@@ -1,0 +1,49 @@
+{
+  "name": "@aix/hooks",
+  "version": "1.0.0",
+  "description": "AIX Component Library - Utility Hooks Collection",
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./es/index.d.ts",
+      "import": "./es/index.js",
+      "require": "./lib/index.js"
+    },
+    "./use-locale": {
+      "types": "./es/use-locale/index.d.ts",
+      "import": "./es/use-locale/index.js",
+      "require": "./lib/use-locale/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "lib",
+    "es",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "rollup -c -w",
+    "build": "npm run build:js && npm run build:types",
+    "build:js": "rollup -c",
+    "build:types": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist es lib",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest --run --passWithNoTests"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.22"
+  },
+  "keywords": [
+    "vue",
+    "vue3",
+    "hooks",
+    "composables",
+    "i18n",
+    "locale",
+    "intl"
+  ],
+  "license": "MIT"
+}

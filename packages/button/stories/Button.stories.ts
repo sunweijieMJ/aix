@@ -1,7 +1,9 @@
+import { useCommonLocale } from '@aix/hooks';
 import type { Meta, StoryObj } from '@storybook/vue3';
 import Button from '../src/Button.vue';
+import type { ButtonProps } from '../src/types';
 
-const meta = {
+const meta: Meta<typeof Button> = {
   title: 'Components/Button',
   component: Button,
   tags: ['autodocs'],
@@ -56,10 +58,7 @@ const meta = {
       },
     },
   },
-  args: {
-    default: 'Button',
-  },
-} satisfies Meta<typeof Button>;
+};
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -71,7 +70,7 @@ export const Default: Story = {
   args: {
     type: 'default',
   },
-  render: (args: any) => ({
+  render: (args: ButtonProps) => ({
     components: { Button },
     setup() {
       return { args };
@@ -87,7 +86,7 @@ export const Primary: Story = {
   args: {
     type: 'primary',
   },
-  render: (args: any) => ({
+  render: (args: ButtonProps) => ({
     components: { Button },
     setup() {
       return { args };
@@ -103,7 +102,7 @@ export const Dashed: Story = {
   args: {
     type: 'dashed',
   },
-  render: (args: any) => ({
+  render: (args: ButtonProps) => ({
     components: { Button },
     setup() {
       return { args };
@@ -119,7 +118,7 @@ export const Text: Story = {
   args: {
     type: 'text',
   },
-  render: (args: any) => ({
+  render: (args: ButtonProps) => ({
     components: { Button },
     setup() {
       return { args };
@@ -135,7 +134,7 @@ export const Link: Story = {
   args: {
     type: 'link',
   },
-  render: (args: any) => ({
+  render: (args: ButtonProps) => ({
     components: { Button },
     setup() {
       return { args };
@@ -227,6 +226,95 @@ export const AllTypes: Story = {
 };
 
 /**
+ * 国际化示例
+ * 点击右上角的语言切换按钮查看效果
+ */
+export const I18nDemo: Story = {
+  render: () => ({
+    components: { Button },
+    setup() {
+      const { t } = useCommonLocale();
+      return { t };
+    },
+    template: `
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <p style="font-size: 14px; color: #666;">
+          切换右上角的语言按钮，观察按钮文案的变化
+        </p>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <Button type="primary">{{ t.confirm }}</Button>
+          <Button type="default">{{ t.cancel }}</Button>
+          <Button type="dashed">{{ t.submit }}</Button>
+          <Button type="primary" loading>{{ t.loading }}</Button>
+          <Button type="default">{{ t.save }}</Button>
+          <Button type="link">{{ t.edit }}</Button>
+        </div>
+        <div style="padding: 12px; background: #f5f5f5; border-radius: 4px;">
+          <p style="margin: 0; font-size: 12px; color: #666;">
+            💡 提示：这些按钮文案来自公共语言包（commonLocale），所有组件都可以复用。
+          </p>
+        </div>
+      </div>
+    `,
+  }),
+};
+
+/**
+ * 主题切换示例
+ * 点击右上角的主题切换按钮（太阳/月亮图标），查看按钮在不同主题下的效果
+ */
+export const ThemeDemo: Story = {
+  render: () => ({
+    components: { Button },
+    template: `
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
+          <h3 style="margin: 0 0 16px 0; font-size: 16px; color: var(--colorText);">
+            🎨 主题切换演示
+          </h3>
+          <p style="margin: 0 0 16px 0; font-size: 14px; color: var(--colorTextSecondary);">
+            点击右上角工具栏的 <strong>主题按钮</strong>（太阳☀️/月亮🌙 图标），切换亮色/暗色主题
+          </p>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <Button type="primary">Primary</Button>
+            <Button type="default">Default</Button>
+            <Button type="dashed">Dashed</Button>
+            <Button type="text">Text</Button>
+            <Button type="link">Link</Button>
+          </div>
+        </div>
+
+        <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
+          <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--colorText);">
+            ✨ 主题系统特性
+          </h4>
+          <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--colorTextSecondary); line-height: 1.8;">
+            <li>✅ 支持亮色/暗色主题切换</li>
+            <li>✅ 使用 CSS 变量，无需重新渲染组件</li>
+            <li>✅ 自动保存主题偏好到 localStorage</li>
+            <li>✅ 平滑过渡动画（200ms）</li>
+            <li>✅ SSR/SSG 友好（支持 Nuxt/Next.js）</li>
+          </ul>
+        </div>
+
+        <div style="padding: 16px; background: var(--colorPrimaryBg); border: 1px solid var(--colorPrimaryBorder); border-radius: 8px;">
+          <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--colorPrimaryText);">
+            💡 开发提示
+          </h4>
+          <div style="font-size: 13px; color: var(--colorText); line-height: 1.8;">
+            <p style="margin: 0 0 8px 0;">所有组件都使用主题变量，无需特殊配置即可支持主题切换：</p>
+            <pre style="margin: 0; padding: 12px; background: var(--colorBgElevated); border-radius: 4px; overflow-x: auto; font-size: 12px;"><code>// 在组件中使用主题变量
+color: var(--colorPrimary);
+background: var(--colorBgContainer);
+border: 1px solid var(--colorBorder);</code></pre>
+          </div>
+        </div>
+      </div>
+    `,
+  }),
+};
+
+/**
  * 交互式 Playground
  * 在 Controls 面板中调整参数查看效果
  */
@@ -237,7 +325,7 @@ export const Playground: Story = {
     disabled: false,
     loading: false,
   },
-  render: (args: any) => ({
+  render: (args: ButtonProps) => ({
     components: { Button },
     setup() {
       const handleClick = () => {

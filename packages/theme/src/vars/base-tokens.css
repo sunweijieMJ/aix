@@ -1,0 +1,114 @@
+/**
+ * 基础Token - 原子级设计变量
+ * 这些是最底层的设计原子，不应该直接在组件中使用
+ */
+
+:root {
+  /* ========== 色盘 - Cyan ========== */
+  --tokenCyan1: rgb(230 255 251);
+  --tokenCyan2: rgb(181 245 236);
+  --tokenCyan3: rgb(135 232 222);
+  --tokenCyan4: rgb(92 219 211);
+  --tokenCyan5: rgb(54 207 201);
+  --tokenCyan6: rgb(19 194 194);
+  --tokenCyan7: rgb(8 151 156);
+  --tokenCyan8: rgb(0 109 117);
+  --tokenCyan9: rgb(0 71 79);
+  --tokenCyan10: rgb(0 35 41);
+
+  /* ========== 色盘 - Blue ========== */
+  --tokenBlue1: rgb(230 244 255);
+  --tokenBlue2: rgb(163 212 255);
+  --tokenBlue3: rgb(122 189 255);
+  --tokenBlue4: rgb(82 163 255);
+  --tokenBlue5: rgb(41 134 255);
+  --tokenBlue6: rgb(0 102 255);
+  --tokenBlue7: rgb(0 79 217);
+  --tokenBlue8: rgb(0 60 179);
+  --tokenBlue9: rgb(0 42 140);
+  --tokenBlue10: rgb(0 27 102);
+
+  /* ========== 色盘 - Green ========== */
+  --tokenGreen1: rgb(235 250 241);
+  --tokenGreen2: rgb(187 237 208);
+  --tokenGreen3: rgb(141 224 179);
+  --tokenGreen4: rgb(99 212 154);
+  --tokenGreen5: rgb(62 199 133);
+  --tokenGreen6: rgb(27 185 114);
+  --tokenGreen7: rgb(15 148 92);
+  --tokenGreen8: rgb(5 110 70);
+  --tokenGreen9: rgb(0 71 46);
+  --tokenGreen10: rgb(0 33 23);
+
+  /* ========== 色盘 - Red ========== */
+  --tokenRed1: rgb(255 241 240);
+  --tokenRed2: rgb(255 204 199);
+  --tokenRed3: rgb(255 163 158);
+  --tokenRed4: rgb(255 120 117);
+  --tokenRed5: rgb(255 77 79);
+  --tokenRed6: rgb(245 34 45);
+  --tokenRed7: rgb(207 19 34);
+  --tokenRed8: rgb(168 7 26);
+  --tokenRed9: rgb(130 0 20);
+  --tokenRed10: rgb(92 0 17);
+
+  /* ========== 色盘 - Orange ========== */
+  --tokenOrange1: rgb(255 247 230);
+  --tokenOrange2: rgb(255 231 186);
+  --tokenOrange3: rgb(255 213 145);
+  --tokenOrange4: rgb(255 192 105);
+  --tokenOrange5: rgb(255 169 64);
+  --tokenOrange6: rgb(250 140 22);
+  --tokenOrange7: rgb(212 107 8);
+  --tokenOrange8: rgb(173 78 0);
+  --tokenOrange9: rgb(135 56 0);
+  --tokenOrange10: rgb(97 37 0);
+
+  /* ========== 色盘 - Gold ========== */
+  --tokenGold1: rgb(255 251 230);
+  --tokenGold2: rgb(255 241 184);
+  --tokenGold3: rgb(255 229 143);
+  --tokenGold4: rgb(255 214 102);
+  --tokenGold5: rgb(255 197 61);
+  --tokenGold6: rgb(250 173 20);
+  --tokenGold7: rgb(212 136 6);
+  --tokenGold8: rgb(173 104 0);
+  --tokenGold9: rgb(135 77 0);
+  --tokenGold10: rgb(97 52 0);
+
+  /* ========== 间距Token ========== */
+  --tokenSpacing1: 4px;
+  --tokenSpacing2: 8px;
+  --tokenSpacing3: 12px;
+  --tokenSpacing4: 16px;
+  --tokenSpacing5: 20px;
+  --tokenSpacing6: 24px;
+  --tokenSpacing8: 32px;
+  --tokenSpacing12: 48px;
+
+  /* ========== 字号Token ========== */
+  --tokenFontSize1: 12px;
+  --tokenFontSize2: 13px;
+  --tokenFontSize3: 14px;
+  --tokenFontSize4: 15px;
+  --tokenFontSize5: 16px;
+  --tokenFontSize6: 18px;
+  --tokenFontSize7: 20px;
+
+  /* ========== 行高Token ========== */
+  --tokenLineHeight1: 1.2;
+  --tokenLineHeight2: 1.5;
+  --tokenLineHeight3: 1.8;
+
+  /* ========== 圆角Token ========== */
+  --tokenBorderRadius1: 2px;
+  --tokenBorderRadius2: 4px;
+  --tokenBorderRadius3: 6px;
+  --tokenBorderRadius4: 8px;
+
+  /* ========== 控制高度Token ========== */
+  --tokenControlHeight1: 16px;
+  --tokenControlHeight2: 24px;
+  --tokenControlHeight3: 32px;
+  --tokenControlHeight4: 40px;
+}

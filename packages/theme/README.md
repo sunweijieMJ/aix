@@ -1,15 +1,17 @@
 # @aix/theme
 
-AIX 设计系统的主题包，提供 CSS 变量、SCSS Mixins 和主题定制功能。
+AIX Design System - 强大的主题系统，基于 Token 架构和 TypeScript API
 
 ## ✨ 特性
 
-- 🎨 **CSS 变量**：基于 CSS 自定义属性的主题系统
-- 🌓 **亮暗主题**：内置亮色和暗色主题支持
-- 📏 **尺寸系统**：统一的尺寸规范和变量
-- 🔧 **SCSS Mixins**：实用的样式混入工具
-- 🎯 **TypeScript**：完整的类型定义支持
-- 📦 **零依赖**：纯 CSS/SCSS 实现
+- 🎨 **Token 系统**：两层架构（基础Token + 语义Token）
+- 🌓 **暗色模式**：内置亮色/暗色主题，支持自动切换
+- 🎯 **TypeScript**：完整的类型定义和类型安全
+- 🚀 **运行时API**：ThemeController 运行时主题管理
+- 🎭 **预设主题**：5个内置主题，支持自定义
+- 🔧 **颜色算法**：自动生成派生颜色（hover/active/bg等）
+- 📦 **按需加载**：支持按需引入CSS变量
+- 💾 **持久化**：自动保存用户主题偏好
 
 ## 📦 安装
 
@@ -19,229 +21,174 @@ npm install @aix/theme
 yarn add @aix/theme
 ```
 
-## 🔨 使用
+## 🚀 快速开始
 
-### 基础用法
-
-在您的项目入口文件中导入主题：
+### 1. 引入样式
 
 ```typescript
 // main.ts
-import '@aix/theme';
+import '@aix/theme/style'; // 完整主题
+
+// 或按需引入
+import '@aix/theme/vars/light'; // 仅亮色
+import '@aix/theme/vars/dark';  // 仅暗色
+import '@aix/theme/vars/base';  // 仅基础Token
 ```
 
-或在组件中导入：
-
-```vue
-<style>
-@import '@aix/theme';
-
-.my-component {
-  color: var(--colorText);
-  background: var(--colorBgContainer);
-}
-</style>
-```
-
-### 导入特定模块
+### 2. 使用主题控制器
 
 ```typescript
-// 只导入 CSS 变量
-import '@aix/theme/vars';
+import { themeController } from '@aix/theme';
 
-// 只导入亮色主题
-import '@aix/theme/vars/light';
+// 切换暗色模式
+themeController.setMode('dark');
 
-// 只导入暗色主题
-import '@aix/theme/vars/dark';
-
-// 只导入尺寸变量
-import '@aix/theme/vars/size';
+// 应用预设主题
+themeController.applyPreset('tech'); // 科技蓝
 ```
 
-### 使用 SCSS Mixins
+## 📖 核心API
 
-```scss
-@use '@aix/theme/mixins' as *;
-
-.text-truncate {
-  @include ellipsis();
-}
-
-.multi-line-truncate {
-  @include ellipsis(3);
-}
-```
-
-## 📖 CSS 变量
-
-### 颜色变量
-
-```css
-/* 主题色 */
---colorPrimary: #1890ff;
---colorPrimaryHover: #40a9ff;
---colorPrimaryActive: #096dd9;
-
-/* 文本颜色 */
---colorText: rgba(0, 0, 0, 0.88);
---colorTextSecondary: rgba(0, 0, 0, 0.65);
---colorTextLight: #ffffff;
-
-/* 背景颜色 */
---colorBgContainer: #ffffff;
---colorBgLayout: #f5f5f5;
---colorBorder: #d9d9d9;
-
-/* 链接颜色 */
---colorLink: #1890ff;
---colorLinkHover: #40a9ff;
---colorLinkActive: #096dd9;
-```
-
-### 尺寸变量
-
-```css
-/* 字体大小 */
---fontSizeXS: 12px;
---fontSize: 14px;
---fontSizeLG: 16px;
-
-/* 间距 */
---paddingXXS: 4px;
---paddingXS: 8px;
---padding: 12px;
---paddingSM: 16px;
---paddingLG: 20px;
-
-/* 圆角 */
---borderRadiusSM: 4px;
---borderRadius: 6px;
---borderRadiusLG: 8px;
-```
-
-## 🌓 主题切换
-
-### 亮色主题（默认）
+### defineTheme - 定义主题
 
 ```typescript
-import '@aix/theme/vars/light';
-```
+import { defineTheme } from '@aix/theme';
 
-### 暗色主题
-
-```typescript
-import '@aix/theme/vars/dark';
-```
-
-### 动态切换主题
-
-```vue
-<script setup>
-import { ref, watch } from 'vue';
-
-const isDark = ref(false);
-
-watch(isDark, (dark) => {
-  if (dark) {
-    import('@aix/theme/vars/dark');
-  } else {
-    import('@aix/theme/vars/light');
-  }
+const myTheme = defineTheme({
+  token: {
+    colorPrimary: 'rgb(0 102 255)',
+    fontSize: '16px',
+  },
+  algorithm: 'default', // 'default' | 'dark' | 'compact'
 });
-</script>
-
-<template>
-  <button @click="isDark = !isDark">
-    切换到{{ isDark ? '亮色' : '暗色' }}主题
-  </button>
-</template>
 ```
 
-## 🔧 SCSS Mixins
+### ThemeController - 运行时管理
 
-### ellipsis
+```typescript
+import { themeController } from '@aix/theme';
 
-文本溢出省略号
+// 设置模式
+themeController.setMode('dark');
+themeController.toggleMode(); // 切换
 
-```scss
-@use '@aix/theme/mixins' as *;
+// 设置Token
+themeController.setToken('colorPrimary', '#ff0000');
+themeController.setTokens({
+  colorPrimary: '#1890ff',
+  fontSize: '16px',
+});
 
-// 单行省略
-.single-line {
-  @include ellipsis();
-}
+// 应用预设
+themeController.applyPreset('tech');
 
-// 多行省略
-.multi-line {
-  @include ellipsis(3); // 显示 3 行
-}
+// 监听变化
+themeController.onChange((event) => {
+  console.log('Theme changed:', event.detail.mode);
+});
+
+// 跟随系统
+themeController.watchSystemTheme();
 ```
 
-## 🎨 自定义主题
+### 颜色算法
 
-### 覆盖 CSS 变量
+```typescript
+import {
+  generateColorSeries,
+  generateColorPalette,
+  adjustLightness
+} from '@aix/theme';
+
+// 生成完整色系
+const series = generateColorSeries('rgb(0 180 180)');
+// { base, hover, active, bg, border, text, ... }
+
+// 生成10级色盘
+const palette = generateColorPalette('rgb(0 180 180)');
+
+// 调整亮度
+const lighter = adjustLightness('rgb(0 180 180)', 20);
+```
+
+## 🎭 预设主题
+
+| 名称 | 主色 | 说明 |
+|------|------|------|
+| `default` | Cyan | 默认青色主题 |
+| `tech` | Blue | 科技蓝主题 |
+| `nature` | Green | 自然绿主题 |
+| `sunset` | Orange | 日落橙主题 |
+| `purple` | Purple | 优雅紫主题 |
+
+```typescript
+themeController.applyPreset('tech');
+```
+
+## 🏗️ 架构设计
+
+### Token 层级
+
+```
+基础Token (原子级)
+--tokenCyan6, --tokenSpacing4
+    ↓ 映射
+语义Token (业务级)
+--colorPrimary, --padding
+    ↓ 使用
+组件样式
+```
+
+### CSS变量使用
 
 ```css
-:root {
-  /* 自定义主题色 */
-  --colorPrimary: #ff6b6b;
-  --colorPrimaryHover: #ff8787;
-  --colorPrimaryActive: #ff5252;
-
-  /* 自定义字体 */
-  --fontSize: 16px;
-
-  /* 自定义圆角 */
-  --borderRadius: 8px;
-}
-```
-
-### 在组件中使用
-
-```vue
-<template>
-  <div class="custom-card">
-    <h3>自定义卡片</h3>
-    <p>使用主题变量</p>
-  </div>
-</template>
-
-<style scoped>
-.custom-card {
+/* ✅ 推荐：使用语义Token */
+.button {
+  background: var(--colorPrimary);
   padding: var(--padding);
-  border-radius: var(--borderRadius);
-  background: var(--colorBgContainer);
-  color: var(--colorText);
-  border: 1px solid var(--colorBorder);
 }
 
-.custom-card h3 {
-  color: var(--colorPrimary);
-  font-size: var(--fontSizeLG);
+/* ❌ 避免：使用基础Token */
+.button {
+  background: var(--tokenCyan6);
+  padding: 16px;
 }
-</style>
 ```
 
-## 📝 完整变量列表
+## 📝 Token 列表
 
-查看 [src/vars](./src/vars) 目录了解所有可用的 CSS 变量。
+### 颜色Token
 
-## 🤝 与组件库集成
+- 品牌色：`--colorPrimary`, `--colorPrimaryHover`, `--colorPrimaryActive`
+- 功能色：`--colorSuccess`, `--colorWarning`, `--colorError`
+- 文本色：`--colorText`, `--colorTextSecondary`, `--colorTextTertiary`
+- 背景色：`--colorBgBase`, `--colorBgContainer`, `--colorBgLayout`
+- 边框色：`--colorBorder`, `--colorBorderSecondary`
 
-AIX Theme 是 AIX 组件库的基础，所有组件都使用这些主题变量，确保一致的视觉体验。
+### 尺寸Token
 
-```vue
-<script setup>
-import { Button } from '@aix/button';
-import '@aix/theme';
-</script>
+- 间距：`--sizeXXS` (4px) ~ `--sizeXXL` (48px)
+- 字号：`--fontSizeXS` (12px) ~ `--fontSizeXXL` (20px)
+- 圆角：`--borderRadiusXS` (2px) ~ `--borderRadiusLG` (8px)
+- 控制高度：`--controlHeightXS` ~ `--controlHeightLG`
 
-<template>
-  <!-- Button 组件自动使用主题变量 -->
-  <Button type="primary">主要按钮</Button>
-</template>
+## 🔧 构建产物
+
 ```
+dist/
+├── index.js          # ESM 主入口
+├── index.cjs         # CJS 入口
+├── index.d.ts        # 类型定义
+├── index.css         # 完整CSS（包含所有Token）
+└── vars/
+    ├── base-tokens.css      # 基础Token
+    ├── light.css            # 亮色语义Token
+    └── dark.css             # 暗色语义Token
+```
+
+## 📚 更多文档
+
+查看完整文档：[主题定制指南](../../docs/guide/theme.md)
 
 ## 📄 License
 

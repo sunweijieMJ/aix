@@ -43,7 +43,10 @@
         "src/**/*.{ts,tsx,js,jsx,vue}",
         "eslint.config.ts",
         "../../eslint.config.ts",
-        "../../internal/eslint-config/**/*.js"
+        "../../internal/eslint-config/**/*.js",
+        "package.json",
+        "tsconfig.json",
+        "../../tsconfig.json"
       ],
       "outputs": [],
       "cache": true

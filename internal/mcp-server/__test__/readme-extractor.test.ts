@@ -40,7 +40,7 @@ describe('ReadmeExtractor', () => {
     // 检查是否包含button的基本props
     const typeProps = result?.props.find((p) => p.name === 'type');
     expect(typeProps).toBeTruthy();
-    expect(typeProps?.type).toContain('string');
+    expect(typeProps?.type).toContain('primary'); // 检查type包含字面量类型
   });
 
   it('应该正确提取代码示例', async () => {

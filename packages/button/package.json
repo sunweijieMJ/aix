@@ -23,7 +23,8 @@
     "clean": "rimraf dist lib es"
   },
   "dependencies": {
-    "@aix/theme": "workspace:*"
+    "@aix/theme": "workspace:*",
+    "@aix/hooks": "workspace:*"
   },
   "peerDependencies": {
     "vue": "^3.5.0"

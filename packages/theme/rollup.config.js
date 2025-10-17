@@ -1,53 +1,30 @@
-import { cpSync } from 'fs';
-import { join } from 'path';
 import autoprefixer from 'autoprefixer';
 import { defineConfig } from 'rollup';
+import esbuild from 'rollup-plugin-esbuild';
 import postcss from 'rollup-plugin-postcss';
-import * as sass from 'sass';
-
-// 构建后复制 SCSS mixins 文件
-function copyScss() {
-  return {
-    name: 'copy-scss',
-    buildEnd() {
-      cpSync(
-        join(process.cwd(), 'src/mixins'),
-        join(process.cwd(), 'dist/mixins'),
-        { recursive: true },
-      );
-      console.log('✅ SCSS mixins copied to dist/mixins');
-    },
-  };
-}
 
 export default defineConfig([
-  // 构建主 CSS 文件（包含所有变量和样式）
+  // 构建主 CSS 文件（包含所有Token）
   {
-    input: 'src/index.scss',
+    input: 'src/vars/index.css',
     output: {
       file: 'dist/index.css',
       format: 'es',
     },
     plugins: [
-      copyScss(),
       postcss({
         extract: true,
         minimize: true,
         sourceMap: false,
-        use: {
-          sass: {
-            implementation: sass,
-          },
-        },
         plugins: [autoprefixer()],
       }),
     ],
   },
-  // 单独构建变量文件（允许按需引入）
+  // 按需引入：基础Token
   {
-    input: 'src/vars/index.css',
+    input: 'src/vars/base-tokens.css',
     output: {
-      file: 'dist/vars/index.css',
+      file: 'dist/vars/base-tokens.css',
       format: 'es',
     },
     plugins: [
@@ -59,8 +36,9 @@ export default defineConfig([
       }),
     ],
   },
+  // 按需引入：亮色语义Token
   {
-    input: 'src/vars/light.css',
+    input: 'src/vars/semantic-tokens-light.css',
     output: {
       file: 'dist/vars/light.css',
       format: 'es',
@@ -74,8 +52,9 @@ export default defineConfig([
       }),
     ],
   },
+  // 按需引入：暗色语义Token
   {
-    input: 'src/vars/dark.css',
+    input: 'src/vars/semantic-tokens-dark.css',
     output: {
       file: 'dist/vars/dark.css',
       format: 'es',
@@ -89,19 +68,24 @@ export default defineConfig([
       }),
     ],
   },
+  // 构建 TypeScript 文件（工具函数）
   {
-    input: 'src/vars/size.css',
-    output: {
-      file: 'dist/vars/size.css',
-      format: 'es',
-    },
+    input: 'src/index.ts',
+    output: [
+      {
+        file: 'dist/index.js',
+        format: 'esm',
+      },
+      {
+        file: 'dist/index.cjs',
+        format: 'cjs',
+      },
+    ],
     plugins: [
-      postcss({
-        extract: true,
-        minimize: true,
-        sourceMap: false,
-        plugins: [autoprefixer()],
+      esbuild({
+        target: 'es2020',
       }),
     ],
+    external: [],
   },
 ]);

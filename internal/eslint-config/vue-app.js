@@ -89,6 +89,8 @@ export const config = [
       'vue/no-multiple-template-root': 'off',
       // 在 Vue 文件中关闭未使用变量检查（模板中使用的变量可能被误报）
       '@typescript-eslint/no-unused-vars': 'off',
+      // 允许单行多属性（组件库常见）
+      'vue/max-attributes-per-line': 'off',
       // 允许 v-html（组件库可能需要渲染动态 HTML）
       'vue/no-v-html': 'off',
     },

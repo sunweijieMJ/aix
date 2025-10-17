@@ -1,0 +1,59 @@
+/**
+ * 自定义样式
+ * 覆盖 VitePress 默认主题样式
+ */
+
+:root {
+  /* 品牌色 - 使用 AIX 主题色 */
+  --vp-c-brand-1: rgb(0 180 180);
+  --vp-c-brand-2: rgb(31 194 188);
+  --vp-c-brand-3: rgb(0 138 143);
+  --vp-c-brand-soft: rgb(220 245 241);
+
+  /* 首页样式调整 */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(
+    120deg,
+    rgb(0 180 180) 30%,
+    rgb(31 194 188)
+  );
+}
+
+/* 组件演示容器样式 */
+.demo-block {
+  margin: 16px 0;
+  padding: 24px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background-color: var(--vp-c-bg);
+}
+
+.demo-block > * + * {
+  margin-left: 12px;
+}
+
+/* API 表格美化 */
+.vp-doc table {
+  width: 100%;
+  table-layout: auto;
+}
+
+.vp-doc th {
+  background-color: var(--vp-c-bg-soft);
+  font-weight: 600;
+}
+
+.vp-doc code {
+  font-size: 0.875em;
+}
+
+/* 响应式调整 */
+@media (width <= 768px) {
+  .demo-block {
+    padding: 16px;
+  }
+
+  .demo-block > * + * {
+    margin-left: 8px;
+  }
+}

@@ -100,28 +100,60 @@ const handleClick = (event: MouseEvent) => {
 </script>
 ```
 
+### 多语言支持
+
+Button 组件内置了多语言支持。组件包含特有文案（`loadingText`、`clickMe`、`submitButton`）以及继承的公共文案（`confirm`、`cancel`、`add` 等）。
+
+```vue
+<template>
+  <div>
+    <!-- 使用 Button 组件特有文案 -->
+    <Button type="primary">{{ t.clickMe }}</Button>
+    <Button type="primary" :loading="true">{{ t.loadingText }}</Button>
+    <Button type="primary">{{ t.submitButton }}</Button>
+
+    <!-- 使用公共文案 -->
+    <Button type="default">{{ t.confirm }}</Button>
+    <Button type="default">{{ t.cancel }}</Button>
+    <Button type="link">{{ t.add }}</Button>
+  </div>
+</template>
+
+<script setup>
+import { Button, buttonLocale } from '@aix/button';
+import { useLocale } from '@aix/hooks';
+
+// 获取多语言文案
+const { t } = useLocale(buttonLocale);
+
+// t.value 包含：
+// - Button 特有文案：loadingText, clickMe, submitButton
+// - 公共文案：confirm, cancel, add, save, delete, edit 等
+</script>
+```
+
 ## 📖 API
 
 ### Props
 
-| 属性名 | 说明 | 类型 | 可选值 | 默认值 |
-|--------|------|------|--------|--------|
-| type | 按钮类型 | `string` | `'primary'` \| `'default'` \| `'dashed'` \| `'text'` \| `'link'` | `'default'` |
-| size | 按钮尺寸 | `string` | `'small'` \| `'medium'` \| `'large'` | `'medium'` |
-| disabled | 是否禁用 | `boolean` | - | `false` |
-| loading | 是否加载中 | `boolean` | - | `false` |
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `type` | `"primary"` \| `"default"` \| `"dashed"` \| `"text"` \| `"link"` | `default` | - | 按钮类型 |
+| `size` | `"small"` \| `"medium"` \| `"large"` | `medium` | - | 按钮尺寸 |
+| `disabled` | `boolean` | `false` | - | 是否禁用 |
+| `loading` | `boolean` | `false` | - | 是否加载中 |
 
 ### Events
 
-| 事件名 | 说明 | 回调参数 |
-|--------|------|----------|
-| click | 点击按钮时触发 | `(event: MouseEvent) => void` |
+| 事件名 | 参数 | 说明 |
+|--------|------|------|
+| `click` | `MouseEvent` | - |
 
 ### Slots
 
 | 插槽名 | 说明 |
 |--------|------|
-| default | 按钮内容 |
+| `default` | - |
 
 ## 🎨 样式定制
 

@@ -19,11 +19,24 @@ vi.spyOn(console, 'warn').mockImplementation((msg) => {
 vi.spyOn(console, 'error').mockImplementation(() => {});
 
 // ---------------【Mock LocalStorage】---------------
+const localStorageStore = new Map<string, string>();
+
 global.localStorage = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
-  length: 0,
-  key: vi.fn(),
+  getItem: vi.fn((key: string) => localStorageStore.get(key) ?? null),
+  setItem: vi.fn((key: string, value: string) => {
+    localStorageStore.set(key, value);
+  }),
+  removeItem: vi.fn((key: string) => {
+    localStorageStore.delete(key);
+  }),
+  clear: vi.fn(() => {
+    localStorageStore.clear();
+  }),
+  get length() {
+    return localStorageStore.size;
+  },
+  key: vi.fn((index: number) => {
+    const keys = Array.from(localStorageStore.keys());
+    return keys[index] ?? null;
+  }),
 } as unknown as Storage;

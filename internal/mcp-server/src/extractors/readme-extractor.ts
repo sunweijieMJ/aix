@@ -138,10 +138,10 @@ export class ReadmeExtractor {
       tableStartIndex = vue3Header.index || 0;
     }
 
-    // 格式2: 属性 | 类型 | 默认值 | 必填 | 描述 (5列格式)
+    // 格式2: 属性(名) | 类型 | 默认值 | 必填 | 描述(说明) (5列格式)
     if (!tableFormat) {
       const newHeader = apiSection.match(
-        /\|\s*属性\s*\|\s*类型\s*\|\s*默认值\s*\|\s*必填\s*\|\s*描述\s*\|/,
+        /\|\s*属性(?:名)?\s*\|\s*类型\s*\|\s*默认值\s*\|\s*必填\s*\|\s*(?:描述|说明)\s*\|/,
       );
       if (newHeader) {
         tableFormat = 'new';
@@ -250,13 +250,13 @@ export class ReadmeExtractor {
         }
 
         props.push({
-          name: name.trim(),
-          type: type.trim(),
+          name: name.trim().replace(/^`|`$/g, ''), // 去除反引号
+          type: type.trim().replace(/^`|`$/g, ''), // 去除反引号
           required: isRequired,
           description: description?.trim() || '',
           defaultValue:
             defaultValue && defaultValue !== '-'
-              ? defaultValue.trim()
+              ? defaultValue.trim().replace(/^`|`$/g, '') // 去除反引号
               : undefined,
         });
       }

@@ -38,6 +38,10 @@ const config: StorybookConfig = {
         alias: {
           ...config.resolve?.alias,
           '@': join(__dirname, '../packages'),
+          // 使用源代码而不是构建后的代码，确保热更新和日志能正常工作
+          '@aix/hooks': join(__dirname, '../packages/hooks/src'),
+          '@aix/theme': join(__dirname, '../packages/theme/src'),
+          '@aix/button': join(__dirname, '../packages/button/src'),
         },
       },
     };

@@ -1,3 +1,22 @@
-@import './dark.css';
-@import './light.css';
-@import './size.css';
+/**
+ * 主题变量入口文件
+ * 使用 CSS Cascade Layers 明确优先级
+ */
+
+/* 定义层级顺序：base < semantic-light < semantic-dark */
+@layer theme.base, theme.semantic-light, theme.semantic-dark;
+
+/* 基础 Token 层 - 原子级设计变量 */
+@layer theme.base {
+  @import './base-tokens.css';
+}
+
+/* 语义 Token 层 - 亮色模式 */
+@layer theme.semantic-light {
+  @import './semantic-tokens-light.css';
+}
+
+/* 语义 Token 层 - 暗色模式 */
+@layer theme.semantic-dark {
+  @import './semantic-tokens-dark.css';
+}

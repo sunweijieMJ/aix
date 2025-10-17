@@ -1,0 +1,8 @@
+# 此目录由 pnpm sync:docs 自动生成
+# 不要手动编辑此目录下的文件
+
+# 忽略所有 markdown 文件
+*.md
+
+# 保留此 .gitignore
+!.gitignore
