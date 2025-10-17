@@ -1,0 +1,186 @@
+:root {
+  /* ========== Base Colors ========== */
+
+  /* Primary */
+  --colorPrimary: rgb(0 180 180);
+  --colorPrimaryHover: rgb(31 194 188);
+  --colorPrimaryActive: rgb(0 138 143);
+  --colorPrimaryBg: rgb(220 245 241);
+  --colorPrimaryBgHover: rgb(149 232 221);
+  --colorPrimaryBorder: rgb(105 219 208);
+  --colorPrimaryBorderHover: rgb(66 207 197);
+  --colorPrimaryText: rgb(0 180 180);
+  --colorPrimaryTextHover: rgb(31 194 188);
+  --colorPrimaryTextActive: rgb(0 138 143);
+
+  /* Success */
+  --colorSuccess: rgb(27 185 114);
+  --colorSuccessHover: rgb(62 199 133);
+  --colorSuccessActive: rgb(15 148 92);
+  --colorSuccessBg: rgb(235 250 241);
+  --colorSuccessBgHover: rgb(187 237 208);
+  --colorSuccessBorder: rgb(141 224 179);
+  --colorSuccessBorderHover: rgb(99 212 154);
+  --colorSuccessText: rgb(0 71 46);
+  --colorSuccessTextHover: rgb(5 110 70);
+  --colorSuccessTextActive: rgb(0 33 23);
+
+  /* Warning */
+  --colorWarning: rgb(250 173 20);
+  --colorWarningHover: rgb(255 197 61);
+  --colorWarningActive: rgb(212 136 6);
+  --colorWarningBg: rgb(255 251 230);
+  --colorWarningBgHover: rgb(255 241 184);
+  --colorWarningBorder: rgb(255 229 143);
+  --colorWarningBorderHover: rgb(255 214 102);
+  --colorWarningText: rgb(135 77 0);
+  --colorWarningTextHover: rgb(173 104 0);
+  --colorWarningTextActive: rgb(97 52 0);
+
+  /* Error */
+  --colorError: rgb(245 34 45);
+  --colorErrorHover: rgb(255 77 79);
+  --colorErrorActive: rgb(207 19 34);
+  --colorErrorBg: rgb(255 241 240);
+  --colorErrorBgHover: rgb(255 204 199);
+  --colorErrorBorder: rgb(255 163 158);
+  --colorErrorBorderHover: rgb(255 120 117);
+  --colorErrorText: rgb(130 0 20);
+  --colorErrorTextHover: rgb(168 7 26);
+  --colorErrorTextActive: rgb(92 0 17);
+
+  /* ========== Text Colors ========== */
+
+  --colorText: rgb(0 0 0 / 0.88);
+  --colorTextSecondary: rgb(0 0 0 / 0.65);
+  --colorTextTertiary: rgb(0 0 0 / 0.45);
+  --colorTextQuaternary: rgb(0 0 0 / 0.25);
+  --colorTextDisabled: rgb(0 0 0 / 0.25);
+  --colorTextPlaceholder: rgb(0 0 0 / 0.25);
+  --colorTextHeading: rgb(0 0 0 / 0.88);
+  --colorTextDescription: rgb(0 0 0 / 0.45);
+  --colorTextBase: rgb(0 0 0);
+  --colorTextLight: rgb(255 255 255);
+
+  /* ========== Background Colors ========== */
+
+  --colorBgBase: rgb(255 255 255);
+  --colorBgContainer: rgb(255 255 255);
+  --colorBgContainerDisabled: rgb(0 0 0 / 0.04);
+  --colorBgElevated: rgb(255 255 255);
+  --colorBgLayout: rgb(245 245 245);
+  --colorBgMask: rgb(0 0 0 / 0.45);
+  --colorBgSpotlight: rgb(0 0 0 / 0.85);
+  --colorBgTextHover: rgb(0 0 0 / 0.06);
+  --colorBgTextActive: rgb(0 0 0 / 0.15);
+
+  /* ========== Fill Colors ========== */
+
+  --colorFill: rgb(0 0 0 / 0.15);
+  --colorFillSecondary: rgb(0 0 0 / 0.06);
+  --colorFillTertiary: rgb(0 0 0 / 0.04);
+  --colorFillQuaternary: rgb(0 0 0 / 0.02);
+  --colorFillContent: rgb(0 0 0 / 0.06);
+  --colorFillAlter: rgb(0 0 0 / 0.02);
+
+  /* ========== Border Colors ========== */
+
+  --colorBorder: rgb(217 217 217);
+  --colorBorderSecondary: rgb(238 238 238);
+  --colorSplit: rgb(238 238 238);
+
+  /* ========== Control Item Colors ========== */
+
+  --controlItemBgHover: rgb(0 0 0 / 0.04);
+  --controlItemBgActive: rgb(230 244 255);
+  --controlItemBgActiveHover: rgb(186 224 255);
+
+  /* ========== Link Colors ========== */
+
+  --colorLink: rgb(0 180 180);
+  --colorLinkHover: rgb(66 207 197);
+  --colorLinkActive: rgb(0 138 143);
+
+  /* ========== Icon Colors ========== */
+
+  --colorIcon: rgb(0 0 0 / 0.45);
+  --colorIconHover: rgb(0 0 0 / 0.88);
+
+  /* ========== Color Palette (Cyan) ========== */
+
+  --cyan1: rgb(230 255 251);
+  --cyan2: rgb(181 245 236);
+  --cyan3: rgb(135 232 222);
+  --cyan4: rgb(92 219 211);
+  --cyan5: rgb(54 207 201);
+  --cyan6: rgb(19 194 194);
+  --cyan7: rgb(8 151 156);
+  --cyan8: rgb(0 109 117);
+  --cyan9: rgb(0 71 79);
+  --cyan10: rgb(0 35 41);
+
+  /* ========== Color Palette (Blue) ========== */
+
+  --blue1: rgb(230 244 255);
+  --blue2: rgb(163 212 255);
+  --blue3: rgb(122 189 255);
+  --blue4: rgb(82 163 255);
+  --blue5: rgb(41 134 255);
+  --blue6: rgb(0 102 255);
+  --blue7: rgb(0 79 217);
+  --blue8: rgb(0 60 179);
+  --blue9: rgb(0 42 140);
+  --blue10: rgb(0 27 102);
+
+  /* ========== Color Palette (Green) ========== */
+
+  --green1: rgb(235 250 241);
+  --green2: rgb(187 237 208);
+  --green3: rgb(141 224 179);
+  --green4: rgb(99 212 154);
+  --green5: rgb(62 199 133);
+  --green6: rgb(27 185 114);
+  --green7: rgb(15 148 92);
+  --green8: rgb(5 110 70);
+  --green9: rgb(0 71 46);
+  --green10: rgb(0 33 23);
+
+  /* ========== Color Palette (Red) ========== */
+
+  --red1: rgb(255 241 240);
+  --red2: rgb(255 204 199);
+  --red3: rgb(255 163 158);
+  --red4: rgb(255 120 117);
+  --red5: rgb(255 77 79);
+  --red6: rgb(245 34 45);
+  --red7: rgb(207 19 34);
+  --red8: rgb(168 7 26);
+  --red9: rgb(130 0 20);
+  --red10: rgb(92 0 17);
+
+  /* ========== Color Palette (Orange) ========== */
+
+  --orange1: rgb(255 247 230);
+  --orange2: rgb(255 231 186);
+  --orange3: rgb(255 213 145);
+  --orange4: rgb(255 192 105);
+  --orange5: rgb(255 169 64);
+  --orange6: rgb(250 140 22);
+  --orange7: rgb(212 107 8);
+  --orange8: rgb(173 78 0);
+  --orange9: rgb(135 56 0);
+  --orange10: rgb(97 37 0);
+
+  /* ========== Color Palette (Gold) ========== */
+
+  --gold1: rgb(255 251 230);
+  --gold2: rgb(255 241 184);
+  --gold3: rgb(255 229 143);
+  --gold4: rgb(255 214 102);
+  --gold5: rgb(255 197 61);
+  --gold6: rgb(250 173 20);
+  --gold7: rgb(212 136 6);
+  --gold8: rgb(173 104 0);
+  --gold9: rgb(135 77 0);
+  --gold10: rgb(97 52 0);
+}

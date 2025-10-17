@@ -1,0 +1,46 @@
+{
+  "name": "@aix/theme",
+  "version": "1.0.0",
+  "description": "AIX Design System - CSS Variables & SCSS Mixins",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.css",
+  "module": "./dist/index.css",
+  "style": "./dist/index.css",
+  "exports": {
+    ".": {
+      "import": "./dist/index.css",
+      "require": "./dist/index.css"
+    },
+    "./vars": "./dist/vars/index.css",
+    "./vars/light": "./dist/vars/light.css",
+    "./vars/dark": "./dist/vars/dark.css",
+    "./vars/size": "./dist/vars/size.css",
+    "./mixins": "./dist/mixins/index.scss"
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "scripts": {
+    "dev": "rollup -c -w",
+    "lint": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
+    "build": "pnpm run clean && rollup -c",
+    "clean": "rimraf dist"
+  },
+  "publishConfig": {
+    "registry": "https://it-artifactory.yitu-inc.com/api/npm/npm-local/"
+  },
+  "devDependencies": {
+    "@kit/stylelint-config": "workspace:*",
+    "autoprefixer": "*",
+    "postcss": "*",
+    "rimraf": "*",
+    "rollup": "*",
+    "rollup-plugin-postcss": "*",
+    "sass": "*",
+    "stylelint": "*"
+  }
+}

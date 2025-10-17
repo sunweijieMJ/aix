@@ -1,0 +1,109 @@
+:root[data-theme='dark'],
+.dark-theme {
+  /* ========== Base Colors (Dark Mode) ========== */
+
+  /* Primary */
+  --colorPrimary: rgb(31 194 188);
+  --colorPrimaryHover: rgb(66 207 197);
+  --colorPrimaryActive: rgb(0 138 143);
+  --colorPrimaryBg: rgb(0 35 41);
+  --colorPrimaryBgHover: rgb(0 71 79);
+  --colorPrimaryBorder: rgb(0 109 117);
+  --colorPrimaryBorderHover: rgb(8 151 156);
+  --colorPrimaryText: rgb(31 194 188);
+  --colorPrimaryTextHover: rgb(66 207 197);
+  --colorPrimaryTextActive: rgb(0 138 143);
+
+  /* Success */
+  --colorSuccess: rgb(62 199 133);
+  --colorSuccessHover: rgb(99 212 154);
+  --colorSuccessActive: rgb(27 185 114);
+  --colorSuccessBg: rgb(0 33 23);
+  --colorSuccessBgHover: rgb(0 71 46);
+  --colorSuccessBorder: rgb(5 110 70);
+  --colorSuccessBorderHover: rgb(15 148 92);
+  --colorSuccessText: rgb(187 237 208);
+  --colorSuccessTextHover: rgb(141 224 179);
+  --colorSuccessTextActive: rgb(235 250 241);
+
+  /* Warning */
+  --colorWarning: rgb(255 197 61);
+  --colorWarningHover: rgb(255 214 102);
+  --colorWarningActive: rgb(250 173 20);
+  --colorWarningBg: rgb(97 52 0);
+  --colorWarningBgHover: rgb(135 77 0);
+  --colorWarningBorder: rgb(173 104 0);
+  --colorWarningBorderHover: rgb(212 136 6);
+  --colorWarningText: rgb(255 241 184);
+  --colorWarningTextHover: rgb(255 229 143);
+  --colorWarningTextActive: rgb(255 251 230);
+
+  /* Error */
+  --colorError: rgb(255 77 79);
+  --colorErrorHover: rgb(255 120 117);
+  --colorErrorActive: rgb(245 34 45);
+  --colorErrorBg: rgb(92 0 17);
+  --colorErrorBgHover: rgb(130 0 20);
+  --colorErrorBorder: rgb(168 7 26);
+  --colorErrorBorderHover: rgb(207 19 34);
+  --colorErrorText: rgb(255 204 199);
+  --colorErrorTextHover: rgb(255 163 158);
+  --colorErrorTextActive: rgb(255 241 240);
+
+  /* ========== Text Colors (Dark Mode) ========== */
+
+  --colorText: rgb(255 255 255 / 0.85);
+  --colorTextSecondary: rgb(255 255 255 / 0.65);
+  --colorTextTertiary: rgb(255 255 255 / 0.45);
+  --colorTextQuaternary: rgb(255 255 255 / 0.25);
+  --colorTextDisabled: rgb(255 255 255 / 0.25);
+  --colorTextPlaceholder: rgb(255 255 255 / 0.25);
+  --colorTextHeading: rgb(255 255 255 / 0.85);
+  --colorTextDescription: rgb(255 255 255 / 0.45);
+  --colorTextBase: rgb(255 255 255);
+  --colorTextLight: rgb(0 0 0);
+
+  /* ========== Background Colors (Dark Mode) ========== */
+
+  --colorBgBase: rgb(0 0 0);
+  --colorBgContainer: rgb(20 20 20);
+  --colorBgContainerDisabled: rgb(255 255 255 / 0.08);
+  --colorBgElevated: rgb(30 30 30);
+  --colorBgLayout: rgb(10 10 10);
+  --colorBgMask: rgb(0 0 0 / 0.65);
+  --colorBgSpotlight: rgb(255 255 255 / 0.85);
+  --colorBgTextHover: rgb(255 255 255 / 0.08);
+  --colorBgTextActive: rgb(255 255 255 / 0.15);
+
+  /* ========== Fill Colors (Dark Mode) ========== */
+
+  --colorFill: rgb(255 255 255 / 0.18);
+  --colorFillSecondary: rgb(255 255 255 / 0.12);
+  --colorFillTertiary: rgb(255 255 255 / 0.08);
+  --colorFillQuaternary: rgb(255 255 255 / 0.04);
+  --colorFillContent: rgb(255 255 255 / 0.12);
+  --colorFillAlter: rgb(255 255 255 / 0.04);
+
+  /* ========== Border Colors (Dark Mode) ========== */
+
+  --colorBorder: rgb(255 255 255 / 0.15);
+  --colorBorderSecondary: rgb(255 255 255 / 0.06);
+  --colorSplit: rgb(255 255 255 / 0.06);
+
+  /* ========== Control Item Colors (Dark Mode) ========== */
+
+  --controlItemBgHover: rgb(255 255 255 / 0.08);
+  --controlItemBgActive: rgb(0 102 255 / 0.15);
+  --controlItemBgActiveHover: rgb(0 102 255 / 0.25);
+
+  /* ========== Link Colors (Dark Mode) ========== */
+
+  --colorLink: rgb(31 194 188);
+  --colorLinkHover: rgb(66 207 197);
+  --colorLinkActive: rgb(0 138 143);
+
+  /* ========== Icon Colors (Dark Mode) ========== */
+
+  --colorIcon: rgb(255 255 255 / 0.45);
+  --colorIconHover: rgb(255 255 255 / 0.85);
+}

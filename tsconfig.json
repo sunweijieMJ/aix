@@ -1,0 +1,7 @@
+{
+  "extends": "@kit/typescript-config/base-app.json",
+  "compilerOptions": {
+    "noUncheckedSideEffectImports": false,
+    "target": "ES2018"
+  }
+}

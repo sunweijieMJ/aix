@@ -1,0 +1,7 @@
+node_modules
+dist
+build
+es
+lib
+*.md
+packages/icons/src

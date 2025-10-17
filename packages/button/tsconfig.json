@@ -1,0 +1,12 @@
+{
+  "extends": "@kit/typescript-config/base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationDir": "es",
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "es"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "es", "lib", "__test__", "stories"]
+}

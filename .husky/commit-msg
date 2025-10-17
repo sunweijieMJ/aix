@@ -1,0 +1,3 @@
+#!/bin/sh
+
+tsx scripts/commit-msg/index.ts "$1"

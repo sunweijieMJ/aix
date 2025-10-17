@@ -1,0 +1,3 @@
+#!/bin/sh
+
+tsx scripts/pre-commit/index.ts

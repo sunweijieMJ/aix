@@ -1,0 +1,70 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx,vue}",
+        "src/**/*.{css,scss,sass,less}",
+        "src/**/*.{json,md}",
+        "package.json",
+        "tsconfig.json",
+        "rollup.config.js",
+        "../../rollup.config.js"
+      ],
+      "outputs": ["**/dist/**", "**/lib/**", "**/es/**"],
+      "cache": true
+    },
+    "build:js": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx,vue}",
+        "src/**/*.{css,scss,sass,less}",
+        "package.json",
+        "rollup.config.js",
+        "../../rollup.config.js"
+      ],
+      "outputs": ["**/dist/**", "**/lib/**", "**/es/**"],
+      "cache": true
+    },
+    "build:types": {
+      "dependsOn": ["build:js"],
+      "inputs": [
+        "src/**/*.{ts,tsx,vue}",
+        "tsconfig.json",
+        "../../tsconfig.json"
+      ],
+      "outputs": ["**/es/**/*.d.ts"],
+      "cache": true
+    },
+    "lint": {
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx,vue}",
+        "eslint.config.ts",
+        "../../eslint.config.ts",
+        "../../internal/eslint-config/**/*.js"
+      ],
+      "outputs": [],
+      "cache": true
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "clean": {
+      "cache": false
+    },
+    "test": {
+      "inputs": [
+        "src/**/*.{ts,tsx,js,jsx,vue}",
+        "__test__/**/*.{ts,tsx,js,jsx,vue}",
+        "vitest.config.ts",
+        "../../vitest.config.ts",
+        "../../vitest.setup.ts"
+      ],
+      "outputs": ["coverage/**"],
+      "cache": true
+    }
+  }
+}

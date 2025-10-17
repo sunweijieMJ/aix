@@ -1,0 +1,37 @@
+{
+  "name": "@aix/button",
+  "version": "1.0.0",
+  "description": "A Vue 3 Button component",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "style": "./es/index.css",
+  "files": [
+    "dist",
+    "lib",
+    "es"
+  ],
+  "scripts": {
+    "dev": "rollup -c -w",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest --run --passWithNoTests",
+    "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
+    "build:js": "rollup -c",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
+    "clean": "rimraf dist lib es"
+  },
+  "dependencies": {
+    "@aix/theme": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:*",
+    "rimraf": "*",
+    "tsx": "*",
+    "typescript": "*"
+  }
+}

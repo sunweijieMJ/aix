@@ -1,0 +1,106 @@
+{
+  "name": "aix",
+  "version": "1.0.0",
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo dev --concurrency=20",
+    "build": "turbo build",
+    "build:filter": "turbo build --filter",
+    "clean": "turbo clean",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "test:ui": "npx vitest --ui",
+    "type-check": "tsc --noEmit",
+    "preview": "storybook dev -p 6006",
+    "build:storybook": "storybook build --output-dir=dist",
+    "commit": "cross-env NODE_OPTIONS=\"--experimental-transform-types --disable-warning=ExperimentalWarning\" czg",
+    "cspell": "cspell *",
+    "format": "prettier . --write",
+    "lint:md": "markdownlint-cli2 '**/*.{md}'",
+    "gen": "tsx scripts/gen.ts",
+    "gen:docs": "tsx scripts/gen-docs.ts",
+    "pre": "tsx scripts/pre-publish/index.ts",
+    "postinstall": "husky"
+  },
+  "config": {
+    "commitizen": {
+      "path": "node_modules/cz-git"
+    }
+  },
+  "lint-staged": {
+    "*.md": [
+      "npm run lint:md"
+    ],
+    "*": [
+      "pretty-quick --staged"
+    ]
+  },
+  "peerDependencies": {
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.7",
+    "@commitlint/cli": "^20.1.0",
+    "@commitlint/config-conventional": "^20.0.0",
+    "@commitlint/format": "^20.0.0",
+    "@commitlint/types": "^20.0.0",
+    "@kit/eslint-config": "workspace:*",
+    "@kit/stylelint-config": "workspace:*",
+    "@kit/typescript-config": "workspace:*",
+    "@rollup/plugin-commonjs": "^28.0.8",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.1.4",
+    "@rollup/plugin-url": "^8.0.2",
+    "@storybook/addon-essentials": "^8.6.14",
+    "@storybook/addon-interactions": "^8.6.14",
+    "@storybook/addon-links": "^8.6.14",
+    "@storybook/test": "^8.6.14",
+    "@storybook/vue3": "^8.6.14",
+    "@storybook/vue3-vite": "^8.6.14",
+    "@types/node": "^22.13.13",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vitest/ui": "^3.2.4",
+    "@vue/test-utils": "^2.4.6",
+    "autoprefixer": "^10.4.21",
+    "chalk": "^5.6.2",
+    "changesets-gitlab": "^0.13.4",
+    "commitizen": "^4.3.1",
+    "conventional-changelog-atom": "^5.0.0",
+    "cross-env": "^10.1.0",
+    "cspell": "^9.2.1",
+    "cz-git": "^1.12.0",
+    "czg": "^1.12.0",
+    "eslint": "^9.37.0",
+    "glob": "^11.0.3",
+    "husky": "^9.1.7",
+    "inquirer": "^12.10.0",
+    "jsdom": "^27.0.0",
+    "lint-staged": "^16.2.4",
+    "markdownlint-cli2": "^0.18.1",
+    "postcss": "^8.5.6",
+    "prettier": "^3.6.2",
+    "pretty-quick": "^4.2.2",
+    "rimraf": "^6.0.1",
+    "rollup": "^4.52.4",
+    "rollup-plugin-esbuild": "^6.2.1",
+    "rollup-plugin-postcss": "^4.0.2",
+    "rollup-plugin-vue": "^6.0.0",
+    "sass": "^1.93.2",
+    "storybook": "^8.6.14",
+    "stylelint": "^16.25.0",
+    "tsx": "^4.20.6",
+    "turbo": "^2.5.8",
+    "typescript": "5.9.3",
+    "vite": "^6.4.0",
+    "vitest": "^3.2.4",
+    "vue": "^3.5.22",
+    "vue-docgen-api": "^4.79.2",
+    "vue-tsc": "^3.1.1"
+  }
+}
