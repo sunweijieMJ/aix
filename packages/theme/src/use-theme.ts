@@ -4,7 +4,6 @@
  */
 
 import { computed, type Ref } from 'vue';
-import { useThemeContext } from './use-theme-context';
 import type {
   PartialThemeTokens,
   ThemeConfig,
@@ -12,6 +11,7 @@ import type {
   ThemePreset,
   TransitionConfig,
 } from './theme-types';
+import { useThemeContext } from './use-theme-context';
 
 /**
  * useTheme 返回值接口

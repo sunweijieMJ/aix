@@ -3,12 +3,12 @@
  * 提供响应式主题管理能力
  */
 
-import { reactive, computed, type App, type InjectionKey } from 'vue';
+import { type App, computed, type InjectionKey, reactive } from 'vue';
 import { themeController } from './theme-controller';
 import type {
-  ThemeMode,
-  ThemeConfig,
   PartialThemeTokens,
+  ThemeConfig,
+  ThemeMode,
   ThemePreset,
   TransitionConfig,
 } from './theme-types';
