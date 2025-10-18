@@ -118,7 +118,26 @@ const handleClick = (event) => {
 
 ## API
 
-<<< @/../docs/api/button.md
+### Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `type` | `"primary"` \| `"default"` \| `"dashed"` \| `"text"` \| `"link"` | `default` | - | 按钮类型 |
+| `size` | `"small"` \| `"medium"` \| `"large"` | `medium` | - | 按钮尺寸 |
+| `disabled` | `boolean` | `false` | - | 是否禁用 |
+| `loading` | `boolean` | `false` | - | 是否加载中 |
+
+### Events
+
+| 事件名 | 参数 | 说明 |
+|--------|------|------|
+| `click` | `MouseEvent` | 点击按钮时触发 |
+
+### Slots
+
+| 插槽名 | 说明 |
+|--------|------|
+| `default` | 按钮内容 |
 
 ::: tip 提示
 API 文档由 vue-docgen-api 自动生成。如果需要更新，请运行 `pnpm docs:gen`。

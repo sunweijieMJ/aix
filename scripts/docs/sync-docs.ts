@@ -38,8 +38,11 @@ async function syncDocs() {
       const apiContent = extractApiSection(content);
 
       if (apiContent) {
-        // Write only API section to docs/api/
-        await fs.writeFile(targetPath, apiContent, 'utf-8');
+        // Generate complete VitePress document
+        const fullDocument = generateApiDocument(packageName, apiContent);
+
+        // Write to docs/api/
+        await fs.writeFile(targetPath, fullDocument, 'utf-8');
         console.log(chalk.green(`✅ ${packageName}.md API section synced`));
         successCount++;
       } else {
@@ -62,7 +65,7 @@ async function syncDocs() {
  */
 function extractApiSection(content: string): string | null {
   // Find API section using regex
-  const apiStartRegex = /^## 📖 API$/m;
+  const apiStartRegex = /^## API$/m;
   const nextSectionRegex = /^## /m;
 
   const apiStartMatch = content.match(apiStartRegex);
@@ -88,6 +91,41 @@ function extractApiSection(content: string): string | null {
   }
   // API is the last section
   return content.slice(apiStartIndex).trim();
+}
+
+/**
+ * Generate complete VitePress API document with frontmatter
+ */
+function generateApiDocument(packageName: string, apiContent: string): string {
+  // Convert package name to title (e.g., 'button' -> 'Button')
+  const title = packageName.charAt(0).toUpperCase() + packageName.slice(1);
+
+  // Remove "## API" header and clean up extra whitespace
+  let cleanContent = apiContent.replace(/^## API\s*/m, '').trim();
+
+  // Adjust heading levels: ### -> ## (since we removed ## API and added # Title)
+  // This ensures proper heading hierarchy for markdownlint
+  cleanContent = cleanContent.replace(/^### /gm, '## ');
+
+  return `---
+title: ${title} API
+outline: deep
+---
+
+# ${title} API
+
+::: warning 自动生成
+此文档由 \`pnpm docs:sync\` 自动生成。请勿手动编辑此文件。
+
+如需更新 API 文档，请修改组件源码注释，然后运行：
+\`\`\`bash
+pnpm docs:gen  # 生成 API 到 README.md
+pnpm docs:sync # 同步到文档站点
+\`\`\`
+:::
+
+${cleanContent}
+`;
 }
 
 syncDocs().catch(console.error);

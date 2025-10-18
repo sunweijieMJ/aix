@@ -6,17 +6,7 @@
 /* 定义层级顺序：base < semantic-light < semantic-dark */
 @layer theme.base, theme.semantic-light, theme.semantic-dark;
 
-/* 基础 Token 层 - 原子级设计变量 */
-@layer theme.base {
-  @import './base-tokens.css';
-}
-
-/* 语义 Token 层 - 亮色模式 */
-@layer theme.semantic-light {
-  @import './semantic-tokens-light.css';
-}
-
-/* 语义 Token 层 - 暗色模式 */
-@layer theme.semantic-dark {
-  @import './semantic-tokens-dark.css';
-}
+/* 导入并分配到对应的 layer */
+@import './base-tokens.css' layer(theme.base);
+@import './semantic-tokens-light.css' layer(theme.semantic-light);
+@import './semantic-tokens-dark.css' layer(theme.semantic-dark);

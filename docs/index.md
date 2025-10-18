@@ -32,7 +32,7 @@ features:
   - icon: 🔧
     title: 工程化
     details: Monorepo 架构，Turbo 构建，完整的测试和 CI/CD 流程
-  - icon: 📖
+  - icon: 📚
     title: 文档完善
     details: 详细的 API 文档，丰富的示例代码，Storybook 交互式预览
   - icon: 🌍

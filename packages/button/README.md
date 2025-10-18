@@ -132,7 +132,7 @@ const { t } = useLocale(buttonLocale);
 </script>
 ```
 
-## 📖 API
+## API
 
 ### Props
 

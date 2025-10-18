@@ -64,7 +64,7 @@ async function generateDocs() {
  * Generate API markdown from component info
  */
 function generateApiMarkdown(componentInfo: any): string {
-  let markdown = '## 📖 API\n\n';
+  let markdown = '## API\n\n';
 
   // Props
   if (componentInfo.props && componentInfo.props.length > 0) {
@@ -170,7 +170,7 @@ async function updateReadmeApi(readmePath: string, apiMarkdown: string) {
     const content = await fs.readFile(readmePath, 'utf-8');
 
     // Find API section using regex
-    const apiStartRegex = /^## 📖 API$/m;
+    const apiStartRegex = /^## API$/m;
     const nextSectionRegex = /^## /m;
 
     const apiStartMatch = content.match(apiStartRegex);

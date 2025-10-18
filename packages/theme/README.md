@@ -47,7 +47,7 @@ themeController.setMode('dark');
 themeController.applyPreset('tech'); // 科技蓝
 ```
 
-## 📖 核心API
+## 核心API
 
 ### defineTheme - 定义主题
 

@@ -27,6 +27,7 @@ try {
     input: COMMIT_MESSAGE,
     stdio: ['pipe', 'pipe', 'pipe'],
     encoding: 'utf-8',
+    shell: true, // Required for Windows to find npx
   });
 
   if (result.status !== 0) {

@@ -18,6 +18,9 @@ coverage
 # Turbo
 .turbo
 
+# claude
+settings.local.json
+
 # Changeset
 .changeset/pre.json
 
@@ -45,7 +48,7 @@ yarn-error.log*
 
 #lockfile
 package-lock.json
-# pnpm-lock.yaml
+pnpm-lock.yaml
 yarn.lock
 
 # Misc

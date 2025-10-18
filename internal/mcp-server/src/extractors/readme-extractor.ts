@@ -29,7 +29,9 @@ export class ReadmeExtractor {
   } | null> {
     try {
       const content = await readFile(filePath, 'utf8');
-      const { data, content: markdownContent } = matter(content);
+      // Normalize line endings to \n (handle Windows \r\n)
+      const normalizedContent = content.replace(/\r\n/g, '\n');
+      const { data, content: markdownContent } = matter(normalizedContent);
 
       // 提取基本信息
       const title = this.extractTitle(markdownContent);
@@ -92,9 +94,8 @@ export class ReadmeExtractor {
    */
   private extractFeatures(content: string): string[] {
     // 支持带emoji的标题，如 "## ✨ 特性"
-    const featuresMatch = content.match(
-      /^##\s+(?:[^\s\n]+\s+)?特性\s*\n\n((?:- .+\n?)+)/m,
-    );
+    // 更灵活的正则：匹配 "## " 后可能有任意字符（包括emoji）然后是 "特性"
+    const featuresMatch = content.match(/^##\s+.*?特性.*?\n\n((?:- .+\n?)+)/m);
     if (!featuresMatch?.[1]) return [];
 
     return featuresMatch[1]
@@ -102,10 +103,14 @@ export class ReadmeExtractor {
       .map((line) => line.replace(/^-\s*/, '').trim())
       .filter(Boolean)
       .map((feature) => {
-        // 移除 emoji 和格式化符号，只保留文本描述
-        // 使用更通用的emoji正则表达式
+        // 移除开头的 emoji 和格式化符号，只保留文本描述
+        // 匹配更广泛的 emoji 和特殊字符
         return feature
-          .replace(/^[\u{1F300}-\u{1F9FF}][\u{FE00}-\u{FE0F}]?\s*/u, '')
+          .replace(
+            /^[\u{1F000}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}][\u{FE00}-\u{FE0F}]?\s*/u,
+            '',
+          )
+          .replace(/^\*\*(.+?)\*\*[：:]\s*/, '$1：')
           .trim();
       });
   }
@@ -117,8 +122,8 @@ export class ReadmeExtractor {
     const props: PropDefinition[] = [];
 
     // 简单有效的API参考部分匹配 - 支持多种格式
-    // 匹配 "## API 参考" 或 "## 📖 API" 或 "## API"
-    const apiMatch = content.match(/##\s+(?:📖\s+)?API(?:\s+参考)?[\s\S]*$/m);
+    // 匹配 "## API 参考" 或 "## API"
+    const apiMatch = content.match(/##\s+API(?:\s+参考)?[\s\S]*$/m);
     if (!apiMatch) return props;
 
     const apiSection = apiMatch[0];

@@ -283,7 +283,7 @@ export class ComponentExtractor {
       tags = readmeData.tags;
 
       if (this.config.verbose) {
-        log.info(`📖 从 README 提取组件信息: ${readmeData.title}`);
+        log.info(`✅ 从 README 提取组件信息: ${readmeData.title}`);
         log.info(`  - Props: ${props.length} 个`);
         log.info(`  - Examples: ${examples.length} 个`);
         log.info(`  - Category: ${category}`);

@@ -9,6 +9,9 @@ export default defineConfig({
   // 构建输出目录
   outDir: '../dist/docs',
 
+  // 忽略死链接(临时配置,后续补充完整文档)
+  ignoreDeadLinks: true,
+
   // Head 配置
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
@@ -36,13 +39,6 @@ export default defineConfig({
         link: '/examples/basic-usage',
         activeMatch: '/examples/',
       },
-      // {
-      //   text: '相关链接',
-      //   items: [
-      //     { text: 'Storybook', link: '#' },
-      //     { text: '更新日志', link: '/changelog' },
-      //   ],
-      // },
     ],
 
     // 侧边栏
@@ -78,10 +74,7 @@ export default defineConfig({
         {
           text: '表单组件',
           collapsed: true,
-          items: [
-            // { text: 'Input 输入框', link: '/components/input' },
-            // 未来添加更多组件
-          ],
+          items: [],
         },
       ],
 

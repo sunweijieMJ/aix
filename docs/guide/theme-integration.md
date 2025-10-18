@@ -60,7 +60,7 @@ const toggleTheme = () => {
 </script>
 ```
 
-## 📖 API 文档
+## API 文档
 
 ### ThemeController
 

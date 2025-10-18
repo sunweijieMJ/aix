@@ -4,7 +4,7 @@
  */
 
 :root[data-theme='dark'],
-.dark-theme {
+.dark {
   /* ========== 品牌色 - Primary (暗色模式) ========== */
   --colorPrimary: rgb(31 194 188);
   --colorPrimaryHover: rgb(66 207 197);
