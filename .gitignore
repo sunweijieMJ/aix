@@ -62,3 +62,7 @@ storybook-static
 docs/.vitepress/dist
 docs/.vitepress/cache
 .temp
+
+# yalc
+.yalc
+yalc.lock

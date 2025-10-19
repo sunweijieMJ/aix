@@ -356,7 +356,7 @@ pnpm dev
 ### 2. 运行Storybook
 ```bash
 # 启动Storybook开发服务器
-pnpm preview
+pnpm storybook:dev
 ```
 
 ### 3. 运行测试

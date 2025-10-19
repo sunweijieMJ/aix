@@ -513,7 +513,7 @@ du -sh packages/button/dist/
 
 ```bash
 # 启动 Storybook
-pnpm preview
+pnpm storybook:dev
 
 # 检查项：
 # - [ ] 所有 Stories 正常渲染

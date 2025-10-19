@@ -1,0 +1,13 @@
+{
+  "extends": "@kit/typescript-config/base-app.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@aix/button": ["../../packages/button/src"],
+      "@aix/theme": ["../../packages/theme/src"],
+      "@aix/hooks": ["../../packages/hooks/src"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

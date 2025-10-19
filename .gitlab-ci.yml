@@ -74,7 +74,7 @@ pages:
   tags: [trail]
   dependencies: [install]
   script:
-    - pnpm build:storybook
+    - pnpm storybook:build
     - rm -rf $PUBLIC_DIR
     - mv $BUILD_DIR $PUBLIC_DIR
   artifacts:

@@ -649,7 +649,7 @@ export const DisabledInteraction: Story = {
 
 ```bash
 # 启动 Storybook
-pnpm preview
+pnpm storybook:dev
 
 # 在浏览器中查看交互测试
 # http://localhost:6006
@@ -988,7 +988,7 @@ pnpm test -- --coverage
 # ✅ 覆盖率达标（80%+）
 
 # 3. 运行 Storybook 交互测试
-pnpm preview
+pnpm storybook:dev
 # ✅ 所有 Stories 正常，无控制台错误
 
 # 4. 类型检查

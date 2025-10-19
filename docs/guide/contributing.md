@@ -121,7 +121,7 @@ pnpm install
 
 ```bash
 # 方式 1：启动 Storybook
-pnpm preview
+pnpm storybook:dev
 
 # 方式 2：启动文档站点
 pnpm docs:dev

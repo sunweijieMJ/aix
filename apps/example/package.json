@@ -1,0 +1,31 @@
+{
+  "name": "@aix/example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AIX 组件库示例项目 - 源码映射联调演示",
+  "scripts": {
+    "dev": "vite",
+    "dev:source": "cross-env VITE_LINK_MODE=source vite",
+    "dev:yalc": "cross-env VITE_LINK_MODE=yalc vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "lint:script": "eslint . --max-warnings 0",
+    "lint:style": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
+    "link": "pnpm run lint:script && pnpm run lint:style"
+  },
+  "dependencies": {
+    "@aix/button": "file:.yalc/@aix/button",
+    "@aix/hooks": "file:.yalc/@aix/hooks",
+    "@aix/theme": "file:.yalc/@aix/theme",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:*",
+    "@kit/typescript-config": "workspace:*",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "cross-env": "^10.1.0",
+    "typescript": "*",
+    "vite": "^6.4.0",
+    "vue-tsc": "*"
+  }
+}

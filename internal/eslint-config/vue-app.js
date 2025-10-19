@@ -83,6 +83,8 @@ export const config = [
 
     rules: {
       // ========== Vue 3 特定规则调整 ==========
+      // 关闭单行元素内容必须换行的限制
+      'vue/singleline-html-element-content-newline': 'off',
       // 关闭组件名必须多单词的限制（允许 Button.vue 等单词组件名）
       'vue/multi-word-component-names': 'off',
       // 关闭模板根节点唯一性检查（Vue 3 支持多根节点）

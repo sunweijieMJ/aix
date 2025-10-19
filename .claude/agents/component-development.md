@@ -732,7 +732,7 @@ cd packages/button
 pnpm dev
 
 # 启动Storybook
-pnpm preview
+pnpm storybook:dev
 ```
 
 ### 2. 测试阶段
@@ -766,7 +766,7 @@ pnpm lint
 # 生成API文档
 
 # 构建Storybook静态站点
-pnpm build:storybook
+pnpm storybook:build
 ```
 
 ## 💡 最佳实践

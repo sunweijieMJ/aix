@@ -1110,7 +1110,7 @@ pnpm test -- --coverage
 pnpm build
 
 # 启动 Storybook
-pnpm preview
+pnpm storybook:dev
 ```
 
 ---

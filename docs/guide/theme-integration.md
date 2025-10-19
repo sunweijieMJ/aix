@@ -405,7 +405,7 @@ Storybook 已完整集成主题系统，提供实时主题切换功能。
 
 1. 启动 Storybook：
 ```bash
-pnpm preview
+pnpm storybook:dev
 ```
 
 2. 在工具栏中点击 **主题按钮**（太阳☀️/月亮🌙 图标）
