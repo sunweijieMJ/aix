@@ -94,7 +94,6 @@ export const config = [
   // TypeScript ESLint 规则
   {
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off', // any警告
       '@typescript-eslint/no-non-null-assertion': 'off', // 禁止非空断言
       '@typescript-eslint/ban-ts-comment': 'warn',
       '@typescript-eslint/no-use-before-define': 'off', // 禁止定义前使用

@@ -1,0 +1,56 @@
+# ============================================
+# 简化版 Docker Compose 配置
+# 仅包含应用服务，适用于已有外部数据库的场景
+# ============================================
+
+services:
+  base-node-server:
+    image: ${DOCKER_IMAGE_NAME:-base_node:latest}
+    container_name: ${CONTAINER_NAME:-base-node-server}
+    ports:
+      - '${APP_PORT:-31100}:${APP_PORT:-31100}'
+    environment:
+      # 应用配置
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${APP_PORT:-31100}
+      - SERVICE_NAME=${SERVICE_NAME:-base-node-server}
+
+      # 数据库配置
+      - DB_TYPE=${DB_TYPE:-postgresql}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_MAX_CONNECTIONS=${DB_MAX_CONNECTIONS:-10}
+      - DB_DIR=/app/data
+
+      # 缓存配置
+      - CACHE_TYPE=${CACHE_TYPE:-memory}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+
+      # JWT 配置
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-24h}
+
+      # 日志配置
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+    env_file:
+      - .env.production
+    volumes:
+      - ${DATA_DIR:-./data}:/app/data
+    restart: unless-stopped
+    networks:
+      - koa-network
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:${APP_PORT:-31100}/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  koa-network:
+    driver: bridge

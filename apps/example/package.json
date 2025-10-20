@@ -1,7 +1,6 @@
 {
   "name": "@aix/example",
   "version": "1.0.0",
-  "private": true,
   "type": "module",
   "description": "AIX 组件库示例项目 - 模拟外部业务项目联调场景",
   "scripts": {
@@ -15,9 +14,9 @@
     "link": "pnpm run lint:script && pnpm run lint:style"
   },
   "dependencies": {
-    "@aix/button": "file:.yalc/@aix/button",
-    "@aix/hooks": "file:.yalc/@aix/hooks",
-    "@aix/theme": "file:.yalc/@aix/theme",
+    "@aix/button": "workspace:*",
+    "@aix/hooks": "workspace:*",
+    "@aix/theme": "workspace:*",
     "vue": "^3.5.22"
   },
   "devDependencies": {

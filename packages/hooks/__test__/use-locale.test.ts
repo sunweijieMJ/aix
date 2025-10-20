@@ -14,7 +14,6 @@ import {
 } from '../src/use-locale';
 
 // 辅助类型：测试中 app.mount() 返回的 VM 实例类型
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TestVM<T = Record<string, any>> = ComponentPublicInstance & T;
 
 describe('useLocale', () => {

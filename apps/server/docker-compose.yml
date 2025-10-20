@@ -1,0 +1,99 @@
+services:
+  base-node-server:
+    image: ${DOCKER_IMAGE_NAME:-base_node:latest}
+    container_name: ${CONTAINER_NAME:-base-node-server}
+    ports:
+      - '${APP_PORT:-31100}:${APP_PORT:-31100}'
+    environment:
+      # 应用配置
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=${APP_PORT:-31100}
+      - SERVICE_NAME=${SERVICE_NAME:-base-node-server}
+
+      # 数据库配置
+      - DB_TYPE=${DB_TYPE:-postgresql}
+      - DB_HOST=${DB_HOST:-postgres}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-base_node_db}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_MAX_CONNECTIONS=${DB_MAX_CONNECTIONS:-10}
+      - DB_DIR=/app/data
+
+      # 缓存配置
+      - CACHE_TYPE=${CACHE_TYPE:-memory}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+
+      # JWT 配置
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-24h}
+
+      # 日志配置
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+    env_file:
+      - .env.production
+    volumes:
+      - ${DATA_DIR:-./data}:/app/data
+    restart: unless-stopped
+    networks:
+      - koa-network
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:${APP_PORT:-31100}/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # PostgreSQL 数据库服务（可选）
+  postgres:
+    image: postgres:15-alpine
+    container_name: ${CONTAINER_NAME:-base-node}-postgres
+    environment:
+      - POSTGRES_DB=${DB_NAME:-base_node_db}
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '${DB_PORT:-5432}:5432'
+    networks:
+      - koa-network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-postgres}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存服务（可选）
+  redis:
+    image: redis:7-alpine
+    container_name: ${CONTAINER_NAME:-base-node}-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    networks:
+      - koa-network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  koa-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

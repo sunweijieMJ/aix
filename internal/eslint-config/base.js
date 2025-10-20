@@ -49,6 +49,14 @@ export const baseConfig = [
     },
   },
   {
+    rules: {
+      // 关闭 any 类型警告
+      '@typescript-eslint/no-explicit-any': 'off',
+      // 关闭未使用变量警告（如果需要）
+      '@typescript-eslint/no-unused-vars': 'warn',
+    },
+  },
+  {
     ignores: [
       'node_modules/**/*',
       'deploy/**/*',

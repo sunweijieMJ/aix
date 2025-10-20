@@ -1,0 +1,729 @@
+openapi: 3.0.0
+info:
+  title: Base Node Server API
+  version: 1.0.0
+  description: |
+    配置管理服务 API 文档
+
+    ### 功能特性
+
+    - 🔐 JWT 认证授权
+    - 📝 配置管理 CRUD 操作
+    - 💾 缓存管理和统计
+    - 📊 健康检查和性能监控
+    - 🔒 安全防护（CORS、限流、XSS）
+    - 📄 标准化的 API 响应格式
+
+    ### 认证说明
+
+    大部分 API 需要 Bearer Token 认证：
+
+    1. 调用 POST /auth/login 获取 JWT token
+    2. 在请求头中添加: Authorization: Bearer <token>
+    3. Token 默认有效期 24 小时
+
+    ### 响应格式
+
+    所有 API 响应遵循统一格式：
+
+    ```json
+    {
+      "code": 0,           // 状态码：0 表示成功
+      "message": "成功",   // 响应消息
+      "result": {}         // 响应数据
+    }
+    ```
+
+    ### 错误码说明
+
+    - **0**: 成功
+    - **-1**: 一般错误
+    - **-401**: 未授权
+    - **-403**: 禁止访问
+    - **-404**: 资源不存在
+    - **-409**: 资源冲突
+    - **-500**: 服务器内部错误
+  contact:
+    name: Node Team
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: http://localhost:3001/local/v1
+    description: 本地开发服务器
+  - url: http://0.0.0.0:3001/local/v1
+    description: 本地网络服务器
+tags:
+  - name: Auth
+    description: 认证授权 - 用户登录、注册、token管理
+  - name: Config
+    description: 配置管理 - 提供配置的增删改查操作
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'JWT 认证令牌，格式: Bearer <token>'
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: 状态码，0 表示成功，其他值表示错误
+          example: 0
+        message:
+          type: string
+          description: 响应消息
+          example: 操作成功
+        result:
+          type: object
+          description: 响应数据
+          nullable: true
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: 错误码
+          example: -1
+        message:
+          type: string
+          description: 错误信息
+          example: 操作失败
+        result:
+          type: object
+          nullable: true
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: 用户ID
+          example: 550e8400-e29b-41d4-a716-446655440000
+        username:
+          type: string
+          description: 用户名
+          example: admin
+        email:
+          type: string
+          format: email
+          description: 邮箱地址
+          example: admin@example.com
+        role:
+          type: string
+          enum:
+            - admin
+            - user
+            - guest
+          description: 用户角色
+          example: admin
+        createdAt:
+          type: string
+          format: date-time
+          description: 创建时间
+        updatedAt:
+          type: string
+          format: date-time
+          description: 更新时间
+    Config:
+      type: object
+      properties:
+        key:
+          type: string
+          description: 配置键
+          example: app.name
+        value:
+          type: string
+          description: 配置值
+          example: My App
+        description:
+          type: string
+          description: 配置描述
+          example: 应用名称
+        createdAt:
+          type: string
+          format: date-time
+          description: 创建时间
+        updatedAt:
+          type: string
+          format: date-time
+          description: 更新时间
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        expiresIn:
+          type: string
+          description: Token 过期时间
+          example: 24h
+        user:
+          $ref: '#/components/schemas/User'
+    HealthCheck:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - unhealthy
+          description: 健康状态
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+          description: 检查时间
+        uptime:
+          type: number
+          description: 运行时间（秒）
+          example: 3600
+        database:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - healthy
+                - unhealthy
+            responseTime:
+              type: number
+              description: 响应时间（毫秒）
+        cache:
+          type: object
+          properties:
+            status:
+              type: string
+              enum:
+                - healthy
+                - unhealthy
+            type:
+              type: string
+              description: 缓存类型
+              example: memory
+  responses:
+    Success:
+      description: 操作成功
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiResponse'
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: 未授权或 Token 无效
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorResponse'
+              - example:
+                  code: -401
+                  message: Unauthorized
+                  result: null
+    Forbidden:
+      description: 禁止访问
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorResponse'
+              - example:
+                  code: -403
+                  message: Forbidden
+                  result: null
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorResponse'
+              - example:
+                  code: -404
+                  message: Not Found
+                  result: null
+    ServerError:
+      description: 服务器内部错误
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorResponse'
+              - example:
+                  code: -500
+                  message: Internal Server Error
+                  result: null
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      summary: 用户注册
+      description: 注册新用户账号
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                  description: 用户名（3-50个字符）
+                  example: johndoe
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                  description: 用户显示名称（可选，默认使用username）
+                  example: John Doe
+                email:
+                  type: string
+                  format: email
+                  description: 电子邮箱
+                  example: johndoe@example.com
+                password:
+                  type: string
+                  minLength: 8
+                  format: password
+                  description: 密码（至少8个字符，需包含大小写字母和数字）
+                  example: StrongPass123!
+                role:
+                  type: string
+                  enum:
+                    - admin
+                    - user
+                    - guest
+                  description: 用户角色（可选，默认为user）
+                  example: user
+      responses:
+        '200':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: User registered successfully
+                  result:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      username:
+                        type: string
+                        example: johndoe
+                      name:
+                        type: string
+                        example: John Doe
+                      email:
+                        type: string
+                        example: johndoe@example.com
+                      role:
+                        type: string
+                        example: user
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: '2024-01-01T00:00:00.000Z'
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        example: '2024-01-01T00:00:00.000Z'
+        '400':
+          description: 请求参数错误（密码太弱、用户名已存在等）
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: -2
+                  message:
+                    type: string
+                    example: Username already exists
+        '500':
+          description: 服务器内部错误
+  /auth/login:
+    post:
+      summary: 用户登录
+      description: 使用用户名和密码登录，获取访问令牌
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  description: 用户名
+                  example: admin
+                password:
+                  type: string
+                  format: password
+                  description: 密码
+                  example: admin123
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: Login successful
+                  result:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        description: JWT访问令牌
+                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            example: 1
+                          username:
+                            type: string
+                            example: admin
+                          email:
+                            type: string
+                            example: admin@example.com
+                          role:
+                            type: string
+                            example: admin
+                          createdAt:
+                            type: string
+                            format: date-time
+                          updatedAt:
+                            type: string
+                            format: date-time
+                      expiresIn:
+                        type: integer
+                        description: 令牌过期时间（秒）
+                        example: 86400
+        '400':
+          description: 请求参数缺失
+        '401':
+          description: 用户名或密码错误
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: -4
+                  message:
+                    type: string
+                    example: Invalid username or password
+        '500':
+          description: 服务器内部错误
+  /auth/refresh:
+    post:
+      summary: 刷新访问令牌
+      description: 使用现有令牌刷新获取新的访问令牌
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  description: 当前的JWT令牌
+                  example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: 令牌刷新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: Token refreshed successfully
+                  result:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        description: 新的JWT访问令牌
+                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                      expiresIn:
+                        type: integer
+                        description: 令牌过期时间（秒）
+                        example: 86400
+        '400':
+          description: 令牌缺失
+        '401':
+          description: 令牌无效或已过期
+        '500':
+          description: 服务器内部错误
+  /auth/userinfo:
+    get:
+      summary: 获取当前用户信息
+      description: 获取当前已认证用户的详细信息
+      tags:
+        - Auth
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功获取用户信息
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: User info retrieved successfully
+                  result:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      username:
+                        type: string
+                        example: johndoe
+                      name:
+                        type: string
+                        example: John Doe
+                      email:
+                        type: string
+                        example: johndoe@example.com
+                      role:
+                        type: string
+                        example: user
+                      createdAt:
+                        type: string
+                        format: date-time
+                      updatedAt:
+                        type: string
+                        format: date-time
+        '401':
+          description: 未认证或令牌无效
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: -4
+                  message:
+                    type: string
+                    example: No token provided
+        '404':
+          description: 用户不存在
+        '500':
+          description: 服务器内部错误
+  /auth/logout:
+    post:
+      summary: 用户登出
+      description: 登出当前用户（客户端应删除存储的令牌）
+      tags:
+        - Auth
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 登出成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: Logout successful
+                  result:
+                    type: object
+                    nullable: true
+                    example: null
+        '401':
+          description: 未认证或令牌无效
+        '500':
+          description: 服务器内部错误
+  /auth/validate:
+    get:
+      summary: 验证令牌有效性
+      description: 检查提供的令牌是否有效（可选认证，不强制要求令牌）
+      tags:
+        - Auth
+      parameters:
+        - in: header
+          name: Authorization
+          schema:
+            type: string
+          required: false
+          description: Bearer token (可选)
+          example: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: 验证结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 0
+                  message:
+                    type: string
+                    example: Token is valid
+                  result:
+                    type: object
+                    properties:
+                      valid:
+                        type: boolean
+                        description: 令牌是否有效
+                        example: true
+                      user:
+                        type: object
+                        nullable: true
+                        description: 用户信息（如果令牌有效）
+                        properties:
+                          userId:
+                            type: integer
+                            example: 1
+                          username:
+                            type: string
+                            example: johndoe
+                          role:
+                            type: string
+                            example: user
+        '500':
+          description: 服务器内部错误
+  /config:
+    get:
+      summary: 获取所有配置
+      description: 返回所有配置项列表
+      tags:
+        - Config
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 成功获取所有配置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+  /config/{path}:
+    get:
+      summary: 根据路径获取配置
+      description: 根据指定路径获取配置项
+      tags:
+        - Config
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: path
+          required: true
+          schema:
+            type: string
+          description: 配置路径（点分割）
+          example: app.setting.theme
+      responses:
+        '200':
+          description: 成功获取配置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+        '404':
+          description: 配置不存在
+    put:
+      summary: 创建或更新配置
+      description: 根据路径创建新配置或更新已存在的配置
+      tags:
+        - Config
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: path
+          required: true
+          schema:
+            type: string
+          description: 配置路径
+          example: app.setting.theme
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - value
+              properties:
+                value:
+                  type: object
+                  description: 配置值（JSON对象）
+                  example:
+                    color: blue
+                    mode: dark
+      responses:
+        '200':
+          description: 配置保存成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'

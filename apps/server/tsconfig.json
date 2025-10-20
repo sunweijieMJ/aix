@@ -1,0 +1,14 @@
+{
+  "extends": "@kit/typescript-config/base-app.json",
+  "compilerOptions": {
+    // Server 特定配置
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@server/*": ["src/*"]
+    }
+  },
+  "include": ["src", "typings"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
+}

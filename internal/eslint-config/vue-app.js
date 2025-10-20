@@ -50,8 +50,6 @@ export const config = [
     },
     // 自定义规则配置 - 组件库需要更灵活的类型约束
     rules: {
-      // 允许使用 any 类型（组件库可能需要处理各种类型）
-      '@typescript-eslint/no-explicit-any': 'off',
       // 允许使用 namespace（用于类型声明等场景）
       '@typescript-eslint/no-namespace': 'off',
       // 允许空接口（组件库常用于扩展）
@@ -137,7 +135,6 @@ export const config = [
   // ==================== TypeScript 规则 ====================
   {
     rules: {
-      '@typescript-eslint/no-explicit-any': 'off', // 组件库允许 any
       '@typescript-eslint/no-non-null-assertion': 'off', // 允许非空断言
       '@typescript-eslint/ban-ts-comment': 'warn', // 警告 ts 注释
       '@typescript-eslint/no-use-before-define': 'off', // 允许定义前使用

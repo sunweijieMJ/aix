@@ -1,0 +1,58 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build output
+dist
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.production
+!.env.production.example
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage
+.nyc_output
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Package files
+base_node_server/
+*.tar.gz
+*.tar
+server_build_info.sh
+
+# Database
+*.db
+*.sqlite
+data/
+*.sql.backup
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Editor directories and files
+.cursor
