@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "AIX 组件库示例项目 - 源码映射联调演示",
+  "description": "AIX 组件库示例项目 - 模拟外部业务项目联调场景",
   "scripts": {
-    "dev": "vite",
-    "dev:source": "cross-env VITE_LINK_MODE=source vite",
+    "dev": "cross-env VITE_LINK_MODE=source vite",
     "dev:yalc": "cross-env VITE_LINK_MODE=yalc vite",
+    "add:yalc": "tsx scripts/add-yalc.ts",
+    "remove:yalc": "tsx scripts/remove-yalc.ts",
     "build": "vue-tsc --noEmit && vite build",
     "lint:script": "eslint . --max-warnings 0",
     "lint:style": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
@@ -22,10 +23,11 @@
   "devDependencies": {
     "@kit/eslint-config": "workspace:*",
     "@kit/typescript-config": "workspace:*",
-    "@vitejs/plugin-vue": "^6.0.1",
-    "cross-env": "^10.1.0",
+    "@vitejs/plugin-vue": "*",
+    "cross-env": "*",
+    "tsx": "*",
     "typescript": "*",
-    "vite": "^6.4.0",
+    "vite": "*",
     "vue-tsc": "*"
   }
 }

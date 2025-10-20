@@ -1,0 +1,28 @@
+# Yalc 本地链接
+.yalc
+yalc.lock
+.yalc.backup.json
+
+# 依赖
+node_modules
+
+# 构建产物
+dist
+*.local
+
+# 日志
+*.log*
+
+# 编辑器
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 操作系统
+.DS_Store
+Thumbs.db

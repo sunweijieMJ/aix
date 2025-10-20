@@ -63,13 +63,15 @@ vue-library/
 │       │   └── vars/          # CSS变量
 │       ├── package.json       # 主题包配置
 │       └── rollup.config.js   # 构建配置
-├── scripts/                    # 构建和工具脚本
-│   ├── commit-msg/            # 提交信息检查脚本
-│   ├── pre-commit/            # 提交前检查脚本
-│   ├── pre-push/              # 推送前检查脚本
-│   ├── pre-publish/           # 发布前检查脚本
+├── scripts/                   # 构建和工具脚本
+│       ├── husky/             # Husky Git hooks脚本
+│       │   ├── commit-msg/    # 提交信息检查脚本
+│       │   ├── pre-commit/    # 提交前检查脚本
+│       │   └── pre-push/      # 推送前检查脚本
+│       ├── publish/           # 发布脚本
+│       │   ├── index/         s# 发布前检查脚本
 │   └── gen.ts                 # 组件生成脚本
-├── typings/                    # TypeScript类型声明
+├── typings/                   # TypeScript类型声明
 │   ├── global.d.ts            # 全局类型
 │   ├── suffix.d.ts            # 文件后缀类型
 │   └── worker.d.ts            # Worker类型
@@ -190,15 +192,13 @@ internal/
 ### `scripts/` - 自动化脚本
 ```
 scripts/
-├── commit-msg/                 # Git提交信息检查
-│   └── index.ts               # 检查脚本
-├── pre-commit/                 # 提交前检查
-│   └── index.ts               # 检查脚本
-├── pre-push/                   # 推送前检查
-│   └── index.ts               # 检查脚本
-├── pre-publish/                # 发布前检查
-│   └── index.ts               # 检查脚本
-└── gen.ts                      # 组件生成脚本
+├── husky/                 # Husky Git hooks脚本
+│   ├── commit-msg         # Git提交信息检查
+│   ├── pre-commit         # 提交前检查脚本
+│   └── pre-push           # 推送前检查脚本
+├── publish/               # 发布脚本
+│   └── index.ts           # 发布脚本入口
+└── gen.ts                 # 组件生成脚本
 ```
 
 **作用**:

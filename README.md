@@ -58,10 +58,6 @@
 |   ├── ...             # 待添加更多组件
 |
 ├── scripts
-|   ├── commit-msg
-|   ├── pre-commit
-|   ├── pre-publish
-|   ├── pre-push
 |
 ├── typings
 |

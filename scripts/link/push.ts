@@ -31,13 +31,16 @@ function pushPackage(pkgName: string): void {
   try {
     // 先重新构建
     console.log(chalk.gray(`  构建中...`));
-    execSync(`cd ${pkgPath} && pnpm build`, { stdio: 'pipe' });
+    execSync(`cd ${pkgPath} && pnpm build`, { stdio: 'inherit' });
 
     // 推送到所有链接的项目
     execSync(`cd ${pkgPath} && yalc push`, { stdio: 'inherit' });
     console.log(chalk.green(`✓ ${pkgName} 推送成功`));
-  } catch {
+  } catch (error) {
     console.error(chalk.red(`✗ ${pkgName} 推送失败`));
+    if (error instanceof Error && error.message) {
+      console.error(chalk.red(`  错误: ${error.message}`));
+    }
   }
 }
 

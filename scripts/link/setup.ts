@@ -8,6 +8,30 @@ import chalk from 'chalk';
 
 console.log(chalk.cyan('🔗 检查本地联调环境...\n'));
 
+// 检查版本函数
+function checkVersion(
+  command: string,
+  minVersion: string,
+  name: string,
+): boolean {
+  try {
+    const version = execSync(command, { encoding: 'utf-8' }).trim();
+    console.log(chalk.green(`✓ ${name}: ${version}`));
+    return true;
+  } catch {
+    console.log(
+      chalk.yellow(`⚠ ${name} 未安装或版本不符合要求 (需要 >= ${minVersion})`),
+    );
+    return false;
+  }
+}
+
+// 检查必要的工具版本
+console.log(chalk.cyan('检查工具版本:\n'));
+checkVersion('node --version', '22.0.0', 'Node.js');
+checkVersion('pnpm --version', '10.0.0', 'pnpm');
+console.log();
+
 try {
   // 检查是否已安装 yalc
   execSync('yalc --version', { stdio: 'pipe' });

@@ -32,7 +32,7 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "pnpm docs:gen && vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "pre": "tsx scripts/pre-publish/index.ts",
+    "pre": "tsx scripts/publish/index.ts",
     "postinstall": "husky"
   },
   "config": {
