@@ -1,8 +1,8 @@
+import { baseConfig } from '@kit/eslint-config/base';
 import type { Linter } from 'eslint';
-import { config as appConfig } from '@kit/eslint-config/vue-app';
 
 const eslintConfig: Linter.Config[] = [
-  ...(Array.isArray(appConfig) ? appConfig : [appConfig]),
+  ...(Array.isArray(baseConfig) ? baseConfig : [baseConfig]),
   {
     ignores: [
       '**/node_modules/**/*',
