@@ -6,8 +6,8 @@ export default defineConfig({
   description: 'Vue 3 企业级组件库',
   lang: 'zh-CN',
 
-  // 部署基础路径
-  base: '/dist/docs/',
+  // 部署基础路径（GitLab Pages 部署路径：/docs）
+  base: '/docs/',
 
   // 构建输出目录
   outDir: '../dist/docs',
