@@ -48,7 +48,7 @@ yarn-error.log*
 
 #lockfile
 package-lock.json
-pnpm-lock.yaml
+# pnpm-lock.yaml  # 不应该忽略，需要提交以确保依赖版本一致
 yarn.lock
 
 # Misc
