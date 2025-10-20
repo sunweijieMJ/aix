@@ -38,6 +38,8 @@ cache:
 install:
   stage: install
   image: $DOCKER_BUILD_IMAGE
+  before_script:
+    - npm install -g pnpm@10.14.0
   script:
     - pnpm install --frozen-lockfile
   cache:
@@ -65,6 +67,8 @@ build:storybook:
   image: $DOCKER_BUILD_IMAGE
   dependencies:
     - install
+  before_script:
+    - npm install -g pnpm@10.14.0
   script:
     - pnpm storybook:build
   artifacts:
@@ -81,6 +85,8 @@ build:docs:
   image: $DOCKER_BUILD_IMAGE
   dependencies:
     - install
+  before_script:
+    - npm install -g pnpm@10.14.0
   script:
     - pnpm docs:build
   artifacts:
