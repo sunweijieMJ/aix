@@ -24,7 +24,7 @@ variables:
   DOCS_DIR: dist/docs
   DOCKER_BUILD_IMAGE: node:22-alpine
 
-# 缓存依赖配置
+# 全局缓存配置
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
@@ -43,6 +43,7 @@ install:
   script:
     - pnpm install --frozen-lockfile
   cache:
+    key: ${CI_COMMIT_REF_SLUG}
     policy: pull-push
     paths:
       - .pnpm-store/
@@ -139,9 +140,9 @@ deploy:storybook:
   script:
     - echo "部署 Storybook 到 $STORYBOOK_DEPLOY_SERVER"
     - rsync -avz --delete $STORYBOOK_DIR/ $STORYBOOK_DEPLOY_USER@$STORYBOOK_DEPLOY_SERVER:$STORYBOOK_DEPLOY_PATH/
-  when: manual
   only:
     - master
+  when: manual
 
 # 部署 VitePress 文档到远程服务器 (手动)
 deploy:docs:
@@ -158,6 +159,6 @@ deploy:docs:
   script:
     - echo "部署 VitePress 文档到 $DOCS_DEPLOY_SERVER"
     - rsync -avz --delete $DOCS_DIR/ $DOCS_DEPLOY_USER@$DOCS_DEPLOY_SERVER:$DOCS_DEPLOY_PATH/
-  when: manual
   only:
     - master
+  when: manual

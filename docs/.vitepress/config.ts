@@ -6,6 +6,9 @@ export default defineConfig({
   description: 'Vue 3 企业级组件库',
   lang: 'zh-CN',
 
+  // 部署基础路径
+  base: '/dist/docs/',
+
   // 构建输出目录
   outDir: '../dist/docs',
 
