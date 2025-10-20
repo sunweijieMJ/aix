@@ -1,185 +1,155 @@
 # ------------------------------------------------------------
-# GitLab CI 配置文件 - 支持 Turbo monorepo + Changeset 自动发布
-# 支持分支策略、缓存、预发布标签（alpha/beta）及 Storybook 部署
+# GitLab CI 配置文件 - 文档部署
+#
+# 功能特性：
+# - Storybook 文档构建与部署
+# - VitePress 文档构建与部署
+# - 支持 GitLab Pages 自动部署
+# - 支持独立服务器部署
 # ------------------------------------------------------------
 
 stages:
   - install
-  - deploy_storybook
-  - check_changeset
-  - update_version
-  - build_package
-  - publish_package
+  - build_docs
+  - deploy_docs
 
 # 全局变量配置
 variables:
-  BUILD_DIR: dist
   PUBLIC_DIR: public
-  ARTIFACTORY_URL: it-artifactory.yitu-inc.com
+  STORYBOOK_DIR: dist/storybook
+  DOCS_DIR: dist/docs
   DOCKER_BUILD_IMAGE: node:22-alpine
-  NPMRC_PATH: .npmrc
-  NPM_REGISTRY: https://${ARTIFACTORY_URL}/api/npm/npm/
-  GITLAB_TOKEN: $GITLAB_ACCESS_TOKEN
-  AUTH_TOKEN: $NPM_AUTH_TOKEN
-  AUTH_EMAIL: $NPM_AUTH_EMAIL
-  CHANGESET_RELEASE_BRANCH: changeset-release/${CI_COMMIT_REF_NAME}
 
-# 全局工作流规则，仅特定分支启用
+# 全局工作流规则
 workflow:
   rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^(master|release\/.+|feature\/.+|changeset-release\/.+)$/
+    - if: $CI_COMMIT_REF_NAME =~ /^(master|release\/.+)$/
     - when: never
 
-# 缓存依赖配置（使用 pnpm store）
+# 缓存依赖配置
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
     - .pnpm-store/
+    - node_modules/
 
-# 通用的 NPM 私库认证配置
-.setup_npm_auth: &setup_npm_auth
-  - rm -f $NPMRC_PATH
-  - echo "registry=$NPM_REGISTRY" >> $NPMRC_PATH
-  - echo "//${ARTIFACTORY_URL}/api/npm/npm/:_auth=\"$AUTH_TOKEN\"" >> $NPMRC_PATH
-  - echo "//${ARTIFACTORY_URL}/api/npm/npm-local/:_auth=\"$AUTH_TOKEN\"" >> $NPMRC_PATH
-  - echo "email=$AUTH_EMAIL" >> $NPMRC_PATH
-  - echo "always-auth=true" >> $NPMRC_PATH
+# ============================
+# 安装依赖
+# ============================
 
-# 安装依赖，跳过 merge commit（避免 version 后再次 install）
 install:
   stage: install
   tags: [trail]
   image: $DOCKER_BUILD_IMAGE
   script:
-    - *setup_npm_auth
-    - pnpm install --no-frozen-lockfile
+    - pnpm install --frozen-lockfile
   cache:
     policy: pull-push
     paths:
       - .pnpm-store/
-      - node_modules/**/*
-      - packages/*/node_modules/**/*
+      - node_modules/
+      - packages/*/node_modules/
   artifacts:
     paths:
       - node_modules/
       - packages/*/node_modules/
     expire_in: 1 week
   rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^(master|release\/.+|feature\/.+)$/
+    - if: $CI_COMMIT_REF_NAME =~ /^(master|release\/.+)$/
       when: always
 
-# 构建并部署 Storybook 到 GitLab Pages
-pages:
-  stage: deploy_storybook
+# ============================
+# 文档构建
+# ============================
+
+# 构建 Storybook
+build:storybook:
+  stage: build_docs
   tags: [trail]
+  image: $DOCKER_BUILD_IMAGE
   dependencies: [install]
   script:
     - pnpm storybook:build
-    - rm -rf $PUBLIC_DIR
-    - mv $BUILD_DIR $PUBLIC_DIR
   artifacts:
-    paths: [$PUBLIC_DIR]
+    paths:
+      - $STORYBOOK_DIR
     expire_in: 1 week
   rules:
     - if: $CI_COMMIT_REF_NAME =~ /^(master|release\/.+)$/
-
-# 合并请求事件中自动注释 changeset 信息（用于展示包变更）
-check_changeset:
-  stage: check_changeset
-  tags: [trail]
-  image: $DOCKER_BUILD_IMAGE
-  dependencies: [install]
-  script:
-    - export PATH="$PATH:./node_modules/.bin"
-    - npx changesets-gitlab comment
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_COMMIT_REF_NAME !~ /^changeset-release\//
-      when: always
-
-# 执行版本号更新并推送 changeset-release 分支（触发构建）
-update_version:
-  stage: update_version
-  tags: [trail]
-  image: $DOCKER_BUILD_IMAGE
-  dependencies: [install]
-  variables:
-    INPUT_VERSION: npx changeset version
-    INPUT_COMMIT: 'build: changeset版本自动更新'
-    INPUT_TITLE: 'changeset版本自动更新'
-  script:
-    - export PATH="$PATH:./node_modules/.bin"
-    - git branch -D $CHANGESET_RELEASE_BRANCH || true
-    - |
-      if [[ "$CI_COMMIT_REF_NAME" == *"beta"* ]]; then
-        echo "进入 beta 发布模式"
-        npx changeset pre enter beta
-      elif [[ "$CI_COMMIT_REF_NAME" == *"alpha"* ]]; then
-        echo "进入 alpha 发布模式"
-        npx changeset pre enter alpha
-      else
-        echo "退出预发布模式"
-        npx changeset pre exit || true
-      fi
-    - npx changesets-gitlab
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^(master|release\/.+|feature\/.+)$/ && $CI_COMMIT_TITLE !~ /^Merge branch 'changeset-release\//
-      when: manual
-
-# 使用 Turbo 构建 packages 中所有变更包（根据 .changeset）
-build_package:
-  stage: build_package
-  tags: [trail]
-  image: $DOCKER_BUILD_IMAGE
-  dependencies: [install]
-  script:
-    - export PATH="$PATH:./node_modules/.bin"
-    - *setup_npm_auth
-    - |
-      if [ ! -d ".changeset" ]; then
-        echo "未发现 .changeset，跳过构建"
-        exit 0
-      fi
-
-      echo "分析需要构建的包..."
-      find .changeset -name "*.md" | xargs cat | \
-        sed -n '/^---$/,/^---$/p' | grep -E "'.+': (major|minor|patch)" | \
-        sed -E "s/[\"'](.+)[\"']: .+/\1/" | sort -u > packages-to-build.txt
-
-      if [ ! -s packages-to-build.txt ]; then
-        echo "无需要构建的包"
-        exit 0
-      fi
-
-      echo "开始构建包："
-      cat packages-to-build.txt
-
-      echo "执行构建..."
-      npx turbo run build --filter "$(paste -sd '|' packages-to-build.txt)" --output-logs=errors-only
-  artifacts:
-    paths:
-      - packages/*/dist/**/*
-      - packages/*/lib/**/*
-      - packages/*/es/**/*
-    expire_in: 1 week
-    when: on_success
-  rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^(master|release\/.+|feature\/.+)$/ && $CI_COMMIT_TITLE =~ /^Merge branch 'changeset-release\/.+?' into '.+'$/
-      changes:
-        - packages/**/package.json
       when: on_success
 
-# 发布构建完成的包（通过 changeset publish）
-publish_package:
-  stage: publish_package
+# 构建 VitePress 文档
+build:docs:
+  stage: build_docs
   tags: [trail]
   image: $DOCKER_BUILD_IMAGE
-  dependencies: [install, build_package]
+  dependencies: [install]
   script:
-    - export PATH="$PATH:./node_modules/.bin"
-    - *setup_npm_auth
-    - npx changeset publish
+    - pnpm docs:build
+  artifacts:
+    paths:
+      - $DOCS_DIR
+    expire_in: 1 week
   rules:
-    - if: $CI_COMMIT_REF_NAME =~ /^(master|release\/.+|feature\/.+)$/ && $CI_COMMIT_TITLE =~ /^Merge branch 'changeset-release\/.+?' into '.+'$/
-      changes:
-        - packages/**/package.json
+    - if: $CI_COMMIT_REF_NAME =~ /^(master|release\/.+)$/
+      when: on_success
+
+# ============================
+# 文档部署
+# ============================
+
+# 部署到 GitLab Pages (自动)
+pages:
+  stage: deploy_docs
+  tags: [trail]
+  dependencies: [build:storybook]
+  script:
+    - mkdir -p $PUBLIC_DIR
+    - cp -r $STORYBOOK_DIR $PUBLIC_DIR/storybook
+  artifacts:
+    paths:
+      - $PUBLIC_DIR
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_REF_NAME == "master"
+      when: on_success
+
+# 部署 Storybook 到远程服务器 (手动)
+deploy:storybook:
+  stage: deploy_docs
+  tags: [trail]
+  dependencies: [build:storybook]
+  before_script:
+    - 'command -v ssh-agent >/dev/null || ( apk add --update openssh-client )'
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H $STORYBOOK_DEPLOY_SERVER >> ~/.ssh/known_hosts
+  script:
+    - echo "部署 Storybook 到 $STORYBOOK_DEPLOY_SERVER"
+    - rsync -avz --delete $STORYBOOK_DIR/ $STORYBOOK_DEPLOY_USER@$STORYBOOK_DEPLOY_SERVER:$STORYBOOK_DEPLOY_PATH/
+  rules:
+    - if: $CI_COMMIT_REF_NAME == "master" && $STORYBOOK_DEPLOY_SERVER != null
       when: manual
+  needs: [build:storybook]
+
+# 部署 VitePress 文档到远程服务器 (手动)
+deploy:docs:
+  stage: deploy_docs
+  tags: [trail]
+  dependencies: [build:docs]
+  before_script:
+    - 'command -v ssh-agent >/dev/null || ( apk add --update openssh-client )'
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan -H $DOCS_DEPLOY_SERVER >> ~/.ssh/known_hosts
+  script:
+    - echo "部署 VitePress 文档到 $DOCS_DEPLOY_SERVER"
+    - rsync -avz --delete $DOCS_DIR/ $DOCS_DEPLOY_USER@$DOCS_DEPLOY_SERVER:$DOCS_DEPLOY_PATH/
+  rules:
+    - if: $CI_COMMIT_REF_NAME == "master" && $DOCS_DEPLOY_SERVER != null
+      when: manual
+  needs: [build:docs]

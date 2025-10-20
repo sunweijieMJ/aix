@@ -33,6 +33,20 @@
 
 详细的构建配置说明请查看 [rollup.config.md](./rollup.config.md)
 
+## 文档系统
+
+本项目提供两套独立的文档系统：
+
+- **📚 VitePress 文档**: 官方使用文档、API 参考、教程
+  - 开发: `pnpm docs:dev`
+  - 构建: `pnpm docs:build`
+  - 输出: `dist/docs/`
+
+- **📖 Storybook**: 组件开发文档、交互式演示
+  - 开发: `pnpm storybook:dev`
+  - 构建: `pnpm storybook:build`
+  - 输出: `dist/storybook/`
+
 ## 使用文档
 
 - [功能清单](#功能清单)
@@ -181,3 +195,12 @@
   ```bash
   pnpm publish
   ```
+
+## CI/CD 自动化
+
+项目配置了完整的 GitLab CI/CD 流程：
+
+### Pipeline 阶段
+
+2. **文档构建**: Storybook 和 VitePress 文档
+3. **自动部署**: 部署到 GitLab Pages 或独立服务器
