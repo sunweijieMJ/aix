@@ -26,6 +26,10 @@ const getAlias = (): AliasOptions => {
   if (LINK_MODE === 'source') {
     console.log('🔗 联调模式: 源码映射 (支持热更新)');
     return {
+      '@aix/button/style': path.resolve(
+        AIX_ROOT,
+        'packages/button/es/index.css',
+      ),
       '@aix/button': path.resolve(AIX_ROOT, 'packages/button/src'),
       '@aix/theme': path.resolve(AIX_ROOT, 'packages/theme/src'),
       '@aix/hooks': path.resolve(AIX_ROOT, 'packages/hooks/src'),

@@ -9,7 +9,7 @@
   "scripts": {
     "start": "tsx watch src/index.ts",
     "dev": "./scripts/start-dev.sh",
-    "build": "npm run clean && npm run docs:generate && tsup src/index.ts --format esm",
+    "build": "npm run clean && tsup src/index.ts --format esm",
     "prod": "node dist/index.js",
     "clean": "rimraf dist",
     "lint": "eslint src/**/*.ts tests/**/*.ts --fix",

@@ -1,9 +1,7 @@
 {
-  "extends": "@kit/typescript-config/base.json",
+  "extends": "@kit/typescript-config/base-library.json",
   "compilerOptions": {
-    "declaration": true,
     "declarationDir": "es",
-    "emitDeclarationOnly": true,
     "rootDir": "src",
     "outDir": "es"
   },

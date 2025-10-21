@@ -2,7 +2,7 @@ import { createTheme } from '@aix/theme';
 import { createApp } from 'vue';
 import App from './App.vue';
 
-import '@aix/button/es/index.css';
+import '@aix/button/style';
 
 const app = createApp(App);
 

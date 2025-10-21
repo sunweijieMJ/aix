@@ -52,9 +52,6 @@ export default config;
 - ✅ `typescript-eslint`: TypeScript 官方推荐规则
 - ✅ `eslint-config-prettier`: 禁用与 Prettier 冲突的规则
 - ✅ `eslint-plugin-turbo`: Turborepo 相关规则
-- ✅ `eslint-plugin-markdown`: Markdown 文件支持
-- ✅ `eslint-plugin-html`: HTML 文件支持
-- ✅ `eslint-plugin-only-warn`: 将所有错误降级为警告
 
 **忽略目录**
 ```

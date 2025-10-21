@@ -14,7 +14,7 @@
         "../../rollup.config.js"
       ],
       "outputs": ["**/dist/**", "**/lib/**", "**/es/**"],
-      "cache": true
+      "cache": false
     },
     "build:js": {
       "dependsOn": ["^build"],
@@ -26,7 +26,7 @@
         "../../rollup.config.js"
       ],
       "outputs": ["**/dist/**", "**/lib/**", "**/es/**"],
-      "cache": true
+      "cache": false
     },
     "build:types": {
       "dependsOn": ["build:js"],
@@ -36,7 +36,7 @@
         "../../tsconfig.json"
       ],
       "outputs": ["**/es/**/*.d.ts"],
-      "cache": true
+      "cache": false
     },
     "lint": {
       "inputs": [
@@ -49,7 +49,7 @@
         "../../tsconfig.json"
       ],
       "outputs": [],
-      "cache": true
+      "cache": false
     },
     "dev": {
       "cache": false,
@@ -67,7 +67,7 @@
         "../../vitest.setup.ts"
       ],
       "outputs": ["coverage/**"],
-      "cache": true
+      "cache": false
     }
   }
 }

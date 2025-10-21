@@ -15,7 +15,9 @@
   ],
   "scripts": {
     "dev": "rollup -c -w",
-    "lint": "eslint . --max-warnings 0",
+    "lint:script": "eslint . --max-warnings 0",
+    "lint:style": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
+    "link": "pnpm run lint:script && pnpm run lint:style",
     "test": "vitest --run --passWithNoTests",
     "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
     "build:js": "rollup -c",
