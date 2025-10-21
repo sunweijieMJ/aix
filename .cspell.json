@@ -1136,7 +1136,6 @@
     "**/*/lib",
     "**/*/stories",
     "**/*/__test__",
-    "packages/icons/src",
     ".husky/**/*",
     ".turbo/**/*",
     ".vscode/**/*",

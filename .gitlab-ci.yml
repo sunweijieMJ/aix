@@ -5,11 +5,6 @@
 # - Storybook 文档构建与部署
 # - VitePress 文档构建与部署
 # - 支持 GitLab Pages 自动部署
-# - 支持独立服务器部署
-#
-# 运行环境：
-# - 使用 GitLab.com 共享 Runners
-# - 已移除自定义 tags，使用默认 Runners
 # ------------------------------------------------------------
 
 stages:
@@ -124,41 +119,4 @@ pages:
     expire_in: 1 week
   only:
     - master
-
-# 部署 Storybook 到远程服务器 (手动)
-deploy:storybook:
-  stage: deploy_docs
-  dependencies:
-    - build:storybook
-  before_script:
-    - 'command -v ssh-agent >/dev/null || ( apk add --update openssh-client )'
-    - eval $(ssh-agent -s)
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - ssh-keyscan -H $STORYBOOK_DEPLOY_SERVER >> ~/.ssh/known_hosts
-  script:
-    - echo "部署 Storybook 到 $STORYBOOK_DEPLOY_SERVER"
-    - rsync -avz --delete $STORYBOOK_DIR/ $STORYBOOK_DEPLOY_USER@$STORYBOOK_DEPLOY_SERVER:$STORYBOOK_DEPLOY_PATH/
-  only:
-    - master
-  when: manual
-
-# 部署 VitePress 文档到远程服务器 (手动)
-deploy:docs:
-  stage: deploy_docs
-  dependencies:
-    - build:docs
-  before_script:
-    - 'command -v ssh-agent >/dev/null || ( apk add --update openssh-client )'
-    - eval $(ssh-agent -s)
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - ssh-keyscan -H $DOCS_DEPLOY_SERVER >> ~/.ssh/known_hosts
-  script:
-    - echo "部署 VitePress 文档到 $DOCS_DEPLOY_SERVER"
-    - rsync -avz --delete $DOCS_DIR/ $DOCS_DEPLOY_USER@$DOCS_DEPLOY_SERVER:$DOCS_DEPLOY_PATH/
-  only:
-    - master
-  when: manual
+    - /^release\/.+$/
