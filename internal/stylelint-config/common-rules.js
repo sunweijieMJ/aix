@@ -24,7 +24,7 @@ const SCSS_AT_RULES = [
  * 公共规则配置
  */
 export const commonRules = {
-  'max-nesting-depth': 15, // 限制嵌套深度
+  'max-nesting-depth': 10, // 限制嵌套深度
   'scss/dollar-variable-pattern': [/$/, { ignore: 'global' }], // scss变量名忽略警告
   'selector-id-pattern': '^[a-zA-Z][a-zA-Z0-9_-]+$|^el-|^mz-', // 为id选择器指定一个匹配模式
   'selector-class-pattern': '^[a-zA-Z][a-zA-Z0-9_-]+$|^el-|^mz-', // 为类选择器指定一个匹配模式

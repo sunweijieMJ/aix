@@ -51,6 +51,8 @@ export const config = [
       'vue/max-attributes-per-line': 'off',
       // 允许 v-html（组件库可能需要渲染动态 HTML）
       'vue/no-v-html': 'off',
+      // vue组件的可选 props 不需要强制默认值
+      'vue/require-default-prop': 'off',
     },
   },
 
