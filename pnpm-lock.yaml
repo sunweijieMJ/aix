@@ -145,9 +145,6 @@ importers:
       rollup-plugin-postcss:
         specifier: ^4.0.2
         version: 4.0.2(postcss@8.5.6)
-      rollup-plugin-vue:
-        specifier: ^6.0.0
-        version: 6.0.0(@vue/compiler-sfc@3.5.22)
       sass:
         specifier: ^1.93.2
         version: 1.93.2
@@ -166,6 +163,9 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+      unplugin-vue:
+        specifier: ^7.0.2
+        version: 7.0.2(@types/node@22.18.12)(jiti@2.6.1)(sass@1.93.2)(tsx@4.20.6)(vue@3.5.22(typescript@5.9.3))(yaml@2.8.1)
       vite:
         specifier: ^6.4.0
         version: 6.4.1(@types/node@22.18.12)(jiti@2.6.1)(sass@1.93.2)(tsx@4.20.6)(yaml@2.8.1)
@@ -11010,14 +11010,6 @@ packages:
     peerDependencies:
       postcss: 8.x
 
-  rollup-plugin-vue@6.0.0:
-    resolution:
-      {
-        integrity: sha512-oVvUd84d5u73M2HYM3XsMDLtZRIA/tw2U0dmHlXU2UWP5JARYHzh/U9vcxaN/x/9MrepY7VH3pHFeOhrWpxs/Q==,
-      }
-    peerDependencies:
-      '@vue/compiler-sfc': '*'
-
   rollup-pluginutils@2.8.2:
     resolution:
       {
@@ -12408,12 +12400,28 @@ packages:
       }
     engines: { node: '>=18.12.0' }
 
+  unplugin-vue@7.0.2:
+    resolution:
+      {
+        integrity: sha512-4aGYg/oTnHQfJk1edss0qfjO8o3U3gbU8d8WQugVgOPVQ3hAQNXqkRLZN5v+bIL4wqdZrKxrRjr1H1y0aTu2Dg==,
+      }
+    engines: { node: '>=20.19.0' }
+    peerDependencies:
+      vue: ^3.2.25
+
   unplugin@1.16.1:
     resolution:
       {
         integrity: sha512-4/u/j4FrCKdi17jaxuJA0jClGxB1AvU2hw/IuayPc4ay1XGaJs/rbb4v5WKwAjNifjmXK9PIFyuPiaK8azyR9w==,
       }
     engines: { node: '>=14.0.0' }
+
+  unplugin@2.3.10:
+    resolution:
+      {
+        integrity: sha512-6NCPkv1ClwH+/BGE9QeoTIl09nuiAt0gS28nn1PvYXsGKRwM2TCbFA2QiilmehPDTXIe684k4rZI1yl3A1PCUw==,
+      }
+    engines: { node: '>=18.12.0' }
 
   unrs-resolver@1.11.1:
     resolution:
@@ -12546,6 +12554,49 @@ packages:
       sass-embedded: '*'
       stylus: '*'
       sugarss: '*'
+      terser: ^5.16.0
+      tsx: ^4.8.1
+      yaml: ^2.4.2
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+      jiti:
+        optional: true
+      less:
+        optional: true
+      lightningcss:
+        optional: true
+      sass:
+        optional: true
+      sass-embedded:
+        optional: true
+      stylus:
+        optional: true
+      sugarss:
+        optional: true
+      terser:
+        optional: true
+      tsx:
+        optional: true
+      yaml:
+        optional: true
+
+  vite@7.1.12:
+    resolution:
+      {
+        integrity: sha512-ZWyE8YXEXqJrrSLvYgrRP7p62OziLW7xI5HYGWFzOvupfAlrLvURSzv/FyGyy0eidogEM3ujU+kUG1zuHgb6Ug==,
+      }
+    engines: { node: ^20.19.0 || >=22.12.0 }
+    hasBin: true
+    peerDependencies:
+      '@types/node': ^20.19.0 || >=22.12.0
+      jiti: '>=1.21.0'
+      less: ^4.0.0
+      lightningcss: ^1.21.0
+      sass: ^1.70.0
+      sass-embedded: ^1.70.0
+      stylus: '>=0.54.8'
+      sugarss: ^5.0.0
       terser: ^5.16.0
       tsx: ^4.8.1
       yaml: ^2.4.2
@@ -19780,15 +19831,6 @@ snapshots:
     transitivePeerDependencies:
       - ts-node
 
-  rollup-plugin-vue@6.0.0(@vue/compiler-sfc@3.5.22):
-    dependencies:
-      '@vue/compiler-sfc': 3.5.22
-      debug: 4.4.3
-      hash-sum: 2.0.0
-      rollup-pluginutils: 2.8.2
-    transitivePeerDependencies:
-      - supports-color
-
   rollup-pluginutils@2.8.2:
     dependencies:
       estree-walker: 0.6.1
@@ -20719,9 +20761,39 @@ snapshots:
       pathe: 2.0.3
       picomatch: 4.0.3
 
+  unplugin-vue@7.0.2(@types/node@22.18.12)(jiti@2.6.1)(sass@1.93.2)(tsx@4.20.6)(vue@3.5.22(typescript@5.9.3))(yaml@2.8.1):
+    dependencies:
+      '@jridgewell/gen-mapping': 0.3.13
+      '@jridgewell/trace-mapping': 0.3.31
+      '@vue/reactivity': 3.5.22
+      debug: 4.4.3
+      unplugin: 2.3.10
+      vite: 7.1.12(@types/node@22.18.12)(jiti@2.6.1)(sass@1.93.2)(tsx@4.20.6)(yaml@2.8.1)
+      vue: 3.5.22(typescript@5.9.3)
+    transitivePeerDependencies:
+      - '@types/node'
+      - jiti
+      - less
+      - lightningcss
+      - sass
+      - sass-embedded
+      - stylus
+      - sugarss
+      - supports-color
+      - terser
+      - tsx
+      - yaml
+
   unplugin@1.16.1:
     dependencies:
       acorn: 8.15.0
+      webpack-virtual-modules: 0.6.2
+
+  unplugin@2.3.10:
+    dependencies:
+      '@jridgewell/remapping': 2.3.5
+      acorn: 8.15.0
+      picomatch: 4.0.3
       webpack-virtual-modules: 0.6.2
 
   unrs-resolver@1.11.1:
@@ -20818,6 +20890,22 @@ snapshots:
       sass: 1.93.2
 
   vite@6.4.1(@types/node@22.18.12)(jiti@2.6.1)(sass@1.93.2)(tsx@4.20.6)(yaml@2.8.1):
+    dependencies:
+      esbuild: 0.25.11
+      fdir: 6.5.0(picomatch@4.0.3)
+      picomatch: 4.0.3
+      postcss: 8.5.6
+      rollup: 4.52.5
+      tinyglobby: 0.2.15
+    optionalDependencies:
+      '@types/node': 22.18.12
+      fsevents: 2.3.3
+      jiti: 2.6.1
+      sass: 1.93.2
+      tsx: 4.20.6
+      yaml: 2.8.1
+
+  vite@7.1.12(@types/node@22.18.12)(jiti@2.6.1)(sass@1.93.2)(tsx@4.20.6)(yaml@2.8.1):
     dependencies:
       esbuild: 0.25.11
       fdir: 6.5.0(picomatch@4.0.3)

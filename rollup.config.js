@@ -8,7 +8,7 @@ import autoprefixer from 'autoprefixer';
 import { defineConfig } from 'rollup';
 import esbuild from 'rollup-plugin-esbuild';
 import postcss from 'rollup-plugin-postcss';
-import vue from 'rollup-plugin-vue';
+import Vue from 'unplugin-vue/rollup';
 import * as sass from 'sass';
 
 /**
@@ -49,18 +49,10 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
         : undefined,
     },
     plugins: [
-      // Vue 插件必须放在前面
-      vue({
-        target: 'browser',
-        preprocessStyles: true,
-        // 提取 CSS 由 postcss 插件处理
-        style: {
-          preprocessOptions: {
-            scss: {
-              implementation: sass,
-            },
-          },
-        },
+      Vue({
+        // unplugin-vue 基于 @vitejs/plugin-vue@6.0.0
+        // 自动支持 Vue 3.3+ 的外部类型导入特性
+        // 样式预处理由 postcss 插件处理
       }),
       resolve({
         extensions,
