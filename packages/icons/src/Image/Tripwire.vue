@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M17.3333 4C18.8061 4 20 5.19391 20 6.66667C20 8.13943 18.8061 9.33333 17.3333 9.33333C16.9351 9.33333 16.5572 9.24603 16.2178 9.0895L9.0895 16.2178C9.24603 16.5572 9.33333 16.9351 9.33333 17.3333C9.33333 18.8061 8.13943 20 6.66667 20C5.19391 20 4 18.8061 4 17.3333C4 15.8606 5.19391 14.6667 6.66667 14.6667C7.15759 14.6667 7.61752 14.7993 8.01258 15.0307L15.0307 8.01258C14.7993 7.61752 14.6667 7.15759 14.6667 6.66667C14.6667 5.19391 15.8606 4 17.3333 4Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'Tripwire',
+});
+</script>

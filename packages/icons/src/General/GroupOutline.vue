@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M9 12C11.21 12 13 10.21 13 8C13 5.79 11.21 4 9 4C6.79 4 5 5.79 5 8C5 10.21 6.79 12 9 12ZM9 6C10.1 6 11 6.9 11 8C11 9.1 10.1 10 9 10C7.9 10 7 9.1 7 8C7 6.9 7.9 6 9 6ZM19 8C19 10.21 17.21 12 15 12C14.53 12 14.09 11.9 13.67 11.76C14.5 10.73 15 9.42 15 8C15 6.58 14.5 5.27 13.67 4.24C14.09 4.1 14.53 4 15 4C17.21 4 19 5.79 19 8ZM19 17C19 15.32 18.04 14.06 16.67 13.13C19.43 13.53 23 14.82 23 17V20H19V17ZM1 17C1 14.34 6.33 13 9 13C11.67 13 17 14.34 17 17V20H1V17ZM3 17.01V18H15V17C14.8 16.29 11.7 15 9 15C6.3 15 3.2 16.29 3 17.01Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'GroupOutline',
+});
+</script>

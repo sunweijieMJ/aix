@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M11.5286 1.25073L2 1.25073L2 10.7507L13.0086 21.8043L22.5367 12.2507L11.5286 1.25073ZM14.8137 15.5644C13.9837 15.5644 13.3137 14.8944 13.3137 14.0644C13.3137 13.2344 13.9837 12.5644 14.8137 12.5644C15.6437 12.5644 16.3137 13.2344 16.3137 14.0644C16.3137 14.8944 15.6437 15.5644 14.8137 15.5644Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'Tag',
+});
+</script>

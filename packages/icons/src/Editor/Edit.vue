@@ -1,0 +1,39 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M9.00004 15V11.5857L18.0057 2.58521L21.4134 6.00085L12.4143 15H9.00004ZM11.5858 13L18.5866 5.99921L18.0036 5.41486L11 12.4144V13H11.5858Z"
+      fill="currentColor"
+    />
+    <path
+      d="M18.9837 10.9947L18.9982 18.9837H5.01533L5.00107 5.00003H12.9909V3.00003H2.99902L3.01737 20.9837H21.0019L20.9837 10.9911L18.9837 10.9947Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'Edit',
+});
+</script>

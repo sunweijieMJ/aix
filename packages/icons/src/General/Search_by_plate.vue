@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M17.0576 10C19.3026 10 21.1152 11.8127 21.1152 14.0576C21.1152 14.8442 20.8919 15.5965 20.4801 16.2415L20.457 16.275L22.6035 18.4216L21.4216 19.6035L19.275 17.457L19.2415 17.4801C18.7399 17.8004 18.1733 18.0067 17.5761 18.0825L17.3184 18.107L17.0576 18.1152C14.8127 18.1152 13 16.3026 13 14.0576C13 11.8127 14.8127 10 17.0576 10ZM20 6L20.0012 10.0005C19.3848 9.53721 18.6577 9.21309 17.8668 9.07486L17.8667 8H4.86667V16L12.4163 16.0005C12.7644 16.7971 13.3141 17.4854 14.0008 18.001L3 18V6H20ZM17.05 11.35C15.5562 11.35 14.35 12.5562 14.35 14.05C14.35 15.5438 15.5562 16.75 17.05 16.75C18.5438 16.75 19.75 15.5438 19.75 14.05C19.75 12.5562 18.5438 11.35 17.05 11.35ZM12.9998 10.9998C12.563 11.5812 12.2501 12.2609 12.1001 12.9998L7 13V11L12.9998 10.9998Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'SearchByPlate',
+});
+</script>

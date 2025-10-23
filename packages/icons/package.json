@@ -1,0 +1,46 @@
+{
+  "name": "@aix/icons",
+  "version": "1.0.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./es/index.js",
+  "types": "./es/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./es/src/index.d.ts",
+      "import": "./es/index.js",
+      "require": "./lib/index.js"
+    },
+    "./*": {
+      "types": "./es/src/*.d.ts",
+      "import": "./es/*.js",
+      "require": "./lib/*.js"
+    }
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "scripts": {
+    "dev": "rollup -c -w",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest --run --passWithNoTests",
+    "clean": "rimraf es lib src",
+    "build:generate": "tsx scripts/generate.ts",
+    "build:js": "rollup -c",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
+    "build": "pnpm run clean && pnpm run build:generate && pnpm run build:js && pnpm run build:types"
+  },
+  "peerDependencies": {
+    "vue": "^3.3.0"
+  },
+  "devDependencies": {
+    "glob": "^10.3.0",
+    "rimraf": "*",
+    "tsx": "*",
+    "typescript": "*",
+    "vue": "^3.3.0",
+    "vue-tsc": "*"
+  }
+}

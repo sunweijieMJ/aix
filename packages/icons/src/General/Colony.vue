@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M12 12.8333L22 7.41667L12 2L2 7.41667L12 12.8333ZM6.09074 7.41667L12 4.21582L17.9093 7.41667L12 10.6175L6.09074 7.41667ZM22 12.0725L11.9084 17.5L2 12.124L4.04571 11.0619L11.9084 15.3001L19.9706 11L22 12.0725ZM11.9084 22L22 16.4333L19.9706 15.3333L11.9084 19.7437L4.04571 15.3968L2 16.4861L11.9084 22Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'Colony',
+});
+</script>

@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 25"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M6 2H2V6H3V18H2V22H6V21H18V22H22V18H21V6H22V2H18V3H6V2ZM18 18H19.596V6H18V4.55301H6V6H4.59605V18H6V19.553H18V18ZM12.038 7.28709C13.2811 7.28709 14.288 8.29397 14.288 9.53709C14.288 10.7802 13.2811 11.7871 12.038 11.7871C10.7948 11.7871 9.78797 10.7802 9.78797 9.53709C9.78797 8.29397 10.7948 7.28709 12.038 7.28709ZM7.53797 16.2871V15.1621C7.53797 13.6658 10.5361 12.9121 12.038 12.9121C13.5398 12.9121 16.538 13.6658 16.538 15.1621V16.2871H7.53797Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'FrameFace',
+});
+</script>

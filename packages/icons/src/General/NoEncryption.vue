@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M4.22 5L3 6.22L5.04 8.26C4 8.26 4 8.26 4 8.26V20C4 21.1 4 22 4 22H18.7814L19.78 23L21 21.78L4.22 5ZM12 2.9C13.71 2.9 15.1 4.29 15.1 6V8H9.66L20 18.34V10C20 8.9 20 8 20 8H17V6C17 3.24 14.76 1 12 1C9.44 1 7.36 2.93 7.06 5.4L8.9 7.24V6C8.9 4.29 10.29 2.9 12 2.9Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'NoEncryption',
+});
+</script>

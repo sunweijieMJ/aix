@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 25"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M11.9999 5C15.7096 5 18.9955 7.1906 21.832 11.4453L22.2018 12L21.832 12.5547C18.9955 16.8094 15.7096 19 11.9999 19C8.29026 19 5.00436 16.8094 2.1679 12.5547L1.7981 12L2.1679 11.4453C5.00436 7.1906 8.29026 5 11.9999 5ZM11.9999 7C9.19287 7 6.60467 8.63059 4.21341 12C6.60467 15.3694 9.19287 17 11.9999 17C14.807 17 17.3952 15.3694 19.7865 12C17.3952 8.63059 14.807 7 11.9999 7ZM11.9999 15C13.6568 15 14.9999 13.6569 14.9999 12C14.9999 10.3431 13.6568 9 11.9999 9C10.3431 9 8.99995 10.3431 8.99995 12C8.99995 13.6569 10.3431 15 11.9999 15Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'Eye',
+});
+</script>

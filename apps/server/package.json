@@ -2,7 +2,6 @@
   "name": "@aix/server",
   "version": "1.0.0",
   "description": "Lightweight Koa API server for configuration management",
-  "author": "",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

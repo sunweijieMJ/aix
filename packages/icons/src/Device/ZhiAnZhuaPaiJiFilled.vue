@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M5.99995 2H16V4H11.9874V8.82025L18.1237 10.4645C18.6571 10.6074 18.993 11.0837 18.8739 11.5282L16.7171 19.5776C16.598 20.0222 16.069 20.2667 15.5355 20.1237L2.01252 16.5003C1.47906 16.3573 1.14316 15.8811 1.26228 15.4365L3.41911 7.38712C3.53822 6.94256 4.06725 6.69806 4.60072 6.841L9.98738 8.28435V4H5.99995V2ZM22.6945 12.7245L20.6239 20.4519L17.985 18.7095L19.5379 12.914L22.6945 12.7245Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'ZhiAnZhuaPaiJiFilled',
+});
+</script>

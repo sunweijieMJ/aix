@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M10.112 8.512C10.296 8.112 10.4 7.672 10.4 7.2C10.4 5.432 8.968 4 7.2 4C5.432 4 4 5.432 4 7.2C4 8.968 5.432 10.4 7.2 10.4C7.672 10.4 8.112 10.296 8.512 10.112L10.4 12L8.512 13.888C8.112 13.704 7.672 13.6 7.2 13.6C5.432 13.6 4 15.032 4 16.8C4 18.568 5.432 20 7.2 20C8.968 20 10.4 18.568 10.4 16.8C10.4 16.328 10.296 15.888 10.112 15.488L12 13.6L17.6 19.2H20V18.4L10.112 8.512ZM7.5 9C6.675 9 6 8.3325 6 7.5C6 6.6675 6.675 6 7.5 6C8.325 6 9 6.6675 9 7.5C9 8.3325 8.325 9 7.5 9ZM7.5 18C6.675 18 6 17.3325 6 16.5C6 15.6675 6.675 15 7.5 15C8.325 15 9 15.6675 9 16.5C9 17.3325 8.325 18 7.5 18ZM12.5 13C12.22 13 12 12.78 12 12.5C12 12.22 12.22 12 12.5 12C12.78 12 13 12.22 13 12.5C13 12.78 12.78 13 12.5 13ZM17.6667 5L13 9.5L14.5556 11L20 5.75V5H17.6667Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'Cut',
+});
+</script>

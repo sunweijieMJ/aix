@@ -1,0 +1,37 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      d="M8.83 12L13.41 16.59L12 18L6 12L12 6L13.41 7.41L8.83 12Z"
+      fill="currentColor"
+    />
+    <path
+      d="M13.83 12L18.41 16.59L17 18L11 12L17 6L18.41 7.41L13.83 12Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'ArrowLeftDouble',
+});
+</script>

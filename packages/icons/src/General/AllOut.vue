@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M16.21 4.15997L20.21 8.15997V4.15997H16.21ZM20.21 16.16L16.21 20.16H20.21V16.16ZM8.20996 20.16L4.20996 16.16V20.16H8.20996ZM4.20996 8.15997L8.20996 4.15997H4.20996V8.15997ZM17.16 7.20997C14.43 4.47997 9.98996 4.47997 7.25996 7.20997C4.52996 9.93997 4.52996 14.38 7.25996 17.11C9.98996 19.84 14.43 19.84 17.16 17.11C19.89 14.38 19.89 9.94997 17.16 7.20997ZM16.06 16.01C13.93 18.14 10.49 18.14 8.35996 16.01C6.22996 13.88 6.22996 10.44 8.35996 8.30997C10.49 6.17997 13.93 6.17997 16.06 8.30997C18.19 10.44 18.19 13.88 16.06 16.01Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'AllOut',
+});
+</script>

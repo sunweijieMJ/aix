@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M12 21.5C13.1 21.5 14 20.6 14 19.5H10C10 20.6 10.9 21.5 12 21.5ZM18 10.5C18 7.43 16.37 4.86 13.5 4.18V2.5C13.5 2.5 12.83 2.5 12 2.5C11.17 2.5 10.5 2.5 10.5 2.5V4.18C7.64 4.86 6 7.42 6 10.5V15.5L4 17.5V18.5H20V17.5L18 15.5V10.5ZM16 16.5H8V10.5C8 8.02 9.51 6 12 6C14.49 6 16 8.02 16 10.5V16.5Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'NotificationsNone',
+});
+</script>

@@ -537,7 +537,7 @@ node dist/cli.js stats   # 查看统计
 ### 获取帮助
 
 - 📖 [GitHub Issues](https://github.com/your-org/mcp-server/issues)
-- 📧 技术支持：<weijie.sun@yitu-inc.com>
+- 📧 技术支持：<sunweijie@able-elec.com>
 
 ## 🔧 快速适配其他组件库
 

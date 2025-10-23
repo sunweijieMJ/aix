@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M16.2443 13.3483C17.0408 12.2699 17.51 10.9446 17.51 9.5C17.51 5.91 14.6 3 11.01 3C7.42 3 4.51 6 4.51 9.5H2L5.84 13.5L10 9.5H6.51C6.51 7 8.53 5 11.01 5C13.49 5 15.51 7.01 15.51 9.5C15.51 11.98 13.49 14 11.01 14C10.36 14 9.75 13.86 9.19 13.62L7.71 15.1C8.68 15.67 9.8 16 11.01 16C12.4338 16 13.7482 15.5386 14.8216 14.754L20.5143 20.4468L21.9285 19.0325L16.2443 13.3483Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'SearchedFor',
+});
+</script>

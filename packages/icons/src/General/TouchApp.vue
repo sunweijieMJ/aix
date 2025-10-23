@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M9.25 10.24V6.5C9.25 5.12 10.37 4 11.75 4C13.13 4 14.25 5.12 14.25 6.5V10.24C15.46 9.43 16.25 8.06 16.25 6.5C16.25 4.01 14.24 2 11.75 2C9.26 2 7.25 4.01 7.25 6.5C7.25 8.06 8.04 9.43 9.25 10.24ZM19.09 14.3217L14.55 12.1872C14.38 12.1211 14.2 12.0833 14.01 12.0833H13.25V6.41667C13.25 5.63278 12.58 5 11.75 5C10.92 5 10.25 5.63278 10.25 6.41667V16.56L6.82 15.88C6.74 15.8706 6.67 15.8517 6.58 15.8517C6.27 15.8517 5.99 15.9744 5.79 16.1633L5 16.9189L9.94 21.5844C10.21 21.8394 10.59 22 11 22H17.79C18.54 22 19.12 21.4806 19.23 20.7911L19.98 15.8139C19.99 15.7478 20 15.6817 20 15.625C20 15.0394 19.62 14.5294 19.09 14.3217Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'TouchApp',
+});
+</script>

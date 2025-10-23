@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M2.49997 19.0001H21.5V21.0001H2.49997V19.0001ZM20.23 8.58007L14.92 10.0001L8.01997 3.57007L6.08997 4.08007L10.23 11.2501L5.25997 12.5801L3.28997 11.0401L1.83997 11.4301L3.65997 14.5901L4.42997 15.9201L6.02997 15.4901L11.34 14.0701L15.69 12.9101L21 11.4901C21 11.4901 23.1801 10.681 23 10.0001C22.7951 9.22599 20.23 8.58007 20.23 8.58007Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'FlightTakeOff',
+});
+</script>

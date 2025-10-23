@@ -1,0 +1,35 @@
+<template>
+  <svg
+    :width="width"
+    :height="height"
+    :style="{ color: color }"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+    v-bind="$attrs"
+  >
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M1 2.99756V8.00006H3V5.00006H21V19.0001H14V21.0001H23V2.99756H1ZM1 18.0001V21.0001H4C4 19.3401 2.66 18.0001 1 18.0001ZM1 14.0001V16.0001C3.76 16.0001 6 18.2401 6 21.0001H8C8 17.1301 4.87 14.0001 1 14.0001ZM1 10.0001V12.0001C5.97 12.0001 10 16.0301 10 21.0001H12C12 14.9201 7.07 10.0001 1 10.0001Z"
+      fill="currentColor"
+    />
+  </svg>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
+withDefaults(defineProps<Props>(), {
+  width: '1em',
+  height: '1em',
+  color: 'currentColor',
+});
+
+defineOptions({
+  name: 'Cast',
+});
+</script>
