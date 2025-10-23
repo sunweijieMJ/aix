@@ -8,6 +8,28 @@
   "module": "./es/index.js",
   "types": "./es/index.d.ts",
   "style": "./es/index.css",
+  "sideEffects": [
+    "*.css",
+    "*.scss",
+    "*.sass"
+  ],
+  "exports": {
+    ".": {
+      "types": "./es/index.d.ts",
+      "import": "./es/index.js",
+      "require": "./lib/index.js"
+    },
+    "./dist": {
+      "types": "./es/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./es/*": "./es/*",
+    "./lib/*": "./lib/*",
+    "./dist/*": "./dist/*",
+    "./style": "./es/index.css",
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "lib",

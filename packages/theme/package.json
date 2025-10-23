@@ -8,6 +8,12 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "style": "./dist/index.css",
+  "sideEffects": [
+    "*.css",
+    "dist/**/*.css",
+    "dist/index.js",
+    "dist/index.cjs"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

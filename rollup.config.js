@@ -9,7 +9,6 @@ import { defineConfig } from 'rollup';
 import esbuild from 'rollup-plugin-esbuild';
 import postcss from 'rollup-plugin-postcss';
 import Vue from 'unplugin-vue/rollup';
-import * as sass from 'sass';
 
 /**
  * 创建 Vue 3 组件库的 Rollup 配置
@@ -20,8 +19,8 @@ import * as sass from 'sass';
  * @returns {object} Rollup 配置对象
  */
 const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
-  const sourceMapEnabled = format !== 'iife' ? true : false;
-  const minifyEnabled = format === 'iife' ? true : false;
+  const sourceMapEnabled = true;
+  const minifyEnabled = format === 'umd';
   const styleExtensions = ['.css', '.scss', '.sass'];
   const extensions = ['.js', '.ts', '.vue'];
   const pkgPath = path.resolve(dir, 'package.json');
@@ -49,14 +48,11 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
         : undefined,
     },
     plugins: [
-      Vue({
-        // unplugin-vue 基于 @vitejs/plugin-vue@6.0.0
-        // 自动支持 Vue 3.3+ 的外部类型导入特性
-        // 样式预处理由 postcss 插件处理
-      }),
+      Vue(),
       resolve({
         extensions,
-        mainFields: ['main', 'module'],
+        // 优先使用 ESM 格式，其次是 CJS，最后是浏览器字段
+        mainFields: ['module', 'main', 'browser'],
       }),
       commonjs({
         include: /node_modules/,
@@ -64,7 +60,7 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       }),
       json(),
       url({
-        limit: 8 * 1024, // 8 KB
+        limit: 8 * 1024,
         include: [
           '**/*.png',
           '**/*.jpg',
@@ -84,7 +80,7 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       }),
       esbuild({
         sourceMap: sourceMapEnabled,
-        target: 'esnext',
+        target: 'es2020',
         minify: minifyEnabled,
         minifyIdentifiers: minifyEnabled,
         minifySyntax: minifyEnabled,
@@ -100,14 +96,18 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
         extract: true,
         extensions: styleExtensions,
         use: {
-          sass,
+          sass: {
+            // 使用现代 Sass API
+            api: 'modern-compiler',
+            silenceDeprecations: ['legacy-js-api'],
+          },
         },
         plugins: [autoprefixer()],
       }),
     ],
     external: (id) => {
       if (outputFile) {
-        // IIFE 格式只外部化 vue
+        // UMD 格式打包所有依赖，只外部化 Vue
         return id === 'vue' || id.startsWith('vue/');
       }
       // ESM 和 CJS 格式外部化所有依赖
@@ -130,19 +130,20 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
 /**
  * 创建多格式 Rollup 配置
  * @param {string} dir - 组件包目录路径
- * @param {string[]} formats - 需要输出的格式数组，默认 ['esm', 'cjs']
+ * @param {string[]} formats - 需要输出的格式数组，默认 ['esm', 'cjs', 'umd']
  * @returns {object[]} Rollup 配置数组
  *
- * @example
- * // 在组件包的 rollup.config.js 中使用：
- * import { createRollupConfig } from '../../rollup.config.js';
- * export default createRollupConfig(import.meta.dirname);
+ * @description
+ * 产物说明：
+ * - ESM (es/): 保留模块结构，适合现代构建工具（Tree-shaking）
+ * - CJS (lib/): CommonJS 格式，适合 Node.js 环境
+ * - UMD (dist/): 通用格式，同时支持 AMD/CommonJS/全局变量
  */
-export function createRollupConfig(dir, formats = ['esm', 'cjs']) {
+export function createRollupConfig(dir, formats = ['esm', 'cjs', 'umd']) {
   const configMap = {
     esm: defineConfig(createBaseConfig(dir, 'esm', 'es')),
     cjs: defineConfig(createBaseConfig(dir, 'cjs', 'lib')),
-    iife: defineConfig(createBaseConfig(dir, 'iife', 'dist', 'dist/index.js')),
+    umd: defineConfig(createBaseConfig(dir, 'umd', 'dist', 'dist/index.js')),
   };
 
   return formats.map((format) => configMap[format]).filter(Boolean);
