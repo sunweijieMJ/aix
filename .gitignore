@@ -34,6 +34,7 @@ build
 dist
 es
 lib
+packages/icons/src
 internal/mcp-server/data
 
 # TypeScript
