@@ -46,12 +46,12 @@ import { Camera, Search, Home } from '@aix/icons';
     <!-- 使用 props 控制样式 -->
     <Camera :width="24" :height="24" color="red" />
 
-    <!-- 使用 style 属性 -->}
-    <Search style="font-size: 24px; color: blue;" />
+    <!-- 使用 style 属性 -->
+    <Search :style="{ fontSize: '24px', color: 'blue' }" />
 
     <!-- 响应点击事件 -->
     <Home
-      style="font-size: 24px; color: orange; cursor: pointer;"
+      :style="{ fontSize: '24px', color: 'orange', cursor: 'pointer' }"
       @click="handleClick"
     />
   </div>
@@ -72,92 +72,89 @@ const handleClick = () => {
 
 用于表示各种应用功能和模型：
 
-```tsx
-import { 
-  BaoKongRenYuanJianKong, 
-  CarFakeLicensed, 
-  Default,
-  HuoDongGuiJi,
-  StatisticAll
-} from '@yt/icons';
-
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '32px' }}>
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '32px' }">
     <BaoKongRenYuanJianKong title="保控人员监控" />
     <CarFakeLicensed title="车辆假牌" />
     <Default title="默认应用" />
     <HuoDongGuiJi title="活动轨迹" />
     <StatisticAll title="统计全部" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import {
+  BaoKongRenYuanJianKong,
+  CarFakeLicensed,
+  Default,
+  HuoDongGuiJi,
+  StatisticAll
+} from '@aix/icons';
+</script>
 ```
 
 ### 设备类图标 (Device)
 
 表示各种设备和硬件：
 
-```tsx
-import { 
-  Camera, 
-  Computer, 
-  JingWuTongFilled, 
-  ZhiAnZhuaPaiJiFilled,
-  SheXiangTouFilled 
-} from '@yt/icons';
-
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '32px', color: '#1890ff' }}>
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '32px', color: '#1890ff' }">
     <Camera title="摄像头" />
     <Computer title="计算机" />
     <JingWuTongFilled title="警务通" />
     <ZhiAnZhuaPaiJiFilled title="智安抓拍机" />
     <SheXiangTouFilled title="摄像头" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import {
+  Camera,
+  Computer,
+  JingWuTongFilled,
+  ZhiAnZhuaPaiJiFilled,
+  SheXiangTouFilled
+} from '@aix/icons';
+</script>
 ```
 
 ### 编辑类图标 (Editor)
 
 用于编辑操作和文档管理：
 
-```tsx
-import { 
-  Edit, 
-  Delete, 
-  Copy, 
-  Cut, 
-  Send,
-  Dashboard 
-} from '@yt/icons';
-
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '24px' }}>
-    <Edit style={{ color: '#52c41a' }} title="编辑" />
-    <Delete style={{ color: '#ff4d4f' }} title="删除" />
-    <Copy style={{ color: '#1890ff' }} title="复制" />
-    <Cut style={{ color: '#fa8c16' }} title="剪切" />
-    <Send style={{ color: '#722ed1' }} title="发送" />
-    <Dashboard style={{ color: '#13c2c2' }} title="仪表板" />
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '24px' }">
+    <Edit :style="{ color: '#52c41a' }" title="编辑" />
+    <Delete :style="{ color: '#ff4d4f' }" title="删除" />
+    <Copy :style="{ color: '#1890ff' }" title="复制" />
+    <Cut :style="{ color: '#fa8c16' }" title="剪切" />
+    <Send :style="{ color: '#722ed1' }" title="发送" />
+    <Dashboard :style="{ color: '#13c2c2' }" title="仪表板" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import {
+  Edit,
+  Delete,
+  Copy,
+  Cut,
+  Send,
+  Dashboard
+} from '@aix/icons';
+</script>
 ```
 
 ### 文件类图标 (File)
 
 文件和文档相关图标：
 
-```tsx
-import { 
-  Folder, 
-  FolderOpen, 
-  File, 
-  Description, 
-  PictureAsPdf,
-  Assignment 
-} from '@yt/icons';
-
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '28px', color: '#faad14' }}>
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '28px', color: '#faad14' }">
     <Folder title="文件夹" />
     <FolderOpen title="打开文件夹" />
     <File title="文件" />
@@ -165,55 +162,59 @@ export default () => (
     <PictureAsPdf title="PDF文件" />
     <Assignment title="任务" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import {
+  Folder,
+  FolderOpen,
+  File,
+  Description,
+  PictureAsPdf,
+  Assignment
+} from '@aix/icons';
+</script>
 ```
 
 ### 通用类图标 (General)
 
 常用的通用功能图标：
 
-```tsx
-import { 
-  Search, 
-  Add, 
-  Close, 
-  Check, 
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '24px' }">
+    <Search :style="{ color: '#1890ff' }" />
+    <Add :style="{ color: '#52c41a' }" />
+    <Close :style="{ color: '#ff4d4f' }" />
+    <Check :style="{ color: '#52c41a' }" />
+    <ArrowLeft :style="{ color: '#722ed1' }" />
+    <ArrowRight :style="{ color: '#722ed1' }" />
+    <Setting :style="{ color: '#8c8c8c' }" />
+    <Home :style="{ color: '#fa8c16' }" />
+  </div>
+</template>
+
+<script setup lang="ts">
+import {
+  Search,
+  Add,
+  Close,
+  Check,
   ArrowLeft,
   ArrowRight,
   Setting,
-  Home 
-} from '@yt/icons';
-
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '24px' }}>
-    <Search style={{ color: '#1890ff' }} />
-    <Add style={{ color: '#52c41a' }} />
-    <Close style={{ color: '#ff4d4f' }} />
-    <Check style={{ color: '#52c41a' }} />
-    <ArrowLeft style={{ color: '#722ed1' }} />
-    <ArrowRight style={{ color: '#722ed1' }} />
-    <Setting style={{ color: '#8c8c8c' }} />
-    <Home style={{ color: '#fa8c16' }} />
-  </div>
-);
+  Home
+} from '@aix/icons';
+</script>
 ```
 
 ### 图像类图标 (Image)
 
 图像处理和编辑相关：
 
-```tsx
-import { 
-  Photo, 
-  Eye, 
-  Crop, 
-  Filter, 
-  Brightness,
-  FrameFace 
-} from '@yt/icons';
-
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '26px', color: '#eb2f96' }}>
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '26px', color: '#eb2f96' }">
     <Photo title="照片" />
     <Eye title="查看" />
     <Crop title="裁剪" />
@@ -221,25 +222,27 @@ export default () => (
     <Brightness title="亮度" />
     <FrameFace title="人脸框选" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import {
+  Photo,
+  Eye,
+  Crop,
+  Filter,
+  Brightness,
+  FrameFace
+} from '@aix/icons';
+</script>
 ```
 
 ### 地图类图标 (Map)
 
 地理位置和地图相关：
 
-```tsx
-import { 
-  LocationOn, 
-  Map, 
-  Navigation, 
-  Car, 
-  Building,
-  Police 
-} from '@yt/icons';
-
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '26px', color: '#13c2c2' }}>
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '26px', color: '#13c2c2' }">
     <LocationOn title="位置" />
     <Map title="地图" />
     <Navigation title="导航" />
@@ -247,51 +250,55 @@ export default () => (
     <Building title="建筑" />
     <Police title="警察" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import {
+  LocationOn,
+  Map,
+  Navigation,
+  Car,
+  Building,
+  Police
+} from '@aix/icons';
+</script>
 ```
 
 ### 通知类图标 (Notification)
 
 通知、提醒和状态相关：
 
-```tsx
-import { 
-  Notifications, 
-  Warning, 
-  Error, 
-  InfoOutline, 
-  Schedule,
-  Event 
-} from '@yt/icons';
-
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '24px' }}>
-    <Notifications style={{ color: '#1890ff' }} title="通知" />
-    <Warning style={{ color: '#fa8c16' }} title="警告" />
-    <Error style={{ color: '#ff4d4f' }} title="错误" />
-    <InfoOutline style={{ color: '#52c41a' }} title="信息" />
-    <Schedule style={{ color: '#722ed1' }} title="计划" />
-    <Event style={{ color: '#13c2c2' }} title="事件" />
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '24px' }">
+    <Notifications :style="{ color: '#1890ff' }" title="通知" />
+    <Warning :style="{ color: '#fa8c16' }" title="警告" />
+    <Error :style="{ color: '#ff4d4f' }" title="错误" />
+    <InfoOutline :style="{ color: '#52c41a' }" title="信息" />
+    <Schedule :style="{ color: '#722ed1' }" title="计划" />
+    <Event :style="{ color: '#13c2c2' }" title="事件" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import {
+  Notifications,
+  Warning,
+  Error,
+  InfoOutline,
+  Schedule,
+  Event
+} from '@aix/icons';
+</script>
 ```
 
 ### 视频类图标 (Video)
 
 视频播放和控制相关：
 
-```tsx
-import { 
-  Play, 
-  Pause, 
-  Videocam, 
-  VolumeUp, 
-  Fullscreen,
-  SlowMotionVideo 
-} from '@yt/icons';
-
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '28px', color: '#f759ab' }}>
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '28px', color: '#f759ab' }">
     <Play title="播放" />
     <Pause title="暂停" />
     <Videocam title="摄像机" />
@@ -299,130 +306,183 @@ export default () => (
     <Fullscreen title="全屏" />
     <SlowMotionVideo title="慢动作" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import {
+  Play,
+  Pause,
+  Videocam,
+  VolumeUp,
+  Fullscreen,
+  SlowMotionVideo
+} from '@aix/icons';
+</script>
 ```
 
 ## 自定义样式
 
 ### 尺寸设置
 
-```tsx
-import { Camera } from '@yt/icons';
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', alignItems: 'center' }">
+    <!-- 使用 fontSize 控制大小 -->
+    <Camera :style="{ fontSize: '16px' }" />
+    <Camera :style="{ fontSize: '24px' }" />
+    <Camera :style="{ fontSize: '32px' }" />
+    <Camera :style="{ fontSize: '48px' }" />
 
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-    {/* 使用 fontSize 控制大小 */}
-    <Camera style={{ fontSize: '16px' }} />
-    <Camera style={{ fontSize: '24px' }} />
-    <Camera style={{ fontSize: '32px' }} />
-    <Camera style={{ fontSize: '48px' }} />
-    
-    {/* 使用 width 和 height */}
-    <Camera style={{ width: '64px', height: '64px' }} />
+    <!-- 使用 width 和 height -->
+    <Camera :style="{ width: '64px', height: '64px' }" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import { Camera } from '@aix/icons';
+</script>
 ```
 
 ### 颜色设置
 
-```tsx
-import { Search, Heart, Star } from '@yt/icons';
+```vue
+<template>
+  <div :style="{ display: 'flex', gap: '16px', fontSize: '32px' }">
+    <!-- 单色图标 -->
+    <Search :style="{ color: '#1890ff' }" />
+    <Search :style="{ color: '#52c41a' }" />
+    <Search :style="{ color: '#ff4d4f' }" />
 
-export default () => (
-  <div style={{ display: 'flex', gap: '16px', fontSize: '32px' }}>
-    {/* 单色图标 */}
-    <Search style={{ color: '#1890ff' }} />
-    <Search style={{ color: '#52c41a' }} />
-    <Search style={{ color: '#ff4d4f' }} />
-    
-    {/* 渐变色 */}
-    <Search 
-      style={{ 
+    <!-- 渐变色 -->
+    <Search
+      :style="{
         background: 'linear-gradient(45deg, #1890ff, #722ed1)',
         WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent'
-      }} 
+      }"
     />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import { Search } from '@aix/icons';
+</script>
 ```
 
 ### 动画效果
 
-```tsx
-import { Loading, Refresh } from '@yt/icons';
-
-const SpinIcon = () => (
-  <div style={{ fontSize: '32px' }}>
-    {/* 旋转动画 */}
-    <Loading 
-      style={{ 
+```vue
+<template>
+  <div :style="{ fontSize: '32px' }">
+    <!-- 旋转动画 -->
+    <Loading
+      :style="{
         color: '#1890ff',
         animation: 'spin 1s linear infinite'
-      }} 
+      }"
     />
-    
-    {/* 悬停效果 */}
-    <Refresh 
-      style={{ 
+
+    <!-- 悬停效果 -->
+    <Refresh
+      class="refresh-icon"
+      :style="{
         color: '#52c41a',
-        cursor: 'pointer',
-        transition: 'transform 0.3s',
-        ':hover': {
-          transform: 'rotate(180deg)'
-        }
-      }} 
+        cursor: 'pointer'
+      }"
     />
   </div>
-);
+</template>
 
-export default SpinIcon;
+<script setup lang="ts">
+import { Loading, Refresh } from '@aix/icons';
+</script>
+
+<style scoped>
+.refresh-icon {
+  transition: transform 0.3s;
+}
+
+.refresh-icon:hover {
+  transform: rotate(180deg);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>
 ```
 
 ## API 参考
 
 ### 图标组件属性
 
-所有图标组件都继承自 `SVGProps<SVGSVGElement>`，支持所有标准 SVG 属性：
+所有图标组件都支持以下属性，并通过 `v-bind="$attrs"` 透传所有其他 HTML/SVG 属性：
 
 | 属性 | 类型 | 默认值 | 必填 | 描述 |
 | --- | --- | --- | --- | --- |
-| style | CSSProperties | - | ❌ | 自定义样式 |
-| className | string | - | ❌ | CSS 类名 |
-| color | string | 'currentColor' | ❌ | 图标颜色 |
-| fontSize | string \| number | '1em' | ❌ | 图标大小 |
 | width | string \| number | '1em' | ❌ | 图标宽度 |
 | height | string \| number | '1em' | ❌ | 图标高度 |
-| onClick | MouseEventHandler | - | ❌ | 点击事件 |
-| onMouseEnter | MouseEventHandler | - | ❌ | 鼠标进入事件 |
-| onMouseLeave | MouseEventHandler | - | ❌ | 鼠标离开事件 |
-| title | string | - | ❌ | 图标标题（悬停提示） |
+| color | string | 'currentColor' | ❌ | 图标颜色 |
+| style | CSSProperties | - | ❌ | 自定义样式对象（支持所有 CSS 属性） |
+| class | string | - | ❌ | CSS 类名 |
 
-### 与 Ant Design Icons 集成
+**事件支持**：通过 `v-bind="$attrs"` 支持所有原生 DOM 事件，包括：
+- `@click` - 点击事件
+- `@mouseenter` - 鼠标进入事件
+- `@mouseleave` - 鼠标离开事件
+- 以及其他所有标准 SVG/DOM 事件
 
-```tsx
-import Icon from '@ant-design/icons';
-import { Camera } from '@yt/icons';
+**style 属性说明**：
+- 支持传入 Vue 的 style 对象或字符串形式
+- 可以控制颜色、大小、动画、变换等所有 CSS 属性
+- style 中的样式会与组件内部样式合并
+- 示例：
+  ```vue
+  <!-- 对象形式 (推荐) -->
+  <Camera :style="{ fontSize: '24px', color: 'red', transform: 'rotate(45deg)' }" />
 
-// Ant Design Icon 组件属性
-interface IconProps {
-  component: ComponentType<any>;
-  style?: CSSProperties;
-  className?: string;
-  spin?: boolean;
-  rotate?: number;
-  twoToneColor?: string;
-  onClick?: MouseEventHandler;
-}
+  <!-- 字符串形式 -->
+  <Camera style="font-size: 24px; color: red; transform: rotate(45deg);" />
+  ```
 
-export default () => (
-  <Icon 
-    component={Camera}
-    spin={true}
-    rotate={45}
-    style={{ fontSize: '24px', color: '#1890ff' }}
-  />
-);
+### 在第三方组件中使用
+
+图标组件可以很方便地集成到各种 UI 框架中：
+
+```vue
+<template>
+  <!-- 在 Element Plus 中使用 -->
+  <el-button>
+    <template #icon>
+      <Camera :style="{ fontSize: '18px' }" />
+    </template>
+    拍照
+  </el-button>
+
+  <!-- 在 Ant Design Vue 中使用 -->
+  <a-button>
+    <template #icon>
+      <Search :style="{ fontSize: '16px' }" />
+    </template>
+    搜索
+  </a-button>
+
+  <!-- 在自定义组件中使用 -->
+  <CustomCard>
+    <template #icon>
+      <Setting :style="{ fontSize: '20px', color: '#1890ff' }" />
+    </template>
+  </CustomCard>
+</template>
+
+<script setup lang="ts">
+import { Camera, Search, Setting } from '@aix/icons';
+</script>
 ```
 
 ## 图标搜索和管理
@@ -445,45 +505,51 @@ export default () => (
 
 图标组件采用 PascalCase 命名规则：
 
-```tsx
+```vue
+<script setup lang="ts">
 // ✅ 正确的导入方式
-import { 
+import {
   BaoKongRenYuanJianKong,  // 保控人员监控
   ZhiAnZhuaPaiJiFilled,    // 智安抓拍机
   MotorVehicleCompanion    // 机动车伴随
-} from '@yt/icons';
+} from '@aix/icons';
 
 // ❌ 错误的导入方式
-import { baoKongRenYuanJianKong } from '@yt/icons';
+// import { baoKongRenYuanJianKong } from '@aix/icons';
+</script>
 ```
 
 ## 性能优化
 
 ### 按需导入
 
-```tsx
+```vue
+<script setup lang="ts">
 // ✅ 推荐：按需导入
-import { Camera, Search } from '@yt/icons';
+import { Camera, Search } from '@aix/icons';
 
 // ❌ 不推荐：全量导入
-import * as Icons from '@yt/icons';
+// import * as Icons from '@aix/icons';
+</script>
 ```
 
 ### 图标缓存
 
 图标组件基于 SVG 实现，浏览器会自动缓存相同的图标：
 
-```tsx
-import { Camera } from '@yt/icons';
-
-// 多个相同图标会被浏览器缓存优化
-export default () => (
+```vue
+<template>
   <div>
-    <Camera style={{ fontSize: '16px' }} />
-    <Camera style={{ fontSize: '24px', color: 'blue' }} />
-    <Camera style={{ fontSize: '32px', color: 'red' }} />
+    <!-- 多个相同图标会被浏览器缓存优化 -->
+    <Camera :style="{ fontSize: '16px' }" />
+    <Camera :style="{ fontSize: '24px', color: 'blue' }" />
+    <Camera :style="{ fontSize: '32px', color: 'red' }" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import { Camera } from '@aix/icons';
+</script>
 ```
 
 ## 最佳实践
@@ -499,44 +565,64 @@ export default () => (
 
 ### Q: 如何自定义图标颜色？
 
-A: 使用 `style.color` 或 CSS 类名设置颜色：
+A: 使用 `style` 对象中的 `color` 属性或 `color` prop 设置颜色：
 
-```tsx
-import { Search } from '@yt/icons';
+```vue
+<template>
+  <!-- 方式1：使用 style -->
+  <Search :style="{ color: '#1890ff' }" />
 
-export default () => (
-  <Search style={{ color: '#1890ff' }} />
-);
+  <!-- 方式2：使用 color prop -->
+  <Search color="#1890ff" />
+</template>
+
+<script setup lang="ts">
+import { Search } from '@aix/icons';
+</script>
 ```
 
 ### Q: 图标大小如何控制？
 
-A: 推荐使用 `fontSize` 属性，也可以使用 `width` 和 `height`：
+A: 推荐使用 `fontSize` 样式属性，也可以使用 `width` 和 `height` props：
 
-```tsx
-import { Camera } from '@yt/icons';
-
-export default () => (
+```vue
+<template>
   <div>
-    <Camera style={{ fontSize: '24px' }} />
-    <Camera style={{ width: '32px', height: '32px' }} />
+    <!-- 方式1：使用 fontSize (推荐) -->
+    <Camera :style="{ fontSize: '24px' }" />
+
+    <!-- 方式2：使用 width 和 height props -->
+    <Camera :width="32" :height="32" />
+
+    <!-- 方式3：使用 style 中的 width 和 height -->
+    <Camera :style="{ width: '32px', height: '32px' }" />
   </div>
-);
+</template>
+
+<script setup lang="ts">
+import { Camera } from '@aix/icons';
+</script>
 ```
 
 ### Q: 如何添加点击事件？
 
-A: 直接使用 onClick 属性：
+A: 直接使用 Vue 的 `@click` 事件：
 
-```tsx
-import { Setting } from '@yt/icons';
-
-export default () => (
-  <Setting 
-    style={{ fontSize: '24px', cursor: 'pointer' }}
-    onClick={() => console.log('设置被点击')}
+```vue
+<template>
+  <Setting
+    :style="{ fontSize: '24px', cursor: 'pointer' }"
+    @click="handleSettingClick"
   />
-);
+</template>
+
+<script setup lang="ts">
+import { Setting } from '@aix/icons';
+
+const handleSettingClick = () => {
+  console.log('设置被点击');
+};
+</script>
 ```
 
 ### Q: 支持自定义图标吗？
@@ -551,12 +637,19 @@ A: 当前版本使用预定义图标集，如需自定义图标，建议：
 
 A: 直接导入使用即可，所有图标都有完整的 TypeScript 类型定义：
 
-```tsx
-import { Camera } from '@yt/icons';
-import type { SVGProps } from 'react';
+```vue
+<template>
+  <Camera :width="size" :height="size" :color="iconColor" />
+</template>
 
-// 图标组件类型自动推断
-const MyIcon: React.FC<SVGProps<SVGSVGElement>> = Camera;
+<script setup lang="ts">
+import { Camera } from '@aix/icons';
+import { ref } from 'vue';
+
+// 类型会自动推断
+const size = ref<number | string>(24);
+const iconColor = ref<string>('#1890ff');
+</script>
 ```
 
 ### Q: 图标在不同浏览器中显示不一致？

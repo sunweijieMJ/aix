@@ -4,7 +4,7 @@ import Button from '../src/Button.vue';
 import type { ButtonProps } from '../src/types';
 
 const meta: Meta<typeof Button> = {
-  title: 'Components/Button',
+  title: 'Button',
   component: Button,
   tags: ['autodocs'],
   parameters: {
