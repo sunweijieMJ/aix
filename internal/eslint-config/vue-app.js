@@ -53,6 +53,10 @@ export const config = [
       'vue/no-v-html': 'off',
       // vue组件的可选 props 不需要强制默认值
       'vue/require-default-prop': 'off',
+      // 关闭强制自闭合式
+      'vue/html-self-closing': 'off',
+      // 是否要求在标签的右括号前换行
+      'vue/html-closing-bracket-newline': 'off',
     },
   },
 
@@ -93,5 +97,17 @@ export const config = [
   // ==================== ESLint 通用规则 ====================
   {
     rules: commonEslintRules,
+  },
+
+  // ==================== 非 Vue 文件禁用 Vue 规则 ====================
+  {
+    files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx'],
+    ignores: ['**/*.vue'],
+    rules: {
+      'vue/one-component-per-file': 'off',
+      'vue/require-prop-types': 'off',
+      'vue/require-default-prop': 'off',
+      'vue/comment-directive': 'off',
+    },
   },
 ];

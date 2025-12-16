@@ -1,0 +1,528 @@
+/**
+ * @fileoverview 通用动画系统
+ * 提供丰富的动画效果和 CSS 变量配置
+ */
+
+// ========== 动画变量 ==========
+:root {
+  // 动画时长
+  --aix-animation-duration-fast: 0.15s;
+  --aix-animation-duration-base: 0.3s;
+  --aix-animation-duration-slow: 0.5s;
+
+  // 动画曲线
+  --aix-animation-timing-linear: linear;
+  --aix-animation-timing-ease: ease;
+  --aix-animation-timing-ease-in: ease-in;
+  --aix-animation-timing-ease-out: ease-out;
+  --aix-animation-timing-ease-in-out: ease-in-out;
+  --aix-animation-timing-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --aix-animation-timing-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --aix-animation-timing-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+// ========== 基础动画关键帧 ==========
+
+// 淡入
+@keyframes aix-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+// 淡出
+@keyframes aix-fade-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+// 向上滑入
+@keyframes aix-slide-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+// 向下滑入
+@keyframes aix-slide-down {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+// 向左滑入
+@keyframes aix-slide-left {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+// 向右滑入
+@keyframes aix-slide-right {
+  from {
+    transform: translateX(-20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+// 缩放进入
+@keyframes aix-scale-in {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+// 缩放退出
+@keyframes aix-scale-out {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  to {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+
+// 弹跳进入
+@keyframes aix-bounce-in {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
+
+  70% {
+    transform: scale(0.9);
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+// 脉冲
+@keyframes aix-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+// 抖动
+@keyframes aix-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-5px);
+  }
+
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(5px);
+  }
+}
+
+// 旋转
+@keyframes aix-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// 闪烁
+@keyframes aix-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+// 打字光标闪烁
+@keyframes aix-typing-cursor {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+// 骨架屏闪烁
+@keyframes aix-skeleton {
+  0% {
+    background-position: -200px 0;
+  }
+
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+// 波纹扩散
+@keyframes aix-ripple {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+// ========== 动画工具类 ==========
+
+// 淡入效果
+.aix-animate-fade-in {
+  animation: aix-fade-in var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+// 向上滑入
+.aix-animate-slide-up {
+  animation: aix-slide-up var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+// 向下滑入
+.aix-animate-slide-down {
+  animation: aix-slide-down var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+// 向左滑入
+.aix-animate-slide-left {
+  animation: aix-slide-left var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+// 向右滑入
+.aix-animate-slide-right {
+  animation: aix-slide-right var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+// 缩放进入
+.aix-animate-scale-in {
+  animation: aix-scale-in var(--aix-animation-duration-base)
+    var(--aix-animation-timing-spring);
+}
+
+// 弹跳进入
+.aix-animate-bounce-in {
+  animation: aix-bounce-in var(--aix-animation-duration-slow)
+    var(--aix-animation-timing-smooth);
+}
+
+// 脉冲（循环）
+.aix-animate-pulse {
+  animation: aix-pulse 2s var(--aix-animation-timing-ease-in-out) infinite;
+}
+
+// 抖动
+.aix-animate-shake {
+  animation: aix-shake 0.5s var(--aix-animation-timing-ease-in-out);
+}
+
+// 旋转（循环）
+.aix-animate-spin {
+  animation: aix-spin 1s var(--aix-animation-timing-linear) infinite;
+}
+
+// 闪烁（循环）
+.aix-animate-blink {
+  animation: aix-blink 1s step-end infinite;
+}
+
+// 打字光标
+.aix-animate-typing-cursor {
+  animation: aix-typing-cursor 0.7s step-end infinite;
+}
+
+// 骨架屏
+.aix-animate-skeleton {
+  animation: aix-skeleton 1.5s var(--aix-animation-timing-ease-in-out) infinite;
+  background: linear-gradient(
+    90deg,
+    var(--colorBgLayout, #f0f0f0) 25%,
+    var(--colorBgContainer, #e6e6e6) 50%,
+    var(--colorBgLayout, #f0f0f0) 75%
+  );
+  background-size: 200px 100%;
+}
+
+// ========== Vue Transition 类 ==========
+
+// Fade 过渡
+.aix-fade-enter-active,
+.aix-fade-leave-active {
+  transition: opacity var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+.aix-fade-enter-from,
+.aix-fade-leave-to {
+  opacity: 0;
+}
+
+// Fade Up 过渡
+.aix-fade-up-enter-active,
+.aix-fade-up-leave-active {
+  transition: all var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+.aix-fade-up-enter-from {
+  transform: translateY(20px);
+  opacity: 0;
+}
+
+.aix-fade-up-leave-to {
+  transform: translateY(-10px);
+  opacity: 0;
+}
+
+// Fade Down 过渡
+.aix-fade-down-enter-active,
+.aix-fade-down-leave-active {
+  transition: all var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+.aix-fade-down-enter-from {
+  transform: translateY(-20px);
+  opacity: 0;
+}
+
+.aix-fade-down-leave-to {
+  transform: translateY(10px);
+  opacity: 0;
+}
+
+// Scale 过渡
+.aix-scale-enter-active,
+.aix-scale-leave-active {
+  transition: all var(--aix-animation-duration-base)
+    var(--aix-animation-timing-spring);
+}
+
+.aix-scale-enter-from,
+.aix-scale-leave-to {
+  transform: scale(0.9);
+  opacity: 0;
+}
+
+// Slide Up 过渡
+.aix-slide-up-enter-active,
+.aix-slide-up-leave-active {
+  transition: all var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+.aix-slide-up-enter-from {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+.aix-slide-up-leave-to {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+// Slide Down 过渡
+.aix-slide-down-enter-active,
+.aix-slide-down-leave-active {
+  transition: all var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+.aix-slide-down-enter-from {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.aix-slide-down-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+// Expand 展开/收起（高度动画）
+.aix-expand-enter-active,
+.aix-expand-leave-active {
+  overflow: hidden;
+  transition: all var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+.aix-expand-enter-from,
+.aix-expand-leave-to {
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+}
+
+// Zoom 缩放过渡
+.aix-zoom-enter-active {
+  animation: aix-bounce-in var(--aix-animation-duration-slow)
+    var(--aix-animation-timing-smooth);
+}
+
+.aix-zoom-leave-active {
+  animation: aix-scale-out var(--aix-animation-duration-fast)
+    var(--aix-animation-timing-smooth);
+}
+
+// ========== TransitionGroup List 动画 ==========
+
+// List 淡入淡出
+.aix-list-enter-active,
+.aix-list-leave-active {
+  transition: all var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+.aix-list-enter-from,
+.aix-list-leave-to {
+  transform: translateX(30px);
+  opacity: 0;
+}
+
+.aix-list-move {
+  transition: transform var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+}
+
+// List 交错动画（需要配合 data-index 使用）
+.aix-list-stagger-enter-active {
+  transition: all var(--aix-animation-duration-base)
+    var(--aix-animation-timing-smooth);
+  transition-delay: calc(var(--stagger-index, 0) * 50ms);
+}
+
+.aix-list-stagger-leave-active {
+  transition: all var(--aix-animation-duration-fast)
+    var(--aix-animation-timing-smooth);
+}
+
+.aix-list-stagger-enter-from,
+.aix-list-stagger-leave-to {
+  transform: translateY(20px);
+  opacity: 0;
+}
+
+// ========== 动画延迟工具类 ==========
+.aix-delay-100 {
+  animation-delay: 100ms;
+}
+
+.aix-delay-200 {
+  animation-delay: 200ms;
+}
+
+.aix-delay-300 {
+  animation-delay: 300ms;
+}
+
+.aix-delay-400 {
+  animation-delay: 400ms;
+}
+
+.aix-delay-500 {
+  animation-delay: 500ms;
+}
+
+// ========== 动画时长工具类 ==========
+.aix-duration-fast {
+  animation-duration: var(--aix-animation-duration-fast);
+}
+
+.aix-duration-base {
+  animation-duration: var(--aix-animation-duration-base);
+}
+
+.aix-duration-slow {
+  animation-duration: var(--aix-animation-duration-slow);
+}
+
+// ========== 减少动画偏好支持 ==========
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

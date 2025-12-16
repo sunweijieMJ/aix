@@ -1,0 +1,74 @@
+{
+  "name": "@aix/chat",
+  "version": "1.0.0",
+  "description": "A Vue 3 AI Chat component library",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "style": "./es/index.css",
+  "sideEffects": [
+    "*.css",
+    "*.scss",
+    "*.sass"
+  ],
+  "exports": {
+    ".": {
+      "types": "./es/index.d.ts",
+      "import": "./es/index.js",
+      "require": "./lib/index.js"
+    },
+    "./dist": {
+      "types": "./es/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./es/*": "./es/*",
+    "./lib/*": "./lib/*",
+    "./dist/*": "./dist/*",
+    "./style": "./es/index.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "lib",
+    "es"
+  ],
+  "scripts": {
+    "dev": "rollup -c -w",
+    "lint:script": "eslint . --max-warnings 0",
+    "lint:style": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
+    "lint": "pnpm run lint:script && pnpm run lint:style",
+    "test": "vitest --run --passWithNoTests",
+    "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
+    "build:js": "rollup -c",
+    "build:types": "vue-tsc --build --force",
+    "clean": "rimraf dist lib es"
+  },
+  "dependencies": {
+    "@aix/chat-sdk": "workspace:*",
+    "@aix/chat-ui": "workspace:*",
+    "@aix/hooks": "workspace:*",
+    "@aix/icons": "workspace:*",
+    "@aix/theme": "workspace:*",
+    "@microsoft/fetch-event-source": "^2.0.1"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:*",
+    "@kit/stylelint-config": "workspace:*",
+    "@kit/typescript-config": "workspace:*",
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
+    "@vue/test-utils": "^2.4.6",
+    "echarts": "^5.6.0",
+    "happy-dom": "^20.0.8",
+    "nanoid": "^5.1.6",
+    "rimraf": "*",
+    "tsx": "*",
+    "typescript": "*"
+  }
+}

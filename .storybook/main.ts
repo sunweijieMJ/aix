@@ -1,29 +1,37 @@
-import { join } from 'path';
+// This file has been automatically migrated to valid ESM format by Storybook.
+import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'path';
 import type { StorybookConfig } from '@storybook/vue3-vite';
 import vue from '@vitejs/plugin-vue';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const config: StorybookConfig = {
   stories: ['../packages/**/*.stories.@(js|jsx|ts|tsx|mdx)'],
   addons: [
-    '@storybook/addon-links',
-    '@storybook/addon-essentials',
-    '@storybook/addon-interactions',
+    getAbsolutePath('@storybook/addon-links'),
+    getAbsolutePath('@storybook/addon-docs'),
   ],
+
   framework: {
-    name: '@storybook/vue3-vite',
-    options: {},
+    name: getAbsolutePath('@storybook/vue3-vite'),
+    options: {
+      // Disable docgen to avoid potential transformation issues
+      docgen: false,
+    },
   },
-  docs: {
-    autodocs: 'tag',
-  },
+
   core: {
     disableTelemetry: true,
   },
+
   async viteFinal(config) {
-    // Ensure Vue plugin is included
+    // Add Vue plugin if not present
     if (config.plugins) {
       const hasVuePlugin = config.plugins.some(
-        (plugin: any) => plugin && plugin.name === 'vite:vue',
+        (plugin: any) =>
+          plugin && (plugin.name === 'vite:vue' || plugin.name === 'vue'),
       );
       if (!hasVuePlugin) {
         config.plugins.push(vue());
@@ -42,6 +50,10 @@ const config: StorybookConfig = {
           '@aix/hooks': join(__dirname, '../packages/hooks/src'),
           '@aix/theme': join(__dirname, '../packages/theme/src'),
           '@aix/button': join(__dirname, '../packages/button/src'),
+          '@aix/icons': join(__dirname, '../packages/icons/src/index.ts'),
+          '@aix/chat-sdk': join(__dirname, '../packages/chat-sdk/src'),
+          '@aix/chat-ui': join(__dirname, '../packages/chat-ui/src'),
+          '@aix/chat': join(__dirname, '../packages/chat/src'),
         },
       },
     };
@@ -49,3 +61,7 @@ const config: StorybookConfig = {
 };
 
 export default config;
+
+function getAbsolutePath(value: string): any {
+  return dirname(fileURLToPath(import.meta.resolve(`${value}/package.json`)));
+}

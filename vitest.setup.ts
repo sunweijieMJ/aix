@@ -11,12 +11,21 @@ global.fetch = vi.fn(() =>
 );
 
 // ---------------【屏蔽测试警告】---------------
-vi.spyOn(console, 'warn').mockImplementation((msg) => {
-  if (!msg.includes('某些特定警告')) {
-    console.warn(msg); // 仅过滤特定的警告，避免误屏蔽重要信息
+// 保存原始 console 方法引用，避免递归调用
+const originalWarn = console.warn.bind(console);
+
+vi.spyOn(console, 'warn').mockImplementation((...args) => {
+  const msg = args[0];
+  // 过滤掉测试中不重要的警告
+  if (typeof msg === 'string' && msg.includes('某些特定警告')) {
+    return;
   }
+  originalWarn(...args);
 });
-vi.spyOn(console, 'error').mockImplementation(() => {});
+vi.spyOn(console, 'error').mockImplementation(() => {
+  // 可选：在测试中也打印错误（用于调试）
+  // originalError(...args);
+});
 
 // ---------------【Mock LocalStorage】---------------
 const localStorageStore = new Map<string, string>();

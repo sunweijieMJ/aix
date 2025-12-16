@@ -5,16 +5,16 @@
   "type": "module",
   "main": "./lib/index.js",
   "module": "./es/index.js",
-  "types": "./es/src/index.d.ts",
+  "types": "./es/index.d.ts",
   "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./es/src/index.d.ts",
+      "types": "./es/index.d.ts",
       "import": "./es/index.js",
       "require": "./lib/index.js"
     },
     "./*": {
-      "types": "./es/src/*.d.ts",
+      "types": "./es/*.d.ts",
       "import": "./es/*.js",
       "require": "./lib/*.js"
     }

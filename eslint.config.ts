@@ -11,6 +11,7 @@ const eslintConfig: Linter.Config[] = [
       '**/lib/**/*',
       '**/*.log',
       'internal/mcp-server/data/**/*',
+      'packages/icons/src/**/*',
     ],
   },
 ];

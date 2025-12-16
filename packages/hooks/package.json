@@ -37,14 +37,5 @@
   "peerDependencies": {
     "vue": "^3.5.22"
   },
-  "keywords": [
-    "vue",
-    "vue3",
-    "hooks",
-    "composables",
-    "i18n",
-    "locale",
-    "intl"
-  ],
   "license": "MIT"
 }

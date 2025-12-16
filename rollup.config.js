@@ -48,7 +48,17 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
         : undefined,
     },
     plugins: [
-      Vue(),
+      Vue({
+        style: {
+          preprocessLang: 'scss',
+          preprocessOptions: {
+            scss: {
+              api: 'modern-compiler',
+              silenceDeprecations: ['legacy-js-api'],
+            },
+          },
+        },
+      }),
       resolve({
         extensions,
         // 优先使用 ESM 格式，其次是 CJS，最后是浏览器字段

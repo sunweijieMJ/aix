@@ -1,0 +1,12 @@
+{
+  "extends": "@kit/typescript-config/base-library.json",
+  "compilerOptions": {
+    "declarationDir": "es",
+    "rootDir": "src",
+    "outDir": "es",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "es", "lib", "__test__"]
+}

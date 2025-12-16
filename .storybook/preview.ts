@@ -1,5 +1,5 @@
-import type { Preview } from '@storybook/vue3';
-import { setup } from '@storybook/vue3';
+import type { Preview } from '@storybook/vue3-vite';
+import { setup } from '@storybook/vue3-vite';
 import { createLocale } from '../packages/hooks/src';
 import { createTheme } from '../packages/theme/src';
 
@@ -40,10 +40,11 @@ const preview: Preview = {
 
       return {
         components: { story },
-        template: '<story />',
+        template: '<story></story>',
       };
     },
   ],
+
   parameters: {
     controls: {
       matchers: {
@@ -53,17 +54,17 @@ const preview: Preview = {
       expanded: true, // 默认展开 Controls 面板
     },
     backgrounds: {
-      default: 'light',
-      values: [
-        {
+      options: {
+        light: {
           name: 'light',
           value: '#ffffff',
         },
-        {
+
+        dark: {
           name: 'dark',
           value: '#1a1a1a',
         },
-      ],
+      },
     },
     docs: {
       toc: true, // 显示目录
@@ -72,6 +73,7 @@ const preview: Preview = {
       },
     },
   },
+
   globalTypes: {
     locale: {
       name: 'Language',
@@ -98,6 +100,12 @@ const preview: Preview = {
         ],
         dynamicTitle: true,
       },
+    },
+  },
+
+  initialGlobals: {
+    backgrounds: {
+      value: 'light',
     },
   },
 };
