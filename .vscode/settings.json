@@ -42,6 +42,5 @@
       "mode": "auto"
     }
   ],
-  "stylelint.validate": ["css", "postcss", "less", "scss", "sass", "vue"],
-  "marscode.chatLanguage": "cn"
+  "stylelint.validate": ["css", "postcss", "less", "scss", "sass", "vue"]
 }

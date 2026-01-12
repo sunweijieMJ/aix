@@ -51,9 +51,6 @@ const config: StorybookConfig = {
           '@aix/theme': join(__dirname, '../packages/theme/src'),
           '@aix/button': join(__dirname, '../packages/button/src'),
           '@aix/icons': join(__dirname, '../packages/icons/src/index.ts'),
-          '@aix/chat-sdk': join(__dirname, '../packages/chat-sdk/src'),
-          '@aix/chat-ui': join(__dirname, '../packages/chat-ui/src'),
-          '@aix/chat': join(__dirname, '../packages/chat/src'),
         },
       },
     };
