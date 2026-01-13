@@ -1,512 +1,919 @@
 ---
 name: project-structure
-description: Vue组件库项目结构解析、目录组织规范和开发指导
+description: AIX 组件库 Monorepo 项目结构指导，包括目录组织、包管理和构建配置
 ---
 
-# 项目结构解析 Agent
+# AIX 组件库项目结构
 
-## 职责
-负责Vue组件库项目结构解析、目录组织规范和开发指导，帮助AI理解组件库的布局和各目录的作用。
+> **AIX 组件库 Monorepo 架构管理完整指南**
 
-## 🏗️ 项目整体架构
+## 📚 目录
 
-### 技术栈
-- **前端框架**: Vue 3.5.22 (Composition API)
-- **构建工具**: Rollup 4.52.4 + Vite 6.4.0
-- **包管理**: pnpm 10.14.0 (Workspace模式)
-- **Monorepo**: Turborepo 2.5.8
-- **语言**: TypeScript 5.9.3
-- **组件展示**: Storybook 8.6.14
-- **测试框架**: Vitest 3.2.4
-- **样式**: SCSS + PostCSS
+- [项目结构概览](#项目结构概览)
+- [pnpm Workspaces](#pnpm-workspaces)
+- [Turborepo 构建系统](#turborepo-构建系统)
+- [包管理](#包管理)
+- [依赖管理](#依赖管理)
+- [构建优化](#构建优化)
+- [版本管理](#版本管理)
+- [常见问题](#常见问题)
 
-### 架构模式
-- **Monorepo架构**: 使用pnpm workspace + Turborepo管理多包
-- **组件化设计**: 每个组件独立npm包
-- **统一构建**: 根目录统一Rollup配置,所有组件共享
-- **类型驱动**: TypeScript严格类型检查
-- **测试驱动**: 每个组件都有对应的测试用例
+---
 
-## 📁 目录结构详解
+## 项目结构概览
+
+### 📁 目录结构
 
 ```
-vue-library/
-├── .changeset/                 # Changesets版本管理
-├── .claude/                    # Claude AI配置
-│   └── agents/                 # AI Agent配置文件
-├── .husky/                     # Git hooks配置
-│   ├── commit-msg             # 提交信息检查
-│   ├── pre-commit             # 提交前检查
-│   └── pre-push               # 推送前检查
-├── .storybook/                 # Storybook配置
-│   ├── main.ts                # Storybook主配置
-│   └── preview.ts             # 预览配置
-├── internal/                   # 内部工具包
-│   ├── eslint-config/         # ESLint配置包
-│   ├── mcp-server/            # MCP服务器
-│   ├── stylelint-config/      # Stylelint配置包
-│   └── typescript-config/     # TypeScript配置包
-├── packages/                   # 组件包目录
-│   ├── button/                # Button组件
-│   │   ├── __test__/          # 测试文件
-│   │   ├── src/               # 源代码
-│   │   │   ├── Button.vue     # 组件实现
-│   │   │   └── index.ts       # 组件导出
-│   │   ├── stories/           # Storybook故事
-│   │   ├── package.json       # 组件包配置
-│   │   ├── rollup.config.js   # 引用根配置
-│   │   └── tsconfig.json      # TypeScript配置
-│   └── theme/                 # 主题包
-│       ├── src/               # 样式源码
-│       │   ├── index.scss     # 主样式文件
-│       │   ├── mixins/        # SCSS混入
-│       │   └── vars/          # CSS变量
-│       ├── package.json       # 主题包配置
-│       └── rollup.config.js   # 构建配置
-├── scripts/                   # 构建和工具脚本
-│       ├── husky/             # Husky Git hooks脚本
-│       │   ├── commit-msg/    # 提交信息检查脚本
-│       │   ├── pre-commit/    # 提交前检查脚本
-│       │   └── pre-push/      # 推送前检查脚本
-│       ├── publish/           # 发布脚本
-│       │   ├── index/         s# 发布前检查脚本
-│   └── gen.ts                 # 组件生成脚本
-├── typings/                   # TypeScript类型声明
-│   ├── global.d.ts            # 全局类型
-│   ├── suffix.d.ts            # 文件后缀类型
-│   └── worker.d.ts            # Worker类型
-├── .browserslistrc            # 浏览器兼容性配置
-├── .cspell.json               # 拼写检查配置
-├── .editorconfig              # 编辑器配置
-├── .gitignore                 # Git忽略配置
-├── .gitlab-ci.yml             # GitLab CI配置
-├── .markdownlint.json         # Markdown检查配置
-├── .nvmrc                     # Node版本配置
-├── .prettierignore            # Prettier忽略配置
-├── commitlint.config.ts       # Commitlint配置
-├── eslint.config.ts           # ESLint配置
-├── package.json               # 根包配置
-├── pnpm-lock.yaml             # 依赖锁文件
-├── pnpm-workspace.yaml        # Workspace配置
-├── prettier.config.js         # Prettier配置
-├── rollup.config.js           # 统一Rollup配置
-├── stylelint.config.js        # Stylelint配置
-├── tsconfig.json              # TypeScript配置
-├── turbo.json                 # Turborepo配置
-├── vitest.config.ts           # Vitest配置
-└── vitest.setup.ts            # Vitest设置文件
+aix/
+├── .changeset/              # Changesets 配置
+├── .claude/                 # Claude Code 配置
+├── .husky/                  # Git hooks
+├── .storybook/              # Storybook 全局配置
+├── docs/                    # VitePress 文档
+│   ├── .vitepress/         # VitePress 配置
+│   └── components/         # 组件文档
+├── internal/                # 内部工具包（不发布）
+│   ├── eslint-config/      # ESLint 共享配置
+│   ├── stylelint-config/   # Stylelint 共享配置
+│   └── typescript-config/  # TypeScript 共享配置
+├── packages/                # 组件包（发布）
+│   ├── button/             # 组件包示例
+│   ├── theme/              # 主题包（CSS 变量）
+│   └── hooks/              # Hooks 包
+├── scripts/                 # 构建脚本
+├── package.json             # 根 package.json
+├── pnpm-workspace.yaml      # pnpm workspace 配置
+├── turbo.json               # Turborepo 配置
+├── rollup.config.js         # Rollup 共享配置
+├── vitest.config.ts         # Vitest 配置
+└── tsconfig.json            # TypeScript 根配置
 ```
 
-## 📂 核心目录详解
+### 📦 包分类
 
-### `packages/` - 组件包目录
+| 类型 | 目录 | 包名前缀 | 发布 | 说明 |
+|------|------|---------|------|------|
+| **组件包** | `packages/button/` | `@aix/` | ✅ | 单个 UI 组件 |
+| **工具包** | `packages/hooks/` | `@aix/` | ✅ | Composables、工具函数、指令 |
+| **主题包** | `packages/theme/` | `@aix/` | ✅ | CSS 变量、主题样式 |
+| **内部包** | `internal/eslint-config/` | `@kit/` | ❌ | ESLint、TypeScript、Stylelint 配置 |
+| **文档** | `docs/` | - | ❌ | VitePress 文档站点 |
+| **示例** | `examples/` | - | ❌ | 示例项目 |
+
+### 📦 标准包结构
+
+每个组件包遵循统一结构：
+
 ```
-packages/
-├── button/                     # 按钮组件
-│   ├── __test__/              # 测试文件
-│   │   └── Button.test.ts     # 单元测试
-│   ├── src/                   # 源代码
-│   │   ├── Button.vue         # 组件实现
-│   │   └── index.ts           # 组件导出
-│   ├── stories/               # Storybook故事
-│   │   └── Button.stories.ts  # 组件故事
-│   ├── package.json           # 组件包配置
-│   ├── rollup.config.js       # 构建配置(引用根配置)
-│   └── tsconfig.json          # TypeScript配置
-└── theme/                      # 主题包
-    ├── src/                   # 样式源码
-    │   ├── index.scss         # 主样式文件
-    │   ├── mixins/            # SCSS混入
-    │   │   ├── ellipsis.scss  # 文本省略
-    │   │   └── index.scss     # 混入导出
-    │   └── vars/              # CSS变量
-    │       ├── dark.css       # 暗色主题
-    │       ├── light.css      # 亮色主题
-    │       └── size.css       # 尺寸变量
-    ├── package.json           # 主题包配置
-    ├── rollup.config.js       # 构建配置
-    └── stylelint.config.ts    # Stylelint配置
-```
-
-**组件包命名规范**:
-- 包名: `@aix/组件名` (如 `@aix/button`)
-- 目录名: 小写短横线 (如 `button`, `date-picker`)
-- 组件名: PascalCase (如 `Button.vue`, `DatePicker.vue`)
-
-**组件包结构要求**:
-- 必须包含: `package.json`, `tsconfig.json`, `rollup.config.js`
-- 必须包含: `src/index.ts` (组件导出文件)
-- 建议包含: `__test__/` (测试文件)
-- 建议包含: `stories/` (Storybook故事)
-- 建议包含: `README.md` (组件文档)
-
-### `internal/` - 内部工具包
-```
-internal/
-├── eslint-config/              # ESLint配置包
-│   ├── base.js                # 基础配置
-│   ├── vue-app.js             # Vue应用配置
-│   ├── package.json           # 包配置
-│   └── index.d.ts             # 类型声明
-├── mcp-server/                 # MCP服务器
-│   ├── __test__/              # 测试文件
-│   ├── examples/              # 示例配置
-│   ├── src/                   # 源代码
-│   │   ├── cli.ts             # 命令行工具
-│   │   ├── config/            # 配置
-│   │   ├── extractors/        # 提取器
-│   │   ├── mcp-resources/     # MCP资源
-│   │   ├── mcp-tools/         # MCP工具
-│   │   ├── server/            # 服务器
-│   │   └── utils/             # 工具函数
-│   ├── package.json           # 包配置
-│   ├── tsconfig.json          # TypeScript配置
-│   └── tsup.config.ts         # 构建配置
-├── stylelint-config/           # Stylelint配置包
-│   ├── base.js                # 基础配置
-│   ├── vue-app.js             # Vue应用配置
-│   └── package.json           # 包配置
-└── typescript-config/          # TypeScript配置包
-    ├── base.json              # 基础配置
-    ├── base-app.json          # 应用配置
-    └── package.json           # 包配置
+packages/button/
+├── src/
+│   ├── Button.vue          # 组件文件
+│   ├── types.ts            # 类型定义
+│   └── index.ts            # 导出文件
+├── stories/
+│   └── Button.stories.ts   # Storybook story
+├── __tests__/
+│   └── Button.test.ts      # 单元测试
+├── package.json
+├── tsconfig.json
+└── rollup.config.js
 ```
 
-**作用**:
-- 统一管理项目的配置
-- 配置包可复用到其他项目
-- 内部包不会发布到npm
+### 🎨 特殊包
 
-### `.storybook/` - Storybook配置
-```
-.storybook/
-├── main.ts                     # Storybook主配置
-└── preview.ts                  # 预览配置
-```
+#### theme 包
 
-**作用**:
-- 配置Storybook构建和预览
-- 配置插件和装饰器
-- 组件开发和展示平台
+提供 CSS 变量和样式基础：
 
-### `scripts/` - 自动化脚本
 ```
-scripts/
-├── husky/                 # Husky Git hooks脚本
-│   ├── commit-msg         # Git提交信息检查
-│   ├── pre-commit         # 提交前检查脚本
-│   └── pre-push           # 推送前检查脚本
-├── publish/               # 发布脚本
-│   └── index.ts           # 发布脚本入口
-└── gen.ts                 # 组件生成脚本
+packages/theme/
+├── src/
+│   ├── index.css           # 主入口
+│   ├── variables.css       # CSS 变量定义
+│   └── reset.css           # 样式重置
+└── package.json
 ```
 
-**作用**:
-- 自动化Git工作流
-- 代码质量检查
-- 组件快速生成
+#### hooks 包
 
-### `typings/` - 类型声明
+可复用的 Vue Composition API：
+
 ```
-typings/
-├── global.d.ts                 # 全局类型声明
-├── index.d.ts                  # 类型导出
-├── suffix.d.ts                 # 文件后缀类型声明
-├── worker.d.ts                 # Worker类型声明
-└── audio.d.ts                  # 音频类型声明
+packages/hooks/
+├── src/
+│   ├── useClickOutside.ts
+│   ├── useDebounce.ts
+│   └── index.ts
+└── package.json
 ```
 
-**作用**:
-- 全局类型定义
-- 第三方库类型补充
-- 资源文件类型声明
+### 📊 包依赖关系
 
-## 🔄 文件引用规范
+```
+theme (无依赖)
+  ↑
+  ├── button (依赖 theme)
+  ├── select (依赖 theme)
+  └── dialog (依赖 theme)
 
-### 组件包引用规范
-```typescript
-// ✅ 正确：使用workspace协议引用内部包
-// package.json
+hooks (无依赖)
+  ↑
+  └── select (依赖 hooks)
+```
+
+**依赖原则：**
+- theme 包无依赖（只提供 CSS）
+- hooks 包无 UI 依赖（只依赖 Vue）
+- 组件包可依赖 theme 和 hooks
+- 避免循环依赖
+
+---
+
+## pnpm Workspaces
+
+### 配置文件
+
+**pnpm-workspace.yaml**:
+
+```yaml
+packages:
+  # 所有发布的包
+  - 'packages/*'
+  # 内部工具包
+  - 'internal/*'
+  # 文档和示例（不发布）
+  - 'docs'
+  - 'examples/*'
+```
+
+### 常用命令
+
+#### 1. 安装依赖
+
+```bash
+# 安装所有包的依赖
+pnpm install
+
+# 只安装根目录依赖
+pnpm install --filter . eslint
+
+# 为指定包安装依赖
+pnpm --filter @aix/button add vue
+
+# 为所有组件包安装依赖
+pnpm --filter "@aix/*" add -D vitest
+```
+
+#### 2. 运行脚本
+
+```bash
+# 运行单个包的脚本
+pnpm --filter @aix/button dev
+pnpm --filter @aix/button build
+pnpm --filter @aix/button test
+
+# 运行多个包的脚本
+pnpm --filter "@aix/{button,input}" build
+
+# 运行所有包的脚本
+pnpm -r build                    # 递归运行所有包
+pnpm --parallel -r test          # 并行运行所有包的测试
+```
+
+#### 3. 包之间的依赖
+
+```bash
+# 添加 workspace 依赖
+pnpm --filter @aix/select add @aix/input@workspace:*
+pnpm --filter @aix/button add @aix/hooks@workspace:*
+
+# 查看包依赖关系
+pnpm list --depth 0
+pnpm --filter @aix/button list
+```
+
+#### 4. 清理
+
+```bash
+# 清理所有 node_modules
+pnpm -r exec rm -rf node_modules
+pnpm install
+
+# 清理构建产物
+pnpm -r exec rm -rf dist
+
+# 清理测试覆盖率
+pnpm -r exec rm -rf coverage
+```
+
+### workspace 协议
+
+**使用 `workspace:*` 引用内部包**:
+
+```json
+// packages/button/package.json
 {
+  "name": "@aix/button",
   "dependencies": {
-    "@aix/theme": "workspace:*"
-  }
-}
-
-// ✅ 正确：在组件中引用主题
-import '@aix/theme';
-
-// ❌ 错误：使用相对路径
-import '../../theme/src/index.scss';
-```
-
-### 导入顺序规范
-```typescript
-// 1. Vue相关导入
-import { ref, computed, defineComponent } from 'vue';
-import type { PropType } from 'vue';
-
-// 2. 第三方库导入
-import type { App } from 'vue';
-
-// 3. 项目内部导入
-import '@aix/theme';
-
-// 4. 类型导入
-import type { ButtonType, ButtonSize } from './types';
-```
-
-## 📋 新增组件指导
-
-### 使用自动生成脚本
-```bash
-# 运行组件生成脚本
-pnpm gen
-
-# 根据提示输入组件信息
-# - 组件名称 (如: DatePicker)
-# - 组件描述
-# - 是否需要测试文件
-# - 是否需要Storybook故事
-```
-
-### 手动创建组件
-```bash
-# 1. 创建组件目录
-mkdir packages/date-picker
-
-# 2. 创建必需文件
-cd packages/date-picker
-touch package.json tsconfig.json rollup.config.js
-
-# 3. 创建源码目录
-mkdir src __test__ stories
-touch src/DatePicker.vue src/index.ts
-touch __test__/DatePicker.test.ts
-touch stories/DatePicker.stories.ts
-```
-
-### 组件package.json模板
-```json
-{
-  "name": "@aix/date-picker",
-  "version": "0.0.1",
-  "description": "Aix DatePicker Component",
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./dist/style.css": "./dist/style.css"
-  },
-  "files": ["dist"],
-  "scripts": {
-    "dev": "rollup -c -w",
-    "build": "rollup -c && vue-tsc --declaration --emitDeclarationOnly",
-    "clean": "rimraf dist",
-    "test": "vitest"
-  },
-  "peerDependencies": {
-    "vue": "^3.5.22"
-  },
-  "devDependencies": {
+    "@aix/hooks": "workspace:*",
+    "@aix/utils": "workspace:*",
     "@aix/theme": "workspace:*"
   }
 }
 ```
 
-### rollup.config.js模板
-```javascript
-import { createRollupConfig } from '../../rollup.config.js';
+**发布时自动替换**:
 
-export default createRollupConfig(import.meta.dirname);
-```
-
-### src/index.ts模板
-```typescript
-import type { App } from 'vue';
-import DatePicker from './DatePicker.vue';
-
-export { DatePicker };
-
-export default {
-  install(app: App) {
-    app.component('AixDatePicker', DatePicker);
-  },
-};
-```
-
-## 🎯 开发工作流
-
-### 1. 开发组件
-```bash
-# 启动开发模式 (所有组件并行编译)
-pnpm dev
-
-# 或单独开发某个组件
-cd packages/button
-pnpm dev
-```
-
-### 2. 运行Storybook
-```bash
-# 启动Storybook开发服务器
-pnpm storybook:dev
-```
-
-### 3. 运行测试
-```bash
-# 运行所有测试
-pnpm test
-
-# 运行测试UI
-pnpm test:ui
-
-# 单独测试某个组件
-cd packages/button
-pnpm test
-```
-
-### 4. 代码检查
-```bash
-# ESLint检查
-pnpm lint
-
-# TypeScript类型检查
-pnpm type-check
-
-# 格式化代码
-pnpm format
-
-# 拼写检查
-pnpm cspell
-
-# Markdown检查
-pnpm lint:md
-```
-
-### 5. 构建组件
-```bash
-# 构建所有组件
-pnpm build
-
-# 构建指定组件
-pnpm build:filter @aix/button
-
-# 或进入组件目录构建
-cd packages/button
-pnpm build
-```
-
-### 6. 提交代码
-```bash
-# 使用交互式提交
-pnpm commit
-
-# 或直接git commit (会自动运行检查)
-git commit -m "feat: add new component"
-```
-
-### 7. 发布组件
-```bash
-# 1. 创建版本变更
-pnpm changeset
-
-# 2. 更新版本号
-pnpm changeset version
-
-# 3. 构建所有组件
-pnpm build
-
-# 4. 发布到npm
-pnpm changeset publish
-```
-
-## 🎯 AI编程指导原则
-
-### 1. 目录选择原则
-- **新组件** → `packages/组件名/`
-- **主题样式** → `packages/theme/src/`
-- **工具配置** → `internal/配置包/`
-- **类型定义** → `typings/` 或组件内部
-- **测试文件** → `packages/组件名/__test__/`
-- **Storybook故事** → `packages/组件名/stories/`
-
-### 2. 文件命名原则
-- **组件文件**: PascalCase.vue (如 `Button.vue`)
-- **导出文件**: `index.ts`
-- **测试文件**: 组件名.test.ts (如 `Button.test.ts`)
-- **故事文件**: 组件名.stories.ts (如 `Button.stories.ts`)
-- **样式文件**: kebab-case.scss (如 `button.scss`)
-
-### 3. 包命名原则
-- **作用域**: `@aix/`
-- **包名**: 小写短横线 (如 `@aix/date-picker`)
-- **组件名**: PascalCase (如 `DatePicker`)
-- **全局组件名**: `Aix` + 组件名 (如 `AixDatePicker`)
-
-### 4. 构建配置原则
-- **统一配置**: 所有组件使用根目录的`rollup.config.js`
-- **引用方式**: `import { createRollupConfig } from '../../rollup.config.js'`
-- **输出格式**: ESM (.mjs) + CJS (.cjs) + 类型声明 (.d.ts)
-- **样式输出**: 独立的 style.css 文件
-
-### 5. 依赖管理原则
-- **公共依赖**: 只在根package.json声明
-- **组件依赖**: 只声明peerDependencies (vue)
-- **内部依赖**: 使用workspace协议 (`workspace:*`)
-- **开发依赖**: 在根package.json统一管理
-
-## 📊 Monorepo最佳实践
-
-### Turborepo任务编排
 ```json
-// turbo.json
+// 发布后自动替换为具体版本
 {
-  "tasks": {
+  "name": "@aix/button",
+  "dependencies": {
+    "@aix/hooks": "^1.0.0",
+    "@aix/utils": "^1.0.0",
+    "@aix/theme": "^1.0.0"
+  }
+}
+```
+
+---
+
+## Turborepo 构建系统
+
+### 配置文件
+
+**turbo.json**:
+
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [".env"],
+  "pipeline": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": ["coverage/**"]
+    },
+    "lint": {
+      "outputs": []
+    },
+    "type-check": {
+      "outputs": []
+    },
     "dev": {
       "cache": false,
       "persistent": true
-    },
-    "test": {
-      "dependsOn": ["^build"]
     }
   }
 }
 ```
 
-### Workspace依赖管理
-```yaml
-# pnpm-workspace.yaml
-packages:
-  - 'packages/*'
-  - 'internal/*'
+### 任务依赖
+
+```mermaid
+graph TD
+    A[build @aix/hooks] --> B[build @aix/button]
+    A --> C[build @aix/input]
+    A --> D[build @aix/select]
+    E[build @aix/utils] --> B
+    E --> C
+    E --> D
+    F[build @aix/theme] --> B
+    F --> C
+    F --> D
 ```
 
-### 版本管理 (Changesets)
+**`^build` 表示先构建依赖包**:
+
+```json
+{
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],  // 先构建依赖包
+      "outputs": ["dist/**"]
+    }
+  }
+}
+```
+
+### 常用命令
+
 ```bash
-# 1. 添加变更记录
+# 构建所有包（按依赖顺序）
+pnpm build
+
+# 构建指定包及其依赖
+pnpm --filter @aix/button build
+
+# 并行运行测试
+pnpm test
+
+# 类型检查
+pnpm type-check
+
+# Lint 检查
+pnpm lint
+
+# 清除 Turbo 缓存
+pnpm turbo clean
+```
+
+### 缓存机制
+
+Turborepo 会缓存任务输出，加速构建：
+
+```bash
+# 首次构建（慢）
+$ pnpm build
+>>> @aix/hooks:build: cache miss, executing...
+>>> @aix/button:build: cache miss, executing...
+Time: 15s
+
+# 再次构建（快）
+$ pnpm build
+>>> @aix/hooks:build: cache hit, replaying output...
+>>> @aix/button:build: cache hit, replaying output...
+Time: 0.5s
+```
+
+**禁用缓存**:
+
+```bash
+# 强制重新构建
+pnpm build --force
+
+# 配置中禁用缓存
+{
+  "pipeline": {
+    "dev": {
+      "cache": false  // 开发模式不缓存
+    }
+  }
+}
+```
+
+---
+
+## 包管理
+
+### 创建新包
+
+#### 1. 使用脚本创建
+
+```bash
+# 创建新的组件包
+pnpm create:package tooltip
+
+# 生成的结构
+packages/tooltip/
+├── src/
+│   ├── Tooltip.vue
+│   ├── types.ts
+│   └── index.ts
+├── __tests__/
+│   └── Tooltip.test.ts
+├── stories/
+│   └── Tooltip.stories.ts
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── README.md
+```
+
+#### 2. 手动创建
+
+**package.json 模板**:
+
+```json
+{
+  "name": "@aix/tooltip",
+  "version": "0.0.0",
+  "description": "Tooltip component for AIX",
+  "type": "module",
+  "main": "./dist/index.cjs.js",
+  "module": "./dist/index.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && vue-tsc --declaration --emitDeclarationOnly --outDir dist",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage"
+  },
+  "keywords": ["vue", "component", "tooltip", "aix"],
+  "license": "MIT",
+  "peerDependencies": {
+    "vue": "^3.3.0"
+  },
+  "dependencies": {
+    "@aix/hooks": "workspace:*",
+    "@aix/utils": "workspace:*",
+    "@aix/theme": "workspace:*"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0",
+    "vue-tsc": "^1.8.0"
+  }
+}
+```
+
+### 删除包
+
+```bash
+# 1. 删除包目录
+rm -rf packages/tooltip
+
+# 2. 更新依赖它的包
+# 在其他包的 package.json 中移除 @aix/tooltip
+
+# 3. 重新安装依赖
+pnpm install
+
+# 4. 重新构建
+pnpm build
+```
+
+### 重命名包
+
+```bash
+# 1. 更新 package.json 的 name 字段
+# packages/tooltip/package.json
+{
+  "name": "@aix/popover"  // 修改包名
+}
+
+# 2. 更新所有引用该包的地方
+# 搜索并替换 "@aix/tooltip" → "@aix/popover"
+
+# 3. 重新安装依赖
+pnpm install
+
+# 4. 重新构建
+pnpm build
+```
+
+---
+
+## 依赖管理
+
+### 依赖类型
+
+| 类型 | 字段 | 说明 | 示例 |
+|------|------|------|------|
+| **生产依赖** | `dependencies` | 运行时必需 | `vue`, `@aix/hooks` |
+| **开发依赖** | `devDependencies` | 开发时必需 | `vite`, `vitest` |
+| **对等依赖** | `peerDependencies` | 宿主项目提供 | `vue`, `react` |
+| **可选依赖** | `optionalDependencies` | 可选安装 | 很少使用 |
+
+### 依赖原则
+
+#### 1. 组件包依赖
+
+```json
+{
+  "name": "@aix/button",
+  "peerDependencies": {
+    "vue": "^3.3.0"  // Vue 由宿主项目提供
+  },
+  "dependencies": {
+    "@aix/hooks": "workspace:*",  // 内部依赖
+    "@aix/utils": "workspace:*",
+    "@aix/theme": "workspace:*"
+  },
+  "devDependencies": {
+    "vue": "^3.3.0",       // 开发时需要 Vue
+    "vite": "^5.0.0",      // 构建工具
+    "vitest": "^1.0.0"     // 测试工具
+  }
+}
+```
+
+#### 2. 工具包依赖
+
+```json
+{
+  "name": "@aix/hooks",
+  "peerDependencies": {
+    "vue": "^3.3.0"
+  },
+  "dependencies": {
+    // 通常没有依赖
+  },
+  "devDependencies": {
+    "vue": "^3.3.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}
+```
+
+#### 3. 主题包依赖
+
+```json
+{
+  "name": "@aix/theme",
+  "dependencies": {
+    // 纯 CSS 包，通常没有依赖
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"  // 构建 CSS
+  }
+}
+```
+
+### 依赖版本管理
+
+#### 统一版本
+
+**根 package.json 管理公共依赖**:
+
+```json
+{
+  "devDependencies": {
+    "vue": "^3.4.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0",
+    "typescript": "^5.3.0"
+  }
+}
+```
+
+#### 版本范围
+
+```json
+{
+  "dependencies": {
+    "vue": "^3.3.0",      // 主版本锁定，允许次版本和补丁版本更新
+    "lodash": "~4.17.0",  // 次版本锁定，只允许补丁版本更新
+    "dayjs": "1.11.10"    // 精确版本，不允许更新
+  }
+}
+```
+
+### 依赖检查
+
+```bash
+# 检查过期依赖
+pnpm outdated
+
+# 检查过期依赖（递归）
+pnpm -r outdated
+
+# 更新依赖
+pnpm update
+
+# 更新依赖（递归）
+pnpm -r update
+```
+
+---
+
+## 构建优化
+
+### Rollup 配置
+
+**根配置（共享）**:
+
+```javascript
+// rollup.config.js
+export function createRollupConfig(dirname) {
+  return {
+    input: `${dirname}/src/index.ts`,
+    output: [
+      { file: `${dirname}/dist/index.esm.js`, format: 'esm' },
+      { file: `${dirname}/dist/index.cjs.js`, format: 'cjs' },
+    ],
+    external: ['vue'],
+    plugins: [vue(), typescript(), postcss()],
+  };
+}
+```
+
+**包配置（引用）**:
+
+```javascript
+// packages/button/rollup.config.js
+import { createRollupConfig } from '../../rollup.config.js';
+export default createRollupConfig(import.meta.dirname);
+```
+
+### 并行构建
+
+```bash
+# Turborepo 自动并行构建（依赖包先构建）
+pnpm build
+
+# 手动控制并行度
+pnpm build --concurrency=4
+```
+
+### 增量构建
+
+```bash
+# 只构建修改的包及其依赖者
+pnpm --filter @aix/button build
+```
+
+### 构建产物
+
+每个包的构建产物:
+
+```
+packages/button/dist/
+├── index.esm.js         # ESM 格式 (import)
+├── index.cjs.js         # CJS 格式 (require)
+├── index.d.ts           # TypeScript 类型定义
+├── style.css            # 样式文件
+└── Button.vue.d.ts      # 组件类型定义
+```
+
+### 类型生成
+
+```bash
+# 生成类型定义
+pnpm --filter @aix/button exec vue-tsc --declaration --emitDeclarationOnly
+
+# 自动化类型生成（在 package.json 中）
+{
+  "scripts": {
+    "build": "vite build && vue-tsc --declaration --emitDeclarationOnly --outDir dist"
+  }
+}
+```
+
+---
+
+## 版本管理
+
+### Changesets 工作流
+
+AIX 使用 Changesets 管理版本和 changelog。
+
+#### 1. 添加 Changeset
+
+```bash
+# 当你修改了代码后，添加 changeset
 pnpm changeset
 
-# 2. 选择变更类型
-# - major: 破坏性变更
-# - minor: 新功能
-# - patch: Bug修复
+# 交互式选择
+? Which packages would you like to include?
+  ◉ @aix/button
+  ◯ @aix/input
+  ◯ @aix/select
 
-# 3. 更新版本
-pnpm changeset version
+? What kind of change is this for @aix/button?
+  ◯ major (1.0.0 -> 2.0.0) - Breaking change
+  ◉ minor (1.0.0 -> 1.1.0) - New feature
+  ◯ patch (1.0.0 -> 1.0.1) - Bug fix
 
-# 4. 发布
-pnpm changeset publish
+? Please enter a summary for this change:
+  Add loading state support
 ```
 
-通过遵循这些项目结构和组织原则，可以确保组件库的可维护性和可扩展性，为AI编程提供清晰的指导。
+#### 2. 生成 Changeset 文件
+
+```markdown
+<!-- .changeset/cool-lions-jump.md -->
+---
+'@aix/button': minor
+---
+
+Add loading state support
+```
+
+#### 3. 版本提升
+
+```bash
+# 应用所有 changesets，更新版本号和 CHANGELOG
+pnpm changeset version
+
+# 结果：
+# - 更新 packages/button/package.json 版本号
+# - 生成 packages/button/CHANGELOG.md
+# - 删除 .changeset/*.md 文件
+```
+
+#### 4. 发布
+
+```bash
+# 构建所有包
+pnpm build
+
+# 发布到 npm
+pnpm changeset publish
+
+# 推送 git tags
+git push --follow-tags
+```
+
+### 版本策略
+
+| 变更类型 | 版本提升 | 示例 |
+|---------|---------|------|
+| **Breaking Change** | Major | `1.0.0 -> 2.0.0` |
+| **New Feature** | Minor | `1.0.0 -> 1.1.0` |
+| **Bug Fix** | Patch | `1.0.0 -> 1.0.1` |
+
+### 预发布版本
+
+```bash
+# 进入 pre-release 模式
+pnpm changeset pre enter alpha
+
+# 添加 changeset
+pnpm changeset
+
+# 版本提升（生成 1.0.0-alpha.0）
+pnpm changeset version
+
+# 发布预发布版本
+pnpm changeset publish --tag alpha
+
+# 退出 pre-release 模式
+pnpm changeset pre exit
+```
+
+---
+
+## 常见问题
+
+### Q1: 如何添加新的组件包？
+
+```bash
+# 方法 1: 使用脚本（推荐）
+pnpm create:package tooltip
+
+# 方法 2: 手动创建
+# 1. 创建目录 packages/tooltip/
+# 2. 添加 package.json、src/、__tests__/ 等
+# 3. 运行 pnpm install
+```
+
+### Q2: 如何解决依赖冲突？
+
+```bash
+# 1. 查看依赖树
+pnpm list vue
+
+# 2. 统一版本（在根 package.json）
+{
+  "pnpm": {
+    "overrides": {
+      "vue": "^3.4.0"
+    }
+  }
+}
+
+# 3. 重新安装
+pnpm install
+```
+
+### Q3: 如何调试依赖包？
+
+```bash
+# 方法 1: 使用 pnpm link
+cd packages/hooks
+pnpm link --global
+
+cd packages/button
+pnpm link --global @aix/hooks
+
+# 方法 2: 使用 pnpm --filter 在 dev 模式
+pnpm --filter @aix/button dev
+pnpm --filter @aix/hooks dev  # 在另一个终端
+```
+
+### Q4: 如何处理循环依赖？
+
+```bash
+# 检测循环依赖
+pnpm list --depth Infinity | grep -E "deduped"
+
+# 解决方案：
+# 1. 提取公共代码到独立包
+# 2. 使用 devDependencies 而不是 dependencies
+# 3. 重新设计包结构
+
+# 示例：
+# ❌ 错误
+@aix/button depends on @aix/input
+@aix/input depends on @aix/button
+
+# ✅ 正确
+@aix/button depends on @aix/hooks
+@aix/input depends on @aix/hooks
+```
+
+### Q5: 构建缓存不更新怎么办？
+
+```bash
+# 清除 Turborepo 缓存
+pnpm turbo clean
+
+# 清除所有构建产物
+pnpm -r exec rm -rf dist
+
+# 强制重新构建
+pnpm build --force
+
+# 清除 node_modules 并重新安装
+pnpm -r exec rm -rf node_modules
+pnpm install
+```
+
+### Q6: 如何优化安装速度？
+
+```bash
+# 1. 使用 pnpm store 缓存
+pnpm config set store-dir ~/.pnpm-store
+
+# 2. 使用 --frozen-lockfile（CI 环境）
+pnpm install --frozen-lockfile
+
+# 3. 使用 --prefer-offline
+pnpm install --prefer-offline
+
+# 4. 配置 .npmrc
+# .npmrc
+shamefully-hoist=true
+strict-peer-dependencies=false
+```
+
+### Q7: 如何跨包共享配置？
+
+```bash
+# 1. 创建内部配置包
+internal/tsconfig/
+├── base.json
+├── vue.json
+└── package.json
+
+# 2. 子包继承配置
+// packages/button/tsconfig.json
+{
+  "extends": "@kit/typescript-config/vue.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist"
+  }
+}
+```
+
+---
+
+## 最佳实践
+
+### 1. 包设计原则
+
+- ✅ **单一职责**: 每个包只做一件事
+- ✅ **最小依赖**: 尽量减少依赖数量
+- ✅ **独立构建**: 每个包可以独立构建和测试
+- ✅ **按需加载**: 支持 Tree-shaking
+
+### 2. 依赖管理原则
+
+- ✅ **使用 workspace:***: 内部包使用 workspace 协议
+- ✅ **统一版本**: 公共依赖在根 package.json 统一管理
+- ✅ **对等依赖**: Vue、React 等框架使用 peerDependencies
+- ❌ **避免重复**: 不在多个包中重复安装相同依赖
+
+### 3. 构建优化原则
+
+- ✅ **增量构建**: 只构建修改的包
+- ✅ **并行构建**: 利用 Turborepo 并行能力
+- ✅ **缓存利用**: 充分利用 Turborepo 缓存
+- ✅ **按需引入**: 支持按需引入和 Tree-shaking
+
+### 4. 版本管理原则
+
+- ✅ **语义化版本**: 严格遵循 SemVer
+- ✅ **Changelog**: 使用 Changesets 自动生成
+- ✅ **原子提交**: 每个 changeset 对应一个功能或修复
+- ✅ **CI/CD**: 自动化版本发布流程
+
+---
+
+## 📚 相关文档
+
+- [pnpm Workspaces 文档](https://pnpm.io/workspaces)
+- [Turborepo 文档](https://turbo.build/repo/docs)
+- [Changesets 文档](https://github.com/changesets/changesets)
+- [component-design.md](./component-design.md) - 组件设计规范
+- [npm-publishing.md](./npm-publishing.md) - npm 发布流程

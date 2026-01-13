@@ -6,215 +6,151 @@ description: 组件库测试策略、测试用例编写、测试工具配置和�
 # 测试指导 Agent
 
 ## 职责
-专门负责组件库测试策略制定、测试用例编写、测试工具配置和质量保证，为 AI 生成高质量的组件测试代码提供专业指导。
 
-> ⚠️ **重要区别**: 组件库测试专注于**组件行为和 API**，而不是业务逻辑和后端集成。
-
----
+专门负责组件库测试策略制定、测试用例编写、测试工具配置和质量保证，为高质量的组件开发提供专业的测试指导。
 
 ## 🎯 测试策略
 
-### 1. 组件库测试金字塔
+### 1. 测试金字塔
 
 ```
     /\
-   /集成\     <- Storybook 交互测试（少量）
+   /E2E\     <- 少量视觉回归测试 (Chromatic)
   /______\
  /        \
-/  单元测试  \ <- 组件 Props/Events/Slots 测试（大量）
+/Integration\ <- 适量组件组合测试
 /____________\
+/            \
+/  Unit Tests  \ <- 大量组件单元测试
+/________________\
 ```
-
-**与业务应用的区别**:
-- ❌ 不需要 E2E 测试（用户会在自己的应用中做）
-- ❌ 不需要 API 集成测试（组件库不直接调用 API）
-- ✅ 重点是组件单元测试（Props、Events、Slots）
-- ✅ 使用 Storybook 进行交互测试和视觉验证
 
 ### 2. 测试分类
 
-| 测试类型 | 用途 | 工具 | 占比 |
-|---------|------|------|------|
-| **Props 测试** | 验证 Props 传递和默认值 | Vitest + @vue/test-utils | 40% |
-| **Events 测试** | 验证事件触发和参数 | Vitest + @vue/test-utils | 30% |
-| **Slots 测试** | 验证插槽内容渲染 | Vitest + @vue/test-utils | 15% |
-| **状态测试** | 验证禁用、加载等状态 | Vitest + @vue/test-utils | 10% |
-| **无障碍测试** | 验证 a11y 属性和行为 | Vitest + Storybook | 5% |
+- **单元测试**: 测试独立的组件 Props/Emits/Slots
+- **可访问性测试**: 测试 ARIA 属性和键盘导航
+- **视觉回归测试**: 测试 UI 的视觉一致性 (Storybook + Chromatic)
+- **快照测试**: 测试组件渲染输出
 
 ### 3. 测试原则
 
-- **API 优先**: 测试组件的公开 API（Props/Events/Slots），不测试内部实现
-- **用户视角**: 从使用者角度测试，验证最终渲染结果
-- **快速反馈**: 单元测试应在 100ms 内完成
-- **覆盖率目标**: Props/Events 100%，分支覆盖率 80%+
+- **快速反馈**: 测试应该快速执行并提供即时反馈
+- **可靠性**: 测试结果应该稳定可重复
+- **可维护性**: 测试代码应该易于理解和维护
+- **高覆盖率**: Props/Emits/Slots 测试覆盖率 > 80%
 
 ---
 
 ## 🛠️ 测试工具配置
 
-### 当前项目配置
-
-**Vitest 配置** (`vitest.config.ts`):
+### Vitest 配置
 
 ```typescript
-import { resolve } from 'path';
-import vue from '@vitejs/plugin-vue';
+// vitest.config.ts
 import { defineConfig } from 'vitest/config';
+import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
-  root: resolve(__dirname),
   plugins: [vue()],
   test: {
-    globals: true,
     environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./tests/setup.ts'],
+    include: ['packages/**/*.{test,spec}.{js,ts,jsx,tsx}'],
+    exclude: ['node_modules', 'dist', 'coverage', '**/node_modules/**'],
     coverage: {
       provider: 'v8',
-      reportsDirectory: 'coverage',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text', 'json', 'html', 'lcov'],
+      include: ['packages/*/src/**/*.{vue,ts}'],
+      exclude: [
+        '**/*.stories.ts',
+        '**/*.d.ts',
+        '**/index.ts',
+        '**/types.ts',
+      ],
+      thresholds: {
+        global: {
+          branches: 80,
+          functions: 80,
+          lines: 80,
+          statements: 80,
+        },
+      },
     },
-    setupFiles: resolve(__dirname, 'vitest.setup.ts'),
-    include: ['packages/**/__test__/*.{test,spec}.?(c|m)[jt]s?(x)'],
-    exclude: [
-      '**/*/node_modules',
-      '**/*/dist',
-      '**/*/build',
-      '**/*/coverage',
-      '**/*/lib',
-      '**/*/es',
-      '**/*/stories',
-    ],
   },
 });
 ```
 
-**测试设置文件** (`vitest.setup.ts`):
+### 测试设置文件
 
 ```typescript
-import { vi } from 'vitest';
+// tests/setup.ts
+import { beforeAll, afterEach, vi } from 'vitest';
+import { cleanup } from '@testing-library/vue';
+import '@testing-library/jest-dom/vitest';
 
-// Mock fetch API（如果组件内部使用）
-global.fetch = vi.fn(() =>
-  Promise.resolve({
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve({ message: 'Mock data' }),
-    headers: new Headers({ 'Content-Type': 'application/json' }),
-  } as Response),
-);
+beforeAll(() => {
+  // Mock window.matchMedia
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation(query => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
 
-// 屏蔽测试警告
-vi.spyOn(console, 'warn').mockImplementation((msg) => {
-  if (!msg.includes('某些特定警告')) {
-    console.warn(msg);
-  }
-});
-vi.spyOn(console, 'error').mockImplementation(() => {});
+  // Mock ResizeObserver
+  global.ResizeObserver = vi.fn().mockImplementation(() => ({
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+  }));
 
-// Mock LocalStorage（如果组件需要）
-global.localStorage = {
-  getItem: vi.fn(),
-  setItem: vi.fn(),
-  removeItem: vi.fn(),
-  clear: vi.fn(),
-  length: 0,
-  key: vi.fn(),
-} as unknown as Storage;
-
-// Mock matchMedia（响应式组件需要）
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: vi.fn().mockImplementation((query) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })),
+  // Mock IntersectionObserver
+  global.IntersectionObserver = vi.fn().mockImplementation(() => ({
+    observe: vi.fn(),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+  }));
 });
 
-// Mock IntersectionObserver（如果使用虚拟滚动等）
-global.IntersectionObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
-```
-
-### 运行测试
-
-```bash
-# 运行所有测试
-pnpm test
-
-# 运行特定包测试
-pnpm test -- packages/button
-
-# 启动 UI 模式（可视化测试）
-pnpm test:ui
-
-# 生成覆盖率报告
-pnpm test -- --coverage
-
-# 监听模式（开发时使用）
-pnpm test -- --watch
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 ```
 
 ---
 
 ## 🧪 组件单元测试
 
-### 基于 Button 组件的完整示例
-
-参考实际项目: `packages/button/__test__/Button.test.ts`
-
-#### 1. 渲染测试
-
-验证组件基本渲染和 DOM 结构：
+### 基础组件测试
 
 ```typescript
+// packages/button/__tests__/Button.test.ts
+import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
 import { Button } from '../src';
 
-describe('Button 组件', () => {
-  describe('渲染测试', () => {
-    it('应该正确渲染默认按钮', () => {
-      const wrapper = mount(Button, {
-        slots: {
-          default: '点击我',
-        },
-      });
-
-      expect(wrapper.text()).toBe('点击我');
-      expect(wrapper.classes()).toContain('aix-button');
-      expect(wrapper.classes()).toContain('aix-button--default');
-      expect(wrapper.classes()).toContain('aix-button--medium');
+describe('Button', () => {
+  it('应该正确渲染组件', () => {
+    const wrapper = mount(Button, {
+      slots: {
+        default: 'Click Me',
+      },
     });
 
-    it('应该正确渲染插槽内容', () => {
-      const wrapper = mount(Button, {
-        slots: {
-          default: '<span class="custom-content">自定义内容</span>',
-        },
-      });
-
-      expect(wrapper.find('.custom-content').exists()).toBe(true);
-      expect(wrapper.find('.custom-content').text()).toBe('自定义内容');
-    });
+    expect(wrapper.text()).toBe('Click Me');
+    expect(wrapper.classes()).toContain('aix-button');
   });
-});
-```
 
-#### 2. Props 测试
-
-**枚举类型 Props**（如 `type`、`size`）:
-
-```typescript
-describe('类型属性测试', () => {
-  it('应该支持 primary 类型', () => {
+  it('应该正确应用 type 属性', () => {
     const wrapper = mount(Button, {
       props: { type: 'primary' },
     });
@@ -222,889 +158,615 @@ describe('类型属性测试', () => {
     expect(wrapper.classes()).toContain('aix-button--primary');
   });
 
-  it('应该支持所有类型', () => {
-    const types = ['primary', 'default', 'dashed', 'text', 'link'] as const;
-
-    types.forEach((type) => {
-      const wrapper = mount(Button, {
-        props: { type },
-      });
-
-      expect(wrapper.classes()).toContain(`aix-button--${type}`);
-    });
-  });
-});
-
-describe('尺寸属性测试', () => {
-  it('应该支持 small 尺寸', () => {
+  it('应该正确应用 size 属性', () => {
     const wrapper = mount(Button, {
-      props: { size: 'small' },
+      props: { size: 'large' },
     });
 
-    expect(wrapper.classes()).toContain('aix-button--small');
+    expect(wrapper.classes()).toContain('aix-button--large');
   });
-});
-```
 
-**布尔类型 Props**（如 `disabled`、`loading`）:
-
-```typescript
-describe('禁用状态测试', () => {
-  it('应该正确应用禁用状态', () => {
+  it('应该在禁用时不触发点击事件', async () => {
     const wrapper = mount(Button, {
       props: { disabled: true },
-    });
-
-    expect(wrapper.classes()).toContain('aix-button--disabled');
-    expect(wrapper.attributes('disabled')).toBeDefined();
-  });
-
-  it('禁用状态下不应该触发点击事件', async () => {
-    const onClick = vi.fn();
-    const wrapper = mount(Button, {
-      props: { disabled: true },
-      attrs: { onClick },
     });
 
     await wrapper.trigger('click');
-    expect(onClick).not.toHaveBeenCalled();
+
+    expect(wrapper.emitted('click')).toBeUndefined();
   });
-});
-```
 
-**默认值测试**:
-
-```typescript
-describe('Props 默认值测试', () => {
-  it('应该使用正确的默认 props 值', () => {
+  it('应该正确触发点击事件', async () => {
     const wrapper = mount(Button);
 
-    expect(wrapper.classes()).toContain('aix-button--default');
-    expect(wrapper.classes()).toContain('aix-button--medium');
-    expect(wrapper.classes()).not.toContain('aix-button--disabled');
-    expect(wrapper.classes()).not.toContain('aix-button--loading');
+    await wrapper.trigger('click');
+
+    expect(wrapper.emitted('click')).toBeTruthy();
+    expect(wrapper.emitted('click')?.length).toBe(1);
+  });
+
+  it('应该支持自定义图标插槽', () => {
+    const wrapper = mount(Button, {
+      slots: {
+        icon: '<i class="custom-icon"></i>',
+      },
+    });
+
+    expect(wrapper.find('.custom-icon').exists()).toBe(true);
   });
 });
 ```
 
-#### 3. Events 测试
-
-验证事件触发和参数传递：
+### Props 测试
 
 ```typescript
-describe('点击事件测试', () => {
-  it('应该正确触发点击事件', async () => {
-    const onClick = vi.fn();
-    const wrapper = mount(Button, {
-      attrs: { onClick },
-    });
+// packages/select/__tests__/Select.test.ts
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { Select } from '../src';
+import type { SelectOption } from '../src/types';
 
-    await wrapper.trigger('click');
-    expect(onClick).toHaveBeenCalledTimes(1);
-  });
+const mockOptions: SelectOption[] = [
+  { value: '1', label: 'Option 1' },
+  { value: '2', label: 'Option 2' },
+  { value: '3', label: 'Option 3' },
+];
 
-  it('点击事件应该传递 MouseEvent 对象', async () => {
-    let event: MouseEvent | null = null;
-    const wrapper = mount(Button, {
-      attrs: {
-        onClick: (e: MouseEvent) => {
-          event = e;
-        },
+describe('Select Props', () => {
+  it('应该正确渲染选项列表', async () => {
+    const wrapper = mount(Select, {
+      props: {
+        options: mockOptions,
       },
     });
 
     await wrapper.trigger('click');
-    expect(event).toBeInstanceOf(MouseEvent);
+
+    const options = wrapper.findAll('.aix-select__option');
+    expect(options).toHaveLength(3);
+    expect(options[0].text()).toBe('Option 1');
   });
 
-  it('多次点击应该触发多次事件', async () => {
-    const onClick = vi.fn();
-    const wrapper = mount(Button, {
-      attrs: { onClick },
+  it('应该正确设置初始值', () => {
+    const wrapper = mount(Select, {
+      props: {
+        modelValue: '2',
+        options: mockOptions,
+      },
+    });
+
+    expect(wrapper.find('.aix-select__input').text()).toContain('Option 2');
+  });
+
+  it('应该正确显示占位符', () => {
+    const wrapper = mount(Select, {
+      props: {
+        options: mockOptions,
+        placeholder: '请选择',
+      },
+    });
+
+    expect(wrapper.text()).toContain('请选择');
+  });
+
+  it('应该禁用组件', () => {
+    const wrapper = mount(Select, {
+      props: {
+        options: mockOptions,
+        disabled: true,
+      },
+    });
+
+    expect(wrapper.classes()).toContain('aix-select--disabled');
+    expect(wrapper.attributes('aria-disabled')).toBe('true');
+  });
+
+  it('应该支持多选', async () => {
+    const wrapper = mount(Select, {
+      props: {
+        options: mockOptions,
+        multiple: true,
+        modelValue: [],
+      },
     });
 
     await wrapper.trigger('click');
-    await wrapper.trigger('click');
-    await wrapper.trigger('click');
+    const options = wrapper.findAll('.aix-select__option');
+    await options[0].trigger('click');
+    await options[1].trigger('click');
 
-    expect(onClick).toHaveBeenCalledTimes(3);
+    const emitted = wrapper.emitted('update:modelValue');
+    expect(emitted).toBeTruthy();
   });
 });
 ```
 
-**自定义事件测试**（使用 `emits`）:
+### Emits 测试
 
 ```typescript
-// 假设组件有 update:modelValue 事件
-describe('自定义事件测试', () => {
+// packages/input/__tests__/Input.test.ts
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { Input } from '../src';
+
+describe('Input Emits', () => {
   it('应该触发 update:modelValue 事件', async () => {
     const wrapper = mount(Input, {
       props: { modelValue: '' },
     });
 
-    await wrapper.find('input').setValue('new value');
+    await wrapper.find('input').setValue('test');
 
     expect(wrapper.emitted('update:modelValue')).toBeTruthy();
-    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['new value']);
+    expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['test']);
   });
 
-  it('应该触发 change 事件并传递正确参数', async () => {
-    const wrapper = mount(Select, {
-      props: { modelValue: 'a' },
-    });
+  it('应该触发 change 事件', async () => {
+    const wrapper = mount(Input);
 
-    await wrapper.find('[data-value="b"]').trigger('click');
+    const input = wrapper.find('input');
+    await input.setValue('test');
+    await input.trigger('change');
 
-    const changeEvents = wrapper.emitted('change');
-    expect(changeEvents).toBeTruthy();
-    expect(changeEvents?.[0]).toEqual(['b', 'a']); // [newValue, oldValue]
+    expect(wrapper.emitted('change')).toBeTruthy();
+    expect(wrapper.emitted('change')?.[0]).toEqual(['test']);
+  });
+
+  it('应该触发 focus 和 blur 事件', async () => {
+    const wrapper = mount(Input);
+
+    const input = wrapper.find('input');
+    await input.trigger('focus');
+    expect(wrapper.emitted('focus')).toBeTruthy();
+
+    await input.trigger('blur');
+    expect(wrapper.emitted('blur')).toBeTruthy();
+  });
+
+  it('应该在按下 Enter 时触发 submit 事件', async () => {
+    const wrapper = mount(Input);
+
+    await wrapper.find('input').trigger('keydown.enter');
+
+    expect(wrapper.emitted('submit')).toBeTruthy();
   });
 });
 ```
 
-#### 4. Slots 测试
-
-验证插槽内容和作用域插槽：
+### Slots 测试
 
 ```typescript
-describe('插槽测试', () => {
+// packages/card/__tests__/Card.test.ts
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { Card } from '../src';
+
+describe('Card Slots', () => {
   it('应该正确渲染默认插槽', () => {
-    const wrapper = mount(Button, {
-      slots: {
-        default: '按钮文字',
-      },
-    });
-
-    expect(wrapper.text()).toBe('按钮文字');
-  });
-
-  it('应该支持 HTML 插槽内容', () => {
-    const wrapper = mount(Button, {
-      slots: {
-        default: '<strong>Bold</strong> <em>Italic</em>',
-      },
-    });
-
-    expect(wrapper.find('strong').exists()).toBe(true);
-    expect(wrapper.find('em').exists()).toBe(true);
-  });
-
-  it('应该正确渲染具名插槽', () => {
     const wrapper = mount(Card, {
       slots: {
-        header: '<div class="header">标题</div>',
-        default: '<div class="body">内容</div>',
-        footer: '<div class="footer">底部</div>',
+        default: '<div class="content">Card Content</div>',
       },
     });
 
-    expect(wrapper.find('.header').text()).toBe('标题');
-    expect(wrapper.find('.body').text()).toBe('内容');
-    expect(wrapper.find('.footer').text()).toBe('底部');
+    expect(wrapper.find('.content').text()).toBe('Card Content');
   });
 
-  it('应该正确处理作用域插槽', () => {
-    const wrapper = mount(List, {
+  it('应该正确渲染 header 插槽', () => {
+    const wrapper = mount(Card, {
+      slots: {
+        header: '<h3>Card Title</h3>',
+      },
+    });
+
+    expect(wrapper.find('h3').text()).toBe('Card Title');
+  });
+
+  it('应该正确渲染 footer 插槽', () => {
+    const wrapper = mount(Card, {
+      slots: {
+        footer: '<button>Action</button>',
+      },
+    });
+
+    expect(wrapper.find('button').text()).toBe('Action');
+  });
+
+  it('应该支持 scoped slots', () => {
+    const wrapper = mount(Card, {
       props: {
-        items: [{ id: 1, name: 'Item 1' }],
+        data: { title: 'Test' },
       },
       slots: {
-        default: `
-          <template #default="{ item, index }">
-            <span class="item">{{ index }}: {{ item.name }}</span>
-          </template>
-        `,
+        default: '{{ data.title }}',
       },
     });
 
-    expect(wrapper.find('.item').text()).toBe('0: Item 1');
+    expect(wrapper.text()).toContain('Test');
   });
 });
 ```
 
-#### 5. 状态组合测试
+---
 
-验证多个状态同时存在：
+## ♿ 可访问性测试
 
-```typescript
-describe('组合状态测试', () => {
-  it('应该同时支持 type 和 size', () => {
-    const wrapper = mount(Button, {
-      props: {
-        type: 'primary',
-        size: 'large',
-      },
-    });
-
-    expect(wrapper.classes()).toContain('aix-button--primary');
-    expect(wrapper.classes()).toContain('aix-button--large');
-  });
-
-  it('禁用和加载状态可以同时存在', () => {
-    const wrapper = mount(Button, {
-      props: {
-        disabled: true,
-        loading: true,
-      },
-    });
-
-    expect(wrapper.classes()).toContain('aix-button--disabled');
-    expect(wrapper.classes()).toContain('aix-button--loading');
-    expect(wrapper.attributes('disabled')).toBeDefined();
-  });
-
-  it('不同类型和尺寸的组合应该正确渲染', () => {
-    const combinations = [
-      { type: 'primary', size: 'small' },
-      { type: 'dashed', size: 'medium' },
-      { type: 'text', size: 'large' },
-    ] as const;
-
-    combinations.forEach(({ type, size }) => {
-      const wrapper = mount(Button, {
-        props: { type, size },
-      });
-
-      expect(wrapper.classes()).toContain(`aix-button--${type}`);
-      expect(wrapper.classes()).toContain(`aix-button--${size}`);
-    });
-  });
-});
-```
-
-#### 6. 无障碍性测试
-
-验证 a11y 属性和 ARIA 标签：
+### ARIA 属性测试
 
 ```typescript
-describe('无障碍性测试', () => {
-  it('button 元素应该存在', () => {
+// packages/button/__tests__/Button.a11y.test.ts
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { Button } from '../src';
+
+describe('Button Accessibility', () => {
+  it('应该有正确的 role 属性', () => {
     const wrapper = mount(Button);
-    expect(wrapper.element.tagName).toBe('BUTTON');
+
+    expect(wrapper.attributes('role')).toBe('button');
   });
 
-  it('禁用状态应该设置 disabled 属性', () => {
+  it('应该在禁用时设置 aria-disabled', () => {
     const wrapper = mount(Button, {
       props: { disabled: true },
     });
 
-    expect(wrapper.element.getAttribute('disabled')).not.toBeNull();
+    expect(wrapper.attributes('aria-disabled')).toBe('true');
   });
 
-  it('应该支持 aria-label 属性', () => {
-    const wrapper = mount(IconButton, {
-      attrs: {
-        'aria-label': '关闭',
-      },
-    });
-
-    expect(wrapper.attributes('aria-label')).toBe('关闭');
-  });
-
-  it('loading 状态应该设置 aria-busy', () => {
+  it('应该支持 aria-label', () => {
     const wrapper = mount(Button, {
-      props: { loading: true },
+      props: { ariaLabel: 'Submit Form' },
     });
 
-    expect(wrapper.attributes('aria-busy')).toBe('true');
+    expect(wrapper.attributes('aria-label')).toBe('Submit Form');
+  });
+
+  it('应该支持 aria-pressed 状态', () => {
+    const wrapper = mount(Button, {
+      props: { pressed: true },
+    });
+
+    expect(wrapper.attributes('aria-pressed')).toBe('true');
   });
 });
 ```
 
-#### 7. 边缘情况测试
-
-验证异常输入和极端场景：
+### 键盘导航测试
 
 ```typescript
-describe('边缘情况测试', () => {
-  it('空内容时应该正常渲染', () => {
-    const wrapper = mount(Button);
-    expect(wrapper.exists()).toBe(true);
-  });
+// packages/select/__tests__/Select.keyboard.test.ts
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { Select } from '../src';
 
-  it('长文本内容应该正常显示', () => {
-    const longText = '这是一段很长很长很长很长很长的按钮文字内容';
-    const wrapper = mount(Button, {
-      slots: { default: longText },
+describe('Select Keyboard Navigation', () => {
+  const mockOptions = [
+    { value: '1', label: 'Option 1' },
+    { value: '2', label: 'Option 2' },
+    { value: '3', label: 'Option 3' },
+  ];
+
+  it('应该在按下 Enter 时打开下拉菜单', async () => {
+    const wrapper = mount(Select, {
+      props: { options: mockOptions },
     });
 
-    expect(wrapper.text()).toBe(longText);
+    await wrapper.trigger('keydown.enter');
+
+    expect(wrapper.classes()).toContain('aix-select--open');
   });
 
-  it('包含 HTML 的插槽应该正确渲染', () => {
-    const wrapper = mount(Button, {
-      slots: {
-        default: '<strong>Bold</strong> <em>Italic</em>',
-      },
+  it('应该支持方向键导航', async () => {
+    const wrapper = mount(Select, {
+      props: { options: mockOptions },
     });
 
-    expect(wrapper.find('strong').exists()).toBe(true);
-    expect(wrapper.find('em').exists()).toBe(true);
+    await wrapper.trigger('keydown.enter'); // 打开下拉菜单
+    await wrapper.trigger('keydown.down'); // 向下导航
+
+    // 检查是否高亮了第一个选项
+    const options = wrapper.findAll('.aix-select__option');
+    expect(options[0].classes()).toContain('aix-select__option--focused');
   });
 
-  it('无效的 prop 值应该回退到默认值', () => {
-    const wrapper = mount(Button, {
-      props: {
-        // @ts-expect-error 测试无效值
-        type: 'invalid-type',
-      },
+  it('应该在按下 Escape 时关闭下拉菜单', async () => {
+    const wrapper = mount(Select, {
+      props: { options: mockOptions },
     });
 
-    // 应该使用默认类型
-    expect(wrapper.classes()).toContain('aix-button--default');
+    await wrapper.trigger('keydown.enter'); // 打开
+    await wrapper.trigger('keydown.esc'); // 关闭
+
+    expect(wrapper.classes()).not.toContain('aix-select--open');
+  });
+
+  it('应该支持 Tab 键聚焦', async () => {
+    const wrapper = mount(Select, {
+      props: { options: mockOptions },
+      attachTo: document.body,
+    });
+
+    const element = wrapper.element as HTMLElement;
+    element.focus();
+
+    expect(document.activeElement).toBe(element);
+
+    wrapper.unmount();
   });
 });
 ```
 
 ---
 
-## 🎭 Storybook 交互测试
+## 📸 快照测试
 
-### 使用 Play Functions
-
-Storybook 的 play functions 可以测试用户交互场景：
+### 组件快照测试
 
 ```typescript
-// packages/button/stories/Button.stories.ts
-import { expect, userEvent, within } from '@storybook/test';
-import type { Meta, StoryObj } from '@storybook/vue3';
-import Button from '../src/Button.vue';
+// packages/button/__tests__/Button.snapshot.test.ts
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { Button } from '../src';
 
-const meta: Meta<typeof Button> = {
-  title: 'Components/Button',
-  component: Button,
-};
+describe('Button Snapshots', () => {
+  it('应该匹配默认按钮快照', () => {
+    const wrapper = mount(Button, {
+      slots: { default: 'Button' },
+    });
 
-export default meta;
-type Story = StoryObj<typeof meta>;
+    expect(wrapper.html()).toMatchSnapshot();
+  });
 
-/**
- * 交互测试：点击按钮
- */
-export const ClickInteraction: Story = {
-  args: {
-    type: 'primary',
-  },
-  render: (args) => ({
-    components: { Button },
-    setup() {
-      const handleClick = () => {
-        console.log('按钮被点击');
-      };
-      return { args, handleClick };
-    },
-    template: '<Button v-bind="args" @click="handleClick">点击我</Button>',
-  }),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+  it('应该匹配 primary 按钮快照', () => {
+    const wrapper = mount(Button, {
+      props: { type: 'primary' },
+      slots: { default: 'Primary' },
+    });
 
-    // 查找按钮
-    const button = canvas.getByRole('button', { name: /点击我/i });
-    expect(button).toBeInTheDocument();
+    expect(wrapper.html()).toMatchSnapshot();
+  });
 
-    // 验证初始状态
-    expect(button).not.toBeDisabled();
-    expect(button).toHaveClass('aix-button--primary');
+  it('应该匹配禁用按钮快照', () => {
+    const wrapper = mount(Button, {
+      props: { disabled: true },
+      slots: { default: 'Disabled' },
+    });
 
-    // 模拟点击
-    await userEvent.click(button);
+    expect(wrapper.html()).toMatchSnapshot();
+  });
 
-    // 可以验证点击后的效果
-    // 例如：expect(button).toHaveClass('clicked');
-  },
-};
+  it('应该匹配不同尺寸的快照', () => {
+    const sizes = ['small', 'medium', 'large'] as const;
 
-/**
- * 交互测试：禁用状态不能点击
- */
-export const DisabledInteraction: Story = {
-  args: {
-    type: 'primary',
-    disabled: true,
-  },
-  render: (args) => ({
-    components: { Button },
-    setup() {
-      return { args };
-    },
-    template: '<Button v-bind="args">禁用按钮</Button>',
-  }),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
+    sizes.forEach(size => {
+      const wrapper = mount(Button, {
+        props: { size },
+        slots: { default: size },
+      });
 
-    const button = canvas.getByRole('button');
-
-    // 验证禁用状态
-    expect(button).toBeDisabled();
-    expect(button).toHaveClass('aix-button--disabled');
-
-    // 尝试点击（不应该触发事件）
-    await userEvent.click(button);
-    // 禁用按钮的点击会被阻止
-  },
-};
-```
-
-### 运行 Storybook 测试
-
-```bash
-# 启动 Storybook
-pnpm storybook:dev
-
-# 在浏览器中查看交互测试
-# http://localhost:6006
-
-# 运行 Storybook 测试（如果配置了 test-runner）
-pnpm test-storybook
+      expect(wrapper.html()).toMatchSnapshot(`button-${size}`);
+    });
+  });
+});
 ```
 
 ---
 
-## 📊 测试覆盖率
+## 🔧 组件实例方法测试
+
+### 测试 defineExpose 暴露的方法
+
+```typescript
+// packages/input/__tests__/Input.methods.test.ts
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { Input } from '../src';
+
+describe('Input Methods', () => {
+  it('应该暴露 focus 方法', () => {
+    const wrapper = mount(Input, {
+      attachTo: document.body,
+    });
+
+    const instance = wrapper.vm as any;
+    expect(instance.focus).toBeDefined();
+
+    instance.focus();
+
+    const input = wrapper.find('input').element;
+    expect(document.activeElement).toBe(input);
+
+    wrapper.unmount();
+  });
+
+  it('应该暴露 blur 方法', () => {
+    const wrapper = mount(Input, {
+      attachTo: document.body,
+    });
+
+    const instance = wrapper.vm as any;
+    const input = wrapper.find('input').element;
+
+    instance.focus();
+    expect(document.activeElement).toBe(input);
+
+    instance.blur();
+    expect(document.activeElement).not.toBe(input);
+
+    wrapper.unmount();
+  });
+
+  it('应该暴露 select 方法', () => {
+    const wrapper = mount(Input, {
+      props: { modelValue: 'test text' },
+      attachTo: document.body,
+    });
+
+    const instance = wrapper.vm as any;
+    const input = wrapper.find('input').element as HTMLInputElement;
+
+    instance.select();
+
+    expect(input.selectionStart).toBe(0);
+    expect(input.selectionEnd).toBe(input.value.length);
+
+    wrapper.unmount();
+  });
+});
+```
+
+---
+
+## 📊 测试覆盖率要求
 
 ### 覆盖率目标
 
-组件库的覆盖率要求：
+| 类型 | 目标覆盖率 | 说明 |
+|------|-----------|------|
+| **Props** | > 80% | 所有 Props 的不同值都应测试 |
+| **Emits** | > 80% | 所有事件都应有测试用例 |
+| **Slots** | > 80% | 所有插槽都应有测试用例 |
+| **方法** | 100% | defineExpose 的方法必须全部测试 |
+| **分支** | > 80% | if/else 等分支逻辑 |
+| **语句** | > 80% | 代码执行覆盖率 |
 
-| 指标 | 目标 | 说明 |
-|------|------|------|
-| **Props** | 100% | 所有 Props 都应有测试 |
-| **Events** | 100% | 所有事件都应有测试 |
-| **Slots** | 100% | 所有插槽都应有测试 |
-| **Branches** | 80%+ | 分支逻辑覆盖 |
-| **Lines** | 80%+ | 代码行覆盖 |
-
-### 配置覆盖率阈值
-
-```typescript
-// vitest.config.ts
-export default defineConfig({
-  test: {
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html', 'lcov'],
-      thresholds: {
-        // 全局阈值
-        global: {
-          branches: 80,
-          functions: 80,
-          lines: 80,
-          statements: 80,
-        },
-        // 特定目录更高要求
-        'packages/*/src/': {
-          branches: 90,
-          functions: 90,
-          lines: 90,
-          statements: 90,
-        },
-      },
-      exclude: [
-        'coverage/**',
-        'dist/**',
-        'lib/**',
-        'es/**',
-        '**/*.d.ts',
-        '**/*.config.*',
-        '**/stories/**',
-        '**/__test__/**',
-      ],
-    },
-  },
-});
-```
-
-### 查看覆盖率报告
+### 运行覆盖率测试
 
 ```bash
-# 生成覆盖率报告
-pnpm test -- --coverage
+# 运行所有测试并生成覆盖率报告
+pnpm test --coverage
 
-# 查看 HTML 报告（更直观）
+# 运行特定包的测试
+pnpm test --coverage --filter @aix/button
+
+# 查看覆盖率报告
 open coverage/index.html
-
-# 查看命令行报告
-pnpm test -- --coverage --reporter=text
 ```
 
 ---
 
-## 🎯 测试最佳实践
+## 📋 测试最佳实践
 
-### 1. 测试命名规范
+### 测试命名规范
 
-**✅ 好的命名**:
 ```typescript
-describe('Button 组件', () => {
-  describe('Props 测试', () => {
-    it('应该支持 primary 类型', () => {});
-    it('应该在 disabled 为 true 时禁用按钮', () => {});
-  });
-
-  describe('Events 测试', () => {
-    it('点击时应该触发 click 事件', () => {});
-    it('禁用状态下不应该触发 click 事件', () => {});
-  });
+// ✅ 好的测试命名
+describe('Button', () => {
+  it('应该正确渲染组件', () => {});
+  it('应该在禁用时不触发点击事件', () => {});
+  it('应该正确应用 type 属性', () => {});
 });
-```
 
-**❌ 不好的命名**:
-```typescript
+// ❌ 不好的测试命名
 describe('Button', () => {
   it('test1', () => {});
+  it('renders', () => {});
   it('works', () => {});
-  it('type prop', () => {});
 });
 ```
 
-**命名原则**:
-- 使用 `describe` 分组（组件 → 功能 → 具体测试）
-- 测试名称以"应该"开头，描述预期行为
-- 中文命名更清晰（组件库通常是国内团队开发）
-
-### 2. 测试数据管理
-
-创建 fixtures 管理测试数据：
+### 测试组织结构
 
 ```typescript
-// packages/button/__test__/fixtures.ts
-import type { ButtonProps } from '../src';
+describe('Button', () => {
+  // 基础渲染测试
+  describe('Rendering', () => {
+    it('应该正确渲染组件', () => {});
+    it('应该正确渲染插槽内容', () => {});
+  });
 
-export const createButtonProps = (
-  overrides: Partial<ButtonProps> = {},
-): ButtonProps => ({
-  type: 'default',
-  size: 'medium',
-  disabled: false,
-  loading: false,
-  ...overrides,
-});
+  // Props 测试
+  describe('Props', () => {
+    it('应该正确应用 type 属性', () => {});
+    it('应该正确应用 size 属性', () => {});
+  });
 
-export const mockButtonTypes = ['primary', 'default', 'dashed', 'text', 'link'] as const;
-export const mockButtonSizes = ['small', 'medium', 'large'] as const;
-```
+  // Events 测试
+  describe('Events', () => {
+    it('应该正确触发点击事件', () => {});
+    it('应该在禁用时不触发事件', () => {});
+  });
 
-使用 fixtures：
-
-```typescript
-import { createButtonProps, mockButtonTypes } from './fixtures';
-
-it('应该支持所有类型', () => {
-  mockButtonTypes.forEach((type) => {
-    const wrapper = mount(Button, {
-      props: createButtonProps({ type }),
-    });
-
-    expect(wrapper.classes()).toContain(`aix-button--${type}`);
+  // Accessibility 测试
+  describe('Accessibility', () => {
+    it('应该有正确的 ARIA 属性', () => {});
+    it('应该支持键盘导航', () => {});
   });
 });
 ```
 
-### 3. 异步测试
-
-```typescript
-// ✅ 使用 async/await
-it('应该在加载完成后显示数据', async () => {
-  const wrapper = mount(DataComponent);
-
-  // 等待 Vue 更新 DOM
-  await wrapper.vm.$nextTick();
-
-  expect(wrapper.find('.data').text()).toBe('Loaded');
-});
-
-// ✅ 测试异步 Props 变化
-it('应该响应 Props 变化', async () => {
-  const wrapper = mount(Button, {
-    props: { type: 'default' },
-  });
-
-  await wrapper.setProps({ type: 'primary' });
-
-  expect(wrapper.classes()).toContain('aix-button--primary');
-});
-```
-
-### 4. Mock 使用
+### Mock 使用规范
 
 ```typescript
 import { vi } from 'vitest';
 
-// ✅ 清理 Mock
+// ✅ 在 beforeEach 中清理 mock
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// ✅ Mock 函数
-it('应该调用回调函数', async () => {
-  const onClose = vi.fn();
-  const wrapper = mount(Modal, {
-    props: { onClose },
-  });
+// ✅ Mock 外部依赖
+vi.mock('@aix/icon', () => ({
+  Icon: { template: '<i></i>' },
+}));
 
-  await wrapper.find('[data-testid="close-button"]').trigger('click');
-
-  expect(onClose).toHaveBeenCalledTimes(1);
-});
-
-// ✅ Mock 定时器
-it('应该在延迟后关闭', async () => {
-  vi.useFakeTimers();
-
-  const wrapper = mount(Notification, {
-    props: { duration: 3000 },
-  });
-
-  expect(wrapper.isVisible()).toBe(true);
-
-  vi.advanceTimersByTime(3000);
-  await wrapper.vm.$nextTick();
-
-  expect(wrapper.isVisible()).toBe(false);
-
-  vi.useRealTimers();
-});
-```
-
-### 5. 快照测试（谨慎使用）
-
-```typescript
-// ⚠️ 仅在必要时使用快照
-it('应该匹配快照', () => {
-  const wrapper = mount(Button, {
-    props: { type: 'primary', size: 'large' },
-    slots: { default: '提交' },
-  });
-
-  expect(wrapper.html()).toMatchSnapshot();
-});
-
-// ✅ 更好的方式：测试具体行为
-it('应该正确渲染 primary 大按钮', () => {
-  const wrapper = mount(Button, {
-    props: { type: 'primary', size: 'large' },
-    slots: { default: '提交' },
-  });
-
-  expect(wrapper.classes()).toContain('aix-button--primary');
-  expect(wrapper.classes()).toContain('aix-button--large');
-  expect(wrapper.text()).toBe('提交');
-});
-```
-
-**为什么谨慎使用快照**:
-- 快照容易过时，需要频繁更新
-- 快照失败不能明确指出问题
-- 不如具体断言清晰
-
-### 6. 测试隔离
-
-```typescript
-// ✅ 每个测试独立
-describe('Counter 组件', () => {
-  it('应该从 0 开始计数', () => {
-    const wrapper = mount(Counter);
-    expect(wrapper.find('.count').text()).toBe('0');
-  });
-
-  it('点击应该增加计数', async () => {
-    const wrapper = mount(Counter); // 新实例，不受上个测试影响
-    await wrapper.find('button').trigger('click');
-    expect(wrapper.find('.count').text()).toBe('1');
-  });
-});
-
-// ❌ 测试间相互依赖
-describe('Counter 组件', () => {
-  const wrapper = mount(Counter); // 共享实例
-
-  it('应该从 0 开始计数', () => {
-    expect(wrapper.find('.count').text()).toBe('0');
-  });
-
-  it('点击应该增加计数', async () => {
-    // 依赖上个测试的状态
-    await wrapper.find('button').trigger('click');
-    expect(wrapper.find('.count').text()).toBe('1');
-  });
+// ✅ Mock 浏览器 API
+Object.defineProperty(window, 'localStorage', {
+  value: {
+    getItem: vi.fn(),
+    setItem: vi.fn(),
+  },
 });
 ```
 
 ---
 
-## 📋 测试检查清单
+## 🎯 测试检查清单
 
-### 新组件开发时
+> **完整清单**: 详见 [commands/test.md](../commands/test.md)
 
-创建组件时应该编写的测试：
+快速检查项：
+- Props/Emits/Slots 测试覆盖率 > 80%
+- 暴露的方法全部测试
+- 有 ARIA 属性和键盘导航测试
+- 测试命名清晰、相互独立
 
-- [ ] **渲染测试**
-  - [ ] 默认渲染（无 props）
-  - [ ] 所有 props 组合
-  - [ ] 所有插槽变体
+---
 
-- [ ] **Props 测试**
-  - [ ] 每个 prop 的有效值
-  - [ ] 默认值验证
-  - [ ] Props 响应式更新
-
-- [ ] **Events 测试**
-  - [ ] 每个事件触发场景
-  - [ ] 事件参数正确性
-  - [ ] 禁用状态下事件阻止
-
-- [ ] **Slots 测试**
-  - [ ] 默认插槽
-  - [ ] 具名插槽
-  - [ ] 作用域插槽（如果有）
-
-- [ ] **状态测试**
-  - [ ] 禁用状态
-  - [ ] 加载状态
-  - [ ] 错误状态
-  - [ ] 状态组合
-
-- [ ] **无障碍测试**
-  - [ ] 正确的 HTML 语义
-  - [ ] ARIA 属性
-  - [ ] 键盘导航（如果适用）
-
-- [ ] **边缘情况**
-  - [ ] 空内容
-  - [ ] 极长内容
-  - [ ] 无效输入
-
-### 发布前检查
-
-参考 [deployment.md](./deployment.md#发布前检查清单):
+## 🛠️ 测试命令
 
 ```bash
-# 1. 运行所有测试
+# 运行所有测试
 pnpm test
-# ✅ 所有测试通过
 
-# 2. 检查覆盖率
-pnpm test -- --coverage
-# ✅ 覆盖率达标（80%+）
+# 运行特定包的测试
+pnpm test --filter @aix/button
 
-# 3. 运行 Storybook 交互测试
-pnpm storybook:dev
-# ✅ 所有 Stories 正常，无控制台错误
+# 监听模式
+pnpm test --watch
 
-# 4. 类型检查
-pnpm type-check
-# ✅ 无类型错误
+# 运行覆盖率测试
+pnpm test --coverage
+
+# 运行特定测试文件
+pnpm test Button.test.ts
+
+# 更新快照
+pnpm test -u
 ```
 
 ---
 
 ## 📚 相关文档
 
-**官方文档**:
+- [component-design.md](./component-design.md) - 组件设计完整指南
+- [coding-standards.md](./coding-standards.md) - 编码规范
+- [storybook-development.md](./storybook-development.md) - Storybook 开发
+- [commands/test.md](../commands/test.md) - 测试检查清单
 - [Vitest 文档](https://vitest.dev/)
 - [Vue Test Utils 文档](https://test-utils.vuejs.org/)
-- [Storybook Testing 文档](https://storybook.js.org/docs/vue/writing-tests/introduction)
-- [Testing Library 文档](https://testing-library.com/docs/vue-testing-library/intro/)
-
-**项目内部文档**:
-- [component-development.md](./component-development.md) - 组件开发流程（包含测试文件创建）
-- [coding-standards.md](./coding-standards.md) - 代码规范（TypeScript 类型规范）
-- [code-review.md](./code-review.md) - 代码审查规范（测试质量审查）
 
 ---
 
-## 🎯 快速参考
-
-### 常用测试命令
-
-```bash
-# 基础命令
-pnpm test                          # 运行所有测试
-pnpm test -- packages/button       # 运行特定包测试
-pnpm test -- --watch               # 监听模式
-pnpm test:ui                       # UI 模式
-
-# 覆盖率相关
-pnpm test -- --coverage            # 生成覆盖率报告
-pnpm test -- --coverage --reporter=text  # 命令行报告
-
-# 调试相关
-pnpm test -- --reporter=verbose    # 详细输出
-pnpm test -- Button.test.ts        # 运行单个文件
-```
-
-### 常用断言
-
-```typescript
-// 存在性
-expect(wrapper.exists()).toBe(true);
-expect(wrapper.find('.class').exists()).toBe(true);
-
-// 文本内容
-expect(wrapper.text()).toBe('文本');
-expect(wrapper.find('.class').text()).toContain('部分文本');
-
-// 类名
-expect(wrapper.classes()).toContain('class-name');
-expect(wrapper.classes('active')).toBe(true);
-
-// 属性
-expect(wrapper.attributes('disabled')).toBeDefined();
-expect(wrapper.attributes('aria-label')).toBe('标签');
-
-// 事件
-expect(wrapper.emitted('click')).toBeTruthy();
-expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['value']);
-
-// 函数调用
-expect(mockFn).toHaveBeenCalled();
-expect(mockFn).toHaveBeenCalledTimes(2);
-expect(mockFn).toHaveBeenCalledWith('arg1', 'arg2');
-```
-
-### 测试模板
-
-```typescript
-import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { YourComponent } from '../src';
-
-describe('YourComponent 组件', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  describe('渲染测试', () => {
-    it('应该正确渲染', () => {
-      const wrapper = mount(YourComponent);
-      expect(wrapper.exists()).toBe(true);
-    });
-  });
-
-  describe('Props 测试', () => {
-    it('应该支持 xxx prop', () => {
-      const wrapper = mount(YourComponent, {
-        props: { xxx: 'value' },
-      });
-      expect(wrapper.classes()).toContain('expected-class');
-    });
-  });
-
-  describe('Events 测试', () => {
-    it('应该触发 xxx 事件', async () => {
-      const wrapper = mount(YourComponent);
-      await wrapper.find('button').trigger('click');
-      expect(wrapper.emitted('xxx')).toBeTruthy();
-    });
-  });
-
-  describe('Slots 测试', () => {
-    it('应该正确渲染插槽', () => {
-      const wrapper = mount(YourComponent, {
-        slots: { default: 'Content' },
-      });
-      expect(wrapper.text()).toBe('Content');
-    });
-  });
-});
-```
+通过遵循这些测试规范和最佳实践，可以确保组件库的质量和稳定性，为用户提供可靠的组件。

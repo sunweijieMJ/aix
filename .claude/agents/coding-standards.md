@@ -1,680 +1,756 @@
 ---
 name: coding-standards
-description: Vue组件库编码规范和最佳实践，确保代码风格一致性、类型安全和高质量代码
+description: 组件库编码规范和最佳实践，包括 TypeScript、Vue、CSS 样式规范，确保代码风格一致性、类型安全和高质量代码
 ---
 
 # 编码规范 Agent
 
 ## 职责
-负责制定和维护Vue组件库编码规范，确保代码风格一致性、类型安全和最佳实践，为AI生成高质量组件代码提供指导。
+
+负责制定和维护组件库编码规范，确保代码风格一致性、类型安全和最佳实践，为组件开发提供清晰的指导标准。本文档包含 TypeScript 编码规范和 CSS 样式规范（作为单一真实来源）。
+
+> **相关规范参考**:
+> - [component-design.md](component-design.md) - 组件设计完整指南（Props/Emits/Slots）
+
+---
 
 ## 🎯 编码原则
 
 ### 1. 类型优先原则
-- **严格类型定义**: 所有Props、Emits、变量必须有明确的TypeScript类型
-- **避免any类型**: 除非特殊情况，禁止使用 `any` 类型
-- **接口完整性**: 所有数据结构都要有对应的TypeScript接口
-- **泛型合理使用**: 适当使用泛型提高代码复用性
 
-### 2. 组件化原则
-- **单一职责**: 每个组件只负责一个功能
-- **可复用性**: 组件设计要考虑在不同项目中复用
-- **Props类型化**: 所有Props必须有完整的类型定义和JSDoc注释
-- **事件规范**: 使用TypeScript定义组件事件类型
+- **严格类型定义**: 所有变量、函数参数和返回值必须有明确的类型定义
+- **避免 any 类型**: 除非特殊情况，禁止使用 `any` 类型
+- **接口完整性**: 所有数据结构都要有对应的 TypeScript 接口
+- **类型导出**: Props/Emits/Slots 等类型必须导出供用户使用
 
-### 3. 可访问性原则
-- **语义化HTML**: 使用正确的HTML标签
-- **ARIA属性**: 添加必要的ARIA属性支持屏幕阅读器
-- **键盘导航**: 支持Tab、Enter、Escape等键盘操作
-- **焦点管理**: 正确管理组件焦点状态
+### 2. 函数式原则
 
-### 4. 主题化原则
-- **CSS变量**: 所有样式值使用CSS变量，支持主题定制
-- **避免硬编码**: 不在组件中硬编码颜色、尺寸等值
-- **暗色模式**: 考虑暗色模式支持
-- **尺寸变量**: 支持small/medium/large等尺寸变体
+- **纯函数优先**: 组件内部工具函数应该是纯函数
+- **副作用控制**: 明确标识和控制副作用
+- **无全局副作用**: 组件不应修改全局状态
+
+### 3. 样式隔离原则
+
+- **Scoped CSS**: 必须使用 `<style scoped>`
+- **命名空间**: 所有 CSS 类名使用 `aix-` 前缀
+- **CSS 变量**: 使用主题包中定义的 CSS 变量
+
+### 4. 可树摇原则
+
+- **模块化导出**: 每个组件独立导出
+- **按需引入**: 支持按需导入单个组件
+- **无副作用导入**: 避免导入时执行代码
+
+---
 
 ## 📝 TypeScript 编码规范
 
 ### 接口定义规范
+
 ```typescript
-// ✅ 正确：完整的Props接口定义，包含JSDoc注释
+// ✅ 正确：完整的 Props 接口定义
 export interface ButtonProps {
   /** 按钮类型 */
-  type?: 'primary' | 'default' | 'dashed' | 'text' | 'link';
+  type?: 'primary' | 'default' | 'danger';
+
   /** 按钮尺寸 */
   size?: 'small' | 'medium' | 'large';
+
   /** 是否禁用 */
   disabled?: boolean;
+
   /** 是否加载中 */
   loading?: boolean;
 }
 
-// ✅ 正确：完整的Emits接口定义
+// ✅ 正确：完整的 Emits 接口定义
 export interface ButtonEmits {
   /** 点击事件 */
   (e: 'click', event: MouseEvent): void;
-  /** 双击事件 */
-  (e: 'dblclick', event: MouseEvent): void;
 }
 
-// ❌ 错误：使用any类型
+// ❌ 错误：使用 any 类型
 interface BadProps {
-  data: any; // 应该定义具体类型
-  options: any[]; // 应该定义数组元素类型
-}
-
-// ❌ 错误：缺少JSDoc注释
-export interface BadButtonProps {
-  type?: string;
-  size?: string;
+  data: any;  // 应该定义具体类型
 }
 ```
 
 ### 函数类型定义规范
+
 ```typescript
 // ✅ 正确：完整的函数类型定义
 const handleClick = (event: MouseEvent): void => {
-  if (!props.disabled && !props.loading) {
-    emit('click', event);
-  }
-};
-
-// ✅ 泛型函数
-function createComponent<T extends ButtonProps>(
-  props: T
-): Component<T> {
-  return defineComponent({ props });
-}
-
-// ❌ 错误：缺少返回类型
-const handleClick = (event: MouseEvent) => {
   emit('click', event);
 };
+
+// ✅ 正确：异步函数
+const loadOptions = async (): Promise<SelectOption[]> => {
+  // ...
+  return options;
+};
+
+// ✅ 正确：泛型函数
+function mapOptions<T>(items: T[], mapper: (item: T) => SelectOption): SelectOption[] {
+  return items.map(mapper);
+}
 ```
 
 ### 枚举和常量定义
+
 ```typescript
-// ✅ 使用const断言定义字符串联合类型
+// ✅ 使用 const 断言
 export const BUTTON_TYPES = {
   PRIMARY: 'primary',
   DEFAULT: 'default',
-  DASHED: 'dashed',
-  TEXT: 'text',
-  LINK: 'link',
+  DANGER: 'danger',
 } as const;
 
 export type ButtonType = typeof BUTTON_TYPES[keyof typeof BUTTON_TYPES];
 
-// ✅ 使用枚举定义数值类型
+// ✅ 使用枚举
 export enum ComponentSize {
-  SMALL = 1,
-  MEDIUM = 2,
-  LARGE = 3,
-}
-
-// ❌ 错误：使用魔术字符串
-if (props.type === 'primary') { // 应该使用常量
-  // ...
+  SMALL = 'small',
+  MEDIUM = 'medium',
+  LARGE = 'large',
 }
 ```
 
-### 类型守卫和断言
-```typescript
-// ✅ 类型守卫
-function isButtonType(value: unknown): value is ButtonType {
-  return typeof value === 'string' &&
-    ['primary', 'default', 'dashed', 'text', 'link'].includes(value);
-}
+### 类型守卫
 
-// ✅ 类型谓词
-function hasSlotContent(slots: Slots, name: string = 'default'): boolean {
-  return !!slots[name];
+```typescript
+// ✅ 类型守卫（优于类型断言）
+function isSelectOption(obj: unknown): obj is SelectOption {
+  return obj !== null &&
+         typeof obj === 'object' &&
+         'value' in obj &&
+         'label' in obj;
 }
 
 // ❌ 错误：过度使用类型断言
-const type = props.type as ButtonType; // 应该使用类型守卫
+const option = data as SelectOption;  // 应使用类型守卫
 ```
+
+---
 
 ## 🎨 Vue 组件编码规范
 
-### Composition API 规范
+> **CSS 样式规范**: 详见本文档 [CSS 样式编码规范](#-css-样式编码规范) 部分
+
+### 代码组织顺序
+
 ```vue
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue';
-import type { PropType } from 'vue';
+// 1. 导入语句
+import { ref, computed, watch, onMounted } from 'vue';
+import type { Component } from 'vue';
 
-// ==================== 接口定义 ====================
-/** 按钮Props定义 */
+// 2. 接口定义
 export interface ButtonProps {
-  /** 按钮类型 */
-  type?: 'primary' | 'default' | 'dashed' | 'text' | 'link';
-  /** 按钮尺寸 */
-  size?: 'small' | 'medium' | 'large';
-  /** 是否禁用 */
-  disabled?: boolean;
-  /** 是否加载中 */
-  loading?: boolean;
+  type?: 'primary' | 'default';
 }
 
-/** 按钮Events定义 */
 export interface ButtonEmits {
-  /** 点击事件 */
   (e: 'click', event: MouseEvent): void;
 }
 
-// ==================== Props 和 Emits ====================
+// 3. Props 和 Emits
 const props = withDefaults(defineProps<ButtonProps>(), {
   type: 'default',
-  size: 'medium',
-  disabled: false,
-  loading: false,
 });
 
 const emit = defineEmits<ButtonEmits>();
 
-// ==================== 计算属性 ====================
-const buttonClass = computed((): string[] => {
-  return [
-    'aix-button',
-    `aix-button--${props.type}`,
-    `aix-button--${props.size}`,
-    {
-      'aix-button--disabled': props.disabled,
-      'aix-button--loading': props.loading,
-    },
-  ];
-});
+// 4. 响应式数据
+const isHovered = ref<boolean>(false);
+const buttonRef = ref<HTMLButtonElement>();
 
-// ==================== 方法定义 ====================
-/**
- * 处理按钮点击
- * @param event - 鼠标事件对象
- */
+// 5. 计算属性
+const classes = computed((): string[] => [
+  'aix-button',
+  `aix-button--${props.type}`,
+]);
+
+// 6. 方法定义
 const handleClick = (event: MouseEvent): void => {
-  if (!props.disabled && !props.loading) {
-    emit('click', event);
-  }
+  emit('click', event);
 };
 
-// ==================== 生命周期 ====================
+// 7. 生命周期和监听器
 onMounted(() => {
-  // 组件挂载后的逻辑
+  // 初始化逻辑
 });
 
-// ==================== 暴露方法 ====================
+watch(() => props.type, (newType) => {
+  // 响应 type 变化
+});
+
+// 8. 暴露方法（如果需要）
 defineExpose({
-  // 暴露给父组件的方法和属性
+  focus: () => buttonRef.value?.focus(),
 });
 </script>
+
+<template>
+  <button
+    ref="buttonRef"
+    :class="classes"
+    @click="handleClick"
+  >
+    <slot></slot>
+  </button>
+</template>
+
+<style scoped>
+.aix-button {
+  /* 组件样式 */
+}
+</style>
 ```
 
-### 组件Props规范
-```typescript
-// ✅ 正确：完整的Props定义，使用字面量类型
-interface ButtonProps {
-  /** 按钮类型 */
-  type?: 'primary' | 'default' | 'dashed' | 'text' | 'link';
-  /** 按钮尺寸 */
-  size?: 'small' | 'medium' | 'large';
-  /** 是否禁用 */
-  disabled?: boolean;
-  /** 点击回调 */
-  onClick?: (event: MouseEvent) => void;
-}
+### 组件命名规范
 
-const props = withDefaults(defineProps<ButtonProps>(), {
-  type: 'default',
-  size: 'medium',
-  disabled: false,
+```typescript
+// ✅ 正确：组件名使用 Aix 前缀
+export default defineComponent({
+  name: 'AixButton',
 });
 
-// ❌ 错误：使用string类型，失去类型提示
-interface BadProps {
-  type?: string;
-  size?: string;
-}
-
-// ❌ 错误：缺少默认值
-const props = defineProps<ButtonProps>();
+// ❌ 错误：缺少前缀
+export default defineComponent({
+  name: 'Button',
+});
 ```
 
-### 组件事件规范
+---
+
+## 📊 常量定义规范
+
 ```typescript
-// ✅ 正确：完整的事件定义，带参数类型
-interface ButtonEmits {
-  /** 点击事件 */
-  (e: 'click', event: MouseEvent): void;
-  /** 值更新事件（支持v-model） */
-  (e: 'update:modelValue', value: string): void;
-}
+// packages/button/src/constants.ts
 
-const emit = defineEmits<ButtonEmits>();
+// ✅ 正确：大写字母和下划线
+export const DEFAULT_SIZE = 'medium';
+export const MAX_LENGTH = 100;
 
-// 触发事件
-emit('click', event);
-emit('update:modelValue', newValue);
+// ✅ 对象常量使用 as const
+export const SIZE_MAP = {
+  SMALL: 'small',
+  MEDIUM: 'medium',
+  LARGE: 'large',
+} as const;
 
-// ❌ 错误：使用数组定义，失去类型检查
-const emit = defineEmits(['click', 'update:modelValue']);
-
-// ❌ 错误：缺少类型定义
-const emit = defineEmits<{
-  (e: 'click'): void; // 缺少event参数
-}>();
+// ❌ 错误：使用小写命名
+export const defaultSize = 'medium';  // 应该是 DEFAULT_SIZE
 ```
 
-### 组件导出规范
+---
+
+## 📥 导入规范
+
+### 导入顺序
+
+按以下顺序组织导入语句，每组之间空一行：
+
+```typescript
+// 1. Vue 核心
+import { ref, computed, watch, onMounted } from 'vue';
+import type { Component, VNode } from 'vue';
+
+// 2. 第三方库（如果有）
+import dayjs from 'dayjs';
+
+// 3. 本地组件
+import { Icon } from '../icon';
+
+// 4. 类型导入（单独分组，使用 type 关键字）
+import type { ButtonProps, ButtonEmits } from './types';
+import type { SelectOption } from '../select/types';
+```
+
+### 类型导入规范
+
+```typescript
+// ✅ 正确：类型导入使用 type 关键字
+import type { ButtonProps, ButtonEmits } from './Button.vue';
+import type { Component } from 'vue';
+
+// ✅ 正确：混合导入时分开写
+import { Button } from './Button.vue';
+import type { ButtonProps } from './Button.vue';
+
+// ❌ 错误：类型和值混合导入
+import { Button, ButtonProps } from './Button.vue';
+```
+
+### 相对路径规范
+
+```typescript
+// ✅ 正确：同包内使用相对路径
+import { Button } from './Button.vue';
+import type { ButtonProps } from './types';
+
+// ✅ 正确：跨包引用使用包名
+import { Icon } from '@aix/icon';
+import type { IconProps } from '@aix/icon';
+
+// ❌ 错误：同包内使用绝对路径
+import { Button } from '@aix/button/src/Button.vue';
+```
+
+---
+
+## 📤 组件导出规范
+
+### 标准导出模式
+
 ```typescript
 // src/Button.vue
 <script setup lang="ts">
 export interface ButtonProps {
-  // Props定义
+  type?: 'primary' | 'default';
 }
 
 export interface ButtonEmits {
-  // Events定义
+  (e: 'click', event: MouseEvent): void;
 }
-// 组件逻辑...
+
+// 组件定义...
 </script>
 
 // src/index.ts
-// ✅ 正确：同时提供命名导出和插件导出
 import type { App } from 'vue';
 import Button from './Button.vue';
 
-// 命名导出组件
+// 命名导出
 export { Button };
 
-// 导出类型
+// 类型导出
 export type { ButtonProps, ButtonEmits } from './Button.vue';
 
-// 默认导出Vue插件
+// Vue Plugin
 export default {
   install(app: App) {
     app.component('AixButton', Button);
   },
 };
-
-// ❌ 错误：只有默认导出，无法按需引入
-export default Button;
-
-// ❌ 错误：缺少插件install方法
-export { Button };
 ```
 
-## 📊 组件命名规范
+### 类型导出规范
 
-### 组件类名命名
-```scss
-// ✅ 正确：使用BEM命名，带组件库前缀
-.aix-button {
-  // 基础样式
-
-  &__loading {
-    // 元素样式
-  }
-
-  &__content {
-    // 元素样式
-  }
-
-  &--primary {
-    // 修饰符样式
-  }
-
-  &--disabled {
-    // 状态修饰符
-  }
-}
-
-// ❌ 错误：直接使用标签选择器
-button {
-  padding: 8px 16px;
-}
-
-// ❌ 错误：缺少前缀，可能冲突
-.button {
-  padding: 8px 16px;
-}
-
-// ❌ 错误：不遵循BEM
-.button-loading-icon {
-  // 应该是 .aix-button__loading-icon
-}
-```
-
-### 全局组件命名
 ```typescript
-// ✅ 正确：使用Yt前缀 + PascalCase
-app.component('AixButton', Button);
-app.component('AixDatePicker', DatePicker);
-app.component('AixSelect', Select);
+// ✅ 正确：导出所有公开类型
+export { Button } from './Button.vue';
+export type { ButtonProps, ButtonEmits, ButtonSlots } from './Button.vue';
+export type { ButtonInstance } from './types';
 
-// ❌ 错误：缺少前缀
-app.component('Button', Button);
-
-// ❌ 错误：使用kebab-case
-app.component('aix-button', Button);
+// ❌ 错误：没有导出类型
+export { Button } from './Button.vue';
+// 用户无法使用 ButtonProps 类型
 ```
 
-### CSS变量命名
-```css
-/* ✅ 正确：使用--组件名+属性命名 */
-:root {
-  /* Button 组件变量 */
-  --buttonPrimaryBg: #1890ff;
-  --buttonPrimaryBgHover: #40a9ff;
-  --buttonPrimaryBgActive: #096dd9;
-  --buttonPrimaryColor: #ffffff;
+### package.json 配置
 
-  --buttonDefaultBg: #ffffff;
-  --buttonDefaultBorder: #d9d9d9;
-  --buttonDefaultBorderHover: #40a9ff;
-
-  /* 通用变量 */
-  --buttonPadding: 4px 15px;
-  --buttonPaddingSM: 0px 7px;
-  --buttonPaddingLG: 6px 15px;
-  --buttonBorderRadius: 2px;
-}
-
-/* ❌ 错误：使用驼峰命名不规范 */
-:root {
-  --ButtonBg: #ffffff; /* 应该使用buttonDefaultBg */
-  --primary-color: #1890ff; /* 应该使用buttonPrimaryBg */
-}
-```
-
-## 🎨 样式编码规范
-
-### CSS变量使用规范
-```scss
-// ✅ 正确：所有颜色、尺寸使用CSS变量
-.aix-button {
-  padding: var(--buttonPadding);
-  font-size: var(--buttonFontSize);
-  border-radius: var(--buttonBorderRadius);
-  background-color: var(--buttonDefaultBg);
-  border-color: var(--buttonDefaultBorder);
-  color: var(--buttonDefaultColor);
-
-  &--primary {
-    background-color: var(--buttonPrimaryBg);
-    border-color: var(--buttonPrimaryBorder);
-    color: var(--buttonPrimaryColor);
-
-    &:hover {
-      background-color: var(--buttonPrimaryBgHover);
-    }
-  }
-}
-
-// ❌ 错误：硬编码颜色值
-.aix-button {
-  background-color: #1890ff;
-  color: #ffffff;
-  padding: 4px 15px;
-}
-```
-
-### SCSS组织规范
-```scss
-// ✅ 正确：清晰的层级结构，使用CSS变量
-.aix-button {
-  // 基础样式
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--buttonPadding);
-  cursor: pointer;
-
-  // 元素样式
-  &__loading {
-    display: inline-flex;
-    align-items: center;
-  }
-
-  &__loading-icon {
-    width: var(--buttonIconSize);
-    height: var(--buttonIconSize);
-    animation: spin 1s linear infinite;
-  }
-
-  &__content {
-    display: inline-flex;
-    align-items: center;
-  }
-
-  // 类型修饰符
-  &--primary {
-    background-color: var(--buttonPrimaryBg);
-    color: var(--buttonPrimaryColor);
-  }
-
-  &--default {
-    background-color: var(--buttonDefaultBg);
-    color: var(--buttonDefaultColor);
-  }
-
-  // 尺寸修饰符
-  &--small {
-    padding: var(--buttonPaddingSM);
-    font-size: var(--buttonFontSizeSM);
-  }
-
-  &--large {
-    padding: var(--buttonPaddingLG);
-    font-size: var(--buttonFontSizeLG);
-  }
-
-  // 状态修饰符
-  &--disabled {
-    cursor: not-allowed;
-    opacity: var(--buttonDisabledOpacity);
-  }
-}
-
-// 动画定义
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-// ❌ 错误：过深的嵌套
-.aix-button {
-  .button-wrapper {
-    .button-inner {
-      .button-content {
-        span {
-          // 5层嵌套，难以维护
-        }
-      }
-    }
-  }
-}
-
-// ❌ 错误：不使用CSS变量
-.aix-button {
-  background-color: #1890ff;
-  &:hover {
-    background-color: #40a9ff;
-  }
-}
-```
-
-## 🔍 错误处理规范
-
-### Props验证
-```typescript
-// ✅ 正确：使用TypeScript类型和运行时验证
-export interface ButtonProps {
-  type?: 'primary' | 'default' | 'dashed' | 'text' | 'link';
-  size?: 'small' | 'medium' | 'large';
-}
-
-const props = withDefaults(defineProps<ButtonProps>(), {
-  type: 'default',
-  size: 'medium',
-});
-
-// 运行时验证（可选，用于开发阶段）
-if (import.meta.env.DEV) {
-  watch(() => props.type, (newType) => {
-    const validTypes = ['primary', 'default', 'dashed', 'text', 'link'];
-    if (newType && !validTypes.includes(newType)) {
-      console.warn(`[Button] Invalid type: ${newType}`);
-    }
-  }, { immediate: true });
-}
-```
-
-### 事件处理
-```typescript
-// ✅ 正确：完善的事件处理
-const handleClick = (event: MouseEvent): void => {
-  // 状态检查
-  if (props.disabled || props.loading) {
-    event.preventDefault();
-    event.stopPropagation();
-    return;
-  }
-
-  try {
-    // 触发事件
-    emit('click', event);
-  } catch (error) {
-    console.error('[Button] Click handler error:', error);
-  }
-};
-
-// ❌ 错误：缺少错误处理
-const handleClick = (event: MouseEvent) => {
-  emit('click', event);
-};
-```
-
-## 📋 代码注释规范
-
-### JSDoc注释规范
-```typescript
-/**
- * 按钮组件Props定义
- */
-export interface ButtonProps {
-  /**
-   * 按钮类型
-   * @default 'default'
-   */
-  type?: 'primary' | 'default' | 'dashed' | 'text' | 'link';
-
-  /**
-   * 按钮尺寸
-   * @default 'medium'
-   */
-  size?: 'small' | 'medium' | 'large';
-
-  /**
-   * 是否禁用
-   * @default false
-   */
-  disabled?: boolean;
-}
-
-/**
- * 处理按钮点击事件
- * @param event - 鼠标事件对象
- */
-const handleClick = (event: MouseEvent): void => {
-  // 实现...
-};
-```
-
-### 行内注释规范
-```typescript
-// ✅ 正确：解释复杂逻辑
-const buttonClass = computed(() => {
-  // 合并基础类名和修饰符类名
-  return [
-    'aix-button',
-    `aix-button--${props.type}`,
-    `aix-button--${props.size}`,
-    {
-      'aix-button--disabled': props.disabled,
-      'aix-button--loading': props.loading,
+```json
+{
+  "name": "@aix/button",
+  "type": "module",
+  "main": "./dist/index.cjs.js",
+  "module": "./dist/index.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs.js",
+      "types": "./dist/index.d.ts"
     },
-  ];
-});
-
-// ❌ 错误：显而易见的注释
-const disabled = false; // 设置禁用状态为false
-```
-
-## 📋 编码规范快速检查清单
-
-### TypeScript 类型安全检查
-- [ ] 所有Props都有完整的接口定义和JSDoc注释
-- [ ] 所有Emits都有完整的类型定义
-- [ ] 避免使用 `any` 类型
-- [ ] 导出Props和Emits接口供外部使用
-- [ ] 函数参数和返回值类型明确
-- [ ] 使用类型守卫而不是类型断言
-
-### Vue组件规范检查
-- [ ] Props有默认值（使用withDefaults）
-- [ ] Emits使用TypeScript定义
-- [ ] 计算属性有返回类型注解
-- [ ] 事件处理函数有完整的错误处理
-- [ ] 使用script setup语法
-- [ ] 正确使用defineExpose暴露方法
-
-### 组件导出规范检查
-- [ ] 同时提供命名导出和默认导出
-- [ ] 导出Props和Emits类型定义
-- [ ] 默认导出包含install方法
-- [ ] 全局组件名使用Yt前缀
-
-### 样式编码检查
-- [ ] 所有颜色使用CSS变量
-- [ ] 所有尺寸使用CSS变量
-- [ ] 使用BEM命名规范
-- [ ] CSS类名使用aix-前缀
-- [ ] 使用scoped样式隔离
-- [ ] 避免深层嵌套（不超过3层）
-
-### 无障碍性检查
-- [ ] 使用语义化HTML标签
-- [ ] 添加必要的ARIA属性
-- [ ] 支持键盘导航
-- [ ] 正确的焦点管理
-- [ ] 禁用状态正确处理
-
-### 文档注释检查
-- [ ] Props有JSDoc注释和@default标记
-- [ ] 公共方法有JSDoc注释
-- [ ] 复杂逻辑有行内注释说明
-- [ ] 导出的接口有注释说明
-
-## 🛠️ 代码质量工具
-
-### 常用命令
-```bash
-# ESLint 检查
-pnpm lint
-
-# TypeScript 类型检查
-pnpm type-check
-
-# Stylelint 样式检查
-pnpm lint:style
-
-# 格式化代码
-pnpm format
-
-# 拼写检查
-pnpm cspell
+    "./style.css": "./dist/style.css"
+  },
+  "files": ["dist"],
+  "sideEffects": ["*.css"]
+}
 ```
 
 ---
 
-通过遵循这些编码规范，可以确保组件库代码的一致性、可读性和可维护性，为用户提供高质量的组件。
+## 📋 代码注释规范
+
+### JSDoc 注释
+
+所有导出的 Props/Emits/Slots 必须有 JSDoc 注释：
+
+```typescript
+/**
+ * Button 组件 Props
+ */
+export interface ButtonProps {
+  /** 按钮类型 */
+  type?: 'primary' | 'default' | 'danger';
+
+  /** 按钮尺寸 */
+  size?: 'small' | 'medium' | 'large';
+
+  /** 是否禁用 */
+  disabled?: boolean;
+
+  /**
+   * 点击事件处理器
+   * @deprecated 使用 @click 事件代替
+   */
+  onClick?: (event: MouseEvent) => void;
+}
+
+/**
+ * Button 组件 Emits
+ */
+export interface ButtonEmits {
+  /**
+   * 点击事件
+   * @param event 鼠标事件对象
+   */
+  (e: 'click', event: MouseEvent): void;
+}
+```
+
+### 行内注释
+
+```typescript
+// ✅ 正确：解释复杂逻辑
+const filterOptions = (options: SelectOption[], query: string) => {
+  // 忽略大小写进行模糊匹配
+  const lowerQuery = query.toLowerCase();
+  return options.filter(opt =>
+    opt.label.toLowerCase().includes(lowerQuery)
+  );
+};
+
+// ❌ 错误：显而易见的注释
+const count = options.length;  // 获取选项数量
+```
+
+---
+
+## 🎨 CSS 样式编码规范
+
+本节作为 CSS 样式规范的**单一真实来源 (Single Source of Truth)**，供其他文档引用。
+
+### CSS 变量使用规范
+
+组件库在 `packages/theme/src/` 中定义了完整的 CSS 变量系统，所有样式中的颜色**必须**使用这些变量，**禁止硬编码颜色值**。
+
+#### 文本颜色变量
+
+```scss
+.aix-button {
+  // ✅ 正确：使用 CSS 变量
+  color: var(--aix-color-text);              // 普通文本
+  color: var(--aix-color-text-secondary);    // 次要文本
+  color: var(--aix-color-text-disabled);     // 禁用文本
+
+  // ❌ 错误：硬编码颜色
+  color: #333;
+  color: rgba(0, 0, 0, 0.88);
+}
+```
+
+#### 背景和边框颜色
+
+```scss
+.aix-button {
+  // ✅ 背景色
+  background: var(--aix-color-bg);
+  background: var(--aix-color-bg-secondary);
+  background: var(--aix-color-bg-hover);
+
+  // ✅ 边框色
+  border: 1px solid var(--aix-color-border);
+  border: 1px solid var(--aix-color-border-secondary);
+
+  // ✅ 主题色
+  background: var(--aix-color-primary);
+  color: var(--aix-color-primary-text);
+
+  // ✅ 状态色
+  color: var(--aix-color-success);
+  color: var(--aix-color-warning);
+  color: var(--aix-color-danger);
+}
+```
+
+#### 尺寸变量
+
+```scss
+.aix-button {
+  padding: var(--aix-padding-sm);
+  padding: var(--aix-padding-md);
+  border-radius: var(--aix-border-radius);
+  font-size: var(--aix-font-size);
+}
+```
+
+### CSS 类名命名规范
+
+所有 CSS 类名**必须**使用 `aix-` 前缀，避免样式污染：
+
+```scss
+// ✅ 正确：使用 aix- 前缀
+.aix-button { }
+.aix-button__icon { }
+.aix-button--primary { }
+
+// ❌ 错误：缺少前缀
+.button { }
+```
+
+### BEM 命名规范
+
+使用 BEM (Block-Element-Modifier) 命名：
+
+```scss
+.aix-select {                    // Block
+  &__input { }                   // Element
+  &__dropdown { }                // Element
+  &__option { }                  // Element
+  &--disabled { }                // Modifier
+  &--open {
+    .aix-select__dropdown { }    // 嵌套
+  }
+}
+```
+
+### 选择器规范
+
+**嵌套深度不超过 3 层**：
+
+```scss
+// ✅ 正确
+.aix-table {
+  &__header {
+    .aix-table__cell { }         // 2 层
+  }
+}
+
+// ❌ 错误：嵌套过深
+.aix-table .container .header .cell .content { }
+```
+
+**禁止直接使用标签选择器**：
+
+```scss
+// ❌ 错误
+h1 { font-size: 24px; }
+
+// ✅ 正确
+.aix-card__title { font-size: 24px; }
+```
+
+### 盒模型规范
+
+所有组件样式**必须**使用 `box-sizing: border-box`：
+
+```scss
+.aix-button {
+  box-sizing: border-box;
+  width: 120px;
+  padding: 12px 24px;
+  border: 1px solid var(--aix-color-border);
+}
+// 总宽度 = 120px ✅
+```
+
+### RGB 颜色函数规范
+
+使用新语法 `rgb(r g b / alpha)`，**禁止**旧语法 `rgba(r, g, b, alpha)`：
+
+```scss
+// ✅ 正确
+color: rgb(0 0 0 / 0.880);
+background: rgb(255 255 255 / 0.500);
+
+// ❌ 错误
+color: rgba(0, 0, 0, 0.88);
+```
+
+### CSS 数值精度规范
+
+小数**必须保留 3 位**：
+
+```scss
+// ✅ 正确
+.aix-button {
+  font-size: 14.375px;
+  line-height: 1.429em;
+  opacity: 0.880;
+  width: 33.333%;
+}
+
+// ❌ 错误
+.aix-button {
+  line-height: 1.42em;     // 应为 1.420em
+  opacity: 0.88;           // 应为 0.880
+}
+
+// ✅ 整数不加小数点
+width: 100px;
+margin: 0;
+```
+
+### Scoped CSS 规范
+
+所有组件样式**必须**使用 `<style scoped>`：
+
+```vue
+<!-- ✅ 正确 -->
+<style scoped>
+.aix-button { }
+</style>
+
+<!-- ❌ 错误 -->
+<style>
+.aix-button { }
+</style>
+```
+
+### :deep() 选择器规范
+
+`:deep()` 内部禁止使用 BEM 后缀：
+
+```scss
+// ❌ 错误：编译为 :deep(.aix-select)--open (无效)
+:deep(.aix-select) {
+  &--open { ... }
+}
+
+// ✅ 正确：BEM 变体单独写
+:deep(.aix-select) { ... }
+:deep(.aix-select--open) { ... }
+:deep(.aix-select__dropdown) { ... }
+
+// ✅ 允许：伪类、状态类、子选择器
+:deep(.aix-select) {
+  &:hover { ... }
+  &.is-active { ... }
+  .icon { ... }
+}
+```
+
+### SCSS 组织规范
+
+```scss
+// ❌ 禁止定义颜色变量
+// $primary-color: #1890ff;
+
+// ✅ 可以定义间距和混入
+$spacing-sm: 8px;
+$spacing-md: 16px;
+
+@mixin flex-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+// ✅ 组件样式使用 BEM
+.aix-button {
+  @include flex-center;
+  padding: $spacing-md;
+  border: 1px solid var(--aix-color-border);
+  background: var(--aix-color-bg);
+
+  &__icon {
+    margin-right: $spacing-sm;
+  }
+
+  &--primary {
+    background: var(--aix-color-primary);
+    color: var(--aix-color-white);
+  }
+}
+```
+
+---
+
+## 📋 编码规范快速检查清单
+
+### TypeScript 类型安全检查
+
+- [ ] 所有变量都有明确的类型定义，避免使用 `any`
+- [ ] 接口定义完整，包含所有必要字段和 JSDoc 注释
+- [ ] 函数参数和返回值类型明确
+- [ ] 使用类型守卫而不是类型断言
+- [ ] 导入类型时使用 `type` 关键字
+- [ ] Props/Emits/Slots 类型已导出
+
+### Vue 组件规范检查
+
+- [ ] Props 和 Emits 有完整的类型定义
+- [ ] Props/Emits 类型已导出
+- [ ] 响应式数据类型明确
+- [ ] 计算属性有返回类型注解
+- [ ] 组件名称使用 Aix 前缀（AixButton）
+- [ ] 使用 `<script setup lang="ts">`
+- [ ] 代码组织符合标准顺序
+
+### 样式编码检查（强化）
+
+- [ ] 使用 `packages/theme/src/` 中定义的 CSS 变量
+- [ ] 所有颜色值使用 `var(--aix-xxx)` 而非硬编码
+- [ ] 所有 CSS 类名使用 `aix-` 前缀
+- [ ] 使用 `<style scoped>` 避免样式污染
+- [ ] CSS 数值小数保留 3 位（如 14.375px、1.429em、0.880）
+- [ ] 不直接使用标签名选择器（如 `h1`, `p`, `div`）
+- [ ] 每个元素都有语义化的 class 名称
+- [ ] 样式类名遵循 BEM 命名规范
+- [ ] 避免深层嵌套选择器（不超过 3 层）
+
+### 导出规范检查
+
+- [ ] 组件已命名导出
+- [ ] Props/Emits/Slots 类型已导出
+- [ ] package.json 配置正确（main, module, types, exports）
+- [ ] 支持 ESM 和 CJS 两种格式
+- [ ] 类型定义文件已生成（.d.ts）
+- [ ] sideEffects 配置正确
+
+### 组件库特有检查
+
+- [ ] 组件无全局副作用
+- [ ] 样式完全隔离（scoped）
+- [ ] 支持按需引入
+- [ ] 支持 Tree-shaking
+- [ ] 所有 API 有 JSDoc 注释
+- [ ] 有对应的 Storybook story
+- [ ] 有单元测试
+
+---
+
+## 🛠️ 代码质量工具
+
+```bash
+# ESLint 检查
+pnpm lint
+pnpm lint --filter @aix/button
+
+# TypeScript 类型检查
+pnpm type-check
+
+# Stylelint 样式检查（如果配置了）
+pnpm stylelint "packages/**/*.{vue,scss,css}"
+
+# 构建检查
+pnpm build --filter @aix/button
+
+# 运行测试
+pnpm test --filter @aix/button
+```
+
+---
+
+## 📚 相关文档
+
+- [component-design.md](./component-design.md) - 组件设计完整指南
+- [testing.md](./testing.md) - 测试策略
+- [storybook-development.md](./storybook-development.md) - Storybook 开发
+
+---
+
+通过遵循这些编码规范，可以确保组件库代码的一致性、可读性和可维护性，为高质量的组件开发提供清晰的标准。

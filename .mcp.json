@@ -2,12 +2,10 @@
   "mcpServers": {
     "figma": {
       "command": "npx",
-      "args": [
-        "-y",
-        "figma-developer-mcp",
-        "--figma-api-key=figd_i9HcpUzVcpWg_i7Nul556KJbUCJTV5vNV8Q1QyfF",
-        "--stdio"
-      ]
+      "args": ["-y", "figma-developer-mcp", "--stdio"],
+      "env": {
+        "FIGMA_API_KEY": "${FIGMA_API_KEY}"
+      }
     },
     "context7": {
       "command": "npx",
@@ -16,18 +14,6 @@
     "eslint": {
       "command": "npx",
       "args": ["@eslint/mcp@latest"]
-    },
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
-    },
-    "sentry": {
-      "command": "npx",
-      "args": ["-y", "@sentry/mcp-server@latest", "stdio"],
-      "env": {
-        "SENTRY_AUTH_TOKEN": "<你的Sentry Auth Token>",
-        "SENTRY_HOST": "https://sentry.io"
-      }
     }
   }
 }
