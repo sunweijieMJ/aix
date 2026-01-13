@@ -51,6 +51,7 @@ const config: StorybookConfig = {
           '@aix/theme': join(__dirname, '../packages/theme/src'),
           '@aix/button': join(__dirname, '../packages/button/src'),
           '@aix/icons': join(__dirname, '../packages/icons/src/index.ts'),
+          '@aix/video': join(__dirname, '../packages/video/src'),
         },
       },
     };
