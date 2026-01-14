@@ -533,6 +533,25 @@ importers:
         specifier: '*'
         version: 3.1.1(typescript@5.9.3)
 
+  packages/subtitle:
+    dependencies:
+      vue:
+        specifier: ^3.5.0
+        version: 3.5.22(typescript@5.9.3)
+    devDependencies:
+      '@kit/eslint-config':
+        specifier: workspace:*
+        version: link:../../internal/eslint-config
+      rimraf:
+        specifier: '*'
+        version: 6.0.1
+      tsx:
+        specifier: '*'
+        version: 4.20.6
+      typescript:
+        specifier: '*'
+        version: 5.9.3
+
   packages/theme:
     devDependencies:
       '@kit/stylelint-config':
