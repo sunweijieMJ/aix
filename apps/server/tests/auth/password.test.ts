@@ -148,8 +148,8 @@ describe('PasswordUtil', () => {
       await PasswordUtil.hash(testPassword);
       const duration = Date.now() - start;
 
-      // bcrypt应该在1秒内完成（通常100-300ms）
-      expect(duration).toBeLessThan(1000);
+      // bcrypt应该在2秒内完成（通常100-300ms，CI/并行环境下可能更慢）
+      expect(duration).toBeLessThan(2000);
     });
 
     it('should verify password in reasonable time', async () => {

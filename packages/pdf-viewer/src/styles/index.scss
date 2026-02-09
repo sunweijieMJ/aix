@@ -1,0 +1,509 @@
+/**
+ * @aix/pdf 样式
+ */
+
+// CSS 变量
+:root {
+  --aix-pdf-bg: #f5f5f5;
+  --aix-pdf-border: #e0e0e0;
+  --aix-pdf-text: #333;
+  --aix-pdf-text-secondary: #666;
+  --aix-pdf-primary: #409eff;
+  --aix-pdf-primary-light: rgb(64 158 255 / 0.1);
+  --aix-pdf-toolbar-bg: #fff;
+  --aix-pdf-toolbar-border: #e4e7ed;
+  --aix-pdf-menu-bg: #fff;
+  --aix-pdf-menu-shadow: 0 2px 12px rgb(0 0 0 / 0.12);
+  --aix-pdf-menu-hover: #f5f7fa;
+  --aix-pdf-spinner-color: #409eff;
+}
+
+// PDF Viewer 容器
+.aix-pdf-viewer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+}
+
+// 内容区域
+.aix-pdf-viewer__content {
+  display: flex;
+  position: relative;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: auto;
+  background: var(--aix-pdf-bg);
+
+  &--loading {
+    pointer-events: none;
+  }
+}
+
+// 加载指示器
+.aix-pdf-viewer__loading {
+  display: flex;
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  background: rgb(255 255 255 / 0.8);
+}
+
+.aix-pdf-viewer__spinner {
+  width: 40px;
+  height: 40px;
+  animation: aix-pdf-spin 0.8s linear infinite;
+  border: 3px solid var(--aix-pdf-border);
+  border-radius: 50%;
+  border-top-color: var(--aix-pdf-spinner-color);
+}
+
+@keyframes aix-pdf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// 页面容器
+.aix-pdf-viewer__page {
+  position: relative;
+}
+
+// Canvas
+.aix-pdf-viewer__canvas {
+  display: block;
+}
+
+// 文本层
+.aix-pdf-viewer__text-layer {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+
+  // 修复 TailwindCSS 兼容性问题
+  *,
+  *::before,
+  *::after {
+    box-sizing: content-box;
+  }
+}
+
+// 图片层 - z-index 高于文本层，确保可点击
+.aix-pdf-viewer__image-layer {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+// 图片覆盖层
+.aix-pdf-image-overlay {
+  pointer-events: auto;
+}
+
+// 连续滚动模式
+.aix-pdf-viewer__continuous {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--aix-pdf-bg);
+
+  &--loading {
+    pointer-events: none;
+  }
+}
+
+.aix-pdf-viewer__continuous-inner {
+  display: flex;
+  position: relative;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 16px 0;
+}
+
+.aix-pdf-viewer__continuous-page {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
+
+  // 占位符样式
+  &:empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &::after {
+      content: '';
+      width: 24px;
+      height: 24px;
+      animation: aix-pdf-spin 0.8s linear infinite;
+      border: 2px solid var(--aix-pdf-border);
+      border-radius: 50%;
+      border-top-color: var(--aix-pdf-spinner-color);
+    }
+  }
+}
+
+.aix-pdf-continuous__page {
+  position: relative;
+  background: #fff;
+}
+
+.aix-pdf-continuous__canvas {
+  display: block;
+}
+
+.aix-pdf-continuous__text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: content-box;
+  }
+}
+
+// 工具栏
+.aix-pdf-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-top: 1px solid var(--aix-pdf-toolbar-border);
+  background-color: var(--aix-pdf-toolbar-bg);
+
+  &__left,
+  &__center,
+  &__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    transition: all 0.2s;
+    border: 1px solid var(--aix-pdf-border);
+    border-radius: 4px;
+    background: var(--aix-pdf-toolbar-bg);
+    color: var(--aix-pdf-text);
+    font-size: 14px;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      border-color: var(--aix-pdf-primary);
+      color: var(--aix-pdf-primary);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  &__page-info,
+  &__scale {
+    min-width: 60px;
+    color: var(--aix-pdf-text-secondary);
+    font-size: 14px;
+    text-align: center;
+  }
+
+  &__page-input {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  &__input {
+    width: 48px;
+    height: 28px;
+    padding: 0 8px;
+    transition: border-color 0.2s;
+    border: 1px solid var(--aix-pdf-border);
+    border-radius: 4px;
+    outline: none;
+    background: var(--aix-pdf-toolbar-bg);
+    color: var(--aix-pdf-text);
+    font-size: 14px;
+    text-align: center;
+
+    &:focus {
+      border-color: var(--aix-pdf-primary);
+    }
+
+    // 隐藏数字输入框的箭头
+    &::-webkit-outer-spin-button,
+    &::-webkit-inner-spin-button {
+      margin: 0;
+      appearance: none;
+    }
+
+    &[type='number'] {
+      appearance: textfield;
+    }
+  }
+
+  &__page-sep {
+    color: var(--aix-pdf-text-secondary);
+  }
+
+  &__page-total {
+    min-width: 24px;
+    color: var(--aix-pdf-text-secondary);
+    font-size: 14px;
+  }
+}
+
+// 右键菜单
+.aix-pdf-context-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 120px;
+  padding: 4px 0;
+  border-radius: 4px;
+  background: var(--aix-pdf-menu-bg);
+  box-shadow: var(--aix-pdf-menu-shadow);
+
+  &__item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    transition: background-color 0.2s;
+    color: var(--aix-pdf-text);
+    font-size: 14px;
+    cursor: pointer;
+    gap: 8px;
+
+    &:hover:not(&--disabled) {
+      background: var(--aix-pdf-menu-hover);
+    }
+
+    &--disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  &__icon {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+  }
+
+  &__label {
+    flex: 1;
+  }
+
+  &__divider {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--aix-pdf-border);
+  }
+}
+
+// 搜索栏
+.aix-pdf-search-bar {
+  display: flex;
+  position: absolute;
+  z-index: 100;
+  top: 8px;
+  right: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--aix-pdf-toolbar-bg);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.15);
+  gap: 8px;
+
+  &__input-wrapper {
+    display: flex;
+    position: relative;
+    align-items: center;
+  }
+
+  &__icon {
+    position: absolute;
+    left: 8px;
+    color: var(--aix-pdf-text-secondary);
+    pointer-events: none;
+  }
+
+  &__input {
+    width: 180px;
+    height: 32px;
+    padding: 0 28px;
+    transition:
+      border-color 0.2s,
+      width 0.2s;
+    border: 1px solid var(--aix-pdf-border);
+    border-radius: 4px;
+    outline: none;
+    background: var(--aix-pdf-bg);
+    color: var(--aix-pdf-text);
+    font-size: 14px;
+
+    &:focus {
+      width: 220px;
+      border-color: var(--aix-pdf-primary);
+    }
+
+    &::placeholder {
+      color: var(--aix-pdf-text-secondary);
+    }
+  }
+
+  &__clear {
+    display: flex;
+    position: absolute;
+    right: 4px;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    transition: background-color 0.2s;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--aix-pdf-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--aix-pdf-border);
+    }
+  }
+
+  &__nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  &__count {
+    min-width: 50px;
+    color: var(--aix-pdf-text-secondary);
+    font-size: 12px;
+    text-align: center;
+  }
+
+  &__btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    transition: background-color 0.2s;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--aix-pdf-text);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--aix-pdf-menu-hover);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+
+  &__no-result {
+    color: var(--aix-pdf-text-secondary);
+    font-size: 12px;
+  }
+
+  &__loading {
+    display: flex;
+    align-items: center;
+  }
+
+  &__spinner {
+    width: 16px;
+    height: 16px;
+    animation: aix-pdf-spin 0.8s linear infinite;
+    border: 2px solid var(--aix-pdf-border);
+    border-radius: 50%;
+    border-top-color: var(--aix-pdf-primary);
+  }
+
+  &__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin-left: 4px;
+    padding: 0;
+    transition:
+      background-color 0.2s,
+      color 0.2s;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--aix-pdf-text-secondary);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--aix-pdf-menu-hover);
+      color: var(--aix-pdf-text);
+    }
+  }
+}
+
+// 搜索高亮
+.aix-pdf-search-highlight {
+  padding: 1px 0;
+  border-radius: 2px;
+  background-color: rgb(255 235 59 / 0.6);
+
+  &--current {
+    background-color: rgb(255 152 0 / 0.8);
+  }
+}
+
+.aix-pdf-search-wrapper {
+  display: contents;
+}
+
+// 右键菜单动画
+.aix-pdf-context-menu-enter-active,
+.aix-pdf-context-menu-leave-active {
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+
+.aix-pdf-context-menu-enter-from,
+.aix-pdf-context-menu-leave-to {
+  transform: scale(0.95);
+  opacity: 0;
+}

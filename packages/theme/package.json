@@ -34,7 +34,7 @@
     "lint": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
     "build": "pnpm run clean && rollup -c && pnpm run build:types",
     "build:types": "tsc --emitDeclarationOnly --outDir dist",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist tsconfig.tsbuildinfo"
   },
   "publishConfig": {
     "registry": "https://it-artifactory.yitu-inc.com/api/npm/npm-local/"

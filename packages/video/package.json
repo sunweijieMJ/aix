@@ -44,7 +44,7 @@
     "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
     "build:js": "rollup -c",
     "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
-    "clean": "rimraf dist lib es"
+    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {
     "video.js": "^8.21.1",

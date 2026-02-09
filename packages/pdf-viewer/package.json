@@ -1,7 +1,7 @@
 {
-  "name": "@aix/button",
+  "name": "@aix/pdf-viewer",
   "version": "1.0.0",
-  "description": "A Vue 3 Button component",
+  "description": "A Vue 3 PDF Viewer component with text/image selection support",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -38,8 +38,8 @@
   "scripts": {
     "dev": "rollup -c -w",
     "lint:script": "eslint . --max-warnings 0",
-    "lint:style": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
-    "link": "pnpm run lint:script && pnpm run lint:style",
+    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "lint": "pnpm run lint:script && pnpm run lint:style",
     "test": "vitest --run --passWithNoTests",
     "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
     "build:js": "rollup -c",
@@ -47,8 +47,8 @@
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {
-    "@aix/theme": "workspace:*",
-    "@aix/hooks": "workspace:*"
+    "@aix/icons": "workspace:*",
+    "pdfjs-dist": "^5.4.624"
   },
   "peerDependencies": {
     "vue": "^3.5.0"

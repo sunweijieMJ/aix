@@ -1,4 +1,4 @@
 import { config } from '@kit/eslint-config/vue-app';
 import type { Linter } from 'eslint';
 
-export default [{ ignores: ['src/'] }, ...config] as Linter.Config[];
+export default config as Linter.Config[];

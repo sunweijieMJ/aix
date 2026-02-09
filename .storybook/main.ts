@@ -52,6 +52,7 @@ const config: StorybookConfig = {
           '@aix/button': join(__dirname, '../packages/button/src'),
           '@aix/icons': join(__dirname, '../packages/icons/src/index.ts'),
           '@aix/video': join(__dirname, '../packages/video/src'),
+          '@aix/pdf-viewer': join(__dirname, '../packages/pdf-viewer/src'),
         },
       },
     };
