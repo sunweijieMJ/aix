@@ -3,12 +3,7 @@ import { defineConfig } from 'cz-git';
 
 const config = defineConfig({
   extends: ['@commitlint/config-conventional'],
-  parserPreset: {
-    parserOpts: {
-      headerPattern: /^\[(AI|Human)\]\[(\w+)\]: (.+)$/,
-      headerCorrespondence: ['scope', 'type', 'subject'],
-    },
-  },
+  parserPreset: 'conventional-changelog-conventionalcommits',
   formatter: '@commitlint/format',
   rules: {
     'type-enum': [
@@ -30,9 +25,8 @@ const config = defineConfig({
     ],
     'type-case': [RuleConfigSeverity.Error, 'always', 'lower-case'],
     'type-empty': [RuleConfigSeverity.Error, 'never'],
-    'scope-case': [RuleConfigSeverity.Disabled],
-    'scope-enum': [RuleConfigSeverity.Error, 'always', ['AI', 'Human']],
-    'scope-empty': [RuleConfigSeverity.Error, 'never'],
+    'scope-case': [RuleConfigSeverity.Error, 'always', 'lower-case'],
+    'scope-empty': [RuleConfigSeverity.Disabled],
     'subject-empty': [RuleConfigSeverity.Error, 'never'],
     'subject-full-stop': [RuleConfigSeverity.Error, 'never', '.'],
     'subject-case': [RuleConfigSeverity.Disabled],
@@ -42,7 +36,7 @@ const config = defineConfig({
     alias: { fd: 'docs: fix typos' },
     messages: {
       type: '请选择提交的类型（必填）',
-      scope: '请选择提交者类型（必填）',
+      scope: '请输入修改范围（可选）',
       subject: '请简要描述提交（必填）',
       body: '请输入详细描述（可选）',
       footer: '请选择要关闭的issue（可选）',
@@ -60,20 +54,9 @@ const config = defineConfig({
       { value: 'revert', name: 'revert:    回退' },
       { value: 'build', name: 'build:     打包' },
     ],
-    scopes: [
-      { value: 'AI', name: 'AI: 由人工智能生成的代码' },
-      { value: 'Human', name: 'Human: 由人类编写的代码' },
-    ],
-    allowCustomScopes: false,
-    allowEmptyScopes: false,
-    skipQuestions: ['body'],
-    formatMessageCB: ({ type, scope, subject, body, footer }) => {
-      const head = `[${scope}][${type}]: ${subject}`;
-      let full = head;
-      if (body) full += '\n\n' + body;
-      if (footer) full += '\n\n' + footer;
-      return full;
-    },
+    allowCustomScopes: true,
+    allowEmptyScopes: true,
+    skipQuestions: ['body', 'scope'],
   },
 });
 

@@ -111,7 +111,7 @@ packages/
     "test": "vitest"
   },
   "peerDependencies": {
-    "vue": "^3.5.22"
+    "vue": "^3.5.28"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:*",

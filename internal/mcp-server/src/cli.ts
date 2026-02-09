@@ -382,10 +382,10 @@ class McpCli {
       // 使用默认数据目录如果未提供
       const dataDir = options.data || join(__dirname, '../data');
 
-      const { rmdir } = await import('node:fs/promises');
+      const { rm } = await import('node:fs/promises');
       const cacheDir = join(dataDir, '.cache');
 
-      await rmdir(cacheDir, { recursive: true });
+      await rm(cacheDir, { recursive: true, force: true });
       log.info(chalk.green('✅ 缓存清理完成'));
       process.exit(0);
     } catch (error) {

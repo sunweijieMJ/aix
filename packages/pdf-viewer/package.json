@@ -51,7 +51,7 @@
     "pdfjs-dist": "^5.4.624"
   },
   "peerDependencies": {
-    "vue": "^3.5.0"
+    "vue": "^3.5.28"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:*",

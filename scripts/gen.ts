@@ -81,7 +81,7 @@ export default config;
     "@aix/theme": "workspace:*"
   },
   "peerDependencies": {
-    "vue": "^3.5.0"
+    "vue": "^3.5.28"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:*",
