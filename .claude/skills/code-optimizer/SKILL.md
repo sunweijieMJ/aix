@@ -1,6 +1,12 @@
 ---
 name: code-optimizer
 description: 组件库代码优化器 - 自动检测并修复性能、类型安全、可访问性和包体积问题
+license: MIT
+compatibility: Requires Vue 3, TypeScript
+metadata:
+  author: aix
+  version: "1.0.0"
+  category: quality
 ---
 
 # Code Optimizer - 组件库代码优化 Skill
@@ -21,33 +27,6 @@ description: 组件库代码优化器 - 自动检测并修复性能、类型安�
 > - 测试覆盖 → [testing.md](../agents/testing.md)
 > - 组件设计 → [component-design.md](../agents/component-design.md)
 > - 无障碍检查 → [a11y-checker.md](./a11y-checker.md)
-
----
-
-## 使用方式
-
-```bash
-# 优化指定包（自动检测并修复）
-/code-optimizer packages/button
-
-# 优化指定组件
-/code-optimizer packages/select/src/Select.vue
-
-# 只检测，不自动修复
-/code-optimizer --report-only
-
-# 指定优化维度
-/code-optimizer --performance      # 性能优化
-/code-optimizer --types            # 类型安全
-/code-optimizer --a11y             # 可访问性
-/code-optimizer --bundle           # 包体积
-
-# 自动修复所有问题
-/code-optimizer packages/select --fix
-
-# 生成 CI 报告
-/code-optimizer --ci --output optimize-report.json
-```
 
 ---
 
@@ -142,85 +121,6 @@ const { list, containerProps, wrapperProps } = useVirtualList(
 
 ---
 
-## 2. 类型安全
-
-### 2.1 Props/Emits 类型定义
-
-```typescript
-// ✅ 完整的类型定义
-export interface SelectProps {
-  /** 选项列表 */
-  options: SelectOption[];
-  /** 绑定值 */
-  modelValue?: string | string[];
-  /** 是否禁用 */
-  disabled?: boolean;
-  /** 占位符 */
-  placeholder?: string;
-}
-
-export interface SelectEmits {
-  /** 值变化事件 */
-  (e: 'update:modelValue', value: string | string[]): void;
-  /** change 事件 */
-  (e: 'change', value: string | string[], option: SelectOption): void;
-}
-
-// 组件中使用
-const props = withDefaults(defineProps<SelectProps>(), {
-  disabled: false,
-  placeholder: '请选择',
-});
-
-const emit = defineEmits<SelectEmits>();
-```
-
-### 2.2 类型导出
-
-```typescript
-// packages/select/src/index.ts
-export { Select } from './Select.vue';
-
-// ✅ 必须导出类型
-export type { SelectProps, SelectEmits, SelectOption } from './types';
-```
-
-### 2.3 类型守卫
-
-```typescript
-// ✅ 使用类型守卫
-function isSelectOption(obj: unknown): obj is SelectOption {
-  return obj !== null &&
-         typeof obj === 'object' &&
-         'value' in obj &&
-         'label' in obj;
-}
-
-// ❌ 避免类型断言
-const option = data as SelectOption;
-```
-
-### 2.4 公共类型复用
-
-```typescript
-// packages/utils/src/types.ts
-export type ComponentSize = 'small' | 'default' | 'large';
-
-export interface BaseComponentProps {
-  size?: ComponentSize;
-  disabled?: boolean;
-}
-
-// packages/button/src/types.ts
-import type { BaseComponentProps } from '@aix/utils';
-
-export interface ButtonProps extends BaseComponentProps {
-  type?: 'primary' | 'default' | 'danger';
-}
-```
-
----
-
 ## 3. 可访问性优化
 
 ### 3.1 ARIA 属性
@@ -292,58 +192,6 @@ watch(() => props.visible, (visible) => {
 
 ---
 
-## 4. 包体积优化
-
-### 4.1 Tree-shaking 支持
-
-```json
-// package.json
-{
-  "sideEffects": ["*.css"],
-  "exports": {
-    ".": {
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./style.css": "./dist/style.css"
-  }
-}
-```
-
-### 4.2 按需导入
-
-```typescript
-// ✅ 按需导入
-import { Button } from '@aix/button';
-
-// ❌ 全量导入
-import * as Components from '@aix/components';
-```
-
-### 4.3 组件拆分
-
-```vue
-<!-- ❌ 优化前: Table.vue (500+ 行) -->
-<!-- ✅ 优化后: 拆分为多个组件 -->
-<template>
-  <div class="aix-table">
-    <TableHeader :columns="columns" />
-    <TableBody :columns="columns" :data="data" />
-    <TableFooter v-if="pagination" :pagination="pagination" />
-  </div>
-</template>
-```
-
-### 4.4 动态导入
-
-```typescript
-// 大型组件动态导入
-const Dialog = defineAsyncComponent(() => import('./Dialog.vue'));
-```
-
----
-
 ## 优化报告模板
 
 ```
@@ -377,8 +225,6 @@ const Dialog = defineAsyncComponent(() => import('./Dialog.vue'));
    2. 运行 pnpm test
    3. 运行 pnpm build
 ```
-
----
 
 ---
 
@@ -506,77 +352,6 @@ pnpm test --filter @aix/select
 
 ---
 
-## CI 集成
-
-### JSON 报告格式
-
-```bash
-/code-optimizer packages --ci --output optimize-report.json
-```
-
-生成的报告：
-
-```json
-{
-  "timestamp": "2026-01-13T10:30:00Z",
-  "summary": {
-    "totalIssues": 12,
-    "fixed": 10,
-    "skipped": 2,
-    "categories": {
-      "performance": { "found": 5, "fixed": 4 },
-      "types": { "found": 3, "fixed": 3 },
-      "bundle": { "found": 2, "fixed": 2 },
-      "a11y": { "found": 2, "fixed": 1 }
-    }
-  },
-  "files": [
-    {
-      "path": "packages/select/src/Select.vue",
-      "issues": [
-        {
-          "category": "performance",
-          "rule": "no-template-function-call",
-          "line": 45,
-          "message": "避免在模板中直接调用函数",
-          "severity": "error",
-          "fixed": true,
-          "diff": "..."
-        }
-      ]
-    }
-  ],
-  "bundleAnalysis": {
-    "before": { "total": "45.2KB", "gzip": "12.1KB" },
-    "after": { "total": "38.5KB", "gzip": "10.2KB" },
-    "reduction": "14.8%"
-  }
-}
-```
-
-### GitHub Actions 集成
-
-```yaml
-# .github/workflows/optimize.yml
-- name: Code Optimization Check
-  run: |
-    claude "/code-optimizer packages --ci --output optimize-report.json"
-
-- name: Upload Report
-  uses: actions/upload-artifact@v4
-  with:
-    name: optimize-report
-    path: optimize-report.json
-
-- name: Check Results
-  run: |
-    FIXED=$(jq '.summary.fixed' optimize-report.json)
-    TOTAL=$(jq '.summary.totalIssues' optimize-report.json)
-    echo "Fixed $FIXED of $TOTAL issues"
-```
-
----
-
 ## 自动修复规则
 
 ### 性能优化自动修复
@@ -603,20 +378,6 @@ pnpm test --filter @aix/select
 | 缺少 sideEffects | package.json 无配置 | 添加配置 |
 | 全量导入 | `import * from` | 转为按需导入 |
 | 未拆分组件 | 组件 > 500 行 | 提示拆分建议 |
-
----
-
-## 与其他工具配合
-
-```bash
-# 完整优化工作流
-/code-optimizer packages/select          # 1. 检测并修复
-pnpm type-check                          # 2. 类型检查
-pnpm lint                                # 3. 代码检查
-pnpm test                                # 4. 运行测试
-/coverage-analyzer packages/select       # 5. 覆盖率检查
-/a11y-checker packages/select            # 6. 无障碍检查
-```
 
 ---
 

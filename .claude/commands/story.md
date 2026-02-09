@@ -1,5 +1,4 @@
 ---
-name: story
 description: Storybook story 编写清单
 ---
 

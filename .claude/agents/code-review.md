@@ -1,6 +1,8 @@
 ---
 name: code-review
 description: 代码质量检查、安全审查、性能优化建议和最佳实践验证
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # 代码审查 Agent

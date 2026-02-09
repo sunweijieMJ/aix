@@ -1,6 +1,8 @@
 ---
 name: npm-publishing
 description: npm 包发布指南 - 发布流程、版本管理、CI/CD 自动化、发布验证、回滚策略
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # npm 包发布指南

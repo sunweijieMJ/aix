@@ -1,6 +1,12 @@
 ---
 name: component-generator
 description: 根据规范生成Vue组件，适用于组件库开发。支持Props/Emits类型定义、CSS变量、Storybook story
+license: MIT
+compatibility: Requires Vue 3, TypeScript
+metadata:
+  author: aix
+  version: "1.0.0"
+  category: development
 ---
 
 # 组件生成器 Skill

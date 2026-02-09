@@ -1,6 +1,8 @@
 ---
 name: testing
 description: 组件库测试策略、测试用例编写、测试工具配置和质量保证
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # 测试指导 Agent

@@ -1,6 +1,8 @@
 ---
 name: figma-extraction-guide
 description: Figma MCP 技术专家，负责从 Figma 设计稿提取设计数据和下载资源，不负责组件实现
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # Figma MCP 使用指南

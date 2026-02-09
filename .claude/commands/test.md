@@ -1,5 +1,4 @@
 ---
-name: test
 description: 组件测试清单，覆盖 Props/Emits/Slots
 ---
 

@@ -1,6 +1,8 @@
 ---
 name: project-structure
 description: AIX 组件库 Monorepo 项目结构指导，包括目录组织、包管理和构建配置
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # AIX 组件库项目结构

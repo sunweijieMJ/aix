@@ -1,6 +1,12 @@
 ---
 name: test-generator
 description: 自动为组件生成测试模板，包括 Props/Emits/Slots、键盘导航、无障碍测试和 Storybook Story
+license: MIT
+compatibility: Requires Vue 3, TypeScript
+metadata:
+  author: aix
+  version: "1.0.0"
+  category: quality
 ---
 
 # 组件测试生成器 Skill

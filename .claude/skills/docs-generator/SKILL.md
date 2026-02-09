@@ -1,6 +1,12 @@
 ---
 name: docs-generator
 description: 从组件提取 Props/Emits/Slots 生成 VitePress 文档，自动生成 API 表格和示例代码
+license: MIT
+compatibility: Requires Vue 3, TypeScript
+metadata:
+  author: aix
+  version: "1.0.0"
+  category: documentation
 ---
 
 # 文档生成器 Skill

@@ -1,6 +1,8 @@
 ---
 name: accessibility
 description: 组件库无障碍（A11y）完整指南，包括 ARIA 属性、键盘导航、焦点管理、屏幕阅读器支持和测试策略
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # 无障碍（Accessibility）指南

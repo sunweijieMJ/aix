@@ -1,5 +1,4 @@
 ---
-name: release
 description: 发布流程清单，版本管理和 npm 发布
 ---
 

@@ -1,6 +1,8 @@
 ---
 name: performance
 description: 组件库性能优化完整指南，包括 Vue 3 渲染优化、包体积优化、运行时性能和性能测试
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # 性能优化指南

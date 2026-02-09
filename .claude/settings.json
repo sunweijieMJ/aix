@@ -13,20 +13,30 @@
       "Bash(pnpm clean:*)",
       "Bash(pnpm install:*)",
       "Bash(pnpm format:*)",
+      "Bash(pnpm cspell:*)",
+      "Bash(pnpm gen:*)",
+      "Bash(pnpm link:*)",
       "Bash(turbo:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(git mv:*)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git branch:*)",
-      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
       "Bash(git stash:*)",
+      "Bash(git merge:*)",
+      "Bash(git rebase:*)",
+      "Bash(git fetch:*)",
       "Bash(git show:*)"
     ],
-    "deny": [
-      "Bash(git reset --hard:*)",
-      "Bash(git push --force:*)",
-      "Bash(rm -rf:*)"
-    ]
+    "deny": []
   },
   "enabledMcpjsonServers": ["figma", "context7", "eslint"],
   "hooks": {

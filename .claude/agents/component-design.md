@@ -1,6 +1,8 @@
 ---
 name: component-design
 description: Vue组件库设计完整指南，包括设计原则、API设计、样式规范和最佳实践
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # 组件库设计完整指南

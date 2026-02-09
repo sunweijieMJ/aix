@@ -12,6 +12,7 @@ const config = {
     'dist',
     'docs',
     'coverage',
+    'storybook-static',
     '.git',
     'CHANGELOG.md',
   ],

@@ -1,5 +1,4 @@
 ---
-name: review-pr
 description: 快速提醒 PR 审查清单，确保代码质量和项目规范
 ---
 

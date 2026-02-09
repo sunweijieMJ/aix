@@ -1,6 +1,8 @@
 ---
 name: storybook-development
 description: Storybook 开发指导，包括 Story 编写、Controls 配置、文档生成和最佳实践
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # Storybook 开发指导

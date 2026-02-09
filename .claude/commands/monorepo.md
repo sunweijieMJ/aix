@@ -1,5 +1,4 @@
 ---
-name: monorepo
 description: Monorepo 操作清单，包管理和构建
 ---
 

@@ -1,10 +1,6 @@
-# AIX 组件库 Claude 配置指南
+# Claude Code 配置指南
 
-> AIX Vue 组件库的 Claude Code 完整配置，针对 Monorepo 组件库开发优化
->
-> **版本**: v1.0.0
-> **最后更新**: 2026-01-12
-> **适用项目**: AIX Vue 组件库 Monorepo
+> 本项目的 Claude Code 完整配置，包括 Agents、Skills、Commands 和 Hooks
 
 ---
 
@@ -39,15 +35,15 @@ Skills 是命令式工具，用于快速完成组件库开发任务。
 
 | Skill | 文件 | 功能 | 使用场景 |
 |-------|------|------|----------|
-| `/package-creator` | `package-creator.md` | 快速创建新组件包，生成标准目录结构和配置 | 新建组件包 |
-| `/component-generator` | `component-generator.md` | 智能组件生成，支持基础组件开发 | 生成组件代码 |
-| `/figma-to-component` | `figma-to-component.md` | 从 Figma 设计稿生成 Vue 组件，支持动态颜色映射 | 设计稿还原 |
-| `/story-generator` | `story-generator.md` | 生成 Storybook story 文件 | 编写 story |
-| `/docs-generator` | `docs-generator.md` | 从组件提取 API 生成文档 | 生成 API 文档 |
-| `/test-generator` | `test-generator.md` | 自动生成组件测试模板 | 编写测试 |
-| `/coverage-analyzer` | `coverage-analyzer.md` | 测试覆盖率分析，支持 CI 集成和趋势对比 | 覆盖率检查 |
-| `/code-optimizer` | `code-optimizer.md` | 自动检测并修复性能/类型/包体积问题 | 代码优化 |
-| `/a11y-checker` | `a11y-checker.md` | 自动化无障碍检查，ARIA/键盘/焦点管理 | 无障碍检查 |
+| `/package-creator` | `package-creator/SKILL.md` | 快速创建新组件包，生成标准目录结构和配置 | 新建组件包 |
+| `/component-generator` | `component-generator/SKILL.md` | 智能组件生成，支持基础组件开发 | 生成组件代码 |
+| `/figma-to-component` | `figma-to-component/SKILL.md` | 从 Figma 设计稿生成 Vue 组件，支持动态颜色映射 | 设计稿还原 |
+| `/story-generator` | `story-generator/SKILL.md` | 生成 Storybook story 文件 | 编写 story |
+| `/docs-generator` | `docs-generator/SKILL.md` | 从组件提取 API 生成文档 | 生成 API 文档 |
+| `/test-generator` | `test-generator/SKILL.md` | 自动生成组件测试模板 | 编写测试 |
+| `/coverage-analyzer` | `coverage-analyzer/SKILL.md` | 测试覆盖率分析，支持 CI 集成和趋势对比 | 覆盖率检查 |
+| `/code-optimizer` | `code-optimizer/SKILL.md` | 自动检测并修复性能/类型/包体积问题 | 代码优化 |
+| `/a11y-checker` | `a11y-checker/SKILL.md` | 自动化无障碍检查，ARIA/键盘/焦点管理 | 无障碍检查 |
 
 ### 命名规范
 
@@ -433,12 +429,13 @@ Permissions 控制 Claude 可以自动执行哪些命令（无需确认），配
 
 | 分类 | 命令 | 说明 |
 |------|------|------|
-| **开发构建** | `pnpm dev:*`, `pnpm build:*` | 开发和构建 |
-| **代码质量** | `pnpm lint:*`, `pnpm type-check:*` | ESLint 和 TypeScript 检查 |
-| **测试** | `pnpm test:*`, `pnpm commit:*` | 单元测试和提交辅助 |
+| **开发构建** | `pnpm dev:*`, `pnpm build:*`, `pnpm clean:*` | 开发、构建和清理 |
+| **代码质量** | `pnpm lint:*`, `pnpm type-check:*`, `pnpm cspell:*` | ESLint、TypeScript 和拼写检查 |
+| **测试** | `pnpm test:*` | 单元测试 |
 | **文档** | `pnpm storybook:*`, `pnpm docs:*` | Storybook 和文档 |
-| **版本管理** | `pnpm changeset:*` | Changesets 版本管理 |
-| **Git 只读** | `git status`, `git diff`, `git log`, `git branch`, `git fetch`, `git stash` | Git 只读操作 |
+| **版本管理** | `pnpm changeset:*`, `pnpm commit:*` | Changesets 和交互式提交 |
+| **工具链** | `pnpm gen:*`, `pnpm link:*`, `npx tsc:*`, `npx vue-tsc:*` | 生成、链接和类型检查 |
+| **Git 操作** | `git status/diff/log/branch/fetch/stash/show/add/commit/push/pull/checkout/merge/rebase/mv/rm` | 常用 Git 命令 |
 
 ### 配置示例
 
@@ -450,23 +447,17 @@ Permissions 控制 Claude 可以自动执行哪些命令（无需确认），配
       "Bash(pnpm build:*)",
       "Bash(pnpm lint:*)",
       "Bash(pnpm type-check:*)",
+      "Bash(pnpm cspell:*)",
       "Bash(pnpm test:*)",
       "Bash(pnpm commit:*)",
-      "Bash(pnpm storybook:*)",
-      "Bash(pnpm docs:*)",
-      "Bash(pnpm changeset:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
-      "Bash(git branch:*)",
-      "Bash(git fetch:*)",
-      "Bash(git stash:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
-    "deny": [
-      "Bash(git reset --hard:*)",
-      "Bash(git push --force:*)",
-      "Bash(rm -rf:*)"
-    ]
+    "deny": []
   }
 }
 ```
@@ -474,13 +465,7 @@ Permissions 控制 Claude 可以自动执行哪些命令（无需确认），配
 ### 安全说明
 
 - **allow**: 列出的命令 Claude 可以直接执行，无需用户确认
-  - 包含所有安全的构建、测试、文档命令
-  - 包含只读的 Git 命令（status、diff、log 等）
-  - **不包含**写入性 Git 操作（add、commit、push、merge、rebase），需用户确认
-- **deny**: 明确禁止的危险命令
-  - `git reset --hard` - 防止丢失本地更改
-  - `git push --force` - 防止覆盖远程历史
-  - `rm -rf` - 防止误删文件
+- **deny**: 当前为空（与参考仓库一致）
 - 使用 `*` 通配符匹配命令参数
 - 未列出的命令需要用户手动确认
 
@@ -491,26 +476,27 @@ Permissions 控制 Claude 可以自动执行哪些命令（无需确认），配
 ### 提交格式
 
 ```bash
-[scope][type]: subject
+type: subject
+type(scope): subject
 
 # 示例
-[AI][feat]: 添加 Select 组件
-[AI][fix]: 修复 Button 样式问题
-[AI][docs]: 更新组件 API 文档
+feat: 添加 Select 组件
+fix(button): 修复样式问题
+docs: 更新组件 API 文档
 ```
 
 ### 字段说明
 
-- **scope**: `AI` (AI 生成) 或 `Human` (人工编写)
 - **type**: `feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `chore` / `build` / `ci` / `revert`
-- **subject**: 简要描述（不超过 72 字符，不以 `.` 结尾）
+- **scope**: 可选，修改范围（如组件名）
+- **subject**: 简要描述（不超过 72 字符，不以 `.` 结尾，推荐中文）
 
 ### 提交流程
 
 ```bash
-git add .
-git commit -m "[AI][feat]: 简要描述"
-git push
+pnpm commit  # 交互式提交 (推荐)
+# 或
+git commit -m "feat: 简要描述"
 ```
 
 ---
@@ -583,12 +569,18 @@ description: 命令描述 (必需)
 
 ### 新增 Skill
 
-在 `skills/` 目录创建 `.md` 文件:
+在 `skills/` 目录创建 `<name>/SKILL.md` 文件:
 
 ```markdown
 ---
 name: skill-name
 description: Skill 功能描述
+license: MIT
+compatibility: Requires Vue 3, TypeScript
+metadata:
+  author: aix
+  version: "1.0.0"
+  category: development
 ---
 
 # Skill 标题
@@ -611,6 +603,8 @@ description: Skill 功能描述
 ---
 name: agent-name
 description: Agent 职责描述
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # Agent 标题

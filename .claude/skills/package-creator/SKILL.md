@@ -1,6 +1,12 @@
 ---
 name: package-creator
 description: 快速创建新组件包，生成标准目录结构、配置文件和模板代码
+license: MIT
+compatibility: Requires Vue 3, TypeScript
+metadata:
+  author: aix
+  version: "1.0.0"
+  category: scaffold
 ---
 
 # 包创建器 Skill

@@ -1,5 +1,4 @@
 ---
-name: component
 description: 组件开发清单，Props/Emits/样式规范检查
 ---
 

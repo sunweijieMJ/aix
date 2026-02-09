@@ -1,6 +1,8 @@
 ---
 name: coding-standards
 description: 组件库编码规范和最佳实践，包括 TypeScript、Vue、CSS 样式规范，确保代码风格一致性、类型安全和高质量代码
+tools: Read, Grep, Glob
+model: inherit
 ---
 
 # 编码规范 Agent
