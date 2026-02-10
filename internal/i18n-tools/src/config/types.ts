@@ -22,6 +22,18 @@ export interface PathsConfig {
   exportLocale?: string;
   /** 源代码扫描目录，相对于 rootDir */
   source: string;
+  /** .ts/.js 文件中 t 函数的导入路径，如 '@/plugins/i18n' */
+  tImport?: string;
+}
+
+/**
+ * ID 前缀配置
+ */
+export interface IdPrefixConfig {
+  /** 锚点目录名，用于定位路径前缀的起始位置，默认 'src' */
+  anchor?: string;
+  /** 自定义固定前缀，设置后将替代自动提取的路径前缀 */
+  value?: string;
 }
 
 /**
@@ -35,6 +47,26 @@ export interface ConcurrencyConfig {
 }
 
 /**
+ * Vue 框架专用配置
+ */
+export interface VueConfig {
+  /** i18n 库选择，默认 'vue-i18n' */
+  library?: 'vue-i18n' | 'vue-i18next';
+  /** vue-i18next 命名空间（仅 vue-i18next 生效） */
+  namespace?: string;
+}
+
+/**
+ * React 框架专用配置
+ */
+export interface ReactConfig {
+  /** i18n 库选择，默认 'react-i18next' */
+  library?: 'react-intl' | 'react-i18next';
+  /** react-i18next 命名空间（仅 react-i18next 生效） */
+  namespace?: string;
+}
+
+/**
  * i18n-tools 完整配置接口
  */
 export interface I18nToolsConfig {
@@ -43,6 +75,12 @@ export interface I18nToolsConfig {
 
   /** 框架类型 */
   framework: 'vue' | 'react';
+
+  /** Vue 框架专用配置 */
+  vue?: VueConfig;
+
+  /** React 框架专用配置 */
+  react?: ReactConfig;
 
   /** 语言文件路径配置 */
   paths: PathsConfig;
@@ -54,6 +92,9 @@ export interface I18nToolsConfig {
     /** 翻译接口 */
     translation: DifyApiConfig;
   };
+
+  /** ID 前缀配置 */
+  idPrefix?: IdPrefixConfig;
 
   /** 并发控制 */
   concurrency?: ConcurrencyConfig;
@@ -73,16 +114,20 @@ export interface I18nToolsConfig {
 export interface ResolvedConfig {
   rootDir: string;
   framework: 'vue' | 'react';
+  vue: Required<VueConfig>;
+  react: Required<ReactConfig>;
   paths: {
     locale: string;
     customLocale: string;
     exportLocale: string;
     source: string;
+    tImport: string;
   };
   dify: {
     idGeneration: Required<DifyApiConfig>;
     translation: Required<DifyApiConfig>;
   };
+  idPrefix: Required<IdPrefixConfig>;
   concurrency: Required<ConcurrencyConfig>;
   batchSize: number;
   include: string[];

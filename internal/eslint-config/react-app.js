@@ -1,4 +1,4 @@
-import eslintPluginImport from 'eslint-plugin-import';
+import eslintPluginImportX from 'eslint-plugin-import-x';
 import eslintPluginReact from 'eslint-plugin-react';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh';
@@ -62,7 +62,7 @@ export const config = [
   },
   {
     plugins: {
-      import: eslintPluginImport,
+      import: eslintPluginImportX,
     },
     settings: {
       'import/resolver': {

@@ -13,6 +13,8 @@ import {
   VueComponentInjector,
   VueImportManager,
 } from '../strategies/vue';
+import type { VueI18nLibraryType } from '../strategies/vue/libraries';
+import { createVueI18nLibrary } from '../strategies/vue/libraries';
 
 /**
  * Vue 框架适配器
@@ -25,20 +27,26 @@ export class VueAdapter extends FrameworkAdapter {
   private componentInjector: VueComponentInjector;
   private importManager: VueImportManager;
 
-  constructor() {
+  constructor(
+    tImport: string = '@/plugins/locale',
+    libraryType: VueI18nLibraryType = 'vue-i18n',
+    libraryOptions?: { namespace?: string },
+  ) {
+    const library = createVueI18nLibrary(libraryType, libraryOptions);
+
     super({
       type: 'vue',
       extensions: ['.vue'],
-      i18nLibrary: 'vue-i18n',
-      globalFunctionName: '$t',
-      hookName: 'useI18n',
+      i18nLibrary: library.packageName,
+      globalFunctionName: library.templateFunctionName,
+      hookName: library.hookName,
     });
 
-    this.textExtractor = new VueTextExtractor();
-    this.transformer = new VueTransformer();
-    this.restoreTransformer = new VueRestoreTransformer();
-    this.componentInjector = new VueComponentInjector();
-    this.importManager = new VueImportManager();
+    this.textExtractor = new VueTextExtractor(library);
+    this.transformer = new VueTransformer(tImport, library);
+    this.restoreTransformer = new VueRestoreTransformer(library);
+    this.componentInjector = new VueComponentInjector(library);
+    this.importManager = new VueImportManager(tImport, library);
   }
 
   getTextExtractor(): ITextExtractor {

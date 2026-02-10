@@ -6,18 +6,23 @@ import type { ExtractedString } from '../../utils/types';
 import type { ITransformer } from '../../adapters/FrameworkAdapter';
 import { ReactComponentInjector } from './ReactComponentInjector';
 import { ReactImportManager } from './ReactImportManager';
+import type { ReactI18nLibrary } from './libraries';
 
 /**
  * React 代码转换器
  * 负责将提取的文本替换为国际化调用
  */
 export class ReactTransformer implements ITransformer {
+  private tImport: string;
+  private library: ReactI18nLibrary;
+
+  constructor(tImport: string = '@/plugins/locale', library: ReactI18nLibrary) {
+    this.tImport = tImport;
+    this.library = library;
+  }
+
   /**
    * 转换文件
-   * @param filePath - 文件路径
-   * @param extractedStrings - 提取的字符串数组
-   * @param includeDefaultMessage - 是否包含defaultMessage
-   * @returns 转换后的代码
    */
   transform(
     filePath: string,
@@ -38,37 +43,39 @@ export class ReactTransformer implements ITransformer {
       includeDefaultMessage,
     );
 
-    // 检查是否有jsx-text上下文的字符串，如果有，添加FormattedMessage导入
+    // 检查是否有jsx-text上下文的字符串，如果有，添加 JSX 组件导入
     const hasJsxText = fileStrings.some((s) => s.context === 'jsx-text');
-    const importManager = new ReactImportManager();
+    const importManager = new ReactImportManager(this.tImport, this.library);
     if (hasJsxText) {
       transformedCode = importManager.addI18nImports(transformedCode, [
-        'FormattedMessage',
+        this.library.jsxComponentName,
       ]);
     }
 
-    // 添加全局 getIntl 导入和声明 (如果需要)
+    // 添加全局函数导入和声明 (如果需要)
     transformedCode = importManager.handleGlobalImports(
       transformedCode,
       fileStrings,
     );
 
-    // 注入 useIntl / injectIntl (如果需要)
-    const componentInjector = new ReactComponentInjector();
+    // 注入 Hook / HOC (如果需要)
+    const componentInjector = new ReactComponentInjector(
+      this.tImport,
+      this.library,
+    );
     transformedCode = componentInjector.inject(transformedCode);
 
-    // 为使用intl的hooks添加intl到依赖项
-    transformedCode = HooksUtils.addIntlToHooksDependencies(transformedCode);
+    // 为使用翻译变量的hooks添加到依赖项
+    transformedCode = HooksUtils.addTranslationVarToHooksDependencies(
+      transformedCode,
+      this.library,
+    );
 
     return transformedCode;
   }
 
   /**
    * 替换字符串
-   * @param sourceText - 源代码
-   * @param fileStrings - 文件中的字符串数组
-   * @param includeDefaultMessage - 是否包含defaultMessage
-   * @returns 替换后的代码
    */
   private replaceStrings(
     sourceText: string,
@@ -128,10 +135,7 @@ export class ReactTransformer implements ITransformer {
           const start = node.getStart(sourceFile);
           const end = node.getEnd();
 
-          // 获取原始的节点文本用于验证
           const originalNodeText = ASTUtils.nodeToText(node, sourceFile);
-
-          // 使用shouldReplaceNode进行比较，而不是直接比较文本
           const isTemplateString =
             extracted.original.startsWith('`') &&
             extracted.original.endsWith('`');
@@ -152,10 +156,6 @@ export class ReactTransformer implements ITransformer {
 
   /**
    * 根据提取的字符串信息，生成用于替换的i18n代码
-   * @param extracted - 提取的字符串信息
-   * @param node - 原始AST节点
-   * @param includeDefaultMessage - 是否包含defaultMessage
-   * @returns 生成的替换代码字符串
    */
   private generateReplacement(
     extracted: ExtractedString,
@@ -165,105 +165,44 @@ export class ReactTransformer implements ITransformer {
     const { semanticId, context, isTemplateString, templateVariables } =
       extracted;
 
-    // 对于jsx-text使用FormattedMessage组件
+    // 获取 defaultMessage 内容
+    const { message, placeholderMap } = ASTUtils.createMessageWithOptions(
+      extracted.original,
+      templateVariables,
+    );
+    const defaultMsg = includeDefaultMessage ? message : undefined;
+
+    // 构建 values Map
+    const hasValues =
+      isTemplateString && templateVariables && templateVariables.length > 0;
+    const valuesMap = hasValues ? placeholderMap : undefined;
+
+    // 对于jsx-text使用JSX组件
     if (context === 'jsx-text') {
-      return this.generateFormattedMessageReplacement(
-        extracted,
+      return this.library.generateJSXComponent(
+        semanticId,
+        valuesMap,
         includeDefaultMessage,
+        defaultMsg,
       );
     }
 
-    // 对于jsx-attribute和js-code继续使用intl.formatMessage
-    const formatMessageCall = 'intl.formatMessage';
-
-    // React 只有 jsx-text, jsx-attribute, js-code 三种上下文
+    // 对于jsx-attribute和js-code使用函数调用
     const reactContext = context as 'jsx-text' | 'jsx-attribute' | 'js-code';
     const needsWrapper = node
       ? ASTUtils.needsJsxWrapper(node, reactContext)
       : context === 'jsx-attribute';
 
-    let baseCall;
+    const baseCall = this.library.generateFunctionCall(
+      semanticId,
+      valuesMap,
+      includeDefaultMessage,
+      defaultMsg,
+    );
 
-    if (isTemplateString && templateVariables && templateVariables.length > 0) {
-      // 对于带变量的模板字符串
-      const { message, placeholderMap } = ASTUtils.createMessageWithOptions(
-        extracted.original,
-        templateVariables,
-      );
-      const variablesMapping = this.generateVariablesMapping(placeholderMap);
-      if (includeDefaultMessage) {
-        const escapedMessage = JSON.stringify(message);
-        baseCall = `${formatMessageCall}({ id: '${semanticId}', defaultMessage: ${escapedMessage} }, ${variablesMapping})`;
-      } else {
-        baseCall = `${formatMessageCall}({ id: '${semanticId}' }, ${variablesMapping})`;
-      }
-    } else {
-      // 对于普通字符串或不带变量的模板字符串
-      if (includeDefaultMessage) {
-        const { message } = ASTUtils.createMessageWithOptions(
-          extracted.original,
-        );
-        const escapedMessage = JSON.stringify(message);
-        baseCall = `${formatMessageCall}({ id: '${semanticId}', defaultMessage: ${escapedMessage} })`;
-      } else {
-        baseCall = `${formatMessageCall}({ id: '${semanticId}' })`;
-      }
-    }
-
-    // 根据上下文和是否需要包裹来决定返回格式
     if (needsWrapper) {
       return `{${baseCall}}`;
     }
     return baseCall;
-  }
-
-  /**
-   * 生成FormattedMessage组件的替换代码
-   * @param extracted - 提取的字符串信息
-   * @param includeDefaultMessage - 是否包含defaultMessage
-   * @returns FormattedMessage组件代码
-   */
-  private generateFormattedMessageReplacement(
-    extracted: ExtractedString,
-    includeDefaultMessage: boolean,
-  ): string {
-    const { semanticId, isTemplateString, templateVariables } = extracted;
-
-    let props = `id="${semanticId}"`;
-
-    if (includeDefaultMessage) {
-      const { message } = ASTUtils.createMessageWithOptions(
-        extracted.original,
-        templateVariables,
-      );
-      const escapedMessage = JSON.stringify(message);
-      props += ` defaultMessage=${escapedMessage}`;
-    }
-
-    if (isTemplateString && templateVariables && templateVariables.length > 0) {
-      const { placeholderMap } = ASTUtils.createMessageWithOptions(
-        extracted.original,
-        templateVariables,
-      );
-      const variablesMapping = this.generateVariablesMapping(placeholderMap);
-      props += ` values={${variablesMapping}}`;
-    }
-
-    return `<FormattedMessage ${props} />`;
-  }
-
-  /**
-   * 为formatMessage的第二个参数（values）生成变量映射对象字符串
-   * @param placeholderMap - 从表达式到占位符名称的映射 (e.g., Map { 'user.name' => 'name' })
-   * @returns 格式化后的变量映射字符串 (e.g., "{ name: user.name }")
-   */
-  private generateVariablesMapping(
-    placeholderMap: Map<string, string>,
-  ): string {
-    const mappings: string[] = [];
-    placeholderMap.forEach((placeholder, expression) => {
-      mappings.push(`${placeholder}: ${expression}`);
-    });
-    return `{ ${mappings.join(', ')} }`;
   }
 }

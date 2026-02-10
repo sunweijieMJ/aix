@@ -33,7 +33,13 @@ export class GenerateProcessor extends BaseProcessor {
     super(config, isCustom);
     this.framework = config.framework;
     this.adapter =
-      config.framework === 'vue' ? new VueAdapter() : new ReactAdapter();
+      config.framework === 'vue'
+        ? new VueAdapter(config.paths.tImport, config.vue.library, {
+            namespace: config.vue.namespace || undefined,
+          })
+        : new ReactAdapter(config.paths.tImport, config.react.library, {
+            namespace: config.react.namespace || undefined,
+          });
     this.difyClient = new DifyClient(
       config.dify.idGeneration,
       config.concurrency.idGeneration,
@@ -162,6 +168,32 @@ export class GenerateProcessor extends BaseProcessor {
     const textToIdMap = new Map<string, string>();
     const existingIds = new Set<string>();
 
+    // 从 locale 文件读取已有 ID，防止增量运行时键值冲突
+    const localeMap = LanguageFileManager.readLocaleFile(
+      this.config,
+      this.isCustom,
+    );
+    if (localeMap) {
+      for (const key of Object.keys(localeMap)) {
+        existingIds.add(key);
+      }
+    }
+
+    // 从源文件中扫描已有的 t()/$t() 调用
+    const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
+    for (const filePath of Object.keys(fileGroups)) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        let match;
+        while ((match = i18nKeyPattern.exec(content)) !== null) {
+          if (match[1]) existingIds.add(match[1]);
+        }
+        i18nKeyPattern.lastIndex = 0;
+      } catch {
+        /* 忽略读取失败 */
+      }
+    }
+
     const textGroups: Record<string, string[]> = {};
     Object.entries(fileGroups).forEach(([filePath, strings]) => {
       textGroups[filePath] = strings.map((item) => item.original);
@@ -193,28 +225,26 @@ export class GenerateProcessor extends BaseProcessor {
             item.semanticId = textToIdMap.get(messageForId)!;
           } else {
             let finalId: string;
-            if (skipDify) {
-              finalId =
-                ids[index] ||
-                IdGenerator.generateWithFilePath(
-                  item.filePath,
-                  messageForId,
-                  existingIds,
-                );
-            } else {
-              const difyId =
-                ids[index] ||
-                IdGenerator.generateWithFilePath(
-                  item.filePath,
-                  messageForId,
-                  existingIds,
-                );
+            const difyId = ids[index];
+
+            if (difyId) {
+              // Dify 返回的是纯语义 ID，需要添加目录前缀
               finalId = IdGenerator.addDirectoryPrefixToId(
                 item.filePath,
                 difyId,
                 existingIds,
+                this.config.idPrefix,
+              );
+            } else {
+              // Dify 未返回或跳过，本地生成（内部已包含目录前缀）
+              finalId = IdGenerator.generateWithFilePath(
+                item.filePath,
+                messageForId,
+                existingIds,
+                this.config.idPrefix,
               );
             }
+
             textToIdMap.set(messageForId, finalId);
             item.semanticId = finalId;
           }

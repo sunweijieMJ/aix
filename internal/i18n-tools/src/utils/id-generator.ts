@@ -1,4 +1,5 @@
 import path from 'path';
+import type { IdPrefixConfig } from '../config/types';
 import { CONFIG } from './constants';
 import { LoggerUtils } from './logger';
 import type { DifyClient } from './dify-client';
@@ -114,36 +115,54 @@ export class IdGenerator {
    * 使用默认策略生成ID
    * @param filePath - 文件路径
    * @param text - 文本内容
+   * @param existingIds - 已有的ID集合
+   * @param prefixConfig - ID 前缀配置
    * @returns 生成的ID
    */
   private static generateDefault(
     filePath: string,
     text: string,
     existingIds: Set<string>,
+    prefixConfig?: IdPrefixConfig,
   ): string {
     const semanticPart = this.extractSemanticPart(text);
-    return this._createFullId(filePath, semanticPart, existingIds);
+    return this._createFullId(
+      filePath,
+      semanticPart,
+      existingIds,
+      prefixConfig,
+    );
   }
 
   /**
    * 提取目录前缀
    * @param filePath - 文件路径
+   * @param prefixConfig - ID 前缀配置
    * @returns 目录前缀
    */
-  private static extractDirectoryPrefix(filePath: string): string {
+  private static extractDirectoryPrefix(
+    filePath: string,
+    prefixConfig?: IdPrefixConfig,
+  ): string {
     if (!filePath) return '';
+
+    // 如果配置了自定义固定前缀，直接使用
+    if (prefixConfig?.value) {
+      return prefixConfig.value;
+    }
 
     const normalizedPath = path.normalize(filePath);
     const parts = normalizedPath.split(path.sep);
 
-    // 找到src目录的索引
-    const srcIndex = parts.findIndex((part) => part === 'src');
-    if (srcIndex === -1 || srcIndex >= parts.length - 1) {
+    // 使用配置的锚点目录或默认 'src'
+    const anchor = prefixConfig?.anchor || 'src';
+    const anchorIndex = parts.findIndex((part) => part === anchor);
+    if (anchorIndex === -1 || anchorIndex >= parts.length - 1) {
       return '';
     }
 
-    // src下的一级目录
-    const firstLevelDir = parts[srcIndex + 1];
+    // 锚点下的一级目录
+    const firstLevelDir = parts[anchorIndex + 1];
 
     // 当前文件所在目录（不包括文件名）
     const fileIndex = parts.length - 1; // 文件名的索引
@@ -215,42 +234,51 @@ export class IdGenerator {
    * 生成带文件路径的ID
    * @param filePath - 文件路径
    * @param text - 文本内容
+   * @param existingIds - 已有的ID集合
+   * @param prefixConfig - ID 前缀配置
    * @returns 生成的ID
    */
   static generateWithFilePath(
     filePath: string,
     text: string,
     existingIds: Set<string>,
+    prefixConfig?: IdPrefixConfig,
   ): string {
-    return this.generateDefault(filePath, text, existingIds);
+    return this.generateDefault(filePath, text, existingIds, prefixConfig);
   }
 
   /**
    * 为语义ID添加目录前缀
    * @param filePath - 文件路径
    * @param semanticId - 语义ID
+   * @param existingIds - 已有的ID集合
+   * @param prefixConfig - ID 前缀配置
    * @returns 带目录前缀的完整ID
    */
   static addDirectoryPrefixToId(
     filePath: string,
     semanticId: string,
     existingIds: Set<string>,
+    prefixConfig?: IdPrefixConfig,
   ): string {
-    return this._createFullId(filePath, semanticId, existingIds);
+    return this._createFullId(filePath, semanticId, existingIds, prefixConfig);
   }
 
   /**
    * 创建完整的、唯一的ID
    * @param filePath - 文件路径
    * @param semanticPart - 语义部分
+   * @param existingIds - 已有的ID集合
+   * @param prefixConfig - ID 前缀配置
    * @returns 完整的唯一ID
    */
   private static _createFullId(
     filePath: string,
     semanticPart: string,
     existingIds: Set<string>,
+    prefixConfig?: IdPrefixConfig,
   ): string {
-    const directoryPrefix = this.extractDirectoryPrefix(filePath);
+    const directoryPrefix = this.extractDirectoryPrefix(filePath, prefixConfig);
     const cleanedSemanticId = this.sanitizeSemanticId(semanticPart);
 
     if (directoryPrefix) {

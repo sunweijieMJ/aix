@@ -58,7 +58,8 @@ export class ASTUtils {
         ) {
           if (
             ts.isIdentifier(jsxElement.tagName) &&
-            jsxElement.tagName.text === 'FormattedMessage'
+            (jsxElement.tagName.text === 'FormattedMessage' ||
+              jsxElement.tagName.text === 'Trans')
           ) {
             return true;
           }
@@ -68,7 +69,8 @@ export class ASTUtils {
         const openingElement = parent.openingElement;
         if (
           ts.isIdentifier(openingElement.tagName) &&
-          openingElement.tagName.text === 'FormattedMessage'
+          (openingElement.tagName.text === 'FormattedMessage' ||
+            openingElement.tagName.text === 'Trans')
         ) {
           return true;
         }

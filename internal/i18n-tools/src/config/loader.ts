@@ -5,8 +5,11 @@ import {
   DEFAULT_CONCURRENCY,
   DEFAULT_DIFY_TIMEOUT,
   DEFAULT_EXCLUDE,
+  DEFAULT_ID_PREFIX,
   DEFAULT_INCLUDE,
   DEFAULT_PATHS,
+  DEFAULT_REACT,
+  DEFAULT_VUE,
 } from './defaults';
 import type { I18nToolsConfig, ResolvedConfig } from './types';
 
@@ -69,6 +72,14 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   return {
     rootDir,
     framework: userConfig.framework,
+    vue: {
+      library: userConfig.vue?.library ?? DEFAULT_VUE.library,
+      namespace: userConfig.vue?.namespace ?? DEFAULT_VUE.namespace,
+    },
+    react: {
+      library: userConfig.react?.library ?? DEFAULT_REACT.library,
+      namespace: userConfig.react?.namespace ?? DEFAULT_REACT.namespace,
+    },
     paths: {
       locale: path.resolve(
         rootDir,
@@ -86,6 +97,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
         rootDir,
         userConfig.paths.source || DEFAULT_PATHS.source,
       ),
+      tImport: userConfig.paths.tImport || DEFAULT_PATHS.tImport,
     },
     dify: {
       idGeneration: {
@@ -98,6 +110,10 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
         apiKey: userConfig.dify.translation.apiKey,
         timeout: userConfig.dify.translation.timeout ?? DEFAULT_DIFY_TIMEOUT,
       },
+    },
+    idPrefix: {
+      anchor: userConfig.idPrefix?.anchor ?? DEFAULT_ID_PREFIX.anchor,
+      value: userConfig.idPrefix?.value ?? DEFAULT_ID_PREFIX.value,
     },
     concurrency: {
       idGeneration:

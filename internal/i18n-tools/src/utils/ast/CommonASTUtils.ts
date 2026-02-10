@@ -414,6 +414,14 @@ export class CommonASTUtils {
       }
     }
 
+    // 处理无变量模板字符串（`文本` 没有 ${} 的场景）
+    if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      const nodeText = CommonASTUtils.nodeToText(node, sourceFile);
+      if (CommonASTUtils.shouldReplaceNode(nodeText, originalText, false)) {
+        return node;
+      }
+    }
+
     const nearbyNode = CommonASTUtils.findNearbyStringNode(
       sourceFile,
       position,
@@ -478,7 +486,11 @@ export class CommonASTUtils {
       );
       if (!node) continue;
 
-      if (ts.isStringLiteral(node) || ts.isJsxText(node)) {
+      if (
+        ts.isStringLiteral(node) ||
+        ts.isJsxText(node) ||
+        ts.isNoSubstitutionTemplateLiteral(node)
+      ) {
         const nodeText = CommonASTUtils.nodeToText(node, sourceFile);
         if (CommonASTUtils.shouldReplaceNode(nodeText, originalText, false)) {
           return node;

@@ -215,6 +215,7 @@ export class ReactASTUtils {
       'useLayoutEffect',
       'useDebugValue',
       'useIntl',
+      'useTranslation',
     ]);
 
     const visit = (n: ts.Node) => {

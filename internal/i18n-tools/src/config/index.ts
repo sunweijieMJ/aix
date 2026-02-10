@@ -3,6 +3,7 @@ export type {
   I18nToolsConfig,
   ResolvedConfig,
   DifyApiConfig,
+  IdPrefixConfig,
   PathsConfig,
   ConcurrencyConfig,
 } from './types';

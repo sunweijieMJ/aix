@@ -11,24 +11,25 @@ import type {
 } from '../../utils/types';
 
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
+import type { ReactI18nLibrary } from './libraries';
 
 /**
  * React 还原代码转换器
- * 负责将国际化代码还原为原始文本
+ * 负责将国际化代码还原为原始文本（由 library 适配器驱动）
  */
 export class ReactRestoreTransformer implements IRestoreTransformer {
-  /**
-   * 转换文件（实现接口方法）
-   * @param filePath - 文件路径
-   * @param localeMap - 语言映射
-   * @returns 转换后的代码
-   */
+  private tImport: string;
+  private library: ReactI18nLibrary;
+
+  constructor(tImport: string = '@/plugins/locale', library: ReactI18nLibrary) {
+    this.tImport = tImport;
+    this.library = library;
+  }
+
   transform(filePath: string, localeMap: LocaleMap): string {
-    // 读取文件内容
     const sourceText = fs.readFileSync(filePath, 'utf-8');
     const sourceFile = ASTUtils.parseSourceFile(sourceText, filePath);
 
-    // 创建转换上下文
     const context: TransformContext = {
       localeMap,
       definedMessages: new Map(),
@@ -50,19 +51,15 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     });
 
     // 应用转换
-    const transformer = ReactRestoreTransformer.createTransformer(context);
+    const transformer = this.createTransformer(context);
     const result = ts.transform(sourceFile, [transformer]);
 
-    // 如果没有变化，返回原文本
     if (!context.hasChanges) {
       return sourceText;
     }
 
-    // 生成转换后的代码
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
     let transformedCode = printer.printFile(result.transformed[0]!);
-
-    // 清理代码（将 Unicode 转为中文）
     transformedCode =
       ReactImportManager.convertUnicodeToChineseInCode(transformedCode);
 
@@ -72,24 +69,19 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   }
 
   /**
-   * 转换formatMessage调用
-   * @param node - 调用表达式节点
-   * @param localeMap - 语言映射
-   * @param definedMessages - 定义的消息映射
-   * @param sourceFile - 源文件
-   * @returns 转换后的节点或null
+   * 转换翻译函数调用
    */
-  static transformFormatMessage(
+  private transformTranslationCall(
     node: ts.CallExpression,
     localeMap: Record<string, string>,
     definedMessages: Map<string, MessageInfo>,
     sourceFile: ts.SourceFile,
   ): ts.Node | null {
-    if (!ASTUtils.isFormatMessageCall(node)) {
+    if (!this.library.isTranslationCall(node)) {
       return null;
     }
 
-    const messageInfo = ASTUtils.extractFormatMessageInfo(
+    const messageInfo = this.extractTranslationCallInfo(
       node,
       definedMessages,
       sourceFile,
@@ -98,18 +90,14 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return null;
     }
 
-    // 直接从localeMap获取模板，绕过可能导致"[object Object]"问题的字符串替换
     const messageTemplate = messageInfo.id
       ? localeMap[messageInfo.id]
       : undefined;
-
-    // 如果模板不存在，则回退到 defaultMessage
     const templateToUse = messageTemplate ?? messageInfo.defaultMessage;
     if (templateToUse === undefined) {
       return null;
     }
 
-    // 确保文本是正确的中文字符串，而不是Unicode编码
     return ASTUtils.createStringOrTemplateNode(
       templateToUse,
       messageInfo.values,
@@ -117,14 +105,65 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   }
 
   /**
-   * 转换FormattedMessage组件
-   * @param node - JSX元素或自闭合元素节点
-   * @param localeMap - 语言映射
-   * @param definedMessages - 定义的消息映射
-   * @param sourceFile - 源文件
-   * @returns 转换后的节点或null
+   * 提取翻译调用的信息（根据 library 类型分发）
    */
-  static transformFormattedMessage(
+  private extractTranslationCallInfo(
+    node: ts.CallExpression,
+    definedMessages: Map<string, MessageInfo>,
+    sourceFile: ts.SourceFile,
+  ): MessageInfo {
+    // react-intl: intl.formatMessage({ id: 'key' }, { values })
+    if (this.library.packageName === 'react-intl') {
+      return ASTUtils.extractFormatMessageInfo(
+        node,
+        definedMessages,
+        sourceFile,
+      );
+    }
+
+    // react-i18next: t('key', { values }) 或 t('namespace:key', { values })
+    const arg = node.arguments[0];
+    if (!arg) return {};
+
+    const messageInfo: MessageInfo = {};
+
+    if (ts.isStringLiteral(arg)) {
+      let id = arg.text;
+      // 剥离 namespace 前缀 (如 'common:button.submit' → 'button.submit')
+      const colonIndex = id.indexOf(':');
+      if (colonIndex !== -1) {
+        id = id.substring(colonIndex + 1);
+      }
+      messageInfo.id = id;
+    }
+
+    const valuesArg = node.arguments[1];
+    if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
+      const props: Record<string, string> = {};
+      for (const prop of valuesArg.properties) {
+        if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+          const name = prop.name.text;
+          if (name === 'defaultValue') {
+            messageInfo.defaultMessage = ts.isStringLiteral(prop.initializer)
+              ? prop.initializer.text
+              : undefined;
+          } else {
+            props[name] = prop.initializer.getText(sourceFile);
+          }
+        }
+      }
+      if (Object.keys(props).length > 0) {
+        messageInfo.values = props;
+      }
+    }
+
+    return messageInfo;
+  }
+
+  /**
+   * 转换翻译 JSX 组件
+   */
+  private transformTranslationComponent(
     node: ts.JsxElement | ts.JsxSelfClosingElement,
     localeMap: Record<string, string>,
     definedMessages: Map<string, MessageInfo>,
@@ -134,12 +173,12 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
     if (
       !ts.isIdentifier(openingElement.tagName) ||
-      openingElement.tagName.text !== 'FormattedMessage'
+      !this.library.isTranslationComponent(openingElement.tagName.text)
     ) {
       return null;
     }
 
-    const messageInfo = ASTUtils.extractFormattedMessageInfo(
+    const messageInfo = this.extractJSXComponentInfo(
       openingElement,
       definedMessages,
       sourceFile,
@@ -153,40 +192,88 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       : undefined;
     const finalText = messageTemplate ?? messageInfo.defaultMessage ?? '';
 
-    // 如果有values属性，则创建模板字符串
     if (messageInfo.values && Object.keys(messageInfo.values).length > 0) {
       return ASTUtils.createStringOrTemplateNode(finalText, messageInfo.values);
     }
 
-    // 否则创建普通文本节点
     return ts.factory.createJsxText(finalText, false);
   }
 
   /**
-   * 创建转换器
-   * @param context - 转换上下文
-   * @returns 转换器工厂函数
+   * 提取 JSX 组件的信息（根据 library 类型分发）
    */
-  static createTransformer(
+  private extractJSXComponentInfo(
+    openingElement: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
+    definedMessages: Map<string, MessageInfo>,
+    sourceFile: ts.SourceFile,
+  ): MessageInfo {
+    // react-intl: <FormattedMessage id="key" defaultMessage="text" values={{ }} />
+    if (this.library.packageName === 'react-intl') {
+      return ASTUtils.extractFormattedMessageInfo(
+        openingElement,
+        definedMessages,
+        sourceFile,
+      );
+    }
+
+    // react-i18next: <Trans i18nKey="key" defaults="text" values={{ }} />
+    const messageInfo: MessageInfo = {};
+    for (const attribute of openingElement.attributes.properties) {
+      if (ts.isJsxAttribute(attribute) && ts.isIdentifier(attribute.name)) {
+        const attrName = attribute.name.text;
+        if (attrName === 'i18nKey' && attribute.initializer) {
+          if (ts.isStringLiteral(attribute.initializer)) {
+            let id = attribute.initializer.text;
+            // 剥离 namespace 前缀
+            const colonIndex = id.indexOf(':');
+            if (colonIndex !== -1) {
+              id = id.substring(colonIndex + 1);
+            }
+            messageInfo.id = id;
+          }
+        } else if (attrName === 'defaults' && attribute.initializer) {
+          if (ts.isStringLiteral(attribute.initializer)) {
+            messageInfo.defaultMessage = attribute.initializer.text;
+          }
+        } else if (attrName === 'values' && attribute.initializer) {
+          if (
+            ts.isJsxExpression(attribute.initializer) &&
+            attribute.initializer.expression &&
+            ts.isObjectLiteralExpression(attribute.initializer.expression)
+          ) {
+            const props: Record<string, string> = {};
+            for (const prop of attribute.initializer.expression.properties) {
+              if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+                props[prop.name.text] = prop.initializer.getText(sourceFile);
+              }
+            }
+            messageInfo.values = props;
+          }
+        }
+      }
+    }
+    return messageInfo;
+  }
+
+  /**
+   * 创建 AST 转换器
+   */
+  private createTransformer(
     context: TransformContext,
   ): ts.TransformerFactory<ts.SourceFile> {
-    // 预备遍历，用于收集HOC组件的名称映射
+    const library = this.library;
+    const tImport = this.tImport;
+
+    // 预备遍历，收集 HOC 组件的名称映射
     function prepass(node: ts.Node) {
-      // 检查每个变量声明，而不是整个语句
       if (ts.isVariableDeclaration(node)) {
-        if (
-          ts.isIdentifier(node.name) &&
-          node.initializer &&
-          ts.isCallExpression(node.initializer) &&
-          ts.isIdentifier(node.initializer.expression) &&
-          node.initializer.expression.text === 'injectIntl' &&
-          node.initializer.arguments.length > 0 &&
-          ts.isIdentifier(node.initializer.arguments[0]!)
-        ) {
-          const wrappedName = node.name.text;
-          const originalName = (node.initializer.arguments[0] as ts.Identifier)
-            .text;
-          context.componentNameMap.set(wrappedName, originalName);
+        if (ts.isIdentifier(node.name) && node.initializer) {
+          const wrappedComponent = library.getHOCWrappedComponent(
+            node.initializer,
+          );
+          if (wrappedComponent) {
+            context.componentNameMap.set(node.name.text, wrappedComponent);
+          }
         }
       }
       ts.forEachChild(node, prepass);
@@ -197,37 +284,35 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       const visit = (node: ts.Node): ts.Node | ts.Node[] => {
         let currentNode = node;
 
-        // 顺序很重要
         // 1. 重命名组件引用
         currentNode = ReactImportManager.renameComponent(currentNode, context);
-        if (currentNode !== node) {
-          context.hasChanges = true;
-        }
+        if (currentNode !== node) context.hasChanges = true;
 
-        // 2. 解除 injectIntl HOC (现在只做删除/解包)
-        currentNode = ReactImportManager.unwrapInjectIntl(currentNode, context);
-        if (currentNode !== node) {
-          context.hasChanges = true;
-        }
+        // 2. 解除 HOC
+        currentNode = ReactImportManager.unwrapHOC(
+          currentNode,
+          context,
+          library,
+        );
+        if (currentNode !== node) context.hasChanges = true;
 
-        // 3. 清理 WrappedComponentProps 类型引用
-        currentNode =
-          ReactImportManager.cleanupWrappedComponentProps(currentNode);
-        if (currentNode !== node) {
-          context.hasChanges = true;
-        }
+        // 3. 清理 HOC Props 类型引用
+        currentNode = ReactImportManager.cleanupHOCPropsType(
+          currentNode,
+          library,
+        );
+        if (currentNode !== node) context.hasChanges = true;
 
         let nodeChanged = false;
 
-        // 转换formatMessage调用
+        // 转换翻译函数调用
         if (ts.isCallExpression(currentNode)) {
-          const transformedNode =
-            ReactRestoreTransformer.transformFormatMessage(
-              currentNode,
-              context.localeMap,
-              context.definedMessages,
-              context.sourceFile,
-            );
+          const transformedNode = this.transformTranslationCall(
+            currentNode,
+            context.localeMap,
+            context.definedMessages,
+            context.sourceFile,
+          );
           if (transformedNode) {
             context.hasChanges = true;
             currentNode = transformedNode;
@@ -235,7 +320,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           }
         }
 
-        // 处理对象字面量中的formatMessage调用
+        // 处理对象字面量中的翻译调用
         if (ts.isObjectLiteralExpression(currentNode)) {
           const transformedProperties: ts.ObjectLiteralElementLike[] = [];
           let objectChanged = false;
@@ -244,15 +329,13 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             if (ts.isPropertyAssignment(prop)) {
               let newInitializer = prop.initializer;
 
-              // 处理属性值中的formatMessage调用
               if (ts.isCallExpression(prop.initializer)) {
-                const transformedCall =
-                  ReactRestoreTransformer.transformFormatMessage(
-                    prop.initializer,
-                    context.localeMap,
-                    context.definedMessages,
-                    context.sourceFile,
-                  );
+                const transformedCall = this.transformTranslationCall(
+                  prop.initializer,
+                  context.localeMap,
+                  context.definedMessages,
+                  context.sourceFile,
+                );
                 if (transformedCall && ts.isExpression(transformedCall)) {
                   newInitializer = transformedCall;
                   objectChanged = true;
@@ -283,20 +366,18 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           }
         }
 
-        // 如果没有转换为其他类型的节点，继续进行其他检查
         if (!nodeChanged) {
-          // 转换FormattedMessage组件
+          // 转换翻译 JSX 组件
           if (
             ts.isJsxElement(currentNode) ||
             ts.isJsxSelfClosingElement(currentNode)
           ) {
-            const transformedNode =
-              ReactRestoreTransformer.transformFormattedMessage(
-                currentNode,
-                context.localeMap,
-                context.definedMessages,
-                context.sourceFile,
-              );
+            const transformedNode = this.transformTranslationComponent(
+              currentNode,
+              context.localeMap,
+              context.definedMessages,
+              context.sourceFile,
+            );
             if (transformedNode) {
               context.hasChanges = true;
               currentNode = transformedNode;
@@ -304,9 +385,13 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             }
           }
 
-          // 清理导入 (现在由 unwrapInjectIntl 和其他清理共同完成)
+          // 清理导入
           if (ts.isImportDeclaration(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupImports(currentNode);
+            const cleanedNode = ReactImportManager.cleanupImports(
+              currentNode,
+              tImport,
+              library,
+            );
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
@@ -316,8 +401,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
           // 清理变量声明
           if (ts.isVariableStatement(currentNode)) {
-            const cleanedNode =
-              ReactImportManager.cleanupVariableStatements(currentNode);
+            const cleanedNode = ReactImportManager.cleanupVariableStatements(
+              currentNode,
+              library,
+            );
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
@@ -325,10 +412,12 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             }
           }
 
-          // 清理Hook依赖数组（只对调用表达式进行）
+          // 清理Hook依赖数组
           if (ts.isCallExpression(currentNode)) {
-            const cleanedNode =
-              ReactImportManager.cleanupHookDependencies(currentNode);
+            const cleanedNode = ReactImportManager.cleanupHookDependencies(
+              currentNode,
+              library,
+            );
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
@@ -337,7 +426,6 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           }
         }
 
-        // 继续递归遍历子节点
         return ts.visitEachChild(currentNode, visit, transformationContext);
       };
 

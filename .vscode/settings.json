@@ -42,5 +42,11 @@
       "mode": "auto"
     }
   ],
-  "stylelint.validate": ["css", "postcss", "less", "scss", "sass", "vue"]
+  "stylelint.validate": ["css", "postcss", "less", "scss", "sass", "vue"],
+  "i18n-ally.sourceLanguage": "zh-CN",
+  "i18n-ally.displayLanguage": "zh-CN",
+  "i18n-ally.enabledParsers": ["json"],
+  "i18n-ally.enabledFrameworks": ["react", "vue", "vue-sfc"],
+  "i18n-ally.localesPaths": ["apps/client/src/locale"],
+  "i18n-ally.keystyle": "flat"
 }

@@ -162,8 +162,11 @@ const main = async (): Promise<void> => {
 
   const argv = await yargsObj.parse();
 
-  // 加载配置
-  const config = await loadConfig(argv.config as string | undefined);
+  // 加载配置（将相对路径转为绝对路径）
+  const configPath = argv.config
+    ? path.resolve(process.cwd(), argv.config as string)
+    : undefined;
+  const config = await loadConfig(configPath);
   if (!config) {
     LoggerUtils.error(
       '❌ 无法加载配置文件。请在项目根目录创建 i18n.config.ts 或使用 --config 指定路径。',
@@ -221,7 +224,8 @@ export default defineConfig({
   // 输出操作信息
   const location =
     mode === ModeName.EXPORT ? '全局' : custom ? '定制目录' : '主目录';
-  const frameworkLib = config.framework === 'vue' ? 'vue-i18n' : 'react-intl';
+  const frameworkLib =
+    config.framework === 'vue' ? config.vue.library : config.react.library;
   LoggerUtils.info(`🎯 执行模式: ${mode} (${MODE_DESCRIPTIONS[mode]})`);
   LoggerUtils.info(`📍 操作目录: ${location}`);
   LoggerUtils.info(`⚡ 项目框架: ${config.framework} (${frameworkLib})`);

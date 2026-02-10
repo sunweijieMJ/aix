@@ -53,9 +53,11 @@ export class LoggerUtils {
    */
   static error(message: string, error?: any): void {
     if (LoggerUtils.logLevel <= LogLevel.ERROR) {
-      console.error(chalk.red(`[ERROR] ${message}`));
       if (error) {
-        console.error(error);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error(chalk.red(`[ERROR] ${message} ${errorMsg}`));
+      } else {
+        console.error(chalk.red(`[ERROR] ${message}`));
       }
     }
   }

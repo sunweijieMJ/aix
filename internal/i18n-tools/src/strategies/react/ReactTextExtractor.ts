@@ -4,12 +4,18 @@ import { ASTUtils } from '../../utils/ast/ASTUtils';
 import { FileUtils } from '../../utils/file-utils';
 import type { ExtractedString, MessageInfo } from '../../utils/types';
 import type { ITextExtractor } from '../../adapters/FrameworkAdapter';
+import type { ReactI18nLibrary } from './libraries';
 
 /**
  * React 文本提取器
  * 负责从 React 文件中提取需要国际化的文本
  */
 export class ReactTextExtractor implements ITextExtractor {
+  private library?: ReactI18nLibrary;
+
+  constructor(library?: ReactI18nLibrary) {
+    this.library = library;
+  }
   /**
    * 从单个文件中提取字符串
    * @param filePath - 文件路径
@@ -107,7 +113,10 @@ export class ReactTextExtractor implements ITextExtractor {
 
     if (node) {
       // 如果节点已经被国际化结构包裹，则不提取
-      if (ASTUtils.isAlreadyInternationalized(node)) {
+      const alreadyI18n = this.library
+        ? this.library.isAlreadyInternationalized(node)
+        : ASTUtils.isAlreadyInternationalized(node);
+      if (alreadyI18n) {
         return false;
       }
       // 如果字符串在console调用中，不提取

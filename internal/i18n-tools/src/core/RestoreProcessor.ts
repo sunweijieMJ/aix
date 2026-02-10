@@ -28,7 +28,13 @@ export class RestoreProcessor extends BaseProcessor {
     super(config, isCustom);
     this.framework = config.framework;
     this.adapter =
-      config.framework === 'vue' ? new VueAdapter() : new ReactAdapter();
+      config.framework === 'vue'
+        ? new VueAdapter(config.paths.tImport, config.vue.library, {
+            namespace: config.vue.namespace || undefined,
+          })
+        : new ReactAdapter(config.paths.tImport, config.react.library, {
+            namespace: config.react.namespace || undefined,
+          });
   }
 
   protected getOperationName(): string {

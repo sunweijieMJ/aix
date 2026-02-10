@@ -1,6 +1,5 @@
 import type { DifyApiConfig } from '../config';
 import { ConcurrencyController } from './concurrency-controller';
-import { IdGenerator } from './id-generator';
 import { LoggerUtils } from './logger';
 import { DifyResponse, DifyTranslateResponse, Translations } from './types';
 
@@ -81,7 +80,7 @@ export class DifyClient {
       `🔄 使用并发处理，最大并发数: ${this.concurrencyController.getStatus().maxConcurrency}`,
     );
 
-    // 并发处理所有批次
+    // 并发处理所有批次，使用 allSettled 确保所有批次完成后再继续
     const batchPromises = batches.map((batch, index) =>
       this.concurrencyController.add(async () => {
         LoggerUtils.info(
@@ -99,9 +98,21 @@ export class DifyClient {
       }),
     );
 
-    // 等待所有批次完成
-    const batchResults = await Promise.all(batchPromises);
-    const results = batchResults.flat();
+    // 等待所有批次完成（不会因单个失败而提前返回）
+    const settledResults = await Promise.allSettled(batchPromises);
+
+    // 检查是否有失败的批次
+    const failedBatches = settledResults.filter((r) => r.status === 'rejected');
+    if (failedBatches.length > 0) {
+      throw new Error(`${failedBatches.length}/${totalBatches} 个批次处理失败`);
+    }
+
+    const results = settledResults
+      .filter(
+        (r): r is PromiseFulfilledResult<string[]> => r.status === 'fulfilled',
+      )
+      .map((r) => r.value)
+      .flat();
 
     LoggerUtils.success(
       `🎉 所有批次处理完成，共生成 ${results.length} 个语义ID`,
@@ -336,22 +347,21 @@ export class DifyClient {
    * 为文件生成语义ID
    * @param fileGroups - 文件分组
    * @param skipDify - 是否跳过Dify API
-   * @returns 文件分组的语义ID
+   * @returns 文件分组的语义ID（Dify失败时返回空数组，由调用方兜底）
    */
   async generateSemanticIdsForFiles(
     fileGroups: Record<string, string[]>,
     skipDify: boolean = false,
   ): Promise<Record<string, string[]>> {
     const results: Record<string, string[]> = {};
-    const existingIds = new Set<string>();
 
-    // 如果跳过Dify，则使用本地生成策略
+    // 如果跳过Dify，返回空结果，由调用方使用本地生成策略
     if (skipDify) {
-      LoggerUtils.info('🔄 检测到 --skip-dify，使用本地ID生成策略...');
-      for (const [filePath, texts] of Object.entries(fileGroups)) {
-        results[filePath] = texts.map((text) =>
-          IdGenerator.generateWithFilePath(filePath, text, existingIds),
-        );
+      LoggerUtils.info(
+        '🔄 检测到 --skip-dify，将由调用方使用本地ID生成策略...',
+      );
+      for (const filePath of Object.keys(fileGroups)) {
+        results[filePath] = [];
       }
       return results;
     }
@@ -374,11 +384,9 @@ export class DifyClient {
           );
         } catch {
           LoggerUtils.warn(
-            `⚠️ 文件 ${filePath} 的Dify API调用失败，将使用本地ID生成兜底`,
+            `⚠️ 文件 ${filePath} 的Dify API调用失败，将由调用方使用本地ID生成兜底`,
           );
-          results[filePath] = texts.map((text) =>
-            IdGenerator.generateWithFilePath(filePath, text, existingIds),
-          );
+          results[filePath] = [];
         }
       }),
     );

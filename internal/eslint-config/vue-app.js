@@ -1,4 +1,4 @@
-import eslintPluginImport from 'eslint-plugin-import';
+import eslintPluginImportX from 'eslint-plugin-import-x';
 import eslintPluginVue from 'eslint-plugin-vue';
 import tseslint from 'typescript-eslint';
 import { baseConfig } from './base.js';
@@ -63,7 +63,7 @@ export const config = [
   // ==================== Import 规则配置 ====================
   {
     plugins: {
-      import: eslintPluginImport,
+      import: eslintPluginImportX,
     },
     settings: {
       'import/resolver': {

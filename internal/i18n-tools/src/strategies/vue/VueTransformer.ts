@@ -6,12 +6,21 @@ import type { ExtractedString } from '../../utils/types';
 import type { ITransformer } from '../../adapters/FrameworkAdapter';
 import { VueImportManager } from './VueImportManager';
 import { VueComponentInjector } from './VueComponentInjector';
+import type { VueI18nLibrary } from './libraries';
 
 /**
  * Vue 代码转换器
- * 负责将提取的文本替换为 vue-i18n 调用
+ * 负责将提取的文本替换为 i18n 调用
  */
 export class VueTransformer implements ITransformer {
+  private tImport: string;
+  private library?: VueI18nLibrary;
+
+  constructor(tImport: string = '@/plugins/locale', library?: VueI18nLibrary) {
+    this.tImport = tImport;
+    this.library = library;
+  }
+
   /**
    * 转换文件
    * @param filePath - 文件路径
@@ -100,16 +109,16 @@ export class VueTransformer implements ITransformer {
     }
 
     // 添加必要的导入和声明
-    const importManager = new VueImportManager();
+    const importManager = new VueImportManager(this.tImport, this.library);
     transformedCode = importManager.handleGlobalImports(
       transformedCode,
       fileStrings,
       filePath,
     );
 
-    // 只对 .vue 文件注入 useI18n
+    // 只对 .vue 文件注入 Hook
     if (ext === 'vue') {
-      const componentInjector = new VueComponentInjector();
+      const componentInjector = new VueComponentInjector(this.library);
       transformedCode = componentInjector.inject(transformedCode);
     }
 
@@ -234,7 +243,6 @@ export class VueTransformer implements ITransformer {
       const doubleQuotePattern = `"${original}"`;
       index = targetLine.indexOf(doubleQuotePattern, column);
       if (index !== -1) {
-        // 在引号内的字符串（三元运算符内），替换整个 "text" 为 $t(...)
         lines[line] =
           targetLine.substring(0, index) +
           replacement +
@@ -242,18 +250,110 @@ export class VueTransformer implements ITransformer {
         return lines.join('\n');
       }
 
+      // 查找反引号版本（处理无变量模板字符串场景）
+      const backtickPattern = `\`${original}\``;
+      index = targetLine.indexOf(backtickPattern, column);
+      if (index !== -1) {
+        lines[line] =
+          targetLine.substring(0, index) +
+          replacement +
+          targetLine.substring(index + backtickPattern.length);
+        return lines.join('\n');
+      }
+
       // 如果没有找到带引号的版本，查找原始字符串（处理文本节点场景）
-      // 对于文本节点，不使用column限制，因为column可能指向文本中间而非起始位置
       index = targetLine.indexOf(original);
       if (index !== -1) {
         lines[line] =
           targetLine.substring(0, index) +
           replacement +
           targetLine.substring(index + original.length);
+        return lines.join('\n');
+      }
+    }
+
+    // Fallback: 在附近行搜索（处理多行文本节点和跨行插值表达式）
+    for (let delta = 1; delta <= 5; delta++) {
+      for (const tryIdx of [line + delta, line - delta]) {
+        if (tryIdx < 0 || tryIdx >= lines.length) continue;
+        const result = this.tryReplaceOnLine(
+          lines[tryIdx]!,
+          original,
+          replacement,
+        );
+        if (result !== null) {
+          lines[tryIdx] = result;
+          return lines.join('\n');
+        }
       }
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * 在单行中尝试替换文本（用于 fallback 搜索附近行）
+   * @param lineContent - 行内容
+   * @param original - 原始字符串
+   * @param replacement - 替换字符串
+   * @returns 替换后的行内容，如果未找到匹配则返回 null
+   */
+  private tryReplaceOnLine(
+    lineContent: string,
+    original: string,
+    replacement: string,
+  ): string | null {
+    // 静态属性转换
+    if (replacement.startsWith(':')) {
+      const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const attrPattern = new RegExp(`([\\w-]+)=["']${escapedOriginal}["']`);
+      const match = lineContent.match(attrPattern);
+      if (match) {
+        return lineContent.replace(match[0], replacement);
+      }
+    }
+
+    const hasQuotes =
+      (original.startsWith("'") && original.endsWith("'")) ||
+      (original.startsWith('"') && original.endsWith('"')) ||
+      (original.startsWith('`') && original.endsWith('`'));
+
+    if (hasQuotes) {
+      const index = lineContent.indexOf(original);
+      if (index !== -1) {
+        return (
+          lineContent.substring(0, index) +
+          replacement +
+          lineContent.substring(index + original.length)
+        );
+      }
+      return null;
+    }
+
+    // 尝试各种引号包裹
+    for (const quote of ["'", '"', '`']) {
+      const quoted = `${quote}${original}${quote}`;
+      const index = lineContent.indexOf(quoted);
+      if (index !== -1) {
+        return (
+          lineContent.substring(0, index) +
+          replacement +
+          lineContent.substring(index + quoted.length)
+        );
+      }
+    }
+
+    // 尝试裸文本
+    const index = lineContent.indexOf(original);
+    if (index !== -1) {
+      return (
+        lineContent.substring(0, index) +
+        replacement +
+        lineContent.substring(index + original.length)
+      );
+    }
+
+    return null;
   }
 
   /**
@@ -263,12 +363,17 @@ export class VueTransformer implements ITransformer {
    */
   private generateTemplateReplacement(extracted: ExtractedString): string {
     const {
-      semanticId,
       isTemplateString,
       templateVariables,
       templateContext,
       attributeName,
     } = extracted;
+
+    // template 中 $t() 是全局函数，vue-i18next 需要 namespace:key 前缀
+    const ns = this.library?.namespace;
+    const semanticId = ns
+      ? `${ns}:${extracted.semanticId}`
+      : extracted.semanticId;
 
     // 过滤掉字面量，只保留真正的变量表达式
     const actualVariables = templateVariables

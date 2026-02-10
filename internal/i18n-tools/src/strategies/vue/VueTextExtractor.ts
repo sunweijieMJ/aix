@@ -14,12 +14,16 @@ import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
 import type { ExtractedString } from '../../utils/types';
 import type { ITextExtractor } from '../../adapters/FrameworkAdapter';
+import type { VueI18nLibrary } from './libraries';
 
 /**
  * Vue 文本提取器
  * 负责从 Vue 文件中提取需要国际化的文本
  */
 export class VueTextExtractor implements ITextExtractor {
+  constructor(_library?: VueI18nLibrary) {
+    // library 预留用于后续扩展
+  }
   /**
    * 从单个文件中提取字符串
    * @param filePath - 文件路径

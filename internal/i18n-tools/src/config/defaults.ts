@@ -1,4 +1,10 @@
-import type { ConcurrencyConfig, PathsConfig } from './types';
+import type {
+  ConcurrencyConfig,
+  IdPrefixConfig,
+  PathsConfig,
+  ReactConfig,
+  VueConfig,
+} from './types';
 
 /**
  * 默认路径配置
@@ -8,6 +14,31 @@ export const DEFAULT_PATHS: Required<PathsConfig> = {
   customLocale: 'src/overrides/locale',
   exportLocale: 'public/locale',
   source: 'src',
+  tImport: '@/plugins/locale',
+};
+
+/**
+ * 默认 Vue 配置
+ */
+export const DEFAULT_VUE: Required<VueConfig> = {
+  library: 'vue-i18n',
+  namespace: '',
+};
+
+/**
+ * 默认 React 配置
+ */
+export const DEFAULT_REACT: Required<ReactConfig> = {
+  library: 'react-i18next',
+  namespace: '',
+};
+
+/**
+ * 默认 ID 前缀配置
+ */
+export const DEFAULT_ID_PREFIX: Required<IdPrefixConfig> = {
+  anchor: 'src',
+  value: '',
 };
 
 /**
