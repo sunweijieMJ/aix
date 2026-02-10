@@ -4,12 +4,13 @@
  */
 
 import { type App, computed, type InjectionKey, reactive } from 'vue';
-import { themeController } from './theme-controller';
+import { calculateAlgorithm, themeController } from './theme-controller';
 import type {
   PartialThemeTokens,
   ThemeConfig,
   ThemeMode,
   ThemePreset,
+  ThemeTokens,
   TransitionConfig,
 } from './theme-types';
 
@@ -31,6 +32,10 @@ export interface ThemeContext {
   setToken: (key: keyof PartialThemeTokens, value: string | number) => void;
   /** 批量设置 Token */
   setTokens: (tokens: PartialThemeTokens) => void;
+  /** 获取单个 Token 值 */
+  getToken: <K extends keyof ThemeTokens>(key: K) => ThemeTokens[K];
+  /** 获取所有当前 Token */
+  getTokens: () => ThemeTokens;
   /** 应用预设主题 */
   applyPreset: (name: string) => void;
   /** 注册自定义预设 */
@@ -171,10 +176,12 @@ export function createTheme(options?: CreateThemeOptions) {
   const setMode = (newMode: ThemeMode) => {
     state.mode = newMode;
 
-    // 更新配置中的 algorithm
+    // 计算新算法（保留 compact 状态）
+    const newAlgorithm = calculateAlgorithm(newMode, state.config.algorithm);
+
     state.config = {
       ...state.config,
-      algorithm: newMode === 'dark' ? 'dark' : 'default',
+      algorithm: newAlgorithm,
     };
 
     // 应用到 DOM（通过 ThemeController）
@@ -202,8 +209,9 @@ export function createTheme(options?: CreateThemeOptions) {
   const applyTheme = (config: ThemeConfig) => {
     state.config = { ...config };
 
-    // 同步 mode
-    if (config.algorithm === 'dark') {
+    // 同步 mode（dark 和 dark-compact 都算暗色模式）
+    const algorithm = config.algorithm || 'default';
+    if (algorithm === 'dark' || algorithm === 'dark-compact') {
       state.mode = 'dark';
     } else {
       state.mode = 'light';
@@ -252,10 +260,27 @@ export function createTheme(options?: CreateThemeOptions) {
    * 应用预设主题
    */
   const applyPreset = (name: string) => {
+    // 获取预设配置
+    const presets = themeController.getPresets();
+    const preset = presets.find((p) => p.name === name);
+
+    if (!preset) {
+      console.warn(`[ThemeContext] Preset "${name}" not found`);
+      return;
+    }
+
+    // 应用预设到 DOM
     themeController.applyPreset(name);
 
-    // 同步状态
+    // 同步状态：mode 和 config.token
     state.mode = themeController.getMode();
+    state.config = {
+      ...state.config,
+      token: {
+        ...state.config.token,
+        ...preset.token,
+      },
+    };
 
     dispatchChangeEvent();
   };
@@ -327,6 +352,20 @@ export function createTheme(options?: CreateThemeOptions) {
     return themeController.getTransition();
   };
 
+  /**
+   * 获取所有当前 Token
+   */
+  const getTokens = (): ThemeTokens => {
+    return themeController.getTokens();
+  };
+
+  /**
+   * 获取单个 Token 值
+   */
+  const getToken = <K extends keyof ThemeTokens>(key: K): ThemeTokens[K] => {
+    return themeController.getToken(key);
+  };
+
   // 使用 computed 确保响应性
   const modeRef = computed(() => state.mode);
   const configRef = computed(() => state.config);
@@ -349,6 +388,8 @@ export function createTheme(options?: CreateThemeOptions) {
     applyTheme,
     setToken,
     setTokens,
+    getToken,
+    getTokens,
     applyPreset,
     registerPreset,
     getPresets,

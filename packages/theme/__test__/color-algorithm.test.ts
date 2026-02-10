@@ -28,7 +28,7 @@ describe('color-algorithm', () => {
     });
 
     it('should throw error for invalid color', () => {
-      expect(() => parseRGB('invalid')).toThrow('Invalid RGB color');
+      expect(() => parseRGB('invalid')).toThrow('Unsupported color format');
     });
   });
 

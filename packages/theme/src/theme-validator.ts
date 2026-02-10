@@ -44,9 +44,10 @@ export interface ValidationWarning {
 /**
  * RGB 颜色格式正则
  * 支持：rgb(0 0 0), rgb(0, 0, 0), rgb(0 0 0 / 0.5), rgba(0, 0, 0, 0.5)
+ * 支持：rgb(100%, 50%, 0%), rgb(100% 50% 0% / 0.5)
  */
 const RGB_REGEX =
-  /^rgba?\(\s*\d+\s*[,\s]+\s*\d+\s*[,\s]+\s*\d+(\s*[,/]\s*(0?\.\d+|1|0))?\s*\)$/;
+  /^rgba?\(\s*(\d+%?)\s*[,\s]+\s*(\d+%?)\s*[,\s]+\s*(\d+%?)(\s*[,/]\s*(0?\.\d+|1|0))?\s*\)$/;
 
 /**
  * HEX 颜色格式正则
@@ -143,21 +144,35 @@ function validateColor(value: unknown, field: string): ValidationError | null {
       };
     }
 
-    // 验证 RGB 值范围 (0-255)
+    // 验证 RGB 值范围 (0-255 或 0%-100%)
     const match = trimmed.match(
-      /rgba?\s*\(\s*(\d+)\s*[,\s]+\s*(\d+)\s*[,\s]+\s*(\d+)/,
+      /rgba?\s*\(\s*(\d+%?)\s*[,\s]+\s*(\d+%?)\s*[,\s]+\s*(\d+%?)/,
     );
     if (match) {
-      const rNum = parseInt(match[1]!, 10);
-      const gNum = parseInt(match[2]!, 10);
-      const bNum = parseInt(match[3]!, 10);
+      const values = [match[1]!, match[2]!, match[3]!];
 
-      if (rNum > 255 || gNum > 255 || bNum > 255) {
-        return {
-          field,
-          message: `RGB 值必须在 0-255 范围内`,
-          value,
-        };
+      for (const val of values) {
+        if (val.endsWith('%')) {
+          // 百分比格式：0-100%
+          const percent = parseInt(val, 10);
+          if (percent < 0 || percent > 100) {
+            return {
+              field,
+              message: `RGB 百分比值必须在 0%-100% 范围内`,
+              value,
+            };
+          }
+        } else {
+          // 数字格式：0-255
+          const num = parseInt(val, 10);
+          if (num < 0 || num > 255) {
+            return {
+              field,
+              message: `RGB 值必须在 0-255 范围内`,
+              value,
+            };
+          }
+        }
       }
     }
 
@@ -321,6 +336,14 @@ function isFontFamilyField(field: string): boolean {
 }
 
 /**
+ * Box-shadow 基本格式正则
+ * 匹配：offset-x offset-y [blur [spread]] color
+ * 示例：0 1px 2px rgb(0 0 0 / 0.1), 0 0 10px #fff
+ */
+const BOX_SHADOW_REGEX =
+  /^(inset\s+)?-?\d+(\.\d+)?(px|em|rem)?\s+-?\d+(\.\d+)?(px|em|rem)?(\s+-?\d+(\.\d+)?(px|em|rem)?)?(\s+-?\d+(\.\d+)?(px|em|rem)?)?\s+(#[0-9a-fA-F]{3,8}|rgba?\s*\([^)]+\)|hsla?\s*\([^)]+\)|[a-z]+)/i;
+
+/**
  * 验证阴影格式
  */
 function validateShadow(value: unknown, field: string): ValidationError | null {
@@ -332,13 +355,24 @@ function validateShadow(value: unknown, field: string): ValidationError | null {
     };
   }
 
-  // 简单检查阴影格式是否包含基本元素
-  if (value.length > 0 && !value.includes('px') && !value.includes('rgb')) {
-    return {
-      field,
-      message: `阴影格式不正确，应包含像素值和颜色`,
-      value,
-    };
+  // 空值或 'none' 是有效的
+  const trimmed = value.trim();
+  if (trimmed === '' || trimmed.toLowerCase() === 'none') {
+    return null;
+  }
+
+  // 多个阴影用逗号分隔，逐个验证
+  const shadows = trimmed.split(/,(?![^(]*\))/); // 不在括号内的逗号分隔
+
+  for (const shadow of shadows) {
+    const s = shadow.trim();
+    if (s && !BOX_SHADOW_REGEX.test(s)) {
+      return {
+        field,
+        message: `阴影格式不正确，应为 "offset-x offset-y [blur] [spread] color" 格式`,
+        value,
+      };
+    }
   }
 
   return null;
@@ -486,7 +520,7 @@ function validateAlgorithm(config: ThemeConfig): ValidationError[] {
     return errors;
   }
 
-  const validAlgorithms = ['default', 'dark', 'compact'];
+  const validAlgorithms = ['default', 'dark', 'compact', 'dark-compact'];
   if (!validAlgorithms.includes(config.algorithm)) {
     errors.push({
       field: 'algorithm',

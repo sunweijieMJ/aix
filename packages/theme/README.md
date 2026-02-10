@@ -2,18 +2,18 @@
 
 AIX Design System - 强大的主题系统，基于 Token 架构和 TypeScript API
 
-## ✨ 特性
+## 特性
 
-- 🎨 **Token 系统**：两层架构（基础Token + 语义Token）
-- 🌓 **暗色模式**：内置亮色/暗色主题，支持自动切换
-- 🎯 **TypeScript**：完整的类型定义和类型安全
-- 🚀 **运行时API**：ThemeController 运行时主题管理
-- 🎭 **预设主题**：5个内置主题，支持自定义
-- 🔧 **颜色算法**：自动生成派生颜色（hover/active/bg等）
-- 📦 **按需加载**：支持按需引入CSS变量
-- 💾 **持久化**：自动保存用户主题偏好
+- **Token 系统**：两层架构（基础Token + 语义Token）
+- **暗色模式**：内置亮色/暗色主题，支持自动切换
+- **TypeScript**：完整的类型定义和类型安全
+- **Vue 集成**：Context API + Composition API
+- **预设主题**：5个内置主题，支持自定义
+- **颜色算法**：自动生成派生颜色（hover/active/bg等）
+- **按需加载**：支持按需引入CSS变量
+- **持久化**：自动保存用户主题偏好
 
-## 📦 安装
+## 安装
 
 ```bash
 pnpm add @aix/theme
@@ -21,35 +21,105 @@ npm install @aix/theme
 yarn add @aix/theme
 ```
 
-## 🚀 快速开始
+## 快速开始
 
-### 1. 引入样式
+### 1. 安装主题 Context
 
 ```typescript
 // main.ts
-import '@aix/theme/style'; // 完整主题
+import { createApp } from 'vue';
+import { createTheme } from '@aix/theme';
+import '@aix/theme/style';
+import App from './App.vue';
 
-// 或按需引入
-import '@aix/theme/vars/light'; // 仅亮色
-import '@aix/theme/vars/dark';  // 仅暗色
-import '@aix/theme/vars/base';  // 仅基础Token
+const app = createApp(App);
+
+const { install } = createTheme({
+  initialMode: 'light',
+  persist: true,
+  watchSystem: true,
+});
+
+app.use({ install });
+app.mount('#app');
 ```
 
-### 2. 使用主题控制器
+### 2. 在组件中使用
 
-```typescript
-import { themeController } from '@aix/theme';
+```vue
+<template>
+  <button @click="toggleMode">
+    当前主题: {{ mode }}
+  </button>
+</template>
 
-// 切换暗色模式
-themeController.setMode('dark');
+<script setup lang="ts">
+import { useTheme } from '@aix/theme';
+
+const { mode, toggleMode, applyPreset } = useTheme();
 
 // 应用预设主题
-themeController.applyPreset('tech'); // 科技蓝
+applyPreset('tech'); // 科技蓝
+</script>
 ```
 
-## 核心API
+## 核心 API
 
-### defineTheme - 定义主题
+### createTheme - 创建主题 Context
+
+```typescript
+import { createTheme } from '@aix/theme';
+
+const { install, dispose } = createTheme({
+  initialMode: 'light',      // 初始模式
+  persist: true,             // 持久化
+  watchSystem: true,         // 跟随系统
+  storageKey: 'aix-theme-mode',
+});
+
+app.use({ install });
+```
+
+### useTheme - 组件中使用
+
+```typescript
+import { useTheme } from '@aix/theme';
+
+const {
+  mode,           // 响应式：当前模式
+  config,         // 响应式：当前配置
+  setMode,        // 设置模式
+  toggleMode,     // 切换模式
+  setToken,       // 设置单个 Token
+  setTokens,      // 批量设置 Token
+  applyPreset,    // 应用预设
+  registerPreset, // 注册预设
+  getPresets,     // 获取所有预设
+  reset,          // 重置
+} = useTheme();
+
+// 设置模式
+setMode('dark');
+toggleMode();
+
+// 设置 Token
+setToken('colorPrimary', 'rgb(0 102 255)');
+setTokens({
+  colorPrimary: 'rgb(24 144 255)',
+  fontSize: '16px',
+});
+
+// 应用预设
+applyPreset('tech');
+
+// 监听变化
+import { watch } from 'vue';
+watch(mode, (newMode) => {
+  console.log('Theme changed:', newMode);
+});
+```
+
+### defineTheme - 定义主题配置
 
 ```typescript
 import { defineTheme } from '@aix/theme';
@@ -61,34 +131,6 @@ const myTheme = defineTheme({
   },
   algorithm: 'default', // 'default' | 'dark' | 'compact'
 });
-```
-
-### ThemeController - 运行时管理
-
-```typescript
-import { themeController } from '@aix/theme';
-
-// 设置模式
-themeController.setMode('dark');
-themeController.toggleMode(); // 切换
-
-// 设置Token
-themeController.setToken('colorPrimary', '#ff0000');
-themeController.setTokens({
-  colorPrimary: '#1890ff',
-  fontSize: '16px',
-});
-
-// 应用预设
-themeController.applyPreset('tech');
-
-// 监听变化
-themeController.onChange((event) => {
-  console.log('Theme changed:', event.detail.mode);
-});
-
-// 跟随系统
-themeController.watchSystemTheme();
 ```
 
 ### 颜色算法
@@ -111,7 +153,7 @@ const palette = generateColorPalette('rgb(0 180 180)');
 const lighter = adjustLightness('rgb(0 180 180)', 20);
 ```
 
-## 🎭 预设主题
+## 预设主题
 
 | 名称 | 主色 | 说明 |
 |------|------|------|
@@ -122,10 +164,11 @@ const lighter = adjustLightness('rgb(0 180 180)', 20);
 | `purple` | Purple | 优雅紫主题 |
 
 ```typescript
-themeController.applyPreset('tech');
+const { applyPreset } = useTheme();
+applyPreset('tech');
 ```
 
-## 🏗️ 架构设计
+## 架构设计
 
 ### Token 层级
 
@@ -142,20 +185,20 @@ themeController.applyPreset('tech');
 ### CSS变量使用
 
 ```css
-/* ✅ 推荐：使用语义Token */
+/* 推荐：使用语义Token */
 .button {
   background: var(--colorPrimary);
   padding: var(--padding);
 }
 
-/* ❌ 避免：使用基础Token */
+/* 避免：使用基础Token */
 .button {
   background: var(--tokenCyan6);
   padding: 16px;
 }
 ```
 
-## 📝 Token 列表
+## Token 列表
 
 ### 颜色Token
 
@@ -172,24 +215,24 @@ themeController.applyPreset('tech');
 - 圆角：`--borderRadiusXS` (2px) ~ `--borderRadiusLG` (8px)
 - 控制高度：`--controlHeightXS` ~ `--controlHeightLG`
 
-## 🔧 构建产物
+## 构建产物
 
 ```
 dist/
 ├── index.js          # ESM 主入口
 ├── index.cjs         # CJS 入口
 ├── index.d.ts        # 类型定义
-├── index.css         # 完整CSS（包含所有Token）
+├── index.css         # 完整CSS
 └── vars/
     ├── base-tokens.css      # 基础Token
     ├── light.css            # 亮色语义Token
     └── dark.css             # 暗色语义Token
 ```
 
-## 📚 更多文档
+## 更多文档
 
 查看完整文档：[主题定制指南](../../docs/guide/theme.md)
 
-## 📄 License
+## License
 
 MIT

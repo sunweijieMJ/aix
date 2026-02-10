@@ -14,12 +14,14 @@ import { fileURLToPath } from 'url';
 
 import {
   applyDarkAlgorithm,
-  BASE_TOKEN_GROUPS,
   defaultBaseTokens,
   generateDefaultSemanticTokens,
+} from '../src/define-theme';
+import {
+  BASE_TOKEN_GROUPS,
   SEMANTIC_TOKEN_GROUPS,
   SEMANTIC_VAR_REFS,
-} from '../src/define-theme';
+} from './token-metadata';
 import type { ThemeTokens } from '../src/theme-types';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -245,8 +247,9 @@ class ThemeCSSGenerator {
  * 主题变量入口文件
  * 使用 CSS Cascade Layers 明确优先级
  *
- * @generated - 此文件由脚本自动生成，请勿手动修改
+ * @generated - Token CSS 文件由脚本自动生成
  * 如需修改 Token，请编辑 src/define-theme.ts 后运行 pnpm gen:css
+ * transition.css 为手动维护，不会被覆盖
  */
 
 /* 定义层级顺序：base < semantic-light < semantic-dark */
@@ -256,6 +259,9 @@ class ThemeCSSGenerator {
 @import './base-tokens.css' layer(theme.base);
 @import './semantic-tokens-light.css' layer(theme.semantic-light);
 @import './semantic-tokens-dark.css' layer(theme.semantic-dark);
+
+/* 过渡动画样式（手动维护） */
+@import './transition.css';
 `;
   }
 }

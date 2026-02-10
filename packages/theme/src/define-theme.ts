@@ -10,427 +10,11 @@ import {
   rgbToHsl,
   rgbToString,
 } from './color-algorithm';
-import type { ThemeConfig, ThemeTokens } from './theme-types';
-
-/**
- * 基础 Token 分组元数据（用于 CSS 生成）
- */
-export const BASE_TOKEN_GROUPS = {
-  '色盘 - Cyan': [
-    'tokenCyan1',
-    'tokenCyan2',
-    'tokenCyan3',
-    'tokenCyan4',
-    'tokenCyan5',
-    'tokenCyan6',
-    'tokenCyan7',
-    'tokenCyan8',
-    'tokenCyan9',
-    'tokenCyan10',
-  ],
-  '色盘 - Blue': [
-    'tokenBlue1',
-    'tokenBlue2',
-    'tokenBlue3',
-    'tokenBlue4',
-    'tokenBlue5',
-    'tokenBlue6',
-    'tokenBlue7',
-    'tokenBlue8',
-    'tokenBlue9',
-    'tokenBlue10',
-  ],
-  '色盘 - Purple (P1)': [
-    'tokenPurple1',
-    'tokenPurple2',
-    'tokenPurple3',
-    'tokenPurple4',
-    'tokenPurple5',
-    'tokenPurple6',
-    'tokenPurple7',
-    'tokenPurple8',
-    'tokenPurple9',
-    'tokenPurple10',
-  ],
-  '色盘 - Green': [
-    'tokenGreen1',
-    'tokenGreen2',
-    'tokenGreen3',
-    'tokenGreen4',
-    'tokenGreen5',
-    'tokenGreen6',
-    'tokenGreen7',
-    'tokenGreen8',
-    'tokenGreen9',
-    'tokenGreen10',
-  ],
-  '色盘 - Red': [
-    'tokenRed1',
-    'tokenRed2',
-    'tokenRed3',
-    'tokenRed4',
-    'tokenRed5',
-    'tokenRed6',
-    'tokenRed7',
-    'tokenRed8',
-    'tokenRed9',
-    'tokenRed10',
-  ],
-  '色盘 - Orange': [
-    'tokenOrange1',
-    'tokenOrange2',
-    'tokenOrange3',
-    'tokenOrange4',
-    'tokenOrange5',
-    'tokenOrange6',
-    'tokenOrange7',
-    'tokenOrange8',
-    'tokenOrange9',
-    'tokenOrange10',
-  ],
-  '色盘 - Gold': [
-    'tokenGold1',
-    'tokenGold2',
-    'tokenGold3',
-    'tokenGold4',
-    'tokenGold5',
-    'tokenGold6',
-    'tokenGold7',
-    'tokenGold8',
-    'tokenGold9',
-    'tokenGold10',
-  ],
-  '色盘 - Gray/Neutral (P0)': [
-    'tokenGray1',
-    'tokenGray2',
-    'tokenGray3',
-    'tokenGray4',
-    'tokenGray5',
-    'tokenGray6',
-    'tokenGray7',
-    'tokenGray8',
-    'tokenGray9',
-    'tokenGray10',
-    'tokenGray11',
-    'tokenGray12',
-    'tokenGray13',
-  ],
-  间距Token: [
-    'tokenSpacing1',
-    'tokenSpacing2',
-    'tokenSpacing3',
-    'tokenSpacing4',
-    'tokenSpacing5',
-    'tokenSpacing6',
-    'tokenSpacing8',
-    'tokenSpacing12',
-  ],
-  字号Token: [
-    'tokenFontSize1',
-    'tokenFontSize2',
-    'tokenFontSize3',
-    'tokenFontSize4',
-    'tokenFontSize5',
-    'tokenFontSize6',
-    'tokenFontSize7',
-  ],
-  行高Token: ['tokenLineHeight1', 'tokenLineHeight2', 'tokenLineHeight3'],
-  圆角Token: [
-    'tokenBorderRadius1',
-    'tokenBorderRadius2',
-    'tokenBorderRadius3',
-    'tokenBorderRadius4',
-  ],
-  控制高度Token: [
-    'tokenControlHeight1',
-    'tokenControlHeight2',
-    'tokenControlHeight3',
-    'tokenControlHeight4',
-  ],
-  '字体族Token (P1)': ['tokenFontFamily', 'tokenFontFamilyCode'],
-  '阴影Token (P0)': [
-    'tokenShadow1',
-    'tokenShadow2',
-    'tokenShadow3',
-    'tokenShadow4',
-  ],
-  'z-index层级Token (P0)': [
-    'tokenZIndexBase',
-    'tokenZIndexPopup',
-    'tokenZIndexAffix',
-    'tokenZIndexModal',
-    'tokenZIndexPopover',
-    'tokenZIndexTooltip',
-    'tokenZIndexNotification',
-  ],
-} as const;
-
-/**
- * 语义 Token 分组元数据（用于 CSS 生成）
- */
-export const SEMANTIC_TOKEN_GROUPS = {
-  '品牌色 - Primary': [
-    'colorPrimary',
-    'colorPrimaryHover',
-    'colorPrimaryActive',
-    'colorPrimaryBg',
-    'colorPrimaryBgHover',
-    'colorPrimaryBorder',
-    'colorPrimaryBorderHover',
-    'colorPrimaryText',
-    'colorPrimaryTextHover',
-    'colorPrimaryTextActive',
-  ],
-  '功能色 - Success': [
-    'colorSuccess',
-    'colorSuccessHover',
-    'colorSuccessActive',
-    'colorSuccessBg',
-    'colorSuccessBgHover',
-    'colorSuccessBorder',
-    'colorSuccessBorderHover',
-    'colorSuccessText',
-    'colorSuccessTextHover',
-    'colorSuccessTextActive',
-  ],
-  '功能色 - Warning': [
-    'colorWarning',
-    'colorWarningHover',
-    'colorWarningActive',
-    'colorWarningBg',
-    'colorWarningBgHover',
-    'colorWarningBorder',
-    'colorWarningBorderHover',
-    'colorWarningText',
-    'colorWarningTextHover',
-    'colorWarningTextActive',
-  ],
-  '功能色 - Error': [
-    'colorError',
-    'colorErrorHover',
-    'colorErrorActive',
-    'colorErrorBg',
-    'colorErrorBgHover',
-    'colorErrorBorder',
-    'colorErrorBorderHover',
-    'colorErrorText',
-    'colorErrorTextHover',
-    'colorErrorTextActive',
-  ],
-  文本色: [
-    'colorText',
-    'colorTextSecondary',
-    'colorTextTertiary',
-    'colorTextQuaternary',
-    'colorTextDisabled',
-    'colorTextPlaceholder',
-    'colorTextHeading',
-    'colorTextDescription',
-    'colorTextBase',
-    'colorTextLight',
-  ],
-  背景色: [
-    'colorBgBase',
-    'colorBgContainer',
-    'colorBgContainerDisabled',
-    'colorBgElevated',
-    'colorBgLayout',
-    'colorBgMask',
-    'colorBgSpotlight',
-    'colorBgTextHover',
-    'colorBgTextActive',
-  ],
-  填充色: [
-    'colorFill',
-    'colorFillSecondary',
-    'colorFillTertiary',
-    'colorFillQuaternary',
-    'colorFillContent',
-    'colorFillAlter',
-  ],
-  边框色: ['colorBorder', 'colorBorderSecondary', 'colorSplit'],
-  控制项颜色: [
-    'controlItemBgHover',
-    'controlItemBgActive',
-    'controlItemBgActiveHover',
-  ],
-  链接色: ['colorLink', 'colorLinkHover', 'colorLinkActive'],
-  图标色: ['colorIcon', 'colorIconHover'],
-  '间距 - 语义化命名': [
-    'sizeXXS',
-    'sizeXS',
-    'sizeSM',
-    'size',
-    'sizeMD',
-    'sizeLG',
-    'sizeXL',
-    'sizeXXL',
-    'paddingXXS',
-    'paddingXS',
-    'paddingSM',
-    'padding',
-    'paddingMD',
-    'paddingLG',
-    'paddingXL',
-    'paddingXXL',
-    'marginXXS',
-    'marginXS',
-    'marginSM',
-    'margin',
-    'marginMD',
-    'marginLG',
-    'marginXL',
-    'marginXXL',
-  ],
-  控制高度: [
-    'controlHeightXS',
-    'controlHeightSM',
-    'controlHeight',
-    'controlHeightLG',
-  ],
-  圆角: ['borderRadiusXS', 'borderRadiusSM', 'borderRadius', 'borderRadiusLG'],
-  字号: [
-    'fontSizeXS',
-    'fontSizeSM',
-    'fontSize',
-    'fontSizeMD',
-    'fontSizeLG',
-    'fontSizeXL',
-    'fontSizeXXL',
-  ],
-  行高: ['lineHeightSM', 'lineHeight', 'lineHeightLG'],
-  '字体族 (P1)': ['fontFamily', 'fontFamilyCode'],
-  '阴影 (P0)': [
-    'shadowXS',
-    'shadowSM',
-    'shadow',
-    'shadowMD',
-    'shadowLG',
-    'shadowXL',
-  ],
-  'z-index层级 (P0)': [
-    'zIndexBase',
-    'zIndexPopupBase',
-    'zIndexAffix',
-    'zIndexModal',
-    'zIndexModalMask',
-    'zIndexPopover',
-    'zIndexDropdown',
-    'zIndexTooltip',
-    'zIndexNotification',
-    'zIndexMessage',
-  ],
-  '中性色 (P0)': [
-    'colorNeutral1',
-    'colorNeutral2',
-    'colorNeutral3',
-    'colorNeutral4',
-    'colorNeutral5',
-    'colorNeutral6',
-    'colorNeutral7',
-    'colorNeutral8',
-    'colorNeutral9',
-    'colorNeutral10',
-  ],
-} as const;
-
-/**
- * 语义 Token 中使用 var() 引用基础 Token 的映射
- * 亮色模式下这些 Token 使用 var(--tokenXxx) 形式
- */
-export const SEMANTIC_VAR_REFS: Record<string, string> = {
-  // Primary 使用 Cyan
-  colorPrimary: 'tokenCyan6',
-  colorPrimaryText: 'tokenCyan6',
-  // Success 使用 Green
-  colorSuccess: 'tokenGreen6',
-  // Warning 使用 Gold
-  colorWarning: 'tokenGold6',
-  // Error 使用 Red
-  colorError: 'tokenRed6',
-  // Link
-  colorLink: 'tokenCyan6',
-  colorLinkHover: 'tokenCyan4',
-  colorLinkActive: 'tokenCyan7',
-  // Size 映射
-  sizeXXS: 'tokenSpacing1',
-  sizeXS: 'tokenSpacing2',
-  sizeSM: 'tokenSpacing3',
-  size: 'tokenSpacing4',
-  sizeMD: 'tokenSpacing5',
-  sizeLG: 'tokenSpacing6',
-  sizeXL: 'tokenSpacing8',
-  sizeXXL: 'tokenSpacing12',
-  // Padding 映射
-  paddingXXS: 'tokenSpacing1',
-  paddingXS: 'tokenSpacing2',
-  paddingSM: 'tokenSpacing3',
-  padding: 'tokenSpacing4',
-  paddingMD: 'tokenSpacing5',
-  paddingLG: 'tokenSpacing6',
-  paddingXL: 'tokenSpacing8',
-  paddingXXL: 'tokenSpacing12',
-  // Margin 映射
-  marginXXS: 'tokenSpacing1',
-  marginXS: 'tokenSpacing2',
-  marginSM: 'tokenSpacing3',
-  margin: 'tokenSpacing4',
-  marginMD: 'tokenSpacing5',
-  marginLG: 'tokenSpacing6',
-  marginXL: 'tokenSpacing8',
-  marginXXL: 'tokenSpacing12',
-  // Control Height 映射
-  controlHeightXS: 'tokenControlHeight1',
-  controlHeightSM: 'tokenControlHeight2',
-  controlHeight: 'tokenControlHeight3',
-  controlHeightLG: 'tokenControlHeight4',
-  // Border Radius 映射
-  borderRadiusXS: 'tokenBorderRadius1',
-  borderRadiusSM: 'tokenBorderRadius2',
-  borderRadius: 'tokenBorderRadius3',
-  borderRadiusLG: 'tokenBorderRadius4',
-  // Font Size 映射
-  fontSizeXS: 'tokenFontSize1',
-  fontSizeSM: 'tokenFontSize2',
-  fontSize: 'tokenFontSize3',
-  fontSizeMD: 'tokenFontSize4',
-  fontSizeLG: 'tokenFontSize5',
-  fontSizeXL: 'tokenFontSize6',
-  fontSizeXXL: 'tokenFontSize7',
-  // Line Height 映射
-  lineHeightSM: 'tokenLineHeight1',
-  lineHeight: 'tokenLineHeight2',
-  lineHeightLG: 'tokenLineHeight3',
-  // Font Family 映射
-  fontFamily: 'tokenFontFamily',
-  fontFamilyCode: 'tokenFontFamilyCode',
-  // Shadow 映射
-  shadowXS: 'tokenShadow1',
-  shadowSM: 'tokenShadow1',
-  shadow: 'tokenShadow2',
-  shadowMD: 'tokenShadow2',
-  shadowLG: 'tokenShadow3',
-  shadowXL: 'tokenShadow4',
-  // z-index 映射
-  zIndexBase: 'tokenZIndexBase',
-  zIndexPopupBase: 'tokenZIndexPopup',
-  zIndexAffix: 'tokenZIndexAffix',
-  zIndexModal: 'tokenZIndexModal',
-  zIndexPopover: 'tokenZIndexPopover',
-  zIndexTooltip: 'tokenZIndexTooltip',
-  zIndexNotification: 'tokenZIndexNotification',
-  // Neutral 映射
-  colorNeutral1: 'tokenGray1',
-  colorNeutral2: 'tokenGray2',
-  colorNeutral3: 'tokenGray3',
-  colorNeutral4: 'tokenGray4',
-  colorNeutral5: 'tokenGray5',
-  colorNeutral6: 'tokenGray6',
-  colorNeutral7: 'tokenGray7',
-  colorNeutral8: 'tokenGray8',
-  colorNeutral9: 'tokenGray9',
-  colorNeutral10: 'tokenGray10',
-};
+import type {
+  PartialThemeTokens,
+  ThemeConfig,
+  ThemeTokens,
+} from './theme-types';
 
 /**
  * 默认的基础Token
@@ -821,41 +405,77 @@ export function defineTheme(config: ThemeConfig = {}): Required<ThemeConfig> {
 }
 
 /**
+ * 类型安全的 Token 提取函数
+ */
+type BaseTokenKeys = keyof typeof defaultBaseTokens;
+
+function extractBaseTokenOverrides(
+  token: PartialThemeTokens | undefined,
+): Partial<typeof defaultBaseTokens> {
+  if (!token) return {};
+  const result: Partial<typeof defaultBaseTokens> = {};
+  for (const [key, value] of Object.entries(token)) {
+    if (key.startsWith('token') && value !== undefined) {
+      (result as Record<string, unknown>)[key as BaseTokenKeys] = value;
+    }
+  }
+  return result;
+}
+
+function extractSemanticTokenOverrides(
+  token: PartialThemeTokens | undefined,
+): Partial<Omit<ThemeTokens, BaseTokenKeys>> {
+  if (!token) return {};
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(token)) {
+    if (!key.startsWith('token') && value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result as Partial<Omit<ThemeTokens, BaseTokenKeys>>;
+}
+
+/**
  * 生成完整的主题Token
  */
 export function generateThemeTokens(config: ThemeConfig): ThemeTokens {
-  // 合并基础Token
-  const baseTokens = {
+  // 合并基础 Token（类型安全）
+  const baseTokenOverrides = extractBaseTokenOverrides(config.token);
+  const baseTokens: typeof defaultBaseTokens = {
     ...defaultBaseTokens,
-    ...Object.fromEntries(
-      Object.entries(config.token || {}).filter(([key]) =>
-        key.startsWith('token'),
-      ),
-    ),
-  } as typeof defaultBaseTokens;
-
-  // 生成语义Token
-  const semanticTokens = generateDefaultSemanticTokens(baseTokens);
-
-  // 合并用户配置的语义Token
-  const mergedSemanticTokens = {
-    ...semanticTokens,
-    ...Object.fromEntries(
-      Object.entries(config.token || {}).filter(
-        ([key]) => !key.startsWith('token'),
-      ),
-    ),
+    ...baseTokenOverrides,
   };
 
-  // 应用算法（暗色/紧凑模式）
+  // 生成语义 Token
+  const semanticTokens = generateDefaultSemanticTokens(baseTokens);
+
+  // 合并用户配置的语义 Token（类型安全）
+  const semanticOverrides = extractSemanticTokenOverrides(config.token);
+  const mergedSemanticTokens = {
+    ...semanticTokens,
+    ...semanticOverrides,
+  };
+
+  // 应用算法（暗色/紧凑模式，支持组合）
   let finalTokens: ThemeTokens = {
     ...baseTokens,
     ...mergedSemanticTokens,
-  } as ThemeTokens;
+  };
 
-  if (config.algorithm === 'dark') {
+  const algorithm = config.algorithm || 'default';
+
+  // 判断是否需要应用暗色算法
+  const isDark = algorithm === 'dark' || algorithm === 'dark-compact';
+  // 判断是否需要应用紧凑算法
+  const isCompact = algorithm === 'compact' || algorithm === 'dark-compact';
+
+  // 先应用暗色算法（颜色相关）
+  if (isDark) {
     finalTokens = applyDarkAlgorithm(finalTokens);
-  } else if (config.algorithm === 'compact') {
+  }
+
+  // 再应用紧凑算法（尺寸相关）
+  if (isCompact) {
     finalTokens = applyCompactAlgorithm(finalTokens);
   }
 
@@ -863,10 +483,41 @@ export function generateThemeTokens(config: ThemeConfig): ThemeTokens {
 }
 
 /**
+ * 暗色模式颜色调整常量
+ */
+const DARK_MODE_ADJUSTMENTS = {
+  // 主色亮度调整阈值和参数
+  lightness: {
+    low: { threshold: 50, boost: 20, max: 70 },
+    medium: { threshold: 60, boost: 15, max: 75 },
+    high: { boost: 10, max: 80 },
+  },
+  // 饱和度微调
+  saturationBoost: 5,
+  // 交互状态亮度调整
+  hoverLightnessShift: 8,
+  activeLightnessShift: -8,
+  // 背景色参数
+  bg: { lightness: 15, minSaturation: 20, saturationDrop: 30 },
+  bgHover: { lightness: 20, minSaturation: 25, saturationDrop: 25 },
+  // 边框色参数
+  border: { lightness: 30, minSaturation: 30, saturationDrop: 20 },
+  borderHover: { lightness: 40, minSaturation: 35, saturationDrop: 15 },
+} as const;
+
+/**
  * 智能生成暗色模式的功能色系列
  * 根据主题色动态调整亮度，而非使用硬编码值
  */
 function generateDarkColorSeries(baseColor: string) {
+  const {
+    lightness: lt,
+    bg,
+    bgHover,
+    border,
+    borderHover,
+  } = DARK_MODE_ADJUSTMENTS;
+
   try {
     const rgb = parseRGB(baseColor);
     const hsl = rgbToHsl(rgb);
@@ -875,52 +526,65 @@ function generateDarkColorSeries(baseColor: string) {
     const adjustedHsl = { ...hsl };
 
     // 如果主色较暗，提亮它
-    if (hsl.l < 50) {
-      adjustedHsl.l = Math.min(70, hsl.l + 20);
-    } else if (hsl.l < 60) {
-      adjustedHsl.l = Math.min(75, hsl.l + 15);
+    if (hsl.l < lt.low.threshold) {
+      adjustedHsl.l = Math.min(lt.low.max, hsl.l + lt.low.boost);
+    } else if (hsl.l < lt.medium.threshold) {
+      adjustedHsl.l = Math.min(lt.medium.max, hsl.l + lt.medium.boost);
     } else {
-      adjustedHsl.l = Math.min(80, hsl.l + 10);
+      adjustedHsl.l = Math.min(lt.high.max, hsl.l + lt.high.boost);
     }
 
     // 微调饱和度，在暗色模式下保持鲜艳
-    adjustedHsl.s = Math.min(100, hsl.s + 5);
+    adjustedHsl.s = Math.min(
+      100,
+      hsl.s + DARK_MODE_ADJUSTMENTS.saturationBoost,
+    );
 
     const adjustedBase = rgbToString(hslToRgb(adjustedHsl));
+    const { hoverLightnessShift, activeLightnessShift } = DARK_MODE_ADJUSTMENTS;
 
     // 生成派生颜色
     return {
       base: adjustedBase,
-      hover: adjustLightness(adjustedBase, 8),
-      active: adjustLightness(adjustedBase, -8),
+      hover: adjustLightness(adjustedBase, hoverLightnessShift),
+      active: adjustLightness(adjustedBase, activeLightnessShift),
       bg: (() => {
         // 背景色：保留色相，极低亮度，降低饱和度
         const bgHsl = { ...adjustedHsl };
-        bgHsl.l = 15;
-        bgHsl.s = Math.max(20, adjustedHsl.s - 30);
+        bgHsl.l = bg.lightness;
+        bgHsl.s = Math.max(bg.minSaturation, adjustedHsl.s - bg.saturationDrop);
         return rgbToString(hslToRgb(bgHsl));
       })(),
       bgHover: (() => {
-        const bgHsl = { ...adjustedHsl };
-        bgHsl.l = 20;
-        bgHsl.s = Math.max(25, adjustedHsl.s - 25);
-        return rgbToString(hslToRgb(bgHsl));
+        const hoverHsl = { ...adjustedHsl };
+        hoverHsl.l = bgHover.lightness;
+        hoverHsl.s = Math.max(
+          bgHover.minSaturation,
+          adjustedHsl.s - bgHover.saturationDrop,
+        );
+        return rgbToString(hslToRgb(hoverHsl));
       })(),
       border: (() => {
         const borderHsl = { ...adjustedHsl };
-        borderHsl.l = 30;
-        borderHsl.s = Math.max(30, adjustedHsl.s - 20);
+        borderHsl.l = border.lightness;
+        borderHsl.s = Math.max(
+          border.minSaturation,
+          adjustedHsl.s - border.saturationDrop,
+        );
         return rgbToString(hslToRgb(borderHsl));
       })(),
       borderHover: (() => {
-        const borderHsl = { ...adjustedHsl };
-        borderHsl.l = 40;
-        borderHsl.s = Math.max(35, adjustedHsl.s - 15);
-        return rgbToString(hslToRgb(borderHsl));
+        const hoverHsl = { ...adjustedHsl };
+        hoverHsl.l = borderHover.lightness;
+        hoverHsl.s = Math.max(
+          borderHover.minSaturation,
+          adjustedHsl.s - borderHover.saturationDrop,
+        );
+        return rgbToString(hslToRgb(hoverHsl));
       })(),
       text: adjustedBase,
-      textHover: adjustLightness(adjustedBase, 8),
-      textActive: adjustLightness(adjustedBase, -8),
+      textHover: adjustLightness(adjustedBase, hoverLightnessShift),
+      textActive: adjustLightness(adjustedBase, activeLightnessShift),
     };
   } catch {
     // 如果解析失败，返回默认颜色
@@ -934,10 +598,11 @@ function generateDarkColorSeries(baseColor: string) {
  */
 export function applyDarkAlgorithm(tokens: ThemeTokens): ThemeTokens {
   // 智能生成功能色系列
+  // 注意：使用语义色而非 base token，这样用户自定义的颜色才会被正确应用
   const primarySeries = generateDarkColorSeries(tokens.colorPrimary);
-  const successSeries = generateDarkColorSeries(tokens.tokenGreen6);
-  const warningSeries = generateDarkColorSeries(tokens.tokenGold6);
-  const errorSeries = generateDarkColorSeries(tokens.tokenRed6);
+  const successSeries = generateDarkColorSeries(tokens.colorSuccess);
+  const warningSeries = generateDarkColorSeries(tokens.colorWarning);
+  const errorSeries = generateDarkColorSeries(tokens.colorError);
 
   return {
     ...tokens,

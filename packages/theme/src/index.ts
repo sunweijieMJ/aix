@@ -12,7 +12,6 @@ export type {
   ThemeConfig,
   ThemeMode,
   ThemePreset,
-  CSSVarName,
   TransitionConfig,
 } from './theme-types';
 
@@ -60,16 +59,10 @@ export {
   defaultBaseTokens,
   generateDefaultSemanticTokens,
   applyDarkAlgorithm,
-  // 注意：BASE_TOKEN_GROUPS, SEMANTIC_TOKEN_GROUPS, SEMANTIC_VAR_REFS
-  // 仅供 CSS 生成脚本使用，不在运行时导出以减少包体积
 } from './define-theme';
 
-// 主题控制器导出（内部使用）
-export {
-  ThemeController,
-  themeController,
-  builtInPresets,
-} from './theme-controller';
+// 主题控制器导出
+export { ThemeController, calculateAlgorithm } from './theme-controller';
 
 // 主题 Context 导出（推荐使用）
 export {
@@ -84,6 +77,19 @@ export { useThemeContext, useThemeContextOptional } from './use-theme-context';
 // Vue Composition API 导出
 export { useTheme } from './use-theme';
 export type { UseThemeReturn } from './use-theme';
+
+// CSS 变量引用工具导出
+export {
+  cssVar,
+  cssVarName,
+  getCSSVar,
+  getCSSVarName,
+  getCSSVars,
+  getCSSVarRefs,
+  createCSSVarRefs,
+  createCSSVarNames,
+} from './css-var';
+export type { CSSVarRefs, CSSVarNames } from './css-var';
 
 // SSR 兼容性工具导出
 export {

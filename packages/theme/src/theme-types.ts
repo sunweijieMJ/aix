@@ -401,8 +401,9 @@ export interface ThemeConfig {
    * - default: 默认亮色
    * - dark: 暗色模式
    * - compact: 紧凑模式（减小间距）
+   * - dark-compact: 暗色 + 紧凑模式组合
    */
-  algorithm?: 'default' | 'dark' | 'compact';
+  algorithm?: 'default' | 'dark' | 'compact' | 'dark-compact';
 
   /**
    * 组件级覆盖（预留）
@@ -428,8 +429,3 @@ export interface ThemePreset {
   displayName: string;
   token: PartialThemeTokens;
 }
-
-/**
- * CSS变量名
- */
-export type CSSVarName = `--${keyof ThemeTokens}`;

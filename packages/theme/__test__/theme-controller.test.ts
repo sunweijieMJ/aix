@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { builtInPresets, ThemeController } from '../src/theme-controller';
+import { ThemeController } from '../src/theme-controller';
 
 describe('ThemeController', () => {
   let controller: ThemeController;
@@ -237,7 +237,11 @@ describe('ThemeController', () => {
       };
 
       controller.registerPreset(customPreset);
-      expect(builtInPresets['custom']).toEqual(customPreset);
+      expect(controller.hasPreset('custom')).toBe(true);
+      const presets = controller.getPresets();
+      const registered = presets.find((p) => p.name === 'custom');
+      expect(registered).toBeDefined();
+      expect(registered?.token.colorPrimary).toBe('rgb(128 128 128)');
     });
 
     it('should allow applying registered preset', async () => {
@@ -261,7 +265,21 @@ describe('ThemeController', () => {
       };
 
       controller.registerPreset(newDefault);
-      expect(builtInPresets['default']).toEqual(newDefault);
+      const presets = controller.getPresets();
+      const defaultPreset = presets.find((p) => p.name === 'default');
+      expect(defaultPreset?.displayName).toBe('New Default');
+    });
+
+    it('should not affect other controller instances', () => {
+      const customPreset = {
+        name: 'isolated',
+        displayName: 'Isolated',
+        token: { colorPrimary: 'rgb(50 50 50)' },
+      };
+
+      controller.registerPreset(customPreset);
+      const anotherController = new ThemeController();
+      expect(anotherController.hasPreset('isolated')).toBe(false);
     });
   });
 
@@ -297,28 +315,45 @@ describe('ThemeController', () => {
 
   describe('built-in presets', () => {
     it('should have default preset', () => {
-      expect(builtInPresets.default).toBeDefined();
-      expect(builtInPresets.default!.name).toBe('default');
+      const presets = controller.getPresets();
+      const defaultPreset = presets.find((p) => p.name === 'default');
+      expect(defaultPreset).toBeDefined();
+      expect(defaultPreset!.name).toBe('default');
     });
 
     it('should have tech preset with blue primary color', () => {
-      expect(builtInPresets.tech).toBeDefined();
-      expect(builtInPresets.tech!.token.colorPrimary).toContain('0 102 255');
+      const presets = controller.getPresets();
+      const techPreset = presets.find((p) => p.name === 'tech');
+      expect(techPreset).toBeDefined();
+      expect(techPreset!.token.colorPrimary).toContain('0 102 255');
     });
 
     it('should have nature preset with green primary color', () => {
-      expect(builtInPresets.nature).toBeDefined();
-      expect(builtInPresets.nature!.token.colorPrimary).toContain('82 196 26');
+      const presets = controller.getPresets();
+      const naturePreset = presets.find((p) => p.name === 'nature');
+      expect(naturePreset).toBeDefined();
+      expect(naturePreset!.token.colorPrimary).toContain('82 196 26');
     });
 
     it('should have sunset preset with orange primary color', () => {
-      expect(builtInPresets.sunset).toBeDefined();
-      expect(builtInPresets.sunset!.token.colorPrimary).toContain('250 140 22');
+      const presets = controller.getPresets();
+      const sunsetPreset = presets.find((p) => p.name === 'sunset');
+      expect(sunsetPreset).toBeDefined();
+      expect(sunsetPreset!.token.colorPrimary).toContain('250 140 22');
     });
 
     it('should have purple preset with purple primary color', () => {
-      expect(builtInPresets.purple).toBeDefined();
-      expect(builtInPresets.purple!.token.colorPrimary).toContain('114 46 209');
+      const presets = controller.getPresets();
+      const purplePreset = presets.find((p) => p.name === 'purple');
+      expect(purplePreset).toBeDefined();
+      expect(purplePreset!.token.colorPrimary).toContain('114 46 209');
+    });
+
+    it('controller.getPresets should return instance-level presets', () => {
+      const presets1 = controller.getPresets();
+      const presets2 = controller.getPresets();
+      // 返回的是数组，但每次调用返回新数组
+      expect(presets1).not.toBe(presets2);
     });
   });
 

@@ -15,20 +15,21 @@ import type {
   ThemeConfig,
   ThemeMode,
   ThemePreset,
+  ThemeTokens,
   TransitionConfig,
 } from './theme-types';
 import { validateThemeConfig } from './theme-validator';
 
 /**
- * 预设主题
+ * 内置预设主题（不可变）
  */
-export const builtInPresets: Record<string, ThemePreset> = {
-  default: {
+const DEFAULT_PRESETS: readonly ThemePreset[] = [
+  {
     name: 'default',
     displayName: '默认主题',
     token: {},
   },
-  tech: {
+  {
     name: 'tech',
     displayName: '科技蓝',
     token: {
@@ -36,7 +37,7 @@ export const builtInPresets: Record<string, ThemePreset> = {
       colorPrimary: 'rgb(0 102 255)',
     },
   },
-  nature: {
+  {
     name: 'nature',
     displayName: '自然绿',
     token: {
@@ -44,7 +45,7 @@ export const builtInPresets: Record<string, ThemePreset> = {
       colorPrimary: 'rgb(82 196 26)',
     },
   },
-  sunset: {
+  {
     name: 'sunset',
     displayName: '日落橙',
     token: {
@@ -52,7 +53,7 @@ export const builtInPresets: Record<string, ThemePreset> = {
       colorPrimary: 'rgb(250 140 22)',
     },
   },
-  purple: {
+  {
     name: 'purple',
     displayName: '优雅紫',
     token: {
@@ -60,7 +61,7 @@ export const builtInPresets: Record<string, ThemePreset> = {
       colorPrimary: 'rgb(114 46 209)',
     },
   },
-};
+] as const;
 
 /**
  * 默认过渡配置
@@ -72,6 +73,23 @@ const DEFAULT_TRANSITION: Required<TransitionConfig> = {
 };
 
 /**
+ * 根据主题模式和当前算法计算新算法
+ * 保留 compact 状态
+ */
+export function calculateAlgorithm(
+  mode: ThemeMode,
+  currentAlgorithm: ThemeConfig['algorithm'] = 'default',
+): NonNullable<ThemeConfig['algorithm']> {
+  const isCompact =
+    currentAlgorithm === 'compact' || currentAlgorithm === 'dark-compact';
+
+  if (mode === 'dark') {
+    return isCompact ? 'dark-compact' : 'dark';
+  }
+  return isCompact ? 'compact' : 'default';
+}
+
+/**
  * 主题控制器类（纯 DOM 操作层）
  */
 export class ThemeController {
@@ -81,11 +99,18 @@ export class ThemeController {
   private pendingUpdates: Record<string, string> = {};
   private rafId: number | null = null;
   private transitionConfig: Required<TransitionConfig> = DEFAULT_TRANSITION;
+  /** 实例级别的预设列表，避免全局状态污染 */
+  private presets: Map<string, ThemePreset>;
 
   constructor() {
     // SSR 安全的 DOM 引用，SSR 环境下为 null
     this.root = getDocumentRoot();
     this.currentConfig = defineTheme();
+    // 初始化预设列表（每个实例独立）
+    this.presets = new Map();
+    for (const preset of DEFAULT_PRESETS) {
+      this.presets.set(preset.name, { ...preset, token: { ...preset.token } });
+    }
   }
 
   /**
@@ -103,6 +128,21 @@ export class ThemeController {
   }
 
   /**
+   * 获取当前所有 Token 值
+   */
+  getTokens(): ThemeTokens {
+    return generateThemeTokens(this.currentConfig);
+  }
+
+  /**
+   * 获取单个 Token 值
+   */
+  getToken<K extends keyof ThemeTokens>(key: K): ThemeTokens[K] {
+    const tokens = this.getTokens();
+    return tokens[key];
+  }
+
+  /**
    * 设置主题模式
    * @param mode 主题模式
    * @param _persist 保留参数以兼容调用，但不再使用
@@ -115,10 +155,12 @@ export class ThemeController {
       this.root!.setAttribute('data-theme', mode);
     }
 
-    // 更新配置
+    // 计算新算法（保留 compact 状态）
+    const newAlgorithm = calculateAlgorithm(mode, this.currentConfig.algorithm);
+
     this.currentConfig = defineTheme({
       ...this.currentConfig,
-      algorithm: mode === 'dark' ? 'dark' : 'default',
+      algorithm: newAlgorithm,
     });
 
     // 应用主题
@@ -177,23 +219,35 @@ export class ThemeController {
   }
 
   /**
+   * 过渡动画 CSS 类名
+   */
+  private static readonly TRANSITION_CLASS = 'aix-theme-transition';
+
+  /**
    * 应用过渡动画样式
+   * 使用 CSS 类而非直接设置 style，避免影响其他 transition
    */
   private applyTransition(): void {
     if (!this.canAccessDOM()) {
       return;
     }
 
-    if (this.transitionConfig.enabled) {
-      const { duration, easing } = this.transitionConfig;
-      // 为颜色和背景色添加过渡效果
-      this.root!.style.transition = `
-        background-color ${duration}ms ${easing},
-        color ${duration}ms ${easing},
-        border-color ${duration}ms ${easing}
-      `.trim();
+    // 额外检查 classList 是否存在（兼容测试环境）
+    if (!this.root?.classList) {
+      return;
+    }
+
+    const { enabled, duration, easing } = this.transitionConfig;
+
+    if (enabled) {
+      // 添加过渡类并设置 CSS 变量控制过渡参数
+      this.root.classList.add(ThemeController.TRANSITION_CLASS);
+      this.root.style.setProperty('--aix-transition-duration', `${duration}ms`);
+      this.root.style.setProperty('--aix-transition-easing', easing);
     } else {
-      this.root!.style.transition = '';
+      this.root.classList.remove(ThemeController.TRANSITION_CLASS);
+      this.root.style.removeProperty('--aix-transition-duration');
+      this.root.style.removeProperty('--aix-transition-easing');
     }
   }
 
@@ -293,7 +347,7 @@ export class ThemeController {
    * 应用预设主题
    */
   applyPreset(presetName: string): void {
-    const preset = builtInPresets[presetName];
+    const preset = this.presets.get(presetName);
     if (!preset) {
       console.warn(`[ThemeController] Preset "${presetName}" not found`);
       return;
@@ -306,14 +360,21 @@ export class ThemeController {
    * 注册自定义预设
    */
   registerPreset(preset: ThemePreset): void {
-    builtInPresets[preset.name] = preset;
+    this.presets.set(preset.name, { ...preset, token: { ...preset.token } });
   }
 
   /**
    * 获取所有预设
    */
   getPresets(): ThemePreset[] {
-    return Object.values(builtInPresets);
+    return Array.from(this.presets.values());
+  }
+
+  /**
+   * 检查预设是否存在
+   */
+  hasPreset(name: string): boolean {
+    return this.presets.has(name);
   }
 
   /**
@@ -356,9 +417,19 @@ export class ThemeController {
       this.rafId = null;
     }
 
+    // 重置内部状态
     this.pendingUpdates = {};
+    this.currentMode = 'light';
     this.currentConfig = defineTheme();
-    this.setMode('light');
+    this.transitionConfig = DEFAULT_TRANSITION;
+
+    // SSR 安全：设置 data-theme 属性
+    if (this.canAccessDOM()) {
+      this.root!.setAttribute('data-theme', 'light');
+    }
+
+    // 直接应用主题，避免通过 setMode 的重复计算
+    this.applyTheme(this.currentConfig, { validate: false });
   }
 }
 

@@ -1,14 +1,16 @@
 /**
- * Vue Composition API for Theme Management
- * 基于 ThemeContext 的响应式主题管理（推荐使用）
+ * Vue Composition API - 主题管理
+ * 推荐用法：返回响应式 Ref，支持解构后保持响应式
  */
 
 import { computed, type Ref } from 'vue';
+import { cssVar, type CSSVarRefs } from './css-var';
 import type {
   PartialThemeTokens,
   ThemeConfig,
   ThemeMode,
   ThemePreset,
+  ThemeTokens,
   TransitionConfig,
 } from './theme-types';
 import { useThemeContext } from './use-theme-context';
@@ -17,20 +19,36 @@ import { useThemeContext } from './use-theme-context';
  * useTheme 返回值接口
  */
 export interface UseThemeReturn {
-  /** 当前主题模式（响应式 Ref，可安全解构） */
+  /** 当前主题模式（响应式 Ref） */
   mode: Ref<ThemeMode>;
-  /** 当前主题配置（响应式 Ref，可安全解构） */
+  /** 当前主题配置（响应式 Ref） */
   config: Ref<ThemeConfig>;
+  /**
+   * CSS 变量引用映射
+   * 提供类型安全的 CSS 变量名访问
+   *
+   * @example
+   * ```ts
+   * const { cssVar } = useTheme();
+   * // 在样式中使用
+   * const style = { color: cssVar.colorPrimary }; // => { color: "var(--colorPrimary)" }
+   * ```
+   */
+  cssVar: CSSVarRefs;
   /** 设置主题模式 */
   setMode: (mode: ThemeMode) => void;
   /** 切换主题模式（亮色/暗色） */
   toggleMode: () => ThemeMode;
   /** 应用完整主题配置 */
   applyTheme: (config: ThemeConfig) => void;
-  /** 设置单个Token */
+  /** 设置单个 Token */
   setToken: (key: keyof PartialThemeTokens, value: string | number) => void;
-  /** 批量设置Token */
+  /** 批量设置 Token */
   setTokens: (tokens: PartialThemeTokens) => void;
+  /** 获取单个 Token 值 */
+  getToken: <K extends keyof ThemeTokens>(key: K) => ThemeTokens[K] | undefined;
+  /** 获取所有当前 Token */
+  getTokens: () => ThemeTokens;
   /** 应用预设主题 */
   applyPreset: (presetName: string) => void;
   /** 注册自定义预设 */
@@ -46,42 +64,33 @@ export interface UseThemeReturn {
 }
 
 /**
- * Vue Composition API - 主题管理（推荐）
- *
- * 返回响应式 Ref，支持解构后保持响应式。
- * 这是大多数场景下的推荐用法。
- *
- * 与 useThemeContext 的区别：
- * - useTheme: 返回 Ref<T>，解构后保持响应式 ✅
- * - useThemeContext: 返回 getter，解构后丢失响应式 ⚠️
- *
- * @returns 主题管理对象（mode/config 为响应式 Ref）
+ * 主题管理 Hook（推荐）
  *
  * @example
  * ```vue
  * <script setup lang="ts">
  * import { useTheme } from '@aix/theme';
  *
- * // ✅ 可以安全解构，mode 仍然是响应式的
- * const { mode, toggleMode, applyPreset } = useTheme();
+ * const { mode, toggleMode, getToken, cssVar } = useTheme();
  *
- * // ✅ watch 可以正常工作
- * watch(mode, (newMode) => {
- *   console.log('主题变化:', newMode);
- * });
+ * // 获取当前主题色值
+ * const primaryColor = getToken('colorPrimary');
+ *
+ * // 使用 CSS 变量引用（用于动态样式）
+ * const buttonStyle = {
+ *   color: cssVar.colorPrimary,        // => "var(--colorPrimary)"
+ *   background: cssVar.colorBgContainer, // => "var(--colorBgContainer)"
+ * };
  * </script>
  *
  * <template>
- *   <div>
- *     <p>当前模式: {{ mode }}</p>
- *     <button @click="toggleMode">切换主题</button>
- *     <button @click="applyPreset('tech')">科技蓝</button>
- *   </div>
+ *   <button :style="buttonStyle" @click="toggleMode">
+ *     当前: {{ mode }}
+ *   </button>
  * </template>
  * ```
  */
 export function useTheme(): UseThemeReturn {
-  // 获取 ThemeContext
   const context = useThemeContext();
 
   // 将 Context 属性包装为 computed，确保响应性
@@ -91,11 +100,14 @@ export function useTheme(): UseThemeReturn {
   return {
     mode,
     config,
+    cssVar,
     setMode: context.setMode,
     toggleMode: context.toggleMode,
     applyTheme: context.applyTheme,
     setToken: context.setToken,
     setTokens: context.setTokens,
+    getToken: context.getToken,
+    getTokens: context.getTokens,
     applyPreset: context.applyPreset,
     registerPreset: context.registerPreset,
     getPresets: context.getPresets,
