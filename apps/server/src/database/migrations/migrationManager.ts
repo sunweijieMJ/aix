@@ -28,10 +28,8 @@ export interface IMigration {
  * 迁移管理器
  */
 export class MigrationManager {
-  constructor(_migrationsDir?: string) {
-    // migrationsDir 参数保留用于未来扩展
-    _migrationsDir;
-  }
+  // migrationsDir 参数保留用于未来扩展
+  constructor(_migrationsDir?: string) {}
 
   /**
    * 初始化迁移表
