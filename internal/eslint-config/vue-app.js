@@ -40,6 +40,8 @@ export const config = [
     },
 
     rules: {
+      // 关闭 no-useless-assignment（<script setup> 变量在模板中使用，ESLint 无法感知）
+      'no-useless-assignment': 'off',
       // ========== Vue 3 特定规则调整 ==========
       // 关闭单行元素内容必须换行的限制
       'vue/singleline-html-element-content-newline': 'off',

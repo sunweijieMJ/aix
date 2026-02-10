@@ -225,7 +225,7 @@ export class DifyClient {
    * @returns 响应数据
    */
   private async makeRequest(body: any): Promise<any> {
-    let lastError: Error | null = null;
+    let lastError: Error;
     const timeout = this.config.timeout ?? 60000;
 
     for (let attempt = 0; attempt <= this.retryConfig.maxRetries; attempt++) {

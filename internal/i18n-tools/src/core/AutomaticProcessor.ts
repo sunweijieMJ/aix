@@ -61,7 +61,9 @@ export class AutomaticProcessor {
         LoggerUtils.warn(
           `💡 建议: 您可以尝试使用手动模式单独运行此步骤以进行调试: npx i18n-tools -i -m ${step.name}`,
         );
-        throw new Error(`自动化流程在 ${step.name} 步骤中断。`);
+        throw new Error(`自动化流程在 ${step.name} 步骤中断。`, {
+          cause: error,
+        });
       }
     }
 

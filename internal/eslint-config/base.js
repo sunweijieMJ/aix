@@ -58,7 +58,13 @@ export const baseConfig = [
       // 关闭 any 类型警告
       '@typescript-eslint/no-explicit-any': 'off',
       // 未使用变量警告
-      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+        },
+      ],
     },
   },
   {

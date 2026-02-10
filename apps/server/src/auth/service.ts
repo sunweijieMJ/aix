@@ -42,8 +42,6 @@ export class AuthService {
       });
 
       // 移除密码字段
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { passwordHash: _passwordHash, ...user } = userRecord;
 
       logger.info(`User logged in: ${user.username}`);
@@ -99,8 +97,6 @@ export class AuthService {
       });
 
       // 移除密码字段
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { passwordHash: _passwordHash2, ...user } = userRecord;
 
       logger.info(`User registered: ${user.username}`);
@@ -153,8 +149,6 @@ export class AuthService {
       }
 
       // 移除密码字段
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { passwordHash: _passwordHash3, ...user } = userRecord;
 
       return user;

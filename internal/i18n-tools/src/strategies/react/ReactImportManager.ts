@@ -91,19 +91,16 @@ export class ReactImportManager implements IImportManager {
       `import\\s*\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"];?`,
     );
     const match = code.match(importRegex);
-    let updatedCode = code;
     if (match) {
       const existingImports = match[1]!.split(',').map((imp) => imp.trim());
       const newImports = [...new Set([...existingImports, ...imports])];
-      updatedCode = code.replace(
+      return code.replace(
         match[0],
         `import { ${newImports.join(', ')} } from '${packageName}';`,
       );
-    } else {
-      const importStatement = `import { ${imports.join(', ')} } from '${packageName}';\n`;
-      updatedCode = this.addImportStatement(code, importStatement);
     }
-    return updatedCode;
+    const importStatement = `import { ${imports.join(', ')} } from '${packageName}';\n`;
+    return this.addImportStatement(code, importStatement);
   }
 
   private addImportStatement(code: string, importStatement: string): string {
@@ -432,11 +429,12 @@ export class ReactImportManager implements IImportManager {
           }
 
           if (elements.length !== declaration.name.elements.length) {
-            const newBindingPattern =
-              ts.factory.createObjectBindingPattern(elements);
+            // NOTE: 在filter中无法修改declaration引用，此处仅用于类型检查
+            // 实际的声明更新由外部逻辑处理
+            // eslint-disable-next-line no-useless-assignment
             declaration = ts.factory.updateVariableDeclaration(
               declaration,
-              newBindingPattern,
+              ts.factory.createObjectBindingPattern(elements),
               declaration.exclamationToken,
               declaration.type,
               declaration.initializer,

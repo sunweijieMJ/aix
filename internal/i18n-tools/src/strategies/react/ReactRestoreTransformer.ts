@@ -381,7 +381,6 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             if (transformedNode) {
               context.hasChanges = true;
               currentNode = transformedNode;
-              nodeChanged = true;
             }
           }
 
@@ -395,7 +394,6 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
-              nodeChanged = true;
             }
           }
 
@@ -408,7 +406,6 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
-              nodeChanged = true;
             }
           }
 
@@ -421,7 +418,6 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
-              nodeChanged = true;
             }
           }
         }

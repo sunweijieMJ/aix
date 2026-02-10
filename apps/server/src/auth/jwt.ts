@@ -36,7 +36,7 @@ export class JWTUtil {
       return token;
     } catch (error) {
       logger.error('Failed to generate JWT token', error);
-      throw new Error('Failed to generate token');
+      throw new Error('Failed to generate token', { cause: error });
     }
   }
 

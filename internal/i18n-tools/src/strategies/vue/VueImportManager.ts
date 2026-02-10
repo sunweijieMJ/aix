@@ -149,21 +149,16 @@ export class VueImportManager implements IImportManager {
       `import\\s*\\{([^}]+)\\}\\s*from\\s*['"]${packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"];?`,
     );
     const match = code.match(importRegex);
-    let updatedCode = code;
-
     if (match) {
       const existingImports = match[1]!.split(',').map((imp) => imp.trim());
       const newImports = [...new Set([...existingImports, ...imports])];
-      updatedCode = code.replace(
+      return code.replace(
         match[0],
         `import { ${newImports.join(', ')} } from '${packageName}';`,
       );
-    } else {
-      const importStatement = `import { ${imports.join(', ')} } from '${packageName}';\n`;
-      updatedCode = this.addImportToScript(code, importStatement);
     }
-
-    return updatedCode;
+    const importStatement = `import { ${imports.join(', ')} } from '${packageName}';\n`;
+    return this.addImportToScript(code, importStatement);
   }
 
   /**

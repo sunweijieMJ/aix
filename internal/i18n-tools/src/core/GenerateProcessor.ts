@@ -256,7 +256,7 @@ export class GenerateProcessor extends BaseProcessor {
       );
     } catch (error) {
       LoggerUtils.error(`处理文件时发生严重错误:`, error);
-      throw new Error('语义ID生成失败');
+      throw new Error('语义ID生成失败', { cause: error });
     }
   }
 

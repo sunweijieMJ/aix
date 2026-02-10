@@ -269,10 +269,10 @@ export class ComponentExtractor {
 
     // 如果 README 提取失败，回退到传统方法
     let props: ComponentInfo['props'] = [];
-    let examples: ComponentExample[] = [];
-    let description = '';
-    let category = '';
-    let tags: string[] = [];
+    let examples: ComponentExample[];
+    let description: string;
+    let category: string;
+    let tags: string[];
 
     if (readmeData) {
       // 使用 README 提取的数据

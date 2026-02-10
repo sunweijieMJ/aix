@@ -270,6 +270,7 @@ export class McpServer {
 
           throw new Error(
             `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
           );
         }
       },

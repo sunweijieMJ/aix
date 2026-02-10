@@ -23,7 +23,7 @@ export class PasswordUtil {
       return hash;
     } catch (error) {
       logger.error('Failed to hash password', error);
-      throw new Error('Failed to hash password');
+      throw new Error('Failed to hash password', { cause: error });
     }
   }
 
