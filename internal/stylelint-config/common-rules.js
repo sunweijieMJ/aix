@@ -21,10 +21,56 @@ const SCSS_AT_RULES = [
 ];
 
 /**
+ * 常见字体名称（允许使用大写）
+ * font-family 中的字体名称通常使用 PascalCase 或混合大小写
+ */
+const FONT_FAMILY_KEYWORDS = [
+  // 系统字体
+  'BlinkMacSystemFont',
+  // 通用字体
+  'Roboto',
+  'Arial',
+  'Helvetica',
+  'Verdana',
+  'Tahoma',
+  'Georgia',
+  'Consolas',
+  'Courier',
+  'Monaco',
+  'Menlo',
+  // 中文字体
+  'PingFang',
+  'Hiragino',
+  'Heiti',
+  'SimSun',
+  'SimHei',
+  'NSimSun',
+  'FangSong',
+  'KaiTi',
+  'STSong',
+  'STHeiti',
+  // 泛型字体关键字
+  'sans-serif',
+  'serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+];
+
+/**
  * 公共规则配置
  */
 export const commonRules = {
   'max-nesting-depth': 10, // 限制嵌套深度
+  // 允许关键字使用大写（主要是 font-family 中的字体名称）
+  'value-keyword-case': [
+    'lower',
+    {
+      ignoreKeywords: FONT_FAMILY_KEYWORDS,
+      // 允许 SVG 中的 camelCase 关键字
+      camelCaseSvgKeywords: true,
+    },
+  ],
   'scss/dollar-variable-pattern': [/$/, { ignore: 'global' }], // scss变量名忽略警告
   'selector-id-pattern': '^[a-zA-Z][a-zA-Z0-9_-]+$|^el-|^mz-', // 为id选择器指定一个匹配模式
   'selector-class-pattern': '^[a-zA-Z][a-zA-Z0-9_-]+$|^el-|^mz-', // 为类选择器指定一个匹配模式
