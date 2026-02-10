@@ -14,9 +14,6 @@
     "mcp-server",
     "component-library"
   ],
-  "publishConfig": {
-    "registry": "https://it-artifactory.yitu-inc.com/api/npm/npm-local/"
-  },
   "files": [
     "dist",
     "data"

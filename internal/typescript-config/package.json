@@ -2,8 +2,5 @@
   "name": "@kit/typescript-config",
   "version": "1.0.0",
   "type": "module",
-  "license": "MIT",
-  "publishConfig": {
-    "registry": "https://it-artifactory.yitu-inc.com/api/npm/npm/"
-  }
+  "license": "MIT"
 }

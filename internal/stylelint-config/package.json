@@ -2,9 +2,6 @@
   "name": "@kit/stylelint-config",
   "version": "1.0.0",
   "type": "module",
-  "publishConfig": {
-    "registry": "https://it-artifactory.yitu-inc.com/api/npm/npm/"
-  },
   "dependencies": {
     "stylelint": "^16.25.0",
     "stylelint-config-property-sort-order-smacss": "^10.0.0",

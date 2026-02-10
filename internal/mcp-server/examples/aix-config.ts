@@ -32,7 +32,7 @@ export const AIX_COMPONENT_LIBRARY_CONFIG = {
   shortDescription: 'AIX 组件库 MCP 服务器',
 
   // AIX 内部 npm 注册表
-  registry: 'https://it-artifactory.yitu-inc.com/api/npm/npm-local/',
+  registry: 'http://npm-registry.zhihuishu.com:4873/',
 
   // 组件识别模式
   componentPatterns: {

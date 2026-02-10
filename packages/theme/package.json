@@ -36,9 +36,6 @@
     "build:types": "tsc --emitDeclarationOnly --outDir dist",
     "clean": "rimraf dist tsconfig.tsbuildinfo"
   },
-  "publishConfig": {
-    "registry": "https://it-artifactory.yitu-inc.com/api/npm/npm-local/"
-  },
   "peerDependencies": {
     "vue": "^3.0.0"
   },
