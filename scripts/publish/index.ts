@@ -2,7 +2,7 @@
  * 本地发包脚本 - 使用 changeset 管理包版本
  */
 
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import fs from 'fs';
 import { readdir, readFile } from 'fs/promises';
 import path from 'path';
@@ -11,8 +11,34 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 
 // 常量配置
-const NPM_REGISTRY =
-  process.env.NPM_REGISTRY || 'http://npm-registry.zhihuishu.com:4873/';
+const WORKSPACE_DIRS = ['packages', 'internal']; // 可发布的 workspace 目录
+const BUILD_OUTPUTS = ['es', 'lib', 'dist']; // 构建产物目录
+
+// 获取 npm registry 地址（优先级：环境变量 > .npmrc > 默认值）
+const getNpmRegistry = (): string => {
+  // 1. 环境变量
+  if (process.env.NPM_REGISTRY) {
+    return process.env.NPM_REGISTRY;
+  }
+
+  // 2. 从 .npmrc 读取
+  const npmrcPath = path.join(
+    process.env.HOME || process.env.USERPROFILE || '',
+    '.npmrc',
+  );
+  if (fs.existsSync(npmrcPath)) {
+    const npmrc = fs.readFileSync(npmrcPath, 'utf-8');
+    const match = npmrc.match(/registry\s*=\s*(.+)/);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  // 3. 默认私有仓库
+  return 'http://npm-registry.zhihuishu.com:4873/';
+};
+
+const NPM_REGISTRY = getNpmRegistry();
 
 // 获取当前脚本所在的目录
 const __filename = fileURLToPath(import.meta.url);
@@ -25,6 +51,7 @@ const parseArgs = () => {
     mode: '', // 发布模式: release, beta, alpha
     action: '', // 操作类型: full, create, version, publish
     skipPrompts: false, // 是否跳过所有确认提示
+    dryRun: false, // 干运行模式，只显示将要发布的包，不实际发布
     help: false, // 显示帮助信息
   };
 
@@ -40,6 +67,8 @@ const parseArgs = () => {
       i++;
     } else if (arg === '--yes' || arg === '-y') {
       result.skipPrompts = true;
+    } else if (arg === '--dry-run' || arg === '-d') {
+      result.dryRun = true;
     }
   }
 
@@ -59,12 +88,14 @@ ${chalk.yellow('选项:')}
   -m, --mode <mode>    指定发布模式 (release, beta, alpha)
   -a, --action <action> 指定操作类型 (full, create, version, publish)
   -y, --yes            跳过所有确认提示，自动选择默认选项
+  -d, --dry-run        干运行模式，只显示将要发布的包，不实际发布
 
 ${chalk.yellow('示例:')}
   pnpm pre                   # 启动交互式菜单
   pnpm pre -a full -m beta   # 执行完整的 beta 发布流程
   pnpm pre -a create         # 只创建 changeset
   pnpm pre -a publish -y     # 构建并发布，使用默认选项
+  pnpm pre -a publish -d     # 预览将要发布的包（不实际发布）
   `);
 };
 
@@ -93,23 +124,74 @@ const confirm = async (
   return answer as boolean;
 };
 
-// 执行命令并返回输出
-const runCommand = (command: string, silent = false, cwd?: string): string => {
+// 延迟函数
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+// 执行命令的通用函数
+const execCommand = (
+  command: string,
+  options: { cwd?: string; silent?: boolean } = {},
+): string => {
+  const { cwd, silent = false } = options;
   try {
-    return (
-      execSync(command, {
-        encoding: 'utf-8',
-        stdio: silent ? 'pipe' : 'inherit',
-        ...(cwd ? { cwd } : {}),
-      }) ?? ''
-    );
+    return execSync(command, {
+      encoding: 'utf-8',
+      stdio: silent ? 'pipe' : 'inherit',
+      ...(cwd ? { cwd } : {}),
+    });
   } catch (error) {
     const exitCode = (error as { status?: number }).status;
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(
       `命令执行失败: ${command}${exitCode != null ? ` (exit code: ${exitCode})` : ''}\n${detail}`,
+      { cause: error },
     );
   }
+};
+
+// 执行命令并捕获输出（静默模式）
+const exec = (command: string, cwd?: string): string =>
+  execCommand(command, { cwd, silent: true });
+
+// 执行命令并显示输出（交互模式）
+const run = (command: string, cwd?: string): void => {
+  execCommand(command, { cwd, silent: false });
+};
+
+// 带重试的命令执行（用于网络相关操作，交互模式）
+const runWithRetry = async (
+  command: string,
+  options: {
+    cwd?: string;
+    maxRetries?: number;
+    retryDelayMs?: number;
+  } = {},
+): Promise<void> => {
+  const { cwd, maxRetries = 3, retryDelayMs = 3000 } = options;
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      run(command, cwd);
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < maxRetries) {
+        const waitTime = retryDelayMs * attempt;
+        console.log(
+          chalk.yellow(
+            `⚠️ 命令执行失败，${waitTime / 1000} 秒后进行第 ${attempt + 1}/${maxRetries} 次重试...`,
+          ),
+        );
+        await sleep(waitTime);
+      }
+    }
+  }
+
+  throw lastError;
 };
 
 // 查找项目根目录
@@ -134,7 +216,7 @@ const findProjectRoot = (startDir: string): string => {
 const projectRoot = findProjectRoot(__dirname);
 
 // 检查 npm 登录状态
-const checkNpmLogin = async () => {
+const checkNpmLogin = () => {
   console.log(chalk.blue(`检查 npm 登录状态 (${NPM_REGISTRY})...`));
 
   try {
@@ -151,9 +233,9 @@ const checkNpmLogin = async () => {
 };
 
 // 检查工作区状态
-const checkWorkspace = async () => {
+const checkWorkspace = () => {
   console.log(chalk.blue('检查代码工作区状态...'));
-  const status = runCommand('git status --porcelain', true, projectRoot);
+  const status = exec('git status --porcelain', projectRoot);
 
   if (status.trim() !== '') {
     throw new Error(
@@ -164,38 +246,58 @@ const checkWorkspace = async () => {
   console.log(chalk.green('✅ 工作区干净'));
 };
 
+// pre.json 文件结构类型
+interface PreJsonFile {
+  mode: string;
+  tag: string;
+  initialVersions: Record<string, string>;
+  changesets: string[];
+}
+
+// 安全解析 pre.json 文件
+const parsePreJson = (filePath: string): PreJsonFile | null => {
+  try {
+    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    // 类型守卫：确保必要字段存在且类型正确
+    if (
+      typeof content === 'object' &&
+      content !== null &&
+      typeof content.mode === 'string' &&
+      typeof content.tag === 'string'
+    ) {
+      return content as PreJsonFile;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 // 处理发布模式
 const handlePreMode = async (mode: string) => {
   const normalizedMode = mode.toLowerCase();
   const preJsonPath = path.join(projectRoot, '.changeset', 'pre.json');
 
   if (fs.existsSync(preJsonPath)) {
-    try {
-      const preJson = JSON.parse(fs.readFileSync(preJsonPath, 'utf-8'));
-      const currentTag = preJson.tag as string | undefined;
-      const currentMode = preJson.mode as string | undefined;
+    const preJson = parsePreJson(preJsonPath);
 
-      if (currentMode === 'exit') {
-        // pre.json 处于退出状态，清理后重新设置
-        console.log(chalk.gray('清理已退出的预发布状态...'));
-        fs.unlinkSync(preJsonPath);
-      } else if (currentTag === normalizedMode) {
-        console.log(
-          chalk.cyan(`已处于 ${normalizedMode} 预发布模式，无需切换`),
-        );
-        return;
-      } else {
-        // 当前处于预发布模式但要切换到其他模式，先退出
-        console.log(chalk.yellow(`退出当前预发布模式 (${currentTag})...`));
-        runCommand('npx changeset pre exit', false, projectRoot);
-        // 清理 pre.json，确保后续 pre enter 能正常执行
-        if (fs.existsSync(preJsonPath)) {
-          fs.unlinkSync(preJsonPath);
-        }
-      }
-    } catch {
+    if (!preJson) {
+      // 文件损坏或格式无效
       console.warn(chalk.yellow('pre.json 文件已损坏，将重新初始化'));
       fs.unlinkSync(preJsonPath);
+    } else if (preJson.mode !== 'pre' || !preJson.tag) {
+      // changeset 的 pre.json 在预发布模式下 mode 为 "pre"
+      // 如果 mode 不是 "pre" 或者没有有效的 tag，说明文件状态异常
+      console.log(chalk.gray('清理无效的预发布状态文件...'));
+      fs.unlinkSync(preJsonPath);
+    } else if (preJson.tag === normalizedMode) {
+      // 已处于目标预发布模式
+      console.log(chalk.cyan(`已处于 ${normalizedMode} 预发布模式，无需切换`));
+      return;
+    } else {
+      // 需要切换模式：从预发布退出（无论是切换到 release 还是其他预发布模式）
+      console.log(chalk.yellow(`退出当前预发布模式 (${preJson.tag})...`));
+      run('npx changeset pre exit', projectRoot);
     }
   }
 
@@ -205,11 +307,11 @@ const handlePreMode = async (mode: string) => {
       break;
     case 'beta':
       console.log(chalk.cyan('Beta 发布模式'));
-      runCommand('npx changeset pre enter beta', false, projectRoot);
+      run('npx changeset pre enter beta', projectRoot);
       break;
     case 'alpha':
       console.log(chalk.cyan('Alpha 发布模式'));
-      runCommand('npx changeset pre enter alpha', false, projectRoot);
+      run('npx changeset pre enter alpha', projectRoot);
       break;
     default:
       console.log(chalk.yellow(`未知模式 "${mode}"，使用默认的正式发布模式`));
@@ -246,25 +348,34 @@ const setupReleaseMode = async (initialMode = '', skipPrompts = false) => {
   await handlePreMode(mode);
 };
 
-// 创建 changeset
-const createChangeset = async (skipPrompts = false) => {
+// 创建 changeset，返回是否实际创建
+const createChangeset = async (skipPrompts = false): Promise<boolean> => {
   if (await confirm('是否需要创建新的 changeset?', true, skipPrompts)) {
-    runCommand('npx changeset', false, projectRoot);
-  } else {
-    console.log(chalk.yellow('已跳过创建 changeset'));
+    run('npx changeset', projectRoot);
+    return true;
   }
+  console.log(chalk.yellow('已跳过创建 changeset'));
+  return false;
 };
 
 // 更新版本
 const updateVersion = async (skipPrompts = false) => {
   console.log(chalk.blue('更新包版本...'));
-  runCommand('npx changeset version', false, projectRoot);
+
+  run('npx changeset version', projectRoot);
+
+  // 清除缓存，因为版本号已更新
+  clearWorkspaceCache();
 
   console.log(chalk.yellow('版本已更新，请检查版本变更'));
   if (!(await confirm('是否继续?', true, skipPrompts))) {
-    throw new Error(
-      '用户取消发布流程\n注意: changeset version 已执行，包版本已更新但未发布。\n如需回退版本变更，请执行: git stash',
-    );
+    // 用户取消，提供回滚选项
+    console.log(chalk.yellow('用户取消发布流程'));
+    if (await confirm('是否回滚版本变更?', true, skipPrompts)) {
+      run('git checkout -- .', projectRoot);
+      console.log(chalk.green('已回滚版本变更'));
+    }
+    throw new Error('用户取消发布流程');
   }
 };
 
@@ -289,10 +400,12 @@ const getChangedPackages = async (): Promise<Set<string>> => {
 
     if (frontMatter) {
       // 解析 YAML frontmatter 中的包名，支持带引号和不带引号的格式
-      // 例如: '@aix/button': minor 或 "@aix/button": patch
+      // 例如: '@aix/button': minor 或 "@aix/button": patch 或 @aix/button: major
+      // 包名可能包含 . 字符，如 @aix/pdf.viewer
       const lines = frontMatter.trim().split('\n');
       for (const line of lines) {
-        const match = line.match(/^['"]?([^'":\s]+)['"]?\s*:/);
+        // 匹配 @scope/name 或普通包名，支持带引号和不带引号，包名可包含 . 字符
+        const match = line.match(/^['"]?(@?[\w.-]+\/[\w.-]+|[\w.-]+)['"]?\s*:/);
         if (match?.[1]) {
           packages.add(match[1]);
         }
@@ -303,57 +416,138 @@ const getChangedPackages = async (): Promise<Set<string>> => {
   return packages;
 };
 
+// 规范化路径分隔符（Windows 兼容）
+const normalizePath = (filePath: string): string =>
+  filePath.replace(/\\/g, '/');
+
+// Workspace 包信息接口
+interface WorkspacePackage {
+  name: string;
+  version: string;
+  dir: string;
+  pkgJsonPath: string;
+  private: boolean;
+}
+
+// Workspace 包缓存
+let workspacePackagesCache: WorkspacePackage[] | null = null;
+
+// 清除 workspace 包缓存（版本更新后需要调用）
+const clearWorkspaceCache = (): void => {
+  workspacePackagesCache = null;
+};
+
+// 遍历所有 workspace 包（带缓存，避免重复遍历）
+const getWorkspacePackages = (): WorkspacePackage[] => {
+  if (workspacePackagesCache) {
+    return workspacePackagesCache;
+  }
+
+  const packages: WorkspacePackage[] = [];
+
+  for (const workspaceDir of WORKSPACE_DIRS) {
+    const dirPath = path.join(projectRoot, workspaceDir);
+    if (!fs.existsSync(dirPath)) continue;
+
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const pkgJsonPath = path.join(dirPath, entry.name, 'package.json');
+      if (!fs.existsSync(pkgJsonPath)) continue;
+
+      const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+      packages.push({
+        name: pkgJson.name as string,
+        version: pkgJson.version as string,
+        dir: path.join(dirPath, entry.name),
+        pkgJsonPath,
+        private: Boolean(pkgJson.private),
+      });
+    }
+  }
+
+  workspacePackagesCache = packages;
+  return packages;
+};
+
+// 获取可发布的包（排除 private）
+const getPublishablePackages = (): WorkspacePackage[] =>
+  getWorkspacePackages().filter((pkg) => !pkg.private);
+
 // 从 git diff 检测版本变更的包（changeset 文件被 version 消费后的 fallback）
-const getVersionBumpedPackages = async (): Promise<Set<string>> => {
-  const diff = runCommand('git diff --name-only HEAD', true, projectRoot);
+const getVersionBumpedPackages = (): Set<string> => {
+  const diff = exec('git diff --name-only HEAD', projectRoot);
   const packages = new Set<string>();
 
+  // 动态生成匹配正则：(packages|internal)/[^/]+/package.json
+  const workspaceDirsPattern = WORKSPACE_DIRS.join('|');
+  const packageJsonRegex = new RegExp(
+    `^(${workspaceDirsPattern})/[^/]+/package\\.json$`,
+  );
+
   for (const file of diff.trim().split('\n').filter(Boolean)) {
-    if (/^packages\/[^/]+\/package\.json$/.test(file)) {
-      const pkgJson = JSON.parse(
-        fs.readFileSync(path.join(projectRoot, file), 'utf-8'),
-      );
-      packages.add(pkgJson.name as string);
+    // 规范化路径分隔符，确保 Windows 兼容
+    const normalizedFile = normalizePath(file);
+    if (packageJsonRegex.test(normalizedFile)) {
+      const pkgJsonPath = path.join(projectRoot, normalizedFile);
+      if (fs.existsSync(pkgJsonPath)) {
+        const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+        // 跳过 private 包
+        if (!pkgJson.private) {
+          packages.add(pkgJson.name as string);
+        }
+      }
     }
   }
 
   return packages;
 };
 
-// 对比本地版本与 npm registry 已发布版本，检测待发布的包
-const getUnpublishedPackages = async (): Promise<Set<string>> => {
-  const packagesDir = path.join(projectRoot, 'packages');
-  const entries = await readdir(packagesDir, { withFileTypes: true });
-  const packages = new Set<string>();
+// 获取待发布包的详细信息（对比本地版本与 npm registry）
+const getPackagesToPublish = (): Array<{
+  name: string;
+  version: string;
+  dir: string;
+}> => {
+  const result: Array<{ name: string; version: string; dir: string }> = [];
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-
-    const pkgJsonPath = path.join(packagesDir, entry.name, 'package.json');
-    if (!fs.existsSync(pkgJsonPath)) continue;
-
-    const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
-    if (pkgJson.private) continue;
-
-    const pkgName = pkgJson.name as string;
-    const localVersion = pkgJson.version as string;
-
+  for (const pkg of getPublishablePackages()) {
     try {
       const publishedVersion = execSync(
-        `npm view ${pkgName} version --registry=${NPM_REGISTRY}`,
+        `npm view ${pkg.name} version --registry=${NPM_REGISTRY}`,
         { encoding: 'utf-8', stdio: 'pipe' },
       ).trim();
 
-      if (publishedVersion !== localVersion) {
-        packages.add(pkgName);
+      if (publishedVersion !== pkg.version) {
+        result.push({ name: pkg.name, version: pkg.version, dir: pkg.dir });
       }
-    } catch {
-      // 包从未发布过，视为待发布
-      packages.add(pkgName);
+    } catch (error) {
+      // 区分"包不存在"和"网络错误"
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const stderr = (error as { stderr?: Buffer })?.stderr?.toString() ?? '';
+      const errorText = `${errorMessage} ${stderr}`.toLowerCase();
+
+      // npm 404 错误表示包从未发布过
+      if (
+        errorText.includes('404') ||
+        errorText.includes('not found') ||
+        errorText.includes('e404')
+      ) {
+        result.push({ name: pkg.name, version: pkg.version, dir: pkg.dir });
+      } else {
+        // 其他错误（网络问题等）给出警告但继续处理
+        console.warn(
+          chalk.yellow(`⚠️ 无法检查 ${pkg.name} 版本状态: ${errorMessage}`),
+        );
+        // 保守处理：假设需要发布
+        result.push({ name: pkg.name, version: pkg.version, dir: pkg.dir });
+      }
     }
   }
 
-  return packages;
+  return result;
 };
 
 // 检测需要构建的包（多级 fallback）
@@ -366,7 +560,7 @@ const detectPackages = async (): Promise<Set<string>> => {
   }
 
   // 2. 从 git diff 检测（changeset version 后的 unstaged changes）
-  const fromDiff = await getVersionBumpedPackages();
+  const fromDiff = getVersionBumpedPackages();
   if (fromDiff.size) {
     console.log(chalk.gray('(从 git diff 检测到版本变更的包)'));
     return fromDiff;
@@ -374,14 +568,94 @@ const detectPackages = async (): Promise<Set<string>> => {
 
   // 3. 对比 npm registry 版本（workspace 已 clean 的情况）
   console.log(chalk.yellow('从 npm registry 对比本地版本，检测待发布的包...'));
-  const fromRegistry = await getUnpublishedPackages();
-  if (fromRegistry.size) {
-    return fromRegistry;
+  const fromRegistry = getPackagesToPublish();
+  if (fromRegistry.length) {
+    return new Set(fromRegistry.map((pkg) => pkg.name));
   }
 
   throw new Error(
     '未找到需要构建的包。请确认是否已创建 changeset 或更新版本号。',
   );
+};
+
+// 根据包名获取包目录路径
+const getPackageDir = (pkgName: string): string | null => {
+  const pkg = getWorkspacePackages().find((p) => p.name === pkgName);
+  return pkg?.dir ?? null;
+};
+
+// 根据 package.json 的 exports/main/module 字段推断需要的构建产物
+const getRequiredOutputs = (pkgJsonPath: string): string[] => {
+  const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+  const outputs = new Set<string>();
+
+  // 检查 main 字段 (通常指向 lib/cjs)
+  if (pkgJson.main) {
+    if (pkgJson.main.includes('/lib/')) outputs.add('lib');
+    if (pkgJson.main.includes('/dist/')) outputs.add('dist');
+  }
+
+  // 检查 module 字段 (通常指向 es/esm)
+  if (pkgJson.module) {
+    if (pkgJson.module.includes('/es/')) outputs.add('es');
+    if (pkgJson.module.includes('/dist/')) outputs.add('dist');
+  }
+
+  // 检查 exports 字段
+  if (pkgJson.exports) {
+    const exportsStr = JSON.stringify(pkgJson.exports);
+    if (exportsStr.includes('/es/')) outputs.add('es');
+    if (exportsStr.includes('/lib/')) outputs.add('lib');
+    if (exportsStr.includes('/dist/')) outputs.add('dist');
+  }
+
+  // 如果没有检测到任何配置，回退到检查任意一个产物目录存在即可
+  return outputs.size > 0 ? Array.from(outputs) : [];
+};
+
+// 校验构建产物是否存在
+const validateBuildOutputs = (packages: Set<string>) => {
+  console.log(chalk.blue('校验构建产物...'));
+  const errors: string[] = [];
+
+  for (const pkgName of packages) {
+    const pkgDir = getPackageDir(pkgName);
+    if (!pkgDir) {
+      errors.push(`找不到包目录: ${pkgName}`);
+      continue;
+    }
+
+    const pkgJsonPath = path.join(pkgDir, 'package.json');
+    const requiredOutputs = getRequiredOutputs(pkgJsonPath);
+
+    if (requiredOutputs.length > 0) {
+      // 根据 package.json 配置精确校验
+      const missingOutputs = requiredOutputs.filter(
+        (output) => !fs.existsSync(path.join(pkgDir, output)),
+      );
+
+      if (missingOutputs.length > 0) {
+        errors.push(`${pkgName}: 缺少构建产物 (${missingOutputs.join(', ')})`);
+      }
+    } else {
+      // 回退逻辑：至少存在一个构建产物目录
+      const hasAnyOutput = BUILD_OUTPUTS.some((output) =>
+        fs.existsSync(path.join(pkgDir, output)),
+      );
+
+      if (!hasAnyOutput) {
+        errors.push(`${pkgName}: 缺少构建产物 (${BUILD_OUTPUTS.join('/')})`);
+      }
+    }
+  }
+
+  if (errors.length) {
+    throw new Error(
+      `构建产物校验失败:\n${errors.map((e) => `  - ${e}`).join('\n')}`,
+    );
+  }
+
+  console.log(chalk.green('✅ 构建产物校验通过'));
 };
 
 // 构建指定的包
@@ -396,16 +670,50 @@ const buildPackages = async (packages?: Set<string>) => {
     .map((pkg) => `--filter=${pkg}`)
     .join(' ');
 
-  runCommand(
+  run(
     `npx turbo run build ${filterArgs} --output-logs=errors-only`,
-    false,
     projectRoot,
   );
+
+  // 校验构建产物
+  validateBuildOutputs(packagesToBuild);
+};
+
+// 获取已发布包的版本信息，用于生成 commit message
+// 注意：此函数在 git add 之后调用，需要检测 staged changes
+const getPublishedVersions = (): string[] => {
+  const versions: string[] = [];
+
+  for (const pkg of getPublishablePackages()) {
+    // 检查该包是否有版本变更
+    // 优先检测 staged changes (--cached)，fallback 到 unstaged changes
+    try {
+      // 规范化路径用于 git 命令
+      const relativePath = normalizePath(
+        path.relative(projectRoot, pkg.pkgJsonPath),
+      );
+      let diff = exec(
+        `git diff --cached HEAD -- "${relativePath}"`,
+        projectRoot,
+      );
+      // 如果没有 staged changes，尝试检测 unstaged changes
+      if (!diff.trim()) {
+        diff = exec(`git diff HEAD -- "${relativePath}"`, projectRoot);
+      }
+      if (diff.includes('"version"')) {
+        versions.push(`${pkg.name}@${pkg.version}`);
+      }
+    } catch {
+      // 忽略 diff 错误
+    }
+  }
+
+  return versions;
 };
 
 // 发布后的 git 操作
 const postPublishGitActions = async (skipPrompts = false) => {
-  const status = runCommand('git status --porcelain', true, projectRoot);
+  const status = exec('git status --porcelain', projectRoot);
   if (!status.trim()) {
     return;
   }
@@ -419,23 +727,43 @@ const postPublishGitActions = async (skipPrompts = false) => {
     return;
   }
 
-  runCommand(
-    'git add packages/ .changeset/ pnpm-lock.yaml',
-    false,
-    projectRoot,
-  );
-  runCommand('git commit -m "chore: release packages"', false, projectRoot);
+  // 动态生成 git add 路径（包含所有 workspace 目录）
+  const addPaths = [
+    ...WORKSPACE_DIRS.map((dir) => `${dir}/`),
+    '.changeset/',
+    'pnpm-lock.yaml',
+  ].join(' ');
+
+  run(`git add ${addPaths}`, projectRoot);
+
+  // 生成包含版本信息的 commit message
+  const versions = getPublishedVersions();
+  const commitMessage =
+    versions.length > 0
+      ? `chore(release): ${versions.join(', ')}`
+      : 'chore(release): update versions';
+
+  // 使用 spawnSync 避免 shell 转义问题（跨平台兼容）
+  const result = spawnSync('git', ['commit', '-m', commitMessage], {
+    cwd: projectRoot,
+    stdio: 'inherit',
+    encoding: 'utf-8',
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`命令执行失败: git commit (exit code: ${result.status})`);
+  }
   console.log(chalk.green('✅ 版本变更已提交'));
 
   // 2. 是否推送代码
   if (await confirm('是否推送代码到远程仓库?', true, skipPrompts)) {
-    runCommand('git push', false, projectRoot);
+    run('git push', projectRoot);
     console.log(chalk.green('✅ 代码已推送'));
   }
 
   // 3. 是否推送 tags
   if (await confirm('是否推送 Git Tags?', true, skipPrompts)) {
-    runCommand('git push --tags', false, projectRoot);
+    run('git push --tags', projectRoot);
     console.log(chalk.green('✅ Tags 已推送'));
   }
 };
@@ -446,18 +774,36 @@ const getPreReleaseTag = (): string | undefined => {
   if (!fs.existsSync(preJsonPath)) {
     return undefined;
   }
-  try {
-    const preJson = JSON.parse(fs.readFileSync(preJsonPath, 'utf-8'));
-    return preJson.tag as string | undefined;
-  } catch {
-    return undefined;
-  }
+  const preJson = parsePreJson(preJsonPath);
+  return preJson?.tag;
 };
 
 // 发布包
-const publishPackages = async (skipPrompts = false) => {
+const publishPackages = async (skipPrompts = false, dryRun = false) => {
   const preTag = getPreReleaseTag();
   const tagInfo = preTag ? ` (dist-tag: ${preTag})` : ' (dist-tag: latest)';
+
+  // Dry-run 模式：只显示将要发布的包
+  if (dryRun) {
+    console.log(chalk.cyan('\n🔍 Dry-run 模式 - 以下包将被发布:'));
+    console.log(chalk.gray(`目标 Registry: ${NPM_REGISTRY}`));
+    console.log(chalk.gray(`Dist Tag: ${preTag || 'latest'}\n`));
+
+    const packagesToPublish = getPackagesToPublish();
+
+    if (packagesToPublish.length === 0) {
+      console.log(chalk.yellow('没有需要发布的包'));
+      return;
+    }
+
+    for (const pkg of packagesToPublish) {
+      console.log(`  📦 ${chalk.green(pkg.name)}@${chalk.cyan(pkg.version)}`);
+    }
+
+    console.log(chalk.gray(`\n共 ${packagesToPublish.length} 个包待发布`));
+    console.log(chalk.yellow('\n(Dry-run 模式，未实际发布)'));
+    return;
+  }
 
   console.log(chalk.blue('发布包...'));
   console.log(chalk.yellow(`警告: 即将发布到 npm 仓库${tagInfo}`));
@@ -466,13 +812,27 @@ const publishPackages = async (skipPrompts = false) => {
     throw new Error('用户取消发布');
   }
 
+  // 记录发布前的包列表，用于汇总
+  const packagesBeforePublish = getPackagesToPublish();
+
   const tagFlag = preTag ? ` --tag ${preTag}` : '';
-  runCommand(
-    `npx changeset publish --no-git-checks${tagFlag}`,
-    false,
-    projectRoot,
-  );
-  console.log(chalk.green('✅ 发布完成!'));
+
+  // 使用带重试的命令执行，应对网络波动
+  await runWithRetry(`npx changeset publish --no-git-checks${tagFlag}`, {
+    cwd: projectRoot,
+    maxRetries: 3,
+    retryDelayMs: 3000,
+  });
+
+  // 显示发布汇总
+  if (packagesBeforePublish.length > 0) {
+    console.log(chalk.green('\n📦 发布汇总:'));
+    for (const pkg of packagesBeforePublish) {
+      console.log(`  ✅ ${pkg.name}@${pkg.version}`);
+    }
+  }
+
+  console.log(chalk.green('\n✅ 发布完成!'));
 
   await postPublishGitActions(skipPrompts);
 };
@@ -482,10 +842,11 @@ const executeAction = async (
   action: string,
   mode: string,
   skipPrompts: boolean,
+  dryRun: boolean,
 ) => {
   switch (action.toLowerCase()) {
     case 'full':
-      await runFullProcess(skipPrompts, mode);
+      await runFullProcess(skipPrompts, mode, dryRun);
       break;
     case 'create':
       await createChangeset(skipPrompts);
@@ -496,10 +857,12 @@ const executeAction = async (
       await updateVersion(skipPrompts);
       break;
     case 'publish':
-      await checkNpmLogin();
-      await checkWorkspace();
-      await buildPackages();
-      await publishPackages(skipPrompts);
+      if (!dryRun) {
+        await checkNpmLogin();
+        await checkWorkspace();
+        await buildPackages();
+      }
+      await publishPackages(skipPrompts, dryRun);
       break;
     default:
       throw new Error(
@@ -516,7 +879,7 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
   }
 
   if (args.action) {
-    await executeAction(args.action, args.mode, args.skipPrompts);
+    await executeAction(args.action, args.mode, args.skipPrompts, args.dryRun);
     return;
   }
 
@@ -534,6 +897,7 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
         { name: '仅创建 changeset', value: 'create' },
         { name: '仅更新版本号', value: 'version' },
         { name: '仅构建并发布', value: 'publish' },
+        { name: '预览待发布的包 (dry-run)', value: 'dry-run' },
         { name: '退出', value: 'exit' },
       ],
       default: 'full',
@@ -545,12 +909,27 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
     return;
   }
 
+  if (action === 'dry-run') {
+    await publishPackages(true, true);
+    return;
+  }
+
   // 统一走 executeAction，模式选择由 setupReleaseMode 内部处理
-  await executeAction(action, '', args.skipPrompts);
+  await executeAction(action, '', args.skipPrompts, args.dryRun);
 };
 
 // 完整发布流程
-const runFullProcess = async (skipPrompts = false, mode = '') => {
+const runFullProcess = async (
+  skipPrompts = false,
+  mode = '',
+  dryRun = false,
+) => {
+  // Dry-run 模式跳过所有检查，直接显示待发布的包
+  if (dryRun) {
+    await publishPackages(skipPrompts, true);
+    return;
+  }
+
   await checkNpmLogin();
   await checkWorkspace();
 
@@ -561,15 +940,17 @@ const runFullProcess = async (skipPrompts = false, mode = '') => {
   let changedPackages = await getChangedPackages();
   if (!changedPackages.size) {
     console.log(chalk.yellow('未检测到现有的 changeset 文件，需要先创建'));
-    runCommand('npx changeset', false, projectRoot);
+    run('npx changeset', projectRoot);
     changedPackages = await getChangedPackages();
     if (!changedPackages.size) {
       throw new Error('未创建任何 changeset，发布流程终止');
     }
   } else {
-    await createChangeset(skipPrompts);
-    // 重新解析，包含可能新增的 changeset
-    changedPackages = await getChangedPackages();
+    // 只在实际创建了新 changeset 时才重新解析
+    const created = await createChangeset(skipPrompts);
+    if (created) {
+      changedPackages = await getChangedPackages();
+    }
   }
 
   await updateVersion(skipPrompts);
