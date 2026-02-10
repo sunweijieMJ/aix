@@ -8,7 +8,7 @@ import {
   getCSSVarName,
   getCSSVarRefs,
   getCSSVars,
-} from '../src/css-var';
+} from '../src/utils/css-var';
 
 describe('css-var', () => {
   describe('cssVar', () => {

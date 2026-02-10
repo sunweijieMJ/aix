@@ -14,7 +14,7 @@ import type {
   PartialThemeTokens,
   ThemeConfig,
   ThemeTokens,
-} from './theme-types';
+} from '../theme-types';
 
 /**
  * 默认的基础Token

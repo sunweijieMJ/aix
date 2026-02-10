@@ -3,7 +3,7 @@
  * 提供类型安全的 CSS 变量名访问
  */
 
-import type { ThemeTokens } from './theme-types';
+import type { ThemeTokens } from '../theme-types';
 
 /**
  * CSS 变量引用类型

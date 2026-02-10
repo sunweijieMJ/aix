@@ -13,7 +13,7 @@ import {
   parseRGB,
   rgbToHsl,
   rgbToString,
-} from '../src/color-algorithm';
+} from '../src/core/color-algorithm';
 
 describe('color-algorithm', () => {
   describe('parseRGB', () => {

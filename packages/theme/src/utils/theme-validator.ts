@@ -3,7 +3,7 @@
  * 验证主题配置的有效性
  */
 
-import type { PartialThemeTokens, ThemeConfig } from './theme-types';
+import type { PartialThemeTokens, ThemeConfig } from '../theme-types';
 
 /**
  * 验证结果

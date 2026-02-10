@@ -3,7 +3,9 @@
  * 主题系统入口文件
  */
 
+// ============================================================
 // 类型导出
+// ============================================================
 export type {
   BaseTokens,
   SemanticTokens,
@@ -15,7 +17,11 @@ export type {
   TransitionConfig,
 } from './theme-types';
 
-// 颜色算法导出
+// ============================================================
+// 核心模块 (core/)
+// ============================================================
+
+// 颜色算法
 export {
   // 类型
   type RGB,
@@ -47,9 +53,9 @@ export {
   generateTextColor,
   generateColorSeries,
   generateColorPalette,
-} from './color-algorithm';
+} from './core/color-algorithm';
 
-// 主题配置导出
+// 主题定义
 export {
   defineTheme,
   generateThemeTokens,
@@ -59,26 +65,36 @@ export {
   defaultBaseTokens,
   generateDefaultSemanticTokens,
   applyDarkAlgorithm,
-} from './define-theme';
+} from './core/define-theme';
 
-// 主题控制器导出
-export { ThemeController, calculateAlgorithm } from './theme-controller';
+// 主题控制器
+export { ThemeController, calculateAlgorithm } from './core/theme-controller';
 
-// 主题 Context 导出（推荐使用）
+// ============================================================
+// Vue 集成 (vue/)
+// ============================================================
+
+// 主题 Context（推荐使用）
 export {
   createTheme,
   THEME_INJECTION_KEY,
   type ThemeContext,
   type CreateThemeOptions,
-} from './theme-context';
+} from './vue/theme-context';
 
-export { useThemeContext, useThemeContextOptional } from './use-theme-context';
+// Composables
+export {
+  useThemeContext,
+  useThemeContextOptional,
+} from './vue/use-theme-context';
+export { useTheme } from './vue/use-theme';
+export type { UseThemeReturn } from './vue/use-theme';
 
-// Vue Composition API 导出
-export { useTheme } from './use-theme';
-export type { UseThemeReturn } from './use-theme';
+// ============================================================
+// 工具函数 (utils/)
+// ============================================================
 
-// CSS 变量引用工具导出
+// CSS 变量引用工具
 export {
   cssVar,
   cssVarName,
@@ -88,10 +104,10 @@ export {
   getCSSVarRefs,
   createCSSVarRefs,
   createCSSVarNames,
-} from './css-var';
-export type { CSSVarRefs, CSSVarNames } from './css-var';
+} from './utils/css-var';
+export type { CSSVarRefs, CSSVarNames } from './utils/css-var';
 
-// SSR 兼容性工具导出
+// SSR 兼容性工具
 export {
   isBrowser,
   hasLocalStorage,
@@ -102,18 +118,18 @@ export {
   generateSSRInitScript,
   generateSSRStyleTag,
   NextAppRouterHelper,
-} from './ssr-utils';
+} from './utils/ssr-utils';
 
-// 主题验证器导出
+// 主题验证器
 export {
   validateThemeConfig,
   validateThemeConfigOrThrow,
   validateTokens,
   sanitizeThemeConfig,
-} from './theme-validator';
+} from './utils/theme-validator';
 
 export type {
   ValidationResult,
   ValidationError,
   ValidationWarning,
-} from './theme-validator';
+} from './utils/theme-validator';

@@ -9,7 +9,7 @@ import {
   generateThemeTokens,
   tokensToCSSVars,
 } from './define-theme';
-import { getDocumentRoot } from './ssr-utils';
+import { getDocumentRoot } from '../utils/ssr-utils';
 import type {
   PartialThemeTokens,
   ThemeConfig,
@@ -17,8 +17,8 @@ import type {
   ThemePreset,
   ThemeTokens,
   TransitionConfig,
-} from './theme-types';
-import { validateThemeConfig } from './theme-validator';
+} from '../theme-types';
+import { validateThemeConfig } from '../utils/theme-validator';
 
 /**
  * 内置预设主题（不可变）

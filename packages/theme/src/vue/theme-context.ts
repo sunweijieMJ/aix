@@ -4,7 +4,7 @@
  */
 
 import { type App, computed, type InjectionKey, reactive } from 'vue';
-import { calculateAlgorithm, themeController } from './theme-controller';
+import { calculateAlgorithm, themeController } from '../core/theme-controller';
 import type {
   PartialThemeTokens,
   ThemeConfig,
@@ -12,7 +12,7 @@ import type {
   ThemePreset,
   ThemeTokens,
   TransitionConfig,
-} from './theme-types';
+} from '../theme-types';
 
 /**
  * 主题上下文接口

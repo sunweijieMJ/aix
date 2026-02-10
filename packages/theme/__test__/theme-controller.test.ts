@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ThemeController } from '../src/theme-controller';
+import { ThemeController } from '../src/core/theme-controller';
 
 describe('ThemeController', () => {
   let controller: ThemeController;

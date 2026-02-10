@@ -4,7 +4,7 @@
  */
 
 import { computed, type Ref } from 'vue';
-import { cssVar, type CSSVarRefs } from './css-var';
+import { cssVar, type CSSVarRefs } from '../utils/css-var';
 import type {
   PartialThemeTokens,
   ThemeConfig,
@@ -12,7 +12,7 @@ import type {
   ThemePreset,
   ThemeTokens,
   TransitionConfig,
-} from './theme-types';
+} from '../theme-types';
 import { useThemeContext } from './use-theme-context';
 
 /**

@@ -16,7 +16,7 @@ import {
   applyDarkAlgorithm,
   defaultBaseTokens,
   generateDefaultSemanticTokens,
-} from '../src/define-theme';
+} from '../src/core/define-theme';
 import {
   BASE_TOKEN_GROUPS,
   SEMANTIC_TOKEN_GROUPS,

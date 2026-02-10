@@ -3,8 +3,8 @@ import {
   createTheme,
   THEME_INJECTION_KEY,
   type ThemeContext,
-} from '../src/theme-context';
-import { useTheme } from '../src/use-theme';
+} from '../src/vue/theme-context';
+import { useTheme } from '../src/vue/use-theme';
 
 // Shared theme context for all tests
 let sharedThemeContext: ThemeContext;
