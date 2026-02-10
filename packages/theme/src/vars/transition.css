@@ -1,14 +1,16 @@
 /**
  * 主题过渡动画样式
  * 使用 CSS 类控制过渡效果，避免影响其他 transition
+ *
+ * 性能优化：只匹配直接子元素，避免 * 选择器匹配整个 DOM 树
+ * 如需深层过渡，可在子容器上添加 .aix-theme-transition 类
  */
 
 /**
- * 主题切换时的过渡动画
- * 仅应用于直接子元素，避免过度影响组件内部 transition
+ * 定义过渡动画变量，供子元素继承使用
  */
 .aix-theme-transition {
-  transition:
+  --aix-theme-transition:
     background-color var(--aix-transition-duration, 200ms)
       var(--aix-transition-easing, ease-in-out),
     color var(--aix-transition-duration, 200ms)
@@ -21,25 +23,19 @@
       var(--aix-transition-easing, ease-in-out),
     stroke var(--aix-transition-duration, 200ms)
       var(--aix-transition-easing, ease-in-out);
+
+  transition: var(--aix-theme-transition);
 }
 
 /**
- * 使用 :where() 降低选择器优先级，允许组件覆盖
+ * 直接子元素过渡（使用 :where() 降低优先级，允许组件覆盖）
+ * 只匹配一层子元素，避免性能问题
  */
-:where(.aix-theme-transition) :where(*),
-:where(.aix-theme-transition) :where(*::before),
-:where(.aix-theme-transition) :where(*::after) {
-  transition:
-    background-color var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    color var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    border-color var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    box-shadow var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    fill var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    stroke var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out);
+:where(.aix-theme-transition) > :where(*) {
+  transition: var(--aix-theme-transition);
+}
+
+:where(.aix-theme-transition) > :where(*)::before,
+:where(.aix-theme-transition) > :where(*)::after {
+  transition: var(--aix-theme-transition);
 }
