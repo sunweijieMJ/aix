@@ -8,5 +8,5 @@
   "baseBranch": "master",
   "updateInternalDependencies": "patch",
   "bumpVersionsWithWorkspaceProtocolOnly": true,
-  "ignore": ["@internal/mcp-server"]
+  "ignore": ["@aix/mcp-server"]
 }
