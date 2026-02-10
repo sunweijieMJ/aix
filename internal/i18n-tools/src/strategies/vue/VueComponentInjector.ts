@@ -66,13 +66,14 @@ export class VueComponentInjector implements IComponentInjector {
     }
 
     const scriptSetupMatch = code.match(
-      /<script[^>]*setup[^>]*>([\s\S]*?)<\/script>/,
+      /(<script[^>]*setup[^>]*>)([\s\S]*?)<\/script>/,
     );
     if (!scriptSetupMatch) {
       return code;
     }
 
-    const scriptContent = scriptSetupMatch[1]!;
+    const scriptTag = scriptSetupMatch[1]!;
+    const scriptContent = scriptSetupMatch[2]!;
     const lines = scriptContent.split('\n');
 
     let insertIndex = 0;
@@ -89,7 +90,7 @@ export class VueComponentInjector implements IComponentInjector {
     const newScriptContent = lines.join('\n');
     return code.replace(
       scriptSetupMatch[0],
-      `<script setup lang="ts">${newScriptContent}</script>`,
+      `${scriptTag}${newScriptContent}</script>`,
     );
   }
 }

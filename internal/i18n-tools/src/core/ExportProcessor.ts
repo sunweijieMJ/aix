@@ -61,11 +61,20 @@ export class ExportProcessor extends BaseProcessor {
       const zhConflicts = FileUtils.findConflictingKeys(baseZhCN, customZhCN);
       const enConflicts = FileUtils.findConflictingKeys(baseEnUS, customEnUS);
 
-      if (zhConflicts.length > 0) {
-        LoggerUtils.error('zh-CN 语言包冲突', zhConflicts);
-      }
-      if (enConflicts.length > 0) {
-        LoggerUtils.error('en-US 语言包冲突', enConflicts);
+      if (zhConflicts.length > 0 || enConflicts.length > 0) {
+        if (zhConflicts.length > 0) {
+          LoggerUtils.error(
+            `zh-CN 语言包存在 ${zhConflicts.length} 个冲突键: ${zhConflicts.join(', ')}`,
+          );
+        }
+        if (enConflicts.length > 0) {
+          LoggerUtils.error(
+            `en-US 语言包存在 ${enConflicts.length} 个冲突键: ${enConflicts.join(', ')}`,
+          );
+        }
+        throw new Error(
+          '语言包存在冲突，请先解决冲突后再导出。定制包中的 key 不应与基础包重复。',
+        );
       }
 
       LoggerUtils.success('✅ 未发现语言包冲突');

@@ -138,7 +138,8 @@ export class DifyClient {
     );
 
     const results: Translations[] = new Array(batches.length);
-    let completedCount = 0;
+    let successCount = 0;
+    let failedCount = 0;
 
     // 并发处理所有批次
     const batchPromises = batches.map((batch, index) =>
@@ -149,10 +150,10 @@ export class DifyClient {
           const translatedJsonText = await this.translateJson(jsonText);
           const translatedBatch: Translations = JSON.parse(translatedJsonText);
           results[index] = translatedBatch;
+          successCount++;
 
-          completedCount++;
           if (onProgress) {
-            onProgress(completedCount, batches.length);
+            onProgress(successCount + failedCount, batches.length);
           }
 
           LoggerUtils.success(
@@ -161,10 +162,10 @@ export class DifyClient {
         } catch (error) {
           LoggerUtils.error(`❌ 翻译批次 ${index + 1} 失败:`, error);
           results[index] = batch; // 保留原始数据
+          failedCount++;
 
-          completedCount++;
           if (onProgress) {
-            onProgress(completedCount, batches.length);
+            onProgress(successCount + failedCount, batches.length);
           }
         }
       }),
@@ -173,7 +174,13 @@ export class DifyClient {
     // 等待所有批次完成
     await Promise.all(batchPromises);
 
-    LoggerUtils.success(`🎉 批量翻译完成，成功处理 ${completedCount} 个批次`);
+    if (failedCount > 0) {
+      LoggerUtils.warn(
+        `⚠️ 批量翻译完成: ${successCount} 个批次成功, ${failedCount} 个批次失败`,
+      );
+    } else {
+      LoggerUtils.success(`🎉 批量翻译完成，全部 ${successCount} 个批次成功`);
+    }
     return results;
   }
 

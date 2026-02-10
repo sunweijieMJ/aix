@@ -75,7 +75,11 @@ export class RestoreProcessor extends BaseProcessor {
           files.push(resolvedTarget);
         } else if (stat.isDirectory()) {
           files.push(
-            ...FileUtils.getFrameworkFiles(resolvedTarget, this.framework),
+            ...FileUtils.getFrameworkFiles(
+              resolvedTarget,
+              this.framework,
+              this.config.exclude,
+            ),
           );
         }
       } catch (error) {
@@ -106,6 +110,7 @@ export class RestoreProcessor extends BaseProcessor {
         filesToProcess = FileUtils.getFrameworkFiles(
           options.sourceDir,
           this.framework,
+          this.config.exclude,
         );
       }
 

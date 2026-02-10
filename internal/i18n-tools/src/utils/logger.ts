@@ -1,14 +1,14 @@
 import chalk from 'chalk';
 
 /**
- * 日志级别
+ * 日志级别（数值越小越详细）
  */
 export enum LogLevel {
+  DEBUG,
   INFO,
+  SUCCESS,
   WARN,
   ERROR,
-  SUCCESS,
-  DEBUG,
 }
 
 /**

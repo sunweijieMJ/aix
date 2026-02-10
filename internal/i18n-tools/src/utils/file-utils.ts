@@ -292,24 +292,30 @@ export class FileUtils {
     return FileUtils.isReactFile(fileName);
   }
 
-  static getReactFiles(dirPath: string): string[] {
-    return FileUtils.getFrameworkFiles(dirPath, 'react');
+  static getReactFiles(dirPath: string, exclude?: string[]): string[] {
+    return FileUtils.getFrameworkFiles(dirPath, 'react', exclude);
   }
 
-  static getVueFiles(dirPath: string): string[] {
-    return FileUtils.getFrameworkFiles(dirPath, 'vue');
+  static getVueFiles(dirPath: string, exclude?: string[]): string[] {
+    return FileUtils.getFrameworkFiles(dirPath, 'vue', exclude);
   }
 
   static getFrameworkFiles(
     dirPath: string,
     framework: 'react' | 'vue',
+    exclude: string[] = ['node_modules', 'dist', 'build', '.git', 'public'],
   ): string[] {
     const files: string[] = [];
+    const excludeSet = new Set(exclude);
 
     const walkDir = (currentPath: string): void => {
       const entries = fs.readdirSync(currentPath, { withFileTypes: true });
 
       for (const entry of entries) {
+        if (excludeSet.has(entry.name)) {
+          continue;
+        }
+
         const fullPath = path.join(currentPath, entry.name);
 
         if (entry.isDirectory()) {

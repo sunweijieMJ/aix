@@ -108,7 +108,11 @@ export class GenerateProcessor extends BaseProcessor {
   ): Promise<void> {
     LoggerUtils.info(`🚀 开始分析目录: ${FileUtils.getRelativePath(dirPath)}`);
 
-    const frameworkFiles = FileUtils.getFrameworkFiles(dirPath, this.framework);
+    const frameworkFiles = FileUtils.getFrameworkFiles(
+      dirPath,
+      this.framework,
+      this.config.exclude,
+    );
     const frameworkName = this.framework === 'vue' ? 'Vue' : 'React';
 
     if (frameworkFiles.length === 0) {

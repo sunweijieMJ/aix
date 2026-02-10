@@ -110,10 +110,11 @@ export class VueImportManager implements IImportManager {
     const declaration = this.library.generateHookDeclaration() + '\n';
 
     const scriptSetupMatch = code.match(
-      /<script[^>]*setup[^>]*>([\s\S]*?)<\/script>/,
+      /(<script[^>]*setup[^>]*>)([\s\S]*?)<\/script>/,
     );
     if (scriptSetupMatch) {
-      const scriptContent = scriptSetupMatch[1]!;
+      const scriptTag = scriptSetupMatch[1]!;
+      const scriptContent = scriptSetupMatch[2]!;
       const lines = scriptContent.split('\n');
 
       let insertIndex = 0;
@@ -133,7 +134,7 @@ export class VueImportManager implements IImportManager {
       const newScriptContent = lines.join('\n');
       return code.replace(
         scriptSetupMatch[0],
-        `<script setup lang="ts">${newScriptContent}</script>`,
+        `${scriptTag}${newScriptContent}</script>`,
       );
     }
 
@@ -165,12 +166,13 @@ export class VueImportManager implements IImportManager {
    * 在 script 标签内添加 import 语句
    */
   private addImportToScript(code: string, importStatement: string): string {
-    const scriptMatch = code.match(/<script[^>]*>([\s\S]*?)<\/script>/);
+    const scriptMatch = code.match(/(<script[^>]*>)([\s\S]*?)<\/script>/);
     if (!scriptMatch) {
       return code;
     }
 
-    const scriptContent = scriptMatch[1]!;
+    const scriptTag = scriptMatch[1]!;
+    const scriptContent = scriptMatch[2]!;
     const lines = scriptContent.split('\n');
     const lastImportIndex = this.findLastImportIndex(lines);
 
@@ -179,7 +181,7 @@ export class VueImportManager implements IImportManager {
 
     return code.replace(
       scriptMatch[0],
-      `<script setup lang="ts">${newScriptContent}</script>`,
+      `${scriptTag}${newScriptContent}</script>`,
     );
   }
 

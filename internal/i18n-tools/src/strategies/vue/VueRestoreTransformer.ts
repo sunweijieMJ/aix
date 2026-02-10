@@ -45,32 +45,28 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     let restoredCode = sourceText;
 
     // 还原 template 部分
+    // 使用 SFC 解析器返回的 content 精确替换，避免正则在嵌套 template 场景下匹配错误
     if (descriptor.template) {
       const restoredTemplate = this.restoreTemplate(
         descriptor.template.content,
         localeMap,
         lib,
       );
-      const templateMatch = restoredCode.match(
-        /<template>([\s\S]*?)<\/template>/,
-      );
-      if (templateMatch) {
+      if (restoredTemplate !== descriptor.template.content) {
         restoredCode = restoredCode.replace(
-          templateMatch[1]!,
+          descriptor.template.content,
           restoredTemplate,
         );
       }
     }
 
     // 还原 script 部分
+    // 使用 SFC 解析器返回的 content 精确替换，避免正则在多 script 块场景下匹配错误
     const script = descriptor.scriptSetup || descriptor.script;
     if (script) {
       const restoredScript = this.restoreScript(script.content, localeMap, lib);
-      const scriptMatch = restoredCode.match(
-        /<script[^>]*>([\s\S]*?)<\/script>/,
-      );
-      if (scriptMatch) {
-        restoredCode = restoredCode.replace(scriptMatch[1]!, restoredScript);
+      if (restoredScript !== script.content) {
+        restoredCode = restoredCode.replace(script.content, restoredScript);
       }
     }
 
