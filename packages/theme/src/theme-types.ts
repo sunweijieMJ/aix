@@ -406,11 +406,6 @@ export interface ThemeConfig {
   algorithm?: 'default' | 'dark' | 'compact' | 'dark-compact';
 
   /**
-   * 组件级覆盖（预留）
-   */
-  components?: Record<string, any>;
-
-  /**
    * 过渡动画配置
    */
   transition?: TransitionConfig;

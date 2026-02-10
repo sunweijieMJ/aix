@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createCSSVarNames,
-  createCSSVarRefs,
   cssVar,
   cssVarName,
   getCSSVar,
   getCSSVarName,
-  getCSSVarRefs,
-  getCSSVars,
+  _getCSSVarsForTesting,
 } from '../src/utils/css-var';
 
 describe('css-var', () => {
@@ -52,9 +49,13 @@ describe('css-var', () => {
     });
   });
 
-  describe('getCSSVars', () => {
+  describe('_getCSSVarsForTesting (internal)', () => {
     it('should return object with multiple CSS var references', () => {
-      const result = getCSSVars(['colorPrimary', 'colorSuccess', 'fontSize']);
+      const result = _getCSSVarsForTesting([
+        'colorPrimary',
+        'colorSuccess',
+        'fontSize',
+      ]);
 
       expect(result).toEqual({
         colorPrimary: 'var(--colorPrimary)',
@@ -64,40 +65,8 @@ describe('css-var', () => {
     });
 
     it('should return empty object for empty array', () => {
-      const result = getCSSVars([]);
+      const result = _getCSSVarsForTesting([]);
       expect(result).toEqual({});
-    });
-  });
-
-  describe('createCSSVarRefs', () => {
-    it('should create a new proxy instance', () => {
-      const refs1 = createCSSVarRefs();
-      const refs2 = createCSSVarRefs();
-
-      // Different instances
-      expect(refs1).not.toBe(refs2);
-
-      // Same behavior
-      expect(refs1.colorPrimary).toBe('var(--colorPrimary)');
-      expect(refs2.colorPrimary).toBe('var(--colorPrimary)');
-    });
-  });
-
-  describe('createCSSVarNames', () => {
-    it('should create a new proxy instance for var names', () => {
-      const names = createCSSVarNames();
-      expect(names.colorPrimary).toBe('--colorPrimary');
-      expect(names.colorBgContainer).toBe('--colorBgContainer');
-    });
-  });
-
-  describe('getCSSVarRefs', () => {
-    it('should return singleton instance', () => {
-      const refs1 = getCSSVarRefs();
-      const refs2 = getCSSVarRefs();
-
-      expect(refs1).toBe(refs2);
-      expect(refs1.colorPrimary).toBe('var(--colorPrimary)');
     });
   });
 

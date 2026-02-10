@@ -10,25 +10,25 @@ import {
   generateHoverColor,
   generateTextColor,
   hslToRgb,
-  parseRGB,
+  parseColor,
   rgbToHsl,
   rgbToString,
 } from '../src/core/color-algorithm';
 
 describe('color-algorithm', () => {
-  describe('parseRGB', () => {
+  describe('parseColor', () => {
     it('should parse RGB color with spaces', () => {
-      const result = parseRGB('rgb(0 180 180)');
+      const result = parseColor('rgb(0 180 180)');
       expect(result).toEqual({ r: 0, g: 180, b: 180 });
     });
 
     it('should parse RGB color with commas', () => {
-      const result = parseRGB('rgb(0, 180, 180)');
+      const result = parseColor('rgb(0, 180, 180)');
       expect(result).toEqual({ r: 0, g: 180, b: 180 });
     });
 
     it('should throw error for invalid color', () => {
-      expect(() => parseRGB('invalid')).toThrow('Unsupported color format');
+      expect(() => parseColor('invalid')).toThrow('Unsupported color format');
     });
   });
 
@@ -67,8 +67,8 @@ describe('color-algorithm', () => {
       const original = 'rgb(0 180 180)';
       const result = adjustLightness(original, 20);
 
-      const originalHsl = rgbToHsl(parseRGB(original));
-      const resultHsl = rgbToHsl(parseRGB(result));
+      const originalHsl = rgbToHsl(parseColor(original));
+      const resultHsl = rgbToHsl(parseColor(result));
 
       expect(resultHsl.l).toBeGreaterThan(originalHsl.l);
     });
@@ -77,8 +77,8 @@ describe('color-algorithm', () => {
       const original = 'rgb(0 180 180)';
       const result = adjustLightness(original, -20);
 
-      const originalHsl = rgbToHsl(parseRGB(original));
-      const resultHsl = rgbToHsl(parseRGB(result));
+      const originalHsl = rgbToHsl(parseColor(original));
+      const resultHsl = rgbToHsl(parseColor(result));
 
       expect(resultHsl.l).toBeLessThan(originalHsl.l);
     });
@@ -86,7 +86,7 @@ describe('color-algorithm', () => {
     it('should clamp lightness to 0-100', () => {
       const dark = 'rgb(10 10 10)';
       const result = adjustLightness(dark, -50);
-      const hsl = rgbToHsl(parseRGB(result));
+      const hsl = rgbToHsl(parseColor(result));
       expect(hsl.l).toBeGreaterThanOrEqual(0);
     });
   });
@@ -96,8 +96,8 @@ describe('color-algorithm', () => {
       const original = 'rgb(100 150 150)';
       const result = adjustSaturation(original, 20);
 
-      const originalHsl = rgbToHsl(parseRGB(original));
-      const resultHsl = rgbToHsl(parseRGB(result));
+      const originalHsl = rgbToHsl(parseColor(original));
+      const resultHsl = rgbToHsl(parseColor(result));
 
       expect(resultHsl.s).toBeGreaterThan(originalHsl.s);
     });
@@ -108,8 +108,8 @@ describe('color-algorithm', () => {
       const base = 'rgb(0 180 180)';
       const hover = generateHoverColor(base);
 
-      const baseHsl = rgbToHsl(parseRGB(base));
-      const hoverHsl = rgbToHsl(parseRGB(hover));
+      const baseHsl = rgbToHsl(parseColor(base));
+      const hoverHsl = rgbToHsl(parseColor(hover));
 
       expect(hoverHsl.l).toBeGreaterThan(baseHsl.l);
     });
@@ -120,8 +120,8 @@ describe('color-algorithm', () => {
       const base = 'rgb(0 180 180)';
       const active = generateActiveColor(base);
 
-      const baseHsl = rgbToHsl(parseRGB(base));
-      const activeHsl = rgbToHsl(parseRGB(active));
+      const baseHsl = rgbToHsl(parseColor(base));
+      const activeHsl = rgbToHsl(parseColor(active));
 
       expect(activeHsl.l).toBeLessThan(baseHsl.l);
     });
@@ -141,8 +141,8 @@ describe('color-algorithm', () => {
       const base = 'rgb(0 180 180)';
       const border = generateBorderColor(base);
 
-      const baseHsl = rgbToHsl(parseRGB(base));
-      const borderHsl = rgbToHsl(parseRGB(border));
+      const baseHsl = rgbToHsl(parseColor(base));
+      const borderHsl = rgbToHsl(parseColor(border));
 
       expect(borderHsl.l).toBeGreaterThan(baseHsl.l);
     });
@@ -153,8 +153,8 @@ describe('color-algorithm', () => {
       const base = 'rgb(0 180 180)';
       const text = generateTextColor(base);
 
-      const baseHsl = rgbToHsl(parseRGB(base));
-      const textHsl = rgbToHsl(parseRGB(text));
+      const baseHsl = rgbToHsl(parseColor(base));
+      const textHsl = rgbToHsl(parseColor(text));
 
       expect(textHsl.l).toBeLessThan(baseHsl.l);
     });
@@ -193,8 +193,8 @@ describe('color-algorithm', () => {
       const base = 'rgb(0 180 180)';
       const palette = generateColorPalette(base);
 
-      const firstHsl = rgbToHsl(parseRGB(palette[0]!));
-      const lastHsl = rgbToHsl(parseRGB(palette[9]!));
+      const firstHsl = rgbToHsl(parseColor(palette[0]!));
+      const lastHsl = rgbToHsl(parseColor(palette[9]!));
 
       expect(firstHsl.l).toBeGreaterThan(lastHsl.l);
     });

@@ -176,7 +176,6 @@ describe('useTheme', () => {
       const newConfig = {
         token: { colorPrimary: 'rgb(255 0 0)' },
         algorithm: 'default' as const,
-        components: {},
       };
 
       applyTheme(newConfig);

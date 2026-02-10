@@ -33,7 +33,6 @@ export {
   parseColor,
   parseColorWithAlpha,
   parseHex,
-  parseRGB,
   detectColorFormat,
   // 转换函数
   rgbToString,
@@ -67,8 +66,11 @@ export {
   applyDarkAlgorithm,
 } from './core/define-theme';
 
-// 主题控制器
-export { ThemeController, calculateAlgorithm } from './core/theme-controller';
+// DOM 渲染器（底层 API，通常不需要直接使用）
+export {
+  ThemeDOMRenderer,
+  createThemeDOMRenderer,
+} from './core/theme-dom-renderer';
 
 // ============================================================
 // Vue 集成 (vue/)
@@ -96,14 +98,11 @@ export type { UseThemeReturn } from './vue/use-theme';
 
 // CSS 变量引用工具
 export {
+  // 推荐使用
   cssVar,
   cssVarName,
   getCSSVar,
   getCSSVarName,
-  getCSSVars,
-  getCSSVarRefs,
-  createCSSVarRefs,
-  createCSSVarNames,
 } from './utils/css-var';
 export type { CSSVarRefs, CSSVarNames } from './utils/css-var';
 
@@ -117,7 +116,6 @@ export {
   getSystemThemePreference,
   generateSSRInitScript,
   generateSSRStyleTag,
-  NextAppRouterHelper,
 } from './utils/ssr-utils';
 
 // 主题验证器

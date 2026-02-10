@@ -76,20 +76,6 @@ export const getSystemThemePreference = (): 'light' | 'dark' | null => {
 };
 
 /**
- * 安全地派发事件
- */
-export const safeDispatchEvent = (event: Event): boolean => {
-  if (!isBrowser()) return false;
-
-  try {
-    window.dispatchEvent(event);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-/**
  * 创建 SSR 安全的 DOM 引用
  */
 export const getDocumentRoot = (): HTMLElement | null => {
@@ -143,30 +129,3 @@ export function generateSSRInitScript(
 export function generateSSRStyleTag(mode: 'light' | 'dark' = 'light'): string {
   return `<style id="aix-theme-ssr">:root{color-scheme:${mode}}</style>`;
 }
-
-/**
- * Next.js App Router 兼容性辅助
- *
- * @example
- * ```tsx
- * // app/layout.tsx
- * import { generateSSRInitScript } from '@aix/theme/ssr-utils';
- *
- * export default function RootLayout({ children }) {
- *   return (
- *     <html>
- *       <head>
- *         <script dangerouslySetInnerHTML={{
- *           __html: generateSSRInitScript()
- *         }} />
- *       </head>
- *       <body>{children}</body>
- *     </html>
- *   );
- * }
- * ```
- */
-export const NextAppRouterHelper = {
-  generateInitScript: generateSSRInitScript,
-  generateStyleTag: generateSSRStyleTag,
-};

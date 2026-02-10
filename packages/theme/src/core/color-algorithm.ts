@@ -210,18 +210,6 @@ export function parseColorWithAlpha(color: string): RGBA {
 }
 
 /**
- * 解析 RGB 字符串为对象（向后兼容，现在支持多种格式）
- * @example
- * parseRGB('rgb(0 180 180)') // { r: 0, g: 180, b: 180 }
- * parseRGB('rgb(0, 180, 180)') // { r: 0, g: 180, b: 180 }
- * parseRGB('#13c2c2') // { r: 19, g: 194, b: 194 }
- * parseRGB('#fff') // { r: 255, g: 255, b: 255 }
- */
-export function parseRGB(color: string): RGB {
-  return parseColor(color);
-}
-
-/**
  * 将 RGB 对象转换为字符串（CSS Color Module Level 4 语法）
  */
 export function rgbToString(rgb: RGB): string {
@@ -344,7 +332,7 @@ export function hslToRgb(hsl: HSL): RGB {
  * @param amount - 亮度调整量（-100 到 100）
  */
 export function adjustLightness(color: string, amount: number): string {
-  const rgb = parseRGB(color);
+  const rgb = parseColor(color);
   const hsl = rgbToHsl(rgb);
 
   // 限制亮度在 0-100 范围内
@@ -360,7 +348,7 @@ export function adjustLightness(color: string, amount: number): string {
  * @param amount - 饱和度调整量（-100 到 100）
  */
 export function adjustSaturation(color: string, amount: number): string {
-  const rgb = parseRGB(color);
+  const rgb = parseColor(color);
   const hsl = rgbToHsl(rgb);
 
   hsl.s = Math.max(0, Math.min(100, hsl.s + amount));
@@ -394,7 +382,7 @@ export function generateBgColor(
   useAlpha = false,
   alpha = 0.1,
 ): string {
-  const rgb = parseRGB(color);
+  const rgb = parseColor(color);
   const hsl = rgbToHsl(rgb);
 
   // 大幅提高亮度，降低饱和度
@@ -440,7 +428,7 @@ export interface ColorSeries {
 }
 
 export function generateColorSeries(baseColor: string): ColorSeries {
-  const rgb = parseRGB(baseColor);
+  const rgb = parseColor(baseColor);
   const hsl = rgbToHsl(rgb);
 
   // 统一转换为 rgb 格式，确保输出一致
@@ -477,7 +465,7 @@ export function generateColorSeries(baseColor: string): ColorSeries {
  * @param baseColor - 基础颜色（通常是第6级）
  */
 export function generateColorPalette(baseColor: string): string[] {
-  const rgb = parseRGB(baseColor);
+  const rgb = parseColor(baseColor);
   const hsl = rgbToHsl(rgb);
 
   const palette: string[] = [];

@@ -97,9 +97,9 @@
   --controlItemBgActiveHover: rgb(169 224 224);
 
   /* ========== 链接色 ========== */
-  --colorLink: var(--tokenCyan6);
-  --colorLinkHover: var(--tokenCyan4);
-  --colorLinkActive: var(--tokenCyan7);
+  --colorLink: var(--colorPrimary);
+  --colorLinkHover: var(--colorPrimaryHover);
+  --colorLinkActive: var(--colorPrimaryActive);
 
   /* ========== 图标色 ========== */
   --colorIcon: rgb(0 0 0 / 0.45);

@@ -46,7 +46,7 @@ export interface UseThemeReturn {
   /** 批量设置 Token */
   setTokens: (tokens: PartialThemeTokens) => void;
   /** 获取单个 Token 值 */
-  getToken: <K extends keyof ThemeTokens>(key: K) => ThemeTokens[K] | undefined;
+  getToken: <K extends keyof ThemeTokens>(key: K) => ThemeTokens[K];
   /** 获取所有当前 Token */
   getTokens: () => ThemeTokens;
   /** 应用预设主题 */

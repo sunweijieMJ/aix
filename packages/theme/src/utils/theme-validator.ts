@@ -45,9 +45,10 @@ export interface ValidationWarning {
  * RGB 颜色格式正则
  * 支持：rgb(0 0 0), rgb(0, 0, 0), rgb(0 0 0 / 0.5), rgba(0, 0, 0, 0.5)
  * 支持：rgb(100%, 50%, 0%), rgb(100% 50% 0% / 0.5)
+ * 支持：rgba(255, 255, 255, 1), rgba(255, 255, 255, 0.75)
  */
 const RGB_REGEX =
-  /^rgba?\(\s*(\d+%?)\s*[,\s]+\s*(\d+%?)\s*[,\s]+\s*(\d+%?)(\s*[,/]\s*(0?\.\d+|1|0))?\s*\)$/;
+  /^rgba?\(\s*(\d+%?)\s*[,\s]+\s*(\d+%?)\s*[,\s]+\s*(\d+%?)(\s*[,/]\s*(\d*\.?\d+%?))?\s*\)$/;
 
 /**
  * HEX 颜色格式正则
@@ -176,16 +177,28 @@ function validateColor(value: unknown, field: string): ValidationError | null {
       }
     }
 
-    // 验证 alpha 值范围 (0-1)
-    const alphaMatch = trimmed.match(/[,/]\s*([\d.]+)\s*\)$/);
-    if (alphaMatch && trimmed.includes('/')) {
-      const alpha = parseFloat(alphaMatch[1]!);
-      if (alpha < 0 || alpha > 1) {
-        return {
-          field,
-          message: `alpha 值必须在 0-1 范围内`,
-          value,
-        };
+    // 验证 alpha 值范围 (0-1 或 0%-100%)
+    const alphaMatch = trimmed.match(/[,/]\s*([\d.]+%?)\s*\)$/);
+    if (alphaMatch) {
+      const alphaStr = alphaMatch[1]!;
+      if (alphaStr.endsWith('%')) {
+        const percent = parseFloat(alphaStr);
+        if (percent < 0 || percent > 100) {
+          return {
+            field,
+            message: `alpha 百分比必须在 0%-100% 范围内`,
+            value,
+          };
+        }
+      } else {
+        const alpha = parseFloat(alphaStr);
+        if (alpha < 0 || alpha > 1) {
+          return {
+            field,
+            message: `alpha 值必须在 0-1 范围内`,
+            value,
+          };
+        }
       }
     }
 
@@ -405,39 +418,55 @@ function validateFontFamily(
 }
 
 /**
+ * 验证单个 Token 的结果
+ */
+interface TokenValidationResult {
+  error: ValidationError | null;
+  warning: ValidationWarning | null;
+}
+
+/**
  * 验证单个 Token
  */
-function validateToken(field: string, value: unknown): ValidationError | null {
+function validateToken(field: string, value: unknown): TokenValidationResult {
   if (value === undefined || value === null) {
-    return null; // 允许未定义
+    return { error: null, warning: null };
   }
 
   // 颜色字段验证
   if (isColorField(field)) {
-    return validateColor(value, field);
+    return { error: validateColor(value, field), warning: null };
   }
 
   // 尺寸字段验证
   if (isSizeField(field)) {
-    return validateSize(value, field);
+    return { error: validateSize(value, field), warning: null };
   }
 
   // 数值字段验证
   if (isNumberField(field)) {
-    return validateNumber(value, field);
+    return { error: validateNumber(value, field), warning: null };
   }
 
   // 阴影字段验证
   if (isShadowField(field)) {
-    return validateShadow(value, field);
+    return { error: validateShadow(value, field), warning: null };
   }
 
   // 字体族字段验证
   if (isFontFamilyField(field)) {
-    return validateFontFamily(value, field);
+    return { error: validateFontFamily(value, field), warning: null };
   }
 
-  return null;
+  // 未知字段：返回警告
+  return {
+    error: null,
+    warning: {
+      field,
+      message: `未知的 Token 字段 "${field}"，请检查是否拼写错误`,
+      value,
+    },
+  };
 }
 
 /**
@@ -448,9 +477,12 @@ export function validateTokens(tokens: PartialThemeTokens): ValidationResult {
   const warnings: ValidationWarning[] = [];
 
   for (const [field, value] of Object.entries(tokens)) {
-    const error = validateToken(field, value);
+    const { error, warning } = validateToken(field, value);
     if (error) {
       errors.push(error);
+    }
+    if (warning) {
+      warnings.push(warning);
     }
   }
 
@@ -592,7 +624,7 @@ export function validateThemeConfigOrThrow(config: ThemeConfig): void {
 
 /**
  * 创建安全的主题配置
- * 自动过滤掉无效的 Token
+ * 自动过滤掉无效的 Token（保留未知字段但会产生警告）
  */
 export function sanitizeThemeConfig(config: ThemeConfig): ThemeConfig {
   if (!config.token) {
@@ -602,7 +634,8 @@ export function sanitizeThemeConfig(config: ThemeConfig): ThemeConfig {
   const sanitizedTokens: PartialThemeTokens = {};
 
   for (const [field, value] of Object.entries(config.token)) {
-    const error = validateToken(field, value);
+    const { error } = validateToken(field, value);
+    // 只过滤有错误的字段，未知字段（只有警告）会保留
     if (!error) {
       (sanitizedTokens as Record<string, any>)[field] = value;
     }

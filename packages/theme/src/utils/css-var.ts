@@ -21,47 +21,21 @@ export type CSSVarNames = {
 };
 
 /**
- * 创建 CSS 变量引用代理
- * 使用 Proxy 实现按需生成，避免预生成所有变量
- *
- * @example
- * ```ts
- * const cssVar = createCSSVarRefs();
- * cssVar.colorPrimary // => "var(--colorPrimary)"
- * cssVar.fontSize     // => "var(--fontSize)"
- * ```
+ * 创建 CSS 变量代理的通用工厂函数
+ * @internal 内部使用
  */
-export function createCSSVarRefs(): CSSVarRefs {
-  return new Proxy({} as CSSVarRefs, {
+function createCSSVarProxy<T extends object>(
+  formatter: (key: string) => string,
+): T {
+  return new Proxy({} as T, {
     get(_, key: string | symbol): string | undefined {
       // 忽略 Symbol 键（如 Symbol.toStringTag、Symbol.iterator 等）
       if (typeof key === 'symbol') {
         return undefined;
       }
-      return `var(--${key})`;
+      return formatter(key);
     },
-  });
-}
-
-/**
- * 创建 CSS 变量名代理（不带 var() 包装）
- *
- * @example
- * ```ts
- * const varNames = createCSSVarNames();
- * varNames.colorPrimary // => "--colorPrimary"
- * ```
- */
-export function createCSSVarNames(): CSSVarNames {
-  return new Proxy({} as CSSVarNames, {
-    get(_, key: string | symbol): string | undefined {
-      // 忽略 Symbol 键
-      if (typeof key === 'symbol') {
-        return undefined;
-      }
-      return `--${key}`;
-    },
-  });
+  }) as T;
 }
 
 /**
@@ -94,14 +68,9 @@ export function getCSSVarName<K extends keyof ThemeTokens>(key: K): `--${K}` {
 
 /**
  * 批量获取 CSS 变量引用
- *
- * @example
- * ```ts
- * getCSSVars(['colorPrimary', 'colorSuccess'])
- * // => { colorPrimary: "var(--colorPrimary)", colorSuccess: "var(--colorSuccess)" }
- * ```
+ * @internal 仅用于测试，不作为公共 API
  */
-export function getCSSVars<K extends keyof ThemeTokens>(
+export function _getCSSVarsForTesting<K extends keyof ThemeTokens>(
   keys: readonly K[],
 ): Pick<CSSVarRefs, K> {
   const result = {} as Pick<CSSVarRefs, K>;
@@ -109,22 +78,6 @@ export function getCSSVars<K extends keyof ThemeTokens>(
     (result as Record<K, string>)[key] = `var(--${key})`;
   }
   return result;
-}
-
-/**
- * 预生成的 CSS 变量引用单例
- * 适用于不支持 Proxy 的环境或需要静态引用的场景
- */
-let _cssVarInstance: CSSVarRefs | null = null;
-
-/**
- * 获取 CSS 变量引用单例
- */
-export function getCSSVarRefs(): CSSVarRefs {
-  if (!_cssVarInstance) {
-    _cssVarInstance = createCSSVarRefs();
-  }
-  return _cssVarInstance;
 }
 
 /**
@@ -141,7 +94,9 @@ export function getCSSVarRefs(): CSSVarRefs {
  * };
  * ```
  */
-export const cssVar: CSSVarRefs = createCSSVarRefs();
+export const cssVar: CSSVarRefs = createCSSVarProxy<CSSVarRefs>(
+  (key) => `var(--${key})`,
+);
 
 /**
  * CSS 变量名（不带 var() 包装）
@@ -153,4 +108,6 @@ export const cssVar: CSSVarRefs = createCSSVarRefs();
  * element.style.setProperty(cssVarName.colorPrimary, '#ff0000');
  * ```
  */
-export const cssVarName: CSSVarNames = createCSSVarNames();
+export const cssVarName: CSSVarNames = createCSSVarProxy<CSSVarNames>(
+  (key) => `--${key}`,
+);

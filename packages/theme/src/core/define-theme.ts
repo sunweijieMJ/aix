@@ -6,7 +6,7 @@ import {
   adjustLightness,
   generateColorSeries,
   hslToRgb,
-  parseRGB,
+  parseColor,
   rgbToHsl,
   rgbToString,
 } from './color-algorithm';
@@ -354,9 +354,10 @@ export function generateDefaultSemanticTokens(
     fontFamily: baseTokens.tokenFontFamily,
     fontFamilyCode: baseTokens.tokenFontFamilyCode,
 
-    // 阴影 (P0)
+    // 阴影 (P0) - 递进层级
     shadowXS: baseTokens.tokenShadow1,
-    shadowSM: baseTokens.tokenShadow1,
+    shadowSM:
+      '0 2px 4px 0 rgb(0 0 0 / 0.04), 0 1px 6px -1px rgb(0 0 0 / 0.03), 0 1px 2px 0 rgb(0 0 0 / 0.03)',
     shadow: baseTokens.tokenShadow2,
     shadowMD: baseTokens.tokenShadow2,
     shadowLG: baseTokens.tokenShadow3,
@@ -395,7 +396,6 @@ export function defineTheme(config: ThemeConfig = {}): Required<ThemeConfig> {
   return {
     token: config.token || {},
     algorithm: config.algorithm || 'default',
-    components: config.components || {},
     transition: config.transition || {
       duration: 200,
       easing: 'ease-in-out',
@@ -519,7 +519,7 @@ function generateDarkColorSeries(baseColor: string) {
   } = DARK_MODE_ADJUSTMENTS;
 
   try {
-    const rgb = parseRGB(baseColor);
+    const rgb = parseColor(baseColor);
     const hsl = rgbToHsl(rgb);
 
     // 在暗色模式下，主色应该更亮一些以确保可读性
@@ -705,11 +705,11 @@ export function applyDarkAlgorithm(tokens: ThemeTokens): ThemeTokens {
     colorIcon: 'rgb(255 255 255 / 0.45)',
     colorIconHover: 'rgb(255 255 255 / 0.85)',
 
-    // 阴影 - 暗色模式 (P0)
+    // 阴影 - 暗色模式 (P0) - 递进层级
     shadowXS:
       '0 1px 2px 0 rgb(0 0 0 / 0.1), 0 1px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px 0 rgb(0 0 0 / 0.08)',
     shadowSM:
-      '0 1px 2px 0 rgb(0 0 0 / 0.1), 0 1px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px 0 rgb(0 0 0 / 0.08)',
+      '0 2px 4px 0 rgb(0 0 0 / 0.12), 0 1px 6px -1px rgb(0 0 0 / 0.1), 0 1px 2px 0 rgb(0 0 0 / 0.1)',
     shadow:
       '0 3px 6px -4px rgb(0 0 0 / 0.24), 0 6px 16px 0 rgb(0 0 0 / 0.16), 0 9px 28px 8px rgb(0 0 0 / 0.1)',
     shadowMD:
