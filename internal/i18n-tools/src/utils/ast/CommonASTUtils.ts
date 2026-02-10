@@ -163,24 +163,60 @@ export class CommonASTUtils {
    * @param expressionText - 表达式的源代码文本
    * @returns 合理的变量名
    */
+  /**
+   * 非语义后缀集合：这些属性名/方法名不适合作为占位符名称
+   */
+  private static readonly NON_SEMANTIC_SUFFIXES = new Set([
+    // Vue ref 解包
+    'value',
+    // Number 方法
+    'toFixed',
+    'toString',
+    'valueOf',
+    'toLocaleString',
+    'toPrecision',
+    // String 方法
+    'trim',
+    'trimStart',
+    'trimEnd',
+    'toLowerCase',
+    'toUpperCase',
+    'replace',
+    'replaceAll',
+    'slice',
+    'substring',
+    'substr',
+    'padStart',
+    'padEnd',
+    // Array 方法
+    'join',
+    'length',
+  ]);
+
   static getVariableNameFromExpression(expressionText: string): string {
-    let baseName = expressionText.replace(/\(.*\)/g, '');
+    // 使用非贪婪匹配移除函数调用参数，避免 (a * b).toFixed(2) 整体被吃掉
+    let baseName = expressionText.replace(/\([^)]*\)/g, '');
     baseName = baseName.replace(/\?\.|\?/g, '.');
     const parts = baseName.split('.').filter((p) => p.trim() !== '');
-    let key = parts[parts.length - 1] || 'val';
 
-    key = key.replace(/^['"`]|['"`]$/g, '');
-    key = key.replace(/[^\w\u4e00-\u9fa5]/g, '');
+    // 从后往前找第一个有语义的部分（跳过 .value、.toFixed 等）
+    for (let i = parts.length - 1; i >= 0; i--) {
+      let part = parts[i] ?? '';
+      part = part.replace(/^['"`]|['"`]$/g, '');
+      part = part.replace(/[^\w\u4e00-\u9fa5]/g, '');
 
-    if (!key || key.trim() === '') {
-      return 'val';
+      if (part && !this.NON_SEMANTIC_SUFFIXES.has(part)) {
+        return /^[0-9]/.test(part) ? `val_${part}` : part;
+      }
     }
 
-    if (/^[0-9]/.test(key)) {
-      key = `val_${key}`;
+    // 兜底：从原始表达式中提取第一个标识符
+    const idMatch = expressionText.match(/([a-zA-Z_$][\w$]*)/);
+    if (idMatch?.[1] && !this.NON_SEMANTIC_SUFFIXES.has(idMatch[1])) {
+      return idMatch[1];
     }
 
-    return key;
+    return 'val';
   }
 
   /**

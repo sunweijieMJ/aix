@@ -1,6 +1,7 @@
 import type {
   ConcurrencyConfig,
   IdPrefixConfig,
+  LocaleConfig,
   PathsConfig,
   ReactConfig,
   VueConfig,
@@ -34,11 +35,40 @@ export const DEFAULT_REACT: Required<ReactConfig> = {
 };
 
 /**
+ * 默认语言配置
+ */
+export const DEFAULT_LOCALE: Required<LocaleConfig> = {
+  source: 'zh-CN',
+  target: 'en-US',
+};
+
+/**
  * 默认 ID 前缀配置
  */
 export const DEFAULT_ID_PREFIX: Required<IdPrefixConfig> = {
   anchor: 'src',
   value: '',
+  separator: '__',
+  chineseMappings: {
+    确认: 'confirm',
+    取消: 'cancel',
+    删除: 'delete',
+    添加: 'add',
+    编辑: 'edit',
+    保存: 'save',
+    提交: 'submit',
+    搜索: 'search',
+    登录: 'login',
+    退出: 'logout',
+    成功: 'success',
+    失败: 'failed',
+    错误: 'error',
+    警告: 'warning',
+    提示: 'tip',
+    用户: 'user',
+    请输入: 'please_input',
+    请选择: 'please_select',
+  },
 };
 
 /**
@@ -55,9 +85,29 @@ export const DEFAULT_CONCURRENCY: Required<ConcurrencyConfig> = {
 export const DEFAULT_BATCH_SIZE = 10;
 
 /**
- * 默认 Dify API 超时时间（毫秒）
+ * 默认翻译批次间延时（毫秒）
  */
-export const DEFAULT_DIFY_TIMEOUT = 60000;
+export const DEFAULT_BATCH_DELAY = 500;
+
+/**
+ * 默认 LLM API 超时时间（毫秒）
+ */
+export const DEFAULT_LLM_TIMEOUT = 60000;
+
+/**
+ * 默认 LLM 模型
+ */
+export const DEFAULT_LLM_MODEL = 'gpt-4o';
+
+/**
+ * 默认 LLM 最大重试次数
+ */
+export const DEFAULT_LLM_MAX_RETRIES = 2;
+
+/**
+ * 默认 LLM 温度参数
+ */
+export const DEFAULT_LLM_TEMPERATURE = 0.1;
 
 /**
  * 默认文件包含模式

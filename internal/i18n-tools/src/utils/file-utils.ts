@@ -3,7 +3,6 @@ import path from 'path';
 import { CONFIG, FILES } from './constants';
 import { LoggerUtils } from './logger';
 import type { ResolvedConfig } from '../config';
-import { Translations } from './types';
 
 /**
  * 文件和文本操作工具类
@@ -23,26 +22,6 @@ export class FileUtils {
       LoggerUtils.error('JSON解析失败:', error);
       return null;
     }
-  }
-
-  static findDuplicateKeysInJson(content: string): string[] {
-    const keyOccurrences = new Map<string, number>();
-    const duplicates: string[] = [];
-
-    const keyRegex = /"([^"]+)"\s*:/g;
-    let match;
-
-    while ((match = keyRegex.exec(content)) !== null) {
-      const key = match[1]!;
-      const count = keyOccurrences.get(key) || 0;
-      keyOccurrences.set(key, count + 1);
-
-      if (count === 1) {
-        duplicates.push(key);
-      }
-    }
-
-    return duplicates;
   }
 
   static findConflictingKeys(
@@ -201,16 +180,6 @@ export class FileUtils {
   // File I/O Methods
   // =================================================================
 
-  static loadJsonFile(filePath: string): Translations {
-    try {
-      const fileContent = fs.readFileSync(filePath, 'utf8');
-      return FileUtils.safeParseJson(fileContent) || {};
-    } catch (error) {
-      LoggerUtils.error(`加载JSON文件失败: ${filePath}`, error);
-      return {};
-    }
-  }
-
   static safeLoadJsonFile<T extends object>(
     filePath: string,
     options: {
@@ -292,14 +261,6 @@ export class FileUtils {
     return FileUtils.isReactFile(fileName);
   }
 
-  static getReactFiles(dirPath: string, exclude?: string[]): string[] {
-    return FileUtils.getFrameworkFiles(dirPath, 'react', exclude);
-  }
-
-  static getVueFiles(dirPath: string, exclude?: string[]): string[] {
-    return FileUtils.getFrameworkFiles(dirPath, 'vue', exclude);
-  }
-
   static getFrameworkFiles(
     dirPath: string,
     framework: 'react' | 'vue',
@@ -333,15 +294,6 @@ export class FileUtils {
     return files;
   }
 
-  static deleteDirs(dirs: string[]): void {
-    dirs.forEach((dir) => {
-      if (fs.existsSync(dir)) {
-        fs.rmSync(dir, { recursive: true, force: true });
-        LoggerUtils.success(`已删除目录: ${dir}`);
-      }
-    });
-  }
-
   static loadLanguageFile<T extends Record<string, any>>(
     filePath: string,
     lang: string,
@@ -371,16 +323,6 @@ export class FileUtils {
    */
   static getDirectoryPath(config: ResolvedConfig, isCustom: boolean): string {
     return isCustom ? config.paths.customLocale : config.paths.locale;
-  }
-
-  /**
-   * 获取编译目录路径
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   * @returns 编译目录路径
-   */
-  static getCompileDir(config: ResolvedConfig, isCustom: boolean): string {
-    return path.join(this.getDirectoryPath(config, isCustom), 'compile');
   }
 
   /**

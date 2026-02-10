@@ -1,13 +1,20 @@
 /**
- * Dify API 配置接口
+ * LLM API 配置接口
+ * 使用 OpenAI 兼容 API，通过 baseURL 支持 OpenAI/DeepSeek/Azure 等服务
  */
-export interface DifyApiConfig {
-  /** API 地址 */
-  url: string;
+export interface LLMConfig {
   /** API 密钥 */
   apiKey: string;
+  /** 模型名称，如 "gpt-4o"、"deepseek-chat" */
+  model: string;
+  /** API 地址（非 OpenAI 服务时需要设置，如 "https://api.deepseek.com"） */
+  baseURL?: string;
   /** 超时时间（毫秒） */
   timeout?: number;
+  /** 最大重试次数 */
+  maxRetries?: number;
+  /** 温度参数，控制输出随机性，默认 0.1 */
+  temperature?: number;
 }
 
 /**
@@ -27,6 +34,36 @@ export interface PathsConfig {
 }
 
 /**
+ * 语言配置
+ */
+export interface LocaleConfig {
+  /** 源语言代码，默认 'zh-CN' */
+  source?: string;
+  /** 目标语言代码，默认 'en-US' */
+  target?: string;
+}
+
+/**
+ * 自定义提示词配置
+ */
+export interface PromptsConfig {
+  /** ID 生成提示词 */
+  idGeneration?: {
+    /** 自定义 System Prompt（完全覆盖默认值） */
+    system?: string;
+    /** 自定义 User Prompt 模板，使用 {count} 和 {textList} 占位符 */
+    user?: string;
+  };
+  /** 翻译提示词 */
+  translation?: {
+    /** 自定义 System Prompt（完全覆盖默认值） */
+    system?: string;
+    /** 自定义 User Prompt 模板，使用 {jsonText} 占位符 */
+    user?: string;
+  };
+}
+
+/**
  * ID 前缀配置
  */
 export interface IdPrefixConfig {
@@ -34,6 +71,10 @@ export interface IdPrefixConfig {
   anchor?: string;
   /** 自定义固定前缀，设置后将替代自动提取的路径前缀 */
   value?: string;
+  /** ID 分隔符，默认 '__' */
+  separator?: string;
+  /** 中文常用词映射表（用于本地 ID 兜底生成），默认内置 18 个常用词 */
+  chineseMappings?: Record<string, string>;
 }
 
 /**
@@ -82,16 +123,22 @@ export interface I18nToolsConfig {
   /** React 框架专用配置 */
   react?: ReactConfig;
 
+  /** 语言配置（源语言和目标语言） */
+  locale?: LocaleConfig;
+
   /** 语言文件路径配置 */
   paths: PathsConfig;
 
-  /** Dify API 配置 */
-  dify: {
+  /** LLM API 配置 */
+  llm: {
     /** ID 生成接口 */
-    idGeneration: DifyApiConfig;
+    idGeneration: LLMConfig;
     /** 翻译接口 */
-    translation: DifyApiConfig;
+    translation: LLMConfig;
   };
+
+  /** 自定义 AI 提示词 */
+  prompts?: PromptsConfig;
 
   /** ID 前缀配置 */
   idPrefix?: IdPrefixConfig;
@@ -101,6 +148,9 @@ export interface I18nToolsConfig {
 
   /** 翻译批次大小 */
   batchSize?: number;
+
+  /** 翻译批次间延时（毫秒），默认 500 */
+  batchDelay?: number;
 
   /** 文件过滤 glob 模式 */
   include?: string[];
@@ -116,6 +166,7 @@ export interface ResolvedConfig {
   framework: 'vue' | 'react';
   vue: Required<VueConfig>;
   react: Required<ReactConfig>;
+  locale: Required<LocaleConfig>;
   paths: {
     locale: string;
     customLocale: string;
@@ -123,13 +174,20 @@ export interface ResolvedConfig {
     source: string;
     tImport: string;
   };
-  dify: {
-    idGeneration: Required<DifyApiConfig>;
-    translation: Required<DifyApiConfig>;
+  llm: {
+    idGeneration: Required<Omit<LLMConfig, 'baseURL'>> &
+      Pick<LLMConfig, 'baseURL'>;
+    translation: Required<Omit<LLMConfig, 'baseURL'>> &
+      Pick<LLMConfig, 'baseURL'>;
+  };
+  prompts: {
+    idGeneration: { system?: string; user?: string };
+    translation: { system?: string; user?: string };
   };
   idPrefix: Required<IdPrefixConfig>;
   concurrency: Required<ConcurrencyConfig>;
   batchSize: number;
+  batchDelay: number;
   include: string[];
   exclude: string[];
 }

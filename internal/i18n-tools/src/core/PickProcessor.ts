@@ -1,5 +1,5 @@
 import type { ResolvedConfig } from '../config';
-import { FILES, LOCALE_TYPE } from '../utils/constants';
+import { FILES } from '../utils/constants';
 import { FileUtils } from '../utils/file-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
@@ -19,7 +19,11 @@ export class PickProcessor extends BaseProcessor {
     return '生成待翻译文件';
   }
 
-  protected async _execute(): Promise<void> {
+  async execute(): Promise<void> {
+    return this.executeWithLifecycle(() => this._execute());
+  }
+
+  private _execute(): void {
     this.generateUntranslatedFile();
   }
 
@@ -34,15 +38,17 @@ export class PickProcessor extends BaseProcessor {
     );
     this.ensureWorkingDirectory();
 
+    const sourceLocale = this.config.locale.source;
+    const targetLocale = this.config.locale.target;
     const messages = LanguageFileManager.getMessages(
       this.config,
       this.isCustom,
     );
-    const zhCNMessages = messages[LOCALE_TYPE.ZH_CN] || {};
-    const enUSMessages = messages[LOCALE_TYPE.EN_US] || {};
+    const zhCNMessages = messages[sourceLocale] || {};
+    const enUSMessages = messages[targetLocale] || {};
 
     LoggerUtils.info(
-      `📋 开始分析语言条目，共 ${Object.keys(zhCNMessages).length} 个zh-CN条目`,
+      `📋 开始分析语言条目，共 ${Object.keys(zhCNMessages).length} 个${sourceLocale}条目`,
     );
 
     const analysisResult = this.analyzeTranslationStatus(
@@ -62,6 +68,8 @@ export class PickProcessor extends BaseProcessor {
     untranslatedCount: number;
     translatedCount: number;
   } {
+    const sourceLocale = this.config.locale.source;
+    const targetLocale = this.config.locale.target;
     const untranslatedEntries: Translations = {};
     const translatedEntries: Translations = {};
     let untranslatedCount = 0;
@@ -80,14 +88,14 @@ export class PickProcessor extends BaseProcessor {
           !FileUtils.isValidEnglishTranslation(enValue)
         ) {
           untranslatedEntries[key] = {
-            [LOCALE_TYPE.ZH_CN]: zhValue,
-            [LOCALE_TYPE.EN_US]: typeof enValue === 'string' ? enValue : '',
+            [sourceLocale]: zhValue,
+            [targetLocale]: typeof enValue === 'string' ? enValue : '',
           };
           untranslatedCount++;
         } else {
           translatedEntries[key] = {
-            [LOCALE_TYPE.ZH_CN]: zhValue,
-            [LOCALE_TYPE.EN_US]: enValue,
+            [sourceLocale]: zhValue,
+            [targetLocale]: enValue,
           };
           translatedCount++;
         }
@@ -133,6 +141,8 @@ export class PickProcessor extends BaseProcessor {
       typeof PickProcessor.prototype.analyzeTranslationStatus
     >,
   ): void {
+    const sourceLocale = this.config.locale.source;
+    const targetLocale = this.config.locale.target;
     const untranslatedExamples = Object.keys(
       analysisResult.untranslatedEntries,
     ).slice(0, 3);
@@ -141,8 +151,10 @@ export class PickProcessor extends BaseProcessor {
       untranslatedExamples.forEach((key) => {
         const item = analysisResult.untranslatedEntries[key]!;
         LoggerUtils.info(`  ${key}:`);
-        LoggerUtils.info(`    zh-CN: "${item[LOCALE_TYPE.ZH_CN]}"`);
-        LoggerUtils.info(`    en-US: "${item[LOCALE_TYPE.EN_US] || '(空)'}"`);
+        LoggerUtils.info(`    ${sourceLocale}: "${item[sourceLocale]}"`);
+        LoggerUtils.info(
+          `    ${targetLocale}: "${item[targetLocale] || '(空)'}"`,
+        );
       });
     }
 
@@ -154,8 +166,8 @@ export class PickProcessor extends BaseProcessor {
       translatedExamples.forEach((key) => {
         const item = analysisResult.translatedEntries[key]!;
         LoggerUtils.info(`  ${key}:`);
-        LoggerUtils.info(`    zh-CN: "${item[LOCALE_TYPE.ZH_CN]}"`);
-        LoggerUtils.info(`    en-US: "${item[LOCALE_TYPE.EN_US]}"`);
+        LoggerUtils.info(`    ${sourceLocale}: "${item[sourceLocale]}"`);
+        LoggerUtils.info(`    ${targetLocale}: "${item[targetLocale]}"`);
       });
     }
 

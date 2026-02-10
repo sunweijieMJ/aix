@@ -21,7 +21,15 @@ export class ExportProcessor extends BaseProcessor {
     return '导出语言包';
   }
 
-  protected async _execute(outputDir?: string): Promise<void> {
+  protected getDirectoryDescription(): string {
+    return '全局';
+  }
+
+  async execute(outputDir?: string): Promise<void> {
+    return this.executeWithLifecycle(() => this._execute(outputDir));
+  }
+
+  private async _execute(outputDir?: string): Promise<void> {
     LoggerUtils.info(`📂 基础目录: ${this.config.paths.locale}`);
     LoggerUtils.info(`📂 定制目录: ${this.config.paths.customLocale}`);
     LoggerUtils.info(
@@ -34,42 +42,50 @@ export class ExportProcessor extends BaseProcessor {
   private async performExport(outputDir?: string): Promise<void> {
     try {
       const finalOutputDir = outputDir || this.config.paths.exportLocale;
+      const sourceLocale = this.config.locale.source;
+      const targetLocale = this.config.locale.target;
 
-      const baseZhCN = FileUtils.loadLanguageFile(
-        path.join(this.config.paths.locale, 'zh-CN.json'),
-        'zh-CN',
+      const baseSource = FileUtils.loadLanguageFile(
+        path.join(this.config.paths.locale, `${sourceLocale}.json`),
+        sourceLocale,
         '基础',
       );
-      const baseEnUS = FileUtils.loadLanguageFile(
-        path.join(this.config.paths.locale, 'en-US.json'),
-        'en-US',
+      const baseTarget = FileUtils.loadLanguageFile(
+        path.join(this.config.paths.locale, `${targetLocale}.json`),
+        targetLocale,
         '基础',
       );
 
-      const customZhCN = FileUtils.loadLanguageFile(
-        path.join(this.config.paths.customLocale, 'zh-CN.json'),
-        'zh-CN',
+      const customSource = FileUtils.loadLanguageFile(
+        path.join(this.config.paths.customLocale, `${sourceLocale}.json`),
+        sourceLocale,
         '自定义',
       );
-      const customEnUS = FileUtils.loadLanguageFile(
-        path.join(this.config.paths.customLocale, 'en-US.json'),
-        'en-US',
+      const customTarget = FileUtils.loadLanguageFile(
+        path.join(this.config.paths.customLocale, `${targetLocale}.json`),
+        targetLocale,
         '自定义',
       );
 
       LoggerUtils.info('🔍 检查语言包冲突...');
-      const zhConflicts = FileUtils.findConflictingKeys(baseZhCN, customZhCN);
-      const enConflicts = FileUtils.findConflictingKeys(baseEnUS, customEnUS);
+      const sourceConflicts = FileUtils.findConflictingKeys(
+        baseSource,
+        customSource,
+      );
+      const targetConflicts = FileUtils.findConflictingKeys(
+        baseTarget,
+        customTarget,
+      );
 
-      if (zhConflicts.length > 0 || enConflicts.length > 0) {
-        if (zhConflicts.length > 0) {
+      if (sourceConflicts.length > 0 || targetConflicts.length > 0) {
+        if (sourceConflicts.length > 0) {
           LoggerUtils.error(
-            `zh-CN 语言包存在 ${zhConflicts.length} 个冲突键: ${zhConflicts.join(', ')}`,
+            `${sourceLocale} 语言包存在 ${sourceConflicts.length} 个冲突键: ${sourceConflicts.join(', ')}`,
           );
         }
-        if (enConflicts.length > 0) {
+        if (targetConflicts.length > 0) {
           LoggerUtils.error(
-            `en-US 语言包存在 ${enConflicts.length} 个冲突键: ${enConflicts.join(', ')}`,
+            `${targetLocale} 语言包存在 ${targetConflicts.length} 个冲突键: ${targetConflicts.join(', ')}`,
           );
         }
         throw new Error(
@@ -79,56 +95,66 @@ export class ExportProcessor extends BaseProcessor {
 
       LoggerUtils.success('✅ 未发现语言包冲突');
 
-      const mergedZhCN: ILangMsg = { ...baseZhCN, ...customZhCN };
-      const mergedEnUS: ILangMsg = { ...baseEnUS, ...customEnUS };
+      const mergedSource: ILangMsg = { ...baseSource, ...customSource };
+      const mergedTarget: ILangMsg = { ...baseTarget, ...customTarget };
 
       FileUtils.ensureDirectoryExists(finalOutputDir);
 
-      const baseZhCount = Object.keys(baseZhCN).length;
-      const baseEnCount = Object.keys(baseEnUS).length;
-      const customZhCount = Object.keys(customZhCN).length;
-      const customEnCount = Object.keys(customEnUS).length;
-      const mergedZhCount = Object.keys(mergedZhCN).length;
-      const mergedEnCount = Object.keys(mergedEnUS).length;
+      const baseSourceCount = Object.keys(baseSource).length;
+      const baseTargetCount = Object.keys(baseTarget).length;
+      const customSourceCount = Object.keys(customSource).length;
+      const customTargetCount = Object.keys(customTarget).length;
+      const mergedSourceCount = Object.keys(mergedSource).length;
+      const mergedTargetCount = Object.keys(mergedTarget).length;
 
       LoggerUtils.info('\n📊 语言包统计信息:');
       LoggerUtils.info(`📁 基础语言包 (${this.config.paths.locale}):`);
-      LoggerUtils.info(`   zh-CN: ${baseZhCount} 个条目`);
-      LoggerUtils.info(`   en-US: ${baseEnCount} 个条目`);
+      LoggerUtils.info(`   ${sourceLocale}: ${baseSourceCount} 个条目`);
+      LoggerUtils.info(`   ${targetLocale}: ${baseTargetCount} 个条目`);
       LoggerUtils.info(`📁 自定义语言包 (${this.config.paths.customLocale}):`);
-      LoggerUtils.info(`   zh-CN: ${customZhCount} 个条目`);
-      LoggerUtils.info(`   en-US: ${customEnCount} 个条目`);
+      LoggerUtils.info(`   ${sourceLocale}: ${customSourceCount} 个条目`);
+      LoggerUtils.info(`   ${targetLocale}: ${customTargetCount} 个条目`);
       LoggerUtils.info(`📦 合并后语言包:`);
-      LoggerUtils.info(`   zh-CN: ${mergedZhCount} 个条目`);
-      LoggerUtils.info(`   en-US: ${mergedEnCount} 个条目`);
+      LoggerUtils.info(`   ${sourceLocale}: ${mergedSourceCount} 个条目`);
+      LoggerUtils.info(`   ${targetLocale}: ${mergedTargetCount} 个条目`);
 
-      const outputZhPath = path.join(finalOutputDir, 'zh-CN.json');
-      const outputEnPath = path.join(finalOutputDir, 'en-US.json');
+      const outputSourcePath = path.join(
+        finalOutputDir,
+        `${sourceLocale}.json`,
+      );
+      const outputTargetPath = path.join(
+        finalOutputDir,
+        `${targetLocale}.json`,
+      );
 
       fs.writeFileSync(
-        outputZhPath,
-        JSON.stringify(mergedZhCN, null, 2) + '\n',
+        outputSourcePath,
+        JSON.stringify(mergedSource, null, 2) + '\n',
         'utf8',
       );
       fs.writeFileSync(
-        outputEnPath,
-        JSON.stringify(mergedEnUS, null, 2) + '\n',
+        outputTargetPath,
+        JSON.stringify(mergedTarget, null, 2) + '\n',
         'utf8',
       );
 
       LoggerUtils.success('\n✅ 语言包导出成功!');
       LoggerUtils.info(`📄 输出文件:`);
-      LoggerUtils.info(`   ${outputZhPath}`);
-      LoggerUtils.info(`   ${outputEnPath}`);
+      LoggerUtils.info(`   ${outputSourcePath}`);
+      LoggerUtils.info(`   ${outputTargetPath}`);
 
       LoggerUtils.info('\n🔍 验证导出文件...');
       try {
-        const exportedZh = JSON.parse(fs.readFileSync(outputZhPath, 'utf8'));
-        const exportedEn = JSON.parse(fs.readFileSync(outputEnPath, 'utf8'));
+        const exportedSource = JSON.parse(
+          fs.readFileSync(outputSourcePath, 'utf8'),
+        );
+        const exportedTarget = JSON.parse(
+          fs.readFileSync(outputTargetPath, 'utf8'),
+        );
 
         if (
-          Object.keys(exportedZh).length === mergedZhCount &&
-          Object.keys(exportedEn).length === mergedEnCount
+          Object.keys(exportedSource).length === mergedSourceCount &&
+          Object.keys(exportedTarget).length === mergedTargetCount
         ) {
           LoggerUtils.success('✅ 导出文件验证通过');
         } else {

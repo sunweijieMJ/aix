@@ -15,7 +15,7 @@ export class InteractiveUtils {
    */
   static async promptForTopLevelMode(): Promise<'automatic' | 'manual'> {
     const { mode } = await inquirer.prompt({
-      type: 'list',
+      type: 'select',
       name: 'mode',
       message: '请选择运行模式:',
       choices: [
@@ -37,7 +37,7 @@ export class InteractiveUtils {
     defaultMode: ModeName,
   ): Promise<ModeName> {
     const { mode } = await inquirer.prompt({
-      type: 'list',
+      type: 'select',
       name: 'mode',
       message: isCustom ? '请选择定制目录操作模式:' : '请选择操作模式:',
       choices: [

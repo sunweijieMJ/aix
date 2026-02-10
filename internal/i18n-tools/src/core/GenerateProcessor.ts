@@ -3,8 +3,8 @@ import type { ResolvedConfig } from '../config';
 import { ReactAdapter, VueAdapter } from '../adapters';
 import type { FrameworkAdapter } from '../adapters';
 import { CommandUtils } from '../utils/command-utils';
-import { DifyClient } from '../utils/dify-client';
 import { FileUtils } from '../utils/file-utils';
+import { LLMClient } from '../utils/llm-client';
 import { IdGenerator } from '../utils/id-generator';
 import { InteractiveUtils } from '../utils/interactive-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
@@ -17,8 +17,8 @@ import { BaseProcessor } from './BaseProcessor';
  * 负责从 React/Vue 文件中提取文本并生成多语言组件
  */
 export class GenerateProcessor extends BaseProcessor {
-  /** Dify客户端实例 */
-  private difyClient: DifyClient;
+  /** LLM客户端实例 */
+  private llmClient: LLMClient;
   /** 框架类型 */
   private framework: 'react' | 'vue';
   /** 框架适配器 */
@@ -40,9 +40,11 @@ export class GenerateProcessor extends BaseProcessor {
         : new ReactAdapter(config.paths.tImport, config.react.library, {
             namespace: config.react.namespace || undefined,
           });
-    this.difyClient = new DifyClient(
-      config.dify.idGeneration,
+    this.llmClient = new LLMClient(
+      config.llm.idGeneration,
       config.concurrency.idGeneration,
+      config.locale,
+      config.prompts,
     );
   }
 
@@ -50,7 +52,14 @@ export class GenerateProcessor extends BaseProcessor {
     return '代码生成';
   }
 
-  async _execute(targetPath: string, skipDify: boolean = false): Promise<void> {
+  async execute(targetPath: string, skipLLM: boolean = false): Promise<void> {
+    return this.executeWithLifecycle(() => this._execute(targetPath, skipLLM));
+  }
+
+  private async _execute(
+    targetPath: string,
+    skipLLM: boolean = false,
+  ): Promise<void> {
     const validation = FileUtils.validateTargetPath(targetPath, this.framework);
     if (!validation.isValid) {
       LoggerUtils.error(`❌ ${validation.error}`);
@@ -58,15 +67,15 @@ export class GenerateProcessor extends BaseProcessor {
     }
 
     if (validation.type === 'file') {
-      await this.runSingleFile(targetPath, skipDify);
+      await this.runSingleFile(targetPath, skipLLM);
     } else if (validation.type === 'directory') {
-      await this.runDirectory(targetPath, skipDify);
+      await this.runDirectory(targetPath, skipLLM);
     }
   }
 
   async runSingleFile(
     filePath: string,
-    skipDify: boolean = false,
+    skipLLM: boolean = false,
   ): Promise<void> {
     LoggerUtils.info(`🚀 开始分析文件: ${FileUtils.getRelativePath(filePath)}`);
 
@@ -84,7 +93,7 @@ export class GenerateProcessor extends BaseProcessor {
         return;
       }
 
-      await this.generateIdsForStrings(extractedStrings, skipDify);
+      await this.generateIdsForStrings(extractedStrings, skipLLM);
       this.displayResults(extractedStrings);
 
       const shouldApply =
@@ -104,7 +113,7 @@ export class GenerateProcessor extends BaseProcessor {
 
   private async runDirectory(
     dirPath: string,
-    skipDify: boolean = false,
+    skipLLM: boolean = false,
   ): Promise<void> {
     LoggerUtils.info(`🚀 开始分析目录: ${FileUtils.getRelativePath(dirPath)}`);
 
@@ -144,7 +153,7 @@ export class GenerateProcessor extends BaseProcessor {
       return;
     }
 
-    await this.generateIdsForStrings(extractedStrings, skipDify);
+    await this.generateIdsForStrings(extractedStrings, skipLLM);
     this.displayResults(extractedStrings, true);
 
     const shouldApply =
@@ -163,7 +172,7 @@ export class GenerateProcessor extends BaseProcessor {
 
   private async generateIdsForStrings(
     extractedStrings: ExtractedString[],
-    skipDify: boolean = false,
+    skipLLM: boolean = false,
   ): Promise<void> {
     const fileGroups = FileUtils.groupBy(
       extractedStrings,
@@ -208,17 +217,17 @@ export class GenerateProcessor extends BaseProcessor {
     );
 
     try {
-      const idResults = await this.difyClient.generateSemanticIdsForFiles(
+      const idResults = await this.llmClient.generateSemanticIdsForFiles(
         textGroups,
-        skipDify,
+        skipLLM,
       );
 
       Object.entries(fileGroups).forEach(([filePath, strings]) => {
         const ids = idResults[filePath] || [];
 
-        if (!skipDify && ids.length !== strings.length) {
+        if (!skipLLM && ids.length !== strings.length) {
           LoggerUtils.warn(
-            `[${FileUtils.getRelativePath(filePath)}] Dify返回的ID数量与文本数量不匹配 (期望 ${strings.length}, 收到 ${ids.length})，将使用本地ID生成进行回退。`,
+            `[${FileUtils.getRelativePath(filePath)}] LLM返回的ID数量与文本数量不匹配 (期望 ${strings.length}, 收到 ${ids.length})，将使用本地ID生成进行回退。`,
           );
         }
 
@@ -229,18 +238,18 @@ export class GenerateProcessor extends BaseProcessor {
             item.semanticId = textToIdMap.get(messageForId)!;
           } else {
             let finalId: string;
-            const difyId = ids[index];
+            const llmId = ids[index];
 
-            if (difyId) {
-              // Dify 返回的是纯语义 ID，需要添加目录前缀
+            if (llmId) {
+              // LLM 返回的是纯语义 ID，需要添加目录前缀
               finalId = IdGenerator.addDirectoryPrefixToId(
                 item.filePath,
-                difyId,
+                llmId,
                 existingIds,
                 this.config.idPrefix,
               );
             } else {
-              // Dify 未返回或跳过，本地生成（内部已包含目录前缀）
+              // LLM 未返回或跳过，本地生成（内部已包含目录前缀）
               finalId = IdGenerator.generateWithFilePath(
                 item.filePath,
                 messageForId,

@@ -8,10 +8,6 @@ export const FILES = {
   UNTRANSLATED_JSON: 'untranslated.json',
   /** 翻译文件名 */
   TRANSLATIONS_JSON: 'translations.json',
-  /** 英文语言包文件名 */
-  EN_US_JSON: 'en-US.json',
-  /** 中文语言包文件名 */
-  ZH_CN_JSON: 'zh-CN.json',
 } as const;
 
 /**
@@ -22,37 +18,6 @@ export const CONFIG = {
   CHINESE_REGEX: /[\u4e00-\u9fff]/,
   /** 支持的文件扩展名 */
   SUPPORTED_EXTENSIONS: ['.tsx', '.jsx', '.ts', '.js'] as string[],
-  /** 中文映射 */
-  CHINESE_MAPPINGS: {
-    确认: 'confirm',
-    取消: 'cancel',
-    删除: 'delete',
-    添加: 'add',
-    编辑: 'edit',
-    保存: 'save',
-    提交: 'submit',
-    搜索: 'search',
-    登录: 'login',
-    退出: 'logout',
-    成功: 'success',
-    失败: 'failed',
-    错误: 'error',
-    警告: 'warning',
-    提示: 'tip',
-    用户: 'user',
-    请输入: 'please_input',
-    请选择: 'please_select',
-  } as const,
-  /** ID分隔符 */
-  ID_SEPARATOR: '__',
-} as const;
-
-/**
- * 支持的语言类型
- */
-export const LOCALE_TYPE = {
-  ZH_CN: 'zh-CN',
-  EN_US: 'en-US',
 } as const;
 
 /**

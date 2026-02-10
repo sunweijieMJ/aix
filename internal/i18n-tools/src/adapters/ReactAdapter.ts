@@ -1,4 +1,11 @@
 import { FrameworkAdapter, type FrameworkConfig } from './FrameworkAdapter';
+import type {
+  ITextExtractor,
+  ITransformer,
+  IRestoreTransformer,
+  IComponentInjector,
+  IImportManager,
+} from './FrameworkAdapter';
 import {
   ReactTextExtractor,
   ReactTransformer,
@@ -8,7 +15,6 @@ import {
 } from '../strategies/react';
 import {
   createReactI18nLibrary,
-  type ReactI18nLibrary,
   type ReactI18nLibraryType,
 } from '../strategies/react/libraries';
 
@@ -16,8 +22,11 @@ import {
  * React 框架适配器
  */
 export class ReactAdapter extends FrameworkAdapter {
-  private tImport: string;
-  private library: ReactI18nLibrary;
+  private textExtractor: ReactTextExtractor;
+  private transformer: ReactTransformer;
+  private restoreTransformer: ReactRestoreTransformer;
+  private componentInjector: ReactComponentInjector;
+  private importManager: ReactImportManager;
 
   constructor(
     tImport: string = '@/plugins/locale',
@@ -34,27 +43,31 @@ export class ReactAdapter extends FrameworkAdapter {
       hookName: library.hookName,
     };
     super(config);
-    this.tImport = tImport;
-    this.library = library;
+
+    this.textExtractor = new ReactTextExtractor(library);
+    this.transformer = new ReactTransformer(tImport, library);
+    this.restoreTransformer = new ReactRestoreTransformer(tImport, library);
+    this.componentInjector = new ReactComponentInjector(tImport, library);
+    this.importManager = new ReactImportManager(tImport, library);
   }
 
-  getTextExtractor() {
-    return new ReactTextExtractor(this.library);
+  getTextExtractor(): ITextExtractor {
+    return this.textExtractor;
   }
 
-  getTransformer() {
-    return new ReactTransformer(this.tImport, this.library);
+  getTransformer(): ITransformer {
+    return this.transformer;
   }
 
-  getRestoreTransformer() {
-    return new ReactRestoreTransformer(this.tImport, this.library);
+  getRestoreTransformer(): IRestoreTransformer {
+    return this.restoreTransformer;
   }
 
-  getComponentInjector() {
-    return new ReactComponentInjector(this.tImport, this.library);
+  getComponentInjector(): IComponentInjector {
+    return this.componentInjector;
   }
 
-  getImportManager() {
-    return new ReactImportManager(this.tImport, this.library);
+  getImportManager(): IImportManager {
+    return this.importManager;
   }
 }

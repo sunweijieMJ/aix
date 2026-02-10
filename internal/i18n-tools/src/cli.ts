@@ -14,6 +14,7 @@ import {
 } from './core';
 import {
   InteractiveUtils,
+  loadEnv,
   LoggerUtils,
   MODE_DESCRIPTIONS,
   ModeName,
@@ -25,13 +26,14 @@ import {
 const executeGenerate = async (
   config: ResolvedConfig,
   isCustom: boolean,
+  skipLLM: boolean = false,
 ): Promise<void> => {
   const targetPath = await InteractiveUtils.promptForPath(
     ModeName.GENERATE,
     config.framework,
   );
   const processor = new GenerateProcessor(config, isCustom);
-  await processor.execute(targetPath);
+  await processor.execute(targetPath, skipLLM);
 };
 
 /**
@@ -94,6 +96,8 @@ const executeMerge = async (
  * 主函数 - 程序入口点
  */
 const main = async (): Promise<void> => {
+  loadEnv();
+
   const yargsObj = yargs(hideBin(process.argv))
     .scriptName('i18n-tools')
     .usage(
@@ -137,12 +141,17 @@ const main = async (): Promise<void> => {
       alias: 'i',
       describe: '交互式选择操作选项',
       type: 'boolean',
+      default: true,
+    })
+    .option('skip-llm', {
+      describe: '跳过LLM API调用，使用本地ID生成策略',
+      type: 'boolean',
       default: false,
     })
     .help()
     .alias('help', 'h')
     .group(['config', 'mode', 'custom'], '📋 基本选项:')
-    .group(['interactive'], '⚙️  高级选项:')
+    .group(['interactive', 'skip-llm'], '⚙️  高级选项:')
     .example('$0 --config ./i18n.config.ts', '指定配置文件')
     .example('$0 --mode generate', '扫描源码文件，提取中文并生成国际化调用')
     .example('$0 --mode pick', '从国际化文件中提取未翻译的条目')
@@ -181,9 +190,9 @@ export default defineConfig({
     locale: 'src/locale',
     source: 'src',
   },
-  dify: {
-    idGeneration: { url: process.env.DIFY_ID_GEN_URL!, apiKey: process.env.DIFY_ID_GEN_KEY! },
-    translation: { url: process.env.DIFY_TRANS_URL!, apiKey: process.env.DIFY_TRANS_KEY! },
+  llm: {
+    idGeneration: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
+    translation: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
   },
 });`);
     process.exit(1);
@@ -193,6 +202,7 @@ export default defineConfig({
   let mode = (argv.mode as ModeName) || ModeName.GENERATE;
   const custom = Boolean(argv.custom);
   const interactive = Boolean(argv.interactive);
+  const skipLLM = Boolean(argv.skipLlm);
 
   // 交互模式处理
   if (interactive) {
@@ -240,12 +250,12 @@ export default defineConfig({
           );
           await new AutomaticProcessor(config, custom).execute(
             targetPath,
-            false,
+            skipLLM,
           );
         }
         break;
       case ModeName.GENERATE:
-        await executeGenerate(config, custom);
+        await executeGenerate(config, custom, skipLLM);
         break;
       case ModeName.PICK:
         await executePick(config, custom);

@@ -41,7 +41,17 @@ export class RestoreProcessor extends BaseProcessor {
     return '还原';
   }
 
-  async _execute(
+  async execute(
+    targets: string[] = [],
+    outputDir?: string,
+    overwrite: boolean = false,
+  ): Promise<void> {
+    return this.executeWithLifecycle(() =>
+      this._execute(targets, outputDir, overwrite),
+    );
+  }
+
+  private async _execute(
     targets: string[] = [],
     outputDir?: string,
     overwrite: boolean = false,
@@ -60,7 +70,7 @@ export class RestoreProcessor extends BaseProcessor {
 
   private getLocaleFilePath(): string {
     const localeDir = FileUtils.getDirectoryPath(this.config, this.isCustom);
-    return path.join(localeDir, 'zh-CN.json');
+    return path.join(localeDir, `${this.config.locale.source}.json`);
   }
 
   private async resolveTargetFiles(targets: string[]): Promise<string[]> {

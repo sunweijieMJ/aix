@@ -15,8 +15,6 @@ export abstract class BaseProcessor {
   protected isCustom: boolean;
   /** 工作目录路径 */
   protected workingDir: string;
-  /** 编译目录路径 */
-  protected compileDir: string;
 
   /**
    * 构造函数
@@ -27,7 +25,6 @@ export abstract class BaseProcessor {
     this.config = config;
     this.isCustom = isCustom;
     this.workingDir = FileUtils.getDirectoryPath(config, isCustom);
-    this.compileDir = FileUtils.getCompileDir(config, isCustom);
   }
 
   /**
@@ -72,17 +69,19 @@ export abstract class BaseProcessor {
    */
   protected ensureWorkingDirectory(): void {
     FileUtils.ensureDirectoryExists(this.workingDir);
-    FileUtils.ensureDirectoryExists(this.compileDir);
   }
 
   /**
-   * 模板方法：执行处理器的主要逻辑，包含日志和错误处理
+   * 模板方法：包装子类逻辑，提供日志和错误处理
+   * 子类应覆写 execute() 并在内部调用 executeWithLifecycle()
    */
-  public async execute(...args: any[]): Promise<void> {
+  protected async executeWithLifecycle(
+    fn: () => Promise<void> | void,
+  ): Promise<void> {
     const operationName = this.getOperationName();
     this.logOperationStart(operationName);
     try {
-      await this._execute(...args);
+      await fn();
       this.logOperationComplete(operationName);
     } catch (error) {
       this.logError(operationName, error);
@@ -94,9 +93,4 @@ export abstract class BaseProcessor {
    * 抽象方法：获取操作的名称，用于日志输出
    */
   protected abstract getOperationName(): string;
-
-  /**
-   * 抽象方法：执行具体的处理逻辑
-   */
-  protected abstract _execute(...args: any[]): Promise<void> | void;
 }

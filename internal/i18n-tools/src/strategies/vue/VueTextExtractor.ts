@@ -388,6 +388,14 @@ export class VueTextExtractor implements ITextExtractor {
       // 提取字符串字面量
       if (ts.isStringLiteral(node)) {
         const text = node.text;
+
+        // 跳过比较运算符 (===, !==, ==, !=) 中的字符串操作数
+        // 比较值应使用与 locale 无关的常量，提取后会导致数据与比较不同步
+        // 例如 v-if="userType === 'admin'" 或 :type="status === '进行中' ? ..."
+        if (this.isComparisonOperand(node)) {
+          return;
+        }
+
         // 检查该节点是否已经在国际化调用中（如 $t('...') 或 t('...')）
         if (
           !ASTUtils.isAlreadyInternationalized(node) &&
@@ -859,6 +867,24 @@ export class VueTextExtractor implements ITextExtractor {
         lineOffset,
       );
     }
+  }
+
+  /**
+   * 判断字符串字面量是否是比较运算符的操作数
+   * 例如 v-if="userType === 'admin'" 中的 'admin'
+   */
+  private isComparisonOperand(node: ts.Node): boolean {
+    const parent = node.parent;
+    if (parent && ts.isBinaryExpression(parent)) {
+      const op = parent.operatorToken.kind;
+      return (
+        op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+        op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
+        op === ts.SyntaxKind.EqualsEqualsToken ||
+        op === ts.SyntaxKind.ExclamationEqualsToken
+      );
+    }
+    return false;
   }
 
   /**

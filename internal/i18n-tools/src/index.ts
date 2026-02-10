@@ -10,16 +10,24 @@ export {
   DEFAULT_PATHS,
   DEFAULT_CONCURRENCY,
   DEFAULT_BATCH_SIZE,
-  DEFAULT_DIFY_TIMEOUT,
+  DEFAULT_BATCH_DELAY,
+  DEFAULT_LLM_TIMEOUT,
+  DEFAULT_LLM_MODEL,
+  DEFAULT_LLM_MAX_RETRIES,
+  DEFAULT_LLM_TEMPERATURE,
+  DEFAULT_LOCALE,
+  DEFAULT_ID_PREFIX,
   DEFAULT_INCLUDE,
   DEFAULT_EXCLUDE,
 } from './config';
 export type {
   I18nToolsConfig,
   ResolvedConfig,
-  DifyApiConfig,
+  LLMConfig,
   PathsConfig,
   ConcurrencyConfig,
+  LocaleConfig,
+  PromptsConfig,
 } from './config';
 
 // Core processors
@@ -62,24 +70,18 @@ export {
 // Utils - Classes
 export { FileUtils } from './utils/file-utils';
 export { LoggerUtils, LogLevel } from './utils/logger';
-export { DifyClient } from './utils/dify-client';
+export { LLMClient } from './utils/llm-client';
 export { IdGenerator } from './utils/id-generator';
 export { ConcurrencyController } from './utils/concurrency-controller';
 export { InteractiveUtils } from './utils/interactive-utils';
 export { LanguageFileManager } from './utils/language-file-manager';
 export { CommandUtils } from './utils/command-utils';
-export { FormatjsUtils } from './utils/formatjs-utils';
 export { MessageProcessor } from './utils/message-processor';
 export { HooksUtils } from './utils/hooks-utils';
 export { ASTUtils, CommonASTUtils, ReactASTUtils } from './utils/ast';
 
 // Utils - Constants & Enums
-export {
-  FILES,
-  CONFIG,
-  LOCALE_TYPE,
-  MODE_DESCRIPTIONS,
-} from './utils/constants';
+export { FILES, CONFIG, MODE_DESCRIPTIONS } from './utils/constants';
 export { ModeName, FrameworkType } from './utils/types';
 
 // Utils - Types
@@ -89,8 +91,6 @@ export type {
   LocaleMap,
   ILangMsg,
   ILangMap,
-  DifyResponse,
-  DifyTranslateResponse,
   MessageInfo,
   TransformContext,
 } from './utils/types';

@@ -1,5 +1,3 @@
-import { LoggerUtils } from './logger';
-
 /**
  * 并发控制器
  * 管理并发请求的数量和执行顺序
@@ -34,6 +32,7 @@ export class ConcurrencyController {
 
   /**
    * 处理队列中的任务
+   * 注意: 队列中的 task 已在 add() 中包装了 try-catch，不会抛出异常
    */
   private async process(): Promise<void> {
     if (this.running >= this.maxConcurrency || this.queue.length === 0) {
@@ -43,14 +42,9 @@ export class ConcurrencyController {
     this.running++;
     const task = this.queue.shift()!;
 
-    try {
-      await task();
-    } catch (error) {
-      LoggerUtils.error('并发控制器任务执行失败', error);
-    } finally {
-      this.running--;
-      this.process();
-    }
+    await task();
+    this.running--;
+    this.process();
   }
 
   /**

@@ -25,12 +25,14 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "chalk": "^5.6.2",
-    "inquirer": "^13.2.2",
-    "typescript": "^5.9.3",
-    "yargs": "^18.0.0",
+    "@vue/compiler-dom": "^3.5.28",
     "@vue/compiler-sfc": "^3.5.28",
-    "@vue/compiler-dom": "^3.5.28"
+    "chalk": "^5.6.2",
+    "dotenv": "^17.2.4",
+    "inquirer": "^13.2.2",
+    "openai": "^6.19.0",
+    "typescript": "^5.9.3",
+    "yargs": "^18.0.0"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:*",

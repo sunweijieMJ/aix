@@ -1,12 +1,17 @@
 import fs from 'fs';
 import path from 'path';
 import {
+  DEFAULT_BATCH_DELAY,
   DEFAULT_BATCH_SIZE,
   DEFAULT_CONCURRENCY,
-  DEFAULT_DIFY_TIMEOUT,
   DEFAULT_EXCLUDE,
   DEFAULT_ID_PREFIX,
   DEFAULT_INCLUDE,
+  DEFAULT_LLM_MAX_RETRIES,
+  DEFAULT_LLM_MODEL,
+  DEFAULT_LLM_TEMPERATURE,
+  DEFAULT_LLM_TIMEOUT,
+  DEFAULT_LOCALE,
   DEFAULT_PATHS,
   DEFAULT_REACT,
   DEFAULT_VUE,
@@ -80,6 +85,10 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
       library: userConfig.react?.library ?? DEFAULT_REACT.library,
       namespace: userConfig.react?.namespace ?? DEFAULT_REACT.namespace,
     },
+    locale: {
+      source: userConfig.locale?.source ?? DEFAULT_LOCALE.source,
+      target: userConfig.locale?.target ?? DEFAULT_LOCALE.target,
+    },
     paths: {
       locale: path.resolve(
         rootDir,
@@ -99,21 +108,45 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
       ),
       tImport: userConfig.paths.tImport || DEFAULT_PATHS.tImport,
     },
-    dify: {
+    llm: {
       idGeneration: {
-        url: userConfig.dify.idGeneration.url,
-        apiKey: userConfig.dify.idGeneration.apiKey,
-        timeout: userConfig.dify.idGeneration.timeout ?? DEFAULT_DIFY_TIMEOUT,
+        apiKey: userConfig.llm.idGeneration.apiKey,
+        model: userConfig.llm.idGeneration.model ?? DEFAULT_LLM_MODEL,
+        baseURL: userConfig.llm.idGeneration.baseURL,
+        timeout: userConfig.llm.idGeneration.timeout ?? DEFAULT_LLM_TIMEOUT,
+        maxRetries:
+          userConfig.llm.idGeneration.maxRetries ?? DEFAULT_LLM_MAX_RETRIES,
+        temperature:
+          userConfig.llm.idGeneration.temperature ?? DEFAULT_LLM_TEMPERATURE,
       },
       translation: {
-        url: userConfig.dify.translation.url,
-        apiKey: userConfig.dify.translation.apiKey,
-        timeout: userConfig.dify.translation.timeout ?? DEFAULT_DIFY_TIMEOUT,
+        apiKey: userConfig.llm.translation.apiKey,
+        model: userConfig.llm.translation.model ?? DEFAULT_LLM_MODEL,
+        baseURL: userConfig.llm.translation.baseURL,
+        timeout: userConfig.llm.translation.timeout ?? DEFAULT_LLM_TIMEOUT,
+        maxRetries:
+          userConfig.llm.translation.maxRetries ?? DEFAULT_LLM_MAX_RETRIES,
+        temperature:
+          userConfig.llm.translation.temperature ?? DEFAULT_LLM_TEMPERATURE,
+      },
+    },
+    prompts: {
+      idGeneration: {
+        system: userConfig.prompts?.idGeneration?.system,
+        user: userConfig.prompts?.idGeneration?.user,
+      },
+      translation: {
+        system: userConfig.prompts?.translation?.system,
+        user: userConfig.prompts?.translation?.user,
       },
     },
     idPrefix: {
       anchor: userConfig.idPrefix?.anchor ?? DEFAULT_ID_PREFIX.anchor,
       value: userConfig.idPrefix?.value ?? DEFAULT_ID_PREFIX.value,
+      separator: userConfig.idPrefix?.separator ?? DEFAULT_ID_PREFIX.separator,
+      chineseMappings:
+        userConfig.idPrefix?.chineseMappings ??
+        DEFAULT_ID_PREFIX.chineseMappings,
     },
     concurrency: {
       idGeneration:
@@ -123,6 +156,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
         userConfig.concurrency?.translation ?? DEFAULT_CONCURRENCY.translation,
     },
     batchSize: userConfig.batchSize ?? DEFAULT_BATCH_SIZE,
+    batchDelay: userConfig.batchDelay ?? DEFAULT_BATCH_DELAY,
     include: userConfig.include ?? DEFAULT_INCLUDE,
     exclude: userConfig.exclude ?? DEFAULT_EXCLUDE,
   };

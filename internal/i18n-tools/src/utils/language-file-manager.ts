@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
-import { FILES, LOCALE_TYPE } from './constants';
 import { FileUtils } from './file-utils';
 import { LoggerUtils } from './logger';
-import { ExtractedString, ILangMap, LocaleMap, Translations } from './types';
+import type { ExtractedString, ILangMap, LocaleMap } from './types';
+import { CommonASTUtils } from './ast';
 
 /**
  * 语言文件管理器
@@ -30,156 +30,30 @@ export class LanguageFileManager {
    */
   static getMessages(config: ResolvedConfig, isCustom: boolean): ILangMap {
     const translationsDirectory = FileUtils.getDirectoryPath(config, isCustom);
-    const enUSPath = path.join(translationsDirectory, FILES.EN_US_JSON);
-    const zhCNPath = path.join(translationsDirectory, FILES.ZH_CN_JSON);
+    const sourceLocale = config.locale.source;
+    const targetLocale = config.locale.target;
+    const sourcePath = path.join(translationsDirectory, `${sourceLocale}.json`);
+    const targetPath = path.join(translationsDirectory, `${targetLocale}.json`);
 
     // 加载JSON文件
-    const enUS = FileUtils.loadJsonFile(enUSPath);
-    const zhCN = FileUtils.loadJsonFile(zhCNPath);
+    const sourceData = FileUtils.safeLoadJsonFile<Record<string, any>>(
+      sourcePath,
+      {
+        silent: true,
+      },
+    );
+    const targetData = FileUtils.safeLoadJsonFile<Record<string, any>>(
+      targetPath,
+      {
+        silent: true,
+      },
+    );
 
     // 自动扁平化嵌套结构（支持 layout.systemTitle 格式）
     return {
-      'en-US': FileUtils.flattenObject(enUS),
-      'zh-CN': FileUtils.flattenObject(zhCN),
+      [sourceLocale]: FileUtils.flattenObject(sourceData),
+      [targetLocale]: FileUtils.flattenObject(targetData),
     };
-  }
-
-  /**
-   * 清空语言文件
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   */
-  static clearMessages(config: ResolvedConfig, isCustom: boolean): void {
-    const messages = this.getMessages(config, isCustom);
-    const dirDescription = this.getDirDescription(isCustom);
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
-
-    Object.keys(messages).forEach((locale) => {
-      FileUtils.createOrEmptyFile(
-        path.join(workingDir, `${locale}.json`),
-        '{}',
-      );
-      LoggerUtils.info(`已清空 ${locale}.json 文件 ${dirDescription}`);
-    });
-  }
-
-  /**
-   * 生成语言文件
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   */
-  static generateMessages(config: ResolvedConfig, isCustom: boolean): void {
-    try {
-      const languages = Object.keys(this.getMessages(config, isCustom));
-      const dirDescription = this.getDirDescription(isCustom);
-      const workingDir = FileUtils.getDirectoryPath(config, isCustom);
-      const compileDir = FileUtils.getCompileDir(config, isCustom);
-
-      if (
-        !fs.existsSync(compileDir) ||
-        fs.readdirSync(compileDir).length === 0
-      ) {
-        LoggerUtils.warn(
-          `${compileDir} 目录下没有找到消息文件，跳过生成步骤。`,
-        );
-        return;
-      }
-
-      const jsonFiles = fs
-        .readdirSync(compileDir)
-        .filter((file) => file.endsWith('.json'));
-      if (jsonFiles.length === 0) {
-        LoggerUtils.warn(
-          `${compileDir} 目录下没有找到JSON文件，跳过生成步骤。`,
-        );
-        return;
-      }
-
-      const mergedContent = jsonFiles.reduce((acc, file) => {
-        const filePath = path.join(compileDir, file);
-        const content = fs.readFileSync(filePath, 'utf8');
-        return { ...acc, ...FileUtils.safeParseJson(content) };
-      }, {} as Translations);
-
-      languages.forEach((lang) => {
-        fs.writeFileSync(
-          path.join(workingDir, `${lang}.json`),
-          JSON.stringify(mergedContent, null, 2) + '\n',
-        );
-      });
-
-      LoggerUtils.success(
-        `成功生成 ${languages.join(' 和 ')} 语言文件 ${dirDescription}`,
-      );
-    } catch (error) {
-      LoggerUtils.error(`生成语言文件时发生错误:`, error);
-    }
-  }
-
-  /**
-   * 完成语言文件的处理
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   */
-  static completeMessages(config: ResolvedConfig, isCustom: boolean): void {
-    const translatedPath = FileUtils.getTranslatedPath(config, isCustom);
-    const dirDescription = this.getDirDescription(isCustom);
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
-
-    if (!fs.existsSync(translatedPath)) {
-      FileUtils.createOrEmptyFile(translatedPath);
-      LoggerUtils.info(`创建空的 translations.json 文件 ${dirDescription}`);
-    }
-
-    const translations = FileUtils.loadJsonFile(translatedPath);
-    const messages = this.getMessages(config, isCustom);
-
-    Object.entries(messages).forEach(([locale, translation]) => {
-      Object.entries(translation).forEach(([key, message]) => {
-        messages[locale]![key] =
-          (translations[key] && translations[key]![locale]) || message;
-      });
-    });
-
-    Object.entries(messages).forEach(([locale, messageMap]) => {
-      fs.writeFileSync(
-        path.join(workingDir, `${locale}.json`),
-        JSON.stringify(messageMap, null, 2) + '\n',
-      );
-      LoggerUtils.info(`完成 ${locale}.json 文件处理 ${dirDescription}`);
-    });
-
-    const dirsToDelete = [
-      path.join(workingDir, 'compile'),
-      path.join(workingDir, 'extract'),
-    ];
-    FileUtils.deleteDirs(dirsToDelete);
-  }
-
-  /**
-   * 合并消息，生成translations.json
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   */
-  static combineMessages(config: ResolvedConfig, isCustom: boolean): void {
-    const result: Translations = {};
-    const targetFile = FILES.TRANSLATIONS_JSON;
-    const dirDescription = this.getDirDescription(isCustom);
-    const messages = this.getMessages(config, isCustom);
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
-
-    Object.entries(messages).forEach(([locale, translationMap]) => {
-      Object.entries(translationMap).forEach(([id, message]) => {
-        result[id] = result[id] || {};
-        result[id][locale] = message as string;
-      });
-    });
-
-    fs.writeFileSync(
-      path.join(workingDir, targetFile),
-      JSON.stringify(result, null, 2) + '\n',
-    );
-    LoggerUtils.info(`合并生成 ${targetFile} 文件成功 ${dirDescription}`);
   }
 
   /**
@@ -192,8 +66,9 @@ export class LanguageFileManager {
   static readLocaleFile(
     config: ResolvedConfig,
     isCustom: boolean,
-    locale: string = LOCALE_TYPE.ZH_CN,
+    locale?: string,
   ): LocaleMap | null {
+    locale = locale || config.locale.source;
     const workingDir = FileUtils.getDirectoryPath(config, isCustom);
     const localeFilePath = path.join(workingDir, `${locale}.json`);
 
@@ -224,8 +99,9 @@ export class LanguageFileManager {
     config: ResolvedConfig,
     isCustom: boolean,
     localeMap: LocaleMap,
-    locale: string = LOCALE_TYPE.ZH_CN,
+    locale?: string,
   ): void {
+    locale = locale || config.locale.source;
     const workingDir = FileUtils.getDirectoryPath(config, isCustom);
     const localeFilePath = path.join(workingDir, `${locale}.json`);
 
@@ -247,8 +123,9 @@ export class LanguageFileManager {
   static backupFile(
     config: ResolvedConfig,
     isCustom: boolean,
-    locale: string = LOCALE_TYPE.ZH_CN,
+    locale?: string,
   ): void {
+    locale = locale || config.locale.source;
     const workingDir = FileUtils.getDirectoryPath(config, isCustom);
     const localeFilePath = path.join(workingDir, `${locale}.json`);
     const backupFilePath = path.join(workingDir, `${locale}.json.bak`);
@@ -300,16 +177,9 @@ export class LanguageFileManager {
           const usedNames = new Set<string>();
 
           extracted.templateVariables.forEach((variableExpr) => {
-            // 从表达式文本中提取一个合理的变量名
-            let key = variableExpr
-              .replace(/\(.*\)/g, '')
-              .replace(/\?\.|\?/g, '.')
-              .split('.')
-              .filter((p) => p.trim() !== '')
-              .pop()
-              ?.replace(/[^a-zA-Z0-9_]/g, '');
-
-            if (!key) key = 'val';
+            // 复用 CommonASTUtils 的变量名提取逻辑，确保与代码侧参数名一致
+            let key =
+              CommonASTUtils.getVariableNameFromExpression(variableExpr);
 
             const originalKey = key;
             let count = 1;

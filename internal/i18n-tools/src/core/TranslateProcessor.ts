@@ -1,7 +1,6 @@
 import fs from 'fs';
 import type { ResolvedConfig } from '../config';
-import { LOCALE_TYPE } from '../utils/constants';
-import { DifyClient } from '../utils/dify-client';
+import { LLMClient } from '../utils/llm-client';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
@@ -12,18 +11,20 @@ import { BaseProcessor } from './BaseProcessor';
  * 负责处理待翻译文件的翻译工作
  */
 export class TranslateProcessor extends BaseProcessor {
-  private difyClient: DifyClient;
+  private llmClient: LLMClient;
   private batchConfig: { size: number; delay: number };
 
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     super(config, isCustom);
-    this.difyClient = new DifyClient(
-      config.dify.translation,
+    this.llmClient = new LLMClient(
+      config.llm.translation,
       config.concurrency.translation,
+      config.locale,
+      config.prompts,
     );
     this.batchConfig = {
       size: config.batchSize,
-      delay: 500,
+      delay: config.batchDelay,
     };
   }
 
@@ -31,7 +32,11 @@ export class TranslateProcessor extends BaseProcessor {
     return '翻译';
   }
 
-  async _execute(filePath?: string): Promise<void> {
+  async execute(filePath?: string): Promise<void> {
+    return this.executeWithLifecycle(() => this._execute(filePath));
+  }
+
+  private async _execute(filePath?: string): Promise<void> {
     const targetPath =
       filePath || FileUtils.getUntranslatedPath(this.config, this.isCustom);
 
@@ -70,9 +75,10 @@ export class TranslateProcessor extends BaseProcessor {
   }
 
   private filterUntranslatedItems(data: Translations): Translations {
+    const targetLocale = this.config.locale.target;
     const toTranslate: Translations = {};
     for (const [key, item] of Object.entries(data)) {
-      if (!item[LOCALE_TYPE.EN_US]?.trim()) {
+      if (!item[targetLocale]?.trim()) {
         toTranslate[key] = item;
       }
     }
@@ -93,11 +99,11 @@ export class TranslateProcessor extends BaseProcessor {
 
     LoggerUtils.info(`📦 共 ${batches.length} 个批次，使用并发处理`);
     LoggerUtils.info(
-      `🔄 最大并发数: ${this.difyClient.getConcurrencyStatus().maxConcurrency}`,
+      `🔄 最大并发数: ${this.llmClient.getConcurrencyStatus().maxConcurrency}`,
     );
 
     try {
-      const translatedBatches = await this.difyClient.batchTranslate(
+      const translatedBatches = await this.llmClient.batchTranslate(
         batches,
         (current, total) => {
           LoggerUtils.info(
@@ -107,16 +113,21 @@ export class TranslateProcessor extends BaseProcessor {
       );
 
       for (let i = 0; i < translatedBatches.length; i++) {
+        const translatedBatch = translatedBatches[i];
+        if (!translatedBatch) continue;
+
         try {
           const translated = await this.processBatchResult(
-            translatedBatches[i]!,
+            translatedBatch,
             batches[i]!,
             i,
             batches.length,
             filePath,
           );
           totalTranslated += translated;
-          successBatches++;
+          if (translated > 0) {
+            successBatches++;
+          }
         } catch (error) {
           LoggerUtils.error(
             `批次 ${i + 1} 结果处理失败:`,
@@ -174,7 +185,7 @@ export class TranslateProcessor extends BaseProcessor {
 
     try {
       const jsonText = JSON.stringify(batch, null, 2);
-      const translatedJsonText = await this.difyClient.translateJson(jsonText);
+      const translatedJsonText = await this.llmClient.translateJson(jsonText);
       const translatedBatch: Translations = JSON.parse(translatedJsonText);
 
       if (typeof translatedBatch !== 'object' || translatedBatch === null) {
@@ -238,10 +249,11 @@ export class TranslateProcessor extends BaseProcessor {
     });
     let translatedCount = 0;
 
+    const targetLocale = this.config.locale.target;
     for (const [key] of Object.entries(originalBatch)) {
-      const newEnValue = translatedBatch[key]?.[LOCALE_TYPE.EN_US];
+      const newEnValue = translatedBatch[key]?.[targetLocale];
       if (newEnValue?.trim()) {
-        currentData[key]![LOCALE_TYPE.EN_US] = newEnValue;
+        currentData[key]![targetLocale] = newEnValue;
         translatedCount++;
       }
     }

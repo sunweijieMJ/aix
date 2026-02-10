@@ -1,57 +1,26 @@
 import path from 'path';
 import type { IdPrefixConfig } from '../config/types';
-import { CONFIG } from './constants';
-import { LoggerUtils } from './logger';
-import type { DifyClient } from './dify-client';
+import { DEFAULT_ID_PREFIX } from '../config/defaults';
 
 /**
  * ID生成器工具类
- * 提供语义ID生成功能，支持Dify API和默认策略
- *
- * 不再内部创建 DifyClient，由调用方传入
+ * 提供语义ID生成功能，支持目录前缀和唯一性保证
  */
 export class IdGenerator {
   /**
-   * 生成语义ID列表
-   * @param textList - 文本列表
-   * @param options - 生成选项
-   * @param options.skipDify - 是否跳过Dify API
-   * @param options.difyClient - Dify客户端实例（由调用方通过 ResolvedConfig 创建）
-   * @param options.existingIds - 已有的ID集合
-   * @returns 语义ID列表
+   * 获取分隔符
    */
-  static async generateSemanticIds(
-    textList: string[],
-    options: {
-      skipDify?: boolean;
-      difyClient?: DifyClient;
-      existingIds?: Set<string>;
-    } = {},
-  ): Promise<string[]> {
-    const {
-      skipDify = false,
-      difyClient,
-      existingIds = new Set<string>(),
-    } = options;
+  private static getSeparator(prefixConfig?: IdPrefixConfig): string {
+    return prefixConfig?.separator ?? DEFAULT_ID_PREFIX.separator;
+  }
 
-    if (textList.length === 0) return [];
-
-    if (!skipDify && difyClient) {
-      try {
-        LoggerUtils.info('🔗 使用Dify API生成语义ID...');
-        const ids = await difyClient.generateSemanticIds(textList);
-        // DifyClient返回原始ID，此处进行清理
-        return ids.map((id) => this.sanitizeSemanticId(id));
-      } catch (error) {
-        LoggerUtils.error('Dify API调用失败，使用默认策略', error);
-      }
-    }
-
-    // 使用默认策略
-    LoggerUtils.info('📝 使用默认策略生成语义ID...');
-    return textList.map((text, index) =>
-      this.generateDefault(`file_${index}`, text, existingIds),
-    );
+  /**
+   * 获取中文映射表
+   */
+  private static getChineseMappings(
+    prefixConfig?: IdPrefixConfig,
+  ): Record<string, string> {
+    return prefixConfig?.chineseMappings ?? DEFAULT_ID_PREFIX.chineseMappings;
   }
 
   /**
@@ -82,12 +51,17 @@ export class IdGenerator {
   /**
    * 清理完整的ID，保留目录前缀的大小写
    * @param id - 完整的ID（包含目录前缀）
+   * @param prefixConfig - ID 前缀配置
    * @returns 清理后的ID
    */
-  private static sanitizeFullId(id: string): string {
+  private static sanitizeFullId(
+    id: string,
+    prefixConfig?: IdPrefixConfig,
+  ): string {
+    const separator = this.getSeparator(prefixConfig);
     // 检查是否包含目录分隔符
-    if (id.includes(CONFIG.ID_SEPARATOR)) {
-      const parts = id.split(CONFIG.ID_SEPARATOR);
+    if (id.includes(separator)) {
+      const parts = id.split(separator);
 
       // 前两部分是目录前缀，保持大小写
       const directoryParts = parts.slice(0, 2);
@@ -104,7 +78,7 @@ export class IdGenerator {
       );
 
       return [...cleanedDirectoryParts, ...cleanedSemanticParts].join(
-        CONFIG.ID_SEPARATOR,
+        separator,
       );
     }
     // 没有目录前缀，直接清理
@@ -125,7 +99,7 @@ export class IdGenerator {
     existingIds: Set<string>,
     prefixConfig?: IdPrefixConfig,
   ): string {
-    const semanticPart = this.extractSemanticPart(text);
+    const semanticPart = this.extractSemanticPart(text, prefixConfig);
     return this._createFullId(
       filePath,
       semanticPart,
@@ -151,6 +125,7 @@ export class IdGenerator {
       return prefixConfig.value;
     }
 
+    const separator = this.getSeparator(prefixConfig);
     const normalizedPath = path.normalize(filePath);
     const parts = normalizedPath.split(path.sep);
 
@@ -172,24 +147,48 @@ export class IdGenerator {
     if (currentDir === firstLevelDir) {
       const fileName = parts[fileIndex]!;
       const fileNameWithoutExt = path.parse(fileName).name;
-      return `${firstLevelDir}${CONFIG.ID_SEPARATOR}${fileNameWithoutExt}`;
+      return `${firstLevelDir}${separator}${fileNameWithoutExt}`;
     }
 
-    return `${firstLevelDir}${CONFIG.ID_SEPARATOR}${currentDir}`;
+    return `${firstLevelDir}${separator}${currentDir}`;
+  }
+
+  /**
+   * 简单哈希函数，将字符串转为短哈希
+   */
+  private static simpleHash(str: string): string {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash + char) | 0;
+    }
+    return Math.abs(hash).toString(36);
   }
 
   /**
    * 提取语义部分
    * @param text - 文本内容
+   * @param prefixConfig - ID 前缀配置
    * @returns 语义部分
    */
-  private static extractSemanticPart(text: string): string {
+  private static extractSemanticPart(
+    text: string,
+    prefixConfig?: IdPrefixConfig,
+  ): string {
     const cleanText = text.replace(/[^\u4e00-\u9fff\w\s]/g, '').trim();
+    const chineseMappings = this.getChineseMappings(prefixConfig);
 
     // 检查是否有直接的中文映射
-    for (const [chinese, english] of Object.entries(CONFIG.CHINESE_MAPPINGS)) {
-      if (cleanText.includes(chinese)) {
+    for (const [chinese, english] of Object.entries(chineseMappings)) {
+      if (cleanText === chinese) {
         return english;
+      }
+    }
+
+    // 包含中文映射关键词时，用映射 + 哈希后缀区分
+    for (const [chinese, english] of Object.entries(chineseMappings)) {
+      if (cleanText.includes(chinese)) {
+        return `${english}_${this.simpleHash(cleanText)}`;
       }
     }
 
@@ -198,21 +197,24 @@ export class IdGenerator {
       return this.sanitizeSemanticId(cleanText);
     }
 
-    // 默认处理中文文本
-    return 'text';
+    // 中文文本：使用 "t_" + 短哈希，保证不同文本生成不同 ID
+    return `t_${this.simpleHash(cleanText)}`;
   }
 
   /**
    * 确保ID唯一性
    * @param baseId - 基础ID
+   * @param existingIds - 已有的ID集合
+   * @param prefixConfig - ID 前缀配置
    * @returns 唯一ID
    */
   private static ensureUniqueId(
     baseId: string,
     existingIds: Set<string>,
+    prefixConfig?: IdPrefixConfig,
   ): string {
     // 先清理ID，保留目录前缀的大小写
-    const cleanedId = this.sanitizeFullId(baseId);
+    const cleanedId = this.sanitizeFullId(baseId, prefixConfig);
 
     if (!existingIds.has(cleanedId)) {
       existingIds.add(cleanedId);
@@ -278,13 +280,14 @@ export class IdGenerator {
     existingIds: Set<string>,
     prefixConfig?: IdPrefixConfig,
   ): string {
+    const separator = this.getSeparator(prefixConfig);
     const directoryPrefix = this.extractDirectoryPrefix(filePath, prefixConfig);
     const cleanedSemanticId = this.sanitizeSemanticId(semanticPart);
 
     if (directoryPrefix) {
-      const fullId = `${directoryPrefix}${CONFIG.ID_SEPARATOR}${cleanedSemanticId}`;
-      return this.ensureUniqueId(fullId, existingIds);
+      const fullId = `${directoryPrefix}${separator}${cleanedSemanticId}`;
+      return this.ensureUniqueId(fullId, existingIds, prefixConfig);
     }
-    return this.ensureUniqueId(cleanedSemanticId, existingIds);
+    return this.ensureUniqueId(cleanedSemanticId, existingIds, prefixConfig);
   }
 }

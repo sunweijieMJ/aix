@@ -87,30 +87,6 @@ export enum ModeName {
 }
 
 /**
- * Dify API 响应接口
- */
-export interface DifyResponse {
-  data: {
-    outputs: {
-      results: {
-        id_list: string[];
-      };
-    };
-  };
-}
-
-/**
- * Dify 翻译响应接口
- */
-export interface DifyTranslateResponse {
-  data: {
-    outputs: {
-      results: string;
-    };
-  };
-}
-
-/**
  * 消息信息接口
  */
 export interface MessageInfo {

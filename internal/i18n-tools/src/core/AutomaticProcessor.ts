@@ -1,5 +1,6 @@
 import type { ResolvedConfig } from '../config';
 import { LoggerUtils } from '../utils/logger';
+import { BaseProcessor } from './BaseProcessor';
 import { ExportProcessor } from './ExportProcessor';
 import { GenerateProcessor } from './GenerateProcessor';
 import { MergeProcessor } from './MergeProcessor';
@@ -12,50 +13,54 @@ import { TranslateProcessor } from './TranslateProcessor';
  *
  * 接收 ResolvedConfig 并传递给所有子处理器
  */
-export class AutomaticProcessor {
-  private config: ResolvedConfig;
-  private isCustom: boolean;
-
+export class AutomaticProcessor extends BaseProcessor {
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
-    this.config = config;
-    this.isCustom = isCustom;
+    super(config, isCustom);
   }
 
-  async execute(targetPath: string, skipDify: boolean = false): Promise<void> {
-    const steps = [
+  protected getOperationName(): string {
+    return '自动化i18n工作流';
+  }
+
+  async execute(targetPath: string, skipLLM: boolean = false): Promise<void> {
+    return this.executeWithLifecycle(() => this._execute(targetPath, skipLLM));
+  }
+
+  private async _execute(
+    targetPath: string,
+    skipLLM: boolean = false,
+  ): Promise<void> {
+    const steps: Array<{ name: string; run: () => Promise<void> }> = [
       {
         name: 'generate',
-        processor: new GenerateProcessor(this.config, this.isCustom),
+        run: () =>
+          new GenerateProcessor(this.config, this.isCustom).execute(
+            targetPath,
+            skipLLM,
+          ),
       },
       {
         name: 'pick',
-        processor: new PickProcessor(this.config, this.isCustom),
+        run: () => new PickProcessor(this.config, this.isCustom).execute(),
       },
       {
         name: 'translate',
-        processor: new TranslateProcessor(this.config, this.isCustom),
+        run: () => new TranslateProcessor(this.config, this.isCustom).execute(),
       },
       {
         name: 'merge',
-        processor: new MergeProcessor(this.config, this.isCustom),
+        run: () => new MergeProcessor(this.config, this.isCustom).execute(),
       },
-      { name: 'export', processor: new ExportProcessor(this.config) },
+      {
+        name: 'export',
+        run: () => new ExportProcessor(this.config).execute(),
+      },
     ];
-
-    LoggerUtils.info('🚀 开始执行自动化i18n工作流...');
 
     for (const step of steps) {
       try {
         LoggerUtils.info(`\n===== [步骤: ${step.name.toUpperCase()}] =====`);
-
-        if (step.name === 'generate') {
-          await (step.processor as GenerateProcessor).execute(
-            targetPath,
-            skipDify,
-          );
-        } else {
-          await step.processor.execute();
-        }
+        await step.run();
       } catch (error) {
         LoggerUtils.error(`❌ 自动化工作流在 [${step.name}] 步骤失败:`, error);
         LoggerUtils.warn(
@@ -66,7 +71,5 @@ export class AutomaticProcessor {
         });
       }
     }
-
-    LoggerUtils.success('\n✅ 自动化i18n工作流全部执行成功！');
   }
 }

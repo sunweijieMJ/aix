@@ -1,6 +1,6 @@
 import fs from 'fs';
 import type { ResolvedConfig } from '../config';
-import { FILES, LOCALE_TYPE } from '../utils/constants';
+import { FILES } from '../utils/constants';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
@@ -19,7 +19,11 @@ export class MergeProcessor extends BaseProcessor {
     return '合并翻译文件';
   }
 
-  protected async _execute(): Promise<void> {
+  async execute(): Promise<void> {
+    return this.executeWithLifecycle(() => this._execute());
+  }
+
+  private _execute(): void {
     this.mergeTranslationData();
   }
 
@@ -67,10 +71,17 @@ export class MergeProcessor extends BaseProcessor {
   }
 
   private loadUntranslatedData(filePath: string): Translations | null {
-    return FileUtils.safeLoadJsonFile<Translations>(filePath, {
-      defaultValue: null as unknown as Translations,
-      errorMessage: '读取待翻译文件失败',
-    });
+    try {
+      if (!fs.existsSync(filePath)) {
+        LoggerUtils.error(`❌ 待翻译文件不存在: ${filePath}`);
+        return null;
+      }
+      return FileUtils.safeLoadJsonFile<Translations>(filePath, {
+        errorMessage: '读取待翻译文件失败',
+      });
+    } catch {
+      return null;
+    }
   }
 
   private loadExistingTranslations(filePath: string): Translations {
@@ -90,6 +101,8 @@ export class MergeProcessor extends BaseProcessor {
     newTranslatedCount: number;
     stillUntranslatedCount: number;
   } {
+    const sourceLocale = this.config.locale.source;
+    const targetLocale = this.config.locale.target;
     const newlyTranslated: Translations = {};
     const stillUntranslated: Translations = {};
     let newTranslatedCount = 0;
@@ -98,19 +111,19 @@ export class MergeProcessor extends BaseProcessor {
     LoggerUtils.info('🔍 正在分析翻译状态...');
 
     for (const [key, data] of Object.entries(untranslatedData)) {
-      const zhValue = data[LOCALE_TYPE.ZH_CN];
-      const enValue = data[LOCALE_TYPE.EN_US];
+      const zhValue = data[sourceLocale];
+      const enValue = data[targetLocale];
 
       if (enValue && FileUtils.isValidEnglishTranslation(enValue)) {
         newlyTranslated[key] = {
-          [LOCALE_TYPE.ZH_CN]: zhValue ?? '',
-          [LOCALE_TYPE.EN_US]: enValue,
+          [sourceLocale]: zhValue ?? '',
+          [targetLocale]: enValue,
         };
         newTranslatedCount++;
       } else {
         stillUntranslated[key] = {
-          [LOCALE_TYPE.ZH_CN]: zhValue ?? '',
-          [LOCALE_TYPE.EN_US]: enValue || '',
+          [sourceLocale]: zhValue ?? '',
+          [targetLocale]: enValue || '',
         };
         stillUntranslatedCount++;
       }
@@ -176,83 +189,88 @@ export class MergeProcessor extends BaseProcessor {
   }
 
   private updateLanguagePackage(newlyTranslated: Translations): void {
-    const enUSPath = FileUtils.getLocaleFilePath(
+    const sourceLocale = this.config.locale.source;
+    const targetLocale = this.config.locale.target;
+    const targetPath = FileUtils.getLocaleFilePath(
       this.config,
       this.isCustom,
-      LOCALE_TYPE.EN_US,
+      targetLocale,
     );
-    const zhCNPath = FileUtils.getLocaleFilePath(
+    const sourcePath = FileUtils.getLocaleFilePath(
       this.config,
       this.isCustom,
-      LOCALE_TYPE.ZH_CN,
+      sourceLocale,
     );
 
     let originalMessages: Record<string, any> = {};
     let isNested = false;
 
-    if (fs.existsSync(zhCNPath)) {
+    if (fs.existsSync(targetPath)) {
       try {
-        const zhContent = fs.readFileSync(zhCNPath, 'utf-8');
-        const zhMessages = JSON.parse(zhContent);
-        isNested = FileUtils.isNestedStructure(zhMessages);
+        const fileContent = fs.readFileSync(targetPath, 'utf-8');
+        originalMessages = JSON.parse(fileContent);
+        isNested = FileUtils.isNestedStructure(originalMessages);
         LoggerUtils.info(
-          `📋 参考 zh-CN.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`,
+          `📋 参考 ${targetLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`,
         );
       } catch (error) {
-        LoggerUtils.warn(`读取zh-CN.json失败: ${error}`);
+        LoggerUtils.warn(`读取${targetLocale}.json失败: ${error}`);
       }
-    }
-
-    if (fs.existsSync(enUSPath)) {
+    } else if (fs.existsSync(sourcePath)) {
+      // 目标语言文件不存在时，参考源语言的结构
       try {
-        const fileContent = fs.readFileSync(enUSPath, 'utf-8');
-        originalMessages = JSON.parse(fileContent);
+        const sourceContent = fs.readFileSync(sourcePath, 'utf-8');
+        const sourceMessages = JSON.parse(sourceContent);
+        isNested = FileUtils.isNestedStructure(sourceMessages);
+        LoggerUtils.info(
+          `📋 ${targetLocale}.json 不存在，参考 ${sourceLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`,
+        );
       } catch (error) {
-        LoggerUtils.warn(`读取en-US.json失败: ${error}`);
+        LoggerUtils.warn(`读取${sourceLocale}.json失败: ${error}`);
       }
     }
 
-    let enUSMessages: Record<string, string>;
+    let targetMessages: Record<string, string>;
     if (Object.keys(originalMessages).length > 0) {
       const flattenedMessages = FileUtils.flattenObject(originalMessages);
-      enUSMessages = Object.fromEntries(
+      targetMessages = Object.fromEntries(
         Object.entries(flattenedMessages)
           .filter(([, value]) => typeof value === 'string')
           .map(([key, value]) => [key, String(value)]),
       );
     } else {
-      enUSMessages = {};
+      targetMessages = {};
     }
 
-    let enUSUpdatedCount = 0;
+    let updatedCount = 0;
     for (const [key, data] of Object.entries(newlyTranslated)) {
-      const enValue = data[LOCALE_TYPE.EN_US];
+      const translatedValue = data[targetLocale];
       if (
-        enValue &&
-        typeof enValue === 'string' &&
-        enUSMessages[key] !== enValue
+        translatedValue &&
+        typeof translatedValue === 'string' &&
+        targetMessages[key] !== translatedValue
       ) {
-        enUSMessages[key] = enValue;
-        enUSUpdatedCount++;
+        targetMessages[key] = translatedValue;
+        updatedCount++;
       }
     }
 
     let outputMessages: Record<string, any>;
     if (isNested) {
-      outputMessages = FileUtils.unflattenObject(enUSMessages);
+      outputMessages = FileUtils.unflattenObject(targetMessages);
       LoggerUtils.info('📝 保存为嵌套结构');
     } else {
-      outputMessages = enUSMessages;
+      outputMessages = targetMessages;
       LoggerUtils.info('📝 保存为扁平结构');
     }
 
     fs.writeFileSync(
-      enUSPath,
+      targetPath,
       JSON.stringify(outputMessages, null, 2) + '\n',
       'utf8',
     );
     LoggerUtils.info(
-      `📄 已更新 ${FILES.EN_US_JSON}，更新 ${enUSUpdatedCount} 个条目`,
+      `📄 已更新 ${targetLocale}.json，更新 ${updatedCount} 个条目`,
     );
   }
 
@@ -261,6 +279,8 @@ export class MergeProcessor extends BaseProcessor {
       typeof MergeProcessor.prototype.analyzeTranslationStatus
     >,
   ): void {
+    const sourceLocale = this.config.locale.source;
+    const targetLocale = this.config.locale.target;
     const newTranslatedExamples = Object.keys(
       analysisResult.newlyTranslated,
     ).slice(0, 3);
@@ -269,8 +289,8 @@ export class MergeProcessor extends BaseProcessor {
       newTranslatedExamples.forEach((key) => {
         const item = analysisResult.newlyTranslated[key]!;
         LoggerUtils.info(`  ${key}:`);
-        LoggerUtils.info(`    zh-CN: "${item[LOCALE_TYPE.ZH_CN]}"`);
-        LoggerUtils.info(`    en-US: "${item[LOCALE_TYPE.EN_US]}"`);
+        LoggerUtils.info(`    ${sourceLocale}: "${item[sourceLocale]}"`);
+        LoggerUtils.info(`    ${targetLocale}: "${item[targetLocale]}"`);
       });
     }
 
