@@ -1,6 +1,9 @@
 /**
  * 基础Token - 原子级设计变量
  * 这些是最底层的设计原子，不应该直接在组件中使用
+ *
+ * @generated - 此文件由脚本自动生成，请勿手动修改
+ * 如需修改 Token，请编辑 src/define-theme.ts 后运行 pnpm gen:css
  */
 
 :root {
@@ -27,6 +30,18 @@
   --tokenBlue8: rgb(0 60 179);
   --tokenBlue9: rgb(0 42 140);
   --tokenBlue10: rgb(0 27 102);
+
+  /* ========== 色盘 - Purple (P1) ========== */
+  --tokenPurple1: rgb(249 240 255);
+  --tokenPurple2: rgb(239 219 255);
+  --tokenPurple3: rgb(211 173 247);
+  --tokenPurple4: rgb(183 133 242);
+  --tokenPurple5: rgb(146 84 222);
+  --tokenPurple6: rgb(114 46 209);
+  --tokenPurple7: rgb(83 29 171);
+  --tokenPurple8: rgb(57 16 133);
+  --tokenPurple9: rgb(34 7 94);
+  --tokenPurple10: rgb(18 3 56);
 
   /* ========== 色盘 - Green ========== */
   --tokenGreen1: rgb(235 250 241);
@@ -76,6 +91,21 @@
   --tokenGold9: rgb(135 77 0);
   --tokenGold10: rgb(97 52 0);
 
+  /* ========== 色盘 - Gray/Neutral (P0) ========== */
+  --tokenGray1: rgb(255 255 255);
+  --tokenGray2: rgb(250 250 250);
+  --tokenGray3: rgb(245 245 245);
+  --tokenGray4: rgb(240 240 240);
+  --tokenGray5: rgb(217 217 217);
+  --tokenGray6: rgb(191 191 191);
+  --tokenGray7: rgb(140 140 140);
+  --tokenGray8: rgb(89 89 89);
+  --tokenGray9: rgb(67 67 67);
+  --tokenGray10: rgb(48 48 48);
+  --tokenGray11: rgb(36 36 36);
+  --tokenGray12: rgb(20 20 20);
+  --tokenGray13: rgb(0 0 0);
+
   /* ========== 间距Token ========== */
   --tokenSpacing1: 4px;
   --tokenSpacing2: 8px;
@@ -111,4 +141,34 @@
   --tokenControlHeight2: 24px;
   --tokenControlHeight3: 32px;
   --tokenControlHeight4: 40px;
+
+  /* ========== 字体族Token (P1) ========== */
+  --tokenFontFamily:
+    -apple-system, blinkmacsystemfont, 'Segoe UI', roboto, 'Helvetica Neue',
+    arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --tokenFontFamilyCode:
+    'SFMono-Regular', consolas, 'Liberation Mono', menlo, courier, monospace;
+
+  /* ========== 阴影Token (P0) ========== */
+  --tokenShadow1:
+    0 1px 2px 0 rgb(0 0 0 / 0.03), 0 1px 6px -1px rgb(0 0 0 / 0.02),
+    0 2px 4px 0 rgb(0 0 0 / 0.02);
+  --tokenShadow2:
+    0 3px 6px -4px rgb(0 0 0 / 0.12), 0 6px 16px 0 rgb(0 0 0 / 0.08),
+    0 9px 28px 8px rgb(0 0 0 / 0.05);
+  --tokenShadow3:
+    0 6px 16px -8px rgb(0 0 0 / 0.08), 0 9px 28px 0 rgb(0 0 0 / 0.05),
+    0 12px 48px 16px rgb(0 0 0 / 0.03);
+  --tokenShadow4:
+    0 12px 24px -12px rgb(0 0 0 / 0.15), 0 24px 48px 0 rgb(0 0 0 / 0.1),
+    0 36px 72px 24px rgb(0 0 0 / 0.05);
+
+  /* ========== z-index层级Token (P0) ========== */
+  --tokenZIndexBase: 0;
+  --tokenZIndexPopup: 1000;
+  --tokenZIndexAffix: 1100;
+  --tokenZIndexModal: 1200;
+  --tokenZIndexPopover: 1300;
+  --tokenZIndexTooltip: 1400;
+  --tokenZIndexNotification: 1500;
 }

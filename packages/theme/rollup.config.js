@@ -1,10 +1,11 @@
 import autoprefixer from 'autoprefixer';
+import postcssImport from 'postcss-import';
 import { defineConfig } from 'rollup';
 import esbuild from 'rollup-plugin-esbuild';
 import postcss from 'rollup-plugin-postcss';
 
 export default defineConfig([
-  // 构建主 CSS 文件（包含所有Token）
+  // 构建主 CSS 文件（包含所有Token，内联 @import）
   {
     input: 'src/vars/index.css',
     output: {
@@ -16,7 +17,23 @@ export default defineConfig([
         extract: true,
         minimize: true,
         sourceMap: false,
-        plugins: [autoprefixer()],
+        plugins: [postcssImport(), autoprefixer()],
+      }),
+    ],
+  },
+  // 按需引入入口：vars/index.css（内联所有 CSS）
+  {
+    input: 'src/vars/index.css',
+    output: {
+      file: 'dist/vars/index.css',
+      format: 'es',
+    },
+    plugins: [
+      postcss({
+        extract: true,
+        minimize: true,
+        sourceMap: false,
+        plugins: [postcssImport(), autoprefixer()],
       }),
     ],
   },

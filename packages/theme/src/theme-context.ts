@@ -331,6 +331,9 @@ export function createTheme(options?: CreateThemeOptions) {
   const modeRef = computed(() => state.mode);
   const configRef = computed(() => state.config);
 
+  // 存储清理函数
+  let cleanupFn: (() => void) | null = null;
+
   /**
    * Context 对象（使用 getter 确保最新值）
    */
@@ -390,7 +393,22 @@ export function createTheme(options?: CreateThemeOptions) {
 
           // 监听变化
           mediaQuery.addEventListener('change', handler);
+
+          // 保存清理函数
+          cleanupFn = () => {
+            mediaQuery.removeEventListener('change', handler);
+          };
         }
+      }
+    },
+    /**
+     * 清理函数 - 移除事件监听器
+     * 在应用卸载或不再需要主题系统时调用
+     */
+    dispose() {
+      if (cleanupFn) {
+        cleanupFn();
+        cleanupFn = null;
       }
     },
   };

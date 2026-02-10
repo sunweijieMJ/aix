@@ -18,12 +18,29 @@ export type {
 
 // 颜色算法导出
 export {
+  // 类型
+  type RGB,
+  type RGBA,
+  type HSL,
+  type ColorFormat,
+  type ColorSeries,
+  // 解析函数
+  parseColor,
+  parseColorWithAlpha,
+  parseHex,
   parseRGB,
+  detectColorFormat,
+  // 转换函数
   rgbToString,
+  rgbaToString,
+  rgbToHex,
+  rgbaToHex,
   rgbToHsl,
   hslToRgb,
+  // 调整函数
   adjustLightness,
   adjustSaturation,
+  // 生成函数
   generateHoverColor,
   generateActiveColor,
   generateBgColor,
@@ -39,6 +56,12 @@ export {
   generateThemeTokens,
   tokensToCSSVars,
   defaultTheme,
+  // 高级 API（用于自定义主题生成）
+  defaultBaseTokens,
+  generateDefaultSemanticTokens,
+  applyDarkAlgorithm,
+  // 注意：BASE_TOKEN_GROUPS, SEMANTIC_TOKEN_GROUPS, SEMANTIC_VAR_REFS
+  // 仅供 CSS 生成脚本使用，不在运行时导出以减少包体积
 } from './define-theme';
 
 // 主题控制器导出（内部使用）

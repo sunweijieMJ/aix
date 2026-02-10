@@ -56,6 +56,7 @@ export const builtInPresets: Record<string, ThemePreset> = {
     name: 'purple',
     displayName: '优雅紫',
     token: {
+      tokenPurple6: 'rgb(114 46 209)',
       colorPrimary: 'rgb(114 46 209)',
     },
   },
@@ -74,7 +75,7 @@ const DEFAULT_TRANSITION: Required<TransitionConfig> = {
  * 主题控制器类（纯 DOM 操作层）
  */
 export class ThemeController {
-  private root: HTMLElement;
+  private root: HTMLElement | null;
   private currentMode: ThemeMode = 'light';
   private currentConfig: ThemeConfig;
   private pendingUpdates: Record<string, string> = {};
@@ -82,10 +83,16 @@ export class ThemeController {
   private transitionConfig: Required<TransitionConfig> = DEFAULT_TRANSITION;
 
   constructor() {
-    // SSR 安全的 DOM 引用
-    const rootElement = getDocumentRoot();
-    this.root = rootElement || ({} as HTMLElement);
+    // SSR 安全的 DOM 引用，SSR 环境下为 null
+    this.root = getDocumentRoot();
     this.currentConfig = defineTheme();
+  }
+
+  /**
+   * 检查是否在浏览器环境且 DOM 可用
+   */
+  private canAccessDOM(): boolean {
+    return this.root !== null && typeof this.root.style !== 'undefined';
   }
 
   /**
@@ -104,8 +111,8 @@ export class ThemeController {
     this.currentMode = mode;
 
     // SSR 安全：仅在浏览器环境更新 DOM
-    if (this.root && this.root.setAttribute) {
-      this.root.setAttribute('data-theme', mode);
+    if (this.canAccessDOM()) {
+      this.root!.setAttribute('data-theme', mode);
     }
 
     // 更新配置
@@ -173,20 +180,20 @@ export class ThemeController {
    * 应用过渡动画样式
    */
   private applyTransition(): void {
-    if (!this.root || !this.root.style) {
+    if (!this.canAccessDOM()) {
       return;
     }
 
     if (this.transitionConfig.enabled) {
       const { duration, easing } = this.transitionConfig;
       // 为颜色和背景色添加过渡效果
-      this.root.style.transition = `
+      this.root!.style.transition = `
         background-color ${duration}ms ${easing},
         color ${duration}ms ${easing},
         border-color ${duration}ms ${easing}
       `.trim();
     } else {
-      this.root.style.transition = '';
+      this.root!.style.transition = '';
     }
   }
 
@@ -213,7 +220,7 @@ export class ThemeController {
    */
   private batchUpdateCSSVars(vars: Record<string, string>): void {
     // SSR 安全：仅在浏览器环境批处理
-    if (!this.root || !this.root.style) {
+    if (!this.canAccessDOM()) {
       return;
     }
 
@@ -236,13 +243,13 @@ export class ThemeController {
    * 立即应用所有待处理的CSS变量更新
    */
   private flushCSSUpdates(): void {
-    if (!this.root || !this.root.style) {
+    if (!this.canAccessDOM()) {
       return;
     }
 
     // 批量应用所有待处理的更新
     Object.entries(this.pendingUpdates).forEach(([key, value]) => {
-      this.root.style.setProperty(key, value);
+      this.root!.style.setProperty(key, value);
     });
 
     // 清空待处理队列
@@ -332,9 +339,9 @@ export class ThemeController {
     const cssVars = tokensToCSSVars(tokens);
 
     // 立即同步应用
-    if (this.root && this.root.style) {
+    if (this.canAccessDOM()) {
       Object.entries(cssVars).forEach(([key, value]) => {
-        this.root.style.setProperty(key, value);
+        this.root!.style.setProperty(key, value);
       });
     }
   }

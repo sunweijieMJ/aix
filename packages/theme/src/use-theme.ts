@@ -1,6 +1,6 @@
 /**
  * Vue Composition API for Theme Management
- * 基于 ThemeContext 的响应式主题管理
+ * 基于 ThemeContext 的响应式主题管理（推荐使用）
  */
 
 import { computed, type Ref } from 'vue';
@@ -17,9 +17,9 @@ import { useThemeContext } from './use-theme-context';
  * useTheme 返回值接口
  */
 export interface UseThemeReturn {
-  /** 当前主题模式（响应式） */
+  /** 当前主题模式（响应式 Ref，可安全解构） */
   mode: Ref<ThemeMode>;
-  /** 当前主题配置（响应式） */
+  /** 当前主题配置（响应式 Ref，可安全解构） */
   config: Ref<ThemeConfig>;
   /** 设置主题模式 */
   setMode: (mode: ThemeMode) => void;
@@ -46,27 +46,36 @@ export interface UseThemeReturn {
 }
 
 /**
- * Vue Composition API - 主题管理
- * 基于 ThemeContext 的包装，提供响应式的 Ref 返回值
+ * Vue Composition API - 主题管理（推荐）
  *
- * 注意：此函数必须在提供了 ThemeContext 的组件树中使用
- * 确保在应用根部调用了 app.use(createTheme().install)
+ * 返回响应式 Ref，支持解构后保持响应式。
+ * 这是大多数场景下的推荐用法。
  *
- * @returns 主题管理对象（所有属性为响应式 Ref）
+ * 与 useThemeContext 的区别：
+ * - useTheme: 返回 Ref<T>，解构后保持响应式 ✅
+ * - useThemeContext: 返回 getter，解构后丢失响应式 ⚠️
+ *
+ * @returns 主题管理对象（mode/config 为响应式 Ref）
  *
  * @example
  * ```vue
  * <script setup lang="ts">
  * import { useTheme } from '@aix/theme';
  *
+ * // ✅ 可以安全解构，mode 仍然是响应式的
  * const { mode, toggleMode, applyPreset } = useTheme();
+ *
+ * // ✅ watch 可以正常工作
+ * watch(mode, (newMode) => {
+ *   console.log('主题变化:', newMode);
+ * });
  * </script>
  *
  * <template>
  *   <div>
- *     <p>Current mode: {{ mode }}</p>
- *     <button @click="toggleMode">Toggle Theme</button>
- *     <button @click="applyPreset('tech')">Tech Theme</button>
+ *     <p>当前模式: {{ mode }}</p>
+ *     <button @click="toggleMode">切换主题</button>
+ *     <button @click="applyPreset('tech')">科技蓝</button>
  *   </div>
  * </template>
  * ```

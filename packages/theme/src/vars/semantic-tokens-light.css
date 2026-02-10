@@ -1,56 +1,59 @@
 /**
  * 语义Token - 亮色模式
  * 这些是语义级变量，映射自基础Token，组件应该使用这些变量
+ *
+ * @generated - 此文件由脚本自动生成，请勿手动修改
+ * 如需修改 Token，请编辑 src/define-theme.ts 后运行 pnpm gen:css
  */
 
 :root {
   /* ========== 品牌色 - Primary ========== */
   --colorPrimary: var(--tokenCyan6);
-  --colorPrimaryHover: rgb(31 194 188);
-  --colorPrimaryActive: rgb(0 138 143);
-  --colorPrimaryBg: rgb(220 245 241);
-  --colorPrimaryBgHover: rgb(149 232 221);
-  --colorPrimaryBorder: rgb(105 219 208);
-  --colorPrimaryBorderHover: rgb(66 207 197);
+  --colorPrimaryHover: rgb(32 233 233);
+  --colorPrimaryActive: rgb(15 149 149);
+  --colorPrimaryBg: rgb(190 228 228);
+  --colorPrimaryBgHover: rgb(169 224 224);
+  --colorPrimaryBorder: rgb(79 238 238);
+  --colorPrimaryBorderHover: rgb(32 233 233);
   --colorPrimaryText: var(--tokenCyan6);
-  --colorPrimaryTextHover: rgb(31 194 188);
-  --colorPrimaryTextActive: rgb(0 138 143);
+  --colorPrimaryTextHover: rgb(32 233 233);
+  --colorPrimaryTextActive: rgb(15 149 149);
 
   /* ========== 功能色 - Success ========== */
   --colorSuccess: var(--tokenGreen6);
-  --colorSuccessHover: rgb(62 199 133);
-  --colorSuccessActive: rgb(15 148 92);
-  --colorSuccessBg: rgb(235 250 241);
-  --colorSuccessBgHover: rgb(187 237 208);
-  --colorSuccessBorder: rgb(141 224 179);
-  --colorSuccessBorderHover: rgb(99 212 154);
-  --colorSuccessText: rgb(0 71 46);
-  --colorSuccessTextHover: rgb(5 110 70);
-  --colorSuccessTextActive: rgb(0 33 23);
+  --colorSuccessHover: rgb(41 224 142);
+  --colorSuccessActive: rgb(20 143 88);
+  --colorSuccessBg: rgb(193 225 211);
+  --colorSuccessBgHover: rgb(173 220 199);
+  --colorSuccessBorder: rgb(85 231 165);
+  --colorSuccessBorderHover: rgb(41 224 142);
+  --colorSuccessText: rgb(27 185 114);
+  --colorSuccessTextHover: rgb(41 224 142);
+  --colorSuccessTextActive: rgb(20 143 88);
 
   /* ========== 功能色 - Warning ========== */
   --colorWarning: var(--tokenGold6);
-  --colorWarningHover: rgb(255 197 61);
-  --colorWarningActive: rgb(212 136 6);
-  --colorWarningBg: rgb(255 251 230);
-  --colorWarningBgHover: rgb(255 241 184);
-  --colorWarningBorder: rgb(255 229 143);
-  --colorWarningBorderHover: rgb(255 214 102);
-  --colorWarningText: rgb(135 77 0);
-  --colorWarningTextHover: rgb(173 104 0);
-  --colorWarningTextActive: rgb(97 52 0);
+  --colorWarningHover: rgb(251 191 70);
+  --colorWarningActive: rgb(215 145 4);
+  --colorWarningBg: rgb(247 240 227);
+  --colorWarningBgHover: rgb(243 231 206);
+  --colorWarningBorder: rgb(252 208 120);
+  --colorWarningBorderHover: rgb(251 191 70);
+  --colorWarningText: rgb(250 173 20);
+  --colorWarningTextHover: rgb(251 191 70);
+  --colorWarningTextActive: rgb(215 145 4);
 
   /* ========== 功能色 - Error ========== */
   --colorError: var(--tokenRed6);
-  --colorErrorHover: rgb(255 77 79);
-  --colorErrorActive: rgb(207 19 34);
-  --colorErrorBg: rgb(255 241 240);
-  --colorErrorBgHover: rgb(255 204 199);
-  --colorErrorBorder: rgb(255 163 158);
-  --colorErrorBorderHover: rgb(255 120 117);
-  --colorErrorText: rgb(130 0 20);
-  --colorErrorTextHover: rgb(168 7 26);
-  --colorErrorTextActive: rgb(92 0 17);
+  --colorErrorHover: rgb(247 85 93);
+  --colorErrorActive: rgb(219 10 21);
+  --colorErrorBg: rgb(249 236 236);
+  --colorErrorBgHover: rgb(244 215 217);
+  --colorErrorBorder: rgb(249 133 139);
+  --colorErrorBorderHover: rgb(247 85 93);
+  --colorErrorText: rgb(245 34 45);
+  --colorErrorTextHover: rgb(247 85 93);
+  --colorErrorTextActive: rgb(219 10 21);
 
   /* ========== 文本色 ========== */
   --colorText: rgb(0 0 0 / 0.88);
@@ -90,13 +93,13 @@
 
   /* ========== 控制项颜色 ========== */
   --controlItemBgHover: rgb(0 0 0 / 0.04);
-  --controlItemBgActive: rgb(230 244 255);
-  --controlItemBgActiveHover: rgb(186 224 255);
+  --controlItemBgActive: rgb(190 228 228);
+  --controlItemBgActiveHover: rgb(169 224 224);
 
   /* ========== 链接色 ========== */
   --colorLink: var(--tokenCyan6);
-  --colorLinkHover: rgb(66 207 197);
-  --colorLinkActive: rgb(0 138 143);
+  --colorLinkHover: var(--tokenCyan4);
+  --colorLinkActive: var(--tokenCyan7);
 
   /* ========== 图标色 ========== */
   --colorIcon: rgb(0 0 0 / 0.45);
@@ -153,4 +156,40 @@
   --lineHeightSM: var(--tokenLineHeight1);
   --lineHeight: var(--tokenLineHeight2);
   --lineHeightLG: var(--tokenLineHeight3);
+
+  /* ========== 字体族 (P1) ========== */
+  --fontFamily: var(--tokenFontFamily);
+  --fontFamilyCode: var(--tokenFontFamilyCode);
+
+  /* ========== 阴影 (P0) ========== */
+  --shadowXS: var(--tokenShadow1);
+  --shadowSM: var(--tokenShadow1);
+  --shadow: var(--tokenShadow2);
+  --shadowMD: var(--tokenShadow2);
+  --shadowLG: var(--tokenShadow3);
+  --shadowXL: var(--tokenShadow4);
+
+  /* ========== z-index层级 (P0) ========== */
+  --zIndexBase: var(--tokenZIndexBase);
+  --zIndexPopupBase: var(--tokenZIndexPopup);
+  --zIndexAffix: var(--tokenZIndexAffix);
+  --zIndexModal: var(--tokenZIndexModal);
+  --zIndexModalMask: 1199;
+  --zIndexPopover: var(--tokenZIndexPopover);
+  --zIndexDropdown: 1050;
+  --zIndexTooltip: var(--tokenZIndexTooltip);
+  --zIndexNotification: var(--tokenZIndexNotification);
+  --zIndexMessage: 1510;
+
+  /* ========== 中性色 (P0) ========== */
+  --colorNeutral1: var(--tokenGray1);
+  --colorNeutral2: var(--tokenGray2);
+  --colorNeutral3: var(--tokenGray3);
+  --colorNeutral4: var(--tokenGray4);
+  --colorNeutral5: var(--tokenGray5);
+  --colorNeutral6: var(--tokenGray6);
+  --colorNeutral7: var(--tokenGray7);
+  --colorNeutral8: var(--tokenGray8);
+  --colorNeutral9: var(--tokenGray9);
+  --colorNeutral10: var(--tokenGray10);
 }

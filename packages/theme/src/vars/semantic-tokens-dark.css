@@ -1,57 +1,60 @@
 /**
  * 语义Token - 暗色模式
  * 覆盖亮色模式的语义变量
+ *
+ * @generated - 此文件由脚本自动生成，请勿手动修改
+ * 如需修改 Token，请编辑 src/define-theme.ts 后运行 pnpm gen:css
  */
 
 :root[data-theme='dark'],
 .dark {
   /* ========== 品牌色 - Primary (暗色模式) ========== */
-  --colorPrimary: rgb(31 194 188);
-  --colorPrimaryHover: rgb(66 207 197);
-  --colorPrimaryActive: rgb(0 138 143);
-  --colorPrimaryBg: rgb(0 35 41);
-  --colorPrimaryBgHover: rgb(0 71 79);
-  --colorPrimaryBorder: rgb(0 109 117);
-  --colorPrimaryBorderHover: rgb(8 151 156);
-  --colorPrimaryText: rgb(31 194 188);
-  --colorPrimaryTextHover: rgb(66 207 197);
-  --colorPrimaryTextActive: rgb(0 138 143);
+  --colorPrimary: rgb(74 242 242);
+  --colorPrimaryHover: rgb(112 245 245);
+  --colorPrimaryActive: rgb(36 240 240);
+  --colorPrimaryBg: rgb(16 60 60);
+  --colorPrimaryBgHover: rgb(19 83 83);
+  --colorPrimaryBorder: rgb(25 128 128);
+  --colorPrimaryBorderHover: rgb(29 175 175);
+  --colorPrimaryText: rgb(74 242 242);
+  --colorPrimaryTextHover: rgb(112 245 245);
+  --colorPrimaryTextActive: rgb(36 240 240);
 
   /* ========== 功能色 - Success (暗色模式) ========== */
-  --colorSuccess: rgb(62 199 133);
-  --colorSuccessHover: rgb(99 212 154);
-  --colorSuccessActive: rgb(27 185 114);
-  --colorSuccessBg: rgb(0 33 23);
-  --colorSuccessBgHover: rgb(0 71 46);
-  --colorSuccessBorder: rgb(5 110 70);
-  --colorSuccessBorderHover: rgb(15 148 92);
-  --colorSuccessText: rgb(187 237 208);
-  --colorSuccessTextHover: rgb(141 224 179);
-  --colorSuccessTextActive: rgb(235 250 241);
+  --colorSuccess: rgb(81 236 166);
+  --colorSuccessHover: rgb(117 240 185);
+  --colorSuccessActive: rgb(44 232 147);
+  --colorSuccessBg: rgb(19 57 40);
+  --colorSuccessBgHover: rgb(23 79 54);
+  --colorSuccessBorder: rgb(31 122 81);
+  --colorSuccessBorderHover: rgb(36 168 109);
+  --colorSuccessText: rgb(81 236 166);
+  --colorSuccessTextHover: rgb(117 240 185);
+  --colorSuccessTextActive: rgb(44 232 147);
 
   /* ========== 功能色 - Warning (暗色模式) ========== */
-  --colorWarning: rgb(255 197 61);
-  --colorWarningHover: rgb(255 214 102);
-  --colorWarningActive: rgb(250 173 20);
-  --colorWarningBg: rgb(97 52 0);
-  --colorWarningBgHover: rgb(135 77 0);
-  --colorWarningBorder: rgb(173 104 0);
-  --colorWarningBorderHover: rgb(212 136 6);
-  --colorWarningText: rgb(255 241 184);
-  --colorWarningTextHover: rgb(255 229 143);
-  --colorWarningTextActive: rgb(255 251 230);
+  --colorWarning: rgb(255 201 92);
+  --colorWarningHover: rgb(255 214 133);
+  --colorWarningActive: rgb(255 187 51);
+  --colorWarningBg: rgb(65 47 11);
+  --colorWarningBgHover: rgb(89 64 13);
+  --colorWarningBorder: rgb(138 97 15);
+  --colorWarningBorderHover: rgb(189 131 15);
+  --colorWarningText: rgb(255 201 92);
+  --colorWarningTextHover: rgb(255 214 133);
+  --colorWarningTextActive: rgb(255 187 51);
 
   /* ========== 功能色 - Error (暗色模式) ========== */
-  --colorError: rgb(255 77 79);
-  --colorErrorHover: rgb(255 120 117);
-  --colorErrorActive: rgb(245 34 45);
-  --colorErrorBg: rgb(92 0 17);
-  --colorErrorBgHover: rgb(130 0 20);
-  --colorErrorBorder: rgb(168 7 26);
-  --colorErrorBorderHover: rgb(207 19 34);
-  --colorErrorText: rgb(255 204 199);
-  --colorErrorTextHover: rgb(255 163 158);
-  --colorErrorTextActive: rgb(255 241 240);
+  --colorError: rgb(252 105 112);
+  --colorErrorHover: rgb(253 145 150);
+  --colorErrorActive: rgb(251 65 74);
+  --colorErrorBg: rgb(63 13 16);
+  --colorErrorBgHover: rgb(87 15 18);
+  --colorErrorBorder: rgb(135 18 24);
+  --colorErrorBorderHover: rgb(185 19 28);
+  --colorErrorText: rgb(252 105 112);
+  --colorErrorTextHover: rgb(253 145 150);
+  --colorErrorTextActive: rgb(251 65 74);
 
   /* ========== 文本色 (暗色模式) ========== */
   --colorText: rgb(255 255 255 / 0.85);
@@ -91,15 +94,47 @@
 
   /* ========== 控制项颜色 (暗色模式) ========== */
   --controlItemBgHover: rgb(255 255 255 / 0.08);
-  --controlItemBgActive: rgb(0 102 255 / 0.15);
-  --controlItemBgActiveHover: rgb(0 102 255 / 0.25);
+  --controlItemBgActive: rgb(16 60 60);
+  --controlItemBgActiveHover: rgb(19 83 83);
 
   /* ========== 链接色 (暗色模式) ========== */
-  --colorLink: rgb(31 194 188);
-  --colorLinkHover: rgb(66 207 197);
-  --colorLinkActive: rgb(0 138 143);
+  --colorLink: rgb(74 242 242);
+  --colorLinkHover: rgb(112 245 245);
+  --colorLinkActive: rgb(36 240 240);
 
   /* ========== 图标色 (暗色模式) ========== */
   --colorIcon: rgb(255 255 255 / 0.45);
   --colorIconHover: rgb(255 255 255 / 0.85);
+
+  /* ========== 阴影 (P0) (暗色模式) ========== */
+  --shadowXS:
+    0 1px 2px 0 rgb(0 0 0 / 0.1), 0 1px 6px -1px rgb(0 0 0 / 0.08),
+    0 2px 4px 0 rgb(0 0 0 / 0.08);
+  --shadowSM:
+    0 1px 2px 0 rgb(0 0 0 / 0.1), 0 1px 6px -1px rgb(0 0 0 / 0.08),
+    0 2px 4px 0 rgb(0 0 0 / 0.08);
+  --shadow:
+    0 3px 6px -4px rgb(0 0 0 / 0.24), 0 6px 16px 0 rgb(0 0 0 / 0.16),
+    0 9px 28px 8px rgb(0 0 0 / 0.1);
+  --shadowMD:
+    0 3px 6px -4px rgb(0 0 0 / 0.24), 0 6px 16px 0 rgb(0 0 0 / 0.16),
+    0 9px 28px 8px rgb(0 0 0 / 0.1);
+  --shadowLG:
+    0 6px 16px -8px rgb(0 0 0 / 0.16), 0 9px 28px 0 rgb(0 0 0 / 0.1),
+    0 12px 48px 16px rgb(0 0 0 / 0.08);
+  --shadowXL:
+    0 12px 24px -12px rgb(0 0 0 / 0.3), 0 24px 48px 0 rgb(0 0 0 / 0.2),
+    0 36px 72px 24px rgb(0 0 0 / 0.1);
+
+  /* ========== 中性色 (P0) (暗色模式) ========== */
+  --colorNeutral1: rgb(0 0 0);
+  --colorNeutral2: rgb(20 20 20);
+  --colorNeutral3: rgb(36 36 36);
+  --colorNeutral4: rgb(48 48 48);
+  --colorNeutral5: rgb(67 67 67);
+  --colorNeutral6: rgb(89 89 89);
+  --colorNeutral7: rgb(140 140 140);
+  --colorNeutral8: rgb(191 191 191);
+  --colorNeutral9: rgb(217 217 217);
+  --colorNeutral10: rgb(240 240 240);
 }

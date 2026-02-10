@@ -30,6 +30,18 @@ export interface BaseTokens {
   tokenBlue9: string;
   tokenBlue10: string;
 
+  // 色盘 - Purple (P1)
+  tokenPurple1: string;
+  tokenPurple2: string;
+  tokenPurple3: string;
+  tokenPurple4: string;
+  tokenPurple5: string;
+  tokenPurple6: string;
+  tokenPurple7: string;
+  tokenPurple8: string;
+  tokenPurple9: string;
+  tokenPurple10: string;
+
   // 色盘 - Green
   tokenGreen1: string;
   tokenGreen2: string;
@@ -78,6 +90,21 @@ export interface BaseTokens {
   tokenGold9: string;
   tokenGold10: string;
 
+  // 色盘 - Gray/Neutral (P0)
+  tokenGray1: string;
+  tokenGray2: string;
+  tokenGray3: string;
+  tokenGray4: string;
+  tokenGray5: string;
+  tokenGray6: string;
+  tokenGray7: string;
+  tokenGray8: string;
+  tokenGray9: string;
+  tokenGray10: string;
+  tokenGray11: string;
+  tokenGray12: string;
+  tokenGray13: string;
+
   // 尺寸 - 基础间距
   tokenSpacing1: string; // 4px
   tokenSpacing2: string; // 8px
@@ -113,6 +140,25 @@ export interface BaseTokens {
   tokenControlHeight2: string; // 24px
   tokenControlHeight3: string; // 32px
   tokenControlHeight4: string; // 40px
+
+  // 字体族 (P1)
+  tokenFontFamily: string;
+  tokenFontFamilyCode: string;
+
+  // 阴影 (P0)
+  tokenShadow1: string; // 最轻阴影
+  tokenShadow2: string; // 轻阴影
+  tokenShadow3: string; // 中等阴影
+  tokenShadow4: string; // 重阴影
+
+  // z-index 层级 (P0)
+  tokenZIndexBase: number;
+  tokenZIndexPopup: number;
+  tokenZIndexAffix: number;
+  tokenZIndexModal: number;
+  tokenZIndexPopover: number;
+  tokenZIndexTooltip: number;
+  tokenZIndexNotification: number;
 }
 
 /**
@@ -270,6 +316,42 @@ export interface SemanticTokens {
   lineHeightSM: number;
   lineHeight: number;
   lineHeightLG: number;
+
+  // 字体族 (P1)
+  fontFamily: string;
+  fontFamilyCode: string;
+
+  // 阴影 (P0)
+  shadowXS: string;
+  shadowSM: string;
+  shadow: string;
+  shadowMD: string;
+  shadowLG: string;
+  shadowXL: string;
+
+  // z-index 层级 (P0)
+  zIndexBase: number;
+  zIndexPopupBase: number;
+  zIndexAffix: number;
+  zIndexModal: number;
+  zIndexModalMask: number;
+  zIndexPopover: number;
+  zIndexDropdown: number;
+  zIndexTooltip: number;
+  zIndexNotification: number;
+  zIndexMessage: number;
+
+  // 中性色/填充色扩展 (P0)
+  colorNeutral1: string;
+  colorNeutral2: string;
+  colorNeutral3: string;
+  colorNeutral4: string;
+  colorNeutral5: string;
+  colorNeutral6: string;
+  colorNeutral7: string;
+  colorNeutral8: string;
+  colorNeutral9: string;
+  colorNeutral10: string;
 }
 
 /**

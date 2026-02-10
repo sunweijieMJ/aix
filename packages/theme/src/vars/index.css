@@ -1,6 +1,9 @@
 /**
  * 主题变量入口文件
  * 使用 CSS Cascade Layers 明确优先级
+ *
+ * @generated - 此文件由脚本自动生成，请勿手动修改
+ * 如需修改 Token，请编辑 src/define-theme.ts 后运行 pnpm gen:css
  */
 
 /* 定义层级顺序：base < semantic-light < semantic-dark */

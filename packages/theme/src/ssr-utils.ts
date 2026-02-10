@@ -145,28 +145,6 @@ export function generateSSRStyleTag(mode: 'light' | 'dark' = 'light'): string {
 }
 
 /**
- * Nuxt 3 插件模板
- *
- * @example
- * ```ts
- * // plugins/theme.client.ts
- * import { themeController } from '@aix/theme';
- * import { getNuxtThemePlugin } from '@aix/theme/ssr-utils';
- *
- * export default getNuxtThemePlugin();
- * ```
- */
-export function getNuxtThemePlugin() {
-  return {
-    name: 'aix-theme',
-    setup() {
-      // Nuxt 会自动在客户端执行
-      // 主题控制器会自动恢复用户偏好
-    },
-  };
-}
-
-/**
  * Next.js App Router 兼容性辅助
  *
  * @example

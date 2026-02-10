@@ -26,7 +26,7 @@ export interface ValidationError {
   /** 错误消息 */
   message: string;
   /** 当前值 */
-  value: any;
+  value: unknown;
 }
 
 /**
@@ -38,14 +38,29 @@ export interface ValidationWarning {
   /** 警告消息 */
   message: string;
   /** 当前值 */
-  value: any;
+  value: unknown;
 }
 
 /**
  * RGB 颜色格式正则
- * 支持：rgb(0 0 0) 和 rgb(0 0 0 / 0.5)
+ * 支持：rgb(0 0 0), rgb(0, 0, 0), rgb(0 0 0 / 0.5), rgba(0, 0, 0, 0.5)
  */
-const RGB_REGEX = /^rgb\(\s*\d+\s+\d+\s+\d+(\s*\/\s*(0?\.\d+|1|0))?\s*\)$/;
+const RGB_REGEX =
+  /^rgba?\(\s*\d+\s*[,\s]+\s*\d+\s*[,\s]+\s*\d+(\s*[,/]\s*(0?\.\d+|1|0))?\s*\)$/;
+
+/**
+ * HEX 颜色格式正则
+ * 支持：#RGB, #RRGGBB, #RGBA, #RRGGBBAA
+ */
+const HEX_REGEX =
+  /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+/**
+ * HSL 颜色格式正则
+ * 支持：hsl(0 0% 0%), hsl(0, 0%, 0%), hsla(0, 0%, 0%, 0.5)
+ */
+const HSL_REGEX =
+  /^hsla?\(\s*\d+\s*[,\s]+\s*\d+%?\s*[,\s]+\s*\d+%?(\s*[,/]\s*(0?\.\d+|1|0))?\s*\)$/;
 
 /**
  * 数值单位正则
@@ -58,7 +73,7 @@ const SIZE_REGEX = /^(\d+(\.\d+)?)(px|rem|em|%)?$/;
  */
 const COLOR_TOKEN_PATTERNS = [
   /^color/i,
-  /^token(Cyan|Blue|Green|Red|Orange|Gold)/i,
+  /^token(Cyan|Blue|Purple|Green|Red|Orange|Gold|Gray)/i,
 ];
 
 /**
@@ -71,12 +86,26 @@ const SIZE_TOKEN_PATTERNS = [
 /**
  * 数值类型的 Token 字段（无单位）
  */
-const NUMBER_TOKEN_PATTERNS = [/^(lineHeight|tokenLineHeight)/i];
+const NUMBER_TOKEN_PATTERNS = [
+  /^(lineHeight|tokenLineHeight)/i,
+  /^(zIndex|tokenZIndex)/i,
+];
+
+/**
+ * 阴影相关的 Token 字段
+ */
+const SHADOW_TOKEN_PATTERNS = [/^(shadow|tokenShadow)/i];
+
+/**
+ * 字体族相关的 Token 字段
+ */
+const FONT_FAMILY_TOKEN_PATTERNS = [/^(fontFamily|tokenFontFamily)/i];
 
 /**
  * 验证颜色格式
+ * 支持：hex (#RGB, #RRGGBB, #RGBA, #RRGGBBAA), rgb(), rgba(), hsl(), hsla()
  */
-function validateColor(value: any, field: string): ValidationError | null {
+function validateColor(value: unknown, field: string): ValidationError | null {
   if (typeof value !== 'string') {
     return {
       field,
@@ -85,51 +114,93 @@ function validateColor(value: any, field: string): ValidationError | null {
     };
   }
 
-  if (!RGB_REGEX.test(value)) {
-    return {
-      field,
-      message: `颜色格式不正确，应为 rgb(r g b) 或 rgb(r g b / alpha) 格式`,
-      value,
-    };
-  }
+  const trimmed = value.trim();
 
-  // 验证 RGB 值范围 (0-255)
-  const match = value.match(/rgb\((\d+)\s+(\d+)\s+(\d+)/);
-  if (match) {
-    const [, r, g, b] = match;
-    const rNum = parseInt(r!, 10);
-    const gNum = parseInt(g!, 10);
-    const bNum = parseInt(b!, 10);
+  // 检测颜色格式
+  const isHex = trimmed.startsWith('#');
+  const isRgb = trimmed.startsWith('rgb');
+  const isHsl = trimmed.startsWith('hsl');
 
-    if (rNum > 255 || gNum > 255 || bNum > 255) {
+  if (isHex) {
+    // 验证 hex 格式
+    if (!HEX_REGEX.test(trimmed)) {
       return {
         field,
-        message: `RGB 值必须在 0-255 范围内`,
+        message: `hex 颜色格式不正确，应为 #RGB, #RRGGBB, #RGBA 或 #RRGGBBAA 格式`,
         value,
       };
     }
+    return null;
   }
 
-  // 验证 alpha 值范围 (0-1)
-  const alphaMatch = value.match(/\/\s*([\d.]+)/);
-  if (alphaMatch) {
-    const alpha = parseFloat(alphaMatch[1]!);
-    if (alpha < 0 || alpha > 1) {
+  if (isRgb) {
+    // 验证 rgb/rgba 格式
+    if (!RGB_REGEX.test(trimmed)) {
       return {
         field,
-        message: `alpha 值必须在 0-1 范围内`,
+        message: `RGB 颜色格式不正确，应为 rgb(r g b), rgb(r, g, b) 或 rgb(r g b / alpha) 格式`,
         value,
       };
     }
+
+    // 验证 RGB 值范围 (0-255)
+    const match = trimmed.match(
+      /rgba?\s*\(\s*(\d+)\s*[,\s]+\s*(\d+)\s*[,\s]+\s*(\d+)/,
+    );
+    if (match) {
+      const rNum = parseInt(match[1]!, 10);
+      const gNum = parseInt(match[2]!, 10);
+      const bNum = parseInt(match[3]!, 10);
+
+      if (rNum > 255 || gNum > 255 || bNum > 255) {
+        return {
+          field,
+          message: `RGB 值必须在 0-255 范围内`,
+          value,
+        };
+      }
+    }
+
+    // 验证 alpha 值范围 (0-1)
+    const alphaMatch = trimmed.match(/[,/]\s*([\d.]+)\s*\)$/);
+    if (alphaMatch && trimmed.includes('/')) {
+      const alpha = parseFloat(alphaMatch[1]!);
+      if (alpha < 0 || alpha > 1) {
+        return {
+          field,
+          message: `alpha 值必须在 0-1 范围内`,
+          value,
+        };
+      }
+    }
+
+    return null;
   }
 
-  return null;
+  if (isHsl) {
+    // 验证 hsl/hsla 格式
+    if (!HSL_REGEX.test(trimmed)) {
+      return {
+        field,
+        message: `HSL 颜色格式不正确，应为 hsl(h s% l%) 或 hsl(h, s%, l%) 格式`,
+        value,
+      };
+    }
+    return null;
+  }
+
+  // 不支持的格式
+  return {
+    field,
+    message: `颜色格式不正确，支持 hex (#RGB, #RRGGBB), rgb(), rgba(), hsl(), hsla() 格式`,
+    value,
+  };
 }
 
 /**
  * 验证尺寸格式
  */
-function validateSize(value: any, field: string): ValidationError | null {
+function validateSize(value: unknown, field: string): ValidationError | null {
   if (typeof value !== 'string') {
     return {
       field,
@@ -165,7 +236,7 @@ function validateSize(value: any, field: string): ValidationError | null {
 /**
  * 验证数值类型
  */
-function validateNumber(value: any, field: string): ValidationError | null {
+function validateNumber(value: unknown, field: string): ValidationError | null {
   if (typeof value !== 'number') {
     return {
       field,
@@ -188,6 +259,24 @@ function validateNumber(value: any, field: string): ValidationError | null {
       return {
         field,
         message: `行高值应在 0.5-5 范围内`,
+        value,
+      };
+    }
+  }
+
+  // z-index 验证
+  if (field.includes('zIndex') || field.includes('ZIndex')) {
+    if (!Number.isInteger(value)) {
+      return {
+        field,
+        message: `z-index 值必须是整数`,
+        value,
+      };
+    }
+    if (value < -1 || value > 10000) {
+      return {
+        field,
+        message: `z-index 值应在 -1 到 10000 范围内`,
         value,
       };
     }
@@ -218,9 +307,73 @@ function isNumberField(field: string): boolean {
 }
 
 /**
+ * 判断字段是否为阴影类型
+ */
+function isShadowField(field: string): boolean {
+  return SHADOW_TOKEN_PATTERNS.some((pattern) => pattern.test(field));
+}
+
+/**
+ * 判断字段是否为字体族类型
+ */
+function isFontFamilyField(field: string): boolean {
+  return FONT_FAMILY_TOKEN_PATTERNS.some((pattern) => pattern.test(field));
+}
+
+/**
+ * 验证阴影格式
+ */
+function validateShadow(value: unknown, field: string): ValidationError | null {
+  if (typeof value !== 'string') {
+    return {
+      field,
+      message: `阴影值必须是字符串类型`,
+      value,
+    };
+  }
+
+  // 简单检查阴影格式是否包含基本元素
+  if (value.length > 0 && !value.includes('px') && !value.includes('rgb')) {
+    return {
+      field,
+      message: `阴影格式不正确，应包含像素值和颜色`,
+      value,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * 验证字体族格式
+ */
+function validateFontFamily(
+  value: unknown,
+  field: string,
+): ValidationError | null {
+  if (typeof value !== 'string') {
+    return {
+      field,
+      message: `字体族值必须是字符串类型`,
+      value,
+    };
+  }
+
+  if (value.length === 0) {
+    return {
+      field,
+      message: `字体族值不能为空`,
+      value,
+    };
+  }
+
+  return null;
+}
+
+/**
  * 验证单个 Token
  */
-function validateToken(field: string, value: any): ValidationError | null {
+function validateToken(field: string, value: unknown): ValidationError | null {
   if (value === undefined || value === null) {
     return null; // 允许未定义
   }
@@ -238,6 +391,16 @@ function validateToken(field: string, value: any): ValidationError | null {
   // 数值字段验证
   if (isNumberField(field)) {
     return validateNumber(value, field);
+  }
+
+  // 阴影字段验证
+  if (isShadowField(field)) {
+    return validateShadow(value, field);
+  }
+
+  // 字体族字段验证
+  if (isFontFamilyField(field)) {
+    return validateFontFamily(value, field);
   }
 
   return null;

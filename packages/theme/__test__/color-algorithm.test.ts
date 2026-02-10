@@ -130,7 +130,7 @@ describe('color-algorithm', () => {
   describe('generateBgColor', () => {
     it('should generate background color with alpha', () => {
       const base = 'rgb(0 180 180)';
-      const bg = generateBgColor(base, 0.1);
+      const bg = generateBgColor(base, true, 0.1);
 
       expect(bg).toContain('/ 0.1');
     });
