@@ -339,10 +339,10 @@ export const SEMANTIC_VAR_REFS: Record<string, string> = {
   colorWarning: 'tokenGold6',
   // Error 使用 Red
   colorError: 'tokenRed6',
-  // Link
-  colorLink: 'tokenCyan6',
-  colorLinkHover: 'tokenCyan4',
-  colorLinkActive: 'tokenCyan7',
+  // Link - 与 Primary 色系保持一致
+  colorLink: 'colorPrimary',
+  colorLinkHover: 'colorPrimaryHover',
+  colorLinkActive: 'colorPrimaryActive',
   // Size 映射
   sizeXXS: 'tokenSpacing1',
   sizeXS: 'tokenSpacing2',

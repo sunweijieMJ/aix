@@ -144,10 +144,10 @@
 
   /* ========== 字体族Token (P1) ========== */
   --tokenFontFamily:
-    -apple-system, blinkmacsystemfont, 'Segoe UI', roboto, 'Helvetica Neue',
-    arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --tokenFontFamilyCode:
-    'SFMono-Regular', consolas, 'Liberation Mono', menlo, courier, monospace;
+    'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
 
   /* ========== 阴影Token (P0) ========== */
   --tokenShadow1:
