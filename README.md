@@ -57,46 +57,57 @@
 
 ## 功能清单
 
-- [x] `button` 按钮组件 (Vue 3 示例组件)
-- [ ] 待添加更多组件...
+- [x] `button` 按钮组件
+- [x] `hooks` 公共 Composables
+- [x] `icons` 图标组件
+- [x] `pdf-viewer` PDF 查看器
+- [x] `subtitle` 字幕组件
+- [x] `theme` 主题系统
+- [x] `video` 视频播放器
 
 ## 目录结构
 
 ```md
-├── .changeset
-├── .husky
-├── .vscode
-|
-├── packages
-|   ├── button          # Vue 3 按钮组件
-|   ├── ...             # 待添加更多组件
-|
-├── scripts
-|
-├── typings
-|
-├── .browserslistrc
-├── .cspell.json
-├── .editorconfig
-├── .gitignore
-├── .gitlab-ci.yml
-├── .markdownlint.json
-├── .nvmrc
-├── .prettierignore
-├── .stylelintignore
-├── commitlint.config.ts
-├── eslint.config.ts
-├── package.json
-├── pnpm-lock.yaml
-├── pnpm-workspace.yaml
-├── prettier.config.js
-├── README.md
-├── rollup.config.js
-├── stylelint.config.js
-├── tsconfig.json
-├── turbo.json
-├── vitest.config.ts
-├── vitest.setup.ts
+├── apps/                        # 应用（不发布到 npm）
+│   ├── client/                  #   组件 Demo 预览应用
+│   └── server/                  #   后端 API 服务
+│
+├── packages/                    # 组件包（发布到 npm @aix/*）
+│   ├── button/                  #   按钮组件
+│   ├── hooks/                   #   公共 Composables
+│   ├── icons/                   #   图标组件
+│   ├── pdf-viewer/              #   PDF 查看器组件
+│   ├── subtitle/                #   字幕组件
+│   ├── theme/                   #   主题系统（CSS Variables）
+│   └── video/                   #   视频播放器组件
+│
+├── internal/                    # 内部共享配置（不发布）
+│   ├── eslint-config/           #   ESLint 共享配置
+│   ├── i18n-tools/              #   国际化工具
+│   ├── mcp-server/              #   MCP Server 配置
+│   ├── stylelint-config/        #   Stylelint 共享配置
+│   └── typescript-config/       #   TypeScript 共享配置
+│
+├── docs/                        # VitePress 文档源码
+├── scripts/                     # 脚本工具
+│   ├── gen.ts                   #   组件包脚手架生成器
+│   ├── husky/                   #   Git Hooks 脚本
+│   ├── link/                    #   Yalc 本地联调脚本
+│   └── publish/                 #   npm 发布脚本
+│
+├── typings/                     # 全局 TypeScript 类型声明
+│
+├── commitlint.config.ts         # Git 提交信息规范配置
+├── eslint.config.ts             # ESLint 代码检查配置
+├── prettier.config.js           # Prettier 代码格式化配置
+├── stylelint.config.mjs         # Stylelint 样式检查配置
+├── rollup.config.js             # 共享 Rollup 构建配置
+├── turbo.json                   # Turborepo 任务编排配置
+├── tsconfig.json                # TypeScript 根配置
+├── vitest.config.ts             # Vitest 测试框架配置
+├── vitest.setup.ts              # Vitest 测试环境初始化
+├── pnpm-workspace.yaml          # pnpm Workspace 配置
+└── package.json                 # 根 package.json
 ```
 
 ## 开发环境
