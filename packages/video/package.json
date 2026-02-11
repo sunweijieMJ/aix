@@ -47,10 +47,10 @@
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {
-    "video.js": "^8.21.1",
-    "hls.js": "^1.5.18",
+    "video.js": "^8.23.6",
+    "hls.js": "^1.6.15",
     "flv.js": "^1.6.2",
-    "dashjs": "^5.0.0"
+    "dashjs": "^5.1.0"
   },
   "peerDependencies": {
     "vue": "^3.5.28"
