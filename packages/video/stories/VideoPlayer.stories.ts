@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { ref } from 'vue';
-import DefaultControls from '../src/components/DefaultControls.vue';
+import LiveControls from '../src/components/LiveControls.vue';
+import PlaybackControls from '../src/components/PlaybackControls.vue';
 import VideoPlayer from '../src/index.vue';
 
 // 测试视频源
@@ -364,28 +365,109 @@ export const NoControls: Story = {
 };
 
 /**
- * 自定义控制栏
- * 使用插槽完全自定义控制栏 UI
+ * 直播控制栏
+ * 预设的直播场景控制栏，包含播放/暂停、音量、刷新、LIVE 标识、全屏
  */
-export const CustomControls: Story = {
+export const LiveControlsDemo: Story = {
   args: {
-    src: TEST_VIDEOS.mp4Short,
+    src: TEST_VIDEOS.hlsLive,
     customControls: true,
+    controls: false,
   },
   render: (args) => ({
-    components: { VideoPlayer, DefaultControls },
+    components: { VideoPlayer, LiveControls },
+    setup() {
+      const playerRef = ref<InstanceType<typeof VideoPlayer> | null>(null);
+
+      const handleVideoClick = () => {
+        const controls = playerRef.value?.$el?.querySelector(
+          '.aix-video-controls',
+        );
+        if (controls) {
+          const component = (controls as any).__vueParentComponent?.exposed;
+          component?.autoHide?.toggle();
+        }
+      };
+
+      return { args, playerRef, handleVideoClick };
+    },
+    template: `
+      <div style="max-width: 800px;">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">直播控制栏 (LiveControls)</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
+          预设的直播场景控制栏：无进度条、带 LIVE 标识和刷新按钮，3 秒自动隐藏
+        </p>
+        <div style="
+          padding: 12px;
+          margin-bottom: 16px;
+          background: var(--aix-colorPrimaryBg);
+          border: 1px solid var(--aix-colorPrimaryBorder);
+          border-radius: 8px;
+          font-size: 13px;
+          color: var(--aix-colorTextSecondary);
+        ">
+          提示：控制栏 3 秒后自动隐藏，移动鼠标到控制栏区域可重新显示
+        </div>
+        <VideoPlayer ref="playerRef" v-bind="args">
+          <template #controls="{ playerState, controls }">
+            <LiveControls
+              :player-state="playerState"
+              :controls="controls"
+              :auto-hide-delay="3000"
+            />
+          </template>
+        </VideoPlayer>
+      </div>
+    `,
+  }),
+};
+
+/**
+ * 播放控制栏
+ * 预设的回放/点播场景控制栏，包含可拖拽进度条、时间显示、倍速切换
+ */
+export const PlaybackControlsDemo: Story = {
+  args: {
+    src: TEST_VIDEOS.mp4,
+    customControls: true,
+    controls: false,
+    poster:
+      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg',
+  },
+  render: (args) => ({
+    components: { VideoPlayer, PlaybackControls },
     setup() {
       return { args };
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">自定义控制栏</h3>
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">播放控制栏 (PlaybackControls)</h3>
         <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
-          使用 customControls 插槽可以完全自定义控制栏
+          预设的点播/回放控制栏：可拖拽进度条、缓冲进度、时间显示、倍速切换
         </p>
+        <div style="
+          padding: 12px;
+          margin-bottom: 16px;
+          background: var(--aix-colorPrimaryBg);
+          border: 1px solid var(--aix-colorPrimaryBorder);
+          border-radius: 8px;
+          font-size: 13px;
+          color: var(--aix-colorTextSecondary);
+        ">
+          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+            <li>拖拽进度条可跳转，拖拽时显示时间预览</li>
+            <li>点击倍速按钮可切换播放速率</li>
+            <li>控制栏 3 秒无操作自动隐藏</li>
+          </ul>
+        </div>
         <VideoPlayer v-bind="args">
           <template #controls="{ playerState, controls }">
-            <DefaultControls :player-state="playerState" :controls="controls" />
+            <PlaybackControls
+              :player-state="playerState"
+              :controls="controls"
+              :auto-hide-delay="3000"
+              :playback-rates="[0.5, 0.75, 1, 1.25, 1.5, 2]"
+            />
           </template>
         </VideoPlayer>
       </div>

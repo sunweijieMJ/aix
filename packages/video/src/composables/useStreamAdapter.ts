@@ -196,10 +196,13 @@ export function useStreamAdapter(
     diffCritical: options.value.flvOptions?.diffCritical,
     frameTraceOffset: options.value.flvOptions?.frameTraceOffset,
     maxReplayAttempts: options.value.flvOptions?.maxReplayAttempts,
+    monitorInterval: options.value.flvOptions?.monitorInterval,
+    timeUpdateInterval: options.value.flvOptions?.timeUpdateInterval,
     enableDebugLog: getOption('enableDebugLog'),
     flvConfig: options.value.flvOptions?.flvConfig,
     onError: options.value.onError,
     onFirstFrame: options.value.onFirstFrame,
+    onTimeUpdate: options.value.flvOptions?.onTimeUpdate,
   }));
 
   // DASH 配置

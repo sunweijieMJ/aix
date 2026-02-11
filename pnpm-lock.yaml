@@ -703,6 +703,9 @@ importers:
 
   packages/video:
     dependencies:
+      '@aix/icons':
+        specifier: workspace:*
+        version: link:../icons
       dashjs:
         specifier: ^5.1.0
         version: 5.1.0

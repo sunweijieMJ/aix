@@ -30,6 +30,7 @@ export function useEvents(
 ) {
   const handlers = new Map<string, EventListener>();
   let playerEventsCleanup: (() => void) | null = null;
+  let isDestroying = false;
 
   /**
    * 绑定 video 元素事件
@@ -46,38 +47,50 @@ export function useEvents(
     if (events.disabled) return;
 
     if (events.onLoadedData) {
-      const handler = () => events.onLoadedData?.();
+      const handler = () => {
+        if (!isDestroying) events.onLoadedData?.();
+      };
       video.addEventListener('loadeddata', handler);
       handlers.set('loadeddata', handler);
     }
 
     if (events.onCanPlay) {
-      const handler = () => events.onCanPlay?.();
+      const handler = () => {
+        if (!isDestroying) events.onCanPlay?.();
+      };
       video.addEventListener('canplay', handler);
       handlers.set('canplay', handler);
     }
 
     if (events.onPlay) {
-      const handler = () => events.onPlay?.();
+      const handler = () => {
+        if (!isDestroying) events.onPlay?.();
+      };
       video.addEventListener('play', handler);
       handlers.set('play', handler);
     }
 
     if (events.onPause) {
-      const handler = () => events.onPause?.();
+      const handler = () => {
+        if (!isDestroying) events.onPause?.();
+      };
       video.addEventListener('pause', handler);
       handlers.set('pause', handler);
     }
 
     if (events.onEnded) {
-      const handler = () => events.onEnded?.();
+      const handler = () => {
+        if (!isDestroying) events.onEnded?.();
+      };
       video.addEventListener('ended', handler);
       handlers.set('ended', handler);
     }
 
     if (events.onTimeUpdate) {
       const handler = () => {
-        events.onTimeUpdate?.(video.currentTime, video.duration || 0);
+        if (!isDestroying) {
+          events.onTimeUpdate?.(video.currentTime, video.duration || 0);
+        }
       };
       video.addEventListener('timeupdate', handler);
       handlers.set('timeupdate', handler);
@@ -85,7 +98,7 @@ export function useEvents(
 
     if (events.onProgress) {
       const handler = () => {
-        if (video.buffered.length > 0) {
+        if (!isDestroying && video.buffered.length > 0) {
           const buffered =
             video.buffered.end(video.buffered.length - 1) /
             (video.duration || 1);
@@ -98,6 +111,7 @@ export function useEvents(
 
     if (events.onError) {
       const handler = () => {
+        if (isDestroying) return;
         const error = video.error;
         events.onError?.(new Error(error?.message || '视频加载错误'));
       };
@@ -107,7 +121,9 @@ export function useEvents(
 
     if (events.onVolumeChange) {
       const handler = () => {
-        events.onVolumeChange?.(video.volume, video.muted);
+        if (!isDestroying) {
+          events.onVolumeChange?.(video.volume, video.muted);
+        }
       };
       video.addEventListener('volumechange', handler);
       handlers.set('volumechange', handler);
@@ -116,7 +132,7 @@ export function useEvents(
     // 首帧检测
     if (events.onFirstFrame) {
       const handler = () => {
-        if (video.readyState >= 2) {
+        if (!isDestroying && video.readyState >= 2) {
           events.onFirstFrame?.();
         }
       };
@@ -216,7 +232,10 @@ export function useEvents(
   );
 
   // 组件卸载时清理
-  onBeforeUnmount(cleanup);
+  onBeforeUnmount(() => {
+    isDestroying = true;
+    cleanup();
+  });
 
   return {
     bindVideoEvents,

@@ -6,8 +6,10 @@
   >
     <video
       ref="videoRef"
-      class="video-js vjs-default-skin vjs-big-play-centered"
-      data-vjs-player
+      class="video-js vjs-big-play-centered"
+      playsinline
+      webkit-playsinline
+      x5-playsinline
       :crossorigin="crossOrigin ? 'anonymous' : undefined"
     />
 
@@ -22,19 +24,13 @@
 </template>
 
 <script setup lang="ts">
-// 直接导入 video.js 样式，避免 CDN 依赖
 import 'video.js/dist/video-js.css';
-import videojs from 'video.js';
 import {
   ref,
-  shallowRef,
   computed,
-  watch,
   onMounted,
   onBeforeUnmount,
 } from 'vue';
-import { useControls, type ControlsOptions } from './composables/useControls';
-import { useEvents, type EventCallbacks } from './composables/useEvents';
 import {
   useNetworkStatus,
   type NetworkStatus,
@@ -43,19 +39,17 @@ import {
   useOrientationChange,
   type OrientationChangeOptions,
 } from './composables/useOrientationChange';
-import { usePlaybackController } from './composables/usePlaybackController';
-import { usePlayerState } from './composables/usePlayerState';
-import {
-  useStreamAdapter,
-  type StreamAdapterOptions,
-} from './composables/useStreamAdapter';
+import type { StreamAdapterOptions } from './composables/useStreamAdapter';
 import {
   useTouchEvents,
   type TouchEventsOptions,
 } from './composables/useTouchEvents';
-import { DEFAULT_VIDEOJS_OPTIONS } from './constants';
+import {
+  useVideoPlayer,
+  type VideoPlayerOptions,
+  type VideoSourceType,
+} from './composables/useVideoPlayer';
 import type { VideoJsOptions, VideoJsPlayer, ControlMethods } from './types';
-import { isMobileDevice } from './utils';
 
 defineOptions({
   name: 'VideoPlayer',
@@ -102,6 +96,8 @@ export interface VideoPlayerProps {
     StreamAdapterOptions,
     'onReady' | 'onError' | 'onFirstFrame'
   >;
+  /** 视频源类型（不指定时自动推断） */
+  sourceType?: VideoSourceType;
   /** 是否使用自定义控制栏 */
   customControls?: boolean;
   /** 是否启用触摸事件优化 (移动端) */
@@ -156,10 +152,6 @@ const emit = defineEmits<{
 const containerRef = ref<HTMLElement | null>(null);
 const videoRef = ref<HTMLVideoElement | null>(null);
 
-const player = shallowRef<VideoJsPlayer | null>(null);
-const isReady = ref(false);
-const isInitialized = ref(false);
-
 const uri = computed(() => props.src);
 
 const containerStyle = computed(() => {
@@ -175,61 +167,59 @@ const containerStyle = computed(() => {
   return style;
 });
 
-const eventBridge = {
+// ==========================================
+// 核心：useVideoPlayer 统一引擎管理
+// ==========================================
+
+const videoPlayerOptions = computed<VideoPlayerOptions>(() => ({
+  autoplay: props.autoplay,
+  loop: props.loop,
+  muted: props.muted,
+  controls: props.controls,
+  responsive: props.responsive,
+  fluid: props.fluid,
+  aspectRatio: props.aspectRatio,
+  poster: props.poster,
+  preload: props.preload,
+  enableDebugLog: props.enableDebugLog,
+  sourceType: props.sourceType,
+  customControls: props.customControls,
+  videojsOptions: props.options,
+  streamOptions: props.streamOptions,
+  onReady: (player) => emit('ready', player),
   onPlay: () => emit('play'),
   onPause: () => emit('pause'),
   onEnded: () => emit('ended'),
-  onTimeUpdate: (currentTime: number, duration: number) =>
-    emit('timeupdate', currentTime, duration),
-  onError: (error: Error) => emit('error', error),
-};
-
-const controlsOptions = computed<ControlsOptions>(() => ({
-  // 当使用自定义控制栏时，隐藏原生控制栏
-  controls: props.customControls ? false : props.controls,
-  autoPlay: props.autoplay,
-  muted: props.muted,
-  loop: props.loop,
-  preload: props.preload,
-}));
-
-const eventCallbacks = computed<EventCallbacks>(() => ({
-  ...eventBridge,
+  onTimeUpdate: (currentTime, duration) => emit('timeupdate', currentTime, duration),
   onProgress: (buffered) => emit('progress', buffered),
+  onError: (error) => emit('error', error),
   onVolumeChange: (volume, muted) => emit('volumechange', volume, muted),
-  onFullscreen: (isFullscreen) => emit('fullscreenchange', isFullscreen),
+  onFullscreenChange: (isFullscreen) => emit('fullscreenchange', isFullscreen),
   onCanPlay: () => emit('canplay'),
   onLoadedData: () => emit('loadeddata'),
+  onAutoplayMuted: (reason) => emit('autoplayMuted', reason),
 }));
 
-const streamAdapterOptions = computed<StreamAdapterOptions>(() => ({
-  ...props.streamOptions,
-  enableDebugLog: props.enableDebugLog,
-  onError: eventBridge.onError,
-}));
+const videoPlayer = useVideoPlayer(videoRef, uri, videoPlayerOptions);
 
-useControls(videoRef, player, controlsOptions);
-useEvents(videoRef, player, eventCallbacks);
-const streamAdapter = useStreamAdapter(videoRef, uri, streamAdapterOptions);
+// 断网前播放状态保存
+const wasPlayingBeforeOffline = ref(false);
 
-const controller = usePlaybackController({
-  player,
-});
-
-// 播放器状态（用于自定义控制栏）
-const playerStateRefs = usePlayerState(videoRef);
-
+// ==========================================
 // 网络状态监听
+// ==========================================
+
 useNetworkStatus({
   enableDebugLog: props.enableDebugLog,
   onOnline: () => {
     emit('networkOnline');
-    // 网络恢复时尝试重新播放
-    if (player.value && !player.value.paused()) {
-      controller.play().catch(() => {});
+    if (wasPlayingBeforeOffline.value) {
+      videoPlayer.controller.play().catch(() => {});
+      wasPlayingBeforeOffline.value = false;
     }
   },
   onOffline: () => {
+    wasPlayingBeforeOffline.value = videoPlayer.playerState.isPlaying.value;
     emit('networkOffline');
   },
   onNetworkSlow: (status) => {
@@ -240,188 +230,129 @@ useNetworkStatus({
   },
 });
 
+// ==========================================
 // 触摸事件优化
+// ==========================================
+
 const touchEventsOptions = computed<TouchEventsOptions>(() => ({
   enabled: props.enableTouchEvents,
   enableDebugLog: props.enableDebugLog,
   onTap: () => {
-    // 单击播放/暂停
-    if (playerStateRefs.isPlaying.value) {
-      controller.pause();
+    if (videoPlayer.playerState.isPlaying.value) {
+      videoPlayer.controller.pause();
     } else {
-      controller.play();
+      videoPlayer.controller.play();
     }
   },
   onDoubleTap: () => {
-    // 双击全屏
-    controller.toggleFullscreen();
+    videoPlayer.controller.toggleFullscreen();
   },
   onSwipeLeft: () => {
-    // 左滑快退 10 秒
-    const currentTime = controller.getCurrentTime();
-    controller.seek(Math.max(0, currentTime - 10));
+    const currentTime = videoPlayer.controller.getCurrentTime();
+    videoPlayer.controller.seek(Math.max(0, currentTime - 10));
   },
   onSwipeRight: () => {
-    // 右滑快进 10 秒
-    const currentTime = controller.getCurrentTime();
-    const duration = controller.getDuration();
-    controller.seek(Math.min(duration, currentTime + 10));
+    const currentTime = videoPlayer.controller.getCurrentTime();
+    const duration = videoPlayer.controller.getDuration();
+    videoPlayer.controller.seek(Math.min(duration, currentTime + 10));
   },
 }));
 
 useTouchEvents(containerRef, touchEventsOptions);
 
+// ==========================================
 // 屏幕方向监听
+// ==========================================
+
 const orientationOptions = computed<OrientationChangeOptions>(() => ({
   enabled: props.autoFullscreenOnLandscape,
   autoFullscreenOnLandscape: props.autoFullscreenOnLandscape,
   enableDebugLog: props.enableDebugLog,
   onLandscape: () => {
-    // 横屏时自动全屏
-    if (props.autoFullscreenOnLandscape && !controller.isFullscreen()) {
-      controller.toggleFullscreen();
+    if (props.autoFullscreenOnLandscape && !videoPlayer.controller.isFullscreen()) {
+      videoPlayer.controller.toggleFullscreen();
     }
   },
   onPortrait: () => {
-    // 竖屏时退出全屏
-    if (props.autoFullscreenOnLandscape && controller.isFullscreen()) {
-      controller.toggleFullscreen();
+    if (props.autoFullscreenOnLandscape && videoPlayer.controller.isFullscreen()) {
+      videoPlayer.controller.toggleFullscreen();
     }
   },
 }));
 
 useOrientationChange(orientationOptions);
 
+// ==========================================
+// 对外暴露的状态和方法
+// ==========================================
+
 const playerState = computed(() => ({
-  isReady: isReady.value,
-  isPlaying: playerStateRefs.isPlaying.value,
-  currentTime: playerStateRefs.currentTime.value,
-  duration: playerStateRefs.duration.value,
-  volume: playerStateRefs.volume.value,
-  isMuted: playerStateRefs.isMuted.value,
-  isFullscreen: playerStateRefs.isFullscreen.value,
-  buffered: playerStateRefs.buffered.value,
+  isReady: videoPlayer.isReady.value,
+  isPlaying: videoPlayer.playerState.isPlaying.value,
+  currentTime: videoPlayer.playerState.currentTime.value,
+  duration: videoPlayer.playerState.duration.value,
+  volume: videoPlayer.playerState.volume.value,
+  isMuted: videoPlayer.playerState.isMuted.value,
+  isFullscreen: videoPlayer.playerState.isFullscreen.value,
+  buffered: videoPlayer.playerState.buffered.value,
+  isReconnecting: videoPlayer.playerState.isReconnecting.value,
+  autoPlayFailed: videoPlayer.playerState.autoPlayFailed.value,
+  isNativeFullscreen: videoPlayer.playerState.isNativeFullscreen.value,
 }));
 
-// 控制方法（用于自定义控制栏）
 const controlMethods: ControlMethods = {
-  play: controller.play,
-  pause: controller.pause,
-  seek: controller.seek,
-  setVolume: controller.setVolume,
-  getVolume: controller.getVolume,
-  toggleMute: controller.toggleMute,
-  toggleFullscreen: controller.toggleFullscreen,
-  togglePictureInPicture: controller.togglePictureInPicture,
-  reload: () => streamAdapter.reload(),
+  play: videoPlayer.controller.play,
+  pause: videoPlayer.controller.pause,
+  seek: videoPlayer.controller.seek,
+  setVolume: videoPlayer.controller.setVolume,
+  getVolume: videoPlayer.controller.getVolume,
+  toggleMute: videoPlayer.controller.toggleMute,
+  toggleFullscreen: videoPlayer.controller.toggleFullscreen,
+  enterNativeFullscreen: videoPlayer.controller.enterNativeFullscreen,
+  exitNativeFullscreen: videoPlayer.controller.exitNativeFullscreen,
+  togglePictureInPicture: videoPlayer.controller.togglePictureInPicture,
+  setPlaybackRate: videoPlayer.controller.setPlaybackRate,
+  getPlaybackRate: videoPlayer.controller.getPlaybackRate,
+  reload: () => videoPlayer.reloadStream(),
+  forceReload: (shouldPlay?: boolean) => videoPlayer.forceReload(shouldPlay),
 };
 
-/**
- * 初始化 video.js 播放器
- */
-function initPlayer(): void {
-  const video = videoRef.value;
-  if (!video || isInitialized.value) return;
-
-  if (!document.body.contains(video)) {
-    return;
-  }
-
-  try {
-    // 移动端自动播放策略：自动修正 + 事件通知
-    let autoplayMuted = props.muted;
-    if (isMobileDevice() && props.autoplay && !props.muted) {
-      console.warn(
-        '[VideoPlayer] 移动端自动播放需要静音，已自动设置 muted: true',
-        '详见: https://developer.chrome.com/blog/autoplay/',
-      );
-      autoplayMuted = true;
-      emit('autoplayMuted', {
-        reason: 'mobile-policy',
-        originalMuted: props.muted,
-      });
-    }
-
-    const playerOptions: VideoJsOptions = {
-      ...DEFAULT_VIDEOJS_OPTIONS,
-      autoplay: props.autoplay,
-      controls: props.controls,
-      responsive: props.responsive,
-      fluid: props.fluid,
-      loop: props.loop,
-      muted: autoplayMuted,
-      preload: props.preload,
-      aspectRatio: props.aspectRatio,
-      poster: props.poster,
-      ...props.options,
-    };
-
-    const vjsPlayer = videojs(video, playerOptions);
-
-    vjsPlayer.ready(() => {
-      player.value = vjsPlayer;
-      isReady.value = true;
-      isInitialized.value = true;
-      emit('ready', vjsPlayer);
-    });
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    console.error('[VideoPlayer] 初始化失败:', err);
-    emit('error', err);
-  }
-}
-
-/**
- * 销毁播放器
- */
-function destroyPlayer(): void {
-  if (player.value) {
-    try {
-      player.value.dispose();
-    } catch {
-      // 忽略销毁错误
-    }
-    player.value = null;
-    isReady.value = false;
-    isInitialized.value = false;
-  }
-}
-
-watch(videoRef, (video) => {
-  if (video && !isInitialized.value) {
-    requestAnimationFrame(() => {
-      initPlayer();
-    });
-  }
-});
-
 onMounted(() => {
-  if (videoRef.value) {
-    initPlayer();
-  }
+  // Video.js 初始化在 useVideoPlayer 内部通过 watch(videoRef) 触发
 });
 
 onBeforeUnmount(() => {
-  streamAdapter.destroy();
-  destroyPlayer();
+  videoPlayer.destroy();
 });
 
 defineExpose({
-  isReady,
-  getPlayer: () => player.value,
+  // 响应式状态
+  isReady: videoPlayer.isReady,
+  isPlaying: videoPlayer.playerState.isPlaying,
+  isMuted: videoPlayer.playerState.isMuted,
+  isReconnecting: videoPlayer.playerState.isReconnecting,
+  autoPlayFailed: videoPlayer.playerState.autoPlayFailed,
+  isNativeFullscreen: videoPlayer.playerState.isNativeFullscreen,
+  // 实例访问
+  getPlayer: () => videoPlayer.player.value,
   getVideo: () => videoRef.value,
-  // 使用统一播放控制器
-  play: controller.play,
-  pause: controller.pause,
-  seek: controller.seek,
-  setVolume: controller.setVolume,
-  getVolume: controller.getVolume,
-  toggleMute: controller.toggleMute,
-  toggleFullscreen: controller.toggleFullscreen,
-  togglePictureInPicture: controller.togglePictureInPicture,
-  getCurrentTime: controller.getCurrentTime,
-  getDuration: controller.getDuration,
-  reload: () => streamAdapter.reload(),
+  // 控制方法
+  play: videoPlayer.controller.play,
+  pause: videoPlayer.controller.pause,
+  seek: videoPlayer.controller.seek,
+  setVolume: videoPlayer.controller.setVolume,
+  getVolume: videoPlayer.controller.getVolume,
+  toggleMute: videoPlayer.controller.toggleMute,
+  toggleFullscreen: videoPlayer.controller.toggleFullscreen,
+  enterNativeFullscreen: videoPlayer.controller.enterNativeFullscreen,
+  exitNativeFullscreen: videoPlayer.controller.exitNativeFullscreen,
+  togglePictureInPicture: videoPlayer.controller.togglePictureInPicture,
+  getCurrentTime: videoPlayer.controller.getCurrentTime,
+  getDuration: videoPlayer.controller.getDuration,
+  setPlaybackRate: videoPlayer.controller.setPlaybackRate,
+  getPlaybackRate: videoPlayer.controller.getPlaybackRate,
+  reload: () => videoPlayer.reloadStream(),
+  forceReload: (shouldPlay?: boolean) => videoPlayer.forceReload(shouldPlay),
 });
 </script>
 

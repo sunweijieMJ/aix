@@ -3,6 +3,8 @@ export { default as VideoPlayer } from './index.vue';
 
 // 控制栏组件
 export { default as DefaultControls } from './components/DefaultControls.vue';
+export { default as LiveControls } from './components/LiveControls.vue';
+export { default as PlaybackControls } from './components/PlaybackControls.vue';
 
 // Composables
 export * from './composables';

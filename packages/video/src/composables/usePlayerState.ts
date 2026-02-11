@@ -20,6 +20,12 @@ export interface PlayerState {
   isFullscreen: boolean;
   /** 缓冲进度 (0-1) */
   buffered: number;
+  /** 是否正在重连 */
+  isReconnecting: boolean;
+  /** 自动播放是否失败 */
+  autoPlayFailed: boolean;
+  /** 是否处于浏览器原生全屏 */
+  isNativeFullscreen: boolean;
 }
 
 /**
@@ -100,6 +106,12 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
   const isMuted = ref(false);
   const isFullscreen = ref(false);
   const buffered = ref(0);
+  const isReconnecting = ref(false);
+  const autoPlayFailed = ref(false);
+  const isNativeFullscreen = ref(false);
+
+  // 销毁标记，防止组件销毁后更新状态
+  let isDestroying = false;
 
   // 缓冲进度节流相关
   let lastBufferedValue = 0; // 上次更新的缓冲进度值
@@ -111,6 +123,7 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
    * 更新播放状态
    */
   function updatePlayingState(): void {
+    if (isDestroying) return;
     const video = videoRef.value;
     if (!video) return;
 
@@ -121,6 +134,7 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
    * 更新时间信息
    */
   function updateTimeInfo(): void {
+    if (isDestroying) return;
     const video = videoRef.value;
     if (!video) return;
 
@@ -132,6 +146,7 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
    * 更新音量信息
    */
   function updateVolumeInfo(): void {
+    if (isDestroying) return;
     const video = videoRef.value;
     if (!video) return;
 
@@ -143,6 +158,7 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
    * 更新缓冲进度（带节流和变化阈值优化）
    */
   function updateBuffered(): void {
+    if (isDestroying) return;
     const video = videoRef.value;
     if (!video || !video.buffered.length) return;
 
@@ -175,12 +191,33 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
    * 更新全屏状态
    */
   function updateFullscreenState(): void {
-    isFullscreen.value = !!(
+    if (isDestroying) return;
+    const fullscreenEl =
       document.fullscreenElement ||
       (document as any).webkitFullscreenElement ||
       (document as any).mozFullScreenElement ||
-      (document as any).msFullscreenElement
-    );
+      (document as any).msFullscreenElement ||
+      null;
+    isFullscreen.value = !!fullscreenEl;
+    isNativeFullscreen.value = !!fullscreenEl;
+  }
+
+  /**
+   * iOS webkit 全屏开始
+   */
+  function handleWebkitBeginFullscreen(): void {
+    if (isDestroying) return;
+    isNativeFullscreen.value = true;
+    isFullscreen.value = true;
+  }
+
+  /**
+   * iOS webkit 全屏结束
+   */
+  function handleWebkitEndFullscreen(): void {
+    if (isDestroying) return;
+    isNativeFullscreen.value = false;
+    isFullscreen.value = false;
   }
 
   // 全屏事件取消订阅函数
@@ -201,6 +238,13 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
     video.addEventListener('volumechange', updateVolumeInfo);
     video.addEventListener('progress', updateBuffered);
 
+    // iOS webkit 全屏事件
+    video.addEventListener(
+      'webkitbeginfullscreen',
+      handleWebkitBeginFullscreen,
+    );
+    video.addEventListener('webkitendfullscreen', handleWebkitEndFullscreen);
+
     // 使用全屏管理器单例订阅全屏事件
     unsubscribeFullscreen = fullscreenManager.subscribe(updateFullscreenState);
   }
@@ -219,6 +263,13 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
     video.removeEventListener('durationchange', updateTimeInfo);
     video.removeEventListener('volumechange', updateVolumeInfo);
     video.removeEventListener('progress', updateBuffered);
+
+    // iOS webkit 全屏事件
+    video.removeEventListener(
+      'webkitbeginfullscreen',
+      handleWebkitBeginFullscreen,
+    );
+    video.removeEventListener('webkitendfullscreen', handleWebkitEndFullscreen);
 
     // 清理缓冲进度节流定时器
     if (bufferedUpdateTimer !== null) {
@@ -255,6 +306,7 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
 
   // 组件卸载时清理
   onBeforeUnmount(() => {
+    isDestroying = true;
     unbindEvents();
   });
 
@@ -266,5 +318,8 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
     isMuted,
     isFullscreen,
     buffered,
+    isReconnecting,
+    autoPlayFailed,
+    isNativeFullscreen,
   };
 }

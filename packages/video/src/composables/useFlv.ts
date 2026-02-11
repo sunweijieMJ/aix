@@ -45,6 +45,8 @@ export interface FlvOptions {
   maxReplayAttempts?: number;
   /** 监控定时器间隔(毫秒)，直播建议 1000，点播建议 3000 或更高 */
   monitorInterval?: number;
+  /** 时间更新回调间隔(毫秒)，默认 250ms */
+  timeUpdateInterval?: number;
   /** 是否启用调试日志 */
   enableDebugLog?: boolean;
   /** 自定义 flv.js 配置 */
@@ -52,10 +54,12 @@ export interface FlvOptions {
   /** 回调 */
   onError?: (error: Error) => void;
   onFirstFrame?: () => void;
+  /** 时间更新回调 */
+  onTimeUpdate?: (currentTime: number, duration: number) => void;
 }
 
 const DEFAULT_OPTIONS: Required<
-  Omit<FlvOptions, 'flvConfig' | 'onError' | 'onFirstFrame'>
+  Omit<FlvOptions, 'flvConfig' | 'onError' | 'onFirstFrame' | 'onTimeUpdate'>
 > = {
   isLive: true,
   hasVideo: true,
@@ -64,6 +68,7 @@ const DEFAULT_OPTIONS: Required<
   frameTraceOffset: 1.5,
   maxReplayAttempts: 100,
   monitorInterval: 1000,
+  timeUpdateInterval: 250,
   enableDebugLog: false,
 };
 
@@ -87,6 +92,8 @@ export function useFlv(
   let stopWatch: WatchStopHandle | null = null;
   // 监控定时器控制器
   let monitoringTimer: ReturnType<typeof useTimerWithVisibility> | null = null;
+  // 时间更新定时器
+  let timeUpdateTimer: number | null = null;
 
   const flvLoader = sdkLoaders.flv();
 
@@ -119,6 +126,30 @@ export function useFlv(
   }
 
   /**
+   * 启动时间更新定时器（FLV 不可靠地触发原生 timeupdate，需要独立轮询）
+   */
+  function startTimeUpdateTimer(): void {
+    stopTimeUpdateTimer();
+    timeUpdateTimer = window.setInterval(() => {
+      if (isDestroying.value) return;
+      const video = videoRef.value;
+      if (video && options.value.onTimeUpdate) {
+        options.value.onTimeUpdate(video.currentTime || 0, video.duration || 0);
+      }
+    }, getOption('timeUpdateInterval'));
+  }
+
+  /**
+   * 停止时间更新定时器
+   */
+  function stopTimeUpdateTimer(): void {
+    if (timeUpdateTimer !== null) {
+      window.clearInterval(timeUpdateTimer);
+      timeUpdateTimer = null;
+    }
+  }
+
+  /**
    * 销毁播放器
    */
   function destroy(): void {
@@ -129,6 +160,9 @@ export function useFlv(
       stopWatch();
       stopWatch = null;
     }
+
+    // 停止时间更新定时器
+    stopTimeUpdateTimer();
 
     // 销毁监控定时器
     if (monitoringTimer) {
@@ -224,6 +258,9 @@ export function useFlv(
       isReady.value = true;
       isLoading.value = false;
       logDebug('FLV 播放器初始化成功');
+
+      // 启动时间更新定时器
+      startTimeUpdateTimer();
 
       // 设置监控
       setupMonitoring();

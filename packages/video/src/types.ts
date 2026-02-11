@@ -7,11 +7,17 @@ export type { EventCallbacks } from './composables/useEvents';
 export type {
   PlaybackController,
   PlaybackControllerOptions,
+  EngineType,
 } from './composables/usePlaybackController';
 export type { HlsOptions } from './composables/useHls';
 export type { FlvOptions } from './composables/useFlv';
 export type { StreamAdapterOptions } from './composables/useStreamAdapter';
 export type { PlayerState } from './composables/usePlayerState';
+export type {
+  VideoSourceType,
+  VideoPlayerOptions,
+  UseVideoPlayerReturn,
+} from './composables/useVideoPlayer';
 
 /**
  * video.js Player 实例类型
@@ -47,6 +53,16 @@ export interface VideoJsOptions {
 export interface VideoPlayerExpose {
   /** 播放器是否就绪 */
   isReady: Ref<boolean>;
+  /** 是否正在播放 */
+  isPlaying: Ref<boolean>;
+  /** 是否静音 */
+  isMuted: Ref<boolean>;
+  /** 是否正在重连 */
+  isReconnecting: Ref<boolean>;
+  /** 自动播放是否失败 */
+  autoPlayFailed: Ref<boolean>;
+  /** 是否处于浏览器原生全屏 */
+  isNativeFullscreen: Ref<boolean>;
   /** 获取 video.js 播放器实例 */
   getPlayer: () => VideoJsPlayer | null;
   /** 获取 video 元素 */
@@ -65,14 +81,24 @@ export interface VideoPlayerExpose {
   toggleMute: () => void;
   /** 进入/退出全屏 */
   toggleFullscreen: () => void;
+  /** 进入浏览器原生全屏 */
+  enterNativeFullscreen: () => void;
+  /** 退出浏览器原生全屏 */
+  exitNativeFullscreen: () => void;
   /** 进入/退出画中画 */
   togglePictureInPicture: () => Promise<void>;
   /** 获取当前播放时间 (秒) */
   getCurrentTime: () => number;
   /** 获取视频时长 (秒) */
   getDuration: () => number;
+  /** 设置播放速率 (0.25-4) */
+  setPlaybackRate: (rate: number) => void;
+  /** 获取播放速率 */
+  getPlaybackRate: () => number;
   /** 重新加载视频 */
   reload: () => void;
+  /** 强制重载播放器（保留状态，用于修复卡顿/黑屏） */
+  forceReload: (shouldPlay?: boolean) => void;
 }
 
 /**
@@ -116,8 +142,18 @@ export interface ControlMethods {
   toggleMute: () => void;
   /** 进入/退出全屏 */
   toggleFullscreen: () => void;
+  /** 进入浏览器原生全屏 */
+  enterNativeFullscreen: () => void;
+  /** 退出浏览器原生全屏 */
+  exitNativeFullscreen: () => void;
   /** 进入/退出画中画 */
   togglePictureInPicture: () => Promise<void>;
+  /** 设置播放速率 (0.25-4) */
+  setPlaybackRate: (rate: number) => void;
+  /** 获取播放速率 */
+  getPlaybackRate: () => number;
   /** 重新加载视频 */
   reload: () => void;
+  /** 强制重载播放器 */
+  forceReload: (shouldPlay?: boolean) => void;
 }

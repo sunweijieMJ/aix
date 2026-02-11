@@ -5,6 +5,7 @@ export {
   usePlaybackController,
   type PlaybackController,
   type PlaybackControllerOptions,
+  type EngineType,
 } from './usePlaybackController';
 export { usePlayerState, type PlayerState } from './usePlayerState';
 export {
@@ -32,3 +33,14 @@ export {
   useStreamAdapter,
   type StreamAdapterOptions,
 } from './useStreamAdapter';
+export {
+  useVideoPlayer,
+  type VideoSourceType,
+  type VideoPlayerOptions,
+  type UseVideoPlayerReturn,
+} from './useVideoPlayer';
+export {
+  useControlsAutoHide,
+  type AutoHideOptions,
+  type UseControlsAutoHideReturn,
+} from './useControlsAutoHide';

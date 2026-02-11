@@ -2,6 +2,7 @@ import type { Preview } from '@storybook/vue3-vite';
 import { setup } from '@storybook/vue3-vite';
 import { createLocale } from '../packages/hooks/src';
 import { createTheme } from '../packages/theme/src';
+import '../packages/theme/src/vars/index.css';
 
 // 创建全局 locale context
 const { localeContext, install: installLocale } = createLocale('zh-CN');
