@@ -9,8 +9,8 @@ import {
   createLocale,
   useLocale,
   useCommonLocale,
+  formatMessage,
   type ComponentLocale,
-  type Locale,
 } from '../src/use-locale';
 
 // 辅助类型：测试中 app.mount() 返回的 VM 实例类型
@@ -58,26 +58,42 @@ describe('useLocale', () => {
       expect(localStorage.getItem('aix-locale')).toBeNull();
     });
 
-    it('should load locale from localStorage when persist is true', () => {
+    it('should load locale from localStorage on install', () => {
       localStorage.setItem('aix-locale', 'en-US');
-      const { localeContext } = createLocale('zh-CN', { persist: true });
 
-      // 需要手动触发加载（因为在测试环境中）
-      const saved = localStorage.getItem('aix-locale');
-      if (saved && (saved === 'zh-CN' || saved === 'en-US')) {
-        localeContext.setLocale(saved as Locale);
-      }
+      const { localeContext, install } = createLocale('zh-CN', {
+        persist: true,
+      });
+
+      // install 时触发 loadFromStorage
+      const app = createApp({ template: '<div></div>' });
+      app.use({ install });
+      app.mount(document.createElement('div'));
 
       expect(localeContext.locale).toBe('en-US');
+    });
+
+    it('should ignore invalid locale in localStorage', () => {
+      localStorage.setItem('aix-locale', 'invalid-locale');
+
+      const { localeContext, install } = createLocale('zh-CN', {
+        persist: true,
+      });
+
+      const app = createApp({ template: '<div></div>' });
+      app.use({ install });
+      app.mount(document.createElement('div'));
+
+      expect(localeContext.locale).toBe('zh-CN');
     });
   });
 
   describe('useCommonLocale', () => {
-    it('should return common locale texts', () => {
+    it('should return current locale and empty t', () => {
       const app = createApp({
         setup() {
-          const { t } = useCommonLocale();
-          return { t };
+          const { t, locale } = useCommonLocale();
+          return { t, locale };
         },
         template: '<div></div>',
       });
@@ -87,20 +103,19 @@ describe('useLocale', () => {
 
       const vm = app.mount(document.createElement('div')) as TestVM;
 
-      expect(vm.t.confirm).toBe('确认');
-      expect(vm.t.cancel).toBe('取消');
-      expect(vm.t.loading).toBe('加载中...');
+      expect(vm.locale).toBe('zh-CN');
+      expect(vm.t).toEqual({});
     });
 
-    it('should switch locale correctly', async () => {
+    it('should track locale switch', async () => {
       const { localeContext, install } = createLocale('zh-CN');
 
       const TestComponent = defineComponent({
         setup() {
-          const { t } = useCommonLocale();
-          return { t };
+          const { t, locale } = useCommonLocale();
+          return { t, locale };
         },
-        template: '<div>{{ t.confirm }}</div>',
+        template: '<div></div>',
       });
 
       const app = createApp(TestComponent);
@@ -108,13 +123,12 @@ describe('useLocale', () => {
 
       const vm = app.mount(document.createElement('div')) as TestVM;
 
-      expect(vm.t.confirm).toBe('确认');
+      expect(vm.locale).toBe('zh-CN');
 
-      // 切换语言
       localeContext.setLocale('en-US');
       await nextTick();
 
-      expect(vm.t.confirm).toBe('Confirm');
+      expect(vm.locale).toBe('en-US');
     });
   });
 
@@ -124,7 +138,7 @@ describe('useLocale', () => {
       'en-US': { greeting: 'Hello' },
     };
 
-    it('should merge component locale with common locale', () => {
+    it('should return component locale texts', () => {
       const { install } = createLocale('zh-CN');
 
       const TestComponent = defineComponent({
@@ -140,11 +154,7 @@ describe('useLocale', () => {
 
       const vm = app.mount(document.createElement('div')) as TestVM;
 
-      // 组件特有的文案
       expect(vm.t.greeting).toBe('你好');
-      // 公共语言包的文案
-      expect(vm.t.confirm).toBe('确认');
-      expect(vm.t.loading).toBe('加载中...');
     });
 
     it('should switch component locale correctly', async () => {
@@ -172,116 +182,8 @@ describe('useLocale', () => {
     });
   });
 
-  describe('formatters', () => {
-    it('should format plural correctly', () => {
-      const { install } = createLocale('zh-CN');
-
-      const TestComponent = defineComponent({
-        setup() {
-          const { plural } = useCommonLocale();
-          return { plural };
-        },
-        template: '<div></div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      const templates = {
-        zero: '没有项目',
-        one: '{count} 个项目',
-        other: '{count} 个项目',
-      };
-
-      // 中文的 Intl.PluralRules 只返回 "other"
-      expect(vm.plural(0, templates)).toBe('0 个项目');
-      expect(vm.plural(1, templates)).toBe('1 个项目');
-      expect(vm.plural(5, templates)).toBe('5 个项目');
-    });
-
-    it('should format date correctly', () => {
-      const { install } = createLocale('zh-CN');
-
-      const TestComponent = defineComponent({
-        setup() {
-          const { date } = useCommonLocale();
-          return { date };
-        },
-        template: '<div></div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      const testDate = new Date('2025-01-15T10:30:00');
-
-      const shortDate = vm.date.short(testDate);
-      expect(shortDate).toContain('2025');
-      expect(shortDate).toContain('01');
-      expect(shortDate).toContain('15');
-
-      const timeStr = vm.date.time(testDate);
-      expect(timeStr).toContain('10');
-      expect(timeStr).toContain('30');
-    });
-
-    it('should format number correctly', () => {
-      const { install } = createLocale('zh-CN');
-
-      const TestComponent = defineComponent({
-        setup() {
-          const { number } = useCommonLocale();
-          return { number };
-        },
-        template: '<div></div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      expect(vm.number.decimal(1234.5678, 2)).toContain('1');
-      expect(vm.number.decimal(1234.5678, 2)).toContain('234');
-
-      const percent = vm.number.percent(0.755);
-      expect(percent).toContain('75');
-      expect(percent).toContain('%');
-    });
-
-    it('should format currency correctly', () => {
-      const { install } = createLocale('zh-CN');
-
-      const TestComponent = defineComponent({
-        setup() {
-          const { currency } = useCommonLocale();
-          return { currency };
-        },
-        template: '<div></div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      const cny = vm.currency(1234.56);
-      expect(cny).toContain('1');
-      expect(cny).toContain('234');
-      expect(cny).toContain('56');
-
-      const usd = vm.currency(1234.56, 'USD');
-      expect(usd).toContain('1');
-      expect(usd).toContain('234');
-    });
-  });
-
   describe('locale fallback', () => {
-    it('should fallback to zh-CN when locale not found', () => {
+    it('should fallback to zh-CN when no provider', () => {
       const partialLocale: ComponentLocale<{ test: string }> = {
         'zh-CN': { test: '测试' },
         'en-US': { test: 'Test' },
@@ -330,7 +232,6 @@ describe('useLocale', () => {
       const vm = app.mount(document.createElement('div')) as TestVM;
 
       expect(vm.t.greeting).toBe('Hello');
-      expect(vm.t.confirm).toBe('Confirm'); // 公共语言包也应该是英文
     });
 
     it('should prioritize override locale over global locale change', async () => {
@@ -366,8 +267,8 @@ describe('useLocale', () => {
       const TestComponent = defineComponent({
         setup() {
           // 全局是中文，但覆盖为英文
-          const { t } = useCommonLocale('en-US');
-          return { t };
+          const { locale } = useCommonLocale('en-US');
+          return { locale };
         },
         template: '<div></div>',
       });
@@ -377,8 +278,39 @@ describe('useLocale', () => {
 
       const vm = app.mount(document.createElement('div')) as TestVM;
 
-      expect(vm.t.confirm).toBe('Confirm');
-      expect(vm.t.cancel).toBe('Cancel');
+      expect(vm.locale).toBe('en-US');
+    });
+  });
+
+  describe('formatMessage', () => {
+    it('should replace single placeholder', () => {
+      expect(formatMessage('共 {total} 条', { total: 100 })).toBe('共 100 条');
+    });
+
+    it('should replace multiple placeholders', () => {
+      expect(
+        formatMessage('{count} of {total} items', { count: 1, total: 10 }),
+      ).toBe('1 of 10 items');
+    });
+
+    it('should keep unmatched placeholders as-is', () => {
+      expect(formatMessage('{name} has {count} items', { name: 'Alice' })).toBe(
+        'Alice has {count} items',
+      );
+    });
+
+    it('should handle number values', () => {
+      expect(formatMessage('Page {page}', { page: 3 })).toBe('Page 3');
+    });
+
+    it('should handle zero value', () => {
+      expect(formatMessage('{count} items', { count: 0 })).toBe('0 items');
+    });
+
+    it('should return template as-is when no placeholders', () => {
+      expect(formatMessage('No placeholders here', {})).toBe(
+        'No placeholders here',
+      );
     });
   });
 });

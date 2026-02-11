@@ -7,14 +7,14 @@
         v-model="inputValue"
         type="text"
         class="aix-pdf-search-bar__input"
-        placeholder="搜索文档..."
+        :placeholder="t.searchPlaceholder"
         @keydown.enter="handleEnter"
         @keydown.escape="handleClose"
       />
       <button
         v-if="inputValue"
         class="aix-pdf-search-bar__clear"
-        title="清除"
+        :title="t.clearSearch"
         @click="handleClear"
       >
         <Close width="14" height="14" />
@@ -27,7 +27,7 @@
       </span>
       <button
         class="aix-pdf-search-bar__btn"
-        title="上一个 (Shift+Enter)"
+        :title="t.prevMatch"
         :disabled="totalMatches === 0"
         @click="emit('prev')"
       >
@@ -35,7 +35,7 @@
       </button>
       <button
         class="aix-pdf-search-bar__btn"
-        title="下一个 (Enter)"
+        :title="t.nextMatch"
         :disabled="totalMatches === 0"
         @click="emit('next')"
       >
@@ -47,7 +47,7 @@
       v-else-if="inputValue && !searching"
       class="aix-pdf-search-bar__no-result"
     >
-      无结果
+      {{ t.noResults }}
     </div>
 
     <div v-if="searching" class="aix-pdf-search-bar__loading">
@@ -56,7 +56,7 @@
 
     <button
       class="aix-pdf-search-bar__close"
-      title="关闭 (Esc)"
+      :title="t.closeSearch"
       @click="handleClose"
     >
       <Close width="18" height="18" />
@@ -65,6 +65,7 @@
 </template>
 
 <script setup lang="ts">
+import { useLocale } from '@aix/hooks';
 import {
   ArrowDropDown,
   ArrowDropUp,
@@ -72,6 +73,9 @@ import {
   IconSearch as Search,
 } from '@aix/icons';
 import { ref, watch, nextTick } from 'vue';
+import { locale } from '../locale';
+
+const { t } = useLocale(locale);
 
 const props = defineProps<{
   visible: boolean;

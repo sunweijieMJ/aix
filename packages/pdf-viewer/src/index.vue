@@ -130,6 +130,7 @@
  * PdfViewer - PDF 预览组件
  * @description 使用 pdfjs-dist 提供 PDF 预览功能，支持文本和图片选择
  */
+import { useLocale } from '@aix/hooks';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import ContextMenu from './components/ContextMenu.vue';
 import PdfToolbar from './components/PdfToolbar.vue';
@@ -145,9 +146,9 @@ import { useThumbnail } from './composables/useThumbnail';
 import {
   DEFAULT_PDF_CONFIG,
   DEFAULT_IMAGE_LAYER_CONFIG,
-  DEFAULT_CONTEXT_MENU_CONFIG,
   ZOOM_STEP,
 } from './constants';
+import { locale } from './locale';
 import type {
   PdfViewerConfig,
   ImageLayerConfig,
@@ -178,6 +179,9 @@ const emit = defineEmits<{
   (e: 'contextMenu', context: ContextMenuContext): void;
 }>();
 
+// 国际化
+const { t } = useLocale(locale);
+
 // 合并配置
 const mergedConfig = computed<PdfViewerConfig>(() => ({
   ...DEFAULT_PDF_CONFIG,
@@ -189,8 +193,24 @@ const mergedImageLayerConfig = computed<ImageLayerConfig>(() => ({
   ...props.imageLayerConfig,
 }));
 
+const localizedContextMenuConfig = computed<ContextMenuConfig>(() => ({
+  enabled: true,
+  textMenuItems: [{ id: 'copy', label: t.value.copy }],
+  imageMenuItems: [
+    { id: 'copy-image', label: t.value.copyImage },
+    { id: 'save-image', label: t.value.saveImage },
+  ],
+  mixedMenuItems: [
+    { id: 'copy', label: t.value.copy },
+    { id: 'divider', label: '', divider: true },
+    { id: 'copy-image', label: t.value.copyImage },
+    { id: 'save-image', label: t.value.saveImage },
+  ],
+  emptyMenuItems: [],
+}));
+
 const mergedContextMenuConfig = computed<ContextMenuConfig>(() => ({
-  ...DEFAULT_CONTEXT_MENU_CONFIG,
+  ...localizedContextMenuConfig.value,
   ...props.contextMenuConfig,
 }));
 

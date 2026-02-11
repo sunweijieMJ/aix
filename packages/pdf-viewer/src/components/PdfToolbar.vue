@@ -5,7 +5,7 @@
         <button
           class="aix-pdf-toolbar__btn"
           :disabled="currentPage <= 1"
-          title="上一页"
+          :title="t.prev"
           @click="emit('prev')"
         >
           <ArrowLeft width="16" height="16" />
@@ -26,7 +26,7 @@
         <button
           class="aix-pdf-toolbar__btn"
           :disabled="currentPage >= totalPages"
-          title="下一页"
+          :title="t.next"
           @click="emit('next')"
         >
           <ArrowRight width="16" height="16" />
@@ -39,7 +39,7 @@
         <button
           class="aix-pdf-toolbar__btn"
           :disabled="scale <= minScale"
-          title="缩小"
+          :title="t.zoomOut"
           @click="emit('zoom-out')"
         >
           <Minus width="16" height="16" />
@@ -50,7 +50,7 @@
         <button
           class="aix-pdf-toolbar__btn"
           :disabled="scale >= maxScale"
-          title="放大"
+          :title="t.zoomIn"
           @click="emit('zoom-in')"
         >
           <Add width="16" height="16" />
@@ -62,7 +62,7 @@
       <slot name="right">
         <button
           class="aix-pdf-toolbar__btn"
-          title="适应页面"
+          :title="t.fitPage"
           @click="emit('fit-page')"
         >
           <Fullscreen width="16" height="16" />
@@ -73,7 +73,11 @@
 </template>
 
 <script setup lang="ts">
+import { useLocale } from '@aix/hooks';
 import { Add, ArrowLeft, ArrowRight, Fullscreen, Minus } from '@aix/icons';
+import { locale } from '../locale';
+
+const { t } = useLocale(locale);
 
 const props = defineProps<{
   currentPage: number;

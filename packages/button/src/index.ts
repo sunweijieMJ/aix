@@ -2,8 +2,6 @@ import type { App } from 'vue';
 import Button from './Button.vue';
 
 export type { ButtonProps, ButtonEmits } from './types';
-export type { ButtonLocale } from './locale';
-export { buttonLocale } from './locale';
 
 // 支持单独导入
 export { Button };

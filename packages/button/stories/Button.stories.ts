@@ -1,4 +1,3 @@
-import { useCommonLocale } from '@aix/hooks';
 import type { Meta, StoryObj } from '@storybook/vue3';
 import Button from '../src/Button.vue';
 import type { ButtonProps } from '../src/types';
@@ -219,40 +218,6 @@ export const AllTypes: Story = {
           <Button type="primary" loading>Primary</Button>
           <Button type="default" loading>Default</Button>
           <Button type="dashed" loading>Dashed</Button>
-        </div>
-      </div>
-    `,
-  }),
-};
-
-/**
- * 国际化示例
- * 点击右上角的语言切换按钮查看效果
- */
-export const I18nDemo: Story = {
-  render: () => ({
-    components: { Button },
-    setup() {
-      const { t } = useCommonLocale();
-      return { t };
-    },
-    template: `
-      <div style="display: flex; flex-direction: column; gap: 16px;">
-        <p style="font-size: 14px; color: #666;">
-          切换右上角的语言按钮，观察按钮文案的变化
-        </p>
-        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-          <Button type="primary">{{ t.confirm }}</Button>
-          <Button type="default">{{ t.cancel }}</Button>
-          <Button type="dashed">{{ t.submit }}</Button>
-          <Button type="primary" loading>{{ t.loading }}</Button>
-          <Button type="default">{{ t.save }}</Button>
-          <Button type="link">{{ t.edit }}</Button>
-        </div>
-        <div style="padding: 12px; background: #f5f5f5; border-radius: 4px;">
-          <p style="margin: 0; font-size: 12px; color: #666;">
-            💡 提示：这些按钮文案来自公共语言包（commonLocale），所有组件都可以复用。
-          </p>
         </div>
       </div>
     `,

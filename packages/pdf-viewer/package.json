@@ -47,6 +47,7 @@
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {
+    "@aix/hooks": "workspace:*",
     "@aix/icons": "workspace:*",
     "pdfjs-dist": "^5.4.624"
   },

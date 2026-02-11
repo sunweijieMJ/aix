@@ -17,6 +17,9 @@ export * from './composables';
 // 类型
 export * from './types';
 
+// 国际化
+export { locale, type PdfViewerLocaleText } from './locale';
+
 // 常量
 export {
   DEFAULT_PDF_CONFIG,

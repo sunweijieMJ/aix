@@ -46,22 +46,6 @@ const props = withDefaults(defineProps<ButtonProps>(), {
 
 const emit = defineEmits<ButtonEmits>();
 
-/**
- * 多语言支持示例（可选）
- *
- * Button 组件本身不直接使用多语言文案（文案通过插槽传入）
- * 但组件提供了 buttonLocale，可在应用中使用：
- *
- * const { t } = useLocale(buttonLocale);
- * // t.value 包含：
- * // - Button 特有文案：loadingText, clickMe, submitButton
- * // - 公共文案：confirm, cancel, add, save, delete, edit 等
- *
- * 使用示例：
- * <Button>{{ t.clickMe }}</Button>
- * <Button :loading="true">{{ t.loadingText }}</Button>
- */
-
 const handleClick = (event: MouseEvent) => {
   if (!props.disabled && !props.loading) {
     emit('click', event);

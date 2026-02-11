@@ -1,56 +1,27 @@
 /**
- * 公共语言包 - 跨组件共享的通用文案
- * 组件可以通过 useLocale 自动继承这些文案
+ * 模板插值函数
+ * 将模板字符串中的 {key} 占位符替换为对应的参数值
+ *
+ * @example
+ * ```ts
+ * formatMessage('共 {total} 条', { total: 100 }); // '共 100 条'
+ * formatMessage('{count} of {total}', { count: 1, total: 10 }); // '1 of 10'
+ * ```
+ */
+export function formatMessage(
+  template: string,
+  params: Record<string, string | number>,
+): string {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    params[key] != null ? String(params[key]) : `{${key}}`,
+  );
+}
+
+/**
+ * 公共语言包
+ * 当前留空，各组件自行定义完整的语言包，避免与 hooks 耦合
  */
 export const commonLocale = {
-  'zh-CN': {
-    confirm: '确认',
-    cancel: '取消',
-    ok: '好的',
-    close: '关闭',
-    submit: '提交',
-    reset: '重置',
-    save: '保存',
-    delete: '删除',
-    edit: '编辑',
-    search: '搜索',
-    add: '添加',
-    loading: '加载中...',
-    noData: '暂无数据',
-    success: '操作成功',
-    error: '操作失败',
-    warning: '警告',
-    info: '提示',
-    clear: '清空',
-    selectAll: '全选',
-    prev: '上一页',
-    next: '下一页',
-    total: '共 {total} 条',
-  },
-  'en-US': {
-    confirm: 'Confirm',
-    cancel: 'Cancel',
-    ok: 'OK',
-    close: 'Close',
-    submit: 'Submit',
-    reset: 'Reset',
-    save: 'Save',
-    delete: 'Delete',
-    edit: 'Edit',
-    search: 'Search',
-    add: 'Add',
-    loading: 'Loading...',
-    noData: 'No data',
-    success: 'Success',
-    error: 'Error',
-    warning: 'Warning',
-    info: 'Info',
-    clear: 'Clear',
-    selectAll: 'Select all',
-    prev: 'Previous',
-    next: 'Next',
-    total: 'Total {total} items',
-  },
+  'zh-CN': {},
+  'en-US': {},
 } as const;
-
-export type CommonLocale = (typeof commonLocale)['zh-CN'];

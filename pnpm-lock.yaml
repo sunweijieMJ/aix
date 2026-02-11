@@ -614,6 +614,9 @@ importers:
 
   packages/pdf-viewer:
     dependencies:
+      '@aix/hooks':
+        specifier: workspace:*
+        version: link:../hooks
       '@aix/icons':
         specifier: workspace:*
         version: link:../icons
@@ -667,9 +670,6 @@ importers:
       autoprefixer:
         specifier: '*'
         version: 10.4.24(postcss@8.5.6)
-      chokidar:
-        specifier: ^5.0.0
-        version: 5.0.0
       postcss:
         specifier: '*'
         version: 8.5.6
@@ -6132,13 +6132,6 @@ packages:
         integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==,
       }
     engines: { node: '>= 14.16.0' }
-
-  chokidar@5.0.0:
-    resolution:
-      {
-        integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==,
-      }
-    engines: { node: '>= 20.19.0' }
 
   ci-info@3.9.0:
     resolution:
@@ -12014,13 +12007,6 @@ packages:
       }
     engines: { node: '>= 14.18.0' }
 
-  readdirp@5.0.0:
-    resolution:
-      {
-        integrity: sha512-9u/XQ1pvrQtYyMpZe7DXKv2p5CNvyVwzUB6uhLAnQwHMSgKMBR62lc7AHljaeteeHXn11XTAaLLUVZYVZyuRBQ==,
-      }
-    engines: { node: '>= 20.19.0' }
-
   recast@0.23.11:
     resolution:
       {
@@ -17684,10 +17670,6 @@ snapshots:
     dependencies:
       readdirp: 4.1.2
 
-  chokidar@5.0.0:
-    dependencies:
-      readdirp: 5.0.0
-
   ci-info@3.9.0: {}
 
   clear-module@4.1.2:
@@ -21457,8 +21439,6 @@ snapshots:
       util-deprecate: 1.0.2
 
   readdirp@4.1.2: {}
-
-  readdirp@5.0.0: {}
 
   recast@0.23.11:
     dependencies:

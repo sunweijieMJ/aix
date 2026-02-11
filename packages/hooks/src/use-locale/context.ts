@@ -44,10 +44,6 @@ export function createLocale(
 ) {
   const { persist = false } = options;
 
-  const state = reactive({
-    locale: defaultLocale,
-  });
-
   const saveToStorage = (locale: Locale) => {
     if (!persist || typeof window === 'undefined') return;
     try {
@@ -62,24 +58,20 @@ export function createLocale(
     try {
       const saved = localStorage.getItem('aix-locale');
       if (saved && (SUPPORTED_LOCALES as readonly string[]).includes(saved)) {
-        state.locale = saved as Locale;
+        localeContext.locale = saved as Locale;
       }
     } catch (e) {
       console.warn('[AIX Locale] Failed to load locale from localStorage:', e);
     }
   };
 
-  const setLocale = (newLocale: Locale) => {
-    state.locale = newLocale;
-    saveToStorage(newLocale);
-  };
-
-  const localeContext: LocaleContext = {
-    get locale() {
-      return state.locale;
+  const localeContext = reactive<LocaleContext>({
+    locale: defaultLocale,
+    setLocale(newLocale: Locale) {
+      this.locale = newLocale;
+      saveToStorage(newLocale);
     },
-    setLocale,
-  };
+  });
 
   return {
     localeContext,
