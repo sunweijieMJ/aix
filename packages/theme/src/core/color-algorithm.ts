@@ -484,10 +484,11 @@ export function generateColorSeries(baseColor: string): ColorSeries {
  * 基于 10 色阶色板生成完整色彩派生系列（推荐）
  * 使用 HSV 步进法 + 色相旋转 + 暖冷色区分，色彩过渡更自然
  *
- * 色板索引映射（与 Ant Design 一致）：
+ * 色板索引映射：
  *   0=bg, 1=bgHover, 2=border, 3=borderHover,
- *   4=hover, 5=base, 6=active,
- *   7=textHover, 8=text, 9=textActive
+ *   4=hover/textHover, 5=base/text, 6=active/textActive
+ *
+ * 注：text 系列复用主色系索引（4/5/6），而非使用深色端（7/8/9）
  */
 export function generateColorSeriesFromPalette(baseColor: string): ColorSeries {
   const palette = generatePalette(baseColor);

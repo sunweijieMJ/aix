@@ -255,8 +255,8 @@ export function createTheme(options?: CreateThemeOptions) {
     const overrides: Record<string, string> = {};
 
     for (const key of Object.keys(current) as Array<keyof typeof current>) {
-      if (String(current[key]) !== String(defaults[key])) {
-        const value = current[key];
+      const value = current[key];
+      if (value !== undefined && String(value) !== String(defaults[key])) {
         overrides[`--${resolvedPrefix}-${key}`] =
           typeof value === 'number' ? String(value) : value;
       }

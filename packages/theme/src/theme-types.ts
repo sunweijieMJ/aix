@@ -466,9 +466,105 @@ export interface SemanticTokens {
 }
 
 /**
+ * 预设色板 Token - 由 derivePresetColorTokens 动态生成
+ * 每个预设色生成 10 级色阶: colorPreset{Name}1 ~ colorPreset{Name}10
+ * 默认包含 7 种颜色：Cyan, Blue, Purple, Green, Red, Orange, Gold
+ *
+ * 注：属性为可选是因为预设色板可被用户自定义配置覆盖
+ */
+export interface PresetColorTokens {
+  // 预设色板 - Cyan
+  colorPresetCyan1?: string;
+  colorPresetCyan2?: string;
+  colorPresetCyan3?: string;
+  colorPresetCyan4?: string;
+  colorPresetCyan5?: string;
+  colorPresetCyan6?: string;
+  colorPresetCyan7?: string;
+  colorPresetCyan8?: string;
+  colorPresetCyan9?: string;
+  colorPresetCyan10?: string;
+
+  // 预设色板 - Blue
+  colorPresetBlue1?: string;
+  colorPresetBlue2?: string;
+  colorPresetBlue3?: string;
+  colorPresetBlue4?: string;
+  colorPresetBlue5?: string;
+  colorPresetBlue6?: string;
+  colorPresetBlue7?: string;
+  colorPresetBlue8?: string;
+  colorPresetBlue9?: string;
+  colorPresetBlue10?: string;
+
+  // 预设色板 - Purple
+  colorPresetPurple1?: string;
+  colorPresetPurple2?: string;
+  colorPresetPurple3?: string;
+  colorPresetPurple4?: string;
+  colorPresetPurple5?: string;
+  colorPresetPurple6?: string;
+  colorPresetPurple7?: string;
+  colorPresetPurple8?: string;
+  colorPresetPurple9?: string;
+  colorPresetPurple10?: string;
+
+  // 预设色板 - Green
+  colorPresetGreen1?: string;
+  colorPresetGreen2?: string;
+  colorPresetGreen3?: string;
+  colorPresetGreen4?: string;
+  colorPresetGreen5?: string;
+  colorPresetGreen6?: string;
+  colorPresetGreen7?: string;
+  colorPresetGreen8?: string;
+  colorPresetGreen9?: string;
+  colorPresetGreen10?: string;
+
+  // 预设色板 - Red
+  colorPresetRed1?: string;
+  colorPresetRed2?: string;
+  colorPresetRed3?: string;
+  colorPresetRed4?: string;
+  colorPresetRed5?: string;
+  colorPresetRed6?: string;
+  colorPresetRed7?: string;
+  colorPresetRed8?: string;
+  colorPresetRed9?: string;
+  colorPresetRed10?: string;
+
+  // 预设色板 - Orange
+  colorPresetOrange1?: string;
+  colorPresetOrange2?: string;
+  colorPresetOrange3?: string;
+  colorPresetOrange4?: string;
+  colorPresetOrange5?: string;
+  colorPresetOrange6?: string;
+  colorPresetOrange7?: string;
+  colorPresetOrange8?: string;
+  colorPresetOrange9?: string;
+  colorPresetOrange10?: string;
+
+  // 预设色板 - Gold
+  colorPresetGold1?: string;
+  colorPresetGold2?: string;
+  colorPresetGold3?: string;
+  colorPresetGold4?: string;
+  colorPresetGold5?: string;
+  colorPresetGold6?: string;
+  colorPresetGold7?: string;
+  colorPresetGold8?: string;
+  colorPresetGold9?: string;
+  colorPresetGold10?: string;
+
+  /** 动态预设色板索引签名，支持用户自定义预设色 */
+  [key: `colorPreset${string}${number}`]: string | undefined;
+}
+
+/**
  * 完整的主题Token
  */
-export type ThemeTokens = BaseTokens & SemanticTokens;
+export type ThemeTokens = BaseTokens & SemanticTokens & PresetColorTokens;
 
 /**
  * 主题算法函数

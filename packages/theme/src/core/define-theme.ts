@@ -185,7 +185,7 @@ export function generateThemeTokens(config: ThemeConfig): ThemeTokens {
   const presetTokens = derivePresetColorTokens(
     resolvedSeed.presetColors ?? DEFAULT_PRESET_COLORS,
   );
-  finalTokens = { ...finalTokens, ...presetTokens } as ThemeTokens;
+  finalTokens = { ...finalTokens, ...presetTokens };
 
   // 7. 应用算法（支持组合叠加）
   const algos = normalizeAlgorithm(config.algorithm);

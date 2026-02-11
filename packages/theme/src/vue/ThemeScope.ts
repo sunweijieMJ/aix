@@ -70,6 +70,16 @@ export default defineComponent({
       generateThemeTokens(props.config || {}),
     );
 
+    // 只读警告函数（仅开发环境输出警告）
+    const warnReadonly = (method: string) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[ThemeScope] ${method}() 在 ThemeScope 内部不可用。` +
+            `ThemeScope 是只读的嵌套主题作用域，请通过 props 变更配置。`,
+        );
+      }
+    };
+
     // 提供只读 scoped context（scoped 下通过 props 变更配置）
     const scopedContext: ThemeContext = {
       prefix: props.prefix,
@@ -79,26 +89,25 @@ export default defineComponent({
       get config() {
         return props.config || {};
       },
-      setMode: () => {},
-      toggleMode: () => resolvedMode.value,
-      applyTheme: () => {},
-      setToken: () => {},
-      setTokens: () => {},
+      setMode: () => warnReadonly('setMode'),
+      toggleMode: () => {
+        warnReadonly('toggleMode');
+        return resolvedMode.value;
+      },
+      applyTheme: () => warnReadonly('applyTheme'),
+      setToken: () => warnReadonly('setToken'),
+      setTokens: () => warnReadonly('setTokens'),
       getToken: (key) => computedTokens.value[key],
       getTokens: () => computedTokens.value,
-      reset: () => {},
-      setTransition: () => ({
-        duration: 200,
-        easing: 'ease-in-out',
-        enabled: true,
-      }),
+      reset: () => warnReadonly('reset'),
+      setTransition: () => warnReadonly('setTransition'),
       getTransition: () => ({
         duration: 200,
         easing: 'ease-in-out',
         enabled: true,
       }),
-      setComponentTheme: () => {},
-      removeComponentTheme: () => {},
+      setComponentTheme: () => warnReadonly('setComponentTheme'),
+      removeComponentTheme: () => warnReadonly('removeComponentTheme'),
     };
 
     provide(THEME_INJECTION_KEY, scopedContext);

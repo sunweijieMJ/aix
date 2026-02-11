@@ -1,16 +1,18 @@
 # @aix/theme
 
-AIX Design System 主题系统，基于 Design Token 架构，提供完整的 TypeScript API 和 Vue 集成。
+AIX Design System 主题系统，基于三层 Design Token 架构（Seed → Map → Alias），提供完整的 TypeScript API 和 Vue 集成。
 
 ## 特性
 
-- **Design Token 架构**：基础 Token（原子级）+ 语义 Token（业务级）两层设计
+- **三层 Token 架构**：Seed（种子）→ Map（基础）→ Alias（语义）派生体系
 - **暗色模式**：内置亮色/暗色主题，支持系统跟随和自动切换
-- **紧凑模式**：支持 `compact` 和 `dark-compact` 组合算法
+- **算法可组合**：支持 `darkAlgorithm`、`compactAlgorithm`、`wireframeAlgorithm` 叠加
 - **TypeScript**：完整的类型定义，类型安全的 CSS 变量引用
 - **Vue 集成**：Context API + Composition API，响应式状态管理
-- **预设主题**：5 个内置主题，支持自定义预设
-- **颜色算法**：自动生成派生颜色（hover/active/bg/border 等）
+- **嵌套主题**：ThemeScope 组件支持局部主题覆盖
+- **组件级定制**：支持按组件覆写 Token
+- **颜色算法**：HSV 色板生成，自动派生 hover/active/bg/border 等状态色
+- **预设色板**：7 种内置预设色（Cyan、Blue、Purple、Green、Red、Orange、Gold）
 - **SSR 支持**：提供防闪烁脚本和 SSR 工具函数
 - **主题验证**：内置配置验证器，确保 Token 格式正确
 - **持久化**：自动保存用户主题偏好到 localStorage
@@ -41,6 +43,7 @@ const { install, dispose } = createTheme({
   persist: true,           // 持久化到 localStorage
   watchSystem: false,      // 跟随系统主题
   storageKey: 'aix-theme-mode',
+  prefix: 'aix',           // CSS 变量前缀
 });
 
 app.use({ install });
@@ -64,28 +67,58 @@ app.mount('#app');
 <script setup lang="ts">
 import { useTheme } from '@aix/theme';
 
-const { mode, toggleMode, cssVar, applyPreset } = useTheme();
-
-// 应用预设主题
-applyPreset('tech'); // 科技蓝
+const { mode, toggleMode, cssVar } = useTheme();
 </script>
 ```
+
+## 三层 Token 架构
+
+```
+Seed Token (种子层)              约 20 个核心配置
+  │  colorPrimary, fontSize, borderRadius, sizeUnit...
+  │
+  ▼  deriveMapTokens()
+Map Token (基础层)               原子级设计变量
+  │  tokenCyan1~10, tokenSpacing1~12, tokenFontSize1~7...
+  │
+  ▼  deriveAliasTokens()
+Alias Token (语义层)             组件直接使用的语义变量
+     colorPrimary, padding, fontSize, borderRadius...
+```
+
+**设计优势**：
+- **Seed**：用户只需配置少量种子值，即可影响整套主题
+- **Map**：原子级变量，确保设计一致性
+- **Alias**：语义化命名，组件直接使用
 
 ## 核心 API
 
 ### createTheme - 创建主题实例
 
 ```typescript
-import { createTheme } from '@aix/theme';
+import { createTheme, darkAlgorithm, compactAlgorithm } from '@aix/theme';
 
 const { themeContext, install, dispose } = createTheme({
-  initialMode: 'light',           // 初始模式
-  persist: true,                  // 持久化
-  watchSystem: false,             // 跟随系统主题
-  storageKey: 'aix-theme-mode',   // localStorage key
-  initialConfig: {                // 初始配置（可选）
-    token: { colorPrimary: 'rgb(0 102 255)' },
-    algorithm: 'default',
+  initialMode: 'light',
+  persist: true,
+  watchSystem: false,
+  storageKey: 'aix-theme-mode',
+  prefix: 'aix',
+  cssCompatibility: 'normal',  // 'normal' | 'where'
+  initialConfig: {
+    seed: {
+      colorPrimary: 'rgb(22 119 255)',  // 自定义主色
+      borderRadius: 8,
+    },
+    token: {
+      // 直接覆写语义 Token
+    },
+    algorithm: [darkAlgorithm, compactAlgorithm],  // 算法组合
+    transition: {
+      duration: 200,
+      easing: 'ease-in-out',
+      enabled: true,
+    },
   },
 });
 
@@ -116,14 +149,13 @@ const {
   // 主题配置
   applyTheme,     // (config: ThemeConfig) => void
 
-  // 预设管理
-  applyPreset,    // (name: string) => void
-  registerPreset, // (preset: ThemePreset) => void
-  getPresets,     // () => ThemePreset[]
-
   // 过渡动画
   setTransition,  // (config: TransitionConfig) => void
   getTransition,  // () => Required<TransitionConfig>
+
+  // 组件级主题
+  setComponentTheme,    // (name: string, config) => void
+  removeComponentTheme, // (name: string) => void
 
   // 重置
   reset,          // () => void
@@ -145,47 +177,93 @@ const contextOrUndefined = useThemeContextOptional();
 ### cssVar - 类型安全的 CSS 变量引用
 
 ```typescript
-import { cssVar, cssVarName, getCSSVar } from '@aix/theme';
+import { cssVar, cssVarName, getCSSVar, createCSSVarRefs } from '@aix/theme';
 
 // 对象形式（推荐）
 const style = {
-  color: cssVar.colorPrimary,        // => "var(--colorPrimary)"
+  color: cssVar.colorPrimary,        // => "var(--aix-colorPrimary)"
   background: cssVar.colorBgContainer,
 };
 
 // 函数形式（支持 fallback）
-const color = getCSSVar('colorPrimary');           // => "var(--colorPrimary)"
-const colorWithFallback = getCSSVar('colorPrimary', '#000');  // => "var(--colorPrimary, #000)"
+const color = getCSSVar('colorPrimary');
+// => "var(--aix-colorPrimary)"
+const colorWithFallback = getCSSVar('colorPrimary', '#000');
+// => "var(--aix-colorPrimary, #000)"
 
 // 获取变量名（用于 setProperty）
-const varName = cssVarName.colorPrimary;  // => "--colorPrimary"
+const varName = cssVarName.colorPrimary;  // => "--aix-colorPrimary"
 element.style.setProperty(varName, '#ff0000');
+
+// 自定义前缀
+const myVar = createCSSVarRefs('my-app');
+myVar.colorPrimary  // => "var(--my-app-colorPrimary)"
 ```
 
-### defineTheme - 定义主题配置
+### ThemeScope - 嵌套主题组件
+
+```vue
+<template>
+  <div>
+    <!-- 外层：亮色主题 -->
+    <Card>Light Theme Card</Card>
+
+    <!-- 内层：暗色主题 -->
+    <ThemeScope :config="darkConfig" mode="dark">
+      <Card>Dark Theme Card</Card>
+    </ThemeScope>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ThemeScope, darkAlgorithm } from '@aix/theme';
+
+const darkConfig = {
+  algorithm: darkAlgorithm,
+  seed: {
+    colorPrimary: 'rgb(22 119 255)',
+  },
+};
+</script>
+```
+
+**注意**：ThemeScope 内的 context 是只读的，调用 `setMode()`、`setToken()` 等方法会输出警告。
+
+### 算法函数
 
 ```typescript
-import { defineTheme, generateThemeTokens, tokensToCSSVars } from '@aix/theme';
+import {
+  defaultAlgorithm,    // 默认算法（亮色）
+  darkAlgorithm,       // 暗色算法
+  darkMixAlgorithm,    // 暗色混合算法（更柔和）
+  compactAlgorithm,    // 紧凑算法（减小间距/字号）
+  wireframeAlgorithm,  // 线框算法（无填充色）
+} from '@aix/theme';
 
-const myTheme = defineTheme({
-  token: {
-    colorPrimary: 'rgb(0 102 255)',
-    fontSize: '16px',
-  },
-  algorithm: 'dark',  // 'default' | 'dark' | 'compact' | 'dark-compact'
-  transition: {
-    duration: 200,
-    easing: 'ease-in-out',
-    enabled: true,
+// 算法可组合叠加
+const { install } = createTheme({
+  initialConfig: {
+    algorithm: [darkAlgorithm, compactAlgorithm],
   },
 });
+```
 
-// 生成完整的 Token 对象
-const tokens = generateThemeTokens(myTheme);
+### 种子派生 API
 
-// 转换为 CSS 变量对象
-const cssVars = tokensToCSSVars(tokens);
-// { '--colorPrimary': 'rgb(0 102 255)', ... }
+```typescript
+import {
+  defaultSeedTokens,       // 默认种子值
+  deriveMapTokens,         // Seed → Map
+  deriveAliasTokens,       // Map + Seed → Alias
+  deriveThemeTokens,       // 完整派生（便捷函数）
+  derivePresetColorTokens, // 生成预设色板
+  DEFAULT_PRESET_COLORS,   // 默认 7 种预设色
+} from '@aix/theme';
+
+// 自定义种子派生
+const customSeed = { ...defaultSeedTokens, colorPrimary: 'rgb(255 0 100)' };
+const mapTokens = deriveMapTokens(customSeed);
+const aliasTokens = deriveAliasTokens(mapTokens, customSeed);
 ```
 
 ### 颜色算法
@@ -201,26 +279,27 @@ import {
   rgbToHex,
   rgbToHsl,
   hslToRgb,
+  rgbToHsv,
+  hsvToRgb,
 
   // 调整
   adjustLightness,
   adjustSaturation,
+  mixColors,
 
   // 生成
   generateColorSeries,
-  generateColorPalette,
-  generateHoverColor,
-  generateActiveColor,
-  generateBgColor,
+  generateColorSeriesFromPalette,
+  generatePalette,
 } from '@aix/theme';
 
-// 生成完整色系
-const series = generateColorSeries('rgb(0 180 180)');
-// { base, hover, active, bg, bgHover, border, borderHover, text, textHover, textActive }
+// 生成 10 级色板（HSV 步进法）
+const palette = generatePalette('rgb(22 119 255)');
+// => ['rgb(...)', 'rgb(...)', ...] // 10 个颜色
 
-// 生成 10 级色盘
-const palette = generateColorPalette('rgb(0 180 180)');
-// ['rgb(...)', 'rgb(...)', ... ] // 10 个颜色
+// 生成完整色系
+const series = generateColorSeriesFromPalette('rgb(22 119 255)');
+// => { base, hover, active, bg, bgHover, border, borderHover, text, textHover, textActive }
 
 // 调整亮度
 const lighter = adjustLightness('rgb(0 180 180)', 20);  // 变亮
@@ -237,7 +316,7 @@ import {
 } from '@aix/theme';
 
 const result = validateThemeConfig({
-  token: { colorPrimary: 'invalid-color' },
+  seed: { colorPrimary: 'invalid-color' },
 });
 
 if (!result.valid) {
@@ -271,165 +350,129 @@ const styleTag = generateSSRStyleTag('light');
 // <style id="aix-theme-ssr">:root{color-scheme:light}</style>
 ```
 
-## 预设主题
-
-| 名称 | 主色 | 说明 |
-|------|------|------|
-| `default` | Cyan | 默认青色主题 |
-| `tech` | Blue | 科技蓝主题 |
-| `nature` | Green | 自然绿主题 |
-| `sunset` | Orange | 日落橙主题 |
-| `purple` | Purple | 优雅紫主题 |
+## 组件级主题覆写
 
 ```typescript
-// 应用预设
-const { applyPreset } = useTheme();
-applyPreset('tech');
+const { setComponentTheme, removeComponentTheme } = useTheme();
 
-// 注册自定义预设
-const { registerPreset } = useTheme();
-registerPreset({
-  name: 'custom',
-  displayName: '自定义主题',
+// 为 Button 组件设置特殊主题
+setComponentTheme('button', {
   token: {
     colorPrimary: 'rgb(255 0 100)',
+    borderRadius: '20px',
   },
 });
+
+// 移除覆写
+removeComponentTheme('button');
 ```
 
-## 算法模式
-
-| 算法 | 说明 |
-|------|------|
-| `default` | 默认亮色模式 |
-| `dark` | 暗色模式（自动反转颜色） |
-| `compact` | 紧凑模式（减小间距和字号） |
-| `dark-compact` | 暗色 + 紧凑模式组合 |
-
-```typescript
-import { defineTheme } from '@aix/theme';
-
-const darkCompactTheme = defineTheme({
-  algorithm: 'dark-compact',
-});
+生成的 CSS：
+```css
+.aix-button,
+:root[data-theme] .aix-button {
+  --aix-colorPrimary: rgb(255 0 100);
+  --aix-borderRadius: 20px;
+}
 ```
 
-## Token 架构
+## Token 参考
 
-```
-基础 Token (原子级)           语义 Token (业务级)
-─────────────────────────────────────────────────
---tokenCyan6                → --colorPrimary
---tokenSpacing4             → --padding
---tokenFontSize3            → --fontSize
---tokenBorderRadius3        → --borderRadius
-```
+### Seed Token（种子配置）
 
-### 颜色 Token
+| Token | 类型 | 默认值 | 说明 |
+|-------|------|--------|------|
+| colorPrimary | string | `rgb(19 194 194)` | 主色 |
+| colorSuccess | string | `rgb(82 196 26)` | 成功色 |
+| colorWarning | string | `rgb(250 173 20)` | 警告色 |
+| colorError | string | `rgb(245 34 45)` | 错误色 |
+| colorInfo | string | `rgb(19 194 194)` | 信息色 |
+| colorTextBase | string | `rgb(0 0 0)` | 文本基色 |
+| colorBgBase | string | `rgb(255 255 255)` | 背景基色 |
+| fontSize | number | `14` | 基础字号 |
+| borderRadius | number | `6` | 基础圆角 |
+| sizeUnit | number | `4` | 间距单位 |
+| controlHeight | number | `32` | 控件高度 |
+| lineWidth | number | `1` | 边框宽度 |
+| fontWeightStrong | number | `600` | 粗体字重 |
+| motion | boolean | `true` | 是否启用动效 |
+
+### 语义 Token（组件使用）
 
 ```css
 /* 品牌色 */
---colorPrimary, --colorPrimaryHover, --colorPrimaryActive
---colorPrimaryBg, --colorPrimaryBgHover
---colorPrimaryBorder, --colorPrimaryBorderHover
---colorPrimaryText, --colorPrimaryTextHover, --colorPrimaryTextActive
+--aix-colorPrimary, --aix-colorPrimaryHover, --aix-colorPrimaryActive
+--aix-colorPrimaryBg, --aix-colorPrimaryBgHover
+--aix-colorPrimaryBorder, --aix-colorPrimaryBorderHover
+--aix-colorPrimaryText, --aix-colorPrimaryTextHover, --aix-colorPrimaryTextActive
 
-/* 功能色（Success/Warning/Error 同上结构） */
---colorSuccess, --colorWarning, --colorError
+/* 功能色（Success/Warning/Error/Info 同上结构） */
+--aix-colorSuccess, --aix-colorWarning, --aix-colorError, --aix-colorInfo
 
 /* 文本色 */
---colorText, --colorTextSecondary, --colorTextTertiary, --colorTextQuaternary
---colorTextDisabled, --colorTextPlaceholder, --colorTextHeading
+--aix-colorText, --aix-colorTextSecondary, --aix-colorTextTertiary
+--aix-colorTextDisabled, --aix-colorTextPlaceholder, --aix-colorTextHeading
 
 /* 背景色 */
---colorBgBase, --colorBgContainer, --colorBgElevated, --colorBgLayout
---colorBgMask, --colorBgSpotlight, --colorBgTextHover, --colorBgTextActive
+--aix-colorBgBase, --aix-colorBgContainer, --aix-colorBgElevated, --aix-colorBgLayout
+--aix-colorBgMask, --aix-colorBgSpotlight
 
 /* 边框色 */
---colorBorder, --colorBorderSecondary, --colorSplit
+--aix-colorBorder, --aix-colorBorderSecondary, --aix-colorSplit
 
-/* 链接色 */
---colorLink, --colorLinkHover, --colorLinkActive
-```
-
-### 尺寸 Token
-
-```css
 /* 间距 */
---sizeXXS (4px) → --sizeXXL (48px)
---paddingXXS → --paddingXXL
---marginXXS → --marginXXL
+--aix-sizeXXS (4px) → --aix-sizeXXL (48px)
+--aix-paddingXXS → --aix-paddingXXL
+--aix-marginXXS → --aix-marginXXL
 
 /* 字号 */
---fontSizeXS (12px) → --fontSizeXXL (20px)
+--aix-fontSizeXS (12px) → --aix-fontSizeXXL (20px)
 
 /* 圆角 */
---borderRadiusXS (2px) → --borderRadiusLG (8px)
+--aix-borderRadiusXS → --aix-borderRadiusLG
 
 /* 控制高度 */
---controlHeightXS (16px) → --controlHeightLG (40px)
+--aix-controlHeightXS (16px) → --aix-controlHeightLG (40px)
 
-/* 行高 */
---lineHeightSM (1.2), --lineHeight (1.5), --lineHeightLG (1.8)
-```
-
-### 其他 Token
-
-```css
 /* 阴影 */
---shadowXS, --shadowSM, --shadow, --shadowMD, --shadowLG, --shadowXL
+--aix-shadowXS, --aix-shadowSM, --aix-shadow, --aix-shadowMD, --aix-shadowLG
 
 /* z-index */
---zIndexBase, --zIndexPopupBase, --zIndexAffix, --zIndexModal
---zIndexPopover, --zIndexDropdown, --zIndexTooltip, --zIndexNotification
+--aix-zIndexBase, --aix-zIndexPopupBase, --aix-zIndexModal, --aix-zIndexTooltip
 
-/* 字体 */
---fontFamily, --fontFamilyCode
+/* 动效 */
+--aix-motionDurationFast, --aix-motionDurationMid, --aix-motionDurationSlow
+--aix-motionEaseInOut, --aix-motionEaseOut, --aix-motionEaseIn
 ```
 
 ## 目录结构
 
 ```
 src/
-├── core/                    # 核心模块
-│   ├── color-algorithm.ts   # 颜色算法
-│   ├── define-theme.ts      # 主题定义与 Token 生成
-│   └── theme-dom-renderer.ts # DOM 渲染器
-├── vue/                     # Vue 集成
-│   ├── theme-context.ts     # Context 状态管理
-│   ├── use-theme.ts         # useTheme Hook
-│   └── use-theme-context.ts # useThemeContext Hook
-├── utils/                   # 工具函数
-│   ├── css-var.ts           # CSS 变量引用
-│   ├── ssr-utils.ts         # SSR 兼容工具
-│   └── theme-validator.ts   # 主题验证器
-├── vars/                    # CSS 变量定义
-│   ├── index.css            # 入口（CSS Layers）
-│   ├── base-tokens.css      # 基础 Token
-│   ├── semantic-tokens-light.css  # 亮色语义 Token
-│   ├── semantic-tokens-dark.css   # 暗色语义 Token
-│   └── transition.css       # 过渡动画
-├── index.ts                 # 导出入口
-└── theme-types.ts           # 类型定义
-```
-
-## 构建产物
-
-```
-es/                  # ESM 格式
-├── index.js
-├── index.d.ts
-└── ...
-
-lib/                 # CJS 格式
-├── index.js
-└── ...
-
-vars/                # CSS 变量
-├── index.css        # 完整入口
-├── base-tokens.css
-├── semantic-tokens-light.css
-└── semantic-tokens-dark.css
+├── core/                       # 核心模块（纯函数，无 Vue 依赖）
+│   ├── color-algorithm.ts      # 颜色算法（HSL/HSV 转换、色板生成）
+│   ├── define-theme.ts         # 主题定义与算法组合
+│   ├── seed-derivation.ts      # 三层 Token 派生逻辑
+│   └── theme-dom-renderer.ts   # DOM 渲染器
+├── vue/                        # Vue 集成
+│   ├── theme-context.ts        # Context 状态管理 + Plugin
+│   ├── ThemeScope.ts           # 嵌套主题组件
+│   ├── use-theme.ts            # useTheme Hook
+│   └── use-theme-context.ts    # useThemeContext Hook
+├── utils/                      # 工具函数
+│   ├── css-var.ts              # CSS 变量引用
+│   ├── ssr-utils.ts            # SSR 兼容工具
+│   ├── theme-validator.ts      # 主题验证器
+│   └── token-metadata.ts       # Token 元数据（CLI 用）
+├── vars/                       # 静态 CSS 变量文件
+│   ├── index.css               # 入口（CSS Layers）
+│   ├── base-tokens.css         # 基础 Token
+│   ├── semantic-tokens-light.css
+│   ├── semantic-tokens-dark.css
+│   └── transition.css          # 过渡动画
+├── cli.ts                      # CLI 工具
+├── index.ts                    # 导出入口
+└── theme-types.ts              # 类型定义
 ```
 
 ## 最佳实践
@@ -439,14 +482,14 @@ vars/                # CSS 变量
 ```css
 /* ✅ 推荐：使用语义 Token */
 .button {
-  background: var(--colorPrimary);
-  padding: var(--padding);
-  border-radius: var(--borderRadius);
+  background: var(--aix-colorPrimary);
+  padding: var(--aix-padding);
+  border-radius: var(--aix-borderRadius);
 }
 
 /* ❌ 避免：使用基础 Token 或硬编码 */
 .button {
-  background: var(--tokenCyan6);
+  background: var(--aix-tokenCyan6);
   padding: 16px;
   border-radius: 6px;
 }
@@ -459,10 +502,26 @@ vars/                # CSS 变量
 const style = { color: cssVar.colorPrimary };
 
 // ❌ 避免：字符串拼接，容易出错
-const style = { color: 'var(--colorPrimary)' };
+const style = { color: 'var(--aix-colorPrimary)' };
 ```
 
-### 3. 监听主题变化
+### 3. 通过 Seed 定制主题
+
+```typescript
+// ✅ 推荐：配置种子值，自动派生完整主题
+const { install } = createTheme({
+  initialConfig: {
+    seed: {
+      colorPrimary: 'rgb(22 119 255)',
+      borderRadius: 8,
+    },
+  },
+});
+
+// ❌ 避免：逐个覆写语义 Token（维护成本高）
+```
+
+### 4. 监听主题变化
 
 ```typescript
 import { watch } from 'vue';
@@ -479,7 +538,3 @@ window.addEventListener('aix-theme-change', (e) => {
   console.log('主题变化:', e.detail);
 });
 ```
-
-## License
-
-MIT
