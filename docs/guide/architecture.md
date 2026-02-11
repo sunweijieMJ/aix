@@ -1,203 +1,398 @@
-# 架构设计
+# AIX 组件库架构设计文档
 
-## 一、项目概述
+## 1. 概述
 
-**AIX** 是一套基于 Vue 3 的企业级组件库，采用 **Monorepo** 架构，以 `@aix/*` scope 发布到私有 npm registry。项目强调**类型安全**、**样式隔离**、**Tree-shaking** 和**工程规范**。
+### 1.1 项目背景
 
-| 维度 | 技术选型 |
-|------|---------|
-| 框架 | Vue 3 (Composition API + `<script setup>`) |
-| 语言 | TypeScript 5.9 (严格模式) |
-| 构建 | Rollup (ESM / CJS 双格式) + Turbo (任务编排) |
-| 测试 | Vitest + Vue Test Utils (jsdom) |
-| 样式 | Sass + PostCSS + CSS Variables |
-| 文档 | Storybook 10 + VitePress |
-| 包管理 | pnpm 10 (workspace 协议) |
-| 代码质量 | ESLint 10 + Stylelint 17 + Prettier 3 + CSpell + Commitlint |
-| CI/CD | GitLab CI → GitLab Pages |
-| Node | >= 22 |
+AIX 是面向企业级应用的 Vue 3 组件库，采用 Monorepo 架构管理多个独立发布的组件包。项目旨在提供高质量、可定制、类型安全的 UI 组件，服务于内部多个业务线的前端开发需求。
+
+组件库的核心价值在于：
+- **统一设计语言**：确保各业务线 UI 风格一致
+- **提升开发效率**：避免重复造轮子，专注业务逻辑
+- **降低维护成本**：集中维护，统一升级
+
+### 1.2 设计目标
+
+在技术选型和架构设计时，我们确立了以下核心目标：
+
+| 目标 | 说明 |
+|------|------|
+| **类型安全** | 完整的 TypeScript 类型定义，编译时错误检查 |
+| **按需加载** | 支持 Tree-shaking，只打包使用的组件 |
+| **主题定制** | 基于 CSS Variables 的三层 Token 体系 |
+| **开发体验** | 完善的文档、测试、Lint 工具链 |
+| **独立发布** | 各组件包独立版本管理，按需安装 |
+
+### 1.3 技术栈
+
+技术选型遵循"主流、稳定、生态完善"的原则。Vue 3 提供了 Composition API 和更好的 TypeScript 支持；Rollup 专注于库打包，输出体积更小；Turbo 解决了 Monorepo 场景下的构建编排问题。
+
+```mermaid
+mindmap
+  root((AIX 技术栈))
+    框架
+      Vue 3
+        Composition API
+        script setup
+    语言
+      TypeScript 5.9
+        严格模式
+        类型推导
+    构建
+      Rollup
+        ESM/CJS/UMD
+      Turbo
+        任务编排
+    样式
+      Sass
+      PostCSS
+      CSS Variables
+    测试
+      Vitest
+        jsdom
+        v8 覆盖率
+    文档
+      Storybook
+      VitePress
+    包管理
+      pnpm 10
+        workspace 协议
+```
 
 ---
 
-## 二、整体架构图
+## 2. 架构原则
 
-### Monorepo 全景
+### 2.1 设计原则
+
+良好的架构需要遵循一定的设计原则，这些原则指导我们做出一致的技术决策：
+
+1. **单一职责**：每个包只做一件事，组件包只包含组件，配置包只包含配置。这样便于独立发布、独立升级，降低包之间的耦合。
+
+2. **依赖倒置**：组件依赖抽象（CSS Variables），不依赖具体值。这使得主题切换成为可能，业务方可以通过修改变量值来定制样式。
+
+3. **开闭原则**：通过 Props/Slots 扩展功能，不修改组件源码。组件对扩展开放，对修改关闭，保证稳定性。
+
+4. **最小依赖**：避免不必要的外部依赖，减小包体积。每引入一个依赖都需要评估其必要性和体积影响。
+
+### 2.2 技术约束
+
+基于当前技术栈和未来演进方向，我们确立了以下技术约束：
+
+| 约束 | 原因 |
+|------|------|
+| Node >= 22 | 使用最新 ESM 特性，享受性能提升 |
+| Vue >= 3.5 | 依赖 `defineModel`、泛型组件等新特性 |
+| 不使用 scoped 样式 | 保证样式可被外部覆盖，支持深度定制 |
+| 禁止硬编码颜色值 | 确保主题系统生效，支持暗色模式 |
+
+### 2.3 非功能性需求
+
+除了功能正确性，我们还关注以下非功能性指标：
+
+| 维度 | 要求 | 说明 |
+|------|------|------|
+| 包体积 | 单组件 gzip < 10KB | 控制首屏加载时间 |
+| 首屏性能 | 支持 Tree-shaking | 只加载使用的代码 |
+| 浏览器兼容 | 现代浏览器最近 2 个版本 | 不支持 IE |
+| 无障碍 | WCAG 2.1 AA 级别 | 支持键盘导航、屏幕阅读器 |
+
+### 2.4 关键技术决策
+
+以下是项目中的关键技术选型及其原因：
+
+| 决策点 | 选择 | 备选方案 | 选择原因 |
+|-------|------|---------|---------|
+| 打包工具 | Rollup | Vite / esbuild | 专为库设计，Tree-shaking 更彻底，输出体积更小 |
+| 样式方案 | CSS Variables | CSS-in-JS / Tailwind | 零运行时开销，易于覆盖，原生支持暗色模式 |
+| Monorepo 工具 | Turbo | Lerna / Nx | 增量构建快，远程缓存好，配置简单 |
+| 不用 scoped | BEM + 命名空间 | Vue scoped | 允许业务方深度定制样式，避免 `::v-deep` 穿透 |
+| 类型生成 | vue-tsc | tsc | 支持 Vue SFC 的类型提取，生成更准确的 `.d.ts` |
+
+---
+
+## 3. 系统架构
+
+### 3.1 Monorepo 结构
+
+项目采用 Monorepo 架构，所有代码集中在一个仓库中管理。这种架构的优势在于：
+- **代码共享**：公共配置、工具函数可以直接复用
+- **原子提交**：跨包修改可以在一次提交中完成
+- **统一工具链**：ESLint、TypeScript 等配置只需维护一份
+
+整个仓库分为三个主要目录：`packages/` 存放对外发布的组件包，`internal/` 存放仓库内共享的配置包，`apps/` 存放开发调试用的应用。
+
+```mermaid
+mindmap
+  root((AIX Monorepo))
+    packages/
+      ::icon(fa fa-cube)
+      @aix/theme
+        CSS Variables
+        颜色算法
+      @aix/hooks
+        useLocale
+        Composables
+      @aix/icons
+        SVG 图标集
+      @aix/button
+      @aix/video
+        HLS/FLV/DASH
+      @aix/pdf-viewer
+      @aix/subtitle
+        VTT/SRT/ASS
+    internal/
+      ::icon(fa fa-cog)
+      @kit/eslint-config
+      @kit/stylelint-config
+      @kit/typescript-config
+      @kit/i18n-tools
+    apps/
+      ::icon(fa fa-desktop)
+      @aix/client
+        Demo 应用
+      @aix/server
+        API 服务
+```
+
+### 3.2 分层架构
+
+从垂直视角看，整个系统分为四层。上层依赖下层，下层不依赖上层，形成清晰的依赖方向。
+
+- **应用层**：业务项目，是组件库的最终消费者
+- **组件层**：UI 组件，提供可复用的界面元素
+- **基础设施层**：主题、Hooks、图标等基础能力
+- **工程配置层**：ESLint、Stylelint、TSConfig 等开发时配置
+
+这种分层设计确保了关注点分离，每层只需关心自己的职责。
 
 ```mermaid
 graph TB
-    subgraph packages["packages/ (发布为 @aix/*)"]
-        button["@aix/button<br/>按钮组件"]
-        icons["@aix/icons<br/>SVG 图标组件"]
-        subtitle["@aix/subtitle<br/>字幕组件"]
-        pdfviewer["@aix/pdf-viewer<br/>PDF 查看器"]
-        video["@aix/video<br/>视频播放器"]
-        theme["@aix/theme<br/>主题系统 (CSS Variables)"]
-        hooks["@aix/hooks<br/>公共 Composables"]
+    subgraph "应用层"
+        A[业务项目]
     end
 
-    subgraph apps["apps/ (不发布)"]
-        client["@aix/client<br/>Demo 预览 (Vite + Vue 3)"]
-        server["@aix/server<br/>后端 API (Koa + PG + Redis)"]
+    subgraph "组件层"
+        B[UI 组件]
+        B1[button]
+        B2[video]
+        B3[pdf-viewer]
     end
 
-    subgraph internal["internal/ (不发布, 仓库内共享)"]
-        eslintcfg["@kit/eslint-config"]
-        stylelintcfg["@kit/stylelint-config"]
-        tscfg["@kit/typescript-config"]
-        i18ntools["@kit/i18n-tools<br/>国际化 CLI"]
-        mcpserver["@aix/mcp-server<br/>组件信息提取"]
+    subgraph "基础设施层"
+        C[theme]
+        D[hooks]
+        E[icons]
     end
 
-    subgraph infra["工程设施"]
-        turbo["Turbo"]
-        rollup["Rollup"]
-        husky["Husky"]
-        vitest["Vitest"]
-        storybook["Storybook"]
-        vitepress["VitePress"]
-        gitlabci["GitLab CI"]
+    subgraph "工程配置层"
+        F[eslint-config]
+        G[stylelint-config]
+        H[typescript-config]
     end
 
-    button --> theme
-    button --> hooks
-    pdfviewer --> icons
-    pdfviewer --> theme
-    video --> theme
-    subtitle --> theme
-    client --> button
-    client --> hooks
-    client --> theme
-    client --> icons
+    A --> B
+    B --> B1 & B2 & B3
+    B1 & B2 & B3 --> C & D & E
+    B1 & B2 & B3 -.-> F & G & H
 ```
 
-### 包依赖关系
+### 3.3 包依赖关系
+
+组件包之间存在明确的依赖关系。所有 UI 组件都依赖 `@aix/theme` 获取样式变量，部分组件依赖 `@aix/hooks` 获取通用逻辑，媒体类组件依赖 `@aix/icons` 获取图标。
+
+这种依赖结构的好处是：修改主题变量可以影响所有组件，而修改某个组件不会影响其他组件。
 
 ```mermaid
 graph LR
-    subgraph 业务组件
-        B[button]
-        P[pdf-viewer]
-        S[subtitle]
-        V[video]
+    subgraph 基础层
+        theme["@aix/theme"]
+        hooks["@aix/hooks"]
+        icons["@aix/icons"]
     end
 
-    subgraph 基础设施
-        T[theme]
-        H[hooks]
-        I[icons]
+    subgraph 组件层
+        button["@aix/button"]
+        video["@aix/video"]
+        pdf["@aix/pdf-viewer"]
+        subtitle["@aix/subtitle"]
     end
 
-    B --> T
-    B --> H
-    P --> T
-    P --> I
-    S --> T
-    V --> T
-
-    C[apps/client] --> B
-    C --> T
-    C --> H
-    C --> I
+    button --> theme & hooks
+    video --> theme & icons
+    pdf --> theme & icons
+    subtitle --> theme
 ```
+
+### 3.4 包职责划分
+
+每个包有明确的职责边界，避免功能重叠。以下是各包的详细职责说明：
+
+| 包 | 职责 | 发布 |
+|------|------|:----:|
+| `@aix/theme` | CSS Variables 主题系统、颜色算法、Vue 集成 | ✓ |
+| `@aix/hooks` | 通用 Composables (useLocale 等) | ✓ |
+| `@aix/icons` | SVG 图标组件集合 | ✓ |
+| `@aix/button` | 按钮组件 | ✓ |
+| `@aix/video` | 视频播放器 (HLS/FLV/DASH) | ✓ |
+| `@aix/pdf-viewer` | PDF 预览组件 | ✓ |
+| `@aix/subtitle` | 字幕组件 (VTT/SRT/ASS) | ✓ |
+| `@kit/eslint-config` | ESLint 规则集 | ✗ |
+| `@kit/stylelint-config` | Stylelint 规则集 | ✗ |
+| `@kit/typescript-config` | TSConfig 预设 | ✗ |
+
+`@aix/*` 包发布到 npm，供外部项目安装使用；`@kit/*` 包仅在仓库内共享，不对外发布。
 
 ---
 
-## 三、目录结构
+## 4. 目录结构
+
+### 4.1 项目根目录
+
+项目根目录的组织遵循"按职能划分"的原则。源代码、配置文件、脚本、文档各有其位置，便于快速定位。
 
 ```
 aix/
-├── packages/                  # 组件包 (发布为 @aix/*)
-│   ├── button/                #   按钮组件
-│   ├── hooks/                 #   公共 Composables (useLocale 等)
-│   ├── icons/                 #   SVG 图标组件 (1000+ 图标)
-│   ├── pdf-viewer/            #   PDF 查看器 (pdfjs-dist)
-│   ├── subtitle/              #   字幕组件 (VTT/SRT/JSON/SBV/ASS)
-│   ├── theme/                 #   主题系统 (CSS Variables + TS API)
-│   └── video/                 #   视频播放器 (HLS/FLV/DASH/RTSP/WebRTC)
-│
-├── apps/                      # 应用 (不发布)
-│   ├── client/                #   组件 Demo 预览 (Vite + Vue 3)
-│   └── server/                #   后端 API (Koa + PostgreSQL + Redis)
-│
-├── internal/                  # 内部共享包 (不发布)
-│   ├── eslint-config/         #   ESLint 规则 (@kit/eslint-config)
-│   ├── stylelint-config/      #   Stylelint 规则 (@kit/stylelint-config)
-│   ├── typescript-config/     #   TSConfig 预设 (@kit/typescript-config)
-│   ├── i18n-tools/            #   国际化自动化工具 (CLI)
-│   └── mcp-server/            #   MCP 服务 (组件信息提取)
-│
-├── scripts/                   # 工程脚本
-│   ├── gen.ts                 #   组件包脚手架生成器
-│   ├── publish/               #   npm 发布自动化
-│   ├── link/                  #   Yalc 本地联调
-│   ├── husky/                 #   Git Hooks 实现
-│   └── docs/                  #   文档生成 & 同步
-│
-├── docs/                      # VitePress 文档站点
-├── .storybook/                # Storybook 配置
-├── .claude/                   # AI 辅助开发配置
-│
-├── rollup.config.js           # 共享 Rollup 配置工厂
-├── turbo.json                 # Turbo 任务编排
-├── vitest.config.ts           # 测试配置
-├── commitlint.config.ts       # 提交信息规范
-├── prettier.config.js         # 代码格式化
-├── eslint.config.ts           # ESLint 入口
-├── stylelint.config.mjs       # Stylelint 入口
-├── tsconfig.json              # 根 TypeScript 配置
-├── pnpm-workspace.yaml        # pnpm 工作空间
-└── .gitlab-ci.yml             # CI/CD 流水线
+├── packages/               # 组件包 (发布到 npm)
+├── internal/               # 内部配置包 (不发布)
+├── apps/                   # 开发应用
+├── docs/                   # VitePress 文档
+├── scripts/                # 工程脚本
+├── .storybook/             # Storybook 配置
+├── .claude/                # AI 辅助配置
+├── turbo.json              # Turbo 任务配置
+├── rollup.config.js        # 共享构建配置
+├── vitest.config.ts        # 测试配置
+├── commitlint.config.ts    # 提交规范
+└── pnpm-workspace.yaml     # 工作空间定义
 ```
 
-### 组件包标准结构
+### 4.2 组件包结构
 
-每个 `packages/<name>/` 遵循统一目录规范：
+每个组件包遵循统一的目录结构，降低认知负担，便于快速上手开发新组件。
+
+- `src/` 目录存放源代码，包括组件实现、类型定义、导出入口
+- `__test__/` 目录存放单元测试
+- `stories/` 目录存放 Storybook Stories
+- 根目录存放构建配置和包描述文件
 
 ```
 packages/<name>/
 ├── src/
-│   ├── index.ts               # 导出入口
-│   ├── <Name>.vue             # 组件主文件
-│   ├── types.ts               # Props / Emits 类型定义
-│   └── locale/                # 国际化文本 (可选)
-│       ├── index.ts
-│       ├── zh-CN.ts
-│       └── en-US.ts
-├── __test__/                  # 单元测试 (Vitest)
-├── stories/                   # Storybook Stories
-├── rollup.config.js           # 构建配置 (继承根配置)
-├── tsconfig.json              # TS 配置 (继承 internal/)
-├── eslint.config.ts           # ESLint (继承 internal/)
-└── package.json               # 包描述 + 脚本
+│   ├── index.ts            # 导出入口
+│   ├── types.ts            # Props/Emits 类型
+│   ├── <Name>.vue          # 组件实现
+│   └── locale/             # 国际化 (可选)
+├── __test__/               # 单元测试
+├── stories/                # Storybook Stories
+├── rollup.config.js        # 构建配置
+├── tsconfig.json           # TS 配置
+└── package.json            # 包描述
 ```
+
+### 4.3 命名规范
+
+统一的命名规范有助于保持代码一致性，降低沟通成本：
+
+| 类型 | 规范 | 示例 |
+|------|------|------|
+| 包名 | `@aix/<kebab-case>` | `@aix/pdf-viewer` |
+| 组件名 | PascalCase | `PdfViewer` |
+| CSS 类名 | `.aix-<component>` | `.aix-button` |
+| CSS 变量 | `--aix-<camelCase>` | `--aix-colorPrimary` |
+| 文件名 | PascalCase (组件) / kebab-case (其他) | `Button.vue` / `use-locale.ts` |
 
 ---
 
-## 四、主题系统架构
+## 5. 核心模块设计
 
-### 4.1 三层 Token 体系
+### 5.1 主题系统
+
+主题系统是组件库的核心基础设施，负责管理所有视觉相关的变量，包括颜色、字号、间距、圆角等。
+
+#### 三层 Token 架构
+
+我们采用业界流行的三层 Token 架构，参考了 Ant Design 5.0 的设计思路：
+
+- **Seed Tokens（种子）**：最基础的设计变量，如品牌色、基础字号。数量少，约 10-20 个。
+- **Map Tokens（派生）**：由种子通过算法派生，如 hover 态颜色、背景色。数量中等，约 50-100 个。
+- **Alias Tokens（语义）**：具有语义含义的变量，如链接色、成功色。数量较多，约 100-200 个。
+
+这种分层的好处是：业务方只需修改少量种子变量，即可实现整套主题的定制。
 
 ```mermaid
-graph TB
-    subgraph L3["业务组件层"]
-        comp["color: var(--colorPrimary)<br/>padding: var(--padding)<br/>border-radius: var(--borderRadiusSM)"]
-    end
-
-    subgraph L2["语义 Token 层 (Semantic Tokens)"]
-        direction LR
-        light["Light 模式<br/>--colorPrimary: rgb(0 180 180)<br/>--colorText: rgb(0 0 0 88%)<br/>--colorBgContainer: #fff"]
-        dark["Dark 模式<br/>--colorPrimary: rgb(0 180 180)<br/>--colorText: rgb(255 255 255 85%)<br/>--colorBgContainer: #1f1f1f"]
-    end
-
-    subgraph L1["基础 Token 层 (Base Tokens)"]
-        tokens["--tokenCyan1 ~ 10 (色彩阶梯)<br/>--tokenSpacing1 ~ 12 (间距)<br/>--tokenFontSize1 ~ 7 (字号)<br/>--tokenBorderRadius1 ~ 4 (圆角)<br/>--tokenControlHeight1 ~ 4 (控件高度)"]
-    end
-
-    L3 --> L2
-    L2 --> L1
+mindmap
+  root((Token 体系))
+    Seed Tokens
+      ::icon(fa fa-seedling)
+      colorPrimary
+      fontSize
+      borderRadius
+      fontFamily
+    Map Tokens
+      ::icon(fa fa-exchange)
+      colorPrimaryHover
+      colorPrimaryActive
+      colorBgContainer
+      colorBorder
+    Alias Tokens
+      ::icon(fa fa-tag)
+      colorLink
+      colorSuccess
+      colorWarning
+      colorError
 ```
 
-### 4.2 CSS Cascade Layers
+#### Token 派生流程
+
+Token 的派生是自动化的。开发者只需定义 Seed Tokens，Map Tokens 和 Alias Tokens 会通过颜色算法自动生成。这保证了色彩的协调性和一致性。
+
+```mermaid
+flowchart LR
+    A[Seed Tokens] -->|算法派生| B[Map Tokens]
+    B -->|语义映射| C[Alias Tokens]
+    C -->|输出| D[CSS Variables]
+
+    subgraph 示例
+        E["--aix-colorPrimary: #1677ff"]
+        F["--aix-colorPrimaryHover: #4096ff"]
+        G["--aix-colorLink: var(--aix-colorPrimary)"]
+    end
+
+    E --> F --> G
+```
+
+#### 主题切换原理
+
+主题切换（如暗色模式）通过 CSS 属性选择器实现，无需 JavaScript 运行时切换类名。浏览器原生支持，性能最优。
+
+```mermaid
+flowchart LR
+    A[setMode] --> B["setAttribute('data-theme')"]
+    B --> C[":root[data-theme='dark']"]
+    C --> D["CSS Variables 覆盖"]
+```
+
+#### 组件运行时交互
+
+下图展示了组件在运行时如何与主题系统协作。业务代码使用组件时，组件内部通过 CSS Variables 读取主题值，而这些变量由 `@aix/theme` 包注入到页面根节点。
+
+```mermaid
+flowchart LR
+    A[业务代码] -->|使用组件| B[AixButton]
+    B -->|读取样式| C[CSS Variables]
+    C -->|来自| D["@aix/theme"]
+    D -->|挂载到| E[":root"]
+```
+
+这种设计的好处是：
+- **解耦**：组件不直接依赖具体颜色值，只依赖变量名
+- **可定制**：业务方可通过覆盖 CSS Variables 实现主题定制
+- **性能好**：CSS Variables 由浏览器原生处理，无 JavaScript 运行时开销
+
+#### CSS Cascade Layers
+
+为避免 CSS 优先级冲突，主题系统使用 CSS Cascade Layers 组织样式层级：
 
 ```css
 @layer theme.base, theme.semantic-light, theme.semantic-dark;
@@ -207,153 +402,264 @@ graph TB
 @import './semantic-tokens-dark.css'  layer(theme.semantic-dark);
 ```
 
-- 避免 CSS 优先级冲突
+- 基础 Token 层定义色彩阶梯、间距、字号等原子变量
+- 语义 Token 层将原子变量映射为有意义的名称（如 `colorPrimary`）
 - Dark 模式通过 `:root[data-theme='dark']` 选择器自动覆盖 Light 变量
-- 组件无需任何暗色模式逻辑
+- 组件无需任何暗色模式逻辑，自动适配
 
-### 4.3 运行时架构
+#### 内置预设主题
 
-```mermaid
-graph TB
-    subgraph DOM["ThemeController (DOM 层, SSR 安全)"]
-        setMode["setMode(light/dark)<br/>修改 :root[data-theme]"]
-        setTokens["setTokens({...})<br/>批量更新 CSS 自定义属性"]
-        applyPreset["applyPreset('tech')<br/>应用内置预设主题"]
-        colorAlgo["generateColorSeries()<br/>RGB/HSL 算法生成色彩阶梯"]
-    end
-
-    subgraph VueLayer["createTheme() (Vue 集成层)"]
-        plugin["Vue Plugin (app.use)"]
-        context["provide/inject 上下文"]
-        persist["localStorage 持久化"]
-        detect["系统主题偏好检测"]
-    end
-
-    subgraph CompAPI["useTheme() (Composition API)"]
-        refs["响应式 Refs:<br/>mode, config, setMode,<br/>toggleMode, applyTheme"]
-    end
-
-    CompAPI --> VueLayer
-    VueLayer --> DOM
-```
-
-### 4.4 内置预设
+主题系统提供多套开箱即用的预设，可通过 `applyPreset()` 一键切换：
 
 | 预设 | 主色 | 用途 |
 |------|------|------|
-| default | Cyan 系 | 默认品牌色 |
+| default | Cyan | 默认品牌色 |
 | tech | Blue | 科技感 |
 | nature | Green | 自然清新 |
 | sunset | Orange | 温暖活力 |
 | purple | Purple | 高端雅致 |
 
----
+### 5.2 构建系统
 
-## 五、构建体系
+构建系统负责将源代码转换为可发布的产物。我们使用 Rollup 作为打包工具，Turbo 作为任务编排工具。
 
-### 5.1 构建格式与产物
+#### 构建流程
 
-| 格式 | 输出目录 | 用途 | 特点 |
-|------|---------|------|------|
-| **ESM** | `es/` | Vite / Webpack 现代打包 | 保留模块结构, 支持 Tree-shaking |
-| **CJS** | `lib/` | Node.js / 传统工具 | CommonJS 兼容 |
-| **UMD** | `dist/` | CDN / 浏览器直引 | 单文件 + 压缩 (仅部分包) |
+整个构建流程由 Turbo 编排。Turbo 会分析包之间的依赖关系，确保上游包先构建完成，再构建下游包。这避免了手动管理构建顺序的麻烦。
 
-类型声明由 `vue-tsc` 生成 `.d.ts` 到 `es/` 目录。
-
-### 5.2 Rollup 配置工厂
-
-根目录 `rollup.config.js` 导出 `createRollupConfig(dir, formats)` 工厂函数：
+每个包的构建分为两个阶段：`build:js` 使用 Rollup 生成 JavaScript 产物，`build:types` 使用 vue-tsc 生成类型声明文件。
 
 ```mermaid
-graph LR
-    factory["createRollupConfig(dir, formats)"]
+flowchart TD
+    A[pnpm build] --> B[turbo build]
+    B --> C{依赖分析}
+    C --> D[上游包先构建]
 
-    factory --> vue["unplugin-vue<br/>Vue 3 SFC 编译"]
-    factory --> resolve["@rollup/plugin-resolve<br/>模块解析"]
-    factory --> cjs["@rollup/plugin-commonjs<br/>CJS 互操作"]
-    factory --> json["@rollup/plugin-json<br/>JSON 导入"]
-    factory --> url["@rollup/plugin-url<br/>静态资源 (8KB 内联)"]
-    factory --> esbuild["rollup-plugin-esbuild<br/>TS/JSX → ES2020"]
-    factory --> postcss["rollup-plugin-postcss<br/>CSS/SCSS + autoprefixer"]
+    D --> E[build:js]
+    E --> F[Rollup]
+    F --> G[ESM → es/]
+    F --> H[CJS → lib/]
+    F --> I[UMD → dist/]
+
+    D --> J[build:types]
+    J --> K[vue-tsc]
+    K --> L[.d.ts → es/]
 ```
 
-各组件包继承根配置，通常只需一行：
+#### Rollup 插件链
 
-```js
-export default createRollupConfig(import.meta.dirname, ['esm', 'cjs']);
-```
-
-### 5.3 Turbo 任务编排
+Rollup 的强大之处在于其插件系统。我们使用了一系列插件来处理不同类型的文件：
 
 ```mermaid
-graph TD
-    build["build<br/>(依赖 ^build 先构建上游包)"]
-    buildjs["build:js<br/>(Rollup)"]
-    buildtypes["build:types<br/>(vue-tsc)"]
-
-    build --> buildjs
-    buildtypes -->|"依赖"| buildjs
+mindmap
+  root((Rollup 插件))
+    unplugin-vue
+      SFC 编译
+      script setup
+    @rollup/plugin-resolve
+      模块解析
+      别名处理
+    @rollup/plugin-commonjs
+      CJS 互操作
+    rollup-plugin-esbuild
+      TS 转译
+      JSX 处理
+      代码压缩
+    rollup-plugin-postcss
+      Sass 编译
+      Autoprefixer
+      CSS 压缩
 ```
 
-| 任务 | 输入 | 输出 | 缓存 |
-|------|------|------|------|
-| `build` | 源码 + 配置 | `dist/`, `lib/`, `es/` | 禁用 |
-| `build:js` | TS/Vue/SCSS | `dist/`, `lib/`, `es/` | 禁用 |
-| `build:types` | TS/Vue | `es/**/*.d.ts` | 禁用 |
-| `lint` | 源码 + ESLint 配置 | — | 禁用 |
-| `test` | 源码 + 测试文件 | `coverage/` | 禁用 |
-| `dev` | — | — | 持久进程 |
+#### 输出格式
 
----
+我们为每个组件包生成三种格式的产物，满足不同使用场景：
 
-## 六、样式隔离策略
+| 格式 | 目录 | 特点 | 使用场景 |
+|------|------|------|----------|
+| ESM | `es/` | 保留模块结构，支持 Tree-shaking | Vite/Webpack 5+ |
+| CJS | `lib/` | CommonJS 格式 | Node.js/旧版打包器 |
+| UMD | `dist/` | 单文件，已压缩 | CDN 直接引用 |
 
-### BEM + 命名空间
+### 5.3 依赖管理
 
-所有组件使用 `.aix-<component>` 前缀，**不使用 `scoped`**：
+#### Workspace 协议
 
-```scss
-// BEM + 命名空间
-.aix-button {
-  color: var(--colorText);
+pnpm 的 workspace 协议允许我们在 Monorepo 中引用本地包，而无需发布到 npm。开发时，`workspace:*` 会链接到本地源码；发布时，会自动替换为实际版本号。
 
-  &__content { /* Element */ }
-  &__loading-icon { /* Element */ }
-
-  &--primary { /* Modifier: 类型 */ }
-  &--small { /* Modifier: 尺寸 */ }
-  &--disabled { /* Modifier: 状态 */ }
+```json
+{
+  "dependencies": {
+    "@aix/theme": "workspace:*",
+    "@aix/hooks": "workspace:*"
+  }
 }
 ```
 
-**禁止事项：**
-
-- 硬编码颜色值 (如 `color: #1890ff`)
-- 标签选择器 (如 `button { }`)
-- `<style scoped>`
+这种机制带来的好处：
+- 开发时修改依赖包，无需重新安装即可生效
+- 发布时自动处理版本号，无需手动维护
 
 ---
 
-## 七、TypeScript 配置体系
+## 6. 开发规范
 
-### 三层继承
+### 6.1 组件开发规范
+
+组件开发遵循 Vue 3 Composition API 风格，使用 `<script setup>` 语法。Props 和 Emits 必须有完整的 TypeScript 类型定义。
+
+#### Props 定义
+
+所有 Props 都在 `types.ts` 中定义接口，包含完整的 JSDoc 注释。这些注释会被 Storybook 提取，自动生成文档。
+
+```typescript
+// types.ts
+export interface ButtonProps {
+  /** 按钮类型 */
+  type?: 'primary' | 'default' | 'dashed' | 'text' | 'link';
+  /** 按钮尺寸 */
+  size?: 'small' | 'medium' | 'large';
+  /** 是否禁用 */
+  disabled?: boolean;
+}
+```
+
+#### 样式规范
+
+组件样式使用 BEM 命名规范 + `aix-` 命名空间前缀，避免与业务样式冲突。所有颜色、间距、圆角等值都必须使用 CSS Variables，禁止硬编码。
+
+```scss
+// 使用 BEM + 命名空间
+.aix-button {
+  // 使用 CSS Variables，不要硬编码
+  color: var(--aix-colorText);
+  border-radius: var(--aix-borderRadiusSM);
+
+  // Element（元素）
+  &__icon { }
+  &__content { }
+
+  // Modifier（修饰符）
+  &--primary { }
+  &--disabled { }
+}
+```
+
+### 6.2 提交规范
+
+Git 提交信息遵循 Conventional Commits 规范，便于自动生成 CHANGELOG 和语义化版本管理。
+
+```
+<type>(<scope>): <subject>
+
+type: feat | fix | docs | style | refactor | perf | test | build | ci | chore
+scope: 可选，影响范围 (button | theme | hooks)
+subject: 简短描述，推荐使用中文
+```
+
+示例：
+- `feat(button): 新增 loading 状态`
+- `fix(theme): 修复暗色模式切换闪烁`
+- `docs: 更新安装文档`
+
+### 6.3 禁止事项
+
+以下行为在代码审查中会被拒绝：
+
+| 禁止 | 原因 |
+|------|------|
+| 修改 `es/` `lib/` `dist/` | 构建产物由 CI 自动生成 |
+| 硬编码颜色值 | 破坏主题系统，无法支持暗色模式 |
+| `<style scoped>` | 阻止业务方覆盖样式 |
+| 标签选择器 | 影响全局样式，造成样式污染 |
+| 跳过类型定义 | 破坏类型安全，降低开发体验 |
+
+---
+
+## 7. 质量保障
+
+### 7.1 代码检查流程
+
+我们在多个环节设置了自动化检查，确保代码质量：
+
+- **pre-commit**：提交前检查，运行 ESLint、Stylelint、Prettier
+- **commit-msg**：提交信息检查，确保符合规范
+- **CI**：推送后检查，运行类型检查、单元测试、构建
+
+```mermaid
+flowchart LR
+    subgraph "pre-commit"
+        A[git add] --> B[lint-staged]
+        B --> C[ESLint]
+        B --> D[Stylelint]
+        B --> E[Prettier]
+    end
+
+    subgraph "commit-msg"
+        F[git commit] --> G[commitlint]
+    end
+
+    subgraph "CI"
+        H[push] --> I[type-check]
+        H --> J[test]
+        H --> K[build]
+    end
+```
+
+### 7.2 测试策略
+
+测试分为三个层次，覆盖不同的验证场景：
+
+| 层级 | 工具 | 覆盖范围 |
+|------|------|----------|
+| 单元测试 | Vitest | Props/Emits/Slots 行为验证 |
+| 组件测试 | Vue Test Utils | DOM 渲染、用户交互模拟 |
+| 可视化测试 | Storybook | UI 回归、样式变化检测 |
+
+测试覆盖率目标为 80%，重点覆盖核心逻辑和边界情况。
+
+### 7.3 配置包体系
+
+工程配置集中在 `internal/` 目录，各组件包通过继承复用，保证一致性。
+
+```mermaid
+mindmap
+  root((工程配置))
+    @kit/eslint-config
+      typescript-eslint
+      eslint-plugin-vue
+      eslint-config-prettier
+    @kit/stylelint-config
+      stylelint-config-standard-scss
+      stylelint-order
+      SMACSS 属性排序
+    @kit/typescript-config
+      base.json
+        严格模式
+      base-library.json
+        生成 .d.ts
+      base-app.json
+        应用配置
+```
+
+#### TypeScript 三层继承
+
+TypeScript 配置采用三层继承结构，确保一致性的同时满足不同场景需求：
 
 ```mermaid
 graph TD
-    base["internal/typescript-config/<br/>base.json<br/>(公共严格配置)"]
-    lib["base-library.json<br/>(生成 .d.ts + declarationMap)"]
-    app["base-app.json<br/>(不生成 .d.ts)"]
+    base["@kit/typescript-config/base.json<br/>公共严格配置"]
+    lib["base-library.json<br/>生成 .d.ts + declarationMap"]
+    app["base-app.json<br/>不生成 .d.ts"]
 
     base --> lib
     base --> app
 
     pkg["packages/*/tsconfig.json"] -->|extends| lib
     appCfg["apps/*/tsconfig.json"] -->|extends| app
-    root["tsconfig.json (root)"] -->|extends| app
 ```
 
-### 关键编译选项
+**关键编译选项：**
 
 | 选项 | 值 | 说明 |
 |------|------|------|
@@ -361,38 +667,12 @@ graph TD
 | `module` | ESNext | 现代模块语法 |
 | `moduleResolution` | bundler | 适配 Vite/Rollup |
 | `isolatedModules` | true | esbuild 兼容 |
-| `target` | ES2015 | 编译目标 |
 | `noUncheckedIndexedAccess` | true | 索引访问安全检查 |
-| `declaration` + `declarationMap` | true (lib) | 组件包生成类型声明 |
+| `declaration` | true (lib) | 组件包生成类型声明 |
 
----
+#### ESLint 配置层级
 
-## 八、代码质量工具链
-
-```mermaid
-graph LR
-    code["代码修改"] --> add["git add"]
-    add --> precommit["pre-commit hook"]
-    precommit --> lintstaged["lint-staged"]
-    lintstaged --> eslint["ESLint<br/>(TS/Vue)"]
-    lintstaged --> stylelint["Stylelint<br/>(CSS/SCSS)"]
-    lintstaged --> prettier["Prettier<br/>(格式化)"]
-    add --> commitmsg["commit-msg hook"]
-    commitmsg --> commitlint["Commitlint<br/>(Conventional Commits)"]
-```
-
-### 工具职责
-
-| 工具 | 配置包 | 职责 |
-|------|--------|------|
-| **ESLint 10** | `@kit/eslint-config` | JS/TS/Vue 代码规范 |
-| **Stylelint 17** | `@kit/stylelint-config` | CSS/SCSS 样式规范 (SMACSS 属性排序) |
-| **Prettier 3** | `prettier.config.js` | 格式化 (单引号, 分号, 尾逗号) |
-| **CSpell** | `.cspell.json` | 拼写检查 (89 个自定义词) |
-| **Commitlint** | `commitlint.config.ts` | 提交信息规范 (Conventional Commits) |
-| **czg** | 内嵌 commitlint | 交互式提交 (中文提示) |
-
-### ESLint 配置层级
+ESLint 配置同样采用分层设计，支持不同框架场景：
 
 ```mermaid
 graph TD
@@ -408,54 +688,67 @@ graph TD
 
 ---
 
-## 九、测试策略
+## 8. 构建与发布
 
-| 维度 | 配置 |
+### 8.1 构建命令
+
+日常开发和发布常用的构建命令：
+
+| 命令 | 说明 |
 |------|------|
-| 框架 | Vitest |
-| 环境 | jsdom (浏览器模拟) |
-| 覆盖率 | v8 provider, text + json + html 报告 |
-| 范围 | `packages/**/__test__/*.{test,spec}.*` |
-| Setup | mock fetch, mock localStorage, 过滤 console warn/error |
+| `pnpm build` | 全量构建，Turbo 自动处理依赖顺序 |
+| `pnpm build:filter -- --filter=@aix/button` | 只构建指定包及其依赖 |
+| `pnpm dev` | 启动 watch 模式，文件变化自动重新构建 |
 
-```bash
-pnpm test                          # 全量测试 (Turbo 编排)
-pnpm test -- --filter=@aix/button  # 单包测试
-```
+### 8.2 发布流程
 
----
+发布流程使用 Changeset 管理，它提供了版本管理、CHANGELOG 生成、npm 发布的完整解决方案。
 
-## 十、文档体系
-
-### 双文档系统
-
-| 系统 | 用途 | 部署地址 |
-|------|------|---------|
-| **Storybook 10** | 组件交互文档 + 实时预览 | `/storybook` (GitLab Pages) |
-| **VitePress** | 使用指南 + API 文档 | `/docs` (GitLab Pages) |
-
-### Storybook 配置
-
-- 框架: `@storybook/vue3-vite`
-- Stories: `packages/**/*.stories.{ts,tsx,mdx}`
-- Vite alias 映射到组件源码，支持 HMR
-- 全局装饰器: 国际化切换 (中/英) + 主题切换 (Light/Dark)
-
-### VitePress 配置
-
-- 中文文档站 (`lang: 'zh-CN'`)
-- 侧边栏: 指南 / 组件 / 示例
-- 本地搜索
-- Markdown: GitHub 主题 + 行号
-
----
-
-## 十一、CI/CD 流水线
+整个流程分为三步：
+1. **创建变更**：运行 `pnpm changeset`，描述本次变更影响的包和变更类型
+2. **更新版本**：运行 `pnpm changeset version`，自动更新版本号和 CHANGELOG
+3. **发布**：运行 `pnpm pre`，构建并发布到 npm
 
 ```mermaid
-graph TD
-    trigger["master 分支推送<br/>或 release/* 标签"]
-    install["install<br/>pnpm 10.14 + Node 22"]
+sequenceDiagram
+    participant D as 开发者
+    participant C as Changeset
+    participant T as Turbo
+    participant N as npm
+
+    D->>C: pnpm changeset
+    Note over C: 创建变更描述文件
+
+    D->>C: pnpm changeset version
+    Note over C: 更新版本号
+    Note over C: 生成 CHANGELOG
+
+    D->>T: pnpm pre
+    T->>T: turbo build
+    T->>T: 校验构建产物
+    T->>N: changeset publish
+
+    D->>D: git push --tags
+```
+
+### 8.3 版本策略
+
+我们支持三种发布模式，满足不同阶段的需求：
+
+| 模式 | Tag | 版本格式 | 用途 |
+|------|-----|----------|------|
+| release | latest | `1.0.0` | 正式版本，面向生产环境 |
+| beta | beta | `1.0.0-beta.0` | 测试版本，面向内部测试 |
+| alpha | alpha | `1.0.0-alpha.0` | 早期预览，面向尝鲜用户 |
+
+### 8.4 CI/CD 流水线
+
+项目使用 GitLab CI 实现自动化构建和部署。当代码推送到 master 分支或创建 release 标签时，流水线自动触发：
+
+```mermaid
+flowchart TD
+    trigger["master 推送 / release 标签"]
+    install["install<br/>pnpm + Node 22"]
     storybook["Storybook Build"]
     vitepress["VitePress Build"]
     deploy["deploy_docs<br/>GitLab Pages"]
@@ -466,76 +759,22 @@ graph TD
     storybook --> deploy
     vitepress --> deploy
 
-    deploy -->|"/storybook"| sb_out["Storybook 静态站"]
-    deploy -->|"/docs"| vp_out["VitePress 文档站"]
+    deploy -->|/storybook| sb_out["Storybook 静态站"]
+    deploy -->|/docs| vp_out["VitePress 文档站"]
 ```
 
-- Docker: `node:22-alpine`
-- 缓存: `.pnpm-store/` + `node_modules/`
+**CI 环境配置：**
+- Docker 镜像：`node:22-alpine`
+- 缓存：`.pnpm-store/` + `node_modules/`
+- 并行构建 Storybook 和 VitePress，提升效率
 
----
+### 8.5 npm 发布配置
 
-## 十二、本地开发工作流
-
-### 12.1 日常开发
-
-```bash
-# 启动开发服务
-pnpm dev                     # Turbo 并行启动所有包 watch 模式
-pnpm storybook:dev           # Storybook (port 6006)
-
-# 质量检查
-pnpm lint                    # ESLint
-pnpm type-check              # TypeScript 类型检查
-pnpm cspell                  # 拼写检查
-pnpm test                    # 单元测试
-```
-
-### 12.2 新建组件包
-
-```bash
-pnpm gen <component-name>    # 交互式脚手架
-```
-
-自动生成完整目录结构：`src/` + `__test__/` + `stories/` + 配置文件。
-
-### 12.3 本地联调 (Yalc)
-
-```mermaid
-graph LR
-    setup["pnpm link:setup<br/>初始化 Yalc"] --> publish["pnpm link:publish<br/>构建 → 发布到本地 Yalc"]
-    publish --> push["pnpm link:push<br/>推送更新到业务项目"]
-```
-
-`apps/client` 支持两种联调模式:
-
-- **Source 模式** (默认): Vite alias 直接指向包源码，支持 HMR
-- **Yalc 模式**: 使用预构建产物，模拟真实 npm 安装
-
-### 12.4 构建与发布
-
-```bash
-pnpm build                   # 全量构建 (Turbo 编排)
-pnpm build:filter -- --filter=@aix/<name>  # 单包构建
-pnpm pre                     # 预发布流程
-pnpm commit                  # 交互式规范化提交 (czg)
-```
-
----
-
-## 十三、npm 发布配置
-
-| 配置项 | 值 |
-|--------|------|
-| scope | `@aix/*` |
-| registry | `http://npm-registry.zhihuishu.com:4873/` (私有) |
-| exports | ESM (`./es/`) + CJS (`./lib/`) + Types (`./es/*.d.ts`) |
-| sideEffects | CSS 文件标记为有副作用 (防 Tree-shaking 误删) |
-
-每个组件包的 `package.json` 标准 exports：
+组件包发布到私有 npm registry，每个包的 `package.json` 需遵循标准 exports 配置：
 
 ```json
 {
+  "name": "@aix/button",
   "main": "./lib/index.js",
   "module": "./es/index.js",
   "types": "./es/index.d.ts",
@@ -546,32 +785,132 @@ pnpm commit                  # 交互式规范化提交 (czg)
       "require": "./lib/index.js"
     },
     "./style": "./es/index.css"
-  }
+  },
+  "sideEffects": ["*.css", "*.scss"]
 }
 ```
 
+**关键配置说明：**
+
+| 字段 | 说明 |
+|------|------|
+| `main` | CJS 入口，兼容 Node.js |
+| `module` | ESM 入口，支持 Tree-shaking |
+| `types` | TypeScript 类型声明入口 |
+| `exports` | 现代打包器的模块解析配置 |
+| `sideEffects` | 标记 CSS 文件有副作用，防止被 Tree-shaking 误删 |
+
 ---
 
-## 十四、关键约束与禁忌
+## 9. 文档系统
 
-### 禁止
+### 9.1 双文档架构
 
-| 禁止操作 | 说明 |
-|---------|------|
-| 修改 `es/`、`lib/`、`dist/` | 构建产物，自动生成 |
-| 硬编码颜色值 | 必须使用 CSS Variables |
-| 组件间直接引用源码 | 必须通过 `workspace:*` 依赖引用 |
-| 跳过类型定义 | Props/Emits 必须有完整 TypeScript 类型 |
-| 使用标签选择器 | 组件样式必须使用 `.aix-` 前缀的 class |
-| 在组件中使用 `scoped` | 使用 BEM + 命名空间隔离 |
+我们维护两套文档系统，各有侧重：
 
-### 必须遵守
+- **Storybook**：组件级文档，展示组件的各种状态和变体，支持交互式调试
+- **VitePress**：项目级文档，包含使用指南、API 参考、最佳实践
 
-| 规范 | 说明 |
+两套文档都部署到 GitLab Pages，分别位于 `/storybook` 和 `/docs` 路径。
+
+```mermaid
+graph TB
+    subgraph "Storybook"
+        S1[组件 Stories]
+        S2[Props 控制面板]
+        S3[交互演示]
+    end
+
+    subgraph "VitePress"
+        V1[快速开始]
+        V2[主题定制]
+        V3[API 参考]
+    end
+
+    S1 & S2 & S3 --> SO[dist/storybook/]
+    V1 & V2 & V3 --> VO[dist/docs/]
+```
+
+### 9.2 文档职责
+
+| 系统 | 职责 | 受众 |
+|------|------|------|
+| Storybook | 组件可视化、交互测试、设计稿对照 | 开发者、设计师 |
+| VitePress | 使用指南、API 文档、最佳实践 | 开发者 |
+
+---
+
+## 10. 扩展指南
+
+### 10.1 新增组件包
+
+新增组件包的标准流程如下。脚手架工具会生成完整的目录结构和配置文件，开发者只需专注于组件实现。
+
+```bash
+# 1. 生成脚手架
+pnpm gen <component-name>
+
+# 2. 实现组件
+# - src/types.ts      定义 Props/Emits 类型
+# - src/<Name>.vue    实现组件逻辑和模板
+# - src/index.ts      导出组件和类型
+
+# 3. 编写测试
+# - __test__/<name>.test.ts
+
+# 4. 编写文档
+# - stories/<Name>.stories.ts
+```
+
+### 10.2 本地联调
+
+开发过程中，经常需要在业务项目中调试组件库的修改。我们使用 Yalc 实现本地联调，避免频繁发布 npm 包。
+
+```mermaid
+flowchart LR
+    A[pnpm link:setup] --> B[初始化 Yalc]
+    B --> C[pnpm link:publish]
+    C --> D[构建并发布到本地]
+    D --> E[pnpm link:push]
+    E --> F[推送到业务项目]
+```
+
+联调步骤：
+1. 在组件库运行 `pnpm link:setup` 初始化
+2. 修改代码后运行 `pnpm link:publish` 构建并发布到本地 Yalc
+3. 在业务项目运行 `yalc add @aix/button` 安装
+4. 后续修改只需运行 `pnpm link:push` 即可同步
+
+---
+
+## 11. 附录
+
+### 11.1 关键配置文件
+
+| 文件 | 说明 |
 |------|------|
-| Props/Emits 类型定义 | 在 `types.ts` 中定义完整的 TypeScript 接口 |
-| 样式命名空间 | 所有 class 使用 `.aix-<component>` 前缀 |
-| CSS Variables | 颜色/间距/圆角等使用 `var(--aix-*)` |
-| 导出规范 | `index.ts` 统一导出组件和类型 |
-| 测试覆盖 | 新组件必须编写单元测试 |
-| Story 文档 | 新组件必须编写 Storybook Story |
+| `turbo.json` | 定义任务依赖关系和缓存策略 |
+| `rollup.config.js` | 导出 `createRollupConfig()` 工厂函数 |
+| `vitest.config.ts` | 配置测试环境和覆盖率报告 |
+| `commitlint.config.ts` | 定义提交信息规则 |
+| `.changeset/config.json` | 配置版本管理策略 |
+
+### 11.2 常用命令速查
+
+```bash
+# 开发
+pnpm dev                # 启动 watch 模式
+pnpm storybook:dev      # 启动 Storybook 预览
+pnpm docs:dev           # 启动 VitePress 文档
+
+# 质量检查
+pnpm lint               # 运行 ESLint
+pnpm type-check         # 运行 TypeScript 类型检查
+pnpm test               # 运行单元测试
+pnpm cspell             # 运行拼写检查
+
+# 构建发布
+pnpm build              # 全量构建
+pnpm pre                # 执行发布流程
+pnpm commit             # 交互式提交（带规范检查）
+```
