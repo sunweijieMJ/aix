@@ -1,25 +1,28 @@
 # 主题定制
 
-Aix 提供了强大的主题系统，基于 **Token 架构** 和 **TypeScript API**，支持亮色/暗色模式、预设主题和完全自定义。
+Aix 提供了强大的主题系统，基于 **Token 架构** 和 **TypeScript API**，支持亮色/暗色模式切换和完全自定义。
 
 ## 架构设计
 
 ### Token 系统
 
-Aix 采用两层 Token 架构：
+Aix 采用三层 Token 架构：
 
 ```
-基础Token (Base Tokens)
-    ↓ 映射
-语义Token (Semantic Tokens)
+Seed Tokens（种子层）
+    ↓ 派生
+Map Tokens（映射层）
+    ↓ 别名
+Alias Tokens（别名层）
     ↓ 使用
 组件样式
 ```
 
-**基础Token**：原子级设计变量，如 `--tokenCyan6`、`--tokenSpacing4`
-**语义Token**：业务级变量，如 `--colorPrimary`、`--padding`
+**Seed Tokens**：核心设计变量，如 `colorPrimary`、`fontSize`、`borderRadius`
+**Map Tokens**：由种子派生的中间层变量，如各级颜色色阶
+**Alias Tokens**：语义化别名，如 `colorBgContainer`、`colorTextSecondary`
 
-这种设计允许你通过修改基础Token来全局影响主题，或单独调整语义Token来细粒度定制。
+这种设计允许你通过修改种子 Token 来全局影响主题，系统会自动派生出完整的 Token 体系。
 
 ## 快速开始
 
@@ -50,14 +53,15 @@ app.mount('#app');
 <script setup lang="ts">
 import { useTheme } from '@aix/theme';
 
-const { mode, toggleMode, applyPreset } = useTheme();
+const { mode, toggleMode, cssVar } = useTheme();
 </script>
 
 <template>
   <div>
     <p>当前模式: {{ mode }}</p>
     <button @click="toggleMode">切换主题</button>
-    <button @click="applyPreset('tech')">科技蓝主题</button>
+    <!-- 使用 CSS 变量引用 -->
+    <div :style="{ color: cssVar.colorPrimary }">主题色文本</div>
   </div>
 </template>
 ```
@@ -77,9 +81,8 @@ const { themeContext, install } = createTheme({
   initialConfig: {
     token: {
       colorPrimary: 'rgb(0 180 180)',
-      fontSize: '14px',
     },
-    algorithm: 'default',
+    // algorithm: darkAlgorithm, // 可选：使用暗色算法
   },
 
   // 持久化配置
@@ -106,17 +109,32 @@ import { useTheme } from '@aix/theme';
 export default {
   setup() {
     const {
+      // 响应式状态
       mode,           // 当前模式 (Ref<'light' | 'dark'>)
       config,         // 当前配置 (Ref<ThemeConfig>)
+      cssVar,         // CSS 变量引用映射
+
+      // 模式控制
       setMode,        // 设置模式
       toggleMode,     // 切换模式
-      applyTheme,     // 应用完整配置
+
+      // Token 操作
       setToken,       // 设置单个 Token
       setTokens,      // 批量设置 Token
-      applyPreset,    // 应用预设主题
-      registerPreset, // 注册自定义预设
-      getPresets,     // 获取所有预设
+      getToken,       // 获取单个 Token 值
+      getTokens,      // 获取所有 Token
+
+      // 主题配置
+      applyTheme,     // 应用完整配置
       reset,          // 重置为默认主题
+
+      // 过渡动画
+      setTransition,  // 设置过渡配置
+      getTransition,  // 获取过渡配置
+
+      // 组件级主题
+      setComponentTheme,    // 设置组件级主题覆写
+      removeComponentTheme, // 移除组件级主题覆写
     } = useTheme();
 
     // 1. 设置主题模式
@@ -128,62 +146,86 @@ export default {
     // 3. 获取当前模式（响应式）
     console.log(mode.value); // 'light' | 'dark'
 
-    // 4. 设置单个Token
+    // 4. 设置单个 Token
     setToken('colorPrimary', 'rgb(255 0 0)');
 
-    // 5. 批量设置Token
+    // 5. 批量设置 Token
     setTokens({
       colorPrimary: 'rgb(24 144 255)',
-      fontSize: '16px',
+      fontSize: 16,
     });
 
-    // 6. 应用预设主题
-    applyPreset('tech');
+    // 6. 获取 Token 值
+    const primaryColor = getToken('colorPrimary');
 
-    // 7. 响应主题变化（mode 是响应式的）
+    // 7. 使用 CSS 变量引用（用于动态样式）
+    const buttonStyle = {
+      color: cssVar.colorPrimary,        // => "var(--aix-colorPrimary)"
+      background: cssVar.colorBgContainer,
+    };
+
+    // 8. 响应主题变化（mode 是响应式的）
     watch(mode, (newMode) => {
       console.log('Theme changed to:', newMode);
     });
 
-    return { mode, toggleMode };
+    return { mode, toggleMode, buttonStyle };
   }
 }
 ```
 
-## 预设主题
+## 自定义主题
 
-Aix 内置了5个预设主题：
-
-| 名称 | 说明 | 主色 |
-|------|------|------|
-| `default` | 默认主题 | 青色 (Cyan) |
-| `tech` | 科技蓝 | 蓝色 (Blue) |
-| `nature` | 自然绿 | 绿色 (Green) |
-| `sunset` | 日落橙 | 橙色 (Orange) |
-| `purple` | 优雅紫 | 紫色 (Purple) |
+通过 `applyTheme` 可以应用完整的主题配置：
 
 ```vue
 <script setup lang="ts">
-import { useTheme } from '@aix/theme';
+import { useTheme, darkAlgorithm, compactAlgorithm } from '@aix/theme';
 
-const { applyPreset, registerPreset, getPresets } = useTheme();
+const { applyTheme } = useTheme();
 
-// 应用预设
-applyPreset('tech');
-
-// 查看所有预设
-const presets = getPresets();
-console.log(presets);
-
-// 注册自定义预设
-registerPreset({
-  name: 'custom',
-  displayName: '自定义主题',
+// 应用自定义主题配置
+applyTheme({
+  // 种子 Token（核心配置）
+  seed: {
+    colorPrimary: 'rgb(24 144 255)',  // 科技蓝
+    borderRadius: 8,
+  },
+  // 直接覆写 Token（高优先级）
   token: {
-    colorPrimary: 'rgb(255 105 180)',
+    colorBgContainer: 'rgb(250 250 250)',
+  },
+  // 主题算法（可组合）
+  algorithm: [darkAlgorithm, compactAlgorithm],
+  // 过渡动画配置
+  transition: {
+    duration: 300,
+    easing: 'ease-in-out',
   },
 });
 </script>
+```
+
+### 主题算法
+
+Aix 提供多种可组合的主题算法：
+
+| 算法 | 说明 | 效果 |
+|------|------|------|
+| `defaultAlgorithm` | 默认算法 | 亮色主题 |
+| `darkAlgorithm` | 暗色算法 | 暗色主题 |
+| `darkMixAlgorithm` | 混合暗色 | 柔和暗色 |
+| `compactAlgorithm` | 紧凑算法 | 减小间距和尺寸 |
+| `wireframeAlgorithm` | 线框算法 | 无填充样式 |
+
+算法可以组合使用：
+
+```typescript
+import { darkAlgorithm, compactAlgorithm } from '@aix/theme';
+
+applyTheme({
+  algorithm: [darkAlgorithm, compactAlgorithm], // 暗色 + 紧凑
+});
 ```
 
 ## 暗色模式
@@ -272,26 +314,26 @@ onMounted(() => {
 
 | Token | 说明 | 亮色值 | 暗色值 |
 |-------|------|--------|--------|
-| `--colorPrimary` | 主色 | `rgb(0 180 180)` | `rgb(31 194 188)` |
-| `--colorPrimaryHover` | 主色悬停 | 自动生成 | 自动生成 |
-| `--colorPrimaryActive` | 主色激活 | 自动生成 | 自动生成 |
+| `--aix-colorPrimary` | 主色 | `rgb(0 180 180)` | `rgb(31 194 188)` |
+| `--aix-colorPrimaryHover` | 主色悬停 | 自动生成 | 自动生成 |
+| `--aix-colorPrimaryActive` | 主色激活 | 自动生成 | 自动生成 |
 
 #### 功能色
 
 | Token | 说明 | 用途 |
 |-------|------|------|
-| `--colorSuccess` | 成功色 | 成功提示、完成状态 |
-| `--colorWarning` | 警告色 | 警告提示、注意状态 |
-| `--colorError` | 错误色 | 错误提示、危险操作 |
+| `--aix-colorSuccess` | 成功色 | 成功提示、完成状态 |
+| `--aix-colorWarning` | 警告色 | 警告提示、注意状态 |
+| `--aix-colorError` | 错误色 | 错误提示、危险操作 |
 
 #### 文本色
 
 | Token | 说明 | 透明度 |
 |-------|------|--------|
-| `--colorText` | 主文本 | 88% |
-| `--colorTextSecondary` | 次要文本 | 65% |
-| `--colorTextTertiary` | 三级文本 | 45% |
-| `--colorTextDisabled` | 禁用文本 | 25% |
+| `--aix-colorText` | 主文本 | 88% |
+| `--aix-colorTextSecondary` | 次要文本 | 65% |
+| `--aix-colorTextTertiary` | 三级文本 | 45% |
+| `--aix-colorTextDisabled` | 禁用文本 | 25% |
 
 ### 尺寸 Token
 
@@ -299,29 +341,29 @@ onMounted(() => {
 
 | Token | 值 | 说明 |
 |-------|-----|------|
-| `--sizeXXS` | 4px | 极小间距 |
-| `--sizeXS` | 8px | 较小间距 |
-| `--sizeSM` | 12px | 小间距 |
-| `--size` | 16px | 标准间距 |
-| `--sizeLG` | 24px | 大间距 |
+| `--aix-sizeXXS` | 4px | 极小间距 |
+| `--aix-sizeXS` | 8px | 较小间距 |
+| `--aix-sizeSM` | 12px | 小间距 |
+| `--aix-size` | 16px | 标准间距 |
+| `--aix-sizeLG` | 24px | 大间距 |
 
 #### 字号
 
 | Token | 值 | 说明 |
 |-------|-----|------|
-| `--fontSizeXS` | 12px | 辅助文字 |
-| `--fontSize` | 14px | 正文（默认） |
-| `--fontSizeLG` | 16px | 小标题 |
-| `--fontSizeXL` | 18px | 标题 |
+| `--aix-fontSizeXS` | 12px | 辅助文字 |
+| `--aix-fontSize` | 14px | 正文（默认） |
+| `--aix-fontSizeLG` | 16px | 小标题 |
+| `--aix-fontSizeXL` | 18px | 标题 |
 
 #### 圆角
 
 | Token | 值 | 用途 |
 |-------|-----|------|
-| `--borderRadiusXS` | 2px | 小组件 |
-| `--borderRadiusSM` | 4px | 按钮（默认） |
-| `--borderRadius` | 6px | 卡片 |
-| `--borderRadiusLG` | 8px | 大型容器 |
+| `--aix-borderRadiusXS` | 2px | 小组件 |
+| `--aix-borderRadiusSM` | 4px | 按钮（默认） |
+| `--aix-borderRadius` | 6px | 卡片 |
+| `--aix-borderRadiusLG` | 8px | 大型容器 |
 
 ## 高级用法
 
@@ -330,11 +372,11 @@ onMounted(() => {
 ```typescript
 import {
   generateColorSeries,
-  generateColorPalette,
+  generatePalette,
   adjustLightness
 } from '@aix/theme';
 
-// 生成完整色系
+// 生成完整色系（包含 hover、active、bg 等派生色）
 const series = generateColorSeries('rgb(0 180 180)');
 console.log(series);
 // {
@@ -347,8 +389,8 @@ console.log(series);
 //   ...
 // }
 
-// 生成10级色盘
-const palette = generateColorPalette('rgb(0 180 180)');
+// 生成 10 级色阶
+const palette = generatePalette('rgb(0 180 180)');
 console.log(palette); // [浅色...深色]
 
 // 调整亮度
@@ -371,12 +413,11 @@ const app = createApp(App);
 const { install } = createTheme({
   initialMode: 'light',
   initialConfig: {
-    token: {
+    seed: {
       colorPrimary: 'rgb(0 102 255)',  // 科技蓝
-      fontSize: '16px',
-      borderRadius: '8px',
+      borderRadius: 8,
     },
-    algorithm: 'default',
+    // algorithm: darkAlgorithm, // 可选：使用暗色算法
   },
   persist: true,      // 持久化到 localStorage
   watchSystem: true,  // 跟随系统主题
@@ -392,33 +433,43 @@ app.mount('#app');
 import { watch } from 'vue';
 import { useTheme } from '@aix/theme';
 
-const { mode, config, setMode, applyPreset } = useTheme();
+const { mode, config, setMode, toggleMode, setTokens, cssVar } = useTheme();
 
 // 响应主题变化
 watch(mode, (newMode) => {
   console.log('Theme changed to:', newMode);
-  // 可以在这里执行其他逻辑
 });
+
+// 自定义主题配置
+const themes = {
+  default: { colorPrimary: 'rgb(0 180 180)' },
+  tech: { colorPrimary: 'rgb(24 144 255)' },
+  nature: { colorPrimary: 'rgb(82 196 26)' },
+};
+
+const applyCustomTheme = (name: keyof typeof themes) => {
+  setTokens(themes[name]);
+};
 </script>
 
 <template>
   <div class="app">
     <header>
       <h1>My App</h1>
-      <button @click="setMode(mode === 'dark' ? 'light' : 'dark')">
+      <button @click="toggleMode">
         {{ mode === 'dark' ? '🌞' : '🌙' }}
       </button>
     </header>
 
     <nav>
-      <button @click="applyPreset('default')">默认</button>
-      <button @click="applyPreset('tech')">科技蓝</button>
-      <button @click="applyPreset('nature')">自然绿</button>
+      <button @click="applyCustomTheme('default')">默认</button>
+      <button @click="applyCustomTheme('tech')">科技蓝</button>
+      <button @click="applyCustomTheme('nature')">自然绿</button>
     </nav>
 
     <main>
       <p>当前模式: {{ mode }}</p>
-      <p>主色: {{ config.token?.colorPrimary }}</p>
+      <p :style="{ color: cssVar.colorPrimary }">主题色文本</p>
     </main>
   </div>
 </template>
@@ -426,18 +477,18 @@ watch(mode, (newMode) => {
 
 ## 最佳实践
 
-### 1. 使用语义Token
+### 1. 使用语义 Token
 
 ```css
-/* ✅ 推荐 */
+/* ✅ 推荐：使用 aix 前缀的语义 Token */
 .button {
-  background: var(--colorPrimary);
-  padding: var(--padding);
+  background: var(--aix-colorPrimary);
+  padding: var(--aix-paddingSM);
 }
 
-/* ❌ 避免 */
+/* ❌ 避免：硬编码值 */
 .button {
-  background: var(--tokenCyan6);
+  background: #00b4b4;
   padding: 16px;
 }
 ```
@@ -519,10 +570,13 @@ setToken('borderRadius', '8px');
 
 ```typescript
 import type {
-  ThemeTokens,         // 完整Token类型
-  PartialThemeTokens,  // 部分Token类型
+  ThemeTokens,         // 完整 Token 类型
+  PartialThemeTokens,  // 部分 Token 类型（用于覆写）
   ThemeConfig,         // 主题配置类型
-  ThemeMode,           // 主题模式类型
-  ThemePreset,         // 预设类型
+  ThemeMode,           // 主题模式类型 ('light' | 'dark')
+  ThemeAlgorithm,      // 主题算法类型
+  SeedTokens,          // 种子 Token 类型
+  TransitionConfig,    // 过渡动画配置
+  ComponentThemeConfig, // 组件级主题配置
 } from '@aix/theme';
 ```

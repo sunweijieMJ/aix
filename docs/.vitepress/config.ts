@@ -38,6 +38,11 @@ export default defineConfig({
         activeMatch: '/components/',
       },
       {
+        text: 'API',
+        link: '/api/button',
+        activeMatch: '/api/',
+      },
+      {
         text: '示例',
         link: '/examples/basic-usage',
         activeMatch: '/examples/',
@@ -59,6 +64,7 @@ export default defineConfig({
           text: '进阶',
           items: [
             { text: '主题定制', link: '/guide/theme' },
+            { text: '主题集成', link: '/guide/theme-integration' },
             { text: '国际化', link: '/guide/i18n' },
             { text: '最佳实践', link: '/guide/best-practices' },
           ],
@@ -74,13 +80,42 @@ export default defineConfig({
 
       '/components/': [
         {
-          text: '基础组件',
-          items: [{ text: 'Button 按钮', link: '/components/button' }],
+          text: '组件总览',
+          items: [{ text: '组件列表', link: '/components/' }],
         },
         {
-          text: '表单组件',
-          collapsed: true,
-          items: [],
+          text: '基础组件',
+          items: [
+            { text: 'Button 按钮', link: '/components/button' },
+            { text: 'Icons 图标', link: '/components/icons' },
+          ],
+        },
+        {
+          text: '媒体组件',
+          items: [
+            { text: 'VideoPlayer 视频播放器', link: '/components/video' },
+            { text: 'Subtitle 字幕', link: '/components/subtitle' },
+            { text: 'PdfViewer PDF 预览器', link: '/components/pdf-viewer' },
+          ],
+        },
+      ],
+
+      '/api/': [
+        {
+          text: 'API 参考',
+          items: [
+            { text: 'Button', link: '/api/button' },
+            { text: 'VideoPlayer', link: '/api/video' },
+            { text: 'Subtitle', link: '/api/subtitle' },
+            { text: 'PdfViewer', link: '/api/pdf-viewer' },
+          ],
+        },
+        {
+          text: '工具包',
+          items: [
+            { text: 'Theme 主题', link: '/api/theme' },
+            { text: 'Hooks', link: '/api/hooks' },
+          ],
         },
       ],
 

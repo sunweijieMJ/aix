@@ -1,25 +1,21 @@
-# @aix/subtitle
+---
+title: Subtitle 字幕
+outline: deep
+---
 
-Vue 3 字幕组件，支持多种字幕格式（VTT、SRT、JSON、SBV、ASS），可与视频播放器配合使用。
+字幕组件，支持多种字幕格式（VTT、SRT、JSON、SBV、ASS），可与视频播放器配合使用。
 
-## ✨ 特性
+## 何时使用
 
-- 支持多种字幕格式（VTT、SRT、JSON、SBV、ASS）
-- 支持 URL、文本、数组三种数据来源
-- 可配置显示位置（顶部、底部、居中）
-- 支持自定义样式（字体大小、背景样式）
-- 自动分段轮播（文字过长时）
-- 单行/多行显示模式
-- TypeScript 类型支持
-- 轻量级实现
+- 需要在视频上显示字幕
+- 需要支持多种字幕格式
+- 需要自定义字幕样式或位置
 
-## 安装
+## 代码演示
 
-```bash
-pnpm add @aix/subtitle
-```
+### 基础用法
 
-## 快速开始
+配合视频元素使用，通过 `currentTime` 同步字幕。
 
 ```vue
 <template>
@@ -52,41 +48,9 @@ const onTimeUpdate = () => {
 </script>
 ```
 
-## API
-
-### Props
-
-| 属性名 | 类型 | 默认值 | 必填 | 说明 |
-|--------|------|--------|:----:|------|
-| `source` | `SubtitleSource` | - | - | 字幕来源 |
-| `currentTime` | `number` | - | - | 当前播放时间 (秒) - 用于外部控制 |
-| `visible` | `boolean` | `true` | - | 是否显示字幕 |
-| `position` | `"top"` \| `"bottom"` \| `"center"` | `bottom` | - | 字幕位置 |
-| `fontSize` | `number` \| `string` | `20` | - | 字体大小 |
-| `background` | `"blur"` \| `"solid"` \| `"none"` | `blur` | - | 背景样式 |
-| `maxWidth` | `number` \| `string` | `1200px` | - | 最大宽度 |
-| `singleLine` | `boolean` | `false` | - | 是否单行显示（固定高度场景） |
-| `fixedHeight` | `number` | - | - | 固定高度（用于计算分段，单位 px） |
-| `autoSegment` | `boolean` | `false` | - | 是否自动分段（文字过长时分多段轮播显示） |
-| `segmentDuration` | `number` | `3000` | - | 每段显示时长（毫秒），默认 3000ms |
-
-### Events
-
-| 事件名 | 参数 | 说明 |
-|--------|------|------|
-| `loaded` | `Array` | 字幕加载完成 |
-| `error` | `Error` | 字幕加载失败 |
-| `change` | `union` | 当前字幕变化 |
-
-### Slots
-
-| 插槽名 | 说明 |
-|--------|------|
-| `default` | - |
-
-## 使用示例
-
 ### 从 URL 加载
+
+从远程 URL 加载字幕文件，格式会根据文件扩展名自动推断。
 
 ```vue
 <template>
@@ -98,6 +62,8 @@ const onTimeUpdate = () => {
 ```
 
 ### 从文本加载
+
+直接从字幕文本内容加载，需要指定格式。
 
 ```vue
 <template>
@@ -122,6 +88,8 @@ const srtContent = `
 
 ### 从数组加载
 
+直接传入字幕条目数组。
+
 ```vue
 <template>
   <Subtitle
@@ -142,6 +110,8 @@ const subtitleCues: SubtitleCue[] = [
 
 ### 自定义样式
 
+可以自定义字幕的位置、字体大小、背景样式等。
+
 ```vue
 <template>
   <Subtitle
@@ -157,7 +127,7 @@ const subtitleCues: SubtitleCue[] = [
 
 ### 自动分段
 
-当字幕文本过长时，启用自动分段可以分多段轮播显示：
+当字幕文本过长时，启用自动分段可以分多段轮播显示。
 
 ```vue
 <template>
@@ -172,45 +142,53 @@ const subtitleCues: SubtitleCue[] = [
 </template>
 ```
 
-### 配合视频播放器使用
+### 配合 VideoPlayer 使用
+
+与 `@aix/video` 配合使用的完整示例。
 
 ```vue
 <template>
   <div class="player-container">
-    <video
-      ref="videoRef"
+    <VideoPlayer
       :src="videoSrc"
+      @ready="onPlayerReady"
       @timeupdate="onTimeUpdate"
-      @loadedmetadata="onLoadedMetadata"
     />
     <Subtitle
-      ref="subtitleRef"
       :source="subtitleSource"
       :currentTime="currentTime"
       :visible="showSubtitle"
       @loaded="onSubtitleLoaded"
       @change="onSubtitleChange"
     />
+    <button @click="showSubtitle = !showSubtitle">
+      {{ showSubtitle ? '隐藏字幕' : '显示字幕' }}
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { Subtitle, type SubtitleCue, type SubtitleExpose } from '@aix/subtitle';
+import { VideoPlayer } from '@aix/video';
+import { Subtitle, type SubtitleCue } from '@aix/subtitle';
+import '@aix/video/style';
 import '@aix/subtitle/style';
 
-const videoRef = ref<HTMLVideoElement>();
-const subtitleRef = ref<SubtitleExpose>();
 const currentTime = ref(0);
 const showSubtitle = ref(true);
+const videoSrc = '/videos/sample.mp4';
 
 const subtitleSource = {
   type: 'url' as const,
   url: '/subtitles/video.vtt',
 };
 
-const onTimeUpdate = () => {
-  currentTime.value = videoRef.value?.currentTime ?? 0;
+const onPlayerReady = () => {
+  console.log('播放器就绪');
+};
+
+const onTimeUpdate = (time: number) => {
+  currentTime.value = time;
 };
 
 const onSubtitleLoaded = (cues: SubtitleCue[]) => {
@@ -223,10 +201,43 @@ const onSubtitleChange = (cue: SubtitleCue | null, index: number) => {
 </script>
 ```
 
+## API
+
+### Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `source` | `SubtitleSource` | - | - | 字幕来源 |
+| `currentTime` | `number` | - | - | 当前播放时间 (秒) |
+| `visible` | `boolean` | `true` | - | 是否显示字幕 |
+| `position` | `"top"` \| `"bottom"` \| `"center"` | `bottom` | - | 字幕位置 |
+| `fontSize` | `number` \| `string` | `20` | - | 字体大小 |
+| `background` | `"blur"` \| `"solid"` \| `"none"` | `blur` | - | 背景样式 |
+| `maxWidth` | `number` \| `string` | `1200px` | - | 最大宽度 |
+| `singleLine` | `boolean` | `false` | - | 是否单行显示 |
+| `fixedHeight` | `number` | - | - | 固定高度（用于计算分段，单位 px） |
+| `autoSegment` | `boolean` | `false` | - | 是否自动分段 |
+| `segmentDuration` | `number` | `3000` | - | 每段显示时长（毫秒） |
+
+### Events
+
+| 事件名 | 参数 | 说明 |
+|--------|------|------|
+| `loaded` | `SubtitleCue[]` | 字幕加载完成 |
+| `error` | `Error` | 字幕加载失败 |
+| `change` | `(cue: SubtitleCue \| null, index: number)` | 当前字幕变化 |
+
+### Slots
+
+| 插槽名 | 说明 |
+|--------|------|
+| `default` | 自定义字幕内容 |
+
 ## 类型定义
 
+### SubtitleCue
+
 ```typescript
-// 字幕条目
 interface SubtitleCue {
   id?: string;
   startTime: number;  // 开始时间（秒）
@@ -234,17 +245,33 @@ interface SubtitleCue {
   text: string;       // 字幕文本
   data?: Record<string, unknown>;  // 扩展数据
 }
+```
 
-// 字幕格式
-type SubtitleFormat = 'vtt' | 'srt' | 'json' | 'sbv' | 'ass';
+### SubtitleSource
 
-// 字幕来源
+```typescript
 type SubtitleSource =
   | { type: 'url'; url: string; format?: SubtitleFormat }
   | { type: 'text'; content: string; format: SubtitleFormat }
   | { type: 'cues'; cues: SubtitleCue[] };
 ```
 
-## License
+### SubtitleFormat
 
-MIT
+```typescript
+type SubtitleFormat = 'vtt' | 'srt' | 'json' | 'sbv' | 'ass';
+```
+
+## 支持的字幕格式
+
+| 格式 | 说明 | 文件扩展名 |
+|------|------|-----------|
+| `vtt` | WebVTT 格式 | `.vtt` |
+| `srt` | SubRip 格式 | `.srt` |
+| `ass` | Advanced SubStation Alpha | `.ass` |
+| `sbv` | YouTube SBV 格式 | `.sbv` |
+| `json` | JSON 格式 | `.json` |
+
+::: tip 提示
+从 URL 加载时，格式会根据文件扩展名自动推断。从文本加载时，需要手动指定 `format`。
+:::

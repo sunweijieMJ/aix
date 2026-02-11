@@ -53,118 +53,32 @@ const onError = (error: Error) => {
 
 ### Props
 
-| 属性 | 类型 | 默认值 | 必填 | 描述 |
-|------|------|--------|:----:|------|
-| source | `string \| ArrayBuffer` | - | ✅ | PDF 文件 URL 或 ArrayBuffer |
-| initialPage | `number` | `1` | ❌ | 初始页码 |
-| config | `Partial<PdfViewerConfig>` | - | ❌ | 预览器配置 |
-| imageLayerConfig | `Partial<ImageLayerConfig>` | - | ❌ | 图片层配置 |
-| contextMenuConfig | `Partial<ContextMenuConfig>` | - | ❌ | 右键菜单配置 |
-
-### PdfViewerConfig
-
-| 属性 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| initialScale | `number` | `1` | 初始缩放比例（fitToContainer 为 false 时使用） |
-| fitToContainer | `boolean` | `true` | 是否自适应容器尺寸 |
-| maxScale | `number` | `5` | 最大缩放比例 |
-| minScale | `number` | `0.25` | 最小缩放比例 |
-| fitPadding | `number` | `20` | 自适应时的内边距（像素） |
-| showToolbar | `boolean` | `true` | 是否显示工具栏 |
-| enableTextLayer | `boolean` | `true` | 是否启用文字层（支持文字选择） |
-| enableImageLayer | `boolean` | `false` | 是否启用图片层（支持图片选择） |
-| enableContextMenu | `boolean` | `true` | 是否启用右键菜单 |
-| scrollMode | `'single' \| 'continuous'` | `'continuous'` | 滚动模式 |
-| pageGap | `number` | `10` | 连续模式下页面间距（像素） |
-
-### ImageLayerConfig
-
-| 属性 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| enableHover | `boolean` | `true` | 是否启用 hover 效果 |
-| enableSelection | `boolean` | `true` | 是否启用选择功能 |
-| multiSelect | `boolean` | `true` | 是否多选模式（按住 Ctrl 多选） |
-| minImageSize | `number` | `50` | 最小图片尺寸（小于此尺寸的图片会被过滤） |
-| maxPageRatio | `number` | `0.8` | 最大图片占页面比例（超过此比例视为背景） |
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `source` | `string` \| `ArrayBuffer` | - | ✅ | PDF 文件 URL 或 ArrayBuffer |
+| `initialPage` | `number` | `1` | - | 初始页码 |
+| `config` | `Partial` | `() => ({})` | - | 配置项 |
+| `imageLayerConfig` | `Partial` | `() => ({})` | - | 图片层配置 |
+| `contextMenuConfig` | `Partial` | `() => ({})` | - | 右键菜单配置 |
 
 ### Events
 
-| 事件名 | 参数 | 描述 |
+| 事件名 | 参数 | 说明 |
 |--------|------|------|
-| loaded | `totalPages: number` | PDF 加载完成 |
-| error | `error: Error` | PDF 加载失败 |
-| pageChange | `page: number` | 页码变化 |
-| scaleChange | `scale: number` | 缩放比例变化 |
-| textSelect | `text: string` | 文字选中 |
-| imageSelect | `images: PdfImageInfo[]` | 图片选中 |
-| contextMenu | `context: ContextMenuContext` | 右键菜单打开 |
+| `ready` | `number` | - |
+| `error` | `Error` | - |
+| `pageChange` | `number` | - |
+| `scaleChange` | `number` | - |
+| `textSelect` | `string` | - |
+| `imageClick` | `PdfImageInfo` | - |
+| `imageSelect` | `Array` | - |
+| `contextMenu` | `ContextMenuContext` | - |
 
-### Expose
+### Slots
 
-组件暴露以下方法和状态：
-
-#### 状态
-
-| 属性 | 类型 | 描述 |
-|------|------|------|
-| loading | `Ref<boolean>` | 加载状态 |
-| currentPage | `Ref<number>` | 当前页码 |
-| totalPages | `Ref<number>` | 总页数 |
-| scale | `Ref<number>` | 当前缩放比例 |
-
-#### 页面控制
-
-| 方法 | 参数 | 返回值 | 描述 |
-|------|------|--------|------|
-| gotoPage | `page: number` | `Promise<void>` | 跳转到指定页 |
-| nextPage | - | `Promise<void>` | 下一页 |
-| prevPage | - | `Promise<void>` | 上一页 |
-
-#### 缩放控制
-
-| 方法 | 参数 | 返回值 | 描述 |
-|------|------|--------|------|
-| setScale | `scale: number` | `Promise<void>` | 设置缩放比例 |
-| zoomIn | `step?: number` | `Promise<void>` | 放大 |
-| zoomOut | `step?: number` | `Promise<void>` | 缩小 |
-| fitToWidth | - | `Promise<void>` | 适应宽度 |
-| fitToPage | - | `Promise<void>` | 适应页面 |
-
-#### 选择相关
-
-| 方法 | 参数 | 返回值 | 描述 |
-|------|------|--------|------|
-| getSelectedText | - | `string` | 获取选中的文字 |
-| getSelectedImages | - | `PdfImageInfo[]` | 获取选中的图片 |
-| clearSelection | - | `void` | 清除选择 |
-
-#### 缩略图
-
-| 方法 | 参数 | 返回值 | 描述 |
-|------|------|--------|------|
-| generateThumbnail | `page: number, width?: number` | `Promise<ThumbnailInfo>` | 生成单页缩略图 |
-| generateAllThumbnails | `width?: number` | `Promise<ThumbnailInfo[]>` | 生成所有页面缩略图 |
-
-#### 图片提取
-
-| 方法 | 参数 | 返回值 | 描述 |
-|------|------|--------|------|
-| extractImageAsBase64 | `image: PdfImageInfo` | `string` | 将图片区域提取为 Base64 |
-
-#### 搜索
-
-| 方法 | 参数 | 返回值 | 描述 |
-|------|------|--------|------|
-| openSearch | - | `void` | 打开搜索栏 |
-| closeSearch | - | `void` | 关闭搜索栏 |
-| search | `keyword: string` | `Promise<void>` | 执行搜索 |
-
-#### 其他
-
-| 方法 | 参数 | 返回值 | 描述 |
-|------|------|--------|------|
-| reload | - | `Promise<void>` | 重新加载 |
-| destroy | - | `void` | 销毁实例 |
+| 插槽名 | 说明 |
+|--------|------|
+| `toolbar` | - |
 
 ## 使用示例
 
