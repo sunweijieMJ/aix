@@ -139,9 +139,8 @@ const main = async (): Promise<void> => {
     })
     .option('interactive', {
       alias: 'i',
-      describe: '交互式选择操作选项',
+      describe: '交互式选择操作选项（未指定 --mode 时默认开启）',
       type: 'boolean',
-      default: true,
     })
     .option('skip-llm', {
       describe: '跳过LLM API调用，使用本地ID生成策略',
@@ -201,8 +200,15 @@ export default defineConfig({
   // 初始化参数
   let mode = (argv.mode as ModeName) || ModeName.GENERATE;
   const custom = Boolean(argv.custom);
-  const interactive = Boolean(argv.interactive);
   const skipLLM = Boolean(argv.skipLlm);
+
+  // 当显式指定了 --mode/-m 时，默认关闭交互模式；否则默认开启
+  const modeExplicitlySet = process.argv
+    .slice(2)
+    .some(
+      (arg) => arg === '--mode' || arg.startsWith('--mode=') || arg === '-m',
+    );
+  const interactive = argv.interactive ?? !modeExplicitlySet;
 
   // 交互模式处理
   if (interactive) {

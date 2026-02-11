@@ -34,7 +34,7 @@ export class AutomaticProcessor extends BaseProcessor {
       {
         name: 'generate',
         run: () =>
-          new GenerateProcessor(this.config, this.isCustom).execute(
+          new GenerateProcessor(this.config, this.isCustom, false).execute(
             targetPath,
             skipLLM,
           ),

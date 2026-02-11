@@ -1,0 +1,74 @@
+{
+  "components__ButtonDemo__button": {
+    "zh-CN": "按钮",
+    "en-US": "Button"
+  },
+  "components__ButtonDemo__aixbuttondemo": {
+    "zh-CN": "AIX Button 组件演示",
+    "en-US": "AIX Button Component Demo"
+  },
+  "components__ButtonDemo__basicbutton": {
+    "zh-CN": "基础按钮",
+    "en-US": "Basic Button"
+  },
+  "components__ButtonDemo__defaultbutton": {
+    "zh-CN": "默认按钮",
+    "en-US": "Default Button"
+  },
+  "components__ButtonDemo__primarybutton": {
+    "zh-CN": "主要按钮",
+    "en-US": "Primary Button"
+  },
+  "components__ButtonDemo__dashedbutton": {
+    "zh-CN": "虚线按钮",
+    "en-US": "Dashed Button"
+  },
+  "components__ButtonDemo__textbutton": {
+    "zh-CN": "文本按钮",
+    "en-US": "Text Button"
+  },
+  "components__ButtonDemo__linkbutton": {
+    "zh-CN": "链接按钮",
+    "en-US": "Link Button"
+  },
+  "components__ButtonDemo__disabledstate": {
+    "zh-CN": "禁用状态",
+    "en-US": "Disabled State"
+  },
+  "components__ButtonDemo__disabledbutton": {
+    "zh-CN": "禁用按钮",
+    "en-US": "Disabled Button"
+  },
+  "components__ButtonDemo__loadingstate": {
+    "zh-CN": "加载状态",
+    "en-US": "Loading State"
+  },
+  "components__ButtonDemo__loadingindicator": {
+    "zh-CN": "加载中...",
+    "en-US": "Loading..."
+  },
+  "components__ButtonDemo__clicktoload": {
+    "zh-CN": "点击加载",
+    "en-US": "Click to Load"
+  },
+  "components__ButtonDemo__submitform": {
+    "zh-CN": "提交表单",
+    "en-US": "Submit Form"
+  },
+  "components__ButtonDemo__differentsizes": {
+    "zh-CN": "不同尺寸",
+    "en-US": "Different Sizes"
+  },
+  "components__ButtonDemo__smallbutton": {
+    "zh-CN": "小按钮",
+    "en-US": "Small Button"
+  },
+  "components__ButtonDemo__mediumbutton": {
+    "zh-CN": "中按钮",
+    "en-US": "Medium Button"
+  },
+  "components__ButtonDemo__largebutton": {
+    "zh-CN": "大按钮",
+    "en-US": "Large Button"
+  }
+}

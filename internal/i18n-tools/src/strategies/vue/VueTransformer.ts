@@ -1,7 +1,8 @@
 import fs from 'fs';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
-import { ASTUtils } from '../../utils/ast/ASTUtils';
+import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
+import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
 import type { ExtractedString } from '../../utils/types';
 import type { ITransformer } from '../../adapters/FrameworkAdapter';
 import { VueImportManager } from './VueImportManager';
@@ -382,7 +383,7 @@ export class VueTransformer implements ITransformer {
 
     // 处理模板字符串（带变量插值）
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
-      const { placeholderMap } = ASTUtils.createMessageWithOptions(
+      const { placeholderMap } = ReactASTUtils.createMessageWithOptions(
         extracted.original,
         actualVariables,
       );
@@ -471,7 +472,7 @@ export class VueTransformer implements ITransformer {
         localLine,
         localColumn,
       );
-      const node = ASTUtils.findExactStringNode(
+      const node = CommonASTUtils.findExactStringNode(
         sourceFile,
         position,
         extracted.original,
@@ -483,13 +484,13 @@ export class VueTransformer implements ITransformer {
         const end = node.getEnd();
 
         // 验证节点文本
-        const originalNodeText = ASTUtils.nodeToText(node, sourceFile);
+        const originalNodeText = CommonASTUtils.nodeToText(node, sourceFile);
         const isTemplateString =
           extracted.original.startsWith('`') &&
           extracted.original.endsWith('`');
 
         if (
-          ASTUtils.shouldReplaceNode(
+          CommonASTUtils.shouldReplaceNode(
             originalNodeText,
             extracted.original,
             isTemplateString,
@@ -501,7 +502,7 @@ export class VueTransformer implements ITransformer {
     }
 
     // 返回转换后的 script 内容
-    return ASTUtils.applyReplacements(scriptContent, replacements);
+    return CommonASTUtils.applyReplacements(scriptContent, replacements);
   }
 
   /**
@@ -523,7 +524,7 @@ export class VueTransformer implements ITransformer {
 
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
       // 对于模板字符串，使用变量插值
-      const { placeholderMap } = ASTUtils.createMessageWithOptions(
+      const { placeholderMap } = ReactASTUtils.createMessageWithOptions(
         extracted.original,
         actualVariables,
       );

@@ -5,21 +5,23 @@
   "description": "AIX 组件库示例项目 - 模拟外部业务项目联调场景",
   "scripts": {
     "dev": "cross-env VITE_LINK_MODE=source vite",
+    "build": "vue-tsc --noEmit && vite build",
     "dev:yalc": "cross-env VITE_LINK_MODE=yalc vite",
     "add:yalc": "tsx scripts/add-yalc.ts",
     "remove:yalc": "tsx scripts/remove-yalc.ts",
-    "build": "vue-tsc --noEmit && vite build",
     "lint:script": "eslint . --max-warnings 0",
     "lint:style": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
     "link": "pnpm run lint:script && pnpm run lint:style",
-    "i18n": "tsx ../../internal/i18n-tools/src/cli.ts --config ./i18n.config.ts",
-    "i18n:generate": "tsx ../../internal/i18n-tools/src/cli.ts --config ./i18n.config.ts --mode generate",
-    "i18n:restore": "tsx ../../internal/i18n-tools/src/cli.ts --config ./i18n.config.ts --mode restore"
+    "i18n": "tsx ../../internal/i18n-tools/src/cli.ts --config ./i18n.config.ts"
   },
   "dependencies": {
     "@aix/button": "workspace:*",
     "@aix/hooks": "workspace:*",
+    "@aix/icons": "workspace:*",
+    "@aix/pdf-viewer": "workspace:*",
+    "@aix/subtitle": "workspace:*",
     "@aix/theme": "workspace:*",
+    "@aix/video": "workspace:*",
     "element-plus": "^2.13.2",
     "vue": "^3.5.28",
     "vue-i18n": "^11.2.8"

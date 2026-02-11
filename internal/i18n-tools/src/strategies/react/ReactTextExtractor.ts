@@ -1,6 +1,7 @@
 import fs from 'fs';
 import ts from 'typescript';
-import { ASTUtils } from '../../utils/ast/ASTUtils';
+import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
+import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
 import { FileUtils } from '../../utils/file-utils';
 import type { ExtractedString, MessageInfo } from '../../utils/types';
 import type { ITextExtractor } from '../../adapters/FrameworkAdapter';
@@ -23,7 +24,7 @@ export class ReactTextExtractor implements ITextExtractor {
    */
   async extractFromFile(filePath: string): Promise<ExtractedString[]> {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
-    const scriptKind = ASTUtils.getScriptKind(filePath);
+    const scriptKind = CommonASTUtils.getScriptKind(filePath);
     const sourceFile = ts.createSourceFile(
       filePath,
       sourceText,
@@ -81,7 +82,7 @@ export class ReactTextExtractor implements ITextExtractor {
         const messageKey = property.name.text;
 
         if (ts.isObjectLiteralExpression(property.initializer)) {
-          const messageProps = ASTUtils.extractObjectLiteralProperties(
+          const messageProps = CommonASTUtils.extractObjectLiteralProperties(
             property.initializer,
             sourceFile,
           );
@@ -115,12 +116,12 @@ export class ReactTextExtractor implements ITextExtractor {
       // 如果节点已经被国际化结构包裹，则不提取
       const alreadyI18n = this.library
         ? this.library.isAlreadyInternationalized(node)
-        : ASTUtils.isAlreadyInternationalized(node);
+        : CommonASTUtils.isAlreadyInternationalized(node);
       if (alreadyI18n) {
         return false;
       }
       // 如果字符串在console调用中，不提取
-      if (ASTUtils.isInConsoleCall(node)) {
+      if (CommonASTUtils.isInConsoleCall(node)) {
         return false;
       }
     }
@@ -156,7 +157,7 @@ export class ReactTextExtractor implements ITextExtractor {
     if (ts.isJsxElement(node)) {
       const mixedContent = this.extractJsxMixedContent(node, sourceFile);
       if (mixedContent) {
-        const componentType = ASTUtils.getComponentType(node);
+        const componentType = ReactASTUtils.getComponentType(node);
         const position = ts.getLineAndCharacterOfPosition(
           sourceFile,
           node.getStart(sourceFile),
@@ -212,7 +213,7 @@ export class ReactTextExtractor implements ITextExtractor {
         text = '`' + node.head.text;
 
         for (const span of node.templateSpans) {
-          const expressionText = ASTUtils.nodeToText(
+          const expressionText = CommonASTUtils.nodeToText(
             span.expression,
             sourceFile,
           );
@@ -232,9 +233,12 @@ export class ReactTextExtractor implements ITextExtractor {
     }
 
     // 检查是否需要提取
-    if (text && this.shouldExtract(text, ASTUtils.getNodeContext(node), node)) {
-      const componentType = ASTUtils.getComponentType(node);
-      const context = ASTUtils.getNodeContext(node);
+    if (
+      text &&
+      this.shouldExtract(text, ReactASTUtils.getNodeContext(node), node)
+    ) {
+      const componentType = ReactASTUtils.getComponentType(node);
+      const context = ReactASTUtils.getNodeContext(node);
       const position = ts.getLineAndCharacterOfPosition(
         sourceFile,
         node.getStart(sourceFile),
@@ -313,7 +317,7 @@ export class ReactTextExtractor implements ITextExtractor {
           templateText += text;
         }
       } else if (ts.isJsxExpression(child) && child.expression) {
-        const expressionText = ASTUtils.nodeToText(
+        const expressionText = CommonASTUtils.nodeToText(
           child.expression!,
           sourceFile,
         );

@@ -37,8 +37,11 @@ export class VueImportManager implements IImportManager {
       updatedCode = this.addPluginLocaleImport(updatedCode);
     } else {
       const isScriptSetup = /<script\s+setup/.test(code);
+      const hasScriptStrings = fileStrings.some(
+        (s) => s.context === 'script' || s.context === 'js-code',
+      );
 
-      if (isScriptSetup) {
+      if (isScriptSetup && hasScriptStrings) {
         updatedCode = this.addHookImport(updatedCode);
         updatedCode = this.addHookDeclaration(updatedCode);
       }
@@ -102,7 +105,7 @@ export class VueImportManager implements IImportManager {
   /**
    * 添加 Hook 声明（如 const { t } = useI18n() 或 const { t } = useTranslation()）
    */
-  private addHookDeclaration(code: string): string {
+  addHookDeclaration(code: string): string {
     if (this.library.getHookDeclarationCheckRegex().test(code)) {
       return code;
     }

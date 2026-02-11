@@ -198,8 +198,6 @@ export class LLMClient {
     let successCount = 0;
     let failedCount = 0;
 
-    const failedIndices: number[] = [];
-
     const batchPromises = batches.map((batch, index) =>
       this.concurrencyController.add(async () => {
         const jsonText = JSON.stringify(batch, null, 2);
@@ -220,7 +218,6 @@ export class LLMClient {
         } catch (error) {
           LoggerUtils.error(`❌ 翻译批次 ${index + 1} 失败:`, error);
           failedCount++;
-          failedIndices.push(index);
 
           if (onProgress) {
             onProgress(successCount + failedCount, batches.length);
@@ -231,11 +228,7 @@ export class LLMClient {
 
     await Promise.all(batchPromises);
 
-    // 从结果中移除失败的批次（保留为 undefined），调用方需要处理
-    // 用原始数据填充失败批次，但标记 en-US 为空以避免误写入
-    for (const idx of failedIndices) {
-      results[idx] = batches[idx]!;
-    }
+    // 失败的批次保留为 undefined，调用方通过 `if (!translatedBatch) continue` 跳过
 
     if (failedCount > 0) {
       LoggerUtils.warn(

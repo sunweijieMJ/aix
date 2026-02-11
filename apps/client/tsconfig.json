@@ -3,6 +3,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@/*": ["src/*"],
       "@aix/button": ["../../packages/button/src"],
       "@aix/theme": ["../../packages/theme/src"],
       "@aix/hooks": ["../../packages/hooks/src"]

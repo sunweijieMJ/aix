@@ -157,6 +157,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     },
     batchSize: userConfig.batchSize ?? DEFAULT_BATCH_SIZE,
     batchDelay: userConfig.batchDelay ?? DEFAULT_BATCH_DELAY,
+    format: userConfig.format ?? true,
     include: userConfig.include ?? DEFAULT_INCLUDE,
     exclude: userConfig.exclude ?? DEFAULT_EXCLUDE,
   };

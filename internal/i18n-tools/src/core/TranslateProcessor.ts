@@ -70,7 +70,11 @@ export class TranslateProcessor extends BaseProcessor {
       `⚙️  批次设置: ${this.batchConfig.size} 条目/批次, ${this.batchConfig.delay}ms 延时`,
     );
 
-    const result = await this.performBatchTranslation(toTranslate, targetPath);
+    const result = await this.performBatchTranslation(
+      toTranslate,
+      data,
+      targetPath,
+    );
     this.logTranslationResult(result);
   }
 
@@ -87,6 +91,7 @@ export class TranslateProcessor extends BaseProcessor {
 
   private async performBatchTranslation(
     toTranslate: Translations,
+    currentData: Translations,
     filePath: string,
   ): Promise<{
     totalTranslated: number;
@@ -102,64 +107,41 @@ export class TranslateProcessor extends BaseProcessor {
       `🔄 最大并发数: ${this.llmClient.getConcurrencyStatus().maxConcurrency}`,
     );
 
-    try {
-      const translatedBatches = await this.llmClient.batchTranslate(
-        batches,
-        (current, total) => {
-          LoggerUtils.info(
-            `📈 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
-          );
-        },
-      );
+    const translatedBatches = await this.llmClient.batchTranslate(
+      batches,
+      (current, total) => {
+        LoggerUtils.info(
+          `📈 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
+        );
+      },
+    );
 
-      for (let i = 0; i < translatedBatches.length; i++) {
-        const translatedBatch = translatedBatches[i];
-        if (!translatedBatch) continue;
+    for (let i = 0; i < translatedBatches.length; i++) {
+      const translatedBatch = translatedBatches[i];
+      if (!translatedBatch) continue;
 
-        try {
-          const translated = await this.processBatchResult(
-            translatedBatch,
-            batches[i]!,
-            i,
-            batches.length,
-            filePath,
-          );
-          totalTranslated += translated;
-          if (translated > 0) {
-            successBatches++;
-          }
-        } catch (error) {
-          LoggerUtils.error(
-            `批次 ${i + 1} 结果处理失败:`,
-            error instanceof Error ? error.message : error,
-          );
-        }
-      }
-    } catch (error) {
-      LoggerUtils.error(`并发翻译失败，回退到串行处理:`, error);
-
-      for (let i = 0; i < batches.length; i++) {
-        try {
-          const translated = await this.processBatch(
-            batches[i]!,
-            i,
-            batches.length,
-            filePath,
-          );
-          totalTranslated += translated;
+      try {
+        const translated = this.processBatchResult(
+          currentData,
+          translatedBatch,
+          batches[i]!,
+          i,
+          batches.length,
+        );
+        totalTranslated += translated;
+        if (translated > 0) {
           successBatches++;
-
-          if (i < batches.length - 1) {
-            await this.delay(this.batchConfig.delay);
-          }
-        } catch (error) {
-          LoggerUtils.error(
-            `批次 ${i + 1} 失败:`,
-            error instanceof Error ? error.message : error,
-          );
         }
+      } catch (error) {
+        LoggerUtils.error(
+          `批次 ${i + 1} 结果处理失败:`,
+          error instanceof Error ? error.message : error,
+        );
       }
     }
+
+    // 统一写入文件
+    FileUtils.createOrEmptyFile(filePath, JSON.stringify(currentData, null, 2));
 
     return { totalTranslated, successBatches, totalBatches: batches.length };
   }
@@ -173,97 +155,55 @@ export class TranslateProcessor extends BaseProcessor {
     return chunks;
   }
 
-  private async processBatch(
-    batch: Translations,
-    batchIndex: number,
-    totalBatches: number,
-    filePath: string,
-  ): Promise<number> {
-    LoggerUtils.info(
-      `🔄 处理批次 ${batchIndex + 1}/${totalBatches} (${Object.keys(batch).length} 条目)`,
-    );
-
-    try {
-      const jsonText = JSON.stringify(batch, null, 2);
-      const translatedJsonText = await this.llmClient.translateJson(jsonText);
-      const translatedBatch: Translations = JSON.parse(translatedJsonText);
-
-      if (typeof translatedBatch !== 'object' || translatedBatch === null) {
-        throw new Error(`批次 ${batchIndex + 1} 翻译结果格式错误`);
-      }
-
-      const translatedCount = this.updateFileWithTranslations(
-        filePath,
-        batch,
-        translatedBatch,
-      );
-      LoggerUtils.success(
-        `✅ 批次 ${batchIndex + 1} 完成，翻译 ${translatedCount} 个条目`,
-      );
-      return translatedCount;
-    } catch (error) {
-      LoggerUtils.error(`批次 ${batchIndex + 1} 处理失败:`, error);
-      throw error;
-    }
-  }
-
-  private async processBatchResult(
+  private processBatchResult(
+    currentData: Translations,
     translatedBatch: Translations,
     originalBatch: Translations,
     batchIndex: number,
     totalBatches: number,
-    filePath: string,
-  ): Promise<number> {
+  ): number {
     LoggerUtils.info(
       `🔄 处理批次 ${batchIndex + 1}/${totalBatches} 的翻译结果...`,
     );
 
-    try {
-      if (typeof translatedBatch !== 'object' || translatedBatch === null) {
-        throw new Error(`批次 ${batchIndex + 1} 翻译结果格式错误`);
-      }
-
-      const translatedCount = this.updateFileWithTranslations(
-        filePath,
-        originalBatch,
-        translatedBatch,
-      );
-      LoggerUtils.success(
-        `✅ 批次 ${batchIndex + 1} 结果处理完成，翻译 ${translatedCount} 个条目`,
-      );
-      return translatedCount;
-    } catch (error) {
-      LoggerUtils.error(`批次 ${batchIndex + 1} 结果处理失败:`, error);
-      throw error;
+    if (typeof translatedBatch !== 'object' || translatedBatch === null) {
+      throw new Error(`批次 ${batchIndex + 1} 翻译结果格式错误`);
     }
+
+    const translatedCount = this.mergeTranslations(
+      currentData,
+      originalBatch,
+      translatedBatch,
+    );
+    LoggerUtils.success(
+      `✅ 批次 ${batchIndex + 1} 结果处理完成，翻译 ${translatedCount} 个条目`,
+    );
+    return translatedCount;
   }
 
-  private updateFileWithTranslations(
-    filePath: string,
+  /**
+   * 将翻译结果合并到内存数据中（纯内存操作，不涉及文件 I/O）
+   */
+  private mergeTranslations(
+    currentData: Translations,
     originalBatch: Translations,
     translatedBatch: Translations,
   ): number {
-    const currentData = FileUtils.safeLoadJsonFile<Translations>(filePath, {
-      errorMessage: '读取翻译文件失败',
-      silent: true,
-    });
     let translatedCount = 0;
-
     const targetLocale = this.config.locale.target;
+
     for (const [key] of Object.entries(originalBatch)) {
       const newEnValue = translatedBatch[key]?.[targetLocale];
       if (newEnValue?.trim()) {
-        currentData[key]![targetLocale] = newEnValue;
+        if (!currentData[key]) {
+          currentData[key] = {};
+        }
+        currentData[key][targetLocale] = newEnValue;
         translatedCount++;
       }
     }
 
-    FileUtils.createOrEmptyFile(filePath, JSON.stringify(currentData, null, 2));
     return translatedCount;
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private logTranslationResult(result: {

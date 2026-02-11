@@ -26,11 +26,16 @@ const getAlias = (): AliasOptions => {
   if (LINK_MODE === 'source') {
     console.log('🔗 联调模式: 源码映射 (支持热更新)');
     return {
+      '@': path.resolve(__dirname, 'src'),
       '@aix/button/style': path.resolve(
         AIX_ROOT,
         'packages/button/es/index.css',
       ),
       '@aix/button': path.resolve(AIX_ROOT, 'packages/button/src'),
+      '@aix/icons': path.resolve(AIX_ROOT, 'packages/icons/src'),
+      '@aix/pdf-viewer': path.resolve(AIX_ROOT, 'packages/pdf-viewer/src'),
+      '@aix/subtitle': path.resolve(AIX_ROOT, 'packages/subtitle/src'),
+      '@aix/video': path.resolve(AIX_ROOT, 'packages/video/src'),
       '@aix/theme': path.resolve(AIX_ROOT, 'packages/theme/src'),
       '@aix/hooks': path.resolve(AIX_ROOT, 'packages/hooks/src'),
     };
@@ -50,6 +55,16 @@ export default defineConfig({
   optimizeDeps: {
     // 源码模式才排除预构建，Yalc 模式需要预构建以提升性能
     exclude:
-      LINK_MODE === 'source' ? ['@aix/button', '@aix/theme', '@aix/hooks'] : [],
+      LINK_MODE === 'source'
+        ? [
+            '@aix/button',
+            '@aix/icons',
+            '@aix/pdf-viewer',
+            '@aix/subtitle',
+            '@aix/video',
+            '@aix/theme',
+            '@aix/hooks',
+          ]
+        : [],
   },
 });

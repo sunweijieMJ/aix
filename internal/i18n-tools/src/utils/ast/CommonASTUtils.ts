@@ -7,6 +7,88 @@ import { LoggerUtils } from '../logger';
  */
 export class CommonASTUtils {
   /**
+   * 检查节点是否已被国际化结构包裹
+   * 支持检测 t()/$t()、formatMessage()、defineMessages()、
+   * FormattedMessage/Trans JSX 组件等
+   */
+  static isAlreadyInternationalized(node: ts.Node): boolean {
+    let parent = node.parent;
+    while (parent) {
+      if (ts.isCallExpression(parent)) {
+        const expression = parent.expression;
+
+        if (
+          ts.isPropertyAccessExpression(expression) &&
+          ts.isIdentifier(expression.name) &&
+          expression.name.text === 'formatMessage'
+        ) {
+          return true;
+        }
+
+        if (
+          ts.isIdentifier(expression) &&
+          expression.text === 'defineMessages'
+        ) {
+          return true;
+        }
+
+        if (
+          ts.isIdentifier(expression) &&
+          (expression.text === 't' || expression.text === '$t')
+        ) {
+          return true;
+        }
+
+        if (
+          ts.isPropertyAccessExpression(expression) &&
+          ts.isIdentifier(expression.name) &&
+          (expression.name.text === 't' || expression.name.text === '$t')
+        ) {
+          return true;
+        }
+      }
+
+      if (ts.isJsxAttribute(parent)) {
+        const jsxElement = parent.parent.parent;
+        if (
+          ts.isJsxOpeningElement(jsxElement) ||
+          ts.isJsxSelfClosingElement(jsxElement)
+        ) {
+          if (
+            ts.isIdentifier(jsxElement.tagName) &&
+            (jsxElement.tagName.text === 'FormattedMessage' ||
+              jsxElement.tagName.text === 'Trans')
+          ) {
+            return true;
+          }
+        }
+      }
+      if (ts.isJsxElement(parent)) {
+        const openingElement = parent.openingElement;
+        if (
+          ts.isIdentifier(openingElement.tagName) &&
+          (openingElement.tagName.text === 'FormattedMessage' ||
+            openingElement.tagName.text === 'Trans')
+        ) {
+          return true;
+        }
+      }
+
+      if (
+        ts.isBlock(parent) ||
+        ts.isFunctionLike(parent) ||
+        ts.isClassLike(parent)
+      ) {
+        return false;
+      }
+
+      parent = parent.parent;
+    }
+
+    return false;
+  }
+
+  /**
    * 获取字符串字面量的值
    * @param node - TypeScript AST节点
    * @returns 字符串值，如果不是字符串字面量则返回undefined
@@ -351,17 +433,21 @@ export class CommonASTUtils {
 
     let result = sourceText;
 
-    const validReplacements = replacements.filter((replacement, index) => {
-      return !replacements.some((other, otherIndex) => {
-        if (index === otherIndex) return false;
-
-        return (
-          (replacement.start >= other.start && replacement.start < other.end) ||
-          (replacement.end > other.start && replacement.end <= other.end) ||
-          (replacement.start <= other.start && replacement.end >= other.end)
-        );
-      });
-    });
+    // 按范围大小降序排序，优先保留覆盖范围更大的替换
+    const sortedBySize = [...replacements].sort(
+      (a, b) => b.end - b.start - (a.end - a.start),
+    );
+    // 贪心选择：依次选入不与已选替换重叠的项
+    const validReplacements: typeof replacements = [];
+    for (const replacement of sortedBySize) {
+      const hasOverlap = validReplacements.some(
+        (selected) =>
+          replacement.start < selected.end && replacement.end > selected.start,
+      );
+      if (!hasOverlap) {
+        validReplacements.push(replacement);
+      }
+    }
 
     validReplacements.sort((a, b) => b.start - a.start);
 

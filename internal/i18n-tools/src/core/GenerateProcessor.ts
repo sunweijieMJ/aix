@@ -1,6 +1,5 @@
 import fs from 'fs';
 import type { ResolvedConfig } from '../config';
-import { ReactAdapter, VueAdapter } from '../adapters';
 import type { FrameworkAdapter } from '../adapters';
 import { CommandUtils } from '../utils/command-utils';
 import { FileUtils } from '../utils/file-utils';
@@ -23,23 +22,24 @@ export class GenerateProcessor extends BaseProcessor {
   private framework: 'react' | 'vue';
   /** 框架适配器 */
   private adapter: FrameworkAdapter;
+  /** 是否为交互模式（自动模式下为 false，跳过确认提示） */
+  private interactive: boolean;
 
   /**
    * 构造函数
    * @param config - 已解析的配置
    * @param isCustom - 是否为定制目录
+   * @param interactive - 是否启用交互确认（默认 true）
    */
-  constructor(config: ResolvedConfig, isCustom: boolean = false) {
+  constructor(
+    config: ResolvedConfig,
+    isCustom: boolean = false,
+    interactive: boolean = true,
+  ) {
     super(config, isCustom);
     this.framework = config.framework;
-    this.adapter =
-      config.framework === 'vue'
-        ? new VueAdapter(config.paths.tImport, config.vue.library, {
-            namespace: config.vue.namespace || undefined,
-          })
-        : new ReactAdapter(config.paths.tImport, config.react.library, {
-            namespace: config.react.namespace || undefined,
-          });
+    this.adapter = BaseProcessor.createAdapter(config);
+    this.interactive = interactive;
     this.llmClient = new LLMClient(
       config.llm.idGeneration,
       config.concurrency.idGeneration,
@@ -96,10 +96,11 @@ export class GenerateProcessor extends BaseProcessor {
       await this.generateIdsForStrings(extractedStrings, skipLLM);
       this.displayResults(extractedStrings);
 
-      const shouldApply =
-        await InteractiveUtils.promptForGenericConfirmation(
-          '是否应用这些转换？',
-        );
+      const shouldApply = this.interactive
+        ? await InteractiveUtils.promptForGenericConfirmation(
+            '是否应用这些转换？',
+          )
+        : true;
 
       if (shouldApply) {
         await this.applyTransformations([filePath], extractedStrings);
@@ -121,6 +122,7 @@ export class GenerateProcessor extends BaseProcessor {
       dirPath,
       this.framework,
       this.config.exclude,
+      this.config.include,
     );
     const frameworkName = this.framework === 'vue' ? 'Vue' : 'React';
 
@@ -136,13 +138,15 @@ export class GenerateProcessor extends BaseProcessor {
       LoggerUtils.info(`  ${index + 1}. ${FileUtils.getRelativePath(file)}`);
     });
 
-    const shouldProceed =
-      await InteractiveUtils.promptForGenericConfirmation(
-        '是否继续分析这些文件？',
-      );
-    if (!shouldProceed) {
-      LoggerUtils.warn('❌ 已取消操作');
-      return;
+    if (this.interactive) {
+      const shouldProceed =
+        await InteractiveUtils.promptForGenericConfirmation(
+          '是否继续分析这些文件？',
+        );
+      if (!shouldProceed) {
+        LoggerUtils.warn('❌ 已取消操作');
+        return;
+      }
     }
 
     const extractor = this.adapter.getTextExtractor();
@@ -156,8 +160,11 @@ export class GenerateProcessor extends BaseProcessor {
     await this.generateIdsForStrings(extractedStrings, skipLLM);
     this.displayResults(extractedStrings, true);
 
-    const shouldApply =
-      await InteractiveUtils.promptForGenericConfirmation('是否应用这些转换？');
+    const shouldApply = this.interactive
+      ? await InteractiveUtils.promptForGenericConfirmation(
+          '是否应用这些转换？',
+        )
+      : true;
 
     if (shouldApply) {
       const processedFiles = Array.from(
@@ -325,7 +332,9 @@ export class GenerateProcessor extends BaseProcessor {
           false,
         );
         fs.writeFileSync(filePath, transformedCode, 'utf-8');
-        await CommandUtils.formatWithPrettier(filePath);
+        if (this.config.format) {
+          await CommandUtils.formatWithPrettier(filePath);
+        }
         LoggerUtils.success(
           `✅ 已转换: ${FileUtils.getRelativePath(filePath)}`,
         );

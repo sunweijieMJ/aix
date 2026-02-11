@@ -1,4 +1,4 @@
-export { ASTUtils, CommonASTUtils, ReactASTUtils } from './ast';
+export { CommonASTUtils, ReactASTUtils } from './ast';
 export { CommandUtils } from './command-utils';
 export { loadEnv } from './env';
 export { ConcurrencyController } from './concurrency-controller';

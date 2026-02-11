@@ -52,26 +52,39 @@ try {
     }
     log.success('lint 校验通过');
 
-    // TypeScript 类型检查
+    // TypeScript 类型检查（按项目分别检查）
     if (filesByType.ts.length) {
       log.info('正在进行 TypeScript 类型检查...');
-      try {
-        // 首先尝试检查所有文件以确保项目整体类型正确
-        execSync('npx tsc --noEmit', {
+
+      // 检测变更文件涉及的项目，按项目分组
+      const projectMap = new Map<string, string[]>();
+      for (const file of filesByType.ts) {
+        const match = file.match(
+          /^(apps\/[^/]+|internal\/[^/]+|packages\/[^/]+)\//,
+        );
+        if (match) {
+          const project = match[1]!;
+          if (!projectMap.has(project)) projectMap.set(project, []);
+          projectMap.get(project)!.push(file);
+        }
+      }
+
+      // 对每个项目运行类型检查
+      for (const [project] of projectMap) {
+        const tsconfig = `${project}/tsconfig.json`;
+        try {
+          execSync(`test -f ${tsconfig}`, { stdio: 'ignore' });
+        } catch {
+          continue; // 没有 tsconfig 的项目跳过
+        }
+
+        log.info(`  检查 ${project}...`);
+        execSync(`npx vue-tsc --noEmit --project ${tsconfig}`, {
           stdio: 'inherit',
         });
-        log.success('TypeScript 类型检查通过');
-      } catch (error) {
-        // 如果整体检查失败，我们只输出改动文件相关的错误
-        log.warn('正在重新检查改动的文件...');
-        execSync(
-          `npx tsc --noEmit ${filesByType.ts.join(' ')} | grep -f <(echo "${filesByType.ts.join('\n')}")`,
-          {
-            stdio: 'inherit',
-          },
-        );
-        throw error; // 仍然抛出错误以中断提交
       }
+
+      log.success('TypeScript 类型检查通过');
     }
   }
 

@@ -44,7 +44,7 @@ export class VueAdapter extends FrameworkAdapter {
 
     this.textExtractor = new VueTextExtractor(library);
     this.transformer = new VueTransformer(tImport, library);
-    this.restoreTransformer = new VueRestoreTransformer(library);
+    this.restoreTransformer = new VueRestoreTransformer(library, tImport);
     this.componentInjector = new VueComponentInjector(library);
     this.importManager = new VueImportManager(tImport, library);
   }

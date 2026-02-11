@@ -94,6 +94,10 @@ export class FileUtils {
     return CONFIG.CHINESE_REGEX.test(processedText);
   }
 
+  /**
+   * 检查翻译值是否有效（不为空、不是纯标点符号）
+   * 支持任意目标语言（拉丁文、CJK、西里尔文等）
+   */
   static isValidEnglishTranslation(enValue: any): boolean {
     if (typeof enValue !== 'string') return false;
 
@@ -104,7 +108,9 @@ export class FileUtils {
       .trim();
     if (cleanValue.length === 0) return false;
 
-    return /[a-zA-Z0-9]/.test(enValue);
+    // 包含任何文字或数字字符即视为有效翻译
+    // \p{L} 匹配任意语言的字母，\p{N} 匹配任意数字
+    return /[\p{L}\p{N}]/u.test(enValue);
   }
 
   static flattenObject(
@@ -265,6 +271,7 @@ export class FileUtils {
     dirPath: string,
     framework: 'react' | 'vue',
     exclude: string[] = ['node_modules', 'dist', 'build', '.git', 'public'],
+    include: string[] = [],
   ): string[] {
     const files: string[] = [];
     const excludeSet = new Set(exclude);
@@ -285,13 +292,72 @@ export class FileUtils {
           entry.isFile() &&
           FileUtils.isFrameworkFile(entry.name, framework)
         ) {
-          files.push(fullPath);
+          if (
+            include.length === 0 ||
+            FileUtils.matchesIncludePatterns(fullPath, dirPath, include)
+          ) {
+            files.push(fullPath);
+          }
         }
       }
     };
 
     walkDir(dirPath);
     return files;
+  }
+
+  /**
+   * 检查文件路径是否匹配 include 模式列表
+   * 支持常见 glob 模式：** / *.ext、dir/ ** / *.ext、dir/ **
+   */
+  static matchesIncludePatterns(
+    filePath: string,
+    baseDir: string,
+    patterns: string[],
+  ): boolean {
+    if (patterns.length === 0) return true;
+
+    const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
+
+    return patterns.some((pattern) => {
+      const normalized = pattern.replace(/\\/g, '/');
+
+      // **/*.ext → 匹配任意目录下指定扩展名的文件
+      if (normalized.startsWith('**/')) {
+        const suffix = normalized.slice(3);
+        if (suffix.startsWith('*.')) {
+          const ext = suffix.slice(1);
+          return relativePath.endsWith(ext);
+        }
+      }
+
+      // dir/** → 匹配目录下所有文件
+      if (normalized.endsWith('/**')) {
+        const prefix = normalized.slice(0, -3);
+        return relativePath.startsWith(prefix + '/') || relativePath === prefix;
+      }
+
+      // dir/**/*.ext → 匹配目录下指定扩展名的文件
+      const doubleStarIdx = normalized.indexOf('/**/');
+      if (doubleStarIdx !== -1) {
+        const prefix = normalized.slice(0, doubleStarIdx);
+        const suffix = normalized.slice(doubleStarIdx + 4);
+        const matchesPrefix = relativePath.startsWith(prefix + '/');
+        if (suffix.startsWith('*.')) {
+          const ext = suffix.slice(1);
+          return matchesPrefix && relativePath.endsWith(ext);
+        }
+      }
+
+      // *.ext → 匹配当前目录下指定扩展名
+      if (normalized.startsWith('*.')) {
+        const ext = normalized.slice(1);
+        return relativePath.endsWith(ext) && !relativePath.includes('/');
+      }
+
+      // 精确匹配
+      return relativePath === normalized;
+    });
   }
 
   static loadLanguageFile<T extends Record<string, any>>(

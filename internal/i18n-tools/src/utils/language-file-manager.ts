@@ -14,14 +14,6 @@ import { CommonASTUtils } from './ast';
  */
 export class LanguageFileManager {
   /**
-   * 获取目录描述
-   * @returns 目录描述字符串
-   */
-  static getDirDescription(isCustom: boolean): string {
-    return isCustom ? '(定制目录)' : '(主目录)';
-  }
-
-  /**
    * 获取语言消息
    * 读取指定目录下的语言文件，自动扁平化嵌套结构
    * @param config - 已解析的配置

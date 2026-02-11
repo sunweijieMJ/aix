@@ -38,7 +38,7 @@ export default defineConfig({
     // 源代码扫描目录
     source: 'src',
     // .ts/.js 文件中 t 函数的导入路径
-    tImport: '@/plugins/i18n',
+    tImport: '@/plugins/locale',
   },
 
   // LLM API 配置
@@ -103,6 +103,9 @@ export default defineConfig({
 
   // 翻译批次间延时（毫秒），默认 500
   batchDelay: 500,
+
+  // 转换后是否自动格式化代码（Prettier + ESLint），默认 true
+  format: false,
 
   // 文件过滤 glob 模式（扫描哪些文件）
   include: ['**/*.vue', '**/*.tsx', '**/*.jsx', '**/*.ts', '**/*.js'],

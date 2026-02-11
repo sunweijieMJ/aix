@@ -187,9 +187,21 @@ importers:
       '@aix/hooks':
         specifier: workspace:*
         version: link:../../packages/hooks
+      '@aix/icons':
+        specifier: workspace:*
+        version: link:../../packages/icons
+      '@aix/pdf-viewer':
+        specifier: workspace:*
+        version: link:../../packages/pdf-viewer
+      '@aix/subtitle':
+        specifier: workspace:*
+        version: link:../../packages/subtitle
       '@aix/theme':
         specifier: workspace:*
         version: link:../../packages/theme
+      '@aix/video':
+        specifier: workspace:*
+        version: link:../../packages/video
       element-plus:
         specifier: ^2.13.2
         version: 2.13.2(vue@3.5.28(typescript@5.9.3))
@@ -197,7 +209,7 @@ importers:
         specifier: ^3.5.28
         version: 3.5.28(typescript@5.9.3)
       vue-i18n:
-        specifier: ^11.1.3
+        specifier: ^11.2.8
         version: 11.2.8(vue@3.5.28(typescript@5.9.3))
     devDependencies:
       '@kit/eslint-config':
@@ -206,6 +218,9 @@ importers:
       '@kit/i18n-tools':
         specifier: workspace:*
         version: link:../../internal/i18n-tools
+      '@kit/stylelint-config':
+        specifier: workspace:*
+        version: link:../../internal/stylelint-config
       '@kit/typescript-config':
         specifier: workspace:*
         version: link:../../internal/typescript-config
@@ -215,6 +230,12 @@ importers:
       cross-env:
         specifier: '*'
         version: 10.1.0
+      eslint:
+        specifier: '*'
+        version: 10.0.0(jiti@2.6.1)
+      stylelint:
+        specifier: '*'
+        version: 17.1.1(typescript@5.9.3)
       tsx:
         specifier: '*'
         version: 4.21.0

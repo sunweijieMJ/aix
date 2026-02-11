@@ -78,11 +78,11 @@ export { LanguageFileManager } from './utils/language-file-manager';
 export { CommandUtils } from './utils/command-utils';
 export { MessageProcessor } from './utils/message-processor';
 export { HooksUtils } from './utils/hooks-utils';
-export { ASTUtils, CommonASTUtils, ReactASTUtils } from './utils/ast';
+export { CommonASTUtils, ReactASTUtils } from './utils/ast';
 
 // Utils - Constants & Enums
 export { FILES, CONFIG, MODE_DESCRIPTIONS } from './utils/constants';
-export { ModeName, FrameworkType } from './utils/types';
+export { ModeName } from './utils/types';
 
 // Utils - Types
 export type {

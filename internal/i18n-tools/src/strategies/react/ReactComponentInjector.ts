@@ -1,6 +1,6 @@
 import type { IComponentInjector } from '../../adapters/FrameworkAdapter';
 import ts from 'typescript';
-import { ASTUtils } from '../../utils/ast/ASTUtils';
+import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
 import { ReactImportManager } from './ReactImportManager';
 import type { ReactI18nLibrary } from './libraries';
 
@@ -46,7 +46,7 @@ export class ReactComponentInjector implements IComponentInjector {
     const componentsToModify: ComponentInfo[] = [];
 
     const initialVisitor = (node: ts.Node) => {
-      const componentInfo = ASTUtils.getComponentInfo(node);
+      const componentInfo = ReactASTUtils.getComponentInfo(node);
       if (componentInfo) {
         const hasIntl = this.library.isTranslationAvailableInScope(
           componentInfo.node,
@@ -109,7 +109,7 @@ export class ReactComponentInjector implements IComponentInjector {
     const transformations: Transformation[] = [];
 
     const finalVisitor = (node: ts.Node) => {
-      const componentInfo = ASTUtils.getComponentInfo(node);
+      const componentInfo = ReactASTUtils.getComponentInfo(node);
       if (componentInfo) {
         const componentToModify = componentsToModify.find(
           (c) => c.name === componentInfo.name && c.type === componentInfo.type,

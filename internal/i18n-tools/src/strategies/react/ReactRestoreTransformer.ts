@@ -1,6 +1,7 @@
 import fs from 'fs';
 import ts from 'typescript';
-import { ASTUtils } from '../../utils/ast/ASTUtils';
+import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
+import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
 import { ReactImportManager } from './ReactImportManager';
 import { ReactTextExtractor } from './ReactTextExtractor';
 import { MessageProcessor } from '../../utils/message-processor';
@@ -28,7 +29,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
   transform(filePath: string, localeMap: LocaleMap): string {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
-    const sourceFile = ASTUtils.parseSourceFile(sourceText, filePath);
+    const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
 
     const context: TransformContext = {
       localeMap,
@@ -98,7 +99,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return null;
     }
 
-    return ASTUtils.createStringOrTemplateNode(
+    return CommonASTUtils.createStringOrTemplateNode(
       templateToUse,
       messageInfo.values,
     );
@@ -114,7 +115,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   ): MessageInfo {
     // react-intl: intl.formatMessage({ id: 'key' }, { values })
     if (this.library.packageName === 'react-intl') {
-      return ASTUtils.extractFormatMessageInfo(
+      return ReactASTUtils.extractFormatMessageInfo(
         node,
         definedMessages,
         sourceFile,
@@ -193,7 +194,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     const finalText = messageTemplate ?? messageInfo.defaultMessage ?? '';
 
     if (messageInfo.values && Object.keys(messageInfo.values).length > 0) {
-      return ASTUtils.createStringOrTemplateNode(finalText, messageInfo.values);
+      return CommonASTUtils.createStringOrTemplateNode(
+        finalText,
+        messageInfo.values,
+      );
     }
 
     return ts.factory.createJsxText(finalText, false);
@@ -209,7 +213,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   ): MessageInfo {
     // react-intl: <FormattedMessage id="key" defaultMessage="text" values={{ }} />
     if (this.library.packageName === 'react-intl') {
-      return ASTUtils.extractFormattedMessageInfo(
+      return ReactASTUtils.extractFormattedMessageInfo(
         openingElement,
         definedMessages,
         sourceFile,

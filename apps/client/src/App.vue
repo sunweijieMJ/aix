@@ -1,123 +1,79 @@
 <template>
   <div class="app">
     <header class="header">
-      <h1>🎨 AIX 组件库示例</h1>
+      <h1>AIX 组件库示例</h1>
       <div class="mode-badge">
         <span>联调模式: </span>
         <code>{{ linkMode }}</code>
         <button class="theme-toggle" @click="toggleMode">
-          {{ mode === 'light' ? '🌙' : '☀️' }} 切换主题
+          {{ mode === 'light' ? '☀️' : '🌙' }} 切换主题
+        </button>
+        <button class="theme-toggle" @click="toggleLocale">
+          {{ locale === 'zh-CN' ? '中' : 'EN' }}
         </button>
       </div>
     </header>
 
     <main class="main">
-      <section class="section">
-        <h2>Button 组件</h2>
-        <p class="description">演示 @aix/button 组件的各种用法</p>
-
-        <div class="demo-group">
-          <h3>基础按钮</h3>
-          <div class="demo-row">
-            <Button>默认按钮</Button>
-            <Button type="primary"> 主要按钮 </Button>
-            <Button type="dashed"> 虚线按钮 </Button>
-            <Button type="text"> 文本按钮 </Button>
-            <Button type="link"> 链接按钮 </Button>
-          </div>
-        </div>
-
-        <div class="demo-group">
-          <h3>禁用状态</h3>
-          <div class="demo-row">
-            <Button disabled> 禁用按钮 </Button>
-            <Button type="primary" disabled> 主要按钮 </Button>
-            <Button type="dashed" disabled> 虚线按钮 </Button>
-          </div>
-        </div>
-
-        <div class="demo-group">
-          <h3>加载状态</h3>
-          <div class="demo-row">
-            <Button :loading="loading" @click="handleClick">
-              {{ loading ? '加载中...' : '点击加载' }}
-            </Button>
-            <Button type="primary" :loading="loading" @click="handleClick">
-              提交表单
-            </Button>
-          </div>
-        </div>
-
-        <div class="demo-group">
-          <h3>不同尺寸</h3>
-          <div class="demo-row">
-            <Button size="small"> 小型按钮 </Button>
-            <Button size="medium"> 中等按钮 </Button>
-            <Button size="large"> 大型按钮 </Button>
-          </div>
-        </div>
-      </section>
-
-      <section class="section info-section">
-        <h2>💡 使用说明</h2>
-        <div class="info-card">
-          <h3>源码模式 (当前)</h3>
-          <pre><code>pnpm dev
-# 或
-VITE_LINK_MODE=source pnpm dev</code></pre>
-          <ul>
-            <li>✅ 支持热更新 (HMR)</li>
-            <li>✅ 修改组件库源码即时生效</li>
-            <li>✅ 调试方便，可查看源码</li>
-          </ul>
-        </div>
-
-        <div class="info-card">
-          <h3>Yalc 模式</h3>
-          <pre><code>VITE_LINK_MODE=yalc pnpm dev</code></pre>
-          <ul>
-            <li>✅ 测试打包后的产物</li>
-            <li>✅ 模拟真实发布环境</li>
-            <li>⚠️ 需要先执行 <code>pnpm link:publish</code></li>
-          </ul>
-        </div>
-      </section>
-
-      <section class="section">
-        <h2>🔧 实时测试</h2>
-        <p class="description">
-          尝试修改
-          <code>packages/button/src/Button.vue</code>
-          文件，页面会自动更新（源码模式下）
-        </p>
-      </section>
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="Button 按钮" name="button">
+          <ButtonDemo />
+        </el-tab-pane>
+        <el-tab-pane label="Icons 图标" name="icons">
+          <IconsDemo />
+        </el-tab-pane>
+        <el-tab-pane label="PdfViewer PDF" name="pdf-viewer">
+          <PdfViewerDemo />
+        </el-tab-pane>
+        <el-tab-pane label="Subtitle 字幕" name="subtitle">
+          <SubtitleDemo />
+        </el-tab-pane>
+        <el-tab-pane label="Video 视频" name="video">
+          <VideoDemo />
+        </el-tab-pane>
+      </el-tabs>
     </main>
-
-    <footer class="footer">
-      <p>AIX Vue Component Library - 组件库联调示例</p>
-    </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Button } from '@aix/button';
 import { useTheme } from '@aix/theme';
-import { ref } from 'vue';
+import { ref, watchEffect } from 'vue';
+import { useI18n } from 'vue-i18n';
+import ButtonDemo from '@/components/ButtonDemo.vue';
+import IconsDemo from '@/components/IconsDemo.vue';
+import PdfViewerDemo from '@/components/PdfViewerDemo.vue';
+import SubtitleDemo from '@/components/SubtitleDemo.vue';
+import VideoDemo from '@/components/VideoDemo.vue';
+import { loadLocaleMessages, LocaleKey } from '@/plugins/locale';
 
-// 初始化主题
 const { mode, toggleMode } = useTheme();
-
-// 检测联调模式
+const { locale } = useI18n();
 const linkMode = import.meta.env.VITE_LINK_MODE || 'source';
 
-const loading = ref(false);
+const activeTab = ref('button');
 
-const handleClick = () => {
-  loading.value = true;
-  setTimeout(() => {
-    loading.value = false;
-  }, 2000);
+const toggleLocale = () => {
+  locale.value = locale.value === 'zh-CN' ? 'en-US' : 'zh-CN';
 };
+
+// 监听语言变化并重新加载语言包
+watchEffect(async () => {
+  const currentLocale = locale.value as LocaleKey;
+  await loadLocaleMessages(currentLocale);
+  // 设置网站语言
+  document.documentElement.setAttribute('lang', currentLocale);
+});
+
+// 监听主题变化
+watchEffect(() => {
+  const html = document.documentElement;
+  const theme = mode.value;
+  // 切换主题
+  html.setAttribute('theme', theme);
+  html.classList.remove('light', 'dark');
+  html.classList.add(theme);
+});
 </script>
 
 <style scoped>
@@ -182,101 +138,6 @@ const handleClick = () => {
   padding: 2rem;
 }
 
-.section {
-  margin-bottom: 2rem;
-  padding: 2rem;
-  border-radius: 12px;
-  background: white;
-  box-shadow: 0 2px 12px rgb(0 0 0 / 0.08);
-}
-
-.section h2 {
-  margin-top: 0;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid #667eea;
-  color: #333;
-  font-size: 1.8rem;
-}
-
-.description {
-  margin-bottom: 1.5rem;
-  color: #666;
-}
-
-.demo-group {
-  margin-bottom: 2rem;
-}
-
-.demo-group:last-child {
-  margin-bottom: 0;
-}
-
-.demo-group h3 {
-  margin-bottom: 1rem;
-  color: #555;
-  font-size: 1.2rem;
-}
-
-.demo-row {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.info-section {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-}
-
-.info-card {
-  margin-bottom: 1rem;
-  padding: 1.5rem;
-  border-left: 4px solid #667eea;
-  border-radius: 8px;
-  background: white;
-}
-
-.info-card:last-child {
-  margin-bottom: 0;
-}
-
-.info-card h3 {
-  margin-top: 0;
-  color: #667eea;
-  font-size: 1.1rem;
-}
-
-.info-card pre {
-  margin: 1rem 0;
-  padding: 1rem;
-  overflow-x: auto;
-  border-radius: 6px;
-  background: #282c34;
-  color: #abb2bf;
-}
-
-.info-card code {
-  font-family: Consolas, Monaco, monospace;
-  font-size: 0.9rem;
-}
-
-.info-card ul {
-  margin: 0;
-  padding-left: 1.5rem;
-}
-
-.info-card li {
-  margin: 0.5rem 0;
-  color: #555;
-}
-
-.info-card li code {
-  padding: 0.2rem 0.4rem;
-  border-radius: 3px;
-  background: #f0f0f0;
-  color: #e83e8c;
-}
-
 .footer {
   margin-top: 2rem;
   padding: 1.5rem;
@@ -289,7 +150,6 @@ const handleClick = () => {
   margin: 0;
 }
 
-/* 全局样式重置 */
 :global(body) {
   margin: 0;
   background: #f5f7fa;
@@ -301,5 +161,49 @@ const handleClick = () => {
 
 :global(*) {
   box-sizing: border-box;
+}
+
+/* 各 demo 页面共享样式 */
+:global(.demo-page) {
+  padding: 0;
+}
+
+:global(.demo-page h2) {
+  margin-top: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #667eea;
+  color: #333;
+  font-size: 1.8rem;
+}
+
+:global(.demo-page .description) {
+  margin-bottom: 1.5rem;
+  color: #666;
+}
+
+:global(.demo-page .demo-group) {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.08);
+}
+
+:global(.demo-page .demo-group:last-child) {
+  margin-bottom: 0;
+}
+
+:global(.demo-page .demo-group h3) {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #555;
+  font-size: 1.1rem;
+}
+
+:global(.demo-page .demo-row) {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
 }
 </style>

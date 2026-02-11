@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
-import { ReactAdapter, VueAdapter } from '../adapters';
 import type { FrameworkAdapter } from '../adapters';
 import { CommandUtils } from '../utils/command-utils';
 import { FileUtils } from '../utils/file-utils';
@@ -27,14 +26,7 @@ export class RestoreProcessor extends BaseProcessor {
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     super(config, isCustom);
     this.framework = config.framework;
-    this.adapter =
-      config.framework === 'vue'
-        ? new VueAdapter(config.paths.tImport, config.vue.library, {
-            namespace: config.vue.namespace || undefined,
-          })
-        : new ReactAdapter(config.paths.tImport, config.react.library, {
-            namespace: config.react.namespace || undefined,
-          });
+    this.adapter = BaseProcessor.createAdapter(config);
   }
 
   protected getOperationName(): string {
@@ -57,8 +49,8 @@ export class RestoreProcessor extends BaseProcessor {
     overwrite: boolean = false,
   ): Promise<void> {
     const options: RestoreOptions = {
-      sourceDir: process.cwd(),
-      outputDir: outputDir || path.join(process.cwd(), 'restored'),
+      sourceDir: this.config.rootDir,
+      outputDir: outputDir || path.join(this.config.rootDir, 'restored'),
       localePath: this.getLocaleFilePath(),
       overwrite,
     };
@@ -89,6 +81,7 @@ export class RestoreProcessor extends BaseProcessor {
               resolvedTarget,
               this.framework,
               this.config.exclude,
+              this.config.include,
             ),
           );
         }
@@ -121,6 +114,7 @@ export class RestoreProcessor extends BaseProcessor {
           options.sourceDir,
           this.framework,
           this.config.exclude,
+          this.config.include,
         );
       }
 
@@ -212,13 +206,15 @@ export class RestoreProcessor extends BaseProcessor {
       FileUtils.ensureDirectoryExists(path.dirname(actualOutputPath));
       fs.writeFileSync(actualOutputPath, transformedCode, 'utf-8');
 
-      try {
-        await CommandUtils.formatWithPrettier(actualOutputPath);
-      } catch (error) {
-        LoggerUtils.error(
-          `格式化失败，但文件已保存: ${FileUtils.getRelativePath(actualOutputPath)}`,
-          error,
-        );
+      if (this.config.format) {
+        try {
+          await CommandUtils.formatWithPrettier(actualOutputPath);
+        } catch (error) {
+          LoggerUtils.error(
+            `格式化失败，但文件已保存: ${FileUtils.getRelativePath(actualOutputPath)}`,
+            error,
+          );
+        }
       }
 
       LoggerUtils.success(`✅ 还原: ${FileUtils.getRelativePath(filePath)}`);

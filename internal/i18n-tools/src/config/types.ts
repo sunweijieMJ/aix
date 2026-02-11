@@ -152,6 +152,9 @@ export interface I18nToolsConfig {
   /** 翻译批次间延时（毫秒），默认 500 */
   batchDelay?: number;
 
+  /** 转换后是否自动格式化代码（Prettier + ESLint），默认 true */
+  format?: boolean;
+
   /** 文件过滤 glob 模式 */
   include?: string[];
   /** 排除的目录或文件 */
@@ -188,6 +191,7 @@ export interface ResolvedConfig {
   concurrency: Required<ConcurrencyConfig>;
   batchSize: number;
   batchDelay: number;
+  format: boolean;
   include: string[];
   exclude: string[];
 }

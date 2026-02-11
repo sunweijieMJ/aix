@@ -110,18 +110,4 @@ export abstract class FrameworkAdapter {
    * 获取导入管理器
    */
   abstract getImportManager(): IImportManager;
-
-  /**
-   * 验证文件是否为该框架的文件
-   */
-  isValidFile(filePath: string): boolean {
-    return this.config.extensions.some((ext) => filePath.endsWith(ext));
-  }
-
-  /**
-   * 获取支持的文件扩展名列表
-   */
-  getSupportedExtensions(): string[] {
-    return this.config.extensions;
-  }
 }

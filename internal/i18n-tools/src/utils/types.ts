@@ -24,16 +24,6 @@ export interface Translations {
 }
 
 /**
- * 支持的框架类型
- */
-export enum FrameworkType {
-  /** React 框架 */
-  REACT = 'react',
-  /** Vue 框架 */
-  VUE = 'vue',
-}
-
-/**
  * 提取的字符串信息接口（框架无关）
  */
 export interface ExtractedString {

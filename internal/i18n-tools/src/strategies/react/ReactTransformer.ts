@@ -1,6 +1,7 @@
 import fs from 'fs';
 import ts from 'typescript';
-import { ASTUtils } from '../../utils/ast/ASTUtils';
+import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
+import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
 import { HooksUtils } from '../../utils/hooks-utils';
 import type { ExtractedString } from '../../utils/types';
 import type { ITransformer } from '../../adapters/FrameworkAdapter';
@@ -83,7 +84,7 @@ export class ReactTransformer implements ITransformer {
     includeDefaultMessage: boolean,
   ): string {
     const filePath = fileStrings[0]!.filePath;
-    const sourceFile = ASTUtils.parseSourceFile(sourceText, filePath);
+    const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
 
     // 按位置倒序排列，从后往前替换以避免位置偏移
     const sortedStrings = fileStrings.sort((a, b) => {
@@ -113,7 +114,7 @@ export class ReactTransformer implements ITransformer {
         extracted.line - 1,
         extracted.column - 1,
       );
-      const node = ASTUtils.findExactStringNode(
+      const node = CommonASTUtils.findExactStringNode(
         sourceFile,
         position,
         extracted.original,
@@ -135,12 +136,12 @@ export class ReactTransformer implements ITransformer {
           const start = node.getStart(sourceFile);
           const end = node.getEnd();
 
-          const originalNodeText = ASTUtils.nodeToText(node, sourceFile);
+          const originalNodeText = CommonASTUtils.nodeToText(node, sourceFile);
           const isTemplateString =
             extracted.original.startsWith('`') &&
             extracted.original.endsWith('`');
           if (
-            ASTUtils.shouldReplaceNode(
+            CommonASTUtils.shouldReplaceNode(
               originalNodeText,
               extracted.original,
               isTemplateString,
@@ -151,7 +152,7 @@ export class ReactTransformer implements ITransformer {
         }
       }
     }
-    return ASTUtils.applyReplacements(sourceText, replacements);
+    return CommonASTUtils.applyReplacements(sourceText, replacements);
   }
 
   /**
@@ -166,7 +167,7 @@ export class ReactTransformer implements ITransformer {
       extracted;
 
     // 获取 defaultMessage 内容
-    const { message, placeholderMap } = ASTUtils.createMessageWithOptions(
+    const { message, placeholderMap } = ReactASTUtils.createMessageWithOptions(
       extracted.original,
       templateVariables,
     );
@@ -190,7 +191,7 @@ export class ReactTransformer implements ITransformer {
     // 对于jsx-attribute和js-code使用函数调用
     const reactContext = context as 'jsx-text' | 'jsx-attribute' | 'js-code';
     const needsWrapper = node
-      ? ASTUtils.needsJsxWrapper(node, reactContext)
+      ? ReactASTUtils.needsJsxWrapper(node, reactContext)
       : context === 'jsx-attribute';
 
     const baseCall = this.library.generateFunctionCall(

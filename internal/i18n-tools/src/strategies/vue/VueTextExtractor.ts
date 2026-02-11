@@ -9,7 +9,7 @@ import {
   type AttributeNode,
   type DirectiveNode,
 } from '@vue/compiler-dom';
-import { ASTUtils } from '../../utils/ast/ASTUtils';
+import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
 import type { ExtractedString } from '../../utils/types';
@@ -162,7 +162,10 @@ export class VueTextExtractor implements ITextExtractor {
         const textNode = node as TextNode;
         const text = textNode.content.trim();
 
-        if (text && this.shouldExtract(text, 'template')) {
+        if (
+          text &&
+          this.shouldExtract(text, 'template', undefined, 'text-node')
+        ) {
           extractedStrings.push({
             original: text,
             semanticId: '',
@@ -398,7 +401,7 @@ export class VueTextExtractor implements ITextExtractor {
 
         // 检查该节点是否已经在国际化调用中（如 $t('...') 或 t('...')）
         if (
-          !ASTUtils.isAlreadyInternationalized(node) &&
+          !CommonASTUtils.isAlreadyInternationalized(node) &&
           this.shouldExtract(text, 'template')
         ) {
           const argName =
@@ -434,10 +437,10 @@ export class VueTextExtractor implements ITextExtractor {
         );
       }
 
-      // 使用 node.forEachChild 而不是 ts.forEachChild 以确保异步正确处理
-      node.forEachChild((child) => {
-        visit(child);
-      });
+      // 收集子节点后逐个 await，避免 forEachChild 丢弃 Promise
+      for (const child of node.getChildren()) {
+        await visit(child);
+      }
     };
 
     await visit(sourceFile);
@@ -483,7 +486,10 @@ export class VueTextExtractor implements ITextExtractor {
 
         for (const span of node.templateSpans) {
           const expression = span.expression;
-          const expressionText = ASTUtils.nodeToText(expression, sourceFile);
+          const expressionText = CommonASTUtils.nodeToText(
+            expression,
+            sourceFile,
+          );
 
           const isLiteral =
             ts.isStringLiteral(expression) ||
@@ -571,7 +577,7 @@ export class VueTextExtractor implements ITextExtractor {
           const text = node.text;
           // 检查该节点是否已经在国际化调用中（如 $t('...') 或 t('...')）
           if (
-            !ASTUtils.isAlreadyInternationalized(node) &&
+            !CommonASTUtils.isAlreadyInternationalized(node) &&
             this.shouldExtract(text, 'template')
           ) {
             extractedStrings.push({
@@ -602,10 +608,10 @@ export class VueTextExtractor implements ITextExtractor {
           );
         }
 
-        // 使用 node.forEachChild 而不是 ts.forEachChild 以确保异步正确处理
-        node.forEachChild((child) => {
-          visit(child);
-        });
+        // 收集子节点后逐个 await，避免 forEachChild 丢弃 Promise
+        for (const child of node.getChildren()) {
+          await visit(child);
+        }
       };
 
       await visit(sourceFile);
@@ -654,7 +660,10 @@ export class VueTextExtractor implements ITextExtractor {
 
         for (const span of node.templateSpans) {
           const expression = span.expression;
-          const expressionText = ASTUtils.nodeToText(expression, sourceFile);
+          const expressionText = CommonASTUtils.nodeToText(
+            expression,
+            sourceFile,
+          );
 
           // 检查是否是字面量
           const isLiteral =
@@ -789,7 +798,10 @@ export class VueTextExtractor implements ITextExtractor {
 
         for (const span of node.templateSpans) {
           const expression = span.expression;
-          const expressionText = ASTUtils.nodeToText(expression, sourceFile);
+          const expressionText = CommonASTUtils.nodeToText(
+            expression,
+            sourceFile,
+          );
 
           // 检查是否是字面量
           const isLiteral =
@@ -898,17 +910,18 @@ export class VueTextExtractor implements ITextExtractor {
     str: string,
     context: 'template' | 'script',
     node?: ts.Node,
+    templateContext?: string,
   ): boolean {
     // 基本过滤条件
     if (!str.trim()) return false;
 
     if (node) {
       // 如果节点已经被国际化结构包裹，则不提取
-      if (ASTUtils.isAlreadyInternationalized(node)) {
+      if (CommonASTUtils.isAlreadyInternationalized(node)) {
         return false;
       }
       // 如果字符串在console调用中，不提取
-      if (ASTUtils.isInConsoleCall(node)) {
+      if (CommonASTUtils.isInConsoleCall(node)) {
         return false;
       }
     }
@@ -918,8 +931,18 @@ export class VueTextExtractor implements ITextExtractor {
       return true;
     }
 
+    // 模板文本节点中的内容都是用户可见文本，跳过技术值过滤直接提取
+    if (templateContext === 'text-node') {
+      return true;
+    }
+
     // 过滤技术值（Element Plus 等组件库的配置值）
     if (this.isTechnicalValue(str)) {
+      return false;
+    }
+
+    // 过滤不可翻译的技术文本（URL、版本号、CSS 值等）
+    if (this.isNonTranslatableText(str)) {
       return false;
     }
 
@@ -990,6 +1013,42 @@ export class VueTextExtractor implements ITextExtractor {
     ];
 
     return technicalValues.includes(str.toLowerCase());
+  }
+
+  /**
+   * 判断字符串是否是不需要翻译的技术文本
+   * 例如 URL、版本号、CSS 值等
+   */
+  private isNonTranslatableText(str: string): boolean {
+    const trimmed = str.trim();
+
+    // URL
+    if (/^https?:\/\//i.test(trimmed) || /^www\./i.test(trimmed)) return true;
+
+    // Email
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return true;
+
+    // 版本号: v1.2.3, 1.0.0, 1.0.0-beta.1
+    if (/^v?\d+(\.\d+)+(-[\w.]+)?$/.test(trimmed)) return true;
+
+    // CSS 数值: 10px, 1.5rem, 100%, 0.5em
+    if (
+      /^\d+(\.\d+)?(px|em|rem|vh|vw|vmin|vmax|%|pt|cm|mm|in|ch|ex)$/i.test(
+        trimmed,
+      )
+    )
+      return true;
+
+    // CSS 颜色: #fff, #ffffff, #ffffffaa
+    if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) return true;
+
+    // CSS 函数: rgb(), rgba(), hsl(), var()
+    if (/^(rgb|rgba|hsl|hsla|var)\s*\(/.test(trimmed)) return true;
+
+    // 文件路径: ./foo, ../bar, /path
+    if (/^\.{0,2}\/\S+$/.test(trimmed)) return true;
+
+    return false;
   }
 
   /**

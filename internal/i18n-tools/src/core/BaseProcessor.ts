@@ -1,4 +1,6 @@
 import type { ResolvedConfig } from '../config';
+import { ReactAdapter, VueAdapter } from '../adapters';
+import type { FrameworkAdapter } from '../adapters';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
 
@@ -69,6 +71,19 @@ export abstract class BaseProcessor {
    */
   protected ensureWorkingDirectory(): void {
     FileUtils.ensureDirectoryExists(this.workingDir);
+  }
+
+  /**
+   * 根据配置创建对应的框架适配器
+   */
+  protected static createAdapter(config: ResolvedConfig): FrameworkAdapter {
+    return config.framework === 'vue'
+      ? new VueAdapter(config.paths.tImport, config.vue.library, {
+          namespace: config.vue.namespace || undefined,
+        })
+      : new ReactAdapter(config.paths.tImport, config.react.library, {
+          namespace: config.react.namespace || undefined,
+        });
   }
 
   /**
