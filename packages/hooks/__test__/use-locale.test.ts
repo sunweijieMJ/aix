@@ -46,15 +46,21 @@ describe('useLocale', () => {
       expect(localeContext.locale).toBe('en-US');
     });
 
-    it('should save locale to localStorage', () => {
-      const { localeContext } = createLocale();
+    it('should save locale to localStorage when persist is true', () => {
+      const { localeContext } = createLocale('zh-CN', { persist: true });
       localeContext.setLocale('en-US');
       expect(localStorage.getItem('aix-locale')).toBe('en-US');
     });
 
-    it('should load locale from localStorage', () => {
-      localStorage.setItem('aix-locale', 'en-US');
+    it('should not save locale to localStorage by default', () => {
       const { localeContext } = createLocale();
+      localeContext.setLocale('en-US');
+      expect(localStorage.getItem('aix-locale')).toBeNull();
+    });
+
+    it('should load locale from localStorage when persist is true', () => {
+      localStorage.setItem('aix-locale', 'en-US');
+      const { localeContext } = createLocale('zh-CN', { persist: true });
 
       // 需要手动触发加载（因为在测试环境中）
       const saved = localStorage.getItem('aix-locale');

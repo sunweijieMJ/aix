@@ -23,99 +23,109 @@ export function createPluralFormatter(locale: Locale): PluralFormatter {
 
 /**
  * 创建日期格式化器
- * 使用浏览器原生 Intl.DateTimeFormat API
+ * 使用浏览器原生 Intl.DateTimeFormat API，Intl 实例在工厂内预创建并复用
  */
 export function createDateFormatter(locale: Locale): DateFormatter {
+  const shortFmt = new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const longFmt = new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  });
+  const timeFmt = new Intl.DateTimeFormat(locale, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+
   return {
-    short: (date: Date) => {
-      return new Intl.DateTimeFormat(locale, {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(date);
-    },
-    long: (date: Date) => {
-      return new Intl.DateTimeFormat(locale, {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        weekday: 'long',
-      }).format(date);
-    },
-    time: (date: Date) => {
-      return new Intl.DateTimeFormat(locale, {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      }).format(date);
-    },
+    short: (date: Date) => shortFmt.format(date),
+    long: (date: Date) => longFmt.format(date),
+    time: (date: Date) => timeFmt.format(date),
     relative: (date: Date) => {
-      const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
       const diff = date.getTime() - Date.now();
       const absDiff = Math.abs(diff);
 
-      // 分钟
+      if (absDiff < 1000 * 60) {
+        return rtf.format(Math.trunc(diff / 1000), 'second');
+      }
       if (absDiff < 1000 * 60 * 60) {
-        const minutes = Math.round(diff / (1000 * 60));
-        return rtf.format(minutes, 'minute');
+        return rtf.format(Math.trunc(diff / (1000 * 60)), 'minute');
       }
-
-      // 小时
       if (absDiff < 1000 * 60 * 60 * 24) {
-        const hours = Math.round(diff / (1000 * 60 * 60));
-        return rtf.format(hours, 'hour');
+        return rtf.format(Math.trunc(diff / (1000 * 60 * 60)), 'hour');
       }
-
-      // 天
       if (absDiff < 1000 * 60 * 60 * 24 * 30) {
-        const days = Math.round(diff / (1000 * 60 * 60 * 24));
-        return rtf.format(days, 'day');
+        return rtf.format(Math.trunc(diff / (1000 * 60 * 60 * 24)), 'day');
       }
-
-      // 月
-      const months = Math.round(diff / (1000 * 60 * 60 * 24 * 30));
-      return rtf.format(months, 'month');
+      if (absDiff < 1000 * 60 * 60 * 24 * 365) {
+        return rtf.format(
+          Math.trunc(diff / (1000 * 60 * 60 * 24 * 30)),
+          'month',
+        );
+      }
+      return rtf.format(Math.trunc(diff / (1000 * 60 * 60 * 24 * 365)), 'year');
     },
   };
 }
 
 /**
  * 创建数字格式化器
- * 使用浏览器原生 Intl.NumberFormat API
+ * 使用浏览器原生 Intl.NumberFormat API，固定选项的实例预创建，变参实例按需缓存
  */
 export function createNumberFormatter(locale: Locale): NumberFormatter {
+  const percentFmt = new Intl.NumberFormat(locale, {
+    style: 'percent',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  const compactFmt = new Intl.NumberFormat(locale, {
+    notation: 'compact',
+    compactDisplay: 'short',
+  });
+  const decimalCache = new Map<number, Intl.NumberFormat>();
+
   return {
     decimal: (num: number, digits = 2) => {
-      return new Intl.NumberFormat(locale, {
-        minimumFractionDigits: digits,
-        maximumFractionDigits: digits,
-      }).format(num);
+      if (!decimalCache.has(digits)) {
+        decimalCache.set(
+          digits,
+          new Intl.NumberFormat(locale, {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+          }),
+        );
+      }
+      return decimalCache.get(digits)!.format(num);
     },
-    percent: (num: number) => {
-      return new Intl.NumberFormat(locale, {
-        style: 'percent',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      }).format(num);
-    },
-    compact: (num: number) => {
-      return new Intl.NumberFormat(locale, {
-        notation: 'compact',
-        compactDisplay: 'short',
-      }).format(num);
-    },
+    percent: (num: number) => percentFmt.format(num),
+    compact: (num: number) => compactFmt.format(num),
   };
 }
 
 /**
  * 创建货币格式化器
- * 使用浏览器原生 Intl.NumberFormat API
+ * 使用浏览器原生 Intl.NumberFormat API，按币种缓存实例
  */
 export function createCurrencyFormatter(locale: Locale): CurrencyFormatter {
+  const cache = new Map<string, Intl.NumberFormat>();
+
   return (amount: number, currency = 'CNY') => {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency,
-    }).format(amount);
+    if (!cache.has(currency)) {
+      cache.set(
+        currency,
+        new Intl.NumberFormat(locale, {
+          style: 'currency',
+          currency,
+        }),
+      );
+    }
+    return cache.get(currency)!.format(amount);
   };
 }

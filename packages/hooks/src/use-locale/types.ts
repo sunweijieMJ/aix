@@ -1,9 +1,14 @@
 import type { ComputedRef } from 'vue';
 
 /**
+ * 支持的语言列表（单一来源，供运行时校验使用）
+ */
+export const SUPPORTED_LOCALES = ['zh-CN', 'en-US'] as const;
+
+/**
  * 支持的语言类型
  */
-export type Locale = 'zh-CN' | 'en-US';
+export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
 /**
  * 组件语言包结构

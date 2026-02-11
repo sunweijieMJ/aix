@@ -1,4 +1,4 @@
-import { inject, computed, unref, isRef } from 'vue';
+import { inject, computed, unref, isRef, type Ref } from 'vue';
 import { LOCALE_INJECTION_KEY } from './context';
 import { commonLocale } from './common';
 import {
@@ -17,7 +17,7 @@ import type {
   CurrencyFormatter,
 } from './types';
 
-// 格式化器缓存：避免重复创建 Intl 实例，提升性能
+// 格式化器缓存：每个 locale 只创建一次格式化器函数，避免重复构造
 const formatterCache = new Map<
   Locale,
   {
@@ -28,10 +28,6 @@ const formatterCache = new Map<
   }
 >();
 
-/**
- * 获取或创建指定语言的格式化器
- * 使用缓存机制，每个 locale 只创建一次
- */
 function getOrCreateFormatters(locale: Locale) {
   if (!formatterCache.has(locale)) {
     formatterCache.set(locale, {
@@ -49,6 +45,51 @@ export * from './types';
 export * from './context';
 export * from './common';
 export * from './formatters';
+
+/**
+ * 内部共享：locale 解析 + 格式化器闭包
+ * 格式化器通过闭包委托，解构后仍能响应 locale 变化
+ */
+function useLocaleCore(overrideLocale?: Locale | Ref<Locale>) {
+  const localeContext = inject(LOCALE_INJECTION_KEY, null);
+
+  // 优先级：overrideLocale > 全局 locale > 默认 'zh-CN'
+  const currentLocale = computed(() => {
+    const override = isRef(overrideLocale)
+      ? overrideLocale.value
+      : overrideLocale;
+    if (override) {
+      return override;
+    }
+    return unref(localeContext?.locale) ?? 'zh-CN';
+  });
+
+  // 闭包委托：每次调用时读取 currentLocale，解构后仍然响应式
+  const plural: PluralFormatter = (count, templates) =>
+    getOrCreateFormatters(currentLocale.value).plural(count, templates);
+
+  const date: DateFormatter = {
+    short: (d) => getOrCreateFormatters(currentLocale.value).date.short(d),
+    long: (d) => getOrCreateFormatters(currentLocale.value).date.long(d),
+    time: (d) => getOrCreateFormatters(currentLocale.value).date.time(d),
+    relative: (d) =>
+      getOrCreateFormatters(currentLocale.value).date.relative(d),
+  };
+
+  const number: NumberFormatter = {
+    decimal: (n, digits?) =>
+      getOrCreateFormatters(currentLocale.value).number.decimal(n, digits),
+    percent: (n) =>
+      getOrCreateFormatters(currentLocale.value).number.percent(n),
+    compact: (n) =>
+      getOrCreateFormatters(currentLocale.value).number.compact(n),
+  };
+
+  const currency: CurrencyFormatter = (amount, curr?) =>
+    getOrCreateFormatters(currentLocale.value).currency(amount, curr);
+
+  return { currentLocale, plural, date, number, currency };
+}
 
 /**
  * 组件内使用的国际化 hook
@@ -86,59 +127,20 @@ export function useLocale<T extends Record<string, unknown>>(
   componentLocale: ComponentLocale<T>,
   overrideLocale?: Locale | import('vue').Ref<Locale>,
 ): LocaleReturn<T & (typeof commonLocale)['zh-CN']> {
-  // 注入全局 locale context
-  const localeContext = inject(LOCALE_INJECTION_KEY, null);
+  const { currentLocale, plural, date, number, currency } =
+    useLocaleCore(overrideLocale);
 
-  // 当前语言（响应式）
-  // 优先级：overrideLocale > 全局 locale > 默认 'zh-CN'
-  const currentLocale = computed(() => {
-    // 支持 Ref<Locale> 或 Locale
-    const override = isRef(overrideLocale)
-      ? overrideLocale.value
-      : overrideLocale;
-    if (override) {
-      return override;
-    }
-    return unref(localeContext?.locale) ?? 'zh-CN';
-  });
-
-  // 翻译文本对象（自动合并公共语言包和组件语言包）
   const t = computed(() => {
     const locale = currentLocale.value;
-
-    // 获取组件语言包
     const component =
       componentLocale[locale] ||
       componentLocale['zh-CN'] ||
       (Object.values(componentLocale)[0] as T);
-
-    // 获取公共语言包
     const common = commonLocale[locale] || commonLocale['zh-CN'];
-
-    // 合并（组件语言包优先）
     return { ...common, ...component } as T & (typeof commonLocale)['zh-CN'];
   });
 
-  // 使用缓存的格式化器（避免重复创建 Intl 实例）
-  const formatters = computed(() => getOrCreateFormatters(currentLocale.value));
-
-  // 返回格式化器作为 getter，保持响应式且避免每次创建新对象
-  return {
-    locale: currentLocale,
-    t,
-    get plural() {
-      return formatters.value.plural;
-    },
-    get date() {
-      return formatters.value.date;
-    },
-    get number() {
-      return formatters.value.number;
-    },
-    get currency() {
-      return formatters.value.currency;
-    },
-  };
+  return { locale: currentLocale, t, plural, date, number, currency };
 }
 
 /**
@@ -173,41 +175,12 @@ export function useLocale<T extends Record<string, unknown>>(
 export function useCommonLocale(
   overrideLocale?: Locale | import('vue').Ref<Locale>,
 ) {
-  const localeContext = inject(LOCALE_INJECTION_KEY, null);
-
-  const currentLocale = computed(() => {
-    // 支持 Ref<Locale> 或 Locale
-    const override = isRef(overrideLocale)
-      ? overrideLocale.value
-      : overrideLocale;
-    if (override) {
-      return override;
-    }
-    return unref(localeContext?.locale) ?? 'zh-CN';
-  });
+  const { currentLocale, plural, date, number, currency } =
+    useLocaleCore(overrideLocale);
 
   const t = computed(() => {
     return commonLocale[currentLocale.value] || commonLocale['zh-CN'];
   });
 
-  // 使用缓存的格式化器（避免重复创建 Intl 实例）
-  const formatters = computed(() => getOrCreateFormatters(currentLocale.value));
-
-  // 返回格式化器作为 getter，保持响应式且避免每次创建新对象
-  return {
-    locale: currentLocale,
-    t,
-    get plural() {
-      return formatters.value.plural;
-    },
-    get date() {
-      return formatters.value.date;
-    },
-    get number() {
-      return formatters.value.number;
-    },
-    get currency() {
-      return formatters.value.currency;
-    },
-  };
+  return { locale: currentLocale, t, plural, date, number, currency };
 }
