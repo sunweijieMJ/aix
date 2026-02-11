@@ -139,6 +139,7 @@ export const BASE_TOKEN_GROUPS = {
     'tokenControlHeight4',
   ],
   '字体族Token (P1)': ['tokenFontFamily', 'tokenFontFamilyCode'],
+  '边框Token (P1)': ['tokenLineWidth', 'tokenLineType'],
   '阴影Token (P0)': [
     'tokenShadow1',
     'tokenShadow2',
@@ -155,6 +156,25 @@ export const BASE_TOKEN_GROUPS = {
     'tokenZIndexNotification',
   ],
 } as const;
+
+/**
+ * 从预设色板配置动态生成 CSS 分组元数据
+ * @param presetColors 预设色板 Record<name, baseColor>
+ * @returns 分组名 → token key 列表
+ */
+export function generatePresetColorGroups(
+  presetColors: Record<string, string>,
+): Record<string, string[]> {
+  const groups: Record<string, string[]> = {};
+  for (const name of Object.keys(presetColors)) {
+    const keys: string[] = [];
+    for (let i = 1; i <= 10; i++) {
+      keys.push(`colorPreset${name}${i}`);
+    }
+    groups[`预设色板 - ${name}`] = keys;
+  }
+  return groups;
+}
 
 /**
  * 语义 Token 分组元数据（用于 CSS 生成）
@@ -207,6 +227,19 @@ export const SEMANTIC_TOKEN_GROUPS = {
     'colorErrorText',
     'colorErrorTextHover',
     'colorErrorTextActive',
+    'colorHighlight',
+  ],
+  '功能色 - Info': [
+    'colorInfo',
+    'colorInfoHover',
+    'colorInfoActive',
+    'colorInfoBg',
+    'colorInfoBgHover',
+    'colorInfoBorder',
+    'colorInfoBorderHover',
+    'colorInfoText',
+    'colorInfoTextHover',
+    'colorInfoTextActive',
   ],
   文本色: [
     'colorText',
@@ -219,6 +252,7 @@ export const SEMANTIC_TOKEN_GROUPS = {
     'colorTextDescription',
     'colorTextBase',
     'colorTextLight',
+    'colorWhite',
   ],
   背景色: [
     'colorBgBase',
@@ -239,7 +273,12 @@ export const SEMANTIC_TOKEN_GROUPS = {
     'colorFillContent',
     'colorFillAlter',
   ],
-  边框色: ['colorBorder', 'colorBorderSecondary', 'colorSplit'],
+  边框色: [
+    'colorBorder',
+    'colorBorderSecondary',
+    'colorBorderDisabled',
+    'colorSplit',
+  ],
   控制项颜色: [
     'controlItemBgHover',
     'controlItemBgActive',
@@ -290,7 +329,20 @@ export const SEMANTIC_TOKEN_GROUPS = {
     'fontSizeXXL',
   ],
   行高: ['lineHeightSM', 'lineHeight', 'lineHeightLG'],
-  '字体族 (P1)': ['fontFamily', 'fontFamilyCode'],
+  '字体族 (P1)': ['fontFamily', 'fontFamilyCode', 'fontWeightStrong'],
+  边框样式: ['borderWidth', 'borderStyle'],
+  动效时长: ['motionDurationFast', 'motionDurationMid', 'motionDurationSlow'],
+  动效缓动: [
+    'motionEaseInOut',
+    'motionEaseOut',
+    'motionEaseIn',
+    'motionEaseOutBack',
+    'motionEaseInBack',
+    'motionEaseOutCirc',
+    'motionEaseInOutCirc',
+  ],
+  焦点环: ['controlOutline', 'controlOutlineWidth'],
+  实心背景色: ['colorBgSolid', 'colorBgSolidHover', 'colorBgSolidActive'],
   '阴影 (P0)': [
     'shadowXS',
     'shadowSM',
@@ -342,6 +394,9 @@ export const SEMANTIC_VAR_REFS: Record<string, string> = {
   // Error 使用 Red
   colorError: 'tokenRed6',
   colorErrorText: 'tokenRed6',
+  // Info - 跟随 Primary
+  colorInfo: 'colorPrimary',
+  colorInfoText: 'colorPrimary',
   // Link - 与 Primary 色系保持一致
   colorLink: 'colorPrimary',
   colorLinkHover: 'colorPrimaryHover',
@@ -398,6 +453,9 @@ export const SEMANTIC_VAR_REFS: Record<string, string> = {
   // Font Family 映射
   fontFamily: 'tokenFontFamily',
   fontFamilyCode: 'tokenFontFamilyCode',
+  // Border Style 映射
+  borderWidth: 'tokenLineWidth',
+  borderStyle: 'tokenLineType',
   // Shadow 映射
   shadowXS: 'tokenShadow1',
   shadow: 'tokenShadow2',

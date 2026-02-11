@@ -411,6 +411,27 @@ export function generateTextColor(color: string): string {
 }
 
 /**
+ * 混合两个颜色
+ * @param color1 - 第一个颜色（RGB 格式字符串）
+ * @param color2 - 第二个颜色（RGB 格式字符串）
+ * @param weight - color1 的权重（0-100），100 表示完全是 color1
+ */
+export function mixColors(
+  color1: string,
+  color2: string,
+  weight: number,
+): string {
+  const rgb1 = parseColor(color1);
+  const rgb2 = parseColor(color2);
+  const w = weight / 100;
+  return rgbToString({
+    r: Math.round(rgb1.r * w + rgb2.r * (1 - w)),
+    g: Math.round(rgb1.g * w + rgb2.g * (1 - w)),
+    b: Math.round(rgb1.b * w + rgb2.b * (1 - w)),
+  });
+}
+
+/**
  * 生成完整的颜色派生系列
  */
 export interface ColorSeries {
@@ -457,4 +478,227 @@ export function generateColorSeries(baseColor: string): ColorSeries {
     textHover: generateHoverColor(normalizedBase),
     textActive: generateActiveColor(normalizedBase),
   };
+}
+
+/**
+ * 基于 10 色阶色板生成完整色彩派生系列（推荐）
+ * 使用 HSV 步进法 + 色相旋转 + 暖冷色区分，色彩过渡更自然
+ *
+ * 色板索引映射（与 Ant Design 一致）：
+ *   0=bg, 1=bgHover, 2=border, 3=borderHover,
+ *   4=hover, 5=base, 6=active,
+ *   7=textHover, 8=text, 9=textActive
+ */
+export function generateColorSeriesFromPalette(baseColor: string): ColorSeries {
+  const palette = generatePalette(baseColor);
+  return {
+    base: palette[5]!,
+    hover: palette[4]!,
+    active: palette[6]!,
+    bg: palette[0]!,
+    bgHover: palette[1]!,
+    border: palette[2]!,
+    borderHover: palette[3]!,
+    text: palette[5]!,
+    textHover: palette[4]!,
+    textActive: palette[6]!,
+  };
+}
+
+// ============================================================
+// HSV 色空间 + 色板生成（Ant Design 风格）
+// ============================================================
+
+export interface HSV {
+  h: number;
+  s: number;
+  v: number;
+}
+
+/**
+ * RGB 转 HSV
+ */
+export function rgbToHsv(rgb: RGB): HSV {
+  const r = rgb.r / 255;
+  const g = rgb.g / 255;
+  const b = rgb.b / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+
+  let h = 0;
+  if (delta !== 0) {
+    if (max === r) {
+      h = ((g - b) / delta + (g < b ? 6 : 0)) * 60;
+    } else if (max === g) {
+      h = ((b - r) / delta + 2) * 60;
+    } else {
+      h = ((r - g) / delta + 4) * 60;
+    }
+  }
+
+  const s = max === 0 ? 0 : (delta / max) * 100;
+  const v = max * 100;
+
+  return {
+    h: Math.round(h * 100) / 100,
+    s: Math.round(s * 100) / 100,
+    v: Math.round(v * 100) / 100,
+  };
+}
+
+/**
+ * HSV 转 RGB
+ */
+export function hsvToRgb(hsv: HSV): RGB {
+  const h = hsv.h / 60;
+  const s = hsv.s / 100;
+  const v = hsv.v / 100;
+
+  const i = Math.floor(h) % 6;
+  const f = h - Math.floor(h);
+  const p = v * (1 - s);
+  const q = v * (1 - f * s);
+  const t = v * (1 - (1 - f) * s);
+
+  let r: number;
+  let g: number;
+  let b: number;
+
+  switch (i) {
+    case 0:
+      r = v;
+      g = t;
+      b = p;
+      break;
+    case 1:
+      r = q;
+      g = v;
+      b = p;
+      break;
+    case 2:
+      r = p;
+      g = v;
+      b = t;
+      break;
+    case 3:
+      r = p;
+      g = q;
+      b = v;
+      break;
+    case 4:
+      r = t;
+      g = p;
+      b = v;
+      break;
+    default:
+      r = v;
+      g = p;
+      b = q;
+      break;
+  }
+
+  return {
+    r: Math.round(r * 255),
+    g: Math.round(g * 255),
+    b: Math.round(b * 255),
+  };
+}
+
+/**
+ * Ant Design 色板生成参数
+ */
+const HUE_STEP = 2;
+const SATURATION_STEP = 16;
+const SATURATION_STEP2 = 5;
+const BRIGHTNESS_STEP1 = 5;
+const BRIGHTNESS_STEP2 = 15;
+const LIGHT_COLOR_COUNT = 5;
+const DARK_COLOR_COUNT = 4;
+
+function getHue(hsv: HSV, i: number, light: boolean): number {
+  let hue: number;
+  if (Math.round(hsv.h) >= 60 && Math.round(hsv.h) <= 240) {
+    hue = light
+      ? Math.round(hsv.h) - HUE_STEP * i
+      : Math.round(hsv.h) + HUE_STEP * i;
+  } else {
+    hue = light
+      ? Math.round(hsv.h) + HUE_STEP * i
+      : Math.round(hsv.h) - HUE_STEP * i;
+  }
+  if (hue < 0) {
+    hue += 360;
+  } else if (hue >= 360) {
+    hue -= 360;
+  }
+  return hue;
+}
+
+function getSaturation(hsv: HSV, i: number, light: boolean): number {
+  if (hsv.h === 0 && hsv.s === 0) {
+    return hsv.s;
+  }
+  let saturation: number;
+  if (light) {
+    saturation = hsv.s - SATURATION_STEP * i;
+  } else if (i === DARK_COLOR_COUNT) {
+    saturation = hsv.s + SATURATION_STEP;
+  } else {
+    saturation = hsv.s + SATURATION_STEP2 * i;
+  }
+  if (saturation > 100) {
+    saturation = 100;
+  }
+  if (light && i === LIGHT_COLOR_COUNT && saturation > 10) {
+    saturation = 10;
+  }
+  if (saturation < 6) {
+    saturation = 6;
+  }
+  return Math.round(saturation * 100) / 100;
+}
+
+function getValue(hsv: HSV, i: number, light: boolean): number {
+  let value: number;
+  if (light) {
+    value = hsv.v + BRIGHTNESS_STEP1 * i;
+  } else {
+    value = hsv.v - BRIGHTNESS_STEP2 * i;
+  }
+  if (value > 100) {
+    value = 100;
+  }
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * 生成 Ant Design 风格 10 色阶色板
+ * @param baseColor 基准颜色（支持 rgb/hex/hsl）
+ * @returns 10 个 rgb() 字符串，index 0=最浅, 5=基色, 9=最深
+ */
+export function generatePalette(baseColor: string): string[] {
+  const rgb = parseColor(baseColor);
+  const hsv = rgbToHsv(rgb);
+
+  const palette: string[] = [];
+
+  for (let i = LIGHT_COLOR_COUNT; i > 0; i--) {
+    const h = getHue(hsv, i, true);
+    const s = getSaturation(hsv, i, true);
+    const v = getValue(hsv, i, true);
+    palette.push(rgbToString(hsvToRgb({ h, s, v })));
+  }
+
+  palette.push(rgbToString(rgb));
+
+  for (let i = 1; i <= DARK_COLOR_COUNT; i++) {
+    const h = getHue(hsv, i, false);
+    const s = getSaturation(hsv, i, false);
+    const v = getValue(hsv, i, false);
+    palette.push(rgbToString(hsvToRgb({ h, s, v })));
+  }
+
+  return palette;
 }

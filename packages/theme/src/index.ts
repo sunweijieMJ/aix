@@ -7,13 +7,17 @@
 // 类型导出
 // ============================================================
 export type {
+  SeedTokens,
   BaseTokens,
   SemanticTokens,
   ThemeTokens,
   PartialThemeTokens,
+  ThemeAlgorithm,
   ThemeConfig,
   ThemeMode,
   TransitionConfig,
+  ComponentThemeConfig,
+  ComponentsConfig,
 } from './theme-types';
 
 // ============================================================
@@ -26,6 +30,7 @@ export {
   type RGB,
   type RGBA,
   type HSL,
+  type HSV,
   type ColorFormat,
   type ColorSeries,
   // 解析函数
@@ -40,9 +45,13 @@ export {
   rgbaToHex,
   rgbToHsl,
   hslToRgb,
+  rgbToHsv,
+  hsvToRgb,
   // 调整函数
   adjustLightness,
   adjustSaturation,
+  // 混合函数
+  mixColors,
   // 生成函数
   generateHoverColor,
   generateActiveColor,
@@ -50,6 +59,8 @@ export {
   generateBorderColor,
   generateTextColor,
   generateColorSeries,
+  generateColorSeriesFromPalette,
+  generatePalette,
 } from './core/color-algorithm';
 
 // 主题定义
@@ -59,16 +70,36 @@ export {
   tokensToCSSVars,
   defaultTheme,
   // 高级 API（用于自定义主题生成）
-  defaultBaseTokens,
-  generateDefaultSemanticTokens,
   applyDarkAlgorithm,
+  applyDarkMixAlgorithm,
+  computeTokenDiff,
+  generateAllComponentOverrides,
+  generateComponentTokenOverrides,
+  // 可组合算法
+  defaultAlgorithm,
+  darkAlgorithm,
+  darkMixAlgorithm,
+  compactAlgorithm,
+  wireframeAlgorithm,
+  normalizeAlgorithm,
 } from './core/define-theme';
+
+// 种子派生（三层 Token 架构）
+export {
+  DEFAULT_PRESET_COLORS,
+  defaultSeedTokens,
+  deriveMapTokens,
+  deriveAliasTokens,
+  derivePresetColorTokens,
+  deriveThemeTokens,
+} from './core/seed-derivation';
 
 // DOM 渲染器（底层 API，通常不需要直接使用）
 export {
   ThemeDOMRenderer,
   createThemeDOMRenderer,
 } from './core/theme-dom-renderer';
+export type { ThemeDOMRendererOptions } from './core/theme-dom-renderer';
 
 // ============================================================
 // Vue 集成 (vue/)
@@ -90,6 +121,9 @@ export {
 export { useTheme } from './vue/use-theme';
 export type { UseThemeReturn } from './vue/use-theme';
 
+// 嵌套主题作用域组件
+export { default as ThemeScope } from './vue/ThemeScope';
+
 // ============================================================
 // 工具函数 (utils/)
 // ============================================================
@@ -107,7 +141,12 @@ export {
   createCSSVarRefs,
   createCSSVarNames,
 } from './utils/css-var';
-export type { CSSVarRefs, CSSVarNames } from './utils/css-var';
+export type {
+  CSSVarRefs,
+  CSSVarNames,
+  CSSVarRefsWithPrefix,
+  CSSVarNamesWithPrefix,
+} from './utils/css-var';
 
 // SSR 兼容性工具
 export {

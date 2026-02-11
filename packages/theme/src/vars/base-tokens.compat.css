@@ -6,7 +6,7 @@
  * 如需修改 Token，请编辑 src/define-theme.ts 后运行 pnpm gen:css
  */
 
-:root {
+:where(:root) {
   /* ========== 色盘 - Cyan ========== */
   --aix-tokenCyan1: rgb(230 255 251);
   --aix-tokenCyan2: rgb(181 245 236);

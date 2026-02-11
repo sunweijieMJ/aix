@@ -3,7 +3,11 @@
  * 验证主题配置的有效性
  */
 
-import type { PartialThemeTokens, ThemeConfig } from '../theme-types';
+import type {
+  PartialThemeTokens,
+  SeedTokens,
+  ThemeConfig,
+} from '../theme-types';
 
 /**
  * 验证结果
@@ -83,7 +87,7 @@ const COLOR_TOKEN_PATTERNS = [
  * 尺寸相关的 Token 字段
  */
 const SIZE_TOKEN_PATTERNS = [
-  /^(size|padding|margin|fontSize|borderRadius|controlHeight|tokenSpacing|tokenFontSize|tokenBorderRadius|tokenControlHeight)/i,
+  /^(size|padding|margin|fontSize|borderRadius|borderWidth|controlHeight|tokenSpacing|tokenFontSize|tokenBorderRadius|tokenControlHeight|tokenLineWidth)/i,
 ];
 
 /**
@@ -92,6 +96,7 @@ const SIZE_TOKEN_PATTERNS = [
 const NUMBER_TOKEN_PATTERNS = [
   /^(lineHeight|tokenLineHeight)/i,
   /^(zIndex|tokenZIndex)/i,
+  /^fontWeightStrong$/,
 ];
 
 /**
@@ -103,6 +108,10 @@ const SHADOW_TOKEN_PATTERNS = [/^(shadow|tokenShadow)/i];
  * 字体族相关的 Token 字段
  */
 const FONT_FAMILY_TOKEN_PATTERNS = [/^(fontFamily|tokenFontFamily)/i];
+
+const STRING_TOKEN_PATTERNS = [
+  /^(borderStyle|tokenLineType|motionDuration|motionEase|controlOutline)/i,
+];
 
 /**
  * 验证颜色格式
@@ -349,6 +358,10 @@ function isFontFamilyField(field: string): boolean {
   return FONT_FAMILY_TOKEN_PATTERNS.some((pattern) => pattern.test(field));
 }
 
+function isStringField(field: string): boolean {
+  return STRING_TOKEN_PATTERNS.some((pattern) => pattern.test(field));
+}
+
 /**
  * Box-shadow 基本格式正则
  * 匹配：offset-x offset-y [blur [spread]] color
@@ -459,6 +472,17 @@ function validateToken(field: string, value: unknown): TokenValidationResult {
     return { error: validateFontFamily(value, field), warning: null };
   }
 
+  // 字符串类型字段验证（borderStyle, motionDuration 等）
+  if (isStringField(field)) {
+    if (typeof value !== 'string' || value.length === 0) {
+      return {
+        error: { field, message: `${field} 必须是非空字符串`, value },
+        warning: null,
+      };
+    }
+    return { error: null, warning: null };
+  }
+
   // 未知字段：返回警告
   return {
     error: null,
@@ -549,16 +573,27 @@ function validateTransition(config: ThemeConfig): ValidationError[] {
 function validateAlgorithm(config: ThemeConfig): ValidationError[] {
   const errors: ValidationError[] = [];
 
-  if (!config.algorithm) {
+  if (config.algorithm === undefined || config.algorithm === null) {
     return errors;
   }
 
-  const validAlgorithms = ['default', 'dark', 'compact', 'dark-compact'];
-  if (!validAlgorithms.includes(config.algorithm)) {
+  const algo = config.algorithm;
+
+  if (Array.isArray(algo)) {
+    for (let i = 0; i < algo.length; i++) {
+      if (typeof algo[i] !== 'function') {
+        errors.push({
+          field: `algorithm[${i}]`,
+          message: '算法数组中的每一项必须是函数',
+          value: algo[i],
+        });
+      }
+    }
+  } else if (typeof algo !== 'function') {
     errors.push({
       field: 'algorithm',
-      message: `算法必须是 ${validAlgorithms.join(', ')} 之一`,
-      value: config.algorithm,
+      message: '算法必须是函数或函数数组',
+      value: algo,
     });
   }
 
@@ -575,7 +610,7 @@ function validateAlgorithm(config: ThemeConfig): ValidationError[] {
  * ```typescript
  * const result = validateThemeConfig({
  *   token: { colorPrimary: 'rgb(255 0 0)' },
- *   algorithm: 'dark'
+ *   algorithm: darkAlgorithm
  * });
  *
  * if (!result.valid) {
@@ -583,9 +618,192 @@ function validateAlgorithm(config: ThemeConfig): ValidationError[] {
  * }
  * ```
  */
+/**
+ * Seed Token 中的颜色字段
+ */
+const SEED_COLOR_FIELDS: (keyof SeedTokens)[] = [
+  'colorPrimary',
+  'colorSuccess',
+  'colorWarning',
+  'colorError',
+  'colorInfo',
+  'colorTextBase',
+  'colorBgBase',
+];
+
+/**
+ * Seed Token 中的正数数值字段
+ */
+const SEED_POSITIVE_NUMBER_FIELDS: (keyof SeedTokens)[] = [
+  'sizeUnit',
+  'sizeStep',
+  'borderRadius',
+  'fontSize',
+  'lineHeight',
+  'controlHeight',
+];
+
+/**
+ * 验证 Seed Token 配置
+ */
+function validateSeedTokens(seed: Partial<SeedTokens>): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  for (const [field, value] of Object.entries(seed)) {
+    if (value === undefined) continue;
+
+    // 颜色字段验证
+    if (SEED_COLOR_FIELDS.includes(field as keyof SeedTokens)) {
+      const error = validateColor(value, `seed.${field}`);
+      if (error) errors.push(error);
+      continue;
+    }
+
+    // fontWeightStrong 正整数校验 (100~900)
+    if (field === 'fontWeightStrong') {
+      if (
+        typeof value !== 'number' ||
+        !Number.isInteger(value) ||
+        value < 100 ||
+        value > 900
+      ) {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是 100~900 之间的整数`,
+          value,
+        });
+      }
+      continue;
+    }
+
+    // 正数数值字段验证
+    if (SEED_POSITIVE_NUMBER_FIELDS.includes(field as keyof SeedTokens)) {
+      if (typeof value !== 'number' || value <= 0) {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是正数`,
+          value,
+        });
+      }
+      continue;
+    }
+
+    // 字体族字段验证
+    if (field === 'fontFamily' || field === 'fontFamilyCode') {
+      if (typeof value !== 'string' || value.length === 0) {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是非空字符串`,
+          value,
+        });
+      }
+      continue;
+    }
+
+    // z-index 字段验证
+    if (field === 'zIndexBase' || field === 'zIndexPopupBase') {
+      if (typeof value !== 'number' || !Number.isInteger(value)) {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是整数`,
+          value,
+        });
+      }
+      continue;
+    }
+
+    // lineWidth 验证
+    if (field === 'lineWidth') {
+      if (typeof value !== 'number' || value < 0) {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是非负数`,
+          value,
+        });
+      }
+      continue;
+    }
+
+    // lineType 验证
+    if (field === 'lineType') {
+      if (typeof value !== 'string' || value.length === 0) {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是非空字符串`,
+          value,
+        });
+      }
+      continue;
+    }
+
+    // motion 验证
+    if (field === 'motion') {
+      if (typeof value !== 'boolean') {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是布尔类型`,
+          value,
+        });
+      }
+    }
+
+    // presetColors 验证
+    if (field === 'presetColors') {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是 Record<string, string> 对象`,
+          value,
+        });
+      } else {
+        for (const [colorName, colorValue] of Object.entries(
+          value as Record<string, unknown>,
+        )) {
+          const colorError = validateColor(
+            colorValue,
+            `seed.presetColors.${colorName}`,
+          );
+          if (colorError) errors.push(colorError);
+        }
+      }
+      continue;
+    }
+
+    // wireframe 验证
+    if (field === 'wireframe') {
+      if (typeof value !== 'boolean') {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是布尔类型`,
+          value,
+        });
+      }
+      continue;
+    }
+
+    // motionUnit / motionBase 验证
+    if (field === 'motionUnit' || field === 'motionBase') {
+      if (typeof value !== 'number' || value < 0) {
+        errors.push({
+          field: `seed.${field}`,
+          message: `${field} 必须是非负数`,
+          value,
+        });
+      }
+    }
+  }
+
+  return errors;
+}
+
 export function validateThemeConfig(config: ThemeConfig): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
+
+  // 验证 Seed Token
+  if (config.seed) {
+    errors.push(...validateSeedTokens(config.seed));
+  }
 
   // 验证 Token
   if (config.token) {

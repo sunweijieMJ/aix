@@ -4,8 +4,9 @@
  */
 
 import { computed, type Ref } from 'vue';
-import { createCSSVarRefs, type CSSVarRefs } from '../utils/css-var';
+import { createCSSVarRefs, type CSSVarRefsWithPrefix } from '../utils/css-var';
 import type {
+  ComponentThemeConfig,
   PartialThemeTokens,
   ThemeConfig,
   ThemeMode,
@@ -33,7 +34,7 @@ export interface UseThemeReturn {
    * const style = { color: cssVar.colorPrimary }; // => { color: "var(--aix-colorPrimary)" }
    * ```
    */
-  cssVar: CSSVarRefs;
+  cssVar: CSSVarRefsWithPrefix<string>;
   /** 设置主题模式 */
   setMode: (mode: ThemeMode) => void;
   /** 切换主题模式（亮色/暗色） */
@@ -54,6 +55,10 @@ export interface UseThemeReturn {
   setTransition: (config: TransitionConfig) => void;
   /** 获取过渡配置 */
   getTransition: () => Required<TransitionConfig>;
+  /** 设置组件级主题覆写 */
+  setComponentTheme: (name: string, config: ComponentThemeConfig) => void;
+  /** 移除组件级主题覆写 */
+  removeComponentTheme: (name: string) => void;
 }
 
 /**
@@ -104,5 +109,7 @@ export function useTheme(): UseThemeReturn {
     reset: context.reset,
     setTransition: context.setTransition,
     getTransition: context.getTransition,
+    setComponentTheme: context.setComponentTheme,
+    removeComponentTheme: context.removeComponentTheme,
   };
 }

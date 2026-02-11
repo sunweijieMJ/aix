@@ -6,7 +6,7 @@
  * 如需修改 Token，请编辑 src/define-theme.ts 后运行 pnpm gen:css
  */
 
-:root {
+:where(:root) {
   /* ========== 品牌色 - Primary ========== */
   --aix-colorPrimary: var(--aix-tokenCyan6);
   --aix-colorPrimaryHover: rgb(53 207 202);

@@ -6,8 +6,8 @@
  * 如需修改 Token，请编辑 src/define-theme.ts 后运行 pnpm gen:css
  */
 
-:root[data-theme='dark'],
-.dark {
+:where(:root[data-theme='dark']),
+:where(.dark) {
   /* ========== 品牌色 - Primary (暗色模式) ========== */
   --aix-colorPrimary: rgb(74 242 242);
   --aix-colorPrimaryHover: rgb(112 245 245);

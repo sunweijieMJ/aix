@@ -4,418 +4,138 @@
 
 import {
   adjustLightness,
-  generateColorSeries,
+  generatePalette,
   hslToRgb,
+  mixColors,
   parseColor,
   rgbToHsl,
   rgbToString,
 } from './color-algorithm';
+import {
+  DEFAULT_PRESET_COLORS,
+  defaultSeedTokens,
+  deriveMapTokens,
+  deriveAliasTokens,
+  derivePresetColorTokens,
+} from './seed-derivation';
 import type {
+  BaseTokens,
+  ComponentsConfig,
+  ComponentThemeConfig,
   PartialThemeTokens,
+  SeedTokens,
+  ThemeAlgorithm,
   ThemeConfig,
   ThemeTokens,
 } from '../theme-types';
 import { CSS_VAR_PREFIX } from '../utils/css-var';
 
 /**
- * 默认的基础Token
- */
-export const defaultBaseTokens: Pick<
-  ThemeTokens,
-  keyof ThemeTokens & `token${string}`
-> = {
-  // Cyan 色盘
-  tokenCyan1: 'rgb(230 255 251)',
-  tokenCyan2: 'rgb(181 245 236)',
-  tokenCyan3: 'rgb(135 232 222)',
-  tokenCyan4: 'rgb(92 219 211)',
-  tokenCyan5: 'rgb(54 207 201)',
-  tokenCyan6: 'rgb(19 194 194)',
-  tokenCyan7: 'rgb(8 151 156)',
-  tokenCyan8: 'rgb(0 109 117)',
-  tokenCyan9: 'rgb(0 71 79)',
-  tokenCyan10: 'rgb(0 35 41)',
-
-  // Blue 色盘 (Ant Design 官方: #1677ff)
-  tokenBlue1: 'rgb(230 244 255)',
-  tokenBlue2: 'rgb(186 224 255)',
-  tokenBlue3: 'rgb(145 202 255)',
-  tokenBlue4: 'rgb(105 177 255)',
-  tokenBlue5: 'rgb(64 150 255)',
-  tokenBlue6: 'rgb(22 119 255)',
-  tokenBlue7: 'rgb(9 88 217)',
-  tokenBlue8: 'rgb(0 62 179)',
-  tokenBlue9: 'rgb(0 44 140)',
-  tokenBlue10: 'rgb(0 29 102)',
-
-  // Purple 色盘 (P1)
-  tokenPurple1: 'rgb(249 240 255)',
-  tokenPurple2: 'rgb(239 219 255)',
-  tokenPurple3: 'rgb(211 173 247)',
-  tokenPurple4: 'rgb(179 127 235)',
-  tokenPurple5: 'rgb(146 84 222)',
-  tokenPurple6: 'rgb(114 46 209)',
-  tokenPurple7: 'rgb(83 29 171)',
-  tokenPurple8: 'rgb(57 16 133)',
-  tokenPurple9: 'rgb(34 7 94)',
-  tokenPurple10: 'rgb(18 3 56)',
-
-  // Green 色盘 (Ant Design 官方: #52c41a)
-  tokenGreen1: 'rgb(246 255 237)',
-  tokenGreen2: 'rgb(217 247 190)',
-  tokenGreen3: 'rgb(183 235 143)',
-  tokenGreen4: 'rgb(149 222 100)',
-  tokenGreen5: 'rgb(115 209 61)',
-  tokenGreen6: 'rgb(82 196 26)',
-  tokenGreen7: 'rgb(56 158 13)',
-  tokenGreen8: 'rgb(35 120 4)',
-  tokenGreen9: 'rgb(19 82 0)',
-  tokenGreen10: 'rgb(9 43 0)',
-
-  // Red 色盘
-  tokenRed1: 'rgb(255 241 240)',
-  tokenRed2: 'rgb(255 204 199)',
-  tokenRed3: 'rgb(255 163 158)',
-  tokenRed4: 'rgb(255 120 117)',
-  tokenRed5: 'rgb(255 77 79)',
-  tokenRed6: 'rgb(245 34 45)',
-  tokenRed7: 'rgb(207 19 34)',
-  tokenRed8: 'rgb(168 7 26)',
-  tokenRed9: 'rgb(130 0 20)',
-  tokenRed10: 'rgb(92 0 17)',
-
-  // Orange 色盘
-  tokenOrange1: 'rgb(255 247 230)',
-  tokenOrange2: 'rgb(255 231 186)',
-  tokenOrange3: 'rgb(255 213 145)',
-  tokenOrange4: 'rgb(255 192 105)',
-  tokenOrange5: 'rgb(255 169 64)',
-  tokenOrange6: 'rgb(250 140 22)',
-  tokenOrange7: 'rgb(212 107 8)',
-  tokenOrange8: 'rgb(173 78 0)',
-  tokenOrange9: 'rgb(135 56 0)',
-  tokenOrange10: 'rgb(97 37 0)',
-
-  // Gold 色盘
-  tokenGold1: 'rgb(255 251 230)',
-  tokenGold2: 'rgb(255 241 184)',
-  tokenGold3: 'rgb(255 229 143)',
-  tokenGold4: 'rgb(255 214 102)',
-  tokenGold5: 'rgb(255 197 61)',
-  tokenGold6: 'rgb(250 173 20)',
-  tokenGold7: 'rgb(212 136 6)',
-  tokenGold8: 'rgb(173 104 0)',
-  tokenGold9: 'rgb(135 77 0)',
-  tokenGold10: 'rgb(97 52 0)',
-
-  // Gray/Neutral 色盘 (P0) - 13级灰阶
-  tokenGray1: 'rgb(255 255 255)',
-  tokenGray2: 'rgb(250 250 250)',
-  tokenGray3: 'rgb(245 245 245)',
-  tokenGray4: 'rgb(240 240 240)',
-  tokenGray5: 'rgb(217 217 217)',
-  tokenGray6: 'rgb(191 191 191)',
-  tokenGray7: 'rgb(140 140 140)',
-  tokenGray8: 'rgb(89 89 89)',
-  tokenGray9: 'rgb(67 67 67)',
-  tokenGray10: 'rgb(48 48 48)',
-  tokenGray11: 'rgb(36 36 36)',
-  tokenGray12: 'rgb(20 20 20)',
-  tokenGray13: 'rgb(0 0 0)',
-
-  // 间距
-  tokenSpacing1: '4px',
-  tokenSpacing2: '8px',
-  tokenSpacing3: '12px',
-  tokenSpacing4: '16px',
-  tokenSpacing5: '20px',
-  tokenSpacing6: '24px',
-  tokenSpacing8: '32px',
-  tokenSpacing12: '48px',
-
-  // 字号
-  tokenFontSize1: '12px',
-  tokenFontSize2: '13px',
-  tokenFontSize3: '14px',
-  tokenFontSize4: '15px',
-  tokenFontSize5: '16px',
-  tokenFontSize6: '18px',
-  tokenFontSize7: '20px',
-
-  // 行高
-  tokenLineHeight1: 1.2,
-  tokenLineHeight2: 1.5,
-  tokenLineHeight3: 1.8,
-
-  // 圆角
-  tokenBorderRadius1: '2px',
-  tokenBorderRadius2: '4px',
-  tokenBorderRadius3: '6px',
-  tokenBorderRadius4: '8px',
-
-  // 控制高度
-  tokenControlHeight1: '16px',
-  tokenControlHeight2: '24px',
-  tokenControlHeight3: '32px',
-  tokenControlHeight4: '40px',
-
-  // 字体族 (P1)
-  tokenFontFamily:
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif",
-  tokenFontFamilyCode:
-    "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
-
-  // 阴影 (P0) - 亮色模式
-  tokenShadow1:
-    '0 1px 2px 0 rgb(0 0 0 / 0.03), 0 1px 6px -1px rgb(0 0 0 / 0.02), 0 2px 4px 0 rgb(0 0 0 / 0.02)',
-  tokenShadow2:
-    '0 3px 6px -4px rgb(0 0 0 / 0.12), 0 6px 16px 0 rgb(0 0 0 / 0.08), 0 9px 28px 8px rgb(0 0 0 / 0.05)',
-  tokenShadow3:
-    '0 6px 16px -8px rgb(0 0 0 / 0.08), 0 9px 28px 0 rgb(0 0 0 / 0.05), 0 12px 48px 16px rgb(0 0 0 / 0.03)',
-  tokenShadow4:
-    '0 12px 24px -12px rgb(0 0 0 / 0.15), 0 24px 48px 0 rgb(0 0 0 / 0.1), 0 36px 72px 24px rgb(0 0 0 / 0.05)',
-
-  // z-index 层级 (P0)
-  tokenZIndexBase: 0,
-  tokenZIndexPopup: 1000,
-  tokenZIndexAffix: 1100,
-  tokenZIndexModal: 1200,
-  tokenZIndexPopover: 1300,
-  tokenZIndexTooltip: 1400,
-  tokenZIndexNotification: 1500,
-};
-
-/**
- * 生成默认的语义Token（亮色模式）
- */
-export function generateDefaultSemanticTokens(
-  baseTokens: typeof defaultBaseTokens,
-): Omit<ThemeTokens, keyof typeof defaultBaseTokens> {
-  const primarySeries = generateColorSeries(baseTokens.tokenCyan6);
-  const successSeries = generateColorSeries(baseTokens.tokenGreen6);
-  const warningSeries = generateColorSeries(baseTokens.tokenGold6);
-  const errorSeries = generateColorSeries(baseTokens.tokenRed6);
-
-  return {
-    // Primary
-    colorPrimary: primarySeries.base,
-    colorPrimaryHover: primarySeries.hover,
-    colorPrimaryActive: primarySeries.active,
-    colorPrimaryBg: primarySeries.bg,
-    colorPrimaryBgHover: primarySeries.bgHover,
-    colorPrimaryBorder: primarySeries.border,
-    colorPrimaryBorderHover: primarySeries.borderHover,
-    colorPrimaryText: primarySeries.text,
-    colorPrimaryTextHover: primarySeries.textHover,
-    colorPrimaryTextActive: primarySeries.textActive,
-
-    // Success
-    colorSuccess: successSeries.base,
-    colorSuccessHover: successSeries.hover,
-    colorSuccessActive: successSeries.active,
-    colorSuccessBg: successSeries.bg,
-    colorSuccessBgHover: successSeries.bgHover,
-    colorSuccessBorder: successSeries.border,
-    colorSuccessBorderHover: successSeries.borderHover,
-    colorSuccessText: successSeries.text,
-    colorSuccessTextHover: successSeries.textHover,
-    colorSuccessTextActive: successSeries.textActive,
-
-    // Warning
-    colorWarning: warningSeries.base,
-    colorWarningHover: warningSeries.hover,
-    colorWarningActive: warningSeries.active,
-    colorWarningBg: warningSeries.bg,
-    colorWarningBgHover: warningSeries.bgHover,
-    colorWarningBorder: warningSeries.border,
-    colorWarningBorderHover: warningSeries.borderHover,
-    colorWarningText: warningSeries.text,
-    colorWarningTextHover: warningSeries.textHover,
-    colorWarningTextActive: warningSeries.textActive,
-
-    // Error
-    colorError: errorSeries.base,
-    colorErrorHover: errorSeries.hover,
-    colorErrorActive: errorSeries.active,
-    colorErrorBg: errorSeries.bg,
-    colorErrorBgHover: errorSeries.bgHover,
-    colorErrorBorder: errorSeries.border,
-    colorErrorBorderHover: errorSeries.borderHover,
-    colorErrorText: errorSeries.text,
-    colorErrorTextHover: errorSeries.textHover,
-    colorErrorTextActive: errorSeries.textActive,
-
-    // Text
-    colorText: 'rgb(0 0 0 / 0.88)',
-    colorTextSecondary: 'rgb(0 0 0 / 0.65)',
-    colorTextTertiary: 'rgb(0 0 0 / 0.45)',
-    colorTextQuaternary: 'rgb(0 0 0 / 0.25)',
-    colorTextDisabled: 'rgb(0 0 0 / 0.25)',
-    colorTextPlaceholder: 'rgb(0 0 0 / 0.25)',
-    colorTextHeading: 'rgb(0 0 0 / 0.88)',
-    colorTextDescription: 'rgb(0 0 0 / 0.45)',
-    colorTextBase: 'rgb(0 0 0)',
-    colorTextLight: 'rgb(255 255 255)',
-
-    // Background
-    colorBgBase: 'rgb(255 255 255)',
-    colorBgContainer: 'rgb(255 255 255)',
-    colorBgContainerDisabled: 'rgb(0 0 0 / 0.04)',
-    colorBgElevated: 'rgb(255 255 255)',
-    colorBgLayout: 'rgb(245 245 245)',
-    colorBgMask: 'rgb(0 0 0 / 0.45)',
-    colorBgSpotlight: 'rgb(0 0 0 / 0.85)',
-    colorBgTextHover: 'rgb(0 0 0 / 0.06)',
-    colorBgTextActive: 'rgb(0 0 0 / 0.15)',
-
-    // Fill
-    colorFill: 'rgb(0 0 0 / 0.15)',
-    colorFillSecondary: 'rgb(0 0 0 / 0.06)',
-    colorFillTertiary: 'rgb(0 0 0 / 0.04)',
-    colorFillQuaternary: 'rgb(0 0 0 / 0.02)',
-    colorFillContent: 'rgb(0 0 0 / 0.06)',
-    colorFillAlter: 'rgb(0 0 0 / 0.02)',
-
-    // Border
-    colorBorder: 'rgb(217 217 217)',
-    colorBorderSecondary: 'rgb(238 238 238)',
-    colorSplit: 'rgb(238 238 238)',
-
-    // Control Item - 使用主题色的派生色
-    controlItemBgHover: 'rgb(0 0 0 / 0.04)',
-    controlItemBgActive: primarySeries.bg,
-    controlItemBgActiveHover: primarySeries.bgHover,
-
-    // Link - 使用主题色
-    colorLink: primarySeries.base,
-    colorLinkHover: primarySeries.hover,
-    colorLinkActive: primarySeries.active,
-
-    // Icon
-    colorIcon: 'rgb(0 0 0 / 0.45)',
-    colorIconHover: 'rgb(0 0 0 / 0.88)',
-
-    // Size
-    sizeXXS: baseTokens.tokenSpacing1,
-    sizeXS: baseTokens.tokenSpacing2,
-    sizeSM: baseTokens.tokenSpacing3,
-    size: baseTokens.tokenSpacing4,
-    sizeMD: baseTokens.tokenSpacing5,
-    sizeLG: baseTokens.tokenSpacing6,
-    sizeXL: baseTokens.tokenSpacing8,
-    sizeXXL: baseTokens.tokenSpacing12,
-
-    // Padding
-    paddingXXS: baseTokens.tokenSpacing1,
-    paddingXS: baseTokens.tokenSpacing2,
-    paddingSM: baseTokens.tokenSpacing3,
-    padding: baseTokens.tokenSpacing4,
-    paddingMD: baseTokens.tokenSpacing5,
-    paddingLG: baseTokens.tokenSpacing6,
-    paddingXL: baseTokens.tokenSpacing8,
-    paddingXXL: baseTokens.tokenSpacing12,
-
-    // Margin
-    marginXXS: baseTokens.tokenSpacing1,
-    marginXS: baseTokens.tokenSpacing2,
-    marginSM: baseTokens.tokenSpacing3,
-    margin: baseTokens.tokenSpacing4,
-    marginMD: baseTokens.tokenSpacing5,
-    marginLG: baseTokens.tokenSpacing6,
-    marginXL: baseTokens.tokenSpacing8,
-    marginXXL: baseTokens.tokenSpacing12,
-
-    // Control Height
-    controlHeightXS: baseTokens.tokenControlHeight1,
-    controlHeightSM: baseTokens.tokenControlHeight2,
-    controlHeight: baseTokens.tokenControlHeight3,
-    controlHeightLG: baseTokens.tokenControlHeight4,
-
-    // Border Radius
-    borderRadiusXS: baseTokens.tokenBorderRadius1,
-    borderRadiusSM: baseTokens.tokenBorderRadius2,
-    borderRadius: baseTokens.tokenBorderRadius3,
-    borderRadiusLG: baseTokens.tokenBorderRadius4,
-
-    // Font Size
-    fontSizeXS: baseTokens.tokenFontSize1,
-    fontSizeSM: baseTokens.tokenFontSize2,
-    fontSize: baseTokens.tokenFontSize3,
-    fontSizeMD: baseTokens.tokenFontSize4,
-    fontSizeLG: baseTokens.tokenFontSize5,
-    fontSizeXL: baseTokens.tokenFontSize6,
-    fontSizeXXL: baseTokens.tokenFontSize7,
-
-    // Line Height
-    lineHeightSM: baseTokens.tokenLineHeight1,
-    lineHeight: baseTokens.tokenLineHeight2,
-    lineHeightLG: baseTokens.tokenLineHeight3,
-
-    // 字体族 (P1)
-    fontFamily: baseTokens.tokenFontFamily,
-    fontFamilyCode: baseTokens.tokenFontFamilyCode,
-
-    // 阴影 (P0) - 递进层级
-    shadowXS: baseTokens.tokenShadow1,
-    shadowSM:
-      '0 2px 4px 0 rgb(0 0 0 / 0.04), 0 1px 6px -1px rgb(0 0 0 / 0.03), 0 1px 2px 0 rgb(0 0 0 / 0.03)',
-    shadow: baseTokens.tokenShadow2,
-    shadowMD:
-      '0 4px 12px -4px rgb(0 0 0 / 0.1), 0 8px 24px 0 rgb(0 0 0 / 0.06), 0 12px 40px 12px rgb(0 0 0 / 0.04)',
-    shadowLG: baseTokens.tokenShadow3,
-    shadowXL: baseTokens.tokenShadow4,
-
-    // z-index 层级 (P0)
-    zIndexBase: baseTokens.tokenZIndexBase,
-    zIndexPopupBase: baseTokens.tokenZIndexPopup,
-    zIndexAffix: baseTokens.tokenZIndexAffix,
-    zIndexModal: baseTokens.tokenZIndexModal,
-    zIndexModalMask: baseTokens.tokenZIndexModal - 1,
-    zIndexPopover: baseTokens.tokenZIndexPopover,
-    zIndexDropdown: baseTokens.tokenZIndexPopup + 50,
-    zIndexTooltip: baseTokens.tokenZIndexTooltip,
-    zIndexNotification: baseTokens.tokenZIndexNotification,
-    zIndexMessage: baseTokens.tokenZIndexNotification + 10,
-
-    // 中性色 (P0) - 亮色模式，从灰阶映射
-    colorNeutral1: baseTokens.tokenGray1,
-    colorNeutral2: baseTokens.tokenGray2,
-    colorNeutral3: baseTokens.tokenGray3,
-    colorNeutral4: baseTokens.tokenGray4,
-    colorNeutral5: baseTokens.tokenGray5,
-    colorNeutral6: baseTokens.tokenGray6,
-    colorNeutral7: baseTokens.tokenGray7,
-    colorNeutral8: baseTokens.tokenGray8,
-    colorNeutral9: baseTokens.tokenGray9,
-    colorNeutral10: baseTokens.tokenGray10,
-  };
-}
-
-/**
  * 定义主题配置
  */
 export function defineTheme(config: ThemeConfig = {}): Required<ThemeConfig> {
   return {
+    seed: config.seed || {},
     token: config.token || {},
-    algorithm: config.algorithm || 'default',
+    algorithm: config.algorithm || [],
     transition: config.transition || {
       duration: 200,
       easing: 'ease-in-out',
       enabled: true,
     },
+    components: config.components || {},
   };
+}
+
+/**
+ * 默认算法（恒等函数，不做任何修改）
+ */
+export const defaultAlgorithm: ThemeAlgorithm = () => ({});
+
+/**
+ * 计算两组 Token 的差异部分
+ */
+export function computeTokenDiff(
+  base: ThemeTokens,
+  target: ThemeTokens,
+): Partial<ThemeTokens> {
+  const diff: Partial<ThemeTokens> = {};
+  for (const key of Object.keys(target) as Array<keyof ThemeTokens>) {
+    if (String(target[key]) !== String(base[key])) {
+      (diff as Record<string, unknown>)[key] = target[key];
+    }
+  }
+  return diff;
+}
+
+/**
+ * 暗色算法
+ * 包装 applyDarkAlgorithm，返回 diff 而非完整 tokens
+ */
+export const darkAlgorithm: ThemeAlgorithm = (tokens) =>
+  computeTokenDiff(tokens, applyDarkAlgorithm(tokens));
+
+/**
+ * 线框模式算法
+ * 移除所有填充/阴影，边框使用文本色，圆角归零
+ */
+export const wireframeAlgorithm: ThemeAlgorithm = (tokens) => ({
+  colorFill: 'transparent',
+  colorFillSecondary: 'transparent',
+  colorFillTertiary: 'transparent',
+  colorFillQuaternary: 'transparent',
+  colorFillContent: 'transparent',
+  colorFillAlter: 'transparent',
+  colorBgContainer: 'transparent',
+  colorBgElevated: 'transparent',
+  controlItemBgHover: 'transparent',
+  controlItemBgActive: 'transparent',
+  controlItemBgActiveHover: 'transparent',
+  colorBgSolid: 'transparent',
+  colorBgSolidHover: 'transparent',
+  colorBgSolidActive: 'transparent',
+  colorBorder: tokens.colorText,
+  colorBorderSecondary: tokens.colorTextSecondary,
+  borderRadiusXS: '0px',
+  borderRadiusSM: '0px',
+  borderRadius: '0px',
+  borderRadiusLG: '0px',
+  shadowXS: 'none',
+  shadowSM: 'none',
+  shadow: 'none',
+  shadowMD: 'none',
+  shadowLG: 'none',
+  shadowXL: 'none',
+});
+
+/**
+ * 紧凑算法
+ * 包装 applyCompactAlgorithm，返回 diff 而非完整 tokens
+ */
+export const compactAlgorithm: ThemeAlgorithm = (tokens) =>
+  computeTokenDiff(tokens, applyCompactAlgorithm(tokens));
+
+/**
+ * 将 algorithm 配置规范化为 ThemeAlgorithm 数组
+ */
+export function normalizeAlgorithm(
+  algorithm: ThemeConfig['algorithm'],
+): ThemeAlgorithm[] {
+  if (!algorithm) return [];
+  if (Array.isArray(algorithm)) return algorithm;
+  return [algorithm];
 }
 
 /**
  * 类型安全的 Token 提取函数
  */
-type BaseTokenKeys = keyof typeof defaultBaseTokens;
+type BaseTokenKeys = keyof BaseTokens;
 
 function extractBaseTokenOverrides(
   token: PartialThemeTokens | undefined,
-): Partial<typeof defaultBaseTokens> {
+): Partial<BaseTokens> {
   if (!token) return {};
-  const result: Partial<typeof defaultBaseTokens> = {};
+  const result: Partial<BaseTokens> = {};
   for (const [key, value] of Object.entries(token)) {
     if (key.startsWith('token') && value !== undefined) {
       (result as Record<string, unknown>)[key as BaseTokenKeys] = value;
@@ -438,52 +158,48 @@ function extractSemanticTokenOverrides(
 }
 
 /**
- * 生成完整的主题Token
+ * 生成完整的主题Token（三层管线）
  */
 export function generateThemeTokens(config: ThemeConfig): ThemeTokens {
-  // 合并基础 Token（类型安全）
-  const baseTokenOverrides = extractBaseTokenOverrides(config.token);
-  const baseTokens: typeof defaultBaseTokens = {
-    ...defaultBaseTokens,
-    ...baseTokenOverrides,
-  };
+  // 1. 合并 Seed 覆写
+  const resolvedSeed: SeedTokens = { ...defaultSeedTokens, ...config.seed };
 
-  // 生成语义 Token
-  const semanticTokens = generateDefaultSemanticTokens(baseTokens);
+  // 2. Seed → Map 派生
+  const mapTokens = deriveMapTokens(resolvedSeed);
 
-  // 合并用户配置的语义 Token（类型安全）
-  const semanticOverrides = extractSemanticTokenOverrides(config.token);
-  const mergedSemanticTokens = {
-    ...semanticTokens,
-    ...semanticOverrides,
-  };
+  // 3. 合并用户对 Map 层的覆写
+  const mapOverrides = extractBaseTokenOverrides(config.token);
+  const resolvedMap: BaseTokens = { ...mapTokens, ...mapOverrides };
 
-  // 应用算法（暗色/紧凑模式，支持组合）
-  let finalTokens: ThemeTokens = {
-    ...baseTokens,
-    ...mergedSemanticTokens,
-  };
+  // 4. Map → Alias 派生
+  const aliasTokens = deriveAliasTokens(resolvedMap, resolvedSeed);
 
-  const algorithm = config.algorithm || 'default';
+  // 5. 合并用户对 Alias 层的覆写
+  const aliasOverrides = extractSemanticTokenOverrides(config.token);
+  const resolvedAlias = { ...aliasTokens, ...aliasOverrides };
 
-  // 判断是否需要应用暗色算法
-  const isDark = algorithm === 'dark' || algorithm === 'dark-compact';
-  // 判断是否需要应用紧凑算法
-  const isCompact = algorithm === 'compact' || algorithm === 'dark-compact';
+  // 6. 组装完整 Token
+  let finalTokens: ThemeTokens = { ...resolvedMap, ...resolvedAlias };
 
-  // 先应用暗色算法（颜色相关）
-  if (isDark) {
-    finalTokens = applyDarkAlgorithm(finalTokens);
+  // 6.5 生成预设色板（作为附加属性挂载）
+  const presetTokens = derivePresetColorTokens(
+    resolvedSeed.presetColors ?? DEFAULT_PRESET_COLORS,
+  );
+  finalTokens = { ...finalTokens, ...presetTokens } as ThemeTokens;
+
+  // 7. 应用算法（支持组合叠加）
+  const algos = normalizeAlgorithm(config.algorithm);
+  for (const algo of algos) {
+    finalTokens = { ...finalTokens, ...algo(finalTokens) };
   }
 
-  // 再应用紧凑算法（尺寸相关）
-  if (isCompact) {
-    finalTokens = applyCompactAlgorithm(finalTokens);
-  }
-
-  // 用户显式覆写优先级最高，确保不被算法覆盖
-  if (isDark || isCompact) {
-    finalTokens = { ...finalTokens, ...semanticOverrides };
+  // 8. 重新应用用户覆写（最高优先级）
+  if (algos.length > 0) {
+    finalTokens = {
+      ...finalTokens,
+      ...mapOverrides,
+      ...aliasOverrides,
+    };
   }
 
   return finalTokens;
@@ -592,68 +308,11 @@ function generateDarkColorSeries(baseColor: string) {
 }
 
 /**
- * 应用智能暗色算法
- * 根据主题色动态生成暗色方案，而非使用硬编码值
+ * 暗色模式中性覆写（文本/背景/填充/边框/阴影/中性色）
+ * 由 applyDarkAlgorithm 和 applyDarkMixAlgorithm 共用
  */
-export function applyDarkAlgorithm(tokens: ThemeTokens): ThemeTokens {
-  // 智能生成功能色系列
-  // 注意：使用语义色而非 base token，这样用户自定义的颜色才会被正确应用
-  const primarySeries = generateDarkColorSeries(tokens.colorPrimary);
-  const successSeries = generateDarkColorSeries(tokens.colorSuccess);
-  const warningSeries = generateDarkColorSeries(tokens.colorWarning);
-  const errorSeries = generateDarkColorSeries(tokens.colorError);
-
+function getDarkNeutralOverrides(tokens: ThemeTokens): Partial<ThemeTokens> {
   return {
-    ...tokens,
-
-    // 品牌色 - 智能调整
-    colorPrimary: primarySeries.base,
-    colorPrimaryHover: primarySeries.hover,
-    colorPrimaryActive: primarySeries.active,
-    colorPrimaryBg: primarySeries.bg,
-    colorPrimaryBgHover: primarySeries.bgHover,
-    colorPrimaryBorder: primarySeries.border,
-    colorPrimaryBorderHover: primarySeries.borderHover,
-    colorPrimaryText: primarySeries.text,
-    colorPrimaryTextHover: primarySeries.textHover,
-    colorPrimaryTextActive: primarySeries.textActive,
-
-    // 功能色 - Success
-    colorSuccess: successSeries.base,
-    colorSuccessHover: successSeries.hover,
-    colorSuccessActive: successSeries.active,
-    colorSuccessBg: successSeries.bg,
-    colorSuccessBgHover: successSeries.bgHover,
-    colorSuccessBorder: successSeries.border,
-    colorSuccessBorderHover: successSeries.borderHover,
-    colorSuccessText: successSeries.text,
-    colorSuccessTextHover: successSeries.textHover,
-    colorSuccessTextActive: successSeries.textActive,
-
-    // 功能色 - Warning
-    colorWarning: warningSeries.base,
-    colorWarningHover: warningSeries.hover,
-    colorWarningActive: warningSeries.active,
-    colorWarningBg: warningSeries.bg,
-    colorWarningBgHover: warningSeries.bgHover,
-    colorWarningBorder: warningSeries.border,
-    colorWarningBorderHover: warningSeries.borderHover,
-    colorWarningText: warningSeries.text,
-    colorWarningTextHover: warningSeries.textHover,
-    colorWarningTextActive: warningSeries.textActive,
-
-    // 功能色 - Error
-    colorError: errorSeries.base,
-    colorErrorHover: errorSeries.hover,
-    colorErrorActive: errorSeries.active,
-    colorErrorBg: errorSeries.bg,
-    colorErrorBgHover: errorSeries.bgHover,
-    colorErrorBorder: errorSeries.border,
-    colorErrorBorderHover: errorSeries.borderHover,
-    colorErrorText: errorSeries.text,
-    colorErrorTextHover: errorSeries.textHover,
-    colorErrorTextActive: errorSeries.textActive,
-
     // 文本色反转
     colorText: 'rgb(255 255 255 / 0.85)',
     colorTextSecondary: 'rgb(255 255 255 / 0.65)',
@@ -688,17 +347,11 @@ export function applyDarkAlgorithm(tokens: ThemeTokens): ThemeTokens {
     // 边框色反转
     colorBorder: 'rgb(255 255 255 / 0.25)',
     colorBorderSecondary: 'rgb(255 255 255 / 0.15)',
+    colorBorderDisabled: 'rgb(255 255 255 / 0.15)',
     colorSplit: 'rgb(255 255 255 / 0.12)',
 
-    // 控制项颜色 - 使用主题色
+    // 控制项颜色
     controlItemBgHover: 'rgb(255 255 255 / 0.12)',
-    controlItemBgActive: primarySeries.bg,
-    controlItemBgActiveHover: primarySeries.bgHover,
-
-    // 链接色 - 使用主题色
-    colorLink: primarySeries.base,
-    colorLinkHover: primarySeries.hover,
-    colorLinkActive: primarySeries.active,
 
     // 图标色
     colorIcon: 'rgb(255 255 255 / 0.45)',
@@ -718,6 +371,11 @@ export function applyDarkAlgorithm(tokens: ThemeTokens): ThemeTokens {
     shadowXL:
       '0 12px 24px -12px rgb(0 0 0 / 0.3), 0 24px 48px 0 rgb(0 0 0 / 0.2), 0 36px 72px 24px rgb(0 0 0 / 0.1)',
 
+    // 实心背景色 - 暗色模式反转
+    colorBgSolid: 'rgb(255 255 255)',
+    colorBgSolidHover: 'rgb(255 255 255 / 0.75)',
+    colorBgSolidActive: 'rgb(255 255 255 / 0.95)',
+
     // 中性色 - 暗色模式反转 (P0)
     colorNeutral1: tokens.tokenGray13,
     colorNeutral2: tokens.tokenGray12,
@@ -733,61 +391,190 @@ export function applyDarkAlgorithm(tokens: ThemeTokens): ThemeTokens {
 }
 
 /**
- * 应用紧凑算法（减小间距、控制高度和字号）
+ * 生成功能色覆写（从 series 对象映射到 Token 字段）
  */
-function applyCompactAlgorithm(tokens: ThemeTokens): ThemeTokens {
+function colorSeriesToOverrides(
+  prefix: string,
+  series: ReturnType<typeof generateDarkColorSeries>,
+): Partial<ThemeTokens> {
+  return {
+    [`color${prefix}`]: series.base,
+    [`color${prefix}Hover`]: series.hover,
+    [`color${prefix}Active`]: series.active,
+    [`color${prefix}Bg`]: series.bg,
+    [`color${prefix}BgHover`]: series.bgHover,
+    [`color${prefix}Border`]: series.border,
+    [`color${prefix}BorderHover`]: series.borderHover,
+    [`color${prefix}Text`]: series.text,
+    [`color${prefix}TextHover`]: series.textHover,
+    [`color${prefix}TextActive`]: series.textActive,
+  } as unknown as Partial<ThemeTokens>;
+}
+
+/**
+ * 应用智能暗色算法
+ * 根据主题色动态生成暗色方案，而非使用硬编码值
+ */
+export function applyDarkAlgorithm(tokens: ThemeTokens): ThemeTokens {
+  const primarySeries = generateDarkColorSeries(tokens.colorPrimary);
+  const successSeries = generateDarkColorSeries(tokens.colorSuccess);
+  const warningSeries = generateDarkColorSeries(tokens.colorWarning);
+  const errorSeries = generateDarkColorSeries(tokens.colorError);
+  const infoSeries = generateDarkColorSeries(tokens.colorInfo);
+
   return {
     ...tokens,
-    // 减小间距
-    paddingXXS: '2px',
-    paddingXS: '4px',
-    paddingSM: '8px',
-    padding: '12px',
-    paddingMD: '16px',
-    paddingLG: '20px',
-    paddingXL: '24px',
-    paddingXXL: '32px',
+    ...getDarkNeutralOverrides(tokens),
+    ...colorSeriesToOverrides('Primary', primarySeries),
+    ...colorSeriesToOverrides('Success', successSeries),
+    ...colorSeriesToOverrides('Warning', warningSeries),
+    ...colorSeriesToOverrides('Error', errorSeries),
+    ...colorSeriesToOverrides('Info', infoSeries),
+    controlItemBgActive: primarySeries.bg,
+    controlItemBgActiveHover: primarySeries.bgHover,
+    colorLink: primarySeries.base,
+    colorLinkHover: primarySeries.hover,
+    colorLinkActive: primarySeries.active,
+    controlOutline: (() => {
+      const rgb = parseColor(primarySeries.base);
+      return `rgb(${rgb.r} ${rgb.g} ${rgb.b} / 0.15)`;
+    })(),
+    colorHighlight: errorSeries.bg,
+  };
+}
 
-    // 减小 margin
-    marginXXS: '2px',
-    marginXS: '4px',
-    marginSM: '8px',
-    margin: '12px',
-    marginMD: '16px',
-    marginLG: '20px',
-    marginXL: '24px',
-    marginXXL: '32px',
+/**
+ * 暗色混合算法（Ant Design 风格）
+ * 使用色板与暗色背景混合，而非 HSL 调整
+ */
+const DARK_MIX_BG = 'rgb(20 20 20)';
+const DARK_COLOR_MAP: Array<{ index: number; amount: number }> = [
+  { index: 7, amount: 15 },
+  { index: 6, amount: 25 },
+  { index: 5, amount: 30 },
+  { index: 5, amount: 45 },
+  { index: 5, amount: 65 },
+  { index: 5, amount: 85 },
+  { index: 4, amount: 90 },
+  { index: 3, amount: 95 },
+  { index: 2, amount: 97 },
+  { index: 1, amount: 98 },
+];
 
-    // 减小 size
-    sizeXXS: '2px',
-    sizeXS: '4px',
-    sizeSM: '8px',
-    size: '12px',
-    sizeMD: '16px',
-    sizeLG: '20px',
-    sizeXL: '24px',
-    sizeXXL: '32px',
+function generateDarkMixColorSeries(baseColor: string) {
+  const palette = generatePalette(baseColor);
+  const mixed = DARK_COLOR_MAP.map(({ index, amount }) =>
+    mixColors(palette[index]!, DARK_MIX_BG, amount),
+  );
+  return {
+    base: mixed[5]!,
+    hover: mixed[4]!,
+    active: mixed[6]!,
+    bg: mixed[0]!,
+    bgHover: mixed[1]!,
+    border: mixed[2]!,
+    borderHover: mixed[3]!,
+    text: mixed[5]!,
+    textHover: mixed[4]!,
+    textActive: mixed[6]!,
+  };
+}
 
-    // 减小控制高度
-    controlHeightXS: '14px',
-    controlHeightSM: '20px',
-    controlHeight: '28px',
-    controlHeightLG: '36px',
+export function applyDarkMixAlgorithm(tokens: ThemeTokens): ThemeTokens {
+  const primarySeries = generateDarkMixColorSeries(tokens.colorPrimary);
+  const successSeries = generateDarkMixColorSeries(tokens.colorSuccess);
+  const warningSeries = generateDarkMixColorSeries(tokens.colorWarning);
+  const errorSeries = generateDarkMixColorSeries(tokens.colorError);
+  const infoSeries = generateDarkMixColorSeries(tokens.colorInfo);
 
-    // 减小字号
-    fontSizeXS: '11px',
-    fontSizeSM: '12px',
-    fontSize: '13px',
-    fontSizeMD: '14px',
-    fontSizeLG: '15px',
-    fontSizeXL: '16px',
-    fontSizeXXL: '18px',
+  return {
+    ...tokens,
+    ...getDarkNeutralOverrides(tokens),
+    ...colorSeriesToOverrides('Primary', primarySeries),
+    ...colorSeriesToOverrides('Success', successSeries),
+    ...colorSeriesToOverrides('Warning', warningSeries),
+    ...colorSeriesToOverrides('Error', errorSeries),
+    ...colorSeriesToOverrides('Info', infoSeries),
+    controlItemBgActive: primarySeries.bg,
+    controlItemBgActiveHover: primarySeries.bgHover,
+    colorLink: primarySeries.base,
+    colorLinkHover: primarySeries.hover,
+    colorLinkActive: primarySeries.active,
+    controlOutline: (() => {
+      const rgb = parseColor(primarySeries.base);
+      return `rgb(${rgb.r} ${rgb.g} ${rgb.b} / 0.15)`;
+    })(),
+    colorHighlight: errorSeries.bg,
+  };
+}
 
-    // 减小圆角
-    borderRadiusXS: '1px',
-    borderRadiusSM: '2px',
-    borderRadius: '4px',
-    borderRadiusLG: '6px',
+export const darkMixAlgorithm: ThemeAlgorithm = (tokens) =>
+  computeTokenDiff(tokens, applyDarkMixAlgorithm(tokens));
+
+/**
+ * 应用紧凑算法（使用缩小的种子重新派生尺寸相关 Token）
+ */
+function applyCompactAlgorithm(tokens: ThemeTokens): ThemeTokens {
+  const compactSeed: Partial<SeedTokens> = {
+    sizeUnit: 2,
+    sizeStep: 4,
+    fontSize: 13,
+    borderRadius: 4,
+    controlHeight: 28,
+    lineWidth: 1,
+  };
+
+  const resolvedSeed = { ...defaultSeedTokens, ...compactSeed };
+  const compactMap = deriveMapTokens(resolvedSeed);
+  const compactAlias = deriveAliasTokens(compactMap, resolvedSeed);
+
+  return {
+    ...tokens,
+    // 从 compactAlias 取尺寸类 Token
+    paddingXXS: compactAlias.paddingXXS,
+    paddingXS: compactAlias.paddingXS,
+    paddingSM: compactAlias.paddingSM,
+    padding: compactAlias.padding,
+    paddingMD: compactAlias.paddingMD,
+    paddingLG: compactAlias.paddingLG,
+    paddingXL: compactAlias.paddingXL,
+    paddingXXL: compactAlias.paddingXXL,
+
+    marginXXS: compactAlias.marginXXS,
+    marginXS: compactAlias.marginXS,
+    marginSM: compactAlias.marginSM,
+    margin: compactAlias.margin,
+    marginMD: compactAlias.marginMD,
+    marginLG: compactAlias.marginLG,
+    marginXL: compactAlias.marginXL,
+    marginXXL: compactAlias.marginXXL,
+
+    sizeXXS: compactAlias.sizeXXS,
+    sizeXS: compactAlias.sizeXS,
+    sizeSM: compactAlias.sizeSM,
+    size: compactAlias.size,
+    sizeMD: compactAlias.sizeMD,
+    sizeLG: compactAlias.sizeLG,
+    sizeXL: compactAlias.sizeXL,
+    sizeXXL: compactAlias.sizeXXL,
+
+    controlHeightXS: compactAlias.controlHeightXS,
+    controlHeightSM: compactAlias.controlHeightSM,
+    controlHeight: compactAlias.controlHeight,
+    controlHeightLG: compactAlias.controlHeightLG,
+
+    fontSizeXS: compactAlias.fontSizeXS,
+    fontSizeSM: compactAlias.fontSizeSM,
+    fontSize: compactAlias.fontSize,
+    fontSizeMD: compactAlias.fontSizeMD,
+    fontSizeLG: compactAlias.fontSizeLG,
+    fontSizeXL: compactAlias.fontSizeXL,
+    fontSizeXXL: compactAlias.fontSizeXXL,
+
+    borderRadiusXS: compactAlias.borderRadiusXS,
+    borderRadiusSM: compactAlias.borderRadiusSM,
+    borderRadius: compactAlias.borderRadius,
+    borderRadiusLG: compactAlias.borderRadiusLG,
   };
 }
 
@@ -811,8 +598,61 @@ export function tokensToCSSVars(
 }
 
 /**
+ * 生成单个组件的 Token 覆写
+ */
+export function generateComponentTokenOverrides(
+  componentConfig: ComponentThemeConfig,
+  globalTokens: ThemeTokens,
+  globalSeed: SeedTokens,
+  globalAlgorithms: ThemeAlgorithm[],
+): Partial<ThemeTokens> {
+  if (componentConfig.algorithm && componentConfig.seed) {
+    const componentSeed = { ...globalSeed, ...componentConfig.seed };
+    const map = deriveMapTokens(componentSeed);
+    const alias = deriveAliasTokens(map, componentSeed);
+    let componentTokens: ThemeTokens = { ...map, ...alias } as ThemeTokens;
+    for (const algo of globalAlgorithms) {
+      componentTokens = { ...componentTokens, ...algo(componentTokens) };
+    }
+    if (componentConfig.token) {
+      componentTokens = { ...componentTokens, ...componentConfig.token };
+    }
+    return computeTokenDiff(globalTokens, componentTokens);
+  }
+  return componentConfig.token || {};
+}
+
+/**
+ * 生成所有组件的 CSS 变量覆写
+ * @returns Record<componentName, Record<tokenKey, value>>
+ */
+export function generateAllComponentOverrides(
+  components: ComponentsConfig,
+  globalTokens: ThemeTokens,
+  globalSeed: SeedTokens,
+  globalAlgorithms: ThemeAlgorithm[],
+): Record<string, Record<string, string>> {
+  const result: Record<string, Record<string, string>> = {};
+  for (const [name, config] of Object.entries(components)) {
+    const diff = generateComponentTokenOverrides(
+      config,
+      globalTokens,
+      globalSeed,
+      globalAlgorithms,
+    );
+    const keys = Object.keys(diff);
+    if (keys.length === 0) continue;
+    const vars: Record<string, string> = {};
+    for (const key of keys) {
+      const val = (diff as Record<string, unknown>)[key];
+      vars[key] = typeof val === 'number' ? String(val) : String(val);
+    }
+    result[name] = vars;
+  }
+  return result;
+}
+
+/**
  * 默认主题
  */
-export const defaultTheme = defineTheme({
-  algorithm: 'default',
-});
+export const defaultTheme = defineTheme({});

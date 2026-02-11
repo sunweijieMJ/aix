@@ -15,17 +15,18 @@
 import fs from 'fs/promises';
 import path from 'path';
 
+import { applyDarkAlgorithm } from './core/define-theme';
 import {
-  applyDarkAlgorithm,
-  defaultBaseTokens,
-  generateDefaultSemanticTokens,
-} from './core/define-theme';
+  defaultSeedTokens,
+  deriveMapTokens,
+  deriveAliasTokens,
+} from './core/seed-derivation';
 import { CSS_VAR_PREFIX } from './utils/css-var';
 import {
   BASE_TOKEN_GROUPS,
   SEMANTIC_TOKEN_GROUPS,
 } from './utils/token-metadata';
-import type { ThemeTokens } from './theme-types';
+import type { BaseTokens, ThemeTokens } from './theme-types';
 
 // ============================================================
 // CLI 参数解析
@@ -49,8 +50,9 @@ function parseArgs(): { output: string } {
 // ============================================================
 
 function prepareTokenData() {
-  const baseTokens = defaultBaseTokens;
-  const lightSemanticTokens = generateDefaultSemanticTokens(baseTokens);
+  const seed = defaultSeedTokens;
+  const baseTokens = deriveMapTokens(seed);
+  const lightSemanticTokens = deriveAliasTokens(baseTokens, seed);
 
   const fullLightTokens = {
     ...baseTokens,
@@ -76,6 +78,7 @@ const SEMANTIC_PREFIXES: [string, string][] = [
   ['colorSuccess', '成功色'],
   ['colorWarning', '警告色'],
   ['colorError', '错误色'],
+  ['colorInfo', '信息色'],
   ['colorText', '文本色'],
   ['colorBg', '背景色'],
   ['colorFill', '填充色'],
@@ -209,7 +212,7 @@ function fmtVal(value: string | number): string {
 // ============================================================
 
 function generateLightCSS(
-  baseTokens: typeof defaultBaseTokens,
+  baseTokens: BaseTokens,
   fullLightTokens: ThemeTokens,
 ): string {
   const lines: string[] = [
@@ -299,7 +302,7 @@ function generateDarkCSS(
 // ============================================================
 
 function generateJSON(
-  baseTokens: typeof defaultBaseTokens,
+  baseTokens: BaseTokens,
   fullLightTokens: ThemeTokens,
   darkTokens: ThemeTokens,
 ): string {
@@ -329,7 +332,7 @@ function generateJSON(
     $prefix: P,
     base: buildGroup(
       BASE_TOKEN_GROUPS,
-      baseTokens as Record<string, string | number>,
+      baseTokens as unknown as Record<string, string | number>,
     ),
     light: buildGroup(
       SEMANTIC_TOKEN_GROUPS,
@@ -349,7 +352,7 @@ function generateJSON(
 // ============================================================
 
 function generateTS(
-  baseTokens: typeof defaultBaseTokens,
+  baseTokens: BaseTokens,
   fullLightTokens: ThemeTokens,
   darkTokens: ThemeTokens,
 ): string {
@@ -393,7 +396,7 @@ function generateTS(
     addTokens(
       groupName,
       tokenKeys,
-      baseTokens as Record<string, string | number>,
+      baseTokens as unknown as Record<string, string | number>,
     );
   }
   for (const [groupName, tokenKeys] of Object.entries(SEMANTIC_TOKEN_GROUPS)) {

@@ -3,6 +3,64 @@
  */
 
 /**
+ * 种子Token - 主题派生的输入参数
+ * 用户只需配置 ~15 个种子值即可完成全套换肤
+ */
+export interface SeedTokens {
+  // 色彩种子
+  colorPrimary: string;
+  colorSuccess: string;
+  colorWarning: string;
+  colorError: string;
+  colorInfo: string;
+
+  // 中性色种子
+  colorTextBase: string;
+  colorBgBase: string;
+
+  // 尺寸种子
+  sizeUnit: number;
+  sizeStep: number;
+
+  // 圆角种子
+  borderRadius: number;
+
+  // 字体种子
+  fontSize: number;
+  fontFamily: string;
+  fontFamilyCode: string;
+  lineHeight: number;
+
+  // 控件种子
+  controlHeight: number;
+
+  // 边框种子
+  lineWidth: number;
+  lineType: string;
+
+  // 字重种子
+  /** 强调字重，默认 600 */
+  fontWeightStrong: number;
+
+  // 动效种子
+  motion: boolean;
+  /** 动效时间单位（秒），默认 0.1 */
+  motionUnit: number;
+  /** 动效基准时间（秒），默认 0 */
+  motionBase: number;
+
+  /** 线框模式（默认 false） */
+  wireframe: boolean;
+
+  /** 预设色板 { name: baseColor }，默认含 7 个标准色 */
+  presetColors: Record<string, string>;
+
+  // 层级种子
+  zIndexBase: number;
+  zIndexPopupBase: number;
+}
+
+/**
  * 基础Token - 原子级设计变量
  */
 export interface BaseTokens {
@@ -145,6 +203,10 @@ export interface BaseTokens {
   tokenFontFamily: string;
   tokenFontFamilyCode: string;
 
+  // 边框 (P1)
+  tokenLineWidth: string;
+  tokenLineType: string;
+
   // 阴影 (P0)
   tokenShadow1: string; // 最轻阴影
   tokenShadow2: string; // 轻阴影
@@ -213,6 +275,18 @@ export interface SemanticTokens {
   colorErrorTextHover: string;
   colorErrorTextActive: string;
 
+  // 功能色 - Info
+  colorInfo: string;
+  colorInfoHover: string;
+  colorInfoActive: string;
+  colorInfoBg: string;
+  colorInfoBgHover: string;
+  colorInfoBorder: string;
+  colorInfoBorderHover: string;
+  colorInfoText: string;
+  colorInfoTextHover: string;
+  colorInfoTextActive: string;
+
   // 文本色
   colorText: string;
   colorTextSecondary: string;
@@ -247,6 +321,7 @@ export interface SemanticTokens {
   // 边框色
   colorBorder: string;
   colorBorderSecondary: string;
+  colorBorderDisabled: string;
   colorSplit: string;
 
   // 控制项颜色
@@ -341,6 +416,42 @@ export interface SemanticTokens {
   zIndexNotification: number;
   zIndexMessage: number;
 
+  // 边框样式
+  borderWidth: string;
+  borderStyle: string;
+
+  // 动效时长
+  motionDurationFast: string;
+  motionDurationMid: string;
+  motionDurationSlow: string;
+
+  // 焦点环
+  controlOutline: string;
+  controlOutlineWidth: string;
+
+  // 动效缓动函数
+  motionEaseInOut: string;
+  motionEaseOut: string;
+  motionEaseIn: string;
+  motionEaseOutBack: string;
+  motionEaseInBack: string;
+  motionEaseOutCirc: string;
+  motionEaseInOutCirc: string;
+
+  // 字重
+  fontWeightStrong: number;
+
+  // 固定白色
+  colorWhite: string;
+
+  // 实心背景色
+  colorBgSolid: string;
+  colorBgSolidHover: string;
+  colorBgSolidActive: string;
+
+  // 高亮色
+  colorHighlight: string;
+
   // 中性色/填充色扩展 (P0)
   colorNeutral1: string;
   colorNeutral2: string;
@@ -358,6 +469,12 @@ export interface SemanticTokens {
  * 完整的主题Token
  */
 export type ThemeTokens = BaseTokens & SemanticTokens;
+
+/**
+ * 主题算法函数
+ * 接收当前 tokens，返回需要覆写的 token 子集
+ */
+export type ThemeAlgorithm = (tokens: ThemeTokens) => Partial<ThemeTokens>;
 
 /**
  * 用户可配置的主题Token（部分）
@@ -388,27 +505,63 @@ export interface TransitionConfig {
 }
 
 /**
+ * 组件级主题配置
+ */
+export interface ComponentThemeConfig {
+  /** 种子覆写（algorithm=true 时走完整派生） */
+  seed?: Partial<SeedTokens>;
+  /** Token 直接覆写 */
+  token?: PartialThemeTokens;
+  /** 是否对 seed 执行派生管线（默认 false） */
+  algorithm?: boolean;
+}
+
+/**
+ * 组件主题配置映射
+ */
+export type ComponentsConfig = Record<string, ComponentThemeConfig>;
+
+/**
  * 主题配置
  */
 export interface ThemeConfig {
   /**
-   * Token配置
+   * 种子Token配置（推荐配置入口）
+   * 只需设置 ~15 个种子值即可驱动全套 Token 派生
+   */
+  seed?: Partial<SeedTokens>;
+
+  /**
+   * Token配置（高级覆写，逃生舱）
    */
   token?: PartialThemeTokens;
 
   /**
-   * 算法模式
-   * - default: 默认亮色
-   * - dark: 暗色模式
-   * - compact: 紧凑模式（减小间距）
-   * - dark-compact: 暗色 + 紧凑模式组合
+   * 主题算法
+   * 支持单个算法函数或多个算法组合叠加
+   *
+   * @example
+   * // 单个算法
+   * { algorithm: darkAlgorithm }
+   *
+   * // 组合叠加
+   * { algorithm: [darkAlgorithm, compactAlgorithm] }
+   *
+   * // 自定义算法
+   * { algorithm: (tokens) => ({ colorPrimary: 'rgb(255 0 0)' }) }
    */
-  algorithm?: 'default' | 'dark' | 'compact' | 'dark-compact';
+  algorithm?: ThemeAlgorithm | ThemeAlgorithm[];
 
   /**
    * 过渡动画配置
    */
   transition?: TransitionConfig;
+
+  /**
+   * 组件级主题覆写
+   * key 为组件名（如 'button', 'input'），value 为组件级配置
+   */
+  components?: ComponentsConfig;
 }
 
 /**

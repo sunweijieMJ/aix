@@ -24,7 +24,8 @@
     "./vars": "./dist/vars/index.css",
     "./vars/base": "./dist/vars/base-tokens.css",
     "./vars/light": "./dist/vars/light.css",
-    "./vars/dark": "./dist/vars/dark.css"
+    "./vars/dark": "./dist/vars/dark.css",
+    "./vars/compat": "./dist/vars/index.compat.css"
   },
   "bin": {
     "aix-theme-export": "./dist/cli.js"

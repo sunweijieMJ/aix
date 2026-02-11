@@ -106,10 +106,11 @@ export function generateSSRInitScript(
   storageKey: string = 'aix-theme-mode',
   defaultMode: 'light' | 'dark' = 'light',
 ): string {
+  const safeKey = JSON.stringify(storageKey);
   return `
 (function() {
   try {
-    var stored = localStorage.getItem('${storageKey}');
+    var stored = localStorage.getItem(${safeKey});
     var mode = stored === 'dark' || stored === 'light' ? stored : '${defaultMode}';
     document.documentElement.setAttribute('data-theme', mode);
   } catch (e) {

@@ -14,7 +14,14 @@ import {
   createThemeDOMRenderer,
   type ThemeDOMRenderer,
 } from '../core/theme-dom-renderer';
-import { generateThemeTokens } from '../core/define-theme';
+import {
+  generateThemeTokens,
+  generateAllComponentOverrides,
+  darkAlgorithm,
+  darkMixAlgorithm,
+  normalizeAlgorithm,
+} from '../core/define-theme';
+import { defaultSeedTokens } from '../core/seed-derivation';
 import { validateThemeConfig } from '../utils/theme-validator';
 import { CSS_VAR_PREFIX } from '../utils/css-var';
 import {
@@ -23,7 +30,11 @@ import {
   safeSetLocalStorage,
 } from '../utils/ssr-utils';
 import type {
+  ComponentsConfig,
+  ComponentThemeConfig,
   PartialThemeTokens,
+  SeedTokens,
+  ThemeAlgorithm,
   ThemeConfig,
   ThemeMode,
   ThemeTokens,
@@ -60,6 +71,10 @@ export interface ThemeContext {
   setTransition: (config: TransitionConfig) => void;
   /** 获取过渡配置 */
   getTransition: () => Required<TransitionConfig>;
+  /** 设置组件级主题覆写 */
+  setComponentTheme: (name: string, config: ComponentThemeConfig) => void;
+  /** 移除组件级主题覆写 */
+  removeComponentTheme: (name: string) => void;
 }
 
 /**
@@ -84,6 +99,8 @@ export interface CreateThemeOptions {
   initialConfig?: ThemeConfig;
   /** CSS 变量前缀，默认 'aix'（生成 --aix-colorPrimary 等） */
   prefix?: string;
+  /** CSS 选择器兼容模式，'where' 使用 :where() 包裹以降低特异性 */
+  cssCompatibility?: 'normal' | 'where';
 }
 
 /**
@@ -99,26 +116,44 @@ const DEFAULT_TRANSITION: Required<TransitionConfig> = {
  * 内部使用的完整配置类型（所有属性都是必需的）
  */
 interface InternalThemeConfig {
+  seed: Partial<SeedTokens>;
   token: PartialThemeTokens;
-  algorithm: NonNullable<ThemeConfig['algorithm']>;
+  algorithm: ThemeAlgorithm[];
   transition: Required<TransitionConfig>;
+  components: ComponentsConfig;
 }
 
 /**
- * 根据主题模式和当前算法计算新算法
- * 保留 compact 状态
+ * 判断算法是否为暗色类算法
  */
-function calculateAlgorithm(
+function isDarkAlgorithm(algo: ThemeAlgorithm): boolean {
+  return algo === darkAlgorithm || algo === darkMixAlgorithm;
+}
+
+/**
+ * 检测算法数组中是否包含暗色算法
+ */
+function hasDarkAlgorithm(algos: ThemeAlgorithm[]): boolean {
+  return algos.some(isDarkAlgorithm);
+}
+
+/**
+ * 根据主题模式和当前算法计算新算法数组
+ * setMode('dark') 在数组头部插入 darkAlgorithm（如果没有暗色算法）
+ * setMode('light') 过滤掉暗色算法
+ * 其他算法（compact、用户自定义）保持不变
+ */
+function calculateAlgorithmForMode(
   mode: ThemeMode,
-  currentAlgorithm: ThemeConfig['algorithm'] = 'default',
-): NonNullable<ThemeConfig['algorithm']> {
-  const isCompact =
-    currentAlgorithm === 'compact' || currentAlgorithm === 'dark-compact';
+  currentAlgorithms: ThemeAlgorithm[],
+): ThemeAlgorithm[] {
+  // 过滤掉暗色算法
+  const withoutDark = currentAlgorithms.filter((a) => !isDarkAlgorithm(a));
 
   if (mode === 'dark') {
-    return isCompact ? 'dark-compact' : 'dark';
+    return [darkAlgorithm, ...withoutDark];
   }
-  return isCompact ? 'compact' : 'default';
+  return withoutDark;
 }
 
 /**
@@ -154,29 +189,44 @@ export function createTheme(options?: CreateThemeOptions) {
     watchSystem = false,
     initialConfig,
     prefix: userPrefix,
+    cssCompatibility = 'normal',
   } = options || {};
 
   // 解析实际前缀
   const resolvedPrefix = userPrefix || CSS_VAR_PREFIX;
 
   // DOM 渲染器（无状态）
-  const renderer: ThemeDOMRenderer = createThemeDOMRenderer(resolvedPrefix);
+  const renderer: ThemeDOMRenderer = createThemeDOMRenderer({
+    prefix: resolvedPrefix,
+    useWhere: cssCompatibility === 'where',
+  });
 
   // ========== 唯一状态源 ==========
+  const initialAlgos = normalizeAlgorithm(initialConfig?.algorithm);
+  // 如果 initialMode 为 dark 且算法中没有暗色算法，自动添加 darkAlgorithm
+  const resolvedInitialAlgos =
+    initialMode === 'dark' && !initialAlgos.some(isDarkAlgorithm)
+      ? [darkAlgorithm, ...initialAlgos]
+      : initialAlgos;
+  // 从算法推断初始 mode
+  const resolvedInitialMode = hasDarkAlgorithm(resolvedInitialAlgos)
+    ? 'dark'
+    : initialMode;
+
   const state = reactive<{
     mode: ThemeMode;
     config: InternalThemeConfig;
   }>({
-    mode: initialMode,
+    mode: resolvedInitialMode,
     config: {
+      seed: initialConfig?.seed || {},
       token: initialConfig?.token || {},
-      algorithm:
-        initialConfig?.algorithm ||
-        (initialMode === 'dark' ? 'dark' : 'default'),
+      algorithm: resolvedInitialAlgos,
       transition: {
         ...DEFAULT_TRANSITION,
         ...initialConfig?.transition,
       },
+      components: initialConfig?.components || {},
     },
   });
 
@@ -185,8 +235,8 @@ export function createTheme(options?: CreateThemeOptions) {
 
   // 缓存 CSS 基线 tokens，用于 diff 计算
   // 静态 CSS 只提供 light 和 dark 两套，compact 变化需要通过 JS 覆写注入
-  const lightDefaults = generateThemeTokens({ algorithm: 'default' });
-  const darkDefaults = generateThemeTokens({ algorithm: 'dark' });
+  const lightDefaults = generateThemeTokens({});
+  const darkDefaults = generateThemeTokens({ algorithm: darkAlgorithm });
 
   /**
    * 获取当前模式对应的 CSS 基线 tokens
@@ -271,6 +321,20 @@ export function createTheme(options?: CreateThemeOptions) {
     renderer.setDataTheme(state.mode);
     renderer.applyTransition(state.config.transition);
     renderer.applyOverrides(state.mode, computeOverrides());
+
+    // 组件级覆写
+    if (Object.keys(state.config.components).length > 0) {
+      const resolvedSeed = { ...defaultSeedTokens, ...state.config.seed };
+      const componentOverrides = generateAllComponentOverrides(
+        state.config.components,
+        computedTokens.value,
+        resolvedSeed,
+        state.config.algorithm,
+      );
+      renderer.applyComponentOverrides(componentOverrides);
+    } else {
+      renderer.clearComponentOverrides();
+    }
   };
 
   /**
@@ -279,8 +343,11 @@ export function createTheme(options?: CreateThemeOptions) {
   const setMode = (newMode: ThemeMode) => {
     state.mode = newMode;
 
-    // 计算新算法（保留 compact 状态）
-    const newAlgorithm = calculateAlgorithm(newMode, state.config.algorithm);
+    // 计算新算法（保留 compact 等非 dark 算法）
+    const newAlgorithm = calculateAlgorithmForMode(
+      newMode,
+      state.config.algorithm,
+    );
 
     state.config = {
       ...state.config,
@@ -319,20 +386,21 @@ export function createTheme(options?: CreateThemeOptions) {
       console.warn('[ThemeContext] 主题配置警告:', validationResult.warnings);
     }
 
-    // 同步 mode（dark 和 dark-compact 都算暗色模式）
-    const algorithm = config.algorithm || 'default';
-    const newMode =
-      algorithm === 'dark' || algorithm === 'dark-compact' ? 'dark' : 'light';
+    // 规范化算法并同步 mode
+    const algos = normalizeAlgorithm(config.algorithm);
+    const newMode = hasDarkAlgorithm(algos) ? 'dark' : 'light';
     state.mode = newMode;
 
     // 更新配置（统一过渡配置存储）
     state.config = {
+      seed: config.seed || {},
       token: config.token || {},
-      algorithm,
+      algorithm: algos,
       transition: {
         ...DEFAULT_TRANSITION,
         ...config.transition,
       },
+      components: config.components || {},
     };
 
     // 应用到 DOM
@@ -357,7 +425,7 @@ export function createTheme(options?: CreateThemeOptions) {
       },
     };
 
-    renderer.applyOverrides(state.mode, computeOverrides());
+    syncToDOM();
     dispatchChangeEvent();
   };
 
@@ -373,7 +441,7 @@ export function createTheme(options?: CreateThemeOptions) {
       },
     };
 
-    renderer.applyOverrides(state.mode, computeOverrides());
+    syncToDOM();
     dispatchChangeEvent();
   };
 
@@ -387,9 +455,11 @@ export function createTheme(options?: CreateThemeOptions) {
     // 重置状态
     state.mode = 'light';
     state.config = {
+      seed: {},
       token: {},
-      algorithm: 'default',
+      algorithm: [],
       transition: { ...DEFAULT_TRANSITION },
+      components: {},
     };
 
     // 应用到 DOM
@@ -423,6 +493,34 @@ export function createTheme(options?: CreateThemeOptions) {
    */
   const getTransition = (): Required<TransitionConfig> => {
     return { ...state.config.transition };
+  };
+
+  /**
+   * 设置组件级主题覆写
+   */
+  const setComponentTheme = (name: string, config: ComponentThemeConfig) => {
+    state.config = {
+      ...state.config,
+      components: {
+        ...state.config.components,
+        [name]: config,
+      },
+    };
+    syncToDOM();
+    dispatchChangeEvent();
+  };
+
+  /**
+   * 移除组件级主题覆写
+   */
+  const removeComponentTheme = (name: string) => {
+    const { [name]: _, ...rest } = state.config.components;
+    state.config = {
+      ...state.config,
+      components: rest,
+    };
+    syncToDOM();
+    dispatchChangeEvent();
   };
 
   /**
@@ -467,6 +565,8 @@ export function createTheme(options?: CreateThemeOptions) {
     reset,
     setTransition,
     getTransition,
+    setComponentTheme,
+    removeComponentTheme,
   };
 
   return {

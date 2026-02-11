@@ -11,19 +11,29 @@ import type { ThemeTokens } from '../theme-types';
 export const CSS_VAR_PREFIX = 'aix';
 
 /**
- * CSS 变量引用类型
- * 将 Token 键映射为 var(--aix-tokenName) 格式
+ * 带自定义前缀的 CSS 变量引用类型
+ * 将 Token 键映射为 var(--prefix-tokenName) 格式
  */
-export type CSSVarRefs = {
-  readonly [K in keyof ThemeTokens]: `var(--${typeof CSS_VAR_PREFIX}-${K})`;
+export type CSSVarRefsWithPrefix<P extends string> = {
+  readonly [K in keyof ThemeTokens]: `var(--${P}-${K})`;
 };
 
 /**
- * CSS 变量名类型（不带 var() 包装）
+ * CSS 变量引用类型（默认 'aix' 前缀）
  */
-export type CSSVarNames = {
-  readonly [K in keyof ThemeTokens]: `--${typeof CSS_VAR_PREFIX}-${K}`;
+export type CSSVarRefs = CSSVarRefsWithPrefix<typeof CSS_VAR_PREFIX>;
+
+/**
+ * 带自定义前缀的 CSS 变量名类型（不带 var() 包装）
+ */
+export type CSSVarNamesWithPrefix<P extends string> = {
+  readonly [K in keyof ThemeTokens]: `--${P}-${K}`;
 };
+
+/**
+ * CSS 变量名类型（默认 'aix' 前缀，不带 var() 包装）
+ */
+export type CSSVarNames = CSSVarNamesWithPrefix<typeof CSS_VAR_PREFIX>;
 
 /**
  * 创建 CSS 变量代理的通用工厂函数
@@ -52,8 +62,13 @@ function createCSSVarProxy<T extends object>(
  * myVar.colorPrimary // => "var(--my-app-colorPrimary)"
  * ```
  */
-export function createCSSVarRefs(prefix: string = CSS_VAR_PREFIX): CSSVarRefs {
-  return createCSSVarProxy<CSSVarRefs>((key) => `var(--${prefix}-${key})`);
+export function createCSSVarRefs<P extends string = typeof CSS_VAR_PREFIX>(
+  prefix?: P,
+): CSSVarRefsWithPrefix<P> {
+  const p = prefix ?? (CSS_VAR_PREFIX as P);
+  return createCSSVarProxy<CSSVarRefsWithPrefix<P>>(
+    (key) => `var(--${p}-${key})`,
+  );
 }
 
 /**
@@ -65,10 +80,11 @@ export function createCSSVarRefs(prefix: string = CSS_VAR_PREFIX): CSSVarRefs {
  * myVarName.colorPrimary // => "--my-app-colorPrimary"
  * ```
  */
-export function createCSSVarNames(
-  prefix: string = CSS_VAR_PREFIX,
-): CSSVarNames {
-  return createCSSVarProxy<CSSVarNames>((key) => `--${prefix}-${key}`);
+export function createCSSVarNames<P extends string = typeof CSS_VAR_PREFIX>(
+  prefix?: P,
+): CSSVarNamesWithPrefix<P> {
+  const p = prefix ?? (CSS_VAR_PREFIX as P);
+  return createCSSVarProxy<CSSVarNamesWithPrefix<P>>((key) => `--${p}-${key}`);
 }
 
 /**
