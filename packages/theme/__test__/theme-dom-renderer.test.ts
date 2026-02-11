@@ -1,12 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThemeDOMRenderer } from '../src/core/theme-dom-renderer';
-import { generateThemeTokens } from '../src/core/define-theme';
 
 describe('ThemeDOMRenderer', () => {
   let renderer: ThemeDOMRenderer;
   let mockRoot: HTMLElement;
+  let mockHead: {
+    appendChild: ReturnType<typeof vi.fn>;
+    removeChild: ReturnType<typeof vi.fn>;
+  };
+  let createdStyleElements: Array<{
+    id: string;
+    textContent: string | null;
+    remove: ReturnType<typeof vi.fn>;
+  }>;
 
   beforeEach(() => {
+    createdStyleElements = [];
+
     // 模拟 DOM 环境
     mockRoot = {
       setAttribute: vi.fn(),
@@ -20,30 +30,27 @@ describe('ThemeDOMRenderer', () => {
       },
     } as any;
 
+    mockHead = {
+      appendChild: vi.fn(),
+      removeChild: vi.fn(),
+    };
+
     // 模拟 document
     vi.stubGlobal('document', {
       documentElement: mockRoot,
+      head: mockHead,
+      getElementById: vi.fn((_id: string) => null),
+      createElement: vi.fn((tag: string) => {
+        const el = {
+          tagName: tag.toUpperCase(),
+          id: '',
+          textContent: null as string | null,
+          remove: vi.fn(),
+        };
+        createdStyleElements.push(el);
+        return el;
+      }),
     });
-
-    // 模拟 requestAnimationFrame 和 cancelAnimationFrame - 同步执行
-    let rafId = 0;
-
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      vi.fn((callback: FrameRequestCallback) => {
-        const id = ++rafId;
-        // 立即同步执行回调
-        callback(performance.now());
-        return id;
-      }),
-    );
-
-    vi.stubGlobal(
-      'cancelAnimationFrame',
-      vi.fn((_id: number) => {
-        // noop
-      }),
-    );
 
     // 创建新的渲染器实例
     renderer = new ThemeDOMRenderer();
@@ -66,32 +73,111 @@ describe('ThemeDOMRenderer', () => {
     });
   });
 
-  describe('applyTokens', () => {
-    it('should apply CSS variables to root element', async () => {
-      const tokens = generateThemeTokens({ algorithm: 'default' });
-      renderer.applyTokens(tokens);
+  describe('applyOverrides', () => {
+    it('should not inject style tag when overrides is empty', () => {
+      renderer.applyOverrides('light', {});
+      expect(document.createElement).not.toHaveBeenCalled();
+      expect(mockHead.appendChild).not.toHaveBeenCalled();
+    });
 
-      // 等待 RAF 执行
-      await new Promise((resolve) => setTimeout(resolve, 0));
+    it('should create style tag with correct selector and content', () => {
+      renderer.applyOverrides('light', {
+        '--aix-colorPrimary': 'rgb(0 102 255)',
+        '--aix-colorPrimaryHover': 'rgb(64 150 255)',
+      });
 
-      expect(mockRoot.style.setProperty).toHaveBeenCalled();
-      expect(mockRoot.style.setProperty).toHaveBeenCalledWith(
-        expect.stringContaining('--'),
-        expect.any(String),
+      expect(document.createElement).toHaveBeenCalledWith('style');
+      expect(mockHead.appendChild).toHaveBeenCalledTimes(1);
+
+      const styleEl = createdStyleElements[0];
+      expect(styleEl.id).toBe('aix-theme-overrides');
+      expect(styleEl.textContent).toContain(":root[data-theme='light']");
+      expect(styleEl.textContent).toContain(
+        '--aix-colorPrimary: rgb(0 102 255);',
+      );
+      expect(styleEl.textContent).toContain(
+        '--aix-colorPrimaryHover: rgb(64 150 255);',
+      );
+    });
+
+    it('should use dark mode selector for dark mode', () => {
+      renderer.applyOverrides('dark', {
+        '--aix-colorPrimary': 'rgb(0 102 255)',
+      });
+
+      const styleEl = createdStyleElements[0];
+      expect(styleEl.textContent).toContain(":root[data-theme='dark']");
+    });
+
+    it('should reuse existing style tag on subsequent calls', () => {
+      renderer.applyOverrides('light', {
+        '--aix-colorPrimary': 'rgb(0 102 255)',
+      });
+
+      renderer.applyOverrides('light', {
+        '--aix-colorPrimary': 'rgb(255 0 0)',
+      });
+
+      // createElement should be called only once
+      expect(document.createElement).toHaveBeenCalledTimes(1);
+      expect(mockHead.appendChild).toHaveBeenCalledTimes(1);
+
+      // Content should be updated
+      const styleEl = createdStyleElements[0];
+      expect(styleEl.textContent).toContain(
+        '--aix-colorPrimary: rgb(255 0 0);',
+      );
+    });
+
+    it('should remove style tag when overrides become empty', () => {
+      renderer.applyOverrides('light', {
+        '--aix-colorPrimary': 'rgb(0 102 255)',
+      });
+
+      const styleEl = createdStyleElements[0];
+      renderer.applyOverrides('light', {});
+
+      expect(styleEl.remove).toHaveBeenCalled();
+    });
+
+    it('should find existing style tag by id', () => {
+      const existingStyleEl = {
+        id: 'aix-theme-overrides',
+        textContent: null as string | null,
+        remove: vi.fn(),
+      };
+
+      vi.mocked(document.getElementById).mockReturnValue(
+        existingStyleEl as any,
+      );
+
+      renderer.applyOverrides('light', {
+        '--aix-colorPrimary': 'rgb(0 102 255)',
+      });
+
+      // Should not create a new element
+      expect(document.createElement).not.toHaveBeenCalled();
+      expect(mockHead.appendChild).not.toHaveBeenCalled();
+      expect(existingStyleEl.textContent).toContain(
+        '--aix-colorPrimary: rgb(0 102 255);',
       );
     });
   });
 
-  describe('applyTokensSync', () => {
-    it('should apply CSS variables synchronously', () => {
-      const tokens = generateThemeTokens({ algorithm: 'default' });
-      renderer.applyTokensSync(tokens);
+  describe('clearOverrides', () => {
+    it('should remove style tag if present', () => {
+      renderer.applyOverrides('light', {
+        '--aix-colorPrimary': 'rgb(0 102 255)',
+      });
 
-      expect(mockRoot.style.setProperty).toHaveBeenCalled();
-      expect(mockRoot.style.setProperty).toHaveBeenCalledWith(
-        expect.stringContaining('--'),
-        expect.any(String),
-      );
+      const styleEl = createdStyleElements[0];
+      renderer.clearOverrides();
+
+      expect(styleEl.remove).toHaveBeenCalled();
+    });
+
+    it('should be safe to call when no style tag exists', () => {
+      expect(() => renderer.clearOverrides()).not.toThrow();
     });
   });
 
@@ -146,9 +232,25 @@ describe('ThemeDOMRenderer', () => {
   });
 
   describe('reset', () => {
-    it('should reset to light mode', () => {
+    it('should remove style tag and transition', () => {
+      renderer.applyOverrides('light', {
+        '--aix-colorPrimary': 'rgb(0 102 255)',
+      });
+
+      const styleEl = createdStyleElements[0];
       renderer.reset();
-      expect(mockRoot.setAttribute).toHaveBeenCalledWith('data-theme', 'light');
+
+      // style tag removed
+      expect(styleEl.remove).toHaveBeenCalled();
+      // transition removed
+      expect(mockRoot.classList.remove).toHaveBeenCalledWith(
+        'aix-theme-transition',
+      );
+    });
+
+    it('should not set data-theme (caller handles it via syncToDOM)', () => {
+      renderer.reset();
+      expect(mockRoot.setAttribute).not.toHaveBeenCalled();
     });
   });
 

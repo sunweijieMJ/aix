@@ -39,6 +39,16 @@ describe('useTheme', () => {
 
     vi.stubGlobal('document', {
       documentElement: mockRoot,
+      head: {
+        appendChild: vi.fn(),
+        removeChild: vi.fn(),
+      },
+      getElementById: vi.fn((_id: string) => null),
+      createElement: vi.fn((_tag: string) => ({
+        id: '',
+        textContent: null as string | null,
+        remove: vi.fn(),
+      })),
     });
 
     // 模拟 localStorage
@@ -97,22 +107,6 @@ describe('useTheme', () => {
         }
         return true;
       }),
-    );
-
-    // 模拟 requestAnimationFrame - 同步执行
-    let rafId = 0;
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      vi.fn((callback: FrameRequestCallback) => {
-        const id = ++rafId;
-        callback(performance.now());
-        return id;
-      }),
-    );
-
-    vi.stubGlobal(
-      'cancelAnimationFrame',
-      vi.fn(() => {}),
     );
 
     // 清除 localStorage
@@ -198,42 +192,6 @@ describe('useTheme', () => {
     });
   });
 
-  describe('preset management', () => {
-    it('should apply preset theme without throwing', () => {
-      const { applyPreset } = useTheme();
-      expect(() => applyPreset('tech')).not.toThrow();
-    });
-
-    it('should register custom preset', () => {
-      const { registerPreset, getPresets } = useTheme();
-      const customPreset = {
-        name: 'custom',
-        displayName: 'Custom Theme',
-        token: { colorPrimary: 'rgb(128 128 128)' },
-      };
-
-      registerPreset(customPreset);
-      const presets = getPresets();
-      const foundPreset = presets.find((p) => p.name === 'custom');
-
-      expect(foundPreset).toBeDefined();
-      expect(foundPreset?.displayName).toBe('Custom Theme');
-    });
-
-    it('should get all available presets', () => {
-      const { getPresets } = useTheme();
-      const presets = getPresets();
-
-      expect(presets).toBeInstanceOf(Array);
-      expect(presets.length).toBeGreaterThan(0);
-
-      const names = presets.map((p) => p.name);
-      expect(names).toContain('default');
-      expect(names).toContain('tech');
-      expect(names).toContain('nature');
-    });
-  });
-
   describe('reset', () => {
     it('should reset to default theme', () => {
       const { mode, setMode, reset } = useTheme();
@@ -264,15 +222,6 @@ describe('useTheme', () => {
       setMode('dark');
       setMode('light');
       setMode('dark');
-
-      expect(mode.value).toBe('dark');
-    });
-
-    it('should handle preset changes with mode changes', () => {
-      const { setMode, applyPreset, mode } = useTheme();
-
-      setMode('dark');
-      applyPreset('tech');
 
       expect(mode.value).toBe('dark');
     });

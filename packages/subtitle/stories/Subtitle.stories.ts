@@ -298,15 +298,15 @@ export const TimeSync: Story = {
           align-items: center;
           gap: 16px;
           padding: 16px;
-          background: var(--colorBgContainer);
-          border: 1px solid var(--colorBorder);
+          background: var(--aix-colorBgContainer);
+          border: 1px solid var(--aix-colorBorder);
           border-radius: 8px;
         ">
           <button
             @click="togglePlay"
             style="
               padding: 8px 16px;
-              background: var(--colorPrimary);
+              background: var(--aix-colorPrimary);
               color: white;
               border: none;
               border-radius: 4px;
@@ -330,7 +330,7 @@ export const TimeSync: Story = {
             min-width: 60px;
             text-align: right;
             font-family: monospace;
-            color: var(--colorText);
+            color: var(--aix-colorText);
           ">
             {{ formatTime(currentTime) }}
           </span>
@@ -358,7 +358,7 @@ export const Positions: Story = {
     template: `
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
         <div v-for="pos in positions" :key="pos">
-          <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary); text-align: center;">
+          <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary); text-align: center;">
             {{ pos }}
           </p>
           <div style="
@@ -402,7 +402,7 @@ export const BackgroundStyles: Story = {
     template: `
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
         <div v-for="bg in backgrounds" :key="bg.type">
-          <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary); text-align: center;">
+          <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary); text-align: center;">
             {{ bg.label }}
           </p>
           <div style="
@@ -441,7 +441,7 @@ export const FontSizes: Story = {
     template: `
       <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
         <div v-for="size in sizes" :key="size">
-          <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary); text-align: center;">
+          <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary); text-align: center;">
             {{ size }}px
           </p>
           <div style="
@@ -480,28 +480,28 @@ export const VTTFormat: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">VTT 格式解析</h3>
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">VTT 格式解析</h3>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div>
-            <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary);">
+            <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary);">
               VTT 源文件
             </p>
             <pre style="
               margin: 0;
               padding: 16px;
-              background: var(--colorBgContainer);
-              border: 1px solid var(--colorBorder);
+              background: var(--aix-colorBgContainer);
+              border: 1px solid var(--aix-colorBorder);
               border-radius: 8px;
               font-size: 12px;
               overflow-x: auto;
-              color: var(--colorText);
+              color: var(--aix-colorText);
               white-space: pre-wrap;
             ">{{ VTT_CONTENT }}</pre>
           </div>
 
           <div>
-            <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary);">
+            <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary);">
               渲染效果
             </p>
             <div style="
@@ -549,28 +549,28 @@ export const SRTFormat: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">SRT 格式解析</h3>
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">SRT 格式解析</h3>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div>
-            <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary);">
+            <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary);">
               SRT 源文件
             </p>
             <pre style="
               margin: 0;
               padding: 16px;
-              background: var(--colorBgContainer);
-              border: 1px solid var(--colorBorder);
+              background: var(--aix-colorBgContainer);
+              border: 1px solid var(--aix-colorBorder);
               border-radius: 8px;
               font-size: 12px;
               overflow-x: auto;
-              color: var(--colorText);
+              color: var(--aix-colorText);
               white-space: pre-wrap;
             ">{{ SRT_CONTENT }}</pre>
           </div>
 
           <div>
-            <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary);">
+            <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary);">
               渲染效果
             </p>
             <div style="
@@ -618,29 +618,29 @@ export const ASSFormat: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">ASS 格式解析</h3>
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">ASS 格式解析</h3>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div>
-            <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary);">
+            <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary);">
               ASS 源文件
             </p>
             <pre style="
               margin: 0;
               padding: 16px;
-              background: var(--colorBgContainer);
-              border: 1px solid var(--colorBorder);
+              background: var(--aix-colorBgContainer);
+              border: 1px solid var(--aix-colorBorder);
               border-radius: 8px;
               font-size: 11px;
               overflow-x: auto;
-              color: var(--colorText);
+              color: var(--aix-colorText);
               white-space: pre-wrap;
               max-height: 300px;
             ">{{ ASS_CONTENT }}</pre>
           </div>
 
           <div>
-            <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary);">
+            <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary);">
               渲染效果
             </p>
             <div style="
@@ -684,8 +684,8 @@ export const AutoSegment: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">自动分段轮播</h3>
-        <p style="margin: 0 0 16px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">自动分段轮播</h3>
+        <p style="margin: 0 0 16px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           当字幕文本过长时，启用 autoSegment 可以自动分段，按时间轮播显示
         </p>
 
@@ -713,12 +713,12 @@ export const AutoSegment: Story = {
         <div style="
           margin-top: 16px;
           padding: 16px;
-          background: var(--colorPrimaryBg);
-          border: 1px solid var(--colorPrimaryBorder);
+          background: var(--aix-colorPrimaryBg);
+          border: 1px solid var(--aix-colorPrimaryBorder);
           border-radius: 8px;
         ">
-          <h4 style="margin: 0 0 8px; font-size: 14px; color: var(--colorText);">配置说明：</h4>
-          <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--colorTextSecondary); line-height: 1.8;">
+          <h4 style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorText);">配置说明：</h4>
+          <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--aix-colorTextSecondary); line-height: 1.8;">
             <li><code>autoSegment: true</code> - 启用自动分段</li>
             <li><code>fixedHeight: 80</code> - 固定显示区域高度为 80px</li>
             <li><code>segmentDuration: 2500</code> - 每段显示 2.5 秒</li>
@@ -755,7 +755,7 @@ export const SingleLine: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">单行模式</h3>
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">单行模式</h3>
 
         <div style="
           position: relative;
@@ -830,7 +830,7 @@ export const EventListeners: Story = {
     template: `
       <div style="display: flex; gap: 24px; max-width: 1000px;">
         <div style="flex: 1;">
-          <h3 style="margin: 0 0 16px; color: var(--colorText);">字幕播放器</h3>
+          <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">字幕播放器</h3>
 
           <div style="
             position: relative;
@@ -862,11 +862,11 @@ export const EventListeners: Story = {
         </div>
 
         <div style="width: 300px;">
-          <h3 style="margin: 0 0 16px; color: var(--colorText);">事件日志</h3>
+          <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">事件日志</h3>
           <div style="
             padding: 12px;
-            background: var(--colorBgContainer);
-            border: 1px solid var(--colorBorder);
+            background: var(--aix-colorBgContainer);
+            border: 1px solid var(--aix-colorBorder);
             border-radius: 8px;
             max-height: 300px;
             overflow-y: auto;
@@ -876,11 +876,11 @@ export const EventListeners: Story = {
             <div
               v-for="(event, index) in events"
               :key="index"
-              style="padding: 4px 0; border-bottom: 1px solid var(--colorBorderSecondary); color: var(--colorText);"
+              style="padding: 4px 0; border-bottom: 1px solid var(--aix-colorBorderSecondary); color: var(--aix-colorText);"
             >
               {{ event }}
             </div>
-            <div v-if="events.length === 0" style="color: var(--colorTextSecondary);">
+            <div v-if="events.length === 0" style="color: var(--aix-colorTextSecondary);">
               拖动进度条查看事件...
             </div>
           </div>
@@ -904,8 +904,8 @@ export const CustomSlot: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">自定义渲染插槽</h3>
-        <p style="margin: 0 0 16px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">自定义渲染插槽</h3>
+        <p style="margin: 0 0 16px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           使用默认插槽可以完全自定义字幕的渲染方式
         </p>
 
@@ -1011,14 +1011,14 @@ export const CSSVariables: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">CSS 变量定制</h3>
-        <p style="margin: 0 0 16px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">CSS 变量定制</h3>
+        <p style="margin: 0 0 16px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           通过 CSS 变量可以深度定制字幕样式
         </p>
 
         <div style="display: grid; gap: 16px;">
           <div v-for="item in customStyles" :key="item.name">
-            <p style="margin: 0 0 8px; font-size: 14px; color: var(--colorTextSecondary);">
+            <p style="margin: 0 0 8px; font-size: 14px; color: var(--aix-colorTextSecondary);">
               {{ item.name }}
             </p>
             <div style="
@@ -1038,19 +1038,19 @@ export const CSSVariables: Story = {
         <div style="
           margin-top: 16px;
           padding: 16px;
-          background: var(--colorBgContainer);
-          border: 1px solid var(--colorBorder);
+          background: var(--aix-colorBgContainer);
+          border: 1px solid var(--aix-colorBorder);
           border-radius: 8px;
         ">
-          <h4 style="margin: 0 0 12px; font-size: 14px; color: var(--colorText);">可用 CSS 变量：</h4>
+          <h4 style="margin: 0 0 12px; font-size: 14px; color: var(--aix-colorText);">可用 CSS 变量：</h4>
           <pre style="
             margin: 0;
             padding: 12px;
-            background: var(--colorFillTertiary, #f5f5f5);
+            background: var(--aix-colorFillTertiary, #f5f5f5);
             border-radius: 4px;
             font-size: 12px;
             overflow-x: auto;
-            color: var(--colorText);
+            color: var(--aix-colorText);
           ">--subtitle-padding
 --subtitle-border-radius
 --subtitle-text-color
@@ -1081,14 +1081,14 @@ export const Visibility: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">显示/隐藏控制</h3>
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">显示/隐藏控制</h3>
 
         <button
           @click="visible = !visible"
           style="
             margin-bottom: 16px;
             padding: 8px 16px;
-            background: var(--colorPrimary);
+            background: var(--aix-colorPrimary);
             color: white;
             border: none;
             border-radius: 4px;
@@ -1124,39 +1124,39 @@ export const FormatSupport: Story = {
   render: () => ({
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">支持的字幕格式</h3>
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">支持的字幕格式</h3>
         <div style="display: grid; gap: 16px;">
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">WebVTT (.vtt)</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">WebVTT (.vtt)</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               Web 标准字幕格式，支持样式和定位。广泛用于 HTML5 视频。
             </p>
           </div>
 
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">SubRip (.srt)</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">SubRip (.srt)</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               最常见的字幕格式，简单易用。支持时间戳和多行文本。
             </p>
           </div>
 
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">JSON</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">JSON</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               自定义 JSON 格式，支持扩展数据字段，方便程序化生成。
             </p>
           </div>
 
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">YouTube Subtitles (.sbv)</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">YouTube Subtitles (.sbv)</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               YouTube 使用的字幕格式，简化的时间戳格式。
             </p>
           </div>
 
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">Advanced SubStation Alpha (.ass/.ssa)</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">Advanced SubStation Alpha (.ass/.ssa)</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               高级字幕格式，支持丰富的样式、特效和定位。常用于动漫字幕。
             </p>
           </div>
@@ -1190,8 +1190,8 @@ export const Playground: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin: 0 0 16px; color: var(--colorText);">交互式 Playground</h3>
-        <p style="margin: 0 0 16px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin: 0 0 16px; color: var(--aix-colorText);">交互式 Playground</h3>
+        <p style="margin: 0 0 16px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           在右侧 Controls 面板中调整参数，实时查看效果
         </p>
 

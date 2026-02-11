@@ -76,6 +76,7 @@ const SIZE_REGEX = /^(\d+(\.\d+)?)(px|rem|em|%)?$/;
 const COLOR_TOKEN_PATTERNS = [
   /^color/i,
   /^token(Cyan|Blue|Purple|Green|Red|Orange|Gold|Gray)/i,
+  /^controlItemBg/i,
 ];
 
 /**

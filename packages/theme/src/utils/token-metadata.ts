@@ -335,10 +335,13 @@ export const SEMANTIC_VAR_REFS: Record<string, string> = {
   colorPrimaryText: 'tokenCyan6',
   // Success 使用 Green
   colorSuccess: 'tokenGreen6',
+  colorSuccessText: 'tokenGreen6',
   // Warning 使用 Gold
   colorWarning: 'tokenGold6',
+  colorWarningText: 'tokenGold6',
   // Error 使用 Red
   colorError: 'tokenRed6',
+  colorErrorText: 'tokenRed6',
   // Link - 与 Primary 色系保持一致
   colorLink: 'colorPrimary',
   colorLinkHover: 'colorPrimaryHover',
@@ -397,9 +400,7 @@ export const SEMANTIC_VAR_REFS: Record<string, string> = {
   fontFamilyCode: 'tokenFontFamilyCode',
   // Shadow 映射
   shadowXS: 'tokenShadow1',
-  shadowSM: 'tokenShadow1',
   shadow: 'tokenShadow2',
-  shadowMD: 'tokenShadow2',
   shadowLG: 'tokenShadow3',
   shadowXL: 'tokenShadow4',
   // z-index 映射

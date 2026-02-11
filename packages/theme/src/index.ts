@@ -13,7 +13,6 @@ export type {
   PartialThemeTokens,
   ThemeConfig,
   ThemeMode,
-  ThemePreset,
   TransitionConfig,
 } from './theme-types';
 
@@ -51,7 +50,6 @@ export {
   generateBorderColor,
   generateTextColor,
   generateColorSeries,
-  generateColorPalette,
 } from './core/color-algorithm';
 
 // 主题定义
@@ -98,11 +96,16 @@ export type { UseThemeReturn } from './vue/use-theme';
 
 // CSS 变量引用工具
 export {
-  // 推荐使用
+  // 默认前缀常量
+  CSS_VAR_PREFIX,
+  // 推荐使用（默认 'aix' 前缀）
   cssVar,
   cssVarName,
   getCSSVar,
   getCSSVarName,
+  // 自定义前缀工厂函数
+  createCSSVarRefs,
+  createCSSVarNames,
 } from './utils/css-var';
 export type { CSSVarRefs, CSSVarNames } from './utils/css-var';
 

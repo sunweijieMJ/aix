@@ -105,4 +105,19 @@ export default defineConfig([
     ],
     external: [],
   },
+  // CLI 工具（aix-theme-export）
+  {
+    input: 'src/cli.ts',
+    output: {
+      file: 'dist/cli.js',
+      format: 'esm',
+      banner: '#!/usr/bin/env node',
+    },
+    plugins: [
+      esbuild({
+        target: 'es2020',
+      }),
+    ],
+    external: ['fs/promises', 'path'],
+  },
 ]);

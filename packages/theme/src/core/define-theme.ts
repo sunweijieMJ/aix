@@ -15,6 +15,7 @@ import type {
   ThemeConfig,
   ThemeTokens,
 } from '../theme-types';
+import { CSS_VAR_PREFIX } from '../utils/css-var';
 
 /**
  * 默认的基础Token
@@ -35,23 +36,23 @@ export const defaultBaseTokens: Pick<
   tokenCyan9: 'rgb(0 71 79)',
   tokenCyan10: 'rgb(0 35 41)',
 
-  // Blue 色盘
+  // Blue 色盘 (Ant Design 官方: #1677ff)
   tokenBlue1: 'rgb(230 244 255)',
-  tokenBlue2: 'rgb(163 212 255)',
-  tokenBlue3: 'rgb(122 189 255)',
-  tokenBlue4: 'rgb(82 163 255)',
-  tokenBlue5: 'rgb(41 134 255)',
-  tokenBlue6: 'rgb(0 102 255)',
-  tokenBlue7: 'rgb(0 79 217)',
-  tokenBlue8: 'rgb(0 60 179)',
-  tokenBlue9: 'rgb(0 42 140)',
-  tokenBlue10: 'rgb(0 27 102)',
+  tokenBlue2: 'rgb(186 224 255)',
+  tokenBlue3: 'rgb(145 202 255)',
+  tokenBlue4: 'rgb(105 177 255)',
+  tokenBlue5: 'rgb(64 150 255)',
+  tokenBlue6: 'rgb(22 119 255)',
+  tokenBlue7: 'rgb(9 88 217)',
+  tokenBlue8: 'rgb(0 62 179)',
+  tokenBlue9: 'rgb(0 44 140)',
+  tokenBlue10: 'rgb(0 29 102)',
 
   // Purple 色盘 (P1)
   tokenPurple1: 'rgb(249 240 255)',
   tokenPurple2: 'rgb(239 219 255)',
   tokenPurple3: 'rgb(211 173 247)',
-  tokenPurple4: 'rgb(183 133 242)',
+  tokenPurple4: 'rgb(179 127 235)',
   tokenPurple5: 'rgb(146 84 222)',
   tokenPurple6: 'rgb(114 46 209)',
   tokenPurple7: 'rgb(83 29 171)',
@@ -59,17 +60,17 @@ export const defaultBaseTokens: Pick<
   tokenPurple9: 'rgb(34 7 94)',
   tokenPurple10: 'rgb(18 3 56)',
 
-  // Green 色盘
-  tokenGreen1: 'rgb(235 250 241)',
-  tokenGreen2: 'rgb(187 237 208)',
-  tokenGreen3: 'rgb(141 224 179)',
-  tokenGreen4: 'rgb(99 212 154)',
-  tokenGreen5: 'rgb(62 199 133)',
-  tokenGreen6: 'rgb(27 185 114)',
-  tokenGreen7: 'rgb(15 148 92)',
-  tokenGreen8: 'rgb(5 110 70)',
-  tokenGreen9: 'rgb(0 71 46)',
-  tokenGreen10: 'rgb(0 33 23)',
+  // Green 色盘 (Ant Design 官方: #52c41a)
+  tokenGreen1: 'rgb(246 255 237)',
+  tokenGreen2: 'rgb(217 247 190)',
+  tokenGreen3: 'rgb(183 235 143)',
+  tokenGreen4: 'rgb(149 222 100)',
+  tokenGreen5: 'rgb(115 209 61)',
+  tokenGreen6: 'rgb(82 196 26)',
+  tokenGreen7: 'rgb(56 158 13)',
+  tokenGreen8: 'rgb(35 120 4)',
+  tokenGreen9: 'rgb(19 82 0)',
+  tokenGreen10: 'rgb(9 43 0)',
 
   // Red 色盘
   tokenRed1: 'rgb(255 241 240)',
@@ -359,7 +360,8 @@ export function generateDefaultSemanticTokens(
     shadowSM:
       '0 2px 4px 0 rgb(0 0 0 / 0.04), 0 1px 6px -1px rgb(0 0 0 / 0.03), 0 1px 2px 0 rgb(0 0 0 / 0.03)',
     shadow: baseTokens.tokenShadow2,
-    shadowMD: baseTokens.tokenShadow2,
+    shadowMD:
+      '0 4px 12px -4px rgb(0 0 0 / 0.1), 0 8px 24px 0 rgb(0 0 0 / 0.06), 0 12px 40px 12px rgb(0 0 0 / 0.04)',
     shadowLG: baseTokens.tokenShadow3,
     shadowXL: baseTokens.tokenShadow4,
 
@@ -479,6 +481,11 @@ export function generateThemeTokens(config: ThemeConfig): ThemeTokens {
     finalTokens = applyCompactAlgorithm(finalTokens);
   }
 
+  // 用户显式覆写优先级最高，确保不被算法覆盖
+  if (isDark || isCompact) {
+    finalTokens = { ...finalTokens, ...semanticOverrides };
+  }
+
   return finalTokens;
 }
 
@@ -518,78 +525,70 @@ function generateDarkColorSeries(baseColor: string) {
     borderHover,
   } = DARK_MODE_ADJUSTMENTS;
 
-  try {
-    const rgb = parseColor(baseColor);
-    const hsl = rgbToHsl(rgb);
+  const rgb = parseColor(baseColor);
+  const hsl = rgbToHsl(rgb);
 
-    // 在暗色模式下，主色应该更亮一些以确保可读性
-    const adjustedHsl = { ...hsl };
+  // 在暗色模式下，主色应该更亮一些以确保可读性
+  const adjustedHsl = { ...hsl };
 
-    // 如果主色较暗，提亮它
-    if (hsl.l < lt.low.threshold) {
-      adjustedHsl.l = Math.min(lt.low.max, hsl.l + lt.low.boost);
-    } else if (hsl.l < lt.medium.threshold) {
-      adjustedHsl.l = Math.min(lt.medium.max, hsl.l + lt.medium.boost);
-    } else {
-      adjustedHsl.l = Math.min(lt.high.max, hsl.l + lt.high.boost);
-    }
-
-    // 微调饱和度，在暗色模式下保持鲜艳
-    adjustedHsl.s = Math.min(
-      100,
-      hsl.s + DARK_MODE_ADJUSTMENTS.saturationBoost,
-    );
-
-    const adjustedBase = rgbToString(hslToRgb(adjustedHsl));
-    const { hoverLightnessShift, activeLightnessShift } = DARK_MODE_ADJUSTMENTS;
-
-    // 生成派生颜色
-    return {
-      base: adjustedBase,
-      hover: adjustLightness(adjustedBase, hoverLightnessShift),
-      active: adjustLightness(adjustedBase, activeLightnessShift),
-      bg: (() => {
-        // 背景色：保留色相，极低亮度，降低饱和度
-        const bgHsl = { ...adjustedHsl };
-        bgHsl.l = bg.lightness;
-        bgHsl.s = Math.max(bg.minSaturation, adjustedHsl.s - bg.saturationDrop);
-        return rgbToString(hslToRgb(bgHsl));
-      })(),
-      bgHover: (() => {
-        const hoverHsl = { ...adjustedHsl };
-        hoverHsl.l = bgHover.lightness;
-        hoverHsl.s = Math.max(
-          bgHover.minSaturation,
-          adjustedHsl.s - bgHover.saturationDrop,
-        );
-        return rgbToString(hslToRgb(hoverHsl));
-      })(),
-      border: (() => {
-        const borderHsl = { ...adjustedHsl };
-        borderHsl.l = border.lightness;
-        borderHsl.s = Math.max(
-          border.minSaturation,
-          adjustedHsl.s - border.saturationDrop,
-        );
-        return rgbToString(hslToRgb(borderHsl));
-      })(),
-      borderHover: (() => {
-        const hoverHsl = { ...adjustedHsl };
-        hoverHsl.l = borderHover.lightness;
-        hoverHsl.s = Math.max(
-          borderHover.minSaturation,
-          adjustedHsl.s - borderHover.saturationDrop,
-        );
-        return rgbToString(hslToRgb(hoverHsl));
-      })(),
-      text: adjustedBase,
-      textHover: adjustLightness(adjustedBase, hoverLightnessShift),
-      textActive: adjustLightness(adjustedBase, activeLightnessShift),
-    };
-  } catch {
-    // 如果解析失败，返回默认颜色
-    return generateColorSeries(baseColor);
+  // 如果主色较暗，提亮它
+  if (hsl.l < lt.low.threshold) {
+    adjustedHsl.l = Math.min(lt.low.max, hsl.l + lt.low.boost);
+  } else if (hsl.l < lt.medium.threshold) {
+    adjustedHsl.l = Math.min(lt.medium.max, hsl.l + lt.medium.boost);
+  } else {
+    adjustedHsl.l = Math.min(lt.high.max, hsl.l + lt.high.boost);
   }
+
+  // 微调饱和度，在暗色模式下保持鲜艳
+  adjustedHsl.s = Math.min(100, hsl.s + DARK_MODE_ADJUSTMENTS.saturationBoost);
+
+  const adjustedBase = rgbToString(hslToRgb(adjustedHsl));
+  const { hoverLightnessShift, activeLightnessShift } = DARK_MODE_ADJUSTMENTS;
+
+  // 生成派生颜色
+  return {
+    base: adjustedBase,
+    hover: adjustLightness(adjustedBase, hoverLightnessShift),
+    active: adjustLightness(adjustedBase, activeLightnessShift),
+    bg: (() => {
+      // 背景色：保留色相，极低亮度，降低饱和度
+      const bgHsl = { ...adjustedHsl };
+      bgHsl.l = bg.lightness;
+      bgHsl.s = Math.max(bg.minSaturation, adjustedHsl.s - bg.saturationDrop);
+      return rgbToString(hslToRgb(bgHsl));
+    })(),
+    bgHover: (() => {
+      const hoverHsl = { ...adjustedHsl };
+      hoverHsl.l = bgHover.lightness;
+      hoverHsl.s = Math.max(
+        bgHover.minSaturation,
+        adjustedHsl.s - bgHover.saturationDrop,
+      );
+      return rgbToString(hslToRgb(hoverHsl));
+    })(),
+    border: (() => {
+      const borderHsl = { ...adjustedHsl };
+      borderHsl.l = border.lightness;
+      borderHsl.s = Math.max(
+        border.minSaturation,
+        adjustedHsl.s - border.saturationDrop,
+      );
+      return rgbToString(hslToRgb(borderHsl));
+    })(),
+    borderHover: (() => {
+      const hoverHsl = { ...adjustedHsl };
+      hoverHsl.l = borderHover.lightness;
+      hoverHsl.s = Math.max(
+        borderHover.minSaturation,
+        adjustedHsl.s - borderHover.saturationDrop,
+      );
+      return rgbToString(hslToRgb(hoverHsl));
+    })(),
+    text: adjustedBase,
+    textHover: adjustLightness(adjustedBase, hoverLightnessShift),
+    textActive: adjustLightness(adjustedBase, activeLightnessShift),
+  };
 }
 
 /**
@@ -669,30 +668,30 @@ export function applyDarkAlgorithm(tokens: ThemeTokens): ThemeTokens {
 
     // 背景色反转
     colorBgBase: 'rgb(0 0 0)',
-    colorBgContainer: 'rgb(20 20 20)',
+    colorBgContainer: 'rgb(28 28 28)',
     colorBgContainerDisabled: 'rgb(255 255 255 / 0.08)',
-    colorBgElevated: 'rgb(30 30 30)',
-    colorBgLayout: 'rgb(10 10 10)',
+    colorBgElevated: 'rgb(38 38 38)',
+    colorBgLayout: 'rgb(15 15 15)',
     colorBgMask: 'rgb(0 0 0 / 0.65)',
     colorBgSpotlight: 'rgb(255 255 255 / 0.85)',
-    colorBgTextHover: 'rgb(255 255 255 / 0.08)',
-    colorBgTextActive: 'rgb(255 255 255 / 0.15)',
+    colorBgTextHover: 'rgb(255 255 255 / 0.12)',
+    colorBgTextActive: 'rgb(255 255 255 / 0.18)',
 
     // 填充色反转
     colorFill: 'rgb(255 255 255 / 0.18)',
     colorFillSecondary: 'rgb(255 255 255 / 0.12)',
     colorFillTertiary: 'rgb(255 255 255 / 0.08)',
-    colorFillQuaternary: 'rgb(255 255 255 / 0.04)',
+    colorFillQuaternary: 'rgb(255 255 255 / 0.06)',
     colorFillContent: 'rgb(255 255 255 / 0.12)',
-    colorFillAlter: 'rgb(255 255 255 / 0.04)',
+    colorFillAlter: 'rgb(255 255 255 / 0.06)',
 
     // 边框色反转
-    colorBorder: 'rgb(255 255 255 / 0.15)',
-    colorBorderSecondary: 'rgb(255 255 255 / 0.06)',
-    colorSplit: 'rgb(255 255 255 / 0.06)',
+    colorBorder: 'rgb(255 255 255 / 0.25)',
+    colorBorderSecondary: 'rgb(255 255 255 / 0.15)',
+    colorSplit: 'rgb(255 255 255 / 0.12)',
 
     // 控制项颜色 - 使用主题色
-    controlItemBgHover: 'rgb(255 255 255 / 0.08)',
+    controlItemBgHover: 'rgb(255 255 255 / 0.12)',
     controlItemBgActive: primarySeries.bg,
     controlItemBgActiveHover: primarySeries.bgHover,
 
@@ -713,7 +712,7 @@ export function applyDarkAlgorithm(tokens: ThemeTokens): ThemeTokens {
     shadow:
       '0 3px 6px -4px rgb(0 0 0 / 0.24), 0 6px 16px 0 rgb(0 0 0 / 0.16), 0 9px 28px 8px rgb(0 0 0 / 0.1)',
     shadowMD:
-      '0 3px 6px -4px rgb(0 0 0 / 0.24), 0 6px 16px 0 rgb(0 0 0 / 0.16), 0 9px 28px 8px rgb(0 0 0 / 0.1)',
+      '0 4px 12px -4px rgb(0 0 0 / 0.2), 0 8px 24px 0 rgb(0 0 0 / 0.12), 0 12px 40px 12px rgb(0 0 0 / 0.08)',
     shadowLG:
       '0 6px 16px -8px rgb(0 0 0 / 0.16), 0 9px 28px 0 rgb(0 0 0 / 0.1), 0 12px 48px 16px rgb(0 0 0 / 0.08)',
     shadowXL:
@@ -794,12 +793,18 @@ function applyCompactAlgorithm(tokens: ThemeTokens): ThemeTokens {
 
 /**
  * 将Token转换为CSS变量对象
+ * @param tokens 主题 Token 对象
+ * @param prefix CSS 变量前缀，默认 'aix'
  */
-export function tokensToCSSVars(tokens: ThemeTokens): Record<string, string> {
+export function tokensToCSSVars(
+  tokens: ThemeTokens,
+  prefix: string = CSS_VAR_PREFIX,
+): Record<string, string> {
   const cssVars: Record<string, string> = {};
 
   Object.entries(tokens).forEach(([key, value]) => {
-    cssVars[`--${key}`] = typeof value === 'number' ? String(value) : value;
+    cssVars[`--${prefix}-${key}`] =
+      typeof value === 'number' ? String(value) : value;
   });
 
   return cssVars;

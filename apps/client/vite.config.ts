@@ -36,6 +36,10 @@ const getAlias = (): AliasOptions => {
       '@aix/pdf-viewer': path.resolve(AIX_ROOT, 'packages/pdf-viewer/src'),
       '@aix/subtitle': path.resolve(AIX_ROOT, 'packages/subtitle/src'),
       '@aix/video': path.resolve(AIX_ROOT, 'packages/video/src'),
+      '@aix/theme/vars': path.resolve(
+        AIX_ROOT,
+        'packages/theme/src/vars/index.css',
+      ),
       '@aix/theme': path.resolve(AIX_ROOT, 'packages/theme/src'),
       '@aix/hooks': path.resolve(AIX_ROOT, 'packages/hooks/src'),
     };

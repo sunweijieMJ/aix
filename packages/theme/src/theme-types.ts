@@ -415,12 +415,3 @@ export interface ThemeConfig {
  * 主题模式
  */
 export type ThemeMode = 'light' | 'dark';
-
-/**
- * 主题预设
- */
-export interface ThemePreset {
-  name: string;
-  displayName: string;
-  token: PartialThemeTokens;
-}

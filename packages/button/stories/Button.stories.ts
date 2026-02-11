@@ -268,11 +268,11 @@ export const ThemeDemo: Story = {
     components: { Button },
     template: `
       <div style="display: flex; flex-direction: column; gap: 24px;">
-        <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-          <h3 style="margin: 0 0 16px 0; font-size: 16px; color: var(--colorText);">
+        <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+          <h3 style="margin: 0 0 16px 0; font-size: 16px; color: var(--aix-colorText);">
             🎨 主题切换演示
           </h3>
-          <p style="margin: 0 0 16px 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <p style="margin: 0 0 16px 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
             点击右上角工具栏的 <strong>主题按钮</strong>（太阳☀️/月亮🌙 图标），切换亮色/暗色主题
           </p>
           <div style="display: flex; gap: 12px; flex-wrap: wrap;">
@@ -284,11 +284,11 @@ export const ThemeDemo: Story = {
           </div>
         </div>
 
-        <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-          <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--colorText);">
+        <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+          <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--aix-colorText);">
             ✨ 主题系统特性
           </h4>
-          <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--colorTextSecondary); line-height: 1.8;">
+          <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--aix-colorTextSecondary); line-height: 1.8;">
             <li>✅ 支持亮色/暗色主题切换</li>
             <li>✅ 使用 CSS 变量，无需重新渲染组件</li>
             <li>✅ 自动保存主题偏好到 localStorage</li>
@@ -297,16 +297,16 @@ export const ThemeDemo: Story = {
           </ul>
         </div>
 
-        <div style="padding: 16px; background: var(--colorPrimaryBg); border: 1px solid var(--colorPrimaryBorder); border-radius: 8px;">
-          <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--colorPrimaryText);">
+        <div style="padding: 16px; background: var(--aix-colorPrimaryBg); border: 1px solid var(--aix-colorPrimaryBorder); border-radius: 8px;">
+          <h4 style="margin: 0 0 12px 0; font-size: 14px; color: var(--aix-colorPrimaryText);">
             💡 开发提示
           </h4>
-          <div style="font-size: 13px; color: var(--colorText); line-height: 1.8;">
+          <div style="font-size: 13px; color: var(--aix-colorText); line-height: 1.8;">
             <p style="margin: 0 0 8px 0;">所有组件都使用主题变量，无需特殊配置即可支持主题切换：</p>
-            <pre style="margin: 0; padding: 12px; background: var(--colorBgElevated); border-radius: 4px; overflow-x: auto; font-size: 12px;"><code>// 在组件中使用主题变量
-color: var(--colorPrimary);
-background: var(--colorBgContainer);
-border: 1px solid var(--colorBorder);</code></pre>
+            <pre style="margin: 0; padding: 12px; background: var(--aix-colorBgElevated); border-radius: 4px; overflow-x: auto; font-size: 12px;"><code>// 在组件中使用主题变量
+color: var(--aix-colorPrimary);
+background: var(--aix-colorBgContainer);
+border: 1px solid var(--aix-colorBorder);</code></pre>
           </div>
         </div>
       </div>

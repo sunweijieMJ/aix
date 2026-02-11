@@ -4,10 +4,8 @@
  *
  * 用法:
  *   pnpm gen:css          # 生成 CSS 文件
- *   pnpm gen:css --watch  # 监听模式
  */
 
-import { watch } from 'chokidar';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,11 +15,12 @@ import {
   defaultBaseTokens,
   generateDefaultSemanticTokens,
 } from '../src/core/define-theme';
+import { CSS_VAR_PREFIX } from '../src/utils/css-var';
 import {
   BASE_TOKEN_GROUPS,
   SEMANTIC_TOKEN_GROUPS,
   SEMANTIC_VAR_REFS,
-} from './token-metadata';
+} from '../src/utils/token-metadata';
 import type { ThemeTokens } from '../src/theme-types';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,8 +31,6 @@ const colors = {
   reset: '\x1b[0m',
   green: '\x1b[32m',
   blue: '\x1b[34m',
-  yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
 };
 
 function log(message: string, color: keyof typeof colors = 'reset') {
@@ -81,7 +78,7 @@ class ThemeCSSGenerator {
    * 生成 CSS 变量声明
    */
   private generateVarDeclaration(key: string, value: string | number): string {
-    return `  --${key}: ${this.formatValue(value)};`;
+    return `  --${CSS_VAR_PREFIX}-${key}: ${this.formatValue(value)};`;
   }
 
   /**
@@ -155,7 +152,9 @@ class ThemeCSSGenerator {
           // 检查是否应该使用 var() 引用
           const refToken = SEMANTIC_VAR_REFS[key];
           if (refToken) {
-            lines.push(`  --${key}: var(--${refToken});`);
+            lines.push(
+              `  --${CSS_VAR_PREFIX}-${key}: var(--${CSS_VAR_PREFIX}-${refToken});`,
+            );
           } else {
             lines.push(this.generateVarDeclaration(key, value));
           }
@@ -303,56 +302,10 @@ async function generateAllCSS(): Promise<void> {
 }
 
 /**
- * 监听模式
- */
-async function watchMode(): Promise<void> {
-  const watchFiles = [
-    path.resolve(__dirname, '../src/define-theme.ts'),
-    path.resolve(__dirname, '../src/color-algorithm.ts'),
-    path.resolve(__dirname, '../src/theme-types.ts'),
-  ];
-
-  log('👀 监听文件变化...', 'cyan');
-  log(
-    `   ${watchFiles.map((f) => path.relative(process.cwd(), f)).join('\n   ')}`,
-    'cyan',
-  );
-
-  const watcher = watch(watchFiles, {
-    ignoreInitial: true,
-  });
-
-  watcher.on('change', async (changedPath) => {
-    log(
-      `\n📝 文件变化: ${path.relative(process.cwd(), changedPath)}`,
-      'yellow',
-    );
-
-    try {
-      // 注意：由于 ESM 模块缓存，这里无法热重载
-      // 需要重新运行脚本才能获取最新的 Token
-      log('⚠️  检测到变化，请重新运行 pnpm gen:css 以应用更新', 'yellow');
-    } catch (error) {
-      console.error('生成失败:', error);
-    }
-  });
-
-  // 初始生成
-  await generateAllCSS();
-}
-
-/**
  * 主函数
  */
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const isWatch = args.includes('--watch') || args.includes('-w');
-
-  if (isWatch) {
-    await watchMode();
-  } else {
-    await generateAllCSS();
-  }
+  await generateAllCSS();
 }
 
 main().catch((error) => {

@@ -18,8 +18,20 @@ describe('ThemeContext', () => {
       },
     };
 
+    const mockStyleEl = {
+      id: '',
+      textContent: null as string | null,
+      remove: vi.fn(),
+    };
+
     vi.stubGlobal('document', {
       documentElement: mockRoot,
+      head: {
+        appendChild: vi.fn(),
+        removeChild: vi.fn(),
+      },
+      getElementById: vi.fn((_id: string) => null),
+      createElement: vi.fn((_tag: string) => ({ ...mockStyleEl })),
     });
 
     // 模拟 localStorage
@@ -51,22 +63,6 @@ describe('ThemeContext', () => {
 
     // 模拟 window.dispatchEvent
     vi.stubGlobal('dispatchEvent', vi.fn());
-
-    // 模拟 requestAnimationFrame - 同步执行
-    let rafId = 0;
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      vi.fn((callback: FrameRequestCallback) => {
-        const id = ++rafId;
-        callback(performance.now());
-        return id;
-      }),
-    );
-
-    vi.stubGlobal(
-      'cancelAnimationFrame',
-      vi.fn(() => {}),
-    );
 
     // 清除 localStorage
     localStorage.clear();
@@ -170,71 +166,6 @@ describe('ThemeContext', () => {
     });
   });
 
-  describe('preset management', () => {
-    it('should have built-in presets', () => {
-      const { themeContext } = createTheme();
-      const presets = themeContext.getPresets();
-      const names = presets.map((p) => p.name);
-
-      expect(names).toContain('default');
-      expect(names).toContain('tech');
-      expect(names).toContain('nature');
-      expect(names).toContain('sunset');
-      expect(names).toContain('purple');
-    });
-
-    it('should apply preset theme', () => {
-      const { themeContext } = createTheme();
-      themeContext.applyPreset('tech');
-      expect(themeContext.config.token?.colorPrimary).toContain('0 102 255');
-    });
-
-    it('should warn for non-existent preset', () => {
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const { themeContext } = createTheme();
-      themeContext.applyPreset('nonexistent');
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Preset "nonexistent" not found'),
-      );
-      consoleSpy.mockRestore();
-    });
-
-    it('should register custom preset', () => {
-      const { themeContext } = createTheme();
-      const customPreset = {
-        name: 'custom',
-        displayName: 'Custom Theme',
-        token: { colorPrimary: 'rgb(128 128 128)' },
-      };
-
-      themeContext.registerPreset(customPreset);
-      expect(themeContext.hasPreset('custom')).toBe(true);
-
-      const presets = themeContext.getPresets();
-      const registered = presets.find((p) => p.name === 'custom');
-      expect(registered).toBeDefined();
-      expect(registered?.token.colorPrimary).toBe('rgb(128 128 128)');
-    });
-
-    it('should apply registered custom preset', () => {
-      const { themeContext } = createTheme();
-      themeContext.registerPreset({
-        name: 'custom',
-        displayName: 'Custom',
-        token: { colorPrimary: 'rgb(128 128 128)' },
-      });
-
-      themeContext.applyPreset('custom');
-      expect(themeContext.config.token?.colorPrimary).toBe('rgb(128 128 128)');
-    });
-
-    it('should check preset existence', () => {
-      const { themeContext } = createTheme();
-      expect(themeContext.hasPreset('default')).toBe(true);
-      expect(themeContext.hasPreset('nonexistent')).toBe(false);
-    });
-  });
-
   describe('transition management', () => {
     it('should set transition config', () => {
       const { themeContext } = createTheme();
@@ -264,22 +195,6 @@ describe('ThemeContext', () => {
 
       expect(themeContext.mode).toBe('light');
       expect(mockRoot.setAttribute).toHaveBeenCalledWith('data-theme', 'light');
-    });
-  });
-
-  describe('instance isolation', () => {
-    it('should have isolated presets per instance', () => {
-      const { themeContext: context1 } = createTheme();
-      const { themeContext: context2 } = createTheme();
-
-      context1.registerPreset({
-        name: 'isolated',
-        displayName: 'Isolated',
-        token: { colorPrimary: 'rgb(50 50 50)' },
-      });
-
-      expect(context1.hasPreset('isolated')).toBe(true);
-      expect(context2.hasPreset('isolated')).toBe(false);
     });
   });
 

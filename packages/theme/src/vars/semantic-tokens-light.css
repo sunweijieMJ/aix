@@ -8,188 +8,192 @@
 
 :root {
   /* ========== 品牌色 - Primary ========== */
-  --colorPrimary: var(--tokenCyan6);
-  --colorPrimaryHover: rgb(32 233 233);
-  --colorPrimaryActive: rgb(15 149 149);
-  --colorPrimaryBg: rgb(190 228 228);
-  --colorPrimaryBgHover: rgb(169 224 224);
-  --colorPrimaryBorder: rgb(79 238 238);
-  --colorPrimaryBorderHover: rgb(32 233 233);
-  --colorPrimaryText: var(--tokenCyan6);
-  --colorPrimaryTextHover: rgb(32 233 233);
-  --colorPrimaryTextActive: rgb(15 149 149);
+  --aix-colorPrimary: var(--aix-tokenCyan6);
+  --aix-colorPrimaryHover: rgb(32 233 233);
+  --aix-colorPrimaryActive: rgb(15 149 149);
+  --aix-colorPrimaryBg: rgb(190 228 228);
+  --aix-colorPrimaryBgHover: rgb(169 224 224);
+  --aix-colorPrimaryBorder: rgb(79 238 238);
+  --aix-colorPrimaryBorderHover: rgb(55 235 235);
+  --aix-colorPrimaryText: var(--aix-tokenCyan6);
+  --aix-colorPrimaryTextHover: rgb(32 233 233);
+  --aix-colorPrimaryTextActive: rgb(15 149 149);
 
   /* ========== 功能色 - Success ========== */
-  --colorSuccess: var(--tokenGreen6);
-  --colorSuccessHover: rgb(41 224 142);
-  --colorSuccessActive: rgb(20 143 88);
-  --colorSuccessBg: rgb(193 225 211);
-  --colorSuccessBgHover: rgb(173 220 199);
-  --colorSuccessBorder: rgb(85 231 165);
-  --colorSuccessBorderHover: rgb(41 224 142);
-  --colorSuccessText: rgb(27 185 114);
-  --colorSuccessTextHover: rgb(41 224 142);
-  --colorSuccessTextActive: rgb(20 143 88);
+  --aix-colorSuccess: var(--aix-tokenGreen6);
+  --aix-colorSuccessHover: rgb(108 228 47);
+  --aix-colorSuccessActive: rgb(64 153 20);
+  --aix-colorSuccessBg: rgb(209 229 199);
+  --aix-colorSuccessBgHover: rgb(194 224 179);
+  --aix-colorSuccessBorder: rgb(140 234 93);
+  --aix-colorSuccessBorderHover: rgb(124 231 70);
+  --aix-colorSuccessText: var(--aix-tokenGreen6);
+  --aix-colorSuccessTextHover: rgb(108 228 47);
+  --aix-colorSuccessTextActive: rgb(64 153 20);
 
   /* ========== 功能色 - Warning ========== */
-  --colorWarning: var(--tokenGold6);
-  --colorWarningHover: rgb(251 191 70);
-  --colorWarningActive: rgb(215 145 4);
-  --colorWarningBg: rgb(247 240 227);
-  --colorWarningBgHover: rgb(243 231 206);
-  --colorWarningBorder: rgb(252 208 120);
-  --colorWarningBorderHover: rgb(251 191 70);
-  --colorWarningText: rgb(250 173 20);
-  --colorWarningTextHover: rgb(251 191 70);
-  --colorWarningTextActive: rgb(215 145 4);
+  --aix-colorWarning: var(--aix-tokenGold6);
+  --aix-colorWarningHover: rgb(251 191 70);
+  --aix-colorWarningActive: rgb(215 145 4);
+  --aix-colorWarningBg: rgb(247 240 227);
+  --aix-colorWarningBgHover: rgb(243 231 206);
+  --aix-colorWarningBorder: rgb(252 208 120);
+  --aix-colorWarningBorderHover: rgb(252 200 95);
+  --aix-colorWarningText: var(--aix-tokenGold6);
+  --aix-colorWarningTextHover: rgb(251 191 70);
+  --aix-colorWarningTextActive: rgb(215 145 4);
 
   /* ========== 功能色 - Error ========== */
-  --colorError: var(--tokenRed6);
-  --colorErrorHover: rgb(247 85 93);
-  --colorErrorActive: rgb(219 10 21);
-  --colorErrorBg: rgb(249 236 236);
-  --colorErrorBgHover: rgb(244 215 217);
-  --colorErrorBorder: rgb(249 133 139);
-  --colorErrorBorderHover: rgb(247 85 93);
-  --colorErrorText: rgb(245 34 45);
-  --colorErrorTextHover: rgb(247 85 93);
-  --colorErrorTextActive: rgb(219 10 21);
+  --aix-colorError: var(--aix-tokenRed6);
+  --aix-colorErrorHover: rgb(247 85 93);
+  --aix-colorErrorActive: rgb(219 10 21);
+  --aix-colorErrorBg: rgb(249 236 236);
+  --aix-colorErrorBgHover: rgb(244 215 217);
+  --aix-colorErrorBorder: rgb(249 133 139);
+  --aix-colorErrorBorderHover: rgb(248 109 116);
+  --aix-colorErrorText: var(--aix-tokenRed6);
+  --aix-colorErrorTextHover: rgb(247 85 93);
+  --aix-colorErrorTextActive: rgb(219 10 21);
 
   /* ========== 文本色 ========== */
-  --colorText: rgb(0 0 0 / 0.88);
-  --colorTextSecondary: rgb(0 0 0 / 0.65);
-  --colorTextTertiary: rgb(0 0 0 / 0.45);
-  --colorTextQuaternary: rgb(0 0 0 / 0.25);
-  --colorTextDisabled: rgb(0 0 0 / 0.25);
-  --colorTextPlaceholder: rgb(0 0 0 / 0.25);
-  --colorTextHeading: rgb(0 0 0 / 0.88);
-  --colorTextDescription: rgb(0 0 0 / 0.45);
-  --colorTextBase: rgb(0 0 0);
-  --colorTextLight: rgb(255 255 255);
+  --aix-colorText: rgb(0 0 0 / 0.88);
+  --aix-colorTextSecondary: rgb(0 0 0 / 0.65);
+  --aix-colorTextTertiary: rgb(0 0 0 / 0.45);
+  --aix-colorTextQuaternary: rgb(0 0 0 / 0.25);
+  --aix-colorTextDisabled: rgb(0 0 0 / 0.25);
+  --aix-colorTextPlaceholder: rgb(0 0 0 / 0.25);
+  --aix-colorTextHeading: rgb(0 0 0 / 0.88);
+  --aix-colorTextDescription: rgb(0 0 0 / 0.45);
+  --aix-colorTextBase: rgb(0 0 0);
+  --aix-colorTextLight: rgb(255 255 255);
 
   /* ========== 背景色 ========== */
-  --colorBgBase: rgb(255 255 255);
-  --colorBgContainer: rgb(255 255 255);
-  --colorBgContainerDisabled: rgb(0 0 0 / 0.04);
-  --colorBgElevated: rgb(255 255 255);
-  --colorBgLayout: rgb(245 245 245);
-  --colorBgMask: rgb(0 0 0 / 0.45);
-  --colorBgSpotlight: rgb(0 0 0 / 0.85);
-  --colorBgTextHover: rgb(0 0 0 / 0.06);
-  --colorBgTextActive: rgb(0 0 0 / 0.15);
+  --aix-colorBgBase: rgb(255 255 255);
+  --aix-colorBgContainer: rgb(255 255 255);
+  --aix-colorBgContainerDisabled: rgb(0 0 0 / 0.04);
+  --aix-colorBgElevated: rgb(255 255 255);
+  --aix-colorBgLayout: rgb(245 245 245);
+  --aix-colorBgMask: rgb(0 0 0 / 0.45);
+  --aix-colorBgSpotlight: rgb(0 0 0 / 0.85);
+  --aix-colorBgTextHover: rgb(0 0 0 / 0.06);
+  --aix-colorBgTextActive: rgb(0 0 0 / 0.15);
 
   /* ========== 填充色 ========== */
-  --colorFill: rgb(0 0 0 / 0.15);
-  --colorFillSecondary: rgb(0 0 0 / 0.06);
-  --colorFillTertiary: rgb(0 0 0 / 0.04);
-  --colorFillQuaternary: rgb(0 0 0 / 0.02);
-  --colorFillContent: rgb(0 0 0 / 0.06);
-  --colorFillAlter: rgb(0 0 0 / 0.02);
+  --aix-colorFill: rgb(0 0 0 / 0.15);
+  --aix-colorFillSecondary: rgb(0 0 0 / 0.06);
+  --aix-colorFillTertiary: rgb(0 0 0 / 0.04);
+  --aix-colorFillQuaternary: rgb(0 0 0 / 0.02);
+  --aix-colorFillContent: rgb(0 0 0 / 0.06);
+  --aix-colorFillAlter: rgb(0 0 0 / 0.02);
 
   /* ========== 边框色 ========== */
-  --colorBorder: rgb(217 217 217);
-  --colorBorderSecondary: rgb(238 238 238);
-  --colorSplit: rgb(238 238 238);
+  --aix-colorBorder: rgb(217 217 217);
+  --aix-colorBorderSecondary: rgb(238 238 238);
+  --aix-colorSplit: rgb(238 238 238);
 
   /* ========== 控制项颜色 ========== */
-  --controlItemBgHover: rgb(0 0 0 / 0.04);
-  --controlItemBgActive: rgb(190 228 228);
-  --controlItemBgActiveHover: rgb(169 224 224);
+  --aix-controlItemBgHover: rgb(0 0 0 / 0.04);
+  --aix-controlItemBgActive: rgb(190 228 228);
+  --aix-controlItemBgActiveHover: rgb(169 224 224);
 
   /* ========== 链接色 ========== */
-  --colorLink: var(--colorPrimary);
-  --colorLinkHover: var(--colorPrimaryHover);
-  --colorLinkActive: var(--colorPrimaryActive);
+  --aix-colorLink: var(--aix-colorPrimary);
+  --aix-colorLinkHover: var(--aix-colorPrimaryHover);
+  --aix-colorLinkActive: var(--aix-colorPrimaryActive);
 
   /* ========== 图标色 ========== */
-  --colorIcon: rgb(0 0 0 / 0.45);
-  --colorIconHover: rgb(0 0 0 / 0.88);
+  --aix-colorIcon: rgb(0 0 0 / 0.45);
+  --aix-colorIconHover: rgb(0 0 0 / 0.88);
 
   /* ========== 间距 - 语义化命名 ========== */
-  --sizeXXS: var(--tokenSpacing1);
-  --sizeXS: var(--tokenSpacing2);
-  --sizeSM: var(--tokenSpacing3);
-  --size: var(--tokenSpacing4);
-  --sizeMD: var(--tokenSpacing5);
-  --sizeLG: var(--tokenSpacing6);
-  --sizeXL: var(--tokenSpacing8);
-  --sizeXXL: var(--tokenSpacing12);
-  --paddingXXS: var(--tokenSpacing1);
-  --paddingXS: var(--tokenSpacing2);
-  --paddingSM: var(--tokenSpacing3);
-  --padding: var(--tokenSpacing4);
-  --paddingMD: var(--tokenSpacing5);
-  --paddingLG: var(--tokenSpacing6);
-  --paddingXL: var(--tokenSpacing8);
-  --paddingXXL: var(--tokenSpacing12);
-  --marginXXS: var(--tokenSpacing1);
-  --marginXS: var(--tokenSpacing2);
-  --marginSM: var(--tokenSpacing3);
-  --margin: var(--tokenSpacing4);
-  --marginMD: var(--tokenSpacing5);
-  --marginLG: var(--tokenSpacing6);
-  --marginXL: var(--tokenSpacing8);
-  --marginXXL: var(--tokenSpacing12);
+  --aix-sizeXXS: var(--aix-tokenSpacing1);
+  --aix-sizeXS: var(--aix-tokenSpacing2);
+  --aix-sizeSM: var(--aix-tokenSpacing3);
+  --aix-size: var(--aix-tokenSpacing4);
+  --aix-sizeMD: var(--aix-tokenSpacing5);
+  --aix-sizeLG: var(--aix-tokenSpacing6);
+  --aix-sizeXL: var(--aix-tokenSpacing8);
+  --aix-sizeXXL: var(--aix-tokenSpacing12);
+  --aix-paddingXXS: var(--aix-tokenSpacing1);
+  --aix-paddingXS: var(--aix-tokenSpacing2);
+  --aix-paddingSM: var(--aix-tokenSpacing3);
+  --aix-padding: var(--aix-tokenSpacing4);
+  --aix-paddingMD: var(--aix-tokenSpacing5);
+  --aix-paddingLG: var(--aix-tokenSpacing6);
+  --aix-paddingXL: var(--aix-tokenSpacing8);
+  --aix-paddingXXL: var(--aix-tokenSpacing12);
+  --aix-marginXXS: var(--aix-tokenSpacing1);
+  --aix-marginXS: var(--aix-tokenSpacing2);
+  --aix-marginSM: var(--aix-tokenSpacing3);
+  --aix-margin: var(--aix-tokenSpacing4);
+  --aix-marginMD: var(--aix-tokenSpacing5);
+  --aix-marginLG: var(--aix-tokenSpacing6);
+  --aix-marginXL: var(--aix-tokenSpacing8);
+  --aix-marginXXL: var(--aix-tokenSpacing12);
 
   /* ========== 控制高度 ========== */
-  --controlHeightXS: var(--tokenControlHeight1);
-  --controlHeightSM: var(--tokenControlHeight2);
-  --controlHeight: var(--tokenControlHeight3);
-  --controlHeightLG: var(--tokenControlHeight4);
+  --aix-controlHeightXS: var(--aix-tokenControlHeight1);
+  --aix-controlHeightSM: var(--aix-tokenControlHeight2);
+  --aix-controlHeight: var(--aix-tokenControlHeight3);
+  --aix-controlHeightLG: var(--aix-tokenControlHeight4);
 
   /* ========== 圆角 ========== */
-  --borderRadiusXS: var(--tokenBorderRadius1);
-  --borderRadiusSM: var(--tokenBorderRadius2);
-  --borderRadius: var(--tokenBorderRadius3);
-  --borderRadiusLG: var(--tokenBorderRadius4);
+  --aix-borderRadiusXS: var(--aix-tokenBorderRadius1);
+  --aix-borderRadiusSM: var(--aix-tokenBorderRadius2);
+  --aix-borderRadius: var(--aix-tokenBorderRadius3);
+  --aix-borderRadiusLG: var(--aix-tokenBorderRadius4);
 
   /* ========== 字号 ========== */
-  --fontSizeXS: var(--tokenFontSize1);
-  --fontSizeSM: var(--tokenFontSize2);
-  --fontSize: var(--tokenFontSize3);
-  --fontSizeMD: var(--tokenFontSize4);
-  --fontSizeLG: var(--tokenFontSize5);
-  --fontSizeXL: var(--tokenFontSize6);
-  --fontSizeXXL: var(--tokenFontSize7);
+  --aix-fontSizeXS: var(--aix-tokenFontSize1);
+  --aix-fontSizeSM: var(--aix-tokenFontSize2);
+  --aix-fontSize: var(--aix-tokenFontSize3);
+  --aix-fontSizeMD: var(--aix-tokenFontSize4);
+  --aix-fontSizeLG: var(--aix-tokenFontSize5);
+  --aix-fontSizeXL: var(--aix-tokenFontSize6);
+  --aix-fontSizeXXL: var(--aix-tokenFontSize7);
 
   /* ========== 行高 ========== */
-  --lineHeightSM: var(--tokenLineHeight1);
-  --lineHeight: var(--tokenLineHeight2);
-  --lineHeightLG: var(--tokenLineHeight3);
+  --aix-lineHeightSM: var(--aix-tokenLineHeight1);
+  --aix-lineHeight: var(--aix-tokenLineHeight2);
+  --aix-lineHeightLG: var(--aix-tokenLineHeight3);
 
   /* ========== 字体族 (P1) ========== */
-  --fontFamily: var(--tokenFontFamily);
-  --fontFamilyCode: var(--tokenFontFamilyCode);
+  --aix-fontFamily: var(--aix-tokenFontFamily);
+  --aix-fontFamilyCode: var(--aix-tokenFontFamilyCode);
 
   /* ========== 阴影 (P0) ========== */
-  --shadowXS: var(--tokenShadow1);
-  --shadowSM: var(--tokenShadow1);
-  --shadow: var(--tokenShadow2);
-  --shadowMD: var(--tokenShadow2);
-  --shadowLG: var(--tokenShadow3);
-  --shadowXL: var(--tokenShadow4);
+  --aix-shadowXS: var(--aix-tokenShadow1);
+  --aix-shadowSM:
+    0 2px 4px 0 rgb(0 0 0 / 0.04), 0 1px 6px -1px rgb(0 0 0 / 0.03),
+    0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --aix-shadow: var(--aix-tokenShadow2);
+  --aix-shadowMD:
+    0 4px 12px -4px rgb(0 0 0 / 0.1), 0 8px 24px 0 rgb(0 0 0 / 0.06),
+    0 12px 40px 12px rgb(0 0 0 / 0.04);
+  --aix-shadowLG: var(--aix-tokenShadow3);
+  --aix-shadowXL: var(--aix-tokenShadow4);
 
   /* ========== z-index层级 (P0) ========== */
-  --zIndexBase: var(--tokenZIndexBase);
-  --zIndexPopupBase: var(--tokenZIndexPopup);
-  --zIndexAffix: var(--tokenZIndexAffix);
-  --zIndexModal: var(--tokenZIndexModal);
-  --zIndexModalMask: 1199;
-  --zIndexPopover: var(--tokenZIndexPopover);
-  --zIndexDropdown: 1050;
-  --zIndexTooltip: var(--tokenZIndexTooltip);
-  --zIndexNotification: var(--tokenZIndexNotification);
-  --zIndexMessage: 1510;
+  --aix-zIndexBase: var(--aix-tokenZIndexBase);
+  --aix-zIndexPopupBase: var(--aix-tokenZIndexPopup);
+  --aix-zIndexAffix: var(--aix-tokenZIndexAffix);
+  --aix-zIndexModal: var(--aix-tokenZIndexModal);
+  --aix-zIndexModalMask: 1199;
+  --aix-zIndexPopover: var(--aix-tokenZIndexPopover);
+  --aix-zIndexDropdown: 1050;
+  --aix-zIndexTooltip: var(--aix-tokenZIndexTooltip);
+  --aix-zIndexNotification: var(--aix-tokenZIndexNotification);
+  --aix-zIndexMessage: 1510;
 
   /* ========== 中性色 (P0) ========== */
-  --colorNeutral1: var(--tokenGray1);
-  --colorNeutral2: var(--tokenGray2);
-  --colorNeutral3: var(--tokenGray3);
-  --colorNeutral4: var(--tokenGray4);
-  --colorNeutral5: var(--tokenGray5);
-  --colorNeutral6: var(--tokenGray6);
-  --colorNeutral7: var(--tokenGray7);
-  --colorNeutral8: var(--tokenGray8);
-  --colorNeutral9: var(--tokenGray9);
-  --colorNeutral10: var(--tokenGray10);
+  --aix-colorNeutral1: var(--aix-tokenGray1);
+  --aix-colorNeutral2: var(--aix-tokenGray2);
+  --aix-colorNeutral3: var(--aix-tokenGray3);
+  --aix-colorNeutral4: var(--aix-tokenGray4);
+  --aix-colorNeutral5: var(--aix-tokenGray5);
+  --aix-colorNeutral6: var(--aix-tokenGray6);
+  --aix-colorNeutral7: var(--aix-tokenGray7);
+  --aix-colorNeutral8: var(--aix-tokenGray8);
+  --aix-colorNeutral9: var(--aix-tokenGray9);
+  --aix-colorNeutral10: var(--aix-tokenGray10);
 }

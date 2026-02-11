@@ -61,18 +61,7 @@ const toggleLocale = () => {
 watchEffect(async () => {
   const currentLocale = locale.value as LocaleKey;
   await loadLocaleMessages(currentLocale);
-  // 设置网站语言
   document.documentElement.setAttribute('lang', currentLocale);
-});
-
-// 监听主题变化
-watchEffect(() => {
-  const html = document.documentElement;
-  const theme = mode.value;
-  // 切换主题
-  html.setAttribute('theme', theme);
-  html.classList.remove('light', 'dark');
-  html.classList.add(theme);
 });
 </script>
 
@@ -86,8 +75,8 @@ watchEffect(() => {
 .header {
   padding: 2rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
-  color: white;
+  box-shadow: var(--aix-shadow);
+  color: var(--aix-colorTextLight);
   text-align: center;
 }
 
@@ -141,8 +130,8 @@ watchEffect(() => {
 .footer {
   margin-top: 2rem;
   padding: 1.5rem;
-  background: #2c3e50;
-  color: white;
+  background: var(--aix-colorBgSpotlight);
+  color: var(--aix-colorTextLight);
   text-align: center;
 }
 
@@ -152,11 +141,9 @@ watchEffect(() => {
 
 :global(body) {
   margin: 0;
-  background: #f5f7fa;
-  color: #333;
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-    Arial, sans-serif;
+  background: var(--aix-colorBgLayout);
+  color: var(--aix-colorText);
+  font-family: var(--aix-fontFamily);
 }
 
 :global(*) {
@@ -171,22 +158,22 @@ watchEffect(() => {
 :global(.demo-page h2) {
   margin-top: 0;
   padding-bottom: 0.5rem;
-  border-bottom: 2px solid #667eea;
-  color: #333;
+  border-bottom: 2px solid var(--aix-colorPrimary);
+  color: var(--aix-colorText);
   font-size: 1.8rem;
 }
 
 :global(.demo-page .description) {
   margin-bottom: 1.5rem;
-  color: #666;
+  color: var(--aix-colorTextSecondary);
 }
 
 :global(.demo-page .demo-group) {
   margin-bottom: 2rem;
   padding: 1.5rem;
-  border-radius: 12px;
-  background: white;
-  box-shadow: 0 2px 12px rgb(0 0 0 / 0.08);
+  border-radius: var(--aix-borderRadiusLG);
+  background: var(--aix-colorBgContainer);
+  box-shadow: var(--aix-shadow);
 }
 
 :global(.demo-page .demo-group:last-child) {
@@ -196,7 +183,7 @@ watchEffect(() => {
 :global(.demo-page .demo-group h3) {
   margin-top: 0;
   margin-bottom: 1rem;
-  color: #555;
+  color: var(--aix-colorTextSecondary);
   font-size: 1.1rem;
 }
 

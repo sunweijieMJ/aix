@@ -5,7 +5,6 @@ import {
   generateActiveColor,
   generateBgColor,
   generateBorderColor,
-  generateColorPalette,
   generateColorSeries,
   generateHoverColor,
   generateTextColor,
@@ -175,28 +174,6 @@ describe('color-algorithm', () => {
       expect(series).toHaveProperty('text');
       expect(series).toHaveProperty('textHover');
       expect(series).toHaveProperty('textActive');
-    });
-  });
-
-  describe('generateColorPalette', () => {
-    it('should generate 10 color levels', () => {
-      const base = 'rgb(0 180 180)';
-      const palette = generateColorPalette(base);
-
-      expect(palette).toHaveLength(10);
-      palette.forEach((color) => {
-        expect(color).toMatch(/^rgb\(\d+ \d+ \d+\)$/);
-      });
-    });
-
-    it('should have lightest color first and darkest last', () => {
-      const base = 'rgb(0 180 180)';
-      const palette = generateColorPalette(base);
-
-      const firstHsl = rgbToHsl(parseColor(palette[0]!));
-      const lastHsl = rgbToHsl(parseColor(palette[9]!));
-
-      expect(firstHsl.l).toBeGreaterThan(lastHsl.l);
     });
   });
 });

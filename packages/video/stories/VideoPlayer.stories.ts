@@ -196,7 +196,7 @@ export const MP4Video: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">Big Buck Bunny (MP4)</h3>
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">Big Buck Bunny (MP4)</h3>
         <VideoPlayer v-bind="args" />
       </div>
     `,
@@ -218,8 +218,8 @@ export const HLSStream: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">HLS 流媒体 (.m3u8)</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">HLS 流媒体 (.m3u8)</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           自动检测 .m3u8 格式并使用 hls.js 播放
         </p>
         <VideoPlayer v-bind="args" />
@@ -243,8 +243,8 @@ export const DASHStream: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">DASH 流媒体 (.mpd)</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">DASH 流媒体 (.mpd)</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           自动检测 .mpd 格式并使用 dashjs 播放
         </p>
         <VideoPlayer v-bind="args" />
@@ -271,8 +271,8 @@ export const Autoplay: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">自动播放 + 循环</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">自动播放 + 循环</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           浏览器要求自动播放必须静音，组件会自动处理移动端策略
         </p>
         <VideoPlayer v-bind="args" />
@@ -294,10 +294,10 @@ export const AspectRatios: Story = {
     },
     template: `
       <div>
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">不同宽高比</h3>
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">不同宽高比</h3>
         <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px;">
           <div v-for="ratio in ratios" :key="ratio">
-            <p style="margin-bottom: 8px; font-size: 14px; color: var(--colorTextSecondary);">
+            <p style="margin-bottom: 8px; font-size: 14px; color: var(--aix-colorTextSecondary);">
               {{ ratio }}
             </p>
             <VideoPlayer :src="src" :aspect-ratio="ratio" style="max-width: 400px;" />
@@ -327,7 +327,7 @@ export const CustomSize: Story = {
     },
     template: `
       <div>
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">固定尺寸 (400x300)</h3>
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">固定尺寸 (400x300)</h3>
         <VideoPlayer v-bind="args" />
       </div>
     `,
@@ -353,8 +353,8 @@ export const NoControls: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">无控制栏（背景视频）</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">无控制栏（背景视频）</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           适用于网站背景、装饰性视频等场景
         </p>
         <VideoPlayer v-bind="args" />
@@ -379,8 +379,8 @@ export const CustomControls: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">自定义控制栏</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">自定义控制栏</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           使用 customControls 插槽可以完全自定义控制栏
         </p>
         <VideoPlayer v-bind="args">
@@ -442,7 +442,7 @@ export const EventListeners: Story = {
     template: `
       <div style="display: flex; gap: 24px; max-width: 1200px;">
         <div style="flex: 1;">
-          <h3 style="margin-bottom: 16px; color: var(--colorText);">视频播放器</h3>
+          <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">视频播放器</h3>
           <VideoPlayer
             v-bind="args"
             @ready="onReady"
@@ -456,11 +456,11 @@ export const EventListeners: Story = {
           />
         </div>
         <div style="width: 300px;">
-          <h3 style="margin-bottom: 16px; color: var(--colorText);">事件日志</h3>
+          <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">事件日志</h3>
           <div style="
             padding: 12px;
-            background: var(--colorBgContainer);
-            border: 1px solid var(--colorBorder);
+            background: var(--aix-colorBgContainer);
+            border: 1px solid var(--aix-colorBorder);
             border-radius: 8px;
             max-height: 400px;
             overflow-y: auto;
@@ -469,12 +469,12 @@ export const EventListeners: Story = {
           ">
             <div v-for="(event, index) in events" :key="index" style="
               padding: 4px 0;
-              border-bottom: 1px solid var(--colorBorderSecondary);
-              color: var(--colorText);
+              border-bottom: 1px solid var(--aix-colorBorderSecondary);
+              color: var(--aix-colorText);
             ">
               {{ event }}
             </div>
-            <div v-if="events.length === 0" style="color: var(--colorTextSecondary);">
+            <div v-if="events.length === 0" style="color: var(--aix-colorTextSecondary);">
               播放视频查看事件...
             </div>
           </div>
@@ -515,45 +515,45 @@ export const ExternalControl: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">外部控制</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">外部控制</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           通过 ref 获取播放器实例，调用内置方法
         </p>
 
         <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
           <button
             @click="play"
-            style="padding: 8px 16px; background: var(--colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
+            style="padding: 8px 16px; background: var(--aix-colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
           >
             播放
           </button>
           <button
             @click="pause"
-            style="padding: 8px 16px; background: var(--colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
+            style="padding: 8px 16px; background: var(--aix-colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
           >
             暂停
           </button>
           <button
             @click="seek(0)"
-            style="padding: 8px 16px; background: var(--colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
+            style="padding: 8px 16px; background: var(--aix-colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
           >
             回到开头
           </button>
           <button
             @click="seek(5)"
-            style="padding: 8px 16px; background: var(--colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
+            style="padding: 8px 16px; background: var(--aix-colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
           >
             跳转到 5 秒
           </button>
           <button
             @click="toggleMute"
-            style="padding: 8px 16px; background: var(--colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
+            style="padding: 8px 16px; background: var(--aix-colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
           >
             切换静音
           </button>
           <button
             @click="toggleFullscreen"
-            style="padding: 8px 16px; background: var(--colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
+            style="padding: 8px 16px; background: var(--aix-colorPrimary); color: white; border: none; border-radius: 4px; cursor: pointer;"
           >
             切换全屏
           </button>
@@ -581,16 +581,16 @@ export const TouchGestures: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">触摸手势（移动端）</h3>
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">触摸手势（移动端）</h3>
         <div style="
           padding: 16px;
           margin-bottom: 16px;
-          background: var(--colorPrimaryBg);
-          border: 1px solid var(--colorPrimaryBorder);
+          background: var(--aix-colorPrimaryBg);
+          border: 1px solid var(--aix-colorPrimaryBorder);
           border-radius: 8px;
         ">
-          <h4 style="margin: 0 0 12px; font-size: 14px; color: var(--colorText);">支持的手势：</h4>
-          <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--colorTextSecondary); line-height: 1.8;">
+          <h4 style="margin: 0 0 12px; font-size: 14px; color: var(--aix-colorText);">支持的手势：</h4>
+          <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--aix-colorTextSecondary); line-height: 1.8;">
             <li><strong>单击</strong> - 播放/暂停</li>
             <li><strong>双击</strong> - 进入/退出全屏</li>
             <li><strong>左滑</strong> - 快退 10 秒</li>
@@ -619,8 +619,8 @@ export const AutoFullscreenOnLandscape: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">横屏自动全屏</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">横屏自动全屏</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           在移动设备上旋转到横屏时，视频会自动进入全屏模式
         </p>
         <VideoPlayer v-bind="args" />
@@ -645,7 +645,7 @@ export const TransparentBackground: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">透明背景</h3>
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">透明背景</h3>
         <div style="
           padding: 24px;
           background: linear-gradient(45deg, #f0f0f0 25%, transparent 25%),
@@ -679,14 +679,14 @@ export const ThemeDemo: Story = {
       <div style="max-width: 800px;">
         <div style="
           padding: 16px;
-          background: var(--colorBgContainer);
-          border: 1px solid var(--colorBorder);
+          background: var(--aix-colorBgContainer);
+          border: 1px solid var(--aix-colorBorder);
           border-radius: 8px;
         ">
-          <h3 style="margin: 0 0 16px; font-size: 16px; color: var(--colorText);">
+          <h3 style="margin: 0 0 16px; font-size: 16px; color: var(--aix-colorText);">
             主题切换演示
           </h3>
-          <p style="margin: 0 0 16px; font-size: 14px; color: var(--colorTextSecondary);">
+          <p style="margin: 0 0 16px; font-size: 14px; color: var(--aix-colorTextSecondary);">
             点击右上角工具栏的主题按钮（太阳/月亮图标），切换亮色/暗色主题查看效果
           </p>
           <VideoPlayer v-bind="args" />
@@ -704,46 +704,46 @@ export const ProtocolSupport: Story = {
   render: () => ({
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">支持的流媒体协议</h3>
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">支持的流媒体协议</h3>
         <div style="display: grid; gap: 16px;">
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">原生格式</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">原生格式</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               MP4, WebM, OGG, MOV - 浏览器原生支持，无需额外 SDK
             </p>
           </div>
 
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">HLS (.m3u8)</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">HLS (.m3u8)</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               使用 hls.js 实现，支持自适应码率、低延迟模式、错误重试
             </p>
           </div>
 
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">FLV</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">FLV</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               使用 flv.js 实现，支持直播追帧、首帧检测、解码监控
             </p>
           </div>
 
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">DASH (.mpd)</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">DASH (.mpd)</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               使用 dashjs 实现，支持自适应码率、低延迟模式
             </p>
           </div>
 
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">RTSP</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">RTSP</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               需要服务端转换：支持 WebSocket 代理、HLS 转换、WebRTC 网关三种模式
             </p>
           </div>
 
-          <div style="padding: 16px; background: var(--colorBgContainer); border: 1px solid var(--colorBorder); border-radius: 8px;">
-            <h4 style="margin: 0 0 8px; color: var(--colorText);">WebRTC</h4>
-            <p style="margin: 0; font-size: 14px; color: var(--colorTextSecondary);">
+          <div style="padding: 16px; background: var(--aix-colorBgContainer); border: 1px solid var(--aix-colorBorder); border-radius: 8px;">
+            <h4 style="margin: 0 0 8px; color: var(--aix-colorText);">WebRTC</h4>
+            <p style="margin: 0; font-size: 14px; color: var(--aix-colorTextSecondary);">
               支持信令服务器模式，实现 P2P 视频流接收
             </p>
           </div>
@@ -777,8 +777,8 @@ export const Playground: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">交互式 Playground</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">交互式 Playground</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           在右侧 Controls 面板中调整参数，实时查看效果
         </p>
         <VideoPlayer v-bind="args" />
@@ -810,8 +810,8 @@ export const ErrorHandling: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">错误处理</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">错误处理</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           演示视频加载失败时的错误处理
         </p>
 
@@ -820,10 +820,10 @@ export const ErrorHandling: Story = {
           style="
             padding: 16px;
             margin-bottom: 16px;
-            background: var(--colorErrorBg, #fff2f0);
-            border: 1px solid var(--colorErrorBorder, #ffccc7);
+            background: var(--aix-colorErrorBg, #fff2f0);
+            border: 1px solid var(--aix-colorErrorBorder, #ffccc7);
             border-radius: 8px;
-            color: var(--colorError, #ff4d4f);
+            color: var(--aix-colorError, #ff4d4f);
           "
         >
           <strong>错误：</strong> {{ errorMessage }}
@@ -889,8 +889,8 @@ export const NetworkStatusDemo: Story = {
     template: `
       <div style="display: flex; gap: 24px; max-width: 1200px;">
         <div style="flex: 1;">
-          <h3 style="margin-bottom: 16px; color: var(--colorText);">网络状态监听</h3>
-          <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+          <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">网络状态监听</h3>
+          <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
             监听网络连接状态，断网时暂停、恢复时自动重连
           </p>
           <VideoPlayer
@@ -902,12 +902,12 @@ export const NetworkStatusDemo: Story = {
           />
         </div>
         <div style="width: 280px;">
-          <h3 style="margin-bottom: 16px; color: var(--colorText);">网络状态</h3>
+          <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">网络状态</h3>
           <div style="
             padding: 12px;
             margin-bottom: 16px;
-            background: var(--colorBgContainer);
-            border: 1px solid var(--colorBorder);
+            background: var(--aix-colorBgContainer);
+            border: 1px solid var(--aix-colorBorder);
             border-radius: 8px;
           ">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -919,15 +919,15 @@ export const NetworkStatusDemo: Story = {
                   background: networkStatus === '在线' ? '#52c41a' : networkStatus === '离线' ? '#ff4d4f' : '#faad14'
                 }"
               />
-              <span style="color: var(--colorText);">{{ networkStatus }}</span>
+              <span style="color: var(--aix-colorText);">{{ networkStatus }}</span>
             </div>
           </div>
 
-          <h4 style="margin-bottom: 12px; font-size: 14px; color: var(--colorText);">事件日志</h4>
+          <h4 style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorText);">事件日志</h4>
           <div style="
             padding: 12px;
-            background: var(--colorBgContainer);
-            border: 1px solid var(--colorBorder);
+            background: var(--aix-colorBgContainer);
+            border: 1px solid var(--aix-colorBorder);
             border-radius: 8px;
             font-family: monospace;
             font-size: 12px;
@@ -937,11 +937,11 @@ export const NetworkStatusDemo: Story = {
             <div
               v-for="(event, index) in networkEvents"
               :key="index"
-              style="padding: 4px 0; border-bottom: 1px solid var(--colorBorderSecondary); color: var(--colorText);"
+              style="padding: 4px 0; border-bottom: 1px solid var(--aix-colorBorderSecondary); color: var(--aix-colorText);"
             >
               {{ event }}
             </div>
-            <div v-if="networkEvents.length === 0" style="color: var(--colorTextSecondary);">
+            <div v-if="networkEvents.length === 0" style="color: var(--aix-colorTextSecondary);">
               等待网络事件...
             </div>
           </div>
@@ -988,8 +988,8 @@ export const PictureInPicture: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">画中画模式</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">画中画模式</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           支持画中画功能，视频可以悬浮在其他窗口上方播放
         </p>
 
@@ -999,7 +999,7 @@ export const PictureInPicture: Story = {
             :disabled="!isPipSupported"
             :style="{
               padding: '8px 16px',
-              background: isPipSupported ? 'var(--colorPrimary)' : '#d9d9d9',
+              background: isPipSupported ? 'var(--aix-colorPrimary)' : '#d9d9d9',
               color: isPipSupported ? 'white' : '#999',
               border: 'none',
               borderRadius: '4px',
@@ -1008,7 +1008,7 @@ export const PictureInPicture: Story = {
           >
             {{ isPipActive ? '退出画中画' : '进入画中画' }}
           </button>
-          <span v-if="!isPipSupported" style="margin-left: 12px; font-size: 12px; color: var(--colorTextSecondary);">
+          <span v-if="!isPipSupported" style="margin-left: 12px; font-size: 12px; color: var(--aix-colorTextSecondary);">
             您的浏览器不支持画中画功能
           </span>
         </div>
@@ -1044,27 +1044,27 @@ export const AdvancedStreamOptions: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">高级流配置</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">高级流配置</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           通过 streamOptions 属性配置流媒体的高级选项
         </p>
 
         <div style="
           padding: 16px;
           margin-bottom: 16px;
-          background: var(--colorBgContainer);
-          border: 1px solid var(--colorBorder);
+          background: var(--aix-colorBgContainer);
+          border: 1px solid var(--aix-colorBorder);
           border-radius: 8px;
         ">
-          <h4 style="margin: 0 0 12px; font-size: 14px; color: var(--colorText);">当前配置：</h4>
+          <h4 style="margin: 0 0 12px; font-size: 14px; color: var(--aix-colorText);">当前配置：</h4>
           <pre style="
             margin: 0;
             padding: 12px;
-            background: var(--colorFillTertiary, #f5f5f5);
+            background: var(--aix-colorFillTertiary, #f5f5f5);
             border-radius: 4px;
             font-size: 12px;
             overflow-x: auto;
-            color: var(--colorText);
+            color: var(--aix-colorText);
           ">{{ JSON.stringify(streamOptions, null, 2) }}</pre>
         </div>
 
@@ -1089,8 +1089,8 @@ export const WebMVideo: Story = {
     },
     template: `
       <div style="max-width: 800px;">
-        <h3 style="margin-bottom: 16px; color: var(--colorText);">WebM 视频格式</h3>
-        <p style="margin-bottom: 12px; font-size: 14px; color: var(--colorTextSecondary);">
+        <h3 style="margin-bottom: 16px; color: var(--aix-colorText);">WebM 视频格式</h3>
+        <p style="margin-bottom: 12px; font-size: 14px; color: var(--aix-colorTextSecondary);">
           支持 WebM 开放视频格式，无需额外播放器
         </p>
         <VideoPlayer v-bind="args" />

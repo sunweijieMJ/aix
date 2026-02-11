@@ -4,12 +4,11 @@
  */
 
 import { computed, type Ref } from 'vue';
-import { cssVar, type CSSVarRefs } from '../utils/css-var';
+import { createCSSVarRefs, type CSSVarRefs } from '../utils/css-var';
 import type {
   PartialThemeTokens,
   ThemeConfig,
   ThemeMode,
-  ThemePreset,
   ThemeTokens,
   TransitionConfig,
 } from '../theme-types';
@@ -31,7 +30,7 @@ export interface UseThemeReturn {
    * ```ts
    * const { cssVar } = useTheme();
    * // 在样式中使用
-   * const style = { color: cssVar.colorPrimary }; // => { color: "var(--colorPrimary)" }
+   * const style = { color: cssVar.colorPrimary }; // => { color: "var(--aix-colorPrimary)" }
    * ```
    */
   cssVar: CSSVarRefs;
@@ -49,12 +48,6 @@ export interface UseThemeReturn {
   getToken: <K extends keyof ThemeTokens>(key: K) => ThemeTokens[K];
   /** 获取所有当前 Token */
   getTokens: () => ThemeTokens;
-  /** 应用预设主题 */
-  applyPreset: (presetName: string) => void;
-  /** 注册自定义预设 */
-  registerPreset: (preset: ThemePreset) => void;
-  /** 获取所有可用预设 */
-  getPresets: () => ThemePreset[];
   /** 重置为默认主题 */
   reset: () => void;
   /** 设置过渡配置 */
@@ -78,8 +71,8 @@ export interface UseThemeReturn {
  *
  * // 使用 CSS 变量引用（用于动态样式）
  * const buttonStyle = {
- *   color: cssVar.colorPrimary,        // => "var(--colorPrimary)"
- *   background: cssVar.colorBgContainer, // => "var(--colorBgContainer)"
+ *   color: cssVar.colorPrimary,        // => "var(--aix-colorPrimary)"
+ *   background: cssVar.colorBgContainer, // => "var(--aix-colorBgContainer)"
  * };
  * </script>
  *
@@ -100,7 +93,7 @@ export function useTheme(): UseThemeReturn {
   return {
     mode,
     config,
-    cssVar,
+    cssVar: createCSSVarRefs(context.prefix),
     setMode: context.setMode,
     toggleMode: context.toggleMode,
     applyTheme: context.applyTheme,
@@ -108,9 +101,6 @@ export function useTheme(): UseThemeReturn {
     setTokens: context.setTokens,
     getToken: context.getToken,
     getTokens: context.getTokens,
-    applyPreset: context.applyPreset,
-    registerPreset: context.registerPreset,
-    getPresets: context.getPresets,
     reset: context.reset,
     setTransition: context.setTransition,
     getTransition: context.getTransition,

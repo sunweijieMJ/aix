@@ -1,6 +1,5 @@
 /**
  * 颜色生成算法
- * 基于 Ant Design 的颜色算法，用于自动生成派生颜色
  */
 
 export interface RGB {
@@ -453,37 +452,9 @@ export function generateColorSeries(baseColor: string): ColorSeries {
     bg: rgbToString(hslToRgb(bgHsl)),
     bgHover: rgbToString(hslToRgb(bgHoverHsl)),
     border: generateBorderColor(normalizedBase),
-    borderHover: adjustLightness(normalizedBase, 10),
+    borderHover: adjustLightness(normalizedBase, 15),
     text: normalizedBase, // 文本色使用主色本身，而非过暗的派生色
     textHover: generateHoverColor(normalizedBase),
     textActive: generateActiveColor(normalizedBase),
   };
-}
-
-/**
- * 生成色盘（10个层级）
- * @param baseColor - 基础颜色（通常是第6级）
- */
-export function generateColorPalette(baseColor: string): string[] {
-  const rgb = parseColor(baseColor);
-  const hsl = rgbToHsl(rgb);
-
-  const palette: string[] = [];
-
-  // 生成10个层级的颜色
-  for (let i = 1; i <= 10; i++) {
-    const lightness = hsl.l + (6 - i) * 10;
-    const saturation = i <= 6 ? hsl.s : hsl.s - (i - 6) * 5;
-
-    const newHsl = {
-      h: hsl.h,
-      s: Math.max(0, Math.min(100, saturation)),
-      l: Math.max(0, Math.min(100, lightness)),
-    };
-
-    const newRgb = hslToRgb(newHsl);
-    palette.push(rgbToString(newRgb));
-  }
-
-  return palette;
 }

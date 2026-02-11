@@ -184,7 +184,7 @@ function formatTime(seconds: number): string {
   height: 100%;
   transition: width 0.1s;
   border-radius: 2px;
-  background: var(--colorPrimary, rgb(24 144 255));
+  background: rgb(24 144 255);
 }
 
 .progress-handle {

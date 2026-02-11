@@ -26,12 +26,14 @@
     "./vars/light": "./dist/vars/light.css",
     "./vars/dark": "./dist/vars/dark.css"
   },
+  "bin": {
+    "aix-theme-export": "./dist/cli.js"
+  },
   "files": [
     "dist"
   ],
   "scripts": {
     "gen:css": "tsx scripts/gen-css.ts",
-    "gen:css:watch": "tsx scripts/gen-css.ts --watch",
     "dev": "pnpm run gen:css && rollup -c -w",
     "lint": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
     "build": "pnpm run clean && pnpm run gen:css && rollup -c && pnpm run build:types",
@@ -50,7 +52,6 @@
     "@kit/stylelint-config": "workspace:*",
     "@kit/typescript-config": "workspace:*",
     "autoprefixer": "*",
-    "chokidar": "^5.0.0",
     "postcss": "*",
     "postcss-import": "^16.1.1",
     "rimraf": "*",

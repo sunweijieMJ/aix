@@ -9,132 +9,132 @@
 :root[data-theme='dark'],
 .dark {
   /* ========== 品牌色 - Primary (暗色模式) ========== */
-  --colorPrimary: rgb(74 242 242);
-  --colorPrimaryHover: rgb(112 245 245);
-  --colorPrimaryActive: rgb(36 240 240);
-  --colorPrimaryBg: rgb(16 60 60);
-  --colorPrimaryBgHover: rgb(19 83 83);
-  --colorPrimaryBorder: rgb(25 128 128);
-  --colorPrimaryBorderHover: rgb(29 175 175);
-  --colorPrimaryText: rgb(74 242 242);
-  --colorPrimaryTextHover: rgb(112 245 245);
-  --colorPrimaryTextActive: rgb(36 240 240);
+  --aix-colorPrimary: rgb(74 242 242);
+  --aix-colorPrimaryHover: rgb(112 245 245);
+  --aix-colorPrimaryActive: rgb(36 240 240);
+  --aix-colorPrimaryBg: rgb(16 60 60);
+  --aix-colorPrimaryBgHover: rgb(19 83 83);
+  --aix-colorPrimaryBorder: rgb(25 128 128);
+  --aix-colorPrimaryBorderHover: rgb(29 175 175);
+  --aix-colorPrimaryText: rgb(74 242 242);
+  --aix-colorPrimaryTextHover: rgb(112 245 245);
+  --aix-colorPrimaryTextActive: rgb(36 240 240);
 
   /* ========== 功能色 - Success (暗色模式) ========== */
-  --colorSuccess: rgb(81 236 166);
-  --colorSuccessHover: rgb(117 240 185);
-  --colorSuccessActive: rgb(44 232 147);
-  --colorSuccessBg: rgb(19 57 40);
-  --colorSuccessBgHover: rgb(23 79 54);
-  --colorSuccessBorder: rgb(31 122 81);
-  --colorSuccessBorderHover: rgb(36 168 109);
-  --colorSuccessText: rgb(81 236 166);
-  --colorSuccessTextHover: rgb(117 240 185);
-  --colorSuccessTextActive: rgb(44 232 147);
+  --aix-colorSuccess: rgb(138 238 88);
+  --aix-colorSuccessHover: rgb(164 242 125);
+  --aix-colorSuccessActive: rgb(112 235 51);
+  --aix-colorSuccessBg: rgb(32 58 18);
+  --aix-colorSuccessBgHover: rgb(41 80 22);
+  --aix-colorSuccessBorder: rgb(61 124 29);
+  --aix-colorSuccessBorderHover: rgb(79 170 34);
+  --aix-colorSuccessText: rgb(138 238 88);
+  --aix-colorSuccessTextHover: rgb(164 242 125);
+  --aix-colorSuccessTextActive: rgb(112 235 51);
 
   /* ========== 功能色 - Warning (暗色模式) ========== */
-  --colorWarning: rgb(255 201 92);
-  --colorWarningHover: rgb(255 214 133);
-  --colorWarningActive: rgb(255 187 51);
-  --colorWarningBg: rgb(65 47 11);
-  --colorWarningBgHover: rgb(89 64 13);
-  --colorWarningBorder: rgb(138 97 15);
-  --colorWarningBorderHover: rgb(189 131 15);
-  --colorWarningText: rgb(255 201 92);
-  --colorWarningTextHover: rgb(255 214 133);
-  --colorWarningTextActive: rgb(255 187 51);
+  --aix-colorWarning: rgb(255 201 92);
+  --aix-colorWarningHover: rgb(255 214 133);
+  --aix-colorWarningActive: rgb(255 187 51);
+  --aix-colorWarningBg: rgb(65 47 11);
+  --aix-colorWarningBgHover: rgb(89 64 13);
+  --aix-colorWarningBorder: rgb(138 97 15);
+  --aix-colorWarningBorderHover: rgb(189 131 15);
+  --aix-colorWarningText: rgb(255 201 92);
+  --aix-colorWarningTextHover: rgb(255 214 133);
+  --aix-colorWarningTextActive: rgb(255 187 51);
 
   /* ========== 功能色 - Error (暗色模式) ========== */
-  --colorError: rgb(252 105 112);
-  --colorErrorHover: rgb(253 145 150);
-  --colorErrorActive: rgb(251 65 74);
-  --colorErrorBg: rgb(63 13 16);
-  --colorErrorBgHover: rgb(87 15 18);
-  --colorErrorBorder: rgb(135 18 24);
-  --colorErrorBorderHover: rgb(185 19 28);
-  --colorErrorText: rgb(252 105 112);
-  --colorErrorTextHover: rgb(253 145 150);
-  --colorErrorTextActive: rgb(251 65 74);
+  --aix-colorError: rgb(252 105 112);
+  --aix-colorErrorHover: rgb(253 145 150);
+  --aix-colorErrorActive: rgb(251 65 74);
+  --aix-colorErrorBg: rgb(63 13 16);
+  --aix-colorErrorBgHover: rgb(87 15 18);
+  --aix-colorErrorBorder: rgb(135 18 24);
+  --aix-colorErrorBorderHover: rgb(185 19 28);
+  --aix-colorErrorText: rgb(252 105 112);
+  --aix-colorErrorTextHover: rgb(253 145 150);
+  --aix-colorErrorTextActive: rgb(251 65 74);
 
   /* ========== 文本色 (暗色模式) ========== */
-  --colorText: rgb(255 255 255 / 0.85);
-  --colorTextSecondary: rgb(255 255 255 / 0.65);
-  --colorTextTertiary: rgb(255 255 255 / 0.45);
-  --colorTextQuaternary: rgb(255 255 255 / 0.25);
-  --colorTextDisabled: rgb(255 255 255 / 0.25);
-  --colorTextPlaceholder: rgb(255 255 255 / 0.25);
-  --colorTextHeading: rgb(255 255 255 / 0.85);
-  --colorTextDescription: rgb(255 255 255 / 0.45);
-  --colorTextBase: rgb(255 255 255);
-  --colorTextLight: rgb(0 0 0);
+  --aix-colorText: rgb(255 255 255 / 0.85);
+  --aix-colorTextSecondary: rgb(255 255 255 / 0.65);
+  --aix-colorTextTertiary: rgb(255 255 255 / 0.45);
+  --aix-colorTextQuaternary: rgb(255 255 255 / 0.25);
+  --aix-colorTextDisabled: rgb(255 255 255 / 0.25);
+  --aix-colorTextPlaceholder: rgb(255 255 255 / 0.25);
+  --aix-colorTextHeading: rgb(255 255 255 / 0.85);
+  --aix-colorTextDescription: rgb(255 255 255 / 0.45);
+  --aix-colorTextBase: rgb(255 255 255);
+  --aix-colorTextLight: rgb(0 0 0);
 
   /* ========== 背景色 (暗色模式) ========== */
-  --colorBgBase: rgb(0 0 0);
-  --colorBgContainer: rgb(20 20 20);
-  --colorBgContainerDisabled: rgb(255 255 255 / 0.08);
-  --colorBgElevated: rgb(30 30 30);
-  --colorBgLayout: rgb(10 10 10);
-  --colorBgMask: rgb(0 0 0 / 0.65);
-  --colorBgSpotlight: rgb(255 255 255 / 0.85);
-  --colorBgTextHover: rgb(255 255 255 / 0.08);
-  --colorBgTextActive: rgb(255 255 255 / 0.15);
+  --aix-colorBgBase: rgb(0 0 0);
+  --aix-colorBgContainer: rgb(28 28 28);
+  --aix-colorBgContainerDisabled: rgb(255 255 255 / 0.08);
+  --aix-colorBgElevated: rgb(38 38 38);
+  --aix-colorBgLayout: rgb(15 15 15);
+  --aix-colorBgMask: rgb(0 0 0 / 0.65);
+  --aix-colorBgSpotlight: rgb(255 255 255 / 0.85);
+  --aix-colorBgTextHover: rgb(255 255 255 / 0.12);
+  --aix-colorBgTextActive: rgb(255 255 255 / 0.18);
 
   /* ========== 填充色 (暗色模式) ========== */
-  --colorFill: rgb(255 255 255 / 0.18);
-  --colorFillSecondary: rgb(255 255 255 / 0.12);
-  --colorFillTertiary: rgb(255 255 255 / 0.08);
-  --colorFillQuaternary: rgb(255 255 255 / 0.04);
-  --colorFillContent: rgb(255 255 255 / 0.12);
-  --colorFillAlter: rgb(255 255 255 / 0.04);
+  --aix-colorFill: rgb(255 255 255 / 0.18);
+  --aix-colorFillSecondary: rgb(255 255 255 / 0.12);
+  --aix-colorFillTertiary: rgb(255 255 255 / 0.08);
+  --aix-colorFillQuaternary: rgb(255 255 255 / 0.06);
+  --aix-colorFillContent: rgb(255 255 255 / 0.12);
+  --aix-colorFillAlter: rgb(255 255 255 / 0.06);
 
   /* ========== 边框色 (暗色模式) ========== */
-  --colorBorder: rgb(255 255 255 / 0.15);
-  --colorBorderSecondary: rgb(255 255 255 / 0.06);
-  --colorSplit: rgb(255 255 255 / 0.06);
+  --aix-colorBorder: rgb(255 255 255 / 0.25);
+  --aix-colorBorderSecondary: rgb(255 255 255 / 0.15);
+  --aix-colorSplit: rgb(255 255 255 / 0.12);
 
   /* ========== 控制项颜色 (暗色模式) ========== */
-  --controlItemBgHover: rgb(255 255 255 / 0.08);
-  --controlItemBgActive: rgb(16 60 60);
-  --controlItemBgActiveHover: rgb(19 83 83);
+  --aix-controlItemBgHover: rgb(255 255 255 / 0.12);
+  --aix-controlItemBgActive: rgb(16 60 60);
+  --aix-controlItemBgActiveHover: rgb(19 83 83);
 
   /* ========== 链接色 (暗色模式) ========== */
-  --colorLink: rgb(74 242 242);
-  --colorLinkHover: rgb(112 245 245);
-  --colorLinkActive: rgb(36 240 240);
+  --aix-colorLink: rgb(74 242 242);
+  --aix-colorLinkHover: rgb(112 245 245);
+  --aix-colorLinkActive: rgb(36 240 240);
 
   /* ========== 图标色 (暗色模式) ========== */
-  --colorIcon: rgb(255 255 255 / 0.45);
-  --colorIconHover: rgb(255 255 255 / 0.85);
+  --aix-colorIcon: rgb(255 255 255 / 0.45);
+  --aix-colorIconHover: rgb(255 255 255 / 0.85);
 
   /* ========== 阴影 (P0) (暗色模式) ========== */
-  --shadowXS:
+  --aix-shadowXS:
     0 1px 2px 0 rgb(0 0 0 / 0.1), 0 1px 6px -1px rgb(0 0 0 / 0.08),
     0 2px 4px 0 rgb(0 0 0 / 0.08);
-  --shadowSM:
+  --aix-shadowSM:
     0 2px 4px 0 rgb(0 0 0 / 0.12), 0 1px 6px -1px rgb(0 0 0 / 0.1),
     0 1px 2px 0 rgb(0 0 0 / 0.1);
-  --shadow:
+  --aix-shadow:
     0 3px 6px -4px rgb(0 0 0 / 0.24), 0 6px 16px 0 rgb(0 0 0 / 0.16),
     0 9px 28px 8px rgb(0 0 0 / 0.1);
-  --shadowMD:
-    0 3px 6px -4px rgb(0 0 0 / 0.24), 0 6px 16px 0 rgb(0 0 0 / 0.16),
-    0 9px 28px 8px rgb(0 0 0 / 0.1);
-  --shadowLG:
+  --aix-shadowMD:
+    0 4px 12px -4px rgb(0 0 0 / 0.2), 0 8px 24px 0 rgb(0 0 0 / 0.12),
+    0 12px 40px 12px rgb(0 0 0 / 0.08);
+  --aix-shadowLG:
     0 6px 16px -8px rgb(0 0 0 / 0.16), 0 9px 28px 0 rgb(0 0 0 / 0.1),
     0 12px 48px 16px rgb(0 0 0 / 0.08);
-  --shadowXL:
+  --aix-shadowXL:
     0 12px 24px -12px rgb(0 0 0 / 0.3), 0 24px 48px 0 rgb(0 0 0 / 0.2),
     0 36px 72px 24px rgb(0 0 0 / 0.1);
 
   /* ========== 中性色 (P0) (暗色模式) ========== */
-  --colorNeutral1: rgb(0 0 0);
-  --colorNeutral2: rgb(20 20 20);
-  --colorNeutral3: rgb(36 36 36);
-  --colorNeutral4: rgb(48 48 48);
-  --colorNeutral5: rgb(67 67 67);
-  --colorNeutral6: rgb(89 89 89);
-  --colorNeutral7: rgb(140 140 140);
-  --colorNeutral8: rgb(191 191 191);
-  --colorNeutral9: rgb(217 217 217);
-  --colorNeutral10: rgb(240 240 240);
+  --aix-colorNeutral1: rgb(0 0 0);
+  --aix-colorNeutral2: rgb(20 20 20);
+  --aix-colorNeutral3: rgb(36 36 36);
+  --aix-colorNeutral4: rgb(48 48 48);
+  --aix-colorNeutral5: rgb(67 67 67);
+  --aix-colorNeutral6: rgb(89 89 89);
+  --aix-colorNeutral7: rgb(140 140 140);
+  --aix-colorNeutral8: rgb(191 191 191);
+  --aix-colorNeutral9: rgb(217 217 217);
+  --aix-colorNeutral10: rgb(240 240 240);
 }

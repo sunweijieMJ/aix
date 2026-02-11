@@ -74,16 +74,16 @@ const handleClick = (event: MouseEvent) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: var(--paddingXS) var(--padding);
+  padding: var(--aix-paddingXS) var(--aix-padding);
   transition: all 0.3s;
   border: 1px solid transparent;
-  border-radius: var(--borderRadiusSM);
-  font-size: var(--fontSize);
-  line-height: var(--lineHeight);
+  border-radius: var(--aix-borderRadiusSM);
+  font-size: var(--aix-fontSize);
+  line-height: var(--aix-lineHeight);
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  gap: var(--sizeXS);
+  gap: var(--aix-sizeXS);
 
   &:focus {
     outline: none;
@@ -95,8 +95,8 @@ const handleClick = (event: MouseEvent) => {
   }
 
   &__loading-icon {
-    width: var(--fontSize);
-    height: var(--fontSize);
+    width: var(--aix-fontSize);
+    height: var(--aix-fontSize);
     animation: aix-button-loading-spin 1s linear infinite;
   }
 
@@ -107,110 +107,110 @@ const handleClick = (event: MouseEvent) => {
 
   /* 类型样式 - 使用主题变量 */
   &--primary {
-    border-color: var(--colorPrimary);
-    background-color: var(--colorPrimary);
-    color: var(--colorTextLight);
+    border-color: var(--aix-colorPrimary);
+    background-color: var(--aix-colorPrimary);
+    color: var(--aix-colorTextLight);
 
     &:hover:not(.aix-button--disabled) {
-      border-color: var(--colorPrimaryHover);
-      background-color: var(--colorPrimaryHover);
+      border-color: var(--aix-colorPrimaryHover);
+      background-color: var(--aix-colorPrimaryHover);
     }
 
     &:active:not(.aix-button--disabled) {
-      border-color: var(--colorPrimaryActive);
-      background-color: var(--colorPrimaryActive);
+      border-color: var(--aix-colorPrimaryActive);
+      background-color: var(--aix-colorPrimaryActive);
     }
   }
 
   &--default {
-    border-color: var(--colorBorder);
-    background-color: var(--colorBgContainer);
-    color: var(--colorText);
+    border-color: var(--aix-colorBorder);
+    background-color: var(--aix-colorBgContainer);
+    color: var(--aix-colorText);
 
     &:hover:not(.aix-button--disabled) {
-      border-color: var(--colorPrimaryHover);
-      color: var(--colorPrimaryHover);
+      border-color: var(--aix-colorPrimaryHover);
+      color: var(--aix-colorPrimaryHover);
     }
 
     &:active:not(.aix-button--disabled) {
-      border-color: var(--colorPrimaryActive);
-      color: var(--colorPrimaryActive);
+      border-color: var(--aix-colorPrimaryActive);
+      color: var(--aix-colorPrimaryActive);
     }
   }
 
   &--dashed {
     border-style: dashed;
-    border-color: var(--colorBorder);
-    background-color: var(--colorBgContainer);
-    color: var(--colorText);
+    border-color: var(--aix-colorBorder);
+    background-color: var(--aix-colorBgContainer);
+    color: var(--aix-colorText);
 
     &:hover:not(.aix-button--disabled) {
-      border-color: var(--colorPrimaryHover);
-      color: var(--colorPrimaryHover);
+      border-color: var(--aix-colorPrimaryHover);
+      color: var(--aix-colorPrimaryHover);
     }
 
     &:active:not(.aix-button--disabled) {
-      border-color: var(--colorPrimaryActive);
-      color: var(--colorPrimaryActive);
+      border-color: var(--aix-colorPrimaryActive);
+      color: var(--aix-colorPrimaryActive);
     }
   }
 
   &--text {
     border-color: transparent;
     background-color: transparent;
-    color: var(--colorText);
+    color: var(--aix-colorText);
 
     &:hover:not(.aix-button--disabled) {
-      background-color: var(--colorBgTextHover);
+      background-color: var(--aix-colorBgTextHover);
     }
 
     &:active:not(.aix-button--disabled) {
-      background-color: var(--colorBgTextActive);
+      background-color: var(--aix-colorBgTextActive);
     }
   }
 
   &--link {
     border-color: transparent;
     background-color: transparent;
-    color: var(--colorLink);
+    color: var(--aix-colorLink);
 
     &:hover:not(.aix-button--disabled) {
-      color: var(--colorLinkHover);
+      color: var(--aix-colorLinkHover);
     }
 
     &:active:not(.aix-button--disabled) {
-      color: var(--colorLinkActive);
+      color: var(--aix-colorLinkActive);
     }
   }
 
   /* 尺寸样式 - 使用主题变量 */
   &--small {
-    padding: var(--paddingXXS) var(--paddingXS);
-    font-size: var(--fontSizeXS);
+    padding: var(--aix-paddingXXS) var(--aix-paddingXS);
+    font-size: var(--aix-fontSizeXS);
 
     .aix-button__loading-icon {
-      width: var(--fontSizeXS);
-      height: var(--fontSizeXS);
+      width: var(--aix-fontSizeXS);
+      height: var(--aix-fontSizeXS);
     }
   }
 
   &--medium {
-    padding: var(--paddingXS) var(--padding);
-    font-size: var(--fontSize);
+    padding: var(--aix-paddingXS) var(--aix-padding);
+    font-size: var(--aix-fontSize);
 
     .aix-button__loading-icon {
-      width: var(--fontSize);
-      height: var(--fontSize);
+      width: var(--aix-fontSize);
+      height: var(--aix-fontSize);
     }
   }
 
   &--large {
-    padding: var(--paddingSM) var(--paddingLG);
-    font-size: var(--fontSizeLG);
+    padding: var(--aix-paddingSM) var(--aix-paddingLG);
+    font-size: var(--aix-fontSizeLG);
 
     .aix-button__loading-icon {
-      width: var(--fontSizeLG);
-      height: var(--fontSizeLG);
+      width: var(--aix-fontSizeLG);
+      height: var(--aix-fontSizeLG);
     }
   }
 

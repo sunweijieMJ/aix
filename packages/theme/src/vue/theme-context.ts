@@ -16,11 +16,16 @@ import {
 } from '../core/theme-dom-renderer';
 import { generateThemeTokens } from '../core/define-theme';
 import { validateThemeConfig } from '../utils/theme-validator';
+import { CSS_VAR_PREFIX } from '../utils/css-var';
+import {
+  isBrowser,
+  safeGetLocalStorage,
+  safeSetLocalStorage,
+} from '../utils/ssr-utils';
 import type {
   PartialThemeTokens,
   ThemeConfig,
   ThemeMode,
-  ThemePreset,
   ThemeTokens,
   TransitionConfig,
 } from '../theme-types';
@@ -29,6 +34,8 @@ import type {
  * 主题上下文接口
  */
 export interface ThemeContext {
+  /** CSS 变量前缀 */
+  prefix: string;
   /** 当前主题模式 */
   mode: ThemeMode;
   /** 当前主题配置 */
@@ -47,14 +54,6 @@ export interface ThemeContext {
   getToken: <K extends keyof ThemeTokens>(key: K) => ThemeTokens[K];
   /** 获取所有当前 Token */
   getTokens: () => ThemeTokens;
-  /** 应用预设主题 */
-  applyPreset: (name: string) => void;
-  /** 注册自定义预设 */
-  registerPreset: (preset: ThemePreset) => void;
-  /** 获取所有预设 */
-  getPresets: () => ThemePreset[];
-  /** 检查预设是否存在 */
-  hasPreset: (name: string) => boolean;
   /** 重置为默认主题 */
   reset: () => void;
   /** 设置过渡配置 */
@@ -83,50 +82,9 @@ export interface CreateThemeOptions {
   watchSystem?: boolean;
   /** 初始主题配置 */
   initialConfig?: ThemeConfig;
+  /** CSS 变量前缀，默认 'aix'（生成 --aix-colorPrimary 等） */
+  prefix?: string;
 }
-
-/**
- * 内置预设主题
- */
-const DEFAULT_PRESETS: readonly ThemePreset[] = [
-  {
-    name: 'default',
-    displayName: '默认主题',
-    token: {},
-  },
-  {
-    name: 'tech',
-    displayName: '科技蓝',
-    token: {
-      tokenBlue6: 'rgb(0 102 255)',
-      colorPrimary: 'rgb(0 102 255)',
-    },
-  },
-  {
-    name: 'nature',
-    displayName: '自然绿',
-    token: {
-      tokenGreen6: 'rgb(82 196 26)',
-      colorPrimary: 'rgb(82 196 26)',
-    },
-  },
-  {
-    name: 'sunset',
-    displayName: '日落橙',
-    token: {
-      tokenOrange6: 'rgb(250 140 22)',
-      colorPrimary: 'rgb(250 140 22)',
-    },
-  },
-  {
-    name: 'purple',
-    displayName: '优雅紫',
-    token: {
-      tokenPurple6: 'rgb(114 46 209)',
-      colorPrimary: 'rgb(114 46 209)',
-    },
-  },
-] as const;
 
 /**
  * 默认过渡配置
@@ -195,16 +153,14 @@ export function createTheme(options?: CreateThemeOptions) {
     storageKey = 'aix-theme-mode',
     watchSystem = false,
     initialConfig,
+    prefix: userPrefix,
   } = options || {};
 
-  // DOM 渲染器（无状态）
-  const renderer: ThemeDOMRenderer = createThemeDOMRenderer();
+  // 解析实际前缀
+  const resolvedPrefix = userPrefix || CSS_VAR_PREFIX;
 
-  // 预设列表（实例级别）
-  const presets = new Map<string, ThemePreset>();
-  for (const preset of DEFAULT_PRESETS) {
-    presets.set(preset.name, { ...preset, token: { ...preset.token } });
-  }
+  // DOM 渲染器（无状态）
+  const renderer: ThemeDOMRenderer = createThemeDOMRenderer(resolvedPrefix);
 
   // ========== 唯一状态源 ==========
   const state = reactive<{
@@ -227,32 +183,54 @@ export function createTheme(options?: CreateThemeOptions) {
   // 缓存计算后的 tokens，避免重复计算
   const computedTokens = computed(() => generateThemeTokens(state.config));
 
+  // 缓存 CSS 基线 tokens，用于 diff 计算
+  // 静态 CSS 只提供 light 和 dark 两套，compact 变化需要通过 JS 覆写注入
+  const lightDefaults = generateThemeTokens({ algorithm: 'default' });
+  const darkDefaults = generateThemeTokens({ algorithm: 'dark' });
+
+  /**
+   * 获取当前模式对应的 CSS 基线 tokens
+   * 与 CSS 基线做 diff，确保 compact 等算法变化能被检测并注入
+   */
+  const getDefaults = () => {
+    return state.mode === 'dark' ? darkDefaults : lightDefaults;
+  };
+
+  /**
+   * 计算当前 tokens 与默认值的差异，生成 CSS 变量覆写
+   */
+  const computeOverrides = (): Record<string, string> => {
+    const defaults = getDefaults();
+    const current = computedTokens.value;
+    const overrides: Record<string, string> = {};
+
+    for (const key of Object.keys(current) as Array<keyof typeof current>) {
+      if (String(current[key]) !== String(defaults[key])) {
+        const value = current[key];
+        overrides[`--${resolvedPrefix}-${key}`] =
+          typeof value === 'number' ? String(value) : value;
+      }
+    }
+
+    return overrides;
+  };
+
   /**
    * 持久化到 localStorage
    */
   const saveToStorage = (mode: ThemeMode) => {
-    if (!persist || typeof window === 'undefined') return;
-
-    try {
-      localStorage.setItem(storageKey, mode);
-    } catch (e) {
-      console.warn('[ThemeContext] 保存主题失败:', e);
-    }
+    if (!persist) return;
+    safeSetLocalStorage(storageKey, mode);
   };
 
   /**
    * 从 localStorage 恢复
    */
   const loadFromStorage = (): ThemeMode | null => {
-    if (!persist || typeof window === 'undefined') return null;
-
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved === 'light' || saved === 'dark') {
-        return saved;
-      }
-    } catch (e) {
-      console.warn('[ThemeContext] 读取主题失败:', e);
+    if (!persist) return null;
+    const saved = safeGetLocalStorage(storageKey);
+    if (saved === 'light' || saved === 'dark') {
+      return saved;
     }
     return null;
   };
@@ -261,12 +239,12 @@ export function createTheme(options?: CreateThemeOptions) {
    * 清除持久化存储
    */
   const clearStorage = () => {
-    if (!persist || typeof window === 'undefined') return;
+    if (!persist || !isBrowser()) return;
 
     try {
       localStorage.removeItem(storageKey);
-    } catch (e) {
-      console.warn('[ThemeContext] 清除主题失败:', e);
+    } catch {
+      // ignore
     }
   };
 
@@ -274,7 +252,7 @@ export function createTheme(options?: CreateThemeOptions) {
    * 触发主题变化事件
    */
   const dispatchChangeEvent = () => {
-    if (typeof window === 'undefined') return;
+    if (!isBrowser()) return;
 
     window.dispatchEvent(
       new CustomEvent('aix-theme-change', {
@@ -292,7 +270,7 @@ export function createTheme(options?: CreateThemeOptions) {
   const syncToDOM = () => {
     renderer.setDataTheme(state.mode);
     renderer.applyTransition(state.config.transition);
-    renderer.applyTokens(computedTokens.value);
+    renderer.applyOverrides(state.mode, computeOverrides());
   };
 
   /**
@@ -310,8 +288,7 @@ export function createTheme(options?: CreateThemeOptions) {
     };
 
     // 应用到 DOM
-    renderer.setDataTheme(newMode);
-    renderer.applyTokens(computedTokens.value);
+    syncToDOM();
 
     // 持久化
     saveToStorage(newMode);
@@ -332,24 +309,14 @@ export function createTheme(options?: CreateThemeOptions) {
   /**
    * 应用主题配置
    */
-  const applyTheme = (
-    config: ThemeConfig,
-    options?: { validate?: boolean },
-  ) => {
-    const { validate = true } = options || {};
-
-    // 可选的配置验证
-    if (validate) {
-      const validationResult = validateThemeConfig(config);
-      if (!validationResult.valid) {
-        console.warn(
-          '[ThemeContext] 主题配置验证失败:',
-          validationResult.errors,
-        );
-      }
-      if (validationResult.warnings.length > 0) {
-        console.warn('[ThemeContext] 主题配置警告:', validationResult.warnings);
-      }
+  const applyTheme = (config: ThemeConfig) => {
+    // 配置验证
+    const validationResult = validateThemeConfig(config);
+    if (!validationResult.valid) {
+      console.warn('[ThemeContext] 主题配置验证失败:', validationResult.errors);
+    }
+    if (validationResult.warnings.length > 0) {
+      console.warn('[ThemeContext] 主题配置警告:', validationResult.warnings);
     }
 
     // 同步 mode（dark 和 dark-compact 都算暗色模式）
@@ -390,7 +357,7 @@ export function createTheme(options?: CreateThemeOptions) {
       },
     };
 
-    renderer.applyTokens(computedTokens.value);
+    renderer.applyOverrides(state.mode, computeOverrides());
     dispatchChangeEvent();
   };
 
@@ -406,51 +373,8 @@ export function createTheme(options?: CreateThemeOptions) {
       },
     };
 
-    renderer.applyTokens(computedTokens.value);
+    renderer.applyOverrides(state.mode, computeOverrides());
     dispatchChangeEvent();
-  };
-
-  /**
-   * 应用预设主题
-   * 注意：会完全替换当前的 token 配置，而非累积合并
-   */
-  const applyPreset = (name: string) => {
-    const preset = presets.get(name);
-
-    if (!preset) {
-      console.warn(`[ThemeContext] Preset "${name}" not found`);
-      return;
-    }
-
-    // 完全替换 token（不累积之前的配置）
-    state.config = {
-      ...state.config,
-      token: { ...preset.token },
-    };
-
-    renderer.applyTokens(computedTokens.value);
-    dispatchChangeEvent();
-  };
-
-  /**
-   * 注册自定义预设
-   */
-  const registerPreset = (preset: ThemePreset) => {
-    presets.set(preset.name, { ...preset, token: { ...preset.token } });
-  };
-
-  /**
-   * 获取所有预设
-   */
-  const getPresets = (): ThemePreset[] => {
-    return Array.from(presets.values());
-  };
-
-  /**
-   * 检查预设是否存在
-   */
-  const hasPreset = (name: string): boolean => {
-    return presets.has(name);
   };
 
   /**
@@ -526,6 +450,7 @@ export function createTheme(options?: CreateThemeOptions) {
    * Context 对象（使用 getter 确保最新值）
    */
   const themeContext: ThemeContext = {
+    prefix: resolvedPrefix,
     get mode() {
       return modeRef.value;
     },
@@ -539,10 +464,6 @@ export function createTheme(options?: CreateThemeOptions) {
     setTokens,
     getToken,
     getTokens,
-    applyPreset,
-    registerPreset,
-    getPresets,
-    hasPreset,
     reset,
     setTransition,
     getTransition,
@@ -561,7 +482,7 @@ export function createTheme(options?: CreateThemeOptions) {
       app.config.globalProperties.$theme = themeContext;
 
       // 3. 仅在客户端恢复主题和监听系统主题
-      if (typeof window !== 'undefined') {
+      if (isBrowser()) {
         // 恢复主题
         const savedMode = loadFromStorage();
         if (savedMode && savedMode !== state.mode) {
@@ -580,10 +501,12 @@ export function createTheme(options?: CreateThemeOptions) {
             setMode(e.matches ? 'dark' : 'light');
           };
 
-          // 初始同步
-          handler(mediaQuery);
+          // 仅在没有用户持久化偏好时，才用系统偏好做初始同步
+          if (!savedMode) {
+            handler(mediaQuery);
+          }
 
-          // 监听变化
+          // 监听后续变化
           mediaQuery.addEventListener('change', handler);
 
           // 保存清理函数
