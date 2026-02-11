@@ -27,11 +27,6 @@ import type { ComponentIndex } from '../types/index';
 import { createCacheManager } from '../utils/cache';
 import { log } from '../utils/logger';
 import { createMonitoringManager } from '../utils/monitoring';
-import {
-  createSecurityManager,
-  getSecurityConfigFromEnv,
-  SecurityError,
-} from '../utils/security';
 
 /**
  * 获取 MCP Server 项目根目录
@@ -40,8 +35,9 @@ import {
 function getMCPServerRoot(): string {
   const currentFileDir = dirname(fileURLToPath(import.meta.url));
 
-  // 检查当前文件是否在构建输出目录中
-  const isInBuildDir = currentFileDir.includes('/dist');
+  // 检查当前文件是否在构建输出目录中（兼容 Windows 和 Unix 路径）
+  const isInBuildDir =
+    currentFileDir.includes('/dist') || currentFileDir.includes('\\dist');
 
   // 计算相对于项目根目录的路径
   return isInBuildDir
@@ -70,7 +66,6 @@ export class McpServer {
     null;
 
   private cache: ReturnType<typeof createCacheManager>;
-  private securityManager: ReturnType<typeof createSecurityManager>;
   private monitoringManager: ReturnType<typeof createMonitoringManager>;
   private config: ServerConfig;
   private testMode: boolean;
@@ -100,8 +95,7 @@ export class McpServer {
       log.info(`缓存目录: ${this.config.cacheDir}`);
     }
 
-    this.cache = createCacheManager(this.config.cacheDir);
-    this.securityManager = createSecurityManager(getSecurityConfigFromEnv());
+    this.cache = createCacheManager();
     this.monitoringManager = createMonitoringManager();
 
     this.server = new Server(
@@ -122,75 +116,28 @@ export class McpServer {
   }
 
   /**
-   * 请求处理中间件（安全验证 + 监控）
+   * 包装请求处理器，统一处理监控和错误
    */
-  private async processRequest(
-    request: any,
+  private wrapHandler<T>(
     requestType: string,
-  ): Promise<{ requestId: string; startTime: number }> {
-    const requestId = `${requestType}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    const startTime = Date.now();
+    handler: (request: any) => Promise<T>,
+  ): (request: any) => Promise<T> {
+    return async (request: any) => {
+      const startTime = Date.now();
+      this.monitoringManager.recordRequestStart();
 
-    // 记录请求开始
-    this.monitoringManager.recordRequestStart(requestId, requestType);
-
-    try {
-      // 安全验证
-      await this.validateSecurity(request);
-      return { requestId, startTime };
-    } catch (error) {
-      // 记录安全验证失败
-      const errorMessage =
-        error instanceof Error ? error.message : 'Security validation failed';
-      this.monitoringManager.recordError('security_validation', errorMessage);
-      this.monitoringManager.recordRequestEnd(requestId, false, startTime);
-      throw error;
-    }
-  }
-
-  /**
-   * 完成请求处理
-   */
-  private completeRequest(
-    requestId: string,
-    startTime: number,
-    success: boolean,
-  ): void {
-    this.monitoringManager.recordRequestEnd(requestId, success, startTime);
-  }
-
-  /**
-   * 安全验证中间件
-   */
-  private async validateSecurity(request: any): Promise<void> {
-    // 创建请求上下文（在实际环境中，headers 来自 HTTP 请求）
-    const context = this.securityManager.createRequestContext({
-      'user-agent': 'mcp-client',
-      'x-client-id': request.id || 'unknown',
-    });
-
-    // API 密钥验证
-    if (!this.securityManager.validateApiKey(context.apiKey)) {
-      throw new SecurityError(
-        'Invalid or missing API key',
-        'INVALID_API_KEY',
-        401,
-      );
-    }
-
-    // 速率限制检查
-    const rateLimitResult = this.securityManager.checkRateLimit(context);
-    if (!rateLimitResult.allowed) {
-      throw new SecurityError(
-        rateLimitResult.reason || 'Rate limit exceeded',
-        'RATE_LIMIT_EXCEEDED',
-        429,
-        rateLimitResult.retryAfter,
-      );
-    }
-
-    // 记录请求
-    this.securityManager.recordRequest(context, true);
+      try {
+        const result = await handler(request);
+        this.monitoringManager.recordRequestEnd(true, startTime);
+        return result;
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        this.monitoringManager.recordError(requestType, errorMessage);
+        this.monitoringManager.recordRequestEnd(false, startTime);
+        throw error;
+      }
+    };
   }
 
   /**
@@ -198,104 +145,65 @@ export class McpServer {
    */
   private setupHandlers(): void {
     // 工具列表处理器
-    this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-      const { requestId, startTime } = await this.processRequest(
-        request,
-        'list-tools',
-      );
-
-      try {
-        const result = {
-          tools: this.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            inputSchema: tool.inputSchema,
-          })),
-        };
-
-        this.completeRequest(requestId, startTime, true);
-        return result;
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error';
-        this.monitoringManager.recordError('list_tools', errorMessage);
-        this.completeRequest(requestId, startTime, false);
-        throw error;
-      }
-    });
+    this.server.setRequestHandler(
+      ListToolsRequestSchema,
+      this.wrapHandler('list-tools', async () => ({
+        tools: this.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        })),
+      })),
+    );
 
     // 工具调用处理器
     this.server.setRequestHandler(
       CallToolRequestSchema,
-      async (request: any) => {
-        const { requestId, startTime } = await this.processRequest(
-          request,
-          'call-tool',
-        );
+      this.wrapHandler('call-tool', async (request: any) => {
         const { name, arguments: args } = request.params;
         const toolStartTime = Date.now();
 
+        const tool = this.tools.find((t) => t.name === name);
+        if (!tool) {
+          throw new Error(`Unknown tool: ${name}`);
+        }
+
         try {
-          const tool = this.tools.find((t) => t.name === name);
-          if (!tool) {
-            throw new Error(`Unknown tool: ${name}`);
-          }
-
           const result = await tool.execute(args || {});
-
-          // 记录工具调用成功
-          this.monitoringManager.recordToolCall(name, toolStartTime, true);
-          this.completeRequest(requestId, startTime, true);
-
+          this.monitoringManager.recordToolCall(name, toolStartTime);
           return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(result, null, 2),
-              },
-            ],
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
         } catch (error) {
-          // 记录工具调用失败
-          this.monitoringManager.recordToolCall(
-            name || 'unknown',
-            toolStartTime,
-            false,
-          );
-          this.monitoringManager.recordError(
-            'tool_execution',
-            error instanceof Error ? error.message : String(error),
-          );
-          this.completeRequest(requestId, startTime, false);
-
+          this.monitoringManager.recordToolCall(name, toolStartTime);
           throw new Error(
             `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
             { cause: error },
           );
         }
-      },
+      }),
     );
 
     // 提示词列表处理器
-    this.server.setRequestHandler(ListPromptsRequestSchema, async (request) => {
-      await this.validateSecurity(request);
-      const prompts = getAllPrompts();
-      return {
-        prompts: Object.entries(prompts).map(([key]) => ({
-          name: `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-${key}`,
-          description: this.getPromptDescription(key),
-        })),
-      };
-    });
+    this.server.setRequestHandler(
+      ListPromptsRequestSchema,
+      this.wrapHandler('list-prompts', async () => {
+        const prompts = getAllPrompts();
+        return {
+          prompts: Object.entries(prompts).map(([key]) => ({
+            name: `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-${key}`,
+            description: this.getPromptDescription(key),
+          })),
+        };
+      }),
+    );
 
     // 获取提示词处理器
     this.server.setRequestHandler(
       GetPromptRequestSchema,
-      async (request: any) => {
-        await this.validateSecurity(request);
+      this.wrapHandler('get-prompt', async (request: any) => {
         const { name } = request.params;
         const prompts = getAllPrompts();
-
         const promptKey = name.replace(
           `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-`,
           '',
@@ -307,51 +215,37 @@ export class McpServer {
         }
 
         return {
-          messages: [
-            {
-              role: 'user',
-              content: {
-                type: 'text',
-                text: prompt,
-              },
-            },
-          ],
+          messages: [{ role: 'user', content: { type: 'text', text: prompt } }],
         };
-      },
+      }),
     );
 
     // 资源列表处理器
     this.server.setRequestHandler(
       ListResourcesRequestSchema,
-      async (request) => {
-        await this.validateSecurity(request);
+      this.wrapHandler('list-resources', async () => {
         if (!this.resourceManager) {
           return { resources: [] };
         }
-
         const resources = await this.resourceManager.listResources();
         return { resources };
-      },
+      }),
     );
 
     // 读取资源处理器
     this.server.setRequestHandler(
       ReadResourceRequestSchema,
-      async (request: any) => {
-        await this.validateSecurity(request);
+      this.wrapHandler('read-resource', async (request: any) => {
         if (!this.resourceManager) {
           throw new Error('Resource manager not initialized');
         }
-
         const { uri } = request.params;
         const content = await this.resourceManager.readResource(uri);
-
         if (!content) {
           throw new Error(`Resource not found: ${uri}`);
         }
-
         return { contents: [content] };
-      },
+      }),
     );
   }
 
@@ -386,7 +280,7 @@ export class McpServer {
       const cached = await this.cache.get<ComponentIndex>('component-index');
       if (cached) {
         this.componentIndex = cached;
-        this.tools = createTools(this.componentIndex);
+        this.tools = createTools(this.componentIndex, this.config.dataDir);
         this.resourceManager = createResourceManager(this.componentIndex);
         if (this.testMode) {
           log.info('✅ 从缓存加载组件索引');
@@ -413,12 +307,13 @@ export class McpServer {
       }
 
       // 创建工具实例
-      this.tools = createTools(this.componentIndex);
+      this.tools = createTools(this.componentIndex, this.config.dataDir);
       this.resourceManager = createResourceManager(this.componentIndex);
 
       log.info(`✅ 加载了 ${this.componentIndex.components.length} 个组件`);
     } catch (error) {
       log.error('加载组件索引失败:', error);
+      log.warn('⚠️ 服务将以空数据启动，请运行 "extract" 命令生成组件索引');
       // 创建空的组件索引
       this.componentIndex = {
         components: [],
@@ -427,7 +322,7 @@ export class McpServer {
         lastUpdated: new Date().toISOString(),
         version: '1.0.0',
       };
-      this.tools = createTools(this.componentIndex);
+      this.tools = createTools(this.componentIndex, this.config.dataDir);
       this.resourceManager = createResourceManager(this.componentIndex);
     }
   }
@@ -450,7 +345,7 @@ export class McpServer {
       await this.cache.set('component-index', index, 24 * 60 * 60 * 1000);
 
       this.componentIndex = index;
-      this.tools = createTools(this.componentIndex);
+      this.tools = createTools(this.componentIndex, this.config.dataDir);
       this.resourceManager = createResourceManager(this.componentIndex);
 
       log.info('✅ 组件索引已保存');
@@ -488,7 +383,6 @@ export class McpServer {
       componentsLoaded: this.componentIndex?.components.length || 0,
       toolsAvailable: this.tools.length,
       cacheStats: this.cache.getStats(),
-      securityStats: this.securityManager.getStats(),
       monitoringStats: this.monitoringManager.getMetricsSummary(),
       lastUpdated: this.componentIndex?.lastUpdated || null,
     };
@@ -504,10 +398,7 @@ export class McpServer {
     await this.loadComponentIndex();
 
     // 创建 WebSocket Transport
-    this.webSocketTransport = createWebSocketTransport(
-      { port, host },
-      this.securityManager,
-    );
+    this.webSocketTransport = createWebSocketTransport({ port, host });
 
     // 启动 WebSocket 服务器
     await this.webSocketTransport.start();

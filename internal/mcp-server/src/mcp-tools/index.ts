@@ -37,16 +37,19 @@ export { SearchIconsTool };
 /**
  * 创建所有工具实例
  */
-export function createTools(componentIndex: ComponentIndex): BaseTool[] {
+export function createTools(
+  componentIndex: ComponentIndex,
+  dataDir: string,
+): BaseTool[] {
   return [
     new ListComponentsTool(componentIndex),
     new GetComponentInfoTool(componentIndex),
     new GetComponentPropsTool(componentIndex),
     new GetComponentExamplesTool(componentIndex),
     new SearchComponentsTool(componentIndex),
-    new SearchIconsTool(), // 图标搜索工具独立加载索引
+    new SearchIconsTool(dataDir),
     new GetComponentDependenciesTool(componentIndex),
     new GetCategoriesAndTagsTool(componentIndex),
-    new GetComponentChangelogTool(componentIndex), // 添加变更日志工具
+    new GetComponentChangelogTool(componentIndex),
   ];
 }

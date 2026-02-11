@@ -2,7 +2,7 @@
  * 搜索评分工具
  */
 
-import type { ComponentInfo } from '../types/index';
+import type { ComponentInfo, IconIndexItem } from '../types/index';
 
 /**
  * 搜索匹配权重配置
@@ -83,7 +83,10 @@ export function calculateComponentSearchScore(
 /**
  * 计算图标搜索匹配分数
  */
-export function calculateIconSearchScore(icon: any, query: string): number {
+export function calculateIconSearchScore(
+  icon: IconIndexItem,
+  query: string,
+): number {
   let score = 0;
   const queryLower = query.toLowerCase();
 
@@ -163,7 +166,10 @@ export function getComponentMatchedFields(
 /**
  * 获取图标匹配的字段列表
  */
-export function getIconMatchedFields(icon: any, query: string): string[] {
+export function getIconMatchedFields(
+  icon: IconIndexItem,
+  query: string,
+): string[] {
   const fields: string[] = [];
   const queryLower = query.toLowerCase();
 
@@ -181,15 +187,13 @@ export function getIconMatchedFields(icon: any, query: string): string[] {
   }
   if (
     icon.tags &&
-    icon.tags.some((tag: string) => tag.toLowerCase().includes(queryLower))
+    icon.tags.some((tag) => tag.toLowerCase().includes(queryLower))
   ) {
     fields.push('tags');
   }
   if (
     icon.keywords &&
-    icon.keywords.some((keyword: string) =>
-      keyword.toLowerCase().includes(queryLower),
-    )
+    icon.keywords.some((keyword) => keyword.toLowerCase().includes(queryLower))
   ) {
     fields.push('keywords');
   }

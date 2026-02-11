@@ -1,3 +1,4 @@
+import { COMPONENT_LIBRARY_CONFIG } from '../constants';
 import { createParsers } from '../parsers/index';
 import type {
   ComponentExample,
@@ -17,6 +18,11 @@ import { ConcurrencyController } from '../utils/performance';
 import { IconsExtractor } from './icons-extractor';
 import type { IconInfo } from './icons-extractor';
 import { ReadmeExtractor } from './readme-extractor';
+
+/**
+ * 图标包名称（基于组件库配置）
+ */
+const ICONS_PACKAGE_NAME = `${COMPONENT_LIBRARY_CONFIG.packageScope}/icons`;
 
 /**
  * 组件提取器
@@ -111,7 +117,7 @@ export class ComponentExtractor {
           if (!packageInfo) return;
 
           // 特殊处理 Icons 包
-          if (packageInfo.name === '@aix/icons') {
+          if (packageInfo.name === ICONS_PACKAGE_NAME) {
             const extractedIcons =
               await this.iconsExtractor.extractIconsFromPackage(packagePath);
             icons.push(...extractedIcons);

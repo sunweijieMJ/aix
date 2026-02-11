@@ -3,7 +3,8 @@
   "extends": "@kit/typescript-config/base-app.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "target": "ES2020"
   },
   "include": ["src", "typings", "../../typings"],
   "exclude": [

@@ -191,7 +191,14 @@ class McpCli {
     incremental: boolean;
   }): Promise<void> {
     try {
-      log.info(chalk.blue('📦 开始提取组件数据...'));
+      const isIncremental = options.incremental;
+      log.info(
+        chalk.blue(
+          isIncremental
+            ? '📦 开始增量提取组件数据...'
+            : '📦 开始提取组件数据...',
+        ),
+      );
 
       // 使用默认输出目录或提供的目录
       const outputDir = options.output || join(__dirname, '../data');
@@ -231,9 +238,66 @@ class McpCli {
       const { ComponentExtractor } = await import('./extractors/index');
       const extractor = new ComponentExtractor(config);
 
-      // 使用新的提取和保存方法
-      const { components, icons } =
-        await extractor.extractAndSaveAllComponents();
+      let components;
+      let icons: any[] = [];
+
+      if (isIncremental) {
+        // 增量提取：读取上次提取时间
+        const metadataPath = join(config.outputDir, 'metadata.json');
+        let lastExtractTime = new Date(0); // 默认为最早时间
+
+        try {
+          const metadataContent = await fs.readFile(metadataPath, 'utf8');
+          const metadata = JSON.parse(metadataContent);
+          if (metadata.extractedAt) {
+            lastExtractTime = new Date(metadata.extractedAt);
+            log.info(
+              chalk.gray(`上次提取时间: ${lastExtractTime.toISOString()}`),
+            );
+          }
+        } catch {
+          log.warn(chalk.yellow('⚠️ 未找到上次提取记录，将执行全量提取'));
+        }
+
+        // 执行增量提取
+        components =
+          await extractor.extractIncrementalComponents(lastExtractTime);
+
+        // 增量模式下，需要合并现有数据
+        if (components.length > 0) {
+          try {
+            const indexPath = join(config.outputDir, 'components-index.json');
+            const indexContent = await fs.readFile(indexPath, 'utf8');
+            const existingIndex = JSON.parse(indexContent);
+
+            // 合并组件：更新已存在的，添加新的
+            const componentMap = new Map(
+              existingIndex.components.map((c: any) => [c.packageName, c]),
+            );
+            for (const comp of components) {
+              componentMap.set(comp.packageName, comp);
+            }
+
+            // 更新索引（简化版，仅更新组件列表）
+            existingIndex.components = Array.from(componentMap.values());
+            existingIndex.lastUpdated = new Date().toISOString();
+
+            await fs.writeFile(
+              indexPath,
+              JSON.stringify(existingIndex, null, 2),
+              'utf8',
+            );
+            log.info(chalk.green(`📝 已更新组件索引`));
+          } catch (error) {
+            log.warn(chalk.yellow('⚠️ 无法合并现有数据，将覆盖'), error);
+          }
+        }
+      } else {
+        // 全量提取
+        const result = await extractor.extractAndSaveAllComponents();
+        components = result.components;
+        icons = result.icons;
+      }
 
       // 保存元数据
       const metadata = {
@@ -242,6 +306,7 @@ class McpCli {
         totalIcons: icons.length,
         totalItems: components.length + icons.length,
         version: '1.0.0',
+        incremental: isIncremental,
       };
 
       const metadataPath = join(config.outputDir, 'metadata.json');
@@ -252,11 +317,17 @@ class McpCli {
       );
       log.info(chalk.green(`📊 元数据已保存到: ${metadataPath}`));
 
-      log.info(
-        chalk.green(
-          `✅ 成功提取 ${components.length} 个组件和 ${icons.length} 个图标`,
-        ),
-      );
+      if (isIncremental) {
+        log.info(
+          chalk.green(`✅ 增量提取完成，更新了 ${components.length} 个组件`),
+        );
+      } else {
+        log.info(
+          chalk.green(
+            `✅ 成功提取 ${components.length} 个组件和 ${icons.length} 个图标`,
+          ),
+        );
+      }
 
       process.exit(0);
     } catch (error) {
@@ -389,7 +460,7 @@ class McpCli {
       log.info(chalk.green('✅ 缓存清理完成'));
       process.exit(0);
     } catch (error) {
-      if ((error as any).code === 'ENOENT') {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         log.info(chalk.yellow('⚠️ 缓存目录不存在'));
         process.exit(0);
       } else {
@@ -511,7 +582,7 @@ class McpCli {
   /**
    * 健康检查命令
    */
-  private async healthCommand(options: {
+  private async healthCommand(_options: {
     data?: string;
     packages: string;
     quick: boolean;
@@ -519,21 +590,10 @@ class McpCli {
     try {
       log.info(chalk.blue('🏥 执行健康检查...'));
 
-      // 使用默认数据目录如果未提供
-      const dataDir = options.data || join(__dirname, '../data');
+      const monitoring = createMonitoringManager();
 
-      const { createConfigManager } = await import('./config/index');
-      const configManager = createConfigManager({
-        dataDir: dataDir,
-        packagesDir: options.packages,
-      });
-
-      const config = configManager.getAll();
-      const monitoring = createMonitoringManager(config);
-
-      const result = options.quick
-        ? await monitoring.quickHealthCheck()
-        : await monitoring.performHealthCheck();
+      // quick 选项已废弃，统一使用 performHealthCheck
+      const result = await monitoring.performHealthCheck();
 
       const output = formatHealthCheckResult(result);
       log.info(output);
@@ -614,66 +674,13 @@ class McpCli {
    * 运行 CLI
    */
   async run(): Promise<void> {
-    // 检查参数，如果没有任何参数或子命令，启动默认服务器
-    const args = process.argv.slice(2);
-
-    // 如果没有参数，启动服务器
-    if (args.length === 0) {
+    // 无参数时默认启动服务器
+    if (process.argv.length <= 2) {
       await this.serveCommand({ test: false });
       return;
     }
 
-    // 如果是help或version，让commander处理
-    if (
-      args.includes('--help') ||
-      args.includes('-h') ||
-      args.includes('--version') ||
-      args.includes('-V')
-    ) {
-      program.parse();
-      return;
-    }
-
-    // 检查是否有有效的子命令
-    const validCommands = [
-      'serve',
-      'serve-ws',
-      'extract',
-      'validate',
-      'stats',
-      'clean',
-      'health',
-      'sync-version',
-    ];
-    const hasValidCommand = validCommands.some((cmd) => args.includes(cmd));
-
-    if (!hasValidCommand && args.length > 0) {
-      // 如果有参数但没有有效命令，可能是全局选项，启动默认服务器
-      const globalOptions = this.parseGlobalOptions(args);
-      await this.serveCommand(globalOptions);
-      return;
-    }
-
-    // 有有效命令，让commander处理
     program.parse();
-  }
-
-  private parseGlobalOptions(args: string[]): {
-    data?: string;
-    test?: boolean;
-  } {
-    const options: { data?: string; test?: boolean } = { test: false };
-
-    for (let i = 0; i < args.length; i++) {
-      if (args[i] === '-d' || args[i] === '--data') {
-        options.data = args[i + 1];
-        i++; // 跳过下一个参数
-      } else if (args[i] === '-t' || args[i] === '--test') {
-        options.test = true;
-      }
-    }
-
-    return options;
   }
 }
 
@@ -691,10 +698,16 @@ async function main(): Promise<void> {
 }
 
 // 如果直接运行此文件，启动 CLI
-// 简化入口条件以提高兼容性
+// 使用 fileURLToPath 确保跨平台兼容（Windows 和 Unix）
+const currentFilePath = fileURLToPath(import.meta.url);
+const executedFilePath = process.argv[1]
+  ? fileURLToPath(`file://${process.argv[1].replace(/\\/g, '/')}`)
+  : '';
+
 if (
-  import.meta.url.includes('cli.js') ||
-  import.meta.url === `file://${process.argv[1]}`
+  currentFilePath.endsWith('/cli.js') ||
+  currentFilePath.endsWith('\\cli.js') ||
+  currentFilePath === executedFilePath
 ) {
   main().catch((error) => {
     console.error('CLI 启动失败:', error);

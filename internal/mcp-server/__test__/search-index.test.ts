@@ -1,8 +1,14 @@
+/**
+ * SearchIndex 测试 (简化版)
+ *
+ * 简化后的 SearchIndex 使用简单的关键词匹配，
+ * 不再维护复杂的倒排索引和 TF-IDF 统计。
+ */
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ComponentInfo } from '../src/types/index';
 import { createSearchIndex, SearchIndex } from '../src/utils/search-index';
 
-describe('SearchIndex', () => {
+describe('SearchIndex (简化版)', () => {
   let searchIndex: SearchIndex;
   let mockComponents: ComponentInfo[];
 
@@ -53,6 +59,7 @@ describe('SearchIndex', () => {
       const stats = searchIndex.getStats();
 
       expect(stats.componentCount).toBe(1);
+      // 统计每个组件的可搜索字段数量
       expect(stats.termCount).toBeGreaterThan(0);
       expect(stats.totalIndexItems).toBeGreaterThan(0);
     });
@@ -113,7 +120,7 @@ describe('SearchIndex', () => {
       expect(results[0]?.matchedFields).toContain('props');
     });
 
-    it('应该支持模糊搜索', () => {
+    it('应该支持模糊搜索 (前缀匹配)', () => {
       const results = searchIndex.search('imag', 10); // 部分匹配
 
       expect(results.length).toBeGreaterThan(0);
@@ -172,9 +179,10 @@ describe('SearchIndex', () => {
       expect(stats).toHaveProperty('indexSizeEstimate');
 
       expect(stats.componentCount).toBe(1);
+      // 统计每个组件的可搜索字段数量
       expect(stats.termCount).toBeGreaterThan(0);
       expect(stats.averageTermsPerComponent).toBeGreaterThan(0);
-      expect(stats.indexSizeEstimate).toMatch(/\d+KB/);
+      expect(stats.indexSizeEstimate).not.toBe('0KB');
     });
   });
 
@@ -190,17 +198,6 @@ describe('SearchIndex', () => {
       // 测试英文分词
       const results2 = searchIndex.search('image lazy', 10);
       expect(results2.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('calculateSimilarity', () => {
-    it('应该正确计算字符串相似度', () => {
-      searchIndex.buildIndex(mockComponents);
-
-      // 测试相似字符串的搜索
-      const results = searchIndex.search('imag', 10); // 部分匹配
-      expect(results.length).toBeGreaterThan(0);
-      expect(results[0]?.component.name).toBe('Img');
     });
   });
 

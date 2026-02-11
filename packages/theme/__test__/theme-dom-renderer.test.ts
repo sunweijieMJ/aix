@@ -89,7 +89,7 @@ describe('ThemeDOMRenderer', () => {
       expect(document.createElement).toHaveBeenCalledWith('style');
       expect(mockHead.appendChild).toHaveBeenCalledTimes(1);
 
-      const styleEl = createdStyleElements[0];
+      const styleEl = createdStyleElements[0]!;
       expect(styleEl.id).toBe('aix-theme-overrides');
       expect(styleEl.textContent).toContain(":root[data-theme='light']");
       expect(styleEl.textContent).toContain(
@@ -105,7 +105,7 @@ describe('ThemeDOMRenderer', () => {
         '--aix-colorPrimary': 'rgb(0 102 255)',
       });
 
-      const styleEl = createdStyleElements[0];
+      const styleEl = createdStyleElements[0]!;
       expect(styleEl.textContent).toContain(":root[data-theme='dark']");
     });
 
@@ -123,7 +123,7 @@ describe('ThemeDOMRenderer', () => {
       expect(mockHead.appendChild).toHaveBeenCalledTimes(1);
 
       // Content should be updated
-      const styleEl = createdStyleElements[0];
+      const styleEl = createdStyleElements[0]!;
       expect(styleEl.textContent).toContain(
         '--aix-colorPrimary: rgb(255 0 0);',
       );
@@ -134,7 +134,7 @@ describe('ThemeDOMRenderer', () => {
         '--aix-colorPrimary': 'rgb(0 102 255)',
       });
 
-      const styleEl = createdStyleElements[0];
+      const styleEl = createdStyleElements[0]!;
       renderer.applyOverrides('light', {});
 
       expect(styleEl.remove).toHaveBeenCalled();
@@ -170,7 +170,7 @@ describe('ThemeDOMRenderer', () => {
         '--aix-colorPrimary': 'rgb(0 102 255)',
       });
 
-      const styleEl = createdStyleElements[0];
+      const styleEl = createdStyleElements[0]!;
       renderer.clearOverrides();
 
       expect(styleEl.remove).toHaveBeenCalled();
@@ -237,7 +237,7 @@ describe('ThemeDOMRenderer', () => {
         '--aix-colorPrimary': 'rgb(0 102 255)',
       });
 
-      const styleEl = createdStyleElements[0];
+      const styleEl = createdStyleElements[0]!;
       renderer.reset();
 
       // style tag removed

@@ -444,7 +444,10 @@ export const log = {
    */
   error: (message: string, ...args: unknown[]) => {
     if (isColoredMessage(message)) {
-      console.error(message, ...args);
+      if (!IS_PRODUCTION) {
+        console.error(message);
+      }
+      logAdditionalArgs(args);
     } else {
       if (args.length > 0) {
         cliLogger.error(message, undefined, { args });

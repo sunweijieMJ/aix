@@ -2,10 +2,8 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  BatchProcessor,
   ConcurrencyController,
   LargeFileProcessor,
-  OptimizedCache,
 } from '../src/utils/performance';
 
 describe('Performance Utils', () => {
@@ -104,93 +102,6 @@ describe('Performance Utils', () => {
       expect(status).toHaveProperty('queued');
       expect(status).toHaveProperty('maxConcurrent');
       expect(status.maxConcurrent).toBe(2);
-    });
-  });
-
-  describe('OptimizedCache', () => {
-    let cache: OptimizedCache<string>;
-
-    beforeEach(() => {
-      cache = new OptimizedCache<string>(1024, 1000); // 1KB max, 1s TTL
-    });
-
-    it('should store and retrieve values', () => {
-      cache.set('key1', 'value1');
-      expect(cache.get('key1')).toBe('value1');
-    });
-
-    it('should return null for non-existent keys', () => {
-      expect(cache.get('nonexistent')).toBeNull();
-    });
-
-    it('should expire items after TTL', async () => {
-      const shortCache = new OptimizedCache<string>(1024, 50); // 50ms TTL
-      shortCache.set('key1', 'value1');
-
-      expect(shortCache.get('key1')).toBe('value1');
-
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(shortCache.get('key1')).toBeNull();
-    });
-
-    it('should delete items', () => {
-      cache.set('key1', 'value1');
-      cache.delete('key1');
-      expect(cache.get('key1')).toBeNull();
-    });
-
-    it('should provide cache statistics', () => {
-      cache.set('key1', 'value1');
-      const stats = cache.getStats();
-
-      expect(stats).toHaveProperty('entries');
-      expect(stats).toHaveProperty('currentSize');
-      expect(stats).toHaveProperty('maxSize');
-      expect(stats.entries).toBe(1);
-    });
-
-    it('should clear all items', () => {
-      cache.set('key1', 'value1');
-      cache.set('key2', 'value2');
-      cache.clear();
-
-      expect(cache.get('key1')).toBeNull();
-      expect(cache.get('key2')).toBeNull();
-      expect(cache.getStats().entries).toBe(0);
-    });
-  });
-
-  describe('BatchProcessor', () => {
-    it('should process items in batches', async () => {
-      const processor = new BatchProcessor<number, number>(
-        3, // batch size
-        async (batch: number[]) => batch.map((x) => x * 2),
-      );
-
-      const items = [1, 2, 3, 4, 5, 6, 7];
-      const results = await processor.process(items);
-
-      expect(results).toEqual([2, 4, 6, 8, 10, 12, 14]);
-    });
-
-    it('should handle empty input', async () => {
-      const processor = new BatchProcessor<number, number>(
-        3,
-        async (batch: number[]) => batch.map((x) => x * 2),
-      );
-
-      const results = await processor.process([]);
-      expect(results).toEqual([]);
-    });
-
-    it('should handle single batch', async () => {
-      const processor = new BatchProcessor<number, number>(
-        5,
-        async (batch: number[]) => batch.map((x) => x * 2),
-      );
-
-      const results = await processor.process([1, 2, 3]);
-      expect(results).toEqual([2, 4, 6]);
     });
   });
 });

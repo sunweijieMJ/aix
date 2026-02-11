@@ -1,215 +1,101 @@
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { BYTES_PER_KB, BYTES_PER_MB, DEFAULT_CACHE_TTL } from '../constants';
+/**
+ * 缓存管理器 - 简化的纯内存缓存实现
+ *
+ * 设计说明：
+ * - 方法声明为 async 是为了保持 API 一致性和未来可扩展性
+ * - 当前实现是同步的内存缓存，但 async 签名允许未来无缝切换到
+ *   异步存储（如 Redis、IndexedDB 等）而无需修改调用方代码
+ */
+
 import type { CacheItem } from '../types/index';
 import { log } from './logger';
 
+// 默认缓存 TTL: 24小时
+const DEFAULT_CACHE_TTL = 24 * 60 * 60 * 1000;
+
+// 默认最大缓存条目数
+const DEFAULT_MAX_ITEMS = 1000;
+
 /**
- * 缓存监控器（内部使用）
+ * 缓存配置
  */
-class CacheMonitor {
-  private metrics: {
-    hits: number;
-    misses: number;
-    size: number;
-    operations: Array<{
-      op: 'get' | 'set' | 'delete';
-      key: string;
-      hit?: boolean;
-      time: number;
-      size?: number;
-    }>;
-  };
-
-  constructor(private maxOperationsLog = 100) {
-    this.metrics = {
-      hits: 0,
-      misses: 0,
-      size: 0,
-      operations: [],
-    };
-  }
-
-  /**
-   * 记录缓存命中
-   */
-  recordHit(key: string): void {
-    this.metrics.hits++;
-    this.logOperation('get', key, true);
-  }
-
-  /**
-   * 记录缓存未命中
-   */
-  recordMiss(key: string): void {
-    this.metrics.misses++;
-    this.logOperation('get', key, false);
-  }
-
-  /**
-   * 记录缓存设置
-   */
-  recordSet(key: string, size: number): void {
-    this.metrics.size += size;
-    this.logOperation('set', key, undefined, size);
-  }
-
-  /**
-   * 记录缓存删除
-   */
-  recordDelete(key: string, size: number): void {
-    this.metrics.size -= size;
-    this.logOperation('delete', key, undefined, size);
-  }
-
-  /**
-   * 记录操作
-   */
-  private logOperation(
-    op: 'get' | 'set' | 'delete',
-    key: string,
-    hit?: boolean,
-    size?: number,
-  ): void {
-    this.metrics.operations.push({
-      op,
-      key,
-      hit,
-      time: Date.now(),
-      size,
-    });
-
-    // 保持操作日志在限定大小内
-    if (this.metrics.operations.length > this.maxOperationsLog) {
-      this.metrics.operations.shift();
-    }
-  }
-
-  /**
-   * 获取缓存指标
-   */
-  getMetrics() {
-    const hitRate =
-      this.metrics.hits + this.metrics.misses === 0
-        ? 0
-        : this.metrics.hits / (this.metrics.hits + this.metrics.misses);
-
-    return {
-      hits: this.metrics.hits,
-      misses: this.metrics.misses,
-      hitRate: hitRate.toFixed(2),
-      size: this.metrics.size,
-      sizeFormatted: this.formatSize(this.metrics.size),
-      recentOperations: this.metrics.operations.slice(-10),
-    };
-  }
-
-  /**
-   * 格式化大小
-   */
-  private formatSize(bytes: number): string {
-    if (bytes < BYTES_PER_KB) return `${bytes} B`;
-    if (bytes < BYTES_PER_MB) return `${(bytes / BYTES_PER_KB).toFixed(2)} KB`;
-    return `${(bytes / BYTES_PER_MB).toFixed(2)} MB`;
-  }
-
-  /**
-   * 重置指标
-   */
-  reset(): void {
-    this.metrics = {
-      hits: 0,
-      misses: 0,
-      size: 0,
-      operations: [],
-    };
-  }
+export interface CacheConfig {
+  maxItems?: number;
 }
 
 /**
- * 缓存管理器
+ * 缓存统计信息
+ */
+export interface CacheStats {
+  memoryItems: number;
+  maxItems: number;
+  hits: number;
+  misses: number;
+  hitRate: string;
+  size: number;
+  sizeFormatted: string;
+}
+
+/**
+ * 内存缓存管理器
  */
 export class CacheManager {
-  private memoryCache: Map<string, CacheItem<any>> = new Map();
-  private fileCache: string;
-  private monitor: CacheMonitor;
-  private cleanupTimer?: NodeJS.Timeout;
+  private cache = new Map<string, CacheItem<unknown>>();
+  private hits = 0;
+  private misses = 0;
+  private readonly maxItems: number;
 
-  constructor(cacheDir: string) {
-    this.fileCache = cacheDir;
-    this.monitor = new CacheMonitor();
-
-    // 确保缓存目录存在
-    this.ensureCacheDir();
-
-    // 启动自动清理
-    this.startCleanupScheduler();
+  constructor(config: CacheConfig = {}) {
+    this.maxItems = config.maxItems ?? DEFAULT_MAX_ITEMS;
   }
 
   /**
    * 获取缓存项
    */
   async get<T>(key: string): Promise<T | null> {
-    // 先检查内存缓存
-    const memItem = this.memoryCache.get(key);
-    if (memItem && !this.isExpired(memItem)) {
-      this.monitor.recordHit(key);
-      return memItem.data;
-    }
+    const item = this.cache.get(key) as CacheItem<T> | undefined;
 
-    // 再检查文件缓存
-    try {
-      const filePath = this.getFilePath(key);
-      if (!existsSync(filePath)) {
-        this.monitor.recordMiss(key);
-        return null;
-      }
-
-      const content = await readFile(filePath, 'utf8');
-      const item: CacheItem<T> = JSON.parse(content);
-
-      if (this.isExpired(item)) {
-        this.monitor.recordMiss(key);
-        await this.delete(key);
-        return null;
-      }
-
-      // 添加到内存缓存
-      this.memoryCache.set(key, item);
-      this.monitor.recordHit(key);
-
-      return item.data;
-    } catch (error) {
-      log.error('Failed to get cache item:', error);
-      this.monitor.recordMiss(key);
+    if (!item) {
+      this.misses++;
       return null;
     }
+
+    // 检查是否过期
+    if (this.isExpired(item)) {
+      this.cache.delete(key);
+      this.misses++;
+      return null;
+    }
+
+    this.hits++;
+    return item.data;
   }
 
   /**
    * 设置缓存项
    */
   async set<T>(key: string, data: T, ttl = DEFAULT_CACHE_TTL): Promise<void> {
+    // 如果达到上限，删除最旧的条目
+    if (this.cache.size >= this.maxItems && !this.cache.has(key)) {
+      this.evictOldest();
+    }
+
     const item: CacheItem<T> = {
       data,
       timestamp: Date.now(),
       ttl,
     };
+    this.cache.set(key, item);
+  }
 
-    // 设置内存缓存
-    this.memoryCache.set(key, item);
-
-    // 设置文件缓存
-    try {
-      const filePath = this.getFilePath(key);
-      const content = JSON.stringify(item);
-      await writeFile(filePath, content, 'utf8');
-
-      // 记录缓存设置
-      this.monitor.recordSet(key, content.length);
-    } catch (error) {
-      log.error(`Failed to write cache file for ${key}:`, error);
+  /**
+   * 淘汰最旧的缓存条目
+   */
+  private evictOldest(): void {
+    // Map 保持插入顺序，第一个就是最旧的
+    const oldestKey = this.cache.keys().next().value;
+    if (oldestKey !== undefined) {
+      this.cache.delete(oldestKey);
     }
   }
 
@@ -217,102 +103,56 @@ export class CacheManager {
    * 删除缓存项
    */
   async delete(key: string): Promise<void> {
-    // 获取缓存项大小（用于监控）
-    let size = 0;
-    try {
-      const item = this.memoryCache.get(key);
-      if (item) {
-        size = JSON.stringify(item).length;
-      }
-    } catch {
-      // 忽略错误
-    }
-
-    // 删除内存缓存
-    this.memoryCache.delete(key);
-
-    // 删除文件缓存
-    try {
-      const { unlink } = await import('node:fs/promises');
-      const filePath = this.getFilePath(key);
-
-      if (existsSync(filePath)) {
-        await unlink(filePath);
-      }
-
-      // 记录缓存删除
-      this.monitor.recordDelete(key, size);
-    } catch (error) {
-      log.error('Failed to delete cache file:', error);
-    }
+    this.cache.delete(key);
   }
 
   /**
-   * 清空缓存
+   * 清空所有缓存
    */
   async clear(): Promise<void> {
-    // 清空内存缓存
-    this.memoryCache.clear();
-
-    // 清空文件缓存
-    try {
-      const { rm } = await import('node:fs/promises');
-      await rm(this.fileCache, { recursive: true, force: true });
-      await this.ensureCacheDir();
-
-      // 重置监控指标
-      this.monitor.reset();
-    } catch (error) {
-      log.error('Failed to clear cache directory:', error);
-    }
+    this.cache.clear();
+    this.hits = 0;
+    this.misses = 0;
+    log.info('Cache cleared');
   }
 
   /**
    * 获取缓存统计信息
    */
-  getStats() {
+  getStats(): CacheStats {
+    const total = this.hits + this.misses;
+    const hitRate = total > 0 ? (this.hits / total).toFixed(2) : '0.00';
+
+    // 估算缓存大小
+    let size = 0;
+    for (const item of this.cache.values()) {
+      try {
+        size += JSON.stringify(item).length;
+      } catch {
+        // 忽略序列化错误
+      }
+    }
+
     return {
-      memoryItems: this.memoryCache.size,
-      ...this.monitor.getMetrics(),
+      memoryItems: this.cache.size,
+      maxItems: this.maxItems,
+      hits: this.hits,
+      misses: this.misses,
+      hitRate,
+      size,
+      sizeFormatted: this.formatSize(size),
     };
   }
 
   /**
-   * 启动自动清理调度器
-   */
-  private startCleanupScheduler(): void {
-    // 每5分钟清理一次过期缓存
-    this.cleanupTimer = setInterval(
-      () => {
-        this.cleanupExpired().catch((error) => {
-          log.error('Cache cleanup failed:', error);
-        });
-      },
-      5 * 60 * 1000,
-    ); // 5分钟
-  }
-
-  /**
-   * 停止自动清理调度器
-   */
-  stopCleanupScheduler(): void {
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-      this.cleanupTimer = undefined;
-    }
-  }
-
-  /**
-   * 清理过期的缓存项
+   * 清理过期缓存
    */
   async cleanupExpired(): Promise<number> {
-    const now = Date.now();
     let cleanedCount = 0;
 
-    // 清理内存缓存
-    for (const [key, item] of this.memoryCache.entries()) {
-      if (now - item.timestamp > item.ttl) {
-        this.memoryCache.delete(key);
+    for (const [key, item] of this.cache.entries()) {
+      if (this.isExpired(item)) {
+        this.cache.delete(key);
         cleanedCount++;
       }
     }
@@ -325,45 +165,25 @@ export class CacheManager {
   }
 
   /**
-   * 清理所有缓存
-   */
-  async clearAll(): Promise<void> {
-    // 清理内存缓存
-    this.memoryCache.clear();
-    log.info('All cache cleared');
-  }
-
-  /**
    * 检查缓存项是否过期
    */
-  private isExpired(item: CacheItem<any>): boolean {
+  private isExpired(item: CacheItem<unknown>): boolean {
     return Date.now() - item.timestamp > item.ttl;
   }
 
   /**
-   * 获取缓存文件路径
+   * 格式化大小
    */
-  private getFilePath(key: string): string {
-    // 简单的哈希函数
-    const hash = Buffer.from(key).toString('base64').replace(/[/+=]/g, '_');
-    return join(this.fileCache, `${hash}.json`);
-  }
-
-  /**
-   * 确保缓存目录存在
-   */
-  private async ensureCacheDir(): Promise<void> {
-    try {
-      await mkdir(this.fileCache, { recursive: true });
-    } catch (error) {
-      log.error('Failed to create cache directory:', error);
-    }
+  private formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   }
 }
 
 /**
  * 创建缓存管理器
  */
-export function createCacheManager(cacheDir: string): CacheManager {
-  return new CacheManager(cacheDir);
+export function createCacheManager(): CacheManager {
+  return new CacheManager();
 }

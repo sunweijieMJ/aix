@@ -152,7 +152,7 @@ defineExpose({
   justify-content: space-between;
   padding: 32px 12px 12px;
   transition: opacity 0.3s ease;
-  background: linear-gradient(transparent, rgb(0 0 0 / 60%));
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.6));
   color: #fff;
   gap: 8px;
 
@@ -193,7 +193,7 @@ defineExpose({
 
     &:hover {
       opacity: 0.8;
-      background: rgb(255 255 255 / 10%);
+      background: rgb(255 255 255 / 0.1);
     }
 
     &:active {
@@ -206,7 +206,7 @@ defineExpose({
     align-items: center;
     padding: 2px 8px;
     border-radius: 4px;
-    background: rgb(255 255 255 / 15%);
+    background: rgb(255 255 255 / 0.15);
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.5px;

@@ -2,6 +2,8 @@
  * 图标相关的 MCP 工具
  */
 
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { MCP_TOOLS } from '../constants';
 import type { IconsIndex, SearchResult, ToolArguments } from '../types/index';
 import { log } from '../utils';
@@ -14,6 +16,9 @@ import { BaseTool } from './base';
 /**
  * 搜索图标工具
  */
+/** 加载失败后重试间隔（60秒） */
+const RETRY_INTERVAL = 60000;
+
 export class SearchIconsTool extends BaseTool {
   name = MCP_TOOLS.SEARCH_ICONS;
   description = '按关键词搜索图标';
@@ -33,14 +38,23 @@ export class SearchIconsTool extends BaseTool {
     required: ['query'],
   };
 
-  constructor(private iconsIndex: IconsIndex | null = null) {
+  private iconsIndex: IconsIndex | null = null;
+  /** 上次加载尝试时间（支持失败后重试） */
+  private lastLoadAttempt = 0;
+
+  constructor(private dataDir: string) {
     super();
   }
 
   async execute(args: ToolArguments): Promise<SearchResult[]> {
-    // 加载图标索引
-    const iconsIndex = await this.getIconsIndex();
-    if (!iconsIndex || !iconsIndex.icons) {
+    // 懒加载图标索引（支持失败后定时重试）
+    const now = Date.now();
+    if (!this.iconsIndex && now - this.lastLoadAttempt > RETRY_INTERVAL) {
+      this.lastLoadAttempt = now;
+      this.iconsIndex = await this.loadIconsIndex();
+    }
+
+    if (!this.iconsIndex?.icons) {
       return [];
     }
 
@@ -48,21 +62,11 @@ export class SearchIconsTool extends BaseTool {
     const limit = (args.limit as number) || 10;
 
     const results: SearchResult[] = [];
-    let foundCount = 0;
 
-    // 优化：预缓存查询字符串
-    const queryLower = query;
-
-    for (const icon of iconsIndex.icons) {
-      // 早期退出：如果已找到足够的高分结果，可以提前结束
-      if (foundCount >= limit * 3) {
-        // 搜索3倍数量以确保质量
-        break;
-      }
-
-      const score = calculateIconSearchScore(icon, queryLower);
+    for (const icon of this.iconsIndex.icons) {
+      const score = calculateIconSearchScore(icon, query);
       if (score > 0) {
-        const matchedFields = getIconMatchedFields(icon, queryLower);
+        const matchedFields = getIconMatchedFields(icon, query);
 
         results.push({
           component: {
@@ -83,7 +87,6 @@ export class SearchIconsTool extends BaseTool {
           score,
           matchedFields,
         });
-        foundCount++;
       }
     }
 
@@ -92,25 +95,15 @@ export class SearchIconsTool extends BaseTool {
   }
 
   /**
-   * 获取图标索引
+   * 加载图标索引
    */
-  private async getIconsIndex(): Promise<IconsIndex | null> {
-    // 如果有实例索引，直接使用
-    if (this.iconsIndex) {
-      return this.iconsIndex;
-    }
-
-    // 从文件加载
+  private async loadIconsIndex(): Promise<IconsIndex | null> {
     try {
-      const { readFile } = await import('fs/promises');
-      const { join } = await import('path');
-      const indexPath = join(process.cwd(), 'data', 'icons-index.json');
+      const indexPath = join(this.dataDir, 'icons-index.json');
       const indexContent = await readFile(indexPath, 'utf8');
-      const iconsIndex = JSON.parse(indexContent) as IconsIndex;
-
-      return iconsIndex;
+      return JSON.parse(indexContent) as IconsIndex;
     } catch (error) {
-      log.error('无法加载图标索引:', error);
+      log.warn('无法加载图标索引:', error);
       return null;
     }
   }

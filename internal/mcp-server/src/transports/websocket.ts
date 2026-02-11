@@ -12,7 +12,6 @@ import {
   DEFAULT_WS_PATH,
 } from '../constants';
 import { log } from '../utils/logger';
-import type { SecurityManager } from '../utils/security';
 
 /**
  * WebSocket 配置
@@ -39,17 +38,40 @@ interface ClientConnection {
 }
 
 /**
+ * JSON-RPC 请求 ID 类型
+ */
+type JsonRpcId = string | number | null;
+
+/**
+ * 请求映射信息（包含时间戳用于超时清理）
+ */
+interface RequestMapping {
+  clientId: string;
+  timestamp: number;
+}
+
+/**
+ * 请求映射超时时间（60秒）
+ */
+const REQUEST_MAPPING_TIMEOUT = 60000;
+
+/**
  * WebSocket Transport 实现
  */
 export class WebSocketTransport implements Transport {
-  private server: WebSocketServer;
+  private server: WebSocketServer | null = null;
   private clients = new Map<string, ClientConnection>();
   private config: Required<WebSocketConfig>;
   private heartbeatTimer?: NodeJS.Timeout;
   private cleanupTimer?: NodeJS.Timeout;
-  private securityManager?: SecurityManager;
+  /**
+   * 请求 ID 到客户端信息的映射
+   * 用于正确路由 JSON-RPC 响应到发起请求的客户端
+   * 包含时间戳用于超时清理，防止内存泄漏
+   */
+  private requestToClient = new Map<string, RequestMapping>();
 
-  constructor(config: WebSocketConfig, securityManager?: SecurityManager) {
+  constructor(config: WebSocketConfig) {
     this.config = {
       port: config.port,
       host: config.host || DEFAULT_WS_HOST,
@@ -59,17 +81,7 @@ export class WebSocketTransport implements Transport {
         config.heartbeatInterval || DEFAULT_WS_HEARTBEAT_INTERVAL,
       clientTimeout: config.clientTimeout || DEFAULT_WS_CLIENT_TIMEOUT,
     };
-    this.securityManager = securityManager;
-
-    this.server = new WebSocketServer({
-      port: this.config.port,
-      host: this.config.host,
-      path: this.config.path,
-    });
-
-    this.setupEventHandlers();
-    this.startHeartbeat();
-    this.startCleanup();
+    // 注意: server 在 start() 中创建，避免竞态条件
   }
 
   /**
@@ -77,10 +89,20 @@ export class WebSocketTransport implements Transport {
    */
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
+      // 在 start() 中创建 server，确保能正确监听 listening 事件
+      this.server = new WebSocketServer({
+        port: this.config.port,
+        host: this.config.host,
+        path: this.config.path,
+      });
+
       this.server.on('listening', () => {
         log.info(
           `🌐 WebSocket 服务器启动于 ws://${this.config.host}:${this.config.port}${this.config.path}`,
         );
+        this.setupEventHandlers();
+        this.startHeartbeat();
+        this.startCleanup();
         resolve();
       });
 
@@ -98,10 +120,12 @@ export class WebSocketTransport implements Transport {
     return new Promise((resolve) => {
       if (this.heartbeatTimer) {
         clearInterval(this.heartbeatTimer);
+        this.heartbeatTimer = undefined;
       }
 
       if (this.cleanupTimer) {
         clearInterval(this.cleanupTimer);
+        this.cleanupTimer = undefined;
       }
 
       // 关闭所有客户端连接
@@ -110,22 +134,65 @@ export class WebSocketTransport implements Transport {
       }
 
       this.clients.clear();
+      this.requestToClient.clear();
 
-      this.server.close(() => {
-        log.info('🛑 WebSocket 服务器已停止');
+      if (this.server) {
+        this.server.close(() => {
+          log.info('🛑 WebSocket 服务器已停止');
+          this.server = null;
+          resolve();
+        });
+      } else {
         resolve();
-      });
+      }
     });
   }
 
   /**
    * 发送消息（Transport 接口实现）
+   *
+   * MCP 协议是请求-响应模式，响应应发送给发起请求的客户端。
+   * 使用 JSON-RPC id 字段来正确路由响应到对应的客户端。
    */
   send(message: any): Promise<void> {
-    // 对于服务器端，我们需要向所有连接的客户端发送消息
     const data = JSON.stringify(message);
-    const promises: Promise<void>[] = [];
 
+    // 尝试从响应消息中获取请求 ID，查找对应的客户端
+    let targetClientId: string | null = null;
+    const responseId = this.extractResponseId(message);
+
+    if (responseId !== null) {
+      const requestKey = String(responseId);
+      const mapping = this.requestToClient.get(requestKey);
+      if (mapping) {
+        targetClientId = mapping.clientId;
+        // 响应发送后清理映射
+        this.requestToClient.delete(requestKey);
+      }
+    }
+
+    // 如果有目标客户端，只发送给该客户端
+    if (targetClientId) {
+      const client = this.clients.get(targetClientId);
+      if (client && client.ws.readyState === WebSocket.OPEN) {
+        return new Promise((resolve, reject) => {
+          client.ws.send(data, (error) => {
+            if (error) {
+              log.error(`发送消息到客户端 ${client.id} 失败:`, error);
+              reject(error);
+            } else {
+              resolve();
+            }
+          });
+        });
+      }
+      // 客户端不存在或已断开，记录警告
+      log.warn(`目标客户端 ${targetClientId} 不存在或已断开，消息丢弃`);
+      return Promise.resolve();
+    }
+
+    // 没有目标客户端时广播（用于服务器主动推送通知的场景）
+    const promises: Promise<void>[] = [];
     for (const client of this.clients.values()) {
       if (client.ws.readyState === WebSocket.OPEN) {
         promises.push(
@@ -144,6 +211,16 @@ export class WebSocketTransport implements Transport {
     }
 
     return Promise.all(promises).then(() => {});
+  }
+
+  /**
+   * 从 JSON-RPC 响应消息中提取 id 字段
+   */
+  private extractResponseId(message: any): JsonRpcId {
+    if (message && typeof message === 'object' && 'id' in message) {
+      return message.id;
+    }
+    return null;
   }
 
   /**
@@ -175,10 +252,13 @@ export class WebSocketTransport implements Transport {
    * 设置事件处理器
    */
   private setupEventHandlers(): void {
+    if (!this.server) return;
+
     this.server.on('connection', (ws, request) => {
       this.handleConnection(ws, request);
     });
 
+    // 注意: error 事件已在 start() 中处理，这里处理运行时错误
     this.server.on('error', (error) => {
       log.error('WebSocket 服务器错误:', error);
       if (this.errorHandler) {
@@ -190,7 +270,7 @@ export class WebSocketTransport implements Transport {
   /**
    * 处理新连接
    */
-  private async handleConnection(ws: WebSocket, request: any): Promise<void> {
+  private handleConnection(ws: WebSocket, _request: any): void {
     // 检查连接数限制
     if (this.clients.size >= this.config.maxConnections) {
       ws.close(1013, 'Server capacity exceeded');
@@ -199,31 +279,6 @@ export class WebSocketTransport implements Transport {
 
     const clientId = this.generateClientId();
     const now = Date.now();
-
-    // 安全验证
-    if (this.securityManager) {
-      try {
-        const headers = request.headers || {};
-        const context = this.securityManager.createRequestContext(headers);
-
-        // API 密钥验证
-        if (!this.securityManager.validateApiKey(context.apiKey)) {
-          ws.close(1008, 'Invalid API key');
-          return;
-        }
-
-        // 速率限制检查
-        const rateLimitResult = this.securityManager.checkRateLimit(context);
-        if (!rateLimitResult.allowed) {
-          ws.close(1013, 'Rate limit exceeded');
-          return;
-        }
-      } catch (error) {
-        log.error('安全验证失败:', error);
-        ws.close(1008, 'Security validation failed');
-        return;
-      }
-    }
 
     // 创建客户端连接记录
     const client: ClientConnection = {
@@ -284,12 +339,14 @@ export class WebSocketTransport implements Transport {
     try {
       const message = JSON.parse(data.toString());
 
-      // 记录安全事件
-      if (this.securityManager) {
-        const context = this.securityManager.createRequestContext({
-          'x-client-id': clientId,
+      // 记录请求 ID 到客户端 ID 的映射（用于响应路由）
+      // 包含时间戳，支持超时清理
+      const requestId = this.extractRequestId(message);
+      if (requestId !== null) {
+        this.requestToClient.set(String(requestId), {
+          clientId,
+          timestamp: Date.now(),
         });
-        this.securityManager.recordRequest(context, true);
       }
 
       // 调用消息处理器
@@ -300,11 +357,27 @@ export class WebSocketTransport implements Transport {
       log.error(`解析客户端 ${clientId} 消息失败:`, error);
       client.ws.send(
         JSON.stringify({
-          type: 'error',
-          message: 'Invalid message format',
+          jsonrpc: '2.0',
+          error: { code: -32700, message: 'Parse error' },
+          id: null,
         }),
       );
     }
+  }
+
+  /**
+   * 从 JSON-RPC 请求消息中提取 id 字段
+   */
+  private extractRequestId(message: any): JsonRpcId {
+    if (
+      message &&
+      typeof message === 'object' &&
+      'id' in message &&
+      'method' in message
+    ) {
+      return message.id;
+    }
+    return null;
   }
 
   /**
@@ -320,6 +393,13 @@ export class WebSocketTransport implements Transport {
     );
 
     this.clients.delete(clientId);
+
+    // 清理该客户端的请求映射
+    for (const [requestId, mapping] of this.requestToClient.entries()) {
+      if (mapping.clientId === clientId) {
+        this.requestToClient.delete(requestId);
+      }
+    }
 
     // 如果所有客户端都断开连接，调用关闭处理器
     if (this.clients.size === 0 && this.closeHandler) {
@@ -362,12 +442,19 @@ export class WebSocketTransport implements Transport {
     this.cleanupTimer = setInterval(() => {
       const now = Date.now();
 
+      // 清理超时的客户端连接
       for (const [clientId, client] of this.clients.entries()) {
-        // 清理超时的连接
         if (now - client.lastActivity > this.config.clientTimeout) {
           log.info(`⏰ 客户端 ${clientId} 超时，关闭连接`);
           client.ws.close(1000, 'Client timeout');
           this.clients.delete(clientId);
+        }
+      }
+
+      // 清理过期的请求映射（防止内存泄漏）
+      for (const [requestId, mapping] of this.requestToClient.entries()) {
+        if (now - mapping.timestamp > REQUEST_MAPPING_TIMEOUT) {
+          this.requestToClient.delete(requestId);
         }
       }
     }, this.config.heartbeatInterval);
@@ -444,7 +531,6 @@ export class WebSocketTransport implements Transport {
  */
 export function createWebSocketTransport(
   config: WebSocketConfig,
-  securityManager?: SecurityManager,
 ): WebSocketTransport {
-  return new WebSocketTransport(config, securityManager);
+  return new WebSocketTransport(config);
 }

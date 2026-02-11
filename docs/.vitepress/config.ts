@@ -183,11 +183,28 @@ export default withMermaid(
       resolve: {
         alias: {
           '@': fileURLToPath(new URL('../', import.meta.url)),
+          // 组件包别名
           '@aix/button': fileURLToPath(
             new URL('../../packages/button/src', import.meta.url),
           ),
+          '@aix/icons': fileURLToPath(
+            new URL('../../packages/icons/src', import.meta.url),
+          ),
+          '@aix/video': fileURLToPath(
+            new URL('../../packages/video/src', import.meta.url),
+          ),
+          '@aix/pdf-viewer': fileURLToPath(
+            new URL('../../packages/pdf-viewer/src', import.meta.url),
+          ),
+          '@aix/subtitle': fileURLToPath(
+            new URL('../../packages/subtitle/src', import.meta.url),
+          ),
+          // 工具包别名
           '@aix/theme': fileURLToPath(
             new URL('../../packages/theme/src', import.meta.url),
+          ),
+          '@aix/hooks': fileURLToPath(
+            new URL('../../packages/hooks/src', import.meta.url),
           ),
         },
       },

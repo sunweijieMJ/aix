@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { glob } from 'glob';
-import type { PackageInfo } from '../types/index';
+import type { ComponentInfo, PackageInfo } from '../types/index';
 import { log } from './logger';
 
 /**
@@ -29,7 +29,8 @@ export async function findPackages(packagesDir: string): Promise<string[]> {
       absolute: true,
     });
 
-    return packagePaths.map((path) => path.replace('/package.json', ''));
+    // 使用 path.dirname 确保跨平台兼容（Windows 和 Unix）
+    return packagePaths.map((p) => dirname(p));
   } catch (error) {
     log.error('Failed to find packages:', error);
     return [];
@@ -182,9 +183,9 @@ export function extractTags(text: string): string[] {
  * 根据组件名称或包名查找组件
  */
 export function findComponentByName(
-  components: any[],
+  components: ComponentInfo[],
   name: string,
-): any | null {
+): ComponentInfo | null {
   if (!name || !components || components.length === 0) {
     return null;
   }

@@ -1,211 +1,42 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+/**
+ * 健康检查测试 (简化版)
+ *
+ * 简化后的 MonitoringManager 只保留基本的健康检查功能:
+ * - 内存使用检查
+ * - 错误率检查
+ */
+import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
-import type { ServerConfig } from '../src/config/index';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   formatHealthCheckResult,
   MonitoringManager,
 } from '../src/utils/monitoring';
 
-describe('Health Checker', () => {
+describe('Health Checker (简化版)', () => {
   const testDataDir = join(process.cwd(), 'test-tmp');
-  const testConfig: ServerConfig = {
-    dataDir: testDataDir,
-    cacheDir: join(testDataDir, '.cache'),
-    packagesDir: join(testDataDir, 'packages'),
-    cacheTTL: 3600000,
-    enableCache: true,
-    maxCacheSize: 100,
-    maxConcurrentExtraction: 5,
-    extractionTimeout: 30000,
-    serverName: 'test-server',
-    serverVersion: '1.0.0',
-    verbose: false,
-    features: {
-      enablePrompts: true,
-      enableExamples: true,
-      enableChangelog: true,
-      enableDependencyAnalysis: true,
-    },
-    ignorePackages: [],
-    ignorePatterns: [],
-  };
 
   beforeEach(async () => {
     // 清理测试目录
     await rm(testDataDir, { recursive: true, force: true });
   });
 
-  describe('HealthChecker', () => {
-    it('应该创建健康检查器实例', () => {
-      const checker = new MonitoringManager(testConfig);
+  afterEach(async () => {
+    // 清理测试目录
+    await rm(testDataDir, { recursive: true, force: true });
+  });
+
+  describe('MonitoringManager 健康检查', () => {
+    it('应该创建监控管理器实例', () => {
+      const checker = new MonitoringManager();
       expect(checker).toBeInstanceOf(MonitoringManager);
-    });
-
-    it('应该检测 Node.js 版本', async () => {
-      const checker = new MonitoringManager(testConfig);
-
-      // 使用反射访问私有方法进行测试
-      const checkNodeVersion = (checker as any).checkNodeVersion.bind(checker);
-      const result = await checkNodeVersion();
-
-      expect(result).toHaveProperty('name', 'Node.js 版本');
-      expect(result).toHaveProperty('status');
-      expect(['pass', 'warn', 'fail']).toContain(result.status);
-      expect(result).toHaveProperty('message');
-      expect(result.details).toHaveProperty('version');
-    });
-
-    it('应该检测数据目录不存在的情况', async () => {
-      const checker = new MonitoringManager(testConfig);
-
-      const checkDataDirectory = (checker as any).checkDataDirectory.bind(
-        checker,
-      );
-      const result = await checkDataDirectory();
-
-      expect(result).toHaveProperty('name', '数据目录');
-      expect(result.status).toBe('fail');
-      expect(result.message).toContain('数据目录不可访问');
-    });
-
-    it('应该检测数据目录存在的情况', async () => {
-      // 创建测试目录
-      await mkdir(testDataDir, { recursive: true });
-
-      const checker = new MonitoringManager(testConfig);
-      const checkDataDirectory = (checker as any).checkDataDirectory.bind(
-        checker,
-      );
-      const result = await checkDataDirectory();
-
-      expect(result).toHaveProperty('name', '数据目录');
-      expect(result.status).toBe('pass');
-      expect(result.message).toContain('数据目录可访问');
-    });
-
-    it('应该检测组件索引不存在的情况', async () => {
-      await mkdir(testDataDir, { recursive: true });
-
-      const checker = new MonitoringManager(testConfig);
-      const checkComponentIndex = (checker as any).checkComponentIndex.bind(
-        checker,
-      );
-      const result = await checkComponentIndex();
-
-      expect(result).toHaveProperty('name', '组件索引');
-      expect(result.status).toBe('warn');
-      expect(result.message).toContain('组件索引文件不存在');
-    });
-
-    it('应该检测有效的组件索引', async () => {
-      await mkdir(testDataDir, { recursive: true });
-
-      const indexData = {
-        components: [
-          {
-            name: 'TestComponent',
-            packageName: '@test/component',
-            version: '1.0.0',
-            description: 'Test component',
-            category: 'Test',
-            tags: ['test'],
-            author: 'Test',
-            license: 'MIT',
-            sourcePath: '/test',
-            dependencies: [],
-            peerDependencies: [],
-            props: [],
-            examples: [],
-          },
-        ],
-        categories: ['Test'],
-        tags: ['test'],
-        lastUpdated: new Date().toISOString(),
-        version: '1.0.0',
-      };
-
-      await writeFile(
-        join(testDataDir, 'components-index.json'),
-        JSON.stringify(indexData),
-      );
-
-      const checker = new MonitoringManager(testConfig);
-      const checkComponentIndex = (checker as any).checkComponentIndex.bind(
-        checker,
-      );
-      const result = await checkComponentIndex();
-
-      expect(result).toHaveProperty('name', '组件索引');
-      expect(result.status).toBe('pass');
-      expect(result.message).toContain('组件索引正常');
-      expect(result.details).toHaveProperty('componentsCount', 1);
-    });
-
-    it('应该检测空的组件索引', async () => {
-      await mkdir(testDataDir, { recursive: true });
-
-      const indexData = {
-        components: [],
-        categories: [],
-        tags: [],
-        lastUpdated: new Date().toISOString(),
-        version: '1.0.0',
-      };
-
-      await writeFile(
-        join(testDataDir, 'components-index.json'),
-        JSON.stringify(indexData),
-      );
-
-      const checker = new MonitoringManager(testConfig);
-      const checkComponentIndex = (checker as any).checkComponentIndex.bind(
-        checker,
-      );
-      const result = await checkComponentIndex();
-
-      expect(result).toHaveProperty('name', '组件索引');
-      expect(result.status).toBe('warn');
-      expect(result.message).toContain('组件索引为空');
-    });
-
-    it('应该检测损坏的组件索引', async () => {
-      await mkdir(testDataDir, { recursive: true });
-
-      // 写入无效的 JSON
-      await writeFile(
-        join(testDataDir, 'components-index.json'),
-        'invalid json',
-      );
-
-      const checker = new MonitoringManager(testConfig);
-      const checkComponentIndex = (checker as any).checkComponentIndex.bind(
-        checker,
-      );
-      const result = await checkComponentIndex();
-
-      expect(result).toHaveProperty('name', '组件索引');
-      expect(result.status).toBe('fail');
-      expect(result.message).toContain('组件索引文件损坏');
-    });
-
-    it('应该检测内存使用情况', async () => {
-      const checker = new MonitoringManager(testConfig);
-      const checkMemoryUsage = (checker as any).checkMemoryUsage.bind(checker);
-      const result = await checkMemoryUsage();
-
-      expect(result).toHaveProperty('name', '内存使用');
-      expect(['pass', 'warn']).toContain(result.status);
-      expect(result.message).toMatch(/(内存使用正常|内存使用率较高)/);
-      expect(result.details).toHaveProperty('heapUsed');
-      expect(result.details).toHaveProperty('heapTotal');
+      checker.stop();
     });
 
     it('应该执行完整的健康检查', async () => {
       await mkdir(testDataDir, { recursive: true });
-      await mkdir(join(testDataDir, 'packages'), { recursive: true });
 
-      const checker = new MonitoringManager(testConfig);
+      const checker = new MonitoringManager();
       const result = await checker.performHealthCheck();
 
       expect(result).toHaveProperty('status');
@@ -218,19 +49,68 @@ describe('Health Checker', () => {
       expect(result.summary).toHaveProperty('passed');
       expect(result.summary).toHaveProperty('failed');
       expect(result.summary).toHaveProperty('warnings');
+
+      checker.stop();
     });
 
-    it('应该执行快速健康检查', async () => {
-      await mkdir(testDataDir, { recursive: true });
-      await mkdir(join(testDataDir, 'packages'), { recursive: true });
-
-      const checker = new MonitoringManager(testConfig);
-      const result = await checker.quickHealthCheck();
+    it('应该执行健康检查', async () => {
+      const checker = new MonitoringManager();
+      const result = await checker.performHealthCheck();
 
       expect(result).toHaveProperty('status');
       expect(result).toHaveProperty('checks');
-      expect(result.checks.length).toBeLessThan(7); // 快速检查应该少于完整检查
+      // 简化版只有内存和错误率两个检查
+      expect(result.checks.length).toBe(2);
       expect(result).toHaveProperty('summary');
+
+      // 检查内存使用
+      const memoryCheck = result.checks.find((c) => c.name === '内存使用');
+      expect(memoryCheck).toBeDefined();
+      expect(['pass', 'warn', 'fail']).toContain(memoryCheck?.status);
+
+      // 检查错误率
+      const errorRateCheck = result.checks.find((c) => c.name === '错误率');
+      expect(errorRateCheck).toBeDefined();
+      expect(['pass', 'warn', 'fail']).toContain(errorRateCheck?.status);
+
+      checker.stop();
+    });
+
+    it('应该检测高错误率', async () => {
+      const checker = new MonitoringManager();
+
+      // 模拟大量错误
+      for (let i = 0; i < 20; i++) {
+        checker.recordRequestStart();
+        checker.recordError('test_error', `Error ${i}`);
+      }
+
+      const result = await checker.performHealthCheck();
+      const errorRateCheck = result.checks.find((c) => c.name === '错误率');
+
+      expect(errorRateCheck).toBeDefined();
+      // 高错误率应该导致警告或失败
+      expect(['warn', 'fail']).toContain(errorRateCheck?.status);
+
+      checker.stop();
+    });
+
+    it('应该在无错误时返回健康状态', async () => {
+      const checker = new MonitoringManager();
+
+      // 记录一些成功的请求但没有错误
+      for (let i = 0; i < 10; i++) {
+        checker.recordRequestStart();
+        checker.recordRequestEnd(true, Date.now() - 50);
+      }
+
+      const result = await checker.performHealthCheck();
+      const errorRateCheck = result.checks.find((c) => c.name === '错误率');
+
+      expect(errorRateCheck).toBeDefined();
+      expect(errorRateCheck?.status).toBe('pass');
+
+      checker.stop();
     });
   });
 
@@ -255,10 +135,7 @@ describe('Health Checker', () => {
 
       const formatted = formatHealthCheckResult(result);
       expect(formatted).toContain('✅ 健康检查 - HEALTHY');
-      expect(formatted).toContain('📊 检查摘要:');
-      expect(formatted).toContain('总计: 1');
       expect(formatted).toContain('通过: 1');
-      expect(formatted).toContain('📋 详细结果:');
       expect(formatted).toContain('✅ 测试检查: 检查通过');
     });
 

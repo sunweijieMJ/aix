@@ -3,6 +3,47 @@ title: Subtitle 字幕
 outline: deep
 ---
 
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import { Subtitle } from '@aix/subtitle'
+
+// 演示用的字幕数据
+const subtitleCues = [
+  { startTime: 0, endTime: 3, text: '欢迎使用 AIX 字幕组件' },
+  { startTime: 3, endTime: 6, text: '支持多种字幕格式：VTT、SRT、ASS' },
+  { startTime: 6, endTime: 9, text: '可自定义样式和位置' },
+  { startTime: 9, endTime: 12, text: '与视频播放器完美配合' },
+]
+
+const currentTime = ref(0)
+const isPlaying = ref(false)
+let timer = null
+
+const togglePlay = () => {
+  isPlaying.value = !isPlaying.value
+  if (isPlaying.value) {
+    timer = setInterval(() => {
+      currentTime.value += 0.1
+      if (currentTime.value >= 12) {
+        currentTime.value = 0
+      }
+    }, 100)
+  } else {
+    clearInterval(timer)
+  }
+}
+
+const reset = () => {
+  currentTime.value = 0
+  isPlaying.value = false
+  clearInterval(timer)
+}
+
+onUnmounted(() => {
+  clearInterval(timer)
+})
+</script>
+
 字幕组件，支持多种字幕格式（VTT、SRT、JSON、SBV、ASS），可与视频播放器配合使用。
 
 ## 何时使用
@@ -12,6 +53,39 @@ outline: deep
 - 需要自定义字幕样式或位置
 
 ## 代码演示
+
+### 交互演示
+
+点击播放按钮查看字幕效果：
+
+<div class="demo-block" style="position: relative; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 8px; padding: 40px 20px; min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+  <div style="position: relative; width: 100%; max-width: 600px; height: 120px; display: flex; align-items: center; justify-content: center;">
+    <Subtitle
+      :source="{ type: 'cues', cues: subtitleCues }"
+      :currentTime="currentTime"
+      position="center"
+      fontSize="18px"
+      background="blur"
+    />
+  </div>
+  <div style="display: flex; gap: 12px; margin-top: 20px; align-items: center;">
+    <button
+      @click="togglePlay"
+      style="padding: 8px 20px; border-radius: 4px; border: none; background: #409eff; color: white; cursor: pointer; font-size: 14px;"
+    >
+      {{ isPlaying ? '⏸ 暂停' : '▶ 播放' }}
+    </button>
+    <button
+      @click="reset"
+      style="padding: 8px 20px; border-radius: 4px; border: 1px solid #ddd; background: white; cursor: pointer; font-size: 14px;"
+    >
+      ↺ 重置
+    </button>
+    <span style="color: #999; font-size: 14px; margin-left: 12px;">
+      时间: {{ currentTime.toFixed(1) }}s
+    </span>
+  </div>
+</div>
 
 ### 基础用法
 

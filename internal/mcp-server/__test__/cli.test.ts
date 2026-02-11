@@ -240,6 +240,9 @@ describe('CLI Commands', () => {
     });
 
     it('应该处理缺少必需参数', () => {
+      // 使用 exitOverride 防止进程退出
+      program.exitOverride();
+
       program
         .command('test')
         .requiredOption('--required <value>', '必需参数')

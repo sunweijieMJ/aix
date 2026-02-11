@@ -379,12 +379,12 @@ defineExpose({
   right: 0;
   bottom: 0;
   left: 0;
-  transition: opacity 0.3s ease;
-  color: #fff;
 
   // playback 特有
   flex-direction: column;
   padding: 0;
+  transition: opacity 0.3s ease;
+  color: #fff;
   gap: 0;
 
   .aix-video-controls__left,
@@ -412,7 +412,7 @@ defineExpose({
 
     &:hover {
       opacity: 0.8;
-      background: rgb(255 255 255 / 10%);
+      background: rgb(255 255 255 / 0.1);
     }
 
     &:active {
@@ -425,7 +425,7 @@ defineExpose({
     width: 100%;
     height: 4px;
     transition: height 0.2s;
-    background: rgb(255 255 255 / 20%);
+    background: rgb(255 255 255 / 0.2);
     cursor: pointer;
     touch-action: none;
 
@@ -433,10 +433,7 @@ defineExpose({
     &::before {
       content: '';
       position: absolute;
-      top: -14px;
-      right: 0;
-      bottom: -14px;
-      left: 0;
+      inset: -14px 0;
     }
 
     &:hover,
@@ -444,8 +441,8 @@ defineExpose({
       height: 6px;
 
       .aix-video-controls__progress-thumb {
-        opacity: 1;
         transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
       }
     }
   }
@@ -455,7 +452,7 @@ defineExpose({
     top: 0;
     left: 0;
     height: 100%;
-    background: rgb(255 255 255 / 35%);
+    background: rgb(255 255 255 / 0.35);
   }
 
   .aix-video-controls__progress-played {
@@ -478,7 +475,7 @@ defineExpose({
     border-radius: 50%;
     opacity: 0;
     background: #fff;
-    box-shadow: 0 1px 4px rgb(0 0 0 / 40%);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
     pointer-events: none;
   }
 
@@ -488,7 +485,7 @@ defineExpose({
     padding: 2px 6px;
     transform: translateX(-50%);
     border-radius: 3px;
-    background: rgb(0 0 0 / 75%);
+    background: rgb(0 0 0 / 0.75);
     color: #fff;
     font-size: 12px;
     white-space: nowrap;
@@ -501,13 +498,13 @@ defineExpose({
     justify-content: space-between;
     width: 100%;
     padding: 4px 12px 8px;
-    background: linear-gradient(transparent, rgb(0 0 0 / 40%));
+    background: linear-gradient(transparent, rgb(0 0 0 / 0.4));
     gap: 8px;
   }
 
   .aix-video-controls__time {
     flex-shrink: 0;
-    color: rgb(255 255 255 / 90%);
+    color: rgb(255 255 255 / 0.9);
     font-size: 12px;
     white-space: nowrap;
     user-select: none;
@@ -537,7 +534,7 @@ defineExpose({
     margin-bottom: 4px;
     padding: 4px 0;
     border-radius: 6px;
-    background: rgb(0 0 0 / 80%);
+    background: rgb(0 0 0 / 0.8);
     backdrop-filter: blur(8px);
   }
 
@@ -545,13 +542,13 @@ defineExpose({
     padding: 6px 16px;
     border: none;
     background: transparent;
-    color: rgb(255 255 255 / 80%);
+    color: rgb(255 255 255 / 0.8);
     font-size: 13px;
     white-space: nowrap;
     cursor: pointer;
 
     &:hover {
-      background: rgb(255 255 255 / 10%);
+      background: rgb(255 255 255 / 0.1);
       color: #fff;
     }
 

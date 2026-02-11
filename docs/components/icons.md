@@ -3,6 +3,10 @@ title: Icons 图标
 outline: deep
 ---
 
+<script setup>
+import { Home, Setting, Add, Delete, Edit, IconSearch, CheckCircle, Warning, Error, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Play, Pause, VolumeUp, VolumeOff, Fullscreen, Folder, File, Person, People } from '@aix/icons'
+</script>
+
 语义化的矢量图标库，包含 580+ 个 SVG 图标组件。
 
 ## 何时使用
@@ -22,6 +26,14 @@ pnpm add @aix/icons
 ### 基础用法
 
 直接导入需要的图标组件使用。
+
+<div class="demo-block" style="display: flex; gap: 16px; font-size: 24px;">
+  <Home />
+  <Setting />
+  <IconSearch />
+  <Add />
+  <Delete />
+</div>
 
 ```vue
 <template>
@@ -52,6 +64,13 @@ import { IconSearch as Search } from '@aix/icons';
 
 通过 CSS `font-size` 或 `width`/`height` 控制图标大小。
 
+<div class="demo-block" style="display: flex; gap: 16px; align-items: center;">
+  <Home style="font-size: 16px" />
+  <Home style="font-size: 24px" />
+  <Home style="font-size: 32px" />
+  <Home style="font-size: 48px" />
+</div>
+
 ```vue
 <template>
   <div class="icons-size">
@@ -70,6 +89,13 @@ import { Home } from '@aix/icons';
 ### 自定义颜色
 
 通过 CSS `color` 属性控制图标颜色。
+
+<div class="demo-block" style="display: flex; gap: 16px; font-size: 24px;">
+  <Home style="color: #1890ff" />
+  <Home style="color: #52c41a" />
+  <Home style="color: #faad14" />
+  <Home style="color: #f5222d" />
+</div>
 
 ```vue
 <template>
@@ -162,6 +188,13 @@ import { Add, Edit, Delete } from '@aix/icons';
 
 ### 通用操作
 
+<div class="demo-block" style="display: flex; gap: 16px; font-size: 24px; flex-wrap: wrap;">
+  <Add title="添加" />
+  <Delete title="删除" />
+  <Edit title="编辑" />
+  <IconSearch title="搜索" />
+</div>
+
 ```vue
 <script setup lang="ts">
 import {
@@ -181,6 +214,13 @@ import {
 
 ### 方向箭头
 
+<div class="demo-block" style="display: flex; gap: 16px; font-size: 24px;">
+  <ArrowUp title="向上" />
+  <ArrowDown title="向下" />
+  <ArrowLeft title="向左" />
+  <ArrowRight title="向右" />
+</div>
+
 ```vue
 <script setup lang="ts">
 import {
@@ -198,6 +238,12 @@ import {
 
 ### 状态图标
 
+<div class="demo-block" style="display: flex; gap: 16px; font-size: 24px;">
+  <CheckCircle style="color: #52c41a" title="成功" />
+  <Error style="color: #f5222d" title="错误" />
+  <Warning style="color: #faad14" title="警告" />
+</div>
+
 ```vue
 <script setup lang="ts">
 import {
@@ -212,6 +258,14 @@ import {
 ```
 
 ### 媒体控制
+
+<div class="demo-block" style="display: flex; gap: 16px; font-size: 24px;">
+  <Play title="播放" />
+  <Pause title="暂停" />
+  <VolumeUp title="音量" />
+  <VolumeOff title="静音" />
+  <Fullscreen title="全屏" />
+</div>
 
 ```vue
 <script setup lang="ts">
@@ -230,6 +284,11 @@ import {
 
 ### 文件类型
 
+<div class="demo-block" style="display: flex; gap: 16px; font-size: 24px;">
+  <Folder title="文件夹" />
+  <File title="文件" />
+</div>
+
 ```vue
 <script setup lang="ts">
 import {
@@ -244,6 +303,11 @@ import {
 ```
 
 ### 用户相关
+
+<div class="demo-block" style="display: flex; gap: 16px; font-size: 24px;">
+  <Person title="用户" />
+  <People title="多用户" />
+</div>
 
 ```vue
 <script setup lang="ts">

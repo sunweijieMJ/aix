@@ -1,8 +1,14 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { COMPONENT_LIBRARY_CONFIG } from '../constants';
 import type { IconInfo } from '../extractors/icons-extractor';
 import type { ComponentIndex, ComponentInfo } from '../types/index';
 import { log } from './logger';
+
+/**
+ * 图标包名称（基于组件库配置）
+ */
+const ICONS_PACKAGE_NAME = `${COMPONENT_LIBRARY_CONFIG.packageScope}/icons`;
 
 /**
  * 分类数据管理器
@@ -101,7 +107,7 @@ export class DataManager {
    */
   private async saveIconsPackageData(icons: IconInfo[]): Promise<void> {
     const iconsData = {
-      packageName: '@aix/icons',
+      packageName: ICONS_PACKAGE_NAME,
       category: '图标',
       totalCount: icons.length,
       lastUpdated: new Date().toISOString(),
@@ -113,8 +119,9 @@ export class DataManager {
       })),
     };
 
+    const iconsFileName = this.getSafeFileName(ICONS_PACKAGE_NAME);
     await this.saveJsonFile(
-      join(this.outputDir, 'packages', 'aix-icons.json'),
+      join(this.outputDir, 'packages', `${iconsFileName}.json`),
       iconsData,
     );
 
@@ -126,7 +133,7 @@ export class DataManager {
       }
     }
     await this.saveJsonFile(
-      join(this.outputDir, 'packages', 'aix-icons-svg.json'),
+      join(this.outputDir, 'packages', `${iconsFileName}-svg.json`),
       svgMap,
     );
 
@@ -149,7 +156,7 @@ export class DataManager {
   private getIconCategories(icons: IconInfo[]): Record<string, number> {
     const categories: Record<string, number> = {};
     for (const icon of icons) {
-      const category = (icon as any).iconCategory || 'Unknown';
+      const category = icon.iconCategory || 'Unknown';
       categories[category] = (categories[category] || 0) + 1;
     }
     return categories;
@@ -214,27 +221,11 @@ export class DataManager {
    * 根据包名获取数据文件路径
    */
   private getDataFileForPackage(packageName: string): string {
-    if (packageName === '@aix/icons') {
-      return 'packages/aix-icons.json';
+    if (packageName === ICONS_PACKAGE_NAME) {
+      return `packages/${this.getSafeFileName(ICONS_PACKAGE_NAME)}.json`;
     }
     const safeFileName = this.getSafeFileName(packageName);
     return `packages/${safeFileName}.json`;
-  }
-
-  /**
-   * 根据分类获取数据文件路径（保留作为备用）
-   */
-  private getDataFileForCategory(category: string): string {
-    const fileMap: Record<string, string> = {
-      表单: 'components/forms.json',
-      选择器: 'components/pickers.json',
-      弹窗: 'components/modals.json',
-      媒体: 'components/media.json',
-      主题: 'components/theme.json',
-      图标: 'components/icons.json',
-    };
-
-    return fileMap[category] || 'components/others.json';
   }
 
   /**
@@ -275,7 +266,7 @@ export class DataManager {
         packageName: icon.packageName,
         description: icon.description,
         category: icon.category,
-        iconCategory: (icon as any).iconCategory,
+        iconCategory: icon.iconCategory,
         tags: icon.tags,
         keywords: icon.keywords || [],
         dataFile: 'packages/aix-icons.json',
@@ -334,38 +325,6 @@ export class DataManager {
       await mkdir(dirPath, { recursive: true });
     } catch (error) {
       log.warn(`Failed to create directory ${dirPath}:`, error);
-    }
-  }
-
-  /**
-   * 读取分类数据
-   */
-  async loadCategoryData(category: string): Promise<any> {
-    const filePath = join(
-      this.outputDir,
-      this.getDataFileForCategory(category),
-    );
-    try {
-      const content = await readFile(filePath, 'utf8');
-      return JSON.parse(content);
-    } catch (error) {
-      log.warn(`Failed to load category data for ${category}:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * 读取图标SVG内容
-   */
-  async loadIconSvg(iconName: string): Promise<string | null> {
-    const filePath = join(this.outputDir, 'components', 'icons-svg.json');
-    try {
-      const content = await readFile(filePath, 'utf8');
-      const svgMap = JSON.parse(content);
-      return svgMap[iconName] || null;
-    } catch (error) {
-      log.warn(`Failed to load SVG for icon ${iconName}:`, error);
-      return null;
     }
   }
 }

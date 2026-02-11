@@ -1,22 +1,17 @@
-import { existsSync } from 'fs';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CacheItem } from '../src/types/index';
+/**
+ * CacheManager 测试 (简化版)
+ *
+ * 简化后的 CacheManager 只使用内存缓存，不再使用文件系统。
+ * 这对于 MCP Server 的使用场景来说已经足够。
+ */
+import { beforeEach, describe, expect, it } from 'vitest';
 import { CacheManager } from '../src/utils/cache';
-
-// Mock fs modules
-vi.mock('fs/promises');
-vi.mock('fs');
 
 describe('CacheManager', () => {
   let cacheManager: CacheManager;
-  const testCacheDir = '/test/cache';
-  const testTTL = 1000; // 1 second for testing
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    cacheManager = new CacheManager(testCacheDir);
+    cacheManager = new CacheManager();
   });
 
   describe('内存缓存', () => {
@@ -91,81 +86,40 @@ describe('CacheManager', () => {
     });
   });
 
-  describe('文件缓存', () => {
-    it('应该尝试从文件加载缓存', async () => {
-      const key = 'test-key';
-      const cachedData: CacheItem = {
-        data: { test: 'data' },
-        timestamp: Date.now(),
-        ttl: testTTL * 10, // 确保不会过期
-      };
-
-      // 计算预期的文件路径（与CacheManager中的逻辑一致）
-      const hash = Buffer.from(key).toString('base64').replace(/[/+=]/g, '_');
-      const expectedPath = path.join(testCacheDir, `${hash}.json`);
-
-      // Mock文件存在检查和读取
-      vi.mocked(existsSync).mockReturnValue(true);
-      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(cachedData));
-
-      const result = await cacheManager.get(key);
-
-      expect(fs.readFile).toHaveBeenCalledWith(expectedPath, 'utf8');
-      expect(result).toEqual(cachedData.data);
-    });
-
-    it('应该将缓存保存到文件', async () => {
+  describe('纯内存缓存 (简化版)', () => {
+    it('应该只使用内存缓存，不涉及文件操作', async () => {
       const key = 'test-key';
       const value = { data: 'test-data', type: 'test' };
 
-      // Mock文件写入
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-
+      // 设置缓存
       await cacheManager.set(key, value);
 
-      expect(fs.mkdir).toHaveBeenCalledWith(testCacheDir, { recursive: true });
-      expect(fs.writeFile).toHaveBeenCalled();
+      // 获取缓存
+      const result = await cacheManager.get(key);
+      expect(result).toEqual(value);
+
+      // 简化版不再使用文件系统，所有数据只在内存中
+      const stats = cacheManager.getStats();
+      expect(stats.memoryItems).toBe(1);
     });
 
-    it('应该处理文件读取错误', async () => {
-      const key = 'test-key';
-
-      // Mock文件读取失败
-      vi.mocked(fs.readFile).mockRejectedValue(new Error('File not found'));
-      vi.mocked(fs.access).mockRejectedValue(new Error('File not found'));
-
-      const result = await cacheManager.get(key);
-
+    it('应该正确处理不存在的缓存项', async () => {
+      const result = await cacheManager.get('non-existent-key');
       expect(result).toBeNull();
     });
 
-    it('应该处理无效的JSON文件', async () => {
+    it('应该正确处理过期的缓存项', async () => {
       const key = 'test-key';
+      const value = { data: 'test-data', type: 'test' };
 
-      // Mock读取无效JSON
-      vi.mocked(fs.readFile).mockResolvedValue('invalid json');
-      vi.mocked(fs.access).mockResolvedValue(undefined);
+      // 设置一个很短的TTL
+      await cacheManager.set(key, value, 50);
 
+      // 等待过期
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // 过期后应该返回null
       const result = await cacheManager.get(key);
-
-      expect(result).toBeNull();
-    });
-
-    it('应该忽略过期的文件缓存', async () => {
-      const key = 'test-key';
-      const expiredData: CacheItem = {
-        data: { test: 'data' },
-        timestamp: Date.now() - testTTL * 2, // 已过期
-        ttl: testTTL,
-      };
-
-      // Mock文件读取
-      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(expiredData));
-      vi.mocked(fs.access).mockResolvedValue(undefined);
-
-      const result = await cacheManager.get(key);
-
       expect(result).toBeNull();
     });
   });
@@ -280,25 +234,27 @@ describe('CacheManager', () => {
   });
 
   describe('错误处理', () => {
-    it('应该处理设置缓存时的错误', async () => {
-      // Mock文件写入失败
-      vi.mocked(fs.writeFile).mockRejectedValue(new Error('Write failed'));
-      vi.mocked(fs.mkdir).mockRejectedValue(new Error('Mkdir failed'));
+    it('应该处理设置缓存时的各种数据类型', async () => {
+      // 字符串
+      await cacheManager.set('string-key', 'simple string');
+      expect(await cacheManager.get('string-key')).toBe('simple string');
 
-      // 应该不抛出错误，只是不保存到文件
-      await expect(
-        cacheManager.set('key', { data: 'data', type: 'test' }),
-      ).resolves.not.toThrow();
+      // 数字
+      await cacheManager.set('number-key', 42);
+      expect(await cacheManager.get('number-key')).toBe(42);
 
-      // 内存缓存应该仍然工作
-      const result = await cacheManager.get('key');
-      expect(result).toEqual({ data: 'data', type: 'test' });
+      // 数组
+      await cacheManager.set('array-key', [1, 2, 3]);
+      expect(await cacheManager.get('array-key')).toEqual([1, 2, 3]);
+
+      // 对象
+      await cacheManager.set('object-key', { nested: { value: true } });
+      expect(await cacheManager.get('object-key')).toEqual({
+        nested: { value: true },
+      });
     });
 
-    it('应该处理获取缓存时的错误', async () => {
-      // Mock文件读取失败
-      vi.mocked(fs.access).mockRejectedValue(new Error('Access failed'));
-
+    it('应该处理获取不存在的缓存项', async () => {
       const result = await cacheManager.get('non-existent-key');
       expect(result).toBeNull();
     });
@@ -318,6 +274,15 @@ describe('CacheManager', () => {
       await cacheManager.clear();
       const statsAfterClear = cacheManager.getStats();
       expect(statsAfterClear.memoryItems).toBe(0);
+    });
+
+    it('应该返回缓存大小估算', async () => {
+      await cacheManager.set('key1', { data: 'some data' });
+      await cacheManager.set('key2', { data: 'more data', nested: { a: 1 } });
+
+      const stats = cacheManager.getStats();
+      expect(stats.size).toBeGreaterThan(0);
+      expect(stats.sizeFormatted).toBeDefined();
     });
   });
 });

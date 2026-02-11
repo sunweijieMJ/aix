@@ -4,7 +4,7 @@ import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import { createApp } from 'vue';
 import App from './App.vue';
-import i18n from '@/plugins/locale';
+import i18n from './plugins/locale';
 
 import '@aix/button/style';
 

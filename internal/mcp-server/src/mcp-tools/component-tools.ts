@@ -2,8 +2,10 @@
  * 组件相关的 MCP 工具
  */
 
+import { join } from 'node:path';
 import { COMPONENT_LIBRARY_CONFIG, MCP_TOOLS } from '../constants';
 import type {
+  ComponentExample,
   ComponentIndex,
   ComponentInfo,
   SearchResult,
@@ -43,24 +45,22 @@ export class ListComponentsTool extends BaseTool {
 
   async execute(args: ToolArguments): Promise<ComponentInfo[]> {
     let components = this.componentIndex.components;
+    const category = typeof args.category === 'string' ? args.category : null;
+    const tag = typeof args.tag === 'string' ? args.tag : null;
 
     // 按分类过滤
-    if (args.category && typeof args.category === 'string') {
+    if (category) {
+      const categoryLower = category.toLowerCase();
       components = components.filter((c) =>
-        c.category
-          .toLowerCase()
-          .includes((args.category as string).toLowerCase()),
+        c.category.toLowerCase().includes(categoryLower),
       );
     }
 
     // 按标签过滤
-    if (args.tag && typeof args.tag === 'string') {
+    if (tag) {
+      const tagLower = tag.toLowerCase();
       components = components.filter(
-        (c) =>
-          c.tags &&
-          c.tags.some((tag) =>
-            tag.toLowerCase().includes((args.tag as string).toLowerCase()),
-          ),
+        (c) => c.tags && c.tags.some((t) => t.toLowerCase().includes(tagLower)),
       );
     }
 
@@ -158,11 +158,11 @@ export class GetComponentExamplesTool extends BaseTool {
     const component = findComponentByName(this.componentIndex.components, name);
     if (!component) return null;
 
-    let examples = component.examples || [];
+    let examples: ComponentExample[] = component.examples || [];
 
     // 按语言过滤
     if (language && examples.length > 0) {
-      examples = examples.filter((ex: any) => ex.language === language);
+      examples = examples.filter((ex) => ex.language === language);
     }
 
     return examples;
@@ -170,7 +170,7 @@ export class GetComponentExamplesTool extends BaseTool {
 }
 
 /**
- * 搜索组件 - 使用高性能索引
+ * 搜索组件 - 使用内存索引
  */
 export class SearchComponentsTool extends BaseTool {
   name = MCP_TOOLS.SEARCH_COMPONENTS;
@@ -199,19 +199,11 @@ export class SearchComponentsTool extends BaseTool {
 
   private searchIndex = createSearchIndex();
   private indexBuilt = false;
-  private indexFilePath: string;
 
   constructor(private componentIndex: ComponentIndex) {
     super();
-    this.indexFilePath = this.getIndexFilePath();
-    this.initializeSearchIndex();
-  }
-
-  /**
-   * 获取索引文件路径
-   */
-  private getIndexFilePath(): string {
-    return `${process.cwd()}/data/search-index.json`;
+    // 直接构建内存索引
+    this.buildSearchIndex();
   }
 
   async execute(args: ToolArguments): Promise<SearchResult[]> {
@@ -229,7 +221,7 @@ export class SearchComponentsTool extends BaseTool {
     }
 
     try {
-      // 使用高性能索引搜索
+      // 使用内存索引搜索
       const indexedResults = this.searchIndex.search(query, limit);
 
       // 转换为兼容格式
@@ -246,62 +238,19 @@ export class SearchComponentsTool extends BaseTool {
 
       return results;
     } catch (error) {
-      log.error('搜索执行失败:', error);
-      // 降级到使用 Fuse.js
-      return await this.fallbackSearchWithFuse(query, limit);
-    }
-  }
-
-  /**
-   * 初始化搜索索引（尝试从文件加载，失败则构建）
-   */
-  private async initializeSearchIndex(): Promise<void> {
-    try {
-      // 尝试从文件加载索引
-      const loaded = await this.searchIndex.load(this.indexFilePath);
-
-      if (loaded) {
-        // 检查是否需要重建
-        const needsRebuild = await this.searchIndex.needsRebuild(
-          this.indexFilePath,
-          this.componentIndex.components,
-        );
-
-        if (!needsRebuild) {
-          this.indexBuilt = true;
-          log.info('✅ 搜索索引从缓存加载成功');
-          return;
-        }
-      }
-
-      // 加载失败或需要重建，构建新索引
-      await this.buildSearchIndex();
-    } catch (error) {
-      log.error('初始化搜索索引失败:', error);
-      // 降级到不使用持久化
-      await this.buildSearchIndex();
+      log.error('搜索执行失败，使用降级搜索:', error);
+      // 降级到简单的字符串匹配
+      return this.fallbackSimpleSearch(query, limit);
     }
   }
 
   /**
    * 构建搜索索引
    */
-  private async buildSearchIndex(): Promise<void> {
+  private buildSearchIndex(): void {
     try {
       this.searchIndex.buildIndex(this.componentIndex.components);
       this.indexBuilt = true;
-
-      const stats = this.searchIndex.getStats();
-      log.info(
-        `🔍 搜索索引构建完成: ${stats.componentCount} 个组件, ${stats.termCount} 个词项`,
-      );
-
-      // 保存索引到文件
-      try {
-        await this.searchIndex.save(this.indexFilePath);
-      } catch (saveError) {
-        log.warn('保存搜索索引失败，将在下次启动时重新构建:', saveError);
-      }
     } catch (error) {
       log.error('搜索索引构建失败:', error);
       this.indexBuilt = false;
@@ -309,48 +258,10 @@ export class SearchComponentsTool extends BaseTool {
   }
 
   /**
-   * 使用 Fuse.js 的降级搜索方法
+   * 降级搜索方法：简单的字符串匹配
+   * 组件数量通常 <100，简单匹配已足够
    */
-  private async fallbackSearchWithFuse(
-    query: string,
-    limit: number,
-  ): Promise<SearchResult[]> {
-    log.warn('使用 Fuse.js 降级搜索方法');
-
-    try {
-      // 动态导入 Fuse.js
-      const { default: Fuse } = await import('fuse.js');
-
-      const fuse = new Fuse(this.componentIndex.components, {
-        keys: [
-          { name: 'name', weight: 0.3 },
-          { name: 'packageName', weight: 0.25 },
-          { name: 'description', weight: 0.2 },
-          { name: 'category', weight: 0.15 },
-          { name: 'tags', weight: 0.1 },
-        ],
-        threshold: 0.4,
-        includeScore: true,
-      });
-
-      const fuseResults = fuse.search(query, { limit });
-
-      return fuseResults.map((result: any) => ({
-        component: result.item,
-        score: 100 * (1 - (result.score || 0)), // 转换分数到 0-100
-        matchedFields: this.getMatchedFieldsSimple(result.item, query),
-      }));
-    } catch (error) {
-      log.error('Fuse.js 降级搜索也失败:', error);
-      // 最后的降级：简单的字符串匹配
-      return this.simpleStringSearch(query, limit);
-    }
-  }
-
-  /**
-   * 最简单的字符串匹配降级方法
-   */
-  private simpleStringSearch(query: string, limit: number): SearchResult[] {
+  private fallbackSimpleSearch(query: string, limit: number): SearchResult[] {
     const results: SearchResult[] = [];
     const queryLower = query.toLowerCase();
 
@@ -367,16 +278,6 @@ export class SearchComponentsTool extends BaseTool {
     }
 
     return results.sort((a, b) => b.score - a.score).slice(0, limit);
-  }
-
-  /**
-   * 简单获取匹配字段
-   */
-  private getMatchedFieldsSimple(
-    component: ComponentInfo,
-    query: string,
-  ): string[] {
-    return getComponentMatchedFields(component, query.toLowerCase());
   }
 }
 
@@ -489,7 +390,6 @@ export class GetComponentChangelogTool extends BaseTool {
     try {
       // 从组件源路径读取 CHANGELOG.md
       const { readFile } = await import('node:fs/promises');
-      const { join } = await import('node:path');
 
       const changelogPath = join(component.sourcePath, 'CHANGELOG.md');
       let changelogContent;
@@ -532,9 +432,13 @@ export class GetComponentChangelogTool extends BaseTool {
   ): Array<{ version: string; changes: string[] }> {
     const result: Array<{ version: string; changes: string[] }> = [];
 
-    // 匹配版本块：## 1.0.0 (2023-01-01) 或 ## [1.0.0] - 2023-01-01
+    // 匹配版本块，支持完整的 semver 格式：
+    // - ## 1.0.0 (2023-01-01)
+    // - ## [1.0.0] - 2023-01-01
+    // - ## 1.0.0-alpha.1
+    // - ## 1.0.0-rc.0+build.123
     const versionBlocks = content.split(
-      /^## (?:\[?)([\d.]+)(?:\]?)(?:[ -]+(.+))?$/m,
+      /^## (?:\[?)(\d+\.\d+\.\d+(?:-[\w.]+)?(?:\+[\w.]+)?)(?:\]?)(?:[ -]+(.+))?$/m,
     );
 
     for (let i = 1; i < versionBlocks.length; i += 3) {

@@ -48,9 +48,7 @@ export interface ComponentDependencies {
  * 完整的组件信息
  */
 export interface ComponentInfo
-  extends ComponentBasicInfo,
-    ComponentPaths,
-    ComponentDependencies {
+  extends ComponentBasicInfo, ComponentPaths, ComponentDependencies {
   /** Props 定义 */
   props: PropDefinition[];
   /** 组件示例 */
@@ -117,8 +115,8 @@ export interface PackageInfo {
   version: string;
   /** 描述 */
   description?: string;
-  /** 作者 */
-  author?: string;
+  /** 作者 (字符串或对象格式) */
+  author?: string | { name: string; email?: string; url?: string };
   /** 许可证 */
   license?: string;
   /** 依赖 */
@@ -170,6 +168,20 @@ export interface ComponentIndex {
 }
 
 /**
+ * 图标索引项接口（索引中的简化图标信息）
+ */
+export interface IconIndexItem {
+  name: string;
+  packageName: string;
+  description: string;
+  category: string;
+  iconCategory: string;
+  tags: string[];
+  keywords: string[];
+  dataFile: string;
+}
+
+/**
  * 图标索引接口
  */
 export interface IconsIndex {
@@ -180,16 +192,7 @@ export interface IconsIndex {
   /** 最后更新时间 */
   lastUpdated: string;
   /** 图标列表 */
-  icons: Array<{
-    name: string;
-    packageName: string;
-    description: string;
-    category: string;
-    iconCategory: string;
-    tags: string[];
-    keywords: string[];
-    dataFile: string;
-  }>;
+  icons: IconIndexItem[];
 }
 
 /**

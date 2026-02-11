@@ -42,6 +42,8 @@ export interface ResourceContent {
  */
 export class ResourceManager {
   private componentIndex: ComponentIndex;
+  /** 源文件缓存：packageName -> sourceFiles[] */
+  private sourceFilesCache = new Map<string, string[]>();
 
   constructor(componentIndex: ComponentIndex) {
     this.componentIndex = componentIndex;
@@ -165,19 +167,28 @@ export class ResourceManager {
 
   /**
    * 解析资源 URI
+   *
+   * 支持的 URI 格式:
+   * - component-source://@scope/package/filename.ts (scoped 包)
+   * - component-source://package/filename.ts (unscoped 包)
    */
   private parseResourceUri(uri: string): {
     type: ResourceType;
     packageName: string;
     fileName: string;
   } | null {
-    // 修改正则表达式以支持包名中的 / 字符（如 @scope/package）
-    const match = uri.match(/^(component-\w+):\/\/([^/]+(?:\/[^/]+)?)\/(.+)$/);
+    // 使用明确的交替模式匹配包名:
+    // - @[^/]+\/[^/]+ 匹配 scoped 包，如 @aix/button
+    // - [^/]+ 匹配 unscoped 包，如 button
+    const match = uri.match(
+      /^(component-\w+):\/\/(@[^/]+\/[^/]+|[^/]+)\/(.+)$/,
+    );
     if (!match) {
       log.error(`Invalid resource URI: ${uri}`);
       return null;
     }
 
+    // match[1], match[2], match[3] are guaranteed to exist when the regex matches
     return {
       type: match[1] as ResourceType,
       packageName: match[2]!,
@@ -195,22 +206,32 @@ export class ResourceManager {
   }
 
   /**
-   * 获取组件源码文件列表
+   * 获取组件源码文件列表（带缓存）
    */
   private async getComponentSourceFiles(
     component: ComponentInfo,
   ): Promise<string[]> {
+    // 检查缓存
+    const cached = this.sourceFilesCache.get(component.packageName);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const { glob } = await import('glob');
-      const pattern = join(component.sourcePath, 'src/**/*.{ts,tsx}');
+      const pattern = join(component.sourcePath, 'src/**/*.{ts,tsx,vue}');
       const files = await glob(pattern);
 
-      return files.filter(
+      const filteredFiles = files.filter(
         (file) =>
           !file.includes('.test.') &&
           !file.includes('.spec.') &&
           !file.includes('.stories.'),
       );
+
+      // 存入缓存
+      this.sourceFilesCache.set(component.packageName, filteredFiles);
+      return filteredFiles;
     } catch (error) {
       log.warn(`Failed to get source files for ${component.name}:`, error);
       return [];
@@ -247,6 +268,8 @@ export class ResourceManager {
    */
   updateComponentIndex(componentIndex: ComponentIndex): void {
     this.componentIndex = componentIndex;
+    // 清除源文件缓存，因为组件索引已更新
+    this.sourceFilesCache.clear();
   }
 }
 

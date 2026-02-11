@@ -1,3 +1,9 @@
+/**
+ * DataManager 测试 (简化版)
+ *
+ * DataManager 只负责保存组件数据到文件系统。
+ * 加载数据的方法已移除（由 MCP Server 直接读取 JSON 文件）。
+ */
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -70,96 +76,37 @@ describe('DataManager', () => {
         dataManager.saveComponentsByPackage(mockComponents),
       ).rejects.toThrow('Permission denied');
     });
-  });
 
-  describe('loadCategoryData', () => {
-    it('应该正确加载分类数据文件', async () => {
-      const category = 'components';
-      const mockData = { components: mockComponents };
-
-      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockData));
-
-      const result = await dataManager.loadCategoryData(category);
-
-      expect(fs.readFile).toHaveBeenCalledWith(
-        path.join(testDataDir, 'components/others.json'),
-        'utf8',
-      );
-      expect(result).toEqual(mockData);
-    });
-
-    it('应该在文件不存在时返回null', async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
-
-      const result = await dataManager.loadCategoryData('components');
-
-      expect(result).toBeNull();
-    });
-
-    it('应该处理无效JSON文件', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('invalid json');
-
-      const result = await dataManager.loadCategoryData('components');
-
-      expect(result).toBeNull(); // 数据管理器捕获错误并返回null
-    });
-  });
-
-  describe('loadIconSvg', () => {
-    it('应该正确加载图标SVG', async () => {
-      const iconName = 'home';
-      const mockSvgMap = {
-        home: '<svg>home icon</svg>',
-        user: '<svg>user icon</svg>',
-      };
-
-      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockSvgMap));
-
-      const result = await dataManager.loadIconSvg(iconName);
-
-      expect(fs.readFile).toHaveBeenCalledWith(
-        path.join(testDataDir, 'components', 'icons-svg.json'),
-        'utf8',
-      );
-      expect(result).toBe('<svg>home icon</svg>');
-    });
-
-    it('应该在图标不存在时返回null', async () => {
-      const mockSvgMap = {
-        user: '<svg>user icon</svg>',
-      };
-
-      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockSvgMap));
-
-      const result = await dataManager.loadIconSvg('nonexistent');
-
-      expect(result).toBeNull();
-    });
-
-    it('应该在文件读取失败时返回null', async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error('File not found'));
-
-      const result = await dataManager.loadIconSvg('home');
-
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('并发操作', () => {
-    it('应该正确处理并发读写', async () => {
+    it('应该保存主索引文件', async () => {
       vi.mocked(fs.mkdir).mockResolvedValue(undefined);
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-      vi.mocked(fs.readFile).mockResolvedValue(
-        JSON.stringify({ test: 'data' }),
-      );
 
-      const savePromise = dataManager.saveComponentsByPackage(mockComponents);
-      const loadPromise = dataManager.loadCategoryData('components');
+      await dataManager.saveComponentsByPackage(mockComponents);
 
-      await Promise.all([savePromise, loadPromise]);
+      // 验证主索引文件被保存
+      const indexWriteCall = vi
+        .mocked(fs.writeFile)
+        .mock.calls.find((call) =>
+          call[0].toString().includes('components-index.json'),
+        );
 
-      expect(fs.mkdir).toHaveBeenCalled();
-      expect(fs.readFile).toHaveBeenCalled();
+      expect(indexWriteCall).toBeDefined();
+    });
+
+    it('应该保存搜索索引文件', async () => {
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await dataManager.saveComponentsByPackage(mockComponents);
+
+      // 验证搜索索引文件被保存
+      const searchIndexWriteCall = vi
+        .mocked(fs.writeFile)
+        .mock.calls.find((call) =>
+          call[0].toString().includes('search-index.json'),
+        );
+
+      expect(searchIndexWriteCall).toBeDefined();
     });
   });
 
@@ -181,12 +128,24 @@ describe('DataManager', () => {
       expect(savedData.components).toHaveLength(1);
     });
 
-    it('应该处理损坏的数据文件', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('{"incomplete": json');
+    it('应该保存组件的完整信息', async () => {
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
-      const result = await dataManager.loadCategoryData('components');
+      await dataManager.saveComponentsByPackage(mockComponents);
 
-      expect(result).toBeNull(); // 数据管理器捕获错误并返回null
+      const writeCall = vi
+        .mocked(fs.writeFile)
+        .mock.calls.find((call) => call[0].toString().includes('packages'));
+
+      expect(writeCall).toBeDefined();
+      const savedData = JSON.parse(writeCall![1] as string);
+      const savedComponent = savedData.components[0];
+
+      expect(savedComponent.name).toBe('Button');
+      expect(savedComponent.packageName).toBe('@aix/button');
+      expect(savedComponent.description).toBe('按钮组件');
+      expect(savedComponent.tags).toContain('button');
     });
   });
 
@@ -216,31 +175,159 @@ describe('DataManager', () => {
 
       expect(fs.writeFile).toHaveBeenCalled();
     });
+
+    it('应该为每个包创建单独的数据文件', async () => {
+      const multiPackageComponents: ComponentInfo[] = [
+        { ...mockComponents[0]!, name: 'Button', packageName: '@aix/button' },
+        { ...mockComponents[0]!, name: 'Input', packageName: '@aix/input' },
+        { ...mockComponents[0]!, name: 'Select', packageName: '@aix/select' },
+      ];
+
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await dataManager.saveComponentsByPackage(multiPackageComponents);
+
+      // 验证每个包都有单独的数据文件 (跨平台路径匹配)
+      const packageWriteCalls = vi
+        .mocked(fs.writeFile)
+        .mock.calls.filter((call) => {
+          const filePath = call[0].toString();
+          // 跨平台：匹配 packages/ 或 packages\
+          return (
+            filePath.includes('packages/') || filePath.includes('packages\\')
+          );
+        });
+
+      // 应该有 3 个包文件
+      expect(packageWriteCalls.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  describe('图标数据处理', () => {
+    it('应该正确保存图标数据', async () => {
+      const mockIcons = [
+        {
+          name: 'home',
+          packageName: '@aix/icons',
+          version: '1.0.0',
+          description: '首页图标',
+          category: '图标',
+          tags: ['navigation'],
+          author: 'AIX Team',
+          license: 'MIT',
+          sourcePath: '/packages/icons/src/home.svg',
+          svgContent: '<svg>...</svg>',
+          dependencies: [],
+          peerDependencies: [],
+        },
+      ];
+
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await dataManager.saveComponentsByPackage([], mockIcons as any);
+
+      // 验证图标数据文件被保存
+      const iconWriteCall = vi
+        .mocked(fs.writeFile)
+        .mock.calls.find((call) =>
+          call[0].toString().includes('aix-icons.json'),
+        );
+
+      expect(iconWriteCall).toBeDefined();
+    });
+
+    it('应该单独保存SVG内容映射', async () => {
+      const mockIcons = [
+        {
+          name: 'home',
+          packageName: '@aix/icons',
+          version: '1.0.0',
+          description: '首页图标',
+          category: '图标',
+          tags: ['navigation'],
+          author: 'AIX Team',
+          license: 'MIT',
+          sourcePath: '/packages/icons/src/home.svg',
+          svgContent: '<svg>home icon</svg>',
+          dependencies: [],
+          peerDependencies: [],
+        },
+      ];
+
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await dataManager.saveComponentsByPackage([], mockIcons as any);
+
+      // 验证SVG映射文件被保存
+      const svgWriteCall = vi
+        .mocked(fs.writeFile)
+        .mock.calls.find((call) =>
+          call[0].toString().includes('aix-icons-svg.json'),
+        );
+
+      expect(svgWriteCall).toBeDefined();
+      if (svgWriteCall) {
+        const svgData = JSON.parse(svgWriteCall[1] as string);
+        expect(svgData.home).toBe('<svg>home icon</svg>');
+      }
+    });
   });
 
   describe('路径处理', () => {
     it('应该正确处理相对路径', async () => {
       const relativeDataManager = new DataManager('./test-data');
-      vi.mocked(fs.readFile).mockResolvedValue('{"test": "data"}');
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
-      await relativeDataManager.loadCategoryData('components');
+      await relativeDataManager.saveComponentsByPackage(mockComponents);
 
-      expect(fs.readFile).toHaveBeenCalledWith(
-        path.join('./test-data', 'components/others.json'),
-        'utf8',
-      );
+      expect(fs.mkdir).toHaveBeenCalledWith('./test-data', { recursive: true });
     });
 
     it('应该正确处理绝对路径', async () => {
       const absoluteDataManager = new DataManager('/absolute/path');
-      vi.mocked(fs.readFile).mockResolvedValue('{"test": "data"}');
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
-      await absoluteDataManager.loadCategoryData('components');
+      await absoluteDataManager.saveComponentsByPackage(mockComponents);
 
-      expect(fs.readFile).toHaveBeenCalledWith(
-        path.join('/absolute/path', 'components/others.json'),
-        'utf8',
-      );
+      expect(fs.mkdir).toHaveBeenCalledWith('/absolute/path', {
+        recursive: true,
+      });
+    });
+
+    it('应该生成安全的文件名', async () => {
+      const componentWithSpecialPackage: ComponentInfo[] = [
+        {
+          ...mockComponents[0]!,
+          packageName: '@aix/special-name',
+        },
+      ];
+
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await dataManager.saveComponentsByPackage(componentWithSpecialPackage);
+
+      // 验证文件名被正确转换（@ 和 / 被替换）(跨平台路径匹配)
+      const packageWriteCall = vi
+        .mocked(fs.writeFile)
+        .mock.calls.find((call) => {
+          const filePath = call[0].toString();
+          // 跨平台：匹配 packages/ 或 packages\ 且包含 special-name
+          return (
+            (filePath.includes('packages/') ||
+              filePath.includes('packages\\')) &&
+            filePath.includes('special-name')
+          );
+        });
+
+      expect(packageWriteCall).toBeDefined();
+      // 文件名应该是 aix-special-name.json，而不是 @aix/special-name.json
+      expect(packageWriteCall![0].toString()).not.toContain('@');
     });
   });
 });

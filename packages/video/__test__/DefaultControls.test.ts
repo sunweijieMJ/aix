@@ -17,6 +17,9 @@ describe('DefaultControls 组件', () => {
       isMuted: false,
       isFullscreen: false,
       buffered: 0.5,
+      isReconnecting: false,
+      autoPlayFailed: false,
+      isNativeFullscreen: false,
       ...overrides,
     };
   }
@@ -31,8 +34,13 @@ describe('DefaultControls 组件', () => {
       getVolume: vi.fn().mockReturnValue(1),
       toggleMute: vi.fn(),
       toggleFullscreen: vi.fn(),
+      enterNativeFullscreen: vi.fn(),
+      exitNativeFullscreen: vi.fn(),
       togglePictureInPicture: vi.fn().mockResolvedValue(undefined),
+      setPlaybackRate: vi.fn(),
+      getPlaybackRate: vi.fn().mockReturnValue(1),
       reload: vi.fn(),
+      forceReload: vi.fn(),
     };
   }
 
