@@ -1,6 +1,6 @@
 {
   "name": "@aix/server",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "Lightweight Koa API server for configuration management",
   "license": "MIT",
   "type": "module",

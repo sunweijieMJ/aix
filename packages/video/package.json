@@ -1,6 +1,6 @@
 {
   "name": "@aix/video",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "A Vue 3 Video Player component with HLS/FLV/DASH/RTSP/WebRTC support",
   "license": "MIT",
   "type": "module",

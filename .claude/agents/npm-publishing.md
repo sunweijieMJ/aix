@@ -349,7 +349,7 @@ access=public
 ```json
 {
   "name": "@aix/button",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"

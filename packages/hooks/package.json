@@ -1,6 +1,6 @@
 {
   "name": "@aix/hooks",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "AIX Component Library - Utility Hooks Collection",
   "type": "module",
   "main": "./lib/index.js",

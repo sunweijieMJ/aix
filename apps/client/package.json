@@ -1,6 +1,6 @@
 {
   "name": "@aix/client",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "type": "module",
   "description": "AIX 组件库示例项目 - 模拟外部业务项目联调场景",
   "scripts": {

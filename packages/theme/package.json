@@ -1,6 +1,6 @@
 {
   "name": "@aix/theme",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "AIX Design System - Theme System with CSS Variables & TypeScript API",
   "license": "MIT",
   "type": "module",

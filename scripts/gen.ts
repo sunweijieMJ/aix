@@ -55,7 +55,7 @@ export default config;
       path.join(componentDir, 'package.json'),
       `{
   "name": "@aix/${componentName}",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "A Vue 3 ${toPascalCase(componentName)} component",
   "license": "MIT",
   "type": "module",
