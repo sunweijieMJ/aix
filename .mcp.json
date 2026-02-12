@@ -1,5 +1,9 @@
 {
   "mcpServers": {
+    "aix": {
+      "command": "npx",
+      "args": ["@aix/mcp-server@latest"]
+    },
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp"]

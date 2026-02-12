@@ -13,6 +13,14 @@ import inquirer from 'inquirer';
 // 常量配置
 const WORKSPACE_DIRS = ['packages', 'internal']; // 可发布的 workspace 目录
 const BUILD_OUTPUTS = ['es', 'lib', 'dist']; // 构建产物目录
+const DEFAULT_REGISTRY = 'http://npm-registry.zhihuishu.com:4873/'; // 默认私有 npm 仓库地址
+
+// 重试配置
+const DEFAULT_MAX_RETRIES = 3; // 网络操作默认最大重试次数
+const DEFAULT_RETRY_DELAY_MS = 3000; // 网络操作默认重试延迟（毫秒）
+
+// npm 包管理限制
+const NPM_UNPUBLISH_TIME_LIMIT_HOURS = 72; // npm unpublish 时间限制（小时）
 
 // 从 .npmrc 文件中读取 registry 配置
 const readRegistryFromNpmrc = (
@@ -58,7 +66,7 @@ const getNpmRegistry = (): string => {
   if (fromGlobal) return fromGlobal;
 
   // 4. 默认私有仓库
-  return 'http://npm-registry.zhihuishu.com:4873/';
+  return DEFAULT_REGISTRY;
 };
 
 // 获取当前脚本所在的目录
@@ -130,9 +138,17 @@ ${chalk.yellow('用法:')}
 ${chalk.yellow('选项:')}
   -h, --help           显示帮助信息
   -m, --mode <mode>    指定发布模式 (release, beta, alpha)
-  -a, --action <action> 指定操作类型 (full, create, version, publish)
+  -a, --action <action> 指定操作类型
   -y, --yes            跳过所有确认提示，自动选择默认选项
   -d, --dry-run        干运行模式，只显示将要发布的包，不实际发布
+
+${chalk.yellow('操作类型:')}
+  full                 完整发布流程（创建 changeset → 更新版本 → 构建 → 发布）
+  create               仅创建 changeset
+  version              仅更新版本号
+  publish              仅构建并发布
+  deprecate            废弃包版本（推荐，不删除包）
+  unpublish            撤回包版本（仅 ${NPM_UNPUBLISH_TIME_LIMIT_HOURS} 小时内，高风险）
 
 ${chalk.yellow('示例:')}
   pnpm pre                   # 启动交互式菜单
@@ -140,6 +156,7 @@ ${chalk.yellow('示例:')}
   pnpm pre -a create         # 只创建 changeset
   pnpm pre -a publish -y     # 构建并发布，使用默认选项
   pnpm pre -a publish -d     # 预览将要发布的包（不实际发布）
+  pnpm pre -a deprecate      # 废弃指定包版本
   `);
 };
 
@@ -212,7 +229,11 @@ const runWithRetry = async (
     retryDelayMs?: number;
   } = {},
 ): Promise<void> => {
-  const { cwd, maxRetries = 3, retryDelayMs = 3000 } = options;
+  const {
+    cwd,
+    maxRetries = DEFAULT_MAX_RETRIES,
+    retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+  } = options;
 
   let lastError: Error | null = null;
 
@@ -394,10 +415,23 @@ const updateVersion = async (skipPrompts = false) => {
   if (!(await confirm('是否继续?', true, skipPrompts))) {
     // 用户取消，提供回滚选项
     console.log(chalk.yellow('用户取消发布流程'));
-    if (await confirm('是否回滚版本变更?', true, skipPrompts)) {
+    console.log(
+      chalk.gray(
+        '提示：回滚操作会使用 git stash 保存所有未提交的更改（不只是版本变更）',
+      ),
+    );
+    if (
+      await confirm(
+        '是否回滚版本变更? (将 stash 所有未提交的更改)',
+        true,
+        skipPrompts,
+      )
+    ) {
       run('git stash push -m "changeset version rollback"', projectRoot);
       console.log(
-        chalk.green('已使用 git stash 保存版本变更，可通过 git stash pop 恢复'),
+        chalk.green(
+          '✅ 已使用 git stash 保存所有未提交的更改，可通过 git stash pop 恢复',
+        ),
       );
     }
     throw new Error('用户取消发布流程');
@@ -529,52 +563,6 @@ const getVersionBumpedPackages = (): Set<string> => {
   return packages;
 };
 
-// 获取待发布包的详细信息（对比本地版本与 npm registry）
-const getPackagesToPublish = (): Array<{
-  name: string;
-  version: string;
-  dir: string;
-}> => {
-  const result: Array<{ name: string; version: string; dir: string }> = [];
-
-  for (const pkg of getPublishablePackages()) {
-    try {
-      const publishedVersion = execSync(
-        `npm view ${pkg.name} version --registry=${NPM_REGISTRY}`,
-        { encoding: 'utf-8', stdio: 'pipe' },
-      ).trim();
-
-      if (publishedVersion !== pkg.version) {
-        result.push({ name: pkg.name, version: pkg.version, dir: pkg.dir });
-      }
-    } catch (error) {
-      // 区分"包不存在"和"网络错误"
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      const stderr = (error as { stderr?: Buffer })?.stderr?.toString() ?? '';
-      const errorText = `${errorMessage} ${stderr}`.toLowerCase();
-
-      // npm 404 错误表示包从未发布过
-      if (
-        errorText.includes('404') ||
-        errorText.includes('not found') ||
-        errorText.includes('e404')
-      ) {
-        result.push({ name: pkg.name, version: pkg.version, dir: pkg.dir });
-      } else {
-        // 其他错误（网络问题等）给出警告但继续处理
-        console.warn(
-          chalk.yellow(`⚠️ 无法检查 ${pkg.name} 版本状态: ${errorMessage}`),
-        );
-        // 保守处理：假设需要发布
-        result.push({ name: pkg.name, version: pkg.version, dir: pkg.dir });
-      }
-    }
-  }
-
-  return result;
-};
-
 // 检测需要构建的包（多级 fallback）
 const detectPackages = async (): Promise<Set<string>> => {
   // 1. 从 changeset md 文件解析（优先级最高，确保只构建用户明确指定的包）
@@ -591,9 +579,8 @@ const detectPackages = async (): Promise<Set<string>> => {
     return fromDiff;
   }
 
-  // 注意：不再使用 getPackagesToPublish() 来检测，因为它会对比所有包的版本
-  // 在 pre 模式下会导致所有包版本都变为 beta/alpha，从而全部被判定为需要发布
   // 正确的流程是：changeset -> changeset version -> changeset publish
+  // 只构建 changeset 中明确指定的包，确保发布的准确性
 
   throw new Error(
     '未找到需要构建的包。请确认是否已创建 changeset 或更新版本号。',
@@ -878,8 +865,8 @@ const publishPackages = async (skipPrompts = false, dryRun = false) => {
   // 使用带重试的命令执行，应对网络波动
   await runWithRetry(`npx changeset publish --no-git-checks`, {
     cwd: projectRoot,
-    maxRetries: 3,
-    retryDelayMs: 3000,
+    maxRetries: DEFAULT_MAX_RETRIES,
+    retryDelayMs: DEFAULT_RETRY_DELAY_MS,
   });
 
   // 显示发布汇总
@@ -893,6 +880,140 @@ const publishPackages = async (skipPrompts = false, dryRun = false) => {
   console.log(chalk.green('\n✅ 发布完成!'));
 
   await postPublishGitActions(skipPrompts);
+};
+
+// 废弃包版本
+const deprecatePackageVersion = async (skipPrompts = false) => {
+  console.log(chalk.cyan('\n📦 废弃包版本'));
+  console.log(chalk.gray('这将标记指定版本为废弃，用户安装时会看到警告'));
+  console.log(chalk.gray('不会删除包，也不会破坏依赖链\n'));
+
+  // 获取可发布的包列表
+  const publishablePackages = getPublishablePackages();
+  if (publishablePackages.length === 0) {
+    console.log(chalk.yellow('没有可操作的包'));
+    return;
+  }
+
+  const { packageName } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'packageName',
+      message: '选择要废弃的包:',
+      choices: publishablePackages.map((pkg) => ({
+        name: `${pkg.name} (当前版本: ${pkg.version})`,
+        value: pkg.name,
+      })),
+    },
+  ]);
+
+  const { version } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'version',
+      message: '输入要废弃的版本号（留空表示当前版本）:',
+      default: publishablePackages.find((p) => p.name === packageName)?.version,
+    },
+  ]);
+
+  const { message } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'message',
+      message: '废弃原因:',
+      default: '此版本已废弃，请升级到最新版本',
+    },
+  ]);
+
+  console.log(
+    chalk.yellow(`\n即将废弃: ${packageName}@${version}\n原因: ${message}`),
+  );
+  if (!(await confirm('确认废弃?', false, skipPrompts))) {
+    console.log(chalk.gray('已取消'));
+    return;
+  }
+
+  try {
+    run(
+      `npm deprecate ${packageName}@${version} "${message}" --registry=${NPM_REGISTRY}`,
+      projectRoot,
+    );
+    console.log(chalk.green(`✅ 已废弃 ${packageName}@${version}`));
+  } catch (error) {
+    console.error(chalk.red('废弃失败:'), error);
+  }
+};
+
+// 撤回包版本（仅 ${NPM_UNPUBLISH_TIME_LIMIT_HOURS} 小时内）
+const unpublishPackageVersion = async (skipPrompts = false) => {
+  console.log(chalk.red('\n⚠️  撤回包版本 (危险操作)'));
+  console.log(chalk.yellow('注意事项:'));
+  console.log(
+    chalk.gray(`  - 仅 ${NPM_UNPUBLISH_TIME_LIMIT_HOURS} 小时内可撤回`),
+  );
+  console.log(chalk.gray('  - 会破坏依赖链，影响下游项目'));
+  console.log(chalk.gray('  - 撤回后 24 小时内不能重新发布同名包'));
+  console.log(chalk.gray('  - 推荐使用 deprecate 代替\n'));
+
+  if (!(await confirm('确认要继续？这是高风险操作！', false, skipPrompts))) {
+    console.log(chalk.gray('已取消'));
+    return;
+  }
+
+  // 获取可发布的包列表
+  const publishablePackages = getPublishablePackages();
+  if (publishablePackages.length === 0) {
+    console.log(chalk.yellow('没有可操作的包'));
+    return;
+  }
+
+  const { packageName } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'packageName',
+      message: '选择要撤回的包:',
+      choices: publishablePackages.map((pkg) => ({
+        name: `${pkg.name} (当前版本: ${pkg.version})`,
+        value: pkg.name,
+      })),
+    },
+  ]);
+
+  const { version } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'version',
+      message: '输入要撤回的版本号（留空表示当前版本）:',
+      default: publishablePackages.find((p) => p.name === packageName)?.version,
+    },
+  ]);
+
+  console.log(
+    chalk.red(`\n即将撤回: ${packageName}@${version}\n这将永久删除该版本！`),
+  );
+  if (!(await confirm('最后确认，真的要撤回吗？', false, skipPrompts))) {
+    console.log(chalk.gray('已取消'));
+    return;
+  }
+
+  try {
+    run(
+      `npm unpublish ${packageName}@${version} --registry=${NPM_REGISTRY} --force`,
+      projectRoot,
+    );
+    console.log(chalk.green(`✅ 已撤回 ${packageName}@${version}`));
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('404') || errorMessage.includes('72 hours')) {
+      console.error(
+        chalk.red(
+          `撤回失败: 可能是发布超过 ${NPM_UNPUBLISH_TIME_LIMIT_HOURS} 小时，或包不存在，或有其他包依赖`,
+        ),
+      );
+    } else {
+      console.error(chalk.red('撤回失败:'), errorMessage);
+    }
+  }
 };
 
 // 执行指定操作
@@ -922,9 +1043,17 @@ const executeAction = async (
       }
       await publishPackages(skipPrompts, dryRun);
       break;
+    case 'deprecate':
+      await checkNpmLogin();
+      await deprecatePackageVersion(skipPrompts);
+      break;
+    case 'unpublish':
+      await checkNpmLogin();
+      await unpublishPackageVersion(skipPrompts);
+      break;
     default:
       throw new Error(
-        `未知的操作类型 "${action}"，可选值: full, create, version, publish`,
+        `未知的操作类型 "${action}"，可选值: full, create, version, publish, deprecate, unpublish`,
       );
   }
 };
@@ -956,6 +1085,8 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
         { name: '仅更新版本号', value: 'version' },
         { name: '仅构建并发布', value: 'publish' },
         { name: '预览待发布的包 (dry-run)', value: 'dry-run' },
+        { name: '废弃包版本 (deprecate)', value: 'deprecate' },
+        { name: '撤回包版本 (unpublish)', value: 'unpublish' },
         { name: '退出', value: 'exit' },
       ],
       default: 'full',
