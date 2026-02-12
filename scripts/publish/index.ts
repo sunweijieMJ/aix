@@ -428,7 +428,7 @@ const createChangeset = async (skipPrompts = false): Promise<boolean> => {
   // 2. 选择版本类型
   const { bumpType } = await inquirer.prompt([
     {
-      type: 'list',
+      type: 'select',
       name: 'bumpType',
       message: '请选择版本升级类型:',
       choices: [
@@ -1006,7 +1006,7 @@ const deprecatePackageVersion = async (skipPrompts = false) => {
 
   const { packageName } = await inquirer.prompt([
     {
-      type: 'list',
+      type: 'select',
       name: 'packageName',
       message: '选择要废弃的包:',
       choices: publishablePackages.map((pkg) => ({
@@ -1078,7 +1078,7 @@ const unpublishPackageVersion = async (skipPrompts = false) => {
 
   const { packageName } = await inquirer.prompt([
     {
-      type: 'list',
+      type: 'select',
       name: 'packageName',
       message: '选择要撤回的包:',
       choices: publishablePackages.map((pkg) => ({
