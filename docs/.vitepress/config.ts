@@ -46,6 +46,11 @@ export default withMermaid(
           link: '/examples/basic-usage',
           activeMatch: '/examples/',
         },
+        {
+          text: 'RFC',
+          link: '/rfcs/',
+          activeMatch: '/rfcs/',
+        },
       ],
 
       // 侧边栏
@@ -124,6 +129,24 @@ export default withMermaid(
           {
             text: '使用示例',
             items: [{ text: '基础用法', link: '/examples/basic-usage' }],
+          },
+        ],
+
+        '/rfcs/': [
+          {
+            text: 'RFC 设计文档',
+            items: [{ text: '概述', link: '/rfcs/' }],
+          },
+          {
+            text: '已完成',
+            items: [
+              { text: '国际化工具', link: '/rfcs/i18n-tools' },
+              { text: 'MCP Server', link: '/rfcs/mcp-server' },
+            ],
+          },
+          {
+            text: '草稿',
+            items: [{ text: '视觉比对测试', link: '/rfcs/visual-testing-rfc' }],
           },
         ],
       },

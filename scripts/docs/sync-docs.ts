@@ -103,8 +103,8 @@ function generateApiDocument(packageName: string, apiContent: string): string {
   // Remove "## API" header and clean up extra whitespace
   let cleanContent = apiContent.replace(/^## API\s*/m, '').trim();
 
-  // Adjust heading levels: ### -> ## (since we removed ## API and added # Title)
-  // This ensures proper heading hierarchy for markdownlint
+  // Adjust heading levels: ### -> ## (since we removed ## API)
+  // VitePress frontmatter title serves as h1, so ### becomes ##
   cleanContent = cleanContent.replace(/^### /gm, '## ');
 
   return `---
@@ -118,10 +118,12 @@ outline: deep
 此文档由 \`pnpm docs:sync\` 自动生成。请勿手动编辑此文件。
 
 如需更新 API 文档，请修改组件源码注释，然后运行：
+
 \`\`\`bash
 pnpm docs:gen  # 生成 API 到 README.md
 pnpm docs:sync # 同步到文档站点
 \`\`\`
+
 :::
 
 ${cleanContent}
