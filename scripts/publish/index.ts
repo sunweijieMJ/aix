@@ -848,10 +848,13 @@ const publishPackages = async (skipPrompts = false, dryRun = false) => {
   // 记录发布前的包列表，用于汇总
   const packagesBeforePublish = getPackagesToPublish();
 
-  const tagFlag = preTag ? ` --tag ${preTag}` : '';
+  // 说明：changeset publish 在两种模式下的行为
+  // - pre 模式（beta/alpha）：自动使用 pre.json 中配置的标签，不支持 --tag 标志
+  // - release 模式：默认使用 latest 标签
+  // 因此两种模式下都不需要显式指定 --tag
 
   // 使用带重试的命令执行，应对网络波动
-  await runWithRetry(`npx changeset publish --no-git-checks${tagFlag}`, {
+  await runWithRetry(`npx changeset publish --no-git-checks`, {
     cwd: projectRoot,
     maxRetries: 3,
     retryDelayMs: 3000,
