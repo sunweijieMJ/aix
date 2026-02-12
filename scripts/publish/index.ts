@@ -770,10 +770,23 @@ const postPublishGitActions = async (skipPrompts = false) => {
 
   // 生成包含版本信息的 commit message
   const versions = getPublishedVersions();
-  const commitMessage =
-    versions.length > 0
-      ? `chore(release): ${versions.join(', ')}`
-      : 'chore(release): update versions';
+  let commitMessage = 'chore(release): update versions\n\n🤖 Generated with AI';
+
+  if (versions.length > 0) {
+    const singleLineMessage = `chore(release): ${versions.join(', ')}`;
+
+    // 符合 commitlint 的 header-max-length 规则（72 字符）
+    if (singleLineMessage.length <= 72) {
+      // 单包或少量包且不超长：使用完整信息
+      commitMessage = `${singleLineMessage}\n\n🤖 Generated with AI`;
+    } else {
+      // 多包或超长：使用简洁的标题 + 详细的 body
+      const packageCount = versions.length;
+      const shortMessage = `chore(release): 发布 ${packageCount} 个包`;
+      const bodyMessage = versions.map((v) => `- ${v}`).join('\n');
+      commitMessage = `${shortMessage}\n\n${bodyMessage}\n\n🤖 Generated with AI`;
+    }
+  }
 
   // 使用 spawnSync 避免 shell 转义问题（跨平台兼容）
   const result = spawnSync('git', ['commit', '-m', commitMessage], {
