@@ -395,8 +395,10 @@ const updateVersion = async (skipPrompts = false) => {
     // 用户取消，提供回滚选项
     console.log(chalk.yellow('用户取消发布流程'));
     if (await confirm('是否回滚版本变更?', true, skipPrompts)) {
-      run('git checkout -- .', projectRoot);
-      console.log(chalk.green('已回滚版本变更'));
+      run('git stash push -m "changeset version rollback"', projectRoot);
+      console.log(
+        chalk.green('已使用 git stash 保存版本变更，可通过 git stash pop 恢复'),
+      );
     }
     throw new Error('用户取消发布流程');
   }
