@@ -575,7 +575,7 @@ const getPackagesToPublish = (): Array<{
 
 // 检测需要构建的包（多级 fallback）
 const detectPackages = async (): Promise<Set<string>> => {
-  // 1. 从 changeset md 文件解析
+  // 1. 从 changeset md 文件解析（优先级最高，确保只构建用户明确指定的包）
   const fromChangeset = await getChangedPackages();
   if (fromChangeset.size) {
     console.log(chalk.gray('(从 changeset 文件检测到变更的包)'));
@@ -589,12 +589,9 @@ const detectPackages = async (): Promise<Set<string>> => {
     return fromDiff;
   }
 
-  // 3. 对比 npm registry 版本（workspace 已 clean 的情况）
-  console.log(chalk.yellow('从 npm registry 对比本地版本，检测待发布的包...'));
-  const fromRegistry = getPackagesToPublish();
-  if (fromRegistry.length) {
-    return new Set(fromRegistry.map((pkg) => pkg.name));
-  }
+  // 注意：不再使用 getPackagesToPublish() 来检测，因为它会对比所有包的版本
+  // 在 pre 模式下会导致所有包版本都变为 beta/alpha，从而全部被判定为需要发布
+  // 正确的流程是：changeset -> changeset version -> changeset publish
 
   throw new Error(
     '未找到需要构建的包。请确认是否已创建 changeset 或更新版本号。',
@@ -816,24 +813,27 @@ const publishPackages = async (skipPrompts = false, dryRun = false) => {
   const preTag = getPreReleaseTag();
   const tagInfo = preTag ? ` (dist-tag: ${preTag})` : ' (dist-tag: latest)';
 
-  // Dry-run 模式：只显示将要发布的包
+  // Dry-run 模式：只显示 changeset 中指定的包
   if (dryRun) {
-    console.log(chalk.cyan('\n🔍 Dry-run 模式 - 以下包将被发布:'));
+    console.log(chalk.cyan('\n🔍 Dry-run 模式 - Changeset 将发布以下包:'));
     console.log(chalk.gray(`目标 Registry: ${NPM_REGISTRY}`));
     console.log(chalk.gray(`Dist Tag: ${preTag || 'latest'}\n`));
 
-    const packagesToPublish = getPackagesToPublish();
+    const changedPackages = await getChangedPackages();
 
-    if (packagesToPublish.length === 0) {
-      console.log(chalk.yellow('没有需要发布的包'));
+    if (changedPackages.size === 0) {
+      console.log(chalk.yellow('未在 changeset 中找到需要发布的包'));
       return;
     }
 
-    for (const pkg of packagesToPublish) {
-      console.log(`  📦 ${chalk.green(pkg.name)}@${chalk.cyan(pkg.version)}`);
+    for (const pkgName of changedPackages) {
+      const pkg = getWorkspacePackages().find((p) => p.name === pkgName);
+      if (pkg) {
+        console.log(`  📦 ${chalk.green(pkg.name)}@${chalk.cyan(pkg.version)}`);
+      }
     }
 
-    console.log(chalk.gray(`\n共 ${packagesToPublish.length} 个包待发布`));
+    console.log(chalk.gray(`\n共 ${changedPackages.size} 个包待发布`));
     console.log(chalk.yellow('\n(Dry-run 模式，未实际发布)'));
     return;
   }
@@ -845,8 +845,15 @@ const publishPackages = async (skipPrompts = false, dryRun = false) => {
     throw new Error('用户取消发布');
   }
 
-  // 记录发布前的包列表，用于汇总
-  const packagesBeforePublish = getPackagesToPublish();
+  // 记录发布前的包列表（从 changeset 中获取）
+  const changedPackages = await getChangedPackages();
+  const packagesBeforePublish: Array<{ name: string; version: string }> = [];
+  for (const pkgName of changedPackages) {
+    const pkg = getWorkspacePackages().find((p) => p.name === pkgName);
+    if (pkg) {
+      packagesBeforePublish.push({ name: pkg.name, version: pkg.version });
+    }
+  }
 
   // 说明：changeset publish 在两种模式下的行为
   // - pre 模式（beta/alpha）：自动使用 pre.json 中配置的标签，不支持 --tag 标志
