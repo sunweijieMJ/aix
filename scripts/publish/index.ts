@@ -392,14 +392,110 @@ const setupReleaseMode = async (initialMode = '', skipPrompts = false) => {
   await handlePreMode(mode);
 };
 
-// 创建 changeset，返回是否实际创建
+// 创建 changeset，返回是否实际创建（中文交互版）
 const createChangeset = async (skipPrompts = false): Promise<boolean> => {
-  if (await confirm('是否需要创建新的 changeset?', true, skipPrompts)) {
-    run('npx changeset', projectRoot);
-    return true;
+  if (!(await confirm('是否需要创建新的 changeset?', true, skipPrompts))) {
+    console.log(chalk.yellow('已跳过创建 changeset'));
+    return false;
   }
-  console.log(chalk.yellow('已跳过创建 changeset'));
-  return false;
+
+  const publishablePackages = getPublishablePackages();
+
+  if (publishablePackages.length === 0) {
+    console.log(chalk.yellow('没有可发布的包'));
+    return false;
+  }
+
+  // 1. 选择要包含的包
+  const { selectedPackages } = await inquirer.prompt([
+    {
+      type: 'checkbox',
+      name: 'selectedPackages',
+      message: '请选择要发布的包:',
+      choices: publishablePackages.map((pkg: WorkspacePackage) => ({
+        name: `${pkg.name} ${chalk.gray(`(当前版本: ${pkg.version})`)}`,
+        value: pkg.name,
+      })),
+      validate: (answer: string[]) => {
+        if (answer.length === 0) {
+          return '请至少选择一个包';
+        }
+        return true;
+      },
+    },
+  ]);
+
+  // 2. 选择版本类型
+  const { bumpType } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'bumpType',
+      message: '请选择版本升级类型:',
+      choices: [
+        {
+          name: `${chalk.cyan('Patch')} (修复) - 0.0.x ${chalk.gray('(Bug 修复、小改动)')}`,
+          value: 'patch',
+        },
+        {
+          name: `${chalk.cyan('Minor')} (功能) - 0.x.0 ${chalk.gray('(新增功能、向后兼容)')}`,
+          value: 'minor',
+        },
+        {
+          name: `${chalk.cyan('Major')} (破坏性) - x.0.0 ${chalk.gray('(不兼容的 API 变更)')}`,
+          value: 'major',
+        },
+      ],
+      default: 'patch',
+    },
+  ]);
+
+  // 3. 输入变更说明
+  const { summary } = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'summary',
+      message: '请输入变更说明 (将显示在 CHANGELOG 中):',
+      validate: (input: string) => {
+        if (!input.trim()) {
+          return '变更说明不能为空';
+        }
+        return true;
+      },
+    },
+  ]);
+
+  // 4. 显示摘要并确认
+  console.log(chalk.cyan('\n📋 变更集摘要:'));
+  console.log(chalk.gray(`版本类型: ${bumpType.toUpperCase()}`));
+  console.log(
+    chalk.gray(`受影响的包: ${chalk.white(selectedPackages.join(', '))}`),
+  );
+  console.log(chalk.gray(`变更说明: ${chalk.white(summary)}\n`));
+
+  if (!(await confirm('确认创建此 changeset?', true, skipPrompts))) {
+    console.log(chalk.yellow('已取消创建 changeset'));
+    return false;
+  }
+
+  // 5. 生成 changeset 文件
+  const changesetId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const changesetPath = path.join(
+    projectRoot,
+    '.changeset',
+    `${changesetId}.md`,
+  );
+
+  const changesetContent = `---
+${selectedPackages.map((pkg: string) => `"${pkg}": ${bumpType}`).join('\n')}
+---
+
+${summary}
+`;
+
+  fs.writeFileSync(changesetPath, changesetContent, 'utf-8');
+  console.log(chalk.green(`✅ 已创建 changeset: ${changesetId}.md`));
+
+  return true;
 };
 
 // 更新版本
