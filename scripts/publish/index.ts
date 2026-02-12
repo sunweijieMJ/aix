@@ -1238,7 +1238,10 @@ const runFullProcess = async (
   let changedPackages = await getChangedPackages();
   if (!changedPackages.size) {
     console.log(chalk.yellow('未检测到现有的 changeset 文件，需要先创建'));
-    run('npx changeset', projectRoot);
+    const created = await createChangeset(skipPrompts);
+    if (!created) {
+      throw new Error('未创建任何 changeset，发布流程终止');
+    }
     changedPackages = await getChangedPackages();
     if (!changedPackages.size) {
       throw new Error('未创建任何 changeset，发布流程终止');
