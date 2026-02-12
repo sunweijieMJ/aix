@@ -1,0 +1,46 @@
+<template>
+  <div :class="rootClass" @click="handleClick">
+    <slot />
+  </div>
+</template>
+
+<script setup lang="ts">
+import type { <%= it.pascalName %>Props, <%= it.pascalName %>Emits } from './types';
+<% if (it.features.composables) { %>
+import { use<%= it.pascalName %> } from './use<%= it.pascalName %>';
+<% } else { %>
+import { computed } from 'vue';
+<% } %>
+<% if (it.features.scss) { %>
+import './index.scss';
+<% } %>
+
+defineOptions({
+  name: 'Aix<%= it.pascalName %>',
+});
+
+const props = withDefaults(defineProps<<%= it.pascalName %>Props>(), {
+  type: 'default',
+  size: 'medium',
+  disabled: false,
+});
+
+const emit = defineEmits<<%= it.pascalName %>Emits>();
+<% if (it.features.composables) { %>
+const { rootClass } = use<%= it.pascalName %>(props);
+<% } else { %>
+const rootClass = computed(() => [
+  'aix-<%= it.componentName %>',
+  `aix-<%= it.componentName %>--${props.size}`,
+  {
+    'aix-<%= it.componentName %>--primary': props.type === 'primary',
+    'aix-<%= it.componentName %>--disabled': props.disabled,
+  },
+]);
+<% } %>
+
+function handleClick(event: MouseEvent) {
+  if (props.disabled) return;
+  emit('click', event);
+}
+</script>

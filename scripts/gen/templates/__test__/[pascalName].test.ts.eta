@@ -1,0 +1,83 @@
+import { mount } from '@vue/test-utils';
+import { describe, expect, it } from 'vitest';
+import { <%= it.pascalName %> } from '../src';
+
+describe('<%= it.pascalName %> 组件', () => {
+  describe('渲染测试', () => {
+    it('应该正确渲染默认组件', () => {
+      const wrapper = mount(<%= it.pascalName %>, {
+        slots: {
+          default: '测试内容',
+        },
+      });
+
+      expect(wrapper.text()).toBe('测试内容');
+      expect(wrapper.classes()).toContain('aix-<%= it.componentName %>');
+    });
+
+    it('应该正确渲染插槽内容', () => {
+      const wrapper = mount(<%= it.pascalName %>, {
+        slots: {
+          default: '<span class="custom-content">自定义内容</span>',
+        },
+      });
+
+      expect(wrapper.find('.custom-content').exists()).toBe(true);
+      expect(wrapper.find('.custom-content').text()).toBe('自定义内容');
+    });
+  });
+
+  describe('Props 测试', () => {
+    it('应该正确应用 type prop', () => {
+      const wrapper = mount(<%= it.pascalName %>, {
+        props: { type: 'primary' },
+      });
+
+      expect(wrapper.classes()).toContain('aix-<%= it.componentName %>--primary');
+    });
+
+    it('应该正确应用 size prop', () => {
+      const wrapper = mount(<%= it.pascalName %>, {
+        props: { size: 'large' },
+      });
+
+      expect(wrapper.classes()).toContain('aix-<%= it.componentName %>--large');
+    });
+
+    it('应该正确应用 disabled prop', () => {
+      const wrapper = mount(<%= it.pascalName %>, {
+        props: { disabled: true },
+      });
+
+      expect(wrapper.classes()).toContain('aix-<%= it.componentName %>--disabled');
+    });
+  });
+
+  describe('Emits 测试', () => {
+    it('应该触发 click 事件', async () => {
+      const wrapper = mount(<%= it.pascalName %>);
+      await wrapper.trigger('click');
+
+      expect(wrapper.emitted('click')).toHaveLength(1);
+    });
+
+    it('禁用时不应触发 click 事件', async () => {
+      const wrapper = mount(<%= it.pascalName %>, {
+        props: { disabled: true },
+      });
+      await wrapper.trigger('click');
+
+      expect(wrapper.emitted('click')).toBeUndefined();
+    });
+  });
+
+  describe('快照测试', () => {
+    it('默认状态快照', () => {
+      const wrapper = mount(<%= it.pascalName %>, {
+        slots: { default: '快照测试' },
+      });
+
+      expect(wrapper.html()).toMatchSnapshot();
+    });
+  });
+});

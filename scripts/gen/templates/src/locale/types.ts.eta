@@ -1,0 +1,11 @@
+/**
+ * <%= it.pascalName %> 组件国际化配置
+ */
+export interface <%= it.pascalName %>Locale {
+  /** 输入框占位符 */
+  placeholder: string;
+  /** 确认按钮文本 */
+  confirm: string;
+  /** 取消按钮文本 */
+  cancel: string;
+}

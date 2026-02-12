@@ -1,0 +1,9 @@
+import type { <%= it.pascalName %>Locale } from './types';
+
+const enUS: <%= it.pascalName %>Locale = {
+  placeholder: 'Please input',
+  confirm: 'Confirm',
+  cancel: 'Cancel',
+};
+
+export default enUS;

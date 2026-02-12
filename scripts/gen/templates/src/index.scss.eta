@@ -1,0 +1,69 @@
+// <%= it.pascalName %> 组件样式
+// 使用 BEM 命名规范
+
+.aix-<%= it.componentName %> {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--aix-paddingXS) var(--aix-padding);
+  transition: all 0.3s;
+  border: 1px solid var(--aix-colorBorder);
+  border-radius: var(--aix-borderRadiusSM);
+  background-color: var(--aix-colorBgContainer);
+  color: var(--aix-colorText);
+  font-size: var(--aix-fontSize);
+  line-height: var(--aix-lineHeight);
+  cursor: pointer;
+  user-select: none;
+
+  // 尺寸变体
+  &--small {
+    padding: var(--aix-paddingXXS) var(--aix-paddingXS);
+    font-size: var(--aix-fontSizeSM);
+  }
+
+  &--medium {
+    padding: var(--aix-paddingXS) var(--aix-padding);
+    font-size: var(--aix-fontSize);
+  }
+
+  &--large {
+    padding: var(--aix-paddingSM) var(--aix-paddingLG);
+    font-size: var(--aix-fontSizeLG);
+  }
+
+  // 类型变体
+  &--primary {
+    border-color: var(--aix-colorPrimary);
+    background-color: var(--aix-colorPrimary);
+    color: var(--aix-colorTextLightSolid);
+
+    &:hover:not(.aix-<%= it.componentName %>--disabled) {
+      border-color: var(--aix-colorPrimaryHover);
+      background-color: var(--aix-colorPrimaryHover);
+    }
+
+    &:active:not(.aix-<%= it.componentName %>--disabled) {
+      border-color: var(--aix-colorPrimaryActive);
+      background-color: var(--aix-colorPrimaryActive);
+    }
+  }
+
+  &--default {
+    &:hover:not(.aix-<%= it.componentName %>--disabled) {
+      border-color: var(--aix-colorPrimaryHover);
+      color: var(--aix-colorPrimaryHover);
+    }
+
+    &:active:not(.aix-<%= it.componentName %>--disabled) {
+      border-color: var(--aix-colorPrimaryActive);
+      color: var(--aix-colorPrimaryActive);
+    }
+  }
+
+  // 禁用状态
+  &--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}

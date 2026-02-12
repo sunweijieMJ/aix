@@ -1,0 +1,26 @@
+export interface <%= it.pascalName %>Props {
+  /**
+   * 组件类型
+   * @default 'default'
+   */
+  type?: 'primary' | 'default';
+
+  /**
+   * 组件尺寸
+   * @default 'medium'
+   */
+  size?: 'small' | 'medium' | 'large';
+
+  /**
+   * 是否禁用
+   * @default false
+   */
+  disabled?: boolean;
+}
+
+export interface <%= it.pascalName %>Emits {
+  /**
+   * 点击事件
+   */
+  (e: 'click', event: MouseEvent): void;
+}
