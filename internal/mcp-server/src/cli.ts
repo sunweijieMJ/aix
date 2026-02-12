@@ -494,9 +494,7 @@ class McpCli {
         const content = await fs.readFile(indexPath, 'utf8');
         componentIndex = JSON.parse(content);
       } catch (error) {
-        log.info(
-          chalk.yellow('⚠️ 未找到现有组件索引，将创建新索引, error: ', error),
-        );
+        log.warn(chalk.yellow('⚠️ 未找到现有组件索引，将创建新索引'), error);
         componentIndex = {
           components: [],
           categories: [],
@@ -573,6 +571,7 @@ class McpCli {
       log.info(
         chalk.green(`✅ 同步完成，更新了 ${updatedCount} 个组件的版本信息`),
       );
+      process.exit(0);
     } catch (error) {
       log.error(chalk.red('❌ 同步版本失败:'), error);
       process.exit(1);
@@ -603,6 +602,8 @@ class McpCli {
         process.exit(1);
       } else if (result.status === 'warning') {
         process.exit(2);
+      } else {
+        process.exit(0);
       }
     } catch (error) {
       log.error(chalk.red('❌ 健康检查失败:'), error);

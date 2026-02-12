@@ -7,11 +7,9 @@
  *   异步存储（如 Redis、IndexedDB 等）而无需修改调用方代码
  */
 
+import { DEFAULT_CACHE_TTL } from '../constants';
 import type { CacheItem } from '../types/index';
 import { log } from './logger';
-
-// 默认缓存 TTL: 24小时
-const DEFAULT_CACHE_TTL = 24 * 60 * 60 * 1000;
 
 // 默认最大缓存条目数
 const DEFAULT_MAX_ITEMS = 1000;

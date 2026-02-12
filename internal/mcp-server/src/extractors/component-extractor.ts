@@ -47,53 +47,11 @@ export class ComponentExtractor {
   }
 
   /**
-   * 提取所有组件信息
+   * 核心提取逻辑：并发提取所有包，返回组件和图标
    */
-  async extractAllComponents(): Promise<ComponentInfo[]> {
-    const packagePaths = await findPackages(this.config.packagesDir);
-    const components: ComponentInfo[] = [];
-
-    if (!packagePaths || packagePaths.length === 0) {
-      if (this.config.verbose) {
-        log.warn('⚠️ 未找到任何包');
-      }
-      return components;
-    }
-
-    if (this.config.verbose) {
-      log.info(`📦 开始并发提取 ${packagePaths.length} 个包...`);
-    }
-
-    // 使用并发控制器处理包提取
-    const extractTasks = packagePaths.map((packagePath) =>
-      this.concurrencyController.execute(async () => {
-        try {
-          const component = await this.extractComponentFromPackage(packagePath);
-          if (component) {
-            components.push(component);
-          }
-        } catch (error) {
-          log.error(`Failed to extract component from ${packagePath}:`, error);
-        }
-      }),
-    );
-
-    await Promise.all(extractTasks);
-
-    if (this.config.verbose) {
-      log.info(`✅ 成功提取 ${components.length} 个组件`);
-    }
-
-    return components;
-  }
-
-  /**
-   * 提取所有组件并按分类保存
-   */
-  async extractAndSaveAllComponents(): Promise<{
-    components: ComponentInfo[];
-    icons: IconInfo[];
-  }> {
+  private async extractPackages(options?: {
+    includeIcons?: boolean;
+  }): Promise<{ components: ComponentInfo[]; icons: IconInfo[] }> {
     const packagePaths = await findPackages(this.config.packagesDir);
     const components: ComponentInfo[] = [];
     const icons: IconInfo[] = [];
@@ -109,27 +67,26 @@ export class ComponentExtractor {
       log.info(`📦 开始并发提取 ${packagePaths.length} 个包...`);
     }
 
-    // 使用并发控制器处理包提取
     const extractTasks = packagePaths.map((packagePath) =>
       this.concurrencyController.execute(async () => {
         try {
-          const packageInfo = await readPackageJson(packagePath);
-          if (!packageInfo) return;
+          // 提取图标包
+          if (options?.includeIcons) {
+            const packageInfo = await readPackageJson(packagePath);
+            if (packageInfo?.name === ICONS_PACKAGE_NAME) {
+              const extractedIcons =
+                await this.iconsExtractor.extractIconsFromPackage(packagePath);
+              icons.push(...extractedIcons);
+              if (this.config.verbose) {
+                log.info(`🎨 提取了 ${extractedIcons.length} 个图标`);
+              }
+              return;
+            }
+          }
 
-          // 特殊处理 Icons 包
-          if (packageInfo.name === ICONS_PACKAGE_NAME) {
-            const extractedIcons =
-              await this.iconsExtractor.extractIconsFromPackage(packagePath);
-            icons.push(...extractedIcons);
-            if (this.config.verbose) {
-              log.info(`🎨 提取了 ${extractedIcons.length} 个图标`);
-            }
-          } else {
-            const component =
-              await this.extractComponentFromPackage(packagePath);
-            if (component) {
-              components.push(component);
-            }
+          const component = await this.extractComponentFromPackage(packagePath);
+          if (component) {
+            components.push(component);
           }
         } catch (error) {
           log.error(`Failed to extract component from ${packagePath}:`, error);
@@ -140,15 +97,37 @@ export class ComponentExtractor {
     await Promise.all(extractTasks);
 
     if (this.config.verbose) {
-      log.info(
-        `✅ 成功提取 ${components.length} 个组件和 ${icons.length} 个图标`,
-      );
+      const iconMsg =
+        options?.includeIcons && icons.length > 0
+          ? `和 ${icons.length} 个图标`
+          : '';
+      log.info(`✅ 成功提取 ${components.length} 个组件${iconMsg}`);
     }
 
-    // 保存按包分组的数据
-    await this.dataManager.saveComponentsByPackage(components, icons);
-
     return { components, icons };
+  }
+
+  /**
+   * 提取所有组件信息
+   */
+  async extractAllComponents(): Promise<ComponentInfo[]> {
+    const { components } = await this.extractPackages();
+    return components;
+  }
+
+  /**
+   * 提取所有组件和图标并保存
+   */
+  async extractAndSaveAllComponents(): Promise<{
+    components: ComponentInfo[];
+    icons: IconInfo[];
+  }> {
+    const result = await this.extractPackages({ includeIcons: true });
+    await this.dataManager.saveComponentsByPackage(
+      result.components,
+      result.icons,
+    );
+    return result;
   }
 
   /**

@@ -114,27 +114,3 @@ export const TEXT_TEMPLATES = {
   typeImportExample: (typeName: string, packageName: string) =>
     `import type { ${typeName} } from '${COMPONENT_LIBRARY_CONFIG.packageScope}/${packageName}';`,
 } as const;
-
-/**
- * 提示词键值映射
- * 用于生成动态的提示词名称
- */
-export const PROMPT_KEYS = {
-  expert: `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-expert`,
-  query: `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-query`,
-  generation: `${COMPONENT_LIBRARY_CONFIG.packagePrefix}-generation`,
-} as const;
-
-/**
- * 资源 URI 模式
- */
-export const RESOURCE_URI_PATTERNS = {
-  componentSource: (packageName: string, fileName: string) =>
-    `component-source://${COMPONENT_LIBRARY_CONFIG.packageScope}/${packageName}/${fileName}`,
-  componentReadme: (packageName: string) =>
-    `component-readme://${COMPONENT_LIBRARY_CONFIG.packageScope}/${packageName}/README.md`,
-  componentStory: (packageName: string, fileName: string) =>
-    `component-story://${COMPONENT_LIBRARY_CONFIG.packageScope}/${packageName}/${fileName}`,
-  componentChangelog: (packageName: string) =>
-    `component-changelog://${COMPONENT_LIBRARY_CONFIG.packageScope}/${packageName}/CHANGELOG.md`,
-} as const;

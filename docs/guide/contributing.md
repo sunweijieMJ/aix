@@ -16,7 +16,7 @@
 
 ### 报告 Bug
 
-发现 Bug 时，请通过 [GitHub Issues](https://github.com/your-org/aix/issues) 报告：
+发现 Bug 时，请通过 [GitHub Issues](https://github.com/sunweijieMJ/aix/issues) 报告：
 
 1. **搜索现有 Issues**：确认问题是否已被报告
 2. **使用 Bug 模板**：填写完整的 Bug 报告
@@ -52,7 +52,7 @@
 
 ### 提出新功能
 
-通过 [GitHub Issues](https://github.com/your-org/aix/issues) 提出功能请求：
+通过 [GitHub Issues](https://github.com/sunweijieMJ/aix/issues) 提出功能请求：
 
 1. **描述使用场景**：为什么需要这个功能
 2. **提供示例**：展示期望的 API 设计
@@ -108,7 +108,7 @@ git clone https://github.com/YOUR_USERNAME/aix.git
 cd aix
 
 # 添加上游仓库
-git remote add upstream https://github.com/your-org/aix.git
+git remote add upstream https://github.com/sunweijieMJ/aix.git
 ```
 
 ### 安装依赖
@@ -194,7 +194,7 @@ git checkout -b fix/your-bug-fix
 
 #### 创建新组件
 
-参考 [ARCHITECTURE.md](/ARCHITECTURE.md#创建新组件) 的详细步骤。
+参考[架构设计](/guide/architecture)的详细步骤。
 
 **快速开始**：
 
@@ -651,7 +651,7 @@ git push --follow-tags
 
 ### 4. 创建 GitHub Release
 
-1. 访问 [Releases](https://github.com/your-org/aix/releases)
+1. 访问 [Releases](https://github.com/sunweijieMJ/aix/releases)
 2. 点击 "Draft a new release"
 3. 选择标签
 4. 填写发布说明
@@ -668,14 +668,14 @@ git push --follow-tags
 ### 获取帮助
 
 - 查看[文档](https://aix-docs.com)
-- 搜索[GitHub Issues](https://github.com/your-org/aix/issues)
-- 提问到 [GitHub Discussions](https://github.com/your-org/aix/discussions)
+- 搜索[GitHub Issues](https://github.com/sunweijieMJ/aix/issues)
+- 提问到 [GitHub Discussions](https://github.com/sunweijieMJ/aix/discussions)
 
 ## 致谢
 
 感谢所有贡献者！你们的贡献让 Aix 变得更好。
 
-查看[贡献者列表](https://github.com/your-org/aix/graphs/contributors)。
+查看[贡献者列表](https://github.com/sunweijieMJ/aix/graphs/contributors)。
 
 ## 许可证
 

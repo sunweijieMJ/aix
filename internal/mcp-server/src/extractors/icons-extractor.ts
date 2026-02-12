@@ -34,11 +34,11 @@ export class IconsExtractor {
     const icons: IconInfo[] = [];
 
     // 读取 index.tsx 获取所有图标导出
-    const indexPath = join(packagePath, 'src', 'index.tsx');
+    const indexPath = join(packagePath, 'src', 'index.ts');
     const iconExports = await this.parseIconExports(indexPath);
 
     if (iconExports.length === 0) {
-      log.warn('No icon exports found in index.tsx');
+      log.warn('No icon exports found in index.ts');
       return [];
     }
 
@@ -110,7 +110,7 @@ export class IconsExtractor {
     iconExport: { name: string; path: string; category: string },
     packagePath: string,
   ): Promise<IconInfo | null> {
-    const iconFilePath = join(packagePath, 'src', `${iconExport.path}.tsx`);
+    const iconFilePath = join(packagePath, 'src', iconExport.path);
 
     // 读取 SVG 内容
     const svgContent = await this.extractSvgContent(iconFilePath);

@@ -1,7 +1,6 @@
 {
   "name": "@kit/i18n-tools",
   "version": "1.0.0",
-  "private": true,
   "description": "I18n automation tools for Vue/React projects",
   "type": "module",
   "main": "./dist/index.js",

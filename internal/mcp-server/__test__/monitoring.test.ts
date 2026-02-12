@@ -14,7 +14,7 @@ describe('MonitoringManager (简化版)', () => {
   });
 
   afterEach(() => {
-    monitoring.stop();
+    monitoring.resetMetrics();
   });
 
   describe('constructor', () => {

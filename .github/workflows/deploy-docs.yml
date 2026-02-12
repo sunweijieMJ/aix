@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# GitHub Actions - 文档部署
+#
+# 功能特性：
+# - Storybook 文档构建与部署
+# - VitePress 文档构建与部署
+# - 支持 GitHub Pages 自动部署
+#
+# 访问地址（需在 Settings > Pages 中启用 GitHub Actions 部署源）：
+#   - Storybook: https://<owner>.github.io/aix/storybook
+#   - VitePress: https://<owner>.github.io/aix/docs
+# ------------------------------------------------------------
+
+name: Deploy Docs
+
+on:
+  push:
+    branches:
+      - master
+      - 'release/**'
+
+# 同一分支只保留最新的部署，取消进行中的旧运行
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+# GitHub Pages 部署权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  # ============================
+  # 构建文档
+  # ============================
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Storybook
+        run: pnpm storybook:build
+
+      - name: Build VitePress docs
+        run: pnpm docs:build
+
+      - name: Assemble Pages artifact
+        run: |
+          mkdir -p public
+          cp -r dist/storybook public/storybook
+          cp -r dist/docs public/docs
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  # ============================
+  # 部署到 GitHub Pages
+  # ============================
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # 仅 master 分支触发部署
+    if: github.ref == 'refs/heads/master'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

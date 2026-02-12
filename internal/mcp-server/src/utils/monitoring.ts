@@ -165,10 +165,10 @@ export class MonitoringManager {
       message: `${memoryMB}MB`,
     });
 
-    // 错误率检查
+    // 错误率检查（使用实际失败请求数，而非受上限截断的 errors 数组长度）
     const errorRate =
       this.requests.total > 0
-        ? (this.errors.length / this.requests.total) * 100
+        ? (this.requests.failed / this.requests.total) * 100
         : 0;
     checks.push({
       name: '错误率',
@@ -200,13 +200,6 @@ export class MonitoringManager {
     this.errors = [];
     this.toolCalls = {};
     this.startTime = Date.now();
-  }
-
-  /**
-   * 停止监控
-   */
-  stop(): void {
-    // 简化版无定时器，无需清理
   }
 }
 

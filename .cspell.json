@@ -85,7 +85,21 @@
     "webrtc",
     "webvtt",
     "wimax",
-    "xxs"
+    "xxs",
+    "popconfirm",
+    "gpt",
+    "deepseek",
+    "unflatten",
+    "prepass",
+    "interpolations",
+    "fmt",
+    "hsv",
+    "webkitbeginfullscreen",
+    "webkitendfullscreen",
+    "formatjs",
+    "bak",
+    "Jaro",
+    "Winkler"
   ],
   "patterns": [
     {
@@ -114,6 +128,7 @@
     "**/*/docs",
     "packages/icons",
     "apps/server",
+    "apps/client/",
     ".husky/**/*",
     ".turbo/**/*",
     ".vscode/**/*",

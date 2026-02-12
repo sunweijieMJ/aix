@@ -8,14 +8,11 @@ export default withMermaid(
     description: 'Vue 3 企业级组件库',
     lang: 'zh-CN',
 
-    // 部署基础路径（GitLab Pages 部署路径：/docs）
+    // 部署基础路径
     base: '/docs/',
 
     // 构建输出目录
     outDir: '../dist/docs',
-
-    // 忽略死链接(临时配置,后续补充完整文档)
-    ignoreDeadLinks: true,
 
     // Head 配置
     head: [
@@ -75,6 +72,7 @@ export default withMermaid(
             text: '开发',
             items: [
               { text: '架构设计', link: '/guide/architecture' },
+              { text: '编码规范', link: '/guide/development-standards' },
               { text: '贡献指南', link: '/guide/contributing' },
             ],
           },
@@ -107,6 +105,7 @@ export default withMermaid(
             text: 'API 参考',
             items: [
               { text: 'Button', link: '/api/button' },
+              { text: 'Icons', link: '/api/icons' },
               { text: 'VideoPlayer', link: '/api/video' },
               { text: 'Subtitle', link: '/api/subtitle' },
               { text: 'PdfViewer', link: '/api/pdf-viewer' },
@@ -131,7 +130,7 @@ export default withMermaid(
 
       // 社交链接
       socialLinks: [
-        { icon: 'github', link: 'https://github.com/your-org/aix' },
+        { icon: 'github', link: 'https://github.com/sunweijieMJ/aix' },
       ],
 
       // 页脚
@@ -147,7 +146,7 @@ export default withMermaid(
 
       // 编辑链接
       editLink: {
-        pattern: 'https://github.com/your-org/aix/edit/master/docs/:path',
+        pattern: 'https://github.com/sunweijieMJ/aix/edit/master/docs/:path',
         text: '在 GitHub 上编辑此页',
       },
 

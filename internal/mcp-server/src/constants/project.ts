@@ -10,20 +10,12 @@ export const BYTES_PER_MB = 1024 * 1024;
 // 目录和文件名
 export const DEFAULT_DATA_DIR = 'data';
 export const DEFAULT_CACHE_DIR = '.cache';
-export const COMPONENTS_INDEX_FILE = 'components-index.json';
-export const METADATA_FILE = 'metadata.json';
-export const CACHE_INDEX_FILE = 'cache-index.json';
-
-// 文件模式和权限
-export const DEFAULT_FILE_MODE = 0o644;
-export const DEFAULT_DIR_MODE = 0o755;
 
 // 缓存和性能相关
 export const DEFAULT_CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
 export const DEFAULT_MAX_CACHE_SIZE = 100 * BYTES_PER_MB; // 100MB
 export const DEFAULT_MAX_CONCURRENT_EXTRACTION = 5;
 export const DEFAULT_EXTRACTION_TIMEOUT = 30000; // 30秒
-export const DEFAULT_LARGE_FILE_THRESHOLD = 10 * BYTES_PER_MB; // 10MB
 
 // WebSocket相关
 export const DEFAULT_WS_PORT = 8080;
@@ -32,10 +24,6 @@ export const DEFAULT_WS_PATH = '/mcp';
 export const DEFAULT_WS_MAX_CONNECTIONS = 100;
 export const DEFAULT_WS_HEARTBEAT_INTERVAL = 30000; // 30秒
 export const DEFAULT_WS_CLIENT_TIMEOUT = 60000; // 60秒
-
-// 监控相关
-export const DEFAULT_MONITORING_INTERVAL = 5000; // 5秒
-export const MAX_RECENT_ERRORS = 100; // 最多保留100个最近错误
 
 // 文件扩展名
 export const TYPESCRIPT_EXTENSIONS = ['.ts', '.tsx'] as const;
@@ -82,43 +70,10 @@ export const MCP_TOOLS = {
   GET_CATEGORIES_AND_TAGS: 'get-categories-and-tags',
 } as const;
 
-// MCP 提示名称
-export const MCP_PROMPTS = {
-  COMPONENT_USAGE: 'component-usage',
-  EXPERT_PROMPT: 'expert-prompt',
-} as const;
-
 // 资源类型
 export const RESOURCE_TYPES = {
   COMPONENT_SOURCE: 'component-source',
   COMPONENT_README: 'component-readme',
   COMPONENT_STORY: 'component-story',
   COMPONENT_CHANGELOG: 'component-changelog',
-} as const;
-
-// 日志级别
-export const LOG_LEVELS = {
-  ERROR: 'error',
-  WARN: 'warn',
-  INFO: 'info',
-  DEBUG: 'debug',
-} as const;
-
-// 环境变量名称
-export const ENV_VARS = {
-  NODE_ENV: 'NODE_ENV',
-  MCP_DATA_DIR: 'MCP_DATA_DIR',
-  MCP_CACHE_DIR: 'MCP_CACHE_DIR',
-  MCP_PACKAGES_DIR: 'MCP_PACKAGES_DIR',
-  MCP_VERBOSE: 'MCP_VERBOSE',
-  MCP_CACHE_TTL: 'MCP_CACHE_TTL',
-} as const;
-
-// 退出代码
-export const EXIT_CODES = {
-  SUCCESS: 0,
-  ERROR: 1,
-  INVALID_ARGS: 2,
-  CONFIG_ERROR: 3,
-  NETWORK_ERROR: 4,
 } as const;

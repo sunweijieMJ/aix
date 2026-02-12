@@ -27,10 +27,10 @@
   ],
   "scripts": {
     "dev": "rollup -c -w",
-    "build": "npm run build:js && npm run build:types",
+    "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
     "build:js": "rollup -c",
     "build:types": "tsc -p tsconfig.json",
-    "clean": "rm -rf dist es lib",
+    "clean": "rimraf dist es lib tsconfig.tsbuildinfo",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest --run --passWithNoTests"
   },

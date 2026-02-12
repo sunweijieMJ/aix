@@ -86,10 +86,17 @@ export class WebSocketTransport implements Transport {
 
   /**
    * 启动 WebSocket 服务器
+   *
+   * 由 Protocol.connect() 自动调用，不应手动调用。
+   * 内置幂等保护，重复调用会直接返回。
    */
   async start(): Promise<void> {
+    // 幂等保护：防止重复启动导致端口冲突
+    if (this.server) {
+      return;
+    }
+
     return new Promise((resolve, reject) => {
-      // 在 start() 中创建 server，确保能正确监听 listening 事件
       this.server = new WebSocketServer({
         port: this.config.port,
         host: this.config.host,
@@ -224,29 +231,12 @@ export class WebSocketTransport implements Transport {
   }
 
   /**
-   * 设置消息处理器（Transport 接口实现）
+   * Transport 接口回调属性
+   * 由 Protocol.connect() 设置，用于将消息分发给 MCP 协议层
    */
-  onMessage(handler: (message: any) => void): void {
-    this.messageHandler = handler;
-  }
-
-  /**
-   * 设置关闭处理器（Transport 接口实现）
-   */
-  onClose(handler: () => void): void {
-    this.closeHandler = handler;
-  }
-
-  /**
-   * 设置错误处理器（Transport 接口实现）
-   */
-  onError(handler: (error: Error) => void): void {
-    this.errorHandler = handler;
-  }
-
-  private messageHandler?: (message: any) => void;
-  private closeHandler?: () => void;
-  private errorHandler?: (error: Error) => void;
+  onmessage?: (message: any) => void;
+  onclose?: () => void;
+  onerror?: (error: Error) => void;
 
   /**
    * 设置事件处理器
@@ -261,8 +251,8 @@ export class WebSocketTransport implements Transport {
     // 注意: error 事件已在 start() 中处理，这里处理运行时错误
     this.server.on('error', (error) => {
       log.error('WebSocket 服务器错误:', error);
-      if (this.errorHandler) {
-        this.errorHandler(error);
+      if (this.onerror) {
+        this.onerror(error);
       }
     });
   }
@@ -349,9 +339,9 @@ export class WebSocketTransport implements Transport {
         });
       }
 
-      // 调用消息处理器
-      if (this.messageHandler) {
-        this.messageHandler(message);
+      // 调用消息处理器（由 Protocol.connect() 通过 onmessage 属性注册）
+      if (this.onmessage) {
+        this.onmessage(message);
       }
     } catch (error) {
       log.error(`解析客户端 ${clientId} 消息失败:`, error);
@@ -400,11 +390,6 @@ export class WebSocketTransport implements Transport {
         this.requestToClient.delete(requestId);
       }
     }
-
-    // 如果所有客户端都断开连接，调用关闭处理器
-    if (this.clients.size === 0 && this.closeHandler) {
-      this.closeHandler();
-    }
   }
 
   /**
@@ -422,8 +407,8 @@ export class WebSocketTransport implements Transport {
       for (const [clientId, client] of this.clients.entries()) {
         if (!client.isAlive) {
           log.info(`💔 客户端 ${clientId} 心跳检测失败，关闭连接`);
+          // 只调用 terminate()，由 close 事件触发 handleDisconnection 统一清理
           client.ws.terminate();
-          this.clients.delete(clientId);
           continue;
         }
 
@@ -443,11 +428,11 @@ export class WebSocketTransport implements Transport {
       const now = Date.now();
 
       // 清理超时的客户端连接
+      // 只调用 ws.close()，由 close 事件触发 handleDisconnection 统一清理
       for (const [clientId, client] of this.clients.entries()) {
         if (now - client.lastActivity > this.config.clientTimeout) {
           log.info(`⏰ 客户端 ${clientId} 超时，关闭连接`);
           client.ws.close(1000, 'Client timeout');
-          this.clients.delete(clientId);
         }
       }
 

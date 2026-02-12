@@ -153,9 +153,9 @@ describe('WebSocketTransport', () => {
       await transport.start();
 
       const receivedMessages: any[] = [];
-      transport.onMessage((message) => {
+      transport.onmessage = (message) => {
         receivedMessages.push(message);
-      });
+      };
 
       const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
 
@@ -472,14 +472,14 @@ describe('WebSocketTransport', () => {
   });
 
   describe('事件处理器', () => {
-    it('应该触发 onClose 处理器当所有客户端断开', async () => {
+    it('应该在客户端断开时正确清理而不触发 transport onclose', async () => {
       transport = new WebSocketTransport({ port: testPort });
       await transport.start();
 
       let closeCalled = false;
-      transport.onClose(() => {
+      transport.onclose = () => {
         closeCalled = true;
-      });
+      };
 
       const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
 
@@ -492,7 +492,9 @@ describe('WebSocketTransport', () => {
       // 等待断开连接被处理
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(closeCalled).toBe(true);
+      // transport.onclose 仅在 transport 自身关闭时触发，客户端断开不应触发
+      expect(closeCalled).toBe(false);
+      expect(transport.getStats().activeConnections).toBe(0);
     });
 
     it('应该触发 onError 处理器当发生错误', async () => {
@@ -500,9 +502,9 @@ describe('WebSocketTransport', () => {
       await transport.start();
 
       let errorCalled = false;
-      transport.onError(() => {
+      transport.onerror = () => {
         errorCalled = true;
-      });
+      };
 
       // 注意：在正常情况下，我们很难触发服务器错误
       // 这里只验证处理器可以被设置

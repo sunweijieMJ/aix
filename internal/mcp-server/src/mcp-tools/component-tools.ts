@@ -13,10 +13,6 @@ import type {
 } from '../types/index';
 import { findComponentByName, log } from '../utils';
 import { createSearchIndex } from '../utils/search-index';
-import {
-  calculateComponentSearchScore,
-  getComponentMatchedFields,
-} from '../utils/search-scoring';
 import { BaseTool } from './base';
 
 /**
@@ -266,14 +262,26 @@ export class SearchComponentsTool extends BaseTool {
     const queryLower = query.toLowerCase();
 
     for (const component of this.componentIndex.components) {
-      const score = calculateComponentSearchScore(component, queryLower);
+      let score = 0;
+      const matchedFields: string[] = [];
+
+      const fields: Record<string, string> = {
+        name: component.name.toLowerCase(),
+        packageName: component.packageName.toLowerCase(),
+        description: component.description.toLowerCase(),
+        category: component.category.toLowerCase(),
+        tags: (component.tags || []).join(' ').toLowerCase(),
+      };
+
+      for (const [field, text] of Object.entries(fields)) {
+        if (text.includes(queryLower)) {
+          score += field === 'name' ? 100 : field === 'packageName' ? 80 : 40;
+          matchedFields.push(field);
+        }
+      }
+
       if (score > 0) {
-        const matchedFields = getComponentMatchedFields(component, queryLower);
-        results.push({
-          component,
-          score,
-          matchedFields,
-        });
+        results.push({ component, score, matchedFields });
       }
     }
 

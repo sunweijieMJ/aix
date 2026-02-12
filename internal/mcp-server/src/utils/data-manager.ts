@@ -50,9 +50,6 @@ export class DataManager {
     // 保存主索引文件
     await this.saveMainIndex(components, icons);
 
-    // 保存组件搜索索引
-    await this.saveSearchIndex(components);
-
     // 保存图标搜索索引
     if (icons.length > 0) {
       await this.saveIconsIndex(icons);
@@ -164,6 +161,10 @@ export class DataManager {
 
   /**
    * 保存主索引文件
+   *
+   * 保存完整的 ComponentInfo[] 到主索引，确保服务器加载后
+   * props/examples/version/dependencies 等字段可用。
+   * 各包的详细数据同时保存到 packages/ 子目录供按需加载。
    */
   private async saveMainIndex(
     components: ComponentInfo[],
@@ -184,73 +185,18 @@ export class DataManager {
     }
 
     const index: ComponentIndex = {
-      components: [], // 主索引不包含完整组件数据，只包含引用
+      components, // 保存完整的组件数据，确保工具可获取 props/examples 等
       categories: Array.from(allCategories).sort(),
       tags: Array.from(allTags).sort(),
       lastUpdated: new Date().toISOString(),
       version: '1.0.0',
     };
 
-    // 添加组件引用信息
-    const componentRefs = components.map((comp) => ({
-      name: comp.name,
-      packageName: comp.packageName,
-      category: comp.category,
-      description: comp.description,
-      tags: comp.tags,
-      dataFile: this.getDataFileForPackage(comp.packageName),
-    }));
-
-    // 图标现在单独存储在 icons-index.json 中，不再包含在组件索引中
-
-    const indexWithRefs = {
-      ...index,
-      components: componentRefs, // 只包含组件，不包含图标
-      totalComponents: components.length,
-      totalIcons: icons.length,
-    };
-
     await this.saveJsonFile(
       join(this.outputDir, 'components-index.json'),
-      indexWithRefs,
+      index,
     );
     log.info('💾 主索引文件已保存');
-  }
-
-  /**
-   * 根据包名获取数据文件路径
-   */
-  private getDataFileForPackage(packageName: string): string {
-    if (packageName === ICONS_PACKAGE_NAME) {
-      return `packages/${this.getSafeFileName(ICONS_PACKAGE_NAME)}.json`;
-    }
-    const safeFileName = this.getSafeFileName(packageName);
-    return `packages/${safeFileName}.json`;
-  }
-
-  /**
-   * 保存组件搜索索引
-   */
-  private async saveSearchIndex(components: ComponentInfo[]): Promise<void> {
-    const searchIndex = {
-      lastUpdated: new Date().toISOString(),
-      totalComponents: components.length,
-      components: components.map((comp) => ({
-        name: comp.name,
-        packageName: comp.packageName,
-        description: comp.description,
-        category: comp.category,
-        tags: comp.tags,
-        keywords: this.extractSearchKeywords(comp),
-        dataFile: this.getDataFileForPackage(comp.packageName),
-      })),
-    };
-
-    await this.saveJsonFile(
-      join(this.outputDir, 'search-index.json'),
-      searchIndex,
-    );
-    log.info(`💾 组件搜索索引已保存: ${components.length} 个组件`);
   }
 
   /**
@@ -278,34 +224,6 @@ export class DataManager {
       iconsIndex,
     );
     log.info(`💾 图标搜索索引已保存: ${icons.length} 个图标`);
-  }
-
-  /**
-   * 提取搜索关键词
-   */
-  private extractSearchKeywords(component: ComponentInfo): string[] {
-    const keywords = new Set<string>();
-
-    // 从名称中提取
-    const nameWords = component.name
-      .replace(/([A-Z])/g, ' $1')
-      .trim()
-      .toLowerCase()
-      .split(' ');
-    nameWords.forEach((word) => keywords.add(word));
-
-    // 从包名中提取
-    const packageWords = component.packageName
-      .replace(/[@/-]/g, ' ')
-      .split(' ');
-    packageWords.forEach((word) => {
-      if (word.length > 1) keywords.add(word.toLowerCase());
-    });
-
-    // 添加标签
-    component.tags.forEach((tag) => keywords.add(tag.toLowerCase()));
-
-    return Array.from(keywords).filter((word) => word.length > 1);
   }
 
   /**

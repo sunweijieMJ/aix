@@ -93,20 +93,20 @@ describe('DataManager', () => {
       expect(indexWriteCall).toBeDefined();
     });
 
-    it('应该保存搜索索引文件', async () => {
+    it('应该不再保存搜索索引文件（运行时内存构建）', async () => {
       vi.mocked(fs.mkdir).mockResolvedValue(undefined);
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
       await dataManager.saveComponentsByPackage(mockComponents);
 
-      // 验证搜索索引文件被保存
+      // 搜索索引已改为运行时内存构建，不再持久化
       const searchIndexWriteCall = vi
         .mocked(fs.writeFile)
         .mock.calls.find((call) =>
           call[0].toString().includes('search-index.json'),
         );
 
-      expect(searchIndexWriteCall).toBeDefined();
+      expect(searchIndexWriteCall).toBeUndefined();
     });
   });
 

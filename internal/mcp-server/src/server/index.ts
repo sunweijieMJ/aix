@@ -400,10 +400,8 @@ export class McpServer {
     // 创建 WebSocket Transport
     this.webSocketTransport = createWebSocketTransport({ port, host });
 
-    // 启动 WebSocket 服务器
-    await this.webSocketTransport.start();
-
-    // 连接服务器到 WebSocket Transport
+    // server.connect() 内部会按正确顺序：注册 onmessage 等回调 → 调用 transport.start()
+    // 不要额外调用 transport.start()，否则会导致端口重复绑定
     await this.server.connect(this.webSocketTransport);
 
     log.info(`🚀 AIX MCP WebSocket 服务器已启动 ws://${host}:${port}`);
@@ -457,9 +455,6 @@ export class McpServer {
         await this.webSocketTransport.close();
         this.webSocketTransport = undefined;
       }
-
-      // 停止监控
-      this.monitoringManager.stop();
 
       // 关闭服务器
       await this.server.close();

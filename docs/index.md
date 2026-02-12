@@ -17,7 +17,7 @@ hero:
       link: /components/
     - theme: alt
       text: GitHub
-      link: https://github.com/your-org/aix
+      link: https://github.com/sunweijieMJ/aix
 
 features:
   - icon: 🎨

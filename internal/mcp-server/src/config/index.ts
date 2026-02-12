@@ -2,7 +2,6 @@
  * MCP Server 配置管理
  */
 
-import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -15,16 +14,25 @@ import {
   SERVER_NAME,
   SERVER_VERSION,
 } from '../constants';
-import { log } from '../utils/logger';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const isProduction = process.env.NODE_ENV === 'production';
+import { validateServerConfig } from '../utils/validation';
 
 /**
- * 是否为生产环境
+ * 获取 MCP Server 项目根目录
+ * 无论代码运行在 src/ 还是 dist/ 目录下都能正确定位
  */
-export const IS_PRODUCTION = isProduction;
-const projectRoot = resolve(__dirname, '../../..');
+function getMCPServerRoot(): string {
+  const currentDir = dirname(fileURLToPath(import.meta.url));
+  // tsup 构建后输出到 dist/，开发时运行在 src/config/
+  const isInBuildDir =
+    currentDir.includes('/dist') || currentDir.includes('\\dist');
+  return isInBuildDir
+    ? resolve(currentDir, '..') // dist/ → mcp-server/
+    : resolve(currentDir, '../..'); // src/config/ → mcp-server/
+}
+
+const mcpServerRoot = getMCPServerRoot();
+// mcp-server/ → internal/ → aix/
+const workspaceRoot = resolve(mcpServerRoot, '../..');
 
 /**
  * 服务器配置接口
@@ -63,38 +71,13 @@ export interface ServerConfig {
 }
 
 /**
- * 获取适合当前环境的路径
- */
-function getEnvironmentPaths() {
-  const mcpServerDir = resolve(__dirname, '../..');
-
-  // 开发环境
-  if (!isProduction) {
-    return {
-      dataDir: join(mcpServerDir, 'data'),
-      cacheDir: join(mcpServerDir, 'data/.cache'),
-      packagesDir: join(projectRoot, '../packages'),
-    };
-  }
-
-  // 生产环境
-  return {
-    dataDir: join(mcpServerDir, 'data'),
-    cacheDir: join(mcpServerDir, 'data/.cache'),
-    packagesDir: join(__dirname, '../../../../packages'),
-  };
-}
-
-const environmentPaths = getEnvironmentPaths();
-
-/**
  * 默认配置
  */
 export const DEFAULT_CONFIG: ServerConfig = {
   // 数据相关
-  dataDir: environmentPaths.dataDir,
-  cacheDir: environmentPaths.cacheDir,
-  packagesDir: environmentPaths.packagesDir,
+  dataDir: join(mcpServerRoot, 'data'),
+  cacheDir: join(mcpServerRoot, 'data/.cache'),
+  packagesDir: join(workspaceRoot, 'packages'),
 
   // 缓存配置
   cacheTTL: DEFAULT_CACHE_TTL,
@@ -139,19 +122,6 @@ export class ConfigManager {
   }
 
   /**
-   * 从文件加载配置
-   */
-  async loadFromFile(configPath: string): Promise<void> {
-    try {
-      const content = await readFile(configPath, 'utf8');
-      const fileConfig = JSON.parse(content) as Partial<ServerConfig>;
-      this.config = { ...this.config, ...fileConfig };
-    } catch (error) {
-      log.warn(`无法加载配置文件 ${configPath}:`, error);
-    }
-  }
-
-  /**
    * 获取配置
    */
   get<K extends keyof ServerConfig>(key: K): ServerConfig[K] {
@@ -181,68 +151,29 @@ export class ConfigManager {
 
   /**
    * 验证配置
+   *
+   * 复用 validateServerConfig 进行基础字段/数值验证，
+   * 并追加路径存在性和文件系统权限检查。
    */
   async validate(): Promise<{
     isValid: boolean;
     errors: string[];
     warnings: string[];
   }> {
-    const errors: string[] = [];
-    const warnings: string[] = [];
+    // 基础验证（字段、数值范围、格式）
+    const baseResult = validateServerConfig(this.config);
+    const errors = [...baseResult.errors];
+    const warnings = [...baseResult.warnings];
 
-    // 必需字段验证
-    if (!this.config.dataDir) {
-      errors.push('dataDir 不能为空');
-    }
-    if (!this.config.packagesDir) {
-      errors.push('packagesDir 不能为空');
-    }
-    if (!this.config.cacheDir) {
-      errors.push('cacheDir 不能为空');
-    }
-
-    // 数值范围验证
-    if (this.config.cacheTTL < 0) {
-      errors.push('cacheTTL 必须大于等于 0');
-    }
-    if (this.config.maxCacheSize < 0) {
-      errors.push('maxCacheSize 必须大于等于 0');
-    }
-    if (this.config.maxConcurrentExtraction < 1) {
-      errors.push('maxConcurrentExtraction 必须大于 0');
-    }
-    if (this.config.extractionTimeout < 1000) {
-      errors.push('extractionTimeout 必须大于等于 1000ms');
-    }
-
-    // 数值合理性警告
-    if (this.config.maxCacheSize > 500) {
-      warnings.push(
-        `maxCacheSize 设置过大 (${this.config.maxCacheSize}MB)，建议不超过 500MB`,
-      );
-    }
-    if (this.config.cacheTTL > 24 * 60 * 60 * 1000) {
-      warnings.push(
-        `cacheTTL 设置过长 (${this.config.cacheTTL}ms)，建议不超过 24 小时`,
-      );
-    }
-    if (this.config.maxConcurrentExtraction > 10) {
-      warnings.push(
-        `maxConcurrentExtraction 设置过大 (${this.config.maxConcurrentExtraction})，可能导致性能问题`,
-      );
-    }
-
-    // 路径存在性验证
+    // 追加：路径存在性验证
     if (this.config.dataDir || this.config.packagesDir) {
       try {
         const { existsSync } = await import('node:fs');
 
-        // 检查 packagesDir
         if (this.config.packagesDir && !existsSync(this.config.packagesDir)) {
           errors.push(`packagesDir 不存在: ${this.config.packagesDir}`);
         }
 
-        // 检查 dataDir（如果不存在会自动创建，所以只警告）
         if (this.config.dataDir && !existsSync(this.config.dataDir)) {
           warnings.push(`dataDir 不存在，将自动创建: ${this.config.dataDir}`);
         }
@@ -251,7 +182,7 @@ export class ConfigManager {
       }
     }
 
-    // 权限验证
+    // 追加：权限验证
     try {
       const { access, constants } = await import('node:fs/promises');
       const { existsSync } = await import('node:fs');
@@ -290,33 +221,4 @@ export function createConfigManager(
   customConfig?: Partial<ServerConfig>,
 ): ConfigManager {
   return new ConfigManager(customConfig);
-}
-
-/**
- * 环境变量配置映射
- */
-export function getConfigFromEnv(): Partial<ServerConfig> {
-  const config: Partial<ServerConfig> = {};
-
-  if (process.env.MCP_DATA_DIR) {
-    config.dataDir = process.env.MCP_DATA_DIR;
-  }
-
-  if (process.env.MCP_CACHE_DIR) {
-    config.cacheDir = process.env.MCP_CACHE_DIR;
-  }
-
-  if (process.env.MCP_PACKAGES_DIR) {
-    config.packagesDir = process.env.MCP_PACKAGES_DIR;
-  }
-
-  if (process.env.MCP_CACHE_TTL) {
-    config.cacheTTL = parseInt(process.env.MCP_CACHE_TTL, 10);
-  }
-
-  if (process.env.MCP_VERBOSE === 'true') {
-    config.verbose = true;
-  }
-
-  return config;
 }

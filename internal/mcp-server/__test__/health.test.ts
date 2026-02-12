@@ -30,7 +30,7 @@ describe('Health Checker (简化版)', () => {
     it('应该创建监控管理器实例', () => {
       const checker = new MonitoringManager();
       expect(checker).toBeInstanceOf(MonitoringManager);
-      checker.stop();
+      checker.resetMetrics();
     });
 
     it('应该执行完整的健康检查', async () => {
@@ -50,7 +50,7 @@ describe('Health Checker (简化版)', () => {
       expect(result.summary).toHaveProperty('failed');
       expect(result.summary).toHaveProperty('warnings');
 
-      checker.stop();
+      checker.resetMetrics();
     });
 
     it('应该执行健康检查', async () => {
@@ -73,15 +73,16 @@ describe('Health Checker (简化版)', () => {
       expect(errorRateCheck).toBeDefined();
       expect(['pass', 'warn', 'fail']).toContain(errorRateCheck?.status);
 
-      checker.stop();
+      checker.resetMetrics();
     });
 
     it('应该检测高错误率', async () => {
       const checker = new MonitoringManager();
 
-      // 模拟大量错误
+      // 模拟大量失败请求（错误率基于 requests.failed 而非 errors 数组）
       for (let i = 0; i < 20; i++) {
         checker.recordRequestStart();
+        checker.recordRequestEnd(false, Date.now() - 50);
         checker.recordError('test_error', `Error ${i}`);
       }
 
@@ -92,7 +93,7 @@ describe('Health Checker (简化版)', () => {
       // 高错误率应该导致警告或失败
       expect(['warn', 'fail']).toContain(errorRateCheck?.status);
 
-      checker.stop();
+      checker.resetMetrics();
     });
 
     it('应该在无错误时返回健康状态', async () => {
@@ -110,7 +111,7 @@ describe('Health Checker (简化版)', () => {
       expect(errorRateCheck).toBeDefined();
       expect(errorRateCheck?.status).toBe('pass');
 
-      checker.stop();
+      checker.resetMetrics();
     });
   });
 

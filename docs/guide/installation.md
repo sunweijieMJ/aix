@@ -54,7 +54,7 @@ import '@aix/theme/dist/vars/index.css'; // CSS 变量
 
 我们使用 [Changeset](https://github.com/changesets/changesets) 进行版本管理和发布。
 
-查看[更新日志](/changelog)了解各版本的变更。
+查看 [GitHub Releases](https://github.com/sunweijieMJ/aix/releases) 了解各版本的变更。
 
 ## 下一步
 

@@ -1,11 +1,10 @@
 /**
  * 日志系统
+ *
+ * 所有日志输出到 stderr，不会干扰 MCP stdio 协议（使用 stdout）
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
 import chalk from 'chalk';
-import { IS_PRODUCTION } from '../config';
 
 /**
  * 日志级别
@@ -19,27 +18,11 @@ export enum LogLevel {
 }
 
 /**
- * 日志条目接口（内部使用）
- */
-interface LogEntry {
-  timestamp: Date;
-  level: LogLevel;
-  message: string;
-  context?: string;
-  data?: unknown;
-  error?: Error;
-}
-
-/**
- * 日志配置接口（内部使用）
+ * 日志配置接口
  */
 interface LoggerConfig {
   level: LogLevel;
   enableConsole: boolean;
-  enableFile: boolean;
-  logDir?: string;
-  maxFileSize?: number; // MB
-  maxFiles?: number;
   format?: 'json' | 'text';
 }
 
@@ -48,14 +31,11 @@ interface LoggerConfig {
  */
 export class Logger {
   private config: LoggerConfig;
-  private buffer: LogEntry[] = [];
-  private flushTimer?: NodeJS.Timeout;
 
   constructor(config: Partial<LoggerConfig> = {}) {
     this.config = {
       level: LogLevel.INFO,
       enableConsole: true,
-      enableFile: false,
       format: 'text',
       ...config,
     };
@@ -133,177 +113,42 @@ export class Logger {
       return;
     }
 
-    const entry: LogEntry = {
-      timestamp: new Date(),
-      level,
-      message,
-      data,
-    };
-
     if (this.config.enableConsole) {
-      this.logToConsole(entry);
-    }
-
-    if (this.config.enableFile) {
-      this.buffer.push(entry);
-      this.scheduleFlush();
+      this.logToConsole(level, message, data);
     }
   }
 
   /**
-   * 输出到控制台
+   * 输出到控制台（stderr，不干扰 MCP stdio 协议）
    */
-  private logToConsole(entry: LogEntry): void {
-    // CLI 友好模式：简化输出格式
-    if (this.config.format === 'text' && !this.config.enableFile) {
-      // 简化的 CLI 输出
-      let output = '';
-      switch (entry.level) {
-        case LogLevel.DEBUG:
-          output = chalk.gray(entry.message);
-          break;
-        case LogLevel.INFO:
-          output = entry.message; // 保持原色
-          break;
-        case LogLevel.WARN:
-          output = chalk.yellow(entry.message);
-          break;
-        case LogLevel.ERROR:
-          output = chalk.red(entry.message);
-          break;
-        case LogLevel.FATAL:
-          output = chalk.bgRed.white(entry.message);
-          break;
-      }
-
-      if (!IS_PRODUCTION) {
-        console.error(output);
-      }
-
-      if (entry.data && (entry.data as { args?: unknown[] }).args) {
-        // 特殊处理从 console 迁移的参数
-        const args = (entry.data as { args: unknown[] }).args;
-        if (args.length > 0) {
-          if (!IS_PRODUCTION) {
-            args.forEach((arg) => console.error(arg));
-          }
-        }
-      } else if (entry.data) {
-        if (!IS_PRODUCTION) {
-          console.error(entry.data);
-        }
-      }
-    } else {
-      // 详细的日志输出（包含时间戳）
-      const timestamp = entry.timestamp.toISOString();
-      const levelName = LogLevel[entry.level];
-      const prefix = `[${timestamp}] [${levelName}]`;
-
-      let output = '';
-      switch (entry.level) {
-        case LogLevel.DEBUG:
-          output = chalk.gray(`${prefix} ${entry.message}`);
-          break;
-        case LogLevel.INFO:
-          output = chalk.blue(`${prefix} ${entry.message}`);
-          break;
-        case LogLevel.WARN:
-          output = chalk.yellow(`${prefix} ${entry.message}`);
-          break;
-        case LogLevel.ERROR:
-          output = chalk.red(`${prefix} ${entry.message}`);
-          break;
-        case LogLevel.FATAL:
-          output = chalk.bgRed.white(`${prefix} ${entry.message}`);
-          break;
-      }
-
-      if (!IS_PRODUCTION) {
-        console.error(output);
-      }
-
-      if (entry.data) {
-        if (!IS_PRODUCTION) {
-          console.error(chalk.gray('Data:'), entry.data);
-        }
-      }
-    }
-  }
-
-  /**
-   * 计划刷新缓冲区
-   */
-  private scheduleFlush(): void {
-    if (this.flushTimer) {
-      return;
+  private logToConsole(level: LogLevel, message: string, data?: unknown): void {
+    let output = '';
+    switch (level) {
+      case LogLevel.DEBUG:
+        output = chalk.gray(message);
+        break;
+      case LogLevel.INFO:
+        output = message;
+        break;
+      case LogLevel.WARN:
+        output = chalk.yellow(message);
+        break;
+      case LogLevel.ERROR:
+        output = chalk.red(message);
+        break;
+      case LogLevel.FATAL:
+        output = chalk.bgRed.white(message);
+        break;
     }
 
-    this.flushTimer = setTimeout(() => {
-      this.flush().catch(console.error);
-    }, 1000);
-  }
+    console.error(output);
 
-  /**
-   * 刷新缓冲区到文件
-   */
-  async flush(): Promise<void> {
-    if (
-      !this.config.enableFile ||
-      !this.config.logDir ||
-      this.buffer.length === 0
-    ) {
-      return;
+    if (data && (data as { args?: unknown[] }).args) {
+      const args = (data as { args: unknown[] }).args;
+      args.forEach((arg) => console.error(arg));
+    } else if (data) {
+      console.error(data);
     }
-
-    const entries = [...this.buffer];
-    this.buffer = [];
-    this.flushTimer = undefined;
-
-    try {
-      const logFile = this.getLogFileName();
-      const logPath = join(this.config.logDir, logFile);
-
-      await mkdir(dirname(logPath), { recursive: true });
-
-      const content =
-        this.config.format === 'json'
-          ? entries.map((e) => JSON.stringify(e)).join('\n') + '\n'
-          : entries.map((e) => this.formatTextLog(e)).join('\n') + '\n';
-
-      await writeFile(logPath, content, { flag: 'a' });
-    } catch (error) {
-      console.error('Failed to write log file:', error);
-    }
-  }
-
-  /**
-   * 格式化文本日志
-   */
-  private formatTextLog(entry: LogEntry): string {
-    const timestamp = entry.timestamp.toISOString();
-    const levelName = LogLevel[entry.level];
-    let log = `[${timestamp}] [${levelName}] ${entry.message}`;
-
-    if (entry.context) {
-      log = `[${timestamp}] [${levelName}] [${entry.context}] ${entry.message}`;
-    }
-
-    if (entry.data) {
-      log += ` | ${JSON.stringify(entry.data)}`;
-    }
-
-    return log;
-  }
-
-  /**
-   * 获取日志文件名
-   */
-  private getLogFileName(): string {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `mcp-server-${year}-${month}-${day}.log`;
   }
 
   /**
@@ -357,61 +202,32 @@ export class ContextLogger {
 export const logger = new Logger();
 
 /**
- * CLI 友好的日志器实例（简化输出格式）
+ * CLI 友好的日志器实例
  */
 export const cliLogger = new Logger({
   level: LogLevel.DEBUG,
   enableConsole: true,
-  enableFile: false,
   format: 'text',
 });
 
 /**
- * 检查是否为彩色输出消息（包含 chalk 样式或表情符号）
+ * 检查消息是否已经包含 ANSI 格式化（如 chalk 输出）
  */
-function isColoredMessage(message: string): boolean {
-  return (
-    message.includes('\u001b[') || // ANSI 转义序列
-    message.includes('🚀') ||
-    message.includes('✅') ||
-    message.includes('📦') ||
-    message.includes('⚠️') ||
-    message.includes('❌') ||
-    message.includes('🔍') ||
-    message.includes('🧹') ||
-    message.includes('🔄') ||
-    message.includes('🌐') ||
-    message.includes('🏥') ||
-    message.includes('📊') ||
-    message.includes('💾') ||
-    message.includes('🛑')
-  );
-}
-
-/**
- * 输出额外参数
- */
-function logAdditionalArgs(args: unknown[]): void {
-  if (args.length > 0) {
-    if (!IS_PRODUCTION) {
-      args.forEach((arg) => console.error(arg));
-    }
-  }
+function isPreFormatted(message: string): boolean {
+  return message.includes('\u001b[');
 }
 
 /**
  * 统一的日志工具
+ *
+ * 对已经通过 chalk 格式化的消息直接输出到 stderr，
+ * 避免 Logger 再次添加颜色导致格式混乱。
  */
 export const log = {
-  /**
-   * 信息输出 - 智能判断是否保持彩色输出
-   */
   info: (message: string, ...args: unknown[]) => {
-    if (isColoredMessage(message)) {
-      if (!IS_PRODUCTION) {
-        console.error(message);
-      }
-      logAdditionalArgs(args);
+    if (isPreFormatted(message)) {
+      console.error(message);
+      args.forEach((arg) => console.error(arg));
     } else {
       if (args.length > 0) {
         cliLogger.info(message, { args });
@@ -421,15 +237,10 @@ export const log = {
     }
   },
 
-  /**
-   * 警告输出 - 智能判断是否保持彩色输出
-   */
   warn: (message: string, ...args: unknown[]) => {
-    if (isColoredMessage(message)) {
-      if (!IS_PRODUCTION) {
-        console.error(message);
-      }
-      logAdditionalArgs(args);
+    if (isPreFormatted(message)) {
+      console.error(message);
+      args.forEach((arg) => console.error(arg));
     } else {
       if (args.length > 0) {
         cliLogger.warn(message, { args });
@@ -439,15 +250,10 @@ export const log = {
     }
   },
 
-  /**
-   * 错误输出 - 智能判断是否保持彩色输出
-   */
   error: (message: string, ...args: unknown[]) => {
-    if (isColoredMessage(message)) {
-      if (!IS_PRODUCTION) {
-        console.error(message);
-      }
-      logAdditionalArgs(args);
+    if (isPreFormatted(message)) {
+      console.error(message);
+      args.forEach((arg) => console.error(arg));
     } else {
       if (args.length > 0) {
         cliLogger.error(message, undefined, { args });
@@ -457,9 +263,6 @@ export const log = {
     }
   },
 
-  /**
-   * 调试输出
-   */
   debug: (message: string, ...args: unknown[]) => {
     if (args.length > 0) {
       cliLogger.debug(message, { args });
@@ -468,70 +271,6 @@ export const log = {
     }
   },
 };
-
-/**
- * 性能监控
- */
-export class PerformanceMonitor {
-  private timers = new Map<string, number>();
-
-  /**
-   * 开始计时
-   */
-  start(label: string): void {
-    this.timers.set(label, performance.now());
-  }
-
-  /**
-   * 结束计时并记录
-   */
-  end(label: string, logger?: Logger): number {
-    const startTime = this.timers.get(label);
-    if (!startTime) {
-      return 0;
-    }
-
-    const duration = performance.now() - startTime;
-    this.timers.delete(label);
-
-    if (logger) {
-      logger.debug(`Performance: ${label} took ${duration.toFixed(2)}ms`);
-    }
-
-    return duration;
-  }
-
-  /**
-   * 装饰器：测量异步函数执行时间
-   */
-  static measure(label?: string) {
-    return function (
-      target: any,
-      propertyKey: string,
-      descriptor: PropertyDescriptor,
-    ) {
-      const originalMethod = descriptor.value;
-
-      descriptor.value = async function (...args: any[]) {
-        const measureLabel =
-          label || `${target.constructor.name}.${propertyKey}`;
-        const monitor = new PerformanceMonitor();
-        monitor.start(measureLabel);
-
-        try {
-          const result = await originalMethod.apply(this, args);
-          monitor.end(measureLabel, logger);
-          return result;
-        } catch (error) {
-          monitor.end(measureLabel, logger);
-          throw error;
-        }
-      };
-
-      return descriptor;
-    };
-  }
-}
 
 /**
  * 创建日志器实例

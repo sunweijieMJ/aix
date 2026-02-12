@@ -49,7 +49,24 @@ export function validateServerConfig(config: ServerConfig): ValidationResult {
   }
 
   if (config.extractionTimeout < 1000) {
-    warnings.push('extractionTimeout 建议设置为至少 1000ms');
+    errors.push('extractionTimeout 必须大于等于 1000ms');
+  }
+
+  // 数值合理性警告
+  if (config.maxCacheSize > 500) {
+    warnings.push(
+      `maxCacheSize 设置过大 (${config.maxCacheSize}MB)，建议不超过 500MB`,
+    );
+  }
+  if (config.cacheTTL > 24 * 60 * 60 * 1000) {
+    warnings.push(
+      `cacheTTL 设置过长 (${config.cacheTTL}ms)，建议不超过 24 小时`,
+    );
+  }
+  if (config.maxConcurrentExtraction > 10) {
+    warnings.push(
+      `maxConcurrentExtraction 设置过大 (${config.maxConcurrentExtraction})，可能导致性能问题`,
+    );
   }
 
   // 字符串格式验证

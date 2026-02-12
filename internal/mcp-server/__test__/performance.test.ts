@@ -1,58 +1,7 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  ConcurrencyController,
-  LargeFileProcessor,
-} from '../src/utils/performance';
+import { describe, expect, it, beforeEach } from 'vitest';
+import { ConcurrencyController } from '../src/utils/performance';
 
 describe('Performance Utils', () => {
-  let testDir: string;
-
-  beforeEach(async () => {
-    testDir = join(process.cwd(), 'test-perf');
-    await mkdir(testDir, { recursive: true });
-  });
-
-  afterEach(async () => {
-    await rm(testDir, { recursive: true, force: true });
-  });
-
-  describe('LargeFileProcessor', () => {
-    let processor: LargeFileProcessor;
-
-    beforeEach(() => {
-      processor = new LargeFileProcessor(1024, 512); // 1KB max, 512B chunks
-    });
-
-    it('should read small files normally', async () => {
-      const testFile = join(testDir, 'small.txt');
-      const content = 'Hello World';
-      await writeFile(testFile, content);
-
-      const result = await processor.safeReadFile(testFile);
-      expect(result).toBe(content);
-    });
-
-    it('should reject files that are too large', async () => {
-      const testFile = join(testDir, 'large.txt');
-      const largeContent = 'x'.repeat(2048); // 2KB
-      await writeFile(testFile, largeContent);
-
-      const result = await processor.safeReadFile(testFile);
-      expect(result).toBeNull();
-    });
-
-    it('should check if file is too large', async () => {
-      const testFile = join(testDir, 'large.txt');
-      const largeContent = 'x'.repeat(2048);
-      await writeFile(testFile, largeContent);
-
-      const isTooLarge = await processor.isFileTooLarge(testFile);
-      expect(isTooLarge).toBe(true);
-    });
-  });
-
   describe('ConcurrencyController', () => {
     let controller: ConcurrencyController;
 

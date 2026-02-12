@@ -313,19 +313,7 @@ export function initTheme() {
 
 ### 保持设计一致性
 
-```css
-/* ✅ 使用统一的间距系统 */
-.my-component {
-  padding: var(--paddingXS) var(--padding);
-  margin-bottom: var(--marginSM);
-}
-
-/* ❌ 避免硬编码数值 */
-.my-component {
-  padding: 8px 12px;
-  margin-bottom: 16px;
-}
-```
+业务组件中应始终使用主题 CSS 变量，避免硬编码颜色和间距值。详细的 CSS 变量使用规范参见[编码规范 - CSS Variables](/guide/development-standards#_4-2-css-variables-禁止硬编码)。
 
 ## 表单处理
 
@@ -441,64 +429,76 @@ function handleKeydown(e: KeyboardEvent) {
 
 ## 测试
 
-### 组件测试
+组件单元测试的编写规范（文件组织、describe 结构、覆盖维度）参见[编码规范 - 单元测试](/guide/development-standards#_6-单元测试)。本节聚焦业务层面的测试实践。
+
+### 业务组件测试
+
+业务组件测试应关注用户交互流程，而非单个 Props 的枚举验证：
 
 ```typescript
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { Button } from '@aix/button';
+import { createLocale } from '@aix/hooks';
+import UserProfile from '../UserProfile.vue';
 
-describe('Button', () => {
-  it('renders correctly', () => {
-    const wrapper = mount(Button, {
-      slots: { default: 'Click Me' },
+describe('UserProfile 组件', () => {
+  const createWrapper = (props = {}) => {
+    const { install } = createLocale('zh-CN');
+    return mount(UserProfile, {
+      props: { userId: 1, ...props },
+      global: { plugins: [{ install }] },
     });
-    expect(wrapper.text()).toBe('Click Me');
+  };
+
+  it('加载完成后应展示用户信息', async () => {
+    const wrapper = createWrapper();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('.user-name').exists()).toBe(true);
+    expect(wrapper.find('.user-email').exists()).toBe(true);
   });
 
-  it('emits click event', async () => {
-    const wrapper = mount(Button);
-    await wrapper.trigger('click');
-    expect(wrapper.emitted('click')).toBeTruthy();
+  it('点击编辑按钮应切换到编辑模式', async () => {
+    const wrapper = createWrapper();
+    await wrapper.find('[data-testid="edit-btn"]').trigger('click');
+
+    expect(wrapper.find('input[name="username"]').exists()).toBe(true);
   });
 
-  it('does not emit when disabled', async () => {
-    const wrapper = mount(Button, {
-      props: { disabled: true },
-    });
-    await wrapper.trigger('click');
-    expect(wrapper.emitted('click')).toBeFalsy();
+  it('提交表单应触发 update 事件并携带表单数据', async () => {
+    const wrapper = createWrapper();
+    await wrapper.find('[data-testid="edit-btn"]').trigger('click');
+    await wrapper.find('input[name="username"]').setValue('Alice');
+    await wrapper.find('form').trigger('submit');
+
+    expect(wrapper.emitted('update')?.[0]).toEqual([{
+      userId: 1,
+      username: 'Alice',
+    }]);
   });
 });
 ```
 
-### 集成测试
+### 测试工具函数
+
+将重复的测试设置提取为工厂函数，保持测试代码简洁：
 
 ```typescript
+// test-utils.ts
 import { mount } from '@vue/test-utils';
 import { createLocale } from '@aix/hooks';
 
-describe('Form Integration', () => {
-  it('submits form data correctly', async () => {
-    const { install } = createLocale('zh-CN');
-
-    const wrapper = mount(MyForm, {
-      global: {
-        plugins: [{ install }],
-      },
-    });
-
-    await wrapper.find('input[name="username"]').setValue('Alice');
-    await wrapper.find('input[name="email"]').setValue('alice@example.com');
-    await wrapper.find('button[type="submit"]').trigger('click');
-
-    expect(wrapper.emitted('submit')).toBeTruthy();
-    expect(wrapper.emitted('submit')[0]).toEqual([{
-      username: 'Alice',
-      email: 'alice@example.com',
-    }]);
+/** 创建带国际化插件的 mount wrapper */
+export function mountWithPlugins(component: any, options = {}) {
+  const { install } = createLocale('zh-CN');
+  return mount(component, {
+    ...options,
+    global: {
+      plugins: [{ install }],
+      ...(options as any).global,
+    },
   });
-});
+}
 ```
 
 ## 代码组织
@@ -696,7 +696,7 @@ lighthouse https://your-app.com --view
 - ✅ 简化国际化和主题定制
 - ✅ 提高开发效率
 
-如有问题或建议，欢迎提交 [Issue](https://github.com/your-org/aix/issues)。
+如有问题或建议，欢迎提交 [Issue](https://github.com/sunweijieMJ/aix/issues)。
 
 ## 相关文档
 

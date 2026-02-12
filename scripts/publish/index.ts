@@ -14,35 +14,79 @@ import inquirer from 'inquirer';
 const WORKSPACE_DIRS = ['packages', 'internal']; // 可发布的 workspace 目录
 const BUILD_OUTPUTS = ['es', 'lib', 'dist']; // 构建产物目录
 
-// 获取 npm registry 地址（优先级：环境变量 > .npmrc > 默认值）
+// 从 .npmrc 文件中读取 registry 配置
+const readRegistryFromNpmrc = (
+  npmrcPath: string,
+  scope?: string,
+): string | null => {
+  if (!fs.existsSync(npmrcPath)) return null;
+  const npmrc = fs.readFileSync(npmrcPath, 'utf-8');
+
+  // 优先匹配 scoped registry（如 @aix:registry=...）
+  if (scope) {
+    const scopeMatch = npmrc.match(
+      new RegExp(`${scope}:registry\\s*=\\s*(.+)`),
+    );
+    if (scopeMatch?.[1]) return scopeMatch[1].trim();
+  }
+
+  // 回退到全局 registry
+  const match = npmrc.match(/^registry\s*=\s*(.+)/m);
+  return match?.[1]?.trim() ?? null;
+};
+
+// 获取 npm registry 地址（优先级：环境变量 > 项目 .npmrc > 全局 .npmrc > 默认值）
 const getNpmRegistry = (): string => {
   // 1. 环境变量
   if (process.env.NPM_REGISTRY) {
     return process.env.NPM_REGISTRY;
   }
 
-  // 2. 从 .npmrc 读取
-  const npmrcPath = path.join(
+  const scope = '@aix';
+
+  // 2. 项目级 .npmrc（优先读取 scoped registry）
+  const projectNpmrc = path.join(projectRoot, '.npmrc');
+  const fromProject = readRegistryFromNpmrc(projectNpmrc, scope);
+  if (fromProject) return fromProject;
+
+  // 3. 全局 ~/.npmrc
+  const globalNpmrc = path.join(
     process.env.HOME || process.env.USERPROFILE || '',
     '.npmrc',
   );
-  if (fs.existsSync(npmrcPath)) {
-    const npmrc = fs.readFileSync(npmrcPath, 'utf-8');
-    const match = npmrc.match(/registry\s*=\s*(.+)/);
-    if (match?.[1]) {
-      return match[1].trim();
-    }
-  }
+  const fromGlobal = readRegistryFromNpmrc(globalNpmrc, scope);
+  if (fromGlobal) return fromGlobal;
 
-  // 3. 默认私有仓库
+  // 4. 默认私有仓库
   return 'http://npm-registry.zhihuishu.com:4873/';
 };
-
-const NPM_REGISTRY = getNpmRegistry();
 
 // 获取当前脚本所在的目录
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// 查找项目根目录
+const findProjectRoot = (startDir: string): string => {
+  let currentDir = startDir;
+
+  while (true) {
+    const workspaceFilePath = path.join(currentDir, 'pnpm-workspace.yaml');
+    if (fs.existsSync(workspaceFilePath)) {
+      return currentDir;
+    }
+
+    const parentDir = path.resolve(currentDir, '..');
+    if (parentDir === currentDir) {
+      throw new Error('无法找到项目根目录 (未找到 pnpm-workspace.yaml)');
+    }
+    currentDir = parentDir;
+  }
+};
+
+// 从脚本所在目录开始查找项目根目录
+const projectRoot = findProjectRoot(__dirname);
+
+const NPM_REGISTRY = getNpmRegistry();
 
 // 解析命令行参数
 const parseArgs = () => {
@@ -193,27 +237,6 @@ const runWithRetry = async (
 
   throw lastError;
 };
-
-// 查找项目根目录
-const findProjectRoot = (startDir: string): string => {
-  let currentDir = startDir;
-
-  while (true) {
-    const workspaceFilePath = path.join(currentDir, 'pnpm-workspace.yaml');
-    if (fs.existsSync(workspaceFilePath)) {
-      return currentDir;
-    }
-
-    const parentDir = path.resolve(currentDir, '..');
-    if (parentDir === currentDir) {
-      throw new Error('无法找到项目根目录 (未找到 pnpm-workspace.yaml)');
-    }
-    currentDir = parentDir;
-  }
-};
-
-// 从脚本所在目录开始查找项目根目录
-const projectRoot = findProjectRoot(__dirname);
 
 // 检查 npm 登录状态
 const checkNpmLogin = () => {

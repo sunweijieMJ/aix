@@ -32,7 +32,7 @@ export { createParsers } from './parsers/index';
 // MCP 工具
 export { createTools } from './mcp-tools/index';
 
-// 工具函数（包括缓存管理、错误处理、日志等）
+// 工具函数（包括缓存管理、日志等）
 export {
   readPackageJson,
   findPackages,
@@ -48,23 +48,9 @@ export {
   // 缓存管理
   CacheManager,
   createCacheManager,
-  // 错误处理
-  MCPError,
-  ComponentNotFoundError,
-  ToolNotFoundError,
-  ExtractionError,
-  ParseError,
-  CacheError,
-  ValidationError,
-  ConfigError,
-  TimeoutError,
-  ErrorHandler,
-  assert,
-  assertNotNull,
   // 日志系统
   Logger,
   ContextLogger,
-  PerformanceMonitor,
   createLogger,
   logger,
   cliLogger,
@@ -77,24 +63,3 @@ export { getAllPrompts, getPrompt } from './prompts/index';
 
 // CLI 工具
 export { McpCli } from './cli';
-
-// 常量
-import { DEFAULT_CACHE_TTL } from './constants';
-
-/**
- * 版本信息
- */
-export const VERSION = '1.0.0';
-
-/**
- * 默认配置
- */
-export const DEFAULT_CONFIG = {
-  packagesDir: './packages',
-  outputDir: './data',
-  cacheDir: './data/.cache',
-  cacheTTL: DEFAULT_CACHE_TTL,
-  ignorePackages: [] as string[],
-  enableCache: true,
-  verbose: false,
-};
