@@ -641,7 +641,17 @@ const validateBuildOutputs = (packages: Set<string>) => {
   console.log(chalk.blue('校验构建产物...'));
   const errors: string[] = [];
 
+  // 过滤掉 private 包，只校验可发布的包
+  const publishablePackagesMap = new Map(
+    getPublishablePackages().map((pkg) => [pkg.name, pkg]),
+  );
+
   for (const pkgName of packages) {
+    // 跳过 private 包
+    if (!publishablePackagesMap.has(pkgName)) {
+      continue;
+    }
+
     const pkgDir = getPackageDir(pkgName);
     if (!pkgDir) {
       errors.push(`找不到包目录: ${pkgName}`);
