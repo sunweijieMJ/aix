@@ -56,6 +56,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # ------------------------------------------------------------
+      # 先构建 workspace 内部组件包
+      # ------------------------------------------------------------
+      - name: Build internal packages
+        run: pnpm -r --filter "./packages/*" build
+
       - name: Build Storybook
         run: pnpm storybook:build
 

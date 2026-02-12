@@ -12,38 +12,44 @@ stages:
   - build_docs
   - deploy_docs
 
-# 全局变量配置
+# ============================
+# 全局变量
+# ============================
+
 variables:
   PUBLIC_DIR: public
   STORYBOOK_DIR: dist/storybook
   DOCS_DIR: dist/docs
   DOCKER_BUILD_IMAGE: node:22-alpine
 
-# 全局缓存配置
+# ============================
+# 全局缓存
+# ============================
+
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
     - .pnpm-store/
-    - node_modules/
 
 # ============================
-# 安装依赖
+# 公共 node job 配置
 # ============================
 
-install:
-  stage: install
+.default_node_job: &default_node_job
   image: $DOCKER_BUILD_IMAGE
   before_script:
     - npm install -g pnpm@10.14.0
+    - pnpm config set store-dir .pnpm-store
+
+# ============================
+# 1️⃣ 安装依赖
+# ============================
+
+install:
+  <<: *default_node_job
+  stage: install
   script:
     - pnpm install --frozen-lockfile
-  cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    policy: pull-push
-    paths:
-      - .pnpm-store/
-      - node_modules/
-      - packages/*/node_modules/
   artifacts:
     paths:
       - node_modules/
@@ -54,18 +60,18 @@ install:
     - /^release\/.+$/
 
 # ============================
-# 文档构建
+# 2️⃣ 构建 Storybook
 # ============================
 
-# 构建 Storybook
 build:storybook:
+  <<: *default_node_job
   stage: build_docs
-  image: $DOCKER_BUILD_IMAGE
   dependencies:
     - install
-  before_script:
-    - npm install -g pnpm@10.14.0
   script:
+    # 先构建内部组件包
+    - pnpm -r --filter "./packages/*" build
+    # 再构建 Storybook
     - pnpm storybook:build
   artifacts:
     paths:
@@ -75,16 +81,23 @@ build:storybook:
     - master
     - /^release\/.+$/
 
-# 构建 VitePress 文档
+# ============================
+# 3️⃣ 构建 VitePress 文档
+# ============================
+
 build:docs:
+  <<: *default_node_job
   stage: build_docs
-  image: $DOCKER_BUILD_IMAGE
   dependencies:
     - install
   before_script:
     - apk add --no-cache git
     - npm install -g pnpm@10.14.0
+    - pnpm config set store-dir .pnpm-store
   script:
+    # 先构建内部组件包
+    - pnpm -r --filter "./packages/*" build
+    # 再构建 VitePress
     - pnpm docs:build
   artifacts:
     paths:
@@ -95,13 +108,12 @@ build:docs:
     - /^release\/.+$/
 
 # ============================
-# 文档部署
-# ============================
-
-# 部署到 GitLab Pages (自动)
+# 4️⃣ 部署到 GitLab Pages
 # 访问地址：
 #   - Storybook: https://sunweijie1.gitlab.io/aix/storybook
 #   - VitePress: https://sunweijie1.gitlab.io/aix/docs
+# ============================
+
 pages:
   stage: deploy_docs
   dependencies:
