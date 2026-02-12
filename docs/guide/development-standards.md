@@ -2,20 +2,7 @@
 
 本文档基于项目实际配置整理，所有规则均由工具链自动检查。
 
-**配置源文件**：
-
-- TypeScript：[`internal/typescript-config/`](../../internal/typescript-config/)
-- ESLint：[`internal/eslint-config/`](../../internal/eslint-config/)
-- Stylelint：[`internal/stylelint-config/`](../../internal/stylelint-config/)
-- Prettier：[`prettier.config.js`](../../prettier.config.js)
-- Commitlint：[`commitlint.config.ts`](../../commitlint.config.ts)
-- CSpell：[`.cspell.json`](../../.cspell.json)
-
----
-
 ## 1. TypeScript
-
-> 配置继承：[`base.json`](../../internal/typescript-config/base.json) → [`base-library.json`](../../internal/typescript-config/base-library.json)（组件包）/ [`base-app.json`](../../internal/typescript-config/base-app.json)（应用）
 
 ### 1.1 严格类型检查
 
@@ -481,8 +468,6 @@ opacity: 50%;
 ---
 
 ## 5. 代码格式化
-
-> 配置源文件：[`prettier.config.js`](../../prettier.config.js)、[`.editorconfig`](../../.editorconfig)
 
 ```typescript
 // ✓ 正确：符合 Prettier 配置

@@ -489,8 +489,3 @@ A: 使用 `validateThemeConfig()` 进行验证，或使用 `sanitizeThemeConfig(
 ### Q: 主题配置会保存在哪里？
 
 A: 主题模式会自动保存到 `localStorage`（key: `aix-theme-mode`），刷新页面后会自动恢复。
-
-## 相关文档
-
-- [主题定制指南](./theme.md)
-- [组件开发指南](../components/development.md)
