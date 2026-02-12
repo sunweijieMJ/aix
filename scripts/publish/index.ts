@@ -633,6 +633,13 @@ const getRequiredOutputs = (pkgJsonPath: string): string[] => {
   return outputs.size > 0 ? Array.from(outputs) : [];
 };
 
+// 检查包是否需要构建（有 build 脚本）
+const needsBuild = (pkgJsonPath: string): boolean => {
+  const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
+  // 只有在 package.json 中明确定义了 build 脚本时，才需要校验构建产物
+  return !!pkgJson.scripts?.build;
+};
+
 // 校验构建产物是否存在
 const validateBuildOutputs = (packages: Set<string>) => {
   console.log(chalk.blue('校验构建产物...'));
@@ -656,6 +663,12 @@ const validateBuildOutputs = (packages: Set<string>) => {
     }
 
     const pkgJsonPath = path.join(pkgDir, 'package.json');
+
+    // 跳过没有 build 脚本的包（不需要构建产物）
+    if (!needsBuild(pkgJsonPath)) {
+      continue;
+    }
+
     const requiredOutputs = getRequiredOutputs(pkgJsonPath);
 
     if (requiredOutputs.length > 0) {
