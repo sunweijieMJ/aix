@@ -570,7 +570,7 @@ async function generateTestFile(
   componentDir: string,
   componentName: string,
   pascalName: string,
-  config: ComponentConfig,
+  _config: ComponentConfig,
 ) {
   const testTemplate = `import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
@@ -635,7 +635,7 @@ async function generateStoryFile(
   componentDir: string,
   componentName: string,
   pascalName: string,
-  config: ComponentConfig,
+  _config: ComponentConfig,
 ) {
   const storyTemplate = `import type { Meta, StoryObj } from '@storybook/vue3';
 import ${pascalName} from '../src/${pascalName}.vue';
