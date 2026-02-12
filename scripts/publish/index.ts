@@ -855,9 +855,10 @@ const postPublishGitActions = async (skipPrompts = false) => {
     return;
   }
 
-  // 动态生成 git add 路径（包含所有 workspace 目录）
+  // 动态生成 git add 路径（包含所有 workspace 目录 + apps）
   const addPaths = [
     ...WORKSPACE_DIRS.map((dir) => `${dir}/`),
+    'apps/', // apps 目录的依赖版本更新也需要提交
     '.changeset/',
     'pnpm-lock.yaml',
   ].join(' ');
