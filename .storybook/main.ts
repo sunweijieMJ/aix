@@ -41,6 +41,7 @@ const config: StorybookConfig = {
     // Customize Vite config for Storybook
     return {
       ...config,
+      base: process.env.STORYBOOK_BASE || config.base,
       resolve: {
         ...config.resolve,
         alias: {

@@ -8,6 +8,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import prettier from 'prettier';
 import { fileURLToPath } from 'url';
 
 import { applyDarkAlgorithm } from '../src/core/define-theme';
@@ -347,9 +348,15 @@ async function generateAllCSS(): Promise<void> {
     },
   ];
 
+  const prettierConfig = await prettier.resolveConfig(OUTPUT_DIR);
+
   for (const file of files) {
     const filePath = path.join(OUTPUT_DIR, file.name);
-    await fs.writeFile(filePath, file.content, 'utf-8');
+    const formatted = await prettier.format(file.content, {
+      ...prettierConfig,
+      parser: 'css',
+    });
+    await fs.writeFile(filePath, formatted, 'utf-8');
     log(`  ✓ ${file.name}`, 'green');
   }
 

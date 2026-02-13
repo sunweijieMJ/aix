@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# GitHub Actions - 自动发布
+#
+# 工作流程：
+# 1. 开发者提交 changeset (pnpm changeset)
+# 2. PR 合入 master 后，此 workflow 自动创建 "Version Packages" PR
+# 3. "Version Packages" PR 包含版本号更新 + CHANGELOG
+# 4. 合入该 PR 后，自动构建并发布到 npm registry
+#
+# 前置条件：
+# - 在 Settings > Secrets 中配置 NPM_TOKEN
+# - 若使用私有 registry，确保 token 对应正确的 registry
+# ------------------------------------------------------------
+
+name: Release Packages
+
+on:
+  workflow_run:
+    workflows: [Check Quality]
+    branches: [master, 'release/**']
+    types: [completed]
+
+concurrency:
+  group: release-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # 仅在 Check Quality 成功后执行
+    if: github.event.workflow_run.conclusion == 'success'
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Configure npm auth for private registry
+        run: |
+          echo "//npm-registry.zhihuishu.com:4873/:_authToken=\${NPM_TOKEN}" >> .npmrc
+
+      - name: Create Release PR or Publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          title: 'chore(release): version packages'
+          commit: 'chore(release): version packages'
+          version: pnpm changeset version
+          publish: pnpm changeset publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Push git tags
+        if: steps.changesets.outputs.published == 'true'
+        run: git push --follow-tags

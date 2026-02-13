@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# GitHub Actions - CI 质量门禁
+#
+# 触发条件：
+# - PR 提交到 master / release/** 分支
+# - 直接 push 到 master / release/** 分支
+#
+# 检查项：
+# - lint: ESLint + Stylelint 代码规范
+# - type-check: TypeScript 类型检查
+# - test: Vitest 单元测试 + 覆盖率
+# - build: 全量构建验证
+# ------------------------------------------------------------
+
+name: Check Quality
+
+on:
+  pull_request:
+    branches: [master, 'release/**']
+  push:
+    branches: [master, 'release/**']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================
+  # Lint - 代码规范检查
+  # ============================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (ESLint + Stylelint)
+        run: pnpm lint
+
+      - name: Spell check
+        run: pnpm cspell
+
+  # ============================
+  # Type Check - 类型检查
+  # ============================
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript type check
+        run: pnpm type-check
+
+  # ============================
+  # Test - 单元测试
+  # ============================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+  # ============================
+  # Build - 构建验证
+  # ============================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Verify build outputs
+        run: |
+          echo "Checking build outputs..."
+          for pkg in button hooks icons pdf-viewer subtitle theme video; do
+            if [ -d "packages/$pkg/es" ] || [ -d "packages/$pkg/dist" ]; then
+              echo "✅ @aix/$pkg - build output exists"
+            else
+              echo "❌ @aix/$pkg - missing build output"
+              exit 1
+            fi
+          done
+          echo "All packages built successfully"

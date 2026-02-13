@@ -14,14 +14,14 @@
 name: Deploy Docs
 
 on:
-  push:
-    branches:
-      - master
-      - 'release/**'
+  workflow_run:
+    workflows: [Check Quality]
+    branches: [master, 'release/**']
+    types: [completed]
 
 # 同一分支只保留最新的部署，取消进行中的旧运行
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 # GitHub Pages 部署权限
@@ -35,6 +35,8 @@ jobs:
   # 构建文档
   # ============================
   build:
+    # 仅在 Check Quality 成功后执行
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -56,17 +58,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # ------------------------------------------------------------
-      # 先构建 workspace 内部组件包
-      # ------------------------------------------------------------
-      - name: Build internal packages
-        run: pnpm -r --filter "./packages/*" build
-
       - name: Build Storybook
         run: pnpm storybook:build
+        env:
+          STORYBOOK_BASE: /aix/storybook/
 
       - name: Build VitePress docs
         run: pnpm docs:build
+        env:
+          VITEPRESS_BASE: /aix/docs/
 
       - name: Assemble Pages artifact
         run: |
@@ -86,7 +86,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     # 仅 master 分支触发部署
-    if: github.ref == 'refs/heads/master'
+    if: github.event.workflow_run.head_branch == 'master'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

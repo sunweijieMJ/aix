@@ -797,7 +797,7 @@ npm view @aix/button
 # 4. 检查依赖是否正确
 {
   "peerDependencies": {
-    "vue": "^3.3.0"  // 确保版本范围合理
+    "vue": "^3.5.28"  // 确保版本范围合理
   }
 }
 
