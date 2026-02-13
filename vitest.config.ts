@@ -6,9 +6,9 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@aix/icons': resolve(__dirname, 'packages/icons/src/index.ts'),
-      '@aix/theme': resolve(__dirname, 'packages/theme/src/index.ts'),
-      '@aix/hooks': resolve(__dirname, 'packages/hooks/src/index.ts'),
+      '@aix/icons': resolve(__dirname, 'packages/icons/src'),
+      '@aix/theme': resolve(__dirname, 'packages/theme/src'),
+      '@aix/hooks': resolve(__dirname, 'packages/hooks/src'),
     },
   },
   test: {

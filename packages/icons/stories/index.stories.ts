@@ -10,7 +10,7 @@ import {
   Pause,
   Notifications,
   LocationOn,
-} from '../src';
+} from '@aix/icons';
 
 const meta: Meta<typeof Camera> = {
   title: 'Components/Icons',
@@ -38,6 +38,13 @@ const meta: Meta<typeof Camera> = {
 export default meta;
 type Story = StoryObj<typeof Camera>;
 
+// Icon Props 类型
+interface IconProps {
+  width?: string | number;
+  height?: string | number;
+  color?: string;
+}
+
 // 基础示例
 export const Basic: Story = {
   args: {
@@ -45,7 +52,7 @@ export const Basic: Story = {
     height: 24,
     color: '#1890ff',
   },
-  render: (args) => ({
+  render: (args: IconProps) => ({
     components: { Camera },
     setup() {
       return { args };
