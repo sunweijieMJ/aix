@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# CODEOWNERS - 代码所有者配置
+#
+# 功能特性：
+# - PR 自动分配审查人
+# - 按组件/目录设置所有者
+# - 确保关键改动经过审查
+#
+# 语法：
+# <文件路径>  @用户名1 @用户名2
+#
+# 参考文档：
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# ------------------------------------------------------------
+
+# ============================
+# 全局默认所有者
+# ============================
+# 所有文件的默认审查人（修改为你的 GitHub 用户名）
+* @sunweijieMJ
+
+# ============================
+# 核心工程配置
+# ============================
+# 构建配置
+/rollup.config.js @sunweijieMJ
+/turbo.json @sunweijieMJ
+/package.json @sunweijieMJ
+/pnpm-workspace.yaml @sunweijieMJ
+
+# CI/CD 配置
+/.github/workflows/ @sunweijieMJ
+
+# 代码质量配置
+/.eslintrc.cjs @sunweijieMJ
+/.stylelintrc.cjs @sunweijieMJ
+/commitlint.config.ts @sunweijieMJ
+
+# ============================
+# 组件包
+# ============================
+# 主题系统（关键包，需要严格审查）
+/packages/theme/ @sunweijieMJ
+
+# 公共 Hooks（关键包，影响所有组件）
+/packages/hooks/ @sunweijieMJ
+
+# 各组件包（可根据团队分工指定不同所有者）
+/packages/button/ @sunweijieMJ
+/packages/icons/ @sunweijieMJ
+/packages/pdf-viewer/ @sunweijieMJ
+/packages/subtitle/ @sunweijieMJ
+/packages/video/ @sunweijieMJ
+
+# ============================
+# 内部共享配置
+# ============================
+/internal/eslint-config/ @sunweijieMJ
+/internal/stylelint-config/ @sunweijieMJ
+/internal/typescript-config/ @sunweijieMJ
+
+# ============================
+# 文档
+# ============================
+/README.md @sunweijieMJ
+/CLAUDE.md @sunweijieMJ
+/CHANGELOG.md @sunweijieMJ
+
+# ============================
+# 特殊文件
+# ============================
+# 依赖锁文件（通常由 Dependabot 自动更新）
+/pnpm-lock.yaml
+
+# Changeset 配置
+/.changeset/ @sunweijieMJ

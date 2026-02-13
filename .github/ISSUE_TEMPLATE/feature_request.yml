@@ -1,0 +1,94 @@
+name: ✨ 功能需求
+description: 建议新功能或改进现有功能
+title: '[Feature]: '
+labels: ['enhancement', 'needs-review']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢建议！请详细描述你的需求，帮助我们更好地理解和评估。
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: 需求类型
+      description: 这是什么类型的需求？
+      options:
+        - 新组件 (New Component)
+        - 组件增强 (Component Enhancement)
+        - API 改进 (API Improvement)
+        - 样式主题 (Theme/Styling)
+        - 文档改进 (Documentation)
+        - 开发体验 (DX Improvement)
+        - 其他 (Other)
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: 相关组件 (可选)
+      description: 如果是组件相关需求，请填写组件名
+      placeholder: '@aix/button'
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题背景
+      description: 当前遇到了什么问题或限制？
+      placeholder: '目前 Button 组件不支持 loading 状态，导致异步操作时体验不佳...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望方案
+      description: 你期望如何解决这个问题？
+      placeholder: |
+        建议为 Button 添加 `loading` prop：
+        - 显示加载图标
+        - 自动禁用按钮
+        - 保持按钮尺寸稳定
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 备选方案 (可选)
+      description: 是否有其他可行方案？
+      placeholder: '或者可以考虑...'
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: 参考示例 (可选)
+      description: 提供其他组件库的实现参考或设计稿链接
+      placeholder: |
+        - Ant Design: https://ant.design/components/button#loading
+        - Element Plus: https://element-plus.org/en-US/component/button.html#loading
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 优先级
+      description: 你认为这个需求的优先级如何？
+      options:
+        - 🔴 高 - 严重影响使用
+        - 🟡 中 - 影响体验但有变通方案
+        - 🟢 低 - Nice to have
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 检查清单
+      options:
+        - label: 我已搜索现有 Issues，确认此需求未被提出
+          required: true
+        - label: 我已阅读组件库设计原则，确认此需求符合定位
+          required: true
+        - label: 我愿意贡献代码实现此功能
+          required: false

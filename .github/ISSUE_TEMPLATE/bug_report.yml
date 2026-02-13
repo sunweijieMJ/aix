@@ -1,0 +1,105 @@
+name: 🐛 Bug 反馈
+description: 报告组件 Bug 或异常行为
+title: '[Bug]: '
+labels: ['bug', 'needs-triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请详细描述问题，帮助我们快速定位和修复。
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 受影响的组件
+      description: 哪个组件出现了问题？
+      options:
+        - Button (按钮)
+        - Icons (图标)
+        - PdfViewer (PDF 查看器)
+        - Subtitle (字幕)
+        - Video (视频播放器)
+        - Hooks (组合式函数)
+        - Theme (主题系统)
+        - 其他 / Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本号
+      description: 使用的组件库版本（如 @aix/button@1.2.3）
+      placeholder: '1.2.3'
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清晰简洁地描述 Bug 的表现
+      placeholder: '点击按钮后没有响应...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 如何重现此问题？
+      placeholder: |
+        1. 安装 @aix/button
+        2. 在页面中使用 <AixButton disabled>
+        3. 点击按钮
+        4. 发现样式异常
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      description: 应该出现什么正常行为？
+      placeholder: '按钮应该呈现禁用状态，且不可点击'
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-link
+    attributes:
+      label: 复现链接 (可选)
+      description: 提供 CodeSandbox / StackBlitz / GitHub 仓库链接
+      placeholder: 'https://codesandbox.io/s/...'
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息
+      description: 项目环境信息（框架、构建工具、浏览器等）
+      value: |
+        - **Vue 版本**:
+        - **构建工具**: (Vite / Webpack / 其他)
+        - **浏览器**: (Chrome 120 / Safari 17 / ...)
+        - **操作系统**: (macOS / Windows / Linux)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志 (可选)
+      description: 控制台报错、截图等
+      render: shell
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 检查清单
+      options:
+        - label: 我已搜索现有 Issues，确认此问题未被报告
+          required: true
+        - label: 我已阅读组件文档并确认使用方式正确
+          required: true
+        - label: 我愿意提交 PR 修复此问题
+          required: false

@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# Dependabot 自动依赖更新配置
+#
+# 功能特性：
+# - 每周一检查过时的 npm 依赖
+# - 开发依赖和生产依赖分组更新
+# - 自动打标签和设置审查人
+# - 限制每周最多 5 个 PR，避免淹没通知
+#
+# 参考文档：
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+# ------------------------------------------------------------
+
+version: 2
+updates:
+  # ============================
+  # npm 依赖更新
+  # ============================
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+      timezone: 'Asia/Shanghai'
+
+    # 分组策略：减少 PR 数量
+    groups:
+      # 开发依赖分组
+      dev-dependencies:
+        dependency-type: 'development'
+        update-types:
+          - 'minor'
+          - 'patch'
+
+      # 生产依赖分组（minor + patch）
+      production-dependencies:
+        dependency-type: 'production'
+        update-types:
+          - 'minor'
+          - 'patch'
+
+    # 限制每周最多 5 个 PR
+    open-pull-requests-limit: 5
+
+    # PR 标签
+    labels:
+      - 'dependencies'
+      - 'automated'
+
+    # 提交信息前缀
+    commit-message:
+      prefix: 'chore(deps)'
+      include: 'scope'
+
+    # 审查人（可选）
+    # reviewers:
+    #   - "sunweijieMJ"
+
+    # 允许的更新类型（默认全部）
+    # allow:
+    #   - dependency-type: "production"
+    #   - dependency-type: "development"
+
+    # 忽略特定依赖（如果需要）
+    # ignore:
+    #   - dependency-name: "vue"
+    #     versions: ["3.x"]
+
+  # ============================
+  # GitHub Actions 更新
+  # ============================
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+      timezone: 'Asia/Shanghai'
+
+    labels:
+      - 'github-actions'
+      - 'automated'
+
+    commit-message:
+      prefix: 'chore(ci)'

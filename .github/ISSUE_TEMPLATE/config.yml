@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 组件文档
+    url: https://github.com/sunweijieMJ/aix#readme
+    about: 查看组件使用文档和 API 说明
+  - name: 💬 问题讨论
+    url: https://github.com/sunweijieMJ/aix/discussions
+    about: 使用问题、技术讨论请在 Discussions 发起
+  - name: 🎨 Storybook 示例
+    url: https://sunweijieMJ.github.io/aix/storybook
+    about: 查看组件交互示例
