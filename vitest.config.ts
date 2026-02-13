@@ -3,7 +3,6 @@ import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  root: resolve(__dirname),
   plugins: [vue()],
   resolve: {
     alias: {
@@ -21,15 +20,15 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'], // 代码覆盖率报告
     },
     setupFiles: resolve(__dirname, 'vitest.setup.ts'),
-    include: ['packages/**/__test__/*.{test,spec}.?(c|m)[jt]s?(x)'],
+    include: ['**/__test__/*.{test,spec}.?(c|m)[jt]s?(x)'],
     exclude: [
-      '**/*/node_modules',
-      '**/*/dist',
-      '**/*/build',
-      '**/*/coverage',
-      '**/*/lib',
-      '**/*/es',
-      '**/*/stories',
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/coverage/**',
+      '**/lib/**',
+      '**/es/**',
+      '**/stories/**',
     ],
   },
 });

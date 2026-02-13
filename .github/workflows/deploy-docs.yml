@@ -60,19 +60,28 @@ jobs:
 
       - name: Build Storybook
         run: pnpm storybook:build
-        env:
-          STORYBOOK_BASE: /aix/storybook/
 
       - name: Build VitePress docs
         run: pnpm docs:build
-        env:
-          VITEPRESS_BASE: /aix/docs/
 
       - name: Assemble Pages artifact
         run: |
           mkdir -p public
           cp -r dist/storybook public/storybook
           cp -r dist/docs public/docs
+          cat > public/index.html << 'HTML'
+          <!DOCTYPE html>
+          <html lang="zh-CN">
+          <head>
+            <meta charset="UTF-8">
+            <meta http-equiv="refresh" content="0;url=docs/">
+            <title>AIX - Vue 3 组件库</title>
+          </head>
+          <body>
+            <p>正在跳转到 <a href="docs/">文档</a>...</p>
+          </body>
+          </html>
+          HTML
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

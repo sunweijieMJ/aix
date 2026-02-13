@@ -1,15 +1,13 @@
 # ------------------------------------------------------------
 # GitHub Actions - CI 质量门禁
 #
+# 执行顺序：
+# 1. build: 全量构建（生成类型声明等产物）
+# 2. lint / type-check / test: 并行执行（依赖 build 产物）
+#
 # 触发条件：
 # - PR 提交到 master / release/** 分支
 # - 直接 push 到 master / release/** 分支
-#
-# 检查项：
-# - lint: ESLint + Stylelint 代码规范
-# - type-check: TypeScript 类型检查
-# - test: Vitest 单元测试 + 覆盖率
-# - build: 全量构建验证
 # ------------------------------------------------------------
 
 name: Check Quality
@@ -26,91 +24,7 @@ concurrency:
 
 jobs:
   # ============================
-  # Lint - 代码规范检查
-  # ============================
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.14.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Lint (ESLint + Stylelint)
-        run: pnpm lint
-
-      - name: Spell check
-        run: pnpm cspell
-
-  # ============================
-  # Type Check - 类型检查
-  # ============================
-  type-check:
-    name: Type Check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.14.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: TypeScript type check
-        run: pnpm type-check
-
-  # ============================
-  # Test - 单元测试
-  # ============================
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.14.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run tests
-        run: pnpm test
-
-  # ============================
-  # Build - 构建验证
+  # Build - 构建验证（首先执行）
   # ============================
   build:
     name: Build
@@ -148,3 +62,105 @@ jobs:
             fi
           done
           echo "All packages built successfully"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            packages/*/es/
+            packages/*/lib/
+            packages/*/dist/
+          retention-days: 1
+
+  # ============================
+  # Lint - 代码规范检查
+  # ============================
+  lint:
+    name: Lint
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (ESLint + Stylelint)
+        run: pnpm lint
+
+      - name: Spell check
+        run: pnpm cspell
+
+  # ============================
+  # Type Check - 类型检查
+  # ============================
+  type-check:
+    name: Type Check
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+
+      - name: TypeScript type check
+        run: pnpm type-check
+
+  # ============================
+  # Test - 单元测试
+  # ============================
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm vitest run

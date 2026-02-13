@@ -8,8 +8,8 @@ export default withMermaid(
     description: 'Vue 3 企业级组件库',
     lang: 'zh-CN',
 
-    // 部署基础路径（支持环境变量覆盖，适配 GitHub Pages 等不同部署平台）
-    base: (process.env.VITEPRESS_BASE || '/docs/') as `/${string}/`,
+    // 部署基础路径
+    base: '/aix/docs/',
 
     // 构建输出目录
     outDir: '../dist/docs',
