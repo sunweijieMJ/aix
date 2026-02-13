@@ -11,7 +11,7 @@
     "add:yalc": "tsx scripts/add-yalc.ts",
     "remove:yalc": "tsx scripts/remove-yalc.ts",
     "lint:script": "eslint . --max-warnings 0",
-    "lint:style": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
+    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
     "link": "pnpm run lint:script && pnpm run lint:style",
     "i18n": "tsx ../../internal/i18n-tools/src/cli.ts --config ./i18n.config.ts"
   },
