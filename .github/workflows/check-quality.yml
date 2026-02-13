@@ -83,7 +83,7 @@ jobs:
           fi
           echo "All packages built successfully"
 
-      # 缓存构建产物供后续 jobs 使用
+      # 缓存构建产物和依赖供后续 jobs 使用
       - name: Cache build outputs
         uses: actions/cache/save@v4
         with:
@@ -93,6 +93,9 @@ jobs:
             packages/*/dist
             internal/*/dist
             node_modules
+            packages/*/node_modules
+            internal/*/node_modules
+            apps/*/node_modules
           key: build-${{ github.sha }}
 
   # ============================
@@ -117,7 +120,7 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # 恢复构建产物
+      # 恢复构建产物和依赖
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -127,7 +130,11 @@ jobs:
             packages/*/dist
             internal/*/dist
             node_modules
+            packages/*/node_modules
+            internal/*/node_modules
+            apps/*/node_modules
           key: build-${{ github.sha }}
+          fail-on-cache-miss: true
 
       - name: Run tests
         run: pnpm test
@@ -154,7 +161,7 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # 恢复构建产物
+      # 恢复构建产物和依赖
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -164,7 +171,11 @@ jobs:
             packages/*/dist
             internal/*/dist
             node_modules
+            packages/*/node_modules
+            internal/*/node_modules
+            apps/*/node_modules
           key: build-${{ github.sha }}
+          fail-on-cache-miss: true
 
       - name: TypeScript type check
         run: pnpm type-check
@@ -191,7 +202,7 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # 恢复构建产物
+      # 恢复构建产物和依赖
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -201,7 +212,11 @@ jobs:
             packages/*/dist
             internal/*/dist
             node_modules
+            packages/*/node_modules
+            internal/*/node_modules
+            apps/*/node_modules
           key: build-${{ github.sha }}
+          fail-on-cache-miss: true
 
       - name: Lint (ESLint + Stylelint)
         run: pnpm lint
