@@ -1,0 +1,13 @@
+import type { App } from 'vue';
+import <%= it.pascalName %> from './<%= it.pascalName %>.vue';
+
+export type { <%= it.pascalName %>Props, <%= it.pascalName %>Emits } from './types';
+export { <%= it.pascalName %> };
+<% if (it.features.composables) { %>export { use<%= it.pascalName %> } from './use<%= it.pascalName %>';
+<% } %><% if (it.features.i18n) { %>export * from './locale';
+<% } %>
+export default {
+  install(app: App) {
+    app.component('Aix<%= it.pascalName %>', <%= it.pascalName %>);
+  },
+};

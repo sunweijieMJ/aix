@@ -1,0 +1,20 @@
+import { computed } from 'vue';
+import type { <%= it.pascalName %>Props } from './types';
+
+/**
+ * <%= it.pascalName %> 组件逻辑
+ */
+export function use<%= it.pascalName %>(props: <%= it.pascalName %>Props) {
+  const rootClass = computed(() => [
+    'aix-<%= it.componentName %>',
+    `aix-<%= it.componentName %>--${props.size}`,
+    {
+      'aix-<%= it.componentName %>--primary': props.type === 'primary',
+      'aix-<%= it.componentName %>--disabled': props.disabled,
+    },
+  ]);
+
+  return {
+    rootClass,
+  };
+}

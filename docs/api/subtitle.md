@@ -3,14 +3,18 @@ title: Subtitle API
 outline: deep
 ---
 
+# Subtitle API
+
 ::: warning 自动生成
 此文档由 `pnpm docs:sync` 自动生成。请勿手动编辑此文件。
 
 如需更新 API 文档，请修改组件源码注释，然后运行：
+
 ```bash
 pnpm docs:gen  # 生成 API 到 README.md
 pnpm docs:sync # 同步到文档站点
 ```
+
 :::
 
 ## Props

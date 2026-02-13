@@ -1,0 +1,9 @@
+import type { <%= it.pascalName %>Locale } from './types';
+
+const zhCN: <%= it.pascalName %>Locale = {
+  placeholder: '请输入',
+  confirm: '确定',
+  cancel: '取消',
+};
+
+export default zhCN;

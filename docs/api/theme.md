@@ -3,6 +3,8 @@ title: Theme API
 outline: deep
 ---
 
+# Theme API
+
 ::: tip 使用指南
 关于主题系统的使用方法和最佳实践，请参阅 [主题定制](/guide/theme) 指南。
 :::

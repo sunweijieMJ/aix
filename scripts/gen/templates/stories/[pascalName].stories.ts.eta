@@ -1,0 +1,82 @@
+import type { Meta, StoryObj } from '@storybook/vue3';
+import { <%= it.pascalName %> } from '../src';
+
+const meta: Meta<typeof <%= it.pascalName %>> = {
+  title: 'Components/<%= it.pascalName %>',
+  component: <%= it.pascalName %>,
+  tags: ['autodocs'],
+  argTypes: {
+    type: {
+      control: 'select',
+      options: ['default', 'primary'],
+      description: '组件类型',
+    },
+    size: {
+      control: 'select',
+      options: ['small', 'medium', 'large'],
+      description: '组件尺寸',
+    },
+    disabled: {
+      control: 'boolean',
+      description: '是否禁用',
+    },
+  },
+};
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Default: Story = {
+  args: {
+    type: 'default',
+    size: 'medium',
+    disabled: false,
+  },
+  render: (args) => ({
+    components: { <%= it.pascalName %> },
+    setup() {
+      return { args };
+    },
+    template: '<<%= it.pascalName %> v-bind="args">默认内容</<%= it.pascalName %>>',
+  }),
+};
+
+export const Primary: Story = {
+  args: {
+    type: 'primary',
+    size: 'medium',
+  },
+  render: (args) => ({
+    components: { <%= it.pascalName %> },
+    setup() {
+      return { args };
+    },
+    template: '<<%= it.pascalName %> v-bind="args">主要按钮</<%= it.pascalName %>>',
+  }),
+};
+
+export const Sizes: Story = {
+  render: () => ({
+    components: { <%= it.pascalName %> },
+    template: `
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <<%= it.pascalName %> size="small">小尺寸</<%= it.pascalName %>>
+        <<%= it.pascalName %> size="medium">中尺寸</<%= it.pascalName %>>
+        <<%= it.pascalName %> size="large">大尺寸</<%= it.pascalName %>>
+      </div>
+    `,
+  }),
+};
+
+export const Disabled: Story = {
+  args: {
+    disabled: true,
+  },
+  render: (args) => ({
+    components: { <%= it.pascalName %> },
+    setup() {
+      return { args };
+    },
+    template: '<<%= it.pascalName %> v-bind="args">禁用状态</<%= it.pascalName %>>',
+  }),
+};

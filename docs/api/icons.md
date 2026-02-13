@@ -3,6 +3,8 @@ title: Icons API
 outline: deep
 ---
 
+# Icons API
+
 ## 概述
 
 `@aix/icons` 提供 580+ 个语义化 SVG 图标组件，支持按需导入和 Tree Shaking。

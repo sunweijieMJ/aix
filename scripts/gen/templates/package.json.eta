@@ -1,7 +1,7 @@
 {
-  "name": "@aix/button",
+  "name": "@aix/<%= it.componentName %>",
   "version": "0.0.0",
-  "description": "A Vue 3 Button component",
+  "description": "<%= it.description %>",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -46,10 +46,9 @@
     "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
-  "dependencies": {
-    "@aix/theme": "workspace:*",
-    "@aix/hooks": "workspace:*"
-  },
+  "dependencies": {<% if (it.dependencies.length > 0) { %><% it.dependencies.forEach((dep, index) => { %>
+    "<%= dep %>": "workspace:*"<%= index < it.dependencies.length - 1 ? ',' : '' %><% }) %>
+  <% } %>},
   "peerDependencies": {
     "vue": "^3.5.28"
   },

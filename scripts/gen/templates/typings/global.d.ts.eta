@@ -1,0 +1,7 @@
+import type { <%= it.pascalName %> } from '../src';
+
+declare module 'vue' {
+  export interface GlobalComponents {
+    Aix<%= it.pascalName %>: typeof <%= it.pascalName %>;
+  }
+}

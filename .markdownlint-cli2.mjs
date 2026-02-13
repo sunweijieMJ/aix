@@ -24,6 +24,7 @@ const config = {
     MD013: false, // line-length - 不限制行长度
     MD022: false, // blanks-around-headings - 标题周围空行
     MD024: false, // no-duplicate-heading - 允许重复标题
+    MD025: false, // single-h1 - VitePress frontmatter title 会与 h1 冲突
     MD026: false, // no-trailing-punctuation - 标题末尾标点
     MD029: false, // ol-prefix - 有序列表前缀
     MD031: false, // blanks-around-fences - 代码块周围空行
@@ -31,6 +32,7 @@ const config = {
     MD033: false, // no-inline-html - 允许内联 HTML
     MD034: false, // no-bare-urls - 允许裸 URL
     MD036: false, // no-emphasis-as-heading - 强调作为标题
+    MD051: false, // link-fragments - VitePress 自动生成的锚点格式不同
     MD058: false, // blanks-around-tables - 表格周围空行
     MD040: false, // fenced-code-language - 代码块语言
     MD041: false, // first-line-heading - 第一行必须是标题
