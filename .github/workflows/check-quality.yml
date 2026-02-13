@@ -2,8 +2,10 @@
 # GitHub Actions - CI 质量门禁
 #
 # 执行顺序：
-# 1. build: 全量构建验证
-# 2. lint: 代码规范检查（依赖 build 通过）
+# 1. build: 全量构建验证 + 缓存构建产物
+# 2. test: 单元测试（并行执行）
+# 3. type-check: TypeScript 类型检查（并行执行）
+# 4. lint: 代码规范检查（并行执行）
 #
 # 触发条件：
 # - PR 提交到 master / release/** 分支
@@ -53,22 +55,53 @@ jobs:
       - name: Verify build outputs
         run: |
           echo "Checking build outputs..."
-          for pkg in button hooks icons pdf-viewer subtitle theme video; do
-            if [ -d "packages/$pkg/es" ] || [ -d "packages/$pkg/dist" ]; then
+          failed=0
+          for dir in packages/*/; do
+            pkg=$(basename "$dir")
+            # 跳过隐藏目录和非目录文件
+            if [[ "$pkg" == .* ]] || [[ ! -d "$dir" ]]; then
+              continue
+            fi
+
+            # 检查是否有构建产物 (es/lib/dist 任一存在即可)
+            if [ -d "packages/$pkg/es" ] || [ -d "packages/$pkg/lib" ] || [ -d "packages/$pkg/dist" ]; then
               echo "✅ @aix/$pkg - build output exists"
             else
-              echo "❌ @aix/$pkg - missing build output"
-              exit 1
+              # 检查是否有 build 脚本
+              if grep -q '"build"' "packages/$pkg/package.json" 2>/dev/null; then
+                echo "❌ @aix/$pkg - has build script but missing output"
+                failed=1
+              else
+                echo "⚠️  @aix/$pkg - no build script (skip)"
+              fi
             fi
           done
+
+          if [ $failed -eq 1 ]; then
+            echo "Build verification failed"
+            exit 1
+          fi
           echo "All packages built successfully"
 
+      # 缓存构建产物供后续 jobs 使用
+      - name: Cache build outputs
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            packages/*/es
+            packages/*/lib
+            packages/*/dist
+            internal/*/dist
+            node_modules
+          key: build-${{ github.sha }}
+
   # ============================
-  # Lint - 代码规范检查
+  # Test - 单元测试
   # ============================
-  lint:
-    name: Lint
+  test:
+    name: Test
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,8 +117,91 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      # 恢复构建产物
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/*/es
+            packages/*/lib
+            packages/*/dist
+            internal/*/dist
+            node_modules
+          key: build-${{ github.sha }}
+
+      - name: Run tests
+        run: pnpm test
+
+  # ============================
+  # Type Check - TypeScript 类型检查
+  # ============================
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # 恢复构建产物
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/*/es
+            packages/*/lib
+            packages/*/dist
+            internal/*/dist
+            node_modules
+          key: build-${{ github.sha }}
+
+      - name: TypeScript type check
+        run: pnpm type-check
+
+  # ============================
+  # Lint - 代码规范检查
+  # ============================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # 恢复构建产物
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/*/es
+            packages/*/lib
+            packages/*/dist
+            internal/*/dist
+            node_modules
+          key: build-${{ github.sha }}
 
       - name: Lint (ESLint + Stylelint)
         run: pnpm lint
