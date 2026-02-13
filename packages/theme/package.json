@@ -36,7 +36,7 @@
   "scripts": {
     "gen:css": "tsx scripts/gen-css.ts",
     "dev": "pnpm run gen:css && rollup -c -w",
-    "lint": "stylelint 'src/**/*.{css,scss}' --max-warnings 0",
+    "lint": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
     "build": "pnpm run clean && pnpm run gen:css && rollup -c && pnpm run build:types",
     "build:types": "tsc --emitDeclarationOnly --outDir dist",
     "clean": "rimraf dist tsconfig.tsbuildinfo"
