@@ -58,6 +58,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build icons package
+        run: pnpm build:filter @aix/icons
+
       - name: Build Storybook
         run: pnpm storybook:build
 
