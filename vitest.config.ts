@@ -4,13 +4,6 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [vue()],
-  resolve: {
-    alias: {
-      '@aix/icons': resolve(__dirname, 'packages/icons/src'),
-      '@aix/theme': resolve(__dirname, 'packages/theme/src'),
-      '@aix/hooks': resolve(__dirname, 'packages/hooks/src'),
-    },
-  },
   test: {
     globals: true, // 启用全局 API，如 expect
     environment: 'jsdom', // 使用 JSDOM 运行环境（适用于前端组件）
