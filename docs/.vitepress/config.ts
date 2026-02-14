@@ -51,6 +51,11 @@ export default withMermaid(
           link: '/rfcs/',
           activeMatch: '/rfcs/',
         },
+        {
+          text: '技术分享',
+          link: '/tech-sharing/',
+          activeMatch: '/tech-sharing/',
+        },
       ],
 
       // 侧边栏
@@ -147,6 +152,22 @@ export default withMermaid(
           {
             text: '草稿',
             items: [{ text: '视觉比对测试', link: '/rfcs/visual-testing-rfc' }],
+          },
+        ],
+
+        '/tech-sharing/': [
+          {
+            text: '技术分享',
+            items: [{ text: '概述', link: '/tech-sharing/' }],
+          },
+          {
+            text: '工具与工作流',
+            items: [
+              {
+                text: 'Claude Code Agent Team',
+                link: '/tech-sharing/agent-team',
+              },
+            ],
           },
         ],
       },
