@@ -24,22 +24,18 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 视频播放器组件
+ *
+ * 基于 video.js 的 Vue 3 视频播放器，支持 HLS/RTMP/FLV 等多种视频格式
+ */
 import 'video.js/dist/video-js.css';
-import {
-  ref,
-  computed,
-  onMounted,
-  onBeforeUnmount,
-} from 'vue';
-import {
-  useNetworkStatus,
-  type NetworkStatus,
-} from './composables/useNetworkStatus';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { useNetworkStatus } from './composables/useNetworkStatus';
 import {
   useOrientationChange,
   type OrientationChangeOptions,
 } from './composables/useOrientationChange';
-import type { StreamAdapterOptions } from './composables/useStreamAdapter';
 import {
   useTouchEvents,
   type TouchEventsOptions,
@@ -47,64 +43,16 @@ import {
 import {
   useVideoPlayer,
   type VideoPlayerOptions,
-  type VideoSourceType,
 } from './composables/useVideoPlayer';
-import type { VideoJsOptions, VideoJsPlayer, ControlMethods } from './types';
+import type {
+  ControlMethods,
+  VideoPlayerProps,
+  VideoPlayerEmits,
+} from './types';
 
 defineOptions({
   name: 'VideoPlayer',
 });
-
-/**
- * Props
- */
-export interface VideoPlayerProps {
-  /** 视频源地址 */
-  src: string;
-  /** 封面图 */
-  poster?: string;
-  /** 是否自动播放 */
-  autoplay?: boolean;
-  /** 是否循环播放 */
-  loop?: boolean;
-  /** 是否静音 */
-  muted?: boolean;
-  /** 是否显示控制栏 */
-  controls?: boolean;
-  /** 是否响应式 */
-  responsive?: boolean;
-  /** 是否流式布局 */
-  fluid?: boolean;
-  /** 宽度 */
-  width?: number | string;
-  /** 高度 */
-  height?: number | string;
-  /** 宽高比 */
-  aspectRatio?: string;
-  /** 预加载策略 */
-  preload?: 'auto' | 'metadata' | 'none';
-  /** 是否透明背景 */
-  transparent?: boolean;
-  /** 是否跨域 */
-  crossOrigin?: boolean;
-  /** 是否启用调试日志 */
-  enableDebugLog?: boolean;
-  /** video.js 额外配置 */
-  options?: Partial<VideoJsOptions>;
-  /** 流适配器配置 */
-  streamOptions?: Omit<
-    StreamAdapterOptions,
-    'onReady' | 'onError' | 'onFirstFrame'
-  >;
-  /** 视频源类型（不指定时自动推断） */
-  sourceType?: VideoSourceType;
-  /** 是否使用自定义控制栏 */
-  customControls?: boolean;
-  /** 是否启用触摸事件优化 (移动端) */
-  enableTouchEvents?: boolean;
-  /** 横屏时是否自动全屏 */
-  autoFullscreenOnLandscape?: boolean;
-}
 
 const props = withDefaults(defineProps<VideoPlayerProps>(), {
   autoplay: false,
@@ -122,32 +70,7 @@ const props = withDefaults(defineProps<VideoPlayerProps>(), {
   autoFullscreenOnLandscape: false,
 });
 
-/**
- * Emits
- */
-const emit = defineEmits<{
-  ready: [player: VideoJsPlayer];
-  play: [];
-  pause: [];
-  ended: [];
-  timeupdate: [currentTime: number, duration: number];
-  progress: [buffered: number];
-  error: [error: Error];
-  volumechange: [volume: number, muted: boolean];
-  fullscreenchange: [isFullscreen: boolean];
-  canplay: [];
-  loadeddata: [];
-  /** 移动端自动播放策略触发静音 */
-  autoplayMuted: [reason: { reason: 'mobile-policy'; originalMuted: boolean }];
-  /** 网络离线 */
-  networkOffline: [];
-  /** 网络恢复在线 */
-  networkOnline: [];
-  /** 网络变慢 */
-  networkSlow: [status: NetworkStatus];
-  /** 网络状态变化 */
-  networkChange: [status: NetworkStatus];
-}>();
+const emit = defineEmits<VideoPlayerEmits>();
 
 const containerRef = ref<HTMLElement | null>(null);
 const videoRef = ref<HTMLVideoElement | null>(null);
@@ -190,7 +113,8 @@ const videoPlayerOptions = computed<VideoPlayerOptions>(() => ({
   onPlay: () => emit('play'),
   onPause: () => emit('pause'),
   onEnded: () => emit('ended'),
-  onTimeUpdate: (currentTime, duration) => emit('timeupdate', currentTime, duration),
+  onTimeUpdate: (currentTime, duration) =>
+    emit('timeupdate', currentTime, duration),
   onProgress: (buffered) => emit('progress', buffered),
   onError: (error) => emit('error', error),
   onVolumeChange: (volume, muted) => emit('volumechange', volume, muted),
@@ -269,12 +193,18 @@ const orientationOptions = computed<OrientationChangeOptions>(() => ({
   autoFullscreenOnLandscape: props.autoFullscreenOnLandscape,
   enableDebugLog: props.enableDebugLog,
   onLandscape: () => {
-    if (props.autoFullscreenOnLandscape && !videoPlayer.controller.isFullscreen()) {
+    if (
+      props.autoFullscreenOnLandscape &&
+      !videoPlayer.controller.isFullscreen()
+    ) {
       videoPlayer.controller.toggleFullscreen();
     }
   },
   onPortrait: () => {
-    if (props.autoFullscreenOnLandscape && videoPlayer.controller.isFullscreen()) {
+    if (
+      props.autoFullscreenOnLandscape &&
+      videoPlayer.controller.isFullscreen()
+    ) {
       videoPlayer.controller.toggleFullscreen();
     }
   },

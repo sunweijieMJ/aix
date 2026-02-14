@@ -37,16 +37,6 @@ export default withMermaid(
           activeMatch: '/components/',
         },
         {
-          text: 'API',
-          link: '/api/button',
-          activeMatch: '/api/',
-        },
-        {
-          text: '示例',
-          link: '/examples/basic-usage',
-          activeMatch: '/examples/',
-        },
-        {
           text: 'RFC',
           link: '/rfcs/',
           activeMatch: '/rfcs/',
@@ -110,33 +100,6 @@ export default withMermaid(
           },
         ],
 
-        '/api/': [
-          {
-            text: 'API 参考',
-            items: [
-              { text: 'Button', link: '/api/button' },
-              { text: 'Icons', link: '/api/icons' },
-              { text: 'VideoPlayer', link: '/api/video' },
-              { text: 'Subtitle', link: '/api/subtitle' },
-              { text: 'PdfViewer', link: '/api/pdf-viewer' },
-            ],
-          },
-          {
-            text: '工具包',
-            items: [
-              { text: 'Theme 主题', link: '/api/theme' },
-              { text: 'Hooks', link: '/api/hooks' },
-            ],
-          },
-        ],
-
-        '/examples/': [
-          {
-            text: '使用示例',
-            items: [{ text: '基础用法', link: '/examples/basic-usage' }],
-          },
-        ],
-
         '/rfcs/': [
           {
             text: 'RFC 设计文档',
@@ -163,6 +126,10 @@ export default withMermaid(
           {
             text: '工具与工作流',
             items: [
+              {
+                text: 'Claude Code 定制化指南',
+                link: '/tech-sharing/claude-code-customization',
+              },
               {
                 text: 'Claude Code Agent Team',
                 link: '/tech-sharing/agent-team',

@@ -6,9 +6,10 @@
 
 ```
 tech-sharing/
-├── index.md          # 技术分享首页
-├── agent-team.md     # Claude Code Agent Team 完整使用指南
-└── README.md         # 本文件
+├── index.md                      # 技术分享首页
+├── claude-code-customization.md  # Claude Code 定制化完整指南
+├── agent-team.md                 # Claude Code Agent Team 完整使用指南
+└── README.md                     # 本文件
 ```
 
 ## 如何添加新文章

@@ -26,8 +26,9 @@
 
 <script setup lang="ts">
 /**
- * AixSubtitle - 字幕显示组件
- * @description 支持加载 VTT/SRT/JSON/SBV/ASS 格式字幕文件，根据时间显示对应字幕
+ * 字幕显示组件
+ *
+ * 支持加载 VTT/SRT/JSON/SBV/ASS 格式字幕文件，根据时间显示对应字幕
  */
 import { computed, watch, toRef } from 'vue';
 import type { SubtitleProps, SubtitleEmits, SubtitleExpose } from './types';

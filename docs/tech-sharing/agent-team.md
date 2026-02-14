@@ -69,8 +69,8 @@ sequenceDiagram
     T1->>T1: Analyze code for vulnerabilities
     T2->>T2: Profile performance bottlenecks
 
-    T1->>T2: DM: "Found auth issue, may impact perf"
-    T2->>T1: DM: "Thanks, I'll check related code"
+    T1->>T2: DM: "发现认证问题，可能影响性能"
+    T2->>T1: DM: "谢谢，我会检查相关代码"
 
     T1->>TaskList: Mark security review completed
     T2->>TaskList: Mark performance review completed
@@ -415,14 +415,14 @@ claude
 
 ```bash
 # 1. 切换到特定队友
-Shift+Down  # 循环到 "Security Expert"
+Shift+Down  # 循环到 "安全专家"
 
 # 2. 查看队友当前状态
 # （自动显示队友最新消息和工作进度）
 
 # 3. 发送消息给队友
 Press Enter, then type:
-"Focus on OAuth2 token validation first"
+"先专注于 OAuth2 令牌验证"
 
 # 4. 返回 Lead
 Shift+Up  # 切换回 Team Lead
@@ -457,19 +457,19 @@ Shift+Up  # 切换回 Team Lead
 # 通过 Lead 管理任务
 
 # 创建新任务
-"Create a task: refactor error handling in auth.ts"
+"创建任务：重构 auth.ts 中的错误处理"
 
 # 分配任务
-"Assign task #3 to the QA Engineer"
+"将任务 #3 分配给 QA 工程师"
 
 # 设置任务依赖
-"Mark task #4 as blocked by tasks #1, #2, and #3"
+"标记任务 #4 被任务 #1、#2 和 #3 阻塞"
 
 # 查询进度
-"What is each teammate currently working on?"
+"每个队友目前在做什么？"
 
 # 更新任务状态
-"Mark task #1 as completed"
+"标记任务 #1 为已完成"
 ```
 
 ### 4.4 委托模式（Delegate Mode）
@@ -481,10 +481,10 @@ Shift+Up  # 切换回 Team Lead
 Shift+Tab
 
 # 在委托模式下的操作：
-"Create 3 tasks: implement login UI, add validation, write tests"
-"Assign login UI to Frontend Dev"
-"Ask Backend Dev to review the API schema"
-"Ask all teammates to report progress"
+"创建 3 个任务：实现登录 UI、添加验证、编写测试"
+"将登录 UI 分配给前端开发"
+"让后端开发审查 API 架构"
+"让所有队友报告进度"
 
 # 退出委托模式
 Shift+Tab
@@ -494,10 +494,10 @@ Shift+Tab
 
 ```bash
 # 方式 1：优雅关闭（推荐）
-"Ask all teammates to shut down after completing their current tasks"
+"让所有队友在完成当前任务后关闭"
 
 # 方式 2：立即关闭
-"Clean up the team"
+"清理团队"
 
 # 方式 3：关闭特定队友
 "让安全专家队友关闭"
@@ -611,34 +611,34 @@ T=30: Lead 综合报告：根因是 event listener 未清理
 ```bash
 claude
 
-Implement a complete "User Profile Edit" feature from scratch.
+从头开始实现完整的"用户资料编辑"功能。
 
-Create a development team with 4 specialists:
-- API Designer: Design RESTful endpoints, request/response schemas, error handling
-- Frontend Developer: Build profile edit form, validation, state management, API integration
-- Backend Developer: Implement API endpoints, database operations, business logic
-- QA Engineer: Write unit tests, integration tests, E2E tests, edge case coverage
+创建一个包含 4 个专家的开发团队：
+- API 设计师：设计 RESTful 端点、请求/响应架构、错误处理
+- 前端开发：构建资料编辑表单、验证、状态管理、API 集成
+- 后端开发：实现 API 端点、数据库操作、业务逻辑
+- QA 工程师：编写单元测试、集成测试、E2E 测试、边界情况覆盖
 
-Work in parallel with these constraints:
-- API Designer must finish schema first (others depend on it)
-- Frontend and Backend can work simultaneously after schema is done
-- QA writes tests in parallel, mocking APIs initially
+在以下约束下并行工作：
+- API 设计师必须先完成架构（其他人依赖它）
+- 架构完成后，前端和后端可以同时工作
+- QA 并行编写测试，初期模拟 API
 
-Use plan mode - require approval before implementation.
-Coordinate through task list.
+使用计划模式 - 实施前需要批准。
+通过任务列表协调。
 ```
 
 #### 任务依赖图
 
 ```
-Task 1: Design API schema
-   ├─→ Task 2: Implement Backend API
-   │     └─→ Task 5: Integration tests
-   └─→ Task 3: Implement Frontend UI
-         └─→ Task 4: Write unit tests
+任务 1：设计 API 架构
+   ├─→ 任务 2：实现后端 API
+   │     └─→ 任务 5：集成测试
+   └─→ 任务 3：实现前端 UI
+         └─→ 任务 4：编写单元测试
 
-Task 6: E2E tests (depends on: 2, 3)
-Task 7: Documentation (depends on: 1, 2, 3)
+任务 6：E2E 测试（依赖：2, 3）
+任务 7：文档（依赖：1, 2, 3）
 ```
 
 ### 5.4 架构评估（Architecture Review）
@@ -651,22 +651,22 @@ Task 7: Documentation (depends on: 1, 2, 3)
 ```bash
 claude
 
-Evaluate the proposal to migrate from Vue 2 to Vue 3.
+评估从 Vue 2 迁移到 Vue 3 的方案。
 
-Create an evaluation team with 5 analysts:
-- Migration Analyst: Identify breaking changes, migration steps, effort estimation
-- Risk Analyst: Assess migration risks, rollback strategy, downtime impact
-- Performance Analyst: Compare Vue 2 vs Vue 3 performance, bundle size impact
-- Compatibility Analyst: Check third-party library compatibility, polyfill needs
-- Cost-Benefit Analyst: Calculate development cost vs long-term benefits
+创建一个包含 5 个分析师的评估团队：
+- 迁移分析师：识别破坏性变更、迁移步骤、工作量估算
+- 风险分析师：评估迁移风险、回滚策略、停机影响
+- 性能分析师：对比 Vue 2 vs Vue 3 性能、包体积影响
+- 兼容性分析师：检查第三方库兼容性、polyfill 需求
+- 成本收益分析师：计算开发成本 vs 长期收益
 
-Each analyst should:
-1. Research and gather data
-2. Create detailed analysis report
-3. Challenge assumptions of other analysts
-4. Vote on recommendation (Go / No-Go / Defer)
+每个分析师应该：
+1. 研究和收集数据
+2. 创建详细分析报告
+3. 挑战其他分析师的假设
+4. 投票表决建议（执行/不执行/推迟）
 
-Final output: Comprehensive migration assessment with recommendation.
+最终输出：包含建议的全面迁移评估报告。
 ```
 
 ### 5.5 重构任务（Refactoring）
@@ -679,21 +679,21 @@ Final output: Comprehensive migration assessment with recommendation.
 ```bash
 claude
 
-Refactor the legacy authentication system into modular architecture.
+将遗留认证系统重构为模块化架构。
 
-Create a refactoring team with 4 developers:
-- Module A: Refactor password authentication (auth/password.ts)
-- Module B: Refactor OAuth providers (auth/oauth.ts)
-- Module C: Refactor session management (auth/session.ts)
-- Module D: Refactor token handling (auth/token.ts)
+创建一个包含 4 个开发者的重构团队：
+- 模块 A：重构密码认证（auth/password.ts）
+- 模块 B：重构 OAuth 提供商（auth/oauth.ts）
+- 模块 C：重构会话管理（auth/session.ts）
+- 模块 D：重构令牌处理（auth/token.ts）
 
-Rules:
-- Each developer owns one module exclusively (no file conflicts)
-- Coordinate on shared interfaces through task list
-- Write tests before refactoring (TDD approach)
-- Report progress every 15 minutes
+规则：
+- 每个开发者独占一个模块（避免文件冲突）
+- 通过任务列表协调共享接口
+- 重构前先编写测试（TDD 方法）
+- 每 15 分钟报告进度
 
-Goal: Complete all 4 modules in parallel within 1 hour.
+目标：在 1 小时内并行完成所有 4 个模块。
 ```
 
 ---
@@ -746,33 +746,33 @@ packages/tooltip/
 #### 任务列表
 
 ```
-Task 1: Design Tooltip Props/Emits/Slots types
-  Status: In Progress
-  Owner: API Designer
-  Files: src/types.ts
+任务 1：设计 Tooltip Props/Emits/Slots 类型
+  状态：进行中
+  负责人：API 设计师
+  文件：src/types.ts
 
-Task 2: Implement Tooltip component
-  Status: Pending (blocked by Task 1)
-  Owner: Component Developer
-  Files: src/index.vue, src/index.ts, src/styles.scss
+任务 2：实现 Tooltip 组件
+  状态：待处理（被任务 1 阻塞）
+  负责人：组件开发者
+  文件：src/index.vue, src/index.ts, src/styles.scss
 
-Task 3: Write Storybook stories
-  Status: Pending (blocked by Task 1)
-  Owner: Story Writer
-  Files: stories/Tooltip.stories.ts
+任务 3：编写 Storybook stories
+  状态：待处理（被任务 1 阻塞）
+  负责人：Story 编写者
+  文件：stories/Tooltip.stories.ts
 
-Task 4: Write unit and a11y tests
-  Status: In Progress
-  Owner: Test Engineer
-  Files: __test__/index.test.ts
+任务 4：编写单元测试和 a11y 测试
+  状态：进行中
+  负责人：测试工程师
+  文件：__test__/index.test.ts
 
-Task 5: Run type-check and lint
-  Status: Pending (blocked by Task 2)
-  Owner: Component Developer
+任务 5：运行类型检查和 lint
+  状态：待处理（被任务 2 阻塞）
+  负责人：组件开发者
 
-Task 6: Update documentation
-  Status: Pending (blocked by Task 2, 3, 4)
-  Owner: API Designer
+任务 6：更新文档
+  状态：待处理（被任务 2, 3, 4 阻塞）
+  负责人：API 设计师
 ```
 
 ### 6.2 组件深度 PR 审查
@@ -782,26 +782,26 @@ Task 6: Update documentation
 ```bash
 claude
 
-Review the PDF Viewer component refactor (PR #456) against AIX standards.
+对照 AIX 标准审查 PDF Viewer 组件重构（PR #456）。
 
-Create a review team with 5 specialists:
-- Architecture Reviewer: Check module structure, state management, composables usage
-- Type Safety Reviewer: Verify TypeScript strict mode, Props/Emits types, type exports
-- Performance Reviewer: Analyze rendering optimization, memory usage, bundle size impact
-- Accessibility Reviewer: Check ARIA attributes, keyboard navigation, focus management, screen reader
-- Testing Reviewer: Verify test coverage (>80%), edge cases, Storybook stories completeness
+创建一个包含 5 个专家的审查团队：
+- 架构审查员：检查模块结构、状态管理、composables 使用
+- 类型安全审查员：验证 TypeScript 严格模式、Props/Emits 类型、类型导出
+- 性能审查员：分析渲染优化、内存使用、包体积影响
+- 无障碍审查员：检查 ARIA 属性、键盘导航、焦点管理、屏幕阅读器
+- 测试审查员：验证测试覆盖率（>80%）、边界情况、Storybook stories 完整性
 
-Each reviewer should:
-1. Read .claude/agents/<specialty>.md for standards
-2. Check git diff against standards
-3. Report violations with severity (Critical/Important/Suggestion)
-4. Suggest specific fixes with code examples
+每个审查员应该：
+1. 阅读 .claude/agents/<专业>.md 了解标准
+2. 对照标准检查 git diff
+3. 报告违规情况及严重程度（严重/重要/建议）
+4. 提供具体修复建议和代码示例
 
-Cross-check:
-- Performance & Accessibility often conflict (discuss trade-offs)
-- Type Safety & Performance may conflict (discuss abstractions)
+交叉检查：
+- 性能与无障碍经常冲突（讨论权衡）
+- 类型安全与性能可能冲突（讨论抽象）
 
-Final output: Prioritized issue list with fix recommendations.
+最终输出：带修复建议的优先级问题列表。
 ```
 
 #### 审查清单
@@ -860,13 +860,13 @@ Create a debug team with 3 investigators:
   - Investigator should verify: is Vue reactivity causing unexpected re-renders?
   - Check: watch() dependencies, computed() invalidation
 
-Each investigator should:
-1. Read packages/pdf-viewer/src/index.vue
-2. Test hypothesis with code tracing and console logs
-3. Create minimal reproduction if hypothesis is correct
-4. Challenge other theories with counter-evidence
+每个调查员应该：
+1. 阅读 packages/pdf-viewer/src/index.vue
+2. 通过代码追踪和控制台日志测试假设
+3. 如果假设正确，创建最小复现
+4. 用反证据挑战其他理论
 
-Goal: Confirm root cause and propose fix within 20 minutes.
+目标：在 20 分钟内确认根本原因并提出修复方案。
 ```
 
 ### 6.4 样式系统一致性检查
@@ -876,27 +876,27 @@ Goal: Confirm root cause and propose fix within 20 minutes.
 ```bash
 claude
 
-Audit all components in packages/ to ensure CSS variable compliance.
+审核 packages/ 中的所有组件以确保 CSS 变量合规。
 
-Create an audit team with 4 inspectors:
-- Inspector 1: Check packages/button/, packages/icons/
-- Inspector 2: Check packages/pdf-viewer/, packages/video/
-- Inspector 3: Check packages/subtitle/
-- Inspector 4: Check packages/theme/ (verify variable definitions)
+创建一个包含 4 个检查员的审核团队：
+- 检查员 1：检查 packages/button/、packages/icons/
+- 检查员 2：检查 packages/pdf-viewer/、packages/video/
+- 检查员 3：检查 packages/subtitle/
+- 检查员 4：检查 packages/theme/（验证变量定义）
 
-Each inspector should:
-1. Search for hardcoded colors (hex, rgb, hsl)
-2. Search for hardcoded spacing (px values for margins/padding)
-3. Verify all styles use var(--aix-*) from @aix/theme
-4. Report violations with file:line references
+每个检查员应该：
+1. 搜索硬编码颜色（hex、rgb、hsl）
+2. 搜索硬编码间距（px 值的 margin/padding）
+3. 验证所有样式使用 @aix/theme 的 var(--aix-*)
+4. 报告违规情况及文件:行号引用
 
-Violations to flag:
-❌ color: #1890ff;          → Should use: var(--aix-color-primary)
-❌ border-radius: 4px;      → Should use: var(--aix-border-radius)
-❌ padding: 12px;           → Should use: var(--aix-spacing-md)
-✅ color: var(--aix-color-primary);  ← Correct
+需要标记的违规：
+❌ color: #1890ff;          → 应使用：var(--aix-color-primary)
+❌ border-radius: 4px;      → 应使用：var(--aix-border-radius)
+❌ padding: 12px;           → 应使用：var(--aix-spacing-md)
+✅ color: var(--aix-color-primary);  ← 正确
 
-Output: Compliance report with fix recommendations.
+输出：带修复建议的合规报告。
 ```
 
 ### 6.5 测试覆盖率提升
@@ -906,26 +906,26 @@ Output: Compliance report with fix recommendations.
 ```bash
 claude
 
-Increase test coverage for packages/pdf-viewer/ from 72% to >80%.
+将 packages/pdf-viewer/ 的测试覆盖率从 72% 提升到 >80%。
 
-Create a testing team with 3 engineers:
-- Unit Test Engineer: Write missing unit tests for untested functions
-- Integration Test Engineer: Write tests for component interactions (zoom + resize, overlay + click)
-- Edge Case Engineer: Write tests for edge cases (empty PDF, malformed data, boundary values)
+创建一个包含 3 个工程师的测试团队：
+- 单元测试工程师：为未测试函数编写缺失的单元测试
+- 集成测试工程师：编写组件交互测试（zoom + resize、overlay + click）
+- 边界情况工程师：编写边界情况测试（空 PDF、错误数据、边界值）
 
-Workflow:
-1. Run: pnpm test --coverage --filter=@aix/pdf-viewer
-2. Analyze coverage report (coverage/lcov-report/index.html)
-3. Identify uncovered lines/branches
-4. Write tests to cover gaps
+工作流程：
+1. 运行：pnpm test --coverage --filter=@aix/pdf-viewer
+2. 分析覆盖率报告（coverage/lcov-report/index.html）
+3. 识别未覆盖的行/分支
+4. 编写测试填补空白
 
-Focus areas (from MEMORY.md bugs):
-- Manual zoom interactions (zoomIn, zoomOut, setScale)
-- ResizeObserver debounce logic
-- Image overlay event handlers (mouseenter, mouseleave)
-- fitToPage vs fitToWidth mode switching
+重点领域（来自 MEMORY.md 的 bug）：
+- 手动缩放交互（zoomIn、zoomOut、setScale）
+- ResizeObserver 防抖逻辑
+- 图片 overlay 事件处理器（mouseenter、mouseleave）
+- fitToPage vs fitToWidth 模式切换
 
-Goal: Achieve >80% coverage in all categories (lines, branches, functions).
+目标：在所有类别（行、分支、函数）中达到 >80% 覆盖率。
 ```
 
 ---
@@ -938,31 +938,31 @@ Goal: Achieve >80% coverage in all categories (lines, branches, functions).
 
 ```bash
 # 明确的职责划分
-生成 3 teammates:
-- Security Expert: Focus on auth vulnerabilities in auth.ts
-- Performance Expert: Profile query performance in database.ts
-- Code Quality Expert: Review code style in utils.ts
+生成 3 个队友：
+- 安全专家：专注于 auth.ts 中的认证漏洞
+- 性能专家：分析 database.ts 中的查询性能
+- 代码质量专家：审查 utils.ts 中的代码风格
 
 # 清晰的文件边界
-- Teammate A: Edit only src/index.vue
-- Teammate B: Edit only src/types.ts
-- Teammate C: Edit only __test__/index.test.ts
+- 队友 A：仅编辑 src/index.vue
+- 队友 B：仅编辑 src/types.ts
+- 队友 C：仅编辑 __test__/index.test.ts
 
 # 合理的任务粒度（5-6个任务/队友）
-Task 1: Design Props types (15 min)
-Task 2: Implement component logic (30 min)
-Task 3: Write SCSS styles (20 min)
-Task 4: Write unit tests (25 min)
-Task 5: Write Storybook story (15 min)
+任务 1：设计 Props 类型（15 分钟）
+任务 2：实现组件逻辑（30 分钟）
+任务 3：编写 SCSS 样式（20 分钟）
+任务 4：编写单元测试（25 分钟）
+任务 5：编写 Storybook story（15 分钟）
 ```
 
 #### ❌ 不好的任务设计
 
 ```bash
 # 职责重叠（会产生冲突）
-生成 2 teammates:
-- Teammate A: Review the auth module
-- Teammate B: Review the auth module
+生成 2 个队友：
+- 队友 A：审查认证模块
+- 队友 B：审查认证模块
 # 问题：两人编辑同一文件会冲突
 
 # 任务边界模糊
@@ -973,13 +973,13 @@ Task 5: Write Storybook story (15 min)
 # 问题：职责不清，可能重复工作
 
 # 任务粒度太小（协调开销 > 收益）
-Task 1: Import React (30 sec)
-Task 2: Define interface (1 min)
-Task 3: Write one function (2 min)
-# 问题：启动 teammate 的时间比任务本身还长
+任务 1：导入 React（30 秒）
+任务 2：定义接口（1 分钟）
+任务 3：编写一个函数（2 分钟）
+# 问题：启动队友的时间比任务本身还长
 
 # 任务粒度太大（风险高）
-Task 1: Refactor the entire codebase (3 hours)
+任务 1：重构整个代码库（3 小时）
 # 问题：队友工作太久，出错时浪费大量 tokens
 ```
 
@@ -1006,25 +1006,25 @@ Task 1: Refactor the entire codebase (3 hours)
 
 ```bash
 # 每 15 分钟让 Lead 检查进度
-"What is each teammate currently working on?"
+"每个队友目前在做什么？"
 
 # 输出示例：
-Security Expert: Analyzing OAuth2 implementation (Task #1, 60% done)
-Performance Expert: Profiling database queries (Task #2, 80% done)
-Test Engineer: Writing integration tests (Task #4, 30% done)
+安全专家：分析 OAuth2 实现（任务 #1，完成 60%）
+性能专家：分析数据库查询（任务 #2，完成 80%）
+测试工程师：编写集成测试（任务 #4，完成 30%）
 ```
 
 #### 鼓励队友间讨论
 
 ```bash
 # 让队友分享发现
-"Ask Security Expert to share findings with Performance Expert"
+"让安全专家与性能专家分享发现"
 
 # 让队友挑战假设
-"Ask all investigators to challenge each other's theories with evidence"
+"让所有调查员用证据挑战彼此的理论"
 
 # 让队友协作
-"Frontend Dev and Backend Dev should discuss the API contract before implementing"
+"前端开发和后端开发应在实现前讨论 API 契约"
 ```
 
 #### 及时重定向
@@ -1032,31 +1032,31 @@ Test Engineer: Writing integration tests (Task #4, 30% done)
 ```bash
 # 队友方向错误时及时纠正
 Shift+Down  # 切换到该队友
-"Stop working on X, focus on Y instead because..."
+"停止 X 工作，转而专注于 Y，因为..."
 
 # 或通过 Lead
-"Ask the API Designer to change the schema to use RESTful conventions"
+"让 API 设计师将 schema 改为使用 RESTful 规范"
 ```
 
 ### 7.4 文件冲突预防
 
 ```bash
 # 明确文件所有权
-"File ownership:
-- src/index.vue: Component Developer (exclusive)
-- src/types.ts: API Designer (exclusive)
-- __test__/index.test.ts: Test Engineer (exclusive)
-- stories/: Story Writer (exclusive)"
+"文件所有权：
+- src/index.vue: Component Developer (独占)
+- src/types.ts: API Designer (独占)
+- __test__/index.test.ts: Test Engineer (独占)
+- stories/: Story Writer (独占)"
 
 # 协调接口变更
-"API Designer should notify other teammates before changing types.ts"
+"API 设计师在修改 types.ts 前应通知其他队友"
 
 # 使用 Git 分支隔离（高级）
-"Each teammate works on a separate branch:
+"每个队友在独立分支上工作：
 - Component Developer: feature/tooltip-impl
 - Test Engineer: feature/tooltip-tests
 - Story Writer: feature/tooltip-stories
-Merge to main after all are done"
+全部完成后合并到 main"
 ```
 
 ### 7.5 成本优化
@@ -1071,10 +1071,10 @@ Merge to main after all are done"
 - Code Formatter: Format code according to style guide
 
 # 复杂任务用 Sonnet（平衡）
-生成 3 teammates using Sonnet model:
-- Architect: Design system architecture
-- Code Reviewer: Review code quality
-- Bug Investigator: Root cause analysis
+生成 3 个队友使用 Sonnet 模型：
+- 架构师：设计系统架构
+- 代码审查员：审查代码质量
+- Bug 调查员：根本原因分析
 
 # 关键任务用 Opus（最强）
 生成 1 teammate using Opus model:
@@ -1088,10 +1088,10 @@ Merge to main after all are done"
 /cost
 
 # 限制队友轮数（防止失控）
-"Each teammate should complete their task in maximum 10 turns"
+"每个队友最多用 10 轮完成任务"
 
 # 及时关闭闲置队友
-"Shut down teammates that have completed their tasks"
+"关闭已完成任务的队友"
 ```
 
 ### 7.6 计划模式（高风险任务）
@@ -1104,13 +1104,13 @@ Create a refactoring team with plan mode enabled.
 - Backend Refactor: Refactor authentication module (require plan approval)
 - Database Migration: Migrate user table schema (require plan approval)
 
-Each developer must:
-1. Analyze current code
-2. Design refactoring plan
-3. Submit plan for approval
-4. Wait for approval before implementing
+每个开发者必须：
+1. 分析当前代码
+2. 设计重构计划
+3. 提交计划以供批准
+4. 等待批准后再实施
 
-This ensures no destructive changes happen without review.
+这确保没有破坏性更改在未审查的情况下发生。
 ```
 
 ---
@@ -1181,26 +1181,26 @@ Agent Team 成本估算：
 生成 teammates using Haiku for data extraction tasks
 
 # 2. 限制上下文大小
-"Read only the changed files in the PR, not the entire codebase"
+"只读取 PR 中更改的文件，而不是整个代码库"
 
 # 3. 分阶段执行
-"Phase 1: 3 teammates analyze the problem (20 min)
- Phase 2: If consensus is reached, 1 teammate implements the fix
- Shut down unused teammates after Phase 1"
+"阶段 1：3 个队友分析问题（20 分钟）
+ 阶段 2：如果达成共识，1 个队友实施修复
+ 阶段 1 后关闭未使用的队友"
 
 # 4. 重用结果
-"Security Expert: Share your findings.md with other teammates instead of duplicating analysis"
+"安全专家：与其他队友分享你的 findings.md，而不是重复分析"
 ```
 
 #### 提高并行效率
 
 ```bash
 # 1. 独立任务最大化并行
-Task 1, 2, 3: No dependencies → 3 teammates work simultaneously
-Task 4: Depends on 1, 2, 3 → Starts after all complete
+任务 1, 2, 3：无依赖 → 3 个队友同时工作
+任务 4：依赖于 1, 2, 3 → 全部完成后开始
 
 # 2. 避免阻塞
-"API Designer: Publish the draft schema early so Frontend/Backend can start planning"
+"API 设计师：尽早发布草稿架构，以便前端/后端可以开始规划"
 
 # 3. 流水线设计
 Teammate A: Design (0-15min) → Implement (15-30min)
@@ -1222,7 +1222,7 @@ Session cost: $2.34
 └─ Teammate 3 (Testing): $0.64
 
 # 识别高成本队友
-"Teammate 1 is using more tokens than others - check if it's stuck in a loop"
+"Teammate 1 比其他人消耗更多 token - 检查是否陷入循环"
 ```
 
 ---
@@ -1244,8 +1244,8 @@ Session cost: $2.34
    # 简单任务不会自动创建团队
 
 3. 明确请求团队
-   # 而不是：Review this code
-   # 应该是：创建一个代理团队来 review this code
+   # 而不是：审查这段代码
+   # 应该是：创建一个代理团队来审查这段代码
 
 4. 检查显示模式
    # In-process 模式：按 Shift+Down 切换
@@ -1300,25 +1300,25 @@ claude --permission-mode acceptEdits
 
 ```bash
 # 预防措施：明确文件所有权
-"File ownership:
-- Teammate A: packages/button/src/index.vue only
-- Teammate B: packages/button/src/types.ts only
-- Teammate C: packages/button/__test__/index.test.ts only"
+"文件所有权：
+- Teammate A: 仅 packages/button/src/index.vue
+- Teammate B: 仅 packages/button/src/types.ts
+- Teammate C: 仅 packages/button/__test__/index.test.ts"
 
 # 发生冲突后：
 1. Shift+Down 切换到冲突的队友
-2. "Stop editing index.vue - Teammate A owns that file"
-3. "Focus on your assigned file instead"
+2. "停止编辑 index.vue - Teammate A 拥有该文件"
+3. "专注于你分配的文件"
 
 # 使用 Git 分支隔离（高级）
-"Each teammate works on a separate git branch"
+"每个队友在独立的 git 分支上工作"
 ```
 
 #### Q5: 队友进度不同步
 
 ```bash
 # 定期同步
-"What is everyone working on? Report progress percentage."
+"大家都在做什么？报告进度百分比。"
 
 # 输出示例：
 Teammate A: Task #1 - 90% done, almost finished
@@ -1334,13 +1334,13 @@ Teammate C: Task #3 - 70% done, on track
 ```bash
 # 立即重定向
 Shift+Down  # 切换到该队友
-"Stop. You're implementing OAuth1 but we need OAuth2. Please restart with OAuth2."
+"停止。你在实现 OAuth1，但我们需要 OAuth2。请用 OAuth2 重新开始。"
 
 # 或通过 Lead
-"Ask the Backend Dev to use JWT tokens instead of session cookies"
+"让后端开发使用 JWT token 而不是 session cookies"
 
 # 预防措施：在开始前确认理解
-"Before starting, confirm: you understand we're using OAuth2, not OAuth1, correct?"
+"开始前确认：你明白我们使用的是 OAuth2 而不是 OAuth1，对吗？"
 ```
 
 ### 9.3 性能和成本问题
@@ -1352,21 +1352,21 @@ Shift+Down  # 切换到该队友
 /cost
 
 # 识别高消耗队友
-"Which teammate is using the most tokens?"
+"哪个队友消耗的 token 最多？"
 
 # 优化措施：
 1. 关闭闲置队友
-   "Shut down teammates that have completed their tasks"
+   "关闭已完成任务的队友"
 
 2. 限制轮数
-   "Each teammate should complete in max 10 turns"
+   "每个队友最多用 10 轮完成"
 
 3. 使用更小模型
-   "Use Haiku model for simple data extraction tasks"
+   "对简单的数据提取任务使用 Haiku 模型"
 
 4. 分阶段执行
-   "Phase 1: Analysis only (3 teammates)
-    Phase 2: Implementation (1 teammate, others shut down)"
+   "阶段 1：仅分析（3 个队友）
+    阶段 2：实现（1 个队友，其他关闭）"
 ```
 
 #### Q8: 队友工作太慢
@@ -1377,16 +1377,16 @@ Shift+Down  # 切换到该队友查看状态
 
 # 可能原因：
 1. 任务太复杂
-   "Break down your task into smaller steps"
+   "将任务分解成更小的步骤"
 
 2. 等待其他队友
-   "Don't wait - start with mocked dependencies"
+   "别等待 - 用模拟依赖开始"
 
 3. 陷入错误循环
-   "Stop trying to fix this - report the error and move on"
+   "停止修复 - 报告错误并继续"
 
 # 设置时间限制
-"You have 15 minutes to complete this task. If blocked, report and we'll reassign."
+"你有 15 分钟完成任务。如果被阻塞，报告我们会重新分配。"
 ```
 
 #### Q9: 如何优雅关闭团队
@@ -1397,10 +1397,10 @@ Shift+Down  # 切换到该队友查看状态
 # 队友会保存进度并发送最终报告
 
 # 方式 2：全部关闭
-"Ask all teammates to shut down gracefully"
+"让所有队友优雅关闭"
 
 # 方式 3：强制清理（不推荐）
-"Clean up the team"
+"清理团队"
 # 可能丢失未保存的工作
 
 # 检查残留进程
@@ -1432,7 +1432,7 @@ Shift+Down  # 切换到该队友
    cat ~/.claude/logs/latest.log
 
 # 重启队友
-"Restart the Performance Analyst teammate"
+"重启性能分析师队友"
 ```
 
 #### Q11: 任务列表显示错误
@@ -1446,7 +1446,7 @@ Ctrl+T  # 再次显示
 ls ~/.claude/tasks/<team-name>/
 
 # 清理损坏的任务
-"Clean up the task list and recreate tasks"
+"清理任务列表并重新创建任务"
 ```
 
 #### Q12: In-process 模式切换不工作
@@ -1466,7 +1466,7 @@ Shift+Down  # 向下循环
    }
 
 3. 查看队友列表
-   "List all active teammates"
+   "列出所有活跃的队友"
 ```
 
 ---
@@ -1508,11 +1508,11 @@ Shift+Down  # 向下循环
 | **任务列表** | `Ctrl+T` |
 | **委托模式** | `Shift+Tab` |
 | **查看成本** | `/cost` |
-| **检查进度** | `What is each teammate working on?` |
-| **分配任务** | `Assign task #N to <teammate>` |
-| **创建任务** | `Create a task: <description>` |
-| **关闭队友** | `Ask <teammate> to shut down` |
-| **清理团队** | `Clean up the team` |
+| **检查进度** | `每个队友在做什么？` |
+| **分配任务** | `将任务 #N 分配给 <队友>` |
+| **创建任务** | `创建任务：<描述>` |
+| **关闭队友** | `让 <队友> 关闭` |
+| **清理团队** | `清理团队` |
 
 ### 10.3 创建团队模板
 

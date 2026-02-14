@@ -64,213 +64,46 @@ const onError = (error: Error) => {
 | `controls` | `boolean` | `true` | - | 是否显示控制栏 |
 | `responsive` | `boolean` | `true` | - | 是否响应式 |
 | `fluid` | `boolean` | `true` | - | 是否流式布局 |
-| `width` | `number` \| `string` | - | - | 宽度 |
-| `height` | `number` \| `string` | - | - | 高度 |
-| `aspectRatio` | `string` | - | - | 宽高比 |
-| `preload` | `"auto"` \| `"metadata"` \| `"none"` | `auto` | - | 预加载策略 |
+| `width` | `number \| string` | - | - | 宽度 |
+| `height` | `number \| string` | - | - | 高度 |
+| `aspectRatio` | `string` | - | - | 宽高比（如 '16:9'） |
+| `preload` | `"auto" \| "metadata" \| "none"` | `'auto'` | - | 预加载策略 |
 | `transparent` | `boolean` | `false` | - | 是否透明背景 |
 | `crossOrigin` | `boolean` | `true` | - | 是否跨域 |
 | `enableDebugLog` | `boolean` | `false` | - | 是否启用调试日志 |
-| `options` | `Partial` | - | - | video.js 额外配置 |
-| `streamOptions` | `Omit` | - | - | 流适配器配置 |
-| `sourceType` | `VideoSourceType` | - | - | 视频源类型（不指定时自动推断） |
+| `options` | `Partial<VideoJsOptions>` | - | - | video.js 额外配置 |
+| `streamOptions` | `Omit<TSImportType, union>` | - | - | 流适配器配置 |
+| `sourceType` | `any` | - | - | 视频源类型（不指定时自动推断） |
 | `customControls` | `boolean` | `false` | - | 是否使用自定义控制栏 |
-| `enableTouchEvents` | `boolean` | `true` | - | 是否启用触摸事件优化 (移动端) |
+| `enableTouchEvents` | `boolean` | `true` | - | 是否启用触摸事件优化（移动端） |
 | `autoFullscreenOnLandscape` | `boolean` | `false` | - | 横屏时是否自动全屏 |
 
 ### Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `ready` | `VideoJsPlayer` | - |
-| `play` | `-` | - |
-| `pause` | `-` | - |
-| `ended` | `-` | - |
-| `timeupdate` | `number` | - |
-| `progress` | `number` | - |
-| `error` | `Error` | - |
-| `volumechange` | `number` | - |
-| `fullscreenchange` | `boolean` | - |
-| `canplay` | `-` | - |
-| `loadeddata` | `-` | - |
-| `autoplayMuted` | `{ reason: 'mobile-policy'; originalMuted: boolean }` | 移动端自动播放策略触发静音 |
+| `ready` | `VideoJsPlayer` | 播放器就绪，返回 video.js 播放器实例 |
+| `play` | `-` | 开始播放 |
+| `pause` | `-` | 暂停播放 |
+| `ended` | `-` | 播放结束 |
+| `timeupdate` | `number` | 播放时间更新，返回当前时间和总时长（秒） |
+| `progress` | `number` | 缓冲进度更新，返回已缓冲的百分比（0-1） |
+| `error` | `Error` | 播放错误，返回错误信息 |
+| `volumechange` | `number` | 音量变化，返回音量值（0-1）和是否静音 |
+| `fullscreenchange` | `boolean` | 全屏状态变化，返回是否全屏 |
+| `canplay` | `-` | 可以播放（已加载足够数据） |
+| `loadeddata` | `-` | 数据加载完成 |
+| `autoplayMuted` | `{ reason: "mobile-policy"; originalMuted: boolean; }` | 移动端自动播放策略触发静音，返回原因信息 |
 | `networkOffline` | `-` | 网络离线 |
 | `networkOnline` | `-` | 网络恢复在线 |
-| `networkSlow` | `NetworkStatus` | 网络变慢 |
-| `networkChange` | `NetworkStatus` | 网络状态变化 |
+| `networkSlow` | `NetworkStatus` | 网络变慢，返回网络状态信息 |
+| `networkChange` | `NetworkStatus` | 网络状态变化，返回网络状态信息 |
 
 ### Slots
 
 | 插槽名 | 说明 |
 |--------|------|
 | `controls` | - |
-
-## 使用示例
-
-### 基础用法
-
-```vue
-<template>
-  <div style="width: 800px; height: 450px">
-    <VideoPlayer :src="videoSrc" />
-  </div>
-</template>
-
-<script setup lang="ts">
-import { VideoPlayer } from '@aix/video';
-import '@aix/video/style';
-
-const videoSrc = '/videos/sample.mp4';
-</script>
-```
-
-### 播放 HLS 流
-
-```vue
-<template>
-  <VideoPlayer
-    :src="hlsUrl"
-    source-type="hls"
-    :autoplay="true"
-    :muted="true"
-  />
-</template>
-
-<script setup lang="ts">
-import { VideoPlayer } from '@aix/video';
-import '@aix/video/style';
-
-const hlsUrl = 'https://example.com/stream.m3u8';
-</script>
-```
-
-### 使用 ref 控制
-
-```vue
-<template>
-  <div>
-    <div class="toolbar">
-      <button @click="playerRef?.play()">播放</button>
-      <button @click="playerRef?.pause()">暂停</button>
-      <button @click="playerRef?.toggleMute()">静音</button>
-      <button @click="playerRef?.toggleFullscreen()">全屏</button>
-    </div>
-    <VideoPlayer ref="playerRef" :src="videoSrc" />
-  </div>
-</template>
-
-<script setup lang="ts">
-import { ref } from 'vue';
-import { VideoPlayer, type VideoPlayerExpose } from '@aix/video';
-import '@aix/video/style';
-
-const playerRef = ref<VideoPlayerExpose>();
-const videoSrc = '/videos/sample.mp4';
-</script>
-```
-
-### 自定义控制栏
-
-```vue
-<template>
-  <VideoPlayer
-    :src="videoSrc"
-    :custom-controls="true"
-    :controls="false"
-  >
-    <template #controls="{ playerState, controls }">
-      <div class="custom-controls">
-        <button @click="controls.play()" v-if="!playerState.isPlaying">
-          播放
-        </button>
-        <button @click="controls.pause()" v-else>
-          暂停
-        </button>
-        <span>
-          {{ formatTime(playerState.currentTime) }} /
-          {{ formatTime(playerState.duration) }}
-        </span>
-        <input
-          type="range"
-          :value="playerState.volume * 100"
-          @input="controls.setVolume($event.target.value / 100)"
-        />
-      </div>
-    </template>
-  </VideoPlayer>
-</template>
-
-<script setup lang="ts">
-import { VideoPlayer } from '@aix/video';
-import '@aix/video/style';
-
-const videoSrc = '/videos/sample.mp4';
-
-const formatTime = (seconds: number) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-};
-</script>
-```
-
-### 网络状态监听
-
-```vue
-<template>
-  <VideoPlayer
-    :src="videoSrc"
-    @networkOffline="onOffline"
-    @networkOnline="onOnline"
-    @networkSlow="onNetworkSlow"
-  />
-</template>
-
-<script setup lang="ts">
-import { VideoPlayer, type NetworkStatus } from '@aix/video';
-import '@aix/video/style';
-
-const videoSrc = '/videos/sample.mp4';
-
-const onOffline = () => {
-  console.log('网络已断开');
-};
-
-const onOnline = () => {
-  console.log('网络已恢复');
-};
-
-const onNetworkSlow = (status: NetworkStatus) => {
-  console.log('网络变慢:', status);
-};
-</script>
-```
-
-### 移动端优化
-
-```vue
-<template>
-  <VideoPlayer
-    :src="videoSrc"
-    :enable-touch-events="true"
-    :auto-fullscreen-on-landscape="true"
-  />
-</template>
-
-<script setup lang="ts">
-import { VideoPlayer } from '@aix/video';
-import '@aix/video/style';
-
-const videoSrc = '/videos/sample.mp4';
-
-// 触摸手势：
-// - 单击：播放/暂停
-// - 双击：全屏
-// - 左滑：快退 10 秒
-// - 右滑：快进 10 秒
-</script>
-```
-
 ## 类型定义
 
 ```typescript

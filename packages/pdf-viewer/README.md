@@ -55,117 +55,30 @@ const onError = (error: Error) => {
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `source` | `string` \| `ArrayBuffer` | - | ✅ | PDF 文件 URL 或 ArrayBuffer |
-| `initialPage` | `number` | `1` | - | 初始页码 |
-| `config` | `Partial` | `() => ({})` | - | 配置项 |
-| `imageLayerConfig` | `Partial` | `() => ({})` | - | 图片层配置 |
-| `contextMenuConfig` | `Partial` | `() => ({})` | - | 右键菜单配置 |
+| `source` | `string \| ArrayBuffer` | - | ✅ | PDF 文件 URL 或 ArrayBuffer 数据 |
+| `initialPage` | `number` | `1` | - | 初始显示的页码 |
+| `config` | `Partial<PdfViewerConfig>` | `{}` | - | 预览器配置项（缩放、工具栏、文字层等） |
+| `imageLayerConfig` | `Partial<ImageLayerConfig>` | `{}` | - | 图片层配置（hover、选择、样式等） |
+| `contextMenuConfig` | `Partial<ContextMenuConfig>` | `{}` | - | 右键菜单配置（菜单项、启用状态等） |
 
 ### Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `ready` | `number` | - |
-| `error` | `Error` | - |
-| `pageChange` | `number` | - |
-| `scaleChange` | `number` | - |
-| `textSelect` | `string` | - |
-| `imageClick` | `PdfImageInfo` | - |
-| `imageSelect` | `Array` | - |
-| `contextMenu` | `ContextMenuContext` | - |
+| `ready` | `number` | PDF 加载完成，返回总页数 |
+| `error` | `Error` | PDF 加载错误，返回错误信息 |
+| `pageChange` | `number` | 页码变化，返回当前页码和总页数 |
+| `scaleChange` | `number` | 缩放比例变化，返回当前缩放比例 |
+| `textSelect` | `string` | 文本选中，返回选中的文本内容 |
+| `imageClick` | `PdfImageInfo` | 图片点击，返回图片信息和鼠标事件 |
+| `imageSelect` | `PdfImageInfo[]` | 图片选中（多选），返回所有选中的图片 |
+| `contextMenu` | `ContextMenuContext` | 右键菜单触发，返回菜单上下文信息 |
 
 ### Slots
 
 | 插槽名 | 说明 |
 |--------|------|
 | `toolbar` | - |
-
-## 使用示例
-
-### 基础用法
-
-```vue
-<template>
-  <div style="height: 600px">
-    <PdfViewer :source="pdfUrl" />
-  </div>
-</template>
-
-<script setup lang="ts">
-import { PdfViewer } from '@aix/pdf-viewer';
-import '@aix/pdf-viewer/style';
-
-const pdfUrl = '/documents/sample.pdf';
-</script>
-```
-
-### 使用 ref 控制
-
-```vue
-<template>
-  <div>
-    <div class="toolbar">
-      <button @click="pdfRef?.prevPage()">上一页</button>
-      <span>{{ pdfRef?.currentPage }} / {{ pdfRef?.totalPages }}</span>
-      <button @click="pdfRef?.nextPage()">下一页</button>
-      <button @click="pdfRef?.zoomIn()">放大</button>
-      <button @click="pdfRef?.zoomOut()">缩小</button>
-    </div>
-    <PdfViewer ref="pdfRef" :source="pdfUrl" />
-  </div>
-</template>
-
-<script setup lang="ts">
-import { ref } from 'vue';
-import { PdfViewer, type PdfViewerExpose } from '@aix/pdf-viewer';
-import '@aix/pdf-viewer/style';
-
-const pdfRef = ref<PdfViewerExpose>();
-const pdfUrl = '/documents/sample.pdf';
-</script>
-```
-
-### 图片选择
-
-```vue
-<template>
-  <PdfViewer
-    :source="pdfUrl"
-    :config="{ enableImageLayer: true }"
-    :imageLayerConfig="{ multiSelect: true }"
-    @imageSelect="onImageSelect"
-  />
-</template>
-
-<script setup lang="ts">
-import { PdfViewer, type PdfImageInfo } from '@aix/pdf-viewer';
-import '@aix/pdf-viewer/style';
-
-const pdfUrl = '/documents/sample.pdf';
-
-const onImageSelect = (images: PdfImageInfo[]) => {
-  console.log('选中了', images.length, '张图片');
-};
-</script>
-```
-
-### 生成缩略图
-
-```vue
-<script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { PdfViewer, type PdfViewerExpose, type ThumbnailInfo } from '@aix/pdf-viewer';
-
-const pdfRef = ref<PdfViewerExpose>();
-const thumbnails = ref<ThumbnailInfo[]>([]);
-
-onMounted(async () => {
-  // 等待 PDF 加载完成后生成缩略图
-  thumbnails.value = await pdfRef.value?.generateAllThumbnails(150) ?? [];
-});
-</script>
-```
-
 ## 类型定义
 
 ```typescript

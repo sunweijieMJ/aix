@@ -277,35 +277,44 @@ const onSubtitleChange = (cue: SubtitleCue | null, index: number) => {
 
 ## API
 
+::: warning 自动生成的 API 文档
+以下 API 文档由 `pnpm docs:gen` 从组件源码自动生成。请勿手动编辑此部分。
+
+如需更新 API 文档，请：
+1. 修改组件源码中的 JSDoc 注释
+2. 运行 `pnpm docs:gen` 生成到 README.md
+3. 运行 `pnpm docs:sync` 同步到此文档
+:::
+
 ### Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `source` | `SubtitleSource` | - | - | 字幕来源 |
-| `currentTime` | `number` | - | - | 当前播放时间 (秒) |
+| `currentTime` | `number` | - | - | 当前播放时间 (秒)，用于外部控制字幕显示 |
 | `visible` | `boolean` | `true` | - | 是否显示字幕 |
-| `position` | `"top"` \| `"bottom"` \| `"center"` | `bottom` | - | 字幕位置 |
-| `fontSize` | `number` \| `string` | `20` | - | 字体大小 |
-| `background` | `"blur"` \| `"solid"` \| `"none"` | `blur` | - | 背景样式 |
-| `maxWidth` | `number` \| `string` | `1200px` | - | 最大宽度 |
-| `singleLine` | `boolean` | `false` | - | 是否单行显示 |
+| `position` | `"top" \| "bottom" \| "center"` | `'bottom'` | - | 字幕位置 |
+| `fontSize` | `number \| string` | `20` | - | 字体大小，可以是数字(px)或 CSS 字符串 |
+| `background` | `"blur" \| "solid" \| "none"` | `'blur'` | - | 背景样式：blur-毛玻璃、solid-渐变、none-透明 |
+| `maxWidth` | `number \| string` | `'1200px'` | - | 最大宽度，可以是数字(px)或 CSS 字符串 |
+| `singleLine` | `boolean` | `false` | - | 是否单行显示（固定高度场景下启用，需配合 fixedHeight 使用） |
 | `fixedHeight` | `number` | - | - | 固定高度（用于计算分段，单位 px） |
-| `autoSegment` | `boolean` | `false` | - | 是否自动分段 |
+| `autoSegment` | `boolean` | `false` | - | 是否自动分段（文字过长时分多段轮播显示） |
 | `segmentDuration` | `number` | `3000` | - | 每段显示时长（毫秒） |
 
 ### Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `loaded` | `SubtitleCue[]` | 字幕加载完成 |
-| `error` | `Error` | 字幕加载失败 |
-| `change` | `(cue: SubtitleCue \| null, index: number)` | 当前字幕变化 |
+| `loaded` | `SubtitleCue[]` | 字幕加载完成，返回所有字幕条目 |
+| `error` | `Error` | 字幕加载失败，返回错误信息 |
+| `change` | `SubtitleCue \| null` | 当前字幕变化，返回当前字幕条目和索引（null 表示无字幕） |
 
 ### Slots
 
 | 插槽名 | 说明 |
 |--------|------|
-| `default` | 自定义字幕内容 |
+| `default` | - |
 
 ## 类型定义
 

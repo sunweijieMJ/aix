@@ -35,6 +35,11 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 按钮组件
+ *
+ * 用于触发操作和提交表单。支持多种类型、尺寸和状态。
+ */
 import type { ButtonProps, ButtonEmits } from './types';
 
 const props = withDefaults(defineProps<ButtonProps>(), {

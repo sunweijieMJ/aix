@@ -29,35 +29,59 @@ export type SubtitleSource =
 export interface SubtitleProps {
   /** 字幕来源 */
   source?: SubtitleSource;
-  /** 当前播放时间 (秒) - 用于外部控制 */
+  /** 当前播放时间 (秒)，用于外部控制字幕显示 */
   currentTime?: number;
-  /** 是否显示字幕 */
+  /**
+   * 是否显示字幕
+   * @default true
+   */
   visible?: boolean;
-  /** 字幕位置 */
+  /**
+   * 字幕位置
+   * @default 'bottom'
+   */
   position?: 'top' | 'bottom' | 'center';
-  /** 字体大小 */
+  /**
+   * 字体大小，可以是数字(px)或 CSS 字符串
+   * @default 20
+   */
   fontSize?: number | string;
-  /** 背景样式 */
+  /**
+   * 背景样式：blur-毛玻璃、solid-渐变、none-透明
+   * @default 'blur'
+   */
   background?: 'blur' | 'solid' | 'none';
-  /** 最大宽度 */
+  /**
+   * 最大宽度，可以是数字(px)或 CSS 字符串
+   * @default '1200px'
+   */
   maxWidth?: number | string;
-  /** 是否单行显示（固定高度场景） */
+  /**
+   * 是否单行显示（固定高度场景下启用，需配合 fixedHeight 使用）
+   * @default false
+   */
   singleLine?: boolean;
   /** 固定高度（用于计算分段，单位 px） */
   fixedHeight?: number;
-  /** 是否自动分段（文字过长时分多段轮播显示） */
+  /**
+   * 是否自动分段（文字过长时分多段轮播显示）
+   * @default false
+   */
   autoSegment?: boolean;
-  /** 每段显示时长（毫秒），默认 3000ms */
+  /**
+   * 每段显示时长（毫秒）
+   * @default 3000
+   */
   segmentDuration?: number;
 }
 
 /** 字幕组件 Emits */
 export interface SubtitleEmits {
-  /** 字幕加载完成 */
+  /** 字幕加载完成，返回所有字幕条目 */
   (e: 'loaded', cues: SubtitleCue[]): void;
-  /** 字幕加载失败 */
+  /** 字幕加载失败，返回错误信息 */
   (e: 'error', error: Error): void;
-  /** 当前字幕变化 */
+  /** 当前字幕变化，返回当前字幕条目和索引（null 表示无字幕） */
   (e: 'change', cue: SubtitleCue | null, index: number): void;
 }
 

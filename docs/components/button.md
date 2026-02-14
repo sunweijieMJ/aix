@@ -96,36 +96,25 @@ import { Button } from '@aix/button';
 </template>
 ```
 
-### 点击事件
-
-按钮点击事件。
-
-<div class="demo-block">
-  <Button type="primary" @click="handleClick">Click Me</Button>
-</div>
-
-```vue
-<template>
-  <Button type="primary" @click="handleClick">Click Me</Button>
-</template>
-
-<script setup>
-const handleClick = (event) => {
-  console.log('Button clicked!', event);
-};
-</script>
-```
-
 ## API
+
+::: warning 自动生成的 API 文档
+以下 API 文档由 `pnpm docs:gen` 从组件源码自动生成。请勿手动编辑此部分。
+
+如需更新 API 文档，请：
+1. 修改组件源码中的 JSDoc 注释
+2. 运行 `pnpm docs:gen` 生成到 README.md
+3. 运行 `pnpm docs:sync` 同步到此文档
+:::
 
 ### Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `type` | `"primary"` \| `"default"` \| `"dashed"` \| `"text"` \| `"link"` | `default` | - | 按钮类型 |
-| `size` | `"small"` \| `"medium"` \| `"large"` | `medium` | - | 按钮尺寸 |
+| `type` | `"primary" \| "default" \| "dashed" \| "text" \| "link"` | `'default'` | - | 按钮类型 |
+| `size` | `"small" \| "medium" \| "large"` | `'medium'` | - | 按钮尺寸 |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
-| `loading` | `boolean` | `false` | - | 是否加载中 |
+| `loading` | `boolean` | `false` | - | 是否加载中，加载中时按钮不可点击并显示加载动画 |
 
 ### Events
 
@@ -137,8 +126,4 @@ const handleClick = (event) => {
 
 | 插槽名 | 说明 |
 |--------|------|
-| `default` | 按钮内容 |
-
-::: tip 提示
-API 文档由 vue-docgen-api 自动生成。如果需要更新，请运行 `pnpm docs:gen`。
-:::
+| `default` | - |

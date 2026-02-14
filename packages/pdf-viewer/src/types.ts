@@ -170,16 +170,41 @@ export interface ThumbnailInfo {
 
 /** PdfViewer Props */
 export interface PdfViewerProps {
-  /** PDF 文件 URL 或 ArrayBuffer */
+  /** PDF 文件 URL 或 ArrayBuffer 数据 */
   source: string | ArrayBuffer;
-  /** 初始页码 */
+  /**
+   * 初始显示的页码
+   * @default 1
+   */
   initialPage?: number;
-  /** 配置项 */
+  /** 预览器配置项（缩放、工具栏、文字层等） */
   config?: Partial<PdfViewerConfig>;
-  /** 图片层配置 */
+  /** 图片层配置（hover、选择、样式等） */
   imageLayerConfig?: Partial<ImageLayerConfig>;
-  /** 右键菜单配置 */
+  /** 右键菜单配置（菜单项、启用状态等） */
   contextMenuConfig?: Partial<ContextMenuConfig>;
+}
+
+// ==================== 组件 Emits ====================
+
+/** PdfViewer Emits */
+export interface PdfViewerEmits {
+  /** PDF 加载完成，返回总页数 */
+  (e: 'ready', totalPages: number): void;
+  /** PDF 加载错误，返回错误信息 */
+  (e: 'error', error: Error): void;
+  /** 页码变化，返回当前页码和总页数 */
+  (e: 'pageChange', page: number, total: number): void;
+  /** 缩放比例变化，返回当前缩放比例 */
+  (e: 'scaleChange', scale: number): void;
+  /** 文本选中，返回选中的文本内容 */
+  (e: 'textSelect', text: string): void;
+  /** 图片点击，返回图片信息和鼠标事件 */
+  (e: 'imageClick', image: PdfImageInfo, event: MouseEvent): void;
+  /** 图片选中（多选），返回所有选中的图片 */
+  (e: 'imageSelect', images: PdfImageInfo[]): void;
+  /** 右键菜单触发，返回菜单上下文信息 */
+  (e: 'contextMenu', context: ContextMenuContext): void;
 }
 
 // ==================== 组件 Expose ====================

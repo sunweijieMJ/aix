@@ -59,170 +59,30 @@ const onTimeUpdate = () => {
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `source` | `SubtitleSource` | - | - | 字幕来源 |
-| `currentTime` | `number` | - | - | 当前播放时间 (秒) - 用于外部控制 |
+| `currentTime` | `number` | - | - | 当前播放时间 (秒)，用于外部控制字幕显示 |
 | `visible` | `boolean` | `true` | - | 是否显示字幕 |
-| `position` | `"top"` \| `"bottom"` \| `"center"` | `bottom` | - | 字幕位置 |
-| `fontSize` | `number` \| `string` | `20` | - | 字体大小 |
-| `background` | `"blur"` \| `"solid"` \| `"none"` | `blur` | - | 背景样式 |
-| `maxWidth` | `number` \| `string` | `1200px` | - | 最大宽度 |
-| `singleLine` | `boolean` | `false` | - | 是否单行显示（固定高度场景） |
+| `position` | `"top" \| "bottom" \| "center"` | `'bottom'` | - | 字幕位置 |
+| `fontSize` | `number \| string` | `20` | - | 字体大小，可以是数字(px)或 CSS 字符串 |
+| `background` | `"blur" \| "solid" \| "none"` | `'blur'` | - | 背景样式：blur-毛玻璃、solid-渐变、none-透明 |
+| `maxWidth` | `number \| string` | `'1200px'` | - | 最大宽度，可以是数字(px)或 CSS 字符串 |
+| `singleLine` | `boolean` | `false` | - | 是否单行显示（固定高度场景下启用，需配合 fixedHeight 使用） |
 | `fixedHeight` | `number` | - | - | 固定高度（用于计算分段，单位 px） |
 | `autoSegment` | `boolean` | `false` | - | 是否自动分段（文字过长时分多段轮播显示） |
-| `segmentDuration` | `number` | `3000` | - | 每段显示时长（毫秒），默认 3000ms |
+| `segmentDuration` | `number` | `3000` | - | 每段显示时长（毫秒） |
 
 ### Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `loaded` | `Array` | 字幕加载完成 |
-| `error` | `Error` | 字幕加载失败 |
-| `change` | `union` | 当前字幕变化 |
+| `loaded` | `SubtitleCue[]` | 字幕加载完成，返回所有字幕条目 |
+| `error` | `Error` | 字幕加载失败，返回错误信息 |
+| `change` | `SubtitleCue \| null` | 当前字幕变化，返回当前字幕条目和索引（null 表示无字幕） |
 
 ### Slots
 
 | 插槽名 | 说明 |
 |--------|------|
 | `default` | - |
-
-## 使用示例
-
-### 从 URL 加载
-
-```vue
-<template>
-  <Subtitle
-    :source="{ type: 'url', url: '/subtitles/video.vtt' }"
-    :currentTime="currentTime"
-  />
-</template>
-```
-
-### 从文本加载
-
-```vue
-<template>
-  <Subtitle
-    :source="{ type: 'text', content: srtContent, format: 'srt' }"
-    :currentTime="currentTime"
-  />
-</template>
-
-<script setup lang="ts">
-const srtContent = `
-1
-00:00:01,000 --> 00:00:04,000
-这是第一句字幕
-
-2
-00:00:05,000 --> 00:00:08,000
-这是第二句字幕
-`;
-</script>
-```
-
-### 从数组加载
-
-```vue
-<template>
-  <Subtitle
-    :source="{ type: 'cues', cues: subtitleCues }"
-    :currentTime="currentTime"
-  />
-</template>
-
-<script setup lang="ts">
-import type { SubtitleCue } from '@aix/subtitle';
-
-const subtitleCues: SubtitleCue[] = [
-  { startTime: 1, endTime: 4, text: '这是第一句字幕' },
-  { startTime: 5, endTime: 8, text: '这是第二句字幕' },
-];
-</script>
-```
-
-### 自定义样式
-
-```vue
-<template>
-  <Subtitle
-    :source="subtitleSource"
-    :currentTime="currentTime"
-    position="bottom"
-    fontSize="18px"
-    background="blur"
-    maxWidth="80%"
-  />
-</template>
-```
-
-### 自动分段
-
-当字幕文本过长时，启用自动分段可以分多段轮播显示：
-
-```vue
-<template>
-  <Subtitle
-    :source="subtitleSource"
-    :currentTime="currentTime"
-    singleLine
-    autoSegment
-    :segmentDuration="3000"
-    :fixedHeight="40"
-  />
-</template>
-```
-
-### 配合视频播放器使用
-
-```vue
-<template>
-  <div class="player-container">
-    <video
-      ref="videoRef"
-      :src="videoSrc"
-      @timeupdate="onTimeUpdate"
-      @loadedmetadata="onLoadedMetadata"
-    />
-    <Subtitle
-      ref="subtitleRef"
-      :source="subtitleSource"
-      :currentTime="currentTime"
-      :visible="showSubtitle"
-      @loaded="onSubtitleLoaded"
-      @change="onSubtitleChange"
-    />
-  </div>
-</template>
-
-<script setup lang="ts">
-import { ref } from 'vue';
-import { Subtitle, type SubtitleCue, type SubtitleExpose } from '@aix/subtitle';
-import '@aix/subtitle/style';
-
-const videoRef = ref<HTMLVideoElement>();
-const subtitleRef = ref<SubtitleExpose>();
-const currentTime = ref(0);
-const showSubtitle = ref(true);
-
-const subtitleSource = {
-  type: 'url' as const,
-  url: '/subtitles/video.vtt',
-};
-
-const onTimeUpdate = () => {
-  currentTime.value = videoRef.value?.currentTime ?? 0;
-};
-
-const onSubtitleLoaded = (cues: SubtitleCue[]) => {
-  console.log('字幕加载完成，共', cues.length, '条');
-};
-
-const onSubtitleChange = (cue: SubtitleCue | null, index: number) => {
-  console.log('当前字幕:', cue?.text, '索引:', index);
-};
-</script>
-```
-
 ## 类型定义
 
 ```typescript

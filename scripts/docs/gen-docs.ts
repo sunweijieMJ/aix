@@ -61,6 +61,127 @@ async function generateDocs() {
 }
 
 /**
+ * Format type for better display
+ */
+function formatType(prop: any): string {
+  if (!prop.type) {
+    return '`any`';
+  }
+
+  const { type } = prop;
+
+  // Handle union types
+  if (type.name === 'union') {
+    const elements = type.elements
+      ?.map((e: any) => {
+        // Handle string literals: 'primary', 'default'
+        if (e.value !== undefined) {
+          return `"${e.value}"`;
+        }
+        // Handle type names: string, number
+        if (e.name) {
+          return e.name;
+        }
+        return e;
+      })
+      .join(' \\| '); // Escape | for Markdown tables
+    return elements ? `\`${elements}\`` : '`any`';
+  }
+
+  // Handle array types
+  if (type.name === 'array') {
+    const elementType = type.elements?.[0]?.name || 'any';
+    return `\`${elementType}[]\``;
+  }
+
+  // Handle generic types with elements (e.g., Partial<T>, Omit<T, K>)
+  if (type.elements && type.elements.length > 0) {
+    const elementsStr = type.elements
+      .map((e: any) => e.name || 'any')
+      .join(', ');
+    return `\`${type.name}<${elementsStr}>\``;
+  }
+
+  // Handle function types
+  if (type.name === 'func' || type.name === 'function') {
+    return '`Function`';
+  }
+
+  // Handle object types
+  if (type.name === 'object') {
+    return '`Object`';
+  }
+
+  // Handle import types (e.g., TSImportType) - simplify to 'any'
+  if (type.name === 'TSImportType' || type.name.startsWith('TS')) {
+    return '`any`';
+  }
+
+  // Handle generic types with < > in name (e.g., Ref<number>, Promise<string>)
+  if (type.name.includes('<')) {
+    return `\`${type.name}\``;
+  }
+
+  // Default: wrap in backticks
+  return `\`${type.name}\``;
+}
+
+/**
+ * Format default value for better display
+ */
+function formatDefaultValue(defaultValue: any): string {
+  if (!defaultValue || defaultValue.value === undefined) {
+    return '-';
+  }
+
+  let value = defaultValue.value;
+
+  // Clean up quotes and extra characters
+  value = value.replace(/^['"`]|['"`]$/g, '');
+
+  // Handle functions - show simplified version
+  if (value.startsWith('()') || value.startsWith('function')) {
+    // Extract the return value if possible
+    if (value.includes('=> ({})') || value.includes('return {}')) {
+      return '`{}`';
+    }
+    if (value.includes('=> ([])') || value.includes('return []')) {
+      return '`[]`';
+    }
+    // For other functions, just show '-'
+    return '-';
+  }
+
+  // Handle special values
+  if (
+    value === 'true' ||
+    value === 'false' ||
+    value === 'null' ||
+    value === 'undefined'
+  ) {
+    return `\`${value}\``;
+  }
+
+  // Handle numbers
+  if (!isNaN(Number(value))) {
+    return `\`${value}\``;
+  }
+
+  // Handle empty strings
+  if (value === '') {
+    return `\`''\``;
+  }
+
+  // Handle objects/arrays (stringify)
+  if (value.startsWith('{') || value.startsWith('[')) {
+    return `\`${value}\``;
+  }
+
+  // Default: wrap in backticks and quotes
+  return `\`'${value}'\``;
+}
+
+/**
  * Generate API markdown from component info
  */
 function generateApiMarkdown(componentInfo: any): string {
@@ -75,27 +196,10 @@ function generateApiMarkdown(componentInfo: any): string {
     componentInfo.props.forEach((prop: any) => {
       const name = prop.name;
 
-      // Handle complex types
-      let type = 'any';
-      if (prop.type) {
-        if (prop.type.name === 'union') {
-          // Union types: 'primary' | 'default' | 'dashed'
-          type = prop.type.elements
-            ?.map((e: any) => {
-              const val = e.name || e;
-              return typeof val === 'string' && val.includes("'")
-                ? val
-                : `\`${val}\``;
-            })
-            .join(' \\| ');
-        } else {
-          type = `\`${prop.type.name}\``;
-        }
-      }
+      // Handle complex types with improved formatting
+      const type = formatType(prop);
 
-      const defaultValue = prop.defaultValue?.value
-        ? `\`${prop.defaultValue.value.replace(/'/g, '')}\``
-        : '-';
+      const defaultValue = formatDefaultValue(prop.defaultValue);
       const required = prop.required ? '✅' : '-';
       const description = prop.description || '-';
 
@@ -113,8 +217,35 @@ function generateApiMarkdown(componentInfo: any): string {
 
     componentInfo.events.forEach((event: any) => {
       const name = event.name;
-      const params = event.type?.names?.join(', ') || '-';
+      let params = '-';
+
+      if (event.type) {
+        const { names, elements } = event.type;
+
+        if (names && names.length > 0) {
+          // Handle Array types
+          if (names[0] === 'Array' && elements && elements.length > 0) {
+            const elementType = elements[0].name || 'any';
+            params = `${elementType}[]`;
+          }
+          // Handle union types
+          else if (names[0] === 'union' && elements && elements.length > 0) {
+            const types = elements
+              .map((e: any) => e.name || e.value || 'any')
+              .join(' \\| '); // Escape | for Markdown tables
+            params = types;
+          }
+          // Handle other types
+          else {
+            params = names.join(' | ');
+          }
+        }
+      }
+
       const description = event.description || '-';
+
+      // Clean up params: remove newlines and extra spaces
+      params = params.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 
       markdown += `| \`${name}\` | \`${params}\` | ${description} |\n`;
     });
@@ -158,7 +289,8 @@ function generateApiMarkdown(componentInfo: any): string {
     markdown += '\n';
   }
 
-  return markdown;
+  // Keep one trailing newline, remove excessive ones
+  return markdown.replace(/\n+$/, '\n');
 }
 
 /**

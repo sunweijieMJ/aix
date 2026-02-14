@@ -138,50 +138,22 @@ const { t } = useLocale(buttonLocale);
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `type` | `"primary"` \| `"default"` \| `"dashed"` \| `"text"` \| `"link"` | `default` | - | 按钮类型 |
-| `size` | `"small"` \| `"medium"` \| `"large"` | `medium` | - | 按钮尺寸 |
+| `type` | `"primary" \| "default" \| "dashed" \| "text" \| "link"` | `'default'` | - | 按钮类型 |
+| `size` | `"small" \| "medium" \| "large"` | `'medium'` | - | 按钮尺寸 |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
-| `loading` | `boolean` | `false` | - | 是否加载中 |
+| `loading` | `boolean` | `false` | - | 是否加载中，加载中时按钮不可点击并显示加载动画 |
 
 ### Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `click` | `MouseEvent` | - |
+| `click` | `MouseEvent` | 点击按钮时触发 |
 
 ### Slots
 
 | 插槽名 | 说明 |
 |--------|------|
 | `default` | - |
-
-## 🎨 样式定制
-
-### CSS 类名
-
-组件使用标准的 CSS 类名，您可以通过覆盖以下类来自定义样式：
-
-```css
-/* 基础样式 */
-.aix-button { }
-
-/* 类型样式 */
-.aix-button--primary { }
-.aix-button--default { }
-.aix-button--dashed { }
-.aix-button--text { }
-.aix-button--link { }
-
-/* 尺寸样式 */
-.aix-button--small { }
-.aix-button--medium { }
-.aix-button--large { }
-
-/* 状态样式 */
-.aix-button--disabled { }
-.aix-button--loading { }
-```
-
 ## 📝 类型定义
 
 ```typescript

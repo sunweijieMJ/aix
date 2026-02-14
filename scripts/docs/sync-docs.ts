@@ -3,14 +3,13 @@ import path from 'path';
 import chalk from 'chalk';
 import { glob } from 'glob';
 
+const API_INJECT_MARKER = '<!-- @api-inject -->';
+
 /**
- * Extract API section from README and sync to VitePress docs/api directory
+ * Extract API section from README and inject to VitePress docs/components directory
  */
 async function syncDocs() {
   console.log(chalk.cyan('🔄 Syncing API docs to VitePress...\n'));
-
-  const targetDir = path.resolve('docs/api');
-  await fs.mkdir(targetDir, { recursive: true });
 
   // Find all package README.md files
   const readmeFiles = await glob('packages/*/README.md');
@@ -25,38 +24,75 @@ async function syncDocs() {
   }
 
   let successCount = 0;
+  let skipCount = 0;
 
   for (const readmePath of readmeFiles) {
     try {
       const packageName = path.basename(path.dirname(readmePath));
-      const targetPath = path.join(targetDir, `${packageName}.md`);
+      const componentDocPath = path.resolve(
+        `docs/components/${packageName}.md`,
+      );
 
-      // Read README content
-      const content = await fs.readFile(readmePath, 'utf-8');
+      // Check if component doc exists
+      const docExists = await fs
+        .access(componentDocPath)
+        .then(() => true)
+        .catch(() => false);
 
-      // Extract API section
-      const apiContent = extractApiSection(content);
+      if (!docExists) {
+        console.log(
+          chalk.yellow(
+            `⚠️  No component doc found for ${packageName}, skipping...`,
+          ),
+        );
+        skipCount++;
+        continue;
+      }
 
-      if (apiContent) {
-        // Generate complete VitePress document
-        const fullDocument = generateApiDocument(packageName, apiContent);
+      // Read README and component doc content
+      const readmeContent = await fs.readFile(readmePath, 'utf-8');
+      const componentDoc = await fs.readFile(componentDocPath, 'utf-8');
 
-        // Write to docs/api/
-        await fs.writeFile(targetPath, fullDocument, 'utf-8');
-        console.log(chalk.green(`✅ ${packageName}.md API section synced`));
-        successCount++;
-      } else {
+      // Extract API section from README
+      const apiContent = extractApiSection(readmeContent);
+
+      if (!apiContent) {
         console.log(
           chalk.yellow(`⚠️  No API section found in ${packageName} README`),
         );
+        skipCount++;
+        continue;
       }
+
+      // Inject API into component doc
+      let updatedDoc = injectApiContent(componentDoc, apiContent);
+
+      // Clean up excessive blank lines (3+ consecutive newlines -> 2)
+      updatedDoc = updatedDoc.replace(/\n{3,}/g, '\n\n');
+
+      // Write back to component doc
+      await fs.writeFile(componentDocPath, updatedDoc, 'utf-8');
+      console.log(
+        chalk.green(
+          `✅ ${packageName}.md API section injected to docs/components/`,
+        ),
+      );
+      successCount++;
     } catch (error: any) {
-      console.error(chalk.red(`❌ Sync failed: ${error.message}`));
+      console.error(
+        chalk.red(
+          `❌ Sync failed for ${path.basename(path.dirname(readmePath))}: ${error.message}`,
+        ),
+      );
     }
   }
 
   console.log(chalk.cyan('\n' + '='.repeat(50)));
-  console.log(chalk.green(`✨ Sync complete! ${successCount} files synced.`));
+  console.log(
+    chalk.green(
+      `✨ Sync complete! ${successCount} injected, ${skipCount} skipped.`,
+    ),
+  );
   console.log(chalk.cyan('='.repeat(50) + '\n'));
 }
 
@@ -94,40 +130,90 @@ function extractApiSection(content: string): string | null {
 }
 
 /**
- * Generate complete VitePress API document with frontmatter
+ * Inject API content into component doc at marker position
  */
-function generateApiDocument(packageName: string, apiContent: string): string {
-  // Convert package name to title (e.g., 'button' -> 'Button')
-  const title = packageName.charAt(0).toUpperCase() + packageName.slice(1);
+function injectApiContent(componentDoc: string, apiContent: string): string {
+  // Clean API content (remove "## API" header and excessive newlines)
+  const cleanedApi = apiContent
+    .replace(/^## API\s*\n*/m, '')
+    .replace(/\n{3,}/g, '\n\n') // Replace 3+ newlines with 2
+    .trim() // Trim at the end to remove trailing newlines
+    .replace(/\n$/, ''); // Ensure no trailing newline
 
-  // Remove "## API" header and clean up extra whitespace
-  let cleanContent = apiContent.replace(/^## API\s*/m, '').trim();
+  // Add auto-generation warning
+  const apiWithWarning = `## API
 
-  // Adjust heading levels: ### -> ## (since we removed ## API)
-  // VitePress frontmatter title serves as h1, so ### becomes ##
-  cleanContent = cleanContent.replace(/^### /gm, '## ');
+::: warning 自动生成的 API 文档
+以下 API 文档由 \`pnpm docs:gen\` 从组件源码自动生成。请勿手动编辑此部分。
 
-  return `---
-title: ${title} API
-outline: deep
----
-
-# ${title} API
-
-::: warning 自动生成
-此文档由 \`pnpm docs:sync\` 自动生成。请勿手动编辑此文件。
-
-如需更新 API 文档，请修改组件源码注释，然后运行：
-
-\`\`\`bash
-pnpm docs:gen  # 生成 API 到 README.md
-pnpm docs:sync # 同步到文档站点
-\`\`\`
-
+如需更新 API 文档，请：
+1. 修改组件源码中的 JSDoc 注释
+2. 运行 \`pnpm docs:gen\` 生成到 README.md
+3. 运行 \`pnpm docs:sync\` 同步到此文档
 :::
 
-${cleanContent}
-`;
+${cleanedApi}`;
+
+  // Check if marker exists
+  if (componentDoc.includes(API_INJECT_MARKER)) {
+    // Find marker position
+    const markerIndex = componentDoc.indexOf(API_INJECT_MARKER);
+
+    // Find next section after marker (starts with ##)
+    const afterMarker = componentDoc.slice(
+      markerIndex + API_INJECT_MARKER.length,
+    );
+    const nextSectionMatch = afterMarker.match(/\n## /);
+
+    if (nextSectionMatch) {
+      // Replace content between marker and next section
+      const nextSectionIndex =
+        markerIndex + API_INJECT_MARKER.length + nextSectionMatch.index!;
+
+      // Get the rest of the document (starts with \n##)
+      const restOfDoc = componentDoc.slice(nextSectionIndex);
+
+      // Ensure exactly one blank line between API and next section
+      return (
+        componentDoc.slice(0, markerIndex) +
+        apiWithWarning +
+        '\n' + // Add one newline to create a blank line
+        restOfDoc // This starts with \n##, so total: \n\n##
+      );
+    } else {
+      // Marker is at the end, append API
+      return componentDoc.slice(0, markerIndex) + apiWithWarning + '\n';
+    }
+  } else {
+    // No marker found, check if API section already exists
+    const apiSectionMatch = componentDoc.match(/\n## API\b/);
+
+    if (apiSectionMatch) {
+      // Replace existing API section
+      const apiStartIndex = apiSectionMatch.index! + 1; // +1 to skip leading \n
+
+      // Find next section after API
+      const afterApi = componentDoc.slice(apiStartIndex + '## API'.length);
+      const nextSectionMatch = afterApi.match(/\n## /);
+
+      if (nextSectionMatch) {
+        const nextSectionIndex =
+          apiStartIndex + '## API'.length + nextSectionMatch.index!;
+        return (
+          componentDoc.slice(0, apiStartIndex) +
+          apiWithWarning +
+          '\n\n' +
+          componentDoc.slice(nextSectionIndex)
+        );
+      } else {
+        // API is the last section
+        return componentDoc.slice(0, apiStartIndex) + apiWithWarning + '\n';
+      }
+    } else {
+      // No API section and no marker, append at the end
+      return componentDoc.trim() + '\n\n' + apiWithWarning + '\n';
+    }
+  }
 }
 
 syncDocs().catch(console.error);

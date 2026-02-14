@@ -1,5 +1,6 @@
 import videojs from 'video.js';
 import type { Ref } from 'vue';
+import type { NetworkStatus } from './composables/useNetworkStatus';
 
 // 重新导出 composables 类型
 export type { ControlsOptions } from './composables/useControls';
@@ -18,6 +19,7 @@ export type {
   VideoPlayerOptions,
   UseVideoPlayerReturn,
 } from './composables/useVideoPlayer';
+export type { NetworkStatus } from './composables/useNetworkStatus';
 
 /**
  * video.js Player 实例类型
@@ -45,6 +47,137 @@ export interface VideoJsOptions {
   sources?: Array<{ src: string; type: string }>;
   language?: string;
   [key: string]: unknown;
+}
+
+/**
+ * VideoPlayer Props
+ */
+export interface VideoPlayerProps {
+  /** 视频源地址 */
+  src: string;
+  /** 封面图 */
+  poster?: string;
+  /**
+   * 是否自动播放
+   * @default false
+   */
+  autoplay?: boolean;
+  /**
+   * 是否循环播放
+   * @default false
+   */
+  loop?: boolean;
+  /**
+   * 是否静音
+   * @default false
+   */
+  muted?: boolean;
+  /**
+   * 是否显示控制栏
+   * @default true
+   */
+  controls?: boolean;
+  /**
+   * 是否响应式
+   * @default true
+   */
+  responsive?: boolean;
+  /**
+   * 是否流式布局
+   * @default true
+   */
+  fluid?: boolean;
+  /** 宽度 */
+  width?: number | string;
+  /** 高度 */
+  height?: number | string;
+  /** 宽高比（如 '16:9'） */
+  aspectRatio?: string;
+  /**
+   * 预加载策略
+   * @default 'auto'
+   */
+  preload?: 'auto' | 'metadata' | 'none';
+  /**
+   * 是否透明背景
+   * @default false
+   */
+  transparent?: boolean;
+  /**
+   * 是否跨域
+   * @default true
+   */
+  crossOrigin?: boolean;
+  /**
+   * 是否启用调试日志
+   * @default false
+   */
+  enableDebugLog?: boolean;
+  /** video.js 额外配置 */
+  options?: Partial<VideoJsOptions>;
+  /** 流适配器配置 */
+  streamOptions?: Omit<
+    import('./composables/useStreamAdapter').StreamAdapterOptions,
+    'onReady' | 'onError' | 'onFirstFrame'
+  >;
+  /** 视频源类型（不指定时自动推断） */
+  sourceType?: import('./composables/useVideoPlayer').VideoSourceType;
+  /**
+   * 是否使用自定义控制栏
+   * @default false
+   */
+  customControls?: boolean;
+  /**
+   * 是否启用触摸事件优化（移动端）
+   * @default true
+   */
+  enableTouchEvents?: boolean;
+  /**
+   * 横屏时是否自动全屏
+   * @default false
+   */
+  autoFullscreenOnLandscape?: boolean;
+}
+
+/**
+ * VideoPlayer Emits
+ */
+export interface VideoPlayerEmits {
+  /** 播放器就绪，返回 video.js 播放器实例 */
+  (e: 'ready', player: VideoJsPlayer): void;
+  /** 开始播放 */
+  (e: 'play'): void;
+  /** 暂停播放 */
+  (e: 'pause'): void;
+  /** 播放结束 */
+  (e: 'ended'): void;
+  /** 播放时间更新，返回当前时间和总时长（秒） */
+  (e: 'timeupdate', currentTime: number, duration: number): void;
+  /** 缓冲进度更新，返回已缓冲的百分比（0-1） */
+  (e: 'progress', buffered: number): void;
+  /** 播放错误，返回错误信息 */
+  (e: 'error', error: Error): void;
+  /** 音量变化，返回音量值（0-1）和是否静音 */
+  (e: 'volumechange', volume: number, muted: boolean): void;
+  /** 全屏状态变化，返回是否全屏 */
+  (e: 'fullscreenchange', isFullscreen: boolean): void;
+  /** 可以播放（已加载足够数据） */
+  (e: 'canplay'): void;
+  /** 数据加载完成 */
+  (e: 'loadeddata'): void;
+  /** 移动端自动播放策略触发静音，返回原因信息 */
+  (
+    e: 'autoplayMuted',
+    reason: { reason: 'mobile-policy'; originalMuted: boolean },
+  ): void;
+  /** 网络离线 */
+  (e: 'networkOffline'): void;
+  /** 网络恢复在线 */
+  (e: 'networkOnline'): void;
+  /** 网络变慢，返回网络状态信息 */
+  (e: 'networkSlow', status: NetworkStatus): void;
+  /** 网络状态变化，返回网络状态信息 */
+  (e: 'networkChange', status: NetworkStatus): void;
 }
 
 /**

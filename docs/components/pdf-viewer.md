@@ -248,54 +248,43 @@ const onContextMenu = (context: ContextMenuContext) => {
 
 ## API
 
+::: warning 自动生成的 API 文档
+以下 API 文档由 `pnpm docs:gen` 从组件源码自动生成。请勿手动编辑此部分。
+
+如需更新 API 文档，请：
+1. 修改组件源码中的 JSDoc 注释
+2. 运行 `pnpm docs:gen` 生成到 README.md
+3. 运行 `pnpm docs:sync` 同步到此文档
+:::
+
 ### Props
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `source` | `string` \| `ArrayBuffer` | - | ✅ | PDF 文件 URL 或 ArrayBuffer |
-| `initialPage` | `number` | `1` | - | 初始页码 |
-| `config` | `Partial<PdfViewerConfig>` | `{}` | - | 配置项 |
-| `imageLayerConfig` | `Partial<ImageLayerConfig>` | `{}` | - | 图片层配置 |
-| `contextMenuConfig` | `Partial<ContextMenuConfig>` | `{}` | - | 右键菜单配置 |
+| `source` | `string \| ArrayBuffer` | - | ✅ | PDF 文件 URL 或 ArrayBuffer 数据 |
+| `initialPage` | `number` | `1` | - | 初始显示的页码 |
+| `config` | `Partial<PdfViewerConfig>` | `{}` | - | 预览器配置项（缩放、工具栏、文字层等） |
+| `imageLayerConfig` | `Partial<ImageLayerConfig>` | `{}` | - | 图片层配置（hover、选择、样式等） |
+| `contextMenuConfig` | `Partial<ContextMenuConfig>` | `{}` | - | 右键菜单配置（菜单项、启用状态等） |
 
 ### Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `ready` | `number` | PDF 加载完成，参数为总页数 |
-| `error` | `Error` | 加载错误 |
-| `pageChange` | `number` | 页码变化 |
-| `scaleChange` | `number` | 缩放比例变化 |
-| `textSelect` | `string` | 文字选中 |
-| `imageClick` | `PdfImageInfo` | 图片点击 |
-| `imageSelect` | `PdfImageInfo[]` | 图片选中（多选） |
-| `contextMenu` | `ContextMenuContext` | 右键菜单触发 |
+| `ready` | `number` | PDF 加载完成，返回总页数 |
+| `error` | `Error` | PDF 加载错误，返回错误信息 |
+| `pageChange` | `number` | 页码变化，返回当前页码和总页数 |
+| `scaleChange` | `number` | 缩放比例变化，返回当前缩放比例 |
+| `textSelect` | `string` | 文本选中，返回选中的文本内容 |
+| `imageClick` | `PdfImageInfo` | 图片点击，返回图片信息和鼠标事件 |
+| `imageSelect` | `PdfImageInfo[]` | 图片选中（多选），返回所有选中的图片 |
+| `contextMenu` | `ContextMenuContext` | 右键菜单触发，返回菜单上下文信息 |
 
 ### Slots
 
 | 插槽名 | 说明 |
 |--------|------|
-| `toolbar` | 自定义工具栏，接收 `{ currentPage, totalPages, scale, actions }` 参数 |
-
-### Expose
-
-通过 ref 可以获取以下属性和方法：
-
-| 名称 | 类型 | 说明 |
-|------|------|------|
-| `currentPage` | `number` | 当前页码 |
-| `totalPages` | `number` | 总页数 |
-| `scale` | `number` | 当前缩放比例 |
-| `prevPage` | `() => void` | 上一页 |
-| `nextPage` | `() => void` | 下一页 |
-| `goToPage` | `(page: number) => void` | 跳转到指定页 |
-| `zoomIn` | `() => void` | 放大 |
-| `zoomOut` | `() => void` | 缩小 |
-| `setScale` | `(scale: number) => void` | 设置缩放比例 |
-| `fitWidth` | `() => void` | 适应宽度 |
-| `fitPage` | `() => void` | 适应页面 |
-| `generateThumbnail` | `(page: number, width?: number) => Promise<ThumbnailInfo>` | 生成单页缩略图 |
-| `generateAllThumbnails` | `(width?: number) => Promise<ThumbnailInfo[]>` | 生成所有页缩略图 |
+| `toolbar` | - |
 
 ## 类型定义
 

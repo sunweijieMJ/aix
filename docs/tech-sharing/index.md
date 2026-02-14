@@ -12,6 +12,7 @@ outline: deep
 
 ### 工具与工作流
 
+- [Claude Code 定制化完整指南](./claude-code-customization) - 深入掌握 Agents、Skills、Hooks、Commands、CLAUDE.md 和 Settings 配置，构建团队专属的 AI 开发工作流
 - [Claude Code Agent Team 完整使用指南](./agent-team) - 深入了解 Claude Code 的分布式并行协作功能，掌握 Agent Team 的使用方法和最佳实践
 
 ## 🎯 分享主题

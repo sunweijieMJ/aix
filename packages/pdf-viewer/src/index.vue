@@ -127,8 +127,9 @@
 
 <script setup lang="ts">
 /**
- * PdfViewer - PDF 预览组件
- * @description 使用 pdfjs-dist 提供 PDF 预览功能，支持文本和图片选择
+ * PDF 预览组件
+ *
+ * 使用 pdfjs-dist 提供 PDF 预览功能，支持文本和图片选择
  */
 import { useLocale } from '@aix/hooks';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
@@ -155,7 +156,7 @@ import type {
   ContextMenuConfig,
   PdfImageInfo,
   PdfViewerProps,
-  ContextMenuContext,
+  PdfViewerEmits,
   ThumbnailInfo,
 } from './types';
 
@@ -168,16 +169,7 @@ const props = withDefaults(defineProps<PdfViewerProps>(), {
   contextMenuConfig: () => ({}),
 });
 
-const emit = defineEmits<{
-  (e: 'ready', totalPages: number): void;
-  (e: 'error', error: Error): void;
-  (e: 'pageChange', page: number, total: number): void;
-  (e: 'scaleChange', scale: number): void;
-  (e: 'textSelect', text: string): void;
-  (e: 'imageClick', image: PdfImageInfo, event: MouseEvent): void;
-  (e: 'imageSelect', images: PdfImageInfo[]): void;
-  (e: 'contextMenu', context: ContextMenuContext): void;
-}>();
+const emit = defineEmits<PdfViewerEmits>();
 
 // 国际化
 const { t } = useLocale(locale);
