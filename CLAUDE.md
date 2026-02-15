@@ -87,6 +87,29 @@ pnpm type-check && pnpm cspell && pnpm lint
 
 ---
 
+## Agent Team 协作模式
+
+支持多 Agent 并行协作开发，已配置 3 个 teammate 角色。
+
+### 团队场景
+
+| 场景 | 触发方式 | 团队编制 |
+|------|---------|---------|
+| 开发新组件 | "开发新组件 X" | designer → coder → tester + storyteller |
+| 优化老组件 | "优化组件 X" | analyzer → optimizer + tester |
+| 修复多包 Bug | "修复 bug" | fixer-1 + fixer-2 + fixer-3 |
+
+### Teammate 角色
+
+| 角色 | Agent 文件 | 文件所有权 |
+|------|-----------|-----------|
+| designer (架构师) | team-designer.md | 只读，负责架构设计与任务拆解 |
+| tester | team-tester.md | `__test__/` |
+| storyteller | team-storyteller.md | `stories/` + `docs/` |
+| coder/optimizer/fixer | 不需专属 agent，用 general-purpose | `src/` |
+
+---
+
 ## 3 分钟项目速读
 
 ### 核心技术栈
@@ -218,6 +241,14 @@ packages/<name>/
 | **performance** | 渲染优化、包体积优化 | [查看文档](.claude/agents/performance.md) |
 | **code-review** | 代码审查、质量检查 | [查看文档](.claude/agents/code-review.md) |
 | **figma-extraction-guide** | Figma MCP 设计稿提取 | [查看文档](.claude/agents/figma-extraction-guide.md) |
+
+### Team Agent (并行协作角色)
+
+| Agent | 适用场景 | 文档链接 |
+|-------|---------|---------|
+| **team-designer** | 组件架构设计、任务拆解（Plan 模式只读） | [查看文档](.claude/agents/team-designer.md) |
+| **team-tester** | 组件测试编写（文件所有权: `__test__/`） | [查看文档](.claude/agents/team-tester.md) |
+| **team-storyteller** | Story 和文档编写（文件所有权: `stories/` + `docs/`） | [查看文档](.claude/agents/team-storyteller.md) |
 
 ---
 

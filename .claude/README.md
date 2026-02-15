@@ -45,6 +45,18 @@ Skills 是命令式工具，用于快速完成组件库开发任务。
 | `/code-optimizer` | `code-optimizer/SKILL.md` | 自动检测并修复性能/类型/包体积问题 | 代码优化 |
 | `/a11y-checker` | `a11y-checker/SKILL.md` | 自动化无障碍检查，ARIA/键盘/焦点管理 | 无障碍检查 |
 
+### Skill 依赖关系
+
+部分 Skill 存在链式调用，上游 Skill 会自动调用下游 Skill：
+
+```
+figma-to-component ──► component-generator    # 提取设计数据后调用组件生成器
+component-generator ──► story-generator       # --with-story 时调用 Story 生成器
+component-generator ──► test-generator        # --with-test 时调用测试生成器
+coverage-analyzer ──► test-generator          # 覆盖率不足时建议调用测试生成器
+test-generator ──► story-generator            # --with-story 时调用 Story 生成器
+```
+
 ### 命名规范
 
 | 类型 | 命名模式 | 示例 |
@@ -142,6 +154,18 @@ Agents 提供专业领域的深度指导，Claude 根据任务内容自动选择
 | `figma-extraction-guide` | `figma-extraction-guide.md` | Figma MCP 技术专家，设计数据提取 | Figma 设计还原 |
 | `accessibility` | `accessibility.md` | 无障碍（A11y）完整指南，ARIA/键盘导航/焦点管理 | 无障碍开发 |
 | `performance` | `performance.md` | 性能优化指南，渲染优化/虚拟滚动/懒加载/包体积 | 性能优化 |
+
+#### Team Agents (并行协作角色)
+
+用于 Agent Team 多人协作场景，每个角色有明确的文件所有权隔离。
+
+| Agent | 文件 | 职责 | 文件所有权 |
+|-------|------|------|-----------|
+| `team-designer` | `team-designer.md` | 组件架构师（Plan 模式只读），整体架构设计与任务拆解 | 只读 |
+| `team-tester` | `team-tester.md` | 测试工程师，单元测试与无障碍测试 | `__test__/` |
+| `team-storyteller` | `team-storyteller.md` | Story 文档工程师，Storybook Story 与组件文档 | `stories/` + `docs/` |
+
+> **说明**: coder / optimizer / fixer 角色使用 `general-purpose` agent，文件所有权为 `src/`
 
 ### Agent 依赖关系
 
@@ -268,6 +292,7 @@ Hooks 是自动化执行机制，在特定事件触发时自动运行，配置�
 | `SessionStart` | 会话开始 | 显示欢迎信息、包数量、分支、规范提醒 | `printf` 输出信息 |
 | `UserPromptSubmit` | 提交提示时 | 显示 Git 状态，了解当前改动 | `git status --short` |
 | `PostToolUse(Write)` | 写文件后 | 确认文件路径，避免写错位置 | `printf '✅ 文件已写入'` |
+| `TaskCompleted` | 任务完成 | 提醒检查类型/测试/文件所有权 | `printf` 输出清单 |
 | `SessionEnd` | 会话结束 | 显示 Git 状态提醒，避免遗漏提交 | `git status --short` |
 
 ### 可用的 Hook 事件
