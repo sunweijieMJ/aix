@@ -85,7 +85,7 @@ jobs:
 
       # 缓存构建产物和依赖供后续 jobs 使用
       - name: Cache build outputs
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             packages/*/es
@@ -122,7 +122,7 @@ jobs:
 
       # 恢复构建产物和依赖
       - name: Restore build cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             packages/*/es
@@ -163,7 +163,7 @@ jobs:
 
       # 恢复构建产物和依赖
       - name: Restore build cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             packages/*/es
@@ -204,7 +204,7 @@ jobs:
 
       # 恢复构建产物和依赖
       - name: Restore build cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             packages/*/es
