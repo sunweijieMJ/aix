@@ -1,7 +1,6 @@
 {
   "extends": "@kit/typescript-config/base-app.json",
   "compilerOptions": {
-    // Server 特定配置
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": ".",
