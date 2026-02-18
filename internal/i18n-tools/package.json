@@ -37,10 +37,10 @@
     "@kit/eslint-config": "workspace:*",
     "@kit/typescript-config": "workspace:*",
     "@types/inquirer": "^9.0.9",
-    "@types/node": "^25.2.3",
+    "@types/node": "*",
     "@types/yargs": "^17.0.35",
     "rimraf": "*",
-    "tsup": "^8.5.1",
+    "tsup": "*",
     "tsx": "*"
   }
 }

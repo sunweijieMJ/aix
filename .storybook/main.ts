@@ -12,6 +12,7 @@ const config: StorybookConfig = {
   addons: [
     getAbsolutePath('@storybook/addon-links'),
     getAbsolutePath('@storybook/addon-docs'),
+    getAbsolutePath('@storybook/addon-vitest'),
   ],
 
   framework: {
@@ -39,9 +40,11 @@ const config: StorybookConfig = {
     }
 
     // Customize Vite config for Storybook
+    // Skip base when running in Vitest — custom base breaks browser mode's WebSocket connection
+    const isVitest = !!process.env.VITEST;
     return {
       ...config,
-      base: '/aix/storybook/',
+      ...(isVitest ? {} : { base: '/aix/storybook/' }),
       resolve: {
         ...config.resolve,
         alias: {

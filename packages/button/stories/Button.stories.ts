@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
+import { fn, expect, userEvent } from 'storybook/test';
 import Button from '../src/Button.vue';
 import type { ButtonProps } from '../src/types';
 
@@ -13,6 +14,9 @@ const meta: Meta<typeof Button> = {
           'AIX Button 组件支持多种类型、尺寸和状态，完全支持主题定制。',
       },
     },
+  },
+  args: {
+    onClick: fn(),
   },
   argTypes: {
     type: {
@@ -50,7 +54,6 @@ const meta: Meta<typeof Button> = {
       },
     },
     onClick: {
-      action: 'clicked',
       description: '点击事件',
       table: {
         type: { summary: '(event: MouseEvent) => void' },
@@ -61,9 +64,10 @@ const meta: Meta<typeof Button> = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+type StoryArgs = ButtonProps & { onClick: ReturnType<typeof fn> };
 
 /**
- * 默认按钮
+ * 默认按钮 - 验证渲染和点击交互
  */
 export const Default: Story = {
   args: {
@@ -76,6 +80,14 @@ export const Default: Story = {
     },
     template: '<Button v-bind="args">Default Button</Button>',
   }),
+  play: async ({ canvas, args: _args }) => {
+    const args = _args as StoryArgs;
+    const button = canvas.getByRole('button', { name: 'Default Button' });
+    await expect(button).toBeInTheDocument();
+    await expect(button).toBeEnabled();
+    await userEvent.click(button);
+    await expect(args.onClick).toHaveBeenCalledOnce();
+  },
 };
 
 /**
@@ -92,6 +104,13 @@ export const Primary: Story = {
     },
     template: '<Button v-bind="args">Primary Button</Button>',
   }),
+  play: async ({ canvas, args: _args }) => {
+    const args = _args as StoryArgs;
+    const button = canvas.getByRole('button', { name: 'Primary Button' });
+    await expect(button).toBeInTheDocument();
+    await userEvent.click(button);
+    await expect(args.onClick).toHaveBeenCalledOnce();
+  },
 };
 
 /**
@@ -156,40 +175,65 @@ export const Sizes: Story = {
       </div>
     `,
   }),
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByRole('button', { name: 'Small' }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole('button', { name: 'Medium' }),
+    ).toBeInTheDocument();
+    await expect(
+      canvas.getByRole('button', { name: 'Large' }),
+    ).toBeInTheDocument();
+  },
 };
 
 /**
- * 禁用状态
+ * 禁用状态 - 验证禁用按钮不可点击
  */
 export const Disabled: Story = {
-  render: () => ({
+  args: {
+    type: 'primary',
+    disabled: true,
+  },
+  render: (args: ButtonProps) => ({
     components: { Button },
-    template: `
-      <div style="display: flex; gap: 12px;">
-        <Button type="primary" disabled>Primary</Button>
-        <Button type="default" disabled>Default</Button>
-        <Button type="dashed" disabled>Dashed</Button>
-        <Button type="text" disabled>Text</Button>
-        <Button type="link" disabled>Link</Button>
-      </div>
-    `,
+    setup() {
+      return { args };
+    },
+    template: '<Button v-bind="args">Disabled Button</Button>',
   }),
+  play: async ({ canvas, args: _args }) => {
+    const args = _args as StoryArgs;
+    const button = canvas.getByRole('button', { name: 'Disabled Button' });
+    await expect(button).toBeDisabled();
+    await userEvent.click(button);
+    await expect(args.onClick).not.toHaveBeenCalled();
+  },
 };
 
 /**
- * 加载状态
+ * 加载状态 - 验证加载中按钮不可点击且显示加载图标
  */
 export const Loading: Story = {
-  render: () => ({
+  args: {
+    type: 'primary',
+    loading: true,
+  },
+  render: (args: ButtonProps) => ({
     components: { Button },
-    template: `
-      <div style="display: flex; gap: 12px;">
-        <Button type="primary" loading>Loading</Button>
-        <Button type="default" loading>Loading</Button>
-        <Button type="dashed" loading>Loading</Button>
-      </div>
-    `,
+    setup() {
+      return { args };
+    },
+    template: '<Button v-bind="args">Loading Button</Button>',
   }),
+  play: async ({ canvas, args: _args }) => {
+    const args = _args as StoryArgs;
+    const button = canvas.getByRole('button', { name: 'Loading Button' });
+    await expect(button).toBeDisabled();
+    await userEvent.click(button);
+    await expect(args.onClick).not.toHaveBeenCalled();
+  },
 };
 
 /**
@@ -280,8 +324,7 @@ border: 1px solid var(--aix-colorBorder);</code></pre>
 };
 
 /**
- * 交互式 Playground
- * 在 Controls 面板中调整参数查看效果
+ * 交互式 Playground - 完整交互测试
  */
 export const Playground: Story = {
   args: {
@@ -293,11 +336,16 @@ export const Playground: Story = {
   render: (args: ButtonProps) => ({
     components: { Button },
     setup() {
-      const handleClick = () => {
-        alert('按钮被点击了！');
-      };
-      return { args, handleClick };
+      return { args };
     },
-    template: '<Button v-bind="args" @click="handleClick">点击我试试</Button>',
+    template: '<Button v-bind="args">Playground Button</Button>',
   }),
+  play: async ({ canvas, args: _args }) => {
+    const args = _args as StoryArgs;
+    const button = canvas.getByRole('button', { name: 'Playground Button' });
+    await expect(button).toBeInTheDocument();
+    await expect(button).toBeEnabled();
+    await userEvent.click(button);
+    await expect(args.onClick).toHaveBeenCalledOnce();
+  },
 };
