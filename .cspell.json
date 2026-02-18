@@ -99,7 +99,14 @@
     "formatjs",
     "bak",
     "Jaro",
-    "Winkler"
+    "Winkler",
+    "actuals",
+    "BFS",
+    "BEM",
+    "testrc",
+    "domcontentloaded",
+    "networkidle",
+    "fse"
   ],
   "patterns": [
     {

@@ -300,8 +300,8 @@ export class StabilityHandler {
    */
   private async hideElements(page: Page, selectors: string[]): Promise<void> {
     for (const selector of selectors) {
-      await page.evaluate((sel) => {
-        document.querySelectorAll(sel).forEach((el) => {
+      await page.evaluate((selector) => {
+        document.querySelectorAll(selector).forEach((el) => {
           (el as HTMLElement).style.display = 'none';
         });
       }, selector);
@@ -314,8 +314,8 @@ export class StabilityHandler {
    */
   private async maskElements(page: Page, selectors: string[]): Promise<void> {
     for (const selector of selectors) {
-      await page.evaluate((sel) => {
-        document.querySelectorAll(sel).forEach((el) => {
+      await page.evaluate((selector) => {
+        document.querySelectorAll(selector).forEach((el) => {
           const htmlEl = el as HTMLElement;
           htmlEl.style.backgroundColor = '#FF00FF';
           htmlEl.style.color = 'transparent';
@@ -340,12 +340,12 @@ export class StabilityHandler {
   ): Promise<void> {
     for (const { selector, replacement } of replacements) {
       await page.evaluate(
-        ({ sel, text }) => {
-          document.querySelectorAll(sel).forEach((el) => {
+        ({ selector, text }) => {
+          document.querySelectorAll(selector).forEach((el) => {
             el.textContent = text;
           });
         },
-        { sel: selector, text: replacement },
+        { selector, text: replacement },
       );
     }
     log.debug(`Replaced ${replacements.length} selector(s)`);
