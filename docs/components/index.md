@@ -21,8 +21,8 @@ Aix 提供了丰富的企业级 UI 组件，覆盖常见的业务场景。
 
 | 包名 | 说明 | 文档 |
 |------|------|------|
-| `@aix/theme` | 主题系统，CSS Variables + 亮暗模式 | [主题定制](/guide/theme) \| [API](/api/theme) |
-| `@aix/hooks` | 公共 Composition API Hooks | [国际化](/guide/i18n) \| [API](/api/hooks) |
+| `@aix/theme` | 主题系统，CSS Variables + 亮暗模式 | [主题定制](/guide/theme) |
+| `@aix/hooks` | 公共 Composition API Hooks | [国际化](/guide/i18n) |
 
 ## 安装
 

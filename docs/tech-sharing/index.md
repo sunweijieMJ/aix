@@ -95,7 +95,7 @@ outline: deep
 
 - [开发指南](/guide/) - 组件库开发规范和流程
 - [RFC 文档](/rfcs/) - 技术方案设计文档
-- [API 文档](/api/button) - 组件 API 参考
+- [API 文档](/components/button) - 组件 API 参考
 
 ---
 

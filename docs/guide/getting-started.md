@@ -80,4 +80,4 @@ const props: ButtonProps = {
 
 - 查看[组件文档](/components/)了解各个组件的用法
 - 阅读[主题定制](/guide/theme)了解如何定制主题
-- 参考[示例](/examples/basic-usage)查看实际应用场景
+- 参考[组件示例](/components/)查看实际应用场景
