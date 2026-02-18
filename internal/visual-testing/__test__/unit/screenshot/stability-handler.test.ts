@@ -158,7 +158,7 @@ describe('StabilityHandler', () => {
       await handler.stabilizePage(mockPage);
 
       expect(mockPage.evaluate).toHaveBeenCalledWith(expect.any(Function), {
-        sel: '.timestamp',
+        selector: '.timestamp',
         text: '2024-01-01',
       });
     });
