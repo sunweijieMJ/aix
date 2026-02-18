@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+es/
+lib/
+
+# Test output
+coverage/
+__test__/tmp/
+
+# Visual test output
+.visual-test/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

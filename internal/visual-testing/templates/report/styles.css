@@ -1,0 +1,381 @@
+:root {
+  --color-pass: #52c41a;
+  --color-fail: #ff4d4f;
+  --color-critical: #ff4d4f;
+  --color-major: #ff7a45;
+  --color-minor: #ffa940;
+  --color-trivial: #fadb14;
+  --color-bg: #fff;
+  --color-bg-secondary: #f5f5f5;
+  --color-border: #d9d9d9;
+  --color-text: #262626;
+  --color-text-secondary: #8c8c8c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #141414;
+    --color-bg-secondary: #1f1f1f;
+    --color-border: #434343;
+    --color-text: #e8e8e8;
+    --color-text-secondary: #a6a6a6;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Header */
+.header {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.header h1 {
+  margin-bottom: 0.5rem;
+  font-size: 2rem;
+}
+
+.header .meta {
+  display: flex;
+  gap: 1.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* Summary */
+.summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  gap: 2rem;
+}
+
+.score-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 150px;
+  padding: 1rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.score-card.grade-A {
+  background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+}
+
+.score-card.grade-B {
+  background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%);
+}
+
+.score-card.grade-C {
+  background: linear-gradient(135deg, #faad14 0%, #ffc53d 100%);
+}
+
+.score-card.grade-D {
+  background: linear-gradient(135deg, #ff7a45 0%, #ff9c6e 100%);
+}
+
+.score-card.grade-F {
+  background: linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%);
+}
+
+.score-card .grade {
+  font-size: 3rem;
+  font-weight: bold;
+}
+
+.score-card .score {
+  opacity: 0.9;
+  font-size: 1.25rem;
+}
+
+.stats {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat .label {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.stat .value {
+  font-size: 2rem;
+  font-weight: bold;
+}
+
+.stat.passed .value {
+  color: var(--color-pass);
+}
+
+.stat.failed .value {
+  color: var(--color-fail);
+}
+
+.oneliner {
+  grid-column: 1 / -1;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 1.125rem;
+  text-align: center;
+}
+
+/* Key Findings */
+.key-findings {
+  margin-bottom: 2rem;
+}
+
+.key-findings h2 {
+  margin-bottom: 1rem;
+}
+
+.key-findings ul {
+  padding-left: 0;
+  list-style: none;
+}
+
+.key-findings li {
+  position: relative;
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.key-findings li::before {
+  content: '▸';
+  position: absolute;
+  left: 0;
+  color: var(--color-fail);
+}
+
+/* Test Result */
+.test-result {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  border-left: 4px solid var(--color-fail);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+}
+
+.test-result h3 {
+  margin-bottom: 0.5rem;
+}
+
+.test-result .mismatch {
+  margin-bottom: 1rem;
+  color: var(--color-text-secondary);
+}
+
+/* Screenshots */
+.screenshots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.screenshot-item h4 {
+  margin-bottom: 0.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.screenshot-item img {
+  width: 100%;
+  transition: transform 0.2s;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.screenshot-item img:hover {
+  transform: scale(1.02);
+}
+
+/* Analysis */
+.analysis {
+  margin-bottom: 1.5rem;
+}
+
+.analysis h4 {
+  margin-bottom: 1rem;
+}
+
+.difference {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-left: 4px solid;
+  border-radius: 4px;
+  background: var(--color-bg);
+}
+
+.difference.severity-critical {
+  border-left-color: var(--color-critical);
+}
+
+.difference.severity-major {
+  border-left-color: var(--color-major);
+}
+
+.difference.severity-minor {
+  border-left-color: var(--color-minor);
+}
+
+.difference.severity-trivial {
+  border-left-color: var(--color-trivial);
+}
+
+.diff-header {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+  gap: 0.5rem;
+}
+
+.severity-badge,
+.type-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.severity-badge {
+  background: var(--color-fail);
+  color: white;
+}
+
+.type-badge {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.location {
+  color: var(--color-text-secondary);
+  font-family: Monaco, Menlo, monospace;
+  font-size: 0.875rem;
+}
+
+.description {
+  margin-bottom: 0.5rem;
+}
+
+.diff-values {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.875rem;
+}
+
+.expected code,
+.actual code {
+  padding: 0.125rem 0.375rem;
+  border-radius: 2px;
+  background: var(--color-bg-secondary);
+  font-family: Monaco, Menlo, monospace;
+}
+
+/* Suggestions */
+.suggestions h4 {
+  margin-bottom: 1rem;
+}
+
+.suggestion {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 4px;
+  background: var(--color-bg);
+}
+
+.suggestion-header {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.suggestion .type {
+  color: var(--color-pass);
+  font-weight: bold;
+}
+
+.suggestion .file {
+  color: var(--color-text-secondary);
+  font-family: Monaco, Menlo, monospace;
+}
+
+.suggestion pre {
+  margin: 0.5rem 0;
+  padding: 1rem;
+  overflow-x: auto;
+  border-radius: 4px;
+  background: var(--color-bg-secondary);
+}
+
+.suggestion code {
+  font-family: Monaco, Menlo, monospace;
+  font-size: 0.875rem;
+}
+
+/* Passed Tests */
+.passed-tests.collapsed {
+  opacity: 0.7;
+}
+
+.passed-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+.passed-list li {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.passed-list li .mismatch {
+  float: right;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* Failed Tests Section */
+.failed-tests h2 {
+  margin-bottom: 1.5rem;
+  color: var(--color-fail);
+}
+
+.passed-tests h2 {
+  margin-bottom: 1rem;
+  color: var(--color-pass);
+}

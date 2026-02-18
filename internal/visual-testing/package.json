@@ -1,0 +1,91 @@
+{
+  "name": "@kit/visual-testing",
+  "version": "0.1.0",
+  "description": "Visual regression testing with Figma baseline and LLM analysis",
+  "author": "<sunweijie@able-elec.com>",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
+    }
+  },
+  "bin": {
+    "visual-test": "./dist/cli.js"
+  },
+  "keywords": [
+    "visual-testing",
+    "regression-testing",
+    "figma",
+    "llm",
+    "screenshot",
+    "comparison"
+  ],
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest --run --passWithNoTests",
+    "build": "pnpm run clean && tsup",
+    "clean": "rimraf dist",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "cosmiconfig": "^9.0.0",
+    "eta": "^4.5.1",
+    "fs-extra": "^11.3.3",
+    "inquirer": "^13.2.4",
+    "ora": "^9.3.0",
+    "p-limit": "^7.3.0",
+    "picomatch": "^4.0.3",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "openai": "^6.22.0",
+    "playwright": "^1.58.2"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    },
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    },
+    "openai": {
+      "optional": true
+    },
+    "playwright": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "*",
+    "@types/picomatch": "^4.0.2",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "eslint": "*",
+    "openai": "^6.22.0",
+    "playwright": "^1.58.2",
+    "rimraf": "*",
+    "tsup": "*",
+    "tsx": "*",
+    "vitest": "*"
+  }
+}

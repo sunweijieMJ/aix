@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visual Test Report - <%= it.generatedAt %></title>
+  <style>
+    <%= await includeFile('styles.css', it) %>
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>📊 Visual Test Report</h1>
+      <div class="meta">
+        <span>Generated: <%= new Date(it.generatedAt).toLocaleString() %></span>
+        <span>Total Tests: <%= it.results.length %></span>
+      </div>
+    </header>
+
+    <!-- Summary -->
+    <section class="summary">
+      <div class="score-card grade-<%= it.conclusion.summary.grade %>">
+        <div class="grade"><%= it.conclusion.summary.grade %></div>
+        <div class="score"><%= it.conclusion.summary.overallScore %>/100</div>
+      </div>
+      <div class="stats">
+        <div class="stat passed">
+          <span class="label">Passed</span>
+          <span class="value"><%= it.results.filter(r => r.passed).length %></span>
+        </div>
+        <div class="stat failed">
+          <span class="label">Failed</span>
+          <span class="value"><%= it.results.filter(r => !r.passed).length %></span>
+        </div>
+      </div>
+      <div class="oneliner">
+        <%= it.conclusion.summary.oneLiner %>
+      </div>
+    </section>
+
+    <!-- Failed Tests -->
+    <% const failedTests = it.results.filter(r => !r.passed); %>
+    <% if (failedTests.length > 0) { %>
+    <section class="failed-tests">
+      <h2>❌ Failed Tests (<%= failedTests.length %>)</h2>
+
+      <% failedTests.forEach(result => { %>
+      <div class="test-result">
+        <h3><%= result.target %> / <%= result.variant %></h3>
+        <div class="mismatch">
+          Mismatch: <strong><%= result.mismatchPercentage.toFixed(2) %>%</strong>
+        </div>
+
+        <!-- Screenshots -->
+        <div class="screenshots">
+          <div class="screenshot-item">
+            <h4>Baseline</h4>
+            <img src="<%= it.resolveImagePath(result.screenshots.baseline) %>" alt="Baseline" loading="lazy">
+          </div>
+          <div class="screenshot-item">
+            <h4>Actual</h4>
+            <img src="<%= it.resolveImagePath(result.screenshots.actual) %>" alt="Actual" loading="lazy">
+          </div>
+          <% if (result.screenshots.diff) { %>
+          <div class="screenshot-item">
+            <h4>Diff</h4>
+            <img src="<%= it.resolveImagePath(result.screenshots.diff) %>" alt="Diff" loading="lazy">
+          </div>
+          <% } %>
+        </div>
+
+        <!-- LLM Analysis -->
+        <% if (result.analysis && result.analysis.differences && result.analysis.differences.length > 0) { %>
+        <div class="analysis">
+          <h4>🤖 Analysis</h4>
+          <% result.analysis.differences.forEach(diff => { %>
+          <div class="difference severity-<%= diff.severity %>">
+            <div class="diff-header">
+              <span class="severity-badge"><%= diff.severity.toUpperCase() %></span>
+              <span class="type-badge"><%= diff.type %></span>
+              <span class="location"><%= diff.location %></span>
+            </div>
+            <p class="description"><%= diff.description %></p>
+          </div>
+          <% }); %>
+        </div>
+        <% } %>
+      </div>
+      <% }); %>
+    </section>
+    <% } %>
+
+    <!-- Passed Tests -->
+    <% const passedTests = it.results.filter(r => r.passed); %>
+    <% if (passedTests.length > 0) { %>
+    <section class="passed-tests collapsed">
+      <h2>✅ Passed Tests (<%= passedTests.length %>)</h2>
+      <details>
+        <summary>Show passed tests</summary>
+        <ul class="passed-list">
+          <% passedTests.forEach(result => { %>
+          <li>
+            <%= result.target %> / <%= result.variant %>
+            <span class="mismatch"><%= result.mismatchPercentage.toFixed(3) %>%</span>
+          </li>
+          <% }); %>
+        </ul>
+      </details>
+    </section>
+    <% } %>
+  </div>
+
+  <script>
+    // 图片点击放大
+    document.querySelectorAll('.screenshot-item img').forEach(img => {
+      img.addEventListener('click', () => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:9999;cursor:pointer;';
+        const clone = img.cloneNode(true);
+        clone.style.cssText = 'max-width:95vw;max-height:95vh;object-fit:contain;border:2px solid white;';
+        overlay.appendChild(clone);
+        overlay.addEventListener('click', () => overlay.remove());
+        document.body.appendChild(overlay);
+      });
+    });
+  </script>
+</body>
+</html>
