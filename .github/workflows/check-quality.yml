@@ -85,7 +85,7 @@ jobs:
 
       # 缓存构建产物供后续 jobs 使用（node_modules 由各 job 通过 pnpm store 缓存自行恢复）
       - name: Cache build outputs
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             packages/*/es
@@ -119,7 +119,7 @@ jobs:
       # 恢复构建产物（node_modules 由 setup-node 的 pnpm store 缓存 + install 处理）
       - name: Restore build cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             packages/*/es
@@ -163,7 +163,7 @@ jobs:
       # 恢复构建产物（node_modules 由 setup-node 的 pnpm store 缓存 + install 处理）
       - name: Restore build cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             packages/*/es
@@ -207,7 +207,7 @@ jobs:
       # 恢复构建产物（node_modules 由 setup-node 的 pnpm store 缓存 + install 处理）
       - name: Restore build cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             packages/*/es
