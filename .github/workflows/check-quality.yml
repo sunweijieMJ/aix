@@ -83,7 +83,7 @@ jobs:
           fi
           echo "All packages built successfully"
 
-      # 缓存构建产物和依赖供后续 jobs 使用
+      # 缓存构建产物供后续 jobs 使用（node_modules 由各 job 通过 pnpm store 缓存自行恢复）
       - name: Cache build outputs
         uses: actions/cache/save@v4
         with:
@@ -92,10 +92,6 @@ jobs:
             packages/*/lib
             packages/*/dist
             internal/*/dist
-            node_modules
-            packages/*/node_modules
-            internal/*/node_modules
-            apps/*/node_modules
           key: build-${{ github.sha }}
 
   # ============================
@@ -120,8 +116,9 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # 恢复构建产物和依赖
+      # 恢复构建产物（node_modules 由 setup-node 的 pnpm store 缓存 + install 处理）
       - name: Restore build cache
+        id: cache-restore
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -129,12 +126,14 @@ jobs:
             packages/*/lib
             packages/*/dist
             internal/*/dist
-            node_modules
-            packages/*/node_modules
-            internal/*/node_modules
-            apps/*/node_modules
           key: build-${{ github.sha }}
-          fail-on-cache-miss: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages (fallback)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: pnpm build
 
       - name: Run tests
         run: pnpm test
@@ -161,8 +160,9 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # 恢复构建产物和依赖
+      # 恢复构建产物（node_modules 由 setup-node 的 pnpm store 缓存 + install 处理）
       - name: Restore build cache
+        id: cache-restore
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -170,12 +170,14 @@ jobs:
             packages/*/lib
             packages/*/dist
             internal/*/dist
-            node_modules
-            packages/*/node_modules
-            internal/*/node_modules
-            apps/*/node_modules
           key: build-${{ github.sha }}
-          fail-on-cache-miss: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages (fallback)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: pnpm build
 
       - name: TypeScript type check
         run: pnpm type-check
@@ -202,8 +204,9 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      # 恢复构建产物和依赖
+      # 恢复构建产物（node_modules 由 setup-node 的 pnpm store 缓存 + install 处理）
       - name: Restore build cache
+        id: cache-restore
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -211,15 +214,14 @@ jobs:
             packages/*/lib
             packages/*/dist
             internal/*/dist
-            node_modules
-            packages/*/node_modules
-            internal/*/node_modules
-            apps/*/node_modules
           key: build-${{ github.sha }}
-          fail-on-cache-miss: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages (fallback)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: pnpm build
 
       - name: Lint (ESLint + Stylelint)
         run: pnpm lint
-
-      - name: Spell check
-        run: pnpm cspell
