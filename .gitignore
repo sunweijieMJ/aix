@@ -37,6 +37,12 @@ lib
 packages/icons/src
 internal/mcp-server/data
 
+# 视觉测试产物（基准图 baselines 需提交，其余忽略）
+**/.visual-test/actuals
+**/.visual-test/diffs
+**/.visual-test/reports
+**/.visual-test/cache
+
 # TypeScript
 *.tsbuildinfo
 tsconfig.tsbuildinfo

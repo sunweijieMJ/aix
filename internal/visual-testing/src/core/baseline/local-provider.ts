@@ -51,8 +51,32 @@ export class LocalProvider implements BaselineProvider {
     log.debug(`Fetching baseline: ${srcPath} -> ${outputPath}`);
 
     try {
-      const exists = await pathExists(srcPath);
-      if (!exists) {
+      const srcExists = await pathExists(srcPath);
+
+      if (!srcExists) {
+        // 当 source 不存在时（如 Storybook 自动发现场景），fallback 到
+        // outputPath 本身——首次 --update 时截图直接保存在 outputPath，
+        // 后续运行应复用它作为基准图
+        const outputExists = await pathExists(outputPath);
+        if (outputExists) {
+          log.debug(
+            `Source not found, using existing output as baseline: ${outputPath}`,
+          );
+          const [dimensions, hash] = await Promise.all([
+            getImageDimensions(outputPath),
+            hashFile(outputPath),
+          ]);
+          return {
+            path: outputPath,
+            success: true,
+            metadata: {
+              dimensions,
+              hash,
+              fetchedAt: new Date().toISOString(),
+            },
+          };
+        }
+
         return {
           path: outputPath,
           success: false,

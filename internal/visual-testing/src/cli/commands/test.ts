@@ -89,6 +89,7 @@ async function runTest(
   try {
     results = await orchestrator.runTests(
       targetNames.length > 0 ? targetNames : undefined,
+      { update: options.update },
     );
     spinner.succeed('Visual tests completed');
   } catch (error) {

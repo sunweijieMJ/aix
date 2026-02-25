@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Visual Test Report - <%= it.generatedAt %></title>
   <style>
-    <%= await includeFile('styles.css', it) %>
+    <%= it.css %>
   </style>
 </head>
 <body>

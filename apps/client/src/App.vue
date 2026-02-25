@@ -51,7 +51,21 @@ const { mode, toggleMode } = useTheme();
 const { locale } = useI18n();
 const linkMode = import.meta.env.VITE_LINK_MODE || 'source';
 
-const activeTab = ref('button');
+const VALID_TABS = [
+  'button',
+  'icons',
+  'pdf-viewer',
+  'subtitle',
+  'video',
+] as const;
+type TabName = (typeof VALID_TABS)[number];
+
+function getInitialTab(): TabName {
+  const param = new URLSearchParams(location.search).get('tab');
+  return VALID_TABS.includes(param as TabName) ? (param as TabName) : 'button';
+}
+
+const activeTab = ref<TabName>(getInitialTab());
 
 const toggleLocale = () => {
   locale.value = locale.value === 'zh-CN' ? 'en-US' : 'zh-CN';

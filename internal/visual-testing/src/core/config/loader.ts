@@ -148,8 +148,8 @@ export function validateConfigLogic(config: VisualTestConfig): void {
     );
   }
 
-  // 4. 目标配置检查
-  if (config.targets.length === 0) {
+  // 4. 目标配置检查（Storybook 自动发现模式下无需手动配置 targets）
+  if (config.targets.length === 0 && !config.storybook.enabled) {
     warnings.push(
       `⚠️  No test targets defined. Add targets to 'targets' array.`,
     );

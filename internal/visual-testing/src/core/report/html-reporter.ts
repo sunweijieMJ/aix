@@ -22,8 +22,8 @@ const log = logger.child('HtmlReporter');
 function resolveTemplateDir(): string {
   const thisDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.resolve(thisDir, '../../../templates/report'),
-    path.resolve(thisDir, '../../../../templates/report'),
+    path.resolve(thisDir, '../templates/report'), // from dist/
+    path.resolve(thisDir, '../../../templates/report'), // from src/core/report/
   ];
 
   for (const candidate of candidates) {
@@ -75,12 +75,22 @@ export class HtmlReporter implements Reporter {
       );
     }
 
+    const cssPath = path.join(templateDir, 'styles.css');
+    if (!fs.existsSync(cssPath)) {
+      throw new Error(
+        `HTML report styles not found at ${cssPath}. ` +
+          'Ensure the "templates" directory is included in the package build.',
+      );
+    }
+    const css = fs.readFileSync(cssPath, 'utf-8');
+
     const eta = new Eta({ views: templateDir, autoEscape: false });
     const html = eta.render('./index.html.eta', {
       results,
       conclusion,
       generatedAt: new Date().toISOString(),
       resolveImagePath: toRelative,
+      css,
     });
 
     await writeFile(outputPath, html, 'utf-8');

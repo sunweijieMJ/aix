@@ -57,6 +57,14 @@ interface TestTask {
 }
 
 /**
+ * runTests 运行选项
+ */
+interface RunOptions {
+  /** 首次运行或接受变更：基准图不存在时截图并保存为基准图 */
+  update?: boolean;
+}
+
+/**
  * 测试运行的时序数据
  */
 interface Timing {
@@ -118,7 +126,10 @@ export class VisualTestOrchestrator {
    * @param targetNames - 可选，指定运行的目标名称。不传则运行所有。
    * @returns 测试结果数组
    */
-  async runTests(targetNames?: string[]): Promise<TestResult[]> {
+  async runTests(
+    targetNames?: string[],
+    options?: RunOptions,
+  ): Promise<TestResult[]> {
     const totalStart = Date.now();
 
     log.info('Starting visual tests...');
@@ -173,7 +184,7 @@ export class VisualTestOrchestrator {
 
       // 6. 并发执行每个测试任务
       const taskPromises = tasks.map((task) =>
-        limit(() => this.runSingleTest(task)),
+        limit(() => this.runSingleTest(task, options)),
       );
       const settledResults = await Promise.allSettled(taskPromises);
 
@@ -231,12 +242,15 @@ export class VisualTestOrchestrator {
   /**
    * 执行单个测试任务（带超时控制）
    */
-  private async runSingleTest(task: TestTask): Promise<TestResult> {
+  private async runSingleTest(
+    task: TestTask,
+    options?: RunOptions,
+  ): Promise<TestResult> {
     const timeout = this.config.performance.timeout;
     const taskId = `${task.target}/${task.variant}`;
 
     try {
-      return await this.runSingleTestWithTimeout(task, timeout);
+      return await this.runSingleTestWithTimeout(task, timeout, options);
     } catch (error) {
       // 超时或其他未捕获的错误
       if (error instanceof Error && error.message.includes('timeout')) {
@@ -254,6 +268,7 @@ export class VisualTestOrchestrator {
   private async runSingleTestWithTimeout(
     task: TestTask,
     timeout: number,
+    options?: RunOptions,
   ): Promise<TestResult> {
     const taskId = `${task.target}/${task.variant}`;
     log.info(`[${taskId}] Starting test...`);
@@ -279,6 +294,7 @@ export class VisualTestOrchestrator {
           timing,
           taskStart,
           controller.signal,
+          options,
         ),
         new Promise<never>((_, reject) => {
           controller.signal.addEventListener('abort', () => {
@@ -300,6 +316,7 @@ export class VisualTestOrchestrator {
     timing: Timing,
     taskStart: number,
     signal?: AbortSignal,
+    options?: RunOptions,
   ): Promise<TestResult> {
     // 文件路径
     const baselinePath = this.getBaselinePath(task);
@@ -314,6 +331,8 @@ export class VisualTestOrchestrator {
     // ---- Step 1: 准备基准图 ----
     checkAborted();
     let baselineResult: BaselineResult;
+    // 首次运行标记：--update 模式下基准图不存在时，截图后直接保存为基准图
+    let isFirstRun = false;
     try {
       const start = Date.now();
       baselineResult = await this.baselineProvider.fetch({
@@ -323,9 +342,23 @@ export class VisualTestOrchestrator {
       timing.baseline = Date.now() - start;
 
       if (!baselineResult.success) {
-        throw baselineResult.error ?? new Error('Baseline fetch failed');
+        // 仅当错误明确是"文件未找到"时才视为首次运行，
+        // 其他错误（如文件损坏、网络超时）应正常报错，避免静默覆盖已有基准图
+        const isNotFound =
+          baselineResult.error?.message?.toLowerCase().includes('not found') ??
+          false;
+        if (options?.update && isNotFound) {
+          // --update 模式：基准图不存在，跳过此步骤，截图后保存为初始基准图
+          isFirstRun = true;
+          log.info(
+            `[${taskId}] No baseline found, capturing initial baseline...`,
+          );
+        } else {
+          throw baselineResult.error ?? new Error('Baseline fetch failed');
+        }
+      } else {
+        log.debug(`[${taskId}] Baseline ready (${timing.baseline}ms)`);
       }
-      log.debug(`[${taskId}] Baseline ready (${timing.baseline}ms)`);
     } catch (error) {
       log.error(`[${taskId}] Baseline fetch failed`, error as Error);
       return this.createErrorResult(task, error, 'baseline');
@@ -350,6 +383,44 @@ export class VisualTestOrchestrator {
     } catch (error) {
       log.error(`[${taskId}] Screenshot failed`, error as Error);
       return this.createErrorResult(task, error, 'screenshot');
+    }
+
+    // ---- 首次运行：将截图保存为初始基准图，直接返回通过 ----
+    if (isFirstRun) {
+      try {
+        await ensureDir(path.dirname(baselinePath));
+        await copyFile(actualPath, baselinePath);
+        log.info(`[${taskId}] INITIALIZED baseline: ${baselinePath}`);
+      } catch (error) {
+        log.error(
+          `[${taskId}] Failed to save initial baseline`,
+          error as Error,
+        );
+        return this.createErrorResult(task, error, 'baseline');
+      }
+
+      timing.total = Date.now() - taskStart;
+
+      return {
+        target: task.target,
+        variant: task.variant,
+        passed: true,
+        mismatchPercentage: 0,
+        screenshots: {
+          baseline: baselinePath,
+          actual: actualPath,
+          diff: null,
+        },
+        comparison: {
+          match: true,
+          mismatchPercentage: 0,
+          mismatchPixels: 0,
+          totalPixels: 0,
+          diffPath: null,
+          sizeDiff: null,
+          diffRegions: [],
+        },
+      };
     }
 
     // ---- Step 3: 像素比对 ----
