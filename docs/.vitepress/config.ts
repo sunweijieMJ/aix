@@ -114,7 +114,10 @@ export default withMermaid(
           },
           {
             text: '草稿',
-            items: [{ text: '视觉比对测试', link: '/rfcs/visual-testing-rfc' }],
+            items: [
+              { text: '视觉比对测试', link: '/rfcs/visual-testing-rfc' },
+              { text: 'AI 自动修复', link: '/rfcs/auto-fix-design-draft' },
+            ],
           },
         ],
 
