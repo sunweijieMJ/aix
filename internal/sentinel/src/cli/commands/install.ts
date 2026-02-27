@@ -35,6 +35,11 @@ export function registerInstallCommand(program: Command): void {
       'Deploy workflow name for post-deploy trigger',
       'Deploy Production',
     )
+    .option('--phases <list>', 'Comma-separated phases to install (e.g., 1,4)')
+    .option(
+      '--allowed-paths <patterns>',
+      'Comma-separated bash regex patterns for allowed file paths',
+    )
     .action(async (options) => {
       await runInstall(options);
     });
@@ -50,6 +55,8 @@ interface InstallOptions {
   nodeVersion: string;
   reviewers?: string;
   deployWorkflow: string;
+  phases?: string;
+  allowedPaths?: string;
 }
 
 async function runInstall(options: InstallOptions): Promise<void> {
@@ -65,10 +72,29 @@ async function runInstall(options: InstallOptions): Promise<void> {
     return;
   }
 
+  // 解析选择性阶段列表
+  let selectivePhases: Phase[] | undefined;
+  if (options.phases) {
+    const parsed = options.phases.split(',').map((p) => {
+      const n = Number.parseInt(p.trim(), 10);
+      if (n < 1 || n > 4 || Number.isNaN(n)) {
+        logger.error(`无效的阶段值: ${p.trim()}，阶段必须为 1-4 之间的整数`);
+        process.exitCode = 1;
+        return 0 as Phase;
+      }
+      return n as Phase;
+    });
+    if (parsed.includes(0 as Phase)) return;
+    selectivePhases = parsed;
+  }
+
   // 确定安装阶段
   let phase: Phase;
 
-  if (options.all) {
+  if (selectivePhases) {
+    // 选择性模式：phase 取最大值（用于兼容 InstallConfig.phase 字段）
+    phase = Math.max(...selectivePhases) as Phase;
+  } else if (options.all) {
     phase = 4;
   } else if (options.phase) {
     const parsed = Number.parseInt(options.phase, 10);
@@ -100,10 +126,19 @@ async function runInstall(options: InstallOptions): Promise<void> {
   // 确认安装
   if (!options.yes && !options.dryRun) {
     console.log();
-    console.log(chalk.bold(`将安装 Phase 1-${phase} (平台: ${platform}):`));
-    for (let i = 1; i <= phase; i++) {
-      const pc = PHASE_CONFIGS[i as Phase];
-      console.log(chalk.gray(`  ${i}. ${pc.name}: ${pc.description}`));
+    if (selectivePhases) {
+      const phaseList = [...selectivePhases].sort().join(', ');
+      console.log(chalk.bold(`将安装 Phase ${phaseList} (平台: ${platform}):`));
+      for (const p of [...selectivePhases].sort()) {
+        const pc = PHASE_CONFIGS[p];
+        console.log(chalk.gray(`  ${p}. ${pc.name}: ${pc.description}`));
+      }
+    } else {
+      console.log(chalk.bold(`将安装 Phase 1-${phase} (平台: ${platform}):`));
+      for (let i = 1; i <= phase; i++) {
+        const pc = PHASE_CONFIGS[i as Phase];
+        console.log(chalk.gray(`  ${i}. ${pc.name}: ${pc.description}`));
+      }
     }
     console.log(chalk.gray(`  目标: ${target}`));
     console.log();
@@ -132,6 +167,10 @@ async function runInstall(options: InstallOptions): Promise<void> {
     reviewers: options.reviewers,
     deployWorkflow: options.deployWorkflow,
     platform,
+    phases: selectivePhases,
+    allowedPaths: options.allowedPaths
+      ? options.allowedPaths.split(',').map((p) => p.trim())
+      : undefined,
   };
 
   if (config.dryRun) {

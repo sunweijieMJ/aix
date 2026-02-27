@@ -7,10 +7,14 @@
 import path from 'node:path';
 
 import type { InstallConfig, PhaseConfig } from '../types/index.js';
+import { DEFAULT_ALLOWED_PATHS } from '../types/index.js';
 import type { PlatformAdapter } from '../platform/index.js';
 import { readTemplate, writeFile, ensureDir } from '../utils/file.js';
 import { getDefaultBranch } from '../utils/git.js';
-import { renderTemplate } from '../utils/template.js';
+import {
+  formatAllowedPathsDisplay,
+  renderTemplate,
+} from '../utils/template.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -28,12 +32,15 @@ export async function writeWorkflows(
   const writtenFiles: string[] = [];
 
   const reviewers = config.reviewers ?? '';
+  const allowedPaths = config.allowedPaths ?? DEFAULT_ALLOWED_PATHS;
   const vars: Record<string, string> = {
     NODE_VERSION: config.nodeVersion,
     DEFAULT_BRANCH: defaultBranch,
     REVIEWERS: reviewers,
     REVIEWER_FLAG: reviewers ? `--reviewer "${reviewers}"` : '',
     DEPLOY_WORKFLOW: config.deployWorkflow ?? 'Deploy Production',
+    ALLOWED_PATHS_REGEX: allowedPaths.join('|'),
+    ALLOWED_PATHS_DISPLAY: formatAllowedPathsDisplay(allowedPaths),
   };
 
   for (const templateName of phase.workflows) {

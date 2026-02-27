@@ -225,6 +225,10 @@ describe('install', () => {
       expect.any(Object),
     );
 
-    expect(mockedPatchClaudeMd).toHaveBeenCalledWith(expect.any(String), true);
+    expect(mockedPatchClaudeMd).toHaveBeenCalledWith(
+      expect.any(String),
+      true,
+      expect.objectContaining({ ALLOWED_PATHS_DISPLAY: expect.any(String) }),
+    );
   });
 });

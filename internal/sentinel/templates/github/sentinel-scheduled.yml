@@ -207,7 +207,7 @@ jobs:
             4. For test failures, fix the SOURCE code, NOT the test files
             5. For audit issues, only fix if the resolution is clear and safe
             6. Run all checks again after fixing: pnpm lint && pnpm type-check && pnpm test
-            7. Only modify files in src/ or styles/ directories
+            7. Only modify files in these directories: __ALLOWED_PATHS_DISPLAY__
             8. Do NOT modify test files, config files, or package.json
             9. Commit your changes with message: "fix: scheduled maintenance fixes"
           branch: ${{ env.BRANCH_NAME }}
@@ -239,10 +239,10 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
-          # Validate against whitelist
+          # Validate against whitelist (__ALLOWED_PATHS_DISPLAY__)
           INVALID_FILES=""
           while IFS= read -r file; do
-            if [[ ! "$file" =~ ^src/ ]] && [[ ! "$file" =~ ^styles/ ]]; then
+            if [[ ! "$file" =~ __ALLOWED_PATHS_REGEX__ ]]; then
               INVALID_FILES="$INVALID_FILES\n$file"
             fi
           done <<< "$CHANGED_FILES"

@@ -14,6 +14,7 @@ import {
   readTemplate,
 } from '../utils/file.js';
 import { MARKER_START, MARKER_END } from '../types/index.js';
+import { renderTemplate } from '../utils/template.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -28,11 +29,15 @@ import { logger } from '../utils/logger.js';
 export async function patchClaudeMd(
   target: string,
   dryRun: boolean,
+  vars: Record<string, string>,
 ): Promise<boolean> {
   const claudeMdPath = path.join(target, 'CLAUDE.md');
 
   // 读取模板内容
-  const templateContent = await readTemplate('claude-md/sentinel-rules.md');
+  const templateContent = renderTemplate(
+    await readTemplate('claude-md/sentinel-rules.md'),
+    vars,
+  );
   const patchBlock = `${MARKER_START}\n${templateContent}\n${MARKER_END}`;
 
   // 读取或创建 CLAUDE.md
