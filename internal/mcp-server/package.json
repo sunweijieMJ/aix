@@ -28,10 +28,10 @@
     "postinstall": "echo '📦 AIX Components MCP Server installed successfully! Use: npx @aix/mcp-server --help'"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
-    "glob": "^13.0.2",
+    "glob": "^13.0.6",
     "gray-matter": "^4.0.3",
     "typescript": "^5.9.3",
     "ws": "^8.19.0"
