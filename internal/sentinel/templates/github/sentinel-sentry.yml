@@ -150,7 +150,7 @@ jobs:
             3. Implement the minimal fix needed
             4. Run type checking: pnpm type-check
             5. Run linting: pnpm lint
-            6. Only modify files in src/ or styles/ directories
+            6. Only modify files in these directories: __ALLOWED_PATHS_DISPLAY__
             7. Do NOT modify test files, config files, or package.json
             8. Add a brief comment explaining the fix near the changed code
             9. Commit your changes with message: "fix: resolve Sentry error - ${SENTRY_TITLE}"
@@ -183,10 +183,10 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
-          # Validate against whitelist
+          # Validate against whitelist (__ALLOWED_PATHS_DISPLAY__)
           INVALID_FILES=""
           while IFS= read -r file; do
-            if [[ ! "$file" =~ ^src/ ]] && [[ ! "$file" =~ ^styles/ ]]; then
+            if [[ ! "$file" =~ __ALLOWED_PATHS_REGEX__ ]]; then
               INVALID_FILES="$INVALID_FILES\n$file"
             fi
           done <<< "$CHANGED_FILES"

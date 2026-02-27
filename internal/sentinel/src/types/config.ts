@@ -26,6 +26,10 @@ export interface InstallConfig {
   deployWorkflow?: string;
   /** CI 平台，默认 'github' */
   platform: Platform;
+  /** 选择性安装的阶段列表，优先于 phase 的累积逻辑 */
+  phases?: Phase[];
+  /** 允许 AI 修改的文件路径模式（bash regex），默认 ["^src/", "^styles/"] */
+  allowedPaths?: string[];
 }
 
 export interface InstallResult {
@@ -52,6 +56,8 @@ export interface PhaseConfig {
   /** 所需的 CI variables */
   variables: string[];
 }
+
+export const DEFAULT_ALLOWED_PATHS = ['^src/', '^styles/'];
 
 export const VALID_PLATFORMS: Platform[] = ['github'];
 

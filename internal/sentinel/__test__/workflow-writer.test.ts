@@ -7,9 +7,14 @@ vi.mock('../src/utils/file.js', () => ({
   writeFile: vi.fn(),
 }));
 
-vi.mock('../src/utils/template.js', () => ({
-  renderTemplate: vi.fn(),
-}));
+vi.mock('../src/utils/template.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../src/utils/template.js')>();
+  return {
+    ...actual,
+    renderTemplate: vi.fn(),
+  };
+});
 
 vi.mock('../src/utils/git.js', () => ({
   getDefaultBranch: vi.fn(),

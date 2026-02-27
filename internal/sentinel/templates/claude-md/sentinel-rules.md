@@ -7,9 +7,8 @@
 - 不确定时宁可不改，输出分析报告
 
 ## 文件权限
-- 允许修改: src/**
-- 允许修改: styles/**
-- 禁止修改: `tests/**`, `__tests__/**`
+- 允许修改: __ALLOWED_PATHS_DISPLAY__
+- 禁止修改: `tests/**`, `__tests__/**`, `__test__/**`
 - 禁止修改: *.config.*, .env*
 - 禁止修改: package.json (依赖变更需人工决策)
 - 禁止修改: .github/workflows/**

@@ -11,6 +11,7 @@ export type {
 } from './config.js';
 
 export {
+  DEFAULT_ALLOWED_PATHS,
   PHASE_CONFIGS,
   VALID_PLATFORMS,
   MARKER_START,

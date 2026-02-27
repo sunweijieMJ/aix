@@ -7,6 +7,15 @@ vi.mock('../src/utils/file.js', () => ({
   readTemplate: vi.fn(),
 }));
 
+vi.mock('../src/utils/template.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../src/utils/template.js')>();
+  return {
+    ...actual,
+    renderTemplate: vi.fn((_content: string) => _content),
+  };
+});
+
 vi.mock('../src/utils/logger.js', () => ({
   logger: {
     info: vi.fn(),
@@ -50,7 +59,7 @@ describe('patchClaudeMd', () => {
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
     mockedWriteFile.mockResolvedValue(undefined);
 
-    const result = await patchClaudeMd('/tmp/repo', false);
+    const result = await patchClaudeMd('/tmp/repo', false, {});
 
     expect(result).toBe(true);
     expect(mockedWriteFile).toHaveBeenCalledWith(
@@ -67,7 +76,7 @@ describe('patchClaudeMd', () => {
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
     mockedWriteFile.mockResolvedValue(undefined);
 
-    const result = await patchClaudeMd('/tmp/repo', false);
+    const result = await patchClaudeMd('/tmp/repo', false, {});
 
     expect(result).toBe(true);
     expect(mockedWriteFile).toHaveBeenCalledWith(
@@ -93,7 +102,7 @@ describe('patchClaudeMd', () => {
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
     mockedWriteFile.mockResolvedValue(undefined);
 
-    const result = await patchClaudeMd('/tmp/repo', false);
+    const result = await patchClaudeMd('/tmp/repo', false, {});
 
     expect(result).toBe(true);
 
@@ -113,7 +122,7 @@ describe('patchClaudeMd', () => {
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
     mockedWriteFile.mockResolvedValue(undefined);
 
-    await patchClaudeMd('/tmp/repo', false);
+    await patchClaudeMd('/tmp/repo', false, {});
 
     const writtenContent = mockedWriteFile.mock.calls[0]?.[1] as string;
     expect(writtenContent).toContain('# My Project');
@@ -126,7 +135,7 @@ describe('patchClaudeMd', () => {
     mockedPathExists.mockResolvedValue(false);
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
 
-    const result = await patchClaudeMd('/tmp/repo', true);
+    const result = await patchClaudeMd('/tmp/repo', true, {});
 
     expect(result).toBe(true);
     expect(mockedWriteFile).not.toHaveBeenCalled();
@@ -141,7 +150,7 @@ describe('patchClaudeMd', () => {
     mockedReadFile.mockResolvedValue(upToDateContent);
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
 
-    const result = await patchClaudeMd('/tmp/repo', false);
+    const result = await patchClaudeMd('/tmp/repo', false, {});
 
     expect(result).toBe(false);
     expect(mockedWriteFile).not.toHaveBeenCalled();
@@ -155,7 +164,7 @@ describe('patchClaudeMd', () => {
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
     mockedWriteFile.mockResolvedValue(undefined);
 
-    const result = await patchClaudeMd('/tmp/repo', false);
+    const result = await patchClaudeMd('/tmp/repo', false, {});
 
     expect(result).toBe(true);
     expect(logger.warn).toHaveBeenCalledWith(
@@ -179,7 +188,7 @@ describe('patchClaudeMd', () => {
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
     mockedWriteFile.mockResolvedValue(undefined);
 
-    const result = await patchClaudeMd('/tmp/repo', false);
+    const result = await patchClaudeMd('/tmp/repo', false, {});
 
     expect(result).toBe(true);
     expect(logger.warn).toHaveBeenCalledWith(
@@ -202,7 +211,7 @@ describe('patchClaudeMd', () => {
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
     mockedWriteFile.mockResolvedValue(undefined);
 
-    await patchClaudeMd('/tmp/repo', false);
+    await patchClaudeMd('/tmp/repo', false, {});
     const firstRunContent = mockedWriteFile.mock.calls[0]?.[1] as string;
 
     // Simulate: second run should see clean markers and be idempotent
@@ -211,7 +220,7 @@ describe('patchClaudeMd', () => {
     mockedReadFile.mockResolvedValue(firstRunContent);
     mockedReadTemplate.mockResolvedValue(TEMPLATE_CONTENT);
 
-    const result = await patchClaudeMd('/tmp/repo', false);
+    const result = await patchClaudeMd('/tmp/repo', false, {});
 
     // Content unchanged → should return false, no write
     expect(result).toBe(false);

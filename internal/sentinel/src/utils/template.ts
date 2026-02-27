@@ -5,6 +5,17 @@
  */
 
 /**
+ * 将 allowedPaths bash regex 数组转为人类可读的显示格式
+ *
+ * 例: ['^src/', '^packages/.* /src/'] → 'src/, packages/* /src/'
+ */
+export function formatAllowedPathsDisplay(paths: string[]): string {
+  return paths
+    .map((p) => p.replace(/^\^/, '').replace(/\.\*/g, '*'))
+    .join(', ');
+}
+
+/**
  * 渲染模板内容
  *
  * 将模板中的 `__KEY__` 占位符替换为 vars 中对应的值。
