@@ -1,0 +1,286 @@
+# Phase 3: Sentry error auto fix
+# Trigger: repository_dispatch from Sentry webhook (via Cloudflare Worker)
+# Claude Code will analyze the Sentry error and create a fix PR
+
+name: Sentinel - Sentry
+
+on:
+  repository_dispatch:
+    types: [sentry-issue]
+
+# Prevent concurrent runs for the same Sentry issue
+concurrency:
+  group: sentinel-sentry-${{ github.event.client_payload.safe_key || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  sentinel:
+    if: vars.SENTINEL_ENABLED != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    env:
+      SENTRY_TITLE: ${{ github.event.client_payload.title }}
+      SENTRY_CULPRIT: ${{ github.event.client_payload.culprit }}
+      SENTRY_STACKTRACE: ${{ github.event.client_payload.stacktrace }}
+      SENTRY_URL: ${{ github.event.client_payload.url }}
+      SENTRY_LEVEL: ${{ github.event.client_payload.level }}
+      SENTRY_EVENT_ID: ${{ github.event.client_payload.event_id }}
+      SAFE_KEY: ${{ github.event.client_payload.safe_key }}
+      BRANCH_NAME: sentinel/sentry-${{ github.event.client_payload.safe_key || github.run_id }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: __NODE_VERSION__
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check daily PR limit
+        id: pr_limit
+        run: |
+          # Count sentinel PRs created today
+          TODAY=$(date -u +%Y-%m-%d)
+          PR_COUNT=$(gh pr list \
+            --label "sentinel,sentry" \
+            --state all \
+            --search "created:>=$TODAY" \
+            --json number \
+            --jq 'length')
+
+          echo "Today's sentinel Sentry PRs: $PR_COUNT"
+
+          if [ "$PR_COUNT" -ge 10 ]; then
+            echo "::warning::Daily PR limit reached (10). Skipping."
+            echo "limit_reached=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "limit_reached=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for duplicate PR
+        id: dup_check
+        if: steps.pr_limit.outputs.limit_reached != 'true'
+        run: |
+          # Check if a PR already exists for this Sentry issue
+          EXISTING_PR=$(gh pr list \
+            --head "sentinel/sentry-${SAFE_KEY}" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "::notice::PR #$EXISTING_PR already exists for this Sentry issue. Skipping."
+            echo "duplicate=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "duplicate=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Evaluate pre-checks
+        id: precheck
+        env:
+          LIMIT_REACHED: ${{ steps.pr_limit.outputs.limit_reached }}
+          DUPLICATE: ${{ steps.dup_check.outputs.duplicate }}
+        run: |
+          if [ "$LIMIT_REACHED" == "true" ] || \
+             [ "$DUPLICATE" == "true" ]; then
+            echo "should_proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare context
+        id: context
+        if: steps.precheck.outputs.should_proceed == 'true'
+        run: |
+          echo "## Sentry Error Report" > /tmp/sentry-context.md
+          echo "" >> /tmp/sentry-context.md
+          echo "**Title:** ${SENTRY_TITLE}" >> /tmp/sentry-context.md
+          echo "**Level:** ${SENTRY_LEVEL}" >> /tmp/sentry-context.md
+          echo "**Culprit:** ${SENTRY_CULPRIT}" >> /tmp/sentry-context.md
+          echo "**Sentry URL:** ${SENTRY_URL}" >> /tmp/sentry-context.md
+          echo "" >> /tmp/sentry-context.md
+          echo "### Stacktrace" >> /tmp/sentry-context.md
+          echo '```' >> /tmp/sentry-context.md
+          echo "${SENTRY_STACKTRACE}" >> /tmp/sentry-context.md
+          echo '```' >> /tmp/sentry-context.md
+
+          # Write to step output for use in subsequent steps
+          {
+            echo "prompt_context<<CONTEXT_EOF"
+            cat /tmp/sentry-context.md
+            echo "CONTEXT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Context prepared."
+
+      - name: Run Claude Code
+        id: claude
+        if: steps.precheck.outputs.should_proceed == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          model: claude-sonnet-4-6
+          max_turns: 20
+          prompt: |
+            A Sentry error has been reported in production. Analyze and fix it.
+
+            ${{ steps.context.outputs.prompt_context }}
+
+            Instructions:
+            1. Analyze the stacktrace to identify the root cause
+            2. Find the relevant source files in the codebase
+            3. Implement the minimal fix needed
+            4. Run type checking: pnpm type-check
+            5. Run linting: pnpm lint
+            6. Only modify files in src/ or styles/ directories
+            7. Do NOT modify test files, config files, or package.json
+            8. Add a brief comment explaining the fix near the changed code
+            9. Commit your changes with message: "fix: resolve Sentry error - ${SENTRY_TITLE}"
+          branch: ${{ env.BRANCH_NAME }}
+          allowedTools: 'Bash,Read,Write,Edit,Glob,Grep'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Validate changed files
+        if: steps.precheck.outputs.should_proceed == 'true'
+        id: validate
+        run: |
+          # Fetch the sentinel branch from remote (may not exist if Claude made no changes)
+          git fetch origin "$BRANCH_NAME" 2>/dev/null || true
+
+          # Check if branch exists on remote
+          if ! git rev-parse --verify "origin/$BRANCH_NAME" >/dev/null 2>&1; then
+            echo "no_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Compare remote branches to get changed files (independent of local checkout state)
+          CHANGED_FILES=$(git diff "origin/__DEFAULT_BRANCH__...origin/$BRANCH_NAME" --name-only)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "no_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Validate against whitelist
+          INVALID_FILES=""
+          while IFS= read -r file; do
+            if [[ ! "$file" =~ ^src/ ]] && [[ ! "$file" =~ ^styles/ ]]; then
+              INVALID_FILES="$INVALID_FILES\n$file"
+            fi
+          done <<< "$CHANGED_FILES"
+
+          if [ -n "$INVALID_FILES" ]; then
+            echo "::error::Files outside allowed directories were modified:$INVALID_FILES"
+            echo "invalid_files=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "no_changes=false" >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup invalid branch
+        if: always() && steps.validate.outputs.invalid_files == 'true'
+        run: |
+          git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
+          echo "::notice::Cleaned up remote branch with invalid changes: $BRANCH_NAME"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare PR body
+        id: pr_body
+        if: >-
+          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.validate.outputs.no_changes != 'true'
+        run: |
+          # Write PR body to file to avoid shell injection from Sentry data
+          {
+            echo "## Sentry Error Sentinel"
+            echo ""
+            echo "### Error Details"
+            printf -- '- **Title:** %s\n' "$SENTRY_TITLE"
+            printf -- '- **Level:** %s\n' "$SENTRY_LEVEL"
+            printf -- '- **Culprit:** %s\n' "$SENTRY_CULPRIT"
+            printf -- '- **Sentry URL:** %s\n' "$SENTRY_URL"
+            echo ""
+            echo "### Stacktrace"
+            echo '```'
+            printf '%s\n' "$SENTRY_STACKTRACE"
+            echo '```'
+            echo ""
+            echo "### Changes"
+            echo "This PR was automatically generated by Claude Code to fix a Sentry production error."
+            echo ""
+            echo "### Review Checklist"
+            echo "- [ ] Fix addresses the root cause, not just the symptom"
+            echo "- [ ] No unintended side effects"
+            echo "- [ ] Tests pass locally"
+            echo "- [ ] Error is reproducible and fix is verified"
+            echo ""
+            echo "---"
+            echo "🤖 Generated by AI Sentinel (Sentry)"
+          } > /tmp/pr-body.md
+
+      - name: Create Pull Request
+        id: create_pr
+        if: >-
+          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.validate.outputs.no_changes != 'true'
+        run: |
+          # Use --body-file to safely pass PR body (avoids shell injection)
+          PR_URL=$(gh pr create \
+            --head "$BRANCH_NAME" \
+            --base "__DEFAULT_BRANCH__" \
+            --title "fix: Sentry error - ${SAFE_KEY}" \
+            --body-file /tmp/pr-body.md \
+            --label "sentinel,sentry" \
+            __REVIEWER_FLAG__)
+
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create issue on failure
+        if: failure()
+        run: |
+          gh issue create \
+            --title "🚨 Sentinel Sentry fix failed - ${SAFE_KEY}" \
+            --body "## Sentry Auto-Fix Failed
+
+          The automated fix for a Sentry error could not be completed.
+
+          **Error:** ${SENTRY_TITLE}
+          **Culprit:** ${SENTRY_CULPRIT}
+          **Sentry URL:** ${SENTRY_URL}
+
+          ### Action Required
+          Please investigate and fix manually.
+
+          ### Workflow Run
+          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ---
+          🤖 Created by AI Sentinel" \
+            --label "bug,sentinel"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

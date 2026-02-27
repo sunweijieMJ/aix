@@ -1,13 +1,15 @@
-# AI 自动修复系统 (auto-fix)
+# AI 自动修复系统 (sentinel)
 
 > **状态**: Draft
 > **作者**: AIX Team
-> **适用范围**: 业务仓库（GitHub）
-> **定位**: 通用方案模板，托管于 aix 仓库统一管理，各业务仓库按需接入
+> **适用范围**: 业务仓库（当前支持 GitHub Actions，GitLab CI / Jenkins 为远期规划）
+> **定位**: 平台无关的通用方案模板，托管于 aix 仓库统一管理，各业务仓库按需接入
 
 ## 概述
 
-基于 Sentry 监控、部署后冒烟测试、定时巡检和 Issue 标签四种触发源，结合 Claude Code Action 实现「发现问题 → AI 分析修复 → 创建 PR → 人工审核合并」的自动化闭环系统。
+基于 Sentry 监控、部署后冒烟测试、定时巡检和 Issue/工单标签四种触发源，结合 Claude Code（CLI 或 Action）实现「发现问题 → AI 分析修复 → 创建 MR/PR → 人工审核合并」的自动化闭环系统。
+
+方案采用**平台适配层**设计，核心修复逻辑与 CI 平台解耦，通过 `@kit/sentinel` CLI 工具为不同 CI 平台（GitHub Actions / GitLab CI / Jenkins 等）生成对应的 Pipeline 配置。
 
 **核心原则**：
 
@@ -44,11 +46,11 @@
 
 | 优先级 | 目标 | 说明 |
 |--------|------|------|
-| P0 | Issue 标签触发修复 | 开发者打 `auto-fix` 标签即触发 AI 修复 |
+| P0 | Issue 标签触发修复 | 开发者打 `sentinel` 标签即触发 AI 修复 |
 | P0 | 部署后冒烟测试修复 | 部署成功后自动跑 E2E，失败触发修复 |
 | P0 | 安全防护 | 权限控制、限流、降级开关 |
 | P1 | Sentry 错误联动 | 线上错误超阈值自动触发修复 |
-| P1 | 定时质量巡检 | 每日 Cron 跑 lint/type-check/test/audit |
+| P1 | 定时质量巡检 | 每周 Cron 跑 lint/type-check/test/audit（默认每周一） |
 | P2 | 可观测性 | 修复效果 Dashboard、通知策略、周报 |
 
 ### 非目标
@@ -72,7 +74,7 @@ flowchart TB
     end
 
     subgraph "触发调度层"
-        GH["GitHub Actions Workflows"]
+        CI["CI Pipeline（GitHub Actions / GitLab CI / Jenkins）"]
         RL["去重 & 限流"]
     end
 
@@ -81,16 +83,16 @@ flowchart TB
     end
 
     subgraph "AI 修复层"
-        AI["Claude Code Action"]
+        AI["Claude Code（CLI / Action）"]
     end
 
     subgraph "交付 & 审核层"
-        PR["创建 PR + CI"]
+        PR["创建 MR/PR + CI 验证"]
         RV["人工 Review"]
     end
 
-    S & D & C & I --> GH
-    GH --> RL
+    S & D & C & I --> CI
+    CI --> RL
     RL --> CTX
     CTX --> AI
     AI --> PR
@@ -155,11 +157,205 @@ sequenceDiagram
 
 | 组件 | 选型 | 说明 |
 |------|------|------|
-| CI/CD | GitHub Actions | 已有基础设施 |
-| AI 引擎 | `anthropics/claude-code-action@v1` | 官方 GitHub Action，支持代码读写和 PR 创建 |
+| CI/CD | GitHub Actions / GitLab CI / Jenkins | 通过平台适配层支持多种 CI |
+| AI 引擎 | Claude Code CLI（`npx @anthropic-ai/claude-code`）| 平台无关，任何 CI 环境均可运行 |
+| AI 引擎（GitHub 专用） | `anthropics/claude-code-action@v1` | GitHub Actions 专用封装，开箱即用 |
 | 错误监控 | Sentry | 线上运行时错误捕获 |
-| 通知 | GitHub Notifications + 飞书/钉钉 Webhook | 修复 PR 创建后通知 |
-| 中间服务 | Cloudflare Worker / Vercel Serverless | Sentry → GitHub dispatch 的转发层 |
+| 通知 | CI 平台通知 + 飞书/钉钉 Webhook | 修复 MR/PR 创建后通知 |
+| 中间服务 | Cloudflare Worker / Vercel Serverless | Sentry → CI 触发的转发层 |
+| 安装工具 | `@kit/sentinel` CLI | 为不同 CI 平台生成对应配置 |
+
+### CI 平台适配架构
+
+方案的核心修复逻辑与 CI 平台解耦，通过**平台适配层**为不同 CI 生成对应的 Pipeline 配置：
+
+```mermaid
+flowchart TB
+    subgraph "平台适配层"
+        CLI["@kit/sentinel CLI"]
+        CLI --> |--platform github| GH["GitHub Actions YAML"]
+        CLI --> |--platform gitlab| GL["GitLab CI YAML"]
+        CLI --> |--platform jenkins| JK["Jenkinsfile"]
+    end
+
+    subgraph "核心能力（平台无关）"
+        CC["Claude Code CLI"]
+        GIT["Git 操作（分支、提交、推送）"]
+        CTX["上下文收集（Sentry、测试报告）"]
+    end
+
+    GH & GL & JK --> CC
+    CC --> GIT
+    CC --> CTX
+```
+
+#### 各平台能力映射
+
+| 通用能力 | GitHub Actions | GitLab CI | Jenkins |
+|---------|----------------|-----------|---------|
+| AI 修复引擎 | `claude-code-action@v1` | `npx @anthropic-ai/claude-code` CLI | `npx @anthropic-ai/claude-code` CLI |
+| 创建 MR/PR | `gh pr create` | `glab mr create` | GitLab/GitHub API |
+| Issue 触发 | `issues.labeled` 事件 | Webhook + Pipeline trigger | Webhook + Job trigger |
+| 定时触发 | `schedule.cron` | `rules: - if: $CI_PIPELINE_SOURCE == "schedule"` | `triggers { cron(...) }` |
+| 部署后触发 | `deployment_status` / `workflow_run` | `after_script` / downstream pipeline | Post-build action |
+| Sentry 触发 | `repository_dispatch` | Pipeline trigger API | Generic Webhook Trigger |
+| Secret 管理 | GitHub Secrets | CI/CD Variables (masked) | Jenkins Credentials |
+| 并发控制 | `concurrency` group | `resource_group` | `disableConcurrentBuilds` |
+| 降级开关 | `vars.SENTINEL_ENABLED` | CI/CD Variable | Global property / 参数化构建 |
+| 分支保护 | Branch Protection Rules | Protected Branches | 无原生支持，需额外插件 |
+
+#### GitLab CI 模板示例（概念参考，尚未实现）
+
+```yaml
+# .gitlab-ci.yml (概念示例，Phase 5 实现时参考)
+sentinel:issue:
+  stage: fix
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $SENTINEL_ISSUE_IID && $SENTINEL_ENABLED != "false"
+  variables:
+    ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+  resource_group: sentinel
+  script:
+    - git checkout -b "sentinel/issue-${SENTINEL_ISSUE_IID}"
+    - |
+      npx @anthropic-ai/claude-code --prompt "
+        请根据以下 Issue 修复代码：
+        ## Issue #${SENTINEL_ISSUE_IID}
+        **标题**: ${ISSUE_TITLE}
+        **描述**: ${ISSUE_BODY}
+        ## 约束
+        - 只修改 src/ 目录
+        - 最小改动原则
+      " --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+    - |
+      if [ -n "$(git status --porcelain)" ]; then
+        git add -A
+        git commit -m "fix: 自动修复 #${ISSUE_ID} - ${ISSUE_TITLE}"
+        git push origin HEAD
+        glab mr create \
+          --source-branch "sentinel/issue-${ISSUE_ID}" \
+          --title "fix: 自动修复 #${ISSUE_ID} - ${ISSUE_TITLE}" \
+          --description "AI 自动修复，请 Review 后合并。" \
+          --label "sentinel"
+      fi
+
+sentinel:scheduled:
+  stage: fix
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SENTINEL_ENABLED != "false"
+    - if: $CI_PIPELINE_SOURCE == "web" && $SENTINEL_ENABLED != "false"
+      when: manual
+  variables:
+    ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+  resource_group: sentinel
+  script:
+    - pnpm install
+    - mkdir -p reports
+    - pnpm lint 2>&1 | tee reports/lint.txt || true
+    - pnpm type-check 2>&1 | tee reports/typecheck.txt || true
+    - pnpm test 2>&1 | tee reports/test.txt || true
+    - |
+      DATE_TAG=$(date +%Y%m%d)
+      git checkout -b "sentinel/scheduled-${DATE_TAG}"
+      npx @anthropic-ai/claude-code --prompt "
+        以下是质量巡检结果，请修复发现的问题：
+        $(cat reports/*.txt | head -500)
+      " --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+    - |
+      if [ -n "$(git status --porcelain)" ]; then
+        git add -A
+        git commit -m "chore: 每日质量巡检自动修复 (${DATE_TAG})"
+        git push origin HEAD
+        glab mr create \
+          --source-branch "sentinel/scheduled-${DATE_TAG}" \
+          --title "chore: 每日质量巡检自动修复" \
+          --label "sentinel,maintenance"
+      fi
+```
+
+#### Jenkins Pipeline 模板示例（概念参考，尚未实现）
+
+> **注**: 以下为概念示例，Phase 5 实现时参考。实际实现中每条链路生成独立的 `Jenkinsfile.sentinel-*` 文件。
+
+```groovy
+// Jenkinsfile.sentinel-issue (概念示例，Phase 5 实现时参考)
+pipeline {
+    agent any
+
+    triggers {
+        // 定时巡检：工作日凌晨 2 点
+        cron('0 2 * * 1-5')
+        // Sentry/Issue 通过 Generic Webhook Trigger 插件触发
+        GenericTrigger(
+            genericVariables: [
+                [key: 'TRIGGER_TYPE', value: '$.type'],
+                [key: 'ISSUE_TITLE', value: '$.title'],
+                [key: 'ISSUE_BODY', value: '$.body'],
+                [key: 'ISSUE_ID', value: '$.id']
+            ],
+            token: 'sentinel-trigger'
+        )
+    }
+
+    environment {
+        ANTHROPIC_API_KEY = credentials('anthropic-api-key')
+    }
+
+    options {
+        lock(resource: 'sentinel-lock')   // 并发控制
+        timeout(time: 15, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Quality Check') {
+            when {
+                anyOf {
+                    triggeredBy 'TimerTrigger'
+                    environment name: 'TRIGGER_TYPE', value: 'scheduled'
+                }
+            }
+            steps {
+                sh 'pnpm install'
+                sh 'pnpm lint 2>&1 | tee reports/lint.txt || true'
+                sh 'pnpm type-check 2>&1 | tee reports/typecheck.txt || true'
+                sh 'pnpm test 2>&1 | tee reports/test.txt || true'
+            }
+        }
+
+        stage('AI Fix') {
+            steps {
+                sh """
+                    BRANCH="sentinel/\${TRIGGER_TYPE}-\$(date +%Y%m%d%H%M%S)"
+                    git checkout -b "\$BRANCH"
+
+                    npx @anthropic-ai/claude-code --prompt "\$(cat reports/*.txt 2>/dev/null || echo \$ISSUE_BODY)"
+
+                    if [ -n "\$(git status --porcelain)" ]; then
+                        git add -A
+                        git commit -m "fix: 自动修复 - \${ISSUE_TITLE:-质量巡检}"
+                        git push origin HEAD
+                    fi
+                """
+            }
+        }
+
+        stage('Create MR') {
+            when { expression { sh(script: 'git log origin/main..HEAD --oneline | wc -l', returnStdout: true).trim() != '0' } }
+            steps {
+                // 根据代码托管平台选择对应命令
+                sh 'glab mr create --source-branch $(git branch --show-current) --title "fix: AI 自动修复" --label sentinel || true'
+            }
+        }
+    }
+
+    post {
+        failure {
+            // 飞书/钉钉通知
+            sh 'echo "Auto fix failed" | curl -X POST -d @- ${WEBHOOK_URL} || true'
+        }
+    }
+}
+```
 
 ## 详细设计
 
@@ -178,7 +374,7 @@ flowchart TD
     D --> E["去重检查 (KV)"]
     E -->|已处理| X
     E -->|新问题| F["GitHub repository_dispatch"]
-    F --> G["auto-fix-sentry.yml"]
+    F --> G["sentinel-sentry.yml"]
     G --> H["Claude Code 修复 → PR"]
 ```
 
@@ -236,16 +432,18 @@ export default async function handler(req: Request) {
     users_affected: payload.data.issue.userCount,
     first_seen: payload.data.issue.firstSeen,
     permalink: payload.data.issue.permalink,
-    stacktrace: resolvedStacktrace || extractStacktrace(payload),
+    // 截断 stacktrace，避免超过 GITHUB_OUTPUT 的 1MB 限制
+    stacktrace: truncate(resolvedStacktrace || extractStacktrace(payload), 8192),
   }
 
   // 触发 GitHub Actions
+  // 注意：repository_dispatch 需要 PAT（Personal Access Token），默认 GITHUB_TOKEN 无法触发
   await fetch(
     `https://api.github.com/repos/${OWNER}/${REPO}/dispatches`,
     {
       method: 'POST',
       headers: {
-        Authorization: `token ${GITHUB_TOKEN}`,
+        Authorization: `token ${GITHUB_PAT}`,
         Accept: 'application/vnd.github.v3+json',
       },
       body: JSON.stringify({
@@ -256,6 +454,21 @@ export default async function handler(req: Request) {
   )
 
   return new Response('OK', { status: 200 })
+}
+
+// 截断字符串，避免超过 GITHUB_OUTPUT 的 1MB 限制（默认 8KB）
+function truncate(str: string, maxBytes: number): string {
+  const encoder = new TextEncoder()
+  if (encoder.encode(str).length <= maxBytes) return str
+  // 按行截断，保留完整行
+  const lines = str.split('\n')
+  let result = ''
+  for (const line of lines) {
+    const next = result ? `${result}\n${line}` : line
+    if (encoder.encode(next).length > maxBytes - 30) break
+    result = next
+  }
+  return result + '\n... (truncated)'
 }
 
 // 通过 Sentry API 获取已解析的堆栈（source-mapped）
@@ -288,8 +501,8 @@ async function fetchResolvedStacktrace(issueId: string): Promise<string | null> 
 #### GitHub Actions Workflow
 
 ```yaml
-# .github/workflows/auto-fix-sentry.yml
-name: "Auto Fix: Sentry Error"
+# .github/workflows/sentinel-sentry.yml
+name: "Sentinel: Sentry Error"
 
 on:
   repository_dispatch:
@@ -297,12 +510,12 @@ on:
 
 concurrency:
   # 使用中间服务生成的 safe_key（MD5 hash），避免 culprit 中特殊字符导致问题
-  group: auto-fix-sentry-${{ github.event.client_payload.safe_key || github.run_id }}
+  group: sentinel-sentry-${{ github.event.client_payload.safe_key || github.run_id }}
   cancel-in-progress: false
 
 jobs:
-  auto-fix:
-    if: ${{ vars.AUTO_FIX_ENABLED != 'false' }}
+  sentinel:
+    if: ${{ vars.SENTINEL_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -315,15 +528,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install
+
       - name: Check daily PR limit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          count=$(gh pr list --label auto-fix --state open \
+          count=$(gh pr list --label sentinel --state open \
             --json createdAt \
             --jq '[.[] | select(.createdAt > (now - 86400 | todate))] | length')
           if [ "$count" -ge 10 ]; then
-            echo "::warning::Daily auto-fix PR limit reached ($count/10), skipping."
+            echo "::warning::Daily sentinel PR limit reached ($count/10), skipping."
             exit 1
           fi
           echo "Current daily PR count: $count/10"
@@ -332,11 +552,11 @@ jobs:
         id: dedup
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CULPRIT: ${{ github.event.client_payload.culprit }}
         run: |
           # 检查是否已有针对同一 culprit 的开放 PR
-          # 使用 jq --arg 安全传参，避免 culprit 中的特殊字符破坏查询
-          CULPRIT="${{ github.event.client_payload.culprit }}"
-          existing=$(gh pr list --label auto-fix --state open \
+          # 通过 env 传递 client_payload 避免 shell 注入（${{ }} 在 run: 中直接插值有注入风险）
+          existing=$(gh pr list --label sentinel --state open \
             --json title \
             --jq --arg c "$CULPRIT" '[.[] | select(.title | contains($c))] | length')
           if [ "$existing" -gt 0 ]; then
@@ -349,32 +569,41 @@ jobs:
       - name: Prepare error context
         if: steps.dedup.outputs.skip != 'true'
         id: context
+        env:
+          SENTRY_TITLE: ${{ github.event.client_payload.title }}
+          SENTRY_CULPRIT: ${{ github.event.client_payload.culprit }}
+          SENTRY_LEVEL: ${{ github.event.client_payload.level }}
+          SENTRY_COUNT: ${{ github.event.client_payload.count }}
+          SENTRY_USERS: ${{ github.event.client_payload.users_affected }}
+          SENTRY_FIRST_SEEN: ${{ github.event.client_payload.first_seen }}
+          SENTRY_PERMALINK: ${{ github.event.client_payload.permalink }}
+          SENTRY_STACKTRACE: ${{ github.event.client_payload.stacktrace }}
         run: |
-          echo "branch_name=auto-fix/sentry-$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "branch_name=sentinel/sentry-$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
-          # 将上下文存入 GITHUB_OUTPUT（解决 YAML prompt 中 $(cat) 不会被 shell 展开的问题）
+          # 通过 env 传递 client_payload 避免 shell 注入
           {
             echo "error_context<<CONTEXT_EOF"
             echo "## Sentry Error Report"
             echo ""
             echo "| 字段 | 值 |"
             echo "|------|-----|"
-            echo "| **标题** | ${{ github.event.client_payload.title }} |"
-            echo "| **问题函数** | ${{ github.event.client_payload.culprit }} |"
-            echo "| **级别** | ${{ github.event.client_payload.level }} |"
-            echo "| **触发次数** | ${{ github.event.client_payload.count }} |"
-            echo "| **影响用户数** | ${{ github.event.client_payload.users_affected }} |"
-            echo "| **首次出现** | ${{ github.event.client_payload.first_seen }} |"
-            echo "| **Sentry 链接** | ${{ github.event.client_payload.permalink }} |"
+            echo "| **标题** | $SENTRY_TITLE |"
+            echo "| **问题函数** | $SENTRY_CULPRIT |"
+            echo "| **级别** | $SENTRY_LEVEL |"
+            echo "| **触发次数** | $SENTRY_COUNT |"
+            echo "| **影响用户数** | $SENTRY_USERS |"
+            echo "| **首次出现** | $SENTRY_FIRST_SEEN |"
+            echo "| **Sentry 链接** | $SENTRY_PERMALINK |"
             echo ""
             echo "## Stack Trace"
             echo '```'
-            echo '${{ github.event.client_payload.stacktrace }}'
+            echo "$SENTRY_STACKTRACE"
             echo '```'
             echo "CONTEXT_EOF"
           } >> $GITHUB_OUTPUT
 
-      - name: Claude Code Auto Fix
+      - name: Claude Code Sentinel
         if: steps.dedup.outputs.skip != 'true'
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -382,6 +611,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           model: claude-sonnet-4-6
           max_turns: 20
+          branch: ${{ steps.context.outputs.branch_name }}
           prompt: |
             你是一个自动修复机器人，负责修复线上 Sentry 报出的错误。
 
@@ -410,58 +640,67 @@ jobs:
             **风险评估**: 低/中/高
             ---
 
-      # 注意：需确认 claude-code-action 实际暴露的 outputs 字段名
-      # 若 action 本身支持创建 PR，可考虑直接使用其内置能力而非 create-pull-request
-      - name: Check for changes
+      # claude-code-action 自动 commit + push 到指定分支，之后检查分支是否被创建
+      - name: Check branch created
         if: steps.dedup.outputs.skip != 'true'
         id: changes
+        env:
+          BRANCH_NAME: ${{ steps.context.outputs.branch_name }}
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
+          if git ls-remote --exit-code origin "refs/heads/$BRANCH_NAME" > /dev/null 2>&1; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "::notice::Claude 未修改代码，跳过创建 PR"
+            echo "::notice::Claude 未修改代码（分支未创建），跳过创建 PR"
           fi
 
       - name: Create Pull Request
         if: steps.changes.outputs.has_changes == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ steps.context.outputs.branch_name }}
-          title: "fix: 自动修复 Sentry 错误 - ${{ github.event.client_payload.title }}"
-          body: |
-            ## AI 自动修复
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_NAME: ${{ steps.context.outputs.branch_name }}
+          SENTRY_TITLE: ${{ github.event.client_payload.title }}
+          SENTRY_CULPRIT: ${{ github.event.client_payload.culprit }}
+          SENTRY_COUNT: ${{ github.event.client_payload.count }}
+          SENTRY_USERS: ${{ github.event.client_payload.users_affected }}
+          SENTRY_PERMALINK: ${{ github.event.client_payload.permalink }}
+          ERROR_CONTEXT: ${{ steps.context.outputs.error_context }}
+        run: |
+          gh pr create \
+            --head "$BRANCH_NAME" \
+            --title "fix: 自动修复 Sentry 错误 - $SENTRY_TITLE" \
+            --body "## AI 自动修复
 
-            本 PR 由自动修复系统根据 Sentry 错误报告生成。
+          本 PR 由自动修复系统根据 Sentry 错误报告生成。
 
-            ### Sentry Issue
-            - **错误**: ${{ github.event.client_payload.title }}
-            - **位置**: `${{ github.event.client_payload.culprit }}`
-            - **影响**: ${{ github.event.client_payload.count }} 次触发, ${{ github.event.client_payload.users_affected }} 用户受影响
-            - **链接**: ${{ github.event.client_payload.permalink }}
+          ### Sentry Issue
+          - **错误**: $SENTRY_TITLE
+          - **位置**: \`$SENTRY_CULPRIT\`
+          - **影响**: $SENTRY_COUNT 次触发, $SENTRY_USERS 用户受影响
+          - **链接**: $SENTRY_PERMALINK
 
-            ### 错误上下文
-            ${{ steps.context.outputs.error_context }}
+          ### 错误上下文
+          $ERROR_CONTEXT
 
-            ### Review 清单
-            - [ ] 根因分析是否正确
-            - [ ] 修复方案是否合理
-            - [ ] 是否有潜在的副作用
-            - [ ] CI 是否全部通过
+          ### Review 清单
+          - [ ] 根因分析是否正确
+          - [ ] 修复方案是否合理
+          - [ ] 是否有潜在的副作用
+          - [ ] CI 是否全部通过
 
-            ---
-            > 此 PR 由 AI 自动生成，请务必人工 Review 后再合并。
-          labels: |
-            auto-fix
-            bot
-          reviewers: ${{ vars.AUTO_FIX_REVIEWERS }}
+          ---
+          > 此 PR 由 AI 自动生成，请务必人工 Review 后再合并。" \
+            --label "sentinel,bot" \
+            --reviewer "${{ vars.SENTINEL_REVIEWERS }}"
 
       - name: Notify on failure
         if: failure()
+        env:
+          SENTRY_TITLE: ${{ github.event.client_payload.title }}
         run: |
           # 可接入飞书/钉钉 Webhook 通知
-          echo "Auto fix failed for: ${{ github.event.client_payload.title }}"
+          echo "Auto fix failed for: $SENTRY_TITLE"
 ```
 
 ### 链路二：部署后冒烟测试 → 自动修复
@@ -469,8 +708,8 @@ jobs:
 **触发条件**: 生产环境部署成功后自动运行
 
 ```yaml
-# .github/workflows/auto-fix-post-deploy.yml
-name: "Auto Fix: Post-Deploy Smoke Test"
+# .github/workflows/sentinel-post-deploy.yml
+name: "Sentinel: Post-Deploy Smoke Test"
 
 on:
   deployment_status:
@@ -487,7 +726,7 @@ on:
 jobs:
   smoke-test:
     if: >
-      vars.AUTO_FIX_ENABLED != 'false' && (
+      vars.SENTINEL_ENABLED != 'false' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success') ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
@@ -553,13 +792,14 @@ jobs:
         if: steps.smoke.outputs.exit_code == '0'
         run: echo "All smoke tests passed, no fix needed."
 
-      - name: Claude Code Auto Fix
+      - name: Claude Code Sentinel
         if: steps.smoke.outputs.exit_code != '0'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           model: claude-sonnet-4-6
           max_turns: 25
+          branch: "sentinel/post-deploy-${{ github.run_id }}"
           prompt: |
             部署后冒烟测试失败了，请分析并修复。
 
@@ -580,12 +820,13 @@ jobs:
             - 不修改测试文件、配置文件
             - 最小化改动
 
-      # 仅在 Claude 实际修改了代码时才创建 PR（避免环境问题时创建空 PR）
-      - name: Check for changes
+      # claude-code-action 自动 commit + push 到指定分支
+      - name: Check branch created
         if: steps.smoke.outputs.exit_code != '0'
         id: changes
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
+          BRANCH_NAME="sentinel/post-deploy-${{ github.run_id }}"
+          if git ls-remote --exit-code origin "refs/heads/$BRANCH_NAME" > /dev/null 2>&1; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
@@ -594,32 +835,30 @@ jobs:
 
       - name: Create Pull Request
         if: steps.changes.outputs.has_changes == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: "auto-fix/post-deploy-${{ github.run_id }}"
-          title: "fix: 自动修复部署后冒烟测试失败"
-          body: |
-            ## AI 自动修复 - 部署后测试失败
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FAIL_SUMMARY: ${{ steps.test-context.outputs.fail_summary }}
+        run: |
+          gh pr create \
+            --head "sentinel/post-deploy-${{ github.run_id }}" \
+            --title "fix: 自动修复部署后冒烟测试失败" \
+            --body "## AI 自动修复 - 部署后测试失败
 
-            部署后冒烟测试发现问题，AI 已自动生成修复方案。
+          部署后冒烟测试发现问题，AI 已自动生成修复方案。
 
-            ### 失败测试
-            ```
-            ${{ steps.test-context.outputs.fail_summary }}
-            ```
+          ### 失败测试
+          \`\`\`
+          $FAIL_SUMMARY
+          \`\`\`
 
-            ### Review 清单
-            - [ ] 确认修复方案正确
-            - [ ] 确认未引入新问题
-            - [ ] CI 全部通过
+          ### Review 清单
+          - [ ] 确认修复方案正确
+          - [ ] 确认未引入新问题
+          - [ ] CI 全部通过
 
-            ---
-            > 此 PR 由 AI 自动生成，请务必人工 Review 后再合并。
-          labels: |
-            auto-fix
-            post-deploy
-            urgent
+          ---
+          > 此 PR 由 AI 自动生成，请务必人工 Review 后再合并。" \
+            --label "sentinel,post-deploy,urgent"
 ```
 
 ### 链路三：定时质量巡检
@@ -627,17 +866,17 @@ jobs:
 **触发条件**: 工作日定时执行
 
 ```yaml
-# .github/workflows/auto-fix-scheduled.yml
-name: "Auto Fix: Scheduled Quality Check"
+# .github/workflows/sentinel-scheduled.yml
+name: "Sentinel: Scheduled Quality Check"
 
 on:
   schedule:
-    - cron: '0 18 * * 0-4'  # UTC 18:00 = 北京时间次日凌晨 2:00（周一至周五）
+    - cron: '0 3 * * 1'  # 每周一凌晨 3:00（UTC，可按需调整为工作日每日执行）
   workflow_dispatch:
 
 jobs:
   quality-check:
-    if: ${{ vars.AUTO_FIX_ENABLED != 'false' }}
+    if: ${{ vars.SENTINEL_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -752,13 +991,14 @@ jobs:
           echo "date_tag=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
           echo "date_display=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
 
-      - name: Claude Code Auto Fix
+      - name: Claude Code Sentinel
         if: steps.summary.outputs.has_issues == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           model: claude-sonnet-4-6
           max_turns: 30
+          branch: "sentinel/scheduled-${{ steps.summary.outputs.date_tag }}"
           prompt: |
             以下是每日质量巡检的结果，请修复发现的问题。
 
@@ -775,11 +1015,13 @@ jobs:
             - 依赖升级只做 patch 版本升级，minor/major 升级请标注让人工决策
             - 如果某个问题你不确定怎么修，跳过并在报告中说明
 
-      - name: Check for changes
+      # claude-code-action 自动 commit + push 到指定分支
+      - name: Check branch created
         if: steps.summary.outputs.has_issues == 'true'
         id: changes
         run: |
-          if [ -n "$(git status --porcelain)" ]; then
+          BRANCH_NAME="sentinel/scheduled-${{ steps.summary.outputs.date_tag }}"
+          if git ls-remote --exit-code origin "refs/heads/$BRANCH_NAME" > /dev/null 2>&1; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
@@ -788,40 +1030,39 @@ jobs:
 
       - name: Create Pull Request
         if: steps.changes.outputs.has_changes == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: "auto-fix/scheduled-${{ steps.summary.outputs.date_tag }}"
-          title: "chore: 每日质量巡检自动修复 (${{ steps.summary.outputs.date_display }})"
-          body: |
-            ## 每日质量巡检
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT: ${{ steps.summary.outputs.report }}
+        run: |
+          gh pr create \
+            --head "sentinel/scheduled-${{ steps.summary.outputs.date_tag }}" \
+            --title "chore: 每日质量巡检自动修复 (${{ steps.summary.outputs.date_display }})" \
+            --body "## 每日质量巡检
 
-            ${{ steps.summary.outputs.report }}
+          $REPORT
 
-            ---
-            > 此 PR 由 AI 自动生成，请务必人工 Review 后再合并。
-          labels: |
-            auto-fix
-            maintenance
+          ---
+          > 此 PR 由 AI 自动生成，请务必人工 Review 后再合并。" \
+            --label "sentinel,maintenance"
 ```
 
 ### 链路四：Issue 标签触发（人机协同）
 
-**触发条件**: 开发者在 Issue 上打 `auto-fix` 标签
+**触发条件**: 开发者在 Issue 上打 `sentinel` 标签
 
-> **安全注意**: `auto-fix` 标签应通过 GitHub 权限设置限制为 Collaborator 及以上角色才能添加，防止外部用户通过 Issue 内容进行 Prompt 注入。
+> **安全注意**: `sentinel` 标签应通过 GitHub 权限设置限制为 Collaborator 及以上角色才能添加，防止外部用户通过 Issue 内容进行 Prompt 注入。
 
 ```yaml
-# .github/workflows/auto-fix-issue.yml
-name: "Auto Fix: From Issue"
+# .github/workflows/sentinel-issue.yml
+name: "Sentinel: From Issue"
 
 on:
   issues:
     types: [labeled]
 
 jobs:
-  auto-fix:
-    if: github.event.label.name == 'auto-fix' && vars.AUTO_FIX_ENABLED != 'false'
+  sentinel:
+    if: github.event.label.name == 'sentinel' && vars.SENTINEL_ENABLED != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -834,6 +1075,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install
+
       - name: Comment on issue - start
         uses: peter-evans/create-or-update-comment@v4
         with:
@@ -844,13 +1092,14 @@ jobs:
             正在分析 Issue 并生成修复方案，预计 5-10 分钟完成。
             完成后会自动创建 PR 并关联此 Issue。
 
-      - name: Claude Code Auto Fix
+      - name: Claude Code Sentinel
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           model: claude-sonnet-4-6
           max_turns: 25
+          branch: "sentinel/issue-${{ github.event.issue.number }}"
           prompt: |
             请根据以下 GitHub Issue 修复代码：
 
@@ -867,18 +1116,22 @@ jobs:
             4. 确保修复后类型检查和 lint 通过
 
       # 硬检查：确保 AI 没有修改白名单以外的文件（防止 Prompt 注入绕过 CLAUDE.md 软约束）
-      # 注意：claude-code-action 可能直接 commit 代码，需同时检查未暂存和已提交的变更
+      # claude-code-action 会自动 commit + push，用 git diff origin/DEFAULT_BRANCH 对比所有变更
       - name: Validate changed files
         id: validate
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          # 收集所有变更文件（未暂存 + 已暂存 + 已提交但未 push）
-          CHANGED_FILES=$(
-            {
-              git diff --name-only 2>/dev/null
-              git diff --cached --name-only 2>/dev/null
-              git diff HEAD~1 --name-only 2>/dev/null
-            } | sort -u
-          )
+          BRANCH_NAME="sentinel/issue-${{ github.event.issue.number }}"
+          # 检查分支是否被创建（说明 claude 产生了代码变更）
+          if ! git ls-remote --exit-code origin "refs/heads/$BRANCH_NAME" > /dev/null 2>&1; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 获取该分支相对默认分支的所有变更文件
+          git fetch origin "$BRANCH_NAME"
+          CHANGED_FILES=$(git diff "origin/$DEFAULT_BRANCH...origin/$BRANCH_NAME" --name-only 2>/dev/null || true)
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
@@ -897,29 +1150,28 @@ jobs:
       - name: Create Pull Request
         if: steps.validate.outputs.has_changes == 'true'
         id: pr
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          branch: "auto-fix/issue-${{ github.event.issue.number }}"
-          title: "fix: 自动修复 #${{ github.event.issue.number }} - ${{ github.event.issue.title }}"
-          body: |
-            ## AI 自动修复
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_URL=$(gh pr create \
+            --head "sentinel/issue-${{ github.event.issue.number }}" \
+            --title "fix: 自动修复 #${{ github.event.issue.number }} - ${{ github.event.issue.title }}" \
+            --body "## AI 自动修复
 
-            Closes #${{ github.event.issue.number }}
+          Closes #${{ github.event.issue.number }}
 
-            ### 修复说明
-            根据 Issue 描述自动生成的修复方案。
+          ### 修复说明
+          根据 Issue 描述自动生成的修复方案。
 
-            ### Review 清单
-            - [ ] 修复方案是否正确
-            - [ ] 是否有潜在的副作用
-            - [ ] CI 是否全部通过
+          ### Review 清单
+          - [ ] 修复方案是否正确
+          - [ ] 是否有潜在的副作用
+          - [ ] CI 是否全部通过
 
-            ---
-            > 此 PR 由 AI 自动生成，请务必人工 Review 后再合并。
-          labels: |
-            auto-fix
-            bot
+          ---
+          > 此 PR 由 AI 自动生成，请务必人工 Review 后再合并。" \
+            --label "sentinel,bot")
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
 
       - name: Comment on issue - no changes
         if: steps.validate.outputs.has_changes == 'false'
@@ -932,12 +1184,12 @@ jobs:
             AI 分析了此 Issue，但未找到需要修改的代码。可能需要人工介入。
 
       - name: Comment on issue - done
-        if: steps.pr.outputs.pull-request-number
+        if: steps.pr.outputs.pr_url
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
-            **修复 PR 已创建**: #${{ steps.pr.outputs.pull-request-number }}
+            **修复 PR 已创建**: ${{ steps.pr.outputs.pr_url }}
 
             请 Review 后合并。
 
@@ -955,10 +1207,10 @@ jobs:
 
 ### CLAUDE.md 修复规范
 
-在业务仓库的 `CLAUDE.md` 中需要添加 auto-fix 相关约束，作为 AI 修复行为的「护栏」：
+在业务仓库的 `CLAUDE.md` 中需要添加 sentinel 相关约束，作为 AI 修复行为的「护栏」：
 
 ```markdown
-# Auto Fix 规范（供 CI 中的 Claude Code 使用）
+# Sentinel 规范（供 CI 中的 Claude Code 使用）
 
 ## 修复原则
 - 最小改动原则：只改必要的代码
@@ -1012,21 +1264,22 @@ main 分支必须开启以下保护：
 |------|------|---------|
 | 同一错误去重 | 24 小时内同一 Sentry Issue 只触发 1 次 | 中间服务 KV 存储 |
 | 并发控制 | 同一触发源内串行执行 | `concurrency` group（按链路隔离，非全局限制） |
+| 全局并发限制 | 跨链路总并发不超过 3 个 | 中间服务层令牌桶限流（推荐），或 GitHub Actions `concurrency` 全局 group |
 | 重复 PR 检测 | 已有同类开放 PR 时跳过 | workflow 中 `gh pr list` 检查 |
 | 每日上限 | 单日最多创建 10 个修复 PR | workflow 中 `gh pr list` 统计当日数量 |
 | 成本控制 | 单次修复 max_turns <= 30 | Claude Code Action 参数 |
 
 #### 降级开关
 
-通过 GitHub Repository Variable `AUTO_FIX_ENABLED` 一键控制：
+通过 GitHub Repository Variable `SENTINEL_ENABLED` 一键控制：
 
 ```yaml
 jobs:
-  auto-fix:
-    if: ${{ vars.AUTO_FIX_ENABLED != 'false' }}
+  sentinel:
+    if: ${{ vars.SENTINEL_ENABLED != 'false' }}
 ```
 
-紧急情况设置 `AUTO_FIX_ENABLED=false` 即可关闭所有自动修复。
+紧急情况设置 `SENTINEL_ENABLED=false` 即可关闭所有自动修复。
 
 ### 可观测性
 
@@ -1063,13 +1316,13 @@ jobs:
 
 以下问题需要在实施前确认：
 
-| # | 问题 | 影响 | 建议 |
-|---|------|------|------|
-| 1 | **`claude-code-action` 的 outputs schema** | 当前假设存在 `has_changes`、`summary` 等输出字段，需对照官方文档确认实际字段名 | Phase 1 启动前验证，必要时调整 workflow |
-| 2 | **`claude-code-action` 与 `create-pull-request` 的职责划分** | action 本身可能支持创建 PR，与 `create-pull-request` 共用可能产生分支/commit 冲突 | 确认 action 的 PR 创建能力，二选一 |
-| 3 | **step output 的大小限制** | `GITHUB_OUTPUT` 有 ~1MB 限制，大型测试报告或 stacktrace 可能超限 | 对输出做截断（如 `head -500`），或改用 artifact 传递 |
-| 4 | **冒烟测试套件就绪度** | 链路二依赖 `pnpm test:e2e:smoke`，各业务仓库的 E2E 测试成熟度不一 | Phase 2 前先评估各仓库 E2E 覆盖率 |
-| 5 | **修复失败后的重试策略** | 当前修复失败仅发通知，无自动重试机制 | MVP 阶段不重试，后续根据失败原因分类（瞬态 vs 永久）决定是否引入 |
+| # | 问题 | 影响 | 建议 | 状态 |
+|---|------|------|------|------|
+| 1 | **`claude-code-action` 的 outputs schema** | 当前假设存在 `has_changes`、`summary` 等输出字段，需对照官方文档确认实际字段名 | Phase 1 启动前验证，必要时调整 workflow | 待确认 |
+| 2 | ~~**`claude-code-action` 与 `create-pull-request` 的职责划分**~~ | ~~action 本身可能支持创建 PR，与 `create-pull-request` 共用可能产生分支/commit 冲突~~ | 已解决：移除 `create-pull-request`，使用 `claude-code-action` 的 `branch` 参数 + `gh pr create` | **已解决** |
+| 3 | ~~**step output 的大小限制**~~ | ~~`GITHUB_OUTPUT` 有 ~1MB 限制，大型测试报告或 stacktrace 可能超限~~ | 已解决：中间服务添加 8KB stacktrace 截断，测试日志 `head -500` 截断 | **已解决** |
+| 4 | **冒烟测试套件就绪度** | 链路二依赖 `pnpm test:e2e:smoke`，各业务仓库的 E2E 测试成熟度不一 | Phase 2 前先评估各仓库 E2E 覆盖率 | 待确认 |
+| 5 | **修复失败后的重试策略** | 当前修复失败仅发通知，无自动重试机制 | MVP 阶段不重试，后续根据失败原因分类（瞬态 vs 永久）决定是否引入 | 待确认 |
 
 ## 备选方案
 
@@ -1114,7 +1367,7 @@ jobs:
 **目标**: 跑通链路四（Issue 标签触发），验证 Claude Code Action 基本能力
 
 - [ ] 业务仓库 CLAUDE.md 添加修复规范
-- [ ] 配置 `auto-fix-issue.yml` workflow
+- [ ] 配置 `sentinel-issue.yml` workflow
 - [ ] 配置 GitHub Secrets（ANTHROPIC_API_KEY）
 - [ ] 手动创建 3-5 个已知 bug 的 Issue，测试修复效果
 - [ ] 评估修复质量，调优 prompt
@@ -1124,7 +1377,7 @@ jobs:
 **目标**: 接入部署后冒烟测试自动修复
 
 - [ ] 确保已有可用的冒烟测试套件（E2E 或 API 测试）
-- [ ] 配置 `auto-fix-post-deploy.yml` workflow
+- [ ] 配置 `sentinel-post-deploy.yml` workflow
 - [ ] 在 staging 环境先行验证
 - [ ] 灰度到生产环境
 
@@ -1132,9 +1385,10 @@ jobs:
 
 **目标**: 线上错误自动修复
 
-- [ ] 部署中间服务（Cloudflare Worker）
+- [ ] 创建 GitHub PAT（Personal Access Token），配置为 `SENTINEL_PAT` Secret（`repository_dispatch` 需要 PAT，默认 `GITHUB_TOKEN` 无法触发）
+- [ ] 部署中间服务（Cloudflare Worker），配置 `GITHUB_PAT`、`SENTRY_AUTH_TOKEN` 环境变量
 - [ ] 配置 Sentry Alert Rule + Webhook
-- [ ] 配置 `auto-fix-sentry.yml` workflow
+- [ ] 配置 `sentinel-sentry.yml` workflow
 - [ ] 调优触发阈值（避免过度触发）
 - [ ] 生产试运行，观察效果
 
@@ -1142,11 +1396,108 @@ jobs:
 
 **目标**: 完整闭环 + 效果可度量
 
-- [ ] 配置 `auto-fix-scheduled.yml` workflow
+- [ ] 配置 `sentinel-scheduled.yml` workflow
 - [ ] 接入 IM 通知（飞书/钉钉）
 - [ ] 搭建修复效果 Dashboard
 - [ ] 建立周报机制
 - [ ] 根据数据持续调优
+
+### Phase 5: 多 CI 平台适配（远期规划）
+
+> **注**: Phase 1-4 以 GitHub Actions 为唯一实现平台。Phase 5 为远期规划，待 GitHub 平台验证成熟后再启动。代码中已预留 `PlatformAdapter` 接口和工厂模式，扩展新平台只需实现接口并注册。
+
+**目标**: 支持 GitLab CI、Jenkins 等非 GitHub 平台的业务仓库
+
+- [ ] 实现 GitLab CI 适配器 + `glab` CLI 集成
+- [ ] 实现 Jenkins Pipeline 适配器 + Generic Webhook Trigger
+- [ ] Sentry 中间服务支持多平台 dispatch（GitHub dispatch / GitLab trigger / Jenkins webhook）
+- [ ] 编写各平台的安装和验证文档
+- [ ] 在 GitLab/Jenkins 仓库试点验证
+
+## CLI 安装工具
+
+为降低各业务仓库的接入成本，提供 `@kit/sentinel` CLI 工具实现一键安装。
+
+### 安装
+
+```bash
+# GitHub Actions（默认）
+sentinel install --phase 1
+
+# GitLab CI
+sentinel install --phase 1 --platform gitlab
+
+# Jenkins
+sentinel install --phase 1 --platform jenkins
+
+# 从 aix monorepo 内开发调试
+pnpm --filter @kit/sentinel dev -- install --phase 1 --platform github
+```
+
+### 命令
+
+| 命令 | 说明 |
+|------|------|
+| `sentinel install` | 安装指定 Phase 的 workflow 到目标仓库 |
+| `sentinel check` | 检查目标仓库的安装状态（workflow、secrets、CLAUDE.md） |
+| `sentinel uninstall` | 移除已安装的 sentinel workflow 和配置 |
+
+### install 命令参数
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--platform <name>` | CI 平台：当前仅支持 `github`（`gitlab` / `jenkins` 为远期规划） | github |
+| `--phase <1-4>` | 安装指定阶段（累积安装 1..N） | 交互选择 |
+| `--all` | 安装全部 4 个阶段 | - |
+| `--target <path>` | 目标仓库路径 | 当前目录 |
+| `-y, --yes` | 跳过交互确认 | false |
+| `--dry-run` | 仅预览，不实际写入 | false |
+| `--node-version <ver>` | Pipeline 中的 Node.js 版本 | 20 |
+| `--reviewers <list>` | MR/PR 默认 Reviewer | - |
+
+### 安装流程
+
+```mermaid
+flowchart TD
+    A["sentinel install --phase N --platform P"] --> B["环境预检"]
+    B --> C{"通过?"}
+    C -->|否| D["输出错误信息"]
+    C -->|是| E["选择平台模板"]
+    E --> F["安装 Phase 1..N 的 Pipeline 配置"]
+    F --> G["创建标签（如平台支持）"]
+    G --> H["修补 CLAUDE.md"]
+    H --> I["检查 Secrets/Variables"]
+    I --> J["输出安装报告"]
+```
+
+### 工具架构
+
+工具源码位于 `internal/sentinel/`，关键模块：
+
+| 模块 | 职责 |
+|------|------|
+| `core/installer.ts` | 安装编排器（按平台分发） |
+| `core/workflow-writer.ts` | 模板渲染 + 写入对应平台的配置目录 |
+| `core/claude-md-patcher.ts` | 幂等修补 CLAUDE.md |
+| `core/label-creator.ts` | 通过平台 CLI 创建标签 |
+| `core/secrets-checker.ts` | 检查 Secrets/Variables 并输出配置引导 |
+| `utils/template.ts` | `__VAR__` 模板变量替换 |
+
+模板文件按平台组织：
+
+```
+templates/
+├── github/                    # GitHub Actions 模板（已实现）
+│   ├── sentinel-issue.yml
+│   ├── sentinel-post-deploy.yml
+│   ├── sentinel-sentry.yml
+│   └── sentinel-scheduled.yml
+├── claude-md/                 # CLAUDE.md 补丁（通用）
+│   └── sentinel-rules.md
+└── worker/                    # Sentry Worker（通用）
+    └── sentry-webhook.ts
+# gitlab/ 和 jenkins/ 目录为远期 Phase 5 规划
+```
 
 ## 附录
 
@@ -1155,15 +1506,15 @@ jobs:
 | 项目 | 预估成本 | 说明 |
 |------|---------|------|
 | Claude API | ~$50-200/月 | 取决于触发频率，Sonnet 模型性价比高 |
-| GitHub Actions | 包含在现有 Plan | 使用 GitHub-hosted runners |
+| CI 运行时 | 取决于平台 | GitHub Actions 包含在 Plan 中；GitLab 有免费额度；Jenkins 需自备 Runner |
 | 中间服务 | ~$0-5/月 | Cloudflare Worker 免费额度通常够用 |
-| 人工 Review | ~2-4 小时/周 | Review AI 生成的 PR |
+| 人工 Review | ~2-4 小时/周 | Review AI 生成的 MR/PR |
 
 ### FAQ
 
 **Q: 自动修复的 PR 谁来 Review？**
 
-根据修改文件的 CODEOWNERS 自动指定 Reviewer，如未配置则指定 `AUTO_FIX_REVIEWERS` 变量中的人员。
+根据修改文件的 CODEOWNERS 自动指定 Reviewer，如未配置则指定 `SENTINEL_REVIEWERS` 变量中的人员。
 
 **Q: 如果 AI 修错了怎么办？**
 
@@ -1181,13 +1532,58 @@ jobs:
 
 通过 max_turns 限制 + 每日上限 + 降级开关三重保障。建议初期设置 Anthropic API 的月度用量预算告警。
 
+**Q: 不用 GitHub 能跑吗？**
+
+可以。核心修复能力由 Claude Code CLI 提供，不依赖任何特定 CI 平台。Phase 1-4 先以 GitHub Actions 为主验证效果，Phase 5 扩展至 GitLab CI 和 Jenkins。使用 `sentinel install --platform gitlab/jenkins` 即可生成对应平台配置。
+
+**Q: `claude-code-action` 和 Claude Code CLI 有什么区别？**
+
+`claude-code-action` 是 Claude Code CLI 的 GitHub Action 封装，功能等价但仅限 GitHub Actions 环境。在 GitLab CI / Jenkins 等平台，直接使用 `npx @anthropic-ai/claude-code` CLI 即可达到相同效果。CLI 可在任何有 Node.js 的环境运行。
+
+**Q: Jenkins 没有原生分支保护怎么办？**
+
+Jenkins 本身不提供分支保护，但代码仓库通常托管在 GitLab/GitHub/Bitbucket 上，分支保护规则在仓库侧配置即可。AI 修复的 MR/PR 仍然需要通过仓库的审核流程才能合并。
+
 ### 技术依赖
+
+**通用依赖（所有平台）**
 
 | 依赖 | 用途 |
 |------|------|
-| `anthropics/claude-code-action@v1` | AI 代码修复 |
-| `peter-evans/create-pull-request@v6` | 自动创建 PR |
-| `peter-evans/create-or-update-comment@v4` | Issue 评论通知 |
-| `actions/checkout@v4` | 代码检出 |
+| Claude Code CLI (`npx @anthropic-ai/claude-code`) | AI 代码修复引擎（平台无关） |
 | Sentry SDK | 线上错误监控 |
 | Cloudflare Workers / Vercel | Webhook 中间服务 |
+| `@kit/sentinel` CLI | 安装配置工具 |
+
+**GitHub 专用依赖**
+
+| 依赖 | 用途 |
+|------|------|
+| `anthropics/claude-code-action@v1` | GitHub Action 封装（可选，CLI 亦可） |
+| `peter-evans/create-or-update-comment@v4` | Issue 评论通知 |
+| `actions/checkout@v4` | 代码检出 |
+| `gh` CLI | 创建 PR、管理标签和 Secrets |
+
+**GitLab 专用依赖**
+
+| 依赖 | 用途 |
+|------|------|
+| `glab` CLI | 创建 MR、管理标签 |
+| GitLab Pipeline Trigger API | Sentry/外部系统触发 Pipeline |
+
+**Jenkins 专用依赖**
+
+| 依赖 | 用途 |
+|------|------|
+| Generic Webhook Trigger 插件 | 接收外部 Webhook 触发构建 |
+| Lockable Resources 插件 | 并发控制 |
+| Credentials Binding 插件 | Secret 管理 |
+
+### Secrets 需求
+
+| Secret/Variable | 用途 | 哪个阶段需要 |
+|-----------------|------|-------------|
+| `ANTHROPIC_API_KEY` (Secret) | Claude API 调用 | Phase 1-4 |
+| `SENTINEL_PAT` (Secret) | GitHub PAT，用于 `repository_dispatch` 触发 | Phase 3 (Sentry) |
+| `SENTINEL_ENABLED` (Variable) | 降级开关，设为 `false` 关闭所有自动修复 | Phase 1-4 |
+| `SENTINEL_REVIEWERS` (Variable) | 修复 PR 的默认 Reviewer 列表 | Phase 1-4（可选） |

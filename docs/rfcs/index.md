@@ -22,7 +22,7 @@ RFC (Request for Comments) 是本项目的技术设计文档规范。每当设�
 | RFC | 描述 |
 |-----|------|
 | [视觉比对测试](./visual-testing-rfc.md) | 基于 Figma + LLM 的视觉回归测试方案 |
-| [AI 自动修复](./auto-fix-design-draft.md) | 基于 Sentry + Claude Code 的自动发现问题与修复系统 |
+| [AI 自动修复](./sentinel-design-draft.md) | 基于 Sentry + Claude Code 的自动发现问题与修复系统 |
 
 ## RFC 编写规范
 
