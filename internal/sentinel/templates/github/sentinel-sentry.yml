@@ -160,7 +160,7 @@ __PACKAGE_MANAGER_SETUP__
             7. Do NOT modify test files, config files, or package.json
             8. Add a brief comment explaining the fix near the changed code
             9. Commit your changes with message: "fix: resolve Sentry error - ${SENTRY_TITLE}"
-          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__'
+          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],

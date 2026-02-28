@@ -186,7 +186,7 @@ jobs:
             6. Only modify files in these directories: apps/, packages/
             7. Do NOT modify test files, config files, or package.json
             8. Commit your changes with message: "fix: scheduled maintenance fixes"
-          claude_args: '--model claude-haiku-4-5-20251001 --max-turns 30'
+          claude_args: '--model claude-haiku-4-5-20251001 --max-turns 30 --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],
