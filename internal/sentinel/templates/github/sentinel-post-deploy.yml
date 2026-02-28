@@ -44,20 +44,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+__PACKAGE_MANAGER_SETUP__
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: __NODE_VERSION__
-          cache: pnpm
+          cache: __PACKAGE_MANAGER__
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: __INSTALL_CMD__
 
       - name: Install Playwright browsers
-        run: pnpm exec playwright install --with-deps chromium
+        run: __EXEC_CMD__ playwright install --with-deps chromium
 
       - name: Run smoke tests
         id: smoke_tests
@@ -67,7 +66,7 @@ jobs:
         run: |
           # Run smoke tests and capture output
           set +e
-          SMOKE_OUTPUT=$(pnpm test:smoke 2>&1)
+          SMOKE_OUTPUT=$(__SMOKE_TEST_CMD__ 2>&1)
           SMOKE_EXIT_CODE=$?
           set -e
 
@@ -121,8 +120,8 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          model: claude-sonnet-4-6
-          max_turns: 25
+          model: __MODEL__
+          max_turns: __MAX_TURNS__
           prompt: |
             Post-deploy smoke tests have failed. Here is the test output:
 
@@ -132,8 +131,8 @@ jobs:
             1. Analyze the smoke test failures carefully
             2. Identify the root cause in the source code
             3. Implement the minimal fix needed
-            4. Run type checking: pnpm type-check
-            5. Run linting: pnpm lint
+            4. Run type checking: __RUN_CMD__ type-check
+            5. Run linting: __RUN_CMD__ lint
             6. Only modify files in these directories: __ALLOWED_PATHS_DISPLAY__
             7. Do NOT modify test files, config files, or package.json
             8. This is a post-deploy fix, so prioritize correctness and safety

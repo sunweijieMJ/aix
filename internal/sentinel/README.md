@@ -16,9 +16,9 @@ AI 自动修复 Workflow 安装工具 —— 将 AI sentinel CI pipelines 安装
 
 ## 安装阶段
 
-安装默认是**累积式**的：安装 Phase 3 = Phase 1 + 2 + 3 的全部 workflows、labels 和 secrets。
+通过交互式向导选择需要安装的阶段组合，例如只安装 Phase 1 + 4。
 
-也支持**选择性安装**：使用 `--phases` 指定需要的阶段组合，例如只安装 Phase 1 + 4。
+使用 `--yes` 跳过向导时，默认安装 Phase 1（MVP）。
 
 | Phase | 名称 | 触发方式 | 说明 |
 |-------|------|---------|------|
@@ -42,27 +42,18 @@ pnpm add -D @kit/sentinel
 ### 2. 安装 Workflows
 
 ```bash
-# Phase 1: 最小化接入（Issue 标签触发）
-npx sentinel install --phase 1 --target /path/to/repo
+# 交互式安装（推荐）—— 向导会引导选择阶段、包管理器、路径等配置
+npx sentinel install --target /path/to/repo
 
-# Phase 2: 加上部署后检测
-npx sentinel install --phase 2 --target /path/to/repo \
-  --deploy-workflow "Deploy Production" \
-  --reviewers "alice,bob"
-
-# Phase 4: 全量安装（所有阶段）
-npx sentinel install --all --target /path/to/repo
-
-# 选择性安装（只安装 Phase 1 + 4，跳过 2、3）
-npx sentinel install --phases 1,4 --target /path/to/repo
-
-# Monorepo 自定义路径（默认 src/ 和 styles/）
-npx sentinel install --phases 1,4 --target /path/to/repo \
-  --allowed-paths "^packages/.*/src/,^internal/.*/src/,^apps/.*/src/"
+# 非交互模式 —— 使用默认配置安装 Phase 1
+npx sentinel install --target /path/to/repo --yes
 
 # 干跑模式（预览变更，不写入文件）
-npx sentinel install --phase 1 --target /path/to/repo --dry-run
+npx sentinel install --target /path/to/repo --dry-run
 ```
+
+> 交互式向导支持选择阶段组合、包管理器、允许路径、Reviewers 等全部配置。
+> 需要完全可编程的控制请使用[编程 API](#编程-api)。
 
 ### 3. 配置 Secrets
 
@@ -87,7 +78,7 @@ npx sentinel check --target /path/to/repo
 
 ### `sentinel install`
 
-安装 sentinel workflows 到目标仓库。
+安装 sentinel workflows 到目标仓库。默认启动交互式向导，通过 `--yes` 可跳过向导使用默认配置（Phase 1）。
 
 ```bash
 sentinel install [options]
@@ -95,17 +86,28 @@ sentinel install [options]
 
 | 选项 | 说明 | 默认值 |
 |------|------|--------|
-| `--phase <1-4>` | 安装阶段（累积式） | - |
-| `--phases <list>` | 选择性安装阶段（逗号分隔，如 `1,4`） | - |
-| `--all` | 安装全部阶段（等同 `--phase 4`） | - |
 | `--target <path>` | 目标仓库目录 | 当前目录 |
-| `--platform <name>` | CI 平台 | `github` |
-| `--yes` | 跳过交互确认 | `false` |
+| `-y, --yes` | 跳过交互向导，使用默认配置安装 Phase 1 | `false` |
 | `--dry-run` | 预览模式，不写入文件 | `false` |
-| `--node-version <ver>` | Workflow 中的 Node.js 版本 | `20` |
-| `--reviewers <list>` | PR 审查者（逗号分隔） | - |
-| `--deploy-workflow <name>` | 部署 workflow 名称（Phase 2 触发条件） | - |
-| `--allowed-paths <patterns>` | AI 允许修改的文件路径（bash regex，逗号分隔） | `^src/,^styles/` |
+
+**交互式向导中可配置的选项：**
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| 安装阶段 | 多选 Phase 1-4 | Phase 1 |
+| CI 平台 | 当前支持 github | `github` |
+| 包管理器 | pnpm / npm / yarn | `pnpm` |
+| Node.js 版本 | Workflow 中的 Node.js 版本 | `20` |
+| 允许路径 | AI 允许修改的文件路径模式（bash regex） | `^src/, ^styles/` |
+| Reviewers | PR 审查者（逗号分隔） | - |
+| 部署 workflow | Phase 2 触发条件 | `Deploy Production` |
+| 冒烟测试命令 | Phase 2 测试命令 | `pnpm test:smoke` |
+| Owner / Repo | Phase 3 仓库信息（自动从 git remote 读取） | - |
+| Cron 表达式 | Phase 4 定时触发 | `0 3 * * 1` |
+| 检查项 | Phase 4 检查项目 | lint, typecheck, test, audit |
+| Claude 模型 | 高级选项 | `claude-sonnet-4-6` |
+| 最大轮次 | 高级选项 | `30` |
+| PR 每日上限 | 高级选项 | `10` |
 
 ### `sentinel check`
 
@@ -165,27 +167,28 @@ import {
   renderTemplate,
 } from '@kit/sentinel';
 
-// 示例：累积式安装
+// 示例：安装 Phase 1 + 2
 const result = await install({
-  phase: 2,
+  phases: [1, 2],
   target: '/path/to/repo',
   platform: 'github',
   yes: true,
   dryRun: false,
   nodeVersion: '20',
+  packageManager: 'pnpm',
   deployWorkflow: 'Deploy Production',
   reviewers: 'alice,bob',
 });
 
 // 示例：选择性安装 + 自定义路径（Monorepo）
 const monoResult = await install({
-  phase: 4, // phases 指定时作为兼容字段，取最大值即可
   phases: [1, 4],
   target: '/path/to/monorepo',
   platform: 'github',
   yes: true,
   dryRun: false,
   nodeVersion: '22',
+  packageManager: 'pnpm',
   allowedPaths: ['^packages/.*/src/', '^internal/.*/src/'],
 });
 
@@ -278,15 +281,19 @@ src/
 │   ├── types.ts              # PlatformAdapter 接口
 │   ├── github-adapter.ts     # GitHub Actions 实现
 │   └── index.ts              # 适配器工厂
-├── cli/commands/
-│   ├── install.ts            # sentinel install
-│   ├── check.ts              # sentinel check
-│   └── uninstall.ts          # sentinel uninstall
+├── cli/
+│   ├── prompts.ts            # 交互式安装向导（inquirer）
+│   ├── preview.ts            # 安装配置预览面板
+│   └── commands/
+│       ├── install.ts        # sentinel install
+│       ├── check.ts          # sentinel check
+│       └── uninstall.ts      # sentinel uninstall
 └── utils/
     ├── logger.ts             # 彩色日志输出
     ├── template.ts           # __KEY__ 模板变量替换
     ├── file.ts               # 文件 I/O & 模板加载
-    └── git.ts                # Git 操作（isGitRepo, getDefaultBranch）
+    ├── git.ts                # Git 操作（isGitRepo, getDefaultBranch, parseGitRemote）
+    └── package-manager.ts    # 包管理器命令生成（pnpm/npm/yarn）
 
 templates/
 ├── github/                   # GitHub Actions Workflow 模板
@@ -305,8 +312,11 @@ templates/
 ## 开发
 
 ```bash
-# 开发模式（直接运行 CLI）
-pnpm dev install --phase 1 --target /tmp/test-repo --dry-run
+# 开发模式（交互式向导）
+pnpm dev install --target /tmp/test-repo
+
+# 开发模式（非交互 + 干跑）
+pnpm dev install --target /tmp/test-repo --yes --dry-run
 
 # 构建
 pnpm build

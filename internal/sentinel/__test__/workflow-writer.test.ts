@@ -46,13 +46,14 @@ const mockedGetDefaultBranch = vi.mocked(getDefaultBranch);
 
 function createConfig(overrides?: Partial<InstallConfig>): InstallConfig {
   return {
-    phase: 1,
+    phases: [1],
     target: '/tmp/test-repo',
     yes: false,
     dryRun: false,
     nodeVersion: '20',
     reviewers: 'alice',
     platform: 'github',
+    packageManager: 'pnpm',
     ...overrides,
   };
 }
@@ -196,6 +197,33 @@ describe('writeWorkflows', () => {
     expect(mockedWriteFile).not.toHaveBeenCalled();
     expect(result.length).toBe(1);
     expect(result[0]).toContain('sentinel-issue.yml');
+  });
+
+  it('should render template with new package manager and model variables', async () => {
+    mockedReadTemplate.mockResolvedValue('__PACKAGE_MANAGER__ __MODEL__');
+    mockedRenderTemplate.mockReturnValue('pnpm claude-sonnet-4-6');
+    mockedGetDefaultBranch.mockReturnValue('main');
+    mockedEnsureDir.mockResolvedValue(undefined);
+    mockedWriteFile.mockResolvedValue(undefined);
+
+    const config = createConfig({ packageManager: 'pnpm' });
+    const adapter = createMockAdapter();
+    await writeWorkflows(config, createPhaseConfig(), adapter);
+
+    expect(mockedRenderTemplate).toHaveBeenCalledWith(
+      '__PACKAGE_MANAGER__ __MODEL__',
+      expect.objectContaining({
+        PACKAGE_MANAGER: 'pnpm',
+        INSTALL_CMD: 'pnpm install --frozen-lockfile',
+        RUN_CMD: 'pnpm',
+        MODEL: 'claude-sonnet-4-6',
+        MAX_TURNS: '30',
+        PR_DAILY_LIMIT: '10',
+        SMOKE_TEST_CMD: 'pnpm test:smoke',
+        CRON_EXPRESSION: '0 3 * * 1',
+        CHECKS_DEFAULT: 'lint,typecheck,test,audit',
+      }),
+    );
   });
 
   it('should handle multiple workflows in a phase', async () => {

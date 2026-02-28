@@ -20,6 +20,12 @@ vi.mock('../src/core/secrets-checker.js', () => ({
   checkSecrets: vi.fn(),
 }));
 
+vi.mock('../src/utils/file.js', () => ({
+  readTemplate: vi.fn(async () => '// sentry worker template'),
+  writeFile: vi.fn(),
+  ensureDir: vi.fn(),
+}));
+
 vi.mock('../src/platform/index.js', () => ({
   createPlatformAdapter: vi.fn(() => ({
     platform: 'github',
@@ -53,6 +59,7 @@ import { writeWorkflows } from '../src/core/workflow-writer.js';
 import { patchClaudeMd } from '../src/core/claude-md-patcher.js';
 import { createLabels } from '../src/core/label-creator.js';
 import { checkSecrets } from '../src/core/secrets-checker.js';
+import { readTemplate, writeFile, ensureDir } from '../src/utils/file.js';
 import type { InstallConfig } from '../src/types/index.js';
 
 const mockedValidateEnvironment = vi.mocked(validateEnvironment);
@@ -60,15 +67,19 @@ const mockedWriteWorkflows = vi.mocked(writeWorkflows);
 const mockedPatchClaudeMd = vi.mocked(patchClaudeMd);
 const mockedCreateLabels = vi.mocked(createLabels);
 const mockedCheckSecrets = vi.mocked(checkSecrets);
+const mockedReadTemplate = vi.mocked(readTemplate);
+const mockedWriteFile = vi.mocked(writeFile);
+const mockedEnsureDir = vi.mocked(ensureDir);
 
 function createConfig(overrides?: Partial<InstallConfig>): InstallConfig {
   return {
-    phase: 1,
+    phases: [1],
     target: '/tmp/test-repo',
     yes: false,
     dryRun: false,
     nodeVersion: '20',
     platform: 'github',
+    packageManager: 'pnpm',
     ...overrides,
   };
 }
@@ -99,14 +110,14 @@ describe('install', () => {
     vi.clearAllMocks();
   });
 
-  it('should install only issue workflow for phase 1', async () => {
+  it('should install only issue workflow for phases [1]', async () => {
     setupSuccessMocks();
 
-    const result = await install(createConfig({ phase: 1 }));
+    const result = await install(createConfig({ phases: [1] }));
 
     expect(mockedWriteWorkflows).toHaveBeenCalledTimes(1);
     expect(mockedWriteWorkflows).toHaveBeenCalledWith(
-      expect.objectContaining({ phase: 1 }),
+      expect.objectContaining({ phases: [1] }),
       expect.objectContaining({ workflows: ['sentinel-issue.yml'] }),
       expect.any(Object),
     );
@@ -115,13 +126,13 @@ describe('install', () => {
     );
   });
 
-  it('should install phases 1, 2, 3 cumulatively for phase 3', async () => {
+  it('should install selected phases [1, 2, 3]', async () => {
     setupSuccessMocks();
     mockedWriteWorkflows.mockResolvedValueOnce(['sentinel-issue.yml']);
     mockedWriteWorkflows.mockResolvedValueOnce(['sentinel-post-deploy.yml']);
     mockedWriteWorkflows.mockResolvedValueOnce(['sentinel-sentry.yml']);
 
-    const result = await install(createConfig({ phase: 3 }));
+    const result = await install(createConfig({ phases: [1, 2, 3] }));
 
     expect(mockedWriteWorkflows).toHaveBeenCalledTimes(3);
     expect(result.workflows).toEqual(
@@ -136,7 +147,7 @@ describe('install', () => {
   it('should call patchClaudeMd exactly once', async () => {
     setupSuccessMocks();
 
-    await install(createConfig({ phase: 3 }));
+    await install(createConfig({ phases: [1, 2, 3] }));
 
     expect(mockedPatchClaudeMd).toHaveBeenCalledTimes(1);
   });
@@ -147,7 +158,7 @@ describe('install', () => {
     mockedWriteWorkflows.mockResolvedValueOnce(['sentinel-post-deploy.yml']);
     mockedWriteWorkflows.mockResolvedValueOnce(['sentinel-sentry.yml']);
 
-    await install(createConfig({ phase: 3 }));
+    await install(createConfig({ phases: [1, 2, 3] }));
 
     // createLabels should be called exactly once with deduplicated labels
     expect(mockedCreateLabels).toHaveBeenCalledTimes(1);
@@ -169,7 +180,7 @@ describe('install', () => {
   it('should call checkSecrets with aggregated secrets requirement', async () => {
     setupSuccessMocks();
 
-    await install(createConfig({ phase: 3 }));
+    await install(createConfig({ phases: [1, 2, 3] }));
 
     // checkSecrets receives { secrets, variables } (not full PhaseConfig)
     expect(mockedCheckSecrets).toHaveBeenCalledWith(
@@ -185,7 +196,7 @@ describe('install', () => {
   it('should return correct InstallResult with all fields', async () => {
     setupSuccessMocks();
 
-    const result = await install(createConfig({ phase: 1 }));
+    const result = await install(createConfig({ phases: [1] }));
 
     expect(result).toEqual(
       expect.objectContaining({
@@ -229,6 +240,32 @@ describe('install', () => {
       expect.any(String),
       true,
       expect.objectContaining({ ALLOWED_PATHS_DISPLAY: expect.any(String) }),
+    );
+  });
+
+  it('should output sentry worker template when phase 3 is selected', async () => {
+    setupSuccessMocks();
+    mockedWriteWorkflows.mockResolvedValue(['sentinel-sentry.yml']);
+
+    await install(createConfig({ phases: [3] }));
+
+    expect(mockedReadTemplate).toHaveBeenCalledWith('worker/sentry-webhook.ts');
+    expect(mockedEnsureDir).toHaveBeenCalledWith(
+      expect.stringContaining('workers'),
+    );
+    expect(mockedWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining('workers/sentry-webhook.ts'),
+      expect.any(String),
+    );
+  });
+
+  it('should not output sentry worker when phase 3 is not selected', async () => {
+    setupSuccessMocks();
+
+    await install(createConfig({ phases: [1] }));
+
+    expect(mockedReadTemplate).not.toHaveBeenCalledWith(
+      'worker/sentry-webhook.ts',
     );
   });
 });

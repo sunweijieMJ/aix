@@ -6,13 +6,13 @@ name: Sentinel - Scheduled
 on:
   schedule:
     # Run every Monday at 03:00 UTC
-    - cron: '0 3 * * 1'
+    - cron: '__CRON_EXPRESSION__'
   workflow_dispatch:
     inputs:
       checks:
         description: 'Comma-separated checks to run (lint,typecheck,test,audit)'
         required: false
-        default: 'lint,typecheck,test,audit'
+        default: '__CHECKS_DEFAULT__'
         type: string
 
 # Prevent concurrent scheduled runs
@@ -32,7 +32,7 @@ jobs:
 
     env:
       BRANCH_NAME: sentinel/maintenance-${{ github.run_id }}
-      CHECKS: ${{ github.event.inputs.checks || 'lint,typecheck,test,audit' }}
+      CHECKS: ${{ github.event.inputs.checks || '__CHECKS_DEFAULT__' }}
 
     steps:
       - name: Checkout repository
@@ -40,17 +40,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+__PACKAGE_MANAGER_SETUP__
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: __NODE_VERSION__
-          cache: pnpm
+          cache: __PACKAGE_MANAGER__
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: __INSTALL_CMD__
 
       - name: Run lint check
         id: lint
@@ -58,7 +57,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          LINT_OUTPUT=$(pnpm lint 2>&1)
+          LINT_OUTPUT=$(__LINT_CMD__ 2>&1)
           LINT_EXIT=$?
           set -e
 
@@ -75,7 +74,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          TC_OUTPUT=$(pnpm type-check 2>&1)
+          TC_OUTPUT=$(__TYPECHECK_CMD__ 2>&1)
           TC_EXIT=$?
           set -e
 
@@ -92,7 +91,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          TEST_OUTPUT=$(pnpm test 2>&1)
+          TEST_OUTPUT=$(__TEST_CMD__ 2>&1)
           TEST_EXIT=$?
           set -e
 
@@ -109,7 +108,7 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          AUDIT_OUTPUT=$(pnpm audit 2>&1)
+          AUDIT_OUTPUT=$(__AUDIT_CMD__ 2>&1)
           AUDIT_EXIT=$?
           set -e
 
@@ -193,8 +192,8 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          model: claude-sonnet-4-6
-          max_turns: 30
+          model: __MODEL__
+          max_turns: __MAX_TURNS__
           prompt: |
             Scheduled maintenance check found the following issues:
 
@@ -206,7 +205,7 @@ jobs:
             3. Fix type check errors next
             4. For test failures, fix the SOURCE code, NOT the test files
             5. For audit issues, only fix if the resolution is clear and safe
-            6. Run all checks again after fixing: pnpm lint && pnpm type-check && pnpm test
+            6. Run all checks again after fixing: __LINT_CMD__ && __TYPECHECK_CMD__ && __TEST_CMD__
             7. Only modify files in these directories: __ALLOWED_PATHS_DISPLAY__
             8. Do NOT modify test files, config files, or package.json
             9. Commit your changes with message: "fix: scheduled maintenance fixes"

@@ -37,17 +37,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+__PACKAGE_MANAGER_SETUP__
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: __NODE_VERSION__
-          cache: pnpm
+          cache: __PACKAGE_MANAGER__
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: __INSTALL_CMD__
 
       - name: Check daily PR limit
         id: pr_limit
@@ -62,8 +61,8 @@ jobs:
 
           echo "Today's sentinel PRs: $PR_COUNT"
 
-          if [ "$PR_COUNT" -ge 10 ]; then
-            echo "::warning::Daily PR limit reached (10). Skipping."
+          if [ "$PR_COUNT" -ge __PR_DAILY_LIMIT__ ]; then
+            echo "::warning::Daily PR limit reached (__PR_DAILY_LIMIT__). Skipping."
             echo "limit_reached=true" >> "$GITHUB_OUTPUT"
           else
             echo "limit_reached=false" >> "$GITHUB_OUTPUT"
@@ -93,15 +92,15 @@ jobs:
           body: |
             ⚠️ **Sentinel Skipped**
 
-            Daily PR limit (10) has been reached. Please try again tomorrow or fix manually.
+            Daily PR limit (__PR_DAILY_LIMIT__) has been reached. Please try again tomorrow or fix manually.
 
       - name: Run Claude Code
         if: steps.pr_limit.outputs.limit_reached != 'true'
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          model: claude-sonnet-4-6
-          max_turns: 25
+          model: __MODEL__
+          max_turns: __MAX_TURNS__
           prompt: |
             You are fixing a bug reported in issue #${{ github.event.issue.number }}.
 
@@ -113,8 +112,8 @@ jobs:
             1. Analyze the issue description carefully
             2. Find the relevant source files
             3. Implement the minimal fix needed
-            4. Run type checking to verify: pnpm type-check
-            5. Run linting to verify: pnpm lint
+            4. Run type checking to verify: __RUN_CMD__ type-check
+            5. Run linting to verify: __RUN_CMD__ lint
             6. Only modify files in these directories: __ALLOWED_PATHS_DISPLAY__
             7. Do NOT modify test files, config files, or package.json
             8. Commit your changes with message: "fix: sentinel for #${{ github.event.issue.number }}"
