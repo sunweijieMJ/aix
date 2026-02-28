@@ -9,9 +9,13 @@ export type Phase = 1 | 2 | 3 | 4;
 // 当前支持的平台。扩展新平台时添加到联合类型即可。
 export type Platform = 'github';
 
+export type PackageManager = 'pnpm' | 'npm' | 'yarn';
+
+export type ScheduledCheck = 'lint' | 'typecheck' | 'test' | 'audit';
+
 export interface InstallConfig {
-  /** 安装阶段 */
-  phase: Phase;
+  /** 选择安装的阶段列表 */
+  phases: Phase[];
   /** 目标仓库目录 */
   target: string;
   /** 跳过交互确认 */
@@ -26,10 +30,28 @@ export interface InstallConfig {
   deployWorkflow?: string;
   /** CI 平台，默认 'github' */
   platform: Platform;
-  /** 选择性安装的阶段列表，优先于 phase 的累积逻辑 */
-  phases?: Phase[];
   /** 允许 AI 修改的文件路径模式（bash regex），默认 ["^src/", "^styles/"] */
   allowedPaths?: string[];
+  /** 包管理器 */
+  packageManager: PackageManager;
+  /** 冒烟测试命令（Phase 2） */
+  smokeTestCmd?: string;
+  /** 仓库 owner（Phase 3） */
+  owner?: string;
+  /** 仓库名称（Phase 3） */
+  repo?: string;
+  /** cron 表达式（Phase 4） */
+  cronExpression?: string;
+  /** 定时检查项（Phase 4） */
+  checks?: ScheduledCheck[];
+  /** 自定义命令覆盖（Phase 4，key 为检查项名称） */
+  customCommands?: Record<string, string>;
+  /** Claude 模型 */
+  model?: string;
+  /** Claude 最大轮次 */
+  maxTurns?: number;
+  /** 每日 PR 上限 */
+  prDailyLimit?: number;
 }
 
 export interface InstallResult {
@@ -63,6 +85,19 @@ export const VALID_PLATFORMS: Platform[] = ['github'];
 
 export const MARKER_START = '<!-- sentinel:start -->';
 export const MARKER_END = '<!-- sentinel:end -->';
+
+export const DEFAULT_PACKAGE_MANAGER: PackageManager = 'pnpm';
+export const DEFAULT_MODEL = 'claude-sonnet-4-6';
+export const DEFAULT_PR_DAILY_LIMIT = 10;
+export const DEFAULT_CRON = '0 3 * * 1';
+export const DEFAULT_MAX_TURNS = 30;
+export const DEFAULT_SMOKE_TEST_CMD = 'pnpm test:smoke';
+export const ALL_SCHEDULED_CHECKS: ScheduledCheck[] = [
+  'lint',
+  'typecheck',
+  'test',
+  'audit',
+];
 
 export const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
   1: {

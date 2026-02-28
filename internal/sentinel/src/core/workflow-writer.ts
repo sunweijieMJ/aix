@@ -7,10 +7,24 @@
 import path from 'node:path';
 
 import type { InstallConfig, PhaseConfig } from '../types/index.js';
-import { DEFAULT_ALLOWED_PATHS } from '../types/index.js';
+import {
+  DEFAULT_ALLOWED_PATHS,
+  DEFAULT_MODEL,
+  DEFAULT_PR_DAILY_LIMIT,
+  DEFAULT_CRON,
+  DEFAULT_MAX_TURNS,
+  DEFAULT_SMOKE_TEST_CMD,
+  ALL_SCHEDULED_CHECKS,
+} from '../types/index.js';
 import type { PlatformAdapter } from '../platform/index.js';
 import { readTemplate, writeFile, ensureDir } from '../utils/file.js';
 import { getDefaultBranch } from '../utils/git.js';
+import {
+  buildPackageManagerSetup,
+  buildInstallCmd,
+  buildRunCmd,
+  buildExecCmd,
+} from '../utils/package-manager.js';
 import {
   formatAllowedPathsDisplay,
   renderTemplate,
@@ -33,6 +47,7 @@ export async function writeWorkflows(
 
   const reviewers = config.reviewers ?? '';
   const allowedPaths = config.allowedPaths ?? DEFAULT_ALLOWED_PATHS;
+  const runCmd = buildRunCmd(config.packageManager);
   const vars: Record<string, string> = {
     NODE_VERSION: config.nodeVersion,
     DEFAULT_BRANCH: defaultBranch,
@@ -41,6 +56,21 @@ export async function writeWorkflows(
     DEPLOY_WORKFLOW: config.deployWorkflow ?? 'Deploy Production',
     ALLOWED_PATHS_REGEX: allowedPaths.join('|'),
     ALLOWED_PATHS_DISPLAY: formatAllowedPathsDisplay(allowedPaths),
+    PACKAGE_MANAGER_SETUP: buildPackageManagerSetup(config.packageManager),
+    PACKAGE_MANAGER: config.packageManager,
+    INSTALL_CMD: buildInstallCmd(config.packageManager),
+    RUN_CMD: runCmd,
+    EXEC_CMD: buildExecCmd(config.packageManager),
+    MODEL: config.model ?? DEFAULT_MODEL,
+    MAX_TURNS: (config.maxTurns ?? DEFAULT_MAX_TURNS).toString(),
+    PR_DAILY_LIMIT: (config.prDailyLimit ?? DEFAULT_PR_DAILY_LIMIT).toString(),
+    SMOKE_TEST_CMD: config.smokeTestCmd ?? DEFAULT_SMOKE_TEST_CMD,
+    CRON_EXPRESSION: config.cronExpression ?? DEFAULT_CRON,
+    LINT_CMD: config.customCommands?.lint ?? `${runCmd} lint`,
+    TYPECHECK_CMD: config.customCommands?.typecheck ?? `${runCmd} type-check`,
+    TEST_CMD: config.customCommands?.test ?? `${runCmd} test`,
+    AUDIT_CMD: config.customCommands?.audit ?? `${runCmd} audit`,
+    CHECKS_DEFAULT: (config.checks ?? ALL_SCHEDULED_CHECKS).join(','),
   };
 
   for (const templateName of phase.workflows) {

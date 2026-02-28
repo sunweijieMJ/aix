@@ -21,12 +21,13 @@ const mockedPathExists = vi.mocked(
 
 function createConfig(overrides?: Partial<InstallConfig>): InstallConfig {
   return {
-    phase: 1,
+    phases: [1],
     target: '/tmp/test-repo',
     yes: false,
     dryRun: false,
     nodeVersion: '20',
     platform: 'github',
+    packageManager: 'pnpm',
     ...overrides,
   };
 }

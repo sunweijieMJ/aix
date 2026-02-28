@@ -10,6 +10,8 @@
 export type {
   Phase,
   Platform,
+  PackageManager,
+  ScheduledCheck,
   InstallConfig,
   InstallResult,
   PhaseConfig,
@@ -17,7 +19,17 @@ export type {
 
 // ---- 常量导出 ----
 
-export { PHASE_CONFIGS, VALID_PLATFORMS } from './types/index.js';
+export {
+  PHASE_CONFIGS,
+  VALID_PLATFORMS,
+  DEFAULT_PACKAGE_MANAGER,
+  DEFAULT_MODEL,
+  DEFAULT_PR_DAILY_LIMIT,
+  DEFAULT_CRON,
+  DEFAULT_MAX_TURNS,
+  DEFAULT_SMOKE_TEST_CMD,
+  ALL_SCHEDULED_CHECKS,
+} from './types/index.js';
 
 // ---- 平台适配器 ----
 
@@ -33,3 +45,4 @@ export { validateEnvironment } from './core/validator.js';
 // ---- 工具 ----
 
 export { renderTemplate } from './utils/template.js';
+export { parseGitRemote } from './utils/git.js';

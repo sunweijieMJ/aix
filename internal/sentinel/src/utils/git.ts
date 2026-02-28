@@ -63,3 +63,38 @@ export function getDefaultBranch(cwd: string): string {
   // 4. 最终降级
   return 'main';
 }
+
+/**
+ * 解析 git remote origin URL，提取 owner 和 repo
+ *
+ * 支持格式：
+ * - SSH: git@github.com:owner/repo.git
+ * - HTTPS: https://github.com/owner/repo.git
+ */
+export function parseGitRemote(
+  cwd: string,
+): { owner: string; repo: string } | null {
+  try {
+    const url = execSync('git remote get-url origin', {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+
+    // SSH: git@github.com:owner/repo.git
+    const sshMatch = url.match(/git@[^:]+:([^/]+)\/(.+?)(?:\.git)?$/);
+    if (sshMatch) {
+      return { owner: sshMatch[1]!, repo: sshMatch[2]! };
+    }
+
+    // HTTPS: https://github.com/owner/repo.git
+    const httpsMatch = url.match(/https?:\/\/[^/]+\/([^/]+)\/(.+?)(?:\.git)?$/);
+    if (httpsMatch) {
+      return { owner: httpsMatch[1]!, repo: httpsMatch[2]! };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
