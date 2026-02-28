@@ -24,6 +24,7 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+      id-token: write
 
     env:
       BRANCH_NAME: sentinel/issue-${{ github.event.issue.number }}
@@ -94,13 +95,17 @@ jobs:
 
             Daily PR limit (10) has been reached. Please try again tomorrow or fix manually.
 
+      - name: Create fix branch
+        if: steps.pr_limit.outputs.limit_reached != 'true'
+        run: git checkout -b "$BRANCH_NAME"
+
       - name: Run Claude Code
         if: steps.pr_limit.outputs.limit_reached != 'true'
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          model: claude-sonnet-4-6
-          max_turns: 30
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             You are fixing a bug reported in issue #${{ github.event.issue.number }}.
 
@@ -117,26 +122,13 @@ jobs:
             6. Only modify files in these directories: apps/, packages/
             7. Do NOT modify test files, config files, or package.json
             8. Commit your changes with message: "fix: sentinel for #${{ github.event.issue.number }}"
-          branch: ${{ env.BRANCH_NAME }}
-          allowedTools: 'Bash,Read,Write,Edit,Glob,Grep'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: '--model claude-sonnet-4-6 --max-turns 30 --allowedTools "Bash,Read,Write,Edit,Glob,Grep"'
 
       - name: Validate changed files
         if: steps.pr_limit.outputs.limit_reached != 'true'
         id: validate
         run: |
-          # Fetch the sentinel branch from remote (may not exist if Claude made no changes)
-          git fetch origin "$BRANCH_NAME" 2>/dev/null || true
-
-          # Check if branch exists on remote
-          if ! git rev-parse --verify "origin/$BRANCH_NAME" >/dev/null 2>&1; then
-            echo "no_changes=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Compare remote branches to get changed files (independent of local checkout state)
-          CHANGED_FILES=$(git diff "origin/master...origin/$BRANCH_NAME" --name-only)
+          CHANGED_FILES=$(git diff origin/master HEAD --name-only)
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "no_changes=true" >> "$GITHUB_OUTPUT"
@@ -161,6 +153,12 @@ jobs:
           fi
 
           echo "no_changes=false" >> "$GITHUB_OUTPUT"
+
+      - name: Push branch
+        if: >-
+          steps.pr_limit.outputs.limit_reached != 'true' &&
+          steps.validate.outputs.no_changes != 'true'
+        run: git push origin "$BRANCH_NAME"
 
       - name: Create Pull Request
         id: create_pr

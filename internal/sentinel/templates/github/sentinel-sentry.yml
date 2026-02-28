@@ -22,6 +22,7 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+      id-token: write
 
     env:
       SENTRY_TITLE: ${{ github.event.client_payload.title }}
@@ -131,13 +132,17 @@ __PACKAGE_MANAGER_SETUP__
 
           echo "Context prepared."
 
+      - name: Create fix branch
+        if: steps.precheck.outputs.should_proceed == 'true'
+        run: git checkout -b "$BRANCH_NAME"
+
       - name: Run Claude Code
         id: claude
         if: steps.precheck.outputs.should_proceed == 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          model: __MODEL__
-          max_turns: __MAX_TURNS__
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             A Sentry error has been reported in production. Analyze and fix it.
 
@@ -153,26 +158,13 @@ __PACKAGE_MANAGER_SETUP__
             7. Do NOT modify test files, config files, or package.json
             8. Add a brief comment explaining the fix near the changed code
             9. Commit your changes with message: "fix: resolve Sentry error - ${SENTRY_TITLE}"
-          branch: ${{ env.BRANCH_NAME }}
-          allowedTools: 'Bash,Read,Write,Edit,Glob,Grep'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Bash,Read,Write,Edit,Glob,Grep"'
 
       - name: Validate changed files
         if: steps.precheck.outputs.should_proceed == 'true'
         id: validate
         run: |
-          # Fetch the sentinel branch from remote (may not exist if Claude made no changes)
-          git fetch origin "$BRANCH_NAME" 2>/dev/null || true
-
-          # Check if branch exists on remote
-          if ! git rev-parse --verify "origin/$BRANCH_NAME" >/dev/null 2>&1; then
-            echo "no_changes=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Compare remote branches to get changed files (independent of local checkout state)
-          CHANGED_FILES=$(git diff "origin/__DEFAULT_BRANCH__...origin/$BRANCH_NAME" --name-only)
+          CHANGED_FILES=$(git diff origin/__DEFAULT_BRANCH__ HEAD --name-only)
 
           if [ -z "$CHANGED_FILES" ]; then
             echo "no_changes=true" >> "$GITHUB_OUTPUT"
@@ -197,6 +189,12 @@ __PACKAGE_MANAGER_SETUP__
           fi
 
           echo "no_changes=false" >> "$GITHUB_OUTPUT"
+
+      - name: Push branch
+        if: >-
+          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.validate.outputs.no_changes != 'true'
+        run: git push origin "$BRANCH_NAME"
 
       - name: Cleanup invalid branch
         if: always() && steps.validate.outputs.invalid_files == 'true'
