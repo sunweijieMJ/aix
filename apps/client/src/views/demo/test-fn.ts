@@ -1,5 +1,25 @@
 // === 工具函数测试 ===
 
+// Type definitions
+interface ApiResponse {
+  status: number;
+  statusText?: string;
+}
+
+interface FormData {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
+interface LocalizedParams {
+  [key: string]: string | number;
+}
+
+interface UserData {
+  [key: string]: unknown;
+}
+
 // 1. 验证函数
 export const validateUserInput = (input: string): string | null => {
   if (!input || input.trim().length === 0) {
@@ -108,7 +128,7 @@ export const generateTimeRangeMessage = (
 };
 
 // 7. 控制台调试函数（不应该被提取）
-export const debugLog = (message: string, data?: any): void => {
+export const debugLog = (message: string, data?: unknown): void => {
   console.log(`调试信息: ${message}`, data); // console调用不应该被提取
   console.warn(`警告: 这是调试函数`); // console调用不应该被提取
   console.error(`错误: 调试模式下的错误信息`); // console调用不应该被提取
@@ -121,7 +141,7 @@ export const logApiCall = (url: string, method: string): void => {
 
 // 8. 技术性函数（包含技术术语，部分不应该被提取）
 export const validateApiResponse = (
-  response: any,
+  response: ApiResponse,
 ): { valid: boolean; message: string } => {
   if (!response) {
     return { valid: false, message: '响应数据为空' };
@@ -288,7 +308,7 @@ export const checkUserPermission = (
 
 // 16. 数据验证函数
 export const validateFormData = (
-  data: Record<string, any>,
+  data: FormData,
 ): { valid: boolean; errors: string[] } => {
   const errors: string[] = [];
 
@@ -397,7 +417,7 @@ export const getNotificationText = (type: string, count: number): string => {
 
 // 20. 混合场景函数（包含应该和不应该被提取的内容）
 export const processApiResponse = (
-  response: any,
+  response: ApiResponse,
   operation: string,
 ): { success: boolean; message: string } => {
   console.log(`Processing API response for ${operation}`); // console调用不应该被提取
@@ -421,7 +441,7 @@ export const processApiResponse = (
 // 21. 国际化相关函数（模拟已经国际化的函数）
 export const getLocalizedMessage = (
   key: string,
-  params?: Record<string, any>,
+  params?: LocalizedParams,
 ): string => {
   // 模拟已经国际化的函数，这里的中文应该被提取
   const messages: Record<string, string> = {
@@ -506,7 +526,7 @@ export const TEST_SCENARIOS = {
 // 23. 异步函数测试
 export const fetchUserData = async (
   userId: string,
-): Promise<{ success: boolean; message: string; data?: any }> => {
+): Promise<{ success: boolean; message: string; data?: UserData }> => {
   try {
     console.log(`Fetching data for user: ${userId}`); // 不应该被提取
 
