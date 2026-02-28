@@ -1138,7 +1138,7 @@ jobs:
             exit 0
           fi
 
-          FORBIDDEN=$(echo "$CHANGED_FILES" | grep -vE '^src/|^styles/' || true)
+          FORBIDDEN=$(echo "$CHANGED_FILES" | grep -vE '^src/' || true)
           if [ -n "$FORBIDDEN" ]; then
             echo "::error::AI 修改了白名单以外的文件，拒绝创建 PR:"
             echo "$FORBIDDEN"
@@ -1220,7 +1220,6 @@ jobs:
 
 ## 文件权限
 - 允许修改: src/**
-- 允许修改: styles/**
 - 禁止修改: tests/**, __tests__/**
 - 禁止修改: *.config.*, .env*
 - 禁止修改: package.json (依赖变更需人工决策)

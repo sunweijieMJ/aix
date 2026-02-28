@@ -30,7 +30,7 @@ export interface InstallConfig {
   deployWorkflow?: string;
   /** CI 平台，默认 'github' */
   platform: Platform;
-  /** 允许 AI 修改的文件路径模式（bash regex），默认 ["^src/", "^styles/"] */
+  /** 允许 AI 修改的文件路径模式（bash regex），默认 ["^src/"] */
   allowedPaths?: string[];
   /** 包管理器 */
   packageManager: PackageManager;
@@ -79,7 +79,7 @@ export interface PhaseConfig {
   variables: string[];
 }
 
-export const DEFAULT_ALLOWED_PATHS = ['^src/', '^styles/'];
+export const DEFAULT_ALLOWED_PATHS = ['^src/'];
 
 export const VALID_PLATFORMS: Platform[] = ['github'];
 

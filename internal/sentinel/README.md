@@ -98,7 +98,7 @@ sentinel install [options]
 | CI 平台 | 当前支持 github | `github` |
 | 包管理器 | pnpm / npm / yarn | `pnpm` |
 | Node.js 版本 | Workflow 中的 Node.js 版本 | `20` |
-| 允许路径 | AI 允许修改的文件路径模式（bash regex） | `^src/, ^styles/` |
+| 允许路径 | AI 允许修改的文件路径模式（bash regex） | `^src/` |
 | Reviewers | PR 审查者（逗号分隔） | - |
 | 部署 workflow | Phase 2 触发条件 | `Deploy Production` |
 | 冒烟测试命令 | Phase 2 测试命令 | `pnpm test:smoke` |
@@ -253,7 +253,7 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
 |------|------|
 | **AI 修，人审核** | AI 只创建 PR，合并权始终在人 |
 | **最小改动原则** | 只改必要代码，不做额外重构 |
-| **文件权限控制** | 仅允许修改 `--allowed-paths` 指定的目录（默认 `src/` 和 `styles/`），禁止修改测试、配置、CI 文件 |
+| **文件权限控制** | 仅允许修改 `--allowed-paths` 指定的目录（默认 `src/`），禁止修改测试、配置、CI 文件 |
 | **每日 PR 限额** | 每天最多创建 10 个 sentinel PR |
 | **总开关** | `SENTINEL_ENABLED` 变量设为 `false` 即可全局关闭 |
 | **Sentry 去重** | 相同错误 24 小时内不重复触发 |
