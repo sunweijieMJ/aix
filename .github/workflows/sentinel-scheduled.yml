@@ -215,6 +215,7 @@ jobs:
             8. Do NOT modify test files, config files, or package.json
             9. Commit your changes with message: "fix: scheduled maintenance fixes"
           claude_args: '--model claude-sonnet-4-6 --max-turns 30'
+          show_full_output: true
           settings: |
             {
               "enabledMcpjsonServers": [],

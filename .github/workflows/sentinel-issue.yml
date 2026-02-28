@@ -123,6 +123,7 @@ jobs:
             7. Do NOT modify test files, config files, or package.json
             8. Commit your changes with message: "fix: sentinel for #${{ github.event.issue.number }}"
           claude_args: '--model claude-sonnet-4-6 --max-turns 30'
+          show_full_output: true
           settings: |
             {
               "enabledMcpjsonServers": [],
