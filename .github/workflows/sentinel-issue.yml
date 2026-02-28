@@ -124,7 +124,7 @@ jobs:
             6. Only modify files in these directories: apps/, packages/
             7. Do NOT modify test files, config files, or package.json
             8. Commit your changes with message: "fix: sentinel for #${{ github.event.issue.number }}"
-          claude_args: '--model claude-sonnet-4-6 --max-turns 30'
+          claude_args: '--model claude-haiku-4-5-20251001 --max-turns 30'
           show_full_output: true
           settings: |
             {
