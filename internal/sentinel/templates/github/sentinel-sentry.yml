@@ -159,6 +159,11 @@ __PACKAGE_MANAGER_SETUP__
             8. Add a brief comment explaining the fix near the changed code
             9. Commit your changes with message: "fix: resolve Sentry error - ${SENTRY_TITLE}"
           claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__'
+          settings: |
+            {
+              "enabledMcpjsonServers": [],
+              "hooks": {}
+            }
 
       - name: Validate changed files
         if: steps.precheck.outputs.should_proceed == 'true'

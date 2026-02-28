@@ -215,6 +215,11 @@ __PACKAGE_MANAGER_SETUP__
             8. Do NOT modify test files, config files, or package.json
             9. Commit your changes with message: "fix: scheduled maintenance fixes"
           claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__'
+          settings: |
+            {
+              "enabledMcpjsonServers": [],
+              "hooks": {}
+            }
 
       - name: Validate changed files
         if: steps.summary.outputs.has_issues == 'true'

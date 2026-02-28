@@ -123,6 +123,11 @@ __PACKAGE_MANAGER_SETUP__
             7. Do NOT modify test files, config files, or package.json
             8. Commit your changes with message: "fix: sentinel for #${{ github.event.issue.number }}"
           claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__'
+          settings: |
+            {
+              "enabledMcpjsonServers": [],
+              "hooks": {}
+            }
 
       - name: Validate changed files
         if: steps.pr_limit.outputs.limit_reached != 'true'
