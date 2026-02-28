@@ -69,7 +69,6 @@ export async function writeWorkflows(
     LINT_CMD: config.customCommands?.lint ?? `${runCmd} lint`,
     TYPECHECK_CMD: config.customCommands?.typecheck ?? `${runCmd} type-check`,
     TEST_CMD: config.customCommands?.test ?? `${runCmd} test`,
-    AUDIT_CMD: config.customCommands?.audit ?? `${runCmd} audit`,
     CHECKS_DEFAULT: (config.checks ?? ALL_SCHEDULED_CHECKS).join(','),
   };
 

@@ -11,7 +11,7 @@ export type Platform = 'github';
 
 export type PackageManager = 'pnpm' | 'npm' | 'yarn';
 
-export type ScheduledCheck = 'lint' | 'typecheck' | 'test' | 'audit';
+export type ScheduledCheck = 'lint' | 'typecheck' | 'test';
 
 export interface InstallConfig {
   /** 选择安装的阶段列表 */
@@ -96,7 +96,6 @@ export const ALL_SCHEDULED_CHECKS: ScheduledCheck[] = [
   'lint',
   'typecheck',
   'test',
-  'audit',
 ];
 
 export const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
@@ -130,7 +129,7 @@ export const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
   4: {
     phase: 4,
     name: '定时质量巡检',
-    description: '工作日定时跑 lint/type-check/test/audit',
+    description: '工作日定时跑 lint/type-check/test',
     workflows: ['sentinel-scheduled.yml'],
     labels: ['sentinel', 'maintenance'],
     secrets: ['ANTHROPIC_API_KEY'],

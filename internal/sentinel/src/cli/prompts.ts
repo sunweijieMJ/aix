@@ -236,7 +236,6 @@ function getDefaultCheckCmd(check: ScheduledCheck, pm: PackageManager): string {
     lint: `${run} lint`,
     typecheck: `${run} type-check`,
     test: `${run} test`,
-    audit: `${run} audit`,
   };
   return defaults[check];
 }
