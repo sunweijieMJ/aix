@@ -45,7 +45,7 @@
     "cosmiconfig": "^9.0.0",
     "eta": "^4.5.1",
     "fs-extra": "^11.3.3",
-    "inquirer": "^13.2.4",
+    "inquirer": "^13.3.0",
     "ora": "^9.3.0",
     "p-limit": "^7.3.0",
     "picomatch": "^4.0.3",
@@ -56,7 +56,7 @@
   "peerDependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "openai": "^6.22.0",
+    "openai": "^6.25.0",
     "playwright": "^1.58.2"
   },
   "peerDependenciesMeta": {
@@ -81,7 +81,7 @@
     "@types/pixelmatch": "^5.2.6",
     "@types/pngjs": "^6.0.5",
     "eslint": "*",
-    "openai": "^6.22.0",
+    "openai": "^6.25.0",
     "playwright": "^1.58.2",
     "rimraf": "*",
     "tsup": "*",
