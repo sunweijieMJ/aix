@@ -214,7 +214,7 @@ __PACKAGE_MANAGER_SETUP__
             7. Only modify files in these directories: __ALLOWED_PATHS_DISPLAY__
             8. Do NOT modify test files, config files, or package.json
             9. Commit your changes with message: "fix: scheduled maintenance fixes"
-          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Bash,Read,Write,Edit,Glob,Grep"'
+          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__'
 
       - name: Validate changed files
         if: steps.summary.outputs.has_issues == 'true'

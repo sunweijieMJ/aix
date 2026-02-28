@@ -142,7 +142,7 @@ __PACKAGE_MANAGER_SETUP__
             7. Do NOT modify test files, config files, or package.json
             8. This is a post-deploy fix, so prioritize correctness and safety
             9. Commit your changes with message: "fix: post-deploy smoke test failure"
-          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Bash,Read,Write,Edit,Glob,Grep"'
+          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__'
 
       - name: Validate changed files
         if: steps.smoke_tests.outputs.smoke_failed == 'true'

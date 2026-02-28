@@ -122,7 +122,7 @@ __PACKAGE_MANAGER_SETUP__
             6. Only modify files in these directories: __ALLOWED_PATHS_DISPLAY__
             7. Do NOT modify test files, config files, or package.json
             8. Commit your changes with message: "fix: sentinel for #${{ github.event.issue.number }}"
-          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Bash,Read,Write,Edit,Glob,Grep"'
+          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__'
 
       - name: Validate changed files
         if: steps.pr_limit.outputs.limit_reached != 'true'
