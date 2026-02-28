@@ -217,7 +217,6 @@ jobs:
             8. Do NOT modify test files, config files, or package.json
             9. Commit your changes with message: "fix: scheduled maintenance fixes"
           claude_args: '--model claude-haiku-4-5-20251001 --max-turns 30'
-          show_full_output: true
           settings: |
             {
               "enabledMcpjsonServers": [],

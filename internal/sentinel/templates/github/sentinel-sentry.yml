@@ -140,6 +140,8 @@ __PACKAGE_MANAGER_SETUP__
         id: claude
         if: steps.precheck.outputs.should_proceed == 'true'
         uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
