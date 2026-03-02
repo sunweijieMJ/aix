@@ -97,17 +97,17 @@ sentinel install [options]
 | 安装阶段 | 多选 Phase 1-4 | Phase 1 |
 | CI 平台 | 当前支持 github | `github` |
 | 包管理器 | pnpm / npm / yarn | `pnpm` |
-| Node.js 版本 | Workflow 中的 Node.js 版本 | `20` |
+| Node.js 版本 | Workflow 中的 Node.js 版本 | `22` |
 | 允许路径 | AI 允许修改的文件路径模式（bash regex） | `^src/` |
 | Reviewers | PR 审查者（逗号分隔） | - |
 | 部署 workflow | Phase 2 触发条件 | `Deploy Production` |
 | 冒烟测试命令 | Phase 2 测试命令 | `pnpm test:smoke` |
 | Owner / Repo | Phase 3 仓库信息（自动从 git remote 读取） | - |
-| Cron 表达式 | Phase 4 定时触发 | `0 3 * * 1` |
+| Cron 表达式 | Phase 4 定时触发 | `0 18 * * 5` |
 | 检查项 | Phase 4 检查项目 | lint, typecheck, test, audit |
 | Claude 模型 | 高级选项 | `claude-sonnet-4-6` |
-| 最大轮次 | 高级选项 | `30` |
-| PR 每日上限 | 高级选项 | `10` |
+| 最大轮次 | 高级选项 | `10` |
+| PR 每日上限 | 高级选项 | `5` |
 
 ### `sentinel check`
 
@@ -174,7 +174,7 @@ const result = await install({
   platform: 'github',
   yes: true,
   dryRun: false,
-  nodeVersion: '20',
+  nodeVersion: '22',
   packageManager: 'pnpm',
   deployWorkflow: 'Deploy Production',
   reviewers: 'alice,bob',

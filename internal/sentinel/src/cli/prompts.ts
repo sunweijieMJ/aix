@@ -102,7 +102,7 @@ async function promptBaseConfig(defaults: Partial<InstallConfig>) {
       type: 'input',
       name: 'nodeVersion',
       message: 'Node.js 版本:',
-      default: '20',
+      default: '22',
     },
     {
       type: 'input',

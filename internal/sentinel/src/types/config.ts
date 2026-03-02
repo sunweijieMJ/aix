@@ -22,7 +22,7 @@ export interface InstallConfig {
   yes: boolean;
   /** 干跑模式，不实际写入 */
   dryRun: boolean;
-  /** Node.js 版本，默认 "20" */
+  /** Node.js 版本，默认 "22" */
   nodeVersion: string;
   /** GitHub reviewers */
   reviewers?: string;
@@ -88,9 +88,9 @@ export const MARKER_END = '<!-- sentinel:end -->';
 
 export const DEFAULT_PACKAGE_MANAGER: PackageManager = 'pnpm';
 export const DEFAULT_MODEL = 'claude-sonnet-4-6';
-export const DEFAULT_PR_DAILY_LIMIT = 10;
-export const DEFAULT_CRON = '0 3 * * 1';
-export const DEFAULT_MAX_TURNS = 30;
+export const DEFAULT_PR_DAILY_LIMIT = 5;
+export const DEFAULT_CRON = '0 18 * * 5';
+export const DEFAULT_MAX_TURNS = 10;
 export const DEFAULT_SMOKE_TEST_CMD = 'pnpm test:smoke';
 export const ALL_SCHEDULED_CHECKS: ScheduledCheck[] = [
   'lint',

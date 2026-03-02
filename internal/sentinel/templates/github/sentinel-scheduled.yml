@@ -5,8 +5,8 @@ name: Sentinel - Scheduled
 
 on:
   schedule:
-    # 每周一 03:00 UTC 执行
-    - cron: '0 3 * * 1'
+    # 每周五 18:00 UTC（默认），由安装时 CRON_EXPRESSION 变量控制
+    - cron: '__CRON_EXPRESSION__'
   workflow_dispatch:
     inputs:
       checks:

@@ -5,8 +5,8 @@ name: Sentinel - Scheduled
 
 on:
   schedule:
-    # 每周一 03:00 UTC 执行
-    - cron: '0 3 * * 1'
+    # 每周五 18:00 UTC 执行
+    - cron: '0 18 * * 5'
   workflow_dispatch:
     inputs:
       checks:
@@ -186,7 +186,7 @@ jobs:
             6. 只允许修改以下目录：apps/, packages/
             7. 禁止修改测试文件、配置文件或 package.json
             8. 提交信息格式：fix: scheduled maintenance fixes
-          claude_args: '--model claude-haiku-4-5-20251001 --max-turns 30 --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
+          claude_args: '--model claude-haiku-4-5-20251001 --max-turns 10 --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],

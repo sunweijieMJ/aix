@@ -11,6 +11,7 @@ import {
   DEFAULT_MODEL,
   DEFAULT_MAX_TURNS,
   DEFAULT_PR_DAILY_LIMIT,
+  DEFAULT_CRON,
 } from '../types/index.js';
 
 /**
@@ -65,7 +66,7 @@ export function printConfigPreview(config: InstallConfig): void {
 
     if (config.phases.includes(4)) {
       console.log(
-        `  Cron:          ${chalk.white(config.cronExpression ?? '0 3 * * 1')}`,
+        `  Cron:          ${chalk.white(config.cronExpression ?? DEFAULT_CRON)}`,
       );
       if (config.checks) {
         console.log(

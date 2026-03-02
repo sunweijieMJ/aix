@@ -29,7 +29,7 @@ export function buildDefaultConfig(
     target,
     yes: true,
     dryRun,
-    nodeVersion: '20',
+    nodeVersion: '22',
     platform: 'github',
     packageManager: detectPackageManager(target),
   };

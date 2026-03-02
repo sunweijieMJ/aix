@@ -62,8 +62,8 @@ jobs:
 
           echo "今日 sentinel PR 数量: $PR_COUNT"
 
-          if [ "$PR_COUNT" -ge 10 ]; then
-            echo "::warning::今日 PR 数量已达上限（10），跳过本次执行"
+          if [ "$PR_COUNT" -ge 5 ]; then
+            echo "::warning::今日 PR 数量已达上限（5），跳过本次执行"
             echo "limit_reached=true" >> "$GITHUB_OUTPUT"
           else
             echo "limit_reached=false" >> "$GITHUB_OUTPUT"
@@ -93,7 +93,7 @@ jobs:
           body: |
             ⚠️ **Sentinel 已跳过**
 
-            今日 PR 数量已达上限（10），请明日再试或手动修复。
+            今日 PR 数量已达上限（5），请明日再试或手动修复。
 
       - name: 创建修复分支
         if: steps.pr_limit.outputs.limit_reached != 'true'
@@ -126,7 +126,7 @@ jobs:
             6. 只允许修改以下目录：apps/, packages/
             7. 禁止修改测试文件、配置文件或 package.json
             8. 提交信息格式：fix: sentinel for #${{ github.event.issue.number }}
-          claude_args: '--model claude-haiku-4-5-20251001 --max-turns 30 --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
+          claude_args: '--model claude-haiku-4-5-20251001 --max-turns 10 --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],
