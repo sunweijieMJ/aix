@@ -227,7 +227,9 @@ __PACKAGE_MANAGER_SETUP__
         if: >-
           steps.summary.outputs.has_issues == 'true' &&
           steps.validate.outputs.no_changes != 'true'
-        run: git push origin "$BRANCH_NAME"
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: git push "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}" "$BRANCH_NAME"
 
       - name: 清理无效分支
         if: always() && steps.validate.outputs.invalid_files == 'true'

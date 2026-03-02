@@ -167,7 +167,9 @@ jobs:
         if: >-
           steps.pr_limit.outputs.limit_reached != 'true' &&
           steps.validate.outputs.no_changes != 'true'
-        run: git push origin "$BRANCH_NAME"
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: git push "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}" "$BRANCH_NAME"
 
       - name: 创建 PR
         id: create_pr
