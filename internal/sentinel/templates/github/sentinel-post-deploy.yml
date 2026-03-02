@@ -1,5 +1,5 @@
-# Phase 2: Post-deploy smoke test failure auto fix
-# Triggers after deployment, runs smoke tests, and automatically fixes failures
+# Phase 2: 部署后冒烟测试失败自动修复
+# 部署完成后触发，运行冒烟测试，并自动修复失败项
 
 name: Sentinel - Post Deploy
 
@@ -11,11 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       deploy_url:
-        description: 'Deployed URL to test'
+        description: '待测试的部署 URL'
         required: false
         type: string
 
-# Prevent concurrent post-deploy fixes
+# 部署后修复不允许并发执行
 concurrency:
   group: sentinel-post-deploy
   cancel-in-progress: true
@@ -40,32 +40,32 @@ jobs:
       DEPLOY_URL: ${{ github.event.inputs.deploy_url || github.event.deployment_status.target_url || '' }}
 
     steps:
-      - name: Checkout repository
+      - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
 __PACKAGE_MANAGER_SETUP__
 
-      - name: Setup Node.js
+      - name: 配置 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: __NODE_VERSION__
           cache: __PACKAGE_MANAGER__
 
-      - name: Install dependencies
+      - name: 安装依赖
         run: __INSTALL_CMD__
 
-      - name: Install Playwright browsers
+      - name: 安装 Playwright 浏览器
         run: __EXEC_CMD__ playwright install --with-deps chromium
 
-      - name: Run smoke tests
+      - name: 执行冒烟测试
         id: smoke_tests
         continue-on-error: true
         env:
           BASE_URL: ${{ env.DEPLOY_URL }}
         run: |
-          # Run smoke tests and capture output
+          # 执行冒烟测试并捕获输出
           set +e
           SMOKE_OUTPUT=$(__SMOKE_TEST_CMD__ 2>&1)
           SMOKE_EXIT_CODE=$?
@@ -75,52 +75,52 @@ __PACKAGE_MANAGER_SETUP__
 
           if [ $SMOKE_EXIT_CODE -ne 0 ]; then
             echo "smoke_failed=true" >> "$GITHUB_OUTPUT"
-            # Save failure output for Claude
+            # 保存失败输出供 Claude 分析
             echo "$SMOKE_OUTPUT" > /tmp/smoke-test-output.txt
           else
             echo "smoke_failed=false" >> "$GITHUB_OUTPUT"
-            echo "All smoke tests passed!"
+            echo "所有冒烟测试通过！"
           fi
 
-      - name: Skip if tests passed
+      - name: 冒烟测试通过，跳过修复
         if: steps.smoke_tests.outputs.smoke_failed != 'true'
-        run: echo "Smoke tests passed, no fix needed."
+        run: echo "冒烟测试通过，无需修复。"
 
-      - name: Prepare context for Claude
+      - name: 准备上下文信息
         if: steps.smoke_tests.outputs.smoke_failed == 'true'
         id: context
         run: |
-          # Collect failure context
+          # 收集失败上下文
           SMOKE_OUTPUT=$(cat /tmp/smoke-test-output.txt)
 
-          # Truncate if too long (keep first 5000 chars)
+          # 超过 5000 字符时截断
           if [ ${#SMOKE_OUTPUT} -gt 5000 ]; then
-            SMOKE_OUTPUT="${SMOKE_OUTPUT:0:5000}... [truncated]"
+            SMOKE_OUTPUT="${SMOKE_OUTPUT:0:5000}... [已截断]"
           fi
 
-          # Save to file for the prompt
+          # 将上下文写入文件，供提示词使用
           cat > /tmp/fix-context.md << 'CONTEXT_EOF'
-          ## Post-Deploy Smoke Test Failures
+          ## 部署后冒烟测试失败
 
-          The following smoke tests failed after deployment:
+          以下冒烟测试在部署后失败：
 
           ```
           CONTEXT_EOF
           echo "$SMOKE_OUTPUT" >> /tmp/fix-context.md
           echo '```' >> /tmp/fix-context.md
 
-          # Write to step output for use in subsequent steps
+          # 将上下文写入 step output，供后续步骤使用
           {
             echo "prompt_context<<CONTEXT_EOF"
             cat /tmp/fix-context.md
             echo "CONTEXT_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create fix branch
+      - name: 创建修复分支
         if: steps.smoke_tests.outputs.smoke_failed == 'true'
         run: git checkout -b "$BRANCH_NAME"
 
-      - name: Run Claude Code
+      - name: 执行 Claude Code
         if: steps.smoke_tests.outputs.smoke_failed == 'true'
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -130,20 +130,20 @@ __PACKAGE_MANAGER_SETUP__
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
-            Post-deploy smoke tests have failed. Here is the test output:
+            部署后冒烟测试失败，以下是测试输出：
 
             ${{ steps.context.outputs.prompt_context }}
 
-            Instructions:
-            1. Analyze the smoke test failures carefully
-            2. Identify the root cause in the source code
-            3. Implement the minimal fix needed
-            4. Run type checking: __RUN_CMD__ type-check
-            5. Run linting: __RUN_CMD__ lint
-            6. Only modify files in these directories: __ALLOWED_PATHS_DISPLAY__
-            7. Do NOT modify test files, config files, or package.json
-            8. This is a post-deploy fix, so prioritize correctness and safety
-            9. Commit your changes with message: "fix: post-deploy smoke test failure"
+            修复要求：
+            1. 仔细分析冒烟测试失败原因
+            2. 定位源代码中的根本原因
+            3. 实现最小化修复
+            4. 运行类型检查验证：__RUN_CMD__ type-check
+            5. 运行 Lint 验证：__RUN_CMD__ lint
+            6. 只允许修改以下目录：__ALLOWED_PATHS_DISPLAY__
+            7. 禁止修改测试文件、配置文件或 package.json
+            8. 这是部署后修复，务必优先保证正确性和安全性
+            9. 提交信息格式：fix: post-deploy smoke test failure
           claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
           settings: |
             {
@@ -151,7 +151,7 @@ __PACKAGE_MANAGER_SETUP__
               "hooks": {}
             }
 
-      - name: Validate changed files
+      - name: 校验修改文件
         if: steps.smoke_tests.outputs.smoke_failed == 'true'
         id: validate
         run: |
@@ -162,10 +162,10 @@ __PACKAGE_MANAGER_SETUP__
             exit 0
           fi
 
-          echo "Changed files:"
+          echo "已修改文件："
           echo "$CHANGED_FILES"
 
-          # Validate against whitelist (__ALLOWED_PATHS_DISPLAY__)
+          # 校验修改文件是否在白名单目录内（__ALLOWED_PATHS_DISPLAY__）
           INVALID_FILES=""
           while IFS= read -r file; do
             if [[ ! "$file" =~ __ALLOWED_PATHS_REGEX__ ]]; then
@@ -174,55 +174,55 @@ __PACKAGE_MANAGER_SETUP__
           done <<< "$CHANGED_FILES"
 
           if [ -n "$INVALID_FILES" ]; then
-            echo "::error::Files outside allowed directories were modified:$INVALID_FILES"
+            echo "::error::以下文件不在允许修改的目录内：$INVALID_FILES"
             echo "invalid_files=true" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
           echo "no_changes=false" >> "$GITHUB_OUTPUT"
 
-      - name: Push branch
+      - name: 推送分支
         if: >-
           steps.smoke_tests.outputs.smoke_failed == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         run: git push origin "$BRANCH_NAME"
 
-      - name: Cleanup invalid branch
+      - name: 清理无效分支
         if: always() && steps.validate.outputs.invalid_files == 'true'
         run: |
           git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
-          echo "::notice::Cleaned up remote branch with invalid changes: $BRANCH_NAME"
+          echo "::notice::已清理包含非法修改的远端分支：$BRANCH_NAME"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create Pull Request
+      - name: 创建 PR
         id: create_pr
         if: >-
           steps.smoke_tests.outputs.smoke_failed == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         run: |
           {
-            echo "## Post-Deploy Sentinel"
+            echo "## 部署后 Sentinel"
             echo ""
-            echo "### Trigger"
-            echo "Smoke tests failed after deployment."
+            echo "### 触发原因"
+            echo "部署后冒烟测试失败。"
             echo ""
-            echo "### Changes"
-            echo "This PR was automatically generated by Claude Code to fix post-deploy smoke test failures."
+            echo "### 改动说明"
+            echo "本 PR 由 AI Sentinel 自动生成，用于修复部署后冒烟测试失败。"
             echo ""
-            echo "### Validation"
-            echo "- [x] TypeScript type check passed"
-            echo "- [x] Lint check passed"
-            echo "- [x] Only allowed source directories modified (__ALLOWED_PATHS_DISPLAY__)"
+            echo "### 验证结果"
+            echo "- [x] TypeScript 类型检查通过"
+            echo "- [x] Lint 检查通过"
+            echo "- [x] 仅修改了允许的目录（__ALLOWED_PATHS_DISPLAY__）"
             echo ""
-            echo "### Review Checklist"
-            echo "- [ ] Changes are correct and minimal"
-            echo "- [ ] No unintended side effects"
-            echo "- [ ] Smoke tests pass with this fix"
-            echo "- [ ] No regression in other tests"
+            echo "### 审查清单"
+            echo "- [ ] 改动正确且最小化"
+            echo "- [ ] 无意外副作用"
+            echo "- [ ] 此修复可通过冒烟测试"
+            echo "- [ ] 其他测试无回归"
             echo ""
             echo "---"
-            echo "🤖 Generated by AI Sentinel (Post-Deploy)"
+            echo "🤖 由 AI Sentinel（部署后）自动生成"
           } > /tmp/pr-body.md
 
           PR_URL=$(gh pr create \
@@ -237,26 +237,26 @@ __PACKAGE_MANAGER_SETUP__
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create urgent issue if fix failed
+      - name: 无法自动修复时创建紧急 Issue
         if: >-
           steps.smoke_tests.outputs.smoke_failed == 'true' &&
           (steps.validate.outputs.no_changes == 'true' ||
           (failure() && steps.validate.outputs.invalid_files != 'true'))
         run: |
           gh issue create \
-            --title "🚨 Post-deploy smoke test failure - manual fix needed" \
-            --body "## Post-Deploy Failure
+            --title "🚨 部署后冒烟测试失败 - 需要人工修复" \
+            --body "## 部署后失败
 
-          Smoke tests failed after deployment and the automated fix was unable to resolve the issue.
+          部署后冒烟测试失败，且自动修复未能解决问题。
 
-          ### Action Required
-          Please investigate and fix manually.
+          ### 需要人工处理
+          请人工排查并修复。
 
-          ### Workflow Run
+          ### Workflow 运行详情
           ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
           ---
-          🤖 Created by AI Sentinel" \
+          🤖 由 AI Sentinel 自动创建" \
             --label "bug,urgent"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -9,7 +9,7 @@
 #
 # 触发条件：
 # - PR 提交到 master / release/** 分支
-# - 直接 push 到 master / release/** 分支
+# - 直接 push 到 master / release/** / sentinel/** 分支
 # ------------------------------------------------------------
 
 name: Check Quality
@@ -18,7 +18,7 @@ on:
   pull_request:
     branches: [master, 'release/**']
   push:
-    branches: [master, 'release/**']
+    branches: [master, 'release/**', 'sentinel/**']
 
 concurrency:
   group: ci-${{ github.ref }}

@@ -1,6 +1,6 @@
-# Phase 1: Issue-triggered AI Sentinel
-# Trigger: Add 'sentinel' label to an issue
-# Claude Code will analyze the issue and create a fix PR
+# Phase 1: Issue 触发式 AI Sentinel
+# 触发方式: 给 Issue 打上 sentinel 标签
+# Claude Code 将分析 Issue 并自动创建修复 PR
 
 name: Sentinel - Issue
 
@@ -8,7 +8,7 @@ on:
   issues:
     types: [labeled]
 
-# Prevent concurrent runs for the same issue
+# 同一 Issue 不允许并发执行
 concurrency:
   group: sentinel-issue-${{ github.event.issue.number }}
   cancel-in-progress: true
@@ -33,23 +33,23 @@ jobs:
       ISSUE_BODY: ${{ github.event.issue.body }}
 
     steps:
-      - name: Checkout repository
+      - name: 检出代码
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
 __PACKAGE_MANAGER_SETUP__
 
-      - name: Setup Node.js
+      - name: 配置 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: __NODE_VERSION__
           cache: __PACKAGE_MANAGER__
 
-      - name: Install dependencies
+      - name: 安装依赖
         run: __INSTALL_CMD__
 
-      - name: Check daily PR limit
+      - name: 检查每日 PR 数量限制
         id: pr_limit
         run: |
           TODAY=$(date -u +%Y-%m-%d)
@@ -60,10 +60,10 @@ __PACKAGE_MANAGER_SETUP__
             --json number \
             --jq 'length')
 
-          echo "Today's sentinel PRs: $PR_COUNT"
+          echo "今日 sentinel PR 数量: $PR_COUNT"
 
           if [ "$PR_COUNT" -ge __PR_DAILY_LIMIT__ ]; then
-            echo "::warning::Daily PR limit reached (__PR_DAILY_LIMIT__). Skipping."
+            echo "::warning::今日 PR 数量已达上限（__PR_DAILY_LIMIT__），跳过本次执行"
             echo "limit_reached=true" >> "$GITHUB_OUTPUT"
           else
             echo "limit_reached=false" >> "$GITHUB_OUTPUT"
@@ -71,37 +71,37 @@ __PACKAGE_MANAGER_SETUP__
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Comment - fix started
+      - name: 评论 - 开始修复
         if: steps.pr_limit.outputs.limit_reached != 'true'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
-            🤖 **Sentinel Started**
+            🤖 **Sentinel 已启动**
 
-            Claude Code is analyzing this issue and attempting a fix.
-            A PR will be created if a fix is found.
+            Claude Code 正在分析此 Issue 并尝试自动修复。
+            若修复成功，将自动创建 PR。
 
             ---
-            _Triggered by `sentinel` label_
+            _由 `sentinel` 标签触发_
 
-      - name: Comment - limit reached
+      - name: 评论 - 已达每日上限
         if: steps.pr_limit.outputs.limit_reached == 'true'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
-            ⚠️ **Sentinel Skipped**
+            ⚠️ **Sentinel 已跳过**
 
-            Daily PR limit (__PR_DAILY_LIMIT__) has been reached. Please try again tomorrow or fix manually.
+            今日 PR 数量已达上限（__PR_DAILY_LIMIT__），请明日再试或手动修复。
 
-      - name: Create fix branch
+      - name: 创建修复分支
         if: steps.pr_limit.outputs.limit_reached != 'true'
         run: |
           git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
           git checkout -b "$BRANCH_NAME"
 
-      - name: Run Claude Code
+      - name: 执行 Claude Code
         if: steps.pr_limit.outputs.limit_reached != 'true'
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -111,21 +111,21 @@ __PACKAGE_MANAGER_SETUP__
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
-            You are fixing a bug reported in issue #${{ github.event.issue.number }}.
+            你正在修复 Issue #${{ github.event.issue.number }} 中报告的 Bug。
 
-            Issue title: ${{ github.event.issue.title }}
-            Issue body:
+            Issue 标题：${{ github.event.issue.title }}
+            Issue 内容：
             ${{ github.event.issue.body }}
 
-            Instructions:
-            1. Analyze the issue description carefully
-            2. Find the relevant source files
-            3. Implement the minimal fix needed
-            4. Run type checking to verify: __RUN_CMD__ type-check
-            5. Run linting to verify: __RUN_CMD__ lint
-            6. Only modify files in these directories: __ALLOWED_PATHS_DISPLAY__
-            7. Do NOT modify test files, config files, or package.json
-            8. Commit your changes with message: "fix: sentinel for #${{ github.event.issue.number }}"
+            修复要求：
+            1. 仔细分析 Issue 描述，理解问题所在
+            2. 找到相关源文件
+            3. 实现最小化修复
+            4. 运行类型检查验证：__RUN_CMD__ type-check
+            5. 运行 Lint 验证：__RUN_CMD__ lint
+            6. 只允许修改以下目录：__ALLOWED_PATHS_DISPLAY__
+            7. 禁止修改测试文件、配置文件或 package.json
+            8. 提交信息格式：fix: sentinel for #${{ github.event.issue.number }}
           claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
           settings: |
             {
@@ -133,7 +133,7 @@ __PACKAGE_MANAGER_SETUP__
               "hooks": {}
             }
 
-      - name: Validate changed files
+      - name: 校验修改文件
         if: steps.pr_limit.outputs.limit_reached != 'true'
         id: validate
         run: |
@@ -144,10 +144,10 @@ __PACKAGE_MANAGER_SETUP__
             exit 0
           fi
 
-          echo "Changed files:"
+          echo "已修改文件："
           echo "$CHANGED_FILES"
 
-          # Validate against whitelist (__ALLOWED_PATHS_DISPLAY__)
+          # 校验修改文件是否在白名单目录内（__ALLOWED_PATHS_DISPLAY__）
           INVALID_FILES=""
           while IFS= read -r file; do
             if [[ ! "$file" =~ __ALLOWED_PATHS_REGEX__ ]]; then
@@ -156,20 +156,20 @@ __PACKAGE_MANAGER_SETUP__
           done <<< "$CHANGED_FILES"
 
           if [ -n "$INVALID_FILES" ]; then
-            echo "::error::Files outside allowed directories were modified:$INVALID_FILES"
+            echo "::error::以下文件不在允许修改的目录内：$INVALID_FILES"
             echo "invalid_files=true" >> "$GITHUB_OUTPUT"
             exit 1
           fi
 
           echo "no_changes=false" >> "$GITHUB_OUTPUT"
 
-      - name: Push branch
+      - name: 推送分支
         if: >-
           steps.pr_limit.outputs.limit_reached != 'true' &&
           steps.validate.outputs.no_changes != 'true'
         run: git push origin "$BRANCH_NAME"
 
-      - name: Create Pull Request
+      - name: 创建 PR
         id: create_pr
         if: >-
           steps.pr_limit.outputs.limit_reached != 'true' &&
@@ -178,24 +178,24 @@ __PACKAGE_MANAGER_SETUP__
           {
             echo "## Sentinel for #${ISSUE_NUMBER}"
             echo ""
-            echo "### Issue"
-            echo "See issue description for details."
+            echo "### 关联 Issue"
+            echo "详见 Issue 描述。"
             echo ""
-            echo "### Changes"
-            echo "This PR was automatically generated by Claude Code to fix the reported issue."
+            echo "### 改动说明"
+            echo "本 PR 由 AI Sentinel 自动生成，用于修复上述 Issue 中报告的问题。"
             echo ""
-            echo "### Validation"
-            echo "- [x] TypeScript type check passed"
-            echo "- [x] Lint check passed"
-            echo "- [x] Only allowed source directories modified (__ALLOWED_PATHS_DISPLAY__)"
+            echo "### 验证结果"
+            echo "- [x] TypeScript 类型检查通过"
+            echo "- [x] Lint 检查通过"
+            echo "- [x] 仅修改了允许的目录（__ALLOWED_PATHS_DISPLAY__）"
             echo ""
-            echo "### Review Checklist"
-            echo "- [ ] Changes are correct and minimal"
-            echo "- [ ] No unintended side effects"
-            echo "- [ ] Tests pass locally"
+            echo "### 审查清单"
+            echo "- [ ] 改动正确且最小化"
+            echo "- [ ] 无意外副作用"
+            echo "- [ ] 本地测试通过"
             echo ""
             echo "---"
-            echo "🤖 Generated by AI Sentinel"
+            echo "🤖 由 AI Sentinel 自动生成"
           } > /tmp/pr-body.md
 
           PR_URL=$(gh pr create \
@@ -210,27 +210,27 @@ __PACKAGE_MANAGER_SETUP__
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cleanup invalid branch
+      - name: 清理无效分支
         if: always() && steps.validate.outputs.invalid_files == 'true'
         run: |
           git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
-          echo "::notice::Cleaned up remote branch with invalid changes: $BRANCH_NAME"
+          echo "::notice::已清理包含非法修改的远端分支：$BRANCH_NAME"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Comment - PR created
+      - name: 评论 - PR 已创建
         if: steps.create_pr.outputs.pr_url
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
-            ✅ **Sentinel Complete**
+            ✅ **Sentinel 修复完成**
 
-            A fix has been created: ${{ steps.create_pr.outputs.pr_url }}
+            已创建修复 PR：${{ steps.create_pr.outputs.pr_url }}
 
-            Please review the changes before merging.
+            请审查后合并。
 
-      - name: Comment - no changes
+      - name: 评论 - 无修改
         if: >-
           steps.pr_limit.outputs.limit_reached != 'true' &&
           steps.validate.outputs.no_changes == 'true'
@@ -238,18 +238,16 @@ __PACKAGE_MANAGER_SETUP__
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
-            ℹ️ **Sentinel - No Changes**
+            ℹ️ **Sentinel - 未生成修改**
 
-            Claude Code analyzed the issue but could not determine an automated fix.
-            Manual investigation is recommended.
+            Claude Code 已分析此 Issue，但无法确定自动化修复方案，建议人工排查。
 
-      - name: Comment - failure
+      - name: 评论 - 执行失败
         if: failure()
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
-            ❌ **Sentinel Failed**
+            ❌ **Sentinel 执行失败**
 
-            The automated fix attempt encountered an error.
-            Please check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+            自动修复过程中发生错误，请查看 [workflow 运行详情](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})。
