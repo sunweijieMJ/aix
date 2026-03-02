@@ -58,7 +58,7 @@ const handleClick = (event: MouseEvent) => {
 };
 </script>
 
-<style scoped lang="scss">
+<style lang="scss">
 .aix-button {
   display: inline-flex;
   align-items: center;
