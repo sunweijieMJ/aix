@@ -181,7 +181,7 @@ __PACKAGE_MANAGER_SETUP__
             echo "## Sentinel for #${ISSUE_NUMBER}"
             echo ""
             echo "### 关联 Issue"
-            echo "详见 Issue 描述。"
+            echo "Closes #${ISSUE_NUMBER}"
             echo ""
             echo "### 改动说明"
             echo "本 PR 由 AI Sentinel 自动生成，用于修复上述 Issue 中报告的问题。"
