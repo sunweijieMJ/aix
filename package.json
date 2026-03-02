@@ -115,7 +115,7 @@
     "rollup-plugin-postcss": "^4.0.2",
     "sass": "^1.97.3",
     "storybook": "^10.2.13",
-    "stylelint": "^17.1.1",
+    "stylelint": "^17.4.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "turbo": "^2.8.11",
