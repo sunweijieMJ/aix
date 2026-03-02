@@ -134,7 +134,9 @@ __PACKAGE_MANAGER_SETUP__
 
       - name: Create fix branch
         if: steps.precheck.outputs.should_proceed == 'true'
-        run: git checkout -b "$BRANCH_NAME"
+        run: |
+          git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
+          git checkout -b "$BRANCH_NAME"
 
       - name: Run Claude Code
         id: claude

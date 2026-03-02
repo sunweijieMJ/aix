@@ -97,7 +97,9 @@ jobs:
 
       - name: Create fix branch
         if: steps.pr_limit.outputs.limit_reached != 'true'
-        run: git checkout -b "$BRANCH_NAME"
+        run: |
+          git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
+          git checkout -b "$BRANCH_NAME"
 
       - name: Run Claude Code
         if: steps.pr_limit.outputs.limit_reached != 'true'
