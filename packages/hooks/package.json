@@ -32,7 +32,7 @@
     "build:types": "tsc -p tsconfig.json",
     "clean": "rimraf dist es lib tsconfig.tsbuildinfo",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest --run --passWithNoTests"
+    "test": "vitest --run"
   },
   "peerDependencies": {
     "vue": "^3.5.28"

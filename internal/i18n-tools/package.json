@@ -17,7 +17,7 @@
   },
   "scripts": {
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest --run --passWithNoTests",
+    "test": "vitest --run",
     "build": "pnpm run clean && tsup",
     "dev": "tsx src/cli.ts",
     "clean": "rimraf dist",

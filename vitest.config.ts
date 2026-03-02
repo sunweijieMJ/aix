@@ -12,6 +12,7 @@ const dirname =
 
 export default defineConfig({
   test: {
+    passWithNoTests: true,
     projects: [
       // Project 1: 现有单元测试 (jsdom)
       {

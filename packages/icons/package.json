@@ -26,7 +26,7 @@
   "scripts": {
     "dev": "rollup -c -w",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest --run --passWithNoTests",
+    "test": "vitest --run",
     "build:generate": "tsx scripts/generate.ts",
     "build:js": "rollup -c",
     "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",

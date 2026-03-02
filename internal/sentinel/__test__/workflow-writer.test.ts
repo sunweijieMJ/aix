@@ -221,7 +221,7 @@ describe('writeWorkflows', () => {
         PR_DAILY_LIMIT: '10',
         SMOKE_TEST_CMD: 'pnpm test:smoke',
         CRON_EXPRESSION: '0 3 * * 1',
-        CHECKS_DEFAULT: 'lint,typecheck,test,audit',
+        CHECKS_DEFAULT: 'lint,typecheck,test',
       }),
     );
   });
