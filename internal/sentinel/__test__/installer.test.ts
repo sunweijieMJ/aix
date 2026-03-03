@@ -60,6 +60,7 @@ import { patchClaudeMd } from '../src/core/claude-md-patcher.js';
 import { createLabels } from '../src/core/label-creator.js';
 import { checkSecrets } from '../src/core/secrets-checker.js';
 import { readTemplate, writeFile, ensureDir } from '../src/utils/file.js';
+import { logger } from '../src/utils/logger.js';
 import type { InstallConfig } from '../src/types/index.js';
 
 const mockedValidateEnvironment = vi.mocked(validateEnvironment);
@@ -70,6 +71,7 @@ const mockedCheckSecrets = vi.mocked(checkSecrets);
 const mockedReadTemplate = vi.mocked(readTemplate);
 const mockedWriteFile = vi.mocked(writeFile);
 const mockedEnsureDir = vi.mocked(ensureDir);
+const mockedLogger = vi.mocked(logger);
 
 function createConfig(overrides?: Partial<InstallConfig>): InstallConfig {
   return {
@@ -266,6 +268,34 @@ describe('install', () => {
 
     expect(mockedReadTemplate).not.toHaveBeenCalledWith(
       'worker/sentry-webhook.ts',
+    );
+  });
+
+  it('should replace __OWNER__ and __REPO__ in worker when provided', async () => {
+    setupSuccessMocks();
+    mockedWriteWorkflows.mockResolvedValue(['sentinel-sentry.yml']);
+    mockedReadTemplate.mockResolvedValue(
+      "const OWNER = '__OWNER__';\nconst REPO = '__REPO__';",
+    );
+
+    await install(
+      createConfig({ phases: [3], owner: 'my-org', repo: 'my-app' }),
+    );
+
+    expect(mockedWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining('workers/sentry-webhook.ts'),
+      "const OWNER = 'my-org';\nconst REPO = 'my-app';",
+    );
+  });
+
+  it('should warn when phase 3 owner/repo are not provided', async () => {
+    setupSuccessMocks();
+    mockedWriteWorkflows.mockResolvedValue(['sentinel-sentry.yml']);
+
+    await install(createConfig({ phases: [3] }));
+
+    expect(mockedLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('__OWNER__'),
     );
   });
 });

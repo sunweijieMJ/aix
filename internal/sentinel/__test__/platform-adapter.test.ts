@@ -71,7 +71,7 @@ describe('GitHubAdapter', () => {
     ]);
     expect(instructions).not.toBeNull();
     expect(instructions).toContain('Sentry');
-    expect(instructions).toContain('Cloudflare Worker');
+    expect(instructions).toContain('workers/sentry-webhook.ts');
   });
 
   describe('isCliInstalled', () => {

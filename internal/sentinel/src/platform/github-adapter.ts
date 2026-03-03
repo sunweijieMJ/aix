@@ -93,18 +93,16 @@ export class GitHubAdapter implements PlatformAdapter {
     return [
       '## Sentry Webhook Worker 部署',
       '',
-      'Sentry 自动修复需要部署 Cloudflare Worker 来接收 Sentry webhook:',
+      'Worker 模板已输出到 workers/sentry-webhook.ts，还需完成以下步骤：',
       '',
-      '1. 复制 Worker 模板到项目: templates/worker/sentry-webhook.ts',
-      '2. 替换模板中的 __OWNER__ 和 __REPO__ 为实际的 GitHub 用户名和仓库名',
-      '3. 安装 Wrangler CLI: npm install -g wrangler',
-      '4. 创建 KV namespace: wrangler kv namespace create SENTRY_DEDUP',
-      '5. 配置 Worker Secrets:',
+      '1. 安装 Wrangler CLI: npm install -g wrangler',
+      '2. 创建 KV namespace: wrangler kv namespace create SENTRY_DEDUP',
+      '3. 配置 Worker Secrets:',
       '   - wrangler secret put SENTRY_CLIENT_SECRET',
       '   - wrangler secret put SENTRY_AUTH_TOKEN',
       '   - wrangler secret put GITHUB_PAT',
-      '6. 部署 Worker: wrangler deploy',
-      '7. 在 Sentry 项目设置中配置 Webhook URL 指向部署后的 Worker 地址',
+      '4. 部署 Worker: wrangler deploy',
+      '5. 在 Sentry 项目设置中配置 Webhook URL 指向部署后的 Worker 地址',
     ].join('\n');
   }
 }

@@ -81,6 +81,14 @@ export async function install(config: InstallConfig): Promise<InstallResult> {
       await writeFile(workerDest, workerContent);
       logger.debug(`已写入 Sentry Worker: ${workerDest}`);
     }
+
+    if (!config.owner || !config.repo) {
+      logger.warn(
+        'Worker 中 __OWNER__ 和 __REPO__ 未替换，请手动编辑 workers/sentry-webhook.ts 填入实际的 GitHub owner 和 repo',
+      );
+    }
+
+    allWorkflows.push(workerDest);
   }
 
   // 4. 创建 labels（先去重再调用，避免重复 API 请求）
