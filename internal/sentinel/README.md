@@ -25,7 +25,7 @@ AI 自动修复 Workflow 安装工具 —— 将 AI sentinel CI pipelines 安装
 | **1** | Issue 标签触发 | Issue 打 `sentinel` 标签 | MVP，手动触发 AI 修复 |
 | **2** | 部署后冒烟测试 | 部署 workflow 成功后 | E2E 失败自动修复 |
 | **3** | Sentry 错误联动 | 线上错误超阈值 | 生产异常自动创建修复 PR |
-| **4** | 定时质量巡检 | 工作日 Cron 定时 | lint / type-check / test / audit |
+| **4** | 定时质量巡检 | 工作日 Cron 定时 | lint / type-check / test |
 
 ---
 
@@ -59,12 +59,13 @@ npx sentinel install --target /path/to/repo --dry-run
 
 安装完成后，根据提示在 GitHub 仓库中配置所需的 Secrets 和 Variables：
 
-| 名称 | 类型 | 阶段 | 说明 |
-|------|------|------|------|
-| `ANTHROPIC_API_KEY` | Secret | 1-4 | Claude API 密钥 |
-| `SENTINEL_PAT` | Secret | 1-4 | GitHub PAT（用于推送分支和创建 PR） |
-| `SENTINEL_ENABLED` | Variable | 1-4 | 总开关，设为 `false` 可关闭 |
-| `SENTINEL_REVIEWERS` | Variable | 3 | PR 审查者（逗号分隔） |
+| 名称 | 类型 | 阶段 | 必须 | 说明 |
+|------|------|------|------|------|
+| `ANTHROPIC_API_KEY` | Secret | 1-4 | 是 | Claude API 密钥 |
+| `SENTINEL_PAT` | Secret | 1-4 | 是 | GitHub PAT（需 `contents:write` + `pull-requests:write` 权限，用于推送分支和创建 PR） |
+| `ANTHROPIC_BASE_URL` | Secret | 1-4 | 否 | 自定义 API 端点（代理 / 私有部署时使用） |
+| `SENTINEL_ENABLED` | Variable | 1-4 | 否 | 总开关，设为 `false` 可全局关闭 |
+| `SENTINEL_REVIEWERS` | Variable | 3 | 否 | PR 审查者（逗号分隔） |
 
 ### 4. 验证安装
 
@@ -104,9 +105,10 @@ sentinel install [options]
 | 冒烟测试命令 | Phase 2 测试命令 | `pnpm test:smoke` |
 | Owner / Repo | Phase 3 仓库信息（自动从 git remote 读取） | - |
 | Cron 表达式 | Phase 4 定时触发 | `0 18 * * 5` |
-| 检查项 | Phase 4 检查项目 | lint, typecheck, test, audit |
+| 检查项 | Phase 4 检查项目 | lint, typecheck, test |
+| 自定义检查命令 | Phase 4 可覆盖每项检查的执行命令 | `<pm> run lint` 等 |
 | Claude 模型 | 高级选项 | `claude-sonnet-4-6` |
-| 最大轮次 | 高级选项 | `10` |
+| 最大轮次 | 高级选项 | `20` |
 | PR 每日上限 | 高级选项 | `5` |
 
 ### `sentinel check`
@@ -150,13 +152,22 @@ import {
   // 类型
   type InstallConfig,
   type InstallResult,
-  type Phase,
-  type Platform,
+  type Phase,          // 1 | 2 | 3 | 4
+  type Platform,       // 'github'
+  type PackageManager, // 'pnpm' | 'npm' | 'yarn'
+  type ScheduledCheck, // 'lint' | 'typecheck' | 'test'
   type PhaseConfig,
 
   // 常量
   PHASE_CONFIGS,
   VALID_PLATFORMS,
+  DEFAULT_PACKAGE_MANAGER,  // 'pnpm'
+  DEFAULT_MODEL,            // 'claude-sonnet-4-6'
+  DEFAULT_MAX_TURNS,        // 20
+  DEFAULT_PR_DAILY_LIMIT,   // 5
+  DEFAULT_CRON,             // '0 18 * * 5'
+  DEFAULT_SMOKE_TEST_CMD,   // 'pnpm test:smoke'
+  ALL_SCHEDULED_CHECKS,     // ['lint', 'typecheck', 'test']
 
   // 平台适配器
   type PlatformAdapter,
@@ -165,6 +176,7 @@ import {
 
   // 工具
   renderTemplate,
+  parseGitRemote,
 } from '@kit/sentinel';
 
 // 示例：安装 Phase 1 + 2
@@ -198,6 +210,39 @@ console.log('CLAUDE.md 已更新:', result.claudeMdPatched);
 console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
 ```
 
+### InstallConfig 完整参考
+
+| 字段 | 类型 | 必须 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `phases` | `Phase[]` | 是 | - | 选择安装的阶段列表 (`[1]`, `[1,4]` 等) |
+| `target` | `string` | 是 | - | 目标仓库目录绝对路径 |
+| `yes` | `boolean` | 是 | - | 跳过交互确认 |
+| `dryRun` | `boolean` | 是 | `false` | 干跑模式，不实际写入文件 |
+| `platform` | `Platform` | 是 | `'github'` | CI 平台 |
+| `nodeVersion` | `string` | 是 | `'22'` | Workflow 中使用的 Node.js 版本 |
+| `packageManager` | `PackageManager` | 是 | `'pnpm'` | 包管理器（自动检测 lockfile） |
+| `allowedPaths` | `string[]` | 否 | `['^src/']` | AI 允许修改的文件路径模式（bash regex） |
+| `reviewers` | `string` | 否 | - | PR 审查者（逗号分隔） |
+| `deployWorkflow` | `string` | 否 | `'Deploy Production'` | Phase 2: 触发冒烟测试的部署 workflow 名称 |
+| `smokeTestCmd` | `string` | 否 | `'pnpm test:smoke'` | Phase 2: 冒烟测试命令 |
+| `owner` | `string` | 否 | 自动读取 git remote | Phase 3: 仓库 owner |
+| `repo` | `string` | 否 | 自动读取 git remote | Phase 3: 仓库名称 |
+| `cronExpression` | `string` | 否 | `'0 18 * * 5'` | Phase 4: Cron 定时表达式 |
+| `checks` | `ScheduledCheck[]` | 否 | `['lint','typecheck','test']` | Phase 4: 定时检查项 |
+| `customCommands` | `Record<string, string>` | 否 | - | Phase 4: 自定义检查命令（key 为检查项名） |
+| `model` | `string` | 否 | `'claude-sonnet-4-6'` | Claude 模型 |
+| `maxTurns` | `number` | 否 | `20` | Claude 最大轮次 |
+| `prDailyLimit` | `number` | 否 | `5` | 每日 PR 创建上限 |
+
+### InstallResult 返回值
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `workflows` | `string[]` | 已安装的 workflow 文件路径列表 |
+| `labels` | `string[]` | 已创建的 GitHub labels |
+| `claudeMdPatched` | `boolean` | 是否修改了目标仓库的 CLAUDE.md |
+| `secretsOk` | `boolean` | Secrets/Variables 检查是否通过 |
+
 ---
 
 ## 各阶段工作流程
@@ -207,7 +252,7 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
 ```
 开发者在 Issue 上打 `sentinel` 标签
   → GitHub Actions 触发
-  → 检查每日 PR 限额（≤10）
+  → 检查每日 PR 限额（≤5）
   → Claude Code 分析 Issue 描述，修复代码
   → 仅允许修改 --allowed-paths 指定的目录
   → 创建 PR，在 Issue 中回复链接
@@ -240,7 +285,7 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
 
 ```
 工作日 Cron 定时触发
-  → 依次运行: lint → type-check → test → audit
+  → 依次运行: lint → type-check → test
   → 发现问题 → Claude Code 自动修复
   → 创建带 `maintenance` 标签的 PR
 ```
@@ -254,7 +299,7 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
 | **AI 修，人审核** | AI 只创建 PR，合并权始终在人 |
 | **最小改动原则** | 只改必要代码，不做额外重构 |
 | **文件权限控制** | 仅允许修改 `--allowed-paths` 指定的目录（默认 `src/`），禁止修改测试、配置、CI 文件 |
-| **每日 PR 限额** | 每天最多创建 10 个 sentinel PR |
+| **每日 PR 限额** | 每天最多创建 5 个 sentinel PR |
 | **总开关** | `SENTINEL_ENABLED` 变量设为 `false` 即可全局关闭 |
 | **Sentry 去重** | 相同错误 24 小时内不重复触发 |
 | **执行超时** | 单次修复最长 30 分钟 |

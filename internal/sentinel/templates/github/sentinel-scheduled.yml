@@ -12,7 +12,7 @@ on:
       checks:
         description: '要运行的检查项（逗号分隔）：lint,typecheck,test'
         required: false
-        default: 'lint,typecheck,test'
+        default: '__CHECKS_DEFAULT__'
         type: string
 
 # 定时任务不允许并发执行
@@ -33,7 +33,7 @@ jobs:
 
     env:
       BRANCH_NAME: sentinel/maintenance-${{ github.run_id }}
-      CHECKS: ${{ github.event.inputs.checks || 'lint,typecheck,test' }}
+      CHECKS: ${{ github.event.inputs.checks || '__CHECKS_DEFAULT__' }}
 
     steps:
       - name: 检出代码
