@@ -56,10 +56,22 @@ __PACKAGE_MANAGER_SETUP__
       - name: 安装依赖
         run: __INSTALL_CMD__
 
+      - name: 检查部署 URL
+        id: check_url
+        run: |
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "::warning::DEPLOY_URL 为空，跳过冒烟测试"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 安装 Playwright 浏览器
+        if: steps.check_url.outputs.skip != 'true'
         run: __EXEC_CMD__ playwright install --with-deps chromium
 
       - name: 执行冒烟测试
+        if: steps.check_url.outputs.skip != 'true'
         id: smoke_tests
         continue-on-error: true
         env:
@@ -83,11 +95,11 @@ __PACKAGE_MANAGER_SETUP__
           fi
 
       - name: 冒烟测试通过，跳过修复
-        if: steps.smoke_tests.outputs.smoke_failed != 'true'
+        if: steps.check_url.outputs.skip != 'true' && steps.smoke_tests.outputs.smoke_failed != 'true'
         run: echo "冒烟测试通过，无需修复。"
 
       - name: 准备上下文信息
-        if: steps.smoke_tests.outputs.smoke_failed == 'true'
+        if: steps.check_url.outputs.skip != 'true' && steps.smoke_tests.outputs.smoke_failed == 'true'
         id: context
         run: |
           # 收集失败上下文
@@ -117,11 +129,11 @@ __PACKAGE_MANAGER_SETUP__
           } >> "$GITHUB_OUTPUT"
 
       - name: 创建修复分支
-        if: steps.smoke_tests.outputs.smoke_failed == 'true'
+        if: steps.check_url.outputs.skip != 'true' && steps.smoke_tests.outputs.smoke_failed == 'true'
         run: git checkout -b "$BRANCH_NAME"
 
       - name: 执行 Claude Code
-        if: steps.smoke_tests.outputs.smoke_failed == 'true'
+        if: steps.check_url.outputs.skip != 'true' && steps.smoke_tests.outputs.smoke_failed == 'true'
         id: claude
         uses: anthropics/claude-code-action@v1
         env:
@@ -144,15 +156,23 @@ __PACKAGE_MANAGER_SETUP__
             7. 禁止修改测试文件、配置文件或 package.json
             8. 这是部署后修复，务必优先保证正确性和安全性
             9. 提交信息格式：fix: post-deploy smoke test failure
-          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
+          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],
               "hooks": {}
             }
 
+      - name: 验证 - 类型检查
+        if: steps.check_url.outputs.skip != 'true' && steps.smoke_tests.outputs.smoke_failed == 'true'
+        run: __RUN_CMD__ type-check
+
+      - name: 验证 - Lint 检查
+        if: steps.check_url.outputs.skip != 'true' && steps.smoke_tests.outputs.smoke_failed == 'true'
+        run: __RUN_CMD__ lint
+
       - name: 校验修改文件
-        if: steps.smoke_tests.outputs.smoke_failed == 'true'
+        if: steps.check_url.outputs.skip != 'true' && steps.smoke_tests.outputs.smoke_failed == 'true'
         id: validate
         run: |
           CHANGED_FILES=$(git diff origin/__DEFAULT_BRANCH__ HEAD --name-only)
@@ -183,11 +203,12 @@ __PACKAGE_MANAGER_SETUP__
 
       - name: 推送分支
         if: >-
+          steps.check_url.outputs.skip != 'true' &&
           steps.smoke_tests.outputs.smoke_failed == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: git push "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}" "$BRANCH_NAME"
+          SENTINEL_PAT: ${{ secrets.SENTINEL_PAT }}
+        run: git push "https://x-access-token:${SENTINEL_PAT}@github.com/${{ github.repository }}" "$BRANCH_NAME"
 
       - name: 清理无效分支
         if: always() && steps.validate.outputs.invalid_files == 'true'
@@ -200,6 +221,7 @@ __PACKAGE_MANAGER_SETUP__
       - name: 创建 PR
         id: create_pr
         if: >-
+          steps.check_url.outputs.skip != 'true' &&
           steps.smoke_tests.outputs.smoke_failed == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         run: |
@@ -241,6 +263,7 @@ __PACKAGE_MANAGER_SETUP__
 
       - name: 无法自动修复时创建紧急 Issue
         if: >-
+          steps.check_url.outputs.skip != 'true' &&
           steps.smoke_tests.outputs.smoke_failed == 'true' &&
           (steps.validate.outputs.no_changes == 'true' ||
           (failure() && steps.validate.outputs.invalid_files != 'true'))

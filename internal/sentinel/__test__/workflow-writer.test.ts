@@ -217,10 +217,10 @@ describe('writeWorkflows', () => {
         INSTALL_CMD: 'pnpm install --frozen-lockfile',
         RUN_CMD: 'pnpm',
         MODEL: 'claude-sonnet-4-6',
-        MAX_TURNS: '30',
-        PR_DAILY_LIMIT: '10',
+        MAX_TURNS: '20',
+        PR_DAILY_LIMIT: '5',
         SMOKE_TEST_CMD: 'pnpm test:smoke',
-        CRON_EXPRESSION: '0 3 * * 1',
+        CRON_EXPRESSION: '0 18 * * 5',
         CHECKS_DEFAULT: 'lint,typecheck,test',
       }),
     );

@@ -126,12 +126,20 @@ jobs:
             6. 只允许修改以下目录：apps/, packages/
             7. 禁止修改测试文件、配置文件或 package.json
             8. 提交信息格式：fix: sentinel for #${{ github.event.issue.number }}
-          claude_args: '--model claude-haiku-4-5-20251001 --max-turns 10 --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
+          claude_args: '--model claude-sonnet-4-6 --max-turns 20 --allowedTools "Edit,Write,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],
               "hooks": {}
             }
+
+      - name: 验证 - 类型检查
+        if: steps.pr_limit.outputs.limit_reached != 'true'
+        run: pnpm type-check
+
+      - name: 验证 - Lint 检查
+        if: steps.pr_limit.outputs.limit_reached != 'true'
+        run: pnpm lint
 
       - name: 校验修改文件
         if: steps.pr_limit.outputs.limit_reached != 'true'
@@ -168,8 +176,8 @@ jobs:
           steps.pr_limit.outputs.limit_reached != 'true' &&
           steps.validate.outputs.no_changes != 'true'
         env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: git push "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}" "$BRANCH_NAME"
+          SENTINEL_PAT: ${{ secrets.SENTINEL_PAT }}
+        run: git push "https://x-access-token:${SENTINEL_PAT}@github.com/${{ github.repository }}" "$BRANCH_NAME"
 
       - name: 创建 PR
         id: create_pr

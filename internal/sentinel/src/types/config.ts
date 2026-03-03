@@ -90,7 +90,7 @@ export const DEFAULT_PACKAGE_MANAGER: PackageManager = 'pnpm';
 export const DEFAULT_MODEL = 'claude-sonnet-4-6';
 export const DEFAULT_PR_DAILY_LIMIT = 5;
 export const DEFAULT_CRON = '0 18 * * 5';
-export const DEFAULT_MAX_TURNS = 10;
+export const DEFAULT_MAX_TURNS = 20;
 export const DEFAULT_SMOKE_TEST_CMD = 'pnpm test:smoke';
 export const ALL_SCHEDULED_CHECKS: ScheduledCheck[] = [
   'lint',
@@ -105,7 +105,7 @@ export const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
     description: 'MVP - Issue 打 sentinel 标签触发 AI 修复',
     workflows: ['sentinel-issue.yml'],
     labels: ['sentinel', 'bot'],
-    secrets: ['ANTHROPIC_API_KEY'],
+    secrets: ['ANTHROPIC_API_KEY', 'SENTINEL_PAT'],
     variables: ['SENTINEL_ENABLED'],
   },
   2: {
@@ -114,7 +114,7 @@ export const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
     description: '部署成功后自动跑 E2E，失败触发 AI 修复',
     workflows: ['sentinel-post-deploy.yml'],
     labels: ['sentinel', 'post-deploy', 'urgent'],
-    secrets: ['ANTHROPIC_API_KEY'],
+    secrets: ['ANTHROPIC_API_KEY', 'SENTINEL_PAT'],
     variables: ['SENTINEL_ENABLED'],
   },
   3: {
@@ -132,7 +132,7 @@ export const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
     description: '工作日定时跑 lint/type-check/test',
     workflows: ['sentinel-scheduled.yml'],
     labels: ['sentinel', 'maintenance'],
-    secrets: ['ANTHROPIC_API_KEY'],
+    secrets: ['ANTHROPIC_API_KEY', 'SENTINEL_PAT'],
     variables: ['SENTINEL_ENABLED'],
   },
 };

@@ -62,7 +62,7 @@ npx sentinel install --target /path/to/repo --dry-run
 | 名称 | 类型 | 阶段 | 说明 |
 |------|------|------|------|
 | `ANTHROPIC_API_KEY` | Secret | 1-4 | Claude API 密钥 |
-| `SENTINEL_PAT` | Secret | 3 | GitHub PAT（用于创建 Issue） |
+| `SENTINEL_PAT` | Secret | 1-4 | GitHub PAT（用于推送分支和创建 PR） |
 | `SENTINEL_ENABLED` | Variable | 1-4 | 总开关，设为 `false` 可关闭 |
 | `SENTINEL_REVIEWERS` | Variable | 3 | PR 审查者（逗号分隔） |
 

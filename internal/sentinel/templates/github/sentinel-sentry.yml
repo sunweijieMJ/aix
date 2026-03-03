@@ -162,12 +162,20 @@ __PACKAGE_MANAGER_SETUP__
             7. 禁止修改测试文件、配置文件或 package.json
             8. 在修改处附近添加简短注释，说明修复原因
             9. 提交信息格式：fix: resolve Sentry error - ${SENTRY_TITLE}
-          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Bash,Read,Glob,Grep"'
+          claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],
               "hooks": {}
             }
+
+      - name: 验证 - 类型检查
+        if: steps.precheck.outputs.should_proceed == 'true'
+        run: __RUN_CMD__ type-check
+
+      - name: 验证 - Lint 检查
+        if: steps.precheck.outputs.should_proceed == 'true'
+        run: __RUN_CMD__ lint
 
       - name: 校验修改文件
         if: steps.precheck.outputs.should_proceed == 'true'
@@ -204,8 +212,8 @@ __PACKAGE_MANAGER_SETUP__
           steps.precheck.outputs.should_proceed == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: git push "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}" "$BRANCH_NAME"
+          SENTINEL_PAT: ${{ secrets.SENTINEL_PAT }}
+        run: git push "https://x-access-token:${SENTINEL_PAT}@github.com/${{ github.repository }}" "$BRANCH_NAME"
 
       - name: 清理无效分支
         if: always() && steps.validate.outputs.invalid_files == 'true'
@@ -271,24 +279,28 @@ __PACKAGE_MANAGER_SETUP__
       - name: 执行失败时创建 Issue
         if: failure()
         run: |
+          {
+            echo "## Sentry 自动修复失败"
+            echo ""
+            echo "针对以下 Sentry 错误的自动修复未能完成。"
+            echo ""
+            printf -- '**错误:** %s\n' "$SENTRY_TITLE"
+            printf -- '**触发位置:** %s\n' "$SENTRY_CULPRIT"
+            printf -- '**Sentry 链接:** %s\n' "$SENTRY_URL"
+            echo ""
+            echo "### 需要人工处理"
+            echo "请人工排查并修复。"
+            echo ""
+            echo "### Workflow 运行详情"
+            echo "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo "---"
+            echo "🤖 由 AI Sentinel 自动创建"
+          } > /tmp/issue-body.md
+
           gh issue create \
             --title "🚨 Sentinel Sentry 自动修复失败 - ${SAFE_KEY}" \
-            --body "## Sentry 自动修复失败
-
-          针对以下 Sentry 错误的自动修复未能完成。
-
-          **错误:** ${SENTRY_TITLE}
-          **触发位置:** ${SENTRY_CULPRIT}
-          **Sentry 链接:** ${SENTRY_URL}
-
-          ### 需要人工处理
-          请人工排查并修复。
-
-          ### Workflow 运行详情
-          ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          ---
-          🤖 由 AI Sentinel 自动创建" \
+            --body-file /tmp/issue-body.md \
             --label "bug,sentinel"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
