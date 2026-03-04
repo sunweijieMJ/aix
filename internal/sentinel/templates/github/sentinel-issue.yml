@@ -119,6 +119,7 @@ __PACKAGE_MANAGER_SETUP__
       - name: 执行 Claude Code
         if: steps.pr_limit.outputs.limit_reached != 'true'
         id: claude
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         env:
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
@@ -147,24 +148,29 @@ __PACKAGE_MANAGER_SETUP__
             }
 
       - name: 提交 Claude 修改
+        id: commit
         if: steps.pr_limit.outputs.limit_reached != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add __ALLOWED_PATHS_GIT_ADD__
-          git diff --cached --quiet && exit 0
-          git commit -m "fix: sentinel auto-fix for #${{ github.event.issue.number }}"
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "fix: sentinel auto-fix for #${{ github.event.issue.number }}"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 验证 - 类型检查
-        if: steps.pr_limit.outputs.limit_reached != 'true'
+        if: steps.commit.outputs.has_changes == 'true'
         run: __RUN_CMD__ type-check
 
       - name: 验证 - Lint 检查
-        if: steps.pr_limit.outputs.limit_reached != 'true'
+        if: steps.commit.outputs.has_changes == 'true'
         run: __RUN_CMD__ lint
 
       - name: 校验修改文件
-        if: steps.pr_limit.outputs.limit_reached != 'true'
+        if: steps.commit.outputs.has_changes == 'true'
         id: validate
         run: |
           CHANGED_FILES=$(git diff origin/__DEFAULT_BRANCH__ HEAD --name-only)
@@ -195,7 +201,7 @@ __PACKAGE_MANAGER_SETUP__
 
       - name: 推送分支
         if: >-
-          steps.pr_limit.outputs.limit_reached != 'true' &&
+          steps.commit.outputs.has_changes == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         env:
           SENTINEL_PAT: ${{ secrets.SENTINEL_PAT }}
@@ -204,7 +210,7 @@ __PACKAGE_MANAGER_SETUP__
       - name: 创建 PR
         id: create_pr
         if: >-
-          steps.pr_limit.outputs.limit_reached != 'true' &&
+          steps.commit.outputs.has_changes == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         run: |
           {
@@ -263,9 +269,7 @@ __PACKAGE_MANAGER_SETUP__
             请审查后合并。
 
       - name: 评论 - 无修改
-        if: >-
-          steps.pr_limit.outputs.limit_reached != 'true' &&
-          steps.validate.outputs.no_changes == 'true'
+        if: steps.commit.outputs.has_changes == 'false'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.issue.number }}
@@ -275,7 +279,7 @@ __PACKAGE_MANAGER_SETUP__
             Claude Code 已分析此 Issue，但无法确定自动化修复方案，建议人工排查。
 
       - name: 评论 - 执行失败
-        if: failure()
+        if: failure() && steps.commit.outputs.has_changes == 'true'
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.issue.number }}

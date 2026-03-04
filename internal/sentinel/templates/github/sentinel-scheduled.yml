@@ -166,6 +166,7 @@ __PACKAGE_MANAGER_SETUP__
       - name: 执行 Claude Code
         if: steps.summary.outputs.has_issues == 'true'
         id: claude
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         env:
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
@@ -193,28 +194,33 @@ __PACKAGE_MANAGER_SETUP__
             }
 
       - name: 提交 Claude 修改
+        id: commit
         if: steps.summary.outputs.has_issues == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add __ALLOWED_PATHS_GIT_ADD__
-          git diff --cached --quiet && exit 0
-          git commit -m "fix: sentinel scheduled maintenance"
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "fix: sentinel scheduled maintenance"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 验证 - 类型检查
-        if: steps.summary.outputs.has_issues == 'true'
+        if: steps.commit.outputs.has_changes == 'true'
         run: __RUN_CMD__ type-check
 
       - name: 验证 - Lint 检查
-        if: steps.summary.outputs.has_issues == 'true'
+        if: steps.commit.outputs.has_changes == 'true'
         run: __RUN_CMD__ lint
 
       - name: 验证 - 单元测试
-        if: steps.summary.outputs.has_issues == 'true' && contains(env.CHECKS, 'test')
+        if: steps.commit.outputs.has_changes == 'true' && contains(env.CHECKS, 'test')
         run: __RUN_CMD__ test
 
       - name: 校验修改文件
-        if: steps.summary.outputs.has_issues == 'true'
+        if: steps.commit.outputs.has_changes == 'true'
         id: validate
         run: |
           CHANGED_FILES=$(git diff origin/__DEFAULT_BRANCH__ HEAD --name-only)
@@ -245,7 +251,7 @@ __PACKAGE_MANAGER_SETUP__
 
       - name: 推送分支
         if: >-
-          steps.summary.outputs.has_issues == 'true' &&
+          steps.commit.outputs.has_changes == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         env:
           SENTINEL_PAT: ${{ secrets.SENTINEL_PAT }}
@@ -262,7 +268,7 @@ __PACKAGE_MANAGER_SETUP__
       - name: 创建 PR
         id: create_pr
         if: >-
-          steps.summary.outputs.has_issues == 'true' &&
+          steps.commit.outputs.has_changes == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         run: |
           {
@@ -297,7 +303,7 @@ __PACKAGE_MANAGER_SETUP__
 
       - name: 执行失败时创建 Issue
         if: >-
-          steps.summary.outputs.has_issues == 'true' && failure()
+          failure() && steps.commit.outputs.has_changes == 'true'
         run: |
           gh issue create \
             --title "🚨 定时维护自动修复失败" \

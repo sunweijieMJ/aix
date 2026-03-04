@@ -111,6 +111,15 @@ __PACKAGE_MANAGER_SETUP__
         id: context
         if: steps.precheck.outputs.should_proceed == 'true'
         run: |
+          # 检查堆栈信息是否为空
+          STACK_TRIMMED=$(echo "${SENTRY_STACKTRACE}" | tr -d '[:space:]')
+          if [ -z "$STACK_TRIMMED" ] || [ "$STACK_TRIMMED" == "null" ] || [ "$STACK_TRIMMED" == "undefined" ]; then
+            echo "::warning::堆栈信息为空，无法定位代码位置"
+            echo "no_stacktrace=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "no_stacktrace=false" >> "$GITHUB_OUTPUT"
+          fi
+
           echo "## Sentry 错误报告" > /tmp/sentry-context.md
           echo "" >> /tmp/sentry-context.md
           echo "**标题:** ${SENTRY_TITLE}" >> /tmp/sentry-context.md
@@ -132,15 +141,47 @@ __PACKAGE_MANAGER_SETUP__
 
           echo "上下文准备完成。"
 
+      - name: 无堆栈信息，创建分析 Issue
+        if: >-
+          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.context.outputs.no_stacktrace == 'true'
+        run: |
+          {
+            echo "## Sentry 错误 - 缺少堆栈信息"
+            echo ""
+            printf -- '**错误:** %s\n' "$SENTRY_TITLE"
+            printf -- '**级别:** %s\n' "$SENTRY_LEVEL"
+            printf -- '**触发位置:** %s\n' "$SENTRY_CULPRIT"
+            printf -- '**Sentry 链接:** %s\n' "$SENTRY_URL"
+            echo ""
+            echo "### 说明"
+            echo "该 Sentry 错误未携带堆栈信息，无法自动定位代码位置，需人工分析。"
+            echo ""
+            echo "---"
+            echo "🤖 由 AI Sentinel 自动创建"
+          } > /tmp/issue-body.md
+
+          gh issue create \
+            --title "🔍 Sentry 错误需人工分析 - ${SAFE_KEY}" \
+            --body-file /tmp/issue-body.md \
+            --label "sentinel,sentry,needs-triage"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: 创建修复分支
-        if: steps.precheck.outputs.should_proceed == 'true'
+        if: >-
+          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.context.outputs.no_stacktrace != 'true'
         run: |
           git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
           git checkout -b "$BRANCH_NAME"
 
       - name: 执行 Claude Code
         id: claude
-        if: steps.precheck.outputs.should_proceed == 'true'
+        if: >-
+          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.context.outputs.no_stacktrace != 'true'
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         env:
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
@@ -160,6 +201,10 @@ __PACKAGE_MANAGER_SETUP__
             5. 禁止修改测试文件、配置文件或 package.json
             6. 在修改处附近添加简短注释，说明修复原因
             7. 修复完成后无需运行验证命令，workflow 会自动执行类型检查和 Lint 验证
+
+            重要判断规则：
+            - 如果错误无法通过修改允许目录下的代码修复，请立即停止，不要反复尝试
+            - 在前 3 轮内判断是否属于可修复的问题，如果不是，直接结束
           claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Read,Glob,Grep"'
           settings: |
             {
@@ -168,24 +213,31 @@ __PACKAGE_MANAGER_SETUP__
             }
 
       - name: 提交 Claude 修改
-        if: steps.precheck.outputs.should_proceed == 'true'
+        id: commit
+        if: >-
+          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.context.outputs.no_stacktrace != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add __ALLOWED_PATHS_GIT_ADD__
-          git diff --cached --quiet && exit 0
-          git commit -m "fix: sentinel sentry error - ${SAFE_KEY}"
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "fix: sentinel sentry error - ${SAFE_KEY}"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 验证 - 类型检查
-        if: steps.precheck.outputs.should_proceed == 'true'
+        if: steps.commit.outputs.has_changes == 'true'
         run: __RUN_CMD__ type-check
 
       - name: 验证 - Lint 检查
-        if: steps.precheck.outputs.should_proceed == 'true'
+        if: steps.commit.outputs.has_changes == 'true'
         run: __RUN_CMD__ lint
 
       - name: 校验修改文件
-        if: steps.precheck.outputs.should_proceed == 'true'
+        if: steps.commit.outputs.has_changes == 'true'
         id: validate
         run: |
           CHANGED_FILES=$(git diff origin/__DEFAULT_BRANCH__ HEAD --name-only)
@@ -216,7 +268,7 @@ __PACKAGE_MANAGER_SETUP__
 
       - name: 推送分支
         if: >-
-          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.commit.outputs.has_changes == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         env:
           SENTINEL_PAT: ${{ secrets.SENTINEL_PAT }}
@@ -233,7 +285,7 @@ __PACKAGE_MANAGER_SETUP__
       - name: 准备 PR 正文
         id: pr_body
         if: >-
-          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.commit.outputs.has_changes == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         run: |
           # 将 PR 正文写入文件，避免 Sentry 数据中的特殊字符引发 shell 注入
@@ -267,7 +319,7 @@ __PACKAGE_MANAGER_SETUP__
       - name: 创建 PR
         id: create_pr
         if: >-
-          steps.precheck.outputs.should_proceed == 'true' &&
+          steps.commit.outputs.has_changes == 'true' &&
           steps.validate.outputs.no_changes != 'true'
         run: |
           # 使用 --body-file 传递 PR 正文，避免 shell 注入风险
@@ -284,7 +336,7 @@ __PACKAGE_MANAGER_SETUP__
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 执行失败时创建 Issue
-        if: failure()
+        if: failure() && steps.commit.outputs.has_changes == 'true'
         run: |
           {
             echo "## Sentry 自动修复失败"
