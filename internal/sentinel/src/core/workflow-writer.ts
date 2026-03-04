@@ -27,6 +27,7 @@ import {
 } from '../utils/package-manager.js';
 import {
   formatAllowedPathsDisplay,
+  formatAllowedPathsGitAdd,
   renderTemplate,
 } from '../utils/template.js';
 import { logger } from '../utils/logger.js';
@@ -56,6 +57,7 @@ export async function writeWorkflows(
     DEPLOY_WORKFLOW: config.deployWorkflow ?? 'Deploy Production',
     ALLOWED_PATHS_REGEX: allowedPaths.join('|'),
     ALLOWED_PATHS_DISPLAY: formatAllowedPathsDisplay(allowedPaths),
+    ALLOWED_PATHS_GIT_ADD: formatAllowedPathsGitAdd(allowedPaths),
     PACKAGE_MANAGER_SETUP: buildPackageManagerSetup(config.packageManager),
     PACKAGE_MANAGER: config.packageManager,
     INSTALL_CMD: buildInstallCmd(config.packageManager),

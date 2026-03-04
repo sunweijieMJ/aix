@@ -71,7 +71,8 @@ describe('GitHubAdapter', () => {
     ]);
     expect(instructions).not.toBeNull();
     expect(instructions).toContain('Sentry');
-    expect(instructions).toContain('workers/sentry-webhook.ts');
+    expect(instructions).toContain('workers/ 目录');
+    expect(instructions).toContain('wrangler.toml');
   });
 
   describe('isCliInstalled', () => {

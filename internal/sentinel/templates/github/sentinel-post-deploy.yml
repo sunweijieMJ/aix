@@ -5,9 +5,6 @@ name: Sentinel - Post Deploy
 
 on:
   deployment_status:
-  workflow_run:
-    workflows: ['__DEPLOY_WORKFLOW__']
-    types: [completed]
   workflow_dispatch:
     inputs:
       deploy_url:
@@ -25,8 +22,7 @@ jobs:
     if: >-
       vars.SENTINEL_ENABLED != 'false' &&
       ((github.event_name == 'workflow_dispatch') ||
-      (github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'))
+      (github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -56,10 +52,35 @@ __PACKAGE_MANAGER_SETUP__
       - name: 安装依赖
         run: __INSTALL_CMD__
 
-      - name: 检查部署 URL
+      - name: 检查每日 PR 数量限制
+        id: pr_limit
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          PR_COUNT=$(gh pr list \
+            --label "sentinel,post-deploy" \
+            --state all \
+            --search "created:>=$TODAY" \
+            --json number \
+            --jq 'length')
+
+          echo "今日 sentinel post-deploy PR 数量: $PR_COUNT"
+
+          if [ "$PR_COUNT" -ge __PR_DAILY_LIMIT__ ]; then
+            echo "::warning::今日 PR 数量已达上限（__PR_DAILY_LIMIT__），跳过本次执行"
+            echo "limit_reached=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "limit_reached=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 检查前置条件
         id: check_url
         run: |
-          if [ -z "$DEPLOY_URL" ]; then
+          if [ "${{ steps.pr_limit.outputs.limit_reached }}" == "true" ]; then
+            echo "::warning::今日 PR 数量已达上限，跳过本次执行"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif [ -z "$DEPLOY_URL" ]; then
             echo "::warning::DEPLOY_URL 为空，跳过冒烟测试"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
@@ -150,18 +171,25 @@ __PACKAGE_MANAGER_SETUP__
             1. 仔细分析冒烟测试失败原因
             2. 定位源代码中的根本原因
             3. 实现最小化修复
-            4. 运行类型检查验证：__RUN_CMD__ type-check
-            5. 运行 Lint 验证：__RUN_CMD__ lint
-            6. 只允许修改以下目录：__ALLOWED_PATHS_DISPLAY__
-            7. 禁止修改测试文件、配置文件或 package.json
-            8. 这是部署后修复，务必优先保证正确性和安全性
-            9. 提交信息格式：fix: post-deploy smoke test failure
+            4. 只允许修改以下目录：__ALLOWED_PATHS_DISPLAY__
+            5. 禁止修改测试文件、配置文件或 package.json
+            6. 这是部署后修复，务必优先保证正确性和安全性
+            7. 修复完成后无需运行验证命令，workflow 会自动执行类型检查和 Lint 验证
           claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],
               "hooks": {}
             }
+
+      - name: 提交 Claude 修改
+        if: steps.check_url.outputs.skip != 'true' && steps.smoke_tests.outputs.smoke_failed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add __ALLOWED_PATHS_GIT_ADD__
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: sentinel post-deploy smoke test fix"
 
       - name: 验证 - 类型检查
         if: steps.check_url.outputs.skip != 'true' && steps.smoke_tests.outputs.smoke_failed == 'true'

@@ -55,8 +55,8 @@ export interface InstallConfig {
 }
 
 export interface InstallResult {
-  /** 已安装的 workflow 文件路径 */
-  workflows: string[];
+  /** 已输出的文件路径（workflow + worker 等） */
+  outputFiles: string[];
   /** 已创建的 labels */
   labels: string[];
   /** 是否修改了 CLAUDE.md */

@@ -182,16 +182,24 @@ jobs:
             2. 优先修复 lint 错误（通常最简单）
             3. 再修复类型检查错误
             4. 测试失败时，修复源代码而非测试文件
-            5. 修复完成后重新运行所有检查：pnpm lint && pnpm type-check && pnpm test
-            6. 只允许修改以下目录：apps/, packages/
-            7. 禁止修改测试文件、配置文件或 package.json
-            8. 提交信息格式：fix: scheduled maintenance fixes
+            5. 只允许修改以下目录：apps/, packages/
+            6. 禁止修改测试文件、配置文件或 package.json
+            7. 修复完成后无需运行验证命令，workflow 会自动执行类型检查、Lint 和测试验证
           claude_args: '--model claude-sonnet-4-6 --max-turns 20 --allowedTools "Edit,Write,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],
               "hooks": {}
             }
+
+      - name: 提交 Claude 修改
+        if: steps.summary.outputs.has_issues == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/ packages/
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: sentinel scheduled maintenance"
 
       - name: 验证 - 类型检查
         if: steps.summary.outputs.has_issues == 'true'

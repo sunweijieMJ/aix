@@ -156,18 +156,25 @@ __PACKAGE_MANAGER_SETUP__
             1. 分析堆栈信息，定位根本原因
             2. 在代码库中找到相关源文件
             3. 实现最小化修复
-            4. 运行类型检查验证：__RUN_CMD__ type-check
-            5. 运行 Lint 验证：__RUN_CMD__ lint
-            6. 只允许修改以下目录：__ALLOWED_PATHS_DISPLAY__
-            7. 禁止修改测试文件、配置文件或 package.json
-            8. 在修改处附近添加简短注释，说明修复原因
-            9. 提交信息格式：fix: resolve Sentry error - ${SENTRY_TITLE}
+            4. 只允许修改以下目录：__ALLOWED_PATHS_DISPLAY__
+            5. 禁止修改测试文件、配置文件或 package.json
+            6. 在修改处附近添加简短注释，说明修复原因
+            7. 修复完成后无需运行验证命令，workflow 会自动执行类型检查和 Lint 验证
           claude_args: '--model __MODEL__ --max-turns __MAX_TURNS__ --allowedTools "Edit,Write,Read,Glob,Grep"'
           settings: |
             {
               "enabledMcpjsonServers": [],
               "hooks": {}
             }
+
+      - name: 提交 Claude 修改
+        if: steps.precheck.outputs.should_proceed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add __ALLOWED_PATHS_GIT_ADD__
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: sentinel sentry error - ${SAFE_KEY}"
 
       - name: 验证 - 类型检查
         if: steps.precheck.outputs.should_proceed == 'true'

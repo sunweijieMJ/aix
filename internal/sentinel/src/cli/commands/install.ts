@@ -105,8 +105,10 @@ async function runInstall(options: InstallOptions): Promise<void> {
     // 显示安装摘要
     console.log();
     console.log(chalk.bold(`安装摘要 (${config.platform}):`));
-    console.log(chalk.green(`  Pipelines: ${result.workflows.length} 个文件`));
-    for (const wf of result.workflows) {
+    console.log(
+      chalk.green(`  Pipelines: ${result.outputFiles.length} 个文件`),
+    );
+    for (const wf of result.outputFiles) {
       console.log(chalk.gray(`    - ${wf}`));
     }
 

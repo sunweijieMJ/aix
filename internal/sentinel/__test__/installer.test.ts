@@ -123,7 +123,7 @@ describe('install', () => {
       expect.objectContaining({ workflows: ['sentinel-issue.yml'] }),
       expect.any(Object),
     );
-    expect(result.workflows).toEqual(
+    expect(result.outputFiles).toEqual(
       expect.arrayContaining([expect.stringContaining('sentinel-issue')]),
     );
   });
@@ -137,7 +137,7 @@ describe('install', () => {
     const result = await install(createConfig({ phases: [1, 2, 3] }));
 
     expect(mockedWriteWorkflows).toHaveBeenCalledTimes(3);
-    expect(result.workflows).toEqual(
+    expect(result.outputFiles).toEqual(
       expect.arrayContaining([
         'sentinel-issue.yml',
         'sentinel-post-deploy.yml',
@@ -202,7 +202,7 @@ describe('install', () => {
 
     expect(result).toEqual(
       expect.objectContaining({
-        workflows: expect.any(Array),
+        outputFiles: expect.any(Array),
         labels: expect.any(Array),
         claudeMdPatched: true,
         secretsOk: true,
@@ -252,11 +252,16 @@ describe('install', () => {
     await install(createConfig({ phases: [3] }));
 
     expect(mockedReadTemplate).toHaveBeenCalledWith('worker/sentry-webhook.ts');
+    expect(mockedReadTemplate).toHaveBeenCalledWith('worker/wrangler.toml');
     expect(mockedEnsureDir).toHaveBeenCalledWith(
       expect.stringContaining('workers'),
     );
     expect(mockedWriteFile).toHaveBeenCalledWith(
       expect.stringContaining('workers/sentry-webhook.ts'),
+      expect.any(String),
+    );
+    expect(mockedWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining('workers/wrangler.toml'),
       expect.any(String),
     );
   });
@@ -269,6 +274,7 @@ describe('install', () => {
     expect(mockedReadTemplate).not.toHaveBeenCalledWith(
       'worker/sentry-webhook.ts',
     );
+    expect(mockedReadTemplate).not.toHaveBeenCalledWith('worker/wrangler.toml');
   });
 
   it('should replace __OWNER__ and __REPO__ in worker when provided', async () => {

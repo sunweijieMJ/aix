@@ -204,7 +204,7 @@ const monoResult = await install({
   allowedPaths: ['^packages/.*/src/', '^internal/.*/src/'],
 });
 
-console.log('安装的 Workflows:', result.workflows);
+console.log('输出的文件:', result.outputFiles);
 console.log('创建的 Labels:', result.labels);
 console.log('CLAUDE.md 已更新:', result.claudeMdPatched);
 console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
@@ -279,7 +279,7 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
   → 创建带 `sentry` 标签的 PR
 ```
 
-> Phase 3 需额外部署 Cloudflare Worker，详见 `templates/worker/sentry-webhook.ts`
+> Phase 3 需额外部署 Cloudflare Worker 并配置 Sentry Integration，详见下方 [Phase 3 部署指南](#phase-3-部署指南)
 
 ### Phase 4: 定时质量巡检
 
@@ -288,6 +288,93 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
   → 依次运行: lint → type-check → test
   → 发现问题 → Claude Code 自动修复
   → 创建带 `maintenance` 标签的 PR
+```
+
+---
+
+## Phase 3 部署指南
+
+Phase 3（Sentry 错误联动）需要部署 Cloudflare Worker 作为中间层，将 Sentry 告警转发到 GitHub Actions。安装器会自动生成 `workers/sentry-webhook.ts` 和 `workers/wrangler.toml`，但还需要手动完成以下三步。
+
+### 步骤一：部署 Cloudflare Worker
+
+```bash
+# 1. 安装 Wrangler CLI
+npm install -g wrangler
+
+# 2. 登录 Cloudflare
+wrangler login
+
+# 3. 创建 KV namespace（用于错误去重，24h TTL）
+#    若已存在可跳过，用 wrangler kv namespace list 查看
+wrangler kv namespace create SENTRY_DEDUP
+
+# 4. 将返回的 KV namespace ID 填入 workers/wrangler.toml 的 id 字段
+#    例如: id = "6364696df27f49a0b0e4e55886e7d3ba"
+
+# 5. 进入 workers/ 目录
+cd workers
+
+# 6. 配置 Worker Secrets（首次会提示创建 Worker，选 Yes）
+wrangler secret put SENTRY_CLIENT_SECRET  # Sentry Integration 的 Client Secret
+wrangler secret put SENTRY_AUTH_TOKEN      # Sentry Integration 的 Token
+wrangler secret put GITHUB_PAT             # GitHub PAT（需 repo 权限）
+
+# 7. 部署 Worker
+#    首次部署会提示注册 workers.dev 子域名，选 Yes 并输入子域名
+wrangler deploy
+```
+
+> 部署完成后 Worker 地址为: `https://sentry-webhook.<子域名>.workers.dev`
+>
+> **注意**: `GITHUB_PAT` 必须使用 Personal Access Token，不能使用 `GITHUB_TOKEN`。因为 `GITHUB_TOKEN` 触发的 `repository_dispatch` 事件不会启动 Workflows。参见 [GitHub 文档](https://docs.github.com/en/actions/using-workflows/triggering-a-workflow#triggering-a-workflow-from-a-workflow)。
+
+### 步骤二：创建 Sentry Internal Integration
+
+1. 进入 **Sentry → Settings → Developer Settings**
+2. 点击 **Create New Integration → Internal Integration**
+3. 配置如下：
+
+| 字段 | 值 |
+|------|-----|
+| Name | 自定义（如 `Sentinel Webhook`） |
+| Webhook URL | 步骤一部署的 Worker 地址 |
+
+4. **Permissions（权限）**：
+
+| 资源 | 权限 |
+|------|------|
+| Issue & Event | Read |
+| Project | Read |
+| 其他 | No Access |
+
+5. **Webhooks（事件订阅）**：勾选 `issue`
+6. 保存后获取 **Client Secret** 和 **Token**
+
+> 这两个值对应步骤一中 `wrangler secret put` 的 `SENTRY_CLIENT_SECRET` 和 `SENTRY_AUTH_TOKEN`。如果步骤一中填入了错误的值，重新执行 `wrangler secret put` 覆盖即可。
+
+### 步骤三：配置 Sentry Alert Rule
+
+1. 进入 Sentry 项目 → **Alerts → Create Alert Rule**
+2. Alert 类型选择 **Issues**
+3. 配置触发条件，例如：
+   - **When**: An event is captured by Sentry
+   - **Then**: A new issue is created
+4. **Actions**: Send a notification via `<你的 Integration 名称>`
+5. 保存 Alert Rule
+
+### 验证
+
+```bash
+# 1. 在终端启动 Worker 日志监控
+cd workers
+wrangler tail
+
+# 2. 在 Sentry Alert Rule 页面点击 "Send Test Notification"
+
+# 3. 检查 wrangler tail 输出，确认收到请求
+
+# 4. 检查 GitHub 仓库的 Actions 页面，确认触发了 sentry-issue workflow
 ```
 
 ---
@@ -349,7 +436,8 @@ templates/
 ├── claude-md/
 │   └── sentinel-rules.md     # 注入到目标 CLAUDE.md 的修复规范
 └── worker/
-    └── sentry-webhook.ts     # Cloudflare Worker（Sentry → GitHub）
+    ├── sentry-webhook.ts     # Cloudflare Worker（Sentry → GitHub）
+    └── wrangler.toml         # Wrangler 配置（Worker 名称、KV 绑定）
 ```
 
 ---

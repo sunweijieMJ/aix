@@ -49,13 +49,13 @@ export async function install(config: InstallConfig): Promise<InstallResult> {
     .map((p) => PHASE_CONFIGS[p]);
 
   // 3. 写入 pipelines
-  const allWorkflows: string[] = [];
+  const allOutputFiles: string[] = [];
 
   for (const phase of phases) {
     logger.step(`安装阶段 ${phase.phase}: ${phase.name}`);
 
     const workflows = await writeWorkflows(config, phase, adapter);
-    allWorkflows.push(...workflows);
+    allOutputFiles.push(...workflows);
   }
 
   // 3.5 Phase 3: 输出 Sentry Worker 模板到目标仓库
@@ -88,7 +88,18 @@ export async function install(config: InstallConfig): Promise<InstallResult> {
       );
     }
 
-    allWorkflows.push(workerDest);
+    allOutputFiles.push(workerDest);
+
+    // 写入 wrangler.toml
+    const rawWranglerContent = await readTemplate('worker/wrangler.toml');
+    const wranglerDest = path.join(workerDir, 'wrangler.toml');
+    if (config.dryRun) {
+      logger.info(`[dry-run] 将写入: ${wranglerDest}`);
+    } else {
+      await writeFile(wranglerDest, rawWranglerContent);
+      logger.debug(`已写入 Wrangler 配置: ${wranglerDest}`);
+    }
+    allOutputFiles.push(wranglerDest);
   }
 
   // 4. 创建 labels（先去重再调用，避免重复 API 请求）
@@ -125,13 +136,13 @@ export async function install(config: InstallConfig): Promise<InstallResult> {
   );
 
   // 7. 显示安装后提示（某些阶段可能需要额外配置）
-  const postInstructions = adapter.getPostInstallInstructions(allWorkflows);
+  const postInstructions = adapter.getPostInstallInstructions(allOutputFiles);
   if (postInstructions) {
     logger.warn(postInstructions);
   }
 
   return {
-    workflows: allWorkflows,
+    outputFiles: allOutputFiles,
     labels: uniqueLabels,
     claudeMdPatched,
     secretsOk: secretsCheck.ok,

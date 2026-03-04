@@ -16,6 +16,15 @@ export function formatAllowedPathsDisplay(paths: string[]): string {
 }
 
 /**
+ * 将 allowedPaths bash regex 数组转为 git add 可用的路径参数
+ *
+ * 例: ['^src/', '^packages/'] → 'src/ packages/'
+ */
+export function formatAllowedPathsGitAdd(paths: string[]): string {
+  return paths.map((p) => p.replace(/^\^/, '').replace(/\.\*/g, '')).join(' ');
+}
+
+/**
  * 渲染模板内容
  *
  * 将模板中的 `__KEY__` 占位符替换为 vars 中对应的值。
