@@ -26,9 +26,9 @@
     "@aix/subtitle": "workspace:*",
     "@aix/theme": "workspace:*",
     "@aix/video": "workspace:*",
-    "element-plus": "^2.13.2",
-    "vue": "^3.5.28",
-    "vue-i18n": "^11.2.8"
+    "element-plus": "^2.13.5",
+    "vue": "^3.5.29",
+    "vue-i18n": "^11.3.0"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:*",
