@@ -1,9 +1,11 @@
 # AI 自动修复系统 (sentinel)
 
-> **状态**: Draft
+> **状态**: Implemented（Phase 1-4 已实现，详见 [实现差异说明](#实现差异说明)）
 > **作者**: AIX Team
 > **适用范围**: 业务仓库（当前支持 GitHub Actions，GitLab CI / Jenkins 为远期规划）
 > **定位**: 平台无关的通用方案模板，托管于 aix 仓库统一管理，各业务仓库按需接入
+> **实现代码**: `internal/sentinel/`
+> **用户文档**: `internal/sentinel/README.md`
 
 ## 概述
 
@@ -19,6 +21,55 @@
 | **最小改动** | 每次修复只改必要的代码，不做额外重构 |
 | **可观测** | 修复过程全程可追溯，失败有通知 |
 | **可降级** | 一键关闭，不影响正常开发流程 |
+
+## 实现差异说明
+
+> Phase 1-4 均已实现。以下为实际实现与本设计文档的主要差异，供参考。
+> **实际代码和行为以 `internal/sentinel/` 源码和 `internal/sentinel/README.md` 为准。**
+
+### Workflow 执行模型
+
+| 方面 | 设计文档 | 实际实现 |
+|------|---------|---------|
+| **AI 执行方式** | `claude-code-action` 的 `branch` 参数自动 commit + push | Claude Code 修改后手动 `git add`（仅白名单目录）→ `git commit` → 验证 → `git push` |
+| **变更检测** | 依赖 `claude-code-action` 的 `has_changes` output | 使用 `git diff --cached --quiet` 自行检测 |
+| **分支推送** | 使用 `GITHUB_TOKEN` | 使用 `SENTINEL_PAT`（确保推送后触发 CI） |
+| **PR 创建** | `gh pr create`（直接传 body 字符串） | `gh pr create --body-file`（防止 shell 注入） |
+
+### 安全增强（设计文档未涉及）
+
+实际实现新增了以下安全机制：
+
+1. **文件白名单硬校验** - 每次修复后用 `git diff` 校验修改文件是否在 `--allowed-paths` 内，违规则清理分支、拒绝创建 PR
+2. **修复后自动验证** - Claude 修改后自动运行 `type-check` + `lint`（Phase 4 还运行 `test`），验证不通过不创建 PR
+3. **仅 add 白名单文件** - `git add` 只添加白名单目录，即使 Claude 修改了其他文件也不会被提交
+4. **Claude 工具限制** - Claude 仅允许使用 `Edit,Write,Read,Glob,Grep`，禁止 `Bash` 等执行任意命令的工具
+5. **Issue body 截断** - Phase 1 将 Issue body 截断至 5000 字符，防止过大 Issue 浪费 token
+6. **堆栈信息空检查** - Phase 3 检查堆栈信息是否为空，为空则创建分析 Issue 而非尝试修复
+7. **失败时创建 Issue** - Phase 2/3/4 修复失败时自动创建 Issue 引导人工介入
+
+### 触发方式差异
+
+| 阶段 | 设计文档 | 实际实现 |
+|------|---------|---------|
+| Phase 2 | `deployment_status` / `workflow_run` | `workflow_dispatch`（手动或 API 调用，需提供部署 URL） |
+| Phase 4 | `schedule` + `workflow_dispatch` | 相同，但 `workflow_dispatch` 增加了检查项选择输入 |
+
+### Sentry Worker 差异
+
+| 方面 | 设计文档 | 实际实现 |
+|------|---------|---------|
+| **safe_key 生成** | MD5 hash（`createHash('md5')`） | SHA-256 hash（`crypto.subtle.digest`） |
+| **签名验证** | 概念性 `verifySignature()` | 完整 HMAC-SHA256 实现 + 常量时间比较（`timingSafeEqual`） |
+| **client_payload** | `count`, `users_affected`, `first_seen`, `permalink` | `url`, `event_id`, `triggered_rule`（更精简） |
+| **安装验证** | 无 | 处理 `sentry-hook-resource: installation` 验证请求 |
+| **Stacktrace 获取** | 通过 issue ID 获取 latest event | 通过 issue URL + event ID 获取特定 event |
+
+### 模板变量系统
+
+设计文档中的 workflow 示例直接硬编码配置值。实际实现使用 `__KEY__` 模板变量系统（如 `__NODE_VERSION__`、`__PACKAGE_MANAGER__`），安装时由 `renderTemplate()` 替换，同时保留 `${{ }}` GitHub Actions 表达式。
+
+---
 
 ## 动机
 
@@ -358,6 +409,9 @@ pipeline {
 ```
 
 ## 详细设计
+
+> **注**: 以下 Workflow YAML 和代码示例为**设计阶段的概念版本**，与实际实现存在差异。
+> 实际模板位于 `internal/sentinel/templates/`，主要差异见 [实现差异说明](#实现差异说明)。
 
 ### 链路一：Sentry 错误 → 自动修复
 
@@ -1261,12 +1315,21 @@ main 分支必须开启以下保护：
 
 | 维度 | 限制 | 实现方式 |
 |------|------|---------|
-| 同一错误去重 | 24 小时内同一 Sentry Issue 只触发 1 次 | 中间服务 KV 存储 |
-| 并发控制 | 同一触发源内串行执行 | `concurrency` group（按链路隔离，非全局限制） |
-| 全局并发限制 | 跨链路总并发不超过 3 个 | 中间服务层令牌桶限流（推荐），或 GitHub Actions `concurrency` 全局 group |
-| 重复 PR 检测 | 已有同类开放 PR 时跳过 | workflow 中 `gh pr list` 检查 |
-| 每日上限 | 单日最多创建 10 个修复 PR | workflow 中 `gh pr list` 统计当日数量 |
-| 成本控制 | 单次修复 max_turns <= 30 | Claude Code Action 参数 |
+| 同一错误去重 | 24 小时内同一 Sentry Issue 只触发 1 次 | Worker KV 存储（SHA-256 hash 作为 key） |
+| 并发控制 | 同一触发源内串行执行 | `concurrency` group（按链路隔离） |
+| 重复 PR 检测 | 已有同类开放 PR 时跳过 | Phase 3 workflow 中 `gh pr list --head` 检查 |
+| 每日上限 | 单日最多创建 N 个修复 PR（默认 5，可配置） | workflow 中 `gh pr list --search "created:>=$TODAY"` 统计 |
+| 成本控制 | 单次修复 max_turns 可配置（默认 20） | Claude Code Action 参数 |
+
+#### 文件安全（实际实现新增）
+
+| 机制 | 说明 |
+|------|------|
+| **仅 add 白名单文件** | `git add` 只添加 `--allowed-paths` 指定的目录，即使 Claude 修改了其他文件也不被提交 |
+| **白名单硬校验** | 提交后用 `git diff` 校验修改文件，违规则清理远端分支、阻止 PR 创建 |
+| **修复后验证** | Claude 修复完成后自动运行 type-check + lint（Phase 4 还运行 test），不通过则不创建 PR |
+| **Claude 工具限制** | Claude 仅可使用 `Edit,Write,Read,Glob,Grep`，禁止 `Bash` 等可执行任意命令的工具 |
+| **shell 注入防护** | PR body 通过 `--body-file` 传递，Sentry 数据通过 env 变量传递，避免 `${{ }}` 注入 |
 
 #### 降级开关
 
@@ -1306,22 +1369,20 @@ jobs:
 |------|------|----------|
 | **AI 修复引入新 bug** | 高 | 强制 CI 通过 + 人工 Review，禁止自动合并 |
 | **过度触发浪费资源** | 中 | 去重 + 限流 + 阈值调优 + 每日上限 |
-| **Prompt 注入** | 中 | Issue 内容可能包含恶意指令；三层防护：(1) 标签权限限制为 Collaborator+，(2) CLAUDE.md 软约束文件权限，(3) PR 创建前 diff 白名单硬检查 |
+| **Prompt 注入** | 中 | Issue 内容可能包含恶意指令；五层防护：(1) 标签权限限制为 Collaborator+，(2) CLAUDE.md 软约束文件权限，(3) `git add` 仅白名单目录，(4) `git diff` 白名单硬校验（违规清理分支），(5) Claude 工具限制为 `Edit,Write,Read,Glob,Grep` |
 | **API Key 泄露** | 高 | 使用 GitHub Secrets 存储，最小权限原则 |
 | **修复质量低，团队不信任** | 中 | 先从简单问题开始，逐步证明价值 |
 | **API 成本失控** | 中 | max_turns 限制 + 每日上限 + 降级开关 + 月度预算告警 |
 
 ## 待解决问题
 
-以下问题需要在实施前确认：
-
 | # | 问题 | 影响 | 建议 | 状态 |
 |---|------|------|------|------|
-| 1 | **`claude-code-action` 的 outputs schema** | 当前假设存在 `has_changes`、`summary` 等输出字段，需对照官方文档确认实际字段名 | Phase 1 启动前验证，必要时调整 workflow | 待确认 |
-| 2 | ~~**`claude-code-action` 与 `create-pull-request` 的职责划分**~~ | ~~action 本身可能支持创建 PR，与 `create-pull-request` 共用可能产生分支/commit 冲突~~ | 已解决：移除 `create-pull-request`，使用 `claude-code-action` 的 `branch` 参数 + `gh pr create` | **已解决** |
-| 3 | ~~**step output 的大小限制**~~ | ~~`GITHUB_OUTPUT` 有 ~1MB 限制，大型测试报告或 stacktrace 可能超限~~ | 已解决：中间服务添加 8KB stacktrace 截断，测试日志 `head -500` 截断 | **已解决** |
-| 4 | **冒烟测试套件就绪度** | 链路二依赖 `pnpm test:e2e:smoke`，各业务仓库的 E2E 测试成熟度不一 | Phase 2 前先评估各仓库 E2E 覆盖率 | 待确认 |
-| 5 | **修复失败后的重试策略** | 当前修复失败仅发通知，无自动重试机制 | MVP 阶段不重试，后续根据失败原因分类（瞬态 vs 永久）决定是否引入 | 待确认 |
+| 1 | ~~**`claude-code-action` 的 outputs schema**~~ | ~~当前假设存在 `has_changes`、`summary` 等输出字段~~ | 已解决：不依赖 action outputs，改为手动 `git add` + `git diff --cached --quiet` 检测变更 | **已解决** |
+| 2 | ~~**`claude-code-action` 与 `create-pull-request` 的职责划分**~~ | ~~action 本身可能支持创建 PR~~ | 已解决：移除 `create-pull-request`，使用手动 `git commit` + `git push` + `gh pr create` | **已解决** |
+| 3 | ~~**step output 的大小限制**~~ | ~~`GITHUB_OUTPUT` 有 ~1MB 限制~~ | 已解决：Worker 添加 8KB stacktrace 截断，Issue body 截断至 5000 字符 | **已解决** |
+| 4 | **冒烟测试套件就绪度** | 链路二依赖冒烟测试命令（可配置），各业务仓库的 E2E 测试成熟度不一 | Phase 2 前先评估各仓库 E2E 覆盖率。Phase 2 已改为 `workflow_dispatch` 触发，可灵活控制 | 待确认 |
+| 5 | **修复失败后的重试策略** | 当前修复失败创建 Issue 通知，无自动重试机制 | 不重试，失败时自动创建 Issue 引导人工介入 | **设计决定** |
 
 ## 备选方案
 
@@ -1361,45 +1422,53 @@ jobs:
 
 ## 采用策略
 
-### Phase 1: MVP
+### Phase 1: MVP ✅ 已实现
 
 **目标**: 跑通链路四（Issue 标签触发），验证 Claude Code Action 基本能力
 
-- [ ] 业务仓库 CLAUDE.md 添加修复规范
-- [ ] 配置 `sentinel-issue.yml` workflow
-- [ ] 配置 GitHub Secrets（ANTHROPIC_API_KEY）
+- [x] 业务仓库 CLAUDE.md 添加修复规范（安装器自动注入，支持幂等更新）
+- [x] 配置 `sentinel-issue.yml` workflow（安装器自动生成）
+- [x] 配置 GitHub Secrets（ANTHROPIC_API_KEY + SENTINEL_PAT）
 - [ ] 手动创建 3-5 个已知 bug 的 Issue，测试修复效果
 - [ ] 评估修复质量，调优 prompt
 
-### Phase 2: 部署后检测
+**实现增强**: Issue body 截断（5000 字符）、type-check + lint 自动验证、文件白名单硬校验、失败/无修改时自动评论 Issue
+
+### Phase 2: 部署后检测 ✅ 已实现
 
 **目标**: 接入部署后冒烟测试自动修复
 
+- [x] 配置 `sentinel-post-deploy.yml` workflow（安装器自动生成）
 - [ ] 确保已有可用的冒烟测试套件（E2E 或 API 测试）
-- [ ] 配置 `sentinel-post-deploy.yml` workflow
 - [ ] 在 staging 环境先行验证
 - [ ] 灰度到生产环境
 
-### Phase 3: Sentry 联动
+**实现调整**: 触发方式改为 `workflow_dispatch`（手动/API 调用，需提供部署 URL），而非设计中的 `deployment_status` / `workflow_run`。冒烟测试命令可配置。修复失败时自动创建紧急 Issue。
+
+### Phase 3: Sentry 联动 ✅ 已实现
 
 **目标**: 线上错误自动修复
 
-- [ ] 创建 GitHub PAT（Personal Access Token），配置为 `SENTINEL_PAT` Secret（`repository_dispatch` 需要 PAT，默认 `GITHUB_TOKEN` 无法触发）
-- [ ] 部署中间服务（Cloudflare Worker），配置 `GITHUB_PAT`、`SENTRY_AUTH_TOKEN` 环境变量
-- [ ] 配置 Sentry Alert Rule + Webhook
-- [ ] 配置 `sentinel-sentry.yml` workflow
-- [ ] 调优触发阈值（避免过度触发）
+- [x] 生成 Cloudflare Worker 代码和 wrangler.toml（安装器自动输出到 `workers/` 目录）
+- [x] 配置 `sentinel-sentry.yml` workflow（安装器自动生成）
+- [ ] 创建 GitHub PAT（Personal Access Token），配置为 `SENTINEL_PAT` Secret
+- [ ] 部署 Cloudflare Worker，配置 `GITHUB_PAT`、`SENTRY_AUTH_TOKEN`、`SENTRY_CLIENT_SECRET` Secrets
+- [ ] 配置 Sentry Internal Integration + Alert Rule
 - [ ] 生产试运行，观察效果
 
-### Phase 4: 定时巡检 + 可观测
+**实现增强**: Worker 使用 SHA-256 生成 safe_key（替代 MD5）、HMAC-SHA256 签名验证 + 常量时间比较、空堆栈信息检查（创建分析 Issue 而非尝试修复）、重复 PR 检查
+
+### Phase 4: 定时巡检 ✅ 已实现
 
 **目标**: 完整闭环 + 效果可度量
 
-- [ ] 配置 `sentinel-scheduled.yml` workflow
+- [x] 配置 `sentinel-scheduled.yml` workflow（安装器自动生成）
 - [ ] 接入 IM 通知（飞书/钉钉）
 - [ ] 搭建修复效果 Dashboard
 - [ ] 建立周报机制
 - [ ] 根据数据持续调优
+
+**实现增强**: 支持通过 `workflow_dispatch` 手动选择检查项、修复后自动运行 test 复验、检查命令可自定义覆盖、修复失败时自动创建 Issue
 
 ### Phase 5: 多 CI 平台适配（远期规划）
 
@@ -1420,39 +1489,36 @@ jobs:
 ### 安装
 
 ```bash
-# GitHub Actions（默认）
-sentinel install --phase 1
+# 交互式安装（推荐）—— 向导引导选择阶段、包管理器、路径等
+npx sentinel install --target /path/to/repo
 
-# GitLab CI
-sentinel install --phase 1 --platform gitlab
+# 非交互模式 —— 使用默认配置安装 Phase 1
+npx sentinel install --target /path/to/repo --yes
 
-# Jenkins
-sentinel install --phase 1 --platform jenkins
+# 干跑模式
+npx sentinel install --target /path/to/repo --dry-run
 
 # 从 aix monorepo 内开发调试
-pnpm --filter @kit/sentinel dev -- install --phase 1 --platform github
+pnpm dev install --target /tmp/test-repo --yes --dry-run
 ```
 
 ### 命令
 
 | 命令 | 说明 |
 |------|------|
-| `sentinel install` | 安装指定 Phase 的 workflow 到目标仓库 |
-| `sentinel check` | 检查目标仓库的安装状态（workflow、secrets、CLAUDE.md） |
-| `sentinel uninstall` | 移除已安装的 sentinel workflow 和配置 |
+| `sentinel install` | 安装 sentinel workflows 到目标仓库（交互式向导或 `--yes` 默认配置） |
+| `sentinel check` | 检查目标仓库的安装状态（pipeline 文件、secrets、CLAUDE.md） |
+| `sentinel uninstall` | 移除已安装的 sentinel workflow 和 CLAUDE.md 规范 |
 
 ### install 命令参数
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| `--platform <name>` | CI 平台：当前仅支持 `github`（`gitlab` / `jenkins` 为远期规划） | github |
-| `--phase <1-4>` | 安装指定阶段（累积安装 1..N） | 交互选择 |
-| `--all` | 安装全部 4 个阶段 | - |
-| `--target <path>` | 目标仓库路径 | 当前目录 |
-| `-y, --yes` | 跳过交互确认 | false |
-| `--dry-run` | 仅预览，不实际写入 | false |
-| `--node-version <ver>` | Pipeline 中的 Node.js 版本 | 20 |
-| `--reviewers <list>` | MR/PR 默认 Reviewer | - |
+| `--target <path>` | 目标仓库目录 | 当前目录 |
+| `-y, --yes` | 跳过交互向导，使用默认配置安装 Phase 1 | `false` |
+| `--dry-run` | 预览模式，不写入文件 | `false` |
+
+> `--phase`、`--platform` 等选项已移至交互式向导中。使用 `--yes` 时默认安装 Phase 1 + GitHub + pnpm。
 
 ### 安装流程
 
@@ -1471,16 +1537,40 @@ flowchart TD
 
 ### 工具架构
 
-工具源码位于 `internal/sentinel/`，关键模块：
+工具源码位于 `internal/sentinel/`，完整架构：
 
-| 模块 | 职责 |
-|------|------|
-| `core/installer.ts` | 安装编排器（按平台分发） |
-| `core/workflow-writer.ts` | 模板渲染 + 写入对应平台的配置目录 |
-| `core/claude-md-patcher.ts` | 幂等修补 CLAUDE.md |
-| `core/label-creator.ts` | 通过平台 CLI 创建标签 |
-| `core/secrets-checker.ts` | 检查 Secrets/Variables 并输出配置引导 |
-| `utils/template.ts` | `__VAR__` 模板变量替换 |
+```
+src/
+├── cli.ts                    # CLI 入口 (Commander)
+├── index.ts                  # 编程 API 导出
+├── types/
+│   ├── config.ts             # 类型定义 & Phase 配置常量
+│   └── index.ts              # 类型重导出
+├── core/
+│   ├── installer.ts          # 安装编排主流程
+│   ├── validator.ts          # 环境预检（Git 仓库、CLI 工具）
+│   ├── workflow-writer.ts    # 模板渲染 & 文件写入
+│   ├── label-creator.ts      # GitHub Label 创建（去重）
+│   ├── secrets-checker.ts    # Secrets/Variables 校验
+│   └── claude-md-patcher.ts  # CLAUDE.md 规范注入（幂等）
+├── platform/
+│   ├── types.ts              # PlatformAdapter 接口
+│   ├── github-adapter.ts     # GitHub Actions 实现
+│   └── index.ts              # 适配器工厂
+├── cli/
+│   ├── prompts.ts            # 交互式安装向导（inquirer）
+│   ├── preview.ts            # 安装配置预览面板
+│   └── commands/
+│       ├── install.ts        # sentinel install
+│       ├── check.ts          # sentinel check
+│       └── uninstall.ts      # sentinel uninstall
+└── utils/
+    ├── logger.ts             # 彩色日志输出
+    ├── template.ts           # __KEY__ 模板变量替换
+    ├── file.ts               # 文件 I/O & 模板加载
+    ├── git.ts                # Git 操作（isGitRepo, getDefaultBranch, parseGitRemote）
+    └── package-manager.ts    # 包管理器命令生成（pnpm/npm/yarn）
+```
 
 模板文件按平台组织：
 
@@ -1494,7 +1584,8 @@ templates/
 ├── claude-md/                 # CLAUDE.md 补丁（通用）
 │   └── sentinel-rules.md
 └── worker/                    # Sentry Worker（通用）
-    └── sentry-webhook.ts
+    ├── sentry-webhook.ts      # Cloudflare Worker 源码
+    └── wrangler.toml          # Wrangler 配置（Worker 名称、KV 绑定）
 # gitlab/ 和 jenkins/ 目录为远期 Phase 5 规划
 ```
 
@@ -1580,9 +1671,14 @@ Jenkins 本身不提供分支保护，但代码仓库通常托管在 GitLab/GitH
 
 ### Secrets 需求
 
-| Secret/Variable | 用途 | 哪个阶段需要 |
-|-----------------|------|-------------|
-| `ANTHROPIC_API_KEY` (Secret) | Claude API 调用 | Phase 1-4 |
-| `SENTINEL_PAT` (Secret) | GitHub PAT，用于 `repository_dispatch` 触发 | Phase 3 (Sentry) |
-| `SENTINEL_ENABLED` (Variable) | 降级开关，设为 `false` 关闭所有自动修复 | Phase 1-4 |
-| `SENTINEL_REVIEWERS` (Variable) | 修复 PR 的默认 Reviewer 列表 | Phase 1-4（可选） |
+> 以下为实际实现的 Secrets 需求，与设计初版有差异。
+
+| Secret/Variable | 用途 | 哪个阶段需要 | 必须 |
+|-----------------|------|-------------|------|
+| `ANTHROPIC_API_KEY` (Secret) | Claude API 调用 | Phase 1-4 | 是 |
+| `SENTINEL_PAT` (Secret) | GitHub PAT（`contents:write` 权限），用于推送分支。使用 PAT 确保推送后 CI 自动触发 | Phase 1-4 | 是 |
+| `ANTHROPIC_BASE_URL` (Secret) | 自定义 API 端点（代理 / 私有部署时使用） | Phase 1-4 | 否 |
+| `SENTINEL_ENABLED` (Variable) | 降级开关，设为 `false` 关闭所有自动修复 | Phase 1-4 | 否 |
+| `SENTINEL_REVIEWERS` (Variable) | PR 审查者（逗号分隔） | Phase 3 | 否 |
+
+**注**: `SENTINEL_PAT` 的使用范围从最初设计的仅 Phase 3（`repository_dispatch`）扩大至 Phase 1-4（所有阶段的 `git push`）。这是因为 `GITHUB_TOKEN` 推送的提交不会触发后续 workflow。

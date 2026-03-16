@@ -23,7 +23,7 @@ AI 自动修复 Workflow 安装工具 —— 将 AI sentinel CI pipelines 安装
 | Phase | 名称 | 触发方式 | 说明 |
 |-------|------|---------|------|
 | **1** | Issue 标签触发 | Issue 打 `sentinel` 标签 | MVP，手动触发 AI 修复 |
-| **2** | 部署后冒烟测试 | 部署 workflow 成功后 | E2E 失败自动修复 |
+| **2** | 部署后冒烟测试 | `workflow_dispatch`（手动/API） | 提供部署 URL，冒烟测试失败自动修复 |
 | **3** | Sentry 错误联动 | 线上错误超阈值 | 生产异常自动创建修复 PR |
 | **4** | 定时质量巡检 | 工作日 Cron 定时 | lint / type-check / test |
 
@@ -62,7 +62,7 @@ npx sentinel install --target /path/to/repo --dry-run
 | 名称 | 类型 | 阶段 | 必须 | 说明 |
 |------|------|------|------|------|
 | `ANTHROPIC_API_KEY` | Secret | 1-4 | 是 | Claude API 密钥 |
-| `SENTINEL_PAT` | Secret | 1-4 | 是 | GitHub PAT（需 `contents:write` + `pull-requests:write` 权限，用于推送分支和创建 PR） |
+| `SENTINEL_PAT` | Secret | 1-4 | 是 | GitHub PAT（需 `contents:write` 权限，用于推送分支。使用 PAT 确保推送后 CI 自动触发，`GITHUB_TOKEN` 推送的提交不触发 workflow） |
 | `ANTHROPIC_BASE_URL` | Secret | 1-4 | 否 | 自定义 API 端点（代理 / 私有部署时使用） |
 | `SENTINEL_ENABLED` | Variable | 1-4 | 否 | 总开关，设为 `false` 可全局关闭 |
 | `SENTINEL_REVIEWERS` | Variable | 3 | 否 | PR 审查者（逗号分隔） |
@@ -101,7 +101,7 @@ sentinel install [options]
 | Node.js 版本 | Workflow 中的 Node.js 版本 | `22` |
 | 允许路径 | AI 允许修改的文件路径模式（bash regex） | `^src/` |
 | Reviewers | PR 审查者（逗号分隔） | - |
-| 部署 workflow | Phase 2 触发条件 | `Deploy Production` |
+| 部署 URL | Phase 2 待测试的部署环境 URL | 必填（`workflow_dispatch` 输入） |
 | 冒烟测试命令 | Phase 2 测试命令 | `pnpm test:smoke` |
 | Owner / Repo | Phase 3 仓库信息（自动从 git remote 读取） | - |
 | Cron 表达式 | Phase 4 定时触发 | `0 18 * * 5` |
@@ -223,7 +223,7 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
 | `packageManager` | `PackageManager` | 是 | `'pnpm'` | 包管理器（自动检测 lockfile） |
 | `allowedPaths` | `string[]` | 否 | `['^src/']` | AI 允许修改的文件路径模式（bash regex） |
 | `reviewers` | `string` | 否 | - | PR 审查者（逗号分隔） |
-| `deployWorkflow` | `string` | 否 | `'Deploy Production'` | Phase 2: 触发冒烟测试的部署 workflow 名称 |
+| `deployWorkflow` | `string` | 否 | `'Deploy Production'` | Phase 2: 部署 workflow 名称（预留字段，当前模板未使用） |
 | `smokeTestCmd` | `string` | 否 | `'pnpm test:smoke'` | Phase 2: 冒烟测试命令 |
 | `owner` | `string` | 否 | 自动读取 git remote | Phase 3: 仓库 owner |
 | `repo` | `string` | 否 | 自动读取 git remote | Phase 3: 仓库名称 |
@@ -238,7 +238,7 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `workflows` | `string[]` | 已安装的 workflow 文件路径列表 |
+| `outputFiles` | `string[]` | 已输出的文件路径列表（workflow + worker 等） |
 | `labels` | `string[]` | 已创建的 GitHub labels |
 | `claudeMdPatched` | `boolean` | 是否修改了目标仓库的 CLAUDE.md |
 | `secretsOk` | `boolean` | Secrets/Variables 检查是否通过 |
@@ -251,32 +251,48 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
 
 ```
 开发者在 Issue 上打 `sentinel` 标签
-  → GitHub Actions 触发
-  → 检查每日 PR 限额（≤5）
-  → Claude Code 分析 Issue 描述，修复代码
-  → 仅允许修改 --allowed-paths 指定的目录
-  → 创建 PR，在 Issue 中回复链接
+  → 检查每日 PR 限额
+  → 评论 Issue（开始修复）
+  → 截断 Issue body（≤5000 字符）
+  → 创建修复分支
+  → Claude Code 分析 Issue 并修改代码
+  → 仅 git add 白名单目录下的文件
+  → 类型检查 + Lint 验证
+  → 文件白名单硬校验（非法修改则清理分支）
+  → 使用 SENTINEL_PAT 推送分支
+  → 创建 PR（关联 Issue，Closes #N）
+  → 评论 Issue（PR 链接 / 无修改 / 执行失败）
 ```
 
 ### Phase 2: 部署后冒烟测试
 
 ```
-部署 Workflow 成功
-  → 自动运行 E2E 冒烟测试
+手动触发 / API 调用（提供部署 URL）
+  → 检查每日 PR 限额
+  → 安装 Playwright 浏览器
+  → 运行冒烟测试
   → 测试失败 → Claude Code 分析失败原因并修复
-  → 创建带 `urgent` 标签的 PR
-  → 自动指派 Reviewers
+  → 类型检查 + Lint 验证
+  → 文件白名单硬校验
+  → 创建带 `sentinel,post-deploy,urgent` 标签的 PR
+  → 修复失败时创建紧急 Issue
 ```
 
 ### Phase 3: Sentry 错误联动
 
 ```
 线上错误 → Sentry Webhook → Cloudflare Worker
-  → 错误去重（24h TTL，KV 存储）
-  → 获取 resolved stacktrace
+  → HMAC-SHA256 签名验证
+  → KV 去重（24h TTL）
+  → 获取 resolved stacktrace（source-mapped）
   → GitHub repository_dispatch 事件
+  → 检查每日 PR 限额 + 重复 PR 检查
+  → 堆栈信息为空 → 创建分析 Issue，跳过修复
   → Claude Code 分析堆栈并修复
-  → 创建带 `sentry` 标签的 PR
+  → 类型检查 + Lint 验证
+  → 文件白名单硬校验
+  → 创建带 `sentinel,sentry` 标签的 PR
+  → 修复失败时创建 Issue
 ```
 
 > Phase 3 需额外部署 Cloudflare Worker 并配置 Sentry Integration，详见下方 [Phase 3 部署指南](#phase-3-部署指南)
@@ -284,10 +300,14 @@ console.log('Secrets 检查:', result.secretsOk ? '通过' : '缺失');
 ### Phase 4: 定时质量巡检
 
 ```
-工作日 Cron 定时触发
-  → 依次运行: lint → type-check → test
-  → 发现问题 → Claude Code 自动修复
-  → 创建带 `maintenance` 标签的 PR
+Cron 定时触发 / 手动触发（可选择检查项）
+  → 依次运行检查项: lint → type-check → test
+  → 发现问题 → 汇总报告
+  → Claude Code 分析报告并修复
+  → 类型检查 + Lint + 测试验证
+  → 文件白名单硬校验
+  → 创建带 `sentinel,maintenance` 标签的 PR
+  → 修复失败时创建 Issue
 ```
 
 ---
@@ -386,10 +406,16 @@ wrangler tail
 | **AI 修，人审核** | AI 只创建 PR，合并权始终在人 |
 | **最小改动原则** | 只改必要代码，不做额外重构 |
 | **文件权限控制** | 仅允许修改 `--allowed-paths` 指定的目录（默认 `src/`），禁止修改测试、配置、CI 文件 |
-| **每日 PR 限额** | 每天最多创建 5 个 sentinel PR |
+| **文件白名单硬校验** | 每次修复后用 git diff 校验修改文件是否在白名单内，违规则清理分支、拒绝创建 PR |
+| **修复后验证** | Claude 修改完成后自动运行 type-check + lint（Phase 4 还会运行 test），验证不通过则不创建 PR |
+| **仅 add 白名单文件** | `git add` 只添加白名单目录下的文件，即使 Claude 修改了其他文件也不会被提交 |
+| **每日 PR 限额** | 每天最多创建 N 个 sentinel PR（默认 5，各阶段独立计数） |
+| **重复 PR 检查** | Phase 3 创建 PR 前检查是否已有同一 Sentry 错误的开放 PR |
 | **总开关** | `SENTINEL_ENABLED` 变量设为 `false` 即可全局关闭 |
-| **Sentry 去重** | 相同错误 24 小时内不重复触发 |
-| **执行超时** | 单次修复最长 30 分钟 |
+| **Sentry 去重** | 相同错误 24 小时内不重复触发（Worker KV 存储） |
+| **Sentry 签名验证** | Worker 使用 HMAC-SHA256 验证 Sentry webhook 签名 |
+| **Claude 工具限制** | Claude 仅允许使用 `Edit,Write,Read,Glob,Grep` 工具，禁止执行任意命令 |
+| **执行超时** | Phase 1/3: 30 分钟，Phase 2: 45 分钟，Phase 4: 60 分钟 |
 
 ---
 
