@@ -493,7 +493,6 @@ export function getCustomComponents() {
 
 ### 相关文档
 
-- [现有 overrides 实现参考](../../ai-project-verification-h5/src/overrides)
 - [Vue 插件系统](https://vuejs.org/guide/reusability/plugins.html)
 - [Micro Frontends 架构](https://micro-frontends.org/)
 
