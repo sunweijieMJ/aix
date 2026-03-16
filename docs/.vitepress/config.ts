@@ -117,6 +117,10 @@ export default withMermaid(
             items: [
               { text: '视觉比对测试', link: '/rfcs/visual-testing-rfc' },
               { text: 'AI 自动修复', link: '/rfcs/sentinel-design-draft' },
+              {
+                text: '定制化项目代码合并方案',
+                link: '/rfcs/customization-merge-strategy',
+              },
             ],
           },
         ],
@@ -125,6 +129,15 @@ export default withMermaid(
           {
             text: '技术分享',
             items: [{ text: '概述', link: '/tech-sharing/' }],
+          },
+          {
+            text: 'AI 编程',
+            items: [
+              {
+                text: 'AI 编程接入指南（2026）',
+                link: '/tech-sharing/ai-programming-guide',
+              },
+            ],
           },
           {
             text: '工具与工作流',

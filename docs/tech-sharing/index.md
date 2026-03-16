@@ -10,6 +10,10 @@ outline: deep
 
 ## 📚 文章列表
 
+### AI 编程
+
+- [AI 编程接入指南（2026 版）](./ai-programming-guide) - 全面介绍 AI 编程工具生态、大模型选型、项目配置和最佳实践，涵盖 Claude、GPT、Gemini 等主流模型和 Cursor、Windsurf、Claude Code 等工具
+
 ### 工具与工作流
 
 - [Claude Code 定制化完整指南](./claude-code-customization) - 深入掌握 Agents、Skills、Hooks、Commands、CLAUDE.md 和 Settings 配置，构建团队专属的 AI 开发工作流
