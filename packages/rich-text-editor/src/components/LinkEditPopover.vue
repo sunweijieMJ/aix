@@ -1,0 +1,107 @@
+<template>
+  <div
+    v-if="visible"
+    ref="popoverRef"
+    class="aix-rich-text-editor__link-popover"
+  >
+    <input
+      ref="inputRef"
+      v-model="url"
+      :placeholder="t.linkUrl"
+      class="aix-rich-text-editor__link-input"
+      @keydown.enter="confirmLink"
+      @keydown.escape="$emit('close')"
+    />
+    <div class="aix-rich-text-editor__link-actions">
+      <button
+        class="aix-rich-text-editor__link-action-btn aix-rich-text-editor__link-action-btn--primary"
+        type="button"
+        @click="confirmLink"
+      >
+        {{ t.confirm }}
+      </button>
+      <button
+        v-if="hasLink"
+        class="aix-rich-text-editor__link-action-btn aix-rich-text-editor__link-action-btn--danger"
+        type="button"
+        @click="removeLink"
+      >
+        {{ t.linkRemove }}
+      </button>
+      <button
+        class="aix-rich-text-editor__link-action-btn"
+        type="button"
+        @click="$emit('close')"
+      >
+        {{ t.cancel }}
+      </button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import type { Editor } from '@tiptap/core';
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import type { RichTextEditorLocale } from '../locale/types';
+
+const props = defineProps<{
+  editor: Editor | null;
+  visible: boolean;
+  t: RichTextEditorLocale;
+}>();
+
+const emit = defineEmits<{
+  (e: 'close'): void;
+}>();
+
+const url = ref('');
+const hasLink = ref(false);
+const popoverRef = ref<HTMLElement | null>(null);
+const inputRef = ref<HTMLInputElement | null>(null);
+
+watch(
+  () => props.visible,
+  (val) => {
+    if (val && props.editor) {
+      const attrs = props.editor.getAttributes('link');
+      url.value = attrs.href ?? '';
+      hasLink.value = props.editor.isActive('link');
+      // 打开后自动聚焦输入框
+      nextTick(() => inputRef.value?.focus());
+    }
+  },
+);
+
+function confirmLink() {
+  if (!props.editor) return;
+  if (url.value) {
+    props.editor.chain().focus().setLink({ href: url.value }).run();
+  }
+  emit('close');
+}
+
+function removeLink() {
+  if (!props.editor) return;
+  props.editor.chain().focus().unsetLink().run();
+  emit('close');
+}
+
+// 点击外部关闭
+function handleClickOutside(event: MouseEvent) {
+  if (
+    props.visible &&
+    popoverRef.value &&
+    !popoverRef.value.contains(event.target as Node)
+  ) {
+    emit('close');
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('mousedown', handleClickOutside);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('mousedown', handleClickOutside);
+});
+</script>

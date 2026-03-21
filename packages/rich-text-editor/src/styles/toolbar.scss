@@ -1,0 +1,196 @@
+// Toolbar 区域（为 LinkEditPopover 提供定位上下文）
+.aix-rich-text-editor__toolbar-area {
+  position: relative;
+}
+
+// Toolbar 样式
+
+.aix-rich-text-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: var(--aix-paddingXS) var(--aix-paddingSM);
+  border-bottom: 1px solid var(--aix-colorBorderSecondary);
+  background: var(--aix-colorBgElevated);
+}
+
+.aix-rich-text-editor__toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+// 工具按钮
+.aix-rich-text-editor__toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 4px;
+  transition: all 0.15s;
+  border: none;
+  border-radius: var(--aix-borderRadiusSM);
+  outline: none;
+  background: transparent;
+  color: var(--aix-colorTextSecondary);
+  font-size: 16px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--aix-colorFillSecondary);
+    color: var(--aix-colorText);
+  }
+
+  &--active {
+    background: var(--aix-colorPrimaryBg);
+    color: var(--aix-colorPrimary);
+
+    &:hover:not(:disabled) {
+      background: var(--aix-colorPrimaryBg);
+      color: var(--aix-colorPrimary);
+    }
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+// 分隔线
+.aix-rich-text-editor__toolbar-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--aix-colorBorderSecondary);
+}
+
+// 下拉选择
+.aix-rich-text-editor__toolbar-dropdown {
+  position: relative;
+}
+
+.aix-rich-text-editor__toolbar-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+.aix-rich-text-editor__toolbar-dropdown-label {
+  max-width: 80px;
+  overflow: hidden;
+  font-size: var(--aix-fontSizeSM);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aix-rich-text-editor__toolbar-dropdown-menu {
+  position: absolute;
+  z-index: 1000;
+  top: 100%;
+  left: 0;
+  min-width: 120px;
+  max-height: 300px;
+  margin-top: 2px;
+  padding: 4px;
+  overflow-y: auto;
+  border-radius: var(--aix-borderRadius);
+  background: var(--aix-colorBgElevated);
+  box-shadow:
+    0 6px 16px 0 rgb(0 0 0 / 0.08),
+    0 3px 6px -4px rgb(0 0 0 / 0.12),
+    0 9px 28px 8px rgb(0 0 0 / 0.05);
+}
+
+.aix-rich-text-editor__toolbar-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 4px 12px;
+  transition: background 0.15s;
+  border: none;
+  border-radius: var(--aix-borderRadiusSM);
+  background: transparent;
+  color: var(--aix-colorText);
+  font-size: var(--aix-fontSizeSM);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--aix-colorFillSecondary);
+  }
+
+  &--active {
+    background: var(--aix-colorPrimaryBg);
+    color: var(--aix-colorPrimary);
+  }
+}
+
+// 颜色选择器
+.aix-rich-text-editor__toolbar-color-picker {
+  position: relative;
+}
+
+.aix-rich-text-editor__toolbar-color-indicator {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  margin-top: 2px;
+  border-radius: 1px;
+}
+
+.aix-rich-text-editor__toolbar-color-panel {
+  display: grid;
+  position: absolute;
+  z-index: 1000;
+  top: 100%;
+  left: 0;
+  grid-template-columns: repeat(10, 1fr);
+  margin-top: 2px;
+  padding: 8px;
+  border-radius: var(--aix-borderRadius);
+  background: var(--aix-colorBgElevated);
+  box-shadow:
+    0 6px 16px 0 rgb(0 0 0 / 0.08),
+    0 3px 6px -4px rgb(0 0 0 / 0.12),
+    0 9px 28px 8px rgb(0 0 0 / 0.05);
+  gap: 3px;
+}
+
+.aix-rich-text-editor__toolbar-color-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  transition: transform 0.15s;
+  border: 1px solid var(--aix-colorBorderSecondary);
+  border-radius: 2px;
+  cursor: pointer;
+
+  &:hover {
+    z-index: 1;
+    transform: scale(1.2);
+  }
+
+  &--active {
+    outline: 2px solid var(--aix-colorPrimary);
+    outline-offset: 1px;
+  }
+
+  &--clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--aix-colorBgContainer);
+    color: var(--aix-colorTextTertiary);
+    font-size: 10px;
+  }
+}

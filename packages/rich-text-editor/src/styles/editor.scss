@@ -1,0 +1,299 @@
+// RichTextEditor 编辑区域样式
+// BEM 命名规范 + CSS Variables
+
+.aix-rich-text-editor {
+  display: flex;
+  position: relative;
+  flex-direction: column;
+  overflow: hidden;
+  transition: border-color 0.2s;
+  border: 1px solid var(--aix-colorBorder);
+  border-radius: var(--aix-borderRadius);
+  background: var(--aix-colorBgContainer);
+
+  // 聚焦状态
+  &--focused {
+    border-color: var(--aix-colorPrimary);
+    box-shadow: 0 0 0 2px var(--aix-colorPrimaryBg);
+  }
+
+  // 禁用状态
+  &--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+
+    .aix-rich-text-editor__content {
+      pointer-events: none;
+    }
+  }
+
+  // 只读状态
+  &--readonly {
+    .aix-rich-text-editor__content {
+      cursor: default;
+    }
+  }
+}
+
+// 编辑区域容器
+.aix-rich-text-editor__content {
+  flex: 1;
+  overflow-y: auto;
+
+  // ProseMirror 编辑器样式
+  .ProseMirror {
+    min-height: 100px;
+    padding: var(--aix-padding);
+    outline: none;
+    color: var(--aix-colorText);
+    font-size: var(--aix-fontSize);
+    line-height: 1.6;
+
+    // Placeholder
+    p.is-editor-empty:first-child::before {
+      content: attr(data-placeholder);
+      height: 0;
+      float: left;
+      color: var(--aix-colorTextQuaternary);
+      pointer-events: none;
+    }
+
+    // 标题
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+      margin-top: 1em;
+      margin-bottom: 0.5em;
+      color: var(--aix-colorText);
+      font-weight: 600;
+      line-height: 1.4;
+
+      &:first-child {
+        margin-top: 0;
+      }
+    }
+
+    h1 {
+      font-size: 2em;
+    }
+
+    h2 {
+      font-size: 1.5em;
+    }
+
+    h3 {
+      font-size: 1.25em;
+    }
+
+    h4 {
+      font-size: 1.1em;
+    }
+
+    h5 {
+      font-size: 1em;
+    }
+
+    h6 {
+      font-size: 0.9em;
+    }
+
+    // 段落
+    p {
+      margin: 0.5em 0;
+
+      &:first-child {
+        margin-top: 0;
+      }
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    // 链接
+    a {
+      color: var(--aix-colorPrimary);
+      text-decoration: underline;
+      cursor: pointer;
+
+      &:hover {
+        color: var(--aix-colorPrimaryHover);
+      }
+    }
+
+    // 引用块
+    blockquote {
+      margin: 0.5em 0;
+      padding-left: var(--aix-padding);
+      border-left: 3px solid var(--aix-colorBorderSecondary);
+      color: var(--aix-colorTextSecondary);
+    }
+
+    // 行内代码
+    code {
+      padding: 2px 4px;
+      border-radius: var(--aix-borderRadiusSM);
+      background: var(--aix-colorFillSecondary);
+      font-family:
+        SFMono-Regular, Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+      font-size: 0.9em;
+    }
+
+    // 代码块
+    pre {
+      margin: 0.5em 0;
+      padding: var(--aix-paddingSM);
+      overflow-x: auto;
+      border-radius: var(--aix-borderRadiusSM);
+      background: var(--aix-colorFillSecondary);
+
+      code {
+        padding: 0;
+        border-radius: 0;
+        background: none;
+        font-size: inherit;
+      }
+    }
+
+    // 水平线
+    hr {
+      margin: 1em 0;
+      border: none;
+      border-top: 1px solid var(--aix-colorBorderSecondary);
+    }
+
+    // 列表
+    ul,
+    ol {
+      margin: 0.5em 0;
+      padding-left: 1.5em;
+    }
+
+    li {
+      margin: 0.25em 0;
+    }
+
+    // 任务列表
+    ul[data-type='taskList'] {
+      padding-left: 0;
+      list-style: none;
+
+      li {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+
+        > label {
+          flex-shrink: 0;
+          margin-top: 3px;
+
+          input[type='checkbox'] {
+            cursor: pointer;
+            accent-color: var(--aix-colorPrimary);
+          }
+        }
+
+        > div {
+          flex: 1;
+        }
+      }
+    }
+
+    // 表格
+    table {
+      width: 100%;
+      margin: 0.5em 0;
+      table-layout: fixed;
+      border-collapse: collapse;
+
+      th,
+      td {
+        position: relative;
+        min-width: 100px;
+        padding: var(--aix-paddingXS) var(--aix-paddingSM);
+        border: 1px solid var(--aix-colorBorder);
+        vertical-align: top;
+      }
+
+      th {
+        background: var(--aix-colorFillSecondary);
+        font-weight: 600;
+      }
+
+      // 选中单元格
+      .selectedCell::after {
+        content: '';
+        position: absolute;
+        z-index: 1;
+        background: var(--aix-colorPrimaryBg);
+        pointer-events: none;
+        inset: 0;
+      }
+    }
+
+    // 图片
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: var(--aix-borderRadiusSM);
+
+      &.ProseMirror-selectednode {
+        outline: 2px solid var(--aix-colorPrimary);
+        outline-offset: 2px;
+      }
+    }
+
+    // 普通视频（MP4 等）
+    video {
+      max-width: 100%;
+      height: auto;
+      margin: 0.5em 0;
+      border-radius: var(--aix-borderRadiusSM);
+    }
+
+    // 高亮
+    mark {
+      padding: 1px 2px;
+      border-radius: 2px;
+      background-color: var(--aix-colorWarningBg, #fff3bf);
+    }
+
+    // 上下标
+    sub {
+      font-size: 0.75em;
+    }
+
+    sup {
+      font-size: 0.75em;
+    }
+
+    // 提及
+    .mention {
+      padding: 1px 4px;
+      border-radius: var(--aix-borderRadiusSM);
+      background: var(--aix-colorPrimaryBg);
+      color: var(--aix-colorPrimary);
+      font-weight: 500;
+    }
+  }
+}
+
+// 底部状态栏
+.aix-rich-text-editor__footer {
+  display: flex;
+  align-items: center;
+  padding: var(--aix-paddingXXS) var(--aix-paddingSM);
+  border-top: 1px solid var(--aix-colorBorderSecondary);
+  background: var(--aix-colorBgElevated);
+  color: var(--aix-colorTextTertiary);
+  font-size: var(--aix-fontSizeSM);
+  gap: var(--aix-paddingSM);
+}
+
+.aix-rich-text-editor__count {
+  display: inline-flex;
+  align-items: center;
+}

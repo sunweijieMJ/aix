@@ -1,0 +1,117 @@
+// 链接编辑弹窗（定位在 toolbar 下方）
+.aix-rich-text-editor__link-popover {
+  position: absolute;
+  z-index: 1000;
+  top: 100%;
+  left: 50%;
+  margin-top: 4px;
+  padding: var(--aix-paddingSM);
+  transform: translateX(-50%);
+  border-radius: var(--aix-borderRadius);
+  background: var(--aix-colorBgElevated);
+  box-shadow:
+    0 6px 16px 0 rgb(0 0 0 / 0.08),
+    0 3px 6px -4px rgb(0 0 0 / 0.12),
+    0 9px 28px 8px rgb(0 0 0 / 0.05);
+}
+
+.aix-rich-text-editor__link-input {
+  display: block;
+  width: 250px;
+  padding: var(--aix-paddingXS) var(--aix-paddingSM);
+  transition: border-color 0.2s;
+  border: 1px solid var(--aix-colorBorder);
+  border-radius: var(--aix-borderRadiusSM);
+  outline: none;
+  background: var(--aix-colorBgContainer);
+  color: var(--aix-colorText);
+  font-size: var(--aix-fontSizeSM);
+
+  &:focus {
+    border-color: var(--aix-colorPrimary);
+  }
+}
+
+.aix-rich-text-editor__link-actions {
+  display: flex;
+  gap: var(--aix-paddingXS);
+  margin-top: var(--aix-paddingXS);
+}
+
+.aix-rich-text-editor__link-action-btn {
+  padding: var(--aix-paddingXXS) var(--aix-paddingSM);
+  transition: all 0.15s;
+  border: 1px solid var(--aix-colorBorder);
+  border-radius: var(--aix-borderRadiusSM);
+  background: var(--aix-colorBgContainer);
+  color: var(--aix-colorText);
+  font-size: var(--aix-fontSizeSM);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--aix-colorPrimaryHover);
+    color: var(--aix-colorPrimaryHover);
+  }
+
+  &--primary {
+    border-color: var(--aix-colorPrimary);
+    background: var(--aix-colorPrimary);
+    color: #fff;
+
+    &:hover {
+      border-color: var(--aix-colorPrimaryHover);
+      background: var(--aix-colorPrimaryHover);
+      color: #fff;
+    }
+  }
+
+  &--danger {
+    border-color: var(--aix-colorError);
+    color: var(--aix-colorError);
+
+    &:hover {
+      background: var(--aix-colorError);
+      color: #fff;
+    }
+  }
+}
+
+// @提及候选列表
+.aix-rich-text-editor__mention-popup {
+  position: fixed;
+  z-index: 1100;
+  min-width: 180px;
+  max-height: 240px;
+  padding: 4px;
+  overflow-y: auto;
+  border-radius: var(--aix-borderRadius);
+  background: var(--aix-colorBgElevated);
+  box-shadow:
+    0 6px 16px 0 rgb(0 0 0 / 0.08),
+    0 3px 6px -4px rgb(0 0 0 / 0.12),
+    0 9px 28px 8px rgb(0 0 0 / 0.05);
+}
+
+.aix-rich-text-editor__mention-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  transition: background 0.15s;
+  border: none;
+  border-radius: var(--aix-borderRadiusSM);
+  background: transparent;
+  color: var(--aix-colorText);
+  font-size: var(--aix-fontSizeSM);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--aix-colorFillSecondary);
+  }
+
+  &--active {
+    background: var(--aix-colorPrimaryBg);
+    color: var(--aix-colorPrimary);
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "name": "@aix/rich-text-editor",
+  "version": "0.0.0",
+  "description": "A Vue 3 RichTextEditor component for AIX component library",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "style": "./es/index.css",
+  "sideEffects": [
+    "*.css",
+    "*.scss",
+    "*.sass"
+  ],
+  "exports": {
+    ".": {
+      "types": "./es/index.d.ts",
+      "import": "./es/index.js",
+      "require": "./lib/index.js"
+    },
+    "./dist": {
+      "types": "./es/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./es/*": "./es/*",
+    "./lib/*": "./lib/*",
+    "./dist/*": "./dist/*",
+    "./style": "./es/index.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "lib",
+    "es"
+  ],
+  "scripts": {
+    "dev": "rollup -c -w",
+    "lint:script": "eslint . --max-warnings 0",
+    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "lint": "pnpm run lint:script && pnpm run lint:style",
+    "test": "vitest --run",
+    "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
+    "build:js": "rollup -c",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
+    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@aix/theme": "workspace:*",
+    "@aix/hooks": "workspace:*",
+    "@aix/icons": "workspace:*",
+    "@tiptap/vue-3": "^3.0.0",
+    "@tiptap/core": "^3.0.0",
+    "@tiptap/pm": "^3.0.0",
+    "@tiptap/starter-kit": "^3.0.0",
+    "@tiptap/extension-placeholder": "^3.0.0",
+    "@tiptap/extension-link": "^3.0.0",
+    "@tiptap/extension-underline": "^3.0.0",
+    "@tiptap/extension-table": "^3.0.0",
+    "@tiptap/extension-table-row": "^3.0.0",
+    "@tiptap/extension-table-header": "^3.0.0",
+    "@tiptap/extension-table-cell": "^3.0.0",
+    "@tiptap/extension-task-list": "^3.0.0",
+    "@tiptap/extension-task-item": "^3.0.0",
+    "@tiptap/extension-image": "^3.0.0",
+    "@tiptap/extension-text-align": "^3.0.0",
+    "@tiptap/extension-color": "^3.0.0",
+    "@tiptap/extension-text-style": "^3.0.0",
+    "@tiptap/extension-highlight": "^3.0.0",
+    "@tiptap/extension-font-family": "^3.0.0",
+    "@tiptap/extension-font-size": "3.0.0-next.3",
+    "@tiptap/extension-subscript": "^3.0.0",
+    "@tiptap/extension-superscript": "^3.0.0",
+    "@tiptap/extension-character-count": "^3.0.0",
+    "@tiptap/extension-mention": "^3.0.0",
+    "tiptap-markdown": "^0.9.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.28"
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:*",
+    "rimraf": "*",
+    "tsx": "*",
+    "typescript": "*"
+  }
+}
