@@ -1,3 +1,5 @@
+// @vitest-environment node
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { execSyncMock, execFileMock } = vi.hoisted(() => ({
@@ -34,7 +36,9 @@ describe('GitHubAdapter', () => {
   });
 
   it('should return correct pipeline directory', () => {
-    expect(adapter.getPipelineDir('/repo')).toBe('/repo/.github/workflows');
+    expect(adapter.getPipelineDir('/repo')).toBe(
+      path.join('/repo', '.github', 'workflows'),
+    );
   });
 
   it('should return correct template path', () => {

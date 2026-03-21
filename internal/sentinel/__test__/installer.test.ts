@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/core/validator.js', () => ({
@@ -257,11 +258,11 @@ describe('install', () => {
       expect.stringContaining('workers'),
     );
     expect(mockedWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining('workers/sentry-webhook.ts'),
+      expect.stringContaining(path.join('workers', 'sentry-webhook.ts')),
       expect.any(String),
     );
     expect(mockedWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining('workers/wrangler.toml'),
+      expect.stringContaining(path.join('workers', 'wrangler.toml')),
       expect.any(String),
     );
   });
@@ -289,7 +290,7 @@ describe('install', () => {
     );
 
     expect(mockedWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining('workers/sentry-webhook.ts'),
+      expect.stringContaining(path.join('workers', 'sentry-webhook.ts')),
       "const OWNER = 'my-org';\nconst REPO = 'my-app';",
     );
   });

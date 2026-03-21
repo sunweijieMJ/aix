@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/utils/file.js', () => ({
@@ -115,7 +116,9 @@ describe('writeWorkflows', () => {
       'github/sentinel-issue.yml',
     );
     expect(mockedWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining('.github/workflows/sentinel-issue.yml'),
+      expect.stringContaining(
+        path.join('.github', 'workflows', 'sentinel-issue.yml'),
+      ),
       rendered,
     );
     expect(result).toEqual(
