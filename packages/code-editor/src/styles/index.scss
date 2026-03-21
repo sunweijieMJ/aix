@@ -1,0 +1,54 @@
+// CodeEditor 组件样式
+// BEM 命名规范 + CSS Variables
+
+.aix-code-editor {
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s;
+  border: 1px solid var(--aix-colorBorder);
+  border-radius: var(--aix-borderRadiusSM);
+
+  // 编辑器挂载容器
+  &__content {
+    .cm-editor {
+      outline: none;
+      font-family: var(--aix-fontFamilyCode);
+      font-size: var(--aix-fontSizeSM);
+      line-height: var(--aix-lineHeight);
+    }
+
+    .cm-editor.cm-focused {
+      outline: none;
+    }
+
+    .cm-scroller {
+      overflow: auto;
+    }
+
+    // 搜索面板样式
+    .cm-panels {
+      font-family: var(--aix-fontFamily);
+      font-size: var(--aix-fontSizeSM);
+    }
+  }
+
+  // 聚焦状态
+  &--focused {
+    border-color: var(--aix-colorPrimary);
+  }
+
+  // 只读状态（保留光标和选区，不可编辑）
+  &--readonly {
+    cursor: default;
+  }
+
+  // 禁用状态
+  &--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+
+    .cm-editor {
+      pointer-events: none;
+    }
+  }
+}
