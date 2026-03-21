@@ -8,7 +8,11 @@
 import { computed, ref } from 'vue';
 import type { CSSProperties } from 'vue';
 import { useEditorCore } from './composables/useEditorCore';
-import type { CodeEditorProps, CodeEditorEmits } from './types';
+import type {
+  CodeEditorProps,
+  CodeEditorEmits,
+  CodeEditorExpose,
+} from './types';
 
 import './styles/index.scss';
 
@@ -69,7 +73,7 @@ const rootStyle = computed<CSSProperties>(() => {
   return style;
 });
 
-defineExpose({
+defineExpose<CodeEditorExpose>({
   editorView,
   isFocused,
   getValue,

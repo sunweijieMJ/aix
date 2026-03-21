@@ -291,7 +291,7 @@ export const Default: Story = {
   render: (args) => ({
     components: { CodeEditor },
     setup() {
-      const code = ref(args.modelValue);
+      const code = ref((args as Record<string, unknown>).modelValue as string);
       return { args, code };
     },
     template: '<CodeEditor v-bind="args" v-model="code" />',
@@ -309,7 +309,7 @@ export const DarkTheme: Story = {
   render: (args) => ({
     components: { CodeEditor },
     setup() {
-      const code = ref(args.modelValue);
+      const code = ref((args as Record<string, unknown>).modelValue as string);
       return { args, code };
     },
     template: '<CodeEditor v-bind="args" v-model="code" />',

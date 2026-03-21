@@ -1,0 +1,7 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`CodeEditor 组件 > 快照测试 > 默认状态快照 1`] = `
+"<div class="aix-code-editor" style="min-height: 100px;">
+  <div class="aix-code-editor__content"></div>
+</div>"
+`;

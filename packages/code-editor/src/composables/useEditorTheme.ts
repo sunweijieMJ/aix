@@ -48,7 +48,11 @@ const lightEditorTheme = EditorView.theme(
   { dark: false },
 );
 
-/** 浅色代码高亮 */
+/**
+ * 浅色代码高亮（GitHub 配色）
+ * 注意：CodeMirror HighlightStyle 通过 JS 对象定义 token 颜色，无法使用 CSS Variables，
+ * 如需主题化需替换整个 HighlightStyle 实例。
+ */
 const lightHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: '#d73a49' },
   {
@@ -147,7 +151,10 @@ const darkEditorTheme = EditorView.theme(
   { dark: true },
 );
 
-/** 深色代码高亮 */
+/**
+ * 深色代码高亮（VS Code Dark+ 配色）
+ * 同上，CodeMirror HighlightStyle API 限制，无法使用 CSS Variables。
+ */
 const darkHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: '#569cd6' },
   {
