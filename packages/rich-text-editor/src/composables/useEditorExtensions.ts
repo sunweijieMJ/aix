@@ -37,13 +37,11 @@ export function useEditorExtensions(
         },
       }),
     );
-    if (props.placeholder) {
-      extensions.push(
-        Placeholder.configure({
-          placeholder: props.placeholder,
-        }),
-      );
-    }
+    extensions.push(
+      Placeholder.configure({
+        placeholder: () => props.placeholder || '',
+      }),
+    );
 
     // ===== 2. 增强功能（按 Props 按需加载） =====
     const loadTasks: Promise<void>[] = [];

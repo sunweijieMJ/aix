@@ -1,7 +1,6 @@
 import type { ChainedCommands, Editor } from '@tiptap/core';
 import type { ComputedRef, FunctionalComponent, Ref } from 'vue';
 import { computed } from 'vue';
-import type { DropdownOption } from '../components/ToolbarDropdown.vue';
 import { DEFAULT_FONT_SIZES, DEFAULT_FONT_FAMILIES } from '../constants';
 import {
   IconBold,
@@ -34,7 +33,7 @@ import {
   IconFontFamily,
 } from '../icons';
 import type { RichTextEditorLocale } from '../locale/types';
-import type { RichTextEditorProps } from '../types';
+import type { DropdownOption, RichTextEditorProps } from '../types';
 
 /**
  * 扩展命令的链式调用类型

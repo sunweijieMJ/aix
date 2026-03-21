@@ -1,0 +1,15 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`RichTextEditor 组件 > 快照测试 > 默认状态快照 1`] = `
+"<div class="aix-rich-text-editor" style="min-height: 200px;">
+  <!-- Toolbar + 链接弹窗容器（为弹窗提供定位上下文） -->
+  <!--v-if-->
+  <!-- 编辑区域 -->
+  <div class="aix-rich-text-editor__content">
+    <!--v-if-->
+  </div><!-- 表格浮动工具栏 -->
+  <!--v-if-->
+  <!-- 底部状态栏（字符统计） -->
+  <!--v-if-->
+</div>"
+`;

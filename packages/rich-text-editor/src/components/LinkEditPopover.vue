@@ -74,8 +74,14 @@ watch(
 
 function confirmLink() {
   if (!props.editor) return;
-  if (url.value) {
-    props.editor.chain().focus().setLink({ href: url.value }).run();
+  const trimmed = url.value.trim();
+  if (!trimmed) {
+    // 清空 URL 时移除已有链接
+    if (hasLink.value) {
+      props.editor.chain().focus().unsetLink().run();
+    }
+  } else if (!/^\s*(javascript|data|vbscript):/i.test(trimmed)) {
+    props.editor.chain().focus().setLink({ href: trimmed }).run();
   }
   emit('close');
 }

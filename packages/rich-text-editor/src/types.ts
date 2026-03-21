@@ -2,6 +2,14 @@ import type { AnyExtension } from '@tiptap/core';
 import type { Editor } from '@tiptap/vue-3';
 import type { Ref } from 'vue';
 
+// ========== 工具栏下拉选项 ==========
+
+/** 下拉菜单选项 */
+export interface DropdownOption {
+  label: string;
+  value: string;
+}
+
 // ========== 输出格式 ==========
 
 /** 编辑器内容输出格式 */

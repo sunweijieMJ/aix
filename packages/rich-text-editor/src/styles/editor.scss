@@ -281,6 +281,43 @@
   }
 }
 
+// 表格浮动工具栏
+.aix-rich-text-editor__table-toolbar {
+  display: flex;
+  position: absolute;
+  z-index: 1050;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: var(--aix-borderRadius);
+  background: var(--aix-colorBgElevated);
+  box-shadow:
+    0 6px 16px 0 rgb(0 0 0 / 0.08),
+    0 3px 6px -4px rgb(0 0 0 / 0.12),
+    0 9px 28px 8px rgb(0 0 0 / 0.05);
+  gap: 2px;
+
+  .aix-rich-text-editor__toolbar-btn {
+    min-width: 26px;
+    height: 26px;
+
+    &--danger {
+      color: var(--aix-colorError);
+
+      &:hover {
+        background: var(--aix-colorErrorBg, #fff1f0);
+        color: var(--aix-colorError);
+      }
+    }
+  }
+
+  .aix-rich-text-editor__toolbar-divider {
+    width: 1px;
+    height: 16px;
+    margin: 0 2px;
+    background: var(--aix-colorBorderSecondary);
+  }
+}
+
 // 底部状态栏
 .aix-rich-text-editor__footer {
   display: flex;

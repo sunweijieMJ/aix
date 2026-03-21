@@ -185,14 +185,9 @@ const FEATURE_LOADERS: Record<EnhancedFeatureName, FeatureLoader> = {
   },
 };
 
-/** 扩展加载缓存（避免重复加载，以 name + config 引用为 key） */
-const featureCache = new Map<
-  string | FeatureConfig,
-  Map<string, AnyExtension[]>
->();
-
 /**
- * 异步加载增强功能扩展（按需 + 缓存）
+ * 异步加载增强功能扩展（按需加载）
+ * 动态 import() 本身已被 JS 运行时缓存，无需额外缓存层
  * @param name 功能名称
  * @param config 功能配置
  */
@@ -200,18 +195,6 @@ export async function loadFeatureExtensions(
   name: EnhancedFeatureName,
   config?: FeatureConfig,
 ): Promise<AnyExtension[]> {
-  // 用 config 对象引用做外层 key，避免 JSON.stringify 丢失函数属性
-  const configKey: string | FeatureConfig = config ?? '_none_';
-  let byConfig = featureCache.get(configKey);
-  if (!byConfig) {
-    byConfig = new Map();
-    featureCache.set(configKey, byConfig);
-  }
-  const cached = byConfig.get(name);
-  if (cached) return cached;
-
   const loader = FEATURE_LOADERS[name];
-  const extensions = await loader(config);
-  byConfig.set(name, extensions);
-  return extensions;
+  return loader(config);
 }

@@ -200,6 +200,112 @@ export const IconTable = createIconMulti([
   { tag: 'line', attrs: { x1: '15', y1: '3', x2: '15', y2: '21' } },
 ]);
 
+// ===== 表格操作 =====
+
+// 在上方插入行（表格 + 上箭头）
+export const IconRowBefore = createIconMulti([
+  {
+    tag: 'rect',
+    attrs: { x: '3', y: '8', width: '18', height: '13', rx: '2' },
+  },
+  { tag: 'line', attrs: { x1: '3', y1: '14', x2: '21', y2: '14' } },
+  { tag: 'line', attrs: { x1: '12', y1: '8', x2: '12', y2: '21' } },
+  { tag: 'path', attrs: { d: 'M12 5V1m0 0l-3 3m3-3l3 3' } },
+]);
+
+// 在下方插入行
+export const IconRowAfter = createIconMulti([
+  {
+    tag: 'rect',
+    attrs: { x: '3', y: '3', width: '18', height: '13', rx: '2' },
+  },
+  { tag: 'line', attrs: { x1: '3', y1: '10', x2: '21', y2: '10' } },
+  { tag: 'line', attrs: { x1: '12', y1: '3', x2: '12', y2: '16' } },
+  { tag: 'path', attrs: { d: 'M12 19v4m0 0l-3-3m3 3l3-3' } },
+]);
+
+// 删除行
+export const IconRowDelete = createIconMulti([
+  {
+    tag: 'rect',
+    attrs: { x: '3', y: '3', width: '18', height: '18', rx: '2' },
+  },
+  { tag: 'line', attrs: { x1: '3', y1: '9', x2: '21', y2: '9' } },
+  { tag: 'line', attrs: { x1: '3', y1: '15', x2: '21', y2: '15' } },
+  { tag: 'line', attrs: { x1: '8', y1: '11', x2: '16', y2: '13' } },
+  { tag: 'line', attrs: { x1: '16', y1: '11', x2: '8', y2: '13' } },
+]);
+
+// 在左侧插入列
+export const IconColumnBefore = createIconMulti([
+  {
+    tag: 'rect',
+    attrs: { x: '8', y: '3', width: '13', height: '18', rx: '2' },
+  },
+  { tag: 'line', attrs: { x1: '14', y1: '3', x2: '14', y2: '21' } },
+  { tag: 'line', attrs: { x1: '8', y1: '12', x2: '21', y2: '12' } },
+  { tag: 'path', attrs: { d: 'M5 12H1m0 0l3-3m-3 3l3 3' } },
+]);
+
+// 在右侧插入列
+export const IconColumnAfter = createIconMulti([
+  {
+    tag: 'rect',
+    attrs: { x: '3', y: '3', width: '13', height: '18', rx: '2' },
+  },
+  { tag: 'line', attrs: { x1: '10', y1: '3', x2: '10', y2: '21' } },
+  { tag: 'line', attrs: { x1: '3', y1: '12', x2: '16', y2: '12' } },
+  { tag: 'path', attrs: { d: 'M19 12h4m0 0l-3-3m3 3l-3 3' } },
+]);
+
+// 删除列
+export const IconColumnDelete = createIconMulti([
+  {
+    tag: 'rect',
+    attrs: { x: '3', y: '3', width: '18', height: '18', rx: '2' },
+  },
+  { tag: 'line', attrs: { x1: '9', y1: '3', x2: '9', y2: '21' } },
+  { tag: 'line', attrs: { x1: '15', y1: '3', x2: '15', y2: '21' } },
+  { tag: 'line', attrs: { x1: '11', y1: '8', x2: '13', y2: '16' } },
+  { tag: 'line', attrs: { x1: '13', y1: '8', x2: '11', y2: '16' } },
+]);
+
+// 合并单元格
+export const IconMergeCells = createIconMulti([
+  {
+    tag: 'rect',
+    attrs: { x: '3', y: '3', width: '18', height: '18', rx: '2' },
+  },
+  { tag: 'line', attrs: { x1: '3', y1: '12', x2: '21', y2: '12' } },
+  { tag: 'path', attrs: { d: 'M8 7l4 5-4 5' } },
+  { tag: 'path', attrs: { d: 'M16 7l-4 5 4 5' } },
+]);
+
+// 拆分单元格
+export const IconSplitCell = createIconMulti([
+  {
+    tag: 'rect',
+    attrs: { x: '3', y: '3', width: '18', height: '18', rx: '2' },
+  },
+  { tag: 'line', attrs: { x1: '12', y1: '3', x2: '12', y2: '21' } },
+  { tag: 'path', attrs: { d: 'M8 8l-4 4 4 4' } },
+  { tag: 'path', attrs: { d: 'M16 8l4 4-4 4' } },
+]);
+
+// 删除表格
+export const IconTableDelete = createIconMulti([
+  {
+    tag: 'rect',
+    attrs: { x: '3', y: '3', width: '18', height: '18', rx: '2' },
+  },
+  { tag: 'line', attrs: { x1: '3', y1: '9', x2: '21', y2: '9' } },
+  { tag: 'line', attrs: { x1: '3', y1: '15', x2: '21', y2: '15' } },
+  { tag: 'line', attrs: { x1: '9', y1: '3', x2: '9', y2: '21' } },
+  { tag: 'line', attrs: { x1: '15', y1: '3', x2: '15', y2: '21' } },
+  { tag: 'line', attrs: { x1: '7', y1: '7', x2: '17', y2: '17' } },
+  { tag: 'line', attrs: { x1: '17', y1: '7', x2: '7', y2: '17' } },
+]);
+
 // ===== 对齐 =====
 export const IconAlignLeft = createIconMulti([
   { tag: 'line', attrs: { x1: '17', y1: '10', x2: '3', y2: '10' } },

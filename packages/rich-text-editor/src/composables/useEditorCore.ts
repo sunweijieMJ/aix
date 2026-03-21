@@ -6,6 +6,7 @@ import {
   onMounted,
   onBeforeUnmount,
   shallowRef,
+  triggerRef,
 } from 'vue';
 import type { RichTextEditorProps, RichTextEditorEmits } from '../types';
 import { useEditorExtensions } from './useEditorExtensions';
@@ -110,6 +111,11 @@ export function useEditorCore(
       },
     });
 
+    // FIX-1: 监听 transaction 事件，强制 shallowRef 通知依赖方（toolbarGroups 等 computed）
+    ed.on('transaction', () => {
+      triggerRef(editorRef);
+    });
+
     editorRef.value = ed;
     emit('ready', ed);
   });
@@ -131,7 +137,9 @@ export function useEditorCore(
 
       // 比较新值与当前内容，避免不必要的 setContent（会重置光标）
       if (typeof newVal === 'string') {
-        if (newVal === ed.getHTML()) return;
+        const current =
+          props.outputFormat === 'text' ? ed.getText() : ed.getHTML();
+        if (newVal === current) return;
       } else if (newVal !== undefined) {
         if (JSON.stringify(newVal) === JSON.stringify(ed.getJSON())) return;
       }
@@ -146,6 +154,31 @@ export function useEditorCore(
     if (!ed) return;
     ed.setEditable(!props.readonly && !props.disabled);
   });
+
+  // placeholder 变化 → 触发空 transaction 使 Placeholder 装饰重新求值
+  watch(
+    () => props.placeholder,
+    () => {
+      const ed = editorRef.value;
+      if (!ed || ed.isDestroyed) return;
+      ed.view.dispatch(ed.state.tr);
+    },
+  );
+
+  // outputFormat 变化 → 以新格式重新 emit 当前内容
+  watch(
+    () => props.outputFormat,
+    () => {
+      const ed = editorRef.value;
+      if (!ed) return;
+      isInternalUpdate = true;
+      const value = getOutputValue(ed);
+      emit('update:modelValue', value);
+      queueMicrotask(() => {
+        isInternalUpdate = false;
+      });
+    },
+  );
 
   // ===== 编程式 API =====
 
@@ -162,11 +195,11 @@ export function useEditorCore(
   }
 
   function setContent(content: string | Record<string, unknown>) {
-    editorRef.value?.commands.setContent(content, { emitUpdate: false });
+    editorRef.value?.commands.setContent(content, { emitUpdate: true });
   }
 
   function clearContent() {
-    editorRef.value?.commands.clearContent(false);
+    editorRef.value?.commands.clearContent(true);
   }
 
   function focus(position?: 'start' | 'end' | 'all') {

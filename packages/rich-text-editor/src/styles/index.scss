@@ -1,4 +1,3 @@
-// RichTextEditor 样式入口
-@import './editor';
-@import './toolbar';
-@import './bubble-menu';
+@use './editor';
+@use './toolbar';
+@use './bubble-menu';

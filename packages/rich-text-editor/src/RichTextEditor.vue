@@ -19,6 +19,13 @@
       <editor-content v-if="editor" :editor="editor as any" />
     </div>
 
+    <!-- 表格浮动工具栏 -->
+    <TableFloatingToolbar
+      v-if="props.table && isReady"
+      :editor="editor"
+      :t="t"
+    />
+
     <!-- 底部状态栏（字符统计） -->
     <div
       v-if="props.characterCount && isReady"
@@ -38,9 +45,10 @@
 import { useLocale } from '@aix/hooks';
 import { EditorContent } from '@tiptap/vue-3';
 import { computed, ref } from 'vue';
-import type { CSSProperties } from 'vue';
+import type { CSSProperties, Ref } from 'vue';
 import EditorToolbar from './components/EditorToolbar.vue';
 import LinkEditPopover from './components/LinkEditPopover.vue';
+import TableFloatingToolbar from './components/TableFloatingToolbar.vue';
 import { useEditorCore } from './composables/useEditorCore';
 import { useEditorToolbar } from './composables/useEditorToolbar';
 import { locale as richTextLocale } from './locale';
@@ -64,7 +72,11 @@ const props = withDefaults(defineProps<RichTextEditorProps>(), {
 
 const emit = defineEmits<RichTextEditorEmits>();
 
-const { t } = useLocale(richTextLocale, props.locale);
+// useLocale 内部通过 isRef() + if(override) 安全处理 undefined
+const { t } = useLocale(
+  richTextLocale,
+  computed(() => props.locale) as Ref<'zh-CN' | 'en-US'>,
+);
 
 const {
   editor,

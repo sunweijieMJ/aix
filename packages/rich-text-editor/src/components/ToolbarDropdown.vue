@@ -44,13 +44,9 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import type { FunctionalComponent } from 'vue';
 import { IconChevronDown } from '../icons';
+import type { DropdownOption } from '../types';
 
-export interface DropdownOption {
-  label: string;
-  value: string;
-}
-
-const props = defineProps<{
+defineProps<{
   icon?: FunctionalComponent;
   title?: string;
   disabled?: boolean;

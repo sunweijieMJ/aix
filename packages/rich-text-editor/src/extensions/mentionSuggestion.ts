@@ -26,10 +26,14 @@ export function createMentionSuggestion(
 ): MentionSuggestion {
   return {
     char: config?.trigger ?? '@',
+    // 禁用前缀限制，默认只允许空格后触发，不适用于中文等无空格分隔的语言
+    allowedPrefixes: null,
+
     items: ({ query }) => {
       if (!config?.queryItems) return [];
       return config.queryItems(query) as MentionItem[];
     },
+
     render: () => {
       let popup: HTMLElement | null = null;
       let items: MentionItem[] = [];
@@ -75,8 +79,8 @@ export function createMentionSuggestion(
         const rect = clientRect();
         if (!rect) return;
 
-        popup.style.left = `${rect.left + window.scrollX}px`;
-        popup.style.top = `${rect.bottom + window.scrollY + 4}px`;
+        popup.style.left = `${rect.left}px`;
+        popup.style.top = `${rect.bottom + 4}px`;
       }
 
       return {
@@ -133,5 +137,5 @@ export function createMentionSuggestion(
         },
       };
     },
-  };
+  } as MentionSuggestion;
 }
