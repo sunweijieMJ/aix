@@ -8,7 +8,6 @@ export { default as PdfViewer } from './index.vue';
 
 // 子组件
 export { default as PdfToolbar } from './components/PdfToolbar.vue';
-export { default as PdfContextMenu } from './components/ContextMenu.vue';
 export { default as PdfSearchBar } from './components/SearchBar.vue';
 
 // Composables

@@ -837,6 +837,9 @@ importers:
       '@aix/icons':
         specifier: workspace:*
         version: link:../icons
+      '@aix/popper':
+        specifier: workspace:*
+        version: link:../popper
       pdfjs-dist:
         specifier: ^5.4.624
         version: 5.4.624
@@ -908,6 +911,9 @@ importers:
       '@aix/icons':
         specifier: workspace:*
         version: link:../icons
+      '@aix/popper':
+        specifier: workspace:*
+        version: link:../popper
       '@aix/theme':
         specifier: workspace:*
         version: link:../theme
@@ -932,9 +938,6 @@ importers:
       '@tiptap/extension-image':
         specifier: ^3.20.4
         version: 3.20.4(@tiptap/core@3.20.4(@tiptap/pm@3.20.4))
-      '@tiptap/extension-link':
-        specifier: ^3.20.4
-        version: 3.20.4(@tiptap/core@3.20.4(@tiptap/pm@3.20.4))(@tiptap/pm@3.20.4)
       '@tiptap/extension-mention':
         specifier: ^3.20.4
         version: 3.20.4(@tiptap/core@3.20.4(@tiptap/pm@3.20.4))(@tiptap/pm@3.20.4)(@tiptap/suggestion@3.20.4(@tiptap/core@3.20.4(@tiptap/pm@3.20.4))(@tiptap/pm@3.20.4))
@@ -969,9 +972,6 @@ importers:
         specifier: ^3.20.4
         version: 3.20.4(@tiptap/core@3.20.4(@tiptap/pm@3.20.4))
       '@tiptap/extension-text-style':
-        specifier: ^3.20.4
-        version: 3.20.4(@tiptap/core@3.20.4(@tiptap/pm@3.20.4))
-      '@tiptap/extension-underline':
         specifier: ^3.20.4
         version: 3.20.4(@tiptap/core@3.20.4(@tiptap/pm@3.20.4))
       '@tiptap/pm':

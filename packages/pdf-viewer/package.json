@@ -49,6 +49,7 @@
   "dependencies": {
     "@aix/hooks": "workspace:*",
     "@aix/icons": "workspace:*",
+    "@aix/popper": "workspace:*",
     "pdfjs-dist": "^5.4.624"
   },
   "peerDependencies": {

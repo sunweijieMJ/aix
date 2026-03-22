@@ -21,6 +21,12 @@
   gap: 2px;
 }
 
+// Tooltip 触发容器在 flex 布局中需要 inline-flex
+.aix-rich-text-editor__toolbar .aix-tooltip__trigger,
+.aix-rich-text-editor__table-toolbar .aix-tooltip__trigger {
+  display: inline-flex;
+}
+
 // 工具按钮
 .aix-rich-text-editor__toolbar-btn {
   display: inline-flex;
@@ -74,10 +80,6 @@
 }
 
 // 下拉选择
-.aix-rich-text-editor__toolbar-dropdown {
-  position: relative;
-}
-
 .aix-rich-text-editor__toolbar-dropdown-trigger {
   display: inline-flex;
   align-items: center;
@@ -93,53 +95,26 @@
   white-space: nowrap;
 }
 
+// 下拉菜单面板（通过 popperClass 应用）
 .aix-rich-text-editor__toolbar-dropdown-menu {
-  position: absolute;
-  z-index: 1000;
-  top: 100%;
-  left: 0;
-  min-width: 120px;
-  max-height: 300px;
-  margin-top: 2px;
-  padding: 4px;
-  overflow-y: auto;
-  border-radius: var(--aix-borderRadius);
-  background: var(--aix-colorBgElevated);
-  box-shadow:
-    0 6px 16px 0 rgb(0 0 0 / 0.08),
-    0 3px 6px -4px rgb(0 0 0 / 0.12),
-    0 9px 28px 8px rgb(0 0 0 / 0.05);
-}
-
-.aix-rich-text-editor__toolbar-dropdown-item {
-  display: block;
-  width: 100%;
-  padding: 4px 12px;
-  transition: background 0.15s;
-  border: none;
-  border-radius: var(--aix-borderRadiusSM);
-  background: transparent;
-  color: var(--aix-colorText);
-  font-size: var(--aix-fontSizeSM);
-  text-align: left;
-  white-space: nowrap;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--aix-colorFillSecondary);
+  .aix-dropdown__menu {
+    min-width: 120px;
+    max-height: 300px;
+    overflow-y: auto;
   }
 
-  &--active {
-    background: var(--aix-colorPrimaryBg);
-    color: var(--aix-colorPrimary);
+  .aix-dropdown__item {
+    font-size: var(--aix-fontSizeSM);
+    white-space: nowrap;
+
+    &--active {
+      background: var(--aix-colorPrimaryBg);
+      color: var(--aix-colorPrimary);
+    }
   }
 }
 
 // 颜色选择器
-.aix-rich-text-editor__toolbar-color-picker {
-  position: relative;
-}
-
 .aix-rich-text-editor__toolbar-color-indicator {
   display: inline-block;
   width: 14px;
@@ -148,21 +123,15 @@
   border-radius: 1px;
 }
 
+// 颜色面板（由 Popover 定位，通过 popperClass 应用外层样式）
+.aix-rich-text-editor__toolbar-color-panel-wrapper {
+  padding: 0;
+}
+
 .aix-rich-text-editor__toolbar-color-panel {
   display: grid;
-  position: absolute;
-  z-index: 1000;
-  top: 100%;
-  left: 0;
   grid-template-columns: repeat(10, 1fr);
-  margin-top: 2px;
   padding: 8px;
-  border-radius: var(--aix-borderRadius);
-  background: var(--aix-colorBgElevated);
-  box-shadow:
-    0 6px 16px 0 rgb(0 0 0 / 0.08),
-    0 3px 6px -4px rgb(0 0 0 / 0.12),
-    0 9px 28px 8px rgb(0 0 0 / 0.05);
   gap: 3px;
 }
 

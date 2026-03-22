@@ -1,103 +1,117 @@
 <template>
-  <div
-    v-show="visible"
-    ref="toolbarRef"
-    class="aix-rich-text-editor__table-toolbar"
-    :style="toolbarStyle"
-    @mousedown.prevent
-  >
-    <!-- 行操作 -->
-    <button
-      class="aix-rich-text-editor__toolbar-btn"
-      :title="t.addRowBefore"
-      type="button"
-      @click="exec('addRowBefore')"
+  <Transition name="aix-popper-fade">
+    <div
+      v-if="visible"
+      ref="floatingElRef"
+      class="aix-rich-text-editor__table-toolbar"
+      :style="mergedStyles"
+      @mousedown.prevent
     >
-      <IconRowBefore />
-    </button>
-    <button
-      class="aix-rich-text-editor__toolbar-btn"
-      :title="t.addRowAfter"
-      type="button"
-      @click="exec('addRowAfter')"
-    >
-      <IconRowAfter />
-    </button>
-    <button
-      class="aix-rich-text-editor__toolbar-btn"
-      :title="t.deleteRow"
-      type="button"
-      @click="exec('deleteRow')"
-    >
-      <IconRowDelete />
-    </button>
+      <!-- 行操作 -->
+      <Tooltip :content="t.addRowBefore" placement="top">
+        <button
+          class="aix-rich-text-editor__toolbar-btn"
+          type="button"
+          @click="exec('addRowBefore')"
+        >
+          <IconRowBefore />
+        </button>
+      </Tooltip>
+      <Tooltip :content="t.addRowAfter" placement="top">
+        <button
+          class="aix-rich-text-editor__toolbar-btn"
+          type="button"
+          @click="exec('addRowAfter')"
+        >
+          <IconRowAfter />
+        </button>
+      </Tooltip>
+      <Tooltip :content="t.deleteRow" placement="top">
+        <button
+          class="aix-rich-text-editor__toolbar-btn"
+          type="button"
+          @click="exec('deleteRow')"
+        >
+          <IconRowDelete />
+        </button>
+      </Tooltip>
 
-    <span class="aix-rich-text-editor__toolbar-divider" />
+      <span class="aix-rich-text-editor__toolbar-divider" />
 
-    <!-- 列操作 -->
-    <button
-      class="aix-rich-text-editor__toolbar-btn"
-      :title="t.addColumnBefore"
-      type="button"
-      @click="exec('addColumnBefore')"
-    >
-      <IconColumnBefore />
-    </button>
-    <button
-      class="aix-rich-text-editor__toolbar-btn"
-      :title="t.addColumnAfter"
-      type="button"
-      @click="exec('addColumnAfter')"
-    >
-      <IconColumnAfter />
-    </button>
-    <button
-      class="aix-rich-text-editor__toolbar-btn"
-      :title="t.deleteColumn"
-      type="button"
-      @click="exec('deleteColumn')"
-    >
-      <IconColumnDelete />
-    </button>
+      <!-- 列操作 -->
+      <Tooltip :content="t.addColumnBefore" placement="top">
+        <button
+          class="aix-rich-text-editor__toolbar-btn"
+          type="button"
+          @click="exec('addColumnBefore')"
+        >
+          <IconColumnBefore />
+        </button>
+      </Tooltip>
+      <Tooltip :content="t.addColumnAfter" placement="top">
+        <button
+          class="aix-rich-text-editor__toolbar-btn"
+          type="button"
+          @click="exec('addColumnAfter')"
+        >
+          <IconColumnAfter />
+        </button>
+      </Tooltip>
+      <Tooltip :content="t.deleteColumn" placement="top">
+        <button
+          class="aix-rich-text-editor__toolbar-btn"
+          type="button"
+          @click="exec('deleteColumn')"
+        >
+          <IconColumnDelete />
+        </button>
+      </Tooltip>
 
-    <span class="aix-rich-text-editor__toolbar-divider" />
+      <span class="aix-rich-text-editor__toolbar-divider" />
 
-    <!-- 表格操作 -->
-    <button
-      class="aix-rich-text-editor__toolbar-btn"
-      :title="t.mergeCells"
-      type="button"
-      @click="exec('mergeCells')"
-    >
-      <IconMergeCells />
-    </button>
-    <button
-      class="aix-rich-text-editor__toolbar-btn"
-      :title="t.splitCell"
-      type="button"
-      @click="exec('splitCell')"
-    >
-      <IconSplitCell />
-    </button>
-    <button
-      class="aix-rich-text-editor__toolbar-btn aix-rich-text-editor__toolbar-btn--danger"
-      :title="t.deleteTable"
-      type="button"
-      @click="exec('deleteTable')"
-    >
-      <IconTableDelete />
-    </button>
-  </div>
+      <!-- 表格操作 -->
+      <Tooltip :content="t.mergeCells" placement="top">
+        <button
+          class="aix-rich-text-editor__toolbar-btn"
+          type="button"
+          @click="exec('mergeCells')"
+        >
+          <IconMergeCells />
+        </button>
+      </Tooltip>
+      <Tooltip :content="t.splitCell" placement="top">
+        <button
+          class="aix-rich-text-editor__toolbar-btn"
+          type="button"
+          @click="exec('splitCell')"
+        >
+          <IconSplitCell />
+        </button>
+      </Tooltip>
+      <Tooltip :content="t.deleteTable" placement="top">
+        <button
+          class="aix-rich-text-editor__toolbar-btn aix-rich-text-editor__toolbar-btn--danger"
+          type="button"
+          @click="exec('deleteTable')"
+        >
+          <IconTableDelete />
+        </button>
+      </Tooltip>
+    </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
-import type { Editor } from '@tiptap/core';
+import { Tooltip, usePopper, useZIndex } from '@aix/popper';
+import type { ChainedCommands, Editor } from '@tiptap/core';
 import {
   ref,
   computed,
   watch,
+  nextTick,
   onMounted,
   onBeforeUnmount,
+  toRef,
   type Ref,
 } from 'vue';
 import {
@@ -119,16 +133,33 @@ const props = defineProps<{
 }>();
 
 const visible = ref(false);
-const toolbarRef = ref<HTMLElement | null>(null);
-const posX = ref(0);
-const posY = ref(0);
+const floatingElRef = ref<HTMLElement | null>(null);
 
-const toolbarStyle = computed(() => ({
-  left: `${posX.value}px`,
-  top: `${posY.value}px`,
+const t = toRef(props, 't');
+
+// 使用 usePopper 进行定位（表格上方居中）
+// strategy: 'fixed' 因为 reference (table) 在 overflow-y: auto 的滚动容器内
+// absolute 会导致工具栏在内容滚动时位置漂移
+const { referenceRef, floatingRef, floatingStyles, update } = usePopper({
+  placement: 'top',
+  strategy: 'fixed',
+  offset: 4,
+  flip: true,
+  shift: true,
+});
+
+// 桥接 floatingElRef 到 usePopper
+watch(floatingElRef, (el) => {
+  floatingRef.value = el;
+});
+
+// z-index 管理
+const { currentZIndex, nextZIndex } = useZIndex();
+
+const mergedStyles = computed(() => ({
+  ...floatingStyles.value,
+  zIndex: currentZIndex.value,
 }));
-
-const t = computed(() => props.t);
 
 /** 获取 Editor 实例 */
 function getEditor(): Editor | null {
@@ -138,20 +169,27 @@ function getEditor(): Editor | null {
   return 'value' in e ? (e as Ref<Editor | null>).value : e;
 }
 
+/** 表格命令类型 */
+type TableCommand =
+  | 'addRowBefore'
+  | 'addRowAfter'
+  | 'deleteRow'
+  | 'addColumnBefore'
+  | 'addColumnAfter'
+  | 'deleteColumn'
+  | 'mergeCells'
+  | 'splitCell'
+  | 'deleteTable';
+
+type TableChainedCommands = ChainedCommands &
+  Record<TableCommand, () => TableChainedCommands>;
+
 /** 执行表格命令 */
-function exec(command: string) {
+function exec(command: TableCommand) {
   const ed = getEditor();
   if (!ed) return;
-  const chain = ed.chain().focus() as unknown as Record<string, unknown>;
-  if (typeof chain[command] === 'function') {
-    const result = (chain[command] as () => unknown)();
-    if (
-      result &&
-      typeof (result as Record<string, unknown>).run === 'function'
-    ) {
-      ((result as Record<string, unknown>).run as () => void)();
-    }
-  }
+  const chain = ed.chain().focus() as unknown as TableChainedCommands;
+  chain[command]().run();
 }
 
 /** 查找光标所在的 table DOM 元素 */
@@ -182,35 +220,26 @@ function updateToolbar() {
   const ed = getEditor();
   if (!ed || !ed.isActive('table')) {
     visible.value = false;
+    referenceRef.value = null;
     return;
   }
 
   const tableEl = findTableElement(ed);
   if (!tableEl) {
     visible.value = false;
+    referenceRef.value = null;
     return;
   }
 
-  // 找到编辑器容器，计算相对定位
-  const editorContainer = tableEl.closest('.aix-rich-text-editor');
-  if (!editorContainer) {
-    visible.value = false;
-    return;
+  // 将 table 元素作为 reference，usePopper 自动计算浮动定位
+  referenceRef.value = tableEl;
+
+  if (!visible.value) {
+    visible.value = true;
+    nextZIndex();
   }
 
-  const containerRect = editorContainer.getBoundingClientRect();
-  const tableRect = tableEl.getBoundingClientRect();
-  const toolbarEl = toolbarRef.value;
-  const toolbarWidth = toolbarEl?.offsetWidth ?? 300;
-
-  // 计算相对于编辑器容器的位置
-  const relativeTop = tableRect.top - containerRect.top;
-  const tableCenter = tableRect.left - containerRect.left + tableRect.width / 2;
-
-  posX.value = Math.max(4, tableCenter - toolbarWidth / 2);
-  posY.value = relativeTop - 40; // 工具栏高度约 36px + 4px 间距
-
-  visible.value = true;
+  nextTick(() => update());
 }
 
 let editorInstance: Editor | null = null;

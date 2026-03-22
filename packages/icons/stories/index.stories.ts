@@ -150,6 +150,29 @@ export const WithStyle: Story = {
 export const WithAnimation: Story = {
   render: () => ({
     components: { IconSearch, Setting },
+    setup() {
+      // 在 setup 中注入 keyframes 和 hover 样式，避免在 template 中使用 <style> 标签
+      if (
+        typeof document !== 'undefined' &&
+        !document.getElementById('aix-icon-story-animation')
+      ) {
+        const style = document.createElement('style');
+        style.id = 'aix-icon-story-animation';
+        style.textContent = `
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          .hover-icon {
+            transition: transform 0.3s ease;
+          }
+          .hover-icon:hover {
+            transform: rotate(180deg) scale(1.2);
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    },
     template: `
       <div style="padding: 16px;">
         <h3 style="margin-bottom: 16px;">旋转动画</h3>
@@ -182,19 +205,6 @@ export const WithAnimation: Story = {
           />
           <span style="font-size: 14px; color: #666;">鼠标悬停查看效果</span>
         </div>
-
-        <style>
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-          .hover-icon {
-            transition: transform 0.3s ease;
-          }
-          .hover-icon:hover {
-            transform: rotate(180deg) scale(1.2);
-          }
-        </style>
       </div>
     `,
   }),

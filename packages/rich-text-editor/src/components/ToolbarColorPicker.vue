@@ -1,22 +1,28 @@
 <template>
-  <div ref="pickerRef" class="aix-rich-text-editor__toolbar-color-picker">
-    <button
-      :class="[
-        'aix-rich-text-editor__toolbar-btn',
-        { 'aix-rich-text-editor__toolbar-btn--active': isOpen },
-      ]"
-      :title="title"
-      :disabled="disabled"
-      type="button"
-      @click="toggleOpen"
-    >
-      <component :is="icon" v-if="icon" />
-      <span
-        class="aix-rich-text-editor__toolbar-color-indicator"
-        :style="{ backgroundColor: currentColor || 'transparent' }"
-      />
-    </button>
-    <div v-if="isOpen" class="aix-rich-text-editor__toolbar-color-panel">
+  <Popover
+    ref="popoverRef"
+    trigger="click"
+    placement="bottom-start"
+    :arrow="false"
+    :offset="4"
+    popper-class="aix-rich-text-editor__toolbar-color-panel-wrapper"
+  >
+    <template #reference>
+      <Tooltip :content="title" placement="top" :disabled="!title">
+        <button
+          :class="['aix-rich-text-editor__toolbar-btn']"
+          :disabled="disabled"
+          type="button"
+        >
+          <component :is="icon" v-if="icon" />
+          <span
+            class="aix-rich-text-editor__toolbar-color-indicator"
+            :style="{ backgroundColor: currentColor || 'transparent' }"
+          />
+        </button>
+      </Tooltip>
+    </template>
+    <div class="aix-rich-text-editor__toolbar-color-panel">
       <button
         v-for="color in colors"
         :key="color"
@@ -41,11 +47,13 @@
         ✕
       </button>
     </div>
-  </div>
+  </Popover>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { Popover, Tooltip } from '@aix/popper';
+import type { PopoverExpose } from '@aix/popper';
+import { ref } from 'vue';
 import type { FunctionalComponent } from 'vue';
 
 defineProps<{
@@ -61,29 +69,10 @@ const emit = defineEmits<{
   (e: 'select', color: string): void;
 }>();
 
-const isOpen = ref(false);
-const pickerRef = ref<HTMLElement | null>(null);
-
-function toggleOpen() {
-  isOpen.value = !isOpen.value;
-}
+const popoverRef = ref<PopoverExpose | null>(null);
 
 function selectColor(color: string) {
   emit('select', color);
-  isOpen.value = false;
+  popoverRef.value?.hide();
 }
-
-function handleClickOutside(event: MouseEvent) {
-  if (pickerRef.value && !pickerRef.value.contains(event.target as Node)) {
-    isOpen.value = false;
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside);
-});
 </script>

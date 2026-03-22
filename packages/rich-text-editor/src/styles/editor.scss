@@ -284,8 +284,6 @@
 // 表格浮动工具栏
 .aix-rich-text-editor__table-toolbar {
   display: flex;
-  position: absolute;
-  z-index: 1050;
   align-items: center;
   padding: 4px 8px;
   border-radius: var(--aix-borderRadius);

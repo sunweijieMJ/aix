@@ -16,7 +16,7 @@
 
     <!-- 编辑区域 -->
     <div class="aix-rich-text-editor__content">
-      <editor-content v-if="editor" :editor="editor as any" />
+      <editor-content v-if="editor" :editor="editor as Editor" />
     </div>
 
     <!-- 表格浮动工具栏 -->
@@ -43,7 +43,7 @@
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
-import { EditorContent } from '@tiptap/vue-3';
+import { Editor, EditorContent } from '@tiptap/vue-3';
 import { computed, ref } from 'vue';
 import type { CSSProperties, Ref } from 'vue';
 import EditorToolbar from './components/EditorToolbar.vue';
@@ -54,6 +54,8 @@ import { useEditorToolbar } from './composables/useEditorToolbar';
 import { locale as richTextLocale } from './locale';
 import type { RichTextEditorProps, RichTextEditorEmits } from './types';
 
+// 引入 Popper 组件样式（Dropdown/Popover/Tooltip 等）
+import '@aix/popper/style';
 import './styles/index.scss';
 
 defineOptions({

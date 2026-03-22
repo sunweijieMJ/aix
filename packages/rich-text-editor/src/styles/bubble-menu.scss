@@ -1,7 +1,6 @@
 // 链接编辑弹窗（定位在 toolbar 下方）
 .aix-rich-text-editor__link-popover {
   position: absolute;
-  z-index: 1000;
   top: 100%;
   left: 50%;
   margin-top: 4px;
@@ -56,12 +55,12 @@
   &--primary {
     border-color: var(--aix-colorPrimary);
     background: var(--aix-colorPrimary);
-    color: #fff;
+    color: var(--aix-colorWhite);
 
     &:hover {
       border-color: var(--aix-colorPrimaryHover);
       background: var(--aix-colorPrimaryHover);
-      color: #fff;
+      color: var(--aix-colorWhite);
     }
   }
 
@@ -71,7 +70,7 @@
 
     &:hover {
       background: var(--aix-colorError);
-      color: #fff;
+      color: var(--aix-colorWhite);
     }
   }
 }
@@ -79,7 +78,7 @@
 // @提及候选列表
 .aix-rich-text-editor__mention-popup {
   position: fixed;
-  z-index: 1100;
+  z-index: 2050;
   min-width: 180px;
   max-height: 240px;
   padding: 4px;

@@ -1,47 +1,51 @@
 <template>
-  <div
-    v-if="visible"
-    ref="popoverRef"
-    class="aix-rich-text-editor__link-popover"
-  >
-    <input
-      ref="inputRef"
-      v-model="url"
-      :placeholder="t.linkUrl"
-      class="aix-rich-text-editor__link-input"
-      @keydown.enter="confirmLink"
-      @keydown.escape="$emit('close')"
-    />
-    <div class="aix-rich-text-editor__link-actions">
-      <button
-        class="aix-rich-text-editor__link-action-btn aix-rich-text-editor__link-action-btn--primary"
-        type="button"
-        @click="confirmLink"
-      >
-        {{ t.confirm }}
-      </button>
-      <button
-        v-if="hasLink"
-        class="aix-rich-text-editor__link-action-btn aix-rich-text-editor__link-action-btn--danger"
-        type="button"
-        @click="removeLink"
-      >
-        {{ t.linkRemove }}
-      </button>
-      <button
-        class="aix-rich-text-editor__link-action-btn"
-        type="button"
-        @click="$emit('close')"
-      >
-        {{ t.cancel }}
-      </button>
+  <Transition name="aix-popper-fade">
+    <div
+      v-if="visible"
+      ref="popoverRef"
+      class="aix-rich-text-editor__link-popover"
+      :style="{ zIndex: currentZIndex }"
+    >
+      <input
+        ref="inputRef"
+        v-model="url"
+        :placeholder="t.linkUrl"
+        class="aix-rich-text-editor__link-input"
+        @keydown.enter="confirmLink"
+        @keydown.escape="$emit('close')"
+      />
+      <div class="aix-rich-text-editor__link-actions">
+        <button
+          class="aix-rich-text-editor__link-action-btn aix-rich-text-editor__link-action-btn--primary"
+          type="button"
+          @click="confirmLink"
+        >
+          {{ t.confirm }}
+        </button>
+        <button
+          v-if="hasLink"
+          class="aix-rich-text-editor__link-action-btn aix-rich-text-editor__link-action-btn--danger"
+          type="button"
+          @click="removeLink"
+        >
+          {{ t.linkRemove }}
+        </button>
+        <button
+          class="aix-rich-text-editor__link-action-btn"
+          type="button"
+          @click="$emit('close')"
+        >
+          {{ t.cancel }}
+        </button>
+      </div>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
+import { useClickOutside, useZIndex } from '@aix/popper';
 import type { Editor } from '@tiptap/core';
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import type { RichTextEditorLocale } from '../locale/types';
 
 const props = defineProps<{
@@ -59,6 +63,9 @@ const hasLink = ref(false);
 const popoverRef = ref<HTMLElement | null>(null);
 const inputRef = ref<HTMLInputElement | null>(null);
 
+// z-index 管理
+const { currentZIndex, nextZIndex } = useZIndex();
+
 watch(
   () => props.visible,
   (val) => {
@@ -66,6 +73,7 @@ watch(
       const attrs = props.editor.getAttributes('link');
       url.value = attrs.href ?? '';
       hasLink.value = props.editor.isActive('link');
+      nextZIndex();
       // 打开后自动聚焦输入框
       nextTick(() => inputRef.value?.focus());
     }
@@ -93,21 +101,19 @@ function removeLink() {
 }
 
 // 点击外部关闭
-function handleClickOutside(event: MouseEvent) {
-  if (
-    props.visible &&
-    popoverRef.value &&
-    !popoverRef.value.contains(event.target as Node)
-  ) {
-    emit('close');
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
+// 排除工具栏区域：防止点击链接按钮时 pointerdown(close) → click(reopen) 导致闪烁
+useClickOutside({
+  excludeRefs: computed(() => {
+    const refs: (HTMLElement | null | undefined)[] = [popoverRef.value];
+    const toolbarArea = popoverRef.value?.closest(
+      '.aix-rich-text-editor__toolbar-area',
+    );
+    if (toolbarArea instanceof HTMLElement) {
+      refs.push(toolbarArea);
+    }
+    return refs;
+  }),
+  handler: () => emit('close'),
+  enabled: () => props.visible,
 });
 </script>

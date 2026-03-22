@@ -113,15 +113,31 @@
       @close="closeSearch"
     />
 
-    <!-- 右键菜单 -->
-    <ContextMenu
+    <!-- 右键菜单（由 @aix/popper ContextMenu 处理定位、click-outside、ESC） -->
+    <PopperContextMenu
       v-if="mergedConfig.enableContextMenu"
-      :visible="contextMenu.visible.value"
-      :position="contextMenu.position.value"
-      :menu-items="contextMenu.menuItems.value"
-      @click="contextMenu.handleMenuClick"
-      @close="contextMenu.hide"
-    />
+      ref="ctxMenuRef"
+      popper-class="aix-pdf-context-menu"
+      @command="handleContextMenuCommand"
+    >
+      <!-- ContextMenu 要求 default slot 作为触发区域，此处使用程序化 show() 触发，占位即可 -->
+      <span aria-hidden="true" />
+      <template #menu>
+        <template v-for="item in contextMenu.menuItems.value" :key="item.id">
+          <li
+            v-if="item.divider"
+            class="aix-dropdown__divider"
+            role="separator"
+          />
+          <DropdownItem v-else :command="item.id" :disabled="item.disabled">
+            <span v-if="item.icon" class="aix-pdf-context-menu__icon">
+              {{ item.icon }}
+            </span>
+            {{ item.label }}
+          </DropdownItem>
+        </template>
+      </template>
+    </PopperContextMenu>
   </div>
 </template>
 
@@ -132,8 +148,9 @@
  * 使用 pdfjs-dist 提供 PDF 预览功能，支持文本和图片选择
  */
 import { useLocale } from '@aix/hooks';
+import { ContextMenu as PopperContextMenu, DropdownItem } from '@aix/popper';
+import type { ContextMenuExpose } from '@aix/popper';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import ContextMenu from './components/ContextMenu.vue';
 import PdfToolbar from './components/PdfToolbar.vue';
 import SearchBar from './components/SearchBar.vue';
 import { useContextMenu } from './composables/useContextMenu';
@@ -160,6 +177,8 @@ import type {
   ThumbnailInfo,
 } from './types';
 
+// 引入 Popper 组件样式（ContextMenu/DropdownItem 等）
+import '@aix/popper/style';
 import 'pdfjs-dist/web/pdf_viewer.css';
 
 const props = withDefaults(defineProps<PdfViewerProps>(), {
@@ -260,9 +279,13 @@ const textSelection = useTextSelection({
 const thumbnail = useThumbnail();
 
 // 右键菜单
+const ctxMenuRef = ref<ContextMenuExpose | null>(null);
 const contextMenu = useContextMenu({
   config: () => mergedContextMenuConfig.value,
-  getSelectedText: () => textSelection.getSelectedText(textLayerRef.value),
+  getSelectedText: () =>
+    mergedConfig.value.scrollMode === 'continuous'
+      ? textSelection.getSelectedText(continuousContentRef.value)
+      : textSelection.getSelectedText(textLayerRef.value),
   getSelectedImages: () => imageLayer.getSelectedImages(),
   getCurrentPage: () => currentPage.value,
   onMenuClick: (_item, context) => emit('contextMenu', context),
@@ -825,8 +848,16 @@ function handleContentClick(event: MouseEvent): void {
 
 function handleContextMenu(event: MouseEvent): void {
   if (mergedConfig.value.enableContextMenu) {
-    contextMenu.show(event);
+    // 先更新上下文（确定菜单类型和内容），再显示菜单
+    const shouldShow = contextMenu.updateContext(event);
+    if (shouldShow) {
+      ctxMenuRef.value?.show(event);
+    }
   }
+}
+
+function handleContextMenuCommand(command: string | number): void {
+  contextMenu.handleCommand(command);
 }
 
 // ==================== 搜索处理 ====================

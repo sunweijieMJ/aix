@@ -139,7 +139,7 @@
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  background: #fff;
+  background: var(--aix-pdf-toolbar-bg);
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
 
   // 占位符样式
@@ -162,7 +162,7 @@
 
 .aix-pdf-continuous__page {
   position: relative;
-  background: #fff;
+  background: var(--aix-pdf-toolbar-bg);
 }
 
 .aix-pdf-continuous__canvas {
@@ -282,48 +282,10 @@
 
 // 右键菜单
 .aix-pdf-context-menu {
-  position: fixed;
-  z-index: 9999;
-  min-width: 120px;
-  padding: 4px 0;
-  border-radius: 4px;
-  background: var(--aix-pdf-menu-bg);
-  box-shadow: var(--aix-pdf-menu-shadow);
-
-  &__item {
-    display: flex;
-    align-items: center;
-    padding: 8px 16px;
-    transition: background-color 0.2s;
-    color: var(--aix-pdf-text);
-    font-size: 14px;
-    cursor: pointer;
-    gap: 8px;
-
-    &:hover:not(&--disabled) {
-      background: var(--aix-pdf-menu-hover);
-    }
-
-    &--disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-  }
-
   &__icon {
     width: 16px;
     height: 16px;
     font-size: 16px;
-  }
-
-  &__label {
-    flex: 1;
-  }
-
-  &__divider {
-    height: 1px;
-    margin: 4px 0;
-    background: var(--aix-pdf-border);
   }
 }
 
@@ -494,16 +456,4 @@
   display: contents;
 }
 
-// 右键菜单动画
-.aix-pdf-context-menu-enter-active,
-.aix-pdf-context-menu-leave-active {
-  transition:
-    opacity 0.15s,
-    transform 0.15s;
-}
-
-.aix-pdf-context-menu-enter-from,
-.aix-pdf-context-menu-leave-to {
-  transform: scale(0.95);
-  opacity: 0;
-}
+// 右键菜单动画由 @aix/popper 的 aix-popper-fade 处理

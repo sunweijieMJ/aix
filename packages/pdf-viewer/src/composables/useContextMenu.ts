@@ -1,6 +1,7 @@
 /**
  * useContextMenu - 右键菜单
- * @description 管理 PDF 查看器的右键菜单
+ * @description 管理 PDF 查看器的右键菜单上下文和菜单项
+ * 定位、click-outside、ESC 关闭由 @aix/popper ContextMenu 组件处理
  */
 import { ref, computed, type Ref, type ComputedRef } from 'vue';
 import { DEFAULT_CONTEXT_MENU_CONFIG } from '../constants';
@@ -26,20 +27,14 @@ export interface UseContextMenuOptions {
 }
 
 export interface UseContextMenuReturn {
-  /** 是否显示 */
-  visible: Ref<boolean>;
-  /** 菜单位置 */
-  position: Ref<{ x: number; y: number }>;
   /** 当前上下文 */
   context: Ref<ContextMenuContext | null>;
   /** 当前菜单项 */
   menuItems: ComputedRef<ContextMenuItem[]>;
-  /** 显示菜单 */
-  show: (event: MouseEvent) => void;
-  /** 隐藏菜单 */
-  hide: () => void;
-  /** 处理菜单项点击 */
-  handleMenuClick: (item: ContextMenuItem) => void;
+  /** 更新上下文（在 show 之前调用） */
+  updateContext: (event: MouseEvent) => boolean;
+  /** 处理菜单项点击（通过 command 匹配） */
+  handleCommand: (command: string | number) => void;
 }
 
 /**
@@ -56,8 +51,6 @@ export function useContextMenu(
     };
   }
 
-  const visible = ref(false);
-  const position = ref({ x: 0, y: 0 });
   const context = ref<ContextMenuContext | null>(null);
 
   /**
@@ -97,26 +90,28 @@ export function useContextMenu(
   });
 
   /**
-   * 显示菜单
+   * 更新上下文（在 Popper ContextMenu show 之前调用）
+   * @returns true 表示应该显示菜单，false 表示不应显示
    */
-  function show(event: MouseEvent): void {
-    if (!getMergedConfig().enabled) return;
-
-    event.preventDefault();
+  function updateContext(event: MouseEvent): boolean {
+    if (!getMergedConfig().enabled) return false;
 
     const selectedText = options.getSelectedText?.() ?? '';
     const selectedImages = options.getSelectedImages?.() ?? [];
     const currentPage = options.getCurrentPage?.() ?? 1;
     const menuType = getMenuType(selectedText, selectedImages);
 
-    // 如果是空白区域且没有配置空白菜单，不显示
+    // 如果是空白区域且没有配置空白菜单，不阻止浏览器默认右键菜单
     const config = getMergedConfig();
     if (
       menuType === 'empty' &&
       (!config.emptyMenuItems || config.emptyMenuItems.length === 0)
     ) {
-      return;
+      return false;
     }
+
+    // 确定要显示自定义菜单后再阻止浏览器默认行为
+    event.preventDefault();
 
     context.value = {
       type: menuType,
@@ -126,37 +121,25 @@ export function useContextMenu(
       position: { x: event.clientX, y: event.clientY },
     };
 
-    position.value = { x: event.clientX, y: event.clientY };
-    visible.value = true;
+    return true;
   }
 
   /**
-   * 隐藏菜单
+   * 通过 command 处理菜单项点击
    */
-  function hide(): void {
-    visible.value = false;
-  }
-
-  /**
-   * 处理菜单项点击
-   */
-  function handleMenuClick(item: ContextMenuItem): void {
-    if (item.disabled || item.divider) return;
+  function handleCommand(command: string | number): void {
+    const item = menuItems.value.find((i) => i.id === command);
+    if (!item || item.disabled || item.divider) return;
 
     if (context.value) {
       options.onMenuClick?.(item, context.value);
     }
-
-    hide();
   }
 
   return {
-    visible,
-    position,
     context,
     menuItems,
-    show,
-    hide,
-    handleMenuClick,
+    updateContext,
+    handleCommand,
   };
 }

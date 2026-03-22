@@ -1,7 +1,5 @@
 import type { AnyExtension } from '@tiptap/core';
-import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import Underline from '@tiptap/extension-underline';
 import StarterKit from '@tiptap/starter-kit';
 import { loadFeatureExtensions, type EnhancedFeatureName } from '../constants';
 import type { RichTextEditorProps } from '../types';
@@ -22,18 +20,16 @@ export function useEditorExtensions(
     const extensions: AnyExtension[] = [];
 
     // ===== 1. 基础功能（始终加载） =====
+    // StarterKit v3 已内置 Link 和 Underline，通过 configure 传入配置避免重复注册
     extensions.push(
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4, 5, 6] },
-      }),
-    );
-    extensions.push(Underline);
-    extensions.push(
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          rel: 'noopener noreferrer',
-          target: '_blank',
+        link: {
+          openOnClick: false,
+          HTMLAttributes: {
+            rel: 'noopener noreferrer',
+            target: '_blank',
+          },
         },
       }),
     );
