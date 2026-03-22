@@ -1,0 +1,17 @@
+.aix-context-menu {
+  min-width: 140px;
+  padding: var(--aix-paddingXXS) 0;
+  border-radius: var(--aix-borderRadius);
+  background-color: var(--aix-colorBgElevated);
+  box-shadow: var(--aix-shadowMD);
+
+  &__trigger {
+    display: inline-flex;
+  }
+
+  &__menu {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+}

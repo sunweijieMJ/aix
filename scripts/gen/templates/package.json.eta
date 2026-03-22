@@ -53,8 +53,11 @@
     "vue": "^3.5.28"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
-    "rimraf": "*",
+    "@kit/eslint-config": "workspace:*",<% if (it.tools.stylelint) { %>
+    "@kit/stylelint-config": "workspace:*",<% } %>
+    "eslint": "*",
+    "rimraf": "*",<% if (it.tools.stylelint) { %>
+    "stylelint": "*",<% } %>
     "tsx": "*",
     "typescript": "*"
   }

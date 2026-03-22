@@ -30,6 +30,10 @@ export interface TemplateContext {
     scss: boolean;
     composables: boolean;
   };
+  tools: {
+    eslint: boolean;
+    stylelint: boolean;
+  };
   dependencies: string[];
 }
 

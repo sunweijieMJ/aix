@@ -1,0 +1,21 @@
+.aix-tooltip {
+  isolation: isolate;
+  max-width: 250px;
+  padding: var(--aix-paddingXS) var(--aix-paddingSM);
+  border-radius: var(--aix-borderRadiusSM);
+  background-color: var(--aix-colorBgSpotlight);
+  box-shadow: var(--aix-shadowSM);
+  color: var(--aix-colorTextLight);
+  font-size: var(--aix-fontSizeSM);
+  line-height: var(--aix-lineHeight);
+  overflow-wrap: break-word;
+  pointer-events: none;
+
+  .aix-popper__arrow {
+    background-color: var(--aix-colorBgSpotlight);
+  }
+
+  &__trigger {
+    display: inline-flex;
+  }
+}

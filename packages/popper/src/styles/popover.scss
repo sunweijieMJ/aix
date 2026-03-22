@@ -1,0 +1,31 @@
+.aix-popover {
+  isolation: isolate;
+  max-width: 400px;
+  border: 1px solid var(--aix-colorBorderSecondary);
+  border-radius: var(--aix-borderRadius);
+  background-color: var(--aix-colorBgElevated);
+  box-shadow: var(--aix-shadow);
+
+  &__trigger {
+    display: inline-flex;
+  }
+
+  &__arrow {
+    border: 1px solid var(--aix-colorBorderSecondary);
+    background-color: var(--aix-colorBgElevated);
+  }
+
+  &__title {
+    padding: var(--aix-paddingSM) var(--aix-padding);
+    border-bottom: 1px solid var(--aix-colorSplit);
+    color: var(--aix-colorTextHeading);
+    font-size: var(--aix-fontSize);
+    font-weight: var(--aix-fontWeightStrong);
+  }
+
+  &__body {
+    padding: var(--aix-paddingSM) var(--aix-padding);
+    color: var(--aix-colorText);
+    font-size: var(--aix-fontSize);
+  }
+}

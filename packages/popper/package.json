@@ -1,7 +1,7 @@
 {
-  "name": "@aix/subtitle",
+  "name": "@aix/popper",
   "version": "0.0.0",
-  "description": "A Vue 3 Subtitle component with VTT/SRT/JSON/SBV/ASS format support",
+  "description": "A Vue 3 Popper component for AIX component library",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -45,6 +45,10 @@
     "build:js": "rollup -c",
     "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@aix/theme": "workspace:*",
+    "@floating-ui/vue": "^1.1.11"
   },
   "peerDependencies": {
     "vue": "^3.5.28"

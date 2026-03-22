@@ -1,0 +1,47 @@
+.aix-dropdown {
+  min-width: 120px;
+  padding: var(--aix-paddingXXS) 0;
+  border-radius: var(--aix-borderRadius);
+  background-color: var(--aix-colorBgElevated);
+  box-shadow: var(--aix-shadowMD);
+
+  &__trigger {
+    display: inline-flex;
+  }
+
+  &__menu {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__item {
+    display: flex;
+    align-items: center;
+    padding: var(--aix-paddingXS) var(--aix-paddingSM);
+    transition: background-color var(--aix-motionDurationFast)
+      var(--aix-motionEaseInOut);
+    outline: none;
+    color: var(--aix-colorText);
+    font-size: var(--aix-fontSize);
+    line-height: var(--aix-lineHeight);
+    cursor: pointer;
+
+    &:hover:not(&--disabled),
+    &:focus-visible:not(&--disabled) {
+      background-color: var(--aix-controlItemBgHover);
+    }
+
+    &--disabled {
+      color: var(--aix-colorTextDisabled);
+      cursor: not-allowed;
+    }
+  }
+
+  &__divider {
+    height: 1px;
+    margin: var(--aix-paddingXXS) 0;
+    background-color: var(--aix-colorSplit);
+    list-style: none;
+  }
+}

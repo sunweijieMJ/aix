@@ -58,8 +58,11 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:*",
+    "@kit/stylelint-config": "workspace:*",
     "@types/video.js": "^7.3.58",
+    "eslint": "*",
     "rimraf": "*",
+    "stylelint": "*",
     "tsx": "*",
     "typescript": "*"
   }

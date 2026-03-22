@@ -78,6 +78,7 @@ function buildTemplateContext(config: ComponentConfig): TemplateContext {
     pascalName: toPascalCase(config.name),
     description: config.description,
     features: config.features,
+    tools: config.tools,
     dependencies: config.dependencies,
   };
 }

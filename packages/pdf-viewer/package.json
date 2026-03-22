@@ -56,7 +56,10 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:*",
+    "@kit/stylelint-config": "workspace:*",
+    "eslint": "*",
     "rimraf": "*",
+    "stylelint": "*",
     "tsx": "*",
     "typescript": "*"
   }

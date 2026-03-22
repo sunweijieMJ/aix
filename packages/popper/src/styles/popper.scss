@@ -1,0 +1,36 @@
+.aix-popper {
+  position: absolute;
+  box-sizing: border-box;
+  outline: none;
+
+  &__arrow {
+    position: absolute;
+    transform: rotate(45deg);
+    background: inherit;
+  }
+}
+
+// Fade 过渡（Tooltip / Popover）
+// 不能 transition transform，因为 @floating-ui/vue 用 transform: translate() 定位
+.aix-popper-fade-enter-active,
+.aix-popper-fade-leave-active {
+  transition: opacity var(--aix-motionDurationMid, 0.2s)
+    var(--aix-motionEaseInOut, ease);
+}
+
+.aix-popper-fade-enter-from,
+.aix-popper-fade-leave-to {
+  opacity: 0;
+}
+
+// 快速淡入过渡（Dropdown）
+.aix-popper-fade-fast-enter-active,
+.aix-popper-fade-fast-leave-active {
+  transition: opacity var(--aix-motionDurationFast, 0.1s)
+    var(--aix-motionEaseOut, ease-out);
+}
+
+.aix-popper-fade-fast-enter-from,
+.aix-popper-fade-fast-leave-to {
+  opacity: 0;
+}
