@@ -57,6 +57,11 @@ const config: StorybookConfig = {
           '@aix/icons': join(__dirname, '../packages/icons/src/index.ts'),
           '@aix/video': join(__dirname, '../packages/video/src'),
           '@aix/pdf-viewer': join(__dirname, '../packages/pdf-viewer/src'),
+          '@aix/popper/style': join(
+            __dirname,
+            '../packages/popper/src/styles/index.scss',
+          ),
+          '@aix/popper': join(__dirname, '../packages/popper/src'),
         },
       },
     };
