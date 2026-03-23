@@ -121,6 +121,7 @@ export default withMermaid(
                 text: '定制化项目代码合并方案',
                 link: '/rfcs/customization-merge-strategy',
               },
+              { text: '埋点数据采集', link: '/rfcs/tracker' },
             ],
           },
         ],
