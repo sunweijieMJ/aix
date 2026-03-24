@@ -60,7 +60,7 @@ export class TrackerValidator {
   }
 
   private report(message: string): void {
-    const prefix = '[aix-tracker 校验]';
+    const prefix = '[kit-tracker 校验]';
     if (this.onViolation === 'block') {
       console.error(`${prefix} ${message}（已阻止上报）`);
     } else {

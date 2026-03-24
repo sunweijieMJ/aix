@@ -44,23 +44,25 @@ export class SensorsAdapter implements ITrackerAdapter {
     } else if (sdkUrl) {
       await this.loadScript(sdkUrl);
       if (!window.sensors) {
-        throw new Error('[aix-tracker] 神策 SDK 加载后未找到 window.sensors');
+        throw new Error('[kit-tracker] 神策 SDK 加载后未找到 window.sensors');
       }
       this.sdk = window.sensors;
     } else {
       throw new Error(
-        '[aix-tracker] SensorsAdapter 需要提供 sdk（npm 实例）或 sdkUrl（CDN 地址）',
+        '[kit-tracker] SensorsAdapter 需要提供 sdk（npm 实例）或 sdkUrl（CDN 地址）',
       );
     }
 
     // 2. 初始化
-    this.sdk.init({
+    const initConfig: Record<string, unknown> = {
       server_url: serverUrl,
       show_log: showLog ?? false,
       send_type: sendType ?? 'beacon',
       is_single_page: isSinglePage ?? false,
-      heatmap: heatmap ?? {},
-    });
+    };
+    if (heatmap) initConfig.heatmap = heatmap;
+
+    this.sdk.init(initConfig);
 
     this.ready = true;
   }
@@ -94,7 +96,7 @@ export class SensorsAdapter implements ITrackerAdapter {
       script.src = url;
       script.onload = () => resolve();
       script.onerror = () =>
-        reject(new Error(`[aix-tracker] 加载脚本失败: ${url}`));
+        reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
       document.head.appendChild(script);
     });
   }

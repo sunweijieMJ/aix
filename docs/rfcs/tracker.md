@@ -297,7 +297,7 @@ class QDTrackerAdapter implements ITrackerAdapter {
       script.src = url;
       script.charset = 'UTF-8';
       script.onload = () => resolve();
-      script.onerror = () => reject(new Error(`[aix-tracker] 加载脚本失败: ${url}`));
+      script.onerror = () => reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
       document.head.appendChild(script);
     });
   }
@@ -345,7 +345,7 @@ class Tracker {
     // 记录初始化失败的适配器
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
-        console.error(`[aix-tracker] 适配器 "${this.adapters[i].name}" 初始化失败:`, result.reason);
+        console.error(`[kit-tracker] 适配器 "${this.adapters[i].name}" 初始化失败:`, result.reason);
       }
     });
 
@@ -450,7 +450,7 @@ class EventQueue {
     // 队列已满时，丢弃最旧的事件并警告
     if (this.buffer.length >= this.maxSize) {
       const dropped = this.buffer.shift();
-      console.warn(`[aix-tracker] 缓冲队列已满(${this.maxSize})，丢弃最旧事件: ${dropped?.event}`);
+      console.warn(`[kit-tracker] 缓冲队列已满(${this.maxSize})，丢弃最旧事件: ${dropped?.event}`);
     }
     this.buffer.push({ event, properties, targetAdapters });
   }

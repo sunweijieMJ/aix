@@ -28,7 +28,7 @@ export class EventQueue {
     if (this.buffer.length >= this.maxSize) {
       const dropped = this.buffer.shift();
       console.warn(
-        `[aix-tracker] 缓冲队列已满(${this.maxSize})，丢弃最旧事件: ${dropped?.event}`,
+        `[kit-tracker] 缓冲队列已满(${this.maxSize})，丢弃最旧事件: ${dropped?.event}`,
       );
     }
     this.buffer.push({ event, properties, targetAdapters });

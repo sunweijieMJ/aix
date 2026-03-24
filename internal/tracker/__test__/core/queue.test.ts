@@ -19,9 +19,9 @@ describe('EventQueue', () => {
     });
 
     expect(flushed).toHaveLength(2);
-    expect(flushed[0].event).toBe('event_1');
-    expect(flushed[0].targets).toEqual(['adapter_a']);
-    expect(flushed[1].event).toBe('event_2');
+    expect(flushed[0]!.event).toBe('event_1');
+    expect(flushed[0]!.targets).toEqual(['adapter_a']);
+    expect(flushed[1]!.event).toBe('event_2');
     expect(queue.size).toBe(0);
   });
 

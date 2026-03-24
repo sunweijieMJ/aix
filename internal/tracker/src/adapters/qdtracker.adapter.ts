@@ -36,6 +36,11 @@ export class QDTrackerAdapter implements ITrackerAdapter {
   async init(options: TrackerInitOptions): Promise<void> {
     // 1. 动态加载 QDTracker.js
     await this.loadScript(options.sdkUrl);
+    if (!window.QDTracker) {
+      throw new Error(
+        '[kit-tracker] QDTracker SDK 加载后未找到 window.QDTracker',
+      );
+    }
 
     // 2. 如需 AES 加密，额外加载 AES_SEC.js（需在 init 之前加载）
     if (options.qdOptions?.encrypt_mode === 'aes' && options.qdOptions.aesUrl) {
@@ -103,7 +108,7 @@ export class QDTrackerAdapter implements ITrackerAdapter {
       script.src = url;
       script.onload = () => resolve();
       script.onerror = () =>
-        reject(new Error(`[aix-tracker] 加载脚本失败: ${url}`));
+        reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
       document.head.appendChild(script);
     });
   }

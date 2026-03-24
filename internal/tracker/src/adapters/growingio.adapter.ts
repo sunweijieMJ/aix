@@ -37,12 +37,12 @@ export class GrowingIOAdapter implements ITrackerAdapter {
     } else if (sdkUrl) {
       await this.loadScript(sdkUrl);
       if (!window.gdp) {
-        throw new Error('[aix-tracker] GrowingIO SDK 加载后未找到 window.gdp');
+        throw new Error('[kit-tracker] GrowingIO SDK 加载后未找到 window.gdp');
       }
       this.gdp = window.gdp;
     } else {
       throw new Error(
-        '[aix-tracker] GrowingIOAdapter 需要提供 sdk（npm 实例）或 sdkUrl（CDN 地址）',
+        '[kit-tracker] GrowingIOAdapter 需要提供 sdk（npm 实例）或 sdkUrl（CDN 地址）',
       );
     }
 
@@ -83,7 +83,7 @@ export class GrowingIOAdapter implements ITrackerAdapter {
       script.src = url;
       script.onload = () => resolve();
       script.onerror = () =>
-        reject(new Error(`[aix-tracker] 加载脚本失败: ${url}`));
+        reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
       document.head.appendChild(script);
     });
   }

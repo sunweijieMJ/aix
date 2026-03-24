@@ -142,6 +142,6 @@ describe('usePageTracker', () => {
       },
     });
 
-    expect(() => mount(Component)).toThrow('[aix-tracker]');
+    expect(() => mount(Component)).toThrow('[kit-tracker]');
   });
 });

@@ -14,7 +14,7 @@ export function usePageTracker(options: UsePageTrackerOptions): void {
 
   if (!tracker) {
     throw new Error(
-      '[aix-tracker] usePageTracker() 必须在 createTrackerPlugin 安装后的组件中使用',
+      '[kit-tracker] usePageTracker() 必须在 createTrackerPlugin 安装后的组件中使用',
     );
   }
 

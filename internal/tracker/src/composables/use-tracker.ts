@@ -16,7 +16,7 @@ export function useTracker<E extends string = string>() {
 
   if (!injected) {
     throw new Error(
-      '[aix-tracker] useTracker() 必须在 createTrackerPlugin 安装后的组件中使用',
+      '[kit-tracker] useTracker() 必须在 createTrackerPlugin 安装后的组件中使用',
     );
   }
 

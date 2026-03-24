@@ -19,7 +19,7 @@ export function useExposure(options: UseExposureOptions): UseExposureReturn {
 
   if (!injected) {
     throw new Error(
-      '[aix-tracker] useExposure() 必须在 createTrackerPlugin 安装后的组件中使用',
+      '[kit-tracker] useExposure() 必须在 createTrackerPlugin 安装后的组件中使用',
     );
   }
 

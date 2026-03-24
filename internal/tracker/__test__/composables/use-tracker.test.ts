@@ -55,7 +55,7 @@ describe('useTracker', () => {
 
     expect(() => {
       mount(Component);
-    }).toThrow('[aix-tracker]');
+    }).toThrow('[kit-tracker]');
   });
 
   it('track 应调用 Tracker.track', () => {

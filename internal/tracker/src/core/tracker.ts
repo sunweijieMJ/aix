@@ -56,7 +56,7 @@ export class Tracker {
       if (result.status === 'rejected') {
         const adapterName = this.adapters[i]?.name ?? `index:${i}`;
         console.error(
-          `[aix-tracker] 适配器 "${adapterName}" 初始化失败:`,
+          `[kit-tracker] 适配器 "${adapterName}" 初始化失败:`,
           result.reason,
         );
       }
@@ -64,17 +64,15 @@ export class Tracker {
 
     // 回放缓冲的 identify 调用
     if (this.pendingIdentify) {
-      for (const adapter of this.adapters) {
-        if (adapter.isReady()) adapter.identify(this.pendingIdentify);
-      }
+      this.safeForEachAdapter((adapter) =>
+        adapter.identify(this.pendingIdentify!),
+      );
       this.pendingIdentify = null;
     }
 
     // 回放缓冲的公共属性
     const resolved = this.commonProps.resolve();
-    for (const adapter of this.adapters) {
-      if (adapter.isReady()) adapter.setCommonData(resolved);
-    }
+    this.safeForEachAdapter((adapter) => adapter.setCommonData(resolved));
 
     // flush 缓冲队列中的事件（只分发给已就绪的目标适配器）
     this.queue.flush(this.createFlushCallback());
@@ -138,9 +136,7 @@ export class Tracker {
     this.logger.logIdentify(account as Record<string, unknown>);
     this.pendingIdentify = account;
 
-    for (const adapter of this.adapters) {
-      if (adapter.isReady()) adapter.identify(account);
-    }
+    this.safeForEachAdapter((adapter) => adapter.identify(account));
   }
 
   /** 更新公共属性 */
@@ -148,9 +144,7 @@ export class Tracker {
     this.commonProps.update(data as Record<string, any>); // CommonPropertyMap 兼容 PropertyInput
 
     const resolved = this.commonProps.resolve();
-    for (const adapter of this.adapters) {
-      if (adapter.isReady()) adapter.setCommonData(resolved);
-    }
+    this.safeForEachAdapter((adapter) => adapter.setCommonData(resolved));
 
     this.logger.log('公共属性已更新', resolved);
   }
@@ -165,7 +159,7 @@ export class Tracker {
       try {
         adapter.destroy?.();
       } catch (err) {
-        console.error(`[aix-tracker] 适配器 "${adapter.name}" 销毁失败:`, err);
+        console.error(`[kit-tracker] 适配器 "${adapter.name}" 销毁失败:`, err);
       }
     }
 
@@ -192,6 +186,22 @@ export class Tracker {
     };
   }
 
+  /** 安全遍历已就绪的适配器，单个适配器异常不影响其余 */
+  private safeForEachAdapter(fn: (adapter: ITrackerAdapter) => void): void {
+    for (const adapter of this.adapters) {
+      if (adapter.isReady()) {
+        try {
+          fn(adapter);
+        } catch (err) {
+          console.error(
+            `[kit-tracker] 适配器 "${adapter.name}" 操作失败:`,
+            err,
+          );
+        }
+      }
+    }
+  }
+
   /** 向指定适配器列表分发事件 */
   private dispatchToAdapters(
     eventName: string,
@@ -202,7 +212,7 @@ export class Tracker {
       try {
         adapter.track(eventName, properties);
       } catch (err) {
-        console.error(`[aix-tracker] 适配器 "${adapter.name}" 上报失败:`, err);
+        console.error(`[kit-tracker] 适配器 "${adapter.name}" 上报失败:`, err);
       }
     }
   }

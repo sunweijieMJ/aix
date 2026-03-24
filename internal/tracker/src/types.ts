@@ -307,5 +307,5 @@ export interface UsePageTrackerOptions {
 
 /** Tracker 注入 key（Symbol） */
 export const TRACKER_INJECTION_KEY = Symbol(
-  'aix-tracker',
+  'kit-tracker',
 ) as InjectionKey<Tracker>;

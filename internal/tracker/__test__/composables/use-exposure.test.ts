@@ -30,7 +30,7 @@ describe('useExposure', () => {
     vi.unstubAllGlobals();
   });
 
-  function mountWithTracker(setup: () => Record<string, unknown>) {
+  function mountWithTracker(setup: () => Record<string, any>) {
     const adapter = new ConsoleAdapter();
     adapter.init({ appkey: 'test' });
     const tracker = new Tracker({

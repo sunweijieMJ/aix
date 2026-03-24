@@ -42,7 +42,7 @@ export function createTrackerPlugin(options: TrackerPluginOptions): Plugin {
 
       // 4. 异步初始化适配器（fire-and-forget，事件由 EventQueue 缓冲）
       tracker.init().catch((err) => {
-        console.error('[aix-tracker] 初始化失败:', err);
+        console.error('[kit-tracker] 初始化失败:', err);
       });
     },
   };
