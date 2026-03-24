@@ -37,6 +37,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@kit/eslint-config": "workspace:*",
     "@types/node": "*",
     "@types/ws": "^8.18.1",
     "eslint": "*",

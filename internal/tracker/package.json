@@ -1,7 +1,7 @@
 {
-  "name": "@kit/sentinel",
+  "name": "@kit/tracker",
   "version": "0.1.0",
-  "description": "CLI tool to install AI sentinel workflows into business repositories",
+  "description": "基于适配器模式的前端埋点数据采集组件包",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
   "type": "module",
@@ -11,41 +11,34 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./cli": {
-      "types": "./dist/cli.d.ts",
-      "import": "./dist/cli.js"
     }
   },
-  "bin": {
-    "sentinel": "./dist/cli.js"
-  },
   "files": [
-    "dist",
-    "templates"
+    "dist"
   ],
   "scripts": {
     "lint": "eslint . --max-warnings 0",
     "test": "vitest --run",
     "build": "pnpm run clean && tsup",
     "clean": "rimraf dist",
-    "dev": "tsx src/cli.ts"
+    "dev": "tsup --watch"
   },
-  "dependencies": {
-    "chalk": "^5.6.2",
-    "commander": "^14.0.3",
-    "fs-extra": "^11.3.3",
-    "inquirer": "^13.3.0",
-    "ora": "^9.3.0"
+  "peerDependencies": {
+    "vue": "^3.5.0",
+    "vue-router": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vue-router": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
-    "@types/fs-extra": "^11.0.4",
     "@types/node": "*",
     "eslint": "*",
     "rimraf": "*",
     "tsup": "*",
-    "tsx": "*",
+    "vue": "*",
+    "vue-router": "*",
     "vitest": "*"
   }
 }
