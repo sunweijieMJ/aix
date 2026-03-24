@@ -181,8 +181,8 @@ describe('Router Guard (autoPageview)', () => {
 
     const calls = (adapter.track as ReturnType<typeof vi.fn>).mock.calls;
     // 第一次调用应是 $pageclose（前一页）
-    expect(calls[0][0]).toBe('$pageclose');
-    expect(calls[0][1]).toEqual(
+    expect(calls?.[0]?.[0]).toBe('$pageclose');
+    expect(calls?.[0]?.[1]).toEqual(
       expect.objectContaining({
         page_name: '首页',
         dr: expect.any(Number),

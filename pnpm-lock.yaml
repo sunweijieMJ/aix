@@ -561,6 +561,9 @@ importers:
 
   internal/tracker:
     devDependencies:
+      '@kit/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
       '@types/node':
         specifier: '*'
         version: 25.3.2
