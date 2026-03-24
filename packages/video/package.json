@@ -48,10 +48,10 @@
   },
   "dependencies": {
     "@aix/icons": "workspace:*",
-    "video.js": "^8.23.6",
+    "video.js": "^8.23.7",
     "hls.js": "^1.6.15",
     "flv.js": "^1.6.2",
-    "dashjs": "^5.1.0"
+    "dashjs": "^5.1.1"
   },
   "peerDependencies": {
     "vue": "^3.5.28"
