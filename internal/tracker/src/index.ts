@@ -18,6 +18,8 @@ export type {
   QueuedEvent,
   ValidatorConfig,
   ITrackerAdapter,
+  SensorsAdapterConfig,
+  GrowingIOAdapterConfig,
   QDTrackerOptions,
   TrackerInitOptions,
   // Vue 指令
@@ -36,7 +38,12 @@ export type {
 export { Tracker } from './core/index.js';
 
 // ==================== 适配器 ====================
-export { ConsoleAdapter, QDTrackerAdapter } from './adapters/index.js';
+export {
+  ConsoleAdapter,
+  GrowingIOAdapter,
+  QDTrackerAdapter,
+  SensorsAdapter,
+} from './adapters/index.js';
 
 // ==================== Vue 集成 ====================
 export { createTrackerPlugin } from './plugin/index.js';

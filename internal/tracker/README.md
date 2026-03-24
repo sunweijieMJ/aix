@@ -316,6 +316,78 @@ const adapter = new QDTrackerAdapter();
 | heatmap | `Record<string, unknown>` | - | 热力图/点击全埋点配置 |
 | autoTrackUrl | `string` | - | 全埋点脚本地址 |
 
+#### SensorsAdapter
+
+神策数据 SDK 适配器。支持 CDN 和 npm 两种加载方式。
+
+```typescript
+import { SensorsAdapter } from '@kit/tracker';
+
+// CDN 方式
+const adapter = new SensorsAdapter({
+  serverUrl: 'https://xxx.datasink.sensorsdata.cn/sa',
+  sdkUrl: 'https://static.sensorsdata.cn/sdk/1.26.4/sensorsdata.min.js',
+  showLog: import.meta.env.DEV,
+  sendType: 'beacon',
+});
+
+// npm 方式（需自行安装 sa-sdk-javascript）
+import sensors from 'sa-sdk-javascript';
+const adapter = new SensorsAdapter({
+  serverUrl: 'https://xxx.datasink.sensorsdata.cn/sa',
+  sdk: sensors,
+});
+```
+
+**SensorsAdapterConfig：**
+
+| 属性 | 类型 | 默认值 | 必填 | 说明 |
+|------|------|--------|:----:|------|
+| serverUrl | `string` | - | ✅ | 数据接收地址 |
+| sdkUrl | `string` | - | ❌ | CDN 加载地址（与 sdk 二选一） |
+| sdk | `unknown` | - | ❌ | npm 安装的 SDK 实例（与 sdkUrl 二选一） |
+| showLog | `boolean` | `false` | ❌ | 是否显示日志 |
+| sendType | `'image' \| 'ajax' \| 'beacon'` | `'beacon'` | ❌ | 发送方式 |
+| isSinglePage | `boolean` | `false` | ❌ | 单页应用模式 |
+| heatmap | `Record<string, unknown>` | - | ❌ | 热力图配置 |
+
+#### GrowingIOAdapter
+
+GrowingIO SDK 适配器。支持 CDN 和 npm 两种加载方式。
+
+```typescript
+import { GrowingIOAdapter } from '@kit/tracker';
+
+// CDN 方式
+const adapter = new GrowingIOAdapter({
+  accountId: 'your_account_id',
+  dataSourceId: 'your_datasource_id',
+  host: 'https://api.growingio.com',
+  sdkUrl: 'https://assets.giocdn.com/sdk/webjs/cdp/gdp-full.js',
+  version: '1.0.0',
+});
+
+// npm 方式（需自行安装 gio-webjs-sdk-cdp）
+import gdp from 'gio-webjs-sdk-cdp/gdp-full';
+const adapter = new GrowingIOAdapter({
+  accountId: 'your_account_id',
+  dataSourceId: 'your_datasource_id',
+  host: 'https://api.growingio.com',
+  sdk: gdp,
+});
+```
+
+**GrowingIOAdapterConfig：**
+
+| 属性 | 类型 | 默认值 | 必填 | 说明 |
+|------|------|--------|:----:|------|
+| accountId | `string` | - | ✅ | 项目 accountId |
+| dataSourceId | `string` | - | ✅ | 数据源 ID |
+| host | `string` | - | ✅ | API 服务器地址 |
+| sdkUrl | `string` | - | ❌ | CDN 加载地址（与 sdk 二选一） |
+| sdk | `unknown` | - | ❌ | npm 安装的 SDK 实例（与 sdkUrl 二选一） |
+| version | `string` | - | ❌ | 网站版本 |
+
 #### ConsoleAdapter
 
 开发/测试环境使用的调试适配器。`init()` 同步完成，将每次上报通过 `console.groupCollapsed` + `console.table` 输出到控制台。
@@ -327,6 +399,21 @@ import { ConsoleAdapter } from '@kit/tracker';
 const adapters = import.meta.env.DEV
   ? [new ConsoleAdapter()]
   : [new QDTrackerAdapter()];
+```
+
+#### 多平台同时上报
+
+适配器列表支持多个，可同时上报到多个平台：
+
+```typescript
+createTrackerPlugin({
+  appkey: 'your_appkey',
+  adapters: [
+    new QDTrackerAdapter(),
+    new SensorsAdapter({ serverUrl: 'https://...' , sdkUrl: '...' }),
+    new GrowingIOAdapter({ accountId: '...', dataSourceId: '...', host: '...' , sdkUrl: '...' }),
+  ],
+});
 ```
 
 #### 自定义适配器

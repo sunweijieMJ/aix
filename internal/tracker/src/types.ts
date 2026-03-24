@@ -137,7 +137,41 @@ export interface ITrackerAdapter {
   destroy?(): void;
 }
 
-// ==================== 企点 SDK 配置 ====================
+// ==================== 适配器配置 ====================
+
+/** 神策数据 SDK 配置 */
+export interface SensorsAdapterConfig {
+  /** 数据接收地址（必填） */
+  serverUrl: string;
+  /** CDN 加载地址（与 sdk 二选一） */
+  sdkUrl?: string;
+  /** 预加载的 SDK 实例，npm 方式时传入（与 sdkUrl 二选一） */
+  sdk?: unknown;
+  /** 是否显示日志 */
+  showLog?: boolean;
+  /** 发送方式 */
+  sendType?: 'image' | 'ajax' | 'beacon';
+  /** 是否单页应用模式 */
+  isSinglePage?: boolean;
+  /** 热力图配置 */
+  heatmap?: Record<string, unknown>;
+}
+
+/** GrowingIO SDK 配置 */
+export interface GrowingIOAdapterConfig {
+  /** 项目 accountId（必填） */
+  accountId: string;
+  /** 数据源 ID（必填） */
+  dataSourceId: string;
+  /** API 服务器地址（必填） */
+  host: string;
+  /** CDN 加载地址（与 sdk 二选一） */
+  sdkUrl?: string;
+  /** 预加载的 SDK 实例，npm 方式时传入（与 sdkUrl 二选一） */
+  sdk?: unknown;
+  /** 网站版本 */
+  version?: string;
+}
 
 /** 企点 QDTracker SDK 特有配置 */
 export interface QDTrackerOptions {
