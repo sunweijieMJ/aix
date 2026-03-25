@@ -1,6 +1,6 @@
 {
   "name": "@kit/visual-testing",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Visual regression testing with Figma baseline and LLM analysis",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
