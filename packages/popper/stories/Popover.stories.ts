@@ -111,6 +111,74 @@ export const Basic: Story = {
   },
 };
 
+export const Placements: Story = {
+  render: () => ({
+    components: { Popover },
+    template: `
+      <div style="padding: 80px 140px;">
+        <div style="display: flex; justify-content: center; gap: 8px; margin-bottom: 16px;">
+          <Popover title="top-start" placement="top-start">
+            <template #reference><button style="padding: 6px 12px; width: 100px;">top-start</button></template>
+            Popover 内容
+          </Popover>
+          <Popover title="top" placement="top">
+            <template #reference><button style="padding: 6px 12px; width: 100px;">top</button></template>
+            Popover 内容
+          </Popover>
+          <Popover title="top-end" placement="top-end">
+            <template #reference><button style="padding: 6px 12px; width: 100px;">top-end</button></template>
+            Popover 内容
+          </Popover>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <Popover title="left-start" placement="left-start">
+              <template #reference><button style="padding: 6px 12px; width: 100px;">left-start</button></template>
+              Popover 内容
+            </Popover>
+            <Popover title="left" placement="left">
+              <template #reference><button style="padding: 6px 12px; width: 100px;">left</button></template>
+              Popover 内容
+            </Popover>
+            <Popover title="left-end" placement="left-end">
+              <template #reference><button style="padding: 6px 12px; width: 100px;">left-end</button></template>
+              Popover 内容
+            </Popover>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <Popover title="right-start" placement="right-start">
+              <template #reference><button style="padding: 6px 12px; width: 100px;">right-start</button></template>
+              Popover 内容
+            </Popover>
+            <Popover title="right" placement="right">
+              <template #reference><button style="padding: 6px 12px; width: 100px;">right</button></template>
+              Popover 内容
+            </Popover>
+            <Popover title="right-end" placement="right-end">
+              <template #reference><button style="padding: 6px 12px; width: 100px;">right-end</button></template>
+              Popover 内容
+            </Popover>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: center; gap: 8px; margin-top: 16px;">
+          <Popover title="bottom-start" placement="bottom-start">
+            <template #reference><button style="padding: 6px 12px; width: 100px;">bottom-start</button></template>
+            Popover 内容
+          </Popover>
+          <Popover title="bottom" placement="bottom">
+            <template #reference><button style="padding: 6px 12px; width: 100px;">bottom</button></template>
+            Popover 内容
+          </Popover>
+          <Popover title="bottom-end" placement="bottom-end">
+            <template #reference><button style="padding: 6px 12px; width: 100px;">bottom-end</button></template>
+            Popover 内容
+          </Popover>
+        </div>
+      </div>
+    `,
+  }),
+};
+
 export const Triggers: Story = {
   render: () => ({
     components: { Popover },

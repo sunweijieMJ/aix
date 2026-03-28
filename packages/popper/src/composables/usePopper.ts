@@ -49,16 +49,33 @@ const ARROW_SIDE_MAP: Record<string, string> = {
   left: 'right',
 };
 
+/** 箭头尖端圆角半径 (px) */
+const ARROW_TIP_RADIUS = 2;
+
 /**
- * clip-path 映射：根据箭头所在边，裁切旋转后的正方形为三角形
- * 坐标基于旋转前的正方形，rotate(45deg) 后映射为菱形的对应半区
+ * 生成带圆角尖端的箭头 clip-path
+ *
+ * 使用 SVG path() 替代 polygon()，在箭头尖端（旋转后的朝外顶点）
+ * 添加二次贝塞尔曲线圆角，使箭头与圆角容器视觉协调。
  */
-const ARROW_CLIP_PATH: Record<string, string> = {
-  bottom: 'polygon(0 100%, 100% 100%, 100% 0)', // 箭头朝下 (placement=top)
-  top: 'polygon(0 0, 0 100%, 100% 0)', // 箭头朝上 (placement=bottom)
-  right: 'polygon(0 0, 100% 0, 100% 100%)', // 箭头朝右 (placement=left)
-  left: 'polygon(0 0, 0 100%, 100% 100%)', // 箭头朝左 (placement=right)
-};
+function getArrowClipPath(staticSide: string, size: number): string {
+  const r = Math.min(ARROW_TIP_RADIUS, size / 4);
+  const s = size;
+
+  // 每个 case 对应旋转前正方形的一个三角半区，尖端顶点用 Q 曲线替代直角
+  switch (staticSide) {
+    case 'bottom': // placement=top, 尖端 (s,s) 旋转后朝下
+      return `path('M 0 ${s} L ${s - r} ${s} Q ${s} ${s} ${s} ${s - r} L ${s} 0 Z')`;
+    case 'top': // placement=bottom, 尖端 (0,0) 旋转后朝上
+      return `path('M ${r} 0 Q 0 0 0 ${r} L 0 ${s} L ${s} 0 Z')`;
+    case 'right': // placement=left, 尖端 (s,0) 旋转后朝右
+      return `path('M 0 0 L ${s - r} 0 Q ${s} 0 ${s} ${r} L ${s} ${s} Z')`;
+    case 'left': // placement=right, 尖端 (0,s) 旋转后朝左
+      return `path('M 0 0 L 0 ${s - r} Q 0 ${s} ${r} ${s} L ${s} ${s} Z')`;
+    default:
+      return '';
+  }
+}
 
 /**
  * 核心定位 composable，封装 @floating-ui/vue 的 useFloating
@@ -137,7 +154,7 @@ export function usePopper(options: UsePopperOptions = {}): UsePopperReturn {
       [staticSide]: `${-size / 2 - bw}px`,
       width: `${size}px`,
       height: `${size}px`,
-      clipPath: ARROW_CLIP_PATH[staticSide] ?? '',
+      clipPath: getArrowClipPath(staticSide, size),
     };
   });
 

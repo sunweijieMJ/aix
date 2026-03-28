@@ -1,9 +1,8 @@
 <template>
   <span
-    ref="triggerRef"
     class="aix-context-menu__trigger"
     aria-haspopup="menu"
-    @contextmenu.prevent="handleContextMenu"
+    v-on="referenceListeners"
   >
     <slot />
   </span>
@@ -33,10 +32,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, provide, ref, watch, onBeforeUnmount } from 'vue';
-import { useClickOutside } from '../composables/useClickOutside';
+import { computed, nextTick, provide, ref, watch } from 'vue';
 import { createMenuKeyDown } from '../composables/useMenuKeyboard';
 import { usePopper } from '../composables/usePopper';
+import {
+  usePopperTrigger,
+  createVirtualElement,
+} from '../composables/usePopperTrigger';
 import { useZIndex } from '../composables/useZIndex';
 import { DROPDOWN_INJECTION_KEY } from '../types';
 import type {
@@ -57,11 +59,10 @@ const props = withDefaults(defineProps<ContextMenuProps>(), {
 
 const emit = defineEmits<ContextMenuEmits>();
 
-const isOpen = ref(false);
-const triggerRef = ref<HTMLElement | null>(null);
+// 模板 ref
 const floatingElRef = ref<HTMLElement | null>(null);
 
-// 核心定位（使用 usePopper 统一架构，strategy: fixed 适合右键菜单）
+// 核心定位（strategy: fixed 适合右键菜单）
 const { referenceRef, floatingRef, floatingStyles } = usePopper({
   placement: 'bottom-start',
   strategy: 'fixed',
@@ -71,35 +72,23 @@ const { referenceRef, floatingRef, floatingStyles } = usePopper({
   shift: true,
 });
 
-// 桥接 refs
+// 桥接 refs（triggerRef 不桥接——contextmenu 模式使用虚拟元素定位，不需要真实触发元素作为 reference）
 watch(floatingElRef, (el) => {
   floatingRef.value = el;
 });
 
-function handleContextMenu(event: MouseEvent) {
-  if (props.disabled) return;
-
-  const { clientX, clientY } = event;
-  // 使用虚拟元素定位到鼠标坐标
-  referenceRef.value = {
-    getBoundingClientRect: () => ({
-      width: 0,
-      height: 0,
-      x: clientX,
-      y: clientY,
-      top: clientY,
-      left: clientX,
-      right: clientX,
-      bottom: clientY,
-      toJSON: () => ({}),
-    }),
-  } as unknown as HTMLElement;
-  isOpen.value = true;
-}
-
-function hide() {
-  isOpen.value = false;
-}
+// 触发器：复用 usePopperTrigger 的 contextmenu 逻辑（虚拟元素定位 + Escape + 点击外部关闭）
+const {
+  isOpen,
+  show: triggerShow,
+  hide,
+  referenceListeners,
+} = usePopperTrigger({
+  trigger: 'contextmenu',
+  disabled: () => props.disabled,
+  referenceRef,
+  floatingRef,
+});
 
 function handleCommand(command?: string | number) {
   if (command != null) {
@@ -111,33 +100,19 @@ function handleCommand(command?: string | number) {
 provide(DROPDOWN_INJECTION_KEY, { handleItemClick: handleCommand });
 
 // 键盘导航（DropdownItem 渲染 .aix-dropdown__item，使用默认选择器）
-// Escape 由 document 级 keydown 统一处理，避免重复调用 hide()
 const onMenuKeyDown = createMenuKeyDown();
 
+// expose 的 show(event) 需要手动设置虚拟元素后调用 triggerShow
 function show(event: MouseEvent) {
-  handleContextMenu(event);
-}
-
-// 点击外部关闭（排除触发元素和浮动元素）
-useClickOutside({
-  excludeRefs: computed(() => [triggerRef.value, floatingElRef.value]),
-  handler: hide,
-  enabled: isOpen,
-});
-
-// Esc 关闭
-function onKeyDown(event: KeyboardEvent) {
-  if (event.key === 'Escape') hide();
+  referenceRef.value = createVirtualElement(event.clientX, event.clientY);
+  triggerShow();
 }
 
 // 动态 z-index：每次打开时递增，保证最后打开的浮层在最上方
 const { currentZIndex, nextZIndex } = useZIndex();
-
 watch(isOpen, (val) => {
-  if (typeof document === 'undefined') return;
   if (val) {
     nextZIndex();
-    document.addEventListener('keydown', onKeyDown);
     // 菜单打开后聚焦第一个菜单项，启用键盘导航
     nextTick(() => {
       const firstItem = floatingElRef.value?.querySelector<HTMLElement>(
@@ -145,14 +120,6 @@ watch(isOpen, (val) => {
       );
       firstItem?.focus();
     });
-  } else {
-    document.removeEventListener('keydown', onKeyDown);
-  }
-});
-
-onBeforeUnmount(() => {
-  if (typeof document !== 'undefined') {
-    document.removeEventListener('keydown', onKeyDown);
   }
 });
 

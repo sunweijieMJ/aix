@@ -13,6 +13,26 @@ import { useClickOutside } from './useClickOutside';
 /** 事件处理器类型，兼容无参和带 Event 参数的回调 */
 type EventHandler = (event?: Event) => void;
 
+/** 根据鼠标坐标创建虚拟定位元素（用于 contextmenu 等场景） */
+export function createVirtualElement(
+  clientX: number,
+  clientY: number,
+): HTMLElement {
+  return {
+    getBoundingClientRect: () => ({
+      width: 0,
+      height: 0,
+      x: clientX,
+      y: clientY,
+      top: clientY,
+      left: clientX,
+      right: clientX,
+      bottom: clientY,
+      toJSON: () => ({}),
+    }),
+  } as unknown as HTMLElement;
+}
+
 export interface UsePopperTriggerOptions {
   trigger: MaybeRefOrGetter<TriggerType>;
   disabled?: MaybeRefOrGetter<boolean>;
@@ -96,7 +116,10 @@ export function usePopperTrigger(
 
     const delay = toValue(showDelay);
     if (delay > 0) {
-      showTimer = setTimeout(() => setOpen(true), delay);
+      showTimer = setTimeout(() => {
+        if (toValue(disabled)) return;
+        setOpen(true);
+      }, delay);
     } else {
       setOpen(true);
     }
@@ -189,19 +212,7 @@ export function usePopperTrigger(
           mouseEvent.preventDefault();
           const { clientX, clientY } = mouseEvent;
           // 虚拟元素定位到鼠标坐标
-          referenceRef.value = {
-            getBoundingClientRect: () => ({
-              width: 0,
-              height: 0,
-              x: clientX,
-              y: clientY,
-              top: clientY,
-              left: clientX,
-              right: clientX,
-              bottom: clientY,
-              toJSON: () => ({}),
-            }),
-          } as unknown as HTMLElement;
+          referenceRef.value = createVirtualElement(clientX, clientY);
           show();
         };
         break;

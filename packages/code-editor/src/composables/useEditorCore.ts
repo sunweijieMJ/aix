@@ -47,9 +47,6 @@ export function useEditorCore(
   const editorView = shallowRef<EditorView | null>(null);
   const isFocused = ref(false);
 
-  // v-model 防循环更新标记
-  let isInternalUpdate = false;
-
   // 语言切换竞态版本号
   let langLoadVersion = 0;
 
@@ -83,12 +80,8 @@ export function useEditorCore(
     // 文档变更 → 通知外部
     if (update.docChanged) {
       const newValue = update.state.doc.toString();
-      isInternalUpdate = true;
       emit('update:modelValue', newValue);
       emit('change', newValue);
-      queueMicrotask(() => {
-        isInternalUpdate = false;
-      });
     }
   });
 
@@ -125,11 +118,10 @@ export function useEditorCore(
 
   // ---- watch props 变化 ----
 
-  // 外部 modelValue 变化 → 同步到编辑器
+  // 外部 modelValue 变化 → 同步到编辑器（通过内容对比防循环）
   watch(
     () => props.modelValue,
     (newVal) => {
-      if (isInternalUpdate) return;
       const view = editorView.value;
       if (!view) return;
       const currentVal = view.state.doc.toString();

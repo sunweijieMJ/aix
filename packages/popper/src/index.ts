@@ -52,6 +52,7 @@ export {
 export {
   usePopper,
   usePopperTrigger,
+  createVirtualElement,
   useClickOutside,
   createMenuKeyDown,
   useZIndex,

@@ -52,6 +52,9 @@ export function useEditorCore(
 
   const { buildExtensions } = useEditorExtensions(props);
 
+  // 组件卸载标记，防止异步初始化竞态（await 期间组件卸载后不再创建 Editor）
+  let destroyed = false;
+
   /** 获取当前输出值 */
   function getOutputValue(
     editorInstance: Editor,
@@ -80,6 +83,9 @@ export function useEditorCore(
   // 在 onMounted 中异步初始化编辑器
   onMounted(async () => {
     const extensions = await buildExtensions();
+
+    // 防止竞态：await 期间组件已卸载则不创建 Editor
+    if (destroyed) return;
 
     const ed = new Editor({
       content: props.modelValue ?? '',
@@ -122,6 +128,7 @@ export function useEditorCore(
 
   // 组件销毁时清理
   onBeforeUnmount(() => {
+    destroyed = true;
     editorRef.value?.destroy();
     editorRef.value = null;
     isReady.value = false;

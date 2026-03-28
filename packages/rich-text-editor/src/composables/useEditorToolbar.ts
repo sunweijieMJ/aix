@@ -31,6 +31,7 @@ import {
   IconSubscript,
   IconFontSize,
   IconFontFamily,
+  IconClearFormat,
 } from '../icons';
 import type { RichTextEditorLocale } from '../locale/types';
 import type { DropdownOption, RichTextEditorProps } from '../types';
@@ -205,6 +206,15 @@ export function useEditorToolbar(
           isActive: () => ed.isActive('code'),
           isDisabled: () => false,
           action: () => ed.chain().focus().toggleCode().run(),
+        },
+        {
+          key: 'clearFormat',
+          type: 'button',
+          icon: IconClearFormat,
+          label: t.value.clearFormat,
+          isActive: () => false,
+          isDisabled: () => false,
+          action: () => ed.chain().focus().clearNodes().unsetAllMarks().run(),
         },
       ],
     });

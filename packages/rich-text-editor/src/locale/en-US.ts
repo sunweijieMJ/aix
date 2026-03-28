@@ -69,6 +69,7 @@ const enUS: RichTextEditorLocale = {
   characters: 'Characters',
   words: 'Words',
   clearColor: 'Clear',
+  clearFormat: 'Clear Format',
   videoUrl: 'Enter video URL',
 };
 

@@ -69,6 +69,7 @@ const zhCN: RichTextEditorLocale = {
   characters: '字符',
   words: '字数',
   clearColor: '清除颜色',
+  clearFormat: '清除格式',
   videoUrl: '请输入视频地址',
 };
 

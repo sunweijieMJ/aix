@@ -271,7 +271,6 @@ function bindEditor() {
 watch(
   () => props.editor,
   () => bindEditor(),
-  { deep: true },
 );
 
 onMounted(() => {

@@ -6,7 +6,7 @@
       { 'aix-dropdown__item--disabled': disabled },
     ]"
     role="menuitem"
-    :tabindex="disabled ? -1 : 0"
+    :tabindex="-1"
     :aria-disabled="disabled || undefined"
     @click="handleClick"
     @keydown.enter.prevent="handleClick"

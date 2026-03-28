@@ -134,6 +134,8 @@ export interface RichTextEditorLocale {
   words: string;
   /** 清除颜色按钮文案 */
   clearColor: string;
+  /** 清除格式按钮提示 */
+  clearFormat: string;
   /** 视频链接输入提示 */
   videoUrl: string;
 }

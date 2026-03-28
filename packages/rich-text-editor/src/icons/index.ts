@@ -82,6 +82,15 @@ export const IconCode = createIconMulti([
   { tag: 'polyline', attrs: { points: '8 6 2 12 8 18' } },
 ]);
 
+// ===== 清除格式 =====
+export const IconClearFormat = createIconMulti([
+  { tag: 'path', attrs: { d: 'M4 7V4h16v3' } },
+  { tag: 'path', attrs: { d: 'M9 20h6' } },
+  { tag: 'path', attrs: { d: 'M12 4v16' } },
+  { tag: 'line', attrs: { x1: '17', y1: '17', x2: '22', y2: '22' } },
+  { tag: 'line', attrs: { x1: '22', y1: '17', x2: '17', y2: '22' } },
+]);
+
 // ===== 标题 =====
 export const IconHeading = createIconMulti([
   { tag: 'path', attrs: { d: 'M6 12h12' } },

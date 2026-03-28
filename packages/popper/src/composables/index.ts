@@ -1,7 +1,7 @@
 export { usePopper } from './usePopper';
 export type { UsePopperOptions, UsePopperReturn } from './usePopper';
 
-export { usePopperTrigger } from './usePopperTrigger';
+export { usePopperTrigger, createVirtualElement } from './usePopperTrigger';
 export type {
   UsePopperTriggerOptions,
   UsePopperTriggerReturn,
