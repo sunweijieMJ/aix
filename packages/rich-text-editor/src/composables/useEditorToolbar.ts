@@ -34,7 +34,12 @@ import {
   IconClearFormat,
 } from '../icons';
 import type { RichTextEditorLocale } from '../locale/types';
-import type { DropdownOption, RichTextEditorProps } from '../types';
+import type {
+  DropdownOption,
+  RichTextEditorProps,
+  VideoConfig,
+} from '../types';
+import { resolveUploadFn, processFileUpload } from '../utils/upload';
 
 /**
  * 扩展命令的链式调用类型
@@ -362,7 +367,7 @@ export function useEditorToolbar(
         colors: TEXT_COLORS,
         onColorSelect: (color: string) => {
           if (color) {
-            chainFocus(ed).toggleHighlight({ color }).run();
+            chainFocus(ed).setHighlight({ color }).run();
           } else {
             chainFocus(ed).unsetHighlight().run();
           }
@@ -474,40 +479,56 @@ export function useEditorToolbar(
       },
     ];
     if (props.image) {
+      const imageConfig = props.image;
+      const imageUploadFn = resolveUploadFn(imageConfig);
+      const hasImageAbility = !!(imageConfig.customPicker || imageUploadFn);
+      if (!hasImageAbility) {
+        console.warn(
+          '[RichTextEditor] image 已配置但未提供有效的上传方式（customPicker / upload / server），图片按钮将被禁用。',
+        );
+      }
       insertItems.push({
         key: 'image',
         type: 'button',
         icon: IconImage,
         label: t.value.image,
         isActive: () => false,
-        isDisabled: () => false,
-        action: () => {
+        isDisabled: () => !hasImageAbility,
+        action: async () => {
+          // 优先级最高：customPicker 完全接管选择和上传
+          if (imageConfig.customPicker) {
+            const url = await imageConfig.customPicker();
+            if (url) chainFocus(ed).setImage({ src: url }).run();
+            return;
+          }
+          if (!imageUploadFn) return;
           const input = document.createElement('input');
           input.type = 'file';
-          input.accept = props.image?.acceptedTypes?.join(',') ?? 'image/*';
+          input.accept = imageConfig.acceptedTypes?.join(',') ?? 'image/*';
           input.onchange = async () => {
-            const file = input.files?.[0];
-            if (!file || !props.image?.upload) return;
-            const maxSize = props.image.maxSize ?? 5 * 1024 * 1024;
-            if (file.size > maxSize) {
-              console.warn(
-                `[RichTextEditor] 文件大小超过限制: ${file.size} > ${maxSize}`,
-              );
-              return;
-            }
-            try {
-              const url = await props.image.upload(file);
-              chainFocus(ed).setImage({ src: url }).run();
-            } catch (error) {
-              console.error('[RichTextEditor] 图片上传失败:', error);
-            }
+            const rawFile = input.files?.[0];
+            if (!rawFile) return;
+            await processFileUpload(
+              rawFile,
+              imageConfig,
+              imageUploadFn,
+              (url) => chainFocus(ed).setImage({ src: url }).run(),
+              t.value,
+              5 * 1024 * 1024,
+            );
           };
           input.click();
         },
       });
     }
     if (props.video) {
-      const videoConfig = typeof props.video === 'object' ? props.video : {};
+      const videoConfig: VideoConfig =
+        typeof props.video === 'object' ? props.video : {};
+      // Bug fix: 视频默认超时 60s，通过显式传入确保不被 fetchUpload 的 30s 默认值覆盖
+      const videoUploadFn = resolveUploadFn({
+        ...videoConfig,
+        timeout: videoConfig.timeout ?? 60000,
+      });
       insertItems.push({
         key: 'video',
         type: 'button',
@@ -515,25 +536,33 @@ export function useEditorToolbar(
         label: t.value.video,
         isActive: () => false,
         isDisabled: () => false,
-        action: () => {
-          if (videoConfig.upload) {
-            // 有上传回调 → 走文件上传
+        action: async () => {
+          // 优先级最高：customPicker 完全接管
+          if (videoConfig.customPicker) {
+            const url = await videoConfig.customPicker();
+            if (url) chainFocus(ed).setVideo({ src: url }).run();
+            return;
+          }
+          if (videoUploadFn) {
+            // 有上传能力 → 走文件上传
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = 'video/*';
+            input.accept = videoConfig.acceptedTypes?.join(',') ?? 'video/*';
             input.onchange = async () => {
-              const file = input.files?.[0];
-              if (!file || !videoConfig.upload) return;
-              try {
-                const url = await videoConfig.upload(file);
-                chainFocus(ed).setVideo({ src: url }).run();
-              } catch (error) {
-                console.error('[RichTextEditor] 视频上传失败:', error);
-              }
+              const rawFile = input.files?.[0];
+              if (!rawFile) return;
+              await processFileUpload(
+                rawFile,
+                videoConfig,
+                videoUploadFn,
+                (url) => chainFocus(ed).setVideo({ src: url }).run(),
+                t.value,
+                100 * 1024 * 1024,
+              );
             };
             input.click();
           } else {
-            // 无上传回调 → 输入视频 URL
+            // 无上传能力 → 输入视频 URL
             const url = window.prompt(t.value.videoUrl);
             if (url) {
               chainFocus(ed).setVideo({ src: url }).run();

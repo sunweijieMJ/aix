@@ -71,6 +71,11 @@ const zhCN: RichTextEditorLocale = {
   clearColor: '清除颜色',
   clearFormat: '清除格式',
   videoUrl: '请输入视频地址',
+
+  // 上传提示
+  uploadSizeExceeded: '文件大小超过限制',
+  uploadTypeMismatch: '不支持的文件类型',
+  uploadFailed: '上传失败，请重试',
 };
 
 export default zhCN;

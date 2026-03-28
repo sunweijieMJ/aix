@@ -7,6 +7,7 @@ export type {
   RichTextEditorExpose,
   OutputFormat,
   TableConfig,
+  BaseUploadConfig,
   ImageConfig,
   VideoConfig,
   FontSizeConfig,
@@ -14,7 +15,22 @@ export type {
   MentionConfig,
   MentionItem,
   CharacterCountConfig,
+  UploadError,
+  HeadersConfig,
+  ExtraDataConfig,
 } from './types';
+
+export {
+  fetchUpload,
+  fetchMentionItems,
+  isUploadError,
+  processFileUpload,
+} from './utils/upload';
+export type {
+  FetchUploadOptions,
+  FetchMentionOptions,
+  UploadMessages,
+} from './utils/upload';
 
 export { RichTextEditor };
 export { useEditorCore } from './composables';

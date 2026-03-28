@@ -10,6 +10,28 @@ export interface DropdownOption {
   value: string;
 }
 
+// ========== 上传错误 ==========
+
+/** 上传/查询错误信息 */
+export interface UploadError {
+  /** 错误类型 */
+  type: 'size' | 'type' | 'network' | 'server' | 'custom';
+  /** 错误消息 */
+  message: string;
+  /** 原始错误对象 */
+  cause?: unknown;
+}
+
+/** 请求头配置（对象或函数，函数形式支持动态 token） */
+export type HeadersConfig =
+  | Record<string, string>
+  | (() => Record<string, string>);
+
+/** 附加表单字段 */
+export type ExtraDataConfig =
+  | Record<string, string | Blob>
+  | ((file: File) => Record<string, string | Blob>);
+
 // ========== 输出格式 ==========
 
 /** 编辑器内容输出格式 */
@@ -23,23 +45,62 @@ export interface TableConfig {
   resizable?: boolean;
 }
 
-/** 图片功能配置 */
-export interface ImageConfig {
-  /** 图片上传回调，返回图片 URL */
-  upload: (file: File) => Promise<string>;
-  /** 允许的文件类型 @default ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] */
+// ===== 上传公共配置 =====
+
+/** 图片/视频上传的公共配置基类型 */
+export interface BaseUploadConfig {
+  // ===== 选择/上传方式（三选一，customPicker > upload > server） =====
+
+  /**
+   * 自定义选择器：完全替代原生文件选择和上传流程（优先级最��）
+   * 由业务方控制 UI（如弹出资源库弹窗），返回资源 URL 或 null（取消）
+   */
+  customPicker?: () => Promise<string | null>;
+  /** 自定义上传回调，返回文件 URL */
+  upload?: (file: File) => Promise<string>;
+  /** 服务端上传地址（当 upload 未提供时生效） */
+  server?: string;
+
+  // ===== server 模式配置 =====
+
+  /** 自定义请求头 */
+  headers?: HeadersConfig;
+  /** 文件字段名 @default 'file' */
+  fieldName?: string;
+  /** 附加表单字段 */
+  data?: ExtraDataConfig;
+  /** 是否携带 cookie @default false */
+  withCredentials?: boolean;
+  /** 超时时间（ms） */
+  timeout?: number;
+  /** 从响应 JSON 中提取 URL 的点分路径 @default 'data.url' */
+  responsePath?: string;
+
+  // ===== 生命周期钩子 =====
+
+  /** 上传前钩子：返回 false 阻止上传，返回 File 替换文件（可做压缩/重命名） */
+  beforeUpload?: (file: File) => boolean | File | Promise<boolean | File>;
+  /** 上传成功回调 */
+  onSuccess?: (url: string, file: File) => void;
+  /** 上传失败回调 */
+  onError?: (error: UploadError, file: File) => void;
+
+  // ===== 文件校验 =====
+
+  /** 允许的文件类型 */
   acceptedTypes?: string[];
-  /** 最大文件大小（字节） @default 5 * 1024 * 1024 */
+  /** 最大文件大小（字节） */
   maxSize?: number;
+}
+
+/** 图片功能配置（timeout 默认 30000，maxSize 默认 5MB） */
+export interface ImageConfig extends BaseUploadConfig {
   /** 是否允许 base64 内联 @default false */
   allowBase64?: boolean;
 }
 
-/** 视频功能配置 */
-export interface VideoConfig {
-  /** 自定义视频上传回调，返回视频 URL */
-  upload?: (file: File) => Promise<string>;
-}
+/** 视频功能配置（timeout 默认 60000，maxSize 默认 100MB） */
+export interface VideoConfig extends BaseUploadConfig {}
 
 /** 字体大小配置 */
 export interface FontSizeConfig {
@@ -62,8 +123,28 @@ export interface MentionItem {
 
 /** @提及配置 */
 export interface MentionConfig {
-  /** 数据源查询回调 */
-  queryItems: (query: string) => Promise<MentionItem[]> | MentionItem[];
+  // ===== 查询方式（二选一，queryItems 优先） =====
+
+  /** 自定义查询回调（优先级最高） */
+  queryItems?: (query: string) => Promise<MentionItem[]> | MentionItem[];
+  /** 服务端查询地址（当 queryItems 未提供时生效，GET 请求） */
+  server?: string;
+
+  // ===== server 模式配置 =====
+
+  /** 自定义请求头 */
+  headers?: HeadersConfig;
+  /** 查询参数名 @default 'keyword' */
+  queryParamName?: string;
+  /** 从响应 JSON 中提取列表的点分路径 @default 'data' */
+  responsePath?: string;
+  /** 将后端返回数据映射为 MentionItem */
+  transformResponse?: (data: unknown[]) => MentionItem[];
+  /** 查询失败回调 */
+  onError?: (error: UploadError) => void;
+
+  // ===== 显示配置 =====
+
   /** 渲染提及项的标签 */
   renderLabel?: (item: MentionItem) => string;
   /** 触发字符 @default '@' */
@@ -162,7 +243,7 @@ export interface RichTextEditorProps {
   taskList?: boolean;
 
   /**
-   * 图片功能（需要 upload 回调）
+   * 图片功能（需配置 upload 回调或 server 地址）
    */
   image?: ImageConfig;
 
@@ -202,7 +283,7 @@ export interface RichTextEditorProps {
   characterCount?: boolean | CharacterCountConfig;
 
   /**
-   * @提及功能（需要 queryItems 回调）
+   * @提及功能（需配置 queryItems 回调或 server 地址）
    */
   mention?: MentionConfig;
 

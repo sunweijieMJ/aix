@@ -138,4 +138,13 @@ export interface RichTextEditorLocale {
   clearFormat: string;
   /** 视频链接输入提示 */
   videoUrl: string;
+
+  // ===== 上传提示 =====
+
+  /** 文件大小超限提示 */
+  uploadSizeExceeded: string;
+  /** 文件类型不支持提示 */
+  uploadTypeMismatch: string;
+  /** 上传失败提示 */
+  uploadFailed: string;
 }

@@ -71,6 +71,11 @@ const enUS: RichTextEditorLocale = {
   clearColor: 'Clear',
   clearFormat: 'Clear Format',
   videoUrl: 'Enter video URL',
+
+  // Upload messages
+  uploadSizeExceeded: 'File size exceeds the limit',
+  uploadTypeMismatch: 'Unsupported file type',
+  uploadFailed: 'Upload failed, please try again',
 };
 
 export default enUS;
