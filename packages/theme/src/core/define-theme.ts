@@ -653,6 +653,85 @@ export function generateAllComponentOverrides(
 }
 
 /**
+ * 合并组件级主题配置（按组件名浅合并）
+ */
+function mergeComponentsConfig(
+  parent?: ComponentsConfig,
+  child?: ComponentsConfig,
+): ComponentsConfig {
+  if (!parent) return child || {};
+  if (!child) return parent;
+
+  const merged: ComponentsConfig = { ...parent };
+  for (const [name, config] of Object.entries(child)) {
+    const parentConfig = parent[name];
+    if (!parentConfig) {
+      merged[name] = config;
+    } else {
+      // 保持 seed 的 undefined 语义，避免空 {} 误触发派生管线
+      const mergedSeed =
+        parentConfig.seed || config.seed
+          ? { ...parentConfig.seed, ...config.seed }
+          : undefined;
+      const mergedToken =
+        parentConfig.token || config.token
+          ? { ...parentConfig.token, ...config.token }
+          : undefined;
+      merged[name] = {
+        seed: mergedSeed,
+        token: mergedToken,
+        algorithm: config.algorithm ?? parentConfig.algorithm,
+      };
+    }
+  }
+  return merged;
+}
+
+/**
+ * 合并父子主题配置
+ * 用于 ThemeScope inherit=true 时合并父级和子级配置
+ *
+ * 合并策略：
+ * - seed/token: 浅合并，子级覆盖父级
+ * - algorithm: 子级声明则完全替换（算法决定整体风格，不叠加）
+ * - transition: 浅合并
+ * - components: 按组件名级别浅合并
+ */
+export function mergeThemeConfig(
+  parent: ThemeConfig,
+  child: ThemeConfig,
+): ThemeConfig {
+  return {
+    seed: { ...parent.seed, ...child.seed },
+    token: { ...parent.token, ...child.token },
+    algorithm:
+      child.algorithm !== undefined ? child.algorithm : parent.algorithm,
+    transition: { ...parent.transition, ...child.transition },
+    components: mergeComponentsConfig(parent.components, child.components),
+  };
+}
+
+/**
+ * 计算作用域 Token 与基线的差异，输出 CSS 变量覆写对象
+ * 用于 ThemeScope 差异化注入，避免全量注入 300+ 变量
+ */
+export function computeScopedOverrides(
+  scopeTokens: ThemeTokens,
+  baseline: ThemeTokens,
+  prefix: string = CSS_VAR_PREFIX,
+): Record<string, string> {
+  const overrides: Record<string, string> = {};
+  for (const key of Object.keys(scopeTokens) as Array<keyof ThemeTokens>) {
+    const val = scopeTokens[key];
+    if (val !== undefined && String(val) !== String(baseline[key])) {
+      overrides[`--${prefix}-${key}`] =
+        typeof val === 'number' ? String(val) : val;
+    }
+  }
+  return overrides;
+}
+
+/**
  * 默认主题
  */
 export const defaultTheme = defineTheme({});

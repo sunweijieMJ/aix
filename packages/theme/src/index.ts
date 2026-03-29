@@ -10,6 +10,7 @@ export type {
   SeedTokens,
   BaseTokens,
   SemanticTokens,
+  PresetColorTokens,
   ThemeTokens,
   PartialThemeTokens,
   ThemeAlgorithm,
@@ -82,6 +83,9 @@ export {
   compactAlgorithm,
   wireframeAlgorithm,
   normalizeAlgorithm,
+  // 配置合并（用于 ThemeScope 继承场景）
+  mergeThemeConfig,
+  computeScopedOverrides,
 } from './core/define-theme';
 
 // 种子派生（三层 Token 架构）

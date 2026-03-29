@@ -39,3 +39,11 @@
 :where(.aix-theme-transition) > :where(*)::after {
   transition: var(--aix-theme-transition);
 }
+
+/**
+ * ThemeScope 布局透明模式
+ * display: contents 使容器不参与布局，但 CSS 变量仍正常级联到子树
+ */
+.aix-scope-transparent {
+  display: contents;
+}

@@ -173,14 +173,14 @@ export interface BaseTokens {
   tokenSpacing8: string; // 32px
   tokenSpacing12: string; // 48px
 
-  // 字号
-  tokenFontSize1: string; // 12px
-  tokenFontSize2: string; // 13px
+  // 字号（默认 seed.fontSize=14 时的计算值）
+  tokenFontSize1: string; // 10px
+  tokenFontSize2: string; // 12px
   tokenFontSize3: string; // 14px
-  tokenFontSize4: string; // 15px
-  tokenFontSize5: string; // 16px
-  tokenFontSize6: string; // 18px
-  tokenFontSize7: string; // 20px
+  tokenFontSize4: string; // 18px
+  tokenFontSize5: string; // 20px
+  tokenFontSize6: string; // 26px
+  tokenFontSize7: string; // 32px
 
   // 行高
   tokenLineHeight1: number; // 1.2

@@ -318,23 +318,22 @@ export function createTheme(options?: CreateThemeOptions) {
    * 同步状态到 DOM
    */
   const syncToDOM = () => {
-    renderer.setDataTheme(state.mode);
-    renderer.applyTransition(state.config.transition);
-    renderer.applyOverrides(state.mode, computeOverrides());
+    const componentOverrides =
+      Object.keys(state.config.components).length > 0
+        ? generateAllComponentOverrides(
+            state.config.components,
+            computedTokens.value,
+            { ...defaultSeedTokens, ...state.config.seed },
+            state.config.algorithm,
+          )
+        : undefined;
 
-    // 组件级覆写
-    if (Object.keys(state.config.components).length > 0) {
-      const resolvedSeed = { ...defaultSeedTokens, ...state.config.seed };
-      const componentOverrides = generateAllComponentOverrides(
-        state.config.components,
-        computedTokens.value,
-        resolvedSeed,
-        state.config.algorithm,
-      );
-      renderer.applyComponentOverrides(componentOverrides);
-    } else {
-      renderer.clearComponentOverrides();
-    }
+    renderer.syncAll({
+      mode: state.mode,
+      transition: state.config.transition,
+      overrides: computeOverrides(),
+      componentOverrides,
+    });
   };
 
   /**
@@ -598,6 +597,9 @@ export function createTheme(options?: CreateThemeOptions) {
           const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
           const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+            // 如果用户有手动持久化偏好，系统主题变化不应覆写
+            const userSaved = loadFromStorage();
+            if (userSaved) return;
             setMode(e.matches ? 'dark' : 'light');
           };
 

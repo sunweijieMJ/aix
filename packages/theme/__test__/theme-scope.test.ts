@@ -3,7 +3,7 @@ import { defineComponent, h, inject, nextTick } from 'vue';
 import { mount } from '@vue/test-utils';
 import ThemeScope from '../src/vue/ThemeScope';
 import { THEME_INJECTION_KEY, createTheme } from '../src/vue/theme-context';
-import { darkAlgorithm } from '../src/core/define-theme';
+import { darkAlgorithm, generateThemeTokens } from '../src/core/define-theme';
 import type { ThemeContext } from '../src/vue/theme-context';
 
 // 子组件：捕获 inject 的 ThemeContext
@@ -238,6 +238,205 @@ describe('ThemeScope', () => {
     );
     expect(styleEl).not.toBeNull();
     expect(styleEl?.textContent).toContain(`.${scopeClass}`);
+    wrapper.unmount();
+  });
+
+  // ========== 新增测试：inherit 继承机制 ==========
+
+  it('should inherit parent seed when inherit=true (default)', () => {
+    const { install } = createTheme({
+      persist: false,
+      initialConfig: { seed: { colorPrimary: 'rgb(255 0 0)' } },
+    });
+
+    // 子级只设 fontSize，不设 colorPrimary
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: {
+        config: { seed: { fontSize: 12 } },
+      },
+      slots: {
+        default: h(ContextCapture),
+      },
+    });
+
+    const child = wrapper.findComponent(ContextCapture);
+    const ctx = child.vm.ctx as ThemeContext;
+
+    // 应继承父级的 colorPrimary seed 派生结果（不是默认 cyan）
+    const parentTokens = generateThemeTokens({
+      seed: { colorPrimary: 'rgb(255 0 0)', fontSize: 12 },
+    });
+    expect(ctx.getToken('colorPrimary')).toBe(parentTokens.colorPrimary);
+    wrapper.unmount();
+  });
+
+  it('should NOT inherit parent seed when inherit=false', () => {
+    const { install } = createTheme({
+      persist: false,
+      initialConfig: { seed: { colorPrimary: 'rgb(255 0 0)' } },
+    });
+
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: {
+        inherit: false,
+        config: { seed: { fontSize: 12 } },
+      },
+      slots: {
+        default: h(ContextCapture),
+      },
+    });
+
+    const child = wrapper.findComponent(ContextCapture);
+    const ctx = child.vm.ctx as ThemeContext;
+
+    // 不继承父级，colorPrimary 应为默认值（cyan）
+    const defaultTokens = generateThemeTokens({ seed: { fontSize: 12 } });
+    expect(ctx.getToken('colorPrimary')).toBe(defaultTokens.colorPrimary);
+    wrapper.unmount();
+  });
+
+  // ========== 新增测试：transparent 布局透明 ==========
+
+  it('should have aix-scope-transparent class when transparent=true (default)', () => {
+    const { install } = createTheme({ persist: false });
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      slots: { default: '<span>test</span>' },
+    });
+
+    const container = wrapper.find('div');
+    expect(container.classes()).toContain('aix-scope-transparent');
+    wrapper.unmount();
+  });
+
+  it('should NOT have aix-scope-transparent class when transparent=false', () => {
+    const { install } = createTheme({ persist: false });
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: { transparent: false },
+      slots: { default: '<span>test</span>' },
+    });
+
+    const container = wrapper.find('div');
+    expect(container.classes()).not.toContain('aix-scope-transparent');
+    wrapper.unmount();
+  });
+
+  // ========== 新增测试：tag 自定义标签 ==========
+
+  it('should render custom tag when tag prop is provided', () => {
+    const { install } = createTheme({ persist: false });
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: { tag: 'span' },
+      slots: { default: '<em>test</em>' },
+    });
+
+    expect(wrapper.find('span').exists()).toBe(true);
+    expect(wrapper.find('div').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  // ========== 新增测试：components 组件覆盖 ==========
+
+  it('should inject component override style tag', () => {
+    const { install } = createTheme({ persist: false });
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: {
+        config: {
+          components: {
+            button: {
+              token: { colorPrimary: 'rgb(0 255 0)' },
+            },
+          },
+        },
+      },
+      slots: { default: '<span>test</span>' },
+    });
+
+    const scopeClass = wrapper
+      .find('div')
+      .classes()
+      .find((c) => c.startsWith('aix-scope-'));
+
+    // 应存在组件覆盖 style 标签
+    const componentStyleEl = document.getElementById(
+      `aix-component-overrides-${scopeClass}`,
+    );
+    expect(componentStyleEl).not.toBeNull();
+    expect(componentStyleEl?.textContent).toContain('.aix-button');
+    wrapper.unmount();
+  });
+
+  // ========== 新增测试：差异化注入 ==========
+
+  it('should only inject diff tokens, not all tokens', () => {
+    const { install } = createTheme({ persist: false });
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: {
+        config: { seed: { colorPrimary: 'rgb(255 0 0)' } },
+      },
+      slots: { default: '<span>test</span>' },
+    });
+
+    const scopeClass = wrapper
+      .find('div')
+      .classes()
+      .find((c) => c.startsWith('aix-scope-'));
+    const styleEl = document.getElementById(
+      `aix-theme-overrides-${scopeClass}`,
+    );
+    expect(styleEl).not.toBeNull();
+
+    const cssText = styleEl?.textContent || '';
+    // 应包含 primary 相关变量（因为 seed 改了 colorPrimary）
+    expect(cssText).toContain('--aix-colorPrimary');
+
+    // 不应包含未变化的无关 token（如 tokenSpacing、shadow 等）
+    expect(cssText).not.toContain('--aix-tokenSpacing1');
+    expect(cssText).not.toContain('--aix-shadowXS');
+    wrapper.unmount();
+  });
+
+  // ========== 新增测试：scoped context 暴露 mergedConfig ==========
+
+  it('should expose merged config via scoped context', () => {
+    const { install } = createTheme({
+      persist: false,
+      initialConfig: {
+        seed: { colorPrimary: 'rgb(255 0 0)' },
+        components: {
+          button: { token: { colorPrimary: 'rgb(0 0 255)' } },
+        },
+      },
+    });
+
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: {
+        config: {
+          seed: { fontSize: 12 },
+          components: {
+            input: { token: { colorBorder: 'rgb(200 200 200)' } },
+          },
+        },
+      },
+      slots: { default: h(ContextCapture) },
+    });
+
+    const child = wrapper.findComponent(ContextCapture);
+    const ctx = child.vm.ctx as ThemeContext;
+
+    // config 应是合并后的结果
+    expect(ctx.config.seed?.colorPrimary).toBe('rgb(255 0 0)');
+    expect(ctx.config.seed?.fontSize).toBe(12);
+    // components 应合并双方
+    expect(ctx.config.components?.button).toBeDefined();
+    expect(ctx.config.components?.input).toBeDefined();
     wrapper.unmount();
   });
 });

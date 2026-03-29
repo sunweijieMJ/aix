@@ -217,6 +217,29 @@ export class ThemeDOMRenderer {
   }
 
   /**
+   * 统一同步主题状态到 DOM
+   * 合并 setDataTheme + applyTransition + applyOverrides + componentOverrides 四步操作
+   */
+  syncAll(params: {
+    mode: ThemeMode;
+    transition: Required<TransitionConfig>;
+    overrides: Record<string, string>;
+    componentOverrides?: Record<string, Record<string, string>>;
+  }): void {
+    this.setDataTheme(params.mode);
+    this.applyTransition(params.transition);
+    this.applyOverrides(params.mode, params.overrides);
+    if (
+      params.componentOverrides &&
+      Object.keys(params.componentOverrides).length > 0
+    ) {
+      this.applyComponentOverrides(params.componentOverrides);
+    } else {
+      this.clearComponentOverrides();
+    }
+  }
+
+  /**
    * 重置 DOM 状态
    * 移除覆写样式和过渡动画，调用方应在 reset 后调用 syncToDOM 设置新值
    */

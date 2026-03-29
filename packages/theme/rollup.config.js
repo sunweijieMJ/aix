@@ -6,22 +6,7 @@ import postcss from 'rollup-plugin-postcss';
 
 export default defineConfig([
   // 构建主 CSS 文件（包含所有Token，内联 @import）
-  {
-    input: 'src/vars/index.css',
-    output: {
-      file: 'dist/index.css',
-      format: 'es',
-    },
-    plugins: [
-      postcss({
-        extract: true,
-        minimize: true,
-        sourceMap: false,
-        plugins: [postcssImport(), autoprefixer()],
-      }),
-    ],
-  },
-  // 按需引入入口：vars/index.css（内联所有 CSS）
+  // ./style 和 ./vars 两个 exports 入口共用此文件
   {
     input: 'src/vars/index.css',
     output: {

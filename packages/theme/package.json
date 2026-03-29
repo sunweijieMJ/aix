@@ -7,7 +7,7 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "style": "./dist/index.css",
+  "style": "./dist/vars/index.css",
   "sideEffects": [
     "*.css",
     "dist/**/*.css",
@@ -20,7 +20,7 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./style": "./dist/index.css",
+    "./style": "./dist/vars/index.css",
     "./vars": "./dist/vars/index.css",
     "./vars/base": "./dist/vars/base-tokens.css",
     "./vars/light": "./dist/vars/light.css",

@@ -32,25 +32,69 @@ import type { BaseTokens, ThemeTokens } from './theme-types';
 // CLI 参数解析
 // ============================================================
 
-function parseArgs(): { output: string } {
-  const args = process.argv.slice(2);
-  const outputIndex = args.indexOf('--output');
+function printHelp() {
+  console.log(`
+aix-theme-export - 导出全量主题 Token 参考文件
 
+用法:
+  aix-theme-export --output <目录路径> [选项]
+
+选项:
+  --output <路径>   输出目录（必需）
+  --config <路径>   自定义 seed 配置文件（JSON 格式，可选）
+  --help, -h        显示帮助信息
+
+示例:
+  npx aix-theme-export --output ./public/theme/
+  npx aix-theme-export --output ./public/theme/ --config ./theme-seed.json
+
+配置文件格式 (theme-seed.json):
+  {
+    "colorPrimary": "rgb(22 119 255)",
+    "fontSize": 16,
+    "borderRadius": 8
+  }
+
+输出文件:
+  theme-tokens.css       亮色模式全量变量（实际值）
+  theme-tokens-dark.css  暗色模式覆盖变量
+  theme-tokens.ts        TypeScript 常量（含 JSDoc）
+  theme-tokens.json      结构化 JSON 数据
+`);
+}
+
+function parseArgs(): { output: string; configPath?: string } {
+  const args = process.argv.slice(2);
+
+  if (args.includes('--help') || args.includes('-h')) {
+    printHelp();
+    process.exit(0);
+  }
+
+  const outputIndex = args.indexOf('--output');
   if (outputIndex === -1 || !args[outputIndex + 1]) {
     console.error('用法: aix-theme-export --output <目录路径>');
-    console.error('示例: npx aix-theme-export --output ./public/theme/');
+    console.error('运行 aix-theme-export --help 查看更多选项');
     process.exit(1);
   }
 
-  return { output: path.resolve(args[outputIndex + 1]!) };
+  const configIndex = args.indexOf('--config');
+  const configPath =
+    configIndex !== -1 && args[configIndex + 1]
+      ? path.resolve(args[configIndex + 1]!)
+      : undefined;
+
+  return { output: path.resolve(args[outputIndex + 1]!), configPath };
 }
 
 // ============================================================
 // Token 数据准备
 // ============================================================
 
-function prepareTokenData() {
-  const seed = defaultSeedTokens;
+function prepareTokenData(customSeed?: Partial<typeof defaultSeedTokens>) {
+  const seed = customSeed
+    ? { ...defaultSeedTokens, ...customSeed }
+    : defaultSeedTokens;
   const baseTokens = deriveMapTokens(seed);
   const lightSemanticTokens = deriveAliasTokens(baseTokens, seed);
 
@@ -461,11 +505,25 @@ function generateTS(
 // ============================================================
 
 async function main() {
-  const { output } = parseArgs();
+  const { output, configPath } = parseArgs();
+
+  let customSeed: Partial<typeof defaultSeedTokens> | undefined;
+  if (configPath) {
+    try {
+      const configContent = await fs.readFile(configPath, 'utf-8');
+      customSeed = JSON.parse(configContent);
+      console.log(`\n📋 使用自定义配置: ${configPath}`);
+    } catch (e) {
+      console.error(`错误: 无法读取配置文件 ${configPath}`);
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+  }
 
   console.log(`\n🎨 导出主题 Token 到 ${output}`);
 
-  const { baseTokens, fullLightTokens, darkTokens } = prepareTokenData();
+  const { baseTokens, fullLightTokens, darkTokens } =
+    prepareTokenData(customSeed);
 
   await fs.mkdir(output, { recursive: true });
 
