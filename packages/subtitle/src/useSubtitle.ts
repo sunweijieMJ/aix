@@ -8,8 +8,6 @@ import { parseSubtitle, detectFormat } from './parsers';
 import type { SubtitleCue, SubtitleSource } from './types';
 
 export interface UseSubtitleOptions {
-  /** 字幕来源 */
-  source?: SubtitleSource;
   /** 当前时间 (秒) */
   currentTime?: Ref<number>;
   /** 字幕变化回调 */
@@ -60,6 +58,8 @@ export function useSubtitle(
   const currentIndex = ref(-1);
   const loading = ref(false);
   const error = ref<Error | null>(null);
+  // 加载版本计数器，用于防止快速切换 source 时旧请求覆盖新数据
+  let loadVersion = 0;
 
   /**
    * 根据时间查找字幕索引（优化：从上次位置开始查找）
@@ -132,6 +132,7 @@ export function useSubtitle(
    * 加载字幕
    */
   const load = async (src: SubtitleSource): Promise<void> => {
+    const version = ++loadVersion;
     loading.value = true;
     error.value = null;
     cues.value = [];
@@ -154,6 +155,9 @@ export function useSubtitle(
         parsedCues = parseSubtitle(content, format);
       }
 
+      // 忽略过期的加载结果（source 快速切换时，旧请求可能后返回）
+      if (version !== loadVersion) return;
+
       cues.value = parsedCues;
 
       // 加载完成后，根据当前时间同步字幕
@@ -162,10 +166,13 @@ export function useSubtitle(
         updateTime(currentTime.value);
       }
     } catch (e) {
+      if (version !== loadVersion) return;
       error.value = e instanceof Error ? e : new Error(String(e));
       console.error('[Subtitle] 加载失败:', error.value);
     } finally {
-      loading.value = false;
+      if (version === loadVersion) {
+        loading.value = false;
+      }
     }
   };
 

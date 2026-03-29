@@ -68,7 +68,9 @@ const extToFormat: Record<string, SubtitleFormat> = {
  * 根据文件扩展名检测格式
  */
 export function detectFormat(filename: string): SubtitleFormat {
-  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  // 去掉 query string 和 hash，避免 CDN 鉴权 URL 干扰扩展名检测
+  const cleanPath = filename.split(/[?#]/)[0] ?? filename;
+  const ext = cleanPath.split('.').pop()?.toLowerCase() || '';
   return extToFormat[ext] || 'vtt';
 }
 

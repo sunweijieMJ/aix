@@ -1,12 +1,12 @@
 <template>
-  <transition name="subtitle-fade">
+  <transition name="aix-subtitle-fade">
     <div
       v-if="visible && displayText"
-      class="subtitle"
+      class="aix-subtitle"
       :class="[
-        `subtitle--${position}`,
-        `subtitle--bg-${background}`,
-        { 'subtitle--single-line': isSingleLineEffective },
+        `aix-subtitle--${position}`,
+        `aix-subtitle--bg-${background}`,
+        { 'aix-subtitle--single-line': isSingleLineEffective },
       ]"
       :style="subtitleStyle"
     >
@@ -16,9 +16,10 @@
         :full-text="displayText"
         :current-segment="currentSegmentIndex + 1"
         :total-segments="segmentCount"
+        :data="currentCue?.data"
       >
         <!-- 默认渲染 -->
-        <div class="subtitle__text">{{ currentSegmentText }}</div>
+        <div class="aix-subtitle__text">{{ currentSegmentText }}</div>
       </slot>
     </div>
   </transition>
@@ -69,11 +70,12 @@ watch(
   () => props.source,
   async (newSource) => {
     if (newSource) {
-      try {
-        await load(newSource);
+      await load(newSource);
+      // load() 内部已 catch 错误并设置 error.value，通过检查 error 判断结果
+      if (error.value) {
+        emit('error', error.value);
+      } else {
         emit('loaded', cues.value);
-      } catch (e) {
-        emit('error', e instanceof Error ? e : new Error(String(e)));
       }
     }
   },
@@ -128,6 +130,11 @@ defineExpose<SubtitleExpose>({
   reload: async () => {
     if (props.source) {
       await load(props.source);
+      if (error.value) {
+        emit('error', error.value);
+      } else {
+        emit('loaded', cues.value);
+      }
     }
   },
   loading,
@@ -135,7 +142,7 @@ defineExpose<SubtitleExpose>({
 });
 </script>
 
-<style scoped lang="scss">
+<style lang="scss">
 /**
  * Subtitle 组件样式
  *
@@ -154,7 +161,7 @@ defineExpose<SubtitleExpose>({
  * 使用示例:
  * <Subtitle style="--subtitle-text-color: yellow; --subtitle-bg-blur: rgb(0 0 0 / 0.6);" />
  */
-.subtitle {
+.aix-subtitle {
   display: flex;
   position: relative;
   z-index: 1;
@@ -207,7 +214,7 @@ defineExpose<SubtitleExpose>({
   }
 }
 
-.subtitle__text {
+.aix-subtitle__text {
   max-width: var(--subtitle-max-width, 1200px);
   color: var(--subtitle-text-color, rgb(255 255 255 / 0.95));
   font-size: var(--subtitle-font-size, 20px);
@@ -219,15 +226,15 @@ defineExpose<SubtitleExpose>({
 }
 
 // 淡入淡出动画
-.subtitle-fade-enter-active,
-.subtitle-fade-leave-active {
+.aix-subtitle-fade-enter-active,
+.aix-subtitle-fade-leave-active {
   transition:
     opacity var(--subtitle-transition, 0.2s) ease,
     transform var(--subtitle-transition, 0.2s) ease;
 }
 
-.subtitle-fade-enter-from,
-.subtitle-fade-leave-to {
+.aix-subtitle-fade-enter-from,
+.aix-subtitle-fade-leave-to {
   transform: translateY(10px);
   opacity: 0;
 }

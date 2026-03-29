@@ -398,7 +398,7 @@ describe('parsers/index', () => {
       );
       expect(
         detectFormat('https://example.com/path/to/subtitle.srt?param=1'),
-      ).toBe('vtt'); // gets 'srt?param=1', falls back
+      ).toBe('srt'); // query string 已正确剥离
     });
 
     it('should default to vtt for unknown extensions', () => {
