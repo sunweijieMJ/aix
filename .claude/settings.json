@@ -1,40 +1,40 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pnpm dev:*)",
-      "Bash(pnpm lint:*)",
-      "Bash(pnpm type-check:*)",
-      "Bash(pnpm test:*)",
-      "Bash(pnpm commit:*)",
-      "Bash(pnpm build:*)",
-      "Bash(pnpm storybook:*)",
-      "Bash(pnpm docs:*)",
-      "Bash(pnpm changeset:*)",
-      "Bash(pnpm clean:*)",
-      "Bash(pnpm install:*)",
-      "Bash(pnpm format:*)",
-      "Bash(pnpm cspell:*)",
-      "Bash(pnpm gen:*)",
-      "Bash(pnpm link:*)",
-      "Bash(turbo:*)",
-      "Bash(npx tsc:*)",
-      "Bash(npx vue-tsc:*)",
-      "Bash(git mv:*)",
-      "Bash(git rm:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git branch:*)",
-      "Bash(git checkout:*)",
-      "Bash(git pull:*)",
-      "Bash(git push:*)",
-      "Bash(git stash:*)",
-      "Bash(git merge:*)",
-      "Bash(git rebase:*)",
-      "Bash(git fetch:*)",
-      "Bash(git show:*)"
+      "Bash(pnpm dev*)",
+      "Bash(pnpm lint*)",
+      "Bash(pnpm type-check*)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm commit*)",
+      "Bash(pnpm build*)",
+      "Bash(pnpm storybook*)",
+      "Bash(pnpm docs*)",
+      "Bash(pnpm changeset*)",
+      "Bash(pnpm clean*)",
+      "Bash(pnpm install*)",
+      "Bash(pnpm format*)",
+      "Bash(pnpm cspell*)",
+      "Bash(pnpm gen*)",
+      "Bash(pnpm link*)",
+      "Bash(turbo *)",
+      "Bash(npx tsc *)",
+      "Bash(npx vue-tsc *)",
+      "Bash(git mv *)",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git checkout *)",
+      "Bash(git pull*)",
+      "Bash(git push *)",
+      "Bash(git stash*)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git fetch*)",
+      "Bash(git show *)"
     ],
     "deny": []
   },
@@ -52,7 +52,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Write",
+        "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",
@@ -68,17 +68,6 @@
           {
             "type": "command",
             "command": "printf '🎨 AIX 组件库\\n📦 包数量: %s\\n📊 分支: %s\\n📝 未提交: %s 个文件\\n\\n⚡ 快速命令: /component | /story | /test | /release\\n⚠️  规范提醒: Props类型定义 | 样式隔离 | API文档注释\\n' \"$(ls packages 2>/dev/null | wc -l | tr -d ' ')\" \"$(git branch --show-current 2>/dev/null || echo 'unknown')\" \"$(git status --short 2>/dev/null | wc -l | tr -d ' ')\""
-          }
-        ]
-      }
-    ],
-    "TaskCompleted": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "printf '✅ 任务完成！请确认：\\n  □ 类型检查通过 (pnpm type-check)\\n  □ 测试通过 (pnpm test)\\n  □ 文件所有权无冲突\\n'",
-            "timeout": 5
           }
         ]
       }

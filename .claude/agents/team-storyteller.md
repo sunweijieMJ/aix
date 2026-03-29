@@ -1,7 +1,7 @@
 ---
 name: team-storyteller
 description: 团队角色 - Story 文档工程师，负责编写 Storybook Story 和组件文档
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, Edit, Write, Bash
 model: inherit
 ---
 

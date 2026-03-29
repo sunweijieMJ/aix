@@ -1,7 +1,7 @@
 ---
 name: team-tester
 description: 团队角色 - 测试工程师，负责编写单元测试和无障碍测试
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, Edit, Write, Bash
 model: inherit
 ---
 
