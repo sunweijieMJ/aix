@@ -394,7 +394,8 @@ function debouncedResize(): void {
       !isInitialRender
     ) {
       if (mergedConfig.value.scrollMode === 'continuous') {
-        // 连续滚动模式：重新初始化布局
+        // 连续滚动模式：清空旧内容并重新初始化布局
+        clearContinuousPlaceholders();
         await continuousScroll.initLayout(
           pdfLoader.pdfDocument.value,
           containerSize.value.width,
@@ -575,6 +576,8 @@ async function applyContinuousScale(newScale: number): Promise<void> {
   const currentVisiblePage = continuousScroll.visiblePage.value;
   pdfRenderer.scale.value = newScale;
 
+  // 清空占位符旧内容，否则 mountContinuousPages 会因 hasChildNodes() 跳过挂载
+  clearContinuousPlaceholders();
   await continuousScroll.initLayout(pdfDoc, containerSize.value.width);
   await nextTick();
 
@@ -760,6 +763,13 @@ function setContinuousPageRef(
     continuousPageRefs.set(pageNumber, el);
   } else {
     continuousPageRefs.delete(pageNumber);
+  }
+}
+
+/** 清空所有连续模式占位符的内容，确保缩放/resize 后重新挂载 */
+function clearContinuousPlaceholders(): void {
+  for (const [, placeholder] of continuousPageRefs) {
+    placeholder.innerHTML = '';
   }
 }
 
