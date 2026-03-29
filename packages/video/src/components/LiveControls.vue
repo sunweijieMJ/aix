@@ -141,6 +141,8 @@ defineExpose({
 </script>
 
 <style lang="scss">
+// 视频叠加层使用固定透明度值（确保在任意视频内容上的对比度）
+// 品牌色/功能色使用主题变量
 .aix-video-controls {
   display: flex;
   position: absolute;
@@ -220,7 +222,7 @@ defineExpose({
     height: 8px;
     animation: aix-live-pulse 1.5s ease-in-out infinite;
     border-radius: 50%;
-    background: #f5222d;
+    background: var(--aix-colorError, #f5222d);
   }
 }
 

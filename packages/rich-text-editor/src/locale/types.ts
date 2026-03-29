@@ -53,14 +53,8 @@ export interface RichTextEditorLocale {
   link: string;
   /** 链接地址输入框占位符 */
   linkUrl: string;
-  /** 链接文本输入框占位符 */
-  linkText: string;
-  /** "在新窗口打开"选项文案 */
-  linkOpen: string;
   /** 移除链接按钮文案 */
   linkRemove: string;
-  /** 编辑链接按钮文案 */
-  linkEdit: string;
 
   // ===== 插入 =====
 
@@ -70,8 +64,6 @@ export interface RichTextEditorLocale {
   video: string;
   /** 表格按钮提示 */
   table: string;
-  /** 插入表格菜单项文案 */
-  insertTable: string;
   /** 删除表格菜单项文案 */
   deleteTable: string;
   /** 在左侧插入列菜单项文案 */
@@ -93,8 +85,6 @@ export interface RichTextEditorLocale {
 
   // ===== 文本样式 =====
 
-  /** 对齐方式下拉菜单提示 */
-  textAlign: string;
   /** 左对齐按钮提示 */
   alignLeft: string;
   /** 居中对齐按钮提示 */
@@ -115,15 +105,8 @@ export interface RichTextEditorLocale {
   superscript: string;
   /** 下标按钮提示 */
   subscript: string;
-  /** 高亮标记按钮提示 */
-  highlight: string;
-  /** @提及按钮提示 */
-  mention: string;
-
   // ===== 通用 =====
 
-  /** 编辑器空内容时的占位提示文案 */
-  placeholder: string;
   /** 确认按钮文案 */
   confirm: string;
   /** 取消按钮文案 */

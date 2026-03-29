@@ -98,6 +98,23 @@ export default withMermaid(
               { text: 'PdfViewer PDF 预览器', link: '/components/pdf-viewer' },
             ],
           },
+          {
+            text: '编辑器组件',
+            items: [
+              {
+                text: 'CodeEditor 代码编辑器',
+                link: '/components/code-editor',
+              },
+              {
+                text: 'RichTextEditor 富文本编辑器',
+                link: '/components/rich-text-editor',
+              },
+            ],
+          },
+          {
+            text: '弹出层组件',
+            items: [{ text: 'Popper 弹出层', link: '/components/popper' }],
+          },
         ],
 
         '/rfcs/': [

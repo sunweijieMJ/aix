@@ -206,8 +206,8 @@ export const ServerUpload: Story = {
           console.log('[beforeUpload] 文件名:', file.name, '大小:', file.size);
           return true;
         },
-        onSuccess: (url: string) => {
-          console.log('[onSuccess] 上传成功:', url);
+        onSuccess: (_url: string) => {
+          console.log('[onSuccess] 上传成功:', _url);
         },
         onError: (error: { type: string; message: string }) => {
           console.error('[onError]', error.type, error.message);
@@ -304,7 +304,7 @@ export const BeforeUploadHook: Story = {
           console.log('[beforeUpload] 通过校验:', file.name);
           return file;
         },
-        onSuccess: (url: string) => {
+        onSuccess: (_url: string) => {
           console.log('[onSuccess] 图片已插入');
         },
         onError: (error: { type: string; message: string }) => {

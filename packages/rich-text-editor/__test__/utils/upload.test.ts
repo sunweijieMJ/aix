@@ -151,7 +151,7 @@ describe('fetchUpload', () => {
     expect(mockFetch).toHaveBeenCalledOnce();
 
     // 验证 fetch 参数
-    const [fetchUrl, fetchOptions] = mockFetch.mock.calls[0];
+    const [fetchUrl, fetchOptions] = mockFetch.mock.calls[0]!;
     expect(fetchUrl).toBe('/api/upload');
     expect(fetchOptions.method).toBe('POST');
     expect(fetchOptions.body).toBeInstanceOf(FormData);
@@ -185,7 +185,7 @@ describe('fetchUpload', () => {
       headers: { Authorization: 'Bearer abc' },
     });
 
-    const [, fetchOptions] = mockFetch.mock.calls[0];
+    const [, fetchOptions] = mockFetch.mock.calls[0]!;
     expect(fetchOptions.headers).toEqual({ Authorization: 'Bearer abc' });
   });
 
@@ -201,7 +201,7 @@ describe('fetchUpload', () => {
       withCredentials: true,
     });
 
-    const [, fetchOptions] = mockFetch.mock.calls[0];
+    const [, fetchOptions] = mockFetch.mock.calls[0]!;
     expect(fetchOptions.credentials).toBe('include');
   });
 
@@ -287,7 +287,7 @@ describe('fetchMentionItems', () => {
     expect(result).toEqual(items);
 
     // 验证 URL 参数
-    const [fetchUrl] = mockFetch.mock.calls[0];
+    const [fetchUrl] = mockFetch.mock.calls[0]!;
     expect(fetchUrl).toContain('keyword=');
     expect(fetchUrl).toContain('%E5%BC%A0'); // '张' 的 URL 编码
   });
@@ -304,7 +304,7 @@ describe('fetchMentionItems', () => {
       queryParamName: 'q',
     });
 
-    const [fetchUrl] = mockFetch.mock.calls[0];
+    const [fetchUrl] = mockFetch.mock.calls[0]!;
     expect(fetchUrl).toContain('q=test');
   });
 

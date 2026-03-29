@@ -13,6 +13,27 @@ const dirname =
 export default defineConfig({
   test: {
     passWithNoTests: true,
+    coverage: {
+      provider: 'v8',
+      enabled: false,
+      include: ['packages/*/src/**/*.{ts,vue}'],
+      exclude: [
+        '**/*.d.ts',
+        '**/types.ts',
+        '**/locale/**',
+        '**/index.ts',
+        '**/__test__/**',
+        '**/stories/**',
+      ],
+      thresholds: {
+        statements: 80,
+        branches: 80,
+        functions: 80,
+        lines: 80,
+      },
+      reporter: ['text', 'html', 'lcov'],
+      reportsDirectory: './coverage',
+    },
     projects: [
       // Project 1: 现有单元测试 (jsdom)
       {

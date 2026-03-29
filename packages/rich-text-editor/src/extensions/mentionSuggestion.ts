@@ -29,12 +29,19 @@ export function createMentionSuggestion(
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let abortController: AbortController | null = null;
   let requestSeq = 0;
+  // 保存前一个 Promise 的 resolve，cleanup 时用空数组结束它
+  let pendingResolve: ((items: MentionItem[]) => void) | null = null;
 
   /** 清理防抖 timer 和进行中的请求 */
   function cleanup() {
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
+    }
+    // 结束前一个 pending Promise，防止永远不 resolve
+    if (pendingResolve) {
+      pendingResolve([]);
+      pendingResolve = null;
     }
     abortController?.abort();
     abortController = null;
@@ -65,7 +72,9 @@ export function createMentionSuggestion(
         const seq = ++requestSeq;
 
         return new Promise<MentionItem[]>((resolve) => {
+          pendingResolve = resolve;
           debounceTimer = setTimeout(async () => {
+            pendingResolve = null;
             try {
               const items = await fetchMentionItems({
                 server: config.server!,
@@ -109,6 +118,8 @@ export function createMentionSuggestion(
       let items: MentionItem[] = [];
       let selectedIndex = 0;
       let commandFn: ((attrs: MentionNodeAttrs) => void) | null = null;
+      // 保存 clientRect 引用，用于 scroll/resize 时实时更新位置
+      let currentClientRect: (() => DOMRect | null) | null = null;
 
       function selectItem(index: number) {
         const item = items[index];
@@ -153,6 +164,20 @@ export function createMentionSuggestion(
         popup.style.top = `${rect.bottom + 4}px`;
       }
 
+      function onScrollOrResize() {
+        updatePosition(currentClientRect);
+      }
+
+      function addScrollListeners() {
+        window.addEventListener('scroll', onScrollOrResize, true);
+        window.addEventListener('resize', onScrollOrResize);
+      }
+
+      function removeScrollListeners() {
+        window.removeEventListener('scroll', onScrollOrResize, true);
+        window.removeEventListener('resize', onScrollOrResize);
+      }
+
       return {
         onStart(props: SuggestionCallbackProps) {
           popup = document.createElement('div');
@@ -162,15 +187,18 @@ export function createMentionSuggestion(
           items = props.items;
           commandFn = props.command;
           selectedIndex = 0;
+          currentClientRect = props.clientRect ?? null;
 
           updatePosition(props.clientRect);
           updatePopup();
+          addScrollListeners();
         },
 
         onUpdate(props: SuggestionCallbackProps) {
           items = props.items;
           commandFn = props.command;
           selectedIndex = 0;
+          currentClientRect = props.clientRect ?? null;
 
           updatePosition(props.clientRect);
           updatePopup();
@@ -201,6 +229,8 @@ export function createMentionSuggestion(
 
         onExit() {
           cleanup();
+          removeScrollListeners();
+          currentClientRect = null;
           if (popup) {
             popup.remove();
             popup = null;

@@ -27,16 +27,12 @@ const enUS: RichTextEditorLocale = {
   // 链接
   link: 'Link',
   linkUrl: 'URL',
-  linkText: 'Text',
-  linkOpen: 'Open in new window',
   linkRemove: 'Remove link',
-  linkEdit: 'Edit link',
 
   // 插入
   image: 'Image',
   video: 'Video',
   table: 'Table',
-  insertTable: 'Insert table',
   deleteTable: 'Delete table',
   addColumnBefore: 'Add column before',
   addColumnAfter: 'Add column after',
@@ -48,7 +44,6 @@ const enUS: RichTextEditorLocale = {
   splitCell: 'Split cell',
 
   // 文本样式
-  textAlign: 'Alignment',
   alignLeft: 'Align left',
   alignCenter: 'Align center',
   alignRight: 'Align right',
@@ -59,11 +54,7 @@ const enUS: RichTextEditorLocale = {
   fontFamily: 'Font family',
   superscript: 'Superscript',
   subscript: 'Subscript',
-  highlight: 'Highlight',
-  mention: 'Mention',
-
   // 通用
-  placeholder: 'Start typing...',
   confirm: 'Confirm',
   cancel: 'Cancel',
   characters: 'Characters',

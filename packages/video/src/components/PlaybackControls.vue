@@ -371,6 +371,8 @@ defineExpose({
 </script>
 
 <style lang="scss">
+// 视频叠加层使用固定透明度值（确保在任意视频内容上的对比度）
+// 品牌色/功能色使用主题变量
 .aix-video-controls--playback {
   // 基础布局（独立于 LiveControls）
   display: flex;
@@ -460,7 +462,7 @@ defineExpose({
     top: 0;
     left: 0;
     height: 100%;
-    background: var(--aix-color-primary, #1890ff);
+    background: var(--aix-colorPrimary, #1890ff);
   }
 
   .aix-video-controls__progress-thumb {
@@ -521,7 +523,7 @@ defineExpose({
     font-weight: 500;
 
     &--active {
-      color: var(--aix-color-primary, #1890ff);
+      color: var(--aix-colorPrimary, #1890ff);
     }
   }
 
@@ -553,7 +555,7 @@ defineExpose({
     }
 
     &--active {
-      color: var(--aix-color-primary, #1890ff);
+      color: var(--aix-colorPrimary, #1890ff);
     }
   }
 }

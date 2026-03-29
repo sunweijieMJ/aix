@@ -85,6 +85,22 @@ export default defineConfig([
       }),
     ],
   },
+  // 按需引入：compat 版（:where() 低特异性）
+  {
+    input: 'src/vars/index.compat.css',
+    output: {
+      file: 'dist/vars/index.compat.css',
+      format: 'es',
+    },
+    plugins: [
+      postcss({
+        extract: true,
+        minimize: true,
+        sourceMap: false,
+        plugins: [postcssImport(), autoprefixer()],
+      }),
+    ],
+  },
   // 构建 TypeScript 文件（工具函数）
   {
     input: 'src/index.ts',

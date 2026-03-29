@@ -27,16 +27,12 @@ const zhCN: RichTextEditorLocale = {
   // 链接
   link: '链接',
   linkUrl: '链接地址',
-  linkText: '链接文本',
-  linkOpen: '在新窗口打开',
   linkRemove: '移除链接',
-  linkEdit: '编辑链接',
 
   // 插入
   image: '图片',
   video: '视频',
   table: '表格',
-  insertTable: '插入表格',
   deleteTable: '删除表格',
   addColumnBefore: '在左侧插入列',
   addColumnAfter: '在右侧插入列',
@@ -48,7 +44,6 @@ const zhCN: RichTextEditorLocale = {
   splitCell: '拆分单元格',
 
   // 文本样式
-  textAlign: '对齐',
   alignLeft: '左对齐',
   alignCenter: '居中',
   alignRight: '右对齐',
@@ -59,11 +54,7 @@ const zhCN: RichTextEditorLocale = {
   fontFamily: '字体',
   superscript: '上标',
   subscript: '下标',
-  highlight: '高亮',
-  mention: '提及',
-
   // 通用
-  placeholder: '请输入内容...',
   confirm: '确定',
   cancel: '取消',
   characters: '字符',

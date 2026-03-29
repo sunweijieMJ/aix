@@ -107,6 +107,8 @@ function formatTime(seconds: number): string {
 </script>
 
 <style scoped lang="scss">
+// 视频叠加层使用固定透明度值（确保在任意视频内容上的对比度）
+// 品牌色/功能色使用主题变量
 .video-controls {
   display: flex;
   position: absolute;
@@ -184,7 +186,7 @@ function formatTime(seconds: number): string {
   height: 100%;
   transition: width 0.1s;
   border-radius: 2px;
-  background: rgb(24 144 255);
+  background: var(--aix-colorPrimary, rgb(24 144 255));
 }
 
 .progress-handle {

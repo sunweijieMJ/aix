@@ -102,7 +102,7 @@ describe('createMentionSuggestion - server 模式防抖', () => {
     const result = await lastPromise;
     // 只应发出 1 次 fetch（最后一次 'abc'）
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    const [fetchUrl] = mockFetch.mock.calls[0];
+    const [fetchUrl] = mockFetch.mock.calls[0]!;
     expect(fetchUrl).toContain('abc');
     expect(result).toEqual([{ id: 1, label: 'result' }]);
   });

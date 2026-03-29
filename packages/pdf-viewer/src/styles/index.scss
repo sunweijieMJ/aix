@@ -2,20 +2,20 @@
  * @aix/pdf 样式
  */
 
-// CSS 变量
+// CSS 变量 - 引用主题系统变量，保留 fallback 确保独立使用时也有合理表现
 :root {
-  --aix-pdf-bg: #f5f5f5;
-  --aix-pdf-border: #e0e0e0;
-  --aix-pdf-text: #333;
-  --aix-pdf-text-secondary: #666;
-  --aix-pdf-primary: #409eff;
-  --aix-pdf-primary-light: rgb(64 158 255 / 0.1);
-  --aix-pdf-toolbar-bg: #fff;
-  --aix-pdf-toolbar-border: #e4e7ed;
-  --aix-pdf-menu-bg: #fff;
-  --aix-pdf-menu-shadow: 0 2px 12px rgb(0 0 0 / 0.12);
-  --aix-pdf-menu-hover: #f5f7fa;
-  --aix-pdf-spinner-color: #409eff;
+  --aix-pdf-bg: var(--aix-colorBgLayout, #f5f5f5);
+  --aix-pdf-border: var(--aix-colorBorder, #e0e0e0);
+  --aix-pdf-text: var(--aix-colorText, #333);
+  --aix-pdf-text-secondary: var(--aix-colorTextSecondary, #666);
+  --aix-pdf-primary: var(--aix-colorPrimary, #409eff);
+  --aix-pdf-primary-light: var(--aix-colorPrimaryBg, rgb(64 158 255 / 0.1));
+  --aix-pdf-toolbar-bg: var(--aix-colorBgContainer, #fff);
+  --aix-pdf-toolbar-border: var(--aix-colorBorderSecondary, #e4e7ed);
+  --aix-pdf-menu-bg: var(--aix-colorBgElevated, #fff);
+  --aix-pdf-menu-shadow: var(--aix-shadowMD, 0 2px 12px rgb(0 0 0 / 0.12));
+  --aix-pdf-menu-hover: var(--aix-controlItemBgHover, #f5f7fa);
+  --aix-pdf-spinner-color: var(--aix-colorPrimary, #409eff);
 }
 
 // PDF Viewer 容器
@@ -140,7 +140,7 @@
   left: 50%;
   transform: translateX(-50%);
   background: var(--aix-pdf-toolbar-bg);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
+  box-shadow: var(--aix-shadowSM, 0 2px 8px rgb(0 0 0 / 0.1));
 
   // 占位符样式
   &:empty {
@@ -300,7 +300,7 @@
   padding: 8px 12px;
   border-radius: 8px;
   background: var(--aix-pdf-toolbar-bg);
-  box-shadow: 0 2px 12px rgb(0 0 0 / 0.15);
+  box-shadow: var(--aix-shadowMD, 0 2px 12px rgb(0 0 0 / 0.15));
   gap: 8px;
 
   &__input-wrapper {
@@ -445,10 +445,10 @@
 .aix-pdf-search-highlight {
   padding: 1px 0;
   border-radius: 2px;
-  background-color: rgb(255 235 59 / 0.6);
+  background-color: var(--aix-colorWarningBg, rgb(255 235 59 / 0.6));
 
   &--current {
-    background-color: rgb(255 152 0 / 0.8);
+    background-color: var(--aix-colorWarning, rgb(255 152 0 / 0.8));
   }
 }
 

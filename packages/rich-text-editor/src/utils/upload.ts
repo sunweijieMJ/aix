@@ -346,12 +346,22 @@ export async function processFileUpload(
   t: UploadMessages,
   defaultMaxSize: number,
 ): Promise<void> {
-  // 文件类型校验
+  // 文件类型校验（同时支持 MIME 类型如 'image/jpeg' 和扩展名如 '.jpg'）
   const acceptedTypes = config.acceptedTypes;
-  if (acceptedTypes?.length && !acceptedTypes.includes(rawFile.type)) {
-    const error: UploadError = { type: 'type', message: t.uploadTypeMismatch };
-    config.onError?.(error, rawFile);
-    return;
+  if (acceptedTypes?.length) {
+    const isAccepted = acceptedTypes.some((type) =>
+      type.startsWith('.')
+        ? rawFile.name.toLowerCase().endsWith(type.toLowerCase())
+        : rawFile.type === type,
+    );
+    if (!isAccepted) {
+      const error: UploadError = {
+        type: 'type',
+        message: t.uploadTypeMismatch,
+      };
+      config.onError?.(error, rawFile);
+      return;
+    }
   }
   // 文件大小校验
   const maxSize = config.maxSize ?? defaultMaxSize;

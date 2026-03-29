@@ -112,7 +112,6 @@ import {
   onMounted,
   onBeforeUnmount,
   toRef,
-  type Ref,
 } from 'vue';
 import {
   IconRowBefore,
@@ -128,7 +127,7 @@ import {
 import type { RichTextEditorLocale } from '../locale/types';
 
 const props = defineProps<{
-  editor: Ref<Editor | null> | Editor | null;
+  editor: Editor | null;
   t: RichTextEditorLocale;
 }>();
 
@@ -163,10 +162,7 @@ const mergedStyles = computed(() => ({
 
 /** 获取 Editor 实例 */
 function getEditor(): Editor | null {
-  const e = props.editor;
-  if (!e) return null;
-  // 兼容 Ref<Editor | null> 和 Editor
-  return 'value' in e ? (e as Ref<Editor | null>).value : e;
+  return props.editor;
 }
 
 /** 表格命令类型 */

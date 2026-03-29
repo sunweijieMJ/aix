@@ -8,10 +8,12 @@
   transform: translateX(-50%);
   border-radius: var(--aix-borderRadius);
   background: var(--aix-colorBgElevated);
-  box-shadow:
+  box-shadow: var(
+    --aix-shadowMD,
     0 6px 16px 0 rgb(0 0 0 / 0.08),
     0 3px 6px -4px rgb(0 0 0 / 0.12),
-    0 9px 28px 8px rgb(0 0 0 / 0.05);
+    0 9px 28px 8px rgb(0 0 0 / 0.05)
+  );
 }
 
 .aix-rich-text-editor__link-input {
@@ -85,10 +87,12 @@
   overflow-y: auto;
   border-radius: var(--aix-borderRadius);
   background: var(--aix-colorBgElevated);
-  box-shadow:
+  box-shadow: var(
+    --aix-shadowMD,
     0 6px 16px 0 rgb(0 0 0 / 0.08),
     0 3px 6px -4px rgb(0 0 0 / 0.12),
-    0 9px 28px 8px rgb(0 0 0 / 0.05);
+    0 9px 28px 8px rgb(0 0 0 / 0.05)
+  );
 }
 
 .aix-rich-text-editor__mention-item {
