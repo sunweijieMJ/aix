@@ -420,7 +420,7 @@ packages/tooltip/
   "keywords": ["vue", "component", "tooltip", "aix"],
   "license": "MIT",
   "peerDependencies": {
-    "vue": "^3.5.28"
+    "vue": "^3.5.31"
   },
   "dependencies": {
     "@aix/hooks": "workspace:^",
@@ -492,7 +492,7 @@ pnpm build
 {
   "name": "@aix/button",
   "peerDependencies": {
-    "vue": "^3.5.28"  // Vue 由宿主项目提供
+    "vue": "^3.5.31"  // Vue 由宿主项目提供
   },
   "dependencies": {
     "@aix/hooks": "workspace:^",  // 内部依赖
@@ -500,7 +500,7 @@ pnpm build
     "@aix/theme": "workspace:^"
   },
   "devDependencies": {
-    "vue": "^3.5.28",       // 开发时需要 Vue
+    "vue": "^3.5.31",       // 开发时需要 Vue
     "vite": "^5.0.0",      // 构建工具
     "vitest": "^1.0.0"     // 测试工具
   }
@@ -513,13 +513,13 @@ pnpm build
 {
   "name": "@aix/hooks",
   "peerDependencies": {
-    "vue": "^3.5.28"
+    "vue": "^3.5.31"
   },
   "dependencies": {
     // 通常没有依赖
   },
   "devDependencies": {
-    "vue": "^3.5.28",
+    "vue": "^3.5.31",
     "vite": "^5.0.0",
     "vitest": "^1.0.0"
   }
@@ -549,10 +549,10 @@ pnpm build
 ```json
 {
   "devDependencies": {
-    "vue": "^3.5.28",
+    "vue": "^3.5.31",
     "vite": "^5.0.0",
     "vitest": "^1.0.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.9.3"
   }
 }
 ```
@@ -562,7 +562,7 @@ pnpm build
 ```json
 {
   "dependencies": {
-    "vue": "^3.5.28",      // 主版本锁定，允许次版本和补丁版本更新
+    "vue": "^3.5.31",      // 主版本锁定，允许次版本和补丁版本更新
     "lodash": "~4.17.0",  // 次版本锁定，只允许补丁版本更新
     "dayjs": "1.11.10"    // 精确版本，不允许更新
   }
@@ -778,7 +778,7 @@ pnpm list vue
 {
   "pnpm": {
     "overrides": {
-      "vue": "^3.5.28"
+      "vue": "^3.5.31"
     }
   }
 }
