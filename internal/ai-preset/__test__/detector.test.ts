@@ -5,8 +5,10 @@ import { detectPlatforms } from '../src/core/detector.js';
 vi.mock('../src/utils/fs.js', () => ({
   existsSync: vi.fn((p: string) => {
     // 模拟一个只有 CLAUDE.md 和 .cursor/ 的项目
-    const mockPaths = ['/project/CLAUDE.md', '/project/.cursor'];
-    return mockPaths.some((mp) => p.endsWith(mp.replace('/project', '')));
+    // 使用 normalize 后的路径片段匹配，兼容 Windows 反斜杠
+    const normalized = p.replace(/\\/g, '/');
+    const mockSuffixes = ['/CLAUDE.md', '/.cursor'];
+    return mockSuffixes.some((suffix) => normalized.endsWith(suffix));
   }),
 }));
 
