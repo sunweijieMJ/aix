@@ -1,0 +1,53 @@
+{
+  "name": "@kit/ai-preset",
+  "version": "0.0.0",
+  "description": "Cross-platform AI coding preset manager CLI",
+  "author": "<sunweijie@able-elec.com>",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
+    }
+  },
+  "bin": {
+    "ai-preset": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "presets"
+  ],
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest --run",
+    "build": "pnpm run clean && tsup",
+    "clean": "rimraf dist",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "diff": "^8.0.4",
+    "glob": "^13.0.6",
+    "gray-matter": "^4.0.3",
+    "handlebars": "^4.7.9",
+    "inquirer": "^13.3.2"
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:*",
+    "@types/diff": "^8.0.0",
+    "@types/node": "*",
+    "eslint": "*",
+    "rimraf": "*",
+    "tsup": "*",
+    "tsx": "*",
+    "vitest": "*"
+  }
+}
