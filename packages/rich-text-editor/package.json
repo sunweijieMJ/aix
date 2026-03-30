@@ -1,6 +1,6 @@
 {
   "name": "@aix/rich-text-editor",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "A Vue 3 RichTextEditor component for AIX component library",
   "license": "MIT",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@aix/popper",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "A Vue 3 Popper component for AIX component library",
   "license": "MIT",
   "type": "module",
