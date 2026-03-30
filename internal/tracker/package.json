@@ -1,6 +1,6 @@
 {
   "name": "@kit/tracker",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "基于适配器模式的前端埋点数据采集组件包",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
