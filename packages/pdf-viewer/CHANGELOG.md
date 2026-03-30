@@ -1,5 +1,12 @@
 # @aix/pdf-viewer
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies
+  - @aix/icons@0.0.1
+
 ## 0.0.1
 
 ### Patch Changes

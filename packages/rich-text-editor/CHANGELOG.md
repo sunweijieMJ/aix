@@ -1,5 +1,12 @@
 # @aix/rich-text-editor
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies
+  - @aix/icons@0.0.1
+
 ## 0.0.1
 
 ### Patch Changes
