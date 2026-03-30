@@ -1,6 +1,6 @@
 declare module '@kit/eslint-config/base' {
   import type { Linter } from 'eslint';
-  export const baseConfig: Linter.Config[];
+  export const config: Linter.Config[];
 }
 
 declare module '@kit/eslint-config/vue-app' {

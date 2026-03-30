@@ -13,7 +13,6 @@ const config = {
     'stylelint-config-standard-scss', // SCSS 标准配置
     'stylelint-config-property-sort-order-smacss', // 属性排序规则
   ],
-  plugins: ['stylelint-scss', 'stylelint-order'],
   rules: commonRules,
   ignoreFiles: commonIgnoreFiles,
   overrides: commonOverrides,

@@ -1,7 +1,7 @@
 import eslintPluginImportX from 'eslint-plugin-import-x';
 import eslintPluginVue from 'eslint-plugin-vue';
 import tseslint from 'typescript-eslint';
-import { baseConfig } from './base.js';
+import { config as baseConfig } from './base.js';
 import {
   commonTypeScriptRules,
   commonEslintRules,
@@ -83,17 +83,7 @@ export const config = [
 
   // ==================== TypeScript 规则 ====================
   {
-    rules: {
-      ...commonTypeScriptRules,
-      // Vue 特定配置：未使用的变量警告（下划线开头忽略）
-      '@typescript-eslint/no-unused-vars': [
-        'warn',
-        {
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-        },
-      ],
-    },
+    rules: commonTypeScriptRules,
   },
 
   // ==================== ESLint 通用规则 ====================

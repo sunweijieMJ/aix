@@ -8,7 +8,7 @@ import globals from 'globals';
  * eslint基础配置
  * @type {import("eslint").Linter.Config}
  */
-export const baseConfig = [
+export const config = [
   // ==================== 基础推荐配置 ====================
   // 应用 JavaScript 官方推荐规则
   jseslint.configs.recommended,

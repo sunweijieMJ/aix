@@ -1,7 +1,7 @@
 import {
   commonRules,
   commonIgnoreFiles,
-  commonOverrides,
+  scssOverride,
 } from './common-rules.js';
 
 /**
@@ -12,12 +12,11 @@ const config = {
   extends: [
     'stylelint-config-standard-scss', // SCSS 标准配置
     'stylelint-config-property-sort-order-smacss', // 属性排序规则
-    'stylelint-config-recommended-vue', // Vue 推荐配置
+    'stylelint-config-recommended-vue/scss', // Vue + SCSS 推荐配置（已处理 .vue 文件解析）
   ],
-  plugins: ['stylelint-scss', 'stylelint-order'],
   rules: commonRules,
   ignoreFiles: commonIgnoreFiles,
-  overrides: commonOverrides,
+  overrides: [scssOverride],
 };
 
 export default config;

@@ -3,7 +3,7 @@ import eslintPluginReact from 'eslint-plugin-react';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
-import { baseConfig } from './base.js';
+import { config as baseConfig } from './base.js';
 import {
   commonTypeScriptRules,
   commonEslintRules,

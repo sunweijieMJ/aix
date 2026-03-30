@@ -12,7 +12,6 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": false,
     "isolatedModules": true,
-    "allowSyntheticDefaultImports": true,
     "target": "ES2015",
     "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
     "jsx": "preserve",

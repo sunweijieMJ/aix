@@ -1,3 +1,3 @@
 export default {
-  extends: ['@kit/stylelint-config/vue-app.js'],
+  extends: ['@kit/stylelint-config/vue-app'],
 };
