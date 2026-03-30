@@ -42,12 +42,12 @@ project-root/
 ```json
 {
   "dependencies": {
-    "{{packageScope}}/utils": "workspace:*"
+    "{{packageScope}}/utils": "workspace:^"
   }
 }
 ```
 
-- 包间依赖使用 `workspace:*` 协议
+- 包间依赖使用 `workspace:^` 协议
 - 发布时自动替换为实际版本号
 
 ### 依赖提升

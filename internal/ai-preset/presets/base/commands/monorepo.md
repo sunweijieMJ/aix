@@ -57,13 +57,14 @@ pnpm install
 ```json
 {
   "dependencies": {
-    "@scope/utils": "workspace:*"
+    "@scope/utils": "workspace:^"
   }
 }
 ```
 
-- `workspace:*`: 使用当前版本
-- `workspace:^`: 使用兼容版本
+- `workspace:^`: 使用兼容版本（推荐）
+- `workspace:~`: 使用补丁版本
+- `workspace:*`: 使用精确版本
 
 ## 常见问题排查
 

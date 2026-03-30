@@ -187,8 +187,8 @@ pnpm --parallel -r test          # 并行运行所有包的测试
 
 ```bash
 # 添加 workspace 依赖
-pnpm --filter @aix/select add @aix/input@workspace:*
-pnpm --filter @aix/button add @aix/hooks@workspace:*
+pnpm --filter @aix/select add @aix/input@workspace:^
+pnpm --filter @aix/button add @aix/hooks@workspace:^
 
 # 查看包依赖关系
 pnpm list --depth 0
@@ -211,16 +211,16 @@ pnpm -r exec rm -rf coverage
 
 ### workspace 协议
 
-**使用 `workspace:*` 引用内部包**:
+**使用 `workspace:^` 引用内部包**:
 
 ```json
 // packages/button/package.json
 {
   "name": "@aix/button",
   "dependencies": {
-    "@aix/hooks": "workspace:*",
-    "@aix/utils": "workspace:*",
-    "@aix/theme": "workspace:*"
+    "@aix/hooks": "workspace:^",
+    "@aix/utils": "workspace:^",
+    "@aix/theme": "workspace:^"
   }
 }
 ```
@@ -423,9 +423,9 @@ packages/tooltip/
     "vue": "^3.5.28"
   },
   "dependencies": {
-    "@aix/hooks": "workspace:*",
-    "@aix/utils": "workspace:*",
-    "@aix/theme": "workspace:*"
+    "@aix/hooks": "workspace:^",
+    "@aix/utils": "workspace:^",
+    "@aix/theme": "workspace:^"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
@@ -495,9 +495,9 @@ pnpm build
     "vue": "^3.5.28"  // Vue 由宿主项目提供
   },
   "dependencies": {
-    "@aix/hooks": "workspace:*",  // 内部依赖
-    "@aix/utils": "workspace:*",
-    "@aix/theme": "workspace:*"
+    "@aix/hooks": "workspace:^",  // 内部依赖
+    "@aix/utils": "workspace:^",
+    "@aix/theme": "workspace:^"
   },
   "devDependencies": {
     "vue": "^3.5.28",       // 开发时需要 Vue
@@ -891,7 +891,7 @@ internal/tsconfig/
 
 ### 2. 依赖管理原则
 
-- ✅ **使用 workspace:***: 内部包使用 workspace 协议
+- ✅ **使用 workspace:^**: 内部包使用 workspace 协议
 - ✅ **统一版本**: 公共依赖在根 package.json 统一管理
 - ✅ **对等依赖**: Vue、React 等框架使用 peerDependencies
 - ❌ **避免重复**: 不在多个包中重复安装相同依赖

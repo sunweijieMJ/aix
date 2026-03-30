@@ -52,9 +52,9 @@
     }
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
-    "@kit/stylelint-config": "workspace:*",
-    "@kit/typescript-config": "workspace:*",
+    "@kit/eslint-config": "workspace:^",
+    "@kit/stylelint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "eslint": "*",
     "autoprefixer": "*",
     "postcss": "*",

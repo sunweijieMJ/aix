@@ -41,15 +41,15 @@
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {
-    "@aix/theme": "workspace:*",
+    "@aix/theme": "workspace:^",
     "@floating-ui/vue": "^1.1.11"
   },
   "peerDependencies": {
     "vue": "^3.5.28"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
-    "@kit/stylelint-config": "workspace:*",
+    "@kit/eslint-config": "workspace:^",
+    "@kit/stylelint-config": "workspace:^",
     "eslint": "*",
     "rimraf": "*",
     "stylelint": "*",

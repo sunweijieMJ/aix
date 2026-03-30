@@ -2771,7 +2771,7 @@ export default defineConfig({
     "vt:update": "visual-test update"
   },
   "devDependencies": {
-    "@kit/visual-testing": "workspace:*"
+    "@kit/visual-testing": "workspace:^"
   }
 }
 ```

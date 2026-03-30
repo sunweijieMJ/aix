@@ -574,20 +574,20 @@ mindmap
 
 ### 6.2 依赖管理
 
-`workspace:*` 是 pnpm 的本地链接协议，**仅用于开发阶段**。`apps/client` 通过 `workspace:*` 引用所有组件包进行本地联调预览。
+`workspace:^` 是 pnpm 的本地链接协议，**仅用于开发阶段**。`apps/client` 通过 `workspace:^` 引用所有组件包进行本地联调预览。
 
-发布到 npm 时，组件包的 `package.json` 中 `@aix/*` 依赖必须替换为具体版本号（如 `"@aix/hooks": "^1.0.0"`），确保外部消费者能正确安装。
+发布到 npm 时，pnpm 会自动将 `workspace:^` 替换为兼容版本号（如 `"@aix/hooks": "^1.0.0"`），确保外部消费者能正确安装。
 
 ```json
 // 开发时 (apps/client/package.json)
 {
   "dependencies": {
-    "@aix/button": "workspace:*",
-    "@aix/theme": "workspace:*"
+    "@aix/button": "workspace:^",
+    "@aix/theme": "workspace:^"
   }
 }
 
-// 发布时 (packages/button/package.json)
+// 发布后自动替换为 (packages/button/package.json)
 {
   "dependencies": {
     "@aix/theme": "^1.0.0",
@@ -794,7 +794,7 @@ pnpm gen <component-name>
 | **Map Token** | 由 Seed 通过颜色算法自动派生的变量（hover 态、active 态） |
 | **Alias Token** | 具有语义含义的变量（`colorLink`、`colorSuccess`），组件直接引用 |
 | **CSS Cascade Layer** | CSS `@layer` 规则，控制样式层级优先级，避免 specificity 冲突 |
-| **Workspace 协议** | pnpm 的 `workspace:*` 语法，仅用于开发阶段链接本地包，发布时需替换为具体版本号 |
+| **Workspace 协议** | pnpm 的 `workspace:^` 语法，仅用于开发阶段链接本地包，发布时自动替换为兼容版本号 |
 | **preserveModules** | Rollup 配置项，保留源文件模块结构，支持打包器 Tree-shaking |
 | **ComponentLocale** | 组件级国际化定义，包含各语言的翻译键值对 |
 

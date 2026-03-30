@@ -120,8 +120,8 @@ packages/
     "vue": "^3.5.28"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
-    "@kit/typescript-config": "workspace:*"
+    "@kit/eslint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^"
   },
   "publishConfig": {
     "access": "public"

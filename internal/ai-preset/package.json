@@ -41,7 +41,7 @@
     "inquirer": "^13.3.2"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
+    "@kit/eslint-config": "workspace:^",
     "@types/diff": "^8.0.0",
     "@types/node": "*",
     "eslint": "*",

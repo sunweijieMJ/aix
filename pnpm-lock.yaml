@@ -23,13 +23,13 @@ importers:
         specifier: ^20.4.0
         version: 20.4.0
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:internal/eslint-config
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:internal/stylelint-config
       '@kit/typescript-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:internal/typescript-config
       '@rollup/plugin-commonjs':
         specifier: ^29.0.0
@@ -212,25 +212,25 @@ importers:
   apps/client:
     dependencies:
       '@aix/button':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/button
       '@aix/hooks':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/hooks
       '@aix/icons':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/icons
       '@aix/pdf-viewer':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/pdf-viewer
       '@aix/subtitle':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/subtitle
       '@aix/theme':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/theme
       '@aix/video':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../packages/video
       element-plus:
         specifier: ^2.13.2
@@ -243,19 +243,19 @@ importers:
         version: 11.2.8(vue@3.5.28(typescript@5.9.3))
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/i18n-tools':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/i18n-tools
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/stylelint-config
       '@kit/typescript-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/typescript-config
       '@kit/visual-testing':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/visual-testing
       '@vitejs/plugin-vue':
         specifier: '*'
@@ -310,10 +310,10 @@ importers:
         version: 4.3.6
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/typescript-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/typescript-config
       '@types/bcrypt':
         specifier: ^6.0.0
@@ -374,7 +374,7 @@ importers:
         version: 13.3.2(@types/node@25.3.2)
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../eslint-config
       '@types/diff':
         specifier: ^8.0.0
@@ -474,10 +474,10 @@ importers:
         version: 18.0.0
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../eslint-config
       '@kit/typescript-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../typescript-config
       '@types/inquirer':
         specifier: ^9.0.9
@@ -523,7 +523,7 @@ importers:
         version: 8.19.0
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../eslint-config
       '@types/node':
         specifier: '*'
@@ -566,7 +566,7 @@ importers:
         version: 9.3.0
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../eslint-config
       '@types/fs-extra':
         specifier: ^11.0.4
@@ -614,7 +614,7 @@ importers:
   internal/tracker:
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../eslint-config
       '@types/node':
         specifier: '*'
@@ -725,20 +725,20 @@ importers:
   packages/button:
     dependencies:
       '@aix/hooks':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../hooks
       '@aix/theme':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../theme
       vue:
         specifier: ^3.5.28
         version: 3.5.28(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/stylelint-config
       eslint:
         specifier: '*'
@@ -759,7 +759,7 @@ importers:
   packages/code-editor:
     dependencies:
       '@aix/theme':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../theme
       '@codemirror/autocomplete':
         specifier: ^6.20.1
@@ -844,10 +844,10 @@ importers:
         version: 3.5.28(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/stylelint-config
       eslint:
         specifier: '*'
@@ -872,7 +872,7 @@ importers:
         version: 3.5.28(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       eslint:
         specifier: '*'
@@ -890,7 +890,7 @@ importers:
   packages/icons:
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       eslint:
         specifier: '*'
@@ -917,13 +917,13 @@ importers:
   packages/pdf-viewer:
     dependencies:
       '@aix/hooks':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../hooks
       '@aix/icons':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../icons
       '@aix/popper':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../popper
       pdfjs-dist:
         specifier: ^5.4.624
@@ -933,10 +933,10 @@ importers:
         version: 3.5.28(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/stylelint-config
       eslint:
         specifier: '*'
@@ -957,7 +957,7 @@ importers:
   packages/popper:
     dependencies:
       '@aix/theme':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../theme
       '@floating-ui/vue':
         specifier: ^1.1.11
@@ -967,10 +967,10 @@ importers:
         version: 3.5.28(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/stylelint-config
       eslint:
         specifier: '*'
@@ -991,16 +991,16 @@ importers:
   packages/rich-text-editor:
     dependencies:
       '@aix/hooks':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../hooks
       '@aix/icons':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../icons
       '@aix/popper':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../popper
       '@aix/theme':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../theme
       '@tiptap/core':
         specifier: ^3.20.4
@@ -1079,10 +1079,10 @@ importers:
         version: 3.5.28(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/stylelint-config
       eslint:
         specifier: '*'
@@ -1107,10 +1107,10 @@ importers:
         version: 3.5.28(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/stylelint-config
       eslint:
         specifier: '*'
@@ -1131,13 +1131,13 @@ importers:
   packages/theme:
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/stylelint-config
       '@kit/typescript-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/typescript-config
       autoprefixer:
         specifier: '*'
@@ -1182,7 +1182,7 @@ importers:
   packages/video:
     dependencies:
       '@aix/icons':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../icons
       dashjs:
         specifier: ^5.1.0
@@ -1201,10 +1201,10 @@ importers:
         version: 3.5.28(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/eslint-config
       '@kit/stylelint-config':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../internal/stylelint-config
       '@types/video.js':
         specifier: ^7.3.58

@@ -47,14 +47,14 @@
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {<% if (it.dependencies.length > 0) { %><% it.dependencies.forEach((dep, index) => { %>
-    "<%= dep %>": "workspace:*"<%= index < it.dependencies.length - 1 ? ',' : '' %><% }) %>
+    "<%= dep %>": "workspace:^"<%= index < it.dependencies.length - 1 ? ',' : '' %><% }) %>
   <% } %>},
   "peerDependencies": {
     "vue": "^3.5.28"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",<% if (it.tools.stylelint) { %>
-    "@kit/stylelint-config": "workspace:*",<% } %>
+    "@kit/eslint-config": "workspace:^",<% if (it.tools.stylelint) { %>
+    "@kit/stylelint-config": "workspace:^",<% } %>
     "eslint": "*",
     "rimraf": "*",<% if (it.tools.stylelint) { %>
     "stylelint": "*",<% } %>

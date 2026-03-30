@@ -34,8 +34,8 @@
     "yargs": "^18.0.0"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
-    "@kit/typescript-config": "workspace:*",
+    "@kit/eslint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "@types/inquirer": "^9.0.9",
     "@types/node": "*",
     "@types/yargs": "^17.0.35",

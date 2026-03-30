@@ -39,7 +39,7 @@
     "ora": "^9.3.0"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
+    "@kit/eslint-config": "workspace:^",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "*",
     "eslint": "*",

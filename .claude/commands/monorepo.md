@@ -131,21 +131,22 @@ pnpm audit --fix
 ```json
 {
   "dependencies": {
-    "@aix/button": "workspace:*",
+    "@aix/button": "workspace:^",
     "@aix/theme": "workspace:^"
   }
 }
 ```
 
-- `workspace:*`: 使用当前版本
-- `workspace:^`: 使用兼容版本
+- `workspace:^`: 使用兼容版本（推荐）
 - `workspace:~`: 使用补丁版本
+- `workspace:*`: 使用精确版本
 
 ### 发布注意事项
 
 发布前，workspace 协议会被替换为实际版本：
-- `workspace:*` → 当前版本（如 `1.0.0`）
-- `workspace:^` → 兼容版本（如 `^1.0.0`）
+- `workspace:^` → 兼容版本（如 `^1.0.0`）（推荐）
+- `workspace:~` → 补丁版本（如 `~1.0.0`）
+- `workspace:*` → 精确版本（如 `1.0.0`）
 
 ## 常见问题
 

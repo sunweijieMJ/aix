@@ -30,8 +30,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
-    "@kit/typescript-config": "workspace:*",
+    "@kit/eslint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "@types/bcrypt": "^6.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "*",

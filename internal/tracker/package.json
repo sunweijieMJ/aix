@@ -33,7 +33,7 @@
     }
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
+    "@kit/eslint-config": "workspace:^",
     "@types/node": "*",
     "eslint": "*",
     "rimraf": "*",

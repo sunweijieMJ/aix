@@ -25,7 +25,7 @@
 // package.json
 {
   "devDependencies": {
-    "@kit/visual-testing": "workspace:*"
+    "@kit/visual-testing": "workspace:^"
   }
 }
 ```

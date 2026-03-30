@@ -41,17 +41,17 @@
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {
-    "@aix/hooks": "workspace:*",
-    "@aix/icons": "workspace:*",
-    "@aix/popper": "workspace:*",
+    "@aix/hooks": "workspace:^",
+    "@aix/icons": "workspace:^",
+    "@aix/popper": "workspace:^",
     "pdfjs-dist": "^5.4.624"
   },
   "peerDependencies": {
     "vue": "^3.5.28"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
-    "@kit/stylelint-config": "workspace:*",
+    "@kit/eslint-config": "workspace:^",
+    "@kit/stylelint-config": "workspace:^",
     "eslint": "*",
     "rimraf": "*",
     "stylelint": "*",

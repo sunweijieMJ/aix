@@ -42,7 +42,7 @@ aix/
 
 **关键规则**:
 - `packages/` 以 `@aix/` scope 发布，`internal/` 以 `@kit/` scope 发布
-- 包间依赖使用 `workspace:*` 协议
+- 包间依赖使用 `workspace:^` 协议
 - 每个组件包独立 `rollup.config.js`，继承根配置
 
 ## 构建输出
@@ -93,7 +93,7 @@ packages/<name>/
 |---------|------|
 | 修改 `es/`、`lib/`、`dist/` | 构建产物，自动生成 |
 | 硬编码颜色值 | 必须使用 `@aix/theme` 的 CSS Variables |
-| 组件间直接引用源码 | 必须通过 `workspace:*` 依赖引用 |
+| 组件间直接引用源码 | 必须通过 `workspace:^` 依赖引用 |
 | 跳过类型定义 | Props/Emits 必须有完整 TypeScript 类型 |
 | 使用标签选择器 | 组件样式必须使用 `.aix-` 前缀的 class |
 | 在组件中使用 `scoped` | 组件库使用 BEM + 命名空间隔离，不用 scoped |

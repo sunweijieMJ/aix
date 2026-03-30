@@ -44,8 +44,8 @@
     "vue": "^3.5.28"
   },
   "devDependencies": {
-    "@kit/eslint-config": "workspace:*",
-    "@kit/stylelint-config": "workspace:*",
+    "@kit/eslint-config": "workspace:^",
+    "@kit/stylelint-config": "workspace:^",
     "eslint": "*",
     "rimraf": "*",
     "stylelint": "*",
