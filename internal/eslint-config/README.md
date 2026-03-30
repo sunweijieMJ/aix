@@ -2,7 +2,7 @@
 
 内部共享的 ESLint 配置包，为项目提供统一的代码质量检查和编码规范。
 
-## 📦 安装
+## 安装
 
 ```json
 {
@@ -12,7 +12,7 @@
 }
 ```
 
-## 🚀 使用
+## 使用
 
 ### 基础配置 (base)
 
@@ -41,7 +41,7 @@ import { config } from '@kit/eslint-config/vue-app';
 export default config;
 ```
 
-## ⚙️ 配置说明
+## 配置说明
 
 ### base 配置特性
 
@@ -91,7 +91,7 @@ node_modules, deploy, build, dist, logs, es, lib, .rollup.cache
 | 别名支持 | `@` → `./src`，`~` → `./` |
 | 自动排序 | 字母顺序，不区分大小写 |
 
-## 📋 规则说明
+## 规则说明
 
 ### TypeScript 规则
 
@@ -119,7 +119,7 @@ node_modules, deploy, build, dist, logs, es, lib, .rollup.cache
 | `import/order` | error | Import 语句按字母排序 |
 | `camelcase` | off | 不强制驼峰命名 |
 
-## 🎯 使用场景
+## 使用场景
 
 ### 1. Vue 组件库
 
@@ -171,7 +171,7 @@ export default [
 ];
 ```
 
-## 🔧 开发工具集成
+## 开发工具集成
 
 ### VS Code
 
@@ -195,7 +195,7 @@ export default [
 }
 ```
 
-## 🆚 配置对比
+## 配置对比
 
 | 特性 | base | vue-app |
 |------|------|---------|

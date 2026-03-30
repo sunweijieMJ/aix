@@ -1,10 +1,9 @@
-# AIX Components MCP Server
+# @kit/mcp-server
 
 <p align="center">
   <img src="https://img.shields.io/badge/MCP-Compatible-blue?logo=anthropic" alt="MCP Compatible"/>
   <img src="https://img.shields.io/badge/Node.js-18+-green?logo=node.js" alt="Node.js 18+"/>
   <img src="https://img.shields.io/badge/TypeScript-5.0+-blue?logo=typescript" alt="TypeScript 5.0+"/>
-  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License"/>
   <img src="https://img.shields.io/badge/PRs-Welcome-brightgreen" alt="PRs Welcome"/>
 </p>
 
@@ -14,7 +13,7 @@
 
 ---
 
-## 📋 目录
+## 目录
 
 - [核心特性](#-核心特性)
 - [快速开始](#-快速开始)
@@ -31,7 +30,7 @@
 
 ---
 
-## ✨ 核心特性
+## 核心特性
 
 - 🔍 **智能组件提取**：基于 TypeScript AST 精确解析 Props/Emits/Slots
 - 🚀 **高性能搜索**：内置倒排索引 + TF-IDF 算法，支持中英文混合搜索
@@ -40,7 +39,7 @@
 - 📊 **实时监控**：请求统计、性能追踪、健康检查
 - 🔧 **高度可配置**：仅需修改 `constants/library.ts` 即可适配其他组件库
 
-## 🚀 快速开始
+## 快速开始
 
 ### 开发模式
 
@@ -86,7 +85,7 @@ node dist/cli.js health
 | `health` | 健康检查 | `-d <dir>` 数据目录 |
 | `sync-version` | 同步版本信息 | 无 |
 
-## 🔧 AI 集成配置
+## AI 集成配置
 
 ### Claude Desktop 配置 (推荐)
 
@@ -174,7 +173,7 @@ node dist/cli.js health
 }
 ```
 
-## 📊 性能指标
+## 性能指标
 
 ### 搜索性能 (基准测试)
 
@@ -202,12 +201,12 @@ node dist/cli.js health
 node dist/cli.js stats
 
 # 输出示例:
-# 📊 组件统计:
+# 组件统计:
 #   - 总组件数: 47
 #   - 分类数: 8
 #   - 标签数: 156
 #
-# 📈 搜索统计:
+# 搜索统计:
 #   - 总请求数: 1,234
 #   - 缓存命中率: 87%
 #   - 平均响应时间: 5ms
@@ -234,7 +233,7 @@ node dist/cli.js extract --packages=../../packages
 NODE_OPTIONS="--max-old-space-size=4096" node dist/cli.js serve
 ```
 
-## 🧰 MCP 工具集
+## MCP 工具集
 
 ### 组件查询工具 (8个)
 
@@ -309,7 +308,7 @@ Button 组件依赖哪些其他包？
 Input 组件有哪些可配置的属性？
 ```
 
-## 🏗️ 架构设计
+## 架构设计
 
 ### 核心架构图
 
@@ -568,7 +567,7 @@ internal/mcp-server/
 - **内存监控**: 自动 GC 触发、内存泄漏检测
 - **批量操作**: 文件读写合并、并发控制
 
-## 🛠️ 开发指南
+## 开发指南
 
 ### 本地开发
 
@@ -846,7 +845,7 @@ node dist/cli.js validate
 }
 ```
 
-## 🚨 故障排除
+## 故障排除
 
 ### 常见问题和解决方案
 
@@ -989,7 +988,7 @@ tail -f mcp-server.log
 - 📧 技术支持: <sunweijie@able-elec.com>
 - 💬 社区讨论: [Discord](https://discord.gg/your-community)
 
-## 🔧 快速适配其他组件库
+## 快速适配其他组件库
 
 ### ⭐ 一个文件搞定：只需修改 `src/constants/library.ts`
 
@@ -1114,7 +1113,7 @@ export const COMPONENT_LIBRARY_CONFIG = {
 ✅ Monorepo 架构 (pnpm workspace / Lerna / Nx)
 ✅ 单仓库组件库
 
-## ❓ 常见问题 (FAQ)
+## 常见问题 (FAQ)
 
 ### Q: MCP Server 是什么？
 
@@ -1178,7 +1177,7 @@ MCP (Model Context Protocol) 是 Anthropic 推出的标准协议，用于 AI 助
 
 ---
 
-## 🤝 贡献指南
+## 贡献指南
 
 我们欢迎任何形式的贡献！
 
@@ -1221,28 +1220,10 @@ git push origin feature/your-feature
 
 ---
 
-## 🙏 致谢
+## 致谢
 
 - [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol) - Anthropic 的开源协议
 - [TypeScript](https://www.typescriptlang.org/) - 强大的类型系统
 - [Commander.js](https://github.com/tj/commander.js) - CLI 框架
 - [Chalk](https://github.com/chalk/chalk) - 终端彩色输出
 - [ws](https://github.com/websockets/ws) - WebSocket 实现
-
----
-
-## 📄 许可证
-
-[MIT](LICENSE)
-
----
-
-## 📮 联系方式
-
-- 作者: sunweijie
-- 邮箱: <sunweijie@able-elec.com>
-- 项目主页: [AIX Components](https://github.com/your-org/aix)
-
----
-
-**Made with ❤️ by AIX Team**

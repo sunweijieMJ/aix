@@ -1,8 +1,8 @@
 # @aix/button
 
-一个功能完整、高度可定制的 Vue 3 按钮组件。
+这是一个 Vue 3 示例组件。
 
-## ✨ 特性
+## 特性
 
 - 🎨 **多种类型**：支持 primary、default、dashed、text、link 五种按钮类型
 - 📏 **三种尺寸**：small、medium、large 灵活选择
@@ -11,7 +11,7 @@
 - 🎯 **TypeScript**：完整的类型定义，提供最佳开发体验
 - 🌈 **主题定制**：基于 Ant Design 色彩体系，易于定制
 
-## 📦 安装
+## 安装
 
 ```bash
 pnpm add @aix/button
@@ -21,7 +21,7 @@ npm install @aix/button
 yarn add @aix/button
 ```
 
-## 🔨 使用
+## 使用
 
 ### 基础用法
 
@@ -153,8 +153,9 @@ const { t } = useLocale(buttonLocale);
 
 | 插槽名 | 说明 |
 |--------|------|
-| `default` | - |
-## 📝 类型定义
+| `default` | 按钮内容 |
+
+## 类型定义
 
 ```typescript
 export interface ButtonProps {
@@ -172,7 +173,3 @@ export interface ButtonEmits {
   (e: 'click', event: MouseEvent): void;
 }
 ```
-
-## 📄 License
-
-MIT

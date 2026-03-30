@@ -2,7 +2,7 @@
 
 内部共享的 Stylelint 配置包，为项目提供统一的 CSS/SCSS 代码质量检查和样式规范。
 
-## 📦 安装
+## 安装
 
 ```json
 {
@@ -12,7 +12,7 @@
 }
 ```
 
-## 🚀 使用
+## 使用
 
 ### 基础配置 (base)
 
@@ -40,7 +40,7 @@ import vueAppConfig from '@kit/stylelint-config/vue-app.js';
 export default vueAppConfig;
 ```
 
-## ⚙️ 配置说明
+## 配置说明
 
 ### base 配置特性
 
@@ -102,7 +102,7 @@ overrides: [
 ]
 ```
 
-## 📋 规则说明
+## 规则说明
 
 ### 选择器规则
 
@@ -132,7 +132,7 @@ overrides: [
 | `color-function-notation` | modern | 使用 `rgb(0 0 0)` 而非 `rgb(0, 0, 0)` |
 | `alpha-value-notation` | number | 使用 `0.5` 而非 `50%` |
 
-## 🎯 使用场景
+## 使用场景
 
 ### 1. Vue 组件库（推荐使用 vue-app）
 
@@ -182,7 +182,7 @@ export default {
 };
 ```
 
-## 🔧 开发工具集成
+## 开发工具集成
 
 ### VS Code
 
@@ -219,7 +219,7 @@ export default {
 }
 ```
 
-## 📝 代码示例
+## 代码示例
 
 ### 正确的代码
 
@@ -250,7 +250,7 @@ export default {
 }
 ```
 
-## 🆚 配置对比
+## 配置对比
 
 | 特性 | base | vue-app |
 |------|------|---------|

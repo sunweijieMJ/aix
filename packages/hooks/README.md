@@ -2,7 +2,7 @@
 
 AIX 组件库的工具 Hooks 集合，提供国际化等通用功能。
 
-## ✨ 特性
+## 特性
 
 - 轻量级国际化实现
 - TypeScript 类型安全
@@ -256,7 +256,3 @@ const placeholderText = computed(() => props.placeholder ?? t.value.placeholder)
 ### 3. SSR 兼容
 
 `createLocale` 已内置 SSR 支持，会自动检测环境并处理 localStorage 访问。
-
-## License
-
-MIT

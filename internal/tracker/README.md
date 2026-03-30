@@ -599,7 +599,3 @@ pnpm lint
 ## 设计文档
 
 详细设计方案参见 [RFC: 埋点数据采集](../../docs/rfcs/tracker.md)
-
-## License
-
-MIT

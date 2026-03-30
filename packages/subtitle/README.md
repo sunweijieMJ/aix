@@ -2,7 +2,7 @@
 
 Vue 3 字幕组件，支持多种字幕格式（VTT、SRT、JSON、SBV、ASS），可与视频播放器配合使用。
 
-## ✨ 特性
+## 特性
 
 - 支持多种字幕格式（VTT、SRT、JSON、SBV、ASS）
 - 支持 URL、文本、数组三种数据来源
@@ -82,7 +82,8 @@ const onTimeUpdate = () => {
 
 | 插槽名 | 说明 |
 |--------|------|
-| `default` | - |
+| `default` | 自定义字幕渲染内容 |
+
 ## 类型定义
 
 ```typescript
@@ -104,7 +105,3 @@ type SubtitleSource =
   | { type: 'text'; content: string; format: SubtitleFormat }
   | { type: 'cues'; cues: SubtitleCue[] };
 ```
-
-## License
-
-MIT

@@ -2,7 +2,7 @@
 
 基于 pdf.js 的 Vue 3 PDF 预览组件，支持文字选择、图片选择、缩略图生成等功能。
 
-## ✨ 特性
+## 特性
 
 - 基于 pdf.js 5.x，支持最新 PDF 标准
 - 支持单页和连续滚动两种模式
@@ -78,7 +78,8 @@ const onError = (error: Error) => {
 
 | 插槽名 | 说明 |
 |--------|------|
-| `toolbar` | - |
+| `toolbar` | 自定义工具栏内容 |
+
 ## 类型定义
 
 ```typescript
@@ -112,7 +113,3 @@ interface ContextMenuContext {
   position: { x: number; y: number };
 }
 ```
-
-## License
-
-MIT

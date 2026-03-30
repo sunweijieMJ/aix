@@ -2,7 +2,7 @@
 
 基于 video.js 的 Vue 3 视频播放器组件，支持 HLS、FLV、DASH、RTSP、WebRTC 等多种流媒体协议。
 
-## ✨ 特性
+## 特性
 
 - 基于 video.js 8.x，功能强大且稳定
 - 支持多种流媒体协议（HLS、FLV、DASH、RTSP、WebRTC）
@@ -103,7 +103,8 @@ const onError = (error: Error) => {
 
 | 插槽名 | 说明 |
 |--------|------|
-| `controls` | - |
+| `controls` | 自定义控制栏内容（需开启 customControls） |
+
 ## 类型定义
 
 ```typescript
@@ -139,7 +140,3 @@ interface NetworkStatus {
   rtt?: number;
 }
 ```
-
-## License
-
-MIT
