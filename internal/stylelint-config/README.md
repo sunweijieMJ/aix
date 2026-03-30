@@ -51,27 +51,20 @@ export default vueAppConfig;
 | `stylelint-config-standard-scss` | SCSS 官方标准配置 |
 | `stylelint-config-property-sort-order-smacss` | SMACSS 属性排序规则 |
 
-**集成的插件**
-
-| 插件 | 说明 |
-|------|------|
-| `stylelint-scss` | SCSS 特定规则 |
-| `stylelint-order` | CSS 属性排序规则 |
-
 **关键规则**
 
 | 规则 | 值 | 说明 |
 |------|------|------|
-| `max-nesting-depth` | 15 | 限制 SCSS 嵌套深度 |
-| `selector-max-id` | 6 | 限制 ID 选择器数量 |
-| `selector-max-compound-selectors` | 15 | 限制复合选择器数量 |
+| `max-nesting-depth` | 5 | 限制 SCSS 嵌套深度 |
+| `selector-max-id` | 1 | 限制 ID 选择器数量 |
+| `selector-max-compound-selectors` | 5 | 限制复合选择器数量 |
 | `color-function-notation` | modern | 使用现代颜色函数语法 |
 | `alpha-value-notation` | number | 透明度使用数字表示 |
 
-**忽略的文件类型**
+**忽略的文件**
 
 ```
-node_modules, dist, coverage, *.css
+node_modules, build, dist, es, lib, coverage
 ```
 
 ### vue-app 配置特性
@@ -82,19 +75,17 @@ node_modules, dist, coverage, *.css
 
 | 特性 | 说明 |
 |------|------|
-| `stylelint-config-recommended-vue` | Vue 官方推荐配置 |
+| `stylelint-config-recommended-vue/scss` | Vue + SCSS 推荐配置 |
 | Vue SFC `<style>` 标签 | 完整支持 |
 | `:deep()`, `:global()` | 支持 Vue 伪类 |
 | `v-bind()` | 支持 CSS 函数 |
 
 **文件类型处理**
 
+`.vue` 文件解析由 `stylelint-config-recommended-vue/scss` 预设自动处理，仅需额外配置 SCSS 文件：
+
 ```javascript
 overrides: [
-  {
-    files: ['**/*.vue'],
-    customSyntax: 'postcss-html',
-  },
   {
     files: ['**/*.scss'],
     customSyntax: 'postcss-scss',
@@ -110,8 +101,8 @@ overrides: [
 |------|------|------|
 | `selector-id-pattern` | `^[a-zA-Z][a-zA-Z0-9_-]+$\|^el-\|^mz-` | ID 选择器命名规则 |
 | `selector-class-pattern` | `^[a-zA-Z][a-zA-Z0-9_-]+$\|^el-\|^mz-` | 类选择器命名规则 |
-| `selector-max-id` | 6 | 最多 6 个 ID 选择器 |
-| `selector-max-compound-selectors` | 15 | 最多 15 个复合选择器 |
+| `selector-max-id` | 1 | 最多 1 个 ID 选择器 |
+| `selector-max-compound-selectors` | 5 | 最多 5 个复合选择器 |
 | `selector-pseudo-class-no-unknown` | 忽略 `global`, `deep` | 允许 Vue 伪类 |
 | `selector-pseudo-element-no-unknown` | 忽略 `v-deep` | 允许 Vue 深度选择器 |
 
@@ -119,9 +110,9 @@ overrides: [
 
 | 规则 | 值 | 说明 |
 |------|------|------|
-| `scss/dollar-variable-pattern` | `/$/, { ignore: 'global' }` | SCSS 变量命名 |
-| `scss/at-mixin-pattern` | `^[a-zA-Z-0-9]+$` | Mixin 命名规则 |
-| `scss/percent-placeholder-pattern` | `^[a-zA-Z-0-9]+$` | 占位符命名规则 |
+| `scss/dollar-variable-pattern` | null | SCSS 变量命名不约束 |
+| `scss/at-mixin-pattern` | `^[a-zA-Z0-9-]+$` | Mixin 命名规则 |
+| `scss/percent-placeholder-pattern` | `^[a-zA-Z0-9-]+$` | 占位符命名规则 |
 | `scss/at-rule-no-unknown` | 忽略 SCSS 指令 | 允许 `@use`, `@forward` 等 |
 
 ### 函数和值规则

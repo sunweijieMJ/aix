@@ -21,10 +21,10 @@
 在项目根目录创建 `eslint.config.js`（ESLint 9+ 扁平化配置）：
 
 ```javascript
-import { baseConfig } from '@kit/eslint-config/base';
+import { config } from '@kit/eslint-config/base';
 
 export default [
-  ...baseConfig,
+  ...config,
   {
     // 项目自定义规则
   }
@@ -117,7 +117,7 @@ node_modules, deploy, build, dist, logs, es, lib, .rollup.cache
 | `no-console` | prod: warn | 生产环境警告（保留 warn/error）|
 | `no-debugger` | prod: error | 生产环境禁止 |
 | `import/order` | error | Import 语句按字母排序 |
-| `camelcase` | off | 不强制驼峰命名 |
+| `no-restricted-syntax` | error | 禁止 label 和 with 语句 |
 
 ## 使用场景
 
@@ -134,10 +134,10 @@ export default config;
 
 ```javascript
 // eslint.config.js
-import { baseConfig } from '@kit/eslint-config/base';
+import { config } from '@kit/eslint-config/base';
 
 export default [
-  ...baseConfig,
+  ...config,
   {
     languageOptions: {
       parserOptions: {
