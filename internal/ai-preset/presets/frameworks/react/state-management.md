@@ -55,7 +55,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const user = await authApi.login(credentials);
       set({ user, isLoading: false });
-    } catch {
+    } catch (error) {
       set({ isLoading: false });
       throw error;
     }

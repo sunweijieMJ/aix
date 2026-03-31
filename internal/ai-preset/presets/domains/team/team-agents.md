@@ -4,8 +4,9 @@ title: Team Agent 协作规范
 description: 多 Agent 协作模式，包含架构师、测试工程师和文档工程师角色
 layer: domain
 priority: 250
+resourceType: rules
 platforms: [claude]
-tags: [team, agent]
+tags: [team, collaboration]
 version: "1.0.0"
 ---
 

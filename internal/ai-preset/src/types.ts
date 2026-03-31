@@ -4,14 +4,13 @@
 export type PresetLayer = 'base' | 'framework' | 'domain';
 
 /** 框架层预设 */
-export type FrameworkPreset = 'vue3' | 'react' | 'node';
+export type FrameworkPreset = 'vue3' | 'react';
 
 /** 领域层预设 */
 export type DomainPreset =
   | 'component-lib'
   | 'admin'
   | 'mobile'
-  | 'api-service'
   | 'monorepo'
   | 'team'
   | 'design';
@@ -286,14 +285,13 @@ export const ALL_PLATFORMS: AIPlatform[] = [
 ];
 
 /** 所有框架预设 */
-export const ALL_FRAMEWORKS: FrameworkPreset[] = ['vue3', 'react', 'node'];
+export const ALL_FRAMEWORKS: FrameworkPreset[] = ['vue3', 'react'];
 
 /** 所有领域预设 */
 export const ALL_DOMAINS: DomainPreset[] = [
   'component-lib',
   'admin',
   'mobile',
-  'api-service',
   'monorepo',
   'team',
   'design',
@@ -306,7 +304,6 @@ export const DOMAIN_RECOMMENDED_FRAMEWORK: Partial<
   'component-lib': 'vue3',
   admin: 'vue3',
   mobile: 'vue3',
-  'api-service': 'node',
 };
 
 /** 预设名称到目录路径的映射 */
@@ -314,11 +311,9 @@ export const PRESET_DIR_MAP: Record<PresetName, string> = {
   base: 'base',
   vue3: 'frameworks/vue3',
   react: 'frameworks/react',
-  node: 'frameworks/node',
   'component-lib': 'domains/component-lib',
   admin: 'domains/admin',
   mobile: 'domains/mobile',
-  'api-service': 'domains/api-service',
   monorepo: 'domains/monorepo',
   team: 'domains/team',
   design: 'domains/design',

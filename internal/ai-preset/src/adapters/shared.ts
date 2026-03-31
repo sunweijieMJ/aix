@@ -51,7 +51,6 @@ const DOMAIN_NAMES: Record<string, string> = {
   'component-lib': '组件库',
   admin: '中后台管理系统',
   mobile: '移动端/H5',
-  'api-service': 'API 服务',
   monorepo: 'Monorepo',
   team: 'Team 协作',
   design: '设计稿还原',

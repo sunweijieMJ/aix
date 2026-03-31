@@ -181,7 +181,7 @@ function generateId(filePath: string, presetName: PresetName): string {
 /** 从预设名推断层级 */
 function inferLayer(name: PresetName): PresetLayer {
   if (name === 'base') return 'base';
-  if (['vue3', 'react', 'node'].includes(name)) return 'framework';
+  if (['vue3', 'react'].includes(name)) return 'framework';
   return 'domain';
 }
 

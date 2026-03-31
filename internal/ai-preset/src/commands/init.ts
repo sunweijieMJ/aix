@@ -35,7 +35,7 @@ export function registerInitCommand(program: Command): void {
     .command('init')
     .description('交互式初始化 AI 编码规范')
     .option('--platform <platforms>', '目标 AI 平台（逗号分隔）', '')
-    .option('--framework <name>', '框架预设 (vue3/react/node)')
+    .option('--framework <name>', '框架预设 (vue3/react)')
     .option('--domain <domains>', '领域模块（逗号分隔）', '')
     .option('--prefix <prefix>', 'CSS 类名前缀', '')
     .option('--scope <scope>', 'npm 包 scope', '')
@@ -207,7 +207,6 @@ async function collectConfigInteractively(
       choices: [
         { name: 'Vue 3', value: 'vue3' },
         { name: 'React', value: 'react' },
-        { name: 'Node.js', value: 'node' },
         { name: '不选择框架', value: '' },
       ],
     },
@@ -435,7 +434,6 @@ function getDomainLabel(d: DomainPreset): string {
     'component-lib': '组件库开发',
     admin: '中后台管理系统',
     mobile: '移动端 / H5',
-    'api-service': 'API 服务',
     monorepo: 'Monorepo 管理',
     team: 'Team 多 Agent 协作',
     design: '设计稿还原 (Figma)',

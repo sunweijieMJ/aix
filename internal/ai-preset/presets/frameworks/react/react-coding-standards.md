@@ -78,7 +78,7 @@ const handleSubmit = useCallback((data: FormData) => {
 
 // useMemo: 昂贵计算
 const sortedItems = useMemo(
-  () => items.sort((a, b) => a.name.localeCompare(b.name)),
+  () => [...items].sort((a, b) => a.name.localeCompare(b.name)),
   [items],
 );
 ```

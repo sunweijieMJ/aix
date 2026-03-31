@@ -114,13 +114,15 @@ const data = await withRetry(() => api.fetchUser(id), { maxRetries: 2 });
 ## 防抖与节流
 
 ```typescript
+import { debounce, throttle } from 'lodash-es';
+
 // 防抖: 输入停止后才执行 — 适合搜索框
-const debouncedSearch = useDebounceFn((keyword: string) => {
+const debouncedSearch = debounce((keyword: string) => {
   fetchResults(keyword);
 }, 300);
 
 // 节流: 固定间隔执行一次 — 适合滚动监听、resize
-const throttledScroll = useThrottleFn(() => {
+const throttledScroll = throttle(() => {
   checkScrollPosition();
 }, 200);
 ```
@@ -140,48 +142,43 @@ const throttledScroll = useThrottleFn(() => {
 ### AbortController
 
 ```typescript
-// ✅ 正确: 组件卸载时取消未完成的请求
-function useFetchData(url: string) {
-  const data = ref(null);
-  const controller = new AbortController();
-
-  onMounted(async () => {
-    try {
-      const response = await fetch(url, { signal: controller.signal });
-      data.value = await response.json();
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        return; // 正常取消，不处理
-      }
-      throw error;
+// ✅ 正确: 页面/组件销毁时取消未完成的请求
+async function fetchWithAbort(url: string, signal: AbortSignal): Promise<unknown> {
+  try {
+    const response = await fetch(url, { signal });
+    return await response.json();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return null; // 正常取消，不处理
     }
-  });
-
-  onUnmounted(() => controller.abort());
-
-  return { data };
+    throw error;
+  }
 }
+
+// 使用示例
+const controller = new AbortController();
+fetchWithAbort('/api/data', controller.signal);
+// 需要取消时调用
+controller.abort();
 ```
 
 ### 竞态条件处理
 
 ```typescript
 // ✅ 正确: 防止旧请求覆盖新结果
-function useSearch(keyword: Ref<string>) {
-  const results = ref([]);
-  let currentRequestId = 0;
+class SearchHandler {
+  private currentRequestId = 0;
+  results: unknown[] = [];
 
-  watch(keyword, async (newKeyword) => {
-    const requestId = ++currentRequestId;
-    const data = await searchApi(newKeyword);
+  async search(keyword: string) {
+    const requestId = ++this.currentRequestId;
+    const data = await searchApi(keyword);
 
     // 只有最新请求的结果才更新
-    if (requestId === currentRequestId) {
-      results.value = data;
+    if (requestId === this.currentRequestId) {
+      this.results = data;
     }
-  });
-
-  return { results };
+  }
 }
 ```
 
@@ -189,17 +186,17 @@ function useSearch(keyword: Ref<string>) {
 
 ```typescript
 // ✅ 正确: 先更新 UI，失败后回滚
-async function toggleFavorite(itemId: string) {
-  const previousState = isFavorited.value;
+async function toggleFavorite(itemId: string, state: { isFavorited: boolean }) {
+  const previousState = state.isFavorited;
 
   // 乐观更新
-  isFavorited.value = !previousState;
+  state.isFavorited = !previousState;
 
   try {
     await api.toggleFavorite(itemId);
   } catch {
     // 回滚
-    isFavorited.value = previousState;
+    state.isFavorited = previousState;
     showToast('操作失败，请重试');
   }
 }

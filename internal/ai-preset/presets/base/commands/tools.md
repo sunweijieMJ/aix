@@ -14,21 +14,17 @@ version: "1.0.0"
 
 快速查找项目中所有可用的开发工具。
 
-## Skills（代码生成）
+## 工具分类
 
-| Skill | 功能 |
-|-------|------|
-| `/component-generator` | 生成 Vue 组件 |
-| `/store-generator` | 生成 Pinia Store |
-| `/page-assembler` | 页面拼装器 |
-| `/api-generator` | 自定义 API 生成 |
-| `/architecture-designer` | PRD → 架构设计 |
-| `/figma-to-component` | Figma → 组件 |
-| `/test-coverage-checker` | 测试覆盖率检查 |
-| `/implementation-validator` | 代码一致性校验 |
-| `/code-optimizer` | 代码优化 |
+### Skills（代码生成）
 
-## Commands（快速提示）
+自动化执行工具，输入参数后直接生成代码或报告。
+
+> 具体可用的 Skills 由框架层和领域层预设提供，使用 `/tools` 命令时会根据项目配置动态列出。
+
+### Commands（快速提示）
+
+快速参考清单，提供常见操作的最佳实践提醒。
 
 | Command | 功能 |
 |---------|------|
@@ -39,16 +35,11 @@ version: "1.0.0"
 | `/optimize` | 性能优化指南 |
 | `/security-check` | 安全检查清单 |
 
-## Agents（深度指导）
+### Agents（深度指导）
 
-| Agent | 功能 |
-|-------|------|
-| `@coding-standards` | 编码规范 |
-| `@common-patterns` | 通用开发模式 |
-| `@component-design` | 组件设计规范 |
-| `@api-development` | API 接口规范 |
-| `@testing` | 测试策略 |
-| `@code-review` | 代码审查 |
+深度规范文档，提供某个领域的完整指导。
+
+> 具体可用的 Agents 由 base/frameworks/domains 各层预设提供，涵盖编码规范、组件设计、测试策略等主题。
 
 ## 决策流程
 
