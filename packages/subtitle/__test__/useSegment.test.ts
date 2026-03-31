@@ -8,6 +8,8 @@ import {
   getCharWidth,
   estimateTextWidth,
   splitByWidth,
+  type MeasureFn,
+  type GetLinesFn,
 } from '../src/useSegment';
 
 describe('useSegment utility functions', () => {
@@ -483,5 +485,109 @@ describe('useSegment composable', () => {
     });
 
     expect(currentSegmentText.value).toBe('计算属性文本');
+  });
+});
+
+describe('segmentText with measureFn (精确测量路径)', () => {
+  // 模拟一个简单的 measureFn：每行最多 5 个字符
+  const mockMeasureFn: MeasureFn = (text, _maxWidth, _lineHeight) => {
+    const lineCount = Math.ceil(text.length / 5);
+    return { lineCount };
+  };
+
+  // 模拟 getLinesFn：每行最多 5 个字符
+  const mockGetLinesFn: GetLinesFn = (text, _maxWidth, _lineHeight) => {
+    const lines: string[] = [];
+    for (let i = 0; i < text.length; i += 5) {
+      lines.push(text.slice(i, i + 5));
+    }
+    return lines;
+  };
+
+  it('文本在容器内时不分段', () => {
+    const result = segmentText('短文本', {
+      autoSegment: true,
+      fixedHeight: 64,
+      fontSize: 20,
+      maxWidth: 200,
+      measureFn: (_text, _w, _h) => ({ lineCount: 1 }),
+      getLinesFn: mockGetLinesFn,
+    });
+    expect(result).toEqual(['短文本']);
+  });
+
+  it('使用 measureFn 判断溢出并分段', () => {
+    const text = '第一句话。第二句话。第三句话。';
+    const result = segmentText(text, {
+      autoSegment: true,
+      fixedHeight: 32, // maxLines = 1
+      fontSize: 20,
+      maxWidth: 200,
+      measureFn: mockMeasureFn,
+      getLinesFn: mockGetLinesFn,
+    });
+    expect(result.length).toBeGreaterThan(1);
+  });
+
+  it('按句子边界分段', () => {
+    const text = '短句。另一个短句。';
+    // measureFn 返回：整段 = 2 行，每个子句 = 1 行
+    const result = segmentText(text, {
+      autoSegment: true,
+      fixedHeight: 32, // maxLines = 1
+      fontSize: 20,
+      maxWidth: 200,
+      measureFn: (t, _w, _h) => ({ lineCount: Math.ceil(t.length / 5) }),
+      getLinesFn: mockGetLinesFn,
+    });
+    expect(result.length).toBeGreaterThanOrEqual(2);
+    // 每段都应该是 trim 后的非空字符串
+    result.forEach((s) => {
+      expect(s.length).toBeGreaterThan(0);
+      expect(s).toBe(s.trim());
+    });
+  });
+
+  it('超长无标点文本使用 getLinesFn 强制截断', () => {
+    const text = '这是一段没有任何标点符号的超长文本内容';
+    const result = segmentText(text, {
+      autoSegment: true,
+      fixedHeight: 32, // maxLines = 1
+      fontSize: 20,
+      maxWidth: 200,
+      measureFn: mockMeasureFn,
+      getLinesFn: mockGetLinesFn,
+    });
+    expect(result.length).toBeGreaterThan(1);
+    // 每段都应该不超过 5 个字符（mock 的行宽限制）
+    result.forEach((s) => {
+      expect(s.length).toBeLessThanOrEqual(5);
+    });
+  });
+
+  it('不传 measureFn 时降级到估算路径', () => {
+    const result = segmentText('这是测试文本', {
+      autoSegment: true,
+      fixedHeight: 32,
+      fontSize: 20,
+      maxWidth: 200,
+      // 不传 measureFn 和 getLinesFn
+    });
+    // 应该走估算路径，不报错
+    expect(result).toBeDefined();
+    expect(result.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('只传 measureFn 不传 getLinesFn 时降级', () => {
+    const result = segmentText('测试文本', {
+      autoSegment: true,
+      fixedHeight: 32,
+      fontSize: 20,
+      maxWidth: 200,
+      measureFn: mockMeasureFn,
+      // 不传 getLinesFn
+    });
+    // 应该走估算路径
+    expect(result).toBeDefined();
   });
 });

@@ -1,4 +1,12 @@
 <template>
+  <!-- 隐藏的字体探测元素，始终挂载以便 Pretext 读取字体信息 -->
+  <div
+    ref="textContainerRef"
+    class="aix-subtitle__text aix-subtitle__font-probe"
+    aria-hidden="true"
+  >
+    &nbsp;
+  </div>
   <transition name="aix-subtitle-fade">
     <div
       v-if="visible && displayText"
@@ -31,10 +39,11 @@
  *
  * 支持加载 VTT/SRT/JSON/SBV/ASS 格式字幕文件，根据时间显示对应字幕
  */
-import { computed, watch, toRef } from 'vue';
+import { computed, ref, watch, toRef } from 'vue';
 import type { SubtitleProps, SubtitleEmits, SubtitleExpose } from './types';
 import { useSegment } from './useSegment';
 import { useSubtitle } from './useSubtitle';
+import { useTextMeasure } from './useTextMeasure';
 
 defineOptions({
   name: 'AixSubtitle',
@@ -82,12 +91,25 @@ watch(
   { immediate: true },
 );
 
+// 文本容器 ref（用于读取实际字体信息）
+const textContainerRef = ref<HTMLElement | null>(null);
+
+// 精确文本测量（基于 Pretext）
+const {
+  measureText,
+  getLines,
+  ready: measureReady,
+} = useTextMeasure({
+  containerRef: textContainerRef,
+  fontSize: toRef(() => props.fontSize),
+});
+
 // 显示的文本
 const displayText = computed(() => {
   return currentCue.value?.text || '';
 });
 
-// 使用分段 Composable
+// 使用分段 Composable（就绪时注入精确测量函数）
 const { currentSegmentIndex, segmentCount, currentSegmentText } = useSegment({
   text: displayText,
   currentCue,
@@ -97,6 +119,9 @@ const { currentSegmentIndex, segmentCount, currentSegmentText } = useSegment({
   fontSize: toRef(() => props.fontSize),
   maxWidth: toRef(() => props.maxWidth),
   segmentDuration: toRef(() => props.segmentDuration),
+  measureReady,
+  measureFn: measureText,
+  getLinesFn: getLines,
 });
 
 // singleLine 模式是否有效（需要同时设置 fixedHeight）
@@ -223,6 +248,16 @@ defineExpose<SubtitleExpose>({
   text-shadow: var(--subtitle-text-shadow, 0 1px 4px rgb(0 0 0 / 0.5));
   word-break: break-all;
   white-space: pre-wrap;
+}
+
+// 字体探测元素（始终挂载，用于 Pretext 读取字体信息）
+.aix-subtitle__font-probe {
+  visibility: hidden;
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 // 淡入淡出动画

@@ -142,7 +142,7 @@ watch(isOpen, (val) => {
       firstItem?.focus();
     });
   } else {
-    // 菜单关闭后归还焦点到触发器（WAI-ARIA Menu Button 模式）
+    // 菜单关闭后归还焦点到触发器
     triggerRef.value?.focus();
   }
 });

@@ -19,8 +19,53 @@ const DEFAULT_LINE_HEIGHT = 1.6;
 /** 中文字符、中文标点、全角字符的正则 */
 const CJK_REGEX = /[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]/;
 
-/** 句子分隔符正则 */
+/** 句子分隔符正则（捕获组，split 后标点会作为独立元素） */
 const SENTENCE_SEPARATOR_REGEX = /([。！？.!?])/;
+
+/** 纯标点字符串正则（用于检测孤立标点段） */
+const PURE_PUNCTUATION_REGEX = /^[。！？.!?]+$/;
+
+/**
+ * 按句子边界拆分文本，将标点合并回前一个句子
+ * 例如 "第一句话。第二句话！" → ["第一句话。", "第二句话！"]
+ */
+function splitSentences(text: string): string[] {
+  const rawParts = text.split(SENTENCE_SEPARATOR_REGEX).filter(Boolean);
+  const sentences: string[] = [];
+  for (const part of rawParts) {
+    if (SENTENCE_SEPARATOR_REGEX.test(part)) {
+      // 标点符号：合并回前一个句子，或暂存等待下一个内容合并
+      if (sentences.length > 0) {
+        sentences[sentences.length - 1] += part;
+      } else {
+        sentences.push(part);
+      }
+    } else {
+      // 普通文本：如果上一项是纯标点（文本以标点开头的情况），合并到一起
+      const last = sentences.length > 0 ? sentences[sentences.length - 1]! : '';
+      if (sentences.length > 0 && PURE_PUNCTUATION_REGEX.test(last)) {
+        sentences[sentences.length - 1] += part;
+      } else {
+        sentences.push(part);
+      }
+    }
+  }
+  return sentences;
+}
+
+/** 文本测量函数类型（由 Pretext 提供） */
+export type MeasureFn = (
+  text: string,
+  maxWidth: number,
+  lineHeight: number,
+) => { lineCount: number };
+
+/** 文本按行分割函数类型（由 Pretext 提供） */
+export type GetLinesFn = (
+  text: string,
+  maxWidth: number,
+  lineHeight: number,
+) => string[];
 
 export interface UseSegmentOptions {
   /** 当前字幕文本 */
@@ -39,6 +84,12 @@ export interface UseSegmentOptions {
   maxWidth: Ref<number | string> | ComputedRef<number | string>;
   /** 每段显示时长（毫秒） */
   segmentDuration: Ref<number> | ComputedRef<number>;
+  /** 精确测量是否就绪（容器挂载后为 true） */
+  measureReady?: Ref<boolean>;
+  /** 可选：精确测量函数（由 Pretext 提供） */
+  measureFn?: MeasureFn;
+  /** 可选：精确按行分割函数 */
+  getLinesFn?: GetLinesFn;
 }
 
 export interface UseSegmentReturn {
@@ -133,23 +184,124 @@ export function segmentText(
     fixedHeight?: number;
     fontSize: number | string;
     maxWidth: number | string;
+    /** 可选：精确测量函数（由 Pretext 提供） */
+    measureFn?: MeasureFn;
+    /** 可选：精确按行分割函数 */
+    getLinesFn?: GetLinesFn;
   },
 ): string[] {
   if (!options.autoSegment || !options.fixedHeight) {
     return [text];
   }
 
-  // 解析尺寸值
   const fontSize = parseSizeValue(options.fontSize, 20);
   const maxWidthPx = parseSizeValue(options.maxWidth, 1200);
   const lineHeight = DEFAULT_LINE_HEIGHT;
+  const lineHeightPx = fontSize * lineHeight;
+  const maxLines = Math.floor(options.fixedHeight / lineHeightPx);
 
-  // 计算可显示行数
-  const maxLines = Math.floor(options.fixedHeight / (fontSize * lineHeight));
+  // 精确测量路径：使用 Pretext
+  if (options.measureFn && options.getLinesFn) {
+    return segmentTextPrecise(
+      text,
+      maxWidthPx,
+      lineHeightPx,
+      maxLines,
+      options.measureFn,
+      options.getLinesFn,
+    );
+  }
 
+  // 降级路径：使用字符宽度估算
+  return segmentTextEstimate(text, fontSize, maxWidthPx, maxLines);
+}
+
+/**
+ * 精确测量分段（基于 Pretext）
+ */
+function segmentTextPrecise(
+  text: string,
+  maxWidthPx: number,
+  lineHeightPx: number,
+  maxLines: number,
+  measureFn: MeasureFn,
+  getLinesFn: GetLinesFn,
+): string[] {
+  // 先检查整段文本是否在容器内
+  const { lineCount } = measureFn(text, maxWidthPx, lineHeightPx);
+  if (lineCount <= maxLines) {
+    return [text];
+  }
+
+  // 按句子边界拆分（标点已合并回句子），逐段累积直到溢出
+  const segments: string[] = [];
+  let currentSegment = '';
+  const sentences = splitSentences(text);
+
+  for (const part of sentences) {
+    if (!part) continue;
+
+    const combined = currentSegment + part;
+    const result = measureFn(combined, maxWidthPx, lineHeightPx);
+
+    if (result.lineCount <= maxLines) {
+      currentSegment = combined;
+    } else {
+      // 当前段已满
+      if (currentSegment) {
+        segments.push(currentSegment.trim());
+      }
+
+      // 检查单独这个 part 是否超出容器
+      const partResult = measureFn(part, maxWidthPx, lineHeightPx);
+      if (partResult.lineCount > maxLines) {
+        // 用精确行分割来强制截断超长 part
+        // 注意：行之间用 \n 拼接，依赖 CSS white-space: pre-wrap 渲染换行
+        const lines = getLinesFn(part, maxWidthPx, lineHeightPx);
+        let chunk = '';
+        let chunkLineCount = 0;
+        for (const line of lines) {
+          if (chunkLineCount + 1 > maxLines && chunk) {
+            segments.push(chunk.trim());
+            chunk = line;
+            chunkLineCount = 1;
+          } else {
+            chunk += (chunk ? '\n' : '') + line;
+            chunkLineCount++;
+          }
+        }
+        // 如果 chunk 已满（达到 maxLines），推入 segments，清空 currentSegment
+        // 避免多行 chunk 与后续 part 直接拼接导致文本粘连
+        if (chunkLineCount >= maxLines) {
+          segments.push(chunk.trim());
+          currentSegment = '';
+        } else {
+          currentSegment = chunk;
+        }
+      } else {
+        currentSegment = part;
+      }
+    }
+  }
+
+  if (currentSegment) {
+    segments.push(currentSegment.trim());
+  }
+
+  return segments.filter((s) => s.length > 0);
+}
+
+/**
+ * 估算分段（降级路径，使用字符宽度估算）
+ */
+function segmentTextEstimate(
+  text: string,
+  fontSize: number,
+  maxWidthPx: number,
+  maxLines: number,
+): string[] {
   // 每行可容纳的中文字符数（以中文字符宽度为基准）
   const charsPerLine = Math.floor(maxWidthPx / fontSize);
-
   // 每段最大字符宽度
   const maxWidthPerSegment = maxLines * charsPerLine;
 
@@ -162,8 +314,8 @@ export function segmentText(
   const segments: string[] = [];
   let currentSegment = '';
 
-  // 按句号、问号、感叹号分割（保留分隔符）
-  const sentences = text.split(SENTENCE_SEPARATOR_REGEX);
+  // 按句子边界拆分（标点已合并回句子）
+  const sentences = splitSentences(text);
 
   for (const part of sentences) {
     if (!part) continue;
@@ -216,6 +368,9 @@ export function useSegment(options: UseSegmentOptions): UseSegmentReturn {
     fontSize,
     maxWidth,
     segmentDuration,
+    measureReady,
+    measureFn,
+    getLinesFn,
   } = options;
 
   /** 当前分段索引 */
@@ -226,11 +381,15 @@ export function useSegment(options: UseSegmentOptions): UseSegmentReturn {
 
   /** 分段后的文本数组 */
   const textSegments = computed(() => {
+    // measureReady 作为响应式依赖，确保就绪后重新计算
+    const usePrecise = measureReady?.value && measureFn && getLinesFn;
     return segmentText(text.value, {
       autoSegment: autoSegment.value,
       fixedHeight: fixedHeight.value,
       fontSize: fontSize.value,
       maxWidth: maxWidth.value,
+      measureFn: usePrecise ? measureFn : undefined,
+      getLinesFn: usePrecise ? getLinesFn : undefined,
     });
   });
 
@@ -317,6 +476,14 @@ export function useSegment(options: UseSegmentOptions): UseSegmentReturn {
     },
     { immediate: true },
   );
+
+  // 监听分段结果变化（如 measureReady 就绪后精确测量导致分段数变化），重置索引并刷新定时器
+  watch(textSegments, () => {
+    currentSegmentIndex.value = 0;
+    if (autoSegment.value && visible.value && segmentCount.value > 1) {
+      startSegmentTimer();
+    }
+  });
 
   // 监听 visible 变化，控制定时器
   watch(visible, (newVisible) => {
