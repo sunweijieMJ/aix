@@ -3,6 +3,7 @@ import { QDTrackerAdapter } from '../../src/adapters/qdtracker.adapter.js';
 
 describe('QDTrackerAdapter', () => {
   let originalCreateElement: typeof document.createElement;
+  let mockSdkInstance: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(() => {
     // Mock script 加载
@@ -22,14 +23,14 @@ describe('QDTrackerAdapter', () => {
     );
 
     // Mock window.QDTracker
-    const mockInstance = {
+    mockSdkInstance = {
       track: vi.fn(),
       setAccountInfo: vi.fn(),
       setCommonData: vi.fn(),
       setAes: vi.fn(),
     };
     (window as any).QDTracker = {
-      init: vi.fn().mockReturnValue(mockInstance),
+      init: vi.fn().mockReturnValue(mockSdkInstance),
       use: vi.fn(),
     };
   });
@@ -37,6 +38,7 @@ describe('QDTrackerAdapter', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     delete (window as any).QDTracker;
+    delete (window as any).__qq_qidian_da_market_AES_method;
   });
 
   it('name 应为 qdtracker', () => {
@@ -73,11 +75,63 @@ describe('QDTrackerAdapter', () => {
     });
 
     adapter.track('test_event', { key: 'value' });
-
-    const sdkInstance = (window.QDTracker.init as any).mock.results[0].value;
-    expect(sdkInstance.track).toHaveBeenCalledWith('test_event', {
+    expect(mockSdkInstance.track).toHaveBeenCalledWith('test_event', {
       key: 'value',
     });
+  });
+
+  it('identify 应调用 sdk.setAccountInfo', async () => {
+    const adapter = new QDTrackerAdapter();
+    await adapter.init({
+      appkey: 'test',
+      sdkUrl: 'https://cdn.example.com/QDTracker.js',
+    });
+
+    const account = { uin: 'user_123', mobile: '13800000000' };
+    adapter.identify(account);
+    expect(mockSdkInstance.setAccountInfo).toHaveBeenCalledWith(account);
+  });
+
+  it('setCommonData 应调用 sdk.setCommonData', async () => {
+    const adapter = new QDTrackerAdapter();
+    await adapter.init({
+      appkey: 'test',
+      sdkUrl: 'https://cdn.example.com/QDTracker.js',
+    });
+
+    const data = { global_product_type: 'Web' };
+    adapter.setCommonData(data);
+    expect(mockSdkInstance.setCommonData).toHaveBeenCalledWith(data);
+  });
+
+  it('AES 加密模式应加载 AES 脚本并调用 setAes', async () => {
+    const mockAesMethod = { encrypt: vi.fn() };
+    (window as any).__qq_qidian_da_market_AES_method = mockAesMethod;
+
+    const adapter = new QDTrackerAdapter();
+    await adapter.init({
+      appkey: 'test',
+      sdkUrl: 'https://cdn.example.com/QDTracker.js',
+      qdOptions: {
+        encrypt_mode: 'aes',
+        aesUrl: 'https://cdn.example.com/AES_SEC.js',
+      },
+    });
+
+    expect(adapter.isReady()).toBe(true);
+    expect(mockSdkInstance.setAes).toHaveBeenCalledWith(mockAesMethod);
+  });
+
+  it('SDK 加载后 window.QDTracker 不存在时应抛错', async () => {
+    delete (window as any).QDTracker;
+
+    const adapter = new QDTrackerAdapter();
+    await expect(
+      adapter.init({
+        appkey: 'test',
+        sdkUrl: 'https://cdn.example.com/QDTracker.js',
+      }),
+    ).rejects.toThrow('QDTracker SDK 加载后未找到 window.QDTracker');
   });
 
   it('destroy 后 isReady 应为 false', async () => {
