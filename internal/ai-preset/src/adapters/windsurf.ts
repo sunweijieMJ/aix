@@ -11,6 +11,7 @@ import type {
   AIPlatform,
   PlatformAdapter,
   PlatformOutputFile,
+  ResourceType,
   RuleSource,
 } from '../types.js';
 import { ruleIdToSlug } from './shared.js';
@@ -18,6 +19,7 @@ import { ruleIdToSlug } from './shared.js';
 export class WindsurfAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'windsurf';
   readonly displayName = 'Windsurf';
+  readonly supportedResourceTypes: ResourceType[] = ['rules'];
 
   generateFiles(
     rules: RuleSource[],

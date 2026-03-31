@@ -132,6 +132,8 @@ export interface PlatformAdapter {
   readonly platform: AIPlatform;
   /** 平台显示名称 */
   readonly displayName: string;
+  /** 该平台支持的资源类型，默认为空（rules 由用户自行维护） */
+  readonly supportedResourceTypes?: ResourceType[];
 
   /**
    * 将合并后的规则内容转化为平台特定文件列表

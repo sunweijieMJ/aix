@@ -18,6 +18,7 @@ import type {
   AIPlatform,
   PlatformAdapter,
   PlatformOutputFile,
+  ResourceType,
   RuleSource,
 } from '../types.js';
 import { ruleIdToSlug, buildFrontmatterRuleFile } from './shared.js';
@@ -25,6 +26,7 @@ import { ruleIdToSlug, buildFrontmatterRuleFile } from './shared.js';
 export class TraeAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'trae';
   readonly displayName = 'Trae (字节)';
+  readonly supportedResourceTypes: ResourceType[] = ['rules'];
 
   generateFiles(
     rules: RuleSource[],

@@ -2,8 +2,11 @@
  * Claude Code 平台适配器
  *
  * 输出文件格式：
- * - CLAUDE.md — 项目主规范文件（含 ai-preset 标记区域）
  * - .claude/agents/*.md — 独立 Agent 文件（带 Claude frontmatter）
+ * - .claude/commands/*.md — Command 文件
+ * - .claude/skills/<slug>/SKILL.md — Skill 文件
+ *
+ * 注意：CLAUDE.md 由用户自行维护，不自动生成规则内容
  */
 
 import path from 'node:path';
@@ -13,22 +16,27 @@ import type {
   AIPlatform,
   PlatformAdapter,
   PlatformOutputFile,
+  ResourceType,
   RuleSource,
 } from '../types.js';
-import { ruleIdToSlug, buildMarkerEntryFile } from './shared.js';
+import { ruleIdToSlug } from './shared.js';
 
 export class ClaudeAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'claude';
   readonly displayName = 'Claude Code';
+  readonly supportedResourceTypes: ResourceType[] = [
+    'agent',
+    'command',
+    'skill',
+  ];
 
   generateFiles(
     rules: RuleSource[],
-    context: AdapterContext,
+    _context: AdapterContext,
   ): PlatformOutputFile[] {
     const files: PlatformOutputFile[] = [];
 
-    // 按 resourceType 分类
-    const mainRules: RuleSource[] = [];
+    // 按 resourceType 分类（跳过 rules 类型，CLAUDE.md 由用户自行维护）
     const agentRules: RuleSource[] = [];
     const commandRules: RuleSource[] = [];
     const skillRules: RuleSource[] = [];
@@ -45,20 +53,11 @@ export class ClaudeAdapter implements PlatformAdapter {
         case 'skill':
           skillRules.push(rule);
           break;
-        default:
-          mainRules.push(rule);
+        // rules 类型不生成到 CLAUDE.md，由用户自行添加
       }
     }
 
-    // 1. 生成 CLAUDE.md
-    files.push({
-      relativePath: 'CLAUDE.md',
-      content: this.buildClaudeMd(mainRules, context),
-      description: 'Claude Code 主规范文件',
-      sourceRuleIds: mainRules.map((r) => r.meta.id),
-    });
-
-    // 2. 生成 .claude/agents/*.md
+    // 生成 .claude/agents/*.md
     for (const rule of agentRules) {
       const slug = ruleIdToSlug(rule.meta.id);
       files.push({
@@ -69,7 +68,7 @@ export class ClaudeAdapter implements PlatformAdapter {
       });
     }
 
-    // 3. 生成 .claude/commands/*.md
+    // 生成 .claude/commands/*.md
     for (const rule of commandRules) {
       const slug = ruleIdToSlug(rule.meta.id);
       files.push({
@@ -80,7 +79,7 @@ export class ClaudeAdapter implements PlatformAdapter {
       });
     }
 
-    // 4. 生成 .claude/skills/<slug>/SKILL.md
+    // 生成 .claude/skills/<slug>/SKILL.md
     for (const rule of skillRules) {
       const slug = ruleIdToSlug(rule.meta.id);
       files.push({
@@ -99,11 +98,6 @@ export class ClaudeAdapter implements PlatformAdapter {
       existsSync(path.join(projectRoot, 'CLAUDE.md')) ||
       existsSync(path.join(projectRoot, '.claude'))
     );
-  }
-
-  /** 构建 CLAUDE.md 内容 */
-  private buildClaudeMd(rules: RuleSource[], context: AdapterContext): string {
-    return buildMarkerEntryFile(rules, context, { title: 'CLAUDE.md' });
   }
 
   /** 构建 Agent 文件内容 */

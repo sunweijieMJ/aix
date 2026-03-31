@@ -201,7 +201,7 @@ async function collectConfigInteractively(
     framework: FrameworkPreset | '';
   }>([
     {
-      type: 'list',
+      type: 'select',
       name: 'framework',
       message: '选择框架',
       choices: [

@@ -176,7 +176,7 @@ async function runUpgrade(opts: UpgradeOptions): Promise<void> {
 
     const { action } = await inquirer.prompt<{ action: string }>([
       {
-        type: 'list',
+        type: 'select',
         name: 'action',
         message: `${file.relativePath} 已被修改，如何处理?`,
         choices: [

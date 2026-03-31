@@ -12,6 +12,7 @@ import type {
   AIPlatform,
   PlatformAdapter,
   PlatformOutputFile,
+  ResourceType,
   RuleSource,
 } from '../types.js';
 import { ruleIdToSlug, inferGlobs } from './shared.js';
@@ -19,6 +20,7 @@ import { ruleIdToSlug, inferGlobs } from './shared.js';
 export class CursorAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'cursor';
   readonly displayName = 'Cursor';
+  readonly supportedResourceTypes: ResourceType[] = ['rules'];
 
   generateFiles(
     rules: RuleSource[],

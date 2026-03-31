@@ -17,6 +17,7 @@ import type {
   AIPlatform,
   PlatformAdapter,
   PlatformOutputFile,
+  ResourceType,
   RuleSource,
 } from '../types.js';
 import { ruleIdToSlug, buildFrontmatterRuleFile } from './shared.js';
@@ -24,6 +25,7 @@ import { ruleIdToSlug, buildFrontmatterRuleFile } from './shared.js';
 export class QoderAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'qoder';
   readonly displayName = 'Qoder (阿里)';
+  readonly supportedResourceTypes: ResourceType[] = ['rules'];
 
   generateFiles(
     rules: RuleSource[],

@@ -17,6 +17,7 @@ import type {
   AIPlatform,
   PlatformAdapter,
   PlatformOutputFile,
+  ResourceType,
   RuleSource,
 } from '../types.js';
 import { ruleIdToSlug, inferGlobs } from './shared.js';
@@ -24,6 +25,7 @@ import { ruleIdToSlug, inferGlobs } from './shared.js';
 export class TongyiAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'tongyi';
   readonly displayName = '通义灵码 (阿里)';
+  readonly supportedResourceTypes: ResourceType[] = ['rules'];
 
   generateFiles(
     rules: RuleSource[],

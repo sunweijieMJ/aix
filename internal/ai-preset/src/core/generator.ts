@@ -56,11 +56,18 @@ export async function generateAllPlatformFiles(
     };
 
     // 按平台 + userConfig.exclude 过滤规则
-    const filteredSources = filterRulesForPlatform(
+    let filteredSources = filterRulesForPlatform(
       sources,
       platformName,
       options.userConfig,
     );
+
+    // 按适配器支持的 resourceType 过滤（默认不生成 rules，由用户自行维护）
+    const supported = new Set(adapter.supportedResourceTypes ?? []);
+    filteredSources = filteredSources.filter((s) =>
+      supported.has(s.meta.resourceType || 'rules'),
+    );
+
     const platformFiles = adapter.generateFiles(filteredSources, context);
 
     // 渲染模板变量

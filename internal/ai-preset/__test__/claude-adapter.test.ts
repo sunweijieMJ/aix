@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import { ClaudeAdapter } from '../src/adapters/claude.js';
 import { loadRuleSources } from '../src/core/resolver.js';
 import type { AdapterContext, PresetName } from '../src/types.js';
-import { PRESET_MARKER_END, PRESET_MARKER_START } from '../src/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesDir = path.join(__dirname, 'fixtures');
@@ -25,13 +24,11 @@ describe('ClaudeAdapter', () => {
     expect(adapter.displayName).toBe('Claude Code');
   });
 
-  it('生成 CLAUDE.md 文件', async () => {
+  it('不生成 CLAUDE.md 文件（由用户自行维护）', async () => {
     const sources = await loadRuleSources(fixturesDir, ['base' as PresetName]);
     const files = adapter.generateFiles(sources, context);
     const claudeMd = files.find((f) => f.relativePath === 'CLAUDE.md');
-    expect(claudeMd).toBeDefined();
-    expect(claudeMd!.content).toContain(PRESET_MARKER_START);
-    expect(claudeMd!.content).toContain(PRESET_MARKER_END);
+    expect(claudeMd).toBeUndefined();
   });
 
   it('agent 标签的规则输出为独立 agent 文件', async () => {
@@ -59,25 +56,14 @@ describe('ClaudeAdapter', () => {
     expect(agentFile!.content).toContain('model: inherit');
   });
 
-  it('CLAUDE.md 不包含 agent 标签的内容', async () => {
+  it('rules 类型的规则不输出任何文件', async () => {
     const sources = await loadRuleSources(fixturesDir, ['base' as PresetName]);
     const files = adapter.generateFiles(sources, context);
-    const claudeMd = files.find((f) => f.relativePath === 'CLAUDE.md');
-    expect(claudeMd!.content).not.toContain('Agent 内容');
-  });
-
-  it('CLAUDE.md 包含非 agent 规则的内容', async () => {
-    const sources = await loadRuleSources(fixturesDir, ['base' as PresetName]);
-    const files = adapter.generateFiles(sources, context);
-    const claudeMd = files.find((f) => f.relativePath === 'CLAUDE.md');
-    expect(claudeMd!.content).toContain('示例内容');
-  });
-
-  it('CLAUDE.md 包含技术栈概览', async () => {
-    const sources = await loadRuleSources(fixturesDir, ['base' as PresetName]);
-    const files = adapter.generateFiles(sources, context);
-    const claudeMd = files.find((f) => f.relativePath === 'CLAUDE.md');
-    expect(claudeMd!.content).toContain('Vue 3');
-    expect(claudeMd!.content).toContain('TypeScript');
+    // 只应有 agent/command/skill 类型的文件，不包含 rules 内容
+    for (const file of files) {
+      expect(file.relativePath).toMatch(
+        /^\.claude\/(agents|commands|skills)\//,
+      );
+    }
   });
 });
