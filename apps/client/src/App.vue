@@ -15,63 +15,30 @@
     </header>
 
     <main class="main">
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="Button 按钮" name="button">
-          <ButtonDemo />
-        </el-tab-pane>
-        <el-tab-pane label="Icons 图标" name="icons">
-          <IconsDemo />
-        </el-tab-pane>
-        <el-tab-pane label="PdfViewer PDF" name="pdf-viewer">
-          <PdfViewerDemo />
-        </el-tab-pane>
-        <el-tab-pane label="Subtitle 字幕" name="subtitle">
-          <SubtitleDemo />
-        </el-tab-pane>
-        <el-tab-pane label="Video 视频" name="video">
-          <VideoDemo />
-        </el-tab-pane>
-      </el-tabs>
+      <RichTextEditorDemo />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
+import { LOCALE_INJECTION_KEY } from '@aix/hooks';
 import { useTheme } from '@aix/theme';
-import { ref, watchEffect } from 'vue';
+import { inject, watchEffect } from 'vue';
 import { useI18n } from 'vue-i18n';
-import ButtonDemo from '@/components/ButtonDemo.vue';
-import IconsDemo from '@/components/IconsDemo.vue';
-import PdfViewerDemo from '@/components/PdfViewerDemo.vue';
-import SubtitleDemo from '@/components/SubtitleDemo.vue';
-import VideoDemo from '@/components/VideoDemo.vue';
+import RichTextEditorDemo from '@/components/RichTextEditorDemo.vue';
 import { loadLocaleMessages, LocaleKey } from '@/plugins/locale';
 
 const { mode, toggleMode } = useTheme();
 const { locale } = useI18n();
+const aixLocale = inject(LOCALE_INJECTION_KEY)!;
 const linkMode = import.meta.env.VITE_LINK_MODE || 'source';
 
-const VALID_TABS = [
-  'button',
-  'icons',
-  'pdf-viewer',
-  'subtitle',
-  'video',
-] as const;
-type TabName = (typeof VALID_TABS)[number];
-
-function getInitialTab(): TabName {
-  const param = new URLSearchParams(location.search).get('tab');
-  return VALID_TABS.includes(param as TabName) ? (param as TabName) : 'button';
-}
-
-const activeTab = ref<TabName>(getInitialTab());
-
 const toggleLocale = () => {
-  locale.value = locale.value === 'zh-CN' ? 'en-US' : 'zh-CN';
+  const next = locale.value === 'zh-CN' ? 'en-US' : 'zh-CN';
+  locale.value = next;
+  aixLocale.setLocale(next);
 };
 
-// 监听语言变化并重新加载语言包
 watchEffect(async () => {
   const currentLocale = locale.value as LocaleKey;
   await loadLocaleMessages(currentLocale);
@@ -141,18 +108,6 @@ watchEffect(async () => {
   padding: 2rem;
 }
 
-.footer {
-  margin-top: 2rem;
-  padding: 1.5rem;
-  background: var(--aix-colorBgSpotlight);
-  color: var(--aix-colorTextLight);
-  text-align: center;
-}
-
-.footer p {
-  margin: 0;
-}
-
 :global(body) {
   margin: 0;
   background: var(--aix-colorBgLayout);
@@ -164,7 +119,6 @@ watchEffect(async () => {
   box-sizing: border-box;
 }
 
-/* 各 demo 页面共享样式 */
 :global(.demo-page) {
   padding: 0;
 }

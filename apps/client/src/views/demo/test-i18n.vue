@@ -4,61 +4,45 @@
     <p>此页面包含各种 Vue 多语言场景，用于测试 i18n 工具的提取能力</p>
 
     <!-- ==================== 1. Template 文本节点 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>1. Template 文本节点</h2>
-      </template>
+    <section class="test-section">
+      <h2>1. Template 文本节点</h2>
       <div>
         <p>这是一个简单的文本节点</p>
         <span>嵌套的文本内容</span>
         <div>包含多个文字的段落文本</div>
       </div>
-    </el-card>
+    </section>
 
     <!-- ==================== 2. Template 属性值 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>2. Template 属性绑定</h2>
-      </template>
-      <div>
-        <!-- 静态属性 -->
-        <el-button title="这是按钮提示">静态属性</el-button>
-
-        <!-- 动态属性绑定 -->
-        <el-button :title="dynamicTitle">动态属性</el-button>
-        <el-input v-model="inputValue" :placeholder="inputPlaceholder" />
-
-        <!-- 组件属性 -->
-        <el-tooltip :content="tooltipContent">
-          <el-button>悬停查看提示</el-button>
-        </el-tooltip>
+    <section class="test-section">
+      <h2>2. Template 属性绑定</h2>
+      <div class="demo-row">
+        <button title="这是按钮提示">静态属性</button>
+        <button :title="dynamicTitle">动态属性</button>
+        <input v-model="inputValue" :placeholder="inputPlaceholder" />
       </div>
-    </el-card>
+    </section>
 
     <!-- ==================== 3. Template 插值表达式 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>3. 插值表达式</h2>
-      </template>
+    <section class="test-section">
+      <h2>3. 插值表达式</h2>
       <div>
         <p>{{ simpleMessage }}</p>
         <p>用户名: {{ userName }}</p>
         <p>{{ computedMessage }}</p>
         <p>{{ isActive ? '当前状态：活跃' : '当前状态：未激活' }}</p>
       </div>
-    </el-card>
+    </section>
 
     <!-- ==================== 4. 条件渲染 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>4. 条件渲染</h2>
-      </template>
+    <section class="test-section">
+      <h2>4. 条件渲染</h2>
       <div>
-        <el-button @click="showContent = !showContent">
+        <button @click="showContent = !showContent">
           {{ showContent ? '隐藏内容' : '显示内容' }}
-        </el-button>
+        </button>
 
-        <div v-if="showContent" style="margin-top: 12px">
+        <div v-if="showContent" class="conditional-content">
           <p v-if="userType === 'admin'">管理员专属内容</p>
           <p v-else-if="userType === 'user'">普通用户内容</p>
           <p v-else>访客内容</p>
@@ -66,80 +50,76 @@
           <p>{{ status === 'success' ? '操作成功' : '操作失败' }}</p>
         </div>
       </div>
-    </el-card>
+    </section>
 
     <!-- ==================== 5. 列表渲染 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>5. 列表渲染</h2>
-      </template>
+    <section class="test-section">
+      <h2>5. 列表渲染</h2>
       <div>
         <h4>商品列表</h4>
         <div v-for="item in products" :key="item.id" class="list-item">
           <span>商品名称: {{ item.name }}</span>
           <span>价格: ¥{{ item.price }}</span>
-          <el-button size="small">添加到购物车</el-button>
+          <button class="btn-small">添加到购物车</button>
         </div>
         <p>总共 {{ products.length }} 件商品</p>
       </div>
-    </el-card>
+    </section>
 
     <!-- ==================== 6. 表单控件 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>6. 表单控件</h2>
-      </template>
-      <el-form label-position="top">
-        <el-form-item label="用户名">
-          <el-input v-model="formData.username" placeholder="请输入用户名" />
-        </el-form-item>
+    <section class="test-section">
+      <h2>6. 表单控件</h2>
+      <form class="test-form" @submit.prevent="handleSubmit">
+        <div class="form-item">
+          <label>用户名</label>
+          <input v-model="formData.username" placeholder="请输入用户名" />
+        </div>
 
-        <el-form-item label="邮箱">
-          <el-input v-model="formData.email" placeholder="请输入邮箱地址" />
-        </el-form-item>
+        <div class="form-item">
+          <label>邮箱</label>
+          <input v-model="formData.email" placeholder="请输入邮箱地址" />
+        </div>
 
-        <el-form-item label="性别">
-          <el-select v-model="formData.gender" placeholder="请选择性别">
-            <el-option label="男" value="male" />
-            <el-option label="女" value="female" />
-            <el-option label="其他" value="other" />
-          </el-select>
-        </el-form-item>
+        <div class="form-item">
+          <label>性别</label>
+          <select v-model="formData.gender">
+            <option value="" disabled>请选择性别</option>
+            <option value="male">男</option>
+            <option value="female">女</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
 
-        <el-form-item label="简介">
-          <el-input
+        <div class="form-item">
+          <label>简介</label>
+          <textarea
             v-model="formData.bio"
-            type="textarea"
-            :rows="3"
+            rows="3"
             placeholder="请输入个人简介"
           />
-        </el-form-item>
+        </div>
 
-        <el-form-item>
-          <el-button type="primary" @click="handleSubmit">提交表单</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">提交表单</button>
+          <button type="button" @click="handleReset">重置</button>
+        </div>
+      </form>
+    </section>
 
     <!-- ==================== 7. 模板字符串（在 script 中） ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>7. 模板字符串</h2>
-      </template>
+    <section class="test-section">
+      <h2>7. 模板字符串</h2>
       <div>
         <p>{{ welcomeMessage }}</p>
         <p>{{ messageCount }}</p>
         <p>{{ timeRange }}</p>
-        <el-button @click="testTemplateStrings">测试模板字符串</el-button>
+        <button @click="testTemplateStrings">测试模板字符串</button>
       </div>
-    </el-card>
+    </section>
 
     <!-- ==================== 8. 特殊字符 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>8. 特殊字符处理</h2>
-      </template>
+    <section class="test-section">
+      <h2>8. 特殊字符处理</h2>
       <div>
         <p>包含"双引号"的文本</p>
         <p>包含'单引号'的文本</p>
@@ -149,78 +129,81 @@
         <p>18px</p>
         <p>123@test.com</p>
       </div>
-    </el-card>
+    </section>
 
-    <!-- ==================== 9. 组件事件提示 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>9. 消息提示</h2>
-      </template>
-      <div>
-        <el-button @click="showSuccessMessage">成功提示</el-button>
-        <el-button @click="showErrorMessage">错误提示</el-button>
-        <el-button @click="showWarningMessage">警告提示</el-button>
-        <el-button @click="showNotification">通知提示</el-button>
+    <!-- ==================== 9. 消息提示 ==================== -->
+    <section class="test-section">
+      <h2>9. 消息提示</h2>
+      <div class="demo-row">
+        <button @click="showMessage('success', '操作成功完成')">
+          成功提示
+        </button>
+        <button @click="showMessage('error', '操作失败，请重试')">
+          错误提示
+        </button>
+        <button @click="showMessage('warning', '请注意检查输入内容')">
+          警告提示
+        </button>
       </div>
-    </el-card>
+      <p
+        v-if="lastMessage"
+        :class="['message-toast', `message-${lastMessage.type}`]"
+      >
+        {{ lastMessage.text }}
+      </p>
+    </section>
 
     <!-- ==================== 10. 确认对话框 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>10. 对话框和确认</h2>
-      </template>
-      <div>
-        <el-popconfirm
-          title="您确定要删除这条记录吗？"
-          confirm-button-text="确定"
-          cancel-button-text="取消"
-          @confirm="handleDelete"
-        >
-          <template #reference>
-            <el-button type="danger">删除记录</el-button>
-          </template>
-        </el-popconfirm>
-
-        <el-button style="margin-left: 8px" @click="showConfirmDialog">
-          显示确认对话框
-        </el-button>
+    <section class="test-section">
+      <h2>10. 对话框和确认</h2>
+      <div class="demo-row">
+        <button class="btn-danger" @click="handleDelete">删除记录</button>
+        <button @click="showConfirmDialog">显示确认对话框</button>
       </div>
-    </el-card>
+      <div v-if="confirmResult" class="confirm-result">
+        {{ confirmResult }}
+      </div>
+    </section>
 
     <!-- ==================== 11. 复杂场景 ==================== -->
-    <el-card class="test-section">
-      <template #header>
-        <h2>11. 复杂嵌套场景</h2>
-      </template>
-      <div>
-        <el-table :data="tableData" style="width: 100%">
-          <el-table-column prop="name" label="项目名称" />
-          <el-table-column prop="status" label="状态">
-            <template #default="{ row }">
-              <el-tag :type="row.status === '进行中' ? 'success' : 'info'">
+    <section class="test-section">
+      <h2>11. 复杂嵌套场景</h2>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>项目名称</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in tableData" :key="row.id">
+            <td>{{ row.name }}</td>
+            <td>
+              <span
+                :class="[
+                  'status-tag',
+                  row.status === '进行中' ? 'tag-success' : 'tag-info',
+                ]"
+              >
                 {{ row.status }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作">
-            <template #default="{ row }">
-              <el-button size="small" @click="handleEdit(row)">编辑</el-button>
-              <el-button size="small" type="danger" @click="handleRemove(row)">
+              </span>
+            </td>
+            <td>
+              <button class="btn-small" @click="handleEdit(row)">编辑</button>
+              <button class="btn-small btn-danger" @click="handleRemove(row)">
                 删除
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <p style="margin-top: 16px">
-          {{
-            tableData.length > 0
-              ? `共有 ${tableData.length} 个项目`
-              : '暂无数据'
-          }}
-        </p>
-      </div>
-    </el-card>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        {{
+          tableData.length > 0 ? `共有 ${tableData.length} 个项目` : '暂无数据'
+        }}
+      </p>
+    </section>
 
     <!-- ==================== 测试说明 ==================== -->
     <div class="test-description">
@@ -236,7 +219,6 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage, ElNotification, ElMessageBox } from 'element-plus';
 import { ref, computed, reactive } from 'vue';
 
 // ==================== 接口定义 ====================
@@ -260,7 +242,6 @@ interface FormData {
 }
 
 // ==================== 状态定义 ====================
-// 简单变量
 const userName = ref('张三');
 const simpleMessage = ref('这是一个简单的消息');
 const isActive = ref(true);
@@ -268,27 +249,22 @@ const showContent = ref(false);
 const userType = ref<'admin' | 'user' | 'guest'>('admin');
 const status = ref<'success' | 'error'>('success');
 
-// 属性绑定
 const dynamicTitle = ref('这是动态的按钮提示');
 const inputPlaceholder = ref('请输入内容');
-const tooltipContent = ref('这是工具提示的内容');
 const inputValue = ref('');
 
-// 列表数据
 const products = ref<Product[]>([
   { id: 1, name: '苹果', price: 5 },
   { id: 2, name: '香蕉', price: 3 },
   { id: 3, name: '橙子', price: 4 },
 ]);
 
-// 表格数据
 const tableData = ref<TableItem[]>([
   { id: '1', name: '项目A', status: '进行中' },
   { id: '2', name: '项目B', status: '已完成' },
   { id: '3', name: '项目C', status: '暂停' },
 ]);
 
-// 表单数据
 const formData = reactive<FormData>({
   username: '',
   email: '',
@@ -296,99 +272,65 @@ const formData = reactive<FormData>({
   bio: '',
 });
 
-// ==================== 计算属性 ====================
-const computedMessage = computed(() => {
-  return `欢迎回来，${userName.value}`;
-});
+const lastMessage = ref<{ type: string; text: string } | null>(null);
+const confirmResult = ref('');
 
-// 模板字符串示例
+// ==================== 计算属性 ====================
+const computedMessage = computed(() => `欢迎回来，${userName.value}`);
 const welcomeMessage = computed(() => `欢迎 ${userName.value} 使用系统`);
 const messageCount = computed(() => `您有 ${5} 条未读消息`);
 const timeRange = computed(() => `处理时间从 ${'开始'} 到 ${'结束'}`);
 
 // ==================== 事件处理 ====================
+const showMessage = (type: string, text: string) => {
+  lastMessage.value = { type, text };
+  setTimeout(() => {
+    lastMessage.value = null;
+  }, 3000);
+};
+
 const handleSubmit = () => {
-  console.log('提交表单:', formData); // 不应该被提取
-  ElMessage.success('表单提交成功');
+  console.log('提交表单:', formData);
+  showMessage('success', '表单提交成功');
 };
 
 const handleReset = () => {
-  Object.assign(formData, {
-    username: '',
-    email: '',
-    gender: '',
-    bio: '',
-  });
-  ElMessage.info('表单已重置');
+  Object.assign(formData, { username: '', email: '', gender: '', bio: '' });
+  showMessage('info', '表单已重置');
 };
 
 const testTemplateStrings = () => {
   const msg1 = `欢迎 ${userName.value} 使用系统`;
-  const msg2 = `您有 ${5} 条未读消息`;
-  const debugInfo = `Debug: user=${userName.value}`; // 技术信息，不应该被提取
-
-  console.log(debugInfo); // 不应该被提取
+  const debugInfo = `Debug: user=${userName.value}`;
+  console.log(debugInfo);
   alert(msg1);
-  ElMessage.info(msg2);
-};
-
-const showSuccessMessage = () => {
-  ElMessage.success('操作成功完成');
-};
-
-const showErrorMessage = () => {
-  ElMessage.error('操作失败，请重试');
-};
-
-const showWarningMessage = () => {
-  ElMessage.warning('请注意检查输入内容');
-};
-
-const showNotification = () => {
-  ElNotification({
-    title: '系统通知',
-    message: '您有一条新的消息等待查看',
-    type: 'info',
-  });
 };
 
 const handleDelete = () => {
-  console.log('执行删除操作'); // 不应该被提取
-  ElMessage.success('删除成功');
+  if (confirm('您确定要删除这条记录吗？')) {
+    showMessage('success', '删除成功');
+  }
 };
 
 const showConfirmDialog = () => {
-  ElMessageBox.confirm('此操作将永久删除该文件，是否继续？', '警告提示', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(() => {
-      ElMessage.success('已确认删除');
-    })
-    .catch(() => {
-      ElMessage.info('已取消删除');
-    });
+  if (confirm('此操作将永久删除该文件，是否继续？')) {
+    confirmResult.value = '已确认删除';
+    showMessage('success', '已确认删除');
+  } else {
+    confirmResult.value = '已取消删除';
+  }
 };
 
 const handleEdit = (row: TableItem) => {
-  console.log('编辑项目:', row.id); // 不应该被提取
-  ElMessage.info(`正在编辑项目：${row.name}`);
+  console.log('编辑项目:', row.id);
+  showMessage('info', `正在编辑项目：${row.name}`);
 };
 
 const handleRemove = (row: TableItem) => {
-  ElMessageBox.confirm(`确定要删除项目"${row.name}"吗？`, '删除确认', {
-    confirmButtonText: '确定删除',
-    cancelButtonText: '取消',
-    type: 'error',
-  })
-    .then(() => {
-      tableData.value = tableData.value.filter((item) => item.id !== row.id);
-      ElMessage.success('项目已删除');
-    })
-    .catch(() => {
-      console.log('取消删除'); // 不应该被提取
-    });
+  if (confirm(`确定要删除项目"${row.name}"吗？`)) {
+    tableData.value = tableData.value.filter((item) => item.id !== row.id);
+    showMessage('success', '项目已删除');
+  }
 };
 </script>
 
@@ -400,44 +342,195 @@ const handleRemove = (row: TableItem) => {
 
   h1 {
     margin-bottom: 16px;
-    color: var(--el-text-color-primary);
+    color: var(--aix-colorText);
   }
+}
 
-  .test-section {
-    margin-bottom: 24px;
+.test-section {
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid var(--aix-colorBorder, #e5e7eb);
+  border-radius: var(--aix-borderRadiusLG, 8px);
+  background: var(--aix-colorBgContainer, #fff);
 
-    h2 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 600;
+  h2 {
+    margin: 0 0 16px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+}
+
+.demo-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.conditional-content {
+  margin-top: 12px;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--aix-colorBorder, #e5e7eb);
+  border-radius: 4px;
+  gap: 16px;
+}
+
+.test-form {
+  .form-item {
+    margin-bottom: 16px;
+
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+
+    input,
+    select,
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      max-width: 400px;
+      padding: 6px 10px;
+      border: 1px solid var(--aix-colorBorder, #d9d9d9);
+      border-radius: 4px;
+      font-size: 14px;
     }
   }
 
-  .list-item {
+  .form-actions {
     display: flex;
-    align-items: center;
-    margin-bottom: 8px;
-    padding: 8px;
-    border: 1px solid var(--el-border-color);
-    border-radius: 4px;
-    gap: 16px;
+    gap: 8px;
+  }
+}
+
+button {
+  padding: 6px 16px;
+  border: 1px solid var(--aix-colorBorder, #d9d9d9);
+  border-radius: 4px;
+  background: #fff;
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--aix-colorPrimary, #1677ff);
+    color: var(--aix-colorPrimary, #1677ff);
+  }
+}
+
+.btn-primary {
+  border-color: var(--aix-colorPrimary, #1677ff);
+  background: var(--aix-colorPrimary, #1677ff);
+  color: #fff;
+
+  &:hover {
+    opacity: 0.85;
+    color: #fff;
+  }
+}
+
+.btn-danger {
+  border-color: #ff4d4f;
+  color: #ff4d4f;
+
+  &:hover {
+    background: #ff4d4f;
+    color: #fff;
+  }
+}
+
+.btn-small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.message-toast {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.message-success {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.message-error {
+  background: #fff2f0;
+  color: #ff4d4f;
+}
+
+.message-warning {
+  background: #fffbe6;
+  color: #faad14;
+}
+
+.message-info {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.confirm-result {
+  margin-top: 8px;
+  color: var(--aix-colorTextSecondary, #666);
+}
+
+.data-table {
+  width: 100%;
+  border-spacing: 0;
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--aix-colorBorder, #e5e7eb);
+    text-align: left;
   }
 
-  .test-description {
-    margin-top: 32px;
-    padding: 16px;
-    border-radius: 4px;
-    background: var(--el-fill-color-light);
+  th {
+    background: var(--aix-colorBgLayout, #fafafa);
+    font-weight: 600;
+  }
+}
 
-    h3 {
-      margin-top: 0;
-      margin-bottom: 12px;
-    }
+.status-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
 
-    ul {
-      margin: 0;
-      padding-left: 24px;
-    }
+.tag-success {
+  background: #f6ffed;
+  color: #52c41a;
+}
+
+.tag-info {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.test-description {
+  margin-top: 32px;
+  padding: 16px;
+  border-radius: 4px;
+  background: var(--aix-colorBgLayout, #fafafa);
+
+  h3 {
+    margin-top: 0;
+    margin-bottom: 12px;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 24px;
   }
 }
 </style>

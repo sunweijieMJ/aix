@@ -4,7 +4,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@aix/button": ["../../packages/button/src"],
+      "@aix/rich-text-editor": ["../../packages/rich-text-editor/src"],
       "@aix/theme": ["../../packages/theme/src"],
       "@aix/hooks": ["../../packages/hooks/src"]
     }

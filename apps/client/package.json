@@ -19,14 +19,9 @@
     "visual-test:ci": "visual-test test --ci"
   },
   "dependencies": {
-    "@aix/button": "workspace:^",
     "@aix/hooks": "workspace:^",
-    "@aix/icons": "workspace:^",
-    "@aix/pdf-viewer": "workspace:^",
-    "@aix/subtitle": "workspace:^",
+    "@aix/rich-text-editor": "workspace:^",
     "@aix/theme": "workspace:^",
-    "@aix/video": "workspace:^",
-    "element-plus": "^2.13.2",
     "vue": "^3.5.31",
     "vue-i18n": "^11.2.8"
   },
