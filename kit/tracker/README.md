@@ -537,7 +537,7 @@ createTrackerPlugin({
 ## 架构
 
 ```
-internal/tracker/
+kit/tracker/
 ├── src/
 │   ├── index.ts                      # 统一导出入口
 │   ├── types.ts                      # 所有公共 TypeScript 类型

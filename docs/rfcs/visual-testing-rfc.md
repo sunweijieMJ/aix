@@ -2,7 +2,7 @@
 
 > **状态**: Draft (含优化建议)
 > **作者**: AIX Team
-> **位置**: `internal/visual-testing/`
+> **位置**: `kit/visual-testing/`
 > **最后更新**: 2024-01-15
 >
 > ⚡ **本文档已整合关键优化建议**：
@@ -137,7 +137,7 @@ graph TB
 ### 目录结构
 
 ```
-internal/visual-testing/
+kit/visual-testing/
 ├── src/
 │   ├── index.ts                    # 主入口（编程 API）
 │   │
@@ -2778,15 +2778,15 @@ export default defineConfig({
 
 ### 业务仓库集成
 
-业务仓库可以直接复制 `internal/visual-testing` 目录，或作为 Git submodule 引入：
+业务仓库可以直接复制 `kit/visual-testing` 目录，或作为 Git submodule 引入：
 
 ```bash
 # 方式 1: 复制目录
-cp -r path/to/aix/internal/visual-testing ./internal/
+cp -r path/to/aix/kit/visual-testing ./internal/
 
 # 方式 2: Git submodule
 git submodule add git@github.com:xxx/aix.git vendor/aix
-# 然后只使用 vendor/aix/internal/visual-testing
+# 然后只使用 vendor/aix/kit/visual-testing
 
 # 方式 3: 发布到私有 npm (如需)
 # 修改 package.json 的 name 为 @your-org/visual-testing
@@ -2796,7 +2796,7 @@ git submodule add git@github.com:xxx/aix.git vendor/aix
 ```typescript
 // 业务仓库 visual-test.config.ts
 
-import { defineConfig } from './internal/visual-testing';
+import { defineConfig } from './kit/visual-testing';
 
 export default defineConfig({
   name: 'my-business-app',
@@ -2930,7 +2930,7 @@ jobs:
 
 ### Phase 1: 基础架构 (Week 1-2)
 
-- [ ] 创建 `internal/visual-testing` 包结构
+- [ ] 创建 `kit/visual-testing` 包结构
 - [ ] 实现配置系统 (Zod Schema + 加载器)
 - [ ] 实现基准图提供器 (Local + Remote)
 - [ ] 实现截图引擎 (Playwright)

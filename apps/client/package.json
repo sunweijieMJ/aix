@@ -13,7 +13,7 @@
     "lint:script": "eslint . --max-warnings 0",
     "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
     "link": "pnpm run lint:script && pnpm run lint:style",
-    "i18n": "tsx ../../internal/i18n-tools/src/cli.ts --config ./i18n.config.ts",
+    "i18n": "tsx ../../kit/i18n-tools/src/cli.ts --config ./i18n.config.ts",
     "visual-test": "visual-test test",
     "visual-test:update": "visual-test test --update",
     "visual-test:ci": "visual-test test --ci"

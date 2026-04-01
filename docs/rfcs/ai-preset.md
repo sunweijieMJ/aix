@@ -2,7 +2,7 @@
 
 > **状态**: Draft
 > **作者**: AIX Team
-> **位置**: `internal/ai-preset/`
+> **位置**: `kit/ai-preset/`
 
 ## 概述
 
@@ -206,7 +206,7 @@ graph TB
 ### 包结构
 
 ```
-internal/ai-preset/
+kit/ai-preset/
 ├── src/
 │   ├── index.ts                    # CLI 入口
 │   ├── types.ts                    # 公共类型定义

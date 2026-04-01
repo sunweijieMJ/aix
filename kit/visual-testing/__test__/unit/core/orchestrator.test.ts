@@ -23,13 +23,11 @@ const {
 } = vi.hoisted(() => ({
   mockBaselineProvider: {
     name: 'local',
-    fetch: vi
-      .fn()
-      .mockResolvedValue({
-        path: '/tmp/baseline.png',
-        success: true,
-        metadata: {},
-      }),
+    fetch: vi.fn().mockResolvedValue({
+      path: '/tmp/baseline.png',
+      success: true,
+      metadata: {},
+    }),
     exists: vi.fn().mockResolvedValue(true),
     dispose: vi.fn().mockResolvedValue(undefined),
   },
@@ -71,17 +69,15 @@ vi.mock('../../../src/core/comparison/pixel-engine', () => {
 vi.mock('../../../src/core/llm', () => {
   return {
     LLMAnalyzer: class {
-      analyze = vi
-        .fn()
-        .mockResolvedValue({
-          differences: [],
-          assessment: {
-            matchScore: 100,
-            grade: 'A',
-            acceptable: true,
-            summary: 'OK',
-          },
-        });
+      analyze = vi.fn().mockResolvedValue({
+        differences: [],
+        assessment: {
+          matchScore: 100,
+          grade: 'A',
+          acceptable: true,
+          summary: 'OK',
+        },
+      });
       suggestFix = vi.fn().mockResolvedValue([]);
       reset = vi.fn();
       getStats = vi.fn().mockReturnValue({

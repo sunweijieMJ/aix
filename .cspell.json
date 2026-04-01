@@ -6,6 +6,7 @@
   "files": [
     "packages/*/src/**/*.{js,ts,jsx,tsx,vue}",
     "apps/*/src/**/*.{js,ts,jsx,tsx,vue}",
+    "kit/*/src/**/*.{js,ts,jsx,tsx,vue}",
     "internal/*/src/**/*.{js,ts,jsx,tsx,vue}"
   ],
   "dictionaries": [

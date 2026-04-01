@@ -2,7 +2,7 @@
 
 > **状态**: Completed
 > **作者**: AIX Team
-> **位置**: `internal/i18n-tools/`
+> **位置**: `kit/i18n-tools/`
 
 ## 概述
 
@@ -104,7 +104,7 @@ sequenceDiagram
 ### 目录结构
 
 ```
-internal/i18n-tools/
+kit/i18n-tools/
 ├── src/
 │   ├── cli.ts                  # CLI 入口
 │   ├── index.ts                # 主入口
@@ -316,5 +316,5 @@ public/locale/
 
 ## 相关文档
 
-- 详细使用指南: `internal/i18n-tools/README.md`
-- 配置参考: `internal/i18n-tools/README.md#配置参考`
+- 详细使用指南: `kit/i18n-tools/README.md`
+- 配置参考: `kit/i18n-tools/README.md#配置参考`

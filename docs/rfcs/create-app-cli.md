@@ -2,7 +2,7 @@
 
 > **状态**: Draft
 > **作者**: AIX Team
-> **位置**: `internal/create-app/`
+> **位置**: `kit/create-app/`
 
 ## 概述
 
@@ -138,7 +138,7 @@ flowchart TB
 ### 目录结构
 
 ```
-internal/create-app/
+kit/create-app/
 ├── src/
 │   ├── index.ts                 # CLI 入口
 │   ├── cli.ts                   # 命令行参数解析

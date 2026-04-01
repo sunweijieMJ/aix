@@ -247,7 +247,7 @@ importers:
         version: link:../../internal/eslint-config
       '@kit/i18n-tools':
         specifier: workspace:^
-        version: link:../../internal/i18n-tools
+        version: link:../../kit/i18n-tools
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
@@ -256,7 +256,7 @@ importers:
         version: link:../../internal/typescript-config
       '@kit/visual-testing':
         specifier: workspace:^
-        version: link:../../internal/visual-testing
+        version: link:../../kit/visual-testing
       '@vitejs/plugin-vue':
         specifier: '*'
         version: 6.0.5(vite@7.3.1(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.32.0)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.3))(vue@3.5.31(typescript@5.9.3))
@@ -349,55 +349,6 @@ importers:
         specifier: '*'
         version: 4.1.2(@types/node@25.5.0)(@vitest/browser-playwright@4.1.2)(@vitest/ui@4.1.2)(jsdom@29.0.1)(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  internal/ai-preset:
-    dependencies:
-      chalk:
-        specifier: ^5.6.2
-        version: 5.6.2
-      commander:
-        specifier: ^14.0.3
-        version: 14.0.3
-      diff:
-        specifier: ^8.0.4
-        version: 8.0.4
-      glob:
-        specifier: ^13.0.6
-        version: 13.0.6
-      gray-matter:
-        specifier: ^4.0.3
-        version: 4.0.3
-      handlebars:
-        specifier: ^4.7.9
-        version: 4.7.9
-      inquirer:
-        specifier: ^13.3.2
-        version: 13.3.2(@types/node@25.5.0)
-    devDependencies:
-      '@kit/eslint-config':
-        specifier: workspace:^
-        version: link:../eslint-config
-      '@types/diff':
-        specifier: ^8.0.0
-        version: 8.0.0
-      '@types/node':
-        specifier: '*'
-        version: 25.5.0
-      eslint:
-        specifier: '*'
-        version: 10.1.0(jiti@2.6.1)
-      rimraf:
-        specifier: '*'
-        version: 6.1.3
-      tsup:
-        specifier: '*'
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
-      tsx:
-        specifier: '*'
-        version: 4.21.0
-      vitest:
-        specifier: '*'
-        version: 4.1.2(@types/node@25.5.0)(@vitest/browser-playwright@4.1.2)(@vitest/ui@4.1.2)(jsdom@29.0.1)(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.3))
-
   internal/eslint-config:
     dependencies:
       '@eslint/js':
@@ -439,58 +390,6 @@ importers:
       typescript-eslint:
         specifier: ^8.57.2
         version: 8.57.2(eslint@10.1.0(jiti@2.6.1))(typescript@5.9.3)
-
-  internal/i18n-tools:
-    dependencies:
-      '@vue/compiler-dom':
-        specifier: ^3.5.31
-        version: 3.5.31
-      '@vue/compiler-sfc':
-        specifier: ^3.5.31
-        version: 3.5.31
-      chalk:
-        specifier: ^5.6.2
-        version: 5.6.2
-      dotenv:
-        specifier: ^17.2.4
-        version: 17.3.1
-      inquirer:
-        specifier: ^13.2.2
-        version: 13.3.2(@types/node@25.5.0)
-      openai:
-        specifier: ^6.19.0
-        version: 6.33.0(ws@8.20.0)(zod@4.3.6)
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      yargs:
-        specifier: ^18.0.0
-        version: 18.0.0
-    devDependencies:
-      '@kit/eslint-config':
-        specifier: workspace:^
-        version: link:../eslint-config
-      '@kit/typescript-config':
-        specifier: workspace:^
-        version: link:../typescript-config
-      '@types/inquirer':
-        specifier: ^9.0.9
-        version: 9.0.9
-      '@types/node':
-        specifier: '*'
-        version: 25.5.0
-      '@types/yargs':
-        specifier: ^17.0.35
-        version: 17.0.35
-      rimraf:
-        specifier: '*'
-        version: 6.1.3
-      tsup:
-        specifier: '*'
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
-      tsx:
-        specifier: '*'
-        version: 4.21.0
 
   internal/mcp-server:
     dependencies:
@@ -541,49 +440,6 @@ importers:
         specifier: '*'
         version: 4.1.2(@types/node@25.5.0)(@vitest/browser-playwright@4.1.2)(@vitest/ui@4.1.2)(jsdom@29.0.1)(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.3))
 
-  internal/sentinel:
-    dependencies:
-      chalk:
-        specifier: ^5.6.2
-        version: 5.6.2
-      commander:
-        specifier: ^14.0.3
-        version: 14.0.3
-      fs-extra:
-        specifier: ^11.3.3
-        version: 11.3.4
-      inquirer:
-        specifier: ^13.3.0
-        version: 13.3.2(@types/node@25.5.0)
-      ora:
-        specifier: ^9.3.0
-        version: 9.3.0
-    devDependencies:
-      '@kit/eslint-config':
-        specifier: workspace:^
-        version: link:../eslint-config
-      '@types/fs-extra':
-        specifier: ^11.0.4
-        version: 11.0.4
-      '@types/node':
-        specifier: '*'
-        version: 25.5.0
-      eslint:
-        specifier: '*'
-        version: 10.1.0(jiti@2.6.1)
-      rimraf:
-        specifier: '*'
-        version: 6.1.3
-      tsup:
-        specifier: '*'
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
-      tsx:
-        specifier: '*'
-        version: 4.21.0
-      vitest:
-        specifier: '*'
-        version: 4.1.2(@types/node@25.5.0)(@vitest/browser-playwright@4.1.2)(@vitest/ui@4.1.2)(jsdom@29.0.1)(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.3))
-
   internal/stylelint-config:
     dependencies:
       postcss-html:
@@ -611,11 +467,157 @@ importers:
         specifier: ^7.0.0
         version: 7.0.0(stylelint@17.6.0(typescript@5.9.3))
 
-  internal/tracker:
+  internal/typescript-config: {}
+
+  kit/ai-preset:
+    dependencies:
+      chalk:
+        specifier: ^5.6.2
+        version: 5.6.2
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      diff:
+        specifier: ^8.0.4
+        version: 8.0.4
+      glob:
+        specifier: ^13.0.6
+        version: 13.0.6
+      gray-matter:
+        specifier: ^4.0.3
+        version: 4.0.3
+      handlebars:
+        specifier: ^4.7.9
+        version: 4.7.9
+      inquirer:
+        specifier: ^13.3.2
+        version: 13.3.2(@types/node@25.5.0)
     devDependencies:
       '@kit/eslint-config':
         specifier: workspace:^
-        version: link:../eslint-config
+        version: link:../../internal/eslint-config
+      '@types/diff':
+        specifier: ^8.0.0
+        version: 8.0.0
+      '@types/node':
+        specifier: '*'
+        version: 25.5.0
+      eslint:
+        specifier: '*'
+        version: 10.1.0(jiti@2.6.1)
+      rimraf:
+        specifier: '*'
+        version: 6.1.3
+      tsup:
+        specifier: '*'
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+      tsx:
+        specifier: '*'
+        version: 4.21.0
+      vitest:
+        specifier: '*'
+        version: 4.1.2(@types/node@25.5.0)(@vitest/browser-playwright@4.1.2)(@vitest/ui@4.1.2)(jsdom@29.0.1)(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  kit/i18n-tools:
+    dependencies:
+      '@vue/compiler-dom':
+        specifier: ^3.5.31
+        version: 3.5.31
+      '@vue/compiler-sfc':
+        specifier: ^3.5.31
+        version: 3.5.31
+      chalk:
+        specifier: ^5.6.2
+        version: 5.6.2
+      dotenv:
+        specifier: ^17.2.4
+        version: 17.3.1
+      inquirer:
+        specifier: ^13.2.2
+        version: 13.3.2(@types/node@25.5.0)
+      openai:
+        specifier: ^6.19.0
+        version: 6.33.0(ws@8.20.0)(zod@4.3.6)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      yargs:
+        specifier: ^18.0.0
+        version: 18.0.0
+    devDependencies:
+      '@kit/eslint-config':
+        specifier: workspace:^
+        version: link:../../internal/eslint-config
+      '@kit/typescript-config':
+        specifier: workspace:^
+        version: link:../../internal/typescript-config
+      '@types/inquirer':
+        specifier: ^9.0.9
+        version: 9.0.9
+      '@types/node':
+        specifier: '*'
+        version: 25.5.0
+      '@types/yargs':
+        specifier: ^17.0.35
+        version: 17.0.35
+      rimraf:
+        specifier: '*'
+        version: 6.1.3
+      tsup:
+        specifier: '*'
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+      tsx:
+        specifier: '*'
+        version: 4.21.0
+
+  kit/sentinel:
+    dependencies:
+      chalk:
+        specifier: ^5.6.2
+        version: 5.6.2
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
+      fs-extra:
+        specifier: ^11.3.3
+        version: 11.3.4
+      inquirer:
+        specifier: ^13.3.0
+        version: 13.3.2(@types/node@25.5.0)
+      ora:
+        specifier: ^9.3.0
+        version: 9.3.0
+    devDependencies:
+      '@kit/eslint-config':
+        specifier: workspace:^
+        version: link:../../internal/eslint-config
+      '@types/fs-extra':
+        specifier: ^11.0.4
+        version: 11.0.4
+      '@types/node':
+        specifier: '*'
+        version: 25.5.0
+      eslint:
+        specifier: '*'
+        version: 10.1.0(jiti@2.6.1)
+      rimraf:
+        specifier: '*'
+        version: 6.1.3
+      tsup:
+        specifier: '*'
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+      tsx:
+        specifier: '*'
+        version: 4.21.0
+      vitest:
+        specifier: '*'
+        version: 4.1.2(@types/node@25.5.0)(@vitest/browser-playwright@4.1.2)(@vitest/ui@4.1.2)(jsdom@29.0.1)(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.3))
+
+  kit/tracker:
+    devDependencies:
+      '@kit/eslint-config':
+        specifier: workspace:^
+        version: link:../../internal/eslint-config
       '@types/node':
         specifier: '*'
         version: 25.5.0
@@ -638,9 +640,7 @@ importers:
         specifier: '*'
         version: 5.0.4(@vue/compiler-sfc@3.5.31)(vue@3.5.31(typescript@5.9.3))
 
-  internal/typescript-config: {}
-
-  internal/visual-testing:
+  kit/visual-testing:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
@@ -18052,7 +18052,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 3.1.0
-      vitest: 4.1.2(@types/node@25.5.0)(@vitest/browser-playwright@4.1.2)(@vitest/ui@4.1.2)(jsdom@29.0.1)(vite@7.3.1(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.32.0)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.2(@types/node@25.5.0)(@vitest/browser-playwright@4.1.2)(@vitest/ui@4.1.2)(jsdom@29.0.1)(vite@8.0.3(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(@types/node@25.5.0)(esbuild@0.27.4)(jiti@2.6.1)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.3))
 
   '@vitest/utils@3.2.4':
     dependencies:

@@ -91,12 +91,18 @@ pnpm gen <component-name>
 │   ├── theme/                   #   主题系统（CSS Variables）
 │   └── video/                   #   视频播放器组件
 │
-├── internal/                    # 内部共享配置（不发布）
+├── internal/                    # monorepo 内部基础设施
 │   ├── eslint-config/           #   ESLint 共享配置
-│   ├── i18n-tools/              #   国际化工具
 │   ├── mcp-server/              #   MCP Server 配置
 │   ├── stylelint-config/        #   Stylelint 共享配置
 │   └── typescript-config/       #   TypeScript 共享配置
+│
+├── kit/                         # 独立工具包（发布到 npm @kit/*）
+│   ├── ai-preset/               #   AI 编码预设管理
+│   ├── i18n-tools/              #   国际化自动化工具
+│   ├── sentinel/                #   AI Sentinel 工作流
+│   ├── tracker/                 #   前端埋点数据采集
+│   └── visual-testing/          #   视觉回归测试
 │
 ├── docs/                        # VitePress 文档源码
 ├── scripts/                     # 脚本工具

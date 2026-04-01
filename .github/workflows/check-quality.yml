@@ -92,6 +92,7 @@ jobs:
             packages/*/lib
             packages/*/dist
             internal/*/dist
+            kit/*/dist
           key: build-${{ github.sha }}
 
   # ============================
@@ -126,6 +127,7 @@ jobs:
             packages/*/lib
             packages/*/dist
             internal/*/dist
+            kit/*/dist
           key: build-${{ github.sha }}
 
       - name: Install dependencies
@@ -170,6 +172,7 @@ jobs:
             packages/*/lib
             packages/*/dist
             internal/*/dist
+            kit/*/dist
           key: build-${{ github.sha }}
 
       - name: Install dependencies
@@ -214,6 +217,7 @@ jobs:
             packages/*/lib
             packages/*/dist
             internal/*/dist
+            kit/*/dist
           key: build-${{ github.sha }}
 
       - name: Install dependencies

@@ -121,12 +121,17 @@ mindmap
 aix/
 ├── packages/               # 组件包 (发布到 npm @aix/*)
 │   ├── <name>/             #   各组件独立目录 (见下方包职责表)
-├── internal/               # 基础配置与工具包
+├── internal/               # monorepo 内部基础设施
 │   ├── eslint-config/      #   ESLint 规则集
 │   ├── stylelint-config/   #   Stylelint 规则集
 │   ├── typescript-config/  #   TSConfig 预设
-│   ├── mcp-server/         #   MCP Server 工具
-│   └── i18n-tools/         #   国际化自动化工具
+│   └── mcp-server/         #   MCP Server 工具
+├── kit/                    # 独立工具包 (@kit/*)
+│   ├── ai-preset/          #   AI 编码预设管理
+│   ├── i18n-tools/         #   国际化自动化工具
+│   ├── sentinel/           #   AI Sentinel 工作流
+│   ├── tracker/            #   前端埋点数据采集
+│   └── visual-testing/     #   视觉回归测试
 ├── apps/                   # 开发应用 (不发布)
 │   ├── client/             #   Demo 预览
 │   └── server/             #   API 服务
@@ -176,8 +181,12 @@ graph TB
         E[icons]
     end
 
-    subgraph "工程配置与工具层 (internal/*)"
-        F["eslint / stylelint / tsconfig<br/>mcp-server / i18n-tools"]
+    subgraph "工程配置层 (internal/*)"
+        F["eslint / stylelint / tsconfig<br/>mcp-server"]
+    end
+
+    subgraph "独立工具层 (kit/*)"
+        G["ai-preset / i18n-tools / sentinel<br/>tracker / visual-testing"]
     end
 
     A --> B
@@ -222,7 +231,7 @@ graph LR
 
 **组件层**（`packages/` 下，发布到 npm）：各 UI 组件独立成包。
 
-**工程配置与工具层**（`internal/` 下，发布到 npm）：
+**工程配置层**（`internal/` 下，发布到 npm）：
 
 | 包 | 职责 |
 |------|------|
@@ -230,7 +239,16 @@ graph LR
 | `@kit/stylelint-config` | Stylelint 规则集（SMACSS 属性排序） |
 | `@kit/typescript-config` | TSConfig 预设（base / base-library / base-app） |
 | `@aix/mcp-server` | MCP Server，提供组件库数据查询和工具调用 |
+
+**独立工具层**（`kit/` 下，发布到 npm）：
+
+| 包 | 职责 |
+|------|------|
+| `@kit/ai-preset` | AI 编码预设管理 CLI |
 | `@kit/i18n-tools` | 国际化自动化工具（翻译文件生成、校验） |
+| `@kit/sentinel` | AI Sentinel 工作流安装工具 |
+| `@kit/tracker` | 基于适配器模式的前端埋点数据采集 |
+| `@kit/visual-testing` | 视觉回归测试（Figma 基线 + LLM 分析） |
 
 ---
 

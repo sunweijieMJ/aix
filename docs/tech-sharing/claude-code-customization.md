@@ -135,7 +135,8 @@ claude
 ## 项目结构
 - `packages/` - 组件包（发布到 npm）
 - `apps/` - 应用（不发布）
-- `internal/` - 内部共享配置
+- `internal/` - 内部基础设施配置
+- `kit/` - 独立工具包
 
 ## Git 提交规范
 - 格式：`type(scope): subject`

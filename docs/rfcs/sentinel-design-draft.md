@@ -4,8 +4,8 @@
 > **作者**: AIX Team
 > **适用范围**: 业务仓库（当前支持 GitHub Actions，GitLab CI / Jenkins 为远期规划）
 > **定位**: 平台无关的通用方案模板，托管于 aix 仓库统一管理，各业务仓库按需接入
-> **实现代码**: `internal/sentinel/`
-> **用户文档**: `internal/sentinel/README.md`
+> **实现代码**: `kit/sentinel/`
+> **用户文档**: `kit/sentinel/README.md`
 
 ## 概述
 
@@ -25,7 +25,7 @@
 ## 实现差异说明
 
 > Phase 1-4 均已实现。以下为实际实现与本设计文档的主要差异，供参考。
-> **实际代码和行为以 `internal/sentinel/` 源码和 `internal/sentinel/README.md` 为准。**
+> **实际代码和行为以 `kit/sentinel/` 源码和 `kit/sentinel/README.md` 为准。**
 
 ### Workflow 执行模型
 
@@ -411,7 +411,7 @@ pipeline {
 ## 详细设计
 
 > **注**: 以下 Workflow YAML 和代码示例为**设计阶段的概念版本**，与实际实现存在差异。
-> 实际模板位于 `internal/sentinel/templates/`，主要差异见 [实现差异说明](#实现差异说明)。
+> 实际模板位于 `kit/sentinel/templates/`，主要差异见 [实现差异说明](#实现差异说明)。
 
 ### 链路一：Sentry 错误 → 自动修复
 
@@ -1537,7 +1537,7 @@ flowchart TD
 
 ### 工具架构
 
-工具源码位于 `internal/sentinel/`，完整架构：
+工具源码位于 `kit/sentinel/`，完整架构：
 
 ```
 src/

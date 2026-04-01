@@ -35,13 +35,14 @@ aix/
 │   ├── theme/         # 主题系统 (CSS Variables)
 │   └── video/         # 视频播放器
 ├── apps/              # 应用 (不发布)
-├── internal/          # 内部共享工具包 (发布到 npm @kit/*)
+├── internal/          # monorepo 内部基础设施 (lint/ts 配置、MCP Server)
+├── kit/               # 独立工具包 (发布到 npm @kit/*)
 ├── rollup.config.js   # 共享 Rollup 配置
 └── turbo.json         # Turbo 任务编排
 ```
 
 **关键规则**:
-- `packages/` 以 `@aix/` scope 发布，`internal/` 以 `@kit/` scope 发布
+- `packages/` 以 `@aix/` scope 发布，`internal/` 和 `kit/` 以 `@kit/` scope 发布
 - 包间依赖使用 `workspace:^` 协议
 - 每个组件包独立 `rollup.config.js`，继承根配置
 

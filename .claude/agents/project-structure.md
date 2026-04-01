@@ -35,10 +35,17 @@ aix/
 ├── docs/                    # VitePress 文档
 │   ├── .vitepress/         # VitePress 配置
 │   └── components/         # 组件文档
-├── internal/                # 内部工具包（不发布）
+├── internal/                # monorepo 内部基础设施
 │   ├── eslint-config/      # ESLint 共享配置
 │   ├── stylelint-config/   # Stylelint 共享配置
-│   └── typescript-config/  # TypeScript 共享配置
+│   ├── typescript-config/  # TypeScript 共享配置
+│   └── mcp-server/         # MCP Server
+├── kit/                     # 独立工具包 (@kit/*)
+│   ├── ai-preset/          # AI 编码预设管理
+│   ├── i18n-tools/         # 国际化自动化工具
+│   ├── sentinel/           # AI Sentinel 工作流
+│   ├── tracker/            # 前端埋点数据采集
+│   └── visual-testing/     # 视觉回归测试
 ├── packages/                # 组件包（发布）
 │   ├── button/             # 组件包示例
 │   ├── theme/              # 主题包（CSS 变量）
@@ -59,7 +66,8 @@ aix/
 | **组件包** | `packages/button/` | `@aix/` | ✅ | 单个 UI 组件 |
 | **工具包** | `packages/hooks/` | `@aix/` | ✅ | Composables、工具函数、指令 |
 | **主题包** | `packages/theme/` | `@aix/` | ✅ | CSS 变量、主题样式 |
-| **内部包** | `internal/eslint-config/` | `@kit/` | ❌ | ESLint、TypeScript、Stylelint 配置 |
+| **内部包** | `internal/eslint-config/` | `@kit/` | ✅ | ESLint、TypeScript、Stylelint 配置 |
+| **工具包** | `kit/tracker/` | `@kit/` | ✅ | 独立工具（埋点、国际化、测试等） |
 | **文档** | `docs/` | - | ❌ | VitePress 文档站点 |
 | **示例** | `examples/` | - | ❌ | 示例项目 |
 
@@ -140,13 +148,10 @@ hooks (无依赖)
 
 ```yaml
 packages:
-  # 所有发布的包
-  - 'packages/*'
-  # 内部工具包
+  - 'apps/*'
   - 'internal/*'
-  # 文档和示例（不发布）
-  - 'docs'
-  - 'examples/*'
+  - 'kit/*'
+  - 'packages/*'
 ```
 
 ### 常用命令

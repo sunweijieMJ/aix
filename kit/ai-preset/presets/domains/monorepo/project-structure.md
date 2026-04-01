@@ -28,7 +28,8 @@ project-root/
 │   └── <utils>/      # 工具包
 ├── apps/             # 应用（不发布）
 │   └── <app>/
-├── internal/         # 内部工具包
+├── internal/         # monorepo 内部基础设施
+├── kit/              # 独立工具包
 │   └── <tool>/
 ├── pnpm-workspace.yaml
 ├── turbo.json        # 任务编排

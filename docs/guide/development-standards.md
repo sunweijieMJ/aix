@@ -844,7 +844,7 @@ const token = '--aix-colorPrimary';
 import { utils } from '@/helpers';
 ```
 
-检查范围：`packages/`、`apps/`、`internal/` 下的 `.js`、`.ts`、`.tsx`、`.vue` 文件。
+检查范围：`packages/`、`apps/`、`internal/`、`kit/` 下的 `.js`、`.ts`、`.tsx`、`.vue` 文件。
 
 遇到合法但被标红的技术词汇，添加到 `.cspell.json` 的 `words` 列表。
 
