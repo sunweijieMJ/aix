@@ -61,6 +61,11 @@
     "clean": {
       "cache": false
     },
+    "build:generate": {
+      "inputs": ["assets/**/*.svg", "scripts/**/*.ts", "package.json"],
+      "outputs": ["src/**"],
+      "cache": false
+    },
     "test": {
       "inputs": [
         "src/**/*.{ts,tsx,js,jsx,vue}",
