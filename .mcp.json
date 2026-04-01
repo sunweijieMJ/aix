@@ -4,18 +4,6 @@
       "command": "npx",
       "args": ["@aix/mcp-server@latest"]
     },
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
-    },
-    "eslint": {
-      "command": "npx",
-      "args": ["@eslint/mcp@latest"]
-    },
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
-    },
     "figma": {
       "command": "npx",
       "args": ["-y", "figma-developer-mcp", "--stdio"],
@@ -36,25 +24,6 @@
       "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
-      }
-    },
-    "sequential-thinking": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@executeautomation/playwright-mcp-server"]
-    },
-    "memory": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"]
-    },
-    "sentry": {
-      "command": "npx",
-      "args": ["-y", "@sentry/mcp-server@latest"],
-      "env": {
-        "SENTRY_ACCESS_TOKEN": "${SENTRY_ACCESS_TOKEN}"
       }
     }
   }

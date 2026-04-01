@@ -1220,5 +1220,3 @@ npx @kit/ai-preset init --extend @myteam/ai-preset-erp
 - [Claude Code 官方文档](https://docs.anthropic.com/en/docs/claude-code)
 - [Cursor Rules 文档](https://docs.cursor.com/context/rules)
 - [GitHub Copilot Instructions](https://docs.github.com/en/copilot/customizing-copilot)
-- [AIX CLAUDE.md](../../CLAUDE.md) — 当前 AIX 组件库的完整规范实现
-- [MCP Server RFC](./mcp-server.md) — MCP 协议集成参考
