@@ -107,7 +107,7 @@
     "jsdom": "^29.0.1",
     "lint-staged": "^16.4.0",
     "markdownlint-cli2": "^0.22.0",
-    "mermaid": "^11.13.0",
+    "mermaid": "^11.14.0",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
     "pretty-quick": "^4.2.2",
