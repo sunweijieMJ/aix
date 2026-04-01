@@ -2,6 +2,15 @@ import type { Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { Ref } from 'vue';
 
+/** Lint 配置选项 */
+export interface CodeEditorLintConfig {
+  /**
+   * 检查延迟（毫秒），文档变更后等待多久执行 lint
+   * @default 750
+   */
+  delay?: number;
+}
+
 /** 支持的编程语言 */
 export type CodeLanguage =
   | 'javascript'
@@ -111,6 +120,17 @@ export interface CodeEditorProps {
   maxHeight?: string;
 
   /**
+   * 是否启用语法校验
+   * @default true
+   */
+  lint?: boolean;
+
+  /**
+   * 语法校验配置
+   */
+  lintOptions?: CodeEditorLintConfig;
+
+  /**
    * 用户自定义 CodeMirror 扩展
    */
   extensions?: Extension[];
@@ -165,4 +185,7 @@ export interface CodeEditorExpose {
   getLineCount: () => number;
   /** 获取光标位置 */
   getCursorPosition: () => { line: number; col: number };
+
+  /** 当前诊断（错误/警告）数量 */
+  diagnosticCount: Ref<number>;
 }

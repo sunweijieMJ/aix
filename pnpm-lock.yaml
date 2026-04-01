@@ -827,6 +827,9 @@ importers:
       '@codemirror/language':
         specifier: ^6.12.2
         version: 6.12.3
+      '@codemirror/lint':
+        specifier: ^6.9.5
+        version: 6.9.5
       '@codemirror/search':
         specifier: ^6.6.0
         version: 6.6.0

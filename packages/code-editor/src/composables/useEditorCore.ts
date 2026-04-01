@@ -5,6 +5,7 @@ import { type Ref, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { getLanguageExtension } from '../constants';
 import type { CodeEditorEmits, CodeEditorProps } from '../types';
 import { useEditorExtensions } from './useEditorExtensions';
+import { getDiagnosticCount, getLintExtension } from './useEditorLint';
 
 export interface UseEditorCoreReturn {
   /** EditorView 实例 */
@@ -33,6 +34,8 @@ export interface UseEditorCoreReturn {
   getLineCount: () => number;
   /** 获取光标位置 */
   getCursorPosition: () => { line: number; col: number };
+  /** 当前诊断（错误/警告）数量 */
+  diagnosticCount: Ref<number>;
 }
 
 /**
@@ -46,6 +49,7 @@ export function useEditorCore(
 ): UseEditorCoreReturn {
   const editorView = shallowRef<EditorView | null>(null);
   const isFocused = ref(false);
+  const diagnosticCount = ref(0);
 
   // 语言切换竞态版本号
   let langLoadVersion = 0;
@@ -62,6 +66,7 @@ export function useEditorCore(
     reconfigureHighlightActiveLine,
     reconfigureBracketMatching,
     reconfigurePlaceholder,
+    reconfigureLint,
     reconfigureUserExtensions,
   } = useEditorExtensions(props);
 
@@ -83,6 +88,9 @@ export function useEditorCore(
       emit('update:modelValue', newValue);
       emit('change', newValue);
     }
+
+    // 同步诊断数量（每次编辑器 update 时读取当前 lint 诊断数）
+    diagnosticCount.value = getDiagnosticCount(update.state);
   });
 
   // 初始化编辑器（异步加载语言包）
@@ -153,6 +161,20 @@ export function useEditorCore(
 
       editorView.value.dispatch({
         effects: compartments.language.reconfigure(langSupport),
+      });
+
+      // 语言变化后同步更新 linter（内联以复用竞态版本号保护）
+      const lintExt =
+        props.lint !== false
+          ? await getLintExtension(lang, props.lintOptions)
+          : [];
+
+      // 二次竞态保护：linter 加载期间语言可能又被切换
+      if (version !== langLoadVersion) return;
+      if (!editorView.value) return;
+
+      editorView.value.dispatch({
+        effects: compartments.lint.reconfigure(lintExt),
       });
     },
   );
@@ -227,6 +249,15 @@ export function useEditorCore(
     () => {
       if (editorView.value) reconfigurePlaceholder(editorView.value);
     },
+  );
+
+  // 语法校验开关/配置切换
+  watch(
+    [() => props.lint, () => props.lintOptions],
+    async () => {
+      if (editorView.value) await reconfigureLint(editorView.value);
+    },
+    { deep: true },
   );
 
   // 用户自定义扩展切换
@@ -324,5 +355,6 @@ export function useEditorCore(
     redo,
     getLineCount,
     getCursorPosition,
+    diagnosticCount,
   };
 }

@@ -37,6 +37,7 @@ import {
 } from '@codemirror/view';
 import { getLanguageExtension } from '../constants';
 import type { CodeEditorProps } from '../types';
+import { getLintExtension } from './useEditorLint';
 import { getThemeExtension } from './useEditorTheme';
 
 export interface EditorCompartments {
@@ -50,6 +51,7 @@ export interface EditorCompartments {
   highlightActiveLine: Compartment;
   bracketMatching: Compartment;
   placeholder: Compartment;
+  lint: Compartment;
   userExtensions: Compartment;
 }
 
@@ -76,6 +78,8 @@ export interface UseEditorExtensionsReturn {
   reconfigureBracketMatching: (view: EditorView) => void;
   /** 动态重配占位文本 */
   reconfigurePlaceholder: (view: EditorView) => void;
+  /** 动态重配语法校验 */
+  reconfigureLint: (view: EditorView) => Promise<void>;
   /** 动态重配用户自定义扩展 */
   reconfigureUserExtensions: (view: EditorView) => void;
 }
@@ -98,6 +102,7 @@ export function useEditorExtensions(
     highlightActiveLine: new Compartment(),
     bracketMatching: new Compartment(),
     placeholder: new Compartment(),
+    lint: new Compartment(),
     userExtensions: new Compartment(),
   };
 
@@ -191,6 +196,13 @@ export function useEditorExtensions(
         indentUnit.of(' '.repeat(tabSizeVal)),
       ]),
     );
+
+    // 语法校验（按需加载 linter）
+    const lintExt =
+      props.lint !== false
+        ? await getLintExtension(lang, props.lintOptions)
+        : [];
+    extensions.push(compartments.lint.of(lintExt));
 
     // 文档变更监听（由 useEditorCore 传入）
     extensions.push(updateListener);
@@ -286,6 +298,18 @@ export function useEditorExtensions(
     });
   }
 
+  /** 动态切换语法校验 */
+  async function reconfigureLint(view: EditorView) {
+    const lang = props.language ?? 'javascript';
+    const lintExt =
+      props.lint !== false
+        ? await getLintExtension(lang, props.lintOptions)
+        : [];
+    view.dispatch({
+      effects: compartments.lint.reconfigure(lintExt),
+    });
+  }
+
   /** 动态切换用户自定义扩展 */
   function reconfigureUserExtensions(view: EditorView) {
     view.dispatch({
@@ -305,6 +329,7 @@ export function useEditorExtensions(
     reconfigureHighlightActiveLine,
     reconfigureBracketMatching,
     reconfigurePlaceholder,
+    reconfigureLint,
     reconfigureUserExtensions,
   };
 }

@@ -29,6 +29,7 @@ const props = withDefaults(defineProps<CodeEditorProps>(), {
   foldGutter: true,
   highlightActiveLine: true,
   bracketMatching: true,
+  lint: true,
   tabSize: 2,
   minHeight: '100px',
 });
@@ -51,6 +52,7 @@ const {
   redo,
   getLineCount,
   getCursorPosition,
+  diagnosticCount,
 } = useEditorCore(containerRef, props, emit);
 
 const rootClass = computed(() => [
@@ -87,5 +89,6 @@ defineExpose<CodeEditorExpose>({
   redo,
   getLineCount,
   getCursorPosition,
+  diagnosticCount,
 });
 </script>

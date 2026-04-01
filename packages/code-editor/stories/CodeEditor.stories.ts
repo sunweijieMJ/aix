@@ -266,6 +266,10 @@ const meta: Meta<typeof CodeEditor> = {
       control: 'number',
       description: 'Tab 缩进大小',
     },
+    lint: {
+      control: 'boolean',
+      description: '语法校验',
+    },
     placeholder: {
       control: 'text',
       description: '占位文本',
@@ -440,6 +444,75 @@ export const VModel: Story = {
           <strong>v-model 值：</strong>
           <pre style="margin-top: 8px; font-size: 12px; white-space: pre-wrap;">{{ code }}</pre>
         </div>
+      </div>
+    `,
+  }),
+};
+
+const invalidJSON = `{
+  "name": "test",
+  "version": 1.0.0
+  "missing": "comma above"
+}`;
+
+/** 语法校验（JSON） */
+export const LintJSON: Story = {
+  render: () => ({
+    components: { CodeEditor },
+    setup() {
+      const code = ref(invalidJSON);
+      const editorRef = ref<InstanceType<typeof CodeEditor> | null>(null);
+      const errorCount = ref(0);
+
+      function onReady() {
+        // 定时读取诊断数量（lint 异步执行，需延迟获取）
+        setTimeout(() => {
+          if (editorRef.value) {
+            errorCount.value = editorRef.value.diagnosticCount;
+          }
+        }, 1000);
+      }
+
+      return { code, editorRef, errorCount, onReady };
+    },
+    template: `
+      <div>
+        <div style="margin-bottom: 12px; font-size: 13px; color: #666;">
+          编辑下方 JSON，语法错误会在行号栏和内容区域标注红色提示
+        </div>
+        <CodeEditor
+          ref="editorRef"
+          v-model="code"
+          language="json"
+          :lint="true"
+          height="250px"
+          @ready="onReady"
+        />
+      </div>
+    `,
+  }),
+};
+
+/** 关闭语法校验 */
+export const LintDisabled: Story = {
+  args: {
+    modelValue: invalidJSON,
+    language: 'json',
+    lint: false,
+    height: '250px',
+  },
+  render: (args) => ({
+    components: { CodeEditor },
+    setup() {
+      const code = ref((args as Record<string, unknown>).modelValue as string);
+      return { args, code };
+    },
+    template: `
+      <div>
+        <div style="margin-bottom: 12px; font-size: 13px; color: #666;">
+          同样的错误 JSON，但 lint 已关闭，不会显示语法错误标注
+        </div>
+        <CodeEditor v-bind="args" v-model="code" />
       </div>
     `,
   }),

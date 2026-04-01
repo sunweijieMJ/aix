@@ -7,6 +7,7 @@ export type {
   CodeEditorExpose,
   CodeLanguage,
   CodeEditorTheme,
+  CodeEditorLintConfig,
 } from './types';
 
 export { CodeEditor };
