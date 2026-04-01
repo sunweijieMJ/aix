@@ -2,6 +2,14 @@
 
 内部共享的 Stylelint 配置包，为项目提供统一的 CSS/SCSS 代码质量检查和样式规范。
 
+## 特性
+
+- **SCSS 标准配置** - 基于 stylelint-config-standard-scss 官方规则
+- **SMACSS 属性排序** - 统一 CSS 属性书写顺序
+- **Vue SFC 支持** - vue-app 配置支持 Vue 单文件组件
+- **嵌套深度控制** - 限制 SCSS 嵌套最大 5 层
+- **选择器约束** - 限制 ID 选择器和复合选择器数量
+
 ## 安装
 
 ```json

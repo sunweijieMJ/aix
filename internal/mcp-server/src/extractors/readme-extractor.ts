@@ -563,6 +563,71 @@ export class ReadmeExtractor {
   }
 
   /**
+   * 从 markdown 内容中提取 API 相关段落
+   *
+   * 按 ## 标题切分章节，匹配关键词的章节保留为 ApiSection。
+   * 每个章节包含完整的 markdown 内容（含子标题、表格、代码块）。
+   */
+  extractApiSections(
+    content: string,
+  ): Array<{ title: string; content: string }> {
+    const API_SECTION_KEYWORDS = [
+      'API',
+      '使用',
+      '用法',
+      'Usage',
+      '配置',
+      '配置说明',
+      'Configuration',
+      '命令',
+      'CLI',
+      'CLI 命令',
+      'Commands',
+      '快速开始',
+      'Quick Start',
+      '接口',
+      'Interface',
+    ];
+
+    const sections: Array<{ title: string; content: string }> = [];
+    const sectionRegex = /^## (.+)$/gm;
+    const matches: Array<{ title: string; index: number }> = [];
+    let match;
+
+    while ((match = sectionRegex.exec(content)) !== null) {
+      if (match[1]) {
+        matches.push({ title: match[1].trim(), index: match.index });
+      }
+    }
+
+    for (let i = 0; i < matches.length; i++) {
+      const current = matches[i]!;
+      const title = current.title;
+
+      const isApiSection = API_SECTION_KEYWORDS.some(
+        (keyword) => title === keyword || title.includes(keyword),
+      );
+
+      if (!isApiSection) continue;
+
+      const startIndex = current.index;
+      const nextMatch = matches[i + 1];
+      const endIndex = nextMatch ? nextMatch.index : content.length;
+      const sectionContent = content.substring(startIndex, endIndex).trim();
+
+      const contentWithoutTitle = sectionContent
+        .replace(/^## .+\n+/, '')
+        .trim();
+
+      if (contentWithoutTitle) {
+        sections.push({ title, content: contentWithoutTitle });
+      }
+    }
+
+    return sections;
+  }
+
+  /**
    * 提取组件的导出名称（从代码示例中推断）
    */
   extractComponentNames(content: string): string[] {

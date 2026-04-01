@@ -2,6 +2,14 @@
 
 跨 AI 平台的编码规范管理工具。一次配置，同步生成 Claude / Cursor / Copilot / Codex / Windsurf / Trae / 通义灵码的规则文件。
 
+## 特性
+
+- **7 平台支持** - Claude Code / Cursor / Copilot / Codex / Windsurf / Trae / 通义灵码一键同步
+- **三层预设体系** - base（通用）+ framework（框架）+ domain（领域）自由组合
+- **文件生命周期** - managed / modified / ejected 三态管理，支持 eject 和 restore
+- **非交互模式** - 支持 `--yes` 参数，CI 环境友好
+- **增量升级** - `upgrade` 命令自动检测变更，已修改文件提示确认
+
 ## 快速开始
 
 ```bash

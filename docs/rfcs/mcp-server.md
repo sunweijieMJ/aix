@@ -1,4 +1,4 @@
-# 组件库 MCP Server (@kit/mcp-server)
+# 组件库 MCP Server (@aix/mcp-server)
 
 > **状态**: Completed
 > **作者**: AIX Team

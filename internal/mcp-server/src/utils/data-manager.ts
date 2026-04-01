@@ -2,7 +2,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { COMPONENT_LIBRARY_CONFIG } from '../constants';
 import type { IconInfo } from '../extractors/icons-extractor';
-import type { ComponentIndex, ComponentInfo } from '../types/index';
+import type {
+  ComponentIndex,
+  ComponentInfo,
+  ToolPackageIndex,
+  ToolPackageInfo,
+} from '../types/index';
 import { log } from './logger';
 
 /**
@@ -224,6 +229,40 @@ export class DataManager {
       iconsIndex,
     );
     log.info(`💾 图标搜索索引已保存: ${icons.length} 个图标`);
+  }
+
+  /**
+   * 保存工具包数据
+   */
+  async saveToolPackages(packages: ToolPackageInfo[]): Promise<void> {
+    await this.ensureDirectoryExists(this.outputDir);
+    await this.ensureDirectoryExists(join(this.outputDir, 'packages'));
+
+    for (const pkg of packages) {
+      const safeFileName = this.getSafeFileName(pkg.packageName);
+      await this.saveJsonFile(
+        join(this.outputDir, 'packages', `${safeFileName}.json`),
+        pkg,
+      );
+    }
+
+    const allCategories = new Set<string>();
+    const allTags = new Set<string>();
+    for (const pkg of packages) {
+      allCategories.add(pkg.category);
+      pkg.tags.forEach((tag) => allTags.add(tag));
+    }
+
+    const index: ToolPackageIndex = {
+      packages,
+      categories: Array.from(allCategories).sort(),
+      tags: Array.from(allTags).sort(),
+      lastUpdated: new Date().toISOString(),
+      version: '1.0.0',
+    };
+
+    await this.saveJsonFile(join(this.outputDir, 'packages-index.json'), index);
+    log.info(`💾 工具包索引已保存: ${packages.length} 个工具包`);
   }
 
   /**

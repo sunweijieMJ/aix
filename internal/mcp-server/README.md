@@ -1,4 +1,4 @@
-# @kit/mcp-server
+# @aix/mcp-server
 
 <p align="center">
   <img src="https://img.shields.io/badge/MCP-Compatible-blue?logo=anthropic" alt="MCP Compatible"/>
@@ -30,7 +30,7 @@
 
 ---
 
-## 核心特性
+## 特性
 
 - 🔍 **智能组件提取**：基于 TypeScript AST 精确解析 Props/Emits/Slots
 - 🚀 **高性能搜索**：内置倒排索引 + TF-IDF 算法，支持中英文混合搜索

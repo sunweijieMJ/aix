@@ -2,6 +2,14 @@
 
 内部共享的 TypeScript 配置包，为项目提供统一的 TypeScript 编译选项和类型检查规则。
 
+## 特性
+
+- **严格模式全开** - strict + noUnusedLocals + noUncheckedIndexedAccess
+- **多配置预设** - 提供 base（库开发）和 base-app（应用开发）两套配置
+- **路径别名支持** - 内置 @/* 路径映射
+- **声明文件生成** - base 配置自动生成 .d.ts 类型声明
+- **现代 ESM 输出** - 默认 ESNext 模块 + Bundler 模块解析
+
 ## 安装
 
 ```json

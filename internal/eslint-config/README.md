@@ -2,6 +2,14 @@
 
 内部共享的 ESLint 配置包，为项目提供统一的代码质量检查和编码规范。
 
+## 特性
+
+- **ESLint 9 扁平化配置** - 使用最新的 Flat Config 格式，弃用 .eslintrc
+- **TypeScript 严格检查** - 集成 typescript-eslint 推荐规则
+- **Prettier 兼容** - 自动禁用与 Prettier 冲突的规则
+- **Turborepo 规则** - 包含 Turborepo 相关的 lint 规则
+- **多配置预设** - 提供 base（通用）和 vue-app（Vue 3）两套配置
+
 ## 安装
 
 ```json

@@ -23,7 +23,7 @@ import { createResourceManager } from '../mcp-resources/index';
 import { createTools } from '../mcp-tools/index';
 import { getAllPrompts } from '../prompts/index';
 import { createWebSocketTransport } from '../transports/websocket';
-import type { ComponentIndex } from '../types/index';
+import type { ComponentIndex, ToolPackageIndex } from '../types/index';
 import { createCacheManager } from '../utils/cache';
 import { log } from '../utils/logger';
 import { createMonitoringManager } from '../utils/monitoring';
@@ -61,6 +61,7 @@ function getMCPServerRoot(): string {
 export class McpServer {
   private server: Server;
   private componentIndex: ComponentIndex | null = null;
+  private toolPackageIndex: ToolPackageIndex | null = null;
   private tools: ReturnType<typeof createTools> = [];
   private resourceManager: ReturnType<typeof createResourceManager> | null =
     null;
@@ -275,12 +276,19 @@ export class McpServer {
    * @returns 返回一个 Promise，在加载完成后解析
    */
   async loadComponentIndex(): Promise<void> {
+    // 加载工具包索引（可选，不影响组件工具）
+    this.toolPackageIndex = await this.loadToolPackageIndex();
+
     try {
       // 先尝试从缓存加载
       const cached = await this.cache.get<ComponentIndex>('component-index');
       if (cached) {
         this.componentIndex = cached;
-        this.tools = createTools(this.componentIndex, this.config.dataDir);
+        this.tools = createTools(
+          this.componentIndex,
+          this.config.dataDir,
+          this.toolPackageIndex ?? undefined,
+        );
         this.resourceManager = createResourceManager(this.componentIndex);
         if (this.testMode) {
           log.info('✅ 从缓存加载组件索引');
@@ -307,7 +315,11 @@ export class McpServer {
       }
 
       // 创建工具实例
-      this.tools = createTools(this.componentIndex, this.config.dataDir);
+      this.tools = createTools(
+        this.componentIndex,
+        this.config.dataDir,
+        this.toolPackageIndex ?? undefined,
+      );
       this.resourceManager = createResourceManager(this.componentIndex);
 
       log.info(`✅ 加载了 ${this.componentIndex.components.length} 个组件`);
@@ -322,8 +334,27 @@ export class McpServer {
         lastUpdated: new Date().toISOString(),
         version: '1.0.0',
       };
-      this.tools = createTools(this.componentIndex, this.config.dataDir);
+      this.tools = createTools(
+        this.componentIndex,
+        this.config.dataDir,
+        this.toolPackageIndex ?? undefined,
+      );
       this.resourceManager = createResourceManager(this.componentIndex);
+    }
+  }
+
+  /**
+   * 加载工具包索引
+   */
+  private async loadToolPackageIndex(): Promise<ToolPackageIndex | null> {
+    try {
+      const indexPath = join(this.config.dataDir, 'packages-index.json');
+      const content = await readFile(indexPath, 'utf8');
+      const index = JSON.parse(content) as ToolPackageIndex;
+      log.info(`✅ 加载了 ${index.packages.length} 个工具包`);
+      return index;
+    } catch {
+      return null;
     }
   }
 
@@ -345,7 +376,11 @@ export class McpServer {
       await this.cache.set('component-index', index, 24 * 60 * 60 * 1000);
 
       this.componentIndex = index;
-      this.tools = createTools(this.componentIndex, this.config.dataDir);
+      this.tools = createTools(
+        this.componentIndex,
+        this.config.dataDir,
+        this.toolPackageIndex ?? undefined,
+      );
       this.resourceManager = createResourceManager(this.componentIndex);
 
       log.info('✅ 组件索引已保存');

@@ -59,6 +59,7 @@ export const DEFAULT_IGNORE_PATTERNS = [
 
 // MCP 工具名称
 export const MCP_TOOLS = {
+  // 组件库工具
   LIST_COMPONENTS: 'list-components',
   GET_COMPONENT_INFO: 'get-component-info',
   GET_COMPONENT_PROPS: 'get-component-props',
@@ -68,6 +69,10 @@ export const MCP_TOOLS = {
   GET_COMPONENT_DEPENDENCIES: 'get-component-dependencies',
   GET_COMPONENT_CHANGELOG: 'get-component-changelog',
   GET_CATEGORIES_AND_TAGS: 'get-categories-and-tags',
+  // 工具包工具
+  LIST_PACKAGES: 'list-packages',
+  GET_PACKAGE_INFO: 'get-package-info',
+  SEARCH_PACKAGES: 'search-packages',
 } as const;
 
 // 资源类型

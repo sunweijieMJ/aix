@@ -2,7 +2,7 @@
  * MCP 工具模块 - 重新组织的模块化结构
  */
 
-import type { ComponentIndex } from '../types/index';
+import type { ComponentIndex, ToolPackageIndex } from '../types/index';
 import { BaseTool } from './base';
 import {
   GetCategoriesAndTagsTool,
@@ -34,14 +34,23 @@ export {
 // 导出图标工具
 export { SearchIconsTool };
 
+// 导出工具包工具
+import {
+  GetPackageInfoTool,
+  ListPackagesTool,
+  SearchPackagesTool,
+} from './package-tools';
+export { GetPackageInfoTool, ListPackagesTool, SearchPackagesTool };
+
 /**
  * 创建所有工具实例
  */
 export function createTools(
   componentIndex: ComponentIndex,
   dataDir: string,
+  toolPackageIndex?: ToolPackageIndex,
 ): BaseTool[] {
-  return [
+  const tools: BaseTool[] = [
     new ListComponentsTool(componentIndex),
     new GetComponentInfoTool(componentIndex),
     new GetComponentPropsTool(componentIndex),
@@ -52,4 +61,14 @@ export function createTools(
     new GetCategoriesAndTagsTool(componentIndex),
     new GetComponentChangelogTool(componentIndex),
   ];
+
+  if (toolPackageIndex) {
+    tools.push(
+      new ListPackagesTool(toolPackageIndex),
+      new GetPackageInfoTool(toolPackageIndex),
+      new SearchPackagesTool(toolPackageIndex),
+    );
+  }
+
+  return tools;
 }

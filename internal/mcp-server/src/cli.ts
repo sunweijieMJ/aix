@@ -71,6 +71,16 @@ class McpCli {
         '包目录路径',
         join(__dirname, '../../../packages'),
       )
+      .option(
+        '-k, --kit <dir>',
+        '工具包目录路径 (kit/)',
+        join(__dirname, '../../../kit'),
+      )
+      .option(
+        '-i, --internal <dir>',
+        '内部包目录路径 (internal/)',
+        join(__dirname, '../../../internal'),
+      )
       .option('-o, --output <dir>', '输出目录路径')
       .option('-v, --verbose', '显示详细输出', false)
       .option('--ignore <packages>', '忽略的包列表（逗号分隔）', '')
@@ -185,6 +195,8 @@ class McpCli {
    */
   private async extractCommand(options: {
     packages: string;
+    kit: string;
+    internal: string;
     output?: string;
     verbose: boolean;
     ignore: string;
@@ -297,6 +309,29 @@ class McpCli {
         const result = await extractor.extractAndSaveAllComponents();
         components = result.components;
         icons = result.icons;
+
+        // 提取工具包
+        const { ToolPackageExtractor } = await import('./extractors/index');
+        const { DataManager } = await import('./utils/data-manager');
+        const toolExtractor = new ToolPackageExtractor();
+        const dataManager = new DataManager(config.outputDir);
+
+        const kitPackages = await toolExtractor.extractFromDirectory(
+          options.kit,
+          'kit',
+        );
+        const internalPackages = await toolExtractor.extractFromDirectory(
+          options.internal,
+          'internal',
+        );
+        const allToolPackages = [...kitPackages, ...internalPackages];
+
+        if (allToolPackages.length > 0) {
+          await dataManager.saveToolPackages(allToolPackages);
+          log.info(
+            chalk.green(`✅ 成功提取 ${allToolPackages.length} 个工具包`),
+          );
+        }
       }
 
       // 保存元数据

@@ -241,3 +241,6 @@ export interface ParseOptions {
   /** 是否解析依赖 */
   parseDependencies?: boolean;
 }
+
+// 工具包类型
+export * from './tool-package';
