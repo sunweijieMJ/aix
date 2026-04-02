@@ -144,6 +144,7 @@ export default withMermaid(
               },
               { text: '埋点数据采集', link: '/rfcs/tracker' },
               { text: 'AI 编码规范预设', link: '/rfcs/ai-preset' },
+              { text: '群聊机器人服务', link: '/rfcs/im-bot' },
             ],
           },
         ],
