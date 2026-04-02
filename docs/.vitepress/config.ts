@@ -2,6 +2,9 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vitepress';
 import { withMermaid } from 'vitepress-plugin-mermaid';
 
+// GitHub Pages 需要 /aix 前缀，其他环境不需要
+const basePrefix = process.env.DEPLOY_TARGET === 'github' ? '/aix' : '';
+
 export default withMermaid(
   defineConfig({
     title: 'Aix',
@@ -9,7 +12,7 @@ export default withMermaid(
     lang: 'zh-CN',
 
     // 部署基础路径
-    base: '/aix/docs/',
+    base: `${basePrefix}/docs/`,
 
     // 构建输出目录
     outDir: '../dist/docs',

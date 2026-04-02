@@ -7,6 +7,9 @@ import vue from '@vitejs/plugin-vue';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// GitHub Pages 需要 /aix 前缀，其他环境不需要
+const basePrefix = process.env.DEPLOY_TARGET === 'github' ? '/aix' : '';
+
 const config: StorybookConfig = {
   stories: ['../packages/**/*.stories.@(js|jsx|ts|tsx|mdx)'],
   addons: [
@@ -44,7 +47,7 @@ const config: StorybookConfig = {
     const isVitest = !!process.env.VITEST;
     return {
       ...config,
-      ...(isVitest ? {} : { base: '/aix/storybook/' }),
+      ...(isVitest ? {} : { base: `${basePrefix}/storybook/` }),
       resolve: {
         ...config.resolve,
         alias: {

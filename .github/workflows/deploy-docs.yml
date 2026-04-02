@@ -64,9 +64,13 @@ jobs:
 
       - name: Build Storybook
         run: pnpm storybook:build
+        env:
+          DEPLOY_TARGET: github
 
       - name: Build VitePress docs
         run: pnpm docs:build
+        env:
+          DEPLOY_TARGET: github
 
       - name: Assemble Pages artifact
         run: |
