@@ -1,0 +1,12 @@
+# 统一换行符为 LF
+* text=auto eol=lf
+
+# 确保脚本文件使用 LF
+*.sh text eol=lf
+
+# Lock 文件：合并时使用 ours 策略，PR 中折叠 diff
+pnpm-lock.yaml merge=ours linguist-generated=true
+
+# 构建产物和生成文件：PR 中折叠 diff
+*.min.js linguist-generated=true
+*.min.css linguist-generated=true
