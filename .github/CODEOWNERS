@@ -32,8 +32,8 @@
 /.github/workflows/ @sunweijieMJ
 
 # 代码质量配置
-/.eslintrc.cjs @sunweijieMJ
-/.stylelintrc.cjs @sunweijieMJ
+/eslint.config.ts @sunweijieMJ
+/stylelint.config.mjs @sunweijieMJ
 /commitlint.config.ts @sunweijieMJ
 
 # ============================
@@ -47,8 +47,11 @@
 
 # 各组件包（可根据团队分工指定不同所有者）
 /packages/button/ @sunweijieMJ
+/packages/code-editor/ @sunweijieMJ
 /packages/icons/ @sunweijieMJ
 /packages/pdf-viewer/ @sunweijieMJ
+/packages/popper/ @sunweijieMJ
+/packages/rich-text-editor/ @sunweijieMJ
 /packages/subtitle/ @sunweijieMJ
 /packages/video/ @sunweijieMJ
 
@@ -56,6 +59,7 @@
 # 内部共享配置
 # ============================
 /internal/eslint-config/ @sunweijieMJ
+/internal/mcp-server/ @sunweijieMJ
 /internal/stylelint-config/ @sunweijieMJ
 /internal/typescript-config/ @sunweijieMJ
 

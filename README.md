@@ -132,8 +132,6 @@ pnpm gen <component-name>
 ├── tsconfig.json                # TypeScript 根配置
 ├── vitest.config.ts             # Vitest 测试框架配置
 ├── vitest.setup.ts              # Vitest 测试环境初始化
-├── vitest.config.ts             # Vitest 测试框架配置
-├── vitest.setup.ts              # Vitest 测试环境初始化
 ├── pnpm-workspace.yaml          # pnpm Workspace 配置
 └── package.json                 # 根 package.json
 ```
