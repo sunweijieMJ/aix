@@ -131,73 +131,42 @@ const getContent = () => {
 
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
-| `modelValue` | `string \| Record<string, unknown>` | - | - | 编辑器内容（v-model 双向绑定） |
-| `outputFormat` | `'html' \| 'json' \| 'text'` | `'html'` | - | 内容输出格式 |
+| `modelValue` | `string \| Record` | - | - | 编辑器内容（v-model 双向绑定） HTML 字符串或 JSON 对象 |
+| `outputFormat` | `OutputFormat` | `'html'` | - | 内容输出格式 |
 | `readonly` | `boolean` | `false` | - | 是否只读 |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
-| `placeholder` | `string` | `''` | - | 占位文本 |
+| `placeholder` | `string` | `` | - | 占位文本 |
 | `autofocus` | `boolean` | `false` | - | 是否自动聚焦 |
 | `height` | `string` | - | - | 编辑器固定高度（CSS 值） |
 | `minHeight` | `string` | `'200px'` | - | 编辑器最小高度 |
 | `maxHeight` | `string` | - | - | 编辑器最大高度 |
-| `showToolbar` | `boolean` | `true` | - | 是否显示工具栏 |
-| `extensions` | `AnyExtension[]` | - | - | 用户自定义 Tiptap 扩展 |
-| `locale` | `'zh-CN' \| 'en-US'` | - | - | 语言覆盖（优先于全局 locale） |
-
-#### 增强功能 Props（全部可选，默认不启用）
-
-| 属性名 | 类型 | 说明 |
-|--------|------|------|
-| `table` | `boolean \| TableConfig` | 表格功能 |
-| `taskList` | `boolean` | 任务列表（可勾选的 TODO 列表） |
-| `image` | `ImageConfig` | 图片上传功能 |
-| `video` | `boolean \| VideoConfig` | 视频上传功能 |
-| `textAlign` | `boolean` | 文本对齐（左/中/右/两端） |
-| `textColor` | `boolean` | 文本颜色 + 高亮背景 |
-| `fontSize` | `boolean \| FontSizeConfig` | 字体大小 |
-| `fontFamily` | `boolean \| FontFamilyConfig` | 字体族 |
-| `superscriptSubscript` | `boolean` | 上标/下标 |
-| `characterCount` | `boolean \| CharacterCountConfig` | 字符统计 |
-| `mention` | `MentionConfig` | @提及功能 |
-| `highlight` | `boolean` | 高亮标记 |
-| `markdown` | `boolean` | Markdown 输入支持 |
+| `showToolbar` | `boolean` | `true` | - | 是否显示 Toolbar |
+| `extensions` | `Array<AnyExtension>` | - | - | 用户自定义 Tiptap 扩展（完全开放的扩展接口） |
+| `locale` | `"zh-CN" \| "en-US"` | - | - | 语言覆盖（优先于全局 locale） |
+| `table` | `boolean \| TableConfig` | - | - | 表格功能 |
+| `taskList` | `boolean` | - | - | 任务列表（可勾选的 TODO 列表） |
+| `image` | `ImageConfig` | - | - | 图片功能（需配置 upload 回调或 server 地址） |
+| `video` | `boolean \| VideoConfig` | - | - | 视频功能 |
+| `textAlign` | `boolean` | - | - | 文本对齐（左/中/右/两端） |
+| `textColor` | `boolean` | - | - | 文本颜色 + 高亮背景 |
+| `fontSize` | `boolean \| FontSizeConfig` | - | - | 字体大小 |
+| `fontFamily` | `boolean \| FontFamilyConfig` | - | - | 字体族 |
+| `superscriptSubscript` | `boolean` | - | - | 上标/下标 |
+| `characterCount` | `boolean \| CharacterCountConfig` | - | - | 字符统计 |
+| `mention` | `MentionConfig` | - | - | @提及功能（需配置 queryItems 回调或 server 地址） |
+| `highlight` | `boolean` | - | - | 高亮标记 |
+| `markdown` | `boolean` | - | - | Markdown 输入支持 |
 
 ### Events
 
 | 事件名 | 参数 | 说明 |
 |--------|------|------|
-| `update:modelValue` | `string \| Record<string, unknown>` | 内容变化（v-model） |
-| `change` | `string \| Record<string, unknown>` | 内容变化 |
+| `update:modelValue` | `string \| Record` | v-model 更新 |
+| `change` | `string \| Record` | 内容变化 |
 | `focus` | `FocusEvent` | 获得焦点 |
 | `blur` | `FocusEvent` | 失去焦点 |
-| `ready` | `Editor` | 编辑器就绪，返回 Tiptap Editor 实例 |
-| `character-count` | `{ characters: number; words: number }` | 字符统计更新（需启用 characterCount） |
-
-### Slots
-
-| 插槽名 | 说明 |
-|--------|------|
-| `toolbar` | 自定义工具栏内容 |
-
-### Expose
-
-| 方法/属性 | 类型 | 说明 |
-|-----------|------|------|
-| `editor` | `Ref<Editor \| null>` | Tiptap Editor 实例 |
-| `getHTML` | `() => string` | 获取 HTML 内容 |
-| `getJSON` | `() => Record<string, unknown>` | 获取 JSON 内容 |
-| `getText` | `() => string` | 获取纯文本 |
-| `setContent` | `(content: string \| Record<string, unknown>) => void` | 设置内容 |
-| `clearContent` | `() => void` | 清空内容 |
-| `focus` | `(position?: 'start' \| 'end' \| 'all') => void` | 聚焦编辑器 |
-| `blur` | `() => void` | 取消聚焦 |
-| `insertContent` | `(content: string) => void` | 插入内容 |
-| `undo` | `() => void` | 撤销 |
-| `redo` | `() => void` | 重做 |
-| `getCharacterCount` | `() => number` | 获取字符数（需启用 characterCount） |
-| `getWordCount` | `() => number` | 获取词数（需启用 characterCount） |
-| `isEmpty` | `() => boolean` | 判断内容是否为空 |
-
+| `ready` | `Editor` | 编辑器就绪 |
+| `character-count` | `{ characters: number; words: number; }` | 字符统计更新（需启用 characterCount） |
 ## 类型定义
 
 ```typescript

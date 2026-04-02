@@ -1,6 +1,6 @@
 # AIX Vue 组件库
 
-> 使用 `Vue 3`, `Turborepo`, `Rollup`, `Vitest` 等主流技术搭建的 Vue3 组件库工程。
+> 基于 Vue 3 + TypeScript 的企业级组件库 Monorepo，使用 Turborepo 编排、Rollup 构建、Vitest 测试，提供 Storybook 交互文档和 VitePress 使用文档。
 
 ## 快速开始
 
@@ -68,9 +68,12 @@ pnpm gen <component-name>
 ## 功能清单
 
 - [x] `button` 按钮组件
+- [x] `code-editor` 代码编辑器
 - [x] `hooks` 公共 Composables
 - [x] `icons` 图标组件
 - [x] `pdf-viewer` PDF 查看器
+- [x] `popper` 弹出层组件
+- [x] `rich-text-editor` 富文本编辑器
 - [x] `subtitle` 字幕组件
 - [x] `theme` 主题系统
 - [x] `video` 视频播放器
@@ -84,9 +87,12 @@ pnpm gen <component-name>
 │
 ├── packages/                    # 组件包（发布到 npm @aix/*）
 │   ├── button/                  #   按钮组件
+│   ├── code-editor/             #   代码编辑器组件
 │   ├── hooks/                   #   公共 Composables
 │   ├── icons/                   #   图标组件
 │   ├── pdf-viewer/              #   PDF 查看器组件
+│   ├── popper/                  #   弹出层组件
+│   ├── rich-text-editor/        #   富文本编辑器组件
 │   ├── subtitle/                #   字幕组件
 │   ├── theme/                   #   主题系统（CSS Variables）
 │   └── video/                   #   视频播放器组件
@@ -107,20 +113,25 @@ pnpm gen <component-name>
 ├── docs/                        # VitePress 文档源码
 ├── scripts/                     # 脚本工具
 │   ├── docs/                    #   文档生成脚本
-│   ├── gen.ts                   #   组件包脚手架生成器
+│   ├── gen/                     #   组件包脚手架生成器
 │   ├── husky/                   #   Git Hooks 脚本
 │   ├── link/                    #   Yalc 本地联调脚本
 │   └── publish/                 #   npm 发布脚本
 │
 ├── typings/                     # 全局 TypeScript 类型声明
 │
+├── .cspell.json                 # CSpell 拼写检查配置
+├── .markdownlint-cli2.mjs       # Markdownlint 配置
 ├── commitlint.config.ts         # Git 提交信息规范配置
 ├── eslint.config.ts             # ESLint 代码检查配置
 ├── prettier.config.js           # Prettier 代码格式化配置
 ├── stylelint.config.mjs         # Stylelint 样式检查配置
 ├── rollup.config.js             # 共享 Rollup 构建配置
+├── tsup.config.ts               # tsup 构建配置（工具包）
 ├── turbo.json                   # Turborepo 任务编排配置
 ├── tsconfig.json                # TypeScript 根配置
+├── vitest.config.ts             # Vitest 测试框架配置
+├── vitest.setup.ts              # Vitest 测试环境初始化
 ├── vitest.config.ts             # Vitest 测试框架配置
 ├── vitest.setup.ts              # Vitest 测试环境初始化
 ├── pnpm-workspace.yaml          # pnpm Workspace 配置
@@ -155,53 +166,48 @@ pnpm gen <component-name>
 
 ## 常用脚本
 
-- 安装依赖
+### 开发
 
-  ```bash
-  pnpm i
-  ```
+```bash
+pnpm i                    # 安装依赖
+pnpm dev                  # 启动所有包的 dev 模式
+pnpm gen <name>           # 脚手架创建新组件包
+```
 
-- 开发编译
+### 代码质量
 
-  ```bash
-  pnpm dev
-  ```
+```bash
+pnpm lint                 # ESLint + Stylelint 校验
+pnpm type-check           # TypeScript 类型检查
+pnpm format               # Prettier 格式化
+pnpm cspell               # 拼写检查
+pnpm lint:md              # Markdown 格式校验
+```
 
-- 测试
+### 测试
 
-  ```bash
-  pnpm test
-  ```
+```bash
+pnpm test                 # 运行所有测试
+pnpm test:unit            # 仅单元测试
+pnpm test:stories         # 仅 Storybook 测试
+pnpm test:ui              # 测试 UI 面板
+pnpm test:coverage        # 测试覆盖率报告
+```
 
-- cspell 校验
+### 文档
 
-  ```bash
-  pnpm cspell
-  ```
+```bash
+pnpm storybook:dev        # 启动 Storybook（端口 6006）
+pnpm docs:dev             # 启动 VitePress 文档
+pnpm docs:gen             # 从源码生成 API 文档并同步到 VitePress
+pnpm build:docs-all       # 构建 Storybook + VitePress
+```
 
-- 校验代码
+### 提交
 
-  ```bash
-  pnpm lint
-  ```
-
-- ts 检查
-
-  ```bash
-  pnpm type-check
-  ```
-
-- 格式化代码
-
-  ```bash
-  pnpm format
-  ```
-
-- `commit` 代码
-
-  ```bash
-  pnpm commit
-  ```
+```bash
+pnpm commit               # 交互式规范化提交（czg）
+```
 
 ## 打包发布
 
@@ -238,17 +244,11 @@ pnpm gen <component-name>
 
 ### 发布流程
 
-- 预发布检查（lint + type-check + test + build）
+使用 `pnpm pre` 一站式完成发布，脚本基于 changeset 管理版本，流程包括：工作区检查 → npm 登录验证 → 选择发布模式 → 创建变更集 → 更新版本号 → 构建 → 发布 → Git 提交打标签。
 
-  ```bash
-  pnpm pre
-  ```
-
-- 发布 `npm` 包
-
-  ```bash
-  pnpm publish
-  ```
+```bash
+pnpm pre
+```
 
 ### 本地联调
 
@@ -274,10 +274,8 @@ pnpm link:push      # 推送更新到链接的项目
 
 ### 本地验证
 
-在提交代码前，建议运行预发布检查：
+在提交代码前，可分步验证：
 
 ```bash
-pnpm pre
+pnpm lint && pnpm type-check && pnpm test && pnpm build
 ```
-
-该命令会依次执行：lint → type-check → test → build

@@ -78,8 +78,7 @@ const onError = (error: Error) => {
 
 | 插槽名 | 说明 |
 |--------|------|
-| `toolbar` | 自定义工具栏内容 |
-
+| `toolbar` | - |
 ## 类型定义
 
 ```typescript

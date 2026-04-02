@@ -153,8 +153,7 @@ const { t } = useLocale(buttonLocale);
 
 | 插槽名 | 说明 |
 |--------|------|
-| `default` | 按钮内容 |
-
+| `default` | - |
 ## 类型定义
 
 ```typescript

@@ -109,7 +109,7 @@ const insertText = () => {
 |--------|------|--------|:----:|------|
 | `modelValue` | `string` | - | - | 编辑器内容（v-model 双向绑定） |
 | `language` | `CodeLanguage` | `'javascript'` | - | 编程语言 |
-| `theme` | `'light' \| 'dark'` | `'light'` | - | 编辑器主题 |
+| `theme` | `CodeEditorTheme` | `'light'` | - | 主题 |
 | `readonly` | `boolean` | `false` | - | 是否只读（保留光标，不可编辑） |
 | `disabled` | `boolean` | `false` | - | 是否禁用（完全不可交互） |
 | `placeholder` | `string` | - | - | 占位文本 |
@@ -118,10 +118,12 @@ const insertText = () => {
 | `highlightActiveLine` | `boolean` | `true` | - | 是否高亮当前行 |
 | `bracketMatching` | `boolean` | `true` | - | 是否启用括号匹配 |
 | `tabSize` | `number` | `2` | - | Tab 缩进大小 |
-| `height` | `string` | - | - | 编辑器固定高度（CSS 值，如 `'400px'`） |
+| `height` | `string` | - | - | 编辑器固定高度（CSS 值，如 '400px'） |
 | `minHeight` | `string` | `'100px'` | - | 编辑器最小高度 |
 | `maxHeight` | `string` | - | - | 编辑器最大高度 |
-| `extensions` | `Extension[]` | - | - | 用户自定义 CodeMirror 扩展 |
+| `lint` | `boolean` | `true` | - | 是否启用语法校验 |
+| `lintOptions` | `CodeEditorLintConfig` | - | - | 语法校验配置 |
+| `extensions` | `Array<Extension>` | - | - | 用户自定义 CodeMirror 扩展 |
 
 ### Events
 
@@ -132,31 +134,6 @@ const insertText = () => {
 | `focus` | `EditorView` | 获得焦点 |
 | `blur` | `EditorView` | 失去焦点 |
 | `ready` | `EditorView` | 编辑器就绪 |
-
-### Slots
-
-| 插槽名 | 说明 |
-|--------|------|
-| `default` | 编辑器底部附加内容 |
-
-### Expose
-
-| 方法/属性 | 类型 | 说明 |
-|-----------|------|------|
-| `editorView` | `Ref<EditorView \| null>` | EditorView 实例 |
-| `isFocused` | `Ref<boolean>` | 是否获得焦点 |
-| `getValue` | `() => string` | 获取编辑器内容 |
-| `setValue` | `(value: string) => void` | 设置编辑器内容 |
-| `focus` | `() => void` | 聚焦编辑器 |
-| `blur` | `() => void` | 取消聚焦 |
-| `getSelection` | `() => string` | 获取选中文本 |
-| `replaceSelection` | `(text: string) => void` | 替换选中内容 |
-| `insert` | `(text: string) => void` | 在光标位置插入文本 |
-| `undo` | `() => void` | 撤销 |
-| `redo` | `() => void` | 重做 |
-| `getLineCount` | `() => number` | 获取总行数 |
-| `getCursorPosition` | `() => { line: number; col: number }` | 获取光标位置 |
-
 ## 类型定义
 
 ```typescript

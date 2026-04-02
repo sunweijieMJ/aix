@@ -201,7 +201,10 @@ function generateApiMarkdown(componentInfo: any): string {
 
       const defaultValue = formatDefaultValue(prop.defaultValue);
       const required = prop.required ? '✅' : '-';
-      const description = prop.description || '-';
+      const description = (prop.description || '-')
+        .replace(/\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
       markdown += `| \`${name}\` | ${type} | ${defaultValue} | ${required} | ${description} |\n`;
     });
@@ -261,7 +264,10 @@ function generateApiMarkdown(componentInfo: any): string {
 
     componentInfo.slots.forEach((slot: any) => {
       const name = slot.name || 'default';
-      const description = slot.description || '-';
+      const description = (slot.description || '-')
+        .replace(/\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
       markdown += `| \`${name}\` | ${description} |\n`;
     });
@@ -281,7 +287,10 @@ function generateApiMarkdown(componentInfo: any): string {
         ?.map((p: any) => `${p.name}: ${p.type?.name || 'any'}`)
         .join(', ');
       const returns = method.returns?.type?.name || 'void';
-      const description = method.description || '-';
+      const description = (method.description || '-')
+        .replace(/\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
       markdown += `| \`${name}\` | \`${params || '-'}\` | \`${returns}\` | ${description} |\n`;
     });

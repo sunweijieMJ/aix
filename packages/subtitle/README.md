@@ -82,8 +82,7 @@ const onTimeUpdate = () => {
 
 | 插槽名 | 说明 |
 |--------|------|
-| `default` | 自定义字幕渲染内容 |
-
+| `default` | - |
 ## 类型定义
 
 ```typescript

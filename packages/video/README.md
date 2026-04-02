@@ -103,8 +103,7 @@ const onError = (error: Error) => {
 
 | 插槽名 | 说明 |
 |--------|------|
-| `controls` | 自定义控制栏内容（需开启 customControls） |
-
+| `controls` | - |
 ## 类型定义
 
 ```typescript
