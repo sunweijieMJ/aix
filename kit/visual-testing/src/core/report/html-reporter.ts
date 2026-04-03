@@ -4,8 +4,7 @@
  * 使用 eta 模板引擎生成可视化报告，支持图片对比查看。
  */
 
-import fs from 'node:fs';
-import { writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Eta } from 'eta';
@@ -19,7 +18,7 @@ const log = logger.child('HtmlReporter');
 /**
  * 定位模板目录（dist/templates 或 src 同级 templates）
  */
-function resolveTemplateDir(): string {
+async function resolveTemplateDir(): Promise<string> {
   const thisDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
     path.resolve(thisDir, '../templates/report'), // from dist/
@@ -27,8 +26,11 @@ function resolveTemplateDir(): string {
   ];
 
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
+    try {
+      await access(candidate);
       return candidate;
+    } catch {
+      // 目录不存在，尝试下一个
     }
   }
 
@@ -65,10 +67,12 @@ export class HtmlReporter implements Reporter {
 
     const toRelative = (p: string) => resolveImagePath(p, outputDir);
 
-    const templateDir = resolveTemplateDir();
+    const templateDir = await resolveTemplateDir();
     const templatePath = path.join(templateDir, 'index.html.eta');
 
-    if (!fs.existsSync(templatePath)) {
+    try {
+      await access(templatePath);
+    } catch {
       throw new Error(
         `HTML report template not found at ${templatePath}. ` +
           'Ensure the "templates" directory is included in the package build.',
@@ -76,13 +80,15 @@ export class HtmlReporter implements Reporter {
     }
 
     const cssPath = path.join(templateDir, 'styles.css');
-    if (!fs.existsSync(cssPath)) {
+    let css: string;
+    try {
+      css = await readFile(cssPath, 'utf-8');
+    } catch {
       throw new Error(
         `HTML report styles not found at ${cssPath}. ` +
           'Ensure the "templates" directory is included in the package build.',
       );
     }
-    const css = fs.readFileSync(cssPath, 'utf-8');
 
     const eta = new Eta({ views: templateDir, autoEscape: false });
     const html = eta.render('./index.html.eta', {

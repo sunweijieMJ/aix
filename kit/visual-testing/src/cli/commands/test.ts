@@ -106,7 +106,7 @@ async function runTest(
   // 首次运行引导：检测是否大量测试因缺少基准图而失败
   const failedResults = results.filter((r) => !r.passed);
   const missingBaselineResults = failedResults.filter(
-    (r) => r.mismatchPercentage === 100,
+    (r) => r.error?.step === 'baseline',
   );
   if (
     !options.update &&

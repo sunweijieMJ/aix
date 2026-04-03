@@ -30,7 +30,6 @@ export interface ServerConfig {
 export class DevServer {
   private process: ChildProcess | null = null;
   private config: ServerConfig;
-  private exitListener: (() => void) | null = null;
 
   constructor(config: ServerConfig) {
     this.config = config;
@@ -73,14 +72,10 @@ export class DevServer {
         });
       }
 
-      // 监听进程退出
-      this.exitListener = () => {
-        this.process = null;
-        this.exitListener = null;
-      };
+      // 监听进程退出，清空引用
       this.process.on('exit', (code) => {
         log.info(`Dev server exited with code ${code}`);
-        this.exitListener?.();
+        this.process = null;
       });
 
       // 等待服务器就绪

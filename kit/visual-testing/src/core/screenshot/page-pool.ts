@@ -113,11 +113,9 @@ export class PagePool {
       log.debug(
         `Page allocated to waiting request (pool: ${this.pool.length}, busy: ${this.busy.size}, waiting: ${this.waitingQueue.length})`,
       );
-      // 异步重置并分配
+      // 异步重置并分配（resetAndResolve 内部已处理旧 page 的清理）
       this.resetAndResolve(page, waiter.resolve).catch((error) => {
         log.error('Failed to reset page for waiting request', error);
-        this.busy.delete(page);
-        page.close().catch(() => {});
         waiter.reject(
           new Error('Failed to acquire page: reset and creation both failed', {
             cause: error,

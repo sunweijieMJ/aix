@@ -2,8 +2,7 @@
  * 评分工具函数 - 供 rule-based provider 和 conclusion-reporter 共享
  */
 
-import type { Severity } from '../types/llm';
-import type { Assessment } from '../types/llm';
+import type { Severity, Assessment } from '../types/llm';
 
 /**
  * 百分比 → 严重性映射

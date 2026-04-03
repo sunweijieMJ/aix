@@ -66,11 +66,32 @@ export function analyzeDiffRegions(diff: PNG): DiffRegion[] {
 
 /**
  * 合并相邻的差异单元格为更大的区域
+ *
+ * 使用网格坐标哈希表实现 O(n) 邻接查找，
+ * 避免对每个格子全量遍历（原 O(n²) 在高分辨率大量差异格子时有性能风险）。
  */
 function mergeAdjacentCells(
   cells: Array<{ x: number; y: number; w: number; h: number; pixels: number }>,
 ): DiffRegion[] {
   if (cells.length === 0) return [];
+
+  // 构建网格坐标 → cell 索引的查找表
+  const cellMap = new Map<string, number>();
+  for (let i = 0; i < cells.length; i++) {
+    const cell = cells[i]!;
+    const gx = cell.x / GRID_SIZE;
+    const gy = cell.y / GRID_SIZE;
+    cellMap.set(`${gx},${gy}`, i);
+  }
+
+  // 8 个邻居方向（包括对角）+ 额外 1 格间距容差（共 24 个方向）
+  const neighborOffsets: Array<[number, number]> = [];
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      neighborOffsets.push([dx, dy]);
+    }
+  }
 
   const visited = new Set<number>();
   const regions: DiffRegion[] = [];
@@ -79,37 +100,35 @@ function mergeAdjacentCells(
     if (visited.has(i)) continue;
 
     // BFS 合并相邻格子
-    const group: number[] = [];
     const queue = [i];
     visited.add(i);
 
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      group.push(current);
-
-      for (let j = 0; j < cells.length; j++) {
-        if (visited.has(j)) continue;
-        if (areCellsAdjacent(cells[current]!, cells[j]!)) {
-          visited.add(j);
-          queue.push(j);
-        }
-      }
-    }
-
-    // 计算合并后的边界框
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
     let totalPixels = 0;
 
-    for (const idx of group) {
-      const cell = cells[idx]!;
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const cell = cells[current]!;
+
       minX = Math.min(minX, cell.x);
       minY = Math.min(minY, cell.y);
       maxX = Math.max(maxX, cell.x + cell.w);
       maxY = Math.max(maxY, cell.y + cell.h);
       totalPixels += cell.pixels;
+
+      // 只查找有限方向的邻居，而非遍历全部格子
+      const gx = cell.x / GRID_SIZE;
+      const gy = cell.y / GRID_SIZE;
+      for (const [dx, dy] of neighborOffsets) {
+        const neighborIdx = cellMap.get(`${gx + dx},${gy + dy}`);
+        if (neighborIdx !== undefined && !visited.has(neighborIdx)) {
+          visited.add(neighborIdx);
+          queue.push(neighborIdx);
+        }
+      }
     }
 
     regions.push({
@@ -125,18 +144,4 @@ function mergeAdjacentCells(
   }
 
   return regions;
-}
-
-/**
- * 判断两个格子是否相邻（包括对角相邻）
- */
-function areCellsAdjacent(
-  a: { x: number; y: number; w: number; h: number },
-  b: { x: number; y: number; w: number; h: number },
-): boolean {
-  // 允许 1 个格子间距的容差
-  const tolerance = GRID_SIZE;
-  const xOverlap = a.x < b.x + b.w + tolerance && b.x < a.x + a.w + tolerance;
-  const yOverlap = a.y < b.y + b.h + tolerance && b.y < a.y + a.h + tolerance;
-  return xOverlap && yOverlap;
 }
