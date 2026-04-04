@@ -1,9 +1,8 @@
 {
   "extends": "@kit/typescript-config/base-app.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
+      "@/*": ["./src/*"],
       "@aix/rich-text-editor": ["../../packages/rich-text-editor/src"],
       "@aix/theme": ["../../packages/theme/src"],
       "@aix/hooks": ["../../packages/hooks/src"]
