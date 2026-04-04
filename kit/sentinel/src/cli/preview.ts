@@ -51,9 +51,6 @@ export function printConfigPreview(config: InstallConfig): void {
 
     if (config.phases.includes(2)) {
       console.log(
-        `  部署 workflow: ${chalk.white(config.deployWorkflow ?? 'Deploy Production')}`,
-      );
-      console.log(
         `  冒烟测试:      ${chalk.white(config.smokeTestCmd ?? `${config.packageManager} test:smoke`)}`,
       );
     }
@@ -82,7 +79,10 @@ export function printConfigPreview(config: InstallConfig): void {
   }
 
   // 高级设置
-  const hasAdvanced = config.model || config.maxTurns || config.prDailyLimit;
+  const hasAdvanced =
+    (config.model && config.model !== DEFAULT_MODEL) ||
+    (config.maxTurns && config.maxTurns !== DEFAULT_MAX_TURNS) ||
+    (config.prDailyLimit && config.prDailyLimit !== DEFAULT_PR_DAILY_LIMIT);
   if (hasAdvanced) {
     console.log(chalk.bold('\n高级设置:'));
     if (config.model && config.model !== DEFAULT_MODEL) {
@@ -97,11 +97,17 @@ export function printConfigPreview(config: InstallConfig): void {
   }
 
   // 将写入的文件
+  // TODO: 扩展新平台时，路径应从 PlatformAdapter.getPipelineDir() 获取
   console.log(chalk.bold('\n将写入文件:'));
   for (const p of [...config.phases].sort()) {
     const pc = PHASE_CONFIGS[p];
     for (const wf of pc.workflows) {
       console.log(chalk.gray(`  .github/workflows/${wf}`));
+    }
+    if (pc.extraFiles) {
+      for (const extra of pc.extraFiles) {
+        console.log(chalk.gray(`  ${extra.dest}`));
+      }
     }
   }
   console.log(chalk.gray('  CLAUDE.md (补丁)'));

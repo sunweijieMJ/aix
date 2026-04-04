@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/core/validator.js', () => ({
@@ -19,12 +18,6 @@ vi.mock('../src/core/label-creator.js', () => ({
 
 vi.mock('../src/core/secrets-checker.js', () => ({
   checkSecrets: vi.fn(),
-}));
-
-vi.mock('../src/utils/file.js', () => ({
-  readTemplate: vi.fn(async () => '// sentry worker template'),
-  writeFile: vi.fn(),
-  ensureDir: vi.fn(),
 }));
 
 vi.mock('../src/platform/index.js', () => ({
@@ -60,7 +53,6 @@ import { writeWorkflows } from '../src/core/workflow-writer.js';
 import { patchClaudeMd } from '../src/core/claude-md-patcher.js';
 import { createLabels } from '../src/core/label-creator.js';
 import { checkSecrets } from '../src/core/secrets-checker.js';
-import { readTemplate, writeFile, ensureDir } from '../src/utils/file.js';
 import { logger } from '../src/utils/logger.js';
 import type { InstallConfig } from '../src/types/index.js';
 
@@ -69,10 +61,7 @@ const mockedWriteWorkflows = vi.mocked(writeWorkflows);
 const mockedPatchClaudeMd = vi.mocked(patchClaudeMd);
 const mockedCreateLabels = vi.mocked(createLabels);
 const mockedCheckSecrets = vi.mocked(checkSecrets);
-const mockedReadTemplate = vi.mocked(readTemplate);
-const mockedWriteFile = vi.mocked(writeFile);
-const mockedEnsureDir = vi.mocked(ensureDir);
-const mockedLogger = vi.mocked(logger);
+vi.mocked(logger);
 
 function createConfig(overrides?: Partial<InstallConfig>): InstallConfig {
   return {
@@ -246,63 +235,66 @@ describe('install', () => {
     );
   });
 
-  it('should output sentry worker template when phase 3 is selected', async () => {
+  it('should pass phase 3 config with extraFiles to writeWorkflows', async () => {
     setupSuccessMocks();
-    mockedWriteWorkflows.mockResolvedValue(['sentinel-sentry.yml']);
+    mockedWriteWorkflows.mockResolvedValue([
+      'sentinel-sentry.yml',
+      '/tmp/test-repo/workers/sentry-webhook.ts',
+      '/tmp/test-repo/workers/wrangler.toml',
+    ]);
 
     await install(createConfig({ phases: [3] }));
 
-    expect(mockedReadTemplate).toHaveBeenCalledWith('worker/sentry-webhook.ts');
-    expect(mockedReadTemplate).toHaveBeenCalledWith('worker/wrangler.toml');
-    expect(mockedEnsureDir).toHaveBeenCalledWith(
-      expect.stringContaining('workers'),
-    );
-    expect(mockedWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining(path.join('workers', 'sentry-webhook.ts')),
-      expect.any(String),
-    );
-    expect(mockedWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining(path.join('workers', 'wrangler.toml')),
-      expect.any(String),
+    expect(mockedWriteWorkflows).toHaveBeenCalledWith(
+      expect.objectContaining({ phases: [3] }),
+      expect.objectContaining({
+        phase: 3,
+        extraFiles: expect.arrayContaining([
+          expect.objectContaining({ template: 'worker/sentry-webhook.ts' }),
+          expect.objectContaining({ template: 'worker/wrangler.toml' }),
+        ]),
+      }),
+      expect.any(Object),
     );
   });
 
-  it('should not output sentry worker when phase 3 is not selected', async () => {
+  it('should not pass extraFiles config when phase 3 is not selected', async () => {
     setupSuccessMocks();
 
     await install(createConfig({ phases: [1] }));
 
-    expect(mockedReadTemplate).not.toHaveBeenCalledWith(
-      'worker/sentry-webhook.ts',
+    expect(mockedWriteWorkflows).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.not.objectContaining({ extraFiles: expect.anything() }),
+      expect.any(Object),
     );
-    expect(mockedReadTemplate).not.toHaveBeenCalledWith('worker/wrangler.toml');
   });
 
-  it('should replace __OWNER__ and __REPO__ in worker when provided', async () => {
+  it('should pass owner and repo to writeWorkflows for phase 3', async () => {
     setupSuccessMocks();
     mockedWriteWorkflows.mockResolvedValue(['sentinel-sentry.yml']);
-    mockedReadTemplate.mockResolvedValue(
-      "const OWNER = '__OWNER__';\nconst REPO = '__REPO__';",
-    );
 
     await install(
       createConfig({ phases: [3], owner: 'my-org', repo: 'my-app' }),
     );
 
-    expect(mockedWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining(path.join('workers', 'sentry-webhook.ts')),
-      "const OWNER = 'my-org';\nconst REPO = 'my-app';",
+    expect(mockedWriteWorkflows).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: 'my-org', repo: 'my-app' }),
+      expect.objectContaining({ phase: 3 }),
+      expect.any(Object),
     );
   });
 
-  it('should warn when phase 3 owner/repo are not provided', async () => {
+  it('should pass config without owner/repo to writeWorkflows when not provided', async () => {
     setupSuccessMocks();
     mockedWriteWorkflows.mockResolvedValue(['sentinel-sentry.yml']);
 
     await install(createConfig({ phases: [3] }));
 
-    expect(mockedLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('__OWNER__'),
+    expect(mockedWriteWorkflows).toHaveBeenCalledWith(
+      expect.not.objectContaining({ owner: expect.any(String) }),
+      expect.objectContaining({ phase: 3 }),
+      expect.any(Object),
     );
   });
 });

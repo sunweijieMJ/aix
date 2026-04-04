@@ -65,6 +65,17 @@ async function runUninstall(options: {
     }
   }
 
+  // Phase 3 Worker 文件（不在 pipeline 目录内，需单独检查）
+  const workerFiles = [
+    path.join(target, 'workers', 'sentry-webhook.ts'),
+    path.join(target, 'workers', 'wrangler.toml'),
+  ];
+  for (const filePath of workerFiles) {
+    if (await pathExists(filePath)) {
+      filesToRemove.push(filePath);
+    }
+  }
+
   const claudeMdPath = path.join(target, 'CLAUDE.md');
   const claudeMdExists = await pathExists(claudeMdPath);
   let claudeMdHasMarker = false;
@@ -107,10 +118,20 @@ async function runUninstall(options: {
     }
   }
 
-  // 移除 pipeline 文件
+  // 移除 pipeline 文件和 worker 文件
   for (const file of filesToRemove) {
     await fse.remove(file);
     logger.success(`已移除: ${file}`);
+  }
+
+  // 清理空的 workers/ 目录
+  const workerDir = path.join(target, 'workers');
+  if (await pathExists(workerDir)) {
+    const remaining = await fse.readdir(workerDir);
+    if (remaining.length === 0) {
+      await fse.remove(workerDir);
+      logger.debug('已移除空目录: workers/');
+    }
   }
 
   // 移除 CLAUDE.md 中的 sentinel 段落

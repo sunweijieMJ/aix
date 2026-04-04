@@ -58,7 +58,7 @@ __PACKAGE_MANAGER_SETUP__
         continue-on-error: true
         run: |
           set +e
-          LINT_OUTPUT=$(__RUN_CMD__ lint 2>&1)
+          LINT_OUTPUT=$(__LINT_CMD__ 2>&1)
           LINT_EXIT=$?
           set -e
 
@@ -75,7 +75,7 @@ __PACKAGE_MANAGER_SETUP__
         continue-on-error: true
         run: |
           set +e
-          TC_OUTPUT=$(__RUN_CMD__ type-check 2>&1)
+          TC_OUTPUT=$(__TYPECHECK_CMD__ 2>&1)
           TC_EXIT=$?
           set -e
 
@@ -92,7 +92,7 @@ __PACKAGE_MANAGER_SETUP__
         continue-on-error: true
         run: |
           set +e
-          TEST_OUTPUT=$(__RUN_CMD__ test 2>&1)
+          TEST_OUTPUT=$(__TEST_CMD__ 2>&1)
           TEST_EXIT=$?
           set -e
 
@@ -209,15 +209,15 @@ __PACKAGE_MANAGER_SETUP__
 
       - name: 验证 - 类型检查
         if: steps.commit.outputs.has_changes == 'true'
-        run: __RUN_CMD__ type-check
+        run: __TYPECHECK_CMD__
 
       - name: 验证 - Lint 检查
         if: steps.commit.outputs.has_changes == 'true'
-        run: __RUN_CMD__ lint
+        run: __LINT_CMD__
 
       - name: 验证 - 单元测试
         if: steps.commit.outputs.has_changes == 'true' && contains(env.CHECKS, 'test')
-        run: __RUN_CMD__ test
+        run: __TEST_CMD__
 
       - name: 校验修改文件
         if: steps.commit.outputs.has_changes == 'true'

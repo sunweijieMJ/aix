@@ -26,8 +26,6 @@ export interface InstallConfig {
   nodeVersion: string;
   /** GitHub reviewers */
   reviewers?: string;
-  /** 部署 workflow 名称（Phase 2 post-deploy 触发用） */
-  deployWorkflow?: string;
   /** CI 平台，默认 'github' */
   platform: Platform;
   /** 允许 AI 修改的文件路径模式（bash regex），默认 ["^src/"] */
@@ -77,6 +75,8 @@ export interface PhaseConfig {
   secrets: string[];
   /** 所需的 CI variables */
   variables: string[];
+  /** 额外的模板文件（非 pipeline，如 worker 脚本） */
+  extraFiles?: { template: string; dest: string }[];
 }
 
 export const DEFAULT_ALLOWED_PATHS = ['^src/'];
@@ -125,6 +125,13 @@ export const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
     labels: ['sentinel', 'bot', 'sentry'],
     secrets: ['ANTHROPIC_API_KEY', 'SENTINEL_PAT'],
     variables: ['SENTINEL_ENABLED', 'SENTINEL_REVIEWERS'],
+    extraFiles: [
+      {
+        template: 'worker/sentry-webhook.ts',
+        dest: 'workers/sentry-webhook.ts',
+      },
+      { template: 'worker/wrangler.toml', dest: 'workers/wrangler.toml' },
+    ],
   },
   4: {
     phase: 4,

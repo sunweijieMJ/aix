@@ -143,18 +143,11 @@ async function promptPhaseConfig(
     const answers = await inquirer.prompt([
       {
         type: 'input',
-        name: 'deployWorkflow',
-        message: '[Phase 2] 部署 workflow 名称:',
-        default: 'Deploy Production',
-      },
-      {
-        type: 'input',
         name: 'smokeTestCmd',
         message: '[Phase 2] 冒烟测试命令:',
         default: `${buildRunCmd(packageManager)} test:smoke`,
       },
     ]);
-    config.deployWorkflow = answers.deployWorkflow as string;
     config.smokeTestCmd = answers.smokeTestCmd as string;
   }
 

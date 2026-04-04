@@ -54,7 +54,8 @@ export async function writeWorkflows(
     DEFAULT_BRANCH: defaultBranch,
     REVIEWERS: reviewers,
     REVIEWER_FLAG: reviewers ? `--reviewer "${reviewers}"` : '',
-    DEPLOY_WORKFLOW: config.deployWorkflow ?? 'Deploy Production',
+    OWNER: config.owner ?? '',
+    REPO: config.repo ?? '',
     ALLOWED_PATHS_REGEX: allowedPaths.join('|'),
     ALLOWED_PATHS_DISPLAY: formatAllowedPathsDisplay(allowedPaths),
     ALLOWED_PATHS_GIT_ADD: formatAllowedPathsGitAdd(allowedPaths),
@@ -94,6 +95,36 @@ export async function writeWorkflows(
 
     writtenFiles.push(destPath);
     logger.debug(`已写入 pipeline: ${destPath}`);
+  }
+
+  // 写入额外文件（如 Phase 3 的 Worker 脚本）
+  if (phase.extraFiles) {
+    for (const extra of phase.extraFiles) {
+      const destPath = path.join(config.target, extra.dest);
+      const content = await readTemplate(extra.template);
+      const rendered = renderTemplate(content, vars);
+
+      if (config.dryRun) {
+        logger.info(`[dry-run] 将写入: ${destPath}`);
+        writtenFiles.push(destPath);
+        continue;
+      }
+
+      await ensureDir(path.dirname(destPath));
+      await writeFile(destPath, rendered);
+      writtenFiles.push(destPath);
+      logger.debug(`已写入额外文件: ${destPath}`);
+    }
+
+    // OWNER/REPO 未配置时提示用户手动填写
+    if (
+      (!config.owner || !config.repo) &&
+      phase.extraFiles.some((f) => f.dest.includes('sentry'))
+    ) {
+      logger.warn(
+        'Worker 中 __OWNER__ 和 __REPO__ 未替换，请手动编辑 workers/sentry-webhook.ts 填入实际的 GitHub owner 和 repo',
+      );
+    }
   }
 
   return writtenFiles;

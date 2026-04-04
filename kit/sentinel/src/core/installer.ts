@@ -5,19 +5,13 @@
  * 验证环境 → 写入 pipelines → 创建 labels → 补丁 CLAUDE.md → 检查 secrets
  */
 
-import path from 'node:path';
-
 import type {
   InstallConfig,
   InstallResult,
   PhaseConfig,
 } from '../types/index.js';
 import { DEFAULT_ALLOWED_PATHS, PHASE_CONFIGS } from '../types/index.js';
-import {
-  formatAllowedPathsDisplay,
-  renderTemplate,
-} from '../utils/template.js';
-import { readTemplate, writeFile, ensureDir } from '../utils/file.js';
+import { formatAllowedPathsDisplay } from '../utils/template.js';
 import { createPlatformAdapter } from '../platform/index.js';
 import { validateEnvironment } from './validator.js';
 import { writeWorkflows } from './workflow-writer.js';
@@ -56,50 +50,6 @@ export async function install(config: InstallConfig): Promise<InstallResult> {
 
     const workflows = await writeWorkflows(config, phase, adapter);
     allOutputFiles.push(...workflows);
-  }
-
-  // 3.5 Phase 3: 输出 Sentry Worker 模板到目标仓库
-  if (config.phases.includes(3)) {
-    const workerDir = path.join(config.target, 'workers');
-    const workerDest = path.join(workerDir, 'sentry-webhook.ts');
-
-    const rawWorkerContent = await readTemplate('worker/sentry-webhook.ts');
-    const workerVars: Record<string, string> = {};
-    if (config.owner && config.repo) {
-      workerVars.OWNER = config.owner;
-      workerVars.REPO = config.repo;
-    }
-    const workerContent =
-      Object.keys(workerVars).length > 0
-        ? renderTemplate(rawWorkerContent, workerVars)
-        : rawWorkerContent;
-
-    if (config.dryRun) {
-      logger.info(`[dry-run] 将写入: ${workerDest}`);
-    } else {
-      await ensureDir(workerDir);
-      await writeFile(workerDest, workerContent);
-      logger.debug(`已写入 Sentry Worker: ${workerDest}`);
-    }
-
-    if (!config.owner || !config.repo) {
-      logger.warn(
-        'Worker 中 __OWNER__ 和 __REPO__ 未替换，请手动编辑 workers/sentry-webhook.ts 填入实际的 GitHub owner 和 repo',
-      );
-    }
-
-    allOutputFiles.push(workerDest);
-
-    // 写入 wrangler.toml
-    const rawWranglerContent = await readTemplate('worker/wrangler.toml');
-    const wranglerDest = path.join(workerDir, 'wrangler.toml');
-    if (config.dryRun) {
-      logger.info(`[dry-run] 将写入: ${wranglerDest}`);
-    } else {
-      await writeFile(wranglerDest, rawWranglerContent);
-      logger.debug(`已写入 Wrangler 配置: ${wranglerDest}`);
-    }
-    allOutputFiles.push(wranglerDest);
   }
 
   // 4. 创建 labels（先去重再调用，避免重复 API 请求）

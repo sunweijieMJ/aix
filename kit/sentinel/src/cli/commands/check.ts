@@ -9,7 +9,11 @@ import chalk from 'chalk';
 import type { Command } from 'commander';
 
 import type { Phase, Platform } from '../../types/index.js';
-import { PHASE_CONFIGS, VALID_PLATFORMS } from '../../types/index.js';
+import {
+  PHASE_CONFIGS,
+  VALID_PLATFORMS,
+  MARKER_START,
+} from '../../types/index.js';
 import { createPlatformAdapter } from '../../platform/index.js';
 import { pathExists, readFile } from '../../utils/file.js';
 import { logger } from '../../utils/logger.js';
@@ -107,7 +111,7 @@ async function runCheck(options: {
 
   if (await pathExists(claudeMdPath)) {
     const content = await readFile(claudeMdPath);
-    const hasMarker = content.includes('<!-- sentinel:start -->');
+    const hasMarker = content.includes(MARKER_START);
     const status = hasMarker
       ? chalk.green('已注入 sentinel 规范')
       : chalk.yellow('存在但未注入 sentinel 规范');
