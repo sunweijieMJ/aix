@@ -83,7 +83,7 @@ const loginRoute = createRoute({
 });
 
 // @ts-expect-error - OpenAPIHono handler 严格类型与 errorHandler 不兼容，但运行时正常
-auth.openapi(loginRoute, async c => {
+auth.openapi(loginRoute, async (c) => {
   const { username, password } = c.req.valid('json');
 
   const user = users.get(username);
@@ -153,7 +153,7 @@ const getMeRoute = createRoute({
 // 应用认证中间件到 /me 路由
 auth.use('/me', authMiddleware);
 
-auth.openapi(getMeRoute, async c => {
+auth.openapi(getMeRoute, async (c) => {
   // 认证中间件已验证 token，直接从 context 获取用户信息
   const payload = c.get('user');
   const user = users.get(payload.username);
@@ -174,7 +174,7 @@ auth.openapi(getMeRoute, async c => {
   });
 });
 
-auth.openapi(getMeRoute, async c => {
+auth.openapi(getMeRoute, async (c) => {
   // 认证中间件已验证 token，直接从 context 获取用户信息
   const payload = c.get('user');
   const user = users.get(payload.username);

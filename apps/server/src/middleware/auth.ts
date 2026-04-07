@@ -17,7 +17,9 @@ type Variables = {
  * 验证 Authorization header 中的 Bearer token
  * 将解析后的用户信息存储到 c.set('user', payload)
  */
-export const authMiddleware: MiddlewareHandler<{ Variables: Variables }> = async (c, next) => {
+export const authMiddleware: MiddlewareHandler<{
+  Variables: Variables;
+}> = async (c, next) => {
   const authHeader = c.req.header('Authorization');
 
   if (!authHeader?.startsWith('Bearer ')) {

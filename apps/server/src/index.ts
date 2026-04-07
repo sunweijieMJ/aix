@@ -25,7 +25,7 @@ app.onError(errorHandler);
 app.use(
   '*',
   cors({
-    origin: env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim()),
+    origin: env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()),
     credentials: true,
   }),
 );
@@ -49,7 +49,7 @@ app.doc('/openapi.json', {
 });
 
 // 根路由
-app.get('/', c => {
+app.get('/', (c) => {
   return c.json({
     name: '@aix/server',
     version: '2.0.0',
@@ -76,7 +76,7 @@ app.route('/health', health);
 app.route('/api/auth', auth);
 
 // 404 处理
-app.notFound(c => {
+app.notFound((c) => {
   return c.json({ code: 404, message: 'Not Found' }, 404);
 });
 

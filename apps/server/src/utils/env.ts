@@ -29,7 +29,12 @@ export const env = parsed.data;
 
 // 生产环境额外检查
 if (env.NODE_ENV === 'production') {
-  const insecureSecrets = ['your-secret-key-change-in-production', 'secret', 'password', 'changeme'];
+  const insecureSecrets = [
+    'your-secret-key-change-in-production',
+    'secret',
+    'password',
+    'changeme',
+  ];
 
   if (insecureSecrets.includes(env.JWT_SECRET.toLowerCase())) {
     console.error('🚨 FATAL: Insecure JWT_SECRET detected in production!');

@@ -1,13 +1,5 @@
 import videojs from 'video.js';
-import {
-  ref,
-  shallowRef,
-  computed,
-  watch,
-  onBeforeUnmount,
-  type Ref,
-  type ComputedRef,
-} from 'vue';
+import { ref, shallowRef, computed, watch, onBeforeUnmount, type Ref, type ComputedRef } from 'vue';
 import { StreamProtocol, detectProtocol, DEFAULT_VIDEOJS_OPTIONS } from '../constants';
 import type { VideoJsPlayer, VideoJsOptions } from '../types';
 import { isMobileDevice } from '../utils';
@@ -19,15 +11,16 @@ import {
   type EngineType,
 } from './usePlaybackController';
 import { usePlayerState } from './usePlayerState';
-import {
-  useStreamAdapter,
-  type StreamAdapterOptions,
-} from './useStreamAdapter';
+import { useStreamAdapter, type StreamAdapterOptions } from './useStreamAdapter';
 
 /**
  * 视频源类型
  */
-export type VideoSourceType = 'video/mp4' | 'video/x-flv' | 'application/x-mpegURL' | 'application/dash+xml';
+export type VideoSourceType =
+  | 'video/mp4'
+  | 'video/x-flv'
+  | 'application/x-mpegURL'
+  | 'application/dash+xml';
 
 /**
  * useVideoPlayer 配置选项
@@ -169,8 +162,8 @@ export function useVideoPlayer(
   // 引擎类型检测
   // ==========================================
 
-  const detectedProtocol = computed(() =>
-    options.value.streamOptions?.protocol || detectProtocol(uri.value),
+  const detectedProtocol = computed(
+    () => options.value.streamOptions?.protocol || detectProtocol(uri.value),
   );
 
   const engineType = computed<EngineType>(() => {
@@ -283,24 +276,30 @@ export function useVideoPlayer(
     vjsPlayer.muted(shouldMute);
     stateRefs.isMuted.value = shouldMute;
 
-    vjsPlayer.play()?.then(() => {
-      stateRefs.autoPlayFailed.value = false;
-    }).catch(() => {
-      if (!shouldMute) {
-        log('有声自动播放失败，降级为静音播放');
-        vjsPlayer.muted(true);
-        stateRefs.isMuted.value = true;
-        vjsPlayer.play()?.then(() => {
-          stateRefs.autoPlayFailed.value = false;
-        }).catch(() => {
-          logError('静音自动播放也失败');
+    vjsPlayer
+      .play()
+      ?.then(() => {
+        stateRefs.autoPlayFailed.value = false;
+      })
+      .catch(() => {
+        if (!shouldMute) {
+          log('有声自动播放失败，降级为静音播放');
+          vjsPlayer.muted(true);
+          stateRefs.isMuted.value = true;
+          vjsPlayer
+            .play()
+            ?.then(() => {
+              stateRefs.autoPlayFailed.value = false;
+            })
+            .catch(() => {
+              logError('静音自动播放也失败');
+              stateRefs.autoPlayFailed.value = true;
+            });
+        } else {
+          logError('静音自动播放失败');
           stateRefs.autoPlayFailed.value = true;
-        });
-      } else {
-        logError('静音自动播放失败');
-        stateRefs.autoPlayFailed.value = true;
-      }
-    });
+        }
+      });
   }
 
   // ==========================================
@@ -406,14 +405,17 @@ export function useVideoPlayer(
           // 延迟播放，等待 adapter 重新初始化
           setTimeout(() => {
             if (isDestroying) return;
-            video.play()?.then(() => {
-              stateRefs.autoPlayFailed.value = false;
-              clearReconnectTimeout();
-              stateRefs.isReconnecting.value = false;
-            }).catch(() => {
-              clearReconnectTimeout();
-              stateRefs.isReconnecting.value = false;
-            });
+            video
+              .play()
+              ?.then(() => {
+                stateRefs.autoPlayFailed.value = false;
+                clearReconnectTimeout();
+                stateRefs.isReconnecting.value = false;
+              })
+              .catch(() => {
+                clearReconnectTimeout();
+                stateRefs.isReconnecting.value = false;
+              });
           }, 200);
         }
       } else {
@@ -472,23 +474,29 @@ export function useVideoPlayer(
         startHealthCheck();
 
         if (wasPlaying) {
-          vjsPlayer.play()?.then(() => {
-            stateRefs.autoPlayFailed.value = false;
-            clearReconnectTimeout();
-            stateRefs.isReconnecting.value = false;
-          }).catch(() => {
-            // 降级静音播放
-            vjsPlayer.muted(true);
-            stateRefs.isMuted.value = true;
-            vjsPlayer.play()?.then(() => {
+          vjsPlayer
+            .play()
+            ?.then(() => {
               stateRefs.autoPlayFailed.value = false;
               clearReconnectTimeout();
               stateRefs.isReconnecting.value = false;
-            }).catch(() => {
-              clearReconnectTimeout();
-              stateRefs.isReconnecting.value = false;
+            })
+            .catch(() => {
+              // 降级静音播放
+              vjsPlayer.muted(true);
+              stateRefs.isMuted.value = true;
+              vjsPlayer
+                .play()
+                ?.then(() => {
+                  stateRefs.autoPlayFailed.value = false;
+                  clearReconnectTimeout();
+                  stateRefs.isReconnecting.value = false;
+                })
+                .catch(() => {
+                  clearReconnectTimeout();
+                  stateRefs.isReconnecting.value = false;
+                });
             });
-          });
         } else {
           clearReconnectTimeout();
           stateRefs.isReconnecting.value = false;

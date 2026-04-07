@@ -25,7 +25,7 @@ const healthRoute = createRoute({
   },
 });
 
-health.openapi(healthRoute, c => {
+health.openapi(healthRoute, (c) => {
   return c.json({
     code: 200,
     message: 'Success',

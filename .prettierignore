@@ -4,4 +4,7 @@ build
 es
 lib
 *.md
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
 kit/sentinel/templates

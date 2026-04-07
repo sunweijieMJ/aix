@@ -69,6 +69,7 @@
     "@commitlint/format": "^20.5.0",
     "@commitlint/types": "^20.5.0",
     "@kit/eslint-config": "workspace:^",
+    "@kit/prettier-config": "workspace:^",
     "@kit/stylelint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@rollup/plugin-commonjs": "^29.0.2",
