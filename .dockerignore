@@ -1,0 +1,31 @@
+# 依赖和构建产物
+node_modules
+**/node_modules
+**/dist
+**/es
+**/lib
+**/.turbo
+
+# 运行时数据（通过 volume 挂载）
+apps/server/storage
+
+# 开发工具
+.git
+.gitignore
+**/.storybook
+**/stories
+**/__test__
+**/__tests__
+**/coverage
+**/*.test.ts
+**/*.spec.ts
+
+# 文档
+*.md
+docs
+apps/docs
+
+# 其他
+.env*
+*.log
+.DS_Store

@@ -36,9 +36,8 @@ tmp
 temp
 *.tmp
 
-# Database
-*.db
-*.sqlite
+# 运行时持久化目录（不提交）
+storage/
 data/
 
 # OS files

@@ -11,9 +11,16 @@ import { logger } from './middleware/logger';
 import { errorHandler } from './middleware/error';
 import { env } from './utils/env';
 
+// 数据库
+import { initDb } from './db/index';
+
 // 路由
 import health from './routes/health';
-import auth from './routes/auth';
+import docs from './routes/docs';
+import config from './routes/config';
+
+// 初始化数据库
+initDb();
 
 // 创建 OpenAPIHono 实例
 const app = new OpenAPIHono();
@@ -58,7 +65,6 @@ app.get('/', (c) => {
       swagger: '/docs',
       openapi: '/openapi.json',
       health: '/health',
-      auth: '/api/auth/*',
     },
   });
 });
@@ -73,7 +79,8 @@ app.get(
 
 // 注册路由
 app.route('/health', health);
-app.route('/api/auth', auth);
+app.route('/api/docs', docs);
+app.route('/api', config);
 
 // 404 处理
 app.notFound((c) => {
@@ -82,16 +89,7 @@ app.notFound((c) => {
 
 // 启动服务器
 const port = env.PORT;
-console.log(`🚀 Server is running on http://localhost:${port}`);
-console.log(`📝 Environment: ${env.NODE_ENV}`);
-console.log('');
-console.log('Available endpoints:');
-console.log(`  📖 GET  /docs               - Swagger UI 文档`);
-console.log(`  📄 GET  /openapi.json       - OpenAPI JSON`);
-console.log(`  🏠 GET  /                   - API 信息`);
-console.log(`  ❤️  GET  /health            - 健康检查`);
-console.log(`  🔐 POST /api/auth/login     - 登录`);
-console.log(`  👤 GET  /api/auth/me        - 获取用户信息`);
+console.log(`🚀 Server running on http://localhost:${port} (${env.NODE_ENV})`);
 
 serve({
   fetch: app.fetch,

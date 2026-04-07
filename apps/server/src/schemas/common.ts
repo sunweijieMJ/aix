@@ -16,10 +16,3 @@ export const ErrorResponseSchema = z.object({
   code: z.number().openapi({ example: 400 }),
   message: z.string().openapi({ example: 'Error message' }),
 });
-
-// JWT Payload Schema
-export const JWTPayloadSchema = z.object({
-  userId: z.string(),
-  username: z.string(),
-  role: z.enum(['admin', 'user']),
-});
