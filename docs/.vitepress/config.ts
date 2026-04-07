@@ -137,7 +137,7 @@ export default withMermaid(
               { text: 'AI 自动修复', link: '/rfcs/sentinel-design-draft' },
               {
                 text: '定制化项目代码合并方案',
-                link: '/rfcs/customization-merge-strategy',
+                link: '/rfcs/override-layer-architecture',
               },
               { text: '埋点数据采集', link: '/rfcs/tracker' },
               { text: 'AI 编码规范预设', link: '/rfcs/ai-preset' },
