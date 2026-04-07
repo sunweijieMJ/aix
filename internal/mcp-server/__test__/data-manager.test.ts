@@ -62,19 +62,18 @@ describe('DataManager', () => {
       await dataManager.saveComponentsByPackage(mockComponents);
 
       expect(fs.mkdir).toHaveBeenCalledWith(testDataDir, { recursive: true });
-      expect(fs.mkdir).toHaveBeenCalledWith(
-        path.join(testDataDir, 'packages'),
-        { recursive: true },
-      );
+      expect(fs.mkdir).toHaveBeenCalledWith(path.join(testDataDir, 'packages'), {
+        recursive: true,
+      });
     });
 
     it('应该处理保存失败的情况', async () => {
       vi.mocked(fs.mkdir).mockResolvedValue(undefined);
       vi.mocked(fs.writeFile).mockRejectedValue(new Error('Permission denied'));
 
-      await expect(
-        dataManager.saveComponentsByPackage(mockComponents),
-      ).rejects.toThrow('Permission denied');
+      await expect(dataManager.saveComponentsByPackage(mockComponents)).rejects.toThrow(
+        'Permission denied',
+      );
     });
 
     it('应该保存主索引文件', async () => {
@@ -86,9 +85,7 @@ describe('DataManager', () => {
       // 验证主索引文件被保存
       const indexWriteCall = vi
         .mocked(fs.writeFile)
-        .mock.calls.find((call) =>
-          call[0].toString().includes('components-index.json'),
-        );
+        .mock.calls.find((call) => call[0].toString().includes('components-index.json'));
 
       expect(indexWriteCall).toBeDefined();
     });
@@ -102,9 +99,7 @@ describe('DataManager', () => {
       // 搜索索引已改为运行时内存构建，不再持久化
       const searchIndexWriteCall = vi
         .mocked(fs.writeFile)
-        .mock.calls.find((call) =>
-          call[0].toString().includes('search-index.json'),
-        );
+        .mock.calls.find((call) => call[0].toString().includes('search-index.json'));
 
       expect(searchIndexWriteCall).toBeUndefined();
     });
@@ -189,15 +184,11 @@ describe('DataManager', () => {
       await dataManager.saveComponentsByPackage(multiPackageComponents);
 
       // 验证每个包都有单独的数据文件 (跨平台路径匹配)
-      const packageWriteCalls = vi
-        .mocked(fs.writeFile)
-        .mock.calls.filter((call) => {
-          const filePath = call[0].toString();
-          // 跨平台：匹配 packages/ 或 packages\
-          return (
-            filePath.includes('packages/') || filePath.includes('packages\\')
-          );
-        });
+      const packageWriteCalls = vi.mocked(fs.writeFile).mock.calls.filter((call) => {
+        const filePath = call[0].toString();
+        // 跨平台：匹配 packages/ 或 packages\
+        return filePath.includes('packages/') || filePath.includes('packages\\');
+      });
 
       // 应该有 3 个包文件
       expect(packageWriteCalls.length).toBeGreaterThanOrEqual(3);
@@ -231,9 +222,7 @@ describe('DataManager', () => {
       // 验证图标数据文件被保存
       const iconWriteCall = vi
         .mocked(fs.writeFile)
-        .mock.calls.find((call) =>
-          call[0].toString().includes('aix-icons.json'),
-        );
+        .mock.calls.find((call) => call[0].toString().includes('aix-icons.json'));
 
       expect(iconWriteCall).toBeDefined();
     });
@@ -264,9 +253,7 @@ describe('DataManager', () => {
       // 验证SVG映射文件被保存
       const svgWriteCall = vi
         .mocked(fs.writeFile)
-        .mock.calls.find((call) =>
-          call[0].toString().includes('aix-icons-svg.json'),
-        );
+        .mock.calls.find((call) => call[0].toString().includes('aix-icons-svg.json'));
 
       expect(svgWriteCall).toBeDefined();
       if (svgWriteCall) {
@@ -313,17 +300,14 @@ describe('DataManager', () => {
       await dataManager.saveComponentsByPackage(componentWithSpecialPackage);
 
       // 验证文件名被正确转换（@ 和 / 被替换）(跨平台路径匹配)
-      const packageWriteCall = vi
-        .mocked(fs.writeFile)
-        .mock.calls.find((call) => {
-          const filePath = call[0].toString();
-          // 跨平台：匹配 packages/ 或 packages\ 且包含 special-name
-          return (
-            (filePath.includes('packages/') ||
-              filePath.includes('packages\\')) &&
-            filePath.includes('special-name')
-          );
-        });
+      const packageWriteCall = vi.mocked(fs.writeFile).mock.calls.find((call) => {
+        const filePath = call[0].toString();
+        // 跨平台：匹配 packages/ 或 packages\ 且包含 special-name
+        return (
+          (filePath.includes('packages/') || filePath.includes('packages\\')) &&
+          filePath.includes('special-name')
+        );
+      });
 
       expect(packageWriteCall).toBeDefined();
       // 文件名应该是 aix-special-name.json，而不是 @aix/special-name.json

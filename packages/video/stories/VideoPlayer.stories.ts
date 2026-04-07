@@ -380,9 +380,7 @@ export const LiveControlsDemo: Story = {
       const playerRef = ref<InstanceType<typeof VideoPlayer> | null>(null);
 
       const handleVideoClick = () => {
-        const controls = playerRef.value?.$el?.querySelector(
-          '.aix-video-controls',
-        );
+        const controls = playerRef.value?.$el?.querySelector('.aix-video-controls');
         if (controls) {
           const component = (controls as any).__vueParentComponent?.exposed;
           component?.autoHide?.toggle();
@@ -1050,8 +1048,7 @@ export const PictureInPicture: Story = {
 
       const checkPipSupport = () => {
         isPipSupported.value =
-          'pictureInPictureEnabled' in document &&
-          (document as any).pictureInPictureEnabled;
+          'pictureInPictureEnabled' in document && (document as any).pictureInPictureEnabled;
       };
 
       const togglePip = async () => {

@@ -11,11 +11,7 @@ import type { Command } from 'commander';
 import inquirer from 'inquirer';
 
 import type { Platform } from '../../types/index.js';
-import {
-  VALID_PLATFORMS,
-  MARKER_START,
-  MARKER_END,
-} from '../../types/index.js';
+import { VALID_PLATFORMS, MARKER_START, MARKER_END } from '../../types/index.js';
 import { createPlatformAdapter } from '../../platform/index.js';
 import { pathExists, readFile, writeFile } from '../../utils/file.js';
 import { logger } from '../../utils/logger.js';
@@ -30,11 +26,9 @@ export function registerUninstallCommand(program: Command): void {
     .option('--target <path>', 'Target repository directory', process.cwd())
     .option('--platform <platform>', 'CI platform (github)', 'github')
     .option('-y, --yes', 'Skip confirmation prompts')
-    .action(
-      async (options: { target: string; platform: string; yes?: boolean }) => {
-        await runUninstall(options);
-      },
-    );
+    .action(async (options: { target: string; platform: string; yes?: boolean }) => {
+      await runUninstall(options);
+    });
 }
 
 async function runUninstall(options: {
@@ -46,9 +40,7 @@ async function runUninstall(options: {
   const platform = options.platform as Platform;
 
   if (!VALID_PLATFORMS.includes(platform)) {
-    logger.error(
-      `无效的平台: ${options.platform}\n  支持的平台: ${VALID_PLATFORMS.join(', ')}`,
-    );
+    logger.error(`无效的平台: ${options.platform}\n  支持的平台: ${VALID_PLATFORMS.join(', ')}`);
     process.exitCode = 1;
     return;
   }
@@ -82,8 +74,7 @@ async function runUninstall(options: {
 
   if (claudeMdExists) {
     const content = await readFile(claudeMdPath);
-    claudeMdHasMarker =
-      content.includes(MARKER_START) && content.includes(MARKER_END);
+    claudeMdHasMarker = content.includes(MARKER_START) && content.includes(MARKER_END);
   }
 
   if (filesToRemove.length === 0 && !claudeMdHasMarker) {
@@ -138,18 +129,13 @@ async function runUninstall(options: {
   if (claudeMdHasMarker) {
     const content = await readFile(claudeMdPath);
     const startIdx = content.indexOf(MARKER_START);
-    const endIdx = content.indexOf(
-      MARKER_END,
-      startIdx >= 0 ? startIdx + MARKER_START.length : 0,
-    );
+    const endIdx = content.indexOf(MARKER_END, startIdx >= 0 ? startIdx + MARKER_START.length : 0);
 
     if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
       logger.warn('CLAUDE.md 中的 sentinel marker 结构异常，跳过移除');
     } else {
       const before = content.slice(0, startIdx).replace(/\n+$/, '');
-      const after = content
-        .slice(endIdx + MARKER_END.length)
-        .replace(/^\n+/, '');
+      const after = content.slice(endIdx + MARKER_END.length).replace(/^\n+/, '');
 
       // 拼接前后内容，处理 before/after 一方为空的边界情况
       let newContent: string;
@@ -163,10 +149,7 @@ async function runUninstall(options: {
         newContent = before + '\n\n' + after;
       }
 
-      await writeFile(
-        claudeMdPath,
-        newContent ? newContent.trimEnd() + '\n' : '',
-      );
+      await writeFile(claudeMdPath, newContent ? newContent.trimEnd() + '\n' : '');
       logger.success('已移除 CLAUDE.md 中的 sentinel 规范');
     }
   }

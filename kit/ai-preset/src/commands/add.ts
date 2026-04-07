@@ -14,11 +14,7 @@ import type { AIPlatform, DomainPreset } from '../types.js';
 import { ALL_DOMAINS, DOMAIN_RECOMMENDED_FRAMEWORK } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { readProjectName } from '../utils/fs.js';
-import {
-  readConfig,
-  writeConfig,
-  persistedToInitConfig,
-} from '../core/config.js';
+import { readConfig, writeConfig, persistedToInitConfig } from '../core/config.js';
 import { readLockFile, buildLockFile, writeLockFile } from '../core/lock.js';
 import { writeOutputFiles } from '../core/writer.js';
 import { getAvailablePlatforms } from '../adapters/index.js';
@@ -49,10 +45,7 @@ interface AddOptions {
   dryRun: boolean;
 }
 
-async function runAdd(
-  moduleName: string | undefined,
-  opts: AddOptions,
-): Promise<void> {
+async function runAdd(moduleName: string | undefined, opts: AddOptions): Promise<void> {
   const projectRoot = path.resolve(opts.target);
 
   const config = await readConfig(projectRoot);
@@ -69,9 +62,7 @@ async function runAdd(
     const platform = opts.platform as AIPlatform;
     const available = getAvailablePlatforms();
     if (!available.includes(platform)) {
-      throw new Error(
-        `平台 "${platform}" 尚未支持。可用: ${available.join(', ')}`,
-      );
+      throw new Error(`平台 "${platform}" 尚未支持。可用: ${available.join(', ')}`);
     }
     if (config.platforms.includes(platform)) {
       logger.warn(`平台 ${platform} 已安装`);
@@ -85,22 +76,17 @@ async function runAdd(
   // 追加领域模块
   if (moduleName) {
     if (!ALL_DOMAINS.includes(moduleName as DomainPreset)) {
-      throw new Error(
-        `未知模块 "${moduleName}"。可用: ${ALL_DOMAINS.join(', ')}`,
-      );
+      throw new Error(`未知模块 "${moduleName}"。可用: ${ALL_DOMAINS.join(', ')}`);
     }
     if (config.domains.includes(moduleName)) {
       logger.warn(`模块 ${moduleName} 已安装`);
     } else {
       // 检查推荐的框架依赖
-      const recommended =
-        DOMAIN_RECOMMENDED_FRAMEWORK[moduleName as DomainPreset];
+      const recommended = DOMAIN_RECOMMENDED_FRAMEWORK[moduleName as DomainPreset];
       if (recommended && config.framework !== recommended) {
         logger.warn(
           `模块 "${moduleName}" 推荐搭配框架 "${recommended}" 使用` +
-            (config.framework
-              ? `（当前: ${config.framework}）`
-              : '（当前未选择框架）'),
+            (config.framework ? `（当前: ${config.framework}）` : '（当前未选择框架）'),
         );
       }
       config.domains.push(moduleName);
@@ -138,13 +124,7 @@ async function runAdd(
     const { version: cliVersion } = req('../package.json') as {
       version: string;
     };
-    const newLock = buildLockFile(
-      allFiles,
-      writeResult,
-      initConfig,
-      cliVersion,
-      lock,
-    );
+    const newLock = buildLockFile(allFiles, writeResult, initConfig, cliVersion, lock);
     await writeLockFile(projectRoot, newLock);
     await writeConfig(projectRoot, config);
     logger.step('更新配置');

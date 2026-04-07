@@ -156,9 +156,7 @@ export class ReadmeExtractor {
 
     // 格式3: 属性 | 类型 | 默认值 | 描述 (4列格式)
     if (!tableFormat) {
-      const oldHeader = apiSection.match(
-        /\|\s*属性\s*\|\s*类型\s*\|\s*默认值\s*\|\s*描述\s*\|/,
-      );
+      const oldHeader = apiSection.match(/\|\s*属性\s*\|\s*类型\s*\|\s*默认值\s*\|\s*描述\s*\|/);
       if (oldHeader) {
         tableFormat = 'old';
         tableStartIndex = oldHeader.index || 0;
@@ -231,13 +229,7 @@ export class ReadmeExtractor {
         }
 
         // 跳过无效行
-        if (
-          !name ||
-          !type ||
-          name === '属性' ||
-          name === '属性名' ||
-          name === 'Property'
-        ) {
+        if (!name || !type || name === '属性' || name === '属性名' || name === 'Property') {
           continue;
         }
 
@@ -361,8 +353,7 @@ export class ReadmeExtractor {
 
       // 找到代码块所在的行号
       const matchIndex = match.index || 0;
-      const codeBlockStart =
-        content.substring(0, matchIndex).split('\n').length - 1;
+      const codeBlockStart = content.substring(0, matchIndex).split('\n').length - 1;
       const section = sectionMap[codeBlockStart] || '';
 
       // 尝试找到代码块前的描述
@@ -378,12 +369,7 @@ export class ReadmeExtractor {
         if (line.startsWith('###')) {
           description = line.replace(/^#+\s*/, '');
           break;
-        } else if (
-          line &&
-          !line.startsWith('```') &&
-          !line.startsWith('|') &&
-          line.length > 10
-        ) {
+        } else if (line && !line.startsWith('```') && !line.startsWith('|') && line.length > 10) {
           description = line;
           break;
         }
@@ -441,10 +427,7 @@ export class ReadmeExtractor {
       const featureText = featuresMatch[1];
       const keywords = featureText.match(/[\u4e00-\u9fa5a-zA-Z]{2,}/g) || [];
       keywords.forEach((keyword) => {
-        if (
-          keyword.length > 1 &&
-          !['支持', '提供', '完整', '自定义', '灵活'].includes(keyword)
-        ) {
+        if (keyword.length > 1 && !['支持', '提供', '完整', '自定义', '灵活'].includes(keyword)) {
           tags.add(keyword.toLowerCase());
         }
       });
@@ -456,11 +439,7 @@ export class ReadmeExtractor {
       const description = descMatch[1];
       const keywords = description.match(/[\u4e00-\u9fa5a-zA-Z]{2,}/g) || [];
       keywords.forEach((keyword) => {
-        if (
-          keyword &&
-          keyword.length > 1 &&
-          !['基于', '支持', '提供'].includes(keyword)
-        ) {
+        if (keyword && keyword.length > 1 && !['基于', '支持', '提供'].includes(keyword)) {
           tags.add(keyword.toLowerCase());
         }
       });
@@ -468,12 +447,9 @@ export class ReadmeExtractor {
 
     // 从依赖中提取标签（如果在内容中提到）
     if (content.includes('vue') || content.includes('Vue')) tags.add('vue');
-    if (content.includes('typescript') || content.includes('TypeScript'))
-      tags.add('typescript');
-    if (content.includes('videojs') || content.includes('video.js'))
-      tags.add('videojs');
-    if (content.includes('leaflet') || content.includes('Leaflet'))
-      tags.add('leaflet');
+    if (content.includes('typescript') || content.includes('TypeScript')) tags.add('typescript');
+    if (content.includes('videojs') || content.includes('video.js')) tags.add('videojs');
+    if (content.includes('leaflet') || content.includes('Leaflet')) tags.add('leaflet');
     if (content.includes('moho') || content.includes('Moho')) tags.add('moho');
 
     return Array.from(tags).filter((tag) => tag.length > 1);
@@ -568,9 +544,7 @@ export class ReadmeExtractor {
    * 按 ## 标题切分章节，匹配关键词的章节保留为 ApiSection。
    * 每个章节包含完整的 markdown 内容（含子标题、表格、代码块）。
    */
-  extractApiSections(
-    content: string,
-  ): Array<{ title: string; content: string }> {
+  extractApiSections(content: string): Array<{ title: string; content: string }> {
     const API_SECTION_KEYWORDS = [
       'API',
       '使用',
@@ -615,9 +589,7 @@ export class ReadmeExtractor {
       const endIndex = nextMatch ? nextMatch.index : content.length;
       const sectionContent = content.substring(startIndex, endIndex).trim();
 
-      const contentWithoutTitle = sectionContent
-        .replace(/^## .+\n+/, '')
-        .trim();
+      const contentWithoutTitle = sectionContent.replace(/^## .+\n+/, '').trim();
 
       if (contentWithoutTitle) {
         sections.push({ title, content: contentWithoutTitle });
@@ -634,9 +606,7 @@ export class ReadmeExtractor {
     const names = new Set<string>();
 
     // 从 import 语句中提取
-    const importMatches = content.matchAll(
-      /import\s+\{([^}]+)\}\s+from\s+['"][^'"]+['"]/g,
-    );
+    const importMatches = content.matchAll(/import\s+\{([^}]+)\}\s+from\s+['"][^'"]+['"]/g);
     for (const match of importMatches) {
       const imports = match[1]?.split(',').map((imp) => imp.trim()) || [];
       imports.forEach((imp) => {
@@ -677,10 +647,7 @@ export class ReadmeExtractor {
     const importMatches = content.matchAll(/from\s+['"]([^'"]+)['"]/g);
     for (const match of importMatches) {
       const packageName = match[1];
-      if (
-        packageName &&
-        (packageName.startsWith('@') || !packageName.startsWith('.'))
-      ) {
+      if (packageName && (packageName.startsWith('@') || !packageName.startsWith('.'))) {
         dependencies.add(packageName);
       }
     }

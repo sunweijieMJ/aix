@@ -170,9 +170,7 @@ const reportSchema = z.object({
 
 const ciSchema = z.object({
   failOnDiff: z.boolean().default(true),
-  failOnSeverity: z
-    .enum(['critical', 'major', 'minor', 'trivial'])
-    .default('major'),
+  failOnSeverity: z.enum(['critical', 'major', 'minor', 'trivial']).default('major'),
 });
 
 const concurrentSchema = z.object({

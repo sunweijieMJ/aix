@@ -47,8 +47,7 @@ export interface ComponentDependencies {
 /**
  * 完整的组件信息
  */
-export interface ComponentInfo
-  extends ComponentBasicInfo, ComponentPaths, ComponentDependencies {
+export interface ComponentInfo extends ComponentBasicInfo, ComponentPaths, ComponentDependencies {
   /** Props 定义 */
   props: PropDefinition[];
   /** 组件示例 */

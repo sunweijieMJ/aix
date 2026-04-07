@@ -79,9 +79,7 @@ describe('CopilotAdapter', () => {
 
     // 只有一个主文件
     expect(files.length).toBe(1);
-    const entry = files.find(
-      (f) => f.relativePath === '.github/copilot-instructions.md',
-    );
+    const entry = files.find((f) => f.relativePath === '.github/copilot-instructions.md');
     expect(entry).toBeDefined();
     expect(entry!.content).toContain('Copilot Instructions');
   });
@@ -89,9 +87,7 @@ describe('CopilotAdapter', () => {
   it('入口文件直接包含规则内容', async () => {
     const sources = await loadRuleSources(fixturesDir, ['base' as PresetName]);
     const files = adapter.generateFiles(sources, context);
-    const entry = files.find(
-      (f) => f.relativePath === '.github/copilot-instructions.md',
-    );
+    const entry = files.find((f) => f.relativePath === '.github/copilot-instructions.md');
 
     // 规则内容直接合并，不再是链接引用
     expect(entry!.content).toContain('示例规则');

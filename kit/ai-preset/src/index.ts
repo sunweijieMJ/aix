@@ -52,12 +52,7 @@ export {
 export { collectVariables, renderTemplate } from './core/template.js';
 export { writeOutputFiles } from './core/writer.js';
 export type { WriteOptions, WriteResult } from './core/writer.js';
-export {
-  buildLockFile,
-  checkFileStatus,
-  readLockFile,
-  writeLockFile,
-} from './core/lock.js';
+export { buildLockFile, checkFileStatus, readLockFile, writeLockFile } from './core/lock.js';
 export { detectPlatforms } from './core/detector.js';
 export {
   readConfig,

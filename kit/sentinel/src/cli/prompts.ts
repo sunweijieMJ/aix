@@ -4,12 +4,7 @@
 
 import inquirer from 'inquirer';
 
-import type {
-  InstallConfig,
-  Phase,
-  PackageManager,
-  ScheduledCheck,
-} from '../types/index.js';
+import type { InstallConfig, Phase, PackageManager, ScheduledCheck } from '../types/index.js';
 import {
   PHASE_CONFIGS,
   VALID_PLATFORMS,
@@ -31,11 +26,7 @@ export async function collectInstallConfig(
 ): Promise<InstallConfig> {
   const phases = await promptPhases();
   const base = await promptBaseConfig(defaults);
-  const phaseConfig = await promptPhaseConfig(
-    phases,
-    base.target,
-    base.packageManager,
-  );
+  const phaseConfig = await promptPhaseConfig(phases, base.target, base.packageManager);
   const advanced = await promptAdvanced();
 
   return {
@@ -131,11 +122,7 @@ async function promptBaseConfig(defaults: Partial<InstallConfig>) {
   };
 }
 
-async function promptPhaseConfig(
-  phases: Phase[],
-  target: string,
-  packageManager: PackageManager,
-) {
+async function promptPhaseConfig(phases: Phase[], target: string, packageManager: PackageManager) {
   const config: Partial<InstallConfig> = {};
 
   // Phase 2 配置

@@ -61,10 +61,7 @@ export interface UseContinuousScrollReturn {
   /** 处理滚动事件 */
   handleScroll: (scrollTop: number, viewportHeight: number) => void;
   /** 渲染可见页面 */
-  renderVisiblePages: (
-    scrollTop: number,
-    viewportHeight: number,
-  ) => Promise<void>;
+  renderVisiblePages: (scrollTop: number, viewportHeight: number) => Promise<void>;
   /** 滚动到指定页 */
   scrollToPage: (pageNumber: number) => number;
   /** 获取页面容器 */
@@ -97,8 +94,7 @@ export function useContinuousScroll(
   let pdfDocument: PDFDocumentProxy | null = null;
   const pageContainers = new Map<number, HTMLDivElement>();
   const renderingPages = new Set<number>();
-  let pendingRenderArgs: { scrollTop: number; viewportHeight: number } | null =
-    null;
+  let pendingRenderArgs: { scrollTop: number; viewportHeight: number } | null = null;
   /** 布局版本号，initLayout 每次递增，旧渲染据此跳过 */
   let layoutVersion = 0;
 
@@ -112,10 +108,7 @@ export function useContinuousScroll(
    * 初始化页面布局 (不渲染内容，只计算位置)
    * 使用第 1 页的 viewport 作为基准估算，渲染时通过 updatePageLayout 修正实际尺寸
    */
-  async function initLayout(
-    pdf: PDFDocumentProxy,
-    _containerWidth: number,
-  ): Promise<void> {
+  async function initLayout(pdf: PDFDocumentProxy, _containerWidth: number): Promise<void> {
     pdfDocument = pdf;
     visiblePage.value = 1;
     layoutVersion++;
@@ -151,11 +144,7 @@ export function useContinuousScroll(
   /**
    * 更新页面布局（当实际渲染尺寸与估算不同时调用）
    */
-  function updatePageLayout(
-    pageNumber: number,
-    actualWidth: number,
-    actualHeight: number,
-  ): void {
+  function updatePageLayout(pageNumber: number, actualWidth: number, actualHeight: number): void {
     const pageInfo = pages.value.find((p) => p.pageNumber === pageNumber);
     if (!pageInfo) return;
 
@@ -199,10 +188,7 @@ export function useContinuousScroll(
   /**
    * 渲染可见页面及预加载页面
    */
-  async function renderVisiblePages(
-    scrollTop: number,
-    viewportHeight: number,
-  ): Promise<void> {
+  async function renderVisiblePages(scrollTop: number, viewportHeight: number): Promise<void> {
     if (!pdfDocument) return;
 
     if (rendering.value) {
@@ -224,8 +210,7 @@ export function useContinuousScroll(
       // 检查是否在可见区域内 (含预加载)
       const preloadOffset = viewportHeight * preloadPages;
       const isVisible =
-        pageBottom >= viewTop - preloadOffset &&
-        pageTop <= viewBottom + preloadOffset;
+        pageBottom >= viewTop - preloadOffset && pageTop <= viewBottom + preloadOffset;
 
       if (isVisible && !page.rendered && !renderingPages.has(page.pageNumber)) {
         pagesToRender.push(page.pageNumber);
@@ -293,8 +278,7 @@ export function useContinuousScroll(
       canvas.style.height = `${viewport.height}px`;
 
       // 渲染到 Canvas (v5: 传 canvas 而非 canvasContext)
-      const transform =
-        outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
+      const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
       await page.render({
         canvas,
         viewport,
@@ -338,8 +322,7 @@ export function useContinuousScroll(
         pageInfo.canvas = canvas;
       }
     } catch (err) {
-      const error =
-        err instanceof Error ? err : new Error(`渲染第 ${pageNumber} 页失败`);
+      const error = err instanceof Error ? err : new Error(`渲染第 ${pageNumber} 页失败`);
       onRenderError?.(error, pageNumber);
     } finally {
       renderingPages.delete(pageNumber);

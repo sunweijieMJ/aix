@@ -42,11 +42,7 @@ export interface ExtractedString {
   isTemplateString?: boolean;
   templateVariables?: string[];
   /** Vue template 详细上下文 */
-  templateContext?:
-    | 'text-node'
-    | 'static-attribute'
-    | 'dynamic-attribute'
-    | 'interpolation';
+  templateContext?: 'text-node' | 'static-attribute' | 'dynamic-attribute' | 'interpolation';
   /** 属性名称（用于静态属性转动态绑定） */
   attributeName?: string;
 }

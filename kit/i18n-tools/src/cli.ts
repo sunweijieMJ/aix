@@ -12,13 +12,7 @@ import {
   RestoreProcessor,
   TranslateProcessor,
 } from './core';
-import {
-  InteractiveUtils,
-  loadEnv,
-  LoggerUtils,
-  MODE_DESCRIPTIONS,
-  ModeName,
-} from './utils';
+import { InteractiveUtils, loadEnv, LoggerUtils, MODE_DESCRIPTIONS, ModeName } from './utils';
 
 /**
  * 执行generate操作（提取多语言组件）
@@ -28,10 +22,7 @@ const executeGenerate = async (
   isCustom: boolean,
   skipLLM: boolean = false,
 ): Promise<void> => {
-  const targetPath = await InteractiveUtils.promptForPath(
-    ModeName.GENERATE,
-    config.framework,
-  );
+  const targetPath = await InteractiveUtils.promptForPath(ModeName.GENERATE, config.framework);
   const processor = new GenerateProcessor(config, isCustom);
   await processor.execute(targetPath, skipLLM);
 };
@@ -39,14 +30,8 @@ const executeGenerate = async (
 /**
  * 执行restore操作（还原多语言组件）
  */
-const executeRestore = async (
-  config: ResolvedConfig,
-  isCustom: boolean,
-): Promise<void> => {
-  const targetPath = await InteractiveUtils.promptForPath(
-    ModeName.RESTORE,
-    config.framework,
-  );
+const executeRestore = async (config: ResolvedConfig, isCustom: boolean): Promise<void> => {
+  const targetPath = await InteractiveUtils.promptForPath(ModeName.RESTORE, config.framework);
   const processor = new RestoreProcessor(config, isCustom);
   await processor.execute([targetPath], path.dirname(targetPath), true);
 };
@@ -62,10 +47,7 @@ const executeExport = async (config: ResolvedConfig): Promise<void> => {
 /**
  * 执行pick操作（生成待翻译文件）
  */
-const executePick = async (
-  config: ResolvedConfig,
-  isCustom: boolean,
-): Promise<void> => {
+const executePick = async (config: ResolvedConfig, isCustom: boolean): Promise<void> => {
   const processor = new PickProcessor(config, isCustom);
   await processor.execute();
 };
@@ -73,10 +55,7 @@ const executePick = async (
 /**
  * 执行translate操作（翻译待翻译文件）
  */
-const executeTranslate = async (
-  config: ResolvedConfig,
-  isCustom: boolean,
-): Promise<void> => {
+const executeTranslate = async (config: ResolvedConfig, isCustom: boolean): Promise<void> => {
   const processor = new TranslateProcessor(config, isCustom);
   await processor.execute();
 };
@@ -84,10 +63,7 @@ const executeTranslate = async (
 /**
  * 执行merge操作（合并翻译文件）
  */
-const executeMerge = async (
-  config: ResolvedConfig,
-  isCustom: boolean,
-): Promise<void> => {
+const executeMerge = async (config: ResolvedConfig, isCustom: boolean): Promise<void> => {
   const processor = new MergeProcessor(config, isCustom);
   await processor.execute();
 };
@@ -171,9 +147,7 @@ const main = async (): Promise<void> => {
   const argv = await yargsObj.parse();
 
   // 加载配置（将相对路径转为绝对路径）
-  const configPath = argv.config
-    ? path.resolve(process.cwd(), argv.config as string)
-    : undefined;
+  const configPath = argv.config ? path.resolve(process.cwd(), argv.config as string) : undefined;
   const config = await loadConfig(configPath);
   if (!config) {
     LoggerUtils.error(
@@ -205,9 +179,7 @@ export default defineConfig({
   // 当显式指定了 --mode/-m 时，默认关闭交互模式；否则默认开启
   const modeExplicitlySet = process.argv
     .slice(2)
-    .some(
-      (arg) => arg === '--mode' || arg.startsWith('--mode=') || arg === '-m',
-    );
+    .some((arg) => arg === '--mode' || arg.startsWith('--mode=') || arg === '-m');
   const interactive = argv.interactive ?? !modeExplicitlySet;
 
   // 交互模式处理
@@ -220,10 +192,7 @@ export default defineConfig({
       mode = await InteractiveUtils.promptForMode(custom, mode);
     }
 
-    const confirmed = await InteractiveUtils.promptForConfirmation(
-      mode,
-      custom,
-    );
+    const confirmed = await InteractiveUtils.promptForConfirmation(mode, custom);
     if (!confirmed) {
       LoggerUtils.warn('操作已取消');
       process.exit(0);
@@ -232,16 +201,12 @@ export default defineConfig({
 
   // export 模式不需要区分定制目录
   if (mode === ModeName.EXPORT && custom) {
-    LoggerUtils.info(
-      '注意: export 模式会导出所有语言包，不区分主目录和定制目录',
-    );
+    LoggerUtils.info('注意: export 模式会导出所有语言包，不区分主目录和定制目录');
   }
 
   // 输出操作信息
-  const location =
-    mode === ModeName.EXPORT ? '全局' : custom ? '定制目录' : '主目录';
-  const frameworkLib =
-    config.framework === 'vue' ? config.vue.library : config.react.library;
+  const location = mode === ModeName.EXPORT ? '全局' : custom ? '定制目录' : '主目录';
+  const frameworkLib = config.framework === 'vue' ? config.vue.library : config.react.library;
   LoggerUtils.info(`🎯 执行模式: ${mode} (${MODE_DESCRIPTIONS[mode]})`);
   LoggerUtils.info(`📍 操作目录: ${location}`);
   LoggerUtils.info(`⚡ 项目框架: ${config.framework} (${frameworkLib})`);
@@ -254,10 +219,7 @@ export default defineConfig({
             ModeName.AUTOMATIC,
             config.framework,
           );
-          await new AutomaticProcessor(config, custom).execute(
-            targetPath,
-            skipLLM,
-          );
+          await new AutomaticProcessor(config, custom).execute(targetPath, skipLLM);
         }
         break;
       case ModeName.GENERATE:

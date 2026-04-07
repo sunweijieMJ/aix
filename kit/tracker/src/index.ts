@@ -47,15 +47,8 @@ export {
 
 // ==================== Vue 集成 ====================
 export { createTrackerPlugin } from './plugin/index.js';
-export {
-  useTracker,
-  useExposure,
-  usePageTracker,
-} from './composables/index.js';
-export {
-  createTrackClickDirective,
-  createTrackExposureDirective,
-} from './directives/index.js';
+export { useTracker, useExposure, usePageTracker } from './composables/index.js';
+export { createTrackClickDirective, createTrackExposureDirective } from './directives/index.js';
 
 // ==================== 注入 Key ====================
 export { TRACKER_INJECTION_KEY } from './types.js';

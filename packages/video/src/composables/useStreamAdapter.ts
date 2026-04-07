@@ -12,11 +12,7 @@ import { useDash, type DashOptions, type UseDashReturn } from './useDash';
 import { useFlv, type FlvOptions, type UseFlvReturn } from './useFlv';
 import { useHls, type HlsOptions, type UseHlsReturn } from './useHls';
 import { useRtsp, type RtspOptions, type UseRtspReturn } from './useRtsp';
-import {
-  useWebRTC,
-  type WebRTCOptions,
-  type UseWebRTCReturn,
-} from './useWebRTC';
+import { useWebRTC, type WebRTCOptions, type UseWebRTCReturn } from './useWebRTC';
 
 /**
  * 流适配器配置
@@ -73,11 +69,7 @@ export interface UseStreamAdapterReturn {
  * 适配器实例类型
  */
 type AdapterInstance = ReturnType<
-  | typeof useHls
-  | typeof useFlv
-  | typeof useDash
-  | typeof useRtsp
-  | typeof useWebRTC
+  typeof useHls | typeof useFlv | typeof useDash | typeof useRtsp | typeof useWebRTC
 >;
 
 /**
@@ -96,9 +88,7 @@ interface LazyAdapter<T extends AdapterInstance> {
 /**
  * 创建惰性适配器
  */
-function createLazyAdapter<T extends AdapterInstance>(
-  factory: () => T,
-): LazyAdapter<T> {
+function createLazyAdapter<T extends AdapterInstance>(factory: () => T): LazyAdapter<T> {
   let instance: T | null = null;
 
   return {
@@ -138,13 +128,9 @@ export function useStreamAdapter(
   const MAX_URL_CACHE_SIZE = 50;
   const urlCache = new Map<string, string>();
 
-  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(
-    key: K,
-  ): (typeof DEFAULT_OPTIONS)[K] {
+  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(key: K): (typeof DEFAULT_OPTIONS)[K] {
     const value = options.value[key];
-    return value !== undefined
-      ? (value as (typeof DEFAULT_OPTIONS)[K])
-      : DEFAULT_OPTIONS[key];
+    return value !== undefined ? (value as (typeof DEFAULT_OPTIONS)[K]) : DEFAULT_OPTIONS[key];
   }
 
   // 检测协议
@@ -159,9 +145,7 @@ export function useStreamAdapter(
   });
 
   // 是否需要特殊处理
-  const needsSpecialHandler = computed(
-    () => !isNativeFormat(protocolType.value),
-  );
+  const needsSpecialHandler = computed(() => !isNativeFormat(protocolType.value));
 
   // ==========================================
   // 惰性适配器配置 (仅在访问时才创建)
@@ -188,9 +172,7 @@ export function useStreamAdapter(
 
   // FLV 配置
   const flvOptions = computed<FlvOptions>(() => ({
-    isLive:
-      protocolType.value === StreamProtocol.RTMP ||
-      options.value.flvOptions?.isLive,
+    isLive: protocolType.value === StreamProtocol.RTMP || options.value.flvOptions?.isLive,
     hasVideo: options.value.flvOptions?.hasVideo ?? true,
     hasAudio: options.value.flvOptions?.hasAudio ?? true,
     diffCritical: options.value.flvOptions?.diffCritical,
@@ -254,15 +236,9 @@ export function useStreamAdapter(
 
   const lazyHls = createLazyAdapter(() => useHls(videoRef, hlsUri, hlsOptions));
   const lazyFlv = createLazyAdapter(() => useFlv(videoRef, flvUri, flvOptions));
-  const lazyDash = createLazyAdapter(() =>
-    useDash(videoRef, dashUri, dashOptions),
-  );
-  const lazyRtsp = createLazyAdapter(() =>
-    useRtsp(videoRef, rtspUri, rtspOptions),
-  );
-  const lazyWebrtc = createLazyAdapter(() =>
-    useWebRTC(videoRef, webrtcUri, webrtcOptions),
-  );
+  const lazyDash = createLazyAdapter(() => useDash(videoRef, dashUri, dashOptions));
+  const lazyRtsp = createLazyAdapter(() => useRtsp(videoRef, rtspUri, rtspOptions));
+  const lazyWebrtc = createLazyAdapter(() => useWebRTC(videoRef, webrtcUri, webrtcOptions));
 
   /**
    * 规范化 URL 用于比较 (使用 LRU 缓存)
@@ -310,10 +286,7 @@ export function useStreamAdapter(
     const normalizedVideoSrc = normalizeUrl(video.src);
 
     // 避免重复设置相同的 src，防止中断正在进行的 play() 操作
-    if (
-      currentLoadedSrc === uri.value &&
-      normalizedVideoSrc === normalizedUri
-    ) {
+    if (currentLoadedSrc === uri.value && normalizedVideoSrc === normalizedUri) {
       return;
     }
 

@@ -16,10 +16,7 @@ describe('usePageTracker', () => {
     });
   }
 
-  function mountWithPageTracker(
-    tracker: Tracker,
-    options: Parameters<typeof usePageTracker>[0],
-  ) {
+  function mountWithPageTracker(tracker: Tracker, options: Parameters<typeof usePageTracker>[0]) {
     const Component = defineComponent({
       setup() {
         usePageTracker(options);

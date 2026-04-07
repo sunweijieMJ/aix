@@ -139,9 +139,7 @@ function buildConfigFromFlags(
     platforms = opts.platform.split(',').map((p) => {
       const trimmed = p.trim() as AIPlatform;
       if (!available.includes(trimmed)) {
-        throw new Error(
-          `平台 "${trimmed}" 尚未支持。可用: ${available.join(', ')}`,
-        );
+        throw new Error(`平台 "${trimmed}" 尚未支持。可用: ${available.join(', ')}`);
       }
       return trimmed;
     });
@@ -383,13 +381,7 @@ async function executeInit(
 
   // 7. 生成 lock 文件
   const { version: cliVersion } = req('../package.json') as { version: string };
-  const lockFile = buildLockFile(
-    allFiles,
-    writeResult,
-    config,
-    cliVersion,
-    existingLock,
-  );
+  const lockFile = buildLockFile(allFiles, writeResult, config, cliVersion, existingLock);
   if (!options.dryRun) {
     logger.step('更新 lock 文件');
     await writeLockFile(options.projectRoot, lockFile);
@@ -404,9 +396,7 @@ async function executeInit(
   logger.blank();
   logger.success(
     `完成! 写入 ${writeResult.writtenFiles.length} 个文件` +
-      (writeResult.skippedFiles.length > 0
-        ? `，跳过 ${writeResult.skippedFiles.length} 个`
-        : ''),
+      (writeResult.skippedFiles.length > 0 ? `，跳过 ${writeResult.skippedFiles.length} 个` : ''),
   );
 
   if (options.dryRun) {

@@ -1,10 +1,7 @@
 <template>
   <li v-if="divided" class="aix-dropdown__divider" role="separator" />
   <li
-    :class="[
-      'aix-dropdown__item',
-      { 'aix-dropdown__item--disabled': disabled },
-    ]"
+    :class="['aix-dropdown__item', { 'aix-dropdown__item--disabled': disabled }]"
     role="menuitem"
     :tabindex="-1"
     :aria-disabled="disabled || undefined"

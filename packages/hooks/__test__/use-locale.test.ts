@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  createApp,
-  defineComponent,
-  nextTick,
-  type ComponentPublicInstance,
-} from 'vue';
+import { createApp, defineComponent, nextTick, type ComponentPublicInstance } from 'vue';
 import {
   createLocale,
   useLocale,
@@ -288,9 +283,9 @@ describe('useLocale', () => {
     });
 
     it('should replace multiple placeholders', () => {
-      expect(
-        formatMessage('{count} of {total} items', { count: 1, total: 10 }),
-      ).toBe('1 of 10 items');
+      expect(formatMessage('{count} of {total} items', { count: 1, total: 10 })).toBe(
+        '1 of 10 items',
+      );
     });
 
     it('should keep unmatched placeholders as-is', () => {
@@ -308,9 +303,7 @@ describe('useLocale', () => {
     });
 
     it('should return template as-is when no placeholders', () => {
-      expect(formatMessage('No placeholders here', {})).toBe(
-        'No placeholders here',
-      );
+      expect(formatMessage('No placeholders here', {})).toBe('No placeholders here');
     });
   });
 });

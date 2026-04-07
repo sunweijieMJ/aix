@@ -95,9 +95,7 @@ export class ThemeDOMRenderer {
     }
 
     // 构建 CSS 文本
-    const declarations = keys
-      .map((key) => `  ${key}: ${overrides[key]};`)
-      .join('\n');
+    const declarations = keys.map((key) => `  ${key}: ${overrides[key]};`).join('\n');
 
     let selector: string;
     if (this.scopeClass) {
@@ -110,8 +108,7 @@ export class ThemeDOMRenderer {
 
     // 复用或创建 style 标签
     if (!this.styleEl) {
-      this.styleEl =
-        (document.getElementById(this.styleId) as HTMLStyleElement) || null;
+      this.styleEl = (document.getElementById(this.styleId) as HTMLStyleElement) || null;
     }
 
     if (!this.styleEl) {
@@ -145,10 +142,7 @@ export class ThemeDOMRenderer {
 
     if (enabled) {
       this.root.classList.add(this.transitionClass);
-      this.root.style.setProperty(
-        `--${this.prefix}-transition-duration`,
-        `${duration}ms`,
-      );
+      this.root.style.setProperty(`--${this.prefix}-transition-duration`, `${duration}ms`);
       this.root.style.setProperty(`--${this.prefix}-transition-easing`, easing);
     } else {
       this.removeTransition();
@@ -170,9 +164,7 @@ export class ThemeDOMRenderer {
    * 应用组件级 CSS 变量覆写
    * 生成 .aix-{component}, :root[data-theme] .aix-{component} 选择器
    */
-  applyComponentOverrides(
-    overrides: Record<string, Record<string, string>>,
-  ): void {
+  applyComponentOverrides(overrides: Record<string, Record<string, string>>): void {
     if (!isBrowser()) return;
     const blocks: string[] = [];
     const scopePrefix = this.scopeClass ? `.${this.scopeClass} ` : '';
@@ -180,9 +172,7 @@ export class ThemeDOMRenderer {
     for (const [name, tokenOverrides] of Object.entries(overrides)) {
       const keys = Object.keys(tokenOverrides);
       if (keys.length === 0) continue;
-      const decls = keys
-        .map((k) => `  --${this.prefix}-${k}: ${tokenOverrides[k]};`)
-        .join('\n');
+      const decls = keys.map((k) => `  --${this.prefix}-${k}: ${tokenOverrides[k]};`).join('\n');
       blocks.push(
         `${scopePrefix}.${this.prefix}-${name},\n:root[data-theme] ${scopePrefix}.${this.prefix}-${name} {\n${decls}\n}`,
       );
@@ -196,8 +186,7 @@ export class ThemeDOMRenderer {
     }
 
     if (!this.componentStyleEl) {
-      this.componentStyleEl =
-        (document.getElementById(styleId) as HTMLStyleElement) || null;
+      this.componentStyleEl = (document.getElementById(styleId) as HTMLStyleElement) || null;
     }
     if (!this.componentStyleEl) {
       this.componentStyleEl = document.createElement('style');
@@ -229,10 +218,7 @@ export class ThemeDOMRenderer {
     this.setDataTheme(params.mode);
     this.applyTransition(params.transition);
     this.applyOverrides(params.mode, params.overrides);
-    if (
-      params.componentOverrides &&
-      Object.keys(params.componentOverrides).length > 0
-    ) {
+    if (params.componentOverrides && Object.keys(params.componentOverrides).length > 0) {
       this.applyComponentOverrides(params.componentOverrides);
     } else {
       this.clearComponentOverrides();

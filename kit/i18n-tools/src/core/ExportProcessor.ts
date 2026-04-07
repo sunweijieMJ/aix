@@ -32,9 +32,7 @@ export class ExportProcessor extends BaseProcessor {
   private async _execute(outputDir?: string): Promise<void> {
     LoggerUtils.info(`📂 基础目录: ${this.config.paths.locale}`);
     LoggerUtils.info(`📂 定制目录: ${this.config.paths.customLocale}`);
-    LoggerUtils.info(
-      `📂 输出目录: ${outputDir || this.config.paths.exportLocale}`,
-    );
+    LoggerUtils.info(`📂 输出目录: ${outputDir || this.config.paths.exportLocale}`);
 
     await this.performExport(outputDir);
   }
@@ -68,14 +66,8 @@ export class ExportProcessor extends BaseProcessor {
       );
 
       LoggerUtils.info('🔍 检查语言包冲突...');
-      const sourceConflicts = FileUtils.findConflictingKeys(
-        baseSource,
-        customSource,
-      );
-      const targetConflicts = FileUtils.findConflictingKeys(
-        baseTarget,
-        customTarget,
-      );
+      const sourceConflicts = FileUtils.findConflictingKeys(baseSource, customSource);
+      const targetConflicts = FileUtils.findConflictingKeys(baseTarget, customTarget);
 
       if (sourceConflicts.length > 0 || targetConflicts.length > 0) {
         if (sourceConflicts.length > 0) {
@@ -88,9 +80,7 @@ export class ExportProcessor extends BaseProcessor {
             `${targetLocale} 语言包存在 ${targetConflicts.length} 个冲突键: ${targetConflicts.join(', ')}`,
           );
         }
-        throw new Error(
-          '语言包存在冲突，请先解决冲突后再导出。定制包中的 key 不应与基础包重复。',
-        );
+        throw new Error('语言包存在冲突，请先解决冲突后再导出。定制包中的 key 不应与基础包重复。');
       }
 
       LoggerUtils.success('✅ 未发现语言包冲突');
@@ -118,25 +108,11 @@ export class ExportProcessor extends BaseProcessor {
       LoggerUtils.info(`   ${sourceLocale}: ${mergedSourceCount} 个条目`);
       LoggerUtils.info(`   ${targetLocale}: ${mergedTargetCount} 个条目`);
 
-      const outputSourcePath = path.join(
-        finalOutputDir,
-        `${sourceLocale}.json`,
-      );
-      const outputTargetPath = path.join(
-        finalOutputDir,
-        `${targetLocale}.json`,
-      );
+      const outputSourcePath = path.join(finalOutputDir, `${sourceLocale}.json`);
+      const outputTargetPath = path.join(finalOutputDir, `${targetLocale}.json`);
 
-      fs.writeFileSync(
-        outputSourcePath,
-        JSON.stringify(mergedSource, null, 2) + '\n',
-        'utf8',
-      );
-      fs.writeFileSync(
-        outputTargetPath,
-        JSON.stringify(mergedTarget, null, 2) + '\n',
-        'utf8',
-      );
+      fs.writeFileSync(outputSourcePath, JSON.stringify(mergedSource, null, 2) + '\n', 'utf8');
+      fs.writeFileSync(outputTargetPath, JSON.stringify(mergedTarget, null, 2) + '\n', 'utf8');
 
       LoggerUtils.success('\n✅ 语言包导出成功!');
       LoggerUtils.info(`📄 输出文件:`);
@@ -145,12 +121,8 @@ export class ExportProcessor extends BaseProcessor {
 
       LoggerUtils.info('\n🔍 验证导出文件...');
       try {
-        const exportedSource = JSON.parse(
-          fs.readFileSync(outputSourcePath, 'utf8'),
-        );
-        const exportedTarget = JSON.parse(
-          fs.readFileSync(outputTargetPath, 'utf8'),
-        );
+        const exportedSource = JSON.parse(fs.readFileSync(outputSourcePath, 'utf8'));
+        const exportedTarget = JSON.parse(fs.readFileSync(outputTargetPath, 'utf8'));
 
         if (
           Object.keys(exportedSource).length === mergedSourceCount &&

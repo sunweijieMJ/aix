@@ -20,16 +20,10 @@ export class EventQueue {
   }
 
   /** 事件入队，队列已满时丢弃最旧事件 */
-  enqueue(
-    event: string,
-    properties: Record<string, unknown>,
-    targetAdapters: string[],
-  ): void {
+  enqueue(event: string, properties: Record<string, unknown>, targetAdapters: string[]): void {
     if (this.buffer.length >= this.maxSize) {
       const dropped = this.buffer.shift();
-      console.warn(
-        `[kit-tracker] 缓冲队列已满(${this.maxSize})，丢弃最旧事件: ${dropped?.event}`,
-      );
+      console.warn(`[kit-tracker] 缓冲队列已满(${this.maxSize})，丢弃最旧事件: ${dropped?.event}`);
     }
     this.buffer.push({ event, properties, targetAdapters });
   }
@@ -37,9 +31,7 @@ export class EventQueue {
   /** 清空队列并逐条回调 */
   flush(callback: FlushCallback): void {
     const items = this.buffer.splice(0);
-    items.forEach((item) =>
-      callback(item.event, item.properties, item.targetAdapters),
-    );
+    items.forEach((item) => callback(item.event, item.properties, item.targetAdapters));
   }
 
   /** 当前队列长度 */

@@ -10,22 +10,18 @@ describe('renderTemplate', () => {
   });
 
   it('should replace multiple variables in one template', () => {
-    const content =
-      'node: __NODE_VERSION__, branch: __DEFAULT_BRANCH__, reviewer: __REVIEWERS__';
+    const content = 'node: __NODE_VERSION__, branch: __DEFAULT_BRANCH__, reviewer: __REVIEWERS__';
     const vars = {
       NODE_VERSION: '20',
       DEFAULT_BRANCH: 'main',
       REVIEWERS: 'alice',
     };
 
-    expect(renderTemplate(content, vars)).toBe(
-      'node: 20, branch: main, reviewer: alice',
-    );
+    expect(renderTemplate(content, vars)).toBe('node: 20, branch: main, reviewer: alice');
   });
 
   it('should NOT modify GitHub Actions ${{ }} expressions', () => {
-    const content =
-      'if: github.event.label.name == ${{ github.event.label.name }}';
+    const content = 'if: github.event.label.name == ${{ github.event.label.name }}';
     const vars = { NODE_VERSION: '20' };
 
     expect(renderTemplate(content, vars)).toBe(
@@ -65,8 +61,7 @@ describe('renderTemplate', () => {
   });
 
   it('should leave content unchanged when vars map is empty', () => {
-    const content =
-      'node: __NODE_VERSION__, branch: __DEFAULT_BRANCH__, ${{ github.ref }}';
+    const content = 'node: __NODE_VERSION__, branch: __DEFAULT_BRANCH__, ${{ github.ref }}';
     const vars = {};
 
     expect(renderTemplate(content, vars)).toBe(content);

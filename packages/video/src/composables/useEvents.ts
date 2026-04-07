@@ -99,9 +99,7 @@ export function useEvents(
     if (events.onProgress) {
       const handler = () => {
         if (!isDestroying && video.buffered.length > 0) {
-          const buffered =
-            video.buffered.end(video.buffered.length - 1) /
-            (video.duration || 1);
+          const buffered = video.buffered.end(video.buffered.length - 1) / (video.duration || 1);
           events.onProgress?.(buffered);
         }
       };
@@ -170,8 +168,7 @@ export function useEvents(
     const cleanupFns: Array<() => void> = [];
 
     if (events.onFullscreen) {
-      const handler = () =>
-        events.onFullscreen?.(player.isFullscreen() ?? false);
+      const handler = () => events.onFullscreen?.(player.isFullscreen() ?? false);
       player.on('fullscreenchange', handler);
       cleanupFns.push(() => player.off('fullscreenchange', handler));
     }

@@ -39,9 +39,7 @@ export interface DashOptions {
   onError?: (error: Error) => void;
 }
 
-const DEFAULT_OPTIONS: Required<
-  Omit<DashOptions, 'dashConfig' | 'onReady' | 'onError'>
-> = {
+const DEFAULT_OPTIONS: Required<Omit<DashOptions, 'dashConfig' | 'onReady' | 'onError'>> = {
   autoPlay: true,
   lowLatencyMode: false,
 };
@@ -66,13 +64,9 @@ export function useDash(
   // 使用工厂模式创建加载器 (与其他适配器风格一致)
   const dashLoader = sdkLoaders.dash();
 
-  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(
-    key: K,
-  ): (typeof DEFAULT_OPTIONS)[K] {
+  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(key: K): (typeof DEFAULT_OPTIONS)[K] {
     const value = options.value[key];
-    return value !== undefined
-      ? (value as (typeof DEFAULT_OPTIONS)[K])
-      : DEFAULT_OPTIONS[key];
+    return value !== undefined ? (value as (typeof DEFAULT_OPTIONS)[K]) : DEFAULT_OPTIONS[key];
   }
 
   /**
@@ -126,9 +120,7 @@ export function useDash(
 
       // 应用自定义配置
       if (options.value.dashConfig) {
-        player.updateSettings(
-          options.value.dashConfig as Record<string, unknown>,
-        );
+        player.updateSettings(options.value.dashConfig as Record<string, unknown>);
       }
 
       // 事件监听
@@ -151,9 +143,7 @@ export function useDash(
       dashPlayer.value = player;
     } catch (error) {
       isLoading.value = false;
-      options.value.onError?.(
-        error instanceof Error ? error : new Error('初始化 DASH 播放器失败'),
-      );
+      options.value.onError?.(error instanceof Error ? error : new Error('初始化 DASH 播放器失败'));
     }
   }
 

@@ -39,9 +39,7 @@ export type CSSVarNames = CSSVarNamesWithPrefix<typeof CSS_VAR_PREFIX>;
  * 创建 CSS 变量代理的通用工厂函数
  * @internal 内部使用
  */
-function createCSSVarProxy<T extends object>(
-  formatter: (key: string) => string,
-): T {
+function createCSSVarProxy<T extends object>(formatter: (key: string) => string): T {
   return new Proxy({} as T, {
     get(_, key: string | symbol): string | undefined {
       // 忽略 Symbol 键（如 Symbol.toStringTag、Symbol.iterator 等）
@@ -66,9 +64,7 @@ export function createCSSVarRefs<P extends string = typeof CSS_VAR_PREFIX>(
   prefix?: P,
 ): CSSVarRefsWithPrefix<P> {
   const p = prefix ?? (CSS_VAR_PREFIX as P);
-  return createCSSVarProxy<CSSVarRefsWithPrefix<P>>(
-    (key) => `var(--${p}-${key})`,
-  );
+  return createCSSVarProxy<CSSVarRefsWithPrefix<P>>((key) => `var(--${p}-${key})`);
 }
 
 /**
@@ -101,9 +97,7 @@ export function getCSSVar<K extends keyof ThemeTokens>(
   fallback?: string,
   prefix: string = CSS_VAR_PREFIX,
 ): string {
-  return fallback
-    ? `var(--${prefix}-${key}, ${fallback})`
-    : `var(--${prefix}-${key})`;
+  return fallback ? `var(--${prefix}-${key}, ${fallback})` : `var(--${prefix}-${key})`;
 }
 
 /**

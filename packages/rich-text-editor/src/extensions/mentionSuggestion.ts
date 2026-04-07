@@ -1,15 +1,9 @@
-import type {
-  MentionNodeAttrs,
-  MentionOptions,
-} from '@tiptap/extension-mention';
+import type { MentionNodeAttrs, MentionOptions } from '@tiptap/extension-mention';
 import type { MentionConfig, MentionItem } from '../types';
 import { fetchMentionItems } from '../utils/upload';
 
 /** suggestion 配置类型（从 MentionOptions 中提取） */
-type MentionSuggestion = MentionOptions<
-  MentionItem,
-  MentionNodeAttrs
->['suggestion'];
+type MentionSuggestion = MentionOptions<MentionItem, MentionNodeAttrs>['suggestion'];
 
 /** suggestion render 回调的 props 类型 */
 interface SuggestionCallbackProps {
@@ -22,9 +16,7 @@ interface SuggestionCallbackProps {
  * 创建 @提及功能的 suggestion 配置
  * 包含候选列表的查询、渲染、键盘导航和定位逻辑
  */
-export function createMentionSuggestion(
-  config?: MentionConfig,
-): MentionSuggestion {
+export function createMentionSuggestion(config?: MentionConfig): MentionSuggestion {
   // server 模式：防抖 + 请求取消 + 序列号，避免高频请求和 race condition
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let abortController: AbortController | null = null;
@@ -91,15 +83,11 @@ export function createMentionSuggestion(
               if (seq !== requestSeq) return;
               if (config.onError) {
                 const error =
-                  err != null &&
-                  typeof err === 'object' &&
-                  'type' in err &&
-                  'message' in err
+                  err != null && typeof err === 'object' && 'type' in err && 'message' in err
                     ? (err as Parameters<typeof config.onError>[0])
                     : {
                         type: 'server' as const,
-                        message:
-                          err instanceof Error ? err.message : '提及查询失败',
+                        message: err instanceof Error ? err.message : '提及查询失败',
                         cause: err,
                       };
                 config.onError(error);

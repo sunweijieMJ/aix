@@ -55,10 +55,7 @@ export async function ensureDir(dirPath: string): Promise<void> {
 }
 
 /** 写入文件 */
-export async function writeFile(
-  filePath: string,
-  content: string,
-): Promise<void> {
+export async function writeFile(filePath: string, content: string): Promise<void> {
   const dir = path.dirname(filePath);
   await ensureDir(dir);
   await fs.writeFile(filePath, content, 'utf-8');
@@ -69,9 +66,7 @@ export async function getExistingPackages(): Promise<string[]> {
   const packagesDir = getPackagesDir();
   try {
     const entries = await fs.readdir(packagesDir, { withFileTypes: true });
-    return entries
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   } catch {
     return [];
   }
@@ -91,9 +86,7 @@ export function delay(ms: number): Promise<void> {
 
 /** 获取脚本目录 */
 export function getScriptDir(): string {
-  return path
-    .dirname(new URL(import.meta.url).pathname)
-    .replace(/^\/([A-Z]:)/, '$1');
+  return path.dirname(new URL(import.meta.url).pathname).replace(/^\/([A-Z]:)/, '$1');
 }
 
 /** 获取模板目录 */

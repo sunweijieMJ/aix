@@ -13,8 +13,7 @@ export class ConcurrencyController {
   private queue: Array<() => Promise<unknown>> = [];
 
   constructor(maxConcurrent?: number) {
-    this.maxConcurrent =
-      maxConcurrent || Math.max(2, Math.floor(cpus().length / 2));
+    this.maxConcurrent = maxConcurrent || Math.max(2, Math.floor(cpus().length / 2));
   }
 
   /**

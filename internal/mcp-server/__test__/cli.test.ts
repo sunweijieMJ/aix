@@ -115,15 +115,7 @@ describe('CLI Commands', () => {
           expect(options.host).toBe('0.0.0.0');
         });
 
-      program.parse([
-        'node',
-        'cli.js',
-        'serve-ws',
-        '--port',
-        '3000',
-        '--host',
-        '0.0.0.0',
-      ]);
+      program.parse(['node', 'cli.js', 'serve-ws', '--port', '3000', '--host', '0.0.0.0']);
     });
   });
 
@@ -216,14 +208,10 @@ describe('CLI Commands', () => {
 
       // Mock fs.access
       vi.mocked(fs.access).mockResolvedValue(undefined);
-      await expect(validateDirectory('/valid/path')).resolves.toBe(
-        '/valid/path',
-      );
+      await expect(validateDirectory('/valid/path')).resolves.toBe('/valid/path');
 
       vi.mocked(fs.access).mockRejectedValue(new Error('ENOENT'));
-      await expect(validateDirectory('/invalid/path')).rejects.toThrow(
-        '目录不存在',
-      );
+      await expect(validateDirectory('/invalid/path')).rejects.toThrow('目录不存在');
     });
   });
 
@@ -256,10 +244,7 @@ describe('CLI Commands', () => {
 
   describe('帮助信息', () => {
     it('应该显示全局帮助', () => {
-      program
-        .name('aix-mcp-server')
-        .description('AIX Components MCP Server')
-        .version('1.0.33');
+      program.name('aix-mcp-server').description('AIX Components MCP Server').version('1.0.33');
 
       const helpText = program.helpInformation();
 
@@ -293,16 +278,8 @@ describe('CLI Commands', () => {
 
       program
         .command('extract')
-        .option(
-          '--packages <dir>',
-          '组件包目录',
-          process.env.MCP_PACKAGES_DIR || '../../packages',
-        )
-        .option(
-          '--output <dir>',
-          '输出目录',
-          process.env.MCP_DATA_DIR || './data',
-        )
+        .option('--packages <dir>', '组件包目录', process.env.MCP_PACKAGES_DIR || '../../packages')
+        .option('--output <dir>', '输出目录', process.env.MCP_DATA_DIR || './data')
         .option('--verbose', '详细输出', process.env.MCP_VERBOSE === 'true')
         .action((options) => {
           expect(options.packages).toBe('/env/packages');

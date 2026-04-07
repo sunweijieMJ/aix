@@ -21,10 +21,7 @@ export class WindsurfAdapter implements PlatformAdapter {
   readonly displayName = 'Windsurf';
   readonly supportedResourceTypes: ResourceType[] = ['rules'];
 
-  generateFiles(
-    rules: RuleSource[],
-    _context: AdapterContext,
-  ): PlatformOutputFile[] {
+  generateFiles(rules: RuleSource[], _context: AdapterContext): PlatformOutputFile[] {
     return rules.map((rule) => {
       const slug = ruleIdToSlug(rule.meta.id);
       return {

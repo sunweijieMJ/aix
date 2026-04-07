@@ -182,13 +182,7 @@ const darkHighlightStyle = HighlightStyle.define([
   },
   { tag: [tags.operator, tags.operatorKeyword], color: '#c586c0' },
   {
-    tag: [
-      tags.url,
-      tags.escape,
-      tags.regexp,
-      tags.link,
-      tags.special(tags.string),
-    ],
+    tag: [tags.url, tags.escape, tags.regexp, tags.link, tags.special(tags.string)],
     color: '#d7ba7d',
   },
   { tag: [tags.meta, tags.comment], color: '#6a9955' },

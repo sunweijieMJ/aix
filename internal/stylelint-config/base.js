@@ -1,8 +1,4 @@
-import {
-  commonRules,
-  commonIgnoreFiles,
-  commonOverrides,
-} from './common-rules.js';
+import { commonRules, commonIgnoreFiles, commonOverrides } from './common-rules.js';
 
 /**
  * Stylelint 基础配置

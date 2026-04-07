@@ -28,14 +28,8 @@ export class MergeProcessor extends BaseProcessor {
   }
 
   private mergeTranslationData(): void {
-    const untranslatedPath = FileUtils.getUntranslatedPath(
-      this.config,
-      this.isCustom,
-    );
-    const translatedPath = FileUtils.getTranslatedPath(
-      this.config,
-      this.isCustom,
-    );
+    const untranslatedPath = FileUtils.getUntranslatedPath(this.config, this.isCustom);
+    const translatedPath = FileUtils.getTranslatedPath(this.config, this.isCustom);
 
     LoggerUtils.info(`正在合并翻译数据...`);
 
@@ -141,9 +135,7 @@ export class MergeProcessor extends BaseProcessor {
   }
 
   private performMerge(
-    analysisResult: ReturnType<
-      typeof MergeProcessor.prototype.analyzeTranslationStatus
-    >,
+    analysisResult: ReturnType<typeof MergeProcessor.prototype.analyzeTranslationStatus>,
     existingTranslations: Translations,
     translatedPath: string,
   ): void {
@@ -151,26 +143,18 @@ export class MergeProcessor extends BaseProcessor {
       ...existingTranslations,
       ...analysisResult.newlyTranslated,
     };
-    FileUtils.createOrEmptyFile(
-      translatedPath,
-      JSON.stringify(finalTranslations, null, 2),
-    );
+    FileUtils.createOrEmptyFile(translatedPath, JSON.stringify(finalTranslations, null, 2));
     LoggerUtils.info(
       `📄 已更新 ${FILES.TRANSLATIONS_JSON}，现有 ${Object.keys(finalTranslations).length} 个翻译条目`,
     );
 
-    const untranslatedFilePath = FileUtils.getUntranslatedPath(
-      this.config,
-      this.isCustom,
-    );
+    const untranslatedFilePath = FileUtils.getUntranslatedPath(this.config, this.isCustom);
     this.updateUntranslatedFile(untranslatedFilePath, analysisResult);
   }
 
   private updateUntranslatedFile(
     filePath: string,
-    analysisResult: ReturnType<
-      typeof MergeProcessor.prototype.analyzeTranslationStatus
-    >,
+    analysisResult: ReturnType<typeof MergeProcessor.prototype.analyzeTranslationStatus>,
   ): void {
     if (analysisResult.stillUntranslatedCount > 0) {
       FileUtils.createOrEmptyFile(
@@ -182,25 +166,15 @@ export class MergeProcessor extends BaseProcessor {
       );
     } else {
       FileUtils.createOrEmptyFile(filePath, '{}');
-      LoggerUtils.success(
-        `🎉 所有条目已翻译完成，已清空 ${FILES.UNTRANSLATED_JSON}`,
-      );
+      LoggerUtils.success(`🎉 所有条目已翻译完成，已清空 ${FILES.UNTRANSLATED_JSON}`);
     }
   }
 
   private updateLanguagePackage(newlyTranslated: Translations): void {
     const sourceLocale = this.config.locale.source;
     const targetLocale = this.config.locale.target;
-    const targetPath = FileUtils.getLocaleFilePath(
-      this.config,
-      this.isCustom,
-      targetLocale,
-    );
-    const sourcePath = FileUtils.getLocaleFilePath(
-      this.config,
-      this.isCustom,
-      sourceLocale,
-    );
+    const targetPath = FileUtils.getLocaleFilePath(this.config, this.isCustom, targetLocale);
+    const sourcePath = FileUtils.getLocaleFilePath(this.config, this.isCustom, sourceLocale);
 
     let originalMessages: Record<string, any> = {};
     let isNested = false;
@@ -264,26 +238,16 @@ export class MergeProcessor extends BaseProcessor {
       LoggerUtils.info('📝 保存为扁平结构');
     }
 
-    fs.writeFileSync(
-      targetPath,
-      JSON.stringify(outputMessages, null, 2) + '\n',
-      'utf8',
-    );
-    LoggerUtils.info(
-      `📄 已更新 ${targetLocale}.json，更新 ${updatedCount} 个条目`,
-    );
+    fs.writeFileSync(targetPath, JSON.stringify(outputMessages, null, 2) + '\n', 'utf8');
+    LoggerUtils.info(`📄 已更新 ${targetLocale}.json，更新 ${updatedCount} 个条目`);
   }
 
   private displayMergeResult(
-    analysisResult: ReturnType<
-      typeof MergeProcessor.prototype.analyzeTranslationStatus
-    >,
+    analysisResult: ReturnType<typeof MergeProcessor.prototype.analyzeTranslationStatus>,
   ): void {
     const sourceLocale = this.config.locale.source;
     const targetLocale = this.config.locale.target;
-    const newTranslatedExamples = Object.keys(
-      analysisResult.newlyTranslated,
-    ).slice(0, 3);
+    const newTranslatedExamples = Object.keys(analysisResult.newlyTranslated).slice(0, 3);
     if (newTranslatedExamples.length > 0) {
       LoggerUtils.info('\n✅ 新翻译完成示例:');
       newTranslatedExamples.forEach((key) => {
@@ -295,11 +259,7 @@ export class MergeProcessor extends BaseProcessor {
     }
 
     LoggerUtils.info(`\n📊 合并结果:`);
-    LoggerUtils.info(
-      `   - ✅ 新合并翻译: ${analysisResult.newTranslatedCount} 个`,
-    );
-    LoggerUtils.info(
-      `   - 📝 仍需翻译: ${analysisResult.stillUntranslatedCount} 个`,
-    );
+    LoggerUtils.info(`   - ✅ 新合并翻译: ${analysisResult.newTranslatedCount} 个`);
+    LoggerUtils.info(`   - 📝 仍需翻译: ${analysisResult.stillUntranslatedCount} 个`);
   }
 }

@@ -54,9 +54,7 @@ describe('SensorsAdapter', () => {
       }
       return el;
     });
-    vi.spyOn(document.head, 'appendChild').mockImplementation(
-      () => null as any,
-    );
+    vi.spyOn(document.head, 'appendChild').mockImplementation(() => null as any);
 
     const adapter = new SensorsAdapter({
       serverUrl: 'https://test.com/sa',

@@ -71,9 +71,7 @@ export function getDefaultBranch(cwd: string): string {
  * - SSH: git@github.com:owner/repo.git
  * - HTTPS: https://github.com/owner/repo.git
  */
-export function parseGitRemote(
-  cwd: string,
-): { owner: string; repo: string } | null {
+export function parseGitRemote(cwd: string): { owner: string; repo: string } | null {
   try {
     const url = execSync('git remote get-url origin', {
       cwd,

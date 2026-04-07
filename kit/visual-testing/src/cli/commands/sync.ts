@@ -9,10 +9,7 @@ import chalk from 'chalk';
 import type { Command } from 'commander';
 import pLimit from 'p-limit';
 import { loadConfig, loadConfigFromFile } from '../../core/config/loader';
-import {
-  createBaselineProvider,
-  type FetchBaselineOptions,
-} from '../../core/baseline';
+import { createBaselineProvider, type FetchBaselineOptions } from '../../core/baseline';
 import { withSpinner } from '../ui/spinner';
 import { formatSyncResult } from '../ui/formatter';
 import { logger, LogLevel, parseLogLevel } from '../../utils/logger';
@@ -27,15 +24,9 @@ export function registerSyncCommand(program: Command): void {
     .option('-c, --config <path>', 'Config file path')
     .option('--debug', 'Enable debug logging')
     .option('-t, --target <names...>', 'Sync only specific targets')
-    .action(
-      async (options: {
-        config?: string;
-        debug?: boolean;
-        target?: string[];
-      }) => {
-        await runSync(options);
-      },
-    );
+    .action(async (options: { config?: string; debug?: boolean; target?: string[] }) => {
+      await runSync(options);
+    });
 }
 
 async function runSync(options: {
@@ -44,9 +35,7 @@ async function runSync(options: {
   target?: string[];
 }): Promise<void> {
   // 加载配置
-  const config = options.config
-    ? await loadConfigFromFile(options.config)
-    : await loadConfig();
+  const config = options.config ? await loadConfigFromFile(options.config) : await loadConfig();
 
   // 应用配置中的日志级别（--debug 覆盖配置）
   if (options.debug) {
@@ -62,11 +51,7 @@ async function runSync(options: {
   }
 
   if (targets.length === 0) {
-    console.log(
-      chalk.yellow(
-        'No targets found to sync. Add targets to your config file.',
-      ),
-    );
+    console.log(chalk.yellow('No targets found to sync. Add targets to your config file.'));
     return;
   }
 
@@ -76,11 +61,7 @@ async function runSync(options: {
     for (const variant of target.variants) {
       fetchOptions.push({
         source: variant.baseline,
-        outputPath: path.join(
-          config.directories.baselines,
-          target.name,
-          `${variant.name}.png`,
-        ),
+        outputPath: path.join(config.directories.baselines, target.name, `${variant.name}.png`),
       });
     }
   }
@@ -90,12 +71,8 @@ async function runSync(options: {
   const startTime = Date.now();
 
   const limit = pLimit(config.performance.concurrent.maxTargets);
-  const results = await withSpinner(
-    `Syncing ${fetchOptions.length} baselines`,
-    () =>
-      Promise.all(
-        fetchOptions.map((opts) => limit(() => provider.fetch(opts))),
-      ),
+  const results = await withSpinner(`Syncing ${fetchOptions.length} baselines`, () =>
+    Promise.all(fetchOptions.map((opts) => limit(() => provider.fetch(opts)))),
   );
 
   // 清理资源

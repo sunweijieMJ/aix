@@ -36,9 +36,7 @@ describe('ClaudeAdapter', () => {
     const files = adapter.generateFiles(sources, context);
 
     // agent-rule.md 有 agent 标签
-    const agentFile = files.find((f) =>
-      f.relativePath.startsWith('.claude/agents/'),
-    );
+    const agentFile = files.find((f) => f.relativePath.startsWith('.claude/agents/'));
     expect(agentFile).toBeDefined();
     expect(agentFile!.relativePath).toBe('.claude/agents/agent-rule.md');
   });
@@ -46,9 +44,7 @@ describe('ClaudeAdapter', () => {
   it('agent 文件包含正确的 frontmatter', async () => {
     const sources = await loadRuleSources(fixturesDir, ['base' as PresetName]);
     const files = adapter.generateFiles(sources, context);
-    const agentFile = files.find(
-      (f) => f.relativePath === '.claude/agents/agent-rule.md',
-    );
+    const agentFile = files.find((f) => f.relativePath === '.claude/agents/agent-rule.md');
     expect(agentFile).toBeDefined();
     expect(agentFile!.content).toContain('---');
     expect(agentFile!.content).toContain('name: agent-rule');
@@ -61,9 +57,7 @@ describe('ClaudeAdapter', () => {
     const files = adapter.generateFiles(sources, context);
     // 只应有 agent/command/skill 类型的文件，不包含 rules 内容
     for (const file of files) {
-      expect(file.relativePath).toMatch(
-        /^\.claude\/(agents|commands|skills)\//,
-      );
+      expect(file.relativePath).toMatch(/^\.claude\/(agents|commands|skills)\//);
     }
   });
 });

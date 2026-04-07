@@ -35,8 +35,7 @@ export function createAdapter(platform: AIPlatform): PlatformAdapter {
   const AdapterClass = ADAPTER_MAP[platform];
   if (!AdapterClass) {
     throw new Error(
-      `平台 "${platform}" 的适配器尚未实现。` +
-        `当前可用: ${Object.keys(ADAPTER_MAP).join(', ')}`,
+      `平台 "${platform}" 的适配器尚未实现。` + `当前可用: ${Object.keys(ADAPTER_MAP).join(', ')}`,
     );
   }
   return new AdapterClass();

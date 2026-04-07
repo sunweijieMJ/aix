@@ -30,10 +30,7 @@ const { version } = require('../package.json') as { version: string };
 
 const program = new Command();
 
-program
-  .name('ai-preset')
-  .description('跨 AI 平台的编码规范管理工具')
-  .version(version);
+program.name('ai-preset').description('跨 AI 平台的编码规范管理工具').version(version);
 
 registerInitCommand(program);
 registerUpgradeCommand(program);

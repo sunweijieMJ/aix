@@ -97,13 +97,9 @@ export function useFlv(
 
   const flvLoader = sdkLoaders.flv();
 
-  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(
-    key: K,
-  ): (typeof DEFAULT_OPTIONS)[K] {
+  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(key: K): (typeof DEFAULT_OPTIONS)[K] {
     const value = options.value[key];
-    return value !== undefined
-      ? (value as (typeof DEFAULT_OPTIONS)[K])
-      : DEFAULT_OPTIONS[key];
+    return value !== undefined ? (value as (typeof DEFAULT_OPTIONS)[K]) : DEFAULT_OPTIONS[key];
   }
 
   function logDebug(message: string, ...args: unknown[]): void {
@@ -230,15 +226,10 @@ export function useFlv(
 
       flvPlayer.value = player;
 
-      player.on(
-        flvjs.Events.ERROR,
-        (errorType: string, errorDetail: string) => {
-          if (isDestroying.value) return;
-          options.value.onError?.(
-            new Error(`FLV 错误: ${errorType} - ${errorDetail}`),
-          );
-        },
-      );
+      player.on(flvjs.Events.ERROR, (errorType: string, errorDetail: string) => {
+        if (isDestroying.value) return;
+        options.value.onError?.(new Error(`FLV 错误: ${errorType} - ${errorDetail}`));
+      });
 
       player.attachMediaElement(video);
       player.load();
@@ -266,9 +257,7 @@ export function useFlv(
       setupMonitoring();
     } catch (error) {
       isLoading.value = false;
-      options.value.onError?.(
-        error instanceof Error ? error : new Error('初始化 FLV 播放器失败'),
-      );
+      options.value.onError?.(error instanceof Error ? error : new Error('初始化 FLV 播放器失败'));
     }
   }
 
@@ -296,11 +285,7 @@ export function useFlv(
       }
 
       // 追帧逻辑
-      if (
-        getOption('isLive') &&
-        player.buffered &&
-        player.buffered.length > 0
-      ) {
+      if (getOption('isLive') && player.buffered && player.buffered.length > 0) {
         const end = player.buffered.end(0);
         const current = player.currentTime;
         const diff = end - current;
@@ -351,15 +336,11 @@ export function useFlv(
     }
 
     // 创建新的监控定时器
-    monitoringTimer = useTimerWithVisibility(
-      runMonitoringTick,
-      getOption('monitorInterval'),
-      {
-        canStart: () => !!flvPlayer.value && !isDestroying.value,
-        onPause: () => logDebug('页面隐藏，暂停监控'),
-        onResume: () => logDebug('页面可见，恢复监控'),
-      },
-    );
+    monitoringTimer = useTimerWithVisibility(runMonitoringTick, getOption('monitorInterval'), {
+      canStart: () => !!flvPlayer.value && !isDestroying.value,
+      onPause: () => logDebug('页面隐藏，暂停监控'),
+      onResume: () => logDebug('页面可见，恢复监控'),
+    });
 
     // 启动定时器
     monitoringTimer.start();

@@ -92,9 +92,7 @@ const LANGUAGE_LOADERS: Record<CodeLanguage, () => Promise<LanguageSupport>> = {
 const languageCache = new Map<CodeLanguage, LanguageSupport>();
 
 /** 异步获取语言扩展（按需加载 + 缓存） */
-export async function getLanguageExtension(
-  lang: CodeLanguage,
-): Promise<LanguageSupport> {
+export async function getLanguageExtension(lang: CodeLanguage): Promise<LanguageSupport> {
   const cached = languageCache.get(lang);
   if (cached) return cached;
 

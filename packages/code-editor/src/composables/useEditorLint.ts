@@ -21,8 +21,7 @@ export async function getLintExtension(
     return [];
   }
 
-  const { linter, lintGutter, lintKeymap, diagnosticCount } =
-    await import('@codemirror/lint');
+  const { linter, lintGutter, lintKeymap, diagnosticCount } = await import('@codemirror/lint');
   const { keymap } = await import('@codemirror/view');
 
   // 缓存 diagnosticCount 供 getDiagnosticCount 同步调用

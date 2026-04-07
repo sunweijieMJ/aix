@@ -27,11 +27,7 @@
         </button>
       </Tooltip>
       <Tooltip :content="t.deleteRow" placement="top">
-        <button
-          class="aix-rich-text-editor__toolbar-btn"
-          type="button"
-          @click="exec('deleteRow')"
-        >
+        <button class="aix-rich-text-editor__toolbar-btn" type="button" @click="exec('deleteRow')">
           <IconRowDelete />
         </button>
       </Tooltip>
@@ -71,20 +67,12 @@
 
       <!-- 表格操作 -->
       <Tooltip :content="t.mergeCells" placement="top">
-        <button
-          class="aix-rich-text-editor__toolbar-btn"
-          type="button"
-          @click="exec('mergeCells')"
-        >
+        <button class="aix-rich-text-editor__toolbar-btn" type="button" @click="exec('mergeCells')">
           <IconMergeCells />
         </button>
       </Tooltip>
       <Tooltip :content="t.splitCell" placement="top">
-        <button
-          class="aix-rich-text-editor__toolbar-btn"
-          type="button"
-          @click="exec('splitCell')"
-        >
+        <button class="aix-rich-text-editor__toolbar-btn" type="button" @click="exec('splitCell')">
           <IconSplitCell />
         </button>
       </Tooltip>
@@ -104,15 +92,7 @@
 <script setup lang="ts">
 import { Tooltip, usePopper, useZIndex } from '@aix/popper';
 import type { ChainedCommands, Editor } from '@tiptap/core';
-import {
-  ref,
-  computed,
-  watch,
-  nextTick,
-  onMounted,
-  onBeforeUnmount,
-  toRef,
-} from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, toRef } from 'vue';
 import {
   IconRowBefore,
   IconRowAfter,
@@ -177,8 +157,7 @@ type TableCommand =
   | 'splitCell'
   | 'deleteTable';
 
-type TableChainedCommands = ChainedCommands &
-  Record<TableCommand, () => TableChainedCommands>;
+type TableChainedCommands = ChainedCommands & Record<TableCommand, () => TableChainedCommands>;
 
 /** 执行表格命令 */
 function exec(command: TableCommand) {

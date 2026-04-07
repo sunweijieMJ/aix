@@ -23,8 +23,7 @@ import { validateServerConfig } from '../utils/validation';
 function getMCPServerRoot(): string {
   const currentDir = dirname(fileURLToPath(import.meta.url));
   // tsup 构建后输出到 dist/，开发时运行在 src/config/
-  const isInBuildDir =
-    currentDir.includes('/dist') || currentDir.includes('\\dist');
+  const isInBuildDir = currentDir.includes('/dist') || currentDir.includes('\\dist');
   return isInBuildDir
     ? resolve(currentDir, '..') // dist/ → mcp-server/
     : resolve(currentDir, '../..'); // src/config/ → mcp-server/
@@ -217,8 +216,6 @@ export class ConfigManager {
 /**
  * 创建配置管理器实例
  */
-export function createConfigManager(
-  customConfig?: Partial<ServerConfig>,
-): ConfigManager {
+export function createConfigManager(customConfig?: Partial<ServerConfig>): ConfigManager {
   return new ConfigManager(customConfig);
 }

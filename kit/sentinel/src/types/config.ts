@@ -92,11 +92,7 @@ export const DEFAULT_PR_DAILY_LIMIT = 5;
 export const DEFAULT_CRON = '0 18 * * 5';
 export const DEFAULT_MAX_TURNS = 20;
 export const DEFAULT_SMOKE_TEST_CMD = 'pnpm test:smoke';
-export const ALL_SCHEDULED_CHECKS: ScheduledCheck[] = [
-  'lint',
-  'typecheck',
-  'test',
-];
+export const ALL_SCHEDULED_CHECKS: ScheduledCheck[] = ['lint', 'typecheck', 'test'];
 
 export const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
   1: {

@@ -9,15 +9,7 @@
     "kit/*/src/**/*.{js,ts,jsx,tsx,vue}",
     "internal/*/src/**/*.{js,ts,jsx,tsx,vue}"
   ],
-  "dictionaries": [
-    "typescript",
-    "node",
-    "npm",
-    "html",
-    "css",
-    "fonts",
-    "softwareTerms"
-  ],
+  "dictionaries": ["typescript", "node", "npm", "html", "css", "fonts", "softwareTerms"],
   "words": [
     "chenglou",
     "mdc",

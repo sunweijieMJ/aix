@@ -39,16 +39,7 @@ type FeatureConfig =
 type FeatureLoader = (config?: FeatureConfig) => Promise<AnyExtension[]>;
 
 /** 默认字号列表 */
-export const DEFAULT_FONT_SIZES = [
-  '12px',
-  '14px',
-  '16px',
-  '18px',
-  '20px',
-  '24px',
-  '28px',
-  '32px',
-];
+export const DEFAULT_FONT_SIZES = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px'];
 
 /** 默认字体列表 */
 export const DEFAULT_FONT_FAMILIES = [
@@ -65,13 +56,12 @@ export const DEFAULT_FONT_FAMILIES = [
 const FEATURE_LOADERS: Record<EnhancedFeatureName, FeatureLoader> = {
   table: async (config) => {
     const tableConfig = config as TableConfig | undefined;
-    const [{ Table }, { TableRow }, { TableHeader }, { TableCell }] =
-      await Promise.all([
-        import('@tiptap/extension-table'),
-        import('@tiptap/extension-table-row'),
-        import('@tiptap/extension-table-header'),
-        import('@tiptap/extension-table-cell'),
-      ]);
+    const [{ Table }, { TableRow }, { TableHeader }, { TableCell }] = await Promise.all([
+      import('@tiptap/extension-table'),
+      import('@tiptap/extension-table-row'),
+      import('@tiptap/extension-table-header'),
+      import('@tiptap/extension-table-cell'),
+    ]);
     return [
       Table.configure({ resizable: tableConfig?.resizable ?? true }),
       TableRow,
@@ -147,8 +137,7 @@ const FEATURE_LOADERS: Record<EnhancedFeatureName, FeatureLoader> = {
 
   characterCount: async (config) => {
     const countConfig = config as CharacterCountConfig | undefined;
-    const { CharacterCount } =
-      await import('@tiptap/extension-character-count');
+    const { CharacterCount } = await import('@tiptap/extension-character-count');
     return [
       CharacterCount.configure({
         limit: countConfig?.limit,

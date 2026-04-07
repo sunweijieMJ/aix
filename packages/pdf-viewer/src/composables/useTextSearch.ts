@@ -65,9 +65,7 @@ const SEARCH_BATCH_SIZE = 10;
 /**
  * 文本搜索 Composable
  */
-export function useTextSearch(
-  options: UseTextSearchOptions = {},
-): UseTextSearchReturn {
+export function useTextSearch(options: UseTextSearchOptions = {}): UseTextSearchReturn {
   const keyword = ref('');
   const searching = ref(false);
   const matches = ref<SearchMatch[]>([]);
@@ -80,10 +78,7 @@ export function useTextSearch(
   const totalMatches = computed(() => matches.value.length);
 
   const currentMatch = computed<SearchMatch | null>(() => {
-    if (
-      currentMatchIndex.value < 1 ||
-      currentMatchIndex.value > matches.value.length
-    ) {
+    if (currentMatchIndex.value < 1 || currentMatchIndex.value > matches.value.length) {
       return null;
     }
     return matches.value[currentMatchIndex.value - 1] ?? null;
@@ -106,9 +101,7 @@ export function useTextSearch(
     const page = await pdf.getPage(pageNum);
     const textContent = await page.getTextContent();
 
-    const pageText = textContent.items
-      .map((item) => ('str' in item ? item.str : ''))
-      .join('');
+    const pageText = textContent.items.map((item) => ('str' in item ? item.str : '')).join('');
 
     const lowerText = pageText.toLowerCase();
     const pageMatches: [number, number][] = [];
@@ -138,10 +131,7 @@ export function useTextSearch(
   /**
    * 执行搜索（按批并行处理页面）
    */
-  async function search(
-    pdf: PDFDocumentProxy,
-    searchKeyword: string,
-  ): Promise<void> {
+  async function search(pdf: PDFDocumentProxy, searchKeyword: string): Promise<void> {
     const trimmedKeyword = searchKeyword.trim();
 
     // 取消之前的搜索
@@ -166,24 +156,15 @@ export function useTextSearch(
       const allMatches: SearchMatch[] = [];
 
       // 按批并行处理页面（每批 SEARCH_BATCH_SIZE 页）
-      for (
-        let batchStart = 1;
-        batchStart <= pdf.numPages;
-        batchStart += SEARCH_BATCH_SIZE
-      ) {
+      for (let batchStart = 1; batchStart <= pdf.numPages; batchStart += SEARCH_BATCH_SIZE) {
         // 批间检查取消
         if (searchId !== currentSearchId) return;
 
-        const batchEnd = Math.min(
-          batchStart + SEARCH_BATCH_SIZE - 1,
-          pdf.numPages,
-        );
+        const batchEnd = Math.min(batchStart + SEARCH_BATCH_SIZE - 1, pdf.numPages);
         const batchPromises: ReturnType<typeof searchPage>[] = [];
 
         for (let pageNum = batchStart; pageNum <= batchEnd; pageNum++) {
-          batchPromises.push(
-            searchPage(pdf, pageNum, lowerKeyword, trimmedKeyword.length),
-          );
+          batchPromises.push(searchPage(pdf, pageNum, lowerKeyword, trimmedKeyword.length));
         }
 
         // Promise.all 保持页码顺序
@@ -296,9 +277,7 @@ export function useTextSearch(
     }
 
     // 收集所有 text span 及其在拼接文本中的偏移区间
-    const textSpans = Array.from(
-      container.querySelectorAll('span[role="presentation"]'),
-    );
+    const textSpans = Array.from(container.querySelectorAll('span[role="presentation"]'));
     const spanInfos: {
       span: HTMLElement;
       text: string;
@@ -319,10 +298,7 @@ export function useTextSearch(
     }
 
     // 基于缓存的匹配位置（全页拼接文本偏移），计算每个 span 内需要高亮的区间
-    const spanEdits = new Map<
-      number,
-      { start: number; end: number; globalIndex: number }[]
-    >();
+    const spanEdits = new Map<number, { start: number; end: number; globalIndex: number }[]>();
 
     for (let mi = 0; mi < cache.matches.length; mi++) {
       const matchPair = cache.matches[mi];
@@ -363,9 +339,7 @@ export function useTextSearch(
 
       for (const range of ranges) {
         if (range.start > lastIndex) {
-          fragment.appendChild(
-            document.createTextNode(text.substring(lastIndex, range.start)),
-          );
+          fragment.appendChild(document.createTextNode(text.substring(lastIndex, range.start)));
         }
 
         const mark = document.createElement('mark');
@@ -377,9 +351,7 @@ export function useTextSearch(
       }
 
       if (lastIndex < text.length) {
-        fragment.appendChild(
-          document.createTextNode(text.substring(lastIndex)),
-        );
+        fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
       }
 
       span.textContent = '';
@@ -392,9 +364,7 @@ export function useTextSearch(
    * 通过 data-original-text 还原原始文本，保留 span 元素结构
    */
   function clearHighlights(container: HTMLElement): void {
-    const highlightedSpans = container.querySelectorAll(
-      'span[data-original-text]',
-    );
+    const highlightedSpans = container.querySelectorAll('span[data-original-text]');
     highlightedSpans.forEach((span) => {
       const originalText = (span as HTMLElement).dataset.originalText;
       if (originalText !== undefined) {

@@ -27,10 +27,7 @@ export class TongyiAdapter implements PlatformAdapter {
   readonly displayName = '通义灵码 (阿里)';
   readonly supportedResourceTypes: ResourceType[] = ['rules'];
 
-  generateFiles(
-    rules: RuleSource[],
-    _context: AdapterContext,
-  ): PlatformOutputFile[] {
+  generateFiles(rules: RuleSource[], _context: AdapterContext): PlatformOutputFile[] {
     return rules.map((rule) => {
       const slug = ruleIdToSlug(rule.meta.id);
       return {

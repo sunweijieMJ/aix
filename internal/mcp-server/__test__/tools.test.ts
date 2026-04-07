@@ -138,9 +138,7 @@ describe('MCP Tools', () => {
       const tool = tools.find((t) => t.name === 'get-component-info');
       const result = await tool!.execute({ name: '@aix/test-component' });
       expect(result).toBeDefined();
-      expect((result as ComponentInfo)?.packageName).toBe(
-        '@aix/test-component',
-      );
+      expect((result as ComponentInfo)?.packageName).toBe('@aix/test-component');
     });
 
     it('应该对不存在的组件返回 null', async () => {
@@ -220,9 +218,7 @@ describe('MCP Tools', () => {
 
       const result = await tool!.execute({ query: 'TestComponent' });
       expect(result).toHaveLength(1);
-      expect((result as SearchResult[])?.[0]?.component?.name).toBe(
-        'TestComponent',
-      );
+      expect((result as SearchResult[])?.[0]?.component?.name).toBe('TestComponent');
       expect((result as SearchResult[])?.[0]?.score).toBeGreaterThan(0);
     });
 

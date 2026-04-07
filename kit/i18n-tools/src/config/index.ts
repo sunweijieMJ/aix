@@ -9,12 +9,7 @@ export type {
   LocaleConfig,
   PromptsConfig,
 } from './types';
-export {
-  resolveConfig,
-  loadConfig,
-  loadConfigFile,
-  findConfigFile,
-} from './loader';
+export { resolveConfig, loadConfig, loadConfigFile, findConfigFile } from './loader';
 export {
   DEFAULT_PATHS,
   DEFAULT_CONCURRENCY,

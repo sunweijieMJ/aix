@@ -30,12 +30,7 @@ import {
 import { PlaywrightScreenshotEngine } from './screenshot/playwright-engine';
 import { PixelComparisonEngine } from './comparison/pixel-engine';
 import { LLMAnalyzer } from './llm';
-import {
-  JsonReporter,
-  HtmlReporter,
-  ConclusionReporter,
-  type TestResult,
-} from './report';
+import { JsonReporter, HtmlReporter, ConclusionReporter, type TestResult } from './report';
 import { DevServer } from './server/dev-server';
 
 const log = logger.child('Orchestrator');
@@ -126,10 +121,7 @@ export class VisualTestOrchestrator {
    * @param targetNames - 可选，指定运行的目标名称。不传则运行所有。
    * @returns 测试结果数组
    */
-  async runTests(
-    targetNames?: string[],
-    options?: RunOptions,
-  ): Promise<TestResult[]> {
+  async runTests(targetNames?: string[], options?: RunOptions): Promise<TestResult[]> {
     const totalStart = Date.now();
 
     log.info('Starting visual tests...');
@@ -183,9 +175,7 @@ export class VisualTestOrchestrator {
       const limit = pLimit(concurrency);
 
       // 6. 并发执行每个测试任务
-      const taskPromises = tasks.map((task) =>
-        limit(() => this.runSingleTest(task, options)),
-      );
+      const taskPromises = tasks.map((task) => limit(() => this.runSingleTest(task, options)));
       const settledResults = await Promise.allSettled(taskPromises);
 
       for (let i = 0; i < settledResults.length; i++) {
@@ -194,10 +184,7 @@ export class VisualTestOrchestrator {
         if (settled.status === 'fulfilled') {
           results.push(settled.value);
         } else {
-          log.error(
-            `Unexpected error in task ${task.target}/${task.variant}`,
-            settled.reason,
-          );
+          log.error(`Unexpected error in task ${task.target}/${task.variant}`, settled.reason);
           results.push(this.createErrorResult(task, settled.reason));
         }
       }
@@ -242,10 +229,7 @@ export class VisualTestOrchestrator {
   /**
    * 执行单个测试任务（带超时控制）
    */
-  private async runSingleTest(
-    task: TestTask,
-    options?: RunOptions,
-  ): Promise<TestResult> {
+  private async runSingleTest(task: TestTask, options?: RunOptions): Promise<TestResult> {
     const timeout = this.config.performance.timeout;
     const taskId = `${task.target}/${task.variant}`;
 
@@ -288,14 +272,7 @@ export class VisualTestOrchestrator {
 
     try {
       return await Promise.race([
-        this.executeTestSteps(
-          task,
-          taskId,
-          timing,
-          taskStart,
-          controller.signal,
-          options,
-        ),
+        this.executeTestSteps(task, taskId, timing, taskStart, controller.signal, options),
         new Promise<never>((_, reject) => {
           controller.signal.addEventListener('abort', () => {
             reject(new Error(`Task timeout after ${timeout}ms`));
@@ -345,14 +322,11 @@ export class VisualTestOrchestrator {
         // 仅当错误明确是"文件未找到"时才视为首次运行，
         // 其他错误（如文件损坏、网络超时）应正常报错，避免静默覆盖已有基准图
         const isNotFound =
-          baselineResult.error?.message?.toLowerCase().includes('not found') ??
-          false;
+          baselineResult.error?.message?.toLowerCase().includes('not found') ?? false;
         if (options?.update && isNotFound) {
           // --update 模式：基准图不存在，跳过此步骤，截图后保存为初始基准图
           isFirstRun = true;
-          log.info(
-            `[${taskId}] No baseline found, capturing initial baseline...`,
-          );
+          log.info(`[${taskId}] No baseline found, capturing initial baseline...`);
         } else {
           throw baselineResult.error ?? new Error('Baseline fetch failed');
         }
@@ -392,10 +366,7 @@ export class VisualTestOrchestrator {
         await copyFile(actualPath, baselinePath);
         log.info(`[${taskId}] INITIALIZED baseline: ${baselinePath}`);
       } catch (error) {
-        log.error(
-          `[${taskId}] Failed to save initial baseline`,
-          error as Error,
-        );
+        log.error(`[${taskId}] Failed to save initial baseline`, error as Error);
         return this.createErrorResult(task, error, 'baseline');
       }
 
@@ -482,10 +453,7 @@ export class VisualTestOrchestrator {
         timing.analysis = Date.now() - start;
         log.debug(`[${taskId}] LLM analysis done (${timing.analysis}ms)`);
       } catch (error) {
-        log.warn(
-          `[${taskId}] LLM analysis failed, continuing without it`,
-          error,
-        );
+        log.warn(`[${taskId}] LLM analysis failed, continuing without it`, error);
       }
     }
 
@@ -546,10 +514,7 @@ export class VisualTestOrchestrator {
               targetType: target.type,
               variant: `${variant.name}@${viewport.name}`,
               url: variant.url,
-              baseline: this.deriveViewportBaseline(
-                variant.baseline,
-                viewport.name,
-              ),
+              baseline: this.deriveViewportBaseline(variant.baseline, viewport.name),
               selector: variant.selector,
               waitFor: variant.waitFor,
               threshold: variant.threshold,
@@ -577,10 +542,7 @@ export class VisualTestOrchestrator {
               tasks.push({
                 ...baseTask,
                 variant: `${baseTask.variant}@${browserConfig.type}`,
-                baseline: this.deriveBrowserBaseline(
-                  baseTask.baseline,
-                  browserConfig.type,
-                ),
+                baseline: this.deriveBrowserBaseline(baseTask.baseline, browserConfig.type),
                 browser: browserConfig.type,
               });
             }
@@ -616,10 +578,7 @@ export class VisualTestOrchestrator {
 
     // 统一构建结论数据，供所有 reporter 共享（避免重复计算）
     const conclusionReporter = new ConclusionReporter(this.config);
-    reportContext.conclusion = conclusionReporter.buildReport(
-      results,
-      reportContext,
-    );
+    reportContext.conclusion = conclusionReporter.buildReport(results, reportContext);
 
     const reporters: Array<{
       reporter: JsonReporter | HtmlReporter | ConclusionReporter;
@@ -641,11 +600,7 @@ export class VisualTestOrchestrator {
 
     for (const { reporter, name } of reporters) {
       try {
-        const outputPath = await reporter.generate(
-          results,
-          outputDir,
-          reportContext,
-        );
+        const outputPath = await reporter.generate(results, outputDir, reportContext);
         log.info(`${name} report: ${outputPath}`);
       } catch (error) {
         log.error(`Failed to generate ${name} report`, error as Error);
@@ -689,27 +644,15 @@ export class VisualTestOrchestrator {
   // ---- 路径工具 ----
 
   private getBaselinePath(task: TestTask): string {
-    return path.join(
-      this.config.directories.baselines,
-      task.target,
-      `${task.variant}.png`,
-    );
+    return path.join(this.config.directories.baselines, task.target, `${task.variant}.png`);
   }
 
   private getActualPath(task: TestTask): string {
-    return path.join(
-      this.config.directories.actuals,
-      task.target,
-      `${task.variant}.png`,
-    );
+    return path.join(this.config.directories.actuals, task.target, `${task.variant}.png`);
   }
 
   private getDiffPath(task: TestTask): string {
-    return path.join(
-      this.config.directories.diffs,
-      task.target,
-      `${task.variant}-diff.png`,
-    );
+    return path.join(this.config.directories.diffs, task.target, `${task.variant}-diff.png`);
   }
 
   /**
@@ -813,9 +756,7 @@ export class VisualTestOrchestrator {
         const baselinePath = result.screenshots.baseline;
 
         if (!actualPath || !baselinePath) {
-          log.warn(
-            `[${result.target}/${result.variant}] Missing paths, skipping update`,
-          );
+          log.warn(`[${result.target}/${result.variant}] Missing paths, skipping update`);
           continue;
         }
 
@@ -828,14 +769,9 @@ export class VisualTestOrchestrator {
         }
 
         await copyFile(actualPath, baselinePath);
-        log.info(
-          `[${result.target}/${result.variant}] Baseline updated: ${baselinePath}`,
-        );
+        log.info(`[${result.target}/${result.variant}] Baseline updated: ${baselinePath}`);
       } catch (error) {
-        log.error(
-          `[${result.target}/${result.variant}] Failed to update baseline`,
-          error as Error,
-        );
+        log.error(`[${result.target}/${result.variant}] Failed to update baseline`, error as Error);
       }
     }
 

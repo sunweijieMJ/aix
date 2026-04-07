@@ -24,12 +24,7 @@ function setupExposure(
   const { once = true } = binding.value;
   if (once && el[FIRED_KEY]) return;
 
-  const {
-    event,
-    properties,
-    threshold = 0.5,
-    minVisibleTime = 300,
-  } = binding.value;
+  const { event, properties, threshold = 0.5, minVisibleTime = 300 } = binding.value;
 
   // IntersectionObserver 不可用时静默跳过
   if (typeof IntersectionObserver === 'undefined') return;
@@ -42,8 +37,7 @@ function setupExposure(
         if (entry.isIntersecting && entry.intersectionRatio >= threshold) {
           if (timer === null) {
             timer = setTimeout(() => {
-              const props =
-                typeof properties === 'function' ? properties() : properties;
+              const props = typeof properties === 'function' ? properties() : properties;
               tracker.track(event, props);
               timer = null;
               if (once) {

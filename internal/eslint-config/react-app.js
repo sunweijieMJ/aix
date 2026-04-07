@@ -4,11 +4,7 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import { config as baseConfig } from './base.js';
-import {
-  commonTypeScriptRules,
-  commonEslintRules,
-  commonImportRules,
-} from './common-rules.js';
+import { commonTypeScriptRules, commonEslintRules, commonImportRules } from './common-rules.js';
 
 const eslintPluginReactRecommended = eslintPluginReact.configs.flat.recommended;
 
@@ -54,10 +50,7 @@ export const config = [
       'react-refresh': eslintPluginReactRefresh,
     },
     rules: {
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
   },
   {

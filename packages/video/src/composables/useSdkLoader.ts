@@ -24,19 +24,14 @@ const cssCache = new Map<string, HTMLLinkElement>();
  * 动态加载 CSS 文件
  * 用于 SDK 的 beforeLoad 钩子中加载额外的样式依赖
  */
-export function loadCss(
-  href: string,
-  layerName?: string,
-): Promise<HTMLLinkElement> {
+export function loadCss(href: string, layerName?: string): Promise<HTMLLinkElement> {
   const cached = cssCache.get(href);
   if (cached) {
     return Promise.resolve(cached);
   }
 
   return new Promise((resolve, reject) => {
-    const existing = document.querySelector(
-      `link[href="${href}"]`,
-    ) as HTMLLinkElement;
+    const existing = document.querySelector(`link[href="${href}"]`) as HTMLLinkElement;
     if (existing) {
       cssCache.set(href, existing);
       resolve(existing);
@@ -79,9 +74,7 @@ export function removeCss(href: string): void {
  * SDK 动态加载器
  * 支持 ES 模块和 CDN 脚本两种加载方式
  */
-export function useSdkLoader<T = unknown>(
-  config: SdkLoaderConfig,
-): UseSdkLoaderReturn<T> {
+export function useSdkLoader<T = unknown>(config: SdkLoaderConfig): UseSdkLoaderReturn<T> {
   const sdk = shallowRef<T | null>(null);
   const isLoading = ref(false);
   const isLoaded = ref(false);
@@ -96,9 +89,7 @@ export function useSdkLoader<T = unknown>(
     }
 
     // 检查是否已加载
-    const globalSdk = (window as unknown as Record<string, unknown>)[
-      config.globalName
-    ];
+    const globalSdk = (window as unknown as Record<string, unknown>)[config.globalName];
     if (globalSdk) {
       return globalSdk as T;
     }
@@ -109,17 +100,11 @@ export function useSdkLoader<T = unknown>(
       script.async = true;
 
       script.onload = () => {
-        const loadedSdk = (window as unknown as Record<string, unknown>)[
-          config.globalName!
-        ];
+        const loadedSdk = (window as unknown as Record<string, unknown>)[config.globalName!];
         if (loadedSdk) {
           resolve(loadedSdk as T);
         } else {
-          reject(
-            new Error(
-              `[SdkLoader] ${config.name}: 全局变量 ${config.globalName} 未找到`,
-            ),
-          );
+          reject(new Error(`[SdkLoader] ${config.name}: 全局变量 ${config.globalName} 未找到`));
         }
       };
 

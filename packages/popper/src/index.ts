@@ -38,15 +38,7 @@ export type {
 } from './types';
 
 // 组件导出
-export {
-  Popper,
-  PopperArrow,
-  Tooltip,
-  Popover,
-  Dropdown,
-  DropdownItem,
-  ContextMenu,
-};
+export { Popper, PopperArrow, Tooltip, Popover, Dropdown, DropdownItem, ContextMenu };
 
 // Composable 导出
 export {

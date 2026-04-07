@@ -76,18 +76,13 @@ export const PACKAGE_SCOPE = COMPONENT_LIBRARY_CONFIG.packageScope;
  */
 export const TEXT_TEMPLATES = {
   // CLI 相关消息
-  cliWelcome: () =>
-    `🚀 启动 ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server...`,
-  cliSuccess: () =>
-    `✅ ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server 已启动`,
-  cliStop: () =>
-    `🛑 停止 ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server...`,
-  cliStopped: () =>
-    `✅ ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server 已停止`,
+  cliWelcome: () => `🚀 启动 ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server...`,
+  cliSuccess: () => `✅ ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server 已启动`,
+  cliStop: () => `🛑 停止 ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server...`,
+  cliStopped: () => `✅ ${COMPONENT_LIBRARY_CONFIG.displayName} MCP Server 已停止`,
 
   // WebSocket 相关消息
-  wsStart: () =>
-    `🌐 启动 ${COMPONENT_LIBRARY_CONFIG.displayName} MCP WebSocket Server...`,
+  wsStart: () => `🌐 启动 ${COMPONENT_LIBRARY_CONFIG.displayName} MCP WebSocket Server...`,
   wsSuccess: (host: string, port: string | number) =>
     `✅ WebSocket 服务器启动成功! ws://${host}:${port}`,
 
@@ -97,8 +92,7 @@ export const TEXT_TEMPLATES = {
   componentExtractSuccess: (count: number) => `✅ 成功提取 ${count} 个组件`,
 
   // 工具描述
-  toolDescription: () =>
-    `列出所有可用的 ${COMPONENT_LIBRARY_CONFIG.displayName} 组件`,
+  toolDescription: () => `列出所有可用的 ${COMPONENT_LIBRARY_CONFIG.displayName} 组件`,
 
   // 提示词前缀
   promptPrefix: () => COMPONENT_LIBRARY_CONFIG.packagePrefix,

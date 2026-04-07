@@ -13,10 +13,7 @@ import {
   ReactComponentInjector,
   ReactImportManager,
 } from '../strategies/react';
-import {
-  createReactI18nLibrary,
-  type ReactI18nLibraryType,
-} from '../strategies/react/libraries';
+import { createReactI18nLibrary, type ReactI18nLibraryType } from '../strategies/react/libraries';
 
 /**
  * React 框架适配器

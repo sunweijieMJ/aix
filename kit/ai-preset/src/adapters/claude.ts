@@ -24,16 +24,9 @@ import { ruleIdToSlug } from './shared.js';
 export class ClaudeAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'claude';
   readonly displayName = 'Claude Code';
-  readonly supportedResourceTypes: ResourceType[] = [
-    'agent',
-    'command',
-    'skill',
-  ];
+  readonly supportedResourceTypes: ResourceType[] = ['agent', 'command', 'skill'];
 
-  generateFiles(
-    rules: RuleSource[],
-    _context: AdapterContext,
-  ): PlatformOutputFile[] {
+  generateFiles(rules: RuleSource[], _context: AdapterContext): PlatformOutputFile[] {
     const files: PlatformOutputFile[] = [];
 
     // 按 resourceType 分类（跳过 rules 类型，CLAUDE.md 由用户自行维护）

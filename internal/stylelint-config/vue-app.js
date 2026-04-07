@@ -1,8 +1,4 @@
-import {
-  commonRules,
-  commonIgnoreFiles,
-  scssOverride,
-} from './common-rules.js';
+import { commonRules, commonIgnoreFiles, scssOverride } from './common-rules.js';
 
 /**
  * Stylelint Vue 项目配置

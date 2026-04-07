@@ -7,9 +7,7 @@ import { log } from './logger';
 /**
  * 读取并解析 package.json 文件
  */
-export async function readPackageJson(
-  packagePath: string,
-): Promise<PackageInfo | null> {
+export async function readPackageJson(packagePath: string): Promise<PackageInfo | null> {
   try {
     const content = await readFile(join(packagePath, 'package.json'), 'utf8');
     return JSON.parse(content) as PackageInfo;
@@ -55,9 +53,7 @@ export async function findComponentFiles(packagePath: string): Promise<{
   ]);
 
   return {
-    sourceFiles: sourceFiles.filter(
-      (file) => !file.includes('.test.') && !file.includes('.spec.'),
-    ),
+    sourceFiles: sourceFiles.filter((file) => !file.includes('.test.') && !file.includes('.spec.')),
     storyFiles,
     readmeFiles,
   };

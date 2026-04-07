@@ -67,9 +67,7 @@ export const getSystemThemePreference = (): 'light' | 'dark' | null => {
   if (!hasMatchMedia()) return null;
 
   try {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   } catch {
     return null;
   }

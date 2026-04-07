@@ -102,10 +102,7 @@ ${formattedAttrs}
 }
 
 // 将 SVG 转换为 Vue 组件
-function transformToVueComponent(
-  svgPath: string,
-  componentName: string,
-): string {
+function transformToVueComponent(svgPath: string, componentName: string): string {
   const svgContent = fs.readFileSync(svgPath, 'utf-8');
   const processedSvg = processSvgContent(svgContent);
 
@@ -171,9 +168,7 @@ function generateIcons() {
       fs.writeFileSync(outputPath, vueContent, 'utf-8');
 
       // 记录组件信息用于生成入口文件
-      const relativeVuePath = path
-        .relative(srcDir, outputPath)
-        .replace(/\\/g, '/');
+      const relativeVuePath = path.relative(srcDir, outputPath).replace(/\\/g, '/');
       componentNames.push({
         name: componentName,
         path: './' + relativeVuePath, // 保留 .vue 扩展名

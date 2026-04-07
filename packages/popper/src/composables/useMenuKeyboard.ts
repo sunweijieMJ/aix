@@ -31,9 +31,7 @@ export function createMenuKeyDown(
     if (!menu) return;
 
     const items = Array.from(
-      menu.querySelectorAll<HTMLElement>(
-        `${itemSelector}:not(${disabledSelector})`,
-      ),
+      menu.querySelectorAll<HTMLElement>(`${itemSelector}:not(${disabledSelector})`),
     );
     if (items.length === 0) return;
 
@@ -42,9 +40,7 @@ export function createMenuKeyDown(
     switch (event.key) {
       case 'ArrowDown':
         event.preventDefault();
-        items[
-          currentIndex < 0 ? 0 : (currentIndex + 1) % items.length
-        ]?.focus();
+        items[currentIndex < 0 ? 0 : (currentIndex + 1) % items.length]?.focus();
         break;
       case 'ArrowUp':
         event.preventDefault();

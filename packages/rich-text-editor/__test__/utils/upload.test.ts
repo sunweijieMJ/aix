@@ -15,15 +15,13 @@ import {
 
 describe('getByPath', () => {
   it('正常点分路径提取', () => {
-    expect(
-      getByPath({ data: { url: 'https://cdn.com/a.png' } }, 'data.url'),
-    ).toBe('https://cdn.com/a.png');
+    expect(getByPath({ data: { url: 'https://cdn.com/a.png' } }, 'data.url')).toBe(
+      'https://cdn.com/a.png',
+    );
   });
 
   it('深层路径提取', () => {
-    expect(
-      getByPath({ data: { result: { list: [1, 2] } } }, 'data.result.list'),
-    ).toEqual([1, 2]);
+    expect(getByPath({ data: { result: { list: [1, 2] } } }, 'data.result.list')).toEqual([1, 2]);
   });
 
   it('单层路径', () => {
@@ -160,8 +158,7 @@ describe('fetchUpload', () => {
   it('自定义 responsePath 正确提取', async () => {
     mockFetch.mockResolvedValue({
       ok: true,
-      json: () =>
-        Promise.resolve({ result: { fileUrl: 'https://cdn.com/a.jpg' } }),
+      json: () => Promise.resolve({ result: { fileUrl: 'https://cdn.com/a.jpg' } }),
     });
 
     const url = await fetchUpload({
@@ -372,8 +369,7 @@ describe('fetchMentionItems', () => {
     mockFetch.mockImplementation(
       (_url: string, options: { signal: AbortSignal }) =>
         new Promise((resolve, reject) => {
-          const onAbort = () =>
-            reject(new DOMException('Aborted', 'AbortError'));
+          const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
           if (options.signal.aborted) return onAbort();
           options.signal.addEventListener('abort', onAbort, { once: true });
           // 模拟延迟响应（不会到达，因为会先 abort）
@@ -381,8 +377,7 @@ describe('fetchMentionItems', () => {
             () =>
               resolve({
                 ok: true,
-                json: () =>
-                  Promise.resolve({ data: [{ id: 1, label: 'test' }] }),
+                json: () => Promise.resolve({ data: [{ id: 1, label: 'test' }] }),
               }),
             100,
           );
@@ -440,9 +435,7 @@ describe('fetchUpload - timeout', () => {
       (_url: string, options: { signal: AbortSignal }) =>
         new Promise((_resolve, reject) => {
           options.signal.addEventListener('abort', () => {
-            reject(
-              new DOMException('The operation was aborted.', 'AbortError'),
-            );
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
           });
         }),
     );
@@ -522,10 +515,7 @@ describe('processFileUpload', () => {
 
     expect(uploadFn).toHaveBeenCalledOnce();
     expect(onInsert).toHaveBeenCalledWith('https://cdn.com/a.png');
-    expect(onSuccess).toHaveBeenCalledWith(
-      'https://cdn.com/a.png',
-      expect.any(File),
-    );
+    expect(onSuccess).toHaveBeenCalledWith('https://cdn.com/a.png', expect.any(File));
   });
 
   it('文件类型不匹配：调用 onError 并阻止上传', async () => {

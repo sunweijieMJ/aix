@@ -93,9 +93,7 @@ function getVideoElement(
  * 统一播放控制器
  * 支持 Video.js 引擎和原生 video 元素的双引擎分流
  */
-export function usePlaybackController(
-  options: PlaybackControllerOptions,
-): PlaybackController {
+export function usePlaybackController(options: PlaybackControllerOptions): PlaybackController {
   const { player, videoRef } = options;
 
   function getEngine(): EngineType {
@@ -258,9 +256,7 @@ export function usePlaybackController(
     isFullscreen() {
       if (isIOS()) {
         const webkitDocument = document as WebkitDocument;
-        return !!(
-          document.fullscreenElement || webkitDocument.webkitFullscreenElement
-        );
+        return !!(document.fullscreenElement || webkitDocument.webkitFullscreenElement);
       }
       const engine = getEngine();
       if (engine === 'native') {

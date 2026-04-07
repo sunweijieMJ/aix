@@ -53,11 +53,7 @@ export interface IComponentInjector {
  * 导入管理器接口
  */
 export interface IImportManager {
-  handleGlobalImports(
-    code: string,
-    fileStrings: ExtractedString[],
-    filePath?: string,
-  ): string;
+  handleGlobalImports(code: string, fileStrings: ExtractedString[], filePath?: string): string;
   addI18nImports(code: string, imports: string[]): string;
 }
 

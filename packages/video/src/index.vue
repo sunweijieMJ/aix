@@ -36,19 +36,9 @@ import {
   useOrientationChange,
   type OrientationChangeOptions,
 } from './composables/useOrientationChange';
-import {
-  useTouchEvents,
-  type TouchEventsOptions,
-} from './composables/useTouchEvents';
-import {
-  useVideoPlayer,
-  type VideoPlayerOptions,
-} from './composables/useVideoPlayer';
-import type {
-  ControlMethods,
-  VideoPlayerProps,
-  VideoPlayerEmits,
-} from './types';
+import { useTouchEvents, type TouchEventsOptions } from './composables/useTouchEvents';
+import { useVideoPlayer, type VideoPlayerOptions } from './composables/useVideoPlayer';
+import type { ControlMethods, VideoPlayerProps, VideoPlayerEmits } from './types';
 
 defineOptions({
   name: 'VideoPlayer',
@@ -80,12 +70,10 @@ const uri = computed(() => props.src);
 const containerStyle = computed(() => {
   const style: Record<string, string> = {};
   if (props.width) {
-    style.width =
-      typeof props.width === 'number' ? `${props.width}px` : props.width;
+    style.width = typeof props.width === 'number' ? `${props.width}px` : props.width;
   }
   if (props.height) {
-    style.height =
-      typeof props.height === 'number' ? `${props.height}px` : props.height;
+    style.height = typeof props.height === 'number' ? `${props.height}px` : props.height;
   }
   return style;
 });
@@ -113,8 +101,7 @@ const videoPlayerOptions = computed<VideoPlayerOptions>(() => ({
   onPlay: () => emit('play'),
   onPause: () => emit('pause'),
   onEnded: () => emit('ended'),
-  onTimeUpdate: (currentTime, duration) =>
-    emit('timeupdate', currentTime, duration),
+  onTimeUpdate: (currentTime, duration) => emit('timeupdate', currentTime, duration),
   onProgress: (buffered) => emit('progress', buffered),
   onError: (error) => emit('error', error),
   onVolumeChange: (volume, muted) => emit('volumechange', volume, muted),
@@ -193,18 +180,12 @@ const orientationOptions = computed<OrientationChangeOptions>(() => ({
   autoFullscreenOnLandscape: props.autoFullscreenOnLandscape,
   enableDebugLog: props.enableDebugLog,
   onLandscape: () => {
-    if (
-      props.autoFullscreenOnLandscape &&
-      !videoPlayer.controller.isFullscreen()
-    ) {
+    if (props.autoFullscreenOnLandscape && !videoPlayer.controller.isFullscreen()) {
       videoPlayer.controller.toggleFullscreen();
     }
   },
   onPortrait: () => {
-    if (
-      props.autoFullscreenOnLandscape &&
-      videoPlayer.controller.isFullscreen()
-    ) {
+    if (props.autoFullscreenOnLandscape && videoPlayer.controller.isFullscreen()) {
       videoPlayer.controller.toggleFullscreen();
     }
   },

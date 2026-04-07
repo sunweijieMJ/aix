@@ -77,8 +77,7 @@ export class WebSocketTransport implements Transport {
       host: config.host || DEFAULT_WS_HOST,
       path: config.path || DEFAULT_WS_PATH,
       maxConnections: config.maxConnections || DEFAULT_WS_MAX_CONNECTIONS,
-      heartbeatInterval:
-        config.heartbeatInterval || DEFAULT_WS_HEARTBEAT_INTERVAL,
+      heartbeatInterval: config.heartbeatInterval || DEFAULT_WS_HEARTBEAT_INTERVAL,
       clientTimeout: config.clientTimeout || DEFAULT_WS_CLIENT_TIMEOUT,
     };
     // 注意: server 在 start() 中创建，避免竞态条件
@@ -359,12 +358,7 @@ export class WebSocketTransport implements Transport {
    * 从 JSON-RPC 请求消息中提取 id 字段
    */
   private extractRequestId(message: any): JsonRpcId {
-    if (
-      message &&
-      typeof message === 'object' &&
-      'id' in message &&
-      'method' in message
-    ) {
+    if (message && typeof message === 'object' && 'id' in message && 'method' in message) {
       return message.id;
     }
     return null;
@@ -467,8 +461,7 @@ export class WebSocketTransport implements Transport {
       totalConnections: this.clients.size,
       activeConnections: this.clients.size,
       totalMessages,
-      averageConnectionDuration:
-        this.clients.size > 0 ? totalDuration / this.clients.size : 0,
+      averageConnectionDuration: this.clients.size > 0 ? totalDuration / this.clients.size : 0,
     };
   }
 
@@ -514,8 +507,6 @@ export class WebSocketTransport implements Transport {
 /**
  * 创建 WebSocket Transport
  */
-export function createWebSocketTransport(
-  config: WebSocketConfig,
-): WebSocketTransport {
+export function createWebSocketTransport(config: WebSocketConfig): WebSocketTransport {
   return new WebSocketTransport(config);
 }

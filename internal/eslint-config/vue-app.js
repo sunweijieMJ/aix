@@ -2,11 +2,7 @@ import eslintPluginImportX from 'eslint-plugin-import-x';
 import eslintPluginVue from 'eslint-plugin-vue';
 import tseslint from 'typescript-eslint';
 import { config as baseConfig } from './base.js';
-import {
-  commonTypeScriptRules,
-  commonEslintRules,
-  commonImportRules,
-} from './common-rules.js';
+import { commonTypeScriptRules, commonEslintRules, commonImportRules } from './common-rules.js';
 
 /**
  * Vue 组件库的 ESLint 配置

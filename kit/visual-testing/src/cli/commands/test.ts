@@ -9,12 +9,7 @@ import type { Command } from 'commander';
 import { loadConfig, loadConfigFromFile } from '../../core/config/loader';
 import { VisualTestOrchestrator } from '../../core/orchestrator';
 import { createSpinner } from '../ui/spinner';
-import {
-  formatSummary,
-  formatFailures,
-  formatReportPaths,
-  formatLLMCost,
-} from '../ui/formatter';
+import { formatSummary, formatFailures, formatReportPaths, formatLLMCost } from '../ui/formatter';
 import { logger, LogLevel, parseLogLevel } from '../../utils/logger';
 
 /**
@@ -56,9 +51,7 @@ async function runTest(
   },
 ): Promise<void> {
   // 加载配置
-  const config = options.config
-    ? await loadConfigFromFile(options.config)
-    : await loadConfig();
+  const config = options.config ? await loadConfigFromFile(options.config) : await loadConfig();
 
   // 应用配置中的日志级别（--debug 覆盖配置）
   if (options.debug) {
@@ -68,8 +61,7 @@ async function runTest(
   }
 
   // --no-llm 覆盖：创建新的 llm 配置对象，避免修改 Zod 输出
-  const llmConfig =
-    options.llm === false ? { ...config.llm, enabled: false } : config.llm;
+  const llmConfig = options.llm === false ? { ...config.llm, enabled: false } : config.llm;
 
   // 目标过滤提示
   if (targetNames.length > 0) {
@@ -80,23 +72,19 @@ async function runTest(
 
   // 运行测试
   const spinner = createSpinner('Running visual tests...').start();
-  const effectiveConfig =
-    llmConfig !== config.llm ? { ...config, llm: llmConfig } : config;
+  const effectiveConfig = llmConfig !== config.llm ? { ...config, llm: llmConfig } : config;
   const orchestrator = new VisualTestOrchestrator(effectiveConfig);
   const startTime = Date.now();
 
   let results;
   try {
-    results = await orchestrator.runTests(
-      targetNames.length > 0 ? targetNames : undefined,
-      { update: options.update },
-    );
+    results = await orchestrator.runTests(targetNames.length > 0 ? targetNames : undefined, {
+      update: options.update,
+    });
     spinner.succeed('Visual tests completed');
   } catch (error) {
     spinner.fail(error instanceof Error ? error.message : 'Test failed');
-    console.error(
-      chalk.red(error instanceof Error ? error.message : String(error)),
-    );
+    console.error(chalk.red(error instanceof Error ? error.message : String(error)));
     process.exitCode = 1;
     return;
   }
@@ -105,20 +93,14 @@ async function runTest(
 
   // 首次运行引导：检测是否大量测试因缺少基准图而失败
   const failedResults = results.filter((r) => !r.passed);
-  const missingBaselineResults = failedResults.filter(
-    (r) => r.error?.step === 'baseline',
-  );
+  const missingBaselineResults = failedResults.filter((r) => r.error?.step === 'baseline');
   if (
     !options.update &&
     missingBaselineResults.length > 0 &&
     missingBaselineResults.length === failedResults.length
   ) {
     console.log('');
-    console.log(
-      chalk.yellow(
-        'Hint: All failures appear to be missing baselines (first run?).',
-      ),
-    );
+    console.log(chalk.yellow('Hint: All failures appear to be missing baselines (first run?).'));
     console.log(
       chalk.yellow(
         `  Run ${chalk.cyan('visual-test test --update')} to capture initial baselines.`,
@@ -129,9 +111,7 @@ async function runTest(
   // 如果启用了 --update，更新失败用例的基准图
   if (options.update) {
     if (failedResults.length > 0) {
-      console.log(
-        chalk.yellow(`\n📝 Updating ${failedResults.length} baseline(s)...`),
-      );
+      console.log(chalk.yellow(`\n📝 Updating ${failedResults.length} baseline(s)...`));
       await orchestrator.updateBaselines(failedResults);
       console.log(chalk.green('✓ Baselines updated successfully\n'));
     } else {
@@ -157,11 +137,7 @@ async function runTest(
 
   // 输出报告路径
   console.log(
-    formatReportPaths(
-      config.directories.reports,
-      config.report.formats,
-      config.report.conclusion,
-    ),
+    formatReportPaths(config.directories.reports, config.report.formats, config.report.conclusion),
   );
 
   // CI 模式下按 severity 阈值判断是否退出非零
@@ -179,9 +155,7 @@ async function runTest(
       if (r.passed) return false;
       // 无 LLM 分析时，视为显著问题
       if (!r.analysis) return true;
-      return r.analysis.differences.some(
-        (d) => (severityOrder[d.severity] ?? 0) <= thresholdLevel,
-      );
+      return r.analysis.differences.some((d) => (severityOrder[d.severity] ?? 0) <= thresholdLevel);
     });
 
     if (hasSignificantIssues) {

@@ -90,14 +90,8 @@ describe('createTrackerPlugin', () => {
     const directiveSpy = vi.spyOn(app, 'directive');
     app.use(plugin);
 
-    expect(directiveSpy).toHaveBeenCalledWith(
-      'track-click',
-      expect.any(Object),
-    );
-    expect(directiveSpy).toHaveBeenCalledWith(
-      'track-exposure',
-      expect.any(Object),
-    );
+    expect(directiveSpy).toHaveBeenCalledWith('track-click', expect.any(Object));
+    expect(directiveSpy).toHaveBeenCalledWith('track-exposure', expect.any(Object));
     app.unmount();
   });
 
@@ -191,9 +185,7 @@ describe('Router Guard (autoPageview)', () => {
     // 之后应有 $pageview（新页面）
     const pageviewCall = calls.find((c: unknown[]) => c[0] === '$pageview');
     expect(pageviewCall).toBeDefined();
-    expect(pageviewCall![1]).toEqual(
-      expect.objectContaining({ page_name: '关于页' }),
-    );
+    expect(pageviewCall![1]).toEqual(expect.objectContaining({ page_name: '关于页' }));
 
     app.unmount();
   });
@@ -218,9 +210,9 @@ describe('Router Guard (autoPageview)', () => {
     await router.push('/login');
 
     // login 路由应被排除，不上报 $pageview
-    const pageviewCalls = (
-      adapter.track as ReturnType<typeof vi.fn>
-    ).mock.calls.filter((c: unknown[]) => c[0] === '$pageview');
+    const pageviewCalls = (adapter.track as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: unknown[]) => c[0] === '$pageview',
+    );
     const loginPageview = pageviewCalls.find(
       (c: unknown[]) => (c[1] as Record<string, unknown>).page_name === 'login',
     );
@@ -248,9 +240,9 @@ describe('Router Guard (autoPageview)', () => {
     await router.isReady();
     await router.push('/login');
 
-    const pageviewCalls = (
-      adapter.track as ReturnType<typeof vi.fn>
-    ).mock.calls.filter((c: unknown[]) => c[0] === '$pageview');
+    const pageviewCalls = (adapter.track as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c: unknown[]) => c[0] === '$pageview',
+    );
     const loginPageview = pageviewCalls.find(
       (c: unknown[]) => (c[1] as Record<string, unknown>).page_url === '/login',
     );
@@ -297,10 +289,7 @@ describe('Router Guard (autoPageview)', () => {
     app.mount(document.createElement('div'));
 
     // 无路由相关调用
-    expect(adapter.track).not.toHaveBeenCalledWith(
-      '$pageview',
-      expect.anything(),
-    );
+    expect(adapter.track).not.toHaveBeenCalledWith('$pageview', expect.anything());
     app.unmount();
   });
 });

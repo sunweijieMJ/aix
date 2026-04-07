@@ -45,13 +45,9 @@ export function useControls(
   playerRef: Ref<VideoJsPlayer | null>,
   options: Ref<ControlsOptions>,
 ) {
-  function getOption<K extends keyof ControlsOptions>(
-    key: K,
-  ): Required<ControlsOptions>[K] {
+  function getOption<K extends keyof ControlsOptions>(key: K): Required<ControlsOptions>[K] {
     const value = options.value[key];
-    return value !== undefined
-      ? (value as Required<ControlsOptions>[K])
-      : DEFAULT_OPTIONS[key];
+    return value !== undefined ? (value as Required<ControlsOptions>[K]) : DEFAULT_OPTIONS[key];
   }
 
   /**

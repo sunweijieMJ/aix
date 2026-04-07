@@ -5,11 +5,7 @@
  * 验证环境 → 写入 pipelines → 创建 labels → 补丁 CLAUDE.md → 检查 secrets
  */
 
-import type {
-  InstallConfig,
-  InstallResult,
-  PhaseConfig,
-} from '../types/index.js';
+import type { InstallConfig, InstallResult, PhaseConfig } from '../types/index.js';
 import { DEFAULT_ALLOWED_PATHS, PHASE_CONFIGS } from '../types/index.js';
 import { formatAllowedPathsDisplay } from '../utils/template.js';
 import { createPlatformAdapter } from '../platform/index.js';
@@ -38,9 +34,7 @@ export async function install(config: InstallConfig): Promise<InstallResult> {
   }
 
   // 2. 收集需要安装的阶段
-  const phases: PhaseConfig[] = [...config.phases]
-    .sort()
-    .map((p) => PHASE_CONFIGS[p]);
+  const phases: PhaseConfig[] = [...config.phases].sort().map((p) => PHASE_CONFIGS[p]);
 
   // 3. 写入 pipelines
   const allOutputFiles: string[] = [];
@@ -55,12 +49,7 @@ export async function install(config: InstallConfig): Promise<InstallResult> {
   // 4. 创建 labels（先去重再调用，避免重复 API 请求）
   logger.step('创建 labels');
   const uniqueLabelNames = [...new Set(phases.flatMap((p) => p.labels))];
-  const uniqueLabels = await createLabels(
-    uniqueLabelNames,
-    config.target,
-    config.dryRun,
-    adapter,
-  );
+  const uniqueLabels = await createLabels(uniqueLabelNames, config.target, config.dryRun, adapter);
 
   // 5. 补丁 CLAUDE.md
   logger.step('更新 CLAUDE.md');
@@ -68,11 +57,7 @@ export async function install(config: InstallConfig): Promise<InstallResult> {
   const claudeVars: Record<string, string> = {
     ALLOWED_PATHS_DISPLAY: formatAllowedPathsDisplay(allowedPaths),
   };
-  const claudeMdPatched = await patchClaudeMd(
-    config.target,
-    config.dryRun,
-    claudeVars,
-  );
+  const claudeMdPatched = await patchClaudeMd(config.target, config.dryRun, claudeVars);
 
   // 6. 检查 secrets（汇总所有阶段的需求）
   logger.step('检查 secrets 和 variables');

@@ -1,12 +1,6 @@
 #!/usr/bin/env tsx
 import { execSync } from 'child_process';
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
@@ -44,10 +38,7 @@ function getAvailablePackages(): string[] {
 
   return readdirSync(PACKAGES_DIR).filter((name) => {
     const pkgPath = join(PACKAGES_DIR, name);
-    return (
-      statSync(pkgPath).isDirectory() &&
-      existsSync(join(pkgPath, 'package.json'))
-    );
+    return statSync(pkgPath).isDirectory() && existsSync(join(pkgPath, 'package.json'));
   });
 }
 
@@ -132,9 +123,7 @@ async function addYalcDependencies(): Promise<void> {
   ]);
 
   // 处理"全部"选项
-  const packagesToAdd = selectedPackages.includes('all')
-    ? packages
-    : selectedPackages;
+  const packagesToAdd = selectedPackages.includes('all') ? packages : selectedPackages;
 
   if (packagesToAdd.length === 0) {
     console.log(chalk.yellow('⚠ 未选择任何包'));

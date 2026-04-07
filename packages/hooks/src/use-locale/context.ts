@@ -15,8 +15,7 @@ export interface CreateLocaleOptions {
  * Locale 注入 Key
  * 供外部使用，可用于手动 inject
  */
-export const LOCALE_INJECTION_KEY: InjectionKey<LocaleContext> =
-  Symbol('aix-locale');
+export const LOCALE_INJECTION_KEY: InjectionKey<LocaleContext> = Symbol('aix-locale');
 
 /**
  * 创建全局语言上下文
@@ -38,10 +37,7 @@ export const LOCALE_INJECTION_KEY: InjectionKey<LocaleContext> =
  * app.mount('#app');
  * ```
  */
-export function createLocale(
-  defaultLocale: Locale = 'zh-CN',
-  options: CreateLocaleOptions = {},
-) {
+export function createLocale(defaultLocale: Locale = 'zh-CN', options: CreateLocaleOptions = {}) {
   const { persist = false } = options;
 
   const saveToStorage = (locale: Locale) => {

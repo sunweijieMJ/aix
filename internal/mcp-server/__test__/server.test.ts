@@ -36,10 +36,7 @@ describe('McpServer', () => {
       version: '1.0.0',
     };
 
-    await writeFile(
-      join(testDataDir, 'components-index.json'),
-      JSON.stringify(mockIndex, null, 2),
-    );
+    await writeFile(join(testDataDir, 'components-index.json'), JSON.stringify(mockIndex, null, 2));
 
     server = new McpServer(testDataDir, true); // 测试模式
   });

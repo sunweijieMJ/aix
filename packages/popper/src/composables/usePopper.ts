@@ -9,14 +9,7 @@ import {
   type Strategy,
   type Middleware,
 } from '@floating-ui/vue';
-import {
-  computed,
-  ref,
-  toValue,
-  type CSSProperties,
-  type MaybeRefOrGetter,
-  type Ref,
-} from 'vue';
+import { computed, ref, toValue, type CSSProperties, type MaybeRefOrGetter, type Ref } from 'vue';
 
 export interface UsePopperOptions {
   placement?: MaybeRefOrGetter<Placement>;
@@ -129,13 +122,16 @@ export function usePopper(options: UsePopperOptions = {}): UsePopperReturn {
     return list;
   });
 
-  const { floatingStyles, placement, isPositioned, update, middlewareData } =
-    useFloating(referenceRef, floatingRef, {
+  const { floatingStyles, placement, isPositioned, update, middlewareData } = useFloating(
+    referenceRef,
+    floatingRef,
+    {
       placement: computed(() => toValue(placementOption)),
       strategy: computed(() => toValue(strategyOption)),
       middleware,
       whileElementsMounted: autoUpdate,
-    });
+    },
+  );
 
   const arrowStyles = computed<CSSProperties>(() => {
     const data = middlewareData.value.arrow;

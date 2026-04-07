@@ -15,9 +15,7 @@ export const clearWorkspaceCache = (): void => {
 };
 
 // 遍历所有 workspace 包（带缓存，避免重复遍历）
-export const getWorkspacePackages = (
-  projectRoot: string,
-): WorkspacePackage[] => {
+export const getWorkspacePackages = (projectRoot: string): WorkspacePackage[] => {
   if (workspacePackagesCache) {
     return workspacePackagesCache;
   }
@@ -51,16 +49,11 @@ export const getWorkspacePackages = (
 };
 
 // 获取可发布的包（排除 private）
-export const getPublishablePackages = (
-  projectRoot: string,
-): WorkspacePackage[] =>
+export const getPublishablePackages = (projectRoot: string): WorkspacePackage[] =>
   getWorkspacePackages(projectRoot).filter((pkg) => !pkg.private);
 
 // 根据包名获取包目录路径
-export const getPackageDir = (
-  projectRoot: string,
-  pkgName: string,
-): string | null => {
+export const getPackageDir = (projectRoot: string, pkgName: string): string | null => {
   const pkg = getWorkspacePackages(projectRoot).find((p) => p.name === pkgName);
   return pkg?.dir ?? null;
 };

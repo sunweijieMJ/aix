@@ -10,9 +10,7 @@
  * 例: ['^src/', '^packages/.* /src/'] → 'src/, packages/* /src/'
  */
 export function formatAllowedPathsDisplay(paths: string[]): string {
-  return paths
-    .map((p) => p.replace(/^\^/, '').replace(/\.\*/g, '*'))
-    .join(', ');
+  return paths.map((p) => p.replace(/^\^/, '').replace(/\.\*/g, '*')).join(', ');
 }
 
 /**
@@ -33,10 +31,7 @@ export function formatAllowedPathsGitAdd(paths: string[]): string {
  * @param content - 模板内容
  * @param vars - 变量键值对，key 不含双下划线
  */
-export function renderTemplate(
-  content: string,
-  vars: Record<string, string>,
-): string {
+export function renderTemplate(content: string, vars: Record<string, string>): string {
   let result = content;
 
   for (const [key, value] of Object.entries(vars)) {

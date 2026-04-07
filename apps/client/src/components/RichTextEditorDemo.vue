@@ -1,17 +1,11 @@
 <template>
   <div class="demo-page">
     <h2>RichTextEditor 富文本编辑器</h2>
-    <p class="description">
-      基于 Tiptap 的富文本编辑器，支持工具栏、图片、表格、@提及等功能
-    </p>
+    <p class="description">基于 Tiptap 的富文本编辑器，支持工具栏、图片、表格、@提及等功能</p>
 
     <div class="demo-group">
       <h3>基础用法</h3>
-      <RichTextEditor
-        v-model="basicContent"
-        placeholder="请输入内容..."
-        min-height="200px"
-      />
+      <RichTextEditor v-model="basicContent" placeholder="请输入内容..." min-height="200px" />
       <details class="output-preview">
         <summary>查看输出 HTML</summary>
         <pre>{{ basicContent }}</pre>
@@ -42,11 +36,7 @@
 
     <div class="demo-group">
       <h3>只读模式</h3>
-      <RichTextEditor
-        :model-value="readonlyContent"
-        :readonly="true"
-        min-height="120px"
-      />
+      <RichTextEditor :model-value="readonlyContent" :readonly="true" min-height="120px" />
     </div>
 
     <div class="demo-group">

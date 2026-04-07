@@ -5,11 +5,7 @@
  */
 
 import { cosmiconfig } from 'cosmiconfig';
-import {
-  configSchema,
-  type VisualTestConfig,
-  type VisualTestUserConfig,
-} from './schema';
+import { configSchema, type VisualTestConfig, type VisualTestUserConfig } from './schema';
 import { logger } from '../../utils/logger';
 
 const MODULE_NAME = 'visual-test';
@@ -62,9 +58,7 @@ export async function loadConfig(cwd?: string): Promise<VisualTestConfig> {
  * @param filePath - 配置文件路径
  * @returns 经过验证的完整配置对象
  */
-export async function loadConfigFromFile(
-  filePath: string,
-): Promise<VisualTestConfig> {
+export async function loadConfigFromFile(filePath: string): Promise<VisualTestConfig> {
   const explorer = cosmiconfig(MODULE_NAME);
   const result = await explorer.load(filePath);
 
@@ -85,9 +79,7 @@ export async function loadConfigFromFile(
  * @returns 经过验证的完整配置对象
  * @throws {Error} 配置验证失败时抛出，包含详细错误信息
  */
-export function validateConfig(
-  userConfig: VisualTestUserConfig,
-): VisualTestConfig {
+export function validateConfig(userConfig: VisualTestUserConfig): VisualTestConfig {
   const result = configSchema.safeParse(userConfig);
 
   if (!result.success) {
@@ -109,10 +101,7 @@ export function validateConfigLogic(config: VisualTestConfig): void {
   const warnings: string[] = [];
 
   // 计算总测试任务数
-  const totalVariants = config.targets.reduce(
-    (sum, target) => sum + target.variants.length,
-    0,
-  );
+  const totalVariants = config.targets.reduce((sum, target) => sum + target.variants.length, 0);
 
   // 1. LLM 成本控制与总任务数冲突检测
   if (config.llm.enabled && config.llm.costControl.maxCallsPerRun) {
@@ -150,16 +139,11 @@ export function validateConfigLogic(config: VisualTestConfig): void {
 
   // 4. 目标配置检查（Storybook 自动发现模式下无需手动配置 targets）
   if (config.targets.length === 0 && !config.storybook.enabled) {
-    warnings.push(
-      `⚠️  No test targets defined. Add targets to 'targets' array.`,
-    );
+    warnings.push(`⚠️  No test targets defined. Add targets to 'targets' array.`);
   }
 
   // 5. 多视口 + 本地基准图冲突检测
-  if (
-    config.screenshot.viewports.length > 0 &&
-    config.baseline.provider === 'local'
-  ) {
+  if (config.screenshot.viewports.length > 0 && config.baseline.provider === 'local') {
     const localBaselineTargets = config.targets.filter((t) =>
       t.variants.some((v) => typeof v.baseline === 'string'),
     );
@@ -174,9 +158,7 @@ export function validateConfigLogic(config: VisualTestConfig): void {
 
   // 7. 基准图提供器与目标配置冲突
   const figmaVariants = config.targets.flatMap((t) =>
-    t.variants.filter(
-      (v) => typeof v.baseline === 'object' && v.baseline.type === 'figma-mcp',
-    ),
+    t.variants.filter((v) => typeof v.baseline === 'object' && v.baseline.type === 'figma-mcp'),
   );
 
   if (figmaVariants.length > 0 && config.baseline.provider === 'local') {
@@ -200,8 +182,6 @@ export function validateConfigLogic(config: VisualTestConfig): void {
  * @param config - 用户配置对象
  * @returns 原样返回配置对象
  */
-export function defineConfig(
-  config: VisualTestUserConfig,
-): VisualTestUserConfig {
+export function defineConfig(config: VisualTestUserConfig): VisualTestUserConfig {
   return config;
 }

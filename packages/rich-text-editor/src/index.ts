@@ -20,17 +20,8 @@ export type {
   ExtraDataConfig,
 } from './types';
 
-export {
-  fetchUpload,
-  fetchMentionItems,
-  isUploadError,
-  processFileUpload,
-} from './utils/upload';
-export type {
-  FetchUploadOptions,
-  FetchMentionOptions,
-  UploadMessages,
-} from './utils/upload';
+export { fetchUpload, fetchMentionItems, isUploadError, processFileUpload } from './utils/upload';
+export type { FetchUploadOptions, FetchMentionOptions, UploadMessages } from './utils/upload';
 
 export { RichTextEditor };
 export { useEditorCore } from './composables';

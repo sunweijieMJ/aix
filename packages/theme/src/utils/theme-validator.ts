@@ -3,11 +3,7 @@
  * 验证主题配置的有效性
  */
 
-import type {
-  PartialThemeTokens,
-  SeedTokens,
-  ThemeConfig,
-} from '../theme-types';
+import type { PartialThemeTokens, SeedTokens, ThemeConfig } from '../theme-types';
 
 /**
  * 验证结果
@@ -58,15 +54,13 @@ const RGB_REGEX =
  * HEX 颜色格式正则
  * 支持：#RGB, #RRGGBB, #RGBA, #RRGGBBAA
  */
-const HEX_REGEX =
-  /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const HEX_REGEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
 /**
  * HSL 颜色格式正则
  * 支持：hsl(0 0% 0%), hsl(0, 0%, 0%), hsla(0, 0%, 0%, 0.5)
  */
-const HSL_REGEX =
-  /^hsla?\(\s*\d+\s*[,\s]+\s*\d+%\s*[,\s]+\s*\d+%(\s*[,/]\s*(0?\.\d+|1|0))?\s*\)$/;
+const HSL_REGEX = /^hsla?\(\s*\d+\s*[,\s]+\s*\d+%\s*[,\s]+\s*\d+%(\s*[,/]\s*(0?\.\d+|1|0))?\s*\)$/;
 
 /**
  * 数值单位正则
@@ -156,9 +150,7 @@ function validateColor(value: unknown, field: string): ValidationError | null {
     }
 
     // 验证 RGB 值范围 (0-255 或 0%-100%)
-    const match = trimmed.match(
-      /rgba?\s*\(\s*(\d+%?)\s*[,\s]+\s*(\d+%?)\s*[,\s]+\s*(\d+%?)/,
-    );
+    const match = trimmed.match(/rgba?\s*\(\s*(\d+%?)\s*[,\s]+\s*(\d+%?)\s*[,\s]+\s*(\d+%?)/);
     if (match) {
       const values = [match[1]!, match[2]!, match[3]!];
 
@@ -408,10 +400,7 @@ function validateShadow(value: unknown, field: string): ValidationError | null {
 /**
  * 验证字体族格式
  */
-function validateFontFamily(
-  value: unknown,
-  field: string,
-): ValidationError | null {
+function validateFontFamily(value: unknown, field: string): ValidationError | null {
   if (typeof value !== 'string') {
     return {
       field,
@@ -661,12 +650,7 @@ function validateSeedTokens(seed: Partial<SeedTokens>): ValidationError[] {
 
     // fontWeightStrong 正整数校验 (100~900)
     if (field === 'fontWeightStrong') {
-      if (
-        typeof value !== 'number' ||
-        !Number.isInteger(value) ||
-        value < 100 ||
-        value > 900
-      ) {
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 100 || value > 900) {
         errors.push({
           field: `seed.${field}`,
           message: `${field} 必须是 100~900 之间的整数`,
@@ -756,13 +740,8 @@ function validateSeedTokens(seed: Partial<SeedTokens>): ValidationError[] {
           value,
         });
       } else {
-        for (const [colorName, colorValue] of Object.entries(
-          value as Record<string, unknown>,
-        )) {
-          const colorError = validateColor(
-            colorValue,
-            `seed.presetColors.${colorName}`,
-          );
+        for (const [colorName, colorValue] of Object.entries(value as Record<string, unknown>)) {
+          const colorError = validateColor(colorValue, `seed.presetColors.${colorName}`);
           if (colorError) errors.push(colorError);
         }
       }
@@ -833,9 +812,7 @@ export function validateThemeConfigOrThrow(config: ThemeConfig): void {
   const result = validateThemeConfig(config);
 
   if (!result.valid) {
-    const errorMessages = result.errors
-      .map((err) => `${err.field}: ${err.message}`)
-      .join('\n');
+    const errorMessages = result.errors.map((err) => `${err.field}: ${err.message}`).join('\n');
 
     throw new Error(`主题配置验证失败:\n${errorMessages}`);
   }

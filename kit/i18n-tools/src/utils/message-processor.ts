@@ -11,28 +11,19 @@ export class MessageProcessor {
    * @param localeMap - 语言映射
    * @returns 处理后的消息文本
    */
-  static getMessageText(
-    messageInfo: MessageInfo,
-    localeMap: Record<string, string>,
-  ): string {
+  static getMessageText(messageInfo: MessageInfo, localeMap: Record<string, string>): string {
     if (!this.isValidMessage(messageInfo)) {
       return '';
     }
 
     // 优先从语言文件中获取
     if (messageInfo.id && localeMap[messageInfo.id]) {
-      return this.processVariables(
-        localeMap[messageInfo.id]!,
-        messageInfo.values,
-      );
+      return this.processVariables(localeMap[messageInfo.id]!, messageInfo.values);
     }
 
     // 使用默认消息
     if (messageInfo.defaultMessage !== undefined) {
-      return this.processVariables(
-        messageInfo.defaultMessage,
-        messageInfo.values,
-      );
+      return this.processVariables(messageInfo.defaultMessage, messageInfo.values);
     }
 
     return '';
@@ -44,9 +35,7 @@ export class MessageProcessor {
    * @returns 是否有效
    */
   static isValidMessage(messageInfo: MessageInfo): boolean {
-    return (
-      messageInfo.id !== undefined || messageInfo.defaultMessage !== undefined
-    );
+    return messageInfo.id !== undefined || messageInfo.defaultMessage !== undefined;
   }
 
   /**
@@ -55,10 +44,7 @@ export class MessageProcessor {
    * @param values - 变量值
    * @returns 处理后的文本
    */
-  private static processVariables(
-    text: string,
-    values?: Record<string, any>,
-  ): string {
+  private static processVariables(text: string, values?: Record<string, any>): string {
     if (!values) return text;
 
     let result = text;
@@ -69,11 +55,7 @@ export class MessageProcessor {
       const placeholder = `{${key}}`;
       const regex = new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g');
 
-      if (
-        typeof value === 'string' &&
-        value.startsWith('{{') &&
-        value.endsWith('}}')
-      ) {
+      if (typeof value === 'string' && value.startsWith('{{') && value.endsWith('}}')) {
         // 这是一个表达式
         const expression = value.slice(2, -2);
         result = result.replace(regex, `\${${expression}}`);

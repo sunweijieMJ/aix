@@ -16,9 +16,7 @@ async function syncDocs() {
 
   if (readmeFiles.length === 0) {
     console.log(
-      chalk.yellow(
-        '⚠️  No README.md found in packages. Please run pnpm gen:docs first.',
-      ),
+      chalk.yellow('⚠️  No README.md found in packages. Please run pnpm gen:docs first.'),
     );
     return;
   }
@@ -29,9 +27,7 @@ async function syncDocs() {
   for (const readmePath of readmeFiles) {
     try {
       const packageName = path.basename(path.dirname(readmePath));
-      const componentDocPath = path.resolve(
-        `docs/components/${packageName}.md`,
-      );
+      const componentDocPath = path.resolve(`docs/components/${packageName}.md`);
 
       // Check if component doc exists
       const docExists = await fs
@@ -40,11 +36,7 @@ async function syncDocs() {
         .catch(() => false);
 
       if (!docExists) {
-        console.log(
-          chalk.yellow(
-            `⚠️  No component doc found for ${packageName}, skipping...`,
-          ),
-        );
+        console.log(chalk.yellow(`⚠️  No component doc found for ${packageName}, skipping...`));
         skipCount++;
         continue;
       }
@@ -57,9 +49,7 @@ async function syncDocs() {
       const apiContent = extractApiSection(readmeContent);
 
       if (!apiContent) {
-        console.log(
-          chalk.yellow(`⚠️  No API section found in ${packageName} README`),
-        );
+        console.log(chalk.yellow(`⚠️  No API section found in ${packageName} README`));
         skipCount++;
         continue;
       }
@@ -72,11 +62,7 @@ async function syncDocs() {
 
       // Write back to component doc
       await fs.writeFile(componentDocPath, updatedDoc, 'utf-8');
-      console.log(
-        chalk.green(
-          `✅ ${packageName}.md API section injected to docs/components/`,
-        ),
-      );
+      console.log(chalk.green(`✅ ${packageName}.md API section injected to docs/components/`));
       successCount++;
     } catch (error: any) {
       console.error(
@@ -88,11 +74,7 @@ async function syncDocs() {
   }
 
   console.log(chalk.cyan('\n' + '='.repeat(50)));
-  console.log(
-    chalk.green(
-      `✨ Sync complete! ${successCount} injected, ${skipCount} skipped.`,
-    ),
-  );
+  console.log(chalk.green(`✨ Sync complete! ${successCount} injected, ${skipCount} skipped.`));
   console.log(chalk.cyan('='.repeat(50) + '\n'));
 }
 
@@ -114,15 +96,12 @@ function extractApiSection(content: string): string | null {
   const apiStartIndex = apiStartMatch.index!;
 
   // Find the next section after API
-  const afterApiContent = content.slice(
-    apiStartIndex + apiStartMatch[0].length,
-  );
+  const afterApiContent = content.slice(apiStartIndex + apiStartMatch[0].length);
   const nextSectionMatch = afterApiContent.match(nextSectionRegex);
 
   if (nextSectionMatch) {
     // Extract content between API and next section
-    const nextSectionIndex =
-      apiStartIndex + apiStartMatch[0].length + nextSectionMatch.index!;
+    const nextSectionIndex = apiStartIndex + apiStartMatch[0].length + nextSectionMatch.index!;
     return content.slice(apiStartIndex, nextSectionIndex).trim();
   }
   // API is the last section
@@ -160,15 +139,12 @@ ${cleanedApi}`;
     const markerIndex = componentDoc.indexOf(API_INJECT_MARKER);
 
     // Find next section after marker (starts with ##)
-    const afterMarker = componentDoc.slice(
-      markerIndex + API_INJECT_MARKER.length,
-    );
+    const afterMarker = componentDoc.slice(markerIndex + API_INJECT_MARKER.length);
     const nextSectionMatch = afterMarker.match(/\n## /);
 
     if (nextSectionMatch) {
       // Replace content between marker and next section
-      const nextSectionIndex =
-        markerIndex + API_INJECT_MARKER.length + nextSectionMatch.index!;
+      const nextSectionIndex = markerIndex + API_INJECT_MARKER.length + nextSectionMatch.index!;
 
       // Get the rest of the document (starts with \n##)
       const restOfDoc = componentDoc.slice(nextSectionIndex);
@@ -197,8 +173,7 @@ ${cleanedApi}`;
       const nextSectionMatch = afterApi.match(/\n## /);
 
       if (nextSectionMatch) {
-        const nextSectionIndex =
-          apiStartIndex + '## API'.length + nextSectionMatch.index!;
+        const nextSectionIndex = apiStartIndex + '## API'.length + nextSectionMatch.index!;
         return (
           componentDoc.slice(0, apiStartIndex) +
           apiWithWarning +

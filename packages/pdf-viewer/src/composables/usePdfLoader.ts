@@ -22,8 +22,7 @@ export async function loadPdfJsLib(workerSrc?: string): Promise<PdfJs> {
   // worker 加载失败会导致 pdfjs 回退到主线程阻塞式解析，直接崩溃。
   // 使用 jsdelivr CDN 作为默认方案确保 worker 在所有环境下可用。
   lib.GlobalWorkerOptions.workerSrc =
-    workerSrc ??
-    `https://cdn.jsdelivr.net/npm/pdfjs-dist@${lib.version}/build/pdf.worker.min.mjs`;
+    workerSrc ?? `https://cdn.jsdelivr.net/npm/pdfjs-dist@${lib.version}/build/pdf.worker.min.mjs`;
 
   pdfjsLib = lib;
   return lib;
@@ -54,9 +53,7 @@ export interface UsePdfLoaderReturn {
 /**
  * PDF 文档加载 Composable
  */
-export function usePdfLoader(
-  options: UsePdfLoaderOptions = {},
-): UsePdfLoaderReturn {
+export function usePdfLoader(options: UsePdfLoaderOptions = {}): UsePdfLoaderReturn {
   const pdfDocument = shallowRef<PDFDocumentProxy | null>(null);
   const totalPages = ref(0);
   const loading = ref(false);
@@ -67,9 +64,7 @@ export function usePdfLoader(
   /**
    * 加载 PDF 文档
    */
-  async function load(
-    source: string | ArrayBuffer,
-  ): Promise<PDFDocumentProxy | null> {
+  async function load(source: string | ArrayBuffer): Promise<PDFDocumentProxy | null> {
     if (!source) return null;
 
     loading.value = true;
@@ -99,8 +94,7 @@ export function usePdfLoader(
       }
 
       // 创建加载参数
-      const loadingParams =
-        typeof source === 'string' ? { url: source } : { data: source };
+      const loadingParams = typeof source === 'string' ? { url: source } : { data: source };
 
       currentLoadingTask = lib.getDocument(loadingParams);
       const pdf = await currentLoadingTask.promise;
@@ -117,12 +111,7 @@ export function usePdfLoader(
       return pdf;
     } catch (err: unknown) {
       // 忽略取消错误
-      if (
-        err &&
-        typeof err === 'object' &&
-        'name' in err &&
-        err.name === 'AbortException'
-      ) {
+      if (err && typeof err === 'object' && 'name' in err && err.name === 'AbortException') {
         return null;
       }
 

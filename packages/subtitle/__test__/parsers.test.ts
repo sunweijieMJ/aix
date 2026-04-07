@@ -132,8 +132,7 @@ Subtitle text`;
   });
 
   it('should handle Windows line endings', () => {
-    const content =
-      'WEBVTT\r\n\r\n00:00:00.000 --> 00:00:05.000\r\nSubtitle text';
+    const content = 'WEBVTT\r\n\r\n00:00:00.000 --> 00:00:05.000\r\nSubtitle text';
     const cues = parseVTT(content);
     expect(cues).toHaveLength(1);
     expect(cues[0]?.text).toBe('Subtitle text');
@@ -393,12 +392,8 @@ describe('parsers/index', () => {
     });
 
     it('should handle full URLs', () => {
-      expect(detectFormat('https://example.com/path/to/subtitle.vtt')).toBe(
-        'vtt',
-      );
-      expect(
-        detectFormat('https://example.com/path/to/subtitle.srt?param=1'),
-      ).toBe('srt'); // query string 已正确剥离
+      expect(detectFormat('https://example.com/path/to/subtitle.vtt')).toBe('vtt');
+      expect(detectFormat('https://example.com/path/to/subtitle.srt?param=1')).toBe('srt'); // query string 已正确剥离
     });
 
     it('should default to vtt for unknown extensions', () => {
@@ -427,9 +422,7 @@ Test`;
     });
 
     it('should parse JSON format', () => {
-      const content = JSON.stringify([
-        { startTime: 0, endTime: 5, text: 'Test' },
-      ]);
+      const content = JSON.stringify([{ startTime: 0, endTime: 5, text: 'Test' }]);
       const cues = parseSubtitle(content, 'json');
       expect(cues).toHaveLength(1);
       expect(cues[0]?.text).toBe('Test');

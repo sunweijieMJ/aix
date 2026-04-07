@@ -53,18 +53,12 @@ export class MarkdownParser {
       const code = match[2]?.trim() ?? '';
 
       // 只处理 TypeScript/JavaScript 代码
-      if (
-        ['tsx', 'jsx', 'ts', 'js', 'typescript', 'javascript'].includes(
-          language.toLowerCase(),
-        )
-      ) {
+      if (['tsx', 'jsx', 'ts', 'js', 'typescript', 'javascript'].includes(language.toLowerCase())) {
         // 尝试找到代码块前的描述
         const beforeCode = content.substring(0, match.index);
         const lines = beforeCode.split('\n');
         const descriptionLine =
-          lines[lines.length - 1]?.trim() ||
-          lines[lines.length - 2]?.trim() ||
-          '';
+          lines[lines.length - 1]?.trim() || lines[lines.length - 2]?.trim() || '';
 
         examples.push({
           title: `示例 ${examples.length + 1}`,
@@ -128,19 +122,14 @@ export class StoriesParser {
    */
   private extractStoriesExamplesWithRegex(content: string): ComponentExample[] {
     const examples: ComponentExample[] = [];
-    const storyRegex =
-      /export\s+const\s+(\w+)\s*=\s*([\s\S]*?)(?=\nexport\s+const|\n\n|$)/g;
+    const storyRegex = /export\s+const\s+(\w+)\s*=\s*([\s\S]*?)(?=\nexport\s+const|\n\n|$)/g;
     let match;
 
     while ((match = storyRegex.exec(content)) !== null) {
       const storyName = match[1];
       const storyCode = match[2]?.trim() ?? '';
 
-      if (
-        !storyName ||
-        storyName === 'default' ||
-        storyName.toLowerCase().includes('meta')
-      ) {
+      if (!storyName || storyName === 'default' || storyName.toLowerCase().includes('meta')) {
         continue;
       }
 
@@ -215,8 +204,7 @@ export class JSDocParser {
       .filter(Boolean);
 
     let description = '';
-    const params: Array<{ name: string; type: string; description: string }> =
-      [];
+    const params: Array<{ name: string; type: string; description: string }> = [];
     let returns: { type: string; description: string } | undefined;
     const examples: string[] = [];
     const tags: string[] = [];
@@ -227,9 +215,7 @@ export class JSDocParser {
     for (const line of lines) {
       if (line.startsWith('@param')) {
         currentSection = 'param';
-        const paramMatch = line.match(
-          /@param\s+(?:\{([^}]+)\})?\s+(\w+)\s*(.*)$/,
-        );
+        const paramMatch = line.match(/@param\s+(?:\{([^}]+)\})?\s+(\w+)\s*(.*)$/);
         if (paramMatch?.[2]) {
           params.push({
             name: paramMatch[2],

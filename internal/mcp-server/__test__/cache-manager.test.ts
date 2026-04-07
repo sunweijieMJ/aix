@@ -212,9 +212,7 @@ describe('CacheManager', () => {
 
       // 并发写入
       for (let i = 0; i < 10; i++) {
-        promises.push(
-          cacheManager.set(`${key}-${i}`, { data: `data-${i}`, type: 'test' }),
-        );
+        promises.push(cacheManager.set(`${key}-${i}`, { data: `data-${i}`, type: 'test' }));
       }
 
       await Promise.all(promises);

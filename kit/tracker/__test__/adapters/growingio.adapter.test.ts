@@ -61,9 +61,7 @@ describe('GrowingIOAdapter', () => {
       }
       return el;
     });
-    vi.spyOn(document.head, 'appendChild').mockImplementation(
-      () => null as any,
-    );
+    vi.spyOn(document.head, 'appendChild').mockImplementation(() => null as any);
 
     const adapter = new GrowingIOAdapter({
       accountId: 'acc',
@@ -75,12 +73,7 @@ describe('GrowingIOAdapter', () => {
     await adapter.init({ appkey: 'test' });
 
     expect(adapter.isReady()).toBe(true);
-    expect(mockGdp).toHaveBeenCalledWith(
-      'init',
-      'acc',
-      'ds',
-      expect.any(Object),
-    );
+    expect(mockGdp).toHaveBeenCalledWith('init', 'acc', 'ds', expect.any(Object));
   });
 
   it('sdk 和 sdkUrl 都不传应抛错', async () => {

@@ -75,9 +75,7 @@ describe('detectPackageManager', () => {
   });
 
   it('should detect pnpm from pnpm-lock.yaml', () => {
-    existsSyncSpy.mockImplementation((p) =>
-      String(p).endsWith('pnpm-lock.yaml'),
-    );
+    existsSyncSpy.mockImplementation((p) => String(p).endsWith('pnpm-lock.yaml'));
     expect(detectPackageManager('/tmp/repo')).toBe('pnpm');
   });
 
@@ -87,9 +85,7 @@ describe('detectPackageManager', () => {
   });
 
   it('should detect npm from package-lock.json', () => {
-    existsSyncSpy.mockImplementation((p) =>
-      String(p).endsWith('package-lock.json'),
-    );
+    existsSyncSpy.mockImplementation((p) => String(p).endsWith('package-lock.json'));
     expect(detectPackageManager('/tmp/repo')).toBe('npm');
   });
 

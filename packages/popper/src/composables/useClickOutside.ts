@@ -1,10 +1,4 @@
-import {
-  watch,
-  onBeforeUnmount,
-  toValue,
-  type Ref,
-  type MaybeRefOrGetter,
-} from 'vue';
+import { watch, onBeforeUnmount, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
 
 export interface UseClickOutsideOptions {
   /** 排除在"外部"检测之外的元素 */

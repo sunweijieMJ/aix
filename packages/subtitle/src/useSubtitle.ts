@@ -47,9 +47,7 @@ async function fetchSubtitle(url: string): Promise<string> {
 /**
  * 字幕逻辑 Composable
  */
-export function useSubtitle(
-  options: UseSubtitleOptions = {},
-): UseSubtitleReturn {
+export function useSubtitle(options: UseSubtitleOptions = {}): UseSubtitleReturn {
   const { currentTime, onChange } = options;
 
   // 状态

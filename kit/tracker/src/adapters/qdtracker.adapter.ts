@@ -1,8 +1,4 @@
-import type {
-  AccountInfo,
-  ITrackerAdapter,
-  TrackerInitOptions,
-} from '../types.js';
+import type { AccountInfo, ITrackerAdapter, TrackerInitOptions } from '../types.js';
 
 /** window 上的 QDTracker 全局对象类型 */
 interface QDTrackerSDK {
@@ -37,9 +33,7 @@ export class QDTrackerAdapter implements ITrackerAdapter {
     // 1. 动态加载 QDTracker.js
     await this.loadScript(options.sdkUrl);
     if (!window.QDTracker) {
-      throw new Error(
-        '[kit-tracker] QDTracker SDK 加载后未找到 window.QDTracker',
-      );
+      throw new Error('[kit-tracker] QDTracker SDK 加载后未找到 window.QDTracker');
     }
 
     // 2. 如需 AES 加密，额外加载 AES_SEC.js（需在 init 之前加载）
@@ -107,8 +101,7 @@ export class QDTrackerAdapter implements ITrackerAdapter {
       const script = document.createElement('script');
       script.src = url;
       script.onload = () => resolve();
-      script.onerror = () =>
-        reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
+      script.onerror = () => reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
       document.head.appendChild(script);
     });
   }

@@ -14,8 +14,7 @@
 // 不能 transition transform，因为 @floating-ui/vue 用 transform: translate() 定位
 .aix-popper-fade-enter-active,
 .aix-popper-fade-leave-active {
-  transition: opacity var(--aix-motionDurationMid, 0.2s)
-    var(--aix-motionEaseInOut, ease);
+  transition: opacity var(--aix-motionDurationMid, 0.2s) var(--aix-motionEaseInOut, ease);
 }
 
 .aix-popper-fade-enter-from,
@@ -26,8 +25,7 @@
 // 快速淡入过渡（Dropdown）
 .aix-popper-fade-fast-enter-active,
 .aix-popper-fade-fast-leave-active {
-  transition: opacity var(--aix-motionDurationFast, 0.1s)
-    var(--aix-motionEaseOut, ease-out);
+  transition: opacity var(--aix-motionDurationFast, 0.1s) var(--aix-motionEaseOut, ease-out);
 }
 
 .aix-popper-fade-fast-enter-from,

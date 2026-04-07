@@ -55,11 +55,7 @@
         :aria-label="playerState.isFullscreen ? '退出全屏' : '全屏'"
         @click="handleToggleFullscreen"
       >
-        <FullscreenExit
-          v-if="playerState.isFullscreen"
-          width="24"
-          height="24"
-        />
+        <FullscreenExit v-if="playerState.isFullscreen" width="24" height="24" />
         <Fullscreen v-else width="24" height="24" />
       </button>
     </div>
@@ -67,15 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  Play,
-  Pause,
-  VolumeUp,
-  VolumeMute,
-  Fullscreen,
-  FullscreenExit,
-  Refresh,
-} from '@aix/icons';
+import { Play, Pause, VolumeUp, VolumeMute, Fullscreen, FullscreenExit, Refresh } from '@aix/icons';
 import { computed } from 'vue';
 import { useControlsAutoHide } from '../composables/useControlsAutoHide';
 import type { PlayerState, ControlMethods } from '../types';

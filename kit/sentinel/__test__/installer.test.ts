@@ -158,13 +158,7 @@ describe('install', () => {
     // Phase 1: sentinel, bot / Phase 2: sentinel, post-deploy, urgent / Phase 3: sentinel, bot, sentry
     // Deduplicated: sentinel, bot, post-deploy, urgent, sentry
     expect(labels).toEqual(
-      expect.arrayContaining([
-        'sentinel',
-        'bot',
-        'post-deploy',
-        'urgent',
-        'sentry',
-      ]),
+      expect.arrayContaining(['sentinel', 'bot', 'post-deploy', 'urgent', 'sentry']),
     );
     expect(new Set(labels).size).toBe((labels as string[]).length); // no duplicates
   });
@@ -274,9 +268,7 @@ describe('install', () => {
     setupSuccessMocks();
     mockedWriteWorkflows.mockResolvedValue(['sentinel-sentry.yml']);
 
-    await install(
-      createConfig({ phases: [3], owner: 'my-org', repo: 'my-app' }),
-    );
+    await install(createConfig({ phases: [3], owner: 'my-org', repo: 'my-app' }));
 
     expect(mockedWriteWorkflows).toHaveBeenCalledWith(
       expect.objectContaining({ owner: 'my-org', repo: 'my-app' }),

@@ -20,10 +20,7 @@ import { printConfigPreview } from '../preview.js';
 /**
  * 构建默认配置（--yes 模式）
  */
-export function buildDefaultConfig(
-  target: string,
-  dryRun = false,
-): InstallConfig {
+export function buildDefaultConfig(target: string, dryRun = false): InstallConfig {
   return {
     phases: [1],
     target,
@@ -105,9 +102,7 @@ async function runInstall(options: InstallOptions): Promise<void> {
     // 显示安装摘要
     console.log();
     console.log(chalk.bold(`安装摘要 (${config.platform}):`));
-    console.log(
-      chalk.green(`  Pipelines: ${result.outputFiles.length} 个文件`),
-    );
+    console.log(chalk.green(`  Pipelines: ${result.outputFiles.length} 个文件`));
     for (const wf of result.outputFiles) {
       console.log(chalk.gray(`    - ${wf}`));
     }
@@ -117,11 +112,7 @@ async function runInstall(options: InstallOptions): Promise<void> {
       console.log(chalk.gray(`    - ${label}`));
     }
 
-    console.log(
-      chalk.green(
-        `  CLAUDE.md: ${result.claudeMdPatched ? '已更新' : '未变更'}`,
-      ),
-    );
+    console.log(chalk.green(`  CLAUDE.md: ${result.claudeMdPatched ? '已更新' : '未变更'}`));
     console.log(
       result.secretsOk
         ? chalk.green('  Secrets: 全部就绪')

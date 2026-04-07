@@ -10,10 +10,7 @@
  */
 
 import { type App, computed, type InjectionKey, reactive } from 'vue';
-import {
-  createThemeDOMRenderer,
-  type ThemeDOMRenderer,
-} from '../core/theme-dom-renderer';
+import { createThemeDOMRenderer, type ThemeDOMRenderer } from '../core/theme-dom-renderer';
 import {
   generateThemeTokens,
   generateAllComponentOverrides,
@@ -24,11 +21,7 @@ import {
 import { defaultSeedTokens } from '../core/seed-derivation';
 import { validateThemeConfig } from '../utils/theme-validator';
 import { CSS_VAR_PREFIX } from '../utils/css-var';
-import {
-  isBrowser,
-  safeGetLocalStorage,
-  safeSetLocalStorage,
-} from '../utils/ssr-utils';
+import { isBrowser, safeGetLocalStorage, safeSetLocalStorage } from '../utils/ssr-utils';
 import type {
   ComponentsConfig,
   ComponentThemeConfig,
@@ -80,8 +73,7 @@ export interface ThemeContext {
 /**
  * 主题注入 Key
  */
-export const THEME_INJECTION_KEY: InjectionKey<ThemeContext> =
-  Symbol('aix-theme');
+export const THEME_INJECTION_KEY: InjectionKey<ThemeContext> = Symbol('aix-theme');
 
 /**
  * 创建主题选项
@@ -209,9 +201,7 @@ export function createTheme(options?: CreateThemeOptions) {
       ? [darkAlgorithm, ...initialAlgos]
       : initialAlgos;
   // 从算法推断初始 mode
-  const resolvedInitialMode = hasDarkAlgorithm(resolvedInitialAlgos)
-    ? 'dark'
-    : initialMode;
+  const resolvedInitialMode = hasDarkAlgorithm(resolvedInitialAlgos) ? 'dark' : initialMode;
 
   const state = reactive<{
     mode: ThemeMode;
@@ -257,8 +247,7 @@ export function createTheme(options?: CreateThemeOptions) {
     for (const key of Object.keys(current) as Array<keyof typeof current>) {
       const value = current[key];
       if (value !== undefined && String(value) !== String(defaults[key])) {
-        overrides[`--${resolvedPrefix}-${key}`] =
-          typeof value === 'number' ? String(value) : value;
+        overrides[`--${resolvedPrefix}-${key}`] = typeof value === 'number' ? String(value) : value;
       }
     }
 
@@ -343,10 +332,7 @@ export function createTheme(options?: CreateThemeOptions) {
     state.mode = newMode;
 
     // 计算新算法（保留 compact 等非 dark 算法）
-    const newAlgorithm = calculateAlgorithmForMode(
-      newMode,
-      state.config.algorithm,
-    );
+    const newAlgorithm = calculateAlgorithmForMode(newMode, state.config.algorithm);
 
     state.config = {
       ...state.config,

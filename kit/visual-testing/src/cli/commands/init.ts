@@ -33,9 +33,7 @@ async function runInit(options: { yes?: boolean }): Promise<void> {
 
   // 检查是否已存在配置
   if (await pathExists(configPath)) {
-    console.error(
-      chalk.yellow(`Configuration file already exists: ${CONFIG_FILE_NAME}`),
-    );
+    console.error(chalk.yellow(`Configuration file already exists: ${CONFIG_FILE_NAME}`));
     console.error(chalk.gray('Delete it first or edit it directly.'));
     process.exitCode = 1;
     return;

@@ -31,10 +31,7 @@ export class LLMAnalyzer {
   private costController: LLMCostController;
   private config: VisualTestConfig['llm'];
 
-  constructor(
-    config: VisualTestConfig['llm'],
-    options?: { cacheDir?: string },
-  ) {
+  constructor(config: VisualTestConfig['llm'], options?: { cacheDir?: string }) {
     this.config = config;
 
     // 初始化成本控制器
@@ -56,20 +53,11 @@ export class LLMAnalyzer {
         const analyzeAdapter = createAdapter(analyzeConfig);
         this.analyzeClient = new LLMClient(analyzeAdapter, analyzeConfig);
 
-        const suggestFixConfig = this.resolveEndpointConfig(
-          config,
-          'suggestFix',
-        );
+        const suggestFixConfig = this.resolveEndpointConfig(config, 'suggestFix');
         const suggestFixAdapter = createAdapter(suggestFixConfig);
-        this.suggestFixClient = new LLMClient(
-          suggestFixAdapter,
-          suggestFixConfig,
-        );
+        this.suggestFixClient = new LLMClient(suggestFixAdapter, suggestFixConfig);
       } catch (error) {
-        log.warn(
-          'Failed to initialize LLM client, using rule-based fallback',
-          error,
-        );
+        log.warn('Failed to initialize LLM client, using rule-based fallback', error);
       }
     }
   }
@@ -80,10 +68,7 @@ export class LLMAnalyzer {
    * @param options - 分析选项
    * @param externalSignal - 外部 AbortSignal（来自 orchestrator 的任务超时控制）
    */
-  async analyze(
-    options: AnalyzeOptions,
-    externalSignal?: AbortSignal,
-  ): Promise<AnalyzeResult> {
+  async analyze(options: AnalyzeOptions, externalSignal?: AbortSignal): Promise<AnalyzeResult> {
     // 1. 成本控制检查
     if (!this.costController.shouldAnalyze(options.comparisonResult)) {
       log.debug('Cost controller: skipping LLM, using rule-based analysis');
@@ -119,11 +104,7 @@ export class LLMAnalyzer {
         callState.recorded = true;
 
         // 4. 缓存结果
-        await this.costController.cacheAnalysis(
-          options.baselinePath,
-          options.actualPath,
-          result,
-        );
+        await this.costController.cacheAnalysis(options.baselinePath, options.actualPath, result);
 
         return result;
       } catch (error) {
@@ -152,9 +133,7 @@ export class LLMAnalyzer {
 
     // 成本控制：检查调用额度
     if (!this.costController.shouldCall()) {
-      log.debug(
-        'Cost controller: skipping suggestFix (call limit or budget reached)',
-      );
+      log.debug('Cost controller: skipping suggestFix (call limit or budget reached)');
       return [];
     }
 
@@ -228,11 +207,7 @@ export class LLMAnalyzer {
     // releaseCall 统一由 analyze 的 finally 处理，此处只需在重试成功时 recordCall
     switch (strategy) {
       case 'retry': {
-        for (
-          let attempt = 0;
-          attempt < this.config.fallback.retryAttempts;
-          attempt++
-        ) {
+        for (let attempt = 0; attempt < this.config.fallback.retryAttempts; attempt++) {
           try {
             const result = await this.callWithTimeout(
               (signal) => this.analyzeClient!.analyze(options, signal),
@@ -243,9 +218,7 @@ export class LLMAnalyzer {
             callState.recorded = true;
             return result;
           } catch {
-            log.warn(
-              `Retry ${attempt + 1}/${this.config.fallback.retryAttempts} failed`,
-            );
+            log.warn(`Retry ${attempt + 1}/${this.config.fallback.retryAttempts} failed`);
           }
         }
         // 重试耗尽，降级到规则引擎或抛出

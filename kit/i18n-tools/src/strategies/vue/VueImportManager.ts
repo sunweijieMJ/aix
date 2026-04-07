@@ -21,11 +21,7 @@ export class VueImportManager implements IImportManager {
   /**
    * 处理所有导入和全局声明
    */
-  handleGlobalImports(
-    code: string,
-    fileStrings: ExtractedString[],
-    filePath?: string,
-  ): string {
+  handleGlobalImports(code: string, fileStrings: ExtractedString[], filePath?: string): string {
     if (fileStrings.length === 0) {
       return code;
     }
@@ -56,9 +52,7 @@ export class VueImportManager implements IImportManager {
   private addPluginLocaleImport(code: string): string {
     const escapedPath = this.tImport.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (
-      new RegExp(
-        `import\\s*\\{[^}]*\\bt\\b[^}]*\\}\\s*from\\s*['"]${escapedPath}['"]`,
-      ).test(code)
+      new RegExp(`import\\s*\\{[^}]*\\bt\\b[^}]*\\}\\s*from\\s*['"]${escapedPath}['"]`).test(code)
     ) {
       return code;
     }
@@ -112,9 +106,7 @@ export class VueImportManager implements IImportManager {
 
     const declaration = this.library.generateHookDeclaration() + '\n';
 
-    const scriptSetupMatch = code.match(
-      /(<script[^>]*setup[^>]*>)([\s\S]*?)<\/script>/,
-    );
+    const scriptSetupMatch = code.match(/(<script[^>]*setup[^>]*>)([\s\S]*?)<\/script>/);
     if (scriptSetupMatch) {
       const scriptTag = scriptSetupMatch[1]!;
       const scriptContent = scriptSetupMatch[2]!;
@@ -123,11 +115,7 @@ export class VueImportManager implements IImportManager {
       let insertIndex = 0;
       for (let i = 0; i < lines.length; i++) {
         const trimmed = lines[i]!.trim();
-        if (
-          trimmed &&
-          !trimmed.startsWith('import ') &&
-          !trimmed.startsWith('//')
-        ) {
+        if (trimmed && !trimmed.startsWith('import ') && !trimmed.startsWith('//')) {
           insertIndex = i;
           break;
         }
@@ -135,10 +123,7 @@ export class VueImportManager implements IImportManager {
 
       lines.splice(insertIndex, 0, declaration);
       const newScriptContent = lines.join('\n');
-      return code.replace(
-        scriptSetupMatch[0],
-        `${scriptTag}${newScriptContent}</script>`,
-      );
+      return code.replace(scriptSetupMatch[0], `${scriptTag}${newScriptContent}</script>`);
     }
 
     return code;
@@ -156,10 +141,7 @@ export class VueImportManager implements IImportManager {
     if (match) {
       const existingImports = match[1]!.split(',').map((imp) => imp.trim());
       const newImports = [...new Set([...existingImports, ...imports])];
-      return code.replace(
-        match[0],
-        `import { ${newImports.join(', ')} } from '${packageName}';`,
-      );
+      return code.replace(match[0], `import { ${newImports.join(', ')} } from '${packageName}';`);
     }
     const importStatement = `import { ${imports.join(', ')} } from '${packageName}';\n`;
     return this.addImportToScript(code, importStatement);
@@ -182,10 +164,7 @@ export class VueImportManager implements IImportManager {
     lines.splice(lastImportIndex + 1, 0, importStatement.trim());
     const newScriptContent = lines.join('\n');
 
-    return code.replace(
-      scriptMatch[0],
-      `${scriptTag}${newScriptContent}</script>`,
-    );
+    return code.replace(scriptMatch[0], `${scriptTag}${newScriptContent}</script>`);
   }
 
   /**
@@ -211,12 +190,9 @@ export class VueImportManager implements IImportManager {
     code = code.replace(/'([^']*\\u[0-9a-fA-F]{4}[^']*)'/g, (match) => {
       const unicodeStr = match.slice(1, -1);
       try {
-        const decoded = unicodeStr.replace(
-          /\\u([0-9a-fA-F]{4})/g,
-          (_subMatch, hex) => {
-            return String.fromCharCode(parseInt(hex, 16));
-          },
-        );
+        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
         return `'${decoded}'`;
       } catch {
         return match;
@@ -227,12 +203,9 @@ export class VueImportManager implements IImportManager {
     code = code.replace(/"([^"]*\\u[0-9a-fA-F]{4}[^"]*)"/g, (match) => {
       const unicodeStr = match.slice(1, -1);
       try {
-        const decoded = unicodeStr.replace(
-          /\\u([0-9a-fA-F]{4})/g,
-          (_subMatch, hex) => {
-            return String.fromCharCode(parseInt(hex, 16));
-          },
-        );
+        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
         return `"${decoded}"`;
       } catch {
         return match;
@@ -243,12 +216,9 @@ export class VueImportManager implements IImportManager {
     code = code.replace(/`([^`]*\\u[0-9a-fA-F]{4}[^`]*)`/g, (match) => {
       const templateStr = match.slice(1, -1);
       try {
-        const decoded = templateStr.replace(
-          /\\u([0-9a-fA-F]{4})/g,
-          (_subMatch, hex) => {
-            return String.fromCharCode(parseInt(hex, 16));
-          },
-        );
+        const decoded = templateStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
         return `\`${decoded}\``;
       } catch {
         return match;
@@ -262,10 +232,7 @@ export class VueImportManager implements IImportManager {
    * 清理导入语句（用于 restore 操作）
    * 支持传入 library 实例来检测对应包的导入
    */
-  static cleanupImports(
-    node: ts.ImportDeclaration,
-    library?: VueI18nLibrary,
-  ): ts.Node {
+  static cleanupImports(node: ts.ImportDeclaration, library?: VueI18nLibrary): ts.Node {
     if (!node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier)) {
       return node;
     }
@@ -290,74 +257,52 @@ export class VueImportManager implements IImportManager {
    * 清理变量声明语句（移除 Hook 相关声明）
    * 支持传入 library 实例来检测对应 Hook
    */
-  static cleanupVariableStatements(
-    node: ts.VariableStatement,
-    library?: VueI18nLibrary,
-  ): ts.Node {
+  static cleanupVariableStatements(node: ts.VariableStatement, library?: VueI18nLibrary): ts.Node {
     const lib = library ?? new VueI18nLibraryImpl();
 
-    const filteredDeclarations = node.declarationList.declarations.filter(
-      (declaration) => {
-        if (ts.isIdentifier(declaration.name)) {
-          if (
-            declaration.initializer &&
-            ts.isCallExpression(declaration.initializer)
-          ) {
-            const expression = declaration.initializer.expression;
-            if (
-              ts.isIdentifier(expression) &&
-              lib.isHookDeclaration(expression.text)
-            ) {
-              return false;
-            }
+    const filteredDeclarations = node.declarationList.declarations.filter((declaration) => {
+      if (ts.isIdentifier(declaration.name)) {
+        if (declaration.initializer && ts.isCallExpression(declaration.initializer)) {
+          const expression = declaration.initializer.expression;
+          if (ts.isIdentifier(expression) && lib.isHookDeclaration(expression.text)) {
+            return false;
           }
         }
+      }
 
-        // 移除解构 const { t } = useI18n() / useTranslation()
-        if (ts.isObjectBindingPattern(declaration.name)) {
-          if (
-            declaration.initializer &&
-            ts.isCallExpression(declaration.initializer)
-          ) {
-            const expression = declaration.initializer.expression;
-            if (
-              ts.isIdentifier(expression) &&
-              lib.isHookDeclaration(expression.text)
-            ) {
-              return false;
-            }
-          }
-
-          const elements = declaration.name.elements.filter((element) => {
-            if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
-              return element.name.text !== 't';
-            }
-            return true;
-          });
-
-          if (elements.length === 0) {
+      // 移除解构 const { t } = useI18n() / useTranslation()
+      if (ts.isObjectBindingPattern(declaration.name)) {
+        if (declaration.initializer && ts.isCallExpression(declaration.initializer)) {
+          const expression = declaration.initializer.expression;
+          if (ts.isIdentifier(expression) && lib.isHookDeclaration(expression.text)) {
             return false;
           }
         }
 
-        return true;
-      },
-    );
+        const elements = declaration.name.elements.filter((element) => {
+          if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
+            return element.name.text !== 't';
+          }
+          return true;
+        });
+
+        if (elements.length === 0) {
+          return false;
+        }
+      }
+
+      return true;
+    });
 
     if (filteredDeclarations.length === 0) {
       return ts.factory.createNotEmittedStatement(node);
     }
 
-    if (
-      filteredDeclarations.length < node.declarationList.declarations.length
-    ) {
+    if (filteredDeclarations.length < node.declarationList.declarations.length) {
       return ts.factory.updateVariableStatement(
         node,
         node.modifiers,
-        ts.factory.updateVariableDeclarationList(
-          node.declarationList,
-          filteredDeclarations,
-        ),
+        ts.factory.updateVariableDeclarationList(node.declarationList, filteredDeclarations),
       );
     }
 
@@ -390,8 +335,7 @@ export class VueImportManager implements IImportManager {
         });
 
         if (filteredElements.length !== depsArg.elements.length) {
-          const newDepsArray =
-            ts.factory.createArrayLiteralExpression(filteredElements);
+          const newDepsArray = ts.factory.createArrayLiteralExpression(filteredElements);
           const newArguments = [...node.arguments];
           newArguments[1] = newDepsArray;
           return ts.factory.updateCallExpression(

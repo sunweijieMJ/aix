@@ -92,11 +92,7 @@ export const runWithRetry = async (
     retryDelayMs?: number;
   } = {},
 ): Promise<void> => {
-  const {
-    cwd,
-    maxRetries = DEFAULT_MAX_RETRIES,
-    retryDelayMs = DEFAULT_RETRY_DELAY_MS,
-  } = options;
+  const { cwd, maxRetries = DEFAULT_MAX_RETRIES, retryDelayMs = DEFAULT_RETRY_DELAY_MS } = options;
 
   let lastError: Error | null = null;
 
@@ -129,9 +125,7 @@ export const confirm = async (
   skipPrompt = false,
 ): Promise<boolean> => {
   if (skipPrompt) {
-    console.log(
-      `${message} ${chalk.dim(`[自动选择: ${defaultValue ? 'Yes' : 'No'}]`)}`,
-    );
+    console.log(`${message} ${chalk.dim(`[自动选择: ${defaultValue ? 'Yes' : 'No'}]`)}`);
     return defaultValue;
   }
 
@@ -148,5 +142,4 @@ export const confirm = async (
 };
 
 // 规范化路径分隔符（Windows 兼容）
-export const normalizePath = (filePath: string): string =>
-  filePath.replace(/\\/g, '/');
+export const normalizePath = (filePath: string): string => filePath.replace(/\\/g, '/');

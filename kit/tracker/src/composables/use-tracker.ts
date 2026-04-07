@@ -1,10 +1,5 @@
 import { inject } from 'vue';
-import type {
-  AccountInfo,
-  BaseEventProperties,
-  CommonPropertyMap,
-  EventName,
-} from '../types.js';
+import type { AccountInfo, BaseEventProperties, CommonPropertyMap, EventName } from '../types.js';
 import { TRACKER_INJECTION_KEY } from '../types.js';
 
 /**
@@ -15,19 +10,14 @@ export function useTracker<E extends string = string>() {
   const injected = inject(TRACKER_INJECTION_KEY);
 
   if (!injected) {
-    throw new Error(
-      '[kit-tracker] useTracker() 必须在 createTrackerPlugin 安装后的组件中使用',
-    );
+    throw new Error('[kit-tracker] useTracker() 必须在 createTrackerPlugin 安装后的组件中使用');
   }
 
   // 赋值给 non-nullable 变量，避免闭包中 TS 无法收窄
   const tracker = injected;
 
   /** 上报自定义事件 */
-  function track(
-    eventName: EventName<E>,
-    properties?: BaseEventProperties,
-  ): void {
+  function track(eventName: EventName<E>, properties?: BaseEventProperties): void {
     tracker.track(eventName, properties);
   }
 

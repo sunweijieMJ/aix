@@ -46,10 +46,7 @@ describe('ComponentExtractor', () => {
   describe('extractAllComponents', () => {
     it('应该从所有包中提取组件', async () => {
       // Mock findPackages 返回包路径
-      mockUtils.findPackages.mockResolvedValue([
-        '/test/packages/button',
-        '/test/packages/input',
-      ]);
+      mockUtils.findPackages.mockResolvedValue(['/test/packages/button', '/test/packages/input']);
 
       // Mock readPackageJson
       mockUtils.readPackageJson.mockImplementation(async (pkgPath: string) => {
@@ -101,10 +98,7 @@ describe('ComponentExtractor', () => {
       config.ignorePackages = ['@aix/ignored'];
       extractor = new ComponentExtractor(config);
 
-      mockUtils.findPackages.mockResolvedValue([
-        '/test/packages/button',
-        '/test/packages/ignored',
-      ]);
+      mockUtils.findPackages.mockResolvedValue(['/test/packages/button', '/test/packages/ignored']);
 
       mockUtils.readPackageJson.mockImplementation(async (pkgPath: string) => {
         if (pkgPath.includes('button')) {
@@ -164,9 +158,7 @@ describe('ComponentExtractor', () => {
         readmeFiles: [],
       });
 
-      const component = await extractor.extractComponentFromPackage(
-        '/test/packages/button',
-      );
+      const component = await extractor.extractComponentFromPackage('/test/packages/button');
 
       expect(component).not.toBeNull();
       expect(component?.name).toBe('Button');
@@ -180,9 +172,7 @@ describe('ComponentExtractor', () => {
     it('应该正确处理没有 package.json 的包', async () => {
       mockUtils.readPackageJson.mockResolvedValue(null);
 
-      const component = await extractor.extractComponentFromPackage(
-        '/test/packages/invalid',
-      );
+      const component = await extractor.extractComponentFromPackage('/test/packages/invalid');
 
       expect(component).toBeNull();
     });
@@ -216,9 +206,7 @@ describe('ComponentExtractor', () => {
           readmeFiles: [],
         });
 
-        const component = await extractor.extractComponentFromPackage(
-          '/test/packages/test',
-        );
+        const component = await extractor.extractComponentFromPackage('/test/packages/test');
 
         expect(component?.category).toBe(expectedCategory);
       }
@@ -229,10 +217,7 @@ describe('ComponentExtractor', () => {
     it('应该只提取自上次提取后有更新的组件', async () => {
       const lastExtractTime = new Date(Date.now() - 3600000); // 1小时前
 
-      mockUtils.findPackages.mockResolvedValue([
-        '/test/packages/button',
-        '/test/packages/input',
-      ]);
+      mockUtils.findPackages.mockResolvedValue(['/test/packages/button', '/test/packages/input']);
 
       mockUtils.readPackageJson.mockImplementation(async (pkgPath: string) => {
         if (pkgPath.includes('button')) {
@@ -261,8 +246,7 @@ describe('ComponentExtractor', () => {
         return { mtime: new Date(Date.now() - 7200000) } as any;
       });
 
-      const components =
-        await extractor.extractIncrementalComponents(lastExtractTime);
+      const components = await extractor.extractIncrementalComponents(lastExtractTime);
 
       // 只有 button 应该被提取
       expect(components.length).toBe(1);
@@ -299,10 +283,7 @@ describe('ComponentExtractor', () => {
 
   describe('getStats', () => {
     it('应该返回正确的统计信息', async () => {
-      mockUtils.findPackages.mockResolvedValue([
-        '/test/packages/button',
-        '/test/packages/input',
-      ]);
+      mockUtils.findPackages.mockResolvedValue(['/test/packages/button', '/test/packages/input']);
 
       mockUtils.readPackageJson.mockImplementation(async (pkgPath: string) => {
         if (pkgPath.includes('button')) {
@@ -387,9 +368,7 @@ describe('ComponentExtractor', () => {
         readmeFiles: [],
       });
 
-      const component = await extractor.extractComponentFromPackage(
-        '/test/packages/button',
-      );
+      const component = await extractor.extractComponentFromPackage('/test/packages/button');
 
       expect(component?.author).toBe('AIX Team <aix@example.com>');
     });
@@ -408,9 +387,7 @@ describe('ComponentExtractor', () => {
         readmeFiles: [],
       });
 
-      const component = await extractor.extractComponentFromPackage(
-        '/test/packages/button',
-      );
+      const component = await extractor.extractComponentFromPackage('/test/packages/button');
 
       expect(component?.author).toBe('AIX Team <aix@example.com>');
     });
@@ -428,9 +405,7 @@ describe('ComponentExtractor', () => {
         readmeFiles: [],
       });
 
-      const component = await extractor.extractComponentFromPackage(
-        '/test/packages/button',
-      );
+      const component = await extractor.extractComponentFromPackage('/test/packages/button');
 
       expect(component?.author).toBe('');
     });

@@ -1,10 +1,7 @@
 <template>
   <div :class="rootClass" :style="rootStyle">
     <!-- Toolbar + 链接弹窗容器（为弹窗提供定位上下文） -->
-    <div
-      v-if="props.showToolbar && isReady"
-      class="aix-rich-text-editor__toolbar-area"
-    >
+    <div v-if="props.showToolbar && isReady" class="aix-rich-text-editor__toolbar-area">
       <EditorToolbar :toolbar-groups="toolbarGroups" :locale="t" />
       <LinkEditPopover
         :editor="editor"
@@ -20,23 +17,12 @@
     </div>
 
     <!-- 表格浮动工具栏 -->
-    <TableFloatingToolbar
-      v-if="props.table && isReady"
-      :editor="editor"
-      :t="t"
-    />
+    <TableFloatingToolbar v-if="props.table && isReady" :editor="editor" :t="t" />
 
     <!-- 底部状态栏（字符统计） -->
-    <div
-      v-if="props.characterCount && isReady"
-      class="aix-rich-text-editor__footer"
-    >
-      <span class="aix-rich-text-editor__count">
-        {{ t.characters }}: {{ getCharacterCount() }}
-      </span>
-      <span class="aix-rich-text-editor__count">
-        {{ t.words }}: {{ getWordCount() }}
-      </span>
+    <div v-if="props.characterCount && isReady" class="aix-rich-text-editor__footer">
+      <span class="aix-rich-text-editor__count">{{ t.characters }}: {{ getCharacterCount() }}</span>
+      <span class="aix-rich-text-editor__count">{{ t.words }}: {{ getWordCount() }}</span>
     </div>
   </div>
 </template>
@@ -75,10 +61,7 @@ const props = withDefaults(defineProps<RichTextEditorProps>(), {
 const emit = defineEmits<RichTextEditorEmits>();
 
 // useLocale 内部通过 isRef() + if(override) 安全处理 undefined
-const { t } = useLocale(
-  richTextLocale,
-  computed(() => props.locale) as Ref<'zh-CN' | 'en-US'>,
-);
+const { t } = useLocale(richTextLocale, computed(() => props.locale) as Ref<'zh-CN' | 'en-US'>);
 
 const {
   editor,

@@ -8,10 +8,7 @@ export {
   type EngineType,
 } from './usePlaybackController';
 export { usePlayerState, type PlayerState } from './usePlayerState';
-export {
-  useTimerWithVisibility,
-  type TimerWithVisibilityOptions,
-} from './useTimerWithVisibility';
+export { useTimerWithVisibility, type TimerWithVisibilityOptions } from './useTimerWithVisibility';
 export {
   useNetworkStatus,
   type NetworkStatus,
@@ -29,10 +26,7 @@ export { useFlv, type FlvOptions } from './useFlv';
 export { useDash, type DashOptions } from './useDash';
 export { useRtsp, type RtspOptions } from './useRtsp';
 export { useWebRTC, type WebRTCOptions } from './useWebRTC';
-export {
-  useStreamAdapter,
-  type StreamAdapterOptions,
-} from './useStreamAdapter';
+export { useStreamAdapter, type StreamAdapterOptions } from './useStreamAdapter';
 export {
   useVideoPlayer,
   type VideoSourceType,

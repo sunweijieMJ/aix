@@ -19,8 +19,7 @@
     display: flex;
     align-items: center;
     padding: var(--aix-paddingXS) var(--aix-paddingSM);
-    transition: background-color var(--aix-motionDurationFast)
-      var(--aix-motionEaseInOut);
+    transition: background-color var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
     outline: none;
     color: var(--aix-colorText);
     font-size: var(--aix-fontSize);

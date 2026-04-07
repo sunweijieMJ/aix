@@ -70,9 +70,7 @@ export class VueTransformer implements ITransformer {
 
       // 处理 template 部分（后处理，但先替换）
       if (descriptor.template) {
-        const templateStrings = fileStrings.filter(
-          (s) => s.context === 'template',
-        );
+        const templateStrings = fileStrings.filter((s) => s.context === 'template');
         if (templateStrings.length > 0) {
           const transformedTemplate = this.processTemplate(
             descriptor.template.content,
@@ -111,11 +109,7 @@ export class VueTransformer implements ITransformer {
 
     // 添加必要的导入和声明
     const importManager = new VueImportManager(this.tImport, this.library);
-    transformedCode = importManager.handleGlobalImports(
-      transformedCode,
-      fileStrings,
-      filePath,
-    );
+    transformedCode = importManager.handleGlobalImports(transformedCode, fileStrings, filePath);
 
     // 只对 .vue 文件注入 Hook
     if (ext === 'vue') {
@@ -277,11 +271,7 @@ export class VueTransformer implements ITransformer {
     for (let delta = 1; delta <= 5; delta++) {
       for (const tryIdx of [line + delta, line - delta]) {
         if (tryIdx < 0 || tryIdx >= lines.length) continue;
-        const result = this.tryReplaceOnLine(
-          lines[tryIdx]!,
-          original,
-          replacement,
-        );
+        const result = this.tryReplaceOnLine(lines[tryIdx]!, original, replacement);
         if (result !== null) {
           lines[tryIdx] = result;
           return lines.join('\n');
@@ -363,23 +353,14 @@ export class VueTransformer implements ITransformer {
    * @returns 替换字符串
    */
   private generateTemplateReplacement(extracted: ExtractedString): string {
-    const {
-      isTemplateString,
-      templateVariables,
-      templateContext,
-      attributeName,
-    } = extracted;
+    const { isTemplateString, templateVariables, templateContext, attributeName } = extracted;
 
     // template 中 $t() 是全局函数，vue-i18next 需要 namespace:key 前缀
     const ns = this.library?.namespace;
-    const semanticId = ns
-      ? `${ns}:${extracted.semanticId}`
-      : extracted.semanticId;
+    const semanticId = ns ? `${ns}:${extracted.semanticId}` : extracted.semanticId;
 
     // 过滤掉字面量，只保留真正的变量表达式
-    const actualVariables = templateVariables
-      ? this.filterLiterals(templateVariables)
-      : undefined;
+    const actualVariables = templateVariables ? this.filterLiterals(templateVariables) : undefined;
 
     // 处理模板字符串（带变量插值）
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
@@ -445,16 +426,8 @@ export class VueTransformer implements ITransformer {
     const sortedStrings = strings.sort((a, b) => {
       const aLine = a.line - lineOffset - 1;
       const bLine = b.line - lineOffset - 1;
-      const aPos = ts.getPositionOfLineAndCharacter(
-        sourceFile,
-        aLine,
-        a.column - 1,
-      );
-      const bPos = ts.getPositionOfLineAndCharacter(
-        sourceFile,
-        bLine,
-        b.column - 1,
-      );
+      const aPos = ts.getPositionOfLineAndCharacter(sourceFile, aLine, a.column - 1);
+      const bPos = ts.getPositionOfLineAndCharacter(sourceFile, bLine, b.column - 1);
       return bPos - aPos;
     });
 
@@ -467,16 +440,8 @@ export class VueTransformer implements ITransformer {
     for (const extracted of sortedStrings) {
       const localLine = extracted.line - lineOffset - 1;
       const localColumn = extracted.column - 1;
-      const position = ts.getPositionOfLineAndCharacter(
-        sourceFile,
-        localLine,
-        localColumn,
-      );
-      const node = CommonASTUtils.findExactStringNode(
-        sourceFile,
-        position,
-        extracted.original,
-      );
+      const position = ts.getPositionOfLineAndCharacter(sourceFile, localLine, localColumn);
+      const node = CommonASTUtils.findExactStringNode(sourceFile, position, extracted.original);
 
       if (node) {
         const replacement = this.generateScriptReplacement(extracted);
@@ -486,15 +451,10 @@ export class VueTransformer implements ITransformer {
         // 验证节点文本
         const originalNodeText = CommonASTUtils.nodeToText(node, sourceFile);
         const isTemplateString =
-          extracted.original.startsWith('`') &&
-          extracted.original.endsWith('`');
+          extracted.original.startsWith('`') && extracted.original.endsWith('`');
 
         if (
-          CommonASTUtils.shouldReplaceNode(
-            originalNodeText,
-            extracted.original,
-            isTemplateString,
-          )
+          CommonASTUtils.shouldReplaceNode(originalNodeText, extracted.original, isTemplateString)
         ) {
           replacements.push({ start, end, replacement });
         }
@@ -518,9 +478,7 @@ export class VueTransformer implements ITransformer {
     const tFunc = 't';
 
     // 过滤掉字面量，只保留真正的变量表达式
-    const actualVariables = templateVariables
-      ? this.filterLiterals(templateVariables)
-      : undefined;
+    const actualVariables = templateVariables ? this.filterLiterals(templateVariables) : undefined;
 
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
       // 对于模板字符串，使用变量插值
@@ -541,9 +499,7 @@ export class VueTransformer implements ITransformer {
    * @param placeholderMap - 从表达式到占位符名称的映射
    * @returns 格式化后的变量映射字符串
    */
-  private generateVariablesMapping(
-    placeholderMap: Map<string, string>,
-  ): string {
+  private generateVariablesMapping(placeholderMap: Map<string, string>): string {
     const mappings: string[] = [];
     placeholderMap.forEach((placeholder, expression) => {
       mappings.push(`${placeholder}: ${expression}`);

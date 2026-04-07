@@ -13,17 +13,14 @@ const iconComponents = [
 
 describe('Icons 图标组件', () => {
   describe('基础渲染', () => {
-    it.each(iconComponents)(
-      '$name ($category) 应该渲染 SVG 元素',
-      ({ component }) => {
-        const wrapper = mount(component);
-        const svg = wrapper.find('svg');
+    it.each(iconComponents)('$name ($category) 应该渲染 SVG 元素', ({ component }) => {
+      const wrapper = mount(component);
+      const svg = wrapper.find('svg');
 
-        expect(svg.exists()).toBe(true);
-        expect(svg.attributes('viewBox')).toBe('0 0 24 24');
-        expect(svg.attributes('xmlns')).toBe('http://www.w3.org/2000/svg');
-      },
-    );
+      expect(svg.exists()).toBe(true);
+      expect(svg.attributes('viewBox')).toBe('0 0 24 24');
+      expect(svg.attributes('xmlns')).toBe('http://www.w3.org/2000/svg');
+    });
 
     it.each(iconComponents)(
       '$name ($category) 应该包含 path 且 fill 为 currentColor',
@@ -38,35 +35,26 @@ describe('Icons 图标组件', () => {
   });
 
   describe('Props 默认值', () => {
-    it.each(iconComponents)(
-      '$name ($category) 默认 width 应为 1em',
-      ({ component }) => {
-        const wrapper = mount(component);
-        const svg = wrapper.find('svg');
+    it.each(iconComponents)('$name ($category) 默认 width 应为 1em', ({ component }) => {
+      const wrapper = mount(component);
+      const svg = wrapper.find('svg');
 
-        expect(svg.attributes('width')).toBe('1em');
-      },
-    );
+      expect(svg.attributes('width')).toBe('1em');
+    });
 
-    it.each(iconComponents)(
-      '$name ($category) 默认 height 应为 1em',
-      ({ component }) => {
-        const wrapper = mount(component);
-        const svg = wrapper.find('svg');
+    it.each(iconComponents)('$name ($category) 默认 height 应为 1em', ({ component }) => {
+      const wrapper = mount(component);
+      const svg = wrapper.find('svg');
 
-        expect(svg.attributes('height')).toBe('1em');
-      },
-    );
+      expect(svg.attributes('height')).toBe('1em');
+    });
 
-    it.each(iconComponents)(
-      '$name ($category) 默认 color 应为 currentColor',
-      ({ component }) => {
-        const wrapper = mount(component);
-        const svg = wrapper.find('svg');
+    it.each(iconComponents)('$name ($category) 默认 color 应为 currentColor', ({ component }) => {
+      const wrapper = mount(component);
+      const svg = wrapper.find('svg');
 
-        expect(svg.element.style.color.toLowerCase()).toBe('currentcolor');
-      },
-    );
+      expect(svg.element.style.color.toLowerCase()).toBe('currentcolor');
+    });
   });
 
   describe('Props 自定义', () => {

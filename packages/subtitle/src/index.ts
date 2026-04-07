@@ -23,19 +23,11 @@ export {
   estimateTextWidth,
   splitByWidth,
 } from './useSegment';
-export type {
-  UseSegmentOptions,
-  UseSegmentReturn,
-  MeasureFn,
-  GetLinesFn,
-} from './useSegment';
+export type { UseSegmentOptions, UseSegmentReturn, MeasureFn, GetLinesFn } from './useSegment';
 
 // 导出精确文本测量 Composable
 export { useTextMeasure } from './useTextMeasure';
-export type {
-  UseTextMeasureOptions,
-  UseTextMeasureReturn,
-} from './useTextMeasure';
+export type { UseTextMeasureOptions, UseTextMeasureReturn } from './useTextMeasure';
 
 // 导出解析器
 export { parseSubtitle, detectFormat } from './parsers';

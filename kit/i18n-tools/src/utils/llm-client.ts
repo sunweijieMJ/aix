@@ -1,10 +1,6 @@
 import OpenAI from 'openai';
 import type { LLMConfig, LocaleConfig, PromptsConfig } from '../config';
-import {
-  DEFAULT_LLM_MAX_RETRIES,
-  DEFAULT_LLM_TEMPERATURE,
-  DEFAULT_LLM_TIMEOUT,
-} from '../config';
+import { DEFAULT_LLM_MAX_RETRIES, DEFAULT_LLM_TEMPERATURE, DEFAULT_LLM_TIMEOUT } from '../config';
 import { ConcurrencyController } from './concurrency-controller';
 import { LoggerUtils } from './logger';
 import {
@@ -48,10 +44,7 @@ export class LLMClient {
   /**
    * 调用 LLM chat completion
    */
-  private async chatCompletion(
-    systemPrompt: string,
-    userPrompt: string,
-  ): Promise<string> {
+  private async chatCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
     const response = await this.openai.chat.completions.create({
       model: this.model,
       messages: [
@@ -76,9 +69,7 @@ export class LLMClient {
     let cleaned = text.trim();
     // 去除 markdown code fence
     if (cleaned.startsWith('```')) {
-      cleaned = cleaned
-        .replace(/^```(?:json)?\s*\n?/, '')
-        .replace(/\n?```\s*$/, '');
+      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
     }
     return cleaned.trim();
   }
@@ -86,10 +77,7 @@ export class LLMClient {
   /**
    * 生成语义ID列表（支持并发分批）
    */
-  async generateSemanticIds(
-    textList: string[],
-    batchSize: number = 10,
-  ): Promise<string[]> {
+  async generateSemanticIds(textList: string[], batchSize: number = 10): Promise<string[]> {
     if (textList.length === 0) return [];
 
     if (textList.length <= batchSize) {
@@ -105,9 +93,7 @@ export class LLMClient {
       batches.push(textList.slice(startIndex, endIndex));
     }
 
-    LoggerUtils.info(
-      `📊 需要分 ${totalBatches} 批次处理，每批 ${batchSize} 个文本`,
-    );
+    LoggerUtils.info(`📊 需要分 ${totalBatches} 批次处理，每批 ${batchSize} 个文本`);
     LoggerUtils.info(
       `🔄 使用并发处理，最大并发数: ${this.concurrencyController.getStatus().maxConcurrency}`,
     );
@@ -137,24 +123,18 @@ export class LLMClient {
     }
 
     const results = settledResults
-      .filter(
-        (r): r is PromiseFulfilledResult<string[]> => r.status === 'fulfilled',
-      )
+      .filter((r): r is PromiseFulfilledResult<string[]> => r.status === 'fulfilled')
       .map((r) => r.value)
       .flat();
 
-    LoggerUtils.success(
-      `🎉 所有批次处理完成，共生成 ${results.length} 个语义ID`,
-    );
+    LoggerUtils.success(`🎉 所有批次处理完成，共生成 ${results.length} 个语义ID`);
     return results;
   }
 
   /**
    * 处理单个批次的语义ID生成
    */
-  private async generateSemanticIdsBatch(
-    textList: string[],
-  ): Promise<string[]> {
+  private async generateSemanticIdsBatch(textList: string[]): Promise<string[]> {
     const rawContent = await this.chatCompletion(
       getIdGenerationSystemPrompt(this.locale, this.prompts),
       getIdGenerationUserPrompt(textList, this.locale, this.prompts),
@@ -171,10 +151,7 @@ export class LLMClient {
       return parsed.id_list as string[];
     } catch (error) {
       if (error instanceof SyntaxError) {
-        throw new Error(
-          `LLM 返回的 JSON 解析失败: ${rawContent.slice(0, 200)}`,
-          { cause: error },
-        );
+        throw new Error(`LLM 返回的 JSON 解析失败: ${rawContent.slice(0, 200)}`, { cause: error });
       }
       throw error;
     }
@@ -212,9 +189,7 @@ export class LLMClient {
             onProgress(successCount + failedCount, batches.length);
           }
 
-          LoggerUtils.success(
-            `✅ 翻译批次 ${index + 1}/${batches.length} 完成`,
-          );
+          LoggerUtils.success(`✅ 翻译批次 ${index + 1}/${batches.length} 完成`);
         } catch (error) {
           LoggerUtils.error(`❌ 翻译批次 ${index + 1} 失败:`, error);
           failedCount++;
@@ -231,9 +206,7 @@ export class LLMClient {
     // 失败的批次保留为 undefined，调用方通过 `if (!translatedBatch) continue` 跳过
 
     if (failedCount > 0) {
-      LoggerUtils.warn(
-        `⚠️ 批量翻译完成: ${successCount} 个批次成功, ${failedCount} 个批次失败`,
-      );
+      LoggerUtils.warn(`⚠️ 批量翻译完成: ${successCount} 个批次成功, ${failedCount} 个批次失败`);
     } else {
       LoggerUtils.success(`🎉 批量翻译完成，全部 ${successCount} 个批次成功`);
     }
@@ -256,10 +229,9 @@ export class LLMClient {
       return cleaned;
     } catch (error) {
       if (error instanceof SyntaxError) {
-        throw new Error(
-          `LLM 翻译返回的 JSON 解析失败: ${rawContent.slice(0, 200)}`,
-          { cause: error },
-        );
+        throw new Error(`LLM 翻译返回的 JSON 解析失败: ${rawContent.slice(0, 200)}`, {
+          cause: error,
+        });
       }
       throw error;
     }
@@ -307,26 +279,18 @@ export class LLMClient {
       return results;
     }
 
-    LoggerUtils.info(
-      `🚀 开始通过LLM为 ${Object.keys(fileGroups).length} 个文件生成语义ID...`,
-    );
+    LoggerUtils.info(`🚀 开始通过LLM为 ${Object.keys(fileGroups).length} 个文件生成语义ID...`);
 
     const promises = Object.entries(fileGroups).map(([filePath, texts]) =>
       this.concurrencyController.add(async () => {
-        LoggerUtils.info(
-          `🔄 正在处理文件: ${filePath} (${texts.length} 个文本)...`,
-        );
+        LoggerUtils.info(`🔄 正在处理文件: ${filePath} (${texts.length} 个文本)...`);
 
         try {
           const allIds = await this.generateSemanticIds(texts);
           results[filePath] = allIds;
-          LoggerUtils.success(
-            `✅ 文件 ${filePath} 的语义ID生成完成，共 ${allIds.length} 个ID`,
-          );
+          LoggerUtils.success(`✅ 文件 ${filePath} 的语义ID生成完成，共 ${allIds.length} 个ID`);
         } catch {
-          LoggerUtils.warn(
-            `⚠️ 文件 ${filePath} 的LLM API调用失败，将由调用方使用本地ID生成兜底`,
-          );
+          LoggerUtils.warn(`⚠️ 文件 ${filePath} 的LLM API调用失败，将由调用方使用本地ID生成兜底`);
           results[filePath] = [];
         }
       }),

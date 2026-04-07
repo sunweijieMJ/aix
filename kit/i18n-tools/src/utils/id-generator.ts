@@ -17,9 +17,7 @@ export class IdGenerator {
   /**
    * 获取中文映射表
    */
-  private static getChineseMappings(
-    prefixConfig?: IdPrefixConfig,
-  ): Record<string, string> {
+  private static getChineseMappings(prefixConfig?: IdPrefixConfig): Record<string, string> {
     return prefixConfig?.chineseMappings ?? DEFAULT_ID_PREFIX.chineseMappings;
   }
 
@@ -29,10 +27,7 @@ export class IdGenerator {
    * @param preserveCase - 是否保留大小写
    * @returns 清理后的ID
    */
-  private static sanitizeSemanticId(
-    id: string,
-    preserveCase: boolean = false,
-  ): string {
+  private static sanitizeSemanticId(id: string, preserveCase: boolean = false): string {
     let result = id;
 
     if (!preserveCase) {
@@ -54,10 +49,7 @@ export class IdGenerator {
    * @param prefixConfig - ID 前缀配置
    * @returns 清理后的ID
    */
-  private static sanitizeFullId(
-    id: string,
-    prefixConfig?: IdPrefixConfig,
-  ): string {
+  private static sanitizeFullId(id: string, prefixConfig?: IdPrefixConfig): string {
     const separator = this.getSeparator(prefixConfig);
     // 检查是否包含目录分隔符
     if (id.includes(separator)) {
@@ -69,17 +61,13 @@ export class IdGenerator {
       // 语义部分转小写
       const semanticParts = parts.slice(2);
 
-      const cleanedDirectoryParts = directoryParts.map((part) =>
-        part.replace(/[^a-zA-Z0-9]/g, ''),
-      );
+      const cleanedDirectoryParts = directoryParts.map((part) => part.replace(/[^a-zA-Z0-9]/g, ''));
 
       const cleanedSemanticParts = semanticParts.map(
         (part) => this.sanitizeSemanticId(part, false), // 语义部分转小写
       );
 
-      return [...cleanedDirectoryParts, ...cleanedSemanticParts].join(
-        separator,
-      );
+      return [...cleanedDirectoryParts, ...cleanedSemanticParts].join(separator);
     }
     // 没有目录前缀，直接清理
     return this.sanitizeSemanticId(id, false);
@@ -100,12 +88,7 @@ export class IdGenerator {
     prefixConfig?: IdPrefixConfig,
   ): string {
     const semanticPart = this.extractSemanticPart(text, prefixConfig);
-    return this._createFullId(
-      filePath,
-      semanticPart,
-      existingIds,
-      prefixConfig,
-    );
+    return this._createFullId(filePath, semanticPart, existingIds, prefixConfig);
   }
 
   /**
@@ -114,10 +97,7 @@ export class IdGenerator {
    * @param prefixConfig - ID 前缀配置
    * @returns 目录前缀
    */
-  private static extractDirectoryPrefix(
-    filePath: string,
-    prefixConfig?: IdPrefixConfig,
-  ): string {
+  private static extractDirectoryPrefix(filePath: string, prefixConfig?: IdPrefixConfig): string {
     if (!filePath) return '';
 
     // 如果配置了自定义固定前缀，直接使用
@@ -171,10 +151,7 @@ export class IdGenerator {
    * @param prefixConfig - ID 前缀配置
    * @returns 语义部分
    */
-  private static extractSemanticPart(
-    text: string,
-    prefixConfig?: IdPrefixConfig,
-  ): string {
+  private static extractSemanticPart(text: string, prefixConfig?: IdPrefixConfig): string {
     const cleanText = text.replace(/[^\u4e00-\u9fff\w\s]/g, '').trim();
     const chineseMappings = this.getChineseMappings(prefixConfig);
 

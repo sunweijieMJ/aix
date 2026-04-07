@@ -133,9 +133,7 @@ describe('SearchIndex (简化版)', () => {
       expect(results.length).toBeGreaterThanOrEqual(1);
       // 验证结果按分数降序排列
       for (let i = 1; i < results.length; i++) {
-        expect(results[i - 1]?.score).toBeGreaterThanOrEqual(
-          results[i]?.score || 0,
-        );
+        expect(results[i - 1]?.score).toBeGreaterThanOrEqual(results[i]?.score || 0);
       }
     });
 
@@ -161,9 +159,7 @@ describe('SearchIndex (简化版)', () => {
       const results = searchIndex.search('Img', 10);
 
       expect(results[0]?.highlights).toBeDefined();
-      expect(Object.keys(results[0]?.highlights || {}).length).toBeGreaterThan(
-        0,
-      );
+      expect(Object.keys(results[0]?.highlights || {}).length).toBeGreaterThan(0);
     });
   });
 
@@ -219,25 +215,22 @@ describe('SearchIndex (简化版)', () => {
     });
 
     it('应该处理大量组件', () => {
-      const largeComponentList: ComponentInfo[] = Array.from(
-        { length: 1000 },
-        (_, i) => ({
-          ...mockComponents[0],
-          name: `Component${i}`,
-          packageName: `@aix/component-${i}`,
-          description: `组件${i}的描述`,
-          version: '1.0.0',
-          category: '测试',
-          tags: ['test'],
-          author: 'Test Author',
-          license: 'MIT',
-          sourcePath: '/test/path',
-          dependencies: ['vue'],
-          peerDependencies: ['vue'],
-          props: mockComponents[0]?.props || [],
-          examples: mockComponents[0]?.examples || [],
-        }),
-      );
+      const largeComponentList: ComponentInfo[] = Array.from({ length: 1000 }, (_, i) => ({
+        ...mockComponents[0],
+        name: `Component${i}`,
+        packageName: `@aix/component-${i}`,
+        description: `组件${i}的描述`,
+        version: '1.0.0',
+        category: '测试',
+        tags: ['test'],
+        author: 'Test Author',
+        license: 'MIT',
+        sourcePath: '/test/path',
+        dependencies: ['vue'],
+        peerDependencies: ['vue'],
+        props: mockComponents[0]?.props || [],
+        examples: mockComponents[0]?.examples || [],
+      }));
 
       searchIndex.buildIndex(largeComponentList);
       const stats = searchIndex.getStats();

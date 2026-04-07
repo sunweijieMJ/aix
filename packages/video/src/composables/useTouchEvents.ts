@@ -103,10 +103,7 @@ export function useTouchEvents(
     }
 
     // 检测滑动
-    if (
-      touchDuration < SWIPE_MAX_DURATION &&
-      Math.abs(touchDistanceX) > SWIPE_MIN_DISTANCE
-    ) {
+    if (touchDuration < SWIPE_MAX_DURATION && Math.abs(touchDistanceX) > SWIPE_MIN_DISTANCE) {
       // 水平滑动距离大于垂直滑动距离
       if (Math.abs(touchDistanceX) > Math.abs(touchDistanceY)) {
         if (touchDistanceX > 0) {

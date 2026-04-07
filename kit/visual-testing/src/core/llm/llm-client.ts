@@ -7,10 +7,7 @@
 
 import fs from 'node:fs/promises';
 import { logger } from '../../utils/logger';
-import {
-  ANALYZE_DIFF_PROMPT,
-  SUGGEST_FIX_PROMPT,
-} from './prompts/analyze-diff';
+import { ANALYZE_DIFF_PROMPT, SUGGEST_FIX_PROMPT } from './prompts/analyze-diff';
 import { z } from 'zod';
 import type {
   LLMConfig,
@@ -46,12 +43,8 @@ export class LLMClient {
   /**
    * 视觉差异分析（带图片）
    */
-  async analyze(
-    options: AnalyzeOptions,
-    signal?: AbortSignal,
-  ): Promise<AnalyzeResult> {
-    const { baselinePath, actualPath, diffPath, comparisonResult, context } =
-      options;
+  async analyze(options: AnalyzeOptions, signal?: AbortSignal): Promise<AnalyzeResult> {
+    const { baselinePath, actualPath, diffPath, comparisonResult, context } = options;
 
     // 1. 读取图片
     const images = await this.loadImages(baselinePath, actualPath, diffPath);
@@ -81,10 +74,7 @@ export class LLMClient {
   /**
    * 生成修复建议（纯文本）
    */
-  async suggestFix(
-    options: SuggestFixOptions,
-    signal?: AbortSignal,
-  ): Promise<FixSuggestion[]> {
+  async suggestFix(options: SuggestFixOptions, signal?: AbortSignal): Promise<FixSuggestion[]> {
     const prompt = this.buildSuggestFixPrompt(options.differences);
 
     const callResult = await this.adapter.chat(prompt, {
@@ -128,30 +118,19 @@ export class LLMClient {
     comparisonResult: AnalyzeOptions['comparisonResult'],
     context?: AnalyzeOptions['context'],
   ): string {
-    return ANALYZE_DIFF_PROMPT.replaceAll(
-      '{{name}}',
-      context?.name || 'Unknown',
-    )
+    return ANALYZE_DIFF_PROMPT.replaceAll('{{name}}', context?.name || 'Unknown')
       .replaceAll('{{type}}', context?.type || 'component')
       .replaceAll('{{framework}}', context?.framework || 'Vue 3')
       .replaceAll('{{mismatchPixels}}', String(comparisonResult.mismatchPixels))
-      .replaceAll(
-        '{{mismatchPercentage}}',
-        comparisonResult.mismatchPercentage.toFixed(2),
-      )
+      .replaceAll('{{mismatchPercentage}}', comparisonResult.mismatchPercentage.toFixed(2))
       .replaceAll(
         '{{sizeDiff}}',
-        comparisonResult.sizeDiff
-          ? JSON.stringify(comparisonResult.sizeDiff)
-          : '无',
+        comparisonResult.sizeDiff ? JSON.stringify(comparisonResult.sizeDiff) : '无',
       );
   }
 
   private buildSuggestFixPrompt(differences: Difference[]): string {
-    return SUGGEST_FIX_PROMPT.replaceAll(
-      '{{differences}}',
-      JSON.stringify(differences, null, 2),
-    );
+    return SUGGEST_FIX_PROMPT.replaceAll('{{differences}}', JSON.stringify(differences, null, 2));
   }
 
   // ---- 私有方法：响应解析 ----
@@ -243,10 +222,7 @@ export class LLMClient {
       if (validated.success) {
         return validated.data.fixes;
       }
-      log.warn(
-        'LLM suggest-fix response schema validation failed',
-        validated.error.issues,
-      );
+      log.warn('LLM suggest-fix response schema validation failed', validated.error.issues);
     }
 
     return [];

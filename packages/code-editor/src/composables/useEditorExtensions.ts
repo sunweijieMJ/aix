@@ -4,12 +4,7 @@ import {
   closeBracketsKeymap,
   completionKeymap,
 } from '@codemirror/autocomplete';
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  indentWithTab,
-} from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import {
   bracketMatching as bracketMatchingExt,
   foldGutter as foldGutterExt,
@@ -87,9 +82,7 @@ export interface UseEditorExtensionsReturn {
 /**
  * 管理 CodeMirror Extension 和 Compartment
  */
-export function useEditorExtensions(
-  props: CodeEditorProps,
-): UseEditorExtensionsReturn {
+export function useEditorExtensions(props: CodeEditorProps): UseEditorExtensionsReturn {
   // Compartment 实例（整个组件生命周期内稳定引用）
   const compartments: EditorCompartments = {
     language: new Compartment(),
@@ -107,9 +100,7 @@ export function useEditorExtensions(
   };
 
   /** 构建初始扩展数组（异步加载语言包） */
-  async function buildExtensions(
-    updateListener: Extension,
-  ): Promise<Extension[]> {
+  async function buildExtensions(updateListener: Extension): Promise<Extension[]> {
     const extensions: Extension[] = [];
 
     // 静态扩展（始终启用）
@@ -125,21 +116,13 @@ export function useEditorExtensions(
     extensions.push(autocompletion());
 
     // 默认语法高亮作为 fallback
-    extensions.push(
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-    );
+    extensions.push(syntaxHighlighting(defaultHighlightStyle, { fallback: true }));
 
     // Compartment 动态扩展（可运行时切换）
     extensions.push(
-      compartments.lineNumbers.of(
-        props.lineNumbers !== false ? lineNumbersExt() : [],
-      ),
+      compartments.lineNumbers.of(props.lineNumbers !== false ? lineNumbersExt() : []),
     );
-    extensions.push(
-      compartments.foldGutter.of(
-        props.foldGutter !== false ? foldGutterExt() : [],
-      ),
-    );
+    extensions.push(compartments.foldGutter.of(props.foldGutter !== false ? foldGutterExt() : []));
     extensions.push(
       compartments.highlightActiveLine.of(
         props.highlightActiveLine !== false
@@ -148,14 +131,10 @@ export function useEditorExtensions(
       ),
     );
     extensions.push(
-      compartments.bracketMatching.of(
-        props.bracketMatching !== false ? bracketMatchingExt() : [],
-      ),
+      compartments.bracketMatching.of(props.bracketMatching !== false ? bracketMatchingExt() : []),
     );
     extensions.push(
-      compartments.placeholder.of(
-        props.placeholder ? placeholderExt(props.placeholder) : [],
-      ),
+      compartments.placeholder.of(props.placeholder ? placeholderExt(props.placeholder) : []),
     );
 
     // 快捷键
@@ -175,19 +154,9 @@ export function useEditorExtensions(
     const lang = props.language ?? 'javascript';
     const langSupport = await getLanguageExtension(lang);
     extensions.push(compartments.language.of(langSupport));
-    extensions.push(
-      compartments.theme.of(getThemeExtension(props.theme ?? 'light')),
-    );
-    extensions.push(
-      compartments.readonly.of(
-        EditorState.readOnly.of(props.readonly ?? false),
-      ),
-    );
-    extensions.push(
-      compartments.editable.of(
-        EditorView.editable.of(!(props.disabled ?? false)),
-      ),
-    );
+    extensions.push(compartments.theme.of(getThemeExtension(props.theme ?? 'light')));
+    extensions.push(compartments.readonly.of(EditorState.readOnly.of(props.readonly ?? false)));
+    extensions.push(compartments.editable.of(EditorView.editable.of(!(props.disabled ?? false))));
 
     const tabSizeVal = props.tabSize ?? 2;
     extensions.push(
@@ -198,10 +167,7 @@ export function useEditorExtensions(
     );
 
     // 语法校验（按需加载 linter）
-    const lintExt =
-      props.lint !== false
-        ? await getLintExtension(lang, props.lintOptions)
-        : [];
+    const lintExt = props.lint !== false ? await getLintExtension(lang, props.lintOptions) : [];
     extensions.push(compartments.lint.of(lintExt));
 
     // 文档变更监听（由 useEditorCore 传入）
@@ -216,18 +182,14 @@ export function useEditorExtensions(
   /** 动态切换主题 */
   function reconfigureTheme(view: EditorView) {
     view.dispatch({
-      effects: compartments.theme.reconfigure(
-        getThemeExtension(props.theme ?? 'light'),
-      ),
+      effects: compartments.theme.reconfigure(getThemeExtension(props.theme ?? 'light')),
     });
   }
 
   /** 动态切换只读 */
   function reconfigureReadonly(view: EditorView) {
     view.dispatch({
-      effects: compartments.readonly.reconfigure(
-        EditorState.readOnly.of(props.readonly ?? false),
-      ),
+      effects: compartments.readonly.reconfigure(EditorState.readOnly.of(props.readonly ?? false)),
     });
   }
 
@@ -301,10 +263,7 @@ export function useEditorExtensions(
   /** 动态切换语法校验 */
   async function reconfigureLint(view: EditorView) {
     const lang = props.language ?? 'javascript';
-    const lintExt =
-      props.lint !== false
-        ? await getLintExtension(lang, props.lintOptions)
-        : [];
+    const lintExt = props.lint !== false ? await getLintExtension(lang, props.lintOptions) : [];
     view.dispatch({
       effects: compartments.lint.reconfigure(lintExt),
     });

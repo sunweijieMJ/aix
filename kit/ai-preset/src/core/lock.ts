@@ -20,9 +20,7 @@ import type { WriteResult } from './writer.js';
 /**
  * 读取 .ai-preset/lock.json，不存在返回 null
  */
-export async function readLockFile(
-  projectRoot: string,
-): Promise<LockFile | null> {
+export async function readLockFile(projectRoot: string): Promise<LockFile | null> {
   const lockPath = path.join(projectRoot, LOCK_DIR, LOCK_FILENAME);
   if (!existsSync(lockPath)) {
     return null;
@@ -39,10 +37,7 @@ export async function readLockFile(
 /**
  * 写入 .ai-preset/lock.json
  */
-export async function writeLockFile(
-  projectRoot: string,
-  lockFile: LockFile,
-): Promise<void> {
+export async function writeLockFile(projectRoot: string, lockFile: LockFile): Promise<void> {
   const lockPath = path.join(projectRoot, LOCK_DIR, LOCK_FILENAME);
   await writeFile(lockPath, JSON.stringify(lockFile, null, 2) + '\n');
 }
@@ -67,10 +62,7 @@ export function buildLockFile(
       if (entry.status === 'ejected') {
         // ejected 文件始终保留
         fileEntries[filePath] = entry;
-      } else if (
-        newFilePaths.has(filePath) &&
-        !writeResult.writtenFiles.includes(filePath)
-      ) {
+      } else if (newFilePaths.has(filePath) && !writeResult.writtenFiles.includes(filePath)) {
         // 新预设仍生成此文件，但本次未写入（如 upgrade 时用户选择 keep）→ 保留旧条目
         fileEntries[filePath] = entry;
       }
@@ -124,10 +116,7 @@ export async function checkFileStatus(
     try {
       const content = await readFile(absPath);
       const currentHash = sha256(content);
-      statusMap.set(
-        relativePath,
-        currentHash === entry.hash ? 'managed' : 'modified',
-      );
+      statusMap.set(relativePath, currentHash === entry.hash ? 'managed' : 'modified');
     } catch {
       statusMap.set(relativePath, 'modified');
     }

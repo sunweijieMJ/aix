@@ -8,12 +8,7 @@
       @before-leave="onBeforeHide"
       @after-leave="onHide"
     >
-      <div
-        v-if="isOpen"
-        ref="floatingElRef"
-        :class="floatingClasses"
-        :style="mergedStyles"
-      >
+      <div v-if="isOpen" ref="floatingElRef" :class="floatingClasses" :style="mergedStyles">
         <slot />
         <PopperArrow v-if="arrow" ref="arrowElRef" :style="arrowStyles" />
       </div>

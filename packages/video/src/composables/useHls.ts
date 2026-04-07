@@ -41,9 +41,7 @@ export interface HlsOptions {
   onError?: (error: Error) => void;
 }
 
-const DEFAULT_OPTIONS: Required<
-  Omit<HlsOptions, 'hlsConfig' | 'onReady' | 'onError'>
-> = {
+const DEFAULT_OPTIONS: Required<Omit<HlsOptions, 'hlsConfig' | 'onReady' | 'onError'>> = {
   autoPlay: true,
   lowLatencyMode: true,
   maxNetworkRetries: 3,
@@ -72,13 +70,9 @@ export function useHls(
 
   const hlsLoader = sdkLoaders.hls();
 
-  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(
-    key: K,
-  ): (typeof DEFAULT_OPTIONS)[K] {
+  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(key: K): (typeof DEFAULT_OPTIONS)[K] {
     const value = options.value[key];
-    return value !== undefined
-      ? (value as (typeof DEFAULT_OPTIONS)[K])
-      : DEFAULT_OPTIONS[key];
+    return value !== undefined ? (value as (typeof DEFAULT_OPTIONS)[K]) : DEFAULT_OPTIONS[key];
   }
 
   /**
@@ -139,50 +133,41 @@ export function useHls(
         options.value.onReady?.();
       });
 
-      hls.on(
-        Hls.Events.ERROR,
-        (_event: string, data: { fatal: boolean; type: string }) => {
-          if (data.fatal) {
-            switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
-                if (networkRetryCount < getOption('maxNetworkRetries')) {
-                  networkRetryCount++;
-                  console.warn(
-                    `[HLS] 网络错误，正在重试 (${networkRetryCount}/${getOption('maxNetworkRetries')})`,
-                  );
-                  hls.startLoad();
-                } else {
-                  options.value.onError?.(
-                    new Error(
-                      `HLS 网络错误: 已达到最大重试次数 (${getOption('maxNetworkRetries')})`,
-                    ),
-                  );
-                }
-                break;
-              case Hls.ErrorTypes.MEDIA_ERROR:
-                if (mediaRetryCount < getOption('maxMediaRetries')) {
-                  mediaRetryCount++;
-                  console.warn(
-                    `[HLS] 媒体错误，正在恢复 (${mediaRetryCount}/${getOption('maxMediaRetries')})`,
-                  );
-                  hls.recoverMediaError();
-                } else {
-                  options.value.onError?.(
-                    new Error(
-                      `HLS 媒体错误: 已达到最大重试次数 (${getOption('maxMediaRetries')})`,
-                    ),
-                  );
-                }
-                break;
-              default:
-                options.value.onError?.(
-                  new Error(`HLS 致命错误: ${data.type}`),
+      hls.on(Hls.Events.ERROR, (_event: string, data: { fatal: boolean; type: string }) => {
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              if (networkRetryCount < getOption('maxNetworkRetries')) {
+                networkRetryCount++;
+                console.warn(
+                  `[HLS] 网络错误，正在重试 (${networkRetryCount}/${getOption('maxNetworkRetries')})`,
                 );
-                break;
-            }
+                hls.startLoad();
+              } else {
+                options.value.onError?.(
+                  new Error(`HLS 网络错误: 已达到最大重试次数 (${getOption('maxNetworkRetries')})`),
+                );
+              }
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              if (mediaRetryCount < getOption('maxMediaRetries')) {
+                mediaRetryCount++;
+                console.warn(
+                  `[HLS] 媒体错误，正在恢复 (${mediaRetryCount}/${getOption('maxMediaRetries')})`,
+                );
+                hls.recoverMediaError();
+              } else {
+                options.value.onError?.(
+                  new Error(`HLS 媒体错误: 已达到最大重试次数 (${getOption('maxMediaRetries')})`),
+                );
+              }
+              break;
+            default:
+              options.value.onError?.(new Error(`HLS 致命错误: ${data.type}`));
+              break;
           }
-        },
-      );
+        }
+      });
 
       // 加载成功后重置重试计数器
       hls.on(Hls.Events.FRAG_LOADED, () => {

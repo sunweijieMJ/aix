@@ -6,19 +6,13 @@
  */
 
 interface SubtleCrypto {
-  timingSafeEqual(
-    a: ArrayBuffer | ArrayBufferView,
-    b: ArrayBuffer | ArrayBufferView,
-  ): boolean;
+  timingSafeEqual(a: ArrayBuffer | ArrayBufferView, b: ArrayBuffer | ArrayBufferView): boolean;
 }
 
 interface KVNamespace {
   get(key: string, options?: { type?: 'text' }): Promise<string | null>;
   get(key: string, options: { type: 'json' }): Promise<unknown>;
-  get(
-    key: string,
-    options: { type: 'arrayBuffer' },
-  ): Promise<ArrayBuffer | null>;
+  get(key: string, options: { type: 'arrayBuffer' }): Promise<ArrayBuffer | null>;
   get(key: string, options: { type: 'stream' }): Promise<ReadableStream | null>;
   put(
     key: string,
@@ -26,11 +20,7 @@ interface KVNamespace {
     options?: { expiration?: number; expirationTtl?: number },
   ): Promise<void>;
   delete(key: string): Promise<void>;
-  list(options?: {
-    prefix?: string;
-    limit?: number;
-    cursor?: string;
-  }): Promise<{
+  list(options?: { prefix?: string; limit?: number; cursor?: string }): Promise<{
     keys: { name: string }[];
     list_complete: boolean;
     cursor?: string;

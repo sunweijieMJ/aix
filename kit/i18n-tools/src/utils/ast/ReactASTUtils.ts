@@ -8,9 +8,7 @@ import { CommonASTUtils } from './CommonASTUtils';
  * 提供 React/JSX 相关的 AST 操作功能
  */
 export class ReactASTUtils {
-  static getNodeContext(
-    node: ts.Node,
-  ): 'jsx-text' | 'jsx-attribute' | 'js-code' {
+  static getNodeContext(node: ts.Node): 'jsx-text' | 'jsx-attribute' | 'js-code' {
     if (ts.isJsxText(node)) {
       return 'jsx-text';
     }
@@ -20,21 +18,13 @@ export class ReactASTUtils {
       if (ts.isJsxAttribute(parent)) {
         return 'jsx-attribute';
       }
-      if (
-        ts.isJsxExpression(parent) &&
-        parent.parent &&
-        ts.isJsxAttribute(parent.parent)
-      ) {
+      if (ts.isJsxExpression(parent) && parent.parent && ts.isJsxAttribute(parent.parent)) {
         return 'jsx-attribute';
       }
       if (ts.isJsxAttribute(parent) && parent.initializer === node) {
         return 'jsx-attribute';
       }
-      if (
-        ts.isStringLiteral(node) &&
-        ts.isJsxAttribute(parent) &&
-        parent.initializer === node
-      ) {
+      if (ts.isStringLiteral(node) && ts.isJsxAttribute(parent) && parent.initializer === node) {
         return 'jsx-attribute';
       }
       parent = parent.parent;
@@ -73,16 +63,10 @@ export class ReactASTUtils {
       if (ts.isPropertyAssignment(parent) && parent.initializer === node) {
         return false;
       }
-      if (
-        ts.isCallExpression(parent) &&
-        parent.arguments.includes(node as ts.Expression)
-      ) {
+      if (ts.isCallExpression(parent) && parent.arguments.includes(node as ts.Expression)) {
         return false;
       }
-      if (
-        ts.isArrayLiteralExpression(parent) &&
-        parent.elements.includes(node as ts.Expression)
-      ) {
+      if (ts.isArrayLiteralExpression(parent) && parent.elements.includes(node as ts.Expression)) {
         return false;
       }
       if (ts.isVariableDeclaration(parent) && parent.initializer === node) {
@@ -228,11 +212,7 @@ export class ReactASTUtils {
         }
       }
 
-      if (
-        ts.isJsxElement(n) ||
-        ts.isJsxSelfClosingElement(n) ||
-        ts.isJsxFragment(n)
-      ) {
+      if (ts.isJsxElement(n) || ts.isJsxSelfClosingElement(n) || ts.isJsxFragment(n)) {
         isReactFunction = true;
         return;
       }
@@ -273,11 +253,7 @@ export class ReactASTUtils {
           | ts.FunctionExpression;
       }
     | undefined {
-    if (
-      ts.isClassDeclaration(node) &&
-      node.name &&
-      ReactASTUtils.isClassComponent(node)
-    ) {
+    if (ts.isClassDeclaration(node) && node.name && ReactASTUtils.isClassComponent(node)) {
       if (ReactASTUtils.isComponentName(node.name.text)) {
         return { name: node.name.text, type: 'class', node };
       }
@@ -289,9 +265,7 @@ export class ReactASTUtils {
       ReactASTUtils.isComponentName(node.name.text)
     ) {
       if (node.initializer) {
-        const funcNode = ReactASTUtils.getFunctionNodeFromInitializer(
-          node.initializer,
-        );
+        const funcNode = ReactASTUtils.getFunctionNodeFromInitializer(node.initializer);
         if (funcNode && ReactASTUtils.isFunctionComponent(funcNode)) {
           return { name: node.name.text, type: 'function', node: funcNode };
         }
@@ -308,14 +282,8 @@ export class ReactASTUtils {
       }
     }
 
-    if (
-      ts.isExportAssignment(node) &&
-      !node.isExportEquals &&
-      node.expression
-    ) {
-      const funcNode = ReactASTUtils.getFunctionNodeFromInitializer(
-        node.expression,
-      );
+    if (ts.isExportAssignment(node) && !node.isExportEquals && node.expression) {
+      const funcNode = ReactASTUtils.getFunctionNodeFromInitializer(node.expression);
       if (funcNode && ReactASTUtils.isFunctionComponent(funcNode)) {
         const name = 'DefaultExportedComponent';
         return { name, type: 'function', node: funcNode };
@@ -328,10 +296,7 @@ export class ReactASTUtils {
   private static getFunctionNodeFromInitializer(
     initializer: ts.Expression,
   ): ts.ArrowFunction | ts.FunctionExpression | undefined {
-    if (
-      ts.isArrowFunction(initializer) ||
-      ts.isFunctionExpression(initializer)
-    ) {
+    if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) {
       return initializer;
     }
     if (
@@ -369,10 +334,7 @@ export class ReactASTUtils {
     let messageInfo: MessageInfo = {};
 
     if (ts.isObjectLiteralExpression(arg)) {
-      const props = CommonASTUtils.extractObjectLiteralProperties(
-        arg,
-        sourceFile,
-      );
+      const props = CommonASTUtils.extractObjectLiteralProperties(arg, sourceFile);
       messageInfo = {
         id: props.id,
         defaultMessage: props.defaultMessage,
@@ -380,10 +342,7 @@ export class ReactASTUtils {
 
       const valuesArg = node.arguments[1];
       if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
-        messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
-          valuesArg,
-          sourceFile,
-        );
+        messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
       }
     } else if (ReactASTUtils.isMessageReference(arg)) {
       messageInfo = ReactASTUtils.resolveMessageReference(
@@ -393,10 +352,7 @@ export class ReactASTUtils {
 
       const valuesArg = node.arguments[1];
       if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
-        messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
-          valuesArg,
-          sourceFile,
-        );
+        messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
       }
     }
 
@@ -412,23 +368,12 @@ export class ReactASTUtils {
 
     for (const attribute of openingElement.attributes.properties) {
       if (ts.isJsxSpreadAttribute(attribute)) {
-        const spreadMessage = ReactASTUtils.handleSpreadAttribute(
-          attribute,
-          definedMessages,
-        );
+        const spreadMessage = ReactASTUtils.handleSpreadAttribute(attribute, definedMessages);
         if (spreadMessage) {
           messageInfo = { ...messageInfo, ...spreadMessage };
         }
-      } else if (
-        ts.isJsxAttribute(attribute) &&
-        ts.isIdentifier(attribute.name)
-      ) {
-        ReactASTUtils.handleJsxAttribute(
-          attribute,
-          messageInfo,
-          definedMessages,
-          sourceFile,
-        );
+      } else if (ts.isJsxAttribute(attribute) && ts.isIdentifier(attribute.name)) {
+        ReactASTUtils.handleJsxAttribute(attribute, messageInfo, definedMessages, sourceFile);
       }
     }
 
@@ -461,10 +406,7 @@ export class ReactASTUtils {
 
     switch (attrName) {
       case 'id':
-        messageInfo.id = ReactASTUtils.extractJsxAttributeValue(
-          attribute,
-          definedMessages,
-        );
+        messageInfo.id = ReactASTUtils.extractJsxAttributeValue(attribute, definedMessages);
         break;
       case 'defaultMessage':
         messageInfo.defaultMessage = ReactASTUtils.extractJsxAttributeValue(
@@ -496,10 +438,7 @@ export class ReactASTUtils {
 
     if (ts.isStringLiteral(attribute.initializer)) {
       return attribute.initializer.text;
-    } else if (
-      ts.isJsxExpression(attribute.initializer) &&
-      attribute.initializer.expression
-    ) {
+    } else if (ts.isJsxExpression(attribute.initializer) && attribute.initializer.expression) {
       return ReactASTUtils.extractExpressionValue(
         attribute.initializer.expression,
         definedMessages,

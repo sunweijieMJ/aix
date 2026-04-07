@@ -92,11 +92,7 @@
 
         <div class="form-item">
           <label>简介</label>
-          <textarea
-            v-model="formData.bio"
-            rows="3"
-            placeholder="请输入个人简介"
-          />
+          <textarea v-model="formData.bio" rows="3" placeholder="请输入个人简介" />
         </div>
 
         <div class="form-actions">
@@ -135,20 +131,11 @@
     <section class="test-section">
       <h2>9. 消息提示</h2>
       <div class="demo-row">
-        <button @click="showMessage('success', '操作成功完成')">
-          成功提示
-        </button>
-        <button @click="showMessage('error', '操作失败，请重试')">
-          错误提示
-        </button>
-        <button @click="showMessage('warning', '请注意检查输入内容')">
-          警告提示
-        </button>
+        <button @click="showMessage('success', '操作成功完成')">成功提示</button>
+        <button @click="showMessage('error', '操作失败，请重试')">错误提示</button>
+        <button @click="showMessage('warning', '请注意检查输入内容')">警告提示</button>
       </div>
-      <p
-        v-if="lastMessage"
-        :class="['message-toast', `message-${lastMessage.type}`]"
-      >
+      <p v-if="lastMessage" :class="['message-toast', `message-${lastMessage.type}`]">
         {{ lastMessage.text }}
       </p>
     </section>
@@ -180,28 +167,19 @@
           <tr v-for="row in tableData" :key="row.id">
             <td>{{ row.name }}</td>
             <td>
-              <span
-                :class="[
-                  'status-tag',
-                  row.status === '进行中' ? 'tag-success' : 'tag-info',
-                ]"
-              >
+              <span :class="['status-tag', row.status === '进行中' ? 'tag-success' : 'tag-info']">
                 {{ row.status }}
               </span>
             </td>
             <td>
               <button class="btn-small" @click="handleEdit(row)">编辑</button>
-              <button class="btn-small btn-danger" @click="handleRemove(row)">
-                删除
-              </button>
+              <button class="btn-small btn-danger" @click="handleRemove(row)">删除</button>
             </td>
           </tr>
         </tbody>
       </table>
       <p>
-        {{
-          tableData.length > 0 ? `共有 ${tableData.length} 个项目` : '暂无数据'
-        }}
+        {{ tableData.length > 0 ? `共有 ${tableData.length} 个项目` : '暂无数据' }}
       </p>
     </section>
 

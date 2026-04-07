@@ -16,10 +16,7 @@ export function createSpinner(text: string): Ora {
 /**
  * 执行异步任务并显示 spinner
  */
-export async function withSpinner<T>(
-  text: string,
-  fn: () => Promise<T>,
-): Promise<T> {
+export async function withSpinner<T>(text: string, fn: () => Promise<T>): Promise<T> {
   const spinner = createSpinner(text);
   spinner.start();
   try {

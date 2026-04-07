@@ -7,10 +7,7 @@ import { join } from 'node:path';
 import { MCP_TOOLS } from '../constants';
 import type { IconsIndex, SearchResult, ToolArguments } from '../types/index';
 import { log } from '../utils';
-import {
-  calculateIconSearchScore,
-  getIconMatchedFields,
-} from '../utils/search-scoring';
+import { calculateIconSearchScore, getIconMatchedFields } from '../utils/search-scoring';
 import { BaseTool } from './base';
 
 /**

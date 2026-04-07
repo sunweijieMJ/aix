@@ -2,11 +2,7 @@
  * 输入验证器
  */
 
-import {
-  getComponentDir,
-  directoryExists,
-  getExistingPackages,
-} from './utils.js';
+import { getComponentDir, directoryExists, getExistingPackages } from './utils.js';
 
 /** 组件名称格式验证 */
 export function validateComponentName(name: string): true | string {
@@ -19,15 +15,7 @@ export function validateComponentName(name: string): true | string {
   }
 
   // 保留字检查
-  const reserved = [
-    'node_modules',
-    'dist',
-    'src',
-    'test',
-    'tests',
-    'lib',
-    'es',
-  ];
+  const reserved = ['node_modules', 'dist', 'src', 'test', 'tests', 'lib', 'es'];
   if (reserved.includes(name)) {
     return `"${name}" 是保留名称，不能使用`;
   }
@@ -42,9 +30,7 @@ export async function checkComponentExists(name: string): Promise<boolean> {
 }
 
 /** 验证组件名称（包含存在性检查） */
-export async function validateComponentNameWithExistence(
-  name: string,
-): Promise<true | string> {
+export async function validateComponentNameWithExistence(name: string): Promise<true | string> {
   const formatResult = validateComponentName(name);
   if (formatResult !== true) {
     return formatResult;

@@ -21,11 +21,7 @@ export interface UseTextMeasureOptions {
 
 export interface UseTextMeasureReturn {
   /** 测量文本在给定宽度下的行数和高度 */
-  measureText: (
-    text: string,
-    maxWidth: number,
-    lineHeight: number,
-  ) => LayoutResult;
+  measureText: (text: string, maxWidth: number, lineHeight: number) => LayoutResult;
   /** 获取文本按行分割的结果 */
   getLines: (text: string, maxWidth: number, lineHeight: number) => string[];
   /** Pretext 是否就绪（容器挂载后才能读取字体） */
@@ -41,14 +37,8 @@ function readFontFromElement(el: HTMLElement): string {
   // getComputedStyle 的 font 属性在部分浏览器可能为空，需要手动拼接
   if (style.font) return style.font;
   // 降级拼接，遵循 CSS font shorthand 语法: [style] [weight] size family
-  const fontStyle =
-    style.fontStyle && style.fontStyle !== 'normal'
-      ? style.fontStyle + ' '
-      : '';
-  const fontWeight =
-    style.fontWeight && style.fontWeight !== '400'
-      ? style.fontWeight + ' '
-      : '';
+  const fontStyle = style.fontStyle && style.fontStyle !== 'normal' ? style.fontStyle + ' ' : '';
+  const fontWeight = style.fontWeight && style.fontWeight !== '400' ? style.fontWeight + ' ' : '';
   const fontSize = style.fontSize || '20px';
   const fontFamily = style.fontFamily || 'sans-serif';
   return `${fontStyle}${fontWeight}${fontSize} ${fontFamily}`;
@@ -57,9 +47,7 @@ function readFontFromElement(el: HTMLElement): string {
 /**
  * 基于 Pretext 的精确文本测量 Composable
  */
-export function useTextMeasure(
-  options: UseTextMeasureOptions,
-): UseTextMeasureReturn {
+export function useTextMeasure(options: UseTextMeasureOptions): UseTextMeasureReturn {
   const { containerRef, fontSize } = options;
 
   /** 当前使用的 font 字符串 */
@@ -90,11 +78,7 @@ export function useTextMeasure(
   /**
    * 测量文本在给定宽度下的行数和高度
    */
-  function measureText(
-    text: string,
-    maxWidth: number,
-    lineHeight: number,
-  ): LayoutResult {
+  function measureText(text: string, maxWidth: number, lineHeight: number): LayoutResult {
     if (!text || !fontString.value) {
       return { lineCount: 0, height: 0 };
     }
@@ -105,11 +89,7 @@ export function useTextMeasure(
   /**
    * 获取文本按行分割的结果
    */
-  function getLines(
-    text: string,
-    maxWidth: number,
-    lineHeight: number,
-  ): string[] {
+  function getLines(text: string, maxWidth: number, lineHeight: number): string[] {
     if (!text || !fontString.value) {
       return [text || ''];
     }

@@ -41,8 +41,7 @@ export class RuleBasedProvider {
 
     // 基于差异区域生成差异条目
     for (const region of diffRegions) {
-      const regionPercentage =
-        (region.pixels / comparisonResult.totalPixels) * 100;
+      const regionPercentage = (region.pixels / comparisonResult.totalPixels) * 100;
       differences.push({
         id: `diff-${diffIdx++}`,
         type: region.type === 'unknown' ? 'other' : region.type,
@@ -77,9 +76,7 @@ export class RuleBasedProvider {
     sizeDiff: NonNullable<AnalyzeOptions['comparisonResult']['sizeDiff']>,
   ): Severity {
     const widthDiff = Math.abs(sizeDiff.baseline.width - sizeDiff.actual.width);
-    const heightDiff = Math.abs(
-      sizeDiff.baseline.height - sizeDiff.actual.height,
-    );
+    const heightDiff = Math.abs(sizeDiff.baseline.height - sizeDiff.actual.height);
     const maxDiff = Math.max(widthDiff, heightDiff);
 
     if (maxDiff > 100) return 'critical';
@@ -88,10 +85,7 @@ export class RuleBasedProvider {
     return 'trivial';
   }
 
-  private buildAssessment(
-    mismatchPercentage: number,
-    differences: Difference[],
-  ): Assessment {
+  private buildAssessment(mismatchPercentage: number, differences: Difference[]): Assessment {
     const matchScore = Math.max(0, Math.round(100 - mismatchPercentage * 5));
     const grade = scoreToGrade(matchScore);
     const hasCritical = differences.some((d) => d.severity === 'critical');
@@ -101,12 +95,7 @@ export class RuleBasedProvider {
       matchScore,
       grade,
       acceptable: !hasCritical && !hasMajor && matchScore >= 80,
-      summary: this.buildSummaryText(
-        matchScore,
-        differences.length,
-        hasCritical,
-        hasMajor,
-      ),
+      summary: this.buildSummaryText(matchScore, differences.length, hasCritical, hasMajor),
     };
   }
 
@@ -117,8 +106,7 @@ export class RuleBasedProvider {
     hasMajor: boolean,
   ): string {
     if (diffCount === 0) return '无差异，完美匹配';
-    if (hasCritical)
-      return `发现 ${diffCount} 处差异，包含严重问题，需要立即修复`;
+    if (hasCritical) return `发现 ${diffCount} 处差异，包含严重问题，需要立即修复`;
     if (hasMajor) return `发现 ${diffCount} 处差异，存在明显问题，建议尽快修复`;
     if (score >= 90) return `发现 ${diffCount} 处微小差异，整体匹配度良好`;
     return `发现 ${diffCount} 处差异，匹配度 ${score}%`;

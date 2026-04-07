@@ -77,10 +77,7 @@ export class ConclusionReporter implements Reporter {
   /**
    * 构建结论报告（也可直接调用获取数据）
    */
-  buildReport(
-    results: TestResult[],
-    context?: ReportContext,
-  ): ConclusionReport {
+  buildReport(results: TestResult[], context?: ReportContext): ConclusionReport {
     const issues = this.extractIssues(results);
     const summary = this.buildSummary(results, issues);
     const fixPlan = this.buildFixPlan(issues);
@@ -95,8 +92,7 @@ export class ConclusionReporter implements Reporter {
         totalTokens: context.llmStats.totalTokens,
         estimatedCost: context.llmStats.estimatedCost,
         averageTokensPerCall: context.llmStats.averageTokensPerCall,
-        costPerFailedTest:
-          failed > 0 ? context.llmStats.estimatedCost / failed : 0,
+        costPerFailedTest: failed > 0 ? context.llmStats.estimatedCost / failed : 0,
       };
     }
 
@@ -131,10 +127,7 @@ export class ConclusionReporter implements Reporter {
     };
   }
 
-  private buildSummary(
-    results: TestResult[],
-    issues: Issue[],
-  ): ExecutiveSummary {
+  private buildSummary(results: TestResult[], issues: Issue[]): ExecutiveSummary {
     const passed = results.filter((r) => r.passed).length;
     const failed = results.filter((r) => !r.passed).length;
 
@@ -276,17 +269,12 @@ export class ConclusionReporter implements Reporter {
     };
   }
 
-  private buildNextActions(
-    summary: ExecutiveSummary,
-    issues: Issue[],
-  ): NextAction[] {
+  private buildNextActions(summary: ExecutiveSummary, issues: Issue[]): NextAction[] {
     const actions: NextAction[] = [];
 
     const criticalIssues = issues.filter((i) => i.severity === 'critical');
     const majorIssues = issues.filter((i) => i.severity === 'major');
-    const minorIssues = issues.filter(
-      (i) => i.severity === 'minor' || i.severity === 'trivial',
-    );
+    const minorIssues = issues.filter((i) => i.severity === 'minor' || i.severity === 'trivial');
 
     if (criticalIssues.length > 0) {
       actions.push({
@@ -355,20 +343,14 @@ export class ConclusionReporter implements Reporter {
     return findings.slice(0, 5);
   }
 
-  private generateOneLiner(
-    passed: number,
-    failed: number,
-    issues: Issue[],
-  ): string {
+  private generateOneLiner(passed: number, failed: number, issues: Issue[]): string {
     const total = passed + failed;
 
     if (failed === 0) {
       return `All ${total} visual tests passed with no differences detected.`;
     }
 
-    const criticalCount = issues.filter(
-      (i) => i.severity === 'critical',
-    ).length;
+    const criticalCount = issues.filter((i) => i.severity === 'critical').length;
     const majorCount = issues.filter((i) => i.severity === 'major').length;
 
     const parts: string[] = [];
@@ -376,9 +358,7 @@ export class ConclusionReporter implements Reporter {
     if (majorCount > 0) parts.push(`${majorCount} major`);
 
     const issueSummary =
-      parts.length > 0
-        ? parts.join(', ') + ' issue(s)'
-        : `${issues.length} issue(s)`;
+      parts.length > 0 ? parts.join(', ') + ' issue(s)' : `${issues.length} issue(s)`;
 
     return `${failed}/${total} tests failed with ${issueSummary}. Estimated ${this.estimateHours(issues)}h to fix.`;
   }

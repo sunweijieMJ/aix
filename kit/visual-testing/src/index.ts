@@ -37,10 +37,7 @@ export { logger, LogLevel } from './utils/logger';
 
 // ---- 类型导出 ----
 
-export type {
-  VisualTestConfig,
-  VisualTestUserConfig,
-} from './core/config/schema';
+export type { VisualTestConfig, VisualTestUserConfig } from './core/config/schema';
 
 export type { TestResult } from './core/report/types';
 export type {

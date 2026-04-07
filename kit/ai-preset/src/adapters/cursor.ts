@@ -22,10 +22,7 @@ export class CursorAdapter implements PlatformAdapter {
   readonly displayName = 'Cursor';
   readonly supportedResourceTypes: ResourceType[] = ['rules'];
 
-  generateFiles(
-    rules: RuleSource[],
-    _context: AdapterContext,
-  ): PlatformOutputFile[] {
+  generateFiles(rules: RuleSource[], _context: AdapterContext): PlatformOutputFile[] {
     const files: PlatformOutputFile[] = [];
 
     for (const rule of rules) {

@@ -33,9 +33,7 @@ export class TrackerValidator {
 
     // 校验事件名格式
     if (!this.eventNamePattern.test(eventName)) {
-      this.report(
-        `事件名 "${eventName}" 不符合命名规范: ${this.eventNamePattern}`,
-      );
+      this.report(`事件名 "${eventName}" 不符合命名规范: ${this.eventNamePattern}`);
       valid = false;
     }
 

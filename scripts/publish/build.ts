@@ -45,10 +45,7 @@ const needsBuild = (pkgJsonPath: string): boolean => {
 };
 
 // 校验构建产物是否存在
-export const validateBuildOutputs = (
-  projectRoot: string,
-  packages: Set<string>,
-) => {
+export const validateBuildOutputs = (projectRoot: string, packages: Set<string>) => {
   console.log(chalk.blue('校验构建产物...'));
   const errors: string[] = [];
 
@@ -89,9 +86,7 @@ export const validateBuildOutputs = (
       }
     } else {
       // 回退逻辑：至少存在一个构建产物目录
-      const hasAnyOutput = BUILD_OUTPUTS.some((output) =>
-        fs.existsSync(path.join(pkgDir, output)),
-      );
+      const hasAnyOutput = BUILD_OUTPUTS.some((output) => fs.existsSync(path.join(pkgDir, output)));
 
       if (!hasAnyOutput) {
         errors.push(`${pkgName}: 缺少构建产物 (${BUILD_OUTPUTS.join('/')})`);
@@ -100,19 +95,14 @@ export const validateBuildOutputs = (
   }
 
   if (errors.length) {
-    throw new Error(
-      `构建产物校验失败:\n${errors.map((e) => `  - ${e}`).join('\n')}`,
-    );
+    throw new Error(`构建产物校验失败:\n${errors.map((e) => `  - ${e}`).join('\n')}`);
   }
 
   console.log(chalk.green('✅ 构建产物校验通过'));
 };
 
 // 构建指定的包
-export const buildPackages = async (
-  projectRoot: string,
-  packages: Set<string>,
-) => {
+export const buildPackages = async (projectRoot: string, packages: Set<string>) => {
   console.log(chalk.green('需要构建的包:'));
   packages.forEach((pkg) => console.log(`  ${pkg}`));
 
@@ -121,10 +111,7 @@ export const buildPackages = async (
     .map((pkg) => `--filter=${pkg}`)
     .join(' ');
 
-  run(
-    `npx turbo run build ${filterArgs} --output-logs=errors-only`,
-    projectRoot,
-  );
+  run(`npx turbo run build ${filterArgs} --output-logs=errors-only`, projectRoot);
 
   // 校验构建产物
   validateBuildOutputs(projectRoot, packages);

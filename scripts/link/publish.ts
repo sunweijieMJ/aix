@@ -15,10 +15,7 @@ const PACKAGES_DIR = join(process.cwd(), 'packages');
 function getPackages(): string[] {
   return readdirSync(PACKAGES_DIR).filter((name) => {
     const pkgPath = join(PACKAGES_DIR, name);
-    return (
-      statSync(pkgPath).isDirectory() &&
-      existsSync(join(pkgPath, 'package.json'))
-    );
+    return statSync(pkgPath).isDirectory() && existsSync(join(pkgPath, 'package.json'));
   });
 }
 
@@ -84,9 +81,7 @@ async function main() {
     return;
   }
 
-  const packagesToPublish = selectedPackages.includes('__all__')
-    ? packages
-    : selectedPackages;
+  const packagesToPublish = selectedPackages.includes('__all__') ? packages : selectedPackages;
 
   console.log(chalk.cyan(`\n将发布 ${packagesToPublish.length} 个包\n`));
 
@@ -98,9 +93,7 @@ async function main() {
   console.log(chalk.cyan('📖 下一步:\n'));
   console.log(chalk.gray('  在业务项目中执行:'));
   console.log(
-    chalk.gray(
-      `    yalc add ${packagesToPublish.map((p: string) => `@aix/${p}`).join(' ')}\n`,
-    ),
+    chalk.gray(`    yalc add ${packagesToPublish.map((p: string) => `@aix/${p}`).join(' ')}\n`),
   );
 }
 

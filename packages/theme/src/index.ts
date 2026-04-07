@@ -99,10 +99,7 @@ export {
 } from './core/seed-derivation';
 
 // DOM 渲染器（底层 API，通常不需要直接使用）
-export {
-  ThemeDOMRenderer,
-  createThemeDOMRenderer,
-} from './core/theme-dom-renderer';
+export { ThemeDOMRenderer, createThemeDOMRenderer } from './core/theme-dom-renderer';
 export type { ThemeDOMRendererOptions } from './core/theme-dom-renderer';
 
 // ============================================================
@@ -118,10 +115,7 @@ export {
 } from './vue/theme-context';
 
 // Composables
-export {
-  useThemeContext,
-  useThemeContextOptional,
-} from './vue/use-theme-context';
+export { useThemeContext, useThemeContextOptional } from './vue/use-theme-context';
 export { useTheme } from './vue/use-theme';
 export type { UseThemeReturn } from './vue/use-theme';
 
@@ -172,8 +166,4 @@ export {
   sanitizeThemeConfig,
 } from './utils/theme-validator';
 
-export type {
-  ValidationResult,
-  ValidationError,
-  ValidationWarning,
-} from './utils/theme-validator';
+export type { ValidationResult, ValidationError, ValidationWarning } from './utils/theme-validator';

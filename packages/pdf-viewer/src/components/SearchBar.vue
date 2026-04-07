@@ -22,9 +22,7 @@
     </div>
 
     <div v-if="totalMatches > 0" class="aix-pdf-search-bar__nav">
-      <span class="aix-pdf-search-bar__count">
-        {{ currentIndex }} / {{ totalMatches }}
-      </span>
+      <span class="aix-pdf-search-bar__count">{{ currentIndex }} / {{ totalMatches }}</span>
       <button
         class="aix-pdf-search-bar__btn"
         :title="t.prevMatch"
@@ -43,10 +41,7 @@
       </button>
     </div>
 
-    <div
-      v-else-if="inputValue && !searching"
-      class="aix-pdf-search-bar__no-result"
-    >
+    <div v-else-if="inputValue && !searching" class="aix-pdf-search-bar__no-result">
       {{ t.noResults }}
     </div>
 
@@ -54,11 +49,7 @@
       <div class="aix-pdf-search-bar__spinner" />
     </div>
 
-    <button
-      class="aix-pdf-search-bar__close"
-      :title="t.closeSearch"
-      @click="handleClose"
-    >
+    <button class="aix-pdf-search-bar__close" :title="t.closeSearch" @click="handleClose">
       <Close width="18" height="18" />
     </button>
   </div>
@@ -66,12 +57,7 @@
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
-import {
-  ArrowDropDown,
-  ArrowDropUp,
-  Close,
-  IconSearch as Search,
-} from '@aix/icons';
+import { ArrowDropDown, ArrowDropUp, Close, IconSearch as Search } from '@aix/icons';
 import { ref, watch, nextTick } from 'vue';
 import { locale } from '../locale';
 
@@ -99,10 +85,7 @@ const lastSearchedKeyword = ref('');
 function handleEnter(event: KeyboardEvent): void {
   if (event.shiftKey) {
     emit('prev');
-  } else if (
-    inputValue.value &&
-    inputValue.value === lastSearchedKeyword.value
-  ) {
+  } else if (inputValue.value && inputValue.value === lastSearchedKeyword.value) {
     emit('next');
   } else if (inputValue.value) {
     lastSearchedKeyword.value = inputValue.value;

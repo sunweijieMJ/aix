@@ -59,10 +59,7 @@ describe('useTimerWithVisibility', () => {
 
       vi.advanceTimersByTime(3000);
       expect(callback).toHaveBeenCalledTimes(0);
-      expect(removeEventListenerSpy).toHaveBeenCalledWith(
-        'visibilitychange',
-        expect.any(Function),
-      );
+      expect(removeEventListenerSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
     });
   });
 

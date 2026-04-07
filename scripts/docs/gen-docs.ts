@@ -30,9 +30,7 @@ async function generateDocs() {
       const packageDir = path.dirname(path.dirname(componentPath));
       const packageName = path.basename(packageDir);
 
-      console.log(
-        chalk.blue(`📝 Updating ${chalk.bold(packageName)} README...`),
-      );
+      console.log(chalk.blue(`📝 Updating ${chalk.bold(packageName)} README...`));
 
       // Generate API markdown
       const apiMarkdown = generateApiMarkdown(componentInfo);
@@ -44,9 +42,7 @@ async function generateDocs() {
       console.log(chalk.green(`✅ ${packageName} README.md updated\n`));
       successCount++;
     } catch (error: any) {
-      console.error(
-        chalk.red(`❌ Failed to process ${componentPath}: ${error.message}\n`),
-      );
+      console.error(chalk.red(`❌ Failed to process ${componentPath}: ${error.message}\n`));
       failCount++;
     }
   }
@@ -96,9 +92,7 @@ function formatType(prop: any): string {
 
   // Handle generic types with elements (e.g., Partial<T>, Omit<T, K>)
   if (type.elements && type.elements.length > 0) {
-    const elementsStr = type.elements
-      .map((e: any) => e.name || 'any')
-      .join(', ');
+    const elementsStr = type.elements.map((e: any) => e.name || 'any').join(', ');
     return `\`${type.name}<${elementsStr}>\``;
   }
 
@@ -153,12 +147,7 @@ function formatDefaultValue(defaultValue: any): string {
   }
 
   // Handle special values
-  if (
-    value === 'true' ||
-    value === 'false' ||
-    value === 'null' ||
-    value === 'undefined'
-  ) {
+  if (value === 'true' || value === 'false' || value === 'null' || value === 'undefined') {
     return `\`${value}\``;
   }
 
@@ -201,10 +190,7 @@ function generateApiMarkdown(componentInfo: any): string {
 
       const defaultValue = formatDefaultValue(prop.defaultValue);
       const required = prop.required ? '✅' : '-';
-      const description = (prop.description || '-')
-        .replace(/\n/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const description = (prop.description || '-').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 
       markdown += `| \`${name}\` | ${type} | ${defaultValue} | ${required} | ${description} |\n`;
     });
@@ -233,9 +219,7 @@ function generateApiMarkdown(componentInfo: any): string {
           }
           // Handle union types
           else if (names[0] === 'union' && elements && elements.length > 0) {
-            const types = elements
-              .map((e: any) => e.name || e.value || 'any')
-              .join(' \\| '); // Escape | for Markdown tables
+            const types = elements.map((e: any) => e.name || e.value || 'any').join(' \\| '); // Escape | for Markdown tables
             params = types;
           }
           // Handle other types
@@ -264,10 +248,7 @@ function generateApiMarkdown(componentInfo: any): string {
 
     componentInfo.slots.forEach((slot: any) => {
       const name = slot.name || 'default';
-      const description = (slot.description || '-')
-        .replace(/\n/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const description = (slot.description || '-').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 
       markdown += `| \`${name}\` | ${description} |\n`;
     });
@@ -321,21 +302,16 @@ async function updateReadmeApi(readmePath: string, apiMarkdown: string) {
       const apiStartIndex = apiStartMatch.index!;
 
       // Find the next section after API
-      const afterApiContent = content.slice(
-        apiStartIndex + apiStartMatch[0].length,
-      );
+      const afterApiContent = content.slice(apiStartIndex + apiStartMatch[0].length);
       const nextSectionMatch = afterApiContent.match(nextSectionRegex);
 
       let newContent: string;
 
       if (nextSectionMatch) {
         // Replace content between API and next section
-        const nextSectionIndex =
-          apiStartIndex + apiStartMatch[0].length + nextSectionMatch.index!;
+        const nextSectionIndex = apiStartIndex + apiStartMatch[0].length + nextSectionMatch.index!;
         newContent =
-          content.slice(0, apiStartIndex) +
-          apiMarkdown +
-          content.slice(nextSectionIndex);
+          content.slice(0, apiStartIndex) + apiMarkdown + content.slice(nextSectionIndex);
       } else {
         // API is the last section, replace from API to end
         newContent = content.slice(0, apiStartIndex) + apiMarkdown;

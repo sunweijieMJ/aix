@@ -40,10 +40,7 @@ export const Video = Node.create<VideoOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return [
-      'video',
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
-    ];
+    return ['video', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes)];
   },
 
   addCommands() {

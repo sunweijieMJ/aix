@@ -78,30 +78,12 @@ describe('usePlayerState', () => {
       videoRef.value = mockVideo;
       await nextTick();
 
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'play',
-        expect.any(Function),
-      );
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'pause',
-        expect.any(Function),
-      );
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'ended',
-        expect.any(Function),
-      );
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'timeupdate',
-        expect.any(Function),
-      );
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'volumechange',
-        expect.any(Function),
-      );
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'progress',
-        expect.any(Function),
-      );
+      expect(addEventListenerSpy).toHaveBeenCalledWith('play', expect.any(Function));
+      expect(addEventListenerSpy).toHaveBeenCalledWith('pause', expect.any(Function));
+      expect(addEventListenerSpy).toHaveBeenCalledWith('ended', expect.any(Function));
+      expect(addEventListenerSpy).toHaveBeenCalledWith('timeupdate', expect.any(Function));
+      expect(addEventListenerSpy).toHaveBeenCalledWith('volumechange', expect.any(Function));
+      expect(addEventListenerSpy).toHaveBeenCalledWith('progress', expect.any(Function));
     });
 
     it('更换 video 元素后应该重新绑定事件', async () => {
@@ -120,10 +102,7 @@ describe('usePlayerState', () => {
       await nextTick();
 
       // 验证新元素绑定了事件
-      expect(addEventListenerSpy).toHaveBeenCalledWith(
-        'play',
-        expect.any(Function),
-      );
+      expect(addEventListenerSpy).toHaveBeenCalledWith('play', expect.any(Function));
     });
   });
 

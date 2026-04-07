@@ -32,10 +32,7 @@ export class ReactImportManager implements IImportManager {
       updatedCode = this.addGlobalFunctionImport(updatedCode);
       const globalDeclaration = this.library.generateGlobalDeclaration();
       if (globalDeclaration) {
-        updatedCode = this.addGlobalFunctionDeclaration(
-          updatedCode,
-          globalDeclaration,
-        );
+        updatedCode = this.addGlobalFunctionDeclaration(updatedCode, globalDeclaration);
       }
     }
     return updatedCode;
@@ -49,9 +46,7 @@ export class ReactImportManager implements IImportManager {
     const funcName = this.library.globalFunctionName.split('.')[0]!;
     const escapedPath = this.tImport.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (
-      new RegExp(
-        `import\\s*\\{.*${funcName}.*\\}\\s*from\\s*['"]${escapedPath}['"]`,
-      ).test(code)
+      new RegExp(`import\\s*\\{.*${funcName}.*\\}\\s*from\\s*['"]${escapedPath}['"]`).test(code)
     ) {
       return code;
     }
@@ -59,10 +54,7 @@ export class ReactImportManager implements IImportManager {
     return this.addImportStatement(code, importStatement);
   }
 
-  private addGlobalFunctionDeclaration(
-    code: string,
-    declaration: string,
-  ): string {
+  private addGlobalFunctionDeclaration(code: string, declaration: string): string {
     // 检查是否已存在
     if (code.includes(declaration.trim())) {
       return code;
@@ -87,17 +79,12 @@ export class ReactImportManager implements IImportManager {
   private addLibraryImports(code: string, imports: string[]): string {
     const packageName = this.library.packageName;
     const escapedPkg = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const importRegex = new RegExp(
-      `import\\s*\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"];?`,
-    );
+    const importRegex = new RegExp(`import\\s*\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"];?`);
     const match = code.match(importRegex);
     if (match) {
       const existingImports = match[1]!.split(',').map((imp) => imp.trim());
       const newImports = [...new Set([...existingImports, ...imports])];
-      return code.replace(
-        match[0],
-        `import { ${newImports.join(', ')} } from '${packageName}';`,
-      );
+      return code.replace(match[0], `import { ${newImports.join(', ')} } from '${packageName}';`);
     }
     const importStatement = `import { ${imports.join(', ')} } from '${packageName}';\n`;
     return this.addImportStatement(code, importStatement);
@@ -131,12 +118,9 @@ export class ReactImportManager implements IImportManager {
     code = code.replace(/'([^']*\\u[0-9a-fA-F]{4}[^']*)'/g, (match) => {
       const unicodeStr = match.slice(1, -1);
       try {
-        const decoded = unicodeStr.replace(
-          /\\u([0-9a-fA-F]{4})/g,
-          (_subMatch, hex) => {
-            return String.fromCharCode(parseInt(hex, 16));
-          },
-        );
+        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
         return `'${decoded}'`;
       } catch {
         return match;
@@ -147,12 +131,9 @@ export class ReactImportManager implements IImportManager {
     code = code.replace(/"([^"]*\\u[0-9a-fA-F]{4}[^"]*)"/g, (match) => {
       const unicodeStr = match.slice(1, -1);
       try {
-        const decoded = unicodeStr.replace(
-          /\\u([0-9a-fA-F]{4})/g,
-          (_subMatch, hex) => {
-            return String.fromCharCode(parseInt(hex, 16));
-          },
-        );
+        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
         return `"${decoded}"`;
       } catch {
         return match;
@@ -163,12 +144,9 @@ export class ReactImportManager implements IImportManager {
     code = code.replace(/\{'([^']*\\u[0-9a-fA-F]{4}[^']*)'\}/g, (match) => {
       const unicodeStr = match.slice(2, -2);
       try {
-        const decoded = unicodeStr.replace(
-          /\\u([0-9a-fA-F]{4})/g,
-          (_subMatch, hex) => {
-            return String.fromCharCode(parseInt(hex, 16));
-          },
-        );
+        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
         return `{'${decoded}'}`;
       } catch {
         return match;
@@ -179,12 +157,9 @@ export class ReactImportManager implements IImportManager {
     code = code.replace(/`([^`]*\\u[0-9a-fA-F]{4}[^`]*)`/g, (match) => {
       const templateStr = match.slice(1, -1);
       try {
-        const decoded = templateStr.replace(
-          /\\u([0-9a-fA-F]{4})/g,
-          (_subMatch, hex) => {
-            return String.fromCharCode(parseInt(hex, 16));
-          },
-        );
+        const decoded = templateStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
+          return String.fromCharCode(parseInt(hex, 16));
+        });
         return `\`${decoded}\``;
       } catch {
         return match;
@@ -199,17 +174,11 @@ export class ReactImportManager implements IImportManager {
   /**
    * 解除 HOC 的包裹（由 library 适配器驱动）
    */
-  static unwrapHOC(
-    node: ts.Node,
-    context: TransformContext,
-    library: ReactI18nLibrary,
-  ): ts.Node {
+  static unwrapHOC(node: ts.Node, context: TransformContext, library: ReactI18nLibrary): ts.Node {
     // case 1: export default HOC(Component)
     if (ts.isExportAssignment(node) && ts.isCallExpression(node.expression)) {
       if (library.isHOCCall(node.expression)) {
-        const wrappedComponent = library.getHOCWrappedComponent(
-          node.expression,
-        );
+        const wrappedComponent = library.getHOCWrappedComponent(node.expression);
         if (wrappedComponent) {
           const arg = node.expression.arguments[0]!;
           return ts.factory.updateExportAssignment(node, node.modifiers, arg);
@@ -219,40 +188,28 @@ export class ReactImportManager implements IImportManager {
 
     // case 2: const Injected = HOC(Component)
     if (ts.isVariableStatement(node)) {
-      const remainingDeclarations = node.declarationList.declarations.filter(
-        (decl) => {
-          if (ts.isIdentifier(decl.name)) {
-            return !context.componentNameMap.has(decl.name.text);
-          }
-          return true;
-        },
-      );
+      const remainingDeclarations = node.declarationList.declarations.filter((decl) => {
+        if (ts.isIdentifier(decl.name)) {
+          return !context.componentNameMap.has(decl.name.text);
+        }
+        return true;
+      });
 
       if (remainingDeclarations.length === 0) {
         return ts.factory.createNotEmittedStatement(node);
       }
 
-      if (
-        remainingDeclarations.length < node.declarationList.declarations.length
-      ) {
+      if (remainingDeclarations.length < node.declarationList.declarations.length) {
         const newDeclList = ts.factory.updateVariableDeclarationList(
           node.declarationList,
           remainingDeclarations,
         );
-        return ts.factory.updateVariableStatement(
-          node,
-          node.modifiers,
-          newDeclList,
-        );
+        return ts.factory.updateVariableStatement(node, node.modifiers, newDeclList);
       }
     }
 
     // case 3: class _Comp ... (通常由HOC引入)
-    if (
-      ts.isClassDeclaration(node) &&
-      node.name &&
-      node.name.text.startsWith('_')
-    ) {
+    if (ts.isClassDeclaration(node) && node.name && node.name.text.startsWith('_')) {
       const newName = node.name.text.substring(1);
       return ts.factory.updateClassDeclaration(
         node,
@@ -277,10 +234,7 @@ export class ReactImportManager implements IImportManager {
       ts.isJsxClosingElement(node)
     ) {
       const tagName = node.tagName;
-      if (
-        ts.isIdentifier(tagName) &&
-        context.componentNameMap.has(tagName.text)
-      ) {
+      if (ts.isIdentifier(tagName) && context.componentNameMap.has(tagName.text)) {
         const newName = context.componentNameMap.get(tagName.text)!;
         const newTagName = ts.factory.createIdentifier(newName);
 
@@ -312,10 +266,7 @@ export class ReactImportManager implements IImportManager {
   /**
    * 清理 HOC Props 类型引用（由 library 适配器驱动）
    */
-  static cleanupHOCPropsType(
-    node: ts.Node,
-    library: ReactI18nLibrary,
-  ): ts.Node {
+  static cleanupHOCPropsType(node: ts.Node, library: ReactI18nLibrary): ts.Node {
     const propsType = library.hocPropsType;
 
     // case 1: `extends HOCPropsType`
@@ -358,10 +309,7 @@ export class ReactImportManager implements IImportManager {
         return newTypes[0]!;
       }
       if (newTypes.length !== node.types.length) {
-        return ts.factory.updateIntersectionTypeNode(
-          node,
-          ts.factory.createNodeArray(newTypes),
-        );
+        return ts.factory.updateIntersectionTypeNode(node, ts.factory.createNodeArray(newTypes));
       }
     }
 
@@ -398,68 +346,58 @@ export class ReactImportManager implements IImportManager {
   /**
    * 清理变量声明语句 (AST)（由 library 适配器驱动）
    */
-  static cleanupVariableStatements(
-    node: ts.VariableStatement,
-    library: ReactI18nLibrary,
-  ): ts.Node {
-    const filteredDeclarations = node.declarationList.declarations.filter(
-      (declaration) => {
-        // 移除 Hook 声明 (useIntl / useTranslation)
-        if (library.isHookDeclaration(declaration)) {
+  static cleanupVariableStatements(node: ts.VariableStatement, library: ReactI18nLibrary): ts.Node {
+    const filteredDeclarations = node.declarationList.declarations.filter((declaration) => {
+      // 移除 Hook 声明 (useIntl / useTranslation)
+      if (library.isHookDeclaration(declaration)) {
+        return false;
+      }
+
+      // 移除全局函数声明 (getIntl)
+      if (library.isGlobalFunctionDeclaration(declaration)) {
+        return false;
+      }
+
+      // 移除解构中的翻译变量
+      if (ts.isObjectBindingPattern(declaration.name)) {
+        const varName = library.translationVarName;
+        const elements = declaration.name.elements.filter((element) => {
+          if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
+            return element.name.text !== varName;
+          }
+          return true;
+        });
+
+        if (elements.length === 0) {
           return false;
         }
 
-        // 移除全局函数声明 (getIntl)
-        if (library.isGlobalFunctionDeclaration(declaration)) {
-          return false;
+        if (elements.length !== declaration.name.elements.length) {
+          // NOTE: 在filter中无法修改declaration引用，此处仅用于类型检查
+          // 实际的声明更新由外部逻辑处理
+          // eslint-disable-next-line no-useless-assignment
+          declaration = ts.factory.updateVariableDeclaration(
+            declaration,
+            ts.factory.createObjectBindingPattern(elements),
+            declaration.exclamationToken,
+            declaration.type,
+            declaration.initializer,
+          );
         }
+      }
 
-        // 移除解构中的翻译变量
-        if (ts.isObjectBindingPattern(declaration.name)) {
-          const varName = library.translationVarName;
-          const elements = declaration.name.elements.filter((element) => {
-            if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
-              return element.name.text !== varName;
-            }
-            return true;
-          });
-
-          if (elements.length === 0) {
-            return false;
-          }
-
-          if (elements.length !== declaration.name.elements.length) {
-            // NOTE: 在filter中无法修改declaration引用，此处仅用于类型检查
-            // 实际的声明更新由外部逻辑处理
-            // eslint-disable-next-line no-useless-assignment
-            declaration = ts.factory.updateVariableDeclaration(
-              declaration,
-              ts.factory.createObjectBindingPattern(elements),
-              declaration.exclamationToken,
-              declaration.type,
-              declaration.initializer,
-            );
-          }
-        }
-
-        return true;
-      },
-    );
+      return true;
+    });
 
     if (filteredDeclarations.length === 0) {
       return ts.factory.createNotEmittedStatement(node);
     }
 
-    if (
-      filteredDeclarations.length < node.declarationList.declarations.length
-    ) {
+    if (filteredDeclarations.length < node.declarationList.declarations.length) {
       return ts.factory.updateVariableStatement(
         node,
         node.modifiers,
-        ts.factory.updateVariableDeclarationList(
-          node.declarationList,
-          filteredDeclarations,
-        ),
+        ts.factory.updateVariableDeclarationList(node.declarationList, filteredDeclarations),
       );
     }
 
@@ -469,10 +407,7 @@ export class ReactImportManager implements IImportManager {
   /**
    * 清理Hook依赖数组中的翻译变量引用 (AST)
    */
-  static cleanupHookDependencies(
-    node: ts.CallExpression,
-    library: ReactI18nLibrary,
-  ): ts.Node {
+  static cleanupHookDependencies(node: ts.CallExpression, library: ReactI18nLibrary): ts.Node {
     if (!ts.isIdentifier(node.expression)) {
       return node;
     }
@@ -496,8 +431,7 @@ export class ReactImportManager implements IImportManager {
     });
 
     if (filteredElements.length !== depsArg.elements.length) {
-      const newDepsArray =
-        ts.factory.createArrayLiteralExpression(filteredElements);
+      const newDepsArray = ts.factory.createArrayLiteralExpression(filteredElements);
       const newArguments = [...node.arguments];
       newArguments[1] = newDepsArray;
 

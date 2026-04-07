@@ -25,17 +25,11 @@ export class CommonASTUtils {
           return true;
         }
 
-        if (
-          ts.isIdentifier(expression) &&
-          expression.text === 'defineMessages'
-        ) {
+        if (ts.isIdentifier(expression) && expression.text === 'defineMessages') {
           return true;
         }
 
-        if (
-          ts.isIdentifier(expression) &&
-          (expression.text === 't' || expression.text === '$t')
-        ) {
+        if (ts.isIdentifier(expression) && (expression.text === 't' || expression.text === '$t')) {
           return true;
         }
 
@@ -50,14 +44,10 @@ export class CommonASTUtils {
 
       if (ts.isJsxAttribute(parent)) {
         const jsxElement = parent.parent.parent;
-        if (
-          ts.isJsxOpeningElement(jsxElement) ||
-          ts.isJsxSelfClosingElement(jsxElement)
-        ) {
+        if (ts.isJsxOpeningElement(jsxElement) || ts.isJsxSelfClosingElement(jsxElement)) {
           if (
             ts.isIdentifier(jsxElement.tagName) &&
-            (jsxElement.tagName.text === 'FormattedMessage' ||
-              jsxElement.tagName.text === 'Trans')
+            (jsxElement.tagName.text === 'FormattedMessage' || jsxElement.tagName.text === 'Trans')
           ) {
             return true;
           }
@@ -74,11 +64,7 @@ export class CommonASTUtils {
         }
       }
 
-      if (
-        ts.isBlock(parent) ||
-        ts.isFunctionLike(parent) ||
-        ts.isClassLike(parent)
-      ) {
+      if (ts.isBlock(parent) || ts.isFunctionLike(parent) || ts.isClassLike(parent)) {
         return false;
       }
 
@@ -116,10 +102,7 @@ export class CommonASTUtils {
    * @param position - 位置
    * @returns 找到的节点，如果没找到则返回undefined
    */
-  static findNodeAtPosition(
-    sourceFile: ts.SourceFile,
-    position: number,
-  ): ts.Node | undefined {
+  static findNodeAtPosition(sourceFile: ts.SourceFile, position: number): ts.Node | undefined {
     function find(node: ts.Node): ts.Node | undefined {
       if (position >= node.getFullStart() && position < node.getEnd()) {
         return ts.forEachChild(node, find) || node;
@@ -145,10 +128,7 @@ export class CommonASTUtils {
       if (ts.isPropertyAssignment(property)) {
         const key = CommonASTUtils.getPropertyKey(property.name);
         if (key) {
-          props[key] = CommonASTUtils.getPropertyValue(
-            property.initializer,
-            sourceFile,
-          );
+          props[key] = CommonASTUtils.getPropertyValue(property.initializer, sourceFile);
         }
       }
     }
@@ -176,10 +156,7 @@ export class CommonASTUtils {
    * @param sourceFile - 源文件（可选）
    * @returns 属性值
    */
-  private static getPropertyValue(
-    initializer: ts.Expression,
-    sourceFile?: ts.SourceFile,
-  ): any {
+  private static getPropertyValue(initializer: ts.Expression, sourceFile?: ts.SourceFile): any {
     const stringValue = CommonASTUtils.getStringLiteralValue(initializer);
 
     if (stringValue !== undefined) {
@@ -307,10 +284,7 @@ export class CommonASTUtils {
    * @param values - 包含变量名到其原始AST节点映射的对象
    * @returns 创建的字符串字面量或模板表达式节点
    */
-  static createStringOrTemplateNode(
-    messageText: string,
-    values?: Record<string, any>,
-  ): ts.Node {
+  static createStringOrTemplateNode(messageText: string, values?: Record<string, any>): ts.Node {
     if (!values || Object.keys(values).length === 0) {
       return ts.factory.createStringLiteral(messageText);
     }
@@ -345,10 +319,7 @@ export class CommonASTUtils {
 
     for (let i = 0; i < placeholderNames.length; i++) {
       const placeholderName = placeholderNames[i];
-      const expressionNode = CommonASTUtils.findExpressionForVariable(
-        placeholderName!,
-        values,
-      );
+      const expressionNode = CommonASTUtils.findExpressionForVariable(placeholderName!, values);
       const literal = literalParts[i + 1] || '';
 
       if (!expressionNode) {
@@ -360,17 +331,11 @@ export class CommonASTUtils {
 
       if (i === placeholderNames.length - 1) {
         templateSpans.push(
-          ts.factory.createTemplateSpan(
-            expressionNode,
-            ts.factory.createTemplateTail(literal),
-          ),
+          ts.factory.createTemplateSpan(expressionNode, ts.factory.createTemplateTail(literal)),
         );
       } else {
         templateSpans.push(
-          ts.factory.createTemplateSpan(
-            expressionNode,
-            ts.factory.createTemplateMiddle(literal),
-          ),
+          ts.factory.createTemplateSpan(expressionNode, ts.factory.createTemplateMiddle(literal)),
         );
       }
     }
@@ -434,15 +399,12 @@ export class CommonASTUtils {
     let result = sourceText;
 
     // 按范围大小降序排序，优先保留覆盖范围更大的替换
-    const sortedBySize = [...replacements].sort(
-      (a, b) => b.end - b.start - (a.end - a.start),
-    );
+    const sortedBySize = [...replacements].sort((a, b) => b.end - b.start - (a.end - a.start));
     // 贪心选择：依次选入不与已选替换重叠的项
     const validReplacements: typeof replacements = [];
     for (const replacement of sortedBySize) {
       const hasOverlap = validReplacements.some(
-        (selected) =>
-          replacement.start < selected.end && replacement.end > selected.start,
+        (selected) => replacement.start < selected.end && replacement.end > selected.start,
       );
       if (!hasOverlap) {
         validReplacements.push(replacement);
@@ -473,10 +435,7 @@ export class CommonASTUtils {
       let parent = node;
       while (parent) {
         if (ts.isJsxElement(parent)) {
-          const mixedContent = CommonASTUtils.reconstructJsxMixedContent(
-            parent,
-            sourceFile,
-          );
+          const mixedContent = CommonASTUtils.reconstructJsxMixedContent(parent, sourceFile);
           if (mixedContent === originalText) {
             return parent;
           }
@@ -484,10 +443,7 @@ export class CommonASTUtils {
         parent = parent.parent;
       }
 
-      if (
-        ts.isTemplateExpression(node) ||
-        ts.isNoSubstitutionTemplateLiteral(node)
-      ) {
+      if (ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
         const nodeText = CommonASTUtils.nodeToText(node, sourceFile);
         if (CommonASTUtils.shouldReplaceNode(nodeText, originalText, true)) {
           return node;
@@ -496,10 +452,7 @@ export class CommonASTUtils {
 
       let parent2 = node.parent;
       while (parent2) {
-        if (
-          ts.isTemplateExpression(parent2) ||
-          ts.isNoSubstitutionTemplateLiteral(parent2)
-        ) {
+        if (ts.isTemplateExpression(parent2) || ts.isNoSubstitutionTemplateLiteral(parent2)) {
           const nodeText = CommonASTUtils.nodeToText(parent2, sourceFile);
           if (CommonASTUtils.shouldReplaceNode(nodeText, originalText, true)) {
             return parent2;
@@ -519,9 +472,7 @@ export class CommonASTUtils {
       while (parent) {
         if (ts.isStringLiteral(parent)) {
           const parentText = CommonASTUtils.nodeToText(parent, sourceFile);
-          if (
-            CommonASTUtils.shouldReplaceNode(parentText, originalText, false)
-          ) {
+          if (CommonASTUtils.shouldReplaceNode(parentText, originalText, false)) {
             return parent;
           }
         }
@@ -544,11 +495,7 @@ export class CommonASTUtils {
       }
     }
 
-    const nearbyNode = CommonASTUtils.findNearbyStringNode(
-      sourceFile,
-      position,
-      originalText,
-    );
+    const nearbyNode = CommonASTUtils.findNearbyStringNode(sourceFile, position, originalText);
     if (nearbyNode) {
       return nearbyNode;
     }
@@ -576,10 +523,7 @@ export class CommonASTUtils {
           templateText += text;
         }
       } else if (ts.isJsxExpression(child) && child.expression) {
-        const expressionText = CommonASTUtils.nodeToText(
-          child.expression,
-          sourceFile,
-        );
+        const expressionText = CommonASTUtils.nodeToText(child.expression, sourceFile);
         templateText += `\${${expressionText}}`;
       }
     }
@@ -602,10 +546,7 @@ export class CommonASTUtils {
         continue;
       }
 
-      const node = CommonASTUtils.findNodeAtPosition(
-        sourceFile,
-        nearbyPosition,
-      );
+      const node = CommonASTUtils.findNodeAtPosition(sourceFile, nearbyPosition);
       if (!node) continue;
 
       if (

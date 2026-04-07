@@ -5,9 +5,7 @@ import type { PlayerState, ControlMethods } from '../src/types';
 
 describe('DefaultControls 组件', () => {
   // 创建模拟的 playerState
-  function createMockPlayerState(
-    overrides: Partial<PlayerState> = {},
-  ): PlayerState {
+  function createMockPlayerState(overrides: Partial<PlayerState> = {}): PlayerState {
     return {
       isReady: true,
       isPlaying: false,

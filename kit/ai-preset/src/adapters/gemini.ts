@@ -20,10 +20,7 @@ export class GeminiAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'gemini';
   readonly displayName = 'Gemini CLI (Google)';
 
-  generateFiles(
-    rules: RuleSource[],
-    context: AdapterContext,
-  ): PlatformOutputFile[] {
+  generateFiles(rules: RuleSource[], context: AdapterContext): PlatformOutputFile[] {
     return [
       {
         relativePath: 'GEMINI.md',

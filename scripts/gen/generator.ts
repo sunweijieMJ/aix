@@ -5,17 +5,8 @@
 import path from 'node:path';
 import chalk from 'chalk';
 import type { ComponentConfig } from './types.js';
-import {
-  toPascalCase,
-  getComponentDir,
-  ensureDir,
-  writeFile,
-} from './utils.js';
-import {
-  renderTemplates,
-  type TemplateContext,
-  type GeneratedFileInfo,
-} from './renderer.js';
+import { toPascalCase, getComponentDir, ensureDir, writeFile } from './utils.js';
+import { renderTemplates, type TemplateContext, type GeneratedFileInfo } from './renderer.js';
 
 /**
  * 生成组件

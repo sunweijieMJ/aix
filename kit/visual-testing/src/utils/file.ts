@@ -39,10 +39,7 @@ export async function pathExists(filePath: string): Promise<boolean> {
 /**
  * 写入 JSON 文件，自动创建目录
  */
-export async function writeJSON(
-  filePath: string,
-  data: unknown,
-): Promise<void> {
+export async function writeJSON(filePath: string, data: unknown): Promise<void> {
   await fse.ensureDir(path.dirname(filePath));
   await fse.writeJSON(filePath, data, { spaces: 2 });
 }

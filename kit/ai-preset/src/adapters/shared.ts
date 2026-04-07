@@ -77,15 +77,11 @@ export function buildMarkerEntryFile(
   lines.push('## 核心技术栈');
   lines.push('');
   if (context.framework) {
-    lines.push(
-      `- **框架**: ${FRAMEWORK_NAMES[context.framework] || context.framework}`,
-    );
+    lines.push(`- **框架**: ${FRAMEWORK_NAMES[context.framework] || context.framework}`);
   }
   lines.push('- **语言**: TypeScript (严格类型检查)');
   if (context.domains.length > 0) {
-    const domainLabels = context.domains
-      .map((d) => DOMAIN_NAMES[d] || d)
-      .join('、');
+    const domainLabels = context.domains.map((d) => DOMAIN_NAMES[d] || d).join('、');
     lines.push(`- **领域**: ${domainLabels}`);
   }
   lines.push('');

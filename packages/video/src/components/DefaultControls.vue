@@ -12,10 +12,7 @@
 
     <!-- 进度条 -->
     <div class="progress-bar" @click="handleProgressClick">
-      <div
-        class="progress-buffered"
-        :style="{ width: `${playerState.buffered * 100}%` }"
-      />
+      <div class="progress-buffered" :style="{ width: `${playerState.buffered * 100}%` }" />
       <div class="progress-played" :style="{ width: `${progress}%` }" />
       <div class="progress-handle" :style="{ left: `${progress}%` }" />
     </div>

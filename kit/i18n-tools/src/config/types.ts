@@ -178,10 +178,8 @@ export interface ResolvedConfig {
     tImport: string;
   };
   llm: {
-    idGeneration: Required<Omit<LLMConfig, 'baseURL'>> &
-      Pick<LLMConfig, 'baseURL'>;
-    translation: Required<Omit<LLMConfig, 'baseURL'>> &
-      Pick<LLMConfig, 'baseURL'>;
+    idGeneration: Required<Omit<LLMConfig, 'baseURL'>> & Pick<LLMConfig, 'baseURL'>;
+    translation: Required<Omit<LLMConfig, 'baseURL'>> & Pick<LLMConfig, 'baseURL'>;
   };
   prompts: {
     idGeneration: { system?: string; user?: string };

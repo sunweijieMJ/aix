@@ -22,9 +22,7 @@ describe('Utils', () => {
     it('should extract display name from package name', () => {
       expect(getDisplayName('@aix/button-component')).toBe('ButtonComponent');
       expect(getDisplayName('simple-component')).toBe('SimpleComponent');
-      expect(getDisplayName('@scope/multi-word-component')).toBe(
-        'MultiWordComponent',
-      );
+      expect(getDisplayName('@scope/multi-word-component')).toBe('MultiWordComponent');
     });
   });
 

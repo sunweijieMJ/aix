@@ -24,15 +24,9 @@
         :style="{ width: `${bufferedPercent}%` }"
       />
       <!-- 已播放进度 -->
-      <div
-        class="aix-video-controls__progress-played"
-        :style="{ width: `${playedPercent}%` }"
-      />
+      <div class="aix-video-controls__progress-played" :style="{ width: `${playedPercent}%` }" />
       <!-- 拖拽滑块 -->
-      <div
-        class="aix-video-controls__progress-thumb"
-        :style="{ left: `${playedPercent}%` }"
-      />
+      <div class="aix-video-controls__progress-thumb" :style="{ left: `${playedPercent}%` }" />
       <!-- 时间预览气泡（拖拽时） -->
       <div
         v-if="isDragging"
@@ -75,11 +69,7 @@
         </button>
 
         <!-- 倍速 -->
-        <div
-          v-if="showPlaybackRate"
-          ref="rateRef"
-          class="aix-video-controls__rate"
-        >
+        <div v-if="showPlaybackRate" ref="rateRef" class="aix-video-controls__rate">
           <button
             :class="[
               'aix-video-controls__btn',
@@ -114,11 +104,7 @@
           :aria-label="playerState.isFullscreen ? '退出全屏' : '全屏'"
           @click="handleToggleFullscreen"
         >
-          <FullscreenExit
-            v-if="playerState.isFullscreen"
-            width="24"
-            height="24"
-          />
+          <FullscreenExit v-if="playerState.isFullscreen" width="24" height="24" />
           <Fullscreen v-else width="24" height="24" />
         </button>
       </div>
@@ -127,14 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  Play,
-  Pause,
-  VolumeUp,
-  VolumeMute,
-  Fullscreen,
-  FullscreenExit,
-} from '@aix/icons';
+import { Play, Pause, VolumeUp, VolumeMute, Fullscreen, FullscreenExit } from '@aix/icons';
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { useControlsAutoHide } from '../composables/useControlsAutoHide';
 import type { PlayerState, ControlMethods } from '../types';

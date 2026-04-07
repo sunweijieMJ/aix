@@ -28,18 +28,12 @@ export class LanguageFileManager {
     const targetPath = path.join(translationsDirectory, `${targetLocale}.json`);
 
     // 加载JSON文件
-    const sourceData = FileUtils.safeLoadJsonFile<Record<string, any>>(
-      sourcePath,
-      {
-        silent: true,
-      },
-    );
-    const targetData = FileUtils.safeLoadJsonFile<Record<string, any>>(
-      targetPath,
-      {
-        silent: true,
-      },
-    );
+    const sourceData = FileUtils.safeLoadJsonFile<Record<string, any>>(sourcePath, {
+      silent: true,
+    });
+    const targetData = FileUtils.safeLoadJsonFile<Record<string, any>>(targetPath, {
+      silent: true,
+    });
 
     // 自动扁平化嵌套结构（支持 layout.systemTitle 格式）
     return {
@@ -73,9 +67,7 @@ export class LanguageFileManager {
       return FileUtils.safeParseJson(content);
     } catch (error) {
       LoggerUtils.error(`❌ 读取语言文件失败: ${localeFilePath}`, error);
-      LoggerUtils.error(
-        '👉 为防止数据丢失，本次将不会更新语言文件。请检查JSON文件格式是否正确。',
-      );
+      LoggerUtils.error('👉 为防止数据丢失，本次将不会更新语言文件。请检查JSON文件格式是否正确。');
       return null;
     }
   }
@@ -112,11 +104,7 @@ export class LanguageFileManager {
    * @param isCustom - 是否为定制目录
    * @param locale - 语言代码
    */
-  static backupFile(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    locale?: string,
-  ): void {
+  static backupFile(config: ResolvedConfig, isCustom: boolean, locale?: string): void {
     locale = locale || config.locale.source;
     const workingDir = FileUtils.getDirectoryPath(config, isCustom);
     const localeFilePath = path.join(workingDir, `${locale}.json`);
@@ -170,8 +158,7 @@ export class LanguageFileManager {
 
           extracted.templateVariables.forEach((variableExpr) => {
             // 复用 CommonASTUtils 的变量名提取逻辑，确保与代码侧参数名一致
-            let key =
-              CommonASTUtils.getVariableNameFromExpression(variableExpr);
+            let key = CommonASTUtils.getVariableNameFromExpression(variableExpr);
 
             const originalKey = key;
             let count = 1;

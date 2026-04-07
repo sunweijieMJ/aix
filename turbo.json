@@ -33,11 +33,7 @@
     },
     "build:types": {
       "dependsOn": ["build:js"],
-      "inputs": [
-        "src/**/*.{ts,tsx,vue}",
-        "tsconfig.json",
-        "../../tsconfig.json"
-      ],
+      "inputs": ["src/**/*.{ts,tsx,vue}", "tsconfig.json", "../../tsconfig.json"],
       "outputs": ["**/es/**/*.d.ts"],
       "cache": false
     },

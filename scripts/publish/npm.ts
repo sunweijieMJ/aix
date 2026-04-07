@@ -6,28 +6,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
-import {
-  DEFAULT_REGISTRY,
-  NPM_UNPUBLISH_TIME_LIMIT_HOURS,
-  exec,
-  run,
-  confirm,
-} from './shared.js';
+import { DEFAULT_REGISTRY, NPM_UNPUBLISH_TIME_LIMIT_HOURS, exec, run, confirm } from './shared.js';
 import { getPublishablePackages } from './workspace.js';
 
 // 从 .npmrc 文件中读取 registry 配置
-const readRegistryFromNpmrc = (
-  npmrcPath: string,
-  scope?: string,
-): string | null => {
+const readRegistryFromNpmrc = (npmrcPath: string, scope?: string): string | null => {
   if (!fs.existsSync(npmrcPath)) return null;
   const npmrc = fs.readFileSync(npmrcPath, 'utf-8');
 
   // 优先匹配 scoped registry（如 @aix:registry=...）
   if (scope) {
-    const scopeMatch = npmrc.match(
-      new RegExp(`${scope}:registry\\s*=\\s*(.+)`),
-    );
+    const scopeMatch = npmrc.match(new RegExp(`${scope}:registry\\s*=\\s*(.+)`));
     if (scopeMatch?.[1]) return scopeMatch[1].trim();
   }
 
@@ -51,10 +40,7 @@ export const getNpmRegistry = (projectRoot: string): string => {
   if (fromProject) return fromProject;
 
   // 3. 全局 ~/.npmrc
-  const globalNpmrc = path.join(
-    process.env.HOME || process.env.USERPROFILE || '',
-    '.npmrc',
-  );
+  const globalNpmrc = path.join(process.env.HOME || process.env.USERPROFILE || '', '.npmrc');
   const fromGlobal = readRegistryFromNpmrc(globalNpmrc, scope);
   if (fromGlobal) return fromGlobal;
 
@@ -123,9 +109,7 @@ export const deprecatePackageVersion = async (
     },
   ]);
 
-  console.log(
-    chalk.yellow(`\n即将废弃: ${packageName}@${version}\n原因: ${message}`),
-  );
+  console.log(chalk.yellow(`\n即将废弃: ${packageName}@${version}\n原因: ${message}`));
   if (!(await confirm('确认废弃?', false, skipPrompts))) {
     console.log(chalk.gray('已取消'));
     return;
@@ -150,9 +134,7 @@ export const unpublishPackageVersion = async (
 ) => {
   console.log(chalk.red('\n⚠️  撤回包版本 (危险操作)'));
   console.log(chalk.yellow('注意事项:'));
-  console.log(
-    chalk.gray(`  - 仅 ${NPM_UNPUBLISH_TIME_LIMIT_HOURS} 小时内可撤回`),
-  );
+  console.log(chalk.gray(`  - 仅 ${NPM_UNPUBLISH_TIME_LIMIT_HOURS} 小时内可撤回`));
   console.log(chalk.gray('  - 会破坏依赖链，影响下游项目'));
   console.log(chalk.gray('  - 撤回后 24 小时内不能重新发布同名包'));
   console.log(chalk.gray('  - 推荐使用 deprecate 代替\n'));
@@ -190,19 +172,14 @@ export const unpublishPackageVersion = async (
     },
   ]);
 
-  console.log(
-    chalk.red(`\n即将撤回: ${packageName}@${version}\n这将永久删除该版本！`),
-  );
+  console.log(chalk.red(`\n即将撤回: ${packageName}@${version}\n这将永久删除该版本！`));
   if (!(await confirm('最后确认，真的要撤回吗？', false, skipPrompts))) {
     console.log(chalk.gray('已取消'));
     return;
   }
 
   try {
-    run(
-      `npm unpublish ${packageName}@${version} --registry=${npmRegistry} --force`,
-      projectRoot,
-    );
+    run(`npm unpublish ${packageName}@${version} --registry=${npmRegistry} --force`, projectRoot);
     console.log(chalk.green(`✅ 已撤回 ${packageName}@${version}`));
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

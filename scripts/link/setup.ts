@@ -9,19 +9,13 @@ import chalk from 'chalk';
 console.log(chalk.cyan('🔗 检查本地联调环境...\n'));
 
 // 检查版本函数
-function checkVersion(
-  command: string,
-  minVersion: string,
-  name: string,
-): boolean {
+function checkVersion(command: string, minVersion: string, name: string): boolean {
   try {
     const version = execSync(command, { encoding: 'utf-8' }).trim();
     console.log(chalk.green(`✓ ${name}: ${version}`));
     return true;
   } catch {
-    console.log(
-      chalk.yellow(`⚠ ${name} 未安装或版本不符合要求 (需要 >= ${minVersion})`),
-    );
+    console.log(chalk.yellow(`⚠ ${name} 未安装或版本不符合要求 (需要 >= ${minVersion})`));
     return false;
   }
 }

@@ -38,11 +38,7 @@ export class ReactTransformer implements ITransformer {
     }
 
     // 替换字符串
-    let transformedCode = this.replaceStrings(
-      sourceText,
-      fileStrings,
-      includeDefaultMessage,
-    );
+    let transformedCode = this.replaceStrings(sourceText, fileStrings, includeDefaultMessage);
 
     // 检查是否有jsx-text上下文的字符串，如果有，添加 JSX 组件导入
     const hasJsxText = fileStrings.some((s) => s.context === 'jsx-text');
@@ -54,16 +50,10 @@ export class ReactTransformer implements ITransformer {
     }
 
     // 添加全局函数导入和声明 (如果需要)
-    transformedCode = importManager.handleGlobalImports(
-      transformedCode,
-      fileStrings,
-    );
+    transformedCode = importManager.handleGlobalImports(transformedCode, fileStrings);
 
     // 注入 Hook / HOC (如果需要)
-    const componentInjector = new ReactComponentInjector(
-      this.tImport,
-      this.library,
-    );
+    const componentInjector = new ReactComponentInjector(this.tImport, this.library);
     transformedCode = componentInjector.inject(transformedCode);
 
     // 为使用翻译变量的hooks添加到依赖项
@@ -88,16 +78,8 @@ export class ReactTransformer implements ITransformer {
 
     // 按位置倒序排列，从后往前替换以避免位置偏移
     const sortedStrings = fileStrings.sort((a, b) => {
-      const aPos = ts.getPositionOfLineAndCharacter(
-        sourceFile,
-        a.line - 1,
-        a.column - 1,
-      );
-      const bPos = ts.getPositionOfLineAndCharacter(
-        sourceFile,
-        b.line - 1,
-        b.column - 1,
-      );
+      const aPos = ts.getPositionOfLineAndCharacter(sourceFile, a.line - 1, a.column - 1);
+      const bPos = ts.getPositionOfLineAndCharacter(sourceFile, b.line - 1, b.column - 1);
       return bPos - aPos;
     });
 
@@ -114,18 +96,10 @@ export class ReactTransformer implements ITransformer {
         extracted.line - 1,
         extracted.column - 1,
       );
-      const node = CommonASTUtils.findExactStringNode(
-        sourceFile,
-        position,
-        extracted.original,
-      );
+      const node = CommonASTUtils.findExactStringNode(sourceFile, position, extracted.original);
 
       if (node) {
-        const replacement = this.generateReplacement(
-          extracted,
-          node,
-          includeDefaultMessage,
-        );
+        const replacement = this.generateReplacement(extracted, node, includeDefaultMessage);
 
         // 对于JSX元素，我们需要替换其children部分
         if (ts.isJsxElement(node)) {
@@ -138,14 +112,9 @@ export class ReactTransformer implements ITransformer {
 
           const originalNodeText = CommonASTUtils.nodeToText(node, sourceFile);
           const isTemplateString =
-            extracted.original.startsWith('`') &&
-            extracted.original.endsWith('`');
+            extracted.original.startsWith('`') && extracted.original.endsWith('`');
           if (
-            CommonASTUtils.shouldReplaceNode(
-              originalNodeText,
-              extracted.original,
-              isTemplateString,
-            )
+            CommonASTUtils.shouldReplaceNode(originalNodeText, extracted.original, isTemplateString)
           ) {
             replacements.push({ start, end, replacement });
           }
@@ -163,8 +132,7 @@ export class ReactTransformer implements ITransformer {
     node?: ts.Node,
     includeDefaultMessage: boolean = false,
   ): string {
-    const { semanticId, context, isTemplateString, templateVariables } =
-      extracted;
+    const { semanticId, context, isTemplateString, templateVariables } = extracted;
 
     // 获取 defaultMessage 内容
     const { message, placeholderMap } = ReactASTUtils.createMessageWithOptions(
@@ -174,8 +142,7 @@ export class ReactTransformer implements ITransformer {
     const defaultMsg = includeDefaultMessage ? message : undefined;
 
     // 构建 values Map
-    const hasValues =
-      isTemplateString && templateVariables && templateVariables.length > 0;
+    const hasValues = isTemplateString && templateVariables && templateVariables.length > 0;
     const valuesMap = hasValues ? placeholderMap : undefined;
 
     // 对于jsx-text使用JSX组件

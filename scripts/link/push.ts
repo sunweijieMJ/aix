@@ -15,10 +15,7 @@ const PACKAGES_DIR = join(process.cwd(), 'packages');
 function getPackages(): string[] {
   return readdirSync(PACKAGES_DIR).filter((name) => {
     const pkgPath = join(PACKAGES_DIR, name);
-    return (
-      statSync(pkgPath).isDirectory() &&
-      existsSync(join(pkgPath, 'package.json'))
-    );
+    return statSync(pkgPath).isDirectory() && existsSync(join(pkgPath, 'package.json'));
   });
 }
 
@@ -76,9 +73,7 @@ async function main() {
     return;
   }
 
-  const packagesToPush = selectedPackages.includes('__all__')
-    ? packages
-    : selectedPackages;
+  const packagesToPush = selectedPackages.includes('__all__') ? packages : selectedPackages;
 
   console.log(chalk.cyan(`\n将推送 ${packagesToPush.length} 个包\n`));
 

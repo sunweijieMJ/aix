@@ -34,8 +34,7 @@ const config: StorybookConfig = {
     // Add Vue plugin if not present
     if (config.plugins) {
       const hasVuePlugin = config.plugins.some(
-        (plugin: any) =>
-          plugin && (plugin.name === 'vite:vue' || plugin.name === 'vue'),
+        (plugin: any) => plugin && (plugin.name === 'vite:vue' || plugin.name === 'vue'),
       );
       if (!hasVuePlugin) {
         config.plugins.push(vue());
@@ -60,10 +59,7 @@ const config: StorybookConfig = {
           '@aix/icons': join(__dirname, '../packages/icons/src/index.ts'),
           '@aix/video': join(__dirname, '../packages/video/src'),
           '@aix/pdf-viewer': join(__dirname, '../packages/pdf-viewer/src'),
-          '@aix/popper/style': join(
-            __dirname,
-            '../packages/popper/src/styles/index.scss',
-          ),
+          '@aix/popper/style': join(__dirname, '../packages/popper/src/styles/index.scss'),
           '@aix/popper': join(__dirname, '../packages/popper/src'),
         },
       },

@@ -40,9 +40,8 @@ export class DataManager {
     const packageGroups = this.groupComponentsByPackage(components);
 
     // 保存各包数据
-    const savePromises = Object.entries(packageGroups).map(
-      ([packageName, packageComponents]) =>
-        this.savePackageData(packageName, packageComponents),
+    const savePromises = Object.entries(packageGroups).map(([packageName, packageComponents]) =>
+      this.savePackageData(packageName, packageComponents),
     );
 
     // 特殊处理Icons包
@@ -66,9 +65,7 @@ export class DataManager {
   /**
    * 按包分组组件
    */
-  private groupComponentsByPackage(
-    components: ComponentInfo[],
-  ): Record<string, ComponentInfo[]> {
+  private groupComponentsByPackage(components: ComponentInfo[]): Record<string, ComponentInfo[]> {
     const packageGroups: Record<string, ComponentInfo[]> = {};
 
     for (const component of components) {
@@ -85,10 +82,7 @@ export class DataManager {
   /**
    * 保存单个包的数据
    */
-  private async savePackageData(
-    packageName: string,
-    components: ComponentInfo[],
-  ): Promise<void> {
+  private async savePackageData(packageName: string, components: ComponentInfo[]): Promise<void> {
     const packageData = {
       packageName,
       totalCount: components.length,
@@ -122,10 +116,7 @@ export class DataManager {
     };
 
     const iconsFileName = this.getSafeFileName(ICONS_PACKAGE_NAME);
-    await this.saveJsonFile(
-      join(this.outputDir, 'packages', `${iconsFileName}.json`),
-      iconsData,
-    );
+    await this.saveJsonFile(join(this.outputDir, 'packages', `${iconsFileName}.json`), iconsData);
 
     // 单独保存SVG内容映射
     const svgMap: Record<string, string> = {};
@@ -134,10 +125,7 @@ export class DataManager {
         svgMap[icon.name] = icon.svgContent;
       }
     }
-    await this.saveJsonFile(
-      join(this.outputDir, 'packages', `${iconsFileName}-svg.json`),
-      svgMap,
-    );
+    await this.saveJsonFile(join(this.outputDir, 'packages', `${iconsFileName}-svg.json`), svgMap);
 
     log.info(`💾 Icons包数据已保存: ${icons.length} 个图标`);
   }
@@ -171,10 +159,7 @@ export class DataManager {
    * props/examples/version/dependencies 等字段可用。
    * 各包的详细数据同时保存到 packages/ 子目录供按需加载。
    */
-  private async saveMainIndex(
-    components: ComponentInfo[],
-    icons: IconInfo[],
-  ): Promise<void> {
+  private async saveMainIndex(components: ComponentInfo[], icons: IconInfo[]): Promise<void> {
     const allCategories = new Set<string>();
     const allTags = new Set<string>();
 
@@ -197,10 +182,7 @@ export class DataManager {
       version: '1.0.0',
     };
 
-    await this.saveJsonFile(
-      join(this.outputDir, 'components-index.json'),
-      index,
-    );
+    await this.saveJsonFile(join(this.outputDir, 'components-index.json'), index);
     log.info('💾 主索引文件已保存');
   }
 
@@ -224,10 +206,7 @@ export class DataManager {
       })),
     };
 
-    await this.saveJsonFile(
-      join(this.outputDir, 'icons-index.json'),
-      iconsIndex,
-    );
+    await this.saveJsonFile(join(this.outputDir, 'icons-index.json'), iconsIndex);
     log.info(`💾 图标搜索索引已保存: ${icons.length} 个图标`);
   }
 
@@ -240,10 +219,7 @@ export class DataManager {
 
     for (const pkg of packages) {
       const safeFileName = this.getSafeFileName(pkg.packageName);
-      await this.saveJsonFile(
-        join(this.outputDir, 'packages', `${safeFileName}.json`),
-        pkg,
-      );
+      await this.saveJsonFile(join(this.outputDir, 'packages', `${safeFileName}.json`), pkg);
     }
 
     const allCategories = new Set<string>();

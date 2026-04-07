@@ -19,10 +19,7 @@ export class CodexAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'codex';
   readonly displayName = 'OpenAI Codex';
 
-  generateFiles(
-    rules: RuleSource[],
-    context: AdapterContext,
-  ): PlatformOutputFile[] {
+  generateFiles(rules: RuleSource[], context: AdapterContext): PlatformOutputFile[] {
     return [
       {
         relativePath: 'AGENTS.md',
@@ -61,9 +58,7 @@ export class CodexAdapter implements PlatformAdapter {
         react: 'React',
         node: 'Node.js',
       };
-      lines.push(
-        `- **框架**: ${names[context.framework] || context.framework}`,
-      );
+      lines.push(`- **框架**: ${names[context.framework] || context.framework}`);
     }
     lines.push('');
 

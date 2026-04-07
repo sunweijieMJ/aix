@@ -18,14 +18,10 @@ describe('ConsoleAdapter', () => {
     const adapter = new ConsoleAdapter();
     adapter.init({ appkey: 'test' });
 
-    const groupSpy = vi
-      .spyOn(console, 'groupCollapsed')
-      .mockImplementation(() => {});
+    const groupSpy = vi.spyOn(console, 'groupCollapsed').mockImplementation(() => {});
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     const tableSpy = vi.spyOn(console, 'table').mockImplementation(() => {});
-    const groupEndSpy = vi
-      .spyOn(console, 'groupEnd')
-      .mockImplementation(() => {});
+    const groupEndSpy = vi.spyOn(console, 'groupEnd').mockImplementation(() => {});
 
     adapter.track('test_event', { key: 'value' });
 

@@ -4,10 +4,9 @@ import type { RuleSource } from '../src/types.js';
 
 describe('renderTemplate', () => {
   it('替换简单变量', () => {
-    const result = renderTemplate(
-      '.{{componentPrefix}}-button { color: red; }',
-      { componentPrefix: 'aix' },
-    );
+    const result = renderTemplate('.{{componentPrefix}}-button { color: red; }', {
+      componentPrefix: 'aix',
+    });
     expect(result).toBe('.aix-button { color: red; }');
   });
 

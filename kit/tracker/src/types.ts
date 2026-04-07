@@ -306,6 +306,4 @@ export interface UsePageTrackerOptions {
 // ==================== 内部常量 ====================
 
 /** Tracker 注入 key（Symbol） */
-export const TRACKER_INJECTION_KEY = Symbol(
-  'kit-tracker',
-) as InjectionKey<Tracker>;
+export const TRACKER_INJECTION_KEY = Symbol('kit-tracker') as InjectionKey<Tracker>;

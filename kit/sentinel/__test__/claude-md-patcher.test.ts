@@ -8,8 +8,7 @@ vi.mock('../src/utils/file.js', () => ({
 }));
 
 vi.mock('../src/utils/template.js', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('../src/utils/template.js')>();
+  const actual = await importOriginal<typeof import('../src/utils/template.js')>();
   return {
     ...actual,
     renderTemplate: vi.fn((_content: string) => _content),
@@ -28,19 +27,12 @@ vi.mock('../src/utils/logger.js', () => ({
 }));
 
 import { patchClaudeMd } from '../src/core/claude-md-patcher.js';
-import {
-  readFile,
-  writeFile,
-  pathExists,
-  readTemplate,
-} from '../src/utils/file.js';
+import { readFile, writeFile, pathExists, readTemplate } from '../src/utils/file.js';
 import { logger } from '../src/utils/logger.js';
 
 const mockedReadFile = vi.mocked(readFile);
 const mockedWriteFile = vi.mocked(writeFile);
-const mockedPathExists = vi.mocked(
-  pathExists as (path: string) => Promise<boolean>,
-);
+const mockedPathExists = vi.mocked(pathExists as (path: string) => Promise<boolean>);
 const mockedReadTemplate = vi.mocked(readTemplate);
 
 const MARKER_START = '<!-- sentinel:start -->';
@@ -90,11 +82,7 @@ describe('patchClaudeMd', () => {
   });
 
   it('should replace existing sentinel section between markers (idempotent)', async () => {
-    const oldSection = [
-      MARKER_START,
-      '## Old sentinel content',
-      MARKER_END,
-    ].join('\n');
+    const oldSection = [MARKER_START, '## Old sentinel content', MARKER_END].join('\n');
     const existingContent = `# My Project\n\n${oldSection}\n\n## Other Section`;
 
     mockedPathExists.mockResolvedValue(true);
@@ -167,9 +155,7 @@ describe('patchClaudeMd', () => {
     const result = await patchClaudeMd('/tmp/repo', false, {});
 
     expect(result).toBe(true);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/marker 不完整/),
-    );
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/marker 不完整/));
 
     const writtenContent = mockedWriteFile.mock.calls[0]?.[1] as string;
     // Should contain exactly one pair of markers
@@ -191,9 +177,7 @@ describe('patchClaudeMd', () => {
     const result = await patchClaudeMd('/tmp/repo', false, {});
 
     expect(result).toBe(true);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/marker 不完整/),
-    );
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/marker 不完整/));
 
     const writtenContent = mockedWriteFile.mock.calls[0]?.[1] as string;
     expect(writtenContent.match(new RegExp(MARKER_START, 'g'))).toHaveLength(1);

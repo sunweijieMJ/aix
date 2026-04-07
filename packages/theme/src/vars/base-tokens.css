@@ -144,8 +144,8 @@
 
   /* ========== 字体族Token (P1) ========== */
   --aix-tokenFontFamily:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
-    Arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
   --aix-tokenFontFamilyCode:
     'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
 
@@ -155,8 +155,7 @@
 
   /* ========== 阴影Token (P0) ========== */
   --aix-tokenShadow1:
-    0 1px 2px 0 rgb(0 0 0 / 0.03), 0 1px 6px -1px rgb(0 0 0 / 0.02),
-    0 2px 4px 0 rgb(0 0 0 / 0.02);
+    0 1px 2px 0 rgb(0 0 0 / 0.03), 0 1px 6px -1px rgb(0 0 0 / 0.02), 0 2px 4px 0 rgb(0 0 0 / 0.02);
   --aix-tokenShadow2:
     0 3px 6px -4px rgb(0 0 0 / 0.12), 0 6px 16px 0 rgb(0 0 0 / 0.08),
     0 9px 28px 8px rgb(0 0 0 / 0.05);

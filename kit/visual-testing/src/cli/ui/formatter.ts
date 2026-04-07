@@ -48,12 +48,8 @@ export function formatFailures(results: TestResult[]): string {
   lines.push('');
 
   for (const result of failures) {
-    lines.push(
-      `  ${chalk.red('✗')} ${chalk.bold(`${result.target}/${result.variant}`)}`,
-    );
-    lines.push(
-      `    Mismatch: ${chalk.yellow(`${result.mismatchPercentage.toFixed(2)}%`)}`,
-    );
+    lines.push(`  ${chalk.red('✗')} ${chalk.bold(`${result.target}/${result.variant}`)}`);
+    lines.push(`    Mismatch: ${chalk.yellow(`${result.mismatchPercentage.toFixed(2)}%`)}`);
 
     if (result.analysis?.assessment) {
       lines.push(`    Grade: ${formatGrade(result.analysis.assessment.grade)}`);
@@ -93,9 +89,7 @@ export function formatReportPaths(
     lines.push(`  JSON: ${chalk.underline(`${reportsDir}/report.json`)}`);
   }
   if (hasConclusion) {
-    lines.push(
-      `  Conclusion: ${chalk.underline(`${reportsDir}/conclusion.json`)}`,
-    );
+    lines.push(`  Conclusion: ${chalk.underline(`${reportsDir}/conclusion.json`)}`);
   }
 
   lines.push('');
@@ -116,15 +110,11 @@ export function formatInitSuccess(configPath: string): string {
   const lines: string[] = [];
   lines.push('');
   lines.push(chalk.green('✓') + ` Created ${chalk.bold(configPath)}`);
-  lines.push(
-    chalk.green('✓') + ` Created ${chalk.bold('.visual-test/')} directories`,
-  );
+  lines.push(chalk.green('✓') + ` Created ${chalk.bold('.visual-test/')} directories`);
   lines.push('');
   lines.push(chalk.bold('Next steps:'));
   lines.push(`  1. Edit ${chalk.cyan(configPath)} to add targets`);
-  lines.push(
-    `  2. Run ${chalk.cyan("'visual-test sync'")} to download baselines`,
-  );
+  lines.push(`  2. Run ${chalk.cyan("'visual-test sync'")} to download baselines`);
   lines.push(`  3. Run ${chalk.cyan("'visual-test test'")} to start testing`);
   lines.push('');
   return lines.join('\n');

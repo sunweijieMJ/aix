@@ -38,9 +38,7 @@ export class RestoreProcessor extends BaseProcessor {
     outputDir?: string,
     overwrite: boolean = false,
   ): Promise<void> {
-    return this.executeWithLifecycle(() =>
-      this._execute(targets, outputDir, overwrite),
-    );
+    return this.executeWithLifecycle(() => this._execute(targets, outputDir, overwrite));
   }
 
   private async _execute(
@@ -55,8 +53,7 @@ export class RestoreProcessor extends BaseProcessor {
       overwrite,
     };
 
-    const targetFiles =
-      targets.length > 0 ? await this.resolveTargetFiles(targets) : undefined;
+    const targetFiles = targets.length > 0 ? await this.resolveTargetFiles(targets) : undefined;
     await this.restoreFiles(options, targetFiles);
   }
 
@@ -93,10 +90,7 @@ export class RestoreProcessor extends BaseProcessor {
     return files;
   }
 
-  private async restoreFiles(
-    options: RestoreOptions,
-    targetFiles?: string[],
-  ): Promise<void> {
+  private async restoreFiles(options: RestoreOptions, targetFiles?: string[]): Promise<void> {
     try {
       const localeMap = this.loadLocaleMap(options.localePath);
       if (Object.keys(localeMap).length === 0) {
@@ -119,9 +113,7 @@ export class RestoreProcessor extends BaseProcessor {
       }
 
       const frameworkName = this.framework === 'vue' ? 'Vue' : 'React';
-      LoggerUtils.info(
-        `📁 找到 ${filesToProcess.length} 个${frameworkName}文件待处理`,
-      );
+      LoggerUtils.info(`📁 找到 ${filesToProcess.length} 个${frameworkName}文件待处理`);
 
       if (filesToProcess.length === 0) {
         LoggerUtils.info('✅ 没有找到需要处理的文件');
@@ -137,30 +129,17 @@ export class RestoreProcessor extends BaseProcessor {
         try {
           const outputPath = options.overwrite
             ? filePath
-            : path.join(
-                options.outputDir,
-                path.relative(options.sourceDir, filePath),
-              );
+            : path.join(options.outputDir, path.relative(options.sourceDir, filePath));
 
-          const wasModified = await this.processFile(
-            filePath,
-            localeMap,
-            options,
-            outputPath,
-          );
+          const wasModified = await this.processFile(filePath, localeMap, options, outputPath);
           processedCount++;
           if (wasModified) modifiedCount++;
 
           if (processedCount % 10 === 0) {
-            LoggerUtils.info(
-              `📈 进度: ${processedCount}/${filesToProcess.length} 文件已处理`,
-            );
+            LoggerUtils.info(`📈 进度: ${processedCount}/${filesToProcess.length} 文件已处理`);
           }
         } catch (error) {
-          LoggerUtils.error(
-            `处理文件失败: ${FileUtils.getRelativePath(filePath)}`,
-            error,
-          );
+          LoggerUtils.error(`处理文件失败: ${FileUtils.getRelativePath(filePath)}`, error);
         }
       }
 
@@ -197,9 +176,7 @@ export class RestoreProcessor extends BaseProcessor {
       const transformedCode = restoreTransformer.transform(filePath, localeMap);
 
       if (transformedCode === sourceText) {
-        LoggerUtils.info(
-          `⚪ 跳过: ${FileUtils.getRelativePath(filePath)} (无需修改)`,
-        );
+        LoggerUtils.info(`⚪ 跳过: ${FileUtils.getRelativePath(filePath)} (无需修改)`);
         return false;
       }
 
@@ -220,10 +197,7 @@ export class RestoreProcessor extends BaseProcessor {
       LoggerUtils.success(`✅ 还原: ${FileUtils.getRelativePath(filePath)}`);
       return true;
     } catch (error) {
-      LoggerUtils.error(
-        `处理文件失败 ${FileUtils.getRelativePath(filePath)}:`,
-        error,
-      );
+      LoggerUtils.error(`处理文件失败 ${FileUtils.getRelativePath(filePath)}:`, error);
       return false;
     }
   }

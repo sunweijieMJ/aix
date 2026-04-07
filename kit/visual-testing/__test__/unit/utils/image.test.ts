@@ -12,9 +12,7 @@ const FIXTURES = path.resolve(__dirname, '../../fixtures');
 describe('Image Utils', () => {
   describe('getImageDimensions', () => {
     it('should return correct dimensions for 100x100 image', async () => {
-      const dims = await getImageDimensions(
-        path.join(FIXTURES, 'baseline.png'),
-      );
+      const dims = await getImageDimensions(path.join(FIXTURES, 'baseline.png'));
       expect(dims.width).toBe(100);
       expect(dims.height).toBe(100);
     });

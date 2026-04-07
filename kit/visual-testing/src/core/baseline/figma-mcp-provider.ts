@@ -102,12 +102,7 @@ export class FigmaMcpProvider implements BaselineProvider {
   }
 
   async fetch(options: FetchBaselineOptions): Promise<BaselineResult> {
-    const {
-      source,
-      outputPath,
-      scale = DEFAULT_SCALE,
-      timeout = DEFAULT_TIMEOUT,
-    } = options;
+    const { source, outputPath, scale = DEFAULT_SCALE, timeout = DEFAULT_TIMEOUT } = options;
     const parsed = parseSource(source);
     const fileKey = parsed.fileKey ?? this.defaultFileKey;
 
@@ -115,15 +110,11 @@ export class FigmaMcpProvider implements BaselineProvider {
       return {
         path: outputPath,
         success: false,
-        error: new Error(
-          'Figma fileKey is required. Provide it in the source or provider config.',
-        ),
+        error: new Error('Figma fileKey is required. Provide it in the source or provider config.'),
       };
     }
 
-    log.debug(
-      `Fetching Figma node: ${fileKey}/${parsed.source} -> ${outputPath}`,
-    );
+    log.debug(`Fetching Figma node: ${fileKey}/${parsed.source} -> ${outputPath}`);
 
     try {
       if (!this.mcpClient) {
@@ -132,14 +123,11 @@ export class FigmaMcpProvider implements BaselineProvider {
         } catch (error) {
           // MCP Client 初始化失败，确保状态清理后返回错误结果
           this.mcpClient = null;
-          const errorMsg =
-            error instanceof Error ? error.message : String(error);
+          const errorMsg = error instanceof Error ? error.message : String(error);
           return {
             path: outputPath,
             success: false,
-            error: new Error(
-              `Failed to initialize Figma MCP client: ${errorMsg}`,
-            ),
+            error: new Error(`Failed to initialize Figma MCP client: ${errorMsg}`),
           };
         }
       }
@@ -185,9 +173,7 @@ export class FigmaMcpProvider implements BaselineProvider {
         },
       };
 
-      log.info(
-        `Figma baseline fetched: ${fileName} (${dimensions.width}x${dimensions.height})`,
-      );
+      log.info(`Figma baseline fetched: ${fileName} (${dimensions.width}x${dimensions.height})`);
 
       return { path: outputPath, success: true, metadata };
     } catch (error) {
@@ -269,9 +255,7 @@ export class FigmaMcpProvider implements BaselineProvider {
       // MCP SDK is an optional peer dependency, loaded dynamically at runtime.
       // Wrapping import() in a function with a parameter prevents bundlers (tsup/esbuild)
       // from statically resolving the module path, avoiding build errors when SDK is absent.
-      const { Client } = await importOptional(
-        '@modelcontextprotocol/sdk/client/index.js',
-      );
+      const { Client } = await importOptional('@modelcontextprotocol/sdk/client/index.js');
       const { StdioClientTransport } = await importOptional(
         '@modelcontextprotocol/sdk/client/stdio.js',
       );

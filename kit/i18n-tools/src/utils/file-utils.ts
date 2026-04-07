@@ -45,9 +45,7 @@ export class FileUtils {
             val1 !== null &&
             val2 !== null
           ) {
-            conflicts.push(
-              ...this.findConflictingKeys(val1, val2, currentPath),
-            );
+            conflicts.push(...this.findConflictingKeys(val1, val2, currentPath));
           } else if (val1 !== val2) {
             conflicts.push(currentPath);
           }
@@ -62,10 +60,7 @@ export class FileUtils {
   // Collection/Array Utilities
   // =================================================================
 
-  static groupBy<T>(
-    items: T[],
-    getKey: (item: T) => string,
-  ): Record<string, T[]> {
+  static groupBy<T>(items: T[], getKey: (item: T) => string): Record<string, T[]> {
     return items.reduce(
       (groups, item) => {
         const key = getKey(item);
@@ -83,10 +78,7 @@ export class FileUtils {
   // Text Processing Methods
   // =================================================================
 
-  static containsChinese(
-    text: string,
-    options: { ignoreSpaces?: boolean } = {},
-  ): boolean {
+  static containsChinese(text: string, options: { ignoreSpaces?: boolean } = {}): boolean {
     if (!text) return false;
 
     const processedText = options.ignoreSpaces ? text.replace(/\s/g, '') : text;
@@ -103,9 +95,7 @@ export class FileUtils {
 
     if (!enValue?.trim()) return false;
 
-    const cleanValue = enValue
-      .replace(/[{}[\]().,;:!?'""`~@#$%^&*+=<>|\\/-]/g, '')
-      .trim();
+    const cleanValue = enValue.replace(/[{}[\]().,;:!?'""`~@#$%^&*+=<>|\\/-]/g, '').trim();
     if (cleanValue.length === 0) return false;
 
     // 包含任何文字或数字字符即视为有效翻译
@@ -125,11 +115,7 @@ export class FileUtils {
         const value = obj[key];
         const newKey = prefix ? `${prefix}${separator}${key}` : key;
 
-        if (
-          value !== null &&
-          typeof value === 'object' &&
-          !Array.isArray(value)
-        ) {
+        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
           Object.assign(result, this.flattenObject(value, newKey, separator));
         } else {
           result[newKey] = value;
@@ -140,10 +126,7 @@ export class FileUtils {
     return result;
   }
 
-  static unflattenObject(
-    obj: Record<string, any>,
-    separator: string = '.',
-  ): Record<string, any> {
+  static unflattenObject(obj: Record<string, any>, separator: string = '.'): Record<string, any> {
     const result: Record<string, any> = {};
 
     for (const key in obj) {
@@ -170,11 +153,7 @@ export class FileUtils {
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
         const value = obj[key];
-        if (
-          value !== null &&
-          typeof value === 'object' &&
-          !Array.isArray(value)
-        ) {
+        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
           return true;
         }
       }
@@ -195,12 +174,7 @@ export class FileUtils {
       silent?: boolean;
     } = {},
   ): T {
-    const {
-      defaultValue = {} as T,
-      errorMessage,
-      logSuccess = false,
-      silent = false,
-    } = options;
+    const { defaultValue = {} as T, errorMessage, logSuccess = false, silent = false } = options;
 
     try {
       if (!fs.existsSync(filePath)) {
@@ -215,18 +189,14 @@ export class FileUtils {
 
       if (logSuccess && !silent) {
         const itemCount = Object.keys(result).length;
-        LoggerUtils.success(
-          `📄 已加载 ${path.basename(filePath)}, 包含 ${itemCount} 个条目`,
-        );
+        LoggerUtils.success(`📄 已加载 ${path.basename(filePath)}, 包含 ${itemCount} 个条目`);
       }
 
       return result as T;
     } catch (error) {
       if (!silent) {
         LoggerUtils.error(
-          errorMessage
-            ? `❌ ${errorMessage}: ${filePath}`
-            : `❌ 加载JSON文件失败: ${filePath}`,
+          errorMessage ? `❌ ${errorMessage}: ${filePath}` : `❌ 加载JSON文件失败: ${filePath}`,
           error,
         );
       }
@@ -242,9 +212,7 @@ export class FileUtils {
 
   static createOrEmptyFile(filePath: string, content: string = '{}'): void {
     FileUtils.ensureDirectoryExists(path.dirname(filePath));
-    const contentWithNewline = content.endsWith('\n')
-      ? content
-      : content + '\n';
+    const contentWithNewline = content.endsWith('\n') ? content : content + '\n';
     fs.writeFileSync(filePath, contentWithNewline);
   }
 
@@ -257,10 +225,7 @@ export class FileUtils {
     return ext === '.vue' || ext === '.ts' || ext === '.js';
   }
 
-  static isFrameworkFile(
-    fileName: string,
-    framework: 'react' | 'vue',
-  ): boolean {
+  static isFrameworkFile(fileName: string, framework: 'react' | 'vue'): boolean {
     if (framework === 'vue') {
       return FileUtils.isVueFile(fileName);
     }
@@ -288,10 +253,7 @@ export class FileUtils {
 
         if (entry.isDirectory()) {
           walkDir(fullPath);
-        } else if (
-          entry.isFile() &&
-          FileUtils.isFrameworkFile(entry.name, framework)
-        ) {
+        } else if (entry.isFile() && FileUtils.isFrameworkFile(entry.name, framework)) {
           if (
             include.length === 0 ||
             FileUtils.matchesIncludePatterns(fullPath, dirPath, include)
@@ -310,11 +272,7 @@ export class FileUtils {
    * 检查文件路径是否匹配 include 模式列表
    * 支持常见 glob 模式：** / *.ext、dir/ ** / *.ext、dir/ **
    */
-  static matchesIncludePatterns(
-    filePath: string,
-    baseDir: string,
-    patterns: string[],
-  ): boolean {
+  static matchesIncludePatterns(filePath: string, baseDir: string, patterns: string[]): boolean {
     if (patterns.length === 0) return true;
 
     const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
@@ -397,14 +355,8 @@ export class FileUtils {
    * @param isCustom - 是否为定制目录
    * @returns 待翻译文件路径
    */
-  static getUntranslatedPath(
-    config: ResolvedConfig,
-    isCustom: boolean,
-  ): string {
-    return path.join(
-      this.getDirectoryPath(config, isCustom),
-      FILES.UNTRANSLATED_JSON,
-    );
+  static getUntranslatedPath(config: ResolvedConfig, isCustom: boolean): string {
+    return path.join(this.getDirectoryPath(config, isCustom), FILES.UNTRANSLATED_JSON);
   }
 
   /**
@@ -414,10 +366,7 @@ export class FileUtils {
    * @returns 翻译文件路径
    */
   static getTranslatedPath(config: ResolvedConfig, isCustom: boolean): string {
-    return path.join(
-      this.getDirectoryPath(config, isCustom),
-      FILES.TRANSLATIONS_JSON,
-    );
+    return path.join(this.getDirectoryPath(config, isCustom), FILES.TRANSLATIONS_JSON);
   }
 
   /**
@@ -436,11 +385,7 @@ export class FileUtils {
    * @param locale - 语言代码
    * @returns 语言文件路径
    */
-  static getLocaleFilePath(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    locale: string,
-  ): string {
+  static getLocaleFilePath(config: ResolvedConfig, isCustom: boolean, locale: string): string {
     const baseDir = this.getDirectoryPath(config, isCustom);
     return path.join(baseDir, `${locale}.json`);
   }
@@ -478,8 +423,7 @@ export class FileUtils {
 
     if (stat.isFile()) {
       if (!FileUtils.isFrameworkFile(path.basename(targetPath), framework)) {
-        const supportedTypes =
-          framework === 'vue' ? '.vue, .ts, .js' : '.tsx, .jsx, .ts, .js';
+        const supportedTypes = framework === 'vue' ? '.vue, .ts, .js' : '.tsx, .jsx, .ts, .js';
         return {
           isValid: false,
           type: 'file',

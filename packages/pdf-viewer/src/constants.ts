@@ -53,9 +53,7 @@ export const DEFAULT_IMAGE_LAYER_CONFIG: ImageLayerConfig = {
 };
 
 /** 默认文字菜单项 */
-export const DEFAULT_TEXT_MENU_ITEMS: ContextMenuItem[] = [
-  { id: 'copy', label: '复制' },
-];
+export const DEFAULT_TEXT_MENU_ITEMS: ContextMenuItem[] = [{ id: 'copy', label: '复制' }];
 
 /** 默认图片菜单项 */
 export const DEFAULT_IMAGE_MENU_ITEMS: ContextMenuItem[] = [

@@ -15,10 +15,7 @@
           type="button"
         >
           <component :is="icon" v-if="icon" />
-          <span
-            v-if="displayLabel"
-            class="aix-rich-text-editor__toolbar-dropdown-label"
-          >
+          <span v-if="displayLabel" class="aix-rich-text-editor__toolbar-dropdown-label">
             {{ displayLabel }}
           </span>
           <IconChevronDown />

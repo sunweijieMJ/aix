@@ -7,12 +7,8 @@ const mockGetPage = vi.fn(() =>
   Promise.resolve({
     getViewport: vi.fn(() => ({ width: 612, height: 792, scale: 1 })),
     render: vi.fn(() => ({ promise: Promise.resolve() })),
-    getTextContent: vi.fn(() =>
-      Promise.resolve({ items: [{ str: 'test text' }] }),
-    ),
-    getOperatorList: vi.fn(() =>
-      Promise.resolve({ fnArray: [], argsArray: [] }),
-    ),
+    getTextContent: vi.fn(() => Promise.resolve({ items: [{ str: 'test text' }] })),
+    getOperatorList: vi.fn(() => Promise.resolve({ fnArray: [], argsArray: [] })),
     cleanup: vi.fn(),
   }),
 );

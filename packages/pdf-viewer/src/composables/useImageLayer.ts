@@ -11,11 +11,7 @@ import { OPS } from 'pdfjs-dist';
 import type { PDFPageProxy } from 'pdfjs-dist';
 import { ref, shallowRef, type Ref, type ShallowRef } from 'vue';
 import { DEFAULT_IMAGE_LAYER_CONFIG } from '../constants';
-import type {
-  PdfImageInfo,
-  ImageLayerConfig,
-  ImageLayerEvents,
-} from '../types';
+import type { PdfImageInfo, ImageLayerConfig, ImageLayerEvents } from '../types';
 
 export interface UseImageLayerReturn {
   /** 当前页面的图片列表（单页模式用，连续模式请用 getAllImages） */
@@ -31,10 +27,7 @@ export interface UseImageLayerReturn {
     pageNumber: number,
   ) => Promise<PdfImageInfo[]>;
   /** 渲染图片层 DOM（传入 pageImages 避免并行渲染竞态） */
-  renderImageLayer: (
-    container: HTMLElement,
-    pageImages?: PdfImageInfo[],
-  ) => void;
+  renderImageLayer: (container: HTMLElement, pageImages?: PdfImageInfo[]) => void;
   /** 刷新覆盖层样式 */
   refreshStyles: (container: HTMLElement) => void;
   /** 清除选中 */
@@ -117,14 +110,7 @@ export function useImageLayer(
             m3 = m[3] ?? 1,
             m4 = m[4] ?? 0,
             m5 = m[5] ?? 0;
-          currentTransform = multiplyMatrix(currentTransform, [
-            m0,
-            m1,
-            m2,
-            m3,
-            m4,
-            m5,
-          ]);
+          currentTransform = multiplyMatrix(currentTransform, [m0, m1, m2, m3, m4, m5]);
         }
       } else if (
         fn === OPS.paintImageXObject ||
@@ -157,10 +143,7 @@ export function useImageLayer(
             positions[j] ?? 0,
             positions[j + 1] ?? 0,
           ];
-          const repeatTransform = multiplyMatrix(
-            currentTransform,
-            posTransform,
-          );
+          const repeatTransform = multiplyMatrix(currentTransform, posTransform);
           const imageInfo = extractImageFromTransform(
             objId,
             repeatTransform,
@@ -217,10 +200,7 @@ export function useImageLayer(
     const viewportMatrix: Matrix6 = [vt0, vt1, vt2, vt3, vt4, vt5];
 
     const p1 = applyTransform([pdfX, pdfY], viewportMatrix);
-    const p2 = applyTransform(
-      [pdfX + pdfWidth, pdfY + pdfHeight],
-      viewportMatrix,
-    );
+    const p2 = applyTransform([pdfX + pdfWidth, pdfY + pdfHeight], viewportMatrix);
 
     const vx = p1[0];
     const vy = p1[1];
@@ -233,10 +213,7 @@ export function useImageLayer(
     const height = Math.abs(vy2 - vy);
 
     // 过滤太小的图片
-    if (
-      width < getMergedConfig().minImageSize ||
-      height < getMergedConfig().minImageSize
-    ) {
+    if (width < getMergedConfig().minImageSize || height < getMergedConfig().minImageSize) {
       return null;
     }
 
@@ -265,10 +242,7 @@ export function useImageLayer(
    * 每个 overlay 直接绑定事件监听器
    * @param pageImages 指定渲染的图片列表（连续模式必传，避免并行渲染竞态）
    */
-  function renderImageLayer(
-    container: HTMLElement,
-    pageImages?: PdfImageInfo[],
-  ): void {
+  function renderImageLayer(container: HTMLElement, pageImages?: PdfImageInfo[]): void {
     container.innerHTML = '';
 
     for (const image of pageImages ?? images.value) {
@@ -382,9 +356,7 @@ export function useImageLayer(
       selectedImages.value.add(image.id);
     }
 
-    const selected = getAllImages().filter((img) =>
-      selectedImages.value.has(img.id),
-    );
+    const selected = getAllImages().filter((img) => selectedImages.value.has(img.id));
     events.onSelectionChange?.(selected);
     events.onImageClick?.(image, event);
 
@@ -410,9 +382,7 @@ export function useImageLayer(
       selectedImages.value.clear();
     }
     selectedImages.value.add(imageId);
-    const selected = getAllImages().filter((img) =>
-      selectedImages.value.has(img.id),
-    );
+    const selected = getAllImages().filter((img) => selectedImages.value.has(img.id));
     events.onSelectionChange?.(selected);
   }
 
@@ -470,10 +440,7 @@ function multiplyMatrix(m1: Matrix6, m2: Matrix6): Matrix6 {
   ];
 }
 
-function applyTransform(
-  point: [number, number],
-  transform: Matrix6,
-): [number, number] {
+function applyTransform(point: [number, number], transform: Matrix6): [number, number] {
   const x = point[0],
     y = point[1];
   const a = transform[0],

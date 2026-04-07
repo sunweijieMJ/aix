@@ -28,9 +28,7 @@ export interface PersistedConfig {
 /**
  * 读取 .ai-preset/config.json
  */
-export async function readConfig(
-  projectRoot: string,
-): Promise<PersistedConfig | null> {
+export async function readConfig(projectRoot: string): Promise<PersistedConfig | null> {
   const configPath = path.join(projectRoot, LOCK_DIR, CONFIG_FILENAME);
   if (!existsSync(configPath)) {
     return null;
@@ -47,10 +45,7 @@ export async function readConfig(
 /**
  * 写入 .ai-preset/config.json
  */
-export async function writeConfig(
-  projectRoot: string,
-  config: PersistedConfig,
-): Promise<void> {
+export async function writeConfig(projectRoot: string, config: PersistedConfig): Promise<void> {
   const configPath = path.join(projectRoot, LOCK_DIR, CONFIG_FILENAME);
   await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
 }

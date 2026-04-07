@@ -75,13 +75,7 @@ describe('buildLockFile', () => {
       skippedFiles: ['.claude/agents/test.md'],
     };
 
-    const newLock = buildLockFile(
-      files,
-      upgradeWriteResult,
-      config,
-      '0.0.1',
-      existingLock,
-    );
+    const newLock = buildLockFile(files, upgradeWriteResult, config, '0.0.1', existingLock);
     expect(newLock.files['.claude/agents/test.md']!.status).toBe('ejected');
   });
 });

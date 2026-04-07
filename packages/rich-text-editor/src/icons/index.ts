@@ -450,11 +450,7 @@ export const IconFontSize: FunctionalComponent = () =>
       'stroke-linecap': 'round',
       'stroke-linejoin': 'round',
     },
-    [
-      h('path', { d: 'M4 7V4h16v3' }),
-      h('path', { d: 'M9 20h6' }),
-      h('path', { d: 'M12 4v16' }),
-    ],
+    [h('path', { d: 'M4 7V4h16v3' }), h('path', { d: 'M9 20h6' }), h('path', { d: 'M12 4v16' })],
   );
 
 export const IconFontFamily: FunctionalComponent = () =>

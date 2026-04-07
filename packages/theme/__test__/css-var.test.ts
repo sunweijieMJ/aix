@@ -43,16 +43,12 @@ describe('css-var', () => {
     });
 
     it('should support fallback value', () => {
-      expect(getCSSVar('colorPrimary', '#1890ff')).toBe(
-        'var(--aix-colorPrimary, #1890ff)',
-      );
+      expect(getCSSVar('colorPrimary', '#1890ff')).toBe('var(--aix-colorPrimary, #1890ff)');
       expect(getCSSVar('fontSize', '14px')).toBe('var(--aix-fontSize, 14px)');
     });
 
     it('should support custom prefix', () => {
-      expect(getCSSVar('colorPrimary', undefined, 'my-app')).toBe(
-        'var(--my-app-colorPrimary)',
-      );
+      expect(getCSSVar('colorPrimary', undefined, 'my-app')).toBe('var(--my-app-colorPrimary)');
     });
   });
 
@@ -63,9 +59,7 @@ describe('css-var', () => {
     });
 
     it('should support custom prefix', () => {
-      expect(getCSSVarName('colorPrimary', 'my-app')).toBe(
-        '--my-app-colorPrimary',
-      );
+      expect(getCSSVarName('colorPrimary', 'my-app')).toBe('--my-app-colorPrimary');
     });
   });
 

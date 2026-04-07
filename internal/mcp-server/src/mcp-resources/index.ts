@@ -180,9 +180,7 @@ export class ResourceManager {
     // 使用明确的交替模式匹配包名:
     // - @[^/]+\/[^/]+ 匹配 scoped 包，如 @aix/button
     // - [^/]+ 匹配 unscoped 包，如 button
-    const match = uri.match(
-      /^(component-\w+):\/\/(@[^/]+\/[^/]+|[^/]+)\/(.+)$/,
-    );
+    const match = uri.match(/^(component-\w+):\/\/(@[^/]+\/[^/]+|[^/]+)\/(.+)$/);
     if (!match) {
       log.error(`Invalid resource URI: ${uri}`);
       return null;
@@ -200,17 +198,13 @@ export class ResourceManager {
    * 查找组件
    */
   private findComponent(packageName: string): ComponentInfo | undefined {
-    return this.componentIndex.components.find(
-      (c) => c.packageName === packageName,
-    );
+    return this.componentIndex.components.find((c) => c.packageName === packageName);
   }
 
   /**
    * 获取组件源码文件列表（带缓存）
    */
-  private async getComponentSourceFiles(
-    component: ComponentInfo,
-  ): Promise<string[]> {
+  private async getComponentSourceFiles(component: ComponentInfo): Promise<string[]> {
     // 检查缓存
     const cached = this.sourceFilesCache.get(component.packageName);
     if (cached) {
@@ -224,9 +218,7 @@ export class ResourceManager {
 
       const filteredFiles = files.filter(
         (file) =>
-          !file.includes('.test.') &&
-          !file.includes('.spec.') &&
-          !file.includes('.stories.'),
+          !file.includes('.test.') && !file.includes('.spec.') && !file.includes('.stories.'),
       );
 
       // 存入缓存
@@ -241,10 +233,7 @@ export class ResourceManager {
   /**
    * 查找指定的源码文件
    */
-  private async findSourceFile(
-    component: ComponentInfo,
-    fileName: string,
-  ): Promise<string> {
+  private async findSourceFile(component: ComponentInfo, fileName: string): Promise<string> {
     const sourceFiles = await this.getComponentSourceFiles(component);
     const targetFile = sourceFiles.find((file) => basename(file) === fileName);
 
@@ -276,8 +265,6 @@ export class ResourceManager {
 /**
  * 创建资源管理器
  */
-export function createResourceManager(
-  componentIndex: ComponentIndex,
-): ResourceManager {
+export function createResourceManager(componentIndex: ComponentIndex): ResourceManager {
   return new ResourceManager(componentIndex);
 }

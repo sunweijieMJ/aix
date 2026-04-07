@@ -36,8 +36,7 @@ function getMCPServerRoot(): string {
   const currentFileDir = dirname(fileURLToPath(import.meta.url));
 
   // 检查当前文件是否在构建输出目录中（兼容 Windows 和 Unix 路径）
-  const isInBuildDir =
-    currentFileDir.includes('/dist') || currentFileDir.includes('\\dist');
+  const isInBuildDir = currentFileDir.includes('/dist') || currentFileDir.includes('\\dist');
 
   // 计算相对于项目根目录的路径
   return isInBuildDir
@@ -63,8 +62,7 @@ export class McpServer {
   private componentIndex: ComponentIndex | null = null;
   private toolPackageIndex: ToolPackageIndex | null = null;
   private tools: ReturnType<typeof createTools> = [];
-  private resourceManager: ReturnType<typeof createResourceManager> | null =
-    null;
+  private resourceManager: ReturnType<typeof createResourceManager> | null = null;
 
   private cache: ReturnType<typeof createCacheManager>;
   private monitoringManager: ReturnType<typeof createMonitoringManager>;
@@ -132,8 +130,7 @@ export class McpServer {
         this.monitoringManager.recordRequestEnd(true, startTime);
         return result;
       } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
         this.monitoringManager.recordError(requestType, errorMessage);
         this.monitoringManager.recordRequestEnd(false, startTime);
         throw error;
@@ -304,11 +301,7 @@ export class McpServer {
         this.componentIndex = JSON.parse(content) as ComponentIndex;
 
         // 缓存索引数据
-        await this.cache.set(
-          'component-index',
-          this.componentIndex,
-          24 * 60 * 60 * 1000,
-        ); // 24小时
+        await this.cache.set('component-index', this.componentIndex, 24 * 60 * 60 * 1000); // 24小时
       } catch (error) {
         log.error(`无法读取组件索引文件: ${indexPath}`, error);
         throw error;
@@ -426,10 +419,7 @@ export class McpServer {
   /**
    * 启动 WebSocket 服务器
    */
-  async startWebSocket(
-    port = DEFAULT_WS_PORT,
-    host = DEFAULT_WS_HOST,
-  ): Promise<void> {
+  async startWebSocket(port = DEFAULT_WS_PORT, host = DEFAULT_WS_HOST): Promise<void> {
     await this.loadComponentIndex();
 
     // 创建 WebSocket Transport

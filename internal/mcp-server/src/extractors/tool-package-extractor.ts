@@ -22,10 +22,7 @@ export class ToolPackageExtractor {
   /** 排除的包名（不提取自身） */
   private static EXCLUDED_PACKAGES = new Set(['@aix/mcp-server']);
 
-  async extractFromDirectory(
-    dir: string,
-    scope: 'kit' | 'internal',
-  ): Promise<ToolPackageInfo[]> {
+  async extractFromDirectory(dir: string, scope: 'kit' | 'internal'): Promise<ToolPackageInfo[]> {
     const packagePaths = await findPackages(dir);
     if (!packagePaths || packagePaths.length === 0) {
       return [];
@@ -36,10 +33,7 @@ export class ToolPackageExtractor {
     for (const packagePath of packagePaths) {
       try {
         const pkg = await this.extractFromPackage(packagePath, scope);
-        if (
-          pkg &&
-          !ToolPackageExtractor.EXCLUDED_PACKAGES.has(pkg.packageName)
-        ) {
+        if (pkg && !ToolPackageExtractor.EXCLUDED_PACKAGES.has(pkg.packageName)) {
           packages.push(pkg);
         }
       } catch (error) {
@@ -61,9 +55,7 @@ export class ToolPackageExtractor {
     if (!packageInfo) return null;
 
     // 读取 README
-    let readmeData: Awaited<
-      ReturnType<typeof this.readmeExtractor.extractFromReadme>
-    > = null;
+    let readmeData: Awaited<ReturnType<typeof this.readmeExtractor.extractFromReadme>> = null;
     let readmePath: string | undefined;
     let apiSections: Array<{ title: string; content: string }> = [];
 
@@ -72,9 +64,7 @@ export class ToolPackageExtractor {
       readmeData = await this.readmeExtractor.extractFromReadme(readmePath);
 
       if (readmeData?.content) {
-        apiSections = this.readmeExtractor.extractApiSections(
-          readmeData.content,
-        );
+        apiSections = this.readmeExtractor.extractApiSections(readmeData.content);
       }
     } catch {
       readmePath = undefined;
@@ -106,16 +96,10 @@ export class ToolPackageExtractor {
   /**
    * 推断工具包分类
    */
-  private inferCategory(
-    packageName: string,
-    scope: 'kit' | 'internal',
-  ): string {
+  private inferCategory(packageName: string, scope: 'kit' | 'internal'): string {
     const name = packageName.toLowerCase();
 
-    if (
-      scope === 'internal' &&
-      (name.includes('config') || name.includes('lint'))
-    ) {
+    if (scope === 'internal' && (name.includes('config') || name.includes('lint'))) {
       return '基础设施';
     }
     if (
@@ -140,9 +124,7 @@ export class ToolPackageExtractor {
   /**
    * 提取作者信息
    */
-  private extractAuthor(
-    author?: string | { name: string; email?: string },
-  ): string {
+  private extractAuthor(author?: string | { name: string; email?: string }): string {
     if (!author) return '';
     if (typeof author === 'string') return author;
     return author.name + (author.email ? ` <${author.email}>` : '');

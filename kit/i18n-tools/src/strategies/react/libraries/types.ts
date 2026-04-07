@@ -136,10 +136,7 @@ export interface ReactI18nLibrary {
   /**
    * 检测作用域内是否已有翻译变量
    */
-  isTranslationAvailableInScope(
-    node: ts.Node,
-    sourceFile: ts.SourceFile,
-  ): boolean;
+  isTranslationAvailableInScope(node: ts.Node, sourceFile: ts.SourceFile): boolean;
 
   /**
    * 检测节点是否已经国际化（避免重复处理）

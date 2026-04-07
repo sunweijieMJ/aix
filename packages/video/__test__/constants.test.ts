@@ -63,87 +63,57 @@ describe('constants', () => {
   describe('detectProtocol', () => {
     describe('协议前缀检测', () => {
       it('应该检测 RTMP 协议', () => {
-        expect(detectProtocol('rtmp://server/app/stream')).toBe(
-          StreamProtocol.RTMP,
-        );
+        expect(detectProtocol('rtmp://server/app/stream')).toBe(StreamProtocol.RTMP);
       });
 
       it('应该检测 RTSP 协议', () => {
-        expect(detectProtocol('rtsp://server/stream')).toBe(
-          StreamProtocol.RTSP,
-        );
+        expect(detectProtocol('rtsp://server/stream')).toBe(StreamProtocol.RTSP);
       });
 
       it('应该检测 WebRTC 协议', () => {
-        expect(detectProtocol('webrtc://server/stream')).toBe(
-          StreamProtocol.WebRTC,
-        );
+        expect(detectProtocol('webrtc://server/stream')).toBe(StreamProtocol.WebRTC);
       });
 
       it('应该检测 WebSocket WebRTC', () => {
-        expect(detectProtocol('ws://server/webrtc')).toBe(
-          StreamProtocol.WebRTC,
-        );
+        expect(detectProtocol('ws://server/webrtc')).toBe(StreamProtocol.WebRTC);
         expect(detectProtocol('wss://server/rtc')).toBe(StreamProtocol.WebRTC);
       });
 
       it('普通 WebSocket 应该返回 Unknown', () => {
-        expect(detectProtocol('ws://server/video')).toBe(
-          StreamProtocol.Unknown,
-        );
+        expect(detectProtocol('ws://server/video')).toBe(StreamProtocol.Unknown);
       });
     });
 
     describe('扩展名检测', () => {
       it('应该检测 HLS (.m3u8)', () => {
-        expect(detectProtocol('https://example.com/video.m3u8')).toBe(
-          StreamProtocol.HLS,
-        );
-        expect(detectProtocol('https://example.com/video.m3u8?token=abc')).toBe(
-          StreamProtocol.HLS,
-        );
+        expect(detectProtocol('https://example.com/video.m3u8')).toBe(StreamProtocol.HLS);
+        expect(detectProtocol('https://example.com/video.m3u8?token=abc')).toBe(StreamProtocol.HLS);
       });
 
       it('应该检测 DASH (.mpd)', () => {
-        expect(detectProtocol('https://example.com/video.mpd')).toBe(
-          StreamProtocol.DASH,
-        );
+        expect(detectProtocol('https://example.com/video.mpd')).toBe(StreamProtocol.DASH);
       });
 
       it('应该检测 FLV', () => {
-        expect(detectProtocol('https://example.com/video.flv')).toBe(
-          StreamProtocol.FLV,
-        );
+        expect(detectProtocol('https://example.com/video.flv')).toBe(StreamProtocol.FLV);
       });
 
       it('应该检测 MP4', () => {
-        expect(detectProtocol('https://example.com/video.mp4')).toBe(
-          StreamProtocol.MP4,
-        );
-        expect(detectProtocol('https://example.com/video.m4v')).toBe(
-          StreamProtocol.MP4,
-        );
+        expect(detectProtocol('https://example.com/video.mp4')).toBe(StreamProtocol.MP4);
+        expect(detectProtocol('https://example.com/video.m4v')).toBe(StreamProtocol.MP4);
       });
 
       it('应该检测 WebM', () => {
-        expect(detectProtocol('https://example.com/video.webm')).toBe(
-          StreamProtocol.WebM,
-        );
+        expect(detectProtocol('https://example.com/video.webm')).toBe(StreamProtocol.WebM);
       });
 
       it('应该检测 OGG', () => {
-        expect(detectProtocol('https://example.com/video.ogg')).toBe(
-          StreamProtocol.OGG,
-        );
-        expect(detectProtocol('https://example.com/video.ogv')).toBe(
-          StreamProtocol.OGG,
-        );
+        expect(detectProtocol('https://example.com/video.ogg')).toBe(StreamProtocol.OGG);
+        expect(detectProtocol('https://example.com/video.ogv')).toBe(StreamProtocol.OGG);
       });
 
       it('应该检测 MOV', () => {
-        expect(detectProtocol('https://example.com/video.mov')).toBe(
-          StreamProtocol.MOV,
-        );
+        expect(detectProtocol('https://example.com/video.mov')).toBe(StreamProtocol.MOV);
       });
     });
 
@@ -153,21 +123,13 @@ describe('constants', () => {
       });
 
       it('无扩展名应该返回 Unknown', () => {
-        expect(detectProtocol('https://example.com/video')).toBe(
-          StreamProtocol.Unknown,
-        );
+        expect(detectProtocol('https://example.com/video')).toBe(StreamProtocol.Unknown);
       });
 
       it('应该忽略大小写', () => {
-        expect(detectProtocol('https://example.com/video.MP4')).toBe(
-          StreamProtocol.MP4,
-        );
-        expect(detectProtocol('https://example.com/video.M3U8')).toBe(
-          StreamProtocol.HLS,
-        );
-        expect(detectProtocol('RTSP://server/stream')).toBe(
-          StreamProtocol.RTSP,
-        );
+        expect(detectProtocol('https://example.com/video.MP4')).toBe(StreamProtocol.MP4);
+        expect(detectProtocol('https://example.com/video.M3U8')).toBe(StreamProtocol.HLS);
+        expect(detectProtocol('RTSP://server/stream')).toBe(StreamProtocol.RTSP);
       });
     });
   });

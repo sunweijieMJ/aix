@@ -39,9 +39,7 @@ async function runList(projectRoot: string): Promise<void> {
   console.log();
   console.log(chalk.bold(`📦 AI Preset v${lock.cliVersion}`));
   console.log(
-    `  预设: ${['base', config.framework, ...config.domains]
-      .filter(Boolean)
-      .join(', ')}`,
+    `  预设: ${['base', config.framework, ...config.domains].filter(Boolean).join(', ')}`,
   );
   console.log(`  平台: ${config.platforms.join(', ')}`);
 

@@ -19,10 +19,7 @@ export class CopilotAdapter implements PlatformAdapter {
   readonly platform: AIPlatform = 'copilot';
   readonly displayName = 'GitHub Copilot';
 
-  generateFiles(
-    rules: RuleSource[],
-    context: AdapterContext,
-  ): PlatformOutputFile[] {
+  generateFiles(rules: RuleSource[], context: AdapterContext): PlatformOutputFile[] {
     // Copilot 不支持子文件引用，将所有规则合并到主文件中
     return [
       {
@@ -36,17 +33,13 @@ export class CopilotAdapter implements PlatformAdapter {
 
   detect(projectRoot: string): boolean {
     return (
-      existsSync(
-        path.join(projectRoot, '.github', 'copilot-instructions.md'),
-      ) || existsSync(path.join(projectRoot, '.github', 'copilot'))
+      existsSync(path.join(projectRoot, '.github', 'copilot-instructions.md')) ||
+      existsSync(path.join(projectRoot, '.github', 'copilot'))
     );
   }
 
   /** 构建主指令文件（所有规则合并，含标记区域保护） */
-  private buildInstructionsFile(
-    rules: RuleSource[],
-    context: AdapterContext,
-  ): string {
+  private buildInstructionsFile(rules: RuleSource[], context: AdapterContext): string {
     const lines: string[] = [];
 
     lines.push(`# Copilot Instructions — ${context.projectName}`);
@@ -66,9 +59,7 @@ export class CopilotAdapter implements PlatformAdapter {
         react: 'React',
         node: 'Node.js',
       };
-      lines.push(
-        `- **框架**: ${names[context.framework] || context.framework}`,
-      );
+      lines.push(`- **框架**: ${names[context.framework] || context.framework}`);
     }
     lines.push('');
 

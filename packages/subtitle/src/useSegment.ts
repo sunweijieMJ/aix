@@ -3,14 +3,7 @@
  * @description 处理长文本的自动分段和轮播显示
  */
 
-import {
-  ref,
-  computed,
-  watch,
-  onBeforeUnmount,
-  type Ref,
-  type ComputedRef,
-} from 'vue';
+import { ref, computed, watch, onBeforeUnmount, type Ref, type ComputedRef } from 'vue';
 import type { SubtitleCue } from './types';
 
 /** 默认行高，与 CSS 变量 --subtitle-line-height 保持一致 */
@@ -61,11 +54,7 @@ export type MeasureFn = (
 ) => { lineCount: number };
 
 /** 文本按行分割函数类型（由 Pretext 提供） */
-export type GetLinesFn = (
-  text: string,
-  maxWidth: number,
-  lineHeight: number,
-) => string[];
+export type GetLinesFn = (text: string, maxWidth: number, lineHeight: number) => string[];
 
 export interface UseSegmentOptions {
   /** 当前字幕文本 */
@@ -106,10 +95,7 @@ export interface UseSegmentReturn {
 /**
  * 解析尺寸值为数字（支持 "1200px" 或 1200）
  */
-export function parseSizeValue(
-  value: number | string,
-  fallback: number,
-): number {
+export function parseSizeValue(value: number | string, fallback: number): number {
   if (typeof value === 'number') return value;
   const num = parseFloat(value);
   return isNaN(num) ? fallback : num;
@@ -450,8 +436,7 @@ export function useSegment(options: UseSegmentOptions): UseSegmentReturn {
         currentSegmentIndex.value = 0;
         return;
       }
-      currentSegmentIndex.value =
-        (currentSegmentIndex.value + 1) % currentCount;
+      currentSegmentIndex.value = (currentSegmentIndex.value + 1) % currentCount;
     }, duration);
   }
 

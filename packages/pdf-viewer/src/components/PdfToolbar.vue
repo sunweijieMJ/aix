@@ -44,9 +44,7 @@
         >
           <Minus width="16" height="16" />
         </button>
-        <span class="aix-pdf-toolbar__scale">
-          {{ Math.round(scale * 100) }}%
-        </span>
+        <span class="aix-pdf-toolbar__scale">{{ Math.round(scale * 100) }}%</span>
         <button
           class="aix-pdf-toolbar__btn"
           :disabled="scale >= maxScale"
@@ -60,11 +58,7 @@
 
     <div class="aix-pdf-toolbar__right">
       <slot name="right">
-        <button
-          class="aix-pdf-toolbar__btn"
-          :title="t.fitPage"
-          @click="emit('fit-page')"
-        >
+        <button class="aix-pdf-toolbar__btn" :title="t.fitPage" @click="emit('fit-page')">
           <Fullscreen width="16" height="16" />
         </button>
       </slot>
@@ -100,12 +94,7 @@ function handlePageInput(event: Event): void {
   const input = event.target as HTMLInputElement;
   const page = parseInt(input.value, 10);
 
-  if (
-    !isNaN(page) &&
-    page >= 1 &&
-    page <= props.totalPages &&
-    page !== props.currentPage
-  ) {
+  if (!isNaN(page) && page >= 1 && page <= props.totalPages && page !== props.currentPage) {
     emit('goto', page);
   } else {
     // 重置为当前页

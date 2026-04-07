@@ -22,9 +22,7 @@ import type {
  * 返回的 provider 会根据每个 variant 的 source type 自动路由到对应 provider，
  * 支持同一项目中混用 local 和 figma-mcp 基准图。
  */
-export function createBaselineProvider(
-  config: VisualTestConfig,
-): BaselineProvider {
+export function createBaselineProvider(config: VisualTestConfig): BaselineProvider {
   return new RoutingBaselineProvider(config);
 }
 
@@ -65,9 +63,7 @@ class RoutingBaselineProvider implements BaselineProvider {
     this.providers.clear();
   }
 
-  private resolveProviderType(
-    source: string | BaselineSource,
-  ): BaselineSourceType {
+  private resolveProviderType(source: string | BaselineSource): BaselineSourceType {
     if (typeof source === 'object' && source.type) {
       return source.type;
     }

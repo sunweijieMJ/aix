@@ -54,14 +54,10 @@ export function validateServerConfig(config: ServerConfig): ValidationResult {
 
   // 数值合理性警告
   if (config.maxCacheSize > 500) {
-    warnings.push(
-      `maxCacheSize 设置过大 (${config.maxCacheSize}MB)，建议不超过 500MB`,
-    );
+    warnings.push(`maxCacheSize 设置过大 (${config.maxCacheSize}MB)，建议不超过 500MB`);
   }
   if (config.cacheTTL > 24 * 60 * 60 * 1000) {
-    warnings.push(
-      `cacheTTL 设置过长 (${config.cacheTTL}ms)，建议不超过 24 小时`,
-    );
+    warnings.push(`cacheTTL 设置过长 (${config.cacheTTL}ms)，建议不超过 24 小时`);
   }
   if (config.maxConcurrentExtraction > 10) {
     warnings.push(
@@ -88,9 +84,7 @@ export function validateServerConfig(config: ServerConfig): ValidationResult {
 /**
  * 验证提取器配置
  */
-export function validateExtractorConfig(
-  config: ExtractorConfig,
-): ValidationResult {
+export function validateExtractorConfig(config: ExtractorConfig): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -104,17 +98,11 @@ export function validateExtractorConfig(
   }
 
   // 数值验证
-  if (
-    config.maxConcurrentExtraction !== undefined &&
-    config.maxConcurrentExtraction < 1
-  ) {
+  if (config.maxConcurrentExtraction !== undefined && config.maxConcurrentExtraction < 1) {
     errors.push('maxConcurrentExtraction 必须大于 0');
   }
 
-  if (
-    config.extractionTimeout !== undefined &&
-    config.extractionTimeout < 1000
-  ) {
+  if (config.extractionTimeout !== undefined && config.extractionTimeout < 1000) {
     warnings.push('extractionTimeout 建议设置为至少 1000ms');
   }
 
@@ -133,9 +121,7 @@ export function validateExtractorConfig(
 /**
  * 验证组件信息
  */
-export function validateComponentInfo(
-  component: ComponentInfo,
-): ValidationResult {
+export function validateComponentInfo(component: ComponentInfo): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -155,9 +141,7 @@ export function validateComponentInfo(
   // 格式验证
   if (
     component.packageName &&
-    !/^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/.test(
-      component.packageName,
-    )
+    !/^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/.test(component.packageName)
   ) {
     warnings.push('包名格式可能不符合 npm 规范');
   }
@@ -232,9 +216,7 @@ export function validateEnvironment(): ValidationResult {
 /**
  * 批量验证组件信息
  */
-export function validateComponents(
-  components: ComponentInfo[],
-): ValidationResult {
+export function validateComponents(components: ComponentInfo[]): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 

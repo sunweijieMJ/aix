@@ -1,11 +1,5 @@
 // Config
-export {
-  defineConfig,
-  loadConfig,
-  resolveConfig,
-  loadConfigFile,
-  findConfigFile,
-} from './config';
+export { defineConfig, loadConfig, resolveConfig, loadConfigFile, findConfigFile } from './config';
 export {
   DEFAULT_PATHS,
   DEFAULT_CONCURRENCY,

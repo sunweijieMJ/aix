@@ -388,9 +388,7 @@ export const BackgroundStyles: Story = {
     setup() {
       const source: SubtitleSource = {
         type: 'cues',
-        cues: [
-          { id: '1', startTime: 0, endTime: 100, text: '不同背景样式效果' },
-        ],
+        cues: [{ id: '1', startTime: 0, endTime: 100, text: '不同背景样式效果' }],
       };
       const backgrounds = [
         { type: 'blur', label: '毛玻璃 (blur)' },
@@ -974,9 +972,7 @@ export const CSSVariables: Story = {
     setup() {
       const source: SubtitleSource = {
         type: 'cues',
-        cues: [
-          { id: '1', startTime: 0, endTime: 100, text: '自定义样式的字幕' },
-        ],
+        cues: [{ id: '1', startTime: 0, endTime: 100, text: '自定义样式的字幕' }],
       };
 
       const customStyles = [
@@ -992,8 +988,7 @@ export const CSSVariables: Story = {
           name: '霓虹效果',
           style: {
             '--subtitle-text-color': '#00ffff',
-            '--subtitle-text-shadow':
-              '0 0 5px #00ffff, 0 0 10px #00ffff, 0 0 20px #00ffff',
+            '--subtitle-text-shadow': '0 0 5px #00ffff, 0 0 10px #00ffff, 0 0 20px #00ffff',
             '--subtitle-bg-blur': 'rgba(0, 0, 0, 0.8)',
           },
         },

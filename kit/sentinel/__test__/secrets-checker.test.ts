@@ -15,9 +15,7 @@ import { checkSecrets } from '../src/core/secrets-checker.js';
 import { logger } from '../src/utils/logger.js';
 import type { PlatformAdapter } from '../src/platform/types.js';
 
-function createMockAdapter(
-  overrides?: Partial<PlatformAdapter>,
-): PlatformAdapter {
+function createMockAdapter(overrides?: Partial<PlatformAdapter>): PlatformAdapter {
   return {
     platform: 'github',
     getPipelineDir: (target: string) => `${target}/.github/workflows`,
@@ -34,10 +32,7 @@ function createMockAdapter(
   };
 }
 
-function createRequirement(overrides?: {
-  secrets?: string[];
-  variables?: string[];
-}) {
+function createRequirement(overrides?: { secrets?: string[]; variables?: string[] }) {
   return {
     secrets: ['ANTHROPIC_API_KEY'],
     variables: ['SENTINEL_ENABLED'],
@@ -56,11 +51,7 @@ describe('checkSecrets', () => {
       listVariables: vi.fn(async () => ['SENTINEL_ENABLED']),
     });
 
-    const result = await checkSecrets(
-      createRequirement(),
-      '/tmp/test-repo',
-      adapter,
-    );
+    const result = await checkSecrets(createRequirement(), '/tmp/test-repo', adapter);
 
     expect(result.ok).toBe(true);
     expect(result.missing.secrets).toEqual([]);
@@ -73,11 +64,7 @@ describe('checkSecrets', () => {
       listVariables: vi.fn(async () => ['SENTINEL_ENABLED']),
     });
 
-    const result = await checkSecrets(
-      createRequirement(),
-      '/tmp/test-repo',
-      adapter,
-    );
+    const result = await checkSecrets(createRequirement(), '/tmp/test-repo', adapter);
 
     expect(result.ok).toBe(false);
     expect(result.missing.secrets).toContain('ANTHROPIC_API_KEY');
@@ -90,11 +77,7 @@ describe('checkSecrets', () => {
       listVariables: vi.fn(async () => []),
     });
 
-    const result = await checkSecrets(
-      createRequirement(),
-      '/tmp/test-repo',
-      adapter,
-    );
+    const result = await checkSecrets(createRequirement(), '/tmp/test-repo', adapter);
 
     expect(result.ok).toBe(false);
     expect(result.missing.secrets).toEqual([]);
@@ -107,11 +90,7 @@ describe('checkSecrets', () => {
       listVariables: vi.fn(async () => []),
     });
 
-    const result = await checkSecrets(
-      createRequirement(),
-      '/tmp/test-repo',
-      adapter,
-    );
+    const result = await checkSecrets(createRequirement(), '/tmp/test-repo', adapter);
 
     expect(result.ok).toBe(false);
     expect(result.missing.secrets).toContain('ANTHROPIC_API_KEY');
@@ -151,9 +130,7 @@ describe('checkSecrets', () => {
 
     await checkSecrets(createRequirement(), '/tmp/test-repo', adapter);
 
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/variables/i),
-    );
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/variables/i));
   });
 
   it('should gracefully handle auth errors and return all as missing', async () => {
@@ -171,10 +148,7 @@ describe('checkSecrets', () => {
     const result = await checkSecrets(requirement, '/tmp/test-repo', adapter);
 
     expect(result.ok).toBe(false);
-    expect(result.missing.secrets).toEqual([
-      'ANTHROPIC_API_KEY',
-      'SENTINEL_PAT',
-    ]);
+    expect(result.missing.secrets).toEqual(['ANTHROPIC_API_KEY', 'SENTINEL_PAT']);
     expect(result.missing.variables).toEqual(['SENTINEL_ENABLED']);
     expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/无法读取/));
   });

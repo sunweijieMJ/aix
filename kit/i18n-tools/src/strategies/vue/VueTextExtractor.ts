@@ -106,12 +106,7 @@ export class VueTextExtractor implements ITextExtractor {
 
     try {
       const ast = parseTemplate(templateContent, { comments: true });
-      await this.traverseTemplateNode(
-        ast.children,
-        extractedStrings,
-        filePath,
-        lineOffset,
-      );
+      await this.traverseTemplateNode(ast.children, extractedStrings, filePath, lineOffset);
     } catch (error) {
       LoggerUtils.error(`解析 template 失败: ${filePath}`, error);
     }
@@ -139,12 +134,7 @@ export class VueTextExtractor implements ITextExtractor {
         const elementNode = node as ElementNode;
 
         // 提取属性中的文本
-        await this.extractFromAttributes(
-          elementNode,
-          extractedStrings,
-          filePath,
-          lineOffset,
-        );
+        await this.extractFromAttributes(elementNode, extractedStrings, filePath, lineOffset);
 
         // 递归处理子节点
         if (elementNode.children && elementNode.children.length > 0) {
@@ -162,10 +152,7 @@ export class VueTextExtractor implements ITextExtractor {
         const textNode = node as TextNode;
         const text = textNode.content.trim();
 
-        if (
-          text &&
-          this.shouldExtract(text, 'template', undefined, 'text-node')
-        ) {
+        if (text && this.shouldExtract(text, 'template', undefined, 'text-node')) {
           extractedStrings.push({
             original: text,
             semanticId: '',
@@ -200,12 +187,10 @@ export class VueTextExtractor implements ITextExtractor {
    */
   private isTechnicalAttribute(attrName: string): boolean {
     // CSS 和样式相关
-    if (attrName === 'class' || attrName === 'id' || attrName === 'style')
-      return true;
+    if (attrName === 'class' || attrName === 'id' || attrName === 'style') return true;
 
     // Vue 特殊属性
-    if (attrName === 'key' || attrName === 'ref' || attrName === 'is')
-      return true;
+    if (attrName === 'key' || attrName === 'ref' || attrName === 'is') return true;
 
     // 组件技术配置属性
     const technicalAttrs = [
@@ -252,11 +237,7 @@ export class VueTextExtractor implements ITextExtractor {
     ];
 
     // 检查是否匹配技术属性
-    if (
-      technicalAttrs.some(
-        (tech) => attrName.startsWith(tech) || attrName === tech,
-      )
-    ) {
+    if (technicalAttrs.some((tech) => attrName.startsWith(tech) || attrName === tech)) {
       return true;
     }
 
@@ -405,9 +386,7 @@ export class VueTextExtractor implements ITextExtractor {
           this.shouldExtract(text, 'template')
         ) {
           const argName =
-            directive.arg && directive.arg.type === 4
-              ? (directive.arg as any).content
-              : '';
+            directive.arg && directive.arg.type === 4 ? (directive.arg as any).content : '';
           extractedStrings.push({
             original: text,
             semanticId: '',
@@ -423,10 +402,7 @@ export class VueTextExtractor implements ITextExtractor {
         }
       }
       // 提取模板字符串
-      else if (
-        ts.isTemplateExpression(node) ||
-        ts.isNoSubstitutionTemplateLiteral(node)
-      ) {
+      else if (ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
         await this.extractTemplateStringFromDynamicAttribute(
           node,
           sourceFile,
@@ -486,10 +462,7 @@ export class VueTextExtractor implements ITextExtractor {
 
         for (const span of node.templateSpans) {
           const expression = span.expression;
-          const expressionText = CommonASTUtils.nodeToText(
-            expression,
-            sourceFile,
-          );
+          const expressionText = CommonASTUtils.nodeToText(expression, sourceFile);
 
           const isLiteral =
             ts.isStringLiteral(expression) ||
@@ -501,10 +474,7 @@ export class VueTextExtractor implements ITextExtractor {
 
           if (isLiteral) {
             let literalValue = expressionText;
-            if (
-              ts.isStringLiteral(expression) ||
-              ts.isNoSubstitutionTemplateLiteral(expression)
-            ) {
+            if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
               literalValue = expression.text;
             }
             text += literalValue + span.literal.text;
@@ -519,9 +489,7 @@ export class VueTextExtractor implements ITextExtractor {
 
     if (text && this.shouldExtract(text, 'template')) {
       const argName =
-        directive.arg && directive.arg.type === 4
-          ? (directive.arg as any).content
-          : '';
+        directive.arg && directive.arg.type === 4 ? (directive.arg as any).content : '';
       extractedStrings.push({
         original: text,
         semanticId: '',
@@ -531,8 +499,7 @@ export class VueTextExtractor implements ITextExtractor {
         context: 'template',
         componentType: 'setup',
         isTemplateString,
-        templateVariables:
-          templateVariables.length > 0 ? templateVariables : undefined,
+        templateVariables: templateVariables.length > 0 ? templateVariables : undefined,
         templateContext: 'dynamic-attribute',
         attributeName: argName,
       });
@@ -594,10 +561,7 @@ export class VueTextExtractor implements ITextExtractor {
           }
         }
         // 提取模板字符串
-        else if (
-          ts.isTemplateExpression(node) ||
-          ts.isNoSubstitutionTemplateLiteral(node)
-        ) {
+        else if (ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
           await this.extractTemplateStringFromInterpolation(
             node,
             sourceFile,
@@ -660,10 +624,7 @@ export class VueTextExtractor implements ITextExtractor {
 
         for (const span of node.templateSpans) {
           const expression = span.expression;
-          const expressionText = CommonASTUtils.nodeToText(
-            expression,
-            sourceFile,
-          );
+          const expressionText = CommonASTUtils.nodeToText(expression, sourceFile);
 
           // 检查是否是字面量
           const isLiteral =
@@ -677,10 +638,7 @@ export class VueTextExtractor implements ITextExtractor {
           if (isLiteral) {
             // 字面量直接内联
             let literalValue = expressionText;
-            if (
-              ts.isStringLiteral(expression) ||
-              ts.isNoSubstitutionTemplateLiteral(expression)
-            ) {
+            if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
               literalValue = expression.text;
             }
             text += literalValue + span.literal.text;
@@ -705,8 +663,7 @@ export class VueTextExtractor implements ITextExtractor {
         context: 'template',
         componentType: 'setup',
         isTemplateString,
-        templateVariables:
-          templateVariables.length > 0 ? templateVariables : undefined,
+        templateVariables: templateVariables.length > 0 ? templateVariables : undefined,
         templateContext: 'interpolation',
       });
     }
@@ -735,12 +692,7 @@ export class VueTextExtractor implements ITextExtractor {
         ts.ScriptKind.TS,
       );
 
-      await this.visitScriptNode(
-        sourceFile,
-        sourceFile,
-        extractedStrings,
-        lineOffset,
-      );
+      await this.visitScriptNode(sourceFile, sourceFile, extractedStrings, lineOffset);
     } catch (error) {
       LoggerUtils.error(`解析 script 失败: ${filePath}`, error);
     }
@@ -798,10 +750,7 @@ export class VueTextExtractor implements ITextExtractor {
 
         for (const span of node.templateSpans) {
           const expression = span.expression;
-          const expressionText = CommonASTUtils.nodeToText(
-            expression,
-            sourceFile,
-          );
+          const expressionText = CommonASTUtils.nodeToText(expression, sourceFile);
 
           // 检查是否是字面量
           const isLiteral =
@@ -818,10 +767,7 @@ export class VueTextExtractor implements ITextExtractor {
 
             // 处理后的文本内联字面量值
             let literalValue = expressionText;
-            if (
-              ts.isStringLiteral(expression) ||
-              ts.isNoSubstitutionTemplateLiteral(expression)
-            ) {
+            if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
               literalValue = expression.text;
             }
             processedText += literalValue + span.literal.text;
@@ -843,19 +789,12 @@ export class VueTextExtractor implements ITextExtractor {
     }
 
     // 检查是否需要提取
-    if (
-      originalText &&
-      this.shouldExtract(processedText || originalText, 'script', node)
-    ) {
-      const position = ts.getLineAndCharacterOfPosition(
-        sourceFile,
-        node.getStart(sourceFile),
-      );
+    if (originalText && this.shouldExtract(processedText || originalText, 'script', node)) {
+      const position = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
 
       extractedStrings.push({
         original: originalText,
-        processedMessage:
-          processedText !== originalText ? processedText : undefined,
+        processedMessage: processedText !== originalText ? processedText : undefined,
         semanticId: '',
         filePath: sourceFile.fileName,
         line: position.line + 1 + lineOffset,
@@ -863,8 +802,7 @@ export class VueTextExtractor implements ITextExtractor {
         context: 'script',
         componentType: 'setup',
         isTemplateString,
-        templateVariables:
-          templateVariables.length > 0 ? templateVariables : undefined,
+        templateVariables: templateVariables.length > 0 ? templateVariables : undefined,
       });
       return;
     }
@@ -872,12 +810,7 @@ export class VueTextExtractor implements ITextExtractor {
     // 递归处理子节点
     const children = node.getChildren();
     for (const child of children) {
-      await this.visitScriptNode(
-        child,
-        sourceFile,
-        extractedStrings,
-        lineOffset,
-      );
+      await this.visitScriptNode(child, sourceFile, extractedStrings, lineOffset);
     }
   }
 
@@ -1032,12 +965,7 @@ export class VueTextExtractor implements ITextExtractor {
     if (/^v?\d+(\.\d+)+(-[\w.]+)?$/.test(trimmed)) return true;
 
     // CSS 数值: 10px, 1.5rem, 100%, 0.5em
-    if (
-      /^\d+(\.\d+)?(px|em|rem|vh|vw|vmin|vmax|%|pt|cm|mm|in|ch|ex)$/i.test(
-        trimmed,
-      )
-    )
-      return true;
+    if (/^\d+(\.\d+)?(px|em|rem|vh|vw|vmin|vmax|%|pt|cm|mm|in|ch|ex)$/i.test(trimmed)) return true;
 
     // CSS 颜色: #fff, #ffffff, #ffffffaa
     if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) return true;

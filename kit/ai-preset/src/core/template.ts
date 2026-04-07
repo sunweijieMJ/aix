@@ -12,11 +12,7 @@ function createInstance(): typeof Handlebars {
   // 条件渲染：仅当目标平台匹配时输出
   instance.registerHelper(
     'if_platform',
-    function (
-      this: Record<string, unknown>,
-      platform: string,
-      options: Handlebars.HelperOptions,
-    ) {
+    function (this: Record<string, unknown>, platform: string, options: Handlebars.HelperOptions) {
       const platforms = this._platforms as string[] | undefined;
       if (platforms && platforms.includes(platform)) {
         return options.fn(this);
@@ -28,11 +24,7 @@ function createInstance(): typeof Handlebars {
   // 条件渲染：仅当框架匹配时输出
   instance.registerHelper(
     'if_framework',
-    function (
-      this: Record<string, unknown>,
-      framework: string,
-      options: Handlebars.HelperOptions,
-    ) {
+    function (this: Record<string, unknown>, framework: string, options: Handlebars.HelperOptions) {
       if (this._framework === framework) {
         return options.fn(this);
       }

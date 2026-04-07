@@ -30,11 +30,7 @@
         >
           {{ t.linkRemove }}
         </button>
-        <button
-          class="aix-rich-text-editor__link-action-btn"
-          type="button"
-          @click="$emit('close')"
-        >
+        <button class="aix-rich-text-editor__link-action-btn" type="button" @click="$emit('close')">
           {{ t.cancel }}
         </button>
       </div>
@@ -105,9 +101,7 @@ function removeLink() {
 useClickOutside({
   excludeRefs: computed(() => {
     const refs: (HTMLElement | null | undefined)[] = [popoverRef.value];
-    const toolbarArea = popoverRef.value?.closest(
-      '.aix-rich-text-editor__toolbar-area',
-    );
+    const toolbarArea = popoverRef.value?.closest('.aix-rich-text-editor__toolbar-area');
     if (toolbarArea instanceof HTMLElement) {
       refs.push(toolbarArea);
     }

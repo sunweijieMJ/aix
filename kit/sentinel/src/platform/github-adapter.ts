@@ -56,24 +56,10 @@ export class GitHubAdapter implements PlatformAdapter {
     ];
   }
 
-  async createLabel(
-    name: string,
-    color: string,
-    description: string,
-    cwd: string,
-  ): Promise<void> {
+  async createLabel(name: string, color: string, description: string, cwd: string): Promise<void> {
     await execFileAsync(
       'gh',
-      [
-        'label',
-        'create',
-        name,
-        '--color',
-        color,
-        '--description',
-        description,
-        '--force',
-      ],
+      ['label', 'create', name, '--color', color, '--description', description, '--force'],
       { cwd, encoding: 'utf-8' },
     );
   }
@@ -152,10 +138,9 @@ async function execGhListAsync(
 
     // gh CLI 认证/权限类错误向上抛出，让调用方感知
     if (/auth|login|permission|forbidden|401|403/i.test(message)) {
-      throw new Error(
-        `GitHub CLI 认证或权限不足，请先运行 gh auth login\n  原始错误: ${message}`,
-        { cause: err },
-      );
+      throw new Error(`GitHub CLI 认证或权限不足，请先运行 gh auth login\n  原始错误: ${message}`, {
+        cause: err,
+      });
     }
 
     // 其他错误（如仓库无 secrets）静默返回空

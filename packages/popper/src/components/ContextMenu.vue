@@ -1,9 +1,5 @@
 <template>
-  <span
-    class="aix-context-menu__trigger"
-    aria-haspopup="menu"
-    v-on="referenceListeners"
-  >
+  <span class="aix-context-menu__trigger" aria-haspopup="menu" v-on="referenceListeners">
     <slot />
   </span>
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
@@ -35,17 +31,10 @@
 import { computed, nextTick, provide, ref, watch } from 'vue';
 import { createMenuKeyDown } from '../composables/useMenuKeyboard';
 import { usePopper } from '../composables/usePopper';
-import {
-  usePopperTrigger,
-  createVirtualElement,
-} from '../composables/usePopperTrigger';
+import { usePopperTrigger, createVirtualElement } from '../composables/usePopperTrigger';
 import { useZIndex } from '../composables/useZIndex';
 import { DROPDOWN_INJECTION_KEY } from '../types';
-import type {
-  ContextMenuProps,
-  ContextMenuEmits,
-  ContextMenuExpose,
-} from '../types';
+import type { ContextMenuProps, ContextMenuEmits, ContextMenuExpose } from '../types';
 
 defineOptions({
   name: 'AixContextMenu',

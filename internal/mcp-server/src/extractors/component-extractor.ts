@@ -1,11 +1,6 @@
 import { COMPONENT_LIBRARY_CONFIG } from '../constants';
 import { createParsers } from '../parsers/index';
-import type {
-  ComponentExample,
-  ComponentInfo,
-  ExtractorConfig,
-  PackageInfo,
-} from '../types/index';
+import type { ComponentExample, ComponentInfo, ExtractorConfig, PackageInfo } from '../types/index';
 import {
   DataManager,
   findComponentFiles,
@@ -40,9 +35,7 @@ export class ComponentExtractor {
     this.readmeExtractor = new ReadmeExtractor();
     this.iconsExtractor = new IconsExtractor();
     this.parsers = createParsers();
-    this.concurrencyController = new ConcurrencyController(
-      config.maxConcurrentExtraction || 5,
-    );
+    this.concurrencyController = new ConcurrencyController(config.maxConcurrentExtraction || 5);
     this.dataManager = new DataManager(config.outputDir);
   }
 
@@ -74,8 +67,7 @@ export class ComponentExtractor {
           if (options?.includeIcons) {
             const packageInfo = await readPackageJson(packagePath);
             if (packageInfo?.name === ICONS_PACKAGE_NAME) {
-              const extractedIcons =
-                await this.iconsExtractor.extractIconsFromPackage(packagePath);
+              const extractedIcons = await this.iconsExtractor.extractIconsFromPackage(packagePath);
               icons.push(...extractedIcons);
               if (this.config.verbose) {
                 log.info(`🎨 提取了 ${extractedIcons.length} 个图标`);
@@ -97,10 +89,7 @@ export class ComponentExtractor {
     await Promise.all(extractTasks);
 
     if (this.config.verbose) {
-      const iconMsg =
-        options?.includeIcons && icons.length > 0
-          ? `和 ${icons.length} 个图标`
-          : '';
+      const iconMsg = options?.includeIcons && icons.length > 0 ? `和 ${icons.length} 个图标` : '';
       log.info(`✅ 成功提取 ${components.length} 个组件${iconMsg}`);
     }
 
@@ -123,10 +112,7 @@ export class ComponentExtractor {
     icons: IconInfo[];
   }> {
     const result = await this.extractPackages({ includeIcons: true });
-    await this.dataManager.saveComponentsByPackage(
-      result.components,
-      result.icons,
-    );
+    await this.dataManager.saveComponentsByPackage(result.components, result.icons);
     return result;
   }
 
@@ -135,9 +121,7 @@ export class ComponentExtractor {
    *
    * 仅提取自上次提取后有更新的组件，提高效率
    */
-  async extractIncrementalComponents(
-    lastExtractTime: Date,
-  ): Promise<ComponentInfo[]> {
+  async extractIncrementalComponents(lastExtractTime: Date): Promise<ComponentInfo[]> {
     const packagePaths = await findPackages(this.config.packagesDir);
     const components: ComponentInfo[] = [];
 
@@ -157,16 +141,12 @@ export class ComponentExtractor {
       this.concurrencyController.execute(async () => {
         try {
           // 检查包是否有更新
-          const isUpdated = await this.isPackageUpdatedSince(
-            packagePath,
-            lastExtractTime,
-          );
+          const isUpdated = await this.isPackageUpdatedSince(packagePath, lastExtractTime);
           if (isUpdated) {
             if (this.config.verbose) {
               log.info(`🔄 检测到更新: ${packagePath}`);
             }
-            const component =
-              await this.extractComponentFromPackage(packagePath);
+            const component = await this.extractComponentFromPackage(packagePath);
             if (component) {
               components.push(component);
             }
@@ -189,10 +169,7 @@ export class ComponentExtractor {
   /**
    * 检查包是否在指定时间后更新
    */
-  private async isPackageUpdatedSince(
-    packagePath: string,
-    since: Date,
-  ): Promise<boolean> {
+  private async isPackageUpdatedSince(packagePath: string, since: Date): Promise<boolean> {
     try {
       const { stat } = await import('node:fs/promises');
       const { join } = await import('node:path');
@@ -225,9 +202,7 @@ export class ComponentExtractor {
   /**
    * 从单个包中提取组件信息
    */
-  async extractComponentFromPackage(
-    packagePath: string,
-  ): Promise<ComponentInfo | null> {
+  async extractComponentFromPackage(packagePath: string): Promise<ComponentInfo | null> {
     // 读取 package.json
     const packageInfo = await readPackageJson(packagePath);
     if (!packageInfo) {
@@ -243,13 +218,9 @@ export class ComponentExtractor {
     const files = await findComponentFiles(packagePath);
 
     // 优先从 README.md 提取信息
-    let readmeData: Awaited<
-      ReturnType<typeof this.readmeExtractor.extractFromReadme>
-    > = null;
+    let readmeData: Awaited<ReturnType<typeof this.readmeExtractor.extractFromReadme>> = null;
     if (files.readmeFiles.length > 0 && files.readmeFiles[0]) {
-      readmeData = await this.readmeExtractor.extractFromReadme(
-        files.readmeFiles[0],
-      );
+      readmeData = await this.readmeExtractor.extractFromReadme(files.readmeFiles[0]);
     }
 
     // 如果 README 提取失败，回退到传统方法
@@ -336,9 +307,7 @@ export class ComponentExtractor {
     for (const readmeFile of files.readmeFiles) {
       const readmeData = await this.parsers.markdown.parseReadme(readmeFile);
       if (readmeData) {
-        const readmeExamples = this.parsers.markdown.extractCodeExamples(
-          readmeData.content,
-        );
+        const readmeExamples = this.parsers.markdown.extractCodeExamples(readmeData.content);
         examples.push(...readmeExamples);
       }
     }
@@ -371,11 +340,7 @@ export class ComponentExtractor {
       return '布局';
     } else if (name.includes('navigation') || name.includes('menu')) {
       return '导航';
-    } else if (
-      name.includes('data') ||
-      name.includes('table') ||
-      name.includes('list')
-    ) {
+    } else if (name.includes('data') || name.includes('table') || name.includes('list')) {
       return '数据展示';
     } else if (
       name.includes('feedback') ||
@@ -391,10 +356,7 @@ export class ComponentExtractor {
   /**
    * 提取标签
    */
-  private extractTags(
-    packageInfo: PackageInfo,
-    readmeContent: string,
-  ): string[] {
+  private extractTags(packageInfo: PackageInfo, readmeContent: string): string[] {
     const tags: string[] = [];
 
     // 从包名提取标签
@@ -412,9 +374,7 @@ export class ComponentExtractor {
     if (allDeps.typescript) tags.push('typescript');
 
     // 从 README 内容中提取关键词
-    const keywordMatches = readmeContent.match(
-      /(?:关键词|keywords|tags)[:：]\s*([^\n]+)/i,
-    );
+    const keywordMatches = readmeContent.match(/(?:关键词|keywords|tags)[:：]\s*([^\n]+)/i);
     if (keywordMatches && keywordMatches[1]) {
       const keywords = keywordMatches[1].split(/[,，\s]+/).filter(Boolean);
       tags.push(...keywords);
@@ -426,9 +386,7 @@ export class ComponentExtractor {
   /**
    * 提取作者信息
    */
-  private extractAuthor(
-    author?: string | { name: string; email?: string },
-  ): string {
+  private extractAuthor(author?: string | { name: string; email?: string }): string {
     if (!author) return '';
 
     if (typeof author === 'string') {
@@ -464,8 +422,7 @@ export class ComponentExtractor {
 
     for (const component of components) {
       // 统计分类
-      categories[component.category] =
-        (categories[component.category] || 0) + 1;
+      categories[component.category] = (categories[component.category] || 0) + 1;
 
       // 统计标签
       for (const tag of component.tags) {

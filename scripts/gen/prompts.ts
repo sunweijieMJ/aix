@@ -17,9 +17,7 @@ import {
 /**
  * 收集组件配置
  */
-export async function collectConfig(
-  cliOptions: CliOptions = {},
-): Promise<ComponentConfig> {
+export async function collectConfig(cliOptions: CliOptions = {}): Promise<ComponentConfig> {
   console.log(chalk.cyan.bold('\n✨ AIX 组件库生成器\n'));
 
   // 显示已存在的组件包
@@ -74,9 +72,7 @@ export async function collectConfig(
 /**
  * 快速模式: 使用默认值构建配置
  */
-async function buildQuickConfig(
-  cliOptions: CliOptions,
-): Promise<ComponentConfig> {
+async function buildQuickConfig(cliOptions: CliOptions): Promise<ComponentConfig> {
   const name = cliOptions.name!;
 
   // 验证组件名
@@ -89,8 +85,7 @@ async function buildQuickConfig(
   const config: ComponentConfig = {
     name,
     description:
-      cliOptions.description ||
-      `A Vue 3 ${toPascalCase(name)} component for AIX component library`,
+      cliOptions.description || `A Vue 3 ${toPascalCase(name)} component for AIX component library`,
     features: {
       scss: cliOptions.scss ?? true,
       composables: cliOptions.composables ?? true,
@@ -123,9 +118,7 @@ async function collectBasicInfo(
 ): Promise<{ componentName: string; description: string }> {
   // 如果 CLI 提供了名称，直接验证
   if (cliOptions.name) {
-    const validationResult = await validateComponentNameWithExistence(
-      cliOptions.name,
-    );
+    const validationResult = await validateComponentNameWithExistence(cliOptions.name);
     if (validationResult !== true) {
       console.log(chalk.red(`\n❌ ${validationResult}`));
       process.exit(1);
@@ -190,9 +183,7 @@ async function collectDependencies(cliOptions: CliOptions): Promise<string[]> {
 /**
  * 收集功能特性
  */
-async function collectFeatures(
-  cliOptions: CliOptions,
-): Promise<ComponentConfig['features']> {
+async function collectFeatures(cliOptions: CliOptions): Promise<ComponentConfig['features']> {
   const { needScss, needComposables, needI18n } = await inquirer.prompt([
     {
       type: 'confirm',
@@ -224,9 +215,7 @@ async function collectFeatures(
 /**
  * 收集工具链选择
  */
-async function collectTools(
-  _cliOptions: CliOptions,
-): Promise<ComponentConfig['tools']> {
+async function collectTools(_cliOptions: CliOptions): Promise<ComponentConfig['tools']> {
   const { selectedTools } = await inquirer.prompt([
     {
       type: 'checkbox',
@@ -248,9 +237,7 @@ async function collectTools(
 /**
  * 收集文件选项
  */
-async function collectFileOptions(
-  _cliOptions: CliOptions,
-): Promise<ComponentConfig['files']> {
+async function collectFileOptions(_cliOptions: CliOptions): Promise<ComponentConfig['files']> {
   const { needGlobalTypes } = await inquirer.prompt([
     {
       type: 'confirm',
@@ -277,9 +264,7 @@ function previewConfig(config: ComponentConfig): void {
   console.log(chalk.white(`组件名称: ${chalk.green(config.name)}`));
   console.log(chalk.white(`组件描述: ${chalk.green(config.description)}`));
   console.log(
-    chalk.white(
-      `独立 SCSS: ${config.features.scss ? chalk.green('是') : chalk.gray('否')}`,
-    ),
+    chalk.white(`独立 SCSS: ${config.features.scss ? chalk.green('是') : chalk.gray('否')}`),
   );
   console.log(
     chalk.white(

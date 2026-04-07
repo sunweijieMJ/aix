@@ -14,11 +14,7 @@ import fs from 'node:fs/promises';
 import type { AIPlatform } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { existsSync, readProjectName } from '../utils/fs.js';
-import {
-  readConfig,
-  writeConfig,
-  persistedToInitConfig,
-} from '../core/config.js';
+import { readConfig, writeConfig, persistedToInitConfig } from '../core/config.js';
 import { readLockFile, buildLockFile, writeLockFile } from '../core/lock.js';
 import { writeOutputFiles } from '../core/writer.js';
 import { generateAllPlatformFiles } from '../core/generator.js';
@@ -48,10 +44,7 @@ interface RemoveOptions {
   dryRun: boolean;
 }
 
-async function runRemove(
-  moduleName: string | undefined,
-  opts: RemoveOptions,
-): Promise<void> {
+async function runRemove(moduleName: string | undefined, opts: RemoveOptions): Promise<void> {
   const projectRoot = path.resolve(opts.target);
 
   const config = await readConfig(projectRoot);
@@ -156,13 +149,7 @@ async function runRemove(
     const { version: cliVersion } = req('../package.json') as {
       version: string;
     };
-    const newLock = buildLockFile(
-      allFiles,
-      writeResult,
-      initConfig,
-      cliVersion,
-      lock,
-    );
+    const newLock = buildLockFile(allFiles, writeResult, initConfig, cliVersion, lock);
     await writeLockFile(projectRoot, newLock);
     await writeConfig(projectRoot, config);
     logger.step('更新配置');

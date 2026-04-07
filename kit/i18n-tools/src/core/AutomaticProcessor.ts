@@ -26,18 +26,12 @@ export class AutomaticProcessor extends BaseProcessor {
     return this.executeWithLifecycle(() => this._execute(targetPath, skipLLM));
   }
 
-  private async _execute(
-    targetPath: string,
-    skipLLM: boolean = false,
-  ): Promise<void> {
+  private async _execute(targetPath: string, skipLLM: boolean = false): Promise<void> {
     const steps: Array<{ name: string; run: () => Promise<void> }> = [
       {
         name: 'generate',
         run: () =>
-          new GenerateProcessor(this.config, this.isCustom, false).execute(
-            targetPath,
-            skipLLM,
-          ),
+          new GenerateProcessor(this.config, this.isCustom, false).execute(targetPath, skipLLM),
       },
       {
         name: 'pick',

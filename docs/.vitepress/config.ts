@@ -20,10 +20,7 @@ export default withMermaid(
     // Head 配置
     head: [
       ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
-      [
-        'meta',
-        { name: 'viewport', content: 'width=device-width, initial-scale=1.0' },
-      ],
+      ['meta', { name: 'viewport', content: 'width=device-width, initial-scale=1.0' }],
     ],
 
     // 主题配置
@@ -179,9 +176,7 @@ export default withMermaid(
       },
 
       // 社交链接
-      socialLinks: [
-        { icon: 'github', link: 'https://github.com/sunweijieMJ/aix' },
-      ],
+      socialLinks: [{ icon: 'github', link: 'https://github.com/sunweijieMJ/aix' }],
 
       // 页脚
       footer: {
@@ -233,28 +228,16 @@ export default withMermaid(
         alias: {
           '@': fileURLToPath(new URL('../', import.meta.url)),
           // 组件包别名
-          '@aix/button': fileURLToPath(
-            new URL('../../packages/button/src', import.meta.url),
-          ),
-          '@aix/icons': fileURLToPath(
-            new URL('../../packages/icons/src', import.meta.url),
-          ),
-          '@aix/video': fileURLToPath(
-            new URL('../../packages/video/src', import.meta.url),
-          ),
+          '@aix/button': fileURLToPath(new URL('../../packages/button/src', import.meta.url)),
+          '@aix/icons': fileURLToPath(new URL('../../packages/icons/src', import.meta.url)),
+          '@aix/video': fileURLToPath(new URL('../../packages/video/src', import.meta.url)),
           '@aix/pdf-viewer': fileURLToPath(
             new URL('../../packages/pdf-viewer/src', import.meta.url),
           ),
-          '@aix/subtitle': fileURLToPath(
-            new URL('../../packages/subtitle/src', import.meta.url),
-          ),
+          '@aix/subtitle': fileURLToPath(new URL('../../packages/subtitle/src', import.meta.url)),
           // 工具包别名
-          '@aix/theme': fileURLToPath(
-            new URL('../../packages/theme/src', import.meta.url),
-          ),
-          '@aix/hooks': fileURLToPath(
-            new URL('../../packages/hooks/src', import.meta.url),
-          ),
+          '@aix/theme': fileURLToPath(new URL('../../packages/theme/src', import.meta.url)),
+          '@aix/hooks': fileURLToPath(new URL('../../packages/hooks/src', import.meta.url)),
         },
       },
       optimizeDeps: {

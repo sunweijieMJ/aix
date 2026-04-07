@@ -23,9 +23,7 @@ export interface UploadError {
 }
 
 /** 请求头配置（对象或函数，函数形式支持动态 token） */
-export type HeadersConfig =
-  | Record<string, string>
-  | (() => Record<string, string>);
+export type HeadersConfig = Record<string, string> | (() => Record<string, string>);
 
 /** 附加表单字段 */
 export type ExtraDataConfig =

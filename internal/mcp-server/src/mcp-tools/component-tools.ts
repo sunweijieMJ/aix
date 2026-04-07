@@ -47,9 +47,7 @@ export class ListComponentsTool extends BaseTool {
     // 按分类过滤
     if (category) {
       const categoryLower = category.toLowerCase();
-      components = components.filter((c) =>
-        c.category.toLowerCase().includes(categoryLower),
-      );
+      components = components.filter((c) => c.category.toLowerCase().includes(categoryLower));
     }
 
     // 按标签过滤
@@ -145,9 +143,7 @@ export class GetComponentExamplesTool extends BaseTool {
     super();
   }
 
-  async execute(
-    args: ToolArguments,
-  ): Promise<ComponentInfo['examples'] | null> {
+  async execute(args: ToolArguments): Promise<ComponentInfo['examples'] | null> {
     const name = args.name as string;
     const language = args.language as string;
 
@@ -204,10 +200,7 @@ export class SearchComponentsTool extends BaseTool {
 
   async execute(args: ToolArguments): Promise<SearchResult[]> {
     const query = args.query as string;
-    const limit = Math.min(
-      typeof args.limit === 'number' ? args.limit : 10,
-      100,
-    );
+    const limit = Math.min(typeof args.limit === 'number' ? args.limit : 10, 100);
 
     if (!query.trim() || limit === 0) return [];
 
@@ -468,10 +461,7 @@ export class GetComponentChangelogTool extends BaseTool {
         // 提取每个变更点
         const items = typeChanges
           .split('\n')
-          .filter(
-            (line) =>
-              line.trim().startsWith('-') || line.trim().startsWith('*'),
-          )
+          .filter((line) => line.trim().startsWith('-') || line.trim().startsWith('*'))
           .map((line) => line.replace(/^[-*]\s*/, '').trim())
           .filter(Boolean);
 

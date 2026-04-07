@@ -10,11 +10,7 @@
     <slot name="reference" />
   </span>
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
-    <Transition
-      name="aix-popper-fade-fast"
-      @after-enter="onShow"
-      @after-leave="onHide"
-    >
+    <Transition name="aix-popper-fade-fast" @after-enter="onShow" @after-leave="onHide">
       <div
         v-if="isOpen"
         ref="floatingElRef"
@@ -95,17 +91,16 @@ watch(floatingElRef, (el) => {
 });
 
 // 触发器（支持受控模式）
-const { isOpen, show, hide, referenceListeners, floatingListeners } =
-  usePopperTrigger({
-    trigger: () => props.trigger,
-    disabled: () => props.disabled,
-    showDelay: () => (props.trigger === 'hover' ? props.showDelay : 0),
-    hideDelay: () => (props.trigger === 'hover' ? props.hideDelay : 0),
-    open: () => props.open,
-    onOpenChange: (val) => emit('update:open', val),
-    referenceRef,
-    floatingRef,
-  });
+const { isOpen, show, hide, referenceListeners, floatingListeners } = usePopperTrigger({
+  trigger: () => props.trigger,
+  disabled: () => props.disabled,
+  showDelay: () => (props.trigger === 'hover' ? props.showDelay : 0),
+  hideDelay: () => (props.trigger === 'hover' ? props.hideDelay : 0),
+  open: () => props.open,
+  onOpenChange: (val) => emit('update:open', val),
+  referenceRef,
+  floatingRef,
+});
 
 function onShow() {
   emit('visible-change', true);

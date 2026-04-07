@@ -57,15 +57,9 @@ async function runDoctor(projectRoot: string): Promise<DoctorResult> {
 
   // 2. 文件完整性检查
   const statusMap = await checkFileStatus(projectRoot, lock);
-  const managedCount = [...statusMap.values()].filter(
-    (s) => s === 'managed',
-  ).length;
-  const modifiedCount = [...statusMap.values()].filter(
-    (s) => s === 'modified',
-  ).length;
-  const ejectedCount = [...statusMap.values()].filter(
-    (s) => s === 'ejected',
-  ).length;
+  const managedCount = [...statusMap.values()].filter((s) => s === 'managed').length;
+  const modifiedCount = [...statusMap.values()].filter((s) => s === 'modified').length;
+  const ejectedCount = [...statusMap.values()].filter((s) => s === 'ejected').length;
   const totalCount = statusMap.size;
 
   const missingFiles: string[] = [];

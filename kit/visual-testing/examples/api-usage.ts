@@ -42,9 +42,7 @@ export async function runSpecificTargets() {
     if (!result.passed && result.analysis) {
       console.log(`\n${result.target}/${result.variant}:`);
       for (const diff of result.analysis.differences) {
-        console.log(
-          `  [${diff.severity}] ${diff.location}: ${diff.description}`,
-        );
+        console.log(`  [${diff.severity}] ${diff.location}: ${diff.description}`);
       }
     }
   }

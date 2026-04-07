@@ -3,7 +3,7 @@
     <header class="header">
       <h1>AIX 组件库示例</h1>
       <div class="mode-badge">
-        <span>联调模式: </span>
+        <span>联调模式:</span>
         <code>{{ linkMode }}</code>
         <button class="theme-toggle" @click="toggleMode">
           {{ mode === 'light' ? '☀️' : '🌙' }} 切换主题

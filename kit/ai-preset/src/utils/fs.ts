@@ -17,10 +17,7 @@ export async function readFile(filePath: string): Promise<string> {
 }
 
 /** 写入文件内容，自动创建目录 */
-export async function writeFile(
-  filePath: string,
-  content: string,
-): Promise<void> {
+export async function writeFile(filePath: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, 'utf-8');
 }

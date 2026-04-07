@@ -112,21 +112,9 @@ export const DEFAULT_LLM_TEMPERATURE = 0.1;
 /**
  * 默认文件包含模式
  */
-export const DEFAULT_INCLUDE = [
-  '**/*.vue',
-  '**/*.tsx',
-  '**/*.jsx',
-  '**/*.ts',
-  '**/*.js',
-];
+export const DEFAULT_INCLUDE = ['**/*.vue', '**/*.tsx', '**/*.jsx', '**/*.ts', '**/*.js'];
 
 /**
  * 默认排除目录
  */
-export const DEFAULT_EXCLUDE = [
-  'node_modules',
-  'dist',
-  'build',
-  '.git',
-  'public',
-];
+export const DEFAULT_EXCLUDE = ['node_modules', 'dist', 'build', '.git', 'public'];

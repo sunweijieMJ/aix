@@ -24,10 +24,7 @@ describe('ToolPackageExtractor', () => {
 
   it('应该能从 internal/ 目录提取工具包信息', async () => {
     const extractor = new ToolPackageExtractor();
-    const packages = await extractor.extractFromDirectory(
-      internalDir,
-      'internal',
-    );
+    const packages = await extractor.extractFromDirectory(internalDir, 'internal');
 
     expect(packages.length).toBeGreaterThan(0);
 
@@ -40,14 +37,9 @@ describe('ToolPackageExtractor', () => {
   it('应该正确推断 category', async () => {
     const extractor = new ToolPackageExtractor();
     const kitPackages = await extractor.extractFromDirectory(kitDir, 'kit');
-    const internalPackages = await extractor.extractFromDirectory(
-      internalDir,
-      'internal',
-    );
+    const internalPackages = await extractor.extractFromDirectory(internalDir, 'internal');
 
-    const eslint = internalPackages.find(
-      (p) => p.packageName === '@kit/eslint-config',
-    );
+    const eslint = internalPackages.find((p) => p.packageName === '@kit/eslint-config');
     expect(eslint?.category).toBe('基础设施');
 
     const sentinel = kitPackages.find((p) => p.packageName === '@kit/sentinel');
@@ -59,10 +51,7 @@ describe('ToolPackageExtractor', () => {
 
   it('对不存在的目录应返回空数组', async () => {
     const extractor = new ToolPackageExtractor();
-    const packages = await extractor.extractFromDirectory(
-      '/nonexistent',
-      'kit',
-    );
+    const packages = await extractor.extractFromDirectory('/nonexistent', 'kit');
     expect(packages).toEqual([]);
   });
 });

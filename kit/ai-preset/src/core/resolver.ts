@@ -136,11 +136,7 @@ export async function loadRuleSources(
 /**
  * 解析单个规则源文件
  */
-function parseRuleSource(
-  raw: string,
-  filePath: string,
-  presetName: PresetName,
-): RuleSource | null {
+function parseRuleSource(raw: string, filePath: string, presetName: PresetName): RuleSource | null {
   const { data, content } = matter(raw);
 
   // frontmatter 校验：至少需要 id
@@ -156,8 +152,7 @@ function parseRuleSource(
     tags,
     version: (data.version as string) || '1.0.0',
     variables: data.variables as RuleSourceMeta['variables'],
-    resourceType:
-      (data.resourceType as ResourceType) || inferResourceType(tags),
+    resourceType: (data.resourceType as ResourceType) || inferResourceType(tags),
     skillMeta: data.skillMeta as SkillMeta | undefined,
   };
 
@@ -200,10 +195,7 @@ export function filterRulesForPlatform(
   return sources.filter((s) => {
     if (excludeSet.has(s.meta.id)) return false;
 
-    if (
-      s.meta.platforms.length > 0 &&
-      !s.meta.platforms.includes(targetPlatform)
-    ) {
+    if (s.meta.platforms.length > 0 && !s.meta.platforms.includes(targetPlatform)) {
       return false;
     }
 
@@ -233,9 +225,7 @@ export function mergeRuleSources(
 
     // 平台过滤：空数组表示全平台，否则需要与目标平台有交集
     if (s.meta.platforms.length > 0) {
-      const hasIntersection = s.meta.platforms.some((p) =>
-        targetPlatforms.includes(p),
-      );
+      const hasIntersection = s.meta.platforms.some((p) => targetPlatforms.includes(p));
       if (!hasIntersection) return false;
     }
 

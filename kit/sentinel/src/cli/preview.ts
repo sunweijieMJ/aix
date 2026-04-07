@@ -43,9 +43,7 @@ export function printConfigPreview(config: InstallConfig): void {
 
   // 阶段配置
   const hasPhaseConfig =
-    config.phases.includes(2) ||
-    config.phases.includes(3) ||
-    config.phases.includes(4);
+    config.phases.includes(2) || config.phases.includes(3) || config.phases.includes(4);
   if (hasPhaseConfig) {
     console.log(chalk.bold('\n阶段配置:'));
 
@@ -56,19 +54,13 @@ export function printConfigPreview(config: InstallConfig): void {
     }
 
     if (config.phases.includes(3)) {
-      console.log(
-        `  Owner/Repo:    ${chalk.white(`${config.owner ?? ''}/${config.repo ?? ''}`)}`,
-      );
+      console.log(`  Owner/Repo:    ${chalk.white(`${config.owner ?? ''}/${config.repo ?? ''}`)}`);
     }
 
     if (config.phases.includes(4)) {
-      console.log(
-        `  Cron:          ${chalk.white(config.cronExpression ?? DEFAULT_CRON)}`,
-      );
+      console.log(`  Cron:          ${chalk.white(config.cronExpression ?? DEFAULT_CRON)}`);
       if (config.checks) {
-        console.log(
-          `  检查项:        ${chalk.white(config.checks.join(', '))}`,
-        );
+        console.log(`  检查项:        ${chalk.white(config.checks.join(', '))}`);
       }
       if (config.customCommands) {
         for (const [key, cmd] of Object.entries(config.customCommands)) {

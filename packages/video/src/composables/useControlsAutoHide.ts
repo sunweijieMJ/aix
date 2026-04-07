@@ -1,11 +1,4 @@
-import {
-  ref,
-  onBeforeUnmount,
-  watch,
-  toValue,
-  type MaybeRefOrGetter,
-  type Ref,
-} from 'vue';
+import { ref, onBeforeUnmount, watch, toValue, type MaybeRefOrGetter, type Ref } from 'vue';
 
 export interface AutoHideOptions {
   /** 隐藏延迟（ms），默认 3000，0 表示禁用 */
@@ -31,9 +24,7 @@ export interface UseControlsAutoHideReturn {
  * 控制栏自动隐藏 composable
  * 3 秒无操作后自动隐藏控制栏，交互时重置计时器
  */
-export function useControlsAutoHide(
-  options: AutoHideOptions = {},
-): UseControlsAutoHideReturn {
+export function useControlsAutoHide(options: AutoHideOptions = {}): UseControlsAutoHideReturn {
   const visible = ref(true);
   let timer: ReturnType<typeof setTimeout> | null = null;
 

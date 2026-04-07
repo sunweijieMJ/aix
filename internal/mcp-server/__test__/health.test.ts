@@ -8,10 +8,7 @@
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  formatHealthCheckResult,
-  MonitoringManager,
-} from '../src/utils/monitoring';
+import { formatHealthCheckResult, MonitoringManager } from '../src/utils/monitoring';
 
 describe('Health Checker (简化版)', () => {
   const testDataDir = join(process.cwd(), 'test-tmp');

@@ -40,9 +40,7 @@ export interface UseContextMenuReturn {
 /**
  * 右键菜单 Composable
  */
-export function useContextMenu(
-  options: UseContextMenuOptions = {},
-): UseContextMenuReturn {
+export function useContextMenu(options: UseContextMenuOptions = {}): UseContextMenuReturn {
   /** 获取合并后的配置 */
   function getMergedConfig(): ContextMenuConfig {
     return {
@@ -56,10 +54,7 @@ export function useContextMenu(
   /**
    * 判断菜单类型
    */
-  function getMenuType(
-    selectedText: string,
-    selectedImages: PdfImageInfo[],
-  ): ContextMenuType {
+  function getMenuType(selectedText: string, selectedImages: PdfImageInfo[]): ContextMenuType {
     const hasText = selectedText.length > 0;
     const hasImages = selectedImages.length > 0;
 
@@ -103,10 +98,7 @@ export function useContextMenu(
 
     // 如果是空白区域且没有配置空白菜单，不阻止浏览器默认右键菜单
     const config = getMergedConfig();
-    if (
-      menuType === 'empty' &&
-      (!config.emptyMenuItems || config.emptyMenuItems.length === 0)
-    ) {
+    if (menuType === 'empty' && (!config.emptyMenuItems || config.emptyMenuItems.length === 0)) {
       return false;
     }
 

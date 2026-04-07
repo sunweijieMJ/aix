@@ -7,12 +7,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../../utils/logger';
-import type {
-  LLMConfig,
-  VisionAdapter,
-  ImageInput,
-  VisionCallResult,
-} from '../../../types/llm';
+import type { LLMConfig, VisionAdapter, ImageInput, VisionCallResult } from '../../../types/llm';
 
 const log = logger.child('anthropic-adapter');
 
@@ -75,8 +70,7 @@ export class AnthropicAdapter implements VisionAdapter {
       { signal: options.signal },
     );
 
-    const text =
-      response.content[0]?.type === 'text' ? response.content[0].text : '';
+    const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
 
     return {
       text,
@@ -109,8 +103,7 @@ export class AnthropicAdapter implements VisionAdapter {
       { signal: options.signal },
     );
 
-    const text =
-      response.content[0]?.type === 'text' ? response.content[0].text : '';
+    const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
 
     return {
       text,

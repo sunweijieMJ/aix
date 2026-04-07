@@ -61,9 +61,7 @@ export class PagePool {
         return this.createNewPage();
       }
 
-      log.debug(
-        `Page acquired from pool (pool: ${this.pool.length}, busy: ${this.busy.size})`,
-      );
+      log.debug(`Page acquired from pool (pool: ${this.pool.length}, busy: ${this.busy.size})`);
       return page;
     }
 
@@ -71,16 +69,12 @@ export class PagePool {
     const totalPages = this.busy.size + this.pool.length;
     if (totalPages >= this.maxSize) {
       // 达到上限，等待其他 Page 被释放（带超时）
-      log.debug(
-        `Page pool at max capacity (${totalPages}/${this.maxSize}), waiting...`,
-      );
+      log.debug(`Page pool at max capacity (${totalPages}/${this.maxSize}), waiting...`);
       return new Promise<Page>((resolve, reject) => {
         const timer = setTimeout(() => {
           const idx = this.waitingQueue.findIndex((w) => w.resolve === resolve);
           if (idx !== -1) this.waitingQueue.splice(idx, 1);
-          reject(
-            new Error(`Page acquire timeout after ${this.acquireTimeout}ms`),
-          );
+          reject(new Error(`Page acquire timeout after ${this.acquireTimeout}ms`));
         }, this.acquireTimeout);
 
         this.waitingQueue.push({
@@ -128,9 +122,7 @@ export class PagePool {
     // 池未满，归还
     if (this.pool.length < this.maxSize) {
       this.pool.push(page);
-      log.debug(
-        `Page released to pool (pool: ${this.pool.length}, busy: ${this.busy.size})`,
-      );
+      log.debug(`Page released to pool (pool: ${this.pool.length}, busy: ${this.busy.size})`);
     } else {
       // 池已满，销毁
       page.close().catch(() => {});
@@ -146,10 +138,7 @@ export class PagePool {
    * 注意：调用前 page 已在 busy 中。成功时 page 仍在 busy 中；
    * 失败时旧 page 从 busy 移除并关闭，新 page 通过 createNewPage 加入 busy。
    */
-  private async resetAndResolve(
-    page: Page,
-    resolve: (page: Page) => void,
-  ): Promise<void> {
+  private async resetAndResolve(page: Page, resolve: (page: Page) => void): Promise<void> {
     try {
       await page.goto('about:blank', {
         waitUntil: 'domcontentloaded',
@@ -214,9 +203,7 @@ export class PagePool {
 
     const page = await this.context.newPage();
     this.busy.add(page);
-    log.debug(
-      `New page created (pool: ${this.pool.length}, busy: ${this.busy.size})`,
-    );
+    log.debug(`New page created (pool: ${this.pool.length}, busy: ${this.busy.size})`);
     return page;
   }
 }

@@ -1,13 +1,5 @@
 import { Editor } from '@tiptap/vue-3';
-import {
-  type Ref,
-  ref,
-  watch,
-  onMounted,
-  onBeforeUnmount,
-  shallowRef,
-  triggerRef,
-} from 'vue';
+import { type Ref, ref, watch, onMounted, onBeforeUnmount, shallowRef, triggerRef } from 'vue';
 import type { RichTextEditorProps, RichTextEditorEmits } from '../types';
 import { useEditorExtensions } from './useEditorExtensions';
 
@@ -56,9 +48,7 @@ export function useEditorCore(
   let destroyed = false;
 
   /** 获取当前输出值 */
-  function getOutputValue(
-    editorInstance: Editor,
-  ): string | Record<string, unknown> {
+  function getOutputValue(editorInstance: Editor): string | Record<string, unknown> {
     switch (props.outputFormat) {
       case 'json':
         return editorInstance.getJSON() as Record<string, unknown>;
@@ -144,8 +134,7 @@ export function useEditorCore(
 
       // 比较新值与当前内容，避免不必要的 setContent（会重置光标）
       if (typeof newVal === 'string') {
-        const current =
-          props.outputFormat === 'text' ? ed.getText() : ed.getHTML();
+        const current = props.outputFormat === 'text' ? ed.getText() : ed.getHTML();
         if (newVal === current) return;
       } else if (newVal !== undefined) {
         if (JSON.stringify(newVal) === JSON.stringify(ed.getJSON())) return;

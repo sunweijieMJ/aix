@@ -22,10 +22,7 @@ const log = logger.child('LocalProvider');
 /**
  * 将来源字符串/对象标准化为文件路径
  */
-function resolveLocalPath(
-  source: string | BaselineSource,
-  basePath?: string,
-): string {
+function resolveLocalPath(source: string | BaselineSource, basePath?: string): string {
   const filePath = typeof source === 'string' ? source : source.source;
 
   if (path.isAbsolute(filePath)) {
@@ -59,9 +56,7 @@ export class LocalProvider implements BaselineProvider {
         // 后续运行应复用它作为基准图
         const outputExists = await pathExists(outputPath);
         if (outputExists) {
-          log.debug(
-            `Source not found, using existing output as baseline: ${outputPath}`,
-          );
+          log.debug(`Source not found, using existing output as baseline: ${outputPath}`);
           const [dimensions, hash] = await Promise.all([
             getImageDimensions(outputPath),
             hashFile(outputPath),

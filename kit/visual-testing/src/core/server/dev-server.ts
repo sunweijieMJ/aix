@@ -156,9 +156,7 @@ export class DevServer {
       await new Promise((resolve) => setTimeout(resolve, checkInterval));
     }
 
-    throw new Error(
-      `Dev server did not start within ${timeout}ms. Check your server command.`,
-    );
+    throw new Error(`Dev server did not start within ${timeout}ms. Check your server command.`);
   }
 
   /**

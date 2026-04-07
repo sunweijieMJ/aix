@@ -1,9 +1,6 @@
 import { WebSocket } from 'ws';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  createWebSocketTransport,
-  WebSocketTransport,
-} from '../src/transports/websocket';
+import { createWebSocketTransport, WebSocketTransport } from '../src/transports/websocket';
 
 // 使用端口计数器，每个测试使用不同端口避免冲突
 let portCounter = 19800;

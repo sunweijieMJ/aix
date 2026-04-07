@@ -8,11 +8,7 @@
  */
 
 import { Command } from 'commander';
-import {
-  registerInitCommand,
-  registerSyncCommand,
-  registerTestCommand,
-} from './cli/commands';
+import { registerInitCommand, registerSyncCommand, registerTestCommand } from './cli/commands';
 
 const program = new Command();
 

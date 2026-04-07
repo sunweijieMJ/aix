@@ -2,12 +2,7 @@
  * 报告生成器类型定义
  */
 
-import type {
-  Severity,
-  DifferenceType,
-  AnalyzeResult,
-  FixSuggestion,
-} from '../../types/llm';
+import type { Severity, DifferenceType, AnalyzeResult, FixSuggestion } from '../../types/llm';
 import type { CompareResult } from '../../types/comparison';
 
 /**
@@ -155,9 +150,5 @@ export interface ReportContext {
  */
 export interface Reporter {
   readonly name: string;
-  generate(
-    results: TestResult[],
-    outputDir: string,
-    context?: ReportContext,
-  ): Promise<string>;
+  generate(results: TestResult[], outputDir: string, context?: ReportContext): Promise<string>;
 }

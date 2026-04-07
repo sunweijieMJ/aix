@@ -41,10 +41,7 @@ interface RestoreOptions {
   dryRun: boolean;
 }
 
-async function runRestore(
-  filePath: string | undefined,
-  opts: RestoreOptions,
-): Promise<void> {
+async function runRestore(filePath: string | undefined, opts: RestoreOptions): Promise<void> {
   const projectRoot = path.resolve(opts.target);
 
   const lock = await readLockFile(projectRoot);
@@ -84,10 +81,10 @@ async function runRestore(
   const { initConfig, userConfig } = persistedToInitConfig(config, projectName);
 
   // 生成所有文件内容
-  const allFiles: PlatformOutputFile[] = await generateAllPlatformFiles(
-    initConfig,
-    { projectRoot, userConfig },
-  );
+  const allFiles: PlatformOutputFile[] = await generateAllPlatformFiles(initConfig, {
+    projectRoot,
+    userConfig,
+  });
 
   // 过滤出需要恢复的文件
   const restoreSet = new Set(filesToRestore);

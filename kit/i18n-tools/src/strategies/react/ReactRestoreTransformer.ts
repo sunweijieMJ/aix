@@ -5,11 +5,7 @@ import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
 import { ReactImportManager } from './ReactImportManager';
 import { ReactTextExtractor } from './ReactTextExtractor';
 import { MessageProcessor } from '../../utils/message-processor';
-import type {
-  MessageInfo,
-  TransformContext,
-  LocaleMap,
-} from '../../utils/types';
+import type { MessageInfo, TransformContext, LocaleMap } from '../../utils/types';
 
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
 import type { ReactI18nLibrary } from './libraries';
@@ -42,11 +38,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     // 提取 defineMessages 中的消息定义
     ts.forEachChild(sourceFile, function visit(node: ts.Node) {
       if (ts.isCallExpression(node)) {
-        ReactTextExtractor.extractDefineMessages(
-          node,
-          context.definedMessages,
-          sourceFile,
-        );
+        ReactTextExtractor.extractDefineMessages(node, context.definedMessages, sourceFile);
       }
       ts.forEachChild(node, visit);
     });
@@ -61,8 +53,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
     let transformedCode = printer.printFile(result.transformed[0]!);
-    transformedCode =
-      ReactImportManager.convertUnicodeToChineseInCode(transformedCode);
+    transformedCode = ReactImportManager.convertUnicodeToChineseInCode(transformedCode);
 
     result.dispose();
 
@@ -82,27 +73,18 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return null;
     }
 
-    const messageInfo = this.extractTranslationCallInfo(
-      node,
-      definedMessages,
-      sourceFile,
-    );
+    const messageInfo = this.extractTranslationCallInfo(node, definedMessages, sourceFile);
     if (!MessageProcessor.isValidMessage(messageInfo)) {
       return null;
     }
 
-    const messageTemplate = messageInfo.id
-      ? localeMap[messageInfo.id]
-      : undefined;
+    const messageTemplate = messageInfo.id ? localeMap[messageInfo.id] : undefined;
     const templateToUse = messageTemplate ?? messageInfo.defaultMessage;
     if (templateToUse === undefined) {
       return null;
     }
 
-    return CommonASTUtils.createStringOrTemplateNode(
-      templateToUse,
-      messageInfo.values,
-    );
+    return CommonASTUtils.createStringOrTemplateNode(templateToUse, messageInfo.values);
   }
 
   /**
@@ -115,11 +97,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   ): MessageInfo {
     // react-intl: intl.formatMessage({ id: 'key' }, { values })
     if (this.library.packageName === 'react-intl') {
-      return ReactASTUtils.extractFormatMessageInfo(
-        node,
-        definedMessages,
-        sourceFile,
-      );
+      return ReactASTUtils.extractFormatMessageInfo(node, definedMessages, sourceFile);
     }
 
     // react-i18next: t('key', { values }) 或 t('namespace:key', { values })
@@ -179,25 +157,16 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return null;
     }
 
-    const messageInfo = this.extractJSXComponentInfo(
-      openingElement,
-      definedMessages,
-      sourceFile,
-    );
+    const messageInfo = this.extractJSXComponentInfo(openingElement, definedMessages, sourceFile);
     if (!MessageProcessor.isValidMessage(messageInfo)) {
       return null;
     }
 
-    const messageTemplate = messageInfo.id
-      ? localeMap[messageInfo.id]
-      : undefined;
+    const messageTemplate = messageInfo.id ? localeMap[messageInfo.id] : undefined;
     const finalText = messageTemplate ?? messageInfo.defaultMessage ?? '';
 
     if (messageInfo.values && Object.keys(messageInfo.values).length > 0) {
-      return CommonASTUtils.createStringOrTemplateNode(
-        finalText,
-        messageInfo.values,
-      );
+      return CommonASTUtils.createStringOrTemplateNode(finalText, messageInfo.values);
     }
 
     return ts.factory.createJsxText(finalText, false);
@@ -213,11 +182,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   ): MessageInfo {
     // react-intl: <FormattedMessage id="key" defaultMessage="text" values={{ }} />
     if (this.library.packageName === 'react-intl') {
-      return ReactASTUtils.extractFormattedMessageInfo(
-        openingElement,
-        definedMessages,
-        sourceFile,
-      );
+      return ReactASTUtils.extractFormattedMessageInfo(openingElement, definedMessages, sourceFile);
     }
 
     // react-i18next: <Trans i18nKey="key" defaults="text" values={{ }} />
@@ -262,9 +227,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   /**
    * 创建 AST 转换器
    */
-  private createTransformer(
-    context: TransformContext,
-  ): ts.TransformerFactory<ts.SourceFile> {
+  private createTransformer(context: TransformContext): ts.TransformerFactory<ts.SourceFile> {
     const library = this.library;
     const tImport = this.tImport;
 
@@ -272,9 +235,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     function prepass(node: ts.Node) {
       if (ts.isVariableDeclaration(node)) {
         if (ts.isIdentifier(node.name) && node.initializer) {
-          const wrappedComponent = library.getHOCWrappedComponent(
-            node.initializer,
-          );
+          const wrappedComponent = library.getHOCWrappedComponent(node.initializer);
           if (wrappedComponent) {
             context.componentNameMap.set(node.name.text, wrappedComponent);
           }
@@ -293,18 +254,11 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
         if (currentNode !== node) context.hasChanges = true;
 
         // 2. 解除 HOC
-        currentNode = ReactImportManager.unwrapHOC(
-          currentNode,
-          context,
-          library,
-        );
+        currentNode = ReactImportManager.unwrapHOC(currentNode, context, library);
         if (currentNode !== node) context.hasChanges = true;
 
         // 3. 清理 HOC Props 类型引用
-        currentNode = ReactImportManager.cleanupHOCPropsType(
-          currentNode,
-          library,
-        );
+        currentNode = ReactImportManager.cleanupHOCPropsType(currentNode, library);
         if (currentNode !== node) context.hasChanges = true;
 
         let nodeChanged = false;
@@ -348,10 +302,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
               if (newInitializer !== prop.initializer) {
                 transformedProperties.push(
-                  ts.factory.createPropertyAssignment(
-                    prop.name,
-                    newInitializer,
-                  ),
+                  ts.factory.createPropertyAssignment(prop.name, newInitializer),
                 );
               } else {
                 transformedProperties.push(prop);
@@ -363,19 +314,14 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
           if (objectChanged) {
             context.hasChanges = true;
-            currentNode = ts.factory.createObjectLiteralExpression(
-              transformedProperties,
-            );
+            currentNode = ts.factory.createObjectLiteralExpression(transformedProperties);
             nodeChanged = true;
           }
         }
 
         if (!nodeChanged) {
           // 转换翻译 JSX 组件
-          if (
-            ts.isJsxElement(currentNode) ||
-            ts.isJsxSelfClosingElement(currentNode)
-          ) {
+          if (ts.isJsxElement(currentNode) || ts.isJsxSelfClosingElement(currentNode)) {
             const transformedNode = this.transformTranslationComponent(
               currentNode,
               context.localeMap,
@@ -390,11 +336,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
           // 清理导入
           if (ts.isImportDeclaration(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupImports(
-              currentNode,
-              tImport,
-              library,
-            );
+            const cleanedNode = ReactImportManager.cleanupImports(currentNode, tImport, library);
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
@@ -403,10 +345,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
           // 清理变量声明
           if (ts.isVariableStatement(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupVariableStatements(
-              currentNode,
-              library,
-            );
+            const cleanedNode = ReactImportManager.cleanupVariableStatements(currentNode, library);
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
@@ -415,10 +354,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
           // 清理Hook依赖数组
           if (ts.isCallExpression(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupHookDependencies(
-              currentNode,
-              library,
-            );
+            const cleanedNode = ReactImportManager.cleanupHookDependencies(currentNode, library);
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
@@ -429,8 +365,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
         return ts.visitEachChild(currentNode, visit, transformationContext);
       };
 
-      return (sourceFile: ts.SourceFile) =>
-        ts.visitNode(sourceFile, visit) as ts.SourceFile;
+      return (sourceFile: ts.SourceFile) => ts.visitNode(sourceFile, visit) as ts.SourceFile;
     };
   }
 }

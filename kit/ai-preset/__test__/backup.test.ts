@@ -2,11 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {
-  createBackup,
-  restoreFromBackup,
-  hasBackup,
-} from '../src/core/backup.js';
+import { createBackup, restoreFromBackup, hasBackup } from '../src/core/backup.js';
 
 describe('backup', () => {
   let tempDir: string;
@@ -34,10 +30,7 @@ describe('backup', () => {
   });
 
   it('createBackup 创建备份', async () => {
-    const count = await createBackup(tempDir, [
-      'CLAUDE.md',
-      '.claude/agents/test.md',
-    ]);
+    const count = await createBackup(tempDir, ['CLAUDE.md', '.claude/agents/test.md']);
     expect(count).toBe(2);
     expect(hasBackup(tempDir)).toBe(true);
   });

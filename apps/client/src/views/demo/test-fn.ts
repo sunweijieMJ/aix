@@ -85,25 +85,16 @@ export const formatDate = (date: Date): string => {
 };
 
 // 6. 模板字符串函数
-export const generateWelcomeMessage = (
-  userName: string,
-  loginCount: number,
-): string => {
+export const generateWelcomeMessage = (userName: string, loginCount: number): string => {
   return `欢迎回来，${userName}！这是您第${loginCount}次登录`;
 };
 
-export const generateProgressMessage = (
-  current: number,
-  total: number,
-): string => {
+export const generateProgressMessage = (current: number, total: number): string => {
   const percentage = Math.round((current / total) * 100);
   return `进度：${current}/${total} (${percentage}%)`;
 };
 
-export const generateTimeRangeMessage = (
-  startTime: string,
-  endTime: string,
-): string => {
+export const generateTimeRangeMessage = (startTime: string, endTime: string): string => {
   return `时间范围：从${startTime}到${endTime}`;
 };
 
@@ -120,9 +111,7 @@ export const logApiCall = (url: string, method: string): void => {
 };
 
 // 8. 技术性函数（包含技术术语，部分不应该被提取）
-export const validateApiResponse = (
-  response: any,
-): { valid: boolean; message: string } => {
+export const validateApiResponse = (response: any): { valid: boolean; message: string } => {
   if (!response) {
     return { valid: false, message: '响应数据为空' };
   }
@@ -277,8 +266,7 @@ export const checkUserPermission = (
     viewer: ['read'], // 不应该被提取
   };
 
-  const permissions =
-    rolePermissions[userRole as keyof typeof rolePermissions] || [];
+  const permissions = rolePermissions[userRole as keyof typeof rolePermissions] || [];
 
   if (permissions.includes(requiredPermission)) {
     return { allowed: true, message: '权限验证通过' };
@@ -311,9 +299,7 @@ export const validateFormData = (
 };
 
 // 17. 文件处理函数
-export const validateFileUpload = (
-  file: File,
-): { valid: boolean; message: string } => {
+export const validateFileUpload = (file: File): { valid: boolean; message: string } => {
   const maxSize = 10 * 1024 * 1024; // 10MB，不应该被提取
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif']; // 不应该被提取
 
@@ -343,10 +329,7 @@ export const formatFileSize = (bytes: number): string => {
   return `${size.toFixed(1)} ${units[unitIndex]}`;
 };
 
-export const formatCurrency = (
-  amount: number,
-  currency: string = 'CNY',
-): string => {
+export const formatCurrency = (amount: number, currency: string = 'CNY'): string => {
   const formatter = new Intl.NumberFormat('zh-CN', {
     style: 'currency',
     currency: currency, // 不应该被提取
@@ -419,10 +402,7 @@ export const processApiResponse = (
 };
 
 // 21. 国际化相关函数（模拟已经国际化的函数）
-export const getLocalizedMessage = (
-  key: string,
-  params?: Record<string, any>,
-): string => {
+export const getLocalizedMessage = (key: string, params?: Record<string, any>): string => {
   // 模拟已经国际化的函数，这里的中文应该被提取
   const messages: Record<string, string> = {
     'user.welcome': '欢迎使用系统',
@@ -451,19 +431,14 @@ export const getConditionalMessage = (
   return condition ? trueMessage : falseMessage;
 };
 
-export const getUserStatusMessage = (
-  isOnline: boolean,
-  lastSeen?: Date,
-): string => {
+export const getUserStatusMessage = (isOnline: boolean, lastSeen?: Date): string => {
   if (isOnline) {
     return '当前在线';
   }
 
   if (lastSeen) {
     const now = new Date();
-    const diffMinutes = Math.floor(
-      (now.getTime() - lastSeen.getTime()) / (1000 * 60),
-    );
+    const diffMinutes = Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60));
 
     if (diffMinutes < 60) {
       return `${diffMinutes}分钟前在线`;
@@ -598,14 +573,8 @@ export const processOrderData = (orderData: {
 }): { summary: string; details: string[] } => {
   console.log(`Processing order ${orderData.id}`); // 不应该被提取
 
-  const totalItems = orderData.items.reduce(
-    (sum, item) => sum + item.quantity,
-    0,
-  );
-  const totalAmount = orderData.items.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0,
-  );
+  const totalItems = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalAmount = orderData.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   let statusText: string;
   switch (orderData.status) {

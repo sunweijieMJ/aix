@@ -194,9 +194,7 @@ export const createChangeset = async (
   // 4. 显示摘要并确认
   console.log(chalk.cyan('\n📋 变更集摘要:'));
   console.log(chalk.gray(`版本类型: ${bumpType.toUpperCase()}`));
-  console.log(
-    chalk.gray(`受影响的包: ${chalk.white(selectedPackages.join(', '))}`),
-  );
+  console.log(chalk.gray(`受影响的包: ${chalk.white(selectedPackages.join(', '))}`));
   console.log(chalk.gray(`变更说明: ${chalk.white(summary)}\n`));
 
   if (!(await confirm('确认创建此 changeset?', true, skipPrompts))) {
@@ -206,11 +204,7 @@ export const createChangeset = async (
 
   // 5. 生成 changeset 文件
   const changesetId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  const changesetPath = path.join(
-    projectRoot,
-    '.changeset',
-    `${changesetId}.md`,
-  );
+  const changesetPath = path.join(projectRoot, '.changeset', `${changesetId}.md`);
 
   const changesetContent = `---
 ${selectedPackages.map((pkg: string) => `"${pkg}": ${bumpType}`).join('\n')}
@@ -226,10 +220,7 @@ ${summary}
 };
 
 // 更新版本
-export const updateVersion = async (
-  projectRoot: string,
-  skipPrompts = false,
-) => {
+export const updateVersion = async (projectRoot: string, skipPrompts = false) => {
   console.log(chalk.blue('更新包版本...'));
 
   run('npx changeset version', projectRoot);
@@ -242,22 +233,12 @@ export const updateVersion = async (
     // 用户取消，提供回滚选项
     console.log(chalk.yellow('用户取消发布流程'));
     console.log(
-      chalk.gray(
-        '提示：回滚操作会使用 git stash 保存所有未提交的更改（不只是版本变更）',
-      ),
+      chalk.gray('提示：回滚操作会使用 git stash 保存所有未提交的更改（不只是版本变更）'),
     );
-    if (
-      await confirm(
-        '是否回滚版本变更? (将 stash 所有未提交的更改)',
-        true,
-        skipPrompts,
-      )
-    ) {
+    if (await confirm('是否回滚版本变更? (将 stash 所有未提交的更改)', true, skipPrompts)) {
       run('git stash push -m "changeset version rollback"', projectRoot);
       console.log(
-        chalk.green(
-          '✅ 已使用 git stash 保存所有未提交的更改，可通过 git stash pop 恢复',
-        ),
+        chalk.green('✅ 已使用 git stash 保存所有未提交的更改，可通过 git stash pop 恢复'),
       );
     }
     throw new Error('用户取消发布流程');
@@ -265,18 +246,14 @@ export const updateVersion = async (
 };
 
 // 从 changeset 文件中解析变更的包名
-export const getChangedPackages = async (
-  projectRoot: string,
-): Promise<Set<string>> => {
+export const getChangedPackages = async (projectRoot: string): Promise<Set<string>> => {
   const changesetDir = path.join(projectRoot, '.changeset');
   if (!fs.existsSync(changesetDir)) {
     return new Set();
   }
 
   const files = await readdir(changesetDir);
-  const mdFiles = files.filter(
-    (file) => file.endsWith('.md') && file !== 'README.md',
-  );
+  const mdFiles = files.filter((file) => file.endsWith('.md') && file !== 'README.md');
 
   const packages = new Set<string>();
 
@@ -310,9 +287,7 @@ export const getVersionBumpedPackages = (projectRoot: string): Set<string> => {
 
   // 动态生成匹配正则：(packages|internal)/[^/]+/package.json
   const workspaceDirsPattern = WORKSPACE_DIRS.join('|');
-  const packageJsonRegex = new RegExp(
-    `^(${workspaceDirsPattern})/[^/]+/package\\.json$`,
-  );
+  const packageJsonRegex = new RegExp(`^(${workspaceDirsPattern})/[^/]+/package\\.json$`);
 
   for (const file of diff.trim().split('\n').filter(Boolean)) {
     // 规范化路径分隔符，确保 Windows 兼容
@@ -333,9 +308,7 @@ export const getVersionBumpedPackages = (projectRoot: string): Set<string> => {
 };
 
 // 检测需要构建的包（多级 fallback）
-export const detectPackages = async (
-  projectRoot: string,
-): Promise<Set<string>> => {
+export const detectPackages = async (projectRoot: string): Promise<Set<string>> => {
   // 1. 从 changeset md 文件解析（优先级最高，确保只构建用户明确指定的包）
   const fromChangeset = await getChangedPackages(projectRoot);
   if (fromChangeset.size) {
@@ -353,9 +326,7 @@ export const detectPackages = async (
   // 正确的流程是：changeset -> changeset version -> changeset publish
   // 只构建 changeset 中明确指定的包，确保发布的准确性
 
-  throw new Error(
-    '未找到需要构建的包。请确认是否已创建 changeset 或更新版本号。',
-  );
+  throw new Error('未找到需要构建的包。请确认是否已创建 changeset 或更新版本号。');
 };
 
 // 获取当前预发布 tag（beta/alpha），正式发布返回 undefined

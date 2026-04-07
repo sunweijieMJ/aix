@@ -123,8 +123,7 @@ describe('useSegment utility functions', () => {
     });
 
     it('should segment long text', () => {
-      const longText =
-        '这是第一句话。这是第二句话。这是第三句话。这是第四句话。';
+      const longText = '这是第一句话。这是第二句话。这是第三句话。这是第四句话。';
       const result = segmentText(longText, {
         autoSegment: true,
         fixedHeight: 32, // Only fits 1 line
@@ -143,11 +142,9 @@ describe('useSegment utility functions', () => {
         maxWidth: 100, // 5 Chinese chars per line
       });
       // Should split at punctuation marks
-      expect(
-        result.some(
-          (s) => s.includes('。') || s.includes('！') || s.includes('？'),
-        ),
-      ).toBe(true);
+      expect(result.some((s) => s.includes('。') || s.includes('！') || s.includes('？'))).toBe(
+        true,
+      );
     });
 
     it('should handle text without punctuation', () => {
@@ -197,17 +194,16 @@ describe('useSegment composable', () => {
     const maxWidth = ref<number | string>(1200);
     const segmentDuration = ref(3000);
 
-    const { currentSegmentIndex, segmentCount, currentSegmentText } =
-      useSegment({
-        text,
-        currentCue,
-        autoSegment,
-        visible,
-        fixedHeight,
-        fontSize,
-        maxWidth,
-        segmentDuration,
-      });
+    const { currentSegmentIndex, segmentCount, currentSegmentText } = useSegment({
+      text,
+      currentCue,
+      autoSegment,
+      visible,
+      fixedHeight,
+      fontSize,
+      maxWidth,
+      segmentDuration,
+    });
 
     expect(currentSegmentIndex.value).toBe(0);
     expect(segmentCount.value).toBe(1);

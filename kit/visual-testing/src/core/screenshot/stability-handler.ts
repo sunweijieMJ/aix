@@ -13,11 +13,7 @@ import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type {
-  RetryOptions,
-  StabilityConfig,
-  WaitStrategy,
-} from '../../types/screenshot';
+import type { RetryOptions, StabilityConfig, WaitStrategy } from '../../types/screenshot';
 import { logger } from '../../utils/logger';
 import { removeFile } from '../../utils/file';
 
@@ -114,11 +110,7 @@ export class StabilityHandler {
       // 比对最后两张截图
       const prev = screenshots[screenshots.length - 2]!;
       const last = screenshots[screenshots.length - 1]!;
-      const isConsistent = await this.checkConsistency(
-        prev,
-        last,
-        opts.consistencyThreshold,
-      );
+      const isConsistent = await this.checkConsistency(prev, last, opts.consistencyThreshold);
 
       if (!isConsistent) {
         throw new Error(
@@ -134,9 +126,7 @@ export class StabilityHandler {
     } finally {
       // 清理临时截图
       await Promise.all(
-        screenshots
-          .filter((s) => s !== outputPath)
-          .map((s) => removeFile(s).catch(() => {})),
+        screenshots.filter((s) => s !== outputPath).map((s) => removeFile(s).catch(() => {})),
       );
     }
   }
@@ -151,10 +141,7 @@ export class StabilityHandler {
     path2: string,
     threshold: number,
   ): Promise<boolean> {
-    const [buf1, buf2] = await Promise.all([
-      fs.readFile(path1),
-      fs.readFile(path2),
-    ]);
+    const [buf1, buf2] = await Promise.all([fs.readFile(path1), fs.readFile(path2)]);
     const img1 = PNG.sync.read(buf1);
     const img2 = PNG.sync.read(buf2);
 
@@ -167,16 +154,9 @@ export class StabilityHandler {
     }
 
     const totalPixels = img1.width * img1.height;
-    const diffCount = pixelmatch(
-      img1.data,
-      img2.data,
-      undefined,
-      img1.width,
-      img1.height,
-      {
-        threshold: 0.1,
-      },
-    );
+    const diffCount = pixelmatch(img1.data, img2.data, undefined, img1.width, img1.height, {
+      threshold: 0.1,
+    });
 
     const diffRatio = diffCount / totalPixels;
     const isConsistent = diffRatio <= threshold;
@@ -249,9 +229,7 @@ export class StabilityHandler {
   private async waitForAnimationsComplete(page: Page): Promise<void> {
     try {
       await page.evaluate(() => {
-        return Promise.all(
-          document.getAnimations().map((animation) => animation.finished),
-        );
+        return Promise.all(document.getAnimations().map((animation) => animation.finished));
       });
       log.debug('All animations completed');
     } catch {
@@ -262,10 +240,7 @@ export class StabilityHandler {
   /**
    * 执行自定义等待策略
    */
-  private async executeWaitStrategies(
-    page: Page,
-    strategies: WaitStrategy[],
-  ): Promise<void> {
+  private async executeWaitStrategies(page: Page, strategies: WaitStrategy[]): Promise<void> {
     for (const strategy of strategies) {
       switch (strategy.type) {
         case 'selector':

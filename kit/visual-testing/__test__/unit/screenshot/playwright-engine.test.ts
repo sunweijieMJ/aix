@@ -52,9 +52,7 @@ vi.mock('../../../src/utils/file', () => ({
   removeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
-function createConfig(
-  overrides: Partial<VisualTestConfig> = {},
-): VisualTestConfig {
+function createConfig(overrides: Partial<VisualTestConfig> = {}): VisualTestConfig {
   return {
     name: 'test',
     directories: {
@@ -276,9 +274,7 @@ describe('PlaywrightScreenshotEngine', () => {
       ).rejects.toThrow('timeout');
 
       // goto is called for navigation + PagePool reset (about:blank), so count navigation calls
-      const navCalls = mockPage.goto.mock.calls.filter(
-        (c: unknown[]) => c[0] !== 'about:blank',
-      );
+      const navCalls = mockPage.goto.mock.calls.filter((c: unknown[]) => c[0] !== 'about:blank');
       expect(navCalls.length).toBe(3);
     });
   });
@@ -296,10 +292,7 @@ describe('PlaywrightScreenshotEngine', () => {
       await engine.initialize();
 
       // Call close twice concurrently
-      const [r1, r2] = await Promise.allSettled([
-        engine.close(),
-        engine.close(),
-      ]);
+      const [r1, r2] = await Promise.allSettled([engine.close(), engine.close()]);
 
       expect(r1.status).toBe('fulfilled');
       expect(r2.status).toBe('fulfilled');

@@ -51,9 +51,7 @@ export abstract class BaseProcessor {
    * @param operation - 操作名称
    */
   protected logOperationComplete(operation: string): void {
-    LoggerUtils.success(
-      `✅ ${operation}完成 (${this.getDirectoryDescription()})`,
-    );
+    LoggerUtils.success(`✅ ${operation}完成 (${this.getDirectoryDescription()})`);
   }
 
   /**
@@ -90,9 +88,7 @@ export abstract class BaseProcessor {
    * 模板方法：包装子类逻辑，提供日志和错误处理
    * 子类应覆写 execute() 并在内部调用 executeWithLifecycle()
    */
-  protected async executeWithLifecycle(
-    fn: () => Promise<void> | void,
-  ): Promise<void> {
+  protected async executeWithLifecycle(fn: () => Promise<void> | void): Promise<void> {
     const operationName = this.getOperationName();
     this.logOperationStart(operationName);
     try {

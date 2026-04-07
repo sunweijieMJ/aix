@@ -31,10 +31,7 @@ export function registerDiffCommand(program: Command): void {
     });
 }
 
-async function runDiff(
-  filePath: string | undefined,
-  projectRoot: string,
-): Promise<void> {
+async function runDiff(filePath: string | undefined, projectRoot: string): Promise<void> {
   const lock = await readLockFile(projectRoot);
   if (!lock) {
     throw new Error('未找到 .ai-preset/lock.json，请先运行 ai-preset init');

@@ -140,12 +140,7 @@ export const BASE_TOKEN_GROUPS = {
   ],
   '字体族Token (P1)': ['tokenFontFamily', 'tokenFontFamilyCode'],
   '边框Token (P1)': ['tokenLineWidth', 'tokenLineType'],
-  '阴影Token (P0)': [
-    'tokenShadow1',
-    'tokenShadow2',
-    'tokenShadow3',
-    'tokenShadow4',
-  ],
+  '阴影Token (P0)': ['tokenShadow1', 'tokenShadow2', 'tokenShadow3', 'tokenShadow4'],
   'z-index层级Token (P0)': [
     'tokenZIndexBase',
     'tokenZIndexPopup',
@@ -273,17 +268,8 @@ export const SEMANTIC_TOKEN_GROUPS = {
     'colorFillContent',
     'colorFillAlter',
   ],
-  边框色: [
-    'colorBorder',
-    'colorBorderSecondary',
-    'colorBorderDisabled',
-    'colorSplit',
-  ],
-  控制项颜色: [
-    'controlItemBgHover',
-    'controlItemBgActive',
-    'controlItemBgActiveHover',
-  ],
+  边框色: ['colorBorder', 'colorBorderSecondary', 'colorBorderDisabled', 'colorSplit'],
+  控制项颜色: ['controlItemBgHover', 'controlItemBgActive', 'controlItemBgActiveHover'],
   链接色: ['colorLink', 'colorLinkHover', 'colorLinkActive'],
   图标色: ['colorIcon', 'colorIconHover'],
   '间距 - 语义化命名': [
@@ -312,12 +298,7 @@ export const SEMANTIC_TOKEN_GROUPS = {
     'marginXL',
     'marginXXL',
   ],
-  控制高度: [
-    'controlHeightXS',
-    'controlHeightSM',
-    'controlHeight',
-    'controlHeightLG',
-  ],
+  控制高度: ['controlHeightXS', 'controlHeightSM', 'controlHeight', 'controlHeightLG'],
   圆角: ['borderRadiusXS', 'borderRadiusSM', 'borderRadius', 'borderRadiusLG'],
   字号: [
     'fontSizeXS',
@@ -343,14 +324,7 @@ export const SEMANTIC_TOKEN_GROUPS = {
   ],
   焦点环: ['controlOutline', 'controlOutlineWidth'],
   实心背景色: ['colorBgSolid', 'colorBgSolidHover', 'colorBgSolidActive'],
-  '阴影 (P0)': [
-    'shadowXS',
-    'shadowSM',
-    'shadow',
-    'shadowMD',
-    'shadowLG',
-    'shadowXL',
-  ],
+  '阴影 (P0)': ['shadowXS', 'shadowSM', 'shadow', 'shadowMD', 'shadowLG', 'shadowXL'],
   'z-index层级 (P0)': [
     'zIndexBase',
     'zIndexPopupBase',

@@ -159,10 +159,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     return uses;
   }
 
-  isTranslationAvailableInScope(
-    node: ts.Node,
-    sourceFile: ts.SourceFile,
-  ): boolean {
+  isTranslationAvailableInScope(node: ts.Node, sourceFile: ts.SourceFile): boolean {
     const text = node.getText(sourceFile);
     return (
       /const\s+intl\s*=\s*useIntl/.test(text) ||
@@ -185,10 +182,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
           return true;
         }
         // defineMessages(...)
-        if (
-          ts.isIdentifier(expression) &&
-          expression.text === 'defineMessages'
-        ) {
+        if (ts.isIdentifier(expression) && expression.text === 'defineMessages') {
           return true;
         }
       }
@@ -196,8 +190,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
       if (ts.isJsxAttribute(parent)) {
         const jsxElement = parent.parent.parent;
         if (
-          (ts.isJsxOpeningElement(jsxElement) ||
-            ts.isJsxSelfClosingElement(jsxElement)) &&
+          (ts.isJsxOpeningElement(jsxElement) || ts.isJsxSelfClosingElement(jsxElement)) &&
           ts.isIdentifier(jsxElement.tagName) &&
           jsxElement.tagName.text === 'FormattedMessage'
         ) {
@@ -213,11 +206,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
           return true;
         }
       }
-      if (
-        ts.isBlock(parent) ||
-        ts.isFunctionLike(parent) ||
-        ts.isClassLike(parent)
-      ) {
+      if (ts.isBlock(parent) || ts.isFunctionLike(parent) || ts.isClassLike(parent)) {
         return false;
       }
       parent = parent.parent;

@@ -66,13 +66,12 @@ const emit = defineEmits<SubtitleEmits>();
 const currentTimeRef = toRef(() => props.currentTime ?? 0);
 
 // 使用字幕 Composable
-const { cues, currentCue, currentIndex, loading, error, load, getCueAtTime } =
-  useSubtitle({
-    currentTime: currentTimeRef,
-    onChange: (cue, index) => {
-      emit('change', cue, index);
-    },
-  });
+const { cues, currentCue, currentIndex, loading, error, load, getCueAtTime } = useSubtitle({
+  currentTime: currentTimeRef,
+  onChange: (cue, index) => {
+    emit('change', cue, index);
+  },
+});
 
 // 监听 source 变化，重新加载
 watch(
@@ -126,17 +125,13 @@ const { currentSegmentIndex, segmentCount, currentSegmentText } = useSegment({
 
 // singleLine 模式是否有效（需要同时设置 fixedHeight）
 const isSingleLineEffective = computed(() => {
-  return (
-    props.singleLine && props.fixedHeight !== undefined && props.fixedHeight > 0
-  );
+  return props.singleLine && props.fixedHeight !== undefined && props.fixedHeight > 0;
 });
 
 // 字幕样式
 const subtitleStyle = computed(() => {
-  const fontSize =
-    typeof props.fontSize === 'number' ? `${props.fontSize}px` : props.fontSize;
-  const maxWidth =
-    typeof props.maxWidth === 'number' ? `${props.maxWidth}px` : props.maxWidth;
+  const fontSize = typeof props.fontSize === 'number' ? `${props.fontSize}px` : props.fontSize;
+  const maxWidth = typeof props.maxWidth === 'number' ? `${props.maxWidth}px` : props.maxWidth;
   const fixedHeight = props.fixedHeight ? `${props.fixedHeight}px` : undefined;
 
   return {
@@ -219,12 +214,7 @@ defineExpose<SubtitleExpose>({
     // 设计稿: opacity: 0.3; background: linear-gradient(90deg, rgba(0,0,0,0) 0%, #000 47.91%, rgba(0,0,0,0) 100%)
     background: var(
       --subtitle-bg-solid,
-      linear-gradient(
-        90deg,
-        rgb(0 0 0 / 0) 0%,
-        rgb(0 0 0 / 0.3) 47.91%,
-        rgb(0 0 0 / 0) 100%
-      )
+      linear-gradient(90deg, rgb(0 0 0 / 0) 0%, rgb(0 0 0 / 0.3) 47.91%, rgb(0 0 0 / 0) 100%)
     );
   }
 

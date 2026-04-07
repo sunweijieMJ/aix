@@ -67,8 +67,7 @@ function createFailedResult(
       ],
       assessment: {
         matchScore: 100 - mismatch,
-        grade:
-          mismatch > 30 ? 'F' : mismatch > 20 ? 'D' : mismatch > 10 ? 'C' : 'B',
+        grade: mismatch > 30 ? 'F' : mismatch > 20 ? 'D' : mismatch > 10 ? 'C' : 'B',
         acceptable: mismatch < 20,
         summary: `${mismatch}% mismatch detected`,
       },
@@ -209,10 +208,7 @@ describe('ConclusionReporter', () => {
     });
 
     it('should generate meaningful oneLiner', () => {
-      const results = [
-        createTestResult(),
-        createFailedResult('button', 'primary', 15, 'critical'),
-      ];
+      const results = [createTestResult(), createFailedResult('button', 'primary', 15, 'critical')];
 
       const report = reporter.buildReport(results);
       expect(report.summary.oneLiner).toContain('1/2');

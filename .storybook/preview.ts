@@ -24,10 +24,7 @@ const preview: Preview = {
   decorators: [
     (story, context) => {
       // 同步 Storybook 工具栏的语言设置
-      if (
-        context.globals.locale &&
-        context.globals.locale !== localeContext.locale
-      ) {
+      if (context.globals.locale && context.globals.locale !== localeContext.locale) {
         localeContext.setLocale(context.globals.locale);
       }
 

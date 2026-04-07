@@ -8,12 +8,7 @@
 
 import OpenAI from 'openai';
 import { logger } from '../../../utils/logger';
-import type {
-  LLMConfig,
-  VisionAdapter,
-  ImageInput,
-  VisionCallResult,
-} from '../../../types/llm';
+import type { LLMConfig, VisionAdapter, ImageInput, VisionCallResult } from '../../../types/llm';
 
 const log = logger.child('openai-adapter');
 
@@ -45,8 +40,7 @@ export class OpenAIAdapter implements VisionAdapter {
     },
   ): Promise<VisionCallResult> {
     const content: Array<
-      | { type: 'text'; text: string }
-      | { type: 'image_url'; image_url: { url: string } }
+      { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }
     > = [];
 
     for (const img of images) {

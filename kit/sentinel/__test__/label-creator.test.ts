@@ -15,9 +15,7 @@ import { createLabels } from '../src/core/label-creator.js';
 import { logger } from '../src/utils/logger.js';
 import type { PlatformAdapter } from '../src/platform/types.js';
 
-function createMockAdapter(
-  overrides?: Partial<PlatformAdapter>,
-): PlatformAdapter {
+function createMockAdapter(overrides?: Partial<PlatformAdapter>): PlatformAdapter {
   return {
     platform: 'github',
     getPipelineDir: (target: string) => `${target}/.github/workflows`,
@@ -42,12 +40,7 @@ describe('createLabels', () => {
   it('should create all labels successfully', async () => {
     const adapter = createMockAdapter();
 
-    const result = await createLabels(
-      ['sentinel', 'bot'],
-      '/tmp/test-repo',
-      false,
-      adapter,
-    );
+    const result = await createLabels(['sentinel', 'bot'], '/tmp/test-repo', false, adapter);
 
     expect(result).toEqual(['sentinel', 'bot']);
     expect(adapter.createLabel).toHaveBeenCalledTimes(2);
@@ -61,28 +54,16 @@ describe('createLabels', () => {
 
     const adapter = createMockAdapter({ createLabel: mockCreateLabel });
 
-    const result = await createLabels(
-      ['sentinel', 'bot'],
-      '/tmp/test-repo',
-      false,
-      adapter,
-    );
+    const result = await createLabels(['sentinel', 'bot'], '/tmp/test-repo', false, adapter);
 
     expect(result).toEqual(['bot']);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/sentinel.*失败/),
-    );
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringMatching(/sentinel.*失败/));
   });
 
   it('should not call adapter.createLabel in dry-run mode', async () => {
     const adapter = createMockAdapter();
 
-    const result = await createLabels(
-      ['sentinel', 'bot'],
-      '/tmp/test-repo',
-      true,
-      adapter,
-    );
+    const result = await createLabels(['sentinel', 'bot'], '/tmp/test-repo', true, adapter);
 
     expect(result).toEqual(['sentinel', 'bot']);
     expect(adapter.createLabel).not.toHaveBeenCalled();

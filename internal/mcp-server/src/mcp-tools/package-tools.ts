@@ -3,11 +3,7 @@
  */
 
 import { MCP_TOOLS } from '../constants';
-import type {
-  ToolArguments,
-  ToolPackageIndex,
-  ToolPackageInfo,
-} from '../types/index';
+import type { ToolArguments, ToolPackageIndex, ToolPackageInfo } from '../types/index';
 import { BaseTool } from './base';
 
 /**
@@ -176,14 +172,10 @@ export class SearchPackagesTool extends BaseTool {
   private getMatchedFields(pkg: ToolPackageInfo, query: string): string[] {
     const fields: string[] = [];
     if (pkg.name.toLowerCase().includes(query)) fields.push('name');
-    if (pkg.packageName.toLowerCase().includes(query))
-      fields.push('packageName');
-    if (pkg.description.toLowerCase().includes(query))
-      fields.push('description');
-    if (pkg.tags.some((t) => t.toLowerCase().includes(query)))
-      fields.push('tags');
-    if (pkg.features.some((f) => f.toLowerCase().includes(query)))
-      fields.push('features');
+    if (pkg.packageName.toLowerCase().includes(query)) fields.push('packageName');
+    if (pkg.description.toLowerCase().includes(query)) fields.push('description');
+    if (pkg.tags.some((t) => t.toLowerCase().includes(query))) fields.push('tags');
+    if (pkg.features.some((f) => f.toLowerCase().includes(query))) fields.push('features');
     return fields;
   }
 }

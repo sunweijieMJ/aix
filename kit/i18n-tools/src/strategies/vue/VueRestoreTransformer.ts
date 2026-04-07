@@ -38,11 +38,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       );
     }
 
-    return VueRestoreTransformer.restoreVueFile(
-      sourceText,
-      localeMap,
-      this.library,
-    );
+    return VueRestoreTransformer.restoreVueFile(sourceText, localeMap, this.library);
   }
 
   /**
@@ -68,11 +64,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     // 还原 template 部分
     if (descriptor.template) {
-      const restoredTemplate = this.restoreTemplate(
-        descriptor.template.content,
-        localeMap,
-        lib,
-      );
+      const restoredTemplate = this.restoreTemplate(descriptor.template.content, localeMap, lib);
       if (restoredTemplate !== descriptor.template.content) {
         replacements.push({
           start: descriptor.template.loc.start.offset,
@@ -98,8 +90,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 按偏移量从后往前替换，确保前面的替换不影响后面的偏移
     replacements.sort((a, b) => b.start - a.start);
     for (const { start, end, content } of replacements) {
-      restoredCode =
-        restoredCode.slice(0, start) + content + restoredCode.slice(end);
+      restoredCode = restoredCode.slice(0, start) + content + restoredCode.slice(end);
     }
 
     // 清理导入和 Hook 声明
@@ -134,10 +125,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     if (tImport) {
       const escapedPath = tImport.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       restoredCode = restoredCode.replace(
-        new RegExp(
-          `import\\s*\\{\\s*t\\s*\\}\\s*from\\s*['"]${escapedPath}['"];?\\n?`,
-          'g',
-        ),
+        new RegExp(`import\\s*\\{\\s*t\\s*\\}\\s*from\\s*['"]${escapedPath}['"];?\\n?`, 'g'),
         '',
       );
     }
@@ -169,8 +157,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     // 1. 匹配 {{ $t('key') }} 或 {{ t('key') }} 或 {{ $t('key', { vars }) }}
     //    仅匹配整个插值内容为单个 $t 调用的情况
-    const i18nCallRegex =
-      /\{\{\s*\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{[^}]+\}))?\s*\)\s*\}\}/g;
+    const i18nCallRegex = /\{\{\s*\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{[^}]+\}))?\s*\)\s*\}\}/g;
 
     restored = restored.replace(i18nCallRegex, (match, key, vars) => {
       const text = lookupText(key as string);
@@ -191,38 +178,30 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     // 2. 匹配属性绑定 :attr="$t('key')" 或 :attr="$t('key', { vars })"
     //    还原为静态属性 attr="文本"
-    const attrBindingRegex =
-      /:([\w-]+)="\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{[^}]+\}))?\s*\)"/g;
+    const attrBindingRegex = /:([\w-]+)="\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{[^}]+\}))?\s*\)"/g;
 
-    restored = restored.replace(
-      attrBindingRegex,
-      (match, attrName, key, vars) => {
-        const text = lookupText(key as string);
-        if (!text) {
-          return match;
+    restored = restored.replace(attrBindingRegex, (match, attrName, key, vars) => {
+      const text = lookupText(key as string);
+      if (!text) {
+        return match;
+      }
+
+      if (vars) {
+        try {
+          const restoredText = this.restoreTemplateWithVariablesForBinding(text, vars as string);
+          // 带变量的还原保持动态绑定，使用 ${expr} 语法
+          return `:${attrName}="\`${restoredText}\`"`;
+        } catch {
+          return `${attrName}="${text}"`;
         }
+      }
 
-        if (vars) {
-          try {
-            const restoredText = this.restoreTemplateWithVariablesForBinding(
-              text,
-              vars as string,
-            );
-            // 带变量的还原保持动态绑定，使用 ${expr} 语法
-            return `:${attrName}="\`${restoredText}\`"`;
-          } catch {
-            return `${attrName}="${text}"`;
-          }
-        }
-
-        return `${attrName}="${text}"`;
-      },
-    );
+      return `${attrName}="${text}"`;
+    });
 
     // 3. 匹配插值表达式内部残留的 $t() 调用（如三元表达式中的 $t 调用）
     //    将 $t('key') 替换为 'text'，$t('key', { vars }) 替换为 `text with ${vars}`
-    const innerI18nCallRegex =
-      /\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{[^}]+\}))?\s*\)/g;
+    const innerI18nCallRegex = /\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{[^}]+\}))?\s*\)/g;
 
     restored = restored.replace(innerI18nCallRegex, (match, key, vars) => {
       const text = lookupText(key as string);
@@ -232,10 +211,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
       if (vars) {
         try {
-          const restoredText = this.restoreTemplateWithVariablesForBinding(
-            text,
-            vars as string,
-          );
+          const restoredText = this.restoreTemplateWithVariablesForBinding(text, vars as string);
           return `\`${restoredText}\``;
         } catch {
           return `'${text}'`;
@@ -263,10 +239,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   /**
    * 还原带变量的模板字符串（用于文本节点，使用 Vue 模板插值语法 {{ }} ）
    */
-  private static restoreTemplateWithVariables(
-    text: string,
-    vars: string,
-  ): string {
+  private static restoreTemplateWithVariables(text: string, vars: string): string {
     const varMap = this.parseVarMap(vars);
     let result = text;
     varMap.forEach((expression, placeholder) => {
@@ -279,10 +252,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   /**
    * 还原带变量的模板字符串（用于属性绑定，使用 JS 模板字面量语法 ${} ）
    */
-  private static restoreTemplateWithVariablesForBinding(
-    text: string,
-    vars: string,
-  ): string {
+  private static restoreTemplateWithVariablesForBinding(text: string, vars: string): string {
     const varMap = this.parseVarMap(vars);
     let result = text;
     varMap.forEach((expression, placeholder) => {
@@ -310,17 +280,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     );
 
     // 遍历 AST 收集 t() 调用的替换位置
-    const replacements: Array<{ start: number; end: number; text: string }> =
-      [];
+    const replacements: Array<{ start: number; end: number; text: string }> = [];
 
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
-        const replacement = this.getI18nCallReplacementText(
-          node,
-          localeMap,
-          sourceFile,
-          library,
-        );
+        const replacement = this.getI18nCallReplacementText(node, localeMap, sourceFile, library);
         if (replacement !== null) {
           replacements.push({
             start: node.getStart(sourceFile),
@@ -401,10 +365,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
         const varMap = new Map<string, string>();
         for (const prop of varsArg.properties) {
           if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-            const exprText = CommonASTUtils.nodeToText(
-              prop.initializer,
-              sourceFile,
-            );
+            const exprText = CommonASTUtils.nodeToText(prop.initializer, sourceFile);
             varMap.set(prop.name.text, exprText);
           }
         }
@@ -414,10 +375,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
           let result = text.replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
           // 替换占位符为变量表达式
           varMap.forEach((exprText, placeholder) => {
-            result = result.replace(
-              new RegExp(`\\{${placeholder}\\}`, 'g'),
-              `\${${exprText}}`,
-            );
+            result = result.replace(new RegExp(`\\{${placeholder}\\}`, 'g'), `\${${exprText}}`);
           });
           return `\`${result}\``;
         }
@@ -439,10 +397,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   /**
    * 清理 Hook 相关声明
    */
-  private static cleanupHookDeclarations(
-    code: string,
-    library: VueI18nLibrary,
-  ): string {
+  private static cleanupHookDeclarations(code: string, library: VueI18nLibrary): string {
     return code.replace(library.getHookDeclarationCleanupRegex(), '');
   }
 }

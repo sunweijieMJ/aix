@@ -15,11 +15,7 @@ import {
 } from 'playwright';
 import path from 'node:path';
 import type { VisualTestConfig } from '../config/schema';
-import type {
-  CaptureOptions,
-  ScreenshotEngine,
-  StabilityConfig,
-} from '../../types/screenshot';
+import type { CaptureOptions, ScreenshotEngine, StabilityConfig } from '../../types/screenshot';
 import { StabilityHandler } from './stability-handler';
 import { PagePool } from './page-pool';
 import { ensureDir } from '../../utils/file';
@@ -60,11 +56,7 @@ export class PlaywrightScreenshotEngine implements ScreenshotEngine {
 
       // 启动浏览器
       const playwrightBrowser =
-        browserType === 'chromium'
-          ? chromium
-          : browserType === 'firefox'
-            ? firefox
-            : webkit;
+        browserType === 'chromium' ? chromium : browserType === 'firefox' ? firefox : webkit;
 
       const browser = await playwrightBrowser.launch({
         headless: browserConfig.headless,
@@ -78,18 +70,14 @@ export class PlaywrightScreenshotEngine implements ScreenshotEngine {
       });
 
       // 创建 Page 池
-      const pagePool = new PagePool(
-        this.config.performance.concurrent.poolSize,
-      );
+      const pagePool = new PagePool(this.config.performance.concurrent.poolSize);
       pagePool.setContext(context);
 
       this.browsers.set(browserType, browser);
       this.contexts.set(browserType, context);
       this.pagePools.set(browserType, pagePool);
 
-      log.info(
-        `Browser ${browserType} initialized (viewport: ${width}x${height})`,
-      );
+      log.info(`Browser ${browserType} initialized (viewport: ${width}x${height})`);
     }
   }
 
@@ -109,10 +97,10 @@ export class PlaywrightScreenshotEngine implements ScreenshotEngine {
         lastError = error as Error;
         const isRetryable = this.isRetryableError(error);
 
-        log.warn(
-          `Screenshot attempt ${attempt + 1}/${maxRetries} failed: ${lastError.message}`,
-          { retryable: isRetryable, url: options.url },
-        );
+        log.warn(`Screenshot attempt ${attempt + 1}/${maxRetries} failed: ${lastError.message}`, {
+          retryable: isRetryable,
+          url: options.url,
+        });
 
         // 如果是不可重试的错误，或已达最大重试次数，则抛出
         if (!isRetryable || attempt === maxRetries - 1) {
@@ -137,9 +125,7 @@ export class PlaywrightScreenshotEngine implements ScreenshotEngine {
     const pagePool = this.pagePools.get(browserType);
 
     if (!context || !pagePool) {
-      throw new Error(
-        `Browser ${browserType} not initialized. Call initialize() first.`,
-      );
+      throw new Error(`Browser ${browserType} not initialized. Call initialize() first.`);
     }
 
     // 从池中获取 Page

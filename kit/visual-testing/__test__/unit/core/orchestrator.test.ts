@@ -15,26 +15,22 @@ import type { VisualTestConfig } from '../../../src/core/config/schema';
 
 // ---- Hoisted mocks (vi.mock factories are hoisted, so referenced vars must also be hoisted) ----
 
-const {
-  mockBaselineProvider,
-  mockScreenshotCapture,
-  mockScreenshotClose,
-  mockScreenshotInit,
-} = vi.hoisted(() => ({
-  mockBaselineProvider: {
-    name: 'local',
-    fetch: vi.fn().mockResolvedValue({
-      path: '/tmp/baseline.png',
-      success: true,
-      metadata: {},
-    }),
-    exists: vi.fn().mockResolvedValue(true),
-    dispose: vi.fn().mockResolvedValue(undefined),
-  },
-  mockScreenshotCapture: vi.fn().mockResolvedValue('/tmp/actual.png'),
-  mockScreenshotClose: vi.fn().mockResolvedValue(undefined),
-  mockScreenshotInit: vi.fn().mockResolvedValue(undefined),
-}));
+const { mockBaselineProvider, mockScreenshotCapture, mockScreenshotClose, mockScreenshotInit } =
+  vi.hoisted(() => ({
+    mockBaselineProvider: {
+      name: 'local',
+      fetch: vi.fn().mockResolvedValue({
+        path: '/tmp/baseline.png',
+        success: true,
+        metadata: {},
+      }),
+      exists: vi.fn().mockResolvedValue(true),
+      dispose: vi.fn().mockResolvedValue(undefined),
+    },
+    mockScreenshotCapture: vi.fn().mockResolvedValue('/tmp/actual.png'),
+    mockScreenshotClose: vi.fn().mockResolvedValue(undefined),
+    mockScreenshotInit: vi.fn().mockResolvedValue(undefined),
+  }));
 
 vi.mock('../../../src/core/baseline', () => ({
   createBaselineProvider: vi.fn().mockReturnValue(mockBaselineProvider),
@@ -144,9 +140,7 @@ vi.mock('node:fs/promises', () => ({
 }));
 
 /** 创建最小化的 mock config */
-function mockConfig(
-  overrides: Partial<VisualTestConfig> = {},
-): VisualTestConfig {
+function mockConfig(overrides: Partial<VisualTestConfig> = {}): VisualTestConfig {
   return {
     name: 'test',
     directories: {
@@ -360,9 +354,7 @@ describe('VisualTestOrchestrator', () => {
             {
               name: 'button',
               type: 'component',
-              variants: [
-                { name: 'default', url: 'http://a', baseline: 'a.png' },
-              ],
+              variants: [{ name: 'default', url: 'http://a', baseline: 'a.png' }],
             },
           ],
         }),
@@ -398,9 +390,7 @@ describe('VisualTestOrchestrator', () => {
             {
               name: 'button',
               type: 'component',
-              variants: [
-                { name: 'default', url: 'http://a', baseline: 'a.png' },
-              ],
+              variants: [{ name: 'default', url: 'http://a', baseline: 'a.png' }],
             },
           ],
         }),
@@ -421,9 +411,7 @@ describe('VisualTestOrchestrator', () => {
             {
               name: 'button',
               type: 'component',
-              variants: [
-                { name: 'default', url: 'http://a', baseline: 'a.png' },
-              ],
+              variants: [{ name: 'default', url: 'http://a', baseline: 'a.png' }],
             },
           ],
         }),

@@ -65,10 +65,7 @@ export class ReactTextExtractor implements ITextExtractor {
     definedMessages: Map<string, MessageInfo>,
     sourceFile: ts.SourceFile,
   ): void {
-    if (
-      !ts.isIdentifier(node.expression) ||
-      node.expression.text !== 'defineMessages'
-    ) {
+    if (!ts.isIdentifier(node.expression) || node.expression.text !== 'defineMessages') {
       return;
     }
 
@@ -158,10 +155,7 @@ export class ReactTextExtractor implements ITextExtractor {
       const mixedContent = this.extractJsxMixedContent(node, sourceFile);
       if (mixedContent) {
         const componentType = ReactASTUtils.getComponentType(node);
-        const position = ts.getLineAndCharacterOfPosition(
-          sourceFile,
-          node.getStart(sourceFile),
-        );
+        const position = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
 
         extractedStrings.push({
           original: mixedContent.text,
@@ -173,9 +167,7 @@ export class ReactTextExtractor implements ITextExtractor {
           componentType,
           isTemplateString: mixedContent.isTemplateString,
           templateVariables:
-            mixedContent.templateVariables.length > 0
-              ? mixedContent.templateVariables
-              : undefined,
+            mixedContent.templateVariables.length > 0 ? mixedContent.templateVariables : undefined,
         });
         // 处理了混合内容后，跳过子节点的单独处理
         return;
@@ -213,10 +205,7 @@ export class ReactTextExtractor implements ITextExtractor {
         text = '`' + node.head.text;
 
         for (const span of node.templateSpans) {
-          const expressionText = CommonASTUtils.nodeToText(
-            span.expression,
-            sourceFile,
-          );
+          const expressionText = CommonASTUtils.nodeToText(span.expression, sourceFile);
           templateVariables.push(expressionText);
           text += '${' + expressionText + '}' + span.literal.text;
         }
@@ -233,16 +222,10 @@ export class ReactTextExtractor implements ITextExtractor {
     }
 
     // 检查是否需要提取
-    if (
-      text &&
-      this.shouldExtract(text, ReactASTUtils.getNodeContext(node), node)
-    ) {
+    if (text && this.shouldExtract(text, ReactASTUtils.getNodeContext(node), node)) {
       const componentType = ReactASTUtils.getComponentType(node);
       const context = ReactASTUtils.getNodeContext(node);
-      const position = ts.getLineAndCharacterOfPosition(
-        sourceFile,
-        node.getStart(sourceFile),
-      );
+      const position = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
 
       extractedStrings.push({
         original: text,
@@ -253,8 +236,7 @@ export class ReactTextExtractor implements ITextExtractor {
         context,
         componentType,
         isTemplateString,
-        templateVariables:
-          templateVariables.length > 0 ? templateVariables : undefined,
+        templateVariables: templateVariables.length > 0 ? templateVariables : undefined,
       });
       // 提取成功后，不再需要深入访问该节点的子节点
       return;
@@ -317,10 +299,7 @@ export class ReactTextExtractor implements ITextExtractor {
           templateText += text;
         }
       } else if (ts.isJsxExpression(child) && child.expression) {
-        const expressionText = CommonASTUtils.nodeToText(
-          child.expression!,
-          sourceFile,
-        );
+        const expressionText = CommonASTUtils.nodeToText(child.expression!, sourceFile);
         templateVariables.push(expressionText);
         templateText += `\${${expressionText}}`;
       }

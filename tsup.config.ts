@@ -26,12 +26,7 @@ interface TsupConfigOptions {
  * - external 自动读取 package.json 的 dependencies + peerDependencies
  */
 export function createTsupConfig(options: TsupConfigOptions = {}) {
-  const {
-    cli,
-    entry = { index: 'src/index.ts' },
-    target = 'es2022',
-    platform = 'node',
-  } = options;
+  const { cli, entry = { index: 'src/index.ts' }, target = 'es2022', platform = 'node' } = options;
 
   const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
   const external = [

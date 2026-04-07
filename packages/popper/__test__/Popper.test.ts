@@ -1,14 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
-import {
-  Popper,
-  Tooltip,
-  Popover,
-  Dropdown,
-  DropdownItem,
-  ContextMenu,
-} from '../src';
+import { Popper, Tooltip, Popover, Dropdown, DropdownItem, ContextMenu } from '../src';
 
 // 统一使用 teleportDisabled 让弹层内容留在 wrapper 内可查询
 const TELEPORT_DISABLED = { teleportDisabled: true };
@@ -174,9 +167,7 @@ describe('Tooltip 组件', () => {
 
     const tooltipId = tooltipEl.attributes('id');
     expect(tooltipId).toBeTruthy();
-    expect(
-      wrapper.find('.aix-tooltip__trigger').attributes('aria-describedby'),
-    ).toBe(tooltipId);
+    expect(wrapper.find('.aix-tooltip__trigger').attributes('aria-describedby')).toBe(tooltipId);
   });
 });
 
@@ -425,9 +416,7 @@ describe('DropdownItem 组件', () => {
       props: { label: '选项1', disabled: true },
     });
 
-    expect(wrapper.find('.aix-dropdown__item').attributes('tabindex')).toBe(
-      '-1',
-    );
+    expect(wrapper.find('.aix-dropdown__item').attributes('tabindex')).toBe('-1');
   });
 });
 
@@ -506,9 +495,7 @@ describe('ContextMenu 组件', () => {
       slots: { default: '<div>右键区域</div>' },
     });
 
-    expect(
-      wrapper.find('.aix-context-menu__trigger').attributes('aria-haspopup'),
-    ).toBe('menu');
+    expect(wrapper.find('.aix-context-menu__trigger').attributes('aria-haspopup')).toBe('menu');
   });
 });
 

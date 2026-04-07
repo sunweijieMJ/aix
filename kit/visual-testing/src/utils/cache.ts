@@ -107,9 +107,7 @@ export class CacheManager {
     try {
       const dir = path.dirname(this.persistPath);
       await fs.mkdir(dir, { recursive: true });
-      const entries = Array.from(this.cache.entries()).filter(
-        ([, item]) => !this.isExpired(item),
-      );
+      const entries = Array.from(this.cache.entries()).filter(([, item]) => !this.isExpired(item));
       await fs.writeFile(this.persistPath, JSON.stringify(entries), 'utf-8');
     } catch (error) {
       logger.debug(

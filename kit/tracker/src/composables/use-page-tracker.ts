@@ -13,9 +13,7 @@ export function usePageTracker(options: UsePageTrackerOptions): void {
   const tracker = inject(TRACKER_INJECTION_KEY);
 
   if (!tracker) {
-    throw new Error(
-      '[kit-tracker] usePageTracker() 必须在 createTrackerPlugin 安装后的组件中使用',
-    );
+    throw new Error('[kit-tracker] usePageTracker() 必须在 createTrackerPlugin 安装后的组件中使用');
   }
 
   let enterTime = 0;

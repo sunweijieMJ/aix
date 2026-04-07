@@ -167,9 +167,7 @@ export class MonitoringManager {
 
     // 错误率检查（使用实际失败请求数，而非受上限截断的 errors 数组长度）
     const errorRate =
-      this.requests.total > 0
-        ? (this.requests.failed / this.requests.total) * 100
-        : 0;
+      this.requests.total > 0 ? (this.requests.failed / this.requests.total) * 100 : 0;
     checks.push({
       name: '错误率',
       status: errorRate < 5 ? 'pass' : errorRate < 10 ? 'warn' : 'fail',
@@ -227,8 +225,7 @@ export function formatHealthCheckResult(result: HealthCheckResult): string {
   ];
 
   for (const check of result.checks) {
-    const icon =
-      check.status === 'pass' ? '✅' : check.status === 'warn' ? '⚠️' : '❌';
+    const icon = check.status === 'pass' ? '✅' : check.status === 'warn' ? '⚠️' : '❌';
     lines.push(`  ${icon} ${check.name}: ${check.message}`);
   }
 

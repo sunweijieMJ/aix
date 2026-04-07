@@ -15,9 +15,7 @@ const COMMIT_REGEXP =
   /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .{1,100}/;
 
 if (!COMMIT_REGEXP.test(COMMIT_MESSAGE)) {
-  console.error(
-    `${chalk.bgRed.white(' 错误 ')} ${chalk.yellow('提交信息格式不正确！')}`,
-  );
+  console.error(`${chalk.bgRed.white(' 错误 ')} ${chalk.yellow('提交信息格式不正确！')}`);
   console.error(
     `${chalk.blue('正确格式:')} ${chalk.green('type: subject')} ${chalk.yellow('或')} ${chalk.green('type(scope): subject')}`,
   );

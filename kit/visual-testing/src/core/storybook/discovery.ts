@@ -40,9 +40,7 @@ interface Target {
 /**
  * 从 Storybook /index.json 发现 story 并生成测试目标
  */
-export async function discoverStories(
-  config: VisualTestConfig,
-): Promise<Target[]> {
+export async function discoverStories(config: VisualTestConfig): Promise<Target[]> {
   const sb = config.storybook;
   const baseUrl = (sb.url || config.server.url).replace(/\/+$/, '');
 
@@ -68,9 +66,7 @@ export async function discoverStories(
   const index: StorybookIndex = (await response.json()) as StorybookIndex;
 
   // 过滤: 仅保留 type === 'story'
-  const storyEntries = Object.values(index.entries).filter(
-    (entry) => entry.type === 'story',
-  );
+  const storyEntries = Object.values(index.entries).filter((entry) => entry.type === 'story');
 
   if (storyEntries.length === 0) {
     log.warn('No stories found in Storybook index');
@@ -81,17 +77,14 @@ export async function discoverStories(
 
   // 应用 include/exclude glob 过滤
   const isIncluded = picomatch(sb.include);
-  const isExcluded =
-    sb.exclude.length > 0 ? picomatch(sb.exclude) : () => false;
+  const isExcluded = sb.exclude.length > 0 ? picomatch(sb.exclude) : () => false;
 
   const filteredEntries = storyEntries.filter((entry) => {
     const storyPath = `${entry.title}/${entry.name}`;
     return isIncluded(storyPath) && !isExcluded(storyPath);
   });
 
-  log.debug(
-    `${filteredEntries.length} stories after include/exclude filtering`,
-  );
+  log.debug(`${filteredEntries.length} stories after include/exclude filtering`);
 
   // 按 title 分组为 targets
   const groupMap = new Map<string, StorybookIndexEntry[]>();
@@ -123,9 +116,7 @@ export async function discoverStories(
     });
   }
 
-  log.info(
-    `Discovered ${targets.length} target(s) with ${filteredEntries.length} variant(s)`,
-  );
+  log.info(`Discovered ${targets.length} target(s) with ${filteredEntries.length} variant(s)`);
 
   return targets;
 }

@@ -146,9 +146,7 @@ const publishPackages = async (skipPrompts = false, dryRun = false) => {
     }
 
     for (const pkgName of changedPackages) {
-      const pkg = getWorkspacePackages(projectRoot).find(
-        (p) => p.name === pkgName,
-      );
+      const pkg = getWorkspacePackages(projectRoot).find((p) => p.name === pkgName);
       if (pkg) {
         console.log(`  📦 ${chalk.green(pkg.name)}@${chalk.cyan(pkg.version)}`);
       }
@@ -170,9 +168,7 @@ const publishPackages = async (skipPrompts = false, dryRun = false) => {
   const changedPackages = await getChangedPackages(projectRoot);
   const packagesBeforePublish: Array<{ name: string; version: string }> = [];
   for (const pkgName of changedPackages) {
-    const pkg = getWorkspacePackages(projectRoot).find(
-      (p) => p.name === pkgName,
-    );
+    const pkg = getWorkspacePackages(projectRoot).find((p) => p.name === pkgName);
     if (pkg) {
       packagesBeforePublish.push({ name: pkg.name, version: pkg.version });
     }
@@ -296,11 +292,7 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
 };
 
 // 完整发布流程
-const runFullProcess = async (
-  skipPrompts = false,
-  mode = '',
-  dryRun = false,
-) => {
+const runFullProcess = async (skipPrompts = false, mode = '', dryRun = false) => {
   // Dry-run 模式跳过所有检查，直接显示待发布的包
   if (dryRun) {
     await publishPackages(skipPrompts, true);

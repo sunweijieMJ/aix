@@ -53,14 +53,8 @@ const fullscreenManager = (() => {
       // 首次订阅时绑定全局事件
       if (!isListening) {
         document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener(
-          'webkitfullscreenchange',
-          handleFullscreenChange,
-        );
-        document.addEventListener(
-          'mozfullscreenchange',
-          handleFullscreenChange,
-        );
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
         document.addEventListener('msfullscreenchange', handleFullscreenChange);
         isListening = true;
       }
@@ -71,22 +65,10 @@ const fullscreenManager = (() => {
 
         // 最后一个订阅者取消时，移除全局事件
         if (listeners.size === 0 && isListening) {
-          document.removeEventListener(
-            'fullscreenchange',
-            handleFullscreenChange,
-          );
-          document.removeEventListener(
-            'webkitfullscreenchange',
-            handleFullscreenChange,
-          );
-          document.removeEventListener(
-            'mozfullscreenchange',
-            handleFullscreenChange,
-          );
-          document.removeEventListener(
-            'msfullscreenchange',
-            handleFullscreenChange,
-          );
+          document.removeEventListener('fullscreenchange', handleFullscreenChange);
+          document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+          document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+          document.removeEventListener('msfullscreenchange', handleFullscreenChange);
           isListening = false;
         }
       };
@@ -168,8 +150,7 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
     try {
       const bufferedEnd = video.buffered.end(video.buffered.length - 1);
       const videoDuration = video.duration || 0;
-      const newBufferedValue =
-        videoDuration > 0 ? bufferedEnd / videoDuration : 0;
+      const newBufferedValue = videoDuration > 0 ? bufferedEnd / videoDuration : 0;
 
       // 变化阈值：仅在变化超过 1% 时更新
       const bufferedChange = Math.abs(newBufferedValue - lastBufferedValue);
@@ -239,10 +220,7 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
     video.addEventListener('progress', updateBuffered);
 
     // iOS webkit 全屏事件
-    video.addEventListener(
-      'webkitbeginfullscreen',
-      handleWebkitBeginFullscreen,
-    );
+    video.addEventListener('webkitbeginfullscreen', handleWebkitBeginFullscreen);
     video.addEventListener('webkitendfullscreen', handleWebkitEndFullscreen);
 
     // 使用全屏管理器单例订阅全屏事件
@@ -265,10 +243,7 @@ export function usePlayerState(videoRef: Ref<HTMLVideoElement | null>) {
     video.removeEventListener('progress', updateBuffered);
 
     // iOS webkit 全屏事件
-    video.removeEventListener(
-      'webkitbeginfullscreen',
-      handleWebkitBeginFullscreen,
-    );
+    video.removeEventListener('webkitbeginfullscreen', handleWebkitBeginFullscreen);
     video.removeEventListener('webkitendfullscreen', handleWebkitEndFullscreen);
 
     // 清理缓冲进度节流定时器

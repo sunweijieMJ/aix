@@ -18,9 +18,7 @@ describe('QDTrackerAdapter', () => {
       }
       return el;
     });
-    vi.spyOn(document.head, 'appendChild').mockImplementation(
-      () => null as any,
-    );
+    vi.spyOn(document.head, 'appendChild').mockImplementation(() => null as any);
 
     // Mock window.QDTracker
     mockSdkInstance = {

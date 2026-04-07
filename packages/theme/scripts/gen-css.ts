@@ -58,9 +58,7 @@ class ThemeCSSGenerator {
     const map = deriveMapTokens(seed);
     this.baseTokens = map;
     this.lightSemanticTokens = deriveAliasTokens(map, seed);
-    this.presetColorTokens = derivePresetColorTokens(
-      seed.presetColors ?? DEFAULT_PRESET_COLORS,
-    );
+    this.presetColorTokens = derivePresetColorTokens(seed.presetColors ?? DEFAULT_PRESET_COLORS);
 
     const fullLightTokens = {
       ...map,
@@ -173,23 +171,16 @@ class ThemeCSSGenerator {
     ];
 
     // 按分组生成 CSS
-    for (const [groupName, tokenKeys] of Object.entries(
-      SEMANTIC_TOKEN_GROUPS,
-    )) {
+    for (const [groupName, tokenKeys] of Object.entries(SEMANTIC_TOKEN_GROUPS)) {
       lines.push(this.generateGroupComment(groupName));
 
       for (const key of tokenKeys) {
-        const value =
-          this.lightSemanticTokens[
-            key as keyof typeof this.lightSemanticTokens
-          ];
+        const value = this.lightSemanticTokens[key as keyof typeof this.lightSemanticTokens];
         if (value !== undefined) {
           // 检查是否应该使用 var() 引用
           const refToken = SEMANTIC_VAR_REFS[key];
           if (refToken) {
-            lines.push(
-              `  --${CSS_VAR_PREFIX}-${key}: var(--${CSS_VAR_PREFIX}-${refToken});`,
-            );
+            lines.push(`  --${CSS_VAR_PREFIX}-${key}: var(--${CSS_VAR_PREFIX}-${refToken});`);
           } else {
             lines.push(this.generateVarDeclaration(key, value));
           }
@@ -235,9 +226,7 @@ class ThemeCSSGenerator {
     } as ThemeTokens;
 
     // 按分组生成 CSS（只生成与亮色不同的值）
-    for (const [groupName, tokenKeys] of Object.entries(
-      SEMANTIC_TOKEN_GROUPS,
-    )) {
+    for (const [groupName, tokenKeys] of Object.entries(SEMANTIC_TOKEN_GROUPS)) {
       const changedTokens: string[] = [];
 
       for (const key of tokenKeys) {
@@ -249,10 +238,7 @@ class ThemeCSSGenerator {
         const alwaysOutput = key.startsWith('colorNeutral');
 
         // 输出与亮色模式不同的值，或 colorNeutral 系列
-        if (
-          darkValue !== undefined &&
-          (darkValue !== lightValue || alwaysOutput)
-        ) {
+        if (darkValue !== undefined && (darkValue !== lightValue || alwaysOutput)) {
           changedTokens.push(this.generateVarDeclaration(key, darkValue));
         }
       }

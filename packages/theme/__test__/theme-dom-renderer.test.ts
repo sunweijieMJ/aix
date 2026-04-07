@@ -92,12 +92,8 @@ describe('ThemeDOMRenderer', () => {
       const styleEl = createdStyleElements[0]!;
       expect(styleEl.id).toBe('aix-theme-overrides');
       expect(styleEl.textContent).toContain(":root[data-theme='light']");
-      expect(styleEl.textContent).toContain(
-        '--aix-colorPrimary: rgb(0 102 255);',
-      );
-      expect(styleEl.textContent).toContain(
-        '--aix-colorPrimaryHover: rgb(64 150 255);',
-      );
+      expect(styleEl.textContent).toContain('--aix-colorPrimary: rgb(0 102 255);');
+      expect(styleEl.textContent).toContain('--aix-colorPrimaryHover: rgb(64 150 255);');
     });
 
     it('should use dark mode selector for dark mode', () => {
@@ -124,9 +120,7 @@ describe('ThemeDOMRenderer', () => {
 
       // Content should be updated
       const styleEl = createdStyleElements[0]!;
-      expect(styleEl.textContent).toContain(
-        '--aix-colorPrimary: rgb(255 0 0);',
-      );
+      expect(styleEl.textContent).toContain('--aix-colorPrimary: rgb(255 0 0);');
     });
 
     it('should remove style tag when overrides become empty', () => {
@@ -147,9 +141,7 @@ describe('ThemeDOMRenderer', () => {
         remove: vi.fn(),
       };
 
-      vi.mocked(document.getElementById).mockReturnValue(
-        existingStyleEl as any,
-      );
+      vi.mocked(document.getElementById).mockReturnValue(existingStyleEl as any);
 
       renderer.applyOverrides('light', {
         '--aix-colorPrimary': 'rgb(0 102 255)',
@@ -158,9 +150,7 @@ describe('ThemeDOMRenderer', () => {
       // Should not create a new element
       expect(document.createElement).not.toHaveBeenCalled();
       expect(mockHead.appendChild).not.toHaveBeenCalled();
-      expect(existingStyleEl.textContent).toContain(
-        '--aix-colorPrimary: rgb(0 102 255);',
-      );
+      expect(existingStyleEl.textContent).toContain('--aix-colorPrimary: rgb(0 102 255);');
     });
   });
 
@@ -189,13 +179,8 @@ describe('ThemeDOMRenderer', () => {
         easing: 'ease-in-out',
       });
 
-      expect(mockRoot.classList.add).toHaveBeenCalledWith(
-        'aix-theme-transition',
-      );
-      expect(mockRoot.style.setProperty).toHaveBeenCalledWith(
-        '--aix-transition-duration',
-        '200ms',
-      );
+      expect(mockRoot.classList.add).toHaveBeenCalledWith('aix-theme-transition');
+      expect(mockRoot.style.setProperty).toHaveBeenCalledWith('--aix-transition-duration', '200ms');
       expect(mockRoot.style.setProperty).toHaveBeenCalledWith(
         '--aix-transition-easing',
         'ease-in-out',
@@ -209,9 +194,7 @@ describe('ThemeDOMRenderer', () => {
         easing: 'ease-in-out',
       });
 
-      expect(mockRoot.classList.remove).toHaveBeenCalledWith(
-        'aix-theme-transition',
-      );
+      expect(mockRoot.classList.remove).toHaveBeenCalledWith('aix-theme-transition');
     });
   });
 
@@ -219,15 +202,9 @@ describe('ThemeDOMRenderer', () => {
     it('should remove transition class and properties', () => {
       renderer.removeTransition();
 
-      expect(mockRoot.classList.remove).toHaveBeenCalledWith(
-        'aix-theme-transition',
-      );
-      expect(mockRoot.style.removeProperty).toHaveBeenCalledWith(
-        '--aix-transition-duration',
-      );
-      expect(mockRoot.style.removeProperty).toHaveBeenCalledWith(
-        '--aix-transition-easing',
-      );
+      expect(mockRoot.classList.remove).toHaveBeenCalledWith('aix-theme-transition');
+      expect(mockRoot.style.removeProperty).toHaveBeenCalledWith('--aix-transition-duration');
+      expect(mockRoot.style.removeProperty).toHaveBeenCalledWith('--aix-transition-easing');
     });
   });
 
@@ -243,9 +220,7 @@ describe('ThemeDOMRenderer', () => {
       // style tag removed
       expect(styleEl.remove).toHaveBeenCalled();
       // transition removed
-      expect(mockRoot.classList.remove).toHaveBeenCalledWith(
-        'aix-theme-transition',
-      );
+      expect(mockRoot.classList.remove).toHaveBeenCalledWith('aix-theme-transition');
     });
 
     it('should not set data-theme (caller handles it via syncToDOM)', () => {

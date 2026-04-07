@@ -288,9 +288,9 @@ describe('ThemeContext', () => {
         token: { colorPrimary: 'rgb(255 0 0)' },
       });
       // config should contain the component override
-      expect(
-        (themeContext.config as any).components?.button?.token?.colorPrimary,
-      ).toBe('rgb(255 0 0)');
+      expect((themeContext.config as any).components?.button?.token?.colorPrimary).toBe(
+        'rgb(255 0 0)',
+      );
     });
 
     it('should remove component theme', () => {
@@ -310,9 +310,9 @@ describe('ThemeContext', () => {
           },
         },
       });
-      expect(
-        (themeContext.config as any).components?.button?.token?.colorPrimary,
-      ).toBe('rgb(0 255 0)');
+      expect((themeContext.config as any).components?.button?.token?.colorPrimary).toBe(
+        'rgb(0 255 0)',
+      );
     });
 
     it('should apply components via applyTheme', () => {
@@ -322,9 +322,7 @@ describe('ThemeContext', () => {
           input: { token: { borderRadius: '8px' } },
         },
       });
-      expect(
-        (themeContext.config as any).components?.input?.token?.borderRadius,
-      ).toBe('8px');
+      expect((themeContext.config as any).components?.input?.token?.borderRadius).toBe('8px');
     });
 
     it('should clear components on reset', () => {
@@ -333,9 +331,7 @@ describe('ThemeContext', () => {
         token: { colorPrimary: 'rgb(255 0 0)' },
       });
       themeContext.reset();
-      expect(
-        Object.keys((themeContext.config as any).components || {}),
-      ).toHaveLength(0);
+      expect(Object.keys((themeContext.config as any).components || {})).toHaveLength(0);
     });
   });
 

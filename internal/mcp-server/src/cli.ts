@@ -11,10 +11,7 @@ import {
 import { McpServer } from './server/index';
 import type { ExtractorConfig } from './types/index';
 import { log } from './utils/logger';
-import {
-  createMonitoringManager,
-  formatHealthCheckResult,
-} from './utils/monitoring';
+import { createMonitoringManager, formatHealthCheckResult } from './utils/monitoring';
 import { validateExtractorConfig } from './utils/validation';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -66,16 +63,8 @@ class McpCli {
     program
       .command('extract')
       .description('提取组件库数据')
-      .option(
-        '-p, --packages <dir>',
-        '包目录路径',
-        join(__dirname, '../../../packages'),
-      )
-      .option(
-        '-k, --kit <dir>',
-        '工具包目录路径 (kit/)',
-        join(__dirname, '../../../kit'),
-      )
+      .option('-p, --packages <dir>', '包目录路径', join(__dirname, '../../../packages'))
+      .option('-k, --kit <dir>', '工具包目录路径 (kit/)', join(__dirname, '../../../kit'))
       .option(
         '-i, --internal <dir>',
         '内部包目录路径 (internal/)',
@@ -121,11 +110,7 @@ class McpCli {
       .command('health')
       .description('执行健康检查')
       .option('-d, --data <dir>', '数据目录路径')
-      .option(
-        '-p, --packages <dir>',
-        '包目录路径',
-        join(__dirname, '../../../packages'),
-      )
+      .option('-p, --packages <dir>', '包目录路径', join(__dirname, '../../../packages'))
       .option('--quick', '快速检查（仅检查关键项）', false)
       .action(async (options) => {
         await this.healthCommand(options);
@@ -136,11 +121,7 @@ class McpCli {
       .command('sync-version')
       .description('同步组件库版本信息到 MCP Server')
       .option('-d, --data <dir>', '数据目录路径')
-      .option(
-        '-p, --packages <dir>',
-        '包目录路径',
-        join(__dirname, '../../../packages'),
-      )
+      .option('-p, --packages <dir>', '包目录路径', join(__dirname, '../../../packages'))
       .action(async (options) => {
         await this.syncVersionCommand(options);
       });
@@ -149,10 +130,7 @@ class McpCli {
   /**
    * 启动服务器命令
    */
-  private async serveCommand(options: {
-    data?: string;
-    test?: boolean;
-  }): Promise<void> {
+  private async serveCommand(options: { data?: string; test?: boolean }): Promise<void> {
     try {
       log.info(chalk.blue(TEXT_TEMPLATES.cliWelcome()));
 
@@ -204,13 +182,7 @@ class McpCli {
   }): Promise<void> {
     try {
       const isIncremental = options.incremental;
-      log.info(
-        chalk.blue(
-          isIncremental
-            ? '📦 开始增量提取组件数据...'
-            : '📦 开始提取组件数据...',
-        ),
-      );
+      log.info(chalk.blue(isIncremental ? '📦 开始增量提取组件数据...' : '📦 开始提取组件数据...'));
 
       // 使用默认输出目录或提供的目录
       const outputDir = options.output || join(__dirname, '../data');
@@ -222,9 +194,7 @@ class McpCli {
       const config: ExtractorConfig = {
         packagesDir: options.packages,
         outputDir: outputDir,
-        ignorePackages: options.ignore
-          ? options.ignore.split(',').map((s) => s.trim())
-          : [],
+        ignorePackages: options.ignore ? options.ignore.split(',').map((s) => s.trim()) : [],
         enableCache: true,
         verbose: options.verbose,
       };
@@ -263,17 +233,14 @@ class McpCli {
           const metadata = JSON.parse(metadataContent);
           if (metadata.extractedAt) {
             lastExtractTime = new Date(metadata.extractedAt);
-            log.info(
-              chalk.gray(`上次提取时间: ${lastExtractTime.toISOString()}`),
-            );
+            log.info(chalk.gray(`上次提取时间: ${lastExtractTime.toISOString()}`));
           }
         } catch {
           log.warn(chalk.yellow('⚠️ 未找到上次提取记录，将执行全量提取'));
         }
 
         // 执行增量提取
-        components =
-          await extractor.extractIncrementalComponents(lastExtractTime);
+        components = await extractor.extractIncrementalComponents(lastExtractTime);
 
         // 增量模式下，需要合并现有数据
         if (components.length > 0) {
@@ -294,11 +261,7 @@ class McpCli {
             existingIndex.components = Array.from(componentMap.values());
             existingIndex.lastUpdated = new Date().toISOString();
 
-            await fs.writeFile(
-              indexPath,
-              JSON.stringify(existingIndex, null, 2),
-              'utf8',
-            );
+            await fs.writeFile(indexPath, JSON.stringify(existingIndex, null, 2), 'utf8');
             log.info(chalk.green(`📝 已更新组件索引`));
           } catch (error) {
             log.warn(chalk.yellow('⚠️ 无法合并现有数据，将覆盖'), error);
@@ -316,10 +279,7 @@ class McpCli {
         const toolExtractor = new ToolPackageExtractor();
         const dataManager = new DataManager(config.outputDir);
 
-        const kitPackages = await toolExtractor.extractFromDirectory(
-          options.kit,
-          'kit',
-        );
+        const kitPackages = await toolExtractor.extractFromDirectory(options.kit, 'kit');
         const internalPackages = await toolExtractor.extractFromDirectory(
           options.internal,
           'internal',
@@ -328,9 +288,7 @@ class McpCli {
 
         if (allToolPackages.length > 0) {
           await dataManager.saveToolPackages(allToolPackages);
-          log.info(
-            chalk.green(`✅ 成功提取 ${allToolPackages.length} 个工具包`),
-          );
+          log.info(chalk.green(`✅ 成功提取 ${allToolPackages.length} 个工具包`));
         }
       }
 
@@ -345,23 +303,13 @@ class McpCli {
       };
 
       const metadataPath = join(config.outputDir, 'metadata.json');
-      await fs.writeFile(
-        metadataPath,
-        JSON.stringify(metadata, null, 2),
-        'utf8',
-      );
+      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf8');
       log.info(chalk.green(`📊 元数据已保存到: ${metadataPath}`));
 
       if (isIncremental) {
-        log.info(
-          chalk.green(`✅ 增量提取完成，更新了 ${components.length} 个组件`),
-        );
+        log.info(chalk.green(`✅ 增量提取完成，更新了 ${components.length} 个组件`));
       } else {
-        log.info(
-          chalk.green(
-            `✅ 成功提取 ${components.length} 个组件和 ${icons.length} 个图标`,
-          ),
-        );
+        log.info(chalk.green(`✅ 成功提取 ${components.length} 个组件和 ${icons.length} 个图标`));
       }
 
       process.exit(0);
@@ -443,8 +391,7 @@ class McpCli {
       log.info('\n📂 分类分布:');
       const categoryStats: Record<string, number> = {};
       for (const component of index.components) {
-        categoryStats[component.category] =
-          (categoryStats[component.category] || 0) + 1;
+        categoryStats[component.category] = (categoryStats[component.category] || 0) + 1;
       }
       for (const [category, count] of Object.entries(categoryStats)) {
         log.info(`  ${category}: ${chalk.cyan(count)} 个组件`);
@@ -508,10 +455,7 @@ class McpCli {
   /**
    * 同步版本命令
    */
-  private async syncVersionCommand(options: {
-    data?: string;
-    packages: string;
-  }): Promise<void> {
+  private async syncVersionCommand(options: { data?: string; packages: string }): Promise<void> {
     try {
       log.info(chalk.blue('🔄 同步组件库版本信息...'));
 
@@ -541,12 +485,9 @@ class McpCli {
 
       // 查找所有包的 package.json
       const glob = await import('glob');
-      const packageJson = await glob.glob(
-        `${options.packages}/**/package.json`,
-        {
-          ignore: '**/node_modules/**',
-        },
-      );
+      const packageJson = await glob.glob(`${options.packages}/**/package.json`, {
+        ignore: '**/node_modules/**',
+      });
 
       let updatedCount = 0;
 
@@ -567,8 +508,7 @@ class McpCli {
             // 更新版本
             const oldVersion = componentIndex.components[componentIdx].version;
             if (oldVersion !== packageInfo.version) {
-              componentIndex.components[componentIdx].version =
-                packageInfo.version;
+              componentIndex.components[componentIdx].version = packageInfo.version;
               updatedCount++;
 
               log.info(
@@ -597,15 +537,9 @@ class McpCli {
 
       // 保存更新后的索引
       await fs.mkdir(path.dirname(indexPath), { recursive: true });
-      await fs.writeFile(
-        indexPath,
-        JSON.stringify(componentIndex, null, 2),
-        'utf8',
-      );
+      await fs.writeFile(indexPath, JSON.stringify(componentIndex, null, 2), 'utf8');
 
-      log.info(
-        chalk.green(`✅ 同步完成，更新了 ${updatedCount} 个组件的版本信息`),
-      );
+      log.info(chalk.green(`✅ 同步完成，更新了 ${updatedCount} 个组件的版本信息`));
       process.exit(0);
     } catch (error) {
       log.error(chalk.red('❌ 同步版本失败:'), error);
@@ -660,9 +594,7 @@ class McpCli {
 
       log.info(chalk.blue(TEXT_TEMPLATES.wsStart()));
       log.info(chalk.gray(`数据目录: ${dataDir}`));
-      log.info(
-        chalk.gray(`WebSocket 地址: ws://${options.host}:${options.port}`),
-      );
+      log.info(chalk.gray(`WebSocket 地址: ws://${options.host}:${options.port}`));
 
       // 确保数据目录存在
       const fs = await import('node:fs/promises');
@@ -683,9 +615,7 @@ class McpCli {
       log.info(chalk.green('✅ WebSocket 服务器启动成功!'));
       log.info(chalk.gray(`已加载 ${stats.componentsLoaded} 个组件`));
       log.info(chalk.gray(`可用工具: ${stats.toolsAvailable} 个`));
-      log.info(
-        chalk.cyan(`WebSocket 端点: ws://${options.host}:${options.port}`),
-      );
+      log.info(chalk.cyan(`WebSocket 端点: ws://${options.host}:${options.port}`));
 
       // 优雅关闭处理
       const gracefulShutdown = () => {

@@ -37,8 +37,7 @@ export class TranslateProcessor extends BaseProcessor {
   }
 
   private async _execute(filePath?: string): Promise<void> {
-    const targetPath =
-      filePath || FileUtils.getUntranslatedPath(this.config, this.isCustom);
+    const targetPath = filePath || FileUtils.getUntranslatedPath(this.config, this.isCustom);
 
     if (!fs.existsSync(targetPath)) {
       LoggerUtils.error(`文件不存在: ${targetPath}`);
@@ -70,11 +69,7 @@ export class TranslateProcessor extends BaseProcessor {
       `⚙️  批次设置: ${this.batchConfig.size} 条目/批次, ${this.batchConfig.delay}ms 延时`,
     );
 
-    const result = await this.performBatchTranslation(
-      toTranslate,
-      data,
-      targetPath,
-    );
+    const result = await this.performBatchTranslation(toTranslate, data, targetPath);
     this.logTranslationResult(result);
   }
 
@@ -103,18 +98,13 @@ export class TranslateProcessor extends BaseProcessor {
     let successBatches = 0;
 
     LoggerUtils.info(`📦 共 ${batches.length} 个批次，使用并发处理`);
-    LoggerUtils.info(
-      `🔄 最大并发数: ${this.llmClient.getConcurrencyStatus().maxConcurrency}`,
-    );
+    LoggerUtils.info(`🔄 最大并发数: ${this.llmClient.getConcurrencyStatus().maxConcurrency}`);
 
-    const translatedBatches = await this.llmClient.batchTranslate(
-      batches,
-      (current, total) => {
-        LoggerUtils.info(
-          `📈 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
-        );
-      },
-    );
+    const translatedBatches = await this.llmClient.batchTranslate(batches, (current, total) => {
+      LoggerUtils.info(
+        `📈 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
+      );
+    });
 
     for (let i = 0; i < translatedBatches.length; i++) {
       const translatedBatch = translatedBatches[i];
@@ -162,22 +152,14 @@ export class TranslateProcessor extends BaseProcessor {
     batchIndex: number,
     totalBatches: number,
   ): number {
-    LoggerUtils.info(
-      `🔄 处理批次 ${batchIndex + 1}/${totalBatches} 的翻译结果...`,
-    );
+    LoggerUtils.info(`🔄 处理批次 ${batchIndex + 1}/${totalBatches} 的翻译结果...`);
 
     if (typeof translatedBatch !== 'object' || translatedBatch === null) {
       throw new Error(`批次 ${batchIndex + 1} 翻译结果格式错误`);
     }
 
-    const translatedCount = this.mergeTranslations(
-      currentData,
-      originalBatch,
-      translatedBatch,
-    );
-    LoggerUtils.success(
-      `✅ 批次 ${batchIndex + 1} 结果处理完成，翻译 ${translatedCount} 个条目`,
-    );
+    const translatedCount = this.mergeTranslations(currentData, originalBatch, translatedBatch);
+    LoggerUtils.success(`✅ 批次 ${batchIndex + 1} 结果处理完成，翻译 ${translatedCount} 个条目`);
     return translatedCount;
   }
 

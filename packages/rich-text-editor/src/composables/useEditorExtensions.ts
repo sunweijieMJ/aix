@@ -12,9 +12,7 @@ export interface UseEditorExtensionsReturn {
 /**
  * 管理 Tiptap 扩展的按需加载和组装
  */
-export function useEditorExtensions(
-  props: RichTextEditorProps,
-): UseEditorExtensionsReturn {
+export function useEditorExtensions(props: RichTextEditorProps): UseEditorExtensionsReturn {
   /** 构建完整扩展数组 */
   async function buildExtensions(): Promise<AnyExtension[]> {
     const extensions: AnyExtension[] = [];

@@ -22,10 +22,7 @@ export const ICON_SEARCH_WEIGHTS = {
 /**
  * 计算图标搜索匹配分数
  */
-export function calculateIconSearchScore(
-  icon: IconIndexItem,
-  query: string,
-): number {
+export function calculateIconSearchScore(icon: IconIndexItem, query: string): number {
   let score = 0;
   const queryLower = query.toLowerCase();
 
@@ -37,10 +34,7 @@ export function calculateIconSearchScore(
   }
 
   // 图标分类匹配
-  if (
-    icon.iconCategory &&
-    icon.iconCategory.toLowerCase().includes(queryLower)
-  ) {
+  if (icon.iconCategory && icon.iconCategory.toLowerCase().includes(queryLower)) {
     score += ICON_SEARCH_WEIGHTS.CATEGORY_MATCH;
   }
 
@@ -73,10 +67,7 @@ export function calculateIconSearchScore(
 /**
  * 获取图标匹配的字段列表
  */
-export function getIconMatchedFields(
-  icon: IconIndexItem,
-  query: string,
-): string[] {
+export function getIconMatchedFields(icon: IconIndexItem, query: string): string[] {
   const fields: string[] = [];
   const queryLower = query.toLowerCase();
 
@@ -86,16 +77,10 @@ export function getIconMatchedFields(
   if (icon.description && icon.description.toLowerCase().includes(queryLower)) {
     fields.push('description');
   }
-  if (
-    icon.iconCategory &&
-    icon.iconCategory.toLowerCase().includes(queryLower)
-  ) {
+  if (icon.iconCategory && icon.iconCategory.toLowerCase().includes(queryLower)) {
     fields.push('iconCategory');
   }
-  if (
-    icon.tags &&
-    icon.tags.some((tag) => tag.toLowerCase().includes(queryLower))
-  ) {
+  if (icon.tags && icon.tags.some((tag) => tag.toLowerCase().includes(queryLower))) {
     fields.push('tags');
   }
   if (

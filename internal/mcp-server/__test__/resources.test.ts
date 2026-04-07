@@ -1,9 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  createResourceManager,
-  ResourceManager,
-} from '../src/mcp-resources/index';
+import { createResourceManager, ResourceManager } from '../src/mcp-resources/index';
 import type { ComponentIndex, ComponentInfo } from '../src/types/index';
 
 // Mock fs/promises
@@ -76,40 +73,26 @@ describe('ResourceManager', () => {
       expect(resources.length).toBeGreaterThan(0);
 
       // Check for source files
-      const sourceResources = resources.filter((r) =>
-        r.uri.includes('component-source'),
-      );
+      const sourceResources = resources.filter((r) => r.uri.includes('component-source'));
       expect(sourceResources.length).toBe(2);
       expect(sourceResources[0]?.name).toContain('Button -');
       expect(sourceResources[0]?.mimeType).toBe('text/typescript');
 
       // Check for README
-      const readmeResources = resources.filter((r) =>
-        r.uri.includes('component-readme'),
-      );
+      const readmeResources = resources.filter((r) => r.uri.includes('component-readme'));
       expect(readmeResources.length).toBe(1);
-      expect(readmeResources[0]?.uri).toBe(
-        'component-readme://@aix/button/README.md',
-      );
+      expect(readmeResources[0]?.uri).toBe('component-readme://@aix/button/README.md');
       expect(readmeResources[0]?.mimeType).toBe('text/markdown');
 
       // Check for Stories
-      const storyResources = resources.filter((r) =>
-        r.uri.includes('component-story'),
-      );
+      const storyResources = resources.filter((r) => r.uri.includes('component-story'));
       expect(storyResources.length).toBe(1);
-      expect(storyResources[0]?.uri).toBe(
-        'component-story://@aix/button/Button.stories.tsx',
-      );
+      expect(storyResources[0]?.uri).toBe('component-story://@aix/button/Button.stories.tsx');
 
       // Check for Changelog
-      const changelogResources = resources.filter((r) =>
-        r.uri.includes('component-changelog'),
-      );
+      const changelogResources = resources.filter((r) => r.uri.includes('component-changelog'));
       expect(changelogResources.length).toBe(1);
-      expect(changelogResources[0]?.uri).toBe(
-        'component-changelog://@aix/button/CHANGELOG.md',
-      );
+      expect(changelogResources[0]?.uri).toBe('component-changelog://@aix/button/CHANGELOG.md');
     });
 
     it('should handle components without optional paths', async () => {
@@ -169,8 +152,7 @@ describe('ResourceManager', () => {
 
     it('should read component source file', async () => {
       const uri = 'component-source://@aix/button/Button.tsx';
-      const mockFileContent =
-        'export const Button = () => <button>Click me</button>;';
+      const mockFileContent = 'export const Button = () => <button>Click me</button>;';
 
       // Mock glob to return source files
       const { glob } = await import('glob');
@@ -188,8 +170,7 @@ describe('ResourceManager', () => {
 
     it('should read component README file', async () => {
       const uri = 'component-readme://@aix/button/README.md';
-      const mockFileContent =
-        '# Button Component\n\nA reusable button component.';
+      const mockFileContent = '# Button Component\n\nA reusable button component.';
 
       vi.mocked(readFile).mockResolvedValue(mockFileContent);
 
@@ -299,9 +280,7 @@ describe('ResourceManager', () => {
         'component-source:///missing-package/file.tsx',
       ];
 
-      const consoleSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       invalidUris.forEach((uri) => {
         const result = resourceManager['parseResourceUri'](uri);
@@ -336,14 +315,10 @@ describe('ResourceManager', () => {
 
       vi.mocked(glob).mockResolvedValue(mockFiles);
 
-      const result =
-        await resourceManager['getComponentSourceFiles'](mockComponent);
+      const result = await resourceManager['getComponentSourceFiles'](mockComponent);
 
       // Should filter out test and story files
-      expect(result).toEqual([
-        '/packages/button/src/Button.tsx',
-        '/packages/button/src/index.ts',
-      ]);
+      expect(result).toEqual(['/packages/button/src/Button.tsx', '/packages/button/src/index.ts']);
     });
 
     it('should handle glob errors', async () => {
@@ -354,8 +329,7 @@ describe('ResourceManager', () => {
       const { log } = await import('../src/utils/logger');
       const logSpy = vi.spyOn(log, 'warn').mockImplementation(() => {});
 
-      const result =
-        await resourceManager['getComponentSourceFiles'](mockComponent);
+      const result = await resourceManager['getComponentSourceFiles'](mockComponent);
 
       expect(result).toEqual([]);
       expect(logSpy).toHaveBeenCalled();
@@ -372,10 +346,7 @@ describe('ResourceManager', () => {
         '/packages/button/src/index.ts',
       ]);
 
-      const result = await resourceManager['findSourceFile'](
-        mockComponent,
-        'Button.tsx',
-      );
+      const result = await resourceManager['findSourceFile'](mockComponent, 'Button.tsx');
 
       expect(result).toBe('/packages/button/src/Button.tsx');
     });

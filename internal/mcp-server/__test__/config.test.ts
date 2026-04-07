@@ -54,15 +54,12 @@ class MockConfigManager {
       cacheTTL: process.env.MCP_CACHE_TTL
         ? parseInt(process.env.MCP_CACHE_TTL, 10)
         : config.cacheTTL,
-      enableCache:
-        process.env.MCP_ENABLE_CACHE === 'false' ? false : config.enableCache,
+      enableCache: process.env.MCP_ENABLE_CACHE === 'false' ? false : config.enableCache,
       verbose: process.env.MCP_VERBOSE === 'true' ? true : config.verbose,
       maxConcurrent: process.env.MCP_MAX_CONCURRENT
         ? parseInt(process.env.MCP_MAX_CONCURRENT, 10)
         : config.maxConcurrent,
-      port: process.env.MCP_PORT
-        ? parseInt(process.env.MCP_PORT, 10)
-        : config.port,
+      port: process.env.MCP_PORT ? parseInt(process.env.MCP_PORT, 10) : config.port,
       host: process.env.MCP_HOST || config.host,
     };
   }
@@ -206,9 +203,7 @@ describe('ConfigManager', () => {
       vi.mocked(fs.access).mockResolvedValue(undefined);
       vi.mocked(fs.readFile).mockResolvedValue('invalid json');
 
-      await expect(
-        configManager.loadConfig('./invalid.json'),
-      ).rejects.toThrow();
+      await expect(configManager.loadConfig('./invalid.json')).rejects.toThrow();
     });
 
     it('应该优先使用配置文件覆盖环境变量', async () => {
@@ -230,28 +225,20 @@ describe('ConfigManager', () => {
   describe('validateConfig', () => {
     it('应该验证端口号范围', async () => {
       process.env.MCP_PORT = '0';
-      await expect(configManager.loadConfig()).rejects.toThrow(
-        '端口号必须在1-65535之间',
-      );
+      await expect(configManager.loadConfig()).rejects.toThrow('端口号必须在1-65535之间');
 
       process.env.MCP_PORT = '65536';
-      await expect(configManager.loadConfig()).rejects.toThrow(
-        '端口号必须在1-65535之间',
-      );
+      await expect(configManager.loadConfig()).rejects.toThrow('端口号必须在1-65535之间');
     });
 
     it('应该验证缓存TTL', async () => {
       process.env.MCP_CACHE_TTL = '-1';
-      await expect(configManager.loadConfig()).rejects.toThrow(
-        '缓存TTL不能为负数',
-      );
+      await expect(configManager.loadConfig()).rejects.toThrow('缓存TTL不能为负数');
     });
 
     it('应该验证最大并发数', async () => {
       process.env.MCP_MAX_CONCURRENT = '0';
-      await expect(configManager.loadConfig()).rejects.toThrow(
-        '最大并发数必须大于0',
-      );
+      await expect(configManager.loadConfig()).rejects.toThrow('最大并发数必须大于0');
     });
 
     it('应该验证必需路径', async () => {
@@ -291,10 +278,7 @@ describe('ConfigManager', () => {
       await configManager.saveConfig(config, configPath);
 
       expect(fs.mkdir).toHaveBeenCalledWith('.', { recursive: true });
-      expect(fs.writeFile).toHaveBeenCalledWith(
-        configPath,
-        JSON.stringify(config, null, 2),
-      );
+      expect(fs.writeFile).toHaveBeenCalledWith(configPath, JSON.stringify(config, null, 2));
     });
 
     it('应该创建配置目录', async () => {
@@ -315,9 +299,9 @@ describe('ConfigManager', () => {
 
       vi.mocked(fs.mkdir).mockRejectedValue(new Error('Permission denied'));
 
-      await expect(
-        configManager.saveConfig(config, configPath),
-      ).rejects.toThrow('Permission denied');
+      await expect(configManager.saveConfig(config, configPath)).rejects.toThrow(
+        'Permission denied',
+      );
     });
   });
 

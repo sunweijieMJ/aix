@@ -9,8 +9,7 @@ vi.mock('../src/utils/file.js', () => ({
 }));
 
 vi.mock('../src/utils/template.js', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('../src/utils/template.js')>();
+  const actual = await importOriginal<typeof import('../src/utils/template.js')>();
   return {
     ...actual,
     renderTemplate: vi.fn(),
@@ -72,9 +71,7 @@ function createPhaseConfig(overrides?: Partial<PhaseConfig>): PhaseConfig {
   };
 }
 
-function createMockAdapter(
-  overrides?: Partial<PlatformAdapter>,
-): PlatformAdapter {
+function createMockAdapter(overrides?: Partial<PlatformAdapter>): PlatformAdapter {
   return {
     platform: 'github',
     getPipelineDir: (target: string) => `${target}/.github/workflows`,
@@ -112,18 +109,12 @@ describe('writeWorkflows', () => {
 
     const result = await writeWorkflows(config, phase, adapter);
 
-    expect(mockedReadTemplate).toHaveBeenCalledWith(
-      'github/sentinel-issue.yml',
-    );
+    expect(mockedReadTemplate).toHaveBeenCalledWith('github/sentinel-issue.yml');
     expect(mockedWriteFile).toHaveBeenCalledWith(
-      expect.stringContaining(
-        path.join('.github', 'workflows', 'sentinel-issue.yml'),
-      ),
+      expect.stringContaining(path.join('.github', 'workflows', 'sentinel-issue.yml')),
       rendered,
     );
-    expect(result).toEqual(
-      expect.arrayContaining([expect.stringContaining('sentinel-issue.yml')]),
-    );
+    expect(result).toEqual(expect.arrayContaining([expect.stringContaining('sentinel-issue.yml')]));
   });
 
   it('should create pipeline directory if it does not exist', async () => {
@@ -136,9 +127,7 @@ describe('writeWorkflows', () => {
     const adapter = createMockAdapter();
     await writeWorkflows(createConfig(), createPhaseConfig(), adapter);
 
-    expect(mockedEnsureDir).toHaveBeenCalledWith(
-      expect.stringContaining('.github/workflows'),
-    );
+    expect(mockedEnsureDir).toHaveBeenCalledWith(expect.stringContaining('.github/workflows'));
   });
 
   it('should render template with correct variables', async () => {
@@ -169,11 +158,7 @@ describe('writeWorkflows', () => {
     mockedWriteFile.mockResolvedValue(undefined);
 
     const adapter = createMockAdapter();
-    const result = await writeWorkflows(
-      createConfig(),
-      createPhaseConfig(),
-      adapter,
-    );
+    const result = await writeWorkflows(createConfig(), createPhaseConfig(), adapter);
 
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBe(1);

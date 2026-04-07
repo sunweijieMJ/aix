@@ -8,9 +8,7 @@ import type { VisualTestConfig } from '../../../src/core/config/schema';
 import { configSchema } from '../../../src/core/config/schema';
 
 /** 创建带 storybook 配置的 VisualTestConfig */
-function createConfig(
-  overrides: Partial<VisualTestConfig['storybook']> = {},
-): VisualTestConfig {
+function createConfig(overrides: Partial<VisualTestConfig['storybook']> = {}): VisualTestConfig {
   return configSchema.parse({
     storybook: {
       enabled: true,
@@ -171,9 +169,7 @@ describe('discoverStories', () => {
 
     const config = createConfig();
 
-    await expect(discoverStories(config)).rejects.toThrow(
-      /Storybook index request failed: 404/,
-    );
+    await expect(discoverStories(config)).rejects.toThrow(/Storybook index request failed: 404/);
   });
 
   it('should handle trailing slash in URL', async () => {
@@ -185,9 +181,7 @@ describe('discoverStories', () => {
     const targets = await discoverStories(config);
 
     // fetch 应该被调用时 URL 不含双斜杠
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      'http://localhost:6006/index.json',
-    );
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('http://localhost:6006/index.json');
     expect(targets.length).toBeGreaterThan(0);
   });
 
@@ -199,9 +193,7 @@ describe('discoverStories', () => {
     const config = createConfig(); // 未设置 storybook.url
     await discoverStories(config);
 
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      'http://localhost:6006/index.json',
-    );
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('http://localhost:6006/index.json');
   });
 
   it('should use custom defaultSelector', async () => {

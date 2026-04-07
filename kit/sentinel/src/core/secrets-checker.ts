@@ -34,9 +34,7 @@ export async function checkSecrets(
     existingSecrets = await adapter.listSecrets(cwd);
     existingVariables = await adapter.listVariables(cwd);
   } catch {
-    logger.warn(
-      '无法读取 secrets/variables 列表（未登录或权限不足），跳过自动检查',
-    );
+    logger.warn('无法读取 secrets/variables 列表（未登录或权限不足），跳过自动检查');
     return {
       ok: false,
       missing: {
@@ -46,25 +44,17 @@ export async function checkSecrets(
     };
   }
 
-  const missingSecrets = requirement.secrets.filter(
-    (s) => !existingSecrets.includes(s),
-  );
-  const missingVariables = requirement.variables.filter(
-    (v) => !existingVariables.includes(v),
-  );
+  const missingSecrets = requirement.secrets.filter((s) => !existingSecrets.includes(s));
+  const missingVariables = requirement.variables.filter((v) => !existingVariables.includes(v));
 
   const ok = missingSecrets.length === 0 && missingVariables.length === 0;
 
   if (!ok) {
     if (missingSecrets.length > 0) {
-      logger.warn(
-        `缺少 secrets: ${missingSecrets.join(', ')}\n  请在仓库 CI 设置中配置`,
-      );
+      logger.warn(`缺少 secrets: ${missingSecrets.join(', ')}\n  请在仓库 CI 设置中配置`);
     }
     if (missingVariables.length > 0) {
-      logger.warn(
-        `缺少 variables: ${missingVariables.join(', ')}\n  请在仓库 CI 设置中配置`,
-      );
+      logger.warn(`缺少 variables: ${missingVariables.join(', ')}\n  请在仓库 CI 设置中配置`);
     }
   }
 

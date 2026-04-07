@@ -35,8 +35,7 @@ export class SensorsAdapter implements ITrackerAdapter {
   }
 
   async init(_options: TrackerInitOptions): Promise<void> {
-    const { sdk, sdkUrl, serverUrl, showLog, sendType, isSinglePage, heatmap } =
-      this.config;
+    const { sdk, sdkUrl, serverUrl, showLog, sendType, isSinglePage, heatmap } = this.config;
 
     // 1. 获取 SDK 实例：npm 传入 > CDN 加载
     if (sdk) {
@@ -48,9 +47,7 @@ export class SensorsAdapter implements ITrackerAdapter {
       }
       this.sdk = window.sensors;
     } else {
-      throw new Error(
-        '[kit-tracker] SensorsAdapter 需要提供 sdk（npm 实例）或 sdkUrl（CDN 地址）',
-      );
+      throw new Error('[kit-tracker] SensorsAdapter 需要提供 sdk（npm 实例）或 sdkUrl（CDN 地址）');
     }
 
     // 2. 初始化
@@ -95,8 +92,7 @@ export class SensorsAdapter implements ITrackerAdapter {
       const script = document.createElement('script');
       script.src = url;
       script.onload = () => resolve();
-      script.onerror = () =>
-        reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
+      script.onerror = () => reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
       document.head.appendChild(script);
     });
   }

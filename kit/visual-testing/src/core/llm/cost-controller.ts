@@ -149,10 +149,7 @@ export class LLMCostController {
   /**
    * 从缓存获取分析结果
    */
-  async getCachedAnalysis(
-    baselinePath: string,
-    actualPath: string,
-  ): Promise<AnalyzeResult | null> {
+  async getCachedAnalysis(baselinePath: string, actualPath: string): Promise<AnalyzeResult | null> {
     if (!this.config.cacheEnabled) return null;
 
     // 首次访问时从磁盘加载缓存（Promise 缓存避免并发重复加载）
@@ -216,9 +213,7 @@ export class LLMCostController {
         );
       }
     } else {
-      log.debug(
-        `LLM call count: ${this.callCount}/${this.config.maxCallsPerRun}`,
-      );
+      log.debug(`LLM call count: ${this.callCount}/${this.config.maxCallsPerRun}`);
     }
   }
 
@@ -238,8 +233,7 @@ export class LLMCostController {
       callCount: this.callCount,
       totalTokens,
       estimatedCost: this.estimatedCost,
-      averageTokensPerCall:
-        this.callCount > 0 ? totalTokens / this.callCount : 0,
+      averageTokensPerCall: this.callCount > 0 ? totalTokens / this.callCount : 0,
       breakdown: {
         promptTokens: this.totalPromptTokens,
         completionTokens: this.totalCompletionTokens,
@@ -265,15 +259,9 @@ export class LLMCostController {
     return this.cache.getStats();
   }
 
-  private async buildCacheKey(
-    baselinePath: string,
-    actualPath: string,
-  ): Promise<string> {
+  private async buildCacheKey(baselinePath: string, actualPath: string): Promise<string> {
     try {
-      const [h1, h2] = await Promise.all([
-        hashFile(baselinePath),
-        hashFile(actualPath),
-      ]);
+      const [h1, h2] = await Promise.all([hashFile(baselinePath), hashFile(actualPath)]);
       return `${h1}:${h2}`;
     } catch (error) {
       log.warn('Failed to hash files for cache key, using file paths instead', {

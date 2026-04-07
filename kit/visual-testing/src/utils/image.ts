@@ -73,9 +73,7 @@ export function writePNG(png: PNG, filePath: string): Promise<void> {
 /**
  * 获取图片尺寸
  */
-export async function getImageDimensions(
-  filePath: string,
-): Promise<ImageDimensions> {
+export async function getImageDimensions(filePath: string): Promise<ImageDimensions> {
   const png = await readPNG(filePath);
   return { width: png.width, height: png.height };
 }

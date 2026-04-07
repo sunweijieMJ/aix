@@ -9,11 +9,7 @@
     <slot name="reference" />
   </span>
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
-    <Transition
-      :name="transition"
-      @after-enter="emit('show')"
-      @after-leave="emit('hide')"
-    >
+    <Transition :name="transition" @after-enter="emit('show')" @after-leave="emit('hide')">
       <div
         v-if="isOpen"
         :id="popoverId"
@@ -24,11 +20,7 @@
         :style="mergedStyles"
         v-on="floatingListeners"
       >
-        <div
-          v-if="title || $slots.title"
-          :id="titleId"
-          class="aix-popover__title"
-        >
+        <div v-if="title || $slots.title" :id="titleId" class="aix-popover__title">
           <slot name="title">{{ title }}</slot>
         </div>
         <div
@@ -82,14 +74,13 @@ const floatingElRef = ref<HTMLElement | null>(null);
 const arrowElRef = ref<HTMLElement | null>(null);
 
 // 核心定位
-const { referenceRef, floatingRef, arrowRef, floatingStyles, arrowStyles } =
-  usePopper({
-    placement: () => props.placement,
-    offset: () => props.offset,
-    arrow: () => props.arrow,
-    arrowSize: 8,
-    borderWidth: 1,
-  });
+const { referenceRef, floatingRef, arrowRef, floatingStyles, arrowStyles } = usePopper({
+  placement: () => props.placement,
+  offset: () => props.offset,
+  arrow: () => props.arrow,
+  arrowSize: 8,
+  borderWidth: 1,
+});
 
 // 桥接 refs
 watch(triggerRef, (el) => {
@@ -103,17 +94,16 @@ watch(arrowElRef, (el) => {
 });
 
 // 触发器（支持受控模式）
-const { isOpen, show, hide, referenceListeners, floatingListeners } =
-  usePopperTrigger({
-    trigger: () => props.trigger,
-    disabled: () => props.disabled,
-    showDelay: () => (props.trigger === 'hover' ? props.showDelay : 0),
-    hideDelay: () => (props.trigger === 'hover' ? props.hideDelay : 0),
-    open: () => props.open,
-    onOpenChange: (val) => emit('update:open', val),
-    referenceRef,
-    floatingRef,
-  });
+const { isOpen, show, hide, referenceListeners, floatingListeners } = usePopperTrigger({
+  trigger: () => props.trigger,
+  disabled: () => props.disabled,
+  showDelay: () => (props.trigger === 'hover' ? props.showDelay : 0),
+  hideDelay: () => (props.trigger === 'hover' ? props.hideDelay : 0),
+  open: () => props.open,
+  onOpenChange: (val) => emit('update:open', val),
+  referenceRef,
+  floatingRef,
+});
 
 // 动态 z-index：每次打开时递增，保证最后打开的浮层在最上方
 const { currentZIndex, nextZIndex } = useZIndex();
@@ -128,8 +118,7 @@ const mergedStyles = computed<CSSProperties>(() => {
     zIndex: currentZIndex.value,
   };
   if (props.width) {
-    styles.width =
-      typeof props.width === 'number' ? `${props.width}px` : props.width;
+    styles.width = typeof props.width === 'number' ? `${props.width}px` : props.width;
   }
   return styles;
 });

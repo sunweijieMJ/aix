@@ -58,9 +58,7 @@
         <div
           v-for="page in continuousScroll.pages.value"
           :key="page.pageNumber"
-          :ref="
-            (el) => setContinuousPageRef(page.pageNumber, el as HTMLElement)
-          "
+          :ref="(el) => setContinuousPageRef(page.pageNumber, el as HTMLElement)"
           class="aix-pdf-viewer__continuous-page"
           :style="{
             top: `${page.offsetY}px`,
@@ -124,11 +122,7 @@
       <span aria-hidden="true" />
       <template #menu>
         <template v-for="item in contextMenu.menuItems.value" :key="item.id">
-          <li
-            v-if="item.divider"
-            class="aix-dropdown__divider"
-            role="separator"
-          />
+          <li v-if="item.divider" class="aix-dropdown__divider" role="separator" />
           <DropdownItem v-else :command="item.id" :disabled="item.disabled">
             <span v-if="item.icon" class="aix-pdf-context-menu__icon">
               {{ item.icon }}
@@ -161,11 +155,7 @@ import { usePdfRenderer } from './composables/usePdfRenderer';
 import { useTextSearch } from './composables/useTextSearch';
 import { useTextSelection } from './composables/useTextSelection';
 import { useThumbnail } from './composables/useThumbnail';
-import {
-  DEFAULT_PDF_CONFIG,
-  DEFAULT_IMAGE_LAYER_CONFIG,
-  ZOOM_STEP,
-} from './constants';
+import { DEFAULT_PDF_CONFIG, DEFAULT_IMAGE_LAYER_CONFIG, ZOOM_STEP } from './constants';
 import { locale } from './locale';
 import type {
   PdfViewerConfig,
@@ -301,11 +291,7 @@ const continuousScroll = useContinuousScroll({
   onRenderError: (error) => emit('error', error),
   onAfterPageRender: async (page, viewport, pageNumber, container) => {
     if (mergedConfig.value.enableImageLayer) {
-      const pageImages = await imageLayer.extractImages(
-        page,
-        viewport,
-        pageNumber,
-      );
+      const pageImages = await imageLayer.extractImages(page, viewport, pageNumber);
       let imgLayerDiv = container.querySelector(
         '.aix-pdf-viewer__image-layer',
       ) as HTMLElement | null;
@@ -365,9 +351,7 @@ const scale = computed(() => pdfRenderer.scale.value);
  */
 function updateContainerSize(): boolean {
   const container =
-    mergedConfig.value.scrollMode === 'continuous'
-      ? continuousContentRef.value
-      : contentRef.value;
+    mergedConfig.value.scrollMode === 'continuous' ? continuousContentRef.value : contentRef.value;
 
   if (container) {
     const rect = container.getBoundingClientRect();
@@ -388,18 +372,11 @@ function debouncedResize(): void {
   }
   resizeDebounceTimer = setTimeout(async () => {
     resizeDebounceTimer = null;
-    if (
-      updateContainerSize() &&
-      pdfLoader.pdfDocument.value &&
-      !isInitialRender
-    ) {
+    if (updateContainerSize() && pdfLoader.pdfDocument.value && !isInitialRender) {
       if (mergedConfig.value.scrollMode === 'continuous') {
         // 连续滚动模式：清空旧内容并重新初始化布局
         clearContinuousPlaceholders();
-        await continuousScroll.initLayout(
-          pdfLoader.pdfDocument.value,
-          containerSize.value.width,
-        );
+        await continuousScroll.initLayout(pdfLoader.pdfDocument.value, containerSize.value.width);
         if (continuousContentRef.value) {
           await continuousScroll.renderVisiblePages(
             continuousContentRef.value.scrollTop,
@@ -436,11 +413,7 @@ async function renderCurrentPage(useScale?: number): Promise<void> {
     // 图片层渲染在 renderPage 内部完成，与参考实现保持一致
     onAfterRender: async (page, viewport) => {
       if (mergedConfig.value.enableImageLayer && imageLayerRef.value) {
-        const pageImages = await imageLayer.extractImages(
-          page,
-          viewport,
-          pageNum,
-        );
+        const pageImages = await imageLayer.extractImages(page, viewport, pageNum);
         imageLayer.renderImageLayer(imageLayerRef.value, pageImages);
       }
     },
@@ -525,10 +498,7 @@ async function initCurrentMode(): Promise<void> {
       mountContinuousPages();
     }
   } else {
-    pdfRenderer.currentPage.value = Math.min(
-      continuousScroll.visiblePage.value || 1,
-      pdf.numPages,
-    );
+    pdfRenderer.currentPage.value = Math.min(continuousScroll.visiblePage.value || 1, pdf.numPages);
     await renderCurrentPage();
   }
 }
@@ -626,9 +596,7 @@ async function fitToWidth(): Promise<void> {
     mergedConfig.value.scrollMode === 'continuous'
       ? (continuousContentRef.value?.clientWidth ?? containerSize.value.width)
       : containerSize.value.width;
-  const newScale =
-    (containerWidth - mergedConfig.value.fitPadding * 2) /
-    defaultViewport.width;
+  const newScale = (containerWidth - mergedConfig.value.fitPadding * 2) / defaultViewport.width;
 
   if (mergedConfig.value.scrollMode === 'continuous') {
     await applyContinuousScale(newScale);
@@ -646,12 +614,8 @@ async function fitToPage(): Promise<void> {
   const size =
     mergedConfig.value.scrollMode === 'continuous'
       ? {
-          width:
-            continuousContentRef.value?.clientWidth ??
-            containerSize.value.width,
-          height:
-            continuousContentRef.value?.clientHeight ??
-            containerSize.value.height,
+          width: continuousContentRef.value?.clientWidth ?? containerSize.value.width,
+          height: continuousContentRef.value?.clientHeight ?? containerSize.value.height,
         }
       : containerSize.value;
   const newScale = pdfRenderer.calculateFitScale(page, size);
@@ -682,10 +646,7 @@ function clearSelection(): void {
   }
 }
 
-async function generateThumbnail(
-  page: number,
-  width?: number,
-): Promise<ThumbnailInfo> {
+async function generateThumbnail(page: number, width?: number): Promise<ThumbnailInfo> {
   const pdfDoc = pdfLoader.pdfDocument.value;
   if (!pdfDoc) throw new Error('PDF 文档未加载');
   return thumbnail.generateThumbnail(pdfDoc, page, width);
@@ -723,17 +684,7 @@ function extractImageAsBase64(imageInfo: PdfImageInfo): string {
 
   tempCanvas.width = srcWidth;
   tempCanvas.height = srcHeight;
-  ctx.drawImage(
-    canvas,
-    srcX,
-    srcY,
-    srcWidth,
-    srcHeight,
-    0,
-    0,
-    srcWidth,
-    srcHeight,
-  );
+  ctx.drawImage(canvas, srcX, srcY, srcWidth, srcHeight, 0, 0, srcWidth, srcHeight);
 
   return tempCanvas.toDataURL('image/png');
 }
@@ -755,10 +706,7 @@ function destroy(): void {
 // ==================== 连续滚动处理 ====================
 
 /** 设置连续页面的 ref */
-function setContinuousPageRef(
-  pageNumber: number,
-  el: HTMLElement | null,
-): void {
+function setContinuousPageRef(pageNumber: number, el: HTMLElement | null): void {
   if (el) {
     continuousPageRefs.set(pageNumber, el);
   } else {
@@ -778,12 +726,7 @@ function mountContinuousPages(): void {
   for (const page of continuousScroll.pages.value) {
     const container = continuousScroll.getPageContainer(page.pageNumber);
     const placeholder = continuousPageRefs.get(page.pageNumber);
-    if (
-      container &&
-      placeholder &&
-      page.rendered &&
-      container.hasChildNodes()
-    ) {
+    if (container && placeholder && page.rendered && container.hasChildNodes()) {
       // 已挂载则跳过，避免无谓 DOM 操作
       if (placeholder.hasChildNodes()) continue;
       while (container.firstChild) {
@@ -835,10 +778,7 @@ function handleContentClick(event: MouseEvent): void {
   if (target.closest('.aix-pdf-image-overlay')) {
     return;
   }
-  if (
-    mergedConfig.value.enableImageLayer &&
-    imageLayer.selectedImages.value.size > 0
-  ) {
+  if (mergedConfig.value.enableImageLayer && imageLayer.selectedImages.value.size > 0) {
     imageLayer.clearSelection();
     if (mergedConfig.value.scrollMode === 'continuous') {
       // 连续模式：刷新所有页面的图片层样式
@@ -879,9 +819,7 @@ function highlightContinuousSearchMatches(): void {
     if (!page.rendered) continue;
     const placeholder = continuousPageRefs.get(page.pageNumber);
     if (!placeholder) continue;
-    const textLayer = placeholder.querySelector(
-      '.textLayer',
-    ) as HTMLElement | null;
+    const textLayer = placeholder.querySelector('.textLayer') as HTMLElement | null;
     if (textLayer) {
       textSearch.highlightMatches(textLayer, page.pageNumber);
     }
@@ -890,9 +828,7 @@ function highlightContinuousSearchMatches(): void {
 
 function clearContinuousHighlights(): void {
   for (const [, placeholder] of continuousPageRefs) {
-    const textLayer = placeholder.querySelector(
-      '.textLayer',
-    ) as HTMLElement | null;
+    const textLayer = placeholder.querySelector('.textLayer') as HTMLElement | null;
     if (textLayer) {
       textSearch.clearHighlights(textLayer);
     }
@@ -989,9 +925,7 @@ onMounted(async () => {
 
   // 观察正确的容器（根据滚动模式）
   const observeContainer =
-    mergedConfig.value.scrollMode === 'continuous'
-      ? continuousContentRef.value
-      : contentRef.value;
+    mergedConfig.value.scrollMode === 'continuous' ? continuousContentRef.value : contentRef.value;
 
   if (observeContainer && mergedConfig.value.fitToContainer) {
     resizeObserver = new ResizeObserver(debouncedResize);
@@ -1031,10 +965,7 @@ watch(currentPage, () => {
       if (mergedConfig.value.scrollMode === 'continuous') {
         highlightContinuousSearchMatches();
       } else if (textLayerRef.value) {
-        textSearch.highlightMatches(
-          textLayerRef.value,
-          pdfRenderer.currentPage.value,
-        );
+        textSearch.highlightMatches(textLayerRef.value, pdfRenderer.currentPage.value);
       }
     });
   }

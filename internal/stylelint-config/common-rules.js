@@ -118,15 +118,9 @@ export const commonRules = {
   // ==================== Vue/SCSS 语法兼容 ====================
 
   // 允许 Vue 的 ::v-deep 伪元素
-  'selector-pseudo-element-no-unknown': [
-    true,
-    { ignorePseudoElements: ['v-deep'] },
-  ],
+  'selector-pseudo-element-no-unknown': [true, { ignorePseudoElements: ['v-deep'] }],
   // 允许 Vue 的 :global、:deep 伪类
-  'selector-pseudo-class-no-unknown': [
-    true,
-    { ignorePseudoClasses: ['global', 'deep'] },
-  ],
+  'selector-pseudo-class-no-unknown': [true, { ignorePseudoClasses: ['global', 'deep'] }],
   // 允许 SCSS 内置函数和 Vue 的 v-bind()、iOS 安全区的 constant()/env() 等
   'function-no-unknown': [
     true,

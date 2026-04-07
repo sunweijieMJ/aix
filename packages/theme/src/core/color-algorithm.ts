@@ -118,9 +118,7 @@ export function parseColor(color: string): RGB {
     case 'rgb':
     case 'rgba': {
       // 匹配 rgb(r g b), rgb(r, g, b), rgba(r, g, b, a), rgb(r g b / a)
-      const match = trimmed.match(
-        /rgba?\s*\(\s*(\d+)\s*[,\s]+\s*(\d+)\s*[,\s]+\s*(\d+)/,
-      );
+      const match = trimmed.match(/rgba?\s*\(\s*(\d+)\s*[,\s]+\s*(\d+)\s*[,\s]+\s*(\d+)/);
       if (!match) {
         throw new Error(`Invalid RGB/RGBA color: ${color}`);
       }
@@ -133,9 +131,7 @@ export function parseColor(color: string): RGB {
 
     case 'hsl': {
       // 匹配 hsl(h, s%, l%) 或 hsl(h s% l%)
-      const match = trimmed.match(
-        /hsla?\s*\(\s*(\d+)\s*[,\s]+\s*(\d+)%?\s*[,\s]+\s*(\d+)%?/,
-      );
+      const match = trimmed.match(/hsla?\s*\(\s*(\d+)\s*[,\s]+\s*(\d+)%?\s*[,\s]+\s*(\d+)%?/);
       if (!match) {
         throw new Error(`Invalid HSL color: ${color}`);
       }
@@ -376,11 +372,7 @@ export function generateActiveColor(color: string): string {
  * @param useAlpha - 是否使用 alpha 通道（默认 false，返回纯色）
  * @param alpha - alpha 值（0-1，仅当 useAlpha 为 true 时生效）
  */
-export function generateBgColor(
-  color: string,
-  useAlpha = false,
-  alpha = 0.1,
-): string {
+export function generateBgColor(color: string, useAlpha = false, alpha = 0.1): string {
   const rgb = parseColor(color);
   const hsl = rgbToHsl(rgb);
 
@@ -416,11 +408,7 @@ export function generateTextColor(color: string): string {
  * @param color2 - 第二个颜色（RGB 格式字符串）
  * @param weight - color1 的权重（0-100），100 表示完全是 color1
  */
-export function mixColors(
-  color1: string,
-  color2: string,
-  weight: number,
-): string {
+export function mixColors(color1: string, color2: string, weight: number): string {
   const rgb1 = parseColor(color1);
   const rgb2 = parseColor(color2);
   const w = weight / 100;
@@ -621,13 +609,9 @@ const DARK_COLOR_COUNT = 4;
 function getHue(hsv: HSV, i: number, light: boolean): number {
   let hue: number;
   if (Math.round(hsv.h) >= 60 && Math.round(hsv.h) <= 240) {
-    hue = light
-      ? Math.round(hsv.h) - HUE_STEP * i
-      : Math.round(hsv.h) + HUE_STEP * i;
+    hue = light ? Math.round(hsv.h) - HUE_STEP * i : Math.round(hsv.h) + HUE_STEP * i;
   } else {
-    hue = light
-      ? Math.round(hsv.h) + HUE_STEP * i
-      : Math.round(hsv.h) - HUE_STEP * i;
+    hue = light ? Math.round(hsv.h) + HUE_STEP * i : Math.round(hsv.h) - HUE_STEP * i;
   }
   if (hue < 0) {
     hue += 360;

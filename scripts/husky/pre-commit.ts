@@ -11,9 +11,7 @@ const log = {
 try {
   // 获取改动的文件
   log.info('正在获取改动的文件...');
-  const changedFiles = execSync(
-    'git diff --cached --name-only --diff-filter=ACMR',
-  )
+  const changedFiles = execSync('git diff --cached --name-only --diff-filter=ACMR')
     .toString()
     .trim()
     .split('\n');
@@ -59,9 +57,7 @@ try {
       // 检测变更文件涉及的项目，按项目分组
       const projectMap = new Map<string, string[]>();
       for (const file of filesByType.ts) {
-        const match = file.match(
-          /^(apps\/[^/]+|internal\/[^/]+|packages\/[^/]+)\//,
-        );
+        const match = file.match(/^(apps\/[^/]+|internal\/[^/]+|packages\/[^/]+)\//);
         if (match) {
           const project = match[1]!;
           if (!projectMap.has(project)) projectMap.set(project, []);
@@ -102,12 +98,9 @@ try {
     ];
 
     if (packagePaths.length) {
-      execSync(
-        `npx turbo run test ${packagePaths.map((p) => `--filter=${p}`).join(' ')}`,
-        {
-          stdio: 'inherit',
-        },
-      );
+      execSync(`npx turbo run test ${packagePaths.map((p) => `--filter=${p}`).join(' ')}`, {
+        stdio: 'inherit',
+      });
       log.success('单元测试通过');
     } else {
       log.warn('未检测到包的改动，跳过单元测试');

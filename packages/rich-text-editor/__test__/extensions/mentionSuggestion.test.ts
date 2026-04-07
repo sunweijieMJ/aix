@@ -8,9 +8,7 @@ import type { MentionConfig, MentionItem } from '../../src/types';
  */
 function getItemsFn(config?: MentionConfig) {
   const suggestion = createMentionSuggestion(config);
-  return suggestion!.items as (args: {
-    query: string;
-  }) => Promise<MentionItem[]>;
+  return suggestion!.items as (args: { query: string }) => Promise<MentionItem[]>;
 }
 
 describe('createMentionSuggestion - 基础配置', () => {
@@ -110,30 +108,27 @@ describe('createMentionSuggestion - server 模式防抖', () => {
   it('序列号防护：过期请求的结果不影响最新查询', async () => {
     // 第一次请求慢（200ms 延迟），第二次请求快
     let callCount = 0;
-    mockFetch.mockImplementation(
-      (_url: string, options: { signal: AbortSignal }) => {
-        callCount++;
-        const currentCall = callCount;
-        return new Promise((resolve, reject) => {
-          const onAbort = () =>
-            reject(new DOMException('Aborted', 'AbortError'));
-          if (options.signal.aborted) return onAbort();
-          options.signal.addEventListener('abort', onAbort, { once: true });
+    mockFetch.mockImplementation((_url: string, options: { signal: AbortSignal }) => {
+      callCount++;
+      const currentCall = callCount;
+      return new Promise((resolve, reject) => {
+        const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+        if (options.signal.aborted) return onAbort();
+        options.signal.addEventListener('abort', onAbort, { once: true });
 
-          // 第一次调用延迟更长
-          const delay = currentCall === 1 ? 200 : 50;
-          setTimeout(() => {
-            resolve({
-              ok: true,
-              json: () =>
-                Promise.resolve({
-                  data: [{ id: currentCall, label: `result-${currentCall}` }],
-                }),
-            });
-          }, delay);
-        });
-      },
-    );
+        // 第一次调用延迟更长
+        const delay = currentCall === 1 ? 200 : 50;
+        setTimeout(() => {
+          resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                data: [{ id: currentCall, label: `result-${currentCall}` }],
+              }),
+          });
+        }, delay);
+      });
+    });
 
     const items = getItemsFn({ server: '/api/users' });
 
@@ -187,9 +182,7 @@ describe('createMentionSuggestion - server 模式错误处理', () => {
 
     const result = await promise;
     expect(result).toEqual([]);
-    expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'server' }),
-    );
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ type: 'server' }));
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
@@ -232,16 +225,14 @@ describe('createMentionSuggestion - cleanup', () => {
     mockFetch.mockImplementation(
       (_url: string, options: { signal: AbortSignal }) =>
         new Promise((resolve, reject) => {
-          const onAbort = () =>
-            reject(new DOMException('Aborted', 'AbortError'));
+          const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
           if (options.signal.aborted) return onAbort();
           options.signal.addEventListener('abort', onAbort, { once: true });
           setTimeout(
             () =>
               resolve({
                 ok: true,
-                json: () =>
-                  Promise.resolve({ data: [{ id: 1, label: 'test' }] }),
+                json: () => Promise.resolve({ data: [{ id: 1, label: 'test' }] }),
               }),
             100,
           );
@@ -249,9 +240,7 @@ describe('createMentionSuggestion - cleanup', () => {
     );
 
     const suggestion = createMentionSuggestion({ server: '/api/users' });
-    const itemsFn = suggestion!.items as (args: {
-      query: string;
-    }) => Promise<MentionItem[]>;
+    const itemsFn = suggestion!.items as (args: { query: string }) => Promise<MentionItem[]>;
 
     // 发起查询但不等待防抖
     itemsFn({ query: 'test' });

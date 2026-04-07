@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  initConfigToPersisted,
-  persistedToInitConfig,
-} from '../src/core/config.js';
+import { initConfigToPersisted, persistedToInitConfig } from '../src/core/config.js';
 import type { InitConfig } from '../src/types.js';
 
 describe('initConfigToPersisted', () => {
@@ -42,10 +39,7 @@ describe('persistedToInitConfig', () => {
       variables: { componentPrefix: 'aix' },
     });
 
-    const { initConfig, userConfig } = persistedToInitConfig(
-      persisted,
-      'my-project',
-    );
+    const { initConfig, userConfig } = persistedToInitConfig(persisted, 'my-project');
 
     expect(initConfig.platforms).toEqual(['claude']);
     expect(initConfig.framework).toBe('vue3');

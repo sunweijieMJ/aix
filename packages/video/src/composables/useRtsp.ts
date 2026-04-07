@@ -1,10 +1,4 @@
-import {
-  ref,
-  watch,
-  onBeforeUnmount,
-  type Ref,
-  type WatchStopHandle,
-} from 'vue';
+import { ref, watch, onBeforeUnmount, type Ref, type WatchStopHandle } from 'vue';
 
 /**
  * useRtsp 返回类型
@@ -50,10 +44,7 @@ export interface RtspOptions {
 }
 
 const DEFAULT_OPTIONS: Required<
-  Omit<
-    RtspOptions,
-    'wsProxyUrl' | 'hlsConvertUrl' | 'webrtcSignalUrl' | 'onReady' | 'onError'
-  >
+  Omit<RtspOptions, 'wsProxyUrl' | 'hlsConvertUrl' | 'webrtcSignalUrl' | 'onReady' | 'onError'>
 > = {
   convertMode: 'websocket',
   mimeType: 'video/mp4',
@@ -86,13 +77,9 @@ export function useRtsp(
   // watch 清理函数
   let stopWatch: WatchStopHandle | null = null;
 
-  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(
-    key: K,
-  ): (typeof DEFAULT_OPTIONS)[K] {
+  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(key: K): (typeof DEFAULT_OPTIONS)[K] {
     const value = options.value[key];
-    return value !== undefined
-      ? (value as (typeof DEFAULT_OPTIONS)[K])
-      : DEFAULT_OPTIONS[key];
+    return value !== undefined ? (value as (typeof DEFAULT_OPTIONS)[K]) : DEFAULT_OPTIONS[key];
   }
 
   function logDebug(message: string, ...args: unknown[]): void {
@@ -151,11 +138,7 @@ export function useRtsp(
         };
 
         wsConnection.onmessage = (event) => {
-          if (
-            sourceBuffer &&
-            !sourceBuffer.updating &&
-            mediaSource?.readyState === 'open'
-          ) {
+          if (sourceBuffer && !sourceBuffer.updating && mediaSource?.readyState === 'open') {
             try {
               sourceBuffer.appendBuffer(event.data);
             } catch {
@@ -174,9 +157,7 @@ export function useRtsp(
       });
     } catch (error) {
       options.value.onError?.(
-        error instanceof Error
-          ? error
-          : new Error('初始化 RTSP WebSocket 代理失败'),
+        error instanceof Error ? error : new Error('初始化 RTSP WebSocket 代理失败'),
       );
     }
   }

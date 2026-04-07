@@ -9,17 +9,9 @@ export class HooksUtils {
   /**
    * 为使用翻译变量的hooks添加到依赖项数组（由 library 适配器驱动）
    */
-  static addTranslationVarToHooksDependencies(
-    code: string,
-    library: ReactI18nLibrary,
-  ): string {
+  static addTranslationVarToHooksDependencies(code: string, library: ReactI18nLibrary): string {
     const varName = library.translationVarName;
-    const sourceFile = ts.createSourceFile(
-      'temp.tsx',
-      code,
-      ts.ScriptTarget.Latest,
-      true,
-    );
+    const sourceFile = ts.createSourceFile('temp.tsx', code, ts.ScriptTarget.Latest, true);
     const hooksToFix: {
       node: ts.CallExpression;
       needsVar: boolean;
@@ -44,9 +36,7 @@ export class HooksUtils {
 
         if (
           hookName &&
-          ['useCallback', 'useMemo', 'useEffect', 'useLayoutEffect'].includes(
-            hookName,
-          )
+          ['useCallback', 'useMemo', 'useEffect', 'useLayoutEffect'].includes(hookName)
         ) {
           const needsVar = this.hookUsesTranslationVar(node, library);
           if (needsVar) {
@@ -96,8 +86,7 @@ export class HooksUtils {
       } else if (hookCall.arguments.length === 1) {
         const firstArg = hookCall.arguments[0]!;
         const insertPos = firstArg.getEnd();
-        code =
-          code.slice(0, insertPos) + `, [${varName}]` + code.slice(insertPos);
+        code = code.slice(0, insertPos) + `, [${varName}]` + code.slice(insertPos);
       }
     }
 
@@ -120,10 +109,7 @@ export class HooksUtils {
     const checkNode = (node: ts.Node): void => {
       // 检查翻译变量的属性访问 (intl.formatMessage)
       if (ts.isPropertyAccessExpression(node)) {
-        if (
-          ts.isIdentifier(node.expression) &&
-          node.expression.text === varName
-        ) {
+        if (ts.isIdentifier(node.expression) && node.expression.text === varName) {
           usesVar = true;
           return;
         }

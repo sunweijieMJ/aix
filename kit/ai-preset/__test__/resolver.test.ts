@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  loadRuleSources,
-  mergeRuleSources,
-  resolvePresetNames,
-} from '../src/core/resolver.js';
+import { loadRuleSources, mergeRuleSources, resolvePresetNames } from '../src/core/resolver.js';
 import type { InitConfig, PresetName } from '../src/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -89,11 +85,7 @@ describe('loadRuleSources', () => {
 describe('mergeRuleSources', () => {
   it('过滤 exclude 列表中的规则', async () => {
     const sources = await loadRuleSources(fixturesDir, ['base' as PresetName]);
-    const merged = mergeRuleSources(
-      sources,
-      { exclude: ['base/sample-rule'] },
-      ['claude'],
-    );
+    const merged = mergeRuleSources(sources, { exclude: ['base/sample-rule'] }, ['claude']);
     expect(merged.ruleIds).not.toContain('base/sample-rule');
   });
 
@@ -119,11 +111,7 @@ describe('mergeRuleSources', () => {
 
   it('用户变量覆盖默认值', async () => {
     const sources = await loadRuleSources(fixturesDir, ['vue3' as PresetName]);
-    const merged = mergeRuleSources(
-      sources,
-      { variables: { componentPrefix: 'aix' } },
-      ['claude'],
-    );
+    const merged = mergeRuleSources(sources, { variables: { componentPrefix: 'aix' } }, ['claude']);
     expect(merged.variables.componentPrefix).toBe('aix');
   });
 });

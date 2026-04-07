@@ -16,13 +16,7 @@ import path from 'node:path';
 
 const FIXTURES_DIR = path.dirname(new URL(import.meta.url).pathname);
 
-function createSolidPNG(
-  width: number,
-  height: number,
-  r: number,
-  g: number,
-  b: number,
-): PNG {
+function createSolidPNG(width: number, height: number, r: number, g: number, b: number): PNG {
   const png = new PNG({ width, height });
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {

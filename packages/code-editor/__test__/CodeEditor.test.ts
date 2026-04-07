@@ -90,10 +90,7 @@ describe('CodeEditor 组件', () => {
 
     it('编辑器初始化前 API 应安全返回默认值', () => {
       const wrapper = mount(CodeEditor);
-      const vm = wrapper.vm as unknown as Record<
-        string,
-        (...args: unknown[]) => unknown
-      >;
+      const vm = wrapper.vm as unknown as Record<string, (...args: unknown[]) => unknown>;
 
       // 编辑器异步初始化，同步调用应安全返回默认值
       expect(vm.getValue!()).toBe('');

@@ -11,9 +11,7 @@ describe('RichTextEditor 组件', () => {
 
     it('应该渲染编辑区域容器', () => {
       const wrapper = mount(RichTextEditor);
-      expect(wrapper.find('.aix-rich-text-editor__content').exists()).toBe(
-        true,
-      );
+      expect(wrapper.find('.aix-rich-text-editor__content').exists()).toBe(true);
     });
   });
 
@@ -22,18 +20,14 @@ describe('RichTextEditor 组件', () => {
       const wrapper = mount(RichTextEditor, {
         props: { disabled: true },
       });
-      expect(wrapper.find('.aix-rich-text-editor--disabled').exists()).toBe(
-        true,
-      );
+      expect(wrapper.find('.aix-rich-text-editor--disabled').exists()).toBe(true);
     });
 
     it('只读状态应有对应 class', () => {
       const wrapper = mount(RichTextEditor, {
         props: { readonly: true },
       });
-      expect(wrapper.find('.aix-rich-text-editor--readonly').exists()).toBe(
-        true,
-      );
+      expect(wrapper.find('.aix-rich-text-editor--readonly').exists()).toBe(true);
     });
 
     it('height prop 应设置固定高度', () => {
@@ -52,9 +46,7 @@ describe('RichTextEditor 组件', () => {
 
     it('不应显示字符统计（默认未启用）', () => {
       const wrapper = mount(RichTextEditor);
-      expect(wrapper.find('.aix-rich-text-editor__footer').exists()).toBe(
-        false,
-      );
+      expect(wrapper.find('.aix-rich-text-editor__footer').exists()).toBe(false);
     });
   });
 

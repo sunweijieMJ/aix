@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  createTheme,
-  THEME_INJECTION_KEY,
-  type ThemeContext,
-} from '../src/vue/theme-context';
+import { createTheme, THEME_INJECTION_KEY, type ThemeContext } from '../src/vue/theme-context';
 import { useTheme } from '../src/vue/use-theme';
 
 // Shared theme context for all tests

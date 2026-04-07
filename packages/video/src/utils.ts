@@ -10,19 +10,14 @@ interface WindowWithMSStream extends Window {
  * 检测是否为移动设备
  */
 export function isMobileDevice(): boolean {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent,
-  );
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
 /**
  * 检测是否为 iOS 设备
  */
 export function isIOS(): boolean {
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-    !(window as WindowWithMSStream).MSStream
-  );
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as WindowWithMSStream).MSStream;
 }
 
 /**

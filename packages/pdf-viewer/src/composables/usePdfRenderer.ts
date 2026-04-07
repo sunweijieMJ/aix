@@ -67,9 +67,7 @@ export interface UsePdfRendererReturn {
 /**
  * PDF 页面渲染 Composable
  */
-export function usePdfRenderer(
-  options: UsePdfRendererOptions,
-): UsePdfRendererReturn {
+export function usePdfRenderer(options: UsePdfRendererOptions): UsePdfRendererReturn {
   const { getConfig } = options;
 
   const currentPage = ref(1);
@@ -118,21 +116,10 @@ export function usePdfRenderer(
     pageNumber: number,
     context: RenderContext,
   ): Promise<RenderResult | null> {
-    const {
-      canvas,
-      textLayerContainer,
-      pageContainer,
-      containerSize,
-      useScale,
-    } = context;
+    const { canvas, textLayerContainer, pageContainer, containerSize, useScale } = context;
     const config = getConfig();
 
-    if (
-      !pdfDocument ||
-      !canvas ||
-      pageNumber < 1 ||
-      pageNumber > pdfDocument.numPages
-    ) {
+    if (!pdfDocument || !canvas || pageNumber < 1 || pageNumber > pdfDocument.numPages) {
       return null;
     }
 
@@ -166,8 +153,7 @@ export function usePdfRenderer(
       canvas.style.height = `${Math.floor(viewport.height)}px`;
 
       // 渲染 Canvas (v5: 传 canvas 而非 canvasContext)
-      const transform =
-        outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
+      const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
       currentRenderTask = page.render({
         canvas,
         viewport,
@@ -181,10 +167,7 @@ export function usePdfRenderer(
         pageContainer.style.width = `${Math.floor(viewport.width)}px`;
         pageContainer.style.height = `${Math.floor(viewport.height)}px`;
         pageContainer.style.setProperty('--scale-factor', String(renderScale));
-        pageContainer.style.setProperty(
-          '--total-scale-factor',
-          String(renderScale),
-        );
+        pageContainer.style.setProperty('--total-scale-factor', String(renderScale));
       }
 
       // 渲染文本层
@@ -219,10 +202,7 @@ export function usePdfRenderer(
         return null;
       }
 
-      const renderError =
-        err instanceof Error
-          ? err
-          : new Error(`PDF 第 ${pageNumber} 页渲染失败`);
+      const renderError = err instanceof Error ? err : new Error(`PDF 第 ${pageNumber} 页渲染失败`);
       options.onRenderError?.(renderError, pageNumber);
 
       return null;

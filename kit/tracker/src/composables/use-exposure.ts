@@ -7,20 +7,12 @@ import { TRACKER_INJECTION_KEY } from '../types.js';
  * 基于 IntersectionObserver 检测元素是否进入视口并满足可见时长
  */
 export function useExposure(options: UseExposureOptions): UseExposureReturn {
-  const {
-    event,
-    properties,
-    threshold = 0.5,
-    once = true,
-    minVisibleTime = 300,
-  } = options;
+  const { event, properties, threshold = 0.5, once = true, minVisibleTime = 300 } = options;
 
   const injected = inject(TRACKER_INJECTION_KEY);
 
   if (!injected) {
-    throw new Error(
-      '[kit-tracker] useExposure() 必须在 createTrackerPlugin 安装后的组件中使用',
-    );
+    throw new Error('[kit-tracker] useExposure() 必须在 createTrackerPlugin 安装后的组件中使用');
   }
 
   const tracker = injected;

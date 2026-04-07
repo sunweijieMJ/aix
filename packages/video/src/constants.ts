@@ -110,12 +110,9 @@ export function detectProtocol(uri: string): StreamProtocol {
  * 判断是否为原生支持的格式
  */
 export function isNativeFormat(protocol: StreamProtocol): boolean {
-  return [
-    StreamProtocol.MP4,
-    StreamProtocol.WebM,
-    StreamProtocol.OGG,
-    StreamProtocol.MOV,
-  ].includes(protocol);
+  return [StreamProtocol.MP4, StreamProtocol.WebM, StreamProtocol.OGG, StreamProtocol.MOV].includes(
+    protocol,
+  );
 }
 
 /**

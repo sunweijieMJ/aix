@@ -16,16 +16,9 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import { applyDarkAlgorithm } from './core/define-theme';
-import {
-  defaultSeedTokens,
-  deriveMapTokens,
-  deriveAliasTokens,
-} from './core/seed-derivation';
+import { defaultSeedTokens, deriveMapTokens, deriveAliasTokens } from './core/seed-derivation';
 import { CSS_VAR_PREFIX } from './utils/css-var';
-import {
-  BASE_TOKEN_GROUPS,
-  SEMANTIC_TOKEN_GROUPS,
-} from './utils/token-metadata';
+import { BASE_TOKEN_GROUPS, SEMANTIC_TOKEN_GROUPS } from './utils/token-metadata';
 import type { BaseTokens, ThemeTokens } from './theme-types';
 
 // ============================================================
@@ -80,9 +73,7 @@ function parseArgs(): { output: string; configPath?: string } {
 
   const configIndex = args.indexOf('--config');
   const configPath =
-    configIndex !== -1 && args[configIndex + 1]
-      ? path.resolve(args[configIndex + 1]!)
-      : undefined;
+    configIndex !== -1 && args[configIndex + 1] ? path.resolve(args[configIndex + 1]!) : undefined;
 
   return { output: path.resolve(args[outputIndex + 1]!), configPath };
 }
@@ -92,9 +83,7 @@ function parseArgs(): { output: string; configPath?: string } {
 // ============================================================
 
 function prepareTokenData(customSeed?: Partial<typeof defaultSeedTokens>) {
-  const seed = customSeed
-    ? { ...defaultSeedTokens, ...customSeed }
-    : defaultSeedTokens;
+  const seed = customSeed ? { ...defaultSeedTokens, ...customSeed } : defaultSeedTokens;
   const baseTokens = deriveMapTokens(seed);
   const lightSemanticTokens = deriveAliasTokens(baseTokens, seed);
 
@@ -190,9 +179,7 @@ const SIZE_MAP: Record<string, string> = {
 
 function getTokenJSDoc(key: string): string {
   // 色盘 token: tokenCyan1 → "Cyan 1"
-  const paletteMatch = key.match(
-    /^token(Cyan|Blue|Purple|Green|Red|Orange|Gold|Gray)(\d+)$/,
-  );
+  const paletteMatch = key.match(/^token(Cyan|Blue|Purple|Green|Red|Orange|Gold|Gray)(\d+)$/);
   if (paletteMatch) return `${paletteMatch[1]} ${paletteMatch[2]}`;
 
   // 基础 token（带数字后缀）: tokenSpacing4 → "基础间距 4"
@@ -255,10 +242,7 @@ function fmtVal(value: string | number): string {
 // CSS 生成
 // ============================================================
 
-function generateLightCSS(
-  baseTokens: BaseTokens,
-  fullLightTokens: ThemeTokens,
-): string {
+function generateLightCSS(baseTokens: BaseTokens, fullLightTokens: ThemeTokens): string {
   const lines: string[] = [
     '/**',
     ' * AIX 主题 Token - 亮色模式（全量解析值）',
@@ -299,10 +283,7 @@ function generateLightCSS(
   return lines.join('\n');
 }
 
-function generateDarkCSS(
-  fullLightTokens: ThemeTokens,
-  darkTokens: ThemeTokens,
-): string {
+function generateDarkCSS(fullLightTokens: ThemeTokens, darkTokens: ThemeTokens): string {
   const lines: string[] = [
     '/**',
     ' * AIX 主题 Token - 暗色模式覆盖',
@@ -320,10 +301,7 @@ function generateDarkCSS(
       const darkValue = darkTokens[key as keyof ThemeTokens];
       const lightValue = fullLightTokens[key as keyof ThemeTokens];
       const alwaysOutput = key.startsWith('colorNeutral');
-      if (
-        darkValue !== undefined &&
-        (darkValue !== lightValue || alwaysOutput)
-      ) {
+      if (darkValue !== undefined && (darkValue !== lightValue || alwaysOutput)) {
         changed.push(`  --${P}-${key}: ${fmtVal(darkValue)};`);
       }
     }
@@ -374,10 +352,7 @@ function generateJSON(
     $description:
       '全量 CSS 变量参考（自动生成）。运行 npx aix-theme-export --output <dir> 重新生成。',
     $prefix: P,
-    base: buildGroup(
-      BASE_TOKEN_GROUPS,
-      baseTokens as unknown as Record<string, string | number>,
-    ),
+    base: buildGroup(BASE_TOKEN_GROUPS, baseTokens as unknown as Record<string, string | number>),
     light: buildGroup(
       SEMANTIC_TOKEN_GROUPS,
       fullLightTokens as unknown as Record<string, string | number>,
@@ -426,9 +401,7 @@ function generateTS(
       if (value !== undefined) {
         const desc = getTokenJSDoc(key);
         const formatted =
-          typeof value === 'number'
-            ? String(value)
-            : `'${String(value).replace(/'/g, "\\'")}'`;
+          typeof value === 'number' ? String(value) : `'${String(value).replace(/'/g, "\\'")}'`;
         lines.push(`  /** ${desc} */`);
         lines.push(`  '${key}': ${formatted},`);
       }
@@ -437,18 +410,10 @@ function generateTS(
   };
 
   for (const [groupName, tokenKeys] of Object.entries(BASE_TOKEN_GROUPS)) {
-    addTokens(
-      groupName,
-      tokenKeys,
-      baseTokens as unknown as Record<string, string | number>,
-    );
+    addTokens(groupName, tokenKeys, baseTokens as unknown as Record<string, string | number>);
   }
   for (const [groupName, tokenKeys] of Object.entries(SEMANTIC_TOKEN_GROUPS)) {
-    addTokens(
-      groupName,
-      tokenKeys,
-      fullLightTokens as unknown as Record<string, string | number>,
-    );
+    addTokens(groupName, tokenKeys, fullLightTokens as unknown as Record<string, string | number>);
   }
 
   if (lines[lines.length - 1] === '') lines.pop();
@@ -464,10 +429,7 @@ function generateTS(
       const darkValue = darkTokens[key as keyof ThemeTokens];
       const lightValue = fullLightTokens[key as keyof ThemeTokens];
       const alwaysOutput = key.startsWith('colorNeutral');
-      if (
-        darkValue !== undefined &&
-        (darkValue !== lightValue || alwaysOutput)
-      ) {
+      if (darkValue !== undefined && (darkValue !== lightValue || alwaysOutput)) {
         changed.push({ key, value: darkValue });
       }
     }
@@ -476,9 +438,7 @@ function generateTS(
       for (const { key, value } of changed) {
         const desc = getTokenJSDoc(key);
         const formatted =
-          typeof value === 'number'
-            ? String(value)
-            : `'${String(value).replace(/'/g, "\\'")}'`;
+          typeof value === 'number' ? String(value) : `'${String(value).replace(/'/g, "\\'")}'`;
         lines.push(`  /** ${desc} */`);
         lines.push(`  '${key}': ${formatted},`);
       }
@@ -522,8 +482,7 @@ async function main() {
 
   console.log(`\n🎨 导出主题 Token 到 ${output}`);
 
-  const { baseTokens, fullLightTokens, darkTokens } =
-    prepareTokenData(customSeed);
+  const { baseTokens, fullLightTokens, darkTokens } = prepareTokenData(customSeed);
 
   await fs.mkdir(output, { recursive: true });
 

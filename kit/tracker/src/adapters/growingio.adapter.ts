@@ -82,8 +82,7 @@ export class GrowingIOAdapter implements ITrackerAdapter {
       const script = document.createElement('script');
       script.src = url;
       script.onload = () => resolve();
-      script.onerror = () =>
-        reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
+      script.onerror = () => reject(new Error(`[kit-tracker] 加载脚本失败: ${url}`));
       document.head.appendChild(script);
     });
   }

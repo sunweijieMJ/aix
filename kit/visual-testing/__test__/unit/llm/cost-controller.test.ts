@@ -7,9 +7,7 @@ import { LLMCostController } from '../../../src/core/llm/cost-controller';
 import type { CompareResult } from '../../../src/types/comparison';
 
 /** 创建 mock CompareResult */
-function mockCompareResult(
-  overrides: Partial<CompareResult> = {},
-): CompareResult {
+function mockCompareResult(overrides: Partial<CompareResult> = {}): CompareResult {
   return {
     match: false,
     mismatchPercentage: 10,

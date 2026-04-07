@@ -51,9 +51,7 @@ function createMockPage() {
   } as any;
 }
 
-function createConfig(
-  overrides: Partial<StabilityConfig> = {},
-): StabilityConfig {
+function createConfig(overrides: Partial<StabilityConfig> = {}): StabilityConfig {
   return {
     waitForNetworkIdle: false,
     waitForAnimations: false,
@@ -74,9 +72,7 @@ describe('StabilityHandler', () => {
 
   describe('stabilizePage', () => {
     it('should disable animations when configured', async () => {
-      const handler = new StabilityHandler(
-        createConfig({ disableAnimations: true }),
-      );
+      const handler = new StabilityHandler(createConfig({ disableAnimations: true }));
       await handler.stabilizePage(mockPage);
 
       expect(mockPage.addStyleTag).toHaveBeenCalledWith(
@@ -87,18 +83,14 @@ describe('StabilityHandler', () => {
     });
 
     it('should not disable animations when not configured', async () => {
-      const handler = new StabilityHandler(
-        createConfig({ disableAnimations: false }),
-      );
+      const handler = new StabilityHandler(createConfig({ disableAnimations: false }));
       await handler.stabilizePage(mockPage);
 
       expect(mockPage.addStyleTag).not.toHaveBeenCalled();
     });
 
     it('should wait for network idle when configured', async () => {
-      const handler = new StabilityHandler(
-        createConfig({ waitForNetworkIdle: true }),
-      );
+      const handler = new StabilityHandler(createConfig({ waitForNetworkIdle: true }));
       await handler.stabilizePage(mockPage);
 
       expect(mockPage.waitForLoadState).toHaveBeenCalledWith('networkidle', {
@@ -107,9 +99,7 @@ describe('StabilityHandler', () => {
     });
 
     it('should wait for animations to complete when configured', async () => {
-      const handler = new StabilityHandler(
-        createConfig({ waitForAnimations: true }),
-      );
+      const handler = new StabilityHandler(createConfig({ waitForAnimations: true }));
       await handler.stabilizePage(mockPage);
 
       expect(mockPage.evaluate).toHaveBeenCalled();
@@ -139,9 +129,7 @@ describe('StabilityHandler', () => {
     });
 
     it('should mask specified selectors', async () => {
-      const handler = new StabilityHandler(
-        createConfig({ maskSelectors: ['.dynamic-content'] }),
-      );
+      const handler = new StabilityHandler(createConfig({ maskSelectors: ['.dynamic-content'] }));
       await handler.stabilizePage(mockPage);
 
       expect(mockPage.evaluate).toHaveBeenCalled();
@@ -150,9 +138,7 @@ describe('StabilityHandler', () => {
     it('should replace specified selector content', async () => {
       const handler = new StabilityHandler(
         createConfig({
-          replaceSelectors: [
-            { selector: '.timestamp', replacement: '2024-01-01' },
-          ],
+          replaceSelectors: [{ selector: '.timestamp', replacement: '2024-01-01' }],
         }),
       );
       await handler.stabilizePage(mockPage);
@@ -184,9 +170,7 @@ describe('StabilityHandler', () => {
     it('should handle network idle timeout gracefully', async () => {
       mockPage.waitForLoadState.mockRejectedValueOnce(new Error('Timeout'));
 
-      const handler = new StabilityHandler(
-        createConfig({ waitForNetworkIdle: true }),
-      );
+      const handler = new StabilityHandler(createConfig({ waitForNetworkIdle: true }));
 
       // Should not throw
       await handler.stabilizePage(mockPage);
@@ -195,9 +179,7 @@ describe('StabilityHandler', () => {
     it('should handle animation wait failure gracefully', async () => {
       mockPage.evaluate.mockRejectedValueOnce(new Error('Evaluation failed'));
 
-      const handler = new StabilityHandler(
-        createConfig({ waitForAnimations: true }),
-      );
+      const handler = new StabilityHandler(createConfig({ waitForAnimations: true }));
 
       // Should not throw
       await handler.stabilizePage(mockPage);
@@ -288,8 +270,9 @@ describe('StabilityHandler', () => {
     });
 
     it('should throw when screenshots not consistent after retries', async () => {
-      const pixelmatch = (await import('pixelmatch'))
-        .default as unknown as ReturnType<typeof vi.fn>;
+      const pixelmatch = (await import('pixelmatch')).default as unknown as ReturnType<
+        typeof vi.fn
+      >;
       pixelmatch.mockReturnValue(5000); // High diff = inconsistent
 
       const handler = new StabilityHandler(createConfig());

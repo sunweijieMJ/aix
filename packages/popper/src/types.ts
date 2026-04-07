@@ -4,12 +4,7 @@ import type { InjectionKey, Ref } from 'vue';
 export type { Placement, Strategy, Middleware };
 
 /** 触发器类型 */
-export type TriggerType =
-  | 'hover'
-  | 'click'
-  | 'focus'
-  | 'contextmenu'
-  | 'manual';
+export type TriggerType = 'hover' | 'click' | 'focus' | 'contextmenu' | 'manual';
 
 // ==================== Popper (底层) ====================
 
@@ -425,8 +420,7 @@ export interface DropdownContext {
   handleItemClick: (command?: string | number) => void;
 }
 
-export const DROPDOWN_INJECTION_KEY: InjectionKey<DropdownContext> =
-  Symbol('AixDropdown');
+export const DROPDOWN_INJECTION_KEY: InjectionKey<DropdownContext> = Symbol('AixDropdown');
 
 // ==================== ContextMenu ====================
 

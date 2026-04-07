@@ -14,10 +14,7 @@ import { useClickOutside } from './useClickOutside';
 type EventHandler = (event?: Event) => void;
 
 /** 根据鼠标坐标创建虚拟定位元素（用于 contextmenu 等场景） */
-export function createVirtualElement(
-  clientX: number,
-  clientY: number,
-): HTMLElement {
+export function createVirtualElement(clientX: number, clientY: number): HTMLElement {
   return {
     getBoundingClientRect: () => ({
       width: 0,
@@ -63,9 +60,7 @@ export interface UsePopperTriggerReturn {
  * 管理 hover/click/focus/contextmenu/manual 触发方式，
  * 支持受控模式 (open + onOpenChange)
  */
-export function usePopperTrigger(
-  options: UsePopperTriggerOptions,
-): UsePopperTriggerReturn {
+export function usePopperTrigger(options: UsePopperTriggerOptions): UsePopperTriggerReturn {
   const {
     trigger,
     disabled = false,
@@ -189,10 +184,8 @@ export function usePopperTrigger(
         listeners.focusin = () => show();
         listeners.focusout = (event?: Event) => {
           // 焦点移入浮动层时不关闭（避免可交互内容被意外关闭）
-          const relatedTarget = (event as FocusEvent)
-            ?.relatedTarget as Node | null;
-          if (relatedTarget && floatingRef.value?.contains(relatedTarget))
-            return;
+          const relatedTarget = (event as FocusEvent)?.relatedTarget as Node | null;
+          if (relatedTarget && floatingRef.value?.contains(relatedTarget)) return;
           hide();
         };
         break;
@@ -233,8 +226,7 @@ export function usePopperTrigger(
       // 焦点进入浮动层时保持打开（键盘可访问性）
       listeners.focusin = () => clearTimers();
       listeners.focusout = (event?: Event) => {
-        const relatedTarget = (event as FocusEvent)
-          ?.relatedTarget as Node | null;
+        const relatedTarget = (event as FocusEvent)?.relatedTarget as Node | null;
         if (
           relatedTarget &&
           (floatingRef.value?.contains(relatedTarget) ||

@@ -166,10 +166,7 @@ export interface VideoPlayerEmits {
   /** 数据加载完成 */
   (e: 'loadeddata'): void;
   /** 移动端自动播放策略触发静音，返回原因信息 */
-  (
-    e: 'autoplayMuted',
-    reason: { reason: 'mobile-policy'; originalMuted: boolean },
-  ): void;
+  (e: 'autoplayMuted', reason: { reason: 'mobile-policy'; originalMuted: boolean }): void;
   /** 网络离线 */
   (e: 'networkOffline'): void;
   /** 网络恢复在线 */

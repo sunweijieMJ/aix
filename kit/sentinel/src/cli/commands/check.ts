@@ -9,11 +9,7 @@ import chalk from 'chalk';
 import type { Command } from 'commander';
 
 import type { Phase, Platform } from '../../types/index.js';
-import {
-  PHASE_CONFIGS,
-  VALID_PLATFORMS,
-  MARKER_START,
-} from '../../types/index.js';
+import { PHASE_CONFIGS, VALID_PLATFORMS, MARKER_START } from '../../types/index.js';
 import { createPlatformAdapter } from '../../platform/index.js';
 import { pathExists, readFile } from '../../utils/file.js';
 import { logger } from '../../utils/logger.js';
@@ -32,17 +28,12 @@ export function registerCheckCommand(program: Command): void {
     });
 }
 
-async function runCheck(options: {
-  target: string;
-  platform: string;
-}): Promise<void> {
+async function runCheck(options: { target: string; platform: string }): Promise<void> {
   const target = path.resolve(options.target);
   const platform = options.platform as Platform;
 
   if (!VALID_PLATFORMS.includes(platform)) {
-    logger.error(
-      `无效的平台: ${options.platform}\n  支持的平台: ${VALID_PLATFORMS.join(', ')}`,
-    );
+    logger.error(`无效的平台: ${options.platform}\n  支持的平台: ${VALID_PLATFORMS.join(', ')}`);
     process.exitCode = 1;
     return;
   }
@@ -81,9 +72,7 @@ async function runCheck(options: {
     const secrets = await adapter.listSecrets(target);
     const variables = await adapter.listVariables(target);
 
-    const requiredSecrets = [
-      ...new Set(Object.values(PHASE_CONFIGS).flatMap((pc) => pc.secrets)),
-    ];
+    const requiredSecrets = [...new Set(Object.values(PHASE_CONFIGS).flatMap((pc) => pc.secrets))];
     const requiredVariables = [
       ...new Set(Object.values(PHASE_CONFIGS).flatMap((pc) => pc.variables)),
     ];

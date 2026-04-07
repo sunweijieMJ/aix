@@ -122,9 +122,7 @@ describe('Validation Utils', () => {
 
       const result = validateServerConfig(config);
       expect(result.isValid).toBe(false);
-      expect(result.errors).toContain(
-        'serverName 只能包含小写字母、数字和连字符',
-      );
+      expect(result.errors).toContain('serverName 只能包含小写字母、数字和连字符');
     });
   });
 
@@ -171,9 +169,7 @@ describe('Validation Utils', () => {
       const result = validateExtractorConfig(config);
       expect(result.isValid).toBe(false);
       expect(result.errors).toContain('maxConcurrentExtraction 必须大于 0');
-      expect(result.warnings).toContain(
-        'extractionTimeout 建议设置为至少 1000ms',
-      );
+      expect(result.warnings).toContain('extractionTimeout 建议设置为至少 1000ms');
     });
   });
 
@@ -254,16 +250,11 @@ describe('Validation Utils', () => {
 
       // 检查当前 Node.js 版本
       const nodeVersion = process.version;
-      const majorVersion = parseInt(
-        nodeVersion.slice(1).split('.')[0] || '0',
-        10,
-      );
+      const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0] || '0', 10);
 
       if (majorVersion < 18) {
         expect(result.isValid).toBe(false);
-        expect(result.errors.some((e) => e.includes('需要 Node.js 18'))).toBe(
-          true,
-        );
+        expect(result.errors.some((e) => e.includes('需要 Node.js 18'))).toBe(true);
       } else {
         expect(result.isValid).toBe(true);
       }

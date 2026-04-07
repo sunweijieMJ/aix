@@ -23,10 +23,9 @@ describe('FigmaMcpProvider', () => {
   let provider: FigmaMcpProvider;
 
   // Mock initMcpClient to fail fast instead of spawning real MCP processes
-  vi.spyOn(
-    FigmaMcpProvider.prototype as any,
-    'initMcpClient',
-  ).mockRejectedValue(new Error('MCP SDK not available in test'));
+  vi.spyOn(FigmaMcpProvider.prototype as any, 'initMcpClient').mockRejectedValue(
+    new Error('MCP SDK not available in test'),
+  );
 
   afterEach(async () => {
     if (provider) {

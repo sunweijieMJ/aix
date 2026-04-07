@@ -33,9 +33,7 @@ export class VueComponentInjector implements IComponentInjector {
     }
 
     const importManager = new VueImportManager(undefined, this.library);
-    let updatedCode = importManager.addI18nImports(code, [
-      this.library.hookName,
-    ]);
+    let updatedCode = importManager.addI18nImports(code, [this.library.hookName]);
 
     // 委托给 VueImportManager 处理 Hook 声明，避免重复实现
     updatedCode = importManager.addHookDeclaration(updatedCode);

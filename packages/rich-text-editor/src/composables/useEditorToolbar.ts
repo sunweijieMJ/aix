@@ -34,11 +34,7 @@ import {
   IconClearFormat,
 } from '../icons';
 import type { RichTextEditorLocale } from '../locale/types';
-import type {
-  DropdownOption,
-  RichTextEditorProps,
-  VideoConfig,
-} from '../types';
+import type { DropdownOption, RichTextEditorProps, VideoConfig } from '../types';
 import { resolveUploadFn, processFileUpload } from '../utils/upload';
 
 /**
@@ -292,8 +288,7 @@ export function useEditorToolbar(
         action: () => {},
         options: sizes.map((s) => ({ label: s, value: s })),
         currentValue: () => ed.getAttributes('textStyle').fontSize ?? '',
-        displayLabel: () =>
-          ed.getAttributes('textStyle').fontSize ?? t.value.fontSize,
+        displayLabel: () => ed.getAttributes('textStyle').fontSize ?? t.value.fontSize,
         onSelect: (value: string) => {
           chainFocus(ed).setFontSize(value).run();
         },
@@ -522,8 +517,7 @@ export function useEditorToolbar(
       });
     }
     if (props.video) {
-      const videoConfig: VideoConfig =
-        typeof props.video === 'object' ? props.video : {};
+      const videoConfig: VideoConfig = typeof props.video === 'object' ? props.video : {};
       // Bug fix: 视频默认超时 60s，通过显式传入确保不被 fetchUpload 的 30s 默认值覆盖
       const videoUploadFn = resolveUploadFn({
         ...videoConfig,
@@ -579,10 +573,7 @@ export function useEditorToolbar(
         label: t.value.table,
         isActive: () => ed.isActive('table'),
         isDisabled: () => false,
-        action: () =>
-          chainFocus(ed)
-            .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-            .run(),
+        action: () => chainFocus(ed).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
       });
     }
     insertItems.push(

@@ -193,28 +193,19 @@ function parseStyleLine(line: string, formatOrder: string[]): AssStyle | null {
   const underlineIdx = getIndex('underline');
   const strikeOutIdx = getIndex('strikeout');
 
-  const getPart = (idx: number): string | undefined =>
-    idx >= 0 ? parts[idx] : undefined;
+  const getPart = (idx: number): string | undefined => (idx >= 0 ? parts[idx] : undefined);
 
   return {
     name: getPart(nameIdx >= 0 ? nameIdx : 0) ?? 'Default',
     fontName: getPart(fontNameIdx),
     fontSize:
-      fontSizeIdx >= 0 && getPart(fontSizeIdx)
-        ? parseInt(getPart(fontSizeIdx)!, 10)
-        : undefined,
+      fontSizeIdx >= 0 && getPart(fontSizeIdx) ? parseInt(getPart(fontSizeIdx)!, 10) : undefined,
     primaryColor:
       primaryColorIdx >= 0 && getPart(primaryColorIdx)
         ? parseAssColor(getPart(primaryColorIdx)!)
         : undefined,
-    bold:
-      boldIdx >= 0
-        ? getPart(boldIdx) === '-1' || getPart(boldIdx) === '1'
-        : undefined,
-    italic:
-      italicIdx >= 0
-        ? getPart(italicIdx) === '-1' || getPart(italicIdx) === '1'
-        : undefined,
+    bold: boldIdx >= 0 ? getPart(boldIdx) === '-1' || getPart(boldIdx) === '1' : undefined,
+    italic: italicIdx >= 0 ? getPart(italicIdx) === '-1' || getPart(italicIdx) === '1' : undefined,
     underline:
       underlineIdx >= 0
         ? getPart(underlineIdx) === '-1' || getPart(underlineIdx) === '1'
@@ -231,10 +222,7 @@ function parseStyleLine(line: string, formatOrder: string[]): AssStyle | null {
  * @param content ASS 文件内容
  * @param preserveStyles 是否保留样式信息到 data 字段，默认 true
  */
-export function parseASS(
-  content: string,
-  preserveStyles = true,
-): SubtitleCue[] {
+export function parseASS(content: string, preserveStyles = true): SubtitleCue[] {
   const cues: SubtitleCue[] = [];
   const styles: Map<string, AssStyle> = new Map();
   const lines = content.replace(/\r\n/g, '\n').split('\n');
@@ -257,9 +245,7 @@ export function parseASS(
     if (currentSection === '[v4+ styles]' || currentSection === '[v4 styles]') {
       if (line.toLowerCase().startsWith('format:')) {
         const formatStr = line.substring(7).trim();
-        stylesFormatOrder = formatStr
-          .split(',')
-          .map((s) => s.trim().toLowerCase());
+        stylesFormatOrder = formatStr.split(',').map((s) => s.trim().toLowerCase());
       } else if (line.toLowerCase().startsWith('style:')) {
         const style = parseStyleLine(line, stylesFormatOrder);
         if (style) {
@@ -275,9 +261,7 @@ export function parseASS(
     // 解析 Format 行，确定字段顺序
     if (line.toLowerCase().startsWith('format:')) {
       const formatStr = line.substring(7).trim();
-      eventsFormatOrder = formatStr
-        .split(',')
-        .map((s) => s.trim().toLowerCase());
+      eventsFormatOrder = formatStr.split(',').map((s) => s.trim().toLowerCase());
       continue;
     }
 
@@ -328,8 +312,7 @@ export function parseASS(
             cue.data = {
               styleName,
               style: baseStyle,
-              inlineStyle:
-                Object.keys(inlineStyle).length > 0 ? inlineStyle : undefined,
+              inlineStyle: Object.keys(inlineStyle).length > 0 ? inlineStyle : undefined,
             };
           }
         }

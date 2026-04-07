@@ -32,10 +32,7 @@ export class InteractiveUtils {
    * @param defaultMode - 默认模式
    * @returns 用户选择的模式
    */
-  static async promptForMode(
-    isCustom: boolean,
-    defaultMode: ModeName,
-  ): Promise<ModeName> {
+  static async promptForMode(isCustom: boolean, defaultMode: ModeName): Promise<ModeName> {
     const { mode } = await inquirer.prompt({
       type: 'select',
       name: 'mode',
@@ -60,10 +57,7 @@ export class InteractiveUtils {
    * @param isCustom - 是否为定制目录
    * @returns 是否确认
    */
-  static async promptForConfirmation(
-    mode: ModeName,
-    isCustom: boolean,
-  ): Promise<boolean> {
+  static async promptForConfirmation(mode: ModeName, isCustom: boolean): Promise<boolean> {
     const location = isCustom ? '定制目录' : '主目录';
     const message = `
 ================================================

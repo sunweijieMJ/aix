@@ -1,10 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createTools } from '../src/mcp-tools/index';
-import type {
-  ComponentIndex,
-  ToolPackageIndex,
-  ToolPackageInfo,
-} from '../src/types/index';
+import type { ComponentIndex, ToolPackageIndex, ToolPackageInfo } from '../src/types/index';
 
 describe('Package MCP Tools', () => {
   let tools: ReturnType<typeof createTools>;

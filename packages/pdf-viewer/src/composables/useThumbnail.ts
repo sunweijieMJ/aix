@@ -39,9 +39,7 @@ export interface UseThumbnailReturn {
 /**
  * 缩略图生成 Composable
  */
-export function useThumbnail(
-  options: UseThumbnailOptions = {},
-): UseThumbnailReturn {
+export function useThumbnail(options: UseThumbnailOptions = {}): UseThumbnailReturn {
   const { defaultWidth = 120, quality = 0.8, format = 'image/jpeg' } = options;
 
   const thumbnailCache = ref<Map<number, ThumbnailInfo>>(new Map());

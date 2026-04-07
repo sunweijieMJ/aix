@@ -47,11 +47,7 @@ export class IconsExtractor {
     // 为每个图标创建单独的组件信息
     for (const iconExport of iconExports) {
       try {
-        const iconInfo = await this.createIconInfo(
-          packageInfo,
-          iconExport,
-          packagePath,
-        );
+        const iconInfo = await this.createIconInfo(packageInfo, iconExport, packagePath);
         if (iconInfo) {
           icons.push(iconInfo);
         }
@@ -76,8 +72,7 @@ export class IconsExtractor {
   > {
     try {
       const content = await readFile(indexPath, 'utf8');
-      const exports: Array<{ name: string; path: string; category: string }> =
-        [];
+      const exports: Array<{ name: string; path: string; category: string }> = [];
 
       // 匹配 export { default as IconName } from './Category/IconName';
       const exportRegex =
@@ -148,9 +143,7 @@ export class IconsExtractor {
   /**
    * 从图标文件中提取 SVG 内容
    */
-  private async extractSvgContent(
-    filePath: string,
-  ): Promise<string | undefined> {
+  private async extractSvgContent(filePath: string): Promise<string | undefined> {
     try {
       const content = await readFile(filePath, 'utf8');
 
@@ -300,8 +293,7 @@ function MyComponent() {
 
     for (const icon of icons) {
       // 统计分类
-      categoriesCount[icon.iconCategory] =
-        (categoriesCount[icon.iconCategory] || 0) + 1;
+      categoriesCount[icon.iconCategory] = (categoriesCount[icon.iconCategory] || 0) + 1;
 
       // 统计关键词
       for (const keyword of icon.keywords) {

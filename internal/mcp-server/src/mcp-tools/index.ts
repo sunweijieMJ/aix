@@ -35,11 +35,7 @@ export {
 export { SearchIconsTool };
 
 // 导出工具包工具
-import {
-  GetPackageInfoTool,
-  ListPackagesTool,
-  SearchPackagesTool,
-} from './package-tools';
+import { GetPackageInfoTool, ListPackagesTool, SearchPackagesTool } from './package-tools';
 export { GetPackageInfoTool, ListPackagesTool, SearchPackagesTool };
 
 /**

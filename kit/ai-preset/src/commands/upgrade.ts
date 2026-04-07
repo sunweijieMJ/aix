@@ -19,12 +19,7 @@ import type { PlatformOutputFile } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { existsSync, readFile, readProjectName } from '../utils/fs.js';
 import { sha256 } from '../utils/hash.js';
-import {
-  readLockFile,
-  buildLockFile,
-  writeLockFile,
-  checkFileStatus,
-} from '../core/lock.js';
+import { readLockFile, buildLockFile, writeLockFile, checkFileStatus } from '../core/lock.js';
 import { readConfig, persistedToInitConfig } from '../core/config.js';
 import { writeOutputFiles } from '../core/writer.js';
 import { createBackup, restoreFromBackup, hasBackup } from '../core/backup.js';
@@ -85,10 +80,10 @@ async function runUpgrade(opts: UpgradeOptions): Promise<void> {
 
   // 1. 重新生成最新预设
   logger.step('加载最新预设');
-  const allFiles: PlatformOutputFile[] = await generateAllPlatformFiles(
-    initConfig,
-    { projectRoot, userConfig },
-  );
+  const allFiles: PlatformOutputFile[] = await generateAllPlatformFiles(initConfig, {
+    projectRoot,
+    userConfig,
+  });
 
   // 2. 检查当前文件状态
   logger.step('检查文件状态');
@@ -115,9 +110,7 @@ async function runUpgrade(opts: UpgradeOptions): Promise<void> {
       case 'managed': {
         // 检查内容是否有变化
         const absPath = path.join(projectRoot, file.relativePath);
-        const currentContent = existsSync(absPath)
-          ? await readFile(absPath)
-          : '';
+        const currentContent = existsSync(absPath) ? await readFile(absPath) : '';
         if (sha256(currentContent) !== sha256(file.content)) {
           toUpdate.push(file);
         }
@@ -157,11 +150,7 @@ async function runUpgrade(opts: UpgradeOptions): Promise<void> {
     console.log(chalk.red(`  清理: ${toDelete.length} 个文件（已从预设移除）`));
   }
 
-  if (
-    toUpdate.length === 0 &&
-    toConfirm.length === 0 &&
-    toDelete.length === 0
-  ) {
+  if (toUpdate.length === 0 && toConfirm.length === 0 && toDelete.length === 0) {
     logger.success('已是最新，无需更新');
     return;
   }
@@ -193,11 +182,7 @@ async function runUpgrade(opts: UpgradeOptions): Promise<void> {
 
   const finalFiles = [...toUpdate, ...confirmedFiles];
 
-  if (
-    finalFiles.length === 0 &&
-    toDelete.length === 0 &&
-    toConfirm.length === 0
-  ) {
+  if (finalFiles.length === 0 && toDelete.length === 0 && toConfirm.length === 0) {
     logger.success('无需更新');
     return;
   }
@@ -205,19 +190,14 @@ async function runUpgrade(opts: UpgradeOptions): Promise<void> {
   // dry-run 模式下只有 toConfirm 文件时，提示后直接返回
   if (opts.dryRun && finalFiles.length === 0 && toDelete.length === 0) {
     logger.blank();
-    logger.success(
-      `[dry-run] ${toConfirm.length} 个已修改文件需要确认处理方式`,
-    );
+    logger.success(`[dry-run] ${toConfirm.length} 个已修改文件需要确认处理方式`);
     return;
   }
 
   // 7. 备份
   if (!opts.dryRun && (finalFiles.length > 0 || toDelete.length > 0)) {
     logger.step('备份当前文件');
-    const filesToBackup = [
-      ...finalFiles.map((f) => f.relativePath),
-      ...toDelete,
-    ];
+    const filesToBackup = [...finalFiles.map((f) => f.relativePath), ...toDelete];
     const backedUp = await createBackup(projectRoot, filesToBackup);
     logger.debug(`备份了 ${backedUp} 个文件`);
   }
@@ -263,9 +243,7 @@ async function runUpgrade(opts: UpgradeOptions): Promise<void> {
 
   logger.blank();
   const confirmSuffix =
-    opts.dryRun && toConfirm.length > 0
-      ? `，另有 ${toConfirm.length} 个文件需确认`
-      : '';
+    opts.dryRun && toConfirm.length > 0 ? `，另有 ${toConfirm.length} 个文件需确认` : '';
   logger.success(
     opts.dryRun
       ? `[dry-run] 将更新 ${finalFiles.length} 个文件，清理 ${toDelete.length} 个文件${confirmSuffix}`

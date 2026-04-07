@@ -212,9 +212,7 @@ describe('ThemeScope', () => {
     wrapper.unmount();
 
     // 对应的 style 标签应已移除
-    const remainingStyles = document.querySelectorAll(
-      `style[id*="${scopeClass}"]`,
-    );
+    const remainingStyles = document.querySelectorAll(`style[id*="${scopeClass}"]`);
     expect(remainingStyles.length).toBe(0);
   });
 
@@ -233,9 +231,7 @@ describe('ThemeScope', () => {
       .classes()
       .find((c) => c.startsWith('aix-scope-'));
     // 检查注入的 style 标签包含 scoped 选择器
-    const styleEl = document.getElementById(
-      `aix-theme-overrides-${scopeClass}`,
-    );
+    const styleEl = document.getElementById(`aix-theme-overrides-${scopeClass}`);
     expect(styleEl).not.toBeNull();
     expect(styleEl?.textContent).toContain(`.${scopeClass}`);
     wrapper.unmount();
@@ -363,9 +359,7 @@ describe('ThemeScope', () => {
       .find((c) => c.startsWith('aix-scope-'));
 
     // 应存在组件覆盖 style 标签
-    const componentStyleEl = document.getElementById(
-      `aix-component-overrides-${scopeClass}`,
-    );
+    const componentStyleEl = document.getElementById(`aix-component-overrides-${scopeClass}`);
     expect(componentStyleEl).not.toBeNull();
     expect(componentStyleEl?.textContent).toContain('.aix-button');
     wrapper.unmount();
@@ -387,9 +381,7 @@ describe('ThemeScope', () => {
       .find('div')
       .classes()
       .find((c) => c.startsWith('aix-scope-'));
-    const styleEl = document.getElementById(
-      `aix-theme-overrides-${scopeClass}`,
-    );
+    const styleEl = document.getElementById(`aix-theme-overrides-${scopeClass}`);
     expect(styleEl).not.toBeNull();
 
     const cssText = styleEl?.textContent || '';

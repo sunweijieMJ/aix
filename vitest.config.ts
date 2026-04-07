@@ -6,9 +6,7 @@ import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
 
 const dirname =
-  typeof __dirname !== 'undefined'
-    ? __dirname
-    : path.dirname(fileURLToPath(import.meta.url));
+  typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 
 // Storybook 测试项目仅在根目录运行时启用（子包通过 turbo 运行时跳过，避免路径解析问题）
 const isRunFromRoot = process.cwd() === dirname;

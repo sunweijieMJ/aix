@@ -108,9 +108,7 @@ export default defineComponent({
     });
 
     // 生成完整 tokens
-    const computedTokens = computed<ThemeTokens>(() =>
-      generateThemeTokens(mergedConfig.value),
-    );
+    const computedTokens = computed<ThemeTokens>(() => generateThemeTokens(mergedConfig.value));
 
     // 基线 tokens（用于差异化计算）
     // 有父级时直接用父级 tokens；无父级时用相同暗色算法类型的默认 tokens
@@ -119,9 +117,7 @@ export default defineComponent({
         return parentContext.getTokens();
       }
       const algos = normalizeAlgorithm(mergedConfig.value.algorithm);
-      const darkAlgo = algos.find(
-        (a) => a === darkAlgorithm || a === darkMixAlgorithm,
-      );
+      const darkAlgo = algos.find((a) => a === darkAlgorithm || a === darkMixAlgorithm);
       return generateThemeTokens(darkAlgo ? { algorithm: darkAlgo } : {});
     });
 
@@ -192,11 +188,7 @@ export default defineComponent({
           easing: transition?.easing ?? 'ease-in-out',
           enabled: transition?.enabled ?? true,
         },
-        overrides: computeScopedOverrides(
-          computedTokens.value,
-          baselineTokens.value,
-          props.prefix,
-        ),
+        overrides: computeScopedOverrides(computedTokens.value, baselineTokens.value, props.prefix),
         componentOverrides,
       });
     }

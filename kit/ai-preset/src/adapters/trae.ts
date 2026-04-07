@@ -28,10 +28,7 @@ export class TraeAdapter implements PlatformAdapter {
   readonly displayName = 'Trae (字节)';
   readonly supportedResourceTypes: ResourceType[] = ['rules'];
 
-  generateFiles(
-    rules: RuleSource[],
-    _context: AdapterContext,
-  ): PlatformOutputFile[] {
+  generateFiles(rules: RuleSource[], _context: AdapterContext): PlatformOutputFile[] {
     return rules.map((rule) => {
       const slug = ruleIdToSlug(rule.meta.id);
       return {

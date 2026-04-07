@@ -7,13 +7,7 @@ export type PresetLayer = 'base' | 'framework' | 'domain';
 export type FrameworkPreset = 'vue3' | 'react';
 
 /** 领域层预设 */
-export type DomainPreset =
-  | 'component-lib'
-  | 'admin'
-  | 'mobile'
-  | 'monorepo'
-  | 'team'
-  | 'design';
+export type DomainPreset = 'component-lib' | 'admin' | 'mobile' | 'monorepo' | 'team' | 'design';
 
 /** 所有预设名称 */
 export type PresetName = 'base' | FrameworkPreset | DomainPreset;
@@ -137,10 +131,7 @@ export interface PlatformAdapter {
   /**
    * 将合并后的规则内容转化为平台特定文件列表
    */
-  generateFiles(
-    rules: RuleSource[],
-    context: AdapterContext,
-  ): PlatformOutputFile[];
+  generateFiles(rules: RuleSource[], context: AdapterContext): PlatformOutputFile[];
 
   /**
    * 检测项目是否已配置该平台
@@ -298,9 +289,7 @@ export const ALL_DOMAINS: DomainPreset[] = [
 ];
 
 /** 领域模块的推荐框架依赖（非强制，仅用于警告提示） */
-export const DOMAIN_RECOMMENDED_FRAMEWORK: Partial<
-  Record<DomainPreset, FrameworkPreset>
-> = {
+export const DOMAIN_RECOMMENDED_FRAMEWORK: Partial<Record<DomainPreset, FrameworkPreset>> = {
   'component-lib': 'vue3',
   admin: 'vue3',
   mobile: 'vue3',

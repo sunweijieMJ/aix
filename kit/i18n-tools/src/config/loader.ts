@@ -21,11 +21,7 @@ import type { I18nToolsConfig, ResolvedConfig } from './types';
 /**
  * 配置文件名候选列表
  */
-const CONFIG_FILE_NAMES = [
-  'i18n.config.ts',
-  'i18n.config.js',
-  'i18n.config.mjs',
-];
+const CONFIG_FILE_NAMES = ['i18n.config.ts', 'i18n.config.js', 'i18n.config.mjs'];
 
 /**
  * 查找配置文件
@@ -47,9 +43,7 @@ export function findConfigFile(startDir: string): string | null {
  * @param configPath - 配置文件路径（可选，不传则自动查找）
  * @returns 用户配置
  */
-export async function loadConfigFile(
-  configPath?: string,
-): Promise<I18nToolsConfig | null> {
+export async function loadConfigFile(configPath?: string): Promise<I18nToolsConfig | null> {
   const resolvedPath = configPath || findConfigFile(process.cwd());
 
   if (!resolvedPath) {
@@ -90,10 +84,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
       target: userConfig.locale?.target ?? DEFAULT_LOCALE.target,
     },
     paths: {
-      locale: path.resolve(
-        rootDir,
-        userConfig.paths.locale || DEFAULT_PATHS.locale,
-      ),
+      locale: path.resolve(rootDir, userConfig.paths.locale || DEFAULT_PATHS.locale),
       customLocale: path.resolve(
         rootDir,
         userConfig.paths.customLocale || DEFAULT_PATHS.customLocale,
@@ -102,10 +93,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
         rootDir,
         userConfig.paths.exportLocale || DEFAULT_PATHS.exportLocale,
       ),
-      source: path.resolve(
-        rootDir,
-        userConfig.paths.source || DEFAULT_PATHS.source,
-      ),
+      source: path.resolve(rootDir, userConfig.paths.source || DEFAULT_PATHS.source),
       tImport: userConfig.paths.tImport || DEFAULT_PATHS.tImport,
     },
     llm: {
@@ -114,20 +102,16 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
         model: userConfig.llm.idGeneration.model ?? DEFAULT_LLM_MODEL,
         baseURL: userConfig.llm.idGeneration.baseURL,
         timeout: userConfig.llm.idGeneration.timeout ?? DEFAULT_LLM_TIMEOUT,
-        maxRetries:
-          userConfig.llm.idGeneration.maxRetries ?? DEFAULT_LLM_MAX_RETRIES,
-        temperature:
-          userConfig.llm.idGeneration.temperature ?? DEFAULT_LLM_TEMPERATURE,
+        maxRetries: userConfig.llm.idGeneration.maxRetries ?? DEFAULT_LLM_MAX_RETRIES,
+        temperature: userConfig.llm.idGeneration.temperature ?? DEFAULT_LLM_TEMPERATURE,
       },
       translation: {
         apiKey: userConfig.llm.translation.apiKey,
         model: userConfig.llm.translation.model ?? DEFAULT_LLM_MODEL,
         baseURL: userConfig.llm.translation.baseURL,
         timeout: userConfig.llm.translation.timeout ?? DEFAULT_LLM_TIMEOUT,
-        maxRetries:
-          userConfig.llm.translation.maxRetries ?? DEFAULT_LLM_MAX_RETRIES,
-        temperature:
-          userConfig.llm.translation.temperature ?? DEFAULT_LLM_TEMPERATURE,
+        maxRetries: userConfig.llm.translation.maxRetries ?? DEFAULT_LLM_MAX_RETRIES,
+        temperature: userConfig.llm.translation.temperature ?? DEFAULT_LLM_TEMPERATURE,
       },
     },
     prompts: {
@@ -144,16 +128,11 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
       anchor: userConfig.idPrefix?.anchor ?? DEFAULT_ID_PREFIX.anchor,
       value: userConfig.idPrefix?.value ?? DEFAULT_ID_PREFIX.value,
       separator: userConfig.idPrefix?.separator ?? DEFAULT_ID_PREFIX.separator,
-      chineseMappings:
-        userConfig.idPrefix?.chineseMappings ??
-        DEFAULT_ID_PREFIX.chineseMappings,
+      chineseMappings: userConfig.idPrefix?.chineseMappings ?? DEFAULT_ID_PREFIX.chineseMappings,
     },
     concurrency: {
-      idGeneration:
-        userConfig.concurrency?.idGeneration ??
-        DEFAULT_CONCURRENCY.idGeneration,
-      translation:
-        userConfig.concurrency?.translation ?? DEFAULT_CONCURRENCY.translation,
+      idGeneration: userConfig.concurrency?.idGeneration ?? DEFAULT_CONCURRENCY.idGeneration,
+      translation: userConfig.concurrency?.translation ?? DEFAULT_CONCURRENCY.translation,
     },
     batchSize: userConfig.batchSize ?? DEFAULT_BATCH_SIZE,
     batchDelay: userConfig.batchDelay ?? DEFAULT_BATCH_DELAY,
@@ -168,9 +147,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
  * @param configPath - 配置文件路径（可选）
  * @returns 已解析的配置或 null
  */
-export async function loadConfig(
-  configPath?: string,
-): Promise<ResolvedConfig | null> {
+export async function loadConfig(configPath?: string): Promise<ResolvedConfig | null> {
   const userConfig = await loadConfigFile(configPath);
   if (!userConfig) {
     return null;

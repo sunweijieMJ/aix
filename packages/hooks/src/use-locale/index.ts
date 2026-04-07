@@ -16,9 +16,7 @@ function useCurrentLocale(overrideLocale?: Locale | Ref<Locale>) {
 
   // 优先级：overrideLocale > 全局 locale > 默认 'zh-CN'
   return computed(() => {
-    const override = isRef(overrideLocale)
-      ? overrideLocale.value
-      : overrideLocale;
+    const override = isRef(overrideLocale) ? overrideLocale.value : overrideLocale;
     if (override) {
       return override;
     }

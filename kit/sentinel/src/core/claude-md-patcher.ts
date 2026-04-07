@@ -7,12 +7,7 @@
 
 import path from 'node:path';
 
-import {
-  pathExists,
-  readFile,
-  writeFile,
-  readTemplate,
-} from '../utils/file.js';
+import { pathExists, readFile, writeFile, readTemplate } from '../utils/file.js';
 import { MARKER_START, MARKER_END } from '../types/index.js';
 import { renderTemplate } from '../utils/template.js';
 import { logger } from '../utils/logger.js';
@@ -34,10 +29,7 @@ export async function patchClaudeMd(
   const claudeMdPath = path.join(target, 'CLAUDE.md');
 
   // 读取模板内容
-  const templateContent = renderTemplate(
-    await readTemplate('claude-md/sentinel-rules.md'),
-    vars,
-  );
+  const templateContent = renderTemplate(await readTemplate('claude-md/sentinel-rules.md'), vars);
   const patchBlock = `${MARKER_START}\n${templateContent}\n${MARKER_END}`;
 
   // 读取或创建 CLAUDE.md
@@ -54,9 +46,7 @@ export async function patchClaudeMd(
 
   if (hasStart !== hasEnd) {
     logger.warn('CLAUDE.md 中 sentinel marker 不完整，将清理后重新注入');
-    existingContent = existingContent
-      .replace(MARKER_START, '')
-      .replace(MARKER_END, '');
+    existingContent = existingContent.replace(MARKER_START, '').replace(MARKER_END, '');
   }
 
   let newContent: string;

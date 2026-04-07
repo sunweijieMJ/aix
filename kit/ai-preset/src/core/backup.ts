@@ -24,10 +24,7 @@ function getBackupDir(projectRoot: string): string {
  * @param filePaths - 需要备份的文件相对路径列表
  * @returns 实际备份的文件数量
  */
-export async function createBackup(
-  projectRoot: string,
-  filePaths: string[],
-): Promise<number> {
+export async function createBackup(projectRoot: string, filePaths: string[]): Promise<number> {
   const backupDir = getBackupDir(projectRoot);
 
   // 清理旧备份
@@ -68,10 +65,7 @@ export async function createBackup(
     createdAt: new Date().toISOString(),
     files: filePaths.filter((p) => existsSync(path.join(projectRoot, p))),
   };
-  await writeFile(
-    path.join(backupDir, '_meta.json'),
-    JSON.stringify(meta, null, 2) + '\n',
-  );
+  await writeFile(path.join(backupDir, '_meta.json'), JSON.stringify(meta, null, 2) + '\n');
 
   return backedUp;
 }

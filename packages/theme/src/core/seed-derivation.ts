@@ -10,12 +10,7 @@ import {
   parseColor,
   rgbToString,
 } from './color-algorithm';
-import type {
-  BaseTokens,
-  SemanticTokens,
-  SeedTokens,
-  ThemeTokens,
-} from '../theme-types';
+import type { BaseTokens, SemanticTokens, SeedTokens, ThemeTokens } from '../theme-types';
 
 /**
  * 四舍五入到偶数（用于字号派生，确保像素对齐）
@@ -75,8 +70,7 @@ export const defaultSeedTokens: SeedTokens = {
   fontSize: 14,
   fontFamily:
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif",
-  fontFamilyCode:
-    "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
+  fontFamilyCode: "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
   lineHeight: 1.5,
 
   // 控件种子
@@ -234,8 +228,7 @@ export function deriveMapTokens(seed: SeedTokens): BaseTokens {
       const fs = roundToEven(seed.fontSize * Math.E ** (-1 / 5));
       return Math.round(((fs + 8) / fs) * 100) / 100;
     })(),
-    tokenLineHeight2:
-      Math.round(((seed.fontSize + 8) / seed.fontSize) * 100) / 100,
+    tokenLineHeight2: Math.round(((seed.fontSize + 8) / seed.fontSize) * 100) / 100,
     tokenLineHeight3: (() => {
       const fs = roundToEven(seed.fontSize * Math.E ** (3 / 5));
       return Math.round(((fs + 8) / fs) * 100) / 100;
@@ -290,10 +283,7 @@ export function deriveMapTokens(seed: SeedTokens): BaseTokens {
 /**
  * Map + Seed → Alias (SemanticTokens) 派生
  */
-export function deriveAliasTokens(
-  map: BaseTokens,
-  seed: SeedTokens,
-): SemanticTokens {
+export function deriveAliasTokens(map: BaseTokens, seed: SeedTokens): SemanticTokens {
   // 使用 10 色阶色板生成色彩系列（HSV 步进法）
   const primarySeries = generateColorSeriesFromPalette(seed.colorPrimary);
   const successSeries = generateColorSeriesFromPalette(seed.colorSuccess);

@@ -23,9 +23,7 @@ export interface UseTextSelectionReturn {
 /**
  * 文字选择 Composable
  */
-export function useTextSelection(
-  options: UseTextSelectionOptions = {},
-): UseTextSelectionReturn {
+export function useTextSelection(options: UseTextSelectionOptions = {}): UseTextSelectionReturn {
   const selectedText = ref('');
 
   /**

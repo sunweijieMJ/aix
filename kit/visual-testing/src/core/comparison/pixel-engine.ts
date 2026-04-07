@@ -49,20 +49,13 @@ export class PixelComparisonEngine implements ComparisonEngine {
     const diff = new PNG({ width, height });
 
     // 5. 执行比对
-    const mismatchPixels = pixelmatch(
-      aligned1.data,
-      aligned2.data,
-      diff.data,
-      width,
-      height,
-      {
-        threshold: colorThreshold,
-        includeAA: !antialiasing,
-        diffColor: [255, 0, 0],
-        diffColorAlt: [0, 255, 0],
-        alpha: 0.3,
-      },
-    );
+    const mismatchPixels = pixelmatch(aligned1.data, aligned2.data, diff.data, width, height, {
+      threshold: colorThreshold,
+      includeAA: !antialiasing,
+      diffColor: [255, 0, 0],
+      diffColorAlt: [0, 255, 0],
+      alpha: 0.3,
+    });
 
     const totalPixels = width * height;
     const mismatchPercentage = (mismatchPixels / totalPixels) * 100;

@@ -78,9 +78,7 @@ const mockUsers = [
 
 function mockQueryMentionItems(query: string) {
   if (!query) return mockUsers;
-  return mockUsers.filter((u) =>
-    u.label.toLowerCase().includes(query.toLowerCase()),
-  );
+  return mockUsers.filter((u) => u.label.toLowerCase().includes(query.toLowerCase()));
 }
 
 /** 全部增强功能 */
@@ -120,9 +118,7 @@ export const Readonly: Story = {
   render: () => ({
     components: { RichTextEditor },
     setup() {
-      const content = ref(
-        '<h3>只读内容</h3><p>这段内容是<strong>只读</strong>的，无法编辑。</p>',
-      );
+      const content = ref('<h3>只读内容</h3><p>这段内容是<strong>只读</strong>的，无法编辑。</p>');
       return { content };
     },
     template: '<RichTextEditor v-model="content" readonly />',
@@ -149,8 +145,7 @@ export const CustomHeight: Story = {
       const content = ref('<p>固定高度 400px</p>');
       return { content };
     },
-    template:
-      '<RichTextEditor v-model="content" height="400px" placeholder="固定高度编辑器" />',
+    template: '<RichTextEditor v-model="content" height="400px" placeholder="固定高度编辑器" />',
   }),
 };
 
@@ -162,8 +157,7 @@ export const EnglishLocale: Story = {
       const content = ref('<p>English editor interface</p>');
       return { content };
     },
-    template:
-      '<RichTextEditor v-model="content" locale="en-US" placeholder="Start typing..." />',
+    template: '<RichTextEditor v-model="content" locale="en-US" placeholder="Start typing..." />',
   }),
 };
 
@@ -247,18 +241,15 @@ export const ServerMention: Story = {
   render: (args) => ({
     components: { RichTextEditor },
     setup() {
-      const content = ref(
-        '<p>输入 @ 触发提及，数据来源于 server 配置的 API 接口。</p>',
-      );
+      const content = ref('<p>输入 @ 触发提及，数据来源于 server 配置的 API 接口。</p>');
 
       const mentionConfig = {
         server: '/api/users/search',
         queryParamName: 'keyword',
         responsePath: 'data.list',
         headers: () => ({ Authorization: 'Bearer demo-token' }),
-        transformResponse: (
-          items: Array<{ userId: number; nickname: string }>,
-        ) => items.map((i) => ({ id: i.userId, label: i.nickname })),
+        transformResponse: (items: Array<{ userId: number; nickname: string }>) =>
+          items.map((i) => ({ id: i.userId, label: i.nickname })),
         onError: (error: { type: string; message: string }) => {
           console.error('[Mention onError]', error.type, error.message);
         },
@@ -352,9 +343,7 @@ export const CustomPicker: Story = {
 
       const videoConfig = {
         customPicker: async () => {
-          const url = window.prompt(
-            '模拟资源库弹窗 - 输入视频 URL（留空取消）',
-          );
+          const url = window.prompt('模拟资源库弹窗 - 输入视频 URL（留空取消）');
           return url || null;
         },
       };

@@ -20,14 +20,7 @@ const meta: Meta<typeof Dropdown> = {
     },
     placement: {
       control: 'select',
-      options: [
-        'bottom-start',
-        'bottom',
-        'bottom-end',
-        'top-start',
-        'top',
-        'top-end',
-      ],
+      options: ['bottom-start', 'bottom', 'bottom-end', 'top-start', 'top', 'top-end'],
       description: '弹出位置',
       table: {
         type: { summary: 'Placement' },
@@ -240,9 +233,7 @@ export const VisibleChange: Story = {
     setup() {
       const log = ref<string[]>([]);
       const onVisibleChange = (visible: boolean) => {
-        log.value.push(
-          `${new Date().toLocaleTimeString()} — visible-change: ${visible}`,
-        );
+        log.value.push(`${new Date().toLocaleTimeString()} — visible-change: ${visible}`);
         if (log.value.length > 5) log.value.shift();
       };
       const onCommand = (cmd: string | number) => {

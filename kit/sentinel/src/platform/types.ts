@@ -30,12 +30,7 @@ export interface PlatformAdapter {
   getExistingPipelineFiles(): string[];
 
   /** 创建 label */
-  createLabel(
-    name: string,
-    color: string,
-    description: string,
-    cwd: string,
-  ): Promise<void>;
+  createLabel(name: string, color: string, description: string, cwd: string): Promise<void>;
 
   /** 查询已有 secrets */
   listSecrets(cwd: string): Promise<string[]>;

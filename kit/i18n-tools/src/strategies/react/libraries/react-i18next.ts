@@ -126,9 +126,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       ts.isCallExpression(declaration.initializer)
     ) {
       const expression = declaration.initializer.expression;
-      return (
-        ts.isIdentifier(expression) && expression.text === 'useTranslation'
-      );
+      return ts.isIdentifier(expression) && expression.text === 'useTranslation';
     }
     return false;
   }
@@ -171,10 +169,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     const visitor = (child: ts.Node) => {
       if (ts.isCallExpression(child)) {
         // t('key')
-        if (
-          ts.isIdentifier(child.expression) &&
-          child.expression.text === 't'
-        ) {
+        if (ts.isIdentifier(child.expression) && child.expression.text === 't') {
           uses = true;
         }
       }
@@ -186,14 +181,9 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     return uses;
   }
 
-  isTranslationAvailableInScope(
-    node: ts.Node,
-    sourceFile: ts.SourceFile,
-  ): boolean {
+  isTranslationAvailableInScope(node: ts.Node, sourceFile: ts.SourceFile): boolean {
     const text = node.getText(sourceFile);
-    return (
-      /const\s+\{\s*t\s*[,}]/.test(text) && text.includes('useTranslation')
-    );
+    return /const\s+\{\s*t\s*[,}]/.test(text) && text.includes('useTranslation');
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {
@@ -218,8 +208,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       if (ts.isJsxAttribute(parent)) {
         const jsxElement = parent.parent.parent;
         if (
-          (ts.isJsxOpeningElement(jsxElement) ||
-            ts.isJsxSelfClosingElement(jsxElement)) &&
+          (ts.isJsxOpeningElement(jsxElement) || ts.isJsxSelfClosingElement(jsxElement)) &&
           ts.isIdentifier(jsxElement.tagName) &&
           jsxElement.tagName.text === 'Trans'
         ) {
@@ -228,18 +217,11 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       }
       if (ts.isJsxElement(parent)) {
         const openingElement = parent.openingElement;
-        if (
-          ts.isIdentifier(openingElement.tagName) &&
-          openingElement.tagName.text === 'Trans'
-        ) {
+        if (ts.isIdentifier(openingElement.tagName) && openingElement.tagName.text === 'Trans') {
           return true;
         }
       }
-      if (
-        ts.isBlock(parent) ||
-        ts.isFunctionLike(parent) ||
-        ts.isClassLike(parent)
-      ) {
+      if (ts.isBlock(parent) || ts.isFunctionLike(parent) || ts.isClassLike(parent)) {
         return false;
       }
       parent = parent.parent;

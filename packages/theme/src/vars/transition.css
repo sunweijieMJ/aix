@@ -11,18 +11,12 @@
  */
 .aix-theme-transition {
   --aix-theme-transition:
-    background-color var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    color var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    border-color var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    box-shadow var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    fill var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out),
-    stroke var(--aix-transition-duration, 200ms)
-      var(--aix-transition-easing, ease-in-out);
+    background-color var(--aix-transition-duration, 200ms) var(--aix-transition-easing, ease-in-out),
+    color var(--aix-transition-duration, 200ms) var(--aix-transition-easing, ease-in-out),
+    border-color var(--aix-transition-duration, 200ms) var(--aix-transition-easing, ease-in-out),
+    box-shadow var(--aix-transition-duration, 200ms) var(--aix-transition-easing, ease-in-out),
+    fill var(--aix-transition-duration, 200ms) var(--aix-transition-easing, ease-in-out),
+    stroke var(--aix-transition-duration, 200ms) var(--aix-transition-easing, ease-in-out);
 
   transition: var(--aix-theme-transition);
 }

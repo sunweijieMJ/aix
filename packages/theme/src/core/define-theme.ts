@@ -55,10 +55,7 @@ export const defaultAlgorithm: ThemeAlgorithm = () => ({});
 /**
  * 计算两组 Token 的差异部分
  */
-export function computeTokenDiff(
-  base: ThemeTokens,
-  target: ThemeTokens,
-): Partial<ThemeTokens> {
+export function computeTokenDiff(base: ThemeTokens, target: ThemeTokens): Partial<ThemeTokens> {
   const diff: Partial<ThemeTokens> = {};
   for (const key of Object.keys(target) as Array<keyof ThemeTokens>) {
     if (String(target[key]) !== String(base[key])) {
@@ -118,9 +115,7 @@ export const compactAlgorithm: ThemeAlgorithm = (tokens) =>
 /**
  * 将 algorithm 配置规范化为 ThemeAlgorithm 数组
  */
-export function normalizeAlgorithm(
-  algorithm: ThemeConfig['algorithm'],
-): ThemeAlgorithm[] {
+export function normalizeAlgorithm(algorithm: ThemeConfig['algorithm']): ThemeAlgorithm[] {
   if (!algorithm) return [];
   if (Array.isArray(algorithm)) return algorithm;
   return [algorithm];
@@ -131,9 +126,7 @@ export function normalizeAlgorithm(
  */
 type BaseTokenKeys = keyof BaseTokens;
 
-function extractBaseTokenOverrides(
-  token: PartialThemeTokens | undefined,
-): Partial<BaseTokens> {
+function extractBaseTokenOverrides(token: PartialThemeTokens | undefined): Partial<BaseTokens> {
   if (!token) return {};
   const result: Partial<BaseTokens> = {};
   for (const [key, value] of Object.entries(token)) {
@@ -182,9 +175,7 @@ export function generateThemeTokens(config: ThemeConfig): ThemeTokens {
   let finalTokens: ThemeTokens = { ...resolvedMap, ...resolvedAlias };
 
   // 6.5 生成预设色板（作为附加属性挂载）
-  const presetTokens = derivePresetColorTokens(
-    resolvedSeed.presetColors ?? DEFAULT_PRESET_COLORS,
-  );
+  const presetTokens = derivePresetColorTokens(resolvedSeed.presetColors ?? DEFAULT_PRESET_COLORS);
   finalTokens = { ...finalTokens, ...presetTokens };
 
   // 7. 应用算法（支持组合叠加）
@@ -233,13 +224,7 @@ const DARK_MODE_ADJUSTMENTS = {
  * 根据主题色动态调整亮度，而非使用硬编码值
  */
 function generateDarkColorSeries(baseColor: string) {
-  const {
-    lightness: lt,
-    bg,
-    bgHover,
-    border,
-    borderHover,
-  } = DARK_MODE_ADJUSTMENTS;
+  const { lightness: lt, bg, bgHover, border, borderHover } = DARK_MODE_ADJUSTMENTS;
 
   const rgb = parseColor(baseColor);
   const hsl = rgbToHsl(rgb);
@@ -277,28 +262,19 @@ function generateDarkColorSeries(baseColor: string) {
     bgHover: (() => {
       const hoverHsl = { ...adjustedHsl };
       hoverHsl.l = bgHover.lightness;
-      hoverHsl.s = Math.max(
-        bgHover.minSaturation,
-        adjustedHsl.s - bgHover.saturationDrop,
-      );
+      hoverHsl.s = Math.max(bgHover.minSaturation, adjustedHsl.s - bgHover.saturationDrop);
       return rgbToString(hslToRgb(hoverHsl));
     })(),
     border: (() => {
       const borderHsl = { ...adjustedHsl };
       borderHsl.l = border.lightness;
-      borderHsl.s = Math.max(
-        border.minSaturation,
-        adjustedHsl.s - border.saturationDrop,
-      );
+      borderHsl.s = Math.max(border.minSaturation, adjustedHsl.s - border.saturationDrop);
       return rgbToString(hslToRgb(borderHsl));
     })(),
     borderHover: (() => {
       const hoverHsl = { ...adjustedHsl };
       hoverHsl.l = borderHover.lightness;
-      hoverHsl.s = Math.max(
-        borderHover.minSaturation,
-        adjustedHsl.s - borderHover.saturationDrop,
-      );
+      hoverHsl.s = Math.max(borderHover.minSaturation, adjustedHsl.s - borderHover.saturationDrop);
       return rgbToString(hslToRgb(hoverHsl));
     })(),
     text: adjustedBase,
@@ -590,8 +566,7 @@ export function tokensToCSSVars(
   const cssVars: Record<string, string> = {};
 
   Object.entries(tokens).forEach(([key, value]) => {
-    cssVars[`--${prefix}-${key}`] =
-      typeof value === 'number' ? String(value) : value;
+    cssVars[`--${prefix}-${key}`] = typeof value === 'number' ? String(value) : value;
   });
 
   return cssVars;
@@ -670,13 +645,9 @@ function mergeComponentsConfig(
     } else {
       // 保持 seed 的 undefined 语义，避免空 {} 误触发派生管线
       const mergedSeed =
-        parentConfig.seed || config.seed
-          ? { ...parentConfig.seed, ...config.seed }
-          : undefined;
+        parentConfig.seed || config.seed ? { ...parentConfig.seed, ...config.seed } : undefined;
       const mergedToken =
-        parentConfig.token || config.token
-          ? { ...parentConfig.token, ...config.token }
-          : undefined;
+        parentConfig.token || config.token ? { ...parentConfig.token, ...config.token } : undefined;
       merged[name] = {
         seed: mergedSeed,
         token: mergedToken,
@@ -697,15 +668,11 @@ function mergeComponentsConfig(
  * - transition: 浅合并
  * - components: 按组件名级别浅合并
  */
-export function mergeThemeConfig(
-  parent: ThemeConfig,
-  child: ThemeConfig,
-): ThemeConfig {
+export function mergeThemeConfig(parent: ThemeConfig, child: ThemeConfig): ThemeConfig {
   return {
     seed: { ...parent.seed, ...child.seed },
     token: { ...parent.token, ...child.token },
-    algorithm:
-      child.algorithm !== undefined ? child.algorithm : parent.algorithm,
+    algorithm: child.algorithm !== undefined ? child.algorithm : parent.algorithm,
     transition: { ...parent.transition, ...child.transition },
     components: mergeComponentsConfig(parent.components, child.components),
   };
@@ -724,8 +691,7 @@ export function computeScopedOverrides(
   for (const key of Object.keys(scopeTokens) as Array<keyof ThemeTokens>) {
     const val = scopeTokens[key];
     if (val !== undefined && String(val) !== String(baseline[key])) {
-      overrides[`--${prefix}-${key}`] =
-        typeof val === 'number' ? String(val) : val;
+      overrides[`--${prefix}-${key}`] = typeof val === 'number' ? String(val) : val;
     }
   }
   return overrides;

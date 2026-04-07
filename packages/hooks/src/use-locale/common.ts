@@ -8,10 +8,7 @@
  * formatMessage('{count} of {total}', { count: 1, total: 10 }); // '1 of 10'
  * ```
  */
-export function formatMessage(
-  template: string,
-  params: Record<string, string | number>,
-): string {
+export function formatMessage(template: string, params: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (_, key: string) =>
     params[key] != null ? String(params[key]) : `{${key}}`,
   );

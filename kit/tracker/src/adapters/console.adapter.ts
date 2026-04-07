@@ -1,8 +1,4 @@
-import type {
-  AccountInfo,
-  ITrackerAdapter,
-  TrackerInitOptions,
-} from '../types.js';
+import type { AccountInfo, ITrackerAdapter, TrackerInitOptions } from '../types.js';
 
 /**
  * Console 调试适配器

@@ -152,10 +152,7 @@ export const WithAnimation: Story = {
     components: { IconSearch, Setting },
     setup() {
       // 在 setup 中注入 keyframes 和 hover 样式，避免在 template 中使用 <style> 标签
-      if (
-        typeof document !== 'undefined' &&
-        !document.getElementById('aix-icon-story-animation')
-      ) {
+      if (typeof document !== 'undefined' && !document.getElementById('aix-icon-story-animation')) {
         const style = document.createElement('style');
         style.id = 'aix-icon-story-animation';
         style.textContent = `

@@ -10,8 +10,7 @@ const meta: Meta<typeof Button> = {
   parameters: {
     docs: {
       description: {
-        component:
-          'AIX Button 组件支持多种类型、尺寸和状态，完全支持主题定制。',
+        component: 'AIX Button 组件支持多种类型、尺寸和状态，完全支持主题定制。',
       },
     },
   },
@@ -176,15 +175,9 @@ export const Sizes: Story = {
     `,
   }),
   play: async ({ canvas }) => {
-    await expect(
-      canvas.getByRole('button', { name: 'Small' }),
-    ).toBeInTheDocument();
-    await expect(
-      canvas.getByRole('button', { name: 'Medium' }),
-    ).toBeInTheDocument();
-    await expect(
-      canvas.getByRole('button', { name: 'Large' }),
-    ).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Small' })).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Medium' })).toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Large' })).toBeInTheDocument();
   },
 };
 

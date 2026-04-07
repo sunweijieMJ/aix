@@ -32,13 +32,8 @@ export const getPublishedVersions = (projectRoot: string): string[] => {
     // 优先检测 staged changes (--cached)，fallback 到 unstaged changes
     try {
       // 规范化路径用于 git 命令
-      const relativePath = normalizePath(
-        path.relative(projectRoot, pkg.pkgJsonPath),
-      );
-      let diff = exec(
-        `git diff --cached HEAD -- "${relativePath}"`,
-        projectRoot,
-      );
+      const relativePath = normalizePath(path.relative(projectRoot, pkg.pkgJsonPath));
+      let diff = exec(`git diff --cached HEAD -- "${relativePath}"`, projectRoot);
       // 如果没有 staged changes，尝试检测 unstaged changes
       if (!diff.trim()) {
         diff = exec(`git diff HEAD -- "${relativePath}"`, projectRoot);
@@ -55,10 +50,7 @@ export const getPublishedVersions = (projectRoot: string): string[] => {
 };
 
 // 发布后的 git 操作
-export const postPublishGitActions = async (
-  projectRoot: string,
-  skipPrompts = false,
-) => {
+export const postPublishGitActions = async (projectRoot: string, skipPrompts = false) => {
   const status = exec('git status --porcelain', projectRoot);
   if (!status.trim()) {
     return;

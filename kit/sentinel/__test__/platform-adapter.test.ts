@@ -36,21 +36,15 @@ describe('GitHubAdapter', () => {
   });
 
   it('should return correct pipeline directory', () => {
-    expect(adapter.getPipelineDir('/repo')).toBe(
-      path.join('/repo', '.github', 'workflows'),
-    );
+    expect(adapter.getPipelineDir('/repo')).toBe(path.join('/repo', '.github', 'workflows'));
   });
 
   it('should return correct template path', () => {
-    expect(adapter.getTemplatePath('sentinel-issue.yml')).toBe(
-      'github/sentinel-issue.yml',
-    );
+    expect(adapter.getTemplatePath('sentinel-issue.yml')).toBe('github/sentinel-issue.yml');
   });
 
   it('should return same dest file name', () => {
-    expect(adapter.getDestFileName('sentinel-issue.yml')).toBe(
-      'sentinel-issue.yml',
-    );
+    expect(adapter.getDestFileName('sentinel-issue.yml')).toBe('sentinel-issue.yml');
   });
 
   it('should return 4 existing pipeline files', () => {
@@ -64,15 +58,11 @@ describe('GitHubAdapter', () => {
 
   it('should return null for post install instructions when no sentry workflow', () => {
     expect(adapter.getPostInstallInstructions([])).toBeNull();
-    expect(
-      adapter.getPostInstallInstructions(['sentinel-issue.yml']),
-    ).toBeNull();
+    expect(adapter.getPostInstallInstructions(['sentinel-issue.yml'])).toBeNull();
   });
 
   it('should return sentry instructions when sentry workflow is present', () => {
-    const instructions = adapter.getPostInstallInstructions([
-      'sentinel-sentry.yml',
-    ]);
+    const instructions = adapter.getPostInstallInstructions(['sentinel-sentry.yml']);
     expect(instructions).not.toBeNull();
     expect(instructions).toContain('Sentry');
     expect(instructions).toContain('workers/ 目录');
@@ -106,12 +96,7 @@ describe('GitHubAdapter', () => {
         },
       );
 
-      await adapter.createLabel(
-        'sentinel',
-        '0E8A16',
-        'AI auto-fix label',
-        '/repo',
-      );
+      await adapter.createLabel('sentinel', '0E8A16', 'AI auto-fix label', '/repo');
 
       expect(execFileMock).toHaveBeenCalledWith(
         'gh',
@@ -138,10 +123,7 @@ describe('GitHubAdapter', () => {
           _cmd: string,
           _args: string[],
           _opts: unknown,
-          cb: (
-            err: Error | null,
-            result: { stdout: string; stderr: string },
-          ) => void,
+          cb: (err: Error | null, result: { stdout: string; stderr: string }) => void,
         ) => {
           cb(null, {
             stdout: 'ANTHROPIC_API_KEY\t2024-01-01\nGITHUB_TOKEN\t2024-01-01\n',
@@ -160,10 +142,7 @@ describe('GitHubAdapter', () => {
           _cmd: string,
           _args: string[],
           _opts: unknown,
-          cb: (
-            err: Error | null,
-            result: { stdout: string; stderr: string },
-          ) => void,
+          cb: (err: Error | null, result: { stdout: string; stderr: string }) => void,
         ) => {
           cb(null, { stdout: '', stderr: '' });
         },
@@ -174,29 +153,17 @@ describe('GitHubAdapter', () => {
 
     it('should throw on auth/permission errors', async () => {
       execFileMock.mockImplementation(
-        (
-          _cmd: string,
-          _args: string[],
-          _opts: unknown,
-          cb: (err: Error | null) => void,
-        ) => {
+        (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
           cb(new Error('HTTP 401: requires authentication'));
         },
       );
 
-      await expect(adapter.listSecrets('/repo')).rejects.toThrow(
-        /认证或权限不足/,
-      );
+      await expect(adapter.listSecrets('/repo')).rejects.toThrow(/认证或权限不足/);
     });
 
     it('should return empty array on non-auth errors', async () => {
       execFileMock.mockImplementation(
-        (
-          _cmd: string,
-          _args: string[],
-          _opts: unknown,
-          cb: (err: Error | null) => void,
-        ) => {
+        (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
           cb(new Error('no secrets found'));
         },
       );
@@ -213,10 +180,7 @@ describe('GitHubAdapter', () => {
           _cmd: string,
           _args: string[],
           _opts: unknown,
-          cb: (
-            err: Error | null,
-            result: { stdout: string; stderr: string },
-          ) => void,
+          cb: (err: Error | null, result: { stdout: string; stderr: string }) => void,
         ) => {
           cb(null, {
             stdout: 'SENTINEL_ENABLED\ttrue\t2024-01-01\n',
@@ -231,19 +195,12 @@ describe('GitHubAdapter', () => {
 
     it('should throw on auth errors', async () => {
       execFileMock.mockImplementation(
-        (
-          _cmd: string,
-          _args: string[],
-          _opts: unknown,
-          cb: (err: Error | null) => void,
-        ) => {
+        (_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
           cb(new Error('HTTP 403: forbidden'));
         },
       );
 
-      await expect(adapter.listVariables('/repo')).rejects.toThrow(
-        /认证或权限不足/,
-      );
+      await expect(adapter.listVariables('/repo')).rejects.toThrow(/认证或权限不足/);
     });
   });
 });

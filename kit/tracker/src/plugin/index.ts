@@ -35,8 +35,7 @@ export function createTrackerPlugin(options: TrackerPluginOptions): Plugin {
 
       // 3. Router 集成
       if (options.router && options.autoPageview) {
-        const config =
-          typeof options.autoPageview === 'object' ? options.autoPageview : {};
+        const config = typeof options.autoPageview === 'object' ? options.autoPageview : {};
         setupRouterGuard(tracker, options.router, config);
       }
 
@@ -49,11 +48,7 @@ export function createTrackerPlugin(options: TrackerPluginOptions): Plugin {
 }
 
 /** 安装 Router 守卫，自动上报 pageview / pageclose */
-function setupRouterGuard(
-  tracker: Tracker,
-  router: Router,
-  config: AutoPageviewConfig,
-): void {
+function setupRouterGuard(tracker: Tracker, router: Router, config: AutoPageviewConfig): void {
   let prevPageName = '';
   let prevEnterTime = 0;
 
@@ -104,10 +99,7 @@ function setupRouterGuard(
 }
 
 /** 检查路由是否应排除 */
-function shouldExclude(
-  to: RouteLocationNormalized,
-  exclude?: (string | RegExp)[],
-): boolean {
+function shouldExclude(to: RouteLocationNormalized, exclude?: (string | RegExp)[]): boolean {
   if (!exclude || exclude.length === 0) return false;
 
   for (const rule of exclude) {
@@ -126,9 +118,5 @@ function resolvePageName(
   getPageName?: (to: RouteLocationNormalized) => string,
 ): string {
   if (getPageName) return getPageName(to);
-  return (
-    (to.meta?.title as string) ||
-    (typeof to.name === 'string' ? to.name : '') ||
-    to.path
-  );
+  return (to.meta?.title as string) || (typeof to.name === 'string' ? to.name : '') || to.path;
 }

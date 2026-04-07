@@ -77,9 +77,6 @@ export function detectFormat(filename: string): SubtitleFormat {
 /**
  * 解析字幕内容
  */
-export function parseSubtitle(
-  content: string,
-  format: SubtitleFormat,
-): SubtitleCue[] {
+export function parseSubtitle(content: string, format: SubtitleFormat): SubtitleCue[] {
   return parsers[format](content);
 }

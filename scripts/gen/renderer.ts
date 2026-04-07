@@ -61,10 +61,7 @@ export interface GeneratedFileInfo {
 /**
  * 条件配置：哪些模板文件需要满足什么条件才生成
  */
-const CONDITIONS: Record<
-  string,
-  (ctx: TemplateContext, opts: FileGeneratorOptions) => boolean
-> = {
+const CONDITIONS: Record<string, (ctx: TemplateContext, opts: FileGeneratorOptions) => boolean> = {
   // 源码条件
   'src/index.scss.eta': (ctx) => ctx.features.scss,
   'src/use[pascalName].ts.eta': (ctx) => ctx.features.composables,
@@ -130,13 +127,8 @@ function scanTemplates(dir: string, baseDir: string = dir): string[] {
  * 替换文件名中的占位符
  * [pascalName] -> 实际的 PascalCase 名称
  */
-function resolveOutputPath(
-  templatePath: string,
-  context: TemplateContext,
-): string {
-  return templatePath
-    .replace(/\[pascalName\]/g, context.pascalName)
-    .replace(/\.eta$/, ''); // 移除 .eta 扩展名
+function resolveOutputPath(templatePath: string, context: TemplateContext): string {
+  return templatePath.replace(/\[pascalName\]/g, context.pascalName).replace(/\.eta$/, ''); // 移除 .eta 扩展名
 }
 
 /**

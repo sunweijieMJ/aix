@@ -31,14 +31,8 @@ const getAlias = (): AliasOptions => {
         AIX_ROOT,
         'packages/rich-text-editor/es/index.css',
       ),
-      '@aix/rich-text-editor': path.resolve(
-        AIX_ROOT,
-        'packages/rich-text-editor/src',
-      ),
-      '@aix/theme/vars': path.resolve(
-        AIX_ROOT,
-        'packages/theme/src/vars/index.css',
-      ),
+      '@aix/rich-text-editor': path.resolve(AIX_ROOT, 'packages/rich-text-editor/src'),
+      '@aix/theme/vars': path.resolve(AIX_ROOT, 'packages/theme/src/vars/index.css'),
       '@aix/theme': path.resolve(AIX_ROOT, 'packages/theme/src'),
       '@aix/hooks': path.resolve(AIX_ROOT, 'packages/hooks/src'),
     };
@@ -67,9 +61,6 @@ export default defineConfig({
 
   optimizeDeps: {
     // 源码模式才排除预构建，Yalc 模式需要预构建以提升性能
-    exclude:
-      LINK_MODE === 'source'
-        ? ['@aix/rich-text-editor', '@aix/theme', '@aix/hooks']
-        : [],
+    exclude: LINK_MODE === 'source' ? ['@aix/rich-text-editor', '@aix/theme', '@aix/hooks'] : [],
   },
 });

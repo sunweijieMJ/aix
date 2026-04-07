@@ -32,8 +32,7 @@ const meta: Meta<typeof PdfViewer> = {
   },
   decorators: [
     () => ({
-      template:
-        '<div style="width: 100%; height: 600px; overflow: hidden;"><story /></div>',
+      template: '<div style="width: 100%; height: 600px; overflow: hidden;"><story /></div>',
     }),
   ],
 };
@@ -134,10 +133,7 @@ export const WithEvents: Story = {
       };
 
       const handleTextSelect = (text: string) => {
-        if (text)
-          addLog(
-            `选中文字: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`,
-          );
+        if (text) addLog(`选中文字: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"`);
       };
 
       const handleImageClick = (image: PdfImageInfo) => {
@@ -194,9 +190,7 @@ export const ExposedMethods: Story = {
     components: { PdfViewer },
     setup() {
       const pdfRef = ref<InstanceType<typeof PdfViewer> | null>(null);
-      const thumbnails = ref<Array<{ pageNumber: number; dataUrl: string }>>(
-        [],
-      );
+      const thumbnails = ref<Array<{ pageNumber: number; dataUrl: string }>>([]);
       const loading = ref(false);
 
       const generateThumbnails = async () => {
@@ -310,8 +304,7 @@ export const TextSearch: Story = {
   parameters: {
     docs: {
       description: {
-        story:
-          '按 Ctrl+F (或 Cmd+F) 打开搜索栏，输入关键词搜索文档内容。支持上下导航和高亮显示。',
+        story: '按 Ctrl+F (或 Cmd+F) 打开搜索栏，输入关键词搜索文档内容。支持上下导航和高亮显示。',
       },
     },
   },
@@ -355,9 +348,7 @@ export const ContinuousWithThumbnails: Story = {
     components: { PdfViewer },
     setup() {
       const pdfRef = ref<InstanceType<typeof PdfViewer> | null>(null);
-      const thumbnails = ref<Array<{ pageNumber: number; dataUrl: string }>>(
-        [],
-      );
+      const thumbnails = ref<Array<{ pageNumber: number; dataUrl: string }>>([]);
       const currentPage = ref(1);
 
       const handleReady = async () => {
@@ -481,11 +472,8 @@ export const FullFeatures: Story = {
       };
 
       const toggleScrollMode = () => {
-        scrollMode.value =
-          scrollMode.value === 'single' ? 'continuous' : 'single';
-        addLog(
-          `切换到${scrollMode.value === 'single' ? '单页' : '连续滚动'}模式`,
-        );
+        scrollMode.value = scrollMode.value === 'single' ? 'continuous' : 'single';
+        addLog(`切换到${scrollMode.value === 'single' ? '单页' : '连续滚动'}模式`);
       };
 
       const handleReady = (totalPages: number) => {
@@ -552,8 +540,7 @@ export const FullFeatures: Story = {
   parameters: {
     docs: {
       description: {
-        story:
-          '集成所有功能：工具栏、文字选择、图片选择、右键菜单、文本搜索、滚动模式切换。',
+        story: '集成所有功能：工具栏、文字选择、图片选择、右键菜单、文本搜索、滚动模式切换。',
       },
     },
   },

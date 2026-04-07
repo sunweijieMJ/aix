@@ -12,11 +12,7 @@ interface Transformation {
 interface ComponentInfo {
   name: string;
   type: 'class' | 'function';
-  node:
-    | ts.ClassDeclaration
-    | ts.FunctionDeclaration
-    | ts.ArrowFunction
-    | ts.FunctionExpression;
+  node: ts.ClassDeclaration | ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
   needsIntl: boolean;
   hasIntl: boolean;
   injectionType: 'hook' | 'hoc' | 'none';
@@ -53,15 +49,10 @@ export class ReactComponentInjector implements IComponentInjector {
           initialSourceFile,
         );
         const needsIntl =
-          !hasIntl &&
-          this.library.componentUsesTranslation(
-            componentInfo.node,
-            initialSourceFile,
-          );
+          !hasIntl && this.library.componentUsesTranslation(componentInfo.node, initialSourceFile);
 
         if (needsIntl) {
-          const injectionType =
-            componentInfo.type === 'function' ? 'hook' : 'hoc';
+          const injectionType = componentInfo.type === 'function' ? 'hook' : 'hoc';
           componentsToModify.push({
             ...componentInfo,
             needsIntl,
@@ -82,9 +73,7 @@ export class ReactComponentInjector implements IComponentInjector {
     const importManager = new ReactImportManager(this.tImport, this.library);
     let codeWithImports = code;
     if (componentsToModify.some((c) => c.injectionType === 'hook')) {
-      codeWithImports = importManager.addI18nImports(codeWithImports, [
-        this.library.hookName,
-      ]);
+      codeWithImports = importManager.addI18nImports(codeWithImports, [this.library.hookName]);
     }
     if (componentsToModify.some((c) => c.injectionType === 'hoc')) {
       const hocImports = this.library.getImportSpecifiers({
@@ -92,10 +81,7 @@ export class ReactComponentInjector implements IComponentInjector {
         hasHook: false,
         hasHOC: true,
       });
-      codeWithImports = importManager.addI18nImports(
-        codeWithImports,
-        hocImports,
-      );
+      codeWithImports = importManager.addI18nImports(codeWithImports, hocImports);
     }
 
     // Phase 3: 重新解析带有新导入的代码并应用转换
@@ -116,19 +102,13 @@ export class ReactComponentInjector implements IComponentInjector {
         );
 
         if (componentToModify) {
-          if (
-            componentToModify.injectionType === 'hook' &&
-            componentInfo.type === 'function'
-          ) {
+          if (componentToModify.injectionType === 'hook' && componentInfo.type === 'function') {
             this.injectHook(
               componentInfo.node as ts.ArrowFunction | ts.FunctionExpression,
               sourceFileWithImports,
               transformations,
             );
-          } else if (
-            componentToModify.injectionType === 'hoc' &&
-            componentInfo.type === 'class'
-          ) {
+          } else if (componentToModify.injectionType === 'hoc' && componentInfo.type === 'class') {
             this.injectHOC(
               componentInfo.node as ts.ClassDeclaration,
               componentInfo.name,
@@ -208,9 +188,8 @@ export class ReactComponentInjector implements IComponentInjector {
     }
 
     // 2. 修复 constructor props 类型
-    const constructor = classNode.members.find(
-      (member): member is ts.ConstructorDeclaration =>
-        ts.isConstructorDeclaration(member),
+    const constructor = classNode.members.find((member): member is ts.ConstructorDeclaration =>
+      ts.isConstructorDeclaration(member),
     );
     if (constructor && constructor.parameters.length > 0) {
       const propsParam = constructor.parameters[0]!;
@@ -241,10 +220,7 @@ export class ReactComponentInjector implements IComponentInjector {
       }
 
       if (body) {
-        const usesTranslation = this.library.componentUsesTranslation(
-          body,
-          sourceFile,
-        );
+        const usesTranslation = this.library.componentUsesTranslation(body, sourceFile);
         const hasDeclaration = body
           .getText(sourceFile)
           .includes(`const { ${varName} } = this.props`);
@@ -261,9 +237,7 @@ export class ReactComponentInjector implements IComponentInjector {
     }
 
     // 4. 用 HOC 包裹组件
-    const exportModifier = classNode.modifiers?.find(
-      (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-    );
+    const exportModifier = classNode.modifiers?.find((m) => m.kind === ts.SyntaxKind.ExportKeyword);
     const tempClassName = `${className}WithOutIntl`;
 
     if (classNode.name) {
@@ -294,10 +268,7 @@ export class ReactComponentInjector implements IComponentInjector {
     }
   }
 
-  private applyTransformations(
-    code: string,
-    transformations: Transformation[],
-  ): string {
+  private applyTransformations(code: string, transformations: Transformation[]): string {
     transformations.sort((a, b) => b.start - a.start);
     let result = code;
     for (const { start, end, text } of transformations) {

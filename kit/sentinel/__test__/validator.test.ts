@@ -15,9 +15,7 @@ import type { InstallConfig } from '../src/types/index.js';
 import type { PlatformAdapter } from '../src/platform/types.js';
 
 const mockedIsGitRepo = vi.mocked(isGitRepo);
-const mockedPathExists = vi.mocked(
-  pathExists as (path: string) => Promise<boolean>,
-);
+const mockedPathExists = vi.mocked(pathExists as (path: string) => Promise<boolean>);
 
 function createConfig(overrides?: Partial<InstallConfig>): InstallConfig {
   return {
@@ -32,17 +30,14 @@ function createConfig(overrides?: Partial<InstallConfig>): InstallConfig {
   };
 }
 
-function createMockAdapter(
-  overrides?: Partial<PlatformAdapter>,
-): PlatformAdapter {
+function createMockAdapter(overrides?: Partial<PlatformAdapter>): PlatformAdapter {
   return {
     platform: 'github',
     getPipelineDir: (target: string) => `${target}/.github/workflows`,
     getTemplatePath: (baseName: string) => `github/${baseName}`,
     getDestFileName: (baseName: string) => baseName,
     isCliInstalled: () => true,
-    getCliInstallHint: () =>
-      '未检测到 GitHub CLI (gh)\n  请先安装: https://cli.github.com/',
+    getCliInstallHint: () => '未检测到 GitHub CLI (gh)\n  请先安装: https://cli.github.com/',
     getExistingPipelineFiles: () => [
       'sentinel-issue.yml',
       'sentinel-post-deploy.yml',
@@ -84,9 +79,7 @@ describe('validateEnvironment', () => {
     const result = await validateEnvironment(createConfig(), adapter);
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toEqual(
-      expect.arrayContaining([expect.stringMatching(/git/i)]),
-    );
+    expect(result.errors).toEqual(expect.arrayContaining([expect.stringMatching(/git/i)]));
   });
 
   it('should return error when platform CLI is not installed', async () => {
@@ -97,9 +90,7 @@ describe('validateEnvironment', () => {
     const result = await validateEnvironment(createConfig(), adapter);
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toEqual(
-      expect.arrayContaining([expect.stringMatching(/gh/i)]),
-    );
+    expect(result.errors).toEqual(expect.arrayContaining([expect.stringMatching(/gh/i)]));
   });
 
   it('should return valid even when platform config dir does not exist', async () => {
@@ -135,8 +126,6 @@ describe('validateEnvironment', () => {
     const result = await validateEnvironment(createConfig(), adapter);
 
     expect(result.valid).toBe(false);
-    expect(result.errors).toEqual(
-      expect.arrayContaining([expect.stringMatching(/gh/i)]),
-    );
+    expect(result.errors).toEqual(expect.arrayContaining([expect.stringMatching(/gh/i)]));
   });
 });

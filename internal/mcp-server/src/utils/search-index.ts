@@ -96,11 +96,7 @@ export class SearchIndex {
           component,
           score,
           matchedFields: [...new Set(matchedFields)],
-          highlights: this.generateHighlights(
-            component,
-            keywords,
-            matchedFields,
-          ),
+          highlights: this.generateHighlights(component, keywords, matchedFields),
         });
       }
     }
@@ -256,9 +252,7 @@ export class SearchIndex {
     }
 
     const avgTerms =
-      this.components.length > 0
-        ? Math.round(totalTerms / this.components.length)
-        : 0;
+      this.components.length > 0 ? Math.round(totalTerms / this.components.length) : 0;
 
     // 估算索引大小（基于组件数据的 JSON 字符串长度）
     let sizeBytes = 0;

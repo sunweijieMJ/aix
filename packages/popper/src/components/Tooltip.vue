@@ -8,11 +8,7 @@
     <slot />
   </span>
   <Teleport :to="teleportTo" :disabled="teleportDisabled">
-    <Transition
-      :name="transition"
-      @after-enter="emit('show')"
-      @after-leave="emit('hide')"
-    >
+    <Transition :name="transition" @after-enter="emit('show')" @after-leave="emit('hide')">
       <div
         v-if="isOpen"
         :id="tooltipId"
@@ -62,13 +58,12 @@ const floatingElRef = ref<HTMLElement | null>(null);
 const arrowElRef = ref<HTMLElement | null>(null);
 
 // 核心定位
-const { referenceRef, floatingRef, arrowRef, floatingStyles, arrowStyles } =
-  usePopper({
-    placement: () => props.placement,
-    offset: 8,
-    arrow: true,
-    arrowSize: () => props.arrowSize,
-  });
+const { referenceRef, floatingRef, arrowRef, floatingStyles, arrowStyles } = usePopper({
+  placement: () => props.placement,
+  offset: 8,
+  arrow: true,
+  arrowSize: () => props.arrowSize,
+});
 
 // 桥接 refs
 watch(triggerRef, (el) => {

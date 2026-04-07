@@ -164,10 +164,7 @@ export function useEditorCore(
       });
 
       // 语言变化后同步更新 linter（内联以复用竞态版本号保护）
-      const lintExt =
-        props.lint !== false
-          ? await getLintExtension(lang, props.lintOptions)
-          : [];
+      const lintExt = props.lint !== false ? await getLintExtension(lang, props.lintOptions) : [];
 
       // 二次竞态保护：linter 加载期间语言可能又被切换
       if (version !== langLoadVersion) return;

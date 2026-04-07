@@ -47,11 +47,7 @@ export async function writeOutputFiles(
     }
 
     // 处理入口文件（CLAUDE.md 等）的标记区域替换
-    const finalContent = await resolveContent(
-      absPath,
-      file.content,
-      file.relativePath,
-    );
+    const finalContent = await resolveContent(absPath, file.content, file.relativePath);
 
     if (options.dryRun) {
       logger.info(`[dry-run] 将写入: ${file.relativePath}`);
@@ -102,15 +98,7 @@ async function resolveContent(
       );
     }
 
-    return (
-      before +
-      PRESET_MARKER_START +
-      '\n' +
-      newContent +
-      '\n' +
-      PRESET_MARKER_END +
-      after
-    );
+    return before + PRESET_MARKER_START + '\n' + newContent + '\n' + PRESET_MARKER_END + after;
   }
 
   // 已有文件但无标记 → 追加到末尾

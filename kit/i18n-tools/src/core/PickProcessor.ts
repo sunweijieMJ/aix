@@ -28,22 +28,13 @@ export class PickProcessor extends BaseProcessor {
   }
 
   private generateUntranslatedFile(): void {
-    const untranslatedPath = FileUtils.getUntranslatedPath(
-      this.config,
-      this.isCustom,
-    );
-    const translatedPath = FileUtils.getTranslatedPath(
-      this.config,
-      this.isCustom,
-    );
+    const untranslatedPath = FileUtils.getUntranslatedPath(this.config, this.isCustom);
+    const translatedPath = FileUtils.getTranslatedPath(this.config, this.isCustom);
     this.ensureWorkingDirectory();
 
     const sourceLocale = this.config.locale.source;
     const targetLocale = this.config.locale.target;
-    const messages = LanguageFileManager.getMessages(
-      this.config,
-      this.isCustom,
-    );
+    const messages = LanguageFileManager.getMessages(this.config, this.isCustom);
     const zhCNMessages = messages[sourceLocale] || {};
     const enUSMessages = messages[targetLocale] || {};
 
@@ -51,10 +42,7 @@ export class PickProcessor extends BaseProcessor {
       `📋 开始分析语言条目，共 ${Object.keys(zhCNMessages).length} 个${sourceLocale}条目`,
     );
 
-    const analysisResult = this.analyzeTranslationStatus(
-      zhCNMessages,
-      enUSMessages,
-    );
+    const analysisResult = this.analyzeTranslationStatus(zhCNMessages, enUSMessages);
     this.saveFiles(untranslatedPath, translatedPath, analysisResult);
     this.displayResults(analysisResult);
   }
@@ -113,9 +101,7 @@ export class PickProcessor extends BaseProcessor {
   private saveFiles(
     untranslatedPath: string,
     translatedPath: string,
-    analysisResult: ReturnType<
-      typeof PickProcessor.prototype.analyzeTranslationStatus
-    >,
+    analysisResult: ReturnType<typeof PickProcessor.prototype.analyzeTranslationStatus>,
   ): void {
     FileUtils.createOrEmptyFile(
       untranslatedPath,
@@ -137,30 +123,22 @@ export class PickProcessor extends BaseProcessor {
   }
 
   private displayResults(
-    analysisResult: ReturnType<
-      typeof PickProcessor.prototype.analyzeTranslationStatus
-    >,
+    analysisResult: ReturnType<typeof PickProcessor.prototype.analyzeTranslationStatus>,
   ): void {
     const sourceLocale = this.config.locale.source;
     const targetLocale = this.config.locale.target;
-    const untranslatedExamples = Object.keys(
-      analysisResult.untranslatedEntries,
-    ).slice(0, 3);
+    const untranslatedExamples = Object.keys(analysisResult.untranslatedEntries).slice(0, 3);
     if (untranslatedExamples.length > 0) {
       LoggerUtils.info('\n📝 待翻译条目示例:');
       untranslatedExamples.forEach((key) => {
         const item = analysisResult.untranslatedEntries[key]!;
         LoggerUtils.info(`  ${key}:`);
         LoggerUtils.info(`    ${sourceLocale}: "${item[sourceLocale]}"`);
-        LoggerUtils.info(
-          `    ${targetLocale}: "${item[targetLocale] || '(空)'}"`,
-        );
+        LoggerUtils.info(`    ${targetLocale}: "${item[targetLocale] || '(空)'}"`);
       });
     }
 
-    const translatedExamples = Object.keys(
-      analysisResult.translatedEntries,
-    ).slice(0, 3);
+    const translatedExamples = Object.keys(analysisResult.translatedEntries).slice(0, 3);
     if (translatedExamples.length > 0) {
       LoggerUtils.info('\n✅ 已翻译条目示例:');
       translatedExamples.forEach((key) => {

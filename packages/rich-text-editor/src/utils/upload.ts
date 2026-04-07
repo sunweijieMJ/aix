@@ -7,13 +7,7 @@ import type {
 } from '../types';
 
 /** UploadError.type 的合法值域 */
-const UPLOAD_ERROR_TYPES = new Set([
-  'size',
-  'type',
-  'network',
-  'server',
-  'custom',
-]);
+const UPLOAD_ERROR_TYPES = new Set(['size', 'type', 'network', 'server', 'custom']);
 
 /** 判断是否为 UploadError 格式（避免与原生 Error 混淆） */
 export function isUploadError(err: unknown): err is UploadError {
@@ -43,9 +37,7 @@ export function getByPath(obj: unknown, path: string): unknown {
 }
 
 /** 解析 headers 配置：函数形式调用后返回，对象形式直接返回 */
-export function resolveHeaders(
-  headers?: HeadersConfig,
-): Record<string, string> {
+export function resolveHeaders(headers?: HeadersConfig): Record<string, string> {
   if (!headers) return {};
   return typeof headers === 'function' ? headers() : headers;
 }
@@ -95,9 +87,7 @@ export interface FetchUploadOptions {
  * 核心上传函数（server 配置模式使用）
  * 使用原生 fetch + FormData，支持超时和响应路径提取
  */
-export async function fetchUpload(
-  options: FetchUploadOptions,
-): Promise<string> {
+export async function fetchUpload(options: FetchUploadOptions): Promise<string> {
   const {
     server,
     file,
@@ -197,9 +187,7 @@ export interface FetchMentionOptions {
  * 提及数据查询函数（server 配置模式使用）
  * 使用 GET 请求 + URL 查询参数
  */
-export async function fetchMentionItems(
-  options: FetchMentionOptions,
-): Promise<MentionItem[]> {
+export async function fetchMentionItems(options: FetchMentionOptions): Promise<MentionItem[]> {
   const {
     server,
     query,
@@ -251,9 +239,7 @@ export async function fetchMentionItems(
       return [];
     }
 
-    return transformResponse
-      ? transformResponse(list)
-      : (list as MentionItem[]);
+    return transformResponse ? transformResponse(list) : (list as MentionItem[]);
   } catch (err) {
     if (isUploadError(err)) throw err;
     if (err instanceof DOMException && err.name === 'AbortError') {
@@ -313,10 +299,7 @@ export function resolveUploadFn(
 }
 
 /** 将未知错误标准化为 UploadError */
-export function normalizeUploadError(
-  err: unknown,
-  fallbackMessage: string,
-): UploadError {
+export function normalizeUploadError(err: unknown, fallbackMessage: string): UploadError {
   if (isUploadError(err)) return err;
   return {
     type: 'custom',

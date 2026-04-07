@@ -88,9 +88,7 @@ Test subtitle`;
 
       await load(source);
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'https://example.com/subtitle.vtt',
-      );
+      expect(mockFetch).toHaveBeenCalledWith('https://example.com/subtitle.vtt');
       expect(cues.value).toHaveLength(1);
       expect(cues.value[0]?.text).toBe('Test subtitle');
     });
@@ -185,9 +183,7 @@ Test subtitle`;
       const currentTime = ref(0);
       const { currentCue, currentIndex, load } = useSubtitle({ currentTime });
 
-      const testCues: SubtitleCue[] = [
-        { id: '1', startTime: 5, endTime: 10, text: 'First' },
-      ];
+      const testCues: SubtitleCue[] = [{ id: '1', startTime: 5, endTime: 10, text: 'First' }];
 
       await load({ type: 'cues', cues: testCues });
 

@@ -9,11 +9,7 @@
   >
     <template #reference>
       <Tooltip :content="title" placement="top" :disabled="!title">
-        <button
-          :class="['aix-rich-text-editor__toolbar-btn']"
-          :disabled="disabled"
-          type="button"
-        >
+        <button :class="['aix-rich-text-editor__toolbar-btn']" :disabled="disabled" type="button">
           <component :is="icon" v-if="icon" />
           <span
             class="aix-rich-text-editor__toolbar-color-indicator"
@@ -29,8 +25,7 @@
         :class="[
           'aix-rich-text-editor__toolbar-color-swatch',
           {
-            'aix-rich-text-editor__toolbar-color-swatch--active':
-              color === currentColor,
+            'aix-rich-text-editor__toolbar-color-swatch--active': color === currentColor,
           },
         ]"
         :style="{ backgroundColor: color }"

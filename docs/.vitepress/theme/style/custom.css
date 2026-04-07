@@ -12,11 +12,7 @@
 
   /* 首页样式调整 */
   --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(
-    120deg,
-    rgb(0 180 180) 30%,
-    rgb(31 194 188)
-  );
+  --vp-home-hero-name-background: linear-gradient(120deg, rgb(0 180 180) 30%, rgb(31 194 188));
 }
 
 /* 组件演示容器样式 */

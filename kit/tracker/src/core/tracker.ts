@@ -55,18 +55,13 @@ export class Tracker {
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
         const adapterName = this.adapters[i]?.name ?? `index:${i}`;
-        console.error(
-          `[kit-tracker] 适配器 "${adapterName}" 初始化失败:`,
-          result.reason,
-        );
+        console.error(`[kit-tracker] 适配器 "${adapterName}" 初始化失败:`, result.reason);
       }
     });
 
     // 回放缓冲的 identify 调用
     if (this.pendingIdentify) {
-      this.safeForEachAdapter((adapter) =>
-        adapter.identify(this.pendingIdentify!),
-      );
+      this.safeForEachAdapter((adapter) => adapter.identify(this.pendingIdentify!));
       this.pendingIdentify = null;
     }
 
@@ -174,14 +169,8 @@ export class Tracker {
 
   /** 创建 flush 回调，只向已就绪的目标适配器分发事件 */
   private createFlushCallback() {
-    return (
-      event: string,
-      props: Record<string, unknown>,
-      targetAdapters: string[],
-    ) => {
-      const targets = this.adapters.filter(
-        (a) => targetAdapters.includes(a.name) && a.isReady(),
-      );
+    return (event: string, props: Record<string, unknown>, targetAdapters: string[]) => {
+      const targets = this.adapters.filter((a) => targetAdapters.includes(a.name) && a.isReady());
       this.dispatchToAdapters(event, props, targets);
     };
   }
@@ -193,10 +182,7 @@ export class Tracker {
         try {
           fn(adapter);
         } catch (err) {
-          console.error(
-            `[kit-tracker] 适配器 "${adapter.name}" 操作失败:`,
-            err,
-          );
+          console.error(`[kit-tracker] 适配器 "${adapter.name}" 操作失败:`, err);
         }
       }
     }

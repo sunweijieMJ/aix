@@ -43,12 +43,10 @@ export const MOHO_COMPONENT_LIBRARY_CONFIG = {
     propsInterfacePattern: /^(Map\w+|Layer\w+|\w+)Props$/,
 
     // 地图组件文件可能包含 Map、Layer、Control 等前缀
-    componentFilePattern:
-      /^(Map|Layer|Control|Tool|Widget)?[A-Z][a-zA-Z0-9]*\.(ts|tsx)$/,
+    componentFilePattern: /^(Map|Layer|Control|Tool|Widget)?[A-Z][a-zA-Z0-9]*\.(ts|tsx)$/,
 
     // 地图组件导出模式，可能包含 Map、Layer 等前缀
-    componentExportPattern:
-      /^(Map|Layer|Control|Tool|Widget)?[A-Z][a-zA-Z0-9]*$/,
+    componentExportPattern: /^(Map|Layer|Control|Tool|Widget)?[A-Z][a-zA-Z0-9]*$/,
   },
 
   // Moho 地图库包结构

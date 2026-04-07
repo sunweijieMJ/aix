@@ -1,10 +1,4 @@
-import {
-  ref,
-  watch,
-  onBeforeUnmount,
-  type Ref,
-  type WatchStopHandle,
-} from 'vue';
+import { ref, watch, onBeforeUnmount, type Ref, type WatchStopHandle } from 'vue';
 
 /**
  * useWebRTC 返回类型
@@ -43,11 +37,7 @@ export interface WebRTCOptions {
 const DEFAULT_OPTIONS: Required<
   Omit<
     WebRTCOptions,
-    | 'signalServerUrl'
-    | 'iceServers'
-    | 'onReady'
-    | 'onError'
-    | 'onConnectionStateChange'
+    'signalServerUrl' | 'iceServers' | 'onReady' | 'onError' | 'onConnectionStateChange'
   >
 > = {
   enableAudio: true,
@@ -86,13 +76,9 @@ export function useWebRTC(
   // watch 清理函数
   let stopWatch: WatchStopHandle | null = null;
 
-  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(
-    key: K,
-  ): (typeof DEFAULT_OPTIONS)[K] {
+  function getOption<K extends keyof typeof DEFAULT_OPTIONS>(key: K): (typeof DEFAULT_OPTIONS)[K] {
     const value = options.value[key];
-    return value !== undefined
-      ? (value as (typeof DEFAULT_OPTIONS)[K])
-      : DEFAULT_OPTIONS[key];
+    return value !== undefined ? (value as (typeof DEFAULT_OPTIONS)[K]) : DEFAULT_OPTIONS[key];
   }
 
   function logDebug(message: string, ...args: unknown[]): void {
@@ -141,14 +127,9 @@ export function useWebRTC(
         isReady.value = true;
         isLoading.value = false;
         options.value.onReady?.();
-      } else if (
-        pc.connectionState === 'failed' ||
-        pc.connectionState === 'disconnected'
-      ) {
+      } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
         options.value.onError?.(
-          new Error(
-            `WebRTC 连接${pc.connectionState === 'failed' ? '失败' : '断开'}`,
-          ),
+          new Error(`WebRTC 连接${pc.connectionState === 'failed' ? '失败' : '断开'}`),
         );
       }
     };
@@ -215,9 +196,7 @@ export function useWebRTC(
           break;
       }
     } catch (error) {
-      options.value.onError?.(
-        error instanceof Error ? error : new Error('处理信令消息失败'),
-      );
+      options.value.onError?.(error instanceof Error ? error : new Error('处理信令消息失败'));
     }
   }
 
@@ -242,9 +221,7 @@ export function useWebRTC(
           }),
         );
       } catch (error) {
-        options.value.onError?.(
-          error instanceof Error ? error : new Error('发送加入请求失败'),
-        );
+        options.value.onError?.(error instanceof Error ? error : new Error('发送加入请求失败'));
       }
     };
 
@@ -309,9 +286,7 @@ export function useWebRTC(
       connectSignalServer(signalServerUrl, streamId);
     } catch (error) {
       isLoading.value = false;
-      options.value.onError?.(
-        error instanceof Error ? error : new Error('初始化 WebRTC 失败'),
-      );
+      options.value.onError?.(error instanceof Error ? error : new Error('初始化 WebRTC 失败'));
     }
   }
 
@@ -356,11 +331,7 @@ export function useWebRTC(
    * 检查是否支持 WebRTC
    */
   function isSupported(): boolean {
-    return (
-      typeof window !== 'undefined' &&
-      'RTCPeerConnection' in window &&
-      'WebSocket' in window
-    );
+    return typeof window !== 'undefined' && 'RTCPeerConnection' in window && 'WebSocket' in window;
   }
 
   /**
