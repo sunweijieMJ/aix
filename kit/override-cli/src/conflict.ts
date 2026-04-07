@@ -7,7 +7,7 @@ import type { GeneratedFile } from './types';
 export type ConflictStrategy = 'skip' | 'overwrite' | 'cancel';
 
 /**
- * 检测项目代码重名（已有学校目录）
+ * 检测项目代码重名
  *
  * @returns true 表示可以继续，false 表示用户取消
  */

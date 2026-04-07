@@ -19,9 +19,6 @@ import health from './routes/health';
 import docs from './routes/docs';
 import config from './routes/config';
 
-// 初始化数据库
-initDb();
-
 // 创建 OpenAPIHono 实例
 const app = new OpenAPIHono();
 
@@ -89,9 +86,8 @@ app.notFound((c) => {
 
 // 启动服务器
 const port = env.PORT;
-console.log(`🚀 Server running on http://localhost:${port} (${env.NODE_ENV})`);
 
-serve({
-  fetch: app.fetch,
-  port,
+initDb().then(() => {
+  console.log(`🚀 Server running on http://localhost:${port} (${env.NODE_ENV})`);
+  serve({ fetch: app.fetch, port });
 });

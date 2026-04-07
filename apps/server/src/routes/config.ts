@@ -5,6 +5,7 @@ import { createRoute, OpenAPIHono, z } from '@hono/zod-openapi';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index';
 import { settings } from '../db/schema';
+import { errorHandler } from '../middleware/error';
 import { ApiResponseSchema, ErrorResponseSchema } from '../schemas/common';
 import {
   ConfigPathParamSchema,
@@ -14,6 +15,7 @@ import {
 import { AppError } from '../utils/response';
 
 const config = new OpenAPIHono();
+config.onError(errorHandler);
 
 // GET /config/:path — 读取配置
 const getConfigRoute = createRoute({

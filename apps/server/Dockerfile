@@ -1,11 +1,8 @@
 # ---- Stage 1: Builder ----
 FROM node:22-alpine AS builder
 
-# 安装原生模块编译工具（better-sqlite3 需要 node-gyp）
-RUN apk add --no-cache python3 make g++
-
-# 启用 pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
 
 WORKDIR /app
 
@@ -13,7 +10,8 @@ WORKDIR /app
 COPY . .
 
 # 安装所有依赖（含 devDependencies，供构建使用）
-RUN pnpm install --frozen-lockfile
+RUN pnpm config set registry https://registry.npmmirror.com && \
+    pnpm install --frozen-lockfile
 
 # 构建 server 包
 RUN pnpm --filter=@aix/server build
@@ -26,7 +24,7 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# 从构建阶段复制独立部署包（已含编译后的原生模块）
+# 从构建阶段复制独立部署包（已解析 workspace: 协议，仅含生产依赖）
 COPY --from=builder /deploy .
 
 # 预建持久化目录（需挂载 volume）

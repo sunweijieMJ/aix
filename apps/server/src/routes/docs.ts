@@ -9,6 +9,7 @@ import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { db } from '../db/index';
 import { categories } from '../db/schema';
+import { errorHandler } from '../middleware/error';
 import { ApiResponseSchema, ErrorResponseSchema } from '../schemas/common';
 import {
   CategoryParamSchema,
@@ -21,6 +22,7 @@ import {
 import { AppError } from '../utils/response';
 
 const docs = new OpenAPIHono();
+docs.onError(errorHandler);
 
 // 文档文件存储根目录
 const UPLOADS_DIR = resolve(process.cwd(), 'storage/uploads/docs');
@@ -358,7 +360,9 @@ docs.openapi(getTreeRoute, async (c) => {
 // GET /categories/:id/files/* — 读取文件内容（通配符路径，不走 OpenAPI）
 docs.get('/categories/:id/files/*', async (c) => {
   const id = c.req.param('id');
-  const filePath = c.req.param('*') ?? '';
+  const prefix = `/categories/${id}/files/`;
+  const pathIdx = c.req.path.indexOf(prefix);
+  const filePath = pathIdx >= 0 ? c.req.path.slice(pathIdx + prefix.length) : '';
 
   if (!filePath) throw new AppError(400, '文件路径不能为空');
 
