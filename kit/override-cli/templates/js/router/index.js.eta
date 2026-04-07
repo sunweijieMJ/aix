@@ -1,0 +1,23 @@
+/**
+ * @typedef {import('@/utils/override').CustomRouteConfig} CustomRouteConfig
+ */
+
+/**
+ * <%= it.project %> - 路由覆盖
+ *
+ * 支持能力：
+ * - overrideRoutes: 替换已有路由的组件（key 使用全路径如 '/home'）
+ * - customRoutes: 新增独立路由
+ * - disabledRoutes: 按路径禁用路由
+ * - whiteList: 追加免登录白名单路径
+ *
+ * @returns {CustomRouteConfig}
+ */
+export function getCustomRoutes() {
+  return {
+    // overrideRoutes: {},
+    // customRoutes: [],
+    // disabledRoutes: [],
+    // whiteList: [],
+  };
+}

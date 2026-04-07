@@ -1,0 +1,30 @@
+import type { StoreModuleConfig } from '@/utils/override';
+
+/**
+ * <%= it.project %> - Store 覆盖
+ *
+ * 通过 Pinia 插件机制包装已有 Store 的 action。
+ * key 为 store.$id，只推荐覆盖 action，不建议覆盖 ref/computed。
+ *
+ * @example
+ * ```ts
+ * return {
+ *   overrides: {
+ *     global: (store) => {
+ *       const original = store.toggleTheme;
+ *       return {
+ *         toggleTheme() {
+ *           console.log('[<%= it.project.toUpperCase() %>] before toggle');
+ *           original.call(store);
+ *         },
+ *       };
+ *     },
+ *   },
+ * };
+ * ```
+ */
+export function getCustomStoreModules(): StoreModuleConfig {
+  return {
+    // overrides: {},
+  };
+}

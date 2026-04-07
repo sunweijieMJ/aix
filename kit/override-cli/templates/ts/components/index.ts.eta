@@ -1,0 +1,20 @@
+import type { Component } from 'vue';
+
+/**
+ * <%= it.project %> - 组件覆盖
+ *
+ * 替换基础平台预埋的组件（通过 componentManager.getComponent 调用）。
+ * 替换组件需保持与原组件相同的 Props/Emits 接口。
+ *
+ * @example
+ * ```ts
+ * return {
+ *   WelcomeCard: () => import('../views/CustomWelcomeCard.vue'),
+ * };
+ * ```
+ */
+export function getCustomComponents(): Record<string, Component> {
+  return {
+    // WelcomeCard: () => import('../views/CustomWelcomeCard.vue'),
+  };
+}

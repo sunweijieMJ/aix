@@ -1,0 +1,52 @@
+{
+  "name": "@kit/override-cli",
+  "version": "0.0.0",
+  "description": "CLI 工具：一键生成定制化覆盖层目录结构和模板文件",
+  "author": "<sunweijie@able-elec.com>",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
+    }
+  },
+  "bin": {
+    "override-init": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest --run",
+    "build": "pnpm run clean && tsup",
+    "clean": "rimraf dist",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "eta": "^4.5.1",
+    "fs-extra": "^11.3.4",
+    "picocolors": "^1.1.1",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:^",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "*",
+    "@types/prompts": "^2.4.9",
+    "eslint": "*",
+    "rimraf": "*",
+    "tsup": "*",
+    "tsx": "*",
+    "vitest": "*"
+  }
+}

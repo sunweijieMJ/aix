@@ -1,0 +1,21 @@
+import type { ConstantsOverride } from '@/utils/override';
+
+/**
+ * <%= it.project %> - 常量覆盖
+ *
+ * 未提供的字段使用标准产品默认值。
+ *
+ * @example
+ * ```ts
+ * return {
+ *   menuList: [...],           // 替换菜单列表
+ *   roles: { ASSISTANT: '5' }, // 新增角色
+ *   defaultLocale: 'en-US',    // 修改默认语言
+ * };
+ * ```
+ */
+export function getCustomConstants(): ConstantsOverride {
+  return {
+    // 按需覆盖常量
+  };
+}

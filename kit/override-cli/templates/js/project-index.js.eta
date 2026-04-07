@@ -1,0 +1,64 @@
+/**
+ * @typedef {import('../types').OverrideConfig} OverrideConfig
+ */
+<% if (it.modules.includes('components')) { -%>
+import { getCustomComponents } from './components';
+<% } -%>
+<% if (it.modules.includes('router')) { -%>
+import { getCustomRoutes } from './router';
+<% } -%>
+<% if (it.modules.includes('constants')) { -%>
+import { getCustomConstants } from './constants';
+<% } -%>
+<% if (it.modules.includes('locale')) { -%>
+import { getCustomLocales } from './locale';
+<% } -%>
+<% if (it.modules.includes('store')) { -%>
+import { getCustomStoreModules } from './store';
+<% } -%>
+<% if (it.modules.includes('api')) { -%>
+import { getCustomApiConfig } from './api';
+<% } -%>
+<% if (it.modules.includes('layout')) { -%>
+import { getCustomLayout } from './layout';
+<% } -%>
+<% if (it.modules.includes('directives')) { -%>
+import { getCustomDirectives } from './directives';
+<% } %>
+
+/**
+ * <%= it.project %> - 定制配置
+ *
+ * 聚合该学校所有定制模块。
+ * 不需要定制的模块可以删除对应目录和导入，或保留空配置。
+ *
+ * @type {OverrideConfig}
+ */
+const config = {
+<% if (it.modules.includes('components')) { -%>
+  components: getCustomComponents(),
+<% } -%>
+<% if (it.modules.includes('router')) { -%>
+  router: getCustomRoutes(),
+<% } -%>
+<% if (it.modules.includes('constants')) { -%>
+  constants: getCustomConstants(),
+<% } -%>
+<% if (it.modules.includes('locale')) { -%>
+  locale: getCustomLocales(),
+<% } -%>
+<% if (it.modules.includes('store')) { -%>
+  store: getCustomStoreModules(),
+<% } -%>
+<% if (it.modules.includes('api')) { -%>
+  api: getCustomApiConfig(),
+<% } -%>
+<% if (it.modules.includes('layout')) { -%>
+  layout: getCustomLayout(),
+<% } -%>
+<% if (it.modules.includes('directives')) { -%>
+  directives: getCustomDirectives(),
+<% } -%>
+};
+
+export default config;

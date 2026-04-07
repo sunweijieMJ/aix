@@ -1,0 +1,28 @@
+import type { RuntimeOverrideConfig, CustomRouteConfig, ConstantsOverride } from '@/utils/override';
+
+/**
+ * 学校覆盖配置
+ *
+ * 继承 RuntimeOverrideConfig（运行时维度），追加 router 和 constants（静态维度）。
+ * 所有字段可选，只需配置该学校需要定制的模块。
+ * 未配置的模块使用标准产品的默认行为。
+ *
+ * @example
+ * ```ts
+ * // overrides/<%= it.project %>/index.ts
+ * import type { OverrideConfig } from '../types';
+ *
+ * const config: OverrideConfig = {
+ *   constants: { menuList: [...] },
+ *   router: { customRoutes: [...] },
+ * };
+ * export default config;
+ * ```
+ */
+export interface OverrideConfig extends RuntimeOverrideConfig {
+  // ── 静态维度（模块加载时即生效）──
+  /** 路由覆盖、新增、禁用 */
+  router?: CustomRouteConfig;
+  /** 常量覆盖（角色、菜单、API 码等） */
+  constants?: ConstantsOverride;
+}

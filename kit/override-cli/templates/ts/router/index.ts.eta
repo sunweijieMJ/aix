@@ -1,0 +1,33 @@
+import type { CustomRouteConfig } from '@/utils/override';
+
+/**
+ * <%= it.project %> - 路由覆盖
+ *
+ * 支持能力：
+ * - overrideRoutes: 替换已有路由的组件（key 使用全路径如 '/home'）
+ * - customRoutes: 新增独立路由
+ * - disabledRoutes: 按路径禁用路由
+ * - whiteList: 追加免登录白名单路径
+ *
+ * @example
+ * ```ts
+ * return {
+ *   overrideRoutes: {
+ *     '/home': () => import('../views/CustomHome.vue'),
+ *   },
+ *   customRoutes: [{
+ *     path: '/<%= it.project %>-lab',
+ *     component: () => import('@/layout/index.vue'),
+ *     children: [{ path: '', component: () => import('../views/LabManagement.vue') }],
+ *   }],
+ * };
+ * ```
+ */
+export function getCustomRoutes(): CustomRouteConfig {
+  return {
+    // overrideRoutes: {},
+    // customRoutes: [],
+    // disabledRoutes: [],
+    // whiteList: [],
+  };
+}

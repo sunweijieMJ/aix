@@ -1,0 +1,22 @@
+import type { CustomApiConfig } from '@/utils/override';
+
+/**
+ * <%= it.project %> - API 覆盖
+ *
+ * 支持能力：
+ * - instances: 注册新 API 实例或替换已有实例
+ * - modules: 为指定实例注册插件模块
+ *
+ * @example
+ * ```ts
+ * return {
+ *   instances: { external: PolymasApi.create({ baseURL: 'https://api.example.com' }) },
+ * };
+ * ```
+ */
+export function getCustomApiConfig(): CustomApiConfig {
+  return {
+    // instances: {},
+    // modules: {},
+  };
+}

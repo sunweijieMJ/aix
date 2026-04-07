@@ -1,0 +1,20 @@
+/**
+ * @typedef {import('@/utils/override').RuntimeOverrideConfig} RuntimeOverrideConfig
+ * @typedef {import('@/utils/override').CustomRouteConfig} CustomRouteConfig
+ * @typedef {import('@/utils/override').ConstantsOverride} ConstantsOverride
+ */
+
+/**
+ * 学校覆盖配置
+ *
+ * 继承 RuntimeOverrideConfig（运行时维度），追加 router 和 constants（静态维度）。
+ * 所有字段可选，只需配置该学校需要定制的模块。
+ * 未配置的模块使用标准产品的默认行为。
+ *
+ * @typedef {RuntimeOverrideConfig & {
+ *   router?: CustomRouteConfig;
+ *   constants?: ConstantsOverride;
+ * }} OverrideConfig
+ */
+
+export {};

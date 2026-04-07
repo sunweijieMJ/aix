@@ -1,0 +1,88 @@
+import type { OverrideConfig } from './types';
+
+/**
+ * 学校注册表（按 schoolNid/schoolId 匹配）
+ *
+ * schoolNid → 学校代码映射。
+ * 新增学校只需在此表加一行 + 创建对应目录。
+ *
+ * @example '849': 'sdnydx'  // 山东农业大学
+ */
+const SCHOOL_MAP: Record<string, string> = {
+  // 在这里添加学校 NID 映射
+  // '490': 'gzdx',
+};
+
+/**
+ * 用户注册表（按 userId 匹配，优先级低于 SCHOOL_MAP）
+ *
+ * 适用于同一所学校中只有特定用户需要定制，或以个人身份上线定制功能的场景。
+ * userId → 学校代码映射，可与 SCHOOL_MAP 中的学校代码相同，也可指向独立目录。
+ */
+const USER_MAP: Record<string, string> = {
+  // '1812756074952921088': 'hndx',
+};
+
+/**
+ * 自动扫描所有学校配置模块
+ * 使用 eager 加载（配置代码小，页面组件由学校 router 中 lazy import）
+ */
+const schoolModules = import.meta.glob<{ default: OverrideConfig }>('./*/index.ts', { eager: true });
+
+/**
+ * 从 Cookie 中解析用户信息
+ */
+function parseCookieUser(): Record<string, unknown> {
+  try {
+    const match = document.cookie.match(/(?:^|;\s*)hike-polymas-user=([^;]*)/);
+    if (!match) return {};
+    return JSON.parse(decodeURIComponent(match[1])) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * 从 Cookie 获取当前用户的 schoolNid（即 schoolId）
+ */
+export function getSchoolNid(): string {
+  const data = parseCookieUser();
+  return (data.schoolNid as string) || (data.schoolId?.toString() ?? '');
+}
+
+/**
+ * 从 Cookie 获取当前用户的 userId
+ */
+export function getUserId(): string {
+  const data = parseCookieUser();
+  return data.userId?.toString() ?? '';
+}
+
+/**
+ * 获取当前学校代码
+ *
+ * 匹配优先级：schoolNid → userId
+ * - schoolNid 命中 → 整所学校的定制生效
+ * - userId 命中 → 仅该用户的定制生效（适用于个人级定制场景）
+ */
+export function getSchoolCode(): string | null {
+  const nid = getSchoolNid();
+  if (nid && SCHOOL_MAP[nid]) return SCHOOL_MAP[nid];
+
+  const uid = getUserId();
+  if (uid && USER_MAP[uid]) return USER_MAP[uid];
+
+  return null;
+}
+
+/**
+ * 加载当前学校的覆盖配置
+ * 匹配不到学校时返回 null，标准产品行为生效
+ */
+export function loadSchoolConfig(): OverrideConfig | null {
+  const code = getSchoolCode();
+  if (!code) return null;
+
+  const module = schoolModules[`./${code}/index.ts`];
+  return module?.default ?? null;
+}

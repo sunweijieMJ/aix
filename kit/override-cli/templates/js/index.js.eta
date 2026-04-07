@@ -1,0 +1,37 @@
+/**
+ * @typedef {import('@/utils/override').RuntimeOverrideConfig} RuntimeOverrideConfig
+ * @typedef {import('@/utils/override').CustomRouteConfig} CustomRouteConfig
+ * @typedef {import('@/utils/override').ConstantsOverride} ConstantsOverride
+ */
+
+import { loadSchoolConfig } from './registry';
+
+/**
+ * Override 系统 - 统一配置入口
+ *
+ * 两层架构：标准产品（src/） + 学校定制（overrides/{schoolCode}/）
+ * 根据 Cookie 中的 schoolNid 自动加载对应学校的配置。
+ * 匹配不到学校时所有 override 为空，标准产品行为生效。
+ */
+const school = loadSchoolConfig();
+
+// ── 运行时维度 → main.js → initOverrides() ──
+/** @type {RuntimeOverrideConfig} */
+const overrideConfig = {
+  components: school?.components,
+  store: school?.store,
+  locale: school?.locale,
+  api: school?.api,
+  layout: school?.layout,
+  directives: school?.directives,
+};
+
+export default overrideConfig;
+
+// ── 静态维度 → 各消费方直接导入 ──
+
+/** @type {CustomRouteConfig} 学校路由覆盖配置 → router/index.js */
+export const customRoutes = school?.router ?? {};
+
+/** @type {ConstantsOverride} 学校常量覆盖配置 → constants/index.js */
+export const customConstants = school?.constants ?? {};

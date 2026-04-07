@@ -1,0 +1,26 @@
+import type { CustomLayoutConfig } from '@/utils/override';
+
+/**
+ * <%= it.project %> - Layout 覆盖
+ *
+ * 支持能力：
+ * - layout: 替换整个 Layout 组件
+ * - components: 替换 Layout 内部区域（header / menu / main）
+ * - defaultConfig: 覆盖默认配置值
+ *
+ * 注意：layout 与 components 二选一，设置 layout 后 components 无效
+ *
+ * @example
+ * ```ts
+ * return {
+ *   components: { header: () => import('../views/CustomHeader.vue') },
+ *   defaultConfig: { headerVisible: { themeSwitch: false } },
+ * };
+ * ```
+ */
+export function getCustomLayout(): CustomLayoutConfig {
+  return {
+    // components: {},
+    // defaultConfig: {},
+  };
+}
