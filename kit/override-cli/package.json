@@ -1,6 +1,6 @@
 {
   "name": "@kit/override-cli",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "CLI 工具：一键生成定制化覆盖层目录结构和模板文件",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
