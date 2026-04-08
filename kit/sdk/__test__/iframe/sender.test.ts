@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SDKCore } from '../../src/core/sdk.js';
 import { IframeSender } from '../../src/iframe/sender.js';
 
@@ -42,7 +42,7 @@ describe('IframeSender.send', () => {
     sender.send(iframe, { data: 'test' });
 
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[SDK:iframe]'),
+      expect.stringContaining('[SDK:iframe:sender]'),
       expect.any(String),
     );
     warnSpy.mockRestore();

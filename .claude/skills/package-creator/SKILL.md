@@ -122,9 +122,6 @@ packages/
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }
 ```

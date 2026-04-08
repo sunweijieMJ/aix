@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SDKCore } from '../../src/core/sdk.js';
 import { IframeReceiver } from '../../src/iframe/receiver.js';
 import type { IframeEnvelope } from '../../src/iframe/types.js';
@@ -61,7 +61,7 @@ describe('IframeReceiver.onMessage', () => {
 
     expect(handler).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[SDK:iframe]'),
+      expect.stringContaining('[SDK:iframe:receiver]'),
       expect.stringContaining('https://evil.com'),
     );
 
@@ -122,5 +122,18 @@ describe('IframeReceiver.destroy', () => {
 
     dispatchMessage({ data: 'test' });
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('destroy 后调用 onMessage 应 warn 并返回空 stop 函数', () => {
+    const receiver = new IframeReceiver(createCore());
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    receiver.destroy();
+    const stop = receiver.onMessage(vi.fn());
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('[SDK:iframe:receiver]'));
+    expect(stop).toBeTypeOf('function');
+
+    warnSpy.mockRestore();
   });
 });

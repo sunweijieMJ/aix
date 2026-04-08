@@ -6,7 +6,7 @@ export class IframeSender {
   private readonly logger: Logger;
 
   constructor(private readonly core: SDKCore) {
-    this.logger = new Logger(core.debug, 'iframe');
+    this.logger = new Logger(core.debug, 'iframe:sender');
   }
 
   /**

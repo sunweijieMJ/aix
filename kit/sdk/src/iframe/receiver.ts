@@ -7,12 +7,13 @@ type MessageHandler<T = unknown> = (payload: T, source: MessageSource) => void;
 export class IframeReceiver {
   private readonly logger: Logger;
   private listeners: Array<(event: MessageEvent) => void> = [];
+  private destroyed = false;
 
   constructor(
     core: SDKCore,
     private readonly options: ReceiverOptions = {},
   ) {
-    this.logger = new Logger(core.debug, 'iframe');
+    this.logger = new Logger(core.debug, 'iframe:receiver');
   }
 
   /**
@@ -20,6 +21,11 @@ export class IframeReceiver {
    * 可多次调用以注册多个 handler。
    */
   onMessage<T>(handler: MessageHandler<T>): () => void {
+    if (this.destroyed) {
+      this.logger.warn('onMessage() 调用无效：receiver 已销毁');
+      return () => {};
+    }
+
     const listener = (event: MessageEvent) => {
       // 过滤非 SDK 消息
       const data = event.data as IframeEnvelope<T>;
@@ -60,6 +66,7 @@ export class IframeReceiver {
       window.removeEventListener('message', listener);
     }
     this.listeners = [];
+    this.destroyed = true;
     this.logger.log('Receiver destroyed');
   }
 }
