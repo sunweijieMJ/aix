@@ -1,0 +1,31 @@
+/**
+ * 常量覆盖工具
+ * 按策略合并常量：对象浅合并，原始值/数组整体替换
+ */
+
+function isPlainObject(val) {
+  return val !== null && typeof val === 'object' && !Array.isArray(val);
+}
+
+/**
+ * 合并常量覆盖配置到默认值
+ *
+ * @template {Record<string, unknown>} T
+ * @param {T} defaults
+ * @param {Partial<T>} overrides
+ * @returns {T}
+ */
+export function mergeConstants(defaults, overrides) {
+  const result = { ...defaults };
+  for (const key of Object.keys(overrides)) {
+    const val = overrides[key];
+    if (val === undefined) continue;
+    const def = defaults[key];
+    if (isPlainObject(def) && isPlainObject(val)) {
+      result[key] = { ...def, ...val };
+    } else {
+      result[key] = val;
+    }
+  }
+  return result;
+}

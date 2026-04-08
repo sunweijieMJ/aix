@@ -1,0 +1,33 @@
+/**
+ * 常量覆盖工具
+ * 按策略合并常量：对象浅合并，原始值/数组整体替换
+ */
+
+function isPlainObject(val: unknown): val is Record<string, unknown> {
+  return val !== null && typeof val === 'object' && !Array.isArray(val);
+}
+
+/**
+ * 合并常量覆盖配置到默认值
+ *
+ * 合并策略：
+ * - 纯对象 → 浅合并（如 roles: { ADMIN: '1' }）
+ * - 原始值 / 数组 → 整体替换（如 menuList: [...]）
+ */
+export function mergeConstants<T extends Record<string, unknown>>(
+  defaults: T,
+  overrides: { [K in keyof T]?: unknown },
+): T {
+  const result = { ...defaults };
+  for (const key of Object.keys(overrides) as (keyof T)[]) {
+    const val = overrides[key];
+    if (val === undefined) continue;
+    const def = defaults[key];
+    if (isPlainObject(def) && isPlainObject(val)) {
+      result[key] = { ...def, ...val } as T[keyof T];
+    } else {
+      result[key] = val as T[keyof T];
+    }
+  }
+  return result;
+}

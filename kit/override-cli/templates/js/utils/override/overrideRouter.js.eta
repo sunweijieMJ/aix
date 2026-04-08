@@ -1,0 +1,99 @@
+/**
+ * 路由覆盖管理器
+ * 支持新增路由、替换已有路由的组件/属性、禁用路由
+ *
+ * @typedef {{ customRoutes?: import('vue-router').RouteRecordRaw[]; whiteList?: string[]; overrideRoutes?: Record<string, any>; disabledRoutes?: string[] }} CustomRouteConfig
+ */
+
+function resolveFullPath(parentPath, childPath) {
+  if (childPath.startsWith('/')) return childPath;
+  if (!parentPath || parentPath === '/') return `/${childPath}`;
+  return childPath ? `${parentPath}/${childPath}` : parentPath;
+}
+
+function isRouteConfig(value) {
+  if (typeof value !== 'object' || value === null) return false;
+  const routeKeys = ['path', 'component', 'redirect', 'children', 'meta', 'name'];
+  return routeKeys.some(key => key in value);
+}
+
+class RouterManager {
+  constructor() {
+    this.customRoutes = [];
+    this.overrideRoutes = new Map();
+    this.disabledRoutes = new Set();
+    this.extraWhiteList = [];
+    this.consumedPaths = import.meta.env.DEV ? new Set() : null;
+  }
+
+  /** @param {CustomRouteConfig} config */
+  register(config) {
+    if (config.customRoutes) {
+      this.customRoutes.push(...config.customRoutes);
+    }
+    if (config.whiteList) {
+      this.extraWhiteList.push(...config.whiteList);
+    }
+    if (config.overrideRoutes) {
+      Object.entries(config.overrideRoutes).forEach(([path, override]) => {
+        this.overrideRoutes.set(path, override);
+      });
+    }
+    if (config.disabledRoutes) {
+      config.disabledRoutes.forEach(path => this.disabledRoutes.add(path));
+    }
+  }
+
+  getWhiteList() {
+    return this.extraWhiteList;
+  }
+
+  applyOverrides(routes, parentPath = '') {
+    return routes
+      .filter(route => {
+        const fullPath = resolveFullPath(parentPath, route.path);
+        return !this.disabledRoutes.has(fullPath);
+      })
+      .map(route => {
+        const fullPath = resolveFullPath(parentPath, route.path);
+        const override = this.overrideRoutes.get(fullPath);
+        const newRoute = { ...route };
+
+        if (override) {
+          this.consumedPaths?.add(fullPath);
+          if (isRouteConfig(override)) {
+            const { children: overrideChildren, ...rest } = override;
+            Object.assign(newRoute, rest);
+            if (overrideChildren?.length) {
+              newRoute.children = [...(route.children || []), ...overrideChildren];
+            }
+          } else {
+            newRoute.component = override;
+          }
+        }
+
+        if (newRoute.children?.length) {
+          newRoute.children = this.applyOverrides(newRoute.children, fullPath);
+        }
+
+        return newRoute;
+      });
+  }
+
+  addCustomRoutes(router) {
+    this.customRoutes.forEach(route => {
+      router.addRoute(route);
+    });
+  }
+
+  warnUnmatched() {
+    if (!this.consumedPaths) return;
+    for (const path of this.overrideRoutes.keys()) {
+      if (!this.consumedPaths.has(path)) {
+        console.warn(`[Override] Route override "${path}" did not match any route.`);
+      }
+    }
+  }
+}
+
+export const routerManager = new RouterManager();

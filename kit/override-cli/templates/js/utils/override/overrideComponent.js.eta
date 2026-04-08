@@ -1,0 +1,22 @@
+/**
+ * 组件覆盖管理器
+ * 维护自定义组件注册表，支持按名称替换核心组件
+ */
+class ComponentManager {
+  constructor() {
+    this.components = new Map();
+  }
+
+  /** @param {Record<string, import('vue').Component>} components */
+  register(components) {
+    Object.entries(components).forEach(([name, comp]) => {
+      this.components.set(name, comp);
+    });
+  }
+
+  getComponent(name, fallback) {
+    return this.components.get(name) ?? fallback;
+  }
+}
+
+export const componentManager = new ComponentManager();

@@ -1,9 +1,10 @@
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
 import path from 'node:path';
 import { Command } from 'commander';
 import pc from 'picocolors';
 import { isProjectRoot } from './detector';
-import { generateFiles } from './generator';
+import { generateFiles, generateOverrideUtils } from './generator';
 import { checkProjectConflict, resolveConflicts, writeFiles, printFileTree } from './conflict';
 import { runPrompts } from './prompts';
 import { REQUIRED_MODULES, ALL_MODULES, type ModuleId } from './types';
@@ -17,7 +18,7 @@ program
   .name('override-init')
   .description('一键生成定制化覆盖层目录结构和模板文件')
   .version(version)
-  .option('-p, --project <code>', '项目代码（如 sysu、gzdx）')
+  .option('-p, --project <code>', '定制目录名（如 sysu、gzdx）')
   .option('-l, --lang <ts|js>', '语言（ts/js）')
   .option('-m, --modules <list>', '定制模块（逗号分隔）')
   .option('-o, --output <dir>', '输出目录', 'src/overrides')
@@ -124,10 +125,66 @@ program
     writeFiles(resolvedFiles, outputDir);
     printFileTree(resolvedFiles, options.output);
 
-    // 下一步提示
+    // ── 检测并生成 utils/override（仅 TS 项目，首次运行时） ──
+    const utilsDir = path.resolve(cwd, 'src/utils/override');
+    const utilsIndexFile = path.join(utilsDir, 'index.ts');
+    let utilsGenerated = false;
+
+    if (!options.dryRun) {
+      const utilFiles = generateOverrideUtils(options.lang);
+      const missingUtils = utilFiles.filter((f) => !fs.existsSync(path.join(utilsDir, f.path)));
+
+      if (missingUtils.length > 0) {
+        console.log(pc.cyan('\n🔧 检测到 src/utils/override/ 缺少以下文件，自动生成：\n'));
+        writeFiles(missingUtils, utilsDir);
+        printFileTree(missingUtils, 'src/utils/override');
+        utilsGenerated = true;
+      }
+    }
+
+    // ── 下一步提示 ──
+    const ext = options.lang;
+    const overridesAlias = `@/${options.output.replace(/^src\//, '')}`;
+
     console.log(pc.bold('\n📝 下一步：'));
-    console.log(`  1. 在 ${pc.cyan('registry.' + options.lang)} 中添加学校 NID 映射`);
-    console.log(`  2. 在各模块的 ${pc.cyan('index.' + options.lang)} 中实现定制逻辑`);
+    console.log(`  1. 在 ${pc.cyan(`${options.output}/registry.${ext}`)} 中添加学校 NID 映射`);
+    console.log(`  2. 在各模块的 ${pc.cyan('index.' + ext)} 中实现定制逻辑\n`);
+
+    if (!fs.existsSync(utilsIndexFile) && !utilsGenerated) {
+      console.log(
+        pc.yellow('  ⚠️  未检测到 src/utils/override/，请手动创建或重新运行（会自动生成）\n'),
+      );
+    }
+
+    console.log(pc.bold('  手动接入定制系统：\n'));
+
+    console.log(`  ${pc.dim('// main.ts — 初始化运行时覆盖')}`);
+    console.log(`  import { initOverrides } from ${pc.cyan("'@/utils/override'")};`);
+    console.log(`  import overrideConfig from ${pc.cyan(`'${overridesAlias}'`)};`);
+    console.log(
+      `  ${pc.dim("// import { instances } from '@/api/core/request'; // 如有 API 覆盖")}`,
+    );
+    console.log(`  ${pc.cyan('initOverrides')}({ pinia, i18n, config: overrideConfig, app });`);
+    console.log(
+      `  ${pc.dim('// initOverrides({ pinia, i18n, config: overrideConfig, app, apiInstances: instances }); // 如有 API 覆盖')}`,
+    );
+
+    console.log('');
+    console.log(`  ${pc.dim('// router/index.ts — 注册路由覆盖（同步，在 createRouter 之前）')}`);
+    console.log(`  import { routerManager } from ${pc.cyan("'@/utils/override'")};`);
+    console.log(`  import { customRoutes } from ${pc.cyan(`'${overridesAlias}'`)};`);
+    console.log(`  ${pc.cyan('routerManager.register')}(customRoutes);`);
+    console.log(`  routes: [...${pc.cyan('routerManager.applyOverrides')}(staticRoutes)]`);
+    console.log(`  ${pc.cyan('routerManager.addCustomRoutes')}(router);`);
+
+    console.log('');
+    console.log(`  ${pc.dim('// constants/index.ts — 合并静态常量')}`);
+    console.log(`  import { mergeConstants } from ${pc.cyan("'@/utils/override'")};`);
+    console.log(`  import { customConstants } from ${pc.cyan(`'${overridesAlias}'`)};`);
+    console.log(
+      `  export const ROLES = ${pc.cyan('mergeConstants')}(DEFAULT_ROLES, customConstants.roles ?? {});`,
+    );
+
     console.log('');
   });
 

@@ -1,0 +1,53 @@
+import { componentManager } from './overrideComponent';
+import { storeManager } from './overrideStore';
+import { applyApiOverrides } from './overrideApi';
+import { layoutManager } from './overrideLayout';
+import { applyDirectiveOverrides } from './overrideDirectives';
+
+/**
+ * 初始化 Override 系统
+ *
+ * 在 main.js 中调用：
+ * ```js
+ * import { initOverrides } from '@/utils/override';
+ * import overrideConfig from '@/overrides';
+ * import { instances } from '@/api/core/request'; // 如有 API 覆盖
+ *
+ * initOverrides({ pinia, i18n, config: overrideConfig, app, apiInstances: instances });
+ * ```
+ *
+ * 注意：路由覆盖需在 router/index.js 中同步注册，不经过此函数
+ *
+ * @param {{ pinia: import('pinia').Pinia; i18n: any; config: any; app: import('vue').App; apiInstances?: Record<string, any> }} options
+ */
+export function initOverrides({ pinia, i18n, config, app, apiInstances }) {
+  if (config.components) {
+    componentManager.register(config.components);
+  }
+  if (config.layout) {
+    layoutManager.register(config.layout);
+  }
+  if (config.store?.overrides) {
+    storeManager.register(config.store);
+    pinia.use(storeManager.createPlugin());
+  }
+  if (config.locale) {
+    for (const [locale, messages] of Object.entries(config.locale)) {
+      i18n.global.mergeLocaleMessage(locale, messages);
+    }
+  }
+  if (config.api && apiInstances) {
+    applyApiOverrides(config.api, apiInstances);
+  }
+  if (config.directives) {
+    applyDirectiveOverrides(app, config.directives);
+  }
+}
+
+export { componentManager } from './overrideComponent';
+export { routerManager } from './overrideRouter';
+export { storeManager } from './overrideStore';
+export { applyApiOverrides } from './overrideApi';
+export { layoutManager } from './overrideLayout';
+export { applyDirectiveOverrides } from './overrideDirectives';
+export { mergeConstants } from './overrideConstants';

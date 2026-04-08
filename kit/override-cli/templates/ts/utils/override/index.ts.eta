@@ -1,0 +1,104 @@
+import type { App, Component, Directive } from 'vue';
+import type { Pinia } from 'pinia';
+import type { Composer } from 'vue-i18n';
+import type { StoreModuleConfig } from './overrideStore';
+import type { CustomApiConfig } from './overrideApi';
+import type { CustomLayoutConfig } from './overrideLayout';
+import { componentManager } from './overrideComponent';
+import { storeManager } from './overrideStore';
+import { applyApiOverrides } from './overrideApi';
+import { layoutManager } from './overrideLayout';
+import { applyDirectiveOverrides } from './overrideDirectives';
+
+/** 语言包类型：locale → messages */
+export type LocaleMessages = Record<string, Record<string, unknown>>;
+
+/** 常量覆盖配置（静态合并，不经过 initOverrides，模块加载时生效） */
+export interface ConstantsOverride {
+  roles?: Record<string, string>;
+  roleDescriptions?: Record<string, string>;
+  menuList?: unknown[];
+  apiCode?: Record<string, number>;
+  proxyUri?: Record<string, string>;
+  uri?: Record<string, string>;
+  defaultLocale?: string;
+  defaultThemeStyle?: string;
+}
+
+/** Override 系统运行时配置 */
+export interface RuntimeOverrideConfig {
+  components?: Record<string, Component>;
+  store?: StoreModuleConfig;
+  locale?: LocaleMessages;
+  api?: CustomApiConfig;
+  layout?: CustomLayoutConfig;
+  directives?: Record<string, Directive>;
+}
+
+interface I18nLike {
+  global: { mergeLocaleMessage: Composer['mergeLocaleMessage'] };
+}
+
+/** initOverrides 参数 */
+export interface InitOverridesOptions {
+  pinia: Pinia;
+  i18n: I18nLike;
+  config: RuntimeOverrideConfig;
+  app: App;
+  /**
+   * API 实例对象，来自 api/core/request 的 instances
+   * 如项目有 API 覆盖需求，在 main.ts 中传入
+   */
+  apiInstances?: Record<string, any>;
+}
+
+/**
+ * 初始化 Override 系统
+ *
+ * 在 main.ts 中调用：
+ * ```ts
+ * import { initOverrides } from '@/utils/override';
+ * import overrideConfig from '@/overrides';
+ * import { instances } from '@/api/core/request'; // 如有 API 覆盖
+ *
+ * initOverrides({ pinia, i18n, config: overrideConfig, app, apiInstances: instances });
+ * ```
+ *
+ * 注意：路由覆盖需在 router/index.ts 中同步注册，不经过此函数
+ */
+export function initOverrides({ pinia, i18n, config, app, apiInstances }: InitOverridesOptions): void {
+  if (config.components) {
+    componentManager.register(config.components);
+  }
+  if (config.layout) {
+    layoutManager.register(config.layout);
+  }
+  if (config.store?.overrides) {
+    storeManager.register(config.store);
+    pinia.use(storeManager.createPlugin());
+  }
+  if (config.locale) {
+    for (const [locale, messages] of Object.entries(config.locale)) {
+      i18n.global.mergeLocaleMessage(locale, messages);
+    }
+  }
+  if (config.api && apiInstances) {
+    applyApiOverrides(config.api, apiInstances);
+  }
+  if (config.directives) {
+    applyDirectiveOverrides(app, config.directives);
+  }
+}
+
+export { componentManager } from './overrideComponent';
+export { routerManager } from './overrideRouter';
+export { storeManager } from './overrideStore';
+export { applyApiOverrides } from './overrideApi';
+export { layoutManager } from './overrideLayout';
+export { applyDirectiveOverrides } from './overrideDirectives';
+export { mergeConstants } from './overrideConstants';
+
+export type { CustomRouteConfig } from './overrideRouter';
+export type { StoreModuleConfig, StoreOverrideFn } from './overrideStore';
+export type { CustomApiConfig } from './overrideApi';
+export type { CustomLayoutConfig } from './overrideLayout';

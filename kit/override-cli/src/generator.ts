@@ -27,8 +27,8 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
   const { project, lang, modules, output: _output } = options;
   const ext = lang;
 
-  // 模板目录在 dist 同级的 templates/ 下
-  const templatesDir = path.resolve(__dirname, '..', 'templates', lang);
+  // 模板目录：templates/{lang}/overrides/
+  const templatesDir = path.resolve(__dirname, '..', 'templates', lang, 'overrides');
 
   const eta = new Eta({
     views: templatesDir,
@@ -97,6 +97,52 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
     if (file.content !== null) {
       file.content = cleanContent(file.content);
     }
+  }
+
+  return files;
+}
+
+/** utils/override 目录下需要生成的文件基础名（不含扩展名） */
+const OVERRIDE_UTIL_BASES = [
+  'index',
+  'overrideRouter',
+  'overrideComponent',
+  'overrideConstants',
+  'overrideStore',
+  'overrideApi',
+  'overrideDirectives',
+  'overrideLayout',
+];
+
+/**
+ * 生成 src/utils/override/ 下的核心工具文件
+ *
+ * 调用方负责过滤已存在的文件。
+ *
+ * @returns 文件列表，path 相对于 src/utils/override/
+ */
+export function generateOverrideUtils(lang: 'ts' | 'js' = 'ts'): GeneratedFile[] {
+  const utilsTemplatesDir = path.resolve(__dirname, '..', 'templates', lang, 'utils', 'override');
+
+  if (!fs.existsSync(utilsTemplatesDir)) return [];
+
+  const eta = new Eta({
+    views: utilsTemplatesDir,
+    autoEscape: false,
+    autoTrim: false,
+  });
+
+  const files: GeneratedFile[] = [];
+
+  for (const base of OVERRIDE_UTIL_BASES) {
+    const fileName = `${base}.${lang}`;
+    const templateFile = `${fileName}.eta`;
+    if (!fs.existsSync(path.join(utilsTemplatesDir, templateFile))) continue;
+
+    files.push({
+      path: fileName,
+      content: cleanContent(eta.render(`./${templateFile}`, {})),
+    });
   }
 
   return files;

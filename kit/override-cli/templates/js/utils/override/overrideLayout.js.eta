@@ -1,0 +1,32 @@
+/**
+ * Layout 覆盖管理器
+ *
+ * @typedef {'header' | 'menu' | 'main'} LayoutSlot
+ * @typedef {{ layout?: import('vue').Component; components?: Partial<Record<LayoutSlot, import('vue').Component>>; defaultConfig?: Record<string, Record<string, unknown>> }} CustomLayoutConfig
+ */
+class LayoutManager {
+  constructor() {
+    /** @type {CustomLayoutConfig | null} */
+    this.config = null;
+  }
+
+  /** @param {CustomLayoutConfig} config */
+  register(config) {
+    this.config = config;
+  }
+
+  getLayoutComponent(fallback) {
+    return this.config?.layout ?? fallback;
+  }
+
+  /** @param {LayoutSlot} slot */
+  getSlotComponent(slot, fallback) {
+    return this.config?.components?.[slot] ?? fallback;
+  }
+
+  getDefaultConfig() {
+    return this.config?.defaultConfig;
+  }
+}
+
+export const layoutManager = new LayoutManager();

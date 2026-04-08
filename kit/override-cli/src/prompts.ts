@@ -27,7 +27,7 @@ export async function runPrompts(
     questions.push({
       type: 'text',
       name: 'project',
-      message: '项目代码（用于目录名，如 sysu、gzdx）',
+      message: '定制目录名（如 sysu、gzdx）',
       validate: (value: string) =>
         PROJECT_CODE_REGEX.test(value) ? true : '只能包含小写字母、数字和连字符，且以字母开头',
     });

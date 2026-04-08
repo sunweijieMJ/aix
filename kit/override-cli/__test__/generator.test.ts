@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateFiles } from '../src/generator';
+import { generateFiles, generateOverrideUtils } from '../src/generator';
 import type { GenerateOptions } from '../src/types';
 
 const baseOptions: GenerateOptions = {
@@ -127,6 +127,91 @@ describe('generateFiles', () => {
         'store',
       ],
     });
+
+    for (const file of files) {
+      if (file.content && file.content.length > 0) {
+        expect(file.content, `文件 ${file.path} 有连续空行`).not.toMatch(/\n{3,}/);
+      }
+    }
+  });
+
+  it('registry.ts 应包含 import.meta.glob', () => {
+    const files = generateFiles(baseOptions);
+    const registry = files.find((f) => f.path === 'registry.ts');
+    expect(registry!.content).toContain('import.meta.glob');
+  });
+
+  it('types.ts 应包含 OverrideConfig 接口定义', () => {
+    const files = generateFiles(baseOptions);
+    const types = files.find((f) => f.path === 'types.ts');
+    expect(types!.content).toContain('OverrideConfig');
+    expect(types!.content).toContain('RuntimeOverrideConfig');
+  });
+
+  it('index.ts 应包含 loadSchoolConfig 调用', () => {
+    const files = generateFiles(baseOptions);
+    const index = files.find((f) => f.path === 'index.ts');
+    expect(index!.content).toContain('loadSchoolConfig');
+    expect(index!.content).toContain('customRoutes');
+    expect(index!.content).toContain('customConstants');
+  });
+});
+
+describe('generateOverrideUtils', () => {
+  it('TS 模式应返回所有工具文件', () => {
+    const files = generateOverrideUtils('ts');
+    const paths = files.map((f) => f.path);
+
+    expect(paths).toContain('index.ts');
+    expect(paths).toContain('overrideRouter.ts');
+    expect(paths).toContain('overrideComponent.ts');
+    expect(paths).toContain('overrideConstants.ts');
+    expect(paths).toContain('overrideStore.ts');
+    expect(paths).toContain('overrideApi.ts');
+    expect(paths).toContain('overrideDirectives.ts');
+    expect(paths).toContain('overrideLayout.ts');
+    expect(files).toHaveLength(8);
+  });
+
+  it('JS 模式应返回 .js 扩展名的工具文件', () => {
+    const files = generateOverrideUtils('js');
+    const paths = files.map((f) => f.path);
+
+    expect(paths).toContain('index.js');
+    expect(paths).toContain('overrideRouter.js');
+    expect(paths).toContain('overrideConstants.js');
+    expect(files).toHaveLength(8);
+  });
+
+  it('index.ts 应导出 initOverrides 及各管理器', () => {
+    const files = generateOverrideUtils('ts');
+    const index = files.find((f) => f.path === 'index.ts');
+
+    expect(index!.content).toContain('initOverrides');
+    expect(index!.content).toContain('routerManager');
+    expect(index!.content).toContain('componentManager');
+    expect(index!.content).toContain('mergeConstants');
+  });
+
+  it('overrideRouter.ts 应导出 routerManager 和 CustomRouteConfig', () => {
+    const files = generateOverrideUtils('ts');
+    const router = files.find((f) => f.path === 'overrideRouter.ts');
+
+    expect(router!.content).toContain('routerManager');
+    expect(router!.content).toContain('CustomRouteConfig');
+    expect(router!.content).toContain('applyOverrides');
+    expect(router!.content).toContain('addCustomRoutes');
+  });
+
+  it('overrideConstants.ts 应导出 mergeConstants 函数', () => {
+    const files = generateOverrideUtils('ts');
+    const constants = files.find((f) => f.path === 'overrideConstants.ts');
+
+    expect(constants!.content).toContain('mergeConstants');
+  });
+
+  it('生成的工具文件内容不应有连续 3 行空行', () => {
+    const files = generateOverrideUtils('ts');
 
     for (const file of files) {
       if (file.content && file.content.length > 0) {
