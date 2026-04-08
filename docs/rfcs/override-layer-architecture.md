@@ -1,6 +1,6 @@
-# 定制化项目代码合并方案
+# 定制化项目代码合并方案 (@kit/override-cli)
 
-> **状态**: Draft
+> **状态**: 已完成
 > **作者**: AIX Team
 > **适用场景**: 基础产品 + 多个定制项目（独立仓库模式）
 
@@ -848,13 +848,13 @@ const systemTitle = computed(() => siteConfig.config.basic.systemTitle || t('lay
 
 ### 概述
 
-提供 `@kit/override` CLI 工具，用于在业务仓库中一键生成定制化所需的目录结构和模板文件。开发者只需运行命令、回答几个交互式问题，即可完成定制化项目的初始化。
+提供 `@kit/override-cli` CLI 工具，用于在业务仓库中一键生成定制化所需的目录结构和模板文件。开发者只需运行命令、回答几个交互式问题，即可完成定制化项目的初始化。
 
 ### 使用方式
 
 ```bash
 # 在业务仓库根目录执行
-npx @kit/override
+npx @kit/override-cli
 
 # 或通过 pnpm script
 pnpm override:init
@@ -863,7 +863,7 @@ pnpm override:init
 ### 交互流程
 
 ```
-$ npx @kit/override
+$ npx @kit/override-cli
 
 🚀 Override 初始化工具
 
@@ -964,7 +964,7 @@ CLI 生成的文件分两类：
 支持非交互模式，用于 CI 或脚本化调用：
 
 ```bash
-npx @kit/override \
+npx @kit/override-cli \
   --project sysu \
   --lang ts \
   --modules router,constants,components,locale \
@@ -997,7 +997,7 @@ npx @kit/override \
 | `picocolors` | 终端彩色输出 |
 | `fs-extra` | 文件操作 |
 
-工具以 `@kit/override` 独立包发布，也可作为业务脚手架的一部分集成。
+工具以 `@kit/override-cli` 独立包发布，也可作为业务脚手架的一部分集成。
 
 ## CI/CD 自动合并（P2）
 
@@ -1082,7 +1082,7 @@ git push origin main --force-with-lease
 
 ### P0 — CLI 初始化工具 + 覆盖系统
 
-- [ ] **CLI 初始化工具**（`@kit/override`）
+- [ ] **CLI 初始化工具**（`@kit/override-cli`）
   - [ ] 交互式问答流程（项目代码、语言、模块选择）
   - [ ] 语言自动检测（tsconfig.json / package.json）
   - [ ] TS/JS 双模板生成

@@ -127,6 +127,12 @@ export default withMermaid(
             items: [
               { text: '国际化工具', link: '/rfcs/i18n-tools' },
               { text: 'MCP Server', link: '/rfcs/mcp-server' },
+              {
+                text: '定制化项目代码合并方案',
+                link: '/rfcs/override-layer-architecture',
+              },
+              { text: '埋点数据采集', link: '/rfcs/tracker' },
+              { text: 'AI 编码规范预设', link: '/rfcs/ai-preset' },
             ],
           },
           {
@@ -135,12 +141,6 @@ export default withMermaid(
               { text: '项目脚手架工具', link: '/rfcs/create-app-cli' },
               { text: '视觉比对测试', link: '/rfcs/visual-testing-rfc' },
               { text: 'AI 自动修复', link: '/rfcs/sentinel-design-draft' },
-              {
-                text: '定制化项目代码合并方案',
-                link: '/rfcs/override-layer-architecture',
-              },
-              { text: '埋点数据采集', link: '/rfcs/tracker' },
-              { text: 'AI 编码规范预设', link: '/rfcs/ai-preset' },
             ],
           },
         ],

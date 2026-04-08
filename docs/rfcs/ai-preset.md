@@ -1,6 +1,6 @@
 # AI 编码规范预设系统 (@kit/ai-preset)
 
-> **状态**: Draft
+> **状态**: 已完成
 > **作者**: AIX Team
 > **位置**: `kit/ai-preset/`
 

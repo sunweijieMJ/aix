@@ -1,8 +1,8 @@
-# 埋点数据采集 (@aix/tracker)
+# 埋点数据采集 (@kit/tracker)
 
-> **状态**: Draft
+> **状态**: 已完成
 > **作者**: AIX Team
-> **位置**: `packages/tracker/`
+> **位置**: `kit/tracker/`
 
 ## 概述
 
@@ -103,7 +103,7 @@ graph TB
 ### 目录结构
 
 ```
-packages/tracker/
+kit/tracker/
 ├── src/
 │   ├── index.ts                      # 统一导出入口
 │   ├── types.ts                      # 所有公共 TypeScript 类型
@@ -576,7 +576,7 @@ interface QDTrackerOptions { /* ... */ }
 ```typescript
 // main.ts
 import { createApp } from 'vue';
-import { createTrackerPlugin, QDTrackerAdapter, ConsoleAdapter } from '@aix/tracker';
+import { createTrackerPlugin, QDTrackerAdapter, ConsoleAdapter } from '@kit/tracker';
 import router from './router';
 
 const app = createApp(App);
@@ -606,7 +606,7 @@ app.use(createTrackerPlugin({
 
 ```vue
 <script setup lang="ts">
-import { useTracker } from '@aix/tracker';
+import { useTracker } from '@kit/tracker';
 
 const { track, identify } = useTracker();
 
@@ -641,7 +641,7 @@ function onClickApp(item: AppItem, index: number) {
 
 ```vue
 <script setup lang="ts">
-import { useExposure } from '@aix/tracker';
+import { useExposure } from '@kit/tracker';
 
 const { elementRef: bannerRef, isExposed } = useExposure({
   event: 'app_zdydmh_home_top_app_imp',
