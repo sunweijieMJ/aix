@@ -8,7 +8,7 @@ import inquirer from 'inquirer';
 
 // ============ 常量配置 ============
 
-export const WORKSPACE_DIRS = ['packages', 'internal']; // 可发布的 workspace 目录
+export const WORKSPACE_DIRS = ['packages', 'internal', 'kit']; // 可发布的 workspace 目录
 export const BUILD_OUTPUTS = ['es', 'lib', 'dist']; // 构建产物目录
 export const DEFAULT_REGISTRY = 'http://npm-registry.zhihuishu.com:4873/'; // 默认私有 npm 仓库地址
 
