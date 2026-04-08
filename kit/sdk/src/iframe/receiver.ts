@@ -9,7 +9,7 @@ export class IframeReceiver {
   private listeners: Array<(event: MessageEvent) => void> = [];
 
   constructor(
-    private readonly core: SDKCore,
+    core: SDKCore,
     private readonly options: ReceiverOptions = {},
   ) {
     this.logger = new Logger(core.debug, 'iframe');
