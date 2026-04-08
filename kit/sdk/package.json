@@ -1,6 +1,6 @@
 {
   "name": "@kit/sdk",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "通用前端工具 SDK",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
