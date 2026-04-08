@@ -1,8 +1,4 @@
 /**
- * @typedef {import('@/utils/override').CustomLayoutConfig} CustomLayoutConfig
- */
-
-/**
  * <%= it.project %> - Layout 覆盖
  *
  * 支持能力：
@@ -11,8 +7,6 @@
  * - defaultConfig: 覆盖默认配置值
  *
  * 注意：layout 与 components 二选一，设置 layout 后 components 无效
- *
- * @returns {CustomLayoutConfig}
  */
 export function getCustomLayout() {
   return {

@@ -1,7 +1,3 @@
-/**
- * @typedef {import('@/utils/override').LocaleMessages} LocaleMessages
- */
-
 import zhCN from './zh-CN.json';
 import enUS from './en-US.json';
 
@@ -10,8 +6,6 @@ import enUS from './en-US.json';
  *
  * 覆盖: 使用与标准产品相同的 key（如 layout.systemTitle）
  * 新增: 添加新的 key（如 <%= it.project %>.labName）
- *
- * @returns {LocaleMessages}
  */
 export function getCustomLocales() {
   return {

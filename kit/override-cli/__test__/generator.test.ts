@@ -58,7 +58,7 @@ describe('generateFiles', () => {
     const files = generateFiles({ ...baseOptions, lang: 'js' });
     const paths = files.map((f) => f.path);
 
-    expect(paths).toContain('types.js');
+    expect(paths).not.toContain('types.js');
     expect(paths).toContain('index.js');
     expect(paths).toContain('registry.js');
     expect(paths).toContain('test/index.js');
@@ -163,13 +163,13 @@ describe('generateOverrideUtils', () => {
     const paths = files.map((f) => f.path);
 
     expect(paths).toContain('index.ts');
-    expect(paths).toContain('overrideRouter.ts');
-    expect(paths).toContain('overrideComponent.ts');
-    expect(paths).toContain('overrideConstants.ts');
-    expect(paths).toContain('overrideStore.ts');
-    expect(paths).toContain('overrideApi.ts');
-    expect(paths).toContain('overrideDirectives.ts');
-    expect(paths).toContain('overrideLayout.ts');
+    expect(paths).toContain('override-router.ts');
+    expect(paths).toContain('override-component.ts');
+    expect(paths).toContain('override-constants.ts');
+    expect(paths).toContain('override-store.ts');
+    expect(paths).toContain('override-api.ts');
+    expect(paths).toContain('override-directives.ts');
+    expect(paths).toContain('override-layout.ts');
     expect(files).toHaveLength(8);
   });
 
@@ -178,8 +178,8 @@ describe('generateOverrideUtils', () => {
     const paths = files.map((f) => f.path);
 
     expect(paths).toContain('index.js');
-    expect(paths).toContain('overrideRouter.js');
-    expect(paths).toContain('overrideConstants.js');
+    expect(paths).toContain('override-router.js');
+    expect(paths).toContain('override-constants.js');
     expect(files).toHaveLength(8);
   });
 
@@ -193,9 +193,9 @@ describe('generateOverrideUtils', () => {
     expect(index!.content).toContain('mergeConstants');
   });
 
-  it('overrideRouter.ts 应导出 routerManager 和 CustomRouteConfig', () => {
+  it('override-router.ts 应导出 routerManager 和 CustomRouteConfig', () => {
     const files = generateOverrideUtils('ts');
-    const router = files.find((f) => f.path === 'overrideRouter.ts');
+    const router = files.find((f) => f.path === 'override-router.ts');
 
     expect(router!.content).toContain('routerManager');
     expect(router!.content).toContain('CustomRouteConfig');
@@ -203,9 +203,9 @@ describe('generateOverrideUtils', () => {
     expect(router!.content).toContain('addCustomRoutes');
   });
 
-  it('overrideConstants.ts 应导出 mergeConstants 函数', () => {
+  it('override-constants.ts 应导出 mergeConstants 函数', () => {
     const files = generateOverrideUtils('ts');
-    const constants = files.find((f) => f.path === 'overrideConstants.ts');
+    const constants = files.find((f) => f.path === 'override-constants.ts');
 
     expect(constants!.content).toContain('mergeConstants');
   });

@@ -40,10 +40,12 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
   const files: GeneratedFile[] = [];
 
   // ── 基础设施文件（始终生成） ──
-  files.push({
-    path: `types.${ext}`,
-    content: eta.render(`./types.${ext}.eta`, context),
-  });
+  if (lang === 'ts') {
+    files.push({
+      path: `types.${ext}`,
+      content: eta.render(`./types.${ext}.eta`, context),
+    });
+  }
   files.push({
     path: `index.${ext}`,
     content: eta.render(`./index.${ext}.eta`, context),
@@ -105,13 +107,13 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
 /** utils/override 目录下需要生成的文件基础名（不含扩展名） */
 const OVERRIDE_UTIL_BASES = [
   'index',
-  'overrideRouter',
-  'overrideComponent',
-  'overrideConstants',
-  'overrideStore',
-  'overrideApi',
-  'overrideDirectives',
-  'overrideLayout',
+  'override-router',
+  'override-component',
+  'override-constants',
+  'override-store',
+  'override-api',
+  'override-directives',
+  'override-layout',
 ];
 
 /**

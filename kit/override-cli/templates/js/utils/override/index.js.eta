@@ -1,8 +1,8 @@
-import { componentManager } from './overrideComponent';
-import { storeManager } from './overrideStore';
-import { applyApiOverrides } from './overrideApi';
-import { layoutManager } from './overrideLayout';
-import { applyDirectiveOverrides } from './overrideDirectives';
+import { componentManager } from './override-component';
+import { storeManager } from './override-store';
+import { applyApiOverrides } from './override-api';
+import { layoutManager } from './override-layout';
+import { applyDirectiveOverrides } from './override-directives';
 
 /**
  * 初始化 Override 系统
@@ -18,7 +18,7 @@ import { applyDirectiveOverrides } from './overrideDirectives';
  *
  * 注意：路由覆盖需在 router/index.js 中同步注册，不经过此函数
  *
- * @param {{ pinia: import('pinia').Pinia; i18n: any; config: any; app: import('vue').App; apiInstances?: Record<string, any> }} options
+ * @param {object} options
  */
 export function initOverrides({ pinia, i18n, config, app, apiInstances }) {
   if (config.components) {
@@ -44,10 +44,10 @@ export function initOverrides({ pinia, i18n, config, app, apiInstances }) {
   }
 }
 
-export { componentManager } from './overrideComponent';
-export { routerManager } from './overrideRouter';
-export { storeManager } from './overrideStore';
-export { applyApiOverrides } from './overrideApi';
-export { layoutManager } from './overrideLayout';
-export { applyDirectiveOverrides } from './overrideDirectives';
-export { mergeConstants } from './overrideConstants';
+export { componentManager } from './override-component';
+export { routerManager } from './override-router';
+export { storeManager } from './override-store';
+export { applyApiOverrides } from './override-api';
+export { layoutManager } from './override-layout';
+export { applyDirectiveOverrides } from './override-directives';
+export { mergeConstants } from './override-constants';

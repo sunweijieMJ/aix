@@ -3,7 +3,7 @@
  * 同名覆盖内置指令，key 为指令名（不含 v- 前缀）
  *
  * @param {import('vue').App} app
- * @param {Record<string, import('vue').Directive>} directives
+ * @param {object} directives
  */
 export function applyDirectiveOverrides(app, directives) {
   Object.entries(directives).forEach(([name, directive]) => {

@@ -1,6 +1,3 @@
-/**
- * @typedef {import('../types').OverrideConfig} OverrideConfig
- */
 <% if (it.modules.includes('components')) { -%>
 import { getCustomComponents } from './components';
 <% } -%>
@@ -31,8 +28,6 @@ import { getCustomDirectives } from './directives';
  *
  * 聚合该学校所有定制模块。
  * 不需要定制的模块可以删除对应目录和导入，或保留空配置。
- *
- * @type {OverrideConfig}
  */
 const config = {
 <% if (it.modules.includes('components')) { -%>

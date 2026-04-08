@@ -1,8 +1,4 @@
 /**
- * @typedef {import('@/utils/override').CustomRouteConfig} CustomRouteConfig
- */
-
-/**
  * <%= it.project %> - 路由覆盖
  *
  * 支持能力：
@@ -10,8 +6,6 @@
  * - customRoutes: 新增独立路由
  * - disabledRoutes: 按路径禁用路由
  * - whiteList: 追加免登录白名单路径
- *
- * @returns {CustomRouteConfig}
  */
 export function getCustomRoutes() {
   return {

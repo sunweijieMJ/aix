@@ -10,10 +10,9 @@ function isPlainObject(val) {
 /**
  * 合并常量覆盖配置到默认值
  *
- * @template {Record<string, unknown>} T
- * @param {T} defaults
- * @param {Partial<T>} overrides
- * @returns {T}
+ * @param {object} defaults
+ * @param {object} overrides
+ * @returns {object}
  */
 export function mergeConstants(defaults, overrides) {
   const result = { ...defaults };

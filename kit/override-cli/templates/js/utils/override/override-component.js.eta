@@ -7,7 +7,7 @@ class ComponentManager {
     this.components = new Map();
   }
 
-  /** @param {Record<string, import('vue').Component>} components */
+  /** @param {object} components */
   register(components) {
     Object.entries(components).forEach(([name, comp]) => {
       this.components.set(name, comp);

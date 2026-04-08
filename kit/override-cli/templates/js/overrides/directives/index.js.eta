@@ -3,8 +3,6 @@
  *
  * 新增或替换全局指令，key 为指令名（不含 v- 前缀）。
  * 同名指令会覆盖标准产品的内置指令。
- *
- * @returns {Record<string, import('vue').Directive>}
  */
 export function getCustomDirectives() {
   return {

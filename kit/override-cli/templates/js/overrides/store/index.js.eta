@@ -1,14 +1,8 @@
 /**
- * @typedef {import('@/utils/override').StoreModuleConfig} StoreModuleConfig
- */
-
-/**
  * <%= it.project %> - Store 覆盖
  *
  * 通过 Pinia 插件机制包装已有 Store 的 action。
  * key 为 store.$id，只推荐覆盖 action，不建议覆盖 ref/computed。
- *
- * @returns {StoreModuleConfig}
  */
 export function getCustomStoreModules() {
   return {

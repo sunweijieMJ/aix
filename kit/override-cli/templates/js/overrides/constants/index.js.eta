@@ -1,13 +1,7 @@
 /**
- * @typedef {import('@/utils/override').ConstantsOverride} ConstantsOverride
- */
-
-/**
  * <%= it.project %> - 常量覆盖
  *
  * 未提供的字段使用标准产品默认值。
- *
- * @returns {ConstantsOverride}
  */
 export function getCustomConstants() {
   return {

@@ -5,15 +5,13 @@ import { isRef } from 'vue';
  * 通过 Pinia 插件机制扩展已有 Store
  *
  * 注意：推荐覆盖 action 而非 ref/computed，后者有响应式引用脱钩风险
- *
- * @typedef {{ overrides?: Record<string, (store: any) => Record<string, unknown>> }} StoreModuleConfig
  */
 class StoreManager {
   constructor() {
     this.overrides = new Map();
   }
 
-  /** @param {StoreModuleConfig} config */
+  /** @param {object} config */
   register(config) {
     if (config.overrides) {
       Object.entries(config.overrides).forEach(([id, fn]) => {

@@ -1,14 +1,8 @@
 /**
- * @typedef {import('./types').OverrideConfig} OverrideConfig
- */
-
-/**
  * 学校注册表（按 schoolNid/schoolId 匹配）
  *
  * schoolNid → 学校代码映射。
  * 新增学校只需在此表加一行 + 创建对应目录。
- *
- * @type {Record<string, string>}
  */
 const SCHOOL_MAP = {
   // 在这里添加学校 NID 映射
@@ -17,8 +11,6 @@ const SCHOOL_MAP = {
 
 /**
  * 用户注册表（按 userId 匹配，优先级低于 SCHOOL_MAP）
- *
- * @type {Record<string, string>}
  */
 const USER_MAP = {
   // '1812756074952921088': 'hndx',
@@ -32,7 +24,6 @@ const schoolModules = import.meta.glob('./*/index.js', { eager: true });
 
 /**
  * 从 Cookie 中解析用户信息
- * @returns {Record<string, unknown>}
  */
 function parseCookieUser() {
   try {
@@ -46,7 +37,6 @@ function parseCookieUser() {
 
 /**
  * 从 Cookie 获取当前用户的 schoolNid（即 schoolId）
- * @returns {string}
  */
 export function getSchoolNid() {
   const data = parseCookieUser();
@@ -55,7 +45,6 @@ export function getSchoolNid() {
 
 /**
  * 从 Cookie 获取当前用户的 userId
- * @returns {string}
  */
 export function getUserId() {
   const data = parseCookieUser();
@@ -66,7 +55,6 @@ export function getUserId() {
  * 获取当前学校代码
  *
  * 匹配优先级：schoolNid → userId
- * @returns {string | null}
  */
 export function getSchoolCode() {
   const nid = getSchoolNid();
@@ -81,7 +69,6 @@ export function getSchoolCode() {
 /**
  * 加载当前学校的覆盖配置
  * 匹配不到学校时返回 null，标准产品行为生效
- * @returns {OverrideConfig | null}
  */
 export function loadSchoolConfig() {
   const code = getSchoolCode();

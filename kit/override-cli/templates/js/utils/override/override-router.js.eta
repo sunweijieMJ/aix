@@ -1,8 +1,6 @@
 /**
  * 路由覆盖管理器
  * 支持新增路由、替换已有路由的组件/属性、禁用路由
- *
- * @typedef {{ customRoutes?: import('vue-router').RouteRecordRaw[]; whiteList?: string[]; overrideRoutes?: Record<string, any>; disabledRoutes?: string[] }} CustomRouteConfig
  */
 
 function resolveFullPath(parentPath, childPath) {
@@ -26,7 +24,7 @@ class RouterManager {
     this.consumedPaths = import.meta.env.DEV ? new Set() : null;
   }
 
-  /** @param {CustomRouteConfig} config */
+  /** @param {object} config */
   register(config) {
     if (config.customRoutes) {
       this.customRoutes.push(...config.customRoutes);

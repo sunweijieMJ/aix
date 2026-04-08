@@ -1,14 +1,14 @@
 import type { App, Component, Directive } from 'vue';
 import type { Pinia } from 'pinia';
 import type { Composer } from 'vue-i18n';
-import type { StoreModuleConfig } from './overrideStore';
-import type { CustomApiConfig } from './overrideApi';
-import type { CustomLayoutConfig } from './overrideLayout';
-import { componentManager } from './overrideComponent';
-import { storeManager } from './overrideStore';
-import { applyApiOverrides } from './overrideApi';
-import { layoutManager } from './overrideLayout';
-import { applyDirectiveOverrides } from './overrideDirectives';
+import type { StoreModuleConfig } from './override-store';
+import type { CustomApiConfig } from './override-api';
+import type { CustomLayoutConfig } from './override-layout';
+import { componentManager } from './override-component';
+import { storeManager } from './override-store';
+import { applyApiOverrides } from './override-api';
+import { layoutManager } from './override-layout';
+import { applyDirectiveOverrides } from './override-directives';
 
 /** 语言包类型：locale → messages */
 export type LocaleMessages = Record<string, Record<string, unknown>>;
@@ -90,15 +90,15 @@ export function initOverrides({ pinia, i18n, config, app, apiInstances }: InitOv
   }
 }
 
-export { componentManager } from './overrideComponent';
-export { routerManager } from './overrideRouter';
-export { storeManager } from './overrideStore';
-export { applyApiOverrides } from './overrideApi';
-export { layoutManager } from './overrideLayout';
-export { applyDirectiveOverrides } from './overrideDirectives';
-export { mergeConstants } from './overrideConstants';
+export { componentManager } from './override-component';
+export { routerManager } from './override-router';
+export { storeManager } from './override-store';
+export { applyApiOverrides } from './override-api';
+export { layoutManager } from './override-layout';
+export { applyDirectiveOverrides } from './override-directives';
+export { mergeConstants } from './override-constants';
 
-export type { CustomRouteConfig } from './overrideRouter';
-export type { StoreModuleConfig, StoreOverrideFn } from './overrideStore';
-export type { CustomApiConfig } from './overrideApi';
-export type { CustomLayoutConfig } from './overrideLayout';
+export type { CustomRouteConfig } from './override-router';
+export type { StoreModuleConfig, StoreOverrideFn } from './override-store';
+export type { CustomApiConfig } from './override-api';
+export type { CustomLayoutConfig } from './override-layout';

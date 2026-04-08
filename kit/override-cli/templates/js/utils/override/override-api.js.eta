@@ -1,9 +1,8 @@
 /**
  * 将 API 覆盖配置应用到 instances 对象
  *
- * @typedef {{ instances?: Record<string, any>; modules?: Record<string, Function[]> }} CustomApiConfig
- * @param {CustomApiConfig} config
- * @param {Record<string, any>} instances
+ * @param {object} config
+ * @param {object} instances
  */
 export function applyApiOverrides(config, instances) {
   if (config.instances) {

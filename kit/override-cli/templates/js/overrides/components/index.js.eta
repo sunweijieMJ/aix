@@ -3,8 +3,6 @@
  *
  * 替换基础平台预埋的组件（通过 componentManager.getComponent 调用）。
  * 替换组件需保持与原组件相同的 Props/Emits 接口。
- *
- * @returns {Record<string, import('vue').Component>}
  */
 export function getCustomComponents() {
   return {
