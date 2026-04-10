@@ -40,7 +40,7 @@ const createCssConfig = ({ input, output, useImport }) => ({
   ],
 });
 
-const esbuildPlugin = esbuild({ target: 'es2020' });
+const esbuildPlugin = esbuild({ target: 'es2018' });
 
 export default defineConfig([
   // CSS Token 构建

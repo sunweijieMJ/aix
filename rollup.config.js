@@ -90,7 +90,7 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       }),
       esbuild({
         sourceMap: sourceMapEnabled,
-        target: 'es2020',
+        target: 'es2018',
         minify: minifyEnabled,
         minifyIdentifiers: minifyEnabled,
         minifySyntax: minifyEnabled,
