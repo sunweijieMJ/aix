@@ -7,7 +7,7 @@ interface TsupConfigOptions {
   cli?: string;
   /** 库入口，默认 { index: 'src/index.ts' } */
   entry?: Record<string, string>;
-  /** 编译目标，默认 'es2022' */
+  /** 编译目标，默认 'es2018' */
   target?: string;
   /** 运行平台，默认 'node' */
   platform?: 'node' | 'browser';
