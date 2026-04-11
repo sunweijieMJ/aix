@@ -1,4 +1,4 @@
-import type { CustomRouteConfig } from '@/utils/override';
+import type { CustomRouteConfig } from '@/plugins/override';
 
 /**
  * <%= it.project %> - 路由覆盖

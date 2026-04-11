@@ -57,7 +57,7 @@ export interface InitOverridesOptions {
  *
  * 在 main.ts 中调用：
  * ```ts
- * import { initOverrides } from '@/utils/override';
+ * import { initOverrides } from '@/plugins/override';
  * import overrideConfig from '@/overrides';
  * import { instances } from '@/api/core/request'; // 如有 API 覆盖
  *

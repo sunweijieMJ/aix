@@ -18,6 +18,7 @@ describe('generateFiles', () => {
     const paths = files.map((f) => f.path);
 
     expect(paths).toContain('types.ts');
+    expect(paths).toContain('deployment.ts');
     expect(paths).toContain('index.ts');
     expect(paths).toContain('registry.ts');
   });
@@ -42,7 +43,7 @@ describe('generateFiles', () => {
     expect(paths).not.toContain('test/components/index.ts');
   });
 
-  it('locale 模块应额外生成 JSON 文件', () => {
+  it('locale 模块应生成 index 文件（不生成 JSON 文件）', () => {
     const files = generateFiles({
       ...baseOptions,
       modules: ['constants', 'router', 'views', 'locale'],
@@ -50,8 +51,8 @@ describe('generateFiles', () => {
     const paths = files.map((f) => f.path);
 
     expect(paths).toContain('test/locale/index.ts');
-    expect(paths).toContain('test/locale/zh-CN.json');
-    expect(paths).toContain('test/locale/en-US.json');
+    expect(paths).not.toContain('test/locale/zh-CN.json');
+    expect(paths).not.toContain('test/locale/en-US.json');
   });
 
   it('JS 模式应生成 .js 文件', () => {

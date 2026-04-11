@@ -68,7 +68,7 @@
 flowchart LR
     subgraph BASE["基础产品仓库"]
         B1["src/ 基础代码<br/>（views / router / store / api ...）"]
-        B2["src/utils/override/<br/>覆盖系统核心"]
+        B2["src/plugins/override/<br/>覆盖系统核心"]
         B3["src/overrides/<br/>覆盖层模板"]
     end
 
@@ -81,7 +81,7 @@ flowchart LR
     C2 -. "覆盖 / 扩展" .-> C1
 ```
 
-**覆盖系统两层架构**：
+**覆盖系统三层架构**：
 
 ```mermaid
 flowchart TB
@@ -130,20 +130,22 @@ base-product/
 │   ├── store/              # 状态管理（Pinia）
 │   ├── styles/             # 全局样式 + 主题变量
 │   ├── utils/              # 工具函数
+│   ├── plugins/
 │   │   └── override/       # 覆盖系统核心实现
 │   │       ├── index.ts             # 统一导出 + initOverrides()
-│   │       ├── overrideApi.ts       # applyApiOverrides()
-│   │       ├── overrideComponent.ts # ComponentManager
-│   │       ├── overrideConstants.ts # mergeConstants()
-│   │       ├── overrideDirectives.ts# applyDirectiveOverrides()
-│   │       ├── overrideLayout.ts    # LayoutManager
-│   │       ├── overrideRouter.ts    # RouterManager
-│   │       └── overrideStore.ts     # StoreManager
+│   │       ├── override-api.ts      # applyApiOverrides()
+│   │       ├── override-component.ts# ComponentManager
+│   │       ├── override-constants.ts# mergeConstants()
+│   │       ├── override-directives.ts# applyDirectiveOverrides()
+│   │       ├── override-layout.ts   # LayoutManager
+│   │       ├── override-router.ts   # RouterManager
+│   │       └── override-store.ts    # StoreManager
 │   ├── views/              # 页面组件
 │   ├── main.ts             # 应用入口
 │   └── overrides/          # 覆盖层（学校配置目录）
 │       ├── types.ts        # OverrideConfig 类型
-│       ├── index.ts        # 统一导出入口
+│       ├── deployment.ts   # 部署级常量覆盖（对所有学校生效）
+│       ├── index.ts        # 统一导出入口（三层聚合）
 │       └── registry.ts     # 学校注册表 + 动态加载
 └── .gitlab-ci.yml
 ```
@@ -166,10 +168,12 @@ custom-project-a/
 │   ├── store/              # 自动同步，禁止修改
 │   ├── styles/             # 自动同步，禁止修改
 │   ├── utils/              # 自动同步，禁止修改
+│   ├── plugins/            # 自动同步，禁止修改
 │   ├── views/              # 自动同步，禁止修改
 │   ├── main.ts             # 自动同步（合法引用 overrides）
 │   └── overrides/          # ✅ 唯一可修改区域
 │       ├── types.ts        # 类型定义（同步）
+│       ├── deployment.ts   # 部署级常量覆盖（可按需修改）
 │       ├── index.ts        # 统一导出入口（同步）
 │       ├── registry.ts     # 学校注册表（需修改映射）
 │       └── sysu/           # 学校定制配置目录
@@ -185,9 +189,7 @@ custom-project-a/
 │           ├── layout/         # 布局覆盖
 │           │   └── index.ts
 │           ├── locale/         # 国际化覆盖
-│           │   ├── index.ts
-│           │   ├── zh-CN.json
-│           │   └── en-US.json
+│           │   └── index.ts
 │           ├── router/         # 路由覆盖
 │           │   └── index.ts
 │           ├── store/          # 状态覆盖
@@ -200,7 +202,7 @@ custom-project-a/
 **统一导出入口**：
 ```typescript
 // src/overrides/index.ts
-import type { RuntimeOverrideConfig, CustomRouteConfig, ConstantsOverride } from '@/utils/override';
+import type { RuntimeOverrideConfig, CustomRouteConfig, ConstantsOverride } from '@/plugins/override';
 import { loadSchoolConfig } from './registry';
 
 const school = loadSchoolConfig();
@@ -219,7 +221,12 @@ export default overrideConfig;
 
 // 静态维度 → 各消费方直接导入
 export const customRoutes: CustomRouteConfig = school?.router ?? {};
-export const customConstants: ConstantsOverride = school?.constants ?? {};
+// 三层架构：标准产品 + 部署级覆盖(deployment.ts) + 学校定制(overrides/{schoolCode}/)
+import deploymentConstants from './deployment';
+export const customConstants: ConstantsOverride = {
+  ...deploymentConstants,
+  ...(school?.constants ?? {}),
+};
 ```
 
 **学校配置聚合入口**：
@@ -251,9 +258,9 @@ export default config;
 
 ## 详细设计
 
-### 两层架构
+### 三层架构
 
-覆盖系统分为**静态维度**和**运行时维度**：
+覆盖系统分为**静态维度**和**运行时维度**，常量维度采用三层覆盖：
 
 | 维度 | 模块 | 生效时机 | 集成方式 |
 |------|------|---------|---------|
@@ -263,7 +270,7 @@ export default config;
 ### 类型定义
 
 ```typescript
-// src/utils/override/index.ts
+// src/plugins/override/index.ts
 
 /** 常量覆盖（静态维度） */
 export interface ConstantsOverride {
@@ -355,7 +362,7 @@ export interface OverrideConfig extends RuntimeOverrideConfig {
 ```typescript
 // src/main.ts
 import { setupDirectives } from '@/directives';
-import { initOverrides } from '@/utils/override';
+import { initOverrides } from '@/plugins/override';
 import overrideConfig from '@/overrides';
 
 const app = createApp(App);
@@ -383,7 +390,7 @@ app.mount('#app');
 ### initOverrides 实现
 
 ```typescript
-// src/utils/override/index.ts
+// src/plugins/override/index.ts
 export function initOverrides({ pinia, i18n, config, app }: InitOverridesOptions): void {
   // 1. 注册组件覆盖
   if (config.components) {
@@ -425,7 +432,7 @@ export function initOverrides({ pinia, i18n, config, app }: InitOverridesOptions
 **定制项目配置**：
 ```typescript
 // src/overrides/sysu/router/index.ts
-import type { CustomRouteConfig } from '@/utils/override';
+import type { CustomRouteConfig } from '@/plugins/override';
 
 export function getCustomRoutes(): CustomRouteConfig {
   return {
@@ -449,7 +456,7 @@ export function getCustomRoutes(): CustomRouteConfig {
 **基础产品集成**：
 ```typescript
 // src/router/index.ts
-import { routerManager } from '@/utils/override';
+import { routerManager } from '@/plugins/override';
 import { customRoutes } from '@/overrides';
 
 // 同步注册路由覆盖配置
@@ -479,7 +486,7 @@ routerManager.warnUnmatched();
 **定制项目配置**：
 ```typescript
 // src/overrides/sysu/constants/index.ts
-import type { ConstantsOverride } from '@/utils/override';
+import type { ConstantsOverride } from '@/plugins/override';
 
 export function getCustomConstants(): ConstantsOverride {
   return {
@@ -493,7 +500,7 @@ export function getCustomConstants(): ConstantsOverride {
 **基础产品集成**：
 ```typescript
 // src/constants/index.ts
-import { mergeConstants } from '@/utils/override';
+import { mergeConstants } from '@/plugins/override';
 import { customConstants } from '@/overrides';
 
 const DEFAULTS = {
@@ -536,7 +543,7 @@ export function getCustomComponents(): Record<string, Component> {
 **基础产品使用方式**（通过预埋替换点）：
 ```vue
 <script setup lang="ts">
-import { componentManager } from '@/utils/override';
+import { componentManager } from '@/plugins/override';
 import DefaultWelcomeCard from './DefaultWelcomeCard.vue';
 
 // 优先使用定制组件，否则使用默认组件
@@ -557,7 +564,7 @@ const WelcomeCard = componentManager.getComponent('WelcomeCard', DefaultWelcomeC
 **定制项目配置**：
 ```typescript
 // src/overrides/sysu/layout/index.ts
-import type { CustomLayoutConfig } from '@/utils/override';
+import type { CustomLayoutConfig } from '@/plugins/override';
 
 export function getCustomLayout(): CustomLayoutConfig {
   return {
@@ -591,7 +598,7 @@ export function getCustomLayout(): CustomLayoutConfig {
 **定制项目配置**：
 ```typescript
 // src/overrides/sysu/store/index.ts
-import type { StoreModuleConfig } from '@/utils/override';
+import type { StoreModuleConfig } from '@/plugins/override';
 
 export function getCustomStoreModules(): StoreModuleConfig {
   return {
@@ -619,7 +626,7 @@ export function getCustomStoreModules(): StoreModuleConfig {
 **定制项目配置**：
 ```typescript
 // src/overrides/sysu/api/index.ts
-import type { CustomApiConfig } from '@/utils/override';
+import type { CustomApiConfig } from '@/plugins/override';
 
 export function getCustomApiConfig(): CustomApiConfig {
   return {
@@ -640,14 +647,12 @@ export function getCustomApiConfig(): CustomApiConfig {
 **定制项目配置**：
 ```typescript
 // src/overrides/sysu/locale/index.ts
-import type { LocaleMessages } from '@/utils/override';
-import zhCN from './zh-CN.json';
-import enUS from './en-US.json';
+import type { LocaleMessages } from '@/plugins/override';
 
 export function getCustomLocales(): LocaleMessages {
   return {
-    'zh-CN': zhCN,
-    'en-US': enUS,
+    // 按需添加覆盖内容，key 与基础产品保持一致可覆盖，新增 key 为定制专有
+    // 'zh-CN': { layout: { systemTitle: '中山大学化学实验教学平台' } },
   };
 }
 ```
@@ -732,7 +737,7 @@ const restrictedPatterns = {
   src/api/       → src/overrides/     （API 层不应感知定制层）
 ```
 
-> **设计意图**：基础产品通过 `ComponentManager.getComponent()`、`LayoutManager.getSlotComponent()` 等 Manager API 间接使用定制组件，而非直接 import overrides 目录。Manager 在 `utils/override/` 中实现，由 `initOverrides()` 统一注入——这是唯一的桥梁。
+> **设计意图**：基础产品通过 `ComponentManager.getComponent()`、`LayoutManager.getSlotComponent()` 等 Manager API 间接使用定制组件，而非直接 import overrides 目录。Manager 在 `plugins/override/` 中实现，由 `initOverrides()` 统一注入——这是唯一的桥梁。
 
 ## 前端配置管理
 
@@ -895,9 +900,7 @@ $ npx @kit/override-cli
       ├── views/
       ├── components/index.ts
       └── locale/
-          ├── index.ts
-          ├── zh-CN.json
-          └── en-US.json
+          └── index.ts
 
 📝 下一步:
   1. 在 registry.ts 中添加学校 NID 映射
@@ -928,7 +931,7 @@ CLI 工具自动检测业务仓库使用的语言：
 | `components` | `components/` | | 运行时 | 预埋组件替换（需保持相同 Props/Emits 接口） |
 | `directives` | `directives/` | | 运行时 | 全局指令新增/替换 |
 | `layout` | `layout/` | | 运行时 | Layout 组件或内部区域（header/menu/main）替换 |
-| `locale` | `locale/` | | 运行时 | 国际化文案覆盖/新增，含 `zh-CN.json` + `en-US.json` |
+| `locale` | `locale/` | | 运行时 | 国际化文案覆盖/新增（在 `index.ts` 中以对象形式返回，无需 JSON 文件） |
 | `store` | `store/` | | 运行时 | Pinia Store action 包装覆盖 |
 
 > **必选说明**：
@@ -956,7 +959,6 @@ CLI 生成的文件分两类：
 - 用法示例（注释形式）
 - 可用配置项说明
 
-`locale` 模块额外生成 `zh-CN.json` 和 `en-US.json` 空 JSON 文件。
 `views` 模块生成空目录，供 router/components 引用。
 
 ### 命令行参数
@@ -1092,7 +1094,7 @@ git push origin main --force-with-lease
   - [ ] 命令行参数支持（非交互模式）
   - [ ] dry-run 预览模式
 
-- [ ] **覆盖系统核心**（`src/utils/override/`）
+- [ ] **覆盖系统核心**（`src/plugins/override/`）
   - [ ] initOverrides() 统一初始化入口
   - [ ] RouterManager（路由覆盖、新增、禁用，全路径匹配，递归嵌套）
   - [ ] mergeConstants（常量浅合并 / 整体替换）

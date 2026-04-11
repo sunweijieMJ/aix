@@ -1,0 +1,15 @@
+/**
+ * 部署级常量覆盖
+ *
+ * 适用于整个定制部署（对所有学校生效），不区分具体学校。
+ * 学校级别的常量覆盖在各自的 overrides/{schoolCode}/constants/index.js 中定义。
+ *
+ * 合并优先级（低 → 高）：标准产品默认值 < 本文件 < 学校级覆盖
+ */
+const deploymentConstants = {
+  // 按需填写，未填写的字段使用标准产品默认值
+  // proxyUri: { LOCAL: '/custom-api' },
+  // defaultLocale: 'zh-CN',
+};
+
+export default deploymentConstants;

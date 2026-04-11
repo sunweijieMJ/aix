@@ -1,4 +1,4 @@
-import type { ConstantsOverride } from '@/utils/override';
+import type { ConstantsOverride } from '@/plugins/override';
 
 /**
  * <%= it.project %> - 常量覆盖

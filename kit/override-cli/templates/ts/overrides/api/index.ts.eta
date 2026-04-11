@@ -1,4 +1,4 @@
-import type { CustomApiConfig } from '@/utils/override';
+import type { CustomApiConfig } from '@/plugins/override';
 
 /**
  * <%= it.project %> - API 覆盖

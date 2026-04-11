@@ -9,7 +9,7 @@ import { applyDirectiveOverrides } from './override-directives';
  *
  * 在 main.js 中调用：
  * ```js
- * import { initOverrides } from '@/utils/override';
+ * import { initOverrides } from '@/plugins/override';
  * import overrideConfig from '@/overrides';
  * import { instances } from '@/api/core/request'; // 如有 API 覆盖
  *

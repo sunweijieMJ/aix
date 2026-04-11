@@ -1,4 +1,4 @@
-import type { CustomLayoutConfig } from '@/utils/override';
+import type { CustomLayoutConfig } from '@/plugins/override';
 
 /**
  * <%= it.project %> - Layout 覆盖

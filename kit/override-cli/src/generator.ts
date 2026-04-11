@@ -47,6 +47,10 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
     });
   }
   files.push({
+    path: `deployment.${ext}`,
+    content: eta.render(`./deployment.${ext}.eta`, context),
+  });
+  files.push({
     path: `index.${ext}`,
     content: eta.render(`./index.${ext}.eta`, context),
   });
@@ -74,18 +78,6 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
     }
   }
 
-  // ── locale 额外文件 ──
-  if (modules.includes('locale')) {
-    files.push({
-      path: `${project}/locale/zh-CN.json`,
-      content: '{}',
-    });
-    files.push({
-      path: `${project}/locale/en-US.json`,
-      content: '{}',
-    });
-  }
-
   // ── views 空目录 ──
   if (modules.includes('views')) {
     files.push({
@@ -104,7 +96,7 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
   return files;
 }
 
-/** utils/override 目录下需要生成的文件基础名（不含扩展名） */
+/** plugins/override 目录下需要生成的文件基础名（不含扩展名） */
 const OVERRIDE_UTIL_BASES = [
   'index',
   'override-router',
@@ -117,14 +109,14 @@ const OVERRIDE_UTIL_BASES = [
 ];
 
 /**
- * 生成 src/utils/override/ 下的核心工具文件
+ * 生成 src/plugins/override/ 下的核心工具文件
  *
  * 调用方负责过滤已存在的文件。
  *
- * @returns 文件列表，path 相对于 src/utils/override/
+ * @returns 文件列表，path 相对于 src/plugins/override/
  */
 export function generateOverrideUtils(lang: 'ts' | 'js' = 'ts'): GeneratedFile[] {
-  const utilsTemplatesDir = path.resolve(__dirname, '..', 'templates', lang, 'utils', 'override');
+  const utilsTemplatesDir = path.resolve(__dirname, '..', 'templates', lang, 'plugins', 'override');
 
   if (!fs.existsSync(utilsTemplatesDir)) return [];
 

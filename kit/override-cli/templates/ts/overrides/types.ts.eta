@@ -1,4 +1,4 @@
-import type { RuntimeOverrideConfig, CustomRouteConfig, ConstantsOverride } from '@/utils/override';
+import type { RuntimeOverrideConfig, CustomRouteConfig, ConstantsOverride } from '@/plugins/override';
 
 /**
  * 学校覆盖配置

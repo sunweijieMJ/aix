@@ -1,4 +1,4 @@
-import type { StoreModuleConfig } from '@/utils/override';
+import type { StoreModuleConfig } from '@/plugins/override';
 
 /**
  * <%= it.project %> - Store 覆盖

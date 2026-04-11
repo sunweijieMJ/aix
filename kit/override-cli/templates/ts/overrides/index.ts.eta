@@ -1,12 +1,13 @@
-import type { RuntimeOverrideConfig, CustomRouteConfig, ConstantsOverride } from '@/utils/override';
+import type { RuntimeOverrideConfig, CustomRouteConfig, ConstantsOverride } from '@/plugins/override';
 import { loadSchoolConfig } from './registry';
+import deploymentConstants from './deployment';
 
 /**
  * Override 系统 - 统一配置入口
  *
- * 两层架构：标准产品（src/） + 学校定制（overrides/{schoolCode}/）
+ * 三层架构：标准产品（src/） + 部署级覆盖（deployment.ts） + 学校定制（overrides/{schoolCode}/）
  * 根据 Cookie 中的 schoolNid 自动加载对应学校的配置。
- * 匹配不到学校时所有 override 为空，标准产品行为生效。
+ * 匹配不到学校时学校级 override 为空，部署级覆盖仍然生效。
  */
 const school = loadSchoolConfig();
 
@@ -27,5 +28,11 @@ export default overrideConfig;
 /** 学校路由覆盖配置 → router/index.ts */
 export const customRoutes: CustomRouteConfig = school?.router ?? {};
 
-/** 学校常量覆盖配置 → constants/index.ts */
-export const customConstants: ConstantsOverride = school?.constants ?? {};
+/**
+ * 常量覆盖配置 → constants/index.ts
+ * 合并顺序：部署级 < 学校级（学校级优先）
+ */
+export const customConstants: ConstantsOverride = {
+  ...deploymentConstants,
+  ...(school?.constants ?? {}),
+};

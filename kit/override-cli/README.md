@@ -75,7 +75,8 @@ npx @kit/override-cli --project sysu --force
 ```
 src/overrides/
 ├── types.ts          # 公共类型定义
-├── index.ts          # 统一导出（根据已有项目动态聚合）
+├── deployment.ts     # 部署级常量覆盖（对所有学校生效）
+├── index.ts          # 统一导出（三层架构聚合入口）
 ├── registry.ts       # 项目代码 → NID 映射表
 └── sysu/
     ├── index.ts      # 项目聚合入口（动态 import 各模块）
@@ -88,7 +89,8 @@ src/overrides/
 
 生成完成后需要：
 1. 在 `registry.ts` 中添加学校 NID 映射
-2. 在各模块的 `index.ts` 中实现定制逻辑
+2. 在 `deployment.ts` 中填写整个定制部署通用的常量覆盖（可选）
+3. 在各模块的 `index.ts` 中实现定制逻辑
 
 ---
 
@@ -103,7 +105,7 @@ src/overrides/
 运行时维度（`components` / `store` / `locale` / `api` / `layout` / `directives`）统一在此初始化：
 
 ```ts
-import { initOverrides } from '@/utils/override';
+import { initOverrides } from '@/plugins/override';
 import overrideConfig from '@/overrides';
 // 如有 api 模块，额外导入 instances
 // import { instances } from '@/api/core/request';
@@ -116,7 +118,7 @@ initOverrides({ pinia, i18n, config: overrideConfig, app });
 #### router/index.ts — 路由覆盖（`router` 模块，在 createRouter 之前同步执行）
 
 ```ts
-import { routerManager } from '@/utils/override';
+import { routerManager } from '@/plugins/override';
 import { customRoutes } from '@/overrides';
 
 routerManager.register(customRoutes);
@@ -131,7 +133,7 @@ routerManager.addCustomRoutes(router);
 #### constants/index.ts — 常量覆盖（`constants` 模块）
 
 ```ts
-import { mergeConstants } from '@/utils/override';
+import { mergeConstants } from '@/plugins/override';
 import { customConstants } from '@/overrides';
 
 // 对象字段 → 浅合并；数组/原始值字段 → 整体替换
@@ -147,7 +149,7 @@ export const DEFAULT_LOCALE = customConstants.defaultLocale ?? 'zh-CN';
 在需要替换的位置使用 `componentManager.getComponent`，未注册时自动回退到默认组件：
 
 ```ts
-import { componentManager } from '@/utils/override';
+import { componentManager } from '@/plugins/override';
 import DefaultWelcomeCard from './WelcomeCard.vue';
 
 // 优先使用定制组件，否则使用默认组件
@@ -159,7 +161,7 @@ const WelcomeCard = componentManager.getComponent('WelcomeCard', DefaultWelcomeC
 在 Layout 组件中使用 `layoutManager` 获取覆盖后的组件：
 
 ```ts
-import { layoutManager } from '@/utils/override';
+import { layoutManager } from '@/plugins/override';
 import DefaultLayout from './DefaultLayout.vue';
 import DefaultHeader from './Header.vue';
 
@@ -271,8 +273,12 @@ kit/override-cli/
 │   ├── detector.ts     # 项目根目录检测
 │   └── prompts.ts      # 交互式向导（prompts）
 ├── templates/
-│   ├── ts/             # TypeScript 模板（.eta 文件）
-│   └── js/             # JavaScript 模板（.eta 文件）
+│   ├── ts/
+│   │   ├── overrides/  # overrides 目录模板
+│   │   └── plugins/override/  # src/plugins/override 工具库模板
+│   └── js/
+│       ├── overrides/  # overrides 目录模板
+│       └── plugins/override/  # src/plugins/override 工具库模板
 ```
 
 ---

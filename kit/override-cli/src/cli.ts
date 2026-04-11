@@ -125,8 +125,8 @@ program
     writeFiles(resolvedFiles, outputDir);
     printFileTree(resolvedFiles, options.output);
 
-    // ── 检测并生成 utils/override（仅 TS 项目，首次运行时） ──
-    const utilsDir = path.resolve(cwd, 'src/utils/override');
+    // ── 检测并生成 plugins/override（仅 TS 项目，首次运行时） ──
+    const utilsDir = path.resolve(cwd, 'src/plugins/override');
     const utilsIndexFile = path.join(utilsDir, 'index.ts');
     let utilsGenerated = false;
 
@@ -135,9 +135,9 @@ program
       const missingUtils = utilFiles.filter((f) => !fs.existsSync(path.join(utilsDir, f.path)));
 
       if (missingUtils.length > 0) {
-        console.log(pc.cyan('\n🔧 检测到 src/utils/override/ 缺少以下文件，自动生成：\n'));
+        console.log(pc.cyan('\n🔧 检测到 src/plugins/override/ 缺少以下文件，自动生成：\n'));
         writeFiles(missingUtils, utilsDir);
-        printFileTree(missingUtils, 'src/utils/override');
+        printFileTree(missingUtils, 'src/plugins/override');
         utilsGenerated = true;
       }
     }
@@ -152,14 +152,14 @@ program
 
     if (!fs.existsSync(utilsIndexFile) && !utilsGenerated) {
       console.log(
-        pc.yellow('  ⚠️  未检测到 src/utils/override/，请手动创建或重新运行（会自动生成）\n'),
+        pc.yellow('  ⚠️  未检测到 src/plugins/override/，请手动创建或重新运行（会自动生成）\n'),
       );
     }
 
     console.log(pc.bold('  手动接入定制系统：\n'));
 
     console.log(`  ${pc.dim('// main.ts — 初始化运行时覆盖')}`);
-    console.log(`  import { initOverrides } from ${pc.cyan("'@/utils/override'")};`);
+    console.log(`  import { initOverrides } from ${pc.cyan("'@/plugins/override'")};`);
     console.log(`  import overrideConfig from ${pc.cyan(`'${overridesAlias}'`)};`);
     console.log(
       `  ${pc.dim("// import { instances } from '@/api/core/request'; // 如有 API 覆盖")}`,
@@ -171,7 +171,7 @@ program
 
     console.log('');
     console.log(`  ${pc.dim('// router/index.ts — 注册路由覆盖（同步，在 createRouter 之前）')}`);
-    console.log(`  import { routerManager } from ${pc.cyan("'@/utils/override'")};`);
+    console.log(`  import { routerManager } from ${pc.cyan("'@/plugins/override'")};`);
     console.log(`  import { customRoutes } from ${pc.cyan(`'${overridesAlias}'`)};`);
     console.log(`  ${pc.cyan('routerManager.register')}(customRoutes);`);
     console.log(`  routes: [...${pc.cyan('routerManager.applyOverrides')}(staticRoutes)]`);
@@ -179,7 +179,7 @@ program
 
     console.log('');
     console.log(`  ${pc.dim('// constants/index.ts — 合并静态常量')}`);
-    console.log(`  import { mergeConstants } from ${pc.cyan("'@/utils/override'")};`);
+    console.log(`  import { mergeConstants } from ${pc.cyan("'@/plugins/override'")};`);
     console.log(`  import { customConstants } from ${pc.cyan(`'${overridesAlias}'`)};`);
     console.log(
       `  export const ROLES = ${pc.cyan('mergeConstants')}(DEFAULT_ROLES, customConstants.roles ?? {});`,

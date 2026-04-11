@@ -1,6 +1,4 @@
-import type { LocaleMessages } from '@/utils/override';
-import zhCN from './zh-CN.json';
-import enUS from './en-US.json';
+import type { LocaleMessages } from '@/plugins/override';
 
 /**
  * <%= it.project %> - 国际化覆盖
@@ -10,7 +8,6 @@ import enUS from './en-US.json';
  */
 export function getCustomLocales(): LocaleMessages {
   return {
-    'zh-CN': zhCN,
-    'en-US': enUS,
+    // 按需添加覆盖内容
   };
 }
