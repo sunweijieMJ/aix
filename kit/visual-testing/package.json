@@ -54,10 +54,10 @@
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
+    "@anthropic-ai/sdk": "^0.88.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "openai": "^6.22.0",
-    "playwright": "^1.58.2"
+    "playwright": "^1.59.1"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/sdk": {
@@ -74,15 +74,15 @@
     }
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
+    "@anthropic-ai/sdk": "^0.88.0",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "*",
-    "@types/picomatch": "^4.0.2",
+    "@types/picomatch": "^4.0.3",
     "@types/pixelmatch": "^5.2.6",
     "@types/pngjs": "^6.0.5",
     "eslint": "*",
     "openai": "^6.22.0",
-    "playwright": "^1.58.2",
+    "playwright": "^1.59.1",
     "rimraf": "*",
     "tsup": "*",
     "tsx": "*",
