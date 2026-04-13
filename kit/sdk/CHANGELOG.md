@@ -1,5 +1,11 @@
 # @kit/sdk
 
+## 0.0.4
+
+### Patch Changes
+
+- 支持通配符
+
 ## 0.0.3
 
 ### Patch Changes
