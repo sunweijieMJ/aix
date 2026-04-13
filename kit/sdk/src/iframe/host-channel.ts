@@ -3,6 +3,23 @@ import { BaseChannel } from './base-channel.js';
 import { Logger } from '../shared/logger.js';
 import { isHandshakeEnvelope, type HandshakeEnvelope, type HostChannelOptions } from './types.js';
 
+/**
+ * 校验 origin 是否命中白名单中的任意一条规则。
+ * 支持三种写法：
+ * - `'*'`                    — 接受所有来源
+ * - `'https://*.example.com'` — glob 通配符（`*` 匹配任意字符）
+ * - `'https://example.com'`  — 精确匹配
+ */
+function _matchesOrigin(patterns: string[], origin: string): boolean {
+  return patterns.some((pattern) => {
+    if (pattern === '*') return true;
+    if (!pattern.includes('*')) return pattern === origin;
+    // 将 glob 模式转为正则：先转义正则特殊字符，再把 \* 还原为 .*
+    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
+    return new RegExp(`^${escaped}$`).test(origin);
+  });
+}
+
 /** Host 侧支持的目标窗口类型：嵌入的 iframe 或 window.open() 打开的窗口 */
 export type WindowTarget = HTMLIFrameElement | Window;
 
@@ -60,9 +77,9 @@ export class HostChannel extends BaseChannel {
       // 校验消息确实来自目标窗口，防止其他页面伪造握手
       if (event.source !== getContentWindow(this.target)) return;
 
-      // origin 白名单校验
+      // origin 白名单校验；支持精确匹配和 glob 通配符（如 'https://*.example.com'），'*' 表示接受所有来源
       const { allowedOrigins } = this.options;
-      if (allowedOrigins?.length && !allowedOrigins.includes(event.origin)) {
+      if (allowedOrigins?.length && !_matchesOrigin(allowedOrigins, event.origin)) {
         this.logger.warn(`Handshake rejected: origin "${event.origin}" not in allowedOrigins`);
         return;
       }

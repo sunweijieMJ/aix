@@ -36,7 +36,7 @@ const sdk = createSDK({
 
 ```ts
 const channel = sdk.iframe.asHost(iframeEl, {
-  allowedOrigins: ['https://guest.example.com'],
+  allowedOrigins: ['https://guest.example.com'], // 也可用 '*' 或 'https://*.example.com'
 });
 
 channel.send({ type: 'init', config });
@@ -125,7 +125,7 @@ channel.onConnect(() => {
 | 参数 | 类型 | 默认值 | 必填 | 说明 |
 |------|------|--------|:----:|------|
 | target | `HTMLIFrameElement \| Window` | - | ✅ | iframe 元素或 `window.open()` 返回值 |
-| options.allowedOrigins | `string[]` | - | ❌ | 允许握手的 guest origin 白名单 |
+| options.allowedOrigins | `string[]` | - | ❌ | 允许握手的 guest origin 白名单；支持精确匹配、glob 通配符（`'https://*.example.com'`）及 `'*'`（接受所有来源）；不传则接受所有来源 |
 | options.onReconnect | `() => void` | - | ❌ | guest 重载重新握手完成时触发 |
 | options.heartbeat | `HeartbeatOptions` | - | ❌ | 心跳配置，不传则不启用 |
 
