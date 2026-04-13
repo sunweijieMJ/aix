@@ -9,7 +9,7 @@
   "dependencies": {
     "postcss-html": "^1.8.1",
     "postcss-scss": "^4.0.9",
-    "stylelint": "^17.6.0",
+    "stylelint": "^17.7.0",
     "stylelint-config-property-sort-order-smacss": "^11.2.0",
     "stylelint-config-recommended-vue": "^1.6.1",
     "stylelint-config-standard-scss": "^17.0.0",
