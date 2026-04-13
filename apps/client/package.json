@@ -22,8 +22,8 @@
     "@aix/hooks": "workspace:^",
     "@aix/rich-text-editor": "workspace:^",
     "@aix/theme": "workspace:^",
-    "vue": "^3.5.31",
-    "vue-i18n": "^11.2.8"
+    "vue": "^3.5.32",
+    "vue-i18n": "^11.3.2"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
