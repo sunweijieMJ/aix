@@ -1,0 +1,28 @@
+/**
+ * Layout 覆盖管理器
+ */
+class LayoutManager {
+  constructor() {
+    this.config = null;
+  }
+
+  /** @param {object} config */
+  register(config) {
+    this.config = config;
+  }
+
+  getLayoutComponent(fallback) {
+    return this.config?.layout ?? fallback;
+  }
+
+  /** @param {string} slot */
+  getSlotComponent(slot, fallback) {
+    return this.config?.components?.[slot] ?? fallback;
+  }
+
+  getDefaultConfig() {
+    return this.config?.defaultConfig;
+  }
+}
+
+export const layoutManager = new LayoutManager();

@@ -1,0 +1,38 @@
+import type { Component } from 'vue';
+
+// TODO: 根据项目实际 layout context 调整区域类型
+type LayoutSlot = 'header' | 'menu' | 'main';
+
+export interface CustomLayoutConfig {
+  /** 替换整个 Layout 组件 */
+  layout?: Component;
+  /** 替换 Layout 内部区域组件 */
+  components?: Partial<Record<LayoutSlot, Component>>;
+  /** 覆盖默认配置值（根据项目 useLayoutContext 定义具体类型） */
+  defaultConfig?: Record<string, Record<string, unknown>>;
+}
+
+/**
+ * Layout 覆盖管理器
+ */
+class LayoutManager {
+  private config: CustomLayoutConfig | null = null;
+
+  register(config: CustomLayoutConfig): void {
+    this.config = config;
+  }
+
+  getLayoutComponent(fallback: Component | null): Component | null {
+    return this.config?.layout ?? fallback;
+  }
+
+  getSlotComponent(slot: LayoutSlot, fallback: Component): Component {
+    return this.config?.components?.[slot] ?? fallback;
+  }
+
+  getDefaultConfig(): CustomLayoutConfig['defaultConfig'] {
+    return this.config?.defaultConfig;
+  }
+}
+
+export const layoutManager = new LayoutManager();

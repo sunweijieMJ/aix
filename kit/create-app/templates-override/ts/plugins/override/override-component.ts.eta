@@ -1,0 +1,21 @@
+import type { Component } from 'vue';
+
+/**
+ * 组件覆盖管理器
+ * 维护自定义组件注册表，支持按名称替换核心组件
+ */
+class ComponentManager {
+  private components = new Map<string, Component>();
+
+  register(components: Record<string, Component>): void {
+    Object.entries(components).forEach(([name, comp]) => {
+      this.components.set(name, comp);
+    });
+  }
+
+  getComponent(name: string, fallback: Component): Component {
+    return this.components.get(name) ?? fallback;
+  }
+}
+
+export const componentManager = new ComponentManager();

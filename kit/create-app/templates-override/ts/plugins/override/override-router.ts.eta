@@ -1,0 +1,121 @@
+import type { RouteRecordRaw, Router } from 'vue-router';
+
+type RouteComponent = RouteRecordRaw['component'];
+
+/** 路由覆盖值：可以是组件（向后兼容）或部分路由配置 */
+type RouteOverride = RouteComponent | Partial<RouteRecordRaw>;
+
+export interface CustomRouteConfig {
+  /** 新增路由（通过 router.addRoute 动态添加，不受权限过滤） */
+  customRoutes?: RouteRecordRaw[];
+  /**
+   * 追加到路由白名单的路径（无需登录即可访问）
+   */
+  whiteList?: string[];
+  /**
+   * 路径 → 组件或部分路由配置，替换/合并已有路由
+   *
+   * **必须使用全路径**（如 `/home`、`/setting/account`）
+   */
+  overrideRoutes?: Record<string, RouteOverride>;
+  /**
+   * 按路径禁用路由（匹配的路由将被过滤）
+   */
+  disabledRoutes?: string[];
+}
+
+function resolveFullPath(parentPath: string, childPath: string): string {
+  if (childPath.startsWith('/')) return childPath;
+  if (!parentPath || parentPath === '/') return `/${childPath}`;
+  return childPath ? `${parentPath}/${childPath}` : parentPath;
+}
+
+function isRouteConfig(value: RouteOverride): value is Partial<RouteRecordRaw> {
+  if (typeof value !== 'object' || value === null) return false;
+  const routeKeys = ['path', 'component', 'redirect', 'children', 'meta', 'name'];
+  return routeKeys.some(key => key in value);
+}
+
+/**
+ * 路由覆盖管理器
+ * 支持新增路由、替换已有路由的组件/属性、禁用路由
+ */
+class RouterManager {
+  private customRoutes: RouteRecordRaw[] = [];
+  private overrideRoutes = new Map<string, RouteOverride>();
+  private disabledRoutes = new Set<string>();
+  private extraWhiteList: string[] = [];
+  private consumedPaths = import.meta.env.DEV ? new Set<string>() : null;
+
+  register(config: CustomRouteConfig): void {
+    if (config.customRoutes) {
+      this.customRoutes.push(...config.customRoutes);
+    }
+    if (config.whiteList) {
+      this.extraWhiteList.push(...config.whiteList);
+    }
+    if (config.overrideRoutes) {
+      Object.entries(config.overrideRoutes).forEach(([path, override]) => {
+        this.overrideRoutes.set(path, override);
+      });
+    }
+    if (config.disabledRoutes) {
+      config.disabledRoutes.forEach(path => this.disabledRoutes.add(path));
+    }
+  }
+
+  getWhiteList(): string[] {
+    return this.extraWhiteList;
+  }
+
+  applyOverrides(routes: RouteRecordRaw[], parentPath = ''): RouteRecordRaw[] {
+    return routes
+      .filter(route => {
+        const fullPath = resolveFullPath(parentPath, route.path);
+        return !this.disabledRoutes.has(fullPath);
+      })
+      .map(route => {
+        const fullPath = resolveFullPath(parentPath, route.path);
+        const override = this.overrideRoutes.get(fullPath);
+
+        const newRoute: RouteRecordRaw = { ...route };
+
+        if (override) {
+          this.consumedPaths?.add(fullPath);
+
+          if (isRouteConfig(override)) {
+            const { children: overrideChildren, ...rest } = override;
+            Object.assign(newRoute, rest);
+            if (overrideChildren?.length) {
+              newRoute.children = [...(route.children || []), ...overrideChildren] as RouteRecordRaw[];
+            }
+          } else {
+            (newRoute as RouteRecordRaw & { component: RouteComponent }).component = override;
+          }
+        }
+
+        if (newRoute.children?.length) {
+          newRoute.children = this.applyOverrides(newRoute.children, fullPath);
+        }
+
+        return newRoute;
+      });
+  }
+
+  addCustomRoutes(router: Router): void {
+    this.customRoutes.forEach(route => {
+      router.addRoute(route);
+    });
+  }
+
+  warnUnmatched(): void {
+    if (!this.consumedPaths) return;
+    for (const path of this.overrideRoutes.keys()) {
+      if (!this.consumedPaths.has(path)) {
+        console.warn(`[Override] Route override "${path}" did not match any route.`);
+      }
+    }
+  }
+}
+
+export const routerManager = new RouterManager();

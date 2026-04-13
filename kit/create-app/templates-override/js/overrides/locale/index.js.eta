@@ -1,0 +1,11 @@
+/**
+ * <%= it.project %> - 国际化覆盖
+ *
+ * 覆盖: 使用与标准产品相同的 key（如 layout.systemTitle）
+ * 新增: 添加新的 key（如 <%= it.project %>.labName）
+ */
+export function getCustomLocales() {
+  return {
+    // 按需添加覆盖内容
+  };
+}

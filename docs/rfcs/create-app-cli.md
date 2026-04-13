@@ -1190,64 +1190,52 @@ class ProjectGenerator {
 
 ### 变量注入器
 
-模板文件使用 EJS 语法，支持以下变量：
+**D9 决策：使用程序化 TypeScript builder 替代模板引擎（参考 create-vite/create-vue 方案）。**
 
-| 变量 | 类型 | 说明 | 示例 |
-|------|------|------|------|
-| `project.name` | string | 项目名称 | `my-app` |
-| `project.description` | string | 项目描述 | `我的应用` |
-| `project.type` | ProjectType | 项目类型 | `web-app` |
-| `features` | FeatureId[] | 已选特性 | `['i18n', 'mock']` |
-| `deps.ui` | string | UI 框架 | `element-plus` |
-| `deps.css` | string | CSS 方案 | `scss` |
-| `qiankun` | QiankunConfig? | 微前端配置 | — |
-| `year` | number | 当前年份 | `2026` |
+模板中所有文本文件使用简单字符串替换（`variables` 字段定义），`package.json` 通过 `PkgPatcher.patchPackageJson()` 深合并。
 
-模板示例（`_package.json.ejs`）：
+只有少量「入口文件」（如 `src/main.ts`、`src/router/index.ts`、`vite.config.ts`）需要根据特性组合生成不同内容，通过 `.template/config.ts` 中的 `entryFiles` 字段注册对应的 TypeScript builder 函数：
 
-```json
-{
-  "name": "<%= project.name %>",
-  "version": "1.0.0",
-  "description": "<%= project.description %>",
-  "type": "module",
-  "scripts": {
-    "start": "vite --mode development",
-    "build": "vite build --mode production",
-    "type-check": "vue-tsc --noEmit"
-    <%_ if (features.includes('mock')) { _%>
-    ,"mock": "vite --mode mock"
-    <%_ } _%>
-    <%_ if (features.includes('api-gen')) { _%>
-    ,"api:gen": "orval"
-    <%_ } _%>
+```typescript
+// .template/config.ts
+const config: TemplateConfig = {
+  // ...
+  entryFiles: {
+    'src/main.ts':       'buildMainTs',
+    'src/router/index.ts': 'buildRouterIndex',
+    'vite.config.ts':    'buildViteConfig',
   },
-  "dependencies": {
-    "vue": "^3.5.24",
-    "vue-router": "^4.6.3",
-    <%_ if (deps.store === 'pinia') { _%>
-    "pinia": "^3.0.4",
-    <%_ } _%>
-    <%_ if (deps.ui === 'element-plus') { _%>
-    "element-plus": "^2.11.8",
-    <%_ } else if (deps.ui === 'vant') { _%>
-    "vant": "^4.9.0",
-    <%_ } _%>
-    <%_ if (deps.http === 'axios') { _%>
-    "axios": "^1.9.0",
-    <%_ } else if (deps.http === 'ky') { _%>
-    "ky": "^1.8.1",
-    <%_ } else if (deps.http === 'ofetch') { _%>
-    "ofetch": "^1.4.1",
-    <%_ } _%>
-    <%_ if (qiankun?.role === 'sub') { _%>
-    "vite-plugin-qiankun-lite": "^1.3.0",
-    <%_ } else if (qiankun?.role === 'main') { _%>
-    "qiankun": "^2.10.16",
-    <%_ } _%>
-  }
 }
 ```
+
+每个 builder 是 `src/core/entry-builders/` 下的纯函数：
+
+```typescript
+// src/core/entry-builders/main-ts.ts
+export function buildMainTs(config: ProjectConfig): string {
+  const lines: string[] = [
+    "import { createApp } from 'vue'",
+    "import App from './App.vue'",
+    "import router from './router'",
+  ]
+  if (config.features.includes('i18n')) {
+    lines.push("import { setupLocale } from './plugins/locale'")
+  }
+  // ...
+  return lines.join('\n')
+}
+```
+
+**优势对比**:
+
+| 维度 | 模板引擎（EJS/Eta） | TypeScript builder |
+|------|-------------------|-------------------|
+| IDE 支持 | 语法高亮弱，无类型检查 | 完整 TS 类型检查和补全 |
+| 可测试性 | 需要渲染后断言字符串 | 单元测试直接调用函数 |
+| 调试体验 | 模板运行时错误难定位 | 普通 TS 错误，断点可调 |
+| 学习成本 | 需要学模板语法 | 普通 TypeScript |
+
+**适用范围**：仅限 3-5 个真正需要条件生成的入口文件。普通文件（配置文件、样式、组件等）仍使用原始文件 + 字符串变量替换，无需 builder。
 
 ## CLI 设计
 
@@ -1566,37 +1554,59 @@ $ npx @kit/create-app my-project
 
 ### 远程模板规范
 
-远程 Git 模板仓库需要在根目录包含 `template.config.json`：
+远程 Git 模板仓库需要在根目录包含 `.template/config.ts`（由 `jiti` 在运行时直接执行，无需预编译）：
 
-```json
-{
-  "name": "web-app-template",
-  "version": "2.0.0",
-  "description": "标准 Web 应用模板",
-  "projectType": "web-app",
-  "engine": {
-    "node": ">= 22",
-    "createApp": ">= 1.0.0"
+```typescript
+// .template/config.ts
+import type { TemplateConfig } from '@kit/create-app'
+
+const config: TemplateConfig = {
+  id: 'template-pc',
+  platform: 'web',
+  /** 兼容的 CLI 版本范围（semver） */
+  compatibleCliVersions: '>=0.1.0',
+
+  /** 简单字符串替换，应用于所有文本文件 */
+  variables: {
+    '{{project-name}}': '{{name}}',         // 占位符 → 用户输入
+    '{{project-description}}': '{{description}}',
   },
-  "defaultFeatures": ["i18n", "permission"],
-  "enableOverride": true,
-  "variables": {
-    "VITE_BASEURL": {
-      "type": "string",
-      "prompt": "API 基础地址",
-      "default": "https://api.example.com/"
+
+  /** 可选特性定义 */
+  features: {
+    i18n: {
+      label: '国际化 (vue-i18n)',
+      dirs: ['src/locale', 'src/plugins/locale.ts'],
+      deps: ['vue-i18n'],
     },
-    "DEV_PORT": {
-      "type": "number",
-      "prompt": "开发服务器端口",
-      "default": 9090
-    }
+    permission: {
+      label: '权限控制',
+      dirs: ['src/directives/role.ts', 'src/store/modules/permission.ts'],
+    },
+    override: {
+      label: '定制化覆盖系统 (Override)',
+      dirs: ['src/overrides', 'src/plugins/override'],
+    },
   },
-  "hooks": {
-    "afterGenerate": "node scripts/post-generate.js"
-  }
+
+  /**
+   * 需要程序化生成的入口文件
+   * key = 输出路径，value = src/core/entry-builders/ 中的函数名
+   */
+  entryFiles: {
+    'src/main.ts':          'buildMainTs',
+    'src/router/index.ts':  'buildRouterIndex',
+    'vite.config.ts':       'buildViteConfig',
+  },
 }
+
+export default config
 ```
+
+**目录约定**：
+- `.template/config.ts` — 模板配置（必需）
+- `_gitignore` → `.gitignore`（`_` 前缀在写入时自动去掉）
+- `package.json` — 基础依赖，`patchPackageJson` 会根据特性动态增删
 
 ## 缺点与风险
 
@@ -1606,12 +1616,12 @@ $ npx @kit/create-app my-project
 |------|------|---------|
 | 模板维护成本 | 多个模板需要持续更新 | 抽取 base 模板减少重复，自动化测试验证模板 |
 | 特性组合爆炸 | N 个特性有 2^N 种组合 | 定义特性兼容矩阵，CI 中测试关键组合 |
-| EJS 模板调试困难 | 模板语法错误不易定位 | 提供 `--dry-run` 预览，模板 lint 检查 |
+| entry builder 调试 | builder 函数逻辑错误可能产生无效代码 | 单元测试覆盖各特性组合，`--dry-run` 预览输出 |
 | 远程模板网络依赖 | 离线环境无法使用 | 支持本地缓存，`--offline` 模式使用缓存 |
 
 ### 学习成本
 
-- 开发者需要了解模板语法（EJS）才能定制模板
+- 添加新入口 builder 需要了解 TypeScript，但比 EJS 语法更直观
 - 微前端配置涉及 qiankun 概念，新手需要额外学习
 - 缓解：提供完善文档和 `--preset` 模式降低使用门槛
 
@@ -1678,12 +1688,12 @@ $ npx @kit/create-app my-project
 |------|------|------|
 | `commander` | 命令行参数解析 | 成熟稳定 |
 | `prompts` 或 `@clack/prompts` | 交互式问答 | clack 更现代美观 |
-| `ejs` | 模板引擎 | 简单直观，社区广泛使用 |
+| `jiti` | 运行时 TypeScript 执行 | 加载 `.template/config.ts`，不依赖预编译 |
 | `execa` | Shell 命令执行 | 用于 git init、安装依赖 |
 | `fs-extra` | 文件操作增强 | 递归复制、创建目录 |
 | `picocolors` | 终端颜色输出 | 轻量替代 chalk |
 | `ora` | 终端加载动画 | 进度反馈 |
-| `degit` | Git 仓库浅克隆 | 远程模板下载 |
+| `giget` | Git 仓库浅克隆 | 远程模板下载，支持 GitHub/GitLab/Gitea |
 | `validate-npm-package-name` | 包名校验 | 项目名合法性检查 |
 | `semver` | 版本比较 | 模板版本兼容性检查 |
 
