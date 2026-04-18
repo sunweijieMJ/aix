@@ -1,0 +1,69 @@
+{
+  "name": "@aix/flow-graph",
+  "version": "0.0.0",
+  "description": "A Vue 3 FlowGraph component for AIX component library",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "style": "./es/index.css",
+  "sideEffects": [
+    "*.css",
+    "*.scss",
+    "*.sass"
+  ],
+  "exports": {
+    ".": {
+      "types": "./es/index.d.ts",
+      "import": "./es/index.js",
+      "require": "./lib/index.js"
+    },
+    "./dist": {
+      "types": "./es/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    },
+    "./es/*": "./es/*",
+    "./lib/*": "./lib/*",
+    "./dist/*": "./dist/*",
+    "./style": "./es/index.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "lib",
+    "es"
+  ],
+  "scripts": {
+    "dev": "rollup -c -w",
+    "lint:script": "eslint src __test__ *.ts --max-warnings 0",
+    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "lint": "pnpm run lint:script && pnpm run lint:style",
+    "test": "vitest --run",
+    "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
+    "build:js": "rollup -c",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
+    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@aix/theme": "workspace:^",
+    "@aix/hooks": "workspace:^",
+    "@vue-flow/core": "^1.41.0",
+    "@vue-flow/background": "^1.3.0",
+    "@vue-flow/controls": "^1.1.2",
+    "@vue-flow/minimap": "^1.4.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.31"
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:^",
+    "@kit/stylelint-config": "workspace:^",
+    "eslint": "*",
+    "rimraf": "*",
+    "stylelint": "*",
+    "tsx": "*",
+    "typescript": "*"
+  }
+}
