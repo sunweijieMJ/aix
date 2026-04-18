@@ -5,6 +5,7 @@
     :node-types="customNodeTypes"
     :edge-types="customEdgeTypes"
     :edges-updatable="true"
+    :nodes-connectable="props.connectable ?? true"
     @connect="onConnect"
     @edge-update="onEdgeUpdate"
     @pane-dbl-click="onPaneDblClick"
@@ -34,7 +35,7 @@ import '@vue-flow/controls/dist/style.css';
 
 defineOptions({ name: 'AixFlowGraph' });
 
-defineProps<FlowGraphProps>();
+const props = defineProps<FlowGraphProps>();
 const emit = defineEmits<{
   'node-click': [payload: { node: FlowNode; event: MouseTouchEvent }];
   connect: [connection: Connection];

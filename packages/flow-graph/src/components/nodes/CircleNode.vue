@@ -5,18 +5,8 @@
     :style="{ background: data?.color || '#86909C' }"
     @contextmenu.prevent="showMenu = true"
   >
-    <Handle
-      type="target"
-      :position="Position.Left"
-      :connectable="connectable"
-      class="aix-circle-node__handle"
-    />
-    <Handle
-      type="source"
-      :position="Position.Right"
-      :connectable="connectable"
-      class="aix-circle-node__handle"
-    />
+    <Handle type="target" :position="Position.Left" class="aix-circle-node__handle" />
+    <Handle type="source" :position="Position.Right" class="aix-circle-node__handle" />
 
     <div v-if="data?.label" class="aix-circle-node__tooltip">{{ data.label }}</div>
 
@@ -35,13 +25,12 @@
 <script setup lang="ts">
 import { Handle, Position, useVueFlow } from '@vue-flow/core';
 import type { NodeProps } from '@vue-flow/core';
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import type { NodeData } from '../../types';
 
 const props = defineProps<NodeProps<NodeData>>();
 
 const { removeNodes, addNodes, getNodes } = useVueFlow();
-const connectable = computed(() => !props.dragging);
 const showMenu = ref(false);
 
 function closeMenu() {

@@ -25,6 +25,8 @@ export type FlowEdge = Edge<EdgeData>;
 export interface FlowGraphProps {
   nodes?: FlowNode[];
   edges?: FlowEdge[];
+  /** 是否允许手动连线，默认 true */
+  connectable?: boolean;
 }
 
 export interface FlowGraphEmits {
