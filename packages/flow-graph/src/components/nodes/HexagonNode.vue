@@ -1,5 +1,5 @@
 <template>
-  <div class="aix-hexagon-node__wrapper">
+  <div class="aix-hexagon-node__wrapper" :style="{ width: `${size}px`, height: `${size}px` }">
     <!-- 十字渐变（active 状态） -->
     <svg
       v-if="nodeState === 'active'"
@@ -63,8 +63,8 @@
       <Handle type="source" :position="Position.Right" class="aix-hexagon-node__handle" />
 
       <svg
-        width="24"
-        height="23"
+        :width="size"
+        :height="size"
         viewBox="0 0 52 49"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
@@ -113,6 +113,7 @@ const { removeNodes, addNodes, getNodes, updateNodeData } = useVueFlow();
 const showMenu = ref(false);
 
 const nodeState = computed(() => props.data?.state || 'default');
+const size = computed(() => props.data?.size ?? 40);
 
 function onNodeClick() {
   const next = nodeState.value === 'active' ? 'default' : 'active';
@@ -156,8 +157,6 @@ function onCopy() {
 
 .aix-hexagon-node__wrapper {
   position: relative;
-  width: 24px;
-  height: 23px;
 }
 
 .aix-hexagon-node__cross {

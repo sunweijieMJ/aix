@@ -35,8 +35,9 @@ import type { FlowNode, FlowEdge, FlowGraphProps } from './types';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 
-const GRID_SIZE = 20;
-const NODE_HALF = 8;
+const GRID_SIZE = computed(() => props.gridSize ?? 40);
+const nodeSize = computed(() => props.defaultNodeSize ?? 28);
+const hexagonSize = computed(() => props.defaultHexagonSize ?? 40);
 
 defineOptions({ name: 'AixFlowGraph' });
 
@@ -58,14 +59,15 @@ const customNodeTypes = { default: markRaw(CircleNode), hexagon: markRaw(Hexagon
 const customEdgeTypes = { default: markRaw(ColorEdge) };
 
 function createNode(x: number, y: number) {
-  const px = snapEnabled.value ? Math.round(x / GRID_SIZE) * GRID_SIZE - NODE_HALF : x;
-  const py = snapEnabled.value ? Math.round(y / GRID_SIZE) * GRID_SIZE - NODE_HALF : y;
+  const half = nodeSize.value / 2;
+  const px = snapEnabled.value ? Math.round(x / GRID_SIZE.value) * GRID_SIZE.value - half : x;
+  const py = snapEnabled.value ? Math.round(y / GRID_SIZE.value) * GRID_SIZE.value - half : y;
   modelNodes.value = [
     ...modelNodes.value,
     {
       id: `node-${Date.now()}`,
       position: { x: px, y: py },
-      data: { color: '#86909C', _new: true },
+      data: { color: '#86909C', _new: true, size: nodeSize.value },
     },
   ];
 }
@@ -102,12 +104,11 @@ function addNode() {
 
 function onNodeDragStop({ node }: { node: FlowNode }) {
   if (!snapEnabled.value) return;
-  // 六边形 24×23，中心偏移 (12, 11.5)；圆形 16×16，中心偏移 (8, 8)
-  const halfX = node.type === 'hexagon' ? 12 : NODE_HALF;
-  const halfY = node.type === 'hexagon' ? 11.5 : NODE_HALF;
+  const size = node.type === 'hexagon' ? hexagonSize.value : nodeSize.value;
+  const half = size / 2;
   node.position = {
-    x: Math.round((node.position.x + halfX) / GRID_SIZE) * GRID_SIZE - halfX,
-    y: Math.round((node.position.y + halfY) / GRID_SIZE) * GRID_SIZE - halfY,
+    x: Math.round((node.position.x + half) / GRID_SIZE.value) * GRID_SIZE.value - half,
+    y: Math.round((node.position.y + half) / GRID_SIZE.value) * GRID_SIZE.value - half,
   };
 }
 

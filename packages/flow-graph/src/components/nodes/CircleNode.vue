@@ -1,5 +1,5 @@
 <template>
-  <div class="aix-circle-node__wrapper">
+  <div class="aix-circle-node__wrapper" :style="{ width: `${size}px`, height: `${size}px` }">
     <!-- 十字渐变（active 状态）：四条线从中心向外渐淡变细 -->
     <svg
       v-if="nodeState === 'active'"
@@ -61,7 +61,7 @@
     <div
       class="aix-circle-node"
       :class="[`aix-circle-node--${nodeState}`, { selecting: data?.selecting }]"
-      :style="{ background: data?.color || '#86909C' }"
+      :style="{ background: data?.color || '#86909C', width: `${size}px`, height: `${size}px` }"
       @click.stop="onNodeClick"
       @contextmenu.prevent="onContextMenu"
     >
@@ -94,6 +94,7 @@ const { removeNodes, addNodes, getNodes, updateNodeData } = useVueFlow();
 const showMenu = ref(false);
 
 const nodeState = computed(() => props.data?.state || 'default');
+const size = computed(() => props.data?.size ?? 28);
 
 function onNodeClick() {
   const next = nodeState.value === 'active' ? 'default' : 'active';
@@ -144,15 +145,11 @@ function onCopy() {
 
 .aix-circle-node__wrapper {
   position: relative;
-  width: 16px;
-  height: 16px;
 }
 
 .aix-circle-node {
   position: relative;
   z-index: 1;
-  width: 16px;
-  height: 16px;
   border-radius: 50%;
 }
 

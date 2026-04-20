@@ -3,12 +3,11 @@ import type { Node, Edge, Connection, MouseTouchEvent } from '@vue-flow/core';
 export interface NodeData {
   color?: string;
   label?: string;
-  /** 外部控制高亮，区别于 vue-flow 内置的 selected */
   selecting?: boolean;
-  /** 刚通过"添加节点"按钮创建、尚未命名的节点标记 */
   _new?: boolean;
-  /** 节点显示状态: 'default' | 'context' | 'active'，业务可自定义 */
   state?: 'default' | 'context' | 'active';
+  /** 节点尺寸（px） */
+  size?: number;
 }
 
 export interface WayPoint {
@@ -29,8 +28,12 @@ export interface FlowGraphProps {
   edges?: FlowEdge[];
   /** 是否允许手动连线，默认 true */
   connectable?: boolean;
-  /** 是否开启网格吸附模式，默认 true */
   snapGrid?: boolean;
+  gridSize?: number;
+  /** 默认圆形节点尺寸（px），默认 28 */
+  defaultNodeSize?: number;
+  /** 默认六边形节点尺寸（px），默认 40 */
+  defaultHexagonSize?: number;
 }
 
 export interface FlowGraphEmits {

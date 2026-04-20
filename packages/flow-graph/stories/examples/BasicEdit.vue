@@ -14,7 +14,7 @@ import { FlowGraph } from '../../src';
 import type { FlowNode, FlowEdge } from '../../src';
 
 const nodes = ref<FlowNode[]>([
-  { id: '1', type: 'hexagon', position: { x: 68, y: 148 }, data: { color: '#963096' } },
+  { id: '1', type: 'hexagon', position: { x: 68, y: 148 }, data: { color: '#963096', size: 40 } },
   { id: '2', position: { x: 272, y: 72 }, data: { label: '节点 2' } },
   { id: '3', position: { x: 272, y: 212 }, data: { label: '节点 3' } },
   { id: '4', position: { x: 472, y: 152 }, data: { label: '节点 4' } },
