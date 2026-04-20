@@ -8,11 +8,14 @@
     :nodes-connectable="props.connectable ?? true"
     @connect="onConnect"
     @edge-update="onEdgeUpdate"
+    @node-drag-stop="onNodeDragStop"
     @pane-dbl-click="onPaneDblClick"
+    @pane-click="onPaneClick"
     @node-click="({ node, event }) => emit('node-click', { node, event })"
   >
-    <Background />
-    <Controls />
+    <Background v-if="snapEnabled" variant="lines" :gap="GRID_SIZE" :size="1" :color="'#e5e6eb'" />
+    <Background v-else />
+    <FlowControls />
     <Panel position="bottom-center">
       <button class="aix-flow-add-btn" @click="addNode">+ 添加节点</button>
     </Panel>
@@ -21,21 +24,25 @@
 
 <script setup lang="ts">
 import { Background } from '@vue-flow/background';
-import { Controls } from '@vue-flow/controls';
 import { Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import type { Connection, EdgeUpdateEvent, MouseTouchEvent } from '@vue-flow/core';
-import { markRaw } from 'vue';
+import { computed, markRaw } from 'vue';
 import ColorEdge from './components/edges/ColorEdge.vue';
+import FlowControls from './components/FlowControls.vue';
 import CircleNode from './components/nodes/CircleNode.vue';
 import HexagonNode from './components/nodes/HexagonNode.vue';
 import type { FlowNode, FlowEdge, FlowGraphProps } from './types';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
-import '@vue-flow/controls/dist/style.css';
+
+const GRID_SIZE = 20;
+const NODE_HALF = 8;
 
 defineOptions({ name: 'AixFlowGraph' });
 
 const props = defineProps<FlowGraphProps>();
+
+const snapEnabled = computed(() => props.snapGrid !== false);
 const emit = defineEmits<{
   'node-click': [payload: { node: FlowNode; event: MouseTouchEvent }];
   connect: [connection: Connection];
@@ -45,15 +52,21 @@ const emit = defineEmits<{
 const modelNodes = defineModel<FlowNode[]>('nodes', { default: () => [] });
 const modelEdges = defineModel<FlowEdge[]>('edges', { default: () => [] });
 
-const { updateEdge, screenToFlowCoordinate, viewport } = useVueFlow();
+const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData } = useVueFlow();
 
 const customNodeTypes = { default: markRaw(CircleNode), hexagon: markRaw(HexagonNode) };
 const customEdgeTypes = { default: markRaw(ColorEdge) };
 
 function createNode(x: number, y: number) {
+  const px = snapEnabled.value ? Math.round(x / GRID_SIZE) * GRID_SIZE - NODE_HALF : x;
+  const py = snapEnabled.value ? Math.round(y / GRID_SIZE) * GRID_SIZE - NODE_HALF : y;
   modelNodes.value = [
     ...modelNodes.value,
-    { id: `node-${Date.now()}`, position: { x, y }, data: { color: '#86909C', _new: true } },
+    {
+      id: `node-${Date.now()}`,
+      position: { x: px, y: py },
+      data: { color: '#86909C', _new: true },
+    },
   ];
 }
 
@@ -85,6 +98,25 @@ function addNode() {
     if (existing.every((n) => Math.hypot(n.position.x - px, n.position.y - py) >= MIN_DIST)) break;
   }
   createNode(px, py);
+}
+
+function onNodeDragStop({ node }: { node: FlowNode }) {
+  if (!snapEnabled.value) return;
+  // 六边形 24×23，中心偏移 (12, 11.5)；圆形 16×16，中心偏移 (8, 8)
+  const halfX = node.type === 'hexagon' ? 12 : NODE_HALF;
+  const halfY = node.type === 'hexagon' ? 11.5 : NODE_HALF;
+  node.position = {
+    x: Math.round((node.position.x + halfX) / GRID_SIZE) * GRID_SIZE - halfX,
+    y: Math.round((node.position.y + halfY) / GRID_SIZE) * GRID_SIZE - halfY,
+  };
+}
+
+function onPaneClick() {
+  modelNodes.value.forEach((n) => {
+    if (n.data?.state && n.data.state !== 'default') {
+      updateNodeData(n.id, { ...n.data, state: 'default' });
+    }
+  });
 }
 
 function onPaneDblClick(event: MouseEvent) {

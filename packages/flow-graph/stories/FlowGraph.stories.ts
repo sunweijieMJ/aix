@@ -8,6 +8,7 @@ const meta: Meta<typeof FlowGraph> = {
   component: FlowGraph,
   tags: ['autodocs'],
   parameters: { layout: 'fullscreen' },
+  args: { snapGrid: true },
 };
 
 export default meta;

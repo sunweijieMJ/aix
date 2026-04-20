@@ -7,6 +7,8 @@ export interface NodeData {
   selecting?: boolean;
   /** 刚通过"添加节点"按钮创建、尚未命名的节点标记 */
   _new?: boolean;
+  /** 节点显示状态: 'default' | 'context' | 'active'，业务可自定义 */
+  state?: 'default' | 'context' | 'active';
 }
 
 export interface WayPoint {
@@ -27,6 +29,8 @@ export interface FlowGraphProps {
   edges?: FlowEdge[];
   /** 是否允许手动连线，默认 true */
   connectable?: boolean;
+  /** 是否开启网格吸附模式，默认 true */
+  snapGrid?: boolean;
 }
 
 export interface FlowGraphEmits {

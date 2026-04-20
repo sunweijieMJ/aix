@@ -2,6 +2,7 @@
   <FlowGraph
     v-model:nodes="nodes"
     v-model:edges="edges"
+    :snap-grid="true"
     style="width: 100%; height: 100%"
     @connect="onConnect"
   />
@@ -13,10 +14,10 @@ import { FlowGraph } from '../../src';
 import type { FlowNode, FlowEdge } from '../../src';
 
 const nodes = ref<FlowNode[]>([
-  { id: '1', type: 'hexagon', position: { x: 80, y: 150 }, data: { color: '#963096' } },
-  { id: '2', position: { x: 280, y: 80 }, data: { label: '节点 2' } },
-  { id: '3', position: { x: 280, y: 220 }, data: { label: '节点 3' } },
-  { id: '4', position: { x: 480, y: 150 }, data: { label: '节点 4' } },
+  { id: '1', type: 'hexagon', position: { x: 68, y: 148 }, data: { color: '#963096' } },
+  { id: '2', position: { x: 272, y: 72 }, data: { label: '节点 2' } },
+  { id: '3', position: { x: 272, y: 212 }, data: { label: '节点 3' } },
+  { id: '4', position: { x: 472, y: 152 }, data: { label: '节点 4' } },
 ]);
 
 const edges = ref<FlowEdge[]>([

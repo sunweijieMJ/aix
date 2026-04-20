@@ -15,6 +15,15 @@ vi.mock('@vue-flow/core', () => ({
   }),
   useVueFlow: () => ({
     updateEdge: vi.fn(),
+    updateNodeData: vi.fn(),
+    removeNodes: vi.fn(),
+    addNodes: vi.fn(),
+    getNodes: { value: [] },
+    fitView: vi.fn(),
+    zoomIn: vi.fn(),
+    zoomOut: vi.fn(),
+    viewport: { value: { zoom: 1, x: 0, y: 0 } },
+    screenToFlowCoordinate: vi.fn(() => ({ x: 0, y: 0 })),
   }),
   Handle: defineComponent({ template: '<div />' }),
   Position: { Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom' },
@@ -49,7 +58,7 @@ describe('FlowGraph 组件', () => {
 
   it('默认显示控制条', () => {
     const wrapper = mount(FlowGraph);
-    expect(wrapper.find('.vue-flow__controls').exists()).toBe(true);
+    expect(wrapper.find('.aix-flow-controls').exists()).toBe(true);
   });
 
   it('支持 v-model:nodes', () => {

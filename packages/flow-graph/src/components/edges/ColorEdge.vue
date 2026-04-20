@@ -1,7 +1,7 @@
 <template>
   <defs>
-    <marker :id="markerId" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-      <path d="M0,0 L0,6 L9,3 z" :fill="color" />
+    <marker :id="markerId" markerWidth="6" markerHeight="6" refX="5" refY="1.5" orient="auto">
+      <path d="M0,0 L0,3 L5,1.5 z" :fill="color" />
     </marker>
   </defs>
 
@@ -18,7 +18,7 @@
     :d="path"
     fill="none"
     :stroke="color"
-    stroke-width="3"
+    stroke-width="2"
     stroke-linecap="round"
     :marker-end="`url(#${markerId})`"
     @mousedown.stop="onPathMousedown"
@@ -68,7 +68,7 @@ const color = computed(() => edgeData.value.color || '#86909C');
 const markerId = computed(() => `arrow-${props.id}`);
 const waypoints = computed(() => edgeData.value.waypoints ?? []);
 
-const NODE_RADIUS = 14; // CircleNode 半径
+const NODE_RADIUS = 10; // CircleNode 半径（节点尺寸 16px，加上视觉余量）
 
 // Handle 位置即圆心，沿指向对端方向走 NODE_RADIUS 得到圆边缘交点
 function adjustToCircleEdge(
