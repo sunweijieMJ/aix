@@ -42,6 +42,7 @@
   "dependencies": {
     "@aix/theme": "workspace:^",
     "@aix/hooks": "workspace:^",
+    "@aix/popper": "workspace:^",
     "@vue-flow/core": "^1.41.0",
     "@vue-flow/background": "^1.3.0",
     "@vue-flow/controls": "^1.1.2",
