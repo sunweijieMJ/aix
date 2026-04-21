@@ -78,7 +78,8 @@ import { useNodeInteraction } from '../../composables/useNodeInteraction';
 import type { NodeData } from '../../types';
 import NodeActiveCross from './NodeActiveCross.vue';
 
-defineOptions({ name: 'AixHexagonNode' });
+defineOptions({ name: 'AixHexagonNode', inheritAttrs: false });
+defineEmits(['updateNodeInternals']);
 
 const props = defineProps<NodeProps<NodeData>>();
 

@@ -1,6 +1,7 @@
 <template>
   <li v-if="divided" class="aix-dropdown__divider" role="separator" />
   <li
+    v-bind="$attrs"
     :class="['aix-dropdown__item', { 'aix-dropdown__item--disabled': disabled }]"
     role="menuitem"
     :tabindex="-1"
@@ -20,6 +21,7 @@ import type { DropdownItemProps, DropdownItemEmits } from '../types';
 
 defineOptions({
   name: 'AixDropdownItem',
+  inheritAttrs: false,
 });
 
 const props = withDefaults(defineProps<DropdownItemProps>(), {

@@ -66,7 +66,8 @@ import { useNodeInteraction } from '../../composables/useNodeInteraction';
 import type { NodeData } from '../../types';
 import NodeActiveCross from './NodeActiveCross.vue';
 
-defineOptions({ name: 'AixCircleNode' });
+defineOptions({ name: 'AixCircleNode', inheritAttrs: false });
+defineEmits(['updateNodeInternals']);
 
 const props = defineProps<NodeProps<NodeData>>();
 
