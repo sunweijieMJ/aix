@@ -3,6 +3,7 @@ import { FlowGraph } from '../src';
 import BasicEdit from './examples/BasicEdit.vue';
 import CustomNode from './examples/CustomNode.vue';
 import NodeEvents from './examples/NodeEvents.vue';
+import SharedPath from './examples/SharedPath.vue';
 
 const meta: Meta<typeof FlowGraph> = {
   title: 'Components/FlowGraph',
@@ -33,6 +34,13 @@ export const 节点示例: Story = {
   render: () => ({
     components: { CustomNode },
     template: '<div style="width:100%;height:600px"><CustomNode /></div>',
+  }),
+};
+
+export const 多路径共用: Story = {
+  render: () => ({
+    components: { SharedPath },
+    template: '<div style="width:100%;height:600px"><SharedPath /></div>',
   }),
 };
 

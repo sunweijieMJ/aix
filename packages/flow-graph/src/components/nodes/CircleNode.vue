@@ -15,6 +15,7 @@
           v-if="nodeState === 'active'"
           :uid="`c-${id}`"
           :color="data?.color || '#86909c'"
+          :colors="data?.pathColors ?? []"
         />
         <div
           class="aix-circle-node"

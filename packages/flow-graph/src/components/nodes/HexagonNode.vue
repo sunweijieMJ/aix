@@ -15,6 +15,7 @@
           v-if="nodeState === 'active'"
           :uid="`h-${id}`"
           :color="data?.color || '#963096'"
+          :colors="data?.pathColors ?? []"
         />
         <div
           class="aix-hexagon-node"

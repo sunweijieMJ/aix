@@ -1,8 +1,25 @@
 <template>
   <defs>
-    <marker :id="markerId" markerWidth="6" markerHeight="6" refX="5" refY="1.5" orient="auto">
+    <marker :id="markerId" markerWidth="6" markerHeight="6" refX="0" refY="1.5" orient="auto">
       <path d="M0,0 L0,3 L5,1.5 z" :fill="color" />
     </marker>
+    <!-- 共用线段渐变：沿线段方向从当前色渐变到其他路径色 -->
+    <linearGradient
+      v-if="sharedColors.length"
+      :id="gradientId"
+      :x1="adjustedSource.x"
+      :y1="adjustedSource.y"
+      :x2="adjustedTarget.x"
+      :y2="adjustedTarget.y"
+      gradientUnits="userSpaceOnUse"
+    >
+      <stop
+        v-for="(c, i) in gradientStops"
+        :key="i"
+        :offset="`${(i / (gradientStops.length - 1)) * 100}%`"
+        :stop-color="c"
+      />
+    </linearGradient>
   </defs>
 
   <!-- 外部控制的高亮光晕（通过 edge.data.selecting） -->
@@ -27,9 +44,9 @@
   <path
     :d="path"
     fill="none"
-    :stroke="color"
+    :stroke="sharedColors.length ? `url(#${gradientId})` : color"
     stroke-width="2"
-    stroke-linecap="round"
+    stroke-linecap="butt"
     :marker-end="`url(#${markerId})`"
     @mousedown.stop="onPathMousedown"
     @contextmenu.prevent.stop="onPathContextmenu"
@@ -50,7 +67,7 @@
         :key="i"
         class="aix-edge-waypoint nodrag nopan"
         :style="{
-          transform: `translate(-50%, -50%) translate(${viewport.x + wp.x * viewport.zoom}px, ${viewport.y + wp.y * viewport.zoom}px)`,
+          transform: `translate(-50%, -50%) translate(${wp.x}px, ${wp.y}px)`,
         }"
         @mousedown.stop="startDrag($event, i)"
         @contextmenu.prevent.stop="removeWaypoint(i)"
@@ -75,12 +92,16 @@ import type { EdgeData, NodeData } from '../../types';
 defineOptions({ name: 'AixColorEdge' });
 
 const props = defineProps<EdgeProps>();
-const { removeEdges, updateEdgeData, screenToFlowCoordinate, viewport, findNode } = useVueFlow();
+const { removeEdges, updateEdgeData, screenToFlowCoordinate, findNode } = useVueFlow();
 
 const edgeData = computed(() => (props.data as EdgeData | undefined) ?? {});
 const color = computed(() => edgeData.value.color || 'var(--aix-flowGraphEdgeColor, #86909c)');
 const markerId = computed(() => `arrow-${props.id}`);
 const waypoints = computed(() => edgeData.value.waypoints ?? []);
+const sharedColors = computed(() => edgeData.value.sharedColors ?? []);
+const gradientId = computed(() => `grad-${props.id}`);
+/** 渐变 stops：当前色 → 各共用色均匀分布 */
+const gradientStops = computed(() => [color.value, ...sharedColors.value]);
 
 const contextMenuRef = ref<ContextMenuExpose | null>(null);
 
@@ -133,7 +154,8 @@ const adjustedTarget = computed(() => {
   const wps = waypoints.value;
   const fromX = wps.length ? wps[wps.length - 1]!.x : props.sourceX;
   const fromY = wps.length ? wps[wps.length - 1]!.y : props.sourceY;
-  return adjustToNodeEdge(props.targetX, props.targetY, fromX, fromY, targetRadius.value);
+  // 额外缩进箭头长度（markerWidth * stroke-width / 2），让箭头尖端贴合节点边缘
+  return adjustToNodeEdge(props.targetX, props.targetY, fromX, fromY, targetRadius.value + 6);
 });
 
 /** 有 waypoints 时使用圆角折线路径；无 waypoints 时为直线 */
@@ -232,17 +254,15 @@ function distToSegment(
  */
 function startDrag(event: MouseEvent, index: number, originPos?: { x: number; y: number }) {
   cleanupDrag?.();
-  const startX = event.clientX;
-  const startY = event.clientY;
-  const origin = originPos ?? { ...waypoints.value[index]! };
+  const startFlow = originPos ?? { ...waypoints.value[index]! };
+  const startScreen = screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
+  const offsetX = startFlow.x - startScreen.x;
+  const offsetY = startFlow.y - startScreen.y;
 
   function onMove(e: MouseEvent) {
-    const zoom = viewport.value.zoom;
-    const updated = waypoints.value.map((wp, i) =>
-      i === index
-        ? { x: origin.x + (e.clientX - startX) / zoom, y: origin.y + (e.clientY - startY) / zoom }
-        : wp,
-    );
+    const flowPos = screenToFlowCoordinate({ x: e.clientX, y: e.clientY });
+    const newPos = { x: flowPos.x + offsetX, y: flowPos.y + offsetY };
+    const updated = waypoints.value.map((wp, i) => (i === index ? newPos : wp));
     updateEdgeData(props.id, { ...edgeData.value, waypoints: updated });
   }
 

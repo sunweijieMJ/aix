@@ -7,7 +7,7 @@ export interface NodeData {
   color?: string;
   /** 节点标签，悬停时显示在 Tooltip */
   label?: string;
-  /** 是否处于“选择中”的外圈高亮（供外部流程驱动） */
+  /** 是否处于”选择中”的外圈高亮（供外部流程驱动） */
   selecting?: boolean;
   /**
    * 节点交互状态：
@@ -18,6 +18,8 @@ export interface NodeData {
   state?: 'default' | 'context' | 'active';
   /** 节点尺寸（px），圆形与六边形共用此字段 */
   size?: number;
+  /** 节点所属路径的颜色列表（多路径共用时用于扇形着色和十字渐变） */
+  pathColors?: string[];
 }
 
 /** 折线拐点坐标（画布坐标系） */
@@ -34,6 +36,8 @@ export interface EdgeData {
   waypoints?: WayPoint[];
   /** 是否处于高亮状态（供外部流程驱动，显示光晕效果） */
   selecting?: boolean;
+  /** 共用线段的其他路径颜色（用于渐变着色，由外部业务层写入） */
+  sharedColors?: string[];
 }
 
 /** 本组件的节点类型别名（带 NodeData 的 VueFlow Node） */
