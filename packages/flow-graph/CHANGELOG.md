@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.4
+
+### Patch Changes
+
+- 增加路径光圈
+
 ## 0.0.3
 
 ### Patch Changes
