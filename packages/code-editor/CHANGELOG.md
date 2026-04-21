@@ -1,5 +1,11 @@
 # @aix/code-editor
 
+## 0.0.3
+
+### Patch Changes
+
+- 增加边高亮
+
 ## 0.0.2
 
 ### Patch Changes
