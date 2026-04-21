@@ -16,6 +16,34 @@
   >
     <Background v-if="snapEnabled" variant="lines" :gap="gridSize" :size="1" color="#e5e6eb" />
     <Background v-else />
+    <Panel v-if="searchOpen" position="top-center">
+      <div class="aix-flow-search-panel">
+        <div class="aix-flow-search-bar">
+          <img src="./assets/icon-search.svg" width="18" height="18" alt="" />
+          <input
+            ref="searchInputRef"
+            v-model="searchKeyword"
+            class="aix-flow-search-bar__input"
+            placeholder="搜索节点"
+            autocomplete="off"
+            @input="onSearch"
+            @keydown.escape="closeSearch"
+            @keydown.enter="onSearchEnter"
+          />
+          <button class="aix-flow-search-bar__clear" @click="closeSearch">✕</button>
+        </div>
+        <ul v-if="searchSuggestions.length" class="aix-flow-search-suggestions">
+          <li
+            v-for="node in searchSuggestions"
+            :key="node.id"
+            class="aix-flow-search-suggestions__item"
+            @mousedown.prevent="selectSuggestion(node)"
+          >
+            {{ node.data?.label }}
+          </li>
+        </ul>
+      </div>
+    </Panel>
     <Panel position="bottom-center">
       <div class="aix-flow-bottom-bar">
         <button class="aix-flow-add-btn" @click="addNode">
@@ -23,6 +51,9 @@
           添加节点
         </button>
         <FlowControls />
+        <button class="aix-flow-search__btn" :class="{ active: searchOpen }" @click="toggleSearch">
+          <img src="./assets/icon-search.svg" width="18" height="18" alt="搜索" />
+        </button>
       </div>
     </Panel>
   </VueFlow>
@@ -41,7 +72,7 @@
 import { Background } from '@vue-flow/background';
 import { Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import type { EdgeUpdateEvent, MouseTouchEvent } from '@vue-flow/core';
-import { computed, markRaw } from 'vue';
+import { computed, markRaw, nextTick, ref } from 'vue';
 import ColorEdge from './components/edges/ColorEdge.vue';
 import FlowControls from './components/FlowControls.vue';
 import CircleNode from './components/nodes/CircleNode.vue';
@@ -73,7 +104,7 @@ const hexagonSize = computed(() => props.defaultHexagonSize ?? 40);
 /** 是否开启栅格吸附 */
 const snapEnabled = computed(() => props.snapGrid !== false);
 
-const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData } = useVueFlow();
+const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData, fitView } = useVueFlow();
 
 /** 内置节点类型（markRaw 避免 Vue 代理开销） */
 const builtInNodeTypes = {
@@ -140,6 +171,63 @@ function onNodeDragStop({ node }: { node: FlowNode }) {
   };
 }
 
+/** 搜索状态 */
+const searchOpen = ref(false);
+const searchKeyword = ref('');
+const searchInputRef = ref<HTMLInputElement | null>(null);
+
+const suggestionsVisible = ref(true);
+
+const searchSuggestions = computed(() => {
+  const kw = searchKeyword.value.trim().toLowerCase();
+  if (!kw || !suggestionsVisible.value) return [];
+  return modelNodes.value.filter((n) => (n.data?.label ?? '').toLowerCase().includes(kw));
+});
+
+function toggleSearch() {
+  searchOpen.value = !searchOpen.value;
+  if (searchOpen.value) {
+    nextTick(() => searchInputRef.value?.focus());
+  } else {
+    closeSearch();
+  }
+}
+
+function closeSearch() {
+  searchOpen.value = false;
+  searchKeyword.value = '';
+  modelNodes.value.forEach((n) => {
+    if (n.data?.selecting) updateNodeData(n.id, { ...n.data, selecting: false });
+  });
+}
+
+function onSearch() {
+  suggestionsVisible.value = true;
+  const kw = searchKeyword.value.trim().toLowerCase();
+  modelNodes.value.forEach((n) => {
+    const matched = kw !== '' && (n.data?.label ?? '').toLowerCase().includes(kw);
+    if (!!n.data?.selecting !== matched) {
+      updateNodeData(n.id, { ...n.data, selecting: matched });
+    }
+  });
+}
+
+function onSearchEnter() {
+  if (searchSuggestions.value.length === 1) selectSuggestion(searchSuggestions.value[0]!);
+}
+
+function selectSuggestion(node: FlowNode) {
+  modelNodes.value.forEach((n) => {
+    const selecting = n.id === node.id;
+    if (!!n.data?.selecting !== selecting) {
+      updateNodeData(n.id, { ...n.data, selecting });
+    }
+  });
+  searchKeyword.value = node.data?.label ?? '';
+  suggestionsVisible.value = false;
+  fitView({ nodes: [node.id], duration: 300, padding: 0.5 });
+}
+
 /** 点击空白：把非 default 状态的节点统一重置为 default */
 function onPaneClick() {
   modelNodes.value.forEach((n) => {
@@ -177,6 +265,83 @@ function onConnect(connection: {
 </script>
 
 <style>
+.aix-flow-search__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 12px;
+  background: var(--aix-colorBgElevated, #fff);
+  box-shadow: 0 6px 36px rgb(0 0 0 / 0.12);
+  cursor: pointer;
+}
+
+.aix-flow-search__btn.active {
+  background: var(--aix-controlItemBgHover, #f5f5f5);
+}
+
+.aix-flow-search-panel {
+  width: 320px;
+}
+
+.aix-flow-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--aix-colorBgElevated, #fff);
+  box-shadow: 0 6px 36px rgb(0 0 0 / 0.12);
+}
+
+.aix-flow-search-bar__input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--aix-colorText, #1d2129);
+  font-size: 14px;
+}
+
+.aix-flow-search-bar__input::placeholder {
+  color: var(--aix-colorTextPlaceholder, #86909c);
+}
+
+.aix-flow-search-bar__clear {
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--aix-colorTextSecondary, #86909c);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.aix-flow-search-suggestions {
+  margin: 4px 0 0;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--aix-colorBgElevated, #fff);
+  box-shadow: 0 6px 36px rgb(0 0 0 / 0.12);
+  list-style: none;
+}
+
+.aix-flow-search-suggestions__item {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: var(--aix-colorText, #1d2129);
+  font-size: 14px;
+  line-height: 34px;
+  cursor: pointer;
+}
+
+.aix-flow-search-suggestions__item:hover {
+  background: var(--aix-controlItemBgHover, #f5f5f5);
+}
+
 .aix-flow-bottom-bar {
   display: flex;
   align-items: center;

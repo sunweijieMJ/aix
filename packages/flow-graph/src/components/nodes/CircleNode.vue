@@ -126,7 +126,6 @@ function onContextVisibleChange(visible: boolean) {
 }
 
 .aix-circle-node.selecting {
-  outline: 3px solid var(--aix-flowGraphBrand, #1546f2);
-  outline-offset: 2px;
+  filter: drop-shadow(0 0 4px var(--aix-flowGraphBrand, #1546f2));
 }
 </style>
