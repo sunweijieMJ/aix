@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.3
+
+### Patch Changes
+
+- 优化样式
+
 ## 0.0.2
 
 ### Patch Changes
