@@ -1,36 +1,17 @@
 <template>
-  <Panel position="bottom-left">
-    <div class="aix-flow-controls">
-      <button class="aix-flow-controls__btn" title="缩小" @click="zoomOut()">
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <path d="M3.75 9h10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-        </svg>
-      </button>
-      <span class="aix-flow-controls__zoom">{{ zoomPercent }}%</span>
-      <button class="aix-flow-controls__btn" title="放大" @click="zoomIn()">
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <path
-            d="M9 3.75v10.5M3.75 9h10.5"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-          />
-        </svg>
-      </button>
-      <div class="aix-flow-controls__divider" />
-      <button class="aix-flow-controls__btn" title="适应视图" @click="fitView()">
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-          <path
-            d="M2 5V2h3M13 2h3v3M16 13v3h-3M5 16H2v-3"
-            stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-      </button>
-    </div>
-  </Panel>
+  <div class="aix-flow-controls">
+    <button class="aix-flow-controls__btn" title="缩小" @click="zoomOut()">
+      <img src="../assets/icon-ctrl-minus.svg" width="18" height="18" alt="" />
+    </button>
+    <span class="aix-flow-controls__zoom">{{ zoomPercent }}%</span>
+    <button class="aix-flow-controls__btn" title="放大" @click="zoomIn()">
+      <img src="../assets/icon-ctrl-add.svg" width="18" height="18" alt="" />
+    </button>
+    <div class="aix-flow-controls__divider" />
+    <button class="aix-flow-controls__btn" title="适应视图" @click="fitView()">
+      <img src="../assets/icon-ctrl-fit.svg" width="18" height="18" alt="" />
+    </button>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -38,7 +19,7 @@
  * 画布控制条：左下角 Panel，提供缩小 / 缩放百分比显示 / 放大 / 适应视图四个操作。
  * 直接消费 VueFlow 的 `useVueFlow` 暴露的控制方法。
  */
-import { Panel, useVueFlow } from '@vue-flow/core';
+import { useVueFlow } from '@vue-flow/core';
 import { computed } from 'vue';
 
 defineOptions({ name: 'AixFlowControls' });

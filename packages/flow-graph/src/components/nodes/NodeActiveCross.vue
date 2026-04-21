@@ -27,6 +27,7 @@
       :stroke="`url(#${dir.id}-${uid})`"
       stroke-width="2"
       stroke-linecap="round"
+      class="aix-cross-arm"
     />
   </svg>
 </template>
@@ -71,5 +72,17 @@ const directions = [
   height: 92px;
   transform: translate(-50%, -50%);
   pointer-events: none;
+}
+
+.aix-cross-arm {
+  animation: aix-cross-expand 0.3s ease-out forwards;
+  stroke-dasharray: 46;
+  stroke-dashoffset: 46;
+}
+
+@keyframes aix-cross-expand {
+  to {
+    stroke-dashoffset: 0;
+  }
 }
 </style>

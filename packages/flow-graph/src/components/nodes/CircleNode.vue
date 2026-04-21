@@ -1,5 +1,9 @@
 <template>
-  <ContextMenu @command="onCommand" @visible-change="onContextVisibleChange">
+  <ContextMenu
+    popper-class="aix-flow-node-menu"
+    @command="onCommand"
+    @visible-change="onContextVisibleChange"
+  >
     <Tooltip :content="data?.label ?? ''" :disabled="!data?.label" placement="top">
       <div class="aix-circle-node__wrapper" :style="{ width: `${size}px`, height: `${size}px` }">
         <NodeActiveCross v-if="nodeState === 'active'" :uid="`c-${id}`" />
@@ -11,7 +15,7 @@
             width: `${size}px`,
             height: `${size}px`,
           }"
-          @click.stop="onNodeClick"
+          @click="onNodeClick"
         >
           <Handle type="target" :position="Position.Left" class="aix-flow-node__handle" />
           <Handle type="source" :position="Position.Right" class="aix-flow-node__handle" />
@@ -20,8 +24,14 @@
       </div>
     </Tooltip>
     <template #menu>
-      <DropdownItem command="copy" label="复制" />
-      <DropdownItem command="delete" label="删除" />
+      <DropdownItem command="copy">
+        <img src="../../assets/icon-copy.svg" class="aix-flow-node-menu__icon" alt="" />
+        复制
+      </DropdownItem>
+      <DropdownItem command="delete" class="aix-flow-node-menu__delete">
+        <img src="../../assets/icon-delete.svg" class="aix-flow-node-menu__icon" alt="" />
+        删除
+      </DropdownItem>
     </template>
   </ContextMenu>
 </template>
@@ -79,6 +89,9 @@ function onContextVisibleChange(visible: boolean) {
 .aix-circle-node {
   position: relative;
   z-index: 1;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
   border-radius: 50%;
 }
 
@@ -101,9 +114,13 @@ function onContextVisibleChange(visible: boolean) {
   overflow: visible;
 }
 
+.aix-circle-node--context {
+  transform: scale(0.92);
+}
+
 .aix-circle-node__inner {
   position: absolute;
-  inset: 6px;
+  inset: 10px;
   border-radius: 50%;
   background: var(--aix-colorBgElevated, #fff);
 }

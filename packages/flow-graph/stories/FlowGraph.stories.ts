@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/vue3';
 import { FlowGraph } from '../src';
 import BasicEdit from './examples/BasicEdit.vue';
 import CustomNode from './examples/CustomNode.vue';
+import NodeEvents from './examples/NodeEvents.vue';
 
 const meta: Meta<typeof FlowGraph> = {
   title: 'Components/FlowGraph',
@@ -13,6 +14,13 @@ const meta: Meta<typeof FlowGraph> = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+export const 节点事件: Story = {
+  render: () => ({
+    components: { NodeEvents },
+    template: '<div style="width:100%;height:600px"><NodeEvents /></div>',
+  }),
+};
 
 export const 基础编辑: Story = {
   render: () => ({

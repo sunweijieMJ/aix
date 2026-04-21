@@ -47,11 +47,23 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
   }
 
   function onNodeClick() {
+    // 先重置其他节点状态
+    getNodes.value.forEach((n) => {
+      if (n.id !== id && n.data?.state && n.data.state !== 'default') {
+        updateNodeData(n.id, { ...n.data, state: 'default' });
+      }
+    });
     setState(nodeState.value === 'active' ? 'default' : 'active');
   }
 
   function onContextOpen() {
     if (!supportContextState) return;
+    // 先重置其他节点状态
+    getNodes.value.forEach((n) => {
+      if (n.id !== id && n.data?.state && n.data.state !== 'default') {
+        updateNodeData(n.id, { ...n.data, state: 'default' });
+      }
+    });
     setState('context');
   }
 

@@ -12,12 +12,18 @@
     @pane-dbl-click="onPaneDblClick"
     @pane-click="onPaneClick"
     @node-click="({ node, event }) => emit('node-click', { node, event })"
+    @node-context-menu="({ node, event }) => emit('node-right-click', { node, event })"
   >
     <Background v-if="snapEnabled" variant="lines" :gap="gridSize" :size="1" color="#e5e6eb" />
     <Background v-else />
-    <FlowControls />
     <Panel position="bottom-center">
-      <button class="aix-flow-add-btn" @click="addNode">+ 添加节点</button>
+      <div class="aix-flow-bottom-bar">
+        <button class="aix-flow-add-btn" @click="addNode">
+          <img src="./assets/icon-add-node.svg" width="18" height="18" alt="" />
+          添加节点
+        </button>
+        <FlowControls />
+      </div>
     </Panel>
   </VueFlow>
 </template>
@@ -51,7 +57,7 @@ const props = defineProps<FlowGraphProps>();
 const emit = defineEmits<{
   /** 节点被点击 */
   'node-click': [payload: { node: FlowNode; event: MouseTouchEvent }];
-  /** 建立新连线 */
+  'node-right-click': [payload: { node: FlowNode; event: MouseTouchEvent }];
   connect: [connection: FlowConnection];
 }>();
 
@@ -171,18 +177,63 @@ function onConnect(connection: {
 </script>
 
 <style>
+.aix-flow-bottom-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .aix-flow-add-btn {
-  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  width: 102px;
+  height: 42px;
+  padding: 0 16px 0 12px;
   border: none;
-  border-radius: var(--aix-borderRadius, 10px);
+  border-radius: 12px;
   background: var(--aix-flowGraphBrand, #1546f2);
-  box-shadow: 0 10px 24px rgb(21 70 242 / 0.24);
+  box-shadow: none;
   color: var(--aix-colorTextLight, #fff);
   font-size: var(--aix-fontSize, 14px);
+  white-space: nowrap;
   cursor: pointer;
+  gap: 4px;
 }
 
 .aix-flow-add-btn:hover {
   background: var(--aix-flowGraphBrandHover, #1240e0);
+}
+
+/* 节点右键菜单样式 */
+.aix-flow-node-menu {
+  width: 94px;
+  min-width: 94px !important;
+  padding: 4px !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 36px rgb(0 0 0 / 0.12) !important;
+}
+
+.aix-flow-node-menu .aix-dropdown__item {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.aix-flow-node-menu__delete {
+  background: #f5f5f5;
+  color: #ff2626 !important;
+}
+
+.aix-flow-node-menu__delete:hover:not(.aix-dropdown__item--disabled) {
+  background: #ffe8e8 !important;
+}
+
+.aix-flow-node-menu__icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
 }
 </style>

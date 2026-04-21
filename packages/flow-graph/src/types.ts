@@ -80,4 +80,6 @@ export interface FlowGraphEmits {
   connect: [connection: FlowConnection];
   /** 节点被点击时触发，携带节点对象与原始事件 */
   'node-click': [payload: { node: FlowNode; event: MouseTouchEvent }];
+  /** 节点被右键点击时触发，携带节点对象与原始事件 */
+  'node-right-click': [payload: { node: FlowNode; event: MouseTouchEvent }];
 }
