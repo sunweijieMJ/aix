@@ -5,12 +5,11 @@
     :node-types="mergedNodeTypes"
     :edge-types="mergedEdgeTypes"
     :edges-updatable="true"
-    :nodes-connectable="props.connectable ?? true"
+    :nodes-connectable="props.connectable ?? false"
     @connect="onConnect"
     @edge-update="onEdgeUpdate"
     @node-drag-stop="onNodeDragStop"
     @pane-dbl-click="onPaneDblClick"
-    @pane-click="onPaneClick"
     @node-click="({ node, event }) => emit('node-click', { node, event })"
     @node-context-menu="({ node, event }) => emit('node-right-click', { node, event })"
     @mousedown.capture="onGlobalMousedown"
@@ -85,7 +84,14 @@ import FlowControls from './components/FlowControls.vue';
 import CircleNode from './components/nodes/CircleNode.vue';
 import HexagonNode from './components/nodes/HexagonNode.vue';
 import { createNodeId } from './composables/useNodeInteraction';
-import type { FlowNode, FlowEdge, FlowGraphProps, FlowConnection } from './types';
+import {
+  DEFAULT_CIRCLE_SIZE,
+  DEFAULT_HEXAGON_SIZE,
+  type FlowNode,
+  type FlowEdge,
+  type FlowGraphProps,
+  type FlowConnection,
+} from './types';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 
@@ -105,9 +111,9 @@ const modelEdges = defineModel<FlowEdge[]>('edges', { default: () => [] });
 /** 栅格尺寸（px） */
 const gridSize = computed(() => props.gridSize ?? 40);
 /** 新建圆形节点的尺寸 */
-const nodeSize = computed(() => props.defaultNodeSize ?? 28);
+const nodeSize = computed(() => props.defaultNodeSize ?? DEFAULT_CIRCLE_SIZE);
 /** 六边形节点的尺寸（仅用于吸附时的对中修正） */
-const hexagonSize = computed(() => props.defaultHexagonSize ?? 40);
+const hexagonSize = computed(() => props.defaultHexagonSize ?? DEFAULT_HEXAGON_SIZE);
 /** 是否开启栅格吸附 */
 const snapEnabled = computed(() => props.snapGrid !== false);
 
@@ -192,11 +198,11 @@ const searchSuggestions = computed(() => {
 });
 
 function toggleSearch() {
-  searchOpen.value = !searchOpen.value;
   if (searchOpen.value) {
-    nextTick(() => searchInputRef.value?.focus());
-  } else {
     closeSearch();
+  } else {
+    searchOpen.value = true;
+    nextTick(() => searchInputRef.value?.focus());
   }
 }
 
@@ -240,22 +246,24 @@ function resetAllNodeStates() {
   suggestionsVisible.value = false;
   searchKeyword.value = '';
   modelNodes.value.forEach((n) => {
-    if (n.data?.state !== 'default' || n.data?.selecting) {
+    const state = n.data?.state;
+    if ((state && state !== 'default') || n.data?.selecting) {
       updateNodeData(n.id, { ...n.data, state: 'default', selecting: false });
     }
   });
 }
 
-/** 全局 mousedown：点击节点外时重置所有节点状态 */
+/** 全局 mousedown：点击节点/边/搜索面板之外时重置所有节点状态 */
 function onGlobalMousedown(event: MouseEvent) {
   const target = event.target as HTMLElement;
-  if (!target.closest('.vue-flow__node') && !target.closest('.aix-flow-search-panel')) {
+  if (
+    !target.closest('.vue-flow__node') &&
+    !target.closest('.vue-flow__edge') &&
+    !target.closest('.aix-flow-search-panel')
+  ) {
     resetAllNodeStates();
   }
 }
-
-/** 点击空白：无需额外处理，onGlobalMousedown 已覆盖 */
-function onPaneClick() {}
 
 /** 双击空白：在点击坐标处新建节点 */
 function onPaneDblClick(event: MouseEvent) {

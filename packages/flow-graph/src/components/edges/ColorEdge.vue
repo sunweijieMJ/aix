@@ -87,14 +87,19 @@ import { ContextMenu, DropdownItem, type ContextMenuExpose } from '@aix/popper';
 import { EdgeLabelRenderer, useVueFlow } from '@vue-flow/core';
 import type { EdgeProps } from '@vue-flow/core';
 import { computed, onBeforeUnmount, ref } from 'vue';
-import type { EdgeData, NodeData } from '../../types';
+import {
+  DEFAULT_CIRCLE_SIZE,
+  DEFAULT_HEXAGON_SIZE,
+  type EdgeData,
+  type NodeData,
+} from '../../types';
 
 defineOptions({ name: 'AixColorEdge' });
 
-const props = defineProps<EdgeProps>();
+const props = defineProps<EdgeProps<EdgeData>>();
 const { removeEdges, updateEdgeData, screenToFlowCoordinate, findNode } = useVueFlow();
 
-const edgeData = computed(() => (props.data as EdgeData | undefined) ?? {});
+const edgeData = computed<EdgeData>(() => props.data ?? {});
 const color = computed(() => edgeData.value.color || 'var(--aix-flowGraphEdgeColor, #86909c)');
 const markerId = computed(() => `arrow-${props.id}`);
 const waypoints = computed(() => edgeData.value.waypoints ?? []);
@@ -115,7 +120,8 @@ const EDGE_PADDING = 4;
 function radiusOf(nodeId: string): number {
   const node = findNode(nodeId);
   const data = node?.data as NodeData | undefined;
-  const size = data?.size ?? (node?.type === 'hexagon' ? 40 : 28);
+  const size =
+    data?.size ?? (node?.type === 'hexagon' ? DEFAULT_HEXAGON_SIZE : DEFAULT_CIRCLE_SIZE);
   return size / 2 + EDGE_PADDING;
 }
 

@@ -1,136 +1,53 @@
 <template>
-  <ContextMenu
-    popper-class="aix-flow-node-menu"
-    @command="onCommand"
-    @visible-change="onContextVisibleChange"
-  >
-    <Tooltip
-      ref="tooltipRef"
-      :content="data?.label ?? ''"
-      :disabled="!data?.label || dragging"
-      placement="top"
-    >
-      <div class="aix-circle-node__wrapper" :style="{ width: `${size}px`, height: `${size}px` }">
-        <NodeActiveCross
-          v-if="nodeState === 'active'"
-          :uid="`c-${id}`"
-          :color="data?.color || '#86909c'"
-          :colors="data?.pathColors ?? []"
-        />
-        <div
-          class="aix-circle-node"
-          :class="[`aix-circle-node--${nodeState}`]"
-          :style="{
-            background: data?.color || 'var(--aix-flowGraphNodeColor, #86909c)',
-            width: `${size}px`,
-            height: `${size}px`,
-            filter: data?.selecting
-              ? `drop-shadow(0 0 4px ${data?.color || '#86909c'})`
-              : undefined,
-          }"
-          @click="onNodeClick"
-        >
-          <Handle type="target" :position="Position.Left" class="aix-flow-node__handle" />
-          <Handle type="source" :position="Position.Right" class="aix-flow-node__handle" />
-          <div v-if="nodeState === 'context'" class="aix-circle-node__inner" />
-        </div>
+  <BaseNode v-bind="$props" :default-size="DEFAULT_CIRCLE_SIZE" :fallback-color="FALLBACK_COLOR">
+    <template #default="{ size, nodeState, onClick }">
+      <div
+        class="aix-circle-node"
+        :class="`aix-circle-node--${nodeState}`"
+        :style="{
+          background: data?.color || 'var(--aix-flowGraphNodeColor, #86909c)',
+          width: `${size}px`,
+          height: `${size}px`,
+          filter: data?.selecting
+            ? `drop-shadow(0 0 4px ${data?.color || FALLBACK_COLOR})`
+            : undefined,
+        }"
+        @click="onClick"
+      >
+        <div v-if="nodeState === 'context'" class="aix-circle-node__inner" />
       </div>
-    </Tooltip>
-    <template #menu>
-      <DropdownItem command="copy">
-        <img src="../../assets/icon-copy.svg" class="aix-flow-node-menu__icon" alt="" />
-        复制
-      </DropdownItem>
-      <DropdownItem command="delete" class="aix-flow-node-menu__delete">
-        <img src="../../assets/icon-delete.svg" class="aix-flow-node-menu__icon" alt="" />
-        删除
-      </DropdownItem>
     </template>
-  </ContextMenu>
+  </BaseNode>
 </template>
 
 <script setup lang="ts">
 /**
- * 圆形节点：用于流程图的默认节点类型。
- *
- * 交互：
- * - 点击切换 `active` 状态（四向渐变十字可视化）。
- * - 右键打开上下文菜单（复制 / 删除），菜单显示期间节点切至 `context` 状态。
- * - 鼠标悬停时若配置了 `data.label` 会显示 Tooltip。
+ * 圆形节点：默认节点类型。
+ * 所有交互（点击 active / 右键菜单 / Tooltip / Handle）均由 {@link BaseNode} 承载。
  */
-import { ContextMenu, DropdownItem, Tooltip, type TooltipExpose } from '@aix/popper';
-import { Handle, Position } from '@vue-flow/core';
 import type { NodeProps } from '@vue-flow/core';
-import { computed, ref, toRef, watch } from 'vue';
-import { useNodeInteraction } from '../../composables/useNodeInteraction';
-import type { NodeData } from '../../types';
-import NodeActiveCross from './NodeActiveCross.vue';
+import { DEFAULT_CIRCLE_SIZE, type NodeData } from '../../types';
+import BaseNode from './BaseNode.vue';
 
 defineOptions({ name: 'AixCircleNode', inheritAttrs: false });
 defineEmits(['updateNodeInternals']);
 
-const props = defineProps<NodeProps<NodeData>>();
+defineProps<NodeProps<NodeData>>();
 
-/** 节点尺寸（像素），回退到默认 28 */
-const size = computed(() => props.data?.size ?? 28);
-
-const tooltipRef = ref<TooltipExpose | null>(null);
-
-watch(
-  () => props.dragging,
-  (v) => {
-    if (v) tooltipRef.value?.hide();
-  },
-);
-
-const { nodeState, onNodeClick, onContextOpen, onContextClose, onCommand } = useNodeInteraction({
-  id: props.id,
-  data: toRef(props, 'data'),
-});
-
-/** 同步右键菜单开合到节点 context 状态 */
-function onContextVisibleChange(visible: boolean) {
-  if (visible) onContextOpen();
-  else onContextClose();
-}
+/** 圆形节点主色回退（无 data.color 时使用） */
+const FALLBACK_COLOR = '#86909c';
 </script>
 
 <style>
-.vue-flow__node-default:has(.aix-circle-node) {
-  width: auto !important;
-  padding: 0 !important;
-  overflow: visible !important;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.aix-circle-node__wrapper {
-  position: relative;
-}
-
 .aix-circle-node {
   position: relative;
   z-index: 1;
+  width: 100%;
+  height: 100%;
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease;
   border-radius: 50%;
-}
-
-.aix-circle-node .vue-flow__handle {
-  width: 10px;
-  height: 10px;
-  border: none;
-  opacity: 0;
-  background: transparent;
-  pointer-events: none;
-}
-
-.aix-circle-node .aix-flow-node__handle {
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
 }
 
 .aix-circle-node--active {

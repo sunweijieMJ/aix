@@ -1,6 +1,11 @@
 import type { Node, Edge, MouseTouchEvent } from '@vue-flow/core';
 import type { Component } from 'vue';
 
+/** 圆形节点默认尺寸（px） */
+export const DEFAULT_CIRCLE_SIZE = 28;
+/** 六边形节点默认尺寸（px） */
+export const DEFAULT_HEXAGON_SIZE = 40;
+
 /** 节点数据载荷：通过 `node.data` 挂载到每个流程图节点。 */
 export interface NodeData {
   /** 节点主色，缺省使用主题 CSS 变量 */
@@ -56,7 +61,7 @@ export interface FlowGraphProps {
   nodes?: FlowNode[];
   /** v-model:edges 绑定的边数组 */
   edges?: FlowEdge[];
-  /** 是否允许手动连线，默认 `true` */
+  /** 是否允许手动连线（拖拽节点 Handle 创建新边），默认 `false` */
   connectable?: boolean;
   /** 是否开启栅格吸附（拖拽节点结束时吸附到网格），默认 `true` */
   snapGrid?: boolean;

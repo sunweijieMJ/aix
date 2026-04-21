@@ -49,18 +49,18 @@ function onNodeRightClick({ node }: { node: FlowNode; event: MouseTouchEvent }) 
 <style>
 .event-log {
   height: 140px;
-  overflow-y: auto;
   padding: 8px 12px;
-  background: #f7f8fa;
+  overflow-y: auto;
   border-top: 1px solid #e5e6eb;
-  font-size: 12px;
+  background: #f7f8fa;
   font-family: monospace;
+  font-size: 12px;
 }
 
 .event-log__item {
   padding: 2px 0;
-  color: #1d2129;
   border-bottom: 1px solid #e5e6eb;
+  color: #1d2129;
 }
 
 .event-log__empty {

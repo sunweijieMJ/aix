@@ -88,6 +88,7 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
         data: { ...node.data, state: 'default' },
       },
     ]);
+    // VueFlow 的 Node 类型不含 selected，需在节点入库后（nextTick）在 GraphNode 上取消选中
     nextTick(() => {
       const newNode = getNodes.value.find((n) => n.id === newId);
       if (newNode) newNode.selected = false;

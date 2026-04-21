@@ -6,28 +6,9 @@
     aria-hidden="true"
   >
     <defs>
-      <!-- 多色（>4）时：共享一个多色渐变，方向从中心向右 -->
+      <!-- 每条臂一个沿臂方向的渐变，单色与多色统一处理 -->
       <linearGradient
-        v-if="isMultiColor"
-        :id="`cm-${uid}`"
-        x1="60"
-        y1="60"
-        x2="120"
-        y2="60"
-        gradientUnits="userSpaceOnUse"
-      >
-        <stop
-          v-for="(c, i) in resolvedColors"
-          :key="i"
-          :offset="`${(i / (resolvedColors.length - 1)) * 100}%`"
-          :stop-color="c"
-          :stop-opacity="i === resolvedColors.length - 1 ? 0 : 0.7"
-        />
-      </linearGradient>
-      <!-- 单色或 ≤4 色时：每条臂独立渐变 -->
-      <linearGradient
-        v-for="(dir, i) in directions"
-        v-else
+        v-for="dir in directions"
         :id="`${dir.id}-${uid}`"
         :key="dir.id"
         :x1="dir.x1"
@@ -36,8 +17,13 @@
         :y2="dir.y2"
         gradientUnits="userSpaceOnUse"
       >
-        <stop offset="0%" :stop-color="armColor(i)" stop-opacity="0.7" />
-        <stop offset="100%" :stop-color="armColor(i)" stop-opacity="0" />
+        <stop
+          v-for="(s, j) in armStops"
+          :key="j"
+          :offset="s.offset"
+          :stop-color="s.color"
+          :stop-opacity="s.opacity"
+        />
       </linearGradient>
     </defs>
 
@@ -45,7 +31,7 @@
       v-for="dir in directions"
       :key="`p-${dir.id}`"
       :d="`M60 60 L${dir.tx} ${dir.ty}`"
-      :stroke="isMultiColor ? `url(#cm-${uid})` : `url(#${dir.id}-${uid})`"
+      :stroke="`url(#${dir.id}-${uid})`"
       stroke-width="2"
       stroke-linecap="round"
       class="aix-cross-arm"
@@ -56,15 +42,14 @@
 <script setup lang="ts">
 /**
  * 节点 active 状态的四向渐变十字装饰。
- * - 单色：4条臂同色渐变
- * - 2~4色：每条臂按索引取色
- * - >4色：所有臂共享多色渐变
+ * - 单色：每条臂从 0.7 不透明度 → 0（淡出）。
+ * - 多色：每条臂沿自身方向均匀分布多色，末色 alpha 为 0（淡出）。
  */
 import { computed } from 'vue';
 
 interface Props {
   uid: string;
-  color?: string;
+  color: string;
   /** 多路径颜色列表，优先级高于 color */
   colors?: string[];
 }
@@ -72,7 +57,6 @@ interface Props {
 defineOptions({ name: 'AixNodeActiveCross' });
 
 const props = withDefaults(defineProps<Props>(), {
-  color: 'var(--aix-flowGraphCrossColor, #4e5969)',
   colors: () => [],
 });
 
@@ -85,14 +69,21 @@ const directions = [
 
 const resolvedColors = computed(() => (props.colors.length ? props.colors : [props.color]));
 
-/** 超过4色时用多色共享渐变 */
-const isMultiColor = computed(() => resolvedColors.value.length > 4);
-
-/** ≤4色时每条臂按索引循环取色 */
-function armColor(i: number): string {
-  const c = resolvedColors.value;
-  return c[i % c.length]!;
-}
+/** 每条臂共享的 stop 列表：沿臂方向均匀分布各色，末端 alpha=0 实现淡出 */
+const armStops = computed(() => {
+  const colors = resolvedColors.value;
+  if (colors.length === 1) {
+    return [
+      { offset: '0%', color: colors[0]!, opacity: 0.7 },
+      { offset: '100%', color: colors[0]!, opacity: 0 },
+    ];
+  }
+  return colors.map((c, i) => ({
+    offset: `${(i / (colors.length - 1)) * 100}%`,
+    color: c,
+    opacity: i === colors.length - 1 ? 0 : 0.7,
+  }));
+});
 </script>
 
 <style>
