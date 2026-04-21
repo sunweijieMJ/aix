@@ -16,17 +16,16 @@
         :y2="dir.y2"
         gradientUnits="userSpaceOnUse"
       >
-        <stop offset="0%" :stop-color="color" />
+        <stop offset="0%" :stop-color="color" stop-opacity="0.7" />
         <stop offset="100%" :stop-color="color" stop-opacity="0" />
       </linearGradient>
     </defs>
-    <path
+    <!-- 每条臂：从中心(46,46)出发的细长三角形，宽端在中心，尖端在外 -->
+    <polygon
       v-for="dir in directions"
       :key="`p-${dir.id}`"
-      :d="`M46 46 L${dir.x2} ${dir.y2}`"
-      :stroke="`url(#${dir.id}-${uid})`"
-      stroke-width="2"
-      stroke-linecap="round"
+      :points="dir.points"
+      :fill="`url(#${dir.id}-${uid})`"
       class="aix-cross-arm"
     />
   </svg>
@@ -53,12 +52,17 @@ withDefaults(defineProps<Props>(), {
   color: 'var(--aix-flowGraphCrossColor, #4e5969)',
 });
 
-/** 四个方向的端点坐标：右 / 左 / 下 / 上；中心固定在 (46,46) */
+/** 四个方向的三角形臂：points 为三角形顶点，渐变从中心(46,46)向外端 */
+// 半宽 2px，臂长 46px（到 SVG 边缘）
 const directions = [
-  { id: 'cr', x1: 46, y1: 46, x2: 92, y2: 46 },
-  { id: 'cl', x1: 46, y1: 46, x2: 0, y2: 46 },
-  { id: 'cd', x1: 46, y1: 46, x2: 46, y2: 92 },
-  { id: 'cu', x1: 46, y1: 46, x2: 46, y2: 0 },
+  // 右：中心两点(46,44)(46,48) → 右端尖(92,46)
+  { id: 'cr', x1: 46, y1: 46, x2: 92, y2: 46, points: '46,44 46,48 92,46' },
+  // 左：中心两点(46,44)(46,48) → 左端尖(0,46)
+  { id: 'cl', x1: 46, y1: 46, x2: 0, y2: 46, points: '46,44 46,48 0,46' },
+  // 下：中心两点(44,46)(48,46) → 下端尖(46,92)
+  { id: 'cd', x1: 46, y1: 46, x2: 46, y2: 92, points: '44,46 48,46 46,92' },
+  // 上：中心两点(44,46)(48,46) → 上端尖(46,0)
+  { id: 'cu', x1: 46, y1: 46, x2: 46, y2: 0, points: '44,46 48,46 46,0' },
 ];
 </script>
 
@@ -75,14 +79,20 @@ const directions = [
 }
 
 .aix-cross-arm {
+  transform-origin: 46px 46px;
   animation: aix-cross-expand 0.3s ease-out forwards;
-  stroke-dasharray: 46;
-  stroke-dashoffset: 46;
+  opacity: 0;
 }
 
 @keyframes aix-cross-expand {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+
   to {
-    stroke-dashoffset: 0;
+    transform: scale(1);
+    opacity: 1;
   }
 }
 </style>
