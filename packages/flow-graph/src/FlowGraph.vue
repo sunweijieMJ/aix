@@ -13,6 +13,7 @@
     @pane-click="onPaneClick"
     @node-click="({ node, event }) => emit('node-click', { node, event })"
     @node-context-menu="({ node, event }) => emit('node-right-click', { node, event })"
+    @mousedown.capture="onGlobalMousedown"
   >
     <Background v-if="snapEnabled" variant="lines" :gap="gridSize" :size="1" color="#e5e6eb" />
     <Background v-else />
@@ -51,9 +52,15 @@
           添加节点
         </button>
         <FlowControls />
-        <button class="aix-flow-search__btn" :class="{ active: searchOpen }" @click="toggleSearch">
-          <img src="./assets/icon-search.svg" width="18" height="18" alt="搜索" />
-        </button>
+        <div class="aix-flow-search__wrap">
+          <button
+            class="aix-flow-search__btn"
+            :class="{ active: searchOpen }"
+            @click="toggleSearch"
+          >
+            <img src="./assets/icon-search.svg" width="18" height="18" alt="搜索" />
+          </button>
+        </div>
       </div>
     </Panel>
   </VueFlow>
@@ -228,14 +235,27 @@ function selectSuggestion(node: FlowNode) {
   fitView({ nodes: [node.id], duration: 300, padding: 0.5 });
 }
 
-/** 点击空白：把非 default 状态的节点统一重置为 default */
-function onPaneClick() {
+/** 重置所有节点交互状态（active/context/selecting）并清空搜索 */
+function resetAllNodeStates() {
+  suggestionsVisible.value = false;
+  searchKeyword.value = '';
   modelNodes.value.forEach((n) => {
-    if (n.data?.state && n.data.state !== 'default') {
-      updateNodeData(n.id, { ...n.data, state: 'default' });
+    if (n.data?.state !== 'default' || n.data?.selecting) {
+      updateNodeData(n.id, { ...n.data, state: 'default', selecting: false });
     }
   });
 }
+
+/** 全局 mousedown：点击节点外时重置所有节点状态 */
+function onGlobalMousedown(event: MouseEvent) {
+  const target = event.target as HTMLElement;
+  if (!target.closest('.vue-flow__node') && !target.closest('.aix-flow-search-panel')) {
+    resetAllNodeStates();
+  }
+}
+
+/** 点击空白：无需额外处理，onGlobalMousedown 已覆盖 */
+function onPaneClick() {}
 
 /** 双击空白：在点击坐标处新建节点 */
 function onPaneDblClick(event: MouseEvent) {
@@ -265,21 +285,34 @@ function onConnect(connection: {
 </script>
 
 <style>
+.aix-flow-search__wrap {
+  display: flex;
+  align-items: center;
+  height: 42px;
+  padding: 0 4px;
+  border-radius: 12px;
+  background: var(--aix-colorBgElevated, #fff);
+  box-shadow: 0 6px 36px rgb(0 0 0 / 0.12);
+}
+
 .aix-flow-search__btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   border: none;
-  border-radius: 12px;
-  background: var(--aix-colorBgElevated, #fff);
-  box-shadow: 0 6px 36px rgb(0 0 0 / 0.12);
+  border-radius: 6px;
+  background: transparent;
   cursor: pointer;
 }
 
-.aix-flow-search__btn.active {
+.aix-flow-search__btn:hover {
   background: var(--aix-controlItemBgHover, #f5f5f5);
+}
+
+.aix-flow-search__btn.active {
+  background: #e6ebfd;
 }
 
 .aix-flow-search-panel {

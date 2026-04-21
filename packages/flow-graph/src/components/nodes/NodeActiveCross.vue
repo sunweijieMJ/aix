@@ -1,7 +1,7 @@
 <template>
   <svg
     class="aix-flow-node__cross"
-    viewBox="0 0 160 160"
+    viewBox="0 0 120 120"
     xmlns="http://www.w3.org/2000/svg"
     aria-hidden="true"
   >
@@ -20,12 +20,14 @@
         <stop offset="100%" :stop-color="color" stop-opacity="0" />
       </linearGradient>
     </defs>
-    <!-- 每条臂：从中心(46,46)出发的细长三角形，宽端在中心，尖端在外 -->
-    <polygon
+    <!-- 每条臂：stroke 线段，uniform 宽度，渐变从中心向外透明 -->
+    <path
       v-for="dir in directions"
       :key="`p-${dir.id}`"
-      :points="dir.points"
-      :fill="`url(#${dir.id}-${uid})`"
+      :d="`M60 60 L${dir.tx} ${dir.ty}`"
+      :stroke="`url(#${dir.id}-${uid})`"
+      stroke-width="2"
+      stroke-linecap="round"
       class="aix-cross-arm"
     />
   </svg>
@@ -53,12 +55,12 @@ withDefaults(defineProps<Props>(), {
 });
 
 /** 四个方向的三角形臂：points 为三角形顶点，渐变从中心(46,46)向外端 */
-// 半宽 1px，中心(80,80)，臂长 80px
+// 中心(60,60)，臂长 60px
 const directions = [
-  { id: 'cr', x1: 80, y1: 80, x2: 160, y2: 80, points: '80,79 80,81 160,80' },
-  { id: 'cl', x1: 80, y1: 80, x2: 0, y2: 80, points: '80,79 80,81 0,80' },
-  { id: 'cd', x1: 80, y1: 80, x2: 80, y2: 160, points: '79,80 81,80 80,160' },
-  { id: 'cu', x1: 80, y1: 80, x2: 80, y2: 0, points: '79,80 81,80 80,0' },
+  { id: 'cr', x1: 60, y1: 60, x2: 120, y2: 60, tx: 120, ty: 60 },
+  { id: 'cl', x1: 60, y1: 60, x2: 0, y2: 60, tx: 0, ty: 60 },
+  { id: 'cd', x1: 60, y1: 60, x2: 60, y2: 120, tx: 60, ty: 120 },
+  { id: 'cu', x1: 60, y1: 60, x2: 60, y2: 0, tx: 60, ty: 0 },
 ];
 </script>
 
@@ -68,27 +70,21 @@ const directions = [
   z-index: 0;
   top: 50%;
   left: 50%;
-  width: 160px;
-  height: 160px;
+  width: 120px;
+  height: 120px;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
 .aix-cross-arm {
-  transform-origin: 80px 80px;
-  animation: aix-cross-expand 0.3s ease-out forwards;
-  opacity: 0;
+  animation: aix-cross-expand 0.35s ease-out forwards;
+  stroke-dasharray: 60;
+  stroke-dashoffset: 60;
 }
 
 @keyframes aix-cross-expand {
-  from {
-    transform: scale(0.4);
-    opacity: 0;
-  }
-
   to {
-    transform: scale(1);
-    opacity: 1;
+    stroke-dashoffset: 0;
   }
 }
 </style>

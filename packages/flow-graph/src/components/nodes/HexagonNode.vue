@@ -6,10 +6,17 @@
   >
     <Tooltip :content="data?.label ?? ''" :disabled="!data?.label" placement="top">
       <div class="aix-hexagon-node__wrapper" :style="{ width: `${size}px`, height: `${size}px` }">
-        <NodeActiveCross v-if="nodeState === 'active'" :uid="`h-${id}`" />
+        <NodeActiveCross
+          v-if="nodeState === 'active'"
+          :uid="`h-${id}`"
+          :color="data?.color || '#963096'"
+        />
         <div
           class="aix-hexagon-node"
-          :class="[`aix-hexagon-node--${nodeState}`, { selecting: data?.selecting }]"
+          :class="[`aix-hexagon-node--${nodeState}`]"
+          :style="
+            data?.selecting ? { filter: `drop-shadow(0 0 4px ${data?.color || '#963096'})` } : {}
+          "
           @click="onNodeClick"
         >
           <Handle type="target" :position="Position.Left" class="aix-flow-node__handle" />
@@ -125,9 +132,5 @@ function onContextVisibleChange(visible: boolean) {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-}
-
-.aix-hexagon-node.selecting {
-  filter: drop-shadow(0 0 4px var(--aix-flowGraphBrand, #1546f2));
 }
 </style>

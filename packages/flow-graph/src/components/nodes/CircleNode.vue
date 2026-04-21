@@ -6,14 +6,21 @@
   >
     <Tooltip :content="data?.label ?? ''" :disabled="!data?.label" placement="top">
       <div class="aix-circle-node__wrapper" :style="{ width: `${size}px`, height: `${size}px` }">
-        <NodeActiveCross v-if="nodeState === 'active'" :uid="`c-${id}`" />
+        <NodeActiveCross
+          v-if="nodeState === 'active'"
+          :uid="`c-${id}`"
+          :color="data?.color || '#86909c'"
+        />
         <div
           class="aix-circle-node"
-          :class="[`aix-circle-node--${nodeState}`, { selecting: data?.selecting }]"
+          :class="[`aix-circle-node--${nodeState}`]"
           :style="{
             background: data?.color || 'var(--aix-flowGraphNodeColor, #86909c)',
             width: `${size}px`,
             height: `${size}px`,
+            filter: data?.selecting
+              ? `drop-shadow(0 0 4px ${data?.color || '#86909c'})`
+              : undefined,
           }"
           @click="onNodeClick"
         >
@@ -123,9 +130,5 @@ function onContextVisibleChange(visible: boolean) {
   inset: 10px;
   border-radius: 50%;
   background: var(--aix-colorBgElevated, #fff);
-}
-
-.aix-circle-node.selecting {
-  filter: drop-shadow(0 0 4px var(--aix-flowGraphBrand, #1546f2));
 }
 </style>
