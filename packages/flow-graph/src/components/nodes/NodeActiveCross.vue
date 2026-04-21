@@ -1,7 +1,7 @@
 <template>
   <svg
     class="aix-flow-node__cross"
-    viewBox="0 0 92 92"
+    viewBox="0 0 160 160"
     xmlns="http://www.w3.org/2000/svg"
     aria-hidden="true"
   >
@@ -53,16 +53,12 @@ withDefaults(defineProps<Props>(), {
 });
 
 /** 四个方向的三角形臂：points 为三角形顶点，渐变从中心(46,46)向外端 */
-// 半宽 2px，臂长 46px（到 SVG 边缘）
+// 半宽 1px，中心(80,80)，臂长 80px
 const directions = [
-  // 右：中心两点(46,44)(46,48) → 右端尖(92,46)
-  { id: 'cr', x1: 46, y1: 46, x2: 92, y2: 46, points: '46,44 46,48 92,46' },
-  // 左：中心两点(46,44)(46,48) → 左端尖(0,46)
-  { id: 'cl', x1: 46, y1: 46, x2: 0, y2: 46, points: '46,44 46,48 0,46' },
-  // 下：中心两点(44,46)(48,46) → 下端尖(46,92)
-  { id: 'cd', x1: 46, y1: 46, x2: 46, y2: 92, points: '44,46 48,46 46,92' },
-  // 上：中心两点(44,46)(48,46) → 上端尖(46,0)
-  { id: 'cu', x1: 46, y1: 46, x2: 46, y2: 0, points: '44,46 48,46 46,0' },
+  { id: 'cr', x1: 80, y1: 80, x2: 160, y2: 80, points: '80,79 80,81 160,80' },
+  { id: 'cl', x1: 80, y1: 80, x2: 0, y2: 80, points: '80,79 80,81 0,80' },
+  { id: 'cd', x1: 80, y1: 80, x2: 80, y2: 160, points: '79,80 81,80 80,160' },
+  { id: 'cu', x1: 80, y1: 80, x2: 80, y2: 0, points: '79,80 81,80 80,0' },
 ];
 </script>
 
@@ -72,14 +68,14 @@ const directions = [
   z-index: 0;
   top: 50%;
   left: 50%;
-  width: 92px;
-  height: 92px;
+  width: 160px;
+  height: 160px;
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
 .aix-cross-arm {
-  transform-origin: 46px 46px;
+  transform-origin: 80px 80px;
   animation: aix-cross-expand 0.3s ease-out forwards;
   opacity: 0;
 }
