@@ -32,6 +32,8 @@ export interface EdgeData {
   color?: string;
   /** 中间拐点列表，按顺序连成圆角折线 */
   waypoints?: WayPoint[];
+  /** 是否处于高亮状态（供外部流程驱动，显示光晕效果） */
+  selecting?: boolean;
 }
 
 /** 本组件的节点类型别名（带 NodeData 的 VueFlow Node） */
@@ -60,6 +62,8 @@ export interface FlowGraphProps {
   defaultNodeSize?: number;
   /** 默认六边形节点尺寸（px），默认 `40` */
   defaultHexagonSize?: number;
+  /** 搜索联想列表最大高度（px），超出后滚动，默认 200 */
+  suggestionsMaxHeight?: number;
   /** 自定义节点类型映射；会与内置 `default`/`hexagon` 合并，key 冲突时覆盖内置 */
   nodeTypes?: NodeTypesMap;
   /** 自定义边类型映射；会与内置 `default` 合并，key 冲突时覆盖内置 */

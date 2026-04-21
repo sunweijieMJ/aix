@@ -1,5 +1,5 @@
 import { useVueFlow } from '@vue-flow/core';
-import { computed, type Ref } from 'vue';
+import { computed, nextTick, type Ref } from 'vue';
 import type { NodeData } from '../types';
 
 /** {@link useNodeInteraction} 的入参 */
@@ -79,14 +79,19 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
   function onCopy() {
     const node = getNodes.value.find((n) => n.id === id);
     if (!node) return;
+    const newId = createNodeId(`${node.id}-copy`);
     addNodes([
       {
         ...node,
-        id: createNodeId(`${node.id}-copy`),
+        id: newId,
         position: { x: node.position.x + 40, y: node.position.y + 40 },
         data: { ...node.data, state: 'default' },
       },
     ]);
+    nextTick(() => {
+      const newNode = getNodes.value.find((n) => n.id === newId);
+      if (newNode) newNode.selected = false;
+    });
   }
 
   function onCommand(command: string | number) {

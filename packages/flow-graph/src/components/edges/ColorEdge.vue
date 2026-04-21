@@ -5,6 +5,16 @@
     </marker>
   </defs>
 
+  <!-- 外部控制的高亮光晕（通过 edge.data.selecting） -->
+  <path
+    v-if="edgeData.selecting"
+    :d="path"
+    fill="none"
+    :stroke="color"
+    stroke-width="6"
+    stroke-linecap="round"
+    :style="{ filter: `blur(3px)`, opacity: 0.4 }"
+  />
   <!-- 透明宽命中区域，方便点击选中；mousedown 在路径上插入新 waypoint -->
   <path
     :d="path"
@@ -39,7 +49,9 @@
         v-for="(wp, i) in waypoints"
         :key="i"
         class="aix-edge-waypoint nodrag nopan"
-        :style="{ transform: `translate(-50%, -50%) translate(${wp.x}px, ${wp.y}px)` }"
+        :style="{
+          transform: `translate(-50%, -50%) translate(${viewport.x + wp.x * viewport.zoom}px, ${viewport.y + wp.y * viewport.zoom}px)`,
+        }"
         @mousedown.stop="startDrag($event, i)"
         @contextmenu.prevent.stop="removeWaypoint(i)"
       />
@@ -131,7 +143,7 @@ const path = computed(() => {
   const tgt = adjustedTarget.value;
   if (!wps.length) return `M${src.x},${src.y} L${tgt.x},${tgt.y}`;
   const pts = [src, ...wps, tgt];
-  const r = 16;
+  const r = 6;
   let d = `M${pts[0]!.x},${pts[0]!.y}`;
   for (let i = 1; i < pts.length - 1; i++) {
     const prev = pts[i - 1]!;
@@ -180,7 +192,11 @@ function onPathMousedown(event: MouseEvent) {
   const distToTarget = Math.hypot(pos.x - props.targetX, pos.y - props.targetY);
   const distToSource = Math.hypot(pos.x - props.sourceX, pos.y - props.sourceY);
   if (distToTarget < 20 || distToSource < 20) return;
-  const pts = [adjustedSource.value, ...waypoints.value, adjustedTarget.value];
+  const pts = [
+    { x: props.sourceX, y: props.sourceY },
+    ...waypoints.value,
+    { x: props.targetX, y: props.targetY },
+  ];
   let insertIndex = waypoints.value.length;
   let minDist = Infinity;
   for (let i = 0; i < pts.length - 1; i++) {
@@ -251,6 +267,8 @@ function startDrag(event: MouseEvent, index: number, originPos?: { x: number; y:
 
 .aix-edge-waypoint {
   position: absolute;
+  top: 0;
+  left: 0;
   width: 10px;
   height: 10px;
   border: 2px solid var(--aix-flowGraphBrand, #1546f2);

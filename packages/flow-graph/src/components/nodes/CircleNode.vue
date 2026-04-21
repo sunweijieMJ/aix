@@ -4,7 +4,12 @@
     @command="onCommand"
     @visible-change="onContextVisibleChange"
   >
-    <Tooltip :content="data?.label ?? ''" :disabled="!data?.label" placement="top">
+    <Tooltip
+      ref="tooltipRef"
+      :content="data?.label ?? ''"
+      :disabled="!data?.label || dragging"
+      placement="top"
+    >
       <div class="aix-circle-node__wrapper" :style="{ width: `${size}px`, height: `${size}px` }">
         <NodeActiveCross
           v-if="nodeState === 'active'"
@@ -52,10 +57,10 @@
  * - 右键打开上下文菜单（复制 / 删除），菜单显示期间节点切至 `context` 状态。
  * - 鼠标悬停时若配置了 `data.label` 会显示 Tooltip。
  */
-import { ContextMenu, DropdownItem, Tooltip } from '@aix/popper';
+import { ContextMenu, DropdownItem, Tooltip, type TooltipExpose } from '@aix/popper';
 import { Handle, Position } from '@vue-flow/core';
 import type { NodeProps } from '@vue-flow/core';
-import { computed, toRef } from 'vue';
+import { computed, ref, toRef, watch } from 'vue';
 import { useNodeInteraction } from '../../composables/useNodeInteraction';
 import type { NodeData } from '../../types';
 import NodeActiveCross from './NodeActiveCross.vue';
@@ -66,6 +71,15 @@ const props = defineProps<NodeProps<NodeData>>();
 
 /** 节点尺寸（像素），回退到默认 28 */
 const size = computed(() => props.data?.size ?? 28);
+
+const tooltipRef = ref<TooltipExpose | null>(null);
+
+watch(
+  () => props.dragging,
+  (v) => {
+    if (v) tooltipRef.value?.hide();
+  },
+);
 
 const { nodeState, onNodeClick, onContextOpen, onContextClose, onCommand } = useNodeInteraction({
   id: props.id,

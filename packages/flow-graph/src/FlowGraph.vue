@@ -33,7 +33,11 @@
           />
           <button class="aix-flow-search-bar__clear" @click="closeSearch">✕</button>
         </div>
-        <ul v-if="searchSuggestions.length" class="aix-flow-search-suggestions">
+        <ul
+          v-if="searchSuggestions.length"
+          class="aix-flow-search-suggestions"
+          :style="{ maxHeight: `${props.suggestionsMaxHeight ?? 200}px`, overflowY: 'auto' }"
+        >
           <li
             v-for="node in searchSuggestions"
             :key="node.id"
@@ -53,11 +57,7 @@
         </button>
         <FlowControls />
         <div class="aix-flow-search__wrap">
-          <button
-            class="aix-flow-search__btn"
-            :class="{ active: searchOpen }"
-            @click="toggleSearch"
-          >
+          <button class="aix-flow-search__btn" @click="toggleSearch">
             <img src="./assets/icon-search.svg" width="18" height="18" alt="搜索" />
           </button>
         </div>
@@ -309,10 +309,6 @@ function onConnect(connection: {
 
 .aix-flow-search__btn:hover {
   background: var(--aix-controlItemBgHover, #f5f5f5);
-}
-
-.aix-flow-search__btn.active {
-  background: #e6ebfd;
 }
 
 .aix-flow-search-panel {

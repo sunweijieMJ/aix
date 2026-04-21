@@ -4,7 +4,12 @@
     @command="onCommand"
     @visible-change="onContextVisibleChange"
   >
-    <Tooltip :content="data?.label ?? ''" :disabled="!data?.label" placement="top">
+    <Tooltip
+      ref="tooltipRef"
+      :content="data?.label ?? ''"
+      :disabled="!data?.label || dragging"
+      placement="top"
+    >
       <div class="aix-hexagon-node__wrapper" :style="{ width: `${size}px`, height: `${size}px` }">
         <NodeActiveCross
           v-if="nodeState === 'active'"
@@ -64,10 +69,10 @@
  * 六边形节点：与 {@link CircleNode} 行为一致，仅视觉不同。
  * 使用三层嵌套多边形表现层级；`context` 状态下内外填充对调。
  */
-import { ContextMenu, DropdownItem, Tooltip } from '@aix/popper';
+import { ContextMenu, DropdownItem, Tooltip, type TooltipExpose } from '@aix/popper';
 import { Handle, Position } from '@vue-flow/core';
 import type { NodeProps } from '@vue-flow/core';
-import { computed, toRef } from 'vue';
+import { computed, ref, toRef, watch } from 'vue';
 import { useNodeInteraction } from '../../composables/useNodeInteraction';
 import type { NodeData } from '../../types';
 import NodeActiveCross from './NodeActiveCross.vue';
@@ -80,6 +85,14 @@ const props = defineProps<NodeProps<NodeData>>();
 const size = computed(() => props.data?.size ?? 40);
 /** 节点填充色（外层/中层/内层共用） */
 const fillColor = computed(() => props.data?.color || 'var(--aix-flowGraphHexagonColor, #963096)');
+
+const tooltipRef = ref<TooltipExpose | null>(null);
+watch(
+  () => props.dragging,
+  (v) => {
+    if (v) tooltipRef.value?.hide();
+  },
+);
 
 const { nodeState, onNodeClick, onContextOpen, onContextClose, onCommand } = useNodeInteraction({
   id: props.id,
