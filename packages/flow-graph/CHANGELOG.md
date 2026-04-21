@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.6
+
+### Patch Changes
+
+- 更新多路径样式
+
 ## 0.0.5
 
 ### Patch Changes
