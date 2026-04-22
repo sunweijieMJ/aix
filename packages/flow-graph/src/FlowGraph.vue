@@ -78,7 +78,7 @@
 import { Background } from '@vue-flow/background';
 import { Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import type { EdgeUpdateEvent, MouseTouchEvent } from '@vue-flow/core';
-import { computed, markRaw, nextTick, ref } from 'vue';
+import { computed, markRaw, nextTick, provide, ref } from 'vue';
 import ColorEdge from './components/edges/ColorEdge.vue';
 import FlowControls from './components/FlowControls.vue';
 import CircleNode from './components/nodes/CircleNode.vue';
@@ -116,6 +116,8 @@ const nodeSize = computed(() => props.defaultNodeSize ?? DEFAULT_CIRCLE_SIZE);
 const hexagonSize = computed(() => props.defaultHexagonSize ?? DEFAULT_HEXAGON_SIZE);
 /** 是否开启栅格吸附 */
 const snapEnabled = computed(() => props.snapGrid !== false);
+
+provide('flowSnap', { snapEnabled, gridSize, nodeSize, hexagonSize });
 
 const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData, fitView } = useVueFlow();
 

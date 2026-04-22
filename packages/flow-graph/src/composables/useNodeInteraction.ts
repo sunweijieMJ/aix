@@ -1,5 +1,5 @@
 import { useVueFlow } from '@vue-flow/core';
-import { computed, nextTick, type Ref } from 'vue';
+import { computed, inject, nextTick, type ComputedRef, type Ref } from 'vue';
 import type { NodeData } from '../types';
 
 /** {@link useNodeInteraction} 的入参 */
@@ -24,7 +24,7 @@ export interface UseNodeInteractionReturn {
   onContextClose: () => void;
   /** 删除当前节点 */
   onDelete: () => void;
-  /** 复制当前节点到偏移 (40, 40) 的位置 */
+  /** 复制当前节点，位置对齐栅格并自动避开重叠 */
   onCopy: () => void;
   /** 菜单 command 事件的统一派发入口 */
   onCommand: (command: string | number) => void;
@@ -36,9 +36,17 @@ export interface UseNodeInteractionReturn {
  * 右键菜单本身由 `@aix/popper` 的 ContextMenu 处理（包括定位、外点关闭、ESC 关闭等），
  * 本 composable 只负责业务语义与状态同步。
  */
+interface FlowSnapContext {
+  snapEnabled: ComputedRef<boolean>;
+  gridSize: ComputedRef<number>;
+  nodeSize: ComputedRef<number>;
+  hexagonSize: ComputedRef<number>;
+}
+
 export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeInteractionReturn {
   const { id, data, supportContextState = true } = options;
   const { removeNodes, addNodes, getNodes, updateNodeData } = useVueFlow();
+  const snap = inject<FlowSnapContext>('flowSnap');
 
   const nodeState = computed(() => data.value?.state ?? 'default');
 
@@ -80,11 +88,34 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
     const node = getNodes.value.find((n) => n.id === id);
     if (!node) return;
     const newId = createNodeId(`${node.id}-copy`);
+    const step = snap?.gridSize.value ?? 40;
+    // 与 onNodeDragStop 保持一致：优先用 data.size，否则按节点类型取默认尺寸
+    const defaultSize =
+      node.type === 'hexagon' ? (snap?.hexagonSize.value ?? 40) : (snap?.nodeSize.value ?? 28);
+    const half = (node.data?.size ?? defaultSize) / 2;
+
+    function snapPos(x: number, y: number) {
+      if (!snap?.snapEnabled.value) return { x, y };
+      return {
+        x: Math.round((x + half) / step) * step - half,
+        y: Math.round((y + half) / step) * step - half,
+      };
+    }
+
+    // 从偏移一格开始，找第一个不与现有节点完全重叠的位置
+    const existingPositions = new Set(getNodes.value.map((n) => `${n.position.x},${n.position.y}`));
+    let offset = step;
+    let pos = snapPos(node.position.x + offset, node.position.y + offset);
+    while (existingPositions.has(`${pos.x},${pos.y}`)) {
+      offset += step;
+      pos = snapPos(node.position.x + offset, node.position.y + offset);
+    }
+
     addNodes([
       {
         ...node,
         id: newId,
-        position: { x: node.position.x + 40, y: node.position.y + 40 },
+        position: pos,
         data: { ...node.data, state: 'default' },
       },
     ]);
