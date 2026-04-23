@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.11
+
+### Patch Changes
+
+- 导出尺寸
+
 ## 0.0.10
 
 ### Patch Changes
