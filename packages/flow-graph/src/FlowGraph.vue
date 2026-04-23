@@ -8,6 +8,7 @@
     :nodes-connectable="props.connectable ?? false"
     @connect="onConnect"
     @edge-update="onEdgeUpdate"
+    @node-drag-start="onNodeDragStart"
     @node-drag-stop="onNodeDragStop"
     @pane-dbl-click="onPaneDblClick"
     @node-click="({ node, event }) => emit('node-click', { node, event })"
@@ -16,38 +17,11 @@
   >
     <Background v-if="snapEnabled" variant="lines" :gap="gridSize" :size="1" color="#e5e6eb" />
     <Background v-else />
-    <Panel v-if="searchOpen" position="top-center">
-      <div class="aix-flow-search-panel">
-        <div class="aix-flow-search-bar">
-          <img src="./assets/icon-search.svg" width="18" height="18" alt="" />
-          <input
-            ref="searchInputRef"
-            v-model="searchKeyword"
-            class="aix-flow-search-bar__input"
-            placeholder="搜索节点"
-            autocomplete="off"
-            @input="onSearch"
-            @keydown.escape="closeSearch"
-            @keydown.enter="onSearchEnter"
-          />
-          <button class="aix-flow-search-bar__clear" @click="closeSearch">✕</button>
-        </div>
-        <ul
-          v-if="searchSuggestions.length"
-          class="aix-flow-search-suggestions"
-          :style="{ maxHeight: `${props.suggestionsMaxHeight ?? 200}px`, overflowY: 'auto' }"
-        >
-          <li
-            v-for="node in searchSuggestions"
-            :key="node.id"
-            class="aix-flow-search-suggestions__item"
-            @mousedown.prevent="selectSuggestion(node)"
-          >
-            {{ node.data?.label }}
-          </li>
-        </ul>
-      </div>
-    </Panel>
+    <FlowSearch
+      ref="flowSearchRef"
+      :nodes="modelNodes"
+      :suggestions-max-height="props.suggestionsMaxHeight"
+    />
     <Panel position="bottom-center">
       <div class="aix-flow-bottom-bar">
         <button class="aix-flow-add-btn" @click="addNode">
@@ -56,7 +30,7 @@
         </button>
         <FlowControls />
         <div class="aix-flow-search__wrap">
-          <button class="aix-flow-search__btn" @click="toggleSearch">
+          <button class="aix-flow-search__btn" @click="flowSearchRef?.toggle()">
             <img src="./assets/icon-search.svg" width="18" height="18" alt="搜索" />
           </button>
         </div>
@@ -78,9 +52,10 @@
 import { Background } from '@vue-flow/background';
 import { Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import type { EdgeUpdateEvent, MouseTouchEvent } from '@vue-flow/core';
-import { computed, markRaw, nextTick, provide, ref } from 'vue';
+import { computed, markRaw, provide, ref } from 'vue';
 import ColorEdge from './components/edges/ColorEdge.vue';
 import FlowControls from './components/FlowControls.vue';
+import FlowSearch from './components/FlowSearch.vue';
 import CircleNode from './components/nodes/CircleNode.vue';
 import HexagonNode from './components/nodes/HexagonNode.vue';
 import { createNodeId } from './composables/useNodeInteraction';
@@ -119,7 +94,10 @@ const snapEnabled = computed(() => props.snapGrid !== false);
 
 provide('flowSnap', { snapEnabled, gridSize, nodeSize, hexagonSize });
 
-const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData, fitView } = useVueFlow();
+const edgesDeletable = computed(() => props.edgesDeletable !== false);
+provide('flowEdgesDeletable', edgesDeletable);
+
+const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData } = useVueFlow();
 
 /** 内置节点类型（markRaw 避免 Vue 代理开销） */
 const builtInNodeTypes = {
@@ -136,11 +114,25 @@ const mergedNodeTypes = computed(() => ({ ...builtInNodeTypes, ...(props.nodeTyp
 /** 合并内置 + 用户自定义边类型，同名 key 以用户为准 */
 const mergedEdgeTypes = computed(() => ({ ...builtInEdgeTypes, ...(props.edgeTypes ?? {}) }));
 
-/** 以 (x, y) 为中心创建新节点；开启吸附时会对齐到栅格 */
+/** 以 (x, y) 为中心创建新节点；开启吸附时会对齐到栅格并避开已有节点 */
 function createNode(x: number, y: number) {
   const half = nodeSize.value / 2;
-  const px = snapEnabled.value ? Math.round(x / gridSize.value) * gridSize.value - half : x;
-  const py = snapEnabled.value ? Math.round(y / gridSize.value) * gridSize.value - half : y;
+  const snap = snapEnabled.value;
+  const step = gridSize.value;
+  const baseX = snap ? Math.round(x / step) * step - half : x;
+  const baseY = snap ? Math.round(y / step) * step - half : y;
+
+  let px = baseX;
+  let py = baseY;
+  if (snap) {
+    const existing = new Set(modelNodes.value.map((n) => `${n.position.x},${n.position.y}`));
+    for (let r = 0; existing.has(`${px},${py}`); r++) {
+      const angle = r * 2.4;
+      px = Math.round((baseX + half + (r + 1) * step * Math.cos(angle)) / step) * step - half;
+      py = Math.round((baseY + half + (r + 1) * step * Math.sin(angle)) / step) * step - half;
+    }
+  }
+
   modelNodes.value = [
     ...modelNodes.value,
     {
@@ -175,78 +167,47 @@ function addNode() {
   createNode(px, py);
 }
 
-/** 节点拖拽结束：若开启吸附，将节点中心对齐到栅格 */
+/** 记录拖拽开始时的节点位置，用于重叠时回退 */
+const dragStartPositions = new Map<string, { x: number; y: number }>();
+
+function onNodeDragStart({ node }: { node: FlowNode }) {
+  dragStartPositions.set(node.id, { ...node.position });
+}
+
+/** 节点拖拽结束：若开启吸附，将节点中心对齐到栅格；若目标位置与其他节点重叠则回退原位 */
 function onNodeDragStop({ node }: { node: FlowNode }) {
   if (!snapEnabled.value) return;
   const size = node.type === 'hexagon' ? hexagonSize.value : nodeSize.value;
   const half = size / 2;
-  node.position = {
-    x: Math.round((node.position.x + half) / gridSize.value) * gridSize.value - half,
-    y: Math.round((node.position.y + half) / gridSize.value) * gridSize.value - half,
-  };
-}
-
-/** 搜索状态 */
-const searchOpen = ref(false);
-const searchKeyword = ref('');
-const searchInputRef = ref<HTMLInputElement | null>(null);
-
-const suggestionsVisible = ref(true);
-
-const searchSuggestions = computed(() => {
-  const kw = searchKeyword.value.trim().toLowerCase();
-  if (!kw || !suggestionsVisible.value) return [];
-  return modelNodes.value.filter((n) => (n.data?.label ?? '').toLowerCase().includes(kw));
-});
-
-function toggleSearch() {
-  if (searchOpen.value) {
-    closeSearch();
+  const step = gridSize.value;
+  const snappedCx = Math.round((node.position.x + half) / step) * step;
+  const snappedCy = Math.round((node.position.y + half) / step) * step;
+  const snappedX = snappedCx - half;
+  const snappedY = snappedCy - half;
+  const occupied = modelNodes.value.some((n) => {
+    if (n.id === node.id) return false;
+    const nSize = n.type === 'hexagon' ? hexagonSize.value : nodeSize.value;
+    const nHalf = nSize / 2;
+    return n.position.x + nHalf === snappedCx && n.position.y + nHalf === snappedCy;
+  });
+  if (occupied) {
+    const origin = dragStartPositions.get(node.id);
+    if (origin) node.position = { ...origin };
   } else {
-    searchOpen.value = true;
-    nextTick(() => searchInputRef.value?.focus());
+    node.position = { x: snappedX, y: snappedY };
   }
+  dragStartPositions.delete(node.id);
 }
 
-function closeSearch() {
-  searchOpen.value = false;
-  searchKeyword.value = '';
-  modelNodes.value.forEach((n) => {
-    if (n.data?.selecting) updateNodeData(n.id, { ...n.data, selecting: false });
-  });
-}
-
-function onSearch() {
-  suggestionsVisible.value = true;
-  const kw = searchKeyword.value.trim().toLowerCase();
-  modelNodes.value.forEach((n) => {
-    const matched = kw !== '' && (n.data?.label ?? '').toLowerCase().includes(kw);
-    if (!!n.data?.selecting !== matched) {
-      updateNodeData(n.id, { ...n.data, selecting: matched });
-    }
-  });
-}
-
-function onSearchEnter() {
-  if (searchSuggestions.value.length === 1) selectSuggestion(searchSuggestions.value[0]!);
-}
-
-function selectSuggestion(node: FlowNode) {
-  modelNodes.value.forEach((n) => {
-    const selecting = n.id === node.id;
-    if (!!n.data?.selecting !== selecting) {
-      updateNodeData(n.id, { ...n.data, selecting });
-    }
-  });
-  searchKeyword.value = node.data?.label ?? '';
-  suggestionsVisible.value = false;
-  fitView({ nodes: [node.id], duration: 300, padding: 0.5 });
-}
+const flowSearchRef = ref<{
+  toggle: () => void;
+  close: () => void;
+  resetSelecting: () => void;
+} | null>(null);
 
 /** 重置所有节点交互状态（active/context/selecting）并清空搜索 */
 function resetAllNodeStates() {
-  suggestionsVisible.value = false;
-  searchKeyword.value = '';
+  flowSearchRef.value?.resetSelecting();
   modelNodes.value.forEach((n) => {
     const state = n.data?.state;
     if ((state && state !== 'default') || n.data?.selecting) {

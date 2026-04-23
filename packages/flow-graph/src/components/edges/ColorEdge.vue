@@ -86,7 +86,7 @@
 import { ContextMenu, DropdownItem, type ContextMenuExpose } from '@aix/popper';
 import { EdgeLabelRenderer, useVueFlow } from '@vue-flow/core';
 import type { EdgeProps } from '@vue-flow/core';
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, type Ref } from 'vue';
 import {
   DEFAULT_CIRCLE_SIZE,
   DEFAULT_HEXAGON_SIZE,
@@ -107,6 +107,9 @@ const sharedColors = computed(() => edgeData.value.sharedColors ?? []);
 const gradientId = computed(() => `grad-${props.id}`);
 /** 渐变 stops：当前色 → 各共用色均匀分布 */
 const gradientStops = computed(() => [color.value, ...sharedColors.value]);
+
+const edgesDeletable = inject<Ref<boolean>>('flowEdgesDeletable', ref(true));
+const deletable = computed(() => edgeData.value.deletable !== false && edgesDeletable.value);
 
 const contextMenuRef = ref<ContextMenuExpose | null>(null);
 
@@ -149,19 +152,27 @@ function adjustToNodeEdge(
   };
 }
 
+/** 节点中心坐标（从 findNode 读取，比 handle 坐标更准确） */
+function centerOf(nodeId: string): { x: number; y: number } {
+  const node = findNode(nodeId);
+  const data = node?.data as NodeData | undefined;
+  const size =
+    data?.size ?? (node?.type === 'hexagon' ? DEFAULT_HEXAGON_SIZE : DEFAULT_CIRCLE_SIZE);
+  return { x: (node?.position.x ?? 0) + size / 2, y: (node?.position.y ?? 0) + size / 2 };
+}
+
 const adjustedSource = computed(() => {
   const wps = waypoints.value;
-  const toX = wps.length ? wps[0]!.x : props.targetX;
-  const toY = wps.length ? wps[0]!.y : props.targetY;
-  return adjustToNodeEdge(props.sourceX, props.sourceY, toX, toY, sourceRadius.value);
+  const c = centerOf(props.source);
+  const to = wps.length ? wps[0]! : centerOf(props.target);
+  return adjustToNodeEdge(c.x, c.y, to.x, to.y, sourceRadius.value);
 });
 
 const adjustedTarget = computed(() => {
   const wps = waypoints.value;
-  const fromX = wps.length ? wps[wps.length - 1]!.x : props.sourceX;
-  const fromY = wps.length ? wps[wps.length - 1]!.y : props.sourceY;
-  // 额外缩进箭头长度（markerWidth * stroke-width / 2），让箭头尖端贴合节点边缘
-  return adjustToNodeEdge(props.targetX, props.targetY, fromX, fromY, targetRadius.value + 6);
+  const c = centerOf(props.target);
+  const from = wps.length ? wps[wps.length - 1]! : centerOf(props.source);
+  return adjustToNodeEdge(c.x, c.y, from.x, from.y, targetRadius.value + 6);
 });
 
 /** 有 waypoints 时使用圆角折线路径；无 waypoints 时为直线 */
@@ -194,7 +205,7 @@ let cleanupDrag: (() => void) | null = null;
 
 /** 打开删除菜单（通过 ContextMenu 的虚拟元素定位） */
 function onPathContextmenu(event: MouseEvent) {
-  contextMenuRef.value?.show(event);
+  if (deletable.value) contextMenuRef.value?.show(event);
 }
 
 onBeforeUnmount(() => {

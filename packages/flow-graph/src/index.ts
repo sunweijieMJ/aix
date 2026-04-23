@@ -2,6 +2,7 @@ import type { App } from 'vue';
 import FlowGraph from './FlowGraph.vue';
 
 export { FlowGraph };
+export { calcOrthogonalWaypoints, setNodeType } from './utils';
 
 export type {
   FlowNode,

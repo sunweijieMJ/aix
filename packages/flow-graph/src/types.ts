@@ -43,6 +43,8 @@ export interface EdgeData {
   selecting?: boolean;
   /** 共用线段的其他路径颜色（用于渐变着色，由外部业务层写入） */
   sharedColors?: string[];
+  /** 是否允许删除此边，优先级高于全局 `edgesDeletable`，默认继承全局 */
+  deletable?: boolean;
 }
 
 /** 本组件的节点类型别名（带 NodeData 的 VueFlow Node） */
@@ -77,6 +79,8 @@ export interface FlowGraphProps {
   nodeTypes?: NodeTypesMap;
   /** 自定义边类型映射；会与内置 `default` 合并，key 冲突时覆盖内置 */
   edgeTypes?: EdgeTypesMap;
+  /** 是否允许删除边（右键菜单删除），默认 `true`；单条边可通过 `edge.deletable` 覆盖 */
+  edgesDeletable?: boolean;
 }
 
 /** FlowGraph `connect` 事件的载荷；sourceHandle/targetHandle 已规范化为 `string | null`（不含 undefined） */
