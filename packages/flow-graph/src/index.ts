@@ -3,6 +3,7 @@ import FlowGraph from './FlowGraph.vue';
 
 export { FlowGraph };
 export { calcOrthogonalWaypoints, setNodeType } from './utils';
+export { DEFAULT_CIRCLE_SIZE, DEFAULT_HEXAGON_SIZE } from './types';
 
 export type {
   FlowNode,
