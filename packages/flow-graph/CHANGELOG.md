@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.12
+
+### Patch Changes
+
+- 添加minimap
+
 ## 0.0.11
 
 ### Patch Changes
