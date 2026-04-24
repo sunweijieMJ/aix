@@ -43,4 +43,6 @@ export function setNodeType(node: FlowNode, type: string | undefined): void {
   const diff = (newSize - oldSize) / 2;
   node.type = type;
   node.position = { x: node.position.x - diff, y: node.position.y - diff };
+  node.width = newSize;
+  node.height = newSize;
 }

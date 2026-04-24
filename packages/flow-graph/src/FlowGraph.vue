@@ -22,6 +22,7 @@
       :nodes="modelNodes"
       :suggestions-max-height="props.suggestionsMaxHeight"
     />
+    <MiniMap class="aix-flow-minimap" position="bottom-right" pannable zoomable />
     <Panel position="bottom-center">
       <div class="aix-flow-bottom-bar">
         <button class="aix-flow-add-btn" @click="addNode">
@@ -52,7 +53,9 @@
 import { Background } from '@vue-flow/background';
 import { Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import type { EdgeUpdateEvent, MouseTouchEvent } from '@vue-flow/core';
+import { MiniMap } from '@vue-flow/minimap';
 import { computed, markRaw, provide, ref } from 'vue';
+import '@vue-flow/minimap/dist/style.css';
 import ColorEdge from './components/edges/ColorEdge.vue';
 import FlowControls from './components/FlowControls.vue';
 import FlowSearch from './components/FlowSearch.vue';
@@ -367,6 +370,13 @@ function onConnect(connection: {
 
 .aix-flow-add-btn:hover {
   background: var(--aix-flowGraphBrandHover, #1240e0);
+}
+
+.aix-flow-minimap.vue-flow__minimap {
+  overflow: hidden;
+  border: none;
+  border-radius: 12px;
+  box-shadow: 0 6px 36px rgb(0 0 0 / 0.12);
 }
 
 /* 节点右键菜单样式 */
