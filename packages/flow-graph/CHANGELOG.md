@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.13
+
+### Patch Changes
+
+- 升级依赖
+
 ## 0.0.12
 
 ### Patch Changes
