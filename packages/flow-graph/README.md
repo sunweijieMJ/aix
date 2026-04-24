@@ -91,3 +91,29 @@ function onConnect(connection: Connection) {
 - `addNode() / removeNode() / updateNode() / getNode()`
 - `addEdge() / removeEdge() / updateEdge() / getEdge()`
 - `selectAll() / clearSelection()`
+
+## API
+
+### Props
+
+| 属性名 | 类型 | 默认值 | 必填 | 说明 |
+|--------|------|--------|:----:|------|
+| `nodes` | `Array<FlowNode>` | - | - | v-model:nodes 绑定的节点数组 |
+| `edges` | `Array<FlowEdge>` | - | - | v-model:edges 绑定的边数组 |
+| `connectable` | `boolean` | - | - | 是否允许手动连线（拖拽节点 Handle 创建新边），默认 `false` |
+| `snapGrid` | `boolean` | - | - | 是否开启栅格吸附（拖拽节点结束时吸附到网格），默认 `true` |
+| `gridSize` | `number` | - | - | 栅格尺寸（px），同时作为背景线间距，默认 `40` |
+| `defaultNodeSize` | `number` | - | - | 默认圆形节点尺寸（px），默认 `28` |
+| `defaultHexagonSize` | `number` | - | - | 默认六边形节点尺寸（px），默认 `40` |
+| `suggestionsMaxHeight` | `number` | - | - | 搜索联想列表最大高度（px），超出后滚动，默认 200 |
+| `nodeTypes` | `NodeTypesMap` | - | - | 自定义节点类型映射；会与内置 `default`/`hexagon` 合并，key 冲突时覆盖内置 |
+| `edgeTypes` | `EdgeTypesMap` | - | - | 自定义边类型映射；会与内置 `default` 合并，key 冲突时覆盖内置 |
+| `edgesDeletable` | `boolean` | - | - | 是否允许删除边（右键菜单删除），默认 `true`；单条边可通过 `edge.deletable` 覆盖 |
+
+### Events
+
+| 事件名 | 参数 | 说明 |
+|--------|------|------|
+| `node-click` | `{ node: FlowNode; event: MouseTouchEvent }` | 节点被点击 |
+| `node-right-click` | `{ node: FlowNode; event: MouseTouchEvent }` | - |
+| `connect` | `FlowConnection` | - |
