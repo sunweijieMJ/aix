@@ -23,7 +23,7 @@
       :suggestions-max-height="props.suggestionsMaxHeight"
     />
     <MiniMap class="aix-flow-minimap" position="bottom-right" pannable zoomable />
-    <Panel :position="bottomBarPos" :style="bottomBarStyle">
+    <Panel :position="bottomBarPos" :style="bottomBarStyle" class="aix-flow-bottom-panel">
       <div class="aix-flow-bottom-bar">
         <button class="aix-flow-add-btn" @click="addNode">
           <img src="./assets/icon-add-node.svg" width="18" height="18" alt="" />
@@ -375,6 +375,10 @@ function onConnect(connection: {
 
 .aix-flow-search-suggestions__item:hover {
   background: var(--aix-controlItemBgHover, #f5f5f5);
+}
+
+.aix-flow-bottom-panel {
+  transition: transform 0.3s ease;
 }
 
 .aix-flow-bottom-bar {
