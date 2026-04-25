@@ -107,9 +107,9 @@ const bottomBarPos = computed(() => {
 
 const bottomBarStyle = computed(() => {
   const p = props.bottomBarPosition;
-  if (!p || typeof p === 'string') return undefined;
+  if (!p || typeof p === 'string') return { transform: 'translate(0px, 0px)' };
   const { x = 0, y = 0 } = p.offset ?? {};
-  return x || y ? { transform: `translate(${x}px, ${y}px)` } : undefined;
+  return { transform: `translate(${x}px, ${y}px)` };
 });
 provide('flowEdgesDeletable', edgesDeletable);
 

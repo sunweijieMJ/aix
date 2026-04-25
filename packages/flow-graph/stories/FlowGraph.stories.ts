@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { FlowGraph } from '../src';
 import BasicEdit from './examples/BasicEdit.vue';
+import BottomBarPosition from './examples/BottomBarPosition.vue';
 import CustomNode from './examples/CustomNode.vue';
 import NodeEvents from './examples/NodeEvents.vue';
 import SharedPath from './examples/SharedPath.vue';
@@ -15,6 +16,13 @@ const meta: Meta<typeof FlowGraph> = {
 
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+export const 底部工具栏位置: Story = {
+  render: () => ({
+    components: { BottomBarPosition },
+    template: '<div style="width:100%;height:600px"><BottomBarPosition /></div>',
+  }),
+};
 
 export const 节点事件: Story = {
   render: () => ({
