@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.17
+
+### Patch Changes
+
+- 更新添加bottomBarPosition
+
 ## 0.0.16
 
 ### Patch Changes
