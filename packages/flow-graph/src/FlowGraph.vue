@@ -54,7 +54,7 @@ import { Background } from '@vue-flow/background';
 import { Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import type { EdgeUpdateEvent, MouseTouchEvent } from '@vue-flow/core';
 import { MiniMap } from '@vue-flow/minimap';
-import { computed, markRaw, provide, ref } from 'vue';
+import { computed, markRaw, onMounted, onUnmounted, provide, ref } from 'vue';
 import '@vue-flow/minimap/dist/style.css';
 import ColorEdge from './components/edges/ColorEdge.vue';
 import FlowControls from './components/FlowControls.vue';
@@ -100,7 +100,25 @@ provide('flowSnap', { snapEnabled, gridSize, nodeSize, hexagonSize });
 const edgesDeletable = computed(() => props.edgesDeletable !== false);
 provide('flowEdgesDeletable', edgesDeletable);
 
-const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData } = useVueFlow();
+const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData, getEdges, removeEdges } =
+  useVueFlow();
+
+function onKeyDelete(event: KeyboardEvent) {
+  if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+  const nonDeletableSelected = getEdges.value.some(
+    (e) => e.selected && (e.data?.deletable === false || !edgesDeletable.value),
+  );
+  if (!nonDeletableSelected) return;
+  event.stopPropagation();
+  event.preventDefault();
+  const toDelete = getEdges.value
+    .filter((e) => e.selected && e.data?.deletable !== false && edgesDeletable.value)
+    .map((e) => e.id);
+  if (toDelete.length) removeEdges(toDelete);
+}
+
+onMounted(() => document.addEventListener('keydown', onKeyDelete, true));
+onUnmounted(() => document.removeEventListener('keydown', onKeyDelete, true));
 
 /** 内置节点类型（markRaw 避免 Vue 代理开销） */
 const builtInNodeTypes = {
@@ -282,6 +300,7 @@ function onConnect(connection: {
 }
 
 .aix-flow-search__btn:hover {
+  border-radius: 8px;
   background: var(--aix-controlItemBgHover, #f5f5f5);
 }
 
@@ -348,7 +367,7 @@ function onConnect(connection: {
 .aix-flow-bottom-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .aix-flow-add-btn {
@@ -390,10 +409,16 @@ function onConnect(connection: {
 
 .aix-flow-node-menu .aix-dropdown__item {
   height: 34px;
+  margin: 2px 0;
   padding: 0 12px;
   border-radius: 8px;
+  color: #4e5969;
   font-size: 14px;
   line-height: 22px;
+}
+
+.aix-flow-node-menu .aix-dropdown__item:hover {
+  color: #1d2129;
 }
 
 .aix-flow-node-menu__delete {

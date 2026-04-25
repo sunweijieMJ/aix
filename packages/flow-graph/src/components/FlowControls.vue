@@ -55,6 +55,7 @@ const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
 }
 
 .aix-flow-controls__btn:hover {
+  border-radius: 8px;
   background: var(--aix-controlItemBgHover, #f5f5f5);
 }
 

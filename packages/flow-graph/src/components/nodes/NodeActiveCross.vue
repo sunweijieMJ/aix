@@ -90,8 +90,10 @@ const armStops = computed(() => {
 .aix-flow-node__cross {
   position: absolute;
   z-index: 0;
-  top: 50%;
-  left: 50%;
+
+  /* 以节点中心为基准 */
+  top: calc(50% - 0.5px);
+  left: calc(50% - 0.5px);
   width: 120px;
   height: 120px;
   transform: translate(-50%, -50%);
