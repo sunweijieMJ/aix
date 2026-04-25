@@ -1,6 +1,15 @@
 import type { Node, Edge, MouseTouchEvent } from '@vue-flow/core';
 import type { Component } from 'vue';
 
+/** 面板位置类型 */
+export type PanelPositionType =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right';
+
 /** 圆形节点默认尺寸（px） */
 export const DEFAULT_CIRCLE_SIZE = 28;
 /** 六边形节点默认尺寸（px） */
@@ -81,6 +90,10 @@ export interface FlowGraphProps {
   edgeTypes?: EdgeTypesMap;
   /** 是否允许删除边（右键菜单删除），默认 `true`；单条边可通过 `edge.deletable` 覆盖 */
   edgesDeletable?: boolean;
+  /** 底部工具栏位置，默认 `'bottom-center'`；支持字符串或带偏移的对象形式 */
+  bottomBarPosition?:
+    | PanelPositionType
+    | { position?: PanelPositionType; offset?: { x?: number; y?: number } };
 }
 
 /** FlowGraph `connect` 事件的载荷；sourceHandle/targetHandle 已规范化为 `string | null`（不含 undefined） */

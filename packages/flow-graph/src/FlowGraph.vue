@@ -23,7 +23,7 @@
       :suggestions-max-height="props.suggestionsMaxHeight"
     />
     <MiniMap class="aix-flow-minimap" position="bottom-right" pannable zoomable />
-    <Panel position="bottom-center">
+    <Panel :position="bottomBarPos" :style="bottomBarStyle">
       <div class="aix-flow-bottom-bar">
         <button class="aix-flow-add-btn" @click="addNode">
           <img src="./assets/icon-add-node.svg" width="18" height="18" alt="" />
@@ -98,6 +98,19 @@ const snapEnabled = computed(() => props.snapGrid !== false);
 provide('flowSnap', { snapEnabled, gridSize, nodeSize, hexagonSize });
 
 const edgesDeletable = computed(() => props.edgesDeletable !== false);
+
+const bottomBarPos = computed(() => {
+  const p = props.bottomBarPosition;
+  if (!p) return 'bottom-center';
+  return typeof p === 'string' ? p : (p.position ?? 'bottom-center');
+});
+
+const bottomBarStyle = computed(() => {
+  const p = props.bottomBarPosition;
+  if (!p || typeof p === 'string') return undefined;
+  const { x = 0, y = 0 } = p.offset ?? {};
+  return x || y ? { transform: `translate(${x}px, ${y}px)` } : undefined;
+});
 provide('flowEdgesDeletable', edgesDeletable);
 
 const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData, getEdges, removeEdges } =
