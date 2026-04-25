@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.15
+
+### Patch Changes
+
+- 添加bottomBarStyle
+
 ## 0.0.14
 
 ### Patch Changes
