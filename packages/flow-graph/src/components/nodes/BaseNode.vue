@@ -7,7 +7,7 @@
     <Tooltip
       ref="tooltipRef"
       :content="data?.label ?? ''"
-      :disabled="!data?.label || dragging"
+      :disabled="!data?.label || dragging || (data?.selecting && data?.tooltipDisabled)"
       placement="top"
     >
       <div
@@ -82,6 +82,13 @@ watch(
   () => props.dragging,
   (v) => {
     if (v) tooltipRef.value?.hide();
+  },
+);
+watch(
+  () => props.data?.selecting,
+  (v) => {
+    if (v && props.data?.label && !props.data?.tooltipDisabled) tooltipRef.value?.show();
+    else tooltipRef.value?.hide();
   },
 );
 

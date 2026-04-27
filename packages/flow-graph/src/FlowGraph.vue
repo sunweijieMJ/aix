@@ -107,9 +107,9 @@ const bottomBarPos = computed(() => {
 
 const bottomBarStyle = computed(() => {
   const p = props.bottomBarPosition;
-  if (!p || typeof p === 'string') return { transform: 'translate(0px, 0px)' };
+  if (!p || typeof p === 'string') return {};
   const { x = 0, y = 0 } = p.offset ?? {};
-  return { transform: `translate(${x}px, ${y}px)` };
+  return { transform: `translateX(calc(-50% + ${x}px)) translateY(${y}px)` };
 });
 provide('flowEdgesDeletable', edgesDeletable);
 
@@ -366,10 +366,13 @@ function onConnect(connection: {
 .aix-flow-search-suggestions__item {
   height: 34px;
   padding: 0 12px;
+  overflow: hidden;
   border-radius: 8px;
   color: var(--aix-colorText, #1d2129);
   font-size: 14px;
   line-height: 34px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -413,6 +416,10 @@ function onConnect(connection: {
   border: none;
   border-radius: 12px;
   box-shadow: 0 6px 36px rgb(0 0 0 / 0.12);
+}
+
+.aix-flow-minimap.vue-flow__minimap svg {
+  display: block;
 }
 
 /* 节点右键菜单样式 */

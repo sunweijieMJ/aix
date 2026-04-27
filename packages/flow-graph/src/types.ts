@@ -34,6 +34,8 @@ export interface NodeData {
   size?: number;
   /** 节点所属路径的颜色列表（多路径共用时用于扇形着色和十字渐变） */
   pathColors?: string[];
+  /** 高亮（selecting）时是否禁用 Tooltip，默认 false（显示） */
+  tooltipDisabled?: boolean;
 }
 
 /** 折线拐点坐标（画布坐标系） */
