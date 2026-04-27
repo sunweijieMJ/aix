@@ -1,9 +1,9 @@
 <template>
   <BaseNode v-bind="$props" :default-size="DEFAULT_HEXAGON_SIZE" :fallback-color="FALLBACK_COLOR">
-    <template #default="{ size, nodeState, onClick }">
+    <template #default="{ size, nodeState, clicking, onClick }">
       <div
         class="aix-hexagon-node"
-        :class="`aix-hexagon-node--${nodeState}`"
+        :class="[`aix-hexagon-node--${nodeState}`, { 'aix-hexagon-node--clicking': clicking }]"
         :style="
           data?.selecting
             ? { filter: `drop-shadow(0 0 4px ${multiColors[0] || data?.color || FALLBACK_COLOR})` }
@@ -129,5 +129,23 @@ const multiColors = computed(() => props.data?.pathColors ?? []);
 
 .aix-hexagon-node--context {
   transform: scale(0.92);
+}
+
+.aix-hexagon-node--clicking {
+  animation: aix-node-click 0.3s ease;
+}
+
+@keyframes aix-node-click {
+  0% {
+    transform: scale(1);
+  }
+
+  40% {
+    transform: scale(0.88);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 </style>

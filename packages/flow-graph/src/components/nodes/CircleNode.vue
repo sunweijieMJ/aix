@@ -1,9 +1,9 @@
 <template>
   <BaseNode v-bind="$props" :default-size="DEFAULT_CIRCLE_SIZE" :fallback-color="FALLBACK_COLOR">
-    <template #default="{ size, nodeState, onClick }">
+    <template #default="{ size, nodeState, clicking, onClick }">
       <div
         class="aix-circle-node"
-        :class="`aix-circle-node--${nodeState}`"
+        :class="[`aix-circle-node--${nodeState}`, { 'aix-circle-node--clicking': clicking }]"
         :style="{
           background: data?.color || 'var(--aix-flowGraphNodeColor, #86909c)',
           width: `${size}px`,
@@ -56,6 +56,24 @@ const FALLBACK_COLOR = '#86909c';
 
 .aix-circle-node--context {
   transform: scale(0.92);
+}
+
+.aix-circle-node--clicking {
+  animation: aix-node-click 0.3s ease;
+}
+
+@keyframes aix-node-click {
+  0% {
+    transform: scale(1);
+  }
+
+  40% {
+    transform: scale(0.88);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 .aix-circle-node__inner {

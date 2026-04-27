@@ -1,5 +1,5 @@
 import { useVueFlow } from '@vue-flow/core';
-import { computed, inject, nextTick, type ComputedRef, type Ref } from 'vue';
+import { computed, inject, nextTick, ref, type ComputedRef, type Ref } from 'vue';
 import type { NodeData } from '../types';
 
 /** {@link useNodeInteraction} 的入参 */
@@ -16,6 +16,8 @@ export interface UseNodeInteractionOptions {
 export interface UseNodeInteractionReturn {
   /** 当前节点状态（default / context / active） */
   nodeState: Readonly<Ref<NonNullable<NodeData['state']>>>;
+  /** 点击动画触发标记 */
+  clicking: Ref<boolean>;
   /** 点击节点：在 active / default 之间切换 */
   onNodeClick: () => void;
   /** 右键菜单打开时调用：将节点切至 context 态 */
@@ -49,13 +51,21 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
   const snap = inject<FlowSnapContext>('flowSnap');
 
   const nodeState = computed(() => data.value?.state ?? 'default');
+  const clicking = ref(false);
 
   function setState(next: NodeData['state']) {
     updateNodeData(id, { ...data.value, state: next });
   }
 
+  function triggerClickAnimation() {
+    clicking.value = true;
+    setTimeout(() => {
+      clicking.value = false;
+    }, 300);
+  }
+
   function onNodeClick() {
-    // 先重置其他节点状态
+    triggerClickAnimation();
     getNodes.value.forEach((n) => {
       if (n.id !== id && n.data?.state && n.data.state !== 'default') {
         updateNodeData(n.id, { ...n.data, state: 'default' });
@@ -133,6 +143,7 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
 
   return {
     nodeState,
+    clicking,
     onNodeClick,
     onContextOpen,
     onContextClose,

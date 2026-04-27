@@ -21,7 +21,7 @@
           :color="data?.color || fallbackColor"
           :colors="data?.pathColors ?? []"
         />
-        <slot :size="size" :node-state="nodeState" :on-click="onNodeClick" />
+        <slot :size="size" :node-state="nodeState" :clicking="clicking" :on-click="onNodeClick" />
         <Handle type="target" :position="Position.Left" class="aix-flow-node__handle" />
         <Handle type="source" :position="Position.Right" class="aix-flow-node__handle" />
       </div>
@@ -92,10 +92,11 @@ watch(
   },
 );
 
-const { nodeState, onNodeClick, onContextOpen, onContextClose, onCommand } = useNodeInteraction({
-  id: props.id,
-  data: toRef(props, 'data'),
-});
+const { nodeState, clicking, onNodeClick, onContextOpen, onContextClose, onCommand } =
+  useNodeInteraction({
+    id: props.id,
+    data: toRef(props, 'data'),
+  });
 
 /** 同步右键菜单开合到节点 context 状态 */
 function onContextVisibleChange(visible: boolean) {
