@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.21
+
+### Patch Changes
+
+- 添加点击动画
+
 ## 0.0.20
 
 ### Patch Changes
