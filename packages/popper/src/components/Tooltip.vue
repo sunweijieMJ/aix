@@ -25,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
+import { computed, nextTick, ref, useId, watch } from 'vue';
 import { usePopper } from '../composables/usePopper';
 import { usePopperTrigger } from '../composables/usePopperTrigger';
 import { useZIndex } from '../composables/useZIndex';
@@ -58,7 +58,7 @@ const floatingElRef = ref<HTMLElement | null>(null);
 const arrowElRef = ref<HTMLElement | null>(null);
 
 // 核心定位
-const { referenceRef, floatingRef, arrowRef, floatingStyles, arrowStyles } = usePopper({
+const { referenceRef, floatingRef, arrowRef, floatingStyles, arrowStyles, update } = usePopper({
   placement: () => props.placement,
   offset: 8,
   arrow: true,
@@ -100,7 +100,10 @@ const mergedStyles = computed(() => ({
 }));
 
 defineExpose<TooltipExpose>({
-  show,
+  show: () => {
+    show();
+    nextTick(() => update());
+  },
   hide,
 });
 </script>
