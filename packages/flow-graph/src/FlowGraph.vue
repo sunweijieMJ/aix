@@ -404,7 +404,7 @@ function onConnect(connection: {
   align-items: center;
   width: 102px;
   height: 42px;
-  padding: 10px 12px;
+  padding: 0 12px;
   border: none;
   border-radius: 12px;
   background: var(--aix-flowGraphBrand, #1546f2);
