@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.23
+
+### Patch Changes
+
+- 修复路径切换tooltip延迟问题
+
 ## 0.0.22
 
 ### Patch Changes
