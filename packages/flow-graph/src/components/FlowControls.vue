@@ -36,7 +36,7 @@ const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
   align-items: center;
   height: 42px;
   padding: 0 4px;
-  border-radius: var(--aix-borderRadiusLG, 12px);
+  border-radius: 12px;
   background: var(--aix-colorBgElevated, #fff);
   box-shadow: var(--aix-shadowMD, 0 6px 36px 0 rgb(0 0 0 / 0.12));
 }

@@ -113,8 +113,17 @@ const bottomBarStyle = computed(() => {
 });
 provide('flowEdgesDeletable', edgesDeletable);
 
-const { updateEdge, screenToFlowCoordinate, viewport, updateNodeData, getEdges, removeEdges } =
-  useVueFlow();
+const {
+  updateEdge,
+  screenToFlowCoordinate,
+  viewport,
+  updateNodeData,
+  getEdges,
+  removeEdges,
+  fitView,
+} = useVueFlow();
+
+defineExpose({ fitView });
 
 function onKeyDelete(event: KeyboardEvent) {
   if (event.key !== 'Delete' && event.key !== 'Backspace') return;

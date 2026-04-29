@@ -3,6 +3,7 @@ import { FlowGraph } from '../src';
 import BasicEdit from './examples/BasicEdit.vue';
 import BottomBarPosition from './examples/BottomBarPosition.vue';
 import CustomNode from './examples/CustomNode.vue';
+import HighlightPath from './examples/HighlightPath.vue';
 import NodeEvents from './examples/NodeEvents.vue';
 import SharedPath from './examples/SharedPath.vue';
 
@@ -49,6 +50,13 @@ export const 多路径共用: Story = {
   render: () => ({
     components: { SharedPath },
     template: '<div style="width:100%;height:600px"><SharedPath /></div>',
+  }),
+};
+
+export const 高亮路径切换: Story = {
+  render: () => ({
+    components: { HighlightPath },
+    template: '<div style="width:100%;height:600px"><HighlightPath /></div>',
   }),
 };
 

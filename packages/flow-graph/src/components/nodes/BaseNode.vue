@@ -8,6 +8,7 @@
       ref="tooltipRef"
       :content="data?.label ?? ''"
       :disabled="!data?.label || dragging || (data?.selecting && data?.tooltipDisabled)"
+      :hide-delay="0"
       placement="top"
     >
       <div
