@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.25
+
+### Patch Changes
+
+- 修复按钮高度
+
 ## 0.0.24
 
 ### Patch Changes
