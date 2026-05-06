@@ -1,5 +1,5 @@
 import type { Node, Edge, MouseTouchEvent } from '@vue-flow/core';
-import type { Component } from 'vue';
+import type { Component, ComputedRef, InjectionKey } from 'vue';
 
 /** 面板位置类型 */
 export type PanelPositionType =
@@ -68,6 +68,62 @@ export type NodeTypesMap = Record<string, Component>;
 /** 用于扩展 VueFlow 的边类型映射 */
 export type EdgeTypesMap = Record<string, Component>;
 
+/**
+ * 流程图栅格上下文：通过 {@link FlowSnapContextKey} 注入给内部子组件 / composable。
+ * 暴露为公共类型，便于业务方编写自定义节点时复用栅格语义。
+ */
+export interface FlowSnapContext {
+  /** 是否开启栅格吸附 */
+  snapEnabled: ComputedRef<boolean>;
+  /** 栅格尺寸（px） */
+  gridSize: ComputedRef<number>;
+  /** 圆形节点默认尺寸（px） */
+  nodeSize: ComputedRef<number>;
+  /** 六边形节点默认尺寸（px） */
+  hexagonSize: ComputedRef<number>;
+}
+
+/** {@link FlowSnapContext} 的注入键，命名空间隔离 + 类型契约 */
+export const FlowSnapContextKey: InjectionKey<FlowSnapContext> = Symbol('aix-flow-snap');
+
+/** 全局 `edgesDeletable` 注入键 */
+export const FlowEdgesDeletableKey: InjectionKey<ComputedRef<boolean>> = Symbol(
+  'aix-flow-edges-deletable',
+);
+
+/** 暴露给外部的底部工具栏插槽 props */
+export interface FlowGraphBottomBarSlotProps {
+  /** 在视口中心螺旋寻位创建一个圆形节点 */
+  addNode: () => void;
+  /** 打开搜索面板 */
+  openSearch: () => void;
+  /** 关闭搜索面板 */
+  closeSearch: () => void;
+  /** 适应视图 */
+  fitView: (params?: { nodes?: string[]; duration?: number; padding?: number }) => void;
+  /** 放大 */
+  zoomIn: () => void;
+  /** 缩小 */
+  zoomOut: () => void;
+}
+
+/**
+ * `FlowGraph` 通过 `defineExpose` 暴露给父组件 ref 的实例方法集合。
+ * 用作 `ref<InstanceType<typeof FlowGraph>>` 的类型补充。
+ */
+export interface FlowGraphInstance {
+  /** 适应视图（包裹所有节点） */
+  fitView: (params?: { nodes?: string[]; duration?: number; padding?: number }) => void;
+  /** 在视口中心螺旋寻位新建一个圆形节点 */
+  addNode: () => void;
+  /** 打开搜索面板并 focus */
+  openSearch: () => void;
+  /** 关闭搜索面板并清空高亮 */
+  closeSearch: () => void;
+  /** 重置所有节点的交互状态（active/context/selecting） */
+  resetNodeStates: () => void;
+}
+
 /** FlowGraph 组件 Props */
 export interface FlowGraphProps {
   /** v-model:nodes 绑定的节点数组 */
@@ -114,4 +170,10 @@ export interface FlowGraphEmits {
   'node-click': [payload: { node: FlowNode; event: MouseTouchEvent }];
   /** 节点被右键点击时触发，携带节点对象与原始事件 */
   'node-right-click': [payload: { node: FlowNode; event: MouseTouchEvent }];
+  /** 通过内部交互（按钮新建 / 双击空白 / 复制）新增节点时触发 */
+  'node-add': [node: FlowNode];
+  /** 通过内部交互（右键删除 / Delete 键）删除节点时触发，载荷为节点 id 列表 */
+  'node-remove': [nodeIds: string[]];
+  /** 通过内部交互（右键删除 / Delete 键）删除边时触发，载荷为边 id 列表 */
+  'edge-remove': [edgeIds: string[]];
 }

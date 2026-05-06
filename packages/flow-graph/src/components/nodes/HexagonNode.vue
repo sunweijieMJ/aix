@@ -41,11 +41,7 @@
           >
             <div
               xmlns="http://www.w3.org/1999/xhtml"
-              :style="{
-                width: '52px',
-                height: '49px',
-                background: `conic-gradient(${multiColors.map((c, i) => `${c} ${(i / multiColors.length) * 100}% ${((i + 1) / multiColors.length) * 100}%`).join(', ')})`,
-              }"
+              :style="{ width: '52px', height: '49px', background: conicGradient }"
             />
           </foreignObject>
           <path
@@ -72,11 +68,7 @@
           >
             <div
               xmlns="http://www.w3.org/1999/xhtml"
-              :style="{
-                width: '52px',
-                height: '49px',
-                background: `conic-gradient(${multiColors.map((c, i) => `${c} ${(i / multiColors.length) * 100}% ${((i + 1) / multiColors.length) * 100}%`).join(', ')})`,
-              }"
+              :style="{ width: '52px', height: '49px', background: conicGradient }"
             />
           </foreignObject>
           <path
@@ -101,7 +93,6 @@ import { DEFAULT_HEXAGON_SIZE, type NodeData } from '../../types';
 import BaseNode from './BaseNode.vue';
 
 defineOptions({ name: 'AixHexagonNode', inheritAttrs: false });
-defineEmits(['updateNodeInternals']);
 
 const props = defineProps<NodeProps<NodeData>>();
 
@@ -115,6 +106,16 @@ const fillColor = computed(
 
 /** 多路径颜色列表，长度 > 1 时启用 conic-gradient 叠加层 */
 const multiColors = computed(() => props.data?.pathColors ?? []);
+
+/** 外环 / 内环共用的扇形渐变背景：每个颜色均匀占据 360°/n */
+const conicGradient = computed(() => {
+  const colors = multiColors.value;
+  if (colors.length <= 1) return undefined;
+  const stops = colors
+    .map((c, i) => `${c} ${(i / colors.length) * 100}% ${((i + 1) / colors.length) * 100}%`)
+    .join(', ');
+  return `conic-gradient(${stops})`;
+});
 </script>
 
 <style>
@@ -133,19 +134,5 @@ const multiColors = computed(() => props.data?.pathColors ?? []);
 
 .aix-hexagon-node--clicking {
   animation: aix-node-click 0.3s ease;
-}
-
-@keyframes aix-node-click {
-  0% {
-    transform: scale(1);
-  }
-
-  40% {
-    transform: scale(0.88);
-  }
-
-  100% {
-    transform: scale(1);
-  }
 }
 </style>

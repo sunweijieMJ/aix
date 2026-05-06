@@ -30,7 +30,6 @@ import { DEFAULT_CIRCLE_SIZE, type NodeData } from '../../types';
 import BaseNode from './BaseNode.vue';
 
 defineOptions({ name: 'AixCircleNode', inheritAttrs: false });
-defineEmits(['updateNodeInternals']);
 
 defineProps<NodeProps<NodeData>>();
 
@@ -60,20 +59,6 @@ const FALLBACK_COLOR = '#86909c';
 
 .aix-circle-node--clicking {
   animation: aix-node-click 0.3s ease;
-}
-
-@keyframes aix-node-click {
-  0% {
-    transform: scale(1);
-  }
-
-  40% {
-    transform: scale(0.88);
-  }
-
-  100% {
-    transform: scale(1);
-  }
 }
 
 .aix-circle-node__inner {

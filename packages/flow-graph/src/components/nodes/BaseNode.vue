@@ -71,7 +71,6 @@ interface Props {
 }
 
 defineOptions({ name: 'AixFlowBaseNode', inheritAttrs: false });
-defineEmits(['updateNodeInternals']);
 
 const props = defineProps<Props>();
 
@@ -139,5 +138,20 @@ defineExpose({ size, nodeState });
 
 .aix-flow-node__wrapper--connectable .aix-flow-node__handle {
   pointer-events: auto;
+}
+
+/* 圆形 / 六边形共用的点击反馈动画 */
+@keyframes aix-node-click {
+  0% {
+    transform: scale(1);
+  }
+
+  40% {
+    transform: scale(0.88);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 </style>

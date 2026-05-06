@@ -31,6 +31,18 @@ export function calcOrthogonalWaypoints(
 }
 
 /**
+ * 生成唯一节点 id。优先使用 `crypto.randomUUID`，不可用时降级到 `Date.now + 随机`。
+ * @param prefix - id 前缀，默认 `node`
+ */
+export function createNodeId(prefix = 'node'): string {
+  const uuid =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix}-${uuid}`;
+}
+
+/**
  * 切换节点类型并修正 position，保持节点中心不变。
  * 直接修改传入的 node 对象（原地修改，兼容 vue-flow v-model）。
  */

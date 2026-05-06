@@ -1,6 +1,7 @@
 import { useVueFlow } from '@vue-flow/core';
-import { computed, inject, nextTick, ref, type ComputedRef, type Ref } from 'vue';
-import type { NodeData } from '../types';
+import { computed, inject, nextTick, onScopeDispose, ref, type Ref } from 'vue';
+import { FlowSnapContextKey, type NodeData } from '../types';
+import { createNodeId } from '../utils';
 
 /** {@link useNodeInteraction} 的入参 */
 export interface UseNodeInteractionOptions {
@@ -32,23 +33,19 @@ export interface UseNodeInteractionReturn {
   onCommand: (command: string | number) => void;
 }
 
+/** 点击动画时长（ms），与 `aix-node-click` keyframes 持续时间保持一致 */
+const CLICK_ANIMATION_MS = 300;
+
 /**
  * 节点共享交互：封装 state 切换（active / context）、复制、删除以及右键菜单的 command 派发。
  *
  * 右键菜单本身由 `@aix/popper` 的 ContextMenu 处理（包括定位、外点关闭、ESC 关闭等），
  * 本 composable 只负责业务语义与状态同步。
  */
-interface FlowSnapContext {
-  snapEnabled: ComputedRef<boolean>;
-  gridSize: ComputedRef<number>;
-  nodeSize: ComputedRef<number>;
-  hexagonSize: ComputedRef<number>;
-}
-
 export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeInteractionReturn {
   const { id, data, supportContextState = true } = options;
   const { removeNodes, addNodes, getNodes, updateNodeData } = useVueFlow();
-  const snap = inject<FlowSnapContext>('flowSnap');
+  const snap = inject(FlowSnapContextKey, null);
 
   const nodeState = computed(() => data.value?.state ?? 'default');
   const clicking = ref(false);
@@ -57,12 +54,23 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
     updateNodeData(id, { ...data.value, state: next });
   }
 
+  let clickTimer: ReturnType<typeof setTimeout> | null = null;
   function triggerClickAnimation() {
+    if (clickTimer !== null) clearTimeout(clickTimer);
     clicking.value = true;
-    setTimeout(() => {
+    clickTimer = setTimeout(() => {
       clicking.value = false;
-    }, 300);
+      clickTimer = null;
+    }, CLICK_ANIMATION_MS);
   }
+
+  // 组件卸载时清理 timer，避免在已销毁的 ref 上写入
+  onScopeDispose(() => {
+    if (clickTimer !== null) {
+      clearTimeout(clickTimer);
+      clickTimer = null;
+    }
+  });
 
   function onNodeClick() {
     triggerClickAnimation();
@@ -153,14 +161,5 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
   };
 }
 
-/**
- * 生成唯一节点 id。优先使用 `crypto.randomUUID`，不可用时降级到 `Date.now + 随机`。
- * @param prefix - id 前缀，默认 `node`
- */
-export function createNodeId(prefix = 'node'): string {
-  const uuid =
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return `${prefix}-${uuid}`;
-}
+// 兼容历史导入路径：转发 utils.ts 中的 createNodeId
+export { createNodeId } from '../utils';

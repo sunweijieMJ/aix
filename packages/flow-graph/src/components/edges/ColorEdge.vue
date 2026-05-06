@@ -86,13 +86,17 @@
 import { ContextMenu, DropdownItem, type ContextMenuExpose } from '@aix/popper';
 import { EdgeLabelRenderer, useVueFlow } from '@vue-flow/core';
 import type { EdgeProps } from '@vue-flow/core';
-import { computed, inject, onBeforeUnmount, ref, type Ref } from 'vue';
+import { computed, inject, onBeforeUnmount, ref } from 'vue';
 import {
   DEFAULT_CIRCLE_SIZE,
   DEFAULT_HEXAGON_SIZE,
+  FlowEdgesDeletableKey,
   type EdgeData,
   type NodeData,
 } from '../../types';
+
+/** 与 `<marker markerWidth>` 一致的箭头视觉长度，用于让线段终点为箭头预留空间 */
+const ARROW_MARKER_LENGTH = 6;
 
 defineOptions({ name: 'AixColorEdge' });
 
@@ -108,7 +112,10 @@ const gradientId = computed(() => `grad-${props.id}`);
 /** 渐变 stops：当前色 → 各共用色均匀分布 */
 const gradientStops = computed(() => [color.value, ...sharedColors.value]);
 
-const edgesDeletable = inject<Ref<boolean>>('flowEdgesDeletable', ref(true));
+const edgesDeletable = inject(
+  FlowEdgesDeletableKey,
+  computed(() => true),
+);
 const deletable = computed(() => edgeData.value.deletable !== false && edgesDeletable.value);
 
 const contextMenuRef = ref<ContextMenuExpose | null>(null);
@@ -172,7 +179,7 @@ const adjustedTarget = computed(() => {
   const wps = waypoints.value;
   const c = centerOf(props.target);
   const from = wps.length ? wps[wps.length - 1]! : centerOf(props.source);
-  return adjustToNodeEdge(c.x, c.y, from.x, from.y, targetRadius.value + 6);
+  return adjustToNodeEdge(c.x, c.y, from.x, from.y, targetRadius.value + ARROW_MARKER_LENGTH);
 });
 
 /** 有 waypoints 时使用圆角折线路径；无 waypoints 时为直线 */
@@ -272,9 +279,10 @@ function distToSegment(
 function startDrag(event: MouseEvent, index: number, originPos?: { x: number; y: number }) {
   cleanupDrag?.();
   const startFlow = originPos ?? { ...waypoints.value[index]! };
-  const startScreen = screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
-  const offsetX = startFlow.x - startScreen.x;
-  const offsetY = startFlow.y - startScreen.y;
+  // 鼠标按下点的 flow 坐标，用于计算拖拽时的位移补偿
+  const startMouseFlow = screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
+  const offsetX = startFlow.x - startMouseFlow.x;
+  const offsetY = startFlow.y - startMouseFlow.y;
 
   function onMove(e: MouseEvent) {
     const flowPos = screenToFlowCoordinate({ x: e.clientX, y: e.clientY });
