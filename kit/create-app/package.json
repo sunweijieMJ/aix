@@ -30,7 +30,7 @@
     "commander": "^14.0.3",
     "fs-extra": "^11.3.4",
     "giget": "^1.2.4",
-    "jiti": "^2.4.2",
+    "jiti": "^2.7.0",
     "picocolors": "^1.1.1",
     "semver": "^7.7.1",
     "validate-npm-package-name": "^6.0.0",
