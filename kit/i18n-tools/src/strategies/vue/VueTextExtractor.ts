@@ -182,6 +182,12 @@ export class VueTextExtractor extends BaseTextExtractor {
     if (attrName === 'key' || attrName === 'ref' || attrName === 'is') return true;
 
     // 组件技术配置属性
+    // 注意 aria-* 的处理规则：
+    //   - aria-label：面向辅助技术用户的可见文案，应当本地化，不放入排除名单
+    //   - aria-labelledby / aria-describedby：取值是另一元素的 ID 引用（如
+    //     "nav-title"），翻译后运行时无法关联到目标 id，破坏 a11y 关联，必须排除
+    //   - 其余 aria-*（aria-hidden / aria-expanded / aria-controls 等）取值是
+    //     布尔/状态枚举/ID 引用，不在 shouldExtract 的中文/英文规则命中范围内
     const technicalAttrs = [
       'size',
       'type',
@@ -209,9 +215,8 @@ export class VueTextExtractor extends BaseTextExtractor {
       'enctype',
       'for',
       'role',
-      'aria-label',
-      'aria-labelledby',
-      'aria-describedby',
+      'aria-labelledby', // ID 引用，翻译后破坏 a11y 关联
+      'aria-describedby', // ID 引用，翻译后破坏 a11y 关联
       'prop',
       'column-key',
       'index',
@@ -712,7 +717,14 @@ export class VueTextExtractor extends BaseTextExtractor {
       return true;
     }
 
-    // 模板文本节点中的内容都是用户可见文本，跳过技术值过滤直接提取
+    // 过滤不可翻译的技术文本（URL、版本号、CSS 值、邮箱、纯符号等）
+    // 注意：必须放在 text-node 短路之前，否则 <p>18px</p> / <p>foo@bar.com</p>
+    // 这类纯技术值会被当作"用户可见文本"提取出来。
+    if (this.isNonTranslatableText(str)) {
+      return false;
+    }
+
+    // 模板文本节点中的内容默认视为用户可见文本，跳过技术值过滤直接提取
     if (templateContext === 'text-node') {
       return true;
     }
@@ -722,15 +734,12 @@ export class VueTextExtractor extends BaseTextExtractor {
       return false;
     }
 
-    // 过滤不可翻译的技术文本（URL、版本号、CSS 值等）
-    if (this.isNonTranslatableText(str)) {
-      return false;
-    }
-
     // 英文字符串的判断逻辑
+    // 仅 template 文本节点中的纯英文文本才视为面向用户的可见文案；
+    // 属性值（即便是 template 上下文）是 ID 引用 / 类名 / 配置值的概率更高，
+    // 不应仅凭"含字母"就提取——例如 aria-labelledby="nav-title"、role="button"。
     if (/[a-zA-Z]/.test(str)) {
-      // template 中的文本节点直接提取
-      if (context === 'template') {
+      if (context === 'template' && templateContext === 'text-node') {
         return true;
       }
       return false;
@@ -823,6 +832,11 @@ export class VueTextExtractor extends BaseTextExtractor {
 
     // 文件路径: ./foo, ../bar, /path
     if (/^\.{0,2}\/\S+$/.test(trimmed)) return true;
+
+    // 纯符号 / 标点：不含任何字母或数字（兜底）。
+    // 例如 → ← × ✓ ··· 这类字符没有翻译意义，但它们既不是 URL 也不是 CSS。
+    // 必须放在最后做兜底，确保前面已识别的特定模式不会被这条规则覆盖。
+    if (!/[\p{L}\p{N}]/u.test(trimmed)) return true;
 
     return false;
   }

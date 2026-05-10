@@ -29,6 +29,8 @@ export class VueImportManager implements IImportManager {
     const ext = filePath?.split('.').pop()?.toLowerCase();
 
     if (ext === 'ts' || ext === 'js') {
+      // 先清理占位声明，再注入真正的 import { t }，否则会和原 declare 冲突。
+      updatedCode = this.stripPlaceholderTDeclares(updatedCode);
       updatedCode = this.addPluginLocaleImport(updatedCode);
     } else {
       const isScriptSetup = /<script\s+setup/.test(code);
@@ -37,12 +39,38 @@ export class VueImportManager implements IImportManager {
       );
 
       if (isScriptSetup && hasScriptStrings) {
+        // SFC + script setup 注入 const { t } = useI18n() 之前同样要清理占位声明。
+        updatedCode = this.stripPlaceholderTDeclares(updatedCode);
         updatedCode = this.addHookImport(updatedCode);
         updatedCode = this.addHookDeclaration(updatedCode);
       }
     }
 
     return updatedCode;
+  }
+
+  /**
+   * 删除与"即将注入的真实 t 标识符"冲突的占位声明：
+   *   declare const t: <signature>;
+   *   void t;
+   *
+   * Why: i18n 提取器约定模板里写 t() / $t() 的字符串会被识别为"已国际化"而跳过。
+   * 业务方为了让源文件在跑 i18n-tools 之前也能通过 tsc，常见写法是 `declare
+   * const t: ...;`。一旦工具注入真实的 `import { t }` 或 `const { t } = useI18n()`,
+   * 占位 declare 就会和真正的 t 标识符产生 "Duplicate identifier / Import
+   * declaration conflicts with local declaration" 错误。注入前清理它。
+   *
+   * **只 strip 与即将注入的标识符同名的 declare**。`$t` 工具不会注入（它是 Vue
+   * Options API 的实例属性，无法在模块顶层 import），所以 `declare const $t`
+   * 不冲突，必须保留——否则会误伤业务方对 $t 调用的类型支持。
+   *
+   * 仅匹配单行形式的 declare 与 `void t;` 占位行；多行类型签名是少见情况，
+   * 留给业务方自行处理。
+   */
+  private stripPlaceholderTDeclares(code: string): string {
+    const declareRe = /^[ \t]*declare[ \t]+const[ \t]+t[ \t]*:[^\n;]+;[ \t]*\r?\n?/gm;
+    const voidRe = /^[ \t]*void[ \t]+t[ \t]*;[ \t]*\r?\n?/gm;
+    return code.replace(declareRe, '').replace(voidRe, '');
   }
 
   /**

@@ -59,7 +59,10 @@ export class VueTransformer implements ITransformer {
       }> = [];
 
       // 处理 script 部分（先处理，因为在文件后面）
+      // SFC 中 Options API（有 <script> 但没有 <script setup>）应当生成 this.$t(...)
+      // —— 顶层无 t / useI18n 注入，全靠组件实例上的 $t 全局属性。
       const script = descriptor.scriptSetup || descriptor.script;
+      const useThisQualifier = !descriptor.scriptSetup && !!descriptor.script;
       if (script) {
         const scriptStrings = fileStrings.filter((s) => s.context === 'script');
         if (scriptStrings.length > 0) {
@@ -67,6 +70,7 @@ export class VueTransformer implements ITransformer {
             script.content,
             script.loc.start.line - 1,
             scriptStrings,
+            useThisQualifier,
           );
           replacements.push({
             start: script.loc.start.offset,
@@ -111,6 +115,7 @@ export class VueTransformer implements ITransformer {
           sourceText,
           0, // 没有 template，从第 0 行开始
           scriptStrings,
+          false, // 纯 .ts/.js 走 import { t } from '@/plugins/locale' 路径，不用 this.$t
         );
       }
     }
@@ -155,7 +160,11 @@ export class VueTransformer implements ITransformer {
     for (const extracted of sortedStrings) {
       const replacement = this.generateTemplateReplacement(extracted);
       const localLine = extracted.line - lineOffset - 1;
-      const localColumn = extracted.column;
+      // @vue/compiler-dom 给的 column 是 1-based，replaceInTemplate 内部所有
+      // indexOf / 范围比较都按 0-based 处理，必须减 1。否则文本节点位于行末时，
+      // indexOf 会从下一字符起找不到原文，落入"全行重新搜索"的兜底分支，把同行
+      // 前面（如 v-tooltip 字符串字面量内部）出现的相同子串误替换。
+      const localColumn = extracted.column - 1;
 
       // 在 template 内容中查找并替换
       transformedTemplate = this.replaceInTemplate(
@@ -442,6 +451,7 @@ export class VueTransformer implements ITransformer {
     scriptContent: string,
     lineOffset: number,
     strings: ExtractedString[],
+    useThisQualifier: boolean,
   ): string {
     const sourceFile = CommonASTUtils.parseSourceFile(scriptContent, 'temp.ts');
 
@@ -467,7 +477,7 @@ export class VueTransformer implements ITransformer {
       const node = CommonASTUtils.findExactStringNode(sourceFile, position, extracted.original);
 
       if (node) {
-        const replacement = this.generateScriptReplacement(extracted);
+        const replacement = this.generateScriptReplacement(extracted, useThisQualifier);
         const start = node.getStart(sourceFile);
         const end = node.getEnd();
 
@@ -493,12 +503,13 @@ export class VueTransformer implements ITransformer {
    * @param extracted - 提取的字符串信息
    * @returns 替换字符串
    */
-  private generateScriptReplacement(extracted: ExtractedString): string {
+  private generateScriptReplacement(extracted: ExtractedString, useThisQualifier: boolean): string {
     const { semanticId, isTemplateString, templateVariables } = extracted;
 
-    // 检查是否在 Composition API 中（使用 t）还是 Options API 中（使用 this.$t）
-    // 默认使用 t()，因为 VueComponentInjector 会确保声明存在
-    const tFunc = 't';
+    // SFC Options API 走 this.$t（vue-i18n 全局注册的实例属性，data/methods/
+    // computed/lifecycle 的 this 都指向组件实例）；其它情况（script setup、纯
+    // .ts/.js）走裸 t —— hook 声明或 import 语句由 ImportManager 注入。
+    const tFunc = useThisQualifier ? 'this.$t' : 't';
 
     // 过滤掉字面量，只保留真正的变量表达式
     const actualVariables = templateVariables ? this.filterLiterals(templateVariables) : undefined;
