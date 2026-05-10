@@ -160,9 +160,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       return localeMap[lookupKey] || localeMap[rawKey];
     };
 
-    // pass 1/2 占位机制：使用形如 `I18N_R_<idx>` 的唯一 token 隔离已还原片段，
-    // 防止 pass 3 的 innerI18nCallRegex 把 locale 文本里碰巧出现的 `t('xxx')`
-    // 字面字符串当成残留的 i18n 调用再次替换。回填阶段统一恢复成原文。
+    // pass 1/2 占位机制：用 PUA 字符（U+E000）作为不可见边界包裹 `I18N_R_<idx>`，
+    // 隔离已还原片段，防止 pass 3 的 innerI18nCallRegex 把 locale 文本里碰巧出现的
+    // `t('xxx')` 字面字符串当成残留的 i18n 调用再次替换。
+    // Why PUA：Vue 模板源不会合法含 PUA 字符；相比纯 ASCII token（如 `I18N_R_0`），
+    // 后者若出现在 locale 原文（技术文档场景）会被回填正则误吞，是结构性漏洞。
     const placeholders: string[] = [];
     const stash = (text: string): string => {
       const token = `I18N_R_${placeholders.length}`;
@@ -193,12 +195,15 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       return stash(text);
     });
 
-    // 2. 匹配属性绑定 :attr="$t('key')" 或 :attr="$t('key', { vars })"
+    // 2. 匹配属性绑定 :attr="$t('key')" 或 :attr='$t("key")'（外/内引号任意组合）。
     //    还原为静态属性 attr="文本"。vars 段支持单层嵌套花括号。
+    //    Why 用反向引用 \2：Vue 官方允许 `:attr='...'` 单引号写法，原先只匹配
+    //    双引号外层时，单引号场景会绕过本 pass，被 pass 3 兜底替换为 'text'，
+    //    输出 `:attr=''text''` 无效语法。
     const attrBindingRegex =
-      /:([\w-]+)="\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)"/g;
+      /:([\w-]+)=(["'])\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)\2/g;
 
-    restored = restored.replace(attrBindingRegex, (match, attrName, key, vars) => {
+    restored = restored.replace(attrBindingRegex, (match, attrName, _outer, key, vars) => {
       const text = lookupText(key as string);
       if (!text) {
         return match;

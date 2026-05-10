@@ -2,6 +2,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 import type { IdPrefixConfig } from '../config/types';
 import { DEFAULT_ID_PREFIX } from '../config/defaults';
+import { FileUtils } from './file-utils';
 
 /**
  * ID生成器工具类
@@ -120,8 +121,10 @@ export class IdGenerator {
     }
 
     const separator = this.getSeparator(prefixConfig);
-    const normalizedPath = path.normalize(filePath);
-    const parts = normalizedPath.split(path.sep);
+    // 同时按 `/` 和 `\` 切分：path.normalize + path.sep 在 Linux 上不会把 `\` 当
+    // 分隔符（path.sep === '/'），导致开发者从 Windows 提交的混合路径在 CI/Linux
+    // 上整段被当作单一目录名，前缀提取失败。归一化双分隔符后跨平台一致。
+    const parts = filePath.split(/[\\/]/).filter(Boolean);
 
     // 使用配置的锚点目录或默认 'src'
     const anchor = prefixConfig?.anchor || 'src';
@@ -185,7 +188,9 @@ export class IdGenerator {
     }
 
     // 如果是纯英文，直接处理
-    if (!/[\u4e00-\u9fff]/.test(cleanText)) {
+    // \u590d\u7528 FileUtils.containsChinese\uff0c\u907f\u514d\u4e0e file-utils / constants \u591a\u5904\u5b9a\u4e49\u4e2d\u6587\u5224\u5b9a
+    // \u6b63\u5219\u5e26\u6765\u8bed\u4e49\u6f02\u79fb\uff08\u4f8b\u5982\u672a\u6765\u82e5\u9700\u6269\u5230\u65e5\u97e9\u5b57\u7b26\uff0c\u5f97\u6539\u4e09\u5904\u4fdd\u6301\u4e00\u81f4\uff09\u3002
+    if (!FileUtils.containsChinese(cleanText)) {
       return this.sanitizeSemanticId(cleanText);
     }
 

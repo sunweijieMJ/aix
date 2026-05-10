@@ -175,7 +175,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     // 通过 extracted.original 在源代码中匹配并替换；processedMessage 走 ID
     // 生成与 locale 写入路径，承载字面量内联后的真实文案。
     else if (ts.isTemplateExpression(node)) {
-      if (CommonASTUtils.templateLiteralsContainChinese(node, FileUtils.containsChinese)) {
+      if (CommonASTUtils.templateLiteralsContainChinese(node)) {
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
         text = result.originalText;
         if (result.processedText !== result.originalText) {

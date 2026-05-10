@@ -438,7 +438,7 @@ export class VueTextExtractor extends BaseTextExtractor {
       // 字面量内联与占位符生成逻辑，避免双端漂移。
       // template 段保留"内联字面量后的 text"用作 original（与原内联实现行为一致），
       // 因为 VueTransformer 通过 line/column 定位、不需要按 original 文本匹配源码。
-      if (CommonASTUtils.templateLiteralsContainChinese(node, FileUtils.containsChinese)) {
+      if (CommonASTUtils.templateLiteralsContainChinese(node)) {
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
         text = result.processedText;
         templateVariables.push(...result.templateVariables);
@@ -560,7 +560,7 @@ export class VueTextExtractor extends BaseTextExtractor {
       text = node.text;
     } else if (ts.isTemplateExpression(node)) {
       // 复用 CommonASTUtils.processTemplateExpression（同动态属性段说明）
-      if (CommonASTUtils.templateLiteralsContainChinese(node, FileUtils.containsChinese)) {
+      if (CommonASTUtils.templateLiteralsContainChinese(node)) {
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
         text = result.processedText;
         templateVariables.push(...result.templateVariables);
@@ -645,7 +645,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     // 处理模板字符串：复用 CommonASTUtils.processTemplateExpression，
     // 与 React 端走同一份字面量过滤 / 占位符生成逻辑，避免双端漂移。
     else if (ts.isTemplateExpression(node)) {
-      if (CommonASTUtils.templateLiteralsContainChinese(node, FileUtils.containsChinese)) {
+      if (CommonASTUtils.templateLiteralsContainChinese(node)) {
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
         originalText = result.originalText;
         processedText = result.processedText;

@@ -50,7 +50,11 @@ export class ConcurrencyController {
 
   /**
    * 处理队列中的任务
-   * 注意: 队列中的 task 已在 add() 中包装了 try-catch，不会抛出异常
+   *
+   * 队列中的 task 已在 add() 内包装了 try-catch，正常路径下 `await task()` 不会抛。
+   * 但用 try/finally 兜底是防御性的：若未来有人直接 `controller.queue.push(rawTask)`
+   * 绕过 add，或 add 内的 Promise 包装本身抛错（如 reject 内的代码异常），running
+   * 计数仍能正确回落，避免槽位泄漏导致后续任务永远 pending。
    */
   private async process(): Promise<void> {
     if (this.running >= this.maxConcurrency || this.queue.length === 0) {
@@ -60,9 +64,12 @@ export class ConcurrencyController {
     this.running++;
     const task = this.queue.shift()!;
 
-    await task();
-    this.running--;
-    void this.process();
+    try {
+      await task();
+    } finally {
+      this.running--;
+      void this.process();
+    }
   }
 
   /**

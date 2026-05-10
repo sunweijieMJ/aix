@@ -113,56 +113,50 @@ export class LanguageFileManager {
   ): void {
     if (extractedStrings.length === 0) return;
 
-    try {
-      const localeMap = this.readLocaleFile(config, isCustom);
-      if (localeMap === null) return; // 如果读取失败则中止
+    // 读取阶段：readLocaleFile 已经吞掉异常并返回 null。null 表示"文件存在但解析
+    // 失败"，此时不应继续覆写——防止把 LocaleMap 用空对象重置丢数据。
+    const localeMap = this.readLocaleFile(config, isCustom);
+    if (localeMap === null) return;
 
-      const newEntries: LocaleMap = {};
-      let updatedCount = 0;
-      let addedCount = 0;
+    const newEntries: LocaleMap = {};
+    let updatedCount = 0;
+    let addedCount = 0;
 
-      for (const extracted of extractedStrings) {
-        if (!extracted.semanticId) continue;
+    for (const extracted of extractedStrings) {
+      if (!extracted.semanticId) continue;
 
-        // 使用processedMessage（字面量已内联）或original
-        const rawMessage = extracted.processedMessage || extracted.original;
+      const rawMessage = extracted.processedMessage || extracted.original;
 
-        // 占位符替换（${expr} → {key}）和变量名去重逻辑全部委托给
-        // CommonASTUtils.createMessageWithOptions，避免与代码侧参数名不一致。
-        // 之前此处与该方法存在重复实现，是一处隐性维护风险。
-        const { message } =
-          extracted.isTemplateString && extracted.templateVariables
-            ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
-            : { message: rawMessage.replace(/^['"`]|['"`]$/g, '') };
+      // 占位符替换（${expr} → {key}）和变量名去重逻辑全部委托给
+      // CommonASTUtils.createMessageWithOptions，避免与代码侧参数名不一致。
+      const { message } =
+        extracted.isTemplateString && extracted.templateVariables
+          ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
+          : { message: rawMessage.replace(/^['"`]|['"`]$/g, '') };
 
-        if (!localeMap[extracted.semanticId]) {
-          // 新增条目
-          newEntries[extracted.semanticId] = message;
-          addedCount++;
-        } else if (localeMap[extracted.semanticId] !== message) {
-          // 更新已存在的条目
-          localeMap[extracted.semanticId] = message;
-          updatedCount++;
-        }
+      if (!localeMap[extracted.semanticId]) {
+        newEntries[extracted.semanticId] = message;
+        addedCount++;
+      } else if (localeMap[extracted.semanticId] !== message) {
+        localeMap[extracted.semanticId] = message;
+        updatedCount++;
       }
-
-      if (addedCount > 0 || updatedCount > 0) {
-        // 合并旧条目和新条目，以保证顺序
-        const finalMap = { ...localeMap, ...newEntries };
-        this.writeLocaleFile(config, isCustom, finalMap);
-
-        LoggerUtils.success(`✅ 语言文件更新成功！`);
-        if (addedCount > 0) {
-          LoggerUtils.info(`   - 新增条目: ${addedCount}`);
-        }
-        if (updatedCount > 0) {
-          LoggerUtils.info(`   - 更新条目: ${updatedCount}`);
-        }
-      } else {
-        LoggerUtils.info('✅ 语言文件已是最新状态，无需更新');
-      }
-    } catch (error) {
-      LoggerUtils.error('❌ 更新语言文件时发生错误:', error);
     }
+
+    if (addedCount === 0 && updatedCount === 0) {
+      LoggerUtils.info('✅ 语言文件已是最新状态，无需更新');
+      return;
+    }
+
+    // 写入阶段：必须把 writeLocaleFile 的异常向上抛出。writeLocaleFile 自己注释也
+    // 明确"必须抛出，否则会产出 t('key') 但 locale 无对应条目的撕裂代码"。原先
+    // 在此 try-catch 静默吞错，恰好破坏该契约——上层 GenerateProcessor 误以为
+    // locale 已写入，继续覆写源码，最终产生不一致状态。
+    const finalMap = { ...localeMap, ...newEntries };
+    this.writeLocaleFile(config, isCustom, finalMap);
+
+    LoggerUtils.success(`✅ 语言文件更新成功！`);
+    if (addedCount > 0) LoggerUtils.info(`   - 新增条目: ${addedCount}`);
+    if (updatedCount > 0) LoggerUtils.info(`   - 更新条目: ${updatedCount}`);
   }
 }

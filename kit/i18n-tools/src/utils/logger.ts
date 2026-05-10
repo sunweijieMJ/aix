@@ -49,16 +49,28 @@ export class LoggerUtils {
   /**
    * 记录错误日志
    * @param message - 日志消息
-   * @param error - 错误对象
+   * @param error - 错误对象（仅取 name + message，DEBUG 级别下追加 stack）
+   *
+   * Why 不直接透传整对象：OpenAI / Axios 等 SDK 抛出的 error 对象的 toString /
+   * 序列化结果里可能含完整 URL（带 query token）、请求 headers（含 Authorization），
+   * 调用方频繁写 `LoggerUtils.error('xxx 失败:', error)` 会扩散凭据泄露风险。
+   * 这里强制只取安全字段，stack 仅在 DEBUG 模式输出。
    */
-  static error(message: string, error?: any): void {
-    if (LoggerUtils.logLevel <= LogLevel.ERROR) {
-      if (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error(chalk.red(`[ERROR] ${message} ${errorMsg}`));
-      } else {
-        console.error(chalk.red(`[ERROR] ${message}`));
-      }
+  static error(message: string, error?: unknown): void {
+    if (LoggerUtils.logLevel > LogLevel.ERROR) return;
+    if (error === undefined || error === null) {
+      console.error(chalk.red(`[ERROR] ${message}`));
+      return;
+    }
+    const safe =
+      error instanceof Error
+        ? `${error.name}: ${error.message}`
+        : typeof error === 'string'
+          ? error
+          : `[non-Error: ${Object.prototype.toString.call(error)}]`;
+    console.error(chalk.red(`[ERROR] ${message} ${safe}`));
+    if (LoggerUtils.logLevel <= LogLevel.DEBUG && error instanceof Error && error.stack) {
+      console.error(chalk.gray(error.stack));
     }
   }
 

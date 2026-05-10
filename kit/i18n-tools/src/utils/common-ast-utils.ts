@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { CONFIG } from './constants';
 import { LoggerUtils } from './logger';
 
 /**
@@ -179,12 +180,10 @@ export class CommonASTUtils {
    * 不含本地化文案的模板误处理。变量表达式中的中文（如 ${'中文'}）由
    * processTemplateExpression 内部的内联逻辑兜底。
    */
-  static templateLiteralsContainChinese(
-    node: ts.TemplateExpression,
-    containsChinese: (text: string) => boolean,
-  ): boolean {
-    if (containsChinese(node.head.text)) return true;
-    return node.templateSpans.some((span) => containsChinese(span.literal.text));
+  static templateLiteralsContainChinese(node: ts.TemplateExpression): boolean {
+    const test = (s: string): boolean => CONFIG.CHINESE_REGEX.test(s);
+    if (test(node.head.text)) return true;
+    return node.templateSpans.some((span) => test(span.literal.text));
   }
 
   /**
@@ -562,12 +561,18 @@ export class CommonASTUtils {
     // 贪心选择：依次选入不与已选替换重叠的项
     const validReplacements: typeof replacements = [];
     for (const replacement of sortedBySize) {
-      const hasOverlap = validReplacements.some(
+      const overlapping = validReplacements.find(
         (selected) => replacement.start < selected.end && replacement.end > selected.start,
       );
-      if (!hasOverlap) {
-        validReplacements.push(replacement);
+      if (overlapping) {
+        // 静默丢弃会让"明明提取了却没替换成功"的现象难以排查；告警便于定位
+        // 调用方（如 findExactStringNode 同时返回了重叠节点）的语义问题
+        LoggerUtils.warn(
+          `跳过重叠替换: [${replacement.start},${replacement.end}] 与 [${overlapping.start},${overlapping.end}] 冲突，保留范围更大的项`,
+        );
+        continue;
       }
+      validReplacements.push(replacement);
     }
 
     validReplacements.sort((a, b) => b.start - a.start);
@@ -692,14 +697,22 @@ export class CommonASTUtils {
   }
 
   /**
-   * 在指定位置附近模糊查找匹配的字符串节点
+   * 在指定位置附近模糊查找匹配的字符串节点。
+   *
+   * Why ±NEARBY_OFFSET：上游传入的 position 由不同 AST 工具计算，可能因引号、
+   * leading whitespace、JSX `{ ' ' }` 等场景偏移 1~3 字符；±5 是经验值，覆盖常见
+   * 偏移又不会越界跳到相邻 token。改大无明显收益（命中率边际为 0），改小则有
+   * 漏命中风险。如未来发现 ±5 不够，调整这一处常量即可。
    */
+  private static readonly NEARBY_SEARCH_OFFSET = 5;
+
   private static findNearbyStringNode(
     sourceFile: ts.SourceFile,
     position: number,
     originalText: string,
   ): ts.Node | undefined {
-    for (let offset = -5; offset <= 5; offset++) {
+    const range = CommonASTUtils.NEARBY_SEARCH_OFFSET;
+    for (let offset = -range; offset <= range; offset++) {
       const nearbyPosition = position + offset;
       if (nearbyPosition < 0 || nearbyPosition >= sourceFile.text.length) {
         continue;
@@ -807,13 +820,44 @@ export class CommonASTUtils {
    * 此前两端各自实现（一份反向遍历、一份正向遍历），结果等价但维护两份易漂移。
    */
   static findLastImportLineIndex(lines: string[]): number {
-    let lastImportIndex = -1;
+    // 多行 import（如 `import {\n  A,\n  B,\n} from 'x'`）只用 startsWith('import ')
+    // 检测会让 lastImportIndex 停在第一行（`import {`），随后 `appendImportLine` 把
+    // 新 import 插到第二行，落入花括号内部，产生语法错误。
+    // 这里通过 brace 平衡跨行追踪 import 语句的真实结束行。
+    let lastImportEndLine = -1;
+    let pendingDepth = 0; // 当前 import 内尚未闭合的 { 深度
+
     for (let i = 0; i < lines.length; i++) {
-      if (lines[i]!.trim().startsWith('import ')) {
-        lastImportIndex = i;
+      const line = lines[i]!;
+      const trimmed = line.trim();
+
+      if (pendingDepth > 0) {
+        for (const ch of line) {
+          if (ch === '{') pendingDepth++;
+          else if (ch === '}') pendingDepth--;
+        }
+        if (pendingDepth === 0) {
+          // brace 闭合那一行就是该 import 的实际结束行
+          lastImportEndLine = i;
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith('import ') || trimmed.startsWith('import{')) {
+        let depth = 0;
+        for (const ch of line) {
+          if (ch === '{') depth++;
+          else if (ch === '}') depth--;
+        }
+        if (depth === 0) {
+          lastImportEndLine = i;
+        } else {
+          pendingDepth = depth;
+        }
       }
     }
-    return lastImportIndex;
+
+    return lastImportEndLine;
   }
 
   /**
