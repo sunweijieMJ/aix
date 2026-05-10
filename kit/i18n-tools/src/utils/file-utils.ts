@@ -228,18 +228,27 @@ export class FileUtils {
   }
 
   /**
-   * 原子写入：先写到同目录的临时文件，fsync 后 rename 替换目标。
+   * 原子写入：先写到同目录的临时文件，fsync 落盘后 rename 替换目标。
    *
    * Why: 直接 writeFileSync 在写入过程中若进程崩溃 / 同名并发写，
    *      目标文件会处于"半截"状态。rename 在大多数 POSIX 与 Windows
    *      文件系统上都是原子的，能保证读端永远看到完整的旧或新内容。
+   *      fsync 显式刷新内核缓冲区到物理介质，避免 rename 后断电仍丢内容。
    *      显式 utf8 编码可避免 Windows 下默认 ANSI 解码的 mojibake。
    */
   private static atomicWrite(filePath: string, content: string): void {
     const dir = path.dirname(filePath);
     const tmpPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
     try {
-      fs.writeFileSync(tmpPath, content, 'utf8');
+      const fd = fs.openSync(tmpPath, 'w');
+      try {
+        fs.writeFileSync(fd, content, 'utf8');
+        // FlushFileBuffers / fdatasync：rename 仅保证目录项原子切换，
+        // 文件内容真正落盘要靠 fsync。
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
       fs.renameSync(tmpPath, filePath);
     } catch (error) {
       // 失败时清理临时文件，不向上吞没原始错误

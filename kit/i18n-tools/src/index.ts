@@ -1,4 +1,13 @@
-// Config
+// =============================================================================
+// 公共 API
+//
+// 仅暴露程序化调用所需的最小集合：配置、Processor、Adapter。
+// 内部实现（strategies/* 与 utils/*）通过 Adapter / Processor 对外协作，
+// 不在此处直接导出——避免 utils 重命名、字段调整、辅助类拆分等内部重构演变成
+// breaking change。需要扩展时优先通过 Adapter 接口注入实现。
+// =============================================================================
+
+// ---- Config ----
 export { defineConfig, loadConfig, resolveConfig, loadConfigFile, findConfigFile } from './config';
 export {
   DEFAULT_PATHS,
@@ -28,7 +37,7 @@ export type {
   IdPrefixConfig,
 } from './config';
 
-// Core processors
+// ---- Core processors ----
 export {
   BaseProcessor,
   GenerateProcessor,
@@ -40,7 +49,7 @@ export {
   AutomaticProcessor,
 } from './core';
 
-// Adapters
+// ---- Adapters ----
 export { FrameworkAdapter, ReactAdapter, VueAdapter, createFrameworkAdapter } from './adapters';
 export type {
   FrameworkConfig,
@@ -52,48 +61,3 @@ export type {
   ReactAdapterOptions,
   VueAdapterOptions,
 } from './adapters';
-
-// Strategies
-export {
-  VueTextExtractor,
-  VueTransformer,
-  VueRestoreTransformer,
-  VueComponentInjector,
-  VueImportManager,
-  ReactTextExtractor,
-  ReactTransformer,
-  ReactRestoreTransformer,
-  ReactComponentInjector,
-  ReactImportManager,
-} from './strategies';
-
-// Utils - Classes
-export { FileUtils } from './utils/file-utils';
-export { LoggerUtils, LogLevel } from './utils/logger';
-export { LLMClient } from './utils/llm-client';
-export { IdGenerator } from './utils/id-generator';
-export { ConcurrencyController } from './utils/concurrency-controller';
-export { InteractiveUtils } from './utils/interactive-utils';
-export { LanguageFileManager } from './utils/language-file-manager';
-export { CommandUtils } from './utils/command-utils';
-export { MessageProcessor } from './utils/message-processor';
-export { HooksUtils } from './strategies/react/hooks-utils';
-export { CommonASTUtils } from './utils/common-ast-utils';
-export { ReactASTUtils } from './strategies/react/react-ast-utils';
-export { Glossary } from './utils/glossary';
-export type { GlossaryMap } from './utils/glossary';
-
-// Utils - Constants & Enums
-export { FILES, CONFIG, MODE_DESCRIPTIONS } from './utils/constants';
-export { ModeName } from './utils/types';
-
-// Utils - Types
-export type {
-  ExtractedString,
-  Translations,
-  LocaleMap,
-  ILangMsg,
-  ILangMap,
-  MessageInfo,
-  TransformContext,
-} from './utils/types';

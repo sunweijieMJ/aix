@@ -124,7 +124,7 @@ export class VueImportManager implements IImportManager {
    * 在 <script> 块内合并/追加命名导入（对 SFC 文件，避免误匹配 template/style 中的相似字符串）
    */
   private mergeNamedImportInScript(code: string, packageName: string, names: string[]): string {
-    const scriptMatch = code.match(/(<script[^>]*>)([\s\S]*?)<\/script>/);
+    const scriptMatch = VueImportManager.matchScriptBlock(code);
     if (!scriptMatch) return code;
     const scriptTag = scriptMatch[1]!;
     const scriptContent = scriptMatch[2]!;
@@ -136,11 +136,25 @@ export class VueImportManager implements IImportManager {
    * 在 <script> 块内追加一条 import 语句
    */
   private addImportToScript(code: string, importStatement: string): string {
-    const scriptMatch = code.match(/(<script[^>]*>)([\s\S]*?)<\/script>/);
+    const scriptMatch = VueImportManager.matchScriptBlock(code);
     if (!scriptMatch) return code;
     const scriptTag = scriptMatch[1]!;
     const scriptContent = scriptMatch[2]!;
     const updatedScript = CommonASTUtils.appendImportLine(scriptContent, importStatement);
     return code.replace(scriptMatch[0], `${scriptTag}${updatedScript}</script>`);
+  }
+
+  /**
+   * 定位 SFC 中需要写入 import / hook 的 <script> 块。
+   *
+   * Why: 一个 SFC 可同时存在 <script> 与 <script setup>（Vue 3 合法用法）。
+   *      naïvely 用 /<script[^>]*>/ 总会命中文档中第一个 <script>，
+   *      把 import 错误地塞进非 setup 块，导致 hook/composable 不可用。
+   *      因此优先匹配带 setup 的 script 块，没有时再回落到普通 script。
+   */
+  private static matchScriptBlock(code: string): RegExpMatchArray | null {
+    const setupMatch = code.match(/(<script[^>]*\bsetup\b[^>]*>)([\s\S]*?)<\/script>/);
+    if (setupMatch) return setupMatch;
+    return code.match(/(<script[^>]*>)([\s\S]*?)<\/script>/);
   }
 }
