@@ -31,6 +31,25 @@ export interface PathsConfig {
   source: string;
   /** .ts/.js 文件中 t 函数的导入路径，如 '@/plugins/i18n' */
   tImport?: string;
+  /**
+   * 翻译词表（glossary / translation memory）文件路径，相对于 rootDir。
+   * 命中词表的原文将直接采用其译文，不送 LLM。未配置则禁用此特性。
+   */
+  glossary?: string;
+}
+
+/**
+ * 翻译词表配置
+ */
+export interface GlossaryConfig {
+  /**
+   * 命中策略：
+   * - 'always'（默认）：词表译文优先；与已有目标译文不同时覆盖并打 INFO 审计
+   * - 'when-empty'：仅在目标语种缺失/为空时采用词表译文
+   */
+  override?: 'always' | 'when-empty';
+  /** 是否对原文做 trim + 空白压缩后再匹配，默认 true */
+  normalize?: boolean;
 }
 
 /**
@@ -75,6 +94,13 @@ export interface IdPrefixConfig {
   separator?: string;
   /** 中文常用词映射表（用于本地 ID 兜底生成），默认内置 18 个常用词 */
   chineseMappings?: Record<string, string>;
+  /**
+   * 是否允许跨目录复用 i18n key，默认 false。
+   *
+   * - false：相同原文只在同一目录前缀下复用 key（推荐，保持 namespace 边界清晰）
+   * - true：全局复用，相同原文在任意目录都复用同一个 key（最大去重，但跨包引用）
+   */
+  reuseAcrossDirectories?: boolean;
 }
 
 /**
@@ -105,6 +131,11 @@ export interface ReactConfig {
   library?: 'react-intl' | 'react-i18next';
   /** react-i18next 命名空间（仅 react-i18next 生效） */
   namespace?: string;
+  /**
+   * 是否在生成的 i18n 调用中携带 defaultMessage（react-intl 等需要源文本兜底时使用）。
+   * 默认 false。
+   */
+  includeDefaultMessage?: boolean;
 }
 
 /**
@@ -131,14 +162,22 @@ export interface I18nToolsConfig {
 
   /** LLM API 配置 */
   llm: {
-    /** ID 生成接口 */
-    idGeneration: LLMConfig;
-    /** 翻译接口 */
-    translation: LLMConfig;
+    /**
+     * 默认配置，idGeneration 和 translation 中未指定的字段会继承此配置。
+     * 使用同一个 API Key / 模型时，只需在此配置，无需在两处重复。
+     */
+    default?: Partial<LLMConfig>;
+    /** ID 生成接口，未指定的字段继承自 llm.default */
+    idGeneration?: Partial<LLMConfig>;
+    /** 翻译接口，未指定的字段继承自 llm.default */
+    translation?: Partial<LLMConfig>;
   };
 
   /** 自定义 AI 提示词 */
   prompts?: PromptsConfig;
+
+  /** 翻译词表配置（仅当配置了 paths.glossary 时生效） */
+  glossary?: GlossaryConfig;
 
   /** ID 前缀配置 */
   idPrefix?: IdPrefixConfig;
@@ -167,15 +206,26 @@ export interface I18nToolsConfig {
 export interface ResolvedConfig {
   rootDir: string;
   framework: 'vue' | 'react';
+  /**
+   * Vue 框架配置。loader 始终用默认值填充，与 framework 无关；
+   * 仅当 `framework === 'vue'` 时被适配器消费。
+   */
   vue: Required<VueConfig>;
+  /**
+   * React 框架配置。loader 始终用默认值填充，与 framework 无关；
+   * 仅当 `framework === 'react'` 时被适配器消费。
+   */
   react: Required<ReactConfig>;
   locale: Required<LocaleConfig>;
   paths: {
     locale: string;
-    customLocale: string;
+    /** 仅当用户显式配置 customLocale 时才存在；未配置则保持 undefined，下游据此判定单/双目录 */
+    customLocale?: string;
     exportLocale: string;
     source: string;
     tImport: string;
+    /** 仅当用户显式配置 glossary 时才存在；未配置则保持 undefined */
+    glossary?: string;
   };
   llm: {
     idGeneration: Required<Omit<LLMConfig, 'baseURL'>> & Pick<LLMConfig, 'baseURL'>;
@@ -186,6 +236,7 @@ export interface ResolvedConfig {
     translation: { system?: string; user?: string };
   };
   idPrefix: Required<IdPrefixConfig>;
+  glossary: Required<GlossaryConfig>;
   concurrency: Required<ConcurrencyConfig>;
   batchSize: number;
   batchDelay: number;

@@ -90,7 +90,7 @@ export class FileUtils {
    * 检查翻译值是否有效（不为空、不是纯标点符号）
    * 支持任意目标语言（拉丁文、CJK、西里尔文等）
    */
-  static isValidEnglishTranslation(enValue: any): boolean {
+  static isValidTranslation(enValue: any): boolean {
     if (typeof enValue !== 'string') return false;
 
     if (!enValue?.trim()) return false;
@@ -185,14 +185,25 @@ export class FileUtils {
       }
 
       const fileContent = fs.readFileSync(filePath, 'utf8');
-      const result = FileUtils.safeParseJson(fileContent) || defaultValue;
+      const parsed = FileUtils.safeParseJson(fileContent);
+
+      if (parsed === null) {
+        if (!silent) {
+          LoggerUtils.error(
+            errorMessage
+              ? `❌ ${errorMessage}（JSON格式损坏）: ${filePath}`
+              : `❌ JSON格式损坏，无法加载: ${filePath}`,
+          );
+        }
+        return defaultValue;
+      }
 
       if (logSuccess && !silent) {
-        const itemCount = Object.keys(result).length;
+        const itemCount = Object.keys(parsed).length;
         LoggerUtils.success(`📄 已加载 ${path.basename(filePath)}, 包含 ${itemCount} 个条目`);
       }
 
-      return result as T;
+      return parsed as T;
     } catch (error) {
       if (!silent) {
         LoggerUtils.error(
@@ -213,39 +224,104 @@ export class FileUtils {
   static createOrEmptyFile(filePath: string, content: string = '{}'): void {
     FileUtils.ensureDirectoryExists(path.dirname(filePath));
     const contentWithNewline = content.endsWith('\n') ? content : content + '\n';
-    fs.writeFileSync(filePath, contentWithNewline);
+    FileUtils.atomicWrite(filePath, contentWithNewline);
   }
 
-  static isReactFile(fileName: string): boolean {
-    return CONFIG.SUPPORTED_EXTENSIONS.includes(path.extname(fileName));
-  }
-
-  static isVueFile(fileName: string): boolean {
-    const ext = path.extname(fileName);
-    return ext === '.vue' || ext === '.ts' || ext === '.js';
-  }
-
-  static isFrameworkFile(fileName: string, framework: 'react' | 'vue'): boolean {
-    if (framework === 'vue') {
-      return FileUtils.isVueFile(fileName);
+  /**
+   * 原子写入：先写到同目录的临时文件，fsync 后 rename 替换目标。
+   *
+   * Why: 直接 writeFileSync 在写入过程中若进程崩溃 / 同名并发写，
+   *      目标文件会处于"半截"状态。rename 在大多数 POSIX 与 Windows
+   *      文件系统上都是原子的，能保证读端永远看到完整的旧或新内容。
+   *      显式 utf8 编码可避免 Windows 下默认 ANSI 解码的 mojibake。
+   */
+  private static atomicWrite(filePath: string, content: string): void {
+    const dir = path.dirname(filePath);
+    const tmpPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
+    try {
+      fs.writeFileSync(tmpPath, content, 'utf8');
+      fs.renameSync(tmpPath, filePath);
+    } catch (error) {
+      // 失败时清理临时文件，不向上吞没原始错误
+      try {
+        if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+      } catch {
+        // 临时文件清理失败不影响主流程错误传播
+      }
+      throw error;
     }
-    return FileUtils.isReactFile(fileName);
   }
 
+  /**
+   * 统一的 JSON 写入：保证父目录存在、缩进一致、末尾换行。
+   *
+   * Why: 早期实现散落在多个 Processor 内联拼装 `JSON.stringify(data, null, 2) + '\n'`，
+   * 一旦换行/编码/缩进策略需要调整就要多处改动；统一入口避免漂移。
+   */
+  static writeJsonFile(
+    filePath: string,
+    data: unknown,
+    options: { indent?: number; ensureDir?: boolean } = {},
+  ): void {
+    const { indent = 2, ensureDir = true } = options;
+    if (ensureDir) {
+      FileUtils.ensureDirectoryExists(path.dirname(filePath));
+    }
+    const content = JSON.stringify(data, null, indent) + '\n';
+    FileUtils.atomicWrite(filePath, content);
+  }
+
+  /** 类型声明文件不应被作为业务源码处理 */
+  static isDeclarationFile(fileName: string): boolean {
+    return fileName.endsWith('.d.ts') || fileName.endsWith('.d.mts') || fileName.endsWith('.d.cts');
+  }
+
+  /**
+   * 文件名是否匹配给定扩展名集合（同时排除类型声明文件）。
+   * 框架细节由调用方通过 Adapter.getSupportedExtensions() 提供，本工具不再硬编码。
+   */
+  static matchesExtensions(fileName: string, extensions: string[]): boolean {
+    if (FileUtils.isDeclarationFile(fileName)) return false;
+    return extensions.includes(path.extname(fileName));
+  }
+
+  /**
+   * 扫描目录，返回所有匹配指定扩展名集合的源文件。
+   * 框架信息由调用方通过 adapter.getSupportedExtensions() 注入。
+   *
+   * exclude 同时支持精确名（如 'node_modules'）与简单 glob（含 `*` 的模式，如
+   * `*.config.ts`），避免业务方需要把每种构建工具配置文件名都写一遍。
+   */
   static getFrameworkFiles(
     dirPath: string,
-    framework: 'react' | 'vue',
+    extensions: string[],
     exclude: string[] = ['node_modules', 'dist', 'build', '.git', 'public'],
     include: string[] = [],
   ): string[] {
     const files: string[] = [];
-    const excludeSet = new Set(exclude);
+    const literalExcludes = new Set<string>();
+    const globExcludes: RegExp[] = [];
+    for (const e of exclude) {
+      if (e.includes('*') || e.includes('?')) {
+        globExcludes.push(FileUtils.simpleGlobToRegex(e));
+      } else {
+        literalExcludes.add(e);
+      }
+    }
+
+    const isExcluded = (name: string): boolean => {
+      if (literalExcludes.has(name)) return true;
+      for (const r of globExcludes) {
+        if (r.test(name)) return true;
+      }
+      return false;
+    };
 
     const walkDir = (currentPath: string): void => {
       const entries = fs.readdirSync(currentPath, { withFileTypes: true });
 
       for (const entry of entries) {
-        if (excludeSet.has(entry.name)) {
+        if (isExcluded(entry.name)) {
           continue;
         }
 
@@ -253,7 +329,7 @@ export class FileUtils {
 
         if (entry.isDirectory()) {
           walkDir(fullPath);
-        } else if (entry.isFile() && FileUtils.isFrameworkFile(entry.name, framework)) {
+        } else if (entry.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
           if (
             include.length === 0 ||
             FileUtils.matchesIncludePatterns(fullPath, dirPath, include)
@@ -266,6 +342,16 @@ export class FileUtils {
 
     walkDir(dirPath);
     return files;
+  }
+
+  /**
+   * 将简单 glob（仅支持 `*` 与 `?`）编译为锚定到整段名称的正则。
+   * 不处理路径分隔符与花括号扩展，仅服务于 exclude 中的单段文件名匹配。
+   */
+  private static simpleGlobToRegex(pattern: string): RegExp {
+    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    const regex = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
+    return new RegExp(`^${regex}$`);
   }
 
   /**
@@ -346,7 +432,13 @@ export class FileUtils {
    * @returns 目录路径
    */
   static getDirectoryPath(config: ResolvedConfig, isCustom: boolean): string {
-    return isCustom ? config.paths.customLocale : config.paths.locale;
+    if (isCustom) {
+      if (!config.paths.customLocale) {
+        throw new Error('未配置 paths.customLocale，无法启用定制目录模式');
+      }
+      return config.paths.customLocale;
+    }
+    return config.paths.locale;
   }
 
   /**
@@ -402,10 +494,14 @@ export class FileUtils {
 
   /**
    * 验证目标路径的有效性
+   *
+   * @param extensions - 该框架支持的扩展名列表（含点号）
+   * @param displayName - 框架展示名，用于错误提示（例如 "Vue" / "React"）
    */
   static validateTargetPath(
     targetPath: string,
-    framework: 'react' | 'vue' = 'react',
+    extensions: string[],
+    displayName: string,
   ): {
     isValid: boolean;
     type: 'file' | 'directory' | 'invalid';
@@ -422,12 +518,11 @@ export class FileUtils {
     const stat = fs.statSync(targetPath);
 
     if (stat.isFile()) {
-      if (!FileUtils.isFrameworkFile(path.basename(targetPath), framework)) {
-        const supportedTypes = framework === 'vue' ? '.vue, .ts, .js' : '.tsx, .jsx, .ts, .js';
+      if (!FileUtils.matchesExtensions(path.basename(targetPath), extensions)) {
         return {
           isValid: false,
           type: 'file',
-          error: `不支持的文件类型，请选择${framework === 'vue' ? 'Vue' : 'React'}文件(${supportedTypes})`,
+          error: `不支持的文件类型，请选择${displayName}文件(${extensions.join(', ')})`,
         };
       }
       return { isValid: true, type: 'file' };

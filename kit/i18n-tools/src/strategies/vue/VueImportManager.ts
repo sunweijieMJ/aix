@@ -1,8 +1,7 @@
 import type { IImportManager } from '../../adapters/FrameworkAdapter';
-import ts from 'typescript';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
 import type { ExtractedString } from '../../utils/types';
 import type { VueI18nLibrary } from './libraries';
-import { VueI18nLibraryImpl } from './libraries';
 
 /**
  * 管理 Vue i18n 转换中所需的 import 语句和相关代码
@@ -11,9 +10,9 @@ export class VueImportManager implements IImportManager {
   private tImport: string;
   private library: VueI18nLibrary;
 
-  constructor(tImport: string = '@/plugins/locale', library?: VueI18nLibrary) {
+  constructor(tImport: string, library: VueI18nLibrary) {
     this.tImport = tImport;
-    this.library = library ?? new VueI18nLibraryImpl();
+    this.library = library;
   }
 
   // ==================== 添加 Imports ====================
@@ -50,38 +49,23 @@ export class VueImportManager implements IImportManager {
    * 添加从 @/plugins/locale 导入 t 函数（用于纯 .ts/.js 文件）
    */
   private addPluginLocaleImport(code: string): string {
-    const escapedPath = this.tImport.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedPath = CommonASTUtils.escapeRegExp(this.tImport);
     if (
       new RegExp(`import\\s*\\{[^}]*\\bt\\b[^}]*\\}\\s*from\\s*['"]${escapedPath}['"]`).test(code)
     ) {
       return code;
     }
-
-    const lines = code.split('\n');
-    let lastImportIndex = -1;
-
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i]!.trim().startsWith('import ')) {
-        lastImportIndex = i;
-      }
-    }
-
-    const importStatement = `import { t } from '${this.tImport}';`;
-
-    if (lastImportIndex >= 0) {
-      lines.splice(lastImportIndex + 1, 0, importStatement);
-    } else {
-      lines.unshift(importStatement);
-    }
-
-    return lines.join('\n');
+    return CommonASTUtils.mergeNamedImport(code, this.tImport, ['t']);
   }
 
   /**
    * 添加 i18n 库导入 (实现接口方法)
+   *
+   * 仅在 SFC 的 <script> 块内合并/追加。VueComponentInjector 只对 SFC 调用本方法，
+   * 非 SFC 输入按 HEAD 行为原样返回。
    */
   addI18nImports(code: string, imports: string[]): string {
-    return this.addLibraryImports(code, imports);
+    return this.mergeNamedImportInScript(code, this.library.packageName, imports);
   }
 
   /**
@@ -92,7 +76,7 @@ export class VueImportManager implements IImportManager {
       return code;
     }
 
-    const hookImport = this.library.generateImportStatement() + '\n';
+    const hookImport = this.library.generateImportStatement();
     return this.addImportToScript(code, hookImport);
   }
 
@@ -112,12 +96,19 @@ export class VueImportManager implements IImportManager {
       const scriptContent = scriptSetupMatch[2]!;
       const lines = scriptContent.split('\n');
 
-      let insertIndex = 0;
-      for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i]!.trim();
-        if (trimmed && !trimmed.startsWith('import ') && !trimmed.startsWith('//')) {
-          insertIndex = i;
-          break;
+      // 优先以"最后一条 import 之后"作为锚点；只有完全没有 import 时才寻找首个非空非注释行。
+      const lastImportIndex = CommonASTUtils.findLastImportLineIndex(lines);
+      let insertIndex: number;
+      if (lastImportIndex >= 0) {
+        insertIndex = lastImportIndex + 1;
+      } else {
+        insertIndex = lines.length;
+        for (let i = 0; i < lines.length; i++) {
+          const trimmed = lines[i]!.trim();
+          if (trimmed && !trimmed.startsWith('//')) {
+            insertIndex = i;
+            break;
+          }
         }
       }
 
@@ -130,224 +121,26 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
-   * 添加 i18n 库导入
+   * 在 <script> 块内合并/追加命名导入（对 SFC 文件，避免误匹配 template/style 中的相似字符串）
    */
-  private addLibraryImports(code: string, imports: string[]): string {
-    const packageName = this.library.packageName;
-    const importRegex = new RegExp(
-      `import\\s*\\{([^}]+)\\}\\s*from\\s*['"]${packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"];?`,
-    );
-    const match = code.match(importRegex);
-    if (match) {
-      const existingImports = match[1]!.split(',').map((imp) => imp.trim());
-      const newImports = [...new Set([...existingImports, ...imports])];
-      return code.replace(match[0], `import { ${newImports.join(', ')} } from '${packageName}';`);
-    }
-    const importStatement = `import { ${imports.join(', ')} } from '${packageName}';\n`;
-    return this.addImportToScript(code, importStatement);
+  private mergeNamedImportInScript(code: string, packageName: string, names: string[]): string {
+    const scriptMatch = code.match(/(<script[^>]*>)([\s\S]*?)<\/script>/);
+    if (!scriptMatch) return code;
+    const scriptTag = scriptMatch[1]!;
+    const scriptContent = scriptMatch[2]!;
+    const updatedScript = CommonASTUtils.mergeNamedImport(scriptContent, packageName, names);
+    return code.replace(scriptMatch[0], `${scriptTag}${updatedScript}</script>`);
   }
 
   /**
-   * 在 script 标签内添加 import 语句
+   * 在 <script> 块内追加一条 import 语句
    */
   private addImportToScript(code: string, importStatement: string): string {
     const scriptMatch = code.match(/(<script[^>]*>)([\s\S]*?)<\/script>/);
-    if (!scriptMatch) {
-      return code;
-    }
-
+    if (!scriptMatch) return code;
     const scriptTag = scriptMatch[1]!;
     const scriptContent = scriptMatch[2]!;
-    const lines = scriptContent.split('\n');
-    const lastImportIndex = this.findLastImportIndex(lines);
-
-    lines.splice(lastImportIndex + 1, 0, importStatement.trim());
-    const newScriptContent = lines.join('\n');
-
-    return code.replace(scriptMatch[0], `${scriptTag}${newScriptContent}</script>`);
-  }
-
-  /**
-   * 查找最后一个 import 语句的行号
-   */
-  private findLastImportIndex(lines: string[]): number {
-    let lastImportIndex = -1;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i]!.trim().startsWith('import ')) {
-        lastImportIndex = i;
-      }
-    }
-    return lastImportIndex;
-  }
-
-  // ==================== 清理 Imports 和相关代码 ====================
-
-  /**
-   * 转换代码中的 Unicode 编码为中文字符
-   */
-  static convertUnicodeToChineseInCode(code: string): string {
-    // 处理单引号字符串中的 Unicode 编码
-    code = code.replace(/'([^']*\\u[0-9a-fA-F]{4}[^']*)'/g, (match) => {
-      const unicodeStr = match.slice(1, -1);
-      try {
-        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
-          return String.fromCharCode(parseInt(hex, 16));
-        });
-        return `'${decoded}'`;
-      } catch {
-        return match;
-      }
-    });
-
-    // 处理双引号字符串中的 Unicode 编码
-    code = code.replace(/"([^"]*\\u[0-9a-fA-F]{4}[^"]*)"/g, (match) => {
-      const unicodeStr = match.slice(1, -1);
-      try {
-        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
-          return String.fromCharCode(parseInt(hex, 16));
-        });
-        return `"${decoded}"`;
-      } catch {
-        return match;
-      }
-    });
-
-    // 处理模板字符串中的 Unicode 编码
-    code = code.replace(/`([^`]*\\u[0-9a-fA-F]{4}[^`]*)`/g, (match) => {
-      const templateStr = match.slice(1, -1);
-      try {
-        const decoded = templateStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
-          return String.fromCharCode(parseInt(hex, 16));
-        });
-        return `\`${decoded}\``;
-      } catch {
-        return match;
-      }
-    });
-
-    return code;
-  }
-
-  /**
-   * 清理导入语句（用于 restore 操作）
-   * 支持传入 library 实例来检测对应包的导入
-   */
-  static cleanupImports(node: ts.ImportDeclaration, library?: VueI18nLibrary): ts.Node {
-    if (!node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier)) {
-      return node;
-    }
-
-    const moduleName = node.moduleSpecifier.text;
-
-    if (library) {
-      if (library.isLibraryImport(moduleName)) {
-        return ts.factory.createNotEmittedStatement(node);
-      }
-    } else {
-      // 向后兼容：默认清理 vue-i18n
-      if (moduleName === 'vue-i18n') {
-        return ts.factory.createNotEmittedStatement(node);
-      }
-    }
-
-    return node;
-  }
-
-  /**
-   * 清理变量声明语句（移除 Hook 相关声明）
-   * 支持传入 library 实例来检测对应 Hook
-   */
-  static cleanupVariableStatements(node: ts.VariableStatement, library?: VueI18nLibrary): ts.Node {
-    const lib = library ?? new VueI18nLibraryImpl();
-
-    const filteredDeclarations = node.declarationList.declarations.filter((declaration) => {
-      if (ts.isIdentifier(declaration.name)) {
-        if (declaration.initializer && ts.isCallExpression(declaration.initializer)) {
-          const expression = declaration.initializer.expression;
-          if (ts.isIdentifier(expression) && lib.isHookDeclaration(expression.text)) {
-            return false;
-          }
-        }
-      }
-
-      // 移除解构 const { t } = useI18n() / useTranslation()
-      if (ts.isObjectBindingPattern(declaration.name)) {
-        if (declaration.initializer && ts.isCallExpression(declaration.initializer)) {
-          const expression = declaration.initializer.expression;
-          if (ts.isIdentifier(expression) && lib.isHookDeclaration(expression.text)) {
-            return false;
-          }
-        }
-
-        const elements = declaration.name.elements.filter((element) => {
-          if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
-            return element.name.text !== 't';
-          }
-          return true;
-        });
-
-        if (elements.length === 0) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-
-    if (filteredDeclarations.length === 0) {
-      return ts.factory.createNotEmittedStatement(node);
-    }
-
-    if (filteredDeclarations.length < node.declarationList.declarations.length) {
-      return ts.factory.updateVariableStatement(
-        node,
-        node.modifiers,
-        ts.factory.updateVariableDeclarationList(node.declarationList, filteredDeclarations),
-      );
-    }
-
-    return node;
-  }
-
-  /**
-   * 清理 Composition API 中的 Hook 依赖
-   */
-  static cleanupHookDependencies(node: ts.CallExpression): ts.Node {
-    if (!ts.isIdentifier(node.expression)) {
-      return node;
-    }
-
-    const hookName = node.expression.text;
-
-    if (!['watch', 'watchEffect', 'computed'].includes(hookName)) {
-      return node;
-    }
-
-    if (hookName === 'watch' && node.arguments[1]) {
-      const depsArg = node.arguments[1];
-
-      if (ts.isArrayLiteralExpression(depsArg)) {
-        const filteredElements = depsArg.elements.filter((element) => {
-          if (ts.isIdentifier(element) && element.text === 't') {
-            return false;
-          }
-          return true;
-        });
-
-        if (filteredElements.length !== depsArg.elements.length) {
-          const newDepsArray = ts.factory.createArrayLiteralExpression(filteredElements);
-          const newArguments = [...node.arguments];
-          newArguments[1] = newDepsArray;
-          return ts.factory.updateCallExpression(
-            node,
-            node.expression,
-            node.typeArguments,
-            newArguments,
-          );
-        }
-      }
-    }
-
-    return node;
+    const updatedScript = CommonASTUtils.appendImportLine(scriptContent, importStatement);
+    return code.replace(scriptMatch[0], `${scriptTag}${updatedScript}</script>`);
   }
 }

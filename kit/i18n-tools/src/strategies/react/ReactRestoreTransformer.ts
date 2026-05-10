@@ -1,7 +1,7 @@
 import fs from 'fs';
 import ts from 'typescript';
-import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
-import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { ReactASTUtils } from './react-ast-utils';
 import { ReactImportManager } from './ReactImportManager';
 import { ReactTextExtractor } from './ReactTextExtractor';
 import { MessageProcessor } from '../../utils/message-processor';
@@ -53,7 +53,8 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
     let transformedCode = printer.printFile(result.transformed[0]!);
-    transformedCode = ReactImportManager.convertUnicodeToChineseInCode(transformedCode);
+    // React 端 includeJsx=true：处理 `{'...'}` 形式的 JSX 表达式包裹
+    transformedCode = CommonASTUtils.convertUnicodeToChineseInCode(transformedCode, true);
 
     result.dispose();
 

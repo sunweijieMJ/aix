@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
-import type { FrameworkAdapter } from '../adapters';
 import { CommandUtils } from '../utils/command-utils';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
@@ -20,13 +19,8 @@ interface RestoreOptions {
  * 负责将国际化代码还原为原始文本
  */
 export class RestoreProcessor extends BaseProcessor {
-  private framework: 'react' | 'vue';
-  private adapter: FrameworkAdapter;
-
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     super(config, isCustom);
-    this.framework = config.framework;
-    this.adapter = BaseProcessor.createAdapter(config);
   }
 
   protected getOperationName(): string {
@@ -76,7 +70,7 @@ export class RestoreProcessor extends BaseProcessor {
           files.push(
             ...FileUtils.getFrameworkFiles(
               resolvedTarget,
-              this.framework,
+              this.adapter.getSupportedExtensions(),
               this.config.exclude,
               this.config.include,
             ),
@@ -106,13 +100,13 @@ export class RestoreProcessor extends BaseProcessor {
       } else {
         filesToProcess = FileUtils.getFrameworkFiles(
           options.sourceDir,
-          this.framework,
+          this.adapter.getSupportedExtensions(),
           this.config.exclude,
           this.config.include,
         );
       }
 
-      const frameworkName = this.framework === 'vue' ? 'Vue' : 'React';
+      const frameworkName = this.adapter.getDisplayName();
       LoggerUtils.info(`📁 找到 ${filesToProcess.length} 个${frameworkName}文件待处理`);
 
       if (filesToProcess.length === 0) {

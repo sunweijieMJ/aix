@@ -1,6 +1,6 @@
 import type { ResolvedConfig } from '../config';
 import { LoggerUtils } from '../utils/logger';
-import { BaseProcessor } from './BaseProcessor';
+import { FileProcessor } from './FileProcessor';
 import { ExportProcessor } from './ExportProcessor';
 import { GenerateProcessor } from './GenerateProcessor';
 import { MergeProcessor } from './MergeProcessor';
@@ -13,7 +13,7 @@ import { TranslateProcessor } from './TranslateProcessor';
  *
  * 接收 ResolvedConfig 并传递给所有子处理器
  */
-export class AutomaticProcessor extends BaseProcessor {
+export class AutomaticProcessor extends FileProcessor {
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     super(config, isCustom);
   }

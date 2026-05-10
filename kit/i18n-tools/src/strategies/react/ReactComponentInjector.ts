@@ -1,7 +1,8 @@
 import type { IComponentInjector } from '../../adapters/FrameworkAdapter';
 import ts from 'typescript';
-import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
-import { ReactImportManager } from './ReactImportManager';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { ReactASTUtils } from './react-ast-utils';
+import type { ReactImportManager } from './ReactImportManager';
 import type { ReactI18nLibrary } from './libraries';
 
 interface Transformation {
@@ -22,23 +23,17 @@ interface ComponentInfo {
  * 负责向React组件注入国际化能力（由 library 适配器驱动）
  */
 export class ReactComponentInjector implements IComponentInjector {
-  private tImport: string;
   private library: ReactI18nLibrary;
+  private importManager: ReactImportManager;
 
-  constructor(tImport: string = '@/plugins/locale', library: ReactI18nLibrary) {
-    this.tImport = tImport;
+  constructor(library: ReactI18nLibrary, importManager: ReactImportManager) {
     this.library = library;
+    this.importManager = importManager;
   }
 
   inject(code: string): string {
     // Phase 1: 分析原始代码，找出需要注入的组件
-    const initialSourceFile = ts.createSourceFile(
-      'temp.tsx',
-      code,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TSX,
-    );
+    const initialSourceFile = CommonASTUtils.parseSourceFile(code, 'temp.tsx');
     const componentsToModify: ComponentInfo[] = [];
 
     const initialVisitor = (node: ts.Node) => {
@@ -69,11 +64,10 @@ export class ReactComponentInjector implements IComponentInjector {
       return code;
     }
 
-    // Phase 2: 添加必要的导入
-    const importManager = new ReactImportManager(this.tImport, this.library);
+    // Phase 2: 添加必要的导入（使用注入的 importManager 以共享配置）
     let codeWithImports = code;
     if (componentsToModify.some((c) => c.injectionType === 'hook')) {
-      codeWithImports = importManager.addI18nImports(codeWithImports, [this.library.hookName]);
+      codeWithImports = this.importManager.addI18nImports(codeWithImports, [this.library.hookName]);
     }
     if (componentsToModify.some((c) => c.injectionType === 'hoc')) {
       const hocImports = this.library.getImportSpecifiers({
@@ -81,17 +75,11 @@ export class ReactComponentInjector implements IComponentInjector {
         hasHook: false,
         hasHOC: true,
       });
-      codeWithImports = importManager.addI18nImports(codeWithImports, hocImports);
+      codeWithImports = this.importManager.addI18nImports(codeWithImports, hocImports);
     }
 
     // Phase 3: 重新解析带有新导入的代码并应用转换
-    const sourceFileWithImports = ts.createSourceFile(
-      'temp.tsx',
-      codeWithImports,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TSX,
-    );
+    const sourceFileWithImports = CommonASTUtils.parseSourceFile(codeWithImports, 'temp.tsx');
     const transformations: Transformation[] = [];
 
     const finalVisitor = (node: ts.Node) => {

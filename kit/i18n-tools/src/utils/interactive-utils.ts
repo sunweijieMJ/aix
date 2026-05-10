@@ -55,16 +55,22 @@ export class InteractiveUtils {
    * 提示用户确认操作
    * @param mode - 当前模式
    * @param isCustom - 是否为定制目录
+   * @param hasCustomLocale - 是否启用了双目录（影响是否显示"操作目录"）
    * @returns 是否确认
    */
-  static async promptForConfirmation(mode: ModeName, isCustom: boolean): Promise<boolean> {
-    const location = isCustom ? '定制目录' : '主目录';
+  static async promptForConfirmation(
+    mode: ModeName,
+    isCustom: boolean,
+    hasCustomLocale: boolean = true,
+  ): Promise<boolean> {
+    const locationLine = hasCustomLocale
+      ? `\n  - 操作目录: ${isCustom ? '定制目录' : '主目录'}`
+      : '';
     const message = `
 ================================================
   确认操作
 ------------------------------------------------
-  - 操作模式: ${mode} (${MODE_DESCRIPTIONS[mode]})
-  - 操作目录: ${location}
+  - 操作模式: ${mode} (${MODE_DESCRIPTIONS[mode]})${locationLine}
 ================================================
 确定要执行此操作吗?
 `;
@@ -108,13 +114,15 @@ export class InteractiveUtils {
 
   /**
    * 提示用户输入文件或目录路径
+   *
    * @param mode - 操作类型（用于提示信息）
-   * @param framework - 框架类型 ('react' | 'vue')
-   * @returns 用户输入的路径
+   * @param extensions - 框架支持的扩展名列表（来自 adapter.getSupportedExtensions()）
+   * @param displayName - 框架展示名（用于错误提示，如 "Vue"）
    */
   static async promptForPath(
     mode: ModeName,
-    framework: 'react' | 'vue' = 'react',
+    extensions: string[],
+    displayName: string,
   ): Promise<string> {
     let actionText: string;
     switch (mode) {
@@ -137,7 +145,7 @@ export class InteractiveUtils {
           message: `请输入要${actionText}的文件或目录路径:`,
           validate: (input: string) => {
             if (!input.trim()) return '请输入路径';
-            const validation = FileUtils.validateTargetPath(input, framework);
+            const validation = FileUtils.validateTargetPath(input, extensions, displayName);
             if (!validation.isValid) {
               return validation.error || '无效路径';
             }

@@ -9,20 +9,23 @@ import {
   type AttributeNode,
   type DirectiveNode,
 } from '@vue/compiler-dom';
-import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
 import type { ExtractedString } from '../../utils/types';
-import type { ITextExtractor } from '../../adapters/FrameworkAdapter';
+import { BaseTextExtractor } from '../../adapters/FrameworkAdapter';
 import type { VueI18nLibrary } from './libraries';
 
 /**
  * Vue 文本提取器
  * 负责从 Vue 文件中提取需要国际化的文本
  */
-export class VueTextExtractor implements ITextExtractor {
-  constructor(_library?: VueI18nLibrary) {
-    // library 预留用于后续扩展
+export class VueTextExtractor extends BaseTextExtractor {
+  private library: VueI18nLibrary;
+
+  constructor(library: VueI18nLibrary) {
+    super();
+    this.library = library;
   }
   /**
    * 从单个文件中提取字符串
@@ -74,21 +77,7 @@ export class VueTextExtractor implements ITextExtractor {
     return extractedStrings;
   }
 
-  /**
-   * 从多个文件中提取字符串
-   * @param filePaths - 文件路径数组
-   * @returns 提取的字符串数组
-   */
-  async extractFromFiles(filePaths: string[]): Promise<ExtractedString[]> {
-    const allExtractedStrings: ExtractedString[] = [];
-
-    for (const filePath of filePaths) {
-      const extracted = await this.extractFromFile(filePath);
-      allExtractedStrings.push(...extracted);
-    }
-
-    return allExtractedStrings;
-  }
+  // extractFromFiles 由 BaseTextExtractor 提供默认串行实现
 
   /**
    * 从 Vue template 中提取字符串
@@ -360,13 +349,7 @@ export class VueTextExtractor implements ITextExtractor {
     }
 
     // 使用 TypeScript AST 解析动态属性表达式
-    const sourceFile = ts.createSourceFile(
-      'temp.ts',
-      trimmed,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
-    );
+    const sourceFile = CommonASTUtils.parseSourceFile(trimmed, 'temp.ts');
 
     const visit = async (node: ts.Node): Promise<void> => {
       // 提取字符串字面量
@@ -376,7 +359,7 @@ export class VueTextExtractor implements ITextExtractor {
         // 跳过比较运算符 (===, !==, ==, !=) 中的字符串操作数
         // 比较值应使用与 locale 无关的常量，提取后会导致数据与比较不同步
         // 例如 v-if="userType === 'admin'" 或 :type="status === '进行中' ? ..."
-        if (this.isComparisonOperand(node)) {
+        if (CommonASTUtils.isComparisonOperand(node)) {
           return;
         }
 
@@ -446,44 +429,15 @@ export class VueTextExtractor implements ITextExtractor {
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
       text = node.text;
     } else if (ts.isTemplateExpression(node)) {
-      const chineseTextParts: string[] = [];
-      if (node.head.text && FileUtils.containsChinese(node.head.text)) {
-        chineseTextParts.push(node.head.text);
-      }
-      for (const span of node.templateSpans) {
-        if (span.literal.text && FileUtils.containsChinese(span.literal.text)) {
-          chineseTextParts.push(span.literal.text);
-        }
-      }
-
-      if (chineseTextParts.length > 0) {
+      // 复用 CommonASTUtils.processTemplateExpression：与脚本段、React 端走同一份
+      // 字面量内联与占位符生成逻辑，避免双端漂移。
+      // template 段保留"内联字面量后的 text"用作 original（与原内联实现行为一致），
+      // 因为 VueTransformer 通过 line/column 定位、不需要按 original 文本匹配源码。
+      if (CommonASTUtils.templateLiteralsContainChinese(node, FileUtils.containsChinese)) {
+        const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+        text = result.processedText;
+        templateVariables.push(...result.templateVariables);
         isTemplateString = true;
-        text = '`' + node.head.text;
-
-        for (const span of node.templateSpans) {
-          const expression = span.expression;
-          const expressionText = CommonASTUtils.nodeToText(expression, sourceFile);
-
-          const isLiteral =
-            ts.isStringLiteral(expression) ||
-            ts.isNumericLiteral(expression) ||
-            ts.isNoSubstitutionTemplateLiteral(expression) ||
-            expression.kind === ts.SyntaxKind.TrueKeyword ||
-            expression.kind === ts.SyntaxKind.FalseKeyword ||
-            expression.kind === ts.SyntaxKind.NullKeyword;
-
-          if (isLiteral) {
-            let literalValue = expressionText;
-            if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
-              literalValue = expression.text;
-            }
-            text += literalValue + span.literal.text;
-          } else {
-            templateVariables.push(expressionText);
-            text += '${' + expressionText + '}' + span.literal.text;
-          }
-        }
-        text += '`';
       }
     }
 
@@ -530,13 +484,7 @@ export class VueTextExtractor implements ITextExtractor {
 
       // 使用TypeScript AST解析插值表达式内容
       // 这样可以准确提取三元表达式中的字符串（包括模板字符串）
-      const sourceFile = ts.createSourceFile(
-        'temp.ts',
-        content,
-        ts.ScriptTarget.Latest,
-        true,
-        ts.ScriptKind.TS,
-      );
+      const sourceFile = CommonASTUtils.parseSourceFile(content, 'temp.ts');
 
       const visit = async (node: ts.Node): Promise<void> => {
         // 提取字符串字面量
@@ -606,49 +554,12 @@ export class VueTextExtractor implements ITextExtractor {
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
       text = node.text;
     } else if (ts.isTemplateExpression(node)) {
-      // 检查是否包含中文
-      const chineseTextParts: string[] = [];
-      if (node.head.text && FileUtils.containsChinese(node.head.text)) {
-        chineseTextParts.push(node.head.text);
-      }
-      for (const span of node.templateSpans) {
-        if (span.literal.text && FileUtils.containsChinese(span.literal.text)) {
-          chineseTextParts.push(span.literal.text);
-        }
-      }
-
-      // 如果包含中文，提取整个模板字符串
-      if (chineseTextParts.length > 0) {
+      // 复用 CommonASTUtils.processTemplateExpression（同动态属性段说明）
+      if (CommonASTUtils.templateLiteralsContainChinese(node, FileUtils.containsChinese)) {
+        const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+        text = result.processedText;
+        templateVariables.push(...result.templateVariables);
         isTemplateString = true;
-        text = '`' + node.head.text;
-
-        for (const span of node.templateSpans) {
-          const expression = span.expression;
-          const expressionText = CommonASTUtils.nodeToText(expression, sourceFile);
-
-          // 检查是否是字面量
-          const isLiteral =
-            ts.isStringLiteral(expression) ||
-            ts.isNumericLiteral(expression) ||
-            ts.isNoSubstitutionTemplateLiteral(expression) ||
-            expression.kind === ts.SyntaxKind.TrueKeyword ||
-            expression.kind === ts.SyntaxKind.FalseKeyword ||
-            expression.kind === ts.SyntaxKind.NullKeyword;
-
-          if (isLiteral) {
-            // 字面量直接内联
-            let literalValue = expressionText;
-            if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
-              literalValue = expression.text;
-            }
-            text += literalValue + span.literal.text;
-          } else {
-            // 变量作为占位符
-            templateVariables.push(expressionText);
-            text += '${' + expressionText + '}' + span.literal.text;
-          }
-        }
-        text += '`';
       }
     }
 
@@ -684,15 +595,15 @@ export class VueTextExtractor implements ITextExtractor {
     const extractedStrings: ExtractedString[] = [];
 
     try {
-      const sourceFile = ts.createSourceFile(
-        filePath,
-        scriptContent,
-        ts.ScriptTarget.Latest,
-        true,
-        ts.ScriptKind.TS,
-      );
+      const sourceFile = CommonASTUtils.parseSourceFile(scriptContent, filePath);
 
-      await this.visitScriptNode(sourceFile, sourceFile, extractedStrings, lineOffset);
+      // filePath 必须从入参透传到 push 处，不能用 sourceFile.fileName。
+      // ts.createSourceFile 内部会对 fileName 调用 normalizePath，将 Windows 反
+      // 斜杠转换成正斜杠；template 路径用的是入参（反斜杠），两边不一致会让上
+      // 游的 `new Set(extractedStrings.map(s => s.filePath))` 去重失败，导致同一
+      // .vue 文件被 transform 两次（第二次在已被改写的源码上越界，触发 ts
+      // Debug Failure）。
+      await this.visitScriptNode(sourceFile, sourceFile, extractedStrings, lineOffset, filePath);
     } catch (error) {
       LoggerUtils.error(`解析 script 失败: ${filePath}`, error);
     }
@@ -712,74 +623,29 @@ export class VueTextExtractor implements ITextExtractor {
     sourceFile: ts.SourceFile,
     extractedStrings: ExtractedString[],
     lineOffset: number,
+    filePath: string,
   ): Promise<void> {
     let originalText = ''; // 保持源代码原样（用于转换时匹配）
     let processedText = ''; // 内联字面量后的文本（用于locale和ID）
     let isTemplateString = false;
     const templateVariables: string[] = [];
 
-    // 处理字符串字面量
+    // 处理字符串字面量：跳过对象 key、import 路径、比较运算符 / case 操作数
     if (ts.isStringLiteral(node)) {
-      originalText = node.text;
-      processedText = node.text;
+      if (CommonASTUtils.isExtractableStringLiteral(node)) {
+        originalText = node.text;
+        processedText = node.text;
+      }
     }
-    // 处理模板字符串
+    // 处理模板字符串：复用 CommonASTUtils.processTemplateExpression，
+    // 与 React 端走同一份字面量过滤 / 占位符生成逻辑，避免双端漂移。
     else if (ts.isTemplateExpression(node)) {
-      const chineseTextParts: string[] = [];
-
-      // 检查头部文本
-      if (node.head.text && FileUtils.containsChinese(node.head.text)) {
-        chineseTextParts.push(node.head.text);
-      }
-
-      // 检查各个span的文本部分
-      for (const span of node.templateSpans) {
-        if (span.literal.text && FileUtils.containsChinese(span.literal.text)) {
-          chineseTextParts.push(span.literal.text);
-        }
-      }
-
-      // 如果有中文片段，则处理整个模板字符串
-      if (chineseTextParts.length > 0) {
+      if (CommonASTUtils.templateLiteralsContainChinese(node, FileUtils.containsChinese)) {
+        const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+        originalText = result.originalText;
+        processedText = result.processedText;
+        templateVariables.push(...result.templateVariables);
         isTemplateString = true;
-
-        // 构建原始文本（保持源代码样子）
-        originalText = '`' + node.head.text;
-        // 构建处理后的文本（内联字面量）
-        processedText = '`' + node.head.text;
-
-        for (const span of node.templateSpans) {
-          const expression = span.expression;
-          const expressionText = CommonASTUtils.nodeToText(expression, sourceFile);
-
-          // 检查是否是字面量
-          const isLiteral =
-            ts.isStringLiteral(expression) ||
-            ts.isNumericLiteral(expression) ||
-            ts.isNoSubstitutionTemplateLiteral(expression) ||
-            expression.kind === ts.SyntaxKind.TrueKeyword ||
-            expression.kind === ts.SyntaxKind.FalseKeyword ||
-            expression.kind === ts.SyntaxKind.NullKeyword;
-
-          if (isLiteral) {
-            // 原始文本保持${...}格式
-            originalText += '${' + expressionText + '}' + span.literal.text;
-
-            // 处理后的文本内联字面量值
-            let literalValue = expressionText;
-            if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
-              literalValue = expression.text;
-            }
-            processedText += literalValue + span.literal.text;
-          } else {
-            // 变量表达式：两者都保持${...}格式
-            templateVariables.push(expressionText);
-            originalText += '${' + expressionText + '}' + span.literal.text;
-            processedText += '${' + expressionText + '}' + span.literal.text;
-          }
-        }
-        originalText += '`';
-        processedText += '`';
       }
     }
     // 处理无替换模板字符串
@@ -796,7 +662,7 @@ export class VueTextExtractor implements ITextExtractor {
         original: originalText,
         processedMessage: processedText !== originalText ? processedText : undefined,
         semanticId: '',
-        filePath: sourceFile.fileName,
+        filePath,
         line: position.line + 1 + lineOffset,
         column: position.character + 1,
         context: 'script',
@@ -810,26 +676,8 @@ export class VueTextExtractor implements ITextExtractor {
     // 递归处理子节点
     const children = node.getChildren();
     for (const child of children) {
-      await this.visitScriptNode(child, sourceFile, extractedStrings, lineOffset);
+      await this.visitScriptNode(child, sourceFile, extractedStrings, lineOffset, filePath);
     }
-  }
-
-  /**
-   * 判断字符串字面量是否是比较运算符的操作数
-   * 例如 v-if="userType === 'admin'" 中的 'admin'
-   */
-  private isComparisonOperand(node: ts.Node): boolean {
-    const parent = node.parent;
-    if (parent && ts.isBinaryExpression(parent)) {
-      const op = parent.operatorToken.kind;
-      return (
-        op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
-        op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
-        op === ts.SyntaxKind.EqualsEqualsToken ||
-        op === ts.SyntaxKind.ExclamationEqualsToken
-      );
-    }
-    return false;
   }
 
   /**

@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import type { ReactI18nLibrary } from '../strategies/react/libraries';
+import type { ReactI18nLibrary } from './libraries';
 
 /**
  * React Hooks依赖项处理工具类

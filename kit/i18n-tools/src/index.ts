@@ -22,6 +22,10 @@ export type {
   ConcurrencyConfig,
   LocaleConfig,
   PromptsConfig,
+  VueConfig,
+  ReactConfig,
+  GlossaryConfig,
+  IdPrefixConfig,
 } from './config';
 
 // Core processors
@@ -37,7 +41,7 @@ export {
 } from './core';
 
 // Adapters
-export { FrameworkAdapter, ReactAdapter, VueAdapter } from './adapters';
+export { FrameworkAdapter, ReactAdapter, VueAdapter, createFrameworkAdapter } from './adapters';
 export type {
   FrameworkConfig,
   ITextExtractor,
@@ -45,6 +49,8 @@ export type {
   IRestoreTransformer,
   IComponentInjector,
   IImportManager,
+  ReactAdapterOptions,
+  VueAdapterOptions,
 } from './adapters';
 
 // Strategies
@@ -71,8 +77,11 @@ export { InteractiveUtils } from './utils/interactive-utils';
 export { LanguageFileManager } from './utils/language-file-manager';
 export { CommandUtils } from './utils/command-utils';
 export { MessageProcessor } from './utils/message-processor';
-export { HooksUtils } from './utils/hooks-utils';
-export { CommonASTUtils, ReactASTUtils } from './utils/ast';
+export { HooksUtils } from './strategies/react/hooks-utils';
+export { CommonASTUtils } from './utils/common-ast-utils';
+export { ReactASTUtils } from './strategies/react/react-ast-utils';
+export { Glossary } from './utils/glossary';
+export type { GlossaryMap } from './utils/glossary';
 
 // Utils - Constants & Enums
 export { FILES, CONFIG, MODE_DESCRIPTIONS } from './utils/constants';

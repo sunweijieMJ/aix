@@ -3,6 +3,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { loadConfig } from './config';
 import type { ResolvedConfig } from './config';
+import { createFrameworkAdapter } from './adapters';
 import {
   AutomaticProcessor,
   ExportProcessor,
@@ -14,15 +15,35 @@ import {
 } from './core';
 import { InteractiveUtils, loadEnv, LoggerUtils, MODE_DESCRIPTIONS, ModeName } from './utils';
 
+type FrameworkInfo = { extensions: string[]; displayName: string; libraryName: string };
+
+/**
+ * 提取框架展示信息，避免 CLI 层直接耦合具体扩展名/展示名。
+ *
+ * Why: 此函数原本每次调用都 `createFrameworkAdapter(config)`，在 GENERATE/RESTORE/AUTOMATIC
+ *      及顶部状态打印间被反复构造（含全部策略链 importManager/transformer 等）。
+ *      改为接受外部预构造的 adapter，由 main 顶部统一构造一次。
+ */
+const getFrameworkInfo = (adapter: ReturnType<typeof createFrameworkAdapter>): FrameworkInfo => ({
+  extensions: adapter.getSupportedExtensions(),
+  displayName: adapter.getDisplayName(),
+  libraryName: adapter.getLibraryName(),
+});
+
 /**
  * 执行generate操作（提取多语言组件）
  */
 const executeGenerate = async (
   config: ResolvedConfig,
+  frameworkInfo: FrameworkInfo,
   isCustom: boolean,
   skipLLM: boolean = false,
 ): Promise<void> => {
-  const targetPath = await InteractiveUtils.promptForPath(ModeName.GENERATE, config.framework);
+  const targetPath = await InteractiveUtils.promptForPath(
+    ModeName.GENERATE,
+    frameworkInfo.extensions,
+    frameworkInfo.displayName,
+  );
   const processor = new GenerateProcessor(config, isCustom);
   await processor.execute(targetPath, skipLLM);
 };
@@ -30,8 +51,16 @@ const executeGenerate = async (
 /**
  * 执行restore操作（还原多语言组件）
  */
-const executeRestore = async (config: ResolvedConfig, isCustom: boolean): Promise<void> => {
-  const targetPath = await InteractiveUtils.promptForPath(ModeName.RESTORE, config.framework);
+const executeRestore = async (
+  config: ResolvedConfig,
+  frameworkInfo: FrameworkInfo,
+  isCustom: boolean,
+): Promise<void> => {
+  const targetPath = await InteractiveUtils.promptForPath(
+    ModeName.RESTORE,
+    frameworkInfo.extensions,
+    frameworkInfo.displayName,
+  );
   const processor = new RestoreProcessor(config, isCustom);
   await processor.execute([targetPath], path.dirname(targetPath), true);
 };
@@ -173,8 +202,18 @@ export default defineConfig({
 
   // 初始化参数
   let mode = (argv.mode as ModeName) || ModeName.GENERATE;
-  const custom = Boolean(argv.custom);
+  const hasCustomLocale = Boolean(config.paths.customLocale);
   const skipLLM = Boolean(argv.skipLlm);
+
+  // 仅当配置了 paths.customLocale 时，--custom 才有意义；
+  // EXPORT 模式按设计不区分主/定制目录，--custom 在该模式下静默忽略而非报错。
+  if (argv.custom && !hasCustomLocale && argv.mode !== ModeName.EXPORT) {
+    LoggerUtils.error(
+      '❌ 未配置 paths.customLocale，无法使用 --custom。请在 i18n.config 中显式配置定制目录后再启用此选项。',
+    );
+    process.exit(1);
+  }
+  const custom = hasCustomLocale && Boolean(argv.custom);
 
   // 当显式指定了 --mode/-m 时，默认关闭交互模式；否则默认开启
   const modeExplicitlySet = process.argv
@@ -192,7 +231,7 @@ export default defineConfig({
       mode = await InteractiveUtils.promptForMode(custom, mode);
     }
 
-    const confirmed = await InteractiveUtils.promptForConfirmation(mode, custom);
+    const confirmed = await InteractiveUtils.promptForConfirmation(mode, custom, hasCustomLocale);
     if (!confirmed) {
       LoggerUtils.warn('操作已取消');
       process.exit(0);
@@ -204,12 +243,17 @@ export default defineConfig({
     LoggerUtils.info('注意: export 模式会导出所有语言包，不区分主目录和定制目录');
   }
 
+  // 一次性构造 adapter 并复用：避免在每个 mode 分支再 createFrameworkAdapter
+  const adapter = createFrameworkAdapter(config);
+  const frameworkInfo = getFrameworkInfo(adapter);
+
   // 输出操作信息
-  const location = mode === ModeName.EXPORT ? '全局' : custom ? '定制目录' : '主目录';
-  const frameworkLib = config.framework === 'vue' ? config.vue.library : config.react.library;
   LoggerUtils.info(`🎯 执行模式: ${mode} (${MODE_DESCRIPTIONS[mode]})`);
-  LoggerUtils.info(`📍 操作目录: ${location}`);
-  LoggerUtils.info(`⚡ 项目框架: ${config.framework} (${frameworkLib})`);
+  if (hasCustomLocale) {
+    const location = mode === ModeName.EXPORT ? '全局' : custom ? '定制目录' : '主目录';
+    LoggerUtils.info(`📍 操作目录: ${location}`);
+  }
+  LoggerUtils.info(`⚡ 项目框架: ${config.framework} (${frameworkInfo.libraryName})`);
 
   try {
     switch (mode) {
@@ -217,13 +261,14 @@ export default defineConfig({
         {
           const targetPath = await InteractiveUtils.promptForPath(
             ModeName.AUTOMATIC,
-            config.framework,
+            frameworkInfo.extensions,
+            frameworkInfo.displayName,
           );
           await new AutomaticProcessor(config, custom).execute(targetPath, skipLLM);
         }
         break;
       case ModeName.GENERATE:
-        await executeGenerate(config, custom, skipLLM);
+        await executeGenerate(config, frameworkInfo, custom, skipLLM);
         break;
       case ModeName.PICK:
         await executePick(config, custom);
@@ -238,7 +283,7 @@ export default defineConfig({
         await executeExport(config);
         break;
       case ModeName.RESTORE:
-        await executeRestore(config, custom);
+        await executeRestore(config, frameworkInfo, custom);
         break;
       default:
         LoggerUtils.error(`没有匹配的模式: ${mode}`);

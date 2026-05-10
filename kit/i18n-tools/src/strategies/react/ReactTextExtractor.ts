@@ -1,20 +1,21 @@
 import fs from 'fs';
 import ts from 'typescript';
-import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
-import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { ReactASTUtils } from './react-ast-utils';
 import { FileUtils } from '../../utils/file-utils';
 import type { ExtractedString, MessageInfo } from '../../utils/types';
-import type { ITextExtractor } from '../../adapters/FrameworkAdapter';
+import { BaseTextExtractor } from '../../adapters/FrameworkAdapter';
 import type { ReactI18nLibrary } from './libraries';
 
 /**
  * React 文本提取器
  * 负责从 React 文件中提取需要国际化的文本
  */
-export class ReactTextExtractor implements ITextExtractor {
+export class ReactTextExtractor extends BaseTextExtractor {
   private library?: ReactI18nLibrary;
 
   constructor(library?: ReactI18nLibrary) {
+    super();
     this.library = library;
   }
   /**
@@ -24,35 +25,14 @@ export class ReactTextExtractor implements ITextExtractor {
    */
   async extractFromFile(filePath: string): Promise<ExtractedString[]> {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
-    const scriptKind = CommonASTUtils.getScriptKind(filePath);
-    const sourceFile = ts.createSourceFile(
-      filePath,
-      sourceText,
-      ts.ScriptTarget.Latest,
-      true,
-      scriptKind,
-    );
+    const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
 
     const extractedStrings: ExtractedString[] = [];
     await this.visitNode(sourceFile, sourceFile, extractedStrings);
     return extractedStrings.filter((s) => s.filePath === filePath);
   }
 
-  /**
-   * 从多个文件中提取字符串
-   * @param filePaths - 文件路径数组
-   * @returns 提取的字符串数组
-   */
-  async extractFromFiles(filePaths: string[]): Promise<ExtractedString[]> {
-    const allExtractedStrings: ExtractedString[] = [];
-
-    for (const filePath of filePaths) {
-      const extracted = await this.extractFromFile(filePath);
-      allExtractedStrings.push(...extracted);
-    }
-
-    return allExtractedStrings;
-  }
+  // extractFromFiles 由 BaseTextExtractor 提供默认串行实现
 
   /**
    * 提取defineMessages中的消息定义
@@ -175,41 +155,34 @@ export class ReactTextExtractor implements ITextExtractor {
     }
 
     let text = '';
+    let processedMessage: string | undefined;
     let isTemplateString = false;
     const templateVariables: string[] = [];
 
     // 处理字符串字面量
     if (ts.isStringLiteral(node)) {
-      text = node.text;
+      // 跳过对象属性 key、模块导入路径、比较运算符/case 操作数
+      if (CommonASTUtils.isExtractableStringLiteral(node)) {
+        text = node.text;
+      }
     }
-    // 处理模板字符串
+    // 处理模板字符串：复用 CommonASTUtils.processTemplateExpression，
+    // 该方法会把字面量插值（'literal'/123/true 等）内联进文本，
+    // 仅保留真正的变量表达式作为占位符——与 Vue 端对齐，避免
+    // `${'literal'}` 被误当作占位符变量。
+    //
+    // 重要：text 必须保留源代码形式的 ${...} 占位符，因为后续 ReactTransformer
+    // 通过 extracted.original 在源代码中匹配并替换；processedMessage 走 ID
+    // 生成与 locale 写入路径，承载字面量内联后的真实文案。
     else if (ts.isTemplateExpression(node)) {
-      // 首先检查是否有中文文本片段
-      const chineseTextParts: string[] = [];
-
-      // 检查头部文本
-      if (node.head.text && FileUtils.containsChinese(node.head.text)) {
-        chineseTextParts.push(node.head.text);
-      }
-
-      // 检查各个span的文本部分
-      for (const span of node.templateSpans) {
-        if (span.literal.text && FileUtils.containsChinese(span.literal.text)) {
-          chineseTextParts.push(span.literal.text);
+      if (CommonASTUtils.templateLiteralsContainChinese(node, FileUtils.containsChinese)) {
+        const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+        text = result.originalText;
+        if (result.processedText !== result.originalText) {
+          processedMessage = result.processedText;
         }
-      }
-
-      // 如果有中文片段，则处理整个模板字符串
-      if (chineseTextParts.length > 0) {
+        templateVariables.push(...result.templateVariables);
         isTemplateString = true;
-        text = '`' + node.head.text;
-
-        for (const span of node.templateSpans) {
-          const expressionText = CommonASTUtils.nodeToText(span.expression, sourceFile);
-          templateVariables.push(expressionText);
-          text += '${' + expressionText + '}' + span.literal.text;
-        }
-        text += '`';
       }
     }
     // 处理无替换模板字符串
@@ -229,6 +202,7 @@ export class ReactTextExtractor implements ITextExtractor {
 
       extractedStrings.push({
         original: text,
+        processedMessage,
         semanticId: '', // 稍后生成
         filePath: sourceFile.fileName,
         line: position.line + 1,

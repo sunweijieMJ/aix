@@ -1,5 +1,6 @@
 import type {
   ConcurrencyConfig,
+  GlossaryConfig,
   IdPrefixConfig,
   LocaleConfig,
   PathsConfig,
@@ -9,10 +10,12 @@ import type {
 
 /**
  * 默认路径配置
+ *
+ * `customLocale` / `glossary` 不提供默认值：仅当用户在 i18n.config 中显式配置后才启用，
+ * 避免对不存在的目录或文件产生误导性日志。
  */
-export const DEFAULT_PATHS: Required<PathsConfig> = {
+export const DEFAULT_PATHS: Required<Omit<PathsConfig, 'customLocale' | 'glossary'>> = {
   locale: 'src/locale',
-  customLocale: 'src/overrides/locale',
   exportLocale: 'public/locale',
   source: 'src',
   tImport: '@/plugins/locale',
@@ -32,6 +35,7 @@ export const DEFAULT_VUE: Required<VueConfig> = {
 export const DEFAULT_REACT: Required<ReactConfig> = {
   library: 'react-i18next',
   namespace: '',
+  includeDefaultMessage: false,
 };
 
 /**
@@ -69,6 +73,18 @@ export const DEFAULT_ID_PREFIX: Required<IdPrefixConfig> = {
     请输入: 'please_input',
     请选择: 'please_select',
   },
+  reuseAcrossDirectories: false,
+};
+
+/**
+ * 默认词表配置
+ *
+ * 仅当用户在 i18n.config 中配置了 paths.glossary 时才会启用词表功能；
+ * 未启用时 override / normalize 也不生效。
+ */
+export const DEFAULT_GLOSSARY: Required<GlossaryConfig> = {
+  override: 'always',
+  normalize: true,
 };
 
 /**
@@ -115,6 +131,20 @@ export const DEFAULT_LLM_TEMPERATURE = 0.1;
 export const DEFAULT_INCLUDE = ['**/*.vue', '**/*.tsx', '**/*.jsx', '**/*.ts', '**/*.js'];
 
 /**
- * 默认排除目录
+ * 默认排除：含目录名（精确匹配）与文件 glob（仅 `*`/`?`）。
+ *
+ * - 排除常见构建产物 / 版本控制目录
+ * - 排除根目录的工具配置文件，例如 vite.config.ts / tailwind.config.js / i18n.config.ts，
+ *   这些文件即使含中文注释也不应被处理为业务源码
  */
-export const DEFAULT_EXCLUDE = ['node_modules', 'dist', 'build', '.git', 'public'];
+export const DEFAULT_EXCLUDE = [
+  'node_modules',
+  'dist',
+  'build',
+  '.git',
+  'public',
+  '*.config.ts',
+  '*.config.js',
+  '*.config.mjs',
+  '*.config.cjs',
+];

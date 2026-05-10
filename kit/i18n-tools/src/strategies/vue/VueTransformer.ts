@@ -1,25 +1,33 @@
 import fs from 'fs';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
-import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
-import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
 import type { ExtractedString } from '../../utils/types';
 import type { ITransformer } from '../../adapters/FrameworkAdapter';
-import { VueImportManager } from './VueImportManager';
-import { VueComponentInjector } from './VueComponentInjector';
+import type { VueImportManager } from './VueImportManager';
+import type { VueComponentInjector } from './VueComponentInjector';
 import type { VueI18nLibrary } from './libraries';
 
 /**
  * Vue 代码转换器
  * 负责将提取的文本替换为 i18n 调用
+ *
+ * library / importManager / componentInjector 由 VueAdapter 注入，
+ * 转换器自身不再持有 tImport 字符串，避免依赖蔓延。
  */
 export class VueTransformer implements ITransformer {
-  private tImport: string;
-  private library?: VueI18nLibrary;
+  private library: VueI18nLibrary;
+  private importManager: VueImportManager;
+  private componentInjector: VueComponentInjector;
 
-  constructor(tImport: string = '@/plugins/locale', library?: VueI18nLibrary) {
-    this.tImport = tImport;
+  constructor(
+    library: VueI18nLibrary,
+    importManager: VueImportManager,
+    componentInjector: VueComponentInjector,
+  ) {
     this.library = library;
+    this.importManager = importManager;
+    this.componentInjector = componentInjector;
   }
 
   /**
@@ -107,14 +115,16 @@ export class VueTransformer implements ITransformer {
       }
     }
 
-    // 添加必要的导入和声明
-    const importManager = new VueImportManager(this.tImport, this.library);
-    transformedCode = importManager.handleGlobalImports(transformedCode, fileStrings, filePath);
+    // 添加必要的导入和声明（使用注入的 importManager 以共享配置）
+    transformedCode = this.importManager.handleGlobalImports(
+      transformedCode,
+      fileStrings,
+      filePath,
+    );
 
     // 只对 .vue 文件注入 Hook
     if (ext === 'vue') {
-      const componentInjector = new VueComponentInjector(this.library);
-      transformedCode = componentInjector.inject(transformedCode);
+      transformedCode = this.componentInjector.inject(transformedCode);
     }
 
     return transformedCode;
@@ -190,13 +200,28 @@ export class VueTransformer implements ITransformer {
       // 静态属性转换：需要替换整个属性 attr="value" -> :attr="$t(...)"
       // 查找属性模式：attrName="original"
       // 使用 [\\w-]+ 来匹配包含连字符的属性名（如 confirm-button-text）
-      const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const attrPattern = new RegExp(`([\\w-]+)=["']${escapedOriginal}["']`);
-      const match = targetLine.match(attrPattern);
+      // 同行内出现多个相同文本时（如 <span title="确认"><button title="确认">），
+      // 需按 column 选中包含目标位置的那一处，避免 String.replace 总是命中第一处。
+      const escapedOriginal = CommonASTUtils.escapeRegExp(original);
+      const attrPattern = new RegExp(`([\\w-]+)=["']${escapedOriginal}["']`, 'g');
+      let attrMatch: RegExpExecArray | null;
+      let chosen: RegExpExecArray | null = null;
+      while ((attrMatch = attrPattern.exec(targetLine)) !== null) {
+        const start = attrMatch.index;
+        const end = start + attrMatch[0].length;
+        if (start <= column && end >= column) {
+          chosen = attrMatch;
+          break;
+        }
+        if (chosen === null) chosen = attrMatch; // 兜底：保持原行为找第一处
+      }
 
-      if (match) {
-        const fullAttrText = match[0]; // 例如：title="测试" 或 confirm-button-text="确定"
-        lines[line] = targetLine.replace(fullAttrText, replacement);
+      if (chosen) {
+        const start = chosen.index;
+        lines[line] =
+          targetLine.substring(0, start) +
+          replacement +
+          targetLine.substring(start + chosen[0].length);
         return lines.join('\n');
       }
     }
@@ -257,7 +282,11 @@ export class VueTransformer implements ITransformer {
       }
 
       // 如果没有找到带引号的版本，查找原始字符串（处理文本节点场景）
-      index = targetLine.indexOf(original);
+      // 从 column 开始查找，同行重复文本时可命中目标位置而非第一处
+      index = targetLine.indexOf(original, Math.max(0, column));
+      if (index === -1) {
+        index = targetLine.indexOf(original);
+      }
       if (index !== -1) {
         lines[line] =
           targetLine.substring(0, index) +
@@ -296,7 +325,7 @@ export class VueTransformer implements ITransformer {
   ): string | null {
     // 静态属性转换
     if (replacement.startsWith(':')) {
-      const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedOriginal = CommonASTUtils.escapeRegExp(original);
       const attrPattern = new RegExp(`([\\w-]+)=["']${escapedOriginal}["']`);
       const match = lineContent.match(attrPattern);
       if (match) {
@@ -364,7 +393,7 @@ export class VueTransformer implements ITransformer {
 
     // 处理模板字符串（带变量插值）
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
-      const { placeholderMap } = ReactASTUtils.createMessageWithOptions(
+      const { placeholderMap } = CommonASTUtils.createMessageWithOptions(
         extracted.original,
         actualVariables,
       );
@@ -414,13 +443,7 @@ export class VueTransformer implements ITransformer {
     lineOffset: number,
     strings: ExtractedString[],
   ): string {
-    const sourceFile = ts.createSourceFile(
-      'temp.ts',
-      scriptContent,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
-    );
+    const sourceFile = CommonASTUtils.parseSourceFile(scriptContent, 'temp.ts');
 
     // 按位置倒序排列，从后往前替换
     const sortedStrings = strings.sort((a, b) => {
@@ -482,7 +505,7 @@ export class VueTransformer implements ITransformer {
 
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
       // 对于模板字符串，使用变量插值
-      const { placeholderMap } = ReactASTUtils.createMessageWithOptions(
+      const { placeholderMap } = CommonASTUtils.createMessageWithOptions(
         extracted.original,
         actualVariables,
       );

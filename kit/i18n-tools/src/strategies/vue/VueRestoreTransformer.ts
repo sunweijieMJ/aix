@@ -2,11 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
-import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
 import type { LocaleMap } from '../../utils/types';
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
 import type { VueI18nLibrary } from './libraries';
-import { VueI18nLibraryImpl } from './libraries';
 
 /**
  * Vue 还原代码转换器
@@ -16,8 +15,8 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   private library: VueI18nLibrary;
   private tImport: string;
 
-  constructor(library?: VueI18nLibrary, tImport: string = '@/plugins/locale') {
-    this.library = library ?? new VueI18nLibraryImpl();
+  constructor(library: VueI18nLibrary, tImport: string) {
+    this.library = library;
     this.tImport = tImport;
   }
 
@@ -47,9 +46,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   static restoreVueFile(
     sourceText: string,
     localeMap: Record<string, string>,
-    library?: VueI18nLibrary,
+    library: VueI18nLibrary,
   ): string {
-    const lib = library ?? new VueI18nLibraryImpl();
+    const lib = library;
     const { descriptor } = parseSFC(sourceText);
 
     let restoredCode = sourceText;
@@ -106,10 +105,10 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   static restoreStandaloneScript(
     sourceText: string,
     localeMap: Record<string, string>,
-    library?: VueI18nLibrary,
+    library: VueI18nLibrary,
     tImport?: string,
   ): string {
-    const lib = library ?? new VueI18nLibraryImpl();
+    const lib = library;
 
     let restoredCode = this.restoreScript(sourceText, localeMap, lib);
 
@@ -123,7 +122,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     // 清理自定义路径的 t 导入（如 import { t } from '@/plugins/locale'）
     if (tImport) {
-      const escapedPath = tImport.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedPath = CommonASTUtils.escapeRegExp(tImport);
       restoredCode = restoredCode.replace(
         new RegExp(`import\\s*\\{\\s*t\\s*\\}\\s*from\\s*['"]${escapedPath}['"];?\\n?`, 'g'),
         '',
@@ -157,7 +156,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     // 1. 匹配 {{ $t('key') }} 或 {{ t('key') }} 或 {{ $t('key', { vars }) }}
     //    仅匹配整个插值内容为单个 $t 调用的情况
-    const i18nCallRegex = /\{\{\s*\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{[^}]+\}))?\s*\)\s*\}\}/g;
+    //    vars 段支持单层嵌套花括号（如 { obj: { a: 1 } }）
+    const i18nCallRegex =
+      /\{\{\s*\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)\s*\}\}/g;
 
     restored = restored.replace(i18nCallRegex, (match, key, vars) => {
       const text = lookupText(key as string);
@@ -167,7 +168,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
       if (vars) {
         try {
-          return this.restoreTemplateWithVariables(text, vars as string);
+          return this.restoreTemplateWithVariables(text, vars as string, 'mustache');
         } catch {
           return text;
         }
@@ -177,8 +178,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     });
 
     // 2. 匹配属性绑定 :attr="$t('key')" 或 :attr="$t('key', { vars })"
-    //    还原为静态属性 attr="文本"
-    const attrBindingRegex = /:([\w-]+)="\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{[^}]+\}))?\s*\)"/g;
+    //    还原为静态属性 attr="文本"。vars 段支持单层嵌套花括号。
+    const attrBindingRegex =
+      /:([\w-]+)="\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)"/g;
 
     restored = restored.replace(attrBindingRegex, (match, attrName, key, vars) => {
       const text = lookupText(key as string);
@@ -188,7 +190,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
       if (vars) {
         try {
-          const restoredText = this.restoreTemplateWithVariablesForBinding(text, vars as string);
+          const restoredText = this.restoreTemplateWithVariables(text, vars as string, 'template');
           // 带变量的还原保持动态绑定，使用 ${expr} 语法
           return `:${attrName}="\`${restoredText}\`"`;
         } catch {
@@ -201,7 +203,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     // 3. 匹配插值表达式内部残留的 $t() 调用（如三元表达式中的 $t 调用）
     //    将 $t('key') 替换为 'text'，$t('key', { vars }) 替换为 `text with ${vars}`
-    const innerI18nCallRegex = /\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{[^}]+\}))?\s*\)/g;
+    //    vars 段支持单层嵌套花括号。
+    const innerI18nCallRegex =
+      /\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)/g;
 
     restored = restored.replace(innerI18nCallRegex, (match, key, vars) => {
       const text = lookupText(key as string);
@@ -211,7 +215,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
       if (vars) {
         try {
-          const restoredText = this.restoreTemplateWithVariablesForBinding(text, vars as string);
+          const restoredText = this.restoreTemplateWithVariables(text, vars as string, 'template');
           return `\`${restoredText}\``;
         } catch {
           return `'${text}'`;
@@ -239,25 +243,22 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   /**
    * 还原带变量的模板字符串（用于文本节点，使用 Vue 模板插值语法 {{ }} ）
    */
-  private static restoreTemplateWithVariables(text: string, vars: string): string {
-    const varMap = this.parseVarMap(vars);
-    let result = text;
-    varMap.forEach((expression, placeholder) => {
-      const placeholderPattern = new RegExp(`\\{${placeholder}\\}`, 'g');
-      result = result.replace(placeholderPattern, `{{ ${expression} }}`);
-    });
-    return result;
-  }
-
   /**
-   * 还原带变量的模板字符串（用于属性绑定，使用 JS 模板字面量语法 ${} ）
+   * 还原带变量的模板字符串。
+   * - syntax='mustache'：用于 template 文本节点，输出 Vue 插值 `{{ expr }}`
+   * - syntax='template'：用于属性绑定 / JS 模板字面量，输出 `${expr}`
    */
-  private static restoreTemplateWithVariablesForBinding(text: string, vars: string): string {
+  private static restoreTemplateWithVariables(
+    text: string,
+    vars: string,
+    syntax: 'mustache' | 'template',
+  ): string {
     const varMap = this.parseVarMap(vars);
     let result = text;
     varMap.forEach((expression, placeholder) => {
       const placeholderPattern = new RegExp(`\\{${placeholder}\\}`, 'g');
-      result = result.replace(placeholderPattern, `\${${expression}}`);
+      const replacement = syntax === 'mustache' ? `{{ ${expression} }}` : `\${${expression}}`;
+      result = result.replace(placeholderPattern, replacement);
     });
     return result;
   }
@@ -271,13 +272,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     localeMap: Record<string, string>,
     library: VueI18nLibrary,
   ): string {
-    const sourceFile = ts.createSourceFile(
-      'temp.ts',
-      scriptContent,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS,
-    );
+    const sourceFile = CommonASTUtils.parseSourceFile(scriptContent, 'temp.ts');
 
     // 遍历 AST 收集 t() 调用的替换位置
     const replacements: Array<{ start: number; end: number; text: string }> = [];

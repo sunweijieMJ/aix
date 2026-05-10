@@ -1,5 +1,8 @@
-import { execSync } from 'child_process';
+import { exec, execSync } from 'child_process';
+import { promisify } from 'util';
 import { LoggerUtils } from './logger';
+
+const execAsync = promisify(exec);
 
 /**
  * 命令执行工具类
@@ -13,18 +16,8 @@ export class CommandUtils {
   static async formatWithPrettier(filePath: string): Promise<void> {
     LoggerUtils.info(`🎨  正在格式化: ${filePath}`);
     try {
-      // 步骤 1: 使用 Prettier 进行基础格式化
-      execSync(`npx prettier --write "${filePath}"`, {
-        stdio: 'ignore',
-        cwd: process.cwd(),
-      });
-
-      // 步骤 2: 使用 ESLint 修复包括导入顺序在内的问题
-      execSync(`npx eslint --fix "${filePath}"`, {
-        stdio: 'ignore',
-        cwd: process.cwd(),
-      });
-
+      await execAsync(`npx prettier --write "${filePath}"`, { cwd: process.cwd() });
+      await execAsync(`npx eslint --fix "${filePath}"`, { cwd: process.cwd() });
       LoggerUtils.success(`   - ✅  格式化成功`);
     } catch (error) {
       LoggerUtils.error(

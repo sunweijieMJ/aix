@@ -1,4 +1,5 @@
 import path from 'path';
+import { createHash } from 'crypto';
 import type { IdPrefixConfig } from '../config/types';
 import { DEFAULT_ID_PREFIX } from '../config/defaults';
 
@@ -30,6 +31,10 @@ export class IdGenerator {
   private static sanitizeSemanticId(id: string, preserveCase: boolean = false): string {
     let result = id;
 
+    // 去除前导序号噪音：「9. 消息提示」「9、消息」「9) 消息」「9）消息」 → 「消息」
+    // 否则会生成形如 messageprompt9 / 9message 这种带序号的 key
+    result = result.replace(/^\s*\d+\s*[.、。)）:：、\s]+/, '');
+
     if (!preserveCase) {
       result = result.toLowerCase();
     }
@@ -38,9 +43,8 @@ export class IdGenerator {
       .replace(/[^a-zA-Z0-9\s_]/g, '') // 保留下划线和大小写字母
       .trim()
       .replace(/\s+/g, '_')
-      .replace(/_{3,}/g, '__') // 将3个或更多连续下划线替换为__
-      .replace(/^_+|_+$/g, '') // 删除开头和结尾的下划线
-      .replace(/([^_])_(?=[^_])/g, '$1'); // 删除单个下划线，但保留__（使用前瞻避免消费后续字符）
+      .replace(/_{3,}/g, '__') // 将3个或更多连续下划线压缩为__
+      .replace(/^_+|_+$/g, ''); // 删除开头和结尾的下划线
   }
 
   /**
@@ -92,6 +96,16 @@ export class IdGenerator {
   }
 
   /**
+   * 提取目录前缀（公开版本，供外部用于 ID 复用约束）
+   *
+   * 例：filePath = `apps/client/src/views/demo/test-fn.ts`，anchor = `src`，
+   * separator = `__` 时返回 `views__demo`。
+   */
+  static getDirectoryPrefix(filePath: string, prefixConfig?: IdPrefixConfig): string {
+    return this.extractDirectoryPrefix(filePath, prefixConfig);
+  }
+
+  /**
    * 提取目录前缀
    * @param filePath - 文件路径
    * @param prefixConfig - ID 前缀配置
@@ -134,15 +148,16 @@ export class IdGenerator {
   }
 
   /**
-   * 简单哈希函数，将字符串转为短哈希
+   * 短哈希：对 SHA-256 的 base36 编码取前 8 位。
+   * Why: 原 simpleHash（DJB2 风格）对短中文文本碰撞率显著（如 "按钮"/"钮按"），
+   *      会产生重复 ID。SHA-256 在保持稳定确定性的同时，碰撞概率可忽略。
    */
   private static simpleHash(str: string): string {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash + char) | 0;
-    }
-    return Math.abs(hash).toString(36);
+    const hex = createHash('sha256').update(str, 'utf8').digest('hex');
+    // 取前 16 位 hex（64 bit）转 base36，截 8 位以保持原 API 输出长度量级
+    return BigInt('0x' + hex.slice(0, 16))
+      .toString(36)
+      .slice(0, 8);
   }
 
   /**

@@ -1,3 +1,4 @@
+export { FileProcessor } from './FileProcessor';
 export { BaseProcessor } from './BaseProcessor';
 export { GenerateProcessor } from './GenerateProcessor';
 export { RestoreProcessor } from './RestoreProcessor';

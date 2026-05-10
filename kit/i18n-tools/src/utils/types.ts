@@ -41,8 +41,18 @@ export interface ExtractedString {
   componentType: 'function' | 'class' | 'setup' | 'options' | 'other';
   isTemplateString?: boolean;
   templateVariables?: string[];
-  /** Vue template 详细上下文 */
-  templateContext?: 'text-node' | 'static-attribute' | 'dynamic-attribute' | 'interpolation';
+  /**
+   * Vue template 详细上下文
+   * - 'mixed-content'：元素的 children 是 TEXT + INTERPOLATION 的混合，作为整体翻译，
+   *   保留语序。original 字段为源代码形式（含 `{{ }}`），processedMessage 为模板
+   *   字符串形式（用于 locale 文件与 ID 生成）。
+   */
+  templateContext?:
+    | 'text-node'
+    | 'static-attribute'
+    | 'dynamic-attribute'
+    | 'interpolation'
+    | 'mixed-content';
   /** 属性名称（用于静态属性转动态绑定） */
   attributeName?: string;
 }

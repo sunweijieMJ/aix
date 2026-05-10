@@ -1,6 +1,6 @@
 import fs from 'fs';
+import path from 'path';
 import type { ResolvedConfig } from '../config';
-import type { FrameworkAdapter } from '../adapters';
 import { CommandUtils } from '../utils/command-utils';
 import { FileUtils } from '../utils/file-utils';
 import { LLMClient } from '../utils/llm-client';
@@ -18,10 +18,6 @@ import { BaseProcessor } from './BaseProcessor';
 export class GenerateProcessor extends BaseProcessor {
   /** LLM客户端实例 */
   private llmClient: LLMClient;
-  /** 框架类型 */
-  private framework: 'react' | 'vue';
-  /** 框架适配器 */
-  private adapter: FrameworkAdapter;
   /** 是否为交互模式（自动模式下为 false，跳过确认提示） */
   private interactive: boolean;
 
@@ -33,8 +29,6 @@ export class GenerateProcessor extends BaseProcessor {
    */
   constructor(config: ResolvedConfig, isCustom: boolean = false, interactive: boolean = true) {
     super(config, isCustom);
-    this.framework = config.framework;
-    this.adapter = BaseProcessor.createAdapter(config);
     this.interactive = interactive;
     this.llmClient = new LLMClient(
       config.llm.idGeneration,
@@ -42,6 +36,8 @@ export class GenerateProcessor extends BaseProcessor {
       config.locale,
       config.prompts,
     );
+    // 全局 batchDelay 同样应用到 ID 生成的 LLM 调用
+    this.llmClient.setBatchDelay(config.batchDelay);
   }
 
   protected getOperationName(): string {
@@ -53,7 +49,11 @@ export class GenerateProcessor extends BaseProcessor {
   }
 
   private async _execute(targetPath: string, skipLLM: boolean = false): Promise<void> {
-    const validation = FileUtils.validateTargetPath(targetPath, this.framework);
+    const validation = FileUtils.validateTargetPath(
+      targetPath,
+      this.adapter.getSupportedExtensions(),
+      this.adapter.getDisplayName(),
+    );
     if (!validation.isValid) {
       LoggerUtils.error(`❌ ${validation.error}`);
       return;
@@ -105,11 +105,11 @@ export class GenerateProcessor extends BaseProcessor {
 
     const frameworkFiles = FileUtils.getFrameworkFiles(
       dirPath,
-      this.framework,
+      this.adapter.getSupportedExtensions(),
       this.config.exclude,
       this.config.include,
     );
-    const frameworkName = this.framework === 'vue' ? 'Vue' : 'React';
+    const frameworkName = this.adapter.getDisplayName();
 
     if (frameworkFiles.length === 0) {
       LoggerUtils.info(`✅ 目录中未找到${frameworkName}文件`);
@@ -146,7 +146,13 @@ export class GenerateProcessor extends BaseProcessor {
       : true;
 
     if (shouldApply) {
-      const processedFiles = Array.from(new Set(extractedStrings.map((s) => s.filePath)));
+      // path.normalize 兜底：上游 ExtractedString.filePath 可能因为来源路径不同
+      // （例如 ts.createSourceFile 内部 normalizePath 把 \ 替换成 /）出现同一文
+      // 件被记成两条不同字符串。Set 直接用 === 去重会漏掉，导致同一文件被
+      // transform 多次、第二次在已被改写的源码上越界。
+      const processedFiles = Array.from(
+        new Set(extractedStrings.map((s) => path.normalize(s.filePath))),
+      );
       await this.applyTransformations(processedFiles, extractedStrings);
       LoggerUtils.success(`✅ 转换完成！处理了 ${processedFiles.length} 个文件`);
     }
@@ -160,24 +166,83 @@ export class GenerateProcessor extends BaseProcessor {
     const textToIdMap = new Map<string, string>();
     const existingIds = new Set<string>();
 
+    /**
+     * 把原文规范化为查表键：去首尾空白、压缩空白序列。
+     *
+     * 防止「电话号码」与「电话号码 」（多了空格）这类视觉相同但字符串不等的
+     * 文本被分配两个不同的 key。
+     */
+    const normalizeKey = (text: string): string => text.trim().replace(/\s+/g, ' ');
+
+    /**
+     * 把原文清理成「给 LLM 看的版本」：去除前导序号噪音。
+     *
+     * 例：「9. 消息提示」→「消息提示」。LLM 据此生成 `messagePrompt` 而非
+     * `messagePrompt9`（原先 LLM 把 9 挪到末尾，sanitize 也无法去除）。
+     * locale 文件中的 value 仍是原文「9. 消息提示」，仅 ID 命名脱敏。
+     */
+    const cleanForLLM = (text: string): string =>
+      text.replace(/^\s*\d+\s*[.、。)）:：、\s]+/, '').trim() || text;
+
+    /**
+     * 复用 ID 时的目录前缀约束策略。
+     *
+     * - `sameDir`（默认）：仅当历史 key 的目录前缀与当前文件相同才复用。
+     *   避免出现 `views/demo/` 下的代码引用 `components/ButtonDemo/` 的 key。
+     * - `global`：全局复用，相同原文必复用同一 key（最大去重，但跨包引用）。
+     *
+     * 通过 `i18n.config.ts` 的 `idPrefix.reuseAcrossDirectories` 控制（默认 false）。
+     */
+    const allowGlobalReuse = this.config.idPrefix?.reuseAcrossDirectories === true;
+
+    /**
+     * 已有原文 → 候选 key 列表。
+     * 同一原文历史上可能在多个目录下有不同 key（如 components__X__submit 与
+     * views__demo__submit 都对应「提交」），需要按当前文件的目录前缀挑选。
+     */
+    const messageToKeysMap = new Map<string, string[]>();
+
     // 从 locale 文件读取已有 ID，防止增量运行时键值冲突
     const localeMap = LanguageFileManager.readLocaleFile(this.config, this.isCustom);
     if (localeMap) {
-      for (const key of Object.keys(localeMap)) {
+      for (const [key, value] of Object.entries(localeMap)) {
         existingIds.add(key);
+        if (typeof value === 'string') {
+          const normalized = normalizeKey(value);
+          const arr = messageToKeysMap.get(normalized);
+          if (arr) arr.push(key);
+          else messageToKeysMap.set(normalized, [key]);
+        }
       }
     }
 
+    /**
+     * 在历史 key 集合中挑选与当前文件目录前缀匹配的那个；若 allowGlobalReuse 为
+     * true 或没有同前缀候选，回退到第一个历史 key。
+     */
+    const pickReusableKey = (message: string, filePath: string): string | undefined => {
+      const candidates = messageToKeysMap.get(normalizeKey(message));
+      if (!candidates || candidates.length === 0) return undefined;
+
+      const currentPrefix = IdGenerator.getDirectoryPrefix(filePath, this.config.idPrefix);
+      if (!currentPrefix) {
+        return allowGlobalReuse ? candidates[0] : undefined;
+      }
+
+      const sameDirHit = candidates.find((k) => k.startsWith(currentPrefix));
+      if (sameDirHit) return sameDirHit;
+      return allowGlobalReuse ? candidates[0] : undefined;
+    };
+
     // 从源文件中扫描已有的 t()/$t() 调用
-    const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
     for (const filePath of Object.keys(fileGroups)) {
       try {
         const content = fs.readFileSync(filePath, 'utf-8');
+        const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
         let match;
         while ((match = i18nKeyPattern.exec(content)) !== null) {
           if (match[1]) existingIds.add(match[1]);
         }
-        i18nKeyPattern.lastIndex = 0;
       } catch {
         /* 忽略读取失败 */
       }
@@ -185,7 +250,10 @@ export class GenerateProcessor extends BaseProcessor {
 
     const textGroups: Record<string, string[]> = {};
     Object.entries(fileGroups).forEach(([filePath, strings]) => {
-      textGroups[filePath] = strings.map((item) => item.original);
+      // 给 LLM 的文本去序号噪音，但保留 locale value 中的原文
+      textGroups[filePath] = strings.map((item) =>
+        cleanForLLM(item.processedMessage || item.original),
+      );
     });
 
     LoggerUtils.info(`📊 开始并发处理 ${Object.keys(fileGroups).length} 个文件的语义ID生成`);
@@ -204,34 +272,50 @@ export class GenerateProcessor extends BaseProcessor {
 
         strings.forEach((item, index) => {
           const messageForId = item.processedMessage || item.original;
+          const lookupKey = normalizeKey(messageForId);
 
-          if (textToIdMap.has(messageForId)) {
-            item.semanticId = textToIdMap.get(messageForId)!;
-          } else {
-            let finalId: string;
-            const llmId = ids[index];
-
-            if (llmId) {
-              // LLM 返回的是纯语义 ID，需要添加目录前缀
-              finalId = IdGenerator.addDirectoryPrefixToId(
-                item.filePath,
-                llmId,
-                existingIds,
-                this.config.idPrefix,
-              );
-            } else {
-              // LLM 未返回或跳过，本地生成（内部已包含目录前缀）
-              finalId = IdGenerator.generateWithFilePath(
-                item.filePath,
-                messageForId,
-                existingIds,
-                this.config.idPrefix,
-              );
-            }
-
-            textToIdMap.set(messageForId, finalId);
-            item.semanticId = finalId;
+          // 优先级 1：本批次内已生成（同一原文跨文件复用，受同 prefix 约束）
+          if (textToIdMap.has(lookupKey)) {
+            item.semanticId = textToIdMap.get(lookupKey)!;
+            return;
           }
+
+          // 优先级 2：locale 文件中已有相同原文（按目录前缀挑选最合适的历史 key）
+          const reusedId = pickReusableKey(messageForId, item.filePath);
+          if (reusedId) {
+            textToIdMap.set(lookupKey, reusedId);
+            item.semanticId = reusedId;
+            return;
+          }
+
+          // 优先级 3：本次新生成
+          let finalId: string;
+          const llmId = ids[index];
+
+          if (llmId) {
+            // LLM 返回的是纯语义 ID，需要添加目录前缀
+            finalId = IdGenerator.addDirectoryPrefixToId(
+              item.filePath,
+              llmId,
+              existingIds,
+              this.config.idPrefix,
+            );
+          } else {
+            // LLM 未返回或跳过，本地生成（内部已包含目录前缀）
+            finalId = IdGenerator.generateWithFilePath(
+              item.filePath,
+              cleanForLLM(messageForId),
+              existingIds,
+              this.config.idPrefix,
+            );
+          }
+
+          textToIdMap.set(lookupKey, finalId);
+          // 同次内后续文件也能复用：把刚生成的 finalId 也加入候选集
+          const arr = messageToKeysMap.get(lookupKey);
+          if (arr) arr.push(finalId);
+          else messageToKeysMap.set(lookupKey, [finalId]);
+          item.semanticId = finalId;
         });
       });
 
@@ -274,9 +358,13 @@ export class GenerateProcessor extends BaseProcessor {
     LanguageFileManager.updateLanguageFiles(this.config, this.isCustom, extractedStrings);
 
     const transformer = this.adapter.getTransformer();
-    for (const filePath of filePaths) {
+    const failures: Array<{ file: string; error: unknown }> = [];
+    // 最后一道闸：即便调用方传入了重复路径（包括 normalize 后仍不一致的情况），
+    // 也确保每个文件只 transform 一次——避免在已被改写的源码上重新 parse 时越界。
+    const uniqueFilePaths = Array.from(new Set(filePaths.map((p) => path.normalize(p))));
+    for (const filePath of uniqueFilePaths) {
       try {
-        const transformedCode = transformer.transform(filePath, extractedStrings, false);
+        const transformedCode = transformer.transform(filePath, extractedStrings);
         fs.writeFileSync(filePath, transformedCode, 'utf-8');
         if (this.config.format) {
           await CommandUtils.formatWithPrettier(filePath);
@@ -284,9 +372,19 @@ export class GenerateProcessor extends BaseProcessor {
         LoggerUtils.success(`✅ 已转换: ${FileUtils.getRelativePath(filePath)}`);
       } catch (error) {
         LoggerUtils.error(`❌ 转换失败 ${FileUtils.getRelativePath(filePath)}:`, error);
+        failures.push({ file: filePath, error });
       }
     }
+
+    if (failures.length > 0) {
+      // 部分失败必须上抛，避免 AutomaticProcessor 在残缺转换结果上继续推进 pick → translate
+      throw new Error(
+        `转换阶段有 ${failures.length}/${uniqueFilePaths.length} 个文件失败:\n` +
+          failures.map((f) => `  - ${FileUtils.getRelativePath(f.file)}`).join('\n'),
+      );
+    }
+
     LoggerUtils.success('✅ 应用转换完成');
-    LoggerUtils.info(`✨ 处理文件列表: \n- ${filePaths.join('\n- ')}`);
+    LoggerUtils.info(`✨ 处理文件列表: \n- ${uniqueFilePaths.join('\n- ')}`);
   }
 }

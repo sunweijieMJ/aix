@@ -1,107 +1,29 @@
 import type { ResolvedConfig } from '../config';
-import { ReactAdapter, VueAdapter } from '../adapters';
+import { createFrameworkAdapter } from '../adapters';
 import type { FrameworkAdapter } from '../adapters';
-import { FileUtils } from '../utils/file-utils';
-import { LoggerUtils } from '../utils/logger';
+import { FileProcessor } from './FileProcessor';
 
 /**
- * i18n处理器基础类
- * 提供所有i18n脚本的通用功能和配置
+ * 需要 AST 策略链的处理器基类
  *
- * 构造函数注入 ResolvedConfig，不再使用硬编码路径
+ * 在 FileProcessor 之上注入 FrameworkAdapter（封装 TextExtractor / Transformer /
+ * RestoreTransformer / ImportManager / ComponentInjector）。仅 Generate / Restore
+ * 等真正需要解析与改写源代码的处理器才应继承本类。
+ *
+ * 构造时通过工厂函数创建框架适配器（也可由外部注入用于测试），不再依赖具体的
+ * ReactAdapter / VueAdapter 类，新增框架无需修改本类。
  */
-export abstract class BaseProcessor {
-  /** 已解析的配置 */
-  protected config: ResolvedConfig;
-  /** 是否为定制目录 */
-  protected isCustom: boolean;
-  /** 工作目录路径 */
-  protected workingDir: string;
+export abstract class BaseProcessor extends FileProcessor {
+  /** 框架适配器（核心抽象，所有 i18n 操作通过此接口完成） */
+  protected adapter: FrameworkAdapter;
 
   /**
-   * 构造函数
    * @param config - 已解析的配置
    * @param isCustom - 是否为定制目录
+   * @param adapter - 可选的框架适配器，未提供则按 config.framework 自动构建（测试可注入 mock）
    */
-  constructor(config: ResolvedConfig, isCustom: boolean = false) {
-    this.config = config;
-    this.isCustom = isCustom;
-    this.workingDir = FileUtils.getDirectoryPath(config, isCustom);
+  constructor(config: ResolvedConfig, isCustom: boolean = false, adapter?: FrameworkAdapter) {
+    super(config, isCustom);
+    this.adapter = adapter ?? createFrameworkAdapter(config);
   }
-
-  /**
-   * 获取目录类型描述
-   * @returns 目录类型描述
-   */
-  protected getDirectoryDescription(): string {
-    return this.isCustom ? '定制目录' : '主目录';
-  }
-
-  /**
-   * 记录操作开始
-   * @param operation - 操作名称
-   */
-  protected logOperationStart(operation: string): void {
-    LoggerUtils.info(`🚀 开始${operation} (${this.getDirectoryDescription()})`);
-    LoggerUtils.info(`📂 工作目录: ${this.workingDir}`);
-  }
-
-  /**
-   * 记录操作完成
-   * @param operation - 操作名称
-   */
-  protected logOperationComplete(operation: string): void {
-    LoggerUtils.success(`✅ ${operation}完成 (${this.getDirectoryDescription()})`);
-  }
-
-  /**
-   * 记录错误信息
-   * @param operation - 操作名称
-   * @param error - 错误信息
-   */
-  protected logError(operation: string, error: unknown): void {
-    const context = `${operation}失败 (${this.getDirectoryDescription()})`;
-    LoggerUtils.error(context, error);
-  }
-
-  /**
-   * 确保工作目录存在
-   */
-  protected ensureWorkingDirectory(): void {
-    FileUtils.ensureDirectoryExists(this.workingDir);
-  }
-
-  /**
-   * 根据配置创建对应的框架适配器
-   */
-  protected static createAdapter(config: ResolvedConfig): FrameworkAdapter {
-    return config.framework === 'vue'
-      ? new VueAdapter(config.paths.tImport, config.vue.library, {
-          namespace: config.vue.namespace || undefined,
-        })
-      : new ReactAdapter(config.paths.tImport, config.react.library, {
-          namespace: config.react.namespace || undefined,
-        });
-  }
-
-  /**
-   * 模板方法：包装子类逻辑，提供日志和错误处理
-   * 子类应覆写 execute() 并在内部调用 executeWithLifecycle()
-   */
-  protected async executeWithLifecycle(fn: () => Promise<void> | void): Promise<void> {
-    const operationName = this.getOperationName();
-    this.logOperationStart(operationName);
-    try {
-      await fn();
-      this.logOperationComplete(operationName);
-    } catch (error) {
-      this.logError(operationName, error);
-      throw error;
-    }
-  }
-
-  /**
-   * 抽象方法：获取操作的名称，用于日志输出
-   */
-  protected abstract getOperationName(): string;
 }

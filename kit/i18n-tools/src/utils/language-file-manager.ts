@@ -4,7 +4,7 @@ import type { ResolvedConfig } from '../config';
 import { FileUtils } from './file-utils';
 import { LoggerUtils } from './logger';
 import type { ExtractedString, ILangMap, LocaleMap } from './types';
-import { CommonASTUtils } from './ast';
+import { CommonASTUtils } from './common-ast-utils';
 
 /**
  * 语言文件管理器
@@ -90,11 +90,13 @@ export class LanguageFileManager {
     const localeFilePath = path.join(workingDir, `${locale}.json`);
 
     try {
-      // 直接写入，不再对key进行排序，以保持原始顺序并追加新条目
-      const content = JSON.stringify(localeMap, null, 2);
-      fs.writeFileSync(localeFilePath, content + '\n', 'utf-8');
+      // 不对 key 排序，保持原始顺序并追加新条目；使用 writeJsonFile 走原子写入
+      FileUtils.writeJsonFile(localeFilePath, localeMap);
     } catch (error) {
+      // 必须抛出：调用方（如 GenerateProcessor）会在此之后写源码文件，若 locale
+      // 写入静默失败，会产出 t('key') 但 locale 中无对应条目的"撕裂代码"。
       LoggerUtils.error(`❌ 写入语言文件失败: ${localeFilePath}`, error);
+      throw error;
     }
   }
 
@@ -147,32 +149,15 @@ export class LanguageFileManager {
         if (!extracted.semanticId) continue;
 
         // 使用processedMessage（字面量已内联）或original
-        let message = extracted.processedMessage || extracted.original;
-        // 移除原始文本两端的引号或反引号
-        message = message.replace(/^['"`]|['"`]$/g, '');
+        const rawMessage = extracted.processedMessage || extracted.original;
 
-        if (extracted.isTemplateString && extracted.templateVariables) {
-          // 将模板字符串中的 ${...} 替换为 {key}
-          const placeholderMap = new Map<string, string>();
-          const usedNames = new Set<string>();
-
-          extracted.templateVariables.forEach((variableExpr) => {
-            // 复用 CommonASTUtils 的变量名提取逻辑，确保与代码侧参数名一致
-            let key = CommonASTUtils.getVariableNameFromExpression(variableExpr);
-
-            const originalKey = key;
-            let count = 1;
-            while (usedNames.has(key)) {
-              key = `${originalKey}${count++}`;
-            }
-            usedNames.add(key);
-            placeholderMap.set(variableExpr, key);
-          });
-
-          placeholderMap.forEach((placeholder, expression) => {
-            message = message.replace(`\${${expression}}`, `{${placeholder}}`);
-          });
-        }
+        // 占位符替换（${expr} → {key}）和变量名去重逻辑全部委托给
+        // CommonASTUtils.createMessageWithOptions，避免与代码侧参数名不一致。
+        // 之前此处与该方法存在重复实现，是一处隐性维护风险。
+        const { message } =
+          extracted.isTemplateString && extracted.templateVariables
+            ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
+            : { message: rawMessage.replace(/^['"`]|['"`]$/g, '') };
 
         if (!localeMap[extracted.semanticId]) {
           // 新增条目

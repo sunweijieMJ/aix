@@ -21,6 +21,8 @@ export class LLMClient {
   private concurrencyController: ConcurrencyController;
   private locale?: LocaleConfig;
   private prompts?: PromptsConfig;
+  /** 批次间最小间隔（毫秒），用于限流敏感的 LLM 端点 */
+  private batchDelay: number = 0;
 
   constructor(
     config: LLMConfig,
@@ -42,9 +44,39 @@ export class LLMClient {
   }
 
   /**
+   * 设置批次间最小间隔（毫秒）。0 表示不延迟。
+   *
+   * 注意：仅在 add() 进入并发控制器之前生效——只有空闲槽位被占用时才会触发等待，
+   * 因此对低并发（如 1）的限流场景更显著；高并发下 delay 会被并行性掩盖。
+   */
+  setBatchDelay(delayMs: number): void {
+    this.batchDelay = Math.max(0, delayMs | 0);
+  }
+
+  /** 上一次实际派发请求的时间戳，用于实现 batchDelay 限流 */
+  private lastCallTimestamp: number = 0;
+
+  /**
+   * 在发起请求前按 batchDelay 等待最小间隔。
+   * 不依赖并发控制：每次请求保证与上一次至少相隔 batchDelay 毫秒。
+   */
+  private async throttle(): Promise<void> {
+    if (this.batchDelay <= 0) return;
+    const now = Date.now();
+    const earliest = this.lastCallTimestamp + this.batchDelay;
+    // 立即占位，避免并发任务挤在同一时间点
+    this.lastCallTimestamp = Math.max(now, earliest);
+    const wait = earliest - now;
+    if (wait > 0) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+
+  /**
    * 调用 LLM chat completion
    */
   private async chatCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+    await this.throttle();
     const response = await this.openai.chat.completions.create({
       model: this.model,
       messages: [
@@ -133,6 +165,14 @@ export class LLMClient {
 
   /**
    * 处理单个批次的语义ID生成
+   *
+   * LLM 返回兼容两种格式：
+   * 1) `{ id_list: string[] }`（位置数组，原始约定）
+   * 2) `{ id_map: { [text]: id } }`（键值对，更鲁棒）
+   *
+   * 当 LLM 偶发乱序返回 id_list 时，位置数组会引发原文与 ID 错配。新增 id_map
+   * 兼容路径作为防御层：若返回了 id_map，则按输入文本逐项查表，缺失项显式置为
+   * 空字符串让上层使用本地兜底 ID 生成。
    */
   private async generateSemanticIdsBatch(textList: string[]): Promise<string[]> {
     const rawContent = await this.chatCompletion(
@@ -144,11 +184,18 @@ export class LLMClient {
       const cleaned = this.cleanJsonResponse(rawContent);
       const parsed = JSON.parse(cleaned);
 
-      if (!parsed.id_list || !Array.isArray(parsed.id_list)) {
-        throw new Error('LLM 返回格式错误：缺少 id_list 数组');
+      if (parsed && parsed.id_map && typeof parsed.id_map === 'object') {
+        const map = parsed.id_map as Record<string, string>;
+        return textList.map((t) => (typeof map[t] === 'string' ? map[t] : ''));
       }
 
-      return parsed.id_list as string[];
+      if (parsed.id_list && Array.isArray(parsed.id_list)) {
+        // 防御 LLM 偶发返回 null/number 等非字符串元素：非字符串项置为空串，
+        // 由上层（IdGenerator）走本地兜底 ID 生成路径。
+        return (parsed.id_list as unknown[]).map((v) => (typeof v === 'string' ? v : ''));
+      }
+
+      throw new Error('LLM 返回格式错误：缺少 id_list 数组或 id_map 对象');
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new Error(`LLM 返回的 JSON 解析失败: ${rawContent.slice(0, 200)}`, { cause: error });
@@ -159,11 +206,15 @@ export class LLMClient {
 
   /**
    * 批量翻译（支持并发）
+   *
+   * 返回数组与输入 batches 一一对应；失败批次返回 `undefined`，调用方需自行
+   * 跳过或重试。早前签名为 `Translations[]` 但实际写入 `undefined`，与类型不符，
+   * 现明确为 `(Translations | undefined)[]`。
    */
   async batchTranslate(
     batches: Translations[],
     onProgress?: (current: number, total: number) => void,
-  ): Promise<Translations[]> {
+  ): Promise<Array<Translations | undefined>> {
     if (batches.length === 0) return [];
 
     LoggerUtils.info(`🔄 开始批量翻译，共 ${batches.length} 批次`);
@@ -171,7 +222,7 @@ export class LLMClient {
       `🔄 使用并发处理，最大并发数: ${this.concurrencyController.getStatus().maxConcurrency}`,
     );
 
-    const results: Translations[] = new Array(batches.length);
+    const results: Array<Translations | undefined> = new Array(batches.length);
     let successCount = 0;
     let failedCount = 0;
 
@@ -259,7 +310,8 @@ export class LLMClient {
     LoggerUtils.info(
       `🔧 调整最大并发数: ${this.concurrencyController.getStatus().maxConcurrency} -> ${newMaxConcurrency}`,
     );
-    this.concurrencyController = new ConcurrencyController(newMaxConcurrency);
+    // 原地调整：保留已 enqueue 的任务与 running 计数，避免丢失任务导致 pending Promise
+    this.concurrencyController.setMaxConcurrency(newMaxConcurrency);
   }
 
   /**

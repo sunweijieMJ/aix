@@ -1,5 +1,6 @@
 import type { IImportManager } from '../../adapters/FrameworkAdapter';
 import ts from 'typescript';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { ExtractedString, TransformContext } from '../../utils/types';
 import type { ReactI18nLibrary } from './libraries';
 
@@ -44,14 +45,13 @@ export class ReactImportManager implements IImportManager {
 
   private addGlobalFunctionImport(code: string): string {
     const funcName = this.library.globalFunctionName.split('.')[0]!;
-    const escapedPath = this.tImport.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedPath = CommonASTUtils.escapeRegExp(this.tImport);
     if (
       new RegExp(`import\\s*\\{.*${funcName}.*\\}\\s*from\\s*['"]${escapedPath}['"]`).test(code)
     ) {
       return code;
     }
-    const importStatement = `import { ${funcName} } from '${this.tImport}';\n`;
-    return this.addImportStatement(code, importStatement);
+    return CommonASTUtils.mergeNamedImport(code, this.tImport, [funcName]);
   }
 
   private addGlobalFunctionDeclaration(code: string, declaration: string): string {
@@ -59,114 +59,18 @@ export class ReactImportManager implements IImportManager {
     if (code.includes(declaration.trim())) {
       return code;
     }
-
+    // 在最后一个 import 之后插入声明，前置空行便于阅读
     const lines = code.split('\n');
-    const lastImportIndex = this.findLastImportIndex(lines);
+    const lastImportIndex = CommonASTUtils.findLastImportLineIndex(lines);
     lines.splice(lastImportIndex + 1, 0, '\n' + declaration.trim());
     return lines.join('\n');
   }
 
   /**
-   * 添加i18n库导入 (实现接口方法)
+   * 添加 i18n 库导入 (实现接口方法)
    */
   addI18nImports(code: string, imports: string[]): string {
-    return this.addLibraryImports(code, imports);
-  }
-
-  /**
-   * 添加 i18n 库导入
-   */
-  private addLibraryImports(code: string, imports: string[]): string {
-    const packageName = this.library.packageName;
-    const escapedPkg = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const importRegex = new RegExp(`import\\s*\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"];?`);
-    const match = code.match(importRegex);
-    if (match) {
-      const existingImports = match[1]!.split(',').map((imp) => imp.trim());
-      const newImports = [...new Set([...existingImports, ...imports])];
-      return code.replace(match[0], `import { ${newImports.join(', ')} } from '${packageName}';`);
-    }
-    const importStatement = `import { ${imports.join(', ')} } from '${packageName}';\n`;
-    return this.addImportStatement(code, importStatement);
-  }
-
-  private addImportStatement(code: string, importStatement: string): string {
-    const lines = code.split('\n');
-    const lastImportIndex = this.findLastImportIndex(lines);
-    lines.splice(lastImportIndex + 1, 0, importStatement.trim());
-    return lines.join('\n');
-  }
-
-  private findLastImportIndex(lines: string[]): number {
-    let lastImportIndex = -1;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i]!.trim().startsWith('import ')) {
-        lastImportIndex = i;
-        break;
-      }
-    }
-    return lastImportIndex;
-  }
-
-  // ==================== 清理 Imports 和相关代码 ====================
-
-  /**
-   * 转换代码中的Unicode编码为中文字符
-   */
-  static convertUnicodeToChineseInCode(code: string): string {
-    // 处理单引号字符串中的Unicode编码（包含混合内容）
-    code = code.replace(/'([^']*\\u[0-9a-fA-F]{4}[^']*)'/g, (match) => {
-      const unicodeStr = match.slice(1, -1);
-      try {
-        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
-          return String.fromCharCode(parseInt(hex, 16));
-        });
-        return `'${decoded}'`;
-      } catch {
-        return match;
-      }
-    });
-
-    // 处理双引号字符串中的Unicode编码
-    code = code.replace(/"([^"]*\\u[0-9a-fA-F]{4}[^"]*)"/g, (match) => {
-      const unicodeStr = match.slice(1, -1);
-      try {
-        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
-          return String.fromCharCode(parseInt(hex, 16));
-        });
-        return `"${decoded}"`;
-      } catch {
-        return match;
-      }
-    });
-
-    // 处理JSX表达式中的Unicode编码
-    code = code.replace(/\{'([^']*\\u[0-9a-fA-F]{4}[^']*)'\}/g, (match) => {
-      const unicodeStr = match.slice(2, -2);
-      try {
-        const decoded = unicodeStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
-          return String.fromCharCode(parseInt(hex, 16));
-        });
-        return `{'${decoded}'}`;
-      } catch {
-        return match;
-      }
-    });
-
-    // 处理模板字符串中的Unicode编码
-    code = code.replace(/`([^`]*\\u[0-9a-fA-F]{4}[^`]*)`/g, (match) => {
-      const templateStr = match.slice(1, -1);
-      try {
-        const decoded = templateStr.replace(/\\u([0-9a-fA-F]{4})/g, (_subMatch, hex) => {
-          return String.fromCharCode(parseInt(hex, 16));
-        });
-        return `\`${decoded}\``;
-      } catch {
-        return match;
-      }
-    });
-
-    return code;
+    return CommonASTUtils.mergeNamedImport(code, this.library.packageName, imports);
   }
 
   // ==================== 清理 AST 节点 ====================

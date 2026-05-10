@@ -1,35 +1,43 @@
 import fs from 'fs';
 import ts from 'typescript';
-import { CommonASTUtils } from '../../utils/ast/CommonASTUtils';
-import { ReactASTUtils } from '../../utils/ast/ReactASTUtils';
-import { HooksUtils } from '../../utils/hooks-utils';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { ReactASTUtils } from './react-ast-utils';
+import { HooksUtils } from './hooks-utils';
 import type { ExtractedString } from '../../utils/types';
 import type { ITransformer } from '../../adapters/FrameworkAdapter';
-import { ReactComponentInjector } from './ReactComponentInjector';
-import { ReactImportManager } from './ReactImportManager';
+import type { ReactComponentInjector } from './ReactComponentInjector';
+import type { ReactImportManager } from './ReactImportManager';
 import type { ReactI18nLibrary } from './libraries';
 
 /**
  * React 代码转换器
  * 负责将提取的文本替换为国际化调用
+ *
+ * library / importManager / componentInjector 由 ReactAdapter 注入，
+ * includeDefaultMessage 通过构造选项传入，避免污染 ITransformer 抽象接口。
  */
 export class ReactTransformer implements ITransformer {
-  private tImport: string;
   private library: ReactI18nLibrary;
+  private importManager: ReactImportManager;
+  private componentInjector: ReactComponentInjector;
+  private includeDefaultMessage: boolean;
 
-  constructor(tImport: string = '@/plugins/locale', library: ReactI18nLibrary) {
-    this.tImport = tImport;
+  constructor(
+    library: ReactI18nLibrary,
+    importManager: ReactImportManager,
+    componentInjector: ReactComponentInjector,
+    options: { includeDefaultMessage?: boolean } = {},
+  ) {
     this.library = library;
+    this.importManager = importManager;
+    this.componentInjector = componentInjector;
+    this.includeDefaultMessage = options.includeDefaultMessage ?? false;
   }
 
   /**
    * 转换文件
    */
-  transform(
-    filePath: string,
-    extractedStrings: ExtractedString[],
-    includeDefaultMessage: boolean,
-  ): string {
+  transform(filePath: string, extractedStrings: ExtractedString[]): string {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
     const fileStrings = extractedStrings.filter((s) => s.filePath === filePath);
 
@@ -38,23 +46,21 @@ export class ReactTransformer implements ITransformer {
     }
 
     // 替换字符串
-    let transformedCode = this.replaceStrings(sourceText, fileStrings, includeDefaultMessage);
+    let transformedCode = this.replaceStrings(sourceText, fileStrings);
 
     // 检查是否有jsx-text上下文的字符串，如果有，添加 JSX 组件导入
     const hasJsxText = fileStrings.some((s) => s.context === 'jsx-text');
-    const importManager = new ReactImportManager(this.tImport, this.library);
     if (hasJsxText) {
-      transformedCode = importManager.addI18nImports(transformedCode, [
+      transformedCode = this.importManager.addI18nImports(transformedCode, [
         this.library.jsxComponentName,
       ]);
     }
 
     // 添加全局函数导入和声明 (如果需要)
-    transformedCode = importManager.handleGlobalImports(transformedCode, fileStrings);
+    transformedCode = this.importManager.handleGlobalImports(transformedCode, fileStrings);
 
     // 注入 Hook / HOC (如果需要)
-    const componentInjector = new ReactComponentInjector(this.tImport, this.library);
-    transformedCode = componentInjector.inject(transformedCode);
+    transformedCode = this.componentInjector.inject(transformedCode);
 
     // 为使用翻译变量的hooks添加到依赖项
     transformedCode = HooksUtils.addTranslationVarToHooksDependencies(
@@ -68,11 +74,7 @@ export class ReactTransformer implements ITransformer {
   /**
    * 替换字符串
    */
-  private replaceStrings(
-    sourceText: string,
-    fileStrings: ExtractedString[],
-    includeDefaultMessage: boolean,
-  ): string {
+  private replaceStrings(sourceText: string, fileStrings: ExtractedString[]): string {
     const filePath = fileStrings[0]!.filePath;
     const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
 
@@ -99,7 +101,7 @@ export class ReactTransformer implements ITransformer {
       const node = CommonASTUtils.findExactStringNode(sourceFile, position, extracted.original);
 
       if (node) {
-        const replacement = this.generateReplacement(extracted, node, includeDefaultMessage);
+        const replacement = this.generateReplacement(extracted, node);
 
         // 对于JSX元素，我们需要替换其children部分
         if (ts.isJsxElement(node)) {
@@ -127,15 +129,12 @@ export class ReactTransformer implements ITransformer {
   /**
    * 根据提取的字符串信息，生成用于替换的i18n代码
    */
-  private generateReplacement(
-    extracted: ExtractedString,
-    node?: ts.Node,
-    includeDefaultMessage: boolean = false,
-  ): string {
+  private generateReplacement(extracted: ExtractedString, node?: ts.Node): string {
     const { semanticId, context, isTemplateString, templateVariables } = extracted;
+    const includeDefaultMessage = this.includeDefaultMessage;
 
     // 获取 defaultMessage 内容
-    const { message, placeholderMap } = ReactASTUtils.createMessageWithOptions(
+    const { message, placeholderMap } = CommonASTUtils.createMessageWithOptions(
       extracted.original,
       templateVariables,
     );

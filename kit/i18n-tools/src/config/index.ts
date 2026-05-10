@@ -8,6 +8,9 @@ export type {
   ConcurrencyConfig,
   LocaleConfig,
   PromptsConfig,
+  VueConfig,
+  ReactConfig,
+  GlossaryConfig,
 } from './types';
 export { resolveConfig, loadConfig, loadConfigFile, findConfigFile } from './loader';
 export {

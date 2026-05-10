@@ -1,7 +1,6 @@
 import ts from 'typescript';
-import { LoggerUtils } from '../logger';
-import { MessageInfo } from '../types';
-import { CommonASTUtils } from './CommonASTUtils';
+import { MessageInfo } from '../../utils/types';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
 
 /**
  * React 特定的 AST 工具类
@@ -76,46 +75,6 @@ export class ReactASTUtils {
     }
 
     return false;
-  }
-
-  static createMessageWithOptions(
-    originalText: string,
-    templateVariables?: string[],
-  ): { message: string; placeholderMap: Map<string, string> } {
-    const placeholderMap = new Map<string, string>();
-    let message = originalText.replace(/^['"`]|['"`]$/g, '');
-
-    if (templateVariables && templateVariables.length > 0) {
-      const usedNames = new Set<string>();
-
-      templateVariables.forEach((variableExpr) => {
-        let key = CommonASTUtils.getVariableNameFromExpression(variableExpr);
-
-        if (!key || key.trim() === '') {
-          LoggerUtils.warn(
-            `[i18n] Generated empty placeholder key for expression: ${variableExpr}, using 'val'`,
-          );
-          key = 'val';
-        }
-
-        const originalKey = key;
-        let count = 1;
-
-        while (usedNames.has(key)) {
-          key = `${originalKey}${count++}`;
-        }
-
-        usedNames.add(key);
-        placeholderMap.set(variableExpr, key);
-      });
-
-      placeholderMap.forEach((placeholder, expression) => {
-        const searchPattern = `\${${expression}}`;
-        message = message.split(searchPattern).join(`{${placeholder}}`);
-      });
-    }
-
-    return { message, placeholderMap };
   }
 
   static getComponentType(node: ts.Node): 'function' | 'class' | 'other' {

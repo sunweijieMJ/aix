@@ -4,13 +4,13 @@ import { FILES } from '../utils/constants';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
-import { BaseProcessor } from './BaseProcessor';
+import { FileProcessor } from './FileProcessor';
 
 /**
  * 合并处理器
  * 负责将翻译好的文件合并到translations中，并更新语言包
  */
-export class MergeProcessor extends BaseProcessor {
+export class MergeProcessor extends FileProcessor {
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     super(config, isCustom);
   }
@@ -34,9 +34,7 @@ export class MergeProcessor extends BaseProcessor {
     LoggerUtils.info(`正在合并翻译数据...`);
 
     if (!fs.existsSync(untranslatedPath)) {
-      LoggerUtils.error(`待翻译文件不存在: ${untranslatedPath}`);
-      LoggerUtils.info('请先运行 pick 命令生成待翻译文件。');
-      return;
+      throw new Error(`待翻译文件不存在: ${untranslatedPath}，请先运行 pick 命令生成。`);
     }
 
     const untranslatedData = this.loadUntranslatedData(untranslatedPath);
@@ -108,7 +106,7 @@ export class MergeProcessor extends BaseProcessor {
       const zhValue = data[sourceLocale];
       const enValue = data[targetLocale];
 
-      if (enValue && FileUtils.isValidEnglishTranslation(enValue)) {
+      if (enValue && FileUtils.isValidTranslation(enValue)) {
         newlyTranslated[key] = {
           [sourceLocale]: zhValue ?? '',
           [targetLocale]: enValue,
@@ -143,7 +141,7 @@ export class MergeProcessor extends BaseProcessor {
       ...existingTranslations,
       ...analysisResult.newlyTranslated,
     };
-    FileUtils.createOrEmptyFile(translatedPath, JSON.stringify(finalTranslations, null, 2));
+    FileUtils.writeJsonFile(translatedPath, finalTranslations);
     LoggerUtils.info(
       `📄 已更新 ${FILES.TRANSLATIONS_JSON}，现有 ${Object.keys(finalTranslations).length} 个翻译条目`,
     );
@@ -157,10 +155,7 @@ export class MergeProcessor extends BaseProcessor {
     analysisResult: ReturnType<typeof MergeProcessor.prototype.analyzeTranslationStatus>,
   ): void {
     if (analysisResult.stillUntranslatedCount > 0) {
-      FileUtils.createOrEmptyFile(
-        filePath,
-        JSON.stringify(analysisResult.stillUntranslated, null, 2),
-      );
+      FileUtils.writeJsonFile(filePath, analysisResult.stillUntranslated);
       LoggerUtils.info(
         `📝 已更新 ${FILES.UNTRANSLATED_JSON}，剩余 ${analysisResult.stillUntranslatedCount} 个待翻译条目`,
       );
@@ -180,28 +175,22 @@ export class MergeProcessor extends BaseProcessor {
     let isNested = false;
 
     if (fs.existsSync(targetPath)) {
-      try {
-        const fileContent = fs.readFileSync(targetPath, 'utf-8');
-        originalMessages = JSON.parse(fileContent);
-        isNested = FileUtils.isNestedStructure(originalMessages);
-        LoggerUtils.info(
-          `📋 参考 ${targetLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`,
-        );
-      } catch (error) {
-        LoggerUtils.warn(`读取${targetLocale}.json失败: ${error}`);
-      }
+      originalMessages = FileUtils.safeLoadJsonFile<Record<string, any>>(targetPath, {
+        errorMessage: `读取${targetLocale}.json失败`,
+        silent: false,
+      });
+      isNested = FileUtils.isNestedStructure(originalMessages);
+      LoggerUtils.info(`📋 参考 ${targetLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`);
     } else if (fs.existsSync(sourcePath)) {
       // 目标语言文件不存在时，参考源语言的结构
-      try {
-        const sourceContent = fs.readFileSync(sourcePath, 'utf-8');
-        const sourceMessages = JSON.parse(sourceContent);
-        isNested = FileUtils.isNestedStructure(sourceMessages);
-        LoggerUtils.info(
-          `📋 ${targetLocale}.json 不存在，参考 ${sourceLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`,
-        );
-      } catch (error) {
-        LoggerUtils.warn(`读取${sourceLocale}.json失败: ${error}`);
-      }
+      const sourceMessages = FileUtils.safeLoadJsonFile<Record<string, any>>(sourcePath, {
+        errorMessage: `读取${sourceLocale}.json失败`,
+        silent: false,
+      });
+      isNested = FileUtils.isNestedStructure(sourceMessages);
+      LoggerUtils.info(
+        `📋 ${targetLocale}.json 不存在，参考 ${sourceLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`,
+      );
     }
 
     let targetMessages: Record<string, string>;
@@ -238,7 +227,7 @@ export class MergeProcessor extends BaseProcessor {
       LoggerUtils.info('📝 保存为扁平结构');
     }
 
-    fs.writeFileSync(targetPath, JSON.stringify(outputMessages, null, 2) + '\n', 'utf8');
+    FileUtils.writeJsonFile(targetPath, outputMessages);
     LoggerUtils.info(`📄 已更新 ${targetLocale}.json，更新 ${updatedCount} 个条目`);
   }
 
