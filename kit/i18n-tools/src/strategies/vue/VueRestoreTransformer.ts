@@ -366,8 +366,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
         }
 
         if (varMap.size > 0) {
-          // 先转义模板字面量中的特殊字符
-          let result = text.replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+          // 模板字面量需先转义 `\\`（必须最先），再转义反引号与 `${`。
+          // 真实换行允许出现在模板字面量内，无需转换。
+          let result = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
           // 替换占位符为变量表达式
           varMap.forEach((exprText, placeholder) => {
             result = result.replace(new RegExp(`\\{${placeholder}\\}`, 'g'), `\${${exprText}}`);
@@ -378,8 +379,19 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     }
 
     // 简单替换: t('key') → '文本'
-    const escaped = text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    return `'${escaped}'`;
+    // 单引号字符串不能跨行，且 \u2028 / \u2029 即便在 ES2019+ 字符串里合法
+    // 也会被许多老版本 JS 解析器视为非法。一并转义，确保生成代码恒合法。
+    return `'${VueRestoreTransformer.escapeForSingleQuoted(text)}'`;
+  }
+
+  private static escapeForSingleQuoted(text: string): string {
+    return text
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
   }
 
   /**

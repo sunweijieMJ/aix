@@ -50,7 +50,9 @@ export class LLMClient {
    * 因此对低并发（如 1）的限流场景更显著；高并发下 delay 会被并行性掩盖。
    */
   setBatchDelay(delayMs: number): void {
-    this.batchDelay = Math.max(0, delayMs | 0);
+    // 不要用 `delayMs | 0`：位运算把任何 >2^31 的毫秒值截断为负数，
+    // 反而会被 Math.max 救成 0，但小数和大数的处理就此不一致。
+    this.batchDelay = Math.max(0, Math.floor(delayMs));
   }
 
   /** 上一次实际派发请求的时间戳，用于实现 batchDelay 限流 */

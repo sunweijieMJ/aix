@@ -48,16 +48,34 @@ export class VueComponentInjector implements IComponentInjector {
 
   /**
    * 检查代码是否需要 Hook
+   *
+   * Why: 此处的目标是判断"transform 阶段是否插入了 t()/$t() 调用"。
+   *      原实现 /[^\w.$]t\(/ 会把出现在注释、字符串字面量与 HTML 注释里的
+   *      `t(` 字面量误判为真实调用，进而注入冗余 hook，并掩盖真正的"未转换"场景。
+   *      故先剥除注释与字符串字面量后再做边界匹配；用 lookbehind 兼容行首调用。
    */
   private needsHook(code: string): boolean {
     if (this.library.getHookDeclarationCheckRegex().test(code)) {
       return false;
     }
 
-    if (/[^\w.$]t\(/.test(code)) {
-      return true;
-    }
+    const cleaned = VueComponentInjector.stripCommentsAndStrings(code);
+    return /(^|[^\w.$])t\(/.test(cleaned);
+  }
 
-    return false;
+  /**
+   * 启发式剥除注释与字符串字面量，仅用于 needsHook 之类的存在性检测。
+   *
+   * 不处理模板字面量内嵌套表达式中的字符串（成本过高且检测目标无关），
+   * 一律将整个 `\`...\`` 当作字符串吞掉；正则字面量、JSX 等同理。
+   */
+  private static stripCommentsAndStrings(code: string): string {
+    return code
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/\/\/[^\n]*/g, ' ')
+      .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
+      .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
+      .replace(/`(?:[^`\\]|\\.)*`/g, '``');
   }
 }
