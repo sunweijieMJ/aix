@@ -1,4 +1,5 @@
 import type { ResolvedConfig } from '../config';
+import type { FrameworkAdapter } from '../adapters';
 import { LoggerUtils } from '../utils/logger';
 import { FileProcessor } from './FileProcessor';
 import { ExportProcessor } from './ExportProcessor';
@@ -11,11 +12,15 @@ import { TranslateProcessor } from './TranslateProcessor';
  * 自动处理器
  * 负责按顺序执行完整的i18n工作流
  *
- * 接收 ResolvedConfig 并传递给所有子处理器
+ * 接收 ResolvedConfig 并传递给所有子处理器；
+ * 可选注入预构造的 FrameworkAdapter，避免内嵌的 GenerateProcessor 重复构建策略链。
  */
 export class AutomaticProcessor extends FileProcessor {
-  constructor(config: ResolvedConfig, isCustom: boolean = false) {
+  private adapter?: FrameworkAdapter;
+
+  constructor(config: ResolvedConfig, isCustom: boolean = false, adapter?: FrameworkAdapter) {
     super(config, isCustom);
+    this.adapter = adapter;
   }
 
   protected getOperationName(): string {
@@ -31,7 +36,10 @@ export class AutomaticProcessor extends FileProcessor {
       {
         name: 'generate',
         run: () =>
-          new GenerateProcessor(this.config, this.isCustom, false).execute(targetPath, skipLLM),
+          new GenerateProcessor(this.config, this.isCustom, false, this.adapter).execute(
+            targetPath,
+            skipLLM,
+          ),
       },
       {
         name: 'pick',

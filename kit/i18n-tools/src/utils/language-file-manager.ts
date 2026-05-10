@@ -101,30 +101,6 @@ export class LanguageFileManager {
   }
 
   /**
-   * 备份当前的语言文件
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   * @param locale - 语言代码
-   */
-  static backupFile(config: ResolvedConfig, isCustom: boolean, locale?: string): void {
-    locale = locale || config.locale.source;
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
-    const localeFilePath = path.join(workingDir, `${locale}.json`);
-    const backupFilePath = path.join(workingDir, `${locale}.json.bak`);
-
-    try {
-      if (fs.existsSync(localeFilePath)) {
-        fs.copyFileSync(localeFilePath, backupFilePath);
-        LoggerUtils.success(`语言文件备份成功: ${backupFilePath}`);
-      } else {
-        LoggerUtils.warn(`语言文件不存在，无法备份: ${localeFilePath}`);
-      }
-    } catch (error) {
-      LoggerUtils.error(`❌ 备份语言文件失败: ${localeFilePath}`, error);
-    }
-  }
-
-  /**
    * 更新语言文件
    * @param config - 已解析的配置
    * @param isCustom - 是否为定制目录

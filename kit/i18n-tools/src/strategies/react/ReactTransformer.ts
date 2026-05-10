@@ -4,9 +4,11 @@ import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { ReactASTUtils } from './react-ast-utils';
 import { HooksUtils } from './hooks-utils';
 import type { ExtractedString } from '../../utils/types';
-import type { ITransformer } from '../../adapters/FrameworkAdapter';
-import type { ReactComponentInjector } from './ReactComponentInjector';
-import type { ReactImportManager } from './ReactImportManager';
+import type {
+  IComponentInjector,
+  IImportManager,
+  ITransformer,
+} from '../../adapters/FrameworkAdapter';
 import type { ReactI18nLibrary } from './libraries';
 
 /**
@@ -18,14 +20,14 @@ import type { ReactI18nLibrary } from './libraries';
  */
 export class ReactTransformer implements ITransformer {
   private library: ReactI18nLibrary;
-  private importManager: ReactImportManager;
-  private componentInjector: ReactComponentInjector;
+  private importManager: IImportManager;
+  private componentInjector: IComponentInjector;
   private includeDefaultMessage: boolean;
 
   constructor(
     library: ReactI18nLibrary,
-    importManager: ReactImportManager,
-    componentInjector: ReactComponentInjector,
+    importManager: IImportManager,
+    componentInjector: IComponentInjector,
     options: { includeDefaultMessage?: boolean } = {},
   ) {
     this.library = library;

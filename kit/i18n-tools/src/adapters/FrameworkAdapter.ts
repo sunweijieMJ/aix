@@ -2,10 +2,14 @@ import type { ExtractedString, LocaleMap } from '../utils/types';
 
 /**
  * 框架配置接口
+ *
+ * `type` 抽象层不再绑定到具体的框架字面量联合，新增框架时只需扩展具体 Adapter
+ * 与 `createFrameworkAdapter` 工厂分支，无需修改本基类。封闭枚举仍保留在
+ * `config/types.ts` 的用户输入边界。
  */
 export interface FrameworkConfig {
-  /** 框架类型 */
-  type: 'react' | 'vue';
+  /** 框架类型（与 `config.framework` 保持一致；抽象层不约束字面量） */
+  type: string;
   /** 支持的文件扩展名（含点号，如 '.tsx'） */
   extensions: string[];
   /** 框架展示名（用于日志/错误提示，如 'Vue'、'React'） */
@@ -26,23 +30,8 @@ export interface ITextExtractor {
   extractFromFiles(filePaths: string[]): Promise<ExtractedString[]>;
 }
 
-/**
- * 文本提取器抽象基类
- *
- * 提供 extractFromFiles 的默认串行实现，子类只需实现 extractFromFile。
- * 此前 Vue/React 两端各写一份相同的 for-await 样板，统一到本基类。
- */
-export abstract class BaseTextExtractor implements ITextExtractor {
-  abstract extractFromFile(filePath: string): Promise<ExtractedString[]>;
-
-  async extractFromFiles(filePaths: string[]): Promise<ExtractedString[]> {
-    const all: ExtractedString[] = [];
-    for (const filePath of filePaths) {
-      all.push(...(await this.extractFromFile(filePath)));
-    }
-    return all;
-  }
-}
+// BaseTextExtractor 的实现已下沉至 strategies/base/text-extractor.ts，
+// 维持"策略层提供具体实现、适配器层定义抽象接口"的分层语义。
 
 /**
  * 代码转换器接口
@@ -99,9 +88,9 @@ export abstract class FrameworkAdapter {
   }
 
   /**
-   * 获取框架类型
+   * 获取框架类型（具体值由各 Adapter 在 FrameworkConfig 中提供）
    */
-  getType(): 'react' | 'vue' {
+  getType(): string {
     return this.config.type;
   }
 
@@ -114,10 +103,12 @@ export abstract class FrameworkAdapter {
   }
 
   /**
-   * 获取展示名。回退到 type 的首字母大写形式。
+   * 获取展示名。未显式提供时按 `type` 的首字母大写形式回退（如 'svelte' → 'Svelte'）。
    */
   getDisplayName(): string {
-    return this.config.displayName ?? (this.config.type === 'vue' ? 'Vue' : 'React');
+    if (this.config.displayName) return this.config.displayName;
+    const t = this.config.type;
+    return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
   }
 
   /**

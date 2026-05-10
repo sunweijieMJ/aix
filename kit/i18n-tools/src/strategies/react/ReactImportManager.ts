@@ -249,20 +249,25 @@ export class ReactImportManager implements IImportManager {
 
   /**
    * 清理变量声明语句 (AST)（由 library 适配器驱动）
+   *
+   * 三类清理：
+   *   1. Hook 声明（useIntl / useTranslation）整条移除
+   *   2. 全局函数声明（getIntl）整条移除
+   *   3. 解构中仅保留翻译变量（如 `const { t } = ...`）整条移除；
+   *      混合解构（如 `const { t, i18n } = ...`）则重建解构模式仅删除翻译项
    */
   static cleanupVariableStatements(node: ts.VariableStatement, library: ReactI18nLibrary): ts.Node {
-    const filteredDeclarations = node.declarationList.declarations.filter((declaration) => {
-      // 移除 Hook 声明 (useIntl / useTranslation)
-      if (library.isHookDeclaration(declaration)) {
-        return false;
+    const next: ts.VariableDeclaration[] = [];
+    let mutated = false;
+
+    for (const original of node.declarationList.declarations) {
+      if (library.isHookDeclaration(original) || library.isGlobalFunctionDeclaration(original)) {
+        mutated = true;
+        continue;
       }
 
-      // 移除全局函数声明 (getIntl)
-      if (library.isGlobalFunctionDeclaration(declaration)) {
-        return false;
-      }
+      let declaration = original;
 
-      // 移除解构中的翻译变量
       if (ts.isObjectBindingPattern(declaration.name)) {
         const varName = library.translationVarName;
         const elements = declaration.name.elements.filter((element) => {
@@ -273,13 +278,11 @@ export class ReactImportManager implements IImportManager {
         });
 
         if (elements.length === 0) {
-          return false;
+          mutated = true;
+          continue;
         }
 
         if (elements.length !== declaration.name.elements.length) {
-          // NOTE: 在filter中无法修改declaration引用，此处仅用于类型检查
-          // 实际的声明更新由外部逻辑处理
-          // eslint-disable-next-line no-useless-assignment
           declaration = ts.factory.updateVariableDeclaration(
             declaration,
             ts.factory.createObjectBindingPattern(elements),
@@ -287,21 +290,22 @@ export class ReactImportManager implements IImportManager {
             declaration.type,
             declaration.initializer,
           );
+          mutated = true;
         }
       }
 
-      return true;
-    });
+      next.push(declaration);
+    }
 
-    if (filteredDeclarations.length === 0) {
+    if (next.length === 0) {
       return ts.factory.createNotEmittedStatement(node);
     }
 
-    if (filteredDeclarations.length < node.declarationList.declarations.length) {
+    if (mutated) {
       return ts.factory.updateVariableStatement(
         node,
         node.modifiers,
-        ts.factory.updateVariableDeclarationList(node.declarationList, filteredDeclarations),
+        ts.factory.updateVariableDeclarationList(node.declarationList, next),
       );
     }
 

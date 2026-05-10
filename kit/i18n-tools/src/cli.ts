@@ -4,6 +4,7 @@ import { hideBin } from 'yargs/helpers';
 import { loadConfig } from './config';
 import type { ResolvedConfig } from './config';
 import { createFrameworkAdapter } from './adapters';
+import type { FrameworkAdapter } from './adapters';
 import {
   AutomaticProcessor,
   ExportProcessor,
@@ -36,6 +37,7 @@ const getFrameworkInfo = (adapter: ReturnType<typeof createFrameworkAdapter>): F
 const executeGenerate = async (
   config: ResolvedConfig,
   frameworkInfo: FrameworkInfo,
+  adapter: FrameworkAdapter,
   isCustom: boolean,
   skipLLM: boolean = false,
 ): Promise<void> => {
@@ -44,7 +46,7 @@ const executeGenerate = async (
     frameworkInfo.extensions,
     frameworkInfo.displayName,
   );
-  const processor = new GenerateProcessor(config, isCustom);
+  const processor = new GenerateProcessor(config, isCustom, true, adapter);
   await processor.execute(targetPath, skipLLM);
 };
 
@@ -54,6 +56,7 @@ const executeGenerate = async (
 const executeRestore = async (
   config: ResolvedConfig,
   frameworkInfo: FrameworkInfo,
+  adapter: FrameworkAdapter,
   isCustom: boolean,
 ): Promise<void> => {
   const targetPath = await InteractiveUtils.promptForPath(
@@ -61,7 +64,7 @@ const executeRestore = async (
     frameworkInfo.extensions,
     frameworkInfo.displayName,
   );
-  const processor = new RestoreProcessor(config, isCustom);
+  const processor = new RestoreProcessor(config, isCustom, adapter);
   await processor.execute([targetPath], path.dirname(targetPath), true);
 };
 
@@ -264,11 +267,11 @@ export default defineConfig({
             frameworkInfo.extensions,
             frameworkInfo.displayName,
           );
-          await new AutomaticProcessor(config, custom).execute(targetPath, skipLLM);
+          await new AutomaticProcessor(config, custom, adapter).execute(targetPath, skipLLM);
         }
         break;
       case ModeName.GENERATE:
-        await executeGenerate(config, frameworkInfo, custom, skipLLM);
+        await executeGenerate(config, frameworkInfo, adapter, custom, skipLLM);
         break;
       case ModeName.PICK:
         await executePick(config, custom);
@@ -283,7 +286,7 @@ export default defineConfig({
         await executeExport(config);
         break;
       case ModeName.RESTORE:
-        await executeRestore(config, frameworkInfo, custom);
+        await executeRestore(config, frameworkInfo, adapter, custom);
         break;
       default:
         LoggerUtils.error(`没有匹配的模式: ${mode}`);

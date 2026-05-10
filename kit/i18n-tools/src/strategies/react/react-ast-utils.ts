@@ -7,6 +7,17 @@ import { CommonASTUtils } from '../../utils/common-ast-utils';
  * 提供 React/JSX 相关的 AST 操作功能
  */
 export class ReactASTUtils {
+  /**
+   * 判定一个标识符是否像 react-intl `defineMessages({ KEY: ... })` 的容器变量名。
+   *
+   * 此前用 `name.includes('MESSAGE')` 大小写敏感的子串匹配，对常见命名
+   * （`messages` / `intlMessages` / `i18nMessages`）静默失效，导致 restore 时
+   * 丢失消息容器定义。改为大小写无关，集中在此处方便后续替换为 library 注入。
+   */
+  static isMessageContainerName(name: string): boolean {
+    return /messages?/i.test(name);
+  }
+
   static getNodeContext(node: ts.Node): 'jsx-text' | 'jsx-attribute' | 'js-code' {
     if (ts.isJsxText(node)) {
       return 'jsx-text';
@@ -346,7 +357,7 @@ export class ReactASTUtils {
     if (
       ts.isPropertyAccessExpression(attribute.expression) &&
       ts.isIdentifier(attribute.expression.expression) &&
-      attribute.expression.expression.text.includes('MESSAGE') &&
+      ReactASTUtils.isMessageContainerName(attribute.expression.expression.text) &&
       ts.isIdentifier(attribute.expression.name)
     ) {
       const messageKey = attribute.expression.name.text;
@@ -414,7 +425,7 @@ export class ReactASTUtils {
     if (ts.isPropertyAccessExpression(expression)) {
       if (
         ts.isIdentifier(expression.expression) &&
-        expression.expression.text.includes('MESSAGE') &&
+        ReactASTUtils.isMessageContainerName(expression.expression.text) &&
         ts.isIdentifier(expression.name)
       ) {
         const messageKey = expression.name.text;
@@ -425,7 +436,7 @@ export class ReactASTUtils {
       if (
         ts.isPropertyAccessExpression(expression.expression) &&
         ts.isIdentifier(expression.expression.expression) &&
-        expression.expression.expression.text.includes('MESSAGE') &&
+        ReactASTUtils.isMessageContainerName(expression.expression.expression.text) &&
         ts.isIdentifier(expression.expression.name) &&
         ts.isIdentifier(expression.name)
       ) {
@@ -448,7 +459,7 @@ export class ReactASTUtils {
     return (
       ts.isPropertyAccessExpression(arg) &&
       ts.isIdentifier(arg.expression) &&
-      arg.expression.text.includes('MESSAGE') &&
+      ReactASTUtils.isMessageContainerName(arg.expression.text) &&
       ts.isIdentifier(arg.name)
     );
   }

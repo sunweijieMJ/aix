@@ -13,7 +13,7 @@ import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
 import type { ExtractedString } from '../../utils/types';
-import { BaseTextExtractor } from '../../adapters/FrameworkAdapter';
+import { BaseTextExtractor } from '../base';
 import type { VueI18nLibrary } from './libraries';
 
 /**

@@ -188,8 +188,12 @@ export class CommonASTUtils {
   }
 
   /**
-   * 检查节点是否已被框架无关的国际化结构包裹（t()/$t() 调用）。
+   * 检查节点是否应跳过提取：
+   *   - 已被框架无关的 t()/$t() 调用包裹
+   *   - 位于不可提取的位置：类型字面量（type X = '中文'）、枚举成员值
+   *
    * 框架/库特定的 JSX 组件（如 FormattedMessage/Trans）由各 i18n 库适配器自行覆盖。
+   * 调用方语义为"是否应跳过"，因此类型字面量/枚举成员返回 true（跳过）。
    */
   static isAlreadyInternationalized(node: ts.Node): boolean {
     let parent = node.parent;
@@ -210,9 +214,9 @@ export class CommonASTUtils {
         }
       }
 
-      // 类型字面量（type X = '中文'）和枚举成员值（InProgress = '中文'）不应被提取
+      // 类型字面量与枚举成员值在编译期就被消费，不参与运行时本地化，应跳过提取。
       if (ts.isLiteralTypeNode(parent) || ts.isEnumMember(parent)) {
-        return false;
+        return true;
       }
 
       if (ts.isBlock(parent) || ts.isFunctionLike(parent) || ts.isClassLike(parent)) {

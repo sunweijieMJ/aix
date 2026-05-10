@@ -1,19 +1,16 @@
 import ts from 'typescript';
+import type { BaseI18nLibrary } from '../../base';
 
 /**
  * React i18n 库适配器接口
  * 抽象不同 React 国际化库（react-intl / react-i18next）的 API 差异
+ *
+ * 公共标识（packageName / hookName / hookDeclaration）下沉到 BaseI18nLibrary，
+ * 与 Vue 端保持一致的命名约定。
  */
-export interface ReactI18nLibrary {
-  /** 包名: 'react-intl' | 'react-i18next' */
-  readonly packageName: string;
-
+export interface ReactI18nLibrary extends BaseI18nLibrary {
   // ===== Hook 相关 =====
 
-  /** Hook 名称: 'useIntl' | 'useTranslation' */
-  readonly hookName: string;
-  /** Hook 声明代码: 'const intl = useIntl()' | 'const { t } = useTranslation()' */
-  readonly hookDeclaration: string;
   /** 翻译函数/对象变量名: 'intl' | 't' */
   readonly translationVarName: string;
 

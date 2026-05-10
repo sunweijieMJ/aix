@@ -3,9 +3,11 @@ import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import type { ExtractedString } from '../../utils/types';
-import type { ITransformer } from '../../adapters/FrameworkAdapter';
-import type { VueImportManager } from './VueImportManager';
-import type { VueComponentInjector } from './VueComponentInjector';
+import type {
+  IComponentInjector,
+  IImportManager,
+  ITransformer,
+} from '../../adapters/FrameworkAdapter';
 import type { VueI18nLibrary } from './libraries';
 
 /**
@@ -17,13 +19,13 @@ import type { VueI18nLibrary } from './libraries';
  */
 export class VueTransformer implements ITransformer {
   private library: VueI18nLibrary;
-  private importManager: VueImportManager;
-  private componentInjector: VueComponentInjector;
+  private importManager: IImportManager;
+  private componentInjector: IComponentInjector;
 
   constructor(
     library: VueI18nLibrary,
-    importManager: VueImportManager,
-    componentInjector: VueComponentInjector,
+    importManager: IImportManager,
+    componentInjector: IComponentInjector,
   ) {
     this.library = library;
     this.importManager = importManager;

@@ -1,3 +1,5 @@
+import type { BaseI18nLibrary } from '../../base';
+
 /**
  * Vue i18n 库适配器接口
  * 抽象不同 Vue 国际化库（vue-i18n / vue-i18next）的 API 差异
@@ -6,17 +8,11 @@
  * - Composition API Hook 名称和导入包名
  * - 命名空间支持（vue-i18next）
  * - 还原时清理的导入/声明模式
+ *
+ * 公共标识（packageName / hookName / hookDeclaration）下沉到 BaseI18nLibrary，
+ * 与 React 端保持一致的命名约定。
  */
-export interface VueI18nLibrary {
-  /** 包名: 'vue-i18n' | 'vue-i18next' */
-  readonly packageName: string;
-
-  /** Hook 名称: 'useI18n' | 'useTranslation' */
-  readonly hookName: string;
-
-  /** Hook 声明代码: 'const { t } = useI18n()' | 'const { t } = useTranslation()' */
-  readonly hookDeclaration: string;
-
+export interface VueI18nLibrary extends BaseI18nLibrary {
   /** 模板全局函数名（两者都是 $t） */
   readonly templateFunctionName: string;
 

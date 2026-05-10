@@ -134,6 +134,12 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
   /**
    * 还原 template 中的 i18n 调用
+   *
+   * 三个 pass 的关键不变量：pass 1/2 的还原结果（即 locale 文本）可能包含
+   * 形似 `t('xxx')` 的字面字符串（例如原文 `调用 t('foo') 函数`），若直接放进
+   * `restored` 字符串里再跑 pass 3，会被 innerI18nCallRegex 误命中而二次替换。
+   * 因此 pass 1/2 输出占位符（NUL 边界确保无法在 Vue 源里出现），pass 3 跑完后
+   * 再统一回填，保证 pass 3 永远只扫描真正残留的 i18n 调用。
    */
   private static restoreTemplate(
     templateContent: string,
@@ -154,6 +160,16 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       return localeMap[lookupKey] || localeMap[rawKey];
     };
 
+    // pass 1/2 占位机制：使用形如 `I18N_R_<idx>` 的唯一 token 隔离已还原片段，
+    // 防止 pass 3 的 innerI18nCallRegex 把 locale 文本里碰巧出现的 `t('xxx')`
+    // 字面字符串当成残留的 i18n 调用再次替换。回填阶段统一恢复成原文。
+    const placeholders: string[] = [];
+    const stash = (text: string): string => {
+      const token = `I18N_R_${placeholders.length}`;
+      placeholders.push(text);
+      return token;
+    };
+
     // 1. 匹配 {{ $t('key') }} 或 {{ t('key') }} 或 {{ $t('key', { vars }) }}
     //    仅匹配整个插值内容为单个 $t 调用的情况
     //    vars 段支持单层嵌套花括号（如 { obj: { a: 1 } }）
@@ -168,13 +184,13 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
       if (vars) {
         try {
-          return this.restoreTemplateWithVariables(text, vars as string, 'mustache');
+          return stash(this.restoreTemplateWithVariables(text, vars as string, 'mustache'));
         } catch {
-          return text;
+          return stash(text);
         }
       }
 
-      return text;
+      return stash(text);
     });
 
     // 2. 匹配属性绑定 :attr="$t('key')" 或 :attr="$t('key', { vars })"
@@ -192,13 +208,13 @@ export class VueRestoreTransformer implements IRestoreTransformer {
         try {
           const restoredText = this.restoreTemplateWithVariables(text, vars as string, 'template');
           // 带变量的还原保持动态绑定，使用 ${expr} 语法
-          return `:${attrName}="\`${restoredText}\`"`;
+          return stash(`:${attrName}="\`${restoredText}\`"`);
         } catch {
-          return `${attrName}="${text}"`;
+          return stash(`${attrName}="${text}"`);
         }
       }
 
-      return `${attrName}="${text}"`;
+      return stash(`${attrName}="${text}"`);
     });
 
     // 3. 匹配插值表达式内部残留的 $t() 调用（如三元表达式中的 $t 调用）
@@ -224,6 +240,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
       return `'${text}'`;
     });
+
+    // 回填占位符
+    restored = restored.replace(/I18N_R_(\d+)/g, (_match, idx) => placeholders[Number(idx)]!);
 
     return restored;
   }

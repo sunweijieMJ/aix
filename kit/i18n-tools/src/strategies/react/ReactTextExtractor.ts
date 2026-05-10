@@ -4,7 +4,7 @@ import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { ReactASTUtils } from './react-ast-utils';
 import { FileUtils } from '../../utils/file-utils';
 import type { ExtractedString, MessageInfo } from '../../utils/types';
-import { BaseTextExtractor } from '../../adapters/FrameworkAdapter';
+import { BaseTextExtractor } from '../base';
 import type { ReactI18nLibrary } from './libraries';
 
 /**

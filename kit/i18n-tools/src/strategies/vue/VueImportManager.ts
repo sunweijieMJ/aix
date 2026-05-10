@@ -1,7 +1,21 @@
+import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { IImportManager } from '../../adapters/FrameworkAdapter';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import type { ExtractedString } from '../../utils/types';
 import type { VueI18nLibrary } from './libraries';
+
+/**
+ * SFC <script> 块定位结果（基于 @vue/compiler-sfc 解析，避免正则在含
+ * `<!-- </script> -->` 注释或多 script 块时被截断）
+ */
+interface ScriptBlockLocation {
+  /** <script> 标签内部内容（不含开闭标签） */
+  content: string;
+  /** content 在原始 code 中的起始偏移 */
+  start: number;
+  /** content 在原始 code 中的结束偏移 */
+  end: number;
+}
 
 /**
  * 管理 Vue i18n 转换中所需的 import 语句和相关代码
@@ -110,79 +124,88 @@ export class VueImportManager implements IImportManager {
 
   /**
    * 添加 Hook 声明（如 const { t } = useI18n() 或 const { t } = useTranslation()）
+   *
+   * 仅注入到 <script setup>。普通 <script>（Options API）走 this.$t，无需 hook 声明。
    */
   addHookDeclaration(code: string): string {
     if (this.library.getHookDeclarationCheckRegex().test(code)) {
       return code;
     }
 
+    const block = VueImportManager.findScriptBlock(code, { setupOnly: true });
+    if (!block) return code;
+
     const declaration = this.library.generateHookDeclaration() + '\n';
+    const lines = block.content.split('\n');
 
-    const scriptSetupMatch = code.match(/(<script[^>]*setup[^>]*>)([\s\S]*?)<\/script>/);
-    if (scriptSetupMatch) {
-      const scriptTag = scriptSetupMatch[1]!;
-      const scriptContent = scriptSetupMatch[2]!;
-      const lines = scriptContent.split('\n');
-
-      // 优先以"最后一条 import 之后"作为锚点；只有完全没有 import 时才寻找首个非空非注释行。
-      const lastImportIndex = CommonASTUtils.findLastImportLineIndex(lines);
-      let insertIndex: number;
-      if (lastImportIndex >= 0) {
-        insertIndex = lastImportIndex + 1;
-      } else {
-        insertIndex = lines.length;
-        for (let i = 0; i < lines.length; i++) {
-          const trimmed = lines[i]!.trim();
-          if (trimmed && !trimmed.startsWith('//')) {
-            insertIndex = i;
-            break;
-          }
+    // 优先以"最后一条 import 之后"作为锚点；只有完全没有 import 时才寻找首个非空非注释行。
+    const lastImportIndex = CommonASTUtils.findLastImportLineIndex(lines);
+    let insertIndex: number;
+    if (lastImportIndex >= 0) {
+      insertIndex = lastImportIndex + 1;
+    } else {
+      insertIndex = lines.length;
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i]!.trim();
+        if (trimmed && !trimmed.startsWith('//')) {
+          insertIndex = i;
+          break;
         }
       }
-
-      lines.splice(insertIndex, 0, declaration);
-      const newScriptContent = lines.join('\n');
-      return code.replace(scriptSetupMatch[0], `${scriptTag}${newScriptContent}</script>`);
     }
 
-    return code;
+    lines.splice(insertIndex, 0, declaration);
+    return code.slice(0, block.start) + lines.join('\n') + code.slice(block.end);
   }
 
   /**
    * 在 <script> 块内合并/追加命名导入（对 SFC 文件，避免误匹配 template/style 中的相似字符串）
    */
   private mergeNamedImportInScript(code: string, packageName: string, names: string[]): string {
-    const scriptMatch = VueImportManager.matchScriptBlock(code);
-    if (!scriptMatch) return code;
-    const scriptTag = scriptMatch[1]!;
-    const scriptContent = scriptMatch[2]!;
-    const updatedScript = CommonASTUtils.mergeNamedImport(scriptContent, packageName, names);
-    return code.replace(scriptMatch[0], `${scriptTag}${updatedScript}</script>`);
+    const block = VueImportManager.findScriptBlock(code);
+    if (!block) return code;
+    const updatedScript = CommonASTUtils.mergeNamedImport(block.content, packageName, names);
+    return code.slice(0, block.start) + updatedScript + code.slice(block.end);
   }
 
   /**
    * 在 <script> 块内追加一条 import 语句
    */
   private addImportToScript(code: string, importStatement: string): string {
-    const scriptMatch = VueImportManager.matchScriptBlock(code);
-    if (!scriptMatch) return code;
-    const scriptTag = scriptMatch[1]!;
-    const scriptContent = scriptMatch[2]!;
-    const updatedScript = CommonASTUtils.appendImportLine(scriptContent, importStatement);
-    return code.replace(scriptMatch[0], `${scriptTag}${updatedScript}</script>`);
+    const block = VueImportManager.findScriptBlock(code);
+    if (!block) return code;
+    const updatedScript = CommonASTUtils.appendImportLine(block.content, importStatement);
+    return code.slice(0, block.start) + updatedScript + code.slice(block.end);
   }
 
   /**
    * 定位 SFC 中需要写入 import / hook 的 <script> 块。
    *
    * Why: 一个 SFC 可同时存在 <script> 与 <script setup>（Vue 3 合法用法）。
-   *      naïvely 用 /<script[^>]*>/ 总会命中文档中第一个 <script>，
-   *      把 import 错误地塞进非 setup 块，导致 hook/composable 不可用。
-   *      因此优先匹配带 setup 的 script 块，没有时再回落到普通 script。
+   *      naïvely 用 /<script[^>]*>/ 总会命中第一个 <script>，并被 template
+   *      或注释中的 `</script>` 字符串截断（如 `<!-- </script> -->`）。
+   *      改用 @vue/compiler-sfc 解析，优先返回 scriptSetup 块。
    */
-  private static matchScriptBlock(code: string): RegExpMatchArray | null {
-    const setupMatch = code.match(/(<script[^>]*\bsetup\b[^>]*>)([\s\S]*?)<\/script>/);
-    if (setupMatch) return setupMatch;
-    return code.match(/(<script[^>]*>)([\s\S]*?)<\/script>/);
+  private static findScriptBlock(
+    code: string,
+    options: { setupOnly?: boolean } = {},
+  ): ScriptBlockLocation | null {
+    let descriptor;
+    try {
+      descriptor = parseSFC(code).descriptor;
+    } catch {
+      return null;
+    }
+
+    const block = options.setupOnly
+      ? descriptor.scriptSetup
+      : (descriptor.scriptSetup ?? descriptor.script);
+    if (!block) return null;
+
+    return {
+      content: block.content,
+      start: block.loc.start.offset,
+      end: block.loc.end.offset,
+    };
   }
 }

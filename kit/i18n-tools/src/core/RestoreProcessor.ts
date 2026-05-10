@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
+import type { FrameworkAdapter } from '../adapters';
 import { CommandUtils } from '../utils/command-utils';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
@@ -19,8 +20,13 @@ interface RestoreOptions {
  * 负责将国际化代码还原为原始文本
  */
 export class RestoreProcessor extends BaseProcessor {
-  constructor(config: ResolvedConfig, isCustom: boolean = false) {
-    super(config, isCustom);
+  /**
+   * @param config - 已解析的配置
+   * @param isCustom - 是否为定制目录
+   * @param adapter - 可选的框架适配器，未提供则按 config.framework 自动构建
+   */
+  constructor(config: ResolvedConfig, isCustom: boolean = false, adapter?: FrameworkAdapter) {
+    super(config, isCustom, adapter);
   }
 
   protected getOperationName(): string {
@@ -118,6 +124,7 @@ export class RestoreProcessor extends BaseProcessor {
 
       let processedCount = 0;
       let modifiedCount = 0;
+      const failedFiles: string[] = [];
 
       for (const filePath of filesToProcess) {
         try {
@@ -133,6 +140,10 @@ export class RestoreProcessor extends BaseProcessor {
             LoggerUtils.info(`📈 进度: ${processedCount}/${filesToProcess.length} 文件已处理`);
           }
         } catch (error) {
+          // processFile 内部会捕获异常并返回 false；外层 catch 仅兜底"AST/IO 异常逃逸"
+          // 等罕见情况。两路径都纳入 failedFiles，最终统一以非零退出码上抛，避免 CI
+          // 因 silent skip 把"几乎全部失败"误判为成功。
+          failedFiles.push(filePath);
           LoggerUtils.error(`处理文件失败: ${FileUtils.getRelativePath(filePath)}`, error);
         }
       }
@@ -140,9 +151,16 @@ export class RestoreProcessor extends BaseProcessor {
       LoggerUtils.success(`\n✅ 处理完成！`);
       LoggerUtils.info(`📊 总计处理: ${processedCount} 个文件`);
       LoggerUtils.info(`📊 已修改: ${modifiedCount} 个文件`);
+      if (failedFiles.length > 0) {
+        LoggerUtils.error(`📊 处理失败: ${failedFiles.length} 个文件`);
+      }
 
       if (!options.overwrite && modifiedCount > 0) {
         LoggerUtils.info(`📂 输出目录: ${options.outputDir}`);
+      }
+
+      if (failedFiles.length > 0) {
+        throw new Error(`${failedFiles.length} 个文件还原失败，请检查上方日志`);
       }
     } catch (error) {
       LoggerUtils.error('还原过程中发生错误:', error);
@@ -164,35 +182,34 @@ export class RestoreProcessor extends BaseProcessor {
   ): Promise<boolean> {
     const actualOutputPath = outputPath || filePath;
 
-    try {
-      const restoreTransformer = this.adapter.getRestoreTransformer();
-      const sourceText = fs.readFileSync(filePath, 'utf-8');
-      const transformedCode = restoreTransformer.transform(filePath, localeMap);
+    // 不再 try/catch 吞错：让异常向上传播到 restoreFiles 的循环处理器，
+    // 由其计入 failedFiles 并最终非零退出。此前内部 return false 与上层
+    // continue 双重静默会让 CI 把"全部失败"显示为成功。
+    const restoreTransformer = this.adapter.getRestoreTransformer();
+    const sourceText = fs.readFileSync(filePath, 'utf-8');
+    const transformedCode = restoreTransformer.transform(filePath, localeMap);
 
-      if (transformedCode === sourceText) {
-        LoggerUtils.info(`⚪ 跳过: ${FileUtils.getRelativePath(filePath)} (无需修改)`);
-        return false;
-      }
-
-      FileUtils.ensureDirectoryExists(path.dirname(actualOutputPath));
-      fs.writeFileSync(actualOutputPath, transformedCode, 'utf-8');
-
-      if (this.config.format) {
-        try {
-          await CommandUtils.formatWithPrettier(actualOutputPath);
-        } catch (error) {
-          LoggerUtils.error(
-            `格式化失败，但文件已保存: ${FileUtils.getRelativePath(actualOutputPath)}`,
-            error,
-          );
-        }
-      }
-
-      LoggerUtils.success(`✅ 还原: ${FileUtils.getRelativePath(filePath)}`);
-      return true;
-    } catch (error) {
-      LoggerUtils.error(`处理文件失败 ${FileUtils.getRelativePath(filePath)}:`, error);
+    if (transformedCode === sourceText) {
+      LoggerUtils.info(`⚪ 跳过: ${FileUtils.getRelativePath(filePath)} (无需修改)`);
       return false;
     }
+
+    FileUtils.ensureDirectoryExists(path.dirname(actualOutputPath));
+    fs.writeFileSync(actualOutputPath, transformedCode, 'utf-8');
+
+    if (this.config.format) {
+      try {
+        // 格式化失败不算文件还原失败：源已写盘且语义正确，仅美观问题。
+        await CommandUtils.formatWithPrettier(actualOutputPath);
+      } catch (error) {
+        LoggerUtils.error(
+          `格式化失败，但文件已保存: ${FileUtils.getRelativePath(actualOutputPath)}`,
+          error,
+        );
+      }
+    }
+
+    LoggerUtils.success(`✅ 还原: ${FileUtils.getRelativePath(filePath)}`);
+    return true;
   }
 }
