@@ -633,33 +633,7 @@ export const safeExecuteOperation = <T>(
   }
 };
 
-// 28. 常量和枚举测试
-export const UI_MESSAGES = {
-  LOADING: '正在加载...',
-  SUCCESS: '操作成功',
-  ERROR: '操作失败',
-  CONFIRM: '请确认您的操作',
-  CANCEL: '取消',
-  SAVE: '保存',
-  DELETE: '删除',
-  EDIT: '编辑',
-  VIEW: '查看',
-
-  // 技术常量，不应该被提取
-  API_ENDPOINTS: {
-    USER: '/api/users', // 不应该被提取
-    ORDER: '/api/orders', // 不应该被提取
-    PRODUCT: '/api/products', // 不应该被提取
-  },
-
-  // HTTP状态码，不应该被提取
-  HTTP_STATUS: {
-    OK: 200, // 不应该被提取
-    NOT_FOUND: 404, // 不应该被提取
-    SERVER_ERROR: 500, // 不应该被提取
-  },
-} as const;
-
+// 28. TS 枚举（JS 文件无此语法，为 .ts 独占场景）
 export enum OrderStatus {
   PENDING = 'pending', // 不应该被提取
   PROCESSING = 'processing', // 不应该被提取
@@ -714,6 +688,51 @@ export const generateStatusReport = (data: {
   }
 
   return { title, content, level };
+};
+
+// ==================== 30. Glossary（词表）命中场景 ====================
+// 以下所有字符串都已收录于 apps/client/src/locale/glossary.json，
+// 翻译阶段应通过 Glossary.lookup 直接命中、跳过 LLM 调用。
+// 用途：观察 translate 命令日志中的 "📚 词表预填 N 条" 输出，
+//      并核对最终 locale 文件中这些条目的英文是否与 glossary 完全一致。
+export const GLOSSARY_HITS = {
+  // 简单按钮文案
+  submit: '提交',
+  cancel: '取消',
+  confirm: '确认',
+  save: '保存',
+  reset: '重置',
+
+  // 状态文案
+  inProgress: '进行中',
+  completed: '已完成',
+  cancelled: '已取消',
+
+  // 表单文案
+  username: '用户名',
+  email: '邮箱地址',
+  pleaseInput: '请输入',
+
+  // 短句
+  saveSuccess: '保存成功',
+  permissionDenied: '权限不足',
+  loadingData: '正在加载数据...',
+  unsavedChanges: '您有未保存的更改，确定要离开吗？',
+} as const;
+
+// ==================== 31. 已国际化函数（脚本上下文的幂等性）====================
+// 验证：含中文参数但被 t() / $t() 包裹的调用不应被二次提取。
+// 对应 CommonASTUtils.isAlreadyInternationalized 在 .ts 文件路径下的行为。
+declare const t: (key: string, params?: Record<string, unknown>) => string;
+declare const $t: (key: string, params?: Record<string, unknown>) => string;
+
+export const alreadyTranslatedCalls = (): string[] => {
+  return [
+    // ❌ 不应再次提取：参数已在 t()/$t() 调用内
+    t('已确认'),
+    $t('请重新登录'),
+    t('用户欢迎', { name: $t('管理员') }),
+  ];
 };
 
 console.log('测试函数模块加载完成'); // console调用不应该被提取

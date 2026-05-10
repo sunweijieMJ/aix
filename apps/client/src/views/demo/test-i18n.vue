@@ -52,23 +52,9 @@
       </div>
     </section>
 
-    <!-- ==================== 5. 列表渲染 ==================== -->
+    <!-- ==================== 5. 表单控件 ==================== -->
     <section class="test-section">
-      <h2>5. 列表渲染</h2>
-      <div>
-        <h4>商品列表</h4>
-        <div v-for="item in products" :key="item.id" class="list-item">
-          <span>商品名称: {{ item.name }}</span>
-          <span>价格: ¥{{ item.price }}</span>
-          <button class="btn-small">添加到购物车</button>
-        </div>
-        <p>总共 {{ products.length }} 件商品</p>
-      </div>
-    </section>
-
-    <!-- ==================== 6. 表单控件 ==================== -->
-    <section class="test-section">
-      <h2>6. 表单控件</h2>
+      <h2>5. 表单控件</h2>
       <form class="test-form" @submit.prevent="handleSubmit">
         <div class="form-item">
           <label>用户名</label>
@@ -102,9 +88,9 @@
       </form>
     </section>
 
-    <!-- ==================== 7. 模板字符串（在 script 中） ==================== -->
+    <!-- ==================== 6. 模板字符串（在 script 中） ==================== -->
     <section class="test-section">
-      <h2>7. 模板字符串</h2>
+      <h2>6. 模板字符串</h2>
       <div>
         <p>{{ welcomeMessage }}</p>
         <p>{{ messageCount }}</p>
@@ -113,9 +99,9 @@
       </div>
     </section>
 
-    <!-- ==================== 8. 特殊字符 ==================== -->
+    <!-- ==================== 7. 特殊字符 ==================== -->
     <section class="test-section">
-      <h2>8. 特殊字符处理</h2>
+      <h2>7. 特殊字符处理</h2>
       <div>
         <p>包含"双引号"的文本</p>
         <p>包含'单引号'的文本</p>
@@ -127,34 +113,27 @@
       </div>
     </section>
 
-    <!-- ==================== 9. 消息提示 ==================== -->
+    <!-- ==================== 8. 消息提示与对话框确认 ==================== -->
     <section class="test-section">
-      <h2>9. 消息提示</h2>
+      <h2>8. 消息提示与对话框确认</h2>
       <div class="demo-row">
         <button @click="showMessage('success', '操作成功完成')">成功提示</button>
         <button @click="showMessage('error', '操作失败，请重试')">错误提示</button>
         <button @click="showMessage('warning', '请注意检查输入内容')">警告提示</button>
+        <button class="btn-danger" @click="handleDelete">删除记录</button>
+        <button @click="showConfirmDialog">显示确认对话框</button>
       </div>
       <p v-if="lastMessage" :class="['message-toast', `message-${lastMessage.type}`]">
         {{ lastMessage.text }}
       </p>
-    </section>
-
-    <!-- ==================== 10. 确认对话框 ==================== -->
-    <section class="test-section">
-      <h2>10. 对话框和确认</h2>
-      <div class="demo-row">
-        <button class="btn-danger" @click="handleDelete">删除记录</button>
-        <button @click="showConfirmDialog">显示确认对话框</button>
-      </div>
       <div v-if="confirmResult" class="confirm-result">
         {{ confirmResult }}
       </div>
     </section>
 
-    <!-- ==================== 11. 复杂场景 ==================== -->
+    <!-- ==================== 9. 复杂嵌套场景 ==================== -->
     <section class="test-section">
-      <h2>11. 复杂嵌套场景</h2>
+      <h2>9. 复杂嵌套场景</h2>
       <table class="data-table">
         <thead>
           <tr>
@@ -183,6 +162,76 @@
       </p>
     </section>
 
+    <!-- ==================== 10. 无障碍属性（aria-label 等）==================== -->
+    <section class="test-section">
+      <h2>10. 无障碍属性（aria-*）</h2>
+      <div class="demo-row">
+        <!-- ✅ aria-label 是面向用户的文字，应该被提取 -->
+        <button aria-label="关闭弹窗">×</button>
+        <button aria-label="删除当前项目" class="btn-danger">🗑</button>
+        <input aria-label="搜索关键词" placeholder="请输入关键词" />
+        <nav aria-labelledby="nav-title">
+          <span id="nav-title">主导航</span>
+        </nav>
+        <section aria-describedby="section-desc">
+          <p id="section-desc">此区域用于展示用户操作历史记录</p>
+        </section>
+      </div>
+    </section>
+
+    <!-- ==================== 11. v-text 和 v-html 指令 ==================== -->
+    <section class="test-section">
+      <h2>11. v-text / v-html 指令</h2>
+      <div class="demo-row">
+        <!-- ✅ v-text 动态内容（字符串字面量应被提取）-->
+        <span v-text="'加载中...'"></span>
+        <span v-text="isActive ? '已启用' : '已禁用'"></span>
+
+        <!-- ✅ v-html 中的字符串（字面量部分应被提取）-->
+        <div v-html="'<strong>重要提示</strong>：请仔细阅读'"></div>
+      </div>
+    </section>
+
+    <!-- ==================== 12. 自定义指令 / Tooltip ==================== -->
+    <section class="test-section">
+      <h2>12. 自定义指令字符串</h2>
+      <div class="demo-row">
+        <!-- ✅ 自定义指令的字符串参数应被提取 -->
+        <button v-tooltip="'点击此处提交表单'">提交</button>
+        <span v-tooltip="status === 'error' ? '功能暂时关闭' : '点击开始操作'">状态按钮</span>
+
+        <!-- ✅ 动态绑定的提示文字 -->
+        <input :title="'必填项，请勿留空'" placeholder="请输入" />
+      </div>
+    </section>
+
+    <!-- ==================== 13. 中文对象 key（不应提取）==================== -->
+    <section class="test-section">
+      <h2>13. 中文对象 key（不应被提取）</h2>
+      <p>
+        验证 Vue SFC
+        <code>&lt;script setup&gt;</code>
+        中的对象字面量属性 key 不被误提取。
+      </p>
+      <ul>
+        <li v-for="(value, key) in chineseKeyMap" :key="key">{{ key }} → {{ value }}</li>
+      </ul>
+    </section>
+
+    <!-- ==================== 14. 已国际化代码（幂等性测试）==================== -->
+    <section class="test-section">
+      <h2>14. 已国际化代码（不应二次包裹）</h2>
+      <div>
+        <!-- 关键点：参数中含中文，但因外层是 $t / t 调用，提取器应识别为
+             "已国际化"，跳过再次包裹（CommonASTUtils.isAlreadyInternationalized）-->
+        <p>{{ $t('已确认') }}</p>
+        <p>{{ t('用户登录') }}</p>
+        <button :title="$t('点击查看详情')">{{ $t('查看') }}</button>
+        <!-- 嵌套 t() 调用：内层 t() 也含中文，不应被双层包裹 -->
+        <p>{{ $t('欢迎信息', { name: t('管理员') }) }}</p>
+      </div>
+    </section>
+
     <!-- ==================== 测试说明 ==================== -->
     <div class="test-description">
       <h3>测试说明</h3>
@@ -200,12 +249,6 @@
 import { ref, computed, reactive } from 'vue';
 
 // ==================== 接口定义 ====================
-interface Product {
-  id: number;
-  name: string;
-  price: number;
-}
-
 interface TableItem {
   id: string;
   name: string;
@@ -230,12 +273,6 @@ const status = ref<'success' | 'error'>('success');
 const dynamicTitle = ref('这是动态的按钮提示');
 const inputPlaceholder = ref('请输入内容');
 const inputValue = ref('');
-
-const products = ref<Product[]>([
-  { id: 1, name: '苹果', price: 5 },
-  { id: 2, name: '香蕉', price: 3 },
-  { id: 3, name: '橙子', price: 4 },
-]);
 
 const tableData = ref<TableItem[]>([
   { id: '1', name: '项目A', status: '进行中' },
@@ -310,6 +347,30 @@ const handleRemove = (row: TableItem) => {
     showMessage('success', '项目已删除');
   }
 };
+
+// ==================== 中文对象 key（H2 修复对应的回归用例）====================
+// SFC <script setup> 中对象字面量的属性 key 不应被国际化提取，
+// 否则运行时键名变成翻译后的字符串，破坏数据结构。
+const chineseKeyMap: Record<string, string> = {
+  // ❌ 不应提取：以下三行的字符串是对象 key
+  用户名: 'username',
+  邮箱地址: 'email',
+  手机号码: 'phone',
+};
+
+// ✅ 应提取：value 才是真正的 UI 文本，应该被国际化
+const fieldDisplayNames: Record<string, string> = {
+  username: '用户登录名',
+  email: '电子邮箱地址',
+};
+void fieldDisplayNames;
+
+// ==================== 已国际化代码的幂等性测试 ====================
+// 模板里出现了 $t / t 调用，给 t 一个声明以通过 TS 校验；提取器靠
+// CommonASTUtils.isAlreadyInternationalized 识别 t() / $t() 调用，
+// 跳过对其字符串参数的提取（即便参数里含中文）。
+declare const t: (key: string, params?: Record<string, unknown>) => string;
+void t;
 </script>
 
 <style scoped lang="scss">

@@ -31,20 +31,20 @@ export default defineConfig({
   paths: {
     // 语言文件目录
     locale: 'src/locale',
-    // 自定义语言文件目录（用于覆盖默认翻译）
-    customLocale: 'src/overrides/locale',
     // 导出目录（export-to-public 命令输出位置）
     exportLocale: 'public/locale',
     // 源代码扫描目录
     source: 'src',
     // .ts/.js 文件中 t 函数的导入路径
     tImport: '@/plugins/locale',
+    // 翻译词表文件（命中条目跳过 LLM 直接采用）
+    glossary: 'src/locale/glossary.json',
   },
 
   // LLM API 配置
   llm: {
     // ID 生成接口
-    idGeneration: {
+    default: {
       apiKey: process.env.DEEPSEEK_API_KEY!,
       model: 'deepseek-chat',
       baseURL: 'https://api.deepseek.com',
@@ -53,15 +53,6 @@ export default defineConfig({
       // 最大重试次数，默认 2
       maxRetries: 2,
       // 温度参数，控制输出随机性，默认 0.1
-      temperature: 0.1,
-    },
-    // 翻译接口
-    translation: {
-      apiKey: process.env.DEEPSEEK_API_KEY!,
-      model: 'deepseek-chat',
-      baseURL: 'https://api.deepseek.com',
-      timeout: 60000,
-      maxRetries: 2,
       temperature: 0.1,
     },
   },
@@ -99,7 +90,7 @@ export default defineConfig({
   },
 
   // 翻译批次大小（每次发送给 LLM 的条目数）
-  batchSize: 10,
+  batchSize: 50,
 
   // 翻译批次间延时（毫秒），默认 500
   batchDelay: 500,
@@ -111,5 +102,11 @@ export default defineConfig({
   include: ['**/*.vue', '**/*.tsx', '**/*.jsx', '**/*.ts', '**/*.js'],
 
   // 排除的目录或文件
-  exclude: ['node_modules', 'dist', 'build', '.git', 'public'],
+  exclude: ['node_modules', 'dist', 'build', '.git', 'public', 'src/components'],
+
+  // 翻译词表选项（仅 paths.glossary 配置时生效）
+  glossary: {
+    override: 'always',
+    normalize: true,
+  },
 });
