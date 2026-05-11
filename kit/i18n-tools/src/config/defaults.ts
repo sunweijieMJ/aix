@@ -148,3 +148,10 @@ export const DEFAULT_EXCLUDE = [
   '*.config.mjs',
   '*.config.cjs',
 ];
+
+/**
+ * 模块化导出默认值（仅当用户启用 modules 后才生效）
+ */
+export const DEFAULT_MODULES_DEFAULT_MODULE = 'common';
+export const DEFAULT_MODULES_MANIFEST = true;
+export const DEFAULT_MODULES_LAYOUT = 'by-locale' as const;

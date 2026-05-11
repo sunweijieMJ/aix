@@ -14,6 +14,9 @@ import {
   DEFAULT_LLM_TEMPERATURE,
   DEFAULT_LLM_TIMEOUT,
   DEFAULT_LOCALE,
+  DEFAULT_MODULES_DEFAULT_MODULE,
+  DEFAULT_MODULES_LAYOUT,
+  DEFAULT_MODULES_MANIFEST,
   DEFAULT_PATHS,
   DEFAULT_REACT,
   DEFAULT_VUE,
@@ -56,6 +59,51 @@ function resolveLLMConfig(llm: I18nToolsConfig['llm']): {
   return {
     idGeneration: resolveTask(llm.idGeneration, 'idGeneration'),
     translation: resolveTask(llm.translation, 'translation'),
+  };
+}
+
+/**
+ * 解析并校验模块化导出配置（modules）。
+ *
+ * 校验项：
+ * - rules 必须是非空数组
+ * - rule.name 必须存在、为字符串、且全局唯一
+ * - rule.match 与 rule.matchKey 互斥（不可同时存在，也不可都缺失）
+ *
+ * 通过后填充 defaultModule / manifest / layout 的默认值。
+ */
+export function resolveModules(modules: I18nToolsConfig['modules']): ResolvedConfig['modules'] {
+  if (!modules) return undefined;
+
+  if (!Array.isArray(modules.rules) || modules.rules.length === 0) {
+    throw new Error('modules.rules 必须是非空数组');
+  }
+
+  const names = new Set<string>();
+  for (const rule of modules.rules) {
+    if (!rule.name || typeof rule.name !== 'string') {
+      throw new Error(`modules.rules 中存在缺失或非法的 name 字段`);
+    }
+    if (names.has(rule.name)) {
+      throw new Error(`modules.rules 中存在重复的 name: "${rule.name}"`);
+    }
+    names.add(rule.name);
+
+    const hasMatch = rule.match !== undefined;
+    const hasMatchKey = rule.matchKey !== undefined;
+    if (hasMatch && hasMatchKey) {
+      throw new Error(`模块规则 "${rule.name}" 不能同时配置 match 与 matchKey`);
+    }
+    if (!hasMatch && !hasMatchKey) {
+      throw new Error(`模块规则 "${rule.name}" 必须提供 match 或 matchKey 之一`);
+    }
+  }
+
+  return {
+    rules: modules.rules,
+    defaultModule: modules.defaultModule ?? DEFAULT_MODULES_DEFAULT_MODULE,
+    manifest: modules.manifest ?? DEFAULT_MODULES_MANIFEST,
+    layout: modules.layout ?? DEFAULT_MODULES_LAYOUT,
   };
 }
 
@@ -179,6 +227,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     format: userConfig.format ?? true,
     include: userConfig.include ?? DEFAULT_INCLUDE,
     exclude: userConfig.exclude ?? DEFAULT_EXCLUDE,
+    modules: resolveModules(userConfig.modules),
   };
 }
 
