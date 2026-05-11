@@ -18,7 +18,7 @@ describe('resolveModules', () => {
           { name: 'a', match: '**/*' },
         ],
       }),
-    ).toThrow('重复的 name');
+    ).toThrow(/重复的 name.*"a"/);
   });
 
   it('match 与 matchKey 同时存在抛错', () => {
@@ -26,12 +26,12 @@ describe('resolveModules', () => {
       resolveModules({
         rules: [{ name: 'a', match: '**/*', matchKey: () => true }],
       }),
-    ).toThrow('不能同时配置');
+    ).toThrow(/规则 "a".*不能同时配置/);
   });
 
   it('既无 match 也无 matchKey 抛错', () => {
     expect(() => resolveModules({ rules: [{ name: 'a' } as any] })).toThrow(
-      '必须提供 match 或 matchKey',
+      /规则 "a".*必须提供 match 或 matchKey/,
     );
   });
 

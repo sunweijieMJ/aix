@@ -76,13 +76,15 @@ export function resolveModules(modules: I18nToolsConfig['modules']): ResolvedCon
   if (!modules) return undefined;
 
   if (!Array.isArray(modules.rules) || modules.rules.length === 0) {
-    throw new Error('modules.rules 必须是非空数组');
+    const received = Array.isArray(modules.rules) ? '空数组' : typeof modules.rules;
+    throw new Error(`modules.rules 必须是非空数组，实际收到: ${received}`);
   }
 
   const names = new Set<string>();
-  for (const rule of modules.rules) {
+  for (let i = 0; i < modules.rules.length; i++) {
+    const rule = modules.rules[i];
     if (!rule.name || typeof rule.name !== 'string') {
-      throw new Error(`modules.rules 中存在缺失或非法的 name 字段`);
+      throw new Error(`modules.rules[${i}] 的 name 字段缺失或非字符串`);
     }
     if (names.has(rule.name)) {
       throw new Error(`modules.rules 中存在重复的 name: "${rule.name}"`);
