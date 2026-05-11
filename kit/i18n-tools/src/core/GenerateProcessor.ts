@@ -86,6 +86,9 @@ export class GenerateProcessor extends BaseProcessor {
     try {
       const extractor = this.adapter.getTextExtractor();
       const extractedStrings = await extractor.extractFromFile(filePath);
+      // 把 extractor 累积的结构性 warning（如跳过含 HTML 的模板字符串）排空进 RunReport。
+      // 终端已经实时打印过；这里只为落盘留痕到 `.i18n-tools/logs/`。
+      for (const w of extractor.drainWarnings()) this.report.addWarning(w);
 
       if (extractedStrings.length === 0) {
         LoggerUtils.info('✅ 未发现需要提取的文本');
@@ -142,6 +145,9 @@ export class GenerateProcessor extends BaseProcessor {
 
     const extractor = this.adapter.getTextExtractor();
     const extractedStrings = await extractor.extractFromFiles(frameworkFiles);
+    // 同 runSingleFile：把 extractor 累积的结构性 warning 排空进 RunReport，
+    // 落盘到 `<rootDir>/.i18n-tools/logs/` 便于事后回查。
+    for (const w of extractor.drainWarnings()) this.report.addWarning(w);
 
     if (extractedStrings.length === 0) {
       LoggerUtils.info('✅ 所有文件均未发现需要提取的文本');
@@ -384,11 +390,14 @@ export class GenerateProcessor extends BaseProcessor {
     }
 
     // 阶段 3：源码全部落盘后才更新语言文件，保持两者强一致。
+    // 透传 RunReport：LocaleValueLinter 检出的 warning 会同时落盘到
+    // `.i18n-tools/logs/`，事后可回查（仅 console 会被终端刷掉）。
     LanguageFileManager.updateLanguageFiles(
       this.config,
       this.isCustom,
       extractedStrings,
       keyModuleMap,
+      this.report,
     );
 
     // 阶段 4：格式化是美化步骤，单个失败不影响数据正确性，仅警告。

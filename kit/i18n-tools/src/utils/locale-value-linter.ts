@@ -1,4 +1,5 @@
 import { LoggerUtils } from './logger';
+import type { RunReport } from './run-report';
 import type { LocaleMap } from './types';
 
 /**
@@ -28,37 +29,44 @@ export class LocaleValueLinter {
    * 对扁平 locale map 做 value 健康度检查，发现问题以 warning 输出。
    *
    * 注意：本检查不影响落盘流程——即使发现问题，调用方仍可继续写入文件。
+   *
+   * @param localeMap 扁平 locale map
+   * @param report    可选：传入则同时把每条 warning 加入 RunReport，落盘到
+   *                  `<rootDir>/.i18n-tools/logs/` 供事后回查（不传则仅 console）
    */
-  static lint(localeMap: LocaleMap): void {
+  static lint(localeMap: LocaleMap, report?: RunReport): void {
     const duplicates = this.findSemanticDuplicates(localeMap);
     const anomalies = this.findAnomalousValues(localeMap);
 
     if (duplicates.length === 0 && anomalies.length === 0) return;
 
-    LoggerUtils.warn('\n📋 语言文件健康度检查发现以下问题（不阻塞流程，建议手动处理）：');
+    // 同时往 console 和 RunReport 写——console 给即时反馈，RunReport 给磁盘留痕。
+    // emit 函数封装这层一致性，避免每行 warning 都得手写两遍。
+    const emit = (line: string): void => {
+      LoggerUtils.warn(line);
+      report?.addWarning(line);
+    };
+
+    emit('\n📋 语言文件健康度检查发现以下问题（不阻塞流程，建议手动处理）：');
 
     if (duplicates.length > 0) {
-      LoggerUtils.warn(`\n⚠️  发现 ${duplicates.length} 组语义重复 key（占位符变量名/空白差异）：`);
+      emit(`\n⚠️  发现 ${duplicates.length} 组语义重复 key（占位符变量名/空白差异）：`);
       for (const group of duplicates) {
-        LoggerUtils.warn(`   语义形态: "${group.canonical}"`);
+        emit(`   语义形态: "${group.canonical}"`);
         for (const { key, value } of group.entries) {
-          LoggerUtils.warn(`     - ${key}  →  ${JSON.stringify(value)}`);
+          emit(`     - ${key}  →  ${JSON.stringify(value)}`);
         }
-        LoggerUtils.warn(
-          '     💡 建议在源码中统一变量名 / 空白，重跑 generate 即可自动复用同一 key',
-        );
+        emit('     💡 建议在源码中统一变量名 / 空白，重跑 generate 即可自动复用同一 key');
       }
     }
 
     if (anomalies.length > 0) {
-      LoggerUtils.warn(`\n⚠️  发现 ${anomalies.length} 个 value 异常（HTML 标签 / 长度超标）：`);
+      emit(`\n⚠️  发现 ${anomalies.length} 个 value 异常（HTML 标签 / 长度超标）：`);
       for (const { key, value, reasons } of anomalies) {
-        LoggerUtils.warn(`   - ${key}  [${reasons.join(', ')}]`);
-        LoggerUtils.warn(`     value 预览: ${this.preview(value)}`);
+        emit(`   - ${key}  [${reasons.join(', ')}]`);
+        emit(`     value 预览: ${this.preview(value)}`);
       }
-      LoggerUtils.warn(
-        '     💡 含 HTML 的 value 建议改造源码：模板字符串包裹结构，只把文案放入 t() 调用',
-      );
+      emit('     💡 含 HTML 的 value 建议改造源码：模板字符串包裹结构，只把文案放入 t() 调用');
     }
   }
 

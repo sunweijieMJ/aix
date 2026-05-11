@@ -9,8 +9,22 @@ import type { ITextExtractor } from '../../adapters/FrameworkAdapter';
  *
  * 放置在 strategies/base/ 而非 adapters/，以维持"策略层提供具体实现、
  * 适配器层定义抽象接口"的分层语义。adapters/ 仍然导出此类作为公共出口。
+ *
+ * ## warning 累积与排空
+ *
+ * 提取过程中遇到「不致命但值得用户关注」的情况（如跳过含 HTML 的模板字符串），
+ * 子类调用 `recordWarning(msg)` 暂存到实例上；GenerateProcessor 在一轮提取
+ * 结束后调用 `drainWarnings()` 取出并写入 RunReport，落盘到
+ * `<rootDir>/.i18n-tools/logs/` 便于事后回查。
+ *
+ * 之所以走「累积 → 排空」而不是 callback / sink：
+ *  - extractor 实例被 adapter 复用，回调 sink 容易在多次 generate 间残留；
+ *  - drain 是显式动作，调用方明确控制收割时机，更易测试；
+ *  - 子类不需要持有 RunReport 引用，依赖反转更干净。
  */
 export abstract class BaseTextExtractor implements ITextExtractor {
+  private pendingWarnings: string[] = [];
+
   abstract extractFromFile(filePath: string): Promise<ExtractedString[]>;
 
   async extractFromFiles(filePaths: string[]): Promise<ExtractedString[]> {
@@ -19,5 +33,17 @@ export abstract class BaseTextExtractor implements ITextExtractor {
       all.push(...(await this.extractFromFile(filePath)));
     }
     return all;
+  }
+
+  /** 子类向缓冲区追加一条 warning。已经通过 LoggerUtils 输出到 console 的内容也可重复登记，便于落盘。 */
+  protected recordWarning(message: string): void {
+    this.pendingWarnings.push(message);
+  }
+
+  /** 取出累积的 warning 并清空缓冲区，供 Processor 写入 RunReport。 */
+  drainWarnings(): string[] {
+    const out = this.pendingWarnings;
+    this.pendingWarnings = [];
+    return out;
   }
 }

@@ -5,6 +5,7 @@ import { FileUtils } from './file-utils';
 import { LoggerUtils } from './logger';
 import { LocaleValueLinter } from './locale-value-linter';
 import { ModuleResolver } from './module-resolver';
+import type { RunReport } from './run-report';
 import type { ExtractedString, ILangMap, LocaleMap } from './types';
 import { CommonASTUtils } from './common-ast-utils';
 
@@ -406,12 +407,15 @@ export class LanguageFileManager {
   /**
    * 更新语言文件。
    * @param keyModuleMap - 可选：key → module，启用模块化写入
+   * @param report       - 可选：传入则把 LocaleValueLinter 的 warning 也写入
+   *                      RunReport，便于事后从 `.i18n-tools/logs/` 回查
    */
   static updateLanguageFiles(
     config: ResolvedConfig,
     isCustom: boolean,
     extractedStrings: ExtractedString[],
     keyModuleMap?: KeyModuleMap,
+    report?: RunReport,
   ): void {
     if (extractedStrings.length === 0) return;
 
@@ -472,6 +476,7 @@ export class LanguageFileManager {
 
     // 落盘后做一次健康度 lint：检测语义重复 key、含 HTML/超长 value。
     // 不阻塞流程，仅以 warning 输出，供用户决策是否手动整理。
-    LocaleValueLinter.lint(finalMap);
+    // 透传 report：warning 会同时进磁盘报告（如有提供 RunReport 实例）。
+    LocaleValueLinter.lint(finalMap, report);
   }
 }

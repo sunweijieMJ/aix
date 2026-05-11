@@ -28,6 +28,11 @@ export interface FrameworkConfig {
 export interface ITextExtractor {
   extractFromFile(filePath: string): Promise<ExtractedString[]>;
   extractFromFiles(filePaths: string[]): Promise<ExtractedString[]>;
+  /**
+   * 取出并清空提取过程中累积的 warning（如跳过含 HTML 的模板字符串）。
+   * 调用方（GenerateProcessor）负责把 warning 写入 RunReport 以供事后回查。
+   */
+  drainWarnings(): string[];
 }
 
 // BaseTextExtractor 的实现已下沉至 strategies/base/text-extractor.ts，

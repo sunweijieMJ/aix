@@ -118,6 +118,26 @@ const msg = \`当 x < 10 时显示\${x}\`;
       expect(result).toHaveLength(1);
       expect(warnSpy).not.toHaveBeenCalled();
     });
+
+    it('跳过 HTML 模板时 warning 同步进入 drainWarnings 缓冲区', async () => {
+      const file = path.join(tmpDir, 'Demo.vue');
+      fs.writeFileSync(
+        file,
+        `<template><div /></template>
+<script setup>
+const html = \`<div><span>提示</span></div>\`;
+</script>`,
+      );
+
+      const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+      await extractor.extractFromFile(file);
+
+      const warnings = extractor.drainWarnings();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('HTML 标签的模板字符串');
+      // drain 后缓冲区应清空，幂等回放
+      expect(extractor.drainWarnings()).toHaveLength(0);
+    });
   });
 
   describe('React TS', () => {

@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import { FileUtils } from './file-utils';
 
@@ -30,12 +31,22 @@ export interface FailureRecord {
 }
 
 /**
- * 单次运行的失败收集器。
+ * 单次运行的失败 / 警告收集器。
  *
  * 设计原则：
- * 1. 只在出现失败时写盘（hasFailures() === false 直接返回，不产生空文件）。
- * 2. 默认落到 `<rootDir>/node_modules/.cache/i18n-tools/`，沿用 npm 生态对工具
- *    cache 的约定位置；该目录天然在 `.gitignore` 范围内，无需工具侵入业务侧。
+ * 1. 出现失败或警告即写盘；都没有时返回 null，不产生空文件。
+ * 2. 落盘位置：`<rootDir>/.i18n-tools/logs/`。
+ *
+ *    旧版用 `node_modules/.cache/i18n-tools/`，看似省事（自动 gitignore），但
+ *    `.cache/` 语义是「可丢弃的增量缓存」（ESLint / Babel / webpack 都按这语义
+ *    用），与「诊断报告应该在 rm -rf node_modules 后仍保留」相悖，且 CI 缓存
+ *    策略通常会按 lockfile hash 失效掉 node_modules 缓存。
+ *
+ *    迁到 `.i18n-tools/logs/` 后，对齐 .next/ / .turbo/ / .vite/ 等工具的根目录
+ *    自有命名空间约定：用户在项目根一眼能找到，grep / 分享 / CI artifact 上传
+ *    都方便。首次落盘时自动写一份 `.i18n-tools/.gitignore`（内容 `*`）保持
+ *    自包含——不侵入业务的根 `.gitignore`，也避免日志意外入库。
+ *
  * 3. 错误字段统一走 safe-extract，避免泄露凭据。
  * 4. 文件名带时间戳 + command + pid，避免并发运行互相覆盖。
  */
@@ -63,16 +74,25 @@ export class RunReport {
     return this.failures.length > 0;
   }
 
+  hasWarnings(): boolean {
+    return this.warnings.length > 0;
+  }
+
   /**
-   * 写入失败报告到磁盘，返回绝对路径；没有失败时返回 null（不落盘）。
+   * 写入诊断报告到磁盘，返回绝对路径；无失败 + 无警告时返回 null（不落盘）。
    * 写入失败不向上抛错——日志体系不应放大主流程的错误面。
    */
   flush(): string | null {
-    if (!this.hasFailures()) return null;
+    if (!this.hasFailures() && !this.hasWarnings()) return null;
     try {
-      const dir = path.join(this.rootDir, 'node_modules', '.cache', 'i18n-tools');
+      const baseDir = path.join(this.rootDir, '.i18n-tools');
+      const logsDir = path.join(baseDir, 'logs');
+      // 写 self-contained .gitignore，确保整个 .i18n-tools/ 不被业务侧无意中
+      // 提交。幂等：已存在则跳过，避免每次跑都改 mtime 触发其他工具的 watcher。
+      RunReport.ensureGitignore(baseDir);
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filePath = path.join(dir, `run-${timestamp}-${this.command}-${process.pid}.json`);
+      const filePath = path.join(logsDir, `run-${timestamp}-${this.command}-${process.pid}.json`);
       const payload = {
         command: this.command,
         finishedAt: new Date().toISOString(),
@@ -90,6 +110,24 @@ export class RunReport {
       // 写报告本身失败不应破坏主流程；调用方已经通过 console 看到原始错误，
       // 这里再吞掉即可。
       return null;
+    }
+  }
+
+  /**
+   * 在 `.i18n-tools/` 写一份 `.gitignore`（内容 `*`），让整个目录自动被忽略。
+   *
+   * 已存在时不覆盖：用户可能微调过（例如临时取消忽略某次报告），尊重既有内容；
+   * 同时避免每次运行都改 mtime 触发 IDE / watcher 重渲染。
+   */
+  private static ensureGitignore(baseDir: string): void {
+    try {
+      fs.mkdirSync(baseDir, { recursive: true });
+      const giPath = path.join(baseDir, '.gitignore');
+      if (!fs.existsSync(giPath)) {
+        fs.writeFileSync(giPath, '*\n', 'utf-8');
+      }
+    } catch {
+      // gitignore 写失败不应阻断主流程；最坏情况是用户看到未提交的 logs/。
     }
   }
 

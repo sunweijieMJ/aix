@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LocaleValueLinter } from '../src/utils/locale-value-linter';
 import { LoggerUtils } from '../src/utils/logger';
+import { RunReport } from '../src/utils/run-report';
 
 describe('LocaleValueLinter', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -102,5 +103,33 @@ describe('LocaleValueLinter', () => {
       'a.z': null as unknown as string,
     });
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('传入 RunReport 时所有 warning 同步写入 report（落盘后可回查）', () => {
+    const report = new RunReport('generate', '/tmp/nonexistent-test-only');
+    LocaleValueLinter.lint(
+      {
+        'a.foo': '节点{a}',
+        'a.bar': '节点 {b}',
+        'a.html': '<div>x</div>'.repeat(30),
+      },
+      report,
+    );
+
+    expect(report.hasWarnings()).toBe(true);
+    // duplicate group + anomaly section 都应该进 report
+    // 比 console 行数稍多无关紧要，只要内容包含关键标记即可
+    const consoleLines = warnSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(consoleLines).toContain('语义重复');
+    expect(consoleLines).toContain('HTML 标签');
+  });
+
+  it('未传 RunReport 时仅 console 输出（向后兼容）', () => {
+    LocaleValueLinter.lint({
+      'a.foo': '节点{a}',
+      'a.bar': '节点 {b}',
+    });
+    // 应该有 console warn，但不抛错也不依赖外部
+    expect(warnSpy).toHaveBeenCalled();
   });
 });

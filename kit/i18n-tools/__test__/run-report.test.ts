@@ -4,7 +4,9 @@ import os from 'os';
 import path from 'path';
 import { RunReport } from '../src/utils/run-report';
 
-const CACHE_REL = path.join('node_modules', '.cache', 'i18n-tools');
+// 旧路径 node_modules/.cache/i18n-tools 已弃用——诊断报告语义不属 cache，
+// 现走 .i18n-tools/logs/，与 .next / .turbo / .vite 等工具的根目录命名空间一致。
+const LOGS_REL = path.join('.i18n-tools', 'logs');
 
 describe('RunReport', () => {
   let rootDir: string;
@@ -17,12 +19,13 @@ describe('RunReport', () => {
     fs.rmSync(rootDir, { recursive: true, force: true });
   });
 
-  it('没有失败时不写盘', () => {
+  it('没有失败也没有警告时不写盘', () => {
     const report = new RunReport('generate', rootDir);
     expect(report.hasFailures()).toBe(false);
+    expect(report.hasWarnings()).toBe(false);
     const result = report.flush();
     expect(result).toBeNull();
-    expect(fs.existsSync(path.join(rootDir, CACHE_REL))).toBe(false);
+    expect(fs.existsSync(path.join(rootDir, '.i18n-tools'))).toBe(false);
   });
 
   it('部分失败也会落盘并返回绝对路径', () => {
@@ -36,7 +39,7 @@ describe('RunReport', () => {
     const filePath = report.flush();
 
     expect(filePath).not.toBeNull();
-    expect(filePath!.startsWith(path.join(rootDir, CACHE_REL))).toBe(true);
+    expect(filePath!.startsWith(path.join(rootDir, LOGS_REL))).toBe(true);
     expect(fs.existsSync(filePath!)).toBe(true);
 
     const payload = JSON.parse(fs.readFileSync(filePath!, 'utf-8'));
@@ -105,5 +108,43 @@ describe('RunReport', () => {
     expect(payload.failures[0].error.name).toBe('StringError');
     expect(payload.failures[0].error.message).toBe('plain string boom');
     expect(payload.failures[1].error.name).toBe('NonError');
+  });
+
+  it('只有 warning 没有 failure 也会落盘', () => {
+    const report = new RunReport('generate', rootDir);
+    report.addWarning('value 含 HTML 标签：pages.foo');
+    report.addWarning('语义重复 key：a, b');
+
+    const filePath = report.flush();
+    expect(filePath).not.toBeNull();
+    expect(fs.existsSync(filePath!)).toBe(true);
+
+    const payload = JSON.parse(fs.readFileSync(filePath!, 'utf-8'));
+    expect(payload.summary).toEqual({ failed: 0, warnings: 2 });
+    expect(payload.warnings).toHaveLength(2);
+    expect(payload.failures).toHaveLength(0);
+  });
+
+  it('首次落盘自动生成 .i18n-tools/.gitignore，内容为 *', () => {
+    const report = new RunReport('generate', rootDir);
+    report.addWarning('any');
+    report.flush();
+
+    const giPath = path.join(rootDir, '.i18n-tools', '.gitignore');
+    expect(fs.existsSync(giPath)).toBe(true);
+    expect(fs.readFileSync(giPath, 'utf-8')).toBe('*\n');
+  });
+
+  it('用户已修改 .gitignore 时不覆盖（幂等）', () => {
+    fs.mkdirSync(path.join(rootDir, '.i18n-tools'), { recursive: true });
+    const giPath = path.join(rootDir, '.i18n-tools', '.gitignore');
+    const customContent = '# user customized\n!important.json\n';
+    fs.writeFileSync(giPath, customContent, 'utf-8');
+
+    const report = new RunReport('generate', rootDir);
+    report.addWarning('any');
+    report.flush();
+
+    expect(fs.readFileSync(giPath, 'utf-8')).toBe(customContent);
   });
 });

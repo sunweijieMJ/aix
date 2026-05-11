@@ -103,6 +103,11 @@ export class MergeProcessor extends FileProcessor {
     const stillUntranslated: Translations = {};
     let newTranslatedCount = 0;
     let stillUntranslatedCount = 0;
+    // 单独收集「LLM 给了 target 值但被 isValidTranslation 判无效」的条目。
+    // 这类条目 LLM 已经"翻过"但被工具拒收（纯标点 / 空白等），如不告知用户，
+    // 每次 merge 看到的现象是「仍需翻译 N 个」却不知道是 LLM 还没翻还是被拒，
+    // 也不知道怎么破——会永久卡在 untranslated.json 里循环往复。
+    const rejected: Array<{ key: string; zh: string; en: string }> = [];
 
     LoggerUtils.info('🔍 正在分析翻译状态...');
 
@@ -122,11 +127,21 @@ export class MergeProcessor extends FileProcessor {
           [targetLocale]: enValue || '',
         };
         stillUntranslatedCount++;
+        // 区分「LLM 还没翻」与「LLM 翻了但被拒收」：前者 enValue 为空 / 缺失，
+        // 后者 enValue 是非空字符串但 isValidTranslation 返回 false（典型：
+        // 纯标点 "!" / 纯空白）。只对后者发 warn——前者是正常的"等待翻译"。
+        if (typeof enValue === 'string' && enValue.trim().length > 0) {
+          rejected.push({ key, zh: zhValue ?? '', en: enValue });
+        }
       }
     }
 
     LoggerUtils.success(`✅ 新翻译完成: ${newTranslatedCount} 个`);
     LoggerUtils.info(`📝 仍需翻译: ${stillUntranslatedCount} 个`);
+
+    if (rejected.length > 0) {
+      this.reportRejectedTranslations(rejected, sourceLocale, targetLocale);
+    }
 
     return {
       newlyTranslated,
@@ -134,6 +149,39 @@ export class MergeProcessor extends FileProcessor {
       newTranslatedCount,
       stillUntranslatedCount,
     };
+  }
+
+  /**
+   * 对「LLM 翻译被 isValidTranslation 拒收」的条目输出 warn + 落盘到 RunReport。
+   *
+   * 为什么单独搞这个：被拒条目会永远卡在 untranslated.json，下次跑 LLM 大概率
+   * 还是返回纯标点（语义本身就是片段），形成"merge 看到仍需翻译 N 个" → 用户
+   * 重跑 translate → LLM 还是返回 ! → 还是被拒 的死循环。必须显式告知用户
+   * "这些需要人工介入"。
+   */
+  private reportRejectedTranslations(
+    rejected: Array<{ key: string; zh: string; en: string }>,
+    sourceLocale: string,
+    targetLocale: string,
+  ): void {
+    // emit 同时写 console（即时反馈）与 RunReport（落盘到 .i18n-tools/logs/，
+    // 终端刷新后仍可回查）。与 LocaleValueLinter 走同一模式。
+    const emit = (line: string): void => {
+      LoggerUtils.warn(line);
+      this.report.addWarning(line);
+    };
+
+    emit(
+      `\n⚠️  ${rejected.length} 个翻译被判无效（LLM 返回纯标点 / 空白），未合并到 ${targetLocale}：`,
+    );
+    for (const { key, zh, en } of rejected) {
+      emit(`   - ${key}`);
+      emit(`     ${sourceLocale}: ${JSON.stringify(zh)}`);
+      emit(`     ${targetLocale}: ${JSON.stringify(en)}   ← 已被 isValidTranslation 拒收`);
+    }
+    emit('   💡 处理建议：');
+    emit(`     a) 编辑 ${FILES.UNTRANSLATED_JSON}，把 ${targetLocale} 值改成有效翻译后重跑 merge`);
+    emit(`     b) 或源码改造：把片段（如 "吧！"）合并到上下文整句中，消除片段化提取`);
   }
 
   private performMerge(

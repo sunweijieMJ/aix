@@ -648,7 +648,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         // 整段提取会把 SVG / CSS / 样式属性一起灌进 i18n value，翻译质量差且多语言下结构不可控。
         // 跳过提取并 warning，由开发者把 t() 缩到具体文案片段上。
         if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
-          VueTextExtractor.warnHtmlInTemplateLiteral(node, sourceFile, lineOffset, filePath);
+          this.warnHtmlInTemplateLiteral(node, sourceFile, lineOffset, filePath);
           return;
         }
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
@@ -665,7 +665,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         FileUtils.containsChinese(node.text) &&
         CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
       ) {
-        VueTextExtractor.warnHtmlInTemplateLiteral(node, sourceFile, lineOffset, filePath);
+        this.warnHtmlInTemplateLiteral(node, sourceFile, lineOffset, filePath);
         return;
       }
       originalText = node.text;
@@ -888,8 +888,10 @@ export class VueTextExtractor extends BaseTextExtractor {
    *
    * 不抛错——只跳过本节点提取，让 generate 流程继续处理其他节点，避免整文件失败。
    * 用户拿到 warning 后应手动把 t() 缩到具体的中文片段上。
+   *
+   * 同步走 LoggerUtils（即时反馈）与 BaseTextExtractor.recordWarning（落盘留痕）。
    */
-  private static warnHtmlInTemplateLiteral(
+  private warnHtmlInTemplateLiteral(
     node: ts.Node,
     sourceFile: ts.SourceFile,
     lineOffset: number,
@@ -897,11 +899,12 @@ export class VueTextExtractor extends BaseTextExtractor {
   ): void {
     const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
     const line = pos.line + 1 + lineOffset;
-    LoggerUtils.warn(
+    const msg =
       `⚠️ 跳过含 HTML 标签的模板字符串提取：${FileUtils.getRelativePath(filePath)}:${line}\n` +
-        `   原因：整段提取会把 HTML / CSS / SVG 灌进 i18n value，多语言下样式结构不可控。\n` +
-        `   建议：把 t() 调用缩到具体中文文案上，例如\n` +
-        `     \`<span>\${t('key')}</span>\` 替代 \`t('key')\` 包整个 \`<div>...</div>\``,
-    );
+      `   原因：整段提取会把 HTML / CSS / SVG 灌进 i18n value，多语言下样式结构不可控。\n` +
+      `   建议：把 t() 调用缩到具体中文文案上，例如\n` +
+      `     \`<span>\${t('key')}</span>\` 替代 \`t('key')\` 包整个 \`<div>...</div>\``;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
   }
 }
