@@ -200,14 +200,17 @@ export class LanguageFileManager {
    * 读取模块化目录下所有 JSON 文件并合并为扁平 map。
    */
   private static readModularLocaleFlat(
-    _config: ResolvedConfig,
+    config: ResolvedConfig,
     baseDir: string,
     locale: string,
     layout: 'by-locale' | 'by-module',
   ): Record<string, string> {
     const merged: Record<string, string> = {};
+    // 与 serialize 写回时的 unflattenObject 共享 idPrefix.separator，保证
+    // 分隔符不是 '.' 时（如 '__'）nested ↔ flat 双向无损。
+    const separator = config.idPrefix.separator;
     this.iterateModularFiles(baseDir, locale, layout, (_moduleName, data) => {
-      Object.assign(merged, FileUtils.flattenObject(data));
+      Object.assign(merged, FileUtils.flattenObject(data, '', separator));
     });
     return merged;
   }
@@ -243,6 +246,16 @@ export class LanguageFileManager {
   /**
    * 读取语言文件内容（单文件或模块化目录均支持）。
    * 模块化模式时额外返回 keyModuleMap，供 writeLocaleFile 回写时还原分桶。
+   *
+   * 返回值始终是「扁平 map」（flat key → value）。Why：
+   *   - 文件落盘格式由 `config.output.format` 决定，可能是 nested；
+   *   - 上层（updateLanguageFiles / IdReuseResolver / RestoreProcessor / MergeProcessor）
+   *     一律按 `flatKey` 做查找与合并；
+   *   - 若直接返回 nested JSON，`localeMap["pages.flippedcourse.detail.all"]`
+   *     永远 undefined，新 key 会被无脑追加；落盘 serialize 时既存的顶层
+   *     `pages` 对象会和新加的 `pages.flippedcourse.detail.all` 扁平键并列
+   *     存在，触发 assertNoPrefixConflict 报错。
+   * 因此读入时统一展平，与 readModularLocaleFlat 一致。
    */
   static readLocaleFile(
     config: ResolvedConfig,
@@ -263,7 +276,10 @@ export class LanguageFileManager {
         return {};
       }
       const content = fs.readFileSync(localeFilePath, 'utf-8');
-      return FileUtils.safeParseJson(content);
+      const parsed = FileUtils.safeParseJson(content);
+      // 用 idPrefix.separator 展平，与 serialize 写回时的 unflattenObject 使用的
+      // 分隔符保持一致——保证 nested 与 flat 之间往返无损。
+      return FileUtils.flattenObject(parsed, '', config.idPrefix.separator) as LocaleMap;
     } catch (error) {
       LoggerUtils.error(`❌ 读取语言文件失败: ${localeFilePath}`, error);
       LoggerUtils.error('👉 为防止数据丢失，本次将不会更新语言文件。请检查JSON文件格式是否正确。');

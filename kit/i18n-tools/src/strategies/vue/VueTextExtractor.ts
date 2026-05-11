@@ -710,15 +710,15 @@ export class VueTextExtractor extends BaseTextExtractor {
       }
     }
 
-    // 如果字符串包含中文，则提取
+    // 如果字符串包含中文，则提取。
+    //
+    // 注意：曾尝试过滤"短碎片 + 标点"型残渣（如 "吧！" "嗯。" "哦~"），理由是
+    // `<p>{{ msg }}吧！</p>` 这类被 AST 切出的尾巴文本节点 LLM 难翻译，会沉到
+    // untranslated.json 里。但实践中误伤了真实文案——例如「开启你的学习计划<span>
+    // …</span>吧！」里末尾"吧！"是必须翻译的句尾语气词，过滤后线上残留中文。
+    // 权衡下选择"宁多勿漏"：让句尾片段进入提取流程，即便 LLM 翻不好也只是
+    // untranslated.json 多一项噪音，不会导致线上漏翻。
     if (FileUtils.containsChinese(str)) {
-      // 兜底过滤"短碎片 + 标点"型残渣（如 "吧！" "嗯。" "哦~"）：
-      // 多来自 template AST 把 `<p>{{ msg }}吧！</p>` 切分后的尾巴文本节点。
-      // 这类文本单独提取无翻译价值，LLM 通常只能回译为 "!"，被 isValidTranslation
-      // 拦下后永远卡在 untranslated.json 里。源头干掉，杜绝下游污染。
-      if (this.isShortPunctuationFragment(str)) {
-        return false;
-      }
       return true;
     }
 
@@ -808,22 +808,6 @@ export class VueTextExtractor extends BaseTextExtractor {
     ];
 
     return technicalValues.includes(str.toLowerCase());
-  }
-
-  /**
-   * 判断是否是「短碎片 + 标点」型残渣。
-   *
-   * 判定规则不依赖词表：剥离空白和标点后字符数 ≤ 1 且原文含标点。
-   *   "吧！" / "嗯。" / "哦~"  → 命中（1 非标点字符 + 标点）
-   *   "是" / "否" / "确认"     → 不命中（0 标点）
-   *   "确认！" / "你好！"      → 不命中（≥ 2 非标点字符）
-   *
-   * \p{P} 是 Unicode 标点字符类，覆盖中英文标点。纯标点（剥离后 0 字符）
-   * 通常由 isNonTranslatableText 处理，此处兜底也匹配。
-   */
-  private isShortPunctuationFragment(str: string): boolean {
-    const nonPunctChars = str.replace(/[\s\p{P}]/gu, '');
-    return nonPunctChars.length <= 1 && /\p{P}/u.test(str);
   }
 
   /**
