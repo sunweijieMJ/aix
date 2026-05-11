@@ -18,7 +18,22 @@ export class LLMClient {
   private openai: OpenAI;
   private model: string;
   private temperature: number;
-  private concurrencyController: ConcurrencyController;
+  /**
+   * 外层任务并发控制器：用于 generateSemanticIdsForFiles / batchTranslate 这类
+   * "每个输入一个 task"的顶层任务。
+   */
+  private outerController: ConcurrencyController;
+  /**
+   * 内层批次并发控制器：用于 generateSemanticIds 内部对单个文件文本数 > batchSize
+   * 时的拆批任务。
+   *
+   * Why 双池：若内外层共用同一个 controller，会出现经典递归死锁——
+   *   - 外层 N 个文件 task 把槽位占满
+   *   - 其中含 >batchSize 文本的 task 通过 add() 把内层批次入队
+   *   - 内层批次永远拿不到槽位（外层 task 还在 await 它们）→ 进程挂死无日志
+   * 现把两层物理隔离：内层池有自己的槽位，外层 await 即可正常推进。
+   */
+  private innerController: ConcurrencyController;
   private locale?: LocaleConfig;
   private prompts?: PromptsConfig;
   /** 批次间最小间隔（毫秒），用于限流敏感的 LLM 端点 */
@@ -38,7 +53,8 @@ export class LLMClient {
     });
     this.model = config.model;
     this.temperature = config.temperature ?? DEFAULT_LLM_TEMPERATURE;
-    this.concurrencyController = new ConcurrencyController(maxConcurrency);
+    this.outerController = new ConcurrencyController(maxConcurrency);
+    this.innerController = new ConcurrencyController(maxConcurrency);
     this.locale = locale;
     this.prompts = prompts;
   }
@@ -129,11 +145,13 @@ export class LLMClient {
 
     LoggerUtils.info(`📊 需要分 ${totalBatches} 批次处理，每批 ${batchSize} 个文本`);
     LoggerUtils.info(
-      `🔄 使用并发处理，最大并发数: ${this.concurrencyController.getStatus().maxConcurrency}`,
+      `🔄 使用并发处理，最大并发数: ${this.innerController.getStatus().maxConcurrency}`,
     );
 
+    // 内层批次走 innerController，与外层文件任务的 outerController 物理隔离，
+    // 避免外层占满槽位后内层批次永远拿不到槽位导致的递归死锁。
     const batchPromises = batches.map((batch, index) =>
-      this.concurrencyController.add(async () => {
+      this.innerController.add(async () => {
         LoggerUtils.info(
           `🔄 正在处理第 ${index + 1}/${totalBatches} 批次 (${batch.length} 个文本)...`,
         );
@@ -221,15 +239,16 @@ export class LLMClient {
 
     LoggerUtils.info(`🔄 开始批量翻译，共 ${batches.length} 批次`);
     LoggerUtils.info(
-      `🔄 使用并发处理，最大并发数: ${this.concurrencyController.getStatus().maxConcurrency}`,
+      `🔄 使用并发处理，最大并发数: ${this.outerController.getStatus().maxConcurrency}`,
     );
 
     const results: Array<Translations | undefined> = new Array(batches.length);
     let successCount = 0;
     let failedCount = 0;
 
+    // 翻译批次只在顶层并发，没有内层嵌套，走 outerController
     const batchPromises = batches.map((batch, index) =>
-      this.concurrencyController.add(async () => {
+      this.outerController.add(async () => {
         const jsonText = JSON.stringify(batch, null, 2);
 
         try {
@@ -291,18 +310,18 @@ export class LLMClient {
   }
 
   /**
-   * 获取并发控制器状态
+   * 获取并发控制器状态（返回外层池状态，对外语义保持兼容）
    */
   getConcurrencyStatus(): {
     running: number;
     queued: number;
     maxConcurrency: number;
   } {
-    return this.concurrencyController.getStatus();
+    return this.outerController.getStatus();
   }
 
   /**
-   * 调整并发数
+   * 调整并发数（同时调整内外两层，保持隔离设计下两池配额一致）
    */
   adjustConcurrency(newMaxConcurrency: number): void {
     if (newMaxConcurrency < 1) {
@@ -310,10 +329,11 @@ export class LLMClient {
       return;
     }
     LoggerUtils.info(
-      `🔧 调整最大并发数: ${this.concurrencyController.getStatus().maxConcurrency} -> ${newMaxConcurrency}`,
+      `🔧 调整最大并发数: ${this.outerController.getStatus().maxConcurrency} -> ${newMaxConcurrency}`,
     );
     // 原地调整：保留已 enqueue 的任务与 running 计数，避免丢失任务导致 pending Promise
-    this.concurrencyController.setMaxConcurrency(newMaxConcurrency);
+    this.outerController.setMaxConcurrency(newMaxConcurrency);
+    this.innerController.setMaxConcurrency(newMaxConcurrency);
   }
 
   /**
@@ -335,8 +355,10 @@ export class LLMClient {
 
     LoggerUtils.info(`🚀 开始通过LLM为 ${Object.keys(fileGroups).length} 个文件生成语义ID...`);
 
+    // 外层文件级任务走 outerController，与 generateSemanticIds 内部的拆批
+    // innerController 隔离，确保两层都有独立槽位，杜绝递归死锁。
     const promises = Object.entries(fileGroups).map(([filePath, texts]) =>
-      this.concurrencyController.add(async () => {
+      this.outerController.add(async () => {
         LoggerUtils.info(`🔄 正在处理文件: ${filePath} (${texts.length} 个文本)...`);
 
         try {

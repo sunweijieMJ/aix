@@ -49,33 +49,19 @@ export class IdGenerator {
   }
 
   /**
-   * 清理完整的ID，保留目录前缀的大小写
-   * @param id - 完整的ID（包含目录前缀）
-   * @param prefixConfig - ID 前缀配置
-   * @returns 清理后的ID
+   * 按段清理目录前缀（保持每段的大小写，去除非字母数字字符）
+   *
+   * 目录前缀的段数由 extractDirectoryPrefix 决定（可变），不再硬编码 2 段。
+   * 用 split(separator) 严格反推：semanticPart 单段不含 separator，因此
+   * `<directoryPrefix><separator><semanticPart>` 的前 N-1 段即目录段。
    */
-  private static sanitizeFullId(id: string, prefixConfig?: IdPrefixConfig): string {
+  private static cleanDirectoryPrefix(prefix: string, prefixConfig?: IdPrefixConfig): string {
     const separator = this.getSeparator(prefixConfig);
-    // 检查是否包含目录分隔符
-    if (id.includes(separator)) {
-      const parts = id.split(separator);
-
-      // 前两部分是目录前缀，保持大小写
-      const directoryParts = parts.slice(0, 2);
-
-      // 语义部分转小写
-      const semanticParts = parts.slice(2);
-
-      const cleanedDirectoryParts = directoryParts.map((part) => part.replace(/[^a-zA-Z0-9]/g, ''));
-
-      const cleanedSemanticParts = semanticParts.map(
-        (part) => this.sanitizeSemanticId(part, false), // 语义部分转小写
-      );
-
-      return [...cleanedDirectoryParts, ...cleanedSemanticParts].join(separator);
-    }
-    // 没有目录前缀，直接清理
-    return this.sanitizeSemanticId(id, false);
+    return prefix
+      .split(separator)
+      .map((part) => part.replace(/[^a-zA-Z0-9]/g, ''))
+      .filter(Boolean)
+      .join(separator);
   }
 
   /**
@@ -99,15 +85,35 @@ export class IdGenerator {
   /**
    * 提取目录前缀（公开版本，供外部用于 ID 复用约束）
    *
+   * 返回的是「清理后」的前缀，与实际写入 key 时的段格式一致。否则
+   * `IdReuseResolver.pickReusableKey` 用 `startsWith` 与 locale key 对比时，
+   * 含连字符 / 非字母数字字符的目录段会匹配失败（例如原始 `flipped-course`
+   * 与 key 中的 `flippedcourse`），导致同前缀历史 key 无法复用。
+   *
    * 例：filePath = `apps/client/src/views/demo/test-fn.ts`，anchor = `src`，
    * separator = `__` 时返回 `views__demo`。
    */
   static getDirectoryPrefix(filePath: string, prefixConfig?: IdPrefixConfig): string {
-    return this.extractDirectoryPrefix(filePath, prefixConfig);
+    const raw = this.extractDirectoryPrefix(filePath, prefixConfig);
+    if (!raw) return '';
+    return this.cleanDirectoryPrefix(raw, prefixConfig);
   }
 
   /**
    * 提取目录前缀
+   *
+   * 策略：取 anchor 之后到文件所在目录的全部路径段，按 separator 拼接。
+   * 支持 maxDepth 截断，0 或不设表示不限制。
+   *
+   * 例（anchor='src', separator='.'）：
+   *   src/pages/flipped-course/components/Map2D.vue
+   *     → ['pages', 'flipped-course', 'components']
+   *     → 'pages.flipped-course.components'
+   *
+   * 边界：
+   *   - 文件直接在 anchor 下（如 src/foo.vue）：dirParts 为空 → 退化为文件名（去扩展名）
+   *   - 未找到 anchor：返回空串，下游不附加目录前缀
+   *
    * @param filePath - 文件路径
    * @param prefixConfig - ID 前缀配置
    * @returns 目录前缀
@@ -126,28 +132,29 @@ export class IdGenerator {
     // 上整段被当作单一目录名，前缀提取失败。归一化双分隔符后跨平台一致。
     const parts = filePath.split(/[\\/]/).filter(Boolean);
 
-    // 使用配置的锚点目录或默认 'src'
     const anchor = prefixConfig?.anchor || 'src';
     const anchorIndex = parts.findIndex((part) => part === anchor);
     if (anchorIndex === -1 || anchorIndex >= parts.length - 1) {
       return '';
     }
 
-    // 锚点下的一级目录
-    const firstLevelDir = parts[anchorIndex + 1];
+    // anchor 之后到文件名之前的所有目录段
+    const fileIndex = parts.length - 1;
+    let dirParts = parts.slice(anchorIndex + 1, fileIndex);
 
-    // 当前文件所在目录（不包括文件名）
-    const fileIndex = parts.length - 1; // 文件名的索引
-    const currentDir = parts[fileIndex - 1]; // 文件所在目录
-
-    // 如果当前目录就是一级目录，则使用文件名（去掉扩展名）
-    if (currentDir === firstLevelDir) {
+    // 文件直接在 anchor 下：退化为「文件名」（去扩展名），避免前缀为空
+    if (dirParts.length === 0) {
       const fileName = parts[fileIndex]!;
-      const fileNameWithoutExt = path.parse(fileName).name;
-      return `${firstLevelDir}${separator}${fileNameWithoutExt}`;
+      return path.parse(fileName).name;
     }
 
-    return `${firstLevelDir}${separator}${currentDir}`;
+    // maxDepth > 0 时截断到指定层级（≤ 0 视为不限制）
+    const maxDepth = prefixConfig?.maxDepth ?? 0;
+    if (maxDepth > 0 && dirParts.length > maxDepth) {
+      dirParts = dirParts.slice(0, maxDepth);
+    }
+
+    return dirParts.join(separator);
   }
 
   /**
@@ -199,20 +206,13 @@ export class IdGenerator {
   }
 
   /**
-   * 确保ID唯一性
-   * @param baseId - 基础ID
-   * @param existingIds - 已有的ID集合
-   * @param prefixConfig - ID 前缀配置
-   * @returns 唯一ID
+   * 确保ID唯一性（输入已是清理后的 id）
+   *
+   * 此方法只做去重，不再做清理——清理由调用方在拼接前按段完成
+   * （cleanDirectoryPrefix + sanitizeSemanticId），避免 sanitize 误把可变段数的
+   * 目录前缀当成固定 2 段。
    */
-  private static ensureUniqueId(
-    baseId: string,
-    existingIds: Set<string>,
-    prefixConfig?: IdPrefixConfig,
-  ): string {
-    // 先清理ID，保留目录前缀的大小写
-    const cleanedId = this.sanitizeFullId(baseId, prefixConfig);
-
+  private static ensureUniqueId(cleanedId: string, existingIds: Set<string>): string {
     if (!existingIds.has(cleanedId)) {
       existingIds.add(cleanedId);
       return cleanedId;
@@ -265,11 +265,12 @@ export class IdGenerator {
 
   /**
    * 创建完整的、唯一的ID
-   * @param filePath - 文件路径
-   * @param semanticPart - 语义部分
-   * @param existingIds - 已有的ID集合
-   * @param prefixConfig - ID 前缀配置
-   * @returns 完整的唯一ID
+   *
+   * 流程：
+   * 1. extractDirectoryPrefix 拿到原始前缀（可能含多段，如 `pages.flipped-course.components`）
+   * 2. cleanDirectoryPrefix 按段保留大小写去非法字符
+   * 3. sanitizeSemanticId 把语义部分转小写、压缩空白
+   * 4. 拼接 + ensureUniqueId 去重
    */
   private static _createFullId(
     filePath: string,
@@ -278,13 +279,16 @@ export class IdGenerator {
     prefixConfig?: IdPrefixConfig,
   ): string {
     const separator = this.getSeparator(prefixConfig);
-    const directoryPrefix = this.extractDirectoryPrefix(filePath, prefixConfig);
+    const rawDirectoryPrefix = this.extractDirectoryPrefix(filePath, prefixConfig);
     const cleanedSemanticId = this.sanitizeSemanticId(semanticPart);
 
-    if (directoryPrefix) {
-      const fullId = `${directoryPrefix}${separator}${cleanedSemanticId}`;
-      return this.ensureUniqueId(fullId, existingIds, prefixConfig);
+    if (rawDirectoryPrefix) {
+      const cleanedDirectoryPrefix = this.cleanDirectoryPrefix(rawDirectoryPrefix, prefixConfig);
+      const fullId = cleanedDirectoryPrefix
+        ? `${cleanedDirectoryPrefix}${separator}${cleanedSemanticId}`
+        : cleanedSemanticId;
+      return this.ensureUniqueId(fullId, existingIds);
     }
-    return this.ensureUniqueId(cleanedSemanticId, existingIds, prefixConfig);
+    return this.ensureUniqueId(cleanedSemanticId, existingIds);
   }
 }

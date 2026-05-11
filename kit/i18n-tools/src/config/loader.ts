@@ -240,6 +240,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
       chineseMappings: userConfig.idPrefix?.chineseMappings ?? DEFAULT_ID_PREFIX.chineseMappings,
       reuseAcrossDirectories:
         userConfig.idPrefix?.reuseAcrossDirectories ?? DEFAULT_ID_PREFIX.reuseAcrossDirectories,
+      maxDepth: userConfig.idPrefix?.maxDepth ?? DEFAULT_ID_PREFIX.maxDepth,
     },
     glossary: {
       override: userConfig.glossary?.override ?? DEFAULT_GLOSSARY.override,

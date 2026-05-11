@@ -101,6 +101,19 @@ export interface IdPrefixConfig {
    * - true：全局复用，相同原文在任意目录都复用同一个 key（最大去重，但跨包引用）
    */
   reuseAcrossDirectories?: boolean;
+  /**
+   * 路径前缀保留的最大目录层级数，默认 0（不限制，保留 anchor 之后到文件目录的全部段）。
+   *
+   * 对 `src/pages/flipped-course/components/Map2D.vue`（anchor='src'）的输出：
+   * - 0（默认）：`pages.flipped-course.components`
+   * - 1：`pages`
+   * - 2：`pages.flipped-course`
+   * - 3：`pages.flipped-course.components`
+   * - ≥ 4：仍是 `pages.flipped-course.components`（实际层级不足时不补）
+   *
+   * 注意：设置了 `value` 固定前缀时本字段不生效。
+   */
+  maxDepth?: number;
 }
 
 /**

@@ -76,6 +76,7 @@ export const DEFAULT_ID_PREFIX: Required<IdPrefixConfig> = {
     请选择: 'please_select',
   },
   reuseAcrossDirectories: false,
+  maxDepth: 0,
 };
 
 /**
