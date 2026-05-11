@@ -343,6 +343,11 @@ export class GenerateProcessor extends BaseProcessor {
       } catch (error) {
         LoggerUtils.error(`❌ 转换失败 ${FileUtils.getRelativePath(filePath)}:`, error);
         transformFailures.push({ file: filePath, error });
+        this.report.addFailure({
+          stage: 'transform',
+          file: FileUtils.getRelativePath(filePath),
+          error,
+        });
       }
     }
 
@@ -363,6 +368,11 @@ export class GenerateProcessor extends BaseProcessor {
       } catch (error) {
         LoggerUtils.error(`❌ 写入失败 ${FileUtils.getRelativePath(file)}:`, error);
         writeFailures.push({ file, error });
+        this.report.addFailure({
+          stage: 'write',
+          file: FileUtils.getRelativePath(file),
+          error,
+        });
       }
     }
 

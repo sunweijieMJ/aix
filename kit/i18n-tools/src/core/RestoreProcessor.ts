@@ -141,6 +141,11 @@ export class RestoreProcessor extends BaseProcessor {
           // 因 silent skip 把"几乎全部失败"误判为成功。
           failedFiles.push(filePath);
           LoggerUtils.error(`处理文件失败: ${FileUtils.getRelativePath(filePath)}`, error);
+          this.report.addFailure({
+            stage: 'restore',
+            file: FileUtils.getRelativePath(filePath),
+            error,
+          });
         }
       }
 

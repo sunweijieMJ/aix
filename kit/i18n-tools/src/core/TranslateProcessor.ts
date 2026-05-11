@@ -152,6 +152,12 @@ export class TranslateProcessor extends FileProcessor {
       if (!translatedBatch) {
         // LLM 端整批返回 null/undefined，记为失败以便上层感知
         failedBatches.push(i + 1);
+        this.report.addFailure({
+          stage: 'translate',
+          batchIndex: i + 1,
+          keys: Object.keys(batches[i] ?? {}),
+          error: new Error('LLM 返回空批次（null/undefined）'),
+        });
         continue;
       }
 
@@ -173,6 +179,12 @@ export class TranslateProcessor extends FileProcessor {
           error instanceof Error ? error.message : error,
         );
         failedBatches.push(i + 1);
+        this.report.addFailure({
+          stage: 'translate',
+          batchIndex: i + 1,
+          keys: Object.keys(batches[i] ?? {}),
+          error,
+        });
       }
     }
 

@@ -1,6 +1,7 @@
 import type { ResolvedConfig } from '../config';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
+import { RunReport } from '../utils/run-report';
 
 /**
  * 不依赖框架适配器的处理器基类
@@ -18,11 +19,28 @@ export abstract class FileProcessor {
   protected isCustom: boolean;
   /** 工作目录路径 */
   protected workingDir: string;
+  /**
+   * 运行期失败收集器。
+   *
+   * 各 Processor 在失败分支调 `this.report.addFailure(...)` 即可；
+   * executeWithLifecycle 收尾会自动在出现失败时落盘到
+   * `<rootDir>/node_modules/.cache/i18n-tools/`，并把绝对路径打到 stderr。
+   */
+  protected report: RunReport;
 
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     this.config = config;
     this.isCustom = isCustom;
     this.workingDir = FileUtils.getDirectoryPath(config, isCustom);
+    this.report = new RunReport(this.getCommandName(), config.rootDir);
+  }
+
+  /**
+   * 从类名推导出 kebab-case 命令名（如 GenerateProcessor → "generate"），
+   * 用于失败报告文件名。子类无需关心；如有特殊命名可重写。
+   */
+  protected getCommandName(): string {
+    return this.constructor.name.replace(/Processor$/, '').toLowerCase();
   }
 
   /**
@@ -74,6 +92,13 @@ export abstract class FileProcessor {
     } catch (error) {
       this.logError(operationName, error);
       throw error;
+    } finally {
+      // 不论成功或失败都尝试 flush：RunReport.flush 内部判断 hasFailures，
+      // 没有失败时不写盘，所以成功路径零产物。
+      const reportPath = this.report.flush();
+      if (reportPath) {
+        LoggerUtils.warn(`📝 失败报告已写入: ${reportPath}`);
+      }
     }
   }
 
