@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.8
+
+### Patch Changes
+
+- 增加语言文件健康度
+
 ## 0.0.7
 
 ### Patch Changes
