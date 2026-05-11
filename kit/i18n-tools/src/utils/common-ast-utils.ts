@@ -768,8 +768,47 @@ export class CommonASTUtils {
   }
 
   /**
+   * 判断模板变量表达式是否是字面量（不需要作为 i18n 参数传入）
+   * 字面量包括：字符串字面量、数字字面量、布尔值、null/undefined
+   */
+  static isLiteralExpression(varExpr: string): boolean {
+    const trimmed = varExpr.trim();
+    if (/^['"`].*['"`]$/.test(trimmed)) return true;
+    if (/^\d+(\.\d+)?$/.test(trimmed)) return true;
+    if (trimmed === 'true' || trimmed === 'false') return true;
+    if (trimmed === 'null' || trimmed === 'undefined') return true;
+    return false;
+  }
+
+  /**
+   * 求值字面量表达式，返回其展开值（用于直接拼到 message 中）
+   * - 字符串字面量去掉外层引号
+   * - 其它字面量保持原文
+   */
+  static evalLiteralExpression(varExpr: string): string {
+    const trimmed = varExpr.trim();
+    if (/^['"`].*['"`]$/.test(trimmed)) {
+      return trimmed.slice(1, -1);
+    }
+    return trimmed;
+  }
+
+  /**
+   * 过滤掉 templateVariables 中的字面量值，只保留真正的变量表达式
+   * 框架无关，Vue/React 共用
+   */
+  static filterLiterals(templateVariables: string[]): string[] {
+    return templateVariables.filter((varExpr) => !CommonASTUtils.isLiteralExpression(varExpr));
+  }
+
+  /**
    * 将含模板变量的文本转换为 i18n 占位符格式
    * 框架无关，同时用于 Vue 和 React 的模板处理
+   *
+   * 字面量插值（如 `${'active'}`）会被直接展开为字面值嵌入 message，
+   * 不进入 placeholderMap —— 保证 locale message 占位符与代码侧参数对象 key
+   * 严格一致（Why: LanguageFileManager 与 Transformer 必须使用相同语义，否则
+   * locale 中会出现运行时没有对应实参的孤儿占位符）。
    */
   static createMessageWithOptions(
     originalText: string,
@@ -779,9 +818,21 @@ export class CommonASTUtils {
     let message = originalText.replace(/^['"`]|['"`]$/g, '');
 
     if (templateVariables && templateVariables.length > 0) {
+      // 1. 先展开字面量插值：${'active'} → active
+      templateVariables
+        .filter((expr) => CommonASTUtils.isLiteralExpression(expr))
+        .forEach((expr) => {
+          const literalValue = CommonASTUtils.evalLiteralExpression(expr);
+          message = message.split(`\${${expr}}`).join(literalValue);
+        });
+
+      // 2. 再为真实变量生成占位符
+      const actualVariables = templateVariables.filter(
+        (expr) => !CommonASTUtils.isLiteralExpression(expr),
+      );
       const usedNames = new Set<string>();
 
-      templateVariables.forEach((variableExpr) => {
+      actualVariables.forEach((variableExpr) => {
         let key = CommonASTUtils.getVariableNameFromExpression(variableExpr);
 
         if (!key || key.trim() === '') {

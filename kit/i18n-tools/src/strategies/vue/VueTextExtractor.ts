@@ -52,16 +52,17 @@ export class VueTextExtractor extends BaseTextExtractor {
       }
 
       // 提取 script 部分
-      if (descriptor.script || descriptor.scriptSetup) {
-        const script = descriptor.scriptSetup || descriptor.script;
-        if (script) {
-          const scriptStrings = await this.extractFromScript(
-            script.content,
-            filePath,
-            script.loc.start.line - 1,
-          );
-          extractedStrings.push(...scriptStrings);
-        }
+      // Vue 3 官方允许 <script> 与 <script setup> 共存（如用 <script> 声明
+      // inheritAttrs: false 等组件选项，用 <script setup> 写 Composition API），
+      // 两个块的中文文案都需要提取，不能只取其中一个。
+      for (const script of [descriptor.script, descriptor.scriptSetup]) {
+        if (!script) continue;
+        const scriptStrings = await this.extractFromScript(
+          script.content,
+          filePath,
+          script.loc.start.line - 1,
+        );
+        extractedStrings.push(...scriptStrings);
       }
     }
     // 处理纯 .ts 或 .js 文件

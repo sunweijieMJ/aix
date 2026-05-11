@@ -257,10 +257,58 @@ export class VueRestoreTransformer implements IRestoreTransformer {
    */
   private static parseVarMap(vars: string): Map<string, string> {
     const varMap = new Map<string, string>();
-    const varMatches = vars.matchAll(/(\w+):\s*([^,}]+)/g);
-    for (const [, key, value] of varMatches) {
-      varMap.set(key!.trim(), value!.trim());
+
+    // 剥掉最外层 `{}`、去掉首尾空白
+    let body = vars.trim();
+    if (body.startsWith('{') && body.endsWith('}')) {
+      body = body.slice(1, -1);
     }
+
+    // 用括号/引号深度计数分割键值对，避免 `[^,}]+` 在嵌套对象或字符串
+    // 中的逗号、右花括号处误截断（如 `{ fmt: date.toFormat('YYYY, MM') }`、
+    // `{ obj: { a: 1 } }`）。
+    const segments: string[] = [];
+    let depthCurly = 0;
+    let depthParen = 0;
+    let depthBracket = 0;
+    let inString: '"' | "'" | '`' | null = null;
+    let start = 0;
+    for (let i = 0; i < body.length; i++) {
+      const ch = body[i];
+      const prev = i > 0 ? body[i - 1] : '';
+      if (inString) {
+        if (ch === inString && prev !== '\\') inString = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === '`') {
+        inString = ch;
+        continue;
+      }
+      if (ch === '{') depthCurly++;
+      else if (ch === '}') depthCurly--;
+      else if (ch === '(') depthParen++;
+      else if (ch === ')') depthParen--;
+      else if (ch === '[') depthBracket++;
+      else if (ch === ']') depthBracket--;
+      else if (ch === ',' && depthCurly === 0 && depthParen === 0 && depthBracket === 0) {
+        segments.push(body.slice(start, i));
+        start = i + 1;
+      }
+    }
+    if (start < body.length) {
+      segments.push(body.slice(start));
+    }
+
+    for (const seg of segments) {
+      const trimmed = seg.trim();
+      if (!trimmed) continue;
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx === -1) continue;
+      const key = trimmed.slice(0, colonIdx).trim();
+      const value = trimmed.slice(colonIdx + 1).trim();
+      if (key) varMap.set(key, value);
+    }
+
     return varMap;
   }
 

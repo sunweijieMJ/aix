@@ -60,26 +60,42 @@ export class VueTransformer implements ITransformer {
         content: string;
       }> = [];
 
-      // 处理 script 部分（先处理，因为在文件后面）
-      // SFC 中 Options API（有 <script> 但没有 <script setup>）应当生成 this.$t(...)
-      // —— 顶层无 t / useI18n 注入，全靠组件实例上的 $t 全局属性。
-      const script = descriptor.scriptSetup || descriptor.script;
-      const useThisQualifier = !descriptor.scriptSetup && !!descriptor.script;
-      if (script) {
-        const scriptStrings = fileStrings.filter((s) => s.context === 'script');
-        if (scriptStrings.length > 0) {
-          const transformedScript = this.processScript(
-            script.content,
-            script.loc.start.line - 1,
-            scriptStrings,
-            useThisQualifier,
-          );
-          replacements.push({
-            start: script.loc.start.offset,
-            end: script.loc.end.offset,
-            content: transformedScript,
-          });
-        }
+      // 处理 script 部分。
+      // Vue 3 允许 <script> 与 <script setup> 共存：<script> 用于 Options API
+      // 或 inheritAttrs/name 等组件选项，<script setup> 用于 Composition API。
+      // 必须分别独立转换：
+      //   - <script setup> 块：通过 setup 顶层注入的 const { t } = useI18n() 调裸 t()
+      //   - <script> 块：若 <script setup> 不存在，顶层无 useI18n 注入，
+      //     必须走 this.$t（Vue 实例属性）；若两者共存，<script> 块仍是 Options API
+      //     上下文，组件实例属性可用，仍走 this.$t。
+      const scriptBlocks: Array<{
+        block: typeof descriptor.script | typeof descriptor.scriptSetup;
+        useThisQualifier: boolean;
+      }> = [
+        { block: descriptor.script, useThisQualifier: true },
+        { block: descriptor.scriptSetup, useThisQualifier: false },
+      ];
+
+      for (const { block, useThisQualifier } of scriptBlocks) {
+        if (!block) continue;
+        const blockStartLine = block.loc.start.line;
+        const blockEndLine = block.loc.end.line;
+        const scriptStrings = fileStrings.filter(
+          (s) => s.context === 'script' && s.line >= blockStartLine && s.line <= blockEndLine,
+        );
+        if (scriptStrings.length === 0) continue;
+
+        const transformedScript = this.processScript(
+          block.content,
+          block.loc.start.line - 1,
+          scriptStrings,
+          useThisQualifier,
+        );
+        replacements.push({
+          start: block.loc.start.offset,
+          end: block.loc.end.offset,
+          content: transformedScript,
+        });
       }
 
       // 处理 template 部分（后处理，但先替换）
@@ -400,7 +416,9 @@ export class VueTransformer implements ITransformer {
     const semanticId = ns ? `${ns}:${extracted.semanticId}` : extracted.semanticId;
 
     // 过滤掉字面量，只保留真正的变量表达式
-    const actualVariables = templateVariables ? this.filterLiterals(templateVariables) : undefined;
+    const actualVariables = templateVariables
+      ? CommonASTUtils.filterLiterals(templateVariables)
+      : undefined;
 
     // 处理模板字符串（带变量插值）
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
@@ -514,7 +532,9 @@ export class VueTransformer implements ITransformer {
     const tFunc = useThisQualifier ? 'this.$t' : 't';
 
     // 过滤掉字面量，只保留真正的变量表达式
-    const actualVariables = templateVariables ? this.filterLiterals(templateVariables) : undefined;
+    const actualVariables = templateVariables
+      ? CommonASTUtils.filterLiterals(templateVariables)
+      : undefined;
 
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
       // 对于模板字符串，使用变量插值
@@ -541,39 +561,5 @@ export class VueTransformer implements ITransformer {
       mappings.push(`${placeholder}: ${expression}`);
     });
     return `{ ${mappings.join(', ')} }`;
-  }
-
-  /**
-   * 过滤掉templateVariables中的字面量值
-   * @param templateVariables - 模板变量数组
-   * @returns 过滤后只包含真实变量的数组
-   */
-  private filterLiterals(templateVariables: string[]): string[] {
-    return templateVariables.filter((varExpr) => {
-      const trimmed = varExpr.trim();
-
-      // 检查是否是字符串字面量（单引号、双引号、反引号）
-      if (/^['"`].*['"`]$/.test(trimmed)) {
-        return false;
-      }
-
-      // 检查是否是数字字面量
-      if (/^\d+(\.\d+)?$/.test(trimmed)) {
-        return false;
-      }
-
-      // 检查是否是布尔值
-      if (trimmed === 'true' || trimmed === 'false') {
-        return false;
-      }
-
-      // 检查是否是null或undefined
-      if (trimmed === 'null' || trimmed === 'undefined') {
-        return false;
-      }
-
-      // 其他情况视为变量表达式
-      return true;
-    });
   }
 }
