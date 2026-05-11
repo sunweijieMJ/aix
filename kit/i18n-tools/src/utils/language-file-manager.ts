@@ -3,6 +3,7 @@ import path from 'path';
 import type { ResolvedConfig } from '../config';
 import { FileUtils } from './file-utils';
 import { LoggerUtils } from './logger';
+import { LocaleValueLinter } from './locale-value-linter';
 import { ModuleResolver } from './module-resolver';
 import type { ExtractedString, ILangMap, LocaleMap } from './types';
 import { CommonASTUtils } from './common-ast-utils';
@@ -468,5 +469,9 @@ export class LanguageFileManager {
     LoggerUtils.success(`✅ 语言文件更新成功！`);
     if (addedCount > 0) LoggerUtils.info(`   - 新增条目: ${addedCount}`);
     if (updatedCount > 0) LoggerUtils.info(`   - 更新条目: ${updatedCount}`);
+
+    // 落盘后做一次健康度 lint：检测语义重复 key、含 HTML/超长 value。
+    // 不阻塞流程，仅以 warning 输出，供用户决策是否手动整理。
+    LocaleValueLinter.lint(finalMap);
   }
 }

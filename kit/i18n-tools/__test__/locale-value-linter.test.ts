@@ -1,0 +1,106 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { LocaleValueLinter } from '../src/utils/locale-value-linter';
+import { LoggerUtils } from '../src/utils/logger';
+
+describe('LocaleValueLinter', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  describe('语义重复 key 检测', () => {
+    it('识别占位符变量名不同但语义相同的多个 key', () => {
+      LocaleValueLinter.lint({
+        'pages.components.nodeindexplusone': '节点{ni1}',
+        'pages.components.nodeindexplusone_1': '节点 {_ni1}',
+        'pages.components.nodeindexplusone_2': '节点 {nodeIndex1}',
+        'pages.components.start': '开始',
+      });
+
+      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+      const dupSection = messages.find((m) => m.includes('语义重复'));
+      expect(dupSection).toBeDefined();
+
+      // 三个变体都应该被列出
+      expect(messages.some((m) => m.includes('nodeindexplusone '))).toBe(true);
+      expect(messages.some((m) => m.includes('nodeindexplusone_1'))).toBe(true);
+      expect(messages.some((m) => m.includes('nodeindexplusone_2'))).toBe(true);
+    });
+
+    it('占位符两侧空白差异视为同形态', () => {
+      LocaleValueLinter.lint({
+        'a.foo': '{count}条',
+        'a.bar': '{count} 条',
+        'a.baz': ' {count}  条 ',
+      });
+
+      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+      // 单一组（3 个变体）
+      expect(messages.some((m) => m.includes('1 组'))).toBe(true);
+    });
+
+    it('不含占位符、无空白的短文本不参与分组', () => {
+      LocaleValueLinter.lint({
+        'a.x': '取消',
+        'b.x': '取消',
+      });
+      // 纯字面量"取消"重复（业务上是值得提示的合并机会），但本 linter
+      // 当前只关注「占位符 / 空白噪声造成的」假重复，避免噪声。
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('没有重复时不输出告警', () => {
+      LocaleValueLinter.lint({
+        'a.x': '你好 {name}',
+        'b.y': '再见 {name}',
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('异常 value 检测', () => {
+    it('value 含 HTML 标签时告警', () => {
+      const htmlValue = `\n  <div style="color:red"><span>上次学到了这里</span></div>\n`;
+      LocaleValueLinter.lint({ 'pages.lasthere': htmlValue });
+
+      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+      expect(messages.some((m) => m.includes('含 HTML 标签'))).toBe(true);
+    });
+
+    it('value 超长时告警并附长度信息', () => {
+      const longValue = '中'.repeat(250);
+      LocaleValueLinter.lint({ 'pages.long': longValue });
+
+      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+      expect(messages.some((m) => m.includes('长度 250'))).toBe(true);
+    });
+
+    it('正常短文本不告警', () => {
+      LocaleValueLinter.lint({
+        'a.x': '你好世界',
+        'a.y': '请输入用户名',
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('误伤排除：不等式比较表达式（如 "x < 10"）不算 HTML', () => {
+      LocaleValueLinter.lint({ 'a.x': '当 x < 10 时显示提示' });
+      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+      expect(messages.every((m) => !m.includes('含 HTML 标签'))).toBe(true);
+    });
+  });
+
+  it('非 string value 被跳过（防御性）', () => {
+    LocaleValueLinter.lint({
+      'a.x': '正常文案',
+      'a.y': 123 as unknown as string,
+      'a.z': null as unknown as string,
+    });
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+});

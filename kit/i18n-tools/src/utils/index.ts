@@ -10,6 +10,7 @@ export type { GlossaryMap } from './glossary';
 export { IdGenerator } from './id-generator';
 export { InteractiveUtils } from './interactive-utils';
 export { LanguageFileManager } from './language-file-manager';
+export { LocaleValueLinter } from './locale-value-linter';
 export { LoggerUtils, LogLevel } from './logger';
 export { ModuleResolver } from './module-resolver';
 export * from './types';
