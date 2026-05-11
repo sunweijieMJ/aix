@@ -139,6 +139,56 @@ export interface ReactConfig {
 }
 
 /**
+ * 模块归属规则（rules 数组的单个元素）。
+ * `match` 与 `matchKey` 互斥，loader 会校验。
+ *
+ * 匹配优先级：
+ * 1. rules 数组顺序优先（先匹配先归属）
+ * 2. 所有规则未命中 → 落入 ModulesConfig.defaultModule（默认 'common'）
+ */
+export interface ModuleRule {
+  /** 模块名称，将作为 `<lang>/<name>.json` 的文件名（必须唯一） */
+  name: string;
+  /**
+   * 按源码路径匹配（相对 rootDir 的 POSIX 路径）。
+   * - string: 单个 glob，如 `'src/views/order/**'`
+   * - string[]: 多个 glob 任一匹配
+   * - RegExp: 直接 test
+   * - 函数: (filePath, key, message) => boolean
+   */
+  match?:
+    | string
+    | string[]
+    | RegExp
+    | ((filePath: string, key: string, message: string) => boolean);
+  /**
+   * 按 key 内容匹配。命中时不再看 match。
+   * 用于源码路径无关的逻辑分组（如 'error.*' 归 error 模块）。
+   */
+  matchKey?: (key: string, message: string) => boolean;
+}
+
+/**
+ * 模块化导出配置（可选）。
+ * 不配置时：所有行为等同当前——`locale/<lang>.json` 单文件。
+ * 配置时：分桶到 `locale/<lang>/<module>.json`，未匹配的 key 进入 defaultModule。
+ */
+export interface ModulesConfig {
+  /** 模块归属规则列表，按顺序匹配 */
+  rules: ModuleRule[];
+  /** 未匹配规则时归入的模块名，默认 'common' */
+  defaultModule?: string;
+  /** 是否额外生成 manifest.json，默认 true */
+  manifest?: boolean;
+  /**
+   * 输出布局：
+   * - 'by-locale' (默认): `locale/<lang>/<module>.json`
+   * - 'by-module': `locale/<module>/<lang>.json`
+   */
+  layout?: 'by-locale' | 'by-module';
+}
+
+/**
  * i18n-tools 完整配置接口
  */
 export interface I18nToolsConfig {
@@ -198,6 +248,12 @@ export interface I18nToolsConfig {
   include?: string[];
   /** 排除的目录或文件 */
   exclude?: string[];
+
+  /**
+   * 模块化导出配置（可选）。未配置时所有 key 输出到单个文件。
+   * 配置时按 rules 分桶到子目录，详见 ModulesConfig。
+   */
+  modules?: ModulesConfig;
 }
 
 /**
@@ -243,6 +299,13 @@ export interface ResolvedConfig {
   format: boolean;
   include: string[];
   exclude: string[];
+  /** 已解析的模块化配置；未配置时为 undefined */
+  modules?: {
+    rules: ModuleRule[];
+    defaultModule: string;
+    manifest: boolean;
+    layout: 'by-locale' | 'by-module';
+  };
 }
 
 /**
