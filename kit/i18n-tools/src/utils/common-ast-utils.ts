@@ -187,6 +187,20 @@ export class CommonASTUtils {
   }
 
   /**
+   * 模板字符串文本是否包含 HTML 标签。
+   *
+   * 典型场景：`innerHTML = \`<div>...<span>中文</span></div>\`` 这种把 HTML
+   * 拼装放进模板字符串的写法——整段提取会把 HTML / CSS / SVG 一起灌进 locale
+   * value，多语言下样式结构不可控、翻译质量受 HTML 噪声干扰。
+   *
+   * 命中规则：`<` 后必须紧跟字母 / `/`，避免 `x < 10` 等不等式误命中。
+   * 与 LocaleValueLinter 同 family，规则一致，便于双端校验。
+   */
+  static templateLiteralContainsHtmlTags(text: string): boolean {
+    return /<\s*\/?\s*[a-zA-Z][\w-]*(\s|>|\/)/.test(text);
+  }
+
+  /**
    * 检查节点是否应跳过提取：
    *   - 已被框架无关的 t()/$t() 调用包裹
    *   - 位于不可提取的位置：类型字面量（type X = '中文'）、枚举成员值

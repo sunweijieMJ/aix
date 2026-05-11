@@ -3,6 +3,7 @@ import ts from 'typescript';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { ReactASTUtils } from './react-ast-utils';
 import { FileUtils } from '../../utils/file-utils';
+import { LoggerUtils } from '../../utils/logger';
 import type { ExtractedString, MessageInfo } from '../../utils/types';
 import { BaseTextExtractor } from '../base';
 import type { ReactI18nLibrary } from './libraries';
@@ -176,6 +177,12 @@ export class ReactTextExtractor extends BaseTextExtractor {
     // 生成与 locale 写入路径，承载字面量内联后的真实文案。
     else if (ts.isTemplateExpression(node)) {
       if (CommonASTUtils.templateLiteralsContainChinese(node)) {
+        // 含 HTML 标签的整段模板（如 dangerouslySetInnerHTML 拼装）拒绝提取，
+        // 避免 HTML / CSS / SVG 灌进 locale value。详见 Vue 端同名逻辑。
+        if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
+          ReactTextExtractor.warnHtmlInTemplateLiteral(node, sourceFile);
+          return;
+        }
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
         text = result.originalText;
         if (result.processedText !== result.originalText) {
@@ -187,6 +194,13 @@ export class ReactTextExtractor extends BaseTextExtractor {
     }
     // 处理无替换模板字符串
     else if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      if (
+        FileUtils.containsChinese(node.text) &&
+        CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
+      ) {
+        ReactTextExtractor.warnHtmlInTemplateLiteral(node, sourceFile);
+        return;
+      }
       text = node.text;
     }
     // 处理JSX文本
@@ -286,5 +300,19 @@ export class ReactTextExtractor extends BaseTextExtractor {
       isTemplateString: true,
       templateVariables,
     };
+  }
+
+  /**
+   * 输出「含 HTML 模板字符串拒绝提取」的 warning，附文件路径与行号。
+   * 与 VueTextExtractor 行为一致：仅跳过本节点，不抛错。
+   */
+  private static warnHtmlInTemplateLiteral(node: ts.Node, sourceFile: ts.SourceFile): void {
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const line = pos.line + 1;
+    LoggerUtils.warn(
+      `⚠️ 跳过含 HTML 标签的模板字符串提取：${FileUtils.getRelativePath(sourceFile.fileName)}:${line}\n` +
+        `   原因：整段提取会把 HTML / CSS / SVG 灌进 i18n value，多语言下样式结构不可控。\n` +
+        `   建议：把 t() 调用缩到具体中文文案上。`,
+    );
   }
 }

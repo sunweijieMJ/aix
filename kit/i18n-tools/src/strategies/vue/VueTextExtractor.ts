@@ -644,6 +644,13 @@ export class VueTextExtractor extends BaseTextExtractor {
     // 与 React 端走同一份字面量过滤 / 占位符生成逻辑，避免双端漂移。
     else if (ts.isTemplateExpression(node)) {
       if (CommonASTUtils.templateLiteralsContainChinese(node)) {
+        // 模板字符串里含 HTML 标签（典型场景：innerHTML = `<div>...<span>中文</span></div>`），
+        // 整段提取会把 SVG / CSS / 样式属性一起灌进 i18n value，翻译质量差且多语言下结构不可控。
+        // 跳过提取并 warning，由开发者把 t() 缩到具体文案片段上。
+        if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
+          VueTextExtractor.warnHtmlInTemplateLiteral(node, sourceFile, lineOffset, filePath);
+          return;
+        }
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
         originalText = result.originalText;
         processedText = result.processedText;
@@ -653,6 +660,14 @@ export class VueTextExtractor extends BaseTextExtractor {
     }
     // 处理无替换模板字符串
     else if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      // 同 TemplateExpression：含 HTML 的整段模板拒绝提取，避免 HTML 入 locale value。
+      if (
+        FileUtils.containsChinese(node.text) &&
+        CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
+      ) {
+        VueTextExtractor.warnHtmlInTemplateLiteral(node, sourceFile, lineOffset, filePath);
+        return;
+      }
       originalText = node.text;
       processedText = node.text;
     }
@@ -866,5 +881,27 @@ export class VueTextExtractor extends BaseTextExtractor {
     }
 
     return false;
+  }
+
+  /**
+   * 输出「含 HTML 模板字符串拒绝提取」的 warning，附文件路径与行号。
+   *
+   * 不抛错——只跳过本节点提取，让 generate 流程继续处理其他节点，避免整文件失败。
+   * 用户拿到 warning 后应手动把 t() 缩到具体的中文片段上。
+   */
+  private static warnHtmlInTemplateLiteral(
+    node: ts.Node,
+    sourceFile: ts.SourceFile,
+    lineOffset: number,
+    filePath: string,
+  ): void {
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const line = pos.line + 1 + lineOffset;
+    LoggerUtils.warn(
+      `⚠️ 跳过含 HTML 标签的模板字符串提取：${FileUtils.getRelativePath(filePath)}:${line}\n` +
+        `   原因：整段提取会把 HTML / CSS / SVG 灌进 i18n value，多语言下样式结构不可控。\n` +
+        `   建议：把 t() 调用缩到具体中文文案上，例如\n` +
+        `     \`<span>\${t('key')}</span>\` 替代 \`t('key')\` 包整个 \`<div>...</div>\``,
+    );
   }
 }
