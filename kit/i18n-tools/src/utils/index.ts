@@ -1,7 +1,6 @@
 export { CommonASTUtils } from './common-ast-utils';
 export { CommandUtils } from './command-utils';
 export { loadEnv } from './env';
-export { ConcurrencyController } from './concurrency-controller';
 export { FILES, CONFIG, MODE_DESCRIPTIONS } from './constants';
 export { LLMClient } from './llm-client';
 export { FileUtils } from './file-utils';
@@ -11,5 +10,4 @@ export { IdGenerator } from './id-generator';
 export { InteractiveUtils } from './interactive-utils';
 export { LanguageFileManager } from './language-file-manager';
 export { LoggerUtils, LogLevel } from './logger';
-export { MessageProcessor } from './message-processor';
 export * from './types';

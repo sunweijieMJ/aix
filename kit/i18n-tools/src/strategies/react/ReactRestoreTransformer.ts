@@ -4,11 +4,13 @@ import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { ReactASTUtils } from './react-ast-utils';
 import { ReactImportManager } from './ReactImportManager';
 import { ReactTextExtractor } from './ReactTextExtractor';
-import { MessageProcessor } from '../../utils/message-processor';
 import type { MessageInfo, TransformContext, LocaleMap } from '../../utils/types';
-
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
 import type { ReactI18nLibrary } from './libraries';
+
+// 内联的最小校验：消息必须含 id 或 defaultMessage 之一，否则无法用于翻译查找
+const isValidMessage = (m: MessageInfo): boolean =>
+  m.id !== undefined || m.defaultMessage !== undefined;
 
 /**
  * React 还原代码转换器
@@ -75,7 +77,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     }
 
     const messageInfo = this.extractTranslationCallInfo(node, definedMessages, sourceFile);
-    if (!MessageProcessor.isValidMessage(messageInfo)) {
+    if (!isValidMessage(messageInfo)) {
       return null;
     }
 
@@ -159,7 +161,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     }
 
     const messageInfo = this.extractJSXComponentInfo(openingElement, definedMessages, sourceFile);
-    if (!MessageProcessor.isValidMessage(messageInfo)) {
+    if (!isValidMessage(messageInfo)) {
       return null;
     }
 

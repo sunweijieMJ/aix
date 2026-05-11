@@ -82,9 +82,4 @@ export class ConcurrencyController {
       maxConcurrency: this.maxConcurrency,
     };
   }
-
-  /** 当前最大并发数 */
-  getMaxConcurrency(): number {
-    return this.maxConcurrency;
-  }
 }
