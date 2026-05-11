@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.9
+
+### Patch Changes
+
+- 含 HTML 标签的模板字符串拒绝整段提取
+
 ## 0.0.8
 
 ### Patch Changes
