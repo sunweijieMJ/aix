@@ -117,6 +117,7 @@ export class GenerateProcessor extends BaseProcessor {
       this.adapter.getSupportedExtensions(),
       this.config.exclude,
       this.config.include,
+      this.config.rootDir,
     );
     const frameworkName = this.adapter.getDisplayName();
 

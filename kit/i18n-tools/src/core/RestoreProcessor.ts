@@ -73,6 +73,7 @@ export class RestoreProcessor extends BaseProcessor {
               this.adapter.getSupportedExtensions(),
               this.config.exclude,
               this.config.include,
+              this.config.rootDir,
             ),
           );
         }
@@ -103,6 +104,7 @@ export class RestoreProcessor extends BaseProcessor {
           this.adapter.getSupportedExtensions(),
           this.config.exclude,
           this.config.include,
+          this.config.rootDir,
         );
       }
 

@@ -301,12 +301,17 @@ export class FileUtils {
    *
    * exclude 同时支持精确名（如 'node_modules'）与简单 glob（含 `*` 的模式，如
    * `*.config.ts`），避免业务方需要把每种构建工具配置文件名都写一遍。
+   *
+   * include 模式始终以 `rootDir` 为基准做相对路径匹配；未提供时回退到 `dirPath`。
+   * 这样业务侧配置 `src/{glob}.vue` 这类相对项目根的模式，在用户传入子目录
+   * （如 `src/pages/foo`）时也能正确匹配，而不会因相对路径丢失 `src/` 前缀而漏文件。
    */
   static getFrameworkFiles(
     dirPath: string,
     extensions: string[],
     exclude: string[] = ['node_modules', 'dist', 'build', '.git', 'public'],
     include: string[] = [],
+    rootDir?: string,
   ): string[] {
     const files: string[] = [];
     const literalExcludes = new Set<string>();
@@ -329,6 +334,9 @@ export class FileUtils {
     };
 
     const includeMatcher = include.length > 0 ? FileUtils.createIncludeMatcher(include) : null;
+    // 解析为绝对路径，避免 dirPath / rootDir 形态不一致导致 path.relative 产出 `../..` 形态
+    const absoluteDirPath = path.resolve(dirPath);
+    const includeBase = path.resolve(rootDir ?? dirPath);
 
     const walkDir = (currentPath: string): void => {
       const entries = fs.readdirSync(currentPath, { withFileTypes: true });
@@ -343,14 +351,14 @@ export class FileUtils {
         if (entry.isDirectory()) {
           walkDir(fullPath);
         } else if (entry.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
-          if (!includeMatcher || includeMatcher(fullPath, dirPath)) {
+          if (!includeMatcher || includeMatcher(fullPath, includeBase)) {
             files.push(fullPath);
           }
         }
       }
     };
 
-    walkDir(dirPath);
+    walkDir(absoluteDirPath);
     return files;
   }
 
@@ -363,6 +371,7 @@ export class FileUtils {
   ): (filePath: string, baseDir: string) => boolean {
     const isMatch = picomatch(patterns, { dot: true });
     return (filePath, baseDir) => {
+      // 调用方传入的 filePath / baseDir 已经在 getFrameworkFiles 内统一 resolve 成绝对路径
       const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
       return isMatch(relativePath);
     };
