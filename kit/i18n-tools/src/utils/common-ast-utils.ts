@@ -486,7 +486,9 @@ export class CommonASTUtils {
     }
 
     // 使用非贪婪匹配移除函数调用参数，避免 (a * b).toFixed(2) 整体被吃掉
-    let baseName = expressionText.replace(/\([^)]*\)/g, '');
+    // 剥掉 `[...]` 让 `progressMap[item.pathId]` 退回 `progressMap` —— 下标里的
+    // key 名描述的是字典 key，与字典值语义无关，作为占位符名会误导译者。
+    let baseName = expressionText.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '');
     baseName = baseName.replace(/\?\.|\?/g, '.');
     const parts = baseName.split('.').filter((p) => p.trim() !== '');
 
@@ -497,6 +499,7 @@ export class CommonASTUtils {
       part = part.replace(/[^\w\u4e00-\u9fa5]/g, '');
 
       if (part && !this.NON_SEMANTIC_SUFFIXES.has(part)) {
+        if (this.isLowSignalIdentifier(part)) return 'value';
         return /^[0-9]/.test(part) ? `val_${part}` : part;
       }
     }
@@ -504,10 +507,32 @@ export class CommonASTUtils {
     // 兜底：从原始表达式中提取第一个标识符
     const idMatch = expressionText.match(/([a-zA-Z_$][\w$]*)/);
     if (idMatch?.[1] && !this.NON_SEMANTIC_SUFFIXES.has(idMatch[1])) {
+      if (this.isLowSignalIdentifier(idMatch[1])) return 'value';
       return idMatch[1];
     }
 
     return 'val';
+  }
+
+  /**
+   * 占位符命名"信号量"判定：低信号标识符不适合作为译者可见的占位符名。
+   *
+   * 译者最终在 locale 文件里看到的是 `{xxx}`，xxx 来自源代码标识符。下列形态
+   * 信噪比低，对翻译几乎无帮助，且会让"中文相同但源变量名不同的字面量"分裂
+   * 为多个 dedup key（如 `节点 {_ni1}` vs `节点 {nodeIndex1}`）。这些情形
+   * 统一退到中立名 `value`：
+   *
+   * - 单字符或双字符纯小写（i / j / ni / ts / pt 等循环计数器和缩写）
+   * - 下划线起始（_ni / __tmp 等约定俗成的"私有/忽略"标记）
+   *
+   * 三字符以上、camelCase、英文单词形态的标识符（userName / fileName /
+   * pathName / nodeIndex 等）信息量足够，保留原名以维持上下文。
+   */
+  private static isLowSignalIdentifier(name: string): boolean {
+    if (!name) return true;
+    if (name.startsWith('_')) return true;
+    if (name.length <= 2 && /^[a-z]+$/.test(name)) return true;
+    return false;
   }
 
   /**

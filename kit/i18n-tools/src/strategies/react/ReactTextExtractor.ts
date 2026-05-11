@@ -15,8 +15,8 @@ import type { ReactI18nLibrary } from './libraries';
 export class ReactTextExtractor extends BaseTextExtractor {
   private library?: ReactI18nLibrary;
 
-  constructor(library?: ReactI18nLibrary) {
-    super();
+  constructor(library?: ReactI18nLibrary, rejectPatterns: readonly RegExp[] = []) {
+    super(rejectPatterns);
     this.library = library;
   }
   /**
@@ -83,6 +83,17 @@ export class ReactTextExtractor extends BaseTextExtractor {
    * @returns 是否应该提取
    */
   private shouldExtract(
+    str: string,
+    context?: 'jsx-text' | 'jsx-attribute' | 'js-code',
+    node?: ts.Node,
+  ): boolean {
+    // 工具内置规则先判定。规则放行后才让业务侧 rejectPatterns 兜底拒收——
+    // 反之会让用户黑名单越过 isComparisonOperand / isInConsoleCall 等安全规则。
+    if (!this.shouldExtractInternal(str, context, node)) return false;
+    return !this.isRejectedByConfig(str);
+  }
+
+  private shouldExtractInternal(
     str: string,
     context?: 'jsx-text' | 'jsx-attribute' | 'js-code',
     node?: ts.Node,

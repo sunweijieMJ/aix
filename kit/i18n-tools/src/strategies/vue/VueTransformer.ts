@@ -428,8 +428,16 @@ export class VueTransformer implements ITransformer {
 
     // 处理模板字符串（带变量插值）
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
+      // mixed-content（HTML 文本节点+插值复合句）的 `original` 是源码层形式（含 `{{ }}`），
+      // createMessageWithOptions 只识别 `${expr}` 形式，需要拿 processedMessage（合成的
+      // backtick template）作为输入；其余路径（dynamic-attribute、interpolation
+      // 中的 JS 模板字符串）的 `original` 已含 `${expr}`，保持现状。
+      const messageInput =
+        templateContext === 'mixed-content' && extracted.processedMessage
+          ? extracted.processedMessage
+          : extracted.original;
       const { placeholderMap } = CommonASTUtils.createMessageWithOptions(
-        extracted.original,
+        messageInput,
         actualVariables,
       );
       const variablesMapping = this.generateVariablesMapping(placeholderMap);
@@ -443,9 +451,11 @@ export class VueTransformer implements ITransformer {
         case 'dynamic-attribute':
           // 插值表达式和动态属性中：不需要额外的 {{ }}（已在表达式上下文中）
           return `$t('${semanticId}', ${variablesMapping})`;
+        case 'mixed-content':
         case 'text-node':
         default:
-          // 文本节点：使用 {{ }} 包裹
+          // 文本节点 / 复合句：使用 {{ }} 包裹。mixed-content 的 original 已涵盖
+          // 多个源码节点（如 `全部({{ totalCount }})`），整体被一次 indexOf 替换。
           return `{{ $t('${semanticId}', ${variablesMapping}) }}`;
       }
     } else {

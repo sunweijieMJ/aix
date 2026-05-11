@@ -21,8 +21,8 @@ import type { VueI18nLibrary } from './libraries';
  * 负责从 Vue 文件中提取需要国际化的文本
  */
 export class VueTextExtractor extends BaseTextExtractor {
-  constructor(_library: VueI18nLibrary) {
-    super();
+  constructor(_library: VueI18nLibrary, rejectPatterns: readonly RegExp[] = []) {
+    super(rejectPatterns);
   }
   /**
    * 从单个文件中提取字符串
@@ -114,7 +114,9 @@ export class VueTextExtractor extends BaseTextExtractor {
     filePath: string,
     lineOffset: number,
   ): Promise<void> {
-    for (const node of nodes) {
+    let i = 0;
+    while (i < nodes.length) {
+      const node = nodes[i];
       // 处理元素节点
       if (node.type === 1) {
         // ELEMENT
@@ -132,9 +134,36 @@ export class VueTextExtractor extends BaseTextExtractor {
             lineOffset,
           );
         }
+        i++;
+        continue;
       }
-      // 处理文本节点
-      else if (node.type === 2) {
+
+      // TEXT / INTERPOLATION：先尝试把"相邻 TEXT + INTERPOLATION 序列"作为
+      // 复合句整体提取（保留语序、避免切碎导致译文残缺，如「全部({{ count }})」
+      // 切成 `全部(` + 硬编码 `)` 的破坏性产物）。命中则一次处理整组，
+      // 未命中再回退到逐节点提取。
+      if (node.type === 2 || node.type === 5) {
+        let j = i;
+        while (j < nodes.length && (nodes[j].type === 2 || nodes[j].type === 5)) {
+          j++;
+        }
+        const groupSize = j - i;
+        if (
+          groupSize >= 2 &&
+          (await this.tryExtractMixedContent(
+            nodes.slice(i, j) as Array<TextNode | InterpolationNode>,
+            extractedStrings,
+            filePath,
+            lineOffset,
+          ))
+        ) {
+          i = j;
+          continue;
+        }
+        // 不构成复合句或不满足合并条件 → 落回逐节点处理
+      }
+
+      if (node.type === 2) {
         // TEXT
         const textNode = node as TextNode;
         const text = textNode.content.trim();
@@ -152,9 +181,7 @@ export class VueTextExtractor extends BaseTextExtractor {
             templateContext: 'text-node',
           });
         }
-      }
-      // 处理插值表达式 {{ }}
-      else if (node.type === 5) {
+      } else if (node.type === 5) {
         // INTERPOLATION
         const interpolationNode = node as InterpolationNode;
         await this.extractFromInterpolation(
@@ -164,7 +191,97 @@ export class VueTextExtractor extends BaseTextExtractor {
           lineOffset,
         );
       }
+      i++;
     }
+  }
+
+  /**
+   * 尝试把一段连续的 TEXT/INTERPOLATION 子节点作为"复合句"整体提取。
+   *
+   * 适用场景：
+   * - `<div>全部({{ totalCount }})</div>` → 一个 key `全部({totalCount})`
+   * - `<div>第{{ x }}讲：</div>` → 一个 key `第{x}讲：`
+   * - `<div>{{ p }}%已学</div>` → 一个 key `{p}%已学`
+   *
+   * 命中条件（任一不满足均放弃，回退原逐节点处理路径）：
+   * - 组内至少有一段 TEXT 含中文（否则 Locale 价值不大，由原插值路径处理）
+   * - 组全部位于同一行（多行复合句替换边界复杂，保留为后续工作）
+   * - 所有 INTERPOLATION 的表达式必须为 SIMPLE_EXPRESSION（type === 4），
+   *   且表达式文本不含引号——避免吞掉嵌套的中文字符串字面量
+   *   （如 `{{ x ? '中文1' : '中文2' }}`），否则 LLM 翻译时占位符失踪。
+   *
+   * 命中时输出一条 ExtractedString：
+   * - `original`：源码片段（含 `{{ }}` 语法），供 Transformer 子串匹配替换
+   * - `processedMessage`：合成的 backtick template 形式（含 `${expr}`），供
+   *    createMessageWithOptions 生成占位符与 locale message
+   * - `templateContext: 'mixed-content'`
+   */
+  private async tryExtractMixedContent(
+    group: Array<TextNode | InterpolationNode>,
+    extractedStrings: ExtractedString[],
+    filePath: string,
+    lineOffset: number,
+  ): Promise<boolean> {
+    if (group.length < 2) return false;
+
+    const first = group[0]!;
+    const last = group[group.length - 1]!;
+    if (first.loc.start.line !== last.loc.end.line) return false;
+
+    // 必须存在含中文的 TEXT，否则没有提取价值（纯插值由原路径处理）
+    const hasChineseText = group.some(
+      (n) => n.type === 2 && FileUtils.containsChinese((n as TextNode).content),
+    );
+    if (!hasChineseText) return false;
+
+    let synthetic = '`';
+    let originalSrc = '';
+    const templateVariables: string[] = [];
+
+    for (const n of group) {
+      if (n.type === 2) {
+        const textNode = n as TextNode;
+        synthetic += textNode.content;
+        originalSrc += textNode.loc.source;
+        continue;
+      }
+      // INTERPOLATION
+      const interp = n as InterpolationNode;
+      // 仅支持 SIMPLE_EXPRESSION（type 4）；其它结构（如 CompoundExpression）
+      // 进入此分支较少且语义复杂，留给原路径单独处理。
+      if (interp.content.type !== 4) return false;
+      const expr = (interp.content as any).content.trim() as string;
+      // 已是 i18n 调用的不应再被提取
+      if (this.isVueI18nCall(expr)) return false;
+      // 表达式含引号 → 大概率内部有字符串字面量，可能包含需独立翻译的中文，
+      // 退回原路径让 extractFromInterpolation 走 AST 解构提取。
+      if (/['"`]/.test(expr)) return false;
+
+      synthetic += '${' + expr + '}';
+      originalSrc += interp.loc.source;
+      templateVariables.push(expr);
+    }
+    synthetic += '`';
+
+    // 走 shouldExtract（含业务侧 rejectPatterns 兜底），把合成 message 作为 text-node 看待
+    if (!this.shouldExtract(synthetic, 'template', undefined, 'text-node')) {
+      return false;
+    }
+
+    extractedStrings.push({
+      original: originalSrc,
+      processedMessage: synthetic,
+      semanticId: '',
+      filePath,
+      line: first.loc.start.line + lineOffset,
+      column: first.loc.start.column,
+      context: 'template',
+      componentType: 'setup',
+      isTemplateString: true,
+      templateVariables,
+      templateContext: 'mixed-content',
+    });
+    return true;
   }
 
   /**
@@ -706,6 +823,19 @@ export class VueTextExtractor extends BaseTextExtractor {
    * @returns 是否应该提取
    */
   private shouldExtract(
+    str: string,
+    context: 'template' | 'script',
+    node?: ts.Node,
+    templateContext?: string,
+  ): boolean {
+    // 工具内置规则先判定。规则放行后才让业务侧 rejectPatterns 兜底拒收——
+    // 反之会让用户黑名单越过 isComparisonOperand / isInConsoleCall 等安全规则。
+    const passInternal = this.shouldExtractInternal(str, context, node, templateContext);
+    if (!passInternal) return false;
+    return !this.isRejectedByConfig(str);
+  }
+
+  private shouldExtractInternal(
     str: string,
     context: 'template' | 'script',
     node?: ts.Node,

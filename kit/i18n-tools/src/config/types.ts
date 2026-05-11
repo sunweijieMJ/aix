@@ -114,6 +114,27 @@ export interface IdPrefixConfig {
    * 注意：设置了 `value` 固定前缀时本字段不生效。
    */
   maxDepth?: number;
+
+  /**
+   * 跨模块复用 key 的 namespace 提升策略（可选）。
+   *
+   * 当一段原文已在不同目录前缀下被分配过 ≥ `threshold` 个不同 key 时，本次
+   * 新分配将统一归入 `namespace`（如 `common`），避免相同语义在多个模块下
+   * 散落各自的 key、且首次出现位置决定 namespace 的痕迹长期残留。
+   *
+   * - `threshold`：触发阈值（必填；显式配置即启用，最小有效值为 2）
+   * - `namespace`：固定命名空间，默认 `'common'`
+   *
+   * 注意：本机制仅影响"本次新分配"的 ID 选择，**不回迁历史 key**——已写入
+   * locale 的旧 key 仍按原前缀保留。要彻底统一旧数据，需 RESTORE → 删 key →
+   * 重跑 GENERATE。设计上选择保守不回迁，避免误改用户已 review 通过的 key。
+   *
+   * 与 `value` 固定前缀同用时本字段不生效（同 maxDepth 行为）。
+   */
+  promoteToCommon?: {
+    threshold: number;
+    namespace?: string;
+  };
 }
 
 /**
@@ -202,6 +223,22 @@ export interface ModulesConfig {
 }
 
 /**
+ * 文本提取配置
+ *
+ * 工具默认对 template 中所有含中文或字母的文本节点视为可见文案进行提取。
+ * 业务侧若有 dev 占位、内部标识、域名常量等不希望被翻译的文本，可通过
+ * rejectPatterns 声明黑名单。工具内部不做任何业务判断，只提供扩展点。
+ */
+export interface ExtractionConfig {
+  /**
+   * 拒收模式列表。任一模式命中（regex.test 为 true）的字符串将不会进入提取。
+   * 模式只在"待提取候选"已通过工具内置过滤（已含中文 / 已通过技术值排除）后才生效，
+   * 即用于精修，无法用于绕过工具自身的安全规则。
+   */
+  rejectPatterns?: RegExp[];
+}
+
+/**
  * 持久化格式配置
  */
 export interface OutputConfig {
@@ -281,6 +318,11 @@ export interface I18nToolsConfig {
   exclude?: string[];
 
   /**
+   * 文本提取扩展点。业务侧可声明 rejectPatterns 拒收特定文本。
+   */
+  extraction?: ExtractionConfig;
+
+  /**
    * 模块化导出配置（可选）。未配置时所有 key 输出到单个文件。
    * 配置时按 rules 分桶到子目录，详见 ModulesConfig。
    */
@@ -337,6 +379,10 @@ export interface ResolvedConfig {
   format: boolean;
   include: string[];
   exclude: string[];
+  /** 已解析的提取扩展配置（rejectPatterns 默认 []） */
+  extraction: {
+    rejectPatterns: RegExp[];
+  };
   /** 已解析的模块化配置；未配置时为 undefined */
   modules?: {
     rules: ModuleRule[];

@@ -51,6 +51,8 @@ describe('MergeProcessor — 拒收翻译的 warn 行为', () => {
         separator: '.',
         chineseMappings: {},
         reuseAcrossDirectories: false,
+        maxDepth: 0,
+        promoteToCommon: { threshold: 0, namespace: 'common' },
       },
       glossary: { override: 'always', normalize: true },
       concurrency: { idGeneration: 5, translation: 3 },
@@ -59,6 +61,7 @@ describe('MergeProcessor — 拒收翻译的 warn 行为', () => {
       format: false,
       include: ['**/*.vue'],
       exclude: [],
+      extraction: { rejectPatterns: [] },
       output: { format: 'flat' },
     } as ResolvedConfig;
   }
@@ -82,13 +85,13 @@ describe('MergeProcessor — 拒收翻译的 warn 行为', () => {
     const processor = new MergeProcessor(makeConfig(), false);
     await processor.execute();
 
-    const warns = warnSpy.mock.calls.map((c) => String(c[0]));
-    expect(warns.some((m) => m.includes('被判无效'))).toBe(true);
-    expect(warns.some((m) => m.includes('pages.foo.exclamation'))).toBe(true);
-    expect(warns.some((m) => m.includes('"吧！"'))).toBe(true);
-    expect(warns.some((m) => m.includes('"!"'))).toBe(true);
-    expect(warns.some((m) => m.includes('isValidTranslation 拒收'))).toBe(true);
-    expect(warns.some((m) => m.includes('处理建议'))).toBe(true);
+    const warns = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(warns.some((m: string) => m.includes('被判无效'))).toBe(true);
+    expect(warns.some((m: string) => m.includes('pages.foo.exclamation'))).toBe(true);
+    expect(warns.some((m: string) => m.includes('"吧！"'))).toBe(true);
+    expect(warns.some((m: string) => m.includes('"!"'))).toBe(true);
+    expect(warns.some((m: string) => m.includes('isValidTranslation 拒收'))).toBe(true);
+    expect(warns.some((m: string) => m.includes('处理建议'))).toBe(true);
 
     // 落盘到 .i18n-tools/logs/，存档可回查
     const logsDir = path.join(tmpDir, '.i18n-tools', 'logs');
@@ -109,9 +112,9 @@ describe('MergeProcessor — 拒收翻译的 warn 行为', () => {
     const processor = new MergeProcessor(makeConfig(), false);
     await processor.execute();
 
-    const warns = warnSpy.mock.calls.map((c) => String(c[0]));
+    const warns = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
     // 不应包含"被判无效"——空值是正常的 pending 状态，不是拒收
-    expect(warns.some((m) => m.includes('被判无效'))).toBe(false);
+    expect(warns.some((m: string) => m.includes('被判无效'))).toBe(false);
   });
 
   it('正常 LLM 翻译完成合并到 en-US，不触发 warn', async () => {
@@ -122,8 +125,8 @@ describe('MergeProcessor — 拒收翻译的 warn 行为', () => {
     const processor = new MergeProcessor(makeConfig(), false);
     await processor.execute();
 
-    const warns = warnSpy.mock.calls.map((c) => String(c[0]));
-    expect(warns.some((m) => m.includes('被判无效'))).toBe(false);
+    const warns = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(warns.some((m: string) => m.includes('被判无效'))).toBe(false);
 
     // 实际 merge 是否成功：en-US.json 该有 Hello
     const enPath = path.join(tmpDir, 'locale', 'en-US.json');
@@ -142,14 +145,18 @@ describe('MergeProcessor — 拒收翻译的 warn 行为', () => {
     const processor = new MergeProcessor(makeConfig(), false);
     await processor.execute();
 
-    const warns = warnSpy.mock.calls.map((c) => String(c[0]));
+    const warns = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
     // 应该只有 exclamation 被列入拒收 warn，不应包含 hello 或 pending
     const rejectedSection = warns.filter(
-      (m) => m.includes('被判无效') || m.includes('exclamation'),
+      (m: string) => m.includes('被判无效') || m.includes('exclamation'),
     );
     expect(rejectedSection.length).toBeGreaterThan(0);
-    expect(warns.every((m) => !m.includes('pages.foo.hello') || !m.includes('拒收'))).toBe(true);
-    expect(warns.every((m) => !m.includes('pages.foo.pending') || !m.includes('拒收'))).toBe(true);
+    expect(warns.every((m: string) => !m.includes('pages.foo.hello') || !m.includes('拒收'))).toBe(
+      true,
+    );
+    expect(
+      warns.every((m: string) => !m.includes('pages.foo.pending') || !m.includes('拒收')),
+    ).toBe(true);
 
     // merge 行为正常：hello 进 en-US，其它两个留 untranslated
     const en = JSON.parse(fs.readFileSync(path.join(tmpDir, 'locale', 'en-US.json'), 'utf-8'));

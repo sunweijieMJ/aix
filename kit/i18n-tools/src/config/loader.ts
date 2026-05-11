@@ -241,6 +241,13 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
       reuseAcrossDirectories:
         userConfig.idPrefix?.reuseAcrossDirectories ?? DEFAULT_ID_PREFIX.reuseAcrossDirectories,
       maxDepth: userConfig.idPrefix?.maxDepth ?? DEFAULT_ID_PREFIX.maxDepth,
+      promoteToCommon: userConfig.idPrefix?.promoteToCommon
+        ? {
+            // 阈值 < 2 等同禁用：单点使用本身不构成"跨模块复用"
+            threshold: Math.max(0, userConfig.idPrefix.promoteToCommon.threshold ?? 0),
+            namespace: userConfig.idPrefix.promoteToCommon.namespace ?? 'common',
+          }
+        : { threshold: 0, namespace: 'common' },
     },
     glossary: {
       override: userConfig.glossary?.override ?? DEFAULT_GLOSSARY.override,
@@ -255,6 +262,9 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     format: userConfig.format ?? true,
     include: userConfig.include ?? DEFAULT_INCLUDE,
     exclude: userConfig.exclude ?? DEFAULT_EXCLUDE,
+    extraction: {
+      rejectPatterns: userConfig.extraction?.rejectPatterns ?? [],
+    },
     modules: resolveModules(userConfig.modules),
     output: {
       format: userConfig.output?.format ?? DEFAULT_OUTPUT_FORMAT,

@@ -264,6 +264,28 @@ export class IdGenerator {
   }
 
   /**
+   * 使用固定前缀（如 `common`）生成 ID，绕过基于 filePath 的目录前缀推导。
+   *
+   * 用于 promoteToCommon：当一段原文被多个模块复用、需要统一进入 common
+   * namespace 时，调用方提供固定前缀；ID 拼装与 ensureUniqueId 行为与
+   * _createFullId 一致。
+   */
+  static generateWithFixedPrefix(
+    prefix: string,
+    semanticPart: string,
+    existingIds: Set<string>,
+    prefixConfig?: IdPrefixConfig,
+  ): string {
+    const separator = this.getSeparator(prefixConfig);
+    const cleanedSemanticId = this.sanitizeSemanticId(semanticPart);
+    const cleanedPrefix = this.cleanDirectoryPrefix(prefix, prefixConfig);
+    const fullId = cleanedPrefix
+      ? `${cleanedPrefix}${separator}${cleanedSemanticId}`
+      : cleanedSemanticId;
+    return this.ensureUniqueId(fullId, existingIds);
+  }
+
+  /**
    * 创建完整的、唯一的ID
    *
    * 流程：

@@ -133,8 +133,9 @@ describe('output.format=nested 写入', () => {
     expect(messages['zh-CN']).toEqual(original);
 
     // 改一个值再写回，验证读—改—写循环
-    messages['zh-CN']['order.title'] = '订单 v2';
-    LanguageFileManager.writeLocaleFile(config, false, messages['zh-CN'], 'zh-CN');
+    const zh = messages['zh-CN'] as Record<string, string>;
+    zh['order.title'] = '订单 v2';
+    LanguageFileManager.writeLocaleFile(config, false, zh, 'zh-CN');
 
     const file = path.join(config.paths.locale, 'zh-CN.json');
     expect(JSON.parse(fs.readFileSync(file, 'utf-8'))).toEqual({

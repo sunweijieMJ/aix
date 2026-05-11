@@ -24,8 +24,30 @@ import type { ITextExtractor } from '../../adapters/FrameworkAdapter';
  */
 export abstract class BaseTextExtractor implements ITextExtractor {
   private pendingWarnings: string[] = [];
+  private readonly rejectPatterns: readonly RegExp[];
+
+  constructor(rejectPatterns: readonly RegExp[] = []) {
+    this.rejectPatterns = rejectPatterns;
+  }
 
   abstract extractFromFile(filePath: string): Promise<ExtractedString[]>;
+
+  /**
+   * 业务侧通过 config.extraction.rejectPatterns 声明的黑名单命中检测。
+   *
+   * 子类的 shouldExtract 在自身规则判定"可提取"后，必须调用本方法做最后一道拒收检查；
+   * 不在 shouldExtract 内嵌做的原因是：工具内部的安全规则（如 isComparisonOperand）
+   * 必须先于用户黑名单生效，避免黑名单意外放过会破坏运行时逻辑的字面量。
+   */
+  protected isRejectedByConfig(text: string): boolean {
+    if (this.rejectPatterns.length === 0) return false;
+    return this.rejectPatterns.some((re) => {
+      // RegExp 带 g 标志会在多次 test 间保留 lastIndex，跨字符串调用结果不稳定；
+      // 拷贝一份新建实例规避此副作用，对用户透明。
+      const probe = re.global ? new RegExp(re.source, re.flags.replace('g', '')) : re;
+      return probe.test(text);
+    });
+  }
 
   async extractFromFiles(filePaths: string[]): Promise<ExtractedString[]> {
     const all: ExtractedString[] = [];

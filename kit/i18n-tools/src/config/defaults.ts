@@ -77,6 +77,8 @@ export const DEFAULT_ID_PREFIX: Required<IdPrefixConfig> = {
   },
   reuseAcrossDirectories: false,
   maxDepth: 0,
+  // threshold 为 0 表示未启用，loader/resolver 据此跳过提升逻辑
+  promoteToCommon: { threshold: 0, namespace: 'common' },
 };
 
 /**

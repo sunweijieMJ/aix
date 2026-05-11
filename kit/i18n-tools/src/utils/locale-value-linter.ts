@@ -26,6 +26,18 @@ export class LocaleValueLinter {
   private static readonly HTML_TAG_PATTERN = /<\s*\/?\s*[a-zA-Z][\w-]*(\s|>|\/)/;
 
   /**
+   * 短碎片可疑 value：长度 ≤ 3 且 trim 后含至少一个标点。命中即提示"可能是
+   * HTML 复合句切碎产物"（虽然 mixed-content 路径已基本消解此类，仍保留
+   * 兜底诊断以覆盖那些不满足合并条件的边界用例，如跨行复合句）。
+   */
+  private static readonly SUSPICIOUS_FRAGMENT_MAX_LEN = 3;
+  /** 中英文常见标点；命中作为"短碎片"判定附加条件。 */
+  private static readonly PUNCT_PATTERN = /[（）()，,。.！!？?：:；;、,“”"'‘’`[\]【】《》<>%·…—]/;
+
+  /** 跨模块复用候选的默认阈值（≥ N 个不同前缀使用同一 value）。 */
+  private static readonly CROSS_MODULE_REUSE_THRESHOLD = 3;
+
+  /**
    * 对扁平 locale map 做 value 健康度检查，发现问题以 warning 输出。
    *
    * 注意：本检查不影响落盘流程——即使发现问题，调用方仍可继续写入文件。
@@ -33,12 +45,24 @@ export class LocaleValueLinter {
    * @param localeMap 扁平 locale map
    * @param report    可选：传入则同时把每条 warning 加入 RunReport，落盘到
    *                  `<rootDir>/.i18n-tools/logs/` 供事后回查（不传则仅 console）
+   * @param options   可选诊断参数：separator 用于跨模块复用检测的目录前缀切分
    */
-  static lint(localeMap: LocaleMap, report?: RunReport): void {
+  static lint(localeMap: LocaleMap, report?: RunReport, options?: { separator?: string }): void {
     const duplicates = this.findSemanticDuplicates(localeMap);
     const anomalies = this.findAnomalousValues(localeMap);
+    const fragments = this.findSuspiciousFragments(localeMap);
+    const reuseCandidates = options?.separator
+      ? this.findCrossModuleReuseCandidates(localeMap, options.separator)
+      : [];
 
-    if (duplicates.length === 0 && anomalies.length === 0) return;
+    if (
+      duplicates.length === 0 &&
+      anomalies.length === 0 &&
+      fragments.length === 0 &&
+      reuseCandidates.length === 0
+    ) {
+      return;
+    }
 
     // 同时往 console 和 RunReport 写——console 给即时反馈，RunReport 给磁盘留痕。
     // emit 函数封装这层一致性，避免每行 warning 都得手写两遍。
@@ -67,6 +91,29 @@ export class LocaleValueLinter {
         emit(`     value 预览: ${this.preview(value)}`);
       }
       emit('     💡 含 HTML 的 value 建议改造源码：模板字符串包裹结构，只把文案放入 t() 调用');
+    }
+
+    if (fragments.length > 0) {
+      emit(
+        `\n⚠️  发现 ${fragments.length} 个短碎片可疑 value（长度 ≤ ${this.SUSPICIOUS_FRAGMENT_MAX_LEN} 且含标点）：`,
+      );
+      for (const { key, value } of fragments) {
+        emit(`   - ${key}  →  ${JSON.stringify(value)}`);
+      }
+      emit('     💡 可能是 HTML 文本节点 + 插值被切碎的产物。检查源码该 key 的调用点');
+      emit('        是否能把周围文本与插值合并成单一 t() 调用（带占位符），以恢复语序与标点配平');
+    }
+
+    if (reuseCandidates.length > 0) {
+      emit(
+        `\n💡 发现 ${reuseCandidates.length} 组跨模块复用候选（同一 value 在 ≥ ${this.CROSS_MODULE_REUSE_THRESHOLD} 个不同目录前缀下都有 key）：`,
+      );
+      for (const c of reuseCandidates) {
+        emit(`   value: ${JSON.stringify(c.value)}`);
+        emit(`     使用前缀: ${c.prefixes.join(', ')}`);
+      }
+      emit('     💡 考虑在 i18n.config 启用 idPrefix.promoteToCommon = { threshold, namespace }，');
+      emit('        让新增使用点自动归入 common namespace');
     }
   }
 
@@ -124,6 +171,52 @@ export class LocaleValueLinter {
       if (reasons.length > 0) result.push({ key, value, reasons });
     }
     return result;
+  }
+
+  /**
+   * 找出"短碎片可疑 value"——长度 ≤ SUSPICIOUS_FRAGMENT_MAX_LEN 且含至少一个标点。
+   * 用于事后诊断那些没被 mixed-content 合并路径捕获、但仍像被切碎的产物。
+   */
+  private static findSuspiciousFragments(
+    localeMap: LocaleMap,
+  ): Array<{ key: string; value: string }> {
+    const result: Array<{ key: string; value: string }> = [];
+    for (const [key, value] of Object.entries(localeMap)) {
+      if (typeof value !== 'string') continue;
+      const trimmed = value.trim();
+      if (!trimmed) continue;
+      if (trimmed.length > this.SUSPICIOUS_FRAGMENT_MAX_LEN) continue;
+      if (!this.PUNCT_PATTERN.test(trimmed)) continue;
+      result.push({ key, value });
+    }
+    return result;
+  }
+
+  /**
+   * 找出跨模块复用候选：同一 value 在 ≥ CROSS_MODULE_REUSE_THRESHOLD 个不同
+   * 目录前缀下都有 key。用于提示用户考虑启用 promoteToCommon。
+   *
+   * 目录前缀通过 separator 切分 key 取首段（如 separator='.' 时 `pages.foo.bar.x`
+   * 的目录前缀视为 `pages.foo.bar`，前缀长度根据用户实际 maxDepth 而定，这里只是
+   * "把最后一段视为 semanticId 之外都算前缀"）。空前缀（key 无 separator）视为
+   * 同一桶。
+   */
+  private static findCrossModuleReuseCandidates(
+    localeMap: LocaleMap,
+    separator: string,
+  ): Array<{ value: string; prefixes: string[] }> {
+    if (!separator) return [];
+    const valueToPrefixes = new Map<string, Set<string>>();
+    for (const [key, value] of Object.entries(localeMap)) {
+      if (typeof value !== 'string') continue;
+      const idx = key.lastIndexOf(separator);
+      const prefix = idx <= 0 ? '' : key.substring(0, idx);
+      if (!valueToPrefixes.has(value)) valueToPrefixes.set(value, new Set());
+      valueToPrefixes.get(value)!.add(prefix);
+    }
+    return Array.from(valueToPrefixes.entries())
+      .filter(([, prefixes]) => prefixes.size >= this.CROSS_MODULE_REUSE_THRESHOLD)
+      .map(([value, prefixes]) => ({ value, prefixes: Array.from(prefixes).sort() }));
   }
 
   private static preview(value: string): string {

@@ -41,8 +41,8 @@ const html = \`
       const result = await extractor.extractFromFile(file);
 
       expect(result).toHaveLength(0);
-      const warnings = warnSpy.mock.calls.map((c) => String(c[0]));
-      expect(warnings.some((m) => m.includes('HTML 标签的模板字符串'))).toBe(true);
+      const warnings = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(warnings.some((m: string) => m.includes('HTML 标签的模板字符串'))).toBe(true);
     });
 
     it('TemplateExpression（含 ${}）+ HTML + 中文 → 跳过提取并 warn', async () => {
@@ -60,8 +60,8 @@ const html = \`<div class="hello">你好 \${userName}<span>欢迎</span></div>\`
       const result = await extractor.extractFromFile(file);
 
       expect(result).toHaveLength(0);
-      const warnings = warnSpy.mock.calls.map((c) => String(c[0]));
-      expect(warnings.some((m) => m.includes('HTML 标签的模板字符串'))).toBe(true);
+      const warnings = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(warnings.some((m: string) => m.includes('HTML 标签的模板字符串'))).toBe(true);
     });
 
     it('不含 HTML 的模板字符串正常提取（回归保护）', async () => {
@@ -157,8 +157,8 @@ const html = \`<div><span>提示</span></div>\`;
       const result = await extractor.extractFromFile(file);
 
       expect(result).toHaveLength(0);
-      const warnings = warnSpy.mock.calls.map((c) => String(c[0]));
-      expect(warnings.some((m) => m.includes('HTML 标签的模板字符串'))).toBe(true);
+      const warnings = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(warnings.some((m: string) => m.includes('HTML 标签的模板字符串'))).toBe(true);
     });
 
     it('不含 HTML 的模板字符串正常提取（回归保护）', async () => {

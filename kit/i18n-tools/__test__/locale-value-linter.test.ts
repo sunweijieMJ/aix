@@ -23,14 +23,14 @@ describe('LocaleValueLinter', () => {
         'pages.components.start': '开始',
       });
 
-      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
-      const dupSection = messages.find((m) => m.includes('语义重复'));
+      const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      const dupSection = messages.find((m: string) => m.includes('语义重复'));
       expect(dupSection).toBeDefined();
 
       // 三个变体都应该被列出
-      expect(messages.some((m) => m.includes('nodeindexplusone '))).toBe(true);
-      expect(messages.some((m) => m.includes('nodeindexplusone_1'))).toBe(true);
-      expect(messages.some((m) => m.includes('nodeindexplusone_2'))).toBe(true);
+      expect(messages.some((m: string) => m.includes('nodeindexplusone '))).toBe(true);
+      expect(messages.some((m: string) => m.includes('nodeindexplusone_1'))).toBe(true);
+      expect(messages.some((m: string) => m.includes('nodeindexplusone_2'))).toBe(true);
     });
 
     it('占位符两侧空白差异视为同形态', () => {
@@ -40,9 +40,9 @@ describe('LocaleValueLinter', () => {
         'a.baz': ' {count}  条 ',
       });
 
-      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
+      const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
       // 单一组（3 个变体）
-      expect(messages.some((m) => m.includes('1 组'))).toBe(true);
+      expect(messages.some((m: string) => m.includes('1 组'))).toBe(true);
     });
 
     it('不含占位符、无空白的短文本不参与分组', () => {
@@ -69,16 +69,16 @@ describe('LocaleValueLinter', () => {
       const htmlValue = `\n  <div style="color:red"><span>上次学到了这里</span></div>\n`;
       LocaleValueLinter.lint({ 'pages.lasthere': htmlValue });
 
-      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
-      expect(messages.some((m) => m.includes('含 HTML 标签'))).toBe(true);
+      const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(messages.some((m: string) => m.includes('含 HTML 标签'))).toBe(true);
     });
 
     it('value 超长时告警并附长度信息', () => {
       const longValue = '中'.repeat(250);
       LocaleValueLinter.lint({ 'pages.long': longValue });
 
-      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
-      expect(messages.some((m) => m.includes('长度 250'))).toBe(true);
+      const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(messages.some((m: string) => m.includes('长度 250'))).toBe(true);
     });
 
     it('正常短文本不告警', () => {
@@ -91,8 +91,8 @@ describe('LocaleValueLinter', () => {
 
     it('误伤排除：不等式比较表达式（如 "x < 10"）不算 HTML', () => {
       LocaleValueLinter.lint({ 'a.x': '当 x < 10 时显示提示' });
-      const messages = warnSpy.mock.calls.map((c) => String(c[0]));
-      expect(messages.every((m) => !m.includes('含 HTML 标签'))).toBe(true);
+      const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(messages.every((m: string) => !m.includes('含 HTML 标签'))).toBe(true);
     });
   });
 
@@ -119,7 +119,7 @@ describe('LocaleValueLinter', () => {
     expect(report.hasWarnings()).toBe(true);
     // duplicate group + anomaly section 都应该进 report
     // 比 console 行数稍多无关紧要，只要内容包含关键标记即可
-    const consoleLines = warnSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    const consoleLines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(consoleLines).toContain('语义重复');
     expect(consoleLines).toContain('HTML 标签');
   });
@@ -131,5 +131,61 @@ describe('LocaleValueLinter', () => {
     });
     // 应该有 console warn，但不抛错也不依赖外部
     expect(warnSpy).toHaveBeenCalled();
+  });
+
+  describe('短碎片可疑 value', () => {
+    it('命中长度 ≤ 3 且含标点的 value', () => {
+      LocaleValueLinter.lint({
+        'a.all': '全部(',
+        'a.percent': '%已学',
+        'a.dot': '：',
+        'a.normal': '保存', // 长度 2 但无标点 → 不命中
+      });
+
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).toContain('短碎片可疑');
+      expect(lines).toContain('全部(');
+      expect(lines).toContain('%已学');
+      expect(lines).toContain('：');
+      expect(lines).not.toContain('"保存"');
+    });
+
+    it('长 value 不会被误判为短碎片', () => {
+      LocaleValueLinter.lint({
+        'a.long': '请输入用户名以继续操作',
+      });
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).not.toContain('短碎片可疑');
+    });
+  });
+
+  describe('跨模块复用候选检测', () => {
+    it('separator 提供时，识别 ≥3 个前缀下重复出现的相同 value', () => {
+      LocaleValueLinter.lint(
+        {
+          'pages.foo.confirm': '确定',
+          'pages.bar.confirm': '确定',
+          'pages.baz.confirm': '确定',
+          'pages.foo.cancel': '取消', // 只一个前缀 → 不命中
+          'pages.bar.cancel': '取消', // 仍只 2 个前缀 → 不命中
+        },
+        undefined,
+        { separator: '.' },
+      );
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).toContain('跨模块复用候选');
+      expect(lines).toContain('"确定"');
+      expect(lines).not.toContain('"取消"');
+    });
+
+    it('未提供 separator 时跳过跨模块检测', () => {
+      LocaleValueLinter.lint({
+        'pages.foo.confirm': '确定',
+        'pages.bar.confirm': '确定',
+        'pages.baz.confirm': '确定',
+      });
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).not.toContain('跨模块复用候选');
+    });
   });
 });

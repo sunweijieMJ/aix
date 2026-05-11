@@ -22,15 +22,20 @@ export type {
  * 分支并提供新的 Adapter 实现，BaseProcessor 与所有 Processor 子类不需改动。
  */
 export function createFrameworkAdapter(config: ResolvedConfig): FrameworkAdapter {
+  const rejectPatterns = config.extraction.rejectPatterns;
   switch (config.framework) {
     case 'vue': {
-      const options: VueAdapterOptions = { namespace: config.vue.namespace || undefined };
+      const options: VueAdapterOptions = {
+        namespace: config.vue.namespace || undefined,
+        rejectPatterns,
+      };
       return new VueAdapter(config.paths.tImport, config.vue.library, options);
     }
     case 'react': {
       const options: ReactAdapterOptions = {
         namespace: config.react.namespace || undefined,
         includeDefaultMessage: config.react.includeDefaultMessage,
+        rejectPatterns,
       };
       return new ReactAdapter(config.paths.tImport, config.react.library, options);
     }

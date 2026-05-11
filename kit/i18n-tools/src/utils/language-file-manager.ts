@@ -392,8 +392,8 @@ export class LanguageFileManager {
   private static assertNoPrefixConflict(flat: LocaleMap, separator: string): void {
     const keys = Object.keys(flat).sort();
     for (let i = 1; i < keys.length; i++) {
-      const prev = keys[i - 1];
-      const curr = keys[i];
+      const prev = keys[i - 1]!;
+      const curr = keys[i]!;
       if (curr.startsWith(prev + separator)) {
         throw new Error(
           `[i18n-tools] 嵌套输出存在前缀冲突：'${prev}' 同时作为叶子和 '${curr}' 的祖先。\n` +
@@ -477,6 +477,6 @@ export class LanguageFileManager {
     // 落盘后做一次健康度 lint：检测语义重复 key、含 HTML/超长 value。
     // 不阻塞流程，仅以 warning 输出，供用户决策是否手动整理。
     // 透传 report：warning 会同时进磁盘报告（如有提供 RunReport 实例）。
-    LocaleValueLinter.lint(finalMap, report);
+    LocaleValueLinter.lint(finalMap, report, { separator: config.idPrefix.separator });
   }
 }

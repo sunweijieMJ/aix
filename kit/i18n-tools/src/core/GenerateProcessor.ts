@@ -266,14 +266,31 @@ export class GenerateProcessor extends BaseProcessor {
 
     // 优先级 3：本次新生成
     const existingIds = reuseResolver.getExistingIds();
-    const finalId = llmId
-      ? IdGenerator.addDirectoryPrefixToId(item.filePath, llmId, existingIds, this.config.idPrefix)
-      : IdGenerator.generateWithFilePath(
-          item.filePath,
-          GenerateProcessor.cleanForLLM(messageForId),
+
+    // 跨模块 namespace 提升：若本次新分配会把原文带过 promoteToCommon.threshold
+    // 个不同模块前缀，改用 common namespace 而非文件目录前缀。仅作用于"新分配"，
+    // 不回迁历史 key（见 IdPrefixConfig.promoteToCommon 注释）。
+    const promoteToCommon = reuseResolver.shouldPromoteToCommon(messageForId, item.filePath);
+    const finalId = promoteToCommon
+      ? IdGenerator.generateWithFixedPrefix(
+          reuseResolver.getCommonNamespace(),
+          llmId ?? GenerateProcessor.cleanForLLM(messageForId),
           existingIds,
           this.config.idPrefix,
-        );
+        )
+      : llmId
+        ? IdGenerator.addDirectoryPrefixToId(
+            item.filePath,
+            llmId,
+            existingIds,
+            this.config.idPrefix,
+          )
+        : IdGenerator.generateWithFilePath(
+            item.filePath,
+            GenerateProcessor.cleanForLLM(messageForId),
+            existingIds,
+            this.config.idPrefix,
+          );
 
     textToIdMap.set(lookupKey, finalId);
     // 同次内后续文件也能复用：把刚生成的 finalId 注册回索引
