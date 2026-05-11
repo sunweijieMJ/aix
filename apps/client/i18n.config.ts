@@ -77,6 +77,9 @@ export default defineConfig({
     value: '',
     // ID 分隔符，默认 '__'
     separator: '__',
+    // 路径前缀保留的最大目录层级数，默认 0（不限制，保留 anchor 之后到文件目录的全部段）
+    // 注意：设置了 value 固定前缀时本字段不生效
+    // maxDepth: 0,
     // 中文常用词映射表（用于本地 ID 兜底生成，可扩展）
     // chineseMappings: { '确认': 'confirm', '取消': 'cancel', ... },
   },
