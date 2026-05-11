@@ -64,12 +64,12 @@ describe('FlowGraph 组件', () => {
   it('支持 v-model:nodes', () => {
     const nodes = [{ id: '1', position: { x: 0, y: 0 } }];
     const wrapper = mount(FlowGraph, { props: { nodes } });
-    expect(wrapper.props('nodes')).toEqual(nodes);
+    expect((wrapper.props() as Record<string, unknown>).nodes).toEqual(nodes);
   });
 
   it('支持 v-model:edges', () => {
     const edges = [{ id: 'e1', source: '1', target: '2' }];
     const wrapper = mount(FlowGraph, { props: { edges } });
-    expect(wrapper.props('edges')).toEqual(edges);
+    expect((wrapper.props() as Record<string, unknown>).edges).toEqual(edges);
   });
 });

@@ -189,6 +189,18 @@ export interface ModulesConfig {
 }
 
 /**
+ * 导出格式配置
+ */
+export interface OutputConfig {
+  /**
+   * 输出格式：
+   * - 'flat'（默认）：扁平 key/value，如 `{ "views__order__submit": "提交" }`
+   * - 'nested'：按 idPrefix.separator 拆分 key 生成树形结构
+   */
+  format?: 'flat' | 'nested';
+}
+
+/**
  * i18n-tools 完整配置接口
  */
 export interface I18nToolsConfig {
@@ -254,6 +266,11 @@ export interface I18nToolsConfig {
    * 配置时按 rules 分桶到子目录，详见 ModulesConfig。
    */
   modules?: ModulesConfig;
+
+  /**
+   * 导出格式配置（可选）。仅影响 export 输出，内部工作文件始终保持扁平。
+   */
+  output?: OutputConfig;
 }
 
 /**
@@ -305,6 +322,11 @@ export interface ResolvedConfig {
     defaultModule: string;
     manifest: boolean;
     layout: 'by-locale' | 'by-module';
+  };
+
+  /** 已解析的导出格式配置 */
+  output: {
+    format: 'flat' | 'nested';
   };
 }
 

@@ -155,3 +155,8 @@ export const DEFAULT_EXCLUDE = [
 export const DEFAULT_MODULES_DEFAULT_MODULE = 'common';
 export const DEFAULT_MODULES_MANIFEST = true;
 export const DEFAULT_MODULES_LAYOUT = 'by-locale' as const;
+
+/**
+ * 默认导出格式
+ */
+export const DEFAULT_OUTPUT_FORMAT = 'flat' as const;

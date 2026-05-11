@@ -1,3 +1,4 @@
+import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { IComponentInjector } from '../../adapters/FrameworkAdapter';
 import type { VueImportManager } from './VueImportManager';
 import type { VueI18nLibrary } from './libraries';
@@ -31,6 +32,19 @@ export class VueComponentInjector implements IComponentInjector {
     const isScriptSetup = /<script\s+setup/.test(code);
 
     if (!isScriptSetup) {
+      return code;
+    }
+
+    // 双块共存场景：t 由 VueImportManager 在非-setup 块顶层 import 注入；
+    // setup 块共享模块作用域直接复用，**不**再注入 useI18n hook。
+    let descriptor;
+    try {
+      descriptor = parseSFC(code).descriptor;
+    } catch {
+      // 解析失败 → 退回到旧行为
+      descriptor = undefined;
+    }
+    if (descriptor?.script && descriptor.scriptSetup) {
       return code;
     }
 

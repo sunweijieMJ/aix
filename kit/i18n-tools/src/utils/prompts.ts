@@ -89,13 +89,23 @@ Rules:
 2. Only translate ${sourceCode} values to ${targetCode}, do not modify keys or ${sourceCode} values
 3. If ${targetCode} already has a value, keep it unchanged
 4. Translations should be natural and professional
-5. NEVER translate interpolation variables like {name}, {count}, {0} — keep them as-is
+5. CRITICAL — NEVER translate interpolation placeholders. The text inside curly braces \`{...}\` is a variable identifier that must be preserved EXACTLY:
+   - Do NOT translate the words inside \`{}\` (e.g., \`{userName}\` must NOT become \`{user name}\` or \`{用户名}\`)
+   - Do NOT change case (\`{count}\` must NOT become \`{Count}\`)
+   - Do NOT add/remove spaces or punctuation inside \`{}\`
+   - Do NOT split or merge placeholders
+   - The set of placeholders in your output MUST be identical to the input (same names, same count)
 6. NEVER translate HTML tags like <strong>, <br/>, <span> — keep them as-is
 7. Return valid JSON only, no markdown code fences
 
-Example:
-Input: {"loginWelcome": {"${sourceCode}": "欢迎 {name}，您有 {count} 条消息", "${targetCode}": ""}}
-Output: {"loginWelcome": {"${sourceCode}": "欢迎 {name}，您有 {count} 条消息", "${targetCode}": "Welcome {name}, you have {count} messages"}}`;
+Example (correct):
+Input: {"loginWelcome": {"${sourceCode}": "欢迎 {userName}，您有 {count} 条消息", "${targetCode}": ""}}
+Output: {"loginWelcome": {"${sourceCode}": "欢迎 {userName}，您有 {count} 条消息", "${targetCode}": "Welcome {userName}, you have {count} messages"}}
+
+Example (WRONG — placeholder translated, do not do this):
+Input  placeholder: \`{内部错误网络异常}\`
+WRONG output:       \`{internal error network exception}\`   ← runtime cannot match this key
+RIGHT output:       \`{内部错误网络异常}\`                    ← keep identifier verbatim`;
 }
 
 /**

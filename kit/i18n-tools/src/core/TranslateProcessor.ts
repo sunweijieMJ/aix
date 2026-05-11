@@ -211,6 +211,12 @@ export class TranslateProcessor extends FileProcessor {
 
   /**
    * 将翻译结果合并到内存数据中（纯内存操作，不涉及文件 I/O）
+   *
+   * 占位符一致性校验：vue-i18n / i18next 通过 `{xxx}` 字面 key 替换运行时实参，
+   * 若 LLM 把占位符内的标识符也翻译了（如 `{userName}` → `{user name}`），
+   * 运行时无法匹配实参 key，最终用户会看到原始 `{user name}` 字面输出。
+   * 因此：占位符集合（按 key 集合而不是序列）必须与源语保持一致；不一致则
+   * 丢弃该条翻译，留待下一次断点续翻人工/重译处理。
    */
   private mergeTranslations(
     currentData: Translations,
@@ -218,20 +224,68 @@ export class TranslateProcessor extends FileProcessor {
     translatedBatch: Translations,
   ): number {
     let translatedCount = 0;
+    let placeholderMismatches = 0;
+    const sourceLocale = this.config.locale.source;
     const targetLocale = this.config.locale.target;
 
-    for (const [key] of Object.entries(originalBatch)) {
+    for (const [key, originalItem] of Object.entries(originalBatch)) {
       const newEnValue = translatedBatch[key]?.[targetLocale];
-      if (newEnValue?.trim()) {
-        if (!currentData[key]) {
-          currentData[key] = {};
+      if (!newEnValue?.trim()) continue;
+
+      const sourceText = originalItem[sourceLocale];
+      if (typeof sourceText === 'string' && sourceText) {
+        const expected = TranslateProcessor.extractPlaceholders(sourceText);
+        const actual = TranslateProcessor.extractPlaceholders(newEnValue);
+        if (!TranslateProcessor.placeholdersMatch(expected, actual)) {
+          placeholderMismatches++;
+          LoggerUtils.warn(
+            `⚠️ 占位符不匹配，丢弃翻译 [${key}]:\n` +
+              `   源文: ${sourceText}\n` +
+              `   译文: ${newEnValue}\n` +
+              `   期望占位符: {${[...expected].join('}, {')}}\n` +
+              `   实际占位符: {${[...actual].join('}, {')}}`,
+          );
+          continue;
         }
-        currentData[key][targetLocale] = newEnValue;
-        translatedCount++;
       }
+
+      if (!currentData[key]) {
+        currentData[key] = {};
+      }
+      currentData[key][targetLocale] = newEnValue;
+      translatedCount++;
+    }
+
+    if (placeholderMismatches > 0) {
+      LoggerUtils.warn(
+        `   共丢弃 ${placeholderMismatches} 条因占位符被翻译而失效的结果，可重新运行 translate 续翻。`,
+      );
     }
 
     return translatedCount;
+  }
+
+  /**
+   * 提取文本中所有 `{xxx}` 形式的占位符 key 集合。
+   * 用集合而非序列：vue-i18n 允许语序调换（如英译时把 "{count} new messages"
+   * 变成 "you have {count} messages"），只要占位符 key 完整保留即视为合法。
+   */
+  private static extractPlaceholders(text: string): Set<string> {
+    const set = new Set<string>();
+    const regex = /\{([^{}]+)\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      set.add(match[1]!.trim());
+    }
+    return set;
+  }
+
+  private static placeholdersMatch(a: Set<string>, b: Set<string>): boolean {
+    if (a.size !== b.size) return false;
+    for (const k of a) {
+      if (!b.has(k)) return false;
+    }
+    return true;
   }
 
   private logTranslationResult(result: {

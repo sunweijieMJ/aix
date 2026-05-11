@@ -188,8 +188,8 @@ export class IdGenerator {
     }
 
     // 如果是纯英文，直接处理
-    // \u590d\u7528 FileUtils.containsChinese\uff0c\u907f\u514d\u4e0e file-utils / constants \u591a\u5904\u5b9a\u4e49\u4e2d\u6587\u5224\u5b9a
-    // \u6b63\u5219\u5e26\u6765\u8bed\u4e49\u6f02\u79fb\uff08\u4f8b\u5982\u672a\u6765\u82e5\u9700\u6269\u5230\u65e5\u97e9\u5b57\u7b26\uff0c\u5f97\u6539\u4e09\u5904\u4fdd\u6301\u4e00\u81f4\uff09\u3002
+    // 复用 FileUtils.containsChinese，避免与 file-utils / constants 多处定义中文判定
+    // 正则带来语义漂移（例如未来若需扩到日韩字符，得改三处保持一致）。
     if (!FileUtils.containsChinese(cleanText)) {
       return this.sanitizeSemanticId(cleanText);
     }

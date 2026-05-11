@@ -2,6 +2,7 @@ import fs from 'fs';
 import type { ResolvedConfig } from '../config';
 import { FILES } from '../utils/constants';
 import { FileUtils } from '../utils/file-utils';
+import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
@@ -58,7 +59,10 @@ export class MergeProcessor extends FileProcessor {
     }
 
     this.performMerge(analysisResult, existingTranslations, translatedPath);
-    this.updateLanguagePackage(analysisResult.newlyTranslated);
+    // existingTranslations 包含 pick 阶段通过 glossary 预填的条目，这些条目
+    // 不经过 translate，但同样需要写入目标语言文件。合并后一并同步。
+    const allTranslations = { ...existingTranslations, ...analysisResult.newlyTranslated };
+    this.updateLanguagePackage(allTranslations);
     this.displayMergeResult(analysisResult);
   }
 
@@ -166,43 +170,86 @@ export class MergeProcessor extends FileProcessor {
   }
 
   private updateLanguagePackage(newlyTranslated: Translations): void {
-    const sourceLocale = this.config.locale.source;
     const targetLocale = this.config.locale.target;
+
+    if (this.config.modules) {
+      this.updateModularLanguagePackage(newlyTranslated, targetLocale);
+      return;
+    }
+
+    this.updateFlatLanguagePackage(newlyTranslated, targetLocale);
+  }
+
+  private updateModularLanguagePackage(newlyTranslated: Translations, targetLocale: string): void {
+    const sourceLocale = this.config.locale.source;
+
+    // 读取现有 target locale 数据（不依赖其文件分桶，只取扁平值）
+    const { flat: targetMessages } = LanguageFileManager.readModularLocaleWithModuleMap(
+      this.config,
+      this.isCustom,
+      targetLocale,
+    );
+
+    let updatedCount = 0;
+    for (const [key, data] of Object.entries(newlyTranslated)) {
+      const translatedValue = data[targetLocale];
+      if (
+        translatedValue &&
+        typeof translatedValue === 'string' &&
+        targetMessages[key] !== translatedValue
+      ) {
+        targetMessages[key] = translatedValue;
+        updatedCount++;
+      }
+    }
+
+    // 用 ModuleResolver 重新计算 keyModuleMap：source locale 的文本驱动分桶，
+    // 与 generate/export 阶段一致；若用 target locale 文本（英文），matchKey
+    // 规则若依赖中文内容会出现 source/target 分桶不一致的边界 bug。
+    const sourceMessages = LanguageFileManager.readLocaleFile(
+      this.config,
+      this.isCustom,
+      sourceLocale,
+    );
+    // sourceMessages 为 null 时（极少见的 source 文件损坏）回落到用 target 内容反推，
+    // 至少能维持现状不阻塞合并流程。
+    const messagesForBucketing = sourceMessages ?? targetMessages;
+    const keyModuleMap = LanguageFileManager.buildKeyModuleMap(this.config, messagesForBucketing);
+
+    LanguageFileManager.writeLocaleFile(
+      this.config,
+      this.isCustom,
+      targetMessages,
+      targetLocale,
+      keyModuleMap,
+    );
+    LoggerUtils.info(`📄 已更新 ${targetLocale} 模块化语言包，更新 ${updatedCount} 个条目`);
+  }
+
+  private updateFlatLanguagePackage(newlyTranslated: Translations, targetLocale: string): void {
+    const sourceLocale = this.config.locale.source;
     const targetPath = FileUtils.getLocaleFilePath(this.config, this.isCustom, targetLocale);
     const sourcePath = FileUtils.getLocaleFilePath(this.config, this.isCustom, sourceLocale);
 
-    let originalMessages: Record<string, any> = {};
-    let isNested = false;
-
-    if (fs.existsSync(targetPath)) {
-      originalMessages = FileUtils.safeLoadJsonFile<Record<string, any>>(targetPath, {
-        errorMessage: `读取${targetLocale}.json失败`,
-        silent: false,
-      });
-      isNested = FileUtils.isNestedStructure(originalMessages);
+    // 优先以 target locale 现有文件的结构（嵌套/扁平）为模板；
+    // 不存在时回落到 source locale 文件结构，保证 zh-CN/en-US 格式一致。
+    const targetInfo = LanguageFileManager.readFlatLocale(
+      targetPath,
+      `读取${targetLocale}.json失败`,
+    );
+    const targetMessages = targetInfo.flat;
+    let isNested = targetInfo.isNested;
+    if (Object.keys(targetMessages).length > 0 || fs.existsSync(targetPath)) {
       LoggerUtils.info(`📋 参考 ${targetLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`);
     } else if (fs.existsSync(sourcePath)) {
-      // 目标语言文件不存在时，参考源语言的结构
-      const sourceMessages = FileUtils.safeLoadJsonFile<Record<string, any>>(sourcePath, {
-        errorMessage: `读取${sourceLocale}.json失败`,
-        silent: false,
-      });
-      isNested = FileUtils.isNestedStructure(sourceMessages);
+      const sourceInfo = LanguageFileManager.readFlatLocale(
+        sourcePath,
+        `读取${sourceLocale}.json失败`,
+      );
+      isNested = sourceInfo.isNested;
       LoggerUtils.info(
         `📋 ${targetLocale}.json 不存在，参考 ${sourceLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`,
       );
-    }
-
-    let targetMessages: Record<string, string>;
-    if (Object.keys(originalMessages).length > 0) {
-      const flattenedMessages = FileUtils.flattenObject(originalMessages);
-      targetMessages = Object.fromEntries(
-        Object.entries(flattenedMessages)
-          .filter(([, value]) => typeof value === 'string')
-          .map(([key, value]) => [key, String(value)]),
-      );
-    } else {
-      targetMessages = {};
     }
 
     let updatedCount = 0;
@@ -218,13 +265,12 @@ export class MergeProcessor extends FileProcessor {
       }
     }
 
-    let outputMessages: Record<string, any>;
+    const outputMessages: Record<string, any> = isNested
+      ? FileUtils.unflattenObject(targetMessages)
+      : targetMessages;
+
     if (isNested) {
-      outputMessages = FileUtils.unflattenObject(targetMessages);
       LoggerUtils.info('📝 保存为嵌套结构');
-    } else {
-      outputMessages = targetMessages;
-      LoggerUtils.info('📝 保存为扁平结构');
     }
 
     FileUtils.writeJsonFile(targetPath, outputMessages);

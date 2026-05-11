@@ -144,12 +144,18 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
   /**
    * 转换翻译 JSX 组件
+   *
+   * @param inJsxChildContext - 调用方是否处于 JsxElement.children 位置。
+   *   - true: 返回 JsxText（JSX children 合法）；
+   *   - false: 返回 StringLiteral（适用于 JsxAttribute={<Trans />} 等表达式位置，
+   *            JsxText 在此处会产生非法 AST）。
    */
   private transformTranslationComponent(
     node: ts.JsxElement | ts.JsxSelfClosingElement,
     localeMap: Record<string, string>,
     definedMessages: Map<string, MessageInfo>,
     sourceFile: ts.SourceFile,
+    inJsxChildContext: boolean,
   ): ts.Node | null {
     const openingElement = ts.isJsxElement(node) ? node.openingElement : node;
 
@@ -172,7 +178,9 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return CommonASTUtils.createStringOrTemplateNode(finalText, messageInfo.values);
     }
 
-    return ts.factory.createJsxText(finalText, false);
+    return inJsxChildContext
+      ? ts.factory.createJsxText(finalText, false)
+      : ts.factory.createStringLiteral(finalText);
   }
 
   /**
@@ -249,7 +257,13 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     prepass(context.sourceFile);
 
     return (transformationContext: ts.TransformationContext) => {
+      // 父节点栈：判断当前 visit 节点是否在 JsxElement.children 位置；
+      // 在 JsxAttribute / JsxExpression 内部时不能用 JsxText 替换 SelfClosingElement。
+      const parentStack: ts.Node[] = [];
+
       const visit = (node: ts.Node): ts.Node | ts.Node[] => {
+        const parent = parentStack[parentStack.length - 1];
+        const inJsxChildContext = parent !== undefined && ts.isJsxElement(parent);
         let currentNode = node;
 
         // 1. 重命名组件引用
@@ -330,6 +344,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
               context.localeMap,
               context.definedMessages,
               context.sourceFile,
+              inJsxChildContext,
             );
             if (transformedNode) {
               context.hasChanges = true;
@@ -365,7 +380,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           }
         }
 
-        return ts.visitEachChild(currentNode, visit, transformationContext);
+        parentStack.push(currentNode);
+        const result = ts.visitEachChild(currentNode, visit, transformationContext);
+        parentStack.pop();
+        return result;
       };
 
       return (sourceFile: ts.SourceFile) => ts.visitNode(sourceFile, visit) as ts.SourceFile;

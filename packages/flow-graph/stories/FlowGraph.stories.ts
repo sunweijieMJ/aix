@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
+import type { Component } from 'vue';
 import { FlowGraph } from '../src';
 import BasicEdit from './examples/BasicEdit.vue';
 import BottomBarPosition from './examples/BottomBarPosition.vue';
@@ -23,7 +24,7 @@ const meta: Meta<typeof FlowGraph> = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const wrap = (component: unknown) => ({
+const wrap = (component: Component) => ({
   components: { Demo: component },
   template: '<div style="width:100%;height:600px"><Demo /></div>',
 });

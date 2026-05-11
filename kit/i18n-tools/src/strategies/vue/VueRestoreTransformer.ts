@@ -73,14 +73,16 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       }
     }
 
-    // 还原 script 部分
-    const script = descriptor.scriptSetup || descriptor.script;
-    if (script) {
-      const restoredScript = this.restoreScript(script.content, localeMap, lib);
-      if (restoredScript !== script.content) {
+    // 还原 script 部分：SFC 允许 `<script>` 与 `<script setup>` 同时存在，
+    // VueTransformer 生成阶段对两个块都做提取，还原阶段必须对称处理，否则
+    // 仅有 `<script>` 块的 `this.$t(...)` 调用不会被还原，导致 generate/restore 往返丢数据。
+    for (const block of [descriptor.script, descriptor.scriptSetup]) {
+      if (!block) continue;
+      const restoredScript = this.restoreScript(block.content, localeMap, lib);
+      if (restoredScript !== block.content) {
         replacements.push({
-          start: script.loc.start.offset,
-          end: script.loc.end.offset,
+          start: block.loc.start.offset,
+          end: block.loc.end.offset,
           content: restoredScript,
         });
       }

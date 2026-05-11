@@ -47,20 +47,70 @@ export class VueImportManager implements IImportManager {
       updatedCode = this.stripPlaceholderTDeclares(updatedCode);
       updatedCode = this.addPluginLocaleImport(updatedCode);
     } else {
-      const isScriptSetup = /<script\s+setup/.test(code);
       const hasScriptStrings = fileStrings.some(
         (s) => s.context === 'script' || s.context === 'js-code',
       );
+      if (!hasScriptStrings) return updatedCode;
 
-      if (isScriptSetup && hasScriptStrings) {
-        // SFC + script setup 注入 const { t } = useI18n() 之前同样要清理占位声明。
-        updatedCode = this.stripPlaceholderTDeclares(updatedCode);
+      let descriptor;
+      try {
+        descriptor = parseSFC(code).descriptor;
+      } catch {
+        return updatedCode;
+      }
+      const hasNonSetup = !!descriptor.script;
+      const hasSetup = !!descriptor.scriptSetup;
+
+      updatedCode = this.stripPlaceholderTDeclares(updatedCode);
+
+      if (hasNonSetup && hasSetup) {
+        // 双块共存：t 来自非-setup 块顶层 import { t } from tImport；setup 块
+        // 共享模块作用域直接复用，因此 setup 块**不**注入 useI18n / const t。
+        // Why: 与本仓库 demo 注释约定一致（"所有 import 集中到顶部 script 块"），
+        // 也避免双块各自 import 后 eslint-plugin-vue 把整个 SFC 视为一个 program
+        // 时触发 import/order 报错。
+        updatedCode = this.addPluginLocaleImportToNonSetupScript(updatedCode);
+      } else if (hasSetup) {
+        // 仅 <script setup>：标准 useI18n hook 注入路径
         updatedCode = this.addHookImport(updatedCode);
         updatedCode = this.addHookDeclaration(updatedCode);
+      } else {
+        // 仅普通 <script>：按需为模块顶层裸 t() 注入 import
+        updatedCode = this.addPluginLocaleImportToNonSetupScript(updatedCode);
       }
     }
 
     return updatedCode;
+  }
+
+  /**
+   * 若 SFC 的非-setup <script> 块（或 SFC 唯一 <script> 块）内含裸 t() 调用，
+   * 向该块顶部注入 `import { t } from tImport`。已存在则跳过。
+   *
+   * 适用场景：
+   *   - 仅 <script>（Options API + 模块顶层调用）
+   *   - 双块共存（非-setup 块为模块顶层 import 锚点，setup 块共享作用域复用）
+   * 不适用 <script setup> 单存场景 —— 那种走 useI18n hook 注入路径。
+   */
+  private addPluginLocaleImportToNonSetupScript(code: string): string {
+    const block = VueImportManager.findScriptBlock(code, { nonSetupOnly: true });
+    if (!block) return code;
+
+    // 检测块内是否存在裸 t() 调用
+    // 用负向先行排除 this.t / `xt(` / `$t(` 等误匹配
+    if (!/(?:^|[^\w.$])t\s*\(/.test(block.content)) return code;
+
+    const escapedPath = CommonASTUtils.escapeRegExp(this.tImport);
+    if (
+      new RegExp(`import\\s*\\{[^}]*\\bt\\b[^}]*\\}\\s*from\\s*['"]${escapedPath}['"]`).test(
+        block.content,
+      )
+    ) {
+      return code;
+    }
+
+    const updatedScript = CommonASTUtils.mergeNamedImport(block.content, this.tImport, ['t']);
+    return code.slice(0, block.start) + updatedScript + code.slice(block.end);
   }
 
   /**
@@ -111,13 +161,15 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
-   * 添加 Hook 导入（如 useI18n 或 useTranslation）
+   * 添加 Hook 导入（如 useI18n 或 useTranslation）。
+   *
+   * 仅在 <script setup> 单块场景调用 —— 双块共存场景由 handleGlobalImports 改走
+   * 模块顶层 import { t } from tImport 路径，setup 块直接复用，不注入 hook。
    */
   private addHookImport(code: string): string {
     if (this.library.getImportCheckRegex().test(code)) {
       return code;
     }
-
     const hookImport = this.library.generateImportStatement();
     return this.addImportToScript(code, hookImport);
   }
@@ -188,7 +240,7 @@ export class VueImportManager implements IImportManager {
    */
   private static findScriptBlock(
     code: string,
-    options: { setupOnly?: boolean } = {},
+    options: { setupOnly?: boolean; nonSetupOnly?: boolean } = {},
   ): ScriptBlockLocation | null {
     let descriptor;
     try {
@@ -197,9 +249,14 @@ export class VueImportManager implements IImportManager {
       return null;
     }
 
-    const block = options.setupOnly
-      ? descriptor.scriptSetup
-      : (descriptor.scriptSetup ?? descriptor.script);
+    let block;
+    if (options.setupOnly) {
+      block = descriptor.scriptSetup;
+    } else if (options.nonSetupOnly) {
+      block = descriptor.script;
+    } else {
+      block = descriptor.scriptSetup ?? descriptor.script;
+    }
     if (!block) return null;
 
     return {

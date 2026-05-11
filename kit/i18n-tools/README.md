@@ -11,6 +11,10 @@ Vue/React 项目国际化自动化工具集，支持中文提取、语义化 ID 
 - **AI 翻译** - 集成 OpenAI 兼容 API（支持 OpenAI/DeepSeek/Azure 等）
 - **完整工作流** - 从提取到导出的一站式自动化流程
 - **增量处理** - 支持增量运行，避免重复处理已国际化的内容
+- **模块化导出** - 按 glob 规则将语言文件分桶到 `<lang>/<module>.json`，适合大项目按业务域拆分
+- **翻译词表** - 支持术语表（glossary），命中词条直接复用译文，跳过 LLM 调用
+- **嵌套输出** - 可选按 ID 分隔符生成树形 JSON，便于人工浏览大型语言包
+- **事务式写入** - generate 阶段先在内存完成全部 transform，全部成功后才落盘源码与语言文件，避免失败留下孤儿 key
 
 ## 安装
 
@@ -44,16 +48,16 @@ export default defineConfig({
   },
 
   // LLM API 配置（必填）
+  // 推荐用法：在 default 中配置共享参数，idGeneration / translation 仅覆盖差异字段
   llm: {
-    idGeneration: {
+    default: {
       apiKey: process.env.LLM_API_KEY!,
       model: 'gpt-4o',
       // baseURL: 'https://api.deepseek.com', // 非 OpenAI 服务需设置
     },
-    translation: {
-      apiKey: process.env.LLM_API_KEY!,
-      model: 'gpt-4o',
-    },
+    // 如需为两个任务使用不同模型，可单独指定：
+    // idGeneration: { model: 'gpt-4o-mini' },
+    // translation:  { model: 'gpt-4o' },
   },
 });
 ```
@@ -219,12 +223,17 @@ interface I18nToolsConfig {
     exportLocale?: string;  // 导出目录
     source: string;         // 源码扫描目录
     tImport?: string;       // t 函数导入路径
+    glossary?: string;      // 翻译词表（glossary）文件路径
   };
 
   /** LLM API 配置 */
   llm: {
-    idGeneration: LLMConfig;   // ID 生成 API
-    translation: LLMConfig;    // 翻译 API
+    /** 共享默认配置，idGeneration / translation 未指定字段会继承 */
+    default?: Partial<LLMConfig>;
+    /** ID 生成接口，未指定字段继承 default */
+    idGeneration?: Partial<LLMConfig>;
+    /** 翻译接口，未指定字段继承 default */
+    translation?: Partial<LLMConfig>;
   };
 
   /** 自定义 AI 提示词 */
@@ -233,12 +242,19 @@ interface I18nToolsConfig {
     translation?: { system?: string; user?: string };
   };
 
+  /** 翻译词表配置（命中词表则跳过 LLM 翻译） */
+  glossary?: {
+    override?: 'always' | 'when-empty';  // 默认 'always'
+    normalize?: boolean;                  // 默认 true
+  };
+
   /** ID 前缀配置 */
   idPrefix?: {
     anchor?: string;                        // 锚点目录，默认 'src'
     value?: string;                         // 自定义固定前缀
     separator?: string;                     // 分隔符，默认 '__'
     chineseMappings?: Record<string, string>; // 中文常用词映射
+    reuseAcrossDirectories?: boolean;       // 是否跨目录复用 key，默认 false
   };
 
   /** 并发控制 */
@@ -259,8 +275,18 @@ interface I18nToolsConfig {
   /** 文件包含模式，默认 ['**/*.vue', '**/*.tsx', '**/*.jsx', '**/*.ts', '**/*.js'] */
   include?: string[];
 
-  /** 排除目录/文件，默认 ['node_modules', 'dist', 'build', '.git', 'public'] */
+  /**
+   * 排除目录/文件，默认包含常见构建产物及根目录工具配置：
+   * ['node_modules', 'dist', 'build', '.git', 'public',
+   *  '*.config.ts', '*.config.js', '*.config.mjs', '*.config.cjs']
+   */
   exclude?: string[];
+
+  /** 模块化导出配置（按 glob/规则分桶到 <lang>/<module>.json，未配置则单文件输出） */
+  modules?: ModulesConfig;
+
+  /** 导出格式配置：'flat'（默认）或 'nested'（按 separator 拆分 key 为树形结构） */
+  output?: { format?: 'flat' | 'nested' };
 }
 ```
 
@@ -352,6 +378,82 @@ export default defineConfig({
   },
 });
 ```
+
+## 高级特性
+
+### 模块化导出（modules）
+
+适用于大型项目按业务域拆分语言包。配置 `rules` 后，`export` 会把 key 按规则分桶到 `<lang>/<module>.json`，未匹配的 key 落入 `defaultModule`（默认 `common`）。
+
+```typescript
+export default defineConfig({
+  // ... 其他配置
+  modules: {
+    rules: [
+      // 按源码路径匹配（picomatch glob，相对 rootDir）
+      { name: 'order',   match: 'src/views/order/**' },
+      { name: 'product', match: ['src/views/product/**', 'src/components/product/**'] },
+      // 按 key 内容匹配（不依赖源码位置）
+      { name: 'error',   matchKey: (key) => key.startsWith('error__') },
+      // 也支持 RegExp / (filePath, key, message) => boolean
+    ],
+    defaultModule: 'common',     // 未命中规则的 key 归属，默认 'common'
+    manifest: true,              // 是否生成 manifest.json，默认 true
+    layout: 'by-locale',         // 'by-locale': locale/<lang>/<module>.json（默认）
+                                 // 'by-module': locale/<module>/<lang>.json
+  },
+});
+```
+
+**匹配优先级**：rules 数组顺序优先（先匹配先归属），同一 key 最多归属一个模块。`match` 与 `matchKey` 互斥，loader 会校验。
+
+### 翻译词表（glossary）
+
+为固定术语提供"权威译文"——命中词表的原文直接采用既定译文，跳过 LLM 翻译。适合品牌词、UI 控件标签等高频固定术语。
+
+```typescript
+// i18n.config.ts
+export default defineConfig({
+  // ... 其他配置
+  paths: {
+    // ... 其他路径
+    glossary: 'src/locale/glossary.json',
+  },
+  glossary: {
+    override: 'always',     // 'always'（默认）覆盖已有译文 / 'when-empty' 仅在缺失时使用
+    normalize: true,        // 匹配前 trim + 空白压缩，默认 true
+  },
+});
+```
+
+```json
+// src/locale/glossary.json — 按目标语言分组
+{
+  "en-US": {
+    "确认": "Confirm",
+    "取消": "Cancel",
+    "我的订单": "My Orders"
+  }
+}
+```
+
+### 嵌套输出（output.format）
+
+默认导出扁平 key/value（如 `{ "views__order__submit": "提交" }`）。配置 `output.format: 'nested'` 后，export 会按 `idPrefix.separator` 拆分 key 生成树形 JSON：
+
+```typescript
+output: { format: 'nested' }
+```
+
+```json
+// flat（默认）
+{ "views__order__submit": "提交" }
+
+// nested
+{ "views": { "order": { "submit": "提交" } } }
+```
+
+注：仅影响 `export` 输出，工具内部工作文件始终为扁平结构，避免合并冲突。
 
 ## 框架支持
 
@@ -457,14 +559,39 @@ src/overrides/locale/       # 定制目录（--custom 模式）
 ├── untranslated.json       # 定制待翻译条目
 └── translations.json       # 定制已翻译条目
 
-public/locale/              # 导出目录（export 生成）
+public/locale/              # 导出目录（export 生成，单文件模式）
 ├── zh-CN.json              # 合并后的最终源语言包
 └── en-US.json              # 合并后的最终目标语言包
+```
+
+**模块化导出模式**（配置了 `modules` 时）：
+
+```
+public/locale/              # by-locale 布局（默认）
+├── zh-CN/
+│   ├── common.json
+│   ├── order.json
+│   └── product.json
+├── en-US/
+│   ├── common.json
+│   ├── order.json
+│   └── product.json
+└── manifest.json           # 模块清单（manifest: true 时生成）
+
+# 或 by-module 布局
+public/locale/
+├── common/
+│   ├── zh-CN.json
+│   └── en-US.json
+└── order/
+    ├── zh-CN.json
+    └── en-US.json
 ```
 
 **文件说明**：
 - `untranslated.json` 和 `translations.json` 是工作流中间文件，可在发布时忽略
 - `export` 会合并主目录和定制目录的语言文件，检测 key 冲突
+- 模块化模式下，generate/merge 阶段的工作目录也会自动按模块分桶
 
 ## 常见问题
 
@@ -546,3 +673,17 @@ export default defineConfig({
   },
 });
 ```
+
+### Q: generate 中途失败会污染语言文件吗？
+
+不会。`generate` 采用事务式写入：先把全部源文件的 transform 结果保留在内存，**所有文件都成功**才会落盘源码并更新语言文件。任一阶段失败立即抛错，语言文件保持原状，可安全修复后重试。
+
+具体阶段：
+1. **transform 到内存** —— AST 失败（最常见）在此拦截，源码与语言文件均未变更
+2. **写源码** —— IO 失败在此拦截，语言文件未变更
+3. **更新语言文件** —— 仅当前两步全部成功才执行
+4. **prettier 格式化** —— 美化步骤，单个失败仅警告不影响正确性
+
+### Q: 模块化导出后单文件流程还能用吗？
+
+可以。不配置 `modules` 时所有行为完全等同——`<lang>.json` 单文件输出。配置 `modules` 后，generate/merge/export 会自动按规则分桶；语言文件的物理结构变成 `<lang>/<module>.json`，但内部 key 表示和 t() 调用方式不变。

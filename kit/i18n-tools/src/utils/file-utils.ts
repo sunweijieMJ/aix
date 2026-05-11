@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import picomatch from 'picomatch';
 import { CONFIG, FILES } from './constants';
 import { LoggerUtils } from './logger';
 import type { ResolvedConfig } from '../config';
@@ -309,10 +310,11 @@ export class FileUtils {
   ): string[] {
     const files: string[] = [];
     const literalExcludes = new Set<string>();
-    const globExcludes: RegExp[] = [];
+    const globExcludes: picomatch.Matcher[] = [];
     for (const e of exclude) {
       if (e.includes('*') || e.includes('?')) {
-        globExcludes.push(FileUtils.simpleGlobToRegex(e));
+        // 仅匹配单段文件名（不跨越 / 分隔符），保持与原 simpleGlobToRegex 行为一致
+        globExcludes.push(picomatch(e, { dot: true }));
       } else {
         literalExcludes.add(e);
       }
@@ -320,11 +322,13 @@ export class FileUtils {
 
     const isExcluded = (name: string): boolean => {
       if (literalExcludes.has(name)) return true;
-      for (const r of globExcludes) {
-        if (r.test(name)) return true;
+      for (const m of globExcludes) {
+        if (m(name)) return true;
       }
       return false;
     };
+
+    const includeMatcher = include.length > 0 ? FileUtils.createIncludeMatcher(include) : null;
 
     const walkDir = (currentPath: string): void => {
       const entries = fs.readdirSync(currentPath, { withFileTypes: true });
@@ -339,10 +343,7 @@ export class FileUtils {
         if (entry.isDirectory()) {
           walkDir(fullPath);
         } else if (entry.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
-          if (
-            include.length === 0 ||
-            FileUtils.matchesIncludePatterns(fullPath, dirPath, include)
-          ) {
+          if (!includeMatcher || includeMatcher(fullPath, dirPath)) {
             files.push(fullPath);
           }
         }
@@ -354,63 +355,17 @@ export class FileUtils {
   }
 
   /**
-   * 将简单 glob（仅支持 `*` 与 `?`）编译为锚定到整段名称的正则。
-   * 不处理路径分隔符与花括号扩展，仅服务于 exclude 中的单段文件名匹配。
+   * 创建 include 模式匹配器：编译期统一生成 picomatch，运行时仅做相对路径计算。
+   * 使用 dot:true 让以 `.` 开头的目录/文件也能被模式命中；统一以 POSIX 风格相对路径喂入。
    */
-  private static simpleGlobToRegex(pattern: string): RegExp {
-    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-    const regex = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
-    return new RegExp(`^${regex}$`);
-  }
-
-  /**
-   * 检查文件路径是否匹配 include 模式列表
-   * 支持常见 glob 模式：** / *.ext、dir/ ** / *.ext、dir/ **
-   */
-  static matchesIncludePatterns(filePath: string, baseDir: string, patterns: string[]): boolean {
-    if (patterns.length === 0) return true;
-
-    const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
-
-    return patterns.some((pattern) => {
-      const normalized = pattern.replace(/\\/g, '/');
-
-      // **/*.ext → 匹配任意目录下指定扩展名的文件
-      if (normalized.startsWith('**/')) {
-        const suffix = normalized.slice(3);
-        if (suffix.startsWith('*.')) {
-          const ext = suffix.slice(1);
-          return relativePath.endsWith(ext);
-        }
-      }
-
-      // dir/** → 匹配目录下所有文件
-      if (normalized.endsWith('/**')) {
-        const prefix = normalized.slice(0, -3);
-        return relativePath.startsWith(prefix + '/') || relativePath === prefix;
-      }
-
-      // dir/**/*.ext → 匹配目录下指定扩展名的文件
-      const doubleStarIdx = normalized.indexOf('/**/');
-      if (doubleStarIdx !== -1) {
-        const prefix = normalized.slice(0, doubleStarIdx);
-        const suffix = normalized.slice(doubleStarIdx + 4);
-        const matchesPrefix = relativePath.startsWith(prefix + '/');
-        if (suffix.startsWith('*.')) {
-          const ext = suffix.slice(1);
-          return matchesPrefix && relativePath.endsWith(ext);
-        }
-      }
-
-      // *.ext → 匹配当前目录下指定扩展名
-      if (normalized.startsWith('*.')) {
-        const ext = normalized.slice(1);
-        return relativePath.endsWith(ext) && !relativePath.includes('/');
-      }
-
-      // 精确匹配
-      return relativePath === normalized;
-    });
+  private static createIncludeMatcher(
+    patterns: string[],
+  ): (filePath: string, baseDir: string) => boolean {
+    const isMatch = picomatch(patterns, { dot: true });
+    return (filePath, baseDir) => {
+      const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
+      return isMatch(relativePath);
+    };
   }
 
   static loadLanguageFile<T extends Record<string, any>>(
@@ -471,15 +426,6 @@ export class FileUtils {
   }
 
   /**
-   * 获取输出目录路径
-   * @param config - 已解析的配置
-   * @returns 输出目录路径
-   */
-  static getOutputDir(config: ResolvedConfig): string {
-    return config.paths.exportLocale;
-  }
-
-  /**
    * 获取语言文件路径
    * @param config - 已解析的配置
    * @param isCustom - 是否为定制目录
@@ -489,16 +435,6 @@ export class FileUtils {
   static getLocaleFilePath(config: ResolvedConfig, isCustom: boolean, locale: string): string {
     const baseDir = this.getDirectoryPath(config, isCustom);
     return path.join(baseDir, `${locale}.json`);
-  }
-
-  /**
-   * 获取导出文件路径
-   * @param config - 已解析的配置
-   * @param locale - 语言代码
-   * @returns 导出文件路径
-   */
-  static getExportFilePath(config: ResolvedConfig, locale: string): string {
-    return path.join(this.getOutputDir(config), `${locale}.json`);
   }
 
   /**

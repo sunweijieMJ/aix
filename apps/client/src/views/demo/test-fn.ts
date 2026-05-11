@@ -720,19 +720,4 @@ export const GLOSSARY_HITS = {
   unsavedChanges: '您有未保存的更改，确定要离开吗？',
 } as const;
 
-// ==================== 31. 已国际化函数（脚本上下文的幂等性）====================
-// 验证：含中文参数但被 t() / $t() 包裹的调用不应被二次提取。
-// 对应 CommonASTUtils.isAlreadyInternationalized 在 .ts 文件路径下的行为。
-declare const t: (key: string, params?: Record<string, unknown>) => string;
-declare const $t: (key: string, params?: Record<string, unknown>) => string;
-
-export const alreadyTranslatedCalls = (): string[] => {
-  return [
-    // ❌ 不应再次提取：参数已在 t()/$t() 调用内
-    t('已确认'),
-    $t('请重新登录'),
-    t('用户欢迎', { name: $t('管理员') }),
-  ];
-};
-
 console.log('测试函数模块加载完成'); // console调用不应该被提取

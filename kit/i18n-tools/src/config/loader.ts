@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import { createJiti } from 'jiti';
 import {
   DEFAULT_BATCH_DELAY,
   DEFAULT_BATCH_SIZE,
@@ -17,6 +18,7 @@ import {
   DEFAULT_MODULES_DEFAULT_MODULE,
   DEFAULT_MODULES_LAYOUT,
   DEFAULT_MODULES_MANIFEST,
+  DEFAULT_OUTPUT_FORMAT,
   DEFAULT_PATHS,
   DEFAULT_REACT,
   DEFAULT_VUE,
@@ -81,8 +83,7 @@ export function resolveModules(modules: I18nToolsConfig['modules']): ResolvedCon
   }
 
   const names = new Set<string>();
-  for (let i = 0; i < modules.rules.length; i++) {
-    const rule = modules.rules[i];
+  for (const [i, rule] of modules.rules.entries()) {
     if (!rule.name || typeof rule.name !== 'string') {
       throw new Error(`modules.rules[${i}] 的 name 字段缺失或非字符串`);
     }
@@ -101,9 +102,20 @@ export function resolveModules(modules: I18nToolsConfig['modules']): ResolvedCon
     }
   }
 
+  const defaultModule = modules.defaultModule ?? DEFAULT_MODULES_DEFAULT_MODULE;
+
+  // defaultModule 与 rule.name 重名会造成 writeModularLocaleFile 把未命中 key
+  // 与命中该 rule 的 key 写入同一桶文件，语义模糊且难以追踪，禁用之。
+  if (names.has(defaultModule)) {
+    throw new Error(
+      `modules.defaultModule "${defaultModule}" 与同名 rule 冲突。` +
+        `请把 defaultModule 改为另一个不在 rules 中的名称（如 "common"）。`,
+    );
+  }
+
   return {
     rules: modules.rules,
-    defaultModule: modules.defaultModule ?? DEFAULT_MODULES_DEFAULT_MODULE,
+    defaultModule,
     manifest: modules.manifest ?? DEFAULT_MODULES_MANIFEST,
     layout: modules.layout ?? DEFAULT_MODULES_LAYOUT,
   };
@@ -136,6 +148,10 @@ export function findConfigFile(startDir: string): string | null {
  * 配置文件存在但加载失败（语法错误、导入失败等）会重新抛出原始错误，
  * 不再被静默吞为 null —— 否则用户会看到误导性的"找不到配置文件"提示。
  *
+ * Why jiti：Node ESM 运行时不识别 TypeScript 语法，直接 `import()` 一个 `.ts`
+ * 文件会抛 `Unknown file extension ".ts"`。`i18n.config.ts` 是 README 推荐的首选
+ * 命名，必须通过 jiti（或同类 TS loader）才能在生产 dist/cli.js 下加载。
+ *
  * @param configPath - 配置文件路径（可选，不传则自动查找）
  */
 export async function loadConfigFile(configPath?: string): Promise<I18nToolsConfig | null> {
@@ -146,9 +162,19 @@ export async function loadConfigFile(configPath?: string): Promise<I18nToolsConf
   }
 
   try {
-    const fileUrl = pathToFileURL(resolvedPath).href;
-    const configModule = await import(fileUrl);
-    return configModule.default || configModule;
+    const ext = path.extname(resolvedPath);
+    let configModule: { default?: unknown } & Record<string, unknown>;
+
+    if (ext === '.ts' || ext === '.mts' || ext === '.cts') {
+      // .ts 系列必须经 jiti 转译；jiti 自己处理 module URL 解析
+      const jiti = createJiti(import.meta.url, { interopDefault: true });
+      configModule = (await jiti.import(resolvedPath)) as typeof configModule;
+    } else {
+      const fileUrl = pathToFileURL(resolvedPath).href;
+      configModule = await import(fileUrl);
+    }
+
+    return (configModule.default ?? configModule) as I18nToolsConfig;
   } catch (error) {
     throw new Error(
       `加载配置文件失败: ${resolvedPath}\n${error instanceof Error ? error.message : String(error)}`,
@@ -165,7 +191,7 @@ export async function loadConfigFile(configPath?: string): Promise<I18nToolsConf
 export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   const rootDir = path.resolve(userConfig.rootDir);
 
-  return {
+  const resolved: ResolvedConfig = {
     rootDir,
     framework: userConfig.framework,
     vue: {
@@ -230,7 +256,39 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     include: userConfig.include ?? DEFAULT_INCLUDE,
     exclude: userConfig.exclude ?? DEFAULT_EXCLUDE,
     modules: resolveModules(userConfig.modules),
+    output: {
+      format: userConfig.output?.format ?? DEFAULT_OUTPUT_FORMAT,
+    },
   };
+
+  const resolvedSeparator = resolved.idPrefix.separator;
+
+  if (resolved.output.format === 'nested' && resolvedSeparator !== '.') {
+    throw new Error(
+      `配置错误：output.format='nested' 要求 idPrefix.separator='.'，` +
+        `当前 separator='${resolvedSeparator}'。\n` +
+        `vue-i18n 用 '.' 遍历嵌套 key，使用其他分隔符会导致运行时 t() 查找失败。\n` +
+        `请将 idPrefix.separator 改为 '.'，并重新执行 generate 以更新所有 key。`,
+    );
+  }
+
+  // 交叉校验：idPrefix.value 固定前缀 + 模块 glob match 规则会导致虚拟路径反推不准
+  // 详见 LanguageFileManager.buildKeyModuleMap：从 key split 出虚拟路径依赖目录式 prefix，
+  // 若用户用固定 value 覆盖了目录前缀，glob match 规则将命中错误的模块。
+  if (resolved.modules && resolved.idPrefix.value) {
+    const hasGlobMatch = resolved.modules.rules.some(
+      (rule) => rule.match !== undefined && typeof rule.match !== 'function',
+    );
+    if (hasGlobMatch) {
+      console.warn(
+        `⚠️  配置警告：idPrefix.value='${resolved.idPrefix.value}' 与 modules.rules 的 glob match 规则同用时，\n` +
+          `   模块归属反推依赖目录式 key 结构，固定前缀会导致路径不匹配。\n` +
+          `   建议改用 matchKey（基于 key 字面匹配）或 match 传函数形式精确归类。`,
+      );
+    }
+  }
+
+  return resolved;
 }
 
 /**

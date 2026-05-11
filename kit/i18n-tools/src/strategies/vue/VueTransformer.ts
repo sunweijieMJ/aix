@@ -63,20 +63,26 @@ export class VueTransformer implements ITransformer {
       // 处理 script 部分。
       // Vue 3 允许 <script> 与 <script setup> 共存：<script> 用于 Options API
       // 或 inheritAttrs/name 等组件选项，<script setup> 用于 Composition API。
-      // 必须分别独立转换：
-      //   - <script setup> 块：通过 setup 顶层注入的 const { t } = useI18n() 调裸 t()
-      //   - <script> 块：若 <script setup> 不存在，顶层无 useI18n 注入，
-      //     必须走 this.$t（Vue 实例属性）；若两者共存，<script> 块仍是 Options API
-      //     上下文，组件实例属性可用，仍走 this.$t。
+      //   - <script setup> 块：整块走裸 t()（顶层注入 const { t } = useI18n()）
+      //   - <script> 块：按节点判定。defineComponent 选项内部的 method/lifecycle
+      //     体里走 this.$t；模块顶层（顶层 const、IIFE 等）必须走裸 t() 并 import
+      //     —— 顶层不存在 `this`，强行 this.$t 会运行时崩溃。
+      // SFC 各 script 块统一用裸 `t` 函数名：
+      //   - 仅 <script setup>：t 来自 setup 块顶部注入的 const { t } = useI18n()
+      //   - 仅 <script>：t 来自模块顶部注入的 import { t } from tImport
+      //     （Options API 选项内部走 this.$t —— 按 isInThisBindableScope 判定）
+      //   - 双块共存：t 仅在非-setup 块顶部 import 一次，两个块共享模块作用域
+      //     直接复用（Vue 3 SFC 编译模型）。这样避免命名冲突，也匹配本仓库 demo
+      //     注释约定的"所有 import 集中到非-setup 块"风格。
       const scriptBlocks: Array<{
         block: typeof descriptor.script | typeof descriptor.scriptSetup;
-        useThisQualifier: boolean;
+        allowThisQualifier: boolean;
       }> = [
-        { block: descriptor.script, useThisQualifier: true },
-        { block: descriptor.scriptSetup, useThisQualifier: false },
+        { block: descriptor.script, allowThisQualifier: true },
+        { block: descriptor.scriptSetup, allowThisQualifier: false },
       ];
 
-      for (const { block, useThisQualifier } of scriptBlocks) {
+      for (const { block, allowThisQualifier } of scriptBlocks) {
         if (!block) continue;
         const blockStartLine = block.loc.start.line;
         const blockEndLine = block.loc.end.line;
@@ -89,7 +95,7 @@ export class VueTransformer implements ITransformer {
           block.content,
           block.loc.start.line - 1,
           scriptStrings,
-          useThisQualifier,
+          allowThisQualifier,
         );
         replacements.push({
           start: block.loc.start.offset,
@@ -471,7 +477,7 @@ export class VueTransformer implements ITransformer {
     scriptContent: string,
     lineOffset: number,
     strings: ExtractedString[],
-    useThisQualifier: boolean,
+    allowThisQualifier: boolean,
   ): string {
     const sourceFile = CommonASTUtils.parseSourceFile(scriptContent, 'temp.ts');
 
@@ -497,7 +503,11 @@ export class VueTransformer implements ITransformer {
       const node = CommonASTUtils.findExactStringNode(sourceFile, position, extracted.original);
 
       if (node) {
-        const replacement = this.generateScriptReplacement(extracted, useThisQualifier);
+        // 仅当所在块允许 this.$t（普通 <script> 块），且当前节点位于可绑定 this
+        // 的词法作用域（method / lifecycle / 普通函数体内部，箭头函数透明）时，
+        // 才使用 this.$t；模块顶层 / 选项对象的属性初始化器外层 → 裸 t()。
+        const useThis = allowThisQualifier && CommonASTUtils.isInThisBindableScope(node);
+        const replacement = this.generateScriptReplacement(extracted, useThis);
         const start = node.getStart(sourceFile);
         const end = node.getEnd();
 
@@ -528,7 +538,10 @@ export class VueTransformer implements ITransformer {
 
     // SFC Options API 走 this.$t（vue-i18n 全局注册的实例属性，data/methods/
     // computed/lifecycle 的 this 都指向组件实例）；其它情况（script setup、纯
-    // .ts/.js）走裸 t —— hook 声明或 import 语句由 ImportManager 注入。
+    // .ts/.js、SFC <script> 模块顶层）一律走裸 t —— 由 ImportManager 配套注入：
+    //  - <script setup> 单存：const { t } = useI18n()
+    //  - <script> 单存（含 Options API）：import { t } from tImport（仅当模块顶层有调用）
+    //  - 双块共存：import { t } from tImport 注入到非-setup 块；setup 块共享模块作用域
     const tFunc = useThisQualifier ? 'this.$t' : 't';
 
     // 过滤掉字面量，只保留真正的变量表达式

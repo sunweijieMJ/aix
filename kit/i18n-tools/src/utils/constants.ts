@@ -16,8 +16,6 @@ export const FILES = {
 export const CONFIG = {
   /** 中文字符正则表达式 */
   CHINESE_REGEX: /[\u4e00-\u9fff]/,
-  /** 支持的文件扩展名 */
-  SUPPORTED_EXTENSIONS: ['.tsx', '.jsx', '.ts', '.js'] as string[],
 } as const;
 
 /**

@@ -21,11 +21,8 @@ import type { VueI18nLibrary } from './libraries';
  * 负责从 Vue 文件中提取需要国际化的文本
  */
 export class VueTextExtractor extends BaseTextExtractor {
-  private library: VueI18nLibrary;
-
-  constructor(library: VueI18nLibrary) {
+  constructor(_library: VueI18nLibrary) {
     super();
-    this.library = library;
   }
   /**
    * 从单个文件中提取字符串

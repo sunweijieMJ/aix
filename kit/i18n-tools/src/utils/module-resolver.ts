@@ -48,14 +48,6 @@ export class ModuleResolver {
     return this.defaultModule;
   }
 
-  /** 列出所有配置过 + defaultModule 的模块名（去重） */
-  listConfiguredModules(): Set<string> {
-    const set = new Set<string>();
-    for (const { name } of this.compiledRules) set.add(name);
-    set.add(this.defaultModule);
-    return set;
-  }
-
   private static normalizePath(filePath: string): string {
     return filePath.replace(/\\/g, '/');
   }
@@ -77,7 +69,10 @@ export class ModuleResolver {
     }
 
     if (typeof match === 'string' || Array.isArray(match)) {
-      const isMatch = picomatch(match);
+      // dot:true 与 file-utils.ts 中的 picomatch 调用保持一致，否则以 `.` 开头的
+      // 目录（如 `.storybook/...`）下的文件在文件扫描阶段被识别为框架文件，
+      // 但模块归属判定却走 defaultModule，前后行为偏差难以排查。
+      const isMatch = picomatch(match, { dot: true });
       return (fp) => isMatch(fp);
     }
 

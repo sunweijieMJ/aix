@@ -109,4 +109,24 @@ export default defineConfig({
     override: 'always',
     normalize: true,
   },
+
+  // 导出格式配置（仅影响 export 输出，内部工作文件不受影响）
+  output: {
+    // 'flat'（默认）: { "views__demo__title": "标题" }
+    // 'nested': { "views": { "demo": { "title": "标题" } } }
+    format: 'flat',
+  },
+
+  // 模块化导出（可选）
+  // 配置后 export 命令会把 key 按规则分桶到子目录，并生成 manifest.json
+  // modules: {
+  //   rules: [
+  //     // 按源码路径匹配（glob）——key 前缀会反推为虚拟 filePath
+  //     // views__demo__* → src/views/demo/index，可被 glob 命中
+  //     { name: 'demo', match: 'src/views/demo/**' },
+  //   ],
+  //   defaultModule: 'common',
+  //   manifest: true,
+  //   layout: 'by-locale', // public/locale/zh-CN/demo.json
+  // },
 });

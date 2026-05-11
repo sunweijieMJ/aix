@@ -162,9 +162,9 @@
       </p>
     </section>
 
-    <!-- ==================== 10. 无障碍属性（aria-label 等）==================== -->
+    <!-- ==================== 10. 无障碍属性（aria-label / img alt 等）==================== -->
     <section class="test-section">
-      <h2>10. 无障碍属性（aria-*）</h2>
+      <h2>10. 无障碍属性（aria-* / alt）</h2>
       <div class="demo-row">
         <!-- ✅ aria-label 是面向用户的文字，应该被提取 -->
         <button aria-label="关闭弹窗">×</button>
@@ -176,6 +176,10 @@
         <section aria-describedby="section-desc">
           <p id="section-desc">此区域用于展示用户操作历史记录</p>
         </section>
+
+        <!-- ✅ img alt 是面向无障碍/SEO 的可见文本，应被提取（与 aria-label 同类）-->
+        <img src="/placeholder.png" alt="产品封面图" />
+        <img :src="dynamicSrc" :alt="dynamicAlt" />
       </div>
     </section>
 
@@ -218,17 +222,23 @@
       </ul>
     </section>
 
-    <!-- ==================== 14. 已国际化代码（幂等性测试）==================== -->
+    <!-- ==================== 14. HTML 注释中的中文（负向用例）==================== -->
     <section class="test-section">
-      <h2>14. 已国际化代码（不应二次包裹）</h2>
-      <div>
-        <!-- 关键点：参数中含中文，但因外层是 $t / t 调用，提取器应识别为
-             "已国际化"，跳过再次包裹（CommonASTUtils.isAlreadyInternationalized）-->
-        <p>{{ $t('已确认') }}</p>
-        <p>{{ t('用户登录') }}</p>
-        <button :title="$t('点击查看详情')">{{ $t('查看') }}</button>
-        <!-- 嵌套 t() 调用：内层 t() 也含中文，不应被双层包裹 -->
-        <p>{{ $t('欢迎信息', { name: t('管理员') }) }}</p>
+      <h2>14. HTML 注释中的中文（不应被提取）</h2>
+      <!-- ❌ 不应提取：模板编译器使用 comments:true 解析，但提取器只处理
+           ELEMENT/TEXT/INTERPOLATION 三类节点，不应触达 COMMENT(type=3) 节点。
+           本 section 显式断言：以下中文注释不会出现在任何 generate 产物中。 -->
+      <!-- 这是一段中文注释：调试用，可随时删除 -->
+      <!-- TODO: 后续补充错误处理逻辑 -->
+      <!-- 警告：此节点暂未对接后端接口 -->
+      <div>真正的可见文本（应被提取）</div>
+    </section>
+
+    <!-- ==================== 15. emit() 第二参数中的中文 ==================== -->
+    <section class="test-section">
+      <h2>15. emit() 调用参数（Composition API 子组件通信）</h2>
+      <div class="demo-row">
+        <button @click="handleEmitDemo">触发 emit 事件</button>
       </div>
     </section>
 
@@ -262,6 +272,28 @@ interface FormData {
   bio: string;
 }
 
+interface DemoProps {
+  title?: string;
+  placeholder?: string;
+  hint?: string;
+}
+
+// ==================== withDefaults(defineProps) 默认值中的中文（应被提取）====================
+// Why: Composition API 高频场景。withDefaults 的第二参数对象 value 是字符串字面量，
+// 提取器应识别为普通 script 段字符串并提取（key 是 props 字段名，不应提取）。
+const props = withDefaults(defineProps<DemoProps>(), {
+  title: '默认页面标题',
+  placeholder: '请输入查询关键词',
+  hint: '提示：未填写时使用默认值',
+});
+void props;
+
+// defineEmits + emit 调用：第二参数为中文字符串字面量，应被提取
+const emit = defineEmits<{
+  (e: 'change', message: string): void;
+  (e: 'error', reason: string): void;
+}>();
+
 // ==================== 状态定义 ====================
 const userName = ref('张三');
 const simpleMessage = ref('这是一个简单的消息');
@@ -273,6 +305,8 @@ const status = ref<'success' | 'error'>('success');
 const dynamicTitle = ref('这是动态的按钮提示');
 const inputPlaceholder = ref('请输入内容');
 const inputValue = ref('');
+const dynamicSrc = ref('/dynamic-cover.png');
+const dynamicAlt = ref('动态封面：用户头像');
 
 const tableData = ref<TableItem[]>([
   { id: '1', name: '项目A', status: '进行中' },
@@ -348,6 +382,14 @@ const handleRemove = (row: TableItem) => {
   }
 };
 
+// emit() 调用第二参数中的中文（应被提取）
+const handleEmitDemo = () => {
+  // ✅ 应提取：emit 的第二参数是普通字符串字面量
+  emit('change', '配置已更新，请刷新页面查看');
+  // ✅ 应提取：模板字符串中的中文也应被识别
+  emit('error', `操作失败：${status.value === 'error' ? '内部错误' : '网络异常'}`);
+};
+
 // ==================== 中文对象 key（H2 修复对应的回归用例）====================
 // SFC <script setup> 中对象字面量的属性 key 不应被国际化提取，
 // 否则运行时键名变成翻译后的字符串，破坏数据结构。
@@ -364,13 +406,6 @@ const fieldDisplayNames: Record<string, string> = {
   email: '电子邮箱地址',
 };
 void fieldDisplayNames;
-
-// ==================== 已国际化代码的幂等性测试 ====================
-// 模板里出现了 $t / t 调用，给 t 一个声明以通过 TS 校验；提取器靠
-// CommonASTUtils.isAlreadyInternationalized 识别 t() / $t() 调用，
-// 跳过对其字符串参数的提取（即便参数里含中文）。
-declare const t: (key: string, params?: Record<string, unknown>) => string;
-void t;
 </script>
 
 <style scoped lang="scss">

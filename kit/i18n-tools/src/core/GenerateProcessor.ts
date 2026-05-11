@@ -2,13 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
-import { CommandUtils } from '../utils/command-utils';
+import { formatWithPrettier } from '../utils/command-utils';
 import { FileUtils } from '../utils/file-utils';
 import { LLMClient } from '../utils/llm-client';
 import { IdGenerator } from '../utils/id-generator';
 import { InteractiveUtils } from '../utils/interactive-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
+import { ModuleResolver } from '../utils/module-resolver';
 import type { ExtractedString } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
 import { IdReuseResolver } from './IdReuseResolver';
@@ -302,35 +303,97 @@ export class GenerateProcessor extends BaseProcessor {
   ): Promise<void> {
     LoggerUtils.info(`\n🔄 开始应用转换...`);
 
-    LanguageFileManager.updateLanguageFiles(this.config, this.isCustom, extractedStrings);
-
-    const transformer = this.adapter.getTransformer();
-    const failures: Array<{ file: string; error: unknown }> = [];
-    // 最后一道闸：即便调用方传入了重复路径（包括 normalize 后仍不一致的情况），
-    // 也确保每个文件只 transform 一次——避免在已被改写的源码上重新 parse 时越界。
-    const uniqueFilePaths = Array.from(new Set(filePaths.map((p) => path.normalize(p))));
-    for (const filePath of uniqueFilePaths) {
-      try {
-        const transformedCode = transformer.transform(filePath, extractedStrings);
-        fs.writeFileSync(filePath, transformedCode, 'utf-8');
-        if (this.config.format) {
-          await CommandUtils.formatWithPrettier(filePath);
+    let keyModuleMap: Record<string, string> | undefined;
+    if (this.config.modules) {
+      const resolver = new ModuleResolver(this.config.modules);
+      keyModuleMap = {};
+      for (const item of extractedStrings) {
+        if (item.semanticId) {
+          // glob 规则用相对路径（如 src/views/order/**），必须转成相对 rootDir 的路径才能命中
+          const relPath = path.relative(this.config.rootDir, item.filePath).replace(/\\/g, '/');
+          keyModuleMap[item.semanticId] = resolver.resolve(
+            relPath,
+            item.semanticId,
+            item.processedMessage || item.original,
+          );
         }
-        LoggerUtils.success(`✅ 已转换: ${FileUtils.getRelativePath(filePath)}`);
-      } catch (error) {
-        LoggerUtils.error(`❌ 转换失败 ${FileUtils.getRelativePath(filePath)}:`, error);
-        failures.push({ file: filePath, error });
       }
     }
 
-    if (failures.length > 0) {
-      // 部分失败必须上抛，避免 AutomaticProcessor 在残缺转换结果上继续推进 pick → translate
+    const transformer = this.adapter.getTransformer();
+    // 最后一道闸：即便调用方传入了重复路径（包括 normalize 后仍不一致的情况），
+    // 也确保每个文件只 transform 一次——避免在已被改写的源码上重新 parse 时越界。
+    const uniqueFilePaths = Array.from(new Set(filePaths.map((p) => path.normalize(p))));
+
+    // 事务语义：先把全部源码 transform 到内存，全部成功后再落盘 + 更新语言文件。
+    // Why：AST 转换失败是最常见的运行时错误（语法边界 case、第三方 AST 库异常等），
+    // 若按"边算边写"流程，前 N 个文件成功落盘 + 语言文件被污染，第 N+1 个失败
+    // 抛错——会留下"语言文件有 key 但源码无 t() 调用"的孤儿 key，污染后续 pick/
+    // translate/export，且重 generate 不会自愈（updateLanguageFiles 只追加）。
+    // 现在阶段 1 拦截最常见的失败，源码与语言文件双双保持原状，可安全重试。
+
+    // 阶段 1：transform 到内存
+    const transformResults: Array<{ file: string; code: string }> = [];
+    const transformFailures: Array<{ file: string; error: unknown }> = [];
+    for (const filePath of uniqueFilePaths) {
+      try {
+        const code = transformer.transform(filePath, extractedStrings);
+        transformResults.push({ file: filePath, code });
+      } catch (error) {
+        LoggerUtils.error(`❌ 转换失败 ${FileUtils.getRelativePath(filePath)}:`, error);
+        transformFailures.push({ file: filePath, error });
+      }
+    }
+
+    if (transformFailures.length > 0) {
       throw new Error(
-        `转换阶段有 ${failures.length}/${uniqueFilePaths.length} 个文件失败:\n` +
-          failures.map((f) => `  - ${FileUtils.getRelativePath(f.file)}`).join('\n'),
+        `转换阶段有 ${transformFailures.length}/${uniqueFilePaths.length} 个文件失败（语言文件未变更）:\n` +
+          transformFailures.map((f) => `  - ${FileUtils.getRelativePath(f.file)}`).join('\n'),
       );
     }
 
+    // 阶段 2：原子地写所有源码。任一写失败立即抛错，此时语言文件仍未更新，
+    // 不会留下源码-语言文件不一致的污染态（已落盘的部分源码 + 未污染的语言文件，
+    // 重试时 transformer 在已修改源码上跑也能正确处理已有 t() 调用）。
+    const writeFailures: Array<{ file: string; error: unknown }> = [];
+    for (const { file, code } of transformResults) {
+      try {
+        fs.writeFileSync(file, code, 'utf-8');
+      } catch (error) {
+        LoggerUtils.error(`❌ 写入失败 ${FileUtils.getRelativePath(file)}:`, error);
+        writeFailures.push({ file, error });
+      }
+    }
+
+    if (writeFailures.length > 0) {
+      throw new Error(
+        `写入阶段有 ${writeFailures.length}/${transformResults.length} 个文件失败（语言文件未变更）:\n` +
+          writeFailures.map((f) => `  - ${FileUtils.getRelativePath(f.file)}`).join('\n'),
+      );
+    }
+
+    // 阶段 3：源码全部落盘后才更新语言文件，保持两者强一致。
+    LanguageFileManager.updateLanguageFiles(
+      this.config,
+      this.isCustom,
+      extractedStrings,
+      keyModuleMap,
+    );
+
+    // 阶段 4：格式化是美化步骤，单个失败不影响数据正确性，仅警告。
+    if (this.config.format) {
+      for (const { file } of transformResults) {
+        try {
+          await formatWithPrettier(file);
+        } catch (error) {
+          LoggerUtils.warn(`⚠️  格式化失败（已忽略）${FileUtils.getRelativePath(file)}: ${error}`);
+        }
+      }
+    }
+
+    for (const { file } of transformResults) {
+      LoggerUtils.success(`✅ 已转换: ${FileUtils.getRelativePath(file)}`);
+    }
     LoggerUtils.success('✅ 应用转换完成');
     LoggerUtils.info(`✨ 处理文件列表: \n- ${uniqueFilePaths.join('\n- ')}`);
   }

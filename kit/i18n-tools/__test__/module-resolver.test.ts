@@ -78,15 +78,4 @@ describe('ModuleResolver', () => {
     });
     expect(r.resolve('src\\views\\order\\list.vue', 'k', 'v')).toBe('order');
   });
-
-  it('listConfiguredModules 返回所有用到的模块名（含 default）', () => {
-    const r = new ModuleResolver({
-      ...baseConfig,
-      rules: [
-        { name: 'order', match: 'src/views/order/**' },
-        { name: 'user', match: 'src/views/user/**' },
-      ],
-    });
-    expect([...r.listConfiguredModules()].sort()).toEqual(['common', 'order', 'user']);
-  });
 });

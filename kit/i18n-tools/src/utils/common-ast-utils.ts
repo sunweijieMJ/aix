@@ -229,6 +229,49 @@ export class CommonASTUtils {
   }
 
   /**
+   * 判断节点是否处于"可绑定 this"的词法作用域。
+   *
+   * 用于 Vue SFC 普通 <script> 块的转换：data() / methods / computed / watch /
+   * mounted 等 Options API 选项内部的字符串可以写 `this.$t(...)`，因为运行时
+   * `this` 指向组件实例；但同一 <script> 块的**模块顶层**（如顶层
+   * `const X = ...`、IIFE 顶部、模块级 import 等）`this` 是 undefined，
+   * 强行写 `this.$t` 会运行时崩溃。
+   *
+   * 规则（按 JavaScript this 绑定语义）：
+   * - 普通函数 / 方法 / getter / setter / 构造器 → this 绑定到调用点 → 返回 true
+   * - 箭头函数 → 透明，沿父链继续向上判定
+   * - 类声明体 → 透明（类成员的 this 由方法层判定，类字段初始化器无 this）
+   * - 模块顶层 / 块语句直接挂 SourceFile → 返回 false
+   *
+   * 注意：类字段初始化器（class field initializer）严格说有 this（指向实例），
+   * 但实际场景里 SFC 不写 class，故不特别处理。
+   */
+  static isInThisBindableScope(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isArrowFunction(current)) {
+        current = current.parent;
+        continue;
+      }
+      if (
+        ts.isMethodDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isFunctionDeclaration(current) ||
+        ts.isGetAccessor(current) ||
+        ts.isSetAccessor(current) ||
+        ts.isConstructorDeclaration(current)
+      ) {
+        return true;
+      }
+      if (ts.isSourceFile(current)) {
+        return false;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /**
    * 获取字符串字面量的值
    * @param node - TypeScript AST节点
    * @returns 字符串值，如果不是字符串字面量则返回undefined
@@ -411,6 +454,23 @@ export class CommonASTUtils {
   ]);
 
   static getVariableNameFromExpression(expressionText: string): string {
+    const trimmed = expressionText.trim();
+
+    // 复杂表达式（三元 ?: / 逻辑 && || / 比较 == != 等）无法通过字符串切割
+    // 稳定取出语义名。早年实现把三元 `?` 当作 optional chain 走 split('.')
+    // 兜底，会从两个分支字面量里"挤"出形如 `内部错误网络异常` 的拼接标识符，
+    // 写进 locale 文件后再被 LLM 翻译占位符内容，运行时占位符无法替换。
+    // 这类表达式统一退到兜底名 'value'，由 createMessageWithOptions 的 usedNames
+    // 自动加序号去重（value / value1 / value2）。
+    // 注意：optional chaining `obj?.prop` 中的 `?` 后跟 `.`，用负向先行排除。
+    const hasComplexOperator =
+      /\?(?!\.)/.test(trimmed) || // 三元 ?
+      /&&|\|\|/.test(trimmed) || // 逻辑 && ||
+      /===|!==|==|!=/.test(trimmed); // 比较 == != === !==
+    if (hasComplexOperator) {
+      return 'value';
+    }
+
     // 使用非贪婪匹配移除函数调用参数，避免 (a * b).toFixed(2) 整体被吃掉
     let baseName = expressionText.replace(/\([^)]*\)/g, '');
     baseName = baseName.replace(/\?\.|\?/g, '.');

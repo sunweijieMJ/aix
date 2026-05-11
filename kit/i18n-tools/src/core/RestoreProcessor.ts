@@ -2,8 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
-import { CommandUtils } from '../utils/command-utils';
+import { formatWithPrettier } from '../utils/command-utils';
 import { FileUtils } from '../utils/file-utils';
+import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import type { LocaleMap } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
@@ -11,7 +12,6 @@ import { BaseProcessor } from './BaseProcessor';
 interface RestoreOptions {
   sourceDir: string;
   outputDir: string;
-  localePath: string;
   overwrite: boolean;
 }
 
@@ -49,17 +49,11 @@ export class RestoreProcessor extends BaseProcessor {
     const options: RestoreOptions = {
       sourceDir: this.config.rootDir,
       outputDir: outputDir || path.join(this.config.rootDir, 'restored'),
-      localePath: this.getLocaleFilePath(),
       overwrite,
     };
 
     const targetFiles = targets.length > 0 ? await this.resolveTargetFiles(targets) : undefined;
     await this.restoreFiles(options, targetFiles);
-  }
-
-  private getLocaleFilePath(): string {
-    const localeDir = FileUtils.getDirectoryPath(this.config, this.isCustom);
-    return path.join(localeDir, `${this.config.locale.source}.json`);
   }
 
   private async resolveTargetFiles(targets: string[]): Promise<string[]> {
@@ -92,7 +86,7 @@ export class RestoreProcessor extends BaseProcessor {
 
   private async restoreFiles(options: RestoreOptions, targetFiles?: string[]): Promise<void> {
     try {
-      const localeMap = this.loadLocaleMap(options.localePath);
+      const localeMap = this.loadLocaleMap();
       if (Object.keys(localeMap).length === 0) {
         LoggerUtils.warn('语言文件为空或无法加载');
         return;
@@ -168,10 +162,10 @@ export class RestoreProcessor extends BaseProcessor {
     }
   }
 
-  private loadLocaleMap(localePath: string): LocaleMap {
-    return FileUtils.safeLoadJsonFile<LocaleMap>(localePath, {
-      errorMessage: '加载语言文件失败',
-    });
+  private loadLocaleMap(): LocaleMap {
+    // 统一走 LanguageFileManager，自动处理单文件和模块化两种源格式
+    const result = LanguageFileManager.readLocaleFile(this.config, this.isCustom);
+    return result ?? {};
   }
 
   private async processFile(
@@ -200,7 +194,7 @@ export class RestoreProcessor extends BaseProcessor {
     if (this.config.format) {
       try {
         // 格式化失败不算文件还原失败：源已写盘且语义正确，仅美观问题。
-        await CommandUtils.formatWithPrettier(actualOutputPath);
+        await formatWithPrettier(actualOutputPath);
       } catch (error) {
         LoggerUtils.error(
           `格式化失败，但文件已保存: ${FileUtils.getRelativePath(actualOutputPath)}`,
