@@ -10,4 +10,5 @@ export { IdGenerator } from './id-generator';
 export { InteractiveUtils } from './interactive-utils';
 export { LanguageFileManager } from './language-file-manager';
 export { LoggerUtils, LogLevel } from './logger';
+export { ModuleResolver } from './module-resolver';
 export * from './types';
