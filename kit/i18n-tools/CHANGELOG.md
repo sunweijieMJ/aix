@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.5
+
+### Patch Changes
+
+- 修复bug
+
 ## 0.0.4
 
 ### Patch Changes
