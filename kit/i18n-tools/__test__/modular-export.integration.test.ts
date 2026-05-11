@@ -47,6 +47,7 @@ function makeConfig(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     format: false,
     include: ['**/*.vue'],
     exclude: [],
+    output: { format: 'flat' },
     ...overrides,
   } as ResolvedConfig;
 }

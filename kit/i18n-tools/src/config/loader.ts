@@ -213,10 +213,9 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
       customLocale: userConfig.paths.customLocale
         ? path.resolve(rootDir, userConfig.paths.customLocale)
         : undefined,
-      exportLocale: path.resolve(
-        rootDir,
-        userConfig.paths.exportLocale || DEFAULT_PATHS.exportLocale,
-      ),
+      exportLocale: userConfig.paths.exportLocale
+        ? path.resolve(rootDir, userConfig.paths.exportLocale)
+        : undefined,
       source: path.resolve(rootDir, userConfig.paths.source || DEFAULT_PATHS.source),
       tImport: userConfig.paths.tImport || DEFAULT_PATHS.tImport,
       glossary: userConfig.paths.glossary

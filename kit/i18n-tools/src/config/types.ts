@@ -189,13 +189,19 @@ export interface ModulesConfig {
 }
 
 /**
- * 导出格式配置
+ * 持久化格式配置
  */
 export interface OutputConfig {
   /**
-   * 输出格式：
+   * 语言文件序列化格式，同时作用于 paths.locale（工作 + 运行时目录）
+   * 和 paths.exportLocale（独立导出目录）。
+   *
    * - 'flat'（默认）：扁平 key/value，如 `{ "views__order__submit": "提交" }`
-   * - 'nested'：按 idPrefix.separator 拆分 key 生成树形结构
+   * - 'nested'：按 idPrefix.separator 拆分 key 生成树形结构。
+   *   要求 idPrefix.separator === '.'；扁平 key 集合不得存在前缀关系
+   *   （即不能同时有 `a.b` 和 `a.b.c` 作为叶子），否则写入时抛错。
+   *
+   * 工具内部读写时一律以扁平 LocaleMap 工作；嵌套仅作用于落盘那一步。
    */
   format?: 'flat' | 'nested';
 }
@@ -268,7 +274,8 @@ export interface I18nToolsConfig {
   modules?: ModulesConfig;
 
   /**
-   * 导出格式配置（可选）。仅影响 export 输出，内部工作文件始终保持扁平。
+   * 持久化格式配置（可选）。控制 paths.locale 与 paths.exportLocale 的落盘格式；
+   * 工具内部仍以扁平 LocaleMap 工作。
    */
   output?: OutputConfig;
 }
@@ -294,7 +301,8 @@ export interface ResolvedConfig {
     locale: string;
     /** 仅当用户显式配置 customLocale 时才存在；未配置则保持 undefined，下游据此判定单/双目录 */
     customLocale?: string;
-    exportLocale: string;
+    /** 仅当用户显式配置 exportLocale 时才存在；未配置时禁用 export 命令 */
+    exportLocale?: string;
     source: string;
     tImport: string;
     /** 仅当用户显式配置 glossary 时才存在；未配置则保持 undefined */

@@ -86,11 +86,11 @@ export default defineConfig({
     // ID 生成最大并发数
     idGeneration: 5,
     // 翻译最大并发数
-    translation: 3,
+    translation: 5,
   },
 
   // 翻译批次大小（每次发送给 LLM 的条目数）
-  batchSize: 50,
+  batchSize: 30,
 
   // 翻译批次间延时（毫秒），默认 500
   batchDelay: 500,

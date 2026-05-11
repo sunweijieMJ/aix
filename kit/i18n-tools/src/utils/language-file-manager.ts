@@ -297,11 +297,9 @@ export class LanguageFileManager {
   }
 
   /**
-   * 写入语言文件内容。
+   * 写入语言文件内容。落盘格式由 config.output.format 统一决定。
    * @param keyModuleMap - 可选：key → module 名，启用后按模块分桶写入；
-   *   未提供时写入单文件（向后兼容）。
-   * @param nestedOutput - 仅由 ExportProcessor 传入 true，对每个 bucket 应用嵌套转换；
-   *   内部工作文件调用不传此参数，始终写扁平格式。
+   *   未提供时写入单文件。
    */
   static writeLocaleFile(
     config: ResolvedConfig,
@@ -309,26 +307,18 @@ export class LanguageFileManager {
     localeMap: LocaleMap,
     locale?: string,
     keyModuleMap?: KeyModuleMap,
-    nestedOutput?: boolean,
   ): void {
     locale = locale || config.locale.source;
     const workingDir = FileUtils.getDirectoryPath(config, isCustom);
 
     if (config.modules && keyModuleMap) {
-      this.writeModularLocaleFile(
-        config,
-        workingDir,
-        localeMap,
-        locale,
-        keyModuleMap,
-        nestedOutput,
-      );
+      this.writeModularLocaleFile(config, workingDir, localeMap, locale, keyModuleMap);
       return;
     }
 
     const localeFilePath = path.join(workingDir, `${locale}.json`);
     try {
-      FileUtils.writeJsonFile(localeFilePath, localeMap);
+      FileUtils.writeJsonFile(localeFilePath, this.serialize(config, localeMap));
     } catch (error) {
       LoggerUtils.error(`❌ 写入语言文件失败: ${localeFilePath}`, error);
       throw error;
@@ -346,7 +336,6 @@ export class LanguageFileManager {
     localeMap: LocaleMap,
     locale: string,
     keyModuleMap: KeyModuleMap,
-    nestedOutput?: boolean,
   ): void {
     const { layout, defaultModule } = config.modules!;
     const buckets = new Map<string, LocaleMap>();
@@ -362,10 +351,38 @@ export class LanguageFileManager {
         layout === 'by-module'
           ? path.join(baseDir, moduleName, `${locale}.json`)
           : path.join(baseDir, locale, `${moduleName}.json`);
-      const outputData = nestedOutput
-        ? FileUtils.unflattenObject(moduleMap, config.idPrefix.separator)
-        : moduleMap;
-      FileUtils.writeJsonFile(filePath, outputData);
+      FileUtils.writeJsonFile(filePath, this.serialize(config, moduleMap));
+    }
+  }
+
+  /**
+   * 落盘前统一序列化：按 config.output.format 决定扁平 / 嵌套。
+   *
+   * 'nested' 模式下额外做前缀冲突校验——unflattenObject 对 `a.b` 与 `a.b.c`
+   * 同时存在的扁平 map 会静默覆盖（叶子 vs 子树）导致数据丢失，必须前置拦截。
+   */
+  private static serialize(config: ResolvedConfig, flat: LocaleMap): Record<string, any> {
+    if (config.output.format === 'flat') return flat;
+    this.assertNoPrefixConflict(flat, config.idPrefix.separator);
+    return FileUtils.unflattenObject(flat, config.idPrefix.separator);
+  }
+
+  /**
+   * 校验扁平 key 集合是否存在前缀冲突：排序后相邻两项若满足
+   * `curr.startsWith(prev + sep)`，说明 prev 同时作为叶子和 curr 的祖先。
+   */
+  private static assertNoPrefixConflict(flat: LocaleMap, separator: string): void {
+    const keys = Object.keys(flat).sort();
+    for (let i = 1; i < keys.length; i++) {
+      const prev = keys[i - 1];
+      const curr = keys[i];
+      if (curr.startsWith(prev + separator)) {
+        throw new Error(
+          `[i18n-tools] 嵌套输出存在前缀冲突：'${prev}' 同时作为叶子和 '${curr}' 的祖先。\n` +
+            `  unflatten 时叶子值会被子树覆盖，必然丢数据。\n` +
+            `  解决方案：重命名其中一个 key，或将 output.format 切换为 'flat'。`,
+        );
+      }
     }
   }
 

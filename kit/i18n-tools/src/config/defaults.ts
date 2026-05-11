@@ -11,12 +11,14 @@ import type {
 /**
  * 默认路径配置
  *
- * `customLocale` / `glossary` 不提供默认值：仅当用户在 i18n.config 中显式配置后才启用，
- * 避免对不存在的目录或文件产生误导性日志。
+ * `customLocale` / `exportLocale` / `glossary` 不提供默认值：仅当用户在 i18n.config 中
+ * 显式配置后才启用——`exportLocale` 缺省即代表"工作目录就是运行时消费目录"，
+ * 此时 export 命令被禁用，避免对不存在的目录或文件产生误导性日志。
  */
-export const DEFAULT_PATHS: Required<Omit<PathsConfig, 'customLocale' | 'glossary'>> = {
+export const DEFAULT_PATHS: Required<
+  Omit<PathsConfig, 'customLocale' | 'exportLocale' | 'glossary'>
+> = {
   locale: 'src/locale',
-  exportLocale: 'public/locale',
   source: 'src',
   tImport: '@/plugins/locale',
 };

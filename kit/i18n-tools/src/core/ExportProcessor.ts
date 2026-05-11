@@ -3,7 +3,7 @@ import type { ResolvedConfig } from '../config';
 import { FileUtils } from '../utils/file-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
-import type { ILangMsg, LocaleMap } from '../utils/types';
+import type { LocaleMap } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
 
 /**
@@ -31,22 +31,29 @@ export class ExportProcessor extends FileProcessor {
   }
 
   private async _execute(outputDir?: string): Promise<void> {
+    const finalOutputDir = outputDir || this.config.paths.exportLocale;
+    if (!finalOutputDir) {
+      throw new Error(
+        '[i18n-tools] export 需要输出目录：请配置 paths.exportLocale，' +
+          '或通过 CLI --output 显式指定。',
+      );
+    }
+
     LoggerUtils.info(`📂 基础目录: ${this.config.paths.locale}`);
     if (this.config.paths.customLocale) {
       LoggerUtils.info(`📂 定制目录: ${this.config.paths.customLocale}`);
     }
-    LoggerUtils.info(`📂 输出目录: ${outputDir || this.config.paths.exportLocale}`);
+    LoggerUtils.info(`📂 输出目录: ${finalOutputDir}`);
 
-    await this.performExport(outputDir);
+    await this.performExport(finalOutputDir);
   }
 
-  private async performExport(outputDir?: string): Promise<void> {
+  private async performExport(outputDir: string): Promise<void> {
     try {
-      const finalOutputDir = outputDir || this.config.paths.exportLocale;
       if (this.config.modules) {
-        await this.performModularExport(finalOutputDir);
+        await this.performModularExport(outputDir);
       } else {
-        await this.performFlatExport(finalOutputDir);
+        await this.performFlatExport(outputDir);
       }
     } catch (error) {
       LoggerUtils.error('语言包导出失败', error);
@@ -59,30 +66,30 @@ export class ExportProcessor extends FileProcessor {
     const targetLocale = this.config.locale.target;
     const customLocaleDir = this.config.paths.customLocale;
 
-    const baseSource = FileUtils.loadLanguageFile(
+    // 读取后立即扁平化：源文件可能是嵌套（output.format='nested'）也可能扁平。
+    // 必须扁平后再合并/冲突检测，否则嵌套对象的浅合并会让 customSource.<top>
+    // 整块覆盖 baseSource.<top>，静默丢数据。
+    const loadFlat = (filePath: string, lang: string, type: '基础' | '自定义'): LocaleMap => {
+      const raw = FileUtils.loadLanguageFile<Record<string, any>>(filePath, lang, type);
+      return FileUtils.flattenObject(raw) as LocaleMap;
+    };
+
+    const baseSource = loadFlat(
       path.join(this.config.paths.locale, `${sourceLocale}.json`),
       sourceLocale,
       '基础',
     );
-    const baseTarget = FileUtils.loadLanguageFile(
+    const baseTarget = loadFlat(
       path.join(this.config.paths.locale, `${targetLocale}.json`),
       targetLocale,
       '基础',
     );
 
-    const customSource: ILangMsg = customLocaleDir
-      ? FileUtils.loadLanguageFile(
-          path.join(customLocaleDir, `${sourceLocale}.json`),
-          sourceLocale,
-          '自定义',
-        )
+    const customSource: LocaleMap = customLocaleDir
+      ? loadFlat(path.join(customLocaleDir, `${sourceLocale}.json`), sourceLocale, '自定义')
       : {};
-    const customTarget: ILangMsg = customLocaleDir
-      ? FileUtils.loadLanguageFile(
-          path.join(customLocaleDir, `${targetLocale}.json`),
-          targetLocale,
-          '自定义',
-        )
+    const customTarget: LocaleMap = customLocaleDir
+      ? loadFlat(path.join(customLocaleDir, `${targetLocale}.json`), targetLocale, '自定义')
       : {};
 
     if (customLocaleDir) {
@@ -106,8 +113,8 @@ export class ExportProcessor extends FileProcessor {
       LoggerUtils.success('✅ 未发现语言包冲突');
     }
 
-    const mergedSource: ILangMsg = { ...baseSource, ...customSource };
-    const mergedTarget: ILangMsg = { ...baseTarget, ...customTarget };
+    const mergedSource: LocaleMap = { ...baseSource, ...customSource };
+    const mergedTarget: LocaleMap = { ...baseTarget, ...customTarget };
 
     FileUtils.ensureDirectoryExists(outputDir);
 
@@ -124,19 +131,21 @@ export class ExportProcessor extends FileProcessor {
     LoggerUtils.info(`   ${sourceLocale}: ${Object.keys(mergedSource).length} 个条目`);
     LoggerUtils.info(`   ${targetLocale}: ${Object.keys(mergedTarget).length} 个条目`);
 
+    // 复用 LanguageFileManager 的 serialize 逻辑：把 exportLocale 当作"目标 locale 目录"传入
+    const exportConfig = {
+      ...this.config,
+      paths: { ...this.config.paths, locale: outputDir },
+    };
+    LanguageFileManager.writeLocaleFile(exportConfig, false, mergedSource, sourceLocale);
+    LanguageFileManager.writeLocaleFile(exportConfig, false, mergedTarget, targetLocale);
+
     const outputSourcePath = path.join(outputDir, `${sourceLocale}.json`);
     const outputTargetPath = path.join(outputDir, `${targetLocale}.json`);
-    const { format } = this.config.output;
-    const separator = this.config.idPrefix.separator;
-    const toOutput = (data: Record<string, any>) =>
-      format === 'nested' ? FileUtils.unflattenObject(data, separator) : data;
-    FileUtils.writeJsonFile(outputSourcePath, toOutput(mergedSource));
-    FileUtils.writeJsonFile(outputTargetPath, toOutput(mergedTarget));
-
     LoggerUtils.success('\n✅ 语言包导出成功!');
     LoggerUtils.info(`📄 输出文件:\n   ${outputSourcePath}\n   ${outputTargetPath}`);
 
     // 嵌套模式下顶层 key 数量少于 flat key 数量，需 flatten 后再比较
+    const separator = this.config.idPrefix.separator;
     const exportedSource = FileUtils.safeLoadJsonFile<Record<string, any>>(outputSourcePath, {
       silent: true,
     });
@@ -185,14 +194,12 @@ export class ExportProcessor extends FileProcessor {
     LoggerUtils.info(`   模块数: ${moduleCount}`);
 
     const exportConfig = { ...this.config, paths: { ...this.config.paths, locale: outputDir } };
-    const isNested = this.config.output.format === 'nested';
     LanguageFileManager.writeLocaleFile(
       exportConfig,
       false,
       sourceFlat,
       sourceLocale,
       keyModuleMap,
-      isNested,
     );
     LanguageFileManager.writeLocaleFile(
       exportConfig,
@@ -200,7 +207,6 @@ export class ExportProcessor extends FileProcessor {
       targetFlat,
       targetLocale,
       keyModuleMap,
-      isNested,
     );
 
     const moduleNames = [...new Set(Object.values(keyModuleMap))].sort();
