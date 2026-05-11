@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.4
+
+### Patch Changes
+
+- 优化嵌套模式
+
 ## 0.0.3
 
 ### Patch Changes
