@@ -32,7 +32,12 @@ export class AutomaticProcessor extends FileProcessor {
   }
 
   private async _execute(targetPath: string, skipLLM: boolean = false): Promise<void> {
-    const steps: Array<{ name: string; run: () => Promise<void> }> = [
+    const steps: Array<{
+      name: string;
+      skip?: boolean;
+      skipReason?: string;
+      run: () => Promise<void>;
+    }> = [
       {
         name: 'generate',
         run: () =>
@@ -54,14 +59,23 @@ export class AutomaticProcessor extends FileProcessor {
         run: () => new MergeProcessor(this.config, this.isCustom).execute(),
       },
       {
+        // export 是可选步骤：只有显式配置了 paths.exportLocale 才执行。
+        // 未配置即代表"工作目录就是运行时消费目录"，automatic 流程到 merge 即闭环；
+        // 此时强制 export 会因缺少输出目录而抛错并中断后续工作流。
         name: 'export',
+        skip: !this.config.paths.exportLocale,
+        skipReason: '未配置 paths.exportLocale',
         run: () => new ExportProcessor(this.config).execute(),
       },
     ];
 
     for (const step of steps) {
+      LoggerUtils.info(`\n===== [步骤: ${step.name.toUpperCase()}] =====`);
+      if (step.skip) {
+        LoggerUtils.info(`⏭️  跳过 ${step.name}：${step.skipReason}`);
+        continue;
+      }
       try {
-        LoggerUtils.info(`\n===== [步骤: ${step.name.toUpperCase()}] =====`);
         await step.run();
       } catch (error) {
         LoggerUtils.error(`❌ 自动化工作流在 [${step.name}] 步骤失败:`, error);
