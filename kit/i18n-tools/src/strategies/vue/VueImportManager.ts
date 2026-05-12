@@ -1,8 +1,23 @@
-import { parse as parseSFC } from '@vue/compiler-sfc';
+import { parse as parseSFC, babelParse } from '@vue/compiler-sfc';
 import type { IImportManager } from '../../adapters/FrameworkAdapter';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import type { ExtractedString } from '../../utils/types';
 import type { VueI18nLibrary } from './libraries';
+
+/**
+ * Vue 编译宏白名单：这些宏的参数必须在编译期静态求值，不能引用 setup 块内
+ * 的局部变量（否则触发 vue/valid-define-* 规则与 SFC 编译错误）。
+ *
+ * 不含 defineExpose —— 其参数是运行时表达式，本来就允许引用 setup 局部。
+ */
+const COMPILE_TIME_MACROS = new Set([
+  'defineProps',
+  'defineEmits',
+  'defineModel',
+  'withDefaults',
+  'defineOptions',
+  'defineSlots',
+]);
 
 /**
  * SFC <script> 块定位结果（基于 @vue/compiler-sfc 解析，避免正则在含
@@ -69,14 +84,26 @@ export class VueImportManager implements IImportManager {
         // Why: 与本仓库 demo 注释约定一致（"所有 import 集中到顶部 script 块"），
         // 也避免双块各自 import 后 eslint-plugin-vue 把整个 SFC 视为一个 program
         // 时触发 import/order 报错。
-        updatedCode = this.addPluginLocaleImportToNonSetupScript(updatedCode);
+        updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'nonSetupOnly');
       } else if (hasSetup) {
-        // 仅 <script setup>：标准 useI18n hook 注入路径
-        updatedCode = this.addHookImport(updatedCode);
-        updatedCode = this.addHookDeclaration(updatedCode);
+        // 仅 <script setup>：默认走标准 useI18n hook 注入路径。
+        // 例外：若 setup 块内出现编译宏（defineProps/defineEmits/defineModel/
+        // withDefaults/defineOptions/defineSlots）的参数子树引用了 t() —— 此时
+        // hook 注入会让 t 成为 setup 局部变量，触发 vue/valid-define-* 规则
+        // 与 SFC 编译错误。改走模块顶层 import { t } from tImport（在 setup
+        // 块顶部写 import，编译后属模块作用域，可被宏自由引用）。
+        const setupContent = descriptor.scriptSetup!.content;
+        if (VueImportManager.setupReferencesTInCompileMacro(setupContent)) {
+          updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'setupOnly');
+          // 清理可能存在的存量 hook 注入，避免 setup 局部 t 遮蔽模块顶层 t。
+          updatedCode = this.removeHookImportAndDeclaration(updatedCode);
+        } else {
+          updatedCode = this.addHookImport(updatedCode);
+          updatedCode = this.addHookDeclaration(updatedCode);
+        }
       } else {
         // 仅普通 <script>：按需为模块顶层裸 t() 注入 import
-        updatedCode = this.addPluginLocaleImportToNonSetupScript(updatedCode);
+        updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'nonSetupOnly');
       }
     }
 
@@ -84,16 +111,17 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
-   * 若 SFC 的非-setup <script> 块（或 SFC 唯一 <script> 块）内含裸 t() 调用，
-   * 向该块顶部注入 `import { t } from tImport`。已存在则跳过。
+   * 若指定 SFC <script> 块内含裸 t() 调用，向该块顶部注入 `import { t } from
+   * tImport`。已存在则跳过。
    *
    * 适用场景：
-   *   - 仅 <script>（Options API + 模块顶层调用）
-   *   - 双块共存（非-setup 块为模块顶层 import 锚点，setup 块共享作用域复用）
-   * 不适用 <script setup> 单存场景 —— 那种走 useI18n hook 注入路径。
+   *   - 仅 <script>（Options API + 模块顶层调用）—— scope='nonSetupOnly'
+   *   - 双块共存（非-setup 块为模块顶层 import 锚点）—— scope='nonSetupOnly'
+   *   - 仅 <script setup> 且存在编译宏引用 t —— scope='setupOnly'
+   *     （setup 顶层 import 编译后仍属模块作用域，可被编译宏自由引用）
    */
-  private addPluginLocaleImportToNonSetupScript(code: string): string {
-    const block = VueImportManager.findScriptBlock(code, { nonSetupOnly: true });
+  private addPluginLocaleImportToScript(code: string, scope: 'setupOnly' | 'nonSetupOnly'): string {
+    const block = VueImportManager.findScriptBlock(code, { [scope]: true });
     if (!block) return code;
 
     // 检测块内是否存在裸 t() 调用
@@ -111,6 +139,131 @@ export class VueImportManager implements IImportManager {
 
     const updatedScript = CommonASTUtils.mergeNamedImport(block.content, this.tImport, ['t']);
     return code.slice(0, block.start) + updatedScript + code.slice(block.end);
+  }
+
+  /**
+   * 检测 <script setup> 块内容是否存在编译宏（defineProps/defineEmits/
+   * defineModel/withDefaults/defineOptions/defineSlots）的参数子树引用了
+   * 裸的 t() 或 $t() 调用。
+   *
+   * Why: 这些宏的参数必须编译期静态求值，引用 setup 局部变量（包括
+   * `const { t } = useI18n()` 注入的 t）会触发 vue/valid-define-* 规则与
+   * SFC 编译错误。检测命中 → 改走模块顶层 import 路径。
+   *
+   * 解析失败（TS/JSX 语法错误等）保守返回 false —— 维持原默认行为（hook
+   * 注入），不引入额外破坏。
+   */
+  private static setupReferencesTInCompileMacro(setupContent: string): boolean {
+    let ast;
+    try {
+      ast = babelParse(setupContent, {
+        sourceType: 'module',
+        plugins: ['typescript', 'jsx'],
+        errorRecovery: true,
+      });
+    } catch {
+      return false;
+    }
+
+    let hit = false;
+    const visit = (node: unknown): void => {
+      if (hit) return;
+      if (!node || typeof node !== 'object') return;
+      const n = node as { type?: string; callee?: unknown; arguments?: unknown[] };
+      if (n.type === 'CallExpression') {
+        const callee = n.callee as { type?: string; name?: string } | null;
+        if (
+          callee &&
+          callee.type === 'Identifier' &&
+          callee.name &&
+          COMPILE_TIME_MACROS.has(callee.name) &&
+          Array.isArray(n.arguments) &&
+          VueImportManager.subtreeCallsT(n.arguments)
+        ) {
+          hit = true;
+          return;
+        }
+      }
+      for (const key in node) {
+        if (key === 'loc' || key === 'range' || key === 'start' || key === 'end') continue;
+        const value = (node as Record<string, unknown>)[key];
+        if (Array.isArray(value)) {
+          for (const child of value) visit(child);
+        } else if (value && typeof value === 'object') {
+          visit(value);
+        }
+        if (hit) return;
+      }
+    };
+    visit(ast);
+    return hit;
+  }
+
+  /**
+   * 子树内是否存在裸 t() 或 $t() 的 CallExpression（callee 为 Identifier）。
+   * 不匹配 obj.t() / this.$t() 等 MemberExpression 形式 —— 它们不会因
+   * useI18n 注入 t 而出问题。
+   */
+  private static subtreeCallsT(nodes: unknown[]): boolean {
+    let hit = false;
+    const visit = (node: unknown): void => {
+      if (hit) return;
+      if (!node || typeof node !== 'object') return;
+      const n = node as { type?: string; callee?: unknown };
+      if (n.type === 'CallExpression') {
+        const callee = n.callee as { type?: string; name?: string } | null;
+        if (
+          callee &&
+          callee.type === 'Identifier' &&
+          (callee.name === 't' || callee.name === '$t')
+        ) {
+          hit = true;
+          return;
+        }
+      }
+      for (const key in node) {
+        if (key === 'loc' || key === 'range' || key === 'start' || key === 'end') continue;
+        const value = (node as Record<string, unknown>)[key];
+        if (Array.isArray(value)) {
+          for (const child of value) visit(child);
+        } else if (value && typeof value === 'object') {
+          visit(value);
+        }
+        if (hit) return;
+      }
+    };
+    for (const node of nodes) visit(node);
+    return hit;
+  }
+
+  /**
+   * 清理 setup 块内由本工具注入的标准形式：
+   *   import { useI18n } from 'vue-i18n';
+   *   const { t } = useI18n();
+   *
+   * 仅作用于 <script setup> 块。useI18n({ useScope: 'local', messages: ... })
+   * 等含参高级用法是用户手写代码，不在清理正则范围内（regex 仅匹配 useI18n()
+   * 无参形式），不会被误伤。
+   *
+   * 使用场景：原本走 hook 注入的文件后续出现了编译宏引用 t，需迁移到模块
+   * import 路径 —— 此时残留的 hook 声明会让 setup 局部 t 遮蔽模块顶层 t，
+   * 必须清理。
+   */
+  private removeHookImportAndDeclaration(code: string): string {
+    const block = VueImportManager.findScriptBlock(code, { setupOnly: true });
+    if (!block) return code;
+
+    let updated = block.content;
+    updated = updated.replace(this.library.getHookDeclarationCleanupRegex(), '');
+    // import 清理正则匹配整条 `import { ... } from 'vue-i18n'` —— 如果用户
+    // 还在 setup 内手写其他 useI18n 调用，删除 import 会破坏代码。此时保守
+    // 保留 import；多余的 import 由 ESLint no-unused 兜底。
+    if (!/\buseI18n\s*\(/.test(updated)) {
+      updated = updated.replace(this.library.getImportCleanupRegex(), '');
+    }
+
+    if (updated === block.content) return code;
+    return code.slice(0, block.start) + updated + code.slice(block.end);
   }
 
   /**
