@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.13
+
+### Patch Changes
+
+- 修复转义报错
+
 ## 0.0.12
 
 ### Patch Changes
