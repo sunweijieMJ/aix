@@ -426,6 +426,14 @@ export const DROPDOWN_INJECTION_KEY: InjectionKey<DropdownContext> = Symbol('Aix
 
 export interface ContextMenuProps {
   /**
+   * 触发方式
+   * - `'contextmenu'`（默认）：右键弹出，由组件自动监听
+   * - `'manual'`：不绑定任何事件，仅通过 expose 的 `show(event)` 在指定鼠标坐标弹出
+   * @default 'contextmenu'
+   */
+  trigger?: Extract<TriggerType, 'contextmenu' | 'manual'>;
+
+  /**
    * 是否禁用
    * @default false
    */

@@ -61,18 +61,17 @@
       </template>
     </ContextMenu>
 
-    <template v-if="selected">
-      <div
-        v-for="(wp, i) in waypoints"
-        :key="i"
-        class="aix-edge-waypoint nodrag nopan"
-        :style="{
-          transform: `translate(-50%, -50%) translate(${wp.x}px, ${wp.y}px)`,
-        }"
-        @mousedown.stop="startDrag($event, i)"
-        @contextmenu.prevent.stop="removeWaypoint(i)"
-      />
-    </template>
+    <div
+      v-for="(wp, i) in waypoints"
+      :key="i"
+      class="aix-edge-waypoint nodrag nopan"
+      :class="{ 'aix-edge-waypoint--selected': selectedWaypointIndex === i }"
+      :style="{
+        transform: `translate(-50%, -50%) translate(${wp.x}px, ${wp.y}px)`,
+      }"
+      @mousedown.stop="onWaypointMousedown($event, i)"
+      @contextmenu.prevent.stop="removeWaypoint(i)"
+    />
   </EdgeLabelRenderer>
 </template>
 
@@ -90,8 +89,11 @@ import { computed, inject, onBeforeUnmount, ref } from 'vue';
 import {
   DEFAULT_CIRCLE_SIZE,
   DEFAULT_HEXAGON_SIZE,
+  FlowActiveWaypointKey,
   FlowEdgesDeletableKey,
+  FlowSnapContextKey,
   type EdgeData,
+  type FlowActiveWaypoint,
   type NodeData,
 } from '../../types';
 
@@ -102,6 +104,25 @@ defineOptions({ name: 'AixColorEdge' });
 
 const props = defineProps<EdgeProps<EdgeData>>();
 const { removeEdges, updateEdgeData, screenToFlowCoordinate, findNode } = useVueFlow();
+const snap = inject(FlowSnapContextKey, null);
+/**
+ * 本 FlowGraph 实例共享的"当前选中拐点"状态。由 FlowGraph 创建并 provide，
+ * `onKeyDelete` 与 `onGlobalMousedown` 单点处理 Delete 删除与高亮重置。
+ * inject 默认值仅在脱离 FlowGraph 渲染时兜底（如单测直接 mount ColorEdge），生产路径必有 provider。
+ */
+const activeWaypoint = inject(FlowActiveWaypointKey, ref<FlowActiveWaypoint | null>(null));
+
+/** 本边拐点的选中索引（与全局选中匹配时高亮） */
+const selectedWaypointIndex = computed(() =>
+  activeWaypoint.value?.edgeId === props.id ? activeWaypoint.value.index : null,
+);
+
+/** 开启吸附时把坐标对齐到栅格 */
+function snapPoint(p: { x: number; y: number }): { x: number; y: number } {
+  if (!snap?.snapEnabled.value) return p;
+  const step = snap.gridSize.value;
+  return { x: Math.round(p.x / step) * step, y: Math.round(p.y / step) * step };
+}
 
 const edgeData = computed<EdgeData>(() => props.data ?? {});
 const color = computed(() => edgeData.value.color || 'var(--aix-flowGraphEdgeColor, #86909c)');
@@ -224,13 +245,16 @@ function onCommand(command: string | number) {
   if (command === 'delete') removeEdges(props.id);
 }
 
-/** 移除指定索引的拐点 */
+/** 移除指定索引的拐点；若被移除的拐点是当前高亮项，同步清空全局选中 */
 function removeWaypoint(index: number) {
   const wps = waypoints.value.filter((_, i) => i !== index);
   updateEdgeData(props.id, { ...edgeData.value, waypoints: wps });
+  if (activeWaypoint.value?.edgeId === props.id && activeWaypoint.value.index === index) {
+    activeWaypoint.value = null;
+  }
 }
 
-/** 路径左键按下：选中态下在最近的线段插入新拐点并进入拖拽 */
+/** 路径左键按下：选中态下在最近的线段插入新拐点并进入拖拽（拖拽期间自由移动，放开时吸附） */
 function onPathMousedown(event: MouseEvent) {
   if (!props.selected || event.button !== 0) return;
   const pos = screenToFlowCoordinate({ x: event.clientX, y: event.clientY });
@@ -255,7 +279,19 @@ function onPathMousedown(event: MouseEvent) {
   const wps = [...waypoints.value];
   wps.splice(insertIndex, 0, pos);
   updateEdgeData(props.id, { ...edgeData.value, waypoints: wps });
+  activeWaypoint.value = { edgeId: props.id, index: insertIndex };
   startDrag(event, insertIndex, pos);
+}
+
+/**
+ * 拐点 mousedown：写入全局 activeWaypoint 后进入拖拽。
+ * 不需要主动取消边的 selected —— FlowGraph.onKeyDelete 的拐点分支已 early return + preventDefault，
+ * 不会落到边/节点删除分支。
+ */
+function onWaypointMousedown(event: MouseEvent, index: number) {
+  if (event.button !== 0) return;
+  activeWaypoint.value = { edgeId: props.id, index };
+  startDrag(event, index);
 }
 
 /** 点到线段的最短距离 */
@@ -284,14 +320,24 @@ function startDrag(event: MouseEvent, index: number, originPos?: { x: number; y:
   const offsetX = startFlow.x - startMouseFlow.x;
   const offsetY = startFlow.y - startMouseFlow.y;
 
+  // 拖拽过程中自由移动（不吸附），与节点拖拽行为一致；mouseup 时再一次性吸附到栅格
+  let lastPos = { ...startFlow };
+
   function onMove(e: MouseEvent) {
     const flowPos = screenToFlowCoordinate({ x: e.clientX, y: e.clientY });
     const newPos = { x: flowPos.x + offsetX, y: flowPos.y + offsetY };
+    lastPos = newPos;
     const updated = waypoints.value.map((wp, i) => (i === index ? newPos : wp));
     updateEdgeData(props.id, { ...edgeData.value, waypoints: updated });
   }
 
   function onUp() {
+    // 放开时对齐栅格（吸附），未开启吸附则保持原位
+    const snapped = snapPoint(lastPos);
+    if (snapped.x !== lastPos.x || snapped.y !== lastPos.y) {
+      const updated = waypoints.value.map((wp, i) => (i === index ? snapped : wp));
+      updateEdgeData(props.id, { ...edgeData.value, waypoints: updated });
+    }
     cleanupDrag?.();
   }
 
@@ -316,10 +362,17 @@ function startDrag(event: MouseEvent, index: number, originPos?: { x: number; y:
   left: 0;
   width: 10px;
   height: 10px;
+  transition: filter 0.2s ease;
   border: 2px solid var(--aix-flowGraphBrand, #1546f2);
   border-radius: 50%;
   background: var(--aix-colorBgElevated, #fff);
   cursor: move;
   pointer-events: all;
+}
+
+/* 选中态：圆心填品牌色 + drop-shadow 光晕（与节点 active 的视觉语言一致） */
+.aix-edge-waypoint--selected {
+  background: var(--aix-flowGraphBrand, #1546f2);
+  filter: drop-shadow(0 0 4px var(--aix-flowGraphBrand, #1546f2));
 }
 </style>

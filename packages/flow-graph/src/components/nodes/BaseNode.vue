@@ -1,8 +1,9 @@
 <template>
   <ContextMenu
+    ref="contextMenuRef"
+    trigger="manual"
     popper-class="aix-flow-node-menu"
     @command="onCommand"
-    @visible-change="onContextVisibleChange"
   >
     <Tooltip
       ref="tooltipRef"
@@ -11,10 +12,18 @@
       :hide-delay="0"
       placement="top"
     >
+      <!--
+        右键行为：仅屏蔽菜单 UI，保留 `node-right-click` 事件透传。
+        - `.prevent` 阻止浏览器默认右键菜单；
+        - 不加 `.stop`：事件继续冒泡到 `.vue-flow__node`，让 vue-flow emit `nodeContextMenu`，
+          FlowGraph 据此 emit 对外的 `node-right-click`（公开 API，README 文档化）；
+        - 不弹菜单是因为 ContextMenu 使用了 `trigger="manual"`，不会自动响应 contextmenu。
+      -->
       <div
         class="aix-flow-node__wrapper"
         :class="{ 'aix-flow-node__wrapper--connectable': connectable }"
         :style="{ width: `${size}px`, height: `${size}px` }"
+        @contextmenu.prevent
       >
         <NodeActiveCross
           v-if="nodeState === 'active'"
@@ -22,7 +31,12 @@
           :color="data?.color || fallbackColor"
           :colors="data?.pathColors ?? []"
         />
-        <slot :size="size" :node-state="nodeState" :clicking="clicking" :on-click="onNodeClick" />
+        <slot
+          :size="size"
+          :node-state="nodeState"
+          :clicking="clicking"
+          :on-click="onNodeLeftClick"
+        />
         <Handle type="target" :position="Position.Left" class="aix-flow-node__handle" />
         <Handle type="source" :position="Position.Right" class="aix-flow-node__handle" />
       </div>
@@ -48,7 +62,13 @@
  * - 视觉通过默认 slot 暴露 `{ size, nodeState, onClick }`，由子类渲染形状；
  * - Handle 的 pointer-events 由 `connectable` 控制。
  */
-import { ContextMenu, DropdownItem, Tooltip, type TooltipExpose } from '@aix/popper';
+import {
+  ContextMenu,
+  DropdownItem,
+  Tooltip,
+  type ContextMenuExpose,
+  type TooltipExpose,
+} from '@aix/popper';
 import { Handle, Position, type HandleConnectable } from '@vue-flow/core';
 import { computed, ref, toRef, watch } from 'vue';
 import { useNodeInteraction } from '../../composables/useNodeInteraction';
@@ -92,17 +112,36 @@ watch(
   },
 );
 
-const { nodeState, clicking, onNodeClick, onContextOpen, onContextClose, onCommand } =
-  useNodeInteraction({
-    id: props.id,
-    data: toRef(props, 'data'),
-  });
+const { nodeState, clicking, onNodeClick, onCommand } = useNodeInteraction({
+  id: props.id,
+  data: toRef(props, 'data'),
+});
 
-/** 同步右键菜单开合到节点 context 状态 */
-function onContextVisibleChange(visible: boolean) {
-  if (visible) onContextOpen();
-  else onContextClose();
+const contextMenuRef = ref<ContextMenuExpose | null>(null);
+
+/**
+ * 节点左击：切换 active/default 状态。切到 active 时按鼠标坐标弹出菜单；
+ * 关菜单由下面的 watch(nodeState) 统一负责（包括外部 reset 路径），此处不重复处理。
+ *
+ * 注意：nodeState 来自 props.data，更新是异步（vue-flow store → props patch → computed），
+ * 不能在 onNodeClick() 之后立刻读"切换后状态"。这里基于"切换前状态"预判 willActivate。
+ * 右键不弹菜单（ContextMenu 用 `trigger="manual"`），但事件冒泡到 vue-flow，
+ * FlowGraph 据此 emit `node-right-click`（详见 template 注释）。
+ */
+function onNodeLeftClick(event: MouseEvent) {
+  const willActivate = nodeState.value !== 'active';
+  onNodeClick();
+  if (willActivate) contextMenuRef.value?.show(event);
 }
+
+/**
+ * 节点 active 由 useNodeInteraction 内部多个路径切换（如全局 mousedown 的 resetAllNodeStates）。
+ * manual 模式下 ContextMenu 不再自动监听点击外部，因此必须 watch nodeState：
+ * 一旦非 active，主动关闭菜单，避免"节点未选中但菜单还挂着"的视觉残留。
+ */
+watch(nodeState, (s) => {
+  if (s !== 'active') contextMenuRef.value?.hide();
+});
 
 defineExpose({ size, nodeState });
 </script>

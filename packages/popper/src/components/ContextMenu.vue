@@ -41,6 +41,7 @@ defineOptions({
 });
 
 const props = withDefaults(defineProps<ContextMenuProps>(), {
+  trigger: 'contextmenu',
   disabled: false,
   teleportTo: 'body',
   teleportDisabled: false,
@@ -66,14 +67,14 @@ watch(floatingElRef, (el) => {
   floatingRef.value = el;
 });
 
-// 触发器：复用 usePopperTrigger 的 contextmenu 逻辑（虚拟元素定位 + Escape + 点击外部关闭）
+// 触发器：复用 usePopperTrigger 的 contextmenu/manual 逻辑（虚拟元素定位 + Escape + 点击外部关闭）
 const {
   isOpen,
   show: triggerShow,
   hide,
   referenceListeners,
 } = usePopperTrigger({
-  trigger: 'contextmenu',
+  trigger: () => props.trigger,
   disabled: () => props.disabled,
   referenceRef,
   floatingRef,

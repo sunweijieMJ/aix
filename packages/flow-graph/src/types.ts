@@ -1,5 +1,5 @@
 import type { Node, Edge, MouseTouchEvent } from '@vue-flow/core';
-import type { Component, ComputedRef, InjectionKey } from 'vue';
+import type { Component, ComputedRef, InjectionKey, Ref } from 'vue';
 
 /** 面板位置类型 */
 export type PanelPositionType =
@@ -90,6 +90,22 @@ export const FlowSnapContextKey: InjectionKey<FlowSnapContext> = Symbol('aix-flo
 export const FlowEdgesDeletableKey: InjectionKey<ComputedRef<boolean>> = Symbol(
   'aix-flow-edges-deletable',
 );
+
+/** 当前选中的拐点（跨 edge 单选；由 FlowGraph 持有并按需重置） */
+export interface FlowActiveWaypoint {
+  edgeId: string;
+  index: number;
+}
+
+/**
+ * 当前选中拐点的注入键。
+ * 使用 `Symbol.for` 走全局注册表，相同 key 永远返回同一 Symbol，
+ * 在 Storybook + Vite HMR 下也不会因 types.ts 被重新求值而产生新 Symbol，
+ * 保证 inject 始终能匹配到对应 FlowGraph 实例的 provider。
+ */
+export const FlowActiveWaypointKey: InjectionKey<Ref<FlowActiveWaypoint | null>> = Symbol.for(
+  'aix-flow-active-waypoint',
+) as InjectionKey<Ref<FlowActiveWaypoint | null>>;
 
 /** 暴露给外部的底部工具栏插槽 props */
 export interface FlowGraphBottomBarSlotProps {

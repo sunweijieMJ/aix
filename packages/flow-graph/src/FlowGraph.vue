@@ -79,8 +79,11 @@ import HexagonNode from './components/nodes/HexagonNode.vue';
 import {
   DEFAULT_CIRCLE_SIZE,
   DEFAULT_HEXAGON_SIZE,
+  FlowActiveWaypointKey,
   FlowEdgesDeletableKey,
   FlowSnapContextKey,
+  type EdgeData,
+  type FlowActiveWaypoint,
   type FlowConnection,
   type FlowEdge,
   type FlowGraphEmits,
@@ -116,6 +119,15 @@ provide(FlowSnapContextKey, { snapEnabled, gridSize, nodeSize, hexagonSize });
 const edgesDeletable = computed(() => props.edgesDeletable !== false);
 provide(FlowEdgesDeletableKey, edgesDeletable);
 
+/**
+ * 当前选中的拐点（单选，跨 edge），实例私有：
+ * - ColorEdge 在 mousedown 时写入，使得高亮跟随选中；
+ * - FlowGraph 的全局 mousedown 在点击非拐点处时清空（与节点 active 状态一致）；
+ * - 全局 keydown 处理 Delete/Backspace 时优先删除该拐点。
+ */
+const activeWaypoint = ref<FlowActiveWaypoint | null>(null);
+provide(FlowActiveWaypointKey, activeWaypoint);
+
 const bottomBarPos = computed(() => {
   const p = props.bottomBarPosition;
   if (!p) return 'bottom-center';
@@ -131,6 +143,8 @@ const bottomBarStyle = computed(() => {
 
 const {
   updateEdge,
+  updateEdgeData,
+  findEdge,
   screenToFlowCoordinate,
   viewport,
   updateNodeData,
@@ -160,6 +174,21 @@ function isEditableTarget(target: EventTarget | null): boolean {
 function onKeyDelete(event: KeyboardEvent) {
   if (event.key !== 'Delete' && event.key !== 'Backspace') return;
   if (isEditableTarget(event.target)) return;
+
+  // 优先处理拐点删除：拐点选中时不应连带删除整条边或节点。
+  // 拐点编辑（增/删/拖）与边自身的可删除性正交，不依赖 edgesDeletable / edge.data.deletable。
+  // ref 是本实例私有，若 findEdge 找不到说明 edge 已被外部移除，清空 ref 后走默认删除路径即可。
+  if (activeWaypoint.value) {
+    const { edgeId, index } = activeWaypoint.value;
+    const edge = findEdge<EdgeData>(edgeId);
+    activeWaypoint.value = null;
+    if (edge) {
+      const wps = (edge.data?.waypoints ?? []).filter((_, i) => i !== index);
+      updateEdgeData(edgeId, { ...edge.data, waypoints: wps });
+      event.preventDefault();
+      return;
+    }
+  }
 
   // 过滤可删除的边：单条边 deletable=false 或全局 edgesDeletable=false 都跳过
   const edgesToDelete = getEdges.value
@@ -306,9 +335,16 @@ function resetAllNodeStates() {
   });
 }
 
-/** 全局 mousedown：点击节点/边/搜索面板之外时重置所有节点状态 */
+/**
+ * 全局 mousedown（@mousedown.capture 在 VueFlow 上，capture 阶段先于子节点 .stop 修饰符触发）：
+ * - 点击非拐点时清空 activeWaypoint（与节点 active 状态保持一致的清理时机）；
+ * - 点击节点/边/搜索面板之外时整体重置节点 active/context/selecting 状态。
+ */
 function onGlobalMousedown(event: MouseEvent) {
   const target = event.target as HTMLElement;
+  if (!target.closest('.aix-edge-waypoint')) {
+    activeWaypoint.value = null;
+  }
   if (
     !target.closest('.vue-flow__node') &&
     !target.closest('.vue-flow__edge') &&
@@ -538,7 +574,6 @@ defineExpose({
 }
 
 .aix-flow-node-menu__delete {
-  background: var(--aix-controlItemBgHover, #f5f5f5);
   color: var(--aix-colorError, #ff2626) !important;
 }
 

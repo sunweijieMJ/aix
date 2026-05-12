@@ -9,8 +9,6 @@ export interface UseNodeInteractionOptions {
   id: string;
   /** 节点的响应式 data（来自 VueFlow NodeProps.data） */
   data: Ref<NodeData | undefined>;
-  /** 是否支持 context 状态切换（默认 true） */
-  supportContextState?: boolean;
 }
 
 /** {@link useNodeInteraction} 的返回值 */
@@ -21,10 +19,6 @@ export interface UseNodeInteractionReturn {
   clicking: Ref<boolean>;
   /** 点击节点：在 active / default 之间切换 */
   onNodeClick: () => void;
-  /** 右键菜单打开时调用：将节点切至 context 态 */
-  onContextOpen: () => void;
-  /** 右键菜单关闭时调用：将节点切回 default 态 */
-  onContextClose: () => void;
   /** 删除当前节点 */
   onDelete: () => void;
   /** 复制当前节点，位置对齐栅格并自动避开重叠 */
@@ -43,7 +37,7 @@ const CLICK_ANIMATION_MS = 300;
  * 本 composable 只负责业务语义与状态同步。
  */
 export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeInteractionReturn {
-  const { id, data, supportContextState = true } = options;
+  const { id, data } = options;
   const { removeNodes, addNodes, getNodes, updateNodeData } = useVueFlow();
   const snap = inject(FlowSnapContextKey, null);
 
@@ -80,22 +74,6 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
       }
     });
     setState(nodeState.value === 'active' ? 'default' : 'active');
-  }
-
-  function onContextOpen() {
-    if (!supportContextState) return;
-    // 先重置其他节点状态
-    getNodes.value.forEach((n) => {
-      if (n.id !== id && n.data?.state && n.data.state !== 'default') {
-        updateNodeData(n.id, { ...n.data, state: 'default' });
-      }
-    });
-    setState('context');
-  }
-
-  function onContextClose() {
-    if (!supportContextState) return;
-    if (nodeState.value === 'context') setState('default');
   }
 
   function onDelete() {
@@ -153,8 +131,6 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
     nodeState,
     clicking,
     onNodeClick,
-    onContextOpen,
-    onContextClose,
     onDelete,
     onCopy,
     onCommand,
