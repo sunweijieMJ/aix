@@ -1,7 +1,7 @@
 import type { ResolvedConfig } from '../config';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
-import { RunReport } from '../utils/run-report';
+import { RunReport, type CoverageMetric } from '../utils/run-report';
 
 /**
  * 不依赖框架适配器的处理器基类
@@ -41,6 +41,17 @@ export abstract class FileProcessor {
    */
   protected getCommandName(): string {
     return this.constructor.name.replace(/Processor$/, '').toLowerCase();
+  }
+
+  /**
+   * 对外只读暴露本次运行的覆盖率指标（仅 generate / automatic 流程会填充）。
+   * CLI 拿到后可与 --coverage-threshold 比较，决定退出码。
+   *
+   * 这里把 protected report 通过显式 getter 暴露 metric，而不是把整个 report
+   * 改成 public——避免外部直接 addFailure/addWarning 破坏报告语义。
+   */
+  getCoverage(): CoverageMetric | undefined {
+    return this.report.getCoverage();
   }
 
   /**

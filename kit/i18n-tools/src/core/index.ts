@@ -7,3 +7,7 @@ export { TranslateProcessor } from './TranslateProcessor';
 export { MergeProcessor } from './MergeProcessor';
 export { ExportProcessor } from './ExportProcessor';
 export { AutomaticProcessor } from './AutomaticProcessor';
+export { DoctorProcessor } from './DoctorProcessor';
+export type { DoctorCategory, DoctorFinding, DoctorSeverity } from './DoctorProcessor';
+export { GeneratePlanWriter } from './GeneratePlan';
+export type { GeneratePlan, GeneratePlanFileEntry, GeneratePlanHit } from './GeneratePlan';

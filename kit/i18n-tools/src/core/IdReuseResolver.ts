@@ -77,6 +77,15 @@ export class IdReuseResolver {
   }
 
   /**
+   * 源码扫描阶段命中的「已存在 t()/$t() 调用」总次数（不去重）。
+   *
+   * Why 不去重：覆盖率统计的口径是「中文片段调用点」而非「key 数量」。同一个
+   * key 在 5 个地方调用 t('xxx') 就算 5 次已国际化。existingIds 集合是去重的，
+   * 不能直接用作覆盖率分子，故这里单独累加调用次数。
+   */
+  private existingCallSites: number = 0;
+
+  /**
    * 扫描多个源文件中已存在的 t() / $t() 调用，把这些 key 加入 existingIds，
    * 防止新生成的 ID 与源码里硬编码的 key 冲突。
    */
@@ -87,12 +96,20 @@ export class IdReuseResolver {
         const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
         let match;
         while ((match = i18nKeyPattern.exec(content)) !== null) {
-          if (match[1]) this.existingIds.add(match[1]);
+          if (match[1]) {
+            this.existingIds.add(match[1]);
+            this.existingCallSites++;
+          }
         }
       } catch {
         /* 忽略读取失败 */
       }
     }
+  }
+
+  /** 本轮源码扫描到的「已国际化调用点」总次数（覆盖率分子的一部分） */
+  getExistingCallSiteCount(): number {
+    return this.existingCallSites;
   }
 
   /**

@@ -15,6 +15,9 @@ Vue/React 项目国际化自动化工具集，支持中文提取、语义化 ID 
 - **翻译词表** - 支持术语表（glossary），命中词条直接复用译文，跳过 LLM 调用
 - **嵌套输出** - 可选按 ID 分隔符生成树形 JSON，便于人工浏览大型语言包
 - **事务式写入** - generate 阶段先在内存完成全部 transform，全部成功后才落盘源码与语言文件，避免失败留下孤儿 key
+- **Dry-run 预览** - `--dry-run` 生成 plan 文件供 review，`--apply-plan` 回放已审核结果（指纹校验防止源码漂移）
+- **覆盖率指标** - generate 完成输出覆盖率 summary，支持 `--coverage-threshold` 在 CI 卡点
+- **健康体检** - `doctor` 子命令做 locale 结构 lint + 三类对账（孤儿 key / 缺失 key / 未翻译）
 
 ## 安装
 
@@ -91,6 +94,8 @@ i18n-tools [选项]
 
 ### 选项
 
+#### 基本选项
+
 | 选项 | 别名 | 说明 | 默认值 |
 |------|------|------|--------|
 | `--config` | - | 配置文件路径 | `i18n.config.ts` |
@@ -99,6 +104,17 @@ i18n-tools [选项]
 | `--interactive` | `-i` | 交互模式 | 未指定 mode 时开启 |
 | `--skip-llm` | - | 跳过 LLM，使用本地 ID 生成 | `false` |
 | `--help` | `-h` | 显示帮助 | - |
+
+#### CI / Review 选项
+
+| 选项 | 说明 | 适用模式 |
+|------|------|---------|
+| `--dry-run` | 生成 plan 但不修改源码与语言文件（用于 review） | `generate` |
+| `--apply-plan <path \| latest>` | 从指定 plan 回放，跳过 LLM 与 AST 解析；传 `latest` 自动找最近一次 | `generate` |
+| `--keep-plan` | apply 成功后保留 plan 目录（默认会自动清理） | `generate` |
+| `--plan-output-dir <dir>` | 自定义 dry-run 输出根目录（绕开 Windows 长路径等问题） | `generate` |
+| `--coverage-threshold <num>` | 覆盖率低于该百分比（0-100）则以退出码 2 退出 | `generate` / `automatic` |
+| `--ci` | 发现 error 级问题时以非零状态码退出 | `doctor` |
 
 ### 操作模式
 
@@ -111,6 +127,7 @@ i18n-tools [选项]
 | `merge` | 合并翻译 - 将翻译结果合并回主文件 |
 | `restore` | 代码还原 - 将国际化调用还原为中文 |
 | `export` | 语言包导出 - 生成最终的多语言文件 |
+| `doctor` | 健康检查 - 体检 locale 文件结构与源码对账 |
 
 ### 使用示例
 
@@ -131,6 +148,28 @@ npx i18n-tools -m generate --skip-llm
 
 # 指定配置文件
 npx i18n-tools --config ./config/i18n.config.ts -m automatic
+
+# Dry-run：生成 plan 文件供 review，不修改源码
+npx i18n-tools -m generate --dry-run
+#   → 输出 .i18n-tools/plans/generate-<ts>-<pid>/{plan.json, sources/}
+
+# 回放最近一次 dry-run（推荐：无需粘贴长路径）
+npx i18n-tools -m generate --apply-plan latest
+
+# 回放指定 plan（支持传目录或 plan.json 路径；apply 完成默认清理 plan 目录）
+npx i18n-tools -m generate --apply-plan .i18n-tools/plans/.../plan.json
+
+# 想保留 plan 用于事后审计 / PR 附件
+npx i18n-tools -m generate --apply-plan latest --keep-plan
+
+# CI 卡覆盖率：低于 95% 则以退出码 2 退出
+npx i18n-tools -m generate --coverage-threshold 95
+
+# 健康体检
+npx i18n-tools -m doctor
+
+# CI 模式体检（发现 error 即非零退出）
+npx i18n-tools -m doctor --ci
 ```
 
 ## 工作流程
@@ -455,6 +494,144 @@ output: { format: 'nested' }
 
 注：仅影响 `export` 输出，工具内部工作文件始终为扁平结构，避免合并冲突。
 
+### Dry-run + Plan 回放（generate）
+
+适用于大目录批量国际化、需要 PR review 中间产物的场景。`generate --dry-run`
+不修改任何源码与语言文件，而是把 transform 结果写入 plan 目录：
+
+```
+.i18n-tools/plans/generate-<timestamp>-<pid>/
+├── plan.json              # 主 JSON：每文件的 hit 列表 + key→message
+└── sources/               # 每个文件 transform 后的完整源码
+    └── src/views/Login.vue
+```
+
+```bash
+# 1. 生成 plan
+npx i18n-tools -m generate --dry-run
+
+# 2. Review plan.json 与 sources/ 目录下的转换后源码
+#    可用 git diff、code review 工具直接对比
+
+# 3. 确认后回放（推荐用 latest 简写）
+npx i18n-tools -m generate --apply-plan latest
+#   apply 成功后默认删 plan 目录；想保留请加 --keep-plan
+```
+
+**关键设计**：
+
+- **指纹校验**：plan 记录每个源文件的 SHA-256，apply 阶段会重新计算并对比；
+  若 plan 生成后源文件被外部修改过，apply 直接拒绝执行，避免静默覆盖
+- **schemaVersion**：plan 结构带版本号，不识别的版本会拒绝读取（不向前兼容崩坏）
+- **跨步骤复用**：apply 完全不调 LLM 也不解析 AST —— "决策"和"执行"解耦，
+  既加快 review 后的最终落盘速度、也避免 LLM 第二次跑出不同结果
+- **事务保证**：dry-run 失败（AST 错误）时不会留下半截 plan 目录
+- **元数据完整**：plan 包含 `toolVersion`（生成时的 @kit/i18n-tools 版本）和
+  `llmModel`（本次使用的模型名，或 `local` 表示跳过 LLM），给 reviewer 提供
+  判断"是否需要用新版本重跑"的依据
+- **latest 简写 + 自动清理**：
+  - dry-run 写盘时同时落 `.i18n-tools/plans/.last.json` 指向最新目录，
+    `--apply-plan latest` 一行命令直达；指针损坏时回退到目录扫描（按 mtime 倒序）
+  - apply 成功后默认清理 plan 目录（连同指针），避免累积；需要保留时加 `--keep-plan`
+- **自定义输出路径**：`--plan-output-dir <dir>` 把 plan 写到自定义根目录，
+  适合 Windows 项目深路径场景，或希望把 plan 放到 `/tmp` 以快速失效的 CI 场景
+
+### 覆盖率指标与 CI 卡点
+
+`generate` 完成后会打印覆盖率 summary：
+
+```
+📊 本次国际化覆盖率
+────────────────────────────────────
+扫描文件          2095
+中文片段总数      12252
+  已国际化         11993  (97.9%)
+  本轮新生成       200    (1.6%)
+  跳过/待人工      59     (0.5%)
+────────────────────────────────────
+🎯 当前覆盖率   99.5%
+
+⚠️  待人工处理 59 条（详见 .i18n-tools/logs/）
+   • comparison-operand   34  — 比较运算符跳过的中文字面量
+   • mixed-content        25  — 混合内容字符串（无法机械拆分）
+```
+
+CI 卡点：
+
+```bash
+# 覆盖率低于 95% 则以退出码 2 退出
+npx i18n-tools -m generate --coverage-threshold 95
+```
+
+退出码语义：
+- `0` 正常完成
+- `1` 一般失败（AST 错误、IO 错误等）
+- `2` 专用于覆盖率阈值不满足 —— 便于 CI pipeline 单独识别"i18n 覆盖率不足"这一档
+
+覆盖率指标会同时落盘到 `.i18n-tools/logs/run-*.json`（仅当存在 failure / warning /
+待人工条目时落盘，纯成功路径零产物）。
+
+### Doctor 健康体检
+
+`i18n-tools --mode doctor` 对 locale 文件与源码做交叉对账，不修改任何文件：
+
+```bash
+npx i18n-tools -m doctor          # 本地查看
+npx i18n-tools -m doctor --ci     # CI 模式（有 error 即非零退出）
+```
+
+检查维度：
+
+| 类别 | 严重级别 | 触发条件 |
+|------|---------|---------|
+| `missing-key` | **error** | 源码 `t('xxx')` 引用了 locale 不存在的 key（运行时显示 key 字符串） |
+| `orphan-key` | warning | locale 中的 key 源码无引用（清理候选；动态 key 可能误报，不自动删） |
+| `untranslated` | warning | target locale 的 value 与 source 完全相同且含中文（疑似漏译） |
+| `locale-lint` | info / warning | 复用 `LocaleValueLinter.analyze`：语义重复 key、含 HTML、超长 value、跨模块复用候选、硬编码比较等 |
+
+**未翻译判定的保守策略**：仅当 source value 含中文字符且 target = source 时
+才报警，避免对纯英文/纯符号（如 `'TCP/IP'`、`'API'`、`'{count}'`）误判为漏译。
+
+### 落盘日志（.i18n-tools/）
+
+工具会在项目根创建 `.i18n-tools/` 目录（自带 `.gitignore`，不会被业务侧误提交），
+集中存放运行期产物：
+
+```
+.i18n-tools/
+├── .gitignore             # 内容固定为 *，整个目录默认被忽略
+├── logs/                  # 失败 / 警告 / 待人工 条目落盘
+│   └── run-<ts>-<cmd>-<pid>.json
+│   ⚠️  自动按 mtime 倒序保留最近 20 个；不会动用户放在此目录的其它文件
+└── plans/                 # dry-run 生成的 plan
+    ├── .last.json         # 指向最近一次 dry-run 的目录（给 --apply-plan latest 用）
+    └── generate-<ts>-<pid>/
+        ├── plan.json
+        └── sources/
+```
+
+**生命周期**：
+
+- `logs/run-*.json` —— 按 mtime 滚动，仅保留最近 20 个；用户在 `logs/` 下放
+  自己的笔记或归档文件不会被清理
+- `plans/generate-*/` —— apply 成功后默认清理；`--keep-plan` 显式保留
+- `plans/.last.json` —— write 时更新，cleanup 时若指向被清目录则一并删除
+
+日志 payload 结构：
+
+```typescript
+{
+  command: 'generate' | 'doctor' | ...,
+  finishedAt: string,
+  rootDir: string,
+  summary: { failed, warnings, needsManual },
+  coverage?: CoverageMetric,
+  failures: FailureRecord[],
+  warnings: string[],
+  needsManual: ManualEntry[],   // 结构化分类，含 file/line/category/reason/suggestion
+}
+```
+
 ## 框架支持
 
 ### Vue
@@ -526,13 +703,14 @@ await auto.execute('src/views', false);
 
 | 处理器 | 说明 |
 |--------|------|
-| `GenerateProcessor` | 代码生成处理器 |
+| `GenerateProcessor` | 代码生成处理器（支持 `execute(target, skipLLM, { dryRun })` 与 `applyFromPlan(path)`） |
 | `PickProcessor` | 提取待翻译处理器 |
 | `TranslateProcessor` | 翻译处理器 |
 | `MergeProcessor` | 合并翻译处理器 |
 | `ExportProcessor` | 导出处理器 |
 | `RestoreProcessor` | 还原处理器 |
 | `AutomaticProcessor` | 全自动处理器 |
+| `DoctorProcessor` | 健康检查处理器（locale lint + 三类对账） |
 
 ### 导出的工具类
 
@@ -543,6 +721,9 @@ await auto.execute('src/views', false);
 | `LLMClient` | LLM API 客户端 |
 | `IdGenerator` | ID 生成器 |
 | `LanguageFileManager` | 语言文件管理 |
+| `LocaleValueLinter` | locale value 静态检查（`analyze()` 纯函数 + `emit()` sink） |
+| `RunReport` | 运行期诊断报告（failure / warning / needsManual / coverage） |
+| `GeneratePlanWriter` | Plan 序列化/回读/指纹校验（dry-run/apply 用） |
 
 ## 生成的文件结构
 
@@ -687,3 +868,38 @@ export default defineConfig({
 ### Q: 模块化导出后单文件流程还能用吗？
 
 可以。不配置 `modules` 时所有行为完全等同——`<lang>.json` 单文件输出。配置 `modules` 后，generate/merge/export 会自动按规则分桶；语言文件的物理结构变成 `<lang>/<module>.json`，但内部 key 表示和 t() 调用方式不变。
+
+### Q: dry-run 生成 plan 后，源文件被修改了怎么办？
+
+`apply-plan` 阶段会重新计算每个源文件的 SHA-256 与 plan 记录的 hash 对比；
+不一致直接拒绝执行，并打印出被改动的文件列表，**不会**用旧的 transform 结果
+覆盖新内容。需要：
+
+1. 决定保留哪一份变更（plan 内的转换结果 vs. 当前源文件）
+2. 重新跑 `generate --dry-run` 生成新 plan
+3. 重新 review 后 apply
+
+设计上不提供"强制 apply"开关 —— 静默覆盖未审核内容的风险远高于多跑一次
+dry-run 的成本。
+
+### Q: doctor 报了 orphan-key，但其实是动态 key（`t(prefix + name)`）
+
+工具的源码扫描基于静态正则，无法识别动态拼接的 key，因此动态 key 引用的
+locale 条目会被误报为 orphan。当前策略：
+
+- 默认仅 warning 级，不阻塞 CI
+- 不提供 `--fix` 自动删除（明确建议"删除前请人工确认"）
+- 后续可考虑加 `noOrphanCheck` 白名单配置
+
+如果业务大量使用动态 key，建议把 `doctor` 当作 PR 的辅助 review 工具，
+而非 CI 必经环节；或仅启用 `--ci` 关注 missing-key（仍是 error 级）。
+
+### Q: 覆盖率指标里的"跳过/待人工"具体是哪些？
+
+当前精确统计的是工具主动拒收的硬编码场景，归在 `comparison-operand` 等
+分类下；落盘后可在 `.i18n-tools/logs/run-*.json` 的 `needsManual` 数组中
+看到每条详情（含文件、行号、原文、原因、修复建议模板）。
+
+`comparison-operand` 是典型例子：`status === '进行中'` 这种比较若被替换为
+`t('xxx')`，运行时切语言后分支会永久不命中。工具主动跳过，由 `LocaleValueLinter`
+进一步交叉 locale value 报"硬编码 ↔ i18n 文案"风险位置。

@@ -47,6 +47,16 @@ export {
   MergeProcessor,
   ExportProcessor,
   AutomaticProcessor,
+  DoctorProcessor,
+  GeneratePlanWriter,
+} from './core';
+export type {
+  GeneratePlan,
+  GeneratePlanFileEntry,
+  GeneratePlanHit,
+  DoctorCategory,
+  DoctorFinding,
+  DoctorSeverity,
 } from './core';
 
 // ---- Adapters ----

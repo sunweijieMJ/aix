@@ -23,9 +23,140 @@ describe('RunReport', () => {
     const report = new RunReport('generate', rootDir);
     expect(report.hasFailures()).toBe(false);
     expect(report.hasWarnings()).toBe(false);
+    expect(report.hasManualEntries()).toBe(false);
     const result = report.flush();
     expect(result).toBeNull();
     expect(fs.existsSync(path.join(rootDir, '.i18n-tools'))).toBe(false);
+  });
+
+  it('仅 coverage 不会触发落盘（成功路径零产物）', () => {
+    const report = new RunReport('generate', rootDir);
+    report.setCoverage({
+      scannedFiles: 10,
+      totalChineseSegments: 100,
+      alreadyI18n: 80,
+      newlyGenerated: 18,
+      skipped: 2,
+      coverageRate: 0.98,
+    });
+    // coverage 单独存在时不应触发落盘——避免成功路径每次都产 logs
+    expect(report.flush()).toBeNull();
+  });
+
+  it('needsManual 字段：addManualEntry 入库并按 file/category/text 去重', () => {
+    const report = new RunReport('generate', rootDir);
+    const entry = {
+      category: 'comparison-operand' as const,
+      file: 'src/foo.vue',
+      line: 5,
+      column: 3,
+      text: '取消',
+      reason: '比较运算符跳过',
+    };
+    report.addManualEntry(entry);
+    report.addManualEntry(entry); // 同 key 重复入库 → 应去重
+    report.addManualEntry({ ...entry, text: '确定' }); // 不同 text → 不去重
+
+    const groups = report.groupManualByCategory();
+    expect(groups['comparison-operand']).toHaveLength(2);
+    expect(report.hasManualEntries()).toBe(true);
+  });
+
+  it('flush 落盘 payload 包含 coverage 与 needsManual', () => {
+    const report = new RunReport('generate', rootDir);
+    report.setCoverage({
+      scannedFiles: 5,
+      totalChineseSegments: 50,
+      alreadyI18n: 40,
+      newlyGenerated: 8,
+      skipped: 2,
+      coverageRate: 0.96,
+    });
+    report.addManualEntry({
+      category: 'mixed-content',
+      file: 'src/foo.vue',
+      line: 1,
+      column: 1,
+      text: 'AI自动提取',
+      reason: '混合内容，无法机械拆分',
+    });
+
+    const filePath = report.flush();
+    expect(filePath).not.toBeNull();
+    const payload = JSON.parse(fs.readFileSync(filePath!, 'utf-8'));
+    expect(payload.coverage.coverageRate).toBeCloseTo(0.96);
+    expect(payload.coverage.totalChineseSegments).toBe(50);
+    expect(payload.needsManual).toHaveLength(1);
+    expect(payload.needsManual[0].category).toBe('mixed-content');
+    expect(payload.summary.needsManual).toBe(1);
+  });
+
+  it('logs/ 超过保留上限时按 mtime 倒序裁剪旧文件', () => {
+    // 预先在 logs/ 放 25 个伪 run-*.json，mtime 各异
+    const logsDir = path.join(rootDir, '.i18n-tools', 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+    const TOTAL = 25;
+    for (let i = 0; i < TOTAL; i++) {
+      const f = path.join(logsDir, `run-fake-${i.toString().padStart(3, '0')}.json`);
+      fs.writeFileSync(f, '{}');
+      // mtime 序列：i 越小越旧
+      const t = new Date(Date.now() - (TOTAL - i) * 1000);
+      fs.utimesSync(f, t, t);
+    }
+
+    // 再写一个真实 report（触发 prune）。RunReport 自身要写一条 warning 才会落盘。
+    const report = new RunReport('generate', rootDir);
+    report.addWarning('trigger');
+    const flushed = report.flush();
+    expect(flushed).not.toBeNull();
+
+    // 现存 = 保留的 20 个旧 + 这次新写的 1 个 = 21 个？
+    // 不对：pruneOldLogs 在 flush 写入后 *再* 跑，留 LOGS_RETENTION_COUNT 个。
+    // 实现：保留最新的 20 个（含本次新写的）。其它 5 个旧的被删。
+    const remaining = fs.readdirSync(logsDir).filter((n) => /^run-.*\.json$/.test(n));
+    expect(remaining.length).toBe(20);
+    // 本次写的文件必在
+    expect(remaining).toContain(path.basename(flushed!));
+  });
+
+  it('logs/ 清理只动 run-*.json，不影响用户放的其它文件', () => {
+    const logsDir = path.join(rootDir, '.i18n-tools', 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+    // 预放 25 个 run-*.json + 一个用户笔记
+    for (let i = 0; i < 25; i++) {
+      const f = path.join(logsDir, `run-fake-${i.toString().padStart(3, '0')}.json`);
+      fs.writeFileSync(f, '{}');
+      const t = new Date(Date.now() - (25 - i) * 1000);
+      fs.utimesSync(f, t, t);
+    }
+    fs.writeFileSync(path.join(logsDir, 'my-notes.txt'), 'user content');
+    fs.writeFileSync(path.join(logsDir, 'archive.json'), '{}'); // 不是 run-* 模式
+
+    const report = new RunReport('generate', rootDir);
+    report.addWarning('trigger');
+    report.flush();
+
+    // 用户文件原样保留
+    expect(fs.existsSync(path.join(logsDir, 'my-notes.txt'))).toBe(true);
+    expect(fs.existsSync(path.join(logsDir, 'archive.json'))).toBe(true);
+  });
+
+  it('MANUAL_LABELS 与 MANUAL_DEFAULT_SUGGESTIONS 覆盖所有 ManualCategory', () => {
+    // 防止未来加新 category 时忘记同步建议文案
+    const categories: Array<keyof typeof RunReport.MANUAL_LABELS> = [
+      'comparison-operand',
+      'mixed-content',
+      'html-in-template',
+      'html-tag-in-value',
+      'long-value',
+      'semantic-duplicate',
+      'cross-module-reuse',
+      'hardcoded-comparison',
+    ];
+    for (const c of categories) {
+      expect(RunReport.MANUAL_LABELS[c]).toBeTruthy();
+      expect(RunReport.MANUAL_DEFAULT_SUGGESTIONS[c]).toBeTruthy();
+    }
   });
 
   it('部分失败也会落盘并返回绝对路径', () => {
@@ -120,7 +251,7 @@ describe('RunReport', () => {
     expect(fs.existsSync(filePath!)).toBe(true);
 
     const payload = JSON.parse(fs.readFileSync(filePath!, 'utf-8'));
-    expect(payload.summary).toEqual({ failed: 0, warnings: 2 });
+    expect(payload.summary).toEqual({ failed: 0, warnings: 2, needsManual: 0 });
     expect(payload.warnings).toHaveLength(2);
     expect(payload.failures).toHaveLength(0);
   });

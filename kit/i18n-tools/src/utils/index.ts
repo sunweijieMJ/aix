@@ -11,6 +11,15 @@ export { IdGenerator } from './id-generator';
 export { InteractiveUtils } from './interactive-utils';
 export { LanguageFileManager } from './language-file-manager';
 export { LocaleValueLinter } from './locale-value-linter';
+export type { LinterFinding } from './locale-value-linter';
 export { LoggerUtils, LogLevel } from './logger';
 export { ModuleResolver } from './module-resolver';
+export { RunReport } from './run-report';
+export type {
+  CoverageMetric,
+  FailureRecord,
+  FailureStage,
+  ManualCategory,
+  ManualEntry,
+} from './run-report';
 export * from './types';

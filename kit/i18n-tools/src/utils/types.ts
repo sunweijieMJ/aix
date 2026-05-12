@@ -80,6 +80,8 @@ export enum ModeName {
   EXPORT = 'export',
   /** 自动模式 - 串行执行generate、pick、translate、merge、export */
   AUTOMATIC = 'automatic',
+  /** Doctor 模式 - 健康度体检：locale 结构 + 对账（孤儿/缺失/未翻译） */
+  DOCTOR = 'doctor',
 }
 
 /**

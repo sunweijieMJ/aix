@@ -44,6 +44,7 @@ export class InteractiveUtils {
         { name: '合并翻译文件', value: ModeName.MERGE },
         { name: '还原多语言组件', value: ModeName.RESTORE },
         { name: '导出语言文件', value: ModeName.EXPORT },
+        { name: '健康检查（doctor）', value: ModeName.DOCTOR },
       ],
       default: defaultMode,
     });

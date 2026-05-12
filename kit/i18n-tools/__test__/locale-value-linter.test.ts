@@ -42,8 +42,10 @@ describe('LocaleValueLinter', () => {
       });
 
       const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
-      // 单一组（3 个变体）
-      expect(messages.some((m: string) => m.includes('1 组'))).toBe(true);
+      // 三个变体合并为单一组：检查 category tag + 数量
+      expect(
+        messages.some((m: string) => m.includes('[semantic-duplicate]') && m.includes('1 条')),
+      ).toBe(true);
     });
 
     it('不含占位符、无空白的短文本不参与分组', () => {
@@ -117,9 +119,12 @@ describe('LocaleValueLinter', () => {
       report,
     );
 
-    expect(report.hasWarnings()).toBe(true);
-    // duplicate group + anomaly section 都应该进 report
-    // 比 console 行数稍多无关紧要，只要内容包含关键标记即可
+    // 新版用 needsManual 结构化分类替代平铺的 warnings——更便于 doctor 聚合
+    expect(report.hasManualEntries()).toBe(true);
+    const grouped = report.groupManualByCategory();
+    expect(grouped['semantic-duplicate']).toBeDefined();
+    expect(grouped['html-tag-in-value']).toBeDefined();
+    // console 仍输出原始关键词，确保用户终端体验不变
     const consoleLines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(consoleLines).toContain('语义重复');
     expect(consoleLines).toContain('HTML 标签');
@@ -144,7 +149,8 @@ describe('LocaleValueLinter', () => {
       });
 
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
-      expect(lines).toContain('短碎片可疑');
+      // 短碎片归入 mixed-content category（拼装产物，无法机械合并）
+      expect(lines).toContain('[mixed-content]');
       expect(lines).toContain('全部(');
       expect(lines).toContain('%已学');
       expect(lines).toContain('：');
@@ -156,7 +162,7 @@ describe('LocaleValueLinter', () => {
         'a.long': '请输入用户名以继续操作',
       });
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
-      expect(lines).not.toContain('短碎片可疑');
+      expect(lines).not.toContain('[mixed-content]');
     });
   });
 
@@ -248,7 +254,9 @@ describe('LocaleValueLinter', () => {
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       const hits = (lines.match(/\/proj\/x\.vue:5:3/g) || []).length;
       expect(hits).toBe(1);
-      expect(lines).toContain('1 处');
+      // 新格式：单条命中 → `[hardcoded-comparison] 发现 1 条`
+      expect(lines).toContain('[hardcoded-comparison]');
+      expect(lines).toContain('1 条');
     });
   });
 });

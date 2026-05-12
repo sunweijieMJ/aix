@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -7,8 +8,10 @@ import { createFrameworkAdapter } from './adapters';
 import type { FrameworkAdapter } from './adapters';
 import {
   AutomaticProcessor,
+  DoctorProcessor,
   ExportProcessor,
   GenerateProcessor,
+  GeneratePlanWriter,
   MergeProcessor,
   PickProcessor,
   RestoreProcessor,
@@ -32,7 +35,11 @@ const getFrameworkInfo = (adapter: ReturnType<typeof createFrameworkAdapter>): F
 });
 
 /**
- * 执行generate操作（提取多语言组件）
+ * 执行generate操作（提取多语言组件）。
+ * 返回 processor，便于 main 流程在执行后读取覆盖率指标判断 CI 阈值。
+ *
+ * dryRun 为 true 时不修改源码与语言文件，只在 `.i18n-tools/plans/` 下产 plan，
+ * 用户 review 后用 `--apply-plan <path>` 回放即可正式落盘。
  */
 const executeGenerate = async (
   config: ResolvedConfig,
@@ -40,14 +47,92 @@ const executeGenerate = async (
   adapter: FrameworkAdapter,
   isCustom: boolean,
   skipLLM: boolean = false,
-): Promise<void> => {
+  dryRun: boolean = false,
+  planOutputDir?: string,
+): Promise<GenerateProcessor> => {
   const targetPath = await InteractiveUtils.promptForPath(
     ModeName.GENERATE,
     frameworkInfo.extensions,
     frameworkInfo.displayName,
   );
-  const processor = new GenerateProcessor(config, isCustom, true, adapter);
-  await processor.execute(targetPath, skipLLM);
+  // dry-run 模式下 interactive=false：避免在 prompt 询问"是否应用转换"时
+  // 让用户误以为这会真的落盘——dry-run 总是无条件 transform 到内存再写 plan。
+  const processor = new GenerateProcessor(config, isCustom, !dryRun, adapter);
+  const resolvedPlanDir = planOutputDir ? path.resolve(process.cwd(), planOutputDir) : undefined;
+  await processor.execute(targetPath, skipLLM, { dryRun, planOutputDir: resolvedPlanDir });
+  return processor;
+};
+
+/**
+ * 把用户传入的 --apply-plan 值解析为实际 plan.json 路径。
+ *
+ * 支持两种形态：
+ *  - `"latest"`：查 `<rootDir>/.i18n-tools/plans/.last.json`，回退到目录扫描
+ *  - 任意路径：可以是 plan 目录、plan.json 文件，或相对路径；统一规整为 plan.json 绝对路径
+ *
+ * 路径形态自动识别：传入目录时自动拼上 plan.json；这样用户可以从控制台粘贴
+ * dry-run 完成时打印的目录路径直接用。
+ */
+const resolveApplyPlanPath = (config: ResolvedConfig, raw: string): string => {
+  if (raw === 'latest') {
+    const plansRoot = GeneratePlanWriter.getDefaultPlansRoot(config.rootDir);
+    const found = GeneratePlanWriter.resolveLatest(plansRoot);
+    if (!found) {
+      LoggerUtils.error(
+        `❌ 在 ${plansRoot} 下找不到任何 plan。请先运行 \`generate --dry-run\` 生成。`,
+      );
+      process.exit(1);
+    }
+    LoggerUtils.info(`📂 latest 解析为：${found}`);
+    return found;
+  }
+
+  const abs = path.resolve(process.cwd(), raw);
+  // 用户传目录时自动拼 plan.json
+  if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) {
+    return path.join(abs, GeneratePlanWriter.PLAN_FILENAME);
+  }
+  return abs;
+};
+
+/**
+ * 从 plan 文件回放（apply-plan）。绕过 LLM 与 AST，直接按 plan 落盘。
+ * 适用于"先 dry-run 看一眼、确认 OK 再正式提交"工作流。
+ */
+const executeApplyPlan = async (
+  config: ResolvedConfig,
+  adapter: FrameworkAdapter,
+  isCustom: boolean,
+  rawPlanPath: string,
+  keepPlan: boolean,
+): Promise<void> => {
+  const planPath = resolveApplyPlanPath(config, rawPlanPath);
+  const processor = new GenerateProcessor(config, isCustom, false, adapter);
+  await processor.applyFromPlan(planPath, { keepPlan });
+};
+
+/**
+ * 检查覆盖率阈值。覆盖率以「中文片段调用点」为单位计算，规则见
+ * GenerateProcessor.recordAndRenderCoverage。阈值未设置或本次未跑 generate
+ * （coverage 未填充）时直接返回。
+ *
+ * 命中阈值时仅打错并 exit(2)——区别于一般失败的 exit(1)：CI pipeline 可以
+ * 据此专门挂"i18n 覆盖率不足"这一档警示，而不是把所有错误都归到一类。
+ */
+const enforceCoverageThreshold = (
+  processor: { getCoverage(): { coverageRate: number } | undefined },
+  threshold: number | undefined,
+): void => {
+  if (threshold === undefined) return;
+  const coverage = processor.getCoverage();
+  if (!coverage) return;
+  const actualPct = coverage.coverageRate * 100;
+  if (actualPct < threshold) {
+    LoggerUtils.error(
+      `❌ 国际化覆盖率 ${actualPct.toFixed(1)}% 低于阈值 ${threshold}%（--coverage-threshold）`,
+    );
+    process.exit(2);
+  }
 };
 
 /**
@@ -101,6 +186,20 @@ const executeMerge = async (config: ResolvedConfig, isCustom: boolean): Promise<
 };
 
 /**
+ * 执行 doctor 体检：locale 结构 + 源码对账。
+ * ci 模式下若发现 error 级问题，processor 内部会抛错，main 流程会以非零退出。
+ */
+const executeDoctor = async (
+  config: ResolvedConfig,
+  adapter: FrameworkAdapter,
+  isCustom: boolean,
+  ci: boolean,
+): Promise<void> => {
+  const processor = new DoctorProcessor(config, isCustom, adapter, { ci });
+  await processor.execute();
+};
+
+/**
  * 主函数 - 程序入口点
  */
 const main = async (): Promise<void> => {
@@ -118,6 +217,7 @@ const main = async (): Promise<void> => {
 📥 ${ModeName.MERGE} - ${MODE_DESCRIPTIONS[ModeName.MERGE]}
 🔄 ${ModeName.RESTORE} - ${MODE_DESCRIPTIONS[ModeName.RESTORE]}
 📦 ${ModeName.EXPORT} - ${MODE_DESCRIPTIONS[ModeName.EXPORT]}
+🩺 ${ModeName.DOCTOR} - ${MODE_DESCRIPTIONS[ModeName.DOCTOR]}
 
 使用方式: $0 [选项]`,
     )
@@ -136,6 +236,7 @@ const main = async (): Promise<void> => {
         ModeName.MERGE,
         ModeName.EXPORT,
         ModeName.RESTORE,
+        ModeName.DOCTOR,
       ] as const,
       default: ModeName.GENERATE,
     })
@@ -155,12 +256,54 @@ const main = async (): Promise<void> => {
       type: 'boolean',
       default: false,
     })
+    .option('coverage-threshold', {
+      describe: 'generate 完成后若覆盖率低于该百分比（0-100）则以非零状态码退出，用于 CI 卡点',
+      type: 'number',
+    })
+    .option('dry-run', {
+      describe:
+        '只生成 plan 文件到 .i18n-tools/plans/，不修改源码与语言文件（仅 generate 模式生效）',
+      type: 'boolean',
+      default: false,
+    })
+    .option('apply-plan', {
+      describe:
+        '从指定的 plan 文件回放：跳过 LLM 与 AST 解析，直接按 plan 落盘。' +
+        '传入 "latest" 自动解析为最近一次 dry-run 生成的 plan（仅 generate 模式生效）',
+      type: 'string',
+    })
+    .option('keep-plan', {
+      describe: 'apply 成功后保留 plan 目录（默认会自动清理）',
+      type: 'boolean',
+      default: false,
+    })
+    .option('plan-output-dir', {
+      describe:
+        'dry-run 时 plan 的输出根目录（默认 <rootDir>/.i18n-tools/plans/）。' +
+        '用于规避 Windows MAX_PATH 等深路径风险，传入后会在该目录下创建 generate-<ts>-<pid>/',
+      type: 'string',
+    })
+    .option('ci', {
+      describe: 'CI 模式：仅 doctor 模式生效，发现 error 级问题时以非零状态码退出',
+      type: 'boolean',
+      default: false,
+    })
     .help()
     .alias('help', 'h')
     .group(['config', 'mode', 'custom'], '📋 基本选项:')
     .group(['interactive', 'skip-llm'], '⚙️  高级选项:')
+    .group(
+      ['dry-run', 'apply-plan', 'keep-plan', 'plan-output-dir', 'coverage-threshold', 'ci'],
+      '🩺 CI / Review 选项:',
+    )
     .example('$0 --config ./i18n.config.ts', '指定配置文件')
     .example('$0 --mode generate', '扫描源码文件，提取中文并生成国际化调用')
+    .example('$0 --mode generate --dry-run', 'Review 模式：生成 plan 但不修改源码')
+    .example('$0 --mode generate --apply-plan latest', '回放最近一次 dry-run 生成的 plan')
+    .example('$0 --mode generate --apply-plan ./plan.json --keep-plan', '回放并保留 plan 目录')
+    .example('$0 --mode generate --coverage-threshold 95', 'CI 卡点：覆盖率不足 95% 则失败')
+    .example('$0 --mode doctor', '体检 locale 文件健康度 + 源码对账')
+    .example('$0 --mode doctor --ci', 'CI 模式：发现 error 即非零退出')
     .example('$0 --mode pick', '从国际化文件中提取未翻译的条目')
     .example('$0 --mode translate', '使用AI翻译服务翻译中文为英文')
     .example('$0 --mode merge --custom', '将定制目录的翻译结果合并回主文件')
@@ -210,7 +353,14 @@ export default defineConfig({
 
   // 仅当配置了 paths.customLocale 时，--custom 才有意义；
   // EXPORT 模式按设计不区分主/定制目录，--custom 在该模式下静默忽略而非报错。
-  if (argv.custom && !hasCustomLocale && argv.mode !== ModeName.EXPORT) {
+  // DOCTOR 模式只读，--custom 仅用来指示读哪个目录，未配置 customLocale 时即使
+  // 传入也无害（读默认目录），故允许通过。
+  if (
+    argv.custom &&
+    !hasCustomLocale &&
+    argv.mode !== ModeName.EXPORT &&
+    argv.mode !== ModeName.DOCTOR
+  ) {
     LoggerUtils.error(
       '❌ 未配置 paths.customLocale，无法使用 --custom。请在 i18n.config 中显式配置定制目录后再启用此选项。',
     );
@@ -258,6 +408,25 @@ export default defineConfig({
   }
   LoggerUtils.info(`⚡ 项目框架: ${config.framework} (${frameworkInfo.libraryName})`);
 
+  const coverageThreshold = argv['coverage-threshold'] as number | undefined;
+  const dryRun = Boolean(argv['dry-run']);
+  const applyPlanPath = argv['apply-plan'] as string | undefined;
+  const keepPlan = Boolean(argv['keep-plan']);
+  const planOutputDir = argv['plan-output-dir'] as string | undefined;
+
+  // dry-run / apply-plan 仅在 generate 模式下生效。在其他模式下静默忽略
+  // 比抛错更友好（兼容 automatic 串调 generate 的复杂场景），但显式提示
+  // 避免用户写错命令时困惑。
+  if ((dryRun || applyPlanPath) && mode !== ModeName.GENERATE) {
+    LoggerUtils.warn(
+      `⚠️  --dry-run / --apply-plan 仅在 --mode generate 下生效，当前模式 ${mode}，将被忽略`,
+    );
+  }
+  if (dryRun && applyPlanPath) {
+    LoggerUtils.error('❌ --dry-run 与 --apply-plan 互斥，请只指定其一');
+    process.exit(1);
+  }
+
   try {
     switch (mode) {
       case ModeName.AUTOMATIC:
@@ -267,12 +436,30 @@ export default defineConfig({
             frameworkInfo.extensions,
             frameworkInfo.displayName,
           );
-          await new AutomaticProcessor(config, custom, adapter).execute(targetPath, skipLLM);
+          const auto = new AutomaticProcessor(config, custom, adapter);
+          await auto.execute(targetPath, skipLLM);
+          enforceCoverageThreshold(auto, coverageThreshold);
         }
         break;
-      case ModeName.GENERATE:
-        await executeGenerate(config, frameworkInfo, adapter, custom, skipLLM);
+      case ModeName.GENERATE: {
+        if (applyPlanPath) {
+          await executeApplyPlan(config, adapter, custom, applyPlanPath, keepPlan);
+          break;
+        }
+        const generator = await executeGenerate(
+          config,
+          frameworkInfo,
+          adapter,
+          custom,
+          skipLLM,
+          dryRun,
+          planOutputDir,
+        );
+        // dry-run 不真正改动源码，coverage 阈值在此场景无意义（用户的目的是 review
+        // 而非 CI 卡点）；commit 路径才检查
+        if (!dryRun) enforceCoverageThreshold(generator, coverageThreshold);
         break;
+      }
       case ModeName.PICK:
         await executePick(config, custom);
         break;
@@ -287,6 +474,9 @@ export default defineConfig({
         break;
       case ModeName.RESTORE:
         await executeRestore(config, frameworkInfo, adapter, custom);
+        break;
+      case ModeName.DOCTOR:
+        await executeDoctor(config, adapter, custom, Boolean(argv.ci));
         break;
       default:
         LoggerUtils.error(`没有匹配的模式: ${mode}`);

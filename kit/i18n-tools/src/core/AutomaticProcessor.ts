@@ -32,6 +32,11 @@ export class AutomaticProcessor extends FileProcessor {
   }
 
   private async _execute(targetPath: string, skipLLM: boolean = false): Promise<void> {
+    // 显式持有 GenerateProcessor 实例，便于结束后把覆盖率指标透传到 automatic
+    // 自身的 report——CLI 层只看 AutomaticProcessor.getCoverage()，无需感知
+    // 内部 step 的 processor 拓扑。
+    const generator = new GenerateProcessor(this.config, this.isCustom, false, this.adapter);
+
     const steps: Array<{
       name: string;
       skip?: boolean;
@@ -40,11 +45,12 @@ export class AutomaticProcessor extends FileProcessor {
     }> = [
       {
         name: 'generate',
-        run: () =>
-          new GenerateProcessor(this.config, this.isCustom, false, this.adapter).execute(
-            targetPath,
-            skipLLM,
-          ),
+        run: async (): Promise<void> => {
+          await generator.execute(targetPath, skipLLM);
+          // 透传 coverage：generator.report 不与本实例共享，必须显式拷贝
+          const coverage = generator.getCoverage();
+          if (coverage) this.report.setCoverage(coverage);
+        },
       },
       {
         name: 'pick',

@@ -1,7 +1,33 @@
 import { CommonASTUtils } from './common-ast-utils';
 import { LoggerUtils } from './logger';
-import type { RunReport } from './run-report';
+import { RunReport, type ManualCategory } from './run-report';
 import type { LocaleMap } from './types';
+
+/**
+ * 结构化 lint 结果。analyze() 只返回数据，由 emit() 决定如何输出（console /
+ * RunReport / doctor 命令的聚合视图）。
+ *
+ * Why 分层：
+ *  - 原 lint() 同时承担「分析 + console.warn + 写 RunReport」三职，导致
+ *    LanguageFileManager 与未来的 DoctorProcessor 无法复用纯分析逻辑——
+ *    Doctor 想拿结构化结果做 --fix 决策；语言文件落盘时只需要 console + report。
+ *  - 拆分后 analyze 是纯函数，可独立单测；emit 是 sink 适配层。
+ */
+export interface LinterFinding {
+  category: ManualCategory;
+  /** 一行简短描述，console / 日志通用 */
+  title: string;
+  /** 多行详情（含 value / 建议示例等），保留原换行 */
+  details: string[];
+  /** locale key（无对应 key 的全局问题填 '<global>'） */
+  key: string;
+  /** locale value 内容（含 HTML / 重复值等场景使用） */
+  value?: string;
+  /** 源码位置（仅 hardcoded-comparison 等附带文件位置的 finding 有） */
+  file?: string;
+  line?: number;
+  column?: number;
+}
 
 /**
  * 语言文件 value 健康度检查。
@@ -39,103 +65,141 @@ export class LocaleValueLinter {
   private static readonly CROSS_MODULE_REUSE_THRESHOLD = 3;
 
   /**
-   * 对扁平 locale map 做 value 健康度检查，发现问题以 warning 输出。
+   * 纯函数：跑全部检查并返回结构化结果。
    *
-   * 注意：本检查不影响落盘流程——即使发现问题，调用方仍可继续写入文件。
+   * 不做任何 I/O / console，便于 doctor 命令在不同 sink（CI 文本/JSON/HTML）
+   * 上复用，也便于单测断言结构。
    *
-   * @param localeMap 扁平 locale map
-   * @param report    可选：传入则同时把每条 warning 加入 RunReport，落盘到
-   *                  `<rootDir>/.i18n-tools/logs/` 供事后回查（不传则仅 console）
-   * @param options   可选诊断参数：separator 用于跨模块复用检测的目录前缀切分
+   * 注意：findHardcodedComparisons 会消费 CommonASTUtils.drainSkippedComparisonOperands。
+   * 因此 analyze 是「一次性」操作：同一进程内第二次跑会返回空 hardcoded-comparison
+   * 集合。如未来需要"重复 analyze"语义，需把 drain 解耦出去。
+   */
+  static analyze(localeMap: LocaleMap, options?: { separator?: string }): LinterFinding[] {
+    const findings: LinterFinding[] = [];
+
+    for (const group of this.findSemanticDuplicates(localeMap)) {
+      findings.push({
+        category: 'semantic-duplicate',
+        title: `语义形态: "${group.canonical}"`,
+        details: group.entries.map(({ key, value }) => `${key}  →  ${JSON.stringify(value)}`),
+        // 取首个 key 作为定位锚点；details 已包含全部
+        key: group.entries[0]?.key ?? '<global>',
+      });
+    }
+
+    for (const { key, value, reasons } of this.findAnomalousValues(localeMap)) {
+      const isHtml = reasons.some((r) => r.includes('HTML'));
+      findings.push({
+        category: isHtml ? 'html-tag-in-value' : 'long-value',
+        title: `${key}  [${reasons.join(', ')}]`,
+        details: [`value 预览: ${this.preview(value)}`],
+        key,
+        value,
+      });
+    }
+
+    for (const { key, value } of this.findSuspiciousFragments(localeMap)) {
+      // 短碎片归入 mixed-content：它们多是混合内容拆碎的产物
+      findings.push({
+        category: 'mixed-content',
+        title: `${key}  →  ${JSON.stringify(value)}`,
+        details: ['可能是 HTML 文本节点 + 插值被切碎的产物，建议检查源码该 key 的调用点'],
+        key,
+        value,
+      });
+    }
+
+    if (options?.separator) {
+      for (const c of this.findCrossModuleReuseCandidates(localeMap, options.separator)) {
+        findings.push({
+          category: 'cross-module-reuse',
+          title: `value: ${JSON.stringify(c.value)}`,
+          details: [`使用前缀: ${c.prefixes.join(', ')}`],
+          key: '<global>',
+          value: c.value,
+        });
+      }
+    }
+
+    for (const c of this.findHardcodedComparisons(localeMap)) {
+      findings.push({
+        category: 'hardcoded-comparison',
+        title: `${c.filePath}:${c.line}:${c.column}`,
+        details: [
+          `位置硬编码: ${JSON.stringify(c.text)}`,
+          `该文案已对应 key: ${c.matchedKeys.join(', ')}`,
+        ],
+        key: c.matchedKeys[0] ?? '<global>',
+        value: c.text,
+        file: c.filePath,
+        line: c.line,
+        column: c.column,
+      });
+    }
+
+    return findings;
+  }
+
+  /**
+   * 把 analyze 的结果发送到 sink（console 与可选 RunReport）。
+   *
+   * console 输出保留原有可读分组，与历史行为一致：先按类别小标题再展开 details；
+   * RunReport 接收每条 finding 转成的 ManualEntry，落盘到 `.i18n-tools/logs/`
+   * 供事后回查与 doctor 聚合。
+   *
+   * 不区分 sink 全为 no-op 的场景——空 findings 时返回即止，避免输出空标题。
+   */
+  static emit(findings: LinterFinding[], sinks: { console?: boolean; report?: RunReport }): void {
+    if (findings.length === 0) return;
+    const wantConsole = sinks.console !== false;
+
+    const grouped: Record<ManualCategory, LinterFinding[]> = {} as Record<
+      ManualCategory,
+      LinterFinding[]
+    >;
+    for (const f of findings) {
+      (grouped[f.category] ||= []).push(f);
+    }
+
+    if (wantConsole) {
+      LoggerUtils.warn('\n📋 语言文件健康度检查发现以下问题（不阻塞流程，建议手动处理）：');
+    }
+
+    for (const [category, list] of Object.entries(grouped) as Array<
+      [ManualCategory, LinterFinding[]]
+    >) {
+      if (wantConsole) {
+        const label = RunReport.MANUAL_LABELS[category];
+        LoggerUtils.warn(`\n⚠️  [${category}] 发现 ${list.length} 条 — ${label}`);
+        for (const f of list) {
+          LoggerUtils.warn(`   ${f.title}`);
+          for (const line of f.details) LoggerUtils.warn(`     ${line}`);
+        }
+      }
+
+      if (sinks.report) {
+        for (const f of list) {
+          sinks.report.addManualEntry({
+            category,
+            file: f.file ?? '<locale>',
+            line: f.line,
+            column: f.column,
+            text: f.value ?? f.key,
+            reason: f.title,
+            suggestion: RunReport.MANUAL_DEFAULT_SUGGESTIONS[category],
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * 兼容入口：保持旧签名 lint(localeMap, report?, options?) 不变。
+   * 内部直接组合 analyze + emit。新代码请优先用 analyze + emit。
    */
   static lint(localeMap: LocaleMap, report?: RunReport, options?: { separator?: string }): void {
-    const duplicates = this.findSemanticDuplicates(localeMap);
-    const anomalies = this.findAnomalousValues(localeMap);
-    const fragments = this.findSuspiciousFragments(localeMap);
-    const reuseCandidates = options?.separator
-      ? this.findCrossModuleReuseCandidates(localeMap, options.separator)
-      : [];
-    // 提取阶段记录的「比较运算符跳过的中文字面量」与 locale map values 做交叉，
-    // 找出 `someVar === '中文'` 这类硬编码比较与他处已 i18n 化文案脱钩的风险位置。
-    const hardcodedComparisons = this.findHardcodedComparisons(localeMap);
-
-    if (
-      duplicates.length === 0 &&
-      anomalies.length === 0 &&
-      fragments.length === 0 &&
-      reuseCandidates.length === 0 &&
-      hardcodedComparisons.length === 0
-    ) {
-      return;
-    }
-
-    // 同时往 console 和 RunReport 写——console 给即时反馈，RunReport 给磁盘留痕。
-    // emit 函数封装这层一致性，避免每行 warning 都得手写两遍。
-    const emit = (line: string): void => {
-      LoggerUtils.warn(line);
-      report?.addWarning(line);
-    };
-
-    emit('\n📋 语言文件健康度检查发现以下问题（不阻塞流程，建议手动处理）：');
-
-    if (duplicates.length > 0) {
-      emit(`\n⚠️  发现 ${duplicates.length} 组语义重复 key（占位符变量名/空白差异）：`);
-      for (const group of duplicates) {
-        emit(`   语义形态: "${group.canonical}"`);
-        for (const { key, value } of group.entries) {
-          emit(`     - ${key}  →  ${JSON.stringify(value)}`);
-        }
-        emit('     💡 建议在源码中统一变量名 / 空白，重跑 generate 即可自动复用同一 key');
-      }
-    }
-
-    if (anomalies.length > 0) {
-      emit(`\n⚠️  发现 ${anomalies.length} 个 value 异常（HTML 标签 / 长度超标）：`);
-      for (const { key, value, reasons } of anomalies) {
-        emit(`   - ${key}  [${reasons.join(', ')}]`);
-        emit(`     value 预览: ${this.preview(value)}`);
-      }
-      emit('     💡 含 HTML 的 value 建议改造源码：模板字符串包裹结构，只把文案放入 t() 调用');
-    }
-
-    if (fragments.length > 0) {
-      emit(
-        `\n⚠️  发现 ${fragments.length} 个短碎片可疑 value（长度 ≤ ${this.SUSPICIOUS_FRAGMENT_MAX_LEN} 且含标点）：`,
-      );
-      for (const { key, value } of fragments) {
-        emit(`   - ${key}  →  ${JSON.stringify(value)}`);
-      }
-      emit('     💡 可能是 HTML 文本节点 + 插值被切碎的产物。检查源码该 key 的调用点');
-      emit('        是否能把周围文本与插值合并成单一 t() 调用（带占位符），以恢复语序与标点配平');
-    }
-
-    if (reuseCandidates.length > 0) {
-      emit(
-        `\n💡 发现 ${reuseCandidates.length} 组跨模块复用候选（同一 value 在 ≥ ${this.CROSS_MODULE_REUSE_THRESHOLD} 个不同目录前缀下都有 key）：`,
-      );
-      for (const c of reuseCandidates) {
-        emit(`   value: ${JSON.stringify(c.value)}`);
-        emit(`     使用前缀: ${c.prefixes.join(', ')}`);
-      }
-      emit('     💡 考虑在 i18n.config 启用 idPrefix.promoteToCommon = { threshold, namespace }，');
-      emit('        让新增使用点自动归入 common namespace');
-    }
-
-    if (hardcodedComparisons.length > 0) {
-      emit(
-        `\n🚨 发现 ${hardcodedComparisons.length} 处「硬编码中文 ↔ i18n 文案」比较风险（切语言后分支永远不命中）：`,
-      );
-      for (const c of hardcodedComparisons) {
-        emit(`   - ${c.filePath}:${c.line}:${c.column}`);
-        emit(`     位置硬编码: ${JSON.stringify(c.text)}`);
-        emit(`     该文案已对应 key: ${c.matchedKeys.join(', ')}`);
-      }
-      emit('     💡 比较运算符两侧字面量不会被工具提取（避免破坏分支判断），但同句中文若在');
-      emit('        别处（如数组初值/ref 默认值）被提取为 t(...)，运行时切语言后比较一定为假。');
-      emit('        建议改用 key 比较 / 索引比较 / 枚举常量，例如：');
-      emit('           ❌  v-if="activeTab === \'教学路径\'"');
-      emit('           ✅  v-if="activeTabKey === \'teachingpath\'"  或  v-if="activeIdx === 0"');
-    }
+    const findings = this.analyze(localeMap, options);
+    this.emit(findings, { console: true, report });
   }
 
   /**

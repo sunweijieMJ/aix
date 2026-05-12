@@ -29,4 +29,5 @@ export const MODE_DESCRIPTIONS: Record<string, string> = {
   [ModeName.MERGE]: '合并翻译 - 将翻译结果合并回主文件',
   [ModeName.RESTORE]: '代码还原 - 将国际化调用还原为中文（调试用）',
   [ModeName.EXPORT]: '语言包导出 - 生成最终的多语言文件',
+  [ModeName.DOCTOR]: '健康检查 - 体检 locale 文件结构与源码对账',
 };
