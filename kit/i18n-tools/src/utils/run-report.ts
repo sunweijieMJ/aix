@@ -321,7 +321,7 @@ export class RunReport {
 建议手工决定拆分点，或在 locale 文件新增完整 key 由人工翻译：
     'AI自动提取'    →  整段作为 key 翻译，或拆为 'AI' + '自动提取'
     'TCP/IP协议'    →  保留为整段
-    '请输入${name}' →  原工具已支持，确认占位符变量名规范`,
+    '请输入\${name}' →  原工具已支持，确认占位符变量名规范`,
     'html-in-template': `模板字符串含 HTML 标签（如 \`<div>...<span>中文</span></div>\`）。
 整段提取会把 HTML/CSS/SVG 写进 locale value，多语言下样式不可控。
 建议改造源码：模板字符串包裹结构，只把文案放入 t() 调用：
