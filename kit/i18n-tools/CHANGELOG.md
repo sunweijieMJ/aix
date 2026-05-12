@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.10
+
+### Patch Changes
+
+- 断日志体系优化
+
 ## 0.0.9
 
 ### Patch Changes
