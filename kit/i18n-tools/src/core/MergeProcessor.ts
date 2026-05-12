@@ -275,29 +275,18 @@ export class MergeProcessor extends FileProcessor {
   }
 
   private updateFlatLanguagePackage(newlyTranslated: Translations, targetLocale: string): void {
-    const sourceLocale = this.config.locale.source;
-    const targetPath = FileUtils.getLocaleFilePath(this.config, this.isCustom, targetLocale);
-    const sourcePath = FileUtils.getLocaleFilePath(this.config, this.isCustom, sourceLocale);
-
-    // 优先以 target locale 现有文件的结构（嵌套/扁平）为模板；
-    // 不存在时回落到 source locale 文件结构，保证 zh-CN/en-US 格式一致。
-    const targetInfo = LanguageFileManager.readFlatLocale(
-      targetPath,
-      `读取${targetLocale}.json失败`,
+    // 读出现有 target 扁平内容，与新翻译合并后交给 writeLocaleFile 序列化。
+    // 落盘格式（nested / flat）由 config.output.format 在 serialize() 中统一决定，
+    // 不再从现有文件结构嗅探——否则历史扁平文件会让 nested 配置永远无法生效。
+    const targetMessages = LanguageFileManager.readLocaleFile(
+      this.config,
+      this.isCustom,
+      targetLocale,
     );
-    const targetMessages = targetInfo.flat;
-    let isNested = targetInfo.isNested;
-    if (Object.keys(targetMessages).length > 0 || fs.existsSync(targetPath)) {
-      LoggerUtils.info(`📋 参考 ${targetLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`);
-    } else if (fs.existsSync(sourcePath)) {
-      const sourceInfo = LanguageFileManager.readFlatLocale(
-        sourcePath,
-        `读取${sourceLocale}.json失败`,
-      );
-      isNested = sourceInfo.isNested;
-      LoggerUtils.info(
-        `📋 ${targetLocale}.json 不存在，参考 ${sourceLocale}.json 格式: ${isNested ? '嵌套结构' : '扁平结构'}`,
-      );
+    if (targetMessages === null) {
+      // 文件存在但解析失败：readLocaleFile 已打印错误。
+      // 防止覆盖损坏的源文件，直接中断本次同步。
+      return;
     }
 
     let updatedCount = 0;
@@ -313,16 +302,10 @@ export class MergeProcessor extends FileProcessor {
       }
     }
 
-    const outputMessages: Record<string, any> = isNested
-      ? FileUtils.unflattenObject(targetMessages)
-      : targetMessages;
-
-    if (isNested) {
-      LoggerUtils.info('📝 保存为嵌套结构');
-    }
-
-    FileUtils.writeJsonFile(targetPath, outputMessages);
-    LoggerUtils.info(`📄 已更新 ${targetLocale}.json，更新 ${updatedCount} 个条目`);
+    LanguageFileManager.writeLocaleFile(this.config, this.isCustom, targetMessages, targetLocale);
+    LoggerUtils.info(
+      `📄 已更新 ${targetLocale}.json（${this.config.output.format}），更新 ${updatedCount} 个条目`,
+    );
   }
 
   private displayMergeResult(
