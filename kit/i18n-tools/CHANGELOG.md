@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.12
+
+### Patch Changes
+
+- dry-run/apply 工作流 + doctor 体检 +
+
 ## 0.0.11
 
 ### Patch Changes
