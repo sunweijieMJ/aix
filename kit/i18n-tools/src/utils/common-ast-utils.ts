@@ -127,6 +127,50 @@ export class CommonASTUtils {
   }
 
   /**
+   * 被「比较运算符跳过」记录到的中文字面量位置。
+   *
+   * Why: isComparisonOperand 跳过 `status === '进行中'` 这类位置是为了避免
+   *      翻译后分支失效；但同一句中文若在别处（如 tabs 数组初值）被提取，
+   *      就会出现「script 端值已 i18n 化，template 端仍硬编码中文比较」的
+   *      非对称——切语言后分支永远不命中。lint 阶段把本集合与 source locale
+   *      map values 交叉，命中即告警，让用户改用 key 比较或索引比较。
+   *
+   * 用 Map 去重（同一位置多次访问 AST 时只记录一次）。
+   */
+  private static skippedComparisonOperands: Map<
+    string,
+    { text: string; filePath: string; line: number; column: number }
+  > = new Map();
+
+  /**
+   * 记录一处「因比较运算符被跳过」的中文字面量位置。供 extractor 调用。
+   * 仅当 text 含中文时建议记录（调用方自行判定，避免把英文枚举值记进来产生噪音）。
+   */
+  static recordSkippedComparisonOperand(
+    text: string,
+    filePath: string,
+    line: number,
+    column: number,
+  ): void {
+    const key = `${filePath}:${line}:${column}:${text}`;
+    if (!CommonASTUtils.skippedComparisonOperands.has(key)) {
+      CommonASTUtils.skippedComparisonOperands.set(key, { text, filePath, line, column });
+    }
+  }
+
+  /** 取出当前累积的跳过记录并清空（供 lint 阶段一次性消费）。 */
+  static drainSkippedComparisonOperands(): Array<{
+    text: string;
+    filePath: string;
+    line: number;
+    column: number;
+  }> {
+    const items = Array.from(CommonASTUtils.skippedComparisonOperands.values());
+    CommonASTUtils.skippedComparisonOperands.clear();
+    return items;
+  }
+
+  /**
    * 判断字符串字面量是否是比较运算符（=== / !== / == / !=）的操作数
    *
    * 比较的右值通常是 locale 无关的状态常量（如 status === 'pending'）。

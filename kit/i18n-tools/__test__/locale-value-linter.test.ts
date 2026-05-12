@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { CommonASTUtils } from '../src/utils/common-ast-utils';
 import { LocaleValueLinter } from '../src/utils/locale-value-linter';
 import { LoggerUtils } from '../src/utils/logger';
 import { RunReport } from '../src/utils/run-report';
@@ -186,6 +187,68 @@ describe('LocaleValueLinter', () => {
       });
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       expect(lines).not.toContain('跨模块复用候选');
+    });
+  });
+
+  describe('硬编码中文 vs i18n 比较风险检测', () => {
+    beforeEach(() => {
+      // 清空收集器，避免上一个测试遗留污染。
+      CommonASTUtils.drainSkippedComparisonOperands();
+    });
+
+    it('跳过的中文字面量若同时是 locale value，告警命中并列出对应 key', () => {
+      CommonASTUtils.recordSkippedComparisonOperand(
+        '教学路径',
+        '/proj/src/components/PathPopup.vue',
+        17,
+        24,
+      );
+
+      LocaleValueLinter.lint({
+        'pages.flippedcourse.components.teachingpath': '教学路径',
+        'pages.flippedcourse.components.teachingscope': '教学范围',
+      });
+
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).toContain('硬编码中文 ↔ i18n 文案');
+      expect(lines).toContain('/proj/src/components/PathPopup.vue:17:24');
+      expect(lines).toContain('"教学路径"');
+      expect(lines).toContain('pages.flippedcourse.components.teachingpath');
+    });
+
+    it('跳过的中文未出现在 locale map 中则不告警（避免对纯枚举常量的误报）', () => {
+      CommonASTUtils.recordSkippedComparisonOperand('某种内部状态', '/proj/src/foo.vue', 10, 5);
+
+      LocaleValueLinter.lint({
+        'pages.foo.title': '标题',
+      });
+
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).not.toContain('硬编码中文');
+    });
+
+    it('drain 是消耗性操作：lint 后 collector 应被清空，避免下次重复告警', () => {
+      CommonASTUtils.recordSkippedComparisonOperand('完成', '/proj/a.vue', 1, 1);
+      LocaleValueLinter.lint({ 'a.done': '完成' });
+      warnSpy.mockClear();
+
+      // 第二次 lint：collector 已空，不应再次告警
+      LocaleValueLinter.lint({ 'a.done': '完成' });
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).not.toContain('硬编码中文');
+    });
+
+    it('同一位置重复记录会去重（一次告警）', () => {
+      CommonASTUtils.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
+      CommonASTUtils.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
+      CommonASTUtils.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
+
+      LocaleValueLinter.lint({ 'common.cancel': '取消' });
+
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      const hits = (lines.match(/\/proj\/x\.vue:5:3/g) || []).length;
+      expect(hits).toBe(1);
+      expect(lines).toContain('1 处');
     });
   });
 });

@@ -176,6 +176,16 @@ export class ReactTextExtractor extends BaseTextExtractor {
       // 跳过对象属性 key、模块导入路径、比较运算符/case 操作数
       if (CommonASTUtils.isExtractableStringLiteral(node)) {
         text = node.text;
+      } else if (CommonASTUtils.isComparisonOperand(node) && FileUtils.containsChinese(node.text)) {
+        // 比较运算符两侧的中文字面量被跳过 —— 记录到诊断集合，lint 阶段与 locale map
+        // 交叉告警，识别「同句中文在他处被 i18n 化导致 === 比较失效」的风险。
+        const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+        CommonASTUtils.recordSkippedComparisonOperand(
+          node.text,
+          sourceFile.fileName,
+          pos.line + 1,
+          pos.character + 1,
+        );
       }
     }
     // 处理模板字符串：复用 CommonASTUtils.processTemplateExpression，

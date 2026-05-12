@@ -1,3 +1,4 @@
+import { CommonASTUtils } from './common-ast-utils';
 import { LoggerUtils } from './logger';
 import type { RunReport } from './run-report';
 import type { LocaleMap } from './types';
@@ -54,12 +55,16 @@ export class LocaleValueLinter {
     const reuseCandidates = options?.separator
       ? this.findCrossModuleReuseCandidates(localeMap, options.separator)
       : [];
+    // 提取阶段记录的「比较运算符跳过的中文字面量」与 locale map values 做交叉，
+    // 找出 `someVar === '中文'` 这类硬编码比较与他处已 i18n 化文案脱钩的风险位置。
+    const hardcodedComparisons = this.findHardcodedComparisons(localeMap);
 
     if (
       duplicates.length === 0 &&
       anomalies.length === 0 &&
       fragments.length === 0 &&
-      reuseCandidates.length === 0
+      reuseCandidates.length === 0 &&
+      hardcodedComparisons.length === 0
     ) {
       return;
     }
@@ -115,6 +120,65 @@ export class LocaleValueLinter {
       emit('     💡 考虑在 i18n.config 启用 idPrefix.promoteToCommon = { threshold, namespace }，');
       emit('        让新增使用点自动归入 common namespace');
     }
+
+    if (hardcodedComparisons.length > 0) {
+      emit(
+        `\n🚨 发现 ${hardcodedComparisons.length} 处「硬编码中文 ↔ i18n 文案」比较风险（切语言后分支永远不命中）：`,
+      );
+      for (const c of hardcodedComparisons) {
+        emit(`   - ${c.filePath}:${c.line}:${c.column}`);
+        emit(`     位置硬编码: ${JSON.stringify(c.text)}`);
+        emit(`     该文案已对应 key: ${c.matchedKeys.join(', ')}`);
+      }
+      emit('     💡 比较运算符两侧字面量不会被工具提取（避免破坏分支判断），但同句中文若在');
+      emit('        别处（如数组初值/ref 默认值）被提取为 t(...)，运行时切语言后比较一定为假。');
+      emit('        建议改用 key 比较 / 索引比较 / 枚举常量，例如：');
+      emit('           ❌  v-if="activeTab === \'教学路径\'"');
+      emit('           ✅  v-if="activeTabKey === \'teachingpath\'"  或  v-if="activeIdx === 0"');
+    }
+  }
+
+  /**
+   * 把提取阶段记录的「比较运算符跳过的中文字面量」与最终 locale map values 交叉。
+   *
+   * 命中条件：跳过的中文 text 等于某个 key 的 value —— 说明同句中文已在他处被
+   * i18n 化（如 `tabs = [t('...')]`），而此处仍硬编码做 === 比较，运行时切语言
+   * 后必然脱钩。
+   *
+   * 注意：drain 是消耗性操作，调用后 collector 清空，避免下次 lint 重复报警。
+   */
+  private static findHardcodedComparisons(localeMap: LocaleMap): Array<{
+    text: string;
+    filePath: string;
+    line: number;
+    column: number;
+    matchedKeys: string[];
+  }> {
+    const skipped = CommonASTUtils.drainSkippedComparisonOperands();
+    if (skipped.length === 0) return [];
+
+    // 反向索引 value → keys。同一 value 可能对应多个 key（重复中文），全部列出辅助定位。
+    const valueToKeys = new Map<string, string[]>();
+    for (const [key, value] of Object.entries(localeMap)) {
+      if (typeof value !== 'string') continue;
+      if (!valueToKeys.has(value)) valueToKeys.set(value, []);
+      valueToKeys.get(value)!.push(key);
+    }
+
+    const result: Array<{
+      text: string;
+      filePath: string;
+      line: number;
+      column: number;
+      matchedKeys: string[];
+    }> = [];
+    for (const item of skipped) {
+      const matched = valueToKeys.get(item.text);
+      if (matched && matched.length > 0) {
+        result.push({ ...item, matchedKeys: matched });
+      }
+    }
+    return result;
   }
 
   /**

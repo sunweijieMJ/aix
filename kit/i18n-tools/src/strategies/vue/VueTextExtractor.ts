@@ -480,6 +480,17 @@ export class VueTextExtractor extends BaseTextExtractor {
         // 比较值应使用与 locale 无关的常量，提取后会导致数据与比较不同步
         // 例如 v-if="userType === 'admin'" 或 :type="status === '进行中' ? ..."
         if (CommonASTUtils.isComparisonOperand(node)) {
+          // 中文字面量被跳过：记录到诊断集合，lint 阶段与 locale map 交叉告警。
+          // 若同一句中文已在别处（如 script 数组初值）被提取为 i18n key，运行时
+          // 切语言后该比较永远不命中 —— 详见 LocaleValueLinter.findHardcodedComparisons。
+          if (FileUtils.containsChinese(text)) {
+            CommonASTUtils.recordSkippedComparisonOperand(
+              text,
+              filePath,
+              directive.loc.start.line + lineOffset,
+              directive.loc.start.column,
+            );
+          }
           return;
         }
 
@@ -755,6 +766,16 @@ export class VueTextExtractor extends BaseTextExtractor {
       if (CommonASTUtils.isExtractableStringLiteral(node)) {
         originalText = node.text;
         processedText = node.text;
+      } else if (CommonASTUtils.isComparisonOperand(node) && FileUtils.containsChinese(node.text)) {
+        // script 端比较运算符两侧的中文字面量被跳过 —— 与 template 端记录对称，
+        // 用于事后与 locale map 交叉，识别「同句中文在他处被 i18n 化导致比较失效」的风险。
+        const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+        CommonASTUtils.recordSkippedComparisonOperand(
+          node.text,
+          filePath,
+          pos.line + 1 + lineOffset,
+          pos.character + 1,
+        );
       }
     }
     // 处理模板字符串：复用 CommonASTUtils.processTemplateExpression，
