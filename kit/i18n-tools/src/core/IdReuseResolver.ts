@@ -1,5 +1,6 @@
 import fs from 'fs';
 import type { ResolvedConfig } from '../config';
+import { CommonASTUtils } from '../utils/common-ast-utils';
 import { IdGenerator } from '../utils/id-generator';
 import { LanguageFileManager } from '../utils/language-file-manager';
 
@@ -92,7 +93,9 @@ export class IdReuseResolver {
   scanExistingCallsInSources(filePaths: Iterable<string>): void {
     for (const filePath of filePaths) {
       try {
-        const content = fs.readFileSync(filePath, 'utf-8');
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        // 剥除注释，避免被注释掉的 t('foo') 调用污染 existingIds 与覆盖率统计。
+        const content = CommonASTUtils.stripComments(raw);
         const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
         let match;
         while ((match = i18nKeyPattern.exec(content)) !== null) {

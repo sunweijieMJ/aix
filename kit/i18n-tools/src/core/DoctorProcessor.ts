@@ -1,6 +1,7 @@
 import fs from 'fs';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
+import { CommonASTUtils } from '../utils/common-ast-utils';
 import { FileUtils } from '../utils/file-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { type LinterFinding, LocaleValueLinter } from '../utils/locale-value-linter';
@@ -151,7 +152,11 @@ export class DoctorProcessor extends BaseProcessor {
     const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
     for (const filePath of files) {
       try {
-        const content = fs.readFileSync(filePath, 'utf-8');
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        // 剥除注释，避免被注释掉的示例代码（如 // text: t('foo.bar')）被当成
+        // 真实引用统计，进而误报 missing-key。stripComments 保留字符串字面量
+        // 内容，正则仍可正确捕获 t('key') 中的 key。
+        const content = CommonASTUtils.stripComments(raw);
         let match: RegExpExecArray | null;
         while ((match = i18nKeyPattern.exec(content)) !== null) {
           if (match[1]) used.add(match[1]);

@@ -149,6 +149,39 @@ describe('DoctorProcessor', () => {
     expect(all).not.toContain('b (en-US 与 zh-CN 完全相同)');
   });
 
+  it('注释中的 t() 调用不计入引用（不报 missing-key）', async () => {
+    // 行注释、块注释、HTML 注释中的 t('xxx') 都属于"被注释掉的示例代码"，
+    // 不应被当成真实引用。否则会引发 missing-key false-positive。
+    writeSourceFile(
+      'Commented.js',
+      [
+        `// const a = t('comment.line');`,
+        `/* const b = t('comment.block'); */`,
+        `const c = t('greeting');`,
+      ].join('\n'),
+    );
+    writeSourceFile(
+      'CommentedTpl.vue',
+      [
+        `<template>`,
+        `  <!-- {{ t('comment.html') }} -->`,
+        `  <div>{{ t('greeting') }}</div>`,
+        `</template>`,
+      ].join('\n'),
+    );
+    writeLocale('zh-CN', { greeting: '你好' });
+    writeLocale('en-US', { greeting: 'Hello' });
+
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir));
+    await proc.execute();
+
+    const all = collectMessages(infoSpy);
+    expect(all).not.toContain('comment.line');
+    expect(all).not.toContain('comment.block');
+    expect(all).not.toContain('comment.html');
+    expect(all).not.toContain('[missing-key]');
+  });
+
   it('CI 模式 + missing-key 存在 → 抛错', async () => {
     writeSourceFile('Q.vue', `<template>{{ t('absent') }}</template>`);
     writeLocale('zh-CN', {});

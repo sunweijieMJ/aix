@@ -1008,6 +1008,27 @@ export class CommonASTUtils {
   // ==================== Import 文本操作 ====================
 
   /**
+   * 启发式剥除 JS/TS/Vue 源码中的注释（行注释、块注释、HTML 注释），保留字符串字面量。
+   *
+   * Why: 工具的多处静态扫描（doctor 的 t() 引用收集、IdReuseResolver 的 existingIds
+   * 收集等）只需要识别"真实代码里调用的 t('xxx')"。若不剥注释，被注释掉的示例代码
+   * 中的 t('xxx') 会被误统计，产生 false-positive（如 doctor 的 missing-key 误报）。
+   *
+   * 与 VueComponentInjector.stripCommentsAndStrings 区别：
+   *  - 那里需要的是"判断真实代码中是否存在 t() 调用"，连字符串也一并吞掉
+   *  - 这里需要保留字符串内容供正则提取 t('key') 的 key 字面量
+   *
+   * 实现限制：纯文本替换，不处理"字符串内部出现 // 或 /*"的情况（这会让字符串
+   * 后续部分被误判为注释）。对当前用途（扫源码统计 t() 引用）足够。
+   */
+  static stripComments(code: string): string {
+    return code
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/\/\/[^\n]*/g, ' ');
+  }
+
+  /**
    * 在文本行数组中查找最后一条 import 语句的行号；没有则返回 -1。
    *
    * Why: React 与 Vue 的 ImportManager 都需要这个能力来确定"插入新 import 的锚点"，
@@ -1026,10 +1047,7 @@ export class CommonASTUtils {
       const trimmed = line.trim();
 
       if (pendingDepth > 0) {
-        for (const ch of line) {
-          if (ch === '{') pendingDepth++;
-          else if (ch === '}') pendingDepth--;
-        }
+        pendingDepth += CommonASTUtils.countBraceDelta(line);
         if (pendingDepth === 0) {
           // brace 闭合那一行就是该 import 的实际结束行
           lastImportEndLine = i;
@@ -1038,11 +1056,7 @@ export class CommonASTUtils {
       }
 
       if (trimmed.startsWith('import ') || trimmed.startsWith('import{')) {
-        let depth = 0;
-        for (const ch of line) {
-          if (ch === '{') depth++;
-          else if (ch === '}') depth--;
-        }
+        const depth = CommonASTUtils.countBraceDelta(line);
         if (depth === 0) {
           lastImportEndLine = i;
         } else {
@@ -1052,6 +1066,40 @@ export class CommonASTUtils {
     }
 
     return lastImportEndLine;
+  }
+
+  /**
+   * 计算单行内净 `{` - `}` 数，跳过字符串字面量内部的括号。
+   *
+   * Why: 字符串内 `{`/`}`（如 `from '@/i18n{mock}'` 这种含特殊字符的别名路径、
+   * 或字符串 payload 内含括号）若被计入大括号深度，会让 import 边界追踪错位，
+   * 导致 `const { t } = useI18n()` 之类的注入落到错误行。
+   *
+   * 不处理转义字符（`\\'`），对当前用途够用——import 行内出现 `\\'` 极罕见，
+   * 即便出错也只是行号偏差，不会破坏语义。
+   */
+  private static countBraceDelta(line: string): number {
+    let delta = 0;
+    let quote: '"' | "'" | '`' | null = null;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (quote !== null) {
+        if (ch === '\\') {
+          i++; // 跳过下一字符（处理 \" \' \` 等转义）
+          continue;
+        }
+        if (ch === quote) quote = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === '`') {
+        quote = ch;
+      } else if (ch === '{') {
+        delta++;
+      } else if (ch === '}') {
+        delta--;
+      }
+    }
+    return delta;
   }
 
   /**
