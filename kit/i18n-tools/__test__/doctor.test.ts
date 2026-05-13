@@ -93,7 +93,7 @@ describe('DoctorProcessor', () => {
     fs.writeFileSync(path.join(localeDir, `${locale}.json`), JSON.stringify(data));
   };
   const collectMessages = (spy: ReturnType<typeof vi.spyOn>): string =>
-    spy.mock.calls.map((c) => String((c as unknown[])[0])).join('\n');
+    spy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
 
   it('完全干净：source 与 target 完整对齐 → 检查通过', async () => {
     writeSourceFile('Login.vue', `<template><div>{{ t('greeting') }}</div></template>`);
