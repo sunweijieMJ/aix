@@ -1,6 +1,6 @@
 {
   "name": "@aix/pdf-viewer",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A Vue 3 PDF Viewer component with text/image selection support",
   "license": "MIT",
   "type": "module",
