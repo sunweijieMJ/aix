@@ -1,5 +1,13 @@
 # @aix/flow-graph
 
+## 0.0.29
+
+### Patch Changes
+
+- 同步版本
+- Updated dependencies
+  - @aix/popper@0.0.5
+
 ## 0.0.28
 
 ### Patch Changes
