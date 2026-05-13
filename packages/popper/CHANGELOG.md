@@ -1,5 +1,11 @@
 # @aix/popper
 
+## 0.0.4
+
+### Patch Changes
+
+- 增加多语言
+
 ## 0.0.3
 
 ### Patch Changes

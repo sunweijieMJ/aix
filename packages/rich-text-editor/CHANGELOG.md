@@ -1,5 +1,12 @@
 # @aix/rich-text-editor
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies
+  - @aix/popper@0.0.4
+
 ## 0.0.4
 
 ### Patch Changes
