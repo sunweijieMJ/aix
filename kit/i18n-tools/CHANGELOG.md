@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.17
+
+### Patch Changes
+
+- 优化merge
+
 ## 0.0.16
 
 ### Patch Changes
