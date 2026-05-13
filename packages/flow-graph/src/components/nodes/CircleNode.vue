@@ -23,7 +23,7 @@
 <script setup lang="ts">
 /**
  * 圆形节点：默认节点类型。
- * 所有交互（点击 active / 右键菜单 / Tooltip / Handle）均由 {@link BaseNode} 承载。
+ * 所有交互（点击 active / 右键菜单 / 上方 label / Handle）均由 {@link BaseNode} 承载。
  */
 import type { NodeProps } from '@vue-flow/core';
 import { DEFAULT_CIRCLE_SIZE, type NodeData } from '../../types';

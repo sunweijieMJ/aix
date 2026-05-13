@@ -22,7 +22,7 @@
 
 <script setup lang="ts">
 /**
- * 自定义菱形节点：复用 BaseNode 的交互骨架（右键菜单 / Tooltip / Handle / 状态机）。
+ * 自定义菱形节点：复用 BaseNode 的交互骨架（右键菜单 / 上方 label / Handle / 状态机）。
  * 由 `BaseNode` 注入的 default slot 暴露的 `{ size, nodeState, clicking, onClick }` 驱动视觉。
  */
 import type { NodeProps } from '@vue-flow/core';

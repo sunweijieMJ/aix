@@ -81,6 +81,7 @@ import {
   DEFAULT_HEXAGON_SIZE,
   FlowActiveWaypointKey,
   FlowEdgesDeletableKey,
+  FlowNodeLabelConfigKey,
   FlowSnapContextKey,
   type EdgeData,
   type FlowActiveWaypoint,
@@ -96,7 +97,13 @@ import '@vue-flow/core/dist/theme-default.css';
 
 defineOptions({ name: 'AixFlowGraph' });
 
-const props = defineProps<FlowGraphProps>();
+// boolean 类型的 prop 在未传值时会被 Vue 的 Boolean cast 强制变成 false，
+// 仅给"语义默认值为 true"的 boolean prop 显式声明 default: true，避免被 cast 误判。
+const props = withDefaults(defineProps<FlowGraphProps>(), {
+  snapGrid: true,
+  edgesDeletable: true,
+  showNodeLabel: true,
+});
 const emit = defineEmits<FlowGraphEmits>();
 
 const modelNodes = defineModel<FlowNode[]>('nodes', { default: () => [] });
@@ -108,16 +115,24 @@ const gridSize = computed(() => props.gridSize ?? 40);
 const nodeSize = computed(() => props.defaultNodeSize ?? DEFAULT_CIRCLE_SIZE);
 /** 六边形节点的尺寸（仅用于吸附时的对中修正） */
 const hexagonSize = computed(() => props.defaultHexagonSize ?? DEFAULT_HEXAGON_SIZE);
-/** 是否开启栅格吸附 */
-const snapEnabled = computed(() => props.snapGrid !== false);
+/** 是否开启栅格吸附（默认 true，由 withDefaults 兜底） */
+const snapEnabled = computed(() => props.snapGrid);
 /** 背景网格线颜色，使用主题边框色 */
 const gridColor = 'var(--aix-colorBorder, #e5e6eb)';
 
 // 通过 InjectionKey 暴露上下文，给内部 composable / 子组件类型安全地消费
 provide(FlowSnapContextKey, { snapEnabled, gridSize, nodeSize, hexagonSize });
 
-const edgesDeletable = computed(() => props.edgesDeletable !== false);
+const edgesDeletable = computed(() => props.edgesDeletable);
 provide(FlowEdgesDeletableKey, edgesDeletable);
+
+// 节点常驻 label 配置：默认开启（由 withDefaults 保证）、阈值 0.6
+const nodeLabelEnabled = computed(() => props.showNodeLabel);
+const nodeLabelZoomThreshold = computed(() => props.labelZoomThreshold ?? 0.6);
+provide(FlowNodeLabelConfigKey, {
+  enabled: nodeLabelEnabled,
+  zoomThreshold: nodeLabelZoomThreshold,
+});
 
 /**
  * 当前选中的拐点（单选，跨 edge），实例私有：

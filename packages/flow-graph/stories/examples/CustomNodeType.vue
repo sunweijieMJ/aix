@@ -13,7 +13,7 @@
  * 这里实现一个「菱形」节点（diamond），通过 `nodeTypes` 注册，与内置 default/hexagon 共存。
  *
  * 关键点：
- * - 复用 `BaseNode` 拿到右键菜单 / Tooltip / Handle / 点击动画等公共能力；
+ * - 复用 `BaseNode` 拿到右键菜单 / 上方 label / Handle / 点击动画等公共能力；
  * - default slot 暴露 `{ size, nodeState, clicking, onClick }`，由业务层只画形状。
  */
 import { markRaw, ref } from 'vue';

@@ -19,7 +19,7 @@ export const DEFAULT_HEXAGON_SIZE = 40;
 export interface NodeData {
   /** 节点主色，缺省使用主题 CSS 变量 */
   color?: string;
-  /** 节点标签，悬停时显示在 Tooltip */
+  /** 节点标签：作为节点上方常驻气泡显示；超长单行省略，hover 节点时展开多行 */
   label?: string;
   /** 是否处于”选择中”的外圈高亮（供外部流程驱动） */
   selecting?: boolean;
@@ -34,8 +34,6 @@ export interface NodeData {
   size?: number;
   /** 节点所属路径的颜色列表（多路径共用时用于扇形着色和十字渐变） */
   pathColors?: string[];
-  /** 高亮（selecting）时是否禁用 Tooltip，默认 false（显示） */
-  tooltipDisabled?: boolean;
 }
 
 /** 折线拐点坐标（画布坐标系） */
@@ -90,6 +88,26 @@ export const FlowSnapContextKey: InjectionKey<FlowSnapContext> = Symbol('aix-flo
 export const FlowEdgesDeletableKey: InjectionKey<ComputedRef<boolean>> = Symbol(
   'aix-flow-edges-deletable',
 );
+
+/**
+ * 节点常驻 label 配置：控制是否在节点上方显示 data.label 文本，以及最小可见缩放。
+ * 通过 {@link FlowNodeLabelConfigKey} 注入给 BaseNode 消费。
+ */
+export interface FlowNodeLabelConfig {
+  /** 是否开启常驻 label（关闭后节点上方不再显示名称气泡） */
+  enabled: ComputedRef<boolean>;
+  /** 显示阈值：viewport.zoom 低于此值时整体隐藏，避免画面密集 */
+  zoomThreshold: ComputedRef<number>;
+}
+
+/**
+ * {@link FlowNodeLabelConfig} 的注入键。
+ * 与 {@link FlowActiveWaypointKey} 同理走 `Symbol.for`，
+ * 在 Storybook + Vite HMR 下也能保证 provide / inject 用的是同一个 Symbol。
+ */
+export const FlowNodeLabelConfigKey: InjectionKey<FlowNodeLabelConfig> = Symbol.for(
+  'aix-flow-node-label',
+) as InjectionKey<FlowNodeLabelConfig>;
 
 /** 当前选中的拐点（跨 edge 单选；由 FlowGraph 持有并按需重置） */
 export interface FlowActiveWaypoint {
@@ -168,6 +186,16 @@ export interface FlowGraphProps {
   bottomBarPosition?:
     | PanelPositionType
     | { position?: PanelPositionType; offset?: { x?: number; y?: number } };
+  /**
+   * 是否在节点上方常驻显示 `data.label` 文本气泡，默认 `true`。
+   * 关闭后节点不再显示名称。
+   */
+  showNodeLabel?: boolean;
+  /**
+   * 常驻 label 显示阈值：`viewport.zoom` 低于此值时整体隐藏，默认 `0.6`。
+   * 设为 `0` 表示任何缩放都显示。
+   */
+  labelZoomThreshold?: number;
 }
 
 /** FlowGraph `connect` 事件的载荷；sourceHandle/targetHandle 已规范化为 `string | null`（不含 undefined） */
