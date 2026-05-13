@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.30
+
+### Patch Changes
+
+- 修复拐点bug
+
 ## 0.0.29
 
 ### Patch Changes
