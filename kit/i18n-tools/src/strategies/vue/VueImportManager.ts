@@ -84,23 +84,32 @@ export class VueImportManager implements IImportManager {
         // Why: 与本仓库 demo 注释约定一致（"所有 import 集中到顶部 script 块"），
         // 也避免双块各自 import 后 eslint-plugin-vue 把整个 SFC 视为一个 program
         // 时触发 import/order 报错。
+        // 同步清理 setup 块内可能残留的 hook 注入（旧代码或上一轮工具产物），
+        // 否则会与 nonSetup 顶层 import 形成双 t 声明。
+        updatedCode = this.removeHookImportAndDeclaration(updatedCode);
         updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'nonSetupOnly');
       } else if (hasSetup) {
-        // 仅 <script setup>：默认走标准 useI18n hook 注入路径。
-        // 例外：若 setup 块内出现编译宏（defineProps/defineEmits/defineModel/
-        // withDefaults/defineOptions/defineSlots）的参数子树引用了 t() —— 此时
-        // hook 注入会让 t 成为 setup 局部变量，触发 vue/valid-define-* 规则
-        // 与 SFC 编译错误。改走模块顶层 import { t } from tImport（在 setup
-        // 块顶部写 import，编译后属模块作用域，可被宏自由引用）。
-        const setupContent = descriptor.scriptSetup!.content;
-        if (VueImportManager.setupReferencesTInCompileMacro(setupContent)) {
-          updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'setupOnly');
-          // 清理可能存在的存量 hook 注入，避免 setup 局部 t 遮蔽模块顶层 t。
-          updatedCode = this.removeHookImportAndDeclaration(updatedCode);
-        } else {
-          updatedCode = this.addHookImport(updatedCode);
-          updatedCode = this.addHookDeclaration(updatedCode);
-        }
+        // 仅 <script setup>：统一走「模块顶层 import { t } from tImport」路径，
+        // 不再走 useI18n hook 注入。
+        //
+        // Why 统一：
+        //   1. 编译宏场景（defineProps 等参数引用 t()）本来就强制走模块 import；
+        //      hook 路径在该场景下会触发 vue/valid-define-* 规则与 SFC 编译错误。
+        //   2. 两条策略并存导致策略切换时清理不对称——例如上一轮工具走模块 import
+        //      留下 `import { t } from tImport`，本轮走 hook 又注入 `const { t } =
+        //      useI18n()`，t 被声明两次报 SyntaxError（已发生的真实 bug）。
+        //   3. 业务侧 tImport 通常导出 `i18n.global.t`，与 useI18n().t 在响应式
+        //      行为上等价（template 调用都跟随 locale 切换重渲染）。
+        //
+        // 适用前提：tImport 必须暴露命名导出 `t`、vue-i18n 走 legacy:false +
+        // reactive composer、非 SSR、不依赖 useScope:'local' 的局部 messages。
+        //
+        // 无条件先清一次 hook 残留：业务仓库可能有大量上一轮 hook 注入痕迹，
+        // 不清理会与即将写入的 import { t } 双声明。清理正则只匹配工具注入的
+        // 无参形态（`useI18n()` / `const { t } = useI18n()`），不会误伤手写的
+        // `useI18n({ useScope:'local', messages })` 等高级用法。
+        updatedCode = this.removeHookImportAndDeclaration(updatedCode);
+        updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'setupOnly');
       } else {
         // 仅普通 <script>：按需为模块顶层裸 t() 注入 import
         updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'nonSetupOnly');
@@ -124,9 +133,13 @@ export class VueImportManager implements IImportManager {
     const block = VueImportManager.findScriptBlock(code, { [scope]: true });
     if (!block) return code;
 
-    // 检测块内是否存在裸 t() 调用
-    // 用负向先行排除 this.t / `xt(` / `$t(` 等误匹配
-    if (!/(?:^|[^\w.$])t\s*\(/.test(block.content)) return code;
+    // 检测「整个 SFC 的所有 script 块」是否存在裸 t() 调用——而不是仅检测目标 block。
+    // Why: 双块共存场景下，import 写到 nonSetup 块，但 t() 调用可能在 setup 块；
+    //   仅看目标块会漏判，导致 setup 用 t 但 t 无声明（统一策略前置清理 hook 后
+    //   尤其致命）。模块作用域下任一块声明 import { t }，所有块都能用。
+    // 用负向先行排除 this.t / `xt(` / `$t(` 等误匹配。
+    const allScriptContent = VueImportManager.collectAllScriptContent(code);
+    if (!/(?:^|[^\w.$])t\s*\(/.test(allScriptContent)) return code;
 
     const escapedPath = CommonASTUtils.escapeRegExp(this.tImport);
     if (
@@ -381,6 +394,24 @@ export class VueImportManager implements IImportManager {
     if (!block) return code;
     const updatedScript = CommonASTUtils.appendImportLine(block.content, importStatement);
     return code.slice(0, block.start) + updatedScript + code.slice(block.end);
+  }
+
+  /**
+   * 把 SFC 的 script 与 scriptSetup 块内容合并为一个字符串。
+   * 用于「是否需要注入 t 来源」的全局检测：双块共存时 t() 可能只在其中一块。
+   * 解析失败返回空串，调用方据此跳过注入（保守行为，避免破坏未知格式文件）。
+   */
+  private static collectAllScriptContent(code: string): string {
+    let descriptor;
+    try {
+      descriptor = parseSFC(code).descriptor;
+    } catch {
+      return '';
+    }
+    const parts: string[] = [];
+    if (descriptor.script) parts.push(descriptor.script.content);
+    if (descriptor.scriptSetup) parts.push(descriptor.scriptSetup.content);
+    return parts.join('\n');
   }
 
   /**
