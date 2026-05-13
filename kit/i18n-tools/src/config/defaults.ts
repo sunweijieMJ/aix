@@ -165,3 +165,11 @@ export const DEFAULT_MODULES_LAYOUT = 'by-locale' as const;
  * 默认导出格式
  */
 export const DEFAULT_OUTPUT_FORMAT = 'flat' as const;
+
+/**
+ * 默认合并策略
+ *
+ * 'fallback-to-source' 是默认：LLM 拒收条目（如纯标点）用源文本回填到目标语言文件，
+ * 避免运行时显示 key 字符串。详见 MergeConfig.rejectedStrategy 注释。
+ */
+export const DEFAULT_MERGE_REJECTED_STRATEGY = 'fallback-to-source' as const;

@@ -15,6 +15,7 @@ import {
   DEFAULT_LLM_TEMPERATURE,
   DEFAULT_LLM_TIMEOUT,
   DEFAULT_LOCALE,
+  DEFAULT_MERGE_REJECTED_STRATEGY,
   DEFAULT_MODULES_DEFAULT_MODULE,
   DEFAULT_MODULES_LAYOUT,
   DEFAULT_MODULES_MANIFEST,
@@ -269,7 +270,20 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     output: {
       format: userConfig.output?.format ?? DEFAULT_OUTPUT_FORMAT,
     },
+    merge: {
+      rejectedStrategy: userConfig.merge?.rejectedStrategy ?? DEFAULT_MERGE_REJECTED_STRATEGY,
+    },
   };
+
+  // 显式校验 merge.rejectedStrategy：用户可能 typo 成其他字符串，提前在 loader 拦下
+  // 比 MergeProcessor 运行时静默走默认分支更易于诊断。
+  const validStrategies = ['fallback-to-source', 'warn-only'];
+  if (!validStrategies.includes(resolved.merge.rejectedStrategy)) {
+    throw new Error(
+      `配置错误：merge.rejectedStrategy 必须是 ${validStrategies.map((s) => `'${s}'`).join(' | ')} 之一，` +
+        `当前收到 '${resolved.merge.rejectedStrategy}'。`,
+    );
+  }
 
   const resolvedSeparator = resolved.idPrefix.separator;
 

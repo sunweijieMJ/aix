@@ -239,6 +239,26 @@ export interface ExtractionConfig {
 }
 
 /**
+ * 合并阶段配置
+ */
+export interface MergeConfig {
+  /**
+   * LLM 拒收条目（返回值非空但被 isValidTranslation 判无效，如纯标点 "!"）的处理策略。
+   *
+   * - 'fallback-to-source'（默认）：用源语言文本作为目标语言值合并到 translations.json
+   *   与目标语言文件，并从 untranslated.json 移除。运行时不会再出现 "找不到 key 显示
+   *   key 字符串" 的兜底问题；副作用是英文模式下显示源语言片段（如 "吧！"），但比显示
+   *   key 字符串友好。适用于"片段化提取语气词"等无法独立翻译的场景。
+   * - 'warn-only'：仅在 RunReport 警告，不合并；条目永久卡在 untranslated.json 等待
+   *   人工处理（修源码合并片段或手改 untranslated.json）。语义最严格，但需手工介入。
+   *
+   * 与"真未翻译条目"（enValue 为空）的处理无关——后者始终保留在 untranslated.json，
+   * 不会被本策略影响，避免静默把"待翻译"伪装成"已完成"。
+   */
+  rejectedStrategy?: 'fallback-to-source' | 'warn-only';
+}
+
+/**
  * 持久化格式配置
  */
 export interface OutputConfig {
@@ -333,6 +353,11 @@ export interface I18nToolsConfig {
    * 工具内部仍以扁平 LocaleMap 工作。
    */
   output?: OutputConfig;
+
+  /**
+   * 合并阶段配置（可选）。控制 LLM 拒收条目（如纯标点）的兜底策略，详见 MergeConfig。
+   */
+  merge?: MergeConfig;
 }
 
 /**
@@ -394,6 +419,11 @@ export interface ResolvedConfig {
   /** 已解析的导出格式配置 */
   output: {
     format: 'flat' | 'nested';
+  };
+
+  /** 已解析的合并阶段配置 */
+  merge: {
+    rejectedStrategy: 'fallback-to-source' | 'warn-only';
   };
 }
 

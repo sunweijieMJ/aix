@@ -57,8 +57,11 @@ export class MergeProcessor extends FileProcessor {
     // 同样不能在 newTranslatedCount === 0 时早退：本轮虽无 LLM 翻译完成，
     // 但 existingTranslations 中的 glossary 预填条目仍可能未同步到目标语言文件。
     // 历史 bug：早退导致 glossary 命中条目永远卡在 translations.json，en-US.json 缺失。
-    if (analysisResult.newTranslatedCount === 0) {
-      LoggerUtils.warn('本轮没有新完成的 LLM 翻译，将仅同步 translations.json 中已有条目。');
+    // 判定"无新增写入"时也要把 rejectedFallback 计入——它们也是本轮新写入。
+    if (analysisResult.newTranslatedCount === 0 && analysisResult.rejectedFallbackCount === 0) {
+      LoggerUtils.warn(
+        '本轮没有新增翻译或回填，将仅同步 translations.json 中已有条目到目标语言文件。',
+      );
     }
 
     this.performMerge(analysisResult, existingTranslations, translatedPath);
@@ -99,13 +102,17 @@ export class MergeProcessor extends FileProcessor {
     stillUntranslated: Translations;
     newTranslatedCount: number;
     stillUntranslatedCount: number;
+    /** 拒收条目按 fallback-to-source 策略用源文本回填的数量（warn-only 策略下为 0） */
+    rejectedFallbackCount: number;
   } {
     const sourceLocale = this.config.locale.source;
     const targetLocale = this.config.locale.target;
+    const strategy = this.config.merge.rejectedStrategy;
     const newlyTranslated: Translations = {};
     const stillUntranslated: Translations = {};
     let newTranslatedCount = 0;
     let stillUntranslatedCount = 0;
+    let rejectedFallbackCount = 0;
     // 单独收集「LLM 给了 target 值但被 isValidTranslation 判无效」的条目。
     // 这类条目 LLM 已经"翻过"但被工具拒收（纯标点 / 空白等），如不告知用户，
     // 每次 merge 看到的现象是「仍需翻译 N 个」却不知道是 LLM 还没翻还是被拒，
@@ -124,26 +131,52 @@ export class MergeProcessor extends FileProcessor {
           [targetLocale]: enValue,
         };
         newTranslatedCount++;
-      } else {
-        stillUntranslated[key] = {
-          [sourceLocale]: zhValue ?? '',
-          [targetLocale]: enValue || '',
-        };
-        stillUntranslatedCount++;
-        // 区分「LLM 还没翻」与「LLM 翻了但被拒收」：前者 enValue 为空 / 缺失，
-        // 后者 enValue 是非空字符串但 isValidTranslation 返回 false（典型：
-        // 纯标点 "!" / 纯空白）。只对后者发 warn——前者是正常的"等待翻译"。
-        if (typeof enValue === 'string' && enValue.trim().length > 0) {
-          rejected.push({ key, zh: zhValue ?? '', en: enValue });
+        continue;
+      }
+
+      // 区分「LLM 还没翻」与「LLM 翻了但被拒收」：前者 enValue 为空 / 缺失，
+      // 后者 enValue 是非空字符串但 isValidTranslation 返回 false（典型：
+      // 纯标点 "!" / 纯空白）。
+      const isRejected = typeof enValue === 'string' && enValue.trim().length > 0;
+
+      if (isRejected) {
+        rejected.push({ key, zh: zhValue ?? '', en: enValue });
+
+        // fallback-to-source：拒收条目用源文本回填到目标语言文件，避免运行时显示
+        // key 字符串。同时从 untranslated.json 移除（不进入 stillUntranslated），
+        // 否则每次 merge 都重新走拒收警告，且 pick 也无法把它当"已处理"。
+        // 仅当源文本是非空字符串时才回填——zh 为空时回填没有意义。
+        if (
+          strategy === 'fallback-to-source' &&
+          typeof zhValue === 'string' &&
+          zhValue.trim().length > 0
+        ) {
+          newlyTranslated[key] = {
+            [sourceLocale]: zhValue,
+            [targetLocale]: zhValue,
+          };
+          rejectedFallbackCount++;
+          continue;
         }
       }
+
+      // 默认归入 stillUntranslated（含：真未翻译、warn-only 策略下的拒收、
+      // fallback-to-source 但源文本也为空的拒收）
+      stillUntranslated[key] = {
+        [sourceLocale]: zhValue ?? '',
+        [targetLocale]: enValue || '',
+      };
+      stillUntranslatedCount++;
     }
 
     LoggerUtils.success(`✅ 新翻译完成: ${newTranslatedCount} 个`);
+    if (rejectedFallbackCount > 0) {
+      LoggerUtils.info(`🔁 LLM 拒收已用源文本回填: ${rejectedFallbackCount} 个`);
+    }
     LoggerUtils.info(`📝 仍需翻译: ${stillUntranslatedCount} 个`);
 
     if (rejected.length > 0) {
-      this.reportRejectedTranslations(rejected, sourceLocale, targetLocale);
+      this.reportRejectedTranslations(rejected, sourceLocale, targetLocale, strategy);
     }
 
     return {
@@ -151,6 +184,7 @@ export class MergeProcessor extends FileProcessor {
       stillUntranslated,
       newTranslatedCount,
       stillUntranslatedCount,
+      rejectedFallbackCount,
     };
   }
 
@@ -166,6 +200,7 @@ export class MergeProcessor extends FileProcessor {
     rejected: Array<{ key: string; zh: string; en: string }>,
     sourceLocale: string,
     targetLocale: string,
+    strategy: 'fallback-to-source' | 'warn-only',
   ): void {
     // emit 同时写 console（即时反馈）与 RunReport（落盘到 .i18n-tools/logs/，
     // 终端刷新后仍可回查）。与 LocaleValueLinter 走同一模式。
@@ -174,17 +209,38 @@ export class MergeProcessor extends FileProcessor {
       this.report.addWarning(line);
     };
 
-    emit(
-      `\n⚠️  ${rejected.length} 个翻译被判无效（LLM 返回纯标点 / 空白），未合并到 ${targetLocale}：`,
-    );
+    if (strategy === 'fallback-to-source') {
+      emit(
+        `\n🔁 ${rejected.length} 个翻译被判无效（LLM 返回纯标点 / 空白），已用 ${sourceLocale} 源文本回填到 ${targetLocale}：`,
+      );
+    } else {
+      emit(
+        `\n⚠️  ${rejected.length} 个翻译被判无效（LLM 返回纯标点 / 空白），未合并到 ${targetLocale}：`,
+      );
+    }
     for (const { key, zh, en } of rejected) {
       emit(`   - ${key}`);
       emit(`     ${sourceLocale}: ${JSON.stringify(zh)}`);
       emit(`     ${targetLocale}: ${JSON.stringify(en)}   ← 已被 isValidTranslation 拒收`);
     }
     emit('   💡 处理建议：');
-    emit(`     a) 编辑 ${FILES.UNTRANSLATED_JSON}，把 ${targetLocale} 值改成有效翻译后重跑 merge`);
-    emit(`     b) 或源码改造：把片段（如 "吧！"）合并到上下文整句中，消除片段化提取`);
+    if (strategy === 'fallback-to-source') {
+      emit(`     a) 源码改造（推荐）：把片段（如 "吧！"）合并到上下文整句中，消除片段化提取`);
+      emit(
+        `     b) 接受源文本兜底：当前已自动回填，运行时不再出现 missing key；但 ${targetLocale} 模式下显示 ${sourceLocale} 文本`,
+      );
+      emit(
+        `     c) 严格模式：在 i18n.config 设置 merge.rejectedStrategy: 'warn-only' 关闭自动回填`,
+      );
+    } else {
+      emit(
+        `     a) 编辑 ${FILES.UNTRANSLATED_JSON}，把 ${targetLocale} 值改成有效翻译后重跑 merge`,
+      );
+      emit(`     b) 或源码改造：把片段（如 "吧！"）合并到上下文整句中，消除片段化提取`);
+      emit(
+        `     c) 启用回填：在 i18n.config 设置 merge.rejectedStrategy: 'fallback-to-source' 用源文本兜底`,
+      );
+    }
   }
 
   private performMerge(
@@ -329,6 +385,9 @@ export class MergeProcessor extends FileProcessor {
 
     LoggerUtils.info(`\n📊 合并结果:`);
     LoggerUtils.info(`   - ✅ 新合并翻译: ${analysisResult.newTranslatedCount} 个`);
+    if (analysisResult.rejectedFallbackCount > 0) {
+      LoggerUtils.info(`   - 🔁 拒收用源文本回填: ${analysisResult.rejectedFallbackCount} 个`);
+    }
     LoggerUtils.info(`   - 📝 仍需翻译: ${analysisResult.stillUntranslatedCount} 个`);
   }
 }

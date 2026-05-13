@@ -51,6 +51,7 @@ const buildConfig = (overrides: Partial<ResolvedConfig['idPrefix']> = {}): Resol
     exclude: [],
     extraction: { rejectPatterns: [] },
     output: { format: 'flat' },
+    merge: { rejectedStrategy: 'fallback-to-source' },
   };
   return base;
 };

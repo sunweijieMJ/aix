@@ -56,6 +56,7 @@ const buildConfig = (rootDir: string, sourceDir: string, localeDir: string): Res
   exclude: [],
   extraction: { rejectPatterns: [] },
   output: { format: 'flat' },
+  merge: { rejectedStrategy: 'fallback-to-source' },
 });
 
 describe('DoctorProcessor', () => {
