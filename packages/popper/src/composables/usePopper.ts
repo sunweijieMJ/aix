@@ -5,6 +5,7 @@ import {
   flip as flipMiddleware,
   shift as shiftMiddleware,
   arrow as arrowMiddleware,
+  type AutoUpdateOptions,
   type Placement,
   type Strategy,
   type Middleware,
@@ -22,6 +23,12 @@ export interface UsePopperOptions {
   flip?: MaybeRefOrGetter<boolean>;
   shift?: MaybeRefOrGetter<boolean>;
   additionalMiddleware?: MaybeRefOrGetter<Middleware[]>;
+  /**
+   * autoUpdate 行为定制。默认走 floating-ui 内置（ancestorScroll/ResizeObserver/layoutShift）。
+   * 当 reference 元素会被 CSS transform 持续平移（如 vue-flow 的 fitView 动画）时，
+   * layoutShift 的 IntersectionObserver 触发频率不足以跟上动画，应开 `animationFrame: true`。
+   */
+  autoUpdateOptions?: MaybeRefOrGetter<AutoUpdateOptions | undefined>;
 }
 
 export interface UsePopperReturn {
@@ -84,6 +91,7 @@ export function usePopper(options: UsePopperOptions = {}): UsePopperReturn {
     flip: flipOption = true,
     shift: shiftOption = true,
     additionalMiddleware = [],
+    autoUpdateOptions,
   } = options;
 
   const referenceRef = ref<HTMLElement | null>(null);
@@ -129,7 +137,14 @@ export function usePopper(options: UsePopperOptions = {}): UsePopperReturn {
       placement: computed(() => toValue(placementOption)),
       strategy: computed(() => toValue(strategyOption)),
       middleware,
-      whileElementsMounted: autoUpdate,
+      // 透传 autoUpdateOptions：调用方可启用 animationFrame 等高频更新模式。
+      // 未传时退化为 floating-ui 默认（ancestorScroll/elementResize/layoutShift）。
+      whileElementsMounted: (reference, floating, updateFn) => {
+        const opts = toValue(autoUpdateOptions);
+        return opts
+          ? autoUpdate(reference, floating, updateFn, opts)
+          : autoUpdate(reference, floating, updateFn);
+      },
     },
   );
 

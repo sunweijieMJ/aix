@@ -428,7 +428,10 @@ export interface ContextMenuProps {
   /**
    * 触发方式
    * - `'contextmenu'`（默认）：右键弹出，由组件自动监听
-   * - `'manual'`：不绑定任何事件，仅通过 expose 的 `show(event)` 在指定鼠标坐标弹出
+   * - `'manual'`：不绑定任何事件，仅通过 expose 的 `show(eventOrEl)` 弹出。
+   *   - 传 `MouseEvent` 时按鼠标坐标定位（虚拟元素，位置固定，常用于右键菜单）；
+   *   - 传 `HTMLElement` 时以元素为锚，floating-ui 的 autoUpdate 会持续跟随元素位移
+   *     （适合「点击节点弹菜单」且后续节点可能被滚动/平移到其他位置的场景）。
    * @default 'contextmenu'
    */
   trigger?: Extract<TriggerType, 'contextmenu' | 'manual'>;
@@ -465,6 +468,11 @@ export interface ContextMenuEmits {
 }
 
 export interface ContextMenuExpose {
-  show: (event: MouseEvent) => void;
+  /**
+   * 弹出菜单：
+   * - 传 `MouseEvent`：按 `clientX/clientY` 定位（虚拟元素，位置固定）。
+   * - 传 `HTMLElement`：以该元素为锚定参考，菜单会跟随其位移（autoUpdate）。
+   */
+  show: (target: MouseEvent | HTMLElement) => void;
   hide: () => void;
 }

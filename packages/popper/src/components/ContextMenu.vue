@@ -58,6 +58,15 @@ const { t } = useLocale(popperLocale);
 const floatingElRef = ref<HTMLElement | null>(null);
 
 // 核心定位（strategy: fixed 适合右键菜单）
+//
+// autoUpdateOptions：当 reference 为真实 DOM 元素（show(el) 路径）时，元素可能被 CSS transform
+// 持续平移（典型场景：vue-flow fitView 动画），floating-ui 默认的 layoutShift 检测频率不够，
+// 需要开启 animationFrame 模式让定位每帧同步。虚拟元素（鼠标坐标 / contextmenu 自动监听）
+// 永不移动，保持默认即可。
+//
+// 注意：此 getter 仅在 whileElementsMounted 触发时被读取一次（即 isOpen 由 false→true 时），
+// 因此 show/hide 两条路径切换 reference 类型都会被覆盖（包括 contextmenu 自动监听绕过 show()
+// 直接给 referenceRef 赋虚拟元素的场景）。
 const { referenceRef, floatingRef, floatingStyles } = usePopper({
   placement: 'bottom-start',
   strategy: 'fixed',
@@ -65,6 +74,8 @@ const { referenceRef, floatingRef, floatingStyles } = usePopper({
   arrow: false,
   flip: true,
   shift: true,
+  autoUpdateOptions: () =>
+    referenceRef.value instanceof Element ? { animationFrame: true } : undefined,
 });
 
 // 桥接 refs（triggerRef 不桥接——contextmenu 模式使用虚拟元素定位，不需要真实触发元素作为 reference）
@@ -97,9 +108,16 @@ provide(DROPDOWN_INJECTION_KEY, { handleItemClick: handleCommand });
 // 键盘导航（DropdownItem 渲染 .aix-dropdown__item，使用默认选择器）
 const onMenuKeyDown = createMenuKeyDown();
 
-// expose 的 show(event) 需要手动设置虚拟元素后调用 triggerShow
-function show(event: MouseEvent) {
-  referenceRef.value = createVirtualElement(event.clientX, event.clientY);
+// expose 的 show 支持两种锚定方式：
+// - MouseEvent：按鼠标坐标定位（虚拟元素，位置固定，适合右键菜单）；
+// - HTMLElement：以真实元素为锚，floating-ui 的 autoUpdate (默认 layoutShift)
+//   会跟随元素位移自动重定位（适合点击节点弹菜单，后续节点被 fitView/滚动等移动的场景）。
+function show(target: MouseEvent | HTMLElement) {
+  if (target instanceof Element) {
+    referenceRef.value = target as HTMLElement;
+  } else {
+    referenceRef.value = createVirtualElement(target.clientX, target.clientY);
+  }
   triggerShow();
 }
 

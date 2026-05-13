@@ -13,6 +13,7 @@
       - 不弹菜单是因为 ContextMenu 使用了 `trigger="manual"`，不会自动响应 contextmenu。
     -->
     <div
+      ref="wrapperRef"
       class="aix-flow-node__wrapper"
       :class="{ 'aix-flow-node__wrapper--connectable': connectable }"
       :style="{ width: `${size}px`, height: `${size}px` }"
@@ -123,20 +124,27 @@ const { nodeState, clicking, onNodeClick, onCommand } = useNodeInteraction({
 });
 
 const contextMenuRef = ref<ContextMenuExpose | null>(null);
+const wrapperRef = ref<HTMLElement | null>(null);
 
 /**
- * 节点左击：切换 active/default 状态。切到 active 时按鼠标坐标弹出菜单；
+ * 节点左击：切换 active/default 状态。切到 active 时以"节点元素"为锚弹出菜单；
  * 关菜单由下面的 watch(nodeState) 统一负责（包括外部 reset 路径），此处不重复处理。
+ *
+ * 为什么不传 event：以鼠标坐标定位时，菜单会被钉在点击瞬间的屏幕位置；
+ * 业务方常会在 node-click 之后调用 `fitView` 把节点平移到画布中心，
+ * 此时虚拟元素的 rect 不变，菜单就会和节点脱节。改成传节点 wrapper 元素后，
+ * floating-ui 的 autoUpdate（默认 layoutShift IntersectionObserver）会跟随节点
+ * 位移自动重定位，菜单始终贴在节点下方。
  *
  * 注意：nodeState 来自 props.data，更新是异步（vue-flow store → props patch → computed），
  * 不能在 onNodeClick() 之后立刻读"切换后状态"。这里基于"切换前状态"预判 willActivate。
  * 右键不弹菜单（ContextMenu 用 `trigger="manual"`），但事件冒泡到 vue-flow，
  * FlowGraph 据此 emit `node-right-click`（详见 template 注释）。
  */
-function onNodeLeftClick(event: MouseEvent) {
+function onNodeLeftClick(_event: MouseEvent) {
   const willActivate = nodeState.value !== 'active';
   onNodeClick();
-  if (willActivate) contextMenuRef.value?.show(event);
+  if (willActivate && wrapperRef.value) contextMenuRef.value?.show(wrapperRef.value);
 }
 
 /**

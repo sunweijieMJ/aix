@@ -10,6 +10,7 @@ import CustomNodeType from './examples/CustomNodeType.vue';
 import DeletableEdges from './examples/DeletableEdges.vue';
 import ExposedMethods from './examples/ExposedMethods.vue';
 import HighlightPath from './examples/HighlightPath.vue';
+import NodeClickFitView from './examples/NodeClickFitView.vue';
 import NodeEvents from './examples/NodeEvents.vue';
 import SharedPath from './examples/SharedPath.vue';
 
@@ -32,6 +33,8 @@ const wrap = (component: Component) => ({
 export const 底部工具栏位置: Story = { render: () => wrap(BottomBarPosition) };
 
 export const 节点事件: Story = { render: () => wrap(NodeEvents) };
+
+export const 点击节点后居中: Story = { render: () => wrap(NodeClickFitView) };
 
 export const 基础编辑: Story = { render: () => wrap(BasicEdit) };
 
