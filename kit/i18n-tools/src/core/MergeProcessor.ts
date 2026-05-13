@@ -42,20 +42,23 @@ export class MergeProcessor extends FileProcessor {
     if (!untranslatedData) return;
 
     const totalCount = Object.keys(untranslatedData).length;
+    // 注意：即使 untranslated 为空，也不能早退——translations.json 里可能仍有
+    // pick 阶段被 glossary 命中后预填、但尚未同步到目标语言文件的条目。
     if (totalCount === 0) {
-      LoggerUtils.warn('待翻译文件为空，没有需要处理的翻译。');
-      return;
+      LoggerUtils.warn('待翻译文件为空，仅同步 translations.json 中已有条目到目标语言文件。');
+    } else {
+      LoggerUtils.info(`📄 待翻译文件: ${untranslatedPath}`);
+      LoggerUtils.info(`📊 发现 ${totalCount} 个待翻译条目`);
     }
-
-    LoggerUtils.info(`📄 待翻译文件: ${untranslatedPath}`);
-    LoggerUtils.info(`📊 发现 ${totalCount} 个待翻译条目`);
 
     const existingTranslations = this.loadExistingTranslations(translatedPath);
     const analysisResult = this.analyzeTranslationStatus(untranslatedData);
 
+    // 同样不能在 newTranslatedCount === 0 时早退：本轮虽无 LLM 翻译完成，
+    // 但 existingTranslations 中的 glossary 预填条目仍可能未同步到目标语言文件。
+    // 历史 bug：早退导致 glossary 命中条目永远卡在 translations.json，en-US.json 缺失。
     if (analysisResult.newTranslatedCount === 0) {
-      LoggerUtils.warn('没有新完成的翻译可以合并。');
-      return;
+      LoggerUtils.warn('本轮没有新完成的 LLM 翻译，将仅同步 translations.json 中已有条目。');
     }
 
     this.performMerge(analysisResult, existingTranslations, translatedPath);
