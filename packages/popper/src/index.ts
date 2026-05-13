@@ -63,6 +63,10 @@ export type {
 // 注入 Key
 export { DROPDOWN_INJECTION_KEY } from './types';
 
+// 语言包
+export { locale as popperLocale, zhCN as popperZhCN, enUS as popperEnUS } from './locale';
+export type { PopperLocale } from './locale';
+
 // 插件
 export default {
   install(app: App) {

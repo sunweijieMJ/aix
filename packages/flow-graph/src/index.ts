@@ -27,7 +27,16 @@ export { calcOrthogonalWaypoints, createNodeId, setNodeType } from './utils';
 export { DEFAULT_CIRCLE_SIZE, DEFAULT_HEXAGON_SIZE } from './types';
 
 // 注入键（业务方在自定义节点 / 边里 inject 时使用）
-export { FlowSnapContextKey, FlowEdgesDeletableKey, FlowNodeLabelConfigKey } from './types';
+export {
+  FlowSnapContextKey,
+  FlowEdgesDeletableKey,
+  FlowGraphLocaleKey,
+  FlowNodeLabelConfigKey,
+} from './types';
+
+// 语言包
+export { locale as flowGraphLocale, zhCN as flowGraphZhCN, enUS as flowGraphEnUS } from './locale';
+export type { FlowGraphLocale } from './locale';
 
 // 类型导出
 export type {

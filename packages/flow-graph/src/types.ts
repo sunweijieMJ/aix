@@ -1,5 +1,6 @@
 import type { Node, Edge, MouseTouchEvent } from '@vue-flow/core';
 import type { Component, ComputedRef, InjectionKey, Ref } from 'vue';
+import type { FlowGraphLocale } from './locale';
 
 /** 面板位置类型 */
 export type PanelPositionType =
@@ -108,6 +109,15 @@ export interface FlowNodeLabelConfig {
 export const FlowNodeLabelConfigKey: InjectionKey<FlowNodeLabelConfig> = Symbol.for(
   'aix-flow-node-label',
 ) as InjectionKey<FlowNodeLabelConfig>;
+
+/**
+ * FlowGraph 子组件共享的翻译 ComputedRef。
+ * 由 FlowGraph 通过 `useLocale` 解析后 provide，BaseNode / ColorEdge / FlowSearch / FlowControls
+ * 通过 inject 读取，避免每个子组件重复 inject 全局 locale 并加载组件语言包。
+ */
+export const FlowGraphLocaleKey: InjectionKey<ComputedRef<FlowGraphLocale>> = Symbol.for(
+  'aix-flow-graph-locale',
+) as InjectionKey<ComputedRef<FlowGraphLocale>>;
 
 /** 当前选中的拐点（跨 edge 单选；由 FlowGraph 持有并按需重置） */
 export interface FlowActiveWaypoint {

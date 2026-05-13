@@ -1,14 +1,14 @@
 <template>
   <div class="aix-flow-controls">
-    <button class="aix-flow-controls__btn" title="缩小" @click="zoomOut()">
+    <button class="aix-flow-controls__btn" :title="t.zoomOut" @click="zoomOut()">
       <img src="../assets/icon-ctrl-minus.svg" width="18" height="18" alt="" />
     </button>
     <span class="aix-flow-controls__zoom">{{ zoomPercent }}%</span>
-    <button class="aix-flow-controls__btn" title="放大" @click="zoomIn()">
+    <button class="aix-flow-controls__btn" :title="t.zoomIn" @click="zoomIn()">
       <img src="../assets/icon-ctrl-add.svg" width="18" height="18" alt="" />
     </button>
     <div class="aix-flow-controls__divider" />
-    <button class="aix-flow-controls__btn" title="适应视图" @click="fitView()">
+    <button class="aix-flow-controls__btn" :title="t.fitView" @click="fitView()">
       <img src="../assets/icon-ctrl-fit.svg" width="18" height="18" alt="" />
     </button>
   </div>
@@ -20,11 +20,19 @@
  * 直接消费 VueFlow 的 `useVueFlow` 暴露的控制方法。
  */
 import { useVueFlow } from '@vue-flow/core';
-import { computed } from 'vue';
+import { computed, inject } from 'vue';
+import zhCN from '../locale/zh-CN';
+import { FlowGraphLocaleKey } from '../types';
 
 defineOptions({ name: 'AixFlowControls' });
 
 const { zoomIn, zoomOut, fitView, viewport } = useVueFlow();
+
+// 脱离 FlowGraph 单独使用时回退到中文兜底；正常路径都走 FlowGraph 注入的 t
+const t = inject(
+  FlowGraphLocaleKey,
+  computed(() => zhCN),
+);
 
 /** 当前缩放百分比（四舍五入） */
 const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));

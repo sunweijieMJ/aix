@@ -1146,6 +1146,9 @@ importers:
 
   packages/popper:
     dependencies:
+      '@aix/hooks':
+        specifier: workspace:^
+        version: link:../hooks
       '@aix/theme':
         specifier: workspace:^
         version: link:../theme

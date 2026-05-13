@@ -39,12 +39,12 @@
         <div class="aix-flow-bottom-bar">
           <button class="aix-flow-add-btn" @click="addNode">
             <img src="./assets/icon-add-node.svg" width="18" height="18" alt="" />
-            添加节点
+            {{ t.addNode }}
           </button>
           <FlowControls />
           <div class="aix-flow-search__wrap">
             <button class="aix-flow-search__btn" @click="openSearch">
-              <img src="./assets/icon-search.svg" width="18" height="18" alt="搜索" />
+              <img src="./assets/icon-search.svg" width="18" height="18" :alt="t.search" />
             </button>
           </div>
         </div>
@@ -65,6 +65,7 @@
  * - 提供 `#bottom-bar` 具名插槽（默认渲染 `添加节点 / Controls / 搜索` 三件套），
  *   插槽 props 暴露 `addNode / openSearch / closeSearch / fitView / zoomIn / zoomOut`。
  */
+import { useLocale } from '@aix/hooks';
 import { Background } from '@vue-flow/background';
 import { Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import type { EdgeChange, EdgeUpdateEvent, NodeChange } from '@vue-flow/core';
@@ -76,11 +77,13 @@ import FlowControls from './components/FlowControls.vue';
 import FlowSearch from './components/FlowSearch.vue';
 import CircleNode from './components/nodes/CircleNode.vue';
 import HexagonNode from './components/nodes/HexagonNode.vue';
+import { locale as flowGraphLocale } from './locale';
 import {
   DEFAULT_CIRCLE_SIZE,
   DEFAULT_HEXAGON_SIZE,
   FlowActiveWaypointKey,
   FlowEdgesDeletableKey,
+  FlowGraphLocaleKey,
   FlowNodeLabelConfigKey,
   FlowSnapContextKey,
   type EdgeData,
@@ -133,6 +136,12 @@ provide(FlowNodeLabelConfigKey, {
   enabled: nodeLabelEnabled,
   zoomThreshold: nodeLabelZoomThreshold,
 });
+
+// i18n：跟随 @aix/hooks 全局 locale（业务方通过 createLocale 注入）。
+// 在这里集中解析一次并 provide，子组件（含 vue-flow 内部渲染的 BaseNode / ColorEdge）直接 inject，
+// 避免每个子组件重复加载语言包。
+const { t } = useLocale(flowGraphLocale);
+provide(FlowGraphLocaleKey, t);
 
 /**
  * 当前选中的拐点（单选，跨 edge），实例私有：
@@ -536,7 +545,6 @@ defineExpose({
 .aix-flow-add-btn {
   display: flex;
   align-items: center;
-  width: 102px;
   height: 42px;
   padding: 0 12px;
   border: none;

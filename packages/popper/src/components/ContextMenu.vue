@@ -17,7 +17,7 @@
         <ul
           class="aix-context-menu__menu"
           role="menu"
-          aria-label="上下文菜单"
+          :aria-label="t.contextMenu"
           @keydown="onMenuKeyDown"
         >
           <slot name="menu" />
@@ -28,11 +28,13 @@
 </template>
 
 <script setup lang="ts">
+import { useLocale } from '@aix/hooks';
 import { computed, nextTick, provide, ref, watch } from 'vue';
 import { createMenuKeyDown } from '../composables/useMenuKeyboard';
 import { usePopper } from '../composables/usePopper';
 import { usePopperTrigger, createVirtualElement } from '../composables/usePopperTrigger';
 import { useZIndex } from '../composables/useZIndex';
+import { locale as popperLocale } from '../locale';
 import { DROPDOWN_INJECTION_KEY } from '../types';
 import type { ContextMenuProps, ContextMenuEmits, ContextMenuExpose } from '../types';
 
@@ -48,6 +50,9 @@ const props = withDefaults(defineProps<ContextMenuProps>(), {
 });
 
 const emit = defineEmits<ContextMenuEmits>();
+
+// i18n：跟随 @aix/hooks 全局 locale（业务方通过 createLocale 注入），未设置时默认 zh-CN
+const { t } = useLocale(popperLocale);
 
 // 模板 ref
 const floatingElRef = ref<HTMLElement | null>(null);

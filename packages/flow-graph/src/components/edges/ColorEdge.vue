@@ -57,7 +57,7 @@
     <ContextMenu ref="contextMenuRef" popper-class="aix-edge-menu" @command="onCommand">
       <span class="aix-edge-menu__hidden-trigger" aria-hidden="true" />
       <template #menu>
-        <DropdownItem command="delete" label="删除" />
+        <DropdownItem command="delete" :label="t.delete" />
       </template>
     </ContextMenu>
 
@@ -86,11 +86,13 @@ import { ContextMenu, DropdownItem, type ContextMenuExpose } from '@aix/popper';
 import { EdgeLabelRenderer, useVueFlow } from '@vue-flow/core';
 import type { EdgeProps } from '@vue-flow/core';
 import { computed, inject, onBeforeUnmount, ref } from 'vue';
+import zhCN from '../../locale/zh-CN';
 import {
   DEFAULT_CIRCLE_SIZE,
   DEFAULT_HEXAGON_SIZE,
   FlowActiveWaypointKey,
   FlowEdgesDeletableKey,
+  FlowGraphLocaleKey,
   FlowSnapContextKey,
   type EdgeData,
   type FlowActiveWaypoint,
@@ -105,6 +107,11 @@ defineOptions({ name: 'AixColorEdge' });
 const props = defineProps<EdgeProps<EdgeData>>();
 const { removeEdges, updateEdgeData, screenToFlowCoordinate, findNode } = useVueFlow();
 const snap = inject(FlowSnapContextKey, null);
+/** i18n：从 FlowGraph 注入；脱离 FlowGraph 单独使用时回退中文兜底 */
+const t = inject(
+  FlowGraphLocaleKey,
+  computed(() => zhCN),
+);
 /**
  * 本 FlowGraph 实例共享的"当前选中拐点"状态。由 FlowGraph 创建并 provide，
  * `onKeyDelete` 与 `onGlobalMousedown` 单点处理 Delete 删除与高亮重置。

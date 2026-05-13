@@ -45,11 +45,11 @@
     <template #menu>
       <DropdownItem command="copy">
         <img src="../../assets/icon-copy.svg" class="aix-flow-node-menu__icon" alt="" />
-        复制
+        {{ t.copy }}
       </DropdownItem>
       <DropdownItem command="delete" class="aix-flow-node-menu__delete">
         <img src="../../assets/icon-delete.svg" class="aix-flow-node-menu__icon" alt="" />
-        删除
+        {{ t.delete }}
       </DropdownItem>
     </template>
   </ContextMenu>
@@ -67,7 +67,8 @@ import { ContextMenu, DropdownItem, type ContextMenuExpose } from '@aix/popper';
 import { Handle, Position, useVueFlow, type HandleConnectable } from '@vue-flow/core';
 import { computed, inject, ref, toRef, watch } from 'vue';
 import { useNodeInteraction } from '../../composables/useNodeInteraction';
-import { FlowNodeLabelConfigKey, type NodeData } from '../../types';
+import zhCN from '../../locale/zh-CN';
+import { FlowGraphLocaleKey, FlowNodeLabelConfigKey, type NodeData } from '../../types';
 import NodeActiveCross from './NodeActiveCross.vue';
 
 /**
@@ -91,6 +92,12 @@ const props = defineProps<Props>();
 
 /** 节点尺寸（像素），回退到 defaultSize */
 const size = computed(() => props.data?.size ?? props.defaultSize);
+
+/** i18n：从 FlowGraph 注入；脱离 FlowGraph 单独使用时回退中文兜底 */
+const t = inject(
+  FlowGraphLocaleKey,
+  computed(() => zhCN),
+);
 
 /**
  * 常驻 label 显示策略：

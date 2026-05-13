@@ -41,6 +41,7 @@
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {
+    "@aix/hooks": "workspace:^",
     "@aix/theme": "workspace:^",
     "@floating-ui/vue": "^1.1.11"
   },

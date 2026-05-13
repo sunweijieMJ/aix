@@ -7,7 +7,7 @@
           ref="inputRef"
           v-model="keyword"
           class="aix-flow-search-bar__input"
-          placeholder="搜索节点"
+          :placeholder="t.searchNode"
           autocomplete="off"
           @input="onInput"
           @keydown.escape="close"
@@ -35,13 +35,19 @@
 
 <script setup lang="ts">
 import { Panel, useVueFlow } from '@vue-flow/core';
-import { computed, nextTick, ref } from 'vue';
-import type { FlowNode } from '../types';
+import { computed, inject, nextTick, ref } from 'vue';
+import zhCN from '../locale/zh-CN';
+import { FlowGraphLocaleKey, type FlowNode } from '../types';
 
 const props = defineProps<{
   nodes: FlowNode[];
   suggestionsMaxHeight?: number;
 }>();
+
+const t = inject(
+  FlowGraphLocaleKey,
+  computed(() => zhCN),
+);
 
 const { updateNodeData, fitView } = useVueFlow();
 
