@@ -225,6 +225,11 @@ const path = computed(() => {
     const next = pts[i + 1]!;
     const inLen = Math.hypot(cur.x - prev.x, cur.y - prev.y);
     const outLen = Math.hypot(next.x - cur.x, next.y - cur.y);
+    // 相邻点重合时除零会产生 NaN，整段 path 失效，退化为直线连接
+    if (inLen === 0 || outLen === 0) {
+      d += ` L${cur.x},${cur.y}`;
+      continue;
+    }
     const rad = Math.min(r, inLen / 2, outLen / 2);
     const p1x = cur.x - ((cur.x - prev.x) / inLen) * rad;
     const p1y = cur.y - ((cur.y - prev.y) / inLen) * rad;
