@@ -84,6 +84,7 @@ import {
   FlowActiveWaypointKey,
   FlowEdgesDeletableKey,
   FlowGraphLocaleKey,
+  FlowNodeDeleteBlockedKey,
   FlowNodeLabelConfigKey,
   FlowNodeMenuConfigKey,
   FlowSnapContextKey,
@@ -144,6 +145,9 @@ provide(FlowNodeLabelConfigKey, {
 const nodeMenuOnClick = computed(() => props.nodeMenuOnClick);
 const nodeMenuOnHover = computed(() => props.nodeMenuOnHover);
 provide(FlowNodeMenuConfigKey, { onClick: nodeMenuOnClick, onHover: nodeMenuOnHover });
+
+// BaseNode 点击禁用的删除菜单时通过此回调上报，统一转 emit 给业务
+provide(FlowNodeDeleteBlockedKey, (nodeId: string) => emit('node-delete-blocked', [nodeId]));
 
 // i18n：跟随 @aix/hooks 全局 locale（业务方通过 createLocale 注入）。
 // 在这里集中解析一次并 provide，子组件（含 vue-flow 内部渲染的 BaseNode / ColorEdge）直接 inject，
@@ -227,15 +231,18 @@ function onKeyDelete(event: KeyboardEvent) {
   const edgesToDelete = getEdges.value
     .filter((e) => e.selected && e.data?.deletable !== false && edgesDeletable.value)
     .map((e) => e.id);
-  // 选中的节点全部删除（节点的 deletable 字段交由 vue-flow Node 类型自身控制，此处不做拦截）
-  const nodesToDelete = getNodes.value
-    .filter((n) => n.selected && n.deletable !== false)
-    .map((n) => n.id);
+  // 选中的节点：先按 vue-flow 自带的 `node.deletable` 过滤；
+  // 再按业务设置的 `data.deletable === false` 拦截，并通过 `node-delete-blocked` 上报，
+  // 让业务层有机会提示用户为何无法删除（菜单路径已通过 DropdownItem.disabled 视觉置灰）。
+  const candidateNodes = getNodes.value.filter((n) => n.selected && n.deletable !== false);
+  const blockedNodeIds = candidateNodes.filter((n) => n.data?.deletable === false).map((n) => n.id);
+  const nodesToDelete = candidateNodes.filter((n) => n.data?.deletable !== false).map((n) => n.id);
 
-  if (!edgesToDelete.length && !nodesToDelete.length) return;
+  if (!edgesToDelete.length && !nodesToDelete.length && !blockedNodeIds.length) return;
   event.preventDefault();
   if (edgesToDelete.length) removeEdges(edgesToDelete);
   if (nodesToDelete.length) removeNodes(nodesToDelete);
+  if (blockedNodeIds.length) emit('node-delete-blocked', blockedNodeIds);
 }
 
 onMounted(() => window.addEventListener('keydown', onKeyDelete));
@@ -612,8 +619,28 @@ defineExpose({
   color: var(--aix-colorError, #ff2626) !important;
 }
 
-.aix-flow-node-menu__delete:hover:not(.aix-dropdown__item--disabled) {
+.aix-flow-node-menu__delete:hover:not(
+    .aix-dropdown__item--disabled,
+    .aix-flow-node-menu__delete--disabled
+  ) {
   background: var(--aix-colorErrorBg, #ffe8e8) !important;
+}
+
+/*
+  data.deletable === false 时：菜单项视觉禁用（灰 + not-allowed），
+  但保留 click 透传到 onCommand，由 useNodeInteraction 拦截并经 FlowNodeDeleteBlockedKey
+  回调上报，让 FlowGraph emit `node-delete-blocked`。
+  注意 DropdownItem 自身的 :disabled 没有启用，所以 hover/键盘聚焦仍是可见的——
+  这里覆盖文字颜色与 hover 背景，避免给用户"可点击"的错觉。
+*/
+.aix-flow-node-menu__delete.aix-flow-node-menu__delete--disabled {
+  color: var(--aix-colorTextDisabled, #c9cdd4) !important;
+  cursor: not-allowed;
+}
+
+.aix-flow-node-menu__delete.aix-flow-node-menu__delete--disabled:hover {
+  background: transparent !important;
+  color: var(--aix-colorTextDisabled, #c9cdd4) !important;
 }
 
 .aix-flow-node-menu__icon {

@@ -50,6 +50,14 @@ export interface NodeData {
    * 未设置时继承全局 `nodeMenuOnHover`（默认 true）。
    */
   menuOnHover?: boolean;
+  /**
+   * 是否允许删除此节点，默认 `true`。
+   * - `false` 时菜单中的"删除"项呈禁用样式（灰色 + not-allowed 光标），点击不会真的删除；
+   * - 同时拦截键盘 Delete/Backspace 删除；
+   * - 两种被拦截的尝试都会触发 `node-delete-blocked` 事件，业务层可据此提示用户。
+   * 不影响复制；如需禁用复制请使用 `menuOnClick / menuOnHover`。
+   */
+  deletable?: boolean;
 }
 
 /** 折线拐点坐标（画布坐标系） */
@@ -141,6 +149,17 @@ export interface FlowNodeMenuConfig {
 export const FlowNodeMenuConfigKey: InjectionKey<FlowNodeMenuConfig> = Symbol.for(
   'aix-flow-node-menu',
 ) as InjectionKey<FlowNodeMenuConfig>;
+
+/**
+ * "点击删除被拦截"的注入回调：当节点 `data.deletable === false` 时，
+ * BaseNode 的删除菜单仍可点击（视觉为禁用样式），点击后由此回调上报到 FlowGraph，
+ * 进而 emit 公共事件 `node-delete-blocked`，业务层可弹 toast。
+ *
+ * 单独使用 BaseNode（脱离 FlowGraph）时回退为 `null`，点击仍被拦截但无事件抛出。
+ */
+export const FlowNodeDeleteBlockedKey: InjectionKey<(nodeId: string) => void> = Symbol.for(
+  'aix-flow-node-delete-blocked',
+) as InjectionKey<(nodeId: string) => void>;
 
 /**
  * FlowGraph 子组件共享的翻译 ComputedRef。
@@ -273,4 +292,12 @@ export interface FlowGraphEmits {
   'node-remove': [nodeIds: string[]];
   /** 通过内部交互（右键删除 / Delete 键）删除边时触发，载荷为边 id 列表 */
   'edge-remove': [edgeIds: string[]];
+  /**
+   * 删除 `data.deletable === false` 的节点被拦截时触发，载荷为被拦截的节点 id 列表，
+   * 业务层可据此提示用户为何无法删除。两条路径都会上报：
+   * - 键盘 Delete/Backspace 命中（由 FlowGraph.onKeyDelete 统一拦截）；
+   * - 点击右键菜单中已视觉置灰的"删除"项（由 useNodeInteraction.onCommand 经
+   *   {@link FlowNodeDeleteBlockedKey} 注入回调转发到此 emit）。
+   */
+  'node-delete-blocked': [nodeIds: string[]];
 }

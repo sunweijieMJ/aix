@@ -65,7 +65,13 @@
         <img src="../../assets/icon-copy.svg" class="aix-flow-node-menu__icon" alt="" />
         {{ t.copy }}
       </DropdownItem>
-      <DropdownItem command="delete" class="aix-flow-node-menu__delete">
+      <DropdownItem
+        command="delete"
+        :class="[
+          'aix-flow-node-menu__delete',
+          { 'aix-flow-node-menu__delete--disabled': !nodeDeletable },
+        ]"
+      >
         <img src="../../assets/icon-delete.svg" class="aix-flow-node-menu__icon" alt="" />
         {{ t.delete }}
       </DropdownItem>
@@ -157,6 +163,12 @@ const menuOnClickEnabled = computed(
 const menuOnHoverEnabled = computed(
   () => props.data?.menuOnHover ?? menuConfig?.onHover.value ?? true,
 );
+
+/**
+ * 当前节点是否可删除：默认 `true`，业务设置 `data.deletable === false` 时菜单项置灰不可点。
+ * 键盘删除路径的拦截在 FlowGraph 的 `onKeyDelete` 中实现，会额外触发 `node-delete-blocked` 事件。
+ */
+const nodeDeletable = computed(() => props.data?.deletable !== false);
 
 const contextMenuRef = ref<ContextMenuExpose | null>(null);
 const wrapperRef = ref<HTMLElement | null>(null);
@@ -271,6 +283,17 @@ defineExpose({ size, nodeState });
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
+}
+
+/*
+  节点 hover 或路径高亮（selecting）时抬高所在 .vue-flow__node 的 z-index：
+  label 渲染在节点内，vue-flow 给每个节点内联了 z-index，label 自身的 z-index 只在本节点
+  局部 stacking context 内生效；相邻节点（尤其后渲染的）会遮住当前节点的 label。
+  这里压过 vue-flow 的内联值，确保 hover/高亮态的节点连同 label 一起浮在上层。
+*/
+.vue-flow__node:has(.aix-flow-node__wrapper:hover),
+.vue-flow__node:has(.aix-flow-node__label--selecting) {
+  z-index: 1000 !important;
 }
 
 .aix-flow-node__wrapper {

@@ -1,6 +1,6 @@
 import { useVueFlow } from '@vue-flow/core';
 import { computed, inject, nextTick, onScopeDispose, ref, type Ref } from 'vue';
-import { FlowSnapContextKey, type NodeData } from '../types';
+import { FlowNodeDeleteBlockedKey, FlowSnapContextKey, type NodeData } from '../types';
 import { createNodeId } from '../utils';
 
 /** {@link useNodeInteraction} 的入参 */
@@ -40,6 +40,9 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
   const { id, data } = options;
   const { removeNodes, addNodes, getNodes, updateNodeData } = useVueFlow();
   const snap = inject(FlowSnapContextKey, null);
+  // 由 FlowGraph 注入：点击禁用的删除菜单项时回调上报，
+  // FlowGraph 据此 emit 公共事件 `node-delete-blocked`。
+  const onDeleteBlocked = inject(FlowNodeDeleteBlockedKey, null);
 
   const nodeState = computed(() => data.value?.state ?? 'default');
   const clicking = ref(false);
@@ -77,6 +80,9 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
   }
 
   function onDelete() {
+    // 兜底：业务/自定义节点可能直接调用 onDelete，跳过 onCommand 的拦截，
+    // 这里再判一次保证 `data.deletable === false` 时不会被越权删除。
+    if (data.value?.deletable === false) return;
     removeNodes(id);
   }
 
@@ -124,7 +130,15 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
 
   function onCommand(command: string | number) {
     if (command === 'copy') onCopy();
-    else if (command === 'delete') onDelete();
+    else if (command === 'delete') {
+      // 节点被业务标记为不可删时：不执行删除、改为通过注入回调上报，
+      // FlowGraph 接住后 emit `node-delete-blocked` 给业务层提示用。
+      if (data.value?.deletable === false) {
+        onDeleteBlocked?.(id);
+        return;
+      }
+      onDelete();
+    }
   }
 
   return {

@@ -118,4 +118,18 @@ function onConnect(connection: Connection) {
 |--------|------|------|
 | `node-click` | `{ node: FlowNode; event: MouseTouchEvent }` | 节点被点击 |
 | `node-right-click` | `{ node: FlowNode; event: MouseTouchEvent }` | - |
+| `node-add` | `node: FlowNode` | 通过内部交互（按钮新建 / 双击空白 / 复制）新增节点时触发 |
+| `node-remove` | `nodeIds: string[]` | 通过内部交互（右键删除 / Delete 键）删除节点时触发 |
+| `edge-remove` | `edgeIds: string[]` | 通过内部交互（右键删除 / Delete 键）删除边时触发 |
+| `node-delete-blocked` | `nodeIds: string[]` | 删除 `data.deletable === false` 的节点被拦截时触发；两条路径都会上报：键盘 Delete/Backspace 命中、以及点击右键菜单中已视觉置灰的"删除"项 |
 | `connect` | `FlowConnection` | - |
+
+### NodeData 关键字段（节点级覆盖）
+
+通过 `node.data.*` 在单个节点上覆盖全局行为：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `menuOnClick` | `boolean` | 覆盖全局 `nodeMenuOnClick` |
+| `menuOnHover` | `boolean` | 覆盖全局 `nodeMenuOnHover` |
+| `deletable` | `boolean` | 默认 `true`；`false` 时菜单中的"删除"项置灰、键盘删除被拦截，两种被拦截的尝试都会触发 `node-delete-blocked` 事件 |
