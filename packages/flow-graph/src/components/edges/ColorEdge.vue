@@ -48,7 +48,7 @@
     stroke-width="2"
     stroke-linecap="butt"
     :marker-end="`url(#${markerId})`"
-    :style="edgeData.dimmed ? { opacity: 0.4 } : undefined"
+    :class="{ 'aix-color-edge--dimmed': edgeData.dimmed }"
     @mousedown.stop="onPathMousedown"
     @contextmenu.prevent.stop="onPathContextmenu"
   />
@@ -403,5 +403,12 @@ function startDrag(event: MouseEvent, index: number, originPos?: { x: number; y:
 .aix-edge-waypoint--selected {
   background: var(--aix-flowGraphBrand, #1546f2);
   filter: drop-shadow(0 0 4px var(--aix-flowGraphBrand, #1546f2));
+}
+
+/* dim 态：半透明。SVG <path> 不支持 backdrop-filter，因此 edge 仅做透明降级，
+   节点的 backdrop-filter 已足以构成「画布失焦」的视觉语义。
+   业务侧可覆盖 --aix-flowGraphDimmedOpacity 调整强度。 */
+.aix-color-edge--dimmed {
+  opacity: var(--aix-flowGraphDimmedOpacity, 0.4);
 }
 </style>

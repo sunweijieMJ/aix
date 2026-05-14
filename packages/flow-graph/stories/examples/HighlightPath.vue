@@ -155,10 +155,12 @@ const computedNodes = computed(() => {
       ...n,
       // selecting 高亮态下同时写入 activeColor，让 BaseNode 的 label outline 取该路径色；
       // 与业务侧 onHighlightPath 的写入策略一致。
+      // 非高亮路径的节点 dimmed=true，触发透明 + backdrop-filter 模糊。
       data: {
         ...n.data,
         selecting: inPath,
         activeColor: inPath ? active?.color : undefined,
+        dimmed: active ? !inPath : false,
       },
     };
   });
@@ -166,10 +168,13 @@ const computedNodes = computed(() => {
 
 const computedEdges = computed(() => {
   const active = paths.find((p) => p.id === activePath.value);
-  return baseEdges.map((e) => ({
-    ...e,
-    data: { ...e.data, selecting: active?.edgeIds.includes(e.id) ?? false },
-  }));
+  return baseEdges.map((e) => {
+    const inPath = active?.edgeIds.includes(e.id) ?? false;
+    return {
+      ...e,
+      data: { ...e.data, selecting: inPath, dimmed: active ? !inPath : false },
+    };
+  });
 });
 </script>
 

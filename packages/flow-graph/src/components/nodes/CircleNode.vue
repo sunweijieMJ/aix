@@ -3,7 +3,13 @@
     <template #default="{ size, nodeState, clicking, onClick }">
       <div
         class="aix-circle-node"
-        :class="[`aix-circle-node--${nodeState}`, { 'aix-circle-node--clicking': clicking }]"
+        :class="[
+          `aix-circle-node--${nodeState}`,
+          {
+            'aix-circle-node--clicking': clicking,
+            'aix-circle-node--dimmed': data?.dimmed,
+          },
+        ]"
         :style="{
           background:
             data?.activeColor ||
@@ -13,7 +19,6 @@
               : 'var(--aix-flowGraphNodeColor, #86909c)'),
           width: `${size}px`,
           height: `${size}px`,
-          opacity: data?.dimmed ? 0.4 : undefined,
           filter: data?.selecting
             ? `drop-shadow(0 0 4px ${data?.activeColor || data?.color || FALLBACK_COLOR})`
             : undefined,
@@ -65,6 +70,13 @@ const FALLBACK_COLOR = '#86909c';
 
 .aix-circle-node--clicking {
   animation: aix-node-click 0.3s ease;
+}
+
+/* dim 态：半透明 + 背景模糊。
+   业务侧可覆盖 --aix-flowGraphDimmedOpacity / --aix-flowGraphDimmedBlur 调整强度。 */
+.aix-circle-node--dimmed {
+  opacity: var(--aix-flowGraphDimmedOpacity, 0.4);
+  backdrop-filter: var(--aix-flowGraphDimmedBlur, blur(10px));
 }
 
 .aix-circle-node__inner {

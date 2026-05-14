@@ -3,15 +3,20 @@
     <template #default="{ size, nodeState, clicking, onClick }">
       <div
         class="aix-hexagon-node"
-        :class="[`aix-hexagon-node--${nodeState}`, { 'aix-hexagon-node--clicking': clicking }]"
-        :style="{
-          opacity: data?.dimmed ? 0.4 : undefined,
-          ...(data?.selecting
+        :class="[
+          `aix-hexagon-node--${nodeState}`,
+          {
+            'aix-hexagon-node--clicking': clicking,
+            'aix-hexagon-node--dimmed': data?.dimmed,
+          },
+        ]"
+        :style="
+          data?.selecting
             ? {
               filter: `drop-shadow(0 0 4px ${data?.activeColor || multiColors[0] || data?.color || FALLBACK_COLOR})`,
             }
-            : {}),
-        }"
+            : undefined
+        "
         @click="onClick"
       >
         <svg
@@ -143,5 +148,12 @@ const conicGradient = computed(() => {
 
 .aix-hexagon-node--clicking {
   animation: aix-node-click 0.3s ease;
+}
+
+/* dim 态：半透明 + 背景模糊。
+   业务侧可覆盖 --aix-flowGraphDimmedOpacity / --aix-flowGraphDimmedBlur 调整强度。 */
+.aix-hexagon-node--dimmed {
+  opacity: var(--aix-flowGraphDimmedOpacity, 0.4);
+  backdrop-filter: var(--aix-flowGraphDimmedBlur, blur(10px));
 }
 </style>
