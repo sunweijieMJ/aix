@@ -30,7 +30,7 @@
     :stroke="color"
     stroke-width="6"
     stroke-linecap="round"
-    :style="{ filter: `blur(3px)`, opacity: 0.4 }"
+    :style="{ filter: `blur(3px)`, opacity: edgeData.dimmed ? 0.16 : 0.4 }"
   />
   <!-- 透明宽命中区域，方便点击选中；mousedown 在路径上插入新 waypoint -->
   <path
@@ -48,6 +48,7 @@
     stroke-width="2"
     stroke-linecap="butt"
     :marker-end="`url(#${markerId})`"
+    :style="edgeData.dimmed ? { opacity: 0.4 } : undefined"
     @mousedown.stop="onPathMousedown"
     @contextmenu.prevent.stop="onPathContextmenu"
   />
@@ -346,9 +347,25 @@ function startDrag(event: MouseEvent, index: number, originPos?: { x: number; y:
   function onUp() {
     // 放开时对齐栅格（吸附），未开启吸附则保持原位
     const snapped = snapPoint(lastPos);
-    if (snapped.x !== lastPos.x || snapped.y !== lastPos.y) {
-      const updated = waypoints.value.map((wp, i) => (i === index ? snapped : wp));
-      updateEdgeData(props.id, { ...edgeData.value, waypoints: updated });
+    const needSnap = snapped.x !== lastPos.x || snapped.y !== lastPos.y;
+    const finalPos = needSnap ? snapped : lastPos;
+    const baseWps = needSnap
+      ? waypoints.value.map((wp, i) => (i === index ? snapped : wp))
+      : waypoints.value;
+    // 与相邻拐点完全重合时合并（去除当前拐点），避免冗余点导致圆角失效
+    const prev = baseWps[index - 1];
+    const next = baseWps[index + 1];
+    const coincide =
+      (prev && prev.x === finalPos.x && prev.y === finalPos.y) ||
+      (next && next.x === finalPos.x && next.y === finalPos.y);
+    if (coincide) {
+      const dedupped = baseWps.filter((_, i) => i !== index);
+      updateEdgeData(props.id, { ...edgeData.value, waypoints: dedupped });
+      if (activeWaypoint.value?.edgeId === props.id && activeWaypoint.value.index === index) {
+        activeWaypoint.value = null;
+      }
+    } else if (needSnap) {
+      updateEdgeData(props.id, { ...edgeData.value, waypoints: baseWps });
     }
     cleanupDrag?.();
   }

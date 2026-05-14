@@ -35,6 +35,10 @@ export interface NodeData {
   size?: number;
   /** 节点所属路径的颜色列表（多路径共用时用于扇形着色和十字渐变） */
   pathColors?: string[];
+  /** 是否处于淡化状态（opacity 0.4），由外部业务层写入 */
+  dimmed?: boolean;
+  /** 编辑路径时临时覆盖的单色，优先于 color 渲染；退出编辑时清空 */
+  activeColor?: string;
 }
 
 /** 折线拐点坐标（画布坐标系） */
@@ -53,6 +57,8 @@ export interface EdgeData {
   selecting?: boolean;
   /** 共用线段的其他路径颜色（用于渐变着色，由外部业务层写入） */
   sharedColors?: string[];
+  /** 是否处于淡化状态（opacity 0.4），由外部业务层写入 */
+  dimmed?: boolean;
   /** 是否允许删除此边，优先级高于全局 `edgesDeletable`，默认继承全局 */
   deletable?: boolean;
 }

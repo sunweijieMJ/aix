@@ -4,11 +4,14 @@
       <div
         class="aix-hexagon-node"
         :class="[`aix-hexagon-node--${nodeState}`, { 'aix-hexagon-node--clicking': clicking }]"
-        :style="
-          data?.selecting
-            ? { filter: `drop-shadow(0 0 4px ${multiColors[0] || data?.color || FALLBACK_COLOR})` }
-            : {}
-        "
+        :style="{
+          opacity: data?.dimmed ? 0.4 : undefined,
+          ...(data?.selecting
+            ? {
+              filter: `drop-shadow(0 0 4px ${data?.activeColor || multiColors[0] || data?.color || FALLBACK_COLOR})`,
+            }
+            : {}),
+        }"
         @click="onClick"
       >
         <svg
@@ -99,9 +102,12 @@ const props = defineProps<NodeProps<NodeData>>();
 /** 六边形节点主色回退（无 data.color 时使用） */
 const FALLBACK_COLOR = '#963096';
 
-/** 节点填充色（外层/中层/内层共用） */
+/** 节点填充色（外层/中层/内层共用），编辑路径时优先用 activeColor */
 const fillColor = computed(
-  () => props.data?.color || `var(--aix-flowGraphHexagonColor, ${FALLBACK_COLOR})`,
+  () =>
+    props.data?.activeColor ||
+    props.data?.color ||
+    `var(--aix-flowGraphHexagonColor, ${FALLBACK_COLOR})`,
 );
 
 /** 多路径颜色列表，长度 > 1 时启用 conic-gradient 叠加层 */

@@ -5,11 +5,12 @@
         class="aix-circle-node"
         :class="[`aix-circle-node--${nodeState}`, { 'aix-circle-node--clicking': clicking }]"
         :style="{
-          background: data?.color || 'var(--aix-flowGraphNodeColor, #86909c)',
+          background: data?.activeColor || data?.color || 'var(--aix-flowGraphNodeColor, #86909c)',
           width: `${size}px`,
           height: `${size}px`,
+          opacity: data?.dimmed ? 0.4 : undefined,
           filter: data?.selecting
-            ? `drop-shadow(0 0 4px ${data?.color || FALLBACK_COLOR})`
+            ? `drop-shadow(0 0 4px ${data?.activeColor || data?.color || FALLBACK_COLOR})`
             : undefined,
         }"
         @click="onClick"
