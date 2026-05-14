@@ -109,6 +109,8 @@ function onConnect(connection: Connection) {
 | `nodeTypes` | `NodeTypesMap` | - | - | 自定义节点类型映射；会与内置 `default`/`hexagon` 合并，key 冲突时覆盖内置 |
 | `edgeTypes` | `EdgeTypesMap` | - | - | 自定义边类型映射；会与内置 `default` 合并，key 冲突时覆盖内置 |
 | `edgesDeletable` | `boolean` | - | - | 是否允许删除边（右键菜单删除），默认 `true`；单条边可通过 `edge.deletable` 覆盖 |
+| `nodeMenuOnClick` | `boolean` | `true` | - | 左击节点时是否弹出复制/删除菜单。关闭后点击仍切换 active 高亮、仍触发 `node-click`，仅不弹菜单。单节点可通过 `node.data.menuOnClick` 覆盖 |
+| `nodeMenuOnHover` | `boolean` | `true` | - | hover 节点时是否弹出复制/删除菜单。单节点可通过 `node.data.menuOnHover` 覆盖 |
 
 ### Events
 

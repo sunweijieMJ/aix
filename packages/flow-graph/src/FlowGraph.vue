@@ -85,6 +85,7 @@ import {
   FlowEdgesDeletableKey,
   FlowGraphLocaleKey,
   FlowNodeLabelConfigKey,
+  FlowNodeMenuConfigKey,
   FlowSnapContextKey,
   type EdgeData,
   type FlowActiveWaypoint,
@@ -106,6 +107,8 @@ const props = withDefaults(defineProps<FlowGraphProps>(), {
   snapGrid: true,
   edgesDeletable: true,
   showNodeLabel: true,
+  nodeMenuOnClick: true,
+  nodeMenuOnHover: true,
 });
 const emit = defineEmits<FlowGraphEmits>();
 
@@ -136,6 +139,11 @@ provide(FlowNodeLabelConfigKey, {
   enabled: nodeLabelEnabled,
   zoomThreshold: nodeLabelZoomThreshold,
 });
+
+// 节点菜单触发开关：全局默认值，单节点可通过 `data.menuOnClick / menuOnHover` 覆盖
+const nodeMenuOnClick = computed(() => props.nodeMenuOnClick);
+const nodeMenuOnHover = computed(() => props.nodeMenuOnHover);
+provide(FlowNodeMenuConfigKey, { onClick: nodeMenuOnClick, onHover: nodeMenuOnHover });
 
 // i18n：跟随 @aix/hooks 全局 locale（业务方通过 createLocale 注入）。
 // 在这里集中解析一次并 provide，子组件（含 vue-flow 内部渲染的 BaseNode / ColorEdge）直接 inject，

@@ -39,6 +39,17 @@ export interface NodeData {
   dimmed?: boolean;
   /** 编辑路径时临时覆盖的单色，优先于 color 渲染；退出编辑时清空 */
   activeColor?: string;
+  /**
+   * 是否允许"左击"弹出复制/删除菜单。
+   * 未设置时继承全局 `nodeMenuOnClick`（默认 true）。
+   * 注意：仅控制菜单弹出，不影响 active 状态切换与 `node-click` 事件。
+   */
+  menuOnClick?: boolean;
+  /**
+   * 是否允许"hover"弹出复制/删除菜单。
+   * 未设置时继承全局 `nodeMenuOnHover`（默认 true）。
+   */
+  menuOnHover?: boolean;
 }
 
 /** 折线拐点坐标（画布坐标系） */
@@ -115,6 +126,21 @@ export interface FlowNodeLabelConfig {
 export const FlowNodeLabelConfigKey: InjectionKey<FlowNodeLabelConfig> = Symbol.for(
   'aix-flow-node-label',
 ) as InjectionKey<FlowNodeLabelConfig>;
+
+/**
+ * 节点复制/删除菜单的全局触发开关，由 FlowGraph 注入。
+ * 单节点可通过 `node.data.menuOnClick / menuOnHover` 覆盖。
+ */
+export interface FlowNodeMenuConfig {
+  /** 左击是否弹出菜单（默认 true） */
+  onClick: ComputedRef<boolean>;
+  /** hover 是否弹出菜单（默认 true） */
+  onHover: ComputedRef<boolean>;
+}
+
+export const FlowNodeMenuConfigKey: InjectionKey<FlowNodeMenuConfig> = Symbol.for(
+  'aix-flow-node-menu',
+) as InjectionKey<FlowNodeMenuConfig>;
 
 /**
  * FlowGraph 子组件共享的翻译 ComputedRef。
@@ -212,6 +238,17 @@ export interface FlowGraphProps {
    * 设为 `0` 表示任何缩放都显示。
    */
   labelZoomThreshold?: number;
+  /**
+   * 左击节点时是否弹出复制/删除菜单，默认 `true`。
+   * 关闭后点击仍切换 active 高亮、仍触发 `node-click` 事件，仅不弹菜单。
+   * 单节点可通过 `node.data.menuOnClick` 覆盖。
+   */
+  nodeMenuOnClick?: boolean;
+  /**
+   * hover 节点时是否弹出复制/删除菜单，默认 `true`。
+   * 单节点可通过 `node.data.menuOnHover` 覆盖。
+   */
+  nodeMenuOnHover?: boolean;
 }
 
 /** FlowGraph `connect` 事件的载荷；sourceHandle/targetHandle 已规范化为 `string | null`（不含 undefined） */

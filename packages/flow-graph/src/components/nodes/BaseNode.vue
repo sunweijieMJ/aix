@@ -2,7 +2,7 @@
   <ContextMenu
     ref="contextMenuRef"
     trigger="manual"
-    popper-class="aix-flow-node-menu"
+    :popper-class="menuPopperClass"
     @command="onCommand"
   >
     <!--
@@ -19,15 +19,32 @@
       :style="{ width: `${size}px`, height: `${size}px` }"
       @contextmenu.prevent
     >
-      <NodeActiveCross
-        v-if="nodeState === 'active'"
-        :uid="`n-${id}`"
-        :color="data?.color || fallbackColor"
-        :colors="data?.pathColors ?? []"
-      />
-      <slot :size="size" :node-state="nodeState" :clicking="clicking" :on-click="onNodeLeftClick" />
-      <Handle type="target" :position="Position.Left" class="aix-flow-node__handle" />
-      <Handle type="source" :position="Position.Right" class="aix-flow-node__handle" />
+      <!--
+        节点本体容器：hover 监听只挂在这里，与下方"label"分离，
+        避免悬停 label 时也触发菜单。body 完全填充 wrapper 的几何矩形，
+        与原来直接挂 wrapper 的 hover 命中区一致。
+      -->
+      <div
+        ref="bodyRef"
+        class="aix-flow-node__body"
+        @mouseenter="onBodyMouseEnter"
+        @mouseleave="onBodyMouseLeave"
+      >
+        <NodeActiveCross
+          v-if="nodeState === 'active'"
+          :uid="`n-${id}`"
+          :color="data?.color || fallbackColor"
+          :colors="data?.pathColors ?? []"
+        />
+        <slot
+          :size="size"
+          :node-state="nodeState"
+          :clicking="clicking"
+          :on-click="onNodeLeftClick"
+        />
+        <Handle type="target" :position="Position.Left" class="aix-flow-node__handle" />
+        <Handle type="source" :position="Position.Right" class="aix-flow-node__handle" />
+      </div>
       <!--
         节点上方常驻 label：
         - 默认固定宽度 + 单行省略；hover label 自身时展开完整文本；
@@ -66,10 +83,15 @@
  */
 import { ContextMenu, DropdownItem, type ContextMenuExpose } from '@aix/popper';
 import { Handle, Position, useVueFlow, type HandleConnectable } from '@vue-flow/core';
-import { computed, inject, ref, toRef, watch } from 'vue';
+import { computed, inject, onScopeDispose, ref, toRef, useId, watch } from 'vue';
 import { useNodeInteraction } from '../../composables/useNodeInteraction';
 import zhCN from '../../locale/zh-CN';
-import { FlowGraphLocaleKey, FlowNodeLabelConfigKey, type NodeData } from '../../types';
+import {
+  FlowGraphLocaleKey,
+  FlowNodeLabelConfigKey,
+  FlowNodeMenuConfigKey,
+  type NodeData,
+} from '../../types';
 import NodeActiveCross from './NodeActiveCross.vue';
 
 /**
@@ -124,8 +146,88 @@ const { nodeState, clicking, onNodeClick, onCommand } = useNodeInteraction({
   data: toRef(props, 'data'),
 });
 
+/**
+ * 菜单触发开关：节点 `data.menuOnClick / menuOnHover` 优先于全局 prop。
+ * 脱离 FlowGraph 单独使用时回退到 true（保留默认行为）。
+ */
+const menuConfig = inject(FlowNodeMenuConfigKey, null);
+const menuOnClickEnabled = computed(
+  () => props.data?.menuOnClick ?? menuConfig?.onClick.value ?? true,
+);
+const menuOnHoverEnabled = computed(
+  () => props.data?.menuOnHover ?? menuConfig?.onHover.value ?? true,
+);
+
 const contextMenuRef = ref<ContextMenuExpose | null>(null);
 const wrapperRef = ref<HTMLElement | null>(null);
+const bodyRef = ref<HTMLElement | null>(null);
+
+/**
+ * Hover 显示菜单：
+ * - 每个 BaseNode 实例分配一个唯一 popper-class 后缀，便于在轮询时定位"自己"那个浮层；
+ * - 用 Vue 3.5 的 useId() 生成稳定唯一 id，兼容 SSR 与 HMR；
+ * - useId 形如 `v-0` / `:r0:`，统一替换非 token 字符以确保可作为 CSS 类名 / 选择器使用。
+ */
+const menuId = useId().replace(/[^a-zA-Z0-9_-]/g, '_');
+const menuPopperClass = `aix-flow-node-menu aix-flow-node-menu--${menuId}`;
+
+/**
+ * 鼠标 hover 节点时显示菜单；离开后延迟关闭，给用户时间跨过节点与菜单之间 4px 间隙去操作菜单。
+ *
+ * 隐藏策略采用"延迟 + 自轮询 :hover"，理由：
+ * - 菜单是 Teleport 到 body 的，wrapper:hover 不包含菜单，
+ *   单纯依赖 wrapper 的 mouseleave 会让用户在跨越间隙时菜单瞬间消失；
+ * - 在菜单浮层上挂 mouseenter/leave 监听存在时序竞态：菜单 v-if 渲染后还要等 nextTick，
+ *   而用户从节点滑入菜单可能更快，监听挂上之前的 mouseenter 会被错过；
+ * - 用 setTimeout 到点时通过 `Element.matches(':hover')` 直接读浏览器原生 hover 状态，
+ *   命中时再短轮询，原生状态既无监听时序问题，也涵盖菜单内部子元素的 hover 传递。
+ *
+ * 与点击 active 的关系：active 由 useNodeInteraction 持有；只要节点处于 active，
+ * 这里的 tryHide 不主动隐藏，把关闭交给 watch(nodeState) 走点击/外点关闭路径。
+ */
+const HIDE_DELAY = 200;
+const HIDE_POLL = 100;
+let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearHideTimer() {
+  if (hideTimer !== null) {
+    clearTimeout(hideTimer);
+    hideTimer = null;
+  }
+}
+
+function tryHide() {
+  hideTimer = null;
+  if (nodeState.value === 'active') return;
+  // 仅看 body 与菜单是否仍被 hover：wrapper 还包含 label，
+  // 鼠标停在 label 上不应阻止菜单关闭。
+  const menuEl = document.querySelector(`.aix-flow-node-menu--${menuId}`) as HTMLElement | null;
+  if (bodyRef.value?.matches(':hover') || menuEl?.matches(':hover')) {
+    hideTimer = setTimeout(tryHide, HIDE_POLL);
+    return;
+  }
+  contextMenuRef.value?.hide();
+}
+
+function scheduleHideMenu() {
+  clearHideTimer();
+  hideTimer = setTimeout(tryHide, HIDE_DELAY);
+}
+
+function onBodyMouseEnter() {
+  clearHideTimer();
+  if (!menuOnHoverEnabled.value) return;
+  // 仍以 wrapper 为锚定位菜单，保持与点击触发时的对齐位置一致
+  if (wrapperRef.value) contextMenuRef.value?.show(wrapperRef.value);
+}
+
+function onBodyMouseLeave() {
+  // 即便 hover 关闭也允许调度隐藏：可能是 click 路径打开的菜单残留，
+  // tryHide 内部会再判一次 active 状态来决定真正是否隐藏。
+  scheduleHideMenu();
+}
+
+onScopeDispose(clearHideTimer);
 
 /**
  * 节点左击：切换 active/default 状态。切到 active 时以"节点元素"为锚弹出菜单；
@@ -145,6 +247,7 @@ const wrapperRef = ref<HTMLElement | null>(null);
 function onNodeLeftClick(_event: MouseEvent) {
   const willActivate = nodeState.value !== 'active';
   onNodeClick();
+  if (!menuOnClickEnabled.value) return;
   if (willActivate && wrapperRef.value) contextMenuRef.value?.show(wrapperRef.value);
 }
 
@@ -172,6 +275,17 @@ defineExpose({ size, nodeState });
 
 .aix-flow-node__wrapper {
   position: relative;
+}
+
+/*
+  节点本体容器：撑满 wrapper 的几何矩形，
+  作为 hover 区与绝对定位子元素（NodeActiveCross / Handle）的定位锚点。
+  与原直接挂在 wrapper 上的视觉等价，但把 hover 区与外侧的 label 隔离开。
+*/
+.aix-flow-node__body {
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 /*
