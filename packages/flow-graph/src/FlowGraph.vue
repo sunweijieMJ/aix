@@ -176,6 +176,7 @@ const {
   getEdges,
   removeEdges,
   removeNodes,
+  addNodes,
   fitView,
   zoomIn,
   zoomOut,
@@ -271,7 +272,10 @@ function createNode(x: number, y: number): FlowNode {
     position: { x: px, y: py },
     data: { size: nodeSize.value },
   };
-  modelNodes.value = [...modelNodes.value, node];
+  // 必须走 addNodes 而非直接改 modelNodes：v-model 写入会被 vue-flow 静默 setNodes 替换、
+  // 不会派发 nodesChange，外层订阅的 @node-add 收不到。addNodes 会走 createAdditionChange
+  // 路径并触发 hook，与右键复制保持一致。
+  addNodes([node]);
   return node;
 }
 
