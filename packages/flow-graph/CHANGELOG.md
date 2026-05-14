@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.32
+
+### Patch Changes
+
+- label隐藏
+
 ## 0.0.31
 
 ### Patch Changes
