@@ -8,6 +8,7 @@ import CustomBottomBar from './examples/CustomBottomBar.vue';
 import CustomNode from './examples/CustomNode.vue';
 import CustomNodeType from './examples/CustomNodeType.vue';
 import DeletableEdges from './examples/DeletableEdges.vue';
+import DeletableNodes from './examples/DeletableNodes.vue';
 import DimmedNodes from './examples/DimmedNodes.vue';
 import ExposedMethods from './examples/ExposedMethods.vue';
 import HighlightPath from './examples/HighlightPath.vue';
@@ -52,6 +53,8 @@ export const 实例方法调用: Story = { render: () => wrap(ExposedMethods) };
 export const 节点变更事件: Story = { render: () => wrap(ChangeEvents) };
 
 export const 边删除控制: Story = { render: () => wrap(DeletableEdges) };
+
+export const 节点删除控制: Story = { render: () => wrap(DeletableNodes) };
 
 export const 节点淡化与编辑路径: Story = { render: () => wrap(DimmedNodes) };
 

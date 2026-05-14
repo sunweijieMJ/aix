@@ -149,10 +149,19 @@ const baseEdges: FlowEdge[] = [
 
 const computedNodes = computed(() => {
   const active = paths.find((p) => p.id === activePath.value);
-  return baseNodes.map((n) => ({
-    ...n,
-    data: { ...n.data, selecting: active?.nodeIds.includes(n.id) ?? false },
-  }));
+  return baseNodes.map((n) => {
+    const inPath = active?.nodeIds.includes(n.id) ?? false;
+    return {
+      ...n,
+      // selecting 高亮态下同时写入 activeColor，让 BaseNode 的 label outline 取该路径色；
+      // 与业务侧 onHighlightPath 的写入策略一致。
+      data: {
+        ...n.data,
+        selecting: inPath,
+        activeColor: inPath ? active?.color : undefined,
+      },
+    };
+  });
 });
 
 const computedEdges = computed(() => {

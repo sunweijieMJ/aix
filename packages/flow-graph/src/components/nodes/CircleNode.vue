@@ -5,7 +5,9 @@
         class="aix-circle-node"
         :class="[`aix-circle-node--${nodeState}`, { 'aix-circle-node--clicking': clicking }]"
         :style="{
-          background: data?.activeColor || data?.color || 'var(--aix-flowGraphNodeColor, #86909c)',
+          background: selected
+            ? '#4e5969'
+            : data?.activeColor || data?.color || 'var(--aix-flowGraphNodeColor, #86909c)',
           width: `${size}px`,
           height: `${size}px`,
           opacity: data?.dimmed ? 0.4 : undefined,

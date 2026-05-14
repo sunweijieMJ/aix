@@ -125,7 +125,7 @@ const hexagonSize = computed(() => props.defaultHexagonSize ?? DEFAULT_HEXAGON_S
 /** 是否开启栅格吸附（默认 true，由 withDefaults 兜底） */
 const snapEnabled = computed(() => props.snapGrid);
 /** 背景网格线颜色，使用主题边框色 */
-const gridColor = 'var(--aix-colorBorder, #e5e6eb)';
+const gridColor = '#e5e6eb';
 
 // 通过 InjectionKey 暴露上下文，给内部 composable / 子组件类型安全地消费
 provide(FlowSnapContextKey, { snapEnabled, gridSize, nodeSize, hexagonSize });

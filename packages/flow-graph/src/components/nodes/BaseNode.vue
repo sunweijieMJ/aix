@@ -56,6 +56,7 @@
         v-if="showLabel"
         class="aix-flow-node__label"
         :class="{ 'aix-flow-node__label--selecting': data?.selecting }"
+        :style="labelStyle"
       >
         {{ data?.label }}
       </div>
@@ -72,7 +73,20 @@
           { 'aix-flow-node-menu__delete--disabled': !nodeDeletable },
         ]"
       >
-        <img src="../../assets/icon-delete.svg" class="aix-flow-node-menu__icon" alt="" />
+        <svg
+          class="aix-flow-node-menu__icon"
+          width="18"
+          height="18"
+          viewBox="0 0 18 18"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path
+            d="M12.75 4.5H16.5V6H15V15.75C15 16.1642 14.6642 16.5 14.25 16.5H3.75C3.33579 16.5 3 16.1642 3 15.75V6H1.5V4.5H5.25V2.25C5.25 1.83579 5.58579 1.5 6 1.5H12C12.4142 1.5 12.75 1.83579 12.75 2.25V4.5ZM13.5 6H4.5V15H13.5V6ZM6.75 8.25H8.25V12.75H6.75V8.25ZM9.75 8.25H11.25V12.75H9.75V8.25ZM6.75 3V4.5H11.25V3H6.75Z"
+            fill="currentColor"
+          />
+        </svg>
         {{ t.delete }}
       </DropdownItem>
     </template>
@@ -169,6 +183,18 @@ const menuOnHoverEnabled = computed(
  * 键盘删除路径的拦截在 FlowGraph 的 `onKeyDelete` 中实现，会额外触发 `node-delete-blocked` 事件。
  */
 const nodeDeletable = computed(() => props.data?.deletable !== false);
+
+/**
+ * selecting 高亮时，label 描边色只取 `data.activeColor`（业务在高亮某条路径时写入该路径的颜色），
+ * 通过 CSS 变量交给样式层消费；不回退 `data.color`，因为多路径共用节点的 `data.color` 可能是
+ * `conic-gradient(...)` 字符串（业务侧多色拼接），无法用作 `outline-color`。
+ * 无 activeColor 时（URL 定位/单点高亮等非路径语境）由 CSS 主题色兜底。
+ */
+const labelStyle = computed<Record<string, string> | undefined>(() => {
+  if (!props.data?.selecting) return undefined;
+  const color = props.data?.activeColor;
+  return color ? { '--aix-flow-node-label-border-color': color } : undefined;
+});
 
 const contextMenuRef = ref<ContextMenuExpose | null>(null);
 const wrapperRef = ref<HTMLElement | null>(null);
@@ -409,9 +435,13 @@ defineExpose({ size, nodeState });
   overflow-wrap: anywhere;
 }
 
+/*
+  selecting 高亮：用 outline 描边，不占布局空间且跟随 border-radius，
+  避免与 box-shadow 叠加导致布局抖动。
+  描边色优先取业务传入的路径色（通过内联 CSS 变量注入），无则回退到主题色。
+*/
 .aix-flow-node__label--selecting {
-  background: var(--aix-colorPrimary, #1546f2);
-  color: var(--aix-colorTextLight, #fff);
+  outline: 1px solid var(--aix-flow-node-label-border-color, var(--aix-colorPrimary, #1546f2));
 }
 
 /* 圆形 / 六边形共用的点击反馈动画 */

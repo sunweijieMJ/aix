@@ -102,13 +102,18 @@ const props = defineProps<NodeProps<NodeData>>();
 /** 六边形节点主色回退（无 data.color 时使用） */
 const FALLBACK_COLOR = '#963096';
 
-/** 节点填充色（外层/中层/内层共用），编辑路径时优先用 activeColor */
-const fillColor = computed(
-  () =>
+/** 节点填充色（外层/中层/内层共用）：
+ *  - 选中态统一用 #4e5969；
+ *  - 否则编辑路径下优先 activeColor，再退到 data.color / 主题变量 / 兜底色。
+ */
+const fillColor = computed(() => {
+  if (props.selected) return '#4e5969';
+  return (
     props.data?.activeColor ||
     props.data?.color ||
-    `var(--aix-flowGraphHexagonColor, ${FALLBACK_COLOR})`,
-);
+    `var(--aix-flowGraphHexagonColor, ${FALLBACK_COLOR})`
+  );
+});
 
 /** 多路径颜色列表，长度 > 1 时启用 conic-gradient 叠加层 */
 const multiColors = computed(() => props.data?.pathColors ?? []);
