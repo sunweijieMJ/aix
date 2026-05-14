@@ -103,16 +103,14 @@ const props = defineProps<NodeProps<NodeData>>();
 const FALLBACK_COLOR = '#963096';
 
 /** 节点填充色（外层/中层/内层共用）：
- *  - 选中态统一用 #4e5969；
- *  - 否则编辑路径下优先 activeColor，再退到 data.color / 主题变量 / 兜底色。
+ *  - 业务色（activeColor → color）优先，不被左键选中态覆盖；
+ *  - 业务未传色时：选中态退到 `--aix-flowGraphNodeSelectedColor`，否则退到 `--aix-flowGraphHexagonColor`。
  */
 const fillColor = computed(() => {
-  if (props.selected) return '#4e5969';
-  return (
-    props.data?.activeColor ||
-    props.data?.color ||
-    `var(--aix-flowGraphHexagonColor, ${FALLBACK_COLOR})`
-  );
+  if (props.data?.activeColor) return props.data.activeColor;
+  if (props.data?.color) return props.data.color;
+  if (props.selected) return 'var(--aix-flowGraphNodeSelectedColor, #4e5969)';
+  return `var(--aix-flowGraphHexagonColor, ${FALLBACK_COLOR})`;
 });
 
 /** 多路径颜色列表，长度 > 1 时启用 conic-gradient 叠加层 */
