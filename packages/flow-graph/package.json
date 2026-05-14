@@ -1,6 +1,6 @@
 {
   "name": "@aix/flow-graph",
-  "version": "0.0.33",
+  "version": "0.0.34",
   "description": "A Vue 3 FlowGraph component for AIX component library",
   "license": "MIT",
   "type": "module",
