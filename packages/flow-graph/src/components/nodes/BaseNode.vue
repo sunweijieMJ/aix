@@ -113,6 +113,7 @@ const showLabel = computed(() => {
   if (labelConfig && !labelConfig.enabled.value) return false;
   if (!props.data?.label) return false;
   if (props.dragging) return false;
+  if (props.data?.dimmed) return false;
   if (props.data?.selecting) return true;
   const threshold = labelConfig?.zoomThreshold.value ?? 0.6;
   return viewport.value.zoom >= threshold;
