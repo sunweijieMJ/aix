@@ -9,7 +9,7 @@
 export class Logger {
   /**
    * @param enabled 是否启用调试日志（通常等于 `SDKOptions.debug`）
-   * @param module  模块标识，会拼在日志前缀里（例如 `iframe:host`）
+   * @param module  模块标识，会拼在日志前缀里（例如 `cross-window:host`）
    */
   constructor(
     private readonly enabled: boolean,

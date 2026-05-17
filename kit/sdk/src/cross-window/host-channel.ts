@@ -7,15 +7,19 @@ import { isHandshakeEnvelope, type HandshakeEnvelope, type HostChannelOptions } 
  * 校验 origin 是否命中白名单中的任意一条规则。
  * 支持三种写法：
  * - `'*'`                    — 接受所有来源
- * - `'https://*.example.com'` — glob 通配符（`*` 匹配任意字符）
+ * - `'https://*.example.com'` — glob 通配符（`*` 匹配单个子域片段，不跨 `/`）
  * - `'https://example.com'`  — 精确匹配
  */
 function _matchesOrigin(patterns: string[], origin: string): boolean {
   return patterns.some((pattern) => {
     if (pattern === '*') return true;
     if (!pattern.includes('*')) return pattern === origin;
-    // 将 glob 模式转为正则：先转义正则特殊字符，再把 \* 还原为 .*
-    const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
+    // 将 glob 模式转为正则：按 `*` 切段，对每段转义正则元字符后用 `[^/]*` 拼接还原通配符。
+    // `*` 仅匹配 origin 中"非 `/`"的字符，避免跨段误匹配（如 *.example.com 不应吃掉 path）。
+    const escaped = pattern
+      .split('*')
+      .map((seg) => seg.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+      .join('[^/]*');
     return new RegExp(`^${escaped}$`).test(origin);
   });
 }
@@ -38,6 +42,8 @@ function getContentWindow(target: WindowTarget): Window | null {
   return target;
 }
 
+const DEV_HANDSHAKE_WARNING_MS = 3000;
+
 /**
  * Host 侧通信频道。
  *
@@ -47,23 +53,29 @@ function getContentWindow(target: WindowTarget): Window | null {
  *
  * 创建后自动监听 guest 的 sdk:ready 握手信号，
  * 握手完成后建立私有 MessageChannel，握手前的消息自动入队。
- * 支持 guest 页面重载后自动重新握手（旧队列丢弃，handlers/connectListeners 保留）。
+ * 支持 guest 页面重载后自动重新握手；通过 `onConnect({reconnected})` 区分首次与重连。
+ *
+ * 可选 `handshakeTimeout` 在首次握手超时后触发 `onDisconnect('handshake-timeout')`。
  */
 export class HostChannel extends BaseChannel {
+  private handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+
   /**
    * 创建 Host 侧通道。构造完成后立即开始监听 `sdk:ready` 握手信号。
    *
    * @param core    SDK 内部状态容器
    * @param target  目标窗口（iframe 元素或 window.open 返回值）
-   * @param options 可选配置：origin 白名单 / onReconnect / heartbeat
+   * @param options 可选配置：allowedOrigins / handshakeTimeout / heartbeat
    */
   constructor(
     core: SDKCore,
     private readonly target: WindowTarget,
     private readonly options: HostChannelOptions = {},
   ) {
-    super(core, new Logger(core.debug, 'iframe:host'), 'guest', options.heartbeat);
+    super(core, new Logger(core.debug, 'cross-window:host'), 'guest', options.heartbeat);
     this._listenForReady();
+    this._startHandshakeTimeout();
+    this._startDevHandshakeWarning();
   }
 
   /**
@@ -86,17 +98,16 @@ export class HostChannel extends BaseChannel {
 
       const isReconnect = this.port !== null;
       if (isReconnect) {
-        // guest 重载：关闭旧通道（旧 pendingQueue 此时必为空，因为成功的 port 会吸收 send）
+        // guest 重载：先发断连事件让业务感知旧连接已废弃，再关闭旧通道
+        // （旧 pendingQueue 此时必为空，因为成功的 port 会吸收 send）
         this.logger.log(`sdk:ready (reconnect) ← ${event.origin}, re-establishing MessageChannel`);
+        this._emitDisconnect('peer-reconnect');
         this._closeConnection();
       } else {
         this.logger.log(`sdk:ready ← ${event.origin}, establishing MessageChannel`);
       }
 
-      const established = this._establish(event.origin);
-      if (isReconnect && established) {
-        this.options.onReconnect?.();
-      }
+      this._establish(event.origin, isReconnect);
     };
 
     // 保持监听不移除，以支持 guest 重载后重新握手
@@ -106,9 +117,14 @@ export class HostChannel extends BaseChannel {
 
   /**
    * 建立 MessageChannel 并把 port2 交给 guest。
+   * @param guestOrigin 通过白名单校验的 guest origin
+   * @param reconnected 是否为 guest 重载重新握手
    * @returns 是否成功建立
    */
-  private _establish(guestOrigin: string): boolean {
+  private _establish(guestOrigin: string, reconnected: boolean): boolean {
+    // 用户可能在 _emitDisconnect('peer-reconnect') 回调里 dispose 通道，
+    // 此时 listener 控制权已返回此处，需要主动放弃以避免复活已销毁的通道。
+    if (this.disposed) return false;
     const contentWindow = getContentWindow(this.target);
     if (!contentWindow) {
       this.logger.warn('_establish() 失败：目标窗口不可用');
@@ -131,11 +147,49 @@ export class HostChannel extends BaseChannel {
       return false;
     }
 
+    // 握手成功，首次（非 reconnected）清除握手超时定时器
+    if (!reconnected && this.handshakeTimer) {
+      clearTimeout(this.handshakeTimer);
+      this.handshakeTimer = null;
+    }
+
     this.peerOrigin = guestOrigin;
-    this._bindPort(port1);
+    this._bindPort(port1, reconnected);
     this.logger.log(`sdk:ack + port2 → ${guestOrigin}`);
     // 注：_bindPort 内部 flush 的消息会进入 port1 的内置队列，
     // 待 guest 端 port.onmessage 挂上后按序投递。
     return true;
+  }
+
+  /** 启动握手超时检测；未配置或 <=0 时不启用。 */
+  private _startHandshakeTimeout(): void {
+    const timeout = this.options.handshakeTimeout;
+    if (!timeout || timeout <= 0) return;
+    this.handshakeTimer = setTimeout(() => {
+      this.handshakeTimer = null;
+      if (this.port || this.disposed) return; // 已成功握手或已销毁
+      this.logger.warn(`handshake timeout (${timeout}ms)`);
+      this._emitDisconnect('handshake-timeout');
+    }, timeout);
+  }
+
+  /** dev 模式 3s 未握手成功时主动告警，帮助定位握手失败原因。 */
+  private _startDevHandshakeWarning(): void {
+    if (!this.core.debug) return;
+    setTimeout(() => {
+      if (this.port || this.disposed) return;
+      this.logger.warn(
+        '3s 未收到 guest sdk:ready，请检查：guest 是否已挂载 / allowedOrigins 是否匹配 guest origin / iframe 是否加载完成',
+      );
+    }, DEV_HANDSHAKE_WARNING_MS);
+  }
+
+  /** 销毁通道并清除握手定时器。 */
+  dispose(): void {
+    if (this.handshakeTimer) {
+      clearTimeout(this.handshakeTimer);
+      this.handshakeTimer = null;
+    }
+    super.dispose();
   }
 }

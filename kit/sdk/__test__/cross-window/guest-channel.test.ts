@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SDKCore } from '../../src/core/sdk.js';
-import { GuestChannel } from '../../src/iframe/guest-channel.js';
-import type { HandshakeEnvelope } from '../../src/iframe/types.js';
+import { GuestChannel } from '../../src/cross-window/guest-channel.js';
+import type { HandshakeEnvelope } from '../../src/cross-window/types.js';
 
 function createCore(debug = false) {
   return new SDKCore({ appId: 'test-app', debug });
@@ -32,14 +32,21 @@ function restoreParent() {
 /**
  * 模拟 host 响应 sdk:ack，传递 port2。
  * 返回与 port2 配对的 port1（测试侧代表 host 发消息）。
+ *
+ * `source` 默认为 `window.parent`（在测试里通常已被 installMockParent 替换为 mockParent），
+ * 因为 SDK 现在会校验 event.source 是否等于发起握手时的 host。
+ * 如需模拟来自其它窗口的伪造 ack，可显式传入不同的 source。
  */
 function triggerAck(
   origin = 'https://host.example.com',
   appId = 'test-app',
+  source: MessageEventSource | null = window.parent as unknown as MessageEventSource,
 ): { port1: MessagePort; port2: MessagePort } {
   const { port1, port2 } = new MessageChannel();
   const envelope: HandshakeEnvelope = { __sdk: '@kit/sdk', appId, __sys: 'sdk:ack' };
-  window.dispatchEvent(new MessageEvent('message', { data: envelope, origin, ports: [port2] }));
+  window.dispatchEvent(
+    new MessageEvent('message', { data: envelope, origin, ports: [port2], source }),
+  );
   return { port1, port2 };
 }
 
@@ -68,7 +75,7 @@ describe('GuestChannel — 握手流程', () => {
   });
 
   it('ready() 应通过 window.opener 或 window.parent 发送 sdk:ready', () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
 
     channel.ready('https://host.example.com');
 
@@ -81,7 +88,7 @@ describe('GuestChannel — 握手流程', () => {
   });
 
   it('ready() 未传 targetOrigin 时应默认使用 *', () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
 
     channel.ready();
 
@@ -93,7 +100,7 @@ describe('GuestChannel — 握手流程', () => {
   it('ready() 重复调用时应清理旧监听器再重新注册', () => {
     const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener');
 
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     channel.ready();
     channel.ready(); // 第二次：应先移除再注册
 
@@ -105,12 +112,17 @@ describe('GuestChannel — 握手流程', () => {
 
   it('sdk:ack 未携带 port 时应 warn 并忽略', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     channel.ready();
 
+    // 必须提供匹配的 source 才能走到 port 检查（否则会被 source 校验先拦截）
     const envelope: HandshakeEnvelope = { __sdk: '@kit/sdk', appId: 'test-app', __sys: 'sdk:ack' };
     window.dispatchEvent(
-      new MessageEvent('message', { data: envelope, origin: 'https://host.example.com' }),
+      new MessageEvent('message', {
+        data: envelope,
+        origin: 'https://host.example.com',
+        source: window.parent as unknown as MessageEventSource,
+      }),
     );
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('no MessagePort'));
@@ -125,7 +137,7 @@ describe('GuestChannel — self-parent 守卫', () => {
     restoreParent();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const postSpy = vi.spyOn(window, 'postMessage').mockImplementation(() => {});
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
 
     channel.ready();
 
@@ -147,7 +159,7 @@ describe('GuestChannel — 消息发送', () => {
   });
 
   it('握手前 send() 应入队，握手后通过 port 投递', async () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     channel.ready();
 
     channel.send({ type: 'queued' });
@@ -164,7 +176,7 @@ describe('GuestChannel — 消息发送', () => {
   });
 
   it('握手后 send() 应直接通过 port 到达 port1', async () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     channel.ready();
 
     const { port1 } = triggerAck();
@@ -190,7 +202,7 @@ describe('GuestChannel — 消息接收', () => {
   });
 
   it('host 通过 port1 发来的消息应触发 handler', async () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const handler = vi.fn();
     channel.onMessage(handler);
     channel.ready();
@@ -208,7 +220,7 @@ describe('GuestChannel — 消息接收', () => {
   });
 
   it('stop 函数应取消对应 handler', async () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const handler = vi.fn();
 
     const stop = channel.onMessage(handler);
@@ -234,7 +246,7 @@ describe('GuestChannel — 重复 ready()（Bug: 旧 port 泄漏）', () => {
   });
 
   it('成功握手后再次 ready() 应关闭旧 MessageChannel，新通道独立工作', async () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const handler = vi.fn();
     channel.onMessage(handler);
 
@@ -269,7 +281,7 @@ describe('GuestChannel — 重复 ready()（Bug: 旧 port 泄漏）', () => {
   });
 
   it('第一次握手尚未完成就再次 ready() 应只清理旧监听器，新握手正常建立', async () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const handler = vi.fn();
     channel.onMessage(handler);
 
@@ -296,7 +308,7 @@ describe('GuestChannel — 连接状态与 onConnect', () => {
   });
 
   it('握手前 connected=false，握手后 connected=true', () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     expect(channel.connected).toBe(false);
 
     channel.ready();
@@ -310,7 +322,7 @@ describe('GuestChannel — 连接状态与 onConnect', () => {
   });
 
   it('onConnect 在握手成功后触发', () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const onConnect = vi.fn();
     channel.onConnect(onConnect);
 
@@ -324,7 +336,7 @@ describe('GuestChannel — 连接状态与 onConnect', () => {
   });
 
   it('onConnect 重新 ready() 后再次触发', () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const onConnect = vi.fn();
     channel.onConnect(onConnect);
 
@@ -338,7 +350,7 @@ describe('GuestChannel — 连接状态与 onConnect', () => {
   });
 
   it('onConnect 返回的 stop 函数应取消订阅', () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const onConnect = vi.fn();
     const stop = channel.onConnect(onConnect);
     stop();
@@ -361,7 +373,7 @@ describe('GuestChannel — dispose', () => {
 
   it('dispose 后 window 监听器应移除', () => {
     const spy = vi.spyOn(window, 'removeEventListener');
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     channel.ready();
 
     channel.dispose();
@@ -371,7 +383,7 @@ describe('GuestChannel — dispose', () => {
   });
 
   it('dispose 后 ready() 应 warn 并静默忽略', () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     channel.dispose();
@@ -382,7 +394,7 @@ describe('GuestChannel — dispose', () => {
   });
 
   it('dispose 后 send() 应 warn 并静默丢弃', () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     channel.dispose();
@@ -393,7 +405,7 @@ describe('GuestChannel — dispose', () => {
   });
 
   it('dispose 幂等：重复调用不再次触发副作用', () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const spy = vi.spyOn(window, 'removeEventListener');
     channel.ready();
 
@@ -416,7 +428,7 @@ describe('GuestChannel — request / onRequest', () => {
 
   /** 建立已握手的 channel，并返回 host 侧的 port1 用于模拟对端 */
   async function setupConnected() {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     channel.ready();
     const { port1 } = triggerAck();
     const received: unknown[] = [];
@@ -467,7 +479,7 @@ describe('GuestChannel — request / onRequest', () => {
   });
 
   it('request() 握手前调用应入队，握手后自动发出', async () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     const promise = channel.request<{ n: number }, number>({ n: 1 });
     channel.ready();
     const { port1 } = triggerAck();
@@ -485,7 +497,7 @@ describe('GuestChannel — request / onRequest', () => {
   });
 
   it('dispose 后调用 request() 应立即 reject', async () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     channel.dispose();
     await expect(channel.request({ x: 1 })).rejects.toThrow(/channel 已销毁/);
   });
@@ -661,7 +673,10 @@ describe('GuestChannel — 心跳 / onDisconnect', () => {
 
   /** 建立已握手的 channel（配置心跳），返回用于模拟对端的 port1 */
   function setupWithHeartbeat(interval = 30, timeout = 200) {
-    const channel = new GuestChannel(createCore(), { heartbeat: { interval, timeout } });
+    const channel = new GuestChannel(createCore(), {
+      autoReady: false,
+      heartbeat: { interval, timeout },
+    });
     channel.ready();
     const { port1 } = triggerAck();
     const received: unknown[] = [];
@@ -702,6 +717,7 @@ describe('GuestChannel — 心跳 / onDisconnect', () => {
 
   it('对端持续不回消息超过 timeout 应触发 onDisconnect 并断开', async () => {
     const channel = new GuestChannel(createCore(), {
+      autoReady: false,
       heartbeat: { interval: 20, timeout: 80 },
     });
     channel.ready();
@@ -739,7 +755,7 @@ describe('GuestChannel — 心跳 / onDisconnect', () => {
   });
 
   it('不配置 heartbeat 时不应启动定时器（旧行为保持）', async () => {
-    const channel = new GuestChannel(createCore());
+    const channel = new GuestChannel(createCore(), { autoReady: false });
     channel.ready();
     const { port1 } = triggerAck();
     const received: unknown[] = [];
@@ -768,6 +784,7 @@ describe('GuestChannel — 心跳 / onDisconnect', () => {
   it('timeout <= interval 应 warn 并禁用心跳', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const channel = new GuestChannel(createCore(), {
+      autoReady: false,
       heartbeat: { interval: 50, timeout: 50 },
     });
     channel.ready();
@@ -787,6 +804,7 @@ describe('GuestChannel — 心跳 / onDisconnect', () => {
 
   it('onDisconnect stop 函数应取消订阅', async () => {
     const channel = new GuestChannel(createCore(), {
+      autoReady: false,
       heartbeat: { interval: 20, timeout: 80 },
     });
     channel.ready();
@@ -804,6 +822,7 @@ describe('GuestChannel — 心跳 / onDisconnect', () => {
 
   it('重连时旧心跳定时器应停止，新连接独立工作', async () => {
     const channel = new GuestChannel(createCore(), {
+      autoReady: false,
       heartbeat: { interval: 30, timeout: 500 },
     });
     channel.ready();
@@ -832,6 +851,114 @@ describe('GuestChannel — 心跳 / onDisconnect', () => {
     expect(countPings(received2)).toBeGreaterThanOrEqual(1);
     expect(countPings(received1)).toBe(oldPingsSnapshot);
 
+    channel.dispose();
+  });
+});
+
+describe('GuestChannel — onDispose', () => {
+  beforeEach(() => {
+    installMockParent();
+  });
+  afterEach(() => {
+    restoreParent();
+  });
+
+  it('dispose 时应触发 onDispose 回调', () => {
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    const onDispose = vi.fn();
+    channel.onDispose(onDispose);
+
+    channel.dispose();
+
+    expect(onDispose).toHaveBeenCalledOnce();
+  });
+
+  it('已 disposed 后注册 onDispose 应立即同步触发', () => {
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    channel.dispose();
+
+    const onDispose = vi.fn();
+    channel.onDispose(onDispose);
+
+    expect(onDispose).toHaveBeenCalledOnce();
+  });
+
+  it('stop 函数应取消 onDispose 订阅', () => {
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    const onDispose = vi.fn();
+    const stop = channel.onDispose(onDispose);
+    stop();
+
+    channel.dispose();
+
+    expect(onDispose).not.toHaveBeenCalled();
+  });
+});
+
+describe('GuestChannel — sdk:ack origin/source 校验', () => {
+  beforeEach(() => {
+    installMockParent();
+  });
+  afterEach(() => {
+    restoreParent();
+  });
+
+  it('targetOrigin 不为 "*" 时，origin 不匹配的 ack 应被拒绝', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    const onConnect = vi.fn();
+    channel.onConnect(onConnect);
+    channel.ready('https://host.example.com');
+
+    triggerAck('https://evil.example.com');
+
+    expect(onConnect).not.toHaveBeenCalled();
+    expect(channel.connected).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('origin'));
+
+    warnSpy.mockRestore();
+    channel.dispose();
+  });
+
+  it('targetOrigin 不为 "*" 时，origin 匹配的 ack 应正常建立连接', () => {
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    const onConnect = vi.fn();
+    channel.onConnect(onConnect);
+    channel.ready('https://host.example.com');
+
+    triggerAck('https://host.example.com');
+
+    expect(channel.connected).toBe(true);
+    expect(onConnect).toHaveBeenCalledOnce();
+    channel.dispose();
+  });
+
+  it('event.source 与发起握手的 host 不一致时应拒绝', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    channel.ready('https://host.example.com');
+
+    // 用另一个伪造的 source 模拟第三方窗口发来 ack
+    const fakeSource = { postMessage: vi.fn() } as unknown as MessageEventSource;
+    triggerAck('https://host.example.com', 'test-app', fakeSource);
+
+    expect(channel.connected).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('event.source'));
+
+    warnSpy.mockRestore();
+    channel.dispose();
+  });
+
+  it('targetOrigin="*" 时跳过 origin 校验但仍校验 source', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    channel.ready(); // 默认 '*'
+
+    // origin 任意但 source 正确（默认 window.parent）应成功
+    triggerAck('https://any.origin.example');
+
+    expect(channel.connected).toBe(true);
+    warnSpy.mockRestore();
     channel.dispose();
   });
 });

@@ -1,5 +1,5 @@
 import type { SDKOptions } from './types.js';
-import { IframeModule } from '../iframe/module.js';
+import { CrossWindowModule } from '../cross-window/module.js';
 
 /**
  * SDK 内部核心状态容器。
@@ -25,21 +25,31 @@ export class SDKCore {
 }
 
 /**
+ * SDK 实例对象。
+ *
+ * 目前包含 `crossWindow` 模块，覆盖 iframe 与 `window.open()` 两种跨窗口场景。
+ */
+export interface SDK {
+  /** 跨窗口通信模块（iframe / window.open 通用） */
+  readonly crossWindow: CrossWindowModule;
+}
+
+/**
  * 创建 SDK 实例。
  *
- * 返回值是按模块组织的对象，目前暴露 `iframe` 模块，后续会按需扩展更多模块。
+ * 返回值是按模块组织的对象，目前暴露 `crossWindow` 模块，后续会按需扩展更多模块。
  *
  * @param options SDK 初始化配置
  * @returns SDK 实例对象
  * @example
  * ```ts
  * const sdk = createSDK({ appId: 'my-app', debug: true });
- * const channel = sdk.iframe.asHost(iframeElement);
+ * const channel = sdk.crossWindow.asHost(iframeElement);
  * ```
  */
-export function createSDK(options: SDKOptions) {
+export function createSDK(options: SDKOptions): SDK {
   const core = new SDKCore(options);
   return {
-    iframe: new IframeModule(core),
+    crossWindow: new CrossWindowModule(core),
   };
 }

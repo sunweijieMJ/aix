@@ -35,7 +35,7 @@ const sdk = createSDK({
 **Host 侧**（持有目标窗口引用的一方）：
 
 ```ts
-const channel = sdk.iframe.asHost(iframeEl, {
+const channel = sdk.crossWindow.asHost(iframeEl, {
   allowedOrigins: ['https://guest.example.com'], // 也可用 '*' 或 'https://*.example.com'
 });
 
@@ -48,18 +48,19 @@ channel.onMessage((payload, source) => {
 **Guest 侧**（被嵌入或被打开的页面）：
 
 ```ts
-const channel = sdk.iframe.asGuest();
+const channel = sdk.crossWindow.asGuest({
+  expectedHostOrigin: 'https://host.example.com', // 生产环境强烈建议指定
+});
 
 channel.onMessage((payload) => {
   console.log('from host:', payload);
 });
 
-// 页面初始化完成后调用 ready() 发起握手
-channel.ready('https://host.example.com');
-
 channel.send({ status: 'loaded' });
 ```
 
+> 默认 `autoReady: true`，构造后会通过 microtask 自动发起握手，业务侧只需在同步代码里注册 `onMessage` / `onRequest` 即可。
+> 需要延迟握手（如等待外部数据）可传 `autoReady: false`，再手动调用 `channel.ready()`。
 > `ready()` 自动识别运行环境：优先 `window.opener`（新窗口），回退 `window.parent`（iframe）。
 
 ### 请求-应答（RPC）
@@ -86,17 +87,17 @@ try {
 ### 心跳 / 断连检测
 
 ```ts
-const channel = sdk.iframe.asHost(iframeEl, {
+const channel = sdk.crossWindow.asHost(iframeEl, {
   heartbeat: { interval: 5000, timeout: 15000 },
 });
 
 channel.onDisconnect((reason) => {
-  // reason: 'heartbeat-timeout'
+  // reason: 'heartbeat-timeout' | 'peer-reconnect' | 'handshake-timeout'
   console.warn('对端失联:', reason);
 });
 
-channel.onConnect(() => {
-  // 首次握手成功和每次重连成功都触发
+channel.onConnect(({ reconnected }) => {
+  // 首次握手 reconnected=false；guest 重载重新握手 reconnected=true
   channel.send({ type: 'sync-state', payload: latestState });
 });
 ```
@@ -109,7 +110,7 @@ channel.onConnect(() => {
 
 ### createSDK(options)
 
-创建 SDK 实例，返回 `{ iframe }`。
+创建 SDK 实例，返回 `{ crossWindow }`。
 
 | 参数 | 类型 | 默认值 | 必填 | 说明 |
 |------|------|--------|:----:|------|
@@ -118,7 +119,7 @@ channel.onConnect(() => {
 
 ---
 
-### sdk.iframe.asHost(target, options?) → HostChannel
+### sdk.crossWindow.asHost(target, options?) → HostChannel
 
 创建 Host 侧通道，立即开始监听 guest 握手信号。
 
@@ -126,15 +127,19 @@ channel.onConnect(() => {
 |------|------|--------|:----:|------|
 | target | `HTMLIFrameElement \| Window` | - | ✅ | iframe 元素或 `window.open()` 返回值 |
 | options.allowedOrigins | `string[]` | - | ❌ | 允许握手的 guest origin 白名单；支持精确匹配、glob 通配符（`'https://*.example.com'`）及 `'*'`（接受所有来源）；不传则接受所有来源 |
-| options.onReconnect | `() => void` | - | ❌ | guest 重载重新握手完成时触发 |
+| options.handshakeTimeout | `number` | - | ❌ | 首次握手超时阈值（毫秒）。未设置或 ≤0 时不启用；超时后触发 `onDisconnect('handshake-timeout')` |
 | options.heartbeat | `HeartbeatOptions` | - | ❌ | 心跳配置，不传则不启用 |
 
-### sdk.iframe.asGuest(options?) → GuestChannel
+> guest 重载后重新握手通过 `onConnect({ reconnected: true })` 感知，无需单独的 `onReconnect`。
 
-创建 Guest 侧通道，需显式调用 `ready()` 发起握手。
+### sdk.crossWindow.asGuest(options?) → GuestChannel
+
+创建 Guest 侧通道。默认 `autoReady: true`，构造后通过 microtask 自动发起握手。
 
 | 参数 | 类型 | 默认值 | 必填 | 说明 |
 |------|------|--------|:----:|------|
+| options.expectedHostOrigin | `string` | `'*'` | ❌ | host 页面的 origin，生产强烈建议明确指定；`'*'` 跳过校验，仅推荐开发使用 |
+| options.autoReady | `boolean` | `true` | ❌ | 是否在构造后自动通过 microtask 发起握手；设为 `false` 时需要手动调用 `ready()` |
 | options.heartbeat | `HeartbeatOptions` | - | ❌ | 心跳配置，不传则不启用 |
 
 ### HeartbeatOptions
@@ -157,21 +162,22 @@ Host 和 Guest 共享的方法 / 属性：
 | request | `(payload: Req, options?: RequestOptions) => Promise<Res>` | 发起请求，等待对端响应 |
 | onMessage | `(handler: MessageHandler<T>) => () => void` | 订阅普通消息，返回取消函数 |
 | onRequest | `(handler: RequestHandler<Req, Res>) => () => void` | 注册请求处理器，每通道最多 1 个 |
-| onConnect | `(handler: () => void) => () => void` | 订阅连接建立（首次 + 每次重连） |
-| onDisconnect | `(handler: (reason) => void) => () => void` | 订阅断连事件（当前仅 `'heartbeat-timeout'`） |
+| onConnect | `(handler: (event: { reconnected: boolean }) => void) => () => void` | 订阅连接建立；首次握手 `reconnected=false`，guest 重载重新握手 `reconnected=true` |
+| onDisconnect | `(handler: (reason: DisconnectReason) => void) => () => void` | 订阅断连事件（`'heartbeat-timeout'` \| `'peer-reconnect'` \| `'handshake-timeout'`） |
+| onDispose | `(handler: () => void) => () => void` | 订阅通道销毁事件；注册时若已 disposed 立即同步触发 |
 | dispose | `() => void` | 销毁频道，幂等 |
 
 ### Guest 专有
 
 #### channel.ready(targetOrigin?)
 
-通知 host 页面 guest 已初始化完成，发起握手。
+通知 host 页面 guest 已初始化完成，发起握手。`autoReady: true`（默认）时构造期已自动调用，业务侧通常无需手动触发；仅在 `autoReady: false` 或需要重新握手时使用。
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| targetOrigin | `string` | `'*'` | host 页面的 origin，生产环境推荐明确指定 |
+| targetOrigin | `string` | 构造时的 `expectedHostOrigin`（未指定则 `'*'`） | 覆盖期望的 host origin，仅用于测试/特殊场景 |
 
-可重复调用：已连接时会关闭旧 port 并重新握手，handlers 和 connectListeners 保留。
+可重复调用：已连接时会关闭旧 port 并重新握手，handlers / connectListeners / requestHandler 保留。
 
 ---
 
@@ -179,7 +185,11 @@ Host 和 Guest 共享的方法 / 属性：
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| timeout | `number` | `10000` | 请求超时时间（毫秒），超时后 Promise reject |
+| timeout | `number` | `10000` | 单次请求超时时间（毫秒）。`retry` 启用时每次重试独立计时 |
+| retry | `number` | `0` | 失败重试次数。可重试场景：① 单次超时 ② 远端 `onRequest` 返回 `{ ok: false, retryable: true }`。不可重试：handler 抛异常、通道 dispose、响应未带 `retryable` |
+| retryBackoff | `number \| (attempt: number) => number` | `0` | 每次重试前的退避（毫秒）。可传固定值或函数，`attempt` 从 1 开始 |
+
+> 远端 `onRequest` handler 显式返回 `{ ok: false, retryable: true, error? }` 即可让 SDK 自动触发重试；handler 抛出的异常一律视为不可重试。
 
 ### MessageSource（handler 第二个参数）
 

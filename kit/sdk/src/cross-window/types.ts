@@ -48,6 +48,11 @@ export interface ResponseEnvelopeErr {
   reqId: string;
   ok: false;
   error: string;
+  /**
+   * 远端 onRequest 显式返回 `{ ok: false, retryable: true }` 时设为 true，
+   * SDK 据此触发自动重试。handler 抛出异常时此字段为 false（异常不可重试）。
+   */
+  retryable?: boolean;
 }
 
 export type ResponseEnvelope<T = unknown> = ResponseEnvelopeOk<T> | ResponseEnvelopeErr;
@@ -91,8 +96,19 @@ export type RequestHandler<Req = unknown, Res = unknown> = (
 
 /** request() 调用选项 */
 export interface RequestOptions {
-  /** 请求超时时间（毫秒），默认 10000 */
+  /** 单次请求超时时间（毫秒），默认 10000。retry 启用时每次重试独立计时。 */
   timeout?: number;
+  /**
+   * 失败重试次数。0 表示不重试（默认）。
+   * 可重试的失败：① 单次超时 ② 远端 onRequest 返回 `{ ok: false, retryable: true }`。
+   * 不可重试：① 远端 handler 抛异常 ② 通道已 dispose ③ 远端响应 `retryable: false / 不带该字段`。
+   */
+  retry?: number;
+  /**
+   * 每次重试前的退避（毫秒）。可传固定数字或函数 `(attempt) => delay`。
+   * `attempt` 从 1 开始（第 1 次重试前调用）。默认 0（立即重试）。
+   */
+  retryBackoff?: number | ((attempt: number) => number);
 }
 
 /**
@@ -126,24 +142,49 @@ export interface HeartbeatOptions {
   timeout?: number;
 }
 
-/** 断连原因 */
-export type DisconnectReason = 'heartbeat-timeout';
+/**
+ * 断连原因：
+ * - `heartbeat-timeout`：心跳超时，对端无响应
+ * - `peer-reconnect`：对端重新握手（Host 侧旧连接被替换为新连接时触发）
+ * - `handshake-timeout`：Host 启用 handshakeTimeout 后超时仍未收到 guest 握手
+ */
+export type DisconnectReason = 'heartbeat-timeout' | 'peer-reconnect' | 'handshake-timeout';
+
+/**
+ * onConnect 回调事件参数。
+ * - reconnected=false：首次握手成功
+ * - reconnected=true：对端重载后重新握手成功（host 侧 guest 重载、guest 侧不触发，由 _bindPort 传入）
+ */
+export interface ChannelConnectEvent {
+  reconnected: boolean;
+}
 
 /** Host 侧频道配置 */
 export interface HostChannelOptions {
   /** 允许握手的 guest origin 白名单，不传则接受所有来源 */
   allowedOrigins?: string[];
   /**
-   * guest 页面重载后重新握手完成时触发。
-   * 注意：同时注册的 onConnect 也会在重连时触发，二者可独立订阅。
+   * 握手超时阈值（ms）。
+   * 未设置或 <=0 时不启用。超时后触发 onDisconnect('handshake-timeout')。
+   * 仅首次握手计入，握手成功后该定时器立即清除，重连不再启动。
    */
-  onReconnect?: () => void;
+  handshakeTimeout?: number;
   /** 心跳 / 断连检测配置。不传则不启用 */
   heartbeat?: HeartbeatOptions;
 }
 
 /** Guest 侧频道配置 */
 export interface GuestChannelOptions {
+  /**
+   * host 页面的 origin，生产环境强烈建议明确指定（如 'https://host.example.com'）。
+   * 未传或传 '*' 跳过 origin 校验，仅推荐用于开发环境。
+   */
+  expectedHostOrigin?: string;
+  /**
+   * 构造完是否自动通过 microtask 发起握手。默认 true。
+   * 仅在需要延迟握手（例如等待外部数据准备好再握手）的特殊场景设为 false。
+   */
+  autoReady?: boolean;
   /** 心跳 / 断连检测配置。不传则不启用 */
   heartbeat?: HeartbeatOptions;
 }

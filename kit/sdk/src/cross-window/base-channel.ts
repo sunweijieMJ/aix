@@ -4,6 +4,7 @@ import {
   isHeartbeatEnvelope,
   isRequestEnvelope,
   isResponseEnvelope,
+  type ChannelConnectEvent,
   type DisconnectReason,
   type HeartbeatEnvelope,
   type HeartbeatOptions,
@@ -44,7 +45,7 @@ export abstract class BaseChannel {
   protected peerOrigin: string | null = null;
   protected pendingQueue: Array<unknown> = [];
   protected handlers: Array<MessageHandler> = [];
-  protected connectListeners: Array<() => void> = [];
+  protected connectListeners: Array<(event: ChannelConnectEvent) => void> = [];
   protected windowListener: ((event: MessageEvent) => void) | null = null;
   protected disposed = false;
 
@@ -65,6 +66,8 @@ export abstract class BaseChannel {
   private lastSentAt = 0;
   /** 断连回调列表 */
   private disconnectListeners: Array<(reason: DisconnectReason) => void> = [];
+  /** dispose 回调列表 */
+  private disposeListeners: Array<() => void> = [];
 
   /**
    * @param core      SDK 内部状态容器
@@ -132,12 +135,65 @@ export abstract class BaseChannel {
     if (this.disposed) {
       return Promise.reject(new Error('[SDK] request() 调用无效：channel 已销毁'));
     }
+    const maxAttempts = (options.retry ?? 0) + 1;
+    return this._requestWithRetry<Req, Res>(payload, options, maxAttempts, 1);
+  }
+
+  /**
+   * 内部驱动：发起一次 _requestOnce，失败时按 retryable 标记和退避策略递归重试。
+   * 任何时刻 channel 进入 disposed 状态时立即放弃后续重试。
+   */
+  private _requestWithRetry<Req, Res>(
+    payload: Req,
+    options: RequestOptions,
+    maxAttempts: number,
+    attempt: number,
+  ): Promise<Res> {
+    if (this.disposed) {
+      return Promise.reject(new Error('[SDK] request aborted: channel disposed'));
+    }
+    return this._requestOnce<Req, Res>(payload, options).catch(
+      (err: Error & { _retryable?: boolean }) => {
+        if (attempt >= maxAttempts) throw err;
+        if (err._retryable !== true) throw err;
+        const backoff =
+          typeof options.retryBackoff === 'function'
+            ? options.retryBackoff(attempt)
+            : (options.retryBackoff ?? 0);
+        const next = (): Promise<Res> =>
+          this._requestWithRetry<Req, Res>(payload, options, maxAttempts, attempt + 1);
+        if (backoff > 0) {
+          return new Promise<Res>((resolve, reject) => {
+            setTimeout(() => {
+              // 退避期间 channel 可能已被 dispose，避免在已销毁通道上发出无效请求
+              if (this.disposed) {
+                reject(new Error('[SDK] request aborted: channel disposed during retry backoff'));
+                return;
+              }
+              next().then(resolve, reject);
+            }, backoff);
+          });
+        }
+        return next();
+      },
+    );
+  }
+
+  /**
+   * 发起单次请求（无重试）。超时 / 远端可重试错误时 reject 的 Error 上挂 `_retryable: true`。
+   * 这是内部约定字段，业务侧不感知。
+   */
+  private _requestOnce<Req, Res>(payload: Req, options: RequestOptions): Promise<Res> {
     const reqId = this._genReqId();
     const timeoutMs = options.timeout ?? DEFAULT_REQUEST_TIMEOUT;
     return new Promise<Res>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.pendingRequests.delete(reqId)) {
-          reject(new Error(`[SDK] request "${reqId}" 超时（${timeoutMs}ms）`));
+          const err: Error & { _retryable?: boolean } = new Error(
+            `[SDK] request "${reqId}" 超时（${timeoutMs}ms）`,
+          );
+          err._retryable = true; // 超时默认视为可重试
+          reject(err);
         }
       }, timeoutMs);
       this.pendingRequests.set(reqId, {
@@ -198,9 +254,10 @@ export abstract class BaseChannel {
 
   /**
    * 注册连接建立回调。首次握手成功和每次重连成功都会触发。
+   * 回调收到 `{ reconnected }` 事件：首次为 false，对端重载后重新握手为 true。
    * 返回取消订阅的函数。
    */
-  onConnect(handler: () => void): () => void {
+  onConnect(handler: (event: ChannelConnectEvent) => void): () => void {
     if (this.disposed) {
       this.logger.warn('onConnect() 调用无效：channel 已销毁');
       return () => {};
@@ -229,8 +286,29 @@ export abstract class BaseChannel {
   }
 
   /**
+   * 注册销毁回调，通道 `dispose()` 完成清理后触发。
+   * 若注册时通道已销毁，回调会被立即同步触发（便于框架在卸载竞态下也能收到信号）。
+   *
+   * 返回取消订阅的函数。
+   */
+  onDispose(handler: () => void): () => void {
+    if (this.disposed) {
+      try {
+        handler();
+      } catch (err) {
+        this.logger.warn('onDispose callback threw', err);
+      }
+      return () => {};
+    }
+    this.disposeListeners.push(handler);
+    return () => {
+      this.disposeListeners = this.disposeListeners.filter((h) => h !== handler);
+    };
+  }
+
+  /**
    * 销毁频道：关闭 MessagePort、停止心跳、移除 window 监听器、清空所有订阅、
-   * 并 reject 所有 pending 请求。幂等。
+   * reject 所有 pending 请求，并触发 onDispose 回调。幂等。
    */
   dispose(): void {
     if (this.disposed) return;
@@ -249,6 +327,15 @@ export abstract class BaseChannel {
     this.disconnectListeners = [];
     this.requestHandler = null;
     this.disposed = true;
+    // 快照后清空，避免回调内再次注册造成无限循环
+    const disposeCbs = this.disposeListeners.splice(0);
+    for (const cb of disposeCbs) {
+      try {
+        cb();
+      } catch (err) {
+        this.logger.warn('onDispose callback threw', err);
+      }
+    }
     this.logger.log('Channel disposed');
   }
 
@@ -258,13 +345,20 @@ export abstract class BaseChannel {
    * 握手完成后由子类调用：挂 onmessage、flush 队列、触发 onConnect、启动心跳（若启用）。
    * 调用前必须已设置 {@link peerOrigin}。
    * 注：赋值 onmessage 会隐式启用 port，无需再显式调用 port.start()。
+   *
+   * 若通道已 disposed（例如用户在 disconnect / connect 回调内同步触发了 dispose），
+   * 此方法会立即关闭传入的 port 并 no-op，避免已销毁的通道被重新激活。
    */
-  protected _bindPort(port: MessagePort): void {
+  protected _bindPort(port: MessagePort, reconnected: boolean): void {
+    if (this.disposed) {
+      port.close();
+      return;
+    }
     this.port = port;
     port.onmessage = (event: MessageEvent) => this._dispatchMessage(event.data);
     this._flush();
     this._startHeartbeat();
-    this._emitConnect();
+    this._emitConnect(reconnected);
   }
 
   /**
@@ -309,7 +403,12 @@ export abstract class BaseChannel {
     const source: MessageSource = { origin: this.peerOrigin!, appId: this.core.appId };
     this.logger.log(`Message received ← ${this.peerLabel}`);
     for (const handler of this.handlers) {
-      handler(envelope.payload, source);
+      try {
+        handler(envelope.payload, source);
+      } catch (err) {
+        // 单个 handler 抛错不应中断后续 handler 分发，也不应让异常冒泡到 port.onmessage
+        this.logger.warn('onMessage callback threw', err);
+      }
     }
   }
 
@@ -363,7 +462,7 @@ export abstract class BaseChannel {
     this.lastSentAt = now;
   }
 
-  private _emitDisconnect(reason: DisconnectReason): void {
+  protected _emitDisconnect(reason: DisconnectReason): void {
     for (const cb of this.disconnectListeners) {
       try {
         cb(reason);
@@ -378,15 +477,28 @@ export abstract class BaseChannel {
     const source: MessageSource = { origin: this.peerOrigin!, appId: this.core.appId };
     this.logger.log(`Request received ← ${this.peerLabel} (reqId: ${req.reqId})`);
     if (!handler) {
-      this._replyError(req.reqId, 'No request handler registered');
+      this._replyError(req.reqId, 'No request handler registered', false);
       return;
     }
     try {
       const result = await handler(req.payload, source);
+      // 业务约定：handler 返回 `{ ok: false, retryable, error?, code? }` 视为业务失败响应
+      // SDK 据此向请求方报告可重试错误（retryable=true 时调用方 retry 启用就会自动重发）
+      if (result && typeof result === 'object' && (result as { ok?: boolean }).ok === false) {
+        const r = result as {
+          ok: false;
+          retryable?: boolean;
+          error?: string;
+          code?: string;
+        };
+        this._replyError(req.reqId, r.error ?? r.code ?? 'remote error', r.retryable === true);
+        return;
+      }
       this._replyOk(req.reqId, result);
     } catch (err) {
+      // handler 抛出的异常一律不可重试（语义：未预期错误，重试也无意义）
       const message = err instanceof Error ? err.message : String(err);
-      this._replyError(req.reqId, message);
+      this._replyError(req.reqId, message, false);
     }
   }
 
@@ -402,7 +514,9 @@ export abstract class BaseChannel {
     if (res.ok) {
       pending.resolve(res.payload);
     } else {
-      pending.reject(new Error(`[SDK] remote error: ${res.error}`));
+      const err: Error & { _retryable?: boolean } = new Error(`[SDK] remote error: ${res.error}`);
+      err._retryable = res.retryable === true;
+      pending.reject(err);
     }
   }
 
@@ -412,9 +526,9 @@ export abstract class BaseChannel {
     this.port.postMessage(envelope);
   }
 
-  private _replyError(reqId: string, error: string): void {
+  private _replyError(reqId: string, error: string, retryable: boolean): void {
     if (!this.port) return;
-    const envelope: ResponseEnvelopeErr = { __res: true, reqId, ok: false, error };
+    const envelope: ResponseEnvelopeErr = { __res: true, reqId, ok: false, error, retryable };
     this.port.postMessage(envelope);
   }
 
@@ -427,10 +541,11 @@ export abstract class BaseChannel {
     this.pendingRequests.clear();
   }
 
-  private _emitConnect(): void {
+  private _emitConnect(reconnected: boolean): void {
+    const event: ChannelConnectEvent = { reconnected };
     for (const cb of this.connectListeners) {
       try {
-        cb();
+        cb(event);
       } catch (err) {
         this.logger.warn('onConnect callback threw', err);
       }

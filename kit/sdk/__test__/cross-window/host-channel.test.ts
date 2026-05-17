@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SDKCore } from '../../src/core/sdk.js';
-import { HostChannel } from '../../src/iframe/host-channel.js';
-import type { HandshakeEnvelope } from '../../src/iframe/types.js';
+import { HostChannel } from '../../src/cross-window/host-channel.js';
+import type { HandshakeEnvelope } from '../../src/cross-window/types.js';
 
 function createCore(debug = false) {
   return new SDKCore({ appId: 'test-app', debug });
@@ -74,6 +74,43 @@ describe('HostChannel — iframe 握手', () => {
     triggerReady(iframe.contentWindow!, 'https://evil.com');
 
     expect(iframe.contentWindow!.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('allowedOrigins 支持 glob 通配符匹配任意子域', () => {
+    const iframe = createMockIframe();
+    new HostChannel(createCore(), iframe, { allowedOrigins: ['https://*.example.com'] });
+
+    triggerReady(iframe.contentWindow!, 'https://sub.example.com');
+
+    expect(iframe.contentWindow!.postMessage).toHaveBeenCalled();
+  });
+
+  it('allowedOrigins 的 glob 通配符应匹配多级子域', () => {
+    const iframe = createMockIframe();
+    new HostChannel(createCore(), iframe, { allowedOrigins: ['https://*.example.com'] });
+
+    triggerReady(iframe.contentWindow!, 'https://a.b.example.com');
+
+    expect(iframe.contentWindow!.postMessage).toHaveBeenCalled();
+  });
+
+  it('allowedOrigins 的 glob 不应被相似前缀的恶意 origin 绕过', () => {
+    const iframe = createMockIframe();
+    new HostChannel(createCore(), iframe, { allowedOrigins: ['https://*.example.com'] });
+
+    // evilexample.com 不应被 *.example.com 命中
+    triggerReady(iframe.contentWindow!, 'https://evilexample.com');
+
+    expect(iframe.contentWindow!.postMessage).not.toHaveBeenCalled();
+  });
+
+  it("allowedOrigins 传 '*' 时应接受任意 origin", () => {
+    const iframe = createMockIframe();
+    new HostChannel(createCore(), iframe, { allowedOrigins: ['*'] });
+
+    triggerReady(iframe.contentWindow!, 'https://anywhere.example.org');
+
+    expect(iframe.contentWindow!.postMessage).toHaveBeenCalled();
   });
 });
 
@@ -194,16 +231,19 @@ describe('HostChannel — 消息接收', () => {
 });
 
 describe('HostChannel — 重连', () => {
-  it('guest 重载后再次发出 sdk:ready 应重新建立通道并触发 onReconnect', () => {
+  it('guest 重载后再次发出 sdk:ready 应重新建立通道，onConnect 第二次回调 reconnected=true', () => {
     const iframe = createMockIframe();
-    const onReconnect = vi.fn();
-    const channel = new HostChannel(createCore(), iframe, { onReconnect });
+    const onConnect = vi.fn();
+    const channel = new HostChannel(createCore(), iframe);
+    channel.onConnect(onConnect);
 
     triggerReady(iframe.contentWindow!);
     triggerReady(iframe.contentWindow!);
 
     expect(iframe.contentWindow!.postMessage).toHaveBeenCalledTimes(2);
-    expect(onReconnect).toHaveBeenCalledOnce();
+    expect(onConnect).toHaveBeenCalledTimes(2);
+    expect(onConnect).toHaveBeenNthCalledWith(1, { reconnected: false });
+    expect(onConnect).toHaveBeenNthCalledWith(2, { reconnected: true });
     channel.dispose();
   });
 
@@ -330,10 +370,9 @@ describe('HostChannel — 连接状态与 onConnect', () => {
     channel.dispose();
   });
 
-  it('onConnect 在重连时再次触发；onReconnect 与 onConnect 可同时注册', () => {
+  it('onConnect 在重连时通过 reconnected 字段区分首次与重连', () => {
     const iframe = createMockIframe();
-    const onReconnect = vi.fn();
-    const channel = new HostChannel(createCore(), iframe, { onReconnect });
+    const channel = new HostChannel(createCore(), iframe);
     const onConnect = vi.fn();
     channel.onConnect(onConnect);
 
@@ -341,7 +380,8 @@ describe('HostChannel — 连接状态与 onConnect', () => {
     triggerReady(iframe.contentWindow!);
 
     expect(onConnect).toHaveBeenCalledTimes(2);
-    expect(onReconnect).toHaveBeenCalledOnce();
+    expect(onConnect).toHaveBeenNthCalledWith(1, { reconnected: false });
+    expect(onConnect).toHaveBeenNthCalledWith(2, { reconnected: true });
     channel.dispose();
   });
 
@@ -371,5 +411,173 @@ describe('HostChannel — dispose 幂等', () => {
 
     expect(spy.mock.calls.length).toBe(firstCallCount);
     spy.mockRestore();
+  });
+});
+
+describe('HostChannel — onDispose', () => {
+  it('dispose 时应触发已注册的 onDispose 回调', () => {
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe);
+    const onDispose = vi.fn();
+    channel.onDispose(onDispose);
+
+    channel.dispose();
+
+    expect(onDispose).toHaveBeenCalledOnce();
+  });
+
+  it('在已 disposed 的 channel 上注册 onDispose 应立即同步触发', () => {
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe);
+    channel.dispose();
+
+    const onDispose = vi.fn();
+    channel.onDispose(onDispose);
+
+    expect(onDispose).toHaveBeenCalledOnce();
+  });
+
+  it('stop 函数应取消 onDispose 订阅', () => {
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe);
+    const onDispose = vi.fn();
+    const stop = channel.onDispose(onDispose);
+    stop();
+
+    channel.dispose();
+
+    expect(onDispose).not.toHaveBeenCalled();
+  });
+
+  it('多次 dispose 不应重复触发 onDispose', () => {
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe);
+    const onDispose = vi.fn();
+    channel.onDispose(onDispose);
+
+    channel.dispose();
+    channel.dispose();
+
+    expect(onDispose).toHaveBeenCalledOnce();
+  });
+});
+
+describe('HostChannel — onDisconnect peer-reconnect', () => {
+  it('guest 重新握手时应触发 onDisconnect("peer-reconnect")', () => {
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe);
+    const onDisconnect = vi.fn();
+    channel.onDisconnect(onDisconnect);
+
+    triggerReady(iframe.contentWindow!);
+    // 首次握手不应触发
+    expect(onDisconnect).not.toHaveBeenCalled();
+
+    triggerReady(iframe.contentWindow!);
+    // 重连应触发
+    expect(onDisconnect).toHaveBeenCalledOnce();
+    expect(onDisconnect).toHaveBeenCalledWith('peer-reconnect');
+
+    channel.dispose();
+  });
+
+  it('正常 dispose 不应触发 onDisconnect', () => {
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe);
+    const onDisconnect = vi.fn();
+    channel.onDisconnect(onDisconnect);
+
+    triggerReady(iframe.contentWindow!);
+    channel.dispose();
+
+    expect(onDisconnect).not.toHaveBeenCalled();
+  });
+
+  it('在 onDisconnect 回调里同步 dispose 不应让通道被重新激活', async () => {
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe);
+    channel.onDisconnect(() => {
+      channel.dispose();
+    });
+
+    // 首次握手
+    triggerReady(iframe.contentWindow!);
+    expect(channel.connected).toBe(true);
+    const firstPostMessageCount = (iframe.contentWindow!.postMessage as ReturnType<typeof vi.fn>)
+      .mock.calls.length;
+
+    // 重连触发 onDisconnect → 用户在回调里 dispose
+    triggerReady(iframe.contentWindow!);
+
+    // 期望：通道已销毁，未发送新的 sdk:ack（没有复活）
+    expect(channel.connected).toBe(false);
+    expect((iframe.contentWindow!.postMessage as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+      firstPostMessageCount,
+    );
+
+    // 心跳定时器也不应在已 dispose 的通道上残留（间接验证：再等一段时间，无新消息发出）
+    await drain();
+    expect((iframe.contentWindow!.postMessage as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+      firstPostMessageCount,
+    );
+  });
+});
+
+describe('HostChannel — handshakeTimeout', () => {
+  it('未在阈值内握手成功触发 onDisconnect("handshake-timeout")', async () => {
+    vi.useFakeTimers();
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe, { handshakeTimeout: 100 });
+    const onDisconnect = vi.fn();
+    channel.onDisconnect(onDisconnect);
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(onDisconnect).toHaveBeenCalledWith('handshake-timeout');
+    channel.dispose();
+    vi.useRealTimers();
+  });
+
+  it('握手成功后 handshakeTimeout 不触发', async () => {
+    vi.useFakeTimers();
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe, { handshakeTimeout: 100 });
+    const onDisconnect = vi.fn();
+    channel.onDisconnect(onDisconnect);
+
+    triggerReady(iframe.contentWindow!);
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(onDisconnect).not.toHaveBeenCalled();
+    channel.dispose();
+    vi.useRealTimers();
+  });
+
+  it('未设置 handshakeTimeout 时不启用超时检查', async () => {
+    vi.useFakeTimers();
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe);
+    const onDisconnect = vi.fn();
+    channel.onDisconnect(onDisconnect);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(onDisconnect).not.toHaveBeenCalled();
+    channel.dispose();
+    vi.useRealTimers();
+  });
+
+  it('dispose 应清除 handshakeTimer，避免后续误触发', async () => {
+    vi.useFakeTimers();
+    const iframe = createMockIframe();
+    const channel = new HostChannel(createCore(), iframe, { handshakeTimeout: 100 });
+    const onDisconnect = vi.fn();
+    channel.onDisconnect(onDisconnect);
+
+    channel.dispose();
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(onDisconnect).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });

@@ -5,15 +5,19 @@ import type { GuestChannelOptions, HostChannelOptions } from './types.js';
 import type { WindowTarget } from './host-channel.js';
 
 /**
- * Iframe 通信模块入口。
+ * 跨窗口通信模块入口。
+ *
+ * 覆盖两种场景：
+ * - `<iframe>` 嵌入页面（通过 `HTMLIFrameElement` 引用）
+ * - `window.open()` 打开的新窗口（通过 `Window` 引用）
  *
  * 根据调用方在握手中的角色暴露两个工厂方法：
- * - {@link IframeModule.asHost} 主页面使用，持有目标窗口引用
- * - {@link IframeModule.asGuest} 被嵌入/被打开的页面使用
+ * - {@link CrossWindowModule.asHost} 主页面使用，持有目标窗口引用
+ * - {@link CrossWindowModule.asGuest} 被嵌入/被打开的页面使用
  *
  * 模块实例由 {@link createSDK} 创建并注入，用户无需直接实例化。
  */
-export class IframeModule {
+export class CrossWindowModule {
   /**
    * @param core SDK 内部状态容器（依赖注入）
    */

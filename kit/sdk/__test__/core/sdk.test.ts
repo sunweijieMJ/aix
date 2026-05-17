@@ -9,7 +9,9 @@ describe('createSDK', () => {
   it('appId 有效时应正常初始化', () => {
     const sdk = createSDK({ appId: 'test-app' });
     expect(sdk).toBeDefined();
-    expect(sdk.iframe).toBeDefined();
+    expect(sdk.crossWindow).toBeDefined();
+    expect(typeof sdk.crossWindow.asHost).toBe('function');
+    expect(typeof sdk.crossWindow.asGuest).toBe('function');
   });
 
   it('debug 默认为 false', () => {
