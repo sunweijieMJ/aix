@@ -1,5 +1,11 @@
 # @kit/sdk
 
+## 0.0.5
+
+### Patch Changes
+
+- 优化增强sdk
+
 ## 0.0.4
 
 ### Patch Changes
