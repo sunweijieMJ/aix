@@ -59,11 +59,6 @@ export interface VueI18nLibrary extends BaseI18nLibrary {
   getHookDeclarationCheckRegex(): RegExp;
 
   /**
-   * 生成导入清理正则（用于 restore 时移除导入）
-   */
-  getImportCleanupRegex(): RegExp;
-
-  /**
    * 生成 Hook 声明清理正则（用于 restore 时移除声明）
    */
   getHookDeclarationCleanupRegex(): RegExp;

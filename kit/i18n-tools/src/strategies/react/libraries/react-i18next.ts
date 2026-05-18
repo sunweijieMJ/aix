@@ -100,12 +100,17 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   }
 
   isTranslationCall(node: ts.CallExpression): boolean {
-    // t('key') 或 i18next.t('key')
+    // t('key')
     if (ts.isIdentifier(node.expression) && node.expression.text === 't') {
       return true;
     }
+    // 仅 i18next.t('key') —— 不能放宽到所有 obj.t() 形态，否则 router.t()、
+    // store.t() 等同名方法会被 RestoreTransformer 当作 i18n 调用替换为
+    // locale 文案，破坏业务代码（且静默无报错）。
     if (
       ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === 'i18next' &&
       ts.isIdentifier(node.expression.name) &&
       node.expression.name.text === 't'
     ) {

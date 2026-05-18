@@ -268,11 +268,17 @@ export class VueImportManager implements IImportManager {
 
     let updated = block.content;
     updated = updated.replace(this.library.getHookDeclarationCleanupRegex(), '');
-    // import 清理正则匹配整条 `import { ... } from 'vue-i18n'` —— 如果用户
-    // 还在 setup 内手写其他 useI18n 调用，删除 import 会破坏代码。此时保守
-    // 保留 import；多余的 import 由 ESLint no-unused 兜底。
-    if (!/\buseI18n\s*\(/.test(updated)) {
-      updated = updated.replace(this.library.getImportCleanupRegex(), '');
+    // 仍有用户手写的 useI18n()/useTranslation() 调用时，保守保留 import；
+    // 否则用 removeNamedImports 精准摘除 hookName，保留同包其他命名导入
+    // （如 createI18n）。hookName 来自 library，避免硬编码 useI18n 误判 vue-i18next。
+    const escapedHook = CommonASTUtils.escapeRegExp(this.library.hookName);
+    const hookCallStillUsed = new RegExp(`\\b${escapedHook}\\s*\\(`).test(updated);
+    if (!hookCallStillUsed) {
+      updated = CommonASTUtils.removeNamedImports(
+        updated,
+        (moduleName) => this.library.isLibraryImport(moduleName),
+        [this.library.hookName],
+      );
     }
 
     if (updated === block.content) return code;

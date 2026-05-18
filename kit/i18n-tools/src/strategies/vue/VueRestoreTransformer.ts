@@ -208,9 +208,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // `t('xxx')` 字面字符串当成残留的 i18n 调用再次替换。
     // Why PUA：Vue 模板源不会合法含 PUA 字符；相比纯 ASCII token（如 `I18N_R_0`），
     // 后者若出现在 locale 原文（技术文档场景）会被回填正则误吞，是结构性漏洞。
+    // PUA U+E000 作为不可见边界字符；Vue 模板源不会合法含此字符。
+    const PUA = '\uE000';
     const placeholders: string[] = [];
     const stash = (text: string): string => {
-      const token = `I18N_R_${placeholders.length}`;
+      const token = `${PUA}I18N_R_${placeholders.length}${PUA}`;
       placeholders.push(text);
       return token;
     };
@@ -290,7 +292,10 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     });
 
     // 回填占位符
-    restored = restored.replace(/I18N_R_(\d+)/g, (_match, idx) => placeholders[Number(idx)]!);
+    restored = restored.replace(
+      /\uE000I18N_R_(\d+)\uE000/g,
+      (_match, idx) => placeholders[Number(idx)]!,
+    );
 
     return restored;
   }
@@ -510,10 +515,18 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   }
 
   /**
-   * 清理导入语句
+   * 清理工具注入的 hook 导入（仅摘除 library.hookName，不动同一行的其他命名导入）。
+   *
+   * Why 不再用 library.getImportCleanupRegex 直接 replace 成空串：那种粗粒度
+   * 删除整条 import 的方式，会把用户手写的 `import { useI18n, createI18n }
+   * from 'vue-i18n'` 中的 createI18n 一并删除，下游编译报错。
    */
   private static cleanupImports(code: string, library: VueI18nLibrary): string {
-    return code.replace(library.getImportCleanupRegex(), '');
+    return CommonASTUtils.removeNamedImports(
+      code,
+      (moduleName) => library.isLibraryImport(moduleName),
+      [library.hookName],
+    );
   }
 
   /**

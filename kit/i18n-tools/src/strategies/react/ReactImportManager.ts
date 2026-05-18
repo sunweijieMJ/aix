@@ -222,6 +222,13 @@ export class ReactImportManager implements IImportManager {
 
   /**
    * 清理导入语句 (AST)
+   *
+   * tImport 路径下：仅摘除工具注入的全局函数命名（library.globalFunctionName 的根标识符），
+   * 保留用户在同一路径下自有的其他命名导入。
+   * Why 精准：tImport 可能是用户的通用 utility 路径（如 `@/plugins/locale`），
+   * generate 阶段以 mergeNamedImport 把全局函数合并到现有 import，restore 时若整条删除
+   * 会把用户原有的其他命名导入也一并清掉，破坏编译。与 VueRestoreTransformer
+   * 的 cleanupPluginLocaleImport 行为对齐。
    */
   static cleanupImports(
     node: ts.ImportDeclaration,
@@ -239,9 +246,38 @@ export class ReactImportManager implements IImportManager {
       return ts.factory.createNotEmittedStatement(node);
     }
 
-    // 清理全局函数相关导入
+    // 清理工具注入的全局函数 import：精准摘除 funcName，保留同路径其他命名
     if (moduleName === tImport) {
-      return ts.factory.createNotEmittedStatement(node);
+      const funcName = library.globalFunctionName.split('.')[0]!;
+      const namedBindings = node.importClause?.namedBindings;
+      if (!namedBindings || !ts.isNamedImports(namedBindings)) {
+        // 副作用 import / namespace import / default-only：不归工具管，原样保留
+        return node;
+      }
+      const remaining = namedBindings.elements.filter(
+        (el) => (el.propertyName ?? el.name).text !== funcName,
+      );
+      if (remaining.length === namedBindings.elements.length) {
+        // 不含目标命名，原样保留
+        return node;
+      }
+      if (remaining.length === 0 && !node.importClause?.name) {
+        return ts.factory.createNotEmittedStatement(node);
+      }
+      const newNamedImports = ts.factory.updateNamedImports(namedBindings, remaining);
+      const newImportClause = ts.factory.updateImportClause(
+        node.importClause!,
+        node.importClause!.isTypeOnly,
+        node.importClause!.name,
+        newNamedImports,
+      );
+      return ts.factory.updateImportDeclaration(
+        node,
+        node.modifiers,
+        newImportClause,
+        node.moduleSpecifier,
+        node.attributes,
+      );
     }
 
     return node;

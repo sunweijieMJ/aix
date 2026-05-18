@@ -29,8 +29,12 @@ export class ReactTextExtractor extends BaseTextExtractor {
     const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
 
     const extractedStrings: ExtractedString[] = [];
-    await this.visitNode(sourceFile, sourceFile, extractedStrings);
-    return extractedStrings.filter((s) => s.filePath === filePath);
+    // filePath 必须从入参透传到 push 处，不能用 sourceFile.fileName：
+    // ts.createSourceFile 内部会对 fileName 调用 normalizePath，把 Windows 反斜杠
+    // 转成正斜杠，与上游传入的原始路径不一致。Vue 端在 extractFromScript 处有同名
+    // 规避，参见 VueTextExtractor.ts。
+    await this.visitNode(sourceFile, sourceFile, extractedStrings, filePath);
+    return extractedStrings;
   }
 
   // extractFromFiles 由 BaseTextExtractor 提供默认串行实现
@@ -136,11 +140,14 @@ export class ReactTextExtractor extends BaseTextExtractor {
    * 访问AST节点
    * @param node - AST节点
    * @param sourceFile - 源文件
+   * @param extractedStrings - 收集到的提取结果
+   * @param filePath - 原始入参路径（不可用 sourceFile.fileName，见 extractFromFile 注释）
    */
   private async visitNode(
     node: ts.Node,
     sourceFile: ts.SourceFile,
     extractedStrings: ExtractedString[],
+    filePath: string,
   ): Promise<void> {
     // 优先处理JSX元素的混合内容
     if (ts.isJsxElement(node)) {
@@ -152,7 +159,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         extractedStrings.push({
           original: mixedContent.text,
           semanticId: '', // 稍后生成
-          filePath: sourceFile.fileName,
+          filePath,
           line: position.line + 1,
           column: position.character + 1,
           context: 'jsx-text',
@@ -182,7 +189,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
         CommonASTUtils.recordSkippedComparisonOperand(
           node.text,
-          sourceFile.fileName,
+          filePath,
           pos.line + 1,
           pos.character + 1,
         );
@@ -239,7 +246,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         original: text,
         processedMessage,
         semanticId: '', // 稍后生成
-        filePath: sourceFile.fileName,
+        filePath,
         line: position.line + 1,
         column: position.character + 1,
         context,
@@ -254,7 +261,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     // 递归处理子节点 - 修复异步问题
     const children = node.getChildren();
     for (const child of children) {
-      await this.visitNode(child, sourceFile, extractedStrings);
+      await this.visitNode(child, sourceFile, extractedStrings, filePath);
     }
   }
 
@@ -303,10 +310,12 @@ export class ReactTextExtractor extends BaseTextExtractor {
 
     for (const child of children) {
       if (ts.isJsxText(child)) {
-        const text = child.text.trim();
-        if (text) {
-          templateText += text;
-        }
+        // 纯空白（缩进/换行）的 JsxText 跳过；含内容的把换行+缩进压缩为单空格，
+        // 但保留文本与表达式之间的语义空格（如「共 {count} 项」中 `共 ` / ` 项`
+        // 的相邻空格是词间距，trim 掉会让 locale 文案变成「共${count}项」，
+        // 中英混排丢词间距）。
+        if (!child.text.trim()) continue;
+        templateText += child.text.replace(/\s*\n\s*/g, ' ');
       } else if (ts.isJsxExpression(child) && child.expression) {
         const expressionText = CommonASTUtils.nodeToText(child.expression!, sourceFile);
         templateVariables.push(expressionText);

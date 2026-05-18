@@ -36,10 +36,6 @@ export class VueI18nLibraryImpl implements VueI18nLibrary {
     return /const\s*\{\s*t\s*\}\s*=\s*useI18n\(\)/;
   }
 
-  getImportCleanupRegex(): RegExp {
-    return /import\s*\{[^}]*\}\s*from\s*['"]vue-i18n['"];?\n?/g;
-  }
-
   getHookDeclarationCleanupRegex(): RegExp {
     return /const\s*\{\s*t\s*\}\s*=\s*useI18n\(\);?\n?/g;
   }

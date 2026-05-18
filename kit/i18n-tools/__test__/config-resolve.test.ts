@@ -1,3 +1,4 @@
+import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 import { resolveBuckets, resolveConfig } from '../src/config/loader';
 import { BUILTIN_CN_MAPPINGS } from '../src/config/defaults';
@@ -8,8 +9,13 @@ const llm = {
   shared: { apiKey: 'sk-test', model: 'gpt-4o' },
 } as const;
 
+// 跨平台测试根路径：loader 内部用 path.resolve 把它归一化为平台原生绝对路径，
+// 期望值也用 path.resolve 算，避免硬编码 POSIX 在 Windows 上 mismatch。
+const TEST_ROOT = path.resolve('/tmp/proj');
+const expectInRoot = (...segs: string[]): string => path.resolve(TEST_ROOT, ...segs);
+
 const baseConfig: I18nToolsConfig = {
-  root: '/tmp/proj',
+  root: TEST_ROOT,
   framework: { type: 'vue' },
   llm,
 };
@@ -17,14 +23,14 @@ const baseConfig: I18nToolsConfig = {
 describe('resolveConfig - 默认值', () => {
   it('填充全部默认值', () => {
     const r = resolveConfig(baseConfig);
-    expect(r.root).toBe('/tmp/proj');
+    expect(r.root).toBe(TEST_ROOT);
     expect(r.framework.type).toBe('vue');
     expect(r.framework.library).toBe('vue-i18n');
     expect(r.framework.tImport).toBe('@/i18n');
     expect(r.locales.source).toBe('zh-CN');
     expect(r.locales.targets).toEqual(['en-US']);
-    expect(r.io.localesDir).toBe('/tmp/proj/src/i18n');
-    expect(r.io.sourceDir).toBe('/tmp/proj/src');
+    expect(r.io.localesDir).toBe(expectInRoot('src/i18n'));
+    expect(r.io.sourceDir).toBe(expectInRoot('src'));
     expect(r.io.format).toBe('nested');
     expect(r.io.prettify).toBe(true);
     expect(r.io.indent).toBe(2);
@@ -70,7 +76,7 @@ describe('resolveConfig - 默认值', () => {
       ...baseConfig,
       io: { exportDir: 'dist/locales' },
     });
-    expect(r.io.exportDir).toBe('/tmp/proj/dist/locales');
+    expect(r.io.exportDir).toBe(expectInRoot('dist/locales'));
   });
 });
 

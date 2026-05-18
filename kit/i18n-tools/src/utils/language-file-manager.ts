@@ -119,6 +119,19 @@ export class LanguageFileManager {
    * 反推无法工作；loader 已在该场景输出警告，建议改用 matchKey。
    */
   static buildKeyBucketMap(config: ResolvedConfig, localeMap: LocaleMap): KeyBucketMap {
+    return this.buildKeyBucketMapWithStats(config, localeMap).keyBucketMap;
+  }
+
+  /**
+   * 同 buildKeyBucketMap，但额外返回 BucketResolver 的命中统计。
+   *
+   * caller（GenerateProcessor / MergeProcessor 等）拿到 zeroHitRules 后
+   * 应当作为 warning 输出，提示用户规则配错（最常见：matchKey 前缀拼写错误）。
+   */
+  static buildKeyBucketMapWithStats(
+    config: ResolvedConfig,
+    localeMap: LocaleMap,
+  ): { keyBucketMap: KeyBucketMap; ruleHits: Record<string, number>; zeroHitRules: string[] } {
     const buckets = config.buckets!;
     const resolver = new BucketResolver(buckets);
     const sep = config.keys.separator;
@@ -151,7 +164,11 @@ export class LanguageFileManager {
 
       keyBucketMap[key] = resolved;
     }
-    return keyBucketMap;
+    return {
+      keyBucketMap,
+      ruleHits: resolver.getHitStats(),
+      zeroHitRules: resolver.getZeroHitRules(),
+    };
   }
 
   /**
@@ -327,6 +344,10 @@ export class LanguageFileManager {
    * 按 keyBucketMap 分桶写入到桶式目录。
    * by-locale: `<baseDir>/<locale>/<bucket>.json`
    * by-bucket: `<baseDir>/<bucket>/<locale>.json`
+   *
+   * 写盘后自动**清理孤儿 bucket 文件**：当 bucket 规则变更使得某个 bucket 不再
+   * 有 key 时，旧文件会被重命名为 `.json.bak`（与单文件→桶式迁移的备份策略一致）。
+   * 已存在的 `.bak` 不会被覆盖——使清理幂等且不丢历史备份。
    */
   private static writeBucketedLocaleFile(
     config: ResolvedConfig,
@@ -344,6 +365,7 @@ export class LanguageFileManager {
       groups.get(bucketName)![key] = value;
     }
 
+    const writtenPaths = new Set<string>();
     for (const [bucketName, bucketMap] of groups) {
       const filePath =
         layout === 'by-bucket'
@@ -352,6 +374,59 @@ export class LanguageFileManager {
       FileUtils.writeJsonFile(filePath, this.serialize(config, bucketMap), {
         indent: config.io.indent,
       });
+      writtenPaths.add(path.resolve(filePath));
+    }
+
+    this.pruneOrphanBucketFiles(baseDir, locale, layout, writtenPaths);
+  }
+
+  /**
+   * 扫描当前 locale 涉及的所有 bucket 文件位置，把不在 writtenPaths 中的孤儿
+   * `.json` 重命名为 `.json.bak`。已存在的 `.bak` 文件会跳过，避免覆盖历史备份。
+   *
+   * by-locale: 扫 `<baseDir>/<locale>/*.json`
+   * by-bucket: 扫所有 `<baseDir>/<bucket>/<locale>.json`
+   */
+  private static pruneOrphanBucketFiles(
+    baseDir: string,
+    locale: string,
+    layout: 'by-locale' | 'by-bucket',
+    writtenPaths: Set<string>,
+  ): void {
+    const candidates: string[] = [];
+    if (layout === 'by-locale') {
+      const dirPath = path.join(baseDir, locale);
+      if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return;
+      for (const file of fs.readdirSync(dirPath)) {
+        if (file.endsWith('.json')) candidates.push(path.join(dirPath, file));
+      }
+    } else {
+      if (!fs.existsSync(baseDir)) return;
+      for (const entry of fs.readdirSync(baseDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const langFile = path.join(baseDir, entry.name, `${locale}.json`);
+        if (fs.existsSync(langFile)) candidates.push(langFile);
+      }
+    }
+
+    for (const candidate of candidates) {
+      if (writtenPaths.has(path.resolve(candidate))) continue;
+      const bakPath = `${candidate}.bak`;
+      if (fs.existsSync(bakPath)) {
+        // 已经备份过，不再 rename 也不删原文件——人工决定何时清掉
+        LoggerUtils.info(
+          `🪦 孤儿 bucket 文件未清理（备份已存在）: ${path.relative(baseDir, candidate)}`,
+        );
+        continue;
+      }
+      try {
+        fs.renameSync(candidate, bakPath);
+        LoggerUtils.info(
+          `🧹 已将孤儿 bucket 文件备份为 .bak: ${path.relative(baseDir, candidate)}`,
+        );
+      } catch (error) {
+        LoggerUtils.warn(`⚠️  备份孤儿 bucket 文件失败（已忽略）: ${candidate}: ${error}`);
+      }
     }
   }
 
@@ -400,15 +475,13 @@ export class LanguageFileManager {
     if (extractedStrings.length === 0) return;
 
     let localeMap: LocaleMap;
-    let effectiveKeyBucketMap: KeyBucketMap | undefined;
 
     if (config.buckets) {
-      const { flat, keyBucketMap: existingKeyBucketMap } = this.readBucketedLocaleWithBucketMap(
-        config,
-        isCustom,
-      );
-      localeMap = flat;
-      effectiveKeyBucketMap = { ...existingKeyBucketMap, ...(keyBucketMap ?? {}) };
+      // 读 flat 数据即可——磁盘当前布局**不再**作为 keyBucketMap 的兜底来源。
+      // 历史问题：旧逻辑用 existingKeyBucketMap 兜底导致 matchKey/match 规则
+      // 对存量 key 永远失效（旧规则下落到 A 桶的 key，即使新规则该去 B 桶，
+      // 也会因 existing 占位而留在 A）。
+      localeMap = this.readBucketedLocaleWithBucketMap(config, isCustom).flat;
     } else {
       const read = this.readLocaleFile(config, isCustom);
       if (read === null) return;
@@ -429,7 +502,7 @@ export class LanguageFileManager {
           ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
           : { message: rawMessage.replace(/^['"`]|['"`]$/g, '') };
 
-      if (!localeMap[extracted.semanticId]) {
+      if (!(extracted.semanticId in localeMap)) {
         newEntries[extracted.semanticId] = message;
         addedCount++;
       } else if (localeMap[extracted.semanticId] !== message) {
@@ -444,6 +517,37 @@ export class LanguageFileManager {
     }
 
     const finalMap = { ...localeMap, ...newEntries };
+
+    // 重新计算 effectiveKeyBucketMap：caller 提供的（用真实 filePath 算）优先；
+    // caller 没覆盖的 key（来自存量 localeMap 中未被本轮触达的文件）走
+    // buildKeyBucketMap 用虚拟路径反推。这样规则一变，所有 key 都会按新规则落桶。
+    let effectiveKeyBucketMap: KeyBucketMap | undefined;
+    if (config.buckets) {
+      const callerMap = keyBucketMap ?? {};
+      const rebucketSource: LocaleMap = {};
+      for (const key of Object.keys(finalMap)) {
+        if (!(key in callerMap)) rebucketSource[key] = finalMap[key] ?? '';
+      }
+      const rebucket =
+        Object.keys(rebucketSource).length > 0
+          ? this.buildKeyBucketMapWithStats(config, rebucketSource)
+          : { keyBucketMap: {}, zeroHitRules: [], ruleHits: {} };
+      effectiveKeyBucketMap = { ...rebucket.keyBucketMap, ...callerMap };
+
+      // caller 已自己上报真实路径下的命中情况，这里只关心"反推存量 key"也 0
+      // 命中的规则——只有当 callerMap 也没让它命中时才告警，避免误伤。
+      if (rebucket.zeroHitRules.length > 0 && report) {
+        const callerHits = new Set(Object.values(callerMap));
+        const trulyZero = rebucket.zeroHitRules.filter((name) => !callerHits.has(name));
+        if (trulyZero.length > 0) {
+          report.addWarning(
+            `[buckets] 以下规则在本轮 ${Object.keys(finalMap).length} 个 key 上 0 命中，` +
+              `可能配错（matchKey 前缀与实际 key 不符 / match glob 写错）：${trulyZero.join(', ')}`,
+          );
+        }
+      }
+    }
+
     this.writeLocaleFile(config, isCustom, finalMap, undefined, effectiveKeyBucketMap);
 
     LoggerUtils.success(`✅ 语言文件更新成功！`);

@@ -360,6 +360,7 @@ export class GenerateProcessor extends BaseProcessor {
     if (!this.config.buckets) return undefined;
     const resolver = new BucketResolver(this.config.buckets);
     const keyBucketMap: Record<string, string> = {};
+    let resolvedCount = 0;
     for (const item of extractedStrings) {
       if (item.semanticId) {
         // glob 规则用相对路径（如 src/views/order/**），必须转成相对 root 的路径才能命中
@@ -369,8 +370,23 @@ export class GenerateProcessor extends BaseProcessor {
           item.semanticId,
           item.processedMessage || item.original,
         );
+        resolvedCount++;
       }
     }
+
+    // 真实路径下仍 0 命中的规则 = 用户配错（glob/matchKey 与实际不符）。
+    // 只有 resolvedCount>0 时才告警——空 extractedStrings 下不告警避免噪音。
+    if (resolvedCount > 0) {
+      const zeroHit = resolver.getZeroHitRules();
+      if (zeroHit.length > 0) {
+        const msg =
+          `[buckets] 以下规则在本轮 ${resolvedCount} 个新 key 的真实路径下 0 命中，` +
+          `可能配错（match glob 与目录不符 / matchKey 前缀拼写错）：${zeroHit.join(', ')}`;
+        LoggerUtils.warn(msg);
+        this.report.addWarning(msg);
+      }
+    }
+
     return keyBucketMap;
   }
 

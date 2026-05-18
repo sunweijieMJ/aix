@@ -47,10 +47,6 @@ export class VueI18nextLibrary implements VueI18nLibrary {
     return /const\s*\{\s*t\s*\}\s*=\s*useTranslation\(/;
   }
 
-  getImportCleanupRegex(): RegExp {
-    return /import\s*\{[^}]*\}\s*from\s*['"](?:vue-i18next|i18next-vue)['"];?\n?/g;
-  }
-
   getHookDeclarationCleanupRegex(): RegExp {
     return /const\s*\{\s*t\s*\}\s*=\s*useTranslation\([^)]*\);?\n?/g;
   }

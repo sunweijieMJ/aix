@@ -59,6 +59,16 @@ export class DoctorProcessor extends BaseProcessor {
   /** 是否启用 CI 模式（有 error 退出非零）*/
   private ciMode: boolean;
 
+  /**
+   * 暂存 runLinter 一次性产出的原始 LinterFinding[]，供 recordToReport 写入 report。
+   *
+   * Why: LocaleValueLinter.analyze 内部会消费 CommonASTUtils.drainSkippedComparisonOperands，
+   * 是「一次性」操作（见 locale-value-linter.ts 同名注释）。如果 recordToReport 再次调用
+   * analyze 重建 findings，hardcoded-comparison（doctor 唯一的 error-tier lint 类别）会
+   * 因为 drain 已空而漏入 report，CI 门禁失效。
+   */
+  private linterFindings: LinterFinding[] = [];
+
   constructor(
     config: ResolvedConfig,
     isCustom: boolean = false,
@@ -118,6 +128,9 @@ export class DoctorProcessor extends BaseProcessor {
     const lintFindings = LocaleValueLinter.analyze(sourceMap, {
       separator: this.config.keys.separator,
     });
+    // 暂存供 recordToReport 使用，避免再次调用 analyze 触发 drain 后丢失
+    // hardcoded-comparison findings（见字段注释）
+    this.linterFindings = lintFindings;
     return lintFindings.map((f: LinterFinding) => ({
       category: 'locale-lint',
       // hardcoded-comparison 是 error 候选（运行时切语言后业务逻辑会失效），
@@ -334,20 +347,11 @@ export class DoctorProcessor extends BaseProcessor {
    * report.addManualEntry，这里只处理 doctor 自己产生的三类对账，避免重复。
    */
   private recordToReport(findings: DoctorFinding[]): void {
-    // 先把 lint 类发现重新走一遍 emit 入 report（之前 analyze 未触发 emit）
-    const lintFromDoctor = findings.filter((f) => f.category === 'locale-lint');
-    if (lintFromDoctor.length > 0) {
-      // 反向构造 LinterFinding 太啰嗦；直接用 emit 重跑 analyze 更省事
-      const localeMap =
-        LanguageFileManager.readLocaleFile(
-          this.config,
-          this.isCustom,
-          this.config.locales.source,
-        ) ?? {};
-      const analyzeAgain = LocaleValueLinter.analyze(localeMap, {
-        separator: this.config.keys.separator,
-      });
-      LocaleValueLinter.emit(analyzeAgain, { console: false, report: this.report });
+    // 直接复用 runLinter 暂存的原始 LinterFinding[]，不要二次 analyze ——
+    // analyze 内部 drain 的 skippedComparisonOperands 已被首次调用清空，
+    // 重跑会丢失 hardcoded-comparison（doctor 唯一 error-tier lint 类别）。
+    if (this.linterFindings.length > 0) {
+      LocaleValueLinter.emit(this.linterFindings, { console: false, report: this.report });
     }
 
     // 对账类发现：直接写为 warnings（不是 ManualCategory，避免污染）

@@ -1018,14 +1018,121 @@ export class CommonASTUtils {
    *  - 那里需要的是"判断真实代码中是否存在 t() 调用"，连字符串也一并吞掉
    *  - 这里需要保留字符串内容供正则提取 t('key') 的 key 字面量
    *
-   * 实现限制：纯文本替换，不处理"字符串内部出现 // 或 /*"的情况（这会让字符串
-   * 后续部分被误判为注释）。对当前用途（扫源码统计 t() 引用）足够。
+   * 实现：单遍扫描 + 引号/反引号状态机，正确跳过字符串/模板字面量内部的注释起始序列
+   * （行注释、块注释、HTML 注释开头都按字符串内文本处理，不进入注释状态）。
+   * Why 不用单纯正则：JSX 里 href 含 URL（双斜杠）+ 同行 t 调用时，单纯
+   * 「匹配整行直至换行的双斜杠正则」会把 URL 后半段（含同行的 t 调用）一并替换为空格，
+   * 导致 doctor 漏报 used-key（误报 orphan / missing）。
    */
   static stripComments(code: string): string {
-    return code
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/\/\/[^\n]*/g, ' ');
+    const out: string[] = [];
+    const len = code.length;
+    let i = 0;
+    // 状态：none | "..." | '...' | `...` | // | /* | <!--
+    type State = 'none' | 'dq' | 'sq' | 'tpl' | 'line' | 'block' | 'html';
+    let state: State = 'none';
+
+    while (i < len) {
+      const ch = code[i]!;
+      const next = code[i + 1];
+
+      if (state === 'none') {
+        // 进入字符串
+        if (ch === '"') {
+          state = 'dq';
+          out.push(ch);
+          i++;
+          continue;
+        }
+        if (ch === "'") {
+          state = 'sq';
+          out.push(ch);
+          i++;
+          continue;
+        }
+        if (ch === '`') {
+          state = 'tpl';
+          out.push(ch);
+          i++;
+          continue;
+        }
+        // 进入块注释
+        if (ch === '/' && next === '*') {
+          state = 'block';
+          out.push(' ');
+          i += 2;
+          continue;
+        }
+        // 进入行注释
+        if (ch === '/' && next === '/') {
+          state = 'line';
+          out.push(' ');
+          i += 2;
+          continue;
+        }
+        // 进入 HTML 注释
+        if (ch === '<' && code.startsWith('!--', i + 1)) {
+          state = 'html';
+          out.push(' ');
+          i += 4;
+          continue;
+        }
+        out.push(ch);
+        i++;
+        continue;
+      }
+
+      // 字符串：处理转义与闭合
+      if (state === 'dq' || state === 'sq' || state === 'tpl') {
+        if (ch === '\\') {
+          out.push(ch);
+          if (i + 1 < len) out.push(code[i + 1]!);
+          i += 2;
+          continue;
+        }
+        const quote = state === 'dq' ? '"' : state === 'sq' ? "'" : '`';
+        if (ch === quote) {
+          state = 'none';
+        }
+        out.push(ch);
+        i++;
+        continue;
+      }
+
+      // 块注释：吃到 */，整段替空格（保留行结构以便行号不漂移）
+      if (state === 'block') {
+        if (ch === '/' && code[i - 1] === '*' && i - 1 > 0) {
+          state = 'none';
+        }
+        out.push(ch === '\n' ? '\n' : ' ');
+        i++;
+        continue;
+      }
+
+      // 行注释：吃到行尾
+      if (state === 'line') {
+        if (ch === '\n') {
+          state = 'none';
+          out.push('\n');
+        } else {
+          out.push(' ');
+        }
+        i++;
+        continue;
+      }
+
+      // HTML 注释：吃到 -->
+      if (state === 'html') {
+        if (ch === '>' && code[i - 1] === '-' && code[i - 2] === '-') {
+          state = 'none';
+        }
+        out.push(ch === '\n' ? '\n' : ' ');
+        i++;
+        continue;
+      }
+    }
+
+    return out.join('');
   }
 
   /**
@@ -1111,6 +1218,48 @@ export class CommonASTUtils {
     const lastImportIndex = CommonASTUtils.findLastImportLineIndex(lines);
     lines.splice(lastImportIndex + 1, 0, importStatement.trim());
     return lines.join('\n');
+  }
+
+  /**
+   * 从代码中精准摘除指定包的命名导入项。仅删除 names 列表中的名字，
+   * 不破坏同一条 import 内的其他名字。若摘除后命名列表为空，整条 import 行
+   * 一并删除。
+   *
+   * Why 精准摘除：早先各 i18n library 暴露 getImportCleanupRegex 直接匹配整条
+   * `import { … } from 'pkg'` 后 replace 成空串——用户若在同一行手写其他导出
+   * （如 `import { useI18n, createI18n } from 'vue-i18n'`），restore 会把
+   * createI18n 也删掉，下游编译报错。
+   *
+   * @param code            源代码
+   * @param isTargetModule  判断某个 `from 'X'` 是否属于目标库（支持包名别名）
+   * @param namesToRemove   要从命名列表中摘除的名字（精确匹配，trim 后比对）
+   */
+  static removeNamedImports(
+    code: string,
+    isTargetModule: (moduleName: string) => boolean,
+    namesToRemove: string[],
+  ): string {
+    if (namesToRemove.length === 0) return code;
+    // 整行匹配；尾部 `;?` `\n?` 与原 getImportCleanupRegex 行为一致，
+    // 避免删除后留下空行。
+    const importRegex = /import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"];?\n?/g;
+    return code.replace(importRegex, (match, namedList: string, moduleName: string) => {
+      if (!isTargetModule(moduleName)) return match;
+      const remaining = namedList
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean)
+        // `useI18n as foo` 这类重命名导入：取 ` as ` 之前的原始名作为比对锚点
+        .filter((entry) => {
+          const original = entry.split(/\s+as\s+/)[0]!.trim();
+          return !namesToRemove.includes(original);
+        });
+      if (remaining.length === 0) return '';
+      // 复用原始行尾分号/换行，保留风格一致
+      const hasSemi = match.trimEnd().endsWith(';');
+      const hasNewline = match.endsWith('\n');
+      return `import { ${remaining.join(', ')} } from '${moduleName}'${hasSemi ? ';' : ''}${hasNewline ? '\n' : ''}`;
+    });
   }
 
   /**

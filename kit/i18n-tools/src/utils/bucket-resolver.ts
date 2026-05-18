@@ -26,6 +26,8 @@ interface CompiledRule {
 export class BucketResolver {
   private readonly compiledRules: CompiledRule[];
   private readonly defaultBucket: string;
+  /** rule.name → 累计命中次数。规则配错（matchKey 前缀 0 命中等）时用于上层告警 */
+  private readonly hitCounts: Map<string, number>;
 
   constructor(config: ResolvedBucketsConfig) {
     this.defaultBucket = config.defaultBucket;
@@ -33,6 +35,7 @@ export class BucketResolver {
       name: rule.name,
       matcher: BucketResolver.compileRule(rule),
     }));
+    this.hitCounts = new Map(this.compiledRules.map(({ name }) => [name, 0]));
   }
 
   /**
@@ -42,9 +45,25 @@ export class BucketResolver {
   resolve(filePath: string, key: string, message: string): string {
     const normalized = normalizePosix(filePath);
     for (const { name, matcher } of this.compiledRules) {
-      if (matcher(normalized, key, message)) return name;
+      if (matcher(normalized, key, message)) {
+        this.hitCounts.set(name, (this.hitCounts.get(name) ?? 0) + 1);
+        return name;
+      }
     }
     return this.defaultBucket;
+  }
+
+  /**
+   * 返回每条规则在此 resolver 生命周期内的命中次数。
+   * caller 据此识别"配错或失效的规则"（连续多次 resolve 后仍为 0）。
+   */
+  getHitStats(): Record<string, number> {
+    return Object.fromEntries(this.hitCounts);
+  }
+
+  /** 命中次数为 0 的规则名列表，便于直接生成 warning。 */
+  getZeroHitRules(): string[] {
+    return [...this.hitCounts.entries()].filter(([, n]) => n === 0).map(([name]) => name);
   }
 
   private static compileRule(rule: BucketRule): CompiledMatcher {

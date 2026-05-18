@@ -435,18 +435,6 @@ export class FileUtils {
   }
 
   /**
-   * 获取语言文件路径
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   * @param locale - 语言代码
-   * @returns 语言文件路径
-   */
-  static getLocaleFilePath(config: ResolvedConfig, isCustom: boolean, locale: string): string {
-    const baseDir = this.getDirectoryPath(config, isCustom);
-    return path.join(baseDir, `${locale}.json`);
-  }
-
-  /**
    * 验证目标路径的有效性
    *
    * @param extensions - 该框架支持的扩展名列表（含点号）

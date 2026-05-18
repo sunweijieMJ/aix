@@ -144,6 +144,13 @@ export class MergeProcessor extends FileProcessor {
             typeof sourceValue === 'string' &&
             sourceValue.trim().length > 0
           ) {
+            // 注意：回填后该 target 进入 finalEntry，allTranslated 不变；
+            // key 会被移出 untranslated.json（视为「翻译终态：以源文本兜底」）。
+            // 该决策意味着用户后续重跑 translate 不会自动续翻此 key —— 因为
+            // FileUtils.isValidTranslation 只判字母/数字存在性、不分辨语言，
+            // 源语言文本回填到 target 后会被识别为合法翻译，无法触发再翻。
+            // 如需重新翻译，必须手动从 locale 文件中移除该 key 并重跑 generate。
+            // reportRejectedTranslations 会在控制台明确提示这一行为。
             finalEntry[target] = sourceValue;
             rejectedFallbackCount++;
             continue;
@@ -199,6 +206,9 @@ export class MergeProcessor extends FileProcessor {
     if (strategy === 'fallback-to-source') {
       emit(
         `\n🔁 ${rejected.length} 个翻译被判无效（LLM 返回纯标点 / 空白），已用 ${sourceLocale} 源文本回填到 ${targetSet}：`,
+      );
+      emit(
+        `   ⚠️  以下 key 视为「翻译终态」并从 ${FILES.UNTRANSLATED_JSON} 移除；重跑 translate 不会自动续翻，如需重译请手动从 locale 文件删除该 key 后重跑 generate。`,
       );
     } else {
       emit(
