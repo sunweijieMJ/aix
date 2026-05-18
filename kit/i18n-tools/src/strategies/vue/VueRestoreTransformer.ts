@@ -37,7 +37,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       );
     }
 
-    return VueRestoreTransformer.restoreVueFile(sourceText, localeMap, this.library);
+    return VueRestoreTransformer.restoreVueFile(sourceText, localeMap, this.library, this.tImport);
   }
 
   /**
@@ -47,6 +47,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     sourceText: string,
     localeMap: Record<string, string>,
     library: VueI18nLibrary,
+    tImport?: string,
   ): string {
     const lib = library;
     const { descriptor } = parseSFC(sourceText);
@@ -98,7 +99,50 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     restoredCode = this.cleanupImports(restoredCode, lib);
     restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
 
+    // 清理模块顶层 `import { t } from <tImport>`：
+    // generate 阶段对 `<script setup>` 走「模块 import」路径而非 useI18n hook，
+    // restore 必须对称清理，否则 restore 后 t 不再被使用，遗留的 import
+    // 会触发 ESLint `no-unused-vars` / TS unused warning。
+    // 仅在 SFC 的 script/scriptSetup 范围内清理（template/style 不会含 import 语句）。
+    if (tImport) {
+      restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport);
+    }
+
     return restoredCode;
+  }
+
+  /**
+   * 清理 `import { t } from '<tImport>'`（含同时导入其它命名的混合形式）。
+   *
+   * 实现说明：
+   *  - 只 t 一个命名：整条 import 直接删除（与 restoreStandaloneScript 行为对称）
+   *  - 还有其它命名（如 `import { t, i18n } from '...'`）：仅从命名集合中摘掉 t，保留其它
+   *
+   * 仅做"工具确定不会再用 t"场景下的清理；用户手写代码若还有 t() 调用，相应的 t import
+   * 应在 restoreScript 阶段就保留（restoreScript 命中翻译才会做替换）。
+   */
+  private static cleanupPluginLocaleImport(code: string, tImport: string): string {
+    const escapedPath = CommonASTUtils.escapeRegExp(tImport);
+    // 形式 1：仅 t 一个命名 → 整条 import 删除
+    const onlyT = new RegExp(
+      `import\\s*\\{\\s*t\\s*\\}\\s*from\\s*['"]${escapedPath}['"];?\\n?`,
+      'g',
+    );
+    let updated = code.replace(onlyT, '');
+    // 形式 2：t 与其它命名混合 → 仅摘掉 t，保留其它命名
+    const mixed = new RegExp(`(import\\s*\\{)([^}]*)(\\}\\s*from\\s*['"]${escapedPath}['"])`, 'g');
+    updated = updated.replace(mixed, (_match, head: string, body: string, tail: string) => {
+      const names = body
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s && s !== 't' && !/^t\s+as\s+/.test(s));
+      if (names.length === 0) {
+        // 全部命名都被剔除（理论上 onlyT 已先消掉，这里是兜底）
+        return '';
+      }
+      return `${head} ${names.join(', ')} ${tail}`;
+    });
+    return updated;
   }
 
   /**
@@ -122,13 +166,10 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     restoredCode = this.cleanupImports(restoredCode, lib);
     restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
 
-    // 清理自定义路径的 t 导入（如 import { t } from '@/plugins/locale'）
+    // 清理自定义路径的 t 导入（如 import { t } from '@/plugins/locale'）。
+    // 复用 SFC 路径的 helper：可处理 `import { t }` 与 `import { t, i18n }` 混合形式
     if (tImport) {
-      const escapedPath = CommonASTUtils.escapeRegExp(tImport);
-      restoredCode = restoredCode.replace(
-        new RegExp(`import\\s*\\{\\s*t\\s*\\}\\s*from\\s*['"]${escapedPath}['"];?\\n?`, 'g'),
-        '',
-      );
+      restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport);
     }
 
     return restoredCode;

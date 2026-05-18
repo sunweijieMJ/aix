@@ -6,11 +6,10 @@ import { formatWithPrettier } from '../utils/command-utils';
 import { CommonASTUtils } from '../utils/common-ast-utils';
 import { FileUtils } from '../utils/file-utils';
 import { LLMClient } from '../utils/llm-client';
-import { IdGenerator } from '../utils/id-generator';
 import { InteractiveUtils } from '../utils/interactive-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
-import { ModuleResolver } from '../utils/module-resolver';
+import { BucketResolver } from '../utils/bucket-resolver';
 import { RunReport, type CoverageMetric } from '../utils/run-report';
 import type { ExtractedString } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
@@ -47,14 +46,8 @@ export class GenerateProcessor extends BaseProcessor {
   ) {
     super(config, isCustom, adapter);
     this.interactive = interactive;
-    this.llmClient = new LLMClient(
-      config.llm.idGeneration,
-      config.concurrency.idGeneration,
-      config.locale,
-      config.prompts,
-    );
-    // 全局 batchDelay 同样应用到 ID 生成的 LLM 调用
-    this.llmClient.setBatchDelay(config.batchDelay);
+    // LLM 任务级配置（concurrency/batchSize/throttleMs/prompt）已内化在 task
+    this.llmClient = new LLMClient(config.llm.idGeneration, config.locales);
   }
 
   protected getOperationName(): string {
@@ -152,9 +145,9 @@ export class GenerateProcessor extends BaseProcessor {
     const frameworkFiles = FileUtils.getFrameworkFiles(
       dirPath,
       this.adapter.getSupportedExtensions(),
-      this.config.exclude,
-      this.config.include,
-      this.config.rootDir,
+      this.config.io.exclude,
+      this.config.io.include,
+      this.config.root,
     );
     const frameworkName = this.adapter.getDisplayName();
 
@@ -308,27 +301,21 @@ export class GenerateProcessor extends BaseProcessor {
 
     // 跨模块 namespace 提升：若本次新分配会把原文带过 promoteToCommon.threshold
     // 个不同模块前缀，改用 common namespace 而非文件目录前缀。仅作用于"新分配"，
-    // 不回迁历史 key（见 IdPrefixConfig.promoteToCommon 注释）。
+    // 不回迁历史 key（见 keys.reuse.promoteToCommon 注释）。
+    const idGenerator = reuseResolver.getIdGenerator();
     const promoteToCommon = reuseResolver.shouldPromoteToCommon(messageForId, item.filePath);
     const finalId = promoteToCommon
-      ? IdGenerator.generateWithFixedPrefix(
+      ? idGenerator.generateWithFixedPrefix(
           reuseResolver.getCommonNamespace(),
           llmId ?? GenerateProcessor.cleanForLLM(messageForId),
           existingIds,
-          this.config.idPrefix,
         )
       : llmId
-        ? IdGenerator.addDirectoryPrefixToId(
-            item.filePath,
-            llmId,
-            existingIds,
-            this.config.idPrefix,
-          )
-        : IdGenerator.generateWithFilePath(
+        ? idGenerator.addDirectoryPrefixToId(item.filePath, llmId, existingIds)
+        : idGenerator.generateWithFilePath(
             item.filePath,
             GenerateProcessor.cleanForLLM(messageForId),
             existingIds,
-            this.config.idPrefix,
           );
 
     textToIdMap.set(lookupKey, finalId);
@@ -361,30 +348,30 @@ export class GenerateProcessor extends BaseProcessor {
   }
 
   /**
-   * 计算 extractedStrings 的 key → module 归属表（modules 启用时）。
+   * 计算 extractedStrings 的 key → bucket 归属表（buckets 启用时）。
    * 抽出独立方法是因为 commit / dry-run / apply 三条路径都需要这份数据：
    *   - commit：直接传给 LanguageFileManager.updateLanguageFiles
-   *   - dry-run：写入 plan.keyModuleMap
+   *   - dry-run：写入 plan.keyBucketMap
    *   - apply：从 plan 读取，跳过此计算
    */
-  private buildKeyModuleMap(
+  private buildKeyBucketMap(
     extractedStrings: ExtractedString[],
   ): Record<string, string> | undefined {
-    if (!this.config.modules) return undefined;
-    const resolver = new ModuleResolver(this.config.modules);
-    const keyModuleMap: Record<string, string> = {};
+    if (!this.config.buckets) return undefined;
+    const resolver = new BucketResolver(this.config.buckets);
+    const keyBucketMap: Record<string, string> = {};
     for (const item of extractedStrings) {
       if (item.semanticId) {
-        // glob 规则用相对路径（如 src/views/order/**），必须转成相对 rootDir 的路径才能命中
-        const relPath = path.relative(this.config.rootDir, item.filePath).replace(/\\/g, '/');
-        keyModuleMap[item.semanticId] = resolver.resolve(
+        // glob 规则用相对路径（如 src/views/order/**），必须转成相对 root 的路径才能命中
+        const relPath = path.relative(this.config.root, item.filePath).replace(/\\/g, '/');
+        keyBucketMap[item.semanticId] = resolver.resolve(
           relPath,
           item.semanticId,
           item.processedMessage || item.original,
         );
       }
     }
-    return keyModuleMap;
+    return keyBucketMap;
   }
 
   /**
@@ -442,7 +429,7 @@ export class GenerateProcessor extends BaseProcessor {
   private async commitToDisk(
     results: Array<{ file: string; code: string }>,
     extractedStrings: ExtractedString[],
-    keyModuleMap: Record<string, string> | undefined,
+    keyBucketMap: Record<string, string> | undefined,
   ): Promise<void> {
     // 阶段 2：原子地写所有源码。任一写失败立即抛错，此时语言文件仍未更新，
     // 不会留下源码-语言文件不一致的污染态。
@@ -473,12 +460,12 @@ export class GenerateProcessor extends BaseProcessor {
       this.config,
       this.isCustom,
       extractedStrings,
-      keyModuleMap,
+      keyBucketMap,
       this.report,
     );
 
     // 阶段 4：格式化是美化步骤，单个失败不影响数据正确性，仅警告。
-    if (this.config.format) {
+    if (this.config.io.prettify) {
       for (const { file } of results) {
         try {
           await formatWithPrettier(file);
@@ -507,15 +494,15 @@ export class GenerateProcessor extends BaseProcessor {
     extractedStrings: ExtractedString[],
   ): Promise<void> {
     LoggerUtils.info(`\n🔄 开始应用转换...`);
-    const keyModuleMap = this.buildKeyModuleMap(extractedStrings);
+    const keyBucketMap = this.buildKeyBucketMap(extractedStrings);
     const { results, uniqueFilePaths } = this.transformToMemory(filePaths, extractedStrings);
 
     if (this.runMode === 'dry-run') {
-      this.writePlan(uniqueFilePaths, results, extractedStrings, keyModuleMap);
+      this.writePlan(uniqueFilePaths, results, extractedStrings, keyBucketMap);
       return;
     }
 
-    await this.commitToDisk(results, extractedStrings, keyModuleMap);
+    await this.commitToDisk(results, extractedStrings, keyBucketMap);
   }
 
   /**
@@ -530,10 +517,9 @@ export class GenerateProcessor extends BaseProcessor {
     uniqueFilePaths: string[],
     results: Array<{ file: string; code: string }>,
     extractedStrings: ExtractedString[],
-    keyModuleMap: Record<string, string> | undefined,
+    keyBucketMap: Record<string, string> | undefined,
   ): void {
-    const planRoot =
-      this.planOutputDir ?? GeneratePlanWriter.getDefaultPlansRoot(this.config.rootDir);
+    const planRoot = this.planOutputDir ?? GeneratePlanWriter.getDefaultPlansRoot(this.config.root);
     const planDir = path.join(planRoot, GeneratePlanWriter.generateDirName());
 
     // 按文件归组 ExtractedString，便于在 entries 内挂载 hits
@@ -566,7 +552,7 @@ export class GenerateProcessor extends BaseProcessor {
       const result = results.find((r) => r.file === filePath);
       if (!result) continue; // 理论不会发生（transformToMemory 失败已抛错）
 
-      const relPosix = GeneratePlanWriter.toRelPosix(this.config.rootDir, filePath);
+      const relPosix = GeneratePlanWriter.toRelPosix(this.config.root, filePath);
       const transformedRef = `${GeneratePlanWriter.SOURCES_DIRNAME}/${relPosix}`;
       transformedSources.set(relPosix, result.code);
 
@@ -588,7 +574,7 @@ export class GenerateProcessor extends BaseProcessor {
           isTemplateString: s.isTemplateString,
           templateVariables: s.templateVariables,
           attributeName: s.attributeName,
-          module: keyModuleMap?.[s.semanticId],
+          module: keyBucketMap?.[s.semanticId],
         }));
 
       entries.push({
@@ -600,12 +586,12 @@ export class GenerateProcessor extends BaseProcessor {
     }
 
     const plan: GeneratePlan = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       command: 'generate',
       finishedAt: new Date().toISOString(),
-      rootDir: this.config.rootDir,
+      root: this.config.root,
       isCustom: this.isCustom,
-      framework: this.config.framework,
+      framework: this.config.framework.type,
       toolVersion: GenerateProcessor.getToolVersion(),
       // skipLLM 模式下记 'local'：与 LLMClient.generateSemanticIdsForFiles 的本地
       // 兜底路径对应，让 reviewer 知道本批 ID 没经过 LLM。
@@ -617,7 +603,7 @@ export class GenerateProcessor extends BaseProcessor {
       },
       entries,
       localeDelta,
-      keyModuleMap,
+      keyBucketMap,
     };
 
     GeneratePlanWriter.write(planDir, plan, transformedSources);
@@ -673,9 +659,9 @@ export class GenerateProcessor extends BaseProcessor {
     LoggerUtils.info(`📂 加载 Plan: ${planPath}`);
     const { plan, transformedSources } = GeneratePlanWriter.read(planPath);
 
-    if (plan.framework !== this.config.framework) {
+    if (plan.framework !== this.config.framework.type) {
       throw new Error(
-        `Plan 框架 (${plan.framework}) 与当前配置 (${this.config.framework}) 不一致，拒绝 apply。`,
+        `Plan 框架 (${plan.framework}) 与当前配置 (${this.config.framework.type}) 不一致，拒绝 apply。`,
       );
     }
     if (plan.isCustom !== this.isCustom) {
@@ -697,7 +683,7 @@ export class GenerateProcessor extends BaseProcessor {
     //   - extractedStrings: 仅需 semanticId + 用于 message 还原的字段
     const results: Array<{ file: string; code: string }> = [];
     for (const entry of plan.entries) {
-      const abs = GeneratePlanWriter.fromRelPosix(plan.rootDir, entry.file);
+      const abs = GeneratePlanWriter.fromRelPosix(plan.root, entry.file);
       results.push({ file: abs, code: transformedSources.get(entry.file)! });
     }
 
@@ -718,7 +704,7 @@ export class GenerateProcessor extends BaseProcessor {
       }),
     );
 
-    await this.commitToDisk(results, syntheticStrings, plan.keyModuleMap);
+    await this.commitToDisk(results, syntheticStrings, plan.keyBucketMap);
     LoggerUtils.success(
       `✅ Plan 回放完成：${plan.summary.files} 个文件、${plan.summary.newKeys} 个新 key`,
     );

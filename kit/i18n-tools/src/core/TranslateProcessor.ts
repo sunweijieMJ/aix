@@ -9,7 +9,11 @@ import { FileProcessor } from './FileProcessor';
 
 /**
  * 翻译处理器
- * 负责处理待翻译文件的翻译工作
+ *
+ * 多目标语种处理约定：
+ *  - 外层 for target 循环：每个 target 独立做 glossary / chunkData / batchTranslate / merge
+ *  - filterUntranslatedItems 为 per-target 判定
+ *  - 占位符校验在 mergeTranslations 内部针对当前 target 应用
  */
 export class TranslateProcessor extends FileProcessor {
   private llmClient: LLMClient;
@@ -17,18 +21,11 @@ export class TranslateProcessor extends FileProcessor {
 
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     super(config, isCustom);
-    this.llmClient = new LLMClient(
-      config.llm.translation,
-      config.concurrency.translation,
-      config.locale,
-      config.prompts,
-    );
-    // 把 batchDelay 注入 LLMClient，使其在每次 chatCompletion 之前节流。
-    // 之前该字段虽然有默认值且会被打印，但从未生效（"幽灵配置"）。
-    this.llmClient.setBatchDelay(config.batchDelay);
+    // LLM 任务级配置（concurrency/batchSize/throttleMs/prompt）已内化在 task
+    this.llmClient = new LLMClient(config.llm.translation, config.locales);
     this.batchConfig = {
-      size: config.batchSize,
-      delay: config.batchDelay,
+      size: config.llm.translation.batchSize,
+      delay: config.llm.translation.throttleMs,
     };
   }
 
@@ -58,43 +55,66 @@ export class TranslateProcessor extends FileProcessor {
       return;
     }
 
-    // LLM 调用前用词表做二次拦截，命中条目直接落盘，避免无谓的 API 调用。
-    const glossaryFilled = this.applyGlossary(data);
-    if (glossaryFilled > 0) {
-      LoggerUtils.info(`📚 词表预填 ${glossaryFilled} 条，剩余条目走 LLM`);
-      FileUtils.writeJsonFile(targetPath, data);
+    const targets = this.config.locales.targets;
+    LoggerUtils.info(`📋 总条目: ${totalCount}，目标语种: ${targets.join(', ')}`);
+
+    let totalNewlyTranslated = 0;
+    let allSuccessBatches = 0;
+    let allTotalBatches = 0;
+    const allFailedBatches: string[] = [];
+
+    for (const target of targets) {
+      LoggerUtils.info(`\n══════ 翻译目标：${target} ══════`);
+
+      // 词表预填（per-target）
+      const glossaryFilled = this.applyGlossary(data, target);
+      if (glossaryFilled > 0) {
+        LoggerUtils.info(`📚 [${target}] 词表预填 ${glossaryFilled} 条，剩余条目走 LLM`);
+        FileUtils.writeJsonFile(targetPath, data);
+      }
+
+      const toTranslate = this.filterUntranslatedItems(data, target);
+      const needsTranslation = Object.keys(toTranslate).length;
+
+      if (needsTranslation === 0) {
+        LoggerUtils.warn(`[${target}] 所有条目已翻译完成。`);
+        continue;
+      }
+
+      LoggerUtils.info(`📋 [${target}] 需翻译: ${needsTranslation}`);
+      LoggerUtils.info(
+        `⚙️  批次设置: ${this.batchConfig.size} 条目/批次, ${this.batchConfig.delay}ms 延时`,
+      );
+
+      const result = await this.performBatchTranslation(toTranslate, data, targetPath, target);
+      totalNewlyTranslated += result.totalTranslated;
+      allSuccessBatches += result.successBatches;
+      allTotalBatches += result.totalBatches;
+      for (const idx of result.failedBatches) {
+        allFailedBatches.push(`${target}#${idx}`);
+      }
+
+      this.logTargetResult(target, result);
     }
 
-    const toTranslate = this.filterUntranslatedItems(data);
-    const needsTranslation = Object.keys(toTranslate).length;
-
-    if (needsTranslation === 0) {
-      LoggerUtils.warn('所有条目已翻译完成。');
-      return;
-    }
-
-    LoggerUtils.info(`📋 总条目: ${totalCount}, 需翻译: ${needsTranslation}`);
-    LoggerUtils.info(
-      `⚙️  批次设置: ${this.batchConfig.size} 条目/批次, ${this.batchConfig.delay}ms 延时`,
-    );
-
-    const result = await this.performBatchTranslation(toTranslate, data, targetPath);
-    this.logTranslationResult(result);
+    this.logTranslationSummary({
+      totalTranslated: totalNewlyTranslated,
+      successBatches: allSuccessBatches,
+      totalBatches: allTotalBatches,
+      failedBatches: allFailedBatches,
+      targets,
+    });
   }
 
   /**
    * 加载词表并直接填入 data 中目标语种为空的条目。
    * 返回填入的条目数；词表未配置或无命中时为 0。
-   *
-   * 注意：此处只处理"目标语种缺失"的情况；override='always' 的覆盖策略由
-   * pick 阶段统一负责，避免两处都做覆盖导致语义模糊。
    */
-  private applyGlossary(data: Translations): number {
+  private applyGlossary(data: Translations, targetLocale: string): number {
     const glossary = Glossary.load(this.config);
     if (!glossary) return 0;
 
-    const sourceLocale = this.config.locale.source;
-    const targetLocale = this.config.locale.target;
+    const sourceLocale = this.config.locales.source;
     const { normalize } = this.config.glossary;
     let filled = 0;
 
@@ -112,8 +132,7 @@ export class TranslateProcessor extends FileProcessor {
     return filled;
   }
 
-  private filterUntranslatedItems(data: Translations): Translations {
-    const targetLocale = this.config.locale.target;
+  private filterUntranslatedItems(data: Translations, targetLocale: string): Translations {
     const toTranslate: Translations = {};
     for (const [key, item] of Object.entries(data)) {
       if (!item[targetLocale]?.trim()) {
@@ -127,6 +146,7 @@ export class TranslateProcessor extends FileProcessor {
     toTranslate: Translations,
     currentData: Translations,
     filePath: string,
+    targetLocale: string,
   ): Promise<{
     totalTranslated: number;
     successBatches: number;
@@ -138,25 +158,28 @@ export class TranslateProcessor extends FileProcessor {
     let successBatches = 0;
     const failedBatches: number[] = [];
 
-    LoggerUtils.info(`📦 共 ${batches.length} 个批次，使用并发处理`);
+    LoggerUtils.info(`📦 [${targetLocale}] 共 ${batches.length} 个批次，使用并发处理`);
     LoggerUtils.info(`🔄 最大并发数: ${this.llmClient.getConcurrencyStatus().maxConcurrency}`);
 
-    const translatedBatches = await this.llmClient.batchTranslate(batches, (current, total) => {
-      LoggerUtils.info(
-        `📈 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
-      );
-    });
+    const translatedBatches = await this.llmClient.batchTranslate(
+      batches,
+      targetLocale,
+      (current, total) => {
+        LoggerUtils.info(
+          `📈 [${targetLocale}] 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
+        );
+      },
+    );
 
     for (let i = 0; i < translatedBatches.length; i++) {
       const translatedBatch = translatedBatches[i];
       if (!translatedBatch) {
-        // LLM 端整批返回 null/undefined，记为失败以便上层感知
         failedBatches.push(i + 1);
         this.report.addFailure({
           stage: 'translate',
           batchIndex: i + 1,
           keys: Object.keys(batches[i] ?? {}),
-          error: new Error('LLM 返回空批次（null/undefined）'),
+          error: new Error(`LLM 返回空批次（null/undefined）[${targetLocale}]`),
         });
         continue;
       }
@@ -168,6 +191,7 @@ export class TranslateProcessor extends FileProcessor {
           batches[i]!,
           i,
           batches.length,
+          targetLocale,
         );
         totalTranslated += translated;
         if (translated > 0) {
@@ -175,7 +199,7 @@ export class TranslateProcessor extends FileProcessor {
         }
       } catch (error) {
         LoggerUtils.error(
-          `批次 ${i + 1} 结果处理失败:`,
+          `[${targetLocale}] 批次 ${i + 1} 结果处理失败:`,
           error instanceof Error ? error.message : error,
         );
         failedBatches.push(i + 1);
@@ -188,7 +212,7 @@ export class TranslateProcessor extends FileProcessor {
       }
     }
 
-    // 统一写入文件（即便部分批次失败，已成功的翻译也会持久化，便于断点续翻）
+    // 写入文件（每个 target 完成后落盘一次，便于断点续翻）
     FileUtils.writeJsonFile(filePath, currentData);
 
     return { totalTranslated, successBatches, totalBatches: batches.length, failedBatches };
@@ -209,51 +233,58 @@ export class TranslateProcessor extends FileProcessor {
     originalBatch: Translations,
     batchIndex: number,
     totalBatches: number,
+    targetLocale: string,
   ): number {
-    LoggerUtils.info(`🔄 处理批次 ${batchIndex + 1}/${totalBatches} 的翻译结果...`);
+    LoggerUtils.info(
+      `🔄 [${targetLocale}] 处理批次 ${batchIndex + 1}/${totalBatches} 的翻译结果...`,
+    );
 
     if (typeof translatedBatch !== 'object' || translatedBatch === null) {
       throw new Error(`批次 ${batchIndex + 1} 翻译结果格式错误`);
     }
 
-    const translatedCount = this.mergeTranslations(currentData, originalBatch, translatedBatch);
-    LoggerUtils.success(`✅ 批次 ${batchIndex + 1} 结果处理完成，翻译 ${translatedCount} 个条目`);
+    const translatedCount = this.mergeTranslations(
+      currentData,
+      originalBatch,
+      translatedBatch,
+      targetLocale,
+    );
+    LoggerUtils.success(
+      `✅ [${targetLocale}] 批次 ${batchIndex + 1} 结果处理完成，翻译 ${translatedCount} 个条目`,
+    );
     return translatedCount;
   }
 
   /**
-   * 将翻译结果合并到内存数据中（纯内存操作，不涉及文件 I/O）
+   * 将翻译结果合并到内存数据中（纯内存操作）。
    *
-   * 占位符一致性校验：vue-i18n / i18next 通过 `{xxx}` 字面 key 替换运行时实参，
-   * 若 LLM 把占位符内的标识符也翻译了（如 `{userName}` → `{user name}`），
-   * 运行时无法匹配实参 key，最终用户会看到原始 `{user name}` 字面输出。
-   * 因此：占位符集合（按 key 集合而不是序列）必须与源语保持一致；不一致则
-   * 丢弃该条翻译，留待下一次断点续翻人工/重译处理。
+   * 占位符一致性校验：占位符集合（按 key 集合而非序列）必须与源语保持一致；
+   * 不一致则丢弃该条翻译，留待下一次断点续翻人工/重译处理。
    */
   private mergeTranslations(
     currentData: Translations,
     originalBatch: Translations,
     translatedBatch: Translations,
+    targetLocale: string,
   ): number {
     let translatedCount = 0;
     let placeholderMismatches = 0;
-    const sourceLocale = this.config.locale.source;
-    const targetLocale = this.config.locale.target;
+    const sourceLocale = this.config.locales.source;
 
     for (const [key, originalItem] of Object.entries(originalBatch)) {
-      const newEnValue = translatedBatch[key]?.[targetLocale];
-      if (!newEnValue?.trim()) continue;
+      const newValue = translatedBatch[key]?.[targetLocale];
+      if (!newValue?.trim()) continue;
 
       const sourceText = originalItem[sourceLocale];
       if (typeof sourceText === 'string' && sourceText) {
         const expected = TranslateProcessor.extractPlaceholders(sourceText);
-        const actual = TranslateProcessor.extractPlaceholders(newEnValue);
+        const actual = TranslateProcessor.extractPlaceholders(newValue);
         if (!TranslateProcessor.placeholdersMatch(expected, actual)) {
           placeholderMismatches++;
           LoggerUtils.warn(
-            `⚠️ 占位符不匹配，丢弃翻译 [${key}]:\n` +
+            `⚠️ [${targetLocale}] 占位符不匹配，丢弃翻译 [${key}]:\n` +
               `   源文: ${sourceText}\n` +
-              `   译文: ${newEnValue}\n` +
+              `   译文: ${newValue}\n` +
               `   期望占位符: {${[...expected].join('}, {')}}\n` +
               `   实际占位符: {${[...actual].join('}, {')}}`,
           );
@@ -264,13 +295,13 @@ export class TranslateProcessor extends FileProcessor {
       if (!currentData[key]) {
         currentData[key] = {};
       }
-      currentData[key][targetLocale] = newEnValue;
+      currentData[key][targetLocale] = newValue;
       translatedCount++;
     }
 
     if (placeholderMismatches > 0) {
       LoggerUtils.warn(
-        `   共丢弃 ${placeholderMismatches} 条因占位符被翻译而失效的结果，可重新运行 translate 续翻。`,
+        `   [${targetLocale}] 共丢弃 ${placeholderMismatches} 条因占位符被翻译而失效的结果，可重新运行 translate 续翻。`,
       );
     }
 
@@ -279,8 +310,6 @@ export class TranslateProcessor extends FileProcessor {
 
   /**
    * 提取文本中所有 `{xxx}` 形式的占位符 key 集合。
-   * 用集合而非序列：vue-i18n 允许语序调换（如英译时把 "{count} new messages"
-   * 变成 "you have {count} messages"），只要占位符 key 完整保留即视为合法。
    */
   private static extractPlaceholders(text: string): Set<string> {
     const set = new Set<string>();
@@ -300,13 +329,16 @@ export class TranslateProcessor extends FileProcessor {
     return true;
   }
 
-  private logTranslationResult(result: {
-    totalTranslated: number;
-    successBatches: number;
-    totalBatches: number;
-    failedBatches: number[];
-  }): void {
-    LoggerUtils.info(`\n📊 翻译结果统计:`);
+  private logTargetResult(
+    target: string,
+    result: {
+      totalTranslated: number;
+      successBatches: number;
+      totalBatches: number;
+      failedBatches: number[];
+    },
+  ): void {
+    LoggerUtils.info(`\n📊 [${target}] 翻译结果:`);
     LoggerUtils.info(`   - 总批次数: ${result.totalBatches}`);
     LoggerUtils.info(`   - 成功批次数: ${result.successBatches}`);
     LoggerUtils.info(`   - 新翻译条目: ${result.totalTranslated}`);
@@ -314,8 +346,27 @@ export class TranslateProcessor extends FileProcessor {
       LoggerUtils.warn(
         `   - ⚠️ 失败批次（${result.failedBatches.length} 个）: [${result.failedBatches.join(', ')}]`,
       );
+    }
+  }
+
+  private logTranslationSummary(result: {
+    totalTranslated: number;
+    successBatches: number;
+    totalBatches: number;
+    failedBatches: string[];
+    targets: string[];
+  }): void {
+    LoggerUtils.info(`\n📊 整体翻译统计:`);
+    LoggerUtils.info(`   - 处理目标语种: ${result.targets.join(', ')}`);
+    LoggerUtils.info(`   - 总批次数: ${result.totalBatches}`);
+    LoggerUtils.info(`   - 成功批次数: ${result.successBatches}`);
+    LoggerUtils.info(`   - 新翻译条目（跨 target 总和）: ${result.totalTranslated}`);
+    if (result.failedBatches.length > 0) {
       LoggerUtils.warn(
-        `   提示: 已成功的翻译已写入文件；可重新运行 translate 命令对剩余条目断点续翻。`,
+        `   - ⚠️ 失败批次（${result.failedBatches.length} 个，含 target 标识）: [${result.failedBatches.join(', ')}]`,
+      );
+      LoggerUtils.warn(
+        `   提示: 已成功的翻译已写入文件；重新运行 translate 可对剩余条目断点续翻。`,
       );
     }
     LoggerUtils.success(`\n✅ 翻译操作完成`);

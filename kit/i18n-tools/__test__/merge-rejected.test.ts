@@ -4,7 +4,8 @@ import path from 'path';
 import os from 'os';
 import { MergeProcessor } from '../src/core/MergeProcessor';
 import { LoggerUtils } from '../src/utils/logger';
-import type { ResolvedConfig } from '../src/config/types';
+import { resolveConfig } from '../src/config/loader';
+import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
 
 /**
  * merge 阶段对「LLM 翻译被 isValidTranslation 拒收」的条目的两种处理策略：
@@ -32,44 +33,18 @@ describe('MergeProcessor — 拒收翻译的处理策略', () => {
   });
 
   function makeConfig(
-    rejectedStrategy: 'fallback-to-source' | 'warn-only' = 'fallback-to-source',
+    onLlmRejected: 'fallback-to-source' | 'warn-only' = 'fallback-to-source',
   ): ResolvedConfig {
-    return {
-      rootDir: tmpDir,
-      framework: 'vue',
-      vue: { library: 'vue-i18n', namespace: '' },
-      react: { library: 'react-i18next', namespace: '', includeDefaultMessage: false },
-      locale: { source: 'zh-CN', target: 'en-US' },
-      paths: {
-        locale: path.join(tmpDir, 'locale'),
-        source: path.join(tmpDir, 'src'),
-        tImport: '@/plugins/locale',
-      },
-      llm: {
-        idGeneration: { apiKey: 'x', model: 'm', timeout: 60000, maxRetries: 2, temperature: 0.1 },
-        translation: { apiKey: 'x', model: 'm', timeout: 60000, maxRetries: 2, temperature: 0.1 },
-      },
-      prompts: { idGeneration: {}, translation: {} },
-      idPrefix: {
-        anchor: 'src',
-        value: '',
-        separator: '.',
-        chineseMappings: {},
-        reuseAcrossDirectories: false,
-        maxDepth: 0,
-        promoteToCommon: { threshold: 0, namespace: 'common' },
-      },
-      glossary: { override: 'always', normalize: true },
-      concurrency: { idGeneration: 5, translation: 3 },
-      batchSize: 10,
-      batchDelay: 500,
-      format: false,
-      include: ['**/*.vue'],
-      exclude: [],
-      extraction: { rejectPatterns: [] },
-      output: { format: 'flat' },
-      merge: { rejectedStrategy },
-    } as ResolvedConfig;
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      merge: { onLlmRejected },
+    };
+    return resolveConfig(user);
   }
 
   function setupLocaleDir(untranslated: Record<string, { 'zh-CN': string; 'en-US': string }>) {

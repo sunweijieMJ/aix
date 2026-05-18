@@ -48,6 +48,19 @@ export class VueComponentInjector implements IComponentInjector {
       return code;
     }
 
+    // 与 VueImportManager 的「setup-only 统一走模块 import」策略对齐：
+    // 若 setup 块已存在 `import { t } from '<any>'`（通常由 handleGlobalImports
+    // 先一步注入），t 已在模块作用域可用，无需再注入 useI18n() hook。
+    // 否则会产生 TS2440: Import declaration conflicts with local declaration of 't'。
+    if (descriptor?.scriptSetup) {
+      const setupContent = descriptor.scriptSetup.content;
+      if (
+        /import\s*\{[^}]*\bt\b(?:\s*as\s+\w+)?[^}]*\}\s*from\s*['"][^'"]+['"]/.test(setupContent)
+      ) {
+        return code;
+      }
+    }
+
     if (!this.needsHook(code)) {
       return code;
     }

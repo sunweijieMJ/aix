@@ -33,7 +33,7 @@ export abstract class BaseTextExtractor implements ITextExtractor {
   abstract extractFromFile(filePath: string): Promise<ExtractedString[]>;
 
   /**
-   * 业务侧通过 config.extraction.rejectPatterns 声明的黑名单命中检测。
+   * 业务侧通过 config.extract.filterPatterns 声明的过滤模式命中检测。
    *
    * 子类的 shouldExtract 在自身规则判定"可提取"后，必须调用本方法做最后一道拒收检查；
    * 不在 shouldExtract 内嵌做的原因是：工具内部的安全规则（如 isComparisonOperand）

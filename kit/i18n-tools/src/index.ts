@@ -7,34 +7,55 @@
 // breaking change。需要扩展时优先通过 Adapter 接口注入实现。
 // =============================================================================
 
-// ---- Config ----
+// ---- Config: helpers ----
 export { defineConfig, loadConfig, resolveConfig, loadConfigFile, findConfigFile } from './config';
+
+// ---- Config: defaults ----
 export {
-  DEFAULT_PATHS,
-  DEFAULT_CONCURRENCY,
-  DEFAULT_BATCH_SIZE,
-  DEFAULT_BATCH_DELAY,
-  DEFAULT_LLM_TIMEOUT,
+  DEFAULT_IO,
+  DEFAULT_LOCALES,
+  DEFAULT_KEYS,
+  DEFAULT_PREFIX_STRATEGY,
+  BUILTIN_CN_MAPPINGS,
+  DEFAULT_EXTRACT,
+  DEFAULT_GLOSSARY,
+  DEFAULT_LLM_TASK,
   DEFAULT_LLM_MODEL,
-  DEFAULT_LLM_MAX_RETRIES,
-  DEFAULT_LLM_TEMPERATURE,
-  DEFAULT_LOCALE,
-  DEFAULT_ID_PREFIX,
-  DEFAULT_INCLUDE,
-  DEFAULT_EXCLUDE,
+  DEFAULT_VUE_FRAMEWORK,
+  DEFAULT_REACT_FRAMEWORK,
+  DEFAULT_BUCKETS,
+  DEFAULT_MERGE,
+  DEFAULT_CI,
 } from './config';
+
+// ---- Config: types ----
 export type {
   I18nToolsConfig,
   ResolvedConfig,
-  LLMConfig,
-  PathsConfig,
-  ConcurrencyConfig,
-  LocaleConfig,
-  PromptsConfig,
-  VueConfig,
-  ReactConfig,
+  FrameworkConfig,
+  VueFrameworkOptions,
+  ReactFrameworkOptions,
+  LocalesConfig,
+  IoConfig,
+  KeysConfig,
+  PathPrefixStrategy,
+  FixedPrefixStrategy,
+  CustomPrefixStrategy,
+  PrefixStrategyConfig,
+  PrefixContext,
+  KeysFallbackConfig,
+  KeysReuseConfig,
+  ExtractConfig,
   GlossaryConfig,
-  IdPrefixConfig,
+  LLMConfig,
+  LLMSharedConfig,
+  LLMTaskConfig,
+  ResolvedLLMTaskConfig,
+  ResolvedPrefixStrategy,
+  BucketsConfig,
+  BucketRule,
+  MergeConfig,
+  CIConfig,
 } from './config';
 
 // ---- Core processors ----
@@ -62,7 +83,7 @@ export type {
 // ---- Adapters ----
 export { FrameworkAdapter, ReactAdapter, VueAdapter, createFrameworkAdapter } from './adapters';
 export type {
-  FrameworkConfig,
+  FrameworkConfig as FrameworkAdapterConfig,
   ITextExtractor,
   ITransformer,
   IRestoreTransformer,

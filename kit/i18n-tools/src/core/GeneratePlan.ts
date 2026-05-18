@@ -61,18 +61,19 @@ export interface GeneratePlanFileEntry {
  * dry-run 与 apply 之间漂移。
  */
 export interface GeneratePlan {
-  schemaVersion: 1;
+  schemaVersion: 2;
   command: 'generate';
   finishedAt: string;
-  rootDir: string;
+  /** 项目根目录（绝对路径），与 ResolvedConfig.root 对应 */
+  root: string;
   isCustom: boolean;
-  framework: 'vue' | 'react';
+  /** 框架类型字面值，与 framework.type 对应（'vue' | 'react' | 其他扩展） */
+  framework: string;
   /**
    * 生成 plan 时使用的 @kit/i18n-tools 版本号。
    *
-   * Review 时如果发现 plan 是较旧版本生成的（与当前工具版本差异较大），
-   * 可能更稳妥的做法是用新版重跑 dry-run 而非直接 apply —— 旧版可能没有
-   * 现在的修复或额外检查。
+   * Review 时如果发现 plan 由与当前工具明显不同的版本生成，可以选择重跑
+   * dry-run 后再 apply，避免因工具行为差异导致非预期 diff。
    */
   toolVersion?: string;
   /**
@@ -92,8 +93,8 @@ export interface GeneratePlan {
   entries: GeneratePlanFileEntry[];
   /** key → source message，apply 阶段直接合并到 source locale 文件 */
   localeDelta: Record<string, string>;
-  /** key → module 名，仅启用 modules 时非空；apply 阶段透传给 LanguageFileManager */
-  keyModuleMap?: Record<string, string>;
+  /** key → bucket 名，仅启用 buckets 时非空；apply 阶段透传给 LanguageFileManager */
+  keyBucketMap?: Record<string, string>;
 }
 
 /**
@@ -169,7 +170,7 @@ export class GeneratePlanWriter {
       throw new Error(`Plan 文件不存在：${planPath}`);
     }
     const plan = JSON.parse(fs.readFileSync(planPath, 'utf-8')) as GeneratePlan;
-    if (plan.schemaVersion !== 1) {
+    if (plan.schemaVersion !== 2) {
       throw new Error(
         `Plan schemaVersion=${plan.schemaVersion} 不受支持。请重新运行 generate --dry-run 生成新版 plan。`,
       );
@@ -201,7 +202,7 @@ export class GeneratePlanWriter {
   static verifyFingerprint(plan: GeneratePlan): { mismatched: string[] } {
     const mismatched: string[] = [];
     for (const entry of plan.entries) {
-      const abs = path.join(plan.rootDir, entry.file);
+      const abs = path.join(plan.root, entry.file);
       if (!fs.existsSync(abs)) {
         mismatched.push(`${entry.file} (文件不存在)`);
         continue;

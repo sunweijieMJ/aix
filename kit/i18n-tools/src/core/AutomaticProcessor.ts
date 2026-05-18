@@ -65,12 +65,12 @@ export class AutomaticProcessor extends FileProcessor {
         run: () => new MergeProcessor(this.config, this.isCustom).execute(),
       },
       {
-        // export 是可选步骤：只有显式配置了 paths.exportLocale 才执行。
+        // export 是可选步骤：只有显式配置了 io.exportDir 才执行。
         // 未配置即代表"工作目录就是运行时消费目录"，automatic 流程到 merge 即闭环；
         // 此时强制 export 会因缺少输出目录而抛错并中断后续工作流。
         name: 'export',
-        skip: !this.config.paths.exportLocale,
-        skipReason: '未配置 paths.exportLocale',
+        skip: !this.config.io.exportDir,
+        skipReason: '未配置 io.exportDir',
         run: () => new ExportProcessor(this.config).execute(),
       },
     ];

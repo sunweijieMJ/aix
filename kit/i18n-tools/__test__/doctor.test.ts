@@ -4,7 +4,8 @@ import os from 'os';
 import path from 'path';
 import { DoctorProcessor } from '../src/core/DoctorProcessor';
 import { LoggerUtils } from '../src/utils/logger';
-import type { ResolvedConfig } from '../src/config';
+import { resolveConfig } from '../src/config/loader';
+import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 
 /**
  * DoctorProcessor 集成测试。
@@ -12,52 +13,17 @@ import type { ResolvedConfig } from '../src/config';
  * 用真实 fs 而不是 mock：doctor 的核心价值就是扫文件系统做对账，
  * 用 mock 验证不了它实际能否正确识别 missing/orphan/untranslated。
  */
-const buildConfig = (rootDir: string, sourceDir: string, localeDir: string): ResolvedConfig => ({
-  rootDir,
-  framework: 'vue',
-  vue: { library: 'vue-i18n', namespace: '' },
-  react: { library: 'react-i18next', namespace: '', includeDefaultMessage: false },
-  locale: { source: 'zh-CN', target: 'en-US' },
-  paths: { locale: localeDir, source: sourceDir, tImport: '@/locale' },
-  llm: {
-    idGeneration: {
-      apiKey: 'x',
-      model: 'm',
-      baseURL: undefined,
-      timeout: 0,
-      maxRetries: 0,
-      temperature: 0,
-    },
-    translation: {
-      apiKey: 'x',
-      model: 'm',
-      baseURL: undefined,
-      timeout: 0,
-      maxRetries: 0,
-      temperature: 0,
-    },
-  },
-  prompts: { idGeneration: {}, translation: {} },
-  idPrefix: {
-    anchor: 'src',
-    value: '',
-    separator: '.',
-    chineseMappings: {},
-    reuseAcrossDirectories: false,
-    maxDepth: 0,
-    promoteToCommon: { threshold: 0, namespace: 'common' },
-  },
-  glossary: { override: 'always', normalize: true },
-  concurrency: { idGeneration: 1, translation: 1 },
-  batchSize: 10,
-  batchDelay: 0,
-  format: false,
-  include: [],
-  exclude: [],
-  extraction: { rejectPatterns: [] },
-  output: { format: 'flat' },
-  merge: { rejectedStrategy: 'fallback-to-source' },
-});
+const buildConfig = (rootDir: string, sourceDir: string, localeDir: string): ResolvedConfig => {
+  const user: I18nToolsConfig = {
+    root: rootDir,
+    framework: { type: 'vue', tImport: '@/locale' },
+    locales: { source: 'zh-CN', targets: ['en-US'] },
+    io: { localesDir: localeDir, sourceDir, format: 'flat' },
+    keys: { separator: '.' },
+    llm: { shared: { apiKey: 'x', model: 'm' } },
+  };
+  return resolveConfig(user);
+};
 
 describe('DoctorProcessor', () => {
   let rootDir: string;

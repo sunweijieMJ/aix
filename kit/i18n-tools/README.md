@@ -11,7 +11,7 @@ Vue/React 项目国际化自动化工具集，支持中文提取、语义化 ID 
 - **AI 翻译** - 集成 OpenAI 兼容 API（支持 OpenAI/DeepSeek/Azure 等）
 - **完整工作流** - 从提取到导出的一站式自动化流程
 - **增量处理** - 支持增量运行，避免重复处理已国际化的内容
-- **模块化导出** - 按 glob 规则将语言文件分桶到 `<lang>/<module>.json`，适合大项目按业务域拆分
+- **分桶导出** - 按 glob 规则将语言文件分桶到 `<lang>/<bucket>.json`，适合大项目按业务域拆分
 - **翻译词表** - 支持术语表（glossary），命中词条直接复用译文，跳过 LLM 调用
 - **嵌套输出** - 可选按 ID 分隔符生成树形 JSON，便于人工浏览大型语言包
 - **事务式写入** - generate 阶段先在内存完成全部 transform，全部成功后才落盘源码与语言文件，避免失败留下孤儿 key
@@ -29,32 +29,42 @@ pnpm add @kit/i18n-tools -D
 
 ### 1. 创建配置文件
 
-在项目根目录创建配置文件（支持 `i18n.config.ts`、`i18n.config.js`、`i18n.config.mjs`）：
+在项目根目录创建配置文件（支持 `.ts` / `.mts` / `.cts` / `.mjs` / `.cjs` / `.js`）：
 
 ```typescript
 import { defineConfig } from '@kit/i18n-tools';
 
 export default defineConfig({
   // 项目根目录（必填）
-  rootDir: __dirname,
+  root: __dirname,
 
-  // 框架类型：'vue' | 'react'
-  framework: 'vue',
-
-  // 路径配置
-  paths: {
-    locale: 'src/locale',           // 主语言文件目录
-    customLocale: 'src/overrides/locale', // 定制语言文件目录
-    exportLocale: 'public/locale',  // 导出目录
-    source: 'src',                  // 源码扫描目录
-    tImport: '@/plugins/locale',    // t 函数导入路径
+  // 框架配置（折叠 type + library + namespace + tImport）
+  framework: {
+    type: 'vue',                 // 'vue' | 'react'
+    library: 'vue-i18n',         // 与 type 联合校验
+    tImport: '@/i18n',           // t 函数导入路径
   },
 
-  // LLM API 配置（必填）
-  // 推荐用法：在 default 中配置共享参数，idGeneration / translation 仅覆盖差异字段
+  // 语言：targets 数组化，支持多目标
+  locales: {
+    source: 'zh-CN',         // 默认 'zh-CN'
+    targets: ['en-US'],      // 默认 ['en-US']；可多目标如 ['en-US', 'ja-JP']
+  },
+
+  // IO：所有目录 / 扫描 / 落盘聚合于此
+  io: {
+    sourceDir: 'src',
+    localesDir: 'src/i18n',
+    exportDir: 'public/locale',  // 可选，未配置即禁用 export
+    customDir: undefined,        // 可选定制目录
+    format: 'nested',            // JSON 落盘格式
+    prettify: true,              // 是否过 Prettier
+  },
+
+  // LLM 配置：shared 为共享基线，任务级独立覆盖
   llm: {
-    default: {
-      apiKey: process.env.LLM_API_KEY!,
+    shared: {
+      apiKey: process.env.LLM_API_KEY,
       model: 'gpt-4o',
       // baseURL: 'https://api.deepseek.com', // 非 OpenAI 服务需设置
     },
@@ -223,7 +233,7 @@ npx i18n-tools -m doctor --ci
 
 6. **restore** - 将国际化调用还原为中文
    - 输入：已国际化的源文件 + `zh-CN.json`
-   - 输出：还原后的源文件（默认输出到 `<rootDir>/restored/`）
+   - 输出：还原后的源文件（默认输出到 `<root>/restored/`）
 
 ## 配置参考
 
@@ -232,124 +242,145 @@ npx i18n-tools -m doctor --ci
 ```typescript
 interface I18nToolsConfig {
   /** 项目根目录（绝对路径） */
-  rootDir: string;
+  root: string;
 
-  /** 框架类型 */
-  framework: 'vue' | 'react';
-
-  /** Vue 框架配置 */
-  vue?: {
-    library?: 'vue-i18n' | 'vue-i18next';  // 默认 'vue-i18n'
-    namespace?: string;                     // vue-i18next 命名空间
-  };
-
-  /** React 框架配置 */
-  react?: {
-    library?: 'react-intl' | 'react-i18next';  // 默认 'react-i18next'
-    namespace?: string;                         // react-i18next 命名空间
-  };
+  /** 框架配置（判别 union） */
+  framework:
+    | { type: 'vue'; library?: 'vue-i18n' | 'vue-i18next'; namespace?: string; tImport?: string }
+    | {
+        type: 'react';
+        library?: 'react-intl' | 'react-i18next';
+        namespace?: string;
+        tImport?: string;
+        includeDefaultMessage?: boolean;
+      };
 
   /** 语言配置 */
-  locale?: {
-    source?: string;  // 源语言代码，默认 'zh-CN'
-    target?: string;  // 目标语言代码，默认 'en-US'
+  locales?: {
+    source?: string;            // 源语言，默认 'zh-CN'
+    targets?: string[];         // 目标语言数组，默认 ['en-US']
+    names?: Record<string, string>;  // 自定义 locale 展示名（合并到 prompt）
   };
 
-  /** 路径配置 */
-  paths: {
-    locale: string;         // 主语言文件目录
-    customLocale?: string;  // 定制语言文件目录
-    exportLocale?: string;  // 导出目录
-    source: string;         // 源码扫描目录
-    tImport?: string;       // t 函数导入路径
-    glossary?: string;      // 翻译词表（glossary）文件路径
+  /** IO 配置：目录 / 扫描 / 落盘 */
+  io?: {
+    sourceDir?: string;         // 源码扫描根，默认 'src'
+    localesDir?: string;        // 主语言文件目录，默认 'src/i18n'
+    exportDir?: string;         // 发布目录（可选）
+    customDir?: string;         // 定制 override 目录（可选）
+    include?: string[];         // 文件 glob（默认含 vue/tsx/jsx/ts/js）
+    exclude?: string[];         // 默认含 node_modules + test/spec/stories
+    format?: 'flat' | 'nested'; // JSON 落盘格式，默认 'nested'
+    indent?: number;            // JSON 缩进字符数，默认 2
+    prettify?: boolean;         // 是否过 Prettier，默认 true
   };
 
-  /** LLM API 配置 */
-  llm: {
-    /** 共享默认配置，idGeneration / translation 未指定字段会继承 */
-    default?: Partial<LLMConfig>;
-    /** ID 生成接口，未指定字段继承 default */
-    idGeneration?: Partial<LLMConfig>;
-    /** 翻译接口，未指定字段继承 default */
-    translation?: Partial<LLMConfig>;
+  /** Keys 配置：前缀派生 + 兜底 + 复用 */
+  keys?: {
+    separator?: string;         // 段分隔符，默认 '.'
+    prefix?:
+      | {
+          strategy: 'path';
+          anchor?: string;      // 锚点目录，默认 'src'
+          skip?: number;        // 跳过 anchor 后前 N 段
+          take?: number;        // 保留 N 段（0 = 不限）
+          includeFile?: boolean;// 是否把文件名作为最后一段
+          fileNameCase?: 'as-is' | 'camel' | 'kebab' | 'snake' | ((name: string) => string);
+          preserveHyphens?: boolean;  // 保留段中的连字符（默认 true）
+          indexFile?: 'as-is' | 'collapse-to-parent'; // index.* 处理；默认 collapse-to-parent
+          transform?: (segment: string, index: number, ctx: PrefixContext) => string | null;
+        }
+      | { strategy: 'fixed'; value: string }
+      | { strategy: 'custom'; resolve: (filePath: string, ctx: PrefixContext) => string[] }
+      | {
+          // rules：按文件路径分派到不同的子策略（pages/components/utils 各走各的）
+          strategy: 'rules';
+          rules: Array<{
+            match: string | string[] | RegExp | ((filePath: string) => boolean);
+            use: PathStrategy | FixedStrategy | CustomStrategy; // 不允许嵌套 rules
+          }>;
+          fallback?: PathStrategy | FixedStrategy | CustomStrategy; // 可省略，未命中则无前缀
+        };
+    fallback?: {
+      extend?: boolean;                       // 与内置 18 条合并，默认 true
+      mappings?: Record<string, string>;
+    };
+    reuse?: {
+      acrossDirectories?: boolean;            // 默认 false
+      promoteToCommon?: { threshold: number; namespace?: string };
+    };
+    dynamicKeyAllowlist?: (string | RegExp)[]; // doctor 跳过动态 key 误报
+    skip?: (key: string, message: string) => boolean; // doctor untranslated 跳过判定
   };
 
-  /** 自定义 AI 提示词 */
-  prompts?: {
-    idGeneration?: { system?: string; user?: string };
-    translation?: { system?: string; user?: string };
+  /** 文本提取扩展 */
+  extract?: {
+    filterPatterns?: RegExp[];  // 命中即跳过提取
   };
 
-  /** 翻译词表配置（命中词表则跳过 LLM 翻译） */
+  /** 翻译词表 */
   glossary?: {
-    override?: 'always' | 'when-empty';  // 默认 'always'
-    normalize?: boolean;                  // 默认 true
+    file?: string;              // 词表 JSON 路径（未设置即禁用）
+    override?: 'always' | 'when-empty';
+    normalize?: boolean;
   };
 
-  /** ID 前缀配置 */
-  idPrefix?: {
-    anchor?: string;                        // 锚点目录，默认 'src'
-    value?: string;                         // 自定义固定前缀
-    separator?: string;                     // 分隔符，默认 '__'
-    chineseMappings?: Record<string, string>; // 中文常用词映射
-    reuseAcrossDirectories?: boolean;       // 是否跨目录复用 key，默认 false
+  /** LLM 配置 */
+  llm: {
+    shared?: {                  // 共享基线，任务级覆盖
+      apiKey?: string;
+      baseURL?: string;
+      model?: string;
+      timeout?: number;
+      maxRetries?: number;
+      temperature?: number;
+      headers?: Record<string, string>;
+    };
+    idGeneration?: LLMTaskConfig;
+    translation?: LLMTaskConfig;
   };
 
-  /** 并发控制 */
-  concurrency?: {
-    idGeneration?: number;  // ID 生成并发数，默认 5
-    translation?: number;   // 翻译并发数，默认 3
+  /** 分桶导出（按规则把 key 分到不同语言文件） */
+  buckets?: {
+    rules: BucketRule[];
+    defaultBucket?: string;     // 默认 'common'
+    emitManifest?: boolean;     // 默认 true
+    layout?: 'by-locale' | 'by-bucket';
   };
 
-  /** 翻译批次大小，默认 10 */
-  batchSize?: number;
+  /** 合并阶段策略 */
+  merge?: {
+    onLlmRejected?: 'fallback-to-source' | 'warn-only';
+  };
 
-  /** 批次间延时（毫秒），默认 500 */
-  batchDelay?: number;
-
-  /** 是否自动格式化代码，默认 true */
-  format?: boolean;
-
-  /** 文件包含模式，默认 ['**/*.vue', '**/*.tsx', '**/*.jsx', '**/*.ts', '**/*.js'] */
-  include?: string[];
-
-  /**
-   * 排除目录/文件，默认包含常见构建产物及根目录工具配置：
-   * ['node_modules', 'dist', 'build', '.git', 'public',
-   *  '*.config.ts', '*.config.js', '*.config.mjs', '*.config.cjs']
-   */
-  exclude?: string[];
-
-  /** 模块化导出配置（按 glob/规则分桶到 <lang>/<module>.json，未配置则单文件输出） */
-  modules?: ModulesConfig;
-
-  /** 导出格式配置：'flat'（默认）或 'nested'（按 separator 拆分 key 为树形结构） */
-  output?: { format?: 'flat' | 'nested' };
+  /** CI 集成 */
+  ci?: {
+    coverageThreshold?: number;  // 0-100，CLI --coverage-threshold 优先级更高
+  };
 }
 ```
 
-### LLM 配置
+### LLM 任务配置
 
 ```typescript
-interface LLMConfig {
-  /** API 密钥 */
-  apiKey: string;
-
-  /** 模型名称 */
-  model: string;
-
-  /** API 地址（非 OpenAI 服务时需设置） */
+interface LLMTaskConfig {
+  // shared 中的所有字段均可在任务级覆盖
+  apiKey?: string;
   baseURL?: string;
-
-  /** 超时时间（毫秒），默认 60000 */
+  model?: string;
   timeout?: number;
-
-  /** 最大重试次数，默认 2 */
   maxRetries?: number;
-
-  /** 温度参数，默认 0.1 */
   temperature?: number;
+  headers?: Record<string, string>;
+
+  // 任务级独有字段
+  concurrency?: number;       // 默认 5
+  batchSize?: number;         // 默认 30
+  throttleMs?: number;        // 批次间最小间隔，默认 500
+  prompt?: {
+    system?: string;          // 完全覆盖默认 system prompt
+    user?: string;            // user prompt 模板
+  };
 }
 ```
 
@@ -359,15 +390,12 @@ interface LLMConfig {
 
 ```typescript
 export default defineConfig({
-  rootDir: __dirname,
-  framework: 'vue',
-  paths: {
-    locale: 'src/locale',
-    source: 'src',
-  },
+  root: __dirname,
+  framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+  locales: { source: 'zh-CN', targets: ['en-US'] },
+  io: { sourceDir: 'src', localesDir: 'src/i18n' },
   llm: {
-    idGeneration: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
-    translation: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
+    shared: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
   },
 });
 ```
@@ -376,19 +404,17 @@ export default defineConfig({
 
 ```typescript
 export default defineConfig({
-  rootDir: __dirname,
-  framework: 'react',
-  react: {
+  root: __dirname,
+  framework: {
+    type: 'react',
     library: 'react-intl',
-  },
-  paths: {
-    locale: 'src/locales',
-    source: 'src',
     tImport: '@/utils/intl',
+    includeDefaultMessage: true,
   },
+  locales: { source: 'zh-CN', targets: ['en-US'] },
+  io: { sourceDir: 'src', localesDir: 'src/locales' },
   llm: {
-    idGeneration: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
-    translation: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
+    shared: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
   },
 });
 ```
@@ -397,54 +423,64 @@ export default defineConfig({
 
 ```typescript
 export default defineConfig({
-  rootDir: __dirname,
-  framework: 'vue',
-  paths: {
-    locale: 'src/locale',
-    source: 'src',
-  },
+  root: __dirname,
+  framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+  locales: { source: 'zh-CN', targets: ['en-US'] },
+  io: { sourceDir: 'src', localesDir: 'src/i18n' },
   llm: {
-    idGeneration: {
+    shared: {
       apiKey: process.env.DEEPSEEK_API_KEY!,
       model: 'deepseek-chat',
       baseURL: 'https://api.deepseek.com',
     },
-    translation: {
-      apiKey: process.env.DEEPSEEK_API_KEY!,
-      model: 'deepseek-chat',
-      baseURL: 'https://api.deepseek.com',
-    },
+  },
+});
+```
+
+#### 多目标语种 + 任务级独立调优
+
+```typescript
+export default defineConfig({
+  root: __dirname,
+  framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+  locales: { source: 'zh-CN', targets: ['en-US', 'ja-JP', 'ko-KR'] },
+  io: { sourceDir: 'src', localesDir: 'src/i18n' },
+  llm: {
+    shared: { apiKey: process.env.LLM_API_KEY!, baseURL: 'https://api.deepseek.com' },
+    // ID 用更便宜更快的模型，翻译用质量更高的模型
+    idGeneration: { model: 'deepseek-chat', concurrency: 10, batchSize: 50 },
+    translation:  { model: 'gpt-4o',        concurrency: 3,  batchSize: 20 },
   },
 });
 ```
 
 ## 高级特性
 
-### 模块化导出（modules）
+### 分桶导出（buckets）
 
-适用于大型项目按业务域拆分语言包。配置 `rules` 后，`export` 会把 key 按规则分桶到 `<lang>/<module>.json`，未匹配的 key 落入 `defaultModule`（默认 `common`）。
+适用于大型项目按业务域拆分语言包。配置 `buckets.rules` 后，generate / merge / export 会把 key 按规则分桶到子目录，未匹配的 key 落入 `defaultBucket`（默认 `common`）。
 
 ```typescript
 export default defineConfig({
   // ... 其他配置
-  modules: {
+  buckets: {
     rules: [
-      // 按源码路径匹配（picomatch glob，相对 rootDir）
+      // 按源码路径匹配（picomatch glob，相对 root）
       { name: 'order',   match: 'src/views/order/**' },
       { name: 'product', match: ['src/views/product/**', 'src/components/product/**'] },
       // 按 key 内容匹配（不依赖源码位置）
-      { name: 'error',   matchKey: (key) => key.startsWith('error__') },
+      { name: 'error',   matchKey: (key) => key.startsWith('error.') },
       // 也支持 RegExp / (filePath, key, message) => boolean
     ],
-    defaultModule: 'common',     // 未命中规则的 key 归属，默认 'common'
-    manifest: true,              // 是否生成 manifest.json，默认 true
-    layout: 'by-locale',         // 'by-locale': locale/<lang>/<module>.json（默认）
-                                 // 'by-module': locale/<module>/<lang>.json
+    defaultBucket: 'common',     // 未命中规则的 key 归属，默认 'common'
+    emitManifest: true,          // 是否生成 manifest.json，默认 true
+    layout: 'by-locale',         // 'by-locale': <lang>/<bucket>.json（默认）
+                                 // 'by-bucket': <bucket>/<lang>.json
   },
 });
 ```
 
-**匹配优先级**：rules 数组顺序优先（先匹配先归属），同一 key 最多归属一个模块。`match` 与 `matchKey` 互斥，loader 会校验。
+**匹配优先级**：rules 数组顺序优先（先匹配先归属），同一 key 最多归属一个桶。`match` 与 `matchKey` 互斥，loader 会校验。
 
 ### 翻译词表（glossary）
 
@@ -454,45 +490,47 @@ export default defineConfig({
 // i18n.config.ts
 export default defineConfig({
   // ... 其他配置
-  paths: {
-    // ... 其他路径
-    glossary: 'src/locale/glossary.json',
-  },
   glossary: {
-    override: 'always',     // 'always'（默认）覆盖已有译文 / 'when-empty' 仅在缺失时使用
-    normalize: true,        // 匹配前 trim + 空白压缩，默认 true
+    file: 'src/i18n/glossary.json',  // 词表文件路径（相对 root）；未设置即禁用词表功能
+    override: 'always',               // 'always'（默认）覆盖已有译文 / 'when-empty' 仅在缺失时使用
+    normalize: true,                  // 匹配前 trim + 空白压缩，默认 true
   },
 });
 ```
 
 ```json
-// src/locale/glossary.json — 按目标语言分组
+// src/i18n/glossary.json — 可混用两种值形态
 {
-  "en-US": {
-    "确认": "Confirm",
-    "取消": "Cancel",
-    "我的订单": "My Orders"
+  // 简化版：仅作用于 locales.targets[0]
+  "确认": "Confirm",
+
+  // 完整版：按目标语言独立设译文（多目标场景推荐）
+  "我的订单": {
+    "en-US": "My Orders",
+    "ja-JP": "マイオーダー"
   }
 }
 ```
 
-### 嵌套输出（output.format）
+### 落盘格式（io.format）
 
-默认导出扁平 key/value（如 `{ "views__order__submit": "提交" }`）。配置 `output.format: 'nested'` 后，export 会按 `idPrefix.separator` 拆分 key 生成树形 JSON：
+控制语言文件序列化为扁平 key 还是嵌套树形 JSON：
 
 ```typescript
-output: { format: 'nested' }
+io: { format: 'nested' }    // 默认；要求 keys.separator='.'
+// 或
+io: { format: 'flat', /* ... */ }, keys: { separator: '__' }
 ```
 
 ```json
-// flat（默认）
-{ "views__order__submit": "提交" }
-
-// nested
+// 'nested'（默认）
 { "views": { "order": { "submit": "提交" } } }
+
+// 'flat'
+{ "views.order.submit": "提交" }
 ```
 
-注：仅影响 `export` 输出，工具内部工作文件始终为扁平结构，避免合并冲突。
+注：影响 generate / merge / export 全部产物。`flat` + `__` 与 `nested` + `.` 是两套自洽组合；混用会被 loader 拦截（nested 必须用 `.` 分隔）。
 
 ### Dry-run + Plan 回放（generate）
 
@@ -728,27 +766,27 @@ await auto.execute('src/views', false);
 ## 生成的文件结构
 
 ```
-src/locale/                 # 主语言文件目录
+src/i18n/                   # io.localesDir：主语言文件目录（默认 'src/i18n'）
 ├── zh-CN.json              # 源语言文件（generate 生成/更新）
 ├── en-US.json              # 目标语言文件（merge 更新）
 ├── untranslated.json       # 待翻译条目（pick 生成，translate 填充）
 └── translations.json       # 已翻译条目（pick 生成，merge 读取）
 
-src/overrides/locale/       # 定制目录（--custom 模式）
-├── zh-CN.json              # 定制源语言文件
-├── en-US.json              # 定制目标语言文件
-├── untranslated.json       # 定制待翻译条目
-└── translations.json       # 定制已翻译条目
+<io.customDir>/             # 定制目录（--custom 模式；仅在 io.customDir 配置后启用）
+├── zh-CN.json
+├── en-US.json
+├── untranslated.json
+└── translations.json
 
-public/locale/              # 导出目录（export 生成，单文件模式）
+<io.exportDir>/             # export 模式输出目录（如 'public/locale'，单文件布局）
 ├── zh-CN.json              # 合并后的最终源语言包
 └── en-US.json              # 合并后的最终目标语言包
 ```
 
-**模块化导出模式**（配置了 `modules` 时）：
+**分桶模式**（配置了 `buckets` 时）：
 
 ```
-public/locale/              # by-locale 布局（默认）
+<io.exportDir>/             # by-locale 布局（默认）
 ├── zh-CN/
 │   ├── common.json
 │   ├── order.json
@@ -757,10 +795,10 @@ public/locale/              # by-locale 布局（默认）
 │   ├── common.json
 │   ├── order.json
 │   └── product.json
-└── manifest.json           # 模块清单（manifest: true 时生成）
+└── manifest.json           # 桶清单（emitManifest: true 时生成，默认 true）
 
-# 或 by-module 布局
-public/locale/
+# 或 by-bucket 布局
+<io.exportDir>/
 ├── common/
 │   ├── zh-CN.json
 │   └── en-US.json
@@ -771,8 +809,8 @@ public/locale/
 
 **文件说明**：
 - `untranslated.json` 和 `translations.json` 是工作流中间文件，可在发布时忽略
-- `export` 会合并主目录和定制目录的语言文件，检测 key 冲突
-- 模块化模式下，generate/merge 阶段的工作目录也会自动按模块分桶
+- `export` 会合并主目录与 `io.customDir` 的语言文件，检测 key 冲突
+- 分桶模式下，generate/merge 阶段的工作目录也会自动按桶组织
 
 ## 常见问题
 
@@ -813,20 +851,29 @@ const msg = t('welcome_user', { username });
 ```typescript
 export default defineConfig({
   // ...
-  idPrefix: {
-    anchor: 'src',           // 从 src 目录开始提取路径
-    separator: '__',          // 分隔符
-    // value: 'myapp',        // 使用固定前缀（覆盖路径提取）
-    chineseMappings: {        // 自定义中文词映射（用于本地 ID 生成兜底）
-      '确认': 'confirm',
-      '取消': 'cancel',
-      // ...
+  keys: {
+    separator: '.',                  // 段分隔符（nested 模式必须为 '.'）
+    prefix: {
+      strategy: 'path',              // 'path' | 'fixed' | 'custom'
+      anchor: 'src',                 // 从 src 目录开始派生路径
+      // skip: 1,                    // 可选：跳过 anchor 后前 N 段
+      // take: 3,                    // 可选：保留 N 段（0 = 不限）
+      // includeFile: true,          // 可选：把文件名加入前缀末尾
+    },
+    fallback: {
+      extend: true,                  // 与内置 18 条合并，默认 true
+      mappings: {                    // 自定义中文兜底映射
+        // 自定义术语: 'customTerm',
+      },
     },
   },
 });
+
+// 想用固定前缀（绕过路径派生）：
+// keys: { prefix: { strategy: 'fixed', value: 'myapp' } }
 ```
 
-生成的 ID 格式：`views__login__welcomeMessage`
+生成的 ID 格式：`views.login.welcomeMessage`（separator='.'）或 `views__login__welcomeMessage`（separator='__'）
 
 **内置的中文常用词映射**（18 个）：
 
@@ -841,19 +888,21 @@ export default defineConfig({
 
 ### Q: restore 模式会覆盖原文件吗？
 
-默认不会。还原后的文件输出到 `<rootDir>/restored/` 目录。如果需要覆盖原文件，可以在程序化调用时设置 `overwrite: true`。
+默认不会。还原后的文件输出到 `<root>/restored/` 目录。如果需要覆盖原文件，可以在程序化调用时设置 `overwrite: true`。
 
 ### Q: 如何配置不同的源语言和目标语言？
 
 ```typescript
 export default defineConfig({
   // ...
-  locale: {
-    source: 'ja-JP',  // 日语作为源语言
-    target: 'en-US',  // 英语作为目标语言
+  locales: {
+    source: 'ja-JP',           // 日语作为源语言
+    targets: ['en-US', 'zh-CN'], // 多目标语种
   },
 });
 ```
+
+`targets` 是数组，支持多语种同时翻译。loader 会校验 `targets` 不含 `source`、无重复项。
 
 ### Q: generate 中途失败会污染语言文件吗？
 
@@ -865,9 +914,9 @@ export default defineConfig({
 3. **更新语言文件** —— 仅当前两步全部成功才执行
 4. **prettier 格式化** —— 美化步骤，单个失败仅警告不影响正确性
 
-### Q: 模块化导出后单文件流程还能用吗？
+### Q: 分桶导出后单文件流程还能用吗？
 
-可以。不配置 `modules` 时所有行为完全等同——`<lang>.json` 单文件输出。配置 `modules` 后，generate/merge/export 会自动按规则分桶；语言文件的物理结构变成 `<lang>/<module>.json`，但内部 key 表示和 t() 调用方式不变。
+可以。不配置 `buckets` 时所有行为完全等同——`<lang>.json` 单文件输出。配置 `buckets` 后，generate/merge/export 会自动按规则分桶；语言文件的物理结构变成 `<lang>/<bucket>.json`（或 `<bucket>/<lang>.json`），但内部 key 表示和 t() 调用方式不变。
 
 ### Q: dry-run 生成 plan 后，源文件被修改了怎么办？
 

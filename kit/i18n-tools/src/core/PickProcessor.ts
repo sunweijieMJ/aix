@@ -8,8 +8,16 @@ import type { Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
 
 /**
- * Pick处理器
- * 负责生成待翻译文件，将已翻译和待翻译的条目分离
+ * Pick 处理器
+ *
+ * 负责把 locale 文件中"已翻译"与"待翻译"条目分离到 translations.json /
+ * untranslated.json。
+ *
+ * 多目标语种处理约定：
+ *  - untranslated.json schema：每个条目内层包含 source + 所有 targets 字段
+ *  - 判定"待翻译"：任一 target 缺失即视为待翻译条目
+ *  - 词表 lookup 按 target 循环：每个 target 单独命中
+ *  - 统计字段按 target 分组打印
  */
 export class PickProcessor extends FileProcessor {
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
@@ -33,25 +41,40 @@ export class PickProcessor extends FileProcessor {
     const translatedPath = FileUtils.getTranslatedPath(this.config, this.isCustom);
     this.ensureWorkingDirectory();
 
-    const sourceLocale = this.config.locale.source;
-    const targetLocale = this.config.locale.target;
+    const sourceLocale = this.config.locales.source;
+    const targets = this.config.locales.targets;
     const messages = LanguageFileManager.getMessages(this.config, this.isCustom);
-    const zhCNMessages = messages[sourceLocale] || {};
-    const enUSMessages = messages[targetLocale] || {};
+    const sourceMessages = (messages[sourceLocale] || {}) as Record<string, string>;
 
     LoggerUtils.info(
-      `📋 开始分析语言条目，共 ${Object.keys(zhCNMessages).length} 个${sourceLocale}条目`,
+      `📋 开始分析语言条目，共 ${Object.keys(sourceMessages).length} 个 ${sourceLocale} 条目，目标 ${targets.length} 个语种`,
     );
 
     const glossary = Glossary.load(this.config);
-    const analysisResult = this.analyzeTranslationStatus(zhCNMessages, enUSMessages, glossary);
+    // getMessages 返回 ILangMap（含 string | ILangMsg 嵌套类型），但桶式与单文件
+    // 路径都已 flatten 为 Record<string, string>。这里显式收窄类型以匹配下游签名。
+    const analysisResult = this.analyzeTranslationStatus(
+      sourceMessages,
+      messages as unknown as Record<string, Record<string, string>>,
+      glossary,
+    );
     this.saveFiles(untranslatedPath, translatedPath, analysisResult);
     this.displayResults(analysisResult);
   }
 
+  /**
+   * 多 target 分析：对每个 source key，遍历所有 target locale。
+   *
+   * 入口条件：
+   *  - source value 必须是字符串
+   *  - 任一 target 缺失（或被 isValidTranslation 拒收）且未命中词表 → 该 key 进入 untranslated
+   *
+   * 词表 lookup 用 per-target 维度：词表本身支持 `{[locale]: value}`，
+   * 单 target 也可用简化 string 形式（隐式对应 targets[0]）。
+   */
   private analyzeTranslationStatus(
-    zhCNMessages: Record<string, any>,
-    enUSMessages: Record<string, any>,
+    sourceMessages: Record<string, string>,
+    allMessages: Record<string, Record<string, string>>,
     glossary: GlossaryMap | null,
   ): {
     untranslatedEntries: Translations;
@@ -60,67 +83,82 @@ export class PickProcessor extends FileProcessor {
     translatedCount: number;
     glossaryHits: number;
     glossaryOverrides: number;
+    perTargetUntranslated: Record<string, number>;
   } {
-    const sourceLocale = this.config.locale.source;
-    const targetLocale = this.config.locale.target;
+    const sourceLocale = this.config.locales.source;
+    const targets = this.config.locales.targets;
     const { override, normalize } = this.config.glossary;
     const untranslatedEntries: Translations = {};
     const translatedEntries: Translations = {};
-    let untranslatedCount = 0;
-    let translatedCount = 0;
     let glossaryHits = 0;
     let glossaryOverrides = 0;
+    const perTargetUntranslated: Record<string, number> = Object.fromEntries(
+      targets.map((t) => [t, 0]),
+    );
 
-    for (const key in zhCNMessages) {
-      if (!Object.prototype.hasOwnProperty.call(zhCNMessages, key)) continue;
+    for (const key in sourceMessages) {
+      if (!Object.prototype.hasOwnProperty.call(sourceMessages, key)) continue;
 
-      const zhValue = zhCNMessages[key];
-      const enValueRaw = enUSMessages[key];
-      if (typeof zhValue !== 'string') continue;
+      const sourceValue = sourceMessages[key];
+      if (typeof sourceValue !== 'string') continue;
 
-      const enValid = typeof enValueRaw === 'string' && FileUtils.isValidTranslation(enValueRaw);
-      const glossaryHit = glossary
-        ? Glossary.lookup(glossary, zhValue, targetLocale, normalize)
-        : undefined;
+      const perTargetValue: Record<string, string> = {};
+      let hasUntranslated = false;
 
-      let finalEn: string | undefined;
-      if (glossaryHit !== undefined) {
-        if (!enValid) {
-          finalEn = glossaryHit;
-          glossaryHits++;
-        } else if (override === 'always' && enValueRaw !== glossaryHit) {
-          LoggerUtils.info(`🔁 [glossary] 覆盖 ${key}: "${enValueRaw}" → "${glossaryHit}"`);
-          finalEn = glossaryHit;
-          glossaryOverrides++;
-        } else {
-          finalEn = enValueRaw as string;
+      for (const target of targets) {
+        const existing = allMessages[target]?.[key];
+        const valid = typeof existing === 'string' && FileUtils.isValidTranslation(existing);
+        const glossaryHit = glossary
+          ? Glossary.lookup(glossary, sourceValue, target, normalize)
+          : undefined;
+
+        let finalValue: string | undefined;
+        if (glossaryHit !== undefined) {
+          if (!valid) {
+            finalValue = glossaryHit;
+            glossaryHits++;
+          } else if (override === 'always' && existing !== glossaryHit) {
+            LoggerUtils.info(
+              `🔁 [glossary][${target}] 覆盖 ${key}: "${existing}" → "${glossaryHit}"`,
+            );
+            finalValue = glossaryHit;
+            glossaryOverrides++;
+          } else {
+            finalValue = existing as string;
+          }
+        } else if (valid) {
+          finalValue = existing as string;
         }
-      } else if (enValid) {
-        finalEn = enValueRaw as string;
+
+        if (finalValue !== undefined) {
+          perTargetValue[target] = finalValue;
+        } else {
+          perTargetValue[target] = typeof existing === 'string' ? existing : '';
+          hasUntranslated = true;
+          perTargetUntranslated[target]++;
+        }
       }
 
-      if (finalEn !== undefined) {
-        translatedEntries[key] = {
-          [sourceLocale]: zhValue,
-          [targetLocale]: finalEn,
-        };
-        translatedCount++;
+      const entry: Translations[string] = {
+        [sourceLocale]: sourceValue,
+        ...perTargetValue,
+      };
+
+      if (hasUntranslated) {
+        untranslatedEntries[key] = entry;
       } else {
-        untranslatedEntries[key] = {
-          [sourceLocale]: zhValue,
-          [targetLocale]: typeof enValueRaw === 'string' ? enValueRaw : '',
-        };
-        untranslatedCount++;
+        translatedEntries[key] = entry;
       }
     }
 
     return {
       untranslatedEntries,
       translatedEntries,
-      untranslatedCount,
-      translatedCount,
+      untranslatedCount: Object.keys(untranslatedEntries).length,
+      translatedCount: Object.keys(translatedEntries).length,
       glossaryHits,
       glossaryOverrides,
+      perTargetUntranslated,
     };
   }
 
@@ -145,8 +183,9 @@ export class PickProcessor extends FileProcessor {
   private displayResults(
     analysisResult: ReturnType<typeof PickProcessor.prototype.analyzeTranslationStatus>,
   ): void {
-    const sourceLocale = this.config.locale.source;
-    const targetLocale = this.config.locale.target;
+    const sourceLocale = this.config.locales.source;
+    const targets = this.config.locales.targets;
+
     const untranslatedExamples = Object.keys(analysisResult.untranslatedEntries).slice(0, 3);
     if (untranslatedExamples.length > 0) {
       LoggerUtils.info('\n📝 待翻译条目示例:');
@@ -154,7 +193,9 @@ export class PickProcessor extends FileProcessor {
         const item = analysisResult.untranslatedEntries[key]!;
         LoggerUtils.info(`  ${key}:`);
         LoggerUtils.info(`    ${sourceLocale}: "${item[sourceLocale]}"`);
-        LoggerUtils.info(`    ${targetLocale}: "${item[targetLocale] || '(空)'}"`);
+        for (const target of targets) {
+          LoggerUtils.info(`    ${target}: "${item[target] || '(空)'}"`);
+        }
       });
     }
 
@@ -165,7 +206,9 @@ export class PickProcessor extends FileProcessor {
         const item = analysisResult.translatedEntries[key]!;
         LoggerUtils.info(`  ${key}:`);
         LoggerUtils.info(`    ${sourceLocale}: "${item[sourceLocale]}"`);
-        LoggerUtils.info(`    ${targetLocale}: "${item[targetLocale]}"`);
+        for (const target of targets) {
+          LoggerUtils.info(`    ${target}: "${item[target]}"`);
+        }
       });
     }
 
@@ -175,6 +218,14 @@ export class PickProcessor extends FileProcessor {
     LoggerUtils.info(
       `   📋 总计: ${analysisResult.untranslatedCount + analysisResult.translatedCount} 个`,
     );
+    if (targets.length > 1) {
+      LoggerUtils.info(`   📍 按 target 拆分（待翻译数）:`);
+      for (const target of targets) {
+        LoggerUtils.info(
+          `      - ${target}: ${analysisResult.perTargetUntranslated[target] ?? 0} 个`,
+        );
+      }
+    }
     if (analysisResult.glossaryHits > 0 || analysisResult.glossaryOverrides > 0) {
       LoggerUtils.info(
         `   📚 词表命中: ${analysisResult.glossaryHits} 个` +

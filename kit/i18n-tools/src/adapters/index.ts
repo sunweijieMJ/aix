@@ -2,6 +2,8 @@ import type { ResolvedConfig } from '../config';
 import { FrameworkAdapter } from './FrameworkAdapter';
 import { ReactAdapter, type ReactAdapterOptions } from './ReactAdapter';
 import { VueAdapter, type VueAdapterOptions } from './VueAdapter';
+import type { VueI18nLibraryType } from '../strategies/vue/libraries';
+import type { ReactI18nLibraryType } from '../strategies/react/libraries';
 
 export { FrameworkAdapter } from './FrameworkAdapter';
 export { ReactAdapter, type ReactAdapterOptions } from './ReactAdapter';
@@ -22,26 +24,26 @@ export type {
  * 分支并提供新的 Adapter 实现，BaseProcessor 与所有 Processor 子类不需改动。
  */
 export function createFrameworkAdapter(config: ResolvedConfig): FrameworkAdapter {
-  const rejectPatterns = config.extraction.rejectPatterns;
-  switch (config.framework) {
+  const filterPatterns = config.extract.filterPatterns;
+  const tImport = config.framework.tImport;
+  switch (config.framework.type) {
     case 'vue': {
       const options: VueAdapterOptions = {
-        namespace: config.vue.namespace || undefined,
-        rejectPatterns,
+        namespace: config.framework.namespace || undefined,
+        filterPatterns,
       };
-      return new VueAdapter(config.paths.tImport, config.vue.library, options);
+      return new VueAdapter(tImport, config.framework.library as VueI18nLibraryType, options);
     }
     case 'react': {
       const options: ReactAdapterOptions = {
-        namespace: config.react.namespace || undefined,
-        includeDefaultMessage: config.react.includeDefaultMessage,
-        rejectPatterns,
+        namespace: config.framework.namespace || undefined,
+        includeDefaultMessage: config.framework.includeDefaultMessage,
+        filterPatterns,
       };
-      return new ReactAdapter(config.paths.tImport, config.react.library, options);
+      return new ReactAdapter(tImport, config.framework.library as ReactI18nLibraryType, options);
     }
     default: {
-      const exhaustive: never = config.framework;
-      throw new Error(`不支持的框架: ${exhaustive}`);
+      throw new Error(`不支持的框架: ${config.framework.type}`);
     }
   }
 }

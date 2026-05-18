@@ -8,9 +8,12 @@ import { FileProcessor } from './FileProcessor';
 
 /**
  * 导出处理器
- * 负责合并基础语言包和自定义语言包，生成最终的语言包文件
  *
- * 使用 ResolvedConfig 中的路径替代硬编码的 PROJECT_CONFIG
+ * 把基础 + 自定义语言包合并为最终发布产物。
+ *
+ * 多目标语种处理约定：
+ *  - 对 source + 全部 targets 都做 base/custom 合并 + 冲突检测 + 输出
+ *  - manifest.locales 包含全部
  */
 export class ExportProcessor extends FileProcessor {
   constructor(config: ResolvedConfig) {
@@ -21,7 +24,6 @@ export class ExportProcessor extends FileProcessor {
     return '导出语言包';
   }
 
-  // 全局导出，不区分主/定制目录
   protected getDirectoryDescription(): string {
     return '全局';
   }
@@ -31,17 +33,17 @@ export class ExportProcessor extends FileProcessor {
   }
 
   private async _execute(outputDir?: string): Promise<void> {
-    const finalOutputDir = outputDir || this.config.paths.exportLocale;
+    const finalOutputDir = outputDir || this.config.io.exportDir;
     if (!finalOutputDir) {
       throw new Error(
-        '[i18n-tools] export 需要输出目录：请配置 paths.exportLocale，' +
+        '[i18n-tools] export 需要输出目录：请配置 io.exportDir，' +
           '或通过 CLI --output 显式指定。',
       );
     }
 
-    LoggerUtils.info(`📂 基础目录: ${this.config.paths.locale}`);
-    if (this.config.paths.customLocale) {
-      LoggerUtils.info(`📂 定制目录: ${this.config.paths.customLocale}`);
+    LoggerUtils.info(`📂 基础目录: ${this.config.io.localesDir}`);
+    if (this.config.io.customDir) {
+      LoggerUtils.info(`📂 定制目录: ${this.config.io.customDir}`);
     }
     LoggerUtils.info(`📂 输出目录: ${finalOutputDir}`);
 
@@ -50,8 +52,8 @@ export class ExportProcessor extends FileProcessor {
 
   private async performExport(outputDir: string): Promise<void> {
     try {
-      if (this.config.modules) {
-        await this.performModularExport(outputDir);
+      if (this.config.buckets) {
+        await this.performBucketedExport(outputDir);
       } else {
         await this.performFlatExport(outputDir);
       }
@@ -61,51 +63,55 @@ export class ExportProcessor extends FileProcessor {
     }
   }
 
+  /**
+   * 单文件场景的扁平导出。对每个 locale（source + targets）独立做 base/custom 合并。
+   */
   private async performFlatExport(outputDir: string): Promise<void> {
-    const sourceLocale = this.config.locale.source;
-    const targetLocale = this.config.locale.target;
-    const customLocaleDir = this.config.paths.customLocale;
+    const sourceLocale = this.config.locales.source;
+    const targets = this.config.locales.targets;
+    const allLocales = [sourceLocale, ...targets];
+    const customLocaleDir = this.config.io.customDir;
 
-    // 读取后立即扁平化：源文件可能是嵌套（output.format='nested'）也可能扁平。
-    // 必须扁平后再合并/冲突检测，否则嵌套对象的浅合并会让 customSource.<top>
-    // 整块覆盖 baseSource.<top>，静默丢数据。
     const loadFlat = (filePath: string, lang: string, type: '基础' | '自定义'): LocaleMap => {
       const raw = FileUtils.loadLanguageFile<Record<string, any>>(filePath, lang, type);
       return FileUtils.flattenObject(raw) as LocaleMap;
     };
 
-    const baseSource = loadFlat(
-      path.join(this.config.paths.locale, `${sourceLocale}.json`),
-      sourceLocale,
-      '基础',
-    );
-    const baseTarget = loadFlat(
-      path.join(this.config.paths.locale, `${targetLocale}.json`),
-      targetLocale,
-      '基础',
-    );
-
-    const customSource: LocaleMap = customLocaleDir
-      ? loadFlat(path.join(customLocaleDir, `${sourceLocale}.json`), sourceLocale, '自定义')
-      : {};
-    const customTarget: LocaleMap = customLocaleDir
-      ? loadFlat(path.join(customLocaleDir, `${targetLocale}.json`), targetLocale, '自定义')
-      : {};
+    // 一次性加载所有 locale 的 base/custom
+    const baseByLocale = new Map<string, LocaleMap>();
+    const customByLocale = new Map<string, LocaleMap>();
+    for (const locale of allLocales) {
+      baseByLocale.set(
+        locale,
+        loadFlat(path.join(this.config.io.localesDir, `${locale}.json`), locale, '基础'),
+      );
+      customByLocale.set(
+        locale,
+        customLocaleDir
+          ? loadFlat(path.join(customLocaleDir, `${locale}.json`), locale, '自定义')
+          : {},
+      );
+    }
 
     if (customLocaleDir) {
       LoggerUtils.info('🔍 检查语言包冲突...');
-      const sourceConflicts = FileUtils.findConflictingKeys(baseSource, customSource);
-      const targetConflicts = FileUtils.findConflictingKeys(baseTarget, customTarget);
-
-      if (sourceConflicts.length > 0 || targetConflicts.length > 0) {
-        if (sourceConflicts.length > 0) {
-          LoggerUtils.error(
-            `${sourceLocale} 语言包存在 ${sourceConflicts.length} 个冲突键: ${sourceConflicts.join(', ')}`,
-          );
+      const conflictsByLocale: Record<string, string[]> = {};
+      let totalConflicts = 0;
+      for (const locale of allLocales) {
+        const conflicts = FileUtils.findConflictingKeys(
+          baseByLocale.get(locale)!,
+          customByLocale.get(locale)!,
+        );
+        if (conflicts.length > 0) {
+          conflictsByLocale[locale] = conflicts;
+          totalConflicts += conflicts.length;
         }
-        if (targetConflicts.length > 0) {
+      }
+
+      if (totalConflicts > 0) {
+        for (const [locale, conflicts] of Object.entries(conflictsByLocale)) {
           LoggerUtils.error(
-            `${targetLocale} 语言包存在 ${targetConflicts.length} 个冲突键: ${targetConflicts.join(', ')}`,
+            `${locale} 语言包存在 ${conflicts.length} 个冲突键: ${conflicts.join(', ')}`,
           );
         }
         throw new Error('语言包存在冲突，请先解决冲突后再导出。定制包中的 key 不应与基础包重复。');
@@ -113,51 +119,56 @@ export class ExportProcessor extends FileProcessor {
       LoggerUtils.success('✅ 未发现语言包冲突');
     }
 
-    const mergedSource: LocaleMap = { ...baseSource, ...customSource };
-    const mergedTarget: LocaleMap = { ...baseTarget, ...customTarget };
-
+    // 合并并落盘
     FileUtils.ensureDirectoryExists(outputDir);
+    const mergedByLocale = new Map<string, LocaleMap>();
+    for (const locale of allLocales) {
+      mergedByLocale.set(locale, { ...baseByLocale.get(locale)!, ...customByLocale.get(locale)! });
+    }
 
     LoggerUtils.info('\n📊 语言包统计信息:');
-    LoggerUtils.info(`📁 基础语言包 (${this.config.paths.locale}):`);
-    LoggerUtils.info(`   ${sourceLocale}: ${Object.keys(baseSource).length} 个条目`);
-    LoggerUtils.info(`   ${targetLocale}: ${Object.keys(baseTarget).length} 个条目`);
+    LoggerUtils.info(`📁 基础语言包 (${this.config.io.localesDir}):`);
+    for (const locale of allLocales) {
+      LoggerUtils.info(`   ${locale}: ${Object.keys(baseByLocale.get(locale)!).length} 个条目`);
+    }
     if (customLocaleDir) {
       LoggerUtils.info(`📁 自定义语言包 (${customLocaleDir}):`);
-      LoggerUtils.info(`   ${sourceLocale}: ${Object.keys(customSource).length} 个条目`);
-      LoggerUtils.info(`   ${targetLocale}: ${Object.keys(customTarget).length} 个条目`);
+      for (const locale of allLocales) {
+        LoggerUtils.info(`   ${locale}: ${Object.keys(customByLocale.get(locale)!).length} 个条目`);
+      }
     }
     LoggerUtils.info(`📦 合并后语言包:`);
-    LoggerUtils.info(`   ${sourceLocale}: ${Object.keys(mergedSource).length} 个条目`);
-    LoggerUtils.info(`   ${targetLocale}: ${Object.keys(mergedTarget).length} 个条目`);
+    for (const locale of allLocales) {
+      LoggerUtils.info(`   ${locale}: ${Object.keys(mergedByLocale.get(locale)!).length} 个条目`);
+    }
 
-    // 复用 LanguageFileManager 的 serialize 逻辑：把 exportLocale 当作"目标 locale 目录"传入
-    const exportConfig = {
+    // 复用 LanguageFileManager 的 serialize 逻辑：把 outputDir 当作"目标 localesDir"传入
+    const exportConfig: ResolvedConfig = {
       ...this.config,
-      paths: { ...this.config.paths, locale: outputDir },
+      io: { ...this.config.io, localesDir: outputDir },
     };
-    LanguageFileManager.writeLocaleFile(exportConfig, false, mergedSource, sourceLocale);
-    LanguageFileManager.writeLocaleFile(exportConfig, false, mergedTarget, targetLocale);
+    for (const locale of allLocales) {
+      LanguageFileManager.writeLocaleFile(exportConfig, false, mergedByLocale.get(locale)!, locale);
+    }
 
-    const outputSourcePath = path.join(outputDir, `${sourceLocale}.json`);
-    const outputTargetPath = path.join(outputDir, `${targetLocale}.json`);
+    const outputPaths = allLocales.map((l) => path.join(outputDir, `${l}.json`));
     LoggerUtils.success('\n✅ 语言包导出成功!');
-    LoggerUtils.info(`📄 输出文件:\n   ${outputSourcePath}\n   ${outputTargetPath}`);
+    LoggerUtils.info(`📄 输出文件:\n   ${outputPaths.join('\n   ')}`);
 
-    // 嵌套模式下顶层 key 数量少于 flat key 数量，需 flatten 后再比较
-    const separator = this.config.idPrefix.separator;
-    const exportedSource = FileUtils.safeLoadJsonFile<Record<string, any>>(outputSourcePath, {
-      silent: true,
-    });
-    const exportedTarget = FileUtils.safeLoadJsonFile<Record<string, any>>(outputTargetPath, {
-      silent: true,
-    });
-    const flatExportedSource = FileUtils.flattenObject(exportedSource, '', separator);
-    const flatExportedTarget = FileUtils.flattenObject(exportedTarget, '', separator);
-    const ok =
-      Object.keys(flatExportedSource).length === Object.keys(mergedSource).length &&
-      Object.keys(flatExportedTarget).length === Object.keys(mergedTarget).length;
-    if (ok) {
+    // 嵌套模式下顶层 key 数量少于 flat key 数量，flatten 后再比较
+    const separator = this.config.keys.separator;
+    let allOk = true;
+    for (const locale of allLocales) {
+      const exported = FileUtils.safeLoadJsonFile<Record<string, any>>(
+        path.join(outputDir, `${locale}.json`),
+        { silent: true },
+      );
+      const flat = FileUtils.flattenObject(exported, '', separator);
+      if (Object.keys(flat).length !== Object.keys(mergedByLocale.get(locale)!).length) {
+        allOk = false;
+      }
+    }
+    if (allOk) {
       LoggerUtils.success('✅ 导出文件验证通过');
     } else {
       LoggerUtils.warn('导出文件条目数量不匹配');
@@ -165,114 +176,114 @@ export class ExportProcessor extends FileProcessor {
   }
 
   /**
-   * 模块化导出：按模块分桶写入，并在 manifest 配置下生成 manifest.json。
-   *
-   * 读取策略：用 getMessages 兼容单文件和模块化源文件（首次会触发迁移），
-   * 然后用 ModuleResolver 重新给每个 key 分配模块——支持 matchKey 规则，
-   * 以及从 key 前缀反推虚拟文件路径后匹配 glob 规则。
+   * 桶式导出：每个 (locale, bucket) 写一个文件；按 buckets.layout 决定层级。
    */
-  private async performModularExport(outputDir: string): Promise<void> {
-    const { modules } = this.config;
-    if (!modules) return;
+  private async performBucketedExport(outputDir: string): Promise<void> {
+    const { buckets } = this.config;
+    if (!buckets) return;
 
-    const sourceLocale = this.config.locale.source;
-    const targetLocale = this.config.locale.target;
+    const sourceLocale = this.config.locales.source;
+    const targets = this.config.locales.targets;
+    const allLocales = [sourceLocale, ...targets];
 
-    // getMessages 兼容单文件/模块化两种源格式（modules 配置下首次会触发迁移）。
-    // 内部已调用 flattenObject，值均为 string，断言为 LocaleMap 类型安全。
+    // getMessages 兼容单文件/桶式两种源格式（buckets 配置下首次会触发迁移）
     const messages = LanguageFileManager.getMessages(this.config, false);
     const sourceFlat = (messages[sourceLocale] ?? {}) as LocaleMap;
-    const targetFlat = (messages[targetLocale] ?? {}) as LocaleMap;
 
-    // 用 ModuleResolver 为每个 key 分配模块（buildKeyModuleMap 内部也做 key 前缀 → 虚拟路径）
-    const keyModuleMap = LanguageFileManager.buildKeyModuleMap(this.config, sourceFlat);
+    // 用 source 文本驱动分桶（与 generate/merge 一致）
+    const keyBucketMap = LanguageFileManager.buildKeyBucketMap(this.config, sourceFlat);
+    const bucketCount = new Set(Object.values(keyBucketMap)).size;
 
-    const moduleCount = new Set(Object.values(keyModuleMap)).size;
-    LoggerUtils.info('\n📊 模块化语言包统计:');
-    LoggerUtils.info(`   ${sourceLocale}: ${Object.keys(sourceFlat).length} 个条目`);
-    LoggerUtils.info(`   ${targetLocale}: ${Object.keys(targetFlat).length} 个条目`);
-    LoggerUtils.info(`   模块数: ${moduleCount}`);
+    LoggerUtils.info('\n📊 桶式语言包统计:');
+    for (const locale of allLocales) {
+      const flat = (messages[locale] ?? {}) as LocaleMap;
+      LoggerUtils.info(`   ${locale}: ${Object.keys(flat).length} 个条目`);
+    }
+    LoggerUtils.info(`   桶数: ${bucketCount}`);
 
-    const exportConfig = { ...this.config, paths: { ...this.config.paths, locale: outputDir } };
-    LanguageFileManager.writeLocaleFile(
-      exportConfig,
-      false,
-      sourceFlat,
-      sourceLocale,
-      keyModuleMap,
-    );
-    LanguageFileManager.writeLocaleFile(
-      exportConfig,
-      false,
-      targetFlat,
-      targetLocale,
-      keyModuleMap,
-    );
-
-    const moduleNames = [...new Set(Object.values(keyModuleMap))].sort();
-    const locales = [sourceLocale, targetLocale];
-
-    // 每个语言目录生成 index.json，便于消费方按需懒加载时先读模块清单
-    this.writeLocaleIndexFiles(outputDir, locales, moduleNames, modules.layout);
-
-    if (modules.manifest) {
-      this.writeManifest(outputDir, keyModuleMap, locales, modules.layout, modules.defaultModule);
+    const exportConfig: ResolvedConfig = {
+      ...this.config,
+      io: { ...this.config.io, localesDir: outputDir },
+    };
+    for (const locale of allLocales) {
+      LanguageFileManager.writeLocaleFile(
+        exportConfig,
+        false,
+        (messages[locale] ?? {}) as LocaleMap,
+        locale,
+        keyBucketMap,
+      );
     }
 
-    LoggerUtils.success('\n✅ 模块化语言包导出成功!');
+    const bucketNames = [...new Set(Object.values(keyBucketMap))].sort();
+
+    // 每个语言目录生成 index.json，便于消费方按需懒加载
+    this.writeLocaleIndexFiles(outputDir, allLocales, bucketNames, buckets.layout);
+
+    if (buckets.emitManifest) {
+      this.writeManifest(
+        outputDir,
+        keyBucketMap,
+        allLocales,
+        buckets.layout,
+        buckets.defaultBucket,
+      );
+    }
+
+    LoggerUtils.success('\n✅ 桶式语言包导出成功!');
     LoggerUtils.info(`📁 输出目录: ${outputDir}`);
   }
 
-  /** 在每个语言目录写 index.json，列出该目录下的模块清单 */
+  /** 在每个语言目录写 index.json，列出该目录下的桶清单 */
   private writeLocaleIndexFiles(
     outputDir: string,
     locales: string[],
-    moduleNames: string[],
-    layout: 'by-locale' | 'by-module',
+    bucketNames: string[],
+    layout: 'by-locale' | 'by-bucket',
   ): void {
     if (layout !== 'by-locale') return;
     for (const locale of locales) {
       FileUtils.writeJsonFile(path.join(outputDir, locale, 'index.json'), {
-        modules: moduleNames,
+        buckets: bucketNames,
       });
     }
   }
 
   private writeManifest(
     outputDir: string,
-    keyModuleMap: Record<string, string>,
+    keyBucketMap: Record<string, string>,
     locales: string[],
-    layout: 'by-locale' | 'by-module',
-    defaultModule: string,
+    layout: 'by-locale' | 'by-bucket',
+    defaultBucket: string,
   ): void {
-    const modules = [...new Set(Object.values(keyModuleMap))].sort();
+    const bucketNames = [...new Set(Object.values(keyBucketMap))].sort();
     const files: Record<string, Record<string, string>> = {};
 
-    if (layout === 'by-module') {
-      for (const mod of modules) {
-        files[mod] = {};
+    if (layout === 'by-bucket') {
+      for (const bucket of bucketNames) {
+        files[bucket] = {};
         for (const locale of locales) {
-          files[mod][locale] = `${mod}/${locale}.json`;
+          files[bucket][locale] = `${bucket}/${locale}.json`;
         }
       }
     } else {
       for (const locale of locales) {
         files[locale] = {};
-        for (const mod of modules) {
-          files[locale][mod] = `${locale}/${mod}.json`;
+        for (const bucket of bucketNames) {
+          files[locale][bucket] = `${locale}/${bucket}.json`;
         }
       }
     }
 
     const manifest = {
-      modules,
+      buckets: bucketNames,
       locales: [...locales].sort(),
       layout,
-      defaultModule,
+      defaultBucket,
       generatedAt: new Date().toISOString(),
       files,
     };
     FileUtils.writeJsonFile(path.join(outputDir, 'manifest.json'), manifest);
-    LoggerUtils.info(`📄 已生成 manifest.json，包含 ${modules.length} 个模块`);
+    LoggerUtils.info(`📄 已生成 manifest.json，包含 ${bucketNames.length} 个桶`);
   }
 }

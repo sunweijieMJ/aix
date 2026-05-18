@@ -102,12 +102,7 @@ export interface CoverageMetric {
  * 1. 出现失败或警告即写盘；都没有时返回 null，不产生空文件。
  * 2. 落盘位置：`<rootDir>/.i18n-tools/logs/`。
  *
- *    旧版用 `node_modules/.cache/i18n-tools/`，看似省事（自动 gitignore），但
- *    `.cache/` 语义是「可丢弃的增量缓存」（ESLint / Babel / webpack 都按这语义
- *    用），与「诊断报告应该在 rm -rf node_modules 后仍保留」相悖，且 CI 缓存
- *    策略通常会按 lockfile hash 失效掉 node_modules 缓存。
- *
- *    迁到 `.i18n-tools/logs/` 后，对齐 .next/ / .turbo/ / .vite/ 等工具的根目录
+ *    放在 `.i18n-tools/logs/` 对齐 .next/ / .turbo/ / .vite/ 等工具的根目录
  *    自有命名空间约定：用户在项目根一眼能找到，grep / 分享 / CI artifact 上传
  *    都方便。首次落盘时自动写一份 `.i18n-tools/.gitignore`（内容 `*`）保持
  *    自包含——不侵入业务的根 `.gitignore`，也避免日志意外入库。

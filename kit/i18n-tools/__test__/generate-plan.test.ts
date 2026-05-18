@@ -45,10 +45,10 @@ describe('GeneratePlanWriter', () => {
     });
 
     const plan: GeneratePlan = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       command: 'generate',
       finishedAt: new Date().toISOString(),
-      rootDir,
+      root: rootDir,
       isCustom: false,
       framework: 'vue',
       summary: { files: entries.length, hits: 0, newKeys: 1 },

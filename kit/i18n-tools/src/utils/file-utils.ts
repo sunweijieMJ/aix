@@ -406,12 +406,12 @@ export class FileUtils {
    */
   static getDirectoryPath(config: ResolvedConfig, isCustom: boolean): string {
     if (isCustom) {
-      if (!config.paths.customLocale) {
-        throw new Error('未配置 paths.customLocale，无法启用定制目录模式');
+      if (!config.io.customDir) {
+        throw new Error('未配置 io.customDir，无法启用定制目录模式');
       }
-      return config.paths.customLocale;
+      return config.io.customDir;
     }
-    return config.paths.locale;
+    return config.io.localesDir;
   }
 
   /**

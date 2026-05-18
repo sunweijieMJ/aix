@@ -75,7 +75,7 @@ const executeGenerate = async (
  */
 const resolveApplyPlanPath = (config: ResolvedConfig, raw: string): string => {
   if (raw === 'latest') {
-    const plansRoot = GeneratePlanWriter.getDefaultPlansRoot(config.rootDir);
+    const plansRoot = GeneratePlanWriter.getDefaultPlansRoot(config.root);
     const found = GeneratePlanWriter.resolveLatest(plansRoot);
     if (!found) {
       LoggerUtils.error(
@@ -332,15 +332,12 @@ const main = async (): Promise<void> => {
 import { defineConfig } from '@kit/i18n-tools';
 
 export default defineConfig({
-  rootDir: __dirname,
-  framework: 'vue',
-  paths: {
-    locale: 'src/locale',
-    source: 'src',
-  },
+  root: __dirname,
+  framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+  locales: { source: 'zh', targets: ['en'] },
+  io: { localesDir: 'src/i18n', sourceDir: 'src' },
   llm: {
-    idGeneration: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
-    translation: { apiKey: process.env.LLM_API_KEY!, model: 'gpt-4o' },
+    shared: { apiKey: process.env.LLM_API_KEY, model: 'gpt-4o' },
   },
 });`);
     process.exit(1);
@@ -348,10 +345,10 @@ export default defineConfig({
 
   // 初始化参数
   let mode = (argv.mode as ModeName) || ModeName.GENERATE;
-  const hasCustomLocale = Boolean(config.paths.customLocale);
+  const hasCustomLocale = Boolean(config.io.customDir);
   const skipLLM = Boolean(argv.skipLlm);
 
-  // 仅当配置了 paths.customLocale 时，--custom 才有意义；
+  // 仅当配置了 io.customDir 时，--custom 才有意义；
   // EXPORT 模式按设计不区分主/定制目录，--custom 在该模式下静默忽略而非报错。
   // DOCTOR 模式只读，--custom 仅用来指示读哪个目录，未配置 customLocale 时即使
   // 传入也无害（读默认目录），故允许通过。
@@ -362,7 +359,7 @@ export default defineConfig({
     argv.mode !== ModeName.DOCTOR
   ) {
     LoggerUtils.error(
-      '❌ 未配置 paths.customLocale，无法使用 --custom。请在 i18n.config 中显式配置定制目录后再启用此选项。',
+      '❌ 未配置 io.customDir，无法使用 --custom。请在 i18n.config 中显式配置定制目录后再启用此选项。',
     );
     process.exit(1);
   }
@@ -406,9 +403,11 @@ export default defineConfig({
     const location = mode === ModeName.EXPORT ? '全局' : custom ? '定制目录' : '主目录';
     LoggerUtils.info(`📍 操作目录: ${location}`);
   }
-  LoggerUtils.info(`⚡ 项目框架: ${config.framework} (${frameworkInfo.libraryName})`);
+  LoggerUtils.info(`⚡ 项目框架: ${config.framework.type} (${frameworkInfo.libraryName})`);
 
-  const coverageThreshold = argv['coverage-threshold'] as number | undefined;
+  // CLI 优先：用户传 --coverage-threshold 时覆盖 config.ci.coverageThreshold
+  const coverageThreshold =
+    (argv['coverage-threshold'] as number | undefined) ?? config.ci.coverageThreshold;
   const dryRun = Boolean(argv['dry-run']);
   const applyPlanPath = argv['apply-plan'] as string | undefined;
   const keepPlan = Boolean(argv['keep-plan']);

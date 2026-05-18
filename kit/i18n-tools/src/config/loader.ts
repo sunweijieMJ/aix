@@ -3,134 +3,54 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 import { createJiti } from 'jiti';
 import {
-  DEFAULT_BATCH_DELAY,
-  DEFAULT_BATCH_SIZE,
-  DEFAULT_CONCURRENCY,
-  DEFAULT_EXCLUDE,
+  BUILTIN_CN_MAPPINGS,
+  DEFAULT_BUCKETS,
+  DEFAULT_CI,
+  DEFAULT_EXTRACT,
   DEFAULT_GLOSSARY,
-  DEFAULT_ID_PREFIX,
-  DEFAULT_INCLUDE,
-  DEFAULT_LLM_MAX_RETRIES,
+  DEFAULT_IO,
+  DEFAULT_KEYS,
   DEFAULT_LLM_MODEL,
-  DEFAULT_LLM_TEMPERATURE,
-  DEFAULT_LLM_TIMEOUT,
-  DEFAULT_LOCALE,
-  DEFAULT_MERGE_REJECTED_STRATEGY,
-  DEFAULT_MODULES_DEFAULT_MODULE,
-  DEFAULT_MODULES_LAYOUT,
-  DEFAULT_MODULES_MANIFEST,
-  DEFAULT_OUTPUT_FORMAT,
-  DEFAULT_PATHS,
-  DEFAULT_REACT,
-  DEFAULT_VUE,
+  DEFAULT_LLM_TASK,
+  DEFAULT_LOCALES,
+  DEFAULT_MERGE,
+  DEFAULT_REACT_FRAMEWORK,
+  DEFAULT_VUE_FRAMEWORK,
 } from './defaults';
-import type { I18nToolsConfig, LLMConfig, ResolvedConfig } from './types';
+import type {
+  BucketsConfig,
+  FrameworkConfig,
+  I18nToolsConfig,
+  LLMConfig,
+  LLMTaskConfig,
+  PrefixStrategyConfig,
+  ResolvedConfig,
+  ResolvedLLMTaskConfig,
+  ResolvedNestedPrefixStrategy,
+  ResolvedPrefixStrategy,
+} from './types';
 
-type ResolvedLLMConfig = Required<Omit<LLMConfig, 'baseURL'>> & Pick<LLMConfig, 'baseURL'>;
-
-/**
- * 将 llm.default 与任务级配置合并，生成完整的 LLM 配置。
- * 合并优先级: 任务级字段 > llm.default > 全局默认值
- * 若合并后 apiKey 仍为空，则抛出明确错误。
- */
-function resolveLLMConfig(llm: I18nToolsConfig['llm']): {
-  idGeneration: ResolvedLLMConfig;
-  translation: ResolvedLLMConfig;
-} {
-  const base = llm.default ?? {};
-
-  const resolveTask = (
-    task: Partial<LLMConfig> | undefined,
-    taskName: string,
-  ): ResolvedLLMConfig => {
-    const merged = { ...base, ...task };
-    if (!merged.apiKey) {
-      throw new Error(
-        `llm.${taskName}.apiKey 未配置。` + `请在 llm.default 或 llm.${taskName} 中设置 apiKey。`,
-      );
-    }
-    return {
-      apiKey: merged.apiKey,
-      model: merged.model ?? DEFAULT_LLM_MODEL,
-      baseURL: merged.baseURL,
-      timeout: merged.timeout ?? DEFAULT_LLM_TIMEOUT,
-      maxRetries: merged.maxRetries ?? DEFAULT_LLM_MAX_RETRIES,
-      temperature: merged.temperature ?? DEFAULT_LLM_TEMPERATURE,
-    };
-  };
-
-  return {
-    idGeneration: resolveTask(llm.idGeneration, 'idGeneration'),
-    translation: resolveTask(llm.translation, 'translation'),
-  };
-}
+// =============================================================================
+// 配置文件加载与解析
+// =============================================================================
 
 /**
- * 解析并校验模块化导出配置（modules）。
+ * 配置文件候选列表。
  *
- * 校验项：
- * - rules 必须是非空数组
- * - rule.name 必须存在、为字符串、且全局唯一
- * - rule.match 与 rule.matchKey 互斥（不可同时存在，也不可都缺失）
- *
- * 通过后填充 defaultModule / manifest / layout 的默认值。
+ * 扩展：ts/mts/cts 由 jiti 转译；mjs/cjs/js 走原生 dynamic import。
+ * 优先级按数组顺序——同目录同时存在多个文件时取首个。
  */
-export function resolveModules(modules: I18nToolsConfig['modules']): ResolvedConfig['modules'] {
-  if (!modules) return undefined;
-
-  if (!Array.isArray(modules.rules) || modules.rules.length === 0) {
-    const received = Array.isArray(modules.rules) ? '空数组' : typeof modules.rules;
-    throw new Error(`modules.rules 必须是非空数组，实际收到: ${received}`);
-  }
-
-  const names = new Set<string>();
-  for (const [i, rule] of modules.rules.entries()) {
-    if (!rule.name || typeof rule.name !== 'string') {
-      throw new Error(`modules.rules[${i}] 的 name 字段缺失或非字符串`);
-    }
-    if (names.has(rule.name)) {
-      throw new Error(`modules.rules 中存在重复的 name: "${rule.name}"`);
-    }
-    names.add(rule.name);
-
-    const hasMatch = rule.match !== undefined;
-    const hasMatchKey = rule.matchKey !== undefined;
-    if (hasMatch && hasMatchKey) {
-      throw new Error(`模块规则 "${rule.name}" 不能同时配置 match 与 matchKey`);
-    }
-    if (!hasMatch && !hasMatchKey) {
-      throw new Error(`模块规则 "${rule.name}" 必须提供 match 或 matchKey 之一`);
-    }
-  }
-
-  const defaultModule = modules.defaultModule ?? DEFAULT_MODULES_DEFAULT_MODULE;
-
-  // defaultModule 与 rule.name 重名会造成 writeModularLocaleFile 把未命中 key
-  // 与命中该 rule 的 key 写入同一桶文件，语义模糊且难以追踪，禁用之。
-  if (names.has(defaultModule)) {
-    throw new Error(
-      `modules.defaultModule "${defaultModule}" 与同名 rule 冲突。` +
-        `请把 defaultModule 改为另一个不在 rules 中的名称（如 "common"）。`,
-    );
-  }
-
-  return {
-    rules: modules.rules,
-    defaultModule,
-    manifest: modules.manifest ?? DEFAULT_MODULES_MANIFEST,
-    layout: modules.layout ?? DEFAULT_MODULES_LAYOUT,
-  };
-}
-
-/**
- * 配置文件名候选列表
- */
-const CONFIG_FILE_NAMES = ['i18n.config.ts', 'i18n.config.js', 'i18n.config.mjs'];
+const CONFIG_FILE_NAMES = [
+  'i18n.config.ts',
+  'i18n.config.mts',
+  'i18n.config.cts',
+  'i18n.config.mjs',
+  'i18n.config.cjs',
+  'i18n.config.js',
+];
 
 /**
  * 查找配置文件
- * @param startDir - 起始搜索目录
- * @returns 配置文件路径或 null
  */
 export function findConfigFile(startDir: string): string | null {
   for (const fileName of CONFIG_FILE_NAMES) {
@@ -143,17 +63,11 @@ export function findConfigFile(startDir: string): string | null {
 }
 
 /**
- * 加载配置文件
+ * 加载配置文件。
  *
- * 配置文件不存在返回 null（CLI 据此提示"未找到配置文件"）；
- * 配置文件存在但加载失败（语法错误、导入失败等）会重新抛出原始错误，
- * 不再被静默吞为 null —— 否则用户会看到误导性的"找不到配置文件"提示。
+ * 配置文件不存在返回 null；加载失败抛出原始错误（不再静默吞为 null）。
  *
- * Why jiti：Node ESM 运行时不识别 TypeScript 语法，直接 `import()` 一个 `.ts`
- * 文件会抛 `Unknown file extension ".ts"`。`i18n.config.ts` 是 README 推荐的首选
- * 命名，必须通过 jiti（或同类 TS loader）才能在生产 dist/cli.js 下加载。
- *
- * @param configPath - 配置文件路径（可选，不传则自动查找）
+ * Why jiti：Node ESM 不识别 TypeScript，jiti 转译 .ts/.mts/.cts 后才能 import。
  */
 export async function loadConfigFile(configPath?: string): Promise<I18nToolsConfig | null> {
   const resolvedPath = configPath || findConfigFile(process.cwd());
@@ -167,7 +81,6 @@ export async function loadConfigFile(configPath?: string): Promise<I18nToolsConf
     let configModule: { default?: unknown } & Record<string, unknown>;
 
     if (ext === '.ts' || ext === '.mts' || ext === '.cts') {
-      // .ts 系列必须经 jiti 转译；jiti 自己处理 module URL 解析
       const jiti = createJiti(import.meta.url, { interopDefault: true });
       configModule = (await jiti.import(resolvedPath)) as typeof configModule;
     } else {
@@ -184,130 +97,387 @@ export async function loadConfigFile(configPath?: string): Promise<I18nToolsConf
   }
 }
 
+// =============================================================================
+// 子模块解析
+// =============================================================================
+
 /**
- * 解析配置：合并用户配置与默认值，将相对路径转为绝对路径
- * @param userConfig - 用户配置
- * @returns 已解析的完整配置
+ * 解析 framework 配置 + 与 library 做联合校验。
+ *
+ * - type='vue' 时，library 必须 ∈ {vue-i18n, vue-i18next}
+ * - type='react' 时，library 必须 ∈ {react-intl, react-i18next}
+ * - 未知 type 留给抽象层扩展，但当前不接受（loader 严校验）
+ */
+function resolveFramework(framework: FrameworkConfig): ResolvedConfig['framework'] {
+  if (framework.type === 'vue') {
+    const library = framework.library ?? DEFAULT_VUE_FRAMEWORK.library;
+    const allowed: ReadonlyArray<typeof library> = ['vue-i18n', 'vue-i18next'];
+    if (!allowed.includes(library)) {
+      throw new Error(
+        `framework.library 与 type='vue' 不匹配：实际 '${library}'，期望 ${allowed.map((s) => `'${s}'`).join(' | ')}`,
+      );
+    }
+    return {
+      type: 'vue',
+      library,
+      namespace: framework.namespace ?? DEFAULT_VUE_FRAMEWORK.namespace,
+      tImport: framework.tImport ?? DEFAULT_VUE_FRAMEWORK.tImport,
+      includeDefaultMessage: DEFAULT_VUE_FRAMEWORK.includeDefaultMessage,
+    };
+  }
+
+  if (framework.type === 'react') {
+    const library = framework.library ?? DEFAULT_REACT_FRAMEWORK.library;
+    const allowed: ReadonlyArray<typeof library> = ['react-intl', 'react-i18next'];
+    if (!allowed.includes(library)) {
+      throw new Error(
+        `framework.library 与 type='react' 不匹配：实际 '${library}'，期望 ${allowed.map((s) => `'${s}'`).join(' | ')}`,
+      );
+    }
+    return {
+      type: 'react',
+      library,
+      namespace: framework.namespace ?? DEFAULT_REACT_FRAMEWORK.namespace,
+      tImport: framework.tImport ?? DEFAULT_REACT_FRAMEWORK.tImport,
+      includeDefaultMessage:
+        framework.includeDefaultMessage ?? DEFAULT_REACT_FRAMEWORK.includeDefaultMessage,
+    };
+  }
+
+  // exhaustiveness：当用户传入未知 type 时显式拒绝
+  const exhaustive: never = framework;
+  throw new Error(`不支持的 framework.type: ${JSON.stringify(exhaustive)}`);
+}
+
+/**
+ * 解析非嵌套子策略（path / fixed / custom）。
+ *
+ * 单独抽出便于 rules.use / rules.fallback 递归调用，同时强制类型禁止再嵌套 rules。
+ */
+function resolveNestedPrefixStrategy(
+  prefix: PrefixStrategyConfig | undefined,
+  context: string,
+): ResolvedNestedPrefixStrategy {
+  if (!prefix || prefix.strategy === 'path') {
+    const p = prefix ?? { strategy: 'path' as const };
+    return {
+      strategy: 'path',
+      anchor: p.anchor ?? DEFAULT_KEYS.prefix.anchor,
+      skip: Math.max(0, p.skip ?? DEFAULT_KEYS.prefix.skip),
+      take: Math.max(0, p.take ?? DEFAULT_KEYS.prefix.take),
+      includeFile: p.includeFile ?? DEFAULT_KEYS.prefix.includeFile,
+      fileNameCase: p.fileNameCase ?? DEFAULT_KEYS.prefix.fileNameCase,
+      preserveHyphens: p.preserveHyphens ?? DEFAULT_KEYS.prefix.preserveHyphens,
+      indexFile: p.indexFile ?? DEFAULT_KEYS.prefix.indexFile,
+      transform: p.transform,
+    };
+  }
+
+  if (prefix.strategy === 'fixed') {
+    if (!prefix.value || typeof prefix.value !== 'string') {
+      throw new Error(`${context}: strategy='fixed' 必须提供非空的 value 字段`);
+    }
+    return { strategy: 'fixed', value: prefix.value };
+  }
+
+  if (prefix.strategy === 'custom') {
+    if (typeof prefix.resolve !== 'function') {
+      throw new Error(`${context}: strategy='custom' 必须提供 resolve 函数`);
+    }
+    return { strategy: 'custom', resolve: prefix.resolve };
+  }
+
+  if (prefix.strategy === 'rules') {
+    throw new Error(`${context}: 不允许嵌套 strategy='rules'（仅顶层支持，避免无限套娃）`);
+  }
+
+  const exhaustive: never = prefix;
+  throw new Error(`${context}: 未知的 strategy ${JSON.stringify(exhaustive)}`);
+}
+
+/**
+ * 解析前缀策略。strategy 字段做状态校验，避免隐式状态机。
+ *
+ * 顶层支持 path / fixed / custom / rules；其中 rules.use 和 rules.fallback 不允许再嵌套 rules。
+ */
+function resolvePrefixStrategy(prefix: PrefixStrategyConfig | undefined): ResolvedPrefixStrategy {
+  if (prefix && prefix.strategy === 'rules') {
+    if (!Array.isArray(prefix.rules) || prefix.rules.length === 0) {
+      const received = Array.isArray(prefix.rules) ? '空数组' : typeof prefix.rules;
+      throw new Error(`keys.prefix.rules 必须是非空数组，实际收到: ${received}`);
+    }
+    const resolvedRules = prefix.rules.map((rule, i) => {
+      if (rule.match === undefined || rule.match === null) {
+        throw new Error(`keys.prefix.rules[${i}].match 缺失`);
+      }
+      const m = rule.match;
+      const okType =
+        typeof m === 'string' || Array.isArray(m) || m instanceof RegExp || typeof m === 'function';
+      if (!okType) {
+        throw new Error(
+          `keys.prefix.rules[${i}].match 必须是 string | string[] | RegExp | function，实际 ${typeof m}`,
+        );
+      }
+      return {
+        match: rule.match,
+        use: resolveNestedPrefixStrategy(rule.use, `keys.prefix.rules[${i}].use`),
+      };
+    });
+    return {
+      strategy: 'rules',
+      rules: resolvedRules,
+      fallback: prefix.fallback
+        ? resolveNestedPrefixStrategy(prefix.fallback, 'keys.prefix.fallback')
+        : undefined,
+    };
+  }
+
+  return resolveNestedPrefixStrategy(prefix, 'keys.prefix');
+}
+
+/**
+ * 解析 LLM 配置：把 shared 与 task 合并、校验必填字段。
+ *
+ * 合并优先级：任务级字段 > shared > 全局默认值。
+ * apiKey 仍是 task 级必填——shared 缺省时由 task 显式提供也可。
+ */
+function resolveLLM(llm: LLMConfig): ResolvedConfig['llm'] {
+  const shared = llm.shared ?? {};
+
+  const resolveTask = (
+    task: LLMTaskConfig | undefined,
+    taskName: string,
+  ): ResolvedLLMTaskConfig => {
+    const merged: LLMTaskConfig = { ...shared, ...task };
+    if (!merged.apiKey) {
+      throw new Error(
+        `llm.${taskName}.apiKey 未配置。请在 llm.shared 或 llm.${taskName} 中设置 apiKey。`,
+      );
+    }
+    if (!merged.model) {
+      merged.model = DEFAULT_LLM_MODEL;
+    }
+    return {
+      apiKey: merged.apiKey,
+      baseURL: merged.baseURL,
+      model: merged.model,
+      timeout: merged.timeout ?? DEFAULT_LLM_TASK.timeout,
+      maxRetries: merged.maxRetries ?? DEFAULT_LLM_TASK.maxRetries,
+      temperature: merged.temperature ?? DEFAULT_LLM_TASK.temperature,
+      headers: merged.headers,
+      concurrency: Math.max(1, merged.concurrency ?? DEFAULT_LLM_TASK.concurrency),
+      batchSize: Math.max(1, merged.batchSize ?? DEFAULT_LLM_TASK.batchSize),
+      throttleMs: Math.max(0, merged.throttleMs ?? DEFAULT_LLM_TASK.throttleMs),
+      prompt: {
+        system: merged.prompt?.system,
+        user: merged.prompt?.user,
+      },
+    };
+  };
+
+  return {
+    idGeneration: resolveTask(llm.idGeneration, 'idGeneration'),
+    translation: resolveTask(llm.translation, 'translation'),
+  };
+}
+
+/**
+ * 解析并校验分桶配置（buckets）。
+ *
+ * 校验项：
+ *  - rules 必须是非空数组
+ *  - rule.name 必须存在且全局唯一
+ *  - rule.match 与 rule.matchKey 互斥
+ *  - defaultBucket 不能与任一 rule.name 重名
+ */
+export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConfig['buckets'] {
+  if (!buckets) return undefined;
+
+  if (!Array.isArray(buckets.rules) || buckets.rules.length === 0) {
+    const received = Array.isArray(buckets.rules) ? '空数组' : typeof buckets.rules;
+    throw new Error(`buckets.rules 必须是非空数组，实际收到: ${received}`);
+  }
+
+  const names = new Set<string>();
+  for (const [i, rule] of buckets.rules.entries()) {
+    if (!rule.name || typeof rule.name !== 'string') {
+      throw new Error(`buckets.rules[${i}] 的 name 字段缺失或非字符串`);
+    }
+    if (names.has(rule.name)) {
+      throw new Error(`buckets.rules 中存在重复的 name: "${rule.name}"`);
+    }
+    names.add(rule.name);
+
+    const hasMatch = rule.match !== undefined;
+    const hasMatchKey = rule.matchKey !== undefined;
+    if (hasMatch && hasMatchKey) {
+      throw new Error(`桶规则 "${rule.name}" 不能同时配置 match 与 matchKey`);
+    }
+    if (!hasMatch && !hasMatchKey) {
+      throw new Error(`桶规则 "${rule.name}" 必须提供 match 或 matchKey 之一`);
+    }
+  }
+
+  const defaultBucket = buckets.defaultBucket ?? DEFAULT_BUCKETS.defaultBucket;
+
+  if (names.has(defaultBucket)) {
+    throw new Error(
+      `buckets.defaultBucket "${defaultBucket}" 与同名 rule 冲突。` +
+        `请把 defaultBucket 改为另一个不在 rules 中的名称（如 "common"）。`,
+    );
+  }
+
+  return {
+    rules: buckets.rules,
+    defaultBucket,
+    emitManifest: buckets.emitManifest ?? DEFAULT_BUCKETS.emitManifest,
+    layout: buckets.layout ?? DEFAULT_BUCKETS.layout,
+  };
+}
+
+// =============================================================================
+// 顶层 resolveConfig
+// =============================================================================
+
+/**
+ * 解析配置：合并用户配置与默认值，将相对路径转为绝对路径。
  */
 export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
-  const rootDir = path.resolve(userConfig.rootDir);
+  const root = path.resolve(userConfig.root);
 
-  const resolved: ResolvedConfig = {
-    rootDir,
-    framework: userConfig.framework,
-    vue: {
-      library: userConfig.vue?.library ?? DEFAULT_VUE.library,
-      namespace: userConfig.vue?.namespace ?? DEFAULT_VUE.namespace,
-    },
-    react: {
-      library: userConfig.react?.library ?? DEFAULT_REACT.library,
-      namespace: userConfig.react?.namespace ?? DEFAULT_REACT.namespace,
-      includeDefaultMessage:
-        userConfig.react?.includeDefaultMessage ?? DEFAULT_REACT.includeDefaultMessage,
-    },
-    locale: {
-      source: userConfig.locale?.source ?? DEFAULT_LOCALE.source,
-      target: userConfig.locale?.target ?? DEFAULT_LOCALE.target,
-    },
-    paths: {
-      locale: path.resolve(rootDir, userConfig.paths.locale || DEFAULT_PATHS.locale),
-      customLocale: userConfig.paths.customLocale
-        ? path.resolve(rootDir, userConfig.paths.customLocale)
-        : undefined,
-      exportLocale: userConfig.paths.exportLocale
-        ? path.resolve(rootDir, userConfig.paths.exportLocale)
-        : undefined,
-      source: path.resolve(rootDir, userConfig.paths.source || DEFAULT_PATHS.source),
-      tImport: userConfig.paths.tImport || DEFAULT_PATHS.tImport,
-      glossary: userConfig.paths.glossary
-        ? path.resolve(rootDir, userConfig.paths.glossary)
-        : undefined,
-    },
-    llm: resolveLLMConfig(userConfig.llm),
-    prompts: {
-      idGeneration: {
-        system: userConfig.prompts?.idGeneration?.system,
-        user: userConfig.prompts?.idGeneration?.user,
-      },
-      translation: {
-        system: userConfig.prompts?.translation?.system,
-        user: userConfig.prompts?.translation?.user,
-      },
-    },
-    idPrefix: {
-      anchor: userConfig.idPrefix?.anchor ?? DEFAULT_ID_PREFIX.anchor,
-      value: userConfig.idPrefix?.value ?? DEFAULT_ID_PREFIX.value,
-      separator: userConfig.idPrefix?.separator ?? DEFAULT_ID_PREFIX.separator,
-      chineseMappings: userConfig.idPrefix?.chineseMappings ?? DEFAULT_ID_PREFIX.chineseMappings,
-      reuseAcrossDirectories:
-        userConfig.idPrefix?.reuseAcrossDirectories ?? DEFAULT_ID_PREFIX.reuseAcrossDirectories,
-      maxDepth: userConfig.idPrefix?.maxDepth ?? DEFAULT_ID_PREFIX.maxDepth,
-      promoteToCommon: userConfig.idPrefix?.promoteToCommon
+  // ---- locales ----
+  const localesSource = userConfig.locales?.source ?? DEFAULT_LOCALES.source;
+  // 防御性拷贝：避免下游误把 ResolvedConfig.locales.targets 与 DEFAULT_LOCALES.targets
+  // 共享同一引用，进而通过 push/splice 污染默认值。
+  const localesTargets =
+    userConfig.locales?.targets && userConfig.locales.targets.length > 0
+      ? [...userConfig.locales.targets]
+      : [...DEFAULT_LOCALES.targets];
+  if (localesTargets.includes(localesSource)) {
+    throw new Error(
+      `locales.targets 不能包含 source 语种 '${localesSource}'：实际 targets=${JSON.stringify(localesTargets)}`,
+    );
+  }
+  const duplicateTargets = localesTargets.filter((t, i) => localesTargets.indexOf(t) !== i);
+  if (duplicateTargets.length > 0) {
+    throw new Error(`locales.targets 存在重复语种: ${[...new Set(duplicateTargets)].join(', ')}`);
+  }
+
+  // ---- io ----
+  const io = {
+    sourceDir: path.resolve(root, userConfig.io?.sourceDir ?? DEFAULT_IO.sourceDir),
+    localesDir: path.resolve(root, userConfig.io?.localesDir ?? DEFAULT_IO.localesDir),
+    exportDir: userConfig.io?.exportDir ? path.resolve(root, userConfig.io.exportDir) : undefined,
+    customDir: userConfig.io?.customDir ? path.resolve(root, userConfig.io.customDir) : undefined,
+    include: userConfig.io?.include ?? DEFAULT_IO.include,
+    exclude: userConfig.io?.exclude ?? DEFAULT_IO.exclude,
+    format: userConfig.io?.format ?? DEFAULT_IO.format,
+    indent: Math.max(0, userConfig.io?.indent ?? DEFAULT_IO.indent),
+    prettify: userConfig.io?.prettify ?? DEFAULT_IO.prettify,
+  };
+
+  // ---- keys ----
+  const userFallback = userConfig.keys?.fallback;
+  const extend = userFallback?.extend ?? DEFAULT_KEYS.fallback.extend;
+  const userMappings = userFallback?.mappings ?? {};
+  const mappings = extend ? { ...BUILTIN_CN_MAPPINGS, ...userMappings } : { ...userMappings };
+
+  const keys: ResolvedConfig['keys'] = {
+    separator: userConfig.keys?.separator ?? DEFAULT_KEYS.separator,
+    prefix: resolvePrefixStrategy(userConfig.keys?.prefix),
+    fallback: { extend, mappings },
+    reuse: {
+      acrossDirectories:
+        userConfig.keys?.reuse?.acrossDirectories ?? DEFAULT_KEYS.reuse.acrossDirectories,
+      promoteToCommon: userConfig.keys?.reuse?.promoteToCommon
         ? {
             // 阈值 < 2 等同禁用：单点使用本身不构成"跨模块复用"
-            threshold: Math.max(0, userConfig.idPrefix.promoteToCommon.threshold ?? 0),
-            namespace: userConfig.idPrefix.promoteToCommon.namespace ?? 'common',
+            threshold: Math.max(0, userConfig.keys.reuse.promoteToCommon.threshold ?? 0),
+            namespace: userConfig.keys.reuse.promoteToCommon.namespace ?? 'common',
           }
         : { threshold: 0, namespace: 'common' },
     },
+    dynamicKeyAllowlist: userConfig.keys?.dynamicKeyAllowlist ?? DEFAULT_KEYS.dynamicKeyAllowlist,
+    skip: userConfig.keys?.skip,
+  };
+
+  // ---- ci ----
+  const coverageThreshold = userConfig.ci?.coverageThreshold;
+  if (coverageThreshold !== undefined) {
+    if (
+      typeof coverageThreshold !== 'number' ||
+      !Number.isFinite(coverageThreshold) ||
+      coverageThreshold < 0 ||
+      coverageThreshold > 100
+    ) {
+      throw new Error(
+        `ci.coverageThreshold 必须是 [0, 100] 区间的数字，实际收到: ${JSON.stringify(coverageThreshold)}`,
+      );
+    }
+  }
+
+  const resolved: ResolvedConfig = {
+    root,
+    framework: resolveFramework(userConfig.framework),
+    locales: {
+      source: localesSource,
+      targets: localesTargets,
+      names: userConfig.locales?.names ?? {},
+    },
+    io,
+    keys,
+    extract: {
+      filterPatterns: userConfig.extract?.filterPatterns ?? DEFAULT_EXTRACT.filterPatterns,
+    },
     glossary: {
+      file: userConfig.glossary?.file ? path.resolve(root, userConfig.glossary.file) : undefined,
       override: userConfig.glossary?.override ?? DEFAULT_GLOSSARY.override,
       normalize: userConfig.glossary?.normalize ?? DEFAULT_GLOSSARY.normalize,
     },
-    concurrency: {
-      idGeneration: userConfig.concurrency?.idGeneration ?? DEFAULT_CONCURRENCY.idGeneration,
-      translation: userConfig.concurrency?.translation ?? DEFAULT_CONCURRENCY.translation,
-    },
-    batchSize: userConfig.batchSize ?? DEFAULT_BATCH_SIZE,
-    batchDelay: userConfig.batchDelay ?? DEFAULT_BATCH_DELAY,
-    format: userConfig.format ?? true,
-    include: userConfig.include ?? DEFAULT_INCLUDE,
-    exclude: userConfig.exclude ?? DEFAULT_EXCLUDE,
-    extraction: {
-      rejectPatterns: userConfig.extraction?.rejectPatterns ?? [],
-    },
-    modules: resolveModules(userConfig.modules),
-    output: {
-      format: userConfig.output?.format ?? DEFAULT_OUTPUT_FORMAT,
-    },
+    llm: resolveLLM(userConfig.llm),
+    buckets: resolveBuckets(userConfig.buckets),
     merge: {
-      rejectedStrategy: userConfig.merge?.rejectedStrategy ?? DEFAULT_MERGE_REJECTED_STRATEGY,
+      onLlmRejected: userConfig.merge?.onLlmRejected ?? DEFAULT_MERGE.onLlmRejected,
+    },
+    ci: {
+      coverageThreshold: coverageThreshold ?? DEFAULT_CI.coverageThreshold,
     },
   };
 
-  // 显式校验 merge.rejectedStrategy：用户可能 typo 成其他字符串，提前在 loader 拦下
-  // 比 MergeProcessor 运行时静默走默认分支更易于诊断。
-  const validStrategies = ['fallback-to-source', 'warn-only'];
-  if (!validStrategies.includes(resolved.merge.rejectedStrategy)) {
+  // ---- 显式校验 ----
+  const validRejected = ['fallback-to-source', 'warn-only'];
+  if (!validRejected.includes(resolved.merge.onLlmRejected)) {
     throw new Error(
-      `配置错误：merge.rejectedStrategy 必须是 ${validStrategies.map((s) => `'${s}'`).join(' | ')} 之一，` +
-        `当前收到 '${resolved.merge.rejectedStrategy}'。`,
+      `merge.onLlmRejected 必须是 ${validRejected.map((s) => `'${s}'`).join(' | ')} 之一，` +
+        `当前收到 '${resolved.merge.onLlmRejected}'。`,
     );
   }
 
-  const resolvedSeparator = resolved.idPrefix.separator;
-
-  if (resolved.output.format === 'nested' && resolvedSeparator !== '.') {
+  // io.format='nested' 要求 separator='.'：vue-i18n 用 '.' 遍历嵌套 key
+  if (resolved.io.format === 'nested' && resolved.keys.separator !== '.') {
     throw new Error(
-      `配置错误：output.format='nested' 要求 idPrefix.separator='.'，` +
-        `当前 separator='${resolvedSeparator}'。\n` +
+      `io.format='nested' 要求 keys.separator='.'，` +
+        `当前 separator='${resolved.keys.separator}'。\n` +
         `vue-i18n 用 '.' 遍历嵌套 key，使用其他分隔符会导致运行时 t() 查找失败。\n` +
-        `请将 idPrefix.separator 改为 '.'，并重新执行 generate 以更新所有 key。`,
+        `请将 keys.separator 改为 '.'，并重新执行 generate 以更新所有 key。`,
     );
   }
 
-  // 交叉校验：idPrefix.value 固定前缀 + 模块 glob match 规则会导致虚拟路径反推不准
-  // 详见 LanguageFileManager.buildKeyModuleMap：从 key split 出虚拟路径依赖目录式 prefix，
-  // 若用户用固定 value 覆盖了目录前缀，glob match 规则将命中错误的模块。
-  if (resolved.modules && resolved.idPrefix.value) {
-    const hasGlobMatch = resolved.modules.rules.some(
+  // 交叉校验：非 path 前缀策略（fixed/custom/rules）+ buckets glob match
+  // 会导致 LanguageFileManager.buildKeyBucketMap 用 anchor='src' 反推的虚拟路径不准。
+  if (resolved.buckets && resolved.keys.prefix.strategy !== 'path') {
+    const hasGlobMatch = resolved.buckets.rules.some(
       (rule) => rule.match !== undefined && typeof rule.match !== 'function',
     );
     if (hasGlobMatch) {
+      const desc =
+        resolved.keys.prefix.strategy === 'fixed'
+          ? `'fixed'（value='${resolved.keys.prefix.value}'）`
+          : `'${resolved.keys.prefix.strategy}'`;
       console.warn(
-        `⚠️  配置警告：idPrefix.value='${resolved.idPrefix.value}' 与 modules.rules 的 glob match 规则同用时，\n` +
-          `   模块归属反推依赖目录式 key 结构，固定前缀会导致路径不匹配。\n` +
-          `   建议改用 matchKey（基于 key 字面匹配）或 match 传函数形式精确归类。`,
+        `⚠️  配置警告：keys.prefix.strategy=${desc} 与 buckets.rules 的 glob match 规则同用时，\n` +
+          `   桶归属反推依赖单一 anchor 的目录式 key 结构，非 path 策略会导致路径不匹配。\n` +
+          `   建议把 buckets 规则改用 matchKey（基于 key 字面匹配）或 match 传函数形式精确归类。`,
       );
     }
   }
@@ -317,8 +487,6 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
 
 /**
  * 加载并解析配置（便捷方法）
- * @param configPath - 配置文件路径（可选）
- * @returns 已解析的配置或 null
  */
 export async function loadConfig(configPath?: string): Promise<ResolvedConfig | null> {
   const userConfig = await loadConfigFile(configPath);

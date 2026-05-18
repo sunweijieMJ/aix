@@ -47,8 +47,8 @@ export class RestoreProcessor extends BaseProcessor {
     overwrite: boolean = false,
   ): Promise<void> {
     const options: RestoreOptions = {
-      sourceDir: this.config.rootDir,
-      outputDir: outputDir || path.join(this.config.rootDir, 'restored'),
+      sourceDir: this.config.root,
+      outputDir: outputDir || path.join(this.config.root, 'restored'),
       overwrite,
     };
 
@@ -71,9 +71,9 @@ export class RestoreProcessor extends BaseProcessor {
             ...FileUtils.getFrameworkFiles(
               resolvedTarget,
               this.adapter.getSupportedExtensions(),
-              this.config.exclude,
-              this.config.include,
-              this.config.rootDir,
+              this.config.io.exclude,
+              this.config.io.include,
+              this.config.root,
             ),
           );
         }
@@ -102,9 +102,9 @@ export class RestoreProcessor extends BaseProcessor {
         filesToProcess = FileUtils.getFrameworkFiles(
           options.sourceDir,
           this.adapter.getSupportedExtensions(),
-          this.config.exclude,
-          this.config.include,
-          this.config.rootDir,
+          this.config.io.exclude,
+          this.config.io.include,
+          this.config.root,
         );
       }
 
@@ -198,7 +198,7 @@ export class RestoreProcessor extends BaseProcessor {
     FileUtils.ensureDirectoryExists(path.dirname(actualOutputPath));
     fs.writeFileSync(actualOutputPath, transformedCode, 'utf-8');
 
-    if (this.config.format) {
+    if (this.config.io.prettify) {
       try {
         // 格式化失败不算文件还原失败：源已写盘且语义正确，仅美观问题。
         await formatWithPrettier(actualOutputPath);

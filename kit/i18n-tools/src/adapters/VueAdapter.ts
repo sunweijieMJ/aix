@@ -18,8 +18,8 @@ import { createVueI18nLibrary } from '../strategies/vue/libraries';
 
 export interface VueAdapterOptions {
   namespace?: string;
-  /** 业务侧 config.extraction.rejectPatterns，由工厂从 ResolvedConfig 透传 */
-  rejectPatterns?: readonly RegExp[];
+  /** 业务侧 config.extract.filterPatterns，由工厂从 ResolvedConfig 透传 */
+  filterPatterns?: readonly RegExp[];
 }
 
 /**
@@ -50,7 +50,7 @@ export class VueAdapter extends FrameworkAdapter {
       hookName: library.hookName,
     });
 
-    this.textExtractor = new VueTextExtractor(library, options.rejectPatterns ?? []);
+    this.textExtractor = new VueTextExtractor(library, options.filterPatterns ?? []);
     this.importManager = new VueImportManager(tImport, library);
     this.componentInjector = new VueComponentInjector(library, this.importManager);
     this.transformer = new VueTransformer(library, this.importManager, this.componentInjector);

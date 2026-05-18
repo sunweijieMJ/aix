@@ -1,39 +1,67 @@
-import type { LocaleConfig, PromptsConfig } from '../config';
+import type { ResolvedConfig, ResolvedLLMTaskConfig } from '../config';
+
+// =============================================================================
+// LLM Prompts
+//
+// 设计要点：
+//  - 接受 locales 配置（含 names 扩展表）以解析展示名
+//  - 接受 ResolvedLLMTaskConfig（含 prompt.system/user）以支持用户覆盖
+//  - 翻译 prompt 显式接受单 targetLocale：多目标场景由调用方循环
+// =============================================================================
 
 /**
- * 语言名称映射
+ * 内置语言展示名表。用户可通过 `locales.names` 增量扩展或覆盖。
  */
-const LOCALE_NAMES: Record<string, string> = {
+const BUILTIN_LOCALE_NAMES: Record<string, string> = {
+  zh: 'Chinese',
+  en: 'English',
+  ja: 'Japanese',
+  ko: 'Korean',
+  fr: 'French',
+  de: 'German',
+  es: 'Spanish',
+  pt: 'Portuguese',
+  ru: 'Russian',
+  ar: 'Arabic',
+  th: 'Thai',
+  vi: 'Vietnamese',
   'zh-CN': 'Chinese',
+  'zh-HK': 'Traditional Chinese (Hong Kong)',
+  'zh-TW': 'Traditional Chinese (Taiwan)',
   'en-US': 'English',
+  'en-GB': 'English (UK)',
   'ja-JP': 'Japanese',
   'ko-KR': 'Korean',
   'fr-FR': 'French',
   'de-DE': 'German',
   'es-ES': 'Spanish',
   'pt-BR': 'Portuguese',
+  'pt-PT': 'Portuguese',
   'ru-RU': 'Russian',
   'ar-SA': 'Arabic',
   'th-TH': 'Thai',
   'vi-VN': 'Vietnamese',
 };
 
-function getLocaleName(code: string): string {
-  return LOCALE_NAMES[code] || code;
+/**
+ * 解析语言代码到展示名。优先 locales.names，回退内置表，再回退 code 本身。
+ */
+function getLocaleName(code: string, locales: ResolvedConfig['locales']): string {
+  return locales.names[code] ?? BUILTIN_LOCALE_NAMES[code] ?? code;
 }
 
 /**
  * ID 生成 System Prompt
  */
 export function getIdGenerationSystemPrompt(
-  locale?: LocaleConfig,
-  customPrompts?: PromptsConfig,
+  locales: ResolvedConfig['locales'],
+  task: ResolvedLLMTaskConfig,
 ): string {
-  if (customPrompts?.idGeneration?.system) {
-    return customPrompts.idGeneration.system;
+  if (task.prompt.system) {
+    return task.prompt.system;
   }
 
-  const sourceName = getLocaleName(locale?.source || 'zh-CN');
+  const sourceName = getLocaleName(locales.source, locales);
 
   return `You are an i18n key ID generator. Given a list of ${sourceName} texts, generate semantic camelCase English IDs for each text.
 
@@ -53,41 +81,41 @@ Output format: {"id_list": ["id1", "id2", ...]}`;
  */
 export function getIdGenerationUserPrompt(
   textList: string[],
-  locale?: LocaleConfig,
-  customPrompts?: PromptsConfig,
+  locales: ResolvedConfig['locales'],
+  task: ResolvedLLMTaskConfig,
 ): string {
-  if (customPrompts?.idGeneration?.user) {
-    return customPrompts.idGeneration.user
+  if (task.prompt.user) {
+    return task.prompt.user
       .replace('{count}', String(textList.length))
       .replace('{textList}', JSON.stringify(textList, null, 2));
   }
 
-  const sourceName = getLocaleName(locale?.source || 'zh-CN');
+  const sourceName = getLocaleName(locales.source, locales);
   return `Generate semantic IDs for the following ${textList.length} ${sourceName} texts:\n${JSON.stringify(textList, null, 2)}`;
 }
 
 /**
- * 翻译 System Prompt
+ * 翻译 System Prompt（单目标语种）
  */
 export function getTranslationSystemPrompt(
-  locale?: LocaleConfig,
-  customPrompts?: PromptsConfig,
+  locales: ResolvedConfig['locales'],
+  task: ResolvedLLMTaskConfig,
+  targetLocale: string,
 ): string {
-  if (customPrompts?.translation?.system) {
-    return customPrompts.translation.system;
+  if (task.prompt.system) {
+    return task.prompt.system;
   }
 
-  const sourceCode = locale?.source || 'zh-CN';
-  const targetCode = locale?.target || 'en-US';
-  const sourceName = getLocaleName(sourceCode);
-  const targetName = getLocaleName(targetCode);
+  const sourceCode = locales.source;
+  const sourceName = getLocaleName(sourceCode, locales);
+  const targetName = getLocaleName(targetLocale, locales);
 
-  return `You are a professional translator. Translate the ${sourceName} values (${sourceCode}) in the given JSON to ${targetName} (${targetCode}).
+  return `You are a professional translator. Translate the ${sourceName} values (${sourceCode}) in the given JSON to ${targetName} (${targetLocale}).
 
 Rules:
 1. Keep the JSON structure exactly the same
-2. Only translate ${sourceCode} values to ${targetCode}, do not modify keys or ${sourceCode} values
-3. If ${targetCode} already has a value, keep it unchanged
+2. Only translate ${sourceCode} values to ${targetLocale}, do not modify keys or ${sourceCode} values
+3. If ${targetLocale} already has a value, keep it unchanged
 4. Translations should be natural and professional
 5. CRITICAL — NEVER translate interpolation placeholders. The text inside curly braces \`{...}\` is a variable identifier that must be preserved EXACTLY:
    - Do NOT translate the words inside \`{}\` (e.g., \`{userName}\` must NOT become \`{user name}\` or \`{用户名}\`)
@@ -99,8 +127,8 @@ Rules:
 7. Return valid JSON only, no markdown code fences
 
 Example (correct):
-Input: {"loginWelcome": {"${sourceCode}": "欢迎 {userName}，您有 {count} 条消息", "${targetCode}": ""}}
-Output: {"loginWelcome": {"${sourceCode}": "欢迎 {userName}，您有 {count} 条消息", "${targetCode}": "Welcome {userName}, you have {count} messages"}}
+Input: {"loginWelcome": {"${sourceCode}": "欢迎 {userName}，您有 {count} 条消息", "${targetLocale}": ""}}
+Output: {"loginWelcome": {"${sourceCode}": "欢迎 {userName}，您有 {count} 条消息", "${targetLocale}": "Welcome {userName}, you have {count} messages"}}
 
 Example (WRONG — placeholder translated, do not do this):
 Input  placeholder: \`{内部错误网络异常}\`
@@ -109,18 +137,19 @@ RIGHT output:       \`{内部错误网络异常}\`                    ← keep i
 }
 
 /**
- * 翻译 User Prompt
+ * 翻译 User Prompt（单目标语种）
  */
 export function getTranslationUserPrompt(
   jsonText: string,
-  locale?: LocaleConfig,
-  customPrompts?: PromptsConfig,
+  locales: ResolvedConfig['locales'],
+  task: ResolvedLLMTaskConfig,
+  targetLocale: string,
 ): string {
-  if (customPrompts?.translation?.user) {
-    return customPrompts.translation.user.replace('{jsonText}', jsonText);
+  if (task.prompt.user) {
+    return task.prompt.user.replace('{jsonText}', jsonText);
   }
 
-  const sourceName = getLocaleName(locale?.source || 'zh-CN');
-  const targetName = getLocaleName(locale?.target || 'en-US');
+  const sourceName = getLocaleName(locales.source, locales);
+  const targetName = getLocaleName(targetLocale, locales);
   return `Translate the following i18n entries from ${sourceName} to ${targetName}:\n${jsonText}`;
 }

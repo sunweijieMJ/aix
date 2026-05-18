@@ -143,7 +143,7 @@ export class LocaleValueLinter {
   /**
    * 把 analyze 的结果发送到 sink（console 与可选 RunReport）。
    *
-   * console 输出保留原有可读分组，与历史行为一致：先按类别小标题再展开 details；
+   * console 输出按类别可读分组：先按类别小标题再展开 details；
    * RunReport 接收每条 finding 转成的 ManualEntry，落盘到 `.i18n-tools/logs/`
    * 供事后回查与 doctor 聚合。
    *

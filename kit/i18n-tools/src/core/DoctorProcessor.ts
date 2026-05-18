@@ -82,10 +82,7 @@ export class DoctorProcessor extends BaseProcessor {
 
     // 1. locale value 结构性检查（复用 linter）
     const sourceMap =
-      LanguageFileManager.readLocaleFile(this.config, this.isCustom, this.config.locale.source) ??
-      {};
-    const targetMap =
-      LanguageFileManager.readLocaleFile(this.config, this.isCustom, this.config.locale.target) ??
+      LanguageFileManager.readLocaleFile(this.config, this.isCustom, this.config.locales.source) ??
       {};
 
     findings.push(...this.runLinter(sourceMap));
@@ -94,7 +91,13 @@ export class DoctorProcessor extends BaseProcessor {
     const sourceKeys = this.collectUsedKeysFromSources();
     findings.push(...this.checkMissingKeys(sourceKeys, sourceMap));
     findings.push(...this.checkOrphanKeys(sourceKeys, sourceMap));
-    findings.push(...this.checkUntranslated(sourceMap, targetMap));
+
+    // 多 target untranslated 对账：每个 target 独立检查
+    for (const target of this.config.locales.targets) {
+      const targetMap =
+        LanguageFileManager.readLocaleFile(this.config, this.isCustom, target) ?? {};
+      findings.push(...this.checkUntranslated(sourceMap, targetMap, target));
+    }
 
     this.renderConsole(findings);
     this.recordToReport(findings);
@@ -113,7 +116,7 @@ export class DoctorProcessor extends BaseProcessor {
   /** LocaleValueLinter.analyze → DoctorFinding（严重级别全部归 info） */
   private runLinter(sourceMap: LocaleMap): DoctorFinding[] {
     const lintFindings = LocaleValueLinter.analyze(sourceMap, {
-      separator: this.config.idPrefix.separator,
+      separator: this.config.keys.separator,
     });
     return lintFindings.map((f: LinterFinding) => ({
       category: 'locale-lint',
@@ -143,11 +146,11 @@ export class DoctorProcessor extends BaseProcessor {
   private collectUsedKeysFromSources(): Set<string> {
     const used = new Set<string>();
     const files = FileUtils.getFrameworkFiles(
-      this.config.paths.source,
+      this.config.io.sourceDir,
       this.adapter.getSupportedExtensions(),
-      this.config.exclude,
-      this.config.include,
-      this.config.rootDir,
+      this.config.io.exclude,
+      this.config.io.include,
+      this.config.root,
     );
     const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
     for (const filePath of files) {
@@ -177,6 +180,7 @@ export class DoctorProcessor extends BaseProcessor {
   private checkMissingKeys(sourceKeys: Set<string>, sourceMap: LocaleMap): DoctorFinding[] {
     const findings: DoctorFinding[] = [];
     for (const key of sourceKeys) {
+      if (this.matchesDynamicAllowlist(key)) continue;
       // 动态 key 场景：源码可能是 t(prefix + variable)，工具看到的字面量是 prefix
       // 之类的不完整 key。这里只对"完全等于 locale key"的字面量做严格匹配，
       // 否则会对所有动态 t() 调用噪声报警。
@@ -186,7 +190,7 @@ export class DoctorProcessor extends BaseProcessor {
           severity: 'error',
           title: `源码调用 t('${key}') 但 locale 不存在该 key`,
           details: [
-            `语言: ${this.config.locale.source}`,
+            `语言: ${this.config.locales.source}`,
             '运行时会显示 key 字符串而非翻译，建议补全或修正 key 名',
           ],
           key,
@@ -194,6 +198,23 @@ export class DoctorProcessor extends BaseProcessor {
       }
     }
     return findings;
+  }
+
+  /**
+   * 判定一个 key 是否匹配 keys.dynamicKeyAllowlist。
+   * 命中后跳过 missing-key / orphan-key 判定（用户已声明此前缀来自动态拼接）。
+   */
+  private matchesDynamicAllowlist(key: string): boolean {
+    const list = this.config.keys.dynamicKeyAllowlist;
+    if (list.length === 0) return false;
+    for (const pattern of list) {
+      if (typeof pattern === 'string') {
+        if (key.startsWith(pattern)) return true;
+      } else {
+        if (pattern.test(key)) return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -205,6 +226,7 @@ export class DoctorProcessor extends BaseProcessor {
   private checkOrphanKeys(sourceKeys: Set<string>, sourceMap: LocaleMap): DoctorFinding[] {
     const findings: DoctorFinding[] = [];
     for (const key of Object.keys(sourceMap)) {
+      if (this.matchesDynamicAllowlist(key)) continue;
       if (!sourceKeys.has(key)) {
         findings.push({
           category: 'orphan-key',
@@ -232,22 +254,28 @@ export class DoctorProcessor extends BaseProcessor {
    * 当前实现：value 含中文字符 + target = source → 视为漏译候选。能过滤掉
    * 大部分纯英文/纯符号场景。
    */
-  private checkUntranslated(sourceMap: LocaleMap, targetMap: LocaleMap): DoctorFinding[] {
+  private checkUntranslated(
+    sourceMap: LocaleMap,
+    targetMap: LocaleMap,
+    target: string,
+  ): DoctorFinding[] {
     const chineseRegex = /[一-鿿]/;
     const findings: DoctorFinding[] = [];
+    const skipPredicate = this.config.keys.skip;
     for (const [key, sourceValue] of Object.entries(sourceMap)) {
       const targetValue = targetMap[key];
       if (targetValue === undefined) continue; // 缺译归 missing 类，不重复报
       if (typeof sourceValue !== 'string' || typeof targetValue !== 'string') continue;
       if (!chineseRegex.test(sourceValue)) continue; // 源 value 无中文 → 不参与判定
+      if (skipPredicate && skipPredicate(key, sourceValue)) continue;
       if (sourceValue === targetValue) {
         findings.push({
           category: 'untranslated',
           severity: 'warning',
-          title: `${key} (${this.config.locale.target} 与 ${this.config.locale.source} 完全相同)`,
+          title: `${key} (${target} 与 ${this.config.locales.source} 完全相同)`,
           details: [
             `source: ${this.preview(sourceValue)}`,
-            `target: ${this.preview(targetValue)}`,
+            `target [${target}]: ${this.preview(targetValue)}`,
             '疑似 translate 阶段漏处理；运行 `--mode translate` 重跑或人工补译',
           ],
           key,
@@ -311,10 +339,13 @@ export class DoctorProcessor extends BaseProcessor {
     if (lintFromDoctor.length > 0) {
       // 反向构造 LinterFinding 太啰嗦；直接用 emit 重跑 analyze 更省事
       const localeMap =
-        LanguageFileManager.readLocaleFile(this.config, this.isCustom, this.config.locale.source) ??
-        {};
+        LanguageFileManager.readLocaleFile(
+          this.config,
+          this.isCustom,
+          this.config.locales.source,
+        ) ?? {};
       const analyzeAgain = LocaleValueLinter.analyze(localeMap, {
-        separator: this.config.idPrefix.separator,
+        separator: this.config.keys.separator,
       });
       LocaleValueLinter.emit(analyzeAgain, { console: false, report: this.report });
     }

@@ -32,7 +32,7 @@ export abstract class FileProcessor {
     this.config = config;
     this.isCustom = isCustom;
     this.workingDir = FileUtils.getDirectoryPath(config, isCustom);
-    this.report = new RunReport(this.getCommandName(), config.rootDir);
+    this.report = new RunReport(this.getCommandName(), config.root);
   }
 
   /**

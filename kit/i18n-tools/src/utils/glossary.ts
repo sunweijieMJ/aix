@@ -22,8 +22,8 @@ type RawGlossaryFile = Record<string, RawGlossaryValue>;
  *     "确认": { "en-US": "Confirm", "ja-JP": "確認" }
  *   }
  *
- * 简化版 string 形式由 `config.locale.target` 决定语种，等价于
- * `{ [target]: value }`。完整版直接给 locale → 译文映射。
+ * 简化版 string 形式按 `config.locales.targets[0]` 决定语种，等价于
+ * `{ [firstTarget]: value }`。完整版直接给 locale → 译文映射，多目标场景推荐使用。
  */
 export class Glossary {
   /**
@@ -37,12 +37,12 @@ export class Glossary {
   /**
    * 加载并归一化词表。
    *
-   * - 未配置 `paths.glossary` 或文件不存在 → 静默返回 `null`（与 customLocale 同样的"显式启用"语义）
+   * - 未配置 `glossary.file` 或文件不存在 → 静默返回 `null`（与 io.customDir 同样的"显式启用"语义）
    * - JSON 解析失败 → 抛错（safeLoadJsonFile 已记录错误）
    * - 归一化后键冲突 → 抛错，提醒用户清理重复项
    */
   static load(config: ResolvedConfig): GlossaryMap | null {
-    const filePath = config.paths.glossary;
+    const filePath = config.glossary.file;
     if (!filePath || !fs.existsSync(filePath)) return null;
 
     const raw = FileUtils.safeLoadJsonFile<RawGlossaryFile>(filePath, {
@@ -50,7 +50,9 @@ export class Glossary {
     });
     if (!raw || typeof raw !== 'object') return null;
 
-    const targetLocale = config.locale.target;
+    // 简化版 string 形式默认对应「首个 target locale」；多目标场景下用户应用
+    // 完整版 `{ [locale]: value }` 形式以避免歧义。
+    const fallbackTarget = config.locales.targets[0] ?? '';
     const normalize = config.glossary.normalize;
     const map: GlossaryMap = new Map();
 
@@ -58,7 +60,7 @@ export class Glossary {
       const key = this.normalizeKey(src, normalize);
       const entry: Record<string, string> =
         typeof value === 'string'
-          ? { [targetLocale]: value }
+          ? { [fallbackTarget]: value }
           : { ...(value as Record<string, string>) };
 
       if (map.has(key)) {

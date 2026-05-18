@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { ModuleResolver } from '../src/utils/module-resolver';
+import { BucketResolver } from '../src/utils/bucket-resolver';
 
 const baseConfig = {
-  defaultModule: 'common',
-  manifest: true as const,
+  defaultBucket: 'common',
+  emitManifest: true as const,
   layout: 'by-locale' as const,
 };
 
-describe('ModuleResolver', () => {
+describe('BucketResolver', () => {
   it('glob 字符串匹配', () => {
-    const r = new ModuleResolver({
+    const r = new BucketResolver({
       ...baseConfig,
       rules: [{ name: 'order', match: 'src/views/order/**' }],
     });
@@ -18,7 +18,7 @@ describe('ModuleResolver', () => {
   });
 
   it('glob 数组匹配（任一命中）', () => {
-    const r = new ModuleResolver({
+    const r = new BucketResolver({
       ...baseConfig,
       rules: [{ name: 'user', match: ['src/views/user/**', 'src/api/user/**'] }],
     });
@@ -28,7 +28,7 @@ describe('ModuleResolver', () => {
   });
 
   it('RegExp 匹配', () => {
-    const r = new ModuleResolver({
+    const r = new BucketResolver({
       ...baseConfig,
       rules: [{ name: 'admin', match: /\/admin\// }],
     });
@@ -37,7 +37,7 @@ describe('ModuleResolver', () => {
   });
 
   it('函数匹配（接收 filePath/key/message）', () => {
-    const r = new ModuleResolver({
+    const r = new BucketResolver({
       ...baseConfig,
       rules: [
         {
@@ -51,7 +51,7 @@ describe('ModuleResolver', () => {
   });
 
   it('matchKey 按 key 归属', () => {
-    const r = new ModuleResolver({
+    const r = new BucketResolver({
       ...baseConfig,
       rules: [{ name: 'error', matchKey: (key) => key.startsWith('error.') }],
     });
@@ -60,7 +60,7 @@ describe('ModuleResolver', () => {
   });
 
   it('rules 数组顺序优先（先匹配先归属）', () => {
-    const r = new ModuleResolver({
+    const r = new BucketResolver({
       ...baseConfig,
       rules: [
         { name: 'admin', match: 'src/views/admin/**' },
@@ -72,7 +72,7 @@ describe('ModuleResolver', () => {
   });
 
   it('Windows 风格路径自动规范化为 POSIX', () => {
-    const r = new ModuleResolver({
+    const r = new BucketResolver({
       ...baseConfig,
       rules: [{ name: 'order', match: 'src/views/order/**' }],
     });

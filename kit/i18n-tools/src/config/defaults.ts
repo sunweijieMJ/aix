@@ -1,175 +1,243 @@
 import type {
-  ConcurrencyConfig,
+  BucketsConfig,
+  CIConfig,
+  ExtractConfig,
   GlossaryConfig,
-  IdPrefixConfig,
-  LocaleConfig,
-  PathsConfig,
-  ReactConfig,
-  VueConfig,
+  IoConfig,
+  KeysConfig,
+  LLMTaskConfig,
+  LocalesConfig,
+  MergeConfig,
+  PathPrefixStrategy,
 } from './types';
 
+// =============================================================================
+// 默认值
+//
+// 设计要点：
+//  - 主流项目命中率优先：localesDir 用 src/i18n、tImport 用 @/i18n
+//  - 默认开 nested：现代 vue-i18n 项目主流
+//  - 默认 separator='.'：与 nested 协同，避免新手撞 loader 错误
+//  - 测试/Storybook 默认排除：避免无声提取测试文案
+// =============================================================================
+
+// ---- IO ----
+
 /**
- * 默认路径配置
+ * 默认 IO 配置。
  *
- * `customLocale` / `exportLocale` / `glossary` 不提供默认值：仅当用户在 i18n.config 中
- * 显式配置后才启用——`exportLocale` 缺省即代表"工作目录就是运行时消费目录"，
- * 此时 export 命令被禁用，避免对不存在的目录或文件产生误导性日志。
+ * `exportDir` / `customDir` 不提供默认值：仅当用户显式配置后才启用——
+ * `exportDir` 缺省即代表"工作目录就是运行时消费目录"，此时 export 命令被禁用。
  */
-export const DEFAULT_PATHS: Required<
-  Omit<PathsConfig, 'customLocale' | 'exportLocale' | 'glossary'>
-> = {
-  locale: 'src/locale',
-  source: 'src',
-  tImport: '@/plugins/locale',
+export const DEFAULT_IO: Required<Omit<IoConfig, 'exportDir' | 'customDir'>> = {
+  sourceDir: 'src',
+  localesDir: 'src/i18n',
+  include: ['**/*.vue', '**/*.tsx', '**/*.jsx', '**/*.ts', '**/*.js'],
+  exclude: [
+    'node_modules',
+    'dist',
+    'build',
+    '.git',
+    'public',
+    '*.config.ts',
+    '*.config.js',
+    '*.config.mjs',
+    '*.config.cjs',
+    // 测试 / 故事 / mock：避免无声把测试文案提到 locale
+    '**/*.test.*',
+    '**/*.spec.*',
+    '**/*.stories.*',
+    '**/__tests__/**',
+    '**/__mocks__/**',
+  ],
+  format: 'nested',
+  indent: 2,
+  prettify: true,
 };
 
-/**
- * 默认 Vue 配置
- */
-export const DEFAULT_VUE: Required<VueConfig> = {
-  library: 'vue-i18n',
-  namespace: '',
-};
+// ---- Framework ----
 
 /**
- * 默认 React 配置
+ * Vue 框架默认值（loader 始终用这些值填充，与 framework.type 无关）。
  */
-export const DEFAULT_REACT: Required<ReactConfig> = {
-  library: 'react-i18next',
+export const DEFAULT_VUE_FRAMEWORK = {
+  library: 'vue-i18n' as const,
   namespace: '',
+  tImport: '@/i18n',
+  /** Vue 不消费 includeDefaultMessage，但 ResolvedConfig 统一字段以简化下游消费 */
   includeDefaultMessage: false,
 };
 
 /**
- * 默认语言配置
+ * React 框架默认值。
  */
-export const DEFAULT_LOCALE: Required<LocaleConfig> = {
-  source: 'zh-CN',
-  target: 'en-US',
+export const DEFAULT_REACT_FRAMEWORK = {
+  library: 'react-i18next' as const,
+  namespace: '',
+  tImport: '@/i18n',
+  includeDefaultMessage: false,
 };
 
-/**
- * 默认 ID 前缀配置
- */
-export const DEFAULT_ID_PREFIX: Required<IdPrefixConfig> = {
-  anchor: 'src',
-  value: '',
-  separator: '__',
-  chineseMappings: {
-    确认: 'confirm',
-    取消: 'cancel',
-    删除: 'delete',
-    添加: 'add',
-    编辑: 'edit',
-    保存: 'save',
-    提交: 'submit',
-    搜索: 'search',
-    登录: 'login',
-    退出: 'logout',
-    成功: 'success',
-    失败: 'failed',
-    错误: 'error',
-    警告: 'warning',
-    提示: 'tip',
-    用户: 'user',
-    请输入: 'please_input',
-    请选择: 'please_select',
-  },
-  reuseAcrossDirectories: false,
-  maxDepth: 0,
-  // threshold 为 0 表示未启用，loader/resolver 据此跳过提升逻辑
-  promoteToCommon: { threshold: 0, namespace: 'common' },
-};
+// ---- Locales ----
 
 /**
- * 默认词表配置
+ * 默认语言配置。
  *
- * 仅当用户在 i18n.config 中配置了 paths.glossary 时才会启用词表功能；
+ * 用完整 BCP-47 长码 'zh-CN' / 'en-US' 作为默认，含区域信息更明确；
+ * 表对长短码均已覆盖。
+ */
+export const DEFAULT_LOCALES: Required<Omit<LocalesConfig, 'names'>> &
+  Pick<LocalesConfig, 'names'> = {
+  source: 'zh-CN',
+  targets: ['en-US'],
+  names: {},
+};
+
+// ---- Keys ----
+
+/**
+ * 内置中文兜底映射表。仅当 `keys.fallback.extend=true` 时与用户配置合并。
+ *
+ * 设计：LLM 接管 ID 生成后此表很少被命中，但 skip-llm / LLM 失败时仍是兜底必备。
+ */
+export const BUILTIN_CN_MAPPINGS: Record<string, string> = {
+  确认: 'confirm',
+  取消: 'cancel',
+  删除: 'delete',
+  添加: 'add',
+  编辑: 'edit',
+  保存: 'save',
+  提交: 'submit',
+  搜索: 'search',
+  登录: 'login',
+  退出: 'logout',
+  成功: 'success',
+  失败: 'failed',
+  错误: 'error',
+  警告: 'warning',
+  提示: 'tip',
+  用户: 'user',
+  请输入: 'please_input',
+  请选择: 'please_select',
+};
+
+/**
+ * 默认前缀策略：从 src 起、不限层级、不带文件名。
+ *
+ * 默认行为：
+ * - preserveHyphens=true：保留 kebab 目录名，主流项目大量使用
+ * - indexFile='collapse-to-parent'：includeFile=true 时 `index.*` 折叠到父目录（与 Vue/React 习惯一致）
+ */
+export const DEFAULT_PREFIX_STRATEGY: Required<Omit<PathPrefixStrategy, 'transform'>> = {
+  strategy: 'path',
+  anchor: 'src',
+  skip: 0,
+  take: 0,
+  includeFile: false,
+  fileNameCase: 'camel',
+  preserveHyphens: true,
+  indexFile: 'collapse-to-parent',
+};
+
+/**
+ * 默认 Keys 配置。
+ */
+export const DEFAULT_KEYS: {
+  separator: string;
+  prefix: typeof DEFAULT_PREFIX_STRATEGY;
+  fallback: Required<NonNullable<KeysConfig['fallback']>>;
+  reuse: {
+    acrossDirectories: boolean;
+    promoteToCommon: { threshold: number; namespace: string };
+  };
+  dynamicKeyAllowlist: (string | RegExp)[];
+} = {
+  separator: '.',
+  prefix: DEFAULT_PREFIX_STRATEGY,
+  fallback: {
+    extend: true,
+    mappings: {},
+  },
+  reuse: {
+    acrossDirectories: false,
+    // threshold=0 表示未启用，loader/resolver 据此跳过提升逻辑
+    promoteToCommon: { threshold: 0, namespace: 'common' },
+  },
+  dynamicKeyAllowlist: [],
+};
+
+// ---- Extract ----
+
+/**
+ * 默认文本提取扩展配置。
+ */
+export const DEFAULT_EXTRACT: Required<ExtractConfig> = {
+  filterPatterns: [],
+};
+
+// ---- Glossary ----
+
+/**
+ * 默认词表配置。
+ *
+ * 仅当用户配置了 glossary.file 时才会启用词表功能；
  * 未启用时 override / normalize 也不生效。
  */
-export const DEFAULT_GLOSSARY: Required<GlossaryConfig> = {
+export const DEFAULT_GLOSSARY: Required<Omit<GlossaryConfig, 'file'>> = {
   override: 'always',
   normalize: true,
 };
 
+// ---- LLM ----
+
 /**
- * 默认并发配置
+ * 默认 LLM 任务配置。
+ *
+ * idGeneration / translation 各自独立维护一份默认，避免一处改动影响另一处。
+ * 当前两者默认值相同；保留两个常量是为了将来差异化（如翻译用更大并发）。
  */
-export const DEFAULT_CONCURRENCY: Required<ConcurrencyConfig> = {
-  idGeneration: 5,
-  translation: 3,
+export const DEFAULT_LLM_TASK: Required<
+  Omit<LLMTaskConfig, 'apiKey' | 'baseURL' | 'model' | 'headers' | 'prompt'>
+> = {
+  timeout: 60_000,
+  maxRetries: 2,
+  temperature: 0.1,
+  concurrency: 5,
+  batchSize: 30,
+  throttleMs: 500,
 };
 
-/**
- * 默认翻译批次大小
- */
-export const DEFAULT_BATCH_SIZE = 10;
-
-/**
- * 默认翻译批次间延时（毫秒）
- */
-export const DEFAULT_BATCH_DELAY = 500;
-
-/**
- * 默认 LLM API 超时时间（毫秒）
- */
-export const DEFAULT_LLM_TIMEOUT = 60000;
-
-/**
- * 默认 LLM 模型
- */
+/** 默认 LLM 模型 */
 export const DEFAULT_LLM_MODEL = 'gpt-4o';
 
-/**
- * 默认 LLM 最大重试次数
- */
-export const DEFAULT_LLM_MAX_RETRIES = 2;
+// ---- Buckets ----
 
 /**
- * 默认 LLM 温度参数
+ * 默认分桶配置（仅当用户启用 buckets 后才生效）。
  */
-export const DEFAULT_LLM_TEMPERATURE = 0.1;
+export const DEFAULT_BUCKETS: Required<Omit<BucketsConfig, 'rules'>> = {
+  defaultBucket: 'common',
+  emitManifest: true,
+  layout: 'by-locale',
+};
+
+// ---- Merge ----
 
 /**
- * 默认文件包含模式
- */
-export const DEFAULT_INCLUDE = ['**/*.vue', '**/*.tsx', '**/*.jsx', '**/*.ts', '**/*.js'];
-
-/**
- * 默认排除：含目录名（精确匹配）与文件 glob（仅 `*`/`?`）。
+ * 默认合并策略。
  *
- * - 排除常见构建产物 / 版本控制目录
- * - 排除根目录的工具配置文件，例如 vite.config.ts / tailwind.config.js / i18n.config.ts，
- *   这些文件即使含中文注释也不应被处理为业务源码
+ * 'fallback-to-source'：LLM 拒收条目（如纯标点）用源文本回填到目标语言文件，
+ * 避免运行时显示 key 字符串。
  */
-export const DEFAULT_EXCLUDE = [
-  'node_modules',
-  'dist',
-  'build',
-  '.git',
-  'public',
-  '*.config.ts',
-  '*.config.js',
-  '*.config.mjs',
-  '*.config.cjs',
-];
+export const DEFAULT_MERGE: Required<MergeConfig> = {
+  onLlmRejected: 'fallback-to-source',
+};
+
+// ---- CI ----
 
 /**
- * 模块化导出默认值（仅当用户启用 modules 后才生效）
- */
-export const DEFAULT_MODULES_DEFAULT_MODULE = 'common';
-export const DEFAULT_MODULES_MANIFEST = true;
-export const DEFAULT_MODULES_LAYOUT = 'by-locale' as const;
-
-/**
- * 默认导出格式
- */
-export const DEFAULT_OUTPUT_FORMAT = 'flat' as const;
-
-/**
- * 默认合并策略
+ * 默认 CI 配置。
  *
- * 'fallback-to-source' 是默认：LLM 拒收条目（如纯标点）用源文本回填到目标语言文件，
- * 避免运行时显示 key 字符串。详见 MergeConfig.rejectedStrategy 注释。
+ * coverageThreshold 不提供默认值：未配置 = 不卡覆盖率。
  */
-export const DEFAULT_MERGE_REJECTED_STRATEGY = 'fallback-to-source' as const;
+export const DEFAULT_CI: CIConfig = {};

@@ -19,8 +19,8 @@ export interface ReactAdapterOptions {
   namespace?: string;
   /** 是否在生成的 i18n 调用中携带 defaultMessage（react-intl 等场景） */
   includeDefaultMessage?: boolean;
-  /** 业务侧 config.extraction.rejectPatterns，由工厂从 ResolvedConfig 透传 */
-  rejectPatterns?: readonly RegExp[];
+  /** 业务侧 config.extract.filterPatterns，由工厂从 ResolvedConfig 透传 */
+  filterPatterns?: readonly RegExp[];
 }
 
 /**
@@ -54,7 +54,7 @@ export class ReactAdapter extends FrameworkAdapter {
     };
     super(config);
 
-    this.textExtractor = new ReactTextExtractor(library, options.rejectPatterns ?? []);
+    this.textExtractor = new ReactTextExtractor(library, options.filterPatterns ?? []);
     this.importManager = new ReactImportManager(tImport, library);
     this.componentInjector = new ReactComponentInjector(library, this.importManager);
     this.transformer = new ReactTransformer(library, this.importManager, this.componentInjector, {
