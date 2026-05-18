@@ -73,9 +73,11 @@ export class Composer {
       }
     }
 
+    // caller 传入的 relPath 已被 normalizedRel 归一化为 POSIX 风格（`/` 分隔），
+    // 这里也必须用 `/` 比对——不要用 path.sep，否则 Windows 下永远不命中前缀
     function isExcluded(relPath: string): boolean {
       for (const excluded of excludedPaths) {
-        if (relPath === excluded || relPath.startsWith(excluded + path.sep)) return true;
+        if (relPath === excluded || relPath.startsWith(excluded + '/')) return true;
       }
       return false;
     }
