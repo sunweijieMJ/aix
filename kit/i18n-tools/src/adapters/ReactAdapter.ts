@@ -60,7 +60,7 @@ export class ReactAdapter extends FrameworkAdapter {
     this.transformer = new ReactTransformer(library, this.importManager, this.componentInjector, {
       includeDefaultMessage: options.includeDefaultMessage,
     });
-    this.restoreTransformer = new ReactRestoreTransformer(tImport, library);
+    this.restoreTransformer = new ReactRestoreTransformer(library, tImport);
   }
 
   getTextExtractor(): ITextExtractor {

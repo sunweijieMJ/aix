@@ -72,17 +72,15 @@ export class MergeProcessor extends FileProcessor {
   }
 
   private loadUntranslatedData(filePath: string): Translations | null {
-    try {
-      if (!fs.existsSync(filePath)) {
-        LoggerUtils.error(`❌ 待翻译文件不存在: ${filePath}`);
-        return null;
-      }
-      return FileUtils.safeLoadJsonFile<Translations>(filePath, {
-        errorMessage: '读取待翻译文件失败',
-      });
-    } catch {
+    if (!fs.existsSync(filePath)) {
+      LoggerUtils.error(`❌ 待翻译文件不存在: ${filePath}`);
       return null;
     }
+    // safeLoadJsonFile 内部已吞掉 JSON 解析与 IO 异常并返回 null/默认值，
+    // 不会向上抛——历史上外层包裹的 try/catch 是死路径，已移除。
+    return FileUtils.safeLoadJsonFile<Translations>(filePath, {
+      errorMessage: '读取待翻译文件失败',
+    });
   }
 
   private loadExistingTranslations(filePath: string): Translations {

@@ -1,23 +1,8 @@
-import { parse as parseSFC, babelParse } from '@vue/compiler-sfc';
+import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { IImportManager } from '../../adapters/FrameworkAdapter';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import type { ExtractedString } from '../../utils/types';
 import type { VueI18nLibrary } from './libraries';
-
-/**
- * Vue 编译宏白名单：这些宏的参数必须在编译期静态求值，不能引用 setup 块内
- * 的局部变量（否则触发 vue/valid-define-* 规则与 SFC 编译错误）。
- *
- * 不含 defineExpose —— 其参数是运行时表达式，本来就允许引用 setup 局部。
- */
-const COMPILE_TIME_MACROS = new Set([
-  'defineProps',
-  'defineEmits',
-  'defineModel',
-  'withDefaults',
-  'defineOptions',
-  'defineSlots',
-]);
 
 /**
  * SFC <script> 块定位结果（基于 @vue/compiler-sfc 解析，避免正则在含
@@ -155,101 +140,6 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
-   * 检测 <script setup> 块内容是否存在编译宏（defineProps/defineEmits/
-   * defineModel/withDefaults/defineOptions/defineSlots）的参数子树引用了
-   * 裸的 t() 或 $t() 调用。
-   *
-   * Why: 这些宏的参数必须编译期静态求值，引用 setup 局部变量（包括
-   * `const { t } = useI18n()` 注入的 t）会触发 vue/valid-define-* 规则与
-   * SFC 编译错误。检测命中 → 改走模块顶层 import 路径。
-   *
-   * 解析失败（TS/JSX 语法错误等）保守返回 false —— 维持原默认行为（hook
-   * 注入），不引入额外破坏。
-   */
-  private static setupReferencesTInCompileMacro(setupContent: string): boolean {
-    let ast;
-    try {
-      ast = babelParse(setupContent, {
-        sourceType: 'module',
-        plugins: ['typescript', 'jsx'],
-        errorRecovery: true,
-      });
-    } catch {
-      return false;
-    }
-
-    let hit = false;
-    const visit = (node: unknown): void => {
-      if (hit) return;
-      if (!node || typeof node !== 'object') return;
-      const n = node as { type?: string; callee?: unknown; arguments?: unknown[] };
-      if (n.type === 'CallExpression') {
-        const callee = n.callee as { type?: string; name?: string } | null;
-        if (
-          callee &&
-          callee.type === 'Identifier' &&
-          callee.name &&
-          COMPILE_TIME_MACROS.has(callee.name) &&
-          Array.isArray(n.arguments) &&
-          VueImportManager.subtreeCallsT(n.arguments)
-        ) {
-          hit = true;
-          return;
-        }
-      }
-      for (const key in node) {
-        if (key === 'loc' || key === 'range' || key === 'start' || key === 'end') continue;
-        const value = (node as Record<string, unknown>)[key];
-        if (Array.isArray(value)) {
-          for (const child of value) visit(child);
-        } else if (value && typeof value === 'object') {
-          visit(value);
-        }
-        if (hit) return;
-      }
-    };
-    visit(ast);
-    return hit;
-  }
-
-  /**
-   * 子树内是否存在裸 t() 或 $t() 的 CallExpression（callee 为 Identifier）。
-   * 不匹配 obj.t() / this.$t() 等 MemberExpression 形式 —— 它们不会因
-   * useI18n 注入 t 而出问题。
-   */
-  private static subtreeCallsT(nodes: unknown[]): boolean {
-    let hit = false;
-    const visit = (node: unknown): void => {
-      if (hit) return;
-      if (!node || typeof node !== 'object') return;
-      const n = node as { type?: string; callee?: unknown };
-      if (n.type === 'CallExpression') {
-        const callee = n.callee as { type?: string; name?: string } | null;
-        if (
-          callee &&
-          callee.type === 'Identifier' &&
-          (callee.name === 't' || callee.name === '$t')
-        ) {
-          hit = true;
-          return;
-        }
-      }
-      for (const key in node) {
-        if (key === 'loc' || key === 'range' || key === 'start' || key === 'end') continue;
-        const value = (node as Record<string, unknown>)[key];
-        if (Array.isArray(value)) {
-          for (const child of value) visit(child);
-        } else if (value && typeof value === 'object') {
-          visit(value);
-        }
-        if (hit) return;
-      }
-    };
-    for (const node of nodes) visit(node);
-    return hit;
-  }
-
-  /**
    * 清理 setup 块内由本工具注入的标准形式：
    *   import { useI18n } from 'vue-i18n';
    *   const { t } = useI18n();
@@ -333,20 +223,6 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
-   * 添加 Hook 导入（如 useI18n 或 useTranslation）。
-   *
-   * 仅在 <script setup> 单块场景调用 —— 双块共存场景由 handleGlobalImports 改走
-   * 模块顶层 import { t } from tImport 路径，setup 块直接复用，不注入 hook。
-   */
-  private addHookImport(code: string): string {
-    if (this.library.getImportCheckRegex().test(code)) {
-      return code;
-    }
-    const hookImport = this.library.generateImportStatement();
-    return this.addImportToScript(code, hookImport);
-  }
-
-  /**
    * 添加 Hook 声明（如 const { t } = useI18n() 或 const { t } = useTranslation()）
    *
    * 仅注入到 <script setup>。普通 <script>（Options API）走 this.$t，无需 hook 声明。
@@ -389,16 +265,6 @@ export class VueImportManager implements IImportManager {
     const block = VueImportManager.findScriptBlock(code);
     if (!block) return code;
     const updatedScript = CommonASTUtils.mergeNamedImport(block.content, packageName, names);
-    return code.slice(0, block.start) + updatedScript + code.slice(block.end);
-  }
-
-  /**
-   * 在 <script> 块内追加一条 import 语句
-   */
-  private addImportToScript(code: string, importStatement: string): string {
-    const block = VueImportManager.findScriptBlock(code);
-    if (!block) return code;
-    const updatedScript = CommonASTUtils.appendImportLine(block.content, importStatement);
     return code.slice(0, block.start) + updatedScript + code.slice(block.end);
   }
 

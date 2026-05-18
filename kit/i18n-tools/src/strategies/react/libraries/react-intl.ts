@@ -1,5 +1,7 @@
 import ts from 'typescript';
 import type { ReactI18nLibrary } from './types';
+import type { MessageInfo } from '../../../utils/types';
+import { ReactASTUtils } from '../react-ast-utils';
 
 /**
  * react-intl 库适配器实现
@@ -216,6 +218,22 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
       parent = parent.parent;
     }
     return false;
+  }
+
+  extractCallInfo(
+    node: ts.CallExpression,
+    definedMessages: Map<string, MessageInfo>,
+    sourceFile: ts.SourceFile,
+  ): MessageInfo {
+    return ReactASTUtils.extractFormatMessageInfo(node, definedMessages, sourceFile);
+  }
+
+  extractJSXInfo(
+    openingElement: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
+    definedMessages: Map<string, MessageInfo>,
+    sourceFile: ts.SourceFile,
+  ): MessageInfo {
+    return ReactASTUtils.extractFormattedMessageInfo(openingElement, definedMessages, sourceFile);
   }
 
   private formatValuesMapping(values: Map<string, string>): string {

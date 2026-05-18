@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import type { BaseI18nLibrary } from '../../base';
+import type { MessageInfo } from '../../../utils/types';
 
 /**
  * React i18n 库适配器接口
@@ -139,6 +140,32 @@ export interface ReactI18nLibrary extends BaseI18nLibrary {
    * 检测节点是否已经国际化（避免重复处理）
    */
   isAlreadyInternationalized(node: ts.Node): boolean;
+
+  // ===== Restore 提取 (供 RestoreTransformer 多态分发，消除 packageName 字符串分支) =====
+
+  /**
+   * 从翻译函数调用节点中提取 MessageInfo。
+   *   react-intl:    intl.formatMessage({ id, defaultMessage }, values?)
+   *   react-i18next: t('namespace:key', { defaultValue?, ...values })
+   *
+   * 入参 `node` 已由 RestoreTransformer 通过 `isTranslationCall` 过滤过。
+   */
+  extractCallInfo(
+    node: ts.CallExpression,
+    definedMessages: Map<string, MessageInfo>,
+    sourceFile: ts.SourceFile,
+  ): MessageInfo;
+
+  /**
+   * 从翻译 JSX 组件节点中提取 MessageInfo。
+   *   react-intl:    <FormattedMessage id defaultMessage values />
+   *   react-i18next: <Trans i18nKey defaults values />
+   */
+  extractJSXInfo(
+    openingElement: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
+    definedMessages: Map<string, MessageInfo>,
+    sourceFile: ts.SourceFile,
+  ): MessageInfo;
 }
 
 /** 支持的 React i18n 库类型 */

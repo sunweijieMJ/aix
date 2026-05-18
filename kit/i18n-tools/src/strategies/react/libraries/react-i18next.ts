@@ -1,5 +1,7 @@
 import ts from 'typescript';
 import type { ReactI18nLibrary } from './types';
+import type { MessageInfo } from '../../../utils/types';
+import { CommonASTUtils } from '../../../utils/common-ast-utils';
 
 /**
  * react-i18next 库适配器实现
@@ -236,6 +238,75 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       parent = parent.parent;
     }
     return false;
+  }
+
+  extractCallInfo(
+    node: ts.CallExpression,
+    _definedMessages: Map<string, MessageInfo>,
+    sourceFile: ts.SourceFile,
+  ): MessageInfo {
+    const arg = node.arguments[0];
+    if (!arg) return {};
+
+    const messageInfo: MessageInfo = {};
+
+    if (ts.isStringLiteral(arg)) {
+      messageInfo.id = ReactI18nextLibrary.stripNamespacePrefix(arg.text);
+    }
+
+    const valuesArg = node.arguments[1];
+    if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
+      const props = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
+      // react-i18next 约定：values.defaultValue 实为默认翻译文本，上提到 defaultMessage，
+      // 不参与占位符替换。仅在为字符串时上提，其他形态保持 undefined。
+      if (typeof props.defaultValue === 'string') {
+        messageInfo.defaultMessage = props.defaultValue;
+      }
+      delete props.defaultValue;
+      if (Object.keys(props).length > 0) {
+        messageInfo.values = props;
+      }
+    }
+
+    return messageInfo;
+  }
+
+  extractJSXInfo(
+    openingElement: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
+    _definedMessages: Map<string, MessageInfo>,
+    sourceFile: ts.SourceFile,
+  ): MessageInfo {
+    const messageInfo: MessageInfo = {};
+    for (const attribute of openingElement.attributes.properties) {
+      if (!ts.isJsxAttribute(attribute) || !ts.isIdentifier(attribute.name)) continue;
+
+      const attrName = attribute.name.text;
+      const initializer = attribute.initializer;
+      if (!initializer) continue;
+
+      if (attrName === 'i18nKey' && ts.isStringLiteral(initializer)) {
+        messageInfo.id = ReactI18nextLibrary.stripNamespacePrefix(initializer.text);
+      } else if (attrName === 'defaults' && ts.isStringLiteral(initializer)) {
+        messageInfo.defaultMessage = initializer.text;
+      } else if (
+        attrName === 'values' &&
+        ts.isJsxExpression(initializer) &&
+        initializer.expression &&
+        ts.isObjectLiteralExpression(initializer.expression)
+      ) {
+        messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
+          initializer.expression,
+          sourceFile,
+        );
+      }
+    }
+    return messageInfo;
+  }
+
+  /** 剥离 namespace 前缀：`common:button.submit` → `button.submit` */
+  private static stripNamespacePrefix(id: string): string {
+    const colonIndex = id.indexOf(':');
+    return colonIndex === -1 ? id : id.substring(colonIndex + 1);
   }
 
   private formatValuesMapping(values: Map<string, string>): string {

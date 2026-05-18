@@ -1,7 +1,6 @@
 import fs from 'fs';
 import ts from 'typescript';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
-import { ReactASTUtils } from './react-ast-utils';
 import { ReactImportManager } from './ReactImportManager';
 import { ReactTextExtractor } from './ReactTextExtractor';
 import type { MessageInfo, TransformContext, LocaleMap } from '../../utils/types';
@@ -17,12 +16,14 @@ const isValidMessage = (m: MessageInfo): boolean =>
  * 负责将国际化代码还原为原始文本（由 library 适配器驱动）
  */
 export class ReactRestoreTransformer implements IRestoreTransformer {
-  private tImport: string;
   private library: ReactI18nLibrary;
+  private tImport: string;
 
-  constructor(tImport: string = '@/plugins/locale', library: ReactI18nLibrary) {
-    this.tImport = tImport;
+  // 与 VueRestoreTransformer 保持一致的 (library, tImport) 顺序。tImport 默认值
+  // 由配置层（ReactAdapter）决定，不在策略类中提供，避免双源默认值漂移。
+  constructor(library: ReactI18nLibrary, tImport: string) {
     this.library = library;
+    this.tImport = tImport;
   }
 
   transform(filePath: string, localeMap: LocaleMap): string {
@@ -76,7 +77,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return null;
     }
 
-    const messageInfo = this.extractTranslationCallInfo(node, definedMessages, sourceFile);
+    const messageInfo = this.library.extractCallInfo(node, definedMessages, sourceFile);
     if (!isValidMessage(messageInfo)) {
       return null;
     }
@@ -88,58 +89,6 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     }
 
     return CommonASTUtils.createStringOrTemplateNode(templateToUse, messageInfo.values);
-  }
-
-  /**
-   * 提取翻译调用的信息（根据 library 类型分发）
-   */
-  private extractTranslationCallInfo(
-    node: ts.CallExpression,
-    definedMessages: Map<string, MessageInfo>,
-    sourceFile: ts.SourceFile,
-  ): MessageInfo {
-    // react-intl: intl.formatMessage({ id: 'key' }, { values })
-    if (this.library.packageName === 'react-intl') {
-      return ReactASTUtils.extractFormatMessageInfo(node, definedMessages, sourceFile);
-    }
-
-    // react-i18next: t('key', { values }) 或 t('namespace:key', { values })
-    const arg = node.arguments[0];
-    if (!arg) return {};
-
-    const messageInfo: MessageInfo = {};
-
-    if (ts.isStringLiteral(arg)) {
-      let id = arg.text;
-      // 剥离 namespace 前缀 (如 'common:button.submit' → 'button.submit')
-      const colonIndex = id.indexOf(':');
-      if (colonIndex !== -1) {
-        id = id.substring(colonIndex + 1);
-      }
-      messageInfo.id = id;
-    }
-
-    const valuesArg = node.arguments[1];
-    if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
-      const props: Record<string, string> = {};
-      for (const prop of valuesArg.properties) {
-        if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-          const name = prop.name.text;
-          if (name === 'defaultValue') {
-            messageInfo.defaultMessage = ts.isStringLiteral(prop.initializer)
-              ? prop.initializer.text
-              : undefined;
-          } else {
-            props[name] = prop.initializer.getText(sourceFile);
-          }
-        }
-      }
-      if (Object.keys(props).length > 0) {
-        messageInfo.values = props;
-      }
-    }
-
-    return messageInfo;
   }
 
   /**
@@ -166,7 +115,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return null;
     }
 
-    const messageInfo = this.extractJSXComponentInfo(openingElement, definedMessages, sourceFile);
+    const messageInfo = this.library.extractJSXInfo(openingElement, definedMessages, sourceFile);
     if (!isValidMessage(messageInfo)) {
       return null;
     }
@@ -181,58 +130,6 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     return inJsxChildContext
       ? ts.factory.createJsxText(finalText, false)
       : ts.factory.createStringLiteral(finalText);
-  }
-
-  /**
-   * 提取 JSX 组件的信息（根据 library 类型分发）
-   */
-  private extractJSXComponentInfo(
-    openingElement: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
-    definedMessages: Map<string, MessageInfo>,
-    sourceFile: ts.SourceFile,
-  ): MessageInfo {
-    // react-intl: <FormattedMessage id="key" defaultMessage="text" values={{ }} />
-    if (this.library.packageName === 'react-intl') {
-      return ReactASTUtils.extractFormattedMessageInfo(openingElement, definedMessages, sourceFile);
-    }
-
-    // react-i18next: <Trans i18nKey="key" defaults="text" values={{ }} />
-    const messageInfo: MessageInfo = {};
-    for (const attribute of openingElement.attributes.properties) {
-      if (ts.isJsxAttribute(attribute) && ts.isIdentifier(attribute.name)) {
-        const attrName = attribute.name.text;
-        if (attrName === 'i18nKey' && attribute.initializer) {
-          if (ts.isStringLiteral(attribute.initializer)) {
-            let id = attribute.initializer.text;
-            // 剥离 namespace 前缀
-            const colonIndex = id.indexOf(':');
-            if (colonIndex !== -1) {
-              id = id.substring(colonIndex + 1);
-            }
-            messageInfo.id = id;
-          }
-        } else if (attrName === 'defaults' && attribute.initializer) {
-          if (ts.isStringLiteral(attribute.initializer)) {
-            messageInfo.defaultMessage = attribute.initializer.text;
-          }
-        } else if (attrName === 'values' && attribute.initializer) {
-          if (
-            ts.isJsxExpression(attribute.initializer) &&
-            attribute.initializer.expression &&
-            ts.isObjectLiteralExpression(attribute.initializer.expression)
-          ) {
-            const props: Record<string, string> = {};
-            for (const prop of attribute.initializer.expression.properties) {
-              if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-                props[prop.name.text] = prop.initializer.getText(sourceFile);
-              }
-            }
-            messageInfo.values = props;
-          }
-        }
-      }
-    }
-    return messageInfo;
   }
 
   /**
