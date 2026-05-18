@@ -383,7 +383,7 @@ describe('request retry — dispose during backoff', () => {
     // 推进时间，setTimeout 触发后 disposed 守卫应立即 reject
     await vi.advanceTimersByTimeAsync(500);
 
-    const err = await rejection;
+    const err = (await rejection) as Error;
     expect(err.message).toMatch(/channel disposed/);
     // 关键：未发出第 2 次 attempt
     expect(port.postMessage).toHaveBeenCalledTimes(1);

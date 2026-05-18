@@ -135,7 +135,7 @@ export class PickProcessor extends FileProcessor {
         } else {
           perTargetValue[target] = typeof existing === 'string' ? existing : '';
           hasUntranslated = true;
-          perTargetUntranslated[target]++;
+          perTargetUntranslated[target] = (perTargetUntranslated[target] ?? 0) + 1;
         }
       }
 

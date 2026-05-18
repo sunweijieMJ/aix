@@ -326,7 +326,7 @@ export class IdGenerator {
    */
   private readonly anchor: string;
 
-  constructor(private readonly config: ResolvedConfig) {
+  constructor(config: ResolvedConfig) {
     this.separator = config.keys.separator;
     this.strategy = createPrefixStrategy(config.keys.prefix, this.separator);
     this.mappings = config.keys.fallback.mappings;
