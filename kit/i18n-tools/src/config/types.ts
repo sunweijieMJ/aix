@@ -485,8 +485,13 @@ export interface I18nToolsConfig {
   /** 词表配置 */
   glossary?: GlossaryConfig;
 
-  /** LLM 配置 */
-  llm: LLMConfig;
+  /**
+   * LLM 配置。
+   *
+   * 未配置时仍可运行不依赖 LLM 的命令（restore / pick / merge / export / doctor 等），
+   * 但 idGeneration / translation 等真正调用 LLM 的命令会在执行时报错并提示需配置 apiKey。
+   */
+  llm?: LLMConfig;
 
   /** 分桶配置（可选） */
   buckets?: BucketsConfig;

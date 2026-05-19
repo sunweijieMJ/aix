@@ -45,7 +45,16 @@ export interface ITextExtractor {
  * 类的构造器传入，不在公共接口中暴露，避免框架特定参数污染抽象层。
  */
 export interface ITransformer {
-  transform(filePath: string, extractedStrings: ExtractedString[]): string;
+  /**
+   * 转换源代码：在原文中应用 i18n 替换。
+   *
+   * @param filePath        - 原始文件路径（用于 SFC 解析、语言探测等）
+   * @param extractedStrings - 已提取的待替换字符串
+   * @param sourceText      - 可选：调用方已读取的原始内容。提供时跳过内部 readFileSync，
+   *                          这样调用方可在 transform 前后基于同一份内容做哈希/比对，
+   *                          避免在「读 → transform → 再读」窗口内文件被外部改动引发不一致。
+   */
+  transform(filePath: string, extractedStrings: ExtractedString[], sourceText?: string): string;
 }
 
 /**

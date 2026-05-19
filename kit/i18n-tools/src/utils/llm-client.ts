@@ -78,6 +78,13 @@ export class LLMClient {
    * 调用 LLM chat completion
    */
   private async chatCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+    // lazy 校验：apiKey 在 config.resolveLLM 阶段允许为空（不调 LLM 的命令无需配置），
+    // 真正发起请求时再拦截，给出精准的错误信息。
+    if (!this.task.apiKey) {
+      throw new Error(
+        '调用 LLM 但未配置 apiKey。请在配置文件的 llm.shared 或对应任务（llm.idGeneration / llm.translation）中设置 apiKey。',
+      );
+    }
     await this.throttle();
     const response = await this.openai.chat.completions.create({
       model: this.task.model,

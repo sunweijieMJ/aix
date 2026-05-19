@@ -402,18 +402,25 @@ export class GenerateProcessor extends BaseProcessor {
   private transformToMemory(
     filePaths: string[],
     extractedStrings: ExtractedString[],
-  ): { results: Array<{ file: string; code: string }>; uniqueFilePaths: string[] } {
+  ): {
+    results: Array<{ file: string; code: string; originalContent: string }>;
+    uniqueFilePaths: string[];
+  } {
     const transformer = this.adapter.getTransformer();
     // 即便调用方传入了重复路径（包括 normalize 后仍不一致的情况），也确保每个
     // 文件只 transform 一次——避免在已被改写的源码上重新 parse 时越界。
     const uniqueFilePaths = Array.from(new Set(filePaths.map((p) => path.normalize(p))));
 
-    const results: Array<{ file: string; code: string }> = [];
+    const results: Array<{ file: string; code: string; originalContent: string }> = [];
     const failures: Array<{ file: string; error: unknown }> = [];
     for (const filePath of uniqueFilePaths) {
       try {
-        const code = transformer.transform(filePath, extractedStrings);
-        results.push({ file: filePath, code });
+        // 先一次性 read 原文：既作为 transform 的输入，也作为 dry-run plan 的 hash 基准。
+        // 这样保证 plan 中记录的 sourceHash 与 transformedSources 来自同一文件快照，
+        // 消除「transform 内部读 → writePlan 又读」窗口被外部并发改动导致的不一致。
+        const originalContent = fs.readFileSync(filePath, 'utf-8');
+        const code = transformer.transform(filePath, extractedStrings, originalContent);
+        results.push({ file: filePath, code, originalContent });
       } catch (error) {
         LoggerUtils.error(`❌ 转换失败 ${FileUtils.getRelativePath(filePath)}:`, error);
         failures.push({ file: filePath, error });
@@ -518,7 +525,12 @@ export class GenerateProcessor extends BaseProcessor {
       return;
     }
 
-    await this.commitToDisk(results, extractedStrings, keyBucketMap);
+    // commitToDisk 不需要 originalContent，剥掉以维持其入参契约稳定
+    await this.commitToDisk(
+      results.map(({ file, code }) => ({ file, code })),
+      extractedStrings,
+      keyBucketMap,
+    );
   }
 
   /**
@@ -531,7 +543,7 @@ export class GenerateProcessor extends BaseProcessor {
    */
   private writePlan(
     uniqueFilePaths: string[],
-    results: Array<{ file: string; code: string }>,
+    results: Array<{ file: string; code: string; originalContent: string }>,
     extractedStrings: ExtractedString[],
     keyBucketMap: Record<string, string> | undefined,
   ): void {
@@ -572,8 +584,8 @@ export class GenerateProcessor extends BaseProcessor {
       const transformedRef = `${GeneratePlanWriter.SOURCES_DIRNAME}/${relPosix}`;
       transformedSources.set(relPosix, result.code);
 
-      const originalContent = fs.readFileSync(filePath, 'utf-8');
-      const sourceHash = GeneratePlanWriter.sha256(originalContent);
+      // 复用 transformToMemory 阶段已读取的原文，与 sourceHash 共用同一份快照
+      const sourceHash = GeneratePlanWriter.sha256(result.originalContent);
 
       const fileStrings = byFile.get(filePath) ?? [];
       const hits: GeneratePlanHit[] = fileStrings

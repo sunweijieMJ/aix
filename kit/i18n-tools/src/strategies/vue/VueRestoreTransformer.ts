@@ -270,8 +270,10 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 3. 匹配插值表达式内部残留的 $t() 调用（如三元表达式中的 $t 调用）
     //    将 $t('key') 替换为 'text'，$t('key', { vars }) 替换为 `text with ${vars}`
     //    vars 段支持单层嵌套花括号。
+    // 前置 (?<![\w$]) 防止误匹配以字母 t 结尾的非 i18n 函数（如 someFnt('key')），
+    // 与 VueComponentInjector.needsHook 的 t 调用探测保持一致。
     const innerI18nCallRegex =
-      /\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)/g;
+      /(?<![\w$])\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)/g;
 
     restored = restored.replace(innerI18nCallRegex, (match, key, vars) => {
       const text = lookupText(key as string);

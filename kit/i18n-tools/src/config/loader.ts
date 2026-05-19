@@ -236,29 +236,25 @@ function resolvePrefixStrategy(prefix: PrefixStrategyConfig | undefined): Resolv
 }
 
 /**
- * 解析 LLM 配置：把 shared 与 task 合并、校验必填字段。
+ * 解析 LLM 配置：把 shared 与 task 合并、补默认值。
  *
  * 合并优先级：任务级字段 > shared > 全局默认值。
- * apiKey 仍是 task 级必填——shared 缺省时由 task 显式提供也可。
+ *
+ * apiKey 缺失时不再在此抛错，而是返回一个 `apiKey: ''` 的占位 task：
+ *   - 不调 LLM 的命令（restore / pick / merge / export / doctor 等）可以正常运行；
+ *   - 真正调 LLM 的命令在 `LLMClient.chatCompletion` 入口做 lazy 校验，给出精确错误。
+ * 这样避免「用户只想跑 doctor 也被强制配置 apiKey」的体验问题。
  */
-function resolveLLM(llm: LLMConfig): ResolvedConfig['llm'] {
-  const shared = llm.shared ?? {};
+function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
+  const shared = llm?.shared ?? {};
 
-  const resolveTask = (
-    task: LLMTaskConfig | undefined,
-    taskName: string,
-  ): ResolvedLLMTaskConfig => {
+  const resolveTask = (task: LLMTaskConfig | undefined): ResolvedLLMTaskConfig => {
     const merged: LLMTaskConfig = { ...shared, ...task };
-    if (!merged.apiKey) {
-      throw new Error(
-        `llm.${taskName}.apiKey 未配置。请在 llm.shared 或 llm.${taskName} 中设置 apiKey。`,
-      );
-    }
     if (!merged.model) {
       merged.model = DEFAULT_LLM_MODEL;
     }
     return {
-      apiKey: merged.apiKey,
+      apiKey: merged.apiKey ?? '',
       baseURL: merged.baseURL,
       model: merged.model,
       timeout: merged.timeout ?? DEFAULT_LLM_TASK.timeout,
@@ -276,8 +272,8 @@ function resolveLLM(llm: LLMConfig): ResolvedConfig['llm'] {
   };
 
   return {
-    idGeneration: resolveTask(llm.idGeneration, 'idGeneration'),
-    translation: resolveTask(llm.translation, 'translation'),
+    idGeneration: resolveTask(llm?.idGeneration),
+    translation: resolveTask(llm?.translation),
   };
 }
 

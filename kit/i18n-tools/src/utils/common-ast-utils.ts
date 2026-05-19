@@ -1028,71 +1028,124 @@ export class CommonASTUtils {
     const out: string[] = [];
     const len = code.length;
     let i = 0;
-    // 状态：none | "..." | '...' | `...` | // | /* | <!--
-    type State = 'none' | 'dq' | 'sq' | 'tpl' | 'line' | 'block' | 'html';
-    let state: State = 'none';
+
+    // 状态栈：栈顶为当前所处的语法上下文，支持模板字符串 ${...} 内嵌套字符串/模板/注释。
+    // - none      : 代码区
+    // - dq/sq     : 双/单引号字符串
+    // - tpl       : 模板字符串外层（反引号内、非 ${} 段）
+    // - tpl_expr  : 模板字符串内 ${...} 表达式区（属于代码上下文，需追踪 { 嵌套深度）
+    // - line/block/html : 三类注释
+    type FrameKind = 'none' | 'dq' | 'sq' | 'tpl' | 'tpl_expr' | 'line' | 'block' | 'html';
+    interface Frame {
+      kind: FrameKind;
+      braceDepth?: number;
+    }
+    const stack: Frame[] = [{ kind: 'none' }];
+    const top = (): Frame => stack[stack.length - 1]!;
 
     while (i < len) {
+      const frame = top();
       const ch = code[i]!;
       const next = code[i + 1];
 
-      if (state === 'none') {
-        // 进入字符串
+      // 代码上下文（含模板表达式内）：识别字符串/注释起始，tpl_expr 还需匹配 ${} 的闭合
+      if (frame.kind === 'none' || frame.kind === 'tpl_expr') {
         if (ch === '"') {
-          state = 'dq';
+          stack.push({ kind: 'dq' });
           out.push(ch);
           i++;
           continue;
         }
         if (ch === "'") {
-          state = 'sq';
+          stack.push({ kind: 'sq' });
           out.push(ch);
           i++;
           continue;
         }
         if (ch === '`') {
-          state = 'tpl';
+          stack.push({ kind: 'tpl' });
           out.push(ch);
           i++;
           continue;
         }
-        // 进入块注释
         if (ch === '/' && next === '*') {
-          state = 'block';
+          stack.push({ kind: 'block' });
           out.push(' ');
           i += 2;
           continue;
         }
-        // 进入行注释
         if (ch === '/' && next === '/') {
-          state = 'line';
+          stack.push({ kind: 'line' });
           out.push(' ');
           i += 2;
           continue;
         }
-        // 进入 HTML 注释
         if (ch === '<' && code.startsWith('!--', i + 1)) {
-          state = 'html';
+          stack.push({ kind: 'html' });
           out.push(' ');
           i += 4;
           continue;
+        }
+        // tpl_expr 中追踪 { / } 嵌套；遇到深度为 0 的 } 表示 ${...} 闭合，弹栈回到外层 tpl
+        if (frame.kind === 'tpl_expr') {
+          if (ch === '{') {
+            frame.braceDepth = (frame.braceDepth ?? 0) + 1;
+            out.push(ch);
+            i++;
+            continue;
+          }
+          if (ch === '}') {
+            if ((frame.braceDepth ?? 0) === 0) {
+              stack.pop();
+              out.push(ch);
+              i++;
+              continue;
+            }
+            frame.braceDepth = (frame.braceDepth ?? 0) - 1;
+            out.push(ch);
+            i++;
+            continue;
+          }
         }
         out.push(ch);
         i++;
         continue;
       }
 
-      // 字符串：处理转义与闭合
-      if (state === 'dq' || state === 'sq' || state === 'tpl') {
+      // 普通字符串：处理转义与闭合
+      if (frame.kind === 'dq' || frame.kind === 'sq') {
         if (ch === '\\') {
           out.push(ch);
           if (i + 1 < len) out.push(code[i + 1]!);
           i += 2;
           continue;
         }
-        const quote = state === 'dq' ? '"' : state === 'sq' ? "'" : '`';
+        const quote = frame.kind === 'dq' ? '"' : "'";
         if (ch === quote) {
-          state = 'none';
+          stack.pop();
+        }
+        out.push(ch);
+        i++;
+        continue;
+      }
+
+      // 模板字符串：识别 ${ 嵌入表达式与反引号闭合
+      if (frame.kind === 'tpl') {
+        if (ch === '\\') {
+          out.push(ch);
+          if (i + 1 < len) out.push(code[i + 1]!);
+          i += 2;
+          continue;
+        }
+        if (ch === '$' && next === '{') {
+          stack.push({ kind: 'tpl_expr', braceDepth: 0 });
+          out.push('$');
+          out.push('{');
+          i += 2;
+          continue;
+        }
+        if (ch === '`') {
+          stack.pop();
         }
         out.push(ch);
         i++;
@@ -1100,9 +1153,9 @@ export class CommonASTUtils {
       }
 
       // 块注释：吃到 */，整段替空格（保留行结构以便行号不漂移）
-      if (state === 'block') {
+      if (frame.kind === 'block') {
         if (ch === '/' && code[i - 1] === '*' && i - 1 > 0) {
-          state = 'none';
+          stack.pop();
         }
         out.push(ch === '\n' ? '\n' : ' ');
         i++;
@@ -1110,9 +1163,9 @@ export class CommonASTUtils {
       }
 
       // 行注释：吃到行尾
-      if (state === 'line') {
+      if (frame.kind === 'line') {
         if (ch === '\n') {
-          state = 'none';
+          stack.pop();
           out.push('\n');
         } else {
           out.push(' ');
@@ -1122,9 +1175,9 @@ export class CommonASTUtils {
       }
 
       // HTML 注释：吃到 -->
-      if (state === 'html') {
+      if (frame.kind === 'html') {
         if (ch === '>' && code[i - 1] === '-' && code[i - 2] === '-') {
-          state = 'none';
+          stack.pop();
         }
         out.push(ch === '\n' ? '\n' : ' ');
         i++;

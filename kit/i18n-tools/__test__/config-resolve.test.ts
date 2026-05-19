@@ -351,14 +351,26 @@ describe('resolveConfig - ci.coverageThreshold', () => {
 });
 
 describe('resolveConfig - LLM 合并', () => {
-  it('apiKey 缺失抛错', () => {
-    expect(() =>
-      resolveConfig({
-        root: '/tmp/proj',
-        framework: { type: 'vue' },
-        llm: { shared: { model: 'gpt-4o' } },
-      }),
-    ).toThrow(/apiKey 未配置/);
+  it('apiKey 缺失不抛错（lazy 校验：留待真正调用 LLM 时由 LLMClient 拦截）', () => {
+    const r = resolveConfig({
+      root: '/tmp/proj',
+      framework: { type: 'vue' },
+      llm: { shared: { model: 'gpt-4o' } },
+    });
+    expect(r.llm.idGeneration.apiKey).toBe('');
+    expect(r.llm.translation.apiKey).toBe('');
+    expect(r.llm.idGeneration.model).toBe('gpt-4o');
+  });
+
+  it('完全不配 llm 时使用全默认占位，不抛错', () => {
+    const r = resolveConfig({
+      root: '/tmp/proj',
+      framework: { type: 'vue' },
+    });
+    expect(r.llm.idGeneration.apiKey).toBe('');
+    expect(r.llm.translation.apiKey).toBe('');
+    // 默认 model 仍被填充，便于 doctor / 日志展示
+    expect(r.llm.idGeneration.model).toBeTruthy();
   });
 
   it('shared 字段被任务级继承', () => {

@@ -86,9 +86,35 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   }
 
   isTranslationCall(node: ts.CallExpression): boolean {
-    if (ts.isPropertyAccessExpression(node.expression)) {
-      const propName = node.expression.name;
-      if (ts.isIdentifier(propName) && propName.text === 'formatMessage') {
+    // 必须形如 <receiver>.formatMessage(...)，且 receiver 是合法的 intl 持有者：
+    //   - intl.formatMessage(...)            // useIntl / getIntl 产物
+    //   - props.intl.formatMessage(...)      // injectIntl HOC（函数组件）
+    //   - this.props.intl.formatMessage(...) // injectIntl HOC（类组件）
+    // Why: 仅按方法名匹配会把任意 obj.formatMessage(...) 误判为翻译调用，
+    // 配合参数中带 id 字段的对象，restore 阶段可能静默改写业务代码。
+    if (!ts.isPropertyAccessExpression(node.expression)) return false;
+    const propName = node.expression.name;
+    if (!ts.isIdentifier(propName) || propName.text !== 'formatMessage') return false;
+
+    const receiver = node.expression.expression;
+    // intl.formatMessage(...)
+    if (ts.isIdentifier(receiver) && receiver.text === this.translationVarName) {
+      return true;
+    }
+    // props.intl.formatMessage(...) / this.props.intl.formatMessage(...)
+    if (
+      ts.isPropertyAccessExpression(receiver) &&
+      ts.isIdentifier(receiver.name) &&
+      receiver.name.text === this.translationVarName
+    ) {
+      const inner = receiver.expression;
+      if (ts.isIdentifier(inner) && inner.text === 'props') return true;
+      if (
+        ts.isPropertyAccessExpression(inner) &&
+        inner.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        ts.isIdentifier(inner.name) &&
+        inner.name.text === 'props'
+      ) {
         return true;
       }
     }

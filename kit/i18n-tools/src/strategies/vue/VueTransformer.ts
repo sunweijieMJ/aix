@@ -38,8 +38,8 @@ export class VueTransformer implements ITransformer {
    * @param extractedStrings - 提取的字符串数组
    * @returns 转换后的代码
    */
-  transform(filePath: string, extractedStrings: ExtractedString[]): string {
-    const sourceText = fs.readFileSync(filePath, 'utf-8');
+  transform(filePath: string, extractedStrings: ExtractedString[], sourceText?: string): string {
+    sourceText = sourceText ?? fs.readFileSync(filePath, 'utf-8');
     const fileStrings = extractedStrings.filter((s) => s.filePath === filePath);
 
     if (fileStrings.length === 0) {

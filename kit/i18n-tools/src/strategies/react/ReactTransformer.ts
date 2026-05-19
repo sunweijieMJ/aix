@@ -39,8 +39,16 @@ export class ReactTransformer implements ITransformer {
   /**
    * 转换文件
    */
-  transform(filePath: string, extractedStrings: ExtractedString[]): string {
-    const sourceText = fs.readFileSync(filePath, 'utf-8');
+  transform(filePath: string, extractedStrings: ExtractedString[], sourceText?: string): string {
+    const text = sourceText ?? fs.readFileSync(filePath, 'utf-8');
+    return this.transformText(filePath, extractedStrings, text);
+  }
+
+  private transformText(
+    filePath: string,
+    extractedStrings: ExtractedString[],
+    sourceText: string,
+  ): string {
     const fileStrings = extractedStrings.filter((s) => s.filePath === filePath);
 
     if (fileStrings.length === 0) {
