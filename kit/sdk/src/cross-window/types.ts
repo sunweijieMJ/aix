@@ -147,8 +147,13 @@ export interface HeartbeatOptions {
  * - `heartbeat-timeout`：心跳超时，对端无响应
  * - `peer-reconnect`：对端重新握手（Host 侧旧连接被替换为新连接时触发）
  * - `handshake-timeout`：Host 启用 handshakeTimeout 后超时仍未收到 guest 握手
+ * - `handshake-failed`：Host 向 guest 投递 sdk:ack 时 postMessage 抛出异常（如目标窗口已关闭）
  */
-export type DisconnectReason = 'heartbeat-timeout' | 'peer-reconnect' | 'handshake-timeout';
+export type DisconnectReason =
+  | 'heartbeat-timeout'
+  | 'peer-reconnect'
+  | 'handshake-timeout'
+  | 'handshake-failed';
 
 /**
  * onConnect 回调事件参数。

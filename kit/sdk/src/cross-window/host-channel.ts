@@ -142,8 +142,12 @@ export class HostChannel extends BaseChannel {
       };
       contentWindow.postMessage(ack, guestOrigin, [port2]);
     } catch (err) {
+      // postMessage 抛错时 transferable 不会被分离（HTML spec），port2 仍属本 realm，需主动 close 避免泄漏
       port1.close();
+      port2.close();
       this.logger.warn('_establish() 失败：postMessage 抛出异常', err);
+      // 未配 handshakeTimeout 的调用方否则完全感知不到失败，发出明确事件让业务能补救
+      this._emitDisconnect('handshake-failed');
       return false;
     }
 
