@@ -116,6 +116,38 @@ export const setupReleaseMode = async (
   await handlePreMode(projectRoot, mode);
 };
 
+// 版本升级类型选项
+const BUMP_TYPE_CHOICES = [
+  {
+    name: `${chalk.cyan('Patch')} (修复) - 0.0.x ${chalk.gray('(Bug 修复、小改动)')}`,
+    value: 'patch',
+  },
+  {
+    name: `${chalk.cyan('Minor')} (功能) - 0.x.0 ${chalk.gray('(新增功能、向后兼容)')}`,
+    value: 'minor',
+  },
+  {
+    name: `${chalk.cyan('Major')} (破坏性) - x.0.0 ${chalk.gray('(不兼容的 API 变更)')}`,
+    value: 'major',
+  },
+];
+
+// 生成 changeset 文件，返回文件名
+const writeChangesetFile = (
+  projectRoot: string,
+  entries: Array<{ pkg: string; bumpType: string }>,
+  summary: string,
+): string => {
+  const changesetId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  const changesetPath = path.join(projectRoot, '.changeset', `${changesetId}.md`);
+
+  const frontMatter = entries.map(({ pkg, bumpType }) => `"${pkg}": ${bumpType}`).join('\n');
+  const content = `---\n${frontMatter}\n---\n\n${summary}\n`;
+
+  fs.writeFileSync(changesetPath, content, 'utf-8');
+  return `${changesetId}.md`;
+};
+
 // 创建 changeset，返回是否实际创建（中文交互版）
 export const createChangeset = async (
   projectRoot: string,
@@ -134,7 +166,7 @@ export const createChangeset = async (
   }
 
   // 1. 选择要包含的包
-  const { selectedPackages } = await inquirer.prompt([
+  const { selectedPackages } = await inquirer.prompt<{ selectedPackages: string[] }>([
     {
       type: 'checkbox',
       name: 'selectedPackages',
@@ -152,69 +184,120 @@ export const createChangeset = async (
     },
   ]);
 
-  // 2. 选择版本类型
-  const { bumpType } = await inquirer.prompt([
-    {
-      type: 'select',
-      name: 'bumpType',
-      message: '请选择版本升级类型:',
-      choices: [
-        {
-          name: `${chalk.cyan('Patch')} (修复) - 0.0.x ${chalk.gray('(Bug 修复、小改动)')}`,
-          value: 'patch',
-        },
-        {
-          name: `${chalk.cyan('Minor')} (功能) - 0.x.0 ${chalk.gray('(新增功能、向后兼容)')}`,
-          value: 'minor',
-        },
-        {
-          name: `${chalk.cyan('Major')} (破坏性) - x.0.0 ${chalk.gray('(不兼容的 API 变更)')}`,
-          value: 'major',
-        },
-      ],
-      default: 'patch',
-    },
-  ]);
-
-  // 3. 输入变更说明
-  const { summary } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'summary',
-      message: '请输入变更说明 (将显示在 CHANGELOG 中):',
-      validate: (input: string) => {
-        if (!input.trim()) {
-          return '变更说明不能为空';
-        }
-        return true;
+  // 2. 多包时询问是否独立配置 CHANGELOG
+  let perPackage = false;
+  if (selectedPackages.length > 1) {
+    const { mode } = await inquirer.prompt<{ mode: 'shared' | 'per-package' }>([
+      {
+        type: 'select',
+        name: 'mode',
+        message: '多个包的变更说明配置方式:',
+        choices: [
+          { name: '统一配置 (所有包使用相同的版本类型和变更说明)', value: 'shared' },
+          { name: '逐个配置 (为每个包单独设置版本类型和变更说明)', value: 'per-package' },
+        ],
+        default: 'shared',
       },
-    },
-  ]);
+    ]);
+    perPackage = mode === 'per-package';
+  }
+
+  // 3. 收集每个包的版本类型与变更说明
+  type Entry = { pkg: string; bumpType: string; summary: string };
+  const entries: Entry[] = [];
+
+  if (perPackage) {
+    for (const pkgName of selectedPackages) {
+      console.log(chalk.cyan(`\n配置包: ${pkgName}`));
+      const { bumpType } = await inquirer.prompt<{ bumpType: string }>([
+        {
+          type: 'select',
+          name: 'bumpType',
+          message: `[${pkgName}] 请选择版本升级类型:`,
+          choices: BUMP_TYPE_CHOICES,
+          default: 'patch',
+        },
+      ]);
+      const { summary } = await inquirer.prompt<{ summary: string }>([
+        {
+          type: 'input',
+          name: 'summary',
+          message: `[${pkgName}] 请输入变更说明:`,
+          validate: (input: string) => (input.trim() ? true : '变更说明不能为空'),
+        },
+      ]);
+      entries.push({ pkg: pkgName, bumpType, summary: summary.trim() });
+    }
+  } else {
+    const { bumpType } = await inquirer.prompt<{ bumpType: string }>([
+      {
+        type: 'select',
+        name: 'bumpType',
+        message: '请选择版本升级类型:',
+        choices: BUMP_TYPE_CHOICES,
+        default: 'patch',
+      },
+    ]);
+    const { summary } = await inquirer.prompt<{ summary: string }>([
+      {
+        type: 'input',
+        name: 'summary',
+        message: '请输入变更说明 (将显示在 CHANGELOG 中):',
+        validate: (input: string) => (input.trim() ? true : '变更说明不能为空'),
+      },
+    ]);
+    for (const pkg of selectedPackages) {
+      entries.push({ pkg, bumpType, summary: summary.trim() });
+    }
+  }
+
+  // 防御性检查：理论上 entries 一定非空（选择包时已 validate），此分支只为类型收窄
+  const firstEntry = entries[0];
+  if (!firstEntry) {
+    console.log(chalk.yellow('未生成任何变更条目'));
+    return false;
+  }
 
   // 4. 显示摘要并确认
   console.log(chalk.cyan('\n📋 变更集摘要:'));
-  console.log(chalk.gray(`版本类型: ${bumpType.toUpperCase()}`));
-  console.log(chalk.gray(`受影响的包: ${chalk.white(selectedPackages.join(', '))}`));
-  console.log(chalk.gray(`变更说明: ${chalk.white(summary)}\n`));
+  if (perPackage) {
+    for (const e of entries) {
+      console.log(
+        chalk.gray(`  - ${chalk.white(e.pkg)} [${e.bumpType.toUpperCase()}]: ${e.summary}`),
+      );
+    }
+  } else {
+    console.log(chalk.gray(`版本类型: ${firstEntry.bumpType.toUpperCase()}`));
+    console.log(chalk.gray(`受影响的包: ${chalk.white(selectedPackages.join(', '))}`));
+    console.log(chalk.gray(`变更说明: ${chalk.white(firstEntry.summary)}`));
+  }
+  console.log('');
 
   if (!(await confirm('确认创建此 changeset?', true, skipPrompts))) {
     console.log(chalk.yellow('已取消创建 changeset'));
     return false;
   }
 
-  // 5. 生成 changeset 文件
-  const changesetId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-  const changesetPath = path.join(projectRoot, '.changeset', `${changesetId}.md`);
-
-  const changesetContent = `---
-${selectedPackages.map((pkg: string) => `"${pkg}": ${bumpType}`).join('\n')}
----
-
-${summary}
-`;
-
-  fs.writeFileSync(changesetPath, changesetContent, 'utf-8');
-  console.log(chalk.green(`✅ 已创建 changeset: ${changesetId}.md`));
+  // 5. 写入 changeset 文件
+  // 独立模式：每个包一个文件，CHANGELOG 中每个包都有自己的条目
+  // 共享模式：所有包合并成一个文件，CHANGELOG 中各包共用同一段说明
+  if (perPackage) {
+    for (const e of entries) {
+      const filename = writeChangesetFile(
+        projectRoot,
+        [{ pkg: e.pkg, bumpType: e.bumpType }],
+        e.summary,
+      );
+      console.log(chalk.green(`✅ 已创建 changeset: ${filename} (${e.pkg})`));
+    }
+  } else {
+    const filename = writeChangesetFile(
+      projectRoot,
+      entries.map((e) => ({ pkg: e.pkg, bumpType: e.bumpType })),
+      firstEntry.summary,
+    );
+    console.log(chalk.green(`✅ 已创建 changeset: ${filename}`));
+  }
 
   return true;
 };
@@ -236,7 +319,8 @@ export const updateVersion = async (projectRoot: string, skipPrompts = false) =>
       chalk.gray('提示：回滚操作会使用 git stash 保存所有未提交的更改（不只是版本变更）'),
     );
     if (await confirm('是否回滚版本变更? (将 stash 所有未提交的更改)', true, skipPrompts)) {
-      run('git stash push -m "changeset version rollback"', projectRoot);
+      // -u 确保 untracked 文件（如新生成的 CHANGELOG.md）也被保存
+      run('git stash push -u -m "changeset version rollback"', projectRoot);
       console.log(
         chalk.green('✅ 已使用 git stash 保存所有未提交的更改，可通过 git stash pop 恢复'),
       );
@@ -259,20 +343,17 @@ export const getChangedPackages = async (projectRoot: string): Promise<Set<strin
 
   for (const file of mdFiles) {
     const content = await readFile(path.join(changesetDir, file), 'utf-8');
-    const parts = content.split('---');
-    const frontMatter = parts[1];
+    // 精确匹配开头的 YAML frontmatter，避免 summary 中的 --- 干扰
+    const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    const frontMatter = fmMatch?.[1];
+    if (!frontMatter) continue;
 
-    if (frontMatter) {
-      // 解析 YAML frontmatter 中的包名，支持带引号和不带引号的格式
-      // 例如: '@aix/button': minor 或 "@aix/button": patch 或 @aix/button: major
-      // 包名可能包含 . 字符，如 @aix/pdf.viewer
-      const lines = frontMatter.trim().split('\n');
-      for (const line of lines) {
-        // 匹配 @scope/name 或普通包名，支持带引号和不带引号，包名可包含 . 字符
-        const match = line.match(/^['"]?(@?[\w.-]+\/[\w.-]+|[\w.-]+)['"]?\s*:/);
-        if (match?.[1]) {
-          packages.add(match[1]);
-        }
+    const lines = frontMatter.split('\n');
+    for (const line of lines) {
+      // 匹配 @scope/name 或普通包名，支持带引号和不带引号，包名可包含 . 字符
+      const match = line.match(/^['"]?(@?[\w.-]+\/[\w.-]+|[\w.-]+)['"]?\s*:/);
+      if (match?.[1]) {
+        packages.add(match[1]);
       }
     }
   }

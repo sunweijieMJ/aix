@@ -31,6 +31,7 @@ import {
   createChangeset,
   updateVersion,
   getChangedPackages,
+  getVersionBumpedPackages,
   detectPackages,
   getPreReleaseTag,
 } from './changeset.js';
@@ -128,31 +129,45 @@ ${chalk.yellow('示例:')}
 };
 
 // 发布包
-const publishPackages = async (skipPrompts = false, dryRun = false) => {
+// knownPackages: 调用方已检测到的待发布包名集合（用于 changeset 已被 version 消费的场景，
+// 此时 .changeset/*.md 已被删除，单靠 getChangedPackages 无法还原汇总信息）
+const publishPackages = async (
+  skipPrompts = false,
+  dryRun = false,
+  knownPackages?: Set<string>,
+) => {
   const preTag = getPreReleaseTag(projectRoot);
   const tagInfo = preTag ? ` (dist-tag: ${preTag})` : ' (dist-tag: latest)';
 
-  // Dry-run 模式：只显示 changeset 中指定的包
+  // 解析待发布的包：优先使用调用方传入的列表，否则按 changeset → git diff fallback 检测
+  const resolvePackages = async (): Promise<Set<string>> => {
+    if (knownPackages && knownPackages.size > 0) return knownPackages;
+    const fromChangeset = await getChangedPackages(projectRoot);
+    if (fromChangeset.size > 0) return fromChangeset;
+    return getVersionBumpedPackages(projectRoot);
+  };
+
+  // Dry-run 模式：只显示待发布的包
   if (dryRun) {
     console.log(chalk.cyan('\n🔍 Dry-run 模式 - Changeset 将发布以下包:'));
     console.log(chalk.gray(`目标 Registry: ${NPM_REGISTRY}`));
     console.log(chalk.gray(`Dist Tag: ${preTag || 'latest'}\n`));
 
-    const changedPackages = await getChangedPackages(projectRoot);
+    const targetPackages = await resolvePackages();
 
-    if (changedPackages.size === 0) {
-      console.log(chalk.yellow('未在 changeset 中找到需要发布的包'));
+    if (targetPackages.size === 0) {
+      console.log(chalk.yellow('未检测到需要发布的包 (无 changeset 且无版本变更)'));
       return;
     }
 
-    for (const pkgName of changedPackages) {
+    for (const pkgName of targetPackages) {
       const pkg = getWorkspacePackages(projectRoot).find((p) => p.name === pkgName);
       if (pkg) {
         console.log(`  📦 ${chalk.green(pkg.name)}@${chalk.cyan(pkg.version)}`);
       }
     }
 
-    console.log(chalk.gray(`\n共 ${changedPackages.size} 个包待发布`));
+    console.log(chalk.gray(`\n共 ${targetPackages.size} 个包待发布`));
     console.log(chalk.yellow('\n(Dry-run 模式，未实际发布)'));
     return;
   }
@@ -164,10 +179,10 @@ const publishPackages = async (skipPrompts = false, dryRun = false) => {
     throw new Error('用户取消发布');
   }
 
-  // 记录发布前的包列表（从 changeset 中获取）
-  const changedPackages = await getChangedPackages(projectRoot);
+  // 记录发布前的包列表（用于发布汇总）
+  const targetPackages = await resolvePackages();
   const packagesBeforePublish: Array<{ name: string; version: string }> = [];
-  for (const pkgName of changedPackages) {
+  for (const pkgName of targetPackages) {
     const pkg = getWorkspacePackages(projectRoot).find((p) => p.name === pkgName);
     if (pkg) {
       packagesBeforePublish.push({ name: pkg.name, version: pkg.version });
@@ -218,15 +233,18 @@ const executeAction = async (
       await setupReleaseMode(projectRoot, mode, skipPrompts);
       await updateVersion(projectRoot, skipPrompts);
       break;
-    case 'publish':
+    case 'publish': {
+      // 不调用 checkWorkspace：publish 通常在 changeset version 之后执行，
+      // 此时 package.json / CHANGELOG.md / pnpm-lock.yaml 必然处于未提交状态
+      let packages: Set<string> | undefined;
       if (!dryRun) {
         checkNpmLogin(NPM_REGISTRY);
-        checkWorkspace(projectRoot);
-        const packages = await detectPackages(projectRoot);
+        packages = await detectPackages(projectRoot);
         await buildPackages(projectRoot, packages);
       }
-      await publishPackages(skipPrompts, dryRun);
+      await publishPackages(skipPrompts, dryRun, packages);
       break;
+    }
     case 'deprecate':
       checkNpmLogin(NPM_REGISTRY);
       await deprecatePackageVersion(projectRoot, NPM_REGISTRY, skipPrompts);
@@ -317,8 +335,9 @@ const runFullProcess = async (skipPrompts = false, mode = '', dryRun = false) =>
     if (!changedPackages.size) {
       throw new Error('未创建任何 changeset，发布流程终止');
     }
-  } else {
-    // 只在实际创建了新 changeset 时才重新解析
+  } else if (!skipPrompts) {
+    // 已有 changeset：仅在交互模式下询问是否追加新的 changeset
+    // skipPrompts 下直接复用已有 changeset，避免卡在 inquirer 的必填输入
     const created = await createChangeset(projectRoot, skipPrompts);
     if (created) {
       changedPackages = await getChangedPackages(projectRoot);
@@ -327,7 +346,9 @@ const runFullProcess = async (skipPrompts = false, mode = '', dryRun = false) =>
 
   await updateVersion(projectRoot, skipPrompts);
   await buildPackages(projectRoot, changedPackages);
-  await publishPackages(skipPrompts);
+  // 显式传入 changedPackages：changeset version 已消费 .changeset/*.md，
+  // publishPackages 内部无法再通过 getChangedPackages 还原汇总信息
+  await publishPackages(skipPrompts, false, changedPackages);
   console.log(chalk.green('✅ 发布流程完成'));
 };
 
