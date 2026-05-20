@@ -961,4 +961,59 @@ describe('GuestChannel — sdk:ack origin/source 校验', () => {
     warnSpy.mockRestore();
     channel.dispose();
   });
+
+  it('expectedHostOrigin 数组：命中任一精确条目的 ack 应通过', () => {
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    channel.ready(['https://a.example.com', 'https://b.example.com']);
+
+    triggerAck('https://b.example.com');
+
+    expect(channel.connected).toBe(true);
+    channel.dispose();
+  });
+
+  it('expectedHostOrigin 数组：未命中任何条目的 ack 应被拒绝', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    channel.ready(['https://a.example.com', 'https://b.example.com']);
+
+    triggerAck('https://c.example.com');
+
+    expect(channel.connected).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('origin'));
+    warnSpy.mockRestore();
+    channel.dispose();
+  });
+
+  it('expectedHostOrigin glob 通配：子域名命中应通过', () => {
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    channel.ready('https://*.example.com');
+
+    triggerAck('https://sub.example.com');
+
+    expect(channel.connected).toBe(true);
+    channel.dispose();
+  });
+
+  it('expectedHostOrigin glob 通配：跨主域不应误命中', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    channel.ready('https://*.example.com');
+
+    triggerAck('https://other.com');
+
+    expect(channel.connected).toBe(false);
+    warnSpy.mockRestore();
+    channel.dispose();
+  });
+
+  it('expectedHostOrigin 数组包含 "*" 时视为关闭 origin 校验', () => {
+    const channel = new GuestChannel(createCore(), { autoReady: false });
+    channel.ready(['https://a.example.com', '*']);
+
+    triggerAck('https://anything.example');
+
+    expect(channel.connected).toBe(true);
+    channel.dispose();
+  });
 });

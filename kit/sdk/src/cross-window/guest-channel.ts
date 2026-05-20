@@ -1,6 +1,7 @@
 import type { SDKCore } from '../core/sdk.js';
 import { BaseChannel } from './base-channel.js';
 import { Logger } from '../shared/logger.js';
+import { isExactOrigin, matchesOrigin } from './origin-matcher.js';
 import { isHandshakeEnvelope, type GuestChannelOptions, type HandshakeEnvelope } from './types.js';
 
 const DEV_HANDSHAKE_WARNING_MS = 3000;
@@ -16,13 +17,15 @@ const DEV_HANDSHAKE_WARNING_MS = 3000;
  * 需要精细控制握手时机（如测试、需要等待外部数据）的场景可传入 `autoReady: false`，
  * 之后由外部显式调用 {@link GuestChannel.ready}。
  *
- * 安全：当 `expectedHostOrigin` 不为 `'*'` 时，SDK 会严格校验 `sdk:ack` 的 `event.origin`
- * 必须与之完全一致，且 `event.source` 必须等于 `window.opener` 或 `window.parent`，
+ * 安全：当 `expectedHostOrigin` 启用 origin 校验时（即不含 `'*'`），SDK 会校验 `sdk:ack` 的 `event.origin`
+ * 必须命中白名单（支持精确匹配和 glob 通配），且 `event.source` 必须等于 `window.opener` 或 `window.parent`，
  * 防止第三方页面伪造 ack 抢占 MessagePort。
  */
 export class GuestChannel extends BaseChannel {
-  /** `null` 表示未启用 origin 校验（expectedHostOrigin 为 `'*'` 或未传） */
-  private expectedHostOrigin: string | null;
+  /** 空数组表示未启用 origin 校验（expectedHostOrigin 为 `'*'`、未传，或数组包含 `'*'`） */
+  private expectedHostOrigins: string[];
+  /** 发送 sdk:ready 时的 postMessage targetOrigin。单条精确 origin 时使用该值，其它情况降级 `'*'` */
+  private readyTargetOrigin: string;
 
   /**
    * 创建 Guest 侧通道。
@@ -33,10 +36,13 @@ export class GuestChannel extends BaseChannel {
   constructor(core: SDKCore, options: GuestChannelOptions = {}) {
     super(core, new Logger(core.debug, 'cross-window:guest'), 'host', options.heartbeat);
 
-    const origin = options.expectedHostOrigin ?? '*';
-    this.expectedHostOrigin = origin === '*' ? null : origin;
-    if (this.expectedHostOrigin === null) {
-      this.logger.warn('expectedHostOrigin 未指定或为 "*"，origin 校验已禁用，仅推荐用于开发环境');
+    const { origins, readyTarget } = this._resolveExpectedOrigin(options.expectedHostOrigin);
+    this.expectedHostOrigins = origins;
+    this.readyTargetOrigin = readyTarget;
+    if (this.expectedHostOrigins.length === 0) {
+      this.logger.warn(
+        'expectedHostOrigin 未指定或包含 "*"，origin 校验已禁用，仅推荐用于开发环境',
+      );
     }
 
     const autoReady = options.autoReady !== false;
@@ -55,10 +61,11 @@ export class GuestChannel extends BaseChannel {
    * `autoReady: false` 时由调用方自行触发，可重复调用（先清理旧监听器和已绑定 port）。
    *
    * 可选 `targetOrigin` 覆盖构造时的 `expectedHostOrigin`，仅用于测试/特殊场景。
+   * 接受 string 或 string[]，语义同构造参数（支持精确 origin / glob 通配 / `'*'`）。
    *
    * @param targetOrigin 覆盖期望的 host origin（不传则用构造时的 expectedHostOrigin）。
    */
-  ready(targetOrigin?: string): void {
+  ready(targetOrigin?: string | string[]): void {
     if (this.disposed) {
       this.logger.warn('ready() 调用无效：channel 已销毁');
       return;
@@ -74,7 +81,9 @@ export class GuestChannel extends BaseChannel {
 
     // 覆盖 expectedHostOrigin（如果显式传入）
     if (targetOrigin !== undefined) {
-      this.expectedHostOrigin = targetOrigin === '*' ? null : targetOrigin;
+      const { origins, readyTarget } = this._resolveExpectedOrigin(targetOrigin);
+      this.expectedHostOrigins = origins;
+      this.readyTargetOrigin = readyTarget;
     }
 
     // 兼容 iframe（window.parent）和 window.open()（window.opener）两种场景。
@@ -91,9 +100,32 @@ export class GuestChannel extends BaseChannel {
       appId: this.core.appId,
       __sys: 'sdk:ready',
     };
-    const finalTargetOrigin = this.expectedHostOrigin ?? '*';
-    this.logger.log(`sdk:ready → host (targetOrigin: ${finalTargetOrigin})`);
-    host.postMessage(envelope, finalTargetOrigin);
+    this.logger.log(`sdk:ready → host (targetOrigin: ${this.readyTargetOrigin})`);
+    host.postMessage(envelope, this.readyTargetOrigin);
+  }
+
+  /**
+   * 把 `expectedHostOrigin` 选项解析为内部使用的两个字段：
+   * - `origins`：用于校验 ack 的 origin 列表，空数组表示放开校验
+   * - `readyTarget`：发送 sdk:ready 时的 postMessage targetOrigin
+   *
+   * 规则：包含 `'*'` 视为完全放开；只有"单条精确 origin"时 readyTarget 才用该 origin，
+   * 其它情况（多条、含 glob 通配）readyTarget 降级到 `'*'`，因为浏览器 postMessage 的
+   * targetOrigin 只接受单一字符串或 `'*'`，不接受数组或 glob 模式。
+   */
+  private _resolveExpectedOrigin(raw: string | string[] | undefined): {
+    origins: string[];
+    readyTarget: string;
+  } {
+    const list = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+    const hasWildcard = list.length === 0 || list.includes('*');
+    if (hasWildcard) {
+      return { origins: [], readyTarget: '*' };
+    }
+    if (list.length === 1 && isExactOrigin(list[0]!)) {
+      return { origins: list, readyTarget: list[0]! };
+    }
+    return { origins: list, readyTarget: '*' };
   }
 
   /**
@@ -113,9 +145,12 @@ export class GuestChannel extends BaseChannel {
         return;
       }
 
-      if (this.expectedHostOrigin !== null && event.origin !== this.expectedHostOrigin) {
+      if (
+        this.expectedHostOrigins.length > 0 &&
+        !matchesOrigin(this.expectedHostOrigins, event.origin)
+      ) {
         this.logger.warn(
-          `sdk:ack rejected: origin "${event.origin}" ≠ expected "${this.expectedHostOrigin}"`,
+          `sdk:ack rejected: origin "${event.origin}" 不在 expectedHostOrigin (${this.expectedHostOrigins.join(', ')}) 内`,
         );
         return;
       }

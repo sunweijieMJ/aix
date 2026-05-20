@@ -181,10 +181,16 @@ export interface HostChannelOptions {
 /** Guest 侧频道配置 */
 export interface GuestChannelOptions {
   /**
-   * host 页面的 origin，生产环境强烈建议明确指定（如 'https://host.example.com'）。
-   * 未传或传 '*' 跳过 origin 校验，仅推荐用于开发环境。
+   * host 页面的 origin。生产环境强烈建议明确指定。语法与 host 侧 allowedOrigins 对称：
+   * - 精确 origin：`'https://host.example.com'`（最严格，推荐）
+   * - glob 通配：`'https://*.example.com'`（`*` 不跨 `/`）
+   * - 数组：`['https://a.example.com', 'https://*.example.com']`（任一命中即通过）
+   * - `'*'` 或未传：跳过 origin 校验，仅推荐用于开发环境。
+   *
+   * 注意：发送 sdk:ready 时的 postMessage targetOrigin 仅在"单条精确 origin"时使用该值，
+   * 其它情况（含通配/多条/'*'）会降级为 '*'；ready 包不含敏感数据，host 端有 allowedOrigins 反向校验。
    */
-  expectedHostOrigin?: string;
+  expectedHostOrigin?: string | string[];
   /**
    * 构造完是否自动通过 microtask 发起握手。默认 true。
    * 仅在需要延迟握手（例如等待外部数据准备好再握手）的特殊场景设为 false。
