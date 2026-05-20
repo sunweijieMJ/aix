@@ -1,5 +1,11 @@
 # @kit/sdk
 
+## 0.0.6
+
+### Patch Changes
+
+- 补充expectedHostOrigin
+
 ## 0.0.5
 
 ### Patch Changes
