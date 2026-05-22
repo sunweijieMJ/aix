@@ -36,7 +36,16 @@
       "Bash(git fetch*)",
       "Bash(git show *)"
     ],
-    "deny": []
+    "deny": [
+      "Bash(git checkout --*)",
+      "Bash(git checkout .)",
+      "Bash(git checkout -- .)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git branch -D*)"
+    ]
   },
   "enabledMcpjsonServers": ["aix"],
   "hooks": {

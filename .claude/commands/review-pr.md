@@ -4,209 +4,108 @@ description: 快速提醒 PR 审查清单，确保代码质量和项目规范
 
 # Pull Request 审查清单
 
-请按照以下清单全面审查 Pull Request，确保代码符合项目规范和质量标准。
-
-## 📋 审查清单
-
-### 1. 代码质量
-
-#### TypeScript 类型安全
-- [ ] 所有函数、变量都有明确的类型定义
-- [ ] 无 `any` 类型（除非有充分理由）
-- [ ] Props/Emits 接口完整定义
-- [ ] 运行 `pnpm type-check` 无错误
-
-#### 代码规范
-- [ ] 无 ESLint 错误和警告
-- [ ] 代码格式符合 Prettier 规范
-- [ ] 变量和函数命名清晰（camelCase）
-- [ ] 无硬编码魔法数字（使用常量）
-- [ ] 参考 `@coding-standards`
-
-#### Vue 组件规范
-- [ ] Props 定义使用 `defineProps<Props>()`
-- [ ] Emits 定义使用 `defineEmits<Emits>()`
-- [ ] 组件使用 `<script setup>` 语法
-- [ ] 参考 `@component-design`
-
-#### CSS 规范
-- [ ] **所有颜色使用 CSS 变量**（`--aix-*`）
-- [ ] 无硬编码颜色值（#fff、rgb()、rgba()）
-- [ ] CSS 类名使用 BEM 规范（`aix-button--primary`）
-- [ ] **不使用** `scoped`（依赖 `.aix-` 命名空间 + BEM 隔离）
-- [ ] 参考 `@coding-standards`
+> 📌 本清单是**勾选项**。代码审查方法论与详细标准详见 [@code-review](../agents/code-review.md)；编码规范以 [@coding-standards](../agents/coding-standards.md)、组件设计以 [@component-design](../agents/component-design.md)、测试以 [@testing](../agents/testing.md) 为 SSOT。
 
 ---
 
-### 2. 功能完整性
+## 1. 代码质量
 
-#### 功能实现
-- [ ] 功能符合 PRD/需求文档
-- [ ] 核心流程正常工作
-- [ ] 边界情况处理完善
-- [ ] 错误情况处理（try-catch）
+### TypeScript
+- [ ] 函数/变量有明确类型，无 `any`（除非有充分理由）
+- [ ] Props/Emits 接口完整
+- [ ] `pnpm type-check` 通过
 
-#### 组件体验
-- [ ] 加载状态提示（loading prop）
-- [ ] 禁用状态样式正确
-- [ ] 交互反馈及时
-- [ ] 支持键盘导航
+### Vue 组件
+- [ ] 使用 `<script setup>` + `defineProps<Props>()` / `defineEmits<Emits>()`
+- [ ] 遵循 `@component-design` 规范
 
----
-
-### 3. 测试和文档
-
-#### 单元测试
-- [ ] 关键组件有单元测试
-- [ ] 测试覆盖率 >= 80%
-- [ ] 运行 `pnpm test` 全部通过
-- [ ] 参考 `@testing`
-
-#### 代码注释
-- [ ] 复杂逻辑有注释说明
-- [ ] 公共函数有 JSDoc 注释
-- [ ] 必要的 TODO/FIXME 注释
-
-#### 文档更新
-- [ ] README.md 更新（如有新功能）
-- [ ] CHANGELOG.md 更新
-- [ ] API 文档更新（如有新接口）
+### CSS
+- [ ] 颜色/间距使用 `--aix-*` CSS 变量，**无硬编码**
+- [ ] BEM 命名 + `.aix-` 前缀
+- [ ] **未使用** `scoped`
 
 ---
 
-### 4. 无障碍支持
+## 2. 功能完整性
 
-- [ ] 交互元素有正确的 `role` 属性
-- [ ] 状态变化有 `aria-expanded`/`aria-selected` 等属性
-- [ ] 交互元素有 `aria-label` 或 `aria-labelledby`
-- [ ] 键盘可访问（Tab、Enter、Escape、Arrow keys）
+- [ ] 功能符合需求，核心流程正常
+- [ ] 边界情况处理（null / 空 / 异常）
+- [ ] 错误处理（try-catch、Promise reject）
+- [ ] 交互状态完整（loading / disabled / 反馈）
+
+---
+
+## 3. 测试与文档
+
+- [ ] 单测覆盖率 ≥ 80%，`pnpm test` 全通
+- [ ] 复杂逻辑有注释，公共函数有 JSDoc
+- [ ] README / CHANGELOG / API 文档已同步
+
+---
+
+## 4. 无障碍
+
+- [ ] `role` / `aria-*` 属性正确
+- [ ] 键盘可访问（Tab / Enter / Escape / Arrow）
 - [ ] 焦点管理正确（模态框焦点陷阱）
 
 ---
 
-### 5. AI 生成代码专项检查
+## 5. AI 生成代码专项检查（高优先级）
 
-> **审查员宣言**: "LGTM 意味着我已验证逻辑，而非仅觉得代码格式漂亮。"
+> **审查员宣言**："LGTM 意味着我已验证逻辑，而非仅觉得代码格式漂亮。"
 
-#### 幻觉代码验证 (最高优先级)
-- [ ] **幻觉库检测**: 新增的 npm 包是否真实存在？版本是否过旧？
-- [ ] **API 签名验证**: 调用的函数参数是否与当前版本匹配？
-- [ ] **正则表达式实测**: 复杂正则是否在 [regex101](https://regex101.com) 验证过？
+### 幻觉检测
+- [ ] **库存在性**：新增 npm 包是否真实存在、版本是否合理
+- [ ] **API 签名**：调用的函数参数是否与当前版本匹配
+- [ ] **正则**：复杂正则在 [regex101](https://regex101.com) 验证过
 
-#### 凭证与敏感信息
-- [ ] **无硬编码凭证**: 检查 API Key、Token、Password、内网 IP
-- [ ] **无敏感日志**: console.log 中无用户 ID、Token 等敏感数据
-- [ ] **环境变量使用**: 敏感配置通过 `.env` 文件管理
+### 凭证 / 敏感信息
+- [ ] 无硬编码 API Key / Token / Password / 内网 IP
+- [ ] 日志中无用户 ID、Token 等敏感数据
+- [ ] 敏感配置走 `.env`
 
-#### 逻辑完整性
-- [ ] **边界情况**: null、空字符串、负数、超长输入是否处理？
-- [ ] **循环终止**: while/递归是否有明确终止条件？
-- [ ] **业务一致性**: 代码逻辑是否真正符合 PRD 需求？
+### 逻辑完整性
+- [ ] 边界（null/空/负数/超长）已处理
+- [ ] 循环/递归有终止条件
+- [ ] 业务逻辑真正符合需求（不是看着像）
 
-#### 上下文一致性
-- [ ] **轮子检测**: 是否重复实现了已有的工具函数？
-  - 检查 `@aix/hooks` 是否有类似功能
-  - 检查 `@aix/utils` 是否有类似功能
-- [ ] **命名一致**: 命名风格是否与现有代码统一？
-- [ ] **注释同步**: 注释是否与代码逻辑匹配（AI 常忘记更新注释）？
+### 上下文一致性
+- [ ] **轮子检测**：先查 `@aix/hooks`、`@aix/utils` 是否已有同名/同义实现
+- [ ] 命名风格与现有代码一致
+- [ ] 注释与代码逻辑同步（AI 常忘改注释）
 
 ---
 
-### 6. 性能和安全
+## 6. 性能 / 安全 / 依赖
 
-#### 性能优化
-- [ ] 无明显性能问题（大量计算、渲染）
-- [ ] 列表使用虚拟滚动（长列表）
-- [ ] 图片懒加载
-- [ ] 组件懒加载（路由级别）
-
-#### 安全检查
-- [ ] 无 XSS 漏洞（v-html 使用 DOMPurify）
-- [ ] 无 SQL 注入风险
-- [ ] 敏感数据不在前端存储
-- [ ] Token 安全存储（HttpOnly Cookie）
-
-#### 依赖和构建
-- [ ] 无新增不必要的依赖
-- [ ] 运行 `pnpm build` 成功
-- [ ] 构建产物大小合理
+- [ ] 无明显性能问题（大计算、过度渲染）
+- [ ] 长列表虚拟滚动、图片懒加载
+- [ ] `v-html` 走 DOMPurify，无 XSS
+- [ ] 敏感数据不存前端
+- [ ] 无不必要的新增依赖；`pnpm build` 成功，产物大小合理
 
 ---
 
-### 7. Git 和提交规范
+## 7. Git 规范
 
-#### Commit Message
-- [ ] 符合 Conventional Commits 规范
-- [ ] 格式：`type(scope): subject`
-- [ ] 类型正确（feat/fix/docs/style/refactor/test/chore）
-
-#### 分支和合并
-- [ ] 基于最新的 `main/master` 分支
-- [ ] 无合并冲突
-- [ ] 删除已合并的分支
+- [ ] Commit 遵循 Conventional Commits（`type(scope): subject`）
+- [ ] 基于最新主分支，无冲突
 
 ---
 
-## 🚀 自动化检查工具
-
-在审查前，建议运行以下自动化检查：
+## 自动化命令
 
 ```bash
-# 1. 类型检查
-pnpm type-check
-
-# 2. 代码检查
-pnpm lint
-
-# 3. 运行测试
-pnpm test
-
-# 4. 构建检查
-pnpm build
-
-# 5. Storybook 构建
-pnpm storybook:build
+pnpm type-check && pnpm lint && pnpm test && pnpm build && pnpm storybook:build
 ```
 
----
+## 相关工具
 
-## 📝 审查结果模板
-
-### ✅ 通过
-代码质量优秀，符合所有规范，建议合并。
-
-### ⚠️ 需要修改
-发现以下问题，请修改后再合并：
-- [ ] 问题 1：描述
-- [ ] 问题 2：描述
-
-### ❌ 拒绝
-存在重大问题，需要重新设计/实现：
-- 问题描述...
-
----
-
-## 🔧 相关 Skills
-
-| Skill | 功能 | 使用场景 |
-|-------|------|----------|
-| `/code-optimizer` | 自动检测性能/类型问题 | 代码质量检查 |
-| `/a11y-checker` | 无障碍检查 | 可访问性审查 |
-| `/coverage-analyzer` | 测试覆盖率分析 | 测试完整性检查 |
-
-## 🔗 相关 Agents
-
-- `@code-review` - 代码审查完整指南
-- `@coding-standards` - 编码规范
-- `@component-design` - 组件设计规范
-- `@testing` - 测试策略
-
-## 📚 相关文档
-
-- [coding-standards.md](../agents/coding-standards.md) - 编码规范
-- [component-design.md](../agents/component-design.md) - 组件设计规范
-- [testing.md](../agents/testing.md) - 测试策略
-
----
-
-**开始审查吧！逐项检查，确保代码质量。**
+| 类型 | 名称 | 用途 |
+|------|------|------|
+| Skill | `/code-optimizer` | 自动检测性能/类型问题 |
+| Skill | `/a11y-checker` | 无障碍检查 |
+| Skill | `/coverage-analyzer` | 覆盖率分析 |
+| Agent | `@code-review` | 审查方法论（SSOT）|
+| Agent | `@coding-standards` / `@component-design` / `@testing` | 各领域规范（SSOT）|

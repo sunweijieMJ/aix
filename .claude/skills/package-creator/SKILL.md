@@ -1,6 +1,6 @@
 ---
 name: package-creator
-description: Use when the user asks to create / scaffold / 新建 a new package in the AIX monorepo (typical phrases - "新建一个 XX 组件包"、"create a new package")。Generates standard packages/<name>/ structure with package.json / tsconfig / rollup.config.js / src + __test__ + stories templates.
+description: Use ONLY when creating a brand-new **package** (top-level packages/<name>/ directory with its own package.json/tsconfig/rollup.config.js) in the AIX monorepo. Trigger phrases - "新建一个 XX 组件包"、"创建一个新包"、"scaffold a new package". DO NOT use for adding a component inside an existing package — use component-generator for that. Generates standard packages/<name>/ structure with package.json / tsconfig / rollup.config.js / src + __test__ + stories templates.
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:

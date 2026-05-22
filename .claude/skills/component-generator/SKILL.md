@@ -1,6 +1,6 @@
 ---
 name: component-generator
-description: Use when the user asks to create/generate/scaffold a Vue 3 component in the AIX 组件库 (typical phrases - "生成组件"、"新建组件"、"create a XX component"). Supports Props/Emits 类型定义、CSS 变量、可选 --with-story / --with-test。
+description: Use when adding a Vue 3 component **inside an existing package** in the AIX 组件库 (typical phrases - "生成组件"、"在 XX 包里新建组件"、"add a component to XX package"). DO NOT use to create a brand-new package — use package-creator for that. Supports Props/Emits 类型定义、CSS 变量、可选 --with-story / --with-test。
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:

@@ -45,13 +45,13 @@ Skills 是命令式工具，用于快速完成组件库开发任务。
 | `/code-optimizer` | `code-optimizer/SKILL.md` | 自动检测并修复性能/类型/包体积问题 | 代码优化 |
 | `/a11y-checker` | `a11y-checker/SKILL.md` | 自动化无障碍检查，ARIA/键盘/焦点管理 | 无障碍检查 |
 
-### Skill 依赖关系
+### 建议工作流（非自动编排）
 
-**推荐的 Skill 串联用法**（上游 Skill 完成后，提示模型按下游 Skill 的步骤继续工作；Claude Code Skills 系统本身不支持 skill 间显式调用，由模型自行链接）：
+> ⚠️ Claude Code Skills 系统**不支持** skill 间显式调用。下方箭头仅表示**人/模型自行**在上游 skill 完成后接续调用下游 skill 的建议工作流，不是技术依赖。
 
 ```
-figma-to-component ──► component-generator    # 提取设计数据后，按组件生成器的规范产出代码
-coverage-analyzer  ──► test-generator         # 覆盖率不足时，按测试生成器的规范补测试
+figma-to-component ──► component-generator    # 提取设计数据后，手动调用组件生成器产出代码
+coverage-analyzer  ──► test-generator         # 覆盖率不足时，手动调用测试生成器补测试
 ```
 
 **Skill 内置选项**（不是 Skill 间编排，是同一 Skill 的可选参数）：
@@ -92,8 +92,10 @@ Skills 根据任务自动匹配，也可以通过描述任务来触发：
 
 ### 典型工作流
 
+> ⚠️ **以下命令为意图描述，不是可执行 CLI**。Skills 通过 description 自然语言匹配触发，`--xxx` 风格参数仅作示意，实际使用时用自然语言描述意图即可（例如"用 package-creator 创建 Select 包，描述为下拉选择器"）。
+
 ```bash
-# 完整组件开发流程
+# 完整组件开发流程（意图描述）
 /package-creator Select --description="下拉选择器"  # 1. 创建包结构
 /component-generator Select --package=select --with-story  # 2. 生成组件代码
 /story-generator packages/select/src/Select.vue  # 3. 完善 story
@@ -101,8 +103,8 @@ Skills 根据任务自动匹配，也可以通过描述任务来触发：
 /coverage-analyzer packages/select  # 5. 检查覆盖率
 /a11y-checker packages/select  # 6. 无障碍检查
 /docs-generator packages/select  # 7. 生成文档
-pnpm test && pnpm build  # 8. 测试和构建
-pnpm changeset  # 9. 创建 changeset
+pnpm test && pnpm build  # 8. 测试和构建（真实命令）
+pnpm changeset  # 9. 创建 changeset（真实命令）
 ```
 
 ---
@@ -162,20 +164,24 @@ Agents 提供专业领域的深度指导，Claude 根据任务内容自动选择
 
 #### Team Agents (并行协作角色)
 
-用于 Agent Team 多人协作场景，每个角色有明确的文件所有权隔离。
+用于 Agent Team 多人协作场景，每个角色有明确的文件所有权隔离。**Team agent 不会自动触发**，必须通过 Task 工具显式 `subagent_type: team-xxx` 调用。
 
-| Agent | 文件 | 职责 | 文件所有权 |
-|-------|------|------|-----------|
-| `team-designer` | `team-designer.md` | 组件架构师（只读规划角色），整体架构设计与任务拆解 | 只读（tools 仅 Read/Grep/Glob 强制） |
-| `team-tester` | `team-tester.md` | 测试工程师，单元测试与无障碍测试 | `__test__/`（软约束，靠 prompt 自律） |
-| `team-storyteller` | `team-storyteller.md` | Story 文档工程师，Storybook Story 与组件文档 | `stories/` + `docs/`（软约束，靠 prompt 自律） |
+| Agent | 文件 | 职责 | 文件所有权 | 约束类型 |
+|-------|------|------|-----------|---------|
+| `team-designer` | `team-designer.md` | 组件架构师（只读规划角色），整体架构设计与任务拆解 | 只读，不写任何文件 | 🔒 **硬约束**（`tools: Read, Grep, Glob` 由 Claude Code 工具机制强制） |
+| `team-tester` | `team-tester.md` | 测试工程师，单元测试与无障碍测试 | `packages/<name>/__test__/` | ⚠️ **软约束**（frontmatter `tools` 含 Edit/Write，路径范围靠 prompt 自律） |
+| `team-storyteller` | `team-storyteller.md` | Story 文档工程师，Storybook Story 与组件文档 | `packages/<name>/stories/` + `docs/components/` | ⚠️ **软约束**（同上，靠 prompt 自律） |
 
+> **关键差异**：`team-designer` 的只读由 Claude Code 工具白名单**真正强制**；`team-tester` / `team-storyteller` 一旦授予 Edit/Write 权限即全局可写，文件路径范围**无法通过 frontmatter 限制**，必须在派发 prompt 中显式声明边界。这是 Claude Code 当前的能力限制，已在三个 team agent 顶部明确标注。
+>
 > **coder / optimizer / fixer 由 `general-purpose` agent 承担**，文件所有权约束为 `packages/<name>/src/`。
 > **重要**：`general-purpose` 不会自动读取本文件中的隔离规则，**派发任务时必须在 prompt 中显式写明文件所有权边界**，例如：
+>
 > ```
 > 你是 coder 角色，只能修改 packages/button/src/ 下的文件。
 > 禁止动 __test__/、stories/、docs/、其他包及配置文件。
 > ```
+>
 > 派发模板见 [team-designer.md "派发任务时的文件所有权约束" 章节](agents/team-designer.md)。
 
 ### Agent 依赖关系
@@ -431,50 +437,41 @@ MCP (Model Context Protocol) 服务器扩展 Claude 的能力。
 
 Permissions 控制 Claude 可以自动执行哪些命令（无需确认），配置在 `settings.json` 的 `permissions` 字段。
 
-### 当前允许的命令
+### 当前允许的命令（完整清单）
+
+> 以下表格按分类列出 `settings.json` 中 `permissions.allow` 的全部条目，与 `settings.json` 保持一致。变更权限时需同步更新本表格。
 
 | 分类 | 命令 | 说明 |
 |------|------|------|
-| **开发构建** | `pnpm dev*`, `pnpm build*`, `pnpm clean*` | 开发、构建和清理 |
-| **代码质量** | `pnpm lint*`, `pnpm type-check*`, `pnpm cspell*` | ESLint、TypeScript 和拼写检查 |
+| **开发构建** | `pnpm dev*`, `pnpm build*`, `pnpm clean*`, `pnpm install*` | 开发、构建、清理和安装依赖 |
+| **代码质量** | `pnpm lint*`, `pnpm type-check*`, `pnpm cspell*`, `pnpm format*` | ESLint、TypeScript、拼写检查和格式化 |
 | **测试** | `pnpm test*` | 单元测试 |
 | **文档** | `pnpm storybook*`, `pnpm docs*` | Storybook 和文档 |
 | **版本管理** | `pnpm changeset*`, `pnpm commit*` | Changesets 和交互式提交 |
-| **工具链** | `pnpm gen*`, `pnpm link*`, `npx tsc *`, `npx vue-tsc *` | 生成、链接和类型检查 |
-| **Git 操作** | `git status/diff/log/branch/fetch/stash/show/add/commit/push/pull/checkout/merge/rebase/mv/rm` | 常用 Git 命令 |
+| **工具链** | `pnpm gen*`, `pnpm link*`, `turbo *`, `npx tsc *`, `npx vue-tsc *` | 生成、链接、Turbo 任务和类型检查 |
+| **Git 只读** | `git status*`, `git diff*`, `git log*`, `git branch*`, `git fetch*`, `git show *`, `git stash*` | 状态/历史查询 |
+| **Git 写操作** | `git add *`, `git commit *`, `git push *`, `git pull*`, `git checkout *`, `git merge *`, `git rebase *`, `git mv *`, `git rm *` | 仓库修改（带参数）|
 
-### 配置示例
+### 禁止的命令（deny）
 
-```json
-{
-  "permissions": {
-    "allow": [
-      "Bash(pnpm dev*)",
-      "Bash(pnpm build*)",
-      "Bash(pnpm lint*)",
-      "Bash(pnpm type-check*)",
-      "Bash(pnpm cspell*)",
-      "Bash(pnpm test*)",
-      "Bash(pnpm commit*)",
-      "Bash(git status*)",
-      "Bash(git diff*)",
-      "Bash(git log*)",
-      "Bash(git add *)",
-      "Bash(git commit *)",
-      "Bash(git push *)"
-    ],
-    "deny": []
-  }
-}
-```
+> 即使 allow 中允许 `git checkout *`，下方 deny 优先级更高，破坏性子模式仍会被拦截。
+
+| 命令 | 原因 |
+|------|------|
+| `git checkout --*` / `git checkout .` / `git checkout -- .` | 会覆盖工作目录未提交的修改 |
+| `git reset --hard*` | 不可逆的硬重置 |
+| `git clean -f*` | 强制删除未跟踪文件 |
+| `git push --force*` / `git push -f*` | 强制推送可能覆盖远端历史 |
+| `git branch -D*` | 强制删除分支 |
 
 ### 安全说明
 
 - **allow**: 列出的命令 Claude 可以直接执行，无需用户确认
-- **deny**: 当前为空
+- **deny** 优先级高于 allow，即便 `git checkout *` 在 allow 中，破坏性形式仍被拦截
 - pnpm 命令使用 `pnpm cmd*` 格式（无空格），同时覆盖基础命令和冒号子命令（如 `pnpm test` 和 `pnpm test:unit`）
 - git 写操作使用 `git cmd *` 格式（有空格），要求必须带参数，防止意外执行 bare 命令
 - 未列出的命令需要用户手动确认
+- ⚠️ `git commit *` / `git push *` 允许在 allow 中是**有意设计**（个人开发场景），但请遵循 [全局 CLAUDE.md](../../CLAUDE.md) 的「禁止未经确认的提交」规则
 
 ---
 
