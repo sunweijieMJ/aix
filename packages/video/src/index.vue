@@ -1,7 +1,7 @@
 <template>
   <div
     ref="containerRef"
-    :class="['video-player', { 'video-player--transparent': transparent }]"
+    :class="['aix-video', { 'aix-video--transparent': transparent }]"
     :style="containerStyle"
   >
     <video
@@ -267,14 +267,16 @@ defineExpose({
 });
 </script>
 
-<style scoped lang="scss">
-.video-player {
+<style lang="scss">
+// 通过 .aix-video 命名空间隔离，避免使用 scoped（不留 data-v hash 提升外部样式覆盖能力）
+.aix-video {
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
 
-  :deep(.video-js) {
+  // video.js 第三方类名通过祖先选择器限定作用域
+  .video-js {
     width: 100%;
     height: 100%;
   }
@@ -282,7 +284,7 @@ defineExpose({
   &--transparent {
     background: transparent;
 
-    :deep(.video-js) {
+    .video-js {
       background: transparent;
 
       .vjs-tech {

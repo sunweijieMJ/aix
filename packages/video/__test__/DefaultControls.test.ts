@@ -51,10 +51,10 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      expect(wrapper.find('.video-controls').exists()).toBe(true);
-      expect(wrapper.find('.control-btn').exists()).toBe(true);
-      expect(wrapper.find('.progress-bar').exists()).toBe(true);
-      expect(wrapper.find('.time-display').exists()).toBe(true);
+      expect(wrapper.find('.aix-video-default-controls').exists()).toBe(true);
+      expect(wrapper.find('.aix-video-default-controls__btn').exists()).toBe(true);
+      expect(wrapper.find('.aix-video-default-controls__progress').exists()).toBe(true);
+      expect(wrapper.find('.aix-video-default-controls__time').exists()).toBe(true);
     });
 
     it('暂停状态应该显示播放图标', () => {
@@ -65,7 +65,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const playButton = wrapper.find('.control-btn');
+      const playButton = wrapper.find('.aix-video-default-controls__btn');
       expect(playButton.text()).toContain('▶');
     });
 
@@ -77,7 +77,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const playButton = wrapper.find('.control-btn');
+      const playButton = wrapper.find('.aix-video-default-controls__btn');
       expect(playButton.text()).toContain('⏸');
     });
   });
@@ -94,7 +94,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const timeDisplay = wrapper.find('.time-display');
+      const timeDisplay = wrapper.find('.aix-video-default-controls__time');
       expect(timeDisplay.text()).toBe('01:05 / 03:00');
     });
 
@@ -109,7 +109,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const timeDisplay = wrapper.find('.time-display');
+      const timeDisplay = wrapper.find('.aix-video-default-controls__time');
       expect(timeDisplay.text()).toBe('00:00 / 00:00');
     });
 
@@ -124,7 +124,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const timeDisplay = wrapper.find('.time-display');
+      const timeDisplay = wrapper.find('.aix-video-default-controls__time');
       expect(timeDisplay.text()).toBe('00:00 / 00:00');
     });
   });
@@ -141,7 +141,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const progressPlayed = wrapper.find('.progress-played');
+      const progressPlayed = wrapper.find('.aix-video-default-controls__progress-played');
       expect(progressPlayed.attributes('style')).toContain('width: 50%');
     });
 
@@ -155,7 +155,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const progressBuffered = wrapper.find('.progress-buffered');
+      const progressBuffered = wrapper.find('.aix-video-default-controls__progress-buffered');
       expect(progressBuffered.attributes('style')).toContain('width: 75%');
     });
   });
@@ -170,7 +170,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      await wrapper.find('.control-btn').trigger('click');
+      await wrapper.find('.aix-video-default-controls__btn').trigger('click');
       expect(controls.play).toHaveBeenCalled();
     });
 
@@ -183,7 +183,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      await wrapper.find('.control-btn').trigger('click');
+      await wrapper.find('.aix-video-default-controls__btn').trigger('click');
       expect(controls.pause).toHaveBeenCalled();
     });
 
@@ -196,7 +196,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const buttons = wrapper.findAll('.control-btn');
+      const buttons = wrapper.findAll('.aix-video-default-controls__btn');
       // 静音按钮是第二个按钮 (播放、静音、全屏)
       await buttons[1]?.trigger('click');
       expect(controls.toggleMute).toHaveBeenCalled();
@@ -211,7 +211,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const buttons = wrapper.findAll('.control-btn');
+      const buttons = wrapper.findAll('.aix-video-default-controls__btn');
       // 全屏按钮是第三个按钮
       await buttons[2]?.trigger('click');
       expect(controls.toggleFullscreen).toHaveBeenCalled();
@@ -226,7 +226,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const progressBar = wrapper.find('.progress-bar');
+      const progressBar = wrapper.find('.aix-video-default-controls__progress');
 
       // 简单触发点击事件，验证事件处理器存在
       await progressBar.trigger('click');
@@ -246,7 +246,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const buttons = wrapper.findAll('.control-btn');
+      const buttons = wrapper.findAll('.aix-video-default-controls__btn');
       expect(buttons[1]?.text()).toContain('🔇');
     });
 
@@ -258,7 +258,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const buttons = wrapper.findAll('.control-btn');
+      const buttons = wrapper.findAll('.aix-video-default-controls__btn');
       expect(buttons[1]?.text()).toContain('🔊');
     });
   });
@@ -272,7 +272,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const playButton = wrapper.find('.control-btn');
+      const playButton = wrapper.find('.aix-video-default-controls__btn');
       expect(playButton.attributes('aria-label')).toBe('播放');
     });
 
@@ -284,7 +284,7 @@ describe('DefaultControls 组件', () => {
         },
       });
 
-      const playButton = wrapper.find('.control-btn');
+      const playButton = wrapper.find('.aix-video-default-controls__btn');
       expect(playButton.attributes('aria-label')).toBe('暂停');
     });
   });

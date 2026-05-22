@@ -1,8 +1,8 @@
 <template>
-  <div class="video-controls">
+  <div class="aix-video-default-controls">
     <!-- 播放/暂停按钮 -->
     <button
-      class="control-btn"
+      class="aix-video-default-controls__btn"
       :aria-label="playerState.isPlaying ? '暂停' : '播放'"
       @click="togglePlay"
     >
@@ -11,21 +11,24 @@
     </button>
 
     <!-- 进度条 -->
-    <div class="progress-bar" @click="handleProgressClick">
-      <div class="progress-buffered" :style="{ width: `${playerState.buffered * 100}%` }" />
-      <div class="progress-played" :style="{ width: `${progress}%` }" />
-      <div class="progress-handle" :style="{ left: `${progress}%` }" />
+    <div class="aix-video-default-controls__progress" @click="handleProgressClick">
+      <div
+        class="aix-video-default-controls__progress-buffered"
+        :style="{ width: `${playerState.buffered * 100}%` }"
+      />
+      <div class="aix-video-default-controls__progress-played" :style="{ width: `${progress}%` }" />
+      <div class="aix-video-default-controls__progress-handle" :style="{ left: `${progress}%` }" />
     </div>
 
     <!-- 时间显示 -->
-    <div class="time-display">
+    <div class="aix-video-default-controls__time">
       {{ formatTime(playerState.currentTime) }} /
       {{ formatTime(playerState.duration) }}
     </div>
 
     <!-- 音量控制 -->
     <button
-      class="control-btn"
+      class="aix-video-default-controls__btn"
       :aria-label="playerState.isMuted ? '取消静音' : '静音'"
       @click="controls.toggleMute"
     >
@@ -35,7 +38,7 @@
 
     <!-- 全屏按钮 -->
     <button
-      class="control-btn"
+      class="aix-video-default-controls__btn"
       :aria-label="playerState.isFullscreen ? '退出全屏' : '全屏'"
       @click="controls.toggleFullscreen"
     >
@@ -103,10 +106,11 @@ function formatTime(seconds: number): string {
 }
 </script>
 
-<style scoped lang="scss">
+<style lang="scss">
+// 通过 .aix-video-default-controls 命名空间隔离，避免使用 scoped
 // 视频叠加层使用固定透明度值（确保在任意视频内容上的对比度）
 // 品牌色/功能色使用主题变量
-.video-controls {
+.aix-video-default-controls {
   display: flex;
   position: absolute;
   z-index: 10;
@@ -123,88 +127,88 @@ function formatTime(seconds: number): string {
   &:hover {
     opacity: 1;
   }
-}
 
-.control-btn {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  transition: opacity 0.2s;
-  border: none;
-  background: transparent;
-  color: white;
-  font-size: 16px;
-  cursor: pointer;
+  &__btn {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    transition: opacity 0.2s;
+    border: none;
+    background: transparent;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
 
-  &:hover {
-    opacity: 0.8;
-  }
+    &:hover {
+      opacity: 0.8;
+    }
 
-  &:active {
-    opacity: 0.6;
-  }
-}
-
-.progress-bar {
-  position: relative;
-  flex: 1;
-  height: 4px;
-  transition: height 0.2s;
-  border-radius: 2px;
-  background: rgb(255 255 255 / 0.3);
-  cursor: pointer;
-
-  &:hover {
-    height: 6px;
-
-    .progress-handle {
-      opacity: 1;
+    &:active {
+      opacity: 0.6;
     }
   }
-}
 
-.progress-buffered {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  transition: width 0.2s;
-  border-radius: 2px;
-  background: rgb(255 255 255 / 0.5);
-}
+  &__progress {
+    position: relative;
+    flex: 1;
+    height: 4px;
+    transition: height 0.2s;
+    border-radius: 2px;
+    background: rgb(255 255 255 / 0.3);
+    cursor: pointer;
 
-.progress-played {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  transition: width 0.1s;
-  border-radius: 2px;
-  background: var(--aix-colorPrimary, rgb(24 144 255));
-}
+    &:hover {
+      height: 6px;
 
-.progress-handle {
-  position: absolute;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  transform: translate(-50%, -50%);
-  transition: left 0.1s;
-  border-radius: 50%;
-  opacity: 0;
-  background: white;
-  box-shadow: 0 2px 4px rgb(0 0 0 / 0.3);
-}
+      .aix-video-default-controls__progress-handle {
+        opacity: 1;
+      }
+    }
+  }
 
-.time-display {
-  flex-shrink: 0;
-  min-width: 100px;
-  font-size: 12px;
-  text-align: center;
-  white-space: nowrap;
-  user-select: none;
+  &__progress-buffered {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    transition: width 0.2s;
+    border-radius: 2px;
+    background: rgb(255 255 255 / 0.5);
+  }
+
+  &__progress-played {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    transition: width 0.1s;
+    border-radius: 2px;
+    background: var(--aix-colorPrimary, rgb(24 144 255));
+  }
+
+  &__progress-handle {
+    position: absolute;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    transform: translate(-50%, -50%);
+    transition: left 0.1s;
+    border-radius: 50%;
+    opacity: 0;
+    background: white;
+    box-shadow: 0 2px 4px rgb(0 0 0 / 0.3);
+  }
+
+  &__time {
+    flex-shrink: 0;
+    min-width: 100px;
+    font-size: 12px;
+    text-align: center;
+    white-space: nowrap;
+    user-select: none;
+  }
 }
 </style>
