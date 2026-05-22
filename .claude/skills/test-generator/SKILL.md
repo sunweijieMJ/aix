@@ -336,7 +336,7 @@ pnpm test --filter @aix/select                # 2. 运行测试
 
 ## 相关文档
 
-- [testing.md](../agents/testing.md) - 测试策略
-- [coverage-analyzer.md](./coverage-analyzer.md) - 覆盖率分析
-- [story-generator.md](./story-generator.md) - Story 生成
-- [commands/test.md](../commands/test.md) - 测试检查清单
+- [testing.md](../../agents/testing.md) - 测试策略
+- [coverage-analyzer](../coverage-analyzer/SKILL.md) - 覆盖率分析
+- [story-generator](../story-generator/SKILL.md) - Story 生成
+- [commands/test.md](../../commands/test.md) - 测试检查清单

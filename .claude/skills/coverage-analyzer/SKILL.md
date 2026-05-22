@@ -17,6 +17,8 @@ metadata:
 
 ## 使用方式
 
+> ℹ️ 本 Skill 本质是 prompt 指南，**下方的 `--flag` 是给模型解读的语义提示**，不是真实 CLI 参数（项目内没有同名可执行脚本）。可以用自然语言表达相同意图，如"只显示不足的"、"输出 JSON 到 xxx.json"等。
+
 ```bash
 # 检查全局覆盖率
 /coverage-analyzer
@@ -267,7 +269,7 @@ pnpm test --filter @aix/select           # 3. 运行测试
 
 ## 相关文档
 
-- [testing.md](../agents/testing.md) - 测试策略
-- [test-generator.md](./test-generator.md) - 测试生成器
-- [a11y-checker.md](./a11y-checker.md) - 无障碍检查器
-- [commands/test.md](../commands/test.md) - 测试检查清单
+- [testing.md](../../agents/testing.md) - 测试策略
+- [test-generator](../test-generator/SKILL.md) - 测试生成器
+- [a11y-checker](../a11y-checker/SKILL.md) - 无障碍检查器
+- [commands/test.md](../../commands/test.md) - 测试检查清单

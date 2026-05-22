@@ -40,7 +40,6 @@ metadata:
 | `--package` | 目标包名称（packages/ 下的子目录） | 必需 | `--package=button` |
 | `--with-story` | 是否生成 Storybook story | `false` | `--with-story` |
 | `--with-test` | 是否生成单元测试文件 | `false` | `--with-test` |
-| `--with-docs` | 是否生成 API 文档 | `false` | `--with-docs` |
 
 ## 执行流程
 
@@ -55,7 +54,8 @@ metadata:
 **可选信息:**
 - `--with-story`: 是否生成 Storybook story
 - `--with-test`: 是否生成单元测试
-- `--with-docs`: 是否生成 API 文档
+
+> 如需生成 API 文档，请在组件完成后单独调用 [docs-generator](../docs-generator/SKILL.md)。
 
 ### 步骤 2: 确定文件路径
 
@@ -344,7 +344,7 @@ describe('Button', () => {
 
 ```typescript
 // 添加导入
-import { ComponentName } from './{ComponentName}.vue';
+import ComponentName from './{ComponentName}.vue';
 
 // 添加导出
 export { ComponentName };
@@ -440,9 +440,9 @@ pnpm type-check && pnpm lint
 
 ## 相关文档
 
-- [component-design.md](../agents/component-design.md) - 组件设计规范
-- [coding-standards.md](../agents/coding-standards.md) - 编码规范
-- [storybook-development.md](../agents/storybook-development.md) - Storybook 开发指导
+- [component-design.md](../../agents/component-design.md) - 组件设计规范
+- [coding-standards.md](../../agents/coding-standards.md) - 编码规范
+- [storybook-development.md](../../agents/storybook-development.md) - Storybook 开发指导
 
 ## 示例
 

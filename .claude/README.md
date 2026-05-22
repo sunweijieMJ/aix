@@ -47,11 +47,11 @@ Skills 是命令式工具，用于快速完成组件库开发任务。
 
 ### Skill 依赖关系
 
-**真实的 Skill 间编排**（上游 Skill 会显式调用下游 Skill）：
+**推荐的 Skill 串联用法**（上游 Skill 完成后，提示模型按下游 Skill 的步骤继续工作；Claude Code Skills 系统本身不支持 skill 间显式调用，由模型自行链接）：
 
 ```
-figma-to-component ──► component-generator    # 提取设计数据后调用组件生成器
-coverage-analyzer  ──► test-generator         # 覆盖率不足时建议调用测试生成器
+figma-to-component ──► component-generator    # 提取设计数据后，按组件生成器的规范产出代码
+coverage-analyzer  ──► test-generator         # 覆盖率不足时，按测试生成器的规范补测试
 ```
 
 **Skill 内置选项**（不是 Skill 间编排，是同一 Skill 的可选参数）：
@@ -166,9 +166,9 @@ Agents 提供专业领域的深度指导，Claude 根据任务内容自动选择
 
 | Agent | 文件 | 职责 | 文件所有权 |
 |-------|------|------|-----------|
-| `team-designer` | `team-designer.md` | 组件架构师（Plan 模式只读），整体架构设计与任务拆解 | 只读（tools: Read, Grep, Glob） |
-| `team-tester` | `team-tester.md` | 测试工程师，单元测试与无障碍测试 | `__test__/`（tools: Read, Grep, Glob, Edit, Write, Bash） |
-| `team-storyteller` | `team-storyteller.md` | Story 文档工程师，Storybook Story 与组件文档 | `stories/` + `docs/`（tools: Read, Grep, Glob, Edit, Write, Bash） |
+| `team-designer` | `team-designer.md` | 组件架构师（只读规划角色），整体架构设计与任务拆解 | 只读（tools 仅 Read/Grep/Glob 强制） |
+| `team-tester` | `team-tester.md` | 测试工程师，单元测试与无障碍测试 | `__test__/`（软约束，靠 prompt 自律） |
+| `team-storyteller` | `team-storyteller.md` | Story 文档工程师，Storybook Story 与组件文档 | `stories/` + `docs/`（软约束，靠 prompt 自律） |
 
 > **coder / optimizer / fixer 由 `general-purpose` agent 承担**，文件所有权约束为 `packages/<name>/src/`。
 > **重要**：`general-purpose` 不会自动读取本文件中的隔离规则，**派发任务时必须在 prompt 中显式写明文件所有权边界**，例如：
@@ -176,7 +176,7 @@ Agents 提供专业领域的深度指导，Claude 根据任务内容自动选择
 > 你是 coder 角色，只能修改 packages/button/src/ 下的文件。
 > 禁止动 __test__/、stories/、docs/、其他包及配置文件。
 > ```
-> 派发模板见 [team-designer.md "任务拆解输出" 章节](agents/team-designer.md)。
+> 派发模板见 [team-designer.md "派发任务时的文件所有权约束" 章节](agents/team-designer.md)。
 
 ### Agent 依赖关系
 
@@ -379,86 +379,51 @@ git push  # 自动推送
 
 MCP (Model Context Protocol) 服务器扩展 Claude 的能力。
 
-### 配置文件
+### 项目级 vs 用户级
 
-| 文件 | 用途 | 说明 |
-|------|------|------|
-| `.mcp.json` | Claude Code 配置 | 项目根目录，Claude Code 读取 |
-| `.cursor/mcp.json` | Cursor 配置 | Cursor 编辑器读取 |
-| `settings.json` | 启用控制 | `enabledMcpjsonServers` 字段控制启用哪些 |
+| 层级 | 配置文件 | 用途 |
+|------|---------|------|
+| **项目级** | `.mcp.json`（仓库根目录） | 项目自带、需要随仓库分发的 MCP server |
+| **用户级** | `~/.claude.json` 或 IDE 设置 | 个人开发环境的通用 MCP（figma / context7 / chrome-devtools 等），由开发者自行启用，不强制 |
 
-### 当前配置的 MCP 服务器
+> 项目级 server 需要在 `.claude/settings.json` 的 `enabledMcpjsonServers` 中显式启用才生效。
 
-| 服务器 | NPM 包 | 功能 | 使用场景 |
-|--------|--------|------|----------|
-| `figma` | `figma-developer-mcp` | Figma 设计稿读取 | 提取设计数据、下载 SVG/PNG |
-| `context7` | `@upstash/context7-mcp` | 第三方库文档查询 | 获取最新库文档和 API 参考 |
-| `eslint` | `@eslint/mcp@latest` | ESLint 代码检查 | 文件级别的 lint 检查 |
+### 当前项目级 MCP server
 
-### 完整 MCP 配置 (.mcp.json)
+| 服务器 | NPM 包 | 功能 |
+|--------|--------|------|
+| `aix` | `@aix/mcp-server` | AIX 组件库专用 MCP，提供组件元数据查询等能力 |
+
+### 完整 `.mcp.json`
 
 ```json
 {
   "mcpServers": {
-    "figma": {
+    "aix": {
       "command": "npx",
-      "args": ["-y", "figma-developer-mcp", "--stdio"],
-      "env": {
-        "FIGMA_API_KEY": "${FIGMA_API_KEY}"
-      }
-    },
-    "context7": {
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
-    },
-    "eslint": {
-      "command": "npx",
-      "args": ["@eslint/mcp@latest"]
+      "args": ["@aix/mcp-server@latest"]
     }
   }
 }
 ```
 
-### 在 settings.json 中启用
+### 在 `settings.json` 中启用
 
 ```json
 {
-  "enabledMcpjsonServers": ["figma", "context7", "eslint"]
+  "enabledMcpjsonServers": ["aix"]
 }
 ```
 
-### MCP 工具使用示例
+### 常用用户级 MCP（按需自行配置，不在仓库中）
 
-```bash
-# Figma - 提取设计数据
-mcp__figma__get_figma_data  # 获取 Figma 文件数据
-mcp__figma__download_figma_images  # 下载图片资源
+| 服务器 | 用途 | 安装方式（示例） |
+|--------|------|----------------|
+| `context7` | 第三方库文档查询 | `claude mcp add context7 -- npx -y @upstash/context7-mcp` |
+| `figma` | Figma 设计稿读取 | 需 `FIGMA_API_KEY`，参考 [figma-developer-mcp](https://www.npmjs.com/package/figma-developer-mcp) |
+| `chrome-devtools` | 浏览器 DevTools 联动 | 参见对应 MCP 文档 |
 
-# Context7 - 查询库文档
-mcp__context7__resolve-library-id  # 解析库 ID
-mcp__context7__query-docs    # 获取库文档
-
-# ESLint - 代码检查
-mcp__eslint__lint-files  # 检查指定文件
-```
-
-### 环境变量配置
-
-1. 复制环境变量模板：
-   ```bash
-   cp .env.example .env
-   ```
-
-2. 编辑 `.env` 文件，填入实际值：
-   ```bash
-   FIGMA_API_KEY=your_figma_api_key_here
-   ```
-
-| 变量 | 服务器 | 获取方式 |
-|------|--------|----------|
-| `FIGMA_API_KEY` | figma | [Figma 开发者设置](https://www.figma.com/developers/api#access-tokens) |
-
-> **安全提醒**: `.env` 文件已添加到 `.gitignore`，不会被提交到代码仓库。
+> 若需要把 figma 等 server 升级为项目级（团队成员共享配置），请同时更新 `.mcp.json`、`enabledMcpjsonServers` 和本节描述，并提供 `.env.example` 模板。
 
 ---
 

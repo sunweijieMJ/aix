@@ -26,7 +26,7 @@ metadata:
 - ✅ **切图下载** - 自动下载并优化图片资源
 - ✅ **调用组件生成器** - 传递设计数据给 `/component-generator`
 
-> **Figma MCP 详细操作**: 数据提取、异常处理等详见 [figma-extraction-guide.md](../agents/figma-extraction-guide.md)
+> **Figma MCP 详细操作**: 数据提取、异常处理等详见 [figma-extraction-guide.md](../../agents/figma-extraction-guide.md)
 
 ---
 
@@ -52,7 +52,7 @@ metadata:
    - 颜色数量: 4 个
 ```
 
-> **详细操作**: 见 [figma-extraction-guide.md#step-2-获取设计数据](../agents/figma-extraction-guide.md#-step-2-获取设计数据)
+> **详细操作**: 见 [figma-extraction-guide.md#step-2-获取设计数据](../../agents/figma-extraction-guide.md#-step-2-获取设计数据)
 
 ### 步骤 2: 分析设计结构 & 颜色映射
 
@@ -81,7 +81,7 @@ metadata:
    └── icon.svg (16x16 px, 1 KB)
 ```
 
-> **详细操作**: 见 [figma-extraction-guide.md#step-4-下载图片资源](../agents/figma-extraction-guide.md#️-step-4-下载图片资源)
+> **详细操作**: 见 [figma-extraction-guide.md#step-4-下载图片资源](../../agents/figma-extraction-guide.md#️-step-4-下载图片资源)
 
 ### 步骤 4: 调用组件生成器
 
@@ -107,7 +107,7 @@ metadata:
        └── Button.stories.ts (Storybook story)
 ```
 
-> **组件代码模板**: 详见 [component-generator.md](./component-generator.md)
+> **组件代码模板**: 详见 [component-generator](../component-generator/SKILL.md)
 
 ### 步骤 5: 生成完成报告
 

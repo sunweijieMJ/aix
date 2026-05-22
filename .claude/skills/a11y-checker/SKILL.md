@@ -216,6 +216,6 @@ const savesFocus = script.includes('previousActiveElement') ||
 
 ## 相关文档
 
-- [accessibility.md](../agents/accessibility.md) - 无障碍完整指南
-- [testing.md](../agents/testing.md) - 测试策略（含 A11y 测试）
-- [component-design.md](../agents/component-design.md) - 组件设计规范
+- [accessibility.md](../../agents/accessibility.md) - 无障碍完整指南
+- [testing.md](../../agents/testing.md) - 测试策略（含 A11y 测试）
+- [component-design.md](../../agents/component-design.md) - 组件设计规范

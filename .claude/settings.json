@@ -38,7 +38,7 @@
     ],
     "deny": []
   },
-  "enabledMcpjsonServers": ["figma", "context7", "eslint"],
+  "enabledMcpjsonServers": ["aix"],
   "hooks": {
     "SessionStart": [
       {

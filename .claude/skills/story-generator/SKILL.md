@@ -356,6 +356,6 @@ pnpm storybook:dev
 
 ## 相关文档
 
-- [storybook-development.md](../agents/storybook-development.md) - Storybook 开发指导
-- [component-design.md](../agents/component-design.md) - 组件设计规范
-- [testing.md](../agents/testing.md) - 测试策略
+- [storybook-development.md](../../agents/storybook-development.md) - Storybook 开发指导
+- [component-design.md](../../agents/component-design.md) - 组件设计规范
+- [testing.md](../../agents/testing.md) - 测试策略

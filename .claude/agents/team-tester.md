@@ -22,6 +22,8 @@ model: inherit
 - **可操作**: `packages/<name>/__test__/` 目录下的所有文件
 - **禁止修改**: `src/`、`stories/`、`docs/` 下的文件
 
+> ⚠️ **软约束说明**: frontmatter 的 `tools: Edit, Write, Bash` 一旦授予即全局可写，本约束靠 prompt 自律执行，不由工具机制强制。务必在每次具体任务开始前自检"我是否越界"。
+
 ## 测试规范
 
 遵循 [testing.md](testing.md) 的完整测试策略，核心要点：

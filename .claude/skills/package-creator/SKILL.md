@@ -294,6 +294,6 @@ pnpm publish
 
 ## 相关文档
 
-- [project-structure.md](../agents/project-structure.md) - 项目结构和 Monorepo 管理指导
-- [component-generator.md](./component-generator.md) - 组件生成器
-- [npm-publishing.md](../agents/npm-publishing.md) - npm 发布流程
+- [project-structure.md](../../agents/project-structure.md) - 项目结构和 Monorepo 管理指导
+- [component-generator](../component-generator/SKILL.md) - 组件生成器
+- [npm-publishing.md](../../agents/npm-publishing.md) - npm 发布流程

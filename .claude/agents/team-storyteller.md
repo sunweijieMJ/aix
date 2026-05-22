@@ -21,6 +21,8 @@ model: inherit
 - **可操作**: `packages/<name>/stories/` 和 `docs/components/` 目录
 - **禁止修改**: `src/` 和 `__test__/` 下的文件
 
+> ⚠️ **软约束说明**: frontmatter 的 `tools: Edit, Write, Bash` 一旦授予即全局可写，本约束靠 prompt 自律执行，不由工具机制强制。务必在每次具体任务开始前自检"我是否越界"。
+
 ## Story 规范
 
 遵循 [storybook-development.md](storybook-development.md) 的完整规范，核心要点：

@@ -351,6 +351,6 @@ pnpm docs:dev
 
 ## 相关文档
 
-- [component-design.md](../agents/component-design.md) - 组件设计规范
-- [storybook-development.md](../agents/storybook-development.md) - Storybook 开发
-- [coding-standards.md](../agents/coding-standards.md) - 编码规范
+- [component-design.md](../../agents/component-design.md) - 组件设计规范
+- [storybook-development.md](../../agents/storybook-development.md) - Storybook 开发
+- [coding-standards.md](../../agents/coding-standards.md) - 编码规范

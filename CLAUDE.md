@@ -134,6 +134,23 @@ pnpm commit               # 交互式提交 (czg)
 
 项目配置了完整的 Skills、Agents 和 Commands，支持组件库开发全流程自动化。详见 `.claude/` 目录和 `.claude/README.md`。
 
+## Agent Team 协作模式
+
+需要并行开发同一组件的多个产物时，使用三个 Team agent 分工：
+
+| 角色 | Agent | 文件所有权（软约束） |
+|------|-------|------------------|
+| 架构师 | `team-designer`（只读） | 不写代码，只输出方案 |
+| 测试工程师 | `team-tester` | `packages/<name>/__test__/` |
+| Story 工程师 | `team-storyteller` | `packages/<name>/stories/` + `docs/components/` |
+| 编码 / 优化 / 修复 | `general-purpose` | `packages/<name>/src/` |
+
+**关键原则**：
+
+- 文件所有权全部是**软约束**（frontmatter 的 `tools` 字段无法限制写路径），派发任务时**必须在 prompt 里显式声明边界**，避免越界编辑
+- `general-purpose` 不读 agent 配置，派发模板见 [.claude/agents/team-designer.md](.claude/agents/team-designer.md) "派发任务时的文件所有权约束" 章节
+- 工作流：designer 提交方案 → lead 审批 → coder 实现 → tester + storyteller 并行
+
 <!-- sentinel:start -->
 # Sentinel 规范（供 CI 中的 Claude Code 使用）
 

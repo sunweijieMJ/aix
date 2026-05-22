@@ -23,10 +23,10 @@ metadata:
 | **包体积** | Tree-shaking、按需导入、代码拆分 | 最小化体积 | ✅ 支持 |
 
 > **其他规范参考**:
-> - 代码风格 → [coding-standards.md](../agents/coding-standards.md)
-> - 测试覆盖 → [testing.md](../agents/testing.md)
-> - 组件设计 → [component-design.md](../agents/component-design.md)
-> - 无障碍检查 → [a11y-checker.md](./a11y-checker.md)
+> - 代码风格 → [coding-standards.md](../../agents/coding-standards.md)
+> - 测试覆盖 → [testing.md](../../agents/testing.md)
+> - 组件设计 → [component-design.md](../../agents/component-design.md)
+> - 无障碍检查 → [a11y-checker](../a11y-checker/SKILL.md)
 
 ---
 
@@ -383,7 +383,7 @@ pnpm test --filter @aix/select
 
 ## 相关文档
 
-- [coding-standards.md](../agents/coding-standards.md) - 编码规范
-- [component-design.md](../agents/component-design.md) - 组件设计
-- [testing.md](../agents/testing.md) - 测试策略
-- [a11y-checker.md](./a11y-checker.md) - 无障碍检查
+- [coding-standards.md](../../agents/coding-standards.md) - 编码规范
+- [component-design.md](../../agents/component-design.md) - 组件设计
+- [testing.md](../../agents/testing.md) - 测试策略
+- [a11y-checker](../a11y-checker/SKILL.md) - 无障碍检查
