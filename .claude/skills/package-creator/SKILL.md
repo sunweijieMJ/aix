@@ -1,6 +1,6 @@
 ---
 name: package-creator
-description: 快速创建新组件包，生成标准目录结构、配置文件和模板代码
+description: Use when the user asks to create / scaffold / 新建 a new package in the AIX monorepo (typical phrases - "新建一个 XX 组件包"、"create a new package")。Generates standard packages/<name>/ structure with package.json / tsconfig / rollup.config.js / src + __test__ + stories templates.
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:
@@ -76,7 +76,7 @@ packages/
       ├── src/
       │   ├── {ComponentName}.vue       # 组件主文件
       │   └── index.ts                  # 导出文件
-      ├── __tests__/
+      ├── __test__/
       │   └── {ComponentName}.test.ts   # 测试文件
       ├── stories/
       │   └── {ComponentName}.stories.ts  # Story 文件
@@ -94,37 +94,64 @@ packages/
   "name": "@aix/{package-name}",
   "version": "0.0.1",
   "description": "{description}",
+  "license": "MIT",
   "type": "module",
-  "main": "./dist/index.cjs.js",
-  "module": "./dist/index.esm.js",
-  "types": "./dist/index.d.ts",
+  "main": "./lib/index.js",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "style": "./es/index.css",
+  "sideEffects": [
+    "*.css",
+    "*.scss",
+    "*.sass"
+  ],
   "exports": {
     ".": {
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "types": "./dist/index.d.ts"
-    }
+      "types": "./es/index.d.ts",
+      "import": "./es/index.js",
+      "require": "./lib/index.js"
+    },
+    "./es/*": "./es/*",
+    "./lib/*": "./lib/*",
+    "./style": "./es/index.css",
+    "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "lib",
+    "es"
   ],
   "scripts": {
     "dev": "rollup -c -w",
-    "build": "pnpm build:js && pnpm build:types",
+    "lint:script": "eslint . --max-warnings 0",
+    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "lint": "pnpm run lint:script && pnpm run lint:style",
+    "test": "vitest --run",
+    "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
     "build:js": "rollup -c",
-    "build:types": "vue-tsc -p tsconfig.json --declaration --emitDeclarationOnly --outDir dist",
-    "lint": "eslint src",
-    "test": "vitest"
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
+    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "peerDependencies": {
     "vue": "^3.5.31"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
-    "@kit/typescript-config": "workspace:^"
+    "@kit/stylelint-config": "workspace:^",
+    "eslint": "*",
+    "rimraf": "*",
+    "stylelint": "*",
+    "tsx": "*",
+    "typescript": "*"
   }
 }
 ```
+
+> **关键字段说明**：
+> - **双格式输出**：`main` → `lib/`（CJS），`module` → `es/`（ESM），与 `rollup.config.js` 输出一致
+> - **types** 指向 `es/` 下由 `vue-tsc` 生成的 `.d.ts`
+> - **sideEffects** 必须列出样式文件，避免 Tree-shaking 时被错误移除
+> - **exports** 暴露 `./es/*`、`./lib/*`、`./style` 子路径，方便按需引用
 
 #### tsconfig.json
 
@@ -132,7 +159,7 @@ packages/
 {
   "extends": "@kit/typescript-config/vue.json",
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
-  "exclude": ["node_modules", "dist", "__tests__"]
+  "exclude": ["node_modules", "es", "lib", "dist", "__test__"]
 }
 ```
 
@@ -182,7 +209,7 @@ pnpm build
    ✓ src/{ComponentName}.vue
    ✓ src/index.ts
    ✓ stories/{ComponentName}.stories.ts
-   ✓ __tests__/{ComponentName}.test.ts
+   ✓ __test__/{ComponentName}.test.ts
 
 💡 下一步:
    1. 开发组件: cd packages/{package-name}
@@ -211,7 +238,7 @@ packages/{package-name}/
 ├── src/                  # 源代码
 │   ├── *.vue            # 组件文件
 │   └── index.ts         # 导出文件
-├── __tests__/           # 测试文件
+├── __test__/           # 测试文件
 ├── stories/             # Storybook stories
 ├── dist/                # 构建输出（gitignore）
 ├── package.json

@@ -1,6 +1,6 @@
 ---
 name: coverage-analyzer
-description: 分析组件库测试覆盖率，对比 80% 目标，生成详细报告，列出覆盖率不足的组件
+description: Use when the user asks to analyze/check test coverage, 测试覆盖率, or wants to find components below the 80% coverage target. Generates detailed reports listing under-covered packages in the AIX 组件库.
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:

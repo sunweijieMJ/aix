@@ -33,9 +33,9 @@ model: inherit
 
 ### 3. 样式隔离原则
 
-- **Scoped CSS**: 必须使用 `<style scoped>`
-- **命名空间**: 所有 CSS 类名使用 `aix-` 前缀
-- **CSS 变量**: 使用主题包中定义的 CSS 变量
+- **禁用 scoped**: 组件库**不使用** `<style scoped>`（避免编译生成 hash 属性影响样式覆盖与 Tree-shaking）
+- **命名空间隔离**: 所有 CSS 类名使用 `aix-` 前缀 + BEM 命名实现隔离
+- **CSS 变量**: 使用 `@aix/theme` 包中定义的 CSS 变量
 
 ### 4. 可树摇原则
 
@@ -202,9 +202,9 @@ defineExpose({
   </button>
 </template>
 
-<style scoped>
+<style lang="scss">
 .aix-button {
-  /* 组件样式 */
+  /* 组件样式，通过 .aix- 命名空间 + BEM 隔离 */
 }
 </style>
 ```
@@ -596,21 +596,29 @@ width: 100px;
 margin: 0;
 ```
 
-### Scoped CSS 规范
+### 样式隔离规范（禁用 scoped）
 
-所有组件样式**必须**使用 `<style scoped>`：
+组件库**禁止**使用 `<style scoped>`，依赖 `.aix-<component>` 命名空间 + BEM 命名实现隔离：
 
 ```vue
-<!-- ✅ 正确 -->
+<!-- ✅ 正确：不加 scoped，使用 BEM 命名空间 -->
+<style lang="scss">
+.aix-button {
+  &--primary { }
+  &__icon { }
+}
+</style>
+
+<!-- ❌ 错误：使用 scoped -->
 <style scoped>
 .aix-button { }
 </style>
-
-<!-- ❌ 错误 -->
-<style>
-.aix-button { }
-</style>
 ```
+
+**禁用原因**：
+- scoped 会生成 `data-v-xxx` hash 属性，组件库被外部 import 时增加无意义的运行时开销
+- 业务侧难以通过普通 class 覆盖样式，必须用 `:deep()`，破坏封装
+- 与 Tree-shaking、CSS 提取链路兼容性更好
 
 ### :deep() 选择器规范
 
@@ -697,7 +705,7 @@ $spacing-md: 16px;
 - [ ] 使用 `packages/theme/src/` 中定义的 CSS 变量
 - [ ] 所有颜色值使用 `var(--aix-xxx)` 而非硬编码
 - [ ] 所有 CSS 类名使用 `aix-` 前缀
-- [ ] 使用 `<style scoped>` 避免样式污染
+- [ ] **不使用** `<style scoped>`，依赖 `.aix-` 前缀 + BEM 命名空间隔离
 - [ ] CSS 数值小数保留 3 位（如 14.375px、1.429em、0.880）
 - [ ] 不直接使用标签名选择器（如 `h1`, `p`, `div`）
 - [ ] 每个元素都有语义化的 class 名称
@@ -716,7 +724,7 @@ $spacing-md: 16px;
 ### 组件库特有检查
 
 - [ ] 组件无全局副作用
-- [ ] 样式完全隔离（scoped）
+- [ ] 样式通过 `.aix-` 命名空间隔离（禁用 scoped）
 - [ ] 支持按需引入
 - [ ] 支持 Tree-shaking
 - [ ] 所有 API 有 JSDoc 注释

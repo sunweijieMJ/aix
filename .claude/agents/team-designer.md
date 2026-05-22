@@ -97,6 +97,23 @@ packages/<name>/
 - storyteller 任务: [Story 场景列表]
 ```
 
+## 派发任务时的文件所有权约束（重要）
+
+`team-tester` / `team-storyteller` 有专属 agent，由 frontmatter 的 tools 限制隔离。但 **coder / optimizer / fixer 角色由 `general-purpose` agent 承担，没有内建文件所有权约束**，必须在派发 prompt 中显式声明：
+
+```
+你是 <coder|optimizer|fixer> 角色，负责 packages/<name>/<component>。
+
+文件所有权：
+- ✅ 允许编辑: packages/<name>/src/**
+- ❌ 禁止编辑: __test__/、stories/、docs/、其他包、根配置文件 (*.config.*, package.json, tsconfig*.json)
+
+任务: <具体任务描述>
+完成后输出: 修改的文件清单 + 关键决策说明
+```
+
+派发时务必复制以上模板，避免 general-purpose 越界编辑测试或文档目录。
+
 ## 关联角色
 
 在 Agent Team 中与以下角色协作：

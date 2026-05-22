@@ -1,6 +1,6 @@
 ---
 name: a11y-checker
-description: 自动化无障碍检查，检测 ARIA 属性、键盘导航、焦点管理，生成修复建议
+description: Use when the user asks to check accessibility / a11y / 无障碍 of a Vue component, audit ARIA attributes, verify keyboard navigation, or inspect focus management. Generates fix suggestions for AIX 组件库.
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:

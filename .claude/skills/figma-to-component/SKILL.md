@@ -1,6 +1,6 @@
 ---
 name: figma-to-component
-description: 【有Figma设计稿时使用】从设计稿提取设计数据、下载切图、映射CSS变量，然后调用 component-generator 生成组件
+description: Use when the user provides a Figma design link/file and asks to convert it into a Vue component (typical phrases - "把 Figma 设计还原成组件"、"从 Figma 生成"、"convert this Figma"). Extracts design data, downloads assets, maps CSS variables, then delegates to component-generator.
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:

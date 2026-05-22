@@ -1,6 +1,6 @@
 ---
 name: test-generator
-description: 自动为组件生成测试模板，包括 Props/Emits/Slots、键盘导航、无障碍测试和 Storybook Story
+description: Use when the user asks to generate/scaffold unit tests for a Vue component (typical phrases - "为 XX 组件生成测试"、"补测试"、"write tests for XX"). Produces Vitest + Vue Test Utils templates covering Props/Emits/Slots, keyboard navigation, a11y; optional --with-story.
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:
@@ -73,7 +73,7 @@ metadata:
 ```
 🎨 生成测试文件...
 
-   ✓ packages/select/__tests__/Select.test.ts (新增)
+   ✓ packages/select/__test__/Select.test.ts (新增)
    ├─ Props 测试 (10 个用例)
    ├─ Emits 测试 (4 个用例)
    ├─ Slots 测试 (2 个用例)
@@ -89,7 +89,7 @@ metadata:
 ### 生成的测试模板示例
 
 ```typescript
-// packages/select/__tests__/Select.test.ts
+// packages/select/__test__/Select.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Select from '../src/Select.vue';
@@ -267,7 +267,7 @@ describe('Select', () => {
 ✅ 测试生成完成！
 
 📂 生成的文件:
-   - packages/select/__tests__/Select.test.ts
+   - packages/select/__test__/Select.test.ts
    - packages/select/stories/Select.stories.ts (可选)
 
 📊 统计:

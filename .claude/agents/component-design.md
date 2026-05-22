@@ -47,7 +47,7 @@ globalState.value = 'changed'; // 副作用
 ```
 
 ### 4. 样式隔离原则
-- **Scoped CSS**: 使用 `<style scoped>` 避免样式污染
+- **禁用 scoped**: 组件库**不使用** `<style scoped>`，通过 `.aix-<component>` 命名空间 + BEM 实现隔离
 - **命名空间**: 所有 CSS 类使用 `aix-` 前缀
 - **CSS 变量**: 使用主题变量，支持主题定制
 
@@ -583,7 +583,7 @@ const { list, containerProps, wrapperProps } = useVirtualList(
 - [ ] 提供合理的默认内容
 
 ### 样式设计
-- [ ] 使用 `<style scoped>`
+- [ ] **不使用** `<style scoped>`（通过命名空间 + BEM 隔离）
 - [ ] CSS 类名使用 `aix-` 前缀
 - [ ] 使用 CSS 变量，无硬编码值
 - [ ] 遵循 BEM 命名规范
@@ -694,7 +694,7 @@ defineExpose<ButtonInstance>({ focus, blur });
   </button>
 </template>
 
-<style scoped>
+<style lang="scss">
 .aix-button {
   box-sizing: border-box;
   display: inline-flex;

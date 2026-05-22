@@ -135,7 +135,7 @@ afterEach(() => {
 ### 基础组件测试
 
 ```typescript
-// packages/button/__tests__/Button.test.ts
+// packages/button/__test__/Button.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Button } from '../src';
@@ -202,7 +202,7 @@ describe('Button', () => {
 ### Props 测试
 
 ```typescript
-// packages/select/__tests__/Select.test.ts
+// packages/select/__test__/Select.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Select } from '../src';
@@ -286,7 +286,7 @@ describe('Select Props', () => {
 ### Emits 测试
 
 ```typescript
-// packages/input/__tests__/Input.test.ts
+// packages/input/__test__/Input.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Input } from '../src';
@@ -338,7 +338,7 @@ describe('Input Emits', () => {
 ### Slots 测试
 
 ```typescript
-// packages/card/__tests__/Card.test.ts
+// packages/card/__test__/Card.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Card } from '../src';
@@ -396,7 +396,7 @@ describe('Card Slots', () => {
 ### ARIA 属性测试
 
 ```typescript
-// packages/button/__tests__/Button.a11y.test.ts
+// packages/button/__test__/Button.a11y.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Button } from '../src';
@@ -437,7 +437,7 @@ describe('Button Accessibility', () => {
 ### 键盘导航测试
 
 ```typescript
-// packages/select/__tests__/Select.keyboard.test.ts
+// packages/select/__test__/Select.keyboard.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Select } from '../src';
@@ -506,7 +506,7 @@ describe('Select Keyboard Navigation', () => {
 ### 组件快照测试
 
 ```typescript
-// packages/button/__tests__/Button.snapshot.test.ts
+// packages/button/__test__/Button.snapshot.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Button } from '../src';
@@ -560,7 +560,7 @@ describe('Button Snapshots', () => {
 ### 测试 defineExpose 暴露的方法
 
 ```typescript
-// packages/input/__tests__/Input.methods.test.ts
+// packages/input/__test__/Input.methods.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Input } from '../src';

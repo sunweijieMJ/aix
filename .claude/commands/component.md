@@ -21,7 +21,7 @@ description: 组件开发清单，Props/Emits/样式规范检查
 
 ## 样式规范
 
-- [ ] 使用 `scoped` 避免样式污染
+- [ ] **不使用** `scoped`（依赖 `.aix-` 命名空间 + BEM 隔离）
 - [ ] CSS 类名使用 BEM 规范
 - [ ] 使用 CSS 变量（`--aix-*`）
 - [ ] 组件前缀使用 `aix-`

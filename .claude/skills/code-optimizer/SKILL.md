@@ -1,6 +1,6 @@
 ---
 name: code-optimizer
-description: 组件库代码优化器 - 自动检测并修复性能、类型安全、可访问性和包体积问题
+description: Use when the user asks to optimize / refactor / improve a Vue component or package for performance, type safety, bundle size, or a11y. AIX 组件库代码优化器，自动检测并提供修复建议。
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:

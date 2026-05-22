@@ -1,6 +1,6 @@
 ---
 name: component-generator
-description: 根据规范生成Vue组件，适用于组件库开发。支持Props/Emits类型定义、CSS变量、Storybook story
+description: Use when the user asks to create/generate/scaffold a Vue 3 component in the AIX 组件库 (typical phrases - "生成组件"、"新建组件"、"create a XX component"). Supports Props/Emits 类型定义、CSS 变量、可选 --with-story / --with-test。
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:
@@ -66,7 +66,7 @@ packages/
       ├── src/
       │   ├── {ComponentName}.vue       # 组件文件
       │   └── index.ts                  # 导出文件
-      ├── __tests__/
+      ├── __test__/
       │   └── {ComponentName}.test.ts   # 测试文件 (可选)
       └── stories/
           └── {ComponentName}.stories.ts  # Story 文件 (可选)
@@ -132,7 +132,8 @@ const handleClick = (event: MouseEvent) => {
 };
 </script>
 
-<style scoped>
+<style lang="scss">
+/* 组件库禁用 scoped，依赖 .aix- 命名空间 + BEM 隔离 */
 .aix-button {
   display: inline-flex;
   align-items: center;
@@ -277,7 +278,7 @@ export const Sizes: Story = {
 };
 ```
 
-#### 测试文件 (`__tests__/{ComponentName}.test.ts`)
+#### 测试文件 (`__test__/{ComponentName}.test.ts`)
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
@@ -374,7 +375,7 @@ pnpm type-check && pnpm lint
    - packages/{package}/src/{ComponentName}.vue
    - packages/{package}/src/index.ts (已更新)
    - packages/{package}/stories/{ComponentName}.stories.ts (可选)
-   - packages/{package}/__tests__/{ComponentName}.test.ts (可选)
+   - packages/{package}/__test__/{ComponentName}.test.ts (可选)
 
 💡 下一步:
    1. 运行 Storybook 查看组件: pnpm storybook:dev
@@ -418,11 +419,14 @@ pnpm type-check && pnpm lint
 
 ### 4. 样式隔离
 
+组件库**禁用** `<style scoped>`，通过 `.aix-<component>` 命名空间 + BEM 命名实现隔离：
+
 ```vue
-<style scoped>
-/* 使用 scoped 避免样式污染 */
+<style lang="scss">
 .aix-button {
-  /* ... */
+  /* BEM 修饰符 */
+  &--primary { /* ... */ }
+  &__icon { /* ... */ }
 }
 </style>
 ```

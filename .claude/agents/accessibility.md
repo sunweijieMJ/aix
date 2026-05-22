@@ -611,7 +611,7 @@ watch(() => props.visible, (visible) => {
 ### 1. ARIA 属性测试
 
 ```typescript
-// packages/button/__tests__/Button.a11y.test.ts
+// packages/button/__test__/Button.a11y.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Button } from '../src';
@@ -648,7 +648,7 @@ describe('Button Accessibility', () => {
 ### 2. 键盘导航测试
 
 ```typescript
-// packages/select/__tests__/Select.keyboard.test.ts
+// packages/select/__test__/Select.keyboard.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Select } from '../src';
@@ -714,7 +714,7 @@ describe('Select Keyboard Navigation', () => {
 ### 3. 焦点管理测试
 
 ```typescript
-// packages/dialog/__tests__/Dialog.focus.test.ts
+// packages/dialog/__test__/Dialog.focus.test.ts
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Dialog } from '../src';

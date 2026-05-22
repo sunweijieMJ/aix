@@ -806,7 +806,7 @@ pnpm chromatic --project-token=<token>
 ### 2. Snapshot 测试
 
 ```typescript
-// packages/button/__tests__/Button.stories.test.ts
+// packages/button/__test__/Button.stories.test.ts
 import { test } from '@playwright/test';
 
 test('Button story snapshots', async ({ page }) => {

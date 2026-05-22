@@ -46,10 +46,18 @@ aix/
 │   ├── sentinel/           # AI Sentinel 工作流
 │   ├── tracker/            # 前端埋点数据采集
 │   └── visual-testing/     # 视觉回归测试
-├── packages/                # 组件包（发布）
-│   ├── button/             # 组件包示例
+├── packages/                # 组件包（发布到 @aix/*）
+│   ├── button/             # 按钮组件
+│   ├── code-editor/        # 代码编辑器
+│   ├── flow-graph/         # 流程图
+│   ├── hooks/              # 公共 Composables
+│   ├── icons/              # 图标组件
+│   ├── pdf-viewer/         # PDF 查看器
+│   ├── popper/             # 弹层定位
+│   ├── rich-text-editor/   # 富文本编辑器
+│   ├── subtitle/           # 字幕组件
 │   ├── theme/              # 主题包（CSS 变量）
-│   └── hooks/              # Hooks 包
+│   └── video/              # 视频播放器
 ├── scripts/                 # 构建脚本
 ├── package.json             # 根 package.json
 ├── pnpm-workspace.yaml      # pnpm workspace 配置
@@ -69,7 +77,7 @@ aix/
 | **内部包** | `internal/eslint-config/` | `@kit/` | ✅ | ESLint、TypeScript、Stylelint 配置 |
 | **工具包** | `kit/tracker/` | `@kit/` | ✅ | 独立工具（埋点、国际化、测试等） |
 | **文档** | `docs/` | - | ❌ | VitePress 文档站点 |
-| **示例** | `examples/` | - | ❌ | 示例项目 |
+| **应用** | `apps/*` | - | ❌ | 示例项目和工作台 |
 
 ### 📦 标准包结构
 
@@ -83,7 +91,7 @@ packages/button/
 │   └── index.ts            # 导出文件
 ├── stories/
 │   └── Button.stories.ts   # Storybook story
-├── __tests__/
+├── __test__/
 │   └── Button.test.ts      # 单元测试
 ├── package.json
 ├── tsconfig.json
@@ -124,12 +132,13 @@ packages/hooks/
 theme (无依赖)
   ↑
   ├── button (依赖 theme)
-  ├── select (依赖 theme)
-  └── dialog (依赖 theme)
+  ├── popper (依赖 theme)
+  └── video  (依赖 theme)
 
 hooks (无依赖)
   ↑
-  └── select (依赖 hooks)
+  ├── button       (依赖 hooks)
+  └── pdf-viewer   (依赖 hooks)
 ```
 
 **依赖原则：**
@@ -192,7 +201,7 @@ pnpm --parallel -r test          # 并行运行所有包的测试
 
 ```bash
 # 添加 workspace 依赖
-pnpm --filter @aix/select add @aix/input@workspace:^
+pnpm --filter @aix/popper add @aix/theme@workspace:^
 pnpm --filter @aix/button add @aix/hooks@workspace:^
 
 # 查看包依赖关系
@@ -284,11 +293,8 @@ pnpm -r exec rm -rf coverage
 ```mermaid
 graph TD
     A[build @aix/hooks] --> B[build @aix/button]
-    A --> C[build @aix/input]
-    A --> D[build @aix/select]
-    E[build @aix/utils] --> B
-    E --> C
-    E --> D
+    A --> C[build @aix/pdf-viewer]
+    A --> D[build @aix/video]
     F[build @aix/theme] --> B
     F --> C
     F --> D
@@ -381,7 +387,7 @@ packages/tooltip/
 │   ├── Tooltip.vue
 │   ├── types.ts
 │   └── index.ts
-├── __tests__/
+├── __test__/
 │   └── Tooltip.test.ts
 ├── stories/
 │   └── Tooltip.stories.ts
@@ -682,8 +688,8 @@ pnpm changeset
 # 交互式选择
 ? Which packages would you like to include?
   ◉ @aix/button
-  ◯ @aix/input
-  ◯ @aix/select
+  ◯ @aix/popper
+  ◯ @aix/video
 
 ? What kind of change is this for @aix/button?
   ◯ major (1.0.0 -> 2.0.0) - Breaking change
@@ -769,7 +775,7 @@ pnpm create:package tooltip
 
 # 方法 2: 手动创建
 # 1. 创建目录 packages/tooltip/
-# 2. 添加 package.json、src/、__tests__/ 等
+# 2. 添加 package.json、src/、__test__/ 等
 # 3. 运行 pnpm install
 ```
 

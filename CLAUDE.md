@@ -26,14 +26,18 @@
 
 ```
 aix/
-├── packages/          # 组件包 (发布到 npm @aix/*)
-│   ├── button/        # 按钮组件
-│   ├── hooks/         # 公共 Composables
-│   ├── icons/         # 图标组件
-│   ├── pdf-viewer/    # PDF 查看器
-│   ├── subtitle/      # 字幕组件
-│   ├── theme/         # 主题系统 (CSS Variables)
-│   └── video/         # 视频播放器
+├── packages/                 # 组件包 (发布到 npm @aix/*)
+│   ├── button/               # 按钮组件
+│   ├── code-editor/          # 代码编辑器
+│   ├── flow-graph/           # 流程图
+│   ├── hooks/                # 公共 Composables
+│   ├── icons/                # 图标组件
+│   ├── pdf-viewer/           # PDF 查看器
+│   ├── popper/               # 弹层定位
+│   ├── rich-text-editor/     # 富文本编辑器
+│   ├── subtitle/             # 字幕组件
+│   ├── theme/                # 主题系统 (CSS Variables)
+│   └── video/                # 视频播放器
 ├── apps/              # 应用 (不发布)
 ├── internal/          # monorepo 内部基础设施 (lint/ts 配置、MCP Server)
 ├── kit/               # 独立工具包 (发布到 npm @kit/*)
@@ -141,7 +145,7 @@ pnpm commit               # 交互式提交 (czg)
 
 ## 文件权限
 - 允许修改: apps/, packages/
-- 禁止修改: `tests/**`, `__tests__/**`, `__test__/**`
+- 禁止修改: `tests/**`, `__test__/**`
 - 禁止修改: *.config.*, .env*
 - 禁止修改: package.json (依赖变更需人工决策)
 - 禁止修改: .github/workflows/**

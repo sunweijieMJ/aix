@@ -210,7 +210,7 @@ const { list, containerProps, wrapperProps } = useVirtualList(
   </div>
 </template>
 
-<style scoped>
+<style lang="scss">
 .aix-virtual-list {
   height: 400px;
   overflow-y: auto;
@@ -734,7 +734,7 @@ div.aix-button[type="primary"]:not(:disabled):hover { }
 ### 8.1 性能测试用例
 
 ```typescript
-// __tests__/performance/Button.perf.test.ts
+// __test__/performance/Button.perf.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { Button } from '../src';
@@ -771,7 +771,7 @@ describe('Button Performance', () => {
 ### 8.2 渲染性能测试
 
 ```typescript
-// __tests__/performance/List.perf.test.ts
+// __test__/performance/List.perf.test.ts
 describe('List Performance', () => {
   const generateItems = (count: number) =>
     Array.from({ length: count }, (_, i) => ({
@@ -818,7 +818,7 @@ describe('List Performance', () => {
 ### 8.3 内存泄漏测试
 
 ```typescript
-// __tests__/performance/memory.test.ts
+// __test__/performance/memory.test.ts
 describe('Memory Leak', () => {
   it('组件卸载后不应该有内存泄漏', async () => {
     const initialHeap = (performance as any).memory?.usedJSHeapSize;

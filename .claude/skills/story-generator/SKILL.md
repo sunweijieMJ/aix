@@ -1,6 +1,6 @@
 ---
 name: story-generator
-description: 为组件生成 Storybook story，自动分析 Props 生成常用场景和交互测试
+description: Use when the user asks to generate Storybook story / story 文件 / stories for a Vue component. Analyzes Props to produce common-case stories and interaction tests for AIX 组件库.
 license: MIT
 compatibility: Requires Vue 3, TypeScript
 metadata:

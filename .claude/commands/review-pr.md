@@ -33,7 +33,7 @@ description: 快速提醒 PR 审查清单，确保代码质量和项目规范
 - [ ] **所有颜色使用 CSS 变量**（`--aix-*`）
 - [ ] 无硬编码颜色值（#fff、rgb()、rgba()）
 - [ ] CSS 类名使用 BEM 规范（`aix-button--primary`）
-- [ ] 使用 `scoped` 避免样式污染
+- [ ] **不使用** `scoped`（依赖 `.aix-` 命名空间 + BEM 隔离）
 - [ ] 参考 `@coding-standards`
 
 ---
