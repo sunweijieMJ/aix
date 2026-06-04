@@ -1,0 +1,39 @@
+// AI Chat 组件样式依赖 @aix/theme 的语义 token CSS 变量：
+// 颜色 --aix-colorText / --aix-colorBgContainer / --aix-colorPrimary*/--aix-colorBorder
+// 间距 --aix-padding* / --aix-size* 圆角 --aix-borderRadius* 动效 --aix-motionDuration*
+// 各组件样式已内联在对应 .vue 的 <style> 中，此文件用于全局工具类与文档。
+
+// 流光文字：浅→深→浅 横向流动，用于「生成中…」「思考中…」等进行态文案。
+// 默认走文字色阶；.aix-shimmer-text--primary 走主色（对应设计稿蓝色生成中流光）。
+.aix-shimmer-text {
+  animation: aix-shimmer 1.6s linear infinite;
+  background: linear-gradient(
+    90deg,
+    var(--aix-colorTextQuaternary) 0%,
+    var(--aix-colorText) 50%,
+    var(--aix-colorTextQuaternary) 100%
+  );
+  background-clip: text;
+  background-size: 200% 100%;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+
+  &--primary {
+    background-image: linear-gradient(
+      90deg,
+      color-mix(in sRGB, var(--aix-colorPrimary) 30%, transparent) 0%,
+      var(--aix-colorPrimary) 50%,
+      color-mix(in sRGB, var(--aix-colorPrimary) 30%, transparent) 100%
+    );
+  }
+}
+
+@keyframes aix-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}

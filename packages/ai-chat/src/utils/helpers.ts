@@ -1,0 +1,96 @@
+import type {
+  ChatMessage,
+  ChoiceOption,
+  ContentBlock,
+  MessageRole,
+  MessageStatus,
+  SourceItem,
+  ThoughtChainItem,
+} from '../types';
+
+let blockUid = 0;
+/** block 稳定唯一 id（单调递增，保证同一毫秒内也不重复） */
+export const genBlockId = (): string => `blk-${Date.now()}-${blockUid++}`;
+
+let msgUid = 0;
+/** message 稳定唯一 id */
+export const genMsgId = (): string => `msg-${Date.now()}-${msgUid++}`;
+
+// 各工厂返回精确的窄类型（Extract 到对应 type），便于直接喂给只接受特定块类型的组件 prop
+// （如 TextBlock 仅收 text/reasoning）；与 choiceBlock 的写法一致。
+/** 创建文本块 */
+export const textBlock = (text: string): Extract<ContentBlock, { type: 'text' }> => ({
+  id: genBlockId(),
+  type: 'text',
+  text,
+});
+
+/** 创建推理块（思考过程，通常折叠展示） */
+export const reasoningBlock = (text: string): Extract<ContentBlock, { type: 'reasoning' }> => ({
+  id: genBlockId(),
+  type: 'reasoning',
+  text,
+});
+
+/** 创建引用来源块 */
+export const sourcesBlock = (items: SourceItem[]): Extract<ContentBlock, { type: 'sources' }> => ({
+  id: genBlockId(),
+  type: 'sources',
+  items,
+});
+
+/** 创建思维链块（Agent 执行步骤时间线） */
+export const thoughtChainBlock = (
+  items: ThoughtChainItem[],
+): Extract<ContentBlock, { type: 'thought-chain' }> => ({
+  id: genBlockId(),
+  type: 'thought-chain',
+  items,
+});
+
+/** 创建选择题块（单选 / 多选统一；交互式：可作答、可编辑） */
+export const choiceBlock = (input: {
+  stem: string;
+  options: ChoiceOption[];
+  /** 是否多选，默认 false（单选） */
+  multiple?: boolean;
+  /** 展示模式：'review' 只读结果卡（默认）/ 'answer' 可点击作答 */
+  mode?: 'review' | 'answer';
+  /** 标准答案：单选为选项 id，多选为选项 id 数组 */
+  answer?: string | string[];
+  analysis?: string;
+  /** 用户作答：单选为选项 id，多选为选项 id 数组 */
+  selected?: string | string[];
+  editable?: boolean;
+}): Extract<ContentBlock, { type: 'choice' }> => ({
+  id: genBlockId(),
+  type: 'choice',
+  ...input,
+});
+
+/** 构造单 text block 的消息（最常用，纯文本场景） */
+export const textMessage = (role: MessageRole, text: string): ChatMessage => ({
+  id: genMsgId(),
+  role,
+  content: [textBlock(text)],
+});
+
+/** 构造任意 blocks 的消息，支持可选 status / id / extra */
+export const createMessage = (
+  role: MessageRole,
+  blocks: ContentBlock[],
+  opts?: { id?: string; status?: MessageStatus; extra?: Record<string, unknown> },
+): ChatMessage => ({
+  id: opts?.id ?? genMsgId(),
+  role,
+  content: blocks,
+  ...(opts?.status !== undefined ? { status: opts.status } : {}),
+  ...(opts?.extra !== undefined ? { extra: opts.extra } : {}),
+});
+
+/** 提取消息可复制纯文本：仅拼接 text block（不含 reasoning/sources） */
+export const messageText = (m: ChatMessage): string =>
+  m.content
+    .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
+    .map((b) => b.text)
+    .join('');

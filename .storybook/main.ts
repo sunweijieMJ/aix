@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'path';
 import type { StorybookConfig } from '@storybook/vue3-vite';
 import vue from '@vitejs/plugin-vue';
+import { loadEnv } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -44,9 +45,42 @@ const config: StorybookConfig = {
     // Customize Vite config for Storybook
     // Skip base when running in Vitest — custom base breaks browser mode's WebSocket connection
     const isVitest = !!process.env.VITEST;
+
+    // 读取仓库根 .env（含 DIFY_/DEEPSEEK_ 等无 VITE_ 前缀的密钥），仅在 Node 端使用。
+    // 真实 AI 接口走下方 Vite proxy 转发：① 绕过浏览器 CORS ② 密钥在 proxy 注入 Authorization，
+    // 不暴露到前端 bundle。仅用于本地 storybook dev 联调；storybook:build 静态产物无 proxy。
+    const env = loadEnv('development', join(__dirname, '..'), '');
+    const proxy: Record<string, any> = {
+      // Dify：/proxy-dify/* → {DIFY_BASEURL}/*
+      '/proxy-dify': {
+        target: env.DIFY_BASEURL || 'http://dify-new.zhihuishu.com/v1',
+        changeOrigin: true,
+        rewrite: (p: string) => p.replace(/^\/proxy-dify/, ''),
+        configure: (p: any) => {
+          p.on('proxyReq', (req: any) => {
+            if (env.DIFY_API_KEY) req.setHeader('Authorization', `Bearer ${env.DIFY_API_KEY}`);
+          });
+        },
+      },
+      // DeepSeek（OpenAI 兼容）：/proxy-deepseek/* → https://api.deepseek.com/*
+      '/proxy-deepseek': {
+        target: 'https://api.deepseek.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (p: string) => p.replace(/^\/proxy-deepseek/, ''),
+        configure: (p: any) => {
+          p.on('proxyReq', (req: any) => {
+            if (env.DEEPSEEK_API_KEY)
+              req.setHeader('Authorization', `Bearer ${env.DEEPSEEK_API_KEY}`);
+          });
+        },
+      },
+    };
+
     return {
       ...config,
       ...(isVitest ? {} : { base: `${basePrefix}/storybook/` }),
+      server: { ...config.server, proxy: { ...config.server?.proxy, ...proxy } },
       resolve: {
         ...config.resolve,
         alias: {

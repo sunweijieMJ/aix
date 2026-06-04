@@ -124,6 +124,7 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       const dependencies = [
         ...Object.keys(pkg.peerDependencies || {}),
         ...Object.keys(pkg.dependencies || {}),
+        ...Object.keys(pkg.optionalDependencies || {}),
       ];
       return dependencies.some((dep) => id === dep || id.startsWith(`${dep}/`));
     },

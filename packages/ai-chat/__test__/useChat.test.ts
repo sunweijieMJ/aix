@@ -1,0 +1,575 @@
+import { describe, it, expect, vi } from 'vitest';
+import { nextTick, effectScope } from 'vue';
+import { useChat } from '../src/composables/useChat';
+import type { UseChatRequestCtx } from '../src/composables/useChat';
+import type { ChatMessage, ContentBlock } from '../src/types';
+import {
+  messageText,
+  textMessage,
+  createMessage,
+  textBlock,
+  sourcesBlock,
+} from '../src/utils/helpers';
+
+function sseStream(deltas: string[]): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder();
+  return new ReadableStream({
+    start(c) {
+      for (const d of deltas) c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: d })}\n`));
+      c.enqueue(enc.encode('data: [DONE]\n'));
+      c.close();
+    },
+  });
+}
+
+describe('useChat', () => {
+  it('onSend 追加 user + ai 消息并按默认 SSE 解析累积', async () => {
+    const request = vi.fn(async () => sseStream(['Hello', ' world']));
+    const { messages, onSend, isLoading } = useChat({ request });
+    await onSend('hi');
+    await nextTick();
+    expect(messages.value).toHaveLength(2);
+    expect(messages.value[0].role).toBe('user');
+    expect(messageText(messages.value[0])).toBe('hi');
+    expect(messages.value[1].role).toBe('ai');
+    expect(messageText(messages.value[1])).toBe('Hello world');
+    expect(messages.value[1].status).toBe('success');
+    expect(isLoading.value).toBe(false);
+  });
+
+  it('自定义 parseChunk 生效', async () => {
+    const request = vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('A\nB\n'));
+            c.close();
+          },
+        }),
+    );
+    const { messages, onSend } = useChat({
+      request,
+      parseChunk: (raw) => ({ delta: raw }),
+    });
+    await onSend('go');
+    expect(messageText(messages.value[1])).toBe('AB');
+  });
+
+  it('request 抛错时 ai 消息标记 error', async () => {
+    const request = vi.fn(async () => {
+      throw new Error('boom');
+    });
+    const { messages, onSend } = useChat({ request });
+    await onSend('hi');
+    expect(messages.value[1].status).toBe('error');
+  });
+
+  it('abort 时 ai 消息标记 abort 而非 error', async () => {
+    const request = vi.fn(
+      async ({ signal }: { signal: AbortSignal }) =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n'));
+            signal.addEventListener('abort', () =>
+              c.error(new DOMException('Aborted', 'AbortError')),
+            );
+          },
+        }),
+    );
+    const { messages, onSend, abort } = useChat({ request });
+    const p = onSend('hi');
+    await new Promise((r) => setTimeout(r, 10)); // 等首个 chunk 被消费
+    abort();
+    await p;
+    expect(messages.value[1].status).toBe('abort');
+  });
+
+  it('defaultMessages 初始化历史消息', () => {
+    const request = vi.fn(async () => sseStream(['x']));
+    const { messages } = useChat({ request, defaultMessages: [textMessage('user', '历史')] });
+    expect(messages.value).toHaveLength(1);
+    expect(messageText(messages.value[0])).toBe('历史');
+  });
+
+  it('setMessages 直接替换消息列表', () => {
+    const request = vi.fn(async () => sseStream(['x']));
+    const { messages, setMessages } = useChat({ request });
+    setMessages([createMessage('user', [textBlock('hi')], { id: 'a', status: 'local' })]);
+    expect(messages.value).toHaveLength(1);
+    expect(messageText(messages.value[0])).toBe('hi');
+  });
+
+  it('onReload 重置目标 ai 消息并重新请求', async () => {
+    let call = 0;
+    const request = vi.fn(async () => sseStream([call++ === 0 ? 'first' : 'second']));
+    const { messages, onSend, onReload } = useChat({ request });
+    await onSend('hi');
+    await nextTick();
+    const aiId = messages.value[1].id;
+    expect(messageText(messages.value[1])).toBe('first');
+    await onReload(aiId);
+    await nextTick();
+    expect(messageText(messages.value[1])).toBe('second');
+    expect(messages.value[1].status).toBe('success');
+  });
+
+  it('onReload 对不存在的 id 不请求也不抛错', async () => {
+    const request = vi.fn(async () => sseStream(['x']));
+    const { onReload } = useChat({ request });
+    await onReload('not-exist');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('isLoading 时 onSend 被并发保护拦截', async () => {
+    let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+    const request = vi.fn(async () => new ReadableStream<Uint8Array>({ start: (c) => (ctrl = c) }));
+    const { messages, onSend, isLoading } = useChat({ request });
+    const p = onSend('first');
+    await nextTick();
+    expect(isLoading.value).toBe(true);
+    await onSend('second'); // 进行中，应被拦截
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(messages.value).toHaveLength(2); // 仅 first 的 user + ai
+    ctrl.close();
+    await p;
+  });
+
+  it('isLoading 时 onReload 被并发保护拦截', async () => {
+    let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+    const request = vi.fn(async () => new ReadableStream<Uint8Array>({ start: (c) => (ctrl = c) }));
+    const { messages, onSend, onReload, isLoading } = useChat({ request });
+    const p = onSend('first'); // 首个请求挂起（流不结束）
+    await nextTick();
+    expect(isLoading.value).toBe(true);
+    const aiId = messages.value[1].id;
+    await onReload(aiId); // 进行中 reload，应被 isLoading 守卫拦截
+    expect(request).toHaveBeenCalledTimes(1);
+    ctrl.close();
+    await p;
+  });
+
+  it('request 返回 Response 时读取其 body 流', async () => {
+    const request = vi.fn(async () => new Response(sseStream(['R', 'esp'])));
+    const { messages, onSend } = useChat({ request });
+    await onSend('hi');
+    expect(messageText(messages.value[1])).toBe('Resp');
+  });
+
+  it('Bug1：传给 request 的 history 不含刚 push 的空 AI 占位', async () => {
+    let captured: ChatMessage[] = [];
+    const request = vi.fn(async (ctx: UseChatRequestCtx) => {
+      captured = ctx.messages;
+      return sseStream(['ok']);
+    });
+    const { onSend } = useChat({ request });
+    await onSend('hi');
+    expect(captured).toHaveLength(1);
+    expect(captured[0].role).toBe('user');
+    expect(messageText(captured[0])).toBe('hi');
+    // 不应包含 role:'ai' 的空占位
+    expect(captured.some((m) => m.role === 'ai')).toBe(false);
+  });
+
+  it('Bug1：带 defaultMessages 历史时历史被正确带上且不含空 AI 占位', async () => {
+    let captured: ChatMessage[] = [];
+    const request = vi.fn(async (ctx: UseChatRequestCtx) => {
+      captured = ctx.messages;
+      return sseStream(['ok']);
+    });
+    const { onSend } = useChat({
+      request,
+      defaultMessages: [textMessage('user', '历史问'), textMessage('ai', '历史答')],
+    });
+    await onSend('追问');
+    // 2 条历史 + 本次 user，共 3 条；不含空 AI 占位
+    expect(captured).toHaveLength(3);
+    expect(captured.map((m) => messageText(m))).toEqual(['历史问', '历史答', '追问']);
+    expect(captured.some((m) => m.role === 'ai' && m.content.length === 0)).toBe(false);
+  });
+
+  it('onReload 对 user 消息守卫：不请求且不清空其内容', async () => {
+    const request = vi.fn(async () => sseStream(['x']));
+    const { messages, setMessages, onReload } = useChat({ request });
+    setMessages([createMessage('user', [textBlock('别动我')], { id: 'u1', status: 'local' })]);
+    await onReload('u1');
+    expect(request).not.toHaveBeenCalled();
+    expect(messageText(messages.value[0])).toBe('别动我');
+  });
+
+  it('生命周期：成功流结束时 onFinish 收到 success 的 ai 消息', async () => {
+    const request = vi.fn(async () => sseStream(['done']));
+    const onFinish = vi.fn();
+    const onError = vi.fn();
+    const onAbort = vi.fn();
+    const { messages, onSend } = useChat({ request, onFinish, onError, onAbort });
+    await onSend('hi');
+    await nextTick();
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(onFinish.mock.calls[0][0]).toBe(messages.value[1]);
+    expect(onFinish.mock.calls[0][0].status).toBe('success');
+    expect(onError).not.toHaveBeenCalled();
+    expect(onAbort).not.toHaveBeenCalled();
+  });
+
+  it('生命周期：request 抛错时 onError 被调用（status error）', async () => {
+    const request = vi.fn(async () => {
+      throw new Error('boom');
+    });
+    const onFinish = vi.fn();
+    const onError = vi.fn();
+    const onAbort = vi.fn();
+    const { messages, onSend } = useChat({ request, onFinish, onError, onAbort });
+    await onSend('hi');
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0]).toBe(messages.value[1]);
+    expect(onError.mock.calls[0][0].status).toBe('error');
+    expect(onFinish).not.toHaveBeenCalled();
+    expect(onAbort).not.toHaveBeenCalled();
+  });
+
+  it('生命周期：abort 时 onAbort 被调用（status abort）而非 onError/onFinish', async () => {
+    const request = vi.fn(
+      async ({ signal }: { signal: AbortSignal }) =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n'));
+            signal.addEventListener('abort', () =>
+              c.error(new DOMException('Aborted', 'AbortError')),
+            );
+          },
+        }),
+    );
+    const onFinish = vi.fn();
+    const onError = vi.fn();
+    const onAbort = vi.fn();
+    const { messages, onSend, abort } = useChat({ request, onFinish, onError, onAbort });
+    const p = onSend('hi');
+    await new Promise((r) => setTimeout(r, 10));
+    abort();
+    await p;
+    expect(messages.value[1].status).toBe('abort');
+    expect(onAbort).toHaveBeenCalledTimes(1);
+    expect(onAbort.mock.calls[0][0].status).toBe('abort');
+    expect(onError).not.toHaveBeenCalled();
+    expect(onFinish).not.toHaveBeenCalled();
+  });
+
+  it('Bug2：scope.stop() 卸载时中止进行中的请求', async () => {
+    let streamSignal: AbortSignal | null = null;
+    const request = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
+      streamSignal = signal;
+      return new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n'));
+          signal.addEventListener('abort', () =>
+            c.error(new DOMException('Aborted', 'AbortError')),
+          );
+        },
+      });
+    });
+
+    const scope = effectScope();
+    let api!: ReturnType<typeof useChat>;
+    scope.run(() => {
+      api = useChat({ request });
+    });
+    const p = api.onSend('hi');
+    await new Promise((r) => setTimeout(r, 10)); // 等首个 chunk 被消费
+    scope.stop(); // 触发 onScopeDispose → controller.abort()
+    await p;
+    expect(streamSignal!.aborted).toBe(true);
+    expect(api.messages.value[1].status).toBe('abort');
+  });
+
+  it('流式按 block 累积：reasoning 与 text 分段、sources 一次性，生成有序带 id 的 blocks', async () => {
+    const request = vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            const enc = new TextEncoder();
+            c.enqueue(enc.encode('R1\nR2\nT1\nT2\nS\n'));
+            c.close();
+          },
+        }),
+    );
+    let phase: 'r' | 't' = 'r';
+    const { messages, onSend } = useChat({
+      request,
+      parseChunk: (raw) => {
+        const line = raw.trim();
+        if (line === 'S') return { block: sourcesBlock([{ title: 'src' }]) };
+        if (line === 'T1') phase = 't';
+        return { delta: line, blockType: phase === 'r' ? 'reasoning' : 'text' };
+      },
+    });
+    await onSend('go');
+    const blocks = messages.value[1].content;
+    expect(blocks.map((b) => b.type)).toEqual(['reasoning', 'text', 'sources']);
+    expect(blocks.every((b) => typeof b.id === 'string' && b.id)).toBe(true);
+    expect((blocks[0] as Extract<ContentBlock, { type: 'reasoning' }>).text).toBe('R1R2');
+    expect((blocks[1] as Extract<ContentBlock, { type: 'text' }>).text).toBe('T1T2');
+  });
+
+  it('abort 后同步立即 onSend 不被 isLoading 守卫丢弃，且旧请求收尾不污染新请求', async () => {
+    let call = 0;
+    const request = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
+      if (call++ === 0) {
+        // 第一个请求：发出首个 chunk 后挂起，abort 时 error 结束
+        return new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n'));
+            signal.addEventListener('abort', () =>
+              c.error(new DOMException('Aborted', 'AbortError')),
+            );
+          },
+        });
+      }
+      return sseStream(['ok2']); // 第二个请求：立即完成
+    });
+    const { messages, onSend, abort, isLoading } = useChat({ request });
+    const p1 = onSend('first');
+    await new Promise((r) => setTimeout(r, 10)); // 等首个 chunk 被消费
+    expect(isLoading.value).toBe(true);
+    abort();
+    expect(isLoading.value).toBe(false); // abort 同步复位，守卫不再拦截
+    const p2 = onSend('second'); // 立即重发，不应被静默丢弃
+    await p2;
+    await p1.catch(() => {});
+    await nextTick();
+    expect(request).toHaveBeenCalledTimes(2); // 第二次请求真的发出
+    expect(messages.value).toHaveLength(4); // first(user+ai) + second(user+ai)
+    expect(messages.value[1].status).toBe('abort'); // 旧 ai 被中断
+    expect(messageText(messages.value[3])).toBe('ok2'); // 新 ai 正常完成
+    expect(messages.value[3].status).toBe('success');
+    expect(isLoading.value).toBe(false); // 旧请求 finally 未回写污染新状态
+  });
+
+  it('request 抛错时 onError 透出原始 error，并写入 aiMsg.extra.error', async () => {
+    const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const boom = new Error('boom');
+    const request = vi.fn(async () => {
+      throw boom;
+    });
+    const onError = vi.fn();
+    const { messages, onSend } = useChat({ request, onError });
+    await onSend('hi');
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0]).toBe(messages.value[1]); // 第一参数为 ai 消息
+    expect(onError.mock.calls[0][1]).toBe(boom); // 第二参数为原始 error
+    expect(messages.value[1].extra?.error).toBe(boom); // 写入 extra 便于排障
+    expect(consoleErr).toHaveBeenCalled(); // 兜底 console.error
+    consoleErr.mockRestore();
+  });
+
+  it('onEdit 改写用户消息、截断后续并重新生成', async () => {
+    let call = 0;
+    const request = vi.fn(async () => sseStream([call++ === 0 ? 'a1' : 'a2']));
+    const { messages, onSend, onEdit } = useChat({ request });
+    await onSend('q1');
+    await nextTick();
+    const userId = messages.value[0].id;
+    await onEdit(userId, 'q1-edited');
+    await nextTick();
+    expect(messageText(messages.value[0])).toBe('q1-edited');
+    expect(messages.value).toHaveLength(2);
+    expect(messageText(messages.value[1])).toBe('a2');
+    expect(messages.value[1].status).toBe('success');
+  });
+
+  it('onEdit 传给 request 的 history 含编辑后内容且不含后续/空 AI 占位', async () => {
+    let captured: ChatMessage[] = [];
+    let call = 0;
+    const request = vi.fn(async (ctx: UseChatRequestCtx) => {
+      captured = ctx.messages;
+      return sseStream([call++ === 0 ? 'a1' : 'a2']);
+    });
+    const { messages, onSend, onEdit } = useChat({ request });
+    await onSend('q1');
+    await nextTick();
+    await onEdit(messages.value[0].id, 'q1-edited');
+    expect(captured).toHaveLength(1);
+    expect(messageText(captured[0])).toBe('q1-edited');
+    expect(captured.some((m) => m.role === 'ai')).toBe(false);
+  });
+
+  it('onEdit 截断被编辑消息之后的所有历史', async () => {
+    let call = 0;
+    const request = vi.fn(async () => sseStream([`a${call++}`]));
+    const { messages, onSend, onEdit } = useChat({ request });
+    await onSend('q1');
+    await nextTick();
+    await onSend('q2');
+    await nextTick();
+    expect(messages.value).toHaveLength(4);
+    await onEdit(messages.value[0].id, 'q1-edited');
+    await nextTick();
+    expect(messages.value).toHaveLength(2);
+    expect(messageText(messages.value[0])).toBe('q1-edited');
+    expect(messages.value[1].role).toBe('ai');
+  });
+
+  it('onEdit 对非 user 消息守卫：不改写不请求', async () => {
+    const request = vi.fn(async () => sseStream(['x']));
+    const { messages, onSend, onEdit } = useChat({ request });
+    await onSend('q');
+    await nextTick();
+    const aiId = messages.value[1].id;
+    const before = messageText(messages.value[1]);
+    await onEdit(aiId, '篡改');
+    expect(messageText(messages.value[1])).toBe(before);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('onEdit 对不存在 id 不请求不抛错', async () => {
+    const request = vi.fn(async () => sseStream(['x']));
+    const { onEdit } = useChat({ request });
+    await onEdit('nope', 'x');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('isLoading 时 onEdit 被并发守卫拦截', async () => {
+    let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+    const request = vi.fn(async () => new ReadableStream<Uint8Array>({ start: (c) => (ctrl = c) }));
+    const { messages, onSend, onEdit } = useChat({ request });
+    const p = onSend('first');
+    await nextTick();
+    await onEdit(messages.value[0].id, 'edited');
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(messageText(messages.value[0])).toBe('first');
+    ctrl.close();
+    await p;
+  });
+});
+
+describe('useChat.updateBlock', () => {
+  it('按 messageId+blockId 就地合并 patch，触发响应式', () => {
+    const chat = useChat({ request: async () => new ReadableStream() });
+    chat.setMessages([
+      {
+        id: 'm1',
+        role: 'ai',
+        status: 'success',
+        content: [{ id: 'b1', type: 'choice', stem: 'q', options: [], selected: undefined }],
+      },
+    ]);
+    chat.updateBlock('m1', 'b1', { selected: 'o2' });
+    const blk = chat.messages.value[0].content[0] as { selected?: string };
+    expect(blk.selected).toBe('o2');
+  });
+
+  it('blockId 不存在时静默不抛错', () => {
+    const chat = useChat({ request: async () => new ReadableStream() });
+    chat.setMessages([{ id: 'm1', role: 'ai', content: [{ id: 'b1', type: 'text', text: 'x' }] }]);
+    expect(() => chat.updateBlock('m1', 'nope', { a: 1 })).not.toThrow();
+    expect(() => chat.updateBlock('nope', 'b1', { a: 1 })).not.toThrow();
+  });
+
+  it('updateBlock 未命中目标时开发期 console.warn 提示', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const chat = useChat({ request: async () => new ReadableStream() });
+    chat.setMessages([{ id: 'm1', role: 'ai', content: [{ id: 'b1', type: 'text', text: 'x' }] }]);
+    chat.updateBlock('m1', 'nope', { a: 1 });
+    // 断言有来自 ai-chat 的 warn，而非 Vue 自身的通用警告
+    const aiChatWarnCalls = warn.mock.calls.filter(
+      (args) => typeof args[0] === 'string' && args[0].includes('[ai-chat]'),
+    );
+    expect(aiChatWarnCalls.length).toBeGreaterThan(0);
+    warn.mockRestore();
+  });
+});
+
+describe('useChat.setFeedback', () => {
+  it('写回 message.extra.feedback', () => {
+    const chat = useChat({ request: async () => new ReadableStream() });
+    chat.setMessages([{ id: 'm1', role: 'ai', content: [textBlock('hi')], status: 'success' }]);
+    chat.setFeedback('m1', 'like');
+    expect(chat.messages.value[0].extra?.feedback).toBe('like');
+    chat.setFeedback('m1', null);
+    expect(chat.messages.value[0].extra?.feedback).toBe(null);
+  });
+
+  it('保留 extra 其他字段', () => {
+    const chat = useChat({ request: async () => new ReadableStream() });
+    chat.setMessages([{ id: 'm1', role: 'ai', content: [textBlock('hi')], extra: { foo: 1 } }]);
+    chat.setFeedback('m1', 'dislike');
+    expect(chat.messages.value[0].extra).toEqual({ foo: 1, feedback: 'dislike' });
+  });
+
+  it('id 不存在时安全忽略', () => {
+    const chat = useChat({ request: async () => new ReadableStream() });
+    expect(() => chat.setFeedback('nope', 'like')).not.toThrow();
+  });
+
+  describe('parser 渲染消息解耦', () => {
+    it('不传 parser 时 parsedMessages 与 messages 同引用（零开销）', () => {
+      const chat = useChat({ request: vi.fn(async () => sseStream(['x'])) });
+      expect(chat.parsedMessages).toBe(chat.messages);
+    });
+
+    it('传 parser：parsedMessages 为映射结果，messages 保持原始（1→1）', async () => {
+      // 渲染时给每条消息加角色前缀；保留消息 id，仅重塑展示内容
+      const parser = (m: ChatMessage): ChatMessage => ({
+        ...m,
+        content: [textBlock(`[${m.role}] ${messageText(m)}`)],
+      });
+      const { messages, parsedMessages, onSend } = useChat({
+        request: vi.fn(async () => sseStream(['Hi'])),
+        parser,
+      });
+      await onSend('q');
+      await nextTick();
+      // 原始消息不被 parser 改写
+      expect(messageText(messages.value[0])).toBe('q');
+      // 渲染消息经 parser 转换，且 id 保留（可继续支撑 edit/reload 的 id 定位）
+      expect(parsedMessages.value[0].id).toBe(messages.value[0].id);
+      expect(messageText(parsedMessages.value[0])).toBe('[user] q');
+      expect(messageText(parsedMessages.value[1])).toBe('[ai] Hi');
+      expect(parsedMessages.value).toHaveLength(messages.value.length);
+    });
+  });
+
+  describe('retryTimes 失败重试', () => {
+    it('前两次抛错、第三次成功 → 重试后成功', async () => {
+      let n = 0;
+      const request = vi.fn(async () => {
+        n += 1;
+        if (n < 3) throw new Error('boom');
+        return sseStream(['ok']);
+      });
+      const { messages, onSend } = useChat({ request, retryTimes: 2, retryInterval: 0 });
+      await onSend('hi');
+      await nextTick();
+      expect(request).toHaveBeenCalledTimes(3);
+      expect(messages.value[1].status).toBe('success');
+      expect(messageText(messages.value[1])).toBe('ok');
+    });
+
+    it('重试耗尽仍失败 → status=error，onError 收到错误', async () => {
+      const request = vi.fn(async () => {
+        throw new Error('always');
+      });
+      const onError = vi.fn();
+      const ce = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { messages, onSend } = useChat({ request, retryTimes: 1, retryInterval: 0, onError });
+      await onSend('hi');
+      await nextTick();
+      expect(request).toHaveBeenCalledTimes(2); // 首次 + 1 次重试
+      expect(messages.value[1].status).toBe('error');
+      expect(onError).toHaveBeenCalledTimes(1);
+      ce.mockRestore();
+    });
+
+    it('默认 retryTimes=0：失败不重试', async () => {
+      const request = vi.fn(async () => {
+        throw new Error('x');
+      });
+      const ce = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { messages, onSend } = useChat({ request });
+      await onSend('hi');
+      await nextTick();
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(messages.value[1].status).toBe('error');
+      ce.mockRestore();
+    });
+  });
+});

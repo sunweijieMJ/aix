@@ -1,0 +1,71 @@
+{
+  "name": "@aix/ai-chat",
+  "version": "0.0.0",
+  "description": "A Vue 3 AI chat component package",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "style": "./es/index.css",
+  "sideEffects": [
+    "*.css",
+    "*.scss",
+    "*.sass"
+  ],
+  "exports": {
+    ".": {
+      "types": "./es/index.d.ts",
+      "import": "./es/index.js",
+      "require": "./lib/index.js"
+    },
+    "./es/*": "./es/*",
+    "./lib/*": "./lib/*",
+    "./style": "./es/index.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "lib",
+    "es"
+  ],
+  "scripts": {
+    "dev": "rollup -c -w",
+    "lint:script": "eslint . --max-warnings 0",
+    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "lint": "pnpm run lint:script && pnpm run lint:style",
+    "test": "vitest --run",
+    "type-check": "vue-tsc --noEmit -p tsconfig.json",
+    "type-check:stories": "vue-tsc --noEmit -p tsconfig.stories-check.json",
+    "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
+    "build:js": "rollup -c",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
+    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@aix/theme": "workspace:^",
+    "@aix/hooks": "workspace:^",
+    "@aix/icons": "workspace:^",
+    "virtua": "^0.39.0"
+  },
+  "optionalDependencies": {
+    "markdown-it": "^14.1.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.31"
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:^",
+    "@kit/stylelint-config": "workspace:^",
+    "@types/markdown-it": "*",
+    "@vue/test-utils": "*",
+    "eslint": "*",
+    "jsdom": "*",
+    "rimraf": "*",
+    "stylelint": "*",
+    "tsx": "*",
+    "typescript": "*",
+    "vitest": "*",
+    "vue-tsc": "*"
+  }
+}
