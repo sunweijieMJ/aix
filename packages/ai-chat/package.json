@@ -46,10 +46,10 @@
     "@aix/theme": "workspace:^",
     "@aix/hooks": "workspace:^",
     "@aix/icons": "workspace:^",
-    "virtua": "^0.39.0"
+    "virtua": "^0.49.1"
   },
   "optionalDependencies": {
-    "markdown-it": "^14.1.0"
+    "markdown-it": "^14.2.0"
   },
   "peerDependencies": {
     "vue": "^3.5.31"
