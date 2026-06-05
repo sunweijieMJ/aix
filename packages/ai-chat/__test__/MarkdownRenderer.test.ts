@@ -15,8 +15,11 @@ import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
 describe('MarkdownRenderer', () => {
   it('依赖存在时渲染 HTML', async () => {
     const w = mount(MarkdownRenderer, { props: { content: 'hi' } });
-    await flushPromises();
-    expect(w.html()).toContain('<strong>hi</strong>');
+    // 冷启动时渲染器链路含真实的 katex 插件动态 import（跨宏任务），
+    // flushPromises 只刷微任务等不到，用 waitFor 轮询直到就绪
+    await vi.waitFor(() => {
+      expect(w.html()).toContain('<strong>hi</strong>');
+    });
   });
 
   it('content 变化时重渲染（流式场景）', async () => {

@@ -192,6 +192,23 @@ provideAiChatConfig({ enableTyping: false });
 
 依赖为动态 `import`，不会被打进主 chunk，未使用时零额外体积。
 
+### 数学公式（KaTeX，可选）
+
+额外安装 KaTeX 及其 markdown-it 插件后，LaTeX 公式将渲染为排版结果（AI 在理工科场景常输出公式）。支持两套定界符：行内 `$...$` / 块级 `$$...$$`，以及 OpenAI 系常用的行内 `\(...\)` / 块级 `\[...\]`（内部归一化为 `$`/`$$` 后渲染，并自动把 KaTeX 不支持的 `align*` 修正为 `aligned`）：
+
+```bash
+pnpm add katex @vscode/markdown-it-katex
+```
+
+```ts
+// 公式排版依赖 KaTeX 的样式，需在应用入口引入一次
+import 'katex/dist/katex.min.css';
+```
+
+- 已安装 → `$...$` / `$$...$$` 渲染为公式（残缺/非法公式以提示形式呈现，不会中断整段渲染）。
+- 未安装 → 公式原样保留为文本，markdown 其余部分照常渲染（与 `markdown-it` 缺失时同样的降级风格，零额外体积）。
+- 流式渲染时未闭合的 `$$` 残片会被自动隐藏，闭合后再呈现为公式，避免半截裸 LaTeX 闪烁。
+
 ## 主题
 
 所有样式基于 `@aix/theme` 的语义 token CSS 变量（颜色 `--aix-color*`、间距 `--aix-padding*`/`--aix-size*`、圆角 `--aix-borderRadius*`、动效 `--aix-motionDuration*`）。切换 `@aix/theme` 的明暗主题即可联动，无需额外配置。
