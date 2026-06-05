@@ -47,8 +47,11 @@ export interface SenderProps {
   submitType?: 'enter' | 'shiftEnter';
 }
 export interface SenderEmits {
+  /** 输入框文本变化（v-model 同步） */
   (e: 'update:modelValue', v: string): void;
+  /** 提交发送，携带当前文本（回车或点发送触发） */
   (e: 'submit', v: string): void;
+  /** 取消 / 停止（loading 态下点停止按钮触发） */
   (e: 'cancel'): void;
 }
 </script>

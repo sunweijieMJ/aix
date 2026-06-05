@@ -7,11 +7,11 @@ vi.mock('markdown-it', () => {
 });
 
 import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
-import { __resetMarkdownCache } from '../src/composables/useMarkdownRenderer';
+import { __resetMarkdownEngineCache } from '../src/composables/useMarkdownRenderer';
 
 describe('MarkdownRenderer 降级为纯文本', () => {
   it('依赖缺失时原样输出 content，不解析为 HTML', async () => {
-    __resetMarkdownCache();
+    __resetMarkdownEngineCache();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const w = mount(MarkdownRenderer, { props: { content: '**hi**' } });
     await flushPromises();

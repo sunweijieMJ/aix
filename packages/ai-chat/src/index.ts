@@ -52,8 +52,17 @@ export type { CreateParseChunkOptions } from './utils/parsers';
 export { createXFetch } from './utils/x-fetch';
 export type { XFetch, XFetchMiddlewares, CreateXFetchOptions } from './utils/x-fetch';
 
-// 流式 Markdown 防闪烁工具
-export { protectStreamingMarkdown } from './utils/markdown';
+// 流式 Markdown 防闪烁 / 数学定界符归一化工具
+export { protectStreamingMarkdown, normalizeMathDelimiters } from './utils/markdown';
+
+// 自定义 markdown 渲染器（用于 AiChat / MarkdownRenderer 的 markdownRenderers 扩展点）
+export type {
+  MarkdownRenderers,
+  MarkdownRenderer as MarkdownRendererFn,
+  MarkdownRenderContext,
+  MarkdownRenderInfo,
+  MdToken,
+} from './utils/markdownWalker';
 
 // content block 构造/提取 helpers
 export {

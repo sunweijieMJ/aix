@@ -68,6 +68,7 @@ import type {
   BlockActionPayload,
   MessageFeedback,
 } from '../types';
+import type { MarkdownRenderers } from '../utils/markdownWalker';
 
 export interface AiChatProps {
   /** 发起请求，返回字节流或 Response（必填）；透传给 useChat */
@@ -104,6 +105,10 @@ export interface AiChatProps {
   retryTimes?: UseChatOptions['retryTimes'];
   /** 两次重试间隔（ms），默认 1000；透传给 useChat */
   retryInterval?: UseChatOptions['retryInterval'];
+  /** markdown token 渲染器注册表（扩展/覆盖气泡内 markdown 块渲染），优先级高于全局 markdownRenderers */
+  markdownRenderers?: MarkdownRenderers;
+  /** 是否允许渲染原始 HTML（经 DOMPurify 消毒），默认 false；注入到气泡内 MarkdownRenderer */
+  allowHtml?: boolean;
 }
 export interface AiChatEmits {
   /** 用户发送消息（含点击快捷问题），携带文本 */
@@ -135,7 +140,7 @@ import BubbleActions from './BubbleActions.vue';
 import { messageText } from '../utils/helpers';
 import { useChat } from '../composables/useChat';
 import { useNamespace } from '../composables/useNamespace';
-import { useAiChatConfig } from '../composables/useAiChatConfig';
+import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 
 const props = withDefaults(defineProps<AiChatProps>(), {
   showActions: true,
@@ -180,6 +185,16 @@ const blockRenderers = computed<BlockRenderers>(() => ({
   ...config.value.blockRenderers,
   ...props.blockRenderers,
 }));
+
+// markdown 级配置（markdownRenderers / allowHtml）经"全局 + 组件 props"合并后重新 provide 给子树，
+// 供气泡内深层的 TextBlock / ReasoningBlock 的 MarkdownRenderer 注入消费。
+// 优先级：内置默认 < 全局 provideAiChatConfig < 组件 props（与 roles/blockRenderers 一致）。
+// 注：markdownRenderers / allowHtml 视为相对静态配置，此处取 setup 时快照。
+provideAiChatConfig({
+  ...config.value,
+  markdownRenderers: { ...config.value.markdownRenderers, ...props.markdownRenderers },
+  allowHtml: props.allowHtml ?? config.value.allowHtml ?? false,
+});
 
 const {
   messages,

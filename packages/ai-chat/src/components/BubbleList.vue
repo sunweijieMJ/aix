@@ -117,14 +117,12 @@ const passthroughSlotNames = computed(() =>
 );
 const scrollRef = ref<HTMLElement | null>(null);
 const virtualizerRef = ref<VirtualizerHandle | null>(null);
-const { scrollState, unreadCount, computeState, scrollToBottom, follow } = useAutoScroll(
-  scrollRef,
-  {
+const { scrollState, unreadCount, computeState, scrollToBottom, follow, observeContent } =
+  useAutoScroll(scrollRef, {
     // 传 getter 而非快照，使运行时切换 :auto-scroll 生效
     autoScroll: () => props.autoScroll,
     shouldFollow: props.shouldFollow,
-  },
-);
+  });
 
 const resolveBubbleProps = (item: ChatMessage): Partial<BubbleProps> => {
   const cfg = props.roles?.[item.role];
@@ -176,6 +174,9 @@ onMounted(() => {
     } else {
       computeState();
     }
+    // 观测虚拟列表内容区高度变化（流式逐字 / 块淡入 / 公式 / 并发输出），处于底部时持续钉底，
+    // 消除"跟随时机错位"导致的抖动与不贴底（无 ResizeObserver 环境自动空转）。
+    observeContent(scrollRef.value?.firstElementChild as HTMLElement | null);
   });
 });
 

@@ -1,4 +1,4 @@
-import { ref, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
+import { ref, toValue, onScopeDispose, type Ref, type MaybeRefOrGetter } from 'vue';
 
 export type ScrollState = 'AT_BOTTOM' | 'SCROLLED_UP' | 'HAS_NEW_MESSAGES';
 export type FollowReason = 'own-message' | 'new-message' | 'streaming';
@@ -64,5 +64,19 @@ export function useAutoScroll(
     }
   };
 
-  return { scrollState, unreadCount, computeState, scrollToBottom, follow };
+  // 观测内容高度变化：流式逐字、块淡入、公式渲染、并发输出等"非滚动"导致的增高，
+  // 在内容区高度变化时若此前处于底部就持续钉底（reason='streaming' 走 shouldFollow 策略）。
+  // 相比仅在"消息内容增量"时跟随，这里覆盖打字机/渲染时序错位的全部增高，消除抖动与不贴底。
+  let ro: ResizeObserver | null = null;
+  const observeContent = (contentEl: HTMLElement | null) => {
+    ro?.disconnect();
+    ro = null;
+    // jsdom 等环境无 ResizeObserver 时安全空转
+    if (!contentEl || typeof ResizeObserver === 'undefined') return;
+    ro = new ResizeObserver(() => follow('streaming'));
+    ro.observe(contentEl);
+  };
+  onScopeDispose(() => ro?.disconnect());
+
+  return { scrollState, unreadCount, computeState, scrollToBottom, follow, observeContent };
 }

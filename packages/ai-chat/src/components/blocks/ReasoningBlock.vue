@@ -1,6 +1,11 @@
 <template>
   <Thinking :title="t.thoughtTitle" :expanded="streaming">
-    <MarkdownRenderer :content="displayContent" :streaming="typing" />
+    <MarkdownRenderer
+      :content="displayContent"
+      :streaming="typing"
+      :markdown-renderers="config.markdownRenderers"
+      :allow-html="config.allowHtml ?? false"
+    />
   </Thinking>
 </template>
 
@@ -23,6 +28,7 @@ import { useLocale } from '@aix/hooks';
 import Thinking from '../Thinking.vue';
 import MarkdownRenderer from '../MarkdownRenderer.vue';
 import { useTypewriter } from '../../composables/useTypewriter';
+import { useAiChatConfig } from '../../composables/useAiChatConfig';
 import { locale } from '../../locale';
 
 // 注册表统一向渲染器透传 block/info/typing；关闭属性继承避免多余 attr 落到根元素。
@@ -30,6 +36,8 @@ defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(defineProps<ReasoningBlockProps>(), { typing: false });
 const { t } = useLocale(locale);
+// 注入 AiChat 注入的 markdown 级配置（markdownRenderers / allowHtml）透传给 MarkdownRenderer
+const config = useAiChatConfig();
 
 // 复用 TextBlock 同款打字机：流式持续追赶 + enabled 响应式开关
 const text = computed(() => props.block.text);

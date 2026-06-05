@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, waitFor } from 'storybook/test';
+import { h } from 'vue';
 import { MarkdownRenderer } from '../src';
 
 /**
@@ -114,5 +115,61 @@ export const Streaming: Story = {
   play: async ({ canvas }) => {
     // 整修后内容可正常呈现（富文本或纯文本降级均不应抛错）
     await waitFor(() => expect(canvas.getByText(/正在生成代码/)).toBeTruthy());
+  },
+};
+
+/**
+ * 数学公式（KaTeX）：支持 `$...$` / `$$...$$` 与 OpenAI 系 `\(...\)` / `\[...\]` 定界符。
+ * 需安装 `katex` + `@vscode/markdown-it-katex` 并在应用入口引入 `katex/dist/katex.min.css`。
+ */
+export const Math: Story = {
+  args: {
+    content: [
+      '质能方程 $E = mc^2$ 是物理学基石。',
+      '',
+      '欧拉-拉格朗日方程（`\\[...\\]` 块级定界符）：',
+      '',
+      '\\[ \\frac{\\partial \\mathcal{L}}{\\partial q} - \\frac{d}{dt}\\left( \\frac{\\partial \\mathcal{L}}{\\partial \\dot{q}} \\right) = 0 \\]',
+      '',
+      '正态分布概率密度（`$$...$$` 块级）：',
+      '',
+      '$$ f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}} e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}} $$',
+    ].join('\n'),
+  },
+};
+
+/**
+ * 自定义 markdown 渲染器（`markdownRenderers` 扩展点）：覆盖内置 `fence`，把代码块换成带语言标签的卡片。
+ */
+export const CustomRenderers: Story = {
+  args: {
+    content: '普通段落，下面是代码块：\n\n```ts\nconst a = 1;\nconst b = 2;\n```',
+    markdownRenderers: {
+      fence: ({ token }) =>
+        h(
+          'div',
+          { style: 'border:1px dashed var(--aix-colorPrimary);border-radius:6px;padding:8px' },
+          [
+            h(
+              'div',
+              { style: 'font-size:12px;opacity:.6;margin-bottom:4px' },
+              `语言：${token.info || 'text'}`,
+            ),
+            h('pre', { style: 'margin:0' }, token.content),
+          ],
+        ),
+    },
+  },
+};
+
+/**
+ * 原始 HTML（`allowHtml`）：开启后块级 HTML 经 DOMPurify 消毒渲染，危险属性/脚本被去除。
+ * 需安装 `dompurify`；默认关闭时原始 HTML 转义为文本。
+ */
+export const AllowHtml: Story = {
+  args: {
+    allowHtml: true,
+    content:
+      '后端下发的 HTML 卡片：\n\n<div style="padding:8px;border:1px solid var(--aix-colorBorder);border-radius:6px">这是 <strong>HTML</strong> 卡片，<img src="x" onerror="alert(1)"> 中的危险属性已被消毒。</div>',
   },
 };

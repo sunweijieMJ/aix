@@ -1,5 +1,10 @@
 <template>
-  <MarkdownRenderer :content="displayContent" :streaming="typing" />
+  <MarkdownRenderer
+    :content="displayContent"
+    :streaming="typing"
+    :markdown-renderers="config.markdownRenderers"
+    :allow-html="config.allowHtml ?? false"
+  />
 </template>
 
 <script lang="ts">
@@ -17,12 +22,16 @@ export interface TextBlockProps {
 import { computed } from 'vue';
 import MarkdownRenderer from '../MarkdownRenderer.vue';
 import { useTypewriter } from '../../composables/useTypewriter';
+import { useAiChatConfig } from '../../composables/useAiChatConfig';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block/typing，
 // 关闭属性继承避免 info 等多余 attr 落到根渲染元素。
 defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(defineProps<TextBlockProps>(), { typing: false });
+
+// 注入 AiChat 注入的 markdown 级配置（markdownRenderers / allowHtml）透传给 MarkdownRenderer
+const config = useAiChatConfig();
 
 // 用 computed 将 block.text 包装为 Ref<string>（ComputedRef 是 Ref 子类型），
 // 避免对联合类型使用 toRef 带来的麻烦

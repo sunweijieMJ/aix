@@ -1,6 +1,7 @@
 import { provide, inject, computed, reactive, type InjectionKey, type ComputedRef } from 'vue';
 import type { ShouldFollow } from './useAutoScroll';
 import type { RoleConfig, BlockRenderers } from '../types';
+import type { MarkdownRenderers } from '../utils/markdownWalker';
 
 export interface AiChatConfig {
   /** 全局打字机开关，默认 true：开启后流式更新中的 AI 气泡逐字显示（由 AiChat 透传给 BubbleList） */
@@ -11,6 +12,10 @@ export interface AiChatConfig {
   shouldFollow?: ShouldFollow;
   /** 全局块渲染器注册表，被 AiChat 合并后透传给 BubbleList（组件 props.blockRenderers 优先） */
   blockRenderers?: BlockRenderers;
+  /** 全局 markdown token 渲染器注册表，经 AiChat 注入到气泡内 MarkdownRenderer（组件 props 优先） */
+  markdownRenderers?: MarkdownRenderers;
+  /** 是否允许渲染原始 HTML（经 DOMPurify 消毒），默认 false；经 AiChat 注入到 MarkdownRenderer */
+  allowHtml?: boolean;
 }
 
 const DEFAULT_CONFIG: AiChatConfig = { enableTyping: true };

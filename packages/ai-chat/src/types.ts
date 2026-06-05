@@ -17,8 +17,11 @@ export type MessageFeedback = 'like' | 'dislike';
 
 /** 一条对话消息 */
 export interface ChatMessage {
+  /** 消息稳定唯一 id（编辑 / 重新生成 / 块动作均按此定位） */
   id: string;
+  /** 消息角色：user / ai / system 或业务自定义字符串 */
   role: MessageRole;
+  /** 消息状态机当前态（loading/updating/success/error/abort/local） */
   status?: MessageStatus;
   /** 有序内容块（由 string 切换而来） */
   content: ContentBlock[];
@@ -59,15 +62,20 @@ export interface ParsedChunk {
   done?: boolean;
 }
 
-/** 气泡所在位置 */
+/** 气泡所在位置：start 左侧 / end 右侧 */
 export type BubblePlacement = 'start' | 'end';
+/** 气泡样式变体：填充 / 描边 / 无边框 / 阴影 */
 export type BubbleVariant = 'filled' | 'outlined' | 'borderless' | 'shadow';
+/** 气泡圆角形状：圆角 / 贴角（靠头像一侧收尖角） */
 export type BubbleShape = 'round' | 'corner';
 
-/** 传给 contentRender / 作用域 slot 的信息 */
+/** 传给 contentRender / 作用域 slot 的气泡上下文信息 */
 export interface BubbleContentInfo {
+  /** 消息状态（供渲染器按 loading/updating/success 等分支） */
   status?: MessageStatus;
+  /** 消息角色 */
   role: MessageRole;
+  /** 所属消息 key（通常为消息 id），交互块回写动作时回传 */
   key: string | number;
 }
 
@@ -128,7 +136,9 @@ export type BlockActionHandler = (action: BlockAction) => void;
 
 /** Bubble 向上转发的块动作载荷（携带所属消息 key） */
 export interface BlockActionPayload {
+  /** 动作所属消息的 key（通常为消息 id），供 useChat.updateBlock 定位 */
   messageKey: string | number;
+  /** 块动作内容（目标块 id / 类型 / 补丁） */
   action: BlockAction;
 }
 
@@ -144,6 +154,7 @@ export interface ChoiceOption {
 
 /** 模型选项（ModelSelector 用） */
 export interface ModelOption {
+  /** 模型唯一值（选中态与 v-model 绑定它） */
   value: string;
   /** 展示名，缺省回退 value */
   label?: string;
@@ -151,6 +162,7 @@ export interface ModelOption {
 
 /** 快捷问题项（Prompts + AiChat 共享） */
 export interface PromptItem {
+  /** 唯一 key（列表渲染与点击事件标识） */
   key: string | number;
   /** 主文案/标题 */
   label: string;
@@ -162,9 +174,13 @@ export interface PromptItem {
 
 /** 引用来源项 */
 export interface SourceItem {
+  /** 来源标题 */
   title: string;
+  /** 来源链接，提供后渲染为可点击（新窗口打开） */
   url?: string;
+  /** 摘要片段，展开时展示 */
   snippet?: string;
+  /** 来源图标（favicon / emoji） */
   icon?: string;
 }
 
@@ -193,9 +209,11 @@ export interface ThoughtChainResult {
 
 /** 思维链（Agent 执行步骤）单步 */
 export interface ThoughtChainItem {
+  /** 步骤唯一 key（列表渲染标识） */
   key: string | number;
   /** 步骤图标，emoji 或短文本（如 🤔 / 🔍） */
   icon?: string;
+  /** 步骤标题 */
   title: string;
   /** 步骤状态，active 时标题显示流光渐变，默认 done */
   status?: ThoughtChainStatus;

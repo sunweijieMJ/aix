@@ -185,12 +185,11 @@ provideAiChatConfig({ enableTyping: false });
 
 ## Markdown 渲染
 
-`MarkdownRenderer` 与 `BubbleList` 默认 content 插槽会尝试用 `markdown-it` 渲染富文本：
+`MarkdownRenderer` 用 `markdown-it` 把富文本解析为 **token 流**，再经自研 walker 渲染为 **Vue 节点**（而非整串 `v-html`）：
 
-- 安装了 `markdown-it` → 渲染为 HTML。
-- 未安装 → 自动降级为纯文本，并在控制台给出一次性提示。
-
-依赖为动态 `import`，不会被打进主 chunk，未使用时零额外体积。
+- 安装了 `markdown-it` → 渲染为富文本；未安装 → 自动降级为纯文本并控制台提示一次。
+- **块级增量渲染**：按顶层块（段落/标题/代码/公式/表格…）渲染，已完成的块冻结不重渲染，流式时**新块经 `<TransitionGroup>` 淡入**（公式/代码等原子块完成时平滑出现，文字仍逐字打字机），长流式不整段重解析。
+- 依赖为动态 `import`，不打进主 chunk，未使用时零额外体积。
 
 ### 数学公式（KaTeX，可选）
 
@@ -200,14 +199,53 @@ provideAiChatConfig({ enableTyping: false });
 pnpm add katex @vscode/markdown-it-katex
 ```
 
+装好即可——**KaTeX 样式会在加载 katex 时自动注入**，无需手动引入。仅当你的打包器不支持动态 CSS import（个别 SSR / 非常规构建）时，才需在应用入口手动兜底引入一次：
+
 ```ts
-// 公式排版依赖 KaTeX 的样式，需在应用入口引入一次
 import 'katex/dist/katex.min.css';
 ```
 
 - 已安装 → `$...$` / `$$...$$` 渲染为公式（残缺/非法公式以提示形式呈现，不会中断整段渲染）。
 - 未安装 → 公式原样保留为文本，markdown 其余部分照常渲染（与 `markdown-it` 缺失时同样的降级风格，零额外体积）。
 - 流式渲染时未闭合的 `$$` 残片会被自动隐藏，闭合后再呈现为公式，避免半截裸 LaTeX 闪烁。
+
+### 自定义 markdown 渲染器（`markdownRenderers`）
+
+每种 markdown token（`paragraph` / `heading` / `fence` / `math_block` / `table` / …）都对应一个渲染器，可通过 `AiChat` / `MarkdownRenderer` 的 `markdownRenderers` 扩展或覆盖（优先级高于内置，与 `provideAiChatConfig.markdownRenderers` 全局配置合并）：
+
+```vue
+<script setup lang="ts">
+import { h } from 'vue';
+import { AiChat, type MarkdownRenderers } from '@aix/ai-chat';
+
+// 覆盖代码块为带复制按钮的自定义组件、扩展 ```mermaid 等
+const markdownRenderers: MarkdownRenderers = {
+  fence: ({ token }) => h(MyCodeBlock, { code: token.content, lang: token.info }),
+};
+</script>
+
+<template>
+  <AiChat :request="request" :markdown-renderers="markdownRenderers" />
+</template>
+```
+
+渲染器签名：`({ token, renderChildren, info }) => VNode | VNode[] | string`。`renderChildren()` 递归渲染子节点。未注册的 token 类型安全降级（容器渲染子节点、叶子渲染文本）。
+
+### 原始 HTML（`allowHtml`，默认关闭）
+
+默认 `allowHtml=false`：源码中的原始 HTML 标签**被转义为文本**，零 XSS 面。需要渲染后端可信的富 HTML 时，开启 `allowHtml` 并安装 `dompurify`（块级 HTML 经 DOMPurify 消毒后渲染）：
+
+```bash
+pnpm add dompurify
+```
+
+```vue
+<AiChat :request="request" allow-html />
+```
+
+- 仅消毒**块级** HTML（如 `<div>`/`<details>`/`<table>`）；行内裸标签（`<b>` 等）当前丢弃保留文本。
+- 安全兜底：开启 `allowHtml` 但**未安装 `dompurify` 时绝不输出未消毒 HTML**，自动降级为转义文本并告警。
+- 也可经 `provideAiChatConfig({ allowHtml: true })` 全局开启（组件 `allow-html` prop 优先）。
 
 ## 主题
 

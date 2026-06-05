@@ -119,3 +119,49 @@ describe('useAutoScroll', () => {
     expect(unreadCount.value).toBe(1);
   });
 });
+
+describe('useAutoScroll observeContent（内容增高时钉底）', () => {
+  it('处于底部时内容增高自动贴底；用户滚上去后不再贴底', () => {
+    let cb: () => void = () => {};
+    class RO {
+      constructor(c: () => void) {
+        cb = c;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    const prev = (globalThis as any).ResizeObserver;
+    (globalThis as any).ResizeObserver = RO;
+    try {
+      const el = mockEl({ scrollHeight: 1000, scrollTop: 500, clientHeight: 500 }); // 距底=0 → AT_BOTTOM
+      const { observeContent, computeState, scrollState } = useAutoScroll(ref(el));
+      computeState();
+      expect(scrollState.value).toBe('AT_BOTTOM');
+
+      observeContent(mockEl());
+      (el as any).scrollHeight = 2000; // 内容增高
+      cb();
+      expect(el.scrollTop).toBe(2000); // 已贴底
+
+      el.scrollTop = 0; // 用户滚到顶
+      computeState();
+      expect(scrollState.value).toBe('SCROLLED_UP');
+      (el as any).scrollHeight = 3000;
+      cb();
+      expect(el.scrollTop).toBe(0); // 不贴底
+    } finally {
+      (globalThis as any).ResizeObserver = prev;
+    }
+  });
+
+  it('环境无 ResizeObserver 时安全空转（不抛错）', () => {
+    const prev = (globalThis as any).ResizeObserver;
+    (globalThis as any).ResizeObserver = undefined;
+    try {
+      const { observeContent } = useAutoScroll(ref(mockEl()));
+      expect(() => observeContent(mockEl())).not.toThrow();
+    } finally {
+      (globalThis as any).ResizeObserver = prev;
+    }
+  });
+});

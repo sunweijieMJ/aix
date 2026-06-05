@@ -1,15 +1,15 @@
 export interface AiChatLocale {
-  /** 输入框占位提示（Sender 未传 placeholder 时的默认值 / aria-label） */
+  /** 输入框占位提示 */
   senderPlaceholder: string;
-  /** 发送按钮无障碍标签 / title（Sender 非加载态） */
+  /** 发送按钮无障碍标签 */
   sendButton: string;
-  /** 停止按钮无障碍标签 / title（Sender 加载态，点击中断生成） */
+  /** 停止按钮无障碍标签 */
   stopButton: string;
-  /** 重试按钮文案（请求出错时的重试入口） */
+  /** 重试按钮文案 */
   retryButton: string;
-  /** 思考中提示文案（Thinking 占位） */
+  /** 思考中提示文案 */
   thinking: string;
-  /** 思考完成后折叠面板标题（reasoning 块） */
+  /** 思考完成后折叠面板标题 */
   thoughtTitle: string;
   /** 复制消息按钮 */
   copyButton: string;

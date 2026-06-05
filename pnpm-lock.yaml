@@ -918,6 +918,9 @@ importers:
       '@vscode/markdown-it-katex':
         specifier: ^1.1.1
         version: 1.1.2
+      dompurify:
+        specifier: ^3.2.6
+        version: 3.3.3
       katex:
         specifier: ^0.16.11
         version: 0.16.44

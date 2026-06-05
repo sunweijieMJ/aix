@@ -1,4 +1,7 @@
 import { normalizeMathDelimiters } from '../utils/markdown';
+import { createMathRenderers, type KatexLike } from '../utils/mathRenderers';
+import { createHtmlRenderers, type DomPurifyLike } from '../utils/htmlRenderers';
+import type { MarkdownRenderers, MdToken } from '../utils/markdownWalker';
 
 export type MarkdownRenderFn = (src: string) => string;
 
@@ -41,4 +44,81 @@ export async function loadMarkdownRenderer(): Promise<MarkdownRenderFn | null> {
 /** 测试用：重置缓存 */
 export function __resetMarkdownCache() {
   cached = undefined;
+}
+
+/**
+ * 流式 markdown 渲染引擎：暴露 token→VNode walker 所需的 markdown-it 解析能力 + 数学渲染器。
+ * 与旧的字符串 `loadMarkdownRenderer` 不同，这里只返回"零件"，由 MarkdownRenderer 装配。
+ */
+export interface MarkdownEngine {
+  /** markdown-it 解析能力（供 splitMarkdownBlocks 与按块取 token） */
+  md: { parse(src: string, env: unknown): MdToken[] };
+  /** 数学渲染器（katex 可用时含 math_inline/math_block，否则为空 → 公式降级为文本） */
+  mathRenderers: MarkdownRenderers;
+  /** 原始 HTML 渲染器（allowHtml 且 dompurify 可用时含 html_block，否则为空 → 裸 HTML 转义为文本） */
+  htmlRenderers: MarkdownRenderers;
+}
+
+// 按 allowHtml 分别缓存（html:true/false 解析行为不同，不可混用同一实例）
+const engineCache = new Map<boolean, MarkdownEngine | null>();
+
+/**
+ * 动态装配 markdown 引擎；未安装 markdown-it 返回 null（调用方降级纯文本）。
+ * @param allowHtml 是否允许原始 HTML（启用 markdown-it html:true 并经 DOMPurify 消毒），默认 false
+ */
+export async function loadMarkdownEngine(allowHtml = false): Promise<MarkdownEngine | null> {
+  const cached = engineCache.get(allowHtml);
+  if (cached !== undefined) return cached;
+  let engine: MarkdownEngine | null;
+  try {
+    const mod = await import('markdown-it');
+    const MarkdownIt = mod.default ?? mod;
+    const md = new MarkdownIt({ html: allowHtml, linkify: true, breaks: true });
+    let mathRenderers: MarkdownRenderers = {};
+    try {
+      const katexMod = await import('@vscode/markdown-it-katex');
+      // CJS/ESM 互操作：插件函数可能位于 default.default
+      const interop = katexMod as unknown as { default?: { default?: unknown } };
+      const katexPlugin = interop.default?.default ?? katexMod.default ?? katexMod;
+      md.use(katexPlugin as Parameters<typeof md.use>[0], { throwOnError: false });
+      const katexLib = await import('katex');
+      const katex = (katexLib.default ?? katexLib) as unknown as KatexLike;
+      mathRenderers = createMathRenderers(katex);
+      // 自动注入 KaTeX 样式（副作用式 import）：装了 katex 即获得正确排版，无需手动引入。
+      // 打包器不支持 CSS import / SSR 等场景失败时忽略——回退为手动 `import 'katex/dist/katex.min.css'`。
+      try {
+        await import('katex/dist/katex.min.css');
+      } catch {
+        // CSS 自动注入失败：请在应用入口手动引入 katex/dist/katex.min.css
+      }
+    } catch {
+      // 无 katex / 插件：md 仍正常，公式降级为文本（math token 无渲染器 → walker 兜底）
+    }
+    let htmlRenderers: MarkdownRenderers = {};
+    if (allowHtml) {
+      try {
+        const purifyMod = await import('dompurify');
+        const purify = (purifyMod.default ?? purifyMod) as unknown as DomPurifyLike;
+        htmlRenderers = createHtmlRenderers(purify);
+      } catch {
+        // 安全兜底：allowHtml 但无 dompurify → 不提供 html 渲染器，裸 HTML 经 walker 兜底转义为文本
+        console.warn(
+          '[ai-chat] allowHtml 需要 dompurify，未安装 → 原始 HTML 降级为转义文本。如需启用请安装 dompurify。',
+        );
+      }
+    }
+    engine = { md: md as unknown as MarkdownEngine['md'], mathRenderers, htmlRenderers };
+  } catch {
+    console.warn(
+      '[ai-chat] 未安装 markdown-it，Markdown 渲染降级为纯文本。如需启用请安装 markdown-it。',
+    );
+    engine = null;
+  }
+  engineCache.set(allowHtml, engine);
+  return engine;
+}
+
+/** 测试用：重置引擎缓存 */
+export function __resetMarkdownEngineCache() {
+  engineCache.clear();
 }
