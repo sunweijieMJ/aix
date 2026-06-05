@@ -37,6 +37,11 @@
       "outputs": ["**/es/**/*.d.ts"],
       "cache": false
     },
+    "@aix/icons#type-check": {
+      "dependsOn": ["@aix/icons#build"],
+      "outputs": [],
+      "cache": false
+    },
     "type-check": {
       "dependsOn": ["^build"],
       "inputs": [
