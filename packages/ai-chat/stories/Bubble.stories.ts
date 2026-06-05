@@ -150,15 +150,16 @@ export const MultiBlock: Story = {
     ],
   },
   play: async ({ canvas }) => {
-    // text block 始终可见（Markdown 渲染后的标题与第二段正文）
-    await canvas.findByText('回答');
-    await canvas.findByText(/补充：还有第二段正文/);
+    // text block 始终可见（Markdown 渲染后的标题与第二段正文）；
+    // 显式 5s 超时：全量并发跑时首帧渲染（引擎动态 import）受 worker 竞争影响，默认 1s 偶发压线失败
+    await canvas.findByText('回答', undefined, { timeout: 5000 });
+    await canvas.findByText(/补充：还有第二段正文/, undefined, { timeout: 5000 });
     // reasoning 默认折叠：内容不在 DOM，仅显示「思考过程」折叠标题
     await expect(canvas.queryByText('让我先分析一下这个问题…')).toBeNull();
     const thinkingHeader = canvas.getByText('思考过程');
     // 点击展开后 reasoning 内容出现
     await userEvent.click(thinkingHeader);
-    await canvas.findByText('让我先分析一下这个问题…');
+    await canvas.findByText('让我先分析一下这个问题…', undefined, { timeout: 5000 });
   },
 };
 

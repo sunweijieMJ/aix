@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, waitFor } from 'storybook/test';
-import { h, ref, onUnmounted } from 'vue';
+import { h, ref, onMounted, onUnmounted } from 'vue';
 import { MarkdownRenderer } from '../src';
+import { fullReportMarkdown } from './fullReportMarkdown';
 
 /**
  * MarkdownRenderer 组件展示 Markdown 内容。
@@ -102,6 +103,80 @@ export const Empty: Story = {
   args: { content: '' },
 };
 
+const liveDemoContent = fullReportMarkdown;
+
+/**
+ * **流式输出实况**：逐字喂入一篇全要素长文，直观查看防闪烁整修的全套效果——
+ * - 表格（5 列 ×4 行）：表头一出现即渲染成表（合成分隔行），数据行逐行长出，全程无裸竖线、无突变；
+ * - 粗体 / 斜体 / 删除线 / 行内代码 / 链接 / 图片：未闭合期间隐定界符留文本，闭合后整体变样式；
+ * - 行内公式 `$..$` 与块级公式 `$$..$$`、`\[..\]`：块级残片以 latex 代码块逐字可见，
+ *   闭合后切换为 KaTeX（FLIP 高度过渡）；
+ * - 代码块：内含 `$$` 与 `|` 字符，验证代码区遮蔽（不被误当公式/表格整修）；
+ * - mermaid：流式期为代码块逐字显示，块固化后切换成流程图；
+ * - 有序/嵌套列表、引用、分隔线、多级标题等常规块。
+ * 点「重新播放」可反复观看。
+ */
+export const StreamingLive: Story = {
+  render: () => ({
+    components: { MarkdownRenderer },
+    setup() {
+      const content = ref('');
+      const streaming = ref(true);
+      let timer: ReturnType<typeof setInterval> | null = null;
+      const start = () => {
+        if (timer) clearInterval(timer);
+        content.value = '';
+        streaming.value = true;
+        let i = 0;
+        timer = setInterval(() => {
+          i += 2;
+          content.value = liveDemoContent.slice(0, i);
+          if (i >= liveDemoContent.length) {
+            streaming.value = false;
+            if (timer) clearInterval(timer);
+            timer = null;
+          }
+        }, 20);
+      };
+      onMounted(start);
+      onUnmounted(() => {
+        if (timer) clearInterval(timer);
+      });
+      return { content, streaming, start };
+    },
+    template: `
+      <div style="max-width:680px">
+        <button type="button" style="margin-bottom:12px;padding:4px 12px;cursor:pointer" @click="start">▶ 重新播放</button>
+        <MarkdownRenderer :content="content" :streaming="streaming" />
+      </div>`,
+  }),
+  play: async ({ canvasElement }) => {
+    // 表格在分隔行真实到达前就应已成表（合成分隔行生效）
+    await waitFor(() => expect(canvasElement.querySelector('table')).toBeTruthy(), {
+      timeout: 10000,
+    });
+    // 流式结束后全要素就位：粗体 / 图片 / 引用 / KaTeX 公式 / 代码块 / mermaid 流程图
+    await waitFor(() => expect(canvasElement.querySelector('strong')).toBeTruthy(), {
+      timeout: 10000,
+    });
+    await waitFor(() => expect(canvasElement.querySelector('img')).toBeTruthy(), {
+      timeout: 10000,
+    });
+    await waitFor(() => expect(canvasElement.querySelector('blockquote')).toBeTruthy(), {
+      timeout: 15000,
+    });
+    await waitFor(() => expect(canvasElement.querySelector('.katex')).toBeTruthy(), {
+      timeout: 18000,
+    });
+    await waitFor(() => expect(canvasElement.querySelectorAll('pre').length).toBeGreaterThan(0), {
+      timeout: 18000,
+    });
+    await waitFor(() => expect(canvasElement.querySelector('.aix-md-mermaid svg')).toBeTruthy(), {
+      timeout: 25000,
+    });
+  },
+};
+
 /**
  * 流式防闪烁（`streaming` = true）：演示「半截」Markdown 的整修。
  * 输出途中常出现未闭合的代码围栏（``` 未配对）或未闭合的链接（`[文字` 还没打完），
@@ -172,6 +247,34 @@ export const AllowHtml: Story = {
     allowHtml: true,
     content:
       '后端下发的 HTML 卡片：\n\n<div style="padding:8px;border:1px solid var(--aix-colorBorder);border-radius:6px">这是 <strong>HTML</strong> 卡片，<img src="x" onerror="alert(1)"> 中的危险属性已被消毒。</div>',
+  },
+};
+
+/**
+ * 内置图片骨架：图片 markdown 渲染为「shimmer 骨架 → 加载完成平滑过渡出图」，
+ * 不再突然撑开页面；加载失败渲染占位框 + alt 文案（不裂图）。
+ * 已加载过的 URL 有缓存（虚拟列表滚动复现不再闪骨架）。
+ * 业务可经 `markdownRenderers.image` 整体覆盖。
+ */
+export const Images: Story = {
+  args: {
+    content: [
+      '多图加载演示（注意骨架 → 出图的平滑过渡）：',
+      '',
+      '![风景](https://picsum.photos/seed/aix-demo-1/640/240.jpg)',
+      '',
+      '![城市](https://picsum.photos/seed/aix-demo-2/640/200.jpg)',
+      '',
+      '失败占位演示（404 地址不裂图）：',
+      '',
+      '![不存在的图片](https://example.com/not-exist.png)',
+    ].join('\n'),
+  },
+  play: async ({ canvasElement }) => {
+    // 三个图片位均渲染为骨架组件容器（成功与否都不裸奔）
+    await waitFor(() => expect(canvasElement.querySelectorAll('.aix-md-image').length).toBe(3), {
+      timeout: 5000,
+    });
   },
 };
 

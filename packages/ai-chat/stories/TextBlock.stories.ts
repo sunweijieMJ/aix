@@ -48,7 +48,7 @@ type Story = StoryObj<TextBlockProps>;
 export const Default: Story = {
   args: { block: asTextBlock('你好，我是 AIX 智能助手，有什么可以帮你的？') },
   play: async ({ canvas }) => {
-    await canvas.findByText(/AIX 智能助手/);
+    await canvas.findByText(/AIX 智能助手/, undefined, { timeout: 5000 });
   },
 };
 
@@ -56,8 +56,9 @@ export const Default: Story = {
 export const Markdown: Story = {
   args: { block: asTextBlock(MARKDOWN) },
   play: async ({ canvas }) => {
-    await canvas.findByText('列表项一');
-    await canvas.findByText('支持 GFM 表格');
+    // 显式 5s 超时：全量并发跑时首帧渲染（引擎动态 import）受 worker 竞争影响，默认 1s 偶发压线失败
+    await canvas.findByText('列表项一', undefined, { timeout: 5000 });
+    await canvas.findByText('支持 GFM 表格', undefined, { timeout: 5000 });
   },
 };
 

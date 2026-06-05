@@ -9,6 +9,7 @@ import {
   choiceBlock,
   thoughtChainBlock,
 } from '../src/utils/helpers';
+import { fullReportMarkdown } from './fullReportMarkdown';
 
 // ============ 头像（内联 SVG data URI，无需网络） ============
 
@@ -164,12 +165,16 @@ const ANSWER_FALLBACK = [
   '- 用 **Markdown** 输出富文本（代码块、表格、列表都支持）',
   '- 多轮对话、出错后重试、回复中途随时点「停止」中断',
   '',
-  '试试问我：`帮我写一段快速排序` 或 `Composition API 和 Options API 有什么区别`。',
+  '试试问我：`帮我写一段快速排序`、`给我一份完整的示例报告` 或 `Composition API 和 Options API 有什么区别`。',
 ].join('\n');
+
+/** 全要素长文（表格/公式/图片/代码块/mermaid 流程图等），与 MarkdownRenderer.StreamingLive 共用 */
+const ANSWER_FULL = fullReportMarkdown;
 
 /** 根据用户最后一句话的关键词，挑选一段拟真回答 */
 function pickAnswer(question: string): string {
   const q = question.toLowerCase();
+  if (/完整|示例|报告|全要素/.test(q)) return ANSWER_FULL;
   if (/代码|快速排序|算法|python|函数|写一段|写个/.test(q)) return ANSWER_CODE;
   if (/区别|对比|差异|\bvs\b|哪个好/.test(q)) return ANSWER_DIFF;
   if (/vue|composition|响应式|ref\b|组件/.test(q)) return ANSWER_VUE;
@@ -199,8 +204,11 @@ function fullFlowRequest(opts: StreamOptions = {}) {
       failedOnce.add(q);
       throw new Error('mock: 模拟网络错误');
     }
+    const answer = pickAnswer(q);
+    // 全要素长文（1500+ 字符）按默认速度要流 12s+，提速传输——展示节奏由打字机控制
+    const fast = answer === ANSWER_FULL ? { stepMs: 8, chunkSize: 8 } : {};
     // stepMs 取稍慢值，确保流式回复有足够时长供 play 在中途点「停止」
-    return streamSSE(pickAnswer(q), signal, { stepMs: 24, chunkSize: 3, ...opts });
+    return streamSSE(answer, signal, { stepMs: 24, chunkSize: 3, ...fast, ...opts });
   };
 }
 
@@ -453,19 +461,20 @@ type Story = StoryObj<typeof AiChat>;
  *
  * 一个 play 自动跑完整条链路，逐段断言：
  * 1. **快捷问题 → 流式中断**：点快捷问题触发流式回复，回复进行中点「停止」中断（abort）。
- * 2. **多轮追问 → 完整回复**：在已有上下文上继续提问，等待流式 Markdown 表格回答渲染完成。
- * 3. **错误 → 重试成功**：发送触发错误的问题，气泡出现「重试」，点击后第二次请求成功并渲染。
+ * 2. **多轮追问 → 全要素长文**：请求「完整的示例报告」，流式输出表格/公式/图片/代码块/
+ *    mermaid 流程图等全要素 Markdown（与 MarkdownRenderer.StreamingLive 同一份内容）。
+ * 3. **全要素就位终检**：等打字机播完长文，断言 KaTeX 公式与 mermaid 流程图均已渲染。
  *
- * 覆盖 Welcome 引导、流式打字机、abort 中断、多轮上下文、错误重试全部交互路径，
- * 可作为 AiChat 能力的一站式回归用例。
+ * 覆盖 Welcome 引导、流式打字机、abort 中断、多轮上下文、富文本全要素渲染；
+ * 错误 → 手动点「重试」的链路拆到独立的 ErrorRetry story（避免与长文打字机同屏双输出）。
  */
 export const FullInteractionFlow: Story = {
   args: {
     request: fullFlowRequest(),
     welcomeTitle: '完整交互演示',
-    welcomeDescription: '本用例自动跑：发送 → 中断 → 追问 → 报错 → 重试 的完整链路',
+    welcomeDescription: '本用例自动跑：发送 → 中断 → 追问全要素长文 → 渲染终检 的完整链路',
   },
-  play: async ({ canvas, step }) => {
+  play: async ({ canvas, canvasElement, step }) => {
     // 1) 快捷问题触发流式 → 回复进行中点「停止」中断
     await step('快捷问题 → 流式中断', async () => {
       await userEvent.click(canvas.getByRole('button', { name: '帮我写一段快速排序' }));
@@ -479,37 +488,58 @@ export const FullInteractionFlow: Story = {
       );
     });
 
-    // 2) 多轮追问 → 拿到完整 Markdown 回答（对比表格里的「维度」表头）
-    await step('多轮追问 → 完整回复', async () => {
+    // 2) 多轮追问 → 全要素长文（季度报告：表格/公式/图片/代码块/mermaid）
+    await step('多轮追问 → 全要素长文', async () => {
       const ta = canvas.getByRole('textbox');
-      await userEvent.type(ta, 'Composition API 和 Options API 有什么区别');
+      await userEvent.type(ta, '给我一份完整的示例报告');
       await userEvent.keyboard('{Enter}');
-      // 虚拟列表内容异步渲染：用 findByText 轮询，等待流式 + 打字机播出表头
-      await canvas.findByText(/维度/, undefined, { timeout: 12000 });
+      // 虚拟列表内容异步渲染：用 findByText 轮询，等待流式 + 打字机播出表格表头
+      await canvas.findByText(/产品线/, undefined, { timeout: 15000 });
       // 关键：等本轮流式结束（isLoading=false，「停止」消失）再进入下一步，
       // 否则下一条消息会被 Sender 的 loading 守卫拦截而发不出去。
+      // 注：打字机此时可能仍在播长文尾部，不影响发送（typing 与 isLoading 解耦）。
       await waitFor(
         () => expect(canvas.queryByRole('button', { name: '停止' })).not.toBeInTheDocument(),
-        { timeout: 12000 },
+        { timeout: 15000 },
       );
     });
 
-    // 3) 触发错误 → 点「重试」恢复成功
-    await step('错误 → 重试成功', async () => {
-      const ta = canvas.getByRole('textbox');
-      await userEvent.type(ta, '线上报错该怎么排查');
-      await userEvent.keyboard('{Enter}');
-      // 首次失败 → 重试按钮出现；virtua 重挂载会使引用 detached，故在 waitFor 内重查再点
-      await waitFor(
-        async () => {
-          const retry = await canvas.findByRole('button', { name: '重试' });
-          await userEvent.click(retry);
-        },
-        { timeout: 5000 },
-      );
-      // 重试成功 → 渲染排查步骤（ANSWER_DEBUG 含「复现」）
-      await canvas.findByText(/复现/, undefined, { timeout: 12000 });
+    // 3) 全要素终检：等打字机播完长文，公式与流程图渲染就位
+    await step('全要素就位终检', async () => {
+      await waitFor(() => expect(canvasElement.querySelector('.katex')).toBeTruthy(), {
+        timeout: 30000,
+      });
+      await waitFor(() => expect(canvasElement.querySelector('.aix-md-mermaid svg')).toBeTruthy(), {
+        timeout: 30000,
+      });
     });
+  },
+};
+
+/**
+ * ErrorRetry：请求失败 → 气泡出现「重试」按钮 → 点击后第二次请求放行成功。
+ * 从 FullInteractionFlow 拆出的独立用例（避免与全要素长文的打字机同屏双输出）。
+ */
+export const ErrorRetry: Story = {
+  args: {
+    request: fullFlowRequest(),
+    welcomeTitle: '错误重试演示',
+    welcomeDescription: '发送含「报错」的问题：首次失败出现重试按钮，点击后第二次成功',
+  },
+  play: async ({ canvas }) => {
+    const ta = canvas.getByRole('textbox');
+    await userEvent.type(ta, '线上报错该怎么排查');
+    await userEvent.keyboard('{Enter}');
+    // 首次失败 → 重试按钮出现；virtua 重挂载会使引用 detached，故在 waitFor 内重查再点
+    await waitFor(
+      async () => {
+        const retry = await canvas.findByRole('button', { name: '重试' });
+        await userEvent.click(retry);
+      },
+      { timeout: 5000 },
+    );
+    // 重试成功 → 渲染排查步骤（ANSWER_DEBUG 含「复现」）
+    await canvas.findByText(/复现/, undefined, { timeout: 12000 });
   },
 };
 

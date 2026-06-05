@@ -95,6 +95,9 @@ export const Retry: Story = {
     return {
       components: { AiChat },
       setup: () => ({
+        // 注意：模板里用到的 openaiParseChunk 必须随 setup 返回，否则静默传 undefined
+        // → useChat 回落默认 flatParseChunk → OpenAI 报文解析不出 delta → 空内容 success
+        openaiParseChunk,
         request: ({ signal }: { signal: AbortSignal }) => {
           attempt += 1;
           if (attempt < 3) return Promise.reject(new Error(`mock 第 ${attempt} 次失败`));
@@ -123,6 +126,7 @@ export const Parser: Story = {
   render: () => ({
     components: { AiChat },
     setup: () => ({
+      openaiParseChunk,
       // 1→1 转换：保留 id，仅重塑展示文本
       parser: (m: ChatMessage): ChatMessage =>
         m.role === 'ai'
