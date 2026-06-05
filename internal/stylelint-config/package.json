@@ -3,8 +3,14 @@
   "version": "0.0.2",
   "type": "module",
   "exports": {
-    "./base": "./base.js",
-    "./vue-app": "./vue-app.js"
+    "./base": {
+      "types": "./index.d.ts",
+      "default": "./base.js"
+    },
+    "./vue-app": {
+      "types": "./index.d.ts",
+      "default": "./vue-app.js"
+    }
   },
   "dependencies": {
     "postcss-html": "^1.8.1",

@@ -2,9 +2,11 @@
   "name": "@kit/prettier-config",
   "version": "0.0.1",
   "type": "module",
-  "types": "./index.d.ts",
   "exports": {
-    ".": "./index.js"
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
   },
   "dependencies": {
     "prettier": "^3.8.1"
