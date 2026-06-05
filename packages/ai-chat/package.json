@@ -46,11 +46,11 @@
     "@aix/theme": "workspace:^",
     "@aix/hooks": "workspace:^",
     "@aix/icons": "workspace:^",
-    "virtua": "^0.39.0"
+    "virtua": "^0.49.1"
   },
   "optionalDependencies": {
-    "markdown-it": "^14.1.0",
-    "katex": "^0.16.11",
+    "markdown-it": "^14.2.0",
+    "katex": "^0.17.0",
     "@vscode/markdown-it-katex": "^1.1.1"
   },
   "peerDependencies": {
