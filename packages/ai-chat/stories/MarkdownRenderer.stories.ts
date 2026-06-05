@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, waitFor } from 'storybook/test';
-import { h } from 'vue';
+import { h, ref, onUnmounted } from 'vue';
 import { MarkdownRenderer } from '../src';
 
 /**
@@ -172,5 +172,60 @@ export const AllowHtml: Story = {
     allowHtml: true,
     content:
       '后端下发的 HTML 卡片：\n\n<div style="padding:8px;border:1px solid var(--aix-colorBorder);border-radius:6px">这是 <strong>HTML</strong> 卡片，<img src="x" onerror="alert(1)"> 中的危险属性已被消毒。</div>',
+  },
+};
+
+const mermaidContent = `下面是发布流程：
+
+\`\`\`mermaid
+graph TD
+  A[提交代码] --> B{CI 通过?}
+  B -- 是 --> C[发布 npm]
+  B -- 否 --> D[修复问题]
+  D --> A
+\`\`\`
+`;
+
+/**
+ * Mermaid 流程图：装了可选依赖 \`mermaid\` 后，\`\`\`mermaid 围栏自动渲染为图表；
+ * 未安装时维持代码块展示（静默降级）。语法错误的图表也回落为代码块（虚线边框提示）。
+ */
+export const Mermaid: Story = {
+  args: { content: mermaidContent },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.querySelector('.aix-md-mermaid svg')).toBeTruthy(), {
+      timeout: 5000,
+    });
+  },
+};
+
+/**
+ * Mermaid 流式演示：源码逐字输出期间按代码块展示（保留打字机反馈），
+ * 流式结束后平滑切换为图表（FLIP 高度过渡）。
+ */
+export const MermaidStreaming: Story = {
+  render: () => ({
+    components: { MarkdownRenderer },
+    setup() {
+      const content = ref('');
+      const streaming = ref(true);
+      let i = 0;
+      const timer = setInterval(() => {
+        content.value = mermaidContent.slice(0, (i += 6));
+        if (i >= mermaidContent.length) {
+          streaming.value = false;
+          clearInterval(timer);
+        }
+      }, 50);
+      onUnmounted(() => clearInterval(timer));
+      return { content, streaming };
+    },
+    template: '<MarkdownRenderer :content="content" :streaming="streaming" />',
+  }),
+  play: async ({ canvasElement }) => {
+    // 流式结束后应成图
+    await waitFor(() => expect(canvasElement.querySelector('.aix-md-mermaid svg')).toBeTruthy(), {
+      timeout: 10000,
+    });
   },
 };

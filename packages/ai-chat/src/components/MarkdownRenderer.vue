@@ -3,12 +3,12 @@
     <!-- 引擎就绪：按顶层块渲染，新块经 TransitionGroup 淡入；committed 块 source 不变即不重渲染 -->
     <TransitionGroup v-if="loaded && engine" name="aix-markdown-enter">
       <MarkdownBlock
-        v-for="b in blocks"
+        v-for="(b, i) in blocks"
         :key="b.id"
         :source="b.source"
         :parse="parseBlock"
         :renderers="mergedRenderers"
-        :info="renderInfo"
+        :info="i < blocks.length - 1 || !streaming ? committedInfo : activeInfo"
       />
     </TransitionGroup>
     <!-- 加载中 / 引擎不可用（未装 markdown-it）：降级为纯文本 -->
@@ -92,13 +92,23 @@ const processedSource = computed(() => {
   return s;
 });
 
-// 合并数学渲染器 + 用户自定义（用户优先）；computed 稳定引用，避免 committed 子块无谓重渲染。
+// 合并数学/HTML/图表渲染器 + 用户自定义（用户优先）；computed 稳定引用，避免 committed 子块无谓重渲染。
 const mergedRenderers = computed<MarkdownRenderers>(() => ({
   ...engine.value?.mathRenderers,
   ...engine.value?.htmlRenderers,
+  ...engine.value?.diagramRenderers,
   ...props.markdownRenderers,
 }));
-const renderInfo = computed<MarkdownRenderInfo>(() => ({ streaming: props.streaming }));
+// 块级渲染上下文：两个稳定引用，避免每次父渲染生成新对象导致 committed 块无谓重渲染。
+// 非末块（或整条消息已完成）视为 committed —— 供 fence:mermaid 等原子渲染器提前成图。
+const committedInfo = computed<MarkdownRenderInfo>(() => ({
+  streaming: props.streaming,
+  committed: true,
+}));
+const activeInfo = computed<MarkdownRenderInfo>(() => ({
+  streaming: props.streaming,
+  committed: false,
+}));
 
 // 顶层块：按位置复用稳定 id（committed 前缀复用、新末块分配新 id）。直接用纯 reducer 以纳入 engine 依赖。
 const blocks = shallowRef<StreamingBlock[]>([]);
@@ -318,6 +328,22 @@ const MarkdownBlock = defineComponent({
   :where(.hide-tail, .stretchy) {
     overflow: hidden;
   }
+}
+
+/* mermaid 流程图：限宽防溢出，居中展示 */
+.aix-md-mermaid {
+  margin: 0.6em 0;
+  text-align: center;
+
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* 语法错误的 mermaid 源码块：虚线边框提示异常（源码本身仍可读） */
+.aix-md-mermaid-source--error {
+  border-style: dashed;
 }
 
 /* 流式新块入场：淡入（原子块如公式/代码完成时平滑出现，而非瞬现） */

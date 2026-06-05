@@ -19,6 +19,8 @@ export interface MdToken {
 export interface MarkdownRenderInfo {
   /** 是否流式渲染中 */
   streaming: boolean;
+  /** 当前顶层块是否已固化（非活跃末块，或整条消息已完成）——原子渲染器（图表等）据此成图 */
+  committed?: boolean;
 }
 
 export interface MarkdownRenderContext {
@@ -89,7 +91,13 @@ function renderNode(
   renderers: MarkdownRenderers,
   info: MarkdownRenderInfo,
 ): (VNode | string)[] {
-  const key = token.type.replace(/_open$/, '');
+  let key = token.type.replace(/_open$/, '');
+  // fence 按围栏语言优先分发 fence:<lang>（如 fence:mermaid），未注册则回落通用 fence
+  if (token.type === 'fence') {
+    const lang = token.info.trim().split(/\s+/)[0];
+    const langKey = lang ? `fence:${lang}` : '';
+    if (langKey && (renderers[langKey] ?? builtinMarkdownRenderers[langKey])) key = langKey;
+  }
   const renderer = renderers[key] ?? builtinMarkdownRenderers[key];
   if (renderer) {
     const out = renderer({ token, renderChildren, info });

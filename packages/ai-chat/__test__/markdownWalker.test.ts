@@ -92,4 +92,45 @@ describe('renderMarkdownTokens（token→VNode walker）', () => {
     });
     expect(mount(Harness).html()).toContain('兜底文本');
   });
+
+  describe('fence:<lang> 语言分发', () => {
+    it('注册了 fence:mermaid 时，mermaid 围栏走语言渲染器', () => {
+      const html = render('```mermaid\ngraph TD\n```', {
+        'fence:mermaid': ({ token }) => h('div', { class: 'diagram' }, token.content),
+      });
+      expect(html).toContain('diagram');
+      expect(html).toContain('graph TD');
+      expect(html).not.toContain('<pre>');
+    });
+
+    it('未注册语言渲染器时回落通用 fence（默认代码块）', () => {
+      const html = render('```mermaid\ngraph TD\n```');
+      expect(html).toContain('<pre>');
+      expect(html).not.toContain('diagram');
+    });
+
+    it('语言分发不影响其它语言围栏', () => {
+      const html = render('```js\nconst a = 1\n```', {
+        'fence:mermaid': () => h('div', { class: 'diagram' }),
+      });
+      expect(html).toContain('<pre>');
+      expect(html).not.toContain('diagram');
+    });
+
+    it('info 含附加参数时只取首个词作为语言', () => {
+      const html = render('```mermaid {theme}\ngraph TD\n```', {
+        'fence:mermaid': () => h('div', { class: 'diagram' }),
+      });
+      expect(html).toContain('diagram');
+    });
+
+    it('用户注册的通用 fence 渲染器优先级低于语言渲染器、高于内置', () => {
+      const html = render('```mermaid\ngraph TD\n```', {
+        fence: ({ token }) => h('div', { class: 'generic' }, token.content),
+        'fence:mermaid': () => h('div', { class: 'diagram' }),
+      });
+      expect(html).toContain('diagram');
+      expect(html).not.toContain('generic');
+    });
+  });
 });

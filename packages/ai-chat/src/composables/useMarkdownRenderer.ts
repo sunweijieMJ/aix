@@ -1,5 +1,6 @@
 import { createMathRenderers, type KatexLike } from '../utils/mathRenderers';
 import { createHtmlRenderers, type DomPurifyLike } from '../utils/htmlRenderers';
+import { createDiagramRenderers, type MermaidLike } from '../utils/diagramRenderers';
 import type { MarkdownRenderers, MdToken } from '../utils/markdownWalker';
 
 /**
@@ -39,6 +40,8 @@ export interface MarkdownEngine {
   mathRenderers: MarkdownRenderers;
   /** 原始 HTML 渲染器（allowHtml 且 dompurify 可用时含 html_block，否则为空 → 裸 HTML 转义为文本） */
   htmlRenderers: MarkdownRenderers;
+  /** 图表渲染器（mermaid 可用时含 fence:mermaid，否则为空 → mermaid 围栏维持代码块） */
+  diagramRenderers: MarkdownRenderers;
 }
 
 // 按 allowHtml 分别缓存（html:true/false 解析行为不同，不可混用同一实例）
@@ -84,7 +87,20 @@ export async function loadMarkdownEngine(allowHtml = false): Promise<MarkdownEng
         );
       }
     }
-    engine = { md: md as unknown as MarkdownEngine['md'], mathRenderers, htmlRenderers };
+    let diagramRenderers: MarkdownRenderers = {};
+    try {
+      const mermaidMod = await import('mermaid');
+      const mermaid = (mermaidMod.default ?? mermaidMod) as unknown as MermaidLike;
+      diagramRenderers = createDiagramRenderers(mermaid);
+    } catch {
+      // 未安装 mermaid：```mermaid 围栏维持默认代码块（本身即合理展示），与 katex 缺失同样静默
+    }
+    engine = {
+      md: md as unknown as MarkdownEngine['md'],
+      mathRenderers,
+      htmlRenderers,
+      diagramRenderers,
+    };
   } catch {
     console.warn(
       '[ai-chat] 未安装 markdown-it，Markdown 渲染降级为纯文本。如需启用请安装 markdown-it。',

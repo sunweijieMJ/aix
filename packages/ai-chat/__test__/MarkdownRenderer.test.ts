@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { h } from 'vue';
 import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
 import { __resetMarkdownEngineCache } from '../src/composables/useMarkdownRenderer';
+import type { MarkdownRenderContext } from '../src/utils/markdownWalker';
 
 // 新架构：token→VNode walker + 块级渲染 + 数学；冷启动需等引擎动态 import，用 vi.waitFor 轮询。
 describe('MarkdownRenderer（块级 + walker + 数学）', () => {
@@ -78,5 +79,45 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
     // 等块级 HTML 消毒渲染就绪（div.danger 出现），再断言危险属性已去除
     await vi.waitFor(() => expect(w.find('div.danger').exists()).toBe(true));
     expect(w.html()).not.toContain('onerror');
+  });
+
+  it('流式时非末块 info.committed=true、末块 false；流式结束后全部 true', async () => {
+    const probe = {
+      paragraph: ({ renderChildren, info }: MarkdownRenderContext) =>
+        h('p', { 'data-committed': String(info.committed) }, renderChildren()),
+    };
+    const w = mount(MarkdownRenderer, {
+      props: { content: '第一段\n\n第二段', streaming: true, markdownRenderers: probe },
+    });
+    // 等引擎加载完毕、块级渲染就绪（纯文本降级态也含"第二段"文本，须以 <p> 数量为准）
+    await vi.waitFor(() => expect(w.findAll('p').length).toBe(2));
+    const ps = w.findAll('p');
+    expect(ps[0]!.attributes('data-committed')).toBe('true');
+    expect(ps[1]!.attributes('data-committed')).toBe('false');
+
+    // 流式结束：全部固化
+    await w.setProps({ streaming: false });
+    await vi.waitFor(() => {
+      expect(w.findAll('p')[1]!.attributes('data-committed')).toBe('true');
+    });
+  });
+
+  it('```mermaid 围栏（非流式）渲染为图表 SVG', async () => {
+    const w = mount(MarkdownRenderer, {
+      props: { content: '```mermaid\ngraph TD\n  A --> B\n```' },
+    });
+    await vi.waitFor(() => expect(w.find('.aix-md-mermaid svg').exists()).toBe(true));
+    expect(w.find('pre').exists()).toBe(false);
+  });
+
+  it('流式中 ```mermaid 围栏维持代码块逐字可见，流式结束后成图', async () => {
+    const content = '```mermaid\ngraph TD\n  A --> B\n```';
+    const w = mount(MarkdownRenderer, { props: { content, streaming: true } });
+    await vi.waitFor(() => expect(w.find('pre').exists()).toBe(true));
+    expect(w.text()).toContain('graph TD');
+    expect(w.find('.aix-md-mermaid').exists()).toBe(false);
+
+    await w.setProps({ streaming: false });
+    await vi.waitFor(() => expect(w.find('.aix-md-mermaid svg').exists()).toBe(true));
   });
 });
