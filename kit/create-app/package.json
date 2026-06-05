@@ -19,12 +19,12 @@
     "templates-override"
   ],
   "scripts": {
+    "dev": "tsx src/cli.ts",
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
     "build": "pnpm run clean && tsup",
-    "clean": "rimraf dist",
-    "dev": "tsx src/cli.ts"
+    "clean": "rimraf dist"
   },
   "dependencies": {
     "@clack/prompts": "^0.9.1",

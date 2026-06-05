@@ -19,12 +19,12 @@
     "data"
   ],
   "scripts": {
+    "dev": "tsx src/cli.ts",
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
     "build": "pnpm run clean && tsup",
     "clean": "rimraf dist",
-    "dev": "tsx src/cli.ts",
     "extract": "rimraf data && tsx src/cli.ts extract --packages=../../packages",
     "postinstall": "echo '📦 AIX Components MCP Server installed successfully! Use: npx @aix/mcp-server --help'"
   },

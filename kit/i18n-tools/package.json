@@ -16,12 +16,12 @@
     "./cli": "./dist/cli.js"
   },
   "scripts": {
+    "dev": "tsx src/cli.ts",
     "lint": "eslint . --max-warnings 0",
+    "type-check": "tsc --noEmit",
     "test": "vitest --run",
     "build": "pnpm run clean && tsup",
-    "dev": "tsx src/cli.ts",
-    "clean": "rimraf dist",
-    "type-check": "tsc --noEmit"
+    "clean": "rimraf dist"
   },
   "dependencies": {
     "@vue/compiler-dom": "^3.5.31",
