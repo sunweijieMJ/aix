@@ -18,6 +18,7 @@ import SourcesBlock from './components/blocks/SourcesBlock.vue';
 import ChoiceBlock from './components/blocks/ChoiceBlock.vue';
 import AiChat from './components/AiChat.vue';
 import Conversations from './components/Conversations.vue';
+import Skeleton from './components/Skeleton.vue';
 
 // 组件（不带 Aix 前缀）
 export {
@@ -39,6 +40,7 @@ export {
   ChoiceBlock,
   AiChat,
   Conversations,
+  Skeleton,
 };
 
 // composables
@@ -92,6 +94,7 @@ export type { ThoughtChainProps } from './components/ThoughtChain.vue';
 export type { ModelSelectorProps } from './components/ModelSelector.vue';
 export type { ResultCardProps, ResultCardEmits } from './components/ResultCard.vue';
 export type { MarkdownRendererProps } from './components/MarkdownRenderer.vue';
+export type { SkeletonProps } from './components/Skeleton.vue';
 export type { TextBlockProps } from './components/blocks/TextBlock.vue';
 export type { ReasoningBlockProps } from './components/blocks/ReasoningBlock.vue';
 export type { ThoughtChainBlockProps } from './components/blocks/ThoughtChainBlock.vue';
@@ -122,6 +125,7 @@ const components = {
   ChoiceBlock,
   AiChat,
   Conversations,
+  Skeleton,
 };
 
 // 插件：全局注册时加 Aix 前缀

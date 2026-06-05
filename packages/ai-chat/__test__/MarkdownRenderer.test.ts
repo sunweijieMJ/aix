@@ -102,6 +102,26 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
     });
   });
 
+  it('图片 token 渲染为骨架占位组件（内置 imageRenderers 已接入合并链）', async () => {
+    const w = mount(MarkdownRenderer, {
+      props: { content: '看图：![示意](https://a.com/x.png)' },
+    });
+    await vi.waitFor(() => expect(w.find('.aix-md-image').exists()).toBe(true));
+    // 未触发 load 前为骨架态
+    expect(w.find('.aix-skeleton').exists()).toBe(true);
+  });
+
+  it('用户 markdownRenderers.image 覆盖内置图片骨架（注册表优先级）', async () => {
+    const w = mount(MarkdownRenderer, {
+      props: {
+        content: '![示意](https://a.com/x.png)',
+        markdownRenderers: { image: () => h('span', { class: 'my-img' }, '自定义图片') },
+      },
+    });
+    await vi.waitFor(() => expect(w.find('.my-img').exists()).toBe(true));
+    expect(w.find('.aix-md-image').exists()).toBe(false);
+  });
+
   it('```mermaid 围栏（非流式）渲染为图表 SVG', async () => {
     const w = mount(MarkdownRenderer, {
       props: { content: '```mermaid\ngraph TD\n  A --> B\n```' },

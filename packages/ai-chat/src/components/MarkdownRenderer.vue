@@ -51,6 +51,8 @@ import {
 import { useNamespace } from '../composables/useNamespace';
 import { loadMarkdownEngine, type MarkdownEngine } from '../composables/useMarkdownRenderer';
 import { normalizeMathDelimiters, protectStreamingMarkdown } from '../utils/markdown';
+import { imageRenderers } from '../utils/imageRenderers';
+import { transitionHeight } from '../utils/heightTransition';
 import { splitMarkdownBlocks } from '../utils/splitMarkdownBlocks';
 import { reconcileStreamingBlocks, type StreamingBlock } from '../utils/streamingBlocks';
 import {
@@ -92,8 +94,9 @@ const processedSource = computed(() => {
   return s;
 });
 
-// 合并数学/HTML/图表渲染器 + 用户自定义（用户优先）；computed 稳定引用，避免 committed 子块无谓重渲染。
+// 合并数学/HTML/图表/图片渲染器 + 用户自定义（用户优先）；computed 稳定引用，避免 committed 子块无谓重渲染。
 const mergedRenderers = computed<MarkdownRenderers>(() => ({
+  ...imageRenderers,
   ...engine.value?.mathRenderers,
   ...engine.value?.htmlRenderers,
   ...engine.value?.diagramRenderers,
@@ -154,7 +157,7 @@ const MarkdownBlock = defineComponent({
     };
     let prevEl: HTMLElement | null = null;
     let prevHeight = 0;
-    let clearTimer: ReturnType<typeof setTimeout> | null = null;
+    let cancelFlip: (() => void) | null = null;
     onBeforeUpdate(() => {
       prevEl = rootEl();
       prevHeight = prevEl?.offsetHeight ?? 0;
@@ -162,24 +165,10 @@ const MarkdownBlock = defineComponent({
     onUpdated(() => {
       if (!blockProps.info.streaming) return;
       const el = rootEl();
-      // 仅在根元素被替换（形态切换）且前后均可测量时过渡
+      // 仅在根元素被替换（形态切换）且前后均可测量时过渡；动画本体见共享 transitionHeight
       if (!el || el === prevEl || !prevHeight) return;
-      const nextHeight = el.offsetHeight;
-      if (!nextHeight || Math.abs(nextHeight - prevHeight) < 2) return;
-      if (clearTimer) clearTimeout(clearTimer);
-      el.style.height = `${prevHeight}px`;
-      el.style.overflow = 'hidden';
-      void el.offsetHeight; // 强制 reflow，让起始高度生效
-      el.style.transition = 'height var(--aix-motionDurationSlow, 0.25s) ease';
-      el.style.height = `${nextHeight}px`;
-      const clear = () => {
-        el.style.height = '';
-        el.style.overflow = '';
-        el.style.transition = '';
-      };
-      el.addEventListener('transitionend', clear, { once: true });
-      // 兜底：transitionend 可能因元素不可见/动画被打断而不触发
-      clearTimer = setTimeout(clear, 400);
+      cancelFlip?.(); // 重复触发先打断上一次过渡
+      cancelFlip = transitionHeight(el, prevHeight);
     });
 
     return () => {
@@ -344,6 +333,49 @@ const MarkdownBlock = defineComponent({
 /* 语法错误的 mermaid 源码块：虚线边框提示异常（源码本身仍可读） */
 .aix-md-mermaid-source--error {
   border-style: dashed;
+}
+
+/* 内置图片骨架：加载期 shimmer 占位，就绪后淡入；失败占位框不裂图 */
+.aix-md-image {
+  display: block;
+  margin: 0.6em 0;
+}
+
+.aix-md-image__img {
+  max-width: 100%;
+  height: auto;
+  animation: aix-md-image-in var(--aix-motionDurationSlow) var(--aix-motionEaseOut);
+  border-radius: var(--aix-borderRadius);
+}
+
+/* 隐藏的预加载 img：仅用于触发 onload/onerror，不参与布局 */
+.aix-md-image__preload {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.aix-md-image--error {
+  display: inline-flex;
+  gap: var(--aix-paddingXXS);
+  align-items: center;
+  padding: var(--aix-paddingXXS) var(--aix-paddingSM);
+  border: 1px dashed var(--aix-colorBorderSecondary);
+  border-radius: var(--aix-borderRadiusSM);
+  color: var(--aix-colorTextTertiary);
+  font-size: var(--aix-fontSizeSM);
+}
+
+@keyframes aix-md-image-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* 流式新块入场：淡入（原子块如公式/代码完成时平滑出现，而非瞬现） */
