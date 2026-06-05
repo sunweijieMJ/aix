@@ -7,8 +7,9 @@ import { MarkdownRenderer } from '../src';
  * MarkdownRenderer 组件展示 Markdown 内容。
  *
  * **注意**：本组件依赖可选依赖 `markdown-it`。
- * 当前环境未安装 `markdown-it`，组件将**降级为纯文本渲染**（直接显示原始 Markdown 语法字符串）。
- * 安装 `markdown-it` 后，将自动渲染为富文本（标题、粗体、列表、代码块等）。
+ * 本 Storybook 环境已安装 `markdown-it`，以下 story 均为**富文本渲染**效果
+ * （标题、粗体、列表、代码块等）。业务项目未安装 `markdown-it` 时，
+ * 组件会自动降级为纯文本渲染（直接显示原始 Markdown 语法字符串）。
  */
 const meta: Meta<typeof MarkdownRenderer> = {
   title: 'AI Chat/MarkdownRenderer',
@@ -17,7 +18,7 @@ const meta: Meta<typeof MarkdownRenderer> = {
     docs: {
       description: {
         component:
-          'Markdown 渲染器。依赖可选包 `markdown-it`：安装后渲染为富文本；**未安装时降级为纯文本**，直接显示原始 Markdown 字符串。',
+          'Markdown 渲染器。依赖可选包 `markdown-it`：安装后渲染为富文本（本 Storybook 即为富文本效果）；未安装时自动降级为纯文本，直接显示原始 Markdown 字符串。',
       },
     },
   },

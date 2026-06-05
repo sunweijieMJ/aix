@@ -108,9 +108,15 @@ export interface AiChatProps {
   retryTimes?: UseChatOptions['retryTimes'];
   /** 两次重试间隔（ms），默认 1000；透传给 useChat */
   retryInterval?: UseChatOptions['retryInterval'];
-  /** markdown token 渲染器注册表（扩展/覆盖气泡内 markdown 块渲染），优先级高于全局 markdownRenderers */
+  /**
+   * markdown token 渲染器注册表（扩展/覆盖气泡内 markdown 块渲染），优先级高于全局 markdownRenderers。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
   markdownRenderers?: MarkdownRenderers;
-  /** 是否允许渲染原始 HTML（经 DOMPurify 消毒），默认 false；注入到气泡内 MarkdownRenderer */
+  /**
+   * 是否允许渲染原始 HTML（经 DOMPurify 消毒），默认 false；注入到气泡内 MarkdownRenderer。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
   allowHtml?: boolean;
 }
 export interface AiChatEmits {
