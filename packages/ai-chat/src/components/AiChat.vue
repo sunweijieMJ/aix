@@ -108,6 +108,8 @@ export interface AiChatProps {
   retryTimes?: UseChatOptions['retryTimes'];
   /** 两次重试间隔（ms），默认 1000；透传给 useChat */
   retryInterval?: UseChatOptions['retryInterval'];
+  /** 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat */
+  streamTimeout?: UseChatOptions['streamTimeout'];
   /**
    * markdown token 渲染器注册表（扩展/覆盖气泡内 markdown 块渲染），优先级高于全局 markdownRenderers。
    * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
@@ -223,6 +225,7 @@ const {
   defaultMessages: props.defaultMessages,
   retryTimes: props.retryTimes,
   retryInterval: props.retryInterval,
+  streamTimeout: props.streamTimeout,
   onFinish: (m) => emit('finish', m),
   onError: (m) => emit('error', m),
   onAbort: (m) => emit('abort', m),

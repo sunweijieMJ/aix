@@ -35,6 +35,13 @@ export interface UseChatOptions {
   retryTimes?: number;
   /** 两次重试之间的等待间隔（ms），默认 1000。 */
   retryInterval?: number;
+  /**
+   * 流静默超时（ms），默认 0（关闭）：自上次收到流数据起超过该时长无新 chunk，
+   * 判定流卡死，按可重试错误处理（err.name='StreamTimeoutError'，吃 retryTimes 额度）。
+   * 与整体请求超时（x-fetch 的 timeout）互补：本选项只看「数据间隔」，不限制总时长，
+   * 适合流式长回答；请求头阶段的超时仍由 request 实现方（如 createXFetch）负责。
+   */
+  streamTimeout?: number;
 }
 
 export interface UseChatReturn {
@@ -75,6 +82,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onAbort,
     retryTimes = 0,
     retryInterval = 1000,
+    streamTimeout = 0,
   } = options;
   // 内部 ref 为消息状态唯一来源（mutate 即响应式）；受控由 AiChat 层用引用桥接到 v-model。
   const messages = ref<ChatMessage[]>([...defaultMessages]);
@@ -130,15 +138,38 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         // 仅把待生成 AI 消息**之前**的历史交给 request：排除刚 push 的空 AI 占位（content:[]），
         // 多数对话后端不接受以空 assistant 消息结尾的 history。
         const history = messages.value.slice(0, idx);
+        // 流静默看门狗：重试循环沿用同一个用户 ctrl（停止按钮语义），超时不能 abort ctrl，
+        // 否则后续重试拿到的是已 aborted 的信号。启用 streamTimeout 时每次 attempt 建内层
+        // attemptCtrl（用户 abort 经监听单向联动），超时只杀当前尝试、保持可重试。
+        const attemptCtrl = streamTimeout > 0 ? new AbortController() : null;
+        const onUserAbort = () => attemptCtrl?.abort();
+        if (attemptCtrl) ctrl.signal.addEventListener('abort', onUserAbort, { once: true });
+        const signal = attemptCtrl?.signal ?? ctrl.signal;
+        let timedOut = false;
+        let watchdog: ReturnType<typeof setTimeout> | null = null;
+        const armWatchdog = () => {
+          if (!attemptCtrl) return;
+          if (watchdog) clearTimeout(watchdog);
+          watchdog = setTimeout(() => {
+            timedOut = true;
+            attemptCtrl.abort();
+          }, streamTimeout);
+        };
+        const streamTimeoutError = () =>
+          Object.assign(new Error(`[ai-chat] 流静默超过 ${streamTimeout}ms，判定为卡死`), {
+            name: 'StreamTimeoutError',
+          });
         try {
           if (attempt > 0) {
             aiMsg.content = [];
             aiMsg.status = 'loading';
           }
-          const res = await request({ messages: history, signal: ctrl.signal });
+          const res = await request({ messages: history, signal });
           const stream = res instanceof Response ? res.body : res;
           if (!stream) throw new Error('[ai-chat] request 未返回可读流');
-          for await (const line of xStream(stream, ctrl.signal)) {
+          armWatchdog(); // 拿到流即起表，覆盖「连首个 chunk 都不来」的卡死
+          for await (const line of xStream(stream, signal)) {
+            armWatchdog(); // 每收到一行重置：只看数据间隔，不限制总时长
             const { delta, blockType = 'text', block, done } = parseChunk(line);
             if (delta) {
               // 类型已收窄为 'text' | 'reasoning'；此守卫是运行时兜底——parseChunk 由使用方提供，
@@ -157,6 +188,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             }
             if (done) break;
           }
+          // 看门狗触发时 xStream 对 abort 是优雅收尾（reader.cancel → 循环正常退出），
+          // 须先于 abort/success 判定抛出超时错误，交给 catch 走可重试路径。
+          if (timedOut) throw streamTimeoutError();
           if (ctrl.signal.aborted) {
             aiMsg.status = 'abort';
             onAbort?.(aiMsg);
@@ -172,6 +206,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             onAbort?.(aiMsg);
             return;
           }
+          // 超时路径的原始错误可能是 reader 的 AbortError，统一包装为 StreamTimeoutError
+          const finalErr = timedOut ? streamTimeoutError() : err;
           // 仍有重试额度：等待间隔后重试（其间被 abort 则放弃重试并判为 abort）。
           if (attempt < retryTimes) {
             await new Promise((resolve) => setTimeout(resolve, retryInterval));
@@ -185,10 +221,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 重试耗尽：透出原始错误（写入 extra 供渲染层取用、回传 onError 供上层上报、
           // 并兜底打到控制台，避免错误被静默吞掉导致线上无法排障）。
           aiMsg.status = 'error';
-          aiMsg.extra = { ...aiMsg.extra, error: err };
-          console.error('[ai-chat] request failed:', err);
-          onError?.(aiMsg, err);
+          aiMsg.extra = { ...aiMsg.extra, error: finalErr };
+          console.error('[ai-chat] request failed:', finalErr);
+          onError?.(aiMsg, finalErr);
           return;
+        } finally {
+          // 每次尝试的看门狗与联动监听清理（重试新尝试会重建）
+          if (watchdog) clearTimeout(watchdog);
+          if (attemptCtrl) ctrl.signal.removeEventListener('abort', onUserAbort);
         }
       }
     } finally {
