@@ -98,6 +98,98 @@ describe('protectStreamingMarkdown（流式防闪烁）', () => {
     });
   });
 
+  describe('表格残片：表头先行成表（补合成分隔行）', () => {
+    it('仅表头到达：按表头列数补合成分隔行，立即渲染为表头表格', () => {
+      expect(protectStreamingMarkdown('介绍：\n\n| 名称 | 数量 |')).toBe(
+        '介绍：\n\n| 名称 | 数量 |\n| --- | --- |',
+      );
+    });
+
+    it('半截表头（无尾竖线）同样补分隔行', () => {
+      expect(protectStreamingMarkdown('| 名称 | 数量')).toBe('| 名称 | 数量\n| --- | --- |');
+    });
+
+    it('半截分隔行被替换为完整合成分隔行', () => {
+      expect(protectStreamingMarkdown('| 名称 | 数量 |\n| ---')).toBe(
+        '| 名称 | 数量 |\n| --- | --- |',
+      );
+    });
+
+    it('分隔行已完整时不改动', () => {
+      const src = '| 名称 | 数量 |\n| :-- | --: |';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('已有数据行的表格不改动（markdown-it 可正常渐进渲染）', () => {
+      const src = '| 名称 | 数量 |\n| --- | --- |\n| 苹果 | 3';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('代码块内的竖线行不触发表格整修', () => {
+      expect(protectStreamingMarkdown('```text\n| a | b |')).toBe('```text\n| a | b |\n```');
+    });
+
+    it('行首非竖线的普通文本不误伤', () => {
+      const src = '价格 a | b 对比';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+  });
+
+  describe('末行行内残片：隐定界符、留文本（保打字反馈）', () => {
+    it('未闭合 HTML/组件标签残片被隐去', () => {
+      expect(protectStreamingMarkdown('点击 <MyCard title="he')).toBe('点击 ');
+      expect(protectStreamingMarkdown('结束 </div')).toBe('结束 ');
+    });
+
+    it('小于号后非字母（数学不等式）不误伤', () => {
+      const src = '不等式 a < b 且 1<2 成立';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('未闭合行内代码：隐去孤立反引号、保留文本', () => {
+      expect(protectStreamingMarkdown('用 `code 标记')).toBe('用 code 标记');
+      // 已闭合的行内代码原样保留，只处理孤立的那个
+      expect(protectStreamingMarkdown('`a` 和 `b')).toBe('`a` 和 b');
+    });
+
+    it('未闭合粗体/删除线：隐去定界符、保留文本', () => {
+      expect(protectStreamingMarkdown('这是 **重要内容')).toBe('这是 重要内容');
+      expect(protectStreamingMarkdown('**已完成** 而 **半截')).toBe('**已完成** 而 半截');
+      expect(protectStreamingMarkdown('删除 ~~过时内容')).toBe('删除 过时内容');
+    });
+
+    it('已配对的粗体不改动', () => {
+      const src = '这是 **重要** 内容';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('已配对粗体的闭合符后紧跟中文标点不被误删（回归）', () => {
+      const src = '结论是 **数量充足**，详见下表';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('跨行配对的粗体不被误删（配对按全文计数）', () => {
+      const src = '**重要\n内容**';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('未闭合单星/下划线：仅当定界符前是行首或空白才处理（防乘法/snake_case 误伤）', () => {
+      expect(protectStreamingMarkdown('单独 *强调文本')).toBe('单独 强调文本');
+      expect(protectStreamingMarkdown('运算 2*3 的结果')).toBe('运算 2*3 的结果');
+      expect(protectStreamingMarkdown('变量 snake_case 命名')).toBe('变量 snake_case 命名');
+    });
+
+    it('行内代码里的星号/小于号不参与残片判定', () => {
+      const src = '代码 `a*b` 和 `x<y` 示例';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('仅作用于末行，前文的残片样式不被误伤', () => {
+      const src = '前文 **未闭合\n新的一行';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+  });
+
   describe('未闭合块级数学公式 \\[ ... \\]（反斜杠括号写法）', () => {
     it('流式中途未闭合 \\[ 残片转为 latex 围栏代码块，闭合后恢复', () => {
       expect(protectStreamingMarkdown('能量方程：\\[ \\frac{1}{2}\\rho')).toBe(
