@@ -45,6 +45,9 @@ export default defineConfig({
         plugins: [storybookTest({ configDir: path.join(dirname, '.storybook') })],
         test: {
           name: 'storybook',
+          // 全要素长文演示（FullInteractionFlow / StreamingLive）按真实打字机速度播放
+          // 需 25s+，默认 15s 不够；play 内部各断言仍有独立的更短 waitFor 超时把关。
+          testTimeout: 60_000,
           browser: {
             enabled: true,
             headless: true,
