@@ -55,6 +55,6 @@
     "typescript": "*"
   },
   "dependencies": {
-    "@chenglou/pretext": "^0.0.3"
+    "@chenglou/pretext": "^0.0.7"
   }
 }
