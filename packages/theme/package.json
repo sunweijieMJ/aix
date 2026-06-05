@@ -39,6 +39,7 @@
     "lint:script": "eslint . --max-warnings 0",
     "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
     "lint": "pnpm run lint:script && pnpm run lint:style",
+    "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "build": "pnpm run clean && pnpm run gen:css && rollup -c && pnpm run build:types",
     "build:types": "tsc --emitDeclarationOnly --outDir dist",
     "clean": "rimraf dist tsconfig.tsbuildinfo"

@@ -12,6 +12,7 @@
     "remove:yalc": "tsx scripts/remove-yalc.ts",
     "lint:script": "eslint . --max-warnings 0",
     "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "link": "pnpm run lint:script && pnpm run lint:style",
     "i18n": "tsx ../../kit/i18n-tools/src/cli.ts --config ./i18n.config.ts",
     "visual-test": "visual-test test",

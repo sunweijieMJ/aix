@@ -37,6 +37,18 @@
       "outputs": ["**/es/**/*.d.ts"],
       "cache": false
     },
+    "type-check": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "src/**/*.{ts,tsx,vue}",
+        "typings/**/*.d.ts",
+        "stories/**/*.{ts,tsx,vue}",
+        "tsconfig*.json",
+        "package.json"
+      ],
+      "outputs": [],
+      "cache": false
+    },
     "lint": {
       "inputs": [
         "src/**/*.{ts,tsx,js,jsx,vue}",

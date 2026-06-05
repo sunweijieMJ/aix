@@ -2,11 +2,19 @@
   "name": "@kit/eslint-config",
   "version": "0.0.2",
   "type": "module",
-  "types": "./index.d.ts",
   "exports": {
-    "./base": "./base.js",
-    "./vue-app": "./vue-app.js",
-    "./react-app": "./react-app.js"
+    "./base": {
+      "types": "./index.d.ts",
+      "default": "./base.js"
+    },
+    "./vue-app": {
+      "types": "./index.d.ts",
+      "default": "./vue-app.js"
+    },
+    "./react-app": {
+      "types": "./index.d.ts",
+      "default": "./react-app.js"
+    }
   },
   "dependencies": {
     "@eslint/js": "^10.0.1",

@@ -3,5 +3,8 @@
   "compilerOptions": {
     "noUncheckedSideEffectImports": false,
     "target": "ES2018"
-  }
+  },
+  // 根 tsc 只检查根层文件（scripts/.storybook/docs 等），
+  // 各工作区包由各自 tsconfig + turbo type-check 任务负责
+  "exclude": ["node_modules", "dist", "packages", "apps", "kit", "internal"]
 }

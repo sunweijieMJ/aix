@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "lint": "eslint . --max-warnings 0",
+    "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
     "build": "pnpm run clean && tsup",
     "clean": "rimraf dist",
