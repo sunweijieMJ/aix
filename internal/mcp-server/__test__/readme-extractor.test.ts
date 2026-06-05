@@ -6,7 +6,7 @@ describe('ReadmeExtractor', () => {
   const extractor = new ReadmeExtractor();
 
   it('应该能够从Button组件README中提取信息', async () => {
-    const readmePath = join(process.cwd(), '../../packages/button/README.md');
+    const readmePath = join(import.meta.dirname, '../../../packages/button/README.md');
     const result = await extractor.extractFromReadme(readmePath);
 
     expect(result).toBeTruthy();
@@ -20,7 +20,7 @@ describe('ReadmeExtractor', () => {
   });
 
   it('应该能够从Button组件README中提取完整信息', async () => {
-    const readmePath = join(process.cwd(), '../../packages/button/README.md');
+    const readmePath = join(import.meta.dirname, '../../../packages/button/README.md');
     const result = await extractor.extractFromReadme(readmePath);
 
     expect(result).toBeTruthy();
@@ -31,7 +31,7 @@ describe('ReadmeExtractor', () => {
   });
 
   it('应该正确提取Props定义', async () => {
-    const readmePath = join(process.cwd(), '../../packages/button/README.md');
+    const readmePath = join(import.meta.dirname, '../../../packages/button/README.md');
     const result = await extractor.extractFromReadme(readmePath);
 
     expect(result?.props).toBeTruthy();
@@ -44,7 +44,7 @@ describe('ReadmeExtractor', () => {
   });
 
   it('应该正确提取代码示例', async () => {
-    const readmePath = join(process.cwd(), '../../packages/button/README.md');
+    const readmePath = join(import.meta.dirname, '../../../packages/button/README.md');
     const result = await extractor.extractFromReadme(readmePath);
 
     expect(result?.examples).toBeTruthy();
@@ -56,7 +56,7 @@ describe('ReadmeExtractor', () => {
   });
 
   it('应该正确提取特性列表', async () => {
-    const readmePath = join(process.cwd(), '../../packages/button/README.md');
+    const readmePath = join(import.meta.dirname, '../../../packages/button/README.md');
     const result = await extractor.extractFromReadme(readmePath);
 
     expect(result?.features).toBeTruthy();
@@ -71,7 +71,7 @@ describe('ReadmeExtractor', () => {
   });
 
   it('应该正确推断组件分类', async () => {
-    const readmePath = join(process.cwd(), '../../packages/button/README.md');
+    const readmePath = join(import.meta.dirname, '../../../packages/button/README.md');
     const result = await extractor.extractFromReadme(readmePath);
 
     expect(result).toBeTruthy();

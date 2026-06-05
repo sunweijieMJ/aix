@@ -1,11 +1,12 @@
+import { createVueConfig } from '@kit/vitest-config';
 import { defineConfig } from 'vitest/config';
 import Vue from 'unplugin-vue/vite';
 
-export default defineConfig({
-  plugins: [Vue()],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./__test__/setup.ts'],
-  },
-});
+export default defineConfig(
+  createVueConfig({
+    // 本包用 unplugin-vue 编译 SFC（替换基座默认的 @vitejs/plugin-vue）
+    plugins: [Vue()],
+    // 自带 setup（替换基座共享 setup）
+    test: { setupFiles: ['./__test__/setup.ts'] },
+  }),
+);

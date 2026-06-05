@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
     "@types/diff": "^8.0.0",
     "@types/node": "*",
     "eslint": "*",

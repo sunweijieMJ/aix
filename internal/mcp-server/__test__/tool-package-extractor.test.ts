@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { ToolPackageExtractor } from '../src/extractors/tool-package-extractor';
 
 describe('ToolPackageExtractor', () => {
-  const kitDir = join(process.cwd(), '../../kit');
-  const internalDir = join(process.cwd(), '../../internal');
+  const kitDir = join(import.meta.dirname, '../../../kit');
+  const internalDir = join(import.meta.dirname, '../../../internal');
 
   it('应该能从 kit/ 目录提取工具包信息', async () => {
     const extractor = new ToolPackageExtractor();

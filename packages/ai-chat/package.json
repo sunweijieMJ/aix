@@ -60,6 +60,7 @@
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/stylelint-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
     "@types/markdown-it": "*",
     "@vue/test-utils": "*",
     "eslint": "*",

@@ -33,6 +33,7 @@
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
     "@types/adm-zip": "^0.5.8",
     "@types/node": "*",
     "@vitest/coverage-v8": "*",

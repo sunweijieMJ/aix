@@ -307,6 +307,9 @@ importers:
       '@kit/typescript-config':
         specifier: workspace:^
         version: link:../../internal/typescript-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/adm-zip':
         specifier: ^0.5.8
         version: 0.5.8
@@ -410,6 +413,9 @@ importers:
       '@kit/eslint-config':
         specifier: workspace:^
         version: link:../eslint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../vitest-config
       '@types/node':
         specifier: '*'
         version: 25.9.1
@@ -467,6 +473,15 @@ importers:
 
   internal/typescript-config: {}
 
+  internal/vitest-config:
+    dependencies:
+      '@vitejs/plugin-vue':
+        specifier: ^6.0.7
+        version: 6.0.7(vite@8.0.16(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.6.1)(sass@1.100.0)(tsx@4.22.4)(yaml@2.9.0))(vue@3.5.35(typescript@5.9.3))
+      vitest:
+        specifier: '>=4.0.0'
+        version: 4.1.8(@types/node@25.9.1)(@vitest/browser-playwright@4.1.8)(@vitest/coverage-v8@4.1.8)(@vitest/ui@4.1.8)(jsdom@29.1.1)(vite@8.0.16(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.6.1)(sass@1.100.0)(tsx@4.22.4)(yaml@2.9.0))
+
   kit/ai-preset:
     dependencies:
       chalk:
@@ -494,6 +509,9 @@ importers:
       '@kit/eslint-config':
         specifier: workspace:^
         version: link:../../internal/eslint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/diff':
         specifier: ^8.0.0
         version: 8.0.0
@@ -549,6 +567,9 @@ importers:
       '@kit/eslint-config':
         specifier: workspace:^
         version: link:../../internal/eslint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/fs-extra':
         specifier: ^11.0.4
         version: 11.0.4
@@ -619,6 +640,9 @@ importers:
       '@kit/typescript-config':
         specifier: workspace:^
         version: link:../../internal/typescript-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/inquirer':
         specifier: ^9.0.9
         version: 9.0.9
@@ -662,6 +686,9 @@ importers:
       '@kit/eslint-config':
         specifier: workspace:^
         version: link:../../internal/eslint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/fs-extra':
         specifier: ^11.0.4
         version: 11.0.4
@@ -692,6 +719,9 @@ importers:
       '@kit/eslint-config':
         specifier: workspace:^
         version: link:../../internal/eslint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/node':
         specifier: '*'
         version: 25.9.1
@@ -729,6 +759,9 @@ importers:
       '@kit/eslint-config':
         specifier: workspace:^
         version: link:../../internal/eslint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/fs-extra':
         specifier: ^11.0.4
         version: 11.0.4
@@ -756,6 +789,9 @@ importers:
       '@kit/eslint-config':
         specifier: workspace:^
         version: link:../../internal/eslint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/node':
         specifier: '*'
         version: 25.9.1
@@ -823,6 +859,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.78.0
         version: 0.78.0(zod@4.3.6)
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/fs-extra':
         specifier: ^11.0.4
         version: 11.0.4
@@ -884,6 +923,9 @@ importers:
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/markdown-it':
         specifier: '*'
         version: 14.1.2
@@ -946,6 +988,9 @@ importers:
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       eslint:
         specifier: '*'
         version: 10.4.1(jiti@2.6.1)
@@ -1058,6 +1103,9 @@ importers:
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       eslint:
         specifier: '*'
         version: 10.4.1(jiti@2.6.1)
@@ -1107,6 +1155,9 @@ importers:
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       eslint:
         specifier: '*'
         version: 10.4.1(jiti@2.6.1)
@@ -1132,6 +1183,9 @@ importers:
       '@kit/eslint-config':
         specifier: workspace:^
         version: link:../../internal/eslint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       eslint:
         specifier: '*'
         version: 10.4.1(jiti@2.6.1)
@@ -1150,6 +1204,9 @@ importers:
       '@kit/eslint-config':
         specifier: workspace:^
         version: link:../../internal/eslint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       eslint:
         specifier: '*'
         version: 10.4.1(jiti@2.6.1)
@@ -1196,6 +1253,9 @@ importers:
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       eslint:
         specifier: '*'
         version: 10.4.1(jiti@2.6.1)
@@ -1233,6 +1293,9 @@ importers:
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       eslint:
         specifier: '*'
         version: 10.4.1(jiti@2.6.1)
@@ -1345,6 +1408,9 @@ importers:
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       eslint:
         specifier: '*'
         version: 10.4.1(jiti@2.6.1)
@@ -1376,6 +1442,9 @@ importers:
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       eslint:
         specifier: '*'
         version: 10.4.1(jiti@2.6.1)
@@ -1403,6 +1472,9 @@ importers:
       '@kit/typescript-config':
         specifier: workspace:^
         version: link:../../internal/typescript-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       autoprefixer:
         specifier: '*'
         version: 10.5.0(postcss@8.5.15)
@@ -1470,6 +1542,9 @@ importers:
       '@kit/stylelint-config':
         specifier: workspace:^
         version: link:../../internal/stylelint-config
+      '@kit/vitest-config':
+        specifier: workspace:^
+        version: link:../../internal/vitest-config
       '@types/video.js':
         specifier: ^7.3.58
         version: 7.3.58

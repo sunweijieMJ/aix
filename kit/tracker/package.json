@@ -35,12 +35,13 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
     "@types/node": "*",
     "eslint": "*",
     "rimraf": "*",
     "tsup": "*",
+    "vitest": "*",
     "vue": "*",
-    "vue-router": "*",
-    "vitest": "*"
+    "vue-router": "*"
   }
 }

@@ -1,0 +1,17 @@
+{
+  "name": "@kit/vitest-config",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "dependencies": {
+    "@vitejs/plugin-vue": "^6.0.7"
+  },
+  "peerDependencies": {
+    "vitest": ">=4.0.0"
+  }
+}

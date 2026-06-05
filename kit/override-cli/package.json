@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "*",
     "@types/prompts": "^2.4.9",

@@ -53,6 +53,7 @@
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/stylelint-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
     "eslint": "*",
     "rimraf": "*",
     "stylelint": "*",

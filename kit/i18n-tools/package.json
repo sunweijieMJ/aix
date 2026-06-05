@@ -38,6 +38,7 @@
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
     "@types/inquirer": "^9.0.9",
     "@types/node": "*",
     "@types/picomatch": "^4.0.2",

@@ -37,11 +37,6 @@
       "outputs": ["**/es/**/*.d.ts"],
       "cache": false
     },
-    "@aix/icons#type-check": {
-      "dependsOn": ["@aix/icons#build"],
-      "outputs": [],
-      "cache": false
-    },
     "type-check": {
       "dependsOn": ["^build"],
       "inputs": [
@@ -80,12 +75,12 @@
       "cache": false
     },
     "test": {
+      "dependsOn": ["^build"],
       "inputs": [
         "src/**/*.{ts,tsx,js,jsx,vue}",
         "__test__/**/*.{ts,tsx,js,jsx,vue}",
         "vitest.config.ts",
-        "../../vitest.config.ts",
-        "../../vitest.setup.ts"
+        "../../internal/vitest-config/*.{js,ts}"
       ],
       "outputs": ["coverage/**"],
       "cache": false
