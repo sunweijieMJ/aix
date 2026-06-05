@@ -52,8 +52,12 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          vue: ['vue', 'vue-i18n'],
+        // Vite 8 (Rollup 5) 移除了 manualChunks 对象写法，改用函数形式
+        manualChunks(id) {
+          if (/node_modules\/(vue|vue-i18n|@vue|@intlify)\//.test(id)) {
+            return 'vue';
+          }
+          return undefined;
         },
       },
     },
