@@ -1,17 +1,32 @@
 <template>
   <div ref="root" :class="[ns.b(), ns.is('open', open)]">
-    <button type="button" :class="ns.e('trigger')" @click="open = !open">
+    <button
+      ref="triggerRef"
+      type="button"
+      :class="ns.e('trigger')"
+      aria-haspopup="listbox"
+      :aria-expanded="open"
+      @click="toggle"
+      @keydown="onTriggerKeydown"
+    >
       <span :class="ns.e('dot')" />
       <span :class="ns.e('label')">{{ currentLabel }}</span>
       <ArrowDropDown :class="[ns.e('caret'), ns.is('open', open)]" />
     </button>
-    <div v-if="open" :class="[ns.e('menu'), ns.em('menu', placement)]" role="listbox">
+    <div
+      v-if="open"
+      ref="menuRef"
+      :class="[ns.e('menu'), ns.em('menu', placement)]"
+      role="listbox"
+      @keydown="onMenuKeydown"
+    >
       <button
-        v-for="opt in normalized"
+        v-for="(opt, i) in normalized"
         :key="opt.value"
         type="button"
         role="option"
         :aria-selected="opt.value === model"
+        :tabindex="i === activeIndex ? 0 : -1"
         :class="[ns.e('option'), ns.is('active', opt.value === model)]"
         @click="select(opt.value)"
       >
@@ -35,7 +50,7 @@ export interface ModelSelectorProps {
 </script>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { ArrowDropDown } from '@aix/icons';
 import { useNamespace } from '../composables/useNamespace';
 
@@ -49,6 +64,10 @@ const ns = useNamespace('model-selector');
 
 const open = ref(false);
 const root = ref<HTMLElement | null>(null);
+const triggerRef = ref<HTMLButtonElement | null>(null);
+const menuRef = ref<HTMLElement | null>(null);
+// 键盘导航高亮项索引（roving tabindex）：展开时仅该项 tabindex=0，焦点随之移动
+const activeIndex = ref(-1);
 
 const normalized = computed(() =>
   props.options.map((o) => ({ value: o.value, label: o.label ?? o.value })),
@@ -57,14 +76,92 @@ const currentLabel = computed(
   () => normalized.value.find((o) => o.value === model.value)?.label ?? props.placeholder,
 );
 
+// 将焦点移到第 i 个选项（DOM 就绪后），配合 roving tabindex 实现方向键导航
+const focusOption = (i: number) => {
+  nextTick(() => {
+    const items = menuRef.value?.querySelectorAll<HTMLButtonElement>('[role="option"]');
+    items?.[i]?.focus();
+  });
+};
+
+const openMenu = () => {
+  if (open.value) return;
+  open.value = true;
+  // 展开时高亮当前选中项，无选中则落在首项
+  const selected = normalized.value.findIndex((o) => o.value === model.value);
+  activeIndex.value = selected >= 0 ? selected : 0;
+  focusOption(activeIndex.value);
+};
+
+const closeMenu = (focusTrigger = false) => {
+  if (!open.value) return;
+  open.value = false;
+  activeIndex.value = -1;
+  // Esc 关闭时把焦点交还触发按钮，符合 listbox 键盘交互预期
+  if (focusTrigger) nextTick(() => triggerRef.value?.focus());
+};
+
+const toggle = () => (open.value ? closeMenu() : openMenu());
+
+// 在选项间循环移动高亮（方向键），delta 为 +1/-1
+const moveActive = (delta: number) => {
+  const len = normalized.value.length;
+  if (!len) return;
+  activeIndex.value = (activeIndex.value + delta + len) % len;
+  focusOption(activeIndex.value);
+};
+
 const select = (value: string) => {
   model.value = value;
-  open.value = false;
+  closeMenu(true);
+};
+
+const onTriggerKeydown = (e: KeyboardEvent) => {
+  // 触发按钮：方向键展开并聚焦选项；Esc 关闭。Enter/Space 由按钮原生 click→toggle 处理
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    openMenu();
+  } else if (e.key === 'Escape' && open.value) {
+    e.preventDefault();
+    closeMenu(true);
+  }
+};
+
+const onMenuKeydown = (e: KeyboardEvent) => {
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault();
+      moveActive(1);
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      moveActive(-1);
+      break;
+    case 'Home':
+      e.preventDefault();
+      activeIndex.value = 0;
+      focusOption(0);
+      break;
+    case 'End':
+      e.preventDefault();
+      activeIndex.value = normalized.value.length - 1;
+      focusOption(activeIndex.value);
+      break;
+    case 'Escape':
+      e.preventDefault();
+      closeMenu(true);
+      break;
+    case 'Tab':
+      // 焦点离开下拉时关闭（不抢占 Tab 的默认移焦行为）
+      closeMenu();
+      break;
+    // Enter / Space 选中由选项按钮原生 click 处理，无需在此拦截
+  }
 };
 
 // 点击组件外部关闭下拉
 const onDocClick = (e: MouseEvent) => {
-  if (open.value && root.value && !root.value.contains(e.target as Node)) open.value = false;
+  if (open.value && root.value && !root.value.contains(e.target as Node)) closeMenu();
 };
 onMounted(() => document.addEventListener('click', onDocClick));
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick));

@@ -51,6 +51,7 @@
       :class="ns.e('sender')"
       :loading="isLoading"
       :placeholder="placeholder"
+      :submit-type="submitType"
       @submit="onSend"
       @cancel="abort"
     />
@@ -93,6 +94,8 @@ export interface AiChatProps {
   welcomeDescription?: string;
   /** 输入框占位提示，缺省取 locale.senderPlaceholder */
   placeholder?: string;
+  /** 输入框提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之，默认 'enter'；透传给 Sender */
+  submitType?: 'enter' | 'shiftEnter';
   /** 是否为 AI 成功回复挂载默认消息操作（复制 / 重新生成），默认 true；可用 #footer slot 自定义 */
   showActions?: boolean;
   /** 消息操作的显示时机：'always' 常驻显示（默认），'hover' 仅悬浮气泡或键盘聚焦内部按钮时显示（触屏设备始终显示） */
