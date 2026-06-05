@@ -5,9 +5,10 @@ import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { STORAGE_ROOT } from '../config/storage';
 import * as schema from './schema';
 
-const DB_DIR = resolve(process.cwd(), 'storage/data');
+const DB_DIR = resolve(STORAGE_ROOT, 'data');
 const DB_PATH = resolve(DB_DIR, 'aix.db');
 
 mkdirSync(DB_DIR, { recursive: true });

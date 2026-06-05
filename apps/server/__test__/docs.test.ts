@@ -5,11 +5,12 @@ import AdmZip from 'adm-zip';
 import { existsSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { STORAGE_ROOT } from '../src/config/storage';
 import { db, initDb } from '../src/db/index';
 import { categories } from '../src/db/schema';
 import docs from '../src/routes/docs';
 
-const UPLOADS_DIR = resolve(process.cwd(), 'storage/uploads/docs');
+const UPLOADS_DIR = resolve(STORAGE_ROOT, 'uploads/docs');
 
 function createZipFormData(name: string, files: Record<string, string>): FormData {
   const zip = new AdmZip();

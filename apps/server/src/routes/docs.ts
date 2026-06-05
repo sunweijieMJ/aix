@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
+import { STORAGE_ROOT } from '../config/storage';
 import { db } from '../db/index';
 import { categories } from '../db/schema';
 import { errorHandler } from '../middleware/error';
@@ -25,7 +26,7 @@ const docs = new OpenAPIHono();
 docs.onError(errorHandler);
 
 // 文档文件存储根目录
-const UPLOADS_DIR = resolve(process.cwd(), 'storage/uploads/docs');
+const UPLOADS_DIR = resolve(STORAGE_ROOT, 'uploads/docs');
 
 // ---- 工具函数 ----
 
