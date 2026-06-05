@@ -41,6 +41,9 @@ import {
   computed,
   watch,
   defineComponent,
+  getCurrentInstance,
+  onBeforeUpdate,
+  onUpdated,
   h,
   type PropType,
   type VNode,
@@ -128,6 +131,47 @@ const MarkdownBlock = defineComponent({
   },
   setup(blockProps) {
     const tokens = computed(() => blockProps.parse(blockProps.source));
+
+    // —— 流式形态切换的高度 FLIP 过渡 ——
+    // 残片代码块 → KaTeX 公式是同一顶层块（同 key）的原地元素替换，两种盒子高度
+    // 天然不同，直接替换会产生跳变（底部跟随滚动下整条消息抖动）。检测到「根元素
+    // 被替换」（普通逐字增长是同元素 patch，不会触发）且处于流式时，从旧高度平滑
+    // 过渡到新高度。jsdom 无布局（offsetHeight 为 0）时自然跳过，不影响测试与 SSR。
+    const inst = getCurrentInstance();
+    const rootEl = () => {
+      const el = inst?.proxy?.$el as Node | undefined;
+      return el && el.nodeType === 1 ? (el as HTMLElement) : null;
+    };
+    let prevEl: HTMLElement | null = null;
+    let prevHeight = 0;
+    let clearTimer: ReturnType<typeof setTimeout> | null = null;
+    onBeforeUpdate(() => {
+      prevEl = rootEl();
+      prevHeight = prevEl?.offsetHeight ?? 0;
+    });
+    onUpdated(() => {
+      if (!blockProps.info.streaming) return;
+      const el = rootEl();
+      // 仅在根元素被替换（形态切换）且前后均可测量时过渡
+      if (!el || el === prevEl || !prevHeight) return;
+      const nextHeight = el.offsetHeight;
+      if (!nextHeight || Math.abs(nextHeight - prevHeight) < 2) return;
+      if (clearTimer) clearTimeout(clearTimer);
+      el.style.height = `${prevHeight}px`;
+      el.style.overflow = 'hidden';
+      void el.offsetHeight; // 强制 reflow，让起始高度生效
+      el.style.transition = 'height var(--aix-motionDurationSlow, 0.25s) ease';
+      el.style.height = `${nextHeight}px`;
+      const clear = () => {
+        el.style.height = '';
+        el.style.overflow = '';
+        el.style.transition = '';
+      };
+      el.addEventListener('transitionend', clear, { once: true });
+      // 兜底：transitionend 可能因元素不可见/动画被打断而不触发
+      clearTimer = setTimeout(clear, 400);
+    });
+
     return () => {
       const nodes = renderMarkdownTokens(tokens.value, {
         renderers: blockProps.renderers,
