@@ -34,16 +34,30 @@ describe('protectStreamingMarkdown（流式防闪烁）', () => {
   });
 
   describe('未闭合块级数学公式 $$', () => {
-    it('流式中途未闭合 $$ 残片被隐去，闭合后恢复', () => {
-      // 半截：$$ 出现 1 次（奇数）→ 隐去 $$ 起的残片
-      expect(protectStreamingMarkdown('能量方程：$$ \\frac{1}{2}\\rho')).toBe('能量方程：');
+    it('流式中途未闭合 $$ 残片转为 latex 围栏代码块逐字显示，闭合后恢复', () => {
+      // 半截：$$ 出现 1 次（奇数）→ 残片改写为 ```latex 围栏（保留打字反馈、零闪烁）
+      expect(protectStreamingMarkdown('能量方程：$$ \\frac{1}{2}\\rho')).toBe(
+        '能量方程：\n```latex\n\\frac{1}{2}\\rho\n```',
+      );
       // 闭合：$$ 出现 2 次（偶数）→ 原样保留，交给 KaTeX 渲染
       const closed = '能量方程：$$ \\frac{1}{2}\\rho v^2 $$';
       expect(protectStreamingMarkdown(closed)).toBe(closed);
     });
 
-    it('多个公式时只隐去最后一个未闭合的，已闭合的保留', () => {
-      expect(protectStreamingMarkdown('$$a=b$$ 然后 $$c=')).toBe('$$a=b$$ 然后 ');
+    it('刚输出定界符、残片尚无内容时维持隐藏（避免空代码块一闪）', () => {
+      expect(protectStreamingMarkdown('正在推导 $$')).toBe('正在推导 ');
+      expect(protectStreamingMarkdown('$$')).toBe('');
+    });
+
+    it('多个公式时只改写最后一个未闭合的，已闭合的保留', () => {
+      expect(protectStreamingMarkdown('$$a=b$$ 然后 $$c=')).toBe(
+        '$$a=b$$ 然后 \n```latex\nc=\n```',
+      );
+    });
+
+    it('数学残片中的中括号不被末行链接整修误伤', () => {
+      // \sqrt[3]{x 的 [3 不能被「未闭合链接」规则吃掉——残片已进入代码围栏
+      expect(protectStreamingMarkdown('$$ \\sqrt[3]{x')).toBe('```latex\n\\sqrt[3]{x\n```');
     });
 
     it('行内单 $（货币等）不被误伤', () => {
@@ -55,17 +69,49 @@ describe('protectStreamingMarkdown（流式防闪烁）', () => {
     });
   });
 
+  describe('代码区内的数学定界符不参与配对（防止截断代码）', () => {
+    it('已闭合代码块内含奇数个 $$ 时代码原样保留', () => {
+      const src = '```js\nconst tip = "$$";\n```\n';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('未闭合代码块内含 $$ 时仅补收尾围栏，不动代码内容', () => {
+      expect(protectStreamingMarkdown('```js\nconst tip = "$$";')).toBe(
+        '```js\nconst tip = "$$";\n```',
+      );
+    });
+
+    it('行内代码内的 $$ 不参与配对', () => {
+      const src = '使用 `$$` 包裹块级公式';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('代码块内的 \\[ 不触发公式整修', () => {
+      const src = '```js\nconst re = "\\[";\n```\n';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('代码块之外的未闭合 $$ 仍正常整修', () => {
+      expect(protectStreamingMarkdown('```js\na\n```\n$$ x=')).toBe(
+        '```js\na\n```\n```latex\nx=\n```',
+      );
+    });
+  });
+
   describe('未闭合块级数学公式 \\[ ... \\]（反斜杠括号写法）', () => {
-    it('流式中途未闭合 \\[ 残片被隐去，闭合后恢复', () => {
-      // \[ 多于 \] → 隐去 \[ 起的残片
-      expect(protectStreamingMarkdown('能量方程：\\[ \\frac{1}{2}\\rho')).toBe('能量方程：');
+    it('流式中途未闭合 \\[ 残片转为 latex 围栏代码块，闭合后恢复', () => {
+      expect(protectStreamingMarkdown('能量方程：\\[ \\frac{1}{2}\\rho')).toBe(
+        '能量方程：\n```latex\n\\frac{1}{2}\\rho\n```',
+      );
       // 已闭合 → 原样保留（交给后续归一化 + KaTeX）
       const closed = '能量方程：\\[ \\frac{1}{2}\\rho v^2 \\]';
       expect(protectStreamingMarkdown(closed)).toBe(closed);
     });
 
-    it('多个公式时只隐去最后一个未闭合的', () => {
-      expect(protectStreamingMarkdown('\\[a\\] 然后 \\[c=')).toBe('\\[a\\] 然后 ');
+    it('多个公式时只改写最后一个未闭合的', () => {
+      expect(protectStreamingMarkdown('\\[a\\] 然后 \\[c=')).toBe(
+        '\\[a\\] 然后 \n```latex\nc=\n```',
+      );
     });
   });
 });
