@@ -59,7 +59,9 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
   const { storage, saveDebounce = 300, newTitle = '新对话' } = options;
 
   const loaded = storage?.load() ?? null;
-  const init = loaded && loaded.length ? loaded : (options.defaultConversations ?? []);
+  // Array.isArray 防御自定义 storage 返回非数组（如字符串会被 [...str] 展开成无效会话）
+  const init =
+    Array.isArray(loaded) && loaded.length ? loaded : (options.defaultConversations ?? []);
   const conversations = ref<Conversation[]>([...init]);
   const activeKey = ref<string>(conversations.value[0]?.id ?? '');
 
@@ -149,7 +151,10 @@ export function localStorageConversationStorage(key: string): ConversationStorag
     load() {
       try {
         const raw = localStorage.getItem(key);
-        return raw ? (JSON.parse(raw) as Conversation[]) : null;
+        if (!raw) return null;
+        const parsed: unknown = JSON.parse(raw);
+        // 结构校验：被外部篡改/历史脏数据为非数组时按无数据处理
+        return Array.isArray(parsed) ? (parsed as Conversation[]) : null;
       } catch {
         return null;
       }

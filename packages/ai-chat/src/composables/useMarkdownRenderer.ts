@@ -44,16 +44,25 @@ export interface MarkdownEngine {
   diagramRenderers: MarkdownRenderers;
 }
 
-// 按 allowHtml 分别缓存（html:true/false 解析行为不同，不可混用同一实例）
-const engineCache = new Map<boolean, MarkdownEngine | null>();
+// 按 allowHtml 分别缓存（html:true/false 解析行为不同，不可混用同一实例）。
+// 缓存 Promise 而非值（Promise 级锁）：多实例并发首调共享同一次装配，不重复初始化
+const engineCache = new Map<boolean, Promise<MarkdownEngine | null>>();
 
 /**
  * 动态装配 markdown 引擎；未安装 markdown-it 返回 null（调用方降级纯文本）。
  * @param allowHtml 是否允许原始 HTML（启用 markdown-it html:true 并经 DOMPurify 消毒），默认 false
  */
-export async function loadMarkdownEngine(allowHtml = false): Promise<MarkdownEngine | null> {
-  const cached = engineCache.get(allowHtml);
-  if (cached !== undefined) return cached;
+export function loadMarkdownEngine(allowHtml = false): Promise<MarkdownEngine | null> {
+  let pending = engineCache.get(allowHtml);
+  if (!pending) {
+    pending = assembleEngine(allowHtml);
+    engineCache.set(allowHtml, pending);
+  }
+  return pending;
+}
+
+/** 实际装配逻辑（仅经 loadMarkdownEngine 的 Promise 缓存调用） */
+async function assembleEngine(allowHtml: boolean): Promise<MarkdownEngine | null> {
   let engine: MarkdownEngine | null;
   try {
     const { md, katexEnabled } = await createMarkdownIt(allowHtml);
@@ -107,7 +116,6 @@ export async function loadMarkdownEngine(allowHtml = false): Promise<MarkdownEng
     );
     engine = null;
   }
-  engineCache.set(allowHtml, engine);
   return engine;
 }
 

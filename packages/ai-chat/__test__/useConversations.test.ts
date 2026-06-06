@@ -96,5 +96,26 @@ describe('useConversations', () => {
       s.save([conv('a', 'A')]);
       expect(s.load()?.[0].label).toBe('A');
     });
+
+    it('脏数据防御：非数组 JSON（被篡改/历史脏数据）返回 null 而非原样透出', () => {
+      const s = localStorageConversationStorage('aix-conv-test');
+      localStorage.setItem('aix-conv-test', '"abc"'); // JSON.parse 得字符串
+      expect(s.load()).toBeNull();
+      localStorage.setItem('aix-conv-test', '{"id":"x"}'); // 对象也非法
+      expect(s.load()).toBeNull();
+    });
+  });
+
+  it('自定义 storage 返回非数组时回退 defaultConversations（不把字符串展开成会话）', () => {
+    const bad = {
+      load: () => 'abc' as unknown as ReturnType<ConversationStorage['load']>,
+      save: vi.fn(),
+    };
+    const api = useConversations({
+      storage: bad,
+      defaultConversations: [conv('d1', '默认')],
+    });
+    expect(api.conversations.value).toHaveLength(1);
+    expect(api.conversations.value[0]!.id).toBe('d1');
   });
 });

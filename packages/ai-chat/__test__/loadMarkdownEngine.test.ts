@@ -27,4 +27,10 @@ describe('loadMarkdownEngine（装配引擎）', () => {
     const b = await loadMarkdownEngine();
     expect(a).toBe(b);
   });
+
+  it('并发调用共享同一次装配（Promise 级锁）：返回同一引擎实例', async () => {
+    const [a, b] = await Promise.all([loadMarkdownEngine(), loadMarkdownEngine()]);
+    expect(a).not.toBeNull();
+    expect(a).toBe(b);
+  });
 });
