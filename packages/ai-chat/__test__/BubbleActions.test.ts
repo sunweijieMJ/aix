@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { markRaw } from 'vue';
 import { mount } from '@vue/test-utils';
+import { Refresh } from '@aix/icons';
 import BubbleActions from '../src/components/BubbleActions.vue';
 
 describe('BubbleActions', () => {
@@ -15,8 +17,8 @@ describe('BubbleActions', () => {
     expect(w.findAll('.aix-bubble-actions__btn')).toHaveLength(2);
   });
 
-  it('reloadable 为 false 时隐藏重新生成按钮', () => {
-    const w = mount(BubbleActions, { props: { reloadable: false } });
+  it("items: ['copy'] 时只渲染复制按钮", () => {
+    const w = mount(BubbleActions, { props: { items: ['copy'] } });
     expect(w.findAll('.aix-bubble-actions__btn')).toHaveLength(1);
   });
 
@@ -58,33 +60,94 @@ describe('BubbleActions', () => {
     expect(w.find('.aix-bubble-actions__feedback').exists()).toBe(false);
   });
 
-  it('feedbackable 时渲染赞/踩两个按钮', () => {
-    const w = mount(BubbleActions, { props: { feedbackable: true } });
+  it('items 含 feedback 时渲染赞/踩两个按钮', () => {
+    const w = mount(BubbleActions, { props: { items: ['copy', 'regenerate', 'feedback'] } });
     expect(w.findAll('.aix-bubble-actions__feedback')).toHaveLength(2);
   });
 
   it('点赞 emit feedback=like；当前已 like 再点取消（emit null）', async () => {
-    const w = mount(BubbleActions, { props: { feedbackable: true } });
+    const w = mount(BubbleActions, { props: { items: ['copy', 'regenerate', 'feedback'] } });
     const [like] = w.findAll('.aix-bubble-actions__feedback');
-    await like.trigger('click');
+    await like!.trigger('click');
     expect(w.emitted('feedback')![0]).toEqual(['like']);
 
     await w.setProps({ feedback: 'like' });
-    await like.trigger('click');
+    await like!.trigger('click');
     expect(w.emitted('feedback')![1]).toEqual([null]);
   });
 
   it('点踩 emit feedback=dislike，与赞互斥', async () => {
-    const w = mount(BubbleActions, { props: { feedbackable: true, feedback: 'like' } });
+    const w = mount(BubbleActions, {
+      props: { items: ['copy', 'regenerate', 'feedback'], feedback: 'like' },
+    });
     const dislike = w.findAll('.aix-bubble-actions__feedback')[1];
-    await dislike.trigger('click');
+    await dislike!.trigger('click');
     expect(w.emitted('feedback')![0]).toEqual(['dislike']);
   });
 
   it('受控激活态反映到 aria-pressed', async () => {
-    const w = mount(BubbleActions, { props: { feedbackable: true, feedback: 'like' } });
+    const w = mount(BubbleActions, {
+      props: { items: ['copy', 'regenerate', 'feedback'], feedback: 'like' },
+    });
     const [like, dislike] = w.findAll('.aix-bubble-actions__feedback');
-    expect(like.attributes('aria-pressed')).toBe('true');
-    expect(dislike.attributes('aria-pressed')).toBe('false');
+    expect(like!.attributes('aria-pressed')).toBe('true');
+    expect(dislike!.attributes('aria-pressed')).toBe('false');
+  });
+
+  // 新增能力用例
+  it('items 顺序即渲染顺序', () => {
+    const w = mount(BubbleActions, {
+      props: { items: ['regenerate', 'copy'], content: 'hi' },
+    });
+    const labels = w.findAll('button').map((b) => b.attributes('aria-label'));
+    expect(labels[0]).toBe('重新生成');
+    expect(labels[1]).toBe('复制');
+  });
+
+  it('feedback 预设展开为赞/踩两按钮，互斥可取消', async () => {
+    const w = mount(BubbleActions, {
+      props: { items: ['feedback'], feedback: null },
+    });
+    const btns = w.findAll('button');
+    expect(btns).toHaveLength(2);
+    await btns[0]!.trigger('click');
+    expect(w.emitted('feedback')?.[0]).toEqual(['like']);
+    await w.setProps({ feedback: 'like' });
+    await btns[0]!.trigger('click');
+    expect(w.emitted('feedback')?.[1]).toEqual([null]); // 再点取消
+  });
+
+  it('自定义项渲染 icon + label 并触发 onClick(ctx.message)', async () => {
+    const onClick = vi.fn();
+    const message = { id: 'm1', role: 'ai' as const, content: [] };
+    const w = mount(BubbleActions, {
+      props: {
+        items: [{ key: 'share', label: '分享', icon: markRaw(Refresh), onClick }],
+        message,
+      },
+    });
+    const btn = w.find('button');
+    expect(btn.attributes('aria-label')).toBe('分享');
+    await btn.trigger('click');
+    expect(onClick).toHaveBeenCalledWith({ message });
+  });
+
+  it('自定义项 disabled 时按钮禁用且不触发 onClick', async () => {
+    const onClick = vi.fn();
+    const w = mount(BubbleActions, {
+      props: { items: [{ key: 'x', label: 'X', disabled: true, onClick }] },
+    });
+    expect(w.find('button').attributes('disabled')).toBeDefined();
+    await w.find('button').trigger('click');
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('默认 slot 在 items 之后渲染', () => {
+    const w = mount(BubbleActions, {
+      props: { items: ['copy'] },
+      slots: { default: '<button class="extra">extra</button>' },
+    });
+    const btns = w.findAll('button');
+    expect(btns[btns.length - 1]!.classes()).toContain('extra');
   });
 });

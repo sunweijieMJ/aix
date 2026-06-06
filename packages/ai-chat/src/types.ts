@@ -172,6 +172,22 @@ export interface PromptItem {
   description?: string;
 }
 
+/** 附件条目（上传完成后的稳定形态，进入消息块、随消息持久化） */
+export interface AttachmentItem {
+  /** 稳定唯一 id */
+  id: string;
+  /** 文件名（展示用） */
+  name: string;
+  /** 访问地址（upload 返回；图片类用于缩略图） */
+  url?: string;
+  /** 字节数（展示时格式化为 KB/MB） */
+  size?: number;
+  /** MIME 类型（决定卡片图标 / 是否缩略图） */
+  mime?: string;
+  /** 业务扩展字段（如文件服务 fileId），随消息进入 request 的 ctx.messages */
+  extra?: Record<string, unknown>;
+}
+
 /** 引用来源项 */
 export interface SourceItem {
   /** 来源标题 */
@@ -270,4 +286,52 @@ export type ContentBlock =
   | (BlockBase & { type: 'reasoning'; text: string })
   | (BlockBase & { type: 'sources'; items: SourceItem[] })
   | (BlockBase & { type: 'thought-chain'; items: ThoughtChainItem[] })
-  | (BlockBase & { type: 'choice' } & ChoiceBlockFields);
+  | (BlockBase & { type: 'choice' } & ChoiceBlockFields)
+  | (BlockBase & { type: 'attachment'; items: AttachmentItem[] });
+
+/** 内置消息操作预设 key */
+export type ActionKey = 'copy' | 'regenerate' | 'feedback';
+
+/** 自定义消息操作项 */
+export interface ActionItem {
+  /** 唯一 key；不要与内置预设 key（copy/regenerate/feedback）同名，否则 v-for key 冲突 */
+  key: string;
+  /** 按钮文案（tooltip + aria-label），a11y 必填 */
+  label: string;
+  /** 图标组件（@aix/icons 或业务自有）；建议传入前用 `markRaw()` 包裹，避免组件对象进入响应式系统的告警 */
+  icon?: Component;
+  disabled?: boolean;
+  /** 点击回调；ctx.message 为所属消息（BubbleActions 独立使用且未传 message prop 时为 undefined） */
+  onClick?: (ctx: { message?: ChatMessage }) => void;
+}
+
+/** 操作条配置：字符串 = 内置预设，对象 = 自定义项，顺序即渲染顺序 */
+export type ActionsItems = (ActionKey | ActionItem)[];
+
+// ──────────────────────────────────────────────
+// 语音识别类型（useVoiceInput 使用）
+// ──────────────────────────────────────────────
+
+/** 自定义语音识别器收到的回调集 */
+export interface VoiceRecognizerCtx {
+  /** isFinal=false：中间结果（实时预览，可被覆盖）；isFinal=true：一段定稿（不再变化） */
+  onResult: (text: string, isFinal: boolean) => void;
+  /** 识别出错（无权限/网络等），调用方复位 idle */
+  onError: (error: unknown) => void;
+  /** 识别会话结束（用户停止或识别器自停） */
+  onEnd: () => void;
+  /** 期望识别语言（透传 VoiceConfig.lang） */
+  lang?: string;
+}
+
+/** 自定义识别器工厂：启动识别并返回停止句柄（对接讯飞/阿里云等 ASR SDK） */
+export type VoiceRecognizer = (ctx: VoiceRecognizerCtx) => { stop: () => void };
+
+export interface VoiceConfig {
+  /** 自定义识别器；缺省用浏览器 Web Speech API */
+  recognizer?: VoiceRecognizer;
+  /** 识别语言，默认取 navigator.language */
+  lang?: string;
+  /** 识别失败（权限拒绝/网络/启动失败等）回调；状态仍自动复位，toast 等提示由业务做 */
+  onError?: (error: unknown) => void;
+}

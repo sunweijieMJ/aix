@@ -179,6 +179,20 @@ describe('protectStreamingMarkdown（流式防闪烁）', () => {
       expect(protectStreamingMarkdown('变量 snake_case 命名')).toBe('变量 snake_case 命名');
     });
 
+    it('行首列表标记 `* ` 不被当作未闭合强调误删（回归：流式新列表项）', () => {
+      expect(protectStreamingMarkdown('列表项\n* 列表残片')).toBe('列表项\n* 列表残片');
+      expect(protectStreamingMarkdown('功能列表：\n* 支持流式')).toBe('功能列表：\n* 支持流式');
+      expect(protectStreamingMarkdown('- 第一项\n* 第二')).toBe('- 第一项\n* 第二');
+      // 缩进子列表的 `* ` 同样保留
+      expect(protectStreamingMarkdown('列表：\n  * 子项')).toBe('列表：\n  * 子项');
+    });
+
+    it('空白环绕的孤立星号/下划线（乘号、分隔符写法）不被误删', () => {
+      // `* ` 后随空白不可能是强调起始符（CommonMark 左侧定界符不能后随空白），应原样保留
+      expect(protectStreamingMarkdown('结果是 3 * 4')).toBe('结果是 3 * 4');
+      expect(protectStreamingMarkdown('数值 _ 单位')).toBe('数值 _ 单位');
+    });
+
     it('行内代码里的星号/小于号不参与残片判定', () => {
       const src = '代码 `a*b` 和 `x<y` 示例';
       expect(protectStreamingMarkdown(src)).toBe(src);

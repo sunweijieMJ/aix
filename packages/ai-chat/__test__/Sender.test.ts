@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import Sender from '../src/components/Sender.vue';
+import type { VoiceRecognizerCtx, VoiceRecognizer } from '../src/types';
 
 describe('Sender', () => {
   it('Enter 提交并清空，emit submit', async () => {
@@ -117,5 +119,370 @@ describe('Sender', () => {
   it('textarea 带 aria-label（默认取 placeholder 文案）', () => {
     const wrapper = mount(Sender);
     expect(wrapper.find('textarea').attributes('aria-label')).toBeTruthy();
+  });
+
+  // ── 附件集成（opt-in）──────────────────────────────────────────────
+  describe('附件集成', () => {
+    const instantUpload = vi.fn(async (f: File) => ({ name: f.name, url: `/f/${f.name}` }));
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('默认不开启：不传 attachments 时无回形针按钮、无附件面板、无文件 input', () => {
+      const w = mount(Sender);
+      expect(w.find('[aria-label="添加附件"]').exists()).toBe(false);
+      expect(w.find('.aix-attachments-panel').exists()).toBe(false);
+      expect(w.find('input[type="file"]').exists()).toBe(false);
+    });
+
+    it('开启后渲染回形针按钮，点击展开面板（placeholder 可见），选择文件出现预览卡片于面板内', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const attachBtn = w.find('[aria-label="添加附件"]');
+      expect(attachBtn.exists()).toBe(true);
+      // 点回形针展开面板：placeholder 可见
+      await attachBtn.trigger('click');
+      expect(w.find('.aix-attachments-panel__placeholder').exists()).toBe(true);
+      // 经隐藏 input change 后卡片出现在面板列表内
+      const input = w.find('input[type="file"]');
+      const f = new File(['x'], 'a.pdf', { type: 'application/pdf' });
+      Object.defineProperty(input.element, 'files', { value: [f] });
+      await input.trigger('change');
+      await flushPromises();
+      expect(w.findAll('.aix-attachments-panel__list .aix-attachment-card')).toHaveLength(1);
+    });
+
+    it('回形针 toggle：点开面板可见+按钮 is-active，再点收起', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const attachBtn = w.find('[aria-label="添加附件"]');
+      expect(w.find('.aix-attachments-panel').exists()).toBe(false);
+      await attachBtn.trigger('click');
+      expect(w.find('.aix-attachments-panel').exists()).toBe(true);
+      expect(attachBtn.classes()).toContain('is-active');
+      await attachBtn.trigger('click');
+      expect(attachBtn.classes()).not.toContain('is-active');
+    });
+
+    it('add 自动展开：未展开时经拖放 add 文件，面板自动可见', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      expect(w.find('.aix-attachments-panel').exists()).toBe(false);
+      const dt = { files: [new File(['x'], 'auto.pdf')] };
+      await w.find('.aix-sender').trigger('drop', { dataTransfer: dt });
+      await flushPromises();
+      expect(w.find('.aix-attachments-panel').exists()).toBe(true);
+      expect(w.findAll('.aix-attachments-panel__list .aix-attachment-card')).toHaveLength(1);
+    });
+
+    it('收起带徽标：手动收起且仍有 items 时显示数量徽标', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const input = w.find('input[type="file"]');
+      Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'a.pdf')] });
+      await input.trigger('change');
+      await flushPromises();
+      // add 后自动展开，无徽标
+      expect(w.find('.aix-sender__attach-badge').exists()).toBe(false);
+      // 手动收起
+      await w.find('[aria-label="添加附件"]').trigger('click');
+      const badge = w.find('.aix-sender__attach-badge');
+      expect(badge.exists()).toBe(true);
+      expect(badge.text()).toBe('1');
+    });
+
+    it('根 dragenter 自动展开：未展开时根 dragenter 使面板可见', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      expect(w.find('.aix-attachments-panel').exists()).toBe(false);
+      await w.find('.aix-sender').trigger('dragenter');
+      expect(w.find('.aix-attachments-panel').exists()).toBe(true);
+    });
+
+    it('手动收起（items>0）后再 add 重新展开面板（有意设计：新文件落地需可见反馈）', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const input = w.find('input[type="file"]');
+      Object.defineProperty(input.element, 'files', {
+        value: [new File(['x'], 'a.pdf')],
+        configurable: true,
+      });
+      await input.trigger('change');
+      await flushPromises();
+      // add 后自动展开
+      expect(w.find('.aix-attachments-panel').exists()).toBe(true);
+      // 手动收起，仍有条目
+      await w.find('[aria-label="添加附件"]').trigger('click');
+      expect(w.find('.aix-attachments-panel').exists()).toBe(false);
+      // 再 add 新文件 → 面板重新展开
+      Object.defineProperty(input.element, 'files', {
+        value: [new File(['y'], 'b.pdf')],
+        configurable: true,
+      });
+      await input.trigger('change');
+      await flushPromises();
+      expect(w.find('.aix-attachments-panel').exists()).toBe(true);
+      expect(w.findAll('.aix-attachments-panel__list .aix-attachment-card')).toHaveLength(2);
+    });
+
+    it('disabled=true 时拖放不新增卡片、面板不展开（disabled 覆盖附件交互）', async () => {
+      const w = mount(Sender, {
+        props: { disabled: true, attachments: { upload: instantUpload } },
+      });
+      const dt = { files: [new File(['x'], 'drag.pdf')] };
+      await w.find('.aix-sender').trigger('dragenter');
+      expect(w.find('.aix-attachments-panel').exists()).toBe(false); // dragenter 不展开
+      await w.find('.aix-sender').trigger('drop', { dataTransfer: dt });
+      await flushPromises();
+      expect(w.find('.aix-attachments-panel').exists()).toBe(false);
+      expect(w.findAll('.aix-attachment-card')).toHaveLength(0);
+    });
+
+    it('面板高度过渡：enter 未完成即 leave 时，旧 enter 的 finish 不再误触发（快速 toggle 竞态）', () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const vm = w.vm as unknown as {
+        __onPanelEnter: (el: Element, done: () => void) => void;
+        __onPanelLeave: (el: Element, done: () => void) => void;
+      };
+      // jsdom 无布局，用 getter spy 驱动非 0 scrollHeight（与 heightTransition 测试同款手法）
+      const node = document.createElement('div');
+      Object.defineProperty(node, 'scrollHeight', { configurable: true, get: () => 120 });
+      const enterDone = vi.fn();
+      const leaveDone = vi.fn();
+      // enter 挂起（不派发 transitionend）
+      vm.__onPanelEnter(node, enterDone);
+      expect(node.style.height).toBe('120px');
+      // enter 未完成即 leave：leave 入口须先清掉 enter 的监听/timer（竞态修复点）
+      vm.__onPanelLeave(node, leaveDone);
+      expect(node.style.height).toBe('0px'); // leave 接管，目标高 0
+      // 派发 transitionend：只应触发 leave 的 finish；若 enter finish 未被清理则也会跑，
+      // 把 height 置 'auto'（把收起动画弹回全高）并误调用 enterDone。
+      node.dispatchEvent(new Event('transitionend'));
+      expect(enterDone).not.toHaveBeenCalled(); // 关键：旧 enter finish 未误触发
+      expect(leaveDone).toHaveBeenCalledTimes(1);
+      expect(node.style.height).toBe(''); // leave finish 正常清理（非 'auto'）
+    });
+
+    it('isUploading 时发送按钮禁用并带 title 提示', async () => {
+      let resolveUpload!: (v: { name: string }) => void;
+      const pending = vi.fn(
+        () =>
+          new Promise<{ name: string }>((r) => {
+            resolveUpload = r;
+          }),
+      );
+      const w = mount(Sender, {
+        props: { modelValue: 'hi', attachments: { upload: pending } },
+      });
+      const input = w.find('input[type="file"]');
+      Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'a.pdf')] });
+      await input.trigger('change');
+      await w.vm.$nextTick();
+      const send = w.find('.aix-sender__send');
+      expect(send.attributes('disabled')).toBeDefined();
+      expect(send.attributes('title')).toBe('附件上传中');
+      resolveUpload({ name: 'a.pdf' });
+      await flushPromises();
+      expect(send.attributes('disabled')).toBeUndefined();
+    });
+
+    it('提交时 emit submit(text, attachments) 并清空预览', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const input = w.find('input[type="file"]');
+      Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'a.pdf')] });
+      await input.trigger('change');
+      await flushPromises();
+      await w.find('textarea').setValue('帮我总结');
+      await w.find('.aix-sender__send').trigger('click');
+      const payload = w.emitted('submit')?.[0];
+      expect(payload?.[0]).toBe('帮我总结');
+      expect(payload?.[1]).toMatchObject([{ name: 'a.pdf', url: '/f/a.pdf' }]);
+      await w.vm.$nextTick();
+      // drain 清空 + 面板自动收起
+      expect(w.findAll('.aix-attachment-card')).toHaveLength(0);
+      expect(w.find('.aix-attachments-panel').exists()).toBe(false);
+    });
+
+    it('纯附件可发送（无文本）', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const input = w.find('input[type="file"]');
+      Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'a.pdf')] });
+      await input.trigger('change');
+      await flushPromises();
+      const send = w.find('.aix-sender__send');
+      expect(send.attributes('disabled')).toBeUndefined();
+      await send.trigger('click');
+      expect(w.emitted('submit')?.[0]?.[0]).toBe('');
+    });
+
+    it('拖拽文件到 Sender 区域触发上传，卡片出现在面板列表内且面板自动展开', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const dt = { files: [new File(['x'], 'drag.pdf')] };
+      await w.find('.aix-sender').trigger('drop', { dataTransfer: dt });
+      await flushPromises();
+      expect(w.find('.aix-attachments-panel').exists()).toBe(true);
+      expect(w.findAll('.aix-attachments-panel__list .aix-attachment-card')).toHaveLength(1);
+    });
+
+    it('loading 中新增附件上传时，停止按钮仍可点击', async () => {
+      let resolveUpload!: (v: { name: string }) => void;
+      const pending = vi.fn(
+        () =>
+          new Promise<{ name: string }>((r) => {
+            resolveUpload = r;
+          }),
+      );
+      const w = mount(Sender, { props: { loading: true, attachments: { upload: pending } } });
+      const input = w.find('input[type="file"]');
+      Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'a.pdf')] });
+      await input.trigger('change');
+      const send = w.find('.aix-sender__send');
+      expect(send.attributes('disabled')).toBeUndefined(); // 停止不被上传禁用
+      expect(send.attributes('title')).toBe('停止');
+      await send.trigger('click');
+      expect(w.emitted('cancel')).toHaveLength(1);
+      resolveUpload({ name: 'a.pdf' });
+    });
+
+    it('粘贴文件触发上传，卡片出现在面板列表内且面板自动展开', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const dt = {
+        files: [new File(['x'], 'paste.png', { type: 'image/png' })],
+        getData: () => '',
+      };
+      await w.find('textarea').trigger('paste', { clipboardData: dt });
+      await flushPromises();
+      expect(w.find('.aix-attachments-panel').exists()).toBe(true);
+      expect(w.findAll('.aix-attachments-panel__list .aix-attachment-card')).toHaveLength(1);
+    });
+  });
+
+  // ── 语音集成（opt-in）──────────────────────────────────────────────
+  describe('语音集成', () => {
+    const fakeRecognizer = () => {
+      let ctx: VoiceRecognizerCtx | null = null;
+      const stop = vi.fn(() => ctx?.onEnd());
+      const recognizer: VoiceRecognizer = (c) => {
+        ctx = c;
+        return { stop };
+      };
+      return { recognizer, stop, drive: () => ctx! };
+    };
+
+    it('默认不开启：不传 voice 无麦克风按钮', () => {
+      const w = mount(Sender);
+      expect(w.find('[aria-label="语音输入"]').exists()).toBe(false);
+    });
+
+    it('voice=true 但浏览器不支持（jsdom 无 SpeechRecognition）：按钮自动隐藏', () => {
+      const w = mount(Sender, { props: { voice: true } });
+      expect(w.find('[aria-label="语音输入"]').exists()).toBe(false);
+    });
+
+    it('注入自定义识别器：渲染麦克风按钮，点击进入聆听态（placeholder 切换 + 按钮高亮）', async () => {
+      const { recognizer } = fakeRecognizer();
+      const w = mount(Sender, { props: { voice: { recognizer } } });
+      const mic = w.find('[aria-label="语音输入"]');
+      expect(mic.exists()).toBe(true);
+      await mic.trigger('click');
+      expect(w.find('textarea').attributes('placeholder')).toBe('正在聆听…');
+      expect(w.find('[aria-label="停止语音输入"]').classes()).toContain('is-listening');
+    });
+
+    it('定稿文本追加到输入框现有内容；中间结果实时预览、定稿时替换', async () => {
+      const { recognizer, drive } = fakeRecognizer();
+      const w = mount(Sender, { props: { modelValue: '已有', voice: { recognizer } } });
+      await w.find('[aria-label="语音输入"]').trigger('click');
+      drive().onResult('正在', false); // interim 预览
+      await nextTick();
+      expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('已有正在');
+      drive().onResult('正在识别', true); // 定稿替换预览段
+      await nextTick();
+      expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('已有正在识别');
+      expect(w.emitted('update:modelValue')?.at(-1)).toEqual(['已有正在识别']);
+    });
+
+    it('识别出错（如权限拒绝）：voice.onError 收到错误且按钮复位 idle', async () => {
+      const { recognizer, drive } = fakeRecognizer();
+      const onError = vi.fn();
+      const w = mount(Sender, { props: { voice: { recognizer, onError } } });
+      await w.find('[aria-label="语音输入"]').trigger('click');
+      const err = new Error('not-allowed');
+      drive().onError(err);
+      await nextTick();
+      expect(onError).toHaveBeenCalledWith(err);
+      expect(w.find('[aria-label="语音输入"]').exists()).toBe(true); // 复位 idle
+    });
+
+    it('Esc 停止聆听并复位', async () => {
+      const { recognizer, stop } = fakeRecognizer();
+      const w = mount(Sender, { props: { voice: { recognizer } } });
+      await w.find('[aria-label="语音输入"]').trigger('click');
+      await w.find('textarea').trigger('keydown', { key: 'Escape' });
+      expect(stop).toHaveBeenCalledTimes(1);
+      expect(w.find('[aria-label="语音输入"]').exists()).toBe(true); // 复位 idle
+    });
+
+    it('提交发送时自动停止聆听', async () => {
+      const { recognizer, stop } = fakeRecognizer();
+      const w = mount(Sender, { props: { voice: { recognizer } } });
+      await w.find('[aria-label="语音输入"]').trigger('click');
+      await w.find('textarea').setValue('hello');
+      await w.find('.aix-sender__send').trigger('click');
+      expect(stop).toHaveBeenCalled();
+      expect(w.emitted('submit')?.[0]?.[0]).toBe('hello');
+    });
+
+    it('聆听中手动打字不被后续语音结果覆盖', async () => {
+      const { recognizer, drive } = fakeRecognizer();
+      const w = mount(Sender, { props: { voice: { recognizer } } });
+      await w.find('[aria-label="语音输入"]').trigger('click');
+      drive().onResult('你好', true); // 定稿：committedBase='你好'
+      await nextTick();
+      await w.find('textarea').setValue('你好，朋友'); // 聆听中手动补充（setValue 触发 input 事件）
+      drive().onResult('世界', false); // interim 不应覆盖手动输入
+      await nextTick();
+      expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('你好，朋友世界');
+      drive().onResult('世界', true); // 定稿同样在新基线后追加
+      await nextTick();
+      expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('你好，朋友世界');
+    });
+
+    it('聆听中手动编辑后，旧会话迟到的 final 不会重复拼接', async () => {
+      const ctxs: VoiceRecognizerCtx[] = [];
+      const recognizer: VoiceRecognizer = (c) => {
+        ctxs.push(c);
+        return { stop: vi.fn() };
+      };
+      const w = mount(Sender, { props: { voice: { recognizer } } });
+      await w.find('[aria-label="语音输入"]').trigger('click'); // 会话1
+      ctxs[0]!.onResult('世界', false); // interim 预览
+      await nextTick();
+      await w.find('textarea').setValue('世界x'); // 聆听中手动编辑 → 重启为会话2
+      ctxs[0]!.onResult('世界', true); // 旧会话 final 迟到——必须被丢弃
+      await nextTick();
+      expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('世界x'); // 无重复
+      ctxs[1]!.onResult('继续', true); // 新会话正常追加
+      await nextTick();
+      expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('世界x继续');
+    });
+
+    it('IME 组词中的 input 不触发会话重启，compositionend 后重启一次', async () => {
+      const sessions: VoiceRecognizerCtx[] = [];
+      const recognizer: VoiceRecognizer = (c) => {
+        sessions.push(c);
+        return { stop: vi.fn() };
+      };
+      const w = mount(Sender, { props: { voice: { recognizer } } });
+      await w.find('[aria-label="语音输入"]').trigger('click'); // 会话1
+      expect(sessions).toHaveLength(1);
+      const ta = w.find('textarea');
+      // 组词中：isComposing=true 的 input 不重启
+      (ta.element as HTMLTextAreaElement).value = 'nihao';
+      await ta.trigger('input', { isComposing: true });
+      expect(sessions).toHaveLength(1); // 未重启
+      // 组词结束落字
+      (ta.element as HTMLTextAreaElement).value = '你好';
+      await ta.trigger('compositionend');
+      expect(sessions).toHaveLength(2); // 重启一次
+      sessions[1]!.onResult('世界', true);
+      await nextTick();
+      expect((ta.element as HTMLTextAreaElement).value).toBe('你好世界'); // 落字成为新基线
+    });
   });
 });

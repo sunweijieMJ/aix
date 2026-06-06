@@ -1,5 +1,5 @@
 import { ref, computed, onScopeDispose, type Ref } from 'vue';
-import type { ChatMessage, ParsedChunk, MessageFeedback } from '../types';
+import type { ChatMessage, ContentBlock, ParsedChunk, MessageFeedback } from '../types';
 import { genMsgId, genBlockId } from '../utils/helpers';
 import { flatParseChunk } from '../utils/parsers';
 import { xStream } from './useXStream';
@@ -50,7 +50,13 @@ export interface UseChatReturn {
   /** UI 渲染消息：未设置 parser 时与 messages 同引用；设置后为 parser 映射结果 */
   parsedMessages: Ref<ChatMessage[]>;
   isLoading: Ref<boolean>;
-  onSend: (text: string) => Promise<void>;
+  /**
+   * 发送消息：string 为便捷形态（内部包单 text 块）；ContentBlock[] 供附件/富输入。
+   * 传入 ContentBlock[] 时数组引用直接入列（mutate 哲学）；调用方每次应传入新建的 blocks
+   * 数组，不要跨多次 onSend 复用同一数组或 block 对象；blocks 形态由调用方保证非空，
+   * useChat 不做空值守卫。
+   */
+  onSend: (input: string | ContentBlock[]) => Promise<void>;
   onReload: (id: string) => Promise<void>;
   /** 编辑用户消息内容、截断其后历史并重新生成 */
   onEdit: (id: string, text: string) => Promise<void>;
@@ -241,12 +247,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     }
   };
 
-  const onSend = async (text: string) => {
+  const onSend = async (input: string | ContentBlock[]) => {
     if (isLoading.value) return;
+    const content: ContentBlock[] =
+      typeof input === 'string' ? [{ id: genBlockId(), type: 'text', text: input }] : input;
     messages.value.push({
       id: genMsgId(),
       role: 'user',
-      content: [{ id: genBlockId(), type: 'text', text }],
+      content,
       status: 'local',
     });
     const aiId = genMsgId();
@@ -275,8 +283,23 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const msg = messages.value[idx] as ChatMessage;
     // 守卫：仅用户消息可编辑重发，避免误改 AI 回复内容
     if (msg.role !== 'user') return;
-    // 改写为单 text block（用户消息通常纯文本），重置为本地态
-    msg.content = [{ id: genBlockId(), type: 'text', text }];
+    // 文本块合并改写为单 text block（编辑 UI 的草稿即全部文本块拼接），
+    // 非文本块（attachment 等）原位保留，不静默丢弃
+    const newText: ContentBlock = { id: genBlockId(), type: 'text', text };
+    const next: ContentBlock[] = [];
+    let textInserted = false;
+    for (const block of msg.content) {
+      if (block.type === 'text') {
+        if (!textInserted) {
+          next.push(newText);
+          textInserted = true;
+        }
+      } else {
+        next.push(block);
+      }
+    }
+    if (!textInserted) next.push(newText);
+    msg.content = next;
     msg.status = 'local';
     // 截断被编辑消息之后的全部消息，重建对话分支
     messages.value.splice(idx + 1);

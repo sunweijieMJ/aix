@@ -103,6 +103,7 @@ import ReasoningBlock from './blocks/ReasoningBlock.vue';
 import ThoughtChainBlock from './blocks/ThoughtChainBlock.vue';
 import ChoiceBlock from './blocks/ChoiceBlock.vue';
 import SourcesBlock from './blocks/SourcesBlock.vue';
+import AttachmentBlock from './blocks/AttachmentBlock.vue';
 import { locale } from '../locale';
 import { Edit } from '@aix/icons';
 import { messageText } from '../utils/helpers';
@@ -144,6 +145,7 @@ const builtinRenderers: BlockRenderers = {
   sources: SourcesBlock,
   // 单 / 多选统一由 ChoiceBlock 渲染（multiple 区分）。
   choice: ChoiceBlock,
+  attachment: AttachmentBlock,
 };
 const renderers = computed<BlockRenderers>(() => ({
   ...builtinRenderers,

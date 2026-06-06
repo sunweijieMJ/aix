@@ -1,4 +1,5 @@
 import type {
+  AttachmentItem,
   ChatMessage,
   ChoiceOption,
   ContentBlock,
@@ -66,6 +67,15 @@ export const choiceBlock = (input: {
   id: genBlockId(),
   type: 'choice',
   ...input,
+});
+
+/** 创建附件块（用户消息携带的已上传附件） */
+export const attachmentBlock = (
+  items: AttachmentItem[],
+): Extract<ContentBlock, { type: 'attachment' }> => ({
+  id: genBlockId(),
+  type: 'attachment',
+  items,
 });
 
 /** 构造单 text block 的消息（最常用，纯文本场景） */

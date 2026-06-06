@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { nextTick, effectScope } from 'vue';
+import { nextTick, effectScope, toRaw } from 'vue';
 import { useChat } from '../src/composables/useChat';
 import type { UseChatRequestCtx } from '../src/composables/useChat';
 import type { ChatMessage, ContentBlock } from '../src/types';
@@ -9,6 +9,7 @@ import {
   createMessage,
   textBlock,
   sourcesBlock,
+  attachmentBlock,
 } from '../src/utils/helpers';
 
 function sseStream(deltas: string[]): ReadableStream<Uint8Array> {
@@ -408,6 +409,36 @@ describe('useChat', () => {
     expect(messages.value[1].role).toBe('ai');
   });
 
+  it('onEdit 保留非文本块（附件不被静默丢弃），新文本块替换原文本块位置', async () => {
+    let call = 0;
+    const request = vi.fn(async () => sseStream([call++ === 0 ? 'a1' : 'a2']));
+    const { messages, onSend, onEdit } = useChat({ request });
+    await onSend([
+      { id: 'b-att', type: 'attachment', items: [{ id: 'f1', name: 'doc.pdf', url: '/f/1' }] },
+      { id: 'b-text', type: 'text', text: 'q1' },
+    ]);
+    await nextTick();
+    await onEdit(messages.value[0].id, 'q1-edited');
+    await nextTick();
+    const content = messages.value[0].content;
+    expect(content).toHaveLength(2);
+    expect(content[0]).toMatchObject({ type: 'attachment' }); // 附件保留且位置不变
+    expect(content[1]).toMatchObject({ type: 'text', text: 'q1-edited' });
+    expect(messageText(messages.value[0])).toBe('q1-edited');
+  });
+
+  it('onEdit 纯文本消息行为不变：改写为单 text 块', async () => {
+    let call = 0;
+    const request = vi.fn(async () => sseStream([call++ === 0 ? 'a1' : 'a2']));
+    const { messages, onSend, onEdit } = useChat({ request });
+    await onSend('q1');
+    await nextTick();
+    await onEdit(messages.value[0].id, 'q1-edited');
+    await nextTick();
+    expect(messages.value[0].content).toHaveLength(1);
+    expect(messages.value[0].content[0]).toMatchObject({ type: 'text', text: 'q1-edited' });
+  });
+
   it('onEdit 对非 user 消息守卫：不改写不请求', async () => {
     const request = vi.fn(async () => sseStream(['x']));
     const { messages, onSend, onEdit } = useChat({ request });
@@ -571,5 +602,29 @@ describe('useChat.setFeedback', () => {
       expect(messages.value[1].status).toBe('error');
       ce.mockRestore();
     });
+  });
+});
+
+describe('useChat.onSend blocks 形态', () => {
+  it('onSend 接受 ContentBlock[]：用户消息按原块入列', async () => {
+    const request = vi.fn(async () => sseStream(['ok']));
+    const { messages, onSend } = useChat({ request });
+    const blocks = [attachmentBlock([{ id: 'a1', name: 'a.pdf' }]), textBlock('帮我总结')];
+    await onSend(blocks);
+    const user = messages.value[0]!;
+    expect(user.role).toBe('user');
+    // 无拷贝直接入列（响应式 mutate 合约）：messages 经 ref 包裹，user.content 是 reactive
+    // 代理，故用 toRaw 还原其原始对象与传入数组比引用，锁定 useChat 未做 spread 拷贝。
+    expect(toRaw(user.content)).toBe(blocks);
+    expect(user.status).toBe('local');
+  });
+
+  it('onSend 接受 string：行为与现状一致（包单 text 块）', async () => {
+    const request = vi.fn(async () => sseStream(['ok']));
+    const { messages, onSend } = useChat({ request });
+    await onSend('hi');
+    const user = messages.value[0]!;
+    expect(user.content).toHaveLength(1);
+    expect(user.content[0]).toMatchObject({ type: 'text', text: 'hi' });
   });
 });

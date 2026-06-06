@@ -15,3 +15,11 @@ export type {
   UseConversationsOptions,
   UseConversationsReturn,
 } from './useConversations';
+export { useAttachments } from './useAttachments';
+export type {
+  PendingAttachment,
+  UseAttachmentsOptions,
+  UseAttachmentsReturn,
+} from './useAttachments';
+export { useVoiceInput } from './useVoiceInput';
+export type { UseVoiceInputOptions, UseVoiceInputReturn } from './useVoiceInput';

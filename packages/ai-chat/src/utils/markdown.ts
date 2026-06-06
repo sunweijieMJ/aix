@@ -18,8 +18,9 @@
  *    残片不裸奔原则，但用渐进成表替代其扣住不显示）。分隔行之后 markdown-it 本就能
  *    逐行渐进渲染数据行，无需处理。
  * 5) 末行行内残片（未闭合 HTML 标签 / 行内代码反引号 / 粗体删除线强调）：隐去定界符、
- *    保留文本逐字显示，闭合后整体变样式。单 `*`/`_` 仅在前为行首或空白时处理，
- *    防乘法 `2*3`、`snake_case` 误伤；检测均在代码遮蔽后的文本上进行。
+ *    保留文本逐字显示，闭合后整体变样式。单 `*`/`_` 仅在「前为行首或空白、后非空白」时处理，
+ *    防乘法 `2*3`、`snake_case`、行首列表标记 `* `、空白环绕乘号 `3 * 4` 误伤；
+ *    检测均在代码遮蔽后的文本上进行。
  */
 export function protectStreamingMarkdown(src: string): string {
   if (!src) return src;
@@ -131,6 +132,10 @@ export function protectStreamingMarkdown(src: string): string {
     const at = idxs[idxs.length - 1]!;
     if (at < head.length) return; // 落单者不在末行：不越界处理（与链接整修同范围）
     if (needSpaceBefore && at > 0 && !/\s/.test(mAll[at - 1]!)) return;
+    // 后随空白的单定界符不可能成为强调：CommonMark 左侧定界符不能后随空白（开不了），
+    // 而 needSpaceBefore 已限定其前为空白（闭不了）——必然按字面渲染、无闪烁，保留不动。
+    // 典型场景：行首列表标记 `* `（删掉会让流式新列表项丢 bullet 一帧）、乘号 `3 * 4`。
+    if (needSpaceBefore && /\s/.test(mAll[at + dLen] ?? '')) return;
     const rel = at - head.length;
     tail = tail.slice(0, rel) + tail.slice(rel + dLen);
     mAll = mAll.slice(0, at) + mAll.slice(at + dLen);

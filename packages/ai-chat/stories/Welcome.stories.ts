@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
-import { expect } from 'storybook/test';
+import { fn, expect, userEvent } from 'storybook/test';
 import { Welcome, Prompts } from '../src';
+import type { PromptItem } from '../src';
 
 const meta: Meta<typeof Welcome> = {
   title: 'AI Chat/Welcome',
@@ -58,4 +59,56 @@ export const WithExtra: Story = {
       canvas.getByRole('button', { name: '帮我写一段 Python 代码' }),
     ).toBeInTheDocument();
   },
+};
+
+// ──────────────────────────────────────────────
+// Prompts stories（迁移自 Prompts.stories.ts）
+// story 名加前缀 Prompts* 避免与 Welcome stories 撞名
+// ──────────────────────────────────────────────
+
+const defaultPromptItems: PromptItem[] = [
+  { key: '1', label: '帮我写一段 Python 脚本' },
+  { key: '2', label: '解释量子纠缠原理' },
+  { key: '3', label: '给我一个前端面试题' },
+  { key: '4', label: '分析这份代码的性能瓶颈' },
+];
+
+// Prompts 独立 story 类型（meta.component 为 Welcome，故 Prompts story 单独绑组件类型）
+type PromptsStory = StoryObj<typeof Prompts>;
+
+/** Prompts · 默认态：展示 4 个快捷提示按钮 */
+export const PromptsDefault: PromptsStory = {
+  args: {
+    items: defaultPromptItems,
+    onSelect: fn(),
+  },
+  render: (args) => ({
+    components: { Prompts },
+    setup: () => ({ args }),
+    template: `<Prompts v-bind="args" @select="args.onSelect" />`,
+  }),
+  play: async ({ canvas, args }) => {
+    // 找到第一个提示按钮并点击
+    const [first] = canvas.getAllByRole('button');
+    if (!first) throw new Error('未渲染出任何提示按钮');
+    await userEvent.click(first);
+    // 断言 onSelect 被调用，且参数是第一个 item
+    await expect(args.onSelect).toHaveBeenCalledWith(defaultPromptItems[0]);
+  },
+};
+
+/** Prompts · 少量条目 */
+export const PromptsFewItems: PromptsStory = {
+  args: {
+    items: [
+      { key: 'a', label: '写一首诗' },
+      { key: 'b', label: '翻译成英文' },
+    ],
+    onSelect: fn(),
+  },
+  render: (args) => ({
+    components: { Prompts },
+    setup: () => ({ args }),
+    template: `<Prompts v-bind="args" @select="args.onSelect" />`,
+  }),
 };

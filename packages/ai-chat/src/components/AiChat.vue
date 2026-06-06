@@ -23,14 +23,16 @@
         <template v-if="$slots.content" #content="slotProps">
           <slot name="content" v-bind="slotProps" />
         </template>
-        <!-- 消息操作：默认为 AI 成功回复挂载「复制 / 重新生成」，可用 #footer slot 覆盖、
-             或 :show-actions="false" 关闭。仅在需要时提供 footer slot，避免空 footer 节点。 -->
-        <template v-if="showActions || $slots.footer" #footer="{ item }">
+        <!-- 消息操作：通过 actions prop 配置（默认 ['copy','regenerate']），
+             数组形态仅对 ai+success 消息渲染，函数形态按消息细粒度控制；
+             可用 #footer slot 覆盖，设为 [] 关闭。仅在需要时挂载 footer slot，避免空 footer 节点。 -->
+        <template v-if="actionsEnabled || $slots.footer" #footer="{ item }">
           <slot name="footer" :item="item">
             <BubbleActions
-              v-if="item.role === 'ai' && item.status === 'success'"
+              v-if="actionsMap.get(item.id)"
+              :items="actionsMap.get(item.id)!"
               :content="messageText(item)"
-              :feedbackable="feedbackable"
+              :message="item"
               :feedback="(item.extra?.feedback as MessageFeedback | null) ?? null"
               @copy="emit('copy', item)"
               @regenerate="onReload(item.id)"
@@ -52,6 +54,8 @@
       :loading="isLoading"
       :placeholder="placeholder"
       :submit-type="submitType"
+      :attachments="attachments"
+      :voice="voice"
       @submit="onSend"
       @cancel="abort"
     />
@@ -68,8 +72,12 @@ import type {
   BlockRenderers,
   BlockActionPayload,
   MessageFeedback,
+  ActionsItems,
+  AttachmentItem,
+  VoiceConfig,
 } from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
+import type { UseAttachmentsOptions } from '../composables/useAttachments';
 
 export interface AiChatProps {
   /** 发起请求，返回字节流或 Response（必填）；透传给 useChat */
@@ -96,14 +104,18 @@ export interface AiChatProps {
   placeholder?: string;
   /** 输入框提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之，默认 'enter'；透传给 Sender */
   submitType?: 'enter' | 'shiftEnter';
-  /** 是否为 AI 成功回复挂载默认消息操作（复制 / 重新生成），默认 true；可用 #footer slot 自定义 */
-  showActions?: boolean;
+  /**
+   * 消息操作条配置，默认 ['copy','regenerate']。
+   * 数组形态：仅对 role==='ai' && status==='success' 的消息渲染；
+   * 函数形态：对每条消息调用，返回 items 则渲染、null/[] 不渲染（可按状态/角色细控）。
+   * 设为 [] 关闭默认操作条；#footer slot 提供时优先（覆盖机制不变）。
+   * 函数形态应为纯函数（同输入同输出）；返回值随消息 status 响应式更新。
+   */
+  actions?: ActionsItems | ((message: ChatMessage) => ActionsItems | null);
   /** 消息操作的显示时机：'always' 常驻显示（默认），'hover' 仅悬浮气泡或键盘聚焦内部按钮时显示（触屏设备始终显示） */
   actionsTrigger?: 'always' | 'hover';
   /** 是否允许用户消息内联编辑重发，默认 false */
   editable?: boolean;
-  /** 是否为 AI 成功回复挂载赞/踩反馈按钮，默认 false */
-  feedbackable?: boolean;
   /** 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试 */
   retryTimes?: UseChatOptions['retryTimes'];
   /** 两次重试间隔（ms），默认 1000；透传给 useChat */
@@ -120,10 +132,14 @@ export interface AiChatProps {
    * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
    */
   allowHtml?: boolean;
+  /** 附件能力（opt-in），透传 Sender；不传则无任何附件 UI。视为静态配置（setup 快照） */
+  attachments?: UseAttachmentsOptions;
+  /** 语音输入（opt-in），透传 Sender；不传则无麦克风按钮。视为静态配置 */
+  voice?: boolean | VoiceConfig;
 }
 export interface AiChatEmits {
-  /** 用户发送消息（含点击快捷问题），携带文本 */
-  (e: 'send', text: string): void;
+  /** 用户发送消息（含点击快捷问题），携带文本与可选附件 */
+  (e: 'send', text: string, attachments?: AttachmentItem[]): void;
   /** 单条 AI 回复成功完成，携带该消息 */
   (e: 'finish', message: ChatMessage): void;
   /** 请求出错，携带该消息 */
@@ -148,13 +164,12 @@ import BubbleList from './BubbleList.vue';
 import Sender from './Sender.vue';
 import Prompts from './Prompts.vue';
 import BubbleActions from './BubbleActions.vue';
-import { messageText } from '../utils/helpers';
+import { messageText, attachmentBlock, textBlock } from '../utils/helpers';
 import { useChat } from '../composables/useChat';
 import { useNamespace } from '../composables/useNamespace';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 
 const props = withDefaults(defineProps<AiChatProps>(), {
-  showActions: true,
   actionsTrigger: 'always',
 });
 const emit = defineEmits<AiChatEmits>();
@@ -232,7 +247,12 @@ const {
 });
 
 // 包一层：对外抛 send 事件后再委托 useChat（UI 提交、快捷问题、命令式调用统一走此入口）
-const onSend = (text: string) => {
+const onSend = (text: string, attachments?: AttachmentItem[]) => {
+  if (attachments?.length) {
+    emit('send', text, attachments);
+    const blocks = [attachmentBlock(attachments), ...(text ? [textBlock(text)] : [])];
+    return sendMessage(blocks);
+  }
   emit('send', text);
   return sendMessage(text);
 };
@@ -278,6 +298,34 @@ const onFeedback = (id: string, value: MessageFeedback | null) => {
   setFeedback(id, value);
   emit('feedback', { id, value });
 };
+
+// 消息操作条配置逻辑
+const DEFAULT_ACTIONS: ActionsItems = ['copy', 'regenerate'];
+
+// 函数形态对每条消息调用；数组形态保持现状语义（仅 ai+success）
+const actionsFor = (item: ChatMessage): ActionsItems | null => {
+  const a = props.actions ?? DEFAULT_ACTIONS;
+  if (typeof a === 'function') {
+    const r = a(item);
+    return r && r.length > 0 ? r : null;
+  }
+  if (item.role !== 'ai' || item.status !== 'success') return null;
+  return a.length > 0 ? a : null;
+};
+
+// 每条消息的操作条配置（一次计算）：函数形态的用户函数每条消息每轮只调用一次，
+// 且 v-if 与 :items 读同一结果，避免两次调用结果不一致。
+// 依赖 parsedMessages 及各 item 的 role/status，status 流转（updating→success）会触发重算。
+const actionsMap = computed(() => {
+  const map = new Map<string, ActionsItems | null>();
+  for (const item of parsedMessages.value) map.set(item.id, actionsFor(item));
+  return map;
+});
+
+// 数组形态为空数组时整个 footer 模板都不挂（避免空 footer 节点）；函数形态恒挂、逐条判定
+const actionsEnabled = computed(
+  () => typeof props.actions === 'function' || (props.actions ?? DEFAULT_ACTIONS).length > 0,
+);
 
 defineExpose({
   messages,

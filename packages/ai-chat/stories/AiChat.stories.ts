@@ -1,7 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, userEvent, waitFor, fn } from 'storybook/test';
 import { AiChat } from '../src';
-import type { ChatMessage, ParsedChunk, RoleConfig, ThoughtChainItem } from '../src';
+import type {
+  ChatMessage,
+  ParsedChunk,
+  RoleConfig,
+  ThoughtChainItem,
+  VoiceRecognizer,
+} from '../src';
 import {
   textBlock,
   createMessage,
@@ -295,109 +301,6 @@ function thinkingParseChunk(raw: string): ParsedChunk {
   }
 }
 
-// ============ 真实接口对接：Dify / DeepSeek（OpenAI 兼容） ============
-//
-// 这两个示例是**真实连接**：换后端只改 request + parseChunk，AiChat / useChat 其余逻辑
-// （流式累积、打字机、中断、重试、多轮）完全不变。
-// 密钥与跨域统一在 .storybook/main.ts 的 Vite proxy 处理：前端只 fetch 同源 /proxy-* 路径，
-// proxy 注入 Authorization 头并转发到真实网关——**密钥不进前端 bundle，也绕过浏览器 CORS**。
-// 配置来自仓库根 .env（DIFY_BASEURL / DIFY_API_KEY / DEEPSEEK_API_KEY，已被 .gitignore 忽略），
-// 仅本地 storybook dev 生效；storybook:build 静态产物无 proxy。
-
-/** 把消息列表转成 OpenAI / DeepSeek 的 messages 结构（role + 纯文本 content） */
-const toOpenAIMessages = (messages: ChatMessage[]) =>
-  messages
-    .filter((m) => m.role === 'user' || m.role === 'ai')
-    .map((m) => ({ role: m.role === 'ai' ? 'assistant' : 'user', content: messageText(m) }));
-
-/**
- * Dify request（真实连接）：POST /proxy-dify/chat-messages（→ Dify `/chat-messages`，streaming）。
- * 直接返回 fetch 的 Response —— useChat 取 `.body` 流式读取，parseChunk 用 difyParseChunk。
- * Authorization 由 Vite proxy 注入，前端不持有密钥。
- */
-// Dify 终端用户标识 + app 所需的 inputs 变量（按参考请求；不同 app 的 inputs schema 可能不同，
-// 换 app 时改这里。这些不是密钥，留在前端无妨）。
-const DIFY_USER = '20191677';
-const DIFY_INPUTS: Record<string, unknown> = { user_id: DIFY_USER, thinkModel: 'qwen3' };
-
-function difyRequest() {
-  return ({ messages, signal }: { messages: ChatMessage[]; signal: AbortSignal }) => {
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-    return fetch('/proxy-dify/chat-messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({
-        query: lastUser ? messageText(lastUser) : '',
-        user: DIFY_USER,
-        response_mode: 'streaming',
-        inputs: DIFY_INPUTS,
-      }),
-      signal,
-    });
-  };
-}
-
-/**
- * Dify parseChunk（兼容 ChatBot 与 Chatflow 两种 app）：
- * - `message` / `agent_message`：取 `answer` 作为增量（普通聊天应用的流式文本）
- * - `text_chunk`：取 `data.text` 作为增量（Chatflow 工作流节点的流式文本）
- * - `message_end` / `workflow_finished`：收流
- * - 其余（ping / workflow_started / node_started / node_finished …）忽略，不产出增量
- */
-function difyParseChunk(raw: string): ParsedChunk {
-  const line = raw.startsWith('data:') ? raw.slice(5).trim() : raw.trim();
-  if (!line) return {};
-  try {
-    const obj = JSON.parse(line) as { event?: string; answer?: string; data?: { text?: string } };
-    switch (obj.event) {
-      case 'message':
-      case 'agent_message':
-        return { delta: obj.answer ?? '' };
-      case 'text_chunk':
-        return { delta: obj.data?.text ?? '' };
-      case 'message_end':
-      case 'workflow_finished':
-        return { done: true };
-      default:
-        return {};
-    }
-  } catch {
-    return {};
-  }
-}
-
-/**
- * DeepSeek request（真实连接，OpenAI 兼容）：POST /proxy-deepseek/chat/completions（stream=true）。
- * 增量在嵌套路径 `choices[0].delta.content`、流末 `data: [DONE]`，用 openaiParseChunk 解析。
- * 同样走 proxy 注入 Authorization，适配一切 OpenAI 兼容网关（把 proxy target 换成自家网关即可）。
- */
-function deepseekRequest() {
-  return ({ messages, signal }: { messages: ChatMessage[]; signal: AbortSignal }) =>
-    fetch('/proxy-deepseek/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        stream: true,
-        messages: toOpenAIMessages(messages),
-      }),
-      signal,
-    });
-}
-
-/** OpenAI 兼容 parseChunk：读取嵌套 `choices[0].delta.content` 作为增量；`[DONE]` 收流 */
-function openaiParseChunk(raw: string): ParsedChunk {
-  const line = raw.startsWith('data:') ? raw.slice(5).trim() : raw.trim();
-  if (!line) return {};
-  if (line === '[DONE]') return { done: true };
-  try {
-    const obj = JSON.parse(line) as { choices?: { delta?: { content?: string } }[] };
-    return { delta: obj.choices?.[0]?.delta?.content ?? '' };
-  } catch {
-    return {};
-  }
-}
-
 // ============ 共用快捷问题 ============
 
 const PROMPTS = [
@@ -590,59 +493,6 @@ export const WithHistory: Story = {
 };
 
 /**
- * DifyProtocol：对接 Dify（**真实连接**）。
- *
- * request 经 `/proxy-dify` 转发到 Dify `/chat-messages`（streaming），parseChunk 用
- * difyParseChunk 解析 `event:message` 的 `answer` 增量、`message_end` 收流。配置（base/密钥）
- * 在仓库根 `.env` + `.storybook/main.ts` 的 proxy，密钥不进前端。在 Storybook Canvas
- * **手动输入并发送**即可看到真实模型的流式回复（不再是 mock 假数据）。
- *
- * ⚠️ play 只校验界面渲染、**不自动发请求**，以免 CI / test:stories 依赖外网。
- * 验证真实链路请在 storybook dev 里手动发送。
- */
-export const DifyProtocol: Story = {
-  args: {
-    request: difyRequest(),
-    parseChunk: difyParseChunk,
-    welcomeTitle: '对接 Dify（真实连接）',
-    welcomeDescription: '经 Vite proxy 直连 Dify /chat-messages 流式接口，手动发送即可对话',
-    prompts: [{ key: '1', label: '你好，介绍一下你能做什么' }],
-  },
-  play: async ({ canvas }) => {
-    // 仅校验渲染；真实请求留待在 Storybook 中手动触发（避免 CI 依赖外网）
-    await expect(canvas.getByText('对接 Dify（真实连接）')).toBeInTheDocument();
-    await expect(
-      canvas.getByRole('button', { name: '你好，介绍一下你能做什么' }),
-    ).toBeInTheDocument();
-  },
-};
-
-/**
- * OpenAICompatible：对接 DeepSeek（**真实连接**，OpenAI 兼容接口示例 = 你说的「自定义接口」）。
- *
- * DeepSeek / OpenAI Chat Completions（stream=true）的增量在嵌套路径 `choices[0].delta.content`、
- * 流末 `data: [DONE]`，正是 README 说的「需自定义 parseChunk」场景。request 经 `/proxy-deepseek`
- * 转发到 `https://api.deepseek.com/chat/completions`，parseChunk 用 openaiParseChunk。
- * 换 vLLM / Ollama / 通义 等只需改 proxy target，组件侧零改动。
- *
- * ⚠️ 同 Dify：play 只校验渲染，真实对话在 storybook dev 手动发送。
- */
-export const OpenAICompatible: Story = {
-  args: {
-    request: deepseekRequest(),
-    parseChunk: openaiParseChunk,
-    welcomeTitle: '对接 DeepSeek（真实连接 · OpenAI 兼容）',
-    welcomeDescription:
-      '经 Vite proxy 直连 DeepSeek，嵌套 choices[0].delta.content + [DONE]，手动发送即可对话',
-    prompts: [{ key: '1', label: '用一句话介绍你自己' }],
-  },
-  play: async ({ canvas }) => {
-    await expect(canvas.getByText('对接 DeepSeek（真实连接 · OpenAI 兼容）')).toBeInTheDocument();
-    await expect(canvas.getByRole('button', { name: '用一句话介绍你自己' })).toBeInTheDocument();
-  },
-};
-
-/**
  * SingleChoiceInteractive：对话流中输出可交互单选题卡片（端到端）。
  * 以 defaultMessages 注入一道 editable 单选题（AI 输出），可直接点选项作答
  * （经 block-action → useChat.updateBlock 写回，高亮受控），或点右上角编辑题目。
@@ -717,11 +567,11 @@ export const GeneratingProcess: Story = {
 };
 
 /**
- * EditFeedbackAndSubmitType：编排层三能力集成（editable / feedbackable / submitType）。
+ * EditFeedbackAndSubmitType：编排层三能力集成（editable / actions(feedback) / submitType）。
  *
  * 一个 play 串联 AiChat 编排层对外的三组能力与事件，补齐 FullInteractionFlow（流式/中断/重试）
  * 未覆盖的「消息后处理」路径：
- * 1. **赞踩反馈**（`feedbackable`）：对历史 AI 回复点「赞同」，受控写回 `extra.feedback` 高亮，
+ * 1. **赞踩反馈**（`actions: ['copy','regenerate','feedback']`）：对历史 AI 回复点「赞同」，受控写回 `extra.feedback` 高亮，
  *    并对外 `emit('feedback', { id, value })`。
  * 2. **编辑重发**（`editable`）：编辑用户消息并保存 → 截断后续重新生成，对外 `emit('edit', { id, text })`。
  * 3. **提交方式**（`submitType='shiftEnter'`）：普通 Enter 仅换行不发送，Shift+Enter 才触发发送
@@ -734,10 +584,11 @@ export const EditFeedbackAndSubmitType: Story = {
   args: {
     request: assistantRequest(),
     editable: true,
-    feedbackable: true,
+    actions: ['copy', 'regenerate', 'feedback'],
     submitType: 'shiftEnter',
     welcomeTitle: '编辑重发 · 赞踩反馈 · Shift+Enter 提交',
-    welcomeDescription: '演示 AiChat 编排层 editable / feedbackable / submitType 三能力与对外事件',
+    welcomeDescription:
+      '演示 AiChat 编排层 editable / actions(feedback) / submitType 三能力与对外事件',
     placeholder: '输入消息，Shift+Enter 发送，Enter 换行…',
     prompts: undefined,
     // 对外事件间谍（v-bind="args" 会把 onXxx 注册为监听器）
@@ -753,8 +604,8 @@ export const EditFeedbackAndSubmitType: Story = {
     ],
   },
   play: async ({ canvas, args, step }) => {
-    // 1) feedbackable：对历史 AI 回复点「赞同」→ 受控高亮 + emit('feedback')
-    await step('赞踩反馈（feedbackable）', async () => {
+    // 1) actions 含 feedback：对历史 AI 回复点「赞同」→ 受控高亮 + emit('feedback')
+    await step('赞踩反馈（actions feedback）', async () => {
       // 虚拟列表异步渲染：findBy 轮询；过渡期可能 pointer-events:none，关指针检查避免 flaky
       const like = await canvas.findByRole('button', { name: '赞同' }, { timeout: 8000 });
       await userEvent.click(like, { pointerEventsCheck: 0 });
@@ -802,6 +653,122 @@ export const EditFeedbackAndSubmitType: Story = {
       // Shift+Enter 才发送 → emit('send')
       await userEvent.keyboard('{Shift>}{Enter}{/Shift}');
       await waitFor(() => expect(args.onSend).toHaveBeenCalledTimes(1));
+    });
+  },
+};
+
+// ──────────────────────────────────────────────
+// mock 上传实现（带进度，文件名含 'fail' 触发失败）
+// ──────────────────────────────────────────────
+
+const mockUpload = async (
+  file: File,
+  ctx: { onProgress: (p: number) => void; signal: AbortSignal },
+) => {
+  for (let p = 0; p <= 100; p += 20) {
+    if (ctx.signal.aborted) throw new DOMException('aborted', 'AbortError');
+    ctx.onProgress(p);
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  if (file.name.includes('fail')) throw new Error('mock 上传失败');
+  return {
+    name: file.name,
+    size: file.size,
+    mime: file.type,
+    url: `https://example.com/f/${file.name}`,
+  };
+};
+
+// ──────────────────────────────────────────────
+// mock 语音识别器（定时吐字，约 1.8s 后自停）
+// ──────────────────────────────────────────────
+
+const mockRecognizer: VoiceRecognizer = (ctx) => {
+  const words = ['帮我', '帮我总结', '帮我总结这份报告'];
+  let i = 0;
+  const timer = setInterval(() => {
+    const w = words[i];
+    if (w == null) {
+      clearInterval(timer);
+      ctx.onResult(words[words.length - 1]!, true);
+      ctx.onEnd();
+      return;
+    }
+    ctx.onResult(w, false);
+    i++;
+  }, 600);
+  return {
+    stop: () => {
+      clearInterval(timer);
+      ctx.onEnd();
+    },
+  };
+};
+
+/**
+ * FullFeatured：能力全开演示（附件 + 语音 + 操作条 + 快捷问题 + 流式回复）。
+ *
+ * 一次性开启以下全部能力：
+ * - **attachments**：回形针按钮 + 附件面板，支持多文件上传（mock 进度 + 可控失败）
+ * - **voice**：麦克风按钮 + mock 语音识别，约 1.8s 自动定稿填入输入框
+ * - **actions**：`['copy','regenerate','feedback']`，AI 气泡下方渲染赞踩 / 复制 / 重新生成操作条
+ * - **prompts**：欢迎页快捷问题按钮
+ * - **mock request**：流式返回 Markdown 富文本回答
+ *
+ * play 自动串联以下断言：
+ * 1. 回形针按钮（附件）、麦克风按钮（语音）、欢迎页 prompts 同屏存在
+ * 2. 点击回形针 → 附件面板展开（placeholder 文案可见）
+ * 3. 发送一条消息 → AI 回复出现 → 操作条渲染（赞同按钮可见）
+ */
+export const FullFeatured: Story = {
+  args: {
+    request: assistantRequest(),
+    attachments: { upload: mockUpload, accept: 'image/*,.pdf', maxCount: 5 },
+    voice: { recognizer: mockRecognizer },
+    actions: ['copy', 'regenerate', 'feedback'],
+    prompts: PROMPTS,
+    welcomeTitle: '能力全开演示',
+    welcomeDescription:
+      '回形针（附件）+ 麦克风（语音）+ 操作条（赞踩 / 复制 / 重新生成）+ 快捷问题一次全开；文件名含 "fail" 可演示上传失败重试',
+    placeholder: '输入消息，按 Enter 发送，Shift+Enter 换行…',
+  },
+  play: async ({ canvas, step }) => {
+    // 1) 同屏存在：回形针、麦克风、欢迎页 prompts
+    await step('同屏存在：回形针 + 麦克风 + prompts', async () => {
+      const attachBtn = await canvas.findByRole('button', { name: '添加附件' }, { timeout: 5000 });
+      await expect(attachBtn).toBeInTheDocument();
+      const micBtn = await canvas.findByRole('button', { name: '语音输入' }, { timeout: 5000 });
+      await expect(micBtn).toBeInTheDocument();
+      // 欢迎页 prompts：取第一条快捷问题按钮
+      await canvas.findByRole('button', { name: '帮我写一段快速排序' }, { timeout: 5000 });
+    });
+
+    // 2) 点击回形针 → 附件面板展开
+    await step('点击回形针 → 面板展开', async () => {
+      // 点击前重查（虚拟列表 / teleport 教训：click 前重新 find）
+      const attachBtn = await canvas.findByRole('button', { name: '添加附件' });
+      await userEvent.click(attachBtn);
+      await canvas.findByText('点击或拖拽文件到此区域上传', undefined, { timeout: 5000 });
+      // 再次点击收起面板，避免遮挡后续交互
+      const attachBtn2 = await canvas.findByRole('button', { name: '添加附件' });
+      await userEvent.click(attachBtn2);
+    });
+
+    // 3) 发送消息 → AI 回复 → 操作条出现
+    await step('发送消息 → AI 回复 → 操作条渲染', async () => {
+      const ta = canvas.getByRole('textbox');
+      await userEvent.type(ta, '帮我写一段快速排序');
+      await userEvent.keyboard('{Enter}');
+      // 等待 AI 回复关键词出现（流式输出）
+      await canvas.findByText(/快速排序/, undefined, { timeout: 15000 });
+      // 等流式结束（「停止」消失）
+      await waitFor(
+        () => expect(canvas.queryByRole('button', { name: '停止' })).not.toBeInTheDocument(),
+        { timeout: 15000 },
+      );
+      // 操作条：赞同按钮（findBy 轮询，虚拟列表异步渲染）
+      const likeBtn = await canvas.findByRole('button', { name: '赞同' }, { timeout: 8000 });
+      await expect(likeBtn).toBeInTheDocument();
     });
   },
 };

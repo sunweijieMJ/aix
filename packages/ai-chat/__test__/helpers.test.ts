@@ -7,6 +7,7 @@ import {
   textMessage,
   createMessage,
   messageText,
+  attachmentBlock,
 } from '../src/utils/helpers';
 
 describe('helpers', () => {
@@ -48,5 +49,16 @@ describe('helpers', () => {
       sourcesBlock([{ title: 's' }]),
     ]);
     expect(messageText(m)).toBe('正文A正文B');
+  });
+
+  it('attachmentBlock 创建附件块（带稳定 id）', () => {
+    const items = [
+      { id: 'a1', name: 'report.pdf', url: '/f/a1', size: 102400, mime: 'application/pdf' },
+    ];
+    const b = attachmentBlock(items);
+    expect(b.type).toBe('attachment');
+    expect(b.items).toEqual(items);
+    expect(b.items).toBe(items); // 无拷贝保留引用，锁定合约
+    expect(b.id).toBeTruthy();
   });
 });

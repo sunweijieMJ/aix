@@ -73,4 +73,26 @@ export interface AiChatLocale {
   deleteConversation: string;
   /** 会话列表空态 */
   noConversations: string;
+  /** 附件：添加附件按钮 */
+  attachButton: string;
+  /** 附件：上传中提示（发送按钮 title） */
+  attachmentUploading: string;
+  /** 附件：重试上传按钮 */
+  attachmentRetry: string;
+  /** 附件：删除按钮 */
+  attachmentRemove: string;
+  /** 语音：开始语音输入按钮 */
+  voiceButton: string;
+  /** 语音：停止语音输入按钮 */
+  voiceStopButton: string;
+  /** 语音：聆听中占位文案 */
+  voiceListening: string;
+  /** 附件面板：标题 */
+  attachmentsTitle: string;
+  /** 附件面板：拖放区主提示文案（placeholder title） */
+  attachmentPlaceholder: string;
+  /** 附件面板：拖放区副提示文案（placeholder description，对齐 adx 三段式） */
+  attachmentPlaceholderHint: string;
+  /** 附件面板：收起按钮 */
+  attachmentsCollapse: string;
 }

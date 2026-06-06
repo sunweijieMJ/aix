@@ -1,5 +1,6 @@
 import type { App } from 'vue';
 
+import AttachmentCard from './components/AttachmentCard.vue';
 import Bubble from './components/Bubble.vue';
 import BubbleList from './components/BubbleList.vue';
 import BubbleActions from './components/BubbleActions.vue';
@@ -16,12 +17,14 @@ import ReasoningBlock from './components/blocks/ReasoningBlock.vue';
 import ThoughtChainBlock from './components/blocks/ThoughtChainBlock.vue';
 import SourcesBlock from './components/blocks/SourcesBlock.vue';
 import ChoiceBlock from './components/blocks/ChoiceBlock.vue';
+import AttachmentBlock from './components/blocks/AttachmentBlock.vue';
 import AiChat from './components/AiChat.vue';
 import Conversations from './components/Conversations.vue';
 import Skeleton from './components/Skeleton.vue';
 
 // 组件（不带 Aix 前缀）
 export {
+  AttachmentCard,
   Bubble,
   BubbleList,
   BubbleActions,
@@ -38,6 +41,7 @@ export {
   ThoughtChainBlock,
   SourcesBlock,
   ChoiceBlock,
+  AttachmentBlock,
   AiChat,
   Conversations,
   Skeleton,
@@ -52,7 +56,7 @@ export type { CreateParseChunkOptions } from './utils/parsers';
 
 // 带中间件 / 超时的 fetch 包装（鉴权注入、响应校验、超时复用）
 export { createXFetch } from './utils/x-fetch';
-export type { XFetch, XFetchMiddlewares, CreateXFetchOptions } from './utils/x-fetch';
+export type { XFetch, OnRequest, OnResponse, OnError, CreateXFetchOptions } from './utils/x-fetch';
 
 // 流式 Markdown 防闪烁 / 数学定界符归一化工具
 export { protectStreamingMarkdown, normalizeMathDelimiters } from './utils/markdown';
@@ -75,6 +79,7 @@ export {
   sourcesBlock,
   thoughtChainBlock,
   choiceBlock,
+  attachmentBlock,
   textMessage,
   createMessage,
   messageText,
@@ -100,13 +105,20 @@ export type { ReasoningBlockProps } from './components/blocks/ReasoningBlock.vue
 export type { ThoughtChainBlockProps } from './components/blocks/ThoughtChainBlock.vue';
 export type { SourcesBlockProps } from './components/blocks/SourcesBlock.vue';
 export type { ChoiceBlockProps } from './components/blocks/ChoiceBlock.vue';
+export type { AttachmentBlockProps } from './components/blocks/AttachmentBlock.vue';
 export type { ConversationsProps, ConversationsEmits } from './components/Conversations.vue';
+export type {
+  AttachmentCardProps,
+  AttachmentCardEmits,
+  AttachmentCardItem,
+} from './components/AttachmentCard.vue';
 
 // locale
 export { locale as aiChatLocale, zhCN, enUS } from './locale';
 export type { AiChatLocale } from './locale';
 
 const components = {
+  AttachmentCard,
   Bubble,
   BubbleList,
   BubbleActions,
@@ -123,6 +135,7 @@ const components = {
   ThoughtChainBlock,
   SourcesBlock,
   ChoiceBlock,
+  AttachmentBlock,
   AiChat,
   Conversations,
   Skeleton,

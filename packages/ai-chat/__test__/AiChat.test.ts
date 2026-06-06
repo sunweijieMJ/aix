@@ -4,7 +4,7 @@ import { defineComponent, h, nextTick } from 'vue';
 import AiChat from '../src/components/AiChat.vue';
 import { provideAiChatConfig } from '../src/composables/useAiChatConfig';
 import type { FollowContext } from '../src/composables/useAutoScroll';
-import type { ChatMessage } from '../src/types';
+import type { ChatMessage, VoiceRecognizerCtx, VoiceRecognizer } from '../src/types';
 import {
   textBlock,
   textMessage,
@@ -501,12 +501,14 @@ describe('AiChat', () => {
     expect(messageText(w.vm.messages[w.vm.messages.length - 1])).toBe('二答');
   });
 
-  it('show-actions 为 false 时不挂载默认操作', async () => {
+  it('actions=[] 不渲染操作条', async () => {
     const request = vi.fn(async () => once('答'));
-    const w = mount(AiChat, { props: { request, showActions: false } });
+    const w = mount(AiChat, { props: { request, actions: [] } });
     await w.find('textarea').setValue('问');
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();
+    // 先确认气泡已渲染（user + ai），再断言无操作条，避免「因没渲染才无操作条」的假阳性
+    expect(w.findAll('.aix-bubble').length).toBeGreaterThanOrEqual(2);
     expect(w.find('.aix-bubble-actions').exists()).toBe(false);
   });
 
@@ -550,9 +552,11 @@ describe('AiChat', () => {
     expect(w.vm.messages).toHaveLength(2);
   });
 
-  it('feedbackable：点击赞写回 extra.feedback 并 emit feedback', async () => {
+  it('actions 含 feedback：点击赞写回 extra.feedback 并 emit feedback', async () => {
     const request = vi.fn(async () => once('答'));
-    const w = mount(AiChat, { props: { request, feedbackable: true, welcomeTitle: '你好' } });
+    const w = mount(AiChat, {
+      props: { request, actions: ['copy', 'regenerate', 'feedback'], welcomeTitle: '你好' },
+    });
     await w.find('textarea').setValue('问题');
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();
@@ -565,6 +569,34 @@ describe('AiChat', () => {
     const aiMsg = w.vm.messages[w.vm.messages.length - 1];
     expect(aiMsg.extra?.feedback).toBe('like');
     expect(w.emitted('feedback')![0]).toEqual([{ id: aiMsg.id, value: 'like' }]);
+  });
+
+  it('actions 函数形态：按消息细粒度控制', async () => {
+    const request = vi.fn(async () => once('答'));
+    const w = mount(AiChat, {
+      props: {
+        request,
+        actions: (m: ChatMessage) => (m.role === 'ai' ? ['regenerate'] : null),
+        welcomeTitle: '你好',
+      },
+    });
+    await w.find('textarea').setValue('问');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+
+    // AI 消息有操作条，且只有 1 个按钮（重新生成）
+    const actions = w.find('.aix-bubble-actions');
+    expect(actions.exists()).toBe(true);
+    const btns = actions.findAll('.aix-bubble-actions__btn');
+    expect(btns).toHaveLength(1);
+    expect(btns[0].attributes('aria-label')).toBe('重新生成');
+
+    // user 消息（end 气泡）函数返回 null，其内不渲染操作条
+    const userBubble = w.find('.aix-bubble--end');
+    expect(userBubble.exists()).toBe(true);
+    expect(userBubble.find('.aix-bubble-actions').exists()).toBe(false);
+    // 全局仅 1 个操作条（即 AI 那条）
+    expect(w.findAll('.aix-bubble-actions')).toHaveLength(1);
   });
 });
 
@@ -627,6 +659,28 @@ describe('AiChat 交互块回传端到端', () => {
   });
 });
 
+describe('AiChat 语音透传', () => {
+  const fakeRecognizer = () => {
+    let ctx: VoiceRecognizerCtx | null = null;
+    const stop = vi.fn(() => ctx?.onEnd());
+    const recognizer: VoiceRecognizer = (c) => {
+      ctx = c;
+      return { stop };
+    };
+    return { recognizer, stop, drive: () => ctx! };
+  };
+
+  it('voice 透传 Sender：注入识别器后渲染麦克风按钮；默认不传无按钮', () => {
+    const { recognizer } = fakeRecognizer();
+    const w = mount(AiChat, {
+      props: { request: vi.fn(async () => new ReadableStream()), voice: { recognizer } },
+    });
+    expect(w.find('[aria-label="语音输入"]').exists()).toBe(true);
+    const off = mount(AiChat, { props: { request: vi.fn(async () => new ReadableStream()) } });
+    expect(off.find('[aria-label="语音输入"]').exists()).toBe(false);
+  });
+});
+
 describe('AiChat 块插槽穿透', () => {
   it('顶层 #thought-chain-item-content 端到端穿透到 ThoughtChain 内部（携带 item/index）', () => {
     const tcMsg: ChatMessage = {
@@ -643,5 +697,94 @@ describe('AiChat 块插槽穿透', () => {
       },
     });
     expect(w.find('.rich').text()).toBe('R-0-步骤一');
+  });
+});
+
+describe('AiChat 附件接线', () => {
+  it('attachments 透传 Sender；带附件发送组装 [attachmentBlock, textBlock] 消息并回显', async () => {
+    const upload = vi.fn(async (f: File) => ({ name: f.name, url: `/f/${f.name}` }));
+    const request = vi.fn(async () => once('好的'));
+    const w = mount(AiChat, {
+      props: { request, welcomeTitle: '你好', attachments: { upload } },
+    });
+
+    // 1) 经隐藏 input 选文件并触发 change，等待上传 Promise 完成
+    const fileInput = w.find('input[type="file"]');
+    expect(fileInput.exists()).toBe(true);
+    const file = new File(['pdf content'], 'a.pdf', { type: 'application/pdf' });
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      configurable: true,
+    });
+    await fileInput.trigger('change');
+    await flushPromises();
+
+    // 2) 输入文本并点击发送按钮
+    await w.find('textarea').setValue('帮我总结');
+    await w.find('.aix-sender__send').trigger('click');
+    await flushPromises();
+
+    // 3) 断言 emitted('send'): [text, attachments]
+    expect(w.emitted('send')).toBeTruthy();
+    const sendArgs = w.emitted('send')![0] as [string, { name: string; url: string }[]];
+    expect(sendArgs[0]).toBe('帮我总结');
+    expect(Array.isArray(sendArgs[1])).toBe(true);
+    expect(sendArgs[1][0].name).toBe('a.pdf');
+
+    // 4) 断言数据层：用户消息 content 为两块
+    const vm = w.vm as unknown as { messages: ChatMessage[] };
+    const userMsg = vm.messages[0];
+    expect(userMsg.content).toHaveLength(2);
+    expect(userMsg.content[0].type).toBe('attachment');
+    expect(
+      (userMsg.content[0] as { type: 'attachment'; items: { name: string }[] }).items[0].name,
+    ).toBe('a.pdf');
+    expect(userMsg.content[1].type).toBe('text');
+    expect((userMsg.content[1] as { type: 'text'; text: string }).text).toBe('帮我总结');
+
+    // 5) DOM 兜底：气泡内出现 .aix-attachment-card
+    await nextTick();
+    expect(w.find('.aix-attachment-card').exists()).toBe(true);
+  });
+
+  it('纯附件发送：消息只含 attachment 块', async () => {
+    const upload = vi.fn(async (f: File) => ({ name: f.name, url: `/f/${f.name}` }));
+    const request = vi.fn(async () => once('好的'));
+    const w = mount(AiChat, {
+      props: { request, welcomeTitle: '你好', attachments: { upload } },
+    });
+
+    // 选文件但不输入文本
+    const fileInput = w.find('input[type="file"]');
+    const file = new File(['data'], 'b.png', { type: 'image/png' });
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      configurable: true,
+    });
+    await fileInput.trigger('change');
+    await flushPromises();
+
+    // 直接点击发送（文本为空）
+    await w.find('.aix-sender__send').trigger('click');
+    await flushPromises();
+
+    // 断言 emitted('send')[0][0] === '' 且无第三个参数（第二个参数是 attachments 数组）
+    expect(w.emitted('send')).toBeTruthy();
+    const sendArgs = w.emitted('send')![0] as [string, unknown];
+    expect(sendArgs[0]).toBe('');
+    expect(Array.isArray(sendArgs[1])).toBe(true);
+
+    // 断言用户消息 content 仅 1 块且 type === 'attachment'
+    const vm = w.vm as unknown as { messages: ChatMessage[] };
+    const userMsg = vm.messages[0];
+    expect(userMsg.content).toHaveLength(1);
+    expect(userMsg.content[0].type).toBe('attachment');
+  });
+
+  it('默认不开启：AiChat 不传 attachments 无附件 UI', () => {
+    const request = vi.fn(async () => once('x'));
+    const w = mount(AiChat, { props: { request } });
+    expect(w.find('input[type="file"]').exists()).toBe(false);
+    expect(w.find('[aria-label="添加附件"]').exists()).toBe(false);
   });
 });

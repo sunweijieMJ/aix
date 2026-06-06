@@ -1,21 +1,22 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, userEvent, fn } from 'storybook/test';
+import { markRaw } from 'vue';
 import { BubbleActions } from '../src';
+import { Refresh } from '@aix/icons';
 
 const meta: Meta<typeof BubbleActions> = {
   title: 'AI Chat/BubbleActions',
   component: BubbleActions,
   args: {
     content: '这是一段可被复制的 AI 回复文本。',
-    reloadable: true,
+    items: ['copy', 'regenerate'],
     onCopy: fn(),
     onRegenerate: fn(),
     onFeedback: fn(),
   },
   argTypes: {
     content: { control: 'text' },
-    reloadable: { control: 'boolean' },
-    feedbackable: { control: 'boolean' },
+    items: { control: 'object' },
   },
   render: (args) => ({
     components: { BubbleActions },
@@ -33,9 +34,9 @@ export const Default: Story = {
   },
 };
 
-/** 仅复制：reloadable=false 隐藏重新生成 */
+/** 仅复制：items 只含 copy，隐藏重新生成 */
 export const CopyOnly: Story = {
-  args: { reloadable: false },
+  args: { items: ['copy'] },
   play: async ({ canvas }) => {
     await expect(canvas.getAllByRole('button')).toHaveLength(1);
   },
@@ -49,12 +50,40 @@ export const Regenerate: Story = {
   },
 };
 
-/** Feedbackable：开启反馈按钮（赞同 / 反对），点击触发 feedback 事件 */
+/** Feedbackable：items 含 feedback 开启反馈按钮（赞同 / 反对），点击触发 feedback 事件 */
 export const Feedbackable: Story = {
-  args: { feedbackable: true },
+  args: { items: ['copy', 'regenerate', 'feedback'] },
   play: async ({ canvas, args }) => {
     const likeBtn = await canvas.findByRole('button', { name: '赞同' });
     await userEvent.click(likeBtn);
     await expect(args.onFeedback).toHaveBeenCalledTimes(1);
+  },
+};
+
+/**
+ * CustomItems：混合内置预设与自定义操作项。
+ * items 包含内置 `copy`、`regenerate` 与自定义 `share`（带 Refresh 图标）；
+ * play 断言共 3 个按钮，且第三个按钮 aria-label 为「分享」。
+ */
+export const CustomItems: Story = {
+  args: {
+    content: '可复制的内容',
+    items: [
+      'copy',
+      'regenerate',
+      {
+        key: 'share',
+        label: '分享',
+        icon: markRaw(Refresh),
+        onClick: () => console.log('share'),
+      },
+    ],
+  },
+  play: async ({ canvas }) => {
+    const buttons = await canvas.findAllByRole('button');
+    await expect(buttons).toHaveLength(3);
+    // 第三个按钮为自定义「分享」
+    const shareBtn = canvas.getByRole('button', { name: '分享' });
+    await expect(shareBtn).toBeInTheDocument();
   },
 };

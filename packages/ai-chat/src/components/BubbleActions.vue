@@ -1,77 +1,89 @@
 <template>
   <div :class="ns.b()">
-    <button
-      type="button"
-      :class="ns.e('btn')"
-      :aria-label="copied ? t.copiedButton : t.copyButton"
-      :title="copied ? t.copiedButton : t.copyButton"
-      @click="onCopy"
-    >
-      <Check v-if="copied" />
-      <Copy v-else />
-    </button>
-    <button
-      v-if="reloadable"
-      type="button"
-      :class="ns.e('btn')"
-      :aria-label="t.regenerateButton"
-      :title="t.regenerateButton"
-      @click="emit('regenerate')"
-    >
-      <Refresh />
-    </button>
-    <template v-if="feedbackable">
+    <template v-for="item in normalized" :key="item.key">
       <button
+        v-if="item.builtin && item.key === 'copy'"
         type="button"
-        :class="[ns.e('btn'), ns.e('feedback'), ns.is('active', feedback === 'like')]"
-        :aria-label="t.likeButton"
-        :title="t.likeButton"
-        :aria-pressed="feedback === 'like'"
-        @click="toggleFeedback('like')"
+        :class="ns.e('btn')"
+        :aria-label="copied ? t.copiedButton : t.copyButton"
+        :title="copied ? t.copiedButton : t.copyButton"
+        @click="onCopy"
       >
-        <ThumbUp />
+        <Check v-if="copied" />
+        <Copy v-else />
       </button>
       <button
+        v-else-if="item.builtin && item.key === 'regenerate'"
         type="button"
-        :class="[ns.e('btn'), ns.e('feedback'), ns.is('active', feedback === 'dislike')]"
-        :aria-label="t.dislikeButton"
-        :title="t.dislikeButton"
-        :aria-pressed="feedback === 'dislike'"
-        @click="toggleFeedback('dislike')"
+        :class="ns.e('btn')"
+        :aria-label="t.regenerateButton"
+        :title="t.regenerateButton"
+        @click="emit('regenerate')"
       >
-        <ThumbDown />
+        <Refresh />
+      </button>
+      <template v-else-if="item.builtin && item.key === 'feedback'">
+        <button
+          type="button"
+          :class="[ns.e('btn'), ns.e('feedback'), ns.is('active', feedback === 'like')]"
+          :aria-label="t.likeButton"
+          :title="t.likeButton"
+          :aria-pressed="feedback === 'like'"
+          @click="toggleFeedback('like')"
+        >
+          <ThumbUp />
+        </button>
+        <button
+          type="button"
+          :class="[ns.e('btn'), ns.e('feedback'), ns.is('active', feedback === 'dislike')]"
+          :aria-label="t.dislikeButton"
+          :title="t.dislikeButton"
+          :aria-pressed="feedback === 'dislike'"
+          @click="toggleFeedback('dislike')"
+        >
+          <ThumbDown />
+        </button>
+      </template>
+      <button
+        v-else-if="!item.builtin"
+        type="button"
+        :class="ns.e('btn')"
+        :disabled="item.disabled"
+        :aria-label="item.label"
+        :title="item.label"
+        @click="onCustomClick(item)"
+      >
+        <component :is="item.icon" v-if="item.icon" />
+        <span v-else>{{ item.label }}</span>
       </button>
     </template>
-    <!-- 扩展位：使用方可追加分享等自定义操作 -->
+    <!-- 扩展位：items 之后渲染，自由追加任意 VNode -->
     <slot />
   </div>
 </template>
 
 <script lang="ts">
-import type { MessageFeedback } from '../types';
+import type { ActionsItems, ActionItem, ChatMessage, MessageFeedback } from '../types';
 
 export interface BubbleActionsProps {
-  /** 待复制的文本；提供后点击复制按钮自动写入剪贴板并给出「已复制」反馈 */
+  /** 操作项列表：字符串=内置预设（copy/regenerate/feedback），对象=自定义项；默认 ['copy','regenerate'] */
+  items?: ActionsItems;
+  /** 'copy' 内置项的复制文本；提供后点击复制自动写入剪贴板并给出「已复制」反馈 */
   content?: string;
-  /** 是否显示「重新生成」按钮，默认 true */
-  reloadable?: boolean;
-  /** 是否显示赞/踩反馈按钮，默认 false */
-  feedbackable?: boolean;
-  /** 当前反馈激活态（受控），null 表示未反馈 */
+  /** 'feedback' 内置项的受控激活态，null 表示未反馈 */
   feedback?: MessageFeedback | null;
+  /** 自定义项 onClick 的 ctx.message 来源（AiChat 接线时传入；独立使用可不传） */
+  message?: ChatMessage;
 }
 export interface BubbleActionsEmits {
-  /** 复制成功（已写入剪贴板）后触发 */
   (e: 'copy'): void;
-  /** 点击重新生成 */
   (e: 'regenerate'): void;
-  /** 赞/踩切换（互斥，再点同项取消为 null） */
   (e: 'feedback', value: MessageFeedback | null): void;
 }
 </script>
 
 <script setup lang="ts">
-import { ref, onScopeDispose } from 'vue';
+import { ref, computed, onScopeDispose } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { Copy, Check, Refresh, ThumbUp, ThumbDown } from '@aix/icons';
 import { locale } from '../locale';
@@ -79,8 +91,7 @@ import { useNamespace } from '../composables/useNamespace';
 
 const props = withDefaults(defineProps<BubbleActionsProps>(), {
   content: '',
-  reloadable: true,
-  feedbackable: false,
+  items: () => ['copy', 'regenerate'],
 });
 const emit = defineEmits<BubbleActionsEmits>();
 const ns = useNamespace('bubble-actions');
@@ -116,6 +127,21 @@ onScopeDispose(() => {
 const toggleFeedback = (value: MessageFeedback) => {
   // 互斥可取消：再次点击当前激活项则取消（null），否则切到该项
   emit('feedback', props.feedback === value ? null : value);
+};
+
+type NormalizedItem =
+  | { builtin: true; key: 'copy' | 'regenerate' | 'feedback' }
+  | ({ builtin: false } & ActionItem);
+
+const normalized = computed<NormalizedItem[]>(() =>
+  props.items.map((it) =>
+    typeof it === 'string' ? { builtin: true, key: it } : { builtin: false, ...it },
+  ),
+);
+
+const onCustomClick = (item: ActionItem) => {
+  if (item.disabled) return;
+  item.onClick?.({ message: props.message });
 };
 </script>
 
