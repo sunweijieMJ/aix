@@ -287,4 +287,22 @@ describe('ThoughtChain', () => {
       expect(w.text()).toContain('这是正文内容说明');
     });
   });
+
+  it('items 替换后裁剪 openMap：同 key 新步骤不继承已移除步骤的折叠态', async () => {
+    const w = mount(ThoughtChain, {
+      props: { items: [{ key: 'a', title: '步骤A', content: '正文', defaultExpanded: true }] },
+    });
+    const head = () => w.find('.aix-thought-chain__head');
+    expect(head().attributes('aria-expanded')).toBe('true'); // 初始展开
+    await head().trigger('click'); // 折叠
+    expect(head().attributes('aria-expanded')).toBe('false');
+
+    // 移除步骤 a → openMap 应裁剪掉 a 的残留态
+    await w.setProps({ items: [] });
+    // 同 key a 的新步骤回归 → 应回退 defaultExpanded（展开），而非沿用残留的折叠态
+    await w.setProps({
+      items: [{ key: 'a', title: '步骤A', content: '正文', defaultExpanded: true }],
+    });
+    expect(head().attributes('aria-expanded')).toBe('true');
+  });
 });

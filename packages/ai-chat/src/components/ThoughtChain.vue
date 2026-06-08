@@ -90,7 +90,7 @@ export interface ThoughtChainProps {
 </script>
 
 <script setup lang="ts">
-import { reactive, ref, useSlots } from 'vue';
+import { reactive, ref, useSlots, watch } from 'vue';
 import MarkdownRenderer from './MarkdownRenderer.vue';
 import { useNamespace } from '../composables/useNamespace';
 
@@ -116,8 +116,22 @@ const isOpen = (item: ThoughtChainItem): boolean =>
   openMap[item.key] ?? item.defaultExpanded ?? true;
 const toggle = (key: string | number) => {
   const item = props.items.find((it) => it.key === key);
-  openMap[key] = !(openMap[key] ?? item?.defaultExpanded ?? true);
+  // 仅对仍存在的步骤记录展开态，避免 items 替换后为已移除步骤写入残留状态
+  if (!item) return;
+  openMap[key] = !(openMap[key] ?? item.defaultExpanded ?? true);
 };
+
+// items 流式追加/替换后，裁剪 openMap 中已不存在步骤的展开态，避免长对话累积无用记录
+watch(
+  () => props.items,
+  (items) => {
+    const liveKeys = new Set(items.map((it) => it.key));
+    for (const k of Object.keys(openMap)) {
+      // openMap 的 key 经对象字面量存取会被转为 string，需同时比对原始 number key
+      if (!liveKeys.has(k) && !liveKeys.has(Number(k))) delete openMap[k];
+    }
+  },
+);
 
 // 有可折叠内容才显示箭头与正文区：item.content / item.result 或外部提供了 item-content slot
 const hasBody = (item: ThoughtChainItem): boolean =>
