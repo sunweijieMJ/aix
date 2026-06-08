@@ -61,6 +61,9 @@ export type { XFetch, OnRequest, OnResponse, OnError, CreateXFetchOptions } from
 // 流式 Markdown 防闪烁 / 数学定界符归一化工具
 export { protectStreamingMarkdown, normalizeMathDelimiters } from './utils/markdown';
 
+// URL 安全工具（协议白名单，供数据驱动的 href 场景复用）
+export { safeUrl } from './utils/url';
+
 // 自定义 markdown 渲染器（用于 AiChat / MarkdownRenderer 的 markdownRenderers 扩展点）
 export type {
   MarkdownRenderers,

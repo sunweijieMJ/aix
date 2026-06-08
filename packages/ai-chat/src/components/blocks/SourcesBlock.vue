@@ -5,13 +5,13 @@
       <span :class="ns.e('count')">{{ block.items.length }}</span>
     </div>
     <ol :class="ns.e('list')">
-      <li v-for="(item, i) in block.items" :key="i" :class="ns.e('item')">
+      <li v-for="(item, i) in links" :key="i" :class="ns.e('item')">
         <component
-          :is="item.url ? 'a' : 'div'"
+          :is="item.href ? 'a' : 'div'"
           :class="ns.e('link')"
-          :href="item.url || undefined"
-          :target="item.url ? '_blank' : undefined"
-          :rel="item.url ? 'noopener noreferrer' : undefined"
+          :href="item.href"
+          :target="item.href ? '_blank' : undefined"
+          :rel="item.href ? 'noopener noreferrer' : undefined"
         >
           <span :class="ns.e('index')">{{ i + 1 }}</span>
           <img v-if="isImageIcon(item.icon)" :class="ns.e('favicon')" :src="item.icon" alt="" />
@@ -40,16 +40,24 @@ export interface SourcesBlockProps {
 </script>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { locale } from '../../locale';
 import { useNamespace } from '../../composables/useNamespace';
+import { safeUrl } from '../../utils/url';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block，关闭属性继承避免多余 attr 落到根元素。
 defineOptions({ inheritAttrs: false });
 
-defineProps<SourcesBlockProps>();
+const props = defineProps<SourcesBlockProps>();
 const ns = useNamespace('sources-block');
 const { t } = useLocale(locale);
+
+// 来源链接可能来自模型/检索结果（不可信），渲染前经 safeUrl 协议白名单过滤：
+// 安全 url 渲染为可点击 <a>，不安全（如 javascript:）则 href 为 undefined → 降级为 <div> 纯展示。
+const links = computed(() =>
+  props.block.items.map((item) => ({ ...item, href: safeUrl(item.url) })),
+);
 
 // icon 既可能是 favicon 链接（http/https/data/协议相对/绝对路径），也可能是 emoji/短文本。
 // 前者用 <img> 渲染，后者直接作为文本，避免把 emoji 误当图片地址。
