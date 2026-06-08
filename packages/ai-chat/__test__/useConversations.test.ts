@@ -104,6 +104,46 @@ describe('useConversations', () => {
       localStorage.setItem('aix-conv-test', '{"id":"x"}'); // 对象也非法
       expect(s.load()).toBeNull();
     });
+
+    it('Error 序列化：extra.error 存 Error 时不丢失为 {}，提取 name/message', () => {
+      const s = localStorageConversationStorage('aix-conv-test');
+      const c = conv('a', 'A');
+      c.messages[0]!.extra = { error: new TypeError('boom') };
+      s.save([c]);
+      const loaded = s.load();
+      const err = loaded?.[0]!.messages[0]!.extra?.error as {
+        name: string;
+        message: string;
+      };
+      expect(err.name).toBe('TypeError');
+      expect(err.message).toBe('boom');
+    });
+
+    it('循环引用：不抛错、不静默丢失，告警并以 [Circular] 兜底保存其余数据', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const s = localStorageConversationStorage('aix-conv-test');
+      const c = conv('a', 'A');
+      const circular: Record<string, unknown> = {};
+      circular.self = circular; // 构造循环引用
+      c.messages[0]!.extra = { ctx: circular };
+      // 不抛错
+      expect(() => s.save([c])).not.toThrow();
+      // 其余数据仍保存成功（循环段被替换为 [Circular]）
+      expect(s.load()?.[0]!.label).toBe('A');
+      warn.mockRestore();
+    });
+
+    it('保存失败（如配额超限）时告警而非静默吞掉', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('QuotaExceededError');
+      });
+      const s = localStorageConversationStorage('aix-conv-test');
+      expect(() => s.save([conv('a', 'A')])).not.toThrow();
+      expect(warn).toHaveBeenCalled();
+      setItem.mockRestore();
+      warn.mockRestore();
+    });
   });
 
   it('自定义 storage 返回非数组时回退 defaultConversations（不把字符串展开成会话）', () => {

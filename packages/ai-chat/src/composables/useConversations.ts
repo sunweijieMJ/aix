@@ -145,6 +145,29 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
   };
 }
 
+/**
+ * 安全序列化 replacer 工厂（每次 stringify 新建，持有独立的已访问集合）。
+ * 处理三类会让 JSON.stringify 失真或抛错、进而导致整次保存失败的值：
+ * - Error：默认序列化为 `{}`（属性不可枚举），显式提取关键字段避免信息丢失（extra.error 常存 Error）；
+ * - 循环引用：替换为 '[Circular]'，避免 "Converting circular structure to JSON" 抛错；
+ * - BigInt：转字符串，避免 "Do not know how to serialize a BigInt" 抛错。
+ * 注意：对同一对象的多次（非环形）引用也会被判为 '[Circular]'，对树状的会话数据可接受。
+ */
+function createSafeReplacer(): (key: string, value: unknown) => unknown {
+  const seen = new WeakSet<object>();
+  return (_key, value) => {
+    if (value instanceof Error) {
+      return { name: value.name, message: value.message, stack: value.stack };
+    }
+    if (typeof value === 'bigint') return value.toString();
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) return '[Circular]';
+      seen.add(value);
+    }
+    return value;
+  };
+}
+
 /** 基于 localStorage 的会话持久化适配器（JSON 序列化，容错配额/隐私模式异常） */
 export function localStorageConversationStorage(key: string): ConversationStorage {
   return {
@@ -161,9 +184,11 @@ export function localStorageConversationStorage(key: string): ConversationStorag
     },
     save(list) {
       try {
-        localStorage.setItem(key, JSON.stringify(list));
-      } catch {
-        /* 忽略配额超限 / 隐私模式写入异常 */
+        // safeReplacer 兜底不可序列化数据（Error/循环引用/BigInt），避免抛错导致整次保存失败
+        localStorage.setItem(key, JSON.stringify(list, createSafeReplacer()));
+      } catch (err) {
+        // 配额超限 / 隐私模式写入异常 / 极端不可序列化数据：告警而非静默吞掉，便于线上排障
+        console.warn('[ai-chat] 会话持久化失败，本次变更未保存:', err);
       }
     },
   };
