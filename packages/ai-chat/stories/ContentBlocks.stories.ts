@@ -1,7 +1,8 @@
 /**
  * ContentBlocks.stories.ts
  *
- * 四个内置块渲染器合并：TextBlock / ReasoningBlock / SourcesBlock / ThoughtChainBlock。
+ * 五个内置块渲染器合并：TextBlock / ReasoningBlock / SourcesBlock / ThoughtChainBlock / AttachmentBlock。
+ * （ChoiceBlock 因交互复杂保留独立 stories 文件。）
  * 原 4 个独立 stories 文件（TextBlock / ReasoningBlock / SourcesBlock / ThoughtChainBlock）
  * 已删除，所有 story 与 play 断言原样迁移至此。
  *
@@ -10,7 +11,13 @@
  */
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, userEvent } from 'storybook/test';
-import { TextBlock, ReasoningBlock, SourcesBlock, ThoughtChainBlock } from '../src';
+import {
+  TextBlock,
+  ReasoningBlock,
+  SourcesBlock,
+  ThoughtChainBlock,
+  AttachmentBlock,
+} from '../src';
 import type {
   TextBlockProps,
   ReasoningBlockProps,
@@ -18,9 +25,11 @@ import type {
   SourceItem,
   ThoughtChainBlockProps,
   ThoughtChainItem,
+  AttachmentBlockProps,
+  AttachmentItem,
 } from '../src';
 import type { BubbleContentInfo, ContentBlock } from '../src/types';
-import { textBlock, sourcesBlock, thoughtChainBlock } from '../src/utils/helpers';
+import { textBlock, sourcesBlock, thoughtChainBlock, attachmentBlock } from '../src/utils/helpers';
 
 // ──────────────────────────────────────────────
 // 辅助窄化函数（各文件原有）
@@ -110,6 +119,25 @@ const tcSteps: ThoughtChainItem[] = [
 ];
 
 // ──────────────────────────────────────────────
+// AttachmentBlock 共用数据（气泡回显：已上传完成的附件，无 status/进度）
+// ──────────────────────────────────────────────
+
+// 内联 SVG 缩略图（data URI，离线可渲染，避免依赖外网图片）
+const imageThumb =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='68' height='68'%3E%3Crect width='68' height='68' fill='%23f5c518'/%3E%3Ccircle cx='34' cy='34' r='13' fill='%238a5a00'/%3E%3C/svg%3E";
+
+const attachmentItems: AttachmentItem[] = [
+  { id: 'f1', name: 'sunflowers.png', url: imageThumb, mime: 'image/png', size: 245 * 1024 },
+  { id: 'f2', name: '梵高研究报告.pdf', mime: 'application/pdf', size: 1280 * 1024 },
+  {
+    id: 'f3',
+    name: '创作年表.docx',
+    mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    size: 32 * 1024,
+  },
+];
+
+// ──────────────────────────────────────────────
 // Meta（绑定 TextBlock 为主组件，其他块以 render 函数渲染）
 // ──────────────────────────────────────────────
 
@@ -120,7 +148,7 @@ const meta: Meta<TextBlockProps> = {
     docs: {
       description: {
         component:
-          '四个内置块渲染器合并展示：TextBlock / ReasoningBlock / SourcesBlock / ThoughtChainBlock。' +
+          '五个内置块渲染器合并展示：TextBlock / ReasoningBlock / SourcesBlock / ThoughtChainBlock / AttachmentBlock。' +
           '通常经 Bubble 块注册表自动选用，无需手动放置。',
       },
     },
@@ -297,5 +325,72 @@ export const ThoughtChainWithSlot: TcStory = {
   play: async ({ canvas }) => {
     const cards = await canvas.findAllByText(/命中/);
     await expect(cards.length).toBeGreaterThanOrEqual(2);
+  },
+};
+
+// ──────────────────────────────────────────────
+// AttachmentBlock stories（前缀 Attachment*）
+// ──────────────────────────────────────────────
+
+type AttachmentStory = StoryObj<AttachmentBlockProps>;
+
+/**
+ * AttachmentBlock · 默认：气泡内回显已上传附件。
+ * 图片类（mime image/* + url）渲染 68×68 缩略图，其余按文件类型显示图标 + 「后缀 · 大小」。
+ * 回显态不可删除/重试（removable 默认 false，item 无 status）。
+ */
+export const AttachmentDefault: AttachmentStory = {
+  render: () => ({
+    components: { AttachmentBlock },
+    setup: () => ({ block: attachmentBlock(attachmentItems) }),
+    template: `<AttachmentBlock :block="block" />`,
+  }),
+  play: async ({ canvas }) => {
+    // 文件卡：名称可见
+    await canvas.findByText('梵高研究报告.pdf');
+    await canvas.findByText('创作年表.docx');
+    // 图片卡：以 alt=文件名 的缩略图渲染
+    const thumb = await canvas.findByAltText('sunflowers.png');
+    await expect(thumb).toHaveAttribute('src');
+    // 回显态无删除按钮
+    await expect(canvas.queryByRole('button', { name: '删除' })).toBeNull();
+  },
+};
+
+/** AttachmentBlock · 单图片：仅一张图片缩略图 */
+export const AttachmentImage: AttachmentStory = {
+  render: () => ({
+    components: { AttachmentBlock },
+    setup: () => ({
+      block: attachmentBlock([
+        {
+          id: 'img',
+          name: 'starry-night.png',
+          url: imageThumb,
+          mime: 'image/png',
+          size: 180 * 1024,
+        },
+      ]),
+    }),
+    template: `<AttachmentBlock :block="block" />`,
+  }),
+  play: async ({ canvas }) => {
+    await canvas.findByAltText('starry-night.png');
+  },
+};
+
+/** AttachmentBlock · 单文件：非图片类显示类型图标 + 「后缀 · 大小」 */
+export const AttachmentFile: AttachmentStory = {
+  render: () => ({
+    components: { AttachmentBlock },
+    setup: () => ({
+      block: attachmentBlock([
+        { id: 'doc', name: '需求规格说明书.pdf', mime: 'application/pdf', size: 2048 * 1024 },
+      ]),
+    }),
+    template: `<AttachmentBlock :block="block" />`,
+  }),
+  play: async ({ canvas }) => {
+    await canvas.findByText('需求规格说明书.pdf');
   },
 };
