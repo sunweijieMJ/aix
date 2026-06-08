@@ -472,6 +472,12 @@ defineExpose({
   box-shadow: var(--aix-shadowSM);
   gap: var(--aix-sizeXS);
 
+  /* 悬停主色描边，给出"可输入"的预期反馈；聚焦态由下方 focus-within 接管
+     （置于 focus-within 之前：同特异度下既悬停又聚焦时 focus-within 胜出，保留焦点环）。 */
+  &:hover:not(.is-disabled) {
+    border-color: var(--aix-colorPrimaryHover, var(--aix-colorPrimary));
+  }
+
   /* 聚焦时主色描边 + 焦点环，给出清晰的输入焦点反馈 */
   &:focus-within {
     border-color: var(--aix-colorPrimary);

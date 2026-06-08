@@ -281,10 +281,11 @@ watch(messagesModel, (v) => {
 // 点击快捷问题：以其 label 作为消息发送
 const onPromptSelect = (item: PromptItem) => onSend(item.label);
 
-// 交互块动作：先就地写回消息（驱动 DOM），再对外透出供业务持久化 / 判分。
+// 交互块动作：先就地写回消息（驱动 DOM），仅当写回命中时再对外透出供业务持久化 / 判分，
+// 避免未命中（误传 id）时业务据空动作持久化、与实际消息状态不一致。
 const onBlockAction = (payload: BlockActionPayload) => {
-  updateBlock(String(payload.messageKey), payload.action.blockId, payload.action.patch);
-  emit('block-action', payload);
+  const hit = updateBlock(String(payload.messageKey), payload.action.blockId, payload.action.patch);
+  if (hit) emit('block-action', payload);
 };
 
 // 用户消息编辑：先截断重发（驱动 DOM），再对外透出供持久化

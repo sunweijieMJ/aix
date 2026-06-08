@@ -483,16 +483,20 @@ describe('useChat.updateBlock', () => {
         content: [{ id: 'b1', type: 'choice', stem: 'q', options: [], selected: undefined }],
       },
     ]);
-    chat.updateBlock('m1', 'b1', { selected: 'o2' });
+    const hit = chat.updateBlock('m1', 'b1', { selected: 'o2' });
     const blk = chat.messages.value[0].content[0] as { selected?: string };
     expect(blk.selected).toBe('o2');
+    // 命中目标块时返回 true，供上层决定是否对外透出
+    expect(hit).toBe(true);
   });
 
-  it('blockId 不存在时静默不抛错', () => {
+  it('blockId 不存在时静默不抛错，且返回 false', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const chat = useChat({ request: async () => new ReadableStream() });
     chat.setMessages([{ id: 'm1', role: 'ai', content: [{ id: 'b1', type: 'text', text: 'x' }] }]);
-    expect(() => chat.updateBlock('m1', 'nope', { a: 1 })).not.toThrow();
-    expect(() => chat.updateBlock('nope', 'b1', { a: 1 })).not.toThrow();
+    expect(chat.updateBlock('m1', 'nope', { a: 1 })).toBe(false);
+    expect(chat.updateBlock('nope', 'b1', { a: 1 })).toBe(false);
+    warn.mockRestore();
   });
 
   it('updateBlock 未命中目标时开发期 console.warn 提示', () => {
@@ -557,6 +561,55 @@ describe('useChat.setFeedback', () => {
       expect(messageText(parsedMessages.value[1])).toBe('[ai] Hi');
       expect(parsedMessages.value).toHaveLength(messages.value.length);
     });
+
+    it('parser 改变消息 id 时开发期 console.warn 提示（每个原始 id 仅一次）', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      // 违约：parser 重写了 id，破坏 edit/reload/块动作的 id 定位
+      const parser = (m: ChatMessage): ChatMessage => ({ ...m, id: `x-${m.id}` });
+      const { parsedMessages, onSend } = useChat({
+        request: vi.fn(async () => sseStream(['Hi'])),
+        parser,
+      });
+      await onSend('q');
+      await nextTick();
+      // 触发 computed 求值
+      void parsedMessages.value;
+      void parsedMessages.value;
+      const idWarns = warn.mock.calls.filter(
+        (args) => typeof args[0] === 'string' && args[0].includes('parser 改变了消息 id'),
+      );
+      // 两条消息各告警一次（user + ai），重复求值不再追加
+      expect(idWarns.length).toBe(2);
+      warn.mockRestore();
+    });
+  });
+
+  it('parseChunk 返回携带 delta 的非法 blockType 时丢弃增量并告警一次', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const request = vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('a\nb\n'));
+            c.close();
+          },
+        }),
+    );
+    const { messages, onSend } = useChat({
+      request,
+      // 违法：blockType 非 'text'|'reasoning' 却带 delta
+      parseChunk: (raw) => ({ delta: raw, blockType: 'bogus' as never }),
+    });
+    await onSend('go');
+    await nextTick();
+    // 非法增量被丢弃，AI 消息无文本内容
+    expect(messageText(messages.value[1])).toBe('');
+    const badWarns = warn.mock.calls.filter(
+      (args) => typeof args[0] === 'string' && args[0].includes('非法 blockType'),
+    );
+    // 两个非法 chunk 仅告警一次（请求内去重）
+    expect(badWarns.length).toBe(1);
+    warn.mockRestore();
   });
 
   describe('retryTimes 失败重试', () => {

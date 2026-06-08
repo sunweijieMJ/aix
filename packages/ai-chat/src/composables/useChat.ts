@@ -62,7 +62,8 @@ export interface UseChatReturn {
   onEdit: (id: string, text: string) => Promise<void>;
   abort: () => void;
   setMessages: (m: ChatMessage[]) => void;
-  updateBlock: (messageId: string, blockId: string, patch: Record<string, unknown>) => void;
+  /** 按 id 就地合并块字段补丁；返回是否命中目标块（未命中时调用方可据此跳过对外透出） */
+  updateBlock: (messageId: string, blockId: string, patch: Record<string, unknown>) => boolean;
   /** 设置某条消息的赞/踩反馈，就地写回 extra.feedback（null 取消） */
   setFeedback: (id: string, value: MessageFeedback | null) => void;
 }
@@ -93,8 +94,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   // 内部 ref 为消息状态唯一来源（mutate 即响应式）；受控由 AiChat 层用引用桥接到 v-model。
   const messages = ref<ChatMessage[]>([...defaultMessages]);
   // 渲染消息：无 parser 时直接复用 messages 引用（零开销、完全等价）；有则按 parser 映射。
+  // 开发期护栏：parser 必须保留原始消息 id，否则编辑/重生成/块动作的 id 定位将静默失效。
+  // 违约时告警（每个原始 id 仅一次，避免 computed 重算刷屏），但不阻断渲染。
+  const warnedParserIds = new Set<string>();
   const parsedMessages: Ref<ChatMessage[]> = parser
-    ? computed(() => messages.value.map(parser))
+    ? computed(() =>
+        messages.value.map((m, i) => {
+          const out = parser(m, i);
+          if (out.id !== m.id && !warnedParserIds.has(m.id)) {
+            warnedParserIds.add(m.id);
+            console.warn(
+              `[ai-chat] parser 改变了消息 id（原 "${m.id}" → "${out.id}"）：编辑 / 重新生成 / 块动作依赖 id 定位将无法命中该消息，请在 parser 中保留原始 id。`,
+            );
+          }
+          return out;
+        }),
+      )
     : messages;
   const isLoading = ref(false);
   let controller: AbortController | null = null;
@@ -103,18 +118,27 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     messages.value = m;
   };
 
-  /** 按 id 定位并就地合并块字段补丁（交互块回写入口，复用响应式 mutate 约定） */
-  const updateBlock = (messageId: string, blockId: string, patch: Record<string, unknown>) => {
+  /**
+   * 按 id 定位并就地合并块字段补丁（交互块回写入口，复用响应式 mutate 约定）。
+   * 返回是否命中：命中即写回返回 true；未命中仅告警并返回 false，
+   * 供上层（AiChat.onBlockAction）据此决定是否对外透出，避免写回失败仍误导业务持久化。
+   */
+  const updateBlock = (
+    messageId: string,
+    blockId: string,
+    patch: Record<string, unknown>,
+  ): boolean => {
     const msg = messages.value.find((m) => m.id === messageId);
     const blk = msg?.content.find((b) => b.id === blockId);
     if (blk) {
       Object.assign(blk, patch);
-    } else {
-      // 开发期提示：messageId/blockId 未命中，便于业务方排查误传的 id（与未注册渲染器告警同风格）
-      console.warn(
-        `[ai-chat] updateBlock 未找到目标块（messageId="${messageId}", blockId="${blockId}"），本次更新被忽略。`,
-      );
+      return true;
     }
+    // 开发期提示：messageId/blockId 未命中，便于业务方排查误传的 id（与未注册渲染器告警同风格）
+    console.warn(
+      `[ai-chat] updateBlock 未找到目标块（messageId="${messageId}", blockId="${blockId}"），本次更新被忽略。`,
+    );
+    return false;
   };
 
   const setFeedback = (id: string, value: MessageFeedback | null) => {
@@ -130,6 +154,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const ctrl = new AbortController();
     controller = ctrl;
     isLoading.value = true;
+    // 开发期护栏：parseChunk 返回携带 delta 的非法 blockType 时增量会被丢弃，
+    // 本次请求仅告警一次，避免逐 chunk 刷屏。
+    let warnedBadBlockType = false;
     try {
       // 重试循环：仅当「非 abort 的错误」且仍有重试额度时再次发起；abort 立即停止、不重试。
       // 沿用同一个 ctrl（停止按钮仍生效），并在每次重试前清空已累积内容，避免半截内容叠加。
@@ -182,6 +209,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               // 运行时可能违反类型返回非文本块类型，此时丢弃 delta 而非把脏数据塞进 appendDelta。
               if (blockType === 'text' || blockType === 'reasoning') {
                 appendDelta(aiMsg, blockType, delta);
+              } else if (!warnedBadBlockType) {
+                warnedBadBlockType = true;
+                console.warn(
+                  `[ai-chat] parseChunk 返回了携带 delta 的非法 blockType "${blockType}"（仅支持 'text' | 'reasoning'），该增量已被丢弃。如需流式非文本块请改用 block 字段。`,
+                );
               }
               // 收到首个有效增量后才切到 updating；在此之前保持 loading（三点动画），
               // 避免首个 chunk 无文本（如 role-only）时出现空白气泡。

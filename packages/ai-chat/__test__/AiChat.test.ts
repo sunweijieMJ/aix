@@ -657,6 +657,56 @@ describe('AiChat 交互块回传端到端', () => {
     // updateBlock 写回 → DOM 反映
     expect(wrapper.find('.probe').text()).toBe('o2');
   });
+
+  it('块动作 blockId 未命中时不写回、且不对外 emit block-action', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // 渲染器上抛一个不存在的 blockId，模拟误传 / 脏数据
+    const BadProbe = defineComponent({
+      props: {
+        block: { type: Object, required: true },
+        onBlockAction: {
+          type: Function as unknown as () => (a: unknown) => void,
+          default: undefined,
+        },
+      },
+      setup(props) {
+        return () =>
+          h(
+            'button',
+            {
+              class: 'bad-probe',
+              onClick: () =>
+                (props.onBlockAction as ((a: unknown) => void) | undefined)?.({
+                  blockId: 'does-not-exist',
+                  type: 'select',
+                  patch: { selected: 'o2' },
+                }),
+            },
+            'x',
+          );
+      },
+    });
+    const wrapper = mount(AiChat, {
+      props: {
+        request: async () => new ReadableStream(),
+        blockRenderers: { probe: BadProbe },
+        defaultMessages: [
+          {
+            id: 'm1',
+            role: 'ai',
+            status: 'success',
+            content: [{ id: 'b1', type: 'probe', selected: undefined }],
+          },
+        ] as never,
+      },
+    });
+    await nextTick();
+    await wrapper.find('.bad-probe').trigger('click');
+    await nextTick();
+    // 未命中：不对外透出，避免业务据空动作持久化
+    expect(wrapper.emitted('block-action')).toBeFalsy();
+    warn.mockRestore();
+  });
 });
 
 describe('AiChat 语音透传', () => {

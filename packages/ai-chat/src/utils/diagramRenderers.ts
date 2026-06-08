@@ -21,6 +21,8 @@ const cacheGet = (key: string): string | undefined => {
 };
 const cacheSet = (key: string, svg: string) => {
   svgCache.set(key, svg);
+  // LRU 淘汰：Map 迭代顺序即插入顺序（ES2015 规范保证），keys().next() 取到最旧键；
+  // cacheGet 命中时会 delete+set 把热键移到末尾，故此处淘汰的恒为最久未访问项。
   if (svgCache.size > CACHE_MAX) svgCache.delete(svgCache.keys().next().value!);
 };
 
