@@ -709,6 +709,68 @@ describe('AiChat 交互块回传端到端', () => {
   });
 });
 
+describe('AiChat 顶部 header', () => {
+  const req = () => vi.fn(async () => new ReadableStream());
+
+  it('默认不传 header 相关：不渲染标题栏节点', () => {
+    const w = mount(AiChat, { props: { request: req() } });
+    expect(w.find('.aix-ai-chat__header').exists()).toBe(false);
+  });
+
+  it('传 headerTitle：渲染标题栏并展示标题文本', () => {
+    const w = mount(AiChat, { props: { request: req(), headerTitle: 'AI助手' } });
+    const header = w.find('.aix-ai-chat__header');
+    expect(header.exists()).toBe(true);
+    expect(header.find('.aix-ai-chat__header-title').text()).toBe('AI助手');
+  });
+
+  it('header-extra slot：右侧渲染自定义内容（如关闭按钮）', () => {
+    const w = mount(AiChat, {
+      props: { request: req(), headerTitle: 'AI助手' },
+      slots: { 'header-extra': '<button class="biz-close">x</button>' },
+    });
+    expect(w.find('.aix-ai-chat__header .biz-close').exists()).toBe(true);
+  });
+
+  it('header slot：完全覆盖默认标题栏内容', () => {
+    const w = mount(AiChat, {
+      props: { request: req() },
+      slots: { header: '<div class="biz-header">自定义头</div>' },
+    });
+    const header = w.find('.aix-ai-chat__header');
+    expect(header.exists()).toBe(true);
+    expect(header.find('.biz-header').text()).toBe('自定义头');
+    // 完全覆盖时不应再渲染内置标题节点
+    expect(header.find('.aix-ai-chat__header-title').exists()).toBe(false);
+  });
+
+  it('header 具名插槽不被当作块插槽透传给 BubbleList', () => {
+    // header/header-icon/header-extra 属 AiChat 保留插槽，不应出现在块插槽穿透路径
+    const w = mount(AiChat, {
+      props: { request: req(), headerTitle: 'AI助手' },
+      slots: { 'header-extra': '<button class="biz-close">x</button>' },
+    });
+    // 仅渲染于 header 区域一次，BubbleList（空态为 Welcome）内不出现
+    expect(w.findAll('.biz-close').length).toBe(1);
+  });
+});
+
+describe('AiChat 欢迎页插槽透传', () => {
+  it('welcome-title/description/icon 透传到 Welcome 内部具名插槽（支持富文本标题）', () => {
+    const w = mount(AiChat, {
+      props: { request: vi.fn(async () => new ReadableStream()) },
+      slots: {
+        'welcome-icon': '<span class="biz-wicon">🤖</span>',
+        'welcome-title': '我是 <em class="biz-brand">AI试题助手</em>',
+        'welcome-description': '<span class="biz-wdesc">告诉我你的想法</span>',
+      },
+    });
+    expect(w.find('.aix-welcome__title .biz-brand').text()).toBe('AI试题助手');
+    expect(w.find('.aix-welcome__icon .biz-wicon').exists()).toBe(true);
+    expect(w.find('.aix-welcome__description .biz-wdesc').exists()).toBe(true);
+  });
+});
+
 describe('AiChat 语音透传', () => {
   const fakeRecognizer = () => {
     let ctx: VoiceRecognizerCtx | null = null;

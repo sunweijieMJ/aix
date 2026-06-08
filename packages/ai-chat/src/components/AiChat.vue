@@ -1,7 +1,26 @@
 <template>
   <div :class="[ns.b(), ns.is('actions-hover', actionsTrigger === 'hover')]">
+    <!-- 可选标题栏：传 headerTitle/headerIcon 或提供 header* 任一插槽时渲染。
+         默认布局为 [图标] 标题 …… [extra]；header slot 可完全覆盖。关闭等交互由业务填 header-extra。 -->
+    <div v-if="hasHeader" :class="ns.e('header')">
+      <slot name="header">
+        <span v-if="headerIcon || $slots['header-icon']" :class="ns.e('header-icon')">
+          <slot name="header-icon"><img :src="headerIcon" alt="" /></slot>
+        </span>
+        <span :class="ns.e('header-title')">{{ headerTitle }}</span>
+        <span v-if="$slots['header-extra']" :class="ns.e('header-extra')">
+          <slot name="header-extra" />
+        </span>
+      </slot>
+    </div>
     <div :class="ns.e('body')">
       <Welcome v-if="messages.length === 0" :title="welcomeTitle" :description="welcomeDescription">
+        <!-- 透传 Welcome 的图标/标题/描述具名插槽，供业务做品牌图标与富文本标题（如局部主色着色）。 -->
+        <template v-if="$slots['welcome-icon']" #icon><slot name="welcome-icon" /></template>
+        <template v-if="$slots['welcome-title']" #title><slot name="welcome-title" /></template>
+        <template v-if="$slots['welcome-description']" #description>
+          <slot name="welcome-description" />
+        </template>
         <template v-if="prompts?.length || $slots['welcome-extra']" #extra>
           <Prompts v-if="prompts?.length" :items="prompts" @select="onPromptSelect" />
           <slot name="welcome-extra" />
@@ -96,6 +115,10 @@ export interface AiChatProps {
   blockRenderers?: BlockRenderers;
   /** 欢迎页快捷问题，点击后以其 label 作为消息自动发送 */
   prompts?: PromptItem[];
+  /** 顶部标题栏标题文案；传入（或提供 header* 插槽）时渲染标题栏，默认不渲染 */
+  headerTitle?: string;
+  /** 顶部标题栏图标图片地址（可用 header-icon 具名插槽覆盖） */
+  headerIcon?: string;
   /** 欢迎页标题（空消息态展示） */
   welcomeTitle?: string;
   /** 欢迎页描述文案（空消息态展示） */
@@ -177,10 +200,32 @@ const ns = useNamespace('ai-chat');
 const config = useAiChatConfig();
 const slots = useSlots();
 
-// AiChat 自身消费 welcome-extra/content/footer；其余具名插槽透传给 BubbleList（最终落到块渲染器内部 slot）。
-const AICHAT_RESERVED_SLOTS = ['welcome-extra', 'content', 'footer'];
+// AiChat 自身消费的保留插槽（标题栏 + 欢迎/内容/底部）；其余具名插槽透传给 BubbleList（最终落到块渲染器内部 slot）。
+const AICHAT_RESERVED_SLOTS = [
+  'header',
+  'header-icon',
+  'header-extra',
+  'welcome-icon',
+  'welcome-title',
+  'welcome-description',
+  'welcome-extra',
+  'content',
+  'footer',
+];
 const blockSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !AICHAT_RESERVED_SLOTS.includes(n)),
+);
+
+// 标题栏渲染条件：传入 headerTitle/headerIcon，或提供 header/header-icon/header-extra 任一插槽
+const hasHeader = computed(
+  () =>
+    !!(
+      props.headerTitle ||
+      props.headerIcon ||
+      slots.header ||
+      slots['header-icon'] ||
+      slots['header-extra']
+    ),
 );
 
 // 受控模式：父组件可用 v-model:messages 接管消息列表（持久化 / 外部清空 / 跨组件共享）。
@@ -349,6 +394,46 @@ defineExpose({
   height: 100%;
   min-height: 0;
   background-color: var(--aix-colorBgLayout, var(--aix-colorBgContainer));
+
+  /* 可选标题栏：底部细分隔线，左图标 + 标题，右侧 extra（关闭等）靠边 */
+  &__header {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--aix-sizeXS);
+    padding: var(--aix-paddingSM) var(--aix-padding);
+    border-bottom: 1px solid var(--aix-colorBorderSecondary);
+  }
+
+  &__header-icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+
+    img {
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  &__header-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--aix-colorTextHeading);
+    font-size: var(--aix-fontSize);
+    font-weight: var(--aix-fontWeightStrong);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__header-extra {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--aix-sizeXS);
+  }
 
   &__body {
     display: flex;
