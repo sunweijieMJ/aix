@@ -27,6 +27,11 @@ describe('loadMarkdownEngine（装配引擎）', () => {
     expect(engine!.codeRenderers.fence).toBeTypeOf('function');
   });
 
+  it('mermaid 可用时 diagramRenderers 含 fence:mermaid（由 setup.ts 全局 mock 提供）', async () => {
+    const engine = await loadMarkdownEngine();
+    expect(engine!.diagramRenderers['fence:mermaid']).toBeTypeOf('function');
+  });
+
   it('结果被缓存：重复调用返回同一引擎实例', async () => {
     const a = await loadMarkdownEngine();
     const b = await loadMarkdownEngine();

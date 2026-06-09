@@ -24,13 +24,10 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
     expect(off.find('.aix-markdown').classes()).not.toContain('is-streaming');
   });
 
-  it('块级公式 $$...$$ 渲染为 KaTeX', async () => {
-    const w = mount(MarkdownRenderer, { props: { content: '$$E=mc^2$$' } });
-    await vi.waitFor(() => expect(w.html()).toContain('katex'));
-  });
-
-  it('\\[...\\] 定界符公式（归一化后）渲染为 KaTeX', async () => {
-    const w = mount(MarkdownRenderer, { props: { content: '\\[ E=mc^2 \\]' } });
+  // 集成层只验证「数学渲染器已接入渲染链」；$$..$$ 与 \[..\] 两种定界符各取一例，
+  // 后者顺带覆盖归一化已接线（归一化函数本身的细节断言在 normalizeMathDelimiters.test.ts）。
+  it.each([['$$E=mc^2$$'], ['\\[ E=mc^2 \\]']])('数学公式 %s 渲染为 KaTeX', async (content) => {
+    const w = mount(MarkdownRenderer, { props: { content } });
     await vi.waitFor(() => expect(w.html()).toContain('katex'));
   });
 
@@ -129,14 +126,7 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
     expect(w.find('.aix-md-image').exists()).toBe(false);
   });
 
-  it('```mermaid 围栏（非流式）渲染为图表 SVG', async () => {
-    const w = mount(MarkdownRenderer, {
-      props: { content: '```mermaid\ngraph TD\n  A --> B\n```' },
-    });
-    await vi.waitFor(() => expect(w.find('.aix-md-mermaid svg').exists()).toBe(true));
-    expect(w.find('pre').exists()).toBe(false);
-  });
-
+  // 非流式 mermaid → SVG 的纯净态由下方流式用例的「流式结束后成图」尾段一并覆盖，故不再单列。
   it('流式中 ```mermaid 围栏维持代码块逐字可见，流式结束后成图', async () => {
     const content = '```mermaid\ngraph TD\n  A --> B\n```';
     const w = mount(MarkdownRenderer, { props: { content, streaming: true } });
