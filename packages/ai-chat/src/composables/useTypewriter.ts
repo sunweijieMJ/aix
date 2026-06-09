@@ -10,6 +10,12 @@ export interface TypewriterOptions {
   interval?: number;
   /** 是否启用，默认 true；false 时直接同步显示。支持响应式（ref / getter），便于随状态开关。 */
   enabled?: MaybeRefOrGetter<boolean>;
+  /**
+   * 逐字显示追平当前源文本时触发。注意：流式下源持续增长，打字机每追平一次都会触发，
+   * 源再增长后会在下次追平再次触发——最终一次（流结束 + 追平）即「整段打字完成」。
+   * 关闭打字机（enabled→false，立即全显）也视为一次完成。
+   */
+  onComplete?: () => void;
 }
 
 /** 取本帧步长：固定值直接返回；区间 [min,max] 内取随机整数（至少 1，min/max 顺序容错）。 */
@@ -22,8 +28,16 @@ function resolveStep(step: number | [number, number]): number {
 
 export function useTypewriter(source: Ref<string>, options: TypewriterOptions = {}) {
   // 默认 [1,3] 随机步进（均值≈2），比固定步长更接近真人打字节奏；传 number 可固定步长。
-  const { step = [1, 3] as [number, number], interval = 30, enabled = true } = options;
+  const { step = [1, 3] as [number, number], interval = 30, enabled = true, onComplete } = options;
   const isEnabled = () => toValue(enabled);
+  // 已触发 complete 的源长度：避免同一长度重复触发；源被替换（重置）时复位为 -1 以便重新触发。
+  let lastCompletedLen = -1;
+  const fireComplete = (len: number) => {
+    if (len > 0 && len !== lastCompletedLen) {
+      lastCompletedLen = len;
+      onComplete?.();
+    }
+  };
   // 初始取 source 当前快照（而非空串）：打字机只对「挂载后产生的增量」逐字。
   // 否则虚拟列表（virtua）滚动导致 Bubble 卸载又重新挂载时，displayed 重置为空会把
   // 已完整的历史消息从头重播一遍（用户可见 bug：滚回某条消息又重新逐字输出一遍）。
@@ -45,13 +59,18 @@ export function useTypewriter(source: Ref<string>, options: TypewriterOptions = 
     if (!target.startsWith(displayed.value)) {
       displayed.value = '';
       shownChars = [];
+      lastCompletedLen = -1; // 源已替换：复位完成标记，新内容可再次触发 complete
     }
     if (shownChars.length >= targetChars.length) {
       stop();
+      fireComplete(targetChars.length);
       return;
     }
     displayed.value = targetChars.slice(0, shownChars.length + resolveStep(step)).join('');
-    if ([...displayed.value].length >= targetChars.length) stop();
+    if ([...displayed.value].length >= targetChars.length) {
+      stop();
+      fireComplete(targetChars.length);
+    }
   };
 
   // 确保逐帧定时器在运行：timer 一旦启动就持续运行、每帧读取最新 source 追赶。
@@ -80,6 +99,7 @@ export function useTypewriter(source: Ref<string>, options: TypewriterOptions = 
     if (!en) {
       stop();
       displayed.value = source.value;
+      fireComplete([...source.value].length); // 关闭打字机=立即全显，视为一次完成
     } else if (displayed.value !== source.value) {
       ensureRunning();
     }

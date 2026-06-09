@@ -80,6 +80,17 @@ export interface BubbleContentInfo {
 }
 
 /**
+ * 打字机细粒度配置：Bubble / BubbleList 的 `typing` prop 除布尔外可传配置对象，
+ * 透传给底层 useTypewriter 控制逐字节奏。
+ */
+export interface BubbleTypingConfig {
+  /** 每帧追加字符数：number 固定步长 / `[min, max]` 区间内随机，默认 `[1, 3]` */
+  step?: number | [number, number];
+  /** 帧间隔 ms，默认 30 */
+  interval?: number;
+}
+
+/**
  * 气泡 Props（跨组件共享：BubbleList 解析、RoleConfig、AiChat roles 均引用，故置于 types.ts）
  */
 export interface BubbleProps {
@@ -103,8 +114,11 @@ export interface BubbleProps {
   contentRender?: (blocks: ContentBlock[], info: BubbleContentInfo) => unknown;
   /** 虚拟列表 / block-action 回传所用的消息 key（通常为消息 id） */
   itemKey?: string | number;
-  /** 打字机效果：开启后内容逐字显示（适合流式回复中的 AI 气泡），默认 false */
-  typing?: boolean;
+  /**
+   * 打字机效果：`true` 用默认节奏逐字显示；传配置对象 `{ step, interval }` 细化节奏；
+   * 默认 `false`（不逐字）。适合流式回复中的 AI 气泡。
+   */
+  typing?: boolean | BubbleTypingConfig;
   /** block 渲染器注册表：块类型 → 组件，用于扩展新块类型或覆盖内置 text/reasoning 渲染 */
   blockRenderers?: BlockRenderers;
   /** 是否允许内联编辑（仅对 role==='user' 的气泡生效），默认 false */

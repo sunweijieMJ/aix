@@ -10,16 +10,13 @@
           :role="(item as ChatMessage).role"
           :status="(item as ChatMessage).status"
           :loading="(item as ChatMessage).status === 'loading'"
-          :typing="
-            typing &&
-            streamedIds.has((item as ChatMessage).id) &&
-            (item as ChatMessage).status !== 'abort'
-          "
+          :typing="resolveTyping(item as ChatMessage)"
           :editable="editable && (item as ChatMessage).role === 'user'"
           :block-renderers="resolveBlockRenderers(item as ChatMessage)"
           @retry="emit('retry', (item as ChatMessage).id)"
           @block-action="emit('block-action', $event)"
           @edit="emit('edit', (item as ChatMessage).id, $event)"
+          @typing-complete="emit('typing-complete', (item as ChatMessage).id)"
         >
           <template v-if="$slots.content" #content="slotProps">
             <slot name="content" :item="item as ChatMessage" v-bind="slotProps" />
@@ -56,6 +53,7 @@ import type {
   BubbleProps,
   BlockRenderers,
   BlockActionPayload,
+  BubbleTypingConfig,
 } from '../types';
 import type { ShouldFollow } from '../composables/useAutoScroll';
 
@@ -70,8 +68,11 @@ export interface BubbleListProps {
   shouldFollow?: ShouldFollow;
   /** 列表最大高度（CSS 值），默认 '100%'；超出内部滚动 */
   maxHeight?: string;
-  /** 全局打字机开关：开启后流式更新中（status==='updating'）的气泡逐字显示，默认 false */
-  typing?: boolean;
+  /**
+   * 全局打字机开关：开启后流式更新中（status==='updating'）的气泡逐字显示，默认 false。
+   * 传配置对象 `{ step, interval }` 可细化逐字节奏（透传给各气泡的打字机）。
+   */
+  typing?: boolean | BubbleTypingConfig;
   /** 块渲染器注册表：透传给各 Bubble，与 roles 内的 blockRenderers 合并（role 级更具体，优先） */
   blockRenderers?: BlockRenderers;
   /** 是否允许用户气泡内联编辑，透传给各 Bubble（仅 user 角色生效） */
@@ -84,6 +85,8 @@ export interface BubbleListEmits {
   (e: 'block-action', payload: BlockActionPayload): void;
   /** 某条用户消息编辑保存，携带消息 id 与新文本 */
   (e: 'edit', id: string, text: string): void;
+  /** 某条消息逐字显示完毕，携带消息 id（流式打字机追平末尾时触发） */
+  (e: 'typing-complete', id: string): void;
 }
 </script>
 
@@ -127,6 +130,14 @@ const { scrollState, unreadCount, computeState, scrollToBottom, follow, observeC
 const resolveBubbleProps = (item: ChatMessage): Partial<BubbleProps> => {
   const cfg = props.roles?.[item.role];
   return typeof cfg === 'function' ? cfg(item) : (cfg ?? {});
+};
+
+// 解析单条气泡的 typing：仅对「本会话流式过且未中止」的消息开启；
+// 列表级 typing 为配置对象时透传配置（细化节奏），为 true 时传 true。
+const resolveTyping = (item: ChatMessage): boolean | BubbleTypingConfig => {
+  const active = !!props.typing && streamedIds.has(item.id) && item.status !== 'abort';
+  if (!active) return false;
+  return typeof props.typing === 'object' ? props.typing : true;
 };
 
 // 合并 list 级 blockRenderers 与 role 级（role 级更具体，优先）；Bubble 内部再叠加内置默认。

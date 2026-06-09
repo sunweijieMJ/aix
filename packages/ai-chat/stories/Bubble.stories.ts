@@ -55,6 +55,42 @@ export const Typing: Story = {
   }),
 };
 
+/**
+ * TypingRhythm：`typing` 除布尔外可传配置对象 `{ step, interval }` 细化逐字节奏；
+ * 并监听 `typing-complete`（逐字追平后触发），可用于动画结束再渲染操作条等。
+ */
+export const TypingRhythm: Story = {
+  render: () => ({
+    components: { Bubble },
+    setup() {
+      const full =
+        '这段回复以更快的节奏（每帧 4 字、间隔 16ms）逐字输出，打完后触发 typing-complete。';
+      const blocks = ref([textBlock('')]);
+      const done = ref(false);
+      let i = 0;
+      const timer = setInterval(() => {
+        i += 3;
+        blocks.value = [textBlock(full.slice(0, i))];
+        if (i >= full.length) clearInterval(timer);
+      }, 60);
+      return { blocks, done };
+    },
+    template: `
+      <div>
+        <Bubble
+          :content="blocks"
+          :typing="{ step: 4, interval: 16 }"
+          status="updating"
+          @typing-complete="done = true"
+        />
+        <p style="margin-top:8px;color:var(--aix-colorTextTertiary);font-size:12px">
+          typing-complete：{{ done ? '已触发 ✅' : '未触发' }}
+        </p>
+      </div>
+    `,
+  }),
+};
+
 /** Variants：并排展示 filled / outlined / borderless / shadow 四种样式 */
 export const Variants: Story = {
   render: () => ({

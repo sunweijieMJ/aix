@@ -37,6 +37,7 @@
         @retry="onReload"
         @block-action="onBlockAction"
         @edit="onEditMessage"
+        @typing-complete="emit('typing-complete', $event)"
       >
         <!-- 透传气泡内容作用域 slot：使用方提供时覆盖默认 Markdown 渲染 -->
         <template v-if="$slots.content" #content="slotProps">
@@ -186,6 +187,8 @@ export interface AiChatEmits {
   (e: 'edit', payload: { id: string; text: string }): void;
   /** AI 回复赞/踩反馈变化，携带 id 与值（null 取消），供业务持久化 */
   (e: 'feedback', payload: { id: string; value: MessageFeedback | null }): void;
+  /** 某条 AI 消息逐字显示完毕，携带消息 id（流式打字机追平末尾时触发） */
+  (e: 'typing-complete', id: string): void;
 }
 </script>
 

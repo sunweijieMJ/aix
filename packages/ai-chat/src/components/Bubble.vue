@@ -44,6 +44,7 @@
                   :info="info"
                   :typing="typing"
                   :on-block-action="handleBlockAction"
+                  @typing-complete="handleTypingComplete"
                 >
                   <!-- 透传消费方提供的「非保留」具名插槽（约定 <块类型>-<内部slot>）给块渲染器，
                        由其映射到内部组件对应 slot。v-for 仅遍历实际存在的插槽，不产生幽灵插槽。 -->
@@ -90,6 +91,8 @@ export interface BubbleEmits {
   (e: 'block-action', payload: { messageKey: string | number; action: BlockAction }): void;
   /** 用户消息内联编辑保存，携带新文本（由 AiChat 调 onEdit） */
   (e: 'edit', text: string): void;
+  /** 某文本块逐字显示完毕（携带所属消息 key），供上层在动画结束后再渲染操作条等 */
+  (e: 'typing-complete', payload: { messageKey: string | number }): void;
 }
 </script>
 
@@ -123,6 +126,9 @@ const emit = defineEmits<BubbleEmits>();
 // 交互渲染器经统一回调上抛动作；补齐所属消息 key 后向上转发，由 AiChat 落到 useChat.updateBlock。
 const handleBlockAction = (action: BlockAction) =>
   emit('block-action', { messageKey: props.itemKey ?? '', action });
+
+// 块渲染器（TextBlock）逐字打完上抛 → 补齐所属消息 key 后向上转发
+const handleTypingComplete = () => emit('typing-complete', { messageKey: props.itemKey ?? '' });
 
 const ns = useNamespace('bubble');
 const { t } = useLocale(locale);

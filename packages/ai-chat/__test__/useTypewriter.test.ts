@@ -174,4 +174,62 @@ describe('useTypewriter', () => {
     expect(displayed.value.length).toBe(7); // 2 + max(5)
     rnd.mockRestore();
   });
+
+  describe('onComplete', () => {
+    it('逐字追平源文本时触发一次，追平后继续推进不重复触发', async () => {
+      const source = ref('');
+      const onComplete = vi.fn();
+      useTypewriter(source, { step: 2, interval: 10, onComplete });
+      source.value = 'abcd';
+      await nextTick();
+      vi.advanceTimersByTime(10); // 2 字符，未追平
+      expect(onComplete).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(10); // 4 字符，追平
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(100); // 已追平，不再重复
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    it('源继续增长再次追平时再次触发（按长度重新武装）', async () => {
+      const source = ref('');
+      const onComplete = vi.fn();
+      useTypewriter(source, { step: 10, interval: 10, onComplete });
+      source.value = 'abc';
+      await nextTick();
+      vi.advanceTimersByTime(10);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      source.value = 'abcdef';
+      await nextTick();
+      vi.advanceTimersByTime(10);
+      expect(onComplete).toHaveBeenCalledTimes(2);
+    });
+
+    it('源被整体替换后即便长度相同也能再次触发（完成标记复位）', async () => {
+      const source = ref('');
+      const onComplete = vi.fn();
+      useTypewriter(source, { step: 100, interval: 10, onComplete });
+      source.value = 'hello';
+      await nextTick();
+      vi.advanceTimersByTime(10);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+      source.value = 'world'; // 同长度但无公共前缀 → 替换重置，可再次触发
+      await nextTick();
+      vi.advanceTimersByTime(10);
+      expect(onComplete).toHaveBeenCalledTimes(2);
+    });
+
+    it('关闭打字机（enabled→false）立即全显也视为一次完成', async () => {
+      const source = ref('');
+      const enabled = ref(true);
+      const onComplete = vi.fn();
+      useTypewriter(source, { step: 1, interval: 10, enabled, onComplete });
+      source.value = 'abcdef';
+      await nextTick();
+      vi.advanceTimersByTime(10); // 逐帧途中，未完成
+      expect(onComplete).not.toHaveBeenCalled();
+      enabled.value = false;
+      await nextTick();
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+  });
 });
