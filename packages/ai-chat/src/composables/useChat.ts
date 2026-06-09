@@ -2,7 +2,7 @@ import { ref, computed, onScopeDispose, type Ref } from 'vue';
 import type { ChatMessage, ContentBlock, ParsedChunk, MessageFeedback } from '../types';
 import { genMsgId, genBlockId } from '../utils/helpers';
 import { flatParseChunk } from '../utils/parsers';
-import { xStream } from './useXStream';
+import { xStream, sseStream, type SSEChunk } from './useXStream';
 
 export interface UseChatRequestCtx {
   messages: ChatMessage[];
@@ -13,10 +13,17 @@ export interface UseChatOptions {
   /** 发起请求，返回字节流或 Response */
   request: (ctx: UseChatRequestCtx) => Promise<ReadableStream<Uint8Array> | Response>;
   /**
-   * 解析每一行流数据为增量。默认解析**扁平结构** `data: {"delta" | "content": "..."}`
-   * 与 `data: [DONE]`；对接 OpenAI 等**嵌套结构**（`choices[0].delta.content`）需自定义此函数。
+   * 流分帧模式，默认 `'sse'`：按 SSE 规范以空行（`\n\n`）切事件、解析 event/data/id，
+   * parseChunk 收到结构化 `SSEChunk`（覆盖 OpenAI/DeepSeek/Anthropic 等主流 LLM）。
+   * `'line'`：按 `\n` 切行、parseChunk 收到原始字符串（ndjson / 纯文本流）。
    */
-  parseChunk?: (raw: string) => ParsedChunk;
+  streamMode?: 'sse' | 'line';
+  /**
+   * 把单个流单元解析为增量。`sse` 模式收 `SSEChunk`（默认 `flatParseChunk` 读 `data` 顶层
+   * `delta` / `content`，识别 `[DONE]`）；对接 OpenAI/Anthropic 用 `openaiParseChunk` /
+   * `anthropicParseChunk`，或经 `createParseChunk` 自定义。`line` 模式收原始行字符串。
+   */
+  parseChunk?: ((chunk: SSEChunk) => ParsedChunk) | ((line: string) => ParsedChunk);
   /**
    * 渲染消息转换器：把「数据层原始消息」映射为「UI 渲染消息」，解耦后端格式与展示形状。
    * 默认不设置（渲染消息即原始消息，零开销）。
@@ -81,6 +88,7 @@ function appendDelta(msg: ChatMessage, blockType: 'text' | 'reasoning', delta: s
 export function useChat(options: UseChatOptions): UseChatReturn {
   const {
     request,
+    streamMode = 'sse',
     parseChunk = flatParseChunk,
     parser,
     defaultMessages = [],
@@ -91,6 +99,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     retryInterval = 1000,
     streamTimeout = 0,
   } = options;
+  // 按模式选分帧器并统一调用签名：sse → SSEChunk，line → string
+  const callParse = parseChunk as (unit: SSEChunk | string) => ParsedChunk;
   // 内部 ref 为消息状态唯一来源（mutate 即响应式）；受控由 AiChat 层用引用桥接到 v-model。
   const messages = ref<ChatMessage[]>([...defaultMessages]);
   // 渲染消息：无 parser 时直接复用 messages 引用（零开销、完全等价）；有则按 parser 映射。
@@ -201,9 +211,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           const stream = res instanceof Response ? res.body : res;
           if (!stream) throw new Error('[ai-chat] request 未返回可读流');
           armWatchdog(); // 拿到流即起表，覆盖「连首个 chunk 都不来」的卡死
-          for await (const line of xStream(stream, signal)) {
-            armWatchdog(); // 每收到一行重置：只看数据间隔，不限制总时长
-            const { delta, blockType = 'text', block, done } = parseChunk(line);
+          const frames =
+            streamMode === 'line' ? xStream(stream, signal) : sseStream(stream, signal);
+          for await (const unit of frames) {
+            armWatchdog(); // 每收到一个单元重置：只看数据间隔，不限制总时长
+            const { delta, blockType = 'text', block, done } = callParse(unit);
             if (delta) {
               // 类型已收窄为 'text' | 'reasoning'；此守卫是运行时兜底——parseChunk 由使用方提供，
               // 运行时可能违反类型返回非文本块类型，此时丢弃 delta 而非把脏数据塞进 appendDelta。

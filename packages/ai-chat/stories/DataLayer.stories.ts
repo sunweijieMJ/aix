@@ -41,7 +41,7 @@ function streamOpenAI(text: string, signal?: AbortSignal): ReadableStream<Uint8A
           return;
         }
         if (i >= text.length) {
-          c.enqueue(enc.encode('data: [DONE]\n'));
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
           clearInterval(timer);
           try {
             c.close();
@@ -53,7 +53,7 @@ function streamOpenAI(text: string, signal?: AbortSignal): ReadableStream<Uint8A
         const slice = text.slice(i, i + 3);
         i += 3;
         c.enqueue(
-          enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: slice } }] })}\n`),
+          enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: slice } }] })}\n\n`),
         );
       }, 16);
     },
@@ -258,6 +258,8 @@ function deepseekRequest() {
 export const DifyProtocol: Story = {
   args: {
     request: difyRequest(),
+    // difyParseChunk 走逐行字符串协议（自行剥 data: 前缀），用 line 模式
+    streamMode: 'line',
     parseChunk: difyParseChunk,
     welcomeTitle: '对接 Dify（真实连接）',
     welcomeDescription: '经 Vite proxy 直连 Dify /chat-messages 流式接口，手动发送即可对话',

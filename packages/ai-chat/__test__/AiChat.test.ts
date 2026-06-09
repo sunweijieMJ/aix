@@ -28,8 +28,8 @@ function once(text: string): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   return new ReadableStream({
     start(c) {
-      c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: text })}\n`));
-      c.enqueue(enc.encode('data: [DONE]\n'));
+      c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: text })}\n\n`));
+      c.enqueue(enc.encode('data: [DONE]\n\n'));
       c.close();
     },
   });
@@ -41,8 +41,8 @@ function multi(deltas: string[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   return new ReadableStream({
     start(c) {
-      for (const d of deltas) c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: d })}\n`));
-      c.enqueue(enc.encode('data: [DONE]\n'));
+      for (const d of deltas) c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: d })}\n\n`));
+      c.enqueue(enc.encode('data: [DONE]\n\n'));
       c.close();
     },
   });
@@ -231,7 +231,7 @@ describe('AiChat', () => {
       Promise.resolve(
         new ReadableStream<Uint8Array>({
           start(c) {
-            c.enqueue(new TextEncoder().encode('data: {"delta":"部分"}\n'));
+            c.enqueue(new TextEncoder().encode('data: {"delta":"部分"}\n\n'));
             // 不 close，模拟挂起的长连接；abort 时以 AbortError 结束
             signal.addEventListener('abort', () =>
               c.error(new DOMException('Aborted', 'AbortError')),
@@ -418,7 +418,7 @@ describe('AiChat', () => {
       Promise.resolve(
         new ReadableStream<Uint8Array>({
           start(c) {
-            c.enqueue(new TextEncoder().encode('data: {"delta":"部分"}\n'));
+            c.enqueue(new TextEncoder().encode('data: {"delta":"部分"}\n\n'));
             signal.addEventListener('abort', () =>
               c.error(new DOMException('Aborted', 'AbortError')),
             );

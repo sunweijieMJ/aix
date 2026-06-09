@@ -1,45 +1,33 @@
 import type { ParsedChunk } from '../types';
+import type { SSEChunk } from '../composables/useXStream';
 
 /**
- * SSE 行解析工厂与内置预设。
+ * SSE 事件单元解析工厂与内置预设。
  *
- * 把「SSE 协议层解析」（剥 `data:` 前缀、识别结束信号、JSON.parse）与「取文本增量 / 判定块类型」
- * 拆开：协议层在工厂内统一处理，业务只需通过 pickDelta / pickBlockType 适配不同后端的报文结构。
- * 对接 OpenAI 等嵌套格式从「手写一段 JSON 遍历」降为「传一个预设」。
+ * 协议层（`\n\n` 事件边界、`data:` 前缀、注释行、event/id 字段）已由 `sseStream` 处理，
+ * 这里只负责「结构化事件单元 → 增量」：从 `chunk.data`（必要时 `chunk.event`）取文本增量、
+ * 判定块类型、识别结束信号。对接不同后端只需替换预设或传 pickDelta / pickBlockType。
  */
-
-/**
- * 从 `data: ...` 行中取出 payload（去前缀与首尾空白）；非 data 行原样 trim。
- * SSE 注释/心跳行（以 `:` 开头，如 `: keep-alive`，规范中用于保活）忽略为空——
- * 否则会落入下方「非 JSON 视为纯文本」分支，把心跳文本拼进正文。
- * 注意：这会使「纯文本流且某行恰以 `:` 开头」的内容被丢弃，属可接受取舍
- * （本解析器默认即 SSE 语义：已识别 `data:` / `[DONE]`）。
- */
-function extractData(raw: string): string {
-  if (raw.startsWith('data:')) return raw.slice(5).trim();
-  if (raw.startsWith(':')) return '';
-  return raw.trim();
-}
 
 export interface CreateParseChunkOptions {
-  /** 流结束信号，默认 '[DONE]' */
+  /** 流结束信号（匹配 chunk.data），默认 '[DONE]' */
   doneSignal?: string;
-  /** 从已解析的 JSON 报文中取文本增量；返回 undefined / '' 表示本行无文本增量 */
+  /** 从已解析的 JSON 报文中取文本增量；返回 undefined / '' 表示本事件无文本增量 */
   pickDelta?: (json: unknown) => string | undefined;
   /** 判定该增量归属的流式块类型（text / reasoning），默认 text */
   pickBlockType?: (json: unknown) => 'text' | 'reasoning' | undefined;
 }
 
 /**
- * 通用 SSE parseChunk 工厂：负责协议层（`data:` 前缀、`doneSignal`、JSON.parse 容错），
- * 报文结构适配交给 pickDelta / pickBlockType。非 JSON 行回退为整行文本增量（兼容纯文本流）。
+ * 通用 SSE 事件解析工厂：负责 `doneSignal` 识别与 JSON.parse 容错，
+ * 报文结构适配交给 pickDelta / pickBlockType。非 JSON 的 data 回退为整行文本增量（兼容纯文本流）。
  */
 export function createParseChunk(
   options: CreateParseChunkOptions = {},
-): (raw: string) => ParsedChunk {
+): (chunk: SSEChunk) => ParsedChunk {
   const { doneSignal = '[DONE]', pickDelta, pickBlockType } = options;
-  return (raw: string): ParsedChunk => {
-    const data = extractData(raw);
+  return (chunk: SSEChunk): ParsedChunk => {
+    const data = chunk.data;
     if (!data) return {};
     if (data === doneSignal) return { done: true };
     let json: unknown;
@@ -60,16 +48,16 @@ export function createParseChunk(
 }
 
 /**
- * 扁平结构预设（库默认）：读取顶层 `delta` / `content`，结束信号 `[DONE]`。
+ * 扁平结构预设（库默认）：读取 data 中顶层 `delta` / `content`，结束信号 `[DONE]`。
  * 形如 `data: {"delta":"..."}` 或 `data: {"content":"..."}`。
  */
-export const flatParseChunk: (raw: string) => ParsedChunk = createParseChunk();
+export const flatParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChunk();
 
 /**
  * OpenAI 兼容预设：读取 `choices[0].delta.content`；
  * 若仅有 `reasoning_content`（思维链增量）则归入 reasoning 块。结束信号 `[DONE]`。
  */
-export const openaiParseChunk: (raw: string) => ParsedChunk = createParseChunk({
+export const openaiParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChunk({
   pickDelta: (json) => {
     const d = (json as { choices?: { delta?: { content?: string; reasoning_content?: string } }[] })
       ?.choices?.[0]?.delta;
@@ -81,3 +69,25 @@ export const openaiParseChunk: (raw: string) => ParsedChunk = createParseChunk({
     return d?.reasoning_content && !d?.content ? 'reasoning' : 'text';
   },
 });
+
+/**
+ * Anthropic（Claude Messages SSE）兼容预设：**按 `event` 字段路由**（SSE 事件单元的价值体现）。
+ * `content_block_delta` 中 `text_delta` 归 text、`thinking_delta` 归 reasoning；
+ * `message_stop` 判定结束；其余事件（message_start / ping 等）不产出增量。
+ */
+export function anthropicParseChunk(chunk: SSEChunk): ParsedChunk {
+  if (chunk.event === 'message_stop') return { done: true };
+  if (chunk.event === 'content_block_delta') {
+    try {
+      const d = (
+        JSON.parse(chunk.data) as { delta?: { type?: string; text?: string; thinking?: string } }
+      )?.delta;
+      if (d?.type === 'thinking_delta' && d.thinking)
+        return { delta: d.thinking, blockType: 'reasoning' };
+      if (d?.text) return { delta: d.text, blockType: 'text' };
+    } catch {
+      /* 非 JSON 的 data 忽略 */
+    }
+  }
+  return {};
+}

@@ -101,7 +101,9 @@ import type { UseAttachmentsOptions } from '../composables/useAttachments';
 export interface AiChatProps {
   /** 发起请求，返回字节流或 Response（必填）；透传给 useChat */
   request: UseChatOptions['request'];
-  /** 单行流数据 → 增量解析器，默认扁平 SSE；对接 OpenAI 可传 openaiParseChunk。透传给 useChat */
+  /** 流分帧模式（'sse' 默认 / 'line'）；透传给 useChat */
+  streamMode?: UseChatOptions['streamMode'];
+  /** 流单元 → 增量解析器，默认扁平 SSE；对接 OpenAI/Anthropic 传 openaiParseChunk/anthropicParseChunk。透传给 useChat */
   parseChunk?: UseChatOptions['parseChunk'];
   /** 渲染消息转换器（解耦后端格式与展示形状，1→1，须保留消息 id）；透传给 useChat */
   parser?: UseChatOptions['parser'];
@@ -280,6 +282,7 @@ const {
   setFeedback,
 } = useChat({
   request: props.request,
+  streamMode: props.streamMode,
   parseChunk: props.parseChunk,
   parser: props.parser,
   defaultMessages: props.defaultMessages,

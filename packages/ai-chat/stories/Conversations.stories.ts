@@ -65,7 +65,7 @@ function streamText(text: string, signal?: AbortSignal): ReadableStream<Uint8Arr
       let i = 0;
       const timer = setInterval(() => {
         if (signal?.aborted || i >= text.length) {
-          if (i >= text.length) c.enqueue(enc.encode('data: [DONE]\n'));
+          if (i >= text.length) c.enqueue(enc.encode('data: [DONE]\n\n'));
           clearInterval(timer);
           try {
             c.close();
@@ -74,7 +74,7 @@ function streamText(text: string, signal?: AbortSignal): ReadableStream<Uint8Arr
           }
           return;
         }
-        c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: text.slice(i, i + 3) })}\n`));
+        c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: text.slice(i, i + 3) })}\n\n`));
         i += 3;
       }, 16);
     },

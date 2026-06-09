@@ -13,9 +13,9 @@ function manualStream() {
   const enc = new TextEncoder();
   return {
     stream,
-    push: (d: string) => ctrl.enqueue(enc.encode(`data: ${JSON.stringify({ delta: d })}\n`)),
+    push: (d: string) => ctrl.enqueue(enc.encode(`data: ${JSON.stringify({ delta: d })}\n\n`)),
     done: () => {
-      ctrl.enqueue(enc.encode('data: [DONE]\n'));
+      ctrl.enqueue(enc.encode('data: [DONE]\n\n'));
       ctrl.close();
     },
   };
@@ -25,8 +25,8 @@ function completedStream(deltas: string[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   return new ReadableStream({
     start(c) {
-      for (const d of deltas) c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: d })}\n`));
-      c.enqueue(enc.encode('data: [DONE]\n'));
+      for (const d of deltas) c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: d })}\n\n`));
+      c.enqueue(enc.encode('data: [DONE]\n\n'));
       c.close();
     },
   });

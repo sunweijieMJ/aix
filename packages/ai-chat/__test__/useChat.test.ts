@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { nextTick, effectScope, toRaw } from 'vue';
 import { useChat } from '../src/composables/useChat';
 import type { UseChatRequestCtx } from '../src/composables/useChat';
+import { anthropicParseChunk } from '../src/utils/parsers';
 import type { ChatMessage, ContentBlock } from '../src/types';
 import {
   messageText,
@@ -12,12 +13,13 @@ import {
   attachmentBlock,
 } from '../src/utils/helpers';
 
+// 按 SSE 规范用空行（\n\n）分隔事件
 function sseStream(deltas: string[]): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   return new ReadableStream({
     start(c) {
-      for (const d of deltas) c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: d })}\n`));
-      c.enqueue(enc.encode('data: [DONE]\n'));
+      for (const d of deltas) c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: d })}\n\n`));
+      c.enqueue(enc.encode('data: [DONE]\n\n'));
       c.close();
     },
   });
@@ -38,7 +40,7 @@ describe('useChat', () => {
     expect(isLoading.value).toBe(false);
   });
 
-  it('自定义 parseChunk 生效', async () => {
+  it('自定义 parseChunk 生效（line 模式：按行喂字符串）', async () => {
     const request = vi.fn(
       async () =>
         new ReadableStream<Uint8Array>({
@@ -50,10 +52,40 @@ describe('useChat', () => {
     );
     const { messages, onSend } = useChat({
       request,
+      streamMode: 'line',
       parseChunk: (raw) => ({ delta: raw }),
     });
     await onSend('go');
     expect(messageText(messages.value[1])).toBe('AB');
+  });
+
+  it('SSE event 字段全链路路由（Anthropic 风格：event + data 关联）', async () => {
+    const enc = new TextEncoder();
+    const request = vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            // 每个事件含 event 行 + data 行，靠 \n\n 分隔——单 \n 切行模型无法关联两者
+            c.enqueue(
+              enc.encode(
+                'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"你"}}\n\n',
+              ),
+            );
+            c.enqueue(
+              enc.encode(
+                'event: content_block_delta\ndata: {"delta":{"type":"text_delta","text":"好"}}\n\n',
+              ),
+            );
+            c.enqueue(enc.encode('event: message_stop\ndata: {}\n\n'));
+            c.close();
+          },
+        }),
+    );
+    const { messages, onSend } = useChat({ request, parseChunk: anthropicParseChunk });
+    await onSend('hi');
+    await nextTick();
+    expect(messageText(messages.value[1])).toBe('你好');
+    expect(messages.value[1].status).toBe('success');
   });
 
   it('request 抛错时 ai 消息标记 error', async () => {
@@ -70,7 +102,7 @@ describe('useChat', () => {
       async ({ signal }: { signal: AbortSignal }) =>
         new ReadableStream<Uint8Array>({
           start(c) {
-            c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n'));
+            c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n\n'));
             signal.addEventListener('abort', () =>
               c.error(new DOMException('Aborted', 'AbortError')),
             );
@@ -233,7 +265,7 @@ describe('useChat', () => {
       async ({ signal }: { signal: AbortSignal }) =>
         new ReadableStream<Uint8Array>({
           start(c) {
-            c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n'));
+            c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n\n'));
             signal.addEventListener('abort', () =>
               c.error(new DOMException('Aborted', 'AbortError')),
             );
@@ -261,7 +293,7 @@ describe('useChat', () => {
       streamSignal = signal;
       return new ReadableStream<Uint8Array>({
         start(c) {
-          c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n'));
+          c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n\n'));
           signal.addEventListener('abort', () =>
             c.error(new DOMException('Aborted', 'AbortError')),
           );
@@ -296,6 +328,7 @@ describe('useChat', () => {
     let phase: 'r' | 't' = 'r';
     const { messages, onSend } = useChat({
       request,
+      streamMode: 'line',
       parseChunk: (raw) => {
         const line = raw.trim();
         if (line === 'S') return { block: sourcesBlock([{ title: 'src' }]) };
@@ -318,7 +351,7 @@ describe('useChat', () => {
         // 第一个请求：发出首个 chunk 后挂起，abort 时 error 结束
         return new ReadableStream<Uint8Array>({
           start(c) {
-            c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n'));
+            c.enqueue(new TextEncoder().encode('data: {"delta":"x"}\n\n'));
             signal.addEventListener('abort', () =>
               c.error(new DOMException('Aborted', 'AbortError')),
             );
@@ -600,6 +633,7 @@ describe('useChat.setFeedback', () => {
     );
     const { messages, onSend } = useChat({
       request,
+      streamMode: 'line',
       // 违法：blockType 非 'text'|'reasoning' 却带 delta
       parseChunk: (raw) => ({ delta: raw, blockType: 'bogus' as never }),
     });

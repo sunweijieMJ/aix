@@ -48,6 +48,123 @@ export async function* xStream(
   }
 }
 
+/** SSE 模式下 parseChunk 收到的结构化事件单元（无状态纯数据） */
+export interface SSEChunk {
+  /** 事件类型（如 Anthropic 的 content_block_delta），用于按事件路由 */
+  event?: string;
+  /** 事件数据（同一事件多行 data 以 \n 拼接后的结果） */
+  data: string;
+  /** 事件 id（Last-Event-ID 续传锚点） */
+  id?: string;
+  /** 服务端建议的重连间隔（ms） */
+  retry?: number;
+}
+
+/**
+ * 按 SSE 规范把字节流解析为结构化事件：以**空行**为事件边界，事件内按
+ * `field: value` 解析 event/data/id/retry（多行 data 以 \n 拼接、跳过 `:` 注释行、
+ * 冒号后仅去一个空格、剔除行尾 \r）。仅当事件含 data 时才产出（纯注释/仅 event 不派发）。
+ * 中断语义与 xStream 一致：abort 后不再产出、不 flush 残留事件。
+ */
+export async function* sseStream(
+  readableStream: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
+): AsyncGenerator<SSEChunk> {
+  const reader = readableStream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  // 当前事件累加器
+  let dataLines: string[] = [];
+  let event: string | undefined;
+  let id: string | undefined;
+  let retry: number | undefined;
+  let hasData = false;
+  const reset = () => {
+    dataLines = [];
+    event = undefined;
+    id = undefined;
+    retry = undefined;
+    hasData = false;
+  };
+  const buildEvent = (): SSEChunk | null => {
+    if (!hasData) return null; // 无 data 字段的事件（纯注释 / 仅 event）不派发，遵循 SSE 规范
+    const chunk: SSEChunk = { data: dataLines.join('\n') };
+    if (event !== undefined) chunk.event = event;
+    if (id !== undefined) chunk.id = id;
+    if (retry !== undefined) chunk.retry = retry;
+    return chunk;
+  };
+  // 解析单个非空行：注释行（: 开头）忽略，其余按 field[: value] 累加进当前事件
+  const parseLine = (line: string) => {
+    if (line.startsWith(':')) return; // SSE 注释/心跳行
+    const idx = line.indexOf(':');
+    const field = idx === -1 ? line : line.slice(0, idx);
+    let value = idx === -1 ? '' : line.slice(idx + 1);
+    if (value.startsWith(' ')) value = value.slice(1); // 冒号后仅去一个空格
+    switch (field) {
+      case 'data':
+        dataLines.push(value);
+        hasData = true;
+        break;
+      case 'event':
+        event = value;
+        break;
+      case 'id':
+        id = value;
+        break;
+      case 'retry': {
+        const n = Number(value);
+        if (Number.isInteger(n)) retry = n;
+        break;
+      }
+      // 其余字段忽略
+    }
+  };
+
+  const onAbort = () => {
+    reader.cancel().catch(() => {});
+  };
+  if (signal) {
+    if (signal.aborted) onAbort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  }
+  try {
+    while (true) {
+      if (signal?.aborted) return;
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf('\n')) !== -1) {
+        let line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (line.endsWith('\r')) line = line.slice(0, -1); // 兼容 CRLF
+        if (line === '') {
+          // 空行 = 事件边界
+          const ev = buildEvent();
+          reset();
+          if (ev) yield ev;
+        } else {
+          parseLine(line);
+        }
+        if (signal?.aborted) return;
+      }
+    }
+    // 中断后不 flush 残留（与 xStream 的语义一致）
+    if (signal?.aborted) return;
+    // flush：末尾未被空行终结的事件（含无任何换行的单行残片）
+    buffer += decoder.decode();
+    let tail = buffer;
+    if (tail.endsWith('\r')) tail = tail.slice(0, -1);
+    if (tail !== '') parseLine(tail);
+    const ev = buildEvent();
+    if (ev) yield ev;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+    reader.releaseLock();
+  }
+}
+
 /** 组合式封装：响应式收集流数据 + 取消 */
 export function useXStream() {
   const lines = ref<string[]>([]);

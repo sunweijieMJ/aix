@@ -47,7 +47,12 @@ export {
 export * from './composables';
 
 // SSE parseChunk 工厂与内置预设（扁平 / OpenAI 兼容）
-export { createParseChunk, flatParseChunk, openaiParseChunk } from './utils/parsers';
+export {
+  createParseChunk,
+  flatParseChunk,
+  openaiParseChunk,
+  anthropicParseChunk,
+} from './utils/parsers';
 export type { CreateParseChunkOptions } from './utils/parsers';
 
 // 带中间件 / 超时的 fetch 包装（鉴权注入、响应校验、超时复用）

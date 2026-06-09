@@ -54,7 +54,7 @@ const request = ({ messages, signal }: { messages: ChatMessage[]; signal: AbortS
 </template>
 ```
 
-`AiChat` 默认解析**扁平结构**流（`data: {"delta" | "content": "..."}` / `data: [DONE]`，读取顶层字段）——这并非 OpenAI 的嵌套格式（`choices[0].delta.content`），对接 OpenAI 请传入自定义 `parseChunk`（见下文）。`AiChat` 还支持 `v-model:messages` 受控消息列表，并通过 `defineExpose` 暴露 `messages` / `isLoading` / `onSend` / `onReload` / `abort` / `setMessages`，可用模板 ref 获取。
+`AiChat` 默认按 **SSE 事件**解析流（`streamMode: 'sse'`，空行切事件 + 解析 `event`/`data`/`id`），并以**扁平结构**预设读取 `data` 顶层 `delta` / `content`。对接 OpenAI / Anthropic 等只需换内置预设 `openaiParseChunk` / `anthropicParseChunk`，或自定义 `parseChunk`（见下文）。`AiChat` 还支持 `v-model:messages` 受控消息列表，并通过 `defineExpose` 暴露 `messages` / `isLoading` / `onSend` / `onReload` / `abort` / `setMessages`，可用模板 ref 获取。
 
 ## 全局注册（插件）
 
@@ -92,18 +92,35 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 
 ## 自定义协议 / 换模型
 
-默认解析的是**扁平结构** SSE（顶层 `delta` / `content`），并非 OpenAI 的嵌套格式。对接 OpenAI 或其他协议时，只需替换 `parseChunk`（接口不变）：
+默认 `streamMode: 'sse'`：按 SSE 规范以**空行（`\n\n`）切事件**、解析 `event` / `data` / `id` 字段，`parseChunk` 收到结构化 `SSEChunk`（`{ event?, data, id?, retry? }`）。换模型/协议只需替换 `parseChunk` 或换内置预设：
+
+- `flatParseChunk`（默认）：读 `data` 顶层 `delta` / `content`，识别 `[DONE]`
+- `openaiParseChunk`：读 `choices[0].delta.content`，`reasoning_content` 归 reasoning 块
+- `anthropicParseChunk`：**按 `event` 字段路由**（`content_block_delta` 的 text/thinking 分流、`message_stop` 结束）——SSE 事件单元让 `event` 与 `data` 正确关联
 
 ```ts
-import { useChat } from '@aix/ai-chat';
+import { useChat, openaiParseChunk, createParseChunk } from '@aix/ai-chat';
 
-const { messages, onSend, isLoading, abort } = useChat({
+// 直接用预设
+const a = useChat({ request, parseChunk: openaiParseChunk });
+
+// 或用工厂适配自定义字段名 / 结束信号
+const b = useChat({
   request,
-  // 每一行流数据 → 增量；返回 { delta?, done? }
-  parseChunk: (raw) => {
-    if (raw === 'event: end') return { done: true };
-    return { delta: raw }; // 例如：纯文本行协议
-  },
+  parseChunk: createParseChunk({
+    doneSignal: '<END>',
+    pickDelta: (json) => (json as { text?: string }).text,
+  }),
+});
+```
+
+**纯文本 / ndjson 流**（非 SSE）用 `streamMode: 'line'`：按 `\n` 切行、`parseChunk` 收到原始字符串：
+
+```ts
+const c = useChat({
+  request,
+  streamMode: 'line',
+  parseChunk: (line) => (line === 'event: end' ? { done: true } : { delta: line }),
 });
 ```
 
@@ -162,8 +179,9 @@ const roles = {
 
 | Hook | 说明 |
 |------|------|
-| `useChat(options)` | 消息流托管。返回 `messages` / `isLoading` / `onSend` / `onReload` / `abort` / `setMessages`。`options`: `request` / `parseChunk?` / `defaultMessages?` |
-| `xStream(stream, signal?)` | 将 `ReadableStream<Uint8Array>` 解码并按行（`\n`）切分的异步生成器，支持中断 |
+| `useChat(options)` | 消息流托管。返回 `messages` / `isLoading` / `onSend` / `onReload` / `abort` / `setMessages`。`options`: `request` / `streamMode?`（`'sse'` 默认 / `'line'`）/ `parseChunk?` / `defaultMessages?` |
+| `sseStream(stream, signal?)` | 按 SSE 规范把字节流解析为结构化事件（空行切事件 + `event`/`data`/`id` 字段）的异步生成器，支持中断；`useChat` 的 `sse` 模式（默认）用它 |
+| `xStream(stream, signal?)` | 将 `ReadableStream<Uint8Array>` 解码并按行（`\n`）切分的异步生成器，支持中断；`useChat` 的 `line` 模式用它 |
 | `useXStream()` | `xStream` 的响应式封装：`lines` / `isStreaming` / `error` / `start` / `cancel` |
 | `useTypewriter(source, options?)` | 打字机逐字渲染（保留前缀），返回 `displayed` / `stop`。已内置到 `Bubble`（见 `typing` prop），`options.enabled` 支持响应式开关 |
 | `useAutoScroll(scrollEl, options?)` | 滚动状态机 + 跟随策略（own-message / new-message / streaming 三分流） |

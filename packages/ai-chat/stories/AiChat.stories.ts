@@ -75,14 +75,14 @@ function streamSSE(
           return;
         }
         if (i >= text.length) {
-          c.enqueue(enc.encode('data: [DONE]\n'));
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
           clearInterval(timer);
           finish();
           return;
         }
         const slice = text.slice(i, i + chunkSize);
         i += chunkSize;
-        c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: slice })}\n`));
+        c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: slice })}\n\n`));
       }, stepMs);
       signal?.addEventListener('abort', () => {
         clearInterval(timer);
@@ -494,6 +494,8 @@ export const WithHistory: Story = {
 export const GeneratingProcess: Story = {
   args: {
     request: thinkingThenAnswerRequest(),
+    // 该 mock 与自定义 thinkingParseChunk 走逐行协议，用 line 模式按 \n 切行
+    streamMode: 'line',
     parseChunk: thinkingParseChunk,
     welcomeTitle: '试题助手（生成中演示）',
     welcomeDescription: '发送任意消息，观察「思考过程时间线 → 文本答案」的完整生成过程',
