@@ -50,6 +50,16 @@ describe('AiChat 贯通 allowHtml / markdownRenderers', () => {
     expect(w.find('div.card').exists()).toBe(false);
   });
 
+  it('运行时变更 markdown 级配置：告警一次提示快照语义', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const w = mount(AiChat, { props: { request, defaultMessages: [aiMsg('hi')] } });
+    await w.setProps({ allowHtml: true });
+    await w.setProps({ allowHtml: false });
+    const calls = warnSpy.mock.calls.filter((c) => String(c[0]).includes('挂载时快照'));
+    expect(calls).toHaveLength(1); // 仅告警一次，不逐次刷屏
+    warnSpy.mockRestore();
+  });
+
   it('markdownRenderers 透传 → 自定义渲染器生效', async () => {
     const w = mount(AiChat, {
       props: {

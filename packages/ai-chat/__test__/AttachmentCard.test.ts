@@ -47,6 +47,17 @@ describe('AttachmentCard', () => {
     expect(w.attributes('title')).toContain('网络超时');
   });
 
+  it('缩略图加载失败时回退文件类型图标；换 url 后重置重新加载', async () => {
+    const img = { ...base, name: 'p.png', mime: 'image/png', url: '/f/p.png', status: 'done' };
+    const w = mount(AttachmentCard, { props: { item: img } });
+    await w.find('img').trigger('error');
+    expect(w.find('img').exists()).toBe(false);
+    expect(w.find('.aix-attachment-card__thumb-fallback').exists()).toBe(true);
+    // 换源（如重试上传得到新 url）后恢复 img，给新地址重新加载的机会
+    await w.setProps({ item: { ...img, url: '/f/p2.png' } });
+    expect(w.find('img').exists()).toBe(true);
+  });
+
   it('图片 mime 但无 url 时降级渲染图标而非 img', () => {
     const w = mount(AttachmentCard, {
       props: { item: { ...base, name: 'p.png', mime: 'image/png', status: 'done' } },

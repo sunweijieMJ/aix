@@ -5,7 +5,22 @@
   >
     <!-- ===== 图片卡：68×68 正方形缩略图（adx file-card-image：width/height 68）===== -->
     <template v-if="isImage">
-      <img :class="ns.e('thumb')" :src="item.url" :alt="item.name" />
+      <img
+        v-if="!thumbError"
+        :class="ns.e('thumb')"
+        :src="item.url"
+        :alt="item.name"
+        @error="thumbError = true"
+      />
+      <!-- 缩略图加载失败（url 失效/404/跨域）时回退文件类型图标，与文件卡视觉一致 -->
+      <span
+        v-else
+        :class="ns.e('thumb-fallback')"
+        :style="{ color: typeMeta.colorVar }"
+        aria-hidden="true"
+      >
+        <component :is="typeMeta.icon" />
+      </span>
       <!-- 名称悬浮条（adx 图片卡名称省略，悬浮底部） -->
       <span :class="ns.e('name')">{{ item.name }}</span>
       <!-- uploading / error 时缩略图上盖 mask（adx file-img-mask） -->
@@ -93,7 +108,7 @@ export interface AttachmentCardEmits {
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { Refresh, Close } from '@aix/icons';
 import { locale } from '../locale';
@@ -106,6 +121,15 @@ const ns = useNamespace('attachment-card');
 const { t } = useLocale(locale);
 
 const isImage = computed(() => !!props.item.url && (props.item.mime ?? '').startsWith('image/'));
+
+// 缩略图加载失败标记；换源（如重试上传得到新 url）后重置，给新地址重新加载的机会
+const thumbError = ref(false);
+watch(
+  () => props.item.url,
+  () => {
+    thumbError.value = false;
+  },
+);
 
 /** 文件类型展示元数据（图标 + 颜色变量） */
 const typeMeta = computed(() => getFileTypeMeta(props.item.name, props.item.mime));
@@ -250,6 +274,20 @@ const errorTitle = computed(() => {
       object-fit: cover;
     }
 
+    // 缩略图加载失败的兜底图标位（居中文件类型图标，色值由内联 style 按类型给出）
+    .aix-attachment-card__thumb-fallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+
+      svg {
+        width: 32px;
+        height: 32px;
+      }
+    }
+
     // 名称悬浮底部省略条（adx 图片卡名称浮层）
     .aix-attachment-card__name {
       position: absolute;
@@ -257,9 +295,11 @@ const errorTitle = computed(() => {
       bottom: 0;
       left: 0;
       padding: 2px var(--aix-paddingXXS);
-      background: linear-gradient(transparent, rgb(0 0 0 / 0.55));
 
-      // 盖在黑色渐变上的文字恒白：colorWhite（亮色=白，暗色无翻转）而非 colorTextLight（暗色会翻黑）
+      // 遮罩走 colorBgMask 令牌（亮/暗主题均为黑系半透明），随主题统一调整
+      background: linear-gradient(transparent, var(--aix-colorBgMask));
+
+      // 盖在深色渐变上的文字恒白：colorWhite（亮色=白，暗色无翻转）而非 colorTextLight（暗色会翻黑）
       color: var(--aix-colorWhite);
       font-size: var(--aix-fontSizeSM);
       line-height: 1.4;
@@ -272,9 +312,9 @@ const errorTitle = computed(() => {
     position: absolute;
     align-items: center;
     justify-content: center;
-    background: rgb(0 0 0 / 0.5);
+    background: var(--aix-colorBgMask); // 黑系半透明遮罩令牌，亮/暗主题统一
 
-    // 固定黑半透明 mask 上文字恒白：用 colorWhite（暗色不翻转），勿用 colorTextLight
+    // 深色半透明 mask 上文字恒白：用 colorWhite（暗色不翻转），勿用 colorTextLight
     color: var(--aix-colorWhite);
     font-size: var(--aix-fontSize);
     inset: 0;

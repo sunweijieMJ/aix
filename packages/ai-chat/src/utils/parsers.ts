@@ -86,7 +86,12 @@ export function anthropicParseChunk(chunk: SSEChunk): ParsedChunk {
         return { delta: d.thinking, blockType: 'reasoning' };
       if (d?.text) return { delta: d.text, blockType: 'text' };
     } catch {
-      /* 非 JSON 的 data 忽略 */
+      // content_block_delta 的 data 必为 JSON，解析失败说明流已损坏；
+      // 告警（截断展示）而非静默丢弃，避免坏流导致内容缺失却无从排障。
+      console.warn(
+        '[ai-chat] anthropicParseChunk 收到无法解析的 content_block_delta data，该事件已跳过：',
+        chunk.data.slice(0, 200),
+      );
     }
   }
   return {};

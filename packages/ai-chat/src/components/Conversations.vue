@@ -123,12 +123,18 @@ const startRename = (item: ConversationItem) => {
   nextTick(() => editInputRef.value?.focus());
 };
 
-const confirmRename = () => {
+const confirmRename = (e: Event) => {
   if (editingId.value == null) return; // enter 确认后 blur 再次触发时已为 null，安全跳过
   const id = editingId.value;
   const label = editingLabel.value.trim();
+  // 空标签是无效提交：Enter 时保持编辑态等用户修正（不静默吞掉重命名意图）；
+  // blur（点击他处离开）则按取消处理，恢复原名。
+  if (!label) {
+    if (e.type === 'blur') editingId.value = null;
+    return;
+  }
   editingId.value = null;
-  if (label) emit('rename', id, label);
+  emit('rename', id, label);
 };
 
 const cancelRename = () => {

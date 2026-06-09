@@ -67,7 +67,16 @@ const createWebSpeechRecognizer = (): VoiceRecognizer | null => {
     rec.onerror = (e) => ctx.onError(e);
     rec.onend = () => ctx.onEnd();
     rec.start();
-    return { stop: () => rec.stop() };
+    return {
+      stop: () => {
+        rec.stop();
+        // 显式断开事件回调，释放 rec 与闭包的相互引用（频繁重启场景下避免旧实例延迟回收）；
+        // 迟到回调本就被上层会话令牌丢弃，置空不改变行为。
+        rec.onresult = null;
+        rec.onerror = null;
+        rec.onend = null;
+      },
+    };
   };
 };
 

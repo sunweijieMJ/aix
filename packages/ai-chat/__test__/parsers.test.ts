@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   createParseChunk,
   flatParseChunk,
@@ -69,6 +69,12 @@ describe('parsers', () => {
     });
     it('其他事件（如 ping / message_start）不产出增量', () => {
       expect(anthropicParseChunk(sse('{}', { event: 'ping' }))).toEqual({});
+    });
+    it('content_block_delta 携带非法 JSON：跳过该事件并告警（不静默丢弃）', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(anthropicParseChunk(sse('not-json', { event: 'content_block_delta' }))).toEqual({});
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      warnSpy.mockRestore();
     });
   });
 

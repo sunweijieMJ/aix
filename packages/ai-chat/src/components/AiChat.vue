@@ -280,6 +280,20 @@ provideAiChatConfig({
   mdPlugins: props.mdPlugins ?? config.value.mdPlugins,
 });
 
+// 开发期护栏：上面三项 markdown 级配置是 setup 时快照，运行时改 props 不会重新 provide，
+// 子树渲染静默维持旧配置、极难排查。检测到变更时告警一次（与未注册渲染器告警同风格）。
+let warnedStaticMdConfig = false;
+watch(
+  () => [props.markdownRenderers, props.allowHtml, props.mdPlugins],
+  () => {
+    if (warnedStaticMdConfig) return;
+    warnedStaticMdConfig = true;
+    console.warn(
+      '[ai-chat] markdownRenderers / allowHtml / mdPlugins 为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
+    );
+  },
+);
+
 const {
   messages,
   parsedMessages,

@@ -150,6 +150,12 @@ describe('useVoiceInput', () => {
     };
     (sr.onresult as (e: unknown) => void)?.(fakeEvent);
     expect(onFinal).toHaveBeenCalledWith('你好');
+    // stop 后显式断开事件回调，释放旧实例与闭包的相互引用
+    v.stop();
+    expect(sr.stop).toHaveBeenCalled();
+    expect(sr.onresult).toBeNull();
+    expect(sr.onerror).toBeNull();
+    expect(sr.onend).toBeNull();
   });
 
   it('stop 后立即 start：旧会话迟到的 onEnd/onResult 不影响新会话', () => {

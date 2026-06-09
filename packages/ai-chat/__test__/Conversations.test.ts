@@ -50,7 +50,7 @@ describe('Conversations', () => {
     expect(w.emitted('update:activeKey')).toBeUndefined();
   });
 
-  it('重命名为空白时不 emit rename', async () => {
+  it('重命名为空白时不 emit rename：Enter 保持编辑态待修正，blur 按取消恢复原名', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const renameBtn = w
       .findAll('.aix-conversations__item')[0]
@@ -58,8 +58,15 @@ describe('Conversations', () => {
     await renameBtn.trigger('click');
     const input = w.find('.aix-conversations__edit-input');
     await input.setValue('   ');
+    // Enter 提交空白：不 emit，且编辑态保持（不静默吞掉重命名意图）
     await input.trigger('keydown', { key: 'Enter' });
     expect(w.emitted('rename')).toBeUndefined();
+    expect(w.find('.aix-conversations__edit-input').exists()).toBe(true);
+    // blur 离开：按取消处理，关闭编辑态、显示原名
+    await input.trigger('blur');
+    expect(w.emitted('rename')).toBeUndefined();
+    expect(w.find('.aix-conversations__edit-input').exists()).toBe(false);
+    expect(w.findAll('.aix-conversations__item')[0].text()).toContain('关于梵高');
   });
 
   it('groupable=true 渲染分组标题', () => {
