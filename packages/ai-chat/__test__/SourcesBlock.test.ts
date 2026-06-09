@@ -17,6 +17,12 @@ const block = sourcesBlock([
 ]) as Extract<ContentBlock, { type: 'sources' }>;
 
 describe('SourcesBlock', () => {
+  it('空 items 时不渲染任何内容（不显示「来源 0」空标题）', () => {
+    const empty = sourcesBlock([]) as Extract<ContentBlock, { type: 'sources' }>;
+    const w = mount(SourcesBlock, { props: { block: empty } });
+    expect(w.find('.aix-sources-block').exists()).toBe(false);
+  });
+
   it('渲染标题、数量与全部来源项', () => {
     const w = mount(SourcesBlock, { props: { block } });
     expect(w.find('.aix-sources-block__title').text()).toContain('引用来源');

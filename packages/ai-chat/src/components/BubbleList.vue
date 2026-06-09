@@ -4,7 +4,7 @@
       <Virtualizer ref="virtualizerRef" :data="items" #default="{ item }">
         <Bubble
           :key="(item as ChatMessage).id"
-          v-bind="resolveBubbleProps(item as ChatMessage)"
+          v-bind="resolveBubble(item as ChatMessage)"
           :item-key="(item as ChatMessage).id"
           :content="(item as ChatMessage).content"
           :role="(item as ChatMessage).role"
@@ -12,7 +12,6 @@
           :loading="(item as ChatMessage).status === 'loading'"
           :typing="resolveTyping(item as ChatMessage)"
           :editable="editable && (item as ChatMessage).role === 'user'"
-          :block-renderers="resolveBlockRenderers(item as ChatMessage)"
           @retry="emit('retry', (item as ChatMessage).id)"
           @block-action="emit('block-action', $event)"
           @edit="emit('edit', (item as ChatMessage).id, $event)"
@@ -127,9 +126,15 @@ const { scrollState, unreadCount, computeState, scrollToBottom, follow, observeC
     shouldFollow: props.shouldFollow,
   });
 
-const resolveBubbleProps = (item: ChatMessage): Partial<BubbleProps> => {
+// 单次解析角色级 props 并合入块渲染器（避免此前 resolveBubbleProps 被调两次 / 角色函数执行两次）。
+// 块渲染器合并优先级：list 级 < role 级（role 更具体）；Bubble 内部再叠加内置默认。
+const resolveBubble = (item: ChatMessage): Partial<BubbleProps> => {
   const cfg = props.roles?.[item.role];
-  return typeof cfg === 'function' ? cfg(item) : (cfg ?? {});
+  const roleProps = typeof cfg === 'function' ? cfg(item) : (cfg ?? {});
+  return {
+    ...roleProps,
+    blockRenderers: { ...props.blockRenderers, ...roleProps.blockRenderers },
+  };
 };
 
 // 解析单条气泡的 typing：仅对「本会话流式过且未中止」的消息开启；
@@ -139,12 +144,6 @@ const resolveTyping = (item: ChatMessage): boolean | BubbleTypingConfig => {
   if (!active) return false;
   return typeof props.typing === 'object' ? props.typing : true;
 };
-
-// 合并 list 级 blockRenderers 与 role 级（role 级更具体，优先）；Bubble 内部再叠加内置默认。
-const resolveBlockRenderers = (item: ChatMessage): BlockRenderers => ({
-  ...props.blockRenderers,
-  ...resolveBubbleProps(item).blockRenderers,
-});
 
 // 记录「本会话曾进入流式（status==='updating'）」的消息 id：使其在 status 转为 success 后
 // 仍保持打字机开启，直到 typewriter 把剩余字符追平自停，避免数据快于打字机时的结尾跳显。

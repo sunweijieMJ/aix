@@ -63,7 +63,6 @@ import type { PendingAttachment } from '../composables/useAttachments';
 
 export interface AttachmentsPanelProps {
   items: PendingAttachment[];
-  accept?: string;
 }
 
 export interface AttachmentsPanelEmits {

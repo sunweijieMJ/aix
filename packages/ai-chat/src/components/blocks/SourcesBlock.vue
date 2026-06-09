@@ -1,5 +1,6 @@
 <template>
-  <div :class="ns.b()">
+  <!-- 空列表不渲染（与 AttachmentBlock 一致），避免显示「来源 0」的空标题 -->
+  <div v-if="block.items.length" :class="ns.b()">
     <div :class="ns.e('title')">
       {{ t.sourcesTitle }}
       <span :class="ns.e('count')">{{ block.items.length }}</span>

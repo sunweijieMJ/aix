@@ -104,81 +104,107 @@ export function loadMarkdownEngine(
   return pending;
 }
 
+/** 数学渲染器：katex 插件已启用时按需加载 katex 库（含样式自动注入），不可用则返回空 → 公式降级文本 */
+async function loadMathRenderers(katexEnabled: boolean): Promise<MarkdownRenderers> {
+  if (!katexEnabled) return {};
+  try {
+    const katexLib = await import('katex');
+    const katex = (katexLib.default ?? katexLib) as unknown as KatexLike;
+    const renderers = createMathRenderers(katex);
+    // 自动注入 KaTeX 样式（副作用式 import）：装了 katex 即获得正确排版，无需手动引入。
+    // 打包器不支持 CSS import / SSR 等场景失败时忽略——回退为手动 `import 'katex/dist/katex.min.css'`。
+    try {
+      await import('katex/dist/katex.min.css');
+    } catch {
+      // CSS 自动注入失败：请在应用入口手动引入 katex/dist/katex.min.css
+    }
+    return renderers;
+  } catch {
+    // 插件已挂载但 katex 库不可用：math token 无渲染器 → walker 兜底降级为文本
+    return {};
+  }
+}
+
+/** 原始 HTML 渲染器：allowHtml 且 dompurify 可用时启用，否则空 → 裸 HTML 经 walker 兜底转义为文本 */
+async function loadHtmlRenderers(allowHtml: boolean): Promise<MarkdownRenderers> {
+  if (!allowHtml) return {};
+  try {
+    const purifyMod = await import('dompurify');
+    const purify = (purifyMod.default ?? purifyMod) as unknown as DomPurifyLike;
+    return createHtmlRenderers(purify);
+  } catch {
+    // 安全兜底：allowHtml 但无 dompurify → 不提供 html 渲染器，裸 HTML 经 walker 兜底转义为文本
+    console.warn(
+      '[ai-chat] allowHtml 需要 dompurify，未安装 → 原始 HTML 降级为转义文本。如需启用请安装 dompurify。',
+    );
+    return {};
+  }
+}
+
+/** 图表渲染器：mermaid 可用时启用 fence:mermaid，否则空 → mermaid 围栏维持代码块 */
+async function loadDiagramRenderers(): Promise<MarkdownRenderers> {
+  try {
+    const mermaidMod = await import('mermaid');
+    const mermaid = (mermaidMod.default ?? mermaidMod) as unknown as MermaidLike;
+    return createDiagramRenderers(mermaid);
+  } catch {
+    // 未安装 mermaid：```mermaid 围栏维持默认代码块（本身即合理展示），与 katex 缺失同样静默
+    return {};
+  }
+}
+
+/** 代码高亮渲染器：highlight.js 可用时启用通用 fence（含主题样式自动注入），否则空 → 维持纯 pre>code */
+async function loadCodeRenderers(): Promise<MarkdownRenderers> {
+  try {
+    const hljsMod = await import('highlight.js');
+    const hljs = (hljsMod.default ?? hljsMod) as unknown as HljsLike;
+    const renderers = createHighlightRenderers(hljs);
+    // 自动注入默认主题样式（副作用式 import）：装了 highlight.js 即获得配色，无需手动引入。
+    // 失败时忽略——可在应用入口手动引入任一 `highlight.js/styles/*.css` 覆盖。
+    try {
+      await import('highlight.js/styles/github.css');
+    } catch {
+      // CSS 自动注入失败：请在应用入口手动引入 highlight.js 主题样式
+    }
+    return renderers;
+  } catch {
+    // 未安装 highlight.js：代码块维持默认纯 pre>code（本身即合理展示），与 mermaid 缺失同样静默
+    return {};
+  }
+}
+
 /** 实际装配逻辑（仅经 loadMarkdownEngine 的 Promise 缓存调用） */
 async function assembleEngine(
   allowHtml: boolean,
   plugins: MarkdownItPlugin[] = [],
 ): Promise<MarkdownEngine | null> {
-  let engine: MarkdownEngine | null;
   try {
     const { md, katexEnabled } = await createMarkdownIt(allowHtml, plugins);
-    let mathRenderers: MarkdownRenderers = {};
-    if (katexEnabled) {
-      try {
-        const katexLib = await import('katex');
-        const katex = (katexLib.default ?? katexLib) as unknown as KatexLike;
-        mathRenderers = createMathRenderers(katex);
-        // 自动注入 KaTeX 样式（副作用式 import）：装了 katex 即获得正确排版，无需手动引入。
-        // 打包器不支持 CSS import / SSR 等场景失败时忽略——回退为手动 `import 'katex/dist/katex.min.css'`。
-        try {
-          await import('katex/dist/katex.min.css');
-        } catch {
-          // CSS 自动注入失败：请在应用入口手动引入 katex/dist/katex.min.css
-        }
-      } catch {
-        // 插件已挂载但 katex 库不可用：math token 无渲染器 → walker 兜底降级为文本
-      }
-    }
-    let htmlRenderers: MarkdownRenderers = {};
-    if (allowHtml) {
-      try {
-        const purifyMod = await import('dompurify');
-        const purify = (purifyMod.default ?? purifyMod) as unknown as DomPurifyLike;
-        htmlRenderers = createHtmlRenderers(purify);
-      } catch {
-        // 安全兜底：allowHtml 但无 dompurify → 不提供 html 渲染器，裸 HTML 经 walker 兜底转义为文本
-        console.warn(
-          '[ai-chat] allowHtml 需要 dompurify，未安装 → 原始 HTML 降级为转义文本。如需启用请安装 dompurify。',
-        );
-      }
-    }
-    let diagramRenderers: MarkdownRenderers = {};
-    try {
-      const mermaidMod = await import('mermaid');
-      const mermaid = (mermaidMod.default ?? mermaidMod) as unknown as MermaidLike;
-      diagramRenderers = createDiagramRenderers(mermaid);
-    } catch {
-      // 未安装 mermaid：```mermaid 围栏维持默认代码块（本身即合理展示），与 katex 缺失同样静默
-    }
-    let codeRenderers: MarkdownRenderers = {};
-    try {
-      const hljsMod = await import('highlight.js');
-      const hljs = (hljsMod.default ?? hljsMod) as unknown as HljsLike;
-      codeRenderers = createHighlightRenderers(hljs);
-      // 自动注入默认主题样式（副作用式 import）：装了 highlight.js 即获得配色，无需手动引入。
-      // 失败时忽略——可在应用入口手动引入任一 `highlight.js/styles/*.css` 覆盖。
-      try {
-        await import('highlight.js/styles/github.css');
-      } catch {
-        // CSS 自动注入失败：请在应用入口手动引入 highlight.js 主题样式
-      }
-    } catch {
-      // 未安装 highlight.js：代码块维持默认纯 pre>code（本身即合理展示），与 mermaid 缺失同样静默
-    }
-    engine = {
+    // 四类可选渲染器彼此独立，并行加载缩短首帧装配延迟。
+    // 用 allSettled 而非 all：从结构上保证「互不连累」——即使某加载器意外 reject（如未来在其
+    // 内部 try 之外引入抛错），也只让该类渲染器降级为 {}，不会令整个引擎 reject 后降级为纯文本。
+    const settled = await Promise.allSettled([
+      loadMathRenderers(katexEnabled),
+      loadHtmlRenderers(allowHtml),
+      loadDiagramRenderers(),
+      loadCodeRenderers(),
+    ]);
+    const pick = (r: PromiseSettledResult<MarkdownRenderers>): MarkdownRenderers =>
+      r.status === 'fulfilled' ? r.value : {};
+    const [math, html, diagram, code] = settled;
+    return {
       md: md as unknown as MarkdownEngine['md'],
-      mathRenderers,
-      htmlRenderers,
-      diagramRenderers,
-      codeRenderers,
+      mathRenderers: pick(math),
+      htmlRenderers: pick(html),
+      diagramRenderers: pick(diagram),
+      codeRenderers: pick(code),
     };
   } catch {
     console.warn(
       '[ai-chat] 未安装 markdown-it，Markdown 渲染降级为纯文本。如需启用请安装 markdown-it。',
     );
-    engine = null;
+    return null;
   }
-  return engine;
 }
 
 /** 测试用：重置引擎缓存 */
