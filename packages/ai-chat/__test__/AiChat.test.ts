@@ -63,6 +63,22 @@ describe('AiChat', () => {
     expect(w.findAll('.aix-bubble').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('1→N 拆分：默认操作条仅末子气泡显示（去重）', async () => {
+    const request = vi.fn(async () => once('回答'));
+    // 把 ai 消息拆成两个气泡（共享同一 SSOT 消息）
+    const parser = (m: ChatMessage): ChatMessage | ChatMessage[] =>
+      m.role === 'ai' ? [{ ...m }, { ...m }] : m;
+    const w = mount(AiChat, { props: { request, parser } });
+    const ta = w.find('textarea');
+    await ta.setValue('问题');
+    await ta.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    await nextTick();
+    // user(1) + ai 拆 2 = 3 个气泡，但默认操作条只在末子气泡出现 1 次
+    expect(w.findAll('.aix-bubble').length).toBe(3);
+    expect(w.findAll('.aix-bubble-actions').length).toBe(1);
+  });
+
   it('actionsTrigger 控制消息操作显示时机：默认 always 无修饰类，hover 时加 is-actions-hover', () => {
     const request = vi.fn(async () => once('回答'));
     // 默认 always：根节点不含 is-actions-hover（操作常驻显示）

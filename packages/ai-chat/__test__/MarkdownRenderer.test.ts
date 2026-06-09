@@ -17,6 +17,13 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
     });
   });
 
+  it('streaming 时根节点加 is-streaming 修饰类（驱动流式尾光标）', () => {
+    const on = mount(MarkdownRenderer, { props: { content: 'hi', streaming: true } });
+    expect(on.find('.aix-markdown').classes()).toContain('is-streaming');
+    const off = mount(MarkdownRenderer, { props: { content: 'hi', streaming: false } });
+    expect(off.find('.aix-markdown').classes()).not.toContain('is-streaming');
+  });
+
   it('块级公式 $$...$$ 渲染为 KaTeX', async () => {
     const w = mount(MarkdownRenderer, { props: { content: '$$E=mc^2$$' } });
     await vi.waitFor(() => expect(w.html()).toContain('katex'));

@@ -598,25 +598,111 @@ describe('useChat.setFeedback', () => {
       expect(parsedMessages.value).toHaveLength(messages.value.length);
     });
 
-    it('parser 改变消息 id 时开发期 console.warn 提示（每个原始 id 仅一次）', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      // 违约：parser 重写了 id，破坏 edit/reload/块动作的 id 定位
+    it('parser 返回单个但改写 id：id 被覆盖为父 id，回写仍可命中', async () => {
+      // parser 改写 message-level id 不再破坏定位——useChat 接管 id，强制复用父 id
       const parser = (m: ChatMessage): ChatMessage => ({ ...m, id: `x-${m.id}` });
-      const { parsedMessages, onSend } = useChat({
+      const { messages, parsedMessages, onSend, setFeedback } = useChat({
         request: vi.fn(async () => sseStream(['Hi'])),
         parser,
       });
       await onSend('q');
       await nextTick();
-      // 触发 computed 求值
-      void parsedMessages.value;
-      void parsedMessages.value;
-      const idWarns = warn.mock.calls.filter(
-        (args) => typeof args[0] === 'string' && args[0].includes('parser 改变了消息 id'),
-      );
-      // 两条消息各告警一次（user + ai），重复求值不再追加
-      expect(idWarns.length).toBe(2);
-      warn.mockRestore();
+      // 渲染气泡 id === 父消息 id（parser 改的 id 被忽略）
+      expect(parsedMessages.value[1].id).toBe(messages.value[1].id);
+      // 据渲染气泡 id 回写，命中 SSOT 父消息
+      setFeedback(parsedMessages.value[1].id, 'like');
+      expect(messages.value[1].extra?.feedback).toBe('like');
+    });
+
+    describe('1→N 拆分（一条消息拆多气泡）', () => {
+      // 把 ai 消息拆成两个气泡（共享同一 SSOT 消息），user 保持单气泡
+      const splitAi = (m: ChatMessage): ChatMessage | ChatMessage[] =>
+        m.role === 'ai' ? [{ ...m }, { ...m }] : m;
+
+      it('parser 返回数组 → 拆成多气泡，首个子气泡复用父 id、其余派生', async () => {
+        const { messages, parsedMessages, onSend } = useChat({
+          request: vi.fn(async () => sseStream(['Hi'])),
+          parser: splitAi,
+        });
+        await onSend('q');
+        await nextTick();
+        // SSOT 仍是 2 条（user + ai）
+        expect(messages.value).toHaveLength(2);
+        // 渲染视图：user(1) + ai 拆 2 = 3 个气泡
+        expect(parsedMessages.value).toHaveLength(3);
+        const aiId = messages.value[1].id;
+        expect(parsedMessages.value[0].id).toBe(messages.value[0].id);
+        // O1：首个子气泡复用父 id（单→拆转换时不 remount、不闪烁），其余子气泡派生
+        expect(parsedMessages.value[1].id).toBe(aiId);
+        expect(parsedMessages.value[2].id).toBe(`${aiId}__1`);
+      });
+
+      it('拆分子气泡继承父消息 status', async () => {
+        const { messages, parsedMessages, onSend } = useChat({
+          request: vi.fn(async () => sseStream(['Hi'])),
+          parser: splitAi,
+        });
+        await onSend('q');
+        await nextTick();
+        expect(messages.value[1].status).toBe('success');
+        expect(parsedMessages.value[1].status).toBe('success');
+        expect(parsedMessages.value[2].status).toBe('success');
+      });
+
+      it('updateBlock 用派生气泡 id → 解析回父消息命中 SSOT 块', async () => {
+        const { messages, onSend, updateBlock } = useChat({
+          request: vi.fn(async () => sseStream(['Hi'])),
+          parser: splitAi,
+        });
+        await onSend('q');
+        await nextTick();
+        const aiId = messages.value[1].id;
+        const blockId = messages.value[1].content[0].id;
+        // 用派生气泡 id 回写
+        const hit = updateBlock(`${aiId}__1`, blockId, { foo: 'bar' });
+        expect(hit).toBe(true);
+        // 命中 SSOT 父消息块
+        expect((messages.value[1].content[0] as Record<string, unknown>).foo).toBe('bar');
+      });
+
+      it('onReload 用派生气泡 id → 对父消息重新发起请求', async () => {
+        const request = vi.fn(async () => sseStream(['Hi']));
+        const { messages, onReload, onSend } = useChat({ request, parser: splitAi });
+        await onSend('q');
+        await nextTick();
+        const aiId = messages.value[1].id;
+        expect(request).toHaveBeenCalledTimes(1);
+        await onReload(`${aiId}__1`);
+        await nextTick();
+        // 解析回父消息并重新发起
+        expect(request).toHaveBeenCalledTimes(2);
+      });
+
+      it('setFeedback 用派生气泡 id → 写回父消息 extra', async () => {
+        const { messages, onSend, setFeedback } = useChat({
+          request: vi.fn(async () => sseStream(['Hi'])),
+          parser: splitAi,
+        });
+        await onSend('q');
+        await nextTick();
+        const aiId = messages.value[1].id;
+        setFeedback(`${aiId}__1`, 'dislike');
+        expect(messages.value[1].extra?.feedback).toBe('dislike');
+      });
+
+      it('拆分子气泡带 extra.__sub 位置信息（供操作条去重）', async () => {
+        const { messages, parsedMessages, onSend } = useChat({
+          request: vi.fn(async () => sseStream(['Hi'])),
+          parser: splitAi,
+        });
+        await onSend('q');
+        await nextTick();
+        void messages.value;
+        expect(parsedMessages.value[1].extra?.__sub).toEqual({ index: 0, count: 2 });
+        expect(parsedMessages.value[2].extra?.__sub).toEqual({ index: 1, count: 2 });
+        // 非拆分（user，1→1）无 __sub 标记
+        expect(parsedMessages.value[0].extra?.__sub).toBeUndefined();
+      });
     });
   });
 

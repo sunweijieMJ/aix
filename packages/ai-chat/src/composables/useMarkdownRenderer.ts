@@ -10,7 +10,16 @@ import type { MarkdownRenderers, MdToken } from '../utils/markdownWalker';
  * 与 markdown-it 缺失时的整体降级风格一致（零额外体积、按需启用）。
  * markdown-it 本身缺失时抛错，由调用方降级。
  */
-async function createMarkdownIt(html: boolean) {
+/** markdown-it 插件函数（接收 md 实例 + 透传选项） */
+type MarkdownItPluginFn = (md: unknown, ...params: unknown[]) => void;
+/**
+ * markdown-it 插件入口：传插件函数本身，或 `[插件, ...选项]` 元组（透传给 `md.use`）。
+ * 用于注入**新 markdown 语法**（脚注 / 容器 / 任务列表等）——token 级 `markdownRenderers`
+ * 只能改已 tokenize 出的节点渲染、无法新增语法，故新语法须经此注入。
+ */
+export type MarkdownItPlugin = MarkdownItPluginFn | [MarkdownItPluginFn, ...unknown[]];
+
+async function createMarkdownIt(html: boolean, plugins: MarkdownItPlugin[] = []) {
   const mod = await import('markdown-it');
   const MarkdownIt = mod.default ?? mod;
   const md = new MarkdownIt({ html, linkify: true, breaks: true });
@@ -25,6 +34,17 @@ async function createMarkdownIt(html: boolean) {
     katexEnabled = true;
   } catch {
     // katex 插件不可用：保留纯 markdown 能力，不影响其它渲染
+  }
+  // 用户插件在内置（katex）之后挂载，可注入新语法 / 扩展规则。
+  // 逐个 try/catch 隔离：单个插件抛错只跳过该插件，不连累整个引擎降级为纯文本
+  // （与 katex/mermaid/dompurify 的逐项独立降级一致）。
+  for (const entry of plugins) {
+    try {
+      const [fn, ...params] = Array.isArray(entry) ? entry : [entry];
+      md.use(fn as Parameters<typeof md.use>[0], ...params);
+    } catch (err) {
+      console.warn('[ai-chat] markdown-it 插件加载失败，已跳过：', err);
+    }
   }
   return { md, katexEnabled };
 }
@@ -46,13 +66,33 @@ export interface MarkdownEngine {
 
 // 按 allowHtml 分别缓存（html:true/false 解析行为不同，不可混用同一实例）。
 // 缓存 Promise 而非值（Promise 级锁）：多实例并发首调共享同一次装配，不重复初始化
-const engineCache = new Map<boolean, Promise<MarkdownEngine | null>>();
+let engineCache = new Map<boolean, Promise<MarkdownEngine | null>>();
+// 注入插件时按「插件数组引用 + allowHtml」缓存：同一 config.mdPlugins（所有气泡共享同一引用）
+// 只装配一次、跨气泡共享；不同实例的插件集互不污染。WeakMap 随插件数组被 GC 自动回收。
+let pluginEngineCache = new WeakMap<object, Map<boolean, Promise<MarkdownEngine | null>>>();
 
 /**
  * 动态装配 markdown 引擎；未安装 markdown-it 返回 null（调用方降级纯文本）。
  * @param allowHtml 是否允许原始 HTML（启用 markdown-it html:true 并经 DOMPurify 消毒），默认 false
+ * @param plugins 注入的 markdown-it 插件（透传给 md.use）；省略则走 allowHtml 级共享缓存
  */
-export function loadMarkdownEngine(allowHtml = false): Promise<MarkdownEngine | null> {
+export function loadMarkdownEngine(
+  allowHtml = false,
+  plugins?: MarkdownItPlugin[],
+): Promise<MarkdownEngine | null> {
+  if (plugins && plugins.length > 0) {
+    let byHtml = pluginEngineCache.get(plugins);
+    if (!byHtml) {
+      byHtml = new Map();
+      pluginEngineCache.set(plugins, byHtml);
+    }
+    let pending = byHtml.get(allowHtml);
+    if (!pending) {
+      pending = assembleEngine(allowHtml, plugins);
+      byHtml.set(allowHtml, pending);
+    }
+    return pending;
+  }
   let pending = engineCache.get(allowHtml);
   if (!pending) {
     pending = assembleEngine(allowHtml);
@@ -62,10 +102,13 @@ export function loadMarkdownEngine(allowHtml = false): Promise<MarkdownEngine | 
 }
 
 /** 实际装配逻辑（仅经 loadMarkdownEngine 的 Promise 缓存调用） */
-async function assembleEngine(allowHtml: boolean): Promise<MarkdownEngine | null> {
+async function assembleEngine(
+  allowHtml: boolean,
+  plugins: MarkdownItPlugin[] = [],
+): Promise<MarkdownEngine | null> {
   let engine: MarkdownEngine | null;
   try {
-    const { md, katexEnabled } = await createMarkdownIt(allowHtml);
+    const { md, katexEnabled } = await createMarkdownIt(allowHtml, plugins);
     let mathRenderers: MarkdownRenderers = {};
     if (katexEnabled) {
       try {
@@ -121,5 +164,6 @@ async function assembleEngine(allowHtml: boolean): Promise<MarkdownEngine | null
 
 /** 测试用：重置引擎缓存 */
 export function __resetMarkdownEngineCache() {
-  engineCache.clear();
+  engineCache = new Map();
+  pluginEngineCache = new WeakMap();
 }

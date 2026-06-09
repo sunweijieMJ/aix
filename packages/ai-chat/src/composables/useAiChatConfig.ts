@@ -2,6 +2,7 @@ import { provide, inject, computed, reactive, type InjectionKey, type ComputedRe
 import type { ShouldFollow } from './useAutoScroll';
 import type { RoleConfig, BlockRenderers } from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
+import type { MarkdownItPlugin } from './useMarkdownRenderer';
 
 export interface AiChatConfig {
   /** 全局打字机开关，默认 true：开启后流式更新中的 AI 气泡逐字显示（由 AiChat 透传给 BubbleList） */
@@ -16,6 +17,8 @@ export interface AiChatConfig {
   markdownRenderers?: MarkdownRenderers;
   /** 是否允许渲染原始 HTML（经 DOMPurify 消毒），默认 false；经 AiChat 注入到 MarkdownRenderer */
   allowHtml?: boolean;
+  /** 注入的 markdown-it 插件（扩展新语法，如脚注/容器）；经 AiChat 注入到气泡内 MarkdownRenderer */
+  mdPlugins?: MarkdownItPlugin[];
 }
 
 const DEFAULT_CONFIG: AiChatConfig = { enableTyping: true };

@@ -96,6 +96,7 @@ import type {
   VoiceConfig,
 } from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
+import type { MarkdownItPlugin } from '../composables/useMarkdownRenderer';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
 
 export interface AiChatProps {
@@ -157,6 +158,12 @@ export interface AiChatProps {
    * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
    */
   allowHtml?: boolean;
+  /**
+   * 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）；注入到气泡内 MarkdownRenderer。
+   * 与 markdownRenderers 互补：插件加新 tokenization，markdownRenderers 改 token 渲染。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
+  mdPlugins?: MarkdownItPlugin[];
   /** 附件能力（opt-in），透传 Sender；不传则无任何附件 UI。视为静态配置（setup 快照） */
   attachments?: UseAttachmentsOptions;
   /** 语音输入（opt-in），透传 Sender；不传则无麦克风按钮。视为静态配置 */
@@ -267,6 +274,7 @@ provideAiChatConfig({
   ...config.value,
   markdownRenderers: { ...config.value.markdownRenderers, ...props.markdownRenderers },
   allowHtml: props.allowHtml ?? config.value.allowHtml ?? false,
+  mdPlugins: props.mdPlugins ?? config.value.mdPlugins,
 });
 
 const {
@@ -359,6 +367,9 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
     return r && r.length > 0 ? r : null;
   }
   if (item.role !== 'ai' || item.status !== 'success') return null;
+  // 1→N 拆分：默认操作条仅末子气泡显示，避免每个子气泡重复一条（函数形态由业务自控）
+  const sub = item.extra?.__sub as { index: number; count: number } | undefined;
+  if (sub && sub.index < sub.count - 1) return null;
   return a.length > 0 ? a : null;
 };
 

@@ -1,5 +1,5 @@
 <template>
-  <div :class="ns.b()">
+  <div :class="[ns.b(), ns.is('streaming', streaming)]">
     <!-- 引擎就绪：按顶层块渲染，新块经 TransitionGroup 淡入；committed 块 source 不变即不重渲染 -->
     <TransitionGroup v-if="loaded && engine" name="aix-markdown-enter">
       <MarkdownBlock
@@ -31,6 +31,11 @@ export interface MarkdownRendererProps {
   markdownRenderers?: MarkdownRenderers;
   /** 是否允许渲染原始 HTML（经 DOMPurify 消毒；未装 dompurify 则降级为转义文本），默认 false */
   allowHtml?: boolean;
+  /**
+   * 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）。视为静态配置：
+   * 同一数组引用跨气泡共享同一引擎，仅在 allowHtml 变化时随之重载。
+   */
+  mdPlugins?: MarkdownItPlugin[];
 }
 </script>
 
@@ -49,7 +54,11 @@ import {
   type VNode,
 } from 'vue';
 import { useNamespace } from '../composables/useNamespace';
-import { loadMarkdownEngine, type MarkdownEngine } from '../composables/useMarkdownRenderer';
+import {
+  loadMarkdownEngine,
+  type MarkdownEngine,
+  type MarkdownItPlugin,
+} from '../composables/useMarkdownRenderer';
 import { normalizeMathDelimiters, protectStreamingMarkdown } from '../utils/markdown';
 import { imageRenderers } from '../utils/imageRenderers';
 import { transitionHeight } from '../utils/heightTransition';
@@ -71,12 +80,12 @@ const ns = useNamespace('markdown');
 
 const engine = shallowRef<MarkdownEngine | null>(null);
 const loaded = ref(false);
-// allowHtml 变化时重载引擎（按模式缓存，切换开销小）
+// allowHtml 变化时重载引擎（按模式缓存，切换开销小）；mdPlugins 为静态配置，随重载一并应用
 watch(
   () => props.allowHtml,
   async (allowHtml) => {
     loaded.value = false;
-    engine.value = await loadMarkdownEngine(allowHtml);
+    engine.value = await loadMarkdownEngine(allowHtml, props.mdPlugins);
     loaded.value = true;
   },
   { immediate: true },
@@ -198,6 +207,19 @@ const MarkdownBlock = defineComponent({
 
   > :last-child {
     margin-bottom: 0;
+  }
+
+  /* 流式尾光标：流式渲染态下在末块行尾渲染一个闪烁竖条，强化"正在输出"感知。
+     纯 CSS（::after）不侵入内容；末块为文本时内联于行尾，代码/表格等块则紧随其后。 */
+  &.is-streaming > :last-child::after {
+    content: '';
+    display: inline-block;
+    width: 0.5em;
+    height: 1em;
+    margin-left: 1px;
+    transform: translateY(0.12em);
+    animation: aix-md-cursor-blink 1s steps(2, start) infinite;
+    background: currentColor;
   }
 
   p {
@@ -375,6 +397,12 @@ const MarkdownBlock = defineComponent({
 
   to {
     opacity: 1;
+  }
+}
+
+@keyframes aix-md-cursor-blink {
+  50% {
+    opacity: 0;
   }
 }
 

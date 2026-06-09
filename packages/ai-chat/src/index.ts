@@ -74,6 +74,9 @@ export type {
   MdToken,
 } from './utils/markdownWalker';
 
+// markdown-it 插件注入类型（用于 AiChat / MarkdownRenderer 的 mdPlugins 扩展点，注入新语法）
+export type { MarkdownItPlugin } from './composables/useMarkdownRenderer';
+
 // content block 构造/提取 helpers
 export {
   genBlockId,

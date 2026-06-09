@@ -11,6 +11,7 @@ import { messageText } from '../src/utils/helpers';
  * - `openaiParseChunk`：内置 OpenAI 兼容预设，直接对接 `choices[0].delta.content` 报文。
  * - `retryTimes`：请求失败自动重试。
  * - `parser`：解耦「后端原始消息」与「UI 渲染消息」（1→1，保留 id）。
+ * - `parser`（1→N）：一条消息拆成多个气泡（如思考 + 回答），回写经内部映射解析回父消息。
  * - `DifyProtocol`：真实对接 Dify 应用，演示自定义 request + parseChunk 协议适配。
  * - `OpenAICompatible`：真实对接 DeepSeek（OpenAI 兼容），演示换后端只改 proxy target。
  */
@@ -54,6 +55,59 @@ function streamOpenAI(text: string, signal?: AbortSignal): ReadableStream<Uint8A
         i += 3;
         c.enqueue(
           enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: slice } }] })}\n\n`),
+        );
+      }, 16);
+    },
+  });
+}
+
+/**
+ * 按 OpenAI 推理模型协议先流式输出 `reasoning_content`（思考）、再输出 `content`（回答）。
+ * 配合 openaiParseChunk → AI 消息内容为 `[reasoning 块, text 块]`，供 1→N 拆分演示。
+ */
+function streamReasoning(
+  reasoning: string,
+  answer: string,
+  signal?: AbortSignal,
+): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder();
+  return new ReadableStream<Uint8Array>({
+    start(c) {
+      const phases = [
+        { text: reasoning, key: 'reasoning_content' },
+        { text: answer, key: 'content' },
+      ];
+      let p = 0;
+      let i = 0;
+      const close = () => {
+        try {
+          c.close();
+        } catch {
+          /* ignore */
+        }
+      };
+      const timer = setInterval(() => {
+        if (signal?.aborted) {
+          clearInterval(timer);
+          close();
+          return;
+        }
+        // 跳过已输出完的阶段（reasoning → content）
+        while (p < phases.length && i >= (phases[p]?.text.length ?? 0)) {
+          p += 1;
+          i = 0;
+        }
+        const cur = phases[p];
+        if (!cur) {
+          c.enqueue(enc.encode('data: [DONE]\n\n'));
+          clearInterval(timer);
+          close();
+          return;
+        }
+        const slice = cur.text.slice(i, i + 4);
+        i += 4;
+        c.enqueue(
+          enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { [cur.key]: slice } }] })}\n\n`),
         );
       }, 16);
     },
@@ -153,6 +207,58 @@ export const Parser: Story = {
     await userEvent.type(textarea, '介绍一下 parser');
     await userEvent.keyboard('{Enter}');
     await waitFor(() => expect(canvas.getByText(/🤖/)).toBeTruthy(), { timeout: 4000 });
+  },
+};
+
+/**
+ * parser 一对多（1→N）：把一条「同时含思考 + 回答」的 AI 消息**拆成两个气泡**
+ * （思考气泡在上、回答气泡在下）。源 `messages` 仍是一条消息——拆分只发生在渲染层。
+ *
+ * 关键约束：
+ * - parser **保留 block 的 id**（此处用 filter 分流、不重建块）：交互块回写、编辑/重生成
+ *   经组件内部 `${父id}__${序号}` 映射自动解析回父消息，业务无感知。
+ * - message-level id 由组件接管，parser 无需（也不应依赖）自定义气泡 id。
+ * - 拆分子气泡的 status 继承父消息（loading/updating/success），思考气泡随之自动展开/折叠。
+ */
+export const ParserSplit: Story = {
+  render: () => ({
+    components: { AiChat },
+    setup: () => ({
+      openaiParseChunk,
+      // 同时含 reasoning + text 的消息 → 拆「思考」「回答」两个气泡；其余消息保持 1→1
+      parser: (m: ChatMessage): ChatMessage | ChatMessage[] => {
+        if (m.role !== 'ai') return m;
+        const reasoning = m.content.filter((b) => b.type === 'reasoning');
+        const rest = m.content.filter((b) => b.type !== 'reasoning');
+        return reasoning.length && rest.length
+          ? [
+              { ...m, content: reasoning },
+              { ...m, content: rest },
+            ]
+          : m;
+      },
+      request: ({ signal }: { signal: AbortSignal }) =>
+        Promise.resolve(
+          streamReasoning(
+            '先分析问题：用户想了解 1→N 拆分，我把推理与结论分成两段输出。',
+            '**回答**：一条消息可被 parser 拆成「思考」与「回答」两个独立气泡。',
+            signal,
+          ),
+        ),
+    }),
+    template: `<div style="${wrapperStyle}"><AiChat :request="request" :parse-chunk="openaiParseChunk" :parser="parser" placeholder="发一条消息看 1→N 拆分…" /></div>`,
+  }),
+  play: async ({ canvas, canvasElement }) => {
+    const textarea = canvas.getByRole('textbox');
+    await userEvent.click(textarea);
+    await userEvent.type(textarea, '演示 1→N');
+    await userEvent.keyboard('{Enter}');
+    // 回答气泡文本可见
+    await waitFor(() => expect(canvas.getByText(/一条消息可被 parser 拆成/)).toBeTruthy(), {
+      timeout: 5000,
+    });
+    // 一条 AI 消息被拆成「思考 + 回答」两个气泡 → 连同 user 气泡共 3 个
+    await waitFor(() => expect(canvasElement.querySelectorAll('.aix-bubble').length).toBe(3));
   },
 };
 

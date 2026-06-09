@@ -5,6 +5,7 @@
       :streaming="typing"
       :markdown-renderers="config.markdownRenderers"
       :allow-html="config.allowHtml ?? false"
+      :md-plugins="config.mdPlugins"
     />
   </Thinking>
 </template>

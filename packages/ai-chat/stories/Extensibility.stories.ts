@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
+import { expect, userEvent, waitFor } from 'storybook/test';
 import { defineComponent, h, ref, markRaw } from 'vue';
 import { AiChat, MarkdownRenderer, createParseChunk } from '../src';
 import type { MarkdownRenderers, MarkdownRendererFn, PromptItem, RoleConfig } from '../src';
@@ -262,6 +263,41 @@ const PROMPT_1: PromptItem[] = [{ key: 'p1', label: '换一套后端协议怎么
 const PROMPT_2: PromptItem[] = [{ key: 'p2', label: '自定义块能不能流式逐字渲染？' }];
 const PROMPT_3: PromptItem[] = [{ key: 'p3', label: '给我一段带代码和表格的回答' }];
 
+// ============ 场景 4：注入 markdown-it 插件（新增短代码语法） ============
+
+/** markdown-it 插件：把 :tada: / :rocket: / :aix: 短代码替换为表情（演示注入新「语法」） */
+const SHORTCODES: Record<string, string> = { ':tada:': '🎉', ':rocket:': '🚀', ':aix:': '⚡AIX' };
+const shortcodePlugin = (md: unknown) => {
+  const core = (md as { core: { ruler: { push: (n: string, f: (s: unknown) => void) => void } } })
+    .core;
+  core.ruler.push('aix_shortcode', (state) => {
+    const tokens = (
+      state as {
+        tokens: Array<{ type: string; children?: Array<{ type: string; content: string }> }>;
+      }
+    ).tokens;
+    for (const blk of tokens) {
+      if (blk.type !== 'inline' || !blk.children) continue;
+      for (const tok of blk.children) {
+        if (tok.type === 'text') {
+          tok.content = tok.content.replace(/:(?:tada|rocket|aix):/g, (s) => SHORTCODES[s] ?? s);
+        }
+      }
+    }
+  });
+};
+
+/** 用库默认扁平协议流式推送含短代码的文本 */
+const shortcodeRequest = ({ signal }: { signal: AbortSignal }) =>
+  Promise.resolve(
+    streamFrames(
+      toChunks('上线啦 :tada: 新组件 :rocket: ——由 :aix: 强力驱动').map((c) =>
+        JSON.stringify({ delta: c }),
+      ),
+      signal,
+    ),
+  );
+
 const meta: Meta<typeof AiChat> = {
   title: 'AI Chat/扩展能力',
   component: AiChat,
@@ -362,5 +398,36 @@ export const CustomMarkdownRenderer: Story = {
           '和 `table`（外层可横向滚动容器）。优先级高于内置渲染器，未覆盖的 token 仍走内置。',
       },
     },
+  },
+};
+
+/** 场景 4：注入 markdown-it 插件（新增 :shortcode: 语法） */
+export const MarkdownItPlugins: Story = {
+  name: '4. 注入 markdown-it 插件',
+  args: {
+    request: shortcodeRequest,
+    mdPlugins: [shortcodePlugin],
+    welcomeTitle: '注入 markdown-it 插件示例',
+    welcomeDescription: '用 mdPlugins 注入插件，新增 :tada: / :rocket: / :aix: 短代码语法',
+    placeholder: '输入消息…',
+    prompts: [{ key: '1', label: '展示一下短代码' }],
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'token 级 `markdownRenderers` 只能改已有 token 的渲染、无法新增语法。`mdPlugins` 注入原始' +
+          ' markdown-it 插件，可加**新 tokenization**——此处一个 core 规则把 `:tada:`/`:rocket:`/`:aix:`' +
+          ' 短代码替换为表情。多个气泡按「插件数组引用」共享同一引擎，不重复装配。',
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    const ta = canvas.getByRole('textbox');
+    await userEvent.click(ta);
+    await userEvent.type(ta, '展示');
+    await userEvent.keyboard('{Enter}');
+    // 插件把 :aix: 替换为 ⚡AIX（新语法生效）
+    await waitFor(() => expect(canvas.getByText(/⚡AIX/)).toBeTruthy(), { timeout: 5000 });
   },
 };

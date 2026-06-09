@@ -27,10 +27,13 @@ export interface UseChatOptions {
   /**
    * 渲染消息转换器：把「数据层原始消息」映射为「UI 渲染消息」，解耦后端格式与展示形状。
    * 默认不设置（渲染消息即原始消息，零开销）。
-   * 注意（当前为 1→1 转换）：返回的消息须保留原始 `id`（及交互块的 `id`），否则
-   * 编辑 / 重新生成 / 块动作等依赖 id 定位的能力将失效。1→多（一条消息拆多气泡）暂不支持。
+   * - 返回单个消息：1→1（message-level id 由 useChat 接管、强制复用父 id）。
+   * - 返回数组：1→N（一条消息拆多个气泡，如 reasoning + answer）。气泡 id 由 useChat
+   *   派生（`${父id}__${序号}`），编辑 / 重新生成 / 块动作经内部映射解析回父消息。
+   * 注意：parser 可改写或忽略 message-level id（会被覆盖），但**必须保留 block 的 `id`**，
+   * 否则交互块回写无法命中 SSOT 父消息块。
    */
-  parser?: (message: ChatMessage, index: number) => ChatMessage;
+  parser?: (message: ChatMessage, index: number) => ChatMessage | ChatMessage[];
   defaultMessages?: ChatMessage[];
   /** 单条 AI 回复成功完成时触发（status 置为 success） */
   onFinish?: (message: ChatMessage) => void;
@@ -106,21 +109,45 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   // 渲染消息：无 parser 时直接复用 messages 引用（零开销、完全等价）；有则按 parser 映射。
   // 开发期护栏：parser 必须保留原始消息 id，否则编辑/重生成/块动作的 id 定位将静默失效。
   // 违约时告警（每个原始 id 仅一次，避免 computed 重算刷屏），但不阻断渲染。
-  const warnedParserIds = new Set<string>();
-  const parsedMessages: Ref<ChatMessage[]> = parser
-    ? computed(() =>
-        messages.value.map((m, i) => {
-          const out = parser(m, i);
-          if (out.id !== m.id && !warnedParserIds.has(m.id)) {
-            warnedParserIds.add(m.id);
-            console.warn(
-              `[ai-chat] parser 改变了消息 id（原 "${m.id}" → "${out.id}"）：编辑 / 重新生成 / 块动作依赖 id 定位将无法命中该消息，请在 parser 中保留原始 id。`,
-            );
+  // 渲染视图 + 派生气泡 id → 父消息 id 映射，单 computed 同时产出（纯函数；map 随视图一起失效）。
+  // 1→1：复用父 id（回写直接命中 SSOT，map 不记录）；1→N：派生 `${父id}__${序号}` 并记录映射。
+  const parsedState = parser
+    ? computed(() => {
+        const list: ChatMessage[] = [];
+        const map = new Map<string, string>();
+        messages.value.forEach((m, i) => {
+          const r = parser(m, i);
+          const subs = Array.isArray(r) ? r : [r];
+          if (subs.length <= 1) {
+            const sub = subs[0] ?? m;
+            // useChat 接管 message-level id：强制复用父 id，回写无需映射
+            list.push(sub.id === m.id ? sub : { ...sub, id: m.id });
+          } else {
+            // 1→N：首个子气泡复用父 id（单→拆转换不 remount、不闪烁），其余派生稳定 id；
+            // 子气泡继承父消息会话状态，并带 __sub 位置信息（供操作条按「仅末气泡」去重）。
+            const count = subs.length;
+            subs.forEach((sub, bi) => {
+              const derivedId = bi === 0 ? m.id : `${m.id}__${bi}`;
+              if (bi > 0) map.set(derivedId, m.id);
+              list.push({
+                ...sub,
+                id: derivedId,
+                status: m.status,
+                extra: { ...sub.extra, __sub: { index: bi, count } },
+              });
+            });
           }
-          return out;
-        }),
-      )
+        });
+        return { list, map };
+      })
+    : null;
+
+  const parsedMessages: Ref<ChatMessage[]> = parsedState
+    ? computed(() => parsedState.value.list)
     : messages;
+
+  // 把（可能派生的）气泡 id 解析为 SSOT 父消息 id；非派生 id 原样返回（1→1 与无 parser 场景）。
+  const resolveParentId = (id: string): string => parsedState?.value.map.get(id) ?? id;
   const isLoading = ref(false);
   let controller: AbortController | null = null;
 
@@ -138,7 +165,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     blockId: string,
     patch: Record<string, unknown>,
   ): boolean => {
-    const msg = messages.value.find((m) => m.id === messageId);
+    const msg = messages.value.find((m) => m.id === resolveParentId(messageId));
     const blk = msg?.content.find((b) => b.id === blockId);
     if (blk) {
       Object.assign(blk, patch);
@@ -152,7 +179,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   };
 
   const setFeedback = (id: string, value: MessageFeedback | null) => {
-    const msg = messages.value.find((m) => m.id === id);
+    const msg = messages.value.find((m) => m.id === resolveParentId(id));
     if (!msg) return;
     // 就地响应式写回，保留 extra 其他字段
     msg.extra = { ...msg.extra, feedback: value };
@@ -310,19 +337,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
   const onReload = async (id: string) => {
     if (isLoading.value) return;
-    const idx = messages.value.findIndex((m) => m.id === id);
+    // 解析（可能的）派生气泡 id 回父消息 id，再按 SSOT 定位
+    const pid = resolveParentId(id);
+    const idx = messages.value.findIndex((m) => m.id === pid);
     if (idx === -1) return;
     const aiMsg = messages.value[idx] as ChatMessage;
     // 守卫：onReload 仅用于重生成 AI 回复，避免误传 user 消息 id 清空用户输入内容。
     if (aiMsg.role === 'user') return;
     aiMsg.content = [];
     aiMsg.status = 'loading';
-    await runRequest(id);
+    await runRequest(pid);
   };
 
   const onEdit = async (id: string, text: string) => {
     if (isLoading.value) return;
-    const idx = messages.value.findIndex((m) => m.id === id);
+    // 解析（可能的）派生气泡 id 回父消息 id，再按 SSOT 定位
+    const idx = messages.value.findIndex((m) => m.id === resolveParentId(id));
     if (idx === -1) return;
     const msg = messages.value[idx] as ChatMessage;
     // 守卫：仅用户消息可编辑重发，避免误改 AI 回复内容
