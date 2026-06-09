@@ -174,23 +174,26 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
 }
 
 /**
- * 安全序列化 replacer 工厂（每次 stringify 新建，持有独立的已访问集合）。
+ * 安全序列化 replacer 工厂（每次 stringify 新建，持有独立的祖先栈）。
  * 处理三类会让 JSON.stringify 失真或抛错、进而导致整次保存失败的值：
  * - Error：默认序列化为 `{}`（属性不可枚举），显式提取关键字段避免信息丢失（extra.error 常存 Error）；
- * - 循环引用：替换为 '[Circular]'，避免 "Converting circular structure to JSON" 抛错；
+ * - 循环引用：仅当对象出现在自身祖先链上时替换为 '[Circular]'，避免 "Converting circular structure to JSON" 抛错；
  * - BigInt：转字符串，避免 "Do not know how to serialize a BigInt" 抛错。
- * 注意：对同一对象的多次（非环形）引用也会被判为 '[Circular]'，对树状的会话数据可接受。
+ * 用「祖先栈」而非全程 seen 集合：同一对象被多处**非环形**引用（如多条消息共享同一附件/来源对象）
+ * 不会被误判为循环、不会丢数据。replacer 的 this 为当前 key 的持有者，据此回退栈到当前祖先链顶。
  */
 function createSafeReplacer(): (key: string, value: unknown) => unknown {
-  const seen = new WeakSet<object>();
-  return (_key, value) => {
+  const ancestors: unknown[] = [];
+  return function (this: unknown, _key: string, value: unknown): unknown {
     if (value instanceof Error) {
       return { name: value.name, message: value.message, stack: value.stack };
     }
     if (typeof value === 'bigint') return value.toString();
     if (typeof value === 'object' && value !== null) {
-      if (seen.has(value)) return '[Circular]';
-      seen.add(value);
+      // this 为持有该 value 的父对象：回退到当前祖先链顶（离开已序列化完毕的兄弟子树）
+      while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+      if (ancestors.includes(value)) return '[Circular]';
+      ancestors.push(value);
     }
     return value;
   };

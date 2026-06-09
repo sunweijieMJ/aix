@@ -11,16 +11,13 @@ import Thinking from './components/Thinking.vue';
 import ThoughtChain from './components/ThoughtChain.vue';
 import ModelSelector from './components/ModelSelector.vue';
 import MarkdownRenderer from './components/MarkdownRenderer.vue';
-import TextBlock from './components/blocks/TextBlock.vue';
-import ReasoningBlock from './components/blocks/ReasoningBlock.vue';
-import ThoughtChainBlock from './components/blocks/ThoughtChainBlock.vue';
-import SourcesBlock from './components/blocks/SourcesBlock.vue';
-import AttachmentBlock from './components/blocks/AttachmentBlock.vue';
 import AiChat from './components/AiChat.vue';
 import Conversations from './components/Conversations.vue';
 import Skeleton from './components/Skeleton.vue';
 
 // 组件（不带 Aix 前缀）
+// 注意：内置内容块组件（TextBlock / ReasoningBlock / ThoughtChainBlock / SourcesBlock /
+// AttachmentBlock）是 Bubble 块注册表的实现细节，不对外导出——扩展请通过 blockRenderers 注册自定义渲染器。
 export {
   AttachmentCard,
   Bubble,
@@ -33,11 +30,6 @@ export {
   ThoughtChain,
   ModelSelector,
   MarkdownRenderer,
-  TextBlock,
-  ReasoningBlock,
-  ThoughtChainBlock,
-  SourcesBlock,
-  AttachmentBlock,
   AiChat,
   Conversations,
   Skeleton,
@@ -116,11 +108,6 @@ export type { ThoughtChainProps } from './components/ThoughtChain.vue';
 export type { ModelSelectorProps } from './components/ModelSelector.vue';
 export type { MarkdownRendererProps } from './components/MarkdownRenderer.vue';
 export type { SkeletonProps } from './components/Skeleton.vue';
-export type { TextBlockProps } from './components/blocks/TextBlock.vue';
-export type { ReasoningBlockProps } from './components/blocks/ReasoningBlock.vue';
-export type { ThoughtChainBlockProps } from './components/blocks/ThoughtChainBlock.vue';
-export type { SourcesBlockProps } from './components/blocks/SourcesBlock.vue';
-export type { AttachmentBlockProps } from './components/blocks/AttachmentBlock.vue';
 export type { ConversationsProps, ConversationsEmits } from './components/Conversations.vue';
 export type {
   AttachmentCardProps,
@@ -144,11 +131,6 @@ const components = {
   ThoughtChain,
   ModelSelector,
   MarkdownRenderer,
-  TextBlock,
-  ReasoningBlock,
-  ThoughtChainBlock,
-  SourcesBlock,
-  AttachmentBlock,
   AiChat,
   Conversations,
   Skeleton,

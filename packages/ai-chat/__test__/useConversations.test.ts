@@ -184,6 +184,23 @@ describe('useConversations', () => {
       warn.mockRestore();
     });
 
+    it('共享引用（非环形）：多处引用同一对象不被误判为 [Circular]，完整保留', () => {
+      const s = localStorageConversationStorage('aix-conv-test');
+      // 两条消息的 extra 引用同一个对象（仅共享、非环形）：典型如多条回复共享同一份元数据/来源
+      const shared = { tokenUsage: 42, model: 'x' };
+      const c = conv('a', 'A');
+      c.messages = [
+        { ...textMessage('ai', '一'), extra: { meta: shared } },
+        { ...textMessage('ai', '二'), extra: { meta: shared } },
+      ];
+      s.save([c]);
+      const loaded = s.load();
+      // 祖先栈仅对「自身祖先链上」的对象判循环；共享但非环形的两处都应完整保留。
+      // （旧的全程 seen 集合实现会把第二处误替换为字符串 '[Circular]'，本用例即回归护栏。）
+      expect(loaded?.[0]!.messages[0]!.extra?.meta).toEqual({ tokenUsage: 42, model: 'x' });
+      expect(loaded?.[0]!.messages[1]!.extra?.meta).toEqual({ tokenUsage: 42, model: 'x' });
+    });
+
     it('保存失败（如配额超限）时告警而非静默吞掉', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {

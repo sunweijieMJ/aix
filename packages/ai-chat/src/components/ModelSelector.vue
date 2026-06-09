@@ -152,7 +152,9 @@ const onMenuKeydown = (e: KeyboardEvent) => {
       closeMenu(true);
       break;
     case 'Tab':
-      // 焦点离开下拉时关闭（不抢占 Tab 的默认移焦行为）
+      // 焦点离开下拉时关闭（不抢占 Tab 的默认移焦行为）。
+      // roving tabindex 下仅高亮项 tabindex=0、其余 -1，故原生 Tab 会跳过同级选项直接移出组件，
+      // 此处只需关闭菜单做清理，不要回移焦点（否则原生 Tab 会重新进入菜单、随后被卸载致焦点回落 body）。
       closeMenu();
       break;
     // Enter / Space 选中由选项按钮原生 click 处理，无需在此拦截

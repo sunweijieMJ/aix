@@ -75,14 +75,18 @@ export const builtinMarkdownRenderers: MarkdownRenderers = {
   image: ({ token }) => h('img', { src: attr(token, 'src'), alt: token.content }),
 };
 
-/** 从 openIdx 起找到配对的 close token 下标（按 nesting 计深度）；未配对（流式）返回末尾 */
+/**
+ * 从 openIdx 起找到配对的 close token 下标（按 nesting 计深度）。
+ * 未配对（流式半截，markdown-it 通常会在 EOF 自动补闭合，此为防御分支）返回 tokens.length，
+ * 使上层 `slice(open+1, closeIdx)` 把剩余 token 全部纳入子渲染，避免吞掉末个 token。
+ */
 function findClose(tokens: MdToken[], openIdx: number): number {
   let depth = 0;
   for (let j = openIdx; j < tokens.length; j++) {
     depth += tokens[j]!.nesting;
     if (depth === 0) return j;
   }
-  return tokens.length - 1;
+  return tokens.length;
 }
 
 function renderNode(

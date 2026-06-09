@@ -107,8 +107,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   // 内部 ref 为消息状态唯一来源（mutate 即响应式）；受控由 AiChat 层用引用桥接到 v-model。
   const messages = ref<ChatMessage[]>([...defaultMessages]);
   // 渲染消息：无 parser 时直接复用 messages 引用（零开销、完全等价）；有则按 parser 映射。
-  // 开发期护栏：parser 必须保留原始消息 id，否则编辑/重生成/块动作的 id 定位将静默失效。
-  // 违约时告警（每个原始 id 仅一次，避免 computed 重算刷屏），但不阻断渲染。
+  // id 稳定性由 useChat 接管：1→1 时强制复用父 id（见下，sub.id 即便不同也覆盖为 m.id），
+  // 故 parser 未保留原始消息 id 也不会破坏编辑/重生成/块动作的 id 定位，无需运行时告警。
   // 渲染视图 + 派生气泡 id → 父消息 id 映射，单 computed 同时产出（纯函数；map 随视图一起失效）。
   // 1→1：复用父 id（回写直接命中 SSOT，map 不记录）；1→N：派生 `${父id}__${序号}` 并记录映射。
   const parsedState = parser
