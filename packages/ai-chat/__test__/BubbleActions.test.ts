@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { markRaw } from 'vue';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { Refresh } from '@aix/icons';
 import BubbleActions from '../src/components/BubbleActions.vue';
 
@@ -39,19 +39,35 @@ describe('BubbleActions', () => {
     expect(w.emitted('regenerate')).toHaveLength(1);
   });
 
-  it('剪贴板不可用时静默降级、不抛 copy 事件', async () => {
+  it('两条复制路径都失败时静默降级、不抛 copy 事件', async () => {
+    // Clipboard API 写入失败，且 jsdom 无 execCommand 兜底 → copyText 返回 false
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
     });
     const w = mount(BubbleActions, { props: { content: 'x' } });
     await w.findAll('.aix-bubble-actions__btn')[0].trigger('click');
-    await Promise.resolve();
+    await flushPromises();
     expect(w.emitted('copy')).toBeUndefined();
+  });
+
+  it('剪贴板 API 不可用（HTTP / 旧浏览器）时经 execCommand 兜底复制并抛 copy', async () => {
+    Object.assign(navigator, { clipboard: undefined });
+    const exec = vi.fn().mockReturnValue(true);
+    (document as unknown as { execCommand?: unknown }).execCommand = exec;
+    const w = mount(BubbleActions, { props: { items: ['copy'], content: 'hi' } });
+    const copyBtn = w.findAll('.aix-bubble-actions__btn')[0];
+    await copyBtn.trigger('click');
+    await flushPromises();
+    expect(exec).toHaveBeenCalledWith('copy');
+    expect(w.emitted('copy')).toHaveLength(1);
+    expect(copyBtn.attributes('title')).toBe('已复制');
+    delete (document as unknown as { execCommand?: unknown }).execCommand;
   });
 
   it('无 content 时仍抛 copy 事件（交由使用方自定义复制）', async () => {
     const w = mount(BubbleActions);
     await w.findAll('.aix-bubble-actions__btn')[0].trigger('click');
+    await flushPromises();
     expect(w.emitted('copy')).toHaveLength(1);
   });
 

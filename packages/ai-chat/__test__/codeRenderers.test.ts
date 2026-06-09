@@ -112,4 +112,68 @@ describe('createHighlightRenderers（代码高亮渲染器）', () => {
     a.unmount();
     b.unmount();
   });
+
+  describe('代码块头部（语言标签 + 复制按钮）', () => {
+    it('块固化：渲染头部语言标签与复制按钮', async () => {
+      const hljs = makeHljs();
+      const w = mountFence(createHighlightRenderers(hljs), 'const x=1', 'js', { streaming: false });
+      await nextTick();
+      expect(w.find('.aix-md-codeblock').exists()).toBe(true);
+      expect(w.find('.aix-md-codeblock__lang').text()).toBe('js');
+      const btn = w.find('.aix-md-codeblock__copy');
+      expect(btn.exists()).toBe(true);
+      expect(btn.attributes('title')).toBe('复制');
+    });
+
+    it('流式中（未固化）：不渲染复制按钮，避免复制半截代码', async () => {
+      const hljs = makeHljs();
+      const w = mountFence(createHighlightRenderers(hljs), 'const x=1', 'js', {
+        streaming: true,
+        committed: false,
+      });
+      await nextTick();
+      expect(w.find('.aix-md-codeblock__copy').exists()).toBe(false);
+      expect(w.text()).toContain('const x=1');
+    });
+
+    it('无语言且流式中：维持纯 <pre> 代码块，不加外壳头部', async () => {
+      const hljs = makeHljs();
+      const w = mountFence(createHighlightRenderers(hljs), 'plain text', '', {
+        streaming: true,
+        committed: false,
+      });
+      await nextTick();
+      expect(w.find('.aix-md-codeblock').exists()).toBe(false);
+      expect(w.find('pre.aix-md-code').exists()).toBe(true);
+    });
+
+    it('点击复制：把原始代码写入剪贴板并切到「已复制」', async () => {
+      Object.assign(navigator, {
+        clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+      });
+      const hljs = makeHljs();
+      const w = mountFence(createHighlightRenderers(hljs), 'const x=1', 'js', { streaming: false });
+      await nextTick();
+      await w.find('.aix-md-codeblock__copy').trigger('click');
+      await nextTick();
+      // 复制的是原始代码而非高亮后的 HTML
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('const x=1');
+      expect(w.find('.aix-md-codeblock__copy').attributes('title')).toBe('已复制');
+    });
+
+    it('无 Clipboard API（HTTP / 旧浏览器）时点击复制经 execCommand 兜底仍切「已复制」', async () => {
+      Object.assign(navigator, { clipboard: undefined });
+      // 本 jsdom 未实现 execCommand，直接赋值 mock
+      const exec = vi.fn().mockReturnValue(true);
+      (document as unknown as { execCommand?: unknown }).execCommand = exec;
+      const hljs = makeHljs();
+      const w = mountFence(createHighlightRenderers(hljs), 'const x=1', 'js', { streaming: false });
+      await nextTick();
+      await w.find('.aix-md-codeblock__copy').trigger('click');
+      await nextTick();
+      expect(exec).toHaveBeenCalledWith('copy');
+      expect(w.find('.aix-md-codeblock__copy').attributes('title')).toBe('已复制');
+      delete (document as unknown as { execCommand?: unknown }).execCommand;
+    });
+  });
 });

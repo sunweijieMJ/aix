@@ -152,6 +152,27 @@ export const CodeHighlight: Story = {
   },
 };
 
+/**
+ * 代码块头部：固化后的代码块顶部显示语言标签 + 一键复制按钮（复制原始代码，带「已复制」反馈）。
+ * 流式期（块未固化）不显示复制按钮，避免复制到半截代码。
+ */
+export const CodeCopyHeader: Story = {
+  args: {
+    content: ["```python\ndef hello(name):\n    print(f'Hello, {name}!')\n```"].join('\n'),
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      // 头部语言标签
+      const lang = canvasElement.querySelector('.aix-md-codeblock__lang');
+      expect(lang?.textContent).toBe('python');
+      // 复制按钮存在且带「复制」提示
+      const copyBtn = canvasElement.querySelector('.aix-md-codeblock__copy');
+      expect(copyBtn).toBeTruthy();
+      expect(copyBtn?.getAttribute('title')).toBe('复制');
+    });
+  },
+};
+
 /** 空内容 */
 export const Empty: Story = {
   args: { content: '' },

@@ -88,6 +88,7 @@ import { useLocale } from '@aix/hooks';
 import { Copy, Check, Refresh, ThumbUp, ThumbDown } from '@aix/icons';
 import { locale } from '../locale';
 import { useNamespace } from '../composables/useNamespace';
+import { copyText } from '../utils/clipboard';
 
 const props = withDefaults(defineProps<BubbleActionsProps>(), {
   content: '',
@@ -101,17 +102,10 @@ const copied = ref(false);
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 const onCopy = async () => {
-  // 无可写文本时仍向上抛 copy 事件，交由使用方自定义复制逻辑
-  if (props.content && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(props.content);
-    } catch {
-      // 有剪贴板能力但写入失败（权限被拒 / 非聚焦态）视为硬失败：
-      // 静默降级，既不显示「已复制」反馈，也不抛 copy 事件（详见单测「剪贴板不可用时静默降级、不抛 copy 事件」）。
-      // 注意：与上方「无剪贴板能力」路径不同——那条路径会抛 copy 事件交由使用方自定义复制。
-      return;
-    }
-  }
+  // 有文本时用 copyText 复制（内含 Clipboard API + execCommand 兜底，兼容 HTTP / 旧浏览器）；
+  // 两条路径都失败视为硬失败：静默降级，不显示「已复制」也不抛 copy。
+  // 无 content 时跳过复制、仍抛 copy 事件，交由使用方自定义复制逻辑（逃生口）。
+  if (props.content && !(await copyText(props.content))) return;
   copied.value = true;
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {

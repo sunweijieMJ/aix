@@ -342,6 +342,65 @@ const MarkdownBlock = defineComponent({
   }
 }
 
+/* 代码块外壳：头部条（语言标签 + 复制按钮）+ 代码区贴合成一体 */
+.aix-md-codeblock {
+  margin: 0.6em 0;
+  overflow: hidden;
+  border: 1px solid var(--aix-colorBorderSecondary);
+  border-radius: var(--aix-borderRadius);
+  background-color: var(--aix-colorFillTertiary);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--aix-marginXS);
+    min-height: 28px;
+    padding: var(--aix-paddingXXS) var(--aix-paddingSM);
+    border-bottom: 1px solid var(--aix-colorBorderSecondary);
+    color: var(--aix-colorTextTertiary);
+    font-size: var(--aix-fontSizeSM);
+  }
+
+  &__lang {
+    font-family: var(--aix-fontFamilyCode);
+    line-height: 1;
+    text-transform: lowercase;
+  }
+
+  &__copy {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--aix-marginXXS);
+    padding: 2px 6px;
+    transition: all var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
+    border: none;
+    border-radius: var(--aix-borderRadiusSM);
+    background: transparent;
+    color: var(--aix-colorTextTertiary);
+    font-size: var(--aix-fontSizeSM);
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--aix-colorFillSecondary);
+      color: var(--aix-colorText);
+    }
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  /* 容器内的代码区去掉自身边框/圆角/外边距，与头部无缝拼接 */
+  pre.aix-md-code {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+  }
+}
+
 /* mermaid 流程图：限宽防溢出，居中展示 */
 .aix-md-mermaid {
   margin: 0.6em 0;

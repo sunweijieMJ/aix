@@ -1,5 +1,9 @@
-import { defineComponent, h, ref, watch } from 'vue';
+import { defineComponent, h, ref, watch, onScopeDispose } from 'vue';
+import { useLocale } from '@aix/hooks';
+import { Copy, Check } from '@aix/icons';
 import type { MarkdownRenderers } from './markdownWalker';
+import { copyText } from './clipboard';
+import { locale } from '../locale';
 
 /** highlight.js 最小接口（v11 兼容；依赖注入，不直接耦合其类型声明） */
 export interface HljsLike {
@@ -44,6 +48,7 @@ export function __resetHighlightCache() {
  * 流式期（块未 committed）按纯代码块逐字展示；块固化后再同步高亮（避免逐帧重高亮、闪烁）。
  * 已注册语言走 `highlight(language)`，否则 `highlightAuto` 自动检测；高亮抛错则降级纯代码块。
  * hljs 输出已转义代码内容、仅注入自身 span，innerHTML 注入与 mermaid SVG 同信任级别。
+ * 固化后在代码块顶部渲染头部条：左侧语言标签 + 右侧一键复制按钮（复制原始代码）。
  */
 export function createHighlightRenderers(hljs: HljsLike): MarkdownRenderers {
   const CodeBlock = defineComponent({
@@ -55,6 +60,24 @@ export function createHighlightRenderers(hljs: HljsLike): MarkdownRenderers {
     },
     setup(props) {
       const html = ref<string | null>(null);
+      const { t } = useLocale(locale);
+
+      // 复制态：成功复制后短暂显示「已复制」，1.5s 后复位（与 BubbleActions 一致）
+      const copied = ref(false);
+      let copyTimer: ReturnType<typeof setTimeout> | null = null;
+      const onCopy = async () => {
+        // copyText 内含 Clipboard API + execCommand 兜底（兼容 HTTP / 旧浏览器）；两者皆失败则不给反馈
+        if (!(await copyText(props.code))) return;
+        copied.value = true;
+        if (copyTimer) clearTimeout(copyTimer);
+        copyTimer = setTimeout(() => {
+          copied.value = false;
+        }, 1500);
+      };
+      onScopeDispose(() => {
+        if (copyTimer) clearTimeout(copyTimer);
+      });
+
       watch(
         () => [props.code, props.lang, props.settled] as const,
         ([code, lang, settled]) => {
@@ -83,16 +106,37 @@ export function createHighlightRenderers(hljs: HljsLike): MarkdownRenderers {
         },
         { immediate: true },
       );
+
       return () => {
         const langClass = props.lang ? `language-${props.lang}` : undefined;
-        if (html.value !== null) {
-          return h(
-            'pre',
-            { class: 'aix-md-code' },
-            h('code', { class: ['hljs', langClass], innerHTML: html.value }),
-          );
-        }
-        return h('pre', { class: 'aix-md-code' }, h('code', { class: langClass }, props.code));
+        const codeNode =
+          html.value !== null
+            ? h('code', { class: ['hljs', langClass], innerHTML: html.value })
+            : h('code', { class: langClass }, props.code);
+        const pre = h('pre', { class: 'aix-md-code' }, codeNode);
+
+        // 头部：有语言名 或 已固化（可复制）时显示；流式且无语言时维持纯代码块外观
+        if (!props.lang && !props.settled) return pre;
+
+        const label = copied.value ? t.value.copiedButton : t.value.copyButton;
+        const header = h('div', { class: 'aix-md-codeblock__header' }, [
+          h('span', { class: 'aix-md-codeblock__lang' }, props.lang || ''),
+          // 复制按钮仅在固化后出现，避免复制到半截流式代码
+          props.settled
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  class: 'aix-md-codeblock__copy',
+                  'aria-label': label,
+                  title: label,
+                  onClick: onCopy,
+                },
+                [h(copied.value ? Check : Copy), h('span', label)],
+              )
+            : null,
+        ]);
+        return h('div', { class: 'aix-md-codeblock' }, [header, pre]);
       };
     },
   });

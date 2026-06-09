@@ -73,6 +73,9 @@ export { protectStreamingMarkdown, normalizeMathDelimiters } from './utils/markd
 // URL 安全工具（协议白名单，供数据驱动的 href 场景复用）
 export { safeUrl } from './utils/url';
 
+// 复制工具（Clipboard API + execCommand 兜底，兼容 HTTP / 旧浏览器），供自定义渲染器复用
+export { copyText } from './utils/clipboard';
+
 // 自定义 markdown 渲染器（用于 AiChat / MarkdownRenderer 的 markdownRenderers 扩展点）
 export type {
   MarkdownRenderers,

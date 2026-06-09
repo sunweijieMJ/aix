@@ -237,6 +237,14 @@ provideAiChatConfig({ enableTyping: false });
 - **块级增量渲染**：按顶层块（段落/标题/代码/公式/表格…）渲染，已完成的块冻结不重渲染，流式时**新块经 `<TransitionGroup>` 淡入**（公式/代码等原子块完成时平滑出现，文字仍逐字打字机），长流式不整段重解析。
 - 依赖为动态 `import`，不打进主 chunk，未使用时零额外体积。
 
+### 代码高亮与代码块头部（highlight.js，可选）
+
+安装 `highlight.js` 后，代码块在**块固化后**自动语法高亮（流式期先纯码逐字、避免逐帧重高亮闪烁）。固化的代码块顶部带**标准头部**：左侧语言标签 + 右侧一键复制按钮（复制原始代码，带「已复制」反馈）；流式未固化时不显示复制按钮，避免复制到半截代码。复制兼容 **HTTP / 旧浏览器**——`navigator.clipboard` 仅在 HTTPS/localhost 可用，不可用时自动降级 `document.execCommand`（此复制能力经导出的 `copyText(text)` 工具实现，可在自定义渲染器中复用）。需自定义代码块外观（如换主题、加行号）时，用 `markdownRenderers.fence` 覆盖即可。
+
+```bash
+pnpm add highlight.js
+```
+
 ### 数学公式（KaTeX，可选）
 
 额外安装 KaTeX 及其 markdown-it 插件后，LaTeX 公式将渲染为排版结果（AI 在理工科场景常输出公式）。支持两套定界符：行内 `$...$` / 块级 `$$...$$`，以及 OpenAI 系常用的行内 `\(...\)` / 块级 `\[...\]`（内部归一化为 `$`/`$$` 后渲染，并自动把 KaTeX 不支持的 `align*` 修正为 `aligned`）：
