@@ -27,36 +27,6 @@ export interface AiChatLocale {
   exitEdit: string;
   /** 保存 */
   saveButton: string;
-  /** 新增选项 */
-  addOption: string;
-  /** 题型标签：单项选择题 */
-  singleChoiceType: string;
-  /** 题型标签：多项选择题 */
-  multiChoiceType: string;
-  /** 题干 label */
-  stemLabel: string;
-  /** 选项 label */
-  optionsLabel: string;
-  /** 答案解析 label */
-  analysisLabel: string;
-  /** 标准答案前缀 */
-  standardAnswer: string;
-  /** 必须设置一项答案提示 */
-  mustSetAnswer: string;
-  /** 题干输入占位 */
-  stemPlaceholder: string;
-  /** 选项输入占位 */
-  optionPlaceholder: string;
-  /** 解析输入占位 */
-  analysisPlaceholder: string;
-  /** 插入视频 */
-  insertVideo: string;
-  /** 删除 */
-  deleteButton: string;
-  /** 上移选项 */
-  moveUp: string;
-  /** 下移选项 */
-  moveDown: string;
   /** 历史消息加载中提示文案 */
   loadingMessages: string;
   /** 回到底部按钮的无障碍标签 */

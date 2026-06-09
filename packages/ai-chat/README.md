@@ -86,6 +86,9 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 | `Prompts` | 提示词列表 | `items`；emit `select` |
 | `Thinking` | 可折叠的思考过程 | `content?` / `title?` / `expanded?`；slot 默认 |
 | `MarkdownRenderer` | Markdown 渲染（缺依赖降级纯文本） | `content` |
+| `Conversations` | 会话列表（可分组 + 行内重命名 + 删除） | `items` / `groupable?` / `newButtonText?`；emit `create`/`rename`/`delete` |
+| `ModelSelector` | 模型下拉选择器（roving tabindex 键盘导航） | `options` / `placeholder?` / `placement?`；`v-model` 绑定选中 value |
+| `AttachmentCard` | 单个附件卡（输入区预览 / 气泡回显共用） | `item` / `removable?`；emit `remove`/`retry` |
 
 ## 自定义协议 / 换模型
 
@@ -128,7 +131,7 @@ const roles = {
 
 ## 块渲染与富内容插槽穿透
 
-一条消息的 `content` 是**有序内容块**（`ContentBlock[]`）。`Bubble` 内部用单一**块渲染器注册表**按 `block.type` 分发渲染，内置 `text` / `reasoning` / `thought-chain` / `single-choice` 四类，可通过 `blockRenderers` 扩展或覆盖：
+一条消息的 `content` 是**有序内容块**（`ContentBlock[]`）。`Bubble` 内部用单一**块渲染器注册表**按 `block.type` 分发渲染，内置 `text` / `reasoning` / `sources` / `thought-chain` / `attachment` 五类，可通过 `blockRenderers` 扩展或覆盖（业务自定义块如选择题卡片即走此扩展点）：
 
 ```ts
 // 扩展新块类型 / 覆盖内置渲染器（组件级 props.blockRenderers，或全局 provideAiChatConfig.blockRenderers）
@@ -166,6 +169,9 @@ const roles = {
 | `useAutoScroll(scrollEl, options?)` | 滚动状态机 + 跟随策略（own-message / new-message / streaming 三分流） |
 | `loadMarkdownRenderer()` | 动态加载 `markdown-it`，未安装返回 `null`（调用方降级纯文本） |
 | `useAiChatConfig()` / `provideAiChatConfig(config)` | provide/inject 全局配置 |
+| `useConversations(options?)` | 多会话托管（SSOT + 可选持久化）。返回 `conversations` / `activeKey` / `active` / `activeMessages`（绑 `AiChat` 的 `v-model:messages`）/ `items`（绑 `Conversations`）/ `create` / `remove` / `rename`。配合 `localStorageConversationStorage` 持久化 |
+| `useAttachments(options)` | 附件上传托管。返回 `items` / `add` / `remove` / `retry` / `clear` / `isUploading` / `drain`（取出已完成项随消息发送）。`options`: `upload` / `accept?` / `maxCount?` / `maxSize?` |
+| `useVoiceInput(options)` | 语音识别输入。返回 `status` / `isSupported` / `start` / `stop` / `toggle`。缺省用浏览器 Web Speech API，可注入自定义 `recognizer` 对接讯飞/阿里云等 ASR |
 
 ### 打字机效果
 
@@ -251,6 +257,8 @@ pnpm add dompurify
 
 所有样式基于 `@aix/theme` 的语义 token CSS 变量（颜色 `--aix-color*`、间距 `--aix-padding*`/`--aix-size*`、圆角 `--aix-borderRadius*`、动效 `--aix-motionDuration*`）。切换 `@aix/theme` 的明暗主题即可联动，无需额外配置。
 
-## 一期范围说明
+## 能力范围
 
-当前为 MVP，已实现上述原子组件、组合预设与逻辑 hooks。**暂未包含**：会话列表（Conversations）、附件上传（Attachments）、结构化输入（SlotConfig）、富文本 @ 提及、多 Provider class、内置 Mermaid 等，后续版本迭代。
+已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入**（`useVoiceInput`，可对接自定义 ASR）、**模型切换**（`ModelSelector`）、**Mermaid 流程图**（装 `mermaid` 后 ` ```mermaid ` 代码块自动渲染，未装则维持代码块）。
+
+**暂未包含**：结构化输入（SlotConfig）、富文本 @ 提及、多 Provider class 等，后续版本迭代。

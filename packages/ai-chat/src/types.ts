@@ -52,7 +52,7 @@ export interface ParsedChunk {
   /**
    * delta 归属的**流式文本块**类型，默认 text。
    * 仅 'text' / 'reasoning' 支持逐字累积（appendDelta）；其余块类型（sources/
-   * thought-chain/choice）是非流式整块，应通过 `block` 字段一次性追加。
+   * thought-chain/attachment 及业务自定义块）是非流式整块，应通过 `block` 字段一次性追加。
    * 故此处刻意收窄而非用 ContentBlock['type'] 全集，避免诱导「给非文本块传 delta」的误用。
    */
   blockType?: 'text' | 'reasoning';
@@ -140,16 +140,6 @@ export interface BlockActionPayload {
   messageKey: string | number;
   /** 块动作内容（目标块 id / 类型 / 补丁） */
   action: BlockAction;
-}
-
-/** 选择题选项（单选 / 多选共用） */
-export interface ChoiceOption {
-  /** 选项稳定 id（answer / selected 引用它） */
-  id: string;
-  /** 选项序号标签，如 A/B/C/D */
-  label: string;
-  /** 选项内容文本 */
-  content: string;
 }
 
 /** 模型选项（ModelSelector 用） */
@@ -256,37 +246,12 @@ export interface BlockBase {
   id: string;
 }
 
-/**
- * 选择题块字段（单选 / 多选统一）：被 `type:'choice'` 块复用。
- * 单选与多选的差异仅由 `multiple` 标记 + `answer/selected` 是否为数组体现，
- * 同一套数据结构、同一个渲染器覆盖两种题型。
- */
-export interface ChoiceBlockFields {
-  /** 题干 */
-  stem: string;
-  /** 选项列表 */
-  options: ChoiceOption[];
-  /** 是否多选；默认 false（单选）。多选时 answer / selected 为选项 id 数组 */
-  multiple?: boolean;
-  /** 展示模式：'review' 只读结果卡（默认，直出标准答案 / 解析）/ 'answer' 可点击作答 */
-  mode?: 'review' | 'answer';
-  /** 标准答案：单选为选项 id，多选为选项 id 数组 */
-  answer?: string | string[];
-  /** 用户作答：单选为选项 id，多选为选项 id 数组（作答时运行时回写） */
-  selected?: string | string[];
-  /** 详细解析 */
-  analysis?: string;
-  /** 是否允许点击编辑题目本身，默认 false */
-  editable?: boolean;
-}
-
-/** 消息内容块（有序、可扩展）。预留扩展：tool_use / image 等只需新增联合成员 */
+/** 消息内容块（有序、可扩展）。预留扩展：tool_use / image / 业务自定义块只需新增联合成员 */
 export type ContentBlock =
   | (BlockBase & { type: 'text'; text: string })
   | (BlockBase & { type: 'reasoning'; text: string })
   | (BlockBase & { type: 'sources'; items: SourceItem[] })
   | (BlockBase & { type: 'thought-chain'; items: ThoughtChainItem[] })
-  | (BlockBase & { type: 'choice' } & ChoiceBlockFields)
   | (BlockBase & { type: 'attachment'; items: AttachmentItem[] });
 
 /** 内置消息操作预设 key */

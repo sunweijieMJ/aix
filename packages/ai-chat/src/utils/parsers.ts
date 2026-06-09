@@ -8,9 +8,17 @@ import type { ParsedChunk } from '../types';
  * 对接 OpenAI 等嵌套格式从「手写一段 JSON 遍历」降为「传一个预设」。
  */
 
-/** 从 `data: ...` 行中取出 payload（去前缀与首尾空白）；非 data 行原样 trim。 */
+/**
+ * 从 `data: ...` 行中取出 payload（去前缀与首尾空白）；非 data 行原样 trim。
+ * SSE 注释/心跳行（以 `:` 开头，如 `: keep-alive`，规范中用于保活）忽略为空——
+ * 否则会落入下方「非 JSON 视为纯文本」分支，把心跳文本拼进正文。
+ * 注意：这会使「纯文本流且某行恰以 `:` 开头」的内容被丢弃，属可接受取舍
+ * （本解析器默认即 SSE 语义：已识别 `data:` / `[DONE]`）。
+ */
 function extractData(raw: string): string {
-  return raw.startsWith('data:') ? raw.slice(5).trim() : raw.trim();
+  if (raw.startsWith('data:')) return raw.slice(5).trim();
+  if (raw.startsWith(':')) return '';
+  return raw.trim();
 }
 
 export interface CreateParseChunkOptions {

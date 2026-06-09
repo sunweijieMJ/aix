@@ -34,8 +34,8 @@
           <slot name="content" :blocks="content" :info="info">
             <component :is="renderedNode" v-if="contentRender" />
             <template v-else>
-              <!-- 单一注册表分发：内置 text/reasoning/sources/thought-chain/choice 与用户 blockRenderers
-                   合并后统一查表，无对应渲染器的块（如自定义未注册类型）安全跳过（开发期 console.warn 提示）。 -->
+              <!-- 单一注册表分发：内置 text/reasoning/sources/thought-chain/attachment 与用户 blockRenderers
+                   合并后统一查表，无对应渲染器的块（如业务自定义未注册类型）安全跳过（开发期 console.warn 提示）。 -->
               <template v-for="block in content" :key="block.id">
                 <component
                   :is="renderers[block.type]"
@@ -101,7 +101,6 @@ import { useNamespace } from '../composables/useNamespace';
 import TextBlock from './blocks/TextBlock.vue';
 import ReasoningBlock from './blocks/ReasoningBlock.vue';
 import ThoughtChainBlock from './blocks/ThoughtChainBlock.vue';
-import ChoiceBlock from './blocks/ChoiceBlock.vue';
 import SourcesBlock from './blocks/SourcesBlock.vue';
 import AttachmentBlock from './blocks/AttachmentBlock.vue';
 import { locale } from '../locale';
@@ -143,8 +142,6 @@ const builtinRenderers: BlockRenderers = {
   reasoning: ReasoningBlock,
   'thought-chain': ThoughtChainBlock,
   sources: SourcesBlock,
-  // 单 / 多选统一由 ChoiceBlock 渲染（multiple 区分）。
-  choice: ChoiceBlock,
   attachment: AttachmentBlock,
 };
 const renderers = computed<BlockRenderers>(() => ({

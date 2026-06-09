@@ -1,7 +1,6 @@
 import type {
   AttachmentItem,
   ChatMessage,
-  ChoiceOption,
   ContentBlock,
   MessageRole,
   MessageStatus,
@@ -18,7 +17,7 @@ let msgUid = 0;
 export const genMsgId = (): string => `msg-${Date.now()}-${msgUid++}`;
 
 // 各工厂返回精确的窄类型（Extract 到对应 type），便于直接喂给只接受特定块类型的组件 prop
-// （如 TextBlock 仅收 text/reasoning）；与 choiceBlock 的写法一致。
+// （如 TextBlock 仅收 text/reasoning）。
 /** 创建文本块 */
 export const textBlock = (text: string): Extract<ContentBlock, { type: 'text' }> => ({
   id: genBlockId(),
@@ -47,26 +46,6 @@ export const thoughtChainBlock = (
   id: genBlockId(),
   type: 'thought-chain',
   items,
-});
-
-/** 创建选择题块（单选 / 多选统一；交互式：可作答、可编辑） */
-export const choiceBlock = (input: {
-  stem: string;
-  options: ChoiceOption[];
-  /** 是否多选，默认 false（单选） */
-  multiple?: boolean;
-  /** 展示模式：'review' 只读结果卡（默认）/ 'answer' 可点击作答 */
-  mode?: 'review' | 'answer';
-  /** 标准答案：单选为选项 id，多选为选项 id 数组 */
-  answer?: string | string[];
-  analysis?: string;
-  /** 用户作答：单选为选项 id，多选为选项 id 数组 */
-  selected?: string | string[];
-  editable?: boolean;
-}): Extract<ContentBlock, { type: 'choice' }> => ({
-  id: genBlockId(),
-  type: 'choice',
-  ...input,
 });
 
 /** 创建附件块（用户消息携带的已上传附件） */

@@ -10,13 +10,11 @@ import Prompts from './components/Prompts.vue';
 import Thinking from './components/Thinking.vue';
 import ThoughtChain from './components/ThoughtChain.vue';
 import ModelSelector from './components/ModelSelector.vue';
-import ResultCard from './components/ResultCard.vue';
 import MarkdownRenderer from './components/MarkdownRenderer.vue';
 import TextBlock from './components/blocks/TextBlock.vue';
 import ReasoningBlock from './components/blocks/ReasoningBlock.vue';
 import ThoughtChainBlock from './components/blocks/ThoughtChainBlock.vue';
 import SourcesBlock from './components/blocks/SourcesBlock.vue';
-import ChoiceBlock from './components/blocks/ChoiceBlock.vue';
 import AttachmentBlock from './components/blocks/AttachmentBlock.vue';
 import AiChat from './components/AiChat.vue';
 import Conversations from './components/Conversations.vue';
@@ -34,13 +32,11 @@ export {
   Thinking,
   ThoughtChain,
   ModelSelector,
-  ResultCard,
   MarkdownRenderer,
   TextBlock,
   ReasoningBlock,
   ThoughtChainBlock,
   SourcesBlock,
-  ChoiceBlock,
   AttachmentBlock,
   AiChat,
   Conversations,
@@ -81,7 +77,6 @@ export {
   reasoningBlock,
   sourcesBlock,
   thoughtChainBlock,
-  choiceBlock,
   attachmentBlock,
   textMessage,
   createMessage,
@@ -100,14 +95,12 @@ export type { WelcomeProps } from './components/Welcome.vue';
 export type { ThinkingProps } from './components/Thinking.vue';
 export type { ThoughtChainProps } from './components/ThoughtChain.vue';
 export type { ModelSelectorProps } from './components/ModelSelector.vue';
-export type { ResultCardProps, ResultCardEmits } from './components/ResultCard.vue';
 export type { MarkdownRendererProps } from './components/MarkdownRenderer.vue';
 export type { SkeletonProps } from './components/Skeleton.vue';
 export type { TextBlockProps } from './components/blocks/TextBlock.vue';
 export type { ReasoningBlockProps } from './components/blocks/ReasoningBlock.vue';
 export type { ThoughtChainBlockProps } from './components/blocks/ThoughtChainBlock.vue';
 export type { SourcesBlockProps } from './components/blocks/SourcesBlock.vue';
-export type { ChoiceBlockProps } from './components/blocks/ChoiceBlock.vue';
 export type { AttachmentBlockProps } from './components/blocks/AttachmentBlock.vue';
 export type { ConversationsProps, ConversationsEmits } from './components/Conversations.vue';
 export type {
@@ -131,13 +124,11 @@ const components = {
   Thinking,
   ThoughtChain,
   ModelSelector,
-  ResultCard,
   MarkdownRenderer,
   TextBlock,
   ReasoningBlock,
   ThoughtChainBlock,
   SourcesBlock,
-  ChoiceBlock,
   AttachmentBlock,
   AiChat,
   Conversations,

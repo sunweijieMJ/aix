@@ -2,7 +2,6 @@
  * ContentBlocks.stories.ts
  *
  * 五个内置块渲染器合并：TextBlock / ReasoningBlock / SourcesBlock / ThoughtChainBlock / AttachmentBlock。
- * （ChoiceBlock 因交互复杂保留独立 stories 文件。）
  * 原 4 个独立 stories 文件（TextBlock / ReasoningBlock / SourcesBlock / ThoughtChainBlock）
  * 已删除，所有 story 与 play 断言原样迁移至此。
  *

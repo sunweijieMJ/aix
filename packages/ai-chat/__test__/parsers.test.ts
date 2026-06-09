@@ -14,6 +14,13 @@ describe('parsers', () => {
       expect(flatParseChunk('data: ')).toEqual({});
       expect(flatParseChunk('data: 纯文本片段')).toEqual({ delta: '纯文本片段' });
     });
+    it('忽略 SSE 注释/心跳行（以 : 开头），不污染正文', () => {
+      expect(flatParseChunk(': keep-alive')).toEqual({});
+      expect(flatParseChunk(':')).toEqual({});
+      expect(flatParseChunk(': ping')).toEqual({});
+      // openai 预设同样忽略
+      expect(openaiParseChunk(': heartbeat')).toEqual({});
+    });
     it('无 data: 前缀也能解析', () => {
       expect(flatParseChunk('{"delta":"abc"}')).toEqual({ delta: 'abc' });
     });

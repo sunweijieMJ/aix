@@ -480,7 +480,10 @@ describe('useChat.updateBlock', () => {
         id: 'm1',
         role: 'ai',
         status: 'success',
-        content: [{ id: 'b1', type: 'choice', stem: 'q', options: [], selected: undefined }],
+        // 业务自定义交互块（不在内置联合内）：updateBlock 按 id 合并 patch，与块类型无关
+        content: [
+          { id: 'b1', type: 'custom-choice', selected: undefined } as unknown as ContentBlock,
+        ],
       },
     ]);
     const hit = chat.updateBlock('m1', 'b1', { selected: 'o2' });

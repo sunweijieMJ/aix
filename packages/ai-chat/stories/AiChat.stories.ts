@@ -8,13 +8,7 @@ import type {
   ThoughtChainItem,
   VoiceRecognizer,
 } from '../src';
-import {
-  textBlock,
-  createMessage,
-  messageText,
-  choiceBlock,
-  thoughtChainBlock,
-} from '../src/utils/helpers';
+import { textBlock, createMessage, messageText, thoughtChainBlock } from '../src/utils/helpers';
 import { fullReportMarkdown } from './fullReportMarkdown';
 
 // ============ 头像（内联 SVG data URI，无需网络） ============
@@ -489,58 +483,6 @@ export const WithHistory: Story = {
         { id: 'h4', status: 'success' },
       ),
     ],
-  },
-};
-
-/**
- * SingleChoiceInteractive：对话流中输出可交互单选题卡片（端到端）。
- * 以 defaultMessages 注入一道 editable 单选题（AI 输出），可直接点选项作答
- * （经 block-action → useChat.updateBlock 写回，高亮受控），或点右上角编辑题目。
- */
-export const SingleChoiceInteractive: Story = {
-  args: {
-    request: assistantRequest(),
-    welcomeTitle: '试题助手',
-    welcomeDescription: '对话中可输出可交互的单选题卡片',
-    prompts: undefined,
-    defaultMessages: [
-      createMessage('user', [textBlock('生成一道关于梵高《向日葵》的单选题')], {
-        id: 'q1',
-        status: 'local',
-      }),
-      createMessage(
-        'ai',
-        [
-          choiceBlock({
-            stem: '关于梵高《向日葵》下列说法正确的是（ ）',
-            options: [
-              { id: 'o1', label: 'A', content: '创作于巴黎时期' },
-              { id: 'o2', label: 'B', content: '现藏于阿尔勒美术馆' },
-              { id: 'o3', label: 'C', content: '属于点彩画派代表作' },
-              { id: 'o4', label: 'D', content: '使用大量铬黄颜料' },
-            ],
-            multiple: false,
-            mode: 'answer',
-            answer: 'o4',
-            analysis: '梵高《向日葵》系列大量使用铬黄，创作于阿尔勒时期。',
-            editable: true,
-          }),
-        ],
-        { id: 'a1', status: 'success' },
-      ),
-    ],
-  },
-  play: async ({ canvas, canvasElement }) => {
-    // 虚拟列表异步渲染：先等选项出现再点击（findBy 轮询）
-    const optText = await canvas.findByText('使用大量铬黄颜料', undefined, { timeout: 8000 });
-    // 点击选项 li（事件绑定在 li 上）；虚拟列表项过渡期 span 可能 pointer-events:none，
-    // 故定位到 option 容器并关闭指针事件可见性检查，避免 flaky
-    const optionLi = optText.closest('.aix-choice__option') as HTMLElement;
-    await userEvent.click(optionLi, { pointerEventsCheck: 0 });
-    // 点击后经 block-action → useChat 写回，断言受控高亮（轮询等待重渲染）
-    await waitFor(() =>
-      expect(canvasElement.querySelector('.aix-choice__option.is-selected')).toBeTruthy(),
-    );
   },
 };
 
