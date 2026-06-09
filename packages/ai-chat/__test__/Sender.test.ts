@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, h } from 'vue';
 import Sender from '../src/components/Sender.vue';
+import type { SenderSlotScope } from '../src/components/Sender.vue';
 import type { VoiceRecognizerCtx, VoiceRecognizer } from '../src/types';
 
 describe('Sender', () => {
@@ -483,6 +484,59 @@ describe('Sender', () => {
       sessions[1]!.onResult('世界', true);
       await nextTick();
       expect((ta.element as HTMLTextAreaElement).value).toBe('你好世界'); // 落字成为新基线
+    });
+  });
+
+  describe('toolbar 作用域插槽', () => {
+    it('回传当前 value / loading / disabled，并随状态更新', async () => {
+      const w = mount(Sender, {
+        props: { modelValue: 'hi', loading: false, disabled: false },
+        slots: {
+          toolbar: (s: SenderSlotScope) =>
+            h('span', { class: 'probe' }, `v=${s.value} l=${s.loading} d=${s.disabled}`),
+        },
+      });
+      expect(w.find('.probe').text()).toBe('v=hi l=false d=false');
+      await w.setProps({ loading: true, disabled: true });
+      expect(w.find('.probe').text()).toBe('v=hi l=true d=true');
+    });
+
+    it('作用域 send() 触发发送（含守卫），cancel() 触发停止', async () => {
+      const w = mount(Sender, {
+        props: { modelValue: '问题', loading: false },
+        slots: {
+          toolbar: (s: SenderSlotScope) => [
+            h('button', { class: 'do-send', onClick: s.send }),
+            h('button', { class: 'do-cancel', onClick: s.cancel }),
+          ],
+        },
+      });
+      await w.find('.do-send').trigger('click');
+      expect(w.emitted('submit')![0]).toEqual(['问题']);
+      await w.find('.do-cancel').trigger('click');
+      expect(w.emitted('cancel')).toHaveLength(1);
+    });
+
+    it('作用域 send() 复用发送守卫：loading 时不发送', async () => {
+      const w = mount(Sender, {
+        props: { modelValue: '问题', loading: true },
+        slots: {
+          toolbar: (s: SenderSlotScope) => h('button', { class: 'do-send', onClick: s.send }),
+        },
+      });
+      await w.find('.do-send').trigger('click');
+      expect(w.emitted('submit')).toBeUndefined();
+    });
+
+    it('作用域 clear() 清空输入', async () => {
+      const w = mount(Sender, {
+        props: { modelValue: '待清空' },
+        slots: {
+          toolbar: (s: SenderSlotScope) => h('button', { class: 'do-clear', onClick: s.clear }),
+        },
+      });
+      await w.find('.do-clear').trigger('click');
+      expect(w.emitted('update:modelValue')!.at(-1)).toEqual(['']);
     });
   });
 });

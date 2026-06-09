@@ -107,7 +107,7 @@ export * from './types';
 // 组件专属 Props/Emits（定义在各组件 .vue 内）
 export type { BubbleEmits } from './components/Bubble.vue';
 export type { BubbleActionsProps, BubbleActionsEmits } from './components/BubbleActions.vue';
-export type { SenderProps, SenderEmits } from './components/Sender.vue';
+export type { SenderProps, SenderEmits, SenderSlotScope } from './components/Sender.vue';
 export type { BubbleListProps, BubbleListEmits } from './components/BubbleList.vue';
 export type { AiChatProps, AiChatEmits } from './components/AiChat.vue';
 export type { WelcomeProps } from './components/Welcome.vue';

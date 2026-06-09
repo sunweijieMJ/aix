@@ -11,13 +11,14 @@
     @dragleave="onRootDragLeave"
   >
     <!-- 顶部扩展区：常用于附件预览 / 引用上下文等，位于输入行上方 -->
-    <div v-if="$slots.header" :class="ns.e('header')"><slot name="header" /></div>
+    <div v-if="$slots.header" :class="ns.e('header')">
+      <slot name="header" v-bind="slotScope" />
+    </div>
     <!-- 附件面板：展开收起带高度过渡（JS hooks 读 scrollHeight；jsdom 高度 0 自然短路） -->
     <Transition v-if="attach" :css="false" @enter="onPanelEnter" @leave="onPanelLeave">
       <AttachmentsPanel
         v-if="panelOpen"
         :items="attach.items.value"
-        :accept="props.attachments?.accept"
         @pick="openFilePicker"
         @drop="attach.add($event)"
         @remove="attach.remove"
@@ -36,7 +37,9 @@
       @change="onFileChange"
     />
     <div :class="ns.e('main')">
-      <span v-if="$slots.prefix" :class="ns.e('prefix')"><slot name="prefix" /></span>
+      <span v-if="$slots.prefix" :class="ns.e('prefix')">
+        <slot name="prefix" v-bind="slotScope" />
+      </span>
       <textarea
         ref="textareaRef"
         :class="ns.e('input')"
@@ -89,10 +92,12 @@
           {{ attach.items.value.length }}
         </span>
       </button>
-      <slot name="toolbar" />
+      <slot name="toolbar" v-bind="slotScope" />
     </div>
     <!-- 底部扩展区：位于工具栏之下，用于字数统计 / 提示语 / 自定义页脚等 -->
-    <div v-if="$slots.footer" :class="ns.e('footer')"><slot name="footer" /></div>
+    <div v-if="$slots.footer" :class="ns.e('footer')">
+      <slot name="footer" v-bind="slotScope" />
+    </div>
   </div>
 </template>
 
@@ -134,10 +139,32 @@ export interface SenderEmits {
   /** 取消 / 停止（loading 态下点停止按钮触发） */
   (e: 'cancel'): void;
 }
+
+/**
+ * 输入框 prefix / header / toolbar / footer 作用域插槽回传的上下文：
+ * 动作句柄 + 受控状态，业务可在官方发送/停止键旁加自定义按钮（模型选择 / 联网 /
+ * 深度思考开关等）并复用发送、停止、清空逻辑与 loading/disabled 态。
+ */
+export interface SenderSlotScope {
+  /** 触发发送（与点击发送键同守卫：loading/disabled/上传中/空内容时不发） */
+  send: () => void;
+  /** 停止 / 取消当前流式（等价 loading 态点停止键，emit cancel） */
+  cancel: () => void;
+  /** 清空输入框 */
+  clear: () => void;
+  /** 当前是否加载 / 流式中 */
+  loading: boolean;
+  /** 是否禁用 */
+  disabled: boolean;
+  /** 是否正在语音聆听 */
+  recording: boolean;
+  /** 当前输入框文本 */
+  value: string;
+}
 </script>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, reactive } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { Attachment, Mic } from '@aix/icons';
 import { locale } from '../locale';
@@ -445,13 +472,35 @@ const onSendClick = () => {
   else doSubmit();
 };
 
+const clear = () => {
+  inner.value = '';
+  emit('update:modelValue', '');
+  nextTick(autosize);
+};
+
+// prefix / header / toolbar / footer 作用域插槽上下文：回传动作句柄 + 受控状态，
+// 业务可在官方发送键旁加自定义按钮并复用发送/停止/清空逻辑（详见 SenderSlotScope）。
+// 用 reactive 让 loading/disabled/recording/value 以解包后的最新值随渲染回传。
+const slotScope = reactive({
+  send: doSubmit,
+  cancel: () => emit('cancel'),
+  clear,
+  loading: computed(() => props.loading),
+  disabled: computed(() => props.disabled),
+  recording: isListening,
+  value: inner,
+});
+
+defineSlots<{
+  prefix?: (props: SenderSlotScope) => unknown;
+  header?: (props: SenderSlotScope) => unknown;
+  toolbar?: (props: SenderSlotScope) => unknown;
+  footer?: (props: SenderSlotScope) => unknown;
+}>();
+
 defineExpose({
   focus: () => textareaRef.value?.focus(),
-  clear: () => {
-    inner.value = '';
-    emit('update:modelValue', '');
-    nextTick(autosize);
-  },
+  clear,
   // 仅供单测验证面板高度过渡的快速 toggle 竞态（VTU 取 Transition 内节点不便，直接单元级调用）
   __onPanelEnter: onPanelEnter,
   __onPanelLeave: onPanelLeave,

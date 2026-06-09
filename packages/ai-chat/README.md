@@ -81,7 +81,7 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 | `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?`；`v-model:messages` 受控；slot `welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
 | `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?`；slot `content` |
 | `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `contentRender`；slot `avatar`/`header`/`content`/`footer` |
-| `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?`；emit `submit`/`cancel`/`update:modelValue`；expose `focus`/`clear` |
+| `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?`；emit `submit`/`cancel`/`update:modelValue`；expose `focus`/`clear`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
 | `Welcome` | 欢迎/空态 | `icon?` / `title?` / `description?`；slot `icon`/`extra` |
 | `Prompts` | 提示词列表 | `items`；emit `select` |
 | `Thinking` | 可折叠的思考过程 | `content?` / `title?` / `expanded?`；slot 默认 |
@@ -160,6 +160,23 @@ const roles = {
   <Sender :loading="isLoading" @submit="onSend" @cancel="abort" />
 </template>
 ```
+
+### Sender 工具栏作用域插槽（自定义动作按钮）
+
+`Sender` 的 `prefix` / `header` / `toolbar` / `footer` 插槽都是**作用域插槽**，回传动作句柄与受控状态 `SenderSlotScope`：`{ send, cancel, clear, loading, disabled, recording, value }`。业务可在官方发送/停止键旁加自定义按钮（模型选择、联网开关、深度思考开关等）并**复用发送/停止/清空逻辑与 loading 态**，无需自己实现：
+
+```vue
+<Sender placeholder="输入消息…" @submit="onSend">
+  <template #toolbar="{ send, clear, loading, value }">
+    <button @click="webSearch = !webSearch">🌐 联网</button>
+    <span style="flex:1" />
+    <button :disabled="!value" @click="clear">清空</button>
+    <button :disabled="loading || !value" @click="send">发送</button>
+  </template>
+</Sender>
+```
+
+> `send()` 复用了点击发送键的全部守卫（loading / disabled / 上传中 / 空内容时不发）；`cancel()` 等价 loading 态点停止键。
 
 ## 块渲染与富内容插槽穿透
 

@@ -397,3 +397,43 @@ export const WithModelSelector: Story = {
     await canvas.findByText('DeepSeek-V3', undefined, { timeout: 3000 });
   },
 };
+
+/**
+ * ToolbarScopedActions：toolbar 作用域插槽回传 `{ send, cancel, clear, loading, disabled, value }`，
+ * 业务可在官方发送键旁加自定义按钮并复用受控逻辑——此例放一个「联网」开关 + 自定义发送/清空按钮。
+ * play：输入文本 → 点自定义发送按钮 → 断言触发 submit。
+ */
+export const ToolbarScopedActions: Story = {
+  render: () => ({
+    components: { Sender },
+    setup: () => {
+      const web = ref(false);
+      const sent = ref('');
+      return { web, sent };
+    },
+    template: `
+      <div style="padding:16px">
+        <div style="margin-bottom:8px;font-size:13px;color:var(--aix-colorTextSecondary)">
+          联网：{{ web ? '开' : '关' }} / 最近发送：{{ sent || '—' }}
+        </div>
+        <Sender placeholder="输入后点工具栏的「发送」…" @submit="(t) => (sent = t)">
+          <template #toolbar="{ send, clear, loading, value }">
+            <button type="button" :data-on="web" @click="web = !web">🌐 联网</button>
+            <span style="flex:1"></span>
+            <button type="button" class="scoped-clear" :disabled="!value" @click="clear">清空</button>
+            <button type="button" class="scoped-send" :disabled="loading || !value" @click="send">
+              发送
+            </button>
+          </template>
+        </Sender>
+      </div>
+    `,
+  }),
+  play: async ({ canvas }) => {
+    const textarea = canvas.getByRole('textbox');
+    await userEvent.click(textarea);
+    await userEvent.type(textarea, '你好');
+    await userEvent.click(canvas.getByText('发送'));
+    await waitFor(() => expect(canvas.getByText(/最近发送：你好/)).toBeTruthy());
+  },
+};
