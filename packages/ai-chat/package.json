@@ -43,17 +43,18 @@
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {
-    "@aix/theme": "workspace:^",
     "@aix/hooks": "workspace:^",
     "@aix/icons": "workspace:^",
+    "@aix/theme": "workspace:^",
     "virtua": "^0.39.0"
   },
   "optionalDependencies": {
-    "markdown-it": "^14.1.0",
-    "katex": "^0.16.11",
-    "@vscode/markdown-it-katex": "^1.1.1",
-    "dompurify": "^3.2.6",
-    "mermaid": "^11.0.0"
+    "@vscode/markdown-it-katex": "^1.1.2",
+    "dompurify": "^3.4.8",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.17.0",
+    "markdown-it": "^14.2.0",
+    "mermaid": "^11.15.0"
   },
   "peerDependencies": {
     "vue": "^3.5.31"

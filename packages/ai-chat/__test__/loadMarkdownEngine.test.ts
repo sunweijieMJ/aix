@@ -22,6 +22,11 @@ describe('loadMarkdownEngine（装配引擎）', () => {
     expect(engine!.mathRenderers.math_block).toBeTypeOf('function');
   });
 
+  it('highlight.js 可用时 codeRenderers 含通用 fence 渲染器', async () => {
+    const engine = await loadMarkdownEngine();
+    expect(engine!.codeRenderers.fence).toBeTypeOf('function');
+  });
+
   it('结果被缓存：重复调用返回同一引擎实例', async () => {
     const a = await loadMarkdownEngine();
     const b = await loadMarkdownEngine();

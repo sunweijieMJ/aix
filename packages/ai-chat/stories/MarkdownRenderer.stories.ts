@@ -91,10 +91,64 @@ export const PlainText: Story = {
 };
 
 /** 仅代码块 */
+/** 代码块：安装 highlight.js 后自动语法高亮（块固化后上色，流式期先纯码避免逐帧重高亮） */
 export const CodeOnly: Story = {
   args: {
     content:
       "```javascript\nconst greet = (name) => `Hello, ${name}!`\nconsole.log(greet('World'))\n```",
+  },
+  play: async ({ canvasElement }) => {
+    // highlight.js 已安装 → 代码块上色：code 带 hljs 类、且至少出现一个 token span
+    await waitFor(() => {
+      expect(canvasElement.querySelector('code.hljs')).toBeTruthy();
+      expect(
+        canvasElement.querySelector('.hljs-keyword, .hljs-title, .hljs-string, .hljs-built_in'),
+      ).toBeTruthy();
+    });
+  },
+};
+
+/**
+ * 代码高亮展示：安装 highlight.js 后，多语言代码块自动语法上色。
+ * 默认注入 github 亮色主题；暗色模式可在入口手动 `import 'highlight.js/styles/github-dark.css'` 覆盖。
+ */
+export const CodeHighlight: Story = {
+  args: {
+    content: [
+      '### TypeScript',
+      '```typescript',
+      'interface User {',
+      '  id: string',
+      '  name: string',
+      '}',
+      'const greet = (u: User): string => `Hello, ${u.name}!`',
+      '```',
+      '',
+      '### Python',
+      '```python',
+      'def fib(n: int) -> int:',
+      '    return n if n < 2 else fib(n - 1) + fib(n - 2)',
+      '```',
+      '',
+      '### JSON',
+      '```json',
+      '{ "name": "@aix/ai-chat", "highlight": true }',
+      '```',
+      '',
+      '### Bash',
+      '```bash',
+      'pnpm add highlight.js',
+      '```',
+    ].join('\n'),
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      // 4 个代码块均上色（带 hljs 类），且至少出现一个 token span
+      expect(canvasElement.querySelectorAll('code.hljs').length).toBeGreaterThanOrEqual(4);
+      expect(
+        canvasElement.querySelector('.hljs-keyword, .hljs-string, .hljs-built_in, .hljs-number'),
+      ).toBeTruthy();
+    });
   },
 };
 

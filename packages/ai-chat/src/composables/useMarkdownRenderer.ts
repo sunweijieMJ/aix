@@ -1,6 +1,7 @@
 import { createMathRenderers, type KatexLike } from '../utils/mathRenderers';
 import { createHtmlRenderers, type DomPurifyLike } from '../utils/htmlRenderers';
 import { createDiagramRenderers, type MermaidLike } from '../utils/diagramRenderers';
+import { createHighlightRenderers, type HljsLike } from '../utils/codeRenderers';
 import type { MarkdownRenderers, MdToken } from '../utils/markdownWalker';
 
 /**
@@ -62,6 +63,8 @@ export interface MarkdownEngine {
   htmlRenderers: MarkdownRenderers;
   /** 图表渲染器（mermaid 可用时含 fence:mermaid，否则为空 → mermaid 围栏维持代码块） */
   diagramRenderers: MarkdownRenderers;
+  /** 代码高亮渲染器（highlight.js 可用时含通用 fence，否则为空 → 代码块维持纯 pre>code） */
+  codeRenderers: MarkdownRenderers;
 }
 
 // 按 allowHtml 分别缓存（html:true/false 解析行为不同，不可混用同一实例）。
@@ -147,11 +150,27 @@ async function assembleEngine(
     } catch {
       // 未安装 mermaid：```mermaid 围栏维持默认代码块（本身即合理展示），与 katex 缺失同样静默
     }
+    let codeRenderers: MarkdownRenderers = {};
+    try {
+      const hljsMod = await import('highlight.js');
+      const hljs = (hljsMod.default ?? hljsMod) as unknown as HljsLike;
+      codeRenderers = createHighlightRenderers(hljs);
+      // 自动注入默认主题样式（副作用式 import）：装了 highlight.js 即获得配色，无需手动引入。
+      // 失败时忽略——可在应用入口手动引入任一 `highlight.js/styles/*.css` 覆盖。
+      try {
+        await import('highlight.js/styles/github.css');
+      } catch {
+        // CSS 自动注入失败：请在应用入口手动引入 highlight.js 主题样式
+      }
+    } catch {
+      // 未安装 highlight.js：代码块维持默认纯 pre>code（本身即合理展示），与 mermaid 缺失同样静默
+    }
     engine = {
       md: md as unknown as MarkdownEngine['md'],
       mathRenderers,
       htmlRenderers,
       diagramRenderers,
+      codeRenderers,
     };
   } catch {
     console.warn(

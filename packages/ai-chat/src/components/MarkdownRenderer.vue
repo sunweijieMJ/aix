@@ -108,6 +108,7 @@ const mergedRenderers = computed<MarkdownRenderers>(() => ({
   ...imageRenderers,
   ...engine.value?.mathRenderers,
   ...engine.value?.htmlRenderers,
+  ...engine.value?.codeRenderers,
   ...engine.value?.diagramRenderers,
   ...props.markdownRenderers,
 }));
