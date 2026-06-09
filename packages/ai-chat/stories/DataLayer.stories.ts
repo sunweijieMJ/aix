@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
+import { onUnmounted } from 'vue';
 import { expect, userEvent, waitFor } from 'storybook/test';
-import { AiChat, openaiParseChunk } from '../src';
+import { AiChat, openaiParseChunk, createOpenAIRequest } from '../src';
 import type { ChatMessage, ParsedChunk } from '../src';
 import { messageText } from '../src/utils/helpers';
 
@@ -139,6 +140,54 @@ export const OpenAIPreset: Story = {
     await userEvent.type(textarea, '你好');
     await userEvent.keyboard('{Enter}');
     await waitFor(() => expect(canvas.getByText(/OpenAI 格式/)).toBeTruthy(), { timeout: 4000 });
+  },
+};
+
+/**
+ * `createOpenAIRequest` 便利工厂：传 `baseURL` / `model` / `apiKey` 即得到符合 `request` 签名的
+ * 流式请求函数，内部自动拼 `/chat/completions`、注入 `Authorization: Bearer`、置 `stream:true`，
+ * 并把 `ChatMessage[]` 映射为 OpenAI `messages`。配合内置 `openaiParseChunk` 即可对接 OpenAI/
+ * DeepSeek/通义 等兼容后端，免去手写 fetch。
+ *
+ * 本 demo 用本地 `fetch` 桩拦截工厂发出的请求、回放 OpenAI 格式 mock 流（不联网）。
+ */
+export const OpenAIRequestFactory: Story = {
+  render: () => ({
+    components: { AiChat },
+    setup: () => {
+      const realFetch = globalThis.fetch;
+      globalThis.fetch = ((_url: string, init?: RequestInit) =>
+        Promise.resolve(
+          new Response(
+            streamOpenAI(
+              '这条回答由 `createOpenAIRequest` 便利工厂发起：自动拼 `/chat/completions`、注入鉴权头与 `stream:true`，配合 `openaiParseChunk` 解析。',
+              init?.signal ?? undefined,
+            ),
+            { headers: { 'content-type': 'text/event-stream' } },
+          ),
+        )) as typeof fetch;
+      onUnmounted(() => {
+        globalThis.fetch = realFetch;
+      });
+      return {
+        openaiParseChunk,
+        request: createOpenAIRequest({
+          baseURL: 'https://api.openai.com/v1',
+          model: 'gpt-4o',
+          apiKey: 'sk-demo',
+        }),
+      };
+    },
+    template: `<div style="${wrapperStyle}"><AiChat :request="request" :parse-chunk="openaiParseChunk" placeholder="试试发一条消息…" /></div>`,
+  }),
+  play: async ({ canvas }) => {
+    const textarea = canvas.getByRole('textbox');
+    await userEvent.click(textarea);
+    await userEvent.type(textarea, '你好');
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(canvas.getByText(/createOpenAIRequest/)).toBeTruthy(), {
+      timeout: 4000,
+    });
   },
 };
 

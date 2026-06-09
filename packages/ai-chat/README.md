@@ -114,6 +114,21 @@ const b = useChat({
 });
 ```
 
+### 便利工厂：`createOpenAIRequest`（可选）
+
+`request` 完全由你掌控以保证**协议无关**，但对接 OpenAI 兼容后端（OpenAI / DeepSeek / 通义等）时，可用 `createOpenAIRequest` 便利工厂免去手写 fetch——传 `baseURL` / `model` / `apiKey` 即得到符合 `request` 签名的流式请求函数（自动拼 `/chat/completions`、注入 `Authorization: Bearer`、置 `stream:true`，并把 `ChatMessage[]` 映射为 OpenAI `messages`），配合内置 `openaiParseChunk` 使用：
+
+```ts
+import { useChat, createOpenAIRequest, openaiParseChunk } from '@aix/ai-chat';
+
+const chat = useChat({
+  request: createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o', apiKey }),
+  parseChunk: openaiParseChunk,
+});
+```
+
+> ⚠️ 浏览器端直连会暴露 `apiKey`，仅适用于本地调试 / 受信内网；生产请走自有后端代理（此时仍自行实现 `request` 指向代理即可）。可传 `headers` 追加鉴权头、`transformMessages` 自定义消息映射、以及 `temperature` 等任意 OpenAI 兼容参数。
+
 **纯文本 / ndjson 流**（非 SSE）用 `streamMode: 'line'`：按 `\n` 切行、`parseChunk` 收到原始字符串：
 
 ```ts
@@ -200,7 +215,14 @@ import { provideAiChatConfig } from '@aix/ai-chat';
 provideAiChatConfig({ enableTyping: false });
 ```
 
-单独使用 `Bubble` 时通过 `typing` prop 控制（默认 `false`）；也可直接用 `useTypewriter(source, { enabled })` 组合到自定义渲染中（`enabled` 支持响应式）。
+单独使用 `Bubble` / `BubbleList` 时通过 `typing` prop 控制（默认 `false`）。`typing` 除布尔外还可传**配置对象** `{ step, interval }` 细化逐字节奏（`step` 为每帧字符数，支持 `[min,max]` 区间随机；`interval` 为帧间隔 ms）：
+
+```vue
+<!-- 更快节奏：每帧 4 字、间隔 16ms -->
+<Bubble :content="blocks" :typing="{ step: 4, interval: 16 }" status="updating" @typing-complete="onDone" />
+```
+
+逐字追平源文本时触发 `typing-complete` 事件（`Bubble` 携带 `{ messageKey }`，`BubbleList` / `AiChat` 携带消息 `id`），可用于动画结束后再渲染操作条等。注意流式下源持续增长，每追平一次都会触发，最终一次即「整段打完」。也可直接用 `useTypewriter(source, { enabled, step, interval, onComplete })` 组合到自定义渲染中（`enabled` 支持响应式）。
 
 ### ⚠️ 关于扩展点（需业务侧自行接入）
 

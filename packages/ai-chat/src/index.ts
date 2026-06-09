@@ -59,6 +59,14 @@ export type { CreateParseChunkOptions } from './utils/parsers';
 export { createXFetch } from './utils/x-fetch';
 export type { XFetch, OnRequest, OnResponse, OnError, CreateXFetchOptions } from './utils/x-fetch';
 
+// OpenAI 兼容流式请求便利工厂（配合 openaiParseChunk，降低接入门槛；仍保持协议无关性）
+export { createOpenAIRequest } from './utils/openai';
+export type {
+  CreateOpenAIRequestOptions,
+  OpenAIChatParams,
+  OpenAIChatMessage,
+} from './utils/openai';
+
 // 流式 Markdown 防闪烁 / 数学定界符归一化工具
 export { protectStreamingMarkdown, normalizeMathDelimiters } from './utils/markdown';
 
