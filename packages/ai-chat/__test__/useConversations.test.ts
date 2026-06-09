@@ -46,6 +46,42 @@ describe('useConversations', () => {
     expect('messages' in c.items.value[0]).toBe(false);
   });
 
+  it('初始化复位卡在 loading/updating 的消息为 error（避免刷新后永远加载中的假态）', () => {
+    const stored: Conversation[] = [
+      {
+        id: 'c1',
+        label: '会话',
+        timestamp: 1,
+        messages: [
+          { ...textMessage('user', '问题'), status: 'success' },
+          { ...textMessage('ai', '半截回答'), status: 'updating' },
+          { ...textMessage('ai', ''), status: 'loading' },
+        ],
+      },
+    ];
+    const storage: ConversationStorage = { load: () => stored, save: () => {} };
+    const c = useConversations({ storage });
+    const msgs = c.conversations.value[0].messages;
+    expect(msgs[0].status).toBe('success'); // 终态不变
+    expect(msgs[1].status).toBe('error'); // updating → error（保留半截内容 + 重试入口）
+    expect(msgs[2].status).toBe('error'); // loading → error
+    expect(messageText(msgs[1])).toBe('半截回答'); // 已收内容保留
+  });
+
+  it('defaultConversations 同样复位非终态消息', () => {
+    const c = useConversations({
+      defaultConversations: [
+        {
+          id: 'd1',
+          label: 'D',
+          timestamp: 1,
+          messages: [{ ...textMessage('ai', 'x'), status: 'updating' }],
+        },
+      ],
+    });
+    expect(c.conversations.value[0].messages[0].status).toBe('error');
+  });
+
   it('remove：删当前会话则切到第一个；删完置空', () => {
     const c = useConversations({ defaultConversations: [conv('a', 'A'), conv('b', 'B')] });
     c.setActive('a');

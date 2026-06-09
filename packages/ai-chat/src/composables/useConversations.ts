@@ -7,7 +7,30 @@ import {
   type ComputedRef,
   type WritableComputedRef,
 } from 'vue';
-import type { ChatMessage, Conversation, ConversationItem } from '../types';
+import type { ChatMessage, Conversation, ConversationItem, MessageStatus } from '../types';
+
+// 流式中的非终态：恢复时无活跃流推进，须复位
+const IN_FLIGHT_STATUS = new Set<MessageStatus>(['loading', 'updating']);
+
+/**
+ * 初始化/恢复时复位「卡在流式中」的消息：持久化的会话可能在上次流式途中被刷新，
+ * 恢复后这些消息停在 loading/updating 非终态、却无活跃流推进 → 表现为「永远加载中」假态。
+ * 统一复位为 error：停掉假加载、保留已收内容，并经 Bubble 的 error 态给出重试入口。
+ * 仅克隆需改动的消息/会话，终态消息与会话保持原引用（最小变更）。
+ */
+function reconcileStuckMessages(list: Conversation[]): Conversation[] {
+  return list.map((conv) => {
+    let changed = false;
+    const messages = conv.messages.map((m) => {
+      if (m.status && IN_FLIGHT_STATUS.has(m.status)) {
+        changed = true;
+        return { ...m, status: 'error' as MessageStatus };
+      }
+      return m;
+    });
+    return changed ? { ...conv, messages } : conv;
+  });
+}
 
 /** 会话持久化适配器（同步）：load 在初始化时调用，save 在会话变更防抖后调用 */
 export interface ConversationStorage {
@@ -62,7 +85,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
   // Array.isArray 防御自定义 storage 返回非数组（如字符串会被 [...str] 展开成无效会话）
   const init =
     Array.isArray(loaded) && loaded.length ? loaded : (options.defaultConversations ?? []);
-  const conversations = ref<Conversation[]>([...init]);
+  const conversations = ref<Conversation[]>(reconcileStuckMessages(init));
   const activeKey = ref<string>(conversations.value[0]?.id ?? '');
 
   const active = computed(() => conversations.value.find((c) => c.id === activeKey.value));
