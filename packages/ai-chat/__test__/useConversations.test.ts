@@ -82,6 +82,21 @@ describe('useConversations', () => {
     expect(c.conversations.value[0].messages[0].status).toBe('error');
   });
 
+  it('脏数据防御：会话 messages 字段缺失/非数组时归一为空数组，初始化不崩溃', () => {
+    // 模拟被篡改/旧结构迁移的持久化数据：顶层是数组但会话元素缺 messages 或为非数组
+    const dirty = [
+      { id: 'a', label: 'A', timestamp: 1 }, // messages 缺失
+      { id: 'b', label: 'B', timestamp: 2, messages: null }, // messages 非数组
+    ] as unknown as Conversation[];
+    const storage: ConversationStorage = { load: () => dirty, save: () => {} };
+    expect(() => useConversations({ storage })).not.toThrow();
+    const c = useConversations({ storage });
+    expect(c.conversations.value[0].messages).toEqual([]);
+    expect(c.conversations.value[1].messages).toEqual([]);
+    // 正常会话的非终态复位逻辑不受影响
+    expect(c.activeKey.value).toBe('a');
+  });
+
   it('remove：删当前会话则切到第一个；删完置空', () => {
     const c = useConversations({ defaultConversations: [conv('a', 'A'), conv('b', 'B')] });
     c.setActive('a');

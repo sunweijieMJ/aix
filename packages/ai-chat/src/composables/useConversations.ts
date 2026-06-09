@@ -20,6 +20,11 @@ const IN_FLIGHT_STATUS = new Set<MessageStatus>(['loading', 'updating']);
  */
 function reconcileStuckMessages(list: Conversation[]): Conversation[] {
   return list.map((conv) => {
+    // 防御持久化脏数据：会话 messages 字段缺失/非数组（外部篡改、旧结构迁移、手工写入）时归一为空数组，
+    // 否则下方 .map 会对 undefined 调用抛 TypeError，发生在同步初始化阶段会直接中断 setup
+    if (!Array.isArray(conv.messages)) {
+      return { ...conv, messages: [] };
+    }
     let changed = false;
     const messages = conv.messages.map((m) => {
       if (m.status && IN_FLIGHT_STATUS.has(m.status)) {
