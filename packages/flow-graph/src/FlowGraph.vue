@@ -18,7 +18,25 @@
     @node-context-menu="({ node, event }) => emit('node-right-click', { node, event })"
     @mousedown.capture="onGlobalMousedown"
   >
-    <Background v-if="snapEnabled" variant="lines" :gap="gridSize" :size="1" :color="gridColor" />
+    <!--
+      吸附模式下用 #pattern 插槽自定义「圆角方格」网格：
+      每个 pattern tile 画一个与 tile 等大的圆角矩形描边，相邻 tile 的直边重合、
+      圆角在交叉点处四角相对，形成四瓣花形的交叉点效果。
+      :offset="gridSize" 使 patternTransform 平移恰好等于一个 tile（等价于 0），
+      让方格边线精确落在 gridSize 整数倍上，与节点吸附位置对齐。
+    -->
+    <Background v-if="snapEnabled" :gap="gridSize" :offset="gridSize">
+      <template #pattern>
+        <rect
+          :width="scaledGridGap"
+          :height="scaledGridGap"
+          :rx="scaledGridRadius"
+          fill="none"
+          :stroke="gridColor"
+          stroke-width="1"
+        />
+      </template>
+    </Background>
     <Background v-else />
     <FlowSearch
       ref="flowSearchRef"
@@ -193,6 +211,16 @@ const {
   zoomIn,
   zoomOut,
 } = useVueFlow();
+
+/**
+ * 缩放后的网格 tile 尺寸（px），与 Background 内部 scaledGap 的计算保持一致
+ * （`gap * zoom || 1`），保证自定义 pattern 内容与 tile 完全贴合。
+ */
+const scaledGridGap = computed(() => gridSize.value * viewport.value.zoom || 1);
+/** 网格方格圆角与格子尺寸的比例（40px 网格对应 5px 圆角） */
+const GRID_CORNER_RATIO = 0.125;
+/** 缩放后的方格圆角半径，随 zoom 同步缩放保持视觉比例 */
+const scaledGridRadius = computed(() => scaledGridGap.value * GRID_CORNER_RATIO);
 
 /**
  * 全局 keydown 监听规则：
