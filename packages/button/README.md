@@ -139,6 +139,7 @@ const { t } = useLocale(buttonLocale);
 | 属性名 | 类型 | 默认值 | 必填 | 说明 |
 |--------|------|--------|:----:|------|
 | `type` | `"primary" \| "default" \| "dashed" \| "text" \| "link"` | `'default'` | - | 按钮类型 |
+| `htmlType` | `"button" \| "submit" \| "reset"` | `'button'` | - | 原生 button 元素的 type 属性（type 名称已被风格类型占用） 注意：默认值为 'button'，与原生默认的 'submit' 不同， 避免按钮放入 form 后意外触发表单提交；需要提交表单时显式传入 'submit' |
 | `size` | `"small" \| "medium" \| "large"` | `'medium'` | - | 按钮尺寸 |
 | `disabled` | `boolean` | `false` | - | 是否禁用 |
 | `loading` | `boolean` | `false` | - | 是否加载中，加载中时按钮不可点击并显示加载动画 |

@@ -57,6 +57,18 @@ async function generateDocs() {
 }
 
 /**
+ * 清洗进入 Markdown 表格单元格的文本：
+ * 压缩换行与连续空白（多行类型/多行 JSDoc 描述会撑断表格），并转义未转义的竖线
+ */
+function sanitizeCell(text: string): string {
+  return text
+    .replace(/\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/(?<!\\)\|/g, '\\|')
+    .trim();
+}
+
+/**
  * Format type for better display
  */
 function formatType(prop: any): string {
@@ -186,11 +198,12 @@ function generateApiMarkdown(componentInfo: any): string {
       const name = prop.name;
 
       // Handle complex types with improved formatting
-      const type = formatType(prop);
+      // 对象字面量等复杂类型的原始文本可能含换行/竖线，需清洗后才能放进表格
+      const type = sanitizeCell(formatType(prop));
 
       const defaultValue = formatDefaultValue(prop.defaultValue);
       const required = prop.required ? '✅' : '-';
-      const description = (prop.description || '-').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+      const description = sanitizeCell(prop.description || '-');
 
       markdown += `| \`${name}\` | ${type} | ${defaultValue} | ${required} | ${description} |\n`;
     });
@@ -229,10 +242,11 @@ function generateApiMarkdown(componentInfo: any): string {
         }
       }
 
-      const description = event.description || '-';
+      // 多行 JSDoc 描述（含列表项）会撑断表格，与 Props/Slots 一致做清洗
+      const description = sanitizeCell(event.description || '-');
 
       // Clean up params: remove newlines and extra spaces
-      params = params.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+      params = sanitizeCell(params);
 
       markdown += `| \`${name}\` | \`${params}\` | ${description} |\n`;
     });
@@ -248,7 +262,7 @@ function generateApiMarkdown(componentInfo: any): string {
 
     componentInfo.slots.forEach((slot: any) => {
       const name = slot.name || 'default';
-      const description = (slot.description || '-').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+      const description = sanitizeCell(slot.description || '-');
 
       markdown += `| \`${name}\` | ${description} |\n`;
     });
@@ -268,10 +282,7 @@ function generateApiMarkdown(componentInfo: any): string {
         ?.map((p: any) => `${p.name}: ${p.type?.name || 'any'}`)
         .join(', ');
       const returns = method.returns?.type?.name || 'void';
-      const description = (method.description || '-')
-        .replace(/\n/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const description = sanitizeCell(method.description || '-');
 
       markdown += `| \`${name}\` | \`${params || '-'}\` | \`${returns}\` | ${description} |\n`;
     });
