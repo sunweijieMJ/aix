@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.37
+
+### Patch Changes
+
+- 网格吸附样式
+
 ## 0.0.36
 
 ### Patch Changes
