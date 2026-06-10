@@ -1,3 +1,4 @@
+import eslintConfigPrettier from 'eslint-config-prettier';
 import eslintPluginImportX from 'eslint-plugin-import-x';
 import eslintPluginVue from 'eslint-plugin-vue';
 import tseslint from 'typescript-eslint';
@@ -98,4 +99,9 @@ export const config = [
       'vue/comment-directive': 'off',
     },
   },
+
+  // ==================== Prettier 兼容（必须在最后） ====================
+  // base.js 中的 eslintConfigPrettier 会被上方 flat/recommended 的 vue 格式规则覆盖，
+  // 在数组末尾重新应用一次，确保与 Prettier 冲突的格式规则（vue/html-indent 等）被禁用
+  eslintConfigPrettier,
 ];

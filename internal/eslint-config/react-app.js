@@ -1,3 +1,4 @@
+import eslintConfigPrettier from 'eslint-config-prettier';
 import eslintPluginImportX from 'eslint-plugin-import-x';
 import eslintPluginReact from 'eslint-plugin-react';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
@@ -78,4 +79,7 @@ export const config = [
   {
     rules: commonEslintRules,
   },
+
+  // Prettier 兼容（必须在最后）：避免 base.js 中的 eslintConfigPrettier 被上方插件规则覆盖
+  eslintConfigPrettier,
 ];
