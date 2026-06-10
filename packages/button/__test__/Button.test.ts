@@ -63,6 +63,30 @@ describe('Button 组件', () => {
     });
   });
 
+  describe('原生 type 属性测试', () => {
+    it('默认渲染 type="button"，避免表单内意外触发提交', () => {
+      const wrapper = mount(Button);
+
+      expect(wrapper.attributes('type')).toBe('button');
+    });
+
+    it('应该支持通过 htmlType 设置 type="submit"', () => {
+      const wrapper = mount(Button, {
+        props: { htmlType: 'submit' },
+      });
+
+      expect(wrapper.attributes('type')).toBe('submit');
+    });
+
+    it('应该支持通过 htmlType 设置 type="reset"', () => {
+      const wrapper = mount(Button, {
+        props: { htmlType: 'reset' },
+      });
+
+      expect(wrapper.attributes('type')).toBe('reset');
+    });
+  });
+
   describe('尺寸属性测试', () => {
     it('应该支持 small 尺寸', () => {
       const wrapper = mount(Button, {

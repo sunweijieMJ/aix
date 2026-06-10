@@ -9,6 +9,7 @@
         'aix-button--loading': loading,
       },
     ]"
+    :type="htmlType"
     :disabled="disabled || loading"
     @click="handleClick"
   >
@@ -45,6 +46,7 @@ import type { ButtonProps, ButtonEmits } from './types';
 const props = withDefaults(defineProps<ButtonProps>(), {
   type: 'default',
   size: 'medium',
+  htmlType: 'button',
   disabled: false,
   loading: false,
 });
