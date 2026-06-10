@@ -4,7 +4,7 @@
   "description": "A Vue 3 PDF Viewer component with text/image selection support",
   "license": "MIT",
   "type": "module",
-  "main": "./lib/index.js",
+  "main": "./lib/index.cjs",
   "module": "./es/index.js",
   "types": "./es/index.d.ts",
   "style": "./es/index.css",
@@ -17,7 +17,7 @@
     ".": {
       "types": "./es/index.d.ts",
       "import": "./es/index.js",
-      "require": "./lib/index.js"
+      "require": "./lib/index.cjs"
     },
     "./es/*": "./es/*",
     "./lib/*": "./lib/*",
@@ -45,6 +45,7 @@
     "@aix/hooks": "workspace:^",
     "@aix/icons": "workspace:^",
     "@aix/popper": "workspace:^",
+    "@aix/theme": "workspace:^",
     "pdfjs-dist": "^5.4.624"
   },
   "peerDependencies": {

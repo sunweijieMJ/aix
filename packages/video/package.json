@@ -4,7 +4,7 @@
   "description": "A Vue 3 Video Player component with HLS/FLV/DASH/RTSP/WebRTC support",
   "license": "MIT",
   "type": "module",
-  "main": "./lib/index.js",
+  "main": "./lib/index.cjs",
   "module": "./es/index.js",
   "types": "./es/index.d.ts",
   "style": "./es/index.css",
@@ -17,7 +17,7 @@
     ".": {
       "types": "./es/index.d.ts",
       "import": "./es/index.js",
-      "require": "./lib/index.js"
+      "require": "./lib/index.cjs"
     },
     "./es/*": "./es/*",
     "./lib/*": "./lib/*",
@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@aix/icons": "workspace:^",
+    "@aix/theme": "workspace:^",
     "video.js": "^8.23.6",
     "hls.js": "^1.6.15",
     "flv.js": "^1.6.2",

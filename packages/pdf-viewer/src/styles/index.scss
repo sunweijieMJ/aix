@@ -8,14 +8,14 @@
   --aix-pdf-border: var(--aix-colorBorder, #e0e0e0);
   --aix-pdf-text: var(--aix-colorText, #333);
   --aix-pdf-text-secondary: var(--aix-colorTextSecondary, #666);
-  --aix-pdf-primary: var(--aix-colorPrimary, #409eff);
-  --aix-pdf-primary-light: var(--aix-colorPrimaryBg, rgb(64 158 255 / 0.1));
+  --aix-pdf-primary: var(--aix-colorPrimary, rgb(19 194 194));
+  --aix-pdf-primary-light: var(--aix-colorPrimaryBg, rgb(230 255 251));
   --aix-pdf-toolbar-bg: var(--aix-colorBgContainer, #fff);
   --aix-pdf-toolbar-border: var(--aix-colorBorderSecondary, #e4e7ed);
   --aix-pdf-menu-bg: var(--aix-colorBgElevated, #fff);
   --aix-pdf-menu-shadow: var(--aix-shadowMD, 0 2px 12px rgb(0 0 0 / 0.12));
   --aix-pdf-menu-hover: var(--aix-controlItemBgHover, #f5f7fa);
-  --aix-pdf-spinner-color: var(--aix-colorPrimary, #409eff);
+  --aix-pdf-spinner-color: var(--aix-colorPrimary, rgb(19 194 194));
 }
 
 // PDF Viewer 容器

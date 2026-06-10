@@ -441,7 +441,7 @@ defineExpose({
     top: 0;
     left: 0;
     height: 100%;
-    background: var(--aix-colorPrimary, #1890ff);
+    background: var(--aix-colorPrimary, rgb(19 194 194));
   }
 
   .aix-video-controls__progress-thumb {
@@ -502,7 +502,7 @@ defineExpose({
     font-weight: 500;
 
     &--active {
-      color: var(--aix-colorPrimary, #1890ff);
+      color: var(--aix-colorPrimary, rgb(19 194 194));
     }
   }
 
@@ -534,7 +534,7 @@ defineExpose({
     }
 
     &--active {
-      color: var(--aix-colorPrimary, #1890ff);
+      color: var(--aix-colorPrimary, rgb(19 194 194));
     }
   }
 }

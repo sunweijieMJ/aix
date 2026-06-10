@@ -186,7 +186,7 @@ function formatTime(seconds: number): string {
     height: 100%;
     transition: width 0.1s;
     border-radius: 2px;
-    background: var(--aix-colorPrimary, rgb(24 144 255));
+    background: var(--aix-colorPrimary, rgb(19 194 194));
   }
 
   &__progress-handle {

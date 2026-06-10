@@ -210,7 +210,7 @@ defineExpose({
     height: 8px;
     animation: aix-live-pulse 1.5s ease-in-out infinite;
     border-radius: 50%;
-    background: var(--aix-colorError, #f5222d);
+    background: var(--aix-colorError, rgb(245 34 45));
   }
 }
 
