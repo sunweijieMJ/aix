@@ -24,7 +24,7 @@ import {
   deprecatePackageVersion,
   unpublishPackageVersion,
 } from './npm.js';
-import { checkWorkspace, postPublishGitActions } from './git.js';
+import { checkWorkspace, commitVersionChanges, postPublishGitActions } from './git.js';
 import { getWorkspacePackages } from './workspace.js';
 import {
   setupReleaseMode,
@@ -181,6 +181,17 @@ const publishPackages = async (
 
   // 记录发布前的包列表（用于发布汇总）
   const targetPackages = await resolvePackages();
+
+  // 防护：未检测到版本变更（如版本变更已提交、上次发布失败后重跑）时，
+  // changeset publish 仍会发布 registry 中缺失当前版本的包，但这些包未经本次构建/校验
+  if (targetPackages.size === 0) {
+    console.log(chalk.yellow('\n⚠️  未检测到待发布的版本变更（可能已提交，如上次发布失败后重跑）'));
+    console.log(chalk.yellow('changeset publish 仍会发布 registry 中缺失当前版本的包'));
+    console.log(chalk.yellow('这些包未经本次流程构建，请确认本地产物（es/、lib/）是最新构建结果'));
+    if (!(await confirm('确认产物有效并继续发布?', false, skipPrompts))) {
+      throw new Error('用户取消发布，请先构建后重试（pnpm build 或 pnpm pre -a publish）');
+    }
+  }
   const packagesBeforePublish: Array<{ name: string; version: string }> = [];
   for (const pkgName of targetPackages) {
     const pkg = getWorkspacePackages(projectRoot).find((p) => p.name === pkgName);
@@ -188,6 +199,11 @@ const publishPackages = async (
       packagesBeforePublish.push({ name: pkg.name, version: pkg.version });
     }
   }
+
+  // 先提交版本变更再发布（changesets 官方推荐顺序：version → commit → publish）
+  // changeset publish 会在当前 HEAD 上打 tag，先提交才能让 tag 指向包含版本变更的 commit
+  // 若 publish 失败，重跑 publish 即可（changeset 按 registry 缺失版本发布，已提交的版本变更不受影响）
+  const committed = await commitVersionChanges(projectRoot, skipPrompts);
 
   // 说明：changeset publish 在两种模式下的行为
   // - pre 模式（beta/alpha）：自动使用 pre.json 中配置的标签，不支持 --tag 标志
@@ -211,7 +227,7 @@ const publishPackages = async (
 
   console.log(chalk.green('\n✅ 发布完成!'));
 
-  await postPublishGitActions(projectRoot, skipPrompts);
+  await postPublishGitActions(projectRoot, skipPrompts, committed);
 };
 
 // 执行指定操作
@@ -324,31 +340,29 @@ const runFullProcess = async (skipPrompts = false, mode = '', dryRun = false) =>
   await setupReleaseMode(projectRoot, mode, skipPrompts);
 
   // 检查是否已有 changeset 文件，没有则引导创建
-  let changedPackages = await getChangedPackages(projectRoot);
-  if (!changedPackages.size) {
+  const initialChangedPackages = await getChangedPackages(projectRoot);
+  if (!initialChangedPackages.size) {
     console.log(chalk.yellow('未检测到现有的 changeset 文件，需要先创建'));
     const created = await createChangeset(projectRoot, skipPrompts);
     if (!created) {
       throw new Error('未创建任何 changeset，发布流程终止');
     }
-    changedPackages = await getChangedPackages(projectRoot);
-    if (!changedPackages.size) {
+    const afterCreate = await getChangedPackages(projectRoot);
+    if (!afterCreate.size) {
       throw new Error('未创建任何 changeset，发布流程终止');
     }
   } else if (!skipPrompts) {
     // 已有 changeset：仅在交互模式下询问是否追加新的 changeset
     // skipPrompts 下直接复用已有 changeset，避免卡在 inquirer 的必填输入
-    const created = await createChangeset(projectRoot, skipPrompts);
-    if (created) {
-      changedPackages = await getChangedPackages(projectRoot);
-    }
+    await createChangeset(projectRoot, skipPrompts);
   }
 
   await updateVersion(projectRoot, skipPrompts);
-  await buildPackages(projectRoot, changedPackages);
-  // 显式传入 changedPackages：changeset version 已消费 .changeset/*.md，
-  // publishPackages 内部无法再通过 getChangedPackages 还原汇总信息
-  await publishPackages(skipPrompts, false, changedPackages);
+  // updateVersion 后 .changeset/*.md 已消费，改用 detectPackages 的 git diff fallback
+  // 捕获 changeset version 连带 bump 的所有包（而不只是 frontmatter 显式列出的包）
+  const allBumpedPackages = await detectPackages(projectRoot);
+  await buildPackages(projectRoot, allBumpedPackages);
+  await publishPackages(skipPrompts, false, allBumpedPackages);
   console.log(chalk.green('✅ 发布流程完成'));
 };
 
