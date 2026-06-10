@@ -225,6 +225,39 @@ describe('ThoughtChain', () => {
       expect(chips[1].attributes('rel')).toBeUndefined();
     });
 
+    it('chip url 经 safeUrl 白名单：javascript: 协议降级为 <div> 无 href，https 正常渲染 <a>', async () => {
+      const w = mount(ThoughtChain, {
+        props: {
+          items: [
+            {
+              key: 'r',
+              title: '深度检索',
+              result: {
+                chips: [
+                  { text: '恶意链接', url: 'javascript:alert(1)' },
+                  { text: '混淆协议', url: 'java\tscript:alert(1)' },
+                  { text: '正常链接', url: 'https://example.com/detail' },
+                ],
+              },
+            },
+          ],
+        },
+      });
+      await flushPromises();
+      const chips = w.findAll('.aix-thought-chain__chip');
+      expect(chips).toHaveLength(3);
+      // javascript: 协议（含控制字符混淆变体）：降级为 <div>，无任何链接属性
+      for (const unsafe of [chips[0], chips[1]]) {
+        expect(unsafe.element.tagName).toBe('DIV');
+        expect(unsafe.attributes('href')).toBeUndefined();
+        expect(unsafe.attributes('target')).toBeUndefined();
+        expect(unsafe.attributes('rel')).toBeUndefined();
+      }
+      // https 安全链接：正常渲染 <a>
+      expect(chips[2].element.tagName).toBe('A');
+      expect(chips[2].attributes('href')).toBe('https://example.com/detail');
+    });
+
     it('result.title 缺省时不渲染 .__result-title', async () => {
       const w = mount(ThoughtChain, {
         props: {

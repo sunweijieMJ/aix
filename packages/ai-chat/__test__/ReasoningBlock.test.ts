@@ -36,4 +36,23 @@ describe('ReasoningBlock', () => {
     await w.setProps({ info: info('success') });
     expect(w.find('.aix-thinking__body').exists()).toBe(false);
   });
+
+  // 回归：MarkdownRenderer 的 streaming 与 TextBlock 同款按「状态 ∪ 打字机未追平」推导，
+  // 不直接绑定 typing 配置（success 后 typing 仍为 true，常开会导致末块永不固化）。
+  it('success 且打字机已追平（挂载快照）时 markdown 不再处于流式态', async () => {
+    // 打字机初始取挂载快照（displayed 即追平），updating 期间 streaming 仍由状态撑起
+    const w = mount(ReasoningBlock, { props: { block, typing: true, info: info('updating') } });
+    expect(w.findComponent({ name: 'MarkdownRenderer' }).props('streaming')).toBe(true);
+
+    // success 后面板自动折叠（v-if 卸载渲染体），手动展开后检查：typing 仍为 true 但已固化
+    await w.setProps({ info: info('success') });
+    await w.find('.aix-thinking__header').trigger('click');
+    expect(w.findComponent({ name: 'MarkdownRenderer' }).props('streaming')).toBe(false);
+  });
+
+  it('流式中（updating）markdown 处于流式态（与 typing 配置无关）', () => {
+    const w = mount(ReasoningBlock, { props: { block, typing: false, info: info('updating') } });
+    const md = w.findComponent({ name: 'MarkdownRenderer' });
+    expect(md.props('streaming')).toBe(true);
+  });
 });

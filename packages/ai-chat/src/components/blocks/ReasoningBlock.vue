@@ -1,8 +1,8 @@
 <template>
-  <Thinking :title="t.thoughtTitle" :expanded="streaming">
+  <Thinking :title="t.thoughtTitle" :expanded="isStreamingStatus">
     <MarkdownRenderer
       :content="displayContent"
-      :streaming="typingEnabled"
+      :streaming="streaming"
       :markdown-renderers="config.markdownRenderers"
       :allow-html="config.allowHtml ?? false"
       :md-plugins="config.mdPlugins"
@@ -55,7 +55,13 @@ const displayContent = computed(() => (typingEnabled.value ? displayed.value : p
 
 // 流式中（loading/updating）自动展开思考过程，回复完成（success 等）后自动折叠；
 // Thinking 内部 watch expanded，用户仍可手动点击切换。
-const streaming = computed(
+const isStreamingStatus = computed(
   () => props.info?.status === 'loading' || props.info?.status === 'updating',
+);
+
+// MarkdownRenderer 的 streaming 与 TextBlock 同款推导：消息仍在流式或打字机未追平，
+// 而不是 typing 配置本身（success 后 typing 仍为 true，常开会导致末块永不固化、尾光标永闪）。
+const streaming = computed(
+  () => isStreamingStatus.value || (typingEnabled.value && displayed.value !== props.block.text),
 );
 </script>

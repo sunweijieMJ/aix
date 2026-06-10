@@ -80,12 +80,17 @@ const ns = useNamespace('markdown');
 
 const engine = shallowRef<MarkdownEngine | null>(null);
 const loaded = ref(false);
-// allowHtml 变化时重载引擎（按模式缓存，切换开销小）；mdPlugins 为静态配置，随重载一并应用
+// allowHtml 变化时重载引擎（按模式缓存，切换开销小）；mdPlugins 为静态配置，随重载一并应用。
+// 加载令牌：快速切换 allowHtml 时旧 promise 后解析凭令牌失配丢弃，避免引擎被覆盖为错误模式
+let loadToken = 0;
 watch(
   () => props.allowHtml,
   async (allowHtml) => {
+    const token = ++loadToken;
     loaded.value = false;
-    engine.value = await loadMarkdownEngine(allowHtml, props.mdPlugins);
+    const eng = await loadMarkdownEngine(allowHtml, props.mdPlugins);
+    if (token !== loadToken) return; // 期间已发起新一轮加载（或值已回切）：丢弃过期结果
+    engine.value = eng;
     loaded.value = true;
   },
   { immediate: true },

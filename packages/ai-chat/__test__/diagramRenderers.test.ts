@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { defineComponent, h, nextTick } from 'vue';
+import { defineComponent, h, nextTick, ref } from 'vue';
 import { createDiagramRenderers, __resetMermaidCache } from '../src/utils/diagramRenderers';
 import type { MdToken, MarkdownRenderInfo } from '../src/utils/markdownWalker';
 
@@ -94,6 +94,55 @@ describe('createDiagramRenderers（mermaid 流程图渲染器）', () => {
     await flush();
     expect(w.find('pre.aix-md-mermaid-source--error').exists()).toBe(true);
     expect(w.text()).toContain('graph TD ???');
+  });
+
+  // 同一实例 code 可变的挂载方式：wrapper 每次渲染重新产出 fence vnode，
+  // 无 key 时 Vue 原地 patch 同类型组件 → MermaidBlock 实例复用、props.code 更新
+  const mountReactiveFence = (
+    renderers: ReturnType<typeof createDiagramRenderers>,
+    initial: string,
+  ) => {
+    const code = ref(initial);
+    const w = mount(
+      defineComponent({
+        setup: () => () =>
+          h(
+            'div',
+            renderers['fence:mermaid']!({
+              token: fenceToken(code.value),
+              renderChildren: () => [],
+              info: { streaming: false },
+            }) as never,
+          ),
+      }),
+    );
+    return { w, code };
+  };
+
+  it('已出图后 code 变更：复位旧 SVG 并按新代码重新渲染', async () => {
+    const m = makeMermaid();
+    const { w, code } = mountReactiveFence(createDiagramRenderers(m), 'graph A');
+    await flush();
+    expect(w.find('.aix-md-mermaid svg').attributes('data-of')).toBe(encodeURIComponent('graph A'));
+    code.value = 'graph B';
+    await flush();
+    // 不再停留在旧图：按新代码重渲染
+    expect(w.find('.aix-md-mermaid svg').attributes('data-of')).toBe(encodeURIComponent('graph B'));
+    expect(m.render).toHaveBeenCalledTimes(2);
+  });
+
+  it('parse 失败后 code 变更：failed 复位，新代码成功出图（--error 不残留）', async () => {
+    const m = makeMermaid();
+    m.parse.mockRejectedValueOnce(new Error('syntax error'));
+    const { w, code } = mountReactiveFence(createDiagramRenderers(m), 'graph ???');
+    await flush();
+    expect(w.find('pre.aix-md-mermaid-source--error').exists()).toBe(true);
+    code.value = 'graph OK';
+    await flush();
+    expect(w.find('pre.aix-md-mermaid-source--error').exists()).toBe(false);
+    expect(w.find('.aix-md-mermaid svg').attributes('data-of')).toBe(
+      encodeURIComponent('graph OK'),
+    );
   });
 
   it('同源码命中缓存：第二次挂载不再调用 mermaid.render', async () => {

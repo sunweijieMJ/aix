@@ -1,7 +1,7 @@
 <template>
   <MarkdownRenderer
     :content="displayContent"
-    :streaming="typingEnabled"
+    :streaming="streaming"
     :markdown-renderers="config.markdownRenderers"
     :allow-html="config.allowHtml ?? false"
     :md-plugins="config.mdPlugins"
@@ -9,11 +9,13 @@
 </template>
 
 <script lang="ts">
-import type { ContentBlock, BubbleTypingConfig } from '../../types';
+import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
 
 export interface TextBlockProps {
   /** text 或 reasoning 类型的 block */
   block: Extract<ContentBlock, { type: 'text' | 'reasoning' }>;
+  /** 气泡上下文（用于按 status 判定消息是否仍在流式） */
+  info?: BubbleContentInfo;
   /** 打字机：`true` 默认节奏 / 配置对象 `{ step, interval }` / `false` 不逐字，默认 false */
   typing?: boolean | BubbleTypingConfig;
 }
@@ -59,4 +61,16 @@ const { displayed } = useTypewriter(text, {
 
 // typing 关闭时直接取源文本，跳过打字机缓冲
 const displayContent = computed(() => (typingEnabled.value ? displayed.value : props.block.text));
+
+// streaming 反映「渲染内容是否仍可能增长」：消息仍在流式（loading/updating）或打字机未追平，
+// 而不是 typing 配置本身——流式过的消息 success 后 typing 仍保持 true（BubbleList 维持打字机
+// 节奏不中断），若据此常开 streaming，已完成消息的末块将永不固化（结尾代码块无高亮/复制按钮、
+// mermaid 不成图）且尾光标永久闪烁；反之 typing=false 时流式期间也需要防闪烁整修。
+// 历史消息重挂载时 displayed 取挂载快照（已追平），streaming 立即为 false，不影响虚拟列表场景。
+const streaming = computed(
+  () =>
+    props.info?.status === 'loading' ||
+    props.info?.status === 'updating' ||
+    (typingEnabled.value && displayed.value !== props.block.text),
+);
 </script>

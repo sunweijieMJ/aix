@@ -55,7 +55,13 @@ export function createDiagramRenderers(mermaid: MermaidLike): MarkdownRenderers 
       const failed = ref(false);
       watch(
         () => [props.code, props.settled] as const,
-        async ([code, settled]) => {
+        async ([code, settled], prev) => {
+          // code 变更（如已出图后整段替换）：先复位旧 SVG 与失败态，按新代码重走渲染流程。
+          // 流式 append-only 期间 settled=false、svg 恒为空，复位不产生任何重渲染回退。
+          if (prev && code !== prev[0]) {
+            svg.value = null;
+            failed.value = false;
+          }
           if (!settled || svg.value) return;
           const hit = cacheGet(code);
           if (hit !== undefined) {

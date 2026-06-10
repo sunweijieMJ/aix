@@ -43,13 +43,13 @@
               </div>
               <div :class="ns.e('result-chips')">
                 <component
-                  :is="chip.url ? 'a' : 'div'"
+                  :is="chipHref(chip) ? 'a' : 'div'"
                   v-for="(chip, ci) in item.result.chips"
                   :key="ci"
                   :class="ns.e('chip')"
-                  :href="chip.url || undefined"
-                  :target="chip.url ? '_blank' : undefined"
-                  :rel="chip.url ? 'noopener noreferrer' : undefined"
+                  :href="chipHref(chip)"
+                  :target="chipHref(chip) ? '_blank' : undefined"
+                  :rel="chipHref(chip) ? 'noopener noreferrer' : undefined"
                 >
                   <img
                     v-if="chip.thumbnail"
@@ -73,7 +73,7 @@
 </template>
 
 <script lang="ts">
-import type { ThoughtChainItem } from '../types';
+import type { ThoughtChainItem, ThoughtChainResultChip } from '../types';
 
 export interface ThoughtChainProps {
   /** 思维链步骤列表 */
@@ -93,6 +93,7 @@ export interface ThoughtChainProps {
 import { reactive, ref, useSlots, watch } from 'vue';
 import MarkdownRenderer from './MarkdownRenderer.vue';
 import { useNamespace } from '../composables/useNamespace';
+import { safeUrl } from '../utils/url';
 
 const props = withDefaults(defineProps<ThoughtChainProps>(), {
   items: () => [],
@@ -132,6 +133,10 @@ watch(
     }
   },
 );
+
+// chip 链接可能来自模型/检索结果（不可信），渲染前经 safeUrl 协议白名单过滤（与 SourcesBlock 同构）：
+// 安全 url 渲染为可点击 <a>，不安全（如 javascript:）则返回 undefined → 降级为 <div> 纯展示。
+const chipHref = (chip: ThoughtChainResultChip): string | undefined => safeUrl(chip.url);
 
 // 有可折叠内容才显示箭头与正文区：item.content / item.result 或外部提供了 item-content slot
 const hasBody = (item: ThoughtChainItem): boolean =>
