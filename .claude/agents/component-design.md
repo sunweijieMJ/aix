@@ -355,10 +355,10 @@ defineExpose<InputInstance>({ focus, blur });
 ```css
 .aix-button {
   /* ✅ 正确：使用 CSS 变量 */
-  color: var(--aix-color-text);
-  background: var(--aix-color-bg);
-  border-radius: var(--aix-border-radius);
-  padding: var(--aix-padding-md) var(--aix-padding-lg);
+  color: var(--aix-colorText);
+  background: var(--aix-colorBgContainer);
+  border-radius: var(--aix-borderRadius);
+  padding: var(--aix-paddingMD) var(--aix-paddingLG);
 
   /* ❌ 错误：硬编码值 */
   color: #333;
@@ -389,10 +389,10 @@ defineExpose<InputInstance>({ focus, blur });
 
 ```css
 .aix-button {
-  padding: var(--aix-padding-md);
+  padding: var(--aix-paddingMD);
 
   @media (max-width: 768px) {
-    padding: var(--aix-padding-sm);
+    padding: var(--aix-paddingSM);
   }
 }
 ```
@@ -701,24 +701,24 @@ defineExpose<ButtonInstance>({ focus, blur });
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: var(--aix-padding-sm) var(--aix-padding-md);
-  border: 1px solid var(--aix-color-border);
-  border-radius: var(--aix-border-radius);
-  background: var(--aix-color-bg);
-  color: var(--aix-color-text);
+  padding: var(--aix-paddingSM) var(--aix-paddingMD);
+  border: 1px solid var(--aix-colorBorder);
+  border-radius: var(--aix-borderRadius);
+  background: var(--aix-colorBgContainer);
+  color: var(--aix-colorText);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .aix-button--primary {
-  background: var(--aix-color-primary);
-  border-color: var(--aix-color-primary);
-  color: var(--aix-color-primary-text);
+  background: var(--aix-colorPrimary);
+  border-color: var(--aix-colorPrimary);
+  color: var(--aix-colorTextLight);
 }
 
 .aix-button--danger {
-  background: var(--aix-color-danger);
-  border-color: var(--aix-color-danger);
+  background: var(--aix-colorError);
+  border-color: var(--aix-colorError);
   color: #fff;
 }
 
@@ -728,13 +728,13 @@ defineExpose<ButtonInstance>({ focus, blur });
 }
 
 .aix-button--small {
-  padding: var(--aix-padding-xs) var(--aix-padding-sm);
-  font-size: var(--aix-font-size-sm);
+  padding: var(--aix-paddingXS) var(--aix-paddingSM);
+  font-size: var(--aix-fontSizeSM);
 }
 
 .aix-button--large {
-  padding: var(--aix-padding-md) var(--aix-padding-lg);
-  font-size: var(--aix-font-size-lg);
+  padding: var(--aix-paddingMD) var(--aix-paddingLG);
+  font-size: var(--aix-fontSizeLG);
 }
 </style>
 ```

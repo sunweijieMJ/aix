@@ -1,5 +1,8 @@
+import type { App } from 'vue';
+import VideoPlayer from './index.vue';
+
 // 主组件
-export { default as VideoPlayer } from './index.vue';
+export { VideoPlayer };
 
 // 控制栏组件
 export { default as DefaultControls } from './components/DefaultControls.vue';
@@ -26,5 +29,9 @@ export {
 // 设备检测工具
 export { isMobileDevice, isIOS, isAndroid } from './utils';
 
-// 默认导出
-export { default } from './index.vue';
+// 支持插件方式安装（与其他组件包的默认导出语义一致，见 docs/guide/development-standards.md §3.3）
+export default {
+  install(app: App) {
+    app.component('AixVideoPlayer', VideoPlayer);
+  },
+};

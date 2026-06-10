@@ -29,10 +29,10 @@ export const config = [
         parser: tseslint.parser,
         // 支持 .vue 文件扩展名
         extraFileExtensions: ['.vue'],
-        // 启用项目引用以支持 TypeScript 类型检查
-        project: './tsconfig.json',
-        // 设置 TypeScript 配置根目录
-        tsconfigRootDir: process.cwd(),
+        // 按文件就近查找 tsconfig 提供类型信息。
+        // 不能用 project + tsconfigRootDir: process.cwd()：从仓库根运行时（lint-staged/IDE）
+        // 会解析到根 tsconfig.json，而根 tsconfig exclude 了 packages/，导致所有包内 .vue 解析失败
+        projectService: true,
       },
     },
 

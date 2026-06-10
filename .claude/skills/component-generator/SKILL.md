@@ -138,19 +138,19 @@ const handleClick = (event: MouseEvent) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--aix-color-border);
-  border-radius: var(--aix-border-radius);
-  padding: var(--aix-padding-md) var(--aix-padding-lg);
-  font-size: var(--aix-font-size);
+  border: 1px solid var(--aix-colorBorder);
+  border-radius: var(--aix-borderRadius);
+  padding: var(--aix-paddingMD) var(--aix-paddingLG);
+  font-size: var(--aix-fontSize);
   cursor: pointer;
   transition: all 0.3s ease;
-  background: var(--aix-color-bg);
-  color: var(--aix-color-text);
+  background: var(--aix-colorBgContainer);
+  color: var(--aix-colorText);
 }
 
 .aix-button:hover {
-  border-color: var(--aix-color-primary);
-  color: var(--aix-color-primary);
+  border-color: var(--aix-colorPrimary);
+  color: var(--aix-colorPrimary);
 }
 
 .aix-button:disabled {
@@ -159,25 +159,25 @@ const handleClick = (event: MouseEvent) => {
 }
 
 .aix-button--primary {
-  background: var(--aix-color-primary);
-  border-color: var(--aix-color-primary);
+  background: var(--aix-colorPrimary);
+  border-color: var(--aix-colorPrimary);
   color: #fff;
 }
 
 .aix-button--danger {
-  background: var(--aix-color-danger);
-  border-color: var(--aix-color-danger);
+  background: var(--aix-colorError);
+  border-color: var(--aix-colorError);
   color: #fff;
 }
 
 .aix-button--small {
-  padding: var(--aix-padding-sm) var(--aix-padding-md);
-  font-size: var(--aix-font-size-sm);
+  padding: var(--aix-paddingSM) var(--aix-paddingMD);
+  font-size: var(--aix-fontSizeSM);
 }
 
 .aix-button--large {
-  padding: var(--aix-padding-lg) var(--aix-padding-xl);
-  font-size: var(--aix-font-size-lg);
+  padding: var(--aix-paddingLG) var(--aix-paddingXL);
+  font-size: var(--aix-fontSizeLG);
 }
 </style>
 ```
@@ -398,8 +398,8 @@ pnpm type-check && pnpm lint
 ```css
 /* ✅ 正确：使用 CSS 变量 */
 .aix-button {
-  color: var(--aix-color-text);
-  background: var(--aix-color-bg);
+  color: var(--aix-colorText);
+  background: var(--aix-colorBgContainer);
 }
 
 /* ❌ 错误：硬编码颜色 */
@@ -436,7 +436,7 @@ pnpm type-check && pnpm lint
 所有组件使用 `aix-` 前缀，避免与其他库冲突：
 - CSS 类: `.aix-button`
 - 组件注册: `AixButton`
-- CSS 变量: `--aix-color-primary`
+- CSS 变量: `--aix-colorPrimary`
 
 ## 相关文档
 

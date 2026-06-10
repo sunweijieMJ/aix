@@ -3,8 +3,11 @@
  * @description Vue 3 PDF 预览组件，支持文本和图片选择
  */
 
+import type { App } from 'vue';
+import PdfViewer from './index.vue';
+
 // 主组件
-export { default as PdfViewer } from './index.vue';
+export { PdfViewer };
 
 // 子组件
 export { default as PdfToolbar } from './components/PdfToolbar.vue';
@@ -31,5 +34,9 @@ export {
   ZOOM_STEP,
 } from './constants';
 
-// 默认导出
-export { default } from './index.vue';
+// 支持插件方式安装（与其他组件包的默认导出语义一致，见 docs/guide/development-standards.md §3.3）
+export default {
+  install(app: App) {
+    app.component('AixPdfViewer', PdfViewer);
+  },
+};

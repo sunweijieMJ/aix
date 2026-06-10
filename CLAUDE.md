@@ -65,13 +65,15 @@ aix/
 ```scss
 // 正确: 使用 CSS 变量
 .aix-button {
-  color: var(--aix-color-primary);
-  border-radius: var(--aix-border-radius);
+  color: var(--aix-colorPrimary);
+  border-radius: var(--aix-borderRadius);
 }
 
 // 错误: 硬编码颜色值（禁止!）
 .aix-button { color: #1890ff; }
 ```
+
+> Token 命名为 **camelCase**（`--aix-colorPrimary`、`--aix-fontSizeSM`、`--aix-paddingMD`），**不是** kebab-case（`--aix-color-primary` 不存在，写错不会报错但样式静默失效）。完整变量清单见 `packages/theme/src/vars/`。
 
 ## 组件包结构规范
 

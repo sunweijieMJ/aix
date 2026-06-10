@@ -82,7 +82,10 @@ packages/
       │   └── {ComponentName}.stories.ts  # Story 文件
       ├── package.json
       ├── tsconfig.json
-      └── rollup.config.js
+      ├── rollup.config.js
+      ├── vitest.config.ts              # 必需！根 vitest projects 按此文件发现包，缺失则测试被静默跳过
+      ├── eslint.config.ts
+      └── stylelint.config.ts
 ```
 
 ### 步骤 4: 生成配置文件
@@ -130,7 +133,7 @@ packages/
     "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
     "build:js": "rollup -c",
     "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
-    "clean": "rimraf lib es tsconfig.tsbuildinfo"
+    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "peerDependencies": {
     "vue": "^3.5.31"
@@ -138,6 +141,7 @@ packages/
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/stylelint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "eslint": "*",
     "rimraf": "*",
@@ -156,20 +160,57 @@ packages/
 
 #### tsconfig.json
 
+与现存组件包一致（如 `packages/button/tsconfig.json`），继承 `base-library.json`（注意：`vue.json` 预设不存在）：
+
 ```json
 {
-  "extends": "@kit/typescript-config/vue.json",
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
-  "exclude": ["node_modules", "es", "lib", "dist", "__test__"]
+  "extends": "@kit/typescript-config/base-library.json",
+  "compilerOptions": {
+    "declarationDir": "es",
+    "rootDir": "src",
+    "outDir": "es"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "es", "lib", "__test__", "stories"]
 }
 ```
 
 #### rollup.config.js
 
+显式传 `['esm', 'cjs']`（省略第二参数会默认追加 UMD，产出不发布的 dist/ 死产物）：
+
 ```javascript
 import { createRollupConfig } from '../../rollup.config.js';
 
-export default createRollupConfig(import.meta.dirname);
+export default createRollupConfig(import.meta.dirname, ['esm', 'cjs']);
+```
+
+#### vitest.config.ts（必需）
+
+根 `vitest.config.ts` 的 projects 以 `packages/*/vitest.config.ts` 发现包，缺失该文件的包在根口径测试中被静默跳过：
+
+```typescript
+import { createVueConfig } from '@kit/vitest-config';
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig(createVueConfig());
+```
+
+#### eslint.config.ts（必需）
+
+```typescript
+import { config } from '@kit/eslint-config/vue-app';
+import type { Linter } from 'eslint';
+
+export default config as Linter.Config[];
+```
+
+#### stylelint.config.ts（必需）
+
+```typescript
+export default {
+  extends: ['@kit/stylelint-config/vue-app'],
+};
 ```
 
 ### 步骤 5: 生成组件模板
@@ -207,6 +248,9 @@ pnpm build
    ✓ package.json
    ✓ tsconfig.json
    ✓ rollup.config.js
+   ✓ vitest.config.ts
+   ✓ eslint.config.ts
+   ✓ stylelint.config.ts
    ✓ src/{ComponentName}.vue
    ✓ src/index.ts
    ✓ stories/{ComponentName}.stories.ts
@@ -249,18 +293,23 @@ packages/{package-name}/
 
 ### 4. 导出规范
 
+与全库统一（见 docs/guide/development-standards.md §3.3）：**默认导出 install 插件**（支持 `app.use()`），组件本体与类型走具名导出：
+
 ```typescript
 // src/index.ts
 import type { App } from 'vue';
 import ComponentName from './ComponentName.vue';
 
-// 默认导出
-export { ComponentName };
-export default ComponentName;
+export type { ComponentNameProps, ComponentNameEmits } from './types';
 
-// Vue Plugin
-export const install = (app: App) => {
-  app.component('AixComponentName', ComponentName);
+// 支持单独导入
+export { ComponentName };
+
+// 支持插件方式安装
+export default {
+  install(app: App) {
+    app.component('AixComponentName', ComponentName);
+  },
 };
 ```
 

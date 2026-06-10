@@ -444,9 +444,9 @@ const count = options.length;  // 获取选项数量
 ```scss
 .aix-button {
   // ✅ 正确：使用 CSS 变量
-  color: var(--aix-color-text);              // 普通文本
-  color: var(--aix-color-text-secondary);    // 次要文本
-  color: var(--aix-color-text-disabled);     // 禁用文本
+  color: var(--aix-colorText);              // 普通文本
+  color: var(--aix-colorTextSecondary);    // 次要文本
+  color: var(--aix-colorTextDisabled);     // 禁用文本
 
   // ❌ 错误：硬编码颜色
   color: #333;
@@ -459,22 +459,22 @@ const count = options.length;  // 获取选项数量
 ```scss
 .aix-button {
   // ✅ 背景色
-  background: var(--aix-color-bg);
-  background: var(--aix-color-bg-secondary);
-  background: var(--aix-color-bg-hover);
+  background: var(--aix-colorBgContainer);
+  background: var(--aix-colorBgLayout);
+  background: var(--aix-colorBgTextHover);
 
   // ✅ 边框色
-  border: 1px solid var(--aix-color-border);
-  border: 1px solid var(--aix-color-border-secondary);
+  border: 1px solid var(--aix-colorBorder);
+  border: 1px solid var(--aix-colorBorderSecondary);
 
   // ✅ 主题色
-  background: var(--aix-color-primary);
-  color: var(--aix-color-primary-text);
+  background: var(--aix-colorPrimary);
+  color: var(--aix-colorTextLight);
 
   // ✅ 状态色
-  color: var(--aix-color-success);
-  color: var(--aix-color-warning);
-  color: var(--aix-color-danger);
+  color: var(--aix-colorSuccess);
+  color: var(--aix-colorWarning);
+  color: var(--aix-colorError);
 }
 ```
 
@@ -482,10 +482,10 @@ const count = options.length;  // 获取选项数量
 
 ```scss
 .aix-button {
-  padding: var(--aix-padding-sm);
-  padding: var(--aix-padding-md);
-  border-radius: var(--aix-border-radius);
-  font-size: var(--aix-font-size);
+  padding: var(--aix-paddingSM);
+  padding: var(--aix-paddingMD);
+  border-radius: var(--aix-borderRadius);
+  font-size: var(--aix-fontSize);
 }
 ```
 
@@ -554,7 +554,7 @@ h1 { font-size: 24px; }
   box-sizing: border-box;
   width: 120px;
   padding: 12px 24px;
-  border: 1px solid var(--aix-color-border);
+  border: 1px solid var(--aix-colorBorder);
 }
 // 总宽度 = 120px ✅
 ```
@@ -663,16 +663,16 @@ $spacing-md: 16px;
 .aix-button {
   @include flex-center;
   padding: $spacing-md;
-  border: 1px solid var(--aix-color-border);
-  background: var(--aix-color-bg);
+  border: 1px solid var(--aix-colorBorder);
+  background: var(--aix-colorBgContainer);
 
   &__icon {
     margin-right: $spacing-sm;
   }
 
   &--primary {
-    background: var(--aix-color-primary);
-    color: var(--aix-color-white);
+    background: var(--aix-colorPrimary);
+    color: var(--aix-colorWhite);
   }
 }
 ```

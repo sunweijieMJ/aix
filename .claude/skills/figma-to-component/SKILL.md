@@ -66,9 +66,9 @@ metadata:
    - 圆角: 4px
 
    🎨 颜色映射:
-   - #1890FF → var(--aix-color-primary)
-   - #FFFFFF → var(--aix-color-white)
-   - #D9D9D9 → var(--aix-color-border)
+   - #1890FF → var(--aix-colorPrimary)
+   - #FFFFFF → var(--aix-colorWhite)
+   - #D9D9D9 → var(--aix-colorBorder)
 ```
 
 ### 步骤 3: 下载切图
@@ -131,8 +131,8 @@ metadata:
        └── Button.stories.ts
 
 3️⃣ 颜色映射
-   #1890FF → var(--aix-color-primary)
-   #FFFFFF → var(--aix-color-white)
+   #1890FF → var(--aix-colorPrimary)
+   #FFFFFF → var(--aix-colorWhite)
 
 ─────────────────────────────────────────
 

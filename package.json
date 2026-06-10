@@ -54,7 +54,7 @@
       "stylelint --fix"
     ],
     "*.md": [
-      "npm run lint:md"
+      "markdownlint-cli2 --no-globs"
     ],
     "*": [
       "pretty-quick --staged"

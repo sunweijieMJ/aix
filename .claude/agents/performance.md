@@ -675,19 +675,19 @@ div.aix-button[type="primary"]:not(:disabled):hover { }
 ```scss
 // 使用 CSS 变量，切换主题只需修改变量
 :root {
-  --aix-color-primary: rgb(19 194 194);
-  --aix-color-bg: rgb(255 255 255);
+  --aix-colorPrimary: rgb(19 194 194);
+  --aix-colorBgContainer: rgb(255 255 255);
 }
 
 [data-theme="dark"] {
-  --aix-color-primary: rgb(54 207 207);
-  --aix-color-bg: rgb(20 20 20);
+  --aix-colorPrimary: rgb(54 207 207);
+  --aix-colorBgContainer: rgb(20 20 20);
 }
 
 // 组件中使用变量
 .aix-button {
-  background: var(--aix-color-primary);
-  color: var(--aix-color-bg);
+  background: var(--aix-colorPrimary);
+  color: var(--aix-colorBgContainer);
 }
 ```
 
