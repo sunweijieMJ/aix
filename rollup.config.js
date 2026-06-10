@@ -39,6 +39,7 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       ...(outputFile ? { file: outputFile } : { dir: outputDir }),
       name: outputFile ? pkgName : undefined, // 适用于 UMD/IIFE 格式
       exports: format === 'esm' ? undefined : 'named',
+      entryFileNames: format === 'cjs' && !outputFile ? '[name].cjs' : undefined,
       preserveModules: !outputFile,
       preserveModulesRoot: 'src',
       globals: outputFile

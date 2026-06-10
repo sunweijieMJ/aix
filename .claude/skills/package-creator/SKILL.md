@@ -96,7 +96,7 @@ packages/
   "description": "{description}",
   "license": "MIT",
   "type": "module",
-  "main": "./lib/index.js",
+  "main": "./lib/index.cjs",
   "module": "./es/index.js",
   "types": "./es/index.d.ts",
   "style": "./es/index.css",
@@ -109,7 +109,7 @@ packages/
     ".": {
       "types": "./es/index.d.ts",
       "import": "./es/index.js",
-      "require": "./lib/index.js"
+      "require": "./lib/index.cjs"
     },
     "./es/*": "./es/*",
     "./lib/*": "./lib/*",
@@ -117,7 +117,6 @@ packages/
     "./package.json": "./package.json"
   },
   "files": [
-    "dist",
     "lib",
     "es"
   ],
@@ -126,11 +125,12 @@ packages/
     "lint:script": "eslint . --max-warnings 0",
     "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
     "lint": "pnpm run lint:script && pnpm run lint:style",
+    "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
     "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
     "build:js": "rollup -c",
     "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
-    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
+    "clean": "rimraf lib es tsconfig.tsbuildinfo"
   },
   "peerDependencies": {
     "vue": "^3.5.31"
@@ -138,6 +138,7 @@ packages/
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/stylelint-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
     "eslint": "*",
     "rimraf": "*",
     "stylelint": "*",

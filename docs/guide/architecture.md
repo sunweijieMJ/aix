@@ -621,14 +621,14 @@ mindmap
 ```json
 {
   "name": "@aix/button",
-  "main": "./lib/index.js",
+  "main": "./lib/index.cjs",
   "module": "./es/index.js",
   "types": "./es/index.d.ts",
   "exports": {
     ".": {
       "types": "./es/index.d.ts",
       "import": "./es/index.js",
-      "require": "./lib/index.js"
+      "require": "./lib/index.cjs"
     },
     "./style": "./es/index.css"
   },
