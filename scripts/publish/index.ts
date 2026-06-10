@@ -195,7 +195,7 @@ const publishPackages = async (
   // 因此两种模式下都不需要显式指定 --tag
 
   // 使用带重试的命令执行，应对网络波动
-  await runWithRetry(`npx changeset publish --no-git-checks`, {
+  await runWithRetry(`npx changeset publish`, {
     cwd: projectRoot,
     maxRetries: DEFAULT_MAX_RETRIES,
     retryDelayMs: DEFAULT_RETRY_DELAY_MS,
