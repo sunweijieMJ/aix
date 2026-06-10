@@ -33,6 +33,8 @@ export interface AiChatLocale {
   backToBottom: string;
   /** 请求出错时气泡内展示的错误文案 */
   errorMessage: string;
+  /** markdown 内联图片加载失败时的占位文案（无 alt/src 时兜底） */
+  imageLoadError: string;
   /** 引用来源块标题（sources 块） */
   sourcesTitle: string;
   /** 新建会话按钮 */

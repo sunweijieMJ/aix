@@ -1,5 +1,11 @@
 import { ref, computed, onScopeDispose, type Ref } from 'vue';
-import type { ChatMessage, ContentBlock, ParsedChunk, MessageFeedback } from '../types';
+import type {
+  ChatMessage,
+  ContentBlock,
+  ParsedChunk,
+  MessageFeedback,
+  SubBubbleMeta,
+} from '../types';
 import { genMsgId, genBlockId } from '../utils/helpers';
 import { flatParseChunk } from '../utils/parsers';
 import { xStream, sseStream, type SSEChunk } from './useXStream';
@@ -129,11 +135,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             subs.forEach((sub, bi) => {
               const derivedId = bi === 0 ? m.id : `${m.id}__${bi}`;
               if (bi > 0) map.set(derivedId, m.id);
+              // __sub 元信息使用公共类型 SubBubbleMeta 显式标注，与消费侧（AiChat 操作条去重）对齐
+              const subMeta: SubBubbleMeta = { index: bi, count };
               list.push({
                 ...sub,
                 id: derivedId,
                 status: m.status,
-                extra: { ...sub.extra, __sub: { index: bi, count } },
+                extra: { ...sub.extra, __sub: subMeta },
               });
             });
           }

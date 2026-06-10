@@ -70,11 +70,13 @@ describe('imageRenderers（内置图片骨架）', () => {
 
   it('无 src 的异常 token 渲染失败占位，不抛错', () => {
     const vnode = imageRenderers.image!({
-      token: { ...imageToken(''), attrs: null },
+      token: { ...imageToken('', ''), attrs: null },
       renderChildren: () => [],
       info: { streaming: false },
     });
     const w = mount(defineComponent({ render: () => h('div', vnode as never) }));
     expect(w.find('.aix-md-image--error').exists()).toBe(true);
+    // 无 alt/src 时兜底文案取自 locale.imageLoadError（默认 zh-CN）
+    expect(w.text()).toContain('图片加载失败');
   });
 });

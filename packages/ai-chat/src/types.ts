@@ -29,6 +29,18 @@ export interface ChatMessage {
   extra?: Record<string, unknown>;
 }
 
+/**
+ * parser 1→N 拆分时，包内部写入派生气泡 `extra.__sub` 的位置元信息。
+ * 首个子气泡复用父消息 id，其余派生稳定 id（`${父id}__${index}`）；
+ * 供操作条等按「仅末气泡显示」去重，业务读取时收敛为 `SubBubbleMeta | undefined`。
+ */
+export interface SubBubbleMeta {
+  /** 派生气泡在拆分组中的序号（0 起） */
+  index: number;
+  /** 拆分组内气泡总数 */
+  count: number;
+}
+
 /** 单个会话（含元数据与该会话的消息列表） */
 export interface Conversation {
   id: string;

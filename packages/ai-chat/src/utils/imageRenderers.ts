@@ -1,8 +1,10 @@
 import { defineComponent, h, ref, onBeforeUnmount } from 'vue';
+import { useLocale } from '@aix/hooks';
 // 务实取舍：与 diagramRenderers 同理——本文件是「组件工厂」（ImageBlock 即组件），
 // 复用 components 层的 Skeleton 保证占位动效全包一致。
 import Skeleton from '../components/Skeleton.vue';
 import { transitionHeight } from './heightTransition';
+import { locale } from '../locale';
 import type { MarkdownRenderers, MdToken } from './markdownWalker';
 
 /** 已成功加载过的图片 URL：虚拟列表重挂载 / 同图复现时直接出图，不再闪骨架 */
@@ -28,6 +30,8 @@ const ImageBlock = defineComponent({
     alt: { type: String, default: '' },
   },
   setup(props) {
+    // 失败占位兜底文案走 locale 体系（与 codeRenderers 一致），随语言切换响应式更新
+    const { t } = useLocale(locale);
     const status = ref<'loading' | 'loaded' | 'error'>(
       loadedUrls.has(props.src) ? 'loaded' : 'loading',
     );
@@ -60,7 +64,7 @@ const ImageBlock = defineComponent({
         // 失败占位：保留占位框与 alt 文案，避免浏览器默认裂图
         return h('span', { class: 'aix-md-image aix-md-image--error', role: 'img' }, [
           h('span', { 'aria-hidden': 'true' }, '🖼'),
-          props.alt || props.src || '图片加载失败',
+          props.alt || props.src || t.value.imageLoadError,
         ]);
       }
       if (status.value === 'loaded') {

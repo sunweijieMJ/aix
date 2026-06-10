@@ -18,6 +18,7 @@ export const enUS: AiChatLocale = {
   loadingMessages: 'Loading…',
   backToBottom: 'Back to bottom',
   errorMessage: 'Something went wrong, please retry',
+  imageLoadError: 'Image failed to load',
   sourcesTitle: 'Sources',
   newConversation: 'New chat',
   renameConversation: 'Rename',

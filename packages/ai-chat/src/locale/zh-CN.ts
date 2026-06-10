@@ -18,6 +18,7 @@ export const zhCN: AiChatLocale = {
   loadingMessages: '加载中…',
   backToBottom: '回到底部',
   errorMessage: '出错了，请重试',
+  imageLoadError: '图片加载失败',
   sourcesTitle: '引用来源',
   newConversation: '新建会话',
   renameConversation: '重命名',

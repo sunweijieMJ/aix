@@ -95,19 +95,32 @@ import type {
   ActionsItems,
   AttachmentItem,
   VoiceConfig,
+  SubBubbleMeta,
 } from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
 import type { MarkdownItPlugin } from '../composables/useMarkdownRenderer';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
 
 export interface AiChatProps {
-  /** 发起请求，返回字节流或 Response（必填）；透传给 useChat */
+  /**
+   * 发起请求，返回字节流或 Response（必填）；透传给 useChat。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
   request: UseChatOptions['request'];
-  /** 流分帧模式（'sse' 默认 / 'line'）；透传给 useChat */
+  /**
+   * 流分帧模式（'sse' 默认 / 'line'）；透传给 useChat。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
   streamMode?: UseChatOptions['streamMode'];
-  /** 流单元 → 增量解析器，默认扁平 SSE；对接 OpenAI/Anthropic 传 openaiParseChunk/anthropicParseChunk。透传给 useChat */
+  /**
+   * 流单元 → 增量解析器，默认扁平 SSE；对接 OpenAI/Anthropic 传 openaiParseChunk/anthropicParseChunk。透传给 useChat。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
   parseChunk?: UseChatOptions['parseChunk'];
-  /** 渲染消息转换器（解耦后端格式与展示形状，1→1，须保留消息 id）；透传给 useChat */
+  /**
+   * 渲染消息转换器（解耦后端格式与展示形状，1→1，须保留消息 id）；透传给 useChat。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
   parser?: UseChatOptions['parser'];
   /** 初始历史消息 */
   defaultMessages?: UseChatOptions['defaultMessages'];
@@ -143,11 +156,20 @@ export interface AiChatProps {
   actionsTrigger?: 'always' | 'hover';
   /** 是否允许用户消息内联编辑重发，默认 false */
   editable?: boolean;
-  /** 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试 */
+  /**
+   * 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
   retryTimes?: UseChatOptions['retryTimes'];
-  /** 两次重试间隔（ms），默认 1000；透传给 useChat */
+  /**
+   * 两次重试间隔（ms），默认 1000；透传给 useChat。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
   retryInterval?: UseChatOptions['retryInterval'];
-  /** 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat */
+  /**
+   * 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
   streamTimeout?: UseChatOptions['streamTimeout'];
   /**
    * markdown token 渲染器注册表（扩展/覆盖气泡内 markdown 块渲染），优先级高于全局 markdownRenderers。
@@ -294,6 +316,21 @@ watch(
   },
 );
 
+// 开发期护栏（同上）：useChat 的配置项也是 setup 时快照（useChat 内一次性解构），运行时改 props 静默不生效。
+// 仅原始类型 prop 进 watch；request / parseChunk / parser 为函数 prop，业务常以内联箭头函数传入
+// （父组件每次渲染产生新引用），进 watch 会持续误报，故只在 props 注释中声明静态语义，不做运行时检测。
+let warnedStaticChatConfig = false;
+watch(
+  () => [props.streamMode, props.retryTimes, props.retryInterval, props.streamTimeout],
+  () => {
+    if (warnedStaticChatConfig) return;
+    warnedStaticChatConfig = true;
+    console.warn(
+      '[ai-chat] streamMode / retryTimes / retryInterval / streamTimeout（以及 request / parseChunk / parser）为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
+    );
+  },
+);
+
 const {
   messages,
   parsedMessages,
@@ -385,7 +422,7 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
   }
   if (item.role !== 'ai' || item.status !== 'success') return null;
   // 1→N 拆分：默认操作条仅末子气泡显示，避免每个子气泡重复一条（函数形态由业务自控）
-  const sub = item.extra?.__sub as { index: number; count: number } | undefined;
+  const sub = item.extra?.__sub as SubBubbleMeta | undefined;
   if (sub && sub.index < sub.count - 1) return null;
   return a.length > 0 ? a : null;
 };
