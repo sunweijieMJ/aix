@@ -1,10 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-
 // 模拟 markdown-it 未安装：import 抛错 → loadMarkdownEngine 应返回 null 并告警一次
 vi.mock('markdown-it', () => {
   throw new Error('Cannot find module markdown-it');
 });
-
 import {
   loadMarkdownEngine,
   __resetMarkdownEngineCache,

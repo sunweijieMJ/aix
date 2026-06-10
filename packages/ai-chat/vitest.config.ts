@@ -1,6 +1,6 @@
 import { createVueConfig } from '@kit/vitest-config';
-import { defineConfig } from 'vitest/config';
 import Vue from 'unplugin-vue/vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig(
   createVueConfig({

@@ -1,8 +1,8 @@
-import { createMathRenderers, type KatexLike } from '../utils/mathRenderers';
-import { createHtmlRenderers, type DomPurifyLike } from '../utils/htmlRenderers';
-import { createDiagramRenderers, type MermaidLike } from '../utils/diagramRenderers';
 import { createHighlightRenderers, type HljsLike } from '../utils/codeRenderers';
+import { createDiagramRenderers, type MermaidLike } from '../utils/diagramRenderers';
+import { createHtmlRenderers, type DomPurifyLike } from '../utils/htmlRenderers';
 import type { MarkdownRenderers, MdToken } from '../utils/markdownWalker';
+import { createMathRenderers, type KatexLike } from '../utils/mathRenderers';
 
 /**
  * 内部共享：动态加载 markdown-it 并尽力挂载 KaTeX 插件。

@@ -80,8 +80,6 @@
 </template>
 
 <script lang="ts">
-import type { BlockAction } from '../types';
-
 // 注：与下方 <script setup> 的类型 import 合并后属同一模块，BlockAction 仅在此声明一次，
 // setup 块不再重复 import，避免 vue-tsc 报 Duplicate identifier。
 export interface BubbleEmits {
@@ -97,18 +95,18 @@ export interface BubbleEmits {
 </script>
 
 <script setup lang="ts">
-import { computed, watchEffect, useSlots, ref } from 'vue';
 import { useLocale } from '@aix/hooks';
-import type { BubbleProps, BubbleContentInfo, BlockRenderers } from '../types';
-import { useNamespace } from '../composables/useNamespace';
-import TextBlock from './blocks/TextBlock.vue';
-import ReasoningBlock from './blocks/ReasoningBlock.vue';
-import ThoughtChainBlock from './blocks/ThoughtChainBlock.vue';
-import SourcesBlock from './blocks/SourcesBlock.vue';
-import AttachmentBlock from './blocks/AttachmentBlock.vue';
-import { locale } from '../locale';
 import { Edit } from '@aix/icons';
+import { computed, watchEffect, useSlots, ref } from 'vue';
+import { useNamespace } from '../composables/useNamespace';
+import { locale } from '../locale';
+import type { BlockAction, BubbleProps, BubbleContentInfo, BlockRenderers } from '../types';
 import { messageText } from '../utils/helpers';
+import AttachmentBlock from './blocks/AttachmentBlock.vue';
+import ReasoningBlock from './blocks/ReasoningBlock.vue';
+import SourcesBlock from './blocks/SourcesBlock.vue';
+import TextBlock from './blocks/TextBlock.vue';
+import ThoughtChainBlock from './blocks/ThoughtChainBlock.vue';
 
 const props = withDefaults(defineProps<BubbleProps>(), {
   content: () => [],

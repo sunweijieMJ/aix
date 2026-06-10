@@ -11,17 +11,17 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, userEvent } from 'storybook/test';
 // 内置块组件是 Bubble 注册表的实现细节、不对外导出，story 直接按路径引入（与单测一致）。
-import TextBlock from '../src/components/blocks/TextBlock.vue';
-import ReasoningBlock from '../src/components/blocks/ReasoningBlock.vue';
-import SourcesBlock from '../src/components/blocks/SourcesBlock.vue';
-import ThoughtChainBlock from '../src/components/blocks/ThoughtChainBlock.vue';
-import AttachmentBlock from '../src/components/blocks/AttachmentBlock.vue';
-import type { TextBlockProps } from '../src/components/blocks/TextBlock.vue';
-import type { ReasoningBlockProps } from '../src/components/blocks/ReasoningBlock.vue';
-import type { SourcesBlockProps } from '../src/components/blocks/SourcesBlock.vue';
-import type { ThoughtChainBlockProps } from '../src/components/blocks/ThoughtChainBlock.vue';
-import type { AttachmentBlockProps } from '../src/components/blocks/AttachmentBlock.vue';
 import type { SourceItem, ThoughtChainItem, AttachmentItem } from '../src';
+import AttachmentBlock from '../src/components/blocks/AttachmentBlock.vue';
+import type { AttachmentBlockProps } from '../src/components/blocks/AttachmentBlock.vue';
+import ReasoningBlock from '../src/components/blocks/ReasoningBlock.vue';
+import type { ReasoningBlockProps } from '../src/components/blocks/ReasoningBlock.vue';
+import SourcesBlock from '../src/components/blocks/SourcesBlock.vue';
+import type { SourcesBlockProps } from '../src/components/blocks/SourcesBlock.vue';
+import TextBlock from '../src/components/blocks/TextBlock.vue';
+import type { TextBlockProps } from '../src/components/blocks/TextBlock.vue';
+import ThoughtChainBlock from '../src/components/blocks/ThoughtChainBlock.vue';
+import type { ThoughtChainBlockProps } from '../src/components/blocks/ThoughtChainBlock.vue';
 import type { BubbleContentInfo, ContentBlock } from '../src/types';
 import { textBlock, sourcesBlock, thoughtChainBlock, attachmentBlock } from '../src/utils/helpers';
 

@@ -102,9 +102,6 @@
 </template>
 
 <script lang="ts">
-import type { AttachmentItem, VoiceConfig } from '../types';
-import type { UseAttachmentsOptions } from '../composables/useAttachments';
-
 export interface SenderProps {
   /** 输入框文本（v-model），受控 */
   modelValue?: string;
@@ -164,18 +161,20 @@ export interface SenderSlotScope {
 </script>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, reactive } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { Attachment, Mic } from '@aix/icons';
-import { locale } from '../locale';
-import { useNamespace } from '../composables/useNamespace';
-import { useAttachments } from '../composables/useAttachments';
-import { useVoiceInput } from '../composables/useVoiceInput';
-import AttachmentsPanel from './AttachmentsPanel.vue';
+import { ref, computed, watch, nextTick, reactive } from 'vue';
 // 发送按钮图标采用设计稿导出的本地 SVG 资源：默认态为纸飞机、输出中为停止圆点。
 // 以 CSS mask 渲染，使图标颜色随按钮 color（主题变量）变化，而非 SVG 内置色，符合主题系统约定。
 import sendIconUrl from '../assets/send-default.svg';
 import stopIconUrl from '../assets/send-streaming.svg';
+import { useAttachments } from '../composables/useAttachments';
+import type { UseAttachmentsOptions } from '../composables/useAttachments';
+import { useNamespace } from '../composables/useNamespace';
+import { useVoiceInput } from '../composables/useVoiceInput';
+import { locale } from '../locale';
+import type { AttachmentItem, VoiceConfig } from '../types';
+import AttachmentsPanel from './AttachmentsPanel.vue';
 
 const props = withDefaults(defineProps<SenderProps>(), {
   modelValue: '',

@@ -28,8 +28,6 @@
 </template>
 
 <script lang="ts">
-import type { ContentBlock, BubbleContentInfo } from '../../types';
-
 export interface SourcesBlockProps {
   /** sources 类型的 block（一次性追加的引用来源列表） */
   block: Extract<ContentBlock, { type: 'sources' }>;
@@ -41,10 +39,11 @@ export interface SourcesBlockProps {
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue';
 import { useLocale } from '@aix/hooks';
-import { locale } from '../../locale';
+import { computed } from 'vue';
 import { useNamespace } from '../../composables/useNamespace';
+import { locale } from '../../locale';
+import type { ContentBlock, BubbleContentInfo } from '../../types';
 import { safeUrl } from '../../utils/url';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block，关闭属性继承避免多余 attr 落到根元素。

@@ -1,11 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-
 // 模拟 KaTeX 插件未安装：import 时抛错，引擎应降级为「纯 markdown，公式留原样文本」，
 // 不影响 markdown-it 本身（markdown-it 不 mock，仍真实加载）。
 vi.mock('@vscode/markdown-it-katex', () => {
   throw new Error('Cannot find module @vscode/markdown-it-katex');
 });
-
 import {
   loadMarkdownEngine,
   __resetMarkdownEngineCache,

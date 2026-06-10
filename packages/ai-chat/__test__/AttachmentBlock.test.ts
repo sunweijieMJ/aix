@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect } from 'vitest';
 import AttachmentBlock from '../src/components/blocks/AttachmentBlock.vue';
 import Bubble from '../src/components/Bubble.vue';
 import { attachmentBlock } from '../src/utils/helpers';

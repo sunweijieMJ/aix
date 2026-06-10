@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import MarkdownIt from 'markdown-it';
+import { describe, it, expect } from 'vitest';
 import { splitMarkdownBlocks } from '../src/utils/splitMarkdownBlocks';
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true });

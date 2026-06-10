@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { SSEChunk } from '../src/composables/useXStream';
 import {
   createParseChunk,
   flatParseChunk,
   openaiParseChunk,
   anthropicParseChunk,
 } from '../src/utils/parsers';
-import type { SSEChunk } from '../src/composables/useXStream';
 
 /** 便捷构造 SSE 事件单元 */
 const sse = (data: string, extra: Partial<SSEChunk> = {}): SSEChunk => ({ data, ...extra });

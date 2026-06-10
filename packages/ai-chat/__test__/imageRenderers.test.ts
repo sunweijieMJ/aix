@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
 import { imageRenderers, __resetImageCache } from '../src/utils/imageRenderers';
 import type { MdToken } from '../src/utils/markdownWalker';

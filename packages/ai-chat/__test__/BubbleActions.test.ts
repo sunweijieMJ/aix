@@ -1,7 +1,7 @@
+import { Refresh } from '@aix/icons';
+import { mount, flushPromises } from '@vue/test-utils';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { markRaw } from 'vue';
-import { mount, flushPromises } from '@vue/test-utils';
-import { Refresh } from '@aix/icons';
 import BubbleActions from '../src/components/BubbleActions.vue';
 
 describe('BubbleActions', () => {

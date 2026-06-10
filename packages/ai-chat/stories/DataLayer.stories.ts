@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
-import { onUnmounted } from 'vue';
 import { expect, userEvent, waitFor } from 'storybook/test';
+import { onUnmounted } from 'vue';
 import { AiChat, openaiParseChunk, createOpenAIRequest } from '../src';
 import type { ChatMessage, ParsedChunk } from '../src';
 import { messageText } from '../src/utils/helpers';

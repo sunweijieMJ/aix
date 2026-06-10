@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect } from 'vitest';
 import Conversations from '../src/components/Conversations.vue';
 import type { ConversationItem } from '../src/types';
 

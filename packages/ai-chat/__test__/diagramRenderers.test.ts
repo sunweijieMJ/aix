@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { createDiagramRenderers, __resetMermaidCache } from '../src/utils/diagramRenderers';
 import type { MdToken, MarkdownRenderInfo } from '../src/utils/markdownWalker';

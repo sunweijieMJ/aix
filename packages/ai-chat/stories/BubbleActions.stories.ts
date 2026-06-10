@@ -1,8 +1,8 @@
+import { Refresh } from '@aix/icons';
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, userEvent, fn } from 'storybook/test';
 import { markRaw } from 'vue';
 import { BubbleActions } from '../src';
-import { Refresh } from '@aix/icons';
 
 const meta: Meta<typeof BubbleActions> = {
   title: 'AI Chat/BubbleActions',

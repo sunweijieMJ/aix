@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
 import katex from 'katex';
-import { createMathRenderers } from '../src/utils/mathRenderers';
+import { describe, it, expect } from 'vitest';
+import { defineComponent, h } from 'vue';
 import type { MdToken } from '../src/utils/markdownWalker';
+import { createMathRenderers } from '../src/utils/mathRenderers';
 
 const renderers = createMathRenderers(katex);
 

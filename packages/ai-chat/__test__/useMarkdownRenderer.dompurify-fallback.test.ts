@@ -1,12 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
 // 模拟 dompurify 未安装：import 时抛错，触发 loadMarkdownEngine 的安全兜底分支——
 // allowHtml=true 时不提供 html 渲染器（裸 HTML 经 walker 兜底转义为文本）并告警。
 // markdown-it / katex 不 mock，仍真实加载，验证降级仅影响 html 渲染能力。
 vi.mock('dompurify', () => {
   throw new Error('Cannot find module dompurify');
 });
-
 import {
   loadMarkdownEngine,
   __resetMarkdownEngineCache,

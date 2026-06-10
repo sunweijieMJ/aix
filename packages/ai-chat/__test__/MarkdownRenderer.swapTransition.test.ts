@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
 import { __resetMarkdownEngineCache } from '../src/composables/useMarkdownRenderer';
 

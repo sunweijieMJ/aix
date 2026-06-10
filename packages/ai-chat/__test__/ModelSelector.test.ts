@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect } from 'vitest';
 import ModelSelector from '../src/components/ModelSelector.vue';
 import type { ModelOption } from '../src/types';
 

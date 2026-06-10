@@ -17,8 +17,8 @@
 </template>
 
 <script lang="ts">
+// eslint-disable-next-line import/order
 import type { MarkdownRenderers } from '../utils/markdownWalker';
-
 export interface MarkdownRendererProps {
   /** 待渲染的 Markdown 文本 */
   content?: string;
@@ -53,22 +53,22 @@ import {
   type PropType,
   type VNode,
 } from 'vue';
-import { useNamespace } from '../composables/useNamespace';
 import {
   loadMarkdownEngine,
   type MarkdownEngine,
   type MarkdownItPlugin,
 } from '../composables/useMarkdownRenderer';
-import { normalizeMathDelimiters, protectStreamingMarkdown } from '../utils/markdown';
-import { imageRenderers } from '../utils/imageRenderers';
+import { useNamespace } from '../composables/useNamespace';
 import { transitionHeight } from '../utils/heightTransition';
-import { splitMarkdownBlocks } from '../utils/splitMarkdownBlocks';
-import { reconcileStreamingBlocks, type StreamingBlock } from '../utils/streamingBlocks';
+import { imageRenderers } from '../utils/imageRenderers';
+import { normalizeMathDelimiters, protectStreamingMarkdown } from '../utils/markdown';
 import {
   renderMarkdownTokens,
   type MarkdownRenderInfo,
   type MdToken,
 } from '../utils/markdownWalker';
+import { splitMarkdownBlocks } from '../utils/splitMarkdownBlocks';
+import { reconcileStreamingBlocks, type StreamingBlock } from '../utils/streamingBlocks';
 
 const props = withDefaults(defineProps<MarkdownRendererProps>(), {
   content: '',

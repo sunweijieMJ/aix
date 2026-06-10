@@ -10,8 +10,6 @@
 </template>
 
 <script lang="ts">
-import type { ContentBlock, BubbleContentInfo } from '../../types';
-
 export interface ThoughtChainBlockProps {
   /** thought-chain 类型的 block */
   block: Extract<ContentBlock, { type: 'thought-chain' }>;
@@ -23,6 +21,7 @@ export interface ThoughtChainBlockProps {
 </script>
 
 <script setup lang="ts">
+import type { ContentBlock, BubbleContentInfo } from '../../types';
 import ThoughtChain from '../ThoughtChain.vue';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block，

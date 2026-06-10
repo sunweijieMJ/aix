@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
 import MarkdownIt from 'markdown-it';
+import { describe, it, expect } from 'vitest';
+import { defineComponent, h } from 'vue';
 import {
   renderMarkdownTokens,
   type MarkdownRenderers,

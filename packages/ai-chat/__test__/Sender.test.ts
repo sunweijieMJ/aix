@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { nextTick, h } from 'vue';
 import Sender from '../src/components/Sender.vue';
 import type { SenderSlotScope } from '../src/components/Sender.vue';

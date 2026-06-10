@@ -1,6 +1,6 @@
+import { mount } from '@vue/test-utils';
 import { describe, it, expect } from 'vitest';
 import { h } from 'vue';
-import { mount } from '@vue/test-utils';
 import ThoughtChainBlock from '../src/components/blocks/ThoughtChainBlock.vue';
 import Bubble from '../src/components/Bubble.vue';
 import type { ContentBlock } from '../src/types';

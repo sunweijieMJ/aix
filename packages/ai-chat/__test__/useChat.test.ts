@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { nextTick, effectScope, toRaw } from 'vue';
 import { useChat } from '../src/composables/useChat';
 import type { UseChatRequestCtx } from '../src/composables/useChat';
-import { anthropicParseChunk } from '../src/utils/parsers';
 import type { ChatMessage, ContentBlock } from '../src/types';
 import {
   messageText,
@@ -12,6 +11,7 @@ import {
   sourcesBlock,
   attachmentBlock,
 } from '../src/utils/helpers';
+import { anthropicParseChunk } from '../src/utils/parsers';
 
 // 按 SSE 规范用空行（\n\n）分隔事件
 function sseStream(deltas: string[]): ReadableStream<Uint8Array> {

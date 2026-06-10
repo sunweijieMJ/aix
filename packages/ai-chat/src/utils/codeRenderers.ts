@@ -1,9 +1,9 @@
-import { defineComponent, h, ref, watch, onScopeDispose } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { Copy, Check } from '@aix/icons';
-import type { MarkdownRenderers } from './markdownWalker';
-import { copyText } from './clipboard';
+import { defineComponent, h, ref, watch, onScopeDispose } from 'vue';
 import { locale } from '../locale';
+import { copyText } from './clipboard';
+import type { MarkdownRenderers } from './markdownWalker';
 
 /** highlight.js 最小接口（v11 兼容；依赖注入，不直接耦合其类型声明） */
 export interface HljsLike {

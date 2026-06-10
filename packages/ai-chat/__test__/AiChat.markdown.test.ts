@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { h } from 'vue';
 import AiChat from '../src/components/AiChat.vue';
 import { __resetMarkdownEngineCache } from '../src/composables/useMarkdownRenderer';

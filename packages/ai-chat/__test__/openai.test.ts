@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createOpenAIRequest } from '../src/utils/openai';
-import type { ChatMessage } from '../src/types';
 import type { UseChatOptions } from '../src/composables/useChat';
+import type { ChatMessage } from '../src/types';
+import { createOpenAIRequest } from '../src/utils/openai';
 
 const msgs = (): ChatMessage[] => [
   { id: 'u1', role: 'user', content: [{ id: 'b1', type: 'text', text: '你好' }] },

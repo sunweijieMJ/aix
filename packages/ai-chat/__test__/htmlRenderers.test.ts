@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { defineComponent, h } from 'vue';
 import DOMPurify from 'dompurify';
+import { describe, it, expect } from 'vitest';
+import { defineComponent, h } from 'vue';
 import { createHtmlRenderers } from '../src/utils/htmlRenderers';
 import type { MdToken } from '../src/utils/markdownWalker';
 

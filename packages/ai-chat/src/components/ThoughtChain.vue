@@ -73,11 +73,9 @@
 </template>
 
 <script lang="ts">
-import type { ThoughtChainItem, ThoughtChainResultChip } from '../types';
-
 export interface ThoughtChainProps {
   /** 思维链步骤列表 */
-  items: ThoughtChainItem[];
+  items?: ThoughtChainItem[];
   /** 链级头部标题（如「已完成」「生成中…」）；提供后在步骤列表上方渲染一行汇总头部 */
   title?: string;
   /** 是否可点击头部折叠/展开整个步骤列表（需配合 title），默认 false */
@@ -91,9 +89,10 @@ export interface ThoughtChainProps {
 
 <script setup lang="ts">
 import { reactive, ref, useSlots, watch } from 'vue';
-import MarkdownRenderer from './MarkdownRenderer.vue';
 import { useNamespace } from '../composables/useNamespace';
+import type { ThoughtChainItem, ThoughtChainResultChip } from '../types';
 import { safeUrl } from '../utils/url';
+import MarkdownRenderer from './MarkdownRenderer.vue';
 
 const props = withDefaults(defineProps<ThoughtChainProps>(), {
   items: () => [],

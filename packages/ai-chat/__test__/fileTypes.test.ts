@@ -1,4 +1,3 @@
-import { describe, it, expect } from 'vitest';
 import {
   PictureAsPdf,
   Zip,
@@ -9,6 +8,7 @@ import {
   Photo,
   File,
 } from '@aix/icons';
+import { describe, it, expect } from 'vitest';
 import { getFileTypeMeta } from '../src/utils/fileTypes';
 
 describe('getFileTypeMeta', () => {

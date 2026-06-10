@@ -11,8 +11,6 @@
 </template>
 
 <script lang="ts">
-import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
-
 export interface ReasoningBlockProps {
   /** reasoning 类型的 block */
   block: Extract<ContentBlock, { type: 'reasoning' }>;
@@ -24,13 +22,14 @@ export interface ReasoningBlockProps {
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue';
 import { useLocale } from '@aix/hooks';
-import Thinking from '../Thinking.vue';
-import MarkdownRenderer from '../MarkdownRenderer.vue';
-import { useTypewriter } from '../../composables/useTypewriter';
+import { computed } from 'vue';
 import { useAiChatConfig } from '../../composables/useAiChatConfig';
+import { useTypewriter } from '../../composables/useTypewriter';
 import { locale } from '../../locale';
+import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
+import MarkdownRenderer from '../MarkdownRenderer.vue';
+import Thinking from '../Thinking.vue';
 
 // 注册表统一向渲染器透传 block/info/typing；关闭属性继承避免多余 attr 落到根元素。
 defineOptions({ inheritAttrs: false });

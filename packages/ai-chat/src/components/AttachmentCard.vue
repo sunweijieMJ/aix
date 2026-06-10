@@ -89,9 +89,6 @@
 </template>
 
 <script lang="ts">
-import type { AttachmentItem } from '../types';
-import type { PendingAttachment } from '../composables/useAttachments';
-
 /** 卡片条目：稳定形态（气泡回显）或带过程态（输入区预览）皆可 */
 export type AttachmentCardItem = AttachmentItem &
   Partial<Pick<PendingAttachment, 'status' | 'percent' | 'error'>>;
@@ -108,11 +105,13 @@ export interface AttachmentCardEmits {
 </script>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { Refresh, Close } from '@aix/icons';
-import { locale } from '../locale';
+import { computed, ref, watch } from 'vue';
+import type { PendingAttachment } from '../composables/useAttachments';
 import { useNamespace } from '../composables/useNamespace';
+import { locale } from '../locale';
+import type { AttachmentItem } from '../types';
 import { getFileTypeMeta } from '../utils/fileTypes';
 
 const props = withDefaults(defineProps<AttachmentCardProps>(), { removable: false });

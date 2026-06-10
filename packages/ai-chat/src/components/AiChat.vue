@@ -83,24 +83,6 @@
 </template>
 
 <script lang="ts">
-import type { UseChatOptions } from '../composables/useChat';
-import type { ShouldFollow } from '../composables/useAutoScroll';
-import type {
-  ChatMessage,
-  RoleConfig,
-  PromptItem,
-  BlockRenderers,
-  BlockActionPayload,
-  MessageFeedback,
-  ActionsItems,
-  AttachmentItem,
-  VoiceConfig,
-  SubBubbleMeta,
-} from '../types';
-import type { MarkdownRenderers } from '../utils/markdownWalker';
-import type { MarkdownItPlugin } from '../composables/useMarkdownRenderer';
-import type { UseAttachmentsOptions } from '../composables/useAttachments';
-
 export interface AiChatProps {
   /**
    * 发起请求，返回字节流或 Response（必填）；透传给 useChat。
@@ -216,15 +198,32 @@ export interface AiChatEmits {
 
 <script setup lang="ts">
 import { computed, ref, watch, useSlots } from 'vue';
-import Welcome from './Welcome.vue';
-import BubbleList from './BubbleList.vue';
-import Sender from './Sender.vue';
-import Prompts from './Prompts.vue';
-import BubbleActions from './BubbleActions.vue';
-import { messageText, attachmentBlock, textBlock } from '../utils/helpers';
-import { useChat } from '../composables/useChat';
-import { useNamespace } from '../composables/useNamespace';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
+import type { UseAttachmentsOptions } from '../composables/useAttachments';
+import type { ShouldFollow } from '../composables/useAutoScroll';
+import { useChat } from '../composables/useChat';
+import type { UseChatOptions } from '../composables/useChat';
+import type { MarkdownItPlugin } from '../composables/useMarkdownRenderer';
+import { useNamespace } from '../composables/useNamespace';
+import type {
+  ChatMessage,
+  RoleConfig,
+  PromptItem,
+  BlockRenderers,
+  BlockActionPayload,
+  MessageFeedback,
+  ActionsItems,
+  AttachmentItem,
+  VoiceConfig,
+  SubBubbleMeta,
+} from '../types';
+import { messageText, attachmentBlock, textBlock } from '../utils/helpers';
+import type { MarkdownRenderers } from '../utils/markdownWalker';
+import BubbleActions from './BubbleActions.vue';
+import BubbleList from './BubbleList.vue';
+import Prompts from './Prompts.vue';
+import Sender from './Sender.vue';
+import Welcome from './Welcome.vue';
 
 const props = withDefaults(defineProps<AiChatProps>(), {
   actionsTrigger: 'always',

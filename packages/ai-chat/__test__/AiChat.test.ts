@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
+import { describe, it, expect, vi } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
 import AiChat from '../src/components/AiChat.vue';
 import { provideAiChatConfig } from '../src/composables/useAiChatConfig';

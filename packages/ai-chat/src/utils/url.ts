@@ -5,7 +5,6 @@
 const SAFE_PROTOCOL = /^(?:https?|mailto|tel):/i;
 
 /** 用于混淆协议前缀的控制字符与空白（浏览器解析 URL 时会忽略它们） */
-// eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u0020\u00A0]+/g;
 
 /**

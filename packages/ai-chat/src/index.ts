@@ -1,19 +1,18 @@
 import type { App } from 'vue';
-
+import AiChat from './components/AiChat.vue';
 import AttachmentCard from './components/AttachmentCard.vue';
 import Bubble from './components/Bubble.vue';
-import BubbleList from './components/BubbleList.vue';
 import BubbleActions from './components/BubbleActions.vue';
-import Sender from './components/Sender.vue';
-import Welcome from './components/Welcome.vue';
+import BubbleList from './components/BubbleList.vue';
+import Conversations from './components/Conversations.vue';
+import MarkdownRenderer from './components/MarkdownRenderer.vue';
+import ModelSelector from './components/ModelSelector.vue';
 import Prompts from './components/Prompts.vue';
+import Sender from './components/Sender.vue';
+import Skeleton from './components/Skeleton.vue';
 import Thinking from './components/Thinking.vue';
 import ThoughtChain from './components/ThoughtChain.vue';
-import ModelSelector from './components/ModelSelector.vue';
-import MarkdownRenderer from './components/MarkdownRenderer.vue';
-import AiChat from './components/AiChat.vue';
-import Conversations from './components/Conversations.vue';
-import Skeleton from './components/Skeleton.vue';
+import Welcome from './components/Welcome.vue';
 
 // 组件（不带 Aix 前缀）
 // 注意：内置内容块组件（TextBlock / ReasoningBlock / ThoughtChainBlock / SourcesBlock /

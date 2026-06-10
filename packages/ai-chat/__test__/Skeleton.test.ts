@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect } from 'vitest';
 import Skeleton from '../src/components/Skeleton.vue';
 
 describe('Skeleton（通用骨架占位）', () => {

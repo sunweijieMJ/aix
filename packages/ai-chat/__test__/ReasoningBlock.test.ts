@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect } from 'vitest';
 import ReasoningBlock from '../src/components/blocks/ReasoningBlock.vue';
 import type { ContentBlock, BubbleContentInfo } from '../src/types';
 

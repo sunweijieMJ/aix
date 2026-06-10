@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect } from 'vitest';
 import Prompts from '../src/components/Prompts.vue';
 
 describe('Prompts', () => {

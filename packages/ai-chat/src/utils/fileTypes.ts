@@ -1,4 +1,3 @@
-import type { Component } from 'vue';
 import {
   PictureAsPdf,
   Zip,
@@ -9,6 +8,7 @@ import {
   Photo,
   File,
 } from '@aix/icons';
+import type { Component } from 'vue';
 
 export interface FileTypeMeta {
   icon: Component;

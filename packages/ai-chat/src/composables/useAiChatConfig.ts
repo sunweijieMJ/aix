@@ -1,7 +1,7 @@
 import { provide, inject, computed, reactive, type InjectionKey, type ComputedRef } from 'vue';
-import type { ShouldFollow } from './useAutoScroll';
 import type { RoleConfig, BlockRenderers } from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
+import type { ShouldFollow } from './useAutoScroll';
 import type { MarkdownItPlugin } from './useMarkdownRenderer';
 
 export interface AiChatConfig {

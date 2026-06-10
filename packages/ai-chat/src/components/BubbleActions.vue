@@ -63,8 +63,6 @@
 </template>
 
 <script lang="ts">
-import type { ActionsItems, ActionItem, ChatMessage, MessageFeedback } from '../types';
-
 export interface BubbleActionsProps {
   /** 操作项列表：字符串=内置预设（copy/regenerate/feedback），对象=自定义项；默认 ['copy','regenerate'] */
   items?: ActionsItems;
@@ -83,11 +81,12 @@ export interface BubbleActionsEmits {
 </script>
 
 <script setup lang="ts">
-import { ref, computed, onScopeDispose } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { Copy, Check, Refresh, ThumbUp, ThumbDown } from '@aix/icons';
-import { locale } from '../locale';
+import { ref, computed, onScopeDispose } from 'vue';
 import { useNamespace } from '../composables/useNamespace';
+import { locale } from '../locale';
+import type { ActionsItems, ActionItem, ChatMessage, MessageFeedback } from '../types';
 import { copyText } from '../utils/clipboard';
 
 const props = withDefaults(defineProps<BubbleActionsProps>(), {

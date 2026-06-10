@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { describe, it, expect } from 'vitest';
 import { h } from 'vue';
 import ThoughtChain from '../src/components/ThoughtChain.vue';
 import type { ThoughtChainItem } from '../src/types';

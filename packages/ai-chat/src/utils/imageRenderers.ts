@@ -1,10 +1,10 @@
-import { defineComponent, h, ref, onBeforeUnmount } from 'vue';
 import { useLocale } from '@aix/hooks';
+import { defineComponent, h, ref, onBeforeUnmount } from 'vue';
 // 务实取舍：与 diagramRenderers 同理——本文件是「组件工厂」（ImageBlock 即组件），
 // 复用 components 层的 Skeleton 保证占位动效全包一致。
 import Skeleton from '../components/Skeleton.vue';
-import { transitionHeight } from './heightTransition';
 import { locale } from '../locale';
+import { transitionHeight } from './heightTransition';
 import type { MarkdownRenderers, MdToken } from './markdownWalker';
 
 /** 已成功加载过的图片 URL：虚拟列表重挂载 / 同图复现时直接出图，不再闪骨架 */

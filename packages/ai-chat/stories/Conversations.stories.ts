@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
-import { ref } from 'vue';
 import { expect, userEvent, waitFor } from 'storybook/test';
+import { ref } from 'vue';
 import { Conversations, AiChat, useConversations } from '../src';
 import type { ConversationItem } from '../src';
 

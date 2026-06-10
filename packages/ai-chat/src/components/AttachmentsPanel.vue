@@ -53,13 +53,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { AttachFile, Close } from '@aix/icons';
-import { locale } from '../locale';
-import { useNamespace } from '../composables/useNamespace';
-import AttachmentCard from './AttachmentCard.vue';
+import { ref } from 'vue';
 import type { PendingAttachment } from '../composables/useAttachments';
+import { useNamespace } from '../composables/useNamespace';
+import { locale } from '../locale';
+import AttachmentCard from './AttachmentCard.vue';
 
 export interface AttachmentsPanelProps {
   items: PendingAttachment[];
@@ -73,7 +73,7 @@ export interface AttachmentsPanelEmits {
   (e: 'close'): void;
 }
 
-const props = defineProps<AttachmentsPanelProps>();
+defineProps<AttachmentsPanelProps>();
 const emit = defineEmits<AttachmentsPanelEmits>();
 const ns = useNamespace('attachments-panel');
 const { t } = useLocale(locale);

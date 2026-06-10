@@ -5,8 +5,6 @@
 </template>
 
 <script lang="ts">
-import type { ContentBlock, BubbleContentInfo } from '../../types';
-
 export interface AttachmentBlockProps {
   /** attachment 类型的 block（气泡回显附件列表） */
   block: Extract<ContentBlock, { type: 'attachment' }>;
@@ -18,8 +16,9 @@ export interface AttachmentBlockProps {
 </script>
 
 <script setup lang="ts">
-import AttachmentCard from '../AttachmentCard.vue';
 import { useNamespace } from '../../composables/useNamespace';
+import type { ContentBlock, BubbleContentInfo } from '../../types';
+import AttachmentCard from '../AttachmentCard.vue';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block，关闭属性继承避免多余 attr 落到根元素。
 defineOptions({ inheritAttrs: false });

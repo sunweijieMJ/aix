@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { nextTick, h, defineComponent } from 'vue';
 import Bubble from '../src/components/Bubble.vue';
+import type { BlockActionHandler } from '../src/types';
 import { textBlock, sourcesBlock, thoughtChainBlock } from '../src/utils/helpers';
 
 describe('Bubble', () => {
@@ -135,8 +136,6 @@ describe('Bubble', () => {
     });
   });
 });
-
-import type { BlockActionHandler } from '../src/types';
 
 // 极简交互渲染器：点击即调用 onBlockAction
 const ProbeRenderer = defineComponent({

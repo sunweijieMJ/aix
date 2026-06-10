@@ -22,10 +22,10 @@ export interface ThinkingProps {
 </script>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
 import { useLocale } from '@aix/hooks';
-import { locale } from '../locale';
+import { ref, watch } from 'vue';
 import { useNamespace } from '../composables/useNamespace';
+import { locale } from '../locale';
 
 const props = withDefaults(defineProps<ThinkingProps>(), {
   content: '',

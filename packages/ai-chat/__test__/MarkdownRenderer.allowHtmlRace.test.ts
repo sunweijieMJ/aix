@@ -1,7 +1,8 @@
 // allowHtml 快速切换的引擎加载竞态回归：旧 promise 后解析不得覆盖新引擎（令牌守卫）。
 // 通过 mock loadMarkdownEngine 为手动 resolve 的 deferred，精确控制两次加载的落定顺序。
-import { describe, it, expect, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { describe, it, expect, vi } from 'vitest';
+import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
 import type { MdToken } from '../src/utils/markdownWalker';
 
 // vi.mock 工厂会被提升，pending 须经 vi.hoisted 声明
@@ -13,8 +14,6 @@ vi.mock('../src/composables/useMarkdownRenderer', () => ({
   loadMarkdownEngine: (allowHtml: boolean) =>
     new Promise((resolve) => pending.push({ allowHtml, resolve })),
 }));
-
-import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
 
 // 最小假引擎：parse 恒返回一个 fence token（content 标记引擎模式），
 // 既满足 splitMarkdownBlocks 切块（携带 map），又让块渲染输出可区分当前生效的引擎。

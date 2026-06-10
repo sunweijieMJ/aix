@@ -9,8 +9,6 @@
 </template>
 
 <script lang="ts">
-import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
-
 export interface TextBlockProps {
   /** text 或 reasoning 类型的 block */
   block: Extract<ContentBlock, { type: 'text' | 'reasoning' }>;
@@ -27,9 +25,10 @@ export interface TextBlockEmits {
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import MarkdownRenderer from '../MarkdownRenderer.vue';
-import { useTypewriter } from '../../composables/useTypewriter';
 import { useAiChatConfig } from '../../composables/useAiChatConfig';
+import { useTypewriter } from '../../composables/useTypewriter';
+import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
+import MarkdownRenderer from '../MarkdownRenderer.vue';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block/typing，
 // 关闭属性继承避免 info 等多余 attr 落到根渲染元素。

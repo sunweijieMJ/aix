@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
 import { createLocale, LOCALE_INJECTION_KEY } from '@aix/hooks';
-import { locale } from '../src/locale';
-import Sender from '../src/components/Sender.vue';
+import { mount } from '@vue/test-utils';
+import { describe, it, expect } from 'vitest';
+import { nextTick } from 'vue';
 import Bubble from '../src/components/Bubble.vue';
+import Sender from '../src/components/Sender.vue';
+import { locale } from '../src/locale';
 
 describe('locale', () => {
   it('中英文 key 完全一致', () => {

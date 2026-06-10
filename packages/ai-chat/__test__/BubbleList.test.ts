@@ -1,11 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { describe, it, expect, vi } from 'vitest';
 import { defineComponent } from 'vue';
-import BubbleList from '../src/components/BubbleList.vue';
+import { h } from 'vue';
 import Bubble from '../src/components/Bubble.vue';
+import BubbleList from '../src/components/BubbleList.vue';
 import type { ChatMessage } from '../src/types';
 import { textBlock, messageText, thoughtChainBlock } from '../src/utils/helpers';
-import { h } from 'vue';
 
 // vi.mock 会被提升到文件顶部，用 vi.hoisted 安全地共享 mock 函数以便断言委托行为
 const { scrollToIndexMock, followMock } = vi.hoisted(() => ({
@@ -29,7 +29,7 @@ vi.mock('../src/composables/useAutoScroll', async (importOriginal) => {
 // virtua 在 jsdom 下退化：用 stub 直接渲染 default slot，并 expose scrollToIndex
 vi.mock('virtua/vue', () => ({
   Virtualizer: defineComponent({
-    name: 'Virtualizer',
+    name: 'VirtualizerWrapper',
     props: ['data'],
     setup(props: any, { slots, expose }: any) {
       expose({ scrollToIndex: scrollToIndexMock });

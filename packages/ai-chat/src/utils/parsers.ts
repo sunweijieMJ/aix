@@ -1,5 +1,5 @@
-import type { ParsedChunk } from '../types';
 import type { SSEChunk } from '../composables/useXStream';
+import type { ParsedChunk } from '../types';
 
 /**
  * SSE 事件单元解析工厂与内置预设。

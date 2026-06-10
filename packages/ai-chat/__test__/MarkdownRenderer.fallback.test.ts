@@ -1,11 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-
+import { describe, it, expect, vi } from 'vitest';
 // 模拟 markdown-it 未安装，验证 MarkdownRenderer 的 v-else 纯文本降级分支
 vi.mock('markdown-it', () => {
   throw new Error('Cannot find module markdown-it');
 });
-
 import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
 import { __resetMarkdownEngineCache } from '../src/composables/useMarkdownRenderer';
 

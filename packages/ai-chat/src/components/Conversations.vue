@@ -57,8 +57,6 @@
 </template>
 
 <script lang="ts">
-import type { ConversationItem } from '../types';
-
 export interface ConversationsProps {
   /** 会话列表元数据（来自 useConversations.items） */
   items: ConversationItem[];
@@ -78,11 +76,12 @@ export interface ConversationsEmits {
 </script>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue';
 import { useLocale } from '@aix/hooks';
 import { Add, Edit, Delete } from '@aix/icons';
-import { locale } from '../locale';
+import { ref, computed, nextTick } from 'vue';
 import { useNamespace } from '../composables/useNamespace';
+import { locale } from '../locale';
+import type { ConversationItem } from '../types';
 
 const props = withDefaults(defineProps<ConversationsProps>(), { groupable: false });
 const emit = defineEmits<ConversationsEmits>();

@@ -1,7 +1,7 @@
 <template>
   <div :class="ns.b()" :style="{ maxHeight }">
     <div ref="scrollRef" :class="ns.e('scroll')" @scroll="computeState">
-      <Virtualizer ref="virtualizerRef" :data="items" #default="{ item }">
+      <Virtualizer ref="virtualizerRef" v-slot="{ item }" :data="items">
         <Bubble
           :key="(item as ChatMessage).id"
           v-bind="resolveBubble(item as ChatMessage)"
@@ -46,16 +46,6 @@
 </template>
 
 <script lang="ts">
-import type {
-  ChatMessage,
-  RoleConfig,
-  BubbleProps,
-  BlockRenderers,
-  BlockActionPayload,
-  BubbleTypingConfig,
-} from '../types';
-import type { ShouldFollow } from '../composables/useAutoScroll';
-
 export interface BubbleListProps {
   /** 消息列表（渲染数据源，经 virtua 虚拟化渲染为气泡） */
   items: ChatMessage[];
@@ -90,13 +80,22 @@ export interface BubbleListEmits {
 </script>
 
 <script setup lang="ts">
-import { ref, reactive, watch, nextTick, onMounted, computed, useSlots } from 'vue';
-import { Virtualizer } from 'virtua/vue';
 import { useLocale } from '@aix/hooks';
-import Bubble from './Bubble.vue';
-import { locale } from '../locale';
-import { useNamespace } from '../composables/useNamespace';
+import { Virtualizer } from 'virtua/vue';
+import { ref, reactive, watch, nextTick, onMounted, computed, useSlots } from 'vue';
 import { useAutoScroll } from '../composables/useAutoScroll';
+import type { ShouldFollow } from '../composables/useAutoScroll';
+import { useNamespace } from '../composables/useNamespace';
+import { locale } from '../locale';
+import type {
+  ChatMessage,
+  RoleConfig,
+  BubbleProps,
+  BlockRenderers,
+  BlockActionPayload,
+  BubbleTypingConfig,
+} from '../types';
+import Bubble from './Bubble.vue';
 
 const props = withDefaults(defineProps<BubbleListProps>(), {
   autoScroll: true,

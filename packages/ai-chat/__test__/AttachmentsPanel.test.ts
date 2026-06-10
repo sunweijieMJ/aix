@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { describe, it, expect } from 'vitest';
 import AttachmentsPanel from '../src/components/AttachmentsPanel.vue';
 import type { PendingAttachment } from '../src/composables/useAttachments';
 
