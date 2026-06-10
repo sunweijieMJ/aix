@@ -12,6 +12,16 @@ function streamFrom(chunks: string[]): ReadableStream<Uint8Array> {
   });
 }
 
+/** 由原始字节 chunk 构造可读流：用于把多字节 UTF-8 字符精确切断在 chunk 边界 */
+function streamFromBytes(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(c);
+      controller.close();
+    },
+  });
+}
+
 /** 可手动推送/关闭的流 */
 function manualStream() {
   let ctrl!: ReadableStreamDefaultController<Uint8Array>;
@@ -80,6 +90,15 @@ describe('sseStream', () => {
   it('事件被 chunk 边界切开时正确缓冲', async () => {
     const out = await collect(streamFrom(['data: a\nda', 'ta: b\n\n']));
     expect(out).toEqual([{ data: 'a\nb' }]);
+  });
+
+  it('多字节 UTF-8 字符被 chunk 边界切断时正确解码（TextDecoder stream:true）', async () => {
+    // 源码注释承诺 { stream: true } 能处理跨 chunk 的多字节字符，此用例锁定该行为：
+    // 'data: ' 占第 0-6 字节，'你' 占第 6-9 字节；在第 8 字节切断，「你」的 3 字节被拆进
+    // 两个 chunk。若解码未跨 chunk 缓冲残字节，data 会出现 U+FFFD 替换符而非 '你好'。
+    const bytes = new TextEncoder().encode('data: 你好\n\n');
+    const out = await collect(streamFromBytes([bytes.subarray(0, 8), bytes.subarray(8)]));
+    expect(out).toEqual([{ data: '你好' }]);
   });
 
   it('结束时 flush 末尾未被 \\n\\n 终结的事件', async () => {

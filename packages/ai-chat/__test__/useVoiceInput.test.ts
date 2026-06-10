@@ -84,18 +84,33 @@ describe('useVoiceInput', () => {
     expect(v.status.value).toBe('listening'); // 新会话不受影响
   });
 
-  it('识别器同步抛错也通知调用方 onError', () => {
+  it('识别器同步抛错：复位 idle 不卡死，onError 可选透传', () => {
+    // 同步启动失败（如引擎高频重启的 InvalidStateError）须复位 idle 且不让状态卡死；
+    // onError 为可选回调，两种配置都要覆盖：不带时可选链不崩、仅 console.warn 提示，
+    // 带时透传原始 error 且 console.warn 仍触发。
     const recognizer: VoiceRecognizer = () => {
       throw new Error('InvalidStateError');
     };
-    const onError = vi.fn();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const v = useVoiceInput({ config: { recognizer }, onFinal: vi.fn(), onError });
-    v.start();
-    warnSpy.mockRestore(); // 断言前还原，避免断言失败时污染后续用例
-    expect(onError).toHaveBeenCalledTimes(1);
-    expect((onError.mock.calls[0]![0] as Error).message).toBe('InvalidStateError');
-    expect(v.status.value).toBe('idle');
+    try {
+      // 配置一：不带 onError —— options.onError?.() 可选链不崩，复位 idle 可再次 start
+      const v1 = useVoiceInput({ config: { recognizer }, onFinal: vi.fn() });
+      v1.start();
+      expect(v1.status.value).toBe('idle');
+      v1.start(); // 可再次尝试，不被卡死的 listening 拦截
+      expect(v1.status.value).toBe('idle');
+      expect(warnSpy).toHaveBeenCalledTimes(2); // 每次失败都有 console.warn 兜底提示
+      // 配置二：带 onError —— 透传原始 error，console.warn 仍触发
+      const onError = vi.fn();
+      const v2 = useVoiceInput({ config: { recognizer }, onFinal: vi.fn(), onError });
+      v2.start();
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect((onError.mock.calls[0]![0] as Error).message).toBe('InvalidStateError');
+      expect(v2.status.value).toBe('idle');
+      expect(warnSpy).toHaveBeenCalledTimes(3);
+    } finally {
+      warnSpy.mockRestore(); // try/finally 还原，断言失败也不污染后续用例
+    }
   });
 
   it('listening 中重复 start 为空操作（不重复创建识别会话）', () => {
@@ -177,19 +192,6 @@ describe('useVoiceInput', () => {
     expect(onFinal).not.toHaveBeenCalled(); // 不注入
     ctxs[1]!.onResult('新文本', true);
     expect(onFinal).toHaveBeenCalledWith('新文本'); // 新会话正常
-  });
-
-  it('识别器同步抛错：复位 idle 不卡死', () => {
-    const recognizer: VoiceRecognizer = () => {
-      throw new Error('InvalidStateError');
-    };
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const v = useVoiceInput({ config: { recognizer }, onFinal: vi.fn() });
-    v.start();
-    expect(v.status.value).toBe('idle');
-    v.start(); // 可再次尝试，不被卡死的 listening 拦截
-    expect(warnSpy).toHaveBeenCalledTimes(2);
-    warnSpy.mockRestore();
   });
 
   it('作用域销毁自动 stop', () => {

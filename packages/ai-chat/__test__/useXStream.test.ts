@@ -32,12 +32,34 @@ function streamFrom(chunks: string[]): ReadableStream<Uint8Array> {
   });
 }
 
+/** 由原始字节 chunk 构造可读流：用于把多字节 UTF-8 字符精确切断在 chunk 边界 */
+function streamFromBytes(chunks: Uint8Array[]): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      for (const c of chunks) controller.enqueue(c);
+      controller.close();
+    },
+  });
+}
+
 describe('xStream', () => {
   it('按行切分跨 chunk 的数据', async () => {
     const rs = streamFrom(['data: a\n', 'data: b\n', 'data:', ' c\n']);
     const lines: string[] = [];
     for await (const line of xStream(rs)) lines.push(line);
     expect(lines).toEqual(['data: a', 'data: b', 'data: c']);
+  });
+
+  it('多字节 UTF-8 字符（emoji）被 chunk 边界切断时按行完整解码', async () => {
+    // 源码注释承诺 TextDecoder { stream: true } 能处理跨 chunk 的多字节字符，此用例锁定该行为：
+    // 'hi' 占第 0-2 字节，'😀' 占第 2-6 字节（4 字节 UTF-8）；在第 4 字节切断，emoji 被拆进
+    // 两个 chunk。若解码未跨 chunk 缓冲残字节，行内容会出现 U+FFFD 替换符。
+    const bytes = new TextEncoder().encode('hi😀ok\n');
+    const rs = streamFromBytes([bytes.subarray(0, 4), bytes.subarray(4)]);
+    const lines: string[] = [];
+    for await (const line of xStream(rs)) lines.push(line);
+    expect(lines).toEqual(['hi😀ok']);
+    expect(lines[0]).not.toContain('�');
   });
 
   it('abort 后停止产出', async () => {
