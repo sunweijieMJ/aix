@@ -16,6 +16,9 @@ describe('loadMarkdownEngine 降级（highlight.js 缺失）', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const engine = await loadMarkdownEngine();
     expect(engine).not.toBeNull();
+    // 时序调整说明：hljs 改为后台增量合入，须等全部增强 settle（engine.ready）后再断言
+    // 「降级为空」——否则装配中途 codeRenderers 必然为空，断言空洞。降级契约本身不变。
+    await engine!.ready;
     expect(engine!.codeRenderers).toEqual({});
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();

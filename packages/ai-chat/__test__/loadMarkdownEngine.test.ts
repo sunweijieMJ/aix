@@ -16,18 +16,22 @@ describe('loadMarkdownEngine（装配引擎）', () => {
     expect(heading?.map).toBeTruthy();
   });
 
+  // 时序调整说明：渐进装配后引擎在基础项就绪时即返回，katex/hljs 渲染器改为后台增量合入，
+  // 断言前需 await engine.ready（全部增强 settle 的同步点）。能力契约本身（可用即注册）不变。
   it('katex 可用时 mathRenderers 含 math_inline / math_block', async () => {
     const engine = await loadMarkdownEngine();
+    await engine!.ready;
     expect(engine!.mathRenderers.math_inline).toBeTypeOf('function');
     expect(engine!.mathRenderers.math_block).toBeTypeOf('function');
   });
 
   it('highlight.js 可用时 codeRenderers 含通用 fence 渲染器', async () => {
     const engine = await loadMarkdownEngine();
+    await engine!.ready;
     expect(engine!.codeRenderers.fence).toBeTypeOf('function');
   });
 
-  it('mermaid 可用时 diagramRenderers 含 fence:mermaid（由 setup.ts 全局 mock 提供）', async () => {
+  it('diagramRenderers 含 fence:mermaid 懒加载包装（装配期不 import mermaid，围栏渲染时才加载）', async () => {
     const engine = await loadMarkdownEngine();
     expect(engine!.diagramRenderers['fence:mermaid']).toBeTypeOf('function');
   });

@@ -21,6 +21,8 @@ describe('loadMarkdownEngine 降级（KaTeX 插件缺失）', () => {
 
   it('mathRenderers 为空，公式不产生 math token、内容留作原样文本', async () => {
     const engine = await loadMarkdownEngine();
+    // 时序调整说明：渐进装配后须等增强项 settle 再断言「降级为空」，避免装配中途的空洞通过
+    await engine!.ready;
     expect(engine!.mathRenderers).toEqual({});
     const tokens = engine!.md.parse('$$E=mc^2$$', {});
     expect(tokens.some((t) => t.type === 'math_block')).toBe(false);

@@ -1,7 +1,11 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
-import { createDiagramRenderers, __resetMermaidCache } from '../src/utils/diagramRenderers';
+import {
+  createDiagramRenderers,
+  createLazyDiagramRenderers,
+  __resetMermaidCache,
+} from '../src/utils/diagramRenderers';
 import type { MdToken, MarkdownRenderInfo } from '../src/utils/markdownWalker';
 
 // mermaid 经依赖注入（非模块 mock），纯对象假实现即可
@@ -156,5 +160,66 @@ describe('createDiagramRenderers（mermaid 流程图渲染器）', () => {
     expect(m.render).toHaveBeenCalledTimes(1);
     a.unmount();
     b.unmount();
+  });
+
+  // —— 懒加载工厂：mermaid 的 import 下沉到首个 mermaid 围栏真正渲染时 ——
+  describe('createLazyDiagramRenderers（mermaid 惰性加载）', () => {
+    it('创建渲染器时不调用 loader；首个围栏渲染时才触发，且多块共享同一次加载', async () => {
+      const m = makeMermaid();
+      const loader = vi.fn(async () => m);
+      const renderers = createLazyDiagramRenderers(loader);
+      expect(loader).not.toHaveBeenCalled();
+      expect(renderers['fence:mermaid']).toBeTypeOf('function');
+
+      const a = mountFence(renderers, 'graph A', { streaming: false });
+      const b = mountFence(renderers, 'graph B', { streaming: false });
+      await flush();
+      expect(loader).toHaveBeenCalledTimes(1); // 幂等：两个块共享一次加载
+      expect(a.find('.aix-md-mermaid svg').exists()).toBe(true);
+      expect(b.find('.aix-md-mermaid svg').exists()).toBe(true);
+      // 加载成功后按既有约定初始化（strict 安全级别）
+      expect(m.initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ startOnLoad: false, securityLevel: 'strict' }),
+      );
+    });
+
+    it('mermaid 后到：先以代码块呈现，加载落定后已 committed 的块自动升级为 SVG', async () => {
+      const m = makeMermaid();
+      let resolveLoader!: (v: typeof m) => void;
+      const loader = vi.fn(
+        () =>
+          new Promise<typeof m>((r) => {
+            resolveLoader = r;
+          }),
+      );
+      const w = mountFence(createLazyDiagramRenderers(loader), 'graph TD', { streaming: false });
+      await flush();
+      // 加载未落定：维持代码块（无 --error，加载中不是错误态）
+      expect(w.find('pre.aix-md-mermaid-source').exists()).toBe(true);
+      expect(w.find('pre.aix-md-mermaid-source--error').exists()).toBe(false);
+
+      resolveLoader(m);
+      await flush();
+      expect(w.find('.aix-md-mermaid svg').exists()).toBe(true);
+    });
+
+    it('loader 返回 null（mermaid 未安装）：静默维持代码块，无 --error 不抛错', async () => {
+      const loader = vi.fn(async () => null);
+      const w = mountFence(createLazyDiagramRenderers(loader), 'graph TD', { streaming: false });
+      await flush();
+      expect(w.find('pre.aix-md-mermaid-source').exists()).toBe(true);
+      expect(w.find('pre.aix-md-mermaid-source--error').exists()).toBe(false);
+      expect(w.find('.aix-md-mermaid').exists()).toBe(false);
+    });
+
+    it('loader 抛错：与未安装同等静默降级，不产生未处理 rejection', async () => {
+      const loader = vi.fn(async () => {
+        throw new Error('network');
+      });
+      const w = mountFence(createLazyDiagramRenderers(loader), 'graph TD', { streaming: false });
+      await flush();
+      expect(w.find('pre.aix-md-mermaid-source').exists()).toBe(true);
+      expect(w.find('pre.aix-md-mermaid-source--error').exists()).toBe(false);
+    });
   });
 });

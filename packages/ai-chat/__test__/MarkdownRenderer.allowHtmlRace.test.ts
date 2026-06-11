@@ -2,6 +2,7 @@
 // 通过 mock loadMarkdownEngine 为手动 resolve 的 deferred，精确控制两次加载的落定顺序。
 import { mount, flushPromises } from '@vue/test-utils';
 import { describe, it, expect, vi } from 'vitest';
+import { ref } from 'vue';
 import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
 import type { MdToken } from '../src/utils/markdownWalker';
 
@@ -37,6 +38,9 @@ const makeEngine = (mode: string) => ({
   htmlRenderers: {},
   codeRenderers: {},
   diagramRenderers: {},
+  // 渐进装配新增字段：版本号 ref（组件的 processedSource/mergedRenderers 依赖它）+ ready 同步点
+  renderersVersion: ref(0),
+  ready: Promise.resolve(),
 });
 
 describe('MarkdownRenderer allowHtml 切换竞态（令牌守卫）', () => {

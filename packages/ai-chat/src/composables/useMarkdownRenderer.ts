@@ -1,5 +1,6 @@
+import { ref, type Ref } from 'vue';
 import { createHighlightRenderers, type HljsLike } from '../utils/codeRenderers';
-import { createDiagramRenderers, type MermaidLike } from '../utils/diagramRenderers';
+import { createLazyDiagramRenderers, type MermaidLike } from '../utils/diagramRenderers';
 import { createHtmlRenderers, type DomPurifyLike } from '../utils/htmlRenderers';
 import type { MarkdownRenderers, MdToken } from '../utils/markdownWalker';
 import { createMathRenderers, type KatexLike } from '../utils/mathRenderers';
@@ -8,7 +9,8 @@ import { createMathRenderers, type KatexLike } from '../utils/mathRenderers';
  * 内部共享：动态加载 markdown-it 并尽力挂载 KaTeX 插件。
  * 可选增强：KaTeX 插件渲染数学公式（行内 $...$ / 块级 $$...$$）。
  * 未安装 katex 插件时静默跳过——markdown 仍正常工作，仅公式降级为原样文本，
- * 与 markdown-it 缺失时的整体降级风格一致（零额外体积、按需启用）。
+ * 与 markdown-it 缺失时的整体降级风格一致（六个可选增强依赖随包自动安装、运行时按需动态加载，
+ * 个别环境安装失败时该项静默降级、互不连累）。
  * markdown-it 本身缺失时抛错，由调用方降级。
  */
 /** markdown-it 插件函数（接收 md 实例 + 透传选项） */
@@ -51,20 +53,33 @@ async function createMarkdownIt(html: boolean, plugins: MarkdownItPlugin[] = [])
 }
 
 /**
- * 流式 markdown 渲染引擎：暴露 token→VNode walker 所需的 markdown-it 解析能力 + 数学渲染器。
+ * 流式 markdown 渲染引擎：暴露 token→VNode walker 所需的 markdown-it 解析能力 + 各类渲染器。
  * 只返回"零件"，由 MarkdownRenderer 装配。
+ *
+ * 渐进装配：引擎在**基础项**（markdown-it + katex 插件 + dompurify，均轻量）就绪时即返回，
+ * 富文本骨架立即可渲染；**增强项**（katex / highlight.js，体积大）后台加载、settle 后原地合入
+ * 对应渲染器集合并递增 `renderersVersion`；mermaid 更进一步——首个 ```mermaid 围栏渲染时才加载。
  */
 export interface MarkdownEngine {
   /** markdown-it 解析能力（供 splitMarkdownBlocks 与按块取 token） */
   md: { parse(src: string, env: unknown): MdToken[] };
-  /** 数学渲染器（katex 可用时含 math_inline/math_block，否则为空 → 公式降级为文本） */
+  /** 数学渲染器（初始为空；katex 库后台就绪时合入 math_inline/math_block，不可用则维持空 → 公式降级为文本） */
   mathRenderers: MarkdownRenderers;
-  /** 原始 HTML 渲染器（allowHtml 且 dompurify 可用时含 html_block，否则为空 → 裸 HTML 转义为文本） */
+  /** 原始 HTML 渲染器（allowHtml 且 dompurify 可用时含 html_block，否则为空 → 裸 HTML 转义为文本；属基础项，引擎返回时已定型） */
   htmlRenderers: MarkdownRenderers;
-  /** 图表渲染器（mermaid 可用时含 fence:mermaid，否则为空 → mermaid 围栏维持代码块） */
+  /** 图表渲染器：`fence:mermaid` 懒加载包装始终注册，mermaid 模块在首个围栏渲染时才 import；未安装时围栏静默维持代码块 */
   diagramRenderers: MarkdownRenderers;
-  /** 代码高亮渲染器（highlight.js 可用时含通用 fence，否则为空 → 代码块维持纯 pre>code） */
+  /** 代码高亮渲染器（初始为空；highlight.js 后台就绪时合入通用 fence，不可用则维持空 → 代码块维持纯 pre>code） */
   codeRenderers: MarkdownRenderers;
+  /**
+   * 渲染器版本号（响应式）：每次有增强渲染器合入时 +1。
+   * UI 层把它纳入合并渲染器 computed 的依赖——版本 bump 产出新渲染器对象引用，
+   * 恰好触发一轮重渲染让已冻结（committed memo）的块补上增强（如后到的代码高亮）；
+   * 流式 chunk 不改变版本号，committed 块在流式期间仍不随帧重渲染。
+   */
+  renderersVersion: Ref<number>;
+  /** 全部后台增强项 settle（无论成败）后兑现；供预热与测试做同步点 */
+  ready: Promise<void>;
 }
 
 // 按 allowHtml 分别缓存（html:true/false 解析行为不同，不可混用同一实例）。
@@ -141,15 +156,17 @@ async function loadHtmlRenderers(allowHtml: boolean): Promise<MarkdownRenderers>
   }
 }
 
-/** 图表渲染器：mermaid 可用时启用 fence:mermaid，否则空 → mermaid 围栏维持代码块 */
-async function loadDiagramRenderers(): Promise<MarkdownRenderers> {
+/**
+ * mermaid 惰性加载器：交给 createLazyDiagramRenderers，在首个 ```mermaid 围栏真正渲染时才执行。
+ * 与内容无关的对话（绝大多数）全程不为 mermaid（单包最重的可选依赖）付出任何下载/解析成本。
+ */
+async function importMermaid(): Promise<MermaidLike | null> {
   try {
     const mermaidMod = await import('mermaid');
-    const mermaid = (mermaidMod.default ?? mermaidMod) as unknown as MermaidLike;
-    return createDiagramRenderers(mermaid);
+    return (mermaidMod.default ?? mermaidMod) as unknown as MermaidLike;
   } catch {
     // 未安装 mermaid：```mermaid 围栏维持默认代码块（本身即合理展示），与 katex 缺失同样静默
-    return {};
+    return null;
   }
 }
 
@@ -180,25 +197,43 @@ async function assembleEngine(
 ): Promise<MarkdownEngine | null> {
   try {
     const { md, katexEnabled } = await createMarkdownIt(allowHtml, plugins);
-    // 四类可选渲染器彼此独立，并行加载缩短首帧装配延迟。
-    // 用 allSettled 而非 all：从结构上保证「互不连累」——即使某加载器意外 reject（如未来在其
-    // 内部 try 之外引入抛错），也只让该类渲染器降级为 {}，不会令整个引擎 reject 后降级为纯文本。
-    const settled = await Promise.allSettled([
-      loadMathRenderers(katexEnabled),
-      loadHtmlRenderers(allowHtml),
-      loadDiagramRenderers(),
-      loadCodeRenderers(),
-    ]);
-    const pick = (r: PromiseSettledResult<MarkdownRenderers>): MarkdownRenderers =>
-      r.status === 'fulfilled' ? r.value : {};
-    const [math, html, diagram, code] = settled;
-    return {
-      md: md as unknown as MarkdownEngine['md'],
-      mathRenderers: pick(math),
-      htmlRenderers: pick(html),
-      diagramRenderers: pick(diagram),
-      codeRenderers: pick(code),
+    // 基础项之二：dompurify 体积小且关乎 allowHtml 的安全语义（消毒缺位时必须从首帧起就转义），
+    // 随基础引擎一并就绪，避免「先渲染转义文本、消毒器到位后再换富 HTML」的闪变。
+    // loadHtmlRenderers 内部已 try/catch（缺依赖降级 {} 并告警），.catch 仅作结构性兜底。
+    const htmlRenderers = await loadHtmlRenderers(allowHtml).catch((): MarkdownRenderers => ({}));
+
+    const renderersVersion = ref(0);
+    /**
+     * 增量合入：增强渲染器 settle 后原地 Object.assign 进引擎的对应集合，并递增版本号。
+     * 渲染器对象本身非响应式——版本号 ref 是唯一的响应式触发点：UI 的合并渲染器 computed
+     * 依赖它，bump 时产出新对象引用 → 已冻结块的 renderers prop 变化 → 恰好重渲染一轮补上增强。
+     * 降级为空集合（依赖缺失）时不 bump：渲染器集合未变化，避免无意义的整树重渲染。
+     */
+    const mergeInto = (target: MarkdownRenderers) => (renderers: MarkdownRenderers) => {
+      if (Object.keys(renderers).length === 0) return;
+      Object.assign(target, renderers);
+      renderersVersion.value += 1;
     };
+
+    const engine: MarkdownEngine = {
+      md: md as unknown as MarkdownEngine['md'],
+      mathRenderers: {},
+      htmlRenderers,
+      // fence:mermaid 懒加载包装即刻注册（不 import mermaid）：围栏 token 始终有归属渲染器，
+      // mermaid 模块在首个围栏渲染时才加载（见 importMermaid / createLazyDiagramRenderers）
+      diagramRenderers: createLazyDiagramRenderers(importMermaid),
+      codeRenderers: {},
+      renderersVersion,
+      ready: Promise.resolve(),
+    };
+    // 增强项（katex / highlight.js 体积大）后台加载，不阻塞引擎返回——首帧富文本骨架立即可渲染。
+    // 用 allSettled 而非 all：从结构上保证「互不连累」——即使某加载器意外 reject（如未来在其
+    // 内部 try 之外引入抛错），也只让该项维持空集合，不影响其它项合入与 ready 兑现。
+    engine.ready = Promise.allSettled([
+      loadMathRenderers(katexEnabled).then(mergeInto(engine.mathRenderers)),
+      loadCodeRenderers().then(mergeInto(engine.codeRenderers)),
+    ]).then(() => undefined);
+    return engine;
   } catch {
     console.warn(
       '[ai-chat] 未安装 markdown-it，Markdown 渲染降级为纯文本。如需启用请安装 markdown-it。',

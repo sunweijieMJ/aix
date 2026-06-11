@@ -81,6 +81,8 @@ const ns = useNamespace('markdown');
 const engine = shallowRef<MarkdownEngine | null>(null);
 const loaded = ref(false);
 // allowHtml 变化时重载引擎（按模式缓存，切换开销小）；mdPlugins 为静态配置，随重载一并应用。
+// loaded 语义：**基础引擎**（markdown-it 等轻量项）就绪即为 true——富文本骨架立即可渲染，
+// 不等待 hljs/katex 等重量级增强（它们后台增量合入，见 useMarkdownRenderer 的渐进装配）。
 // 加载令牌：快速切换 allowHtml 时旧 promise 后解析凭令牌失配丢弃，避免引擎被覆盖为错误模式
 let loadToken = 0;
 watch(
@@ -102,6 +104,9 @@ const plainText = computed(() => props.content);
 const processedSource = computed(() => {
   const eng = engine.value;
   if (!eng) return props.content;
+  // 渲染器集合本身非响应式，须显式依赖版本号：katex 属后台增强，
+  // mathRenderers 由空变非空（版本 bump）时本 computed 需重算以启用定界符归一化
+  void eng.renderersVersion.value;
   let s = props.content;
   if (Object.keys(eng.mathRenderers).length > 0) s = normalizeMathDelimiters(s);
   if (props.streaming) s = protectStreamingMarkdown(s);
@@ -109,14 +114,22 @@ const processedSource = computed(() => {
 });
 
 // 合并数学/HTML/图表/图片渲染器 + 用户自定义（用户优先）；computed 稳定引用，避免 committed 子块无谓重渲染。
-const mergedRenderers = computed<MarkdownRenderers>(() => ({
-  ...imageRenderers,
-  ...engine.value?.mathRenderers,
-  ...engine.value?.htmlRenderers,
-  ...engine.value?.codeRenderers,
-  ...engine.value?.diagramRenderers,
-  ...props.markdownRenderers,
-}));
+const mergedRenderers = computed<MarkdownRenderers>(() => {
+  // 渲染器版本号纳入依赖：增强渲染器（katex/hljs）后台就绪合入时版本 +1 → 本 computed 产出
+  // 新对象引用 → committed 块的 renderers prop 变化 → 已冻结块恰好重渲染一轮补上增强
+  // （修复「hljs 就绪前已冻结的代码块永远无高亮」的不一致）。
+  // 版本号只随渲染器集合变化 bump、与流式 chunk 无关：流式期间本引用保持稳定，
+  // committed 块仍不随帧重渲染（核心增量渲染优化不受影响）。
+  void engine.value?.renderersVersion.value;
+  return {
+    ...imageRenderers,
+    ...engine.value?.mathRenderers,
+    ...engine.value?.htmlRenderers,
+    ...engine.value?.codeRenderers,
+    ...engine.value?.diagramRenderers,
+    ...props.markdownRenderers,
+  };
+});
 // 块级渲染上下文：两个稳定引用，避免每次父渲染生成新对象导致 committed 块无谓重渲染。
 // 非末块（或整条消息已完成）视为 committed —— 供 fence:mermaid 等原子渲染器提前成图。
 const committedInfo = computed<MarkdownRenderInfo>(() => ({
