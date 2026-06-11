@@ -15,7 +15,6 @@ export const zhCN: AiChatLocale = {
   editButton: '编辑',
   exitEdit: '退出编辑',
   saveButton: '保存',
-  loadingMessages: '加载中…',
   backToBottom: '回到底部',
   errorMessage: '出错了，请重试',
   imageLoadError: '图片加载失败',

@@ -144,8 +144,18 @@ export interface BubbleProps {
  */
 export type BlockRenderers = Record<string, Component>;
 
+/**
+ * 角色级可配的气泡字段（仅样式/渲染类：placement/variant/shape/avatar/contentRender/blockRenderers）。
+ * 类型即文档地排除列表级收口的字段：content/role/status/loading/itemKey 由消息数据驱动，
+ * typing/editable 由列表级策略收口（打字机只对本会话流式过的消息开启、editable 绑定 edit→重发语义）——
+ * 这些键在 BubbleList 模板中被显式绑定覆盖，role 级传入会静默无效，故从类型上禁止。
+ */
+export type RoleBubbleConfig = Partial<
+  Omit<BubbleProps, 'content' | 'role' | 'status' | 'loading' | 'itemKey' | 'typing' | 'editable'>
+>;
+
 /** 角色 → 气泡样式映射，支持静态对象或按消息动态返回（BubbleList + AiChat 共享） */
-export type RoleConfig = Partial<BubbleProps> | ((item: ChatMessage) => Partial<BubbleProps>);
+export type RoleConfig = RoleBubbleConfig | ((item: ChatMessage) => RoleBubbleConfig);
 
 /** 块交互动作信封：交互型渲染器经 onBlockAction 上抛，逐层转发到 useChat.updateBlock */
 export interface BlockAction {

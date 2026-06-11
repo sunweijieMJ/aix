@@ -15,7 +15,6 @@ export const enUS: AiChatLocale = {
   editButton: 'Edit',
   exitEdit: 'Exit edit',
   saveButton: 'Save',
-  loadingMessages: 'Loading…',
   backToBottom: 'Back to bottom',
   errorMessage: 'Something went wrong, please retry',
   imageLoadError: 'Image failed to load',

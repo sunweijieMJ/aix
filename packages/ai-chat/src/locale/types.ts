@@ -27,8 +27,6 @@ export interface AiChatLocale {
   exitEdit: string;
   /** 保存 */
   saveButton: string;
-  /** 历史消息加载中提示文案 */
-  loadingMessages: string;
   /** 回到底部按钮的无障碍标签 */
   backToBottom: string;
   /** 请求出错时气泡内展示的错误文案 */
