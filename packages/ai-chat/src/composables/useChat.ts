@@ -38,6 +38,8 @@ export interface UseChatOptions {
    *   派生（`${父id}__${序号}`），编辑 / 重新生成 / 块动作经内部映射解析回父消息。
    * 注意：parser 可改写或忽略 message-level id（会被覆盖），但**必须保留 block 的 `id`**，
    * 否则交互块回写无法命中 SSOT 父消息块。
+   * 父消息的 extra 会自动合并到渲染消息（parser 输出的同名键优先），故 parser 无需手动
+   * 透传 feedback 等由 useChat 写回 SSOT 的字段。
    */
   parser?: (message: ChatMessage, index: number) => ChatMessage | ChatMessage[];
   defaultMessages?: ChatMessage[];
@@ -74,8 +76,14 @@ export interface UseChatReturn {
    */
   onSend: (input: string | ContentBlock[]) => Promise<void>;
   onReload: (id: string) => Promise<void>;
-  /** 编辑用户消息内容、截断其后历史并重新生成 */
-  onEdit: (id: string, text: string) => Promise<void>;
+  /**
+   * 编辑用户消息内容、截断其后历史并重新生成。
+   * 返回是否受理（与 updateBlock 返回命中与否同构）：true 表示已改写消息并截断重发；
+   * false 表示被守卫拒绝（流式进行中 / id 未命中 / 非 user 消息），消息未做任何改动，
+   * 上层（如 AiChat.onEditMessage）可据此跳过对外透出，避免业务误持久化。
+   * 注：由 void 改为 boolean 属兼容性增强，旧调用方忽略返回值不受影响。
+   */
+  onEdit: (id: string, text: string) => Promise<boolean>;
   abort: () => void;
   setMessages: (m: ChatMessage[]) => void;
   /** 按 id 就地合并块字段补丁；返回是否命中目标块（未命中时调用方可据此跳过对外透出） */
@@ -135,8 +143,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           const subs = Array.isArray(r) ? r : [r];
           if (subs.length <= 1) {
             const sub = subs[0] ?? m;
-            // useChat 接管 message-level id：强制复用父 id，回写无需映射
-            list.push(sub.id === m.id ? sub : { ...sub, id: m.id });
+            // useChat 接管 message-level id（强制复用父 id，回写无需映射），并合并父消息
+            // extra（parser 同名键优先）：parser 未透传 extra 时，setFeedback 等写回 SSOT
+            // 的字段仍能到达渲染层，避免点赞高亮 / 互斥取消静默失效。
+            // 父 extra 为空时不做合并（不引入空对象），id 又一致则原样复用（零开销路径）。
+            const extra = m.extra ? { ...m.extra, ...sub.extra } : sub.extra;
+            list.push(sub.id === m.id && extra === sub.extra ? sub : { ...sub, id: m.id, extra });
           } else {
             // 1→N：首个子气泡复用父 id（单→拆转换不 remount、不闪烁），其余派生稳定 id；
             // 子气泡继承父消息会话状态，并带 __sub 位置信息（供操作条按「仅末气泡」去重）。
@@ -150,7 +162,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 ...sub,
                 id: derivedId,
                 status: m.status,
-                extra: { ...sub.extra, __sub: subMeta },
+                // 合并父消息 extra（parser 同名键优先，与 1→1 分支一致）；__sub 最后写入，
+                // 保证位置元信息不被合并覆盖。
+                extra: { ...m.extra, ...sub.extra, __sub: subMeta },
               });
             });
           }
@@ -167,6 +181,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   const resolveParentId = (id: string): string => parsedState?.value.map.get(id) ?? id;
   const isLoading = ref(false);
   let controller: AbortController | null = null;
+  // 消息级请求归属：每条 AI 消息当前归属的请求 ctrl（与 useAttachments 的
+  // ctrls.get(id)===ctrl 守卫同构）。「abort 后同步 onReload 同一消息」时，
+  // 旧请求的异步收尾必须发现消息已被新请求接管，不得覆写其状态/触发回调。
+  const msgOwners = new Map<string, AbortController>();
 
   const setMessages = (m: ChatMessage[]) => {
     messages.value = m;
@@ -207,6 +225,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     // 避免被「abort 后立即重发」的新请求改写全局 controller 后误判 abort 状态。
     const ctrl = new AbortController();
     controller = ctrl;
+    msgOwners.set(aiMsgId, ctrl);
+    // 终态写入守卫：仅当本请求仍是该消息的归属请求时才允许写状态/触发回调
+    const ownsMsg = () => msgOwners.get(aiMsgId) === ctrl;
     isLoading.value = true;
     // 开发期护栏：parseChunk 返回携带 delta 的非法 blockType 时增量会被丢弃，
     // 本次请求仅告警一次，避免逐 chunk 刷屏。
@@ -286,9 +307,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 须先于 abort/success 判定抛出超时错误，交给 catch 走可重试路径。
           if (timedOut) throw streamTimeoutError();
           if (ctrl.signal.aborted) {
-            aiMsg.status = 'abort';
-            onAbort?.(aiMsg);
-          } else {
+            if (ownsMsg()) {
+              aiMsg.status = 'abort';
+              onAbort?.(aiMsg);
+            }
+          } else if (ownsMsg()) {
             aiMsg.status = 'success';
             onFinish?.(aiMsg);
           }
@@ -296,8 +319,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         } catch (err) {
           // 中断优先于重试：被 abort 直接判为 abort，不再重试。
           if (ctrl.signal.aborted) {
-            aiMsg.status = 'abort';
-            onAbort?.(aiMsg);
+            if (ownsMsg()) {
+              aiMsg.status = 'abort';
+              onAbort?.(aiMsg);
+            }
             return;
           }
           // 超时路径的原始错误可能是 reader 的 AbortError，统一包装为 StreamTimeoutError
@@ -306,18 +331,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           if (attempt < retryTimes) {
             await new Promise((resolve) => setTimeout(resolve, retryInterval));
             if (ctrl.signal.aborted) {
-              aiMsg.status = 'abort';
-              onAbort?.(aiMsg);
+              if (ownsMsg()) {
+                aiMsg.status = 'abort';
+                onAbort?.(aiMsg);
+              }
               return;
             }
             continue;
           }
           // 重试耗尽：透出原始错误（写入 extra 供渲染层取用、回传 onError 供上层上报、
           // 并兜底打到控制台，避免错误被静默吞掉导致线上无法排障）。
-          aiMsg.status = 'error';
-          aiMsg.extra = { ...aiMsg.extra, error: finalErr };
           console.error('[ai-chat] request failed:', finalErr);
-          onError?.(aiMsg, finalErr);
+          if (ownsMsg()) {
+            aiMsg.status = 'error';
+            aiMsg.extra = { ...aiMsg.extra, error: finalErr };
+            onError?.(aiMsg, finalErr);
+          }
           return;
         } finally {
           // 每次尝试的看门狗与联动监听清理（重试新尝试会重建）
@@ -332,6 +361,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         isLoading.value = false;
         controller = null;
       }
+      // 归属表清理：仍归属本请求才删除（已被新请求接管时不得误删其归属记录）
+      if (msgOwners.get(aiMsgId) === ctrl) msgOwners.delete(aiMsgId);
     }
   };
 
@@ -366,14 +397,15 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     await runRequest(pid);
   };
 
-  const onEdit = async (id: string, text: string) => {
-    if (isLoading.value) return;
+  const onEdit = async (id: string, text: string): Promise<boolean> => {
+    // 各守卫拒绝路径返回 false（未受理、消息零改动），供上层跳过对外透出
+    if (isLoading.value) return false;
     // 解析（可能的）派生气泡 id 回父消息 id，再按 SSOT 定位
     const idx = messages.value.findIndex((m) => m.id === resolveParentId(id));
-    if (idx === -1) return;
+    if (idx === -1) return false;
     const msg = messages.value[idx] as ChatMessage;
     // 守卫：仅用户消息可编辑重发，避免误改 AI 回复内容
-    if (msg.role !== 'user') return;
+    if (msg.role !== 'user') return false;
     // 文本块合并改写为单 text block（编辑 UI 的草稿即全部文本块拼接），
     // 非文本块（attachment 等）原位保留，不静默丢弃
     const newText: ContentBlock = { id: genBlockId(), type: 'text', text };
@@ -398,6 +430,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const aiId = genMsgId();
     messages.value.push({ id: aiId, role: 'ai', content: [], status: 'loading' });
     await runRequest(aiId);
+    return true; // 已受理：消息改写 + 截断重发均已执行
   };
 
   const abort = () => {

@@ -164,6 +164,35 @@ describe('Sender', () => {
       expect(attachBtn.classes()).not.toContain('is-active');
     });
 
+    it('disabled 后已展开面板的 drop 不再 add（disabled 覆盖附件全部交互）', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      await w.find('[aria-label="添加附件"]').trigger('click'); // 先在可用态展开面板
+      await w.setProps({ disabled: true });
+      await w
+        .find('.aix-attachments-panel')
+        .trigger('drop', { dataTransfer: { files: [new File(['x'], 'a.pdf')] } });
+      await flushPromises();
+      expect(w.findAll('.aix-attachment-card')).toHaveLength(0);
+      expect(instantUpload).not.toHaveBeenCalled();
+    });
+
+    it('disabled 后面板内 retry 不再重试上传', async () => {
+      const upload = vi
+        .fn<(f: File) => Promise<{ name: string }>>()
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValue({ name: 'a.pdf' });
+      const w = mount(Sender, { props: { attachments: { upload } } });
+      const input = w.find('input[type="file"]');
+      Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'a.pdf')] });
+      await input.trigger('change');
+      await flushPromises();
+      expect(upload).toHaveBeenCalledTimes(1); // 首次上传失败 → error 卡片带重试钮
+      await w.setProps({ disabled: true });
+      await w.find('.aix-attachment-card__btn').trigger('click');
+      await flushPromises();
+      expect(upload).toHaveBeenCalledTimes(1); // disabled：重试被拦截
+    });
+
     it('add 自动展开：未展开时经拖放 add 文件，面板自动可见', async () => {
       const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
       expect(w.find('.aix-attachments-panel').exists()).toBe(false);
@@ -333,15 +362,6 @@ describe('Sender', () => {
       expect(w.emitted('submit')?.[0]?.[0]).toBe('');
     });
 
-    it('拖拽文件到 Sender 区域触发上传，卡片出现在面板列表内且面板自动展开', async () => {
-      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
-      const dt = { files: [new File(['x'], 'drag.pdf')] };
-      await w.find('.aix-sender').trigger('drop', { dataTransfer: dt });
-      await flushPromises();
-      expect(w.find('.aix-attachments-panel').exists()).toBe(true);
-      expect(w.findAll('.aix-attachments-panel__list .aix-attachment-card')).toHaveLength(1);
-    });
-
     it('loading 中新增附件上传时，停止按钮仍可点击', async () => {
       let resolveUpload!: (v: { name: string }) => void;
       const pending = vi.fn(
@@ -483,6 +503,33 @@ describe('Sender', () => {
       ctxs[1]!.onResult('继续', true); // 新会话正常追加
       await nextTick();
       expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('世界x继续');
+    });
+
+    it('转 disabled 后自动停止进行中的语音聆听（对齐附件路径的 disabled 守卫）', async () => {
+      const { recognizer, stop } = fakeRecognizer();
+      const w = mount(Sender, { props: { voice: { recognizer } } });
+      await w.find('[aria-label="语音输入"]').trigger('click');
+      expect(w.find('[aria-label="停止语音输入"]').exists()).toBe(true); // listening 中
+      // 业务在聆听途中禁用（如表单提交期间）：麦克风按钮被禁、Esc 收不到，须自动停止会话
+      await w.setProps({ disabled: true });
+      expect(stop).toHaveBeenCalledTimes(1);
+    });
+
+    it('disabled 后在途语音结果不再改写输入框（applyVoiceText 守卫兜底）', async () => {
+      const { recognizer, drive } = fakeRecognizer();
+      const w = mount(Sender, { props: { voice: { recognizer } } });
+      await w.find('[aria-label="语音输入"]').trigger('click');
+      drive().onResult('你好', false);
+      await nextTick();
+      expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('你好');
+      const emitsBefore = w.emitted('update:modelValue')?.length ?? 0;
+      await w.setProps({ disabled: true });
+      // 旧会话在途结果迟到：不得改写 textarea，也不得继续 emit update:modelValue
+      drive().onResult('你好世界', false);
+      drive().onResult('你好世界', true);
+      await nextTick();
+      expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('你好');
+      expect(w.emitted('update:modelValue')?.length ?? 0).toBe(emitsBefore);
     });
 
     it('IME 组词中的 input 不触发会话重启，compositionend 后重启一次', async () => {

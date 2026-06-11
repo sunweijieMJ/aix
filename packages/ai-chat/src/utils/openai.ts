@@ -87,14 +87,14 @@ export function createOpenAIRequest(options: CreateOpenAIRequestOptions) {
     ...params
   } = options;
   const url = resolveUrl(baseURL);
-  return ({
+  return async ({
     messages,
     signal,
   }: {
     messages: ChatMessage[];
     signal: AbortSignal;
-  }): Promise<Response> =>
-    fetch(url, {
+  }): Promise<Response> => {
+    const res = await fetch(url, {
       method: 'POST',
       signal,
       headers: {
@@ -105,4 +105,15 @@ export function createOpenAIRequest(options: CreateOpenAIRequestOptions) {
       // stream 先给默认 true，再被 params 覆盖（用户可显式关闭）；messages 置最后不可被覆盖
       body: JSON.stringify({ stream: true, ...params, messages: transformMessages(messages) }),
     });
+    // 修复：非 2xx 时响应体是错误 JSON 而非 SSE 流，若直接返回会被 sseStream
+    // 以「零事件正常结束」吞掉，useChat 误判为空内容 success（onError / 重试均失效）。
+    // 这里显式抛错，让其进入 useChat 的错误与重试链路；text() 读取失败时降级为只含状态码。
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(
+        `[ai-chat] OpenAI 请求失败 (HTTP ${res.status})${detail ? `: ${detail.slice(0, 500)}` : ''}`,
+      );
+    }
+    return res;
+  };
 }

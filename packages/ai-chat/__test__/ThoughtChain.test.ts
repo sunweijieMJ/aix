@@ -101,6 +101,26 @@ describe('ThoughtChain', () => {
     expect(wrapper.find('.aix-thought-chain__head').attributes('aria-expanded')).toBe('true');
   });
 
+  it('collapsible=false（默认）时链级头部为 div：无 aria-expanded、无按钮语义、点击不折叠', async () => {
+    const w = mount(ThoughtChain, { props: { items, title: '已完成' } });
+    const summary = w.find('.aix-thought-chain__summary');
+    // 不可折叠的头部不应是 button（屏幕阅读器会播报"按钮，已展开"误导用户）
+    expect(summary.element.tagName).toBe('DIV');
+    expect(summary.attributes('aria-expanded')).toBeUndefined();
+    expect(summary.classes()).not.toContain('is-collapsible');
+    // 点击是 no-op：步骤列表保持渲染
+    await summary.trigger('click');
+    expect(w.find('.aix-thought-chain__list').exists()).toBe(true);
+  });
+
+  it('collapsible=true 时链级头部仍为 button，带 aria-expanded 与 is-collapsible 修饰类', () => {
+    const w = mount(ThoughtChain, { props: { items, title: '已完成', collapsible: true } });
+    const summary = w.find('.aix-thought-chain__summary');
+    expect(summary.element.tagName).toBe('BUTTON');
+    expect(summary.attributes('aria-expanded')).toBe('true');
+    expect(summary.classes()).toContain('is-collapsible');
+  });
+
   it('item-content 作用域 slot 覆盖默认正文（用于检索卡片等富内容）', async () => {
     const w = mount(ThoughtChain, {
       props: { items: [{ key: 's', title: '深度检索', defaultExpanded: true }] },

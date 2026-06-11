@@ -7,6 +7,21 @@ describe('protectStreamingMarkdown（流式防闪烁）', () => {
     expect(protectStreamingMarkdown('# 标题\n\n正文完整')).toBe('# 标题\n\n正文完整');
   });
 
+  it('~~~ 波浪线围栏内的 $$ 不参与数学配对（如 shell 的 $$ PID 变量）', () => {
+    const src = '~~~bash\necho $$\n~~~\n说明文字';
+    expect(protectStreamingMarkdown(src)).toBe(src);
+  });
+
+  it('未闭合 ~~~ 围栏补等长收尾围栏', () => {
+    expect(protectStreamingMarkdown('~~~bash\necho hi')).toBe('~~~bash\necho hi\n~~~');
+  });
+
+  it('4 反引号嵌套围栏：补的收尾围栏与开围栏等长（``` 不落入外层内容形成残影）', () => {
+    expect(protectStreamingMarkdown('````markdown\n```js\ncode\n```')).toBe(
+      '````markdown\n```js\ncode\n```\n````',
+    );
+  });
+
   it('未闭合围栏代码块补收尾围栏', () => {
     expect(protectStreamingMarkdown('```js\nconst a = 1')).toBe('```js\nconst a = 1\n```');
   });
@@ -31,6 +46,15 @@ describe('protectStreamingMarkdown（流式防闪烁）', () => {
   it('仅作用于最后一行，不误伤前文的中括号', () => {
     const src = '[已完成](u) 的内容\n下一行';
     expect(protectStreamingMarkdown(src)).toBe(src);
+  });
+
+  it('已闭合行内代码中的 [ 不触发链接整修（回归：`arr[` 等编程话题被误删尾部）', () => {
+    const src = '写 `arr[` 开始索引即可';
+    expect(protectStreamingMarkdown(src)).toBe(src);
+  });
+
+  it('行内代码之后真正的链接残片仍被隐去', () => {
+    expect(protectStreamingMarkdown('见 `code[0]` 和 [链接残')).toBe('见 `code[0]` 和 ');
   });
 
   describe('未闭合块级数学公式 $$', () => {
@@ -122,6 +146,16 @@ describe('protectStreamingMarkdown（流式防闪烁）', () => {
 
     it('已有数据行的表格不改动（markdown-it 可正常渐进渲染）', () => {
       const src = '| 名称 | 数量 |\n| --- | --- |\n| 苹果 | 3';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+
+    it('表头含转义竖线 \\| 时按 escapedSplit 语义计列（\\| 是单元格内容不算列分隔）', () => {
+      // markdown-it 视 '| a\|b | c |' 为 2 列，朴素 split('|') 会误计 3 列
+      expect(protectStreamingMarkdown('| a\\|b | c |')).toBe('| a\\|b | c |\n| --- | --- |');
+    });
+
+    it('表头含 \\| 且分隔行已完整合法时不改动（不被错误列数判定破坏，回归）', () => {
+      const src = '| a\\|b | c |\n| --- | --- |';
       expect(protectStreamingMarkdown(src)).toBe(src);
     });
 
@@ -217,6 +251,18 @@ describe('protectStreamingMarkdown（流式防闪烁）', () => {
     it('多个公式时只改写最后一个未闭合的', () => {
       expect(protectStreamingMarkdown('\\[a\\] 然后 \\[c=')).toBe(
         '\\[a\\] 然后 \n```latex\nc=\n```',
+      );
+    });
+
+    it('LaTeX 行间距 \\\\[2pt] 的 \\[ 不被误判为定界符：已闭合公式不被撕裂（回归）', () => {
+      // aligned/cases 环境的标准行距写法 \\[2pt]：$$ 已配对、无需任何整修
+      const closed = '$$\\begin{aligned}a\\\\[2pt]b=c\\end{aligned}$$\n后续正文';
+      expect(protectStreamingMarkdown(closed)).toBe(closed);
+    });
+
+    it('\\\\[2pt] 与真正未闭合的 \\[ 共存时，只整修真定界符起的残片', () => {
+      expect(protectStreamingMarkdown('$$a\\\\[2pt]b$$ 然后 \\[c=')).toBe(
+        '$$a\\\\[2pt]b$$ 然后 \n```latex\nc=\n```',
       );
     });
   });

@@ -132,7 +132,16 @@ const activeInfo = computed<MarkdownRenderInfo>(() => ({
 const blocks = shallowRef<StreamingBlock[]>([]);
 let idc = 0;
 const genId = () => `mdb-${idc++}`;
-const parseBlock = (src: string): MdToken[] => engine.value!.md.parse(src, {});
+// 引用式链接定义（[label]: url）按全文收集，经 env 注入每个块的独立解析——否则定义行
+// 所在块之外的引用链接永远解析不出。引用表内容变化时换 parseBlock 引用，触发各块的
+// token memo 重算（定义新增是低频事件，全量重解析可接受）；每次解析克隆引用表，防
+// markdown-it 解析中回写 env 污染共享对象。
+const blockRefs = shallowRef<Record<string, unknown>>({});
+let blockRefsJson = '{}';
+const parseBlock = computed(() => {
+  const refs = blockRefs.value;
+  return (src: string): MdToken[] => engine.value!.md.parse(src, { references: { ...refs } });
+});
 
 watch(
   [engine, processedSource],
@@ -142,7 +151,14 @@ watch(
       blocks.value = [];
       return;
     }
-    const slices = splitMarkdownBlocks(eng.md, processedSource.value);
+    const env: { references?: Record<string, unknown> } = {};
+    const slices = splitMarkdownBlocks(eng.md, processedSource.value, env);
+    const refs = env.references ?? {};
+    const json = JSON.stringify(refs);
+    if (json !== blockRefsJson) {
+      blockRefsJson = json;
+      blockRefs.value = refs;
+    }
     blocks.value = reconcileStreamingBlocks(blocks.value, slices, genId);
   },
   { immediate: true },

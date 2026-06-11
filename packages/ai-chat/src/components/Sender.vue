@@ -20,9 +20,9 @@
         v-if="panelOpen"
         :items="attach.items.value"
         @pick="openFilePicker"
-        @drop="attach.add($event)"
+        @drop="onPanelDrop"
         @remove="attach.remove"
-        @retry="attach.retry"
+        @retry="onPanelRetry"
         @close="panelOpen = false"
       />
     </Transition>
@@ -205,6 +205,14 @@ const onDrop = (e: DragEvent) => {
   e.preventDefault();
   attach.add(e.dataTransfer.files);
 };
+// 面板内拖放/重试事件被面板 stopPropagation、不经根级守卫，须单独受 disabled 约束——
+// 面板可在可用态展开后才被禁用（如表单提交期间），此时附件交互应一并失效
+const onPanelDrop = (files: FileList | File[]) => {
+  if (!props.disabled) attach?.add(files);
+};
+const onPanelRetry = (id: string) => {
+  if (!props.disabled) attach?.retry(id);
+};
 const onDragOver = (e: DragEvent) => {
   if (attach) e.preventDefault(); // 允许 drop
 };
@@ -365,6 +373,9 @@ const autosize = () => {
 // 语音定稿/预览写入：committedBase = 开始聆听时已有文本 + 已定稿段；interim 在其后实时预览
 let committedBase = '';
 const applyVoiceText = (text: string) => {
+  // disabled 兜底守卫：watch 停止会话前的在途结果（onInterim/onFinal）不得改写输入框，
+  // 与附件路径（onPanelDrop/onPanelRetry/onFileChange）的 disabled 约束对齐
+  if (props.disabled) return;
   inner.value = text;
   emit('update:modelValue', text);
   nextTick(autosize);
@@ -395,6 +406,17 @@ const restartVoiceFrom = (text: string) => {
   committedBase = text;
   voice!.start();
 };
+
+// 聆听途中被业务禁用（如表单提交期间 :disabled 置 true）：麦克风按钮已禁用无法手动停、
+// Esc 因 textarea disabled 收不到 keydown，识别会话会继续运行并改写文本——此处自动停止聆听
+if (voice) {
+  watch(
+    () => props.disabled,
+    (d) => {
+      if (d && voice.status.value === 'listening') voice.stop();
+    },
+  );
+}
 
 const onMicClick = () => {
   if (!voice) return;

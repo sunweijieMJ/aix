@@ -121,6 +121,44 @@ describe('createOpenAIRequest', () => {
     ]);
   });
 
+  // —— HTTP 错误校验：非 2xx 必须抛错，否则错误 JSON 会被 sseStream 静默吞掉判为空 success ——
+  describe('HTTP 错误响应校验', () => {
+    it('非 2xx（如 401）时 reject，错误信息含状态码与响应体片段', async () => {
+      fetchMock.mockResolvedValue(
+        new Response('{"error":{"message":"Invalid API key"}}', { status: 401 }),
+      );
+      const ctrl = new AbortController();
+      const req = createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' });
+      await expect(req({ messages: msgs(), signal: ctrl.signal })).rejects.toThrow(
+        /HTTP 401.*Invalid API key/s,
+      );
+    });
+
+    it('5xx 时同样 reject 且含状态码', async () => {
+      fetchMock.mockResolvedValue(new Response('Internal Server Error', { status: 500 }));
+      const ctrl = new AbortController();
+      const req = createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' });
+      await expect(req({ messages: msgs(), signal: ctrl.signal })).rejects.toThrow(/HTTP 500/);
+    });
+
+    it('2xx 时正常 resolve 原 Response，不受校验影响', async () => {
+      const okRes = new Response('ok', { status: 200 });
+      fetchMock.mockResolvedValue(okRes);
+      const ctrl = new AbortController();
+      const req = createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' });
+      await expect(req({ messages: msgs(), signal: ctrl.signal })).resolves.toBe(okRes);
+    });
+
+    it('响应体读取失败时仍抛含状态码的错误（不被 text() 异常掩盖）', async () => {
+      const badRes = new Response('x', { status: 429 });
+      vi.spyOn(badRes, 'text').mockRejectedValue(new Error('read fail'));
+      fetchMock.mockResolvedValue(badRes);
+      const ctrl = new AbortController();
+      const req = createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' });
+      await expect(req({ messages: msgs(), signal: ctrl.signal })).rejects.toThrow(/HTTP 429/);
+    });
+  });
+
   it('返回函数签名与 useChat 的 request 兼容（编译期约束）', () => {
     const options: UseChatOptions = {
       request: createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' }),

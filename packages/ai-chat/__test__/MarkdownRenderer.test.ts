@@ -59,6 +59,25 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
     await vi.waitFor(() => expect(w.html()).toContain('新内容'));
   });
 
+  it('引用式链接：定义行与使用处分属不同块也能解析（回归：按块独立解析丢失引用表）', async () => {
+    const w = mount(MarkdownRenderer, {
+      props: { content: '见 [示例][ex]\n\n[ex]: https://example.com' },
+    });
+    await vi.waitFor(() => {
+      const a = w.find('a');
+      expect(a.exists()).toBe(true);
+      expect(a.attributes('href')).toBe('https://example.com');
+    });
+  });
+
+  it('流式中引用定义后到：已渲染块中的引用链接随定义补全', async () => {
+    const w = mount(MarkdownRenderer, { props: { content: '见 [示例][ex]', streaming: true } });
+    await vi.waitFor(() => expect(w.find('p').exists()).toBe(true));
+    expect(w.find('a').exists()).toBe(false);
+    await w.setProps({ content: '见 [示例][ex]\n\n[ex]: https://example.com' });
+    await vi.waitFor(() => expect(w.find('a').attributes('href')).toBe('https://example.com'));
+  });
+
   it('allowHtml=true 渲染消毒后的块级 HTML', async () => {
     const w = mount(MarkdownRenderer, {
       props: { content: '<div class="card">卡片内容</div>', allowHtml: true },
@@ -69,8 +88,10 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
 
   it('allowHtml=false（默认）原始 HTML 被转义为文本，不生成元素', async () => {
     const w = mount(MarkdownRenderer, { props: { content: '<div class="card">卡片内容</div>' } });
-    await vi.waitFor(() => expect(w.text()).toContain('卡片内容'));
+    // 引擎就绪须以结构性标志（<p> 出现）判定——纯文本降级态 text() 同样含原文，会提前假通过
+    await vi.waitFor(() => expect(w.find('p').exists()).toBe(true));
     expect(w.find('div.card').exists()).toBe(false);
+    expect(w.text()).toContain('卡片内容');
   });
 
   it('allowHtml=true 仍消毒 XSS（块级 HTML 内的 onerror 去除）', async () => {

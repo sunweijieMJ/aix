@@ -136,6 +136,35 @@ describe('useChat', () => {
     expect(messages.value[1].status).toBe('abort');
   });
 
+  it('abort 后同步 onReload 同一消息：旧请求异步收尾不覆写新请求状态（瞬态 abort 闪烁回归）', async () => {
+    let call = 0;
+    let c2!: ReadableStreamDefaultController<Uint8Array>;
+    const request = vi.fn(async () => {
+      call += 1;
+      // 第一次：永不出帧的流（abort 时由消费方 reader.cancel 优雅收尾）；
+      // 第二次：受控流，留在 loading 态直到测试手动喂数据
+      if (call === 1) return new ReadableStream<Uint8Array>({ start() {} });
+      return new ReadableStream<Uint8Array>({ start: (c) => (c2 = c) });
+    });
+    const { messages, onSend, onReload, abort } = useChat({ request });
+    const first = onSend('hi');
+    await new Promise((r) => setTimeout(r, 10)); // 第一次请求已拿到流、进入读取
+    const aiId = messages.value[1]!.id;
+    abort();
+    const reloading = onReload(aiId); // 同步紧随：abort 已复位 isLoading，可通过守卫
+    await first;
+    await new Promise((r) => setTimeout(r, 10)); // 让旧请求的异步收尾彻底跑完
+    // 旧请求收尾不得把已被 onReload 重置为 loading 的消息覆写为 abort
+    expect(messages.value[1]!.status).toBe('loading');
+    const enc = new TextEncoder();
+    c2.enqueue(enc.encode('data: {"delta":"第二轮回答"}\n\n'));
+    c2.enqueue(enc.encode('data: [DONE]\n\n'));
+    c2.close();
+    await reloading;
+    expect(messageText(messages.value[1] as ChatMessage)).toBe('第二轮回答');
+    expect(messages.value[1]!.status).toBe('success');
+  });
+
   it('defaultMessages 初始化历史消息', () => {
     const request = vi.fn(async () => sseStream(['x']));
     const { messages } = useChat({ request, defaultMessages: [textMessage('user', '历史')] });
@@ -522,6 +551,37 @@ describe('useChat', () => {
     ctrl.close();
     await p;
   });
+
+  // Bug 防回归：流式期间 onEdit 被守卫拒绝时必须有受理信号（返回 false），
+  // 否则上层（AiChat.onEditMessage）无从得知编辑被丢弃，仍会 emit 'edit' 误导业务持久化。
+  it('onEdit 受理信号：流式中被守卫拒绝返回 false 且消息不变', async () => {
+    let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+    const request = vi.fn(async () => new ReadableStream<Uint8Array>({ start: (c) => (ctrl = c) }));
+    const { messages, onSend, onEdit } = useChat({ request });
+    const p = onSend('first');
+    await nextTick();
+    const accepted = await onEdit(messages.value[0].id, 'edited');
+    expect(accepted).toBe(false);
+    expect(messageText(messages.value[0])).toBe('first');
+    ctrl.close();
+    await p;
+  });
+
+  it('onEdit 受理信号：非流式受理返回 true，未命中 id / 非 user 消息返回 false', async () => {
+    let call = 0;
+    const request = vi.fn(async () => sseStream([call++ === 0 ? 'a1' : 'a2']));
+    const { messages, onSend, onEdit } = useChat({ request });
+    await onSend('q1');
+    await nextTick();
+    // 未命中 id：返回 false
+    expect(await onEdit('nope', 'x')).toBe(false);
+    // 非 user 消息守卫：返回 false
+    expect(await onEdit(messages.value[1].id, 'x')).toBe(false);
+    // 正常受理：返回 true，且确实已截断重发
+    expect(await onEdit(messages.value[0].id, 'q1-edited')).toBe(true);
+    expect(messageText(messages.value[0])).toBe('q1-edited');
+    expect(request).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('useChat.updateBlock', () => {
@@ -632,6 +692,52 @@ describe('parser 渲染消息解耦', () => {
     // 据渲染气泡 id 回写，命中 SSOT 父消息
     setFeedback(parsedMessages.value[1].id, 'like');
     expect(messages.value[1].extra?.feedback).toBe('like');
+  });
+
+  // Bug 防回归：自定义 parser 从零构造渲染消息（不透传 extra）时，setFeedback 写入
+  // SSOT 父消息的 extra.feedback 必须仍能到达渲染层，否则点赞高亮 / 互斥取消静默失效。
+  it('parser 不透传 extra（1→1）：父消息 feedback 自动合并到渲染消息', async () => {
+    const parser = (m: ChatMessage): ChatMessage => ({
+      id: m.id,
+      role: m.role,
+      content: [textBlock(messageText(m))],
+    });
+    const { messages, parsedMessages, onSend, setFeedback } = useChat({
+      request: vi.fn(async () => sseStream(['Hi'])),
+      parser,
+    });
+    await onSend('q');
+    await nextTick();
+    const aiId = messages.value[1].id;
+    setFeedback(aiId, 'like');
+    // 渲染消息能读到父消息的 feedback（AiChat 的高亮受控值取 item.extra?.feedback）
+    expect(parsedMessages.value[1].extra?.feedback).toBe('like');
+    // 互斥取消：再次写 null 同样透传
+    setFeedback(aiId, null);
+    expect(parsedMessages.value[1].extra?.feedback).toBe(null);
+  });
+
+  it('parser 不透传 extra（1→N）：父消息 feedback 合并到各子气泡且不丢 __sub', async () => {
+    const parser = (m: ChatMessage): ChatMessage | ChatMessage[] =>
+      m.role === 'ai'
+        ? [
+            { id: m.id, role: m.role, content: [textBlock('a')] },
+            { id: m.id, role: m.role, content: [textBlock('b')] },
+          ]
+        : m;
+    const { messages, parsedMessages, onSend, setFeedback } = useChat({
+      request: vi.fn(async () => sseStream(['Hi'])),
+      parser,
+    });
+    await onSend('q');
+    await nextTick();
+    const aiId = messages.value[1].id;
+    setFeedback(aiId, 'like');
+    expect(parsedMessages.value[1].extra?.feedback).toBe('like');
+    expect(parsedMessages.value[2].extra?.feedback).toBe('like');
+    // 合并不得破坏 __sub 元信息（操作条去重依赖）
+    expect(parsedMessages.value[1].extra?.__sub).toEqual({ index: 0, count: 2 });
+    expect(parsedMessages.value[2].extra?.__sub).toEqual({ index: 1, count: 2 });
   });
 
   describe('1→N 拆分（一条消息拆多气泡）', () => {

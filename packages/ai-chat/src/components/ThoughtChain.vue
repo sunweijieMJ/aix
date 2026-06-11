@@ -1,15 +1,19 @@
 <template>
   <div :class="ns.b()">
-    <button
+    <!-- 链级头部动态标签：collapsible 时为可交互 button（aria-expanded + click）；
+         否则为纯展示 div——不输出 aria-expanded、不绑 click，避免屏幕阅读器播报
+         "按钮，已展开" 而键盘 Enter 无任何反馈的误导语义 -->
+    <component
+      :is="collapsible ? 'button' : 'div'"
       v-if="title"
-      type="button"
-      :class="ns.e('summary')"
-      :aria-expanded="chainOpen"
-      @click="toggleChain"
+      :type="collapsible ? 'button' : undefined"
+      :class="[ns.e('summary'), ns.is('collapsible', collapsible)]"
+      :aria-expanded="collapsible ? chainOpen : undefined"
+      v-on="collapsible ? { click: toggleChain } : {}"
     >
       <span v-if="collapsible" :class="[ns.e('summary-arrow'), ns.is('open', chainOpen)]">▾</span>
       <span :class="[ns.e('summary-title'), ns.is('loading', loading)]">{{ title }}</span>
-    </button>
+    </component>
     <ul v-if="chainOpen" :class="ns.e('list')">
       <li
         v-for="(item, i) in items"
@@ -155,7 +159,13 @@ const hasBody = (item: ThoughtChainItem): boolean =>
     color: var(--aix-colorTextSecondary);
     font-size: var(--aix-fontSize);
     font-weight: 500;
-    cursor: pointer;
+
+    /* 仅可折叠头部（button）给出可点指针；纯展示 div 保持默认光标 */
+    cursor: default;
+
+    &.is-collapsible {
+      cursor: pointer;
+    }
   }
 
   &__summary-arrow {

@@ -84,6 +84,35 @@ describe('Conversations', () => {
     expect(w.findAll('.aix-conversations__item')[0].text()).toContain('关于梵高');
   });
 
+  it('编辑中条目被外部移除后编辑态清除，会话切换不被阻断', async () => {
+    const w = mount(Conversations, { props: { items, activeKey: 'a' } });
+    const renameBtn = w
+      .findAll('.aix-conversations__item')[0]
+      .findAll('.aix-conversations__action')[0];
+    await renameBtn.trigger('click');
+    expect(w.find('.aix-conversations__edit-input').exists()).toBe(true);
+    // 条目 a 随 items prop 更新被外部移除：聚焦中的 input 卸载不触发 blur，
+    // editingId 不得残留，否则 select 守卫会全局阻断会话切换
+    await w.setProps({ items: items.filter((it) => it.id !== 'a') });
+    // 点击剩余首项（b）应正常切换选中
+    await w.findAll('.aix-conversations__item')[0].trigger('click');
+    expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
+  });
+
+  it('编辑中条目仍存在时，items 更新不丢失编辑态且 select 守卫仍生效', async () => {
+    const w = mount(Conversations, { props: { items, activeKey: 'a' } });
+    const renameBtn = w
+      .findAll('.aix-conversations__item')[0]
+      .findAll('.aix-conversations__action')[0];
+    await renameBtn.trigger('click');
+    // items 更新但被编辑的 a 仍在：编辑态保持
+    await w.setProps({ items: [...items, { id: 'd', label: '新会话', group: '今天' }] });
+    expect(w.find('.aix-conversations__edit-input').exists()).toBe(true);
+    // 编辑期间点击其他项仍被守卫拦截（既有行为不回归）
+    await w.findAll('.aix-conversations__item')[1].trigger('click');
+    expect(w.emitted('update:activeKey')).toBeUndefined();
+  });
+
   it('groupable=true 渲染分组标题', () => {
     const w = mount(Conversations, { props: { items, groupable: true } });
     const groups = w.findAll('.aix-conversations__group');

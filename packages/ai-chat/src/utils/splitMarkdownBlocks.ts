@@ -14,9 +14,17 @@ export interface MarkdownBlockParser {
   parse(src: string, env: unknown): MdToken[];
 }
 
-export function splitMarkdownBlocks(md: MarkdownBlockParser, src: string): string[] {
+/**
+ * @param env 透传给 md.parse 的解析环境：调用方可借它收集全文的引用式链接定义
+ *            （markdown-it 写入 env.references），再注入各块的独立解析。
+ */
+export function splitMarkdownBlocks(
+  md: MarkdownBlockParser,
+  src: string,
+  env: unknown = {},
+): string[] {
   if (!src) return [];
-  const tokens = md.parse(src, {});
+  const tokens = md.parse(src, env);
   const lines = src.split('\n');
   const blocks: string[] = [];
   for (const t of tokens) {

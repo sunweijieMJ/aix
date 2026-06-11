@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { describe, it, expect, vi } from 'vitest';
 import { defineComponent, h, nextTick } from 'vue';
 import AiChat from '../src/components/AiChat.vue';
+import BubbleList from '../src/components/BubbleList.vue';
 import { provideAiChatConfig } from '../src/composables/useAiChatConfig';
 import type { FollowContext } from '../src/composables/useAutoScroll';
 import type { ChatMessage, VoiceRecognizerCtx, VoiceRecognizer } from '../src/types';
@@ -566,6 +567,42 @@ describe('AiChat', () => {
     expect(w.emitted('edit')![0]).toEqual([{ id: w.vm.messages[0].id, text: '改后问题' }]);
     expect(messageText(w.vm.messages[0])).toBe('改后问题');
     expect(w.vm.messages).toHaveLength(2);
+  });
+
+  // Bug 防回归：流式期间 useChat.onEdit 被守卫拒绝（消息未改写未重发），
+  // AiChat 不得仍 emit 'edit'——否则业务持久化与实际消息状态脱节。
+  it('editable：流式期间保存编辑不 emit edit（守卫拒绝时不误导业务持久化）', async () => {
+    let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+    const request = vi.fn(async () => new ReadableStream<Uint8Array>({ start: (c) => (ctrl = c) }));
+    const w = mount(AiChat, { props: { request, editable: true } });
+    await w.find('textarea').setValue('原问题');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises(); // 流挂起：isLoading 保持 true
+    // 流式中编辑入口已禁用，直接经 BubbleList 的 edit 事件通道验证 emit 门控
+    w.findComponent(BubbleList).vm.$emit('edit', w.vm.messages[0].id, '改后');
+    await flushPromises();
+    expect(w.emitted('edit')).toBeUndefined();
+    expect(messageText(w.vm.messages[0])).toBe('原问题');
+    ctrl.close();
+    await flushPromises();
+  });
+
+  // Bug 防回归：编辑入口须与全局 isLoading 联动——流式期间隐藏编辑按钮（从源头避免
+  // 用户在 AI 回复中保存编辑被静默丢弃），流结束后恢复。
+  it('editable：流式期间编辑入口隐藏，流结束后恢复', async () => {
+    let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+    const request = vi.fn(async () => new ReadableStream<Uint8Array>({ start: (c) => (ctrl = c) }));
+    const w = mount(AiChat, { props: { request, editable: true } });
+    await w.find('textarea').setValue('问');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises(); // 流挂起：isLoading 保持 true
+    expect(w.find('.aix-bubble__edit-btn').exists()).toBe(false);
+    const enc = new TextEncoder();
+    ctrl.enqueue(enc.encode('data: {"delta":"答"}\n\n'));
+    ctrl.enqueue(enc.encode('data: [DONE]\n\n'));
+    ctrl.close();
+    await flushPromises();
+    expect(w.find('.aix-bubble__edit-btn').exists()).toBe(true);
   });
 
   it('actions 含 feedback：点击赞写回 extra.feedback 并 emit feedback', async () => {

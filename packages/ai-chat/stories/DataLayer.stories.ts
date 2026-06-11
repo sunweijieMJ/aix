@@ -157,8 +157,13 @@ export const OpenAIRequestFactory: Story = {
     components: { AiChat },
     setup: () => {
       const realFetch = globalThis.fetch;
-      globalThis.fetch = ((_url: string, init?: RequestInit) =>
-        Promise.resolve(
+      // 仅拦截本工厂指向 api.openai.com 的请求，其余透传真实 fetch：autodocs 文档页会把
+      // 本文件全部 story 同时 inline 挂载，无条件拦截会劫持 Dify 等真实连接演示的请求
+      globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (!url.includes('api.openai.com')) return realFetch(input, init);
+        return Promise.resolve(
           new Response(
             streamOpenAI(
               '这条回答由 `createOpenAIRequest` 便利工厂发起：自动拼 `/chat/completions`、注入鉴权头与 `stream:true`，配合 `openaiParseChunk` 解析。',
@@ -166,7 +171,8 @@ export const OpenAIRequestFactory: Story = {
             ),
             { headers: { 'content-type': 'text/event-stream' } },
           ),
-        )) as typeof fetch;
+        );
+      }) as typeof fetch;
       onUnmounted(() => {
         globalThis.fetch = realFetch;
       });

@@ -33,7 +33,7 @@
         :should-follow="shouldFollow"
         :typing="config.enableTyping"
         :block-renderers="blockRenderers"
-        :editable="editable"
+        :editable="bubbleEditable"
         @retry="onReload"
         @block-action="onBlockAction"
         @edit="onEditMessage"
@@ -397,11 +397,15 @@ const onBlockAction = (payload: BlockActionPayload) => {
   if (hit) emit('block-action', payload);
 };
 
-// 用户消息编辑：先截断重发（驱动 DOM），再对外透出供持久化
-const onEditMessage = (id: string, text: string) => {
-  onEdit(id, text);
-  emit('edit', { id, text });
+// 用户消息编辑：先截断重发（驱动 DOM），仅当 useChat 受理（返回 true）时再对外透出供持久化，
+// 避免守卫拒绝（流式进行中等）编辑被静默丢弃时业务仍收到 'edit' 误持久化（与 onBlockAction 同构）
+const onEditMessage = async (id: string, text: string) => {
+  const accepted = await onEdit(id, text);
+  if (accepted) emit('edit', { id, text });
 };
+
+// 编辑入口与全局加载态联动：流式期间隐藏编辑按钮，从源头避免「保存被守卫静默丢弃」的入口
+const bubbleEditable = computed(() => !!props.editable && !isLoading.value);
 
 // 赞/踩反馈：写回 extra（驱动高亮），再对外透出供持久化
 const onFeedback = (id: string, value: MessageFeedback | null) => {

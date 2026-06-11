@@ -8,11 +8,13 @@
  *    闭合后该分支不再命中，整段交还 KaTeX 渲染为公式（经 TransitionGroup 淡入）。
  *    残片尚无内容（刚输出定界符本身）时维持隐藏，避免空代码块一闪。
  *    仅处理块级 `$$` / `\[`；行内 `$`（与货币 `$5` 歧义）/ `\(`（较短）不处理。
- * 2) 未闭合围栏代码块（``` 数量为奇数）：临时补一个收尾围栏，半截代码以代码块渲染，
- *    而非把后续内容误当代码 / 露出裸 ```（也负责闭合上面新开的 latex 围栏）。
+ * 2) 未闭合围栏代码块（逐行扫描 ```/~~~ 开闭围栏）：临时补一个与开围栏等长的收尾围栏，
+ *    半截代码以代码块渲染，而非把后续内容误当代码 / 露出裸 ```（也负责闭合上面新开的
+ *    latex 围栏；嵌套围栏如 ````markdown 内嵌 ```js 按外层长度补，不产生残影）。
  * 3) 末行未闭合的链接 / 图片起始（`[...` 或 `![...` 尚无配对 `]`）：暂时隐去该残片，
  *    避免流式途中露出裸中括号；token 补全后自然恢复。仅作用于最后一行，避免误伤正文；
- *    数学残片已改写为围栏时跳过（末行是 LaTeX，`\sqrt[3]{x` 等中括号不能被误删）。
+ *    数学残片已改写为围栏时跳过（末行是 LaTeX，`\sqrt[3]{x` 等中括号不能被误删）；
+ *    定位在代码遮蔽后的文本上进行（已闭合行内代码中的 `[` 如 `arr[` 不算链接起始）。
  * 4) 表格残片（表头已现而分隔行未到）：按表头列数补一行合成分隔行，让表头**先行成表**——
  *    避免「裸竖线文本可见 → 分隔行到达瞬间突变成表格」的跳变（借鉴 ant-design-x 的
  *    残片不裸奔原则，但用渐进成表替代其扣住不显示）。分隔行之后 markdown-it 本就能
@@ -46,7 +48,7 @@ export function protectStreamingMarkdown(src: string): string {
   // 与 normalizeMathDelimiters 的代码区保护同一策略，此处因需要 lastIndexOf 原文索引故用遮蔽而非抽出。
   const maskCode = (s: string): string =>
     s
-      .replace(/```[\s\S]*?(?:```|$)/g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/(`{3,}|~{3,})[\s\S]*?(?:\1|$)/g, (m) => m.replace(/[^\n]/g, ' '))
       .replace(/`[^`\n]*`/g, (m) => m.replace(/[^\n]/g, ' '));
   let masked = maskCode(out);
 
@@ -58,8 +60,18 @@ export function protectStreamingMarkdown(src: string): string {
   }
   // 1.5) 未闭合块级数学公式（反斜杠括号写法 \[ ... \]）：\[ 多于 \] → 改写最后一个 \[ 起的残片，
   //      与 $$ 同理（部分模型用 \[ \] 而非 $$）。行内 \( 较短不处理。
-  if ((masked.match(/\\\[/g) ?? []).length > (masked.match(/\\\]/g) ?? []).length) {
-    fenceMathResidual(masked.lastIndexOf('\\['), 2);
+  //      负向后行断言排除前面还有反斜杠的场景：LaTeX 行间距 \\[2pt]（aligned/cases 环境
+  //      标准行距写法）的 \[ 不是定界符，否则已闭合公式会被持续撕裂。
+  const delimIdxs = (s: string, re: RegExp): number[] => {
+    const idxs: number[] = [];
+    for (let m = re.exec(s); m; m = re.exec(s)) idxs.push(m.index);
+    return idxs;
+  };
+  {
+    const opens = delimIdxs(masked, /(?<!\\)\\\[/g);
+    if (opens.length > delimIdxs(masked, /(?<!\\)\\\]/g).length) {
+      fenceMathResidual(opens[opens.length - 1]!, 2);
+    }
   }
   // 1.7) 表格残片：末块「表头已现而分隔行未到」时补合成分隔行，表头先行成表。
   //      末块 = 最后一个空行之后的内容；首行须以 | 开头（按遮蔽后判定，代码区内竖线不算）。
@@ -71,14 +83,19 @@ export function protectStreamingMarkdown(src: string): string {
     if (maskedFirst.trimStart().startsWith('|')) {
       const lines = out.slice(blockStart).split('\n');
       const header = lines[0] ?? '';
-      // 列数 = 表头去首尾竖线后的分段数；全空段（如单个 '|'）不处理
-      const segs = header.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+      // 列数 = 表头去首尾竖线后的分段数；全空段（如单个 '|'）不处理。
+      // 切列前先把转义竖线 \| 替换为占位符：GFM/markdown-it 按转义感知切分（escapedSplit），
+      // \| 属单元格内容不算列分隔，朴素 split('|') 会多计列数（仅用于计数，无需还原内容）。
+      const toCells = (l: string) =>
+        l.trim().replace(/\\\|/g, '\0').replace(/^\|/, '').replace(/\|$/, '').split('|');
+      const segs = toCells(header);
       if (segs.some((s) => s.trim())) {
         const synth = `| ${segs.map(() => '---').join(' | ')} |`;
         // 形似分隔行：仅由 空白/|/:/- 组成且含 -；合法完整分隔行：列数匹配且每列 :?-+:?
         const isSepish = (l: string) => /^[\s|:-]*$/.test(l) && l.includes('-');
         const isValidSep = (l: string) => {
-          const cells = l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+          // 与表头同一转义感知切分，保证列数比较口径一致
+          const cells = toCells(l);
           return (
             l.trim().endsWith('|') &&
             cells.length === segs.length &&
@@ -95,20 +112,36 @@ export function protectStreamingMarkdown(src: string): string {
       }
     }
   }
-  // 2) 未闭合围栏代码块（含上面新开的 latex 围栏）
-  const fenceCount = (out.match(/^```/gm) ?? []).length;
-  if (fenceCount % 2 === 1) {
-    out += (out.endsWith('\n') ? '' : '\n') + '```';
+  // 2) 未闭合围栏代码块（含上面新开的 latex 围栏；``` 与 ~~~，开围栏可为 3+ 字符）：
+  //    逐行跟踪开/闭围栏（闭围栏须同字符、不短于开围栏、无 info 文本），未闭合时补
+  //    等长收尾围栏——嵌套场景（````markdown 内嵌 ```js）固定补 ``` 会因短于外层
+  //    开围栏而落入其内容形成残影，必须按开围栏原样补。
+  let openFence = '';
+  for (const line of out.split('\n')) {
+    const m = /^(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!m) continue;
+    if (!openFence) openFence = m[1]!;
+    else if (m[1]![0] === openFence[0] && m[1]!.length >= openFence.length && !m[2]!.trim())
+      openFence = '';
+  }
+  if (openFence) {
+    out += (out.endsWith('\n') ? '' : '\n') + openFence;
   }
   // 3) 末行未闭合的链接/图片起始（限定最后一行，避免把正文里早先的 `[` 连带删除）；
   //    数学残片围栏内是 LaTeX，跳过以免误删其中括号与星号等
   if (mathFenced) return out;
   const nl = out.lastIndexOf('\n');
   const head = nl === -1 ? '' : out.slice(0, nl + 1);
-  let tail = (nl === -1 ? out : out.slice(nl + 1)).replace(/!?\[[^\]]*$/, '');
-  // 4) 末行行内残片：隐定界符、留文本。检测在遮蔽后末行上做（行内代码里的 < ` * 不参与），
-  //    遮蔽等长故索引与 tail 对齐；4a/4b 同步双切保持后续步骤对齐。
+  let tail = nl === -1 ? out : out.slice(nl + 1);
+  // 3/4) 末行残片检测统一在遮蔽后末行上做（行内代码里的 [ < ` * 不参与），
+  //      遮蔽等长故索引与 tail 对齐；3/4a/4b 同步双切保持后续步骤对齐。
   let maskedTail = maskCode(head + tail).slice(head.length);
+  // 3) 链接/图片残片定位：已闭合行内代码中的 [（如 `arr[`）已被遮蔽，不会误删其后文本
+  const linkIdx = maskedTail.search(/!?\[[^\]]*$/);
+  if (linkIdx !== -1) {
+    tail = tail.slice(0, linkIdx);
+    maskedTail = maskedTail.slice(0, linkIdx);
+  }
   // 4a) 未闭合 HTML/组件标签（`<` 后紧跟字母或 /）：隐去残片；`a < b`、`1<2` 不命中
   const htmlIdx = maskedTail.search(/<\/?[a-zA-Z][^>\n]*$/);
   if (htmlIdx !== -1) {
@@ -164,14 +197,19 @@ export function normalizeMathDelimiters(src: string): string {
   // 私有区字符占位（非控制字符，规避 no-control-regex；用 fromCodePoint 避免源码内嵌不可见字符）
   const PH = String.fromCodePoint(0xe000);
   const stash: string[] = [];
-  // 先抽出代码块与行内代码，避免其中的 \[ \( 被误转
+  // 先抽出代码块与行内代码，避免其中的 \[ \( 被误转。
+  // 围栏正则与 protectStreamingMarkdown 的 maskCode 对齐：同时覆盖 ``` 与 ~~~ 围栏
+  // （markdown-it 两者皆合法），以及流式期间未闭合到 EOF 的围栏（\1 反向引用要求
+  // 闭围栏与开围栏完全一致，或以 $ 兜底到文本末尾），避免这些代码区内的 \[ \] 被误转。
   let out = src
-    .replace(/```[\s\S]*?```/g, (m) => `${PH}${stash.push(m) - 1}${PH}`)
+    .replace(/(`{3,}|~{3,})[\s\S]*?(?:\1|$)/g, (m) => `${PH}${stash.push(m) - 1}${PH}`)
     .replace(/`[^`\n]*`/g, (m) => `${PH}${stash.push(m) - 1}${PH}`);
-  // \[...\] → $$...$$；\(...\) → $...$（非贪婪仅成对转换；用函数返回值避免 $ 被当替换模式）
+  // \[...\] → $$...$$；\(...\) → $...$（非贪婪仅成对转换；用函数返回值避免 $ 被当替换模式）。
+  // 负向后行断言排除被反斜杠转义的场景：LaTeX 行间距 \\[2pt] / 换行 \\ 紧跟括号
+  // 不是定界符，否则误配对会把已闭合公式永久损坏。
   out = out
-    .replace(/\\\[([\s\S]+?)\\\]/g, (_m, body: string) => `$$${body}$$`)
-    .replace(/\\\(([\s\S]+?)\\\)/g, (_m, body: string) => `$${body}$`);
+    .replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (_m, body: string) => `$$${body}$$`)
+    .replace(/(?<!\\)\\\(([\s\S]+?)(?<!\\)\\\)/g, (_m, body: string) => `$${body}$`);
   // KaTeX 不支持 align*，统一替换为 aligned（{align*} 仅出现在 LaTeX，代码区已被占位保护）
   out = out.replace(/\{align\*\}/g, '{aligned}');
   // 还原代码占位

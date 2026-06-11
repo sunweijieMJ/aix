@@ -46,8 +46,10 @@ describe('AiChat 贯通 allowHtml / markdownRenderers', () => {
     const w = mount(AiChat, {
       props: { request, defaultMessages: [aiMsg('<div class="card">卡片内容</div>')] },
     });
-    await vi.waitFor(() => expect(w.text()).toContain('卡片内容'));
+    // 引擎就绪须以结构性标志（<p> 出现）判定——纯文本降级态 text() 同样含原文，会提前假通过
+    await vi.waitFor(() => expect(w.find('p').exists()).toBe(true));
     expect(w.find('div.card').exists()).toBe(false);
+    expect(w.text()).toContain('卡片内容');
   });
 
   it('运行时变更 markdown 级配置：告警一次提示快照语义', async () => {

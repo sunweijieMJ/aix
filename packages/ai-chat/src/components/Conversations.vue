@@ -82,7 +82,7 @@ export interface ConversationsEmits {
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { Add, Edit, Delete } from '@aix/icons';
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, watch } from 'vue';
 import { useNamespace } from '../composables/useNamespace';
 import { locale } from '../locale';
 import type { ConversationItem } from '../types';
@@ -130,6 +130,18 @@ const editInputRef = ref<HTMLInputElement | null>(null);
 const setEditInput = (el: unknown) => {
   editInputRef.value = (el as HTMLInputElement | null) ?? null;
 };
+
+// 编辑中条目随 items prop 更新被外部移除时（聚焦中的行内 input 卸载不触发 blur，
+// editingId 无法经 confirm/cancel 路径复位），裁剪残留编辑态——否则 select 守卫会
+// 永久阻断会话切换。与 ThoughtChain 裁剪 openMap 的既有模式一致。
+watch(
+  () => props.items,
+  (list) => {
+    if (editingId.value != null && !list.some((it) => it.id === editingId.value)) {
+      editingId.value = null;
+    }
+  },
+);
 
 const startRename = (item: ConversationItem) => {
   editingId.value = item.id;
