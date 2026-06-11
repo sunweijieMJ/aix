@@ -15,6 +15,9 @@
     },
     "./cli": "./dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "tsx src/cli.ts",
     "lint": "eslint . --max-warnings 0",

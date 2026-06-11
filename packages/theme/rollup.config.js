@@ -53,7 +53,8 @@ export default defineConfig([
       { file: 'dist/index.cjs', format: 'cjs' },
     ],
     plugins: [esbuildPlugin],
-    external: [],
+    // vue 必须外部化：打进产物会导致消费端双 Vue 实例（inject/reactive 跨实例失效）
+    external: ['vue', /^vue\//],
   },
   // CLI 工具（aix-theme-export）
   {
