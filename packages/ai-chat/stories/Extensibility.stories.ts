@@ -300,6 +300,7 @@ const shortcodeRequest = ({ signal }: { signal: AbortSignal }) =>
 
 const meta: Meta<typeof AiChat> = {
   title: 'AI Chat/扩展能力',
+  tags: ['autodocs'],
   component: AiChat,
   parameters: {
     layout: 'fullscreen',

@@ -52,6 +52,7 @@ const baseMessages: ChatMessage[] = [
 
 const meta: Meta<typeof BubbleList> = {
   title: 'AI Chat/BubbleList',
+  tags: ['autodocs'],
   component: BubbleList,
   args: {
     items: baseMessages,

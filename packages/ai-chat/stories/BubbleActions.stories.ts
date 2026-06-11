@@ -6,6 +6,7 @@ import { BubbleActions } from '../src';
 
 const meta: Meta<typeof BubbleActions> = {
   title: 'AI Chat/BubbleActions',
+  tags: ['autodocs'],
   component: BubbleActions,
   args: {
     content: '这是一段可被复制的 AI 回复文本。',

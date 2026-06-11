@@ -13,6 +13,7 @@ import { Skeleton } from '../src';
  */
 const meta: Meta<typeof Skeleton> = {
   title: 'AI Chat/Skeleton',
+  tags: ['autodocs'],
   component: Skeleton,
 };
 export default meta;

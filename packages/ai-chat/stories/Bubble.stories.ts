@@ -8,6 +8,7 @@ import { textBlock, reasoningBlock, sourcesBlock } from '../src/utils/helpers';
 
 const meta: Meta<BubbleProps> = {
   title: 'AI Chat/Bubble',
+  tags: ['autodocs'],
   component: Bubble,
   args: { content: [textBlock('你好，我是 AI 助手')], placement: 'start', variant: 'filled' },
   argTypes: {
@@ -234,17 +235,6 @@ const SourcesDemo = defineComponent({
 });
 
 /**
- * CustomBlockRenderer：验证 blockRenderers 注册表扩展机制。
- *
- * content 包含 text + sources 两个 block。sources 类型默认无内置渲染器（安全跳过，开发期 console.warn 提示）；
- * 本 story 通过 blockRenderers.sources 注入 SourcesDemo 组件，演示「加个注册器即接入」。
- * play 用 findByText 断言 sources 项（'Vue 3 文档'、'MDN'）均被渲染出来。
- *
- * 注意：blockRenderers 现已支持从 AiChat / BubbleList 顶层透传（见 AiChat 的 blockRenderers prop
- * 与 provideAiChatConfig），业务方无需逐个 role 配置；本 story 在 Bubble 层直接演示注册机制。
- * 仍待后续：包内提供开箱即用的内置 Sources 组件。
- */
-/**
  * Editable：用户气泡内联编辑。editable=true 时，hover 气泡后出现「编辑」按钮；
  * 点击后切换为可编辑输入框，确认后 emit edit 事件。
  * play 断言：初始无编辑输入框 → 点击编辑按钮 → 输入框出现。
@@ -266,6 +256,18 @@ export const Editable: Story = {
   },
 };
 
+/**
+ * CustomBlockRenderer：验证 blockRenderers 注册表的**覆盖**机制。
+ *
+ * content 包含 text + sources 两个 block。sources 类型有内置渲染器（SourcesBlock，
+ * 见 ContentBlocks 分类下的 Sources stories）；本 story 通过 blockRenderers.sources
+ * 注入 SourcesDemo 组件，演示「用户注册器优先于内置」的覆盖能力——同一机制也用于
+ * 扩展全新块类型（未注册类型安全跳过，开发期 console.warn 提示一次）。
+ * play 用 findByText 断言自定义渲染器输出的 sources 项（'Vue 3 文档'、'MDN'）被渲染。
+ *
+ * 注意：blockRenderers 支持从 AiChat / BubbleList 顶层透传（见 AiChat 的 blockRenderers prop
+ * 与 provideAiChatConfig），业务方无需逐个 role 配置；本 story 在 Bubble 层直接演示注册机制。
+ */
 export const CustomBlockRenderer: Story = {
   render: () => ({
     components: { Bubble },

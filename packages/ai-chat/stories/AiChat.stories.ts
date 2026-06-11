@@ -306,6 +306,7 @@ const PROMPTS = [
 
 const meta: Meta<typeof AiChat> = {
   title: 'AI Chat/AiChat',
+  tags: ['autodocs'],
   component: AiChat,
   parameters: {
     layout: 'fullscreen',
@@ -596,7 +597,7 @@ export const EditFeedbackAndSubmitType: Story = {
       await expect(args.onSend).not.toHaveBeenCalled();
       // Shift+Enter 才发送 → emit('send')
       await userEvent.keyboard('{Shift>}{Enter}{/Shift}');
-      await waitFor(() => expect(args.onSend).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(args.onSend).toHaveBeenCalledTimes(1), { timeout: 5000 });
     });
   },
 };

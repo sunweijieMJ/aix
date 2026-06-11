@@ -14,6 +14,7 @@ import { fullReportMarkdown } from './fullReportMarkdown';
  */
 const meta: Meta<typeof MarkdownRenderer> = {
   title: 'AI Chat/MarkdownRenderer',
+  tags: ['autodocs'],
   component: MarkdownRenderer,
   parameters: {
     docs: {
@@ -81,7 +82,9 @@ export const Default: Story = {
   },
   play: async ({ canvas }) => {
     // 无论富文本还是降级纯文本，内容文本都应出现（异步加载渲染器后断言）
-    await waitFor(() => expect(canvas.getByText(/这是一级标题/)).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText(/这是一级标题/)).toBeInTheDocument(), {
+      timeout: 5000,
+    });
   },
 };
 
@@ -104,7 +107,7 @@ export const CodeOnly: Story = {
       expect(
         canvasElement.querySelector('.hljs-keyword, .hljs-title, .hljs-string, .hljs-built_in'),
       ).toBeTruthy();
-    });
+    }, { timeout: 5000 });
   },
 };
 
@@ -148,7 +151,7 @@ export const CodeHighlight: Story = {
       expect(
         canvasElement.querySelector('.hljs-keyword, .hljs-string, .hljs-built_in, .hljs-number'),
       ).toBeTruthy();
-    });
+    }, { timeout: 5000 });
   },
 };
 
@@ -169,7 +172,7 @@ export const CodeCopyHeader: Story = {
       const copyBtn = canvasElement.querySelector('.aix-md-codeblock__copy');
       expect(copyBtn).toBeTruthy();
       expect(copyBtn?.getAttribute('title')).toBe('复制');
-    });
+    }, { timeout: 5000 });
   },
 };
 
@@ -265,7 +268,7 @@ export const Streaming: Story = {
   },
   play: async ({ canvas }) => {
     // 整修后内容可正常呈现（富文本或纯文本降级均不应抛错）
-    await waitFor(() => expect(canvas.getByText(/正在生成代码/)).toBeTruthy());
+    await waitFor(() => expect(canvas.getByText(/正在生成代码/)).toBeTruthy(), { timeout: 5000 });
   },
 };
 

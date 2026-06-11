@@ -18,6 +18,7 @@ const imageUrl =
 
 const meta: Meta<typeof AttachmentCard> = {
   title: 'AI Chat/AttachmentCard',
+  tags: ['autodocs'],
   component: AttachmentCard,
   args: {
     onRemove: fn(),

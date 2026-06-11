@@ -4,6 +4,7 @@ import { Thinking } from '../src';
 
 const meta: Meta<typeof Thinking> = {
   title: 'AI Chat/Thinking',
+  tags: ['autodocs'],
   component: Thinking,
   args: {
     content: '正在分析问题…先拆解用户意图，再检索相关知识，最后组织回答。',

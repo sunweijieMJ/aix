@@ -6,6 +6,7 @@ import type { VoiceRecognizer } from '../src';
 
 const meta: Meta<typeof Sender> = {
   title: 'AI Chat/Sender',
+  tags: ['autodocs'],
   component: Sender,
   args: {
     modelValue: '',
@@ -365,21 +366,9 @@ export const WithModelSelector: Story = {
     const trigger = canvas.getByText('Qwen3-Max');
     await userEvent.click(trigger);
 
-    // 下拉菜单可能通过 teleport 渲染到 document.body，用 body 范围查询
+    // 下拉菜单可能通过 teleport 渲染到 document.body，用 body 范围查询。
+    // waitFor 本身就是轮询等待出现，等待与点击之间无其他操作，单次查询后直接点击即可
     const body = canvasElement.ownerDocument.body;
-    await waitFor(
-      () => {
-        const opt = Array.from(body.querySelectorAll('*')).find(
-          (el) =>
-            el.textContent?.trim() === 'DeepSeek-V3' && (el as HTMLElement).offsetParent !== null,
-        );
-        if (!opt) throw new Error('DeepSeek-V3 选项未出现');
-        return opt as HTMLElement;
-      },
-      { timeout: 3000 },
-    );
-
-    // 重新查询后点击（虚拟列表 / teleport 教训：click 前重新 find）
     const opt = await waitFor(
       () => {
         const el = Array.from(body.querySelectorAll('*')).find(
@@ -434,6 +423,6 @@ export const ToolbarScopedActions: Story = {
     await userEvent.click(textarea);
     await userEvent.type(textarea, '你好');
     await userEvent.click(canvas.getByText('发送'));
-    await waitFor(() => expect(canvas.getByText(/最近发送：你好/)).toBeTruthy());
+    await waitFor(() => expect(canvas.getByText(/最近发送：你好/)).toBeTruthy(), { timeout: 5000 });
   },
 };

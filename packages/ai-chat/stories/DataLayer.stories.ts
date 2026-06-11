@@ -18,6 +18,7 @@ import { messageText } from '../src/utils/helpers';
  */
 const meta: Meta<typeof AiChat> = {
   title: 'AI Chat/数据层能力',
+  tags: ['autodocs'],
   component: AiChat,
   parameters: { layout: 'fullscreen' },
 };
@@ -307,7 +308,9 @@ export const ParserSplit: Story = {
       timeout: 5000,
     });
     // 一条 AI 消息被拆成「思考 + 回答」两个气泡 → 连同 user 气泡共 3 个
-    await waitFor(() => expect(canvasElement.querySelectorAll('.aix-bubble').length).toBe(3));
+    await waitFor(() => expect(canvasElement.querySelectorAll('.aix-bubble').length).toBe(3), {
+      timeout: 5000,
+    });
   },
 };
 

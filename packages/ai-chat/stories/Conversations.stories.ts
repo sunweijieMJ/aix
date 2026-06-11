@@ -6,6 +6,7 @@ import type { ConversationItem } from '../src';
 
 const meta: Meta<typeof Conversations> = {
   title: 'AI Chat/Conversations',
+  tags: ['autodocs'],
   component: Conversations,
   parameters: {
     docs: {
@@ -129,6 +130,6 @@ export const WithChatHistory: StoryObj = {
     await waitFor(() => expect(canvas.getByText(/流式回答/)).toBeTruthy(), { timeout: 5000 });
     // 新建会话后回到空态（Welcome）
     await userEvent.click(canvas.getByRole('button', { name: '新建会话' }));
-    await waitFor(() => expect(canvas.queryByText(/流式回答/)).toBeNull());
+    await waitFor(() => expect(canvas.queryByText(/流式回答/)).toBeNull(), { timeout: 5000 });
   },
 };

@@ -49,6 +49,7 @@ const steps: ThoughtChainItem[] = [
 
 const meta: Meta<ThoughtChainProps> = {
   title: 'AI Chat/ThoughtChain',
+  tags: ['autodocs'],
   component: ThoughtChain,
   argTypes: { items: { control: false } },
 };
@@ -78,7 +79,12 @@ export const Collapsible: Story = {
   },
 };
 
-/** 生成中：汇总标题主色流光（对应设计稿「生成中…」蓝色横向流光） */
+// 内联 SVG 缩略图（data URI，离线可渲染，避免依赖外网图片——与 ContentBlocks/AttachmentCard 同约定）
+const sunflowerThumb =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect width='36' height='36' fill='%23f5c518'/%3E%3Ccircle cx='18' cy='18' r='7' fill='%238a5a00'/%3E%3C/svg%3E";
+const paletteThumb =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Crect width='36' height='36' fill='%234c6ef5'/%3E%3Ccircle cx='13' cy='14' r='4' fill='%23ffd43b'/%3E%3Ccircle cx='23' cy='22' r='4' fill='%23ff8787'/%3E%3C/svg%3E";
+
 /**
  * 完整还原 Figma「生成中」状态：汇总标题蓝色流光 + 一组带 emoji 图标 / 耗时胶囊 /
  * 虚线连接的步骤，其中「深度检索」步骤携带数据驱动的检索结果卡（标题 + chip 列表，
@@ -122,12 +128,12 @@ export const GeneratingTimeline: Story = {
               url: 'https://example.com/q1',
             },
             {
-              thumbnail: 'https://picsum.photos/seed/sunflower-arles/36/36',
+              thumbnail: sunflowerThumb,
               text: '《向日葵》（阿尔勒系列）创作背景与画派归属',
               url: 'https://example.com/q2',
             },
             {
-              thumbnail: 'https://picsum.photos/seed/van-gogh-palette/36/36',
+              thumbnail: paletteThumb,
               text: '梵高后印象派用色解析：铬黄与互补色',
               url: 'https://example.com/q3',
             },

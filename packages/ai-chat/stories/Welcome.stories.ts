@@ -5,6 +5,7 @@ import type { PromptItem } from '../src';
 
 const meta: Meta<typeof Welcome> = {
   title: 'AI Chat/Welcome',
+  tags: ['autodocs'],
   component: Welcome,
   args: {
     title: '你好，我是 AI 助手',
@@ -21,10 +22,14 @@ export const Default: Story = {
   },
 };
 
+// 内联 SVG 机器人图标（data URI，离线可渲染，避免依赖外网图片——与 ContentBlocks/AttachmentCard 同约定）
+const robotIcon =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect x='8' y='14' width='32' height='26' rx='6' fill='%231677ff'/%3E%3Ccircle cx='20' cy='27' r='4' fill='%23fff'/%3E%3Ccircle cx='28' cy='27' r='4' fill='%23fff'/%3E%3Crect x='22' y='4' width='4' height='10' rx='2' fill='%231677ff'/%3E%3C/svg%3E";
+
 /** 带图标：通过 icon prop 显示图标图片 */
 export const WithIcon: Story = {
   args: {
-    icon: 'https://api.dicebear.com/7.x/bottts/svg?seed=aix',
+    icon: robotIcon,
     title: '你好，我是 AI 助手',
     description: '有什么我可以帮你的吗？',
   },

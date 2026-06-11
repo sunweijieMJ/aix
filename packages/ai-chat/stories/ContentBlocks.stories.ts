@@ -137,6 +137,7 @@ const attachmentItems: AttachmentItem[] = [
 
 const meta: Meta<TextBlockProps> = {
   title: 'AI Chat/ContentBlocks',
+  tags: ['autodocs'],
   component: TextBlock,
   parameters: {
     docs: {
