@@ -259,6 +259,28 @@ describe('Sender', () => {
       expect(node.style.height).toBe(''); // leave finish 正常清理（非 'auto'）
     });
 
+    it('面板高度过渡：子元素 transitionend 冒泡不提前 finish（如上传进度条 width 过渡结束）', () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const vm = w.vm as unknown as {
+        __onPanelEnter: (el: Element, done: () => void) => void;
+      };
+      const node = document.createElement('div');
+      const child = document.createElement('span');
+      node.appendChild(child);
+      Object.defineProperty(node, 'scrollHeight', { configurable: true, get: () => 120 });
+      const enterDone = vi.fn();
+      vm.__onPanelEnter(node, enterDone);
+      expect(node.style.height).toBe('120px');
+      // 子元素过渡结束冒泡（AttachmentCard 进度条 transition: width）：不应提前 finish
+      child.dispatchEvent(new Event('transitionend', { bubbles: true }));
+      expect(enterDone).not.toHaveBeenCalled();
+      expect(node.style.height).toBe('120px'); // 仍在过渡，未被置 'auto'
+      // 本元素过渡结束：正常 finish
+      node.dispatchEvent(new Event('transitionend'));
+      expect(enterDone).toHaveBeenCalledTimes(1);
+      expect(node.style.height).toBe('auto');
+    });
+
     it('isUploading 时发送按钮禁用并带 title 提示', async () => {
       let resolveUpload!: (v: { name: string }) => void;
       const pending = vi.fn(

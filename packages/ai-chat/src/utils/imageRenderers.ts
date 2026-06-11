@@ -1,5 +1,5 @@
 import { useLocale } from '@aix/hooks';
-import { defineComponent, h, ref, onBeforeUnmount } from 'vue';
+import { defineComponent, h, ref, watch, onBeforeUnmount } from 'vue';
 // 务实取舍：与 diagramRenderers 同理——本文件是「组件工厂」（ImageBlock 即组件），
 // 复用 components 层的 Skeleton 保证占位动效全包一致。
 import Skeleton from '../components/Skeleton.vue';
@@ -35,6 +35,15 @@ const ImageBlock = defineComponent({
     const status = ref<'loading' | 'loaded' | 'error'>(
       loadedUrls.has(props.src) ? 'loaded' : 'loading',
     );
+    // src 变化时复位（与 diagramRenderers 的 props 变化复位模式一致）：
+    // 无 key 的同位置 patch 会复用本实例（消息编辑/重新生成后同位置换图），
+    // 不复位则旧图的 error/loaded 态粘到新图——error 态下新图连预加载 img 都不渲染，永久卡死。
+    watch(
+      () => props.src,
+      (src) => {
+        status.value = loadedUrls.has(src) ? 'loaded' : 'loading';
+      },
+    );
     const wrapper = ref<HTMLElement | null>(null);
 
     let cancelFlip: (() => void) | null = null;
@@ -58,6 +67,12 @@ const ImageBlock = defineComponent({
     const onError = () => {
       status.value = 'error';
     };
+    // 缓存命中直出的 <img> 实际加载仍可能失败（CDN 过期/网络变化）：
+    // 切失败占位并清缓存（后续挂载回骨架重试），兑现「不裂图」承诺
+    const onLoadedError = () => {
+      loadedUrls.delete(props.src);
+      status.value = 'error';
+    };
 
     return () => {
       if (status.value === 'error' || !props.src) {
@@ -69,7 +84,12 @@ const ImageBlock = defineComponent({
       }
       if (status.value === 'loaded') {
         return h('span', { ref: wrapper, class: 'aix-md-image' }, [
-          h('img', { class: 'aix-md-image__img', src: props.src, alt: props.alt }),
+          h('img', {
+            class: 'aix-md-image__img',
+            src: props.src,
+            alt: props.alt,
+            onError: onLoadedError,
+          }),
         ]);
       }
       // 骨架态：shimmer 占位 + 隐藏的预加载 img（触发 onload/onerror）

@@ -151,12 +151,22 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
       conversations,
       () => {
         if (timer) clearTimeout(timer);
-        timer = setTimeout(() => storage.save(conversations.value), saveDebounce);
+        timer = setTimeout(() => {
+          timer = null; // 置空标记「无待保存变更」，否则 dispose flush 会重复落盘
+          storage.save(conversations.value);
+        }, saveDebounce);
       },
       { deep: true },
     );
+    // dispose 时 flush 而非丢弃：防抖窗口内的最后一段变更（流式期间防抖被持续重置，
+    // 卸载若发生在流结束后的窗口内，丢的可能是整条刚完成的回复）立即落盘。
+    // 浏览器强杀（刷新/关 tab）仍可能丢窗口内数据，由 load 时 reconcileStuckMessages 兜底。
     onScopeDispose(() => {
-      if (timer) clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+        storage.save(conversations.value);
+      }
     });
   }
 

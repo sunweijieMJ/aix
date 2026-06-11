@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import SourcesBlock from '../src/components/blocks/SourcesBlock.vue';
 import Bubble from '../src/components/Bubble.vue';
 import type { ContentBlock } from '../src/types';
@@ -51,6 +51,18 @@ describe('SourcesBlock', () => {
     expect(favicons[0].attributes('src')).toBe('https://example.com/favicon.ico');
     // 第 2 项 icon 是 emoji → 文本节点
     expect(w.find('.aix-sources-block__emoji').text()).toBe('📄');
+  });
+
+  // 防回归：注册表向所有渲染器统一透传 typing（boolean | BubbleTypingConfig），
+  // 本组件虽不消费，但 props 类型收窄为 boolean 会在透传配置对象时触发 dev 期 Invalid prop 警告
+  it('typing 透传配置对象不触发 prop 类型校验警告', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      mount(SourcesBlock, { props: { block, typing: { step: 2, interval: 20 } } });
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes('Invalid prop'))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('作为内置渲染器：Bubble 渲染 sources 块（防回归——此前未注册被静默跳过）', () => {

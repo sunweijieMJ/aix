@@ -44,6 +44,10 @@ export async function* xStream(
     if (tail) yield tail;
   } finally {
     signal?.removeEventListener('abort', onAbort);
+    // 消费方提前 break（如协议层 done）会经生成器 .return() 走到这里：主动 cancel 底层流，
+    // 否则后端在 done 后保持连接时（连接复用/自定义协议）会泄漏挂起连接与流缓冲。
+    // 对已 done/已 cancel 的流是幂等无害操作，与原生 ReadableStream 迭代器 break 即 cancel 的语义对齐。
+    reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
@@ -161,6 +165,8 @@ export async function* sseStream(
     if (ev) yield ev;
   } finally {
     signal?.removeEventListener('abort', onAbort);
+    // 同 xStream：提前 break 时 cancel 底层流，防挂起连接泄漏（幂等）
+    reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

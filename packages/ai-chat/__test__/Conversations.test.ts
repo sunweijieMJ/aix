@@ -28,6 +28,21 @@ describe('Conversations', () => {
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
   });
 
+  it('会话项键盘可达：role/tabindex、Enter/Space 选中、激活项标注 aria-current', async () => {
+    const w = mount(Conversations, { props: { items, activeKey: 'a' } });
+    const itemEls = w.findAll('.aix-conversations__item');
+    // 主操作（选中切换）必须可聚焦、可被辅助技术识别为可交互元素
+    expect(itemEls[0].attributes('role')).toBe('button');
+    expect(itemEls[0].attributes('tabindex')).toBe('0');
+    expect(itemEls[0].attributes('aria-current')).toBe('true');
+    expect(itemEls[1].attributes('aria-current')).toBeUndefined();
+    // Enter / Space 激活
+    await itemEls[1].trigger('keydown', { key: 'Enter' });
+    expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
+    await itemEls[2].trigger('keydown', { key: ' ' });
+    expect(w.emitted('update:activeKey')?.[1]).toEqual(['c']);
+  });
+
   it('点击删除按钮 emit delete(id)', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const firstItem = w.findAll('.aix-conversations__item')[0];

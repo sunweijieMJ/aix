@@ -272,20 +272,26 @@ const onPanelEnter = (el: Element, done: () => void) => {
   const finish = () => {
     if (timer) clearTimeout(timer);
     timer = null;
-    node.removeEventListener('transitionend', finish);
+    node.removeEventListener('transitionend', onEnd);
     node.style.height = 'auto'; // 撑完置 auto，允许内容后续自然变化
     node.style.overflow = '';
     node.style.transition = '';
     node.__panelCleanup = undefined;
     done();
   };
-  node.addEventListener('transitionend', finish);
+  // 子元素过渡结束会冒泡到面板根（如 AttachmentCard 进度条的 transition: width），
+  // 只认面板自身的过渡结束，否则展开动画被提前 finish、高度瞬间跳到 auto
+  const onEnd = (e: Event) => {
+    if (e.target !== node) return;
+    finish();
+  };
+  node.addEventListener('transitionend', onEnd);
   timer = setTimeout(finish, 300);
   // cleanup 只解绑监听/timer，不动样式（新动画的入口会接管样式），避免误清新动画的起始态
   node.__panelCleanup = () => {
     if (timer) clearTimeout(timer);
     timer = null;
-    node.removeEventListener('transitionend', finish);
+    node.removeEventListener('transitionend', onEnd);
     node.__panelCleanup = undefined;
   };
 };
@@ -307,19 +313,24 @@ const onPanelLeave = (el: Element, done: () => void) => {
   const finish = () => {
     if (timer) clearTimeout(timer);
     timer = null;
-    node.removeEventListener('transitionend', finish);
+    node.removeEventListener('transitionend', onEnd);
     node.style.height = '';
     node.style.overflow = '';
     node.style.transition = '';
     node.__panelCleanup = undefined;
     done();
   };
-  node.addEventListener('transitionend', finish);
+  // 同 enter：只认面板自身的过渡结束，防子元素冒泡提前 finish
+  const onEnd = (e: Event) => {
+    if (e.target !== node) return;
+    finish();
+  };
+  node.addEventListener('transitionend', onEnd);
   timer = setTimeout(finish, 300);
   node.__panelCleanup = () => {
     if (timer) clearTimeout(timer);
     timer = null;
-    node.removeEventListener('transitionend', finish);
+    node.removeEventListener('transitionend', onEnd);
     node.__panelCleanup = undefined;
   };
 };

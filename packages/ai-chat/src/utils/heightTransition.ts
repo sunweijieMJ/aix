@@ -18,10 +18,17 @@ export function transitionHeight(el: HTMLElement, prevHeight: number): (() => vo
   const clear = () => {
     if (timer) clearTimeout(timer);
     timer = null;
-    el.removeEventListener('transitionend', clear);
+    el.removeEventListener('transitionend', onEnd);
     el.style.height = '';
     el.style.overflow = '';
     el.style.transition = '';
+  };
+  // transitionend 会从子元素冒泡（如代码块复制按钮 hover 的 transition: all 结束）：
+  // 只认本元素的过渡结束，否则 FLIP 中途被提前清理、高度瞬间跳到终值。
+  // 不用 { once: true }——被忽略的冒泡事件也会消费 once 名额，自身过渡反而失去监听。
+  const onEnd = (e: Event) => {
+    if (e.target !== el) return;
+    clear();
   };
 
   el.style.height = `${prevHeight}px`;
@@ -29,7 +36,7 @@ export function transitionHeight(el: HTMLElement, prevHeight: number): (() => vo
   void el.offsetHeight; // 强制 reflow，让起始高度生效
   el.style.transition = 'height var(--aix-motionDurationSlow, 0.25s) ease';
   el.style.height = `${nextHeight}px`;
-  el.addEventListener('transitionend', clear, { once: true });
+  el.addEventListener('transitionend', onEnd);
   timer = setTimeout(clear, 400);
   return clear;
 }

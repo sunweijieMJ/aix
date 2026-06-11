@@ -12,7 +12,11 @@
           v-for="item in grp.items"
           :key="item.id"
           :class="[ns.e('item'), ns.is('active', item.id === activeKey)]"
+          role="button"
+          tabindex="0"
+          :aria-current="item.id === activeKey ? 'true' : undefined"
           @click="select(item.id)"
+          @keydown="onItemKeydown($event, item.id)"
         >
           <input
             v-if="editingId === item.id"
@@ -105,6 +109,17 @@ const grouped = computed(() => {
 const select = (id: string) => {
   // 行内重命名期间不切换选中，避免误触
   if (editingId.value == null) activeKey.value = id;
+};
+
+// 会话项键盘激活（Enter/Space）：仅处理落在项本体上的按键——
+// 编辑输入框/操作按钮等子元素的按键会冒泡到这里，不做 target 守卫的话，
+// 重命名 Enter 会误触选中切换、输入框打空格会被 preventDefault 吞掉。
+const onItemKeydown = (e: KeyboardEvent, id: string) => {
+  if (e.target !== e.currentTarget) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    select(id);
+  }
 };
 
 // ===== 行内重命名 =====
@@ -205,6 +220,12 @@ const cancelRename = () => {
     &.is-active {
       background: var(--aix-colorFillSecondary);
       font-weight: var(--aix-fontWeightStrong);
+    }
+
+    /* 键盘聚焦环（与 AttachmentsPanel 占位区一致）；列表项相邻，offset 内收避免环重叠 */
+    &:focus-visible {
+      outline: 2px solid var(--aix-colorPrimary);
+      outline-offset: -2px;
     }
   }
 

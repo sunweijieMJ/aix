@@ -149,4 +149,25 @@ describe('useXStream', () => {
     await p2;
     expect(isStreaming.value).toBe(false);
   });
+
+  // 防回归：useChat 在协议层 done（如 [DONE]）时 break 提前结束消费，生成器 finally 必须
+  // cancel 底层流——否则后端在 done 后保持连接（连接复用/自定义协议）时，每条消息泄漏
+  // 一个挂起连接与流缓冲。与 abort 路径的 reader.cancel() 对称。
+  it('消费方提前 break（协议层 done）：底层流被 cancel，不留挂起连接', async () => {
+    let cancelled = false;
+    const enc = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) {
+        c.enqueue(enc.encode('line1\nline2\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    for await (const line of xStream(stream)) {
+      expect(line).toBe('line1');
+      break;
+    }
+    expect(cancelled).toBe(true);
+  });
 });

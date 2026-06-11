@@ -108,6 +108,15 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     retryInterval = 1000,
     streamTimeout = 0,
   } = options;
+  // 开发期护栏（与 updateBlock 未命中 / 非法 blockType 同风格）：line 模式漏配 parseChunk
+  // 是静默死流——默认 flatParseChunk 对行字符串取 .data 恒 undefined → 每行空增量 →
+  // 空内容 success，全程无报错，是最难排查的配置错误形态。
+  if (streamMode === 'line' && !options.parseChunk) {
+    console.warn(
+      '[ai-chat] streamMode="line" 未提供 parseChunk：默认解析器只识别 SSE 事件，' +
+        '行字符串将被全部丢弃（回复恒为空）。请传入 parseChunk，如 (line) => ({ delta: line })。',
+    );
+  }
   // 按模式选分帧器并统一调用签名：sse → SSEChunk，line → string
   const callParse = parseChunk as (unit: SSEChunk | string) => ParsedChunk;
   // 内部 ref 为消息状态唯一来源（mutate 即响应式）；受控由 AiChat 层用引用桥接到 v-model。

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { nextTick } from 'vue';
+import { effectScope, nextTick } from 'vue';
 import {
   useConversations,
   localStorageConversationStorage,
@@ -135,6 +135,39 @@ describe('useConversations', () => {
       vi.advanceTimersByTime(100);
       expect(saved).toHaveLength(1);
       expect(saved[0][0].label).toBe('X2');
+    });
+
+    it('scope 销毁时立即落盘防抖窗口内的未保存变更，而非丢弃（防丢最后一段完整回复）', async () => {
+      const saved: Conversation[][] = [];
+      const storage: ConversationStorage = {
+        load: () => [conv('x', 'X')],
+        save: (list) => saved.push(JSON.parse(JSON.stringify(list))),
+      };
+      const scope = effectScope();
+      const c = scope.run(() => useConversations({ storage, saveDebounce: 100 }))!;
+      c.rename('x', '最后一次变更');
+      await nextTick();
+      expect(saved).toHaveLength(0); // 仍在防抖窗口内
+      // 模拟组件卸载（切路由/关面板）：应 flush 待保存数据而非 clearTimeout 丢弃
+      scope.stop();
+      expect(saved).toHaveLength(1);
+      expect(saved[0][0].label).toBe('最后一次变更');
+      // 销毁后无遗留定时器触发二次保存
+      vi.advanceTimersByTime(200);
+      expect(saved).toHaveLength(1);
+    });
+
+    it('scope 销毁时无待保存变更则不额外 save（已落盘的不重复写）', async () => {
+      const save = vi.fn();
+      const storage: ConversationStorage = { load: () => [conv('x', 'X')], save };
+      const scope = effectScope();
+      const c = scope.run(() => useConversations({ storage, saveDebounce: 100 }))!;
+      c.rename('x', 'X2');
+      await nextTick();
+      vi.advanceTimersByTime(100); // 防抖到期，正常落盘
+      expect(save).toHaveBeenCalledTimes(1);
+      scope.stop(); // 无 pending，不应再写
+      expect(save).toHaveBeenCalledTimes(1);
     });
   });
 

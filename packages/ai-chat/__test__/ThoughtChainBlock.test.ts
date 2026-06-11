@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { h } from 'vue';
 import ThoughtChainBlock from '../src/components/blocks/ThoughtChainBlock.vue';
 import Bubble from '../src/components/Bubble.vue';
@@ -36,6 +36,17 @@ describe('ThoughtChainBlock', () => {
     expect(rich).toHaveLength(2);
     expect(rich[0].text()).toBe('R-0-获取用户输入');
     expect(rich[1].text()).toBe('R-1-正文创作');
+  });
+
+  // 防回归：注册表统一透传 typing（boolean | BubbleTypingConfig），收窄为 boolean 会触发 dev 警告
+  it('typing 透传配置对象不触发 prop 类型校验警告', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      mount(ThoughtChainBlock, { props: { block, typing: { step: 2, interval: 20 } } });
+      expect(warn.mock.calls.filter((c) => String(c[0]).includes('Invalid prop'))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('未提供该命名插槽时不产生幽灵正文（hasBody 不被误触发）', () => {

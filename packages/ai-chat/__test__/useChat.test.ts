@@ -59,6 +59,25 @@ describe('useChat', () => {
     expect(messageText(messages.value[1])).toBe('AB');
   });
 
+  // 防回归：line 模式漏配 parseChunk 是静默死流（默认 flatParseChunk 对行字符串取 .data
+  // 恒 undefined → 每行空增量 → 空内容 success，全程无报错），补开发期护栏与
+  // updateBlock/blockType/dompurify 同风格的 [ai-chat] console.warn
+  it('line 模式漏配 parseChunk：开发期 console.warn 提示；显式传入则不告警', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const request = async () => new ReadableStream<Uint8Array>();
+      useChat({ request, streamMode: 'line' });
+      const aixWarns = () => warn.mock.calls.filter((c) => String(c[0]).includes('[ai-chat]'));
+      expect(aixWarns()).toHaveLength(1);
+      // 显式传 parseChunk / 默认 sse 模式：不告警
+      useChat({ request, streamMode: 'line', parseChunk: (line: string) => ({ delta: line }) });
+      useChat({ request });
+      expect(aixWarns()).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('SSE event 字段全链路路由（Anthropic 风格：event + data 关联）', async () => {
     const enc = new TextEncoder();
     const request = vi.fn(

@@ -10,14 +10,14 @@ export interface AttachmentBlockProps {
   block: Extract<ContentBlock, { type: 'attachment' }>;
   /** 气泡上下文（注册表统一透传，本组件暂不消费） */
   info?: BubbleContentInfo;
-  /** 是否打字机态（注册表统一透传，附件卡片不逐字，故不消费） */
-  typing?: boolean;
+  /** 打字机态（注册表统一透传 boolean | 节奏配置，附件卡片不逐字，故不消费） */
+  typing?: boolean | BubbleTypingConfig;
 }
 </script>
 
 <script setup lang="ts">
 import { useNamespace } from '../../composables/useNamespace';
-import type { ContentBlock, BubbleContentInfo } from '../../types';
+import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
 import AttachmentCard from '../AttachmentCard.vue';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block，关闭属性继承避免多余 attr 落到根元素。

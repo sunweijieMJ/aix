@@ -150,4 +150,22 @@ describe('sseStream', () => {
     await consume;
     expect(out).toEqual([]);
   });
+  // 防回归：与 xStream 同款——消费方提前 break（协议层 done）时 finally 须 cancel 底层流
+  it('消费方提前 break：底层流被 cancel，不留挂起连接', async () => {
+    let cancelled = false;
+    const enc = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      pull(c) {
+        c.enqueue(enc.encode('data: a\n\ndata: b\n\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    for await (const ev of sseStream(stream)) {
+      expect(ev.data).toBe('a');
+      break;
+    }
+    expect(cancelled).toBe(true);
+  });
 });

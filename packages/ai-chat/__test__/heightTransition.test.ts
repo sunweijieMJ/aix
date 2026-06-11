@@ -35,6 +35,21 @@ describe('transitionHeight（共享 FLIP 高度过渡）', () => {
     expect(el.style.transition).toBe('');
   });
 
+  it('子元素 transitionend 冒泡不提前清理（FLIP 期间子元素 hover 过渡结束不打断高度动画）', () => {
+    const el = document.createElement('div');
+    const child = document.createElement('button');
+    el.appendChild(child);
+    mockHeight(el, [120, 120]);
+    transitionHeight(el, 60);
+    // 子元素过渡结束冒泡到 el（如代码块复制按钮的 transition: all）：不应清理
+    child.dispatchEvent(new Event('transitionend', { bubbles: true }));
+    expect(el.style.height).toBe('120px');
+    expect(el.style.transition).toContain('height');
+    // 本元素过渡结束：正常清理
+    el.dispatchEvent(new Event('transitionend'));
+    expect(el.style.height).toBe('');
+  });
+
   it('transitionend 不触发时 400ms 兜底清理', () => {
     const el = document.createElement('div');
     mockHeight(el, [120, 120]);
