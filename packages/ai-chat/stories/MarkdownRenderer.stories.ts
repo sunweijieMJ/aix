@@ -7,10 +7,9 @@ import { fullReportMarkdown } from './fullReportMarkdown';
 /**
  * MarkdownRenderer 组件展示 Markdown 内容。
  *
- * **注意**：本组件依赖可选依赖 `markdown-it`。
- * 本 Storybook 环境已安装 `markdown-it`，以下 story 均为**富文本渲染**效果
- * （标题、粗体、列表、代码块等）。业务项目未安装 `markdown-it` 时，
- * 组件会自动降级为纯文本渲染（直接显示原始 Markdown 语法字符串）。
+ * **注意**：渲染依赖 `markdown-it` 等增强包，随 `@aix/ai-chat` 自动安装、开箱即用，
+ * 以下 story 均为**富文本渲染**效果（标题、粗体、列表、代码块等）。
+ * 个别环境依赖安装失败时，组件会自动降级为纯文本渲染（直接显示原始 Markdown 语法字符串）。
  */
 const meta: Meta<typeof MarkdownRenderer> = {
   title: 'AI Chat/MarkdownRenderer',
@@ -20,7 +19,7 @@ const meta: Meta<typeof MarkdownRenderer> = {
     docs: {
       description: {
         component:
-          'Markdown 渲染器。依赖可选包 `markdown-it`：安装后渲染为富文本（本 Storybook 即为富文本效果）；未安装时自动降级为纯文本，直接显示原始 Markdown 字符串。',
+          'Markdown 渲染器。依赖 `markdown-it`（随包自动安装、开箱即用）渲染为富文本；个别环境依赖安装失败时自动降级为纯文本，直接显示原始 Markdown 字符串。',
       },
     },
   },
@@ -68,7 +67,7 @@ const increment = () => count.value++
 /**
  * 默认：含标题、粗体、列表、代码块等完整 Markdown 语法
  *
- * 安装 markdown-it 后将渲染为富文本；未安装时降级显示原始文本。
+ * 富文本渲染开箱即用；个别环境依赖安装失败时降级显示原始文本。
  */
 export const Default: Story = {
   args: { content: sampleMarkdown },
@@ -76,7 +75,7 @@ export const Default: Story = {
     docs: {
       description: {
         story:
-          '完整 Markdown 示例，含一级/二级/三级标题、粗体、斜体、无序/有序列表、代码块、引用和分隔线。安装 `markdown-it` 后将渲染为富文本。',
+          '完整 Markdown 示例，含一级/二级/三级标题、粗体、斜体、无序/有序列表、代码块、引用和分隔线。富文本渲染开箱即用。',
       },
     },
   },
@@ -94,7 +93,7 @@ export const PlainText: Story = {
 };
 
 /** 仅代码块 */
-/** 代码块：安装 highlight.js 后自动语法高亮（块固化后上色，流式期先纯码避免逐帧重高亮） */
+/** 代码块：highlight.js 随包自动安装并后台渐进加载，代码块自动语法高亮（块固化后上色，流式期先纯码避免逐帧重高亮） */
 export const CodeOnly: Story = {
   args: {
     content:
@@ -102,17 +101,20 @@ export const CodeOnly: Story = {
   },
   play: async ({ canvasElement }) => {
     // highlight.js 已安装 → 代码块上色：code 带 hljs 类、且至少出现一个 token span
-    await waitFor(() => {
-      expect(canvasElement.querySelector('code.hljs')).toBeTruthy();
-      expect(
-        canvasElement.querySelector('.hljs-keyword, .hljs-title, .hljs-string, .hljs-built_in'),
-      ).toBeTruthy();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        expect(canvasElement.querySelector('code.hljs')).toBeTruthy();
+        expect(
+          canvasElement.querySelector('.hljs-keyword, .hljs-title, .hljs-string, .hljs-built_in'),
+        ).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
   },
 };
 
 /**
- * 代码高亮展示：安装 highlight.js 后，多语言代码块自动语法上色。
+ * 代码高亮展示：highlight.js 开箱即用，多语言代码块自动语法上色。
  * 默认注入 github 亮色主题；暗色模式可在入口手动 `import 'highlight.js/styles/github-dark.css'` 覆盖。
  */
 export const CodeHighlight: Story = {
@@ -145,13 +147,16 @@ export const CodeHighlight: Story = {
     ].join('\n'),
   },
   play: async ({ canvasElement }) => {
-    await waitFor(() => {
-      // 4 个代码块均上色（带 hljs 类），且至少出现一个 token span
-      expect(canvasElement.querySelectorAll('code.hljs').length).toBeGreaterThanOrEqual(4);
-      expect(
-        canvasElement.querySelector('.hljs-keyword, .hljs-string, .hljs-built_in, .hljs-number'),
-      ).toBeTruthy();
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        // 4 个代码块均上色（带 hljs 类），且至少出现一个 token span
+        expect(canvasElement.querySelectorAll('code.hljs').length).toBeGreaterThanOrEqual(4);
+        expect(
+          canvasElement.querySelector('.hljs-keyword, .hljs-string, .hljs-built_in, .hljs-number'),
+        ).toBeTruthy();
+      },
+      { timeout: 5000 },
+    );
   },
 };
 
@@ -164,15 +169,18 @@ export const CodeCopyHeader: Story = {
     content: ["```python\ndef hello(name):\n    print(f'Hello, {name}!')\n```"].join('\n'),
   },
   play: async ({ canvasElement }) => {
-    await waitFor(() => {
-      // 头部语言标签
-      const lang = canvasElement.querySelector('.aix-md-codeblock__lang');
-      expect(lang?.textContent).toBe('python');
-      // 复制按钮存在且带「复制」提示
-      const copyBtn = canvasElement.querySelector('.aix-md-codeblock__copy');
-      expect(copyBtn).toBeTruthy();
-      expect(copyBtn?.getAttribute('title')).toBe('复制');
-    }, { timeout: 5000 });
+    await waitFor(
+      () => {
+        // 头部语言标签
+        const lang = canvasElement.querySelector('.aix-md-codeblock__lang');
+        expect(lang?.textContent).toBe('python');
+        // 复制按钮存在且带「复制」提示
+        const copyBtn = canvasElement.querySelector('.aix-md-codeblock__copy');
+        expect(copyBtn).toBeTruthy();
+        expect(copyBtn?.getAttribute('title')).toBe('复制');
+      },
+      { timeout: 5000 },
+    );
   },
 };
 
@@ -274,7 +282,8 @@ export const Streaming: Story = {
 
 /**
  * 数学公式（KaTeX）：支持 `$...$` / `$$...$$` 与 OpenAI 系 `\(...\)` / `\[...\]` 定界符。
- * 需安装 `katex` + `@vscode/markdown-it-katex` 并在应用入口引入 `katex/dist/katex.min.css`。
+ * 依赖 `katex` + `@vscode/markdown-it-katex`（随包自动安装），样式默认自动注入；
+ * 特殊环境注入失败时可在应用入口手动引入 `katex/dist/katex.min.css`。
  */
 export const Math: Story = {
   args: {
@@ -318,7 +327,7 @@ export const CustomRenderers: Story = {
 
 /**
  * 原始 HTML（`allowHtml`）：开启后块级 HTML 经 DOMPurify 消毒渲染，危险属性/脚本被去除。
- * 需安装 `dompurify`；默认关闭时原始 HTML 转义为文本。
+ * `dompurify` 随包自动安装；默认关闭时原始 HTML 转义为文本。
  */
 export const AllowHtml: Story = {
   args: {
@@ -368,8 +377,8 @@ graph TD
 `;
 
 /**
- * Mermaid 流程图：装了可选依赖 \`mermaid\` 后，\`\`\`mermaid 围栏自动渲染为图表；
- * 未安装时维持代码块展示（静默降级）。语法错误的图表也回落为代码块（虚线边框提示）。
+ * Mermaid 流程图：\`mermaid\` 随包自动安装，内容首次出现 \`\`\`mermaid 围栏时才按需加载并渲染为图表；
+ * 个别环境安装失败时维持代码块展示（静默降级）。语法错误的图表也回落为代码块（虚线边框提示）。
  */
 export const Mermaid: Story = {
   args: { content: mermaidContent },
