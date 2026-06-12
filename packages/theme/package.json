@@ -4,7 +4,7 @@
   "description": "AIX Design System - Theme System with CSS Variables & TypeScript API",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "style": "./dist/vars/index.css",
@@ -25,7 +25,8 @@
     "./vars/base": "./dist/vars/base-tokens.css",
     "./vars/light": "./dist/vars/light.css",
     "./vars/dark": "./dist/vars/dark.css",
-    "./vars/compat": "./dist/vars/index.compat.css"
+    "./vars/compat": "./dist/vars/index.compat.css",
+    "./package.json": "./package.json"
   },
   "bin": {
     "aix-theme-export": "./dist/cli.js"

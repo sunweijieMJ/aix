@@ -18,7 +18,9 @@ export default defineConfig({
         '**/*.d.ts',
         '**/types.ts',
         '**/locale/**',
-        '**/index.ts',
+        // 仅排除包入口的纯重导出 index.ts；嵌套 index.ts 可能含真实逻辑
+        // （如 hooks/src/use-locale、subtitle/src/parsers），不能用 **/index.ts 全排
+        'packages/*/src/index.ts',
         '**/__test__/**',
         '**/stories/**',
       ],

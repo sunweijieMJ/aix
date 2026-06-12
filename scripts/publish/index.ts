@@ -255,8 +255,14 @@ const executeAction = async (
       let packages: Set<string> | undefined;
       if (!dryRun) {
         checkNpmLogin(NPM_REGISTRY);
-        packages = await detectPackages(projectRoot);
-        await buildPackages(projectRoot, packages);
+        // allowEmpty：上次发布失败后重跑时 changeset 已消费、版本变更已提交，
+        // 检测结果为空属预期，跳过构建并交由 publishPackages 的防护分支确认后继续
+        packages = await detectPackages(projectRoot, { allowEmpty: true });
+        if (packages.size > 0) {
+          await buildPackages(projectRoot, packages);
+        } else {
+          console.log(chalk.yellow('未检测到版本变更，跳过构建（可能为上次发布失败后的重跑）'));
+        }
       }
       await publishPackages(skipPrompts, dryRun, packages);
       break;

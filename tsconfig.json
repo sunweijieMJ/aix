@@ -5,6 +5,8 @@
     "target": "ES2018"
   },
   // 根 tsc 只检查根层文件（scripts/.storybook/docs 等），
-  // 各工作区包由各自 tsconfig + turbo type-check 任务负责
+  // 各工作区包由各自 tsconfig + turbo type-check 任务负责。
+  // TS 默认 glob 排除点开头的目录，.storybook 与 docs/.vitepress 必须显式列出才会被纳入
+  "include": ["**/*", ".storybook/**/*", "docs/.vitepress/**/*"],
   "exclude": ["node_modules", "dist", "packages", "apps", "kit", "internal"]
 }

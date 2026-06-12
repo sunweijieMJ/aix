@@ -389,7 +389,13 @@ export const getVersionBumpedPackages = (projectRoot: string): Set<string> => {
 };
 
 // 检测需要构建的包（多级 fallback）
-export const detectPackages = async (projectRoot: string): Promise<Set<string>> => {
+// allowEmpty: 检测结果为空时返回空集合而不抛错
+// （publish 重跑场景：changeset 已被 version 消费、版本变更已提交，两级检测必为空，
+//  需放行到 publishPackages 的防护分支由用户确认后继续）
+export const detectPackages = async (
+  projectRoot: string,
+  options: { allowEmpty?: boolean } = {},
+): Promise<Set<string>> => {
   // 1. 从 changeset md 文件解析（优先级最高，确保只构建用户明确指定的包）
   const fromChangeset = await getChangedPackages(projectRoot);
   if (fromChangeset.size) {
@@ -407,6 +413,9 @@ export const detectPackages = async (projectRoot: string): Promise<Set<string>> 
   // 正确的流程是：changeset -> changeset version -> changeset publish
   // 只构建 changeset 中明确指定的包，确保发布的准确性
 
+  if (options.allowEmpty) {
+    return new Set();
+  }
   throw new Error('未找到需要构建的包。请确认是否已创建 changeset 或更新版本号。');
 };
 
