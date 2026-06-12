@@ -131,7 +131,7 @@ describe('Bubble', () => {
       expect(w.text()).toContain('正文');
       expect(w.text()).not.toContain('X');
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn.mock.calls[0][0]).toContain('mystery-block');
+      expect(warn.mock.calls[0]![0]).toContain('mystery-block');
       warn.mockRestore();
     });
   });
@@ -175,7 +175,7 @@ describe('Bubble block-action 回传', () => {
     await wrapper.find('.probe').trigger('click');
     const ev = wrapper.emitted('block-action');
     expect(ev).toBeTruthy();
-    expect(ev![0][0]).toEqual({
+    expect(ev![0]![0]).toEqual({
       messageKey: 'm1',
       action: { blockId: 'b1', type: 'select', patch: { selected: 'o2' } },
     });
@@ -197,7 +197,7 @@ describe('Bubble slot 透传到块渲染器', () => {
     });
     const rich = w.findAll('.rich');
     expect(rich).toHaveLength(2);
-    expect(rich[0].text()).toBe('R:步骤一');
+    expect(rich[0]!.text()).toBe('R:步骤一');
   });
 
   it('reserved 插槽（content）不会被当作块插槽透传，仍走内容覆盖', () => {

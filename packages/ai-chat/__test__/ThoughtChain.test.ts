@@ -22,14 +22,14 @@ describe('ThoughtChain', () => {
     expect(w.findAll('.aix-thought-chain__item')).toHaveLength(2);
     expect(w.text()).toContain('获取用户输入');
     expect(w.text()).toContain('🤔');
-    expect(w.findAll('.aix-thought-chain__badge')[0].text()).toBe('12.59秒');
+    expect(w.findAll('.aix-thought-chain__badge')[0]!.text()).toBe('12.59秒');
   });
 
   it('active 步骤标题加 is-active（流光渐变）', () => {
     const w = mount(ThoughtChain, { props: { items } });
     const titles = w.findAll('.aix-thought-chain__title');
-    expect(titles[0].classes()).not.toContain('is-active');
-    expect(titles[1].classes()).toContain('is-active');
+    expect(titles[0]!.classes()).not.toContain('is-active');
+    expect(titles[1]!.classes()).toContain('is-active');
   });
 
   it('有 content 的步骤默认展开并渲染正文', async () => {
@@ -42,7 +42,7 @@ describe('ThoughtChain', () => {
   it('点击步骤标题切换折叠', async () => {
     const w = mount(ThoughtChain, { props: { items } });
     await flushPromises();
-    const firstHead = w.findAll('.aix-thought-chain__head')[0];
+    const firstHead = w.findAll('.aix-thought-chain__head')[0]!;
     await firstHead.trigger('click'); // 收起
     expect(w.findAll('.aix-thought-chain__body')).toHaveLength(0);
     await firstHead.trigger('click'); // 再展开
@@ -234,15 +234,17 @@ describe('ThoughtChain', () => {
       const chips = w.findAll('.aix-thought-chain__chip');
       expect(chips).toHaveLength(2);
       // 第一个：<a>
-      expect(chips[0].element.tagName).toBe('A');
-      expect(chips[0].attributes('href')).toBe('https://example.com/detail');
-      expect(chips[0].attributes('target')).toBe('_blank');
-      expect(chips[0].attributes('rel')).toBe('noopener noreferrer');
+      const linkChip = chips[0]!;
+      expect(linkChip.element.tagName).toBe('A');
+      expect(linkChip.attributes('href')).toBe('https://example.com/detail');
+      expect(linkChip.attributes('target')).toBe('_blank');
+      expect(linkChip.attributes('rel')).toBe('noopener noreferrer');
       // 第二个：<div>，无链接属性
-      expect(chips[1].element.tagName).toBe('DIV');
-      expect(chips[1].attributes('href')).toBeUndefined();
-      expect(chips[1].attributes('target')).toBeUndefined();
-      expect(chips[1].attributes('rel')).toBeUndefined();
+      const plainChip = chips[1]!;
+      expect(plainChip.element.tagName).toBe('DIV');
+      expect(plainChip.attributes('href')).toBeUndefined();
+      expect(plainChip.attributes('target')).toBeUndefined();
+      expect(plainChip.attributes('rel')).toBeUndefined();
     });
 
     it('chip url 经 safeUrl 白名单：javascript: 协议降级为 <div> 无 href，https 正常渲染 <a>', async () => {
@@ -267,15 +269,16 @@ describe('ThoughtChain', () => {
       const chips = w.findAll('.aix-thought-chain__chip');
       expect(chips).toHaveLength(3);
       // javascript: 协议（含控制字符混淆变体）：降级为 <div>，无任何链接属性
-      for (const unsafe of [chips[0], chips[1]]) {
+      for (const unsafe of [chips[0]!, chips[1]!]) {
         expect(unsafe.element.tagName).toBe('DIV');
         expect(unsafe.attributes('href')).toBeUndefined();
         expect(unsafe.attributes('target')).toBeUndefined();
         expect(unsafe.attributes('rel')).toBeUndefined();
       }
       // https 安全链接：正常渲染 <a>
-      expect(chips[2].element.tagName).toBe('A');
-      expect(chips[2].attributes('href')).toBe('https://example.com/detail');
+      const safeChip = chips[2]!;
+      expect(safeChip.element.tagName).toBe('A');
+      expect(safeChip.attributes('href')).toBe('https://example.com/detail');
     });
 
     it('result.title 缺省时不渲染 .__result-title', async () => {

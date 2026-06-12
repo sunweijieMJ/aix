@@ -14,7 +14,8 @@ const deferredUpload = () => {
     onProgress: (p: number) => void;
   }> = [];
   const upload = vi.fn(
-    (f: File, ctx: { onProgress: (p: number) => void; signal: AbortSignal }) =>
+    // 参数前缀下划线表明有意不使用，规避 noUnusedParameters 报错
+    (_f: File, ctx: { onProgress: (p: number) => void; signal: AbortSignal }) =>
       new Promise<{ name: string; url: string }>((resolve, reject) => {
         resolvers.push({ resolve, reject, signal: ctx.signal, onProgress: ctx.onProgress });
       }),

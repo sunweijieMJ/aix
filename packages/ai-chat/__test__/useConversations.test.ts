@@ -21,7 +21,7 @@ describe('useConversations', () => {
     const id1 = c.create({ label: 'A' });
     const id2 = c.create({ label: 'B' });
     expect(c.activeKey.value).toBe(id2); // 最新建的被激活
-    expect(c.conversations.value[0].id).toBe(id2); // 置顶
+    expect(c.conversations.value[0]!.id).toBe(id2); // 置顶
     expect(c.conversations.value.map((x) => x.label)).toEqual(['B', 'A']);
     expect(id1).not.toBe(id2);
   });
@@ -29,7 +29,7 @@ describe('useConversations', () => {
   it('activeMessages：读写当前激活会话的消息', () => {
     const c = useConversations({ defaultConversations: [conv('a', 'A'), conv('b', 'B')] });
     expect(c.activeKey.value).toBe('a');
-    expect(messageText(c.activeMessages.value[0])).toBe('A 的消息');
+    expect(messageText(c.activeMessages.value[0]!)).toBe('A 的消息');
     // 切到 b → activeMessages 指向 b 的消息
     c.setActive('b');
     expect(c.active.value?.label).toBe('B');
@@ -37,13 +37,14 @@ describe('useConversations', () => {
     c.activeMessages.value = [textMessage('user', '新内容')];
     const bMsgs = c.conversations.value.find((x) => x.id === 'b')?.messages;
     expect(bMsgs).toHaveLength(1);
-    expect(messageText(bMsgs![0])).toBe('新内容');
+    expect(messageText(bMsgs![0]!)).toBe('新内容');
   });
 
   it('items：仅元数据，不含 messages', () => {
     const c = useConversations({ defaultConversations: [conv('a', 'A')] });
-    expect(c.items.value[0]).toEqual({ id: 'a', label: 'A', group: undefined, timestamp: 1 });
-    expect('messages' in c.items.value[0]).toBe(false);
+    const firstItem = c.items.value[0]!;
+    expect(firstItem).toEqual({ id: 'a', label: 'A', group: undefined, timestamp: 1 });
+    expect('messages' in firstItem).toBe(false);
   });
 
   it('初始化复位卡在 loading/updating 的消息为 error（避免刷新后永远加载中的假态）', () => {
@@ -61,11 +62,11 @@ describe('useConversations', () => {
     ];
     const storage: ConversationStorage = { load: () => stored, save: () => {} };
     const c = useConversations({ storage });
-    const msgs = c.conversations.value[0].messages;
-    expect(msgs[0].status).toBe('success'); // 终态不变
-    expect(msgs[1].status).toBe('error'); // updating → error（保留半截内容 + 重试入口）
-    expect(msgs[2].status).toBe('error'); // loading → error
-    expect(messageText(msgs[1])).toBe('半截回答'); // 已收内容保留
+    const msgs = c.conversations.value[0]!.messages;
+    expect(msgs[0]!.status).toBe('success'); // 终态不变
+    expect(msgs[1]!.status).toBe('error'); // updating → error（保留半截内容 + 重试入口）
+    expect(msgs[2]!.status).toBe('error'); // loading → error
+    expect(messageText(msgs[1]!)).toBe('半截回答'); // 已收内容保留
   });
 
   it('defaultConversations 同样复位非终态消息', () => {
@@ -79,7 +80,7 @@ describe('useConversations', () => {
         },
       ],
     });
-    expect(c.conversations.value[0].messages[0].status).toBe('error');
+    expect(c.conversations.value[0]!.messages[0]!.status).toBe('error');
   });
 
   it('脏数据防御：会话 messages 字段缺失/非数组时归一为空数组，初始化不崩溃', () => {
@@ -91,8 +92,8 @@ describe('useConversations', () => {
     const storage: ConversationStorage = { load: () => dirty, save: () => {} };
     expect(() => useConversations({ storage })).not.toThrow();
     const c = useConversations({ storage });
-    expect(c.conversations.value[0].messages).toEqual([]);
-    expect(c.conversations.value[1].messages).toEqual([]);
+    expect(c.conversations.value[0]!.messages).toEqual([]);
+    expect(c.conversations.value[1]!.messages).toEqual([]);
     // 正常会话的非终态复位逻辑不受影响
     expect(c.activeKey.value).toBe('a');
   });
@@ -110,7 +111,7 @@ describe('useConversations', () => {
   it('rename / setActive：改名、切换（无效 id 忽略）', () => {
     const c = useConversations({ defaultConversations: [conv('a', 'A')] });
     c.rename('a', '改后');
-    expect(c.conversations.value[0].label).toBe('改后');
+    expect(c.conversations.value[0]!.label).toBe('改后');
     c.setActive('not-exist');
     expect(c.activeKey.value).toBe('a'); // 无效 id 不切
   });
@@ -134,7 +135,7 @@ describe('useConversations', () => {
       expect(saved).toHaveLength(0); // 防抖未到
       vi.advanceTimersByTime(100);
       expect(saved).toHaveLength(1);
-      expect(saved[0][0].label).toBe('X2');
+      expect(saved[0]![0]!.label).toBe('X2');
     });
 
     it('scope 销毁时立即落盘防抖窗口内的未保存变更，而非丢弃（防丢最后一段完整回复）', async () => {
@@ -151,7 +152,7 @@ describe('useConversations', () => {
       // 模拟组件卸载（切路由/关面板）：应 flush 待保存数据而非 clearTimeout 丢弃
       scope.stop();
       expect(saved).toHaveLength(1);
-      expect(saved[0][0].label).toBe('最后一次变更');
+      expect(saved[0]![0]!.label).toBe('最后一次变更');
       // 销毁后无遗留定时器触发二次保存
       vi.advanceTimersByTime(200);
       expect(saved).toHaveLength(1);
@@ -178,7 +179,7 @@ describe('useConversations', () => {
       const s = localStorageConversationStorage('aix-conv-test');
       expect(s.load()).toBeNull(); // 空
       s.save([conv('a', 'A')]);
-      expect(s.load()?.[0].label).toBe('A');
+      expect(s.load()?.[0]!.label).toBe('A');
     });
 
     it('脏数据防御：非数组 JSON（被篡改/历史脏数据）返回 null 而非原样透出', () => {

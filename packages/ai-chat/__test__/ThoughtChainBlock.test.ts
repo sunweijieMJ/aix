@@ -34,8 +34,8 @@ describe('ThoughtChainBlock', () => {
     });
     const rich = w.findAll('.rich');
     expect(rich).toHaveLength(2);
-    expect(rich[0].text()).toBe('R-0-获取用户输入');
-    expect(rich[1].text()).toBe('R-1-正文创作');
+    expect(rich[0]!.text()).toBe('R-0-获取用户输入');
+    expect(rich[1]!.text()).toBe('R-1-正文创作');
   });
 
   // 防回归：注册表统一透传 typing（boolean | BubbleTypingConfig），收窄为 boolean 会触发 dev 警告

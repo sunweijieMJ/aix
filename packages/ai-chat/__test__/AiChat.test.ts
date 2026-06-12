@@ -270,7 +270,7 @@ describe('AiChat', () => {
     await sendBtn.trigger('click');
     await flushPromises();
     const vm = w.vm as unknown as { messages: ChatMessage[] };
-    expect(vm.messages[1].status).toBe('abort');
+    expect(vm.messages[1]!.status).toBe('abort');
   });
 
   it('v-model:messages 受控：渲染外部传入的初始消息', () => {
@@ -404,7 +404,7 @@ describe('AiChat', () => {
     await w.vm.$nextTick();
 
     expect(w.emitted('finish')).toBeTruthy();
-    const finished = w.emitted('finish')![0][0] as ChatMessage;
+    const finished = w.emitted('finish')![0]![0] as ChatMessage;
     expect(finished.status).toBe('success');
     expect(messageText(finished)).toBe('完整回答');
     // 正常结束不应触发 error / abort
@@ -424,7 +424,7 @@ describe('AiChat', () => {
     await flushPromises();
 
     expect(w.emitted('error')).toBeTruthy();
-    const errored = w.emitted('error')![0][0] as ChatMessage;
+    const errored = w.emitted('error')![0]![0] as ChatMessage;
     expect(errored.status).toBe('error');
     expect(w.emitted('finish')).toBeFalsy();
   });
@@ -455,7 +455,7 @@ describe('AiChat', () => {
     await flushPromises();
 
     expect(w.emitted('abort')).toBeTruthy();
-    const aborted = w.emitted('abort')![0][0] as ChatMessage;
+    const aborted = w.emitted('abort')![0]![0] as ChatMessage;
     expect(aborted.status).toBe('abort');
     expect(w.emitted('finish')).toBeFalsy();
   });
@@ -512,10 +512,10 @@ describe('AiChat', () => {
     expect(actions.findAll('.aix-bubble-actions__btn')).toHaveLength(2);
 
     // 点击重新生成 → onReload → 第二次请求
-    await actions.findAll('.aix-bubble-actions__btn')[1].trigger('click');
+    await actions.findAll('.aix-bubble-actions__btn')[1]!.trigger('click');
     await flushPromises();
     expect(request).toHaveBeenCalledTimes(2);
-    expect(messageText(w.vm.messages[w.vm.messages.length - 1])).toBe('二答');
+    expect(messageText(w.vm.messages[w.vm.messages.length - 1]!)).toBe('二答');
   });
 
   it('actions=[] 不渲染操作条', async () => {
@@ -564,8 +564,10 @@ describe('AiChat', () => {
     await flushPromises();
 
     expect(request).toHaveBeenCalledTimes(2);
-    expect(w.emitted('edit')![0]).toEqual([{ id: w.vm.messages[0].id, text: '改后问题' }]);
-    expect(messageText(w.vm.messages[0])).toBe('改后问题');
+    // 编辑保存后首条消息即被改写的用户消息
+    const editedMsg = w.vm.messages[0]!;
+    expect(w.emitted('edit')![0]).toEqual([{ id: editedMsg.id, text: '改后问题' }]);
+    expect(messageText(editedMsg)).toBe('改后问题');
     expect(w.vm.messages).toHaveLength(2);
   });
 
@@ -579,10 +581,10 @@ describe('AiChat', () => {
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises(); // 流挂起：isLoading 保持 true
     // 流式中编辑入口已禁用，直接经 BubbleList 的 edit 事件通道验证 emit 门控
-    w.findComponent(BubbleList).vm.$emit('edit', w.vm.messages[0].id, '改后');
+    w.findComponent(BubbleList).vm.$emit('edit', w.vm.messages[0]!.id, '改后');
     await flushPromises();
     expect(w.emitted('edit')).toBeUndefined();
-    expect(messageText(w.vm.messages[0])).toBe('原问题');
+    expect(messageText(w.vm.messages[0]!)).toBe('原问题');
     ctrl.close();
     await flushPromises();
   });
@@ -614,12 +616,12 @@ describe('AiChat', () => {
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();
 
-    const like = w.findAll('.aix-bubble-actions__feedback')[0];
+    const like = w.findAll('.aix-bubble-actions__feedback')[0]!;
     expect(like).toBeTruthy();
     await like.trigger('click');
     await flushPromises();
 
-    const aiMsg = w.vm.messages[w.vm.messages.length - 1];
+    const aiMsg = w.vm.messages[w.vm.messages.length - 1]!;
     expect(aiMsg.extra?.feedback).toBe('like');
     expect(w.emitted('feedback')![0]).toEqual([{ id: aiMsg.id, value: 'like' }]);
   });
@@ -642,7 +644,7 @@ describe('AiChat', () => {
     expect(actions.exists()).toBe(true);
     const btns = actions.findAll('.aix-bubble-actions__btn');
     expect(btns).toHaveLength(1);
-    expect(btns[0].attributes('aria-label')).toBe('重新生成');
+    expect(btns[0]!.attributes('aria-label')).toBe('重新生成');
 
     // user 消息（end 气泡）函数返回 null，其内不渲染操作条
     const userBubble = w.find('.aix-bubble--end');
@@ -704,7 +706,7 @@ describe('AiChat 交互块回传端到端', () => {
     // 对外事件
     const ev = wrapper.emitted('block-action');
     expect(ev).toBeTruthy();
-    expect((ev![0][0] as { action: { patch: { selected: string } } }).action.patch.selected).toBe(
+    expect((ev![0]![0] as { action: { patch: { selected: string } } }).action.patch.selected).toBe(
       'o2',
     );
     // updateBlock 写回 → DOM 反映
@@ -894,18 +896,20 @@ describe('AiChat 附件接线', () => {
     const sendArgs = w.emitted('send')![0] as [string, { name: string; url: string }[]];
     expect(sendArgs[0]).toBe('帮我总结');
     expect(Array.isArray(sendArgs[1])).toBe(true);
-    expect(sendArgs[1][0].name).toBe('a.pdf');
+    expect(sendArgs[1][0]!.name).toBe('a.pdf');
 
     // 4) 断言数据层：用户消息 content 为两块
     const vm = w.vm as unknown as { messages: ChatMessage[] };
-    const userMsg = vm.messages[0];
+    const userMsg = vm.messages[0]!;
     expect(userMsg.content).toHaveLength(2);
-    expect(userMsg.content[0].type).toBe('attachment');
+    const attachmentBlock = userMsg.content[0]!;
+    expect(attachmentBlock.type).toBe('attachment');
     expect(
-      (userMsg.content[0] as { type: 'attachment'; items: { name: string }[] }).items[0].name,
+      (attachmentBlock as { type: 'attachment'; items: { name: string }[] }).items[0]!.name,
     ).toBe('a.pdf');
-    expect(userMsg.content[1].type).toBe('text');
-    expect((userMsg.content[1] as { type: 'text'; text: string }).text).toBe('帮我总结');
+    const txtBlock = userMsg.content[1]!;
+    expect(txtBlock.type).toBe('text');
+    expect((txtBlock as { type: 'text'; text: string }).text).toBe('帮我总结');
 
     // 5) DOM 兜底：气泡内出现 .aix-attachment-card
     await nextTick();
@@ -941,9 +945,9 @@ describe('AiChat 附件接线', () => {
 
     // 断言用户消息 content 仅 1 块且 type === 'attachment'
     const vm = w.vm as unknown as { messages: ChatMessage[] };
-    const userMsg = vm.messages[0];
+    const userMsg = vm.messages[0]!;
     expect(userMsg.content).toHaveLength(1);
-    expect(userMsg.content[0].type).toBe('attachment');
+    expect(userMsg.content[0]!.type).toBe('attachment');
   });
 
   it('默认不开启：AiChat 不传 attachments 无附件 UI', () => {

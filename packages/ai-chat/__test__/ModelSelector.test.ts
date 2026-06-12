@@ -33,13 +33,13 @@ describe('ModelSelector', () => {
     await w.find('.aix-model-selector__trigger').trigger('click');
     const opts = w.findAll('.aix-model-selector__option');
     expect(opts).toHaveLength(3);
-    expect(opts[0].classes()).toContain('is-active'); // 当前项高亮
+    expect(opts[0]!.classes()).toContain('is-active'); // 当前项高亮
   });
 
   it('选择某项：emit update:modelValue 并收起菜单', async () => {
     const w = mount(ModelSelector, { props: { options, modelValue: 'Qwen3-Max' } });
     await w.find('.aix-model-selector__trigger').trigger('click');
-    await w.findAll('.aix-model-selector__option')[1].trigger('click');
+    await w.findAll('.aix-model-selector__option')[1]!.trigger('click');
     expect(w.emitted('update:modelValue')![0]).toEqual(['DeepSeek-V3']);
     expect(w.find('.aix-model-selector__menu').exists()).toBe(false);
   });
@@ -86,9 +86,9 @@ describe('ModelSelector', () => {
       expect(w.find('.aix-model-selector__menu').exists()).toBe(true);
       const opts = w.findAll('.aix-model-selector__option');
       // 当前选中项（索引 1）为高亮项：tabindex=0，其余为 -1
-      expect(opts[1].attributes('tabindex')).toBe('0');
-      expect(opts[0].attributes('tabindex')).toBe('-1');
-      expect(opts[2].attributes('tabindex')).toBe('-1');
+      expect(opts[1]!.attributes('tabindex')).toBe('0');
+      expect(opts[0]!.attributes('tabindex')).toBe('-1');
+      expect(opts[2]!.attributes('tabindex')).toBe('-1');
       w.unmount();
     });
 
@@ -102,14 +102,14 @@ describe('ModelSelector', () => {
       const menu = w.find('.aix-model-selector__menu');
       // 0 → 1
       await menu.trigger('keydown', { key: 'ArrowDown' });
-      expect(w.findAll('.aix-model-selector__option')[1].attributes('tabindex')).toBe('0');
+      expect(w.findAll('.aix-model-selector__option')[1]!.attributes('tabindex')).toBe('0');
       // 1 → 2 → 0（继续下移到末项再循环回首项）
       await menu.trigger('keydown', { key: 'ArrowDown' });
       await menu.trigger('keydown', { key: 'ArrowDown' });
-      expect(w.findAll('.aix-model-selector__option')[0].attributes('tabindex')).toBe('0');
+      expect(w.findAll('.aix-model-selector__option')[0]!.attributes('tabindex')).toBe('0');
       // 0 → 2（首项上移循环到末项）
       await menu.trigger('keydown', { key: 'ArrowUp' });
-      expect(w.findAll('.aix-model-selector__option')[2].attributes('tabindex')).toBe('0');
+      expect(w.findAll('.aix-model-selector__option')[2]!.attributes('tabindex')).toBe('0');
       w.unmount();
     });
 
@@ -121,9 +121,9 @@ describe('ModelSelector', () => {
       await w.find('.aix-model-selector__trigger').trigger('keydown', { key: 'ArrowDown' });
       const menu = w.find('.aix-model-selector__menu');
       await menu.trigger('keydown', { key: 'End' });
-      expect(w.findAll('.aix-model-selector__option')[2].attributes('tabindex')).toBe('0');
+      expect(w.findAll('.aix-model-selector__option')[2]!.attributes('tabindex')).toBe('0');
       await menu.trigger('keydown', { key: 'Home' });
-      expect(w.findAll('.aix-model-selector__option')[0].attributes('tabindex')).toBe('0');
+      expect(w.findAll('.aix-model-selector__option')[0]!.attributes('tabindex')).toBe('0');
       w.unmount();
     });
 
@@ -159,7 +159,7 @@ describe('ModelSelector', () => {
         attachTo: document.body,
       });
       await w.find('.aix-model-selector__trigger').trigger('keydown', { key: 'ArrowDown' });
-      await w.findAll('.aix-model-selector__option')[2].trigger('click');
+      await w.findAll('.aix-model-selector__option')[2]!.trigger('click');
       expect(w.emitted('update:modelValue')![0]).toEqual(['GPT-4o']);
       expect(w.find('.aix-model-selector__menu').exists()).toBe(false);
       w.unmount();

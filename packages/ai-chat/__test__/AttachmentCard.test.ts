@@ -48,7 +48,14 @@ describe('AttachmentCard', () => {
   });
 
   it('缩略图加载失败时回退文件类型图标；换 url 后重置重新加载', async () => {
-    const img = { ...base, name: 'p.png', mime: 'image/png', url: '/f/p.png', status: 'done' };
+    // status 用 as const 保持字面量类型，避免拓宽为 string 后与联合类型不匹配
+    const img = {
+      ...base,
+      name: 'p.png',
+      mime: 'image/png',
+      url: '/f/p.png',
+      status: 'done' as const,
+    };
     const w = mount(AttachmentCard, { props: { item: img } });
     await w.find('img').trigger('error');
     expect(w.find('img').exists()).toBe(false);

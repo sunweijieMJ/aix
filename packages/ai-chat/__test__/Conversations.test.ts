@@ -22,39 +22,41 @@ describe('Conversations', () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const itemEls = w.findAll('.aix-conversations__item');
     // 初始 a 激活
-    expect(itemEls[0].classes()).toContain('is-active');
+    expect(itemEls[0]!.classes()).toContain('is-active');
     // 点击 b
-    await itemEls[1].trigger('click');
+    await itemEls[1]!.trigger('click');
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
   });
 
   it('会话项键盘可达：role/tabindex、Enter/Space 选中、激活项标注 aria-current', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const itemEls = w.findAll('.aix-conversations__item');
+    const firstItem = itemEls[0]!;
+    const secondItem = itemEls[1]!;
     // 主操作（选中切换）必须可聚焦、可被辅助技术识别为可交互元素
-    expect(itemEls[0].attributes('role')).toBe('button');
-    expect(itemEls[0].attributes('tabindex')).toBe('0');
-    expect(itemEls[0].attributes('aria-current')).toBe('true');
-    expect(itemEls[1].attributes('aria-current')).toBeUndefined();
+    expect(firstItem.attributes('role')).toBe('button');
+    expect(firstItem.attributes('tabindex')).toBe('0');
+    expect(firstItem.attributes('aria-current')).toBe('true');
+    expect(secondItem.attributes('aria-current')).toBeUndefined();
     // Enter / Space 激活
-    await itemEls[1].trigger('keydown', { key: 'Enter' });
+    await secondItem.trigger('keydown', { key: 'Enter' });
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
-    await itemEls[2].trigger('keydown', { key: ' ' });
+    await itemEls[2]!.trigger('keydown', { key: ' ' });
     expect(w.emitted('update:activeKey')?.[1]).toEqual(['c']);
   });
 
   it('点击删除按钮 emit delete(id)', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
-    const firstItem = w.findAll('.aix-conversations__item')[0];
-    const delBtn = firstItem.findAll('.aix-conversations__action')[1]; // 第二个为删除
+    const firstItem = w.findAll('.aix-conversations__item')[0]!;
+    const delBtn = firstItem.findAll('.aix-conversations__action')[1]!; // 第二个为删除
     await delBtn.trigger('click');
     expect(w.emitted('delete')?.[0]).toEqual(['a']);
   });
 
   it('行内重命名：编辑后回车 emit rename(id, label)，且不切换选中', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
-    const firstItem = w.findAll('.aix-conversations__item')[0];
-    const renameBtn = firstItem.findAll('.aix-conversations__action')[0]; // 第一个为重命名
+    const firstItem = w.findAll('.aix-conversations__item')[0]!;
+    const renameBtn = firstItem.findAll('.aix-conversations__action')[0]!; // 第一个为重命名
     await renameBtn.trigger('click');
     const input = w.find('.aix-conversations__edit-input');
     expect(input.exists()).toBe(true);
@@ -68,8 +70,8 @@ describe('Conversations', () => {
   it('重命名为空白时不 emit rename：Enter 保持编辑态待修正，blur 按取消恢复原名', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const renameBtn = w
-      .findAll('.aix-conversations__item')[0]
-      .findAll('.aix-conversations__action')[0];
+      .findAll('.aix-conversations__item')[0]!
+      .findAll('.aix-conversations__action')[0]!;
     await renameBtn.trigger('click');
     const input = w.find('.aix-conversations__edit-input');
     await input.setValue('   ');
@@ -81,35 +83,35 @@ describe('Conversations', () => {
     await input.trigger('blur');
     expect(w.emitted('rename')).toBeUndefined();
     expect(w.find('.aix-conversations__edit-input').exists()).toBe(false);
-    expect(w.findAll('.aix-conversations__item')[0].text()).toContain('关于梵高');
+    expect(w.findAll('.aix-conversations__item')[0]!.text()).toContain('关于梵高');
   });
 
   it('编辑中条目被外部移除后编辑态清除，会话切换不被阻断', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const renameBtn = w
-      .findAll('.aix-conversations__item')[0]
-      .findAll('.aix-conversations__action')[0];
+      .findAll('.aix-conversations__item')[0]!
+      .findAll('.aix-conversations__action')[0]!;
     await renameBtn.trigger('click');
     expect(w.find('.aix-conversations__edit-input').exists()).toBe(true);
     // 条目 a 随 items prop 更新被外部移除：聚焦中的 input 卸载不触发 blur，
     // editingId 不得残留，否则 select 守卫会全局阻断会话切换
     await w.setProps({ items: items.filter((it) => it.id !== 'a') });
     // 点击剩余首项（b）应正常切换选中
-    await w.findAll('.aix-conversations__item')[0].trigger('click');
+    await w.findAll('.aix-conversations__item')[0]!.trigger('click');
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
   });
 
   it('编辑中条目仍存在时，items 更新不丢失编辑态且 select 守卫仍生效', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const renameBtn = w
-      .findAll('.aix-conversations__item')[0]
-      .findAll('.aix-conversations__action')[0];
+      .findAll('.aix-conversations__item')[0]!
+      .findAll('.aix-conversations__action')[0]!;
     await renameBtn.trigger('click');
     // items 更新但被编辑的 a 仍在：编辑态保持
     await w.setProps({ items: [...items, { id: 'd', label: '新会话', group: '今天' }] });
     expect(w.find('.aix-conversations__edit-input').exists()).toBe(true);
     // 编辑期间点击其他项仍被守卫拦截（既有行为不回归）
-    await w.findAll('.aix-conversations__item')[1].trigger('click');
+    await w.findAll('.aix-conversations__item')[1]!.trigger('click');
     expect(w.emitted('update:activeKey')).toBeUndefined();
   });
 

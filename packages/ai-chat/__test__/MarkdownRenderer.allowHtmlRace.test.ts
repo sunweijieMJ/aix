@@ -54,12 +54,12 @@ describe('MarkdownRenderer allowHtml 切换竞态（令牌守卫）', () => {
     expect(pending).toHaveLength(2);
 
     // 新一轮（true）先落定：生效 html 模式引擎
-    pending[1].resolve(makeEngine('html'));
+    pending[1]!.resolve(makeEngine('html'));
     await flushPromises();
     expect(w.text()).toContain('MODE:html');
 
     // 旧一轮（false）后落定：凭令牌失配丢弃，引擎不被覆盖为错误模式
-    pending[0].resolve(makeEngine('plain'));
+    pending[0]!.resolve(makeEngine('plain'));
     await flushPromises();
     expect(w.text()).toContain('MODE:html');
     expect(w.text()).not.toContain('MODE:plain');

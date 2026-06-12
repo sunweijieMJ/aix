@@ -50,12 +50,15 @@ describe('loadMarkdownEngine（装配引擎）', () => {
 
   describe('mdPlugins（注入原始 markdown-it 插件）', () => {
     it('应用注入的插件：插件函数被调用并作用于 md', async () => {
-      const plugin = (md: {
-        core: {
-          ruler: { push: (n: string, f: (s: { env: Record<string, unknown> }) => void) => void };
+      // MarkdownItPlugin 的函数签名为 (md: unknown) => void，参数须声明为 unknown，
+      // 再在函数体内收窄为本测试所需的最小结构类型
+      const plugin = (md: unknown) => {
+        const m = md as {
+          core: {
+            ruler: { push: (n: string, f: (s: { env: Record<string, unknown> }) => void) => void };
+          };
         };
-      }) => {
-        md.core.ruler.push('aix_test_marker', (state) => {
+        m.core.ruler.push('aix_test_marker', (state) => {
           state.env.aixPluginApplied = true;
         });
       };

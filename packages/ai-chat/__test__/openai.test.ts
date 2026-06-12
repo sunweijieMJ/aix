@@ -130,7 +130,8 @@ describe('createOpenAIRequest', () => {
       const ctrl = new AbortController();
       const req = createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' });
       await expect(req({ messages: msgs(), signal: ctrl.signal })).rejects.toThrow(
-        /HTTP 401.*Invalid API key/s,
+        // [\s\S] 等价于 dotAll 的 .，规避 target ES2015 不支持 s 标志
+        /HTTP 401[\s\S]*Invalid API key/,
       );
     });
 

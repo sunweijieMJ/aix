@@ -50,8 +50,8 @@ describe('BubbleList', () => {
     });
     const bubbles = w.findAll('.aix-bubble');
     expect(bubbles).toHaveLength(2);
-    expect(bubbles[0].classes()).toContain('aix-bubble--end');
-    expect(bubbles[1].classes()).toContain('aix-bubble--start');
+    expect(bubbles[0]!.classes()).toContain('aix-bubble--end');
+    expect(bubbles[1]!.classes()).toContain('aix-bubble--start');
   });
 
   it('expose scrollToBottom 等方法', () => {
@@ -278,19 +278,19 @@ describe('BubbleList', () => {
     const bubbles = w.findAll('.aix-bubble');
     expect(bubbles).toHaveLength(2);
     // user 气泡：函数返回 placement:'end'（根 modifier）+ variant:'outlined'（content modifier）
-    expect(bubbles[0].classes()).toContain('aix-bubble--end');
-    expect(bubbles[0].find('.aix-bubble__content').classes()).toContain(
+    expect(bubbles[0]!.classes()).toContain('aix-bubble--end');
+    expect(bubbles[0]!.find('.aix-bubble__content').classes()).toContain(
       'aix-bubble__content--outlined',
     );
     // ai 气泡：函数返回 placement:'start'
-    expect(bubbles[1].classes()).toContain('aix-bubble--start');
+    expect(bubbles[1]!.classes()).toContain('aix-bubble--start');
   });
 
   it('editable 时仅 user 气泡显示编辑按钮，点击保存冒泡为带 id 的 edit', async () => {
     const w = mount(BubbleList, { props: { items, editable: true } });
     const editBtns = w.findAll('.aix-bubble__edit-btn');
     expect(editBtns).toHaveLength(1); // 仅 user 气泡（items[0]）
-    await editBtns[0].trigger('click');
+    await editBtns[0]!.trigger('click');
     await w.find('textarea.aix-bubble__edit-input').setValue('改后');
     await w.find('.aix-bubble__edit-save').trigger('click');
     expect(w.emitted('edit')![0]).toEqual(['1', '改后']); // [id, text]

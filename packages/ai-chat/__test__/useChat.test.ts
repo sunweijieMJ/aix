@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { nextTick, effectScope, toRaw } from 'vue';
 import { useChat } from '../src/composables/useChat';
 import type { UseChatRequestCtx } from '../src/composables/useChat';
-import type { ChatMessage, ContentBlock } from '../src/types';
+import type { ChatMessage, ContentBlock, ParsedChunk } from '../src/types';
 import {
   messageText,
   textMessage,
@@ -32,11 +32,14 @@ describe('useChat', () => {
     await onSend('hi');
     await nextTick();
     expect(messages.value).toHaveLength(2);
-    expect(messages.value[0].role).toBe('user');
-    expect(messageText(messages.value[0])).toBe('hi');
-    expect(messages.value[1].role).toBe('ai');
-    expect(messageText(messages.value[1])).toBe('Hello world');
-    expect(messages.value[1].status).toBe('success');
+    // noUncheckedIndexedAccess 下索引访问可能为 undefined，长度断言后用非空断言收窄
+    const userMsg = messages.value[0]!;
+    const aiMsg = messages.value[1]!;
+    expect(userMsg.role).toBe('user');
+    expect(messageText(userMsg)).toBe('hi');
+    expect(aiMsg.role).toBe('ai');
+    expect(messageText(aiMsg)).toBe('Hello world');
+    expect(aiMsg.status).toBe('success');
     expect(isLoading.value).toBe(false);
   });
 
@@ -53,10 +56,10 @@ describe('useChat', () => {
     const { messages, onSend } = useChat({
       request,
       streamMode: 'line',
-      parseChunk: (raw) => ({ delta: raw }),
+      parseChunk: (raw: string) => ({ delta: raw }),
     });
     await onSend('go');
-    expect(messageText(messages.value[1])).toBe('AB');
+    expect(messageText(messages.value[1]!)).toBe('AB');
   });
 
   // 防回归：line 模式漏配 parseChunk 是静默死流（默认 flatParseChunk 对行字符串取 .data
@@ -103,8 +106,9 @@ describe('useChat', () => {
     const { messages, onSend } = useChat({ request, parseChunk: anthropicParseChunk });
     await onSend('hi');
     await nextTick();
-    expect(messageText(messages.value[1])).toBe('你好');
-    expect(messages.value[1].status).toBe('success');
+    const aiMsg = messages.value[1]!;
+    expect(messageText(aiMsg)).toBe('你好');
+    expect(aiMsg.status).toBe('success');
   });
 
   it('request 抛错时 ai 消息标记 error', async () => {
@@ -113,7 +117,7 @@ describe('useChat', () => {
     });
     const { messages, onSend } = useChat({ request });
     await onSend('hi');
-    expect(messages.value[1].status).toBe('error');
+    expect(messages.value[1]!.status).toBe('error');
   });
 
   it('abort 时 ai 消息标记 abort 而非 error', async () => {
@@ -133,7 +137,7 @@ describe('useChat', () => {
     await new Promise((r) => setTimeout(r, 10)); // 等首个 chunk 被消费
     abort();
     await p;
-    expect(messages.value[1].status).toBe('abort');
+    expect(messages.value[1]!.status).toBe('abort');
   });
 
   it('abort 后同步 onReload 同一消息：旧请求异步收尾不覆写新请求状态（瞬态 abort 闪烁回归）', async () => {
@@ -169,7 +173,7 @@ describe('useChat', () => {
     const request = vi.fn(async () => sseStream(['x']));
     const { messages } = useChat({ request, defaultMessages: [textMessage('user', '历史')] });
     expect(messages.value).toHaveLength(1);
-    expect(messageText(messages.value[0])).toBe('历史');
+    expect(messageText(messages.value[0]!)).toBe('历史');
   });
 
   it('setMessages 直接替换消息列表', () => {
@@ -177,7 +181,7 @@ describe('useChat', () => {
     const { messages, setMessages } = useChat({ request });
     setMessages([createMessage('user', [textBlock('hi')], { id: 'a', status: 'local' })]);
     expect(messages.value).toHaveLength(1);
-    expect(messageText(messages.value[0])).toBe('hi');
+    expect(messageText(messages.value[0]!)).toBe('hi');
   });
 
   it('onReload 重置目标 ai 消息并重新请求', async () => {
@@ -186,12 +190,14 @@ describe('useChat', () => {
     const { messages, onSend, onReload } = useChat({ request });
     await onSend('hi');
     await nextTick();
-    const aiId = messages.value[1].id;
-    expect(messageText(messages.value[1])).toBe('first');
+    const firstAi = messages.value[1]!;
+    const aiId = firstAi.id;
+    expect(messageText(firstAi)).toBe('first');
     await onReload(aiId);
     await nextTick();
-    expect(messageText(messages.value[1])).toBe('second');
-    expect(messages.value[1].status).toBe('success');
+    const reloadedAi = messages.value[1]!;
+    expect(messageText(reloadedAi)).toBe('second');
+    expect(reloadedAi.status).toBe('success');
   });
 
   it('onReload 对不存在的 id 不请求也不抛错', async () => {
@@ -222,7 +228,7 @@ describe('useChat', () => {
     const p = onSend('first'); // 首个请求挂起（流不结束）
     await nextTick();
     expect(isLoading.value).toBe(true);
-    const aiId = messages.value[1].id;
+    const aiId = messages.value[1]!.id;
     await onReload(aiId); // 进行中 reload，应被 isLoading 守卫拦截
     expect(request).toHaveBeenCalledTimes(1);
     ctrl.close();
@@ -233,7 +239,7 @@ describe('useChat', () => {
     const request = vi.fn(async () => new Response(sseStream(['R', 'esp'])));
     const { messages, onSend } = useChat({ request });
     await onSend('hi');
-    expect(messageText(messages.value[1])).toBe('Resp');
+    expect(messageText(messages.value[1]!)).toBe('Resp');
   });
 
   it('Bug1：传给 request 的 history 不含刚 push 的空 AI 占位', async () => {
@@ -245,8 +251,9 @@ describe('useChat', () => {
     const { onSend } = useChat({ request });
     await onSend('hi');
     expect(captured).toHaveLength(1);
-    expect(captured[0].role).toBe('user');
-    expect(messageText(captured[0])).toBe('hi');
+    const sentMsg = captured[0]!;
+    expect(sentMsg.role).toBe('user');
+    expect(messageText(sentMsg)).toBe('hi');
     // 不应包含 role:'ai' 的空占位
     expect(captured.some((m) => m.role === 'ai')).toBe(false);
   });
@@ -274,7 +281,7 @@ describe('useChat', () => {
     setMessages([createMessage('user', [textBlock('别动我')], { id: 'u1', status: 'local' })]);
     await onReload('u1');
     expect(request).not.toHaveBeenCalled();
-    expect(messageText(messages.value[0])).toBe('别动我');
+    expect(messageText(messages.value[0]!)).toBe('别动我');
   });
 
   it('生命周期：成功流结束时 onFinish 收到 success 的 ai 消息', async () => {
@@ -286,8 +293,9 @@ describe('useChat', () => {
     await onSend('hi');
     await nextTick();
     expect(onFinish).toHaveBeenCalledTimes(1);
-    expect(onFinish.mock.calls[0][0]).toBe(messages.value[1]);
-    expect(onFinish.mock.calls[0][0].status).toBe('success');
+    const finishedMsg = onFinish.mock.calls[0]![0];
+    expect(finishedMsg).toBe(messages.value[1]);
+    expect(finishedMsg.status).toBe('success');
     expect(onError).not.toHaveBeenCalled();
     expect(onAbort).not.toHaveBeenCalled();
   });
@@ -302,8 +310,9 @@ describe('useChat', () => {
     const { messages, onSend } = useChat({ request, onFinish, onError, onAbort });
     await onSend('hi');
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0][0]).toBe(messages.value[1]);
-    expect(onError.mock.calls[0][0].status).toBe('error');
+    const erroredMsg = onError.mock.calls[0]![0];
+    expect(erroredMsg).toBe(messages.value[1]);
+    expect(erroredMsg.status).toBe('error');
     expect(onFinish).not.toHaveBeenCalled();
     expect(onAbort).not.toHaveBeenCalled();
   });
@@ -328,9 +337,9 @@ describe('useChat', () => {
     await new Promise((r) => setTimeout(r, 10));
     abort();
     await p;
-    expect(messages.value[1].status).toBe('abort');
+    expect(messages.value[1]!.status).toBe('abort');
     expect(onAbort).toHaveBeenCalledTimes(1);
-    expect(onAbort.mock.calls[0][0].status).toBe('abort');
+    expect(onAbort.mock.calls[0]![0].status).toBe('abort');
     expect(onError).not.toHaveBeenCalled();
     expect(onFinish).not.toHaveBeenCalled();
   });
@@ -359,7 +368,7 @@ describe('useChat', () => {
     scope.stop(); // 触发 onScopeDispose → controller.abort()
     await p;
     expect(streamSignal!.aborted).toBe(true);
-    expect(api.messages.value[1].status).toBe('abort');
+    expect(api.messages.value[1]!.status).toBe('abort');
   });
 
   it('流式按 block 累积：reasoning 与 text 分段、sources 一次性，生成有序带 id 的 blocks', async () => {
@@ -377,7 +386,7 @@ describe('useChat', () => {
     const { messages, onSend } = useChat({
       request,
       streamMode: 'line',
-      parseChunk: (raw) => {
+      parseChunk: (raw: string): ParsedChunk => {
         const line = raw.trim();
         if (line === 'S') return { block: sourcesBlock([{ title: 'src' }]) };
         if (line === 'T1') phase = 't';
@@ -385,7 +394,7 @@ describe('useChat', () => {
       },
     });
     await onSend('go');
-    const blocks = messages.value[1].content;
+    const blocks = messages.value[1]!.content;
     expect(blocks.map((b) => b.type)).toEqual(['reasoning', 'text', 'sources']);
     expect(blocks.every((b) => typeof b.id === 'string' && b.id)).toBe(true);
     expect((blocks[0] as Extract<ContentBlock, { type: 'reasoning' }>).text).toBe('R1R2');
@@ -420,9 +429,10 @@ describe('useChat', () => {
     await nextTick();
     expect(request).toHaveBeenCalledTimes(2); // 第二次请求真的发出
     expect(messages.value).toHaveLength(4); // first(user+ai) + second(user+ai)
-    expect(messages.value[1].status).toBe('abort'); // 旧 ai 被中断
-    expect(messageText(messages.value[3])).toBe('ok2'); // 新 ai 正常完成
-    expect(messages.value[3].status).toBe('success');
+    expect(messages.value[1]!.status).toBe('abort'); // 旧 ai 被中断
+    const newAi = messages.value[3]!;
+    expect(messageText(newAi)).toBe('ok2'); // 新 ai 正常完成
+    expect(newAi.status).toBe('success');
     expect(isLoading.value).toBe(false); // 旧请求 finally 未回写污染新状态
   });
 
@@ -436,9 +446,10 @@ describe('useChat', () => {
     const { messages, onSend } = useChat({ request, onError });
     await onSend('hi');
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0][0]).toBe(messages.value[1]); // 第一参数为 ai 消息
-    expect(onError.mock.calls[0][1]).toBe(boom); // 第二参数为原始 error
-    expect(messages.value[1].extra?.error).toBe(boom); // 写入 extra 便于排障
+    const errArgs = onError.mock.calls[0]!;
+    expect(errArgs[0]).toBe(messages.value[1]); // 第一参数为 ai 消息
+    expect(errArgs[1]).toBe(boom); // 第二参数为原始 error
+    expect(messages.value[1]!.extra?.error).toBe(boom); // 写入 extra 便于排障
     expect(consoleErr).toHaveBeenCalled(); // 兜底 console.error
     consoleErr.mockRestore();
   });
@@ -449,13 +460,14 @@ describe('useChat', () => {
     const { messages, onSend, onEdit } = useChat({ request });
     await onSend('q1');
     await nextTick();
-    const userId = messages.value[0].id;
+    const userId = messages.value[0]!.id;
     await onEdit(userId, 'q1-edited');
     await nextTick();
-    expect(messageText(messages.value[0])).toBe('q1-edited');
+    expect(messageText(messages.value[0]!)).toBe('q1-edited');
     expect(messages.value).toHaveLength(2);
-    expect(messageText(messages.value[1])).toBe('a2');
-    expect(messages.value[1].status).toBe('success');
+    const aiMsg = messages.value[1]!;
+    expect(messageText(aiMsg)).toBe('a2');
+    expect(aiMsg.status).toBe('success');
   });
 
   it('onEdit 传给 request 的 history 含编辑后内容且不含后续/空 AI 占位', async () => {
@@ -468,9 +480,9 @@ describe('useChat', () => {
     const { messages, onSend, onEdit } = useChat({ request });
     await onSend('q1');
     await nextTick();
-    await onEdit(messages.value[0].id, 'q1-edited');
+    await onEdit(messages.value[0]!.id, 'q1-edited');
     expect(captured).toHaveLength(1);
-    expect(messageText(captured[0])).toBe('q1-edited');
+    expect(messageText(captured[0]!)).toBe('q1-edited');
     expect(captured.some((m) => m.role === 'ai')).toBe(false);
   });
 
@@ -483,11 +495,11 @@ describe('useChat', () => {
     await onSend('q2');
     await nextTick();
     expect(messages.value).toHaveLength(4);
-    await onEdit(messages.value[0].id, 'q1-edited');
+    await onEdit(messages.value[0]!.id, 'q1-edited');
     await nextTick();
     expect(messages.value).toHaveLength(2);
-    expect(messageText(messages.value[0])).toBe('q1-edited');
-    expect(messages.value[1].role).toBe('ai');
+    expect(messageText(messages.value[0]!)).toBe('q1-edited');
+    expect(messages.value[1]!.role).toBe('ai');
   });
 
   it('onEdit 保留非文本块（附件不被静默丢弃），新文本块替换原文本块位置', async () => {
@@ -499,13 +511,13 @@ describe('useChat', () => {
       { id: 'b-text', type: 'text', text: 'q1' },
     ]);
     await nextTick();
-    await onEdit(messages.value[0].id, 'q1-edited');
+    await onEdit(messages.value[0]!.id, 'q1-edited');
     await nextTick();
-    const content = messages.value[0].content;
+    const content = messages.value[0]!.content;
     expect(content).toHaveLength(2);
     expect(content[0]).toMatchObject({ type: 'attachment' }); // 附件保留且位置不变
     expect(content[1]).toMatchObject({ type: 'text', text: 'q1-edited' });
-    expect(messageText(messages.value[0])).toBe('q1-edited');
+    expect(messageText(messages.value[0]!)).toBe('q1-edited');
   });
 
   it('onEdit 纯文本消息行为不变：改写为单 text 块', async () => {
@@ -514,10 +526,11 @@ describe('useChat', () => {
     const { messages, onSend, onEdit } = useChat({ request });
     await onSend('q1');
     await nextTick();
-    await onEdit(messages.value[0].id, 'q1-edited');
+    await onEdit(messages.value[0]!.id, 'q1-edited');
     await nextTick();
-    expect(messages.value[0].content).toHaveLength(1);
-    expect(messages.value[0].content[0]).toMatchObject({ type: 'text', text: 'q1-edited' });
+    const userMsg = messages.value[0]!;
+    expect(userMsg.content).toHaveLength(1);
+    expect(userMsg.content[0]).toMatchObject({ type: 'text', text: 'q1-edited' });
   });
 
   it('onEdit 对非 user 消息守卫：不改写不请求', async () => {
@@ -525,10 +538,11 @@ describe('useChat', () => {
     const { messages, onSend, onEdit } = useChat({ request });
     await onSend('q');
     await nextTick();
-    const aiId = messages.value[1].id;
-    const before = messageText(messages.value[1]);
+    const aiMsg = messages.value[1]!;
+    const aiId = aiMsg.id;
+    const before = messageText(aiMsg);
     await onEdit(aiId, '篡改');
-    expect(messageText(messages.value[1])).toBe(before);
+    expect(messageText(messages.value[1]!)).toBe(before);
     expect(request).toHaveBeenCalledTimes(1);
   });
 
@@ -545,9 +559,9 @@ describe('useChat', () => {
     const { messages, onSend, onEdit } = useChat({ request });
     const p = onSend('first');
     await nextTick();
-    await onEdit(messages.value[0].id, 'edited');
+    await onEdit(messages.value[0]!.id, 'edited');
     expect(request).toHaveBeenCalledTimes(1);
-    expect(messageText(messages.value[0])).toBe('first');
+    expect(messageText(messages.value[0]!)).toBe('first');
     ctrl.close();
     await p;
   });
@@ -560,9 +574,9 @@ describe('useChat', () => {
     const { messages, onSend, onEdit } = useChat({ request });
     const p = onSend('first');
     await nextTick();
-    const accepted = await onEdit(messages.value[0].id, 'edited');
+    const accepted = await onEdit(messages.value[0]!.id, 'edited');
     expect(accepted).toBe(false);
-    expect(messageText(messages.value[0])).toBe('first');
+    expect(messageText(messages.value[0]!)).toBe('first');
     ctrl.close();
     await p;
   });
@@ -576,10 +590,10 @@ describe('useChat', () => {
     // 未命中 id：返回 false
     expect(await onEdit('nope', 'x')).toBe(false);
     // 非 user 消息守卫：返回 false
-    expect(await onEdit(messages.value[1].id, 'x')).toBe(false);
+    expect(await onEdit(messages.value[1]!.id, 'x')).toBe(false);
     // 正常受理：返回 true，且确实已截断重发
-    expect(await onEdit(messages.value[0].id, 'q1-edited')).toBe(true);
-    expect(messageText(messages.value[0])).toBe('q1-edited');
+    expect(await onEdit(messages.value[0]!.id, 'q1-edited')).toBe(true);
+    expect(messageText(messages.value[0]!)).toBe('q1-edited');
     expect(request).toHaveBeenCalledTimes(2);
   });
 });
@@ -599,7 +613,7 @@ describe('useChat.updateBlock', () => {
       },
     ]);
     const hit = chat.updateBlock('m1', 'b1', { selected: 'o2' });
-    const blk = chat.messages.value[0].content[0] as { selected?: string };
+    const blk = chat.messages.value[0]!.content[0] as { selected?: string };
     expect(blk.selected).toBe('o2');
     // 命中目标块时返回 true，供上层决定是否对外透出
     expect(hit).toBe(true);
@@ -633,16 +647,16 @@ describe('useChat.setFeedback', () => {
     const chat = useChat({ request: async () => new ReadableStream() });
     chat.setMessages([{ id: 'm1', role: 'ai', content: [textBlock('hi')], status: 'success' }]);
     chat.setFeedback('m1', 'like');
-    expect(chat.messages.value[0].extra?.feedback).toBe('like');
+    expect(chat.messages.value[0]!.extra?.feedback).toBe('like');
     chat.setFeedback('m1', null);
-    expect(chat.messages.value[0].extra?.feedback).toBe(null);
+    expect(chat.messages.value[0]!.extra?.feedback).toBe(null);
   });
 
   it('保留 extra 其他字段', () => {
     const chat = useChat({ request: async () => new ReadableStream() });
     chat.setMessages([{ id: 'm1', role: 'ai', content: [textBlock('hi')], extra: { foo: 1 } }]);
     chat.setFeedback('m1', 'dislike');
-    expect(chat.messages.value[0].extra).toEqual({ foo: 1, feedback: 'dislike' });
+    expect(chat.messages.value[0]!.extra).toEqual({ foo: 1, feedback: 'dislike' });
   });
 
   it('id 不存在时安全忽略', () => {
@@ -670,11 +684,11 @@ describe('parser 渲染消息解耦', () => {
     await onSend('q');
     await nextTick();
     // 原始消息不被 parser 改写
-    expect(messageText(messages.value[0])).toBe('q');
+    expect(messageText(messages.value[0]!)).toBe('q');
     // 渲染消息经 parser 转换，且 id 保留（可继续支撑 edit/reload 的 id 定位）
-    expect(parsedMessages.value[0].id).toBe(messages.value[0].id);
-    expect(messageText(parsedMessages.value[0])).toBe('[user] q');
-    expect(messageText(parsedMessages.value[1])).toBe('[ai] Hi');
+    expect(parsedMessages.value[0]!.id).toBe(messages.value[0]!.id);
+    expect(messageText(parsedMessages.value[0]!)).toBe('[user] q');
+    expect(messageText(parsedMessages.value[1]!)).toBe('[ai] Hi');
     expect(parsedMessages.value).toHaveLength(messages.value.length);
   });
 
@@ -688,10 +702,10 @@ describe('parser 渲染消息解耦', () => {
     await onSend('q');
     await nextTick();
     // 渲染气泡 id === 父消息 id（parser 改的 id 被忽略）
-    expect(parsedMessages.value[1].id).toBe(messages.value[1].id);
+    expect(parsedMessages.value[1]!.id).toBe(messages.value[1]!.id);
     // 据渲染气泡 id 回写，命中 SSOT 父消息
-    setFeedback(parsedMessages.value[1].id, 'like');
-    expect(messages.value[1].extra?.feedback).toBe('like');
+    setFeedback(parsedMessages.value[1]!.id, 'like');
+    expect(messages.value[1]!.extra?.feedback).toBe('like');
   });
 
   // Bug 防回归：自定义 parser 从零构造渲染消息（不透传 extra）时，setFeedback 写入
@@ -708,13 +722,13 @@ describe('parser 渲染消息解耦', () => {
     });
     await onSend('q');
     await nextTick();
-    const aiId = messages.value[1].id;
+    const aiId = messages.value[1]!.id;
     setFeedback(aiId, 'like');
     // 渲染消息能读到父消息的 feedback（AiChat 的高亮受控值取 item.extra?.feedback）
-    expect(parsedMessages.value[1].extra?.feedback).toBe('like');
+    expect(parsedMessages.value[1]!.extra?.feedback).toBe('like');
     // 互斥取消：再次写 null 同样透传
     setFeedback(aiId, null);
-    expect(parsedMessages.value[1].extra?.feedback).toBe(null);
+    expect(parsedMessages.value[1]!.extra?.feedback).toBe(null);
   });
 
   it('parser 不透传 extra（1→N）：父消息 feedback 合并到各子气泡且不丢 __sub', async () => {
@@ -731,13 +745,15 @@ describe('parser 渲染消息解耦', () => {
     });
     await onSend('q');
     await nextTick();
-    const aiId = messages.value[1].id;
+    const aiId = messages.value[1]!.id;
     setFeedback(aiId, 'like');
-    expect(parsedMessages.value[1].extra?.feedback).toBe('like');
-    expect(parsedMessages.value[2].extra?.feedback).toBe('like');
+    const bubble1 = parsedMessages.value[1]!;
+    const bubble2 = parsedMessages.value[2]!;
+    expect(bubble1.extra?.feedback).toBe('like');
+    expect(bubble2.extra?.feedback).toBe('like');
     // 合并不得破坏 __sub 元信息（操作条去重依赖）
-    expect(parsedMessages.value[1].extra?.__sub).toEqual({ index: 0, count: 2 });
-    expect(parsedMessages.value[2].extra?.__sub).toEqual({ index: 1, count: 2 });
+    expect(bubble1.extra?.__sub).toEqual({ index: 0, count: 2 });
+    expect(bubble2.extra?.__sub).toEqual({ index: 1, count: 2 });
   });
 
   describe('1→N 拆分（一条消息拆多气泡）', () => {
@@ -756,11 +772,11 @@ describe('parser 渲染消息解耦', () => {
       expect(messages.value).toHaveLength(2);
       // 渲染视图：user(1) + ai 拆 2 = 3 个气泡
       expect(parsedMessages.value).toHaveLength(3);
-      const aiId = messages.value[1].id;
-      expect(parsedMessages.value[0].id).toBe(messages.value[0].id);
+      const aiId = messages.value[1]!.id;
+      expect(parsedMessages.value[0]!.id).toBe(messages.value[0]!.id);
       // O1：首个子气泡复用父 id（单→拆转换时不 remount、不闪烁），其余子气泡派生
-      expect(parsedMessages.value[1].id).toBe(aiId);
-      expect(parsedMessages.value[2].id).toBe(`${aiId}__1`);
+      expect(parsedMessages.value[1]!.id).toBe(aiId);
+      expect(parsedMessages.value[2]!.id).toBe(`${aiId}__1`);
     });
 
     it('拆分子气泡继承父消息 status', async () => {
@@ -770,9 +786,9 @@ describe('parser 渲染消息解耦', () => {
       });
       await onSend('q');
       await nextTick();
-      expect(messages.value[1].status).toBe('success');
-      expect(parsedMessages.value[1].status).toBe('success');
-      expect(parsedMessages.value[2].status).toBe('success');
+      expect(messages.value[1]!.status).toBe('success');
+      expect(parsedMessages.value[1]!.status).toBe('success');
+      expect(parsedMessages.value[2]!.status).toBe('success');
     });
 
     it('updateBlock 用派生气泡 id → 解析回父消息命中 SSOT 块', async () => {
@@ -782,13 +798,14 @@ describe('parser 渲染消息解耦', () => {
       });
       await onSend('q');
       await nextTick();
-      const aiId = messages.value[1].id;
-      const blockId = messages.value[1].content[0].id;
+      const aiMsg = messages.value[1]!;
+      const aiId = aiMsg.id;
+      const blockId = aiMsg.content[0]!.id;
       // 用派生气泡 id 回写
       const hit = updateBlock(`${aiId}__1`, blockId, { foo: 'bar' });
       expect(hit).toBe(true);
-      // 命中 SSOT 父消息块
-      expect((messages.value[1].content[0] as Record<string, unknown>).foo).toBe('bar');
+      // 命中 SSOT 父消息块（块类型本身无 foo 字段，以宽松对象形态读取动态合并的属性）
+      expect((aiMsg.content[0] as { foo?: string }).foo).toBe('bar');
     });
 
     it('onReload 用派生气泡 id → 对父消息重新发起请求', async () => {
@@ -796,7 +813,7 @@ describe('parser 渲染消息解耦', () => {
       const { messages, onReload, onSend } = useChat({ request, parser: splitAi });
       await onSend('q');
       await nextTick();
-      const aiId = messages.value[1].id;
+      const aiId = messages.value[1]!.id;
       expect(request).toHaveBeenCalledTimes(1);
       await onReload(`${aiId}__1`);
       await nextTick();
@@ -811,9 +828,9 @@ describe('parser 渲染消息解耦', () => {
       });
       await onSend('q');
       await nextTick();
-      const aiId = messages.value[1].id;
+      const aiId = messages.value[1]!.id;
       setFeedback(`${aiId}__1`, 'dislike');
-      expect(messages.value[1].extra?.feedback).toBe('dislike');
+      expect(messages.value[1]!.extra?.feedback).toBe('dislike');
     });
 
     it('拆分子气泡带 extra.__sub 位置信息（供操作条去重）', async () => {
@@ -824,10 +841,10 @@ describe('parser 渲染消息解耦', () => {
       await onSend('q');
       await nextTick();
       void messages.value;
-      expect(parsedMessages.value[1].extra?.__sub).toEqual({ index: 0, count: 2 });
-      expect(parsedMessages.value[2].extra?.__sub).toEqual({ index: 1, count: 2 });
+      expect(parsedMessages.value[1]!.extra?.__sub).toEqual({ index: 0, count: 2 });
+      expect(parsedMessages.value[2]!.extra?.__sub).toEqual({ index: 1, count: 2 });
       // 非拆分（user，1→1）无 __sub 标记
-      expect(parsedMessages.value[0].extra?.__sub).toBeUndefined();
+      expect(parsedMessages.value[0]!.extra?.__sub).toBeUndefined();
     });
   });
 });
@@ -847,12 +864,12 @@ it('parseChunk 返回携带 delta 的非法 blockType 时丢弃增量并告警�
     request,
     streamMode: 'line',
     // 违法：blockType 非 'text'|'reasoning' 却带 delta
-    parseChunk: (raw) => ({ delta: raw, blockType: 'bogus' as never }),
+    parseChunk: (raw: string) => ({ delta: raw, blockType: 'bogus' as never }),
   });
   await onSend('go');
   await nextTick();
   // 非法增量被丢弃，AI 消息无文本内容
-  expect(messageText(messages.value[1])).toBe('');
+  expect(messageText(messages.value[1]!)).toBe('');
   const badWarns = warn.mock.calls.filter(
     (args) => typeof args[0] === 'string' && args[0].includes('非法 blockType'),
   );
@@ -873,8 +890,9 @@ describe('retryTimes 失败重试', () => {
     await onSend('hi');
     await nextTick();
     expect(request).toHaveBeenCalledTimes(3);
-    expect(messages.value[1].status).toBe('success');
-    expect(messageText(messages.value[1])).toBe('ok');
+    const aiMsg = messages.value[1]!;
+    expect(aiMsg.status).toBe('success');
+    expect(messageText(aiMsg)).toBe('ok');
   });
 
   it('重试耗尽仍失败 → status=error，onError 收到错误', async () => {
@@ -887,7 +905,7 @@ describe('retryTimes 失败重试', () => {
     await onSend('hi');
     await nextTick();
     expect(request).toHaveBeenCalledTimes(2); // 首次 + 1 次重试
-    expect(messages.value[1].status).toBe('error');
+    expect(messages.value[1]!.status).toBe('error');
     expect(onError).toHaveBeenCalledTimes(1);
     ce.mockRestore();
   });
@@ -901,7 +919,7 @@ describe('retryTimes 失败重试', () => {
     await onSend('hi');
     await nextTick();
     expect(request).toHaveBeenCalledTimes(1);
-    expect(messages.value[1].status).toBe('error');
+    expect(messages.value[1]!.status).toBe('error');
     ce.mockRestore();
   });
 
@@ -935,7 +953,7 @@ describe('retryTimes 失败重试', () => {
       abort(); // 等待期内用户中止
       await vi.advanceTimersByTimeAsync(1000); // 等待期满：应检测到 aborted，放弃第二轮
       await p;
-      expect(messages.value[1].status).toBe('abort');
+      expect(messages.value[1]!.status).toBe('abort');
       expect(onAbort).toHaveBeenCalledTimes(1);
       expect(request).toHaveBeenCalledTimes(1); // 不发起第二轮
     } finally {
@@ -965,8 +983,9 @@ describe('retryTimes 失败重试', () => {
     await onSend('hi');
     await nextTick();
     expect(request).toHaveBeenCalledTimes(2);
-    expect(messages.value[1].status).toBe('success');
-    expect(messageText(messages.value[1])).toBe('完整'); // 而非 '半截完整' 叠加
+    const aiMsg = messages.value[1]!;
+    expect(aiMsg.status).toBe('success');
+    expect(messageText(aiMsg)).toBe('完整'); // 而非 '半截完整' 叠加
   });
 });
 

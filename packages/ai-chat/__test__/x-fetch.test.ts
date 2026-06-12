@@ -47,7 +47,9 @@ describe('createXFetch', () => {
     await vi.advanceTimersByTimeAsync(100);
     const err = await p;
     expect(captured?.aborted).toBe(true);
-    expect(err.name).toBe('AbortError');
+    // 用 in 操作符收窄 Error | Response 联合类型再取 name
+    //（jsdom 的 DOMException 不继承 Error，不能用 instanceof Error 收窄）
+    expect('name' in err ? err.name : '').toBe('AbortError');
     vi.useRealTimers();
   });
 
@@ -66,7 +68,8 @@ describe('中间件链与 onError', () => {
 
   it('onRequest 数组按序执行，前者输出为后者输入', async () => {
     const seen: string[] = [];
-    const fetchSpy = vi.fn(async (url: RequestInfo | URL) => {
+    // mock 声明出 init 形参，使 mock.calls 元组带上第二个元素，避免越界取参
+    const fetchSpy = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
       seen.push(String(url));
       return okResponse();
     });
@@ -82,8 +85,8 @@ describe('中间件链与 onError', () => {
     });
     await xfetch('/api');
     expect(seen[0]).toBe('/api?a=1&b=2');
-    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit;
-    expect(init.headers).toEqual({ 'X-A': '1', 'X-B': '2' });
+    const init = fetchSpy.mock.calls[0]?.[1];
+    expect(init?.headers).toEqual({ 'X-A': '1', 'X-B': '2' });
   });
 
   it('onResponse 数组按序包装', async () => {

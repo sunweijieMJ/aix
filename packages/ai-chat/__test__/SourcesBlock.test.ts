@@ -37,9 +37,9 @@ describe('SourcesBlock', () => {
     const links = w.findAll('a.aix-sources-block__link');
     // 仅第 1 项有 url
     expect(links).toHaveLength(1);
-    expect(links[0].attributes('href')).toBe('https://example.com/a');
-    expect(links[0].attributes('target')).toBe('_blank');
-    expect(links[0].attributes('rel')).toBe('noopener noreferrer');
+    expect(links[0]!.attributes('href')).toBe('https://example.com/a');
+    expect(links[0]!.attributes('target')).toBe('_blank');
+    expect(links[0]!.attributes('rel')).toBe('noopener noreferrer');
     // 第 2、3 项无 url → 渲染为 div（非 a）
     expect(w.findAll('.aix-sources-block__link').length).toBe(3);
   });
@@ -48,7 +48,7 @@ describe('SourcesBlock', () => {
     const w = mount(SourcesBlock, { props: { block } });
     const favicons = w.findAll('img.aix-sources-block__favicon');
     expect(favicons).toHaveLength(1); // 仅第 1 项 icon 是 url
-    expect(favicons[0].attributes('src')).toBe('https://example.com/favicon.ico');
+    expect(favicons[0]!.attributes('src')).toBe('https://example.com/favicon.ico');
     // 第 2 项 icon 是 emoji → 文本节点
     expect(w.find('.aix-sources-block__emoji').text()).toBe('📄');
   });

@@ -24,7 +24,7 @@ describe('BubbleActions', () => {
 
   it('点击复制：写入剪贴板、抛 copy 事件并切换为「已复制」反馈', async () => {
     const w = mount(BubbleActions, { props: { content: '要复制的文本' } });
-    const copyBtn = w.findAll('.aix-bubble-actions__btn')[0];
+    const copyBtn = w.findAll('.aix-bubble-actions__btn')[0]!;
     await copyBtn.trigger('click');
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('要复制的文本');
     expect(w.emitted('copy')).toHaveLength(1);
@@ -34,7 +34,7 @@ describe('BubbleActions', () => {
 
   it('点击重新生成抛 regenerate 事件', async () => {
     const w = mount(BubbleActions);
-    const reloadBtn = w.findAll('.aix-bubble-actions__btn')[1];
+    const reloadBtn = w.findAll('.aix-bubble-actions__btn')[1]!;
     await reloadBtn.trigger('click');
     expect(w.emitted('regenerate')).toHaveLength(1);
   });
@@ -45,7 +45,7 @@ describe('BubbleActions', () => {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
     });
     const w = mount(BubbleActions, { props: { content: 'x' } });
-    await w.findAll('.aix-bubble-actions__btn')[0].trigger('click');
+    await w.findAll('.aix-bubble-actions__btn')[0]!.trigger('click');
     await flushPromises();
     expect(w.emitted('copy')).toBeUndefined();
   });
@@ -55,7 +55,7 @@ describe('BubbleActions', () => {
     const exec = vi.fn().mockReturnValue(true);
     (document as unknown as { execCommand?: unknown }).execCommand = exec;
     const w = mount(BubbleActions, { props: { items: ['copy'], content: 'hi' } });
-    const copyBtn = w.findAll('.aix-bubble-actions__btn')[0];
+    const copyBtn = w.findAll('.aix-bubble-actions__btn')[0]!;
     await copyBtn.trigger('click');
     await flushPromises();
     expect(exec).toHaveBeenCalledWith('copy');
@@ -66,7 +66,7 @@ describe('BubbleActions', () => {
 
   it('无 content 时仍抛 copy 事件（交由使用方自定义复制）', async () => {
     const w = mount(BubbleActions);
-    await w.findAll('.aix-bubble-actions__btn')[0].trigger('click');
+    await w.findAll('.aix-bubble-actions__btn')[0]!.trigger('click');
     await flushPromises();
     expect(w.emitted('copy')).toHaveLength(1);
   });
