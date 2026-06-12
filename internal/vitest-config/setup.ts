@@ -10,21 +10,12 @@ global.fetch = vi.fn(() =>
   } as Response),
 );
 
-// ---------------【屏蔽测试警告】---------------
-// 保存原始 console 方法引用，避免递归调用
-const originalWarn = console.warn.bind(console);
-
-vi.spyOn(console, 'warn').mockImplementation((...args) => {
-  const msg = args[0];
-  // 过滤掉测试中不重要的警告
-  if (typeof msg === 'string' && msg.includes('某些特定警告')) {
-    return;
-  }
-  originalWarn(...args);
-});
+// ---------------【屏蔽测试错误输出】---------------
+// console.warn 不拦截：Vue 开发警告走 warn，全量放行便于发现回归
+// console.error 有意静音（沿用旧根 setup 行为）：仅损失调试期诊断输出，
+// 不影响测试结果；需要断言 error 的测试请自建局部 spy
 vi.spyOn(console, 'error').mockImplementation(() => {
-  // 可选：在测试中也打印错误（用于调试）
-  // originalError(...args);
+  // 调试时可临时改为透传：console.info(...args)
 });
 
 // ---------------【Mock LocalStorage】---------------

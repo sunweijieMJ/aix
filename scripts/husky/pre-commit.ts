@@ -37,19 +37,8 @@ try {
     { ts: [] as string[], js: [] as string[] },
   );
 
-  // 执行 lint 和 TypeScript 类型检查
+  // 执行 TypeScript 类型检查（lint 已由上方 lint-staged 的 eslint --fix 覆盖，不再重复跑）
   if (filesByType.ts.length || filesByType.js.length) {
-    // lint 检查
-    log.info('正在进行 lint 校验...');
-    for (const type of ['ts', 'js'] as const) {
-      if (filesByType[type].length) {
-        execSync(`npx eslint ${filesByType[type].join(' ')}`, {
-          stdio: 'inherit',
-        });
-      }
-    }
-    log.success('lint 校验通过');
-
     // TypeScript 类型检查（按项目分别检查）
     if (filesByType.ts.length) {
       log.info('正在进行 TypeScript 类型检查...');
@@ -57,7 +46,7 @@ try {
       // 检测变更文件涉及的项目，按项目分组
       const projectMap = new Map<string, string[]>();
       for (const file of filesByType.ts) {
-        const match = file.match(/^(apps\/[^/]+|internal\/[^/]+|packages\/[^/]+)\//);
+        const match = file.match(/^(apps\/[^/]+|internal\/[^/]+|kit\/[^/]+|packages\/[^/]+)\//);
         if (match) {
           const project = match[1]!;
           if (!projectMap.has(project)) projectMap.set(project, []);
@@ -91,7 +80,8 @@ try {
     const packagePaths = [
       ...new Set(
         relevantFiles
-          .map((file) => file.match(/packages\/(?:@[^/]+\/)?[^/]+/)?.[0])
+          // 与类型检查环节口径一致：覆盖 packages/kit/apps/internal 四类工作区
+          .map((file) => file.match(/^(?:packages|kit|apps|internal)\/[^/]+/)?.[0])
           .filter(Boolean)
           .map((path) => `./${path}`),
       ),

@@ -35,13 +35,19 @@ jobs:
   # 构建文档
   # ============================
   build:
-    # 仅在 Check Quality 所有检查成功后执行
-    if: github.event.workflow_run.conclusion == 'success'
+    # 仅在 master 的 Check Quality 全部成功后执行
+    # （release/** 分支的构建产物不会被部署，提前跳过避免无效构建）
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'master'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # workflow_run 事件下默认 checkout 的是触发时刻 master 最新提交，
+          # 显式锁定为通过 Check Quality 的那个 commit，避免部署未经本轮 CI 的代码
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Setup pnpm
