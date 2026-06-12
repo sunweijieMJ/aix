@@ -42,7 +42,7 @@
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
     "build": "pnpm run clean && pnpm run gen:css && rollup -c && pnpm run build:types",
-    "build:types": "tsc --emitDeclarationOnly --outDir dist",
+    "build:types": "tsc --emitDeclarationOnly --outDir dist -p tsconfig.build.json",
     "clean": "rimraf dist tsconfig.tsbuildinfo"
   },
   "peerDependencies": {

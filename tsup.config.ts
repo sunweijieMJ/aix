@@ -59,7 +59,8 @@ export function createTsupConfig(options: TsupConfigOptions = {}) {
     {
       ...baseOptions,
       entry: { cli },
-      clean: true,
+      // 包级 build 脚本已先 rimraf dist；这里若再 clean，会与并行的库入口构建竞态，偶发删掉对方刚写出的 d.ts
+      clean: false,
       banner: { js: '#!/usr/bin/env node' },
     },
     {

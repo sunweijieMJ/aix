@@ -1,10 +1,12 @@
 {
   "extends": "@kit/typescript-config/base-library.json",
   "compilerOptions": {
-    "declarationDir": "es",
-    "rootDir": "src",
-    "outDir": "es"
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false
   },
-  "include": ["src/**/*", "typings/**/*"],
-  "exclude": ["node_modules", "dist", "es", "lib", "__test__", "stories"]
+  "include": ["src/**/*", "stories/**/*", "__test__/**/*", "typings/**/*"],
+  "exclude": ["node_modules", "dist", "es", "lib"]
 }

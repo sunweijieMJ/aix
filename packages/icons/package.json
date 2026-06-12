@@ -30,7 +30,7 @@
     "test": "vitest --run",
     "build:generate": "tsx scripts/generate.ts",
     "build:js": "rollup -c",
-    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es -p tsconfig.build.json",
     "build": "pnpm run clean && pnpm run build:generate && pnpm run build:js && pnpm run build:types",
     "clean": "rimraf es lib src tsconfig.tsbuildinfo"
   },

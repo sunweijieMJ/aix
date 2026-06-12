@@ -1,0 +1,11 @@
+{
+  "extends": "@kit/typescript-config/base-library.json",
+  "compilerOptions": {
+    "declarationDir": "es",
+    "rootDir": "src",
+    "outDir": "es",
+    "tsBuildInfoFile": "tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*", "typings/**/*"],
+  "exclude": ["node_modules", "dist", "es", "lib", "__test__", "stories"]
+}

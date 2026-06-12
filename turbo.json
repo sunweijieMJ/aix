@@ -12,7 +12,7 @@
         "src/**/*.{css,scss,sass,less}",
         "src/**/*.{json,md}",
         "package.json",
-        "tsconfig.json",
+        "tsconfig*.json",
         "rollup.config.js",
         "../../rollup.config.js"
       ],
@@ -33,7 +33,7 @@
     },
     "build:types": {
       "dependsOn": ["build:js"],
-      "inputs": ["src/**/*.{ts,tsx,vue}", "tsconfig.json", "../../tsconfig.json"],
+      "inputs": ["src/**/*.{ts,tsx,vue}", "tsconfig*.json", "../../tsconfig.json"],
       "outputs": ["**/es/**/*.d.ts"],
       "cache": false
     },
@@ -43,6 +43,7 @@
         "src/**/*.{ts,tsx,vue}",
         "typings/**/*.d.ts",
         "stories/**/*.{ts,tsx,vue}",
+        "__test__/**/*.{ts,tsx,vue}",
         "tsconfig*.json",
         "package.json"
       ],
