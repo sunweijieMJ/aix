@@ -257,6 +257,21 @@ export namespace PdfViewer {
 }
 ```
 
+`defineExpose` 必须用 `satisfies` 与导出的 Expose 接口关联，防止接口与实现漂移：
+
+```typescript
+// ✓ 正确：satisfies 强制 expose 对象与文档类型同步（无运行时成本）
+defineExpose({ currentPage, goToPage } satisfies PdfViewerExpose);
+
+// ✗ 错误：裸对象字面量，增删方法时编译器无法发现接口脱节
+defineExpose({ currentPage, goToPage });
+```
+
+事件命名统一使用 **kebab-case**（多词事件如 `block-action`、`typing-complete`）；
+透传原生媒体/DOM 事件时保留原生小写名（如 `timeupdate`、`volumechange`），属于豁免场景。
+事件载荷约定：多字段一律用对象（`{ id, text }`），单字段用位置参数，同名事件跨组件层级保持同构签名。
+存量组件的 camelCase 事件（如 pdf-viewer 的 `pageChange`）不做破坏性改名，新组件必须遵循本约定。
+
 ### 3.3 导出入口（index.ts）
 
 每个组件包的 `index.ts` 同时支持按需导入和插件安装两种方式：
