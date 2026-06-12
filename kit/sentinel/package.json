@@ -15,7 +15,8 @@
     "./cli": {
       "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "sentinel": "./dist/cli.js"
@@ -41,6 +42,7 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "*",

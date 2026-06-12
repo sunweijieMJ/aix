@@ -11,7 +11,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist"
@@ -26,6 +27,7 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "@types/node": "*",
     "eslint": "*",

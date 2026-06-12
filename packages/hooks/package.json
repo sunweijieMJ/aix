@@ -17,13 +17,12 @@
       "types": "./es/use-locale/index.d.ts",
       "import": "./es/use-locale/index.js",
       "require": "./lib/use-locale/index.cjs"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
-    "dist",
     "lib",
-    "es",
-    "README.md"
+    "es"
   ],
   "scripts": {
     "dev": "rollup -c -w",
@@ -40,6 +39,7 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "eslint": "*",
     "rimraf": "*",

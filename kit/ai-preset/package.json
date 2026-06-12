@@ -15,7 +15,8 @@
     "./cli": {
       "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "ai-preset": "./dist/cli.js"
@@ -43,6 +44,7 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "@types/diff": "^8.0.0",
     "@types/node": "*",

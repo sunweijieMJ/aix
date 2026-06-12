@@ -25,7 +25,6 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist",
     "lib",
     "es"
   ],
@@ -52,6 +51,7 @@
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/stylelint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "eslint": "*",
     "rimraf": "*",

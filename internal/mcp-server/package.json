@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "@types/node": "*",
     "@types/ws": "^8.18.1",
