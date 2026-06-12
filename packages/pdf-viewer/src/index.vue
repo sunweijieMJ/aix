@@ -164,6 +164,7 @@ import type {
   PdfImageInfo,
   PdfViewerProps,
   PdfViewerEmits,
+  PdfViewerExpose,
   ThumbnailInfo,
 } from './types';
 
@@ -971,6 +972,7 @@ watch(currentPage, () => {
   }
 });
 
+// satisfies 约束确保 expose 对象与 types.ts 导出的接口不漂移
 defineExpose({
   // 状态
   loading,
@@ -1010,7 +1012,7 @@ defineExpose({
   // 其他
   reload,
   destroy,
-});
+} satisfies PdfViewerExpose);
 </script>
 
 <style lang="scss">

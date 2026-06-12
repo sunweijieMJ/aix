@@ -71,7 +71,8 @@ const rootStyle = computed<CSSProperties>(() => {
   return style;
 });
 
-defineExpose<CodeEditorExpose>({
+// satisfies 约束确保 expose 对象与 types.ts 导出的接口不漂移
+defineExpose({
   editorView,
   isFocused,
   getValue,
@@ -86,5 +87,5 @@ defineExpose<CodeEditorExpose>({
   getLineCount,
   getCursorPosition,
   diagnosticCount,
-});
+} satisfies CodeEditorExpose);
 </script>

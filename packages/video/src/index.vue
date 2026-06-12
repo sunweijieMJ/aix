@@ -38,7 +38,7 @@ import {
 } from './composables/useOrientationChange';
 import { useTouchEvents, type TouchEventsOptions } from './composables/useTouchEvents';
 import { useVideoPlayer, type VideoPlayerOptions } from './composables/useVideoPlayer';
-import type { ControlMethods, VideoPlayerProps, VideoPlayerEmits } from './types';
+import type { ControlMethods, VideoPlayerProps, VideoPlayerEmits, VideoPlayerExpose } from './types';
 
 defineOptions({
   name: 'VideoPlayer',
@@ -236,6 +236,7 @@ onBeforeUnmount(() => {
   videoPlayer.destroy();
 });
 
+// satisfies 约束确保 expose 对象与 types.ts 导出的接口不漂移
 defineExpose({
   // 响应式状态
   isReady: videoPlayer.isReady,
@@ -264,7 +265,7 @@ defineExpose({
   getPlaybackRate: videoPlayer.controller.getPlaybackRate,
   reload: () => videoPlayer.reloadStream(),
   forceReload: (shouldPlay?: boolean) => videoPlayer.forceReload(shouldPlay),
-});
+} satisfies VideoPlayerExpose);
 </script>
 
 <style lang="scss">

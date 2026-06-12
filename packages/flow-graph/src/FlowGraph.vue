@@ -111,6 +111,7 @@ import {
   type FlowConnection,
   type FlowEdge,
   type FlowGraphEmits,
+  type FlowGraphInstance,
   type FlowGraphProps,
   type FlowNode,
 } from './types';
@@ -479,13 +480,14 @@ function closeSearch() {
   flowSearchRef.value?.close();
 }
 
+// satisfies 约束确保 expose 对象与 types.ts 导出的接口不漂移
 defineExpose({
   fitView,
   addNode,
   openSearch,
   closeSearch,
   resetNodeStates: resetAllNodeStates,
-});
+} satisfies FlowGraphInstance);
 </script>
 
 <style>

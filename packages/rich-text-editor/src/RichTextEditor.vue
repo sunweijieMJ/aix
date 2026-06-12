@@ -38,7 +38,7 @@ import TableFloatingToolbar from './components/TableFloatingToolbar.vue';
 import { useEditorCore } from './composables/useEditorCore';
 import { useEditorToolbar } from './composables/useEditorToolbar';
 import { locale as richTextLocale } from './locale';
-import type { RichTextEditorProps, RichTextEditorEmits } from './types';
+import type { RichTextEditorProps, RichTextEditorEmits, RichTextEditorExpose } from './types';
 
 // 引入 Popper 组件样式（Dropdown/Popover/Tooltip 等）
 import '@aix/popper/style';
@@ -110,6 +110,7 @@ const rootStyle = computed<CSSProperties>(() => {
   return style;
 });
 
+// satisfies 约束确保 expose 对象与 types.ts 导出的接口不漂移
 defineExpose({
   editor,
   getHTML,
@@ -125,5 +126,5 @@ defineExpose({
   getCharacterCount,
   getWordCount,
   isEmpty,
-});
+} satisfies RichTextEditorExpose);
 </script>

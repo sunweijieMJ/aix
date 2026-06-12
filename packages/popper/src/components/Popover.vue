@@ -123,8 +123,8 @@ const mergedStyles = computed<CSSProperties>(() => {
   return styles;
 });
 
-defineExpose<PopoverExpose>({
+defineExpose({
   show,
   hide,
-});
+} satisfies PopoverExpose);
 </script>

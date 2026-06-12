@@ -141,8 +141,8 @@ const mergedStyles = computed(() => ({
   zIndex: currentZIndex.value,
 }));
 
-defineExpose<ContextMenuExpose>({
+defineExpose({
   show,
   hide,
-});
+} satisfies ContextMenuExpose);
 </script>

@@ -99,11 +99,11 @@ const mergedStyles = computed(() => ({
   zIndex: currentZIndex.value,
 }));
 
-defineExpose<TooltipExpose>({
+defineExpose({
   show: () => {
     show();
     nextTick(() => update());
   },
   hide,
-});
+} satisfies TooltipExpose);
 </script>

@@ -147,8 +147,8 @@ const mergedStyles = computed(() => ({
   zIndex: currentZIndex.value,
 }));
 
-defineExpose<DropdownExpose>({
+defineExpose({
   show,
   hide,
-});
+} satisfies DropdownExpose);
 </script>

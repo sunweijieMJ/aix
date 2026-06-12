@@ -132,10 +132,10 @@ function hide() {
   emit('update:open', false);
 }
 
-defineExpose<PopperExpose>({
+defineExpose({
   show,
   hide,
   update,
   referenceRef,
-});
+} satisfies PopperExpose);
 </script>

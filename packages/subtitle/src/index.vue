@@ -141,8 +141,8 @@ const subtitleStyle = computed(() => {
   };
 });
 
-// 暴露方法
-defineExpose<SubtitleExpose>({
+// 暴露方法（satisfies 约束确保 expose 对象与 types.ts 导出的接口不漂移）
+defineExpose({
   getCues: () => cues.value,
   getCurrentCue: () => currentCue.value,
   getCurrentIndex: () => currentIndex.value,
@@ -159,7 +159,7 @@ defineExpose<SubtitleExpose>({
   },
   loading,
   error,
-});
+} satisfies SubtitleExpose);
 </script>
 
 <style lang="scss">
