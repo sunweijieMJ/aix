@@ -43,6 +43,9 @@
   "peerDependencies": {
     "vue": "^3.5.31"
   },
+  "dependencies": {
+    "@chenglou/pretext": "^0.0.8"
+  },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/stylelint-config": "workspace:^",
@@ -53,8 +56,5 @@
     "stylelint": "*",
     "tsx": "*",
     "typescript": "*"
-  },
-  "dependencies": {
-    "@chenglou/pretext": "^0.0.3"
   }
 }
