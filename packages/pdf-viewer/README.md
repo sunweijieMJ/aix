@@ -28,7 +28,7 @@ pnpm add @aix/pdf-viewer
   <PdfViewer
     :source="pdfUrl"
     :config="{ showToolbar: true }"
-    @loaded="onLoaded"
+    @ready="onReady"
     @error="onError"
   />
 </template>
@@ -39,7 +39,7 @@ import '@aix/pdf-viewer/style';
 
 const pdfUrl = 'https://example.com/document.pdf';
 
-const onLoaded = (totalPages: number) => {
+const onReady = (totalPages: number) => {
   console.log('PDF 加载完成，共', totalPages, '页');
 };
 

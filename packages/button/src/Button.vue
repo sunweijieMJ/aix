@@ -76,8 +76,14 @@ const handleClick = (event: MouseEvent) => {
   user-select: none;
   gap: var(--aix-sizeXS);
 
-  &:focus {
+  // 鼠标点击聚焦不显示焦点环，键盘聚焦（:focus-visible）显示，保证键盘可访问性
+  &:focus:not(:focus-visible) {
     outline: none;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 var(--aix-controlOutlineWidth) var(--aix-controlOutline);
   }
 
   &__loading {

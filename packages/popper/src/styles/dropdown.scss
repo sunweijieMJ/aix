@@ -7,6 +7,9 @@
 
   &__trigger {
     display: inline-flex;
+
+    // 程序化归还焦点的临时落点（tabindex=-1，不在 Tab 序列），不显示包裹轮廓
+    outline: none;
   }
 
   &__menu {

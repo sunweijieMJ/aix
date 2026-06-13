@@ -46,8 +46,8 @@ const pdfUrl = '/documents/sample.pdf';
       <button @click="pdfRef?.nextPage()">下一页</button>
       <button @click="pdfRef?.zoomIn()">放大</button>
       <button @click="pdfRef?.zoomOut()">缩小</button>
-      <button @click="pdfRef?.fitWidth()">适应宽度</button>
-      <button @click="pdfRef?.fitPage()">适应页面</button>
+      <button @click="pdfRef?.fitToWidth()">适应宽度</button>
+      <button @click="pdfRef?.fitToPage()">适应页面</button>
     </div>
     <PdfViewer
       ref="pdfRef"
@@ -146,7 +146,7 @@ const onImageSelect = (images: PdfImageInfo[]) => {
         v-for="thumb in thumbnails"
         :key="thumb.pageNumber"
         class="thumbnail"
-        @click="pdfRef?.goToPage(thumb.pageNumber)"
+        @click="pdfRef?.gotoPage(thumb.pageNumber)"
       >
         <img :src="thumb.dataUrl" :alt="`Page ${thumb.pageNumber}`" />
         <span>{{ thumb.pageNumber }}</span>

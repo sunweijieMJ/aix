@@ -3,6 +3,7 @@
     :id="triggerId"
     ref="triggerRef"
     class="aix-dropdown__trigger"
+    tabindex="-1"
     :aria-expanded="isOpen"
     aria-haspopup="menu"
     v-on="referenceListeners"
@@ -129,15 +130,18 @@ const { currentZIndex, nextZIndex } = useZIndex();
 watch(isOpen, (val) => {
   if (val) {
     nextZIndex();
-    // 菜单打开后聚焦第一个菜单项，启用键盘导航
-    nextTick(() => {
-      const firstItem = floatingElRef.value?.querySelector<HTMLElement>(
-        '.aix-dropdown__item:not(.aix-dropdown__item--disabled)',
-      );
-      firstItem?.focus();
-    });
-  } else {
-    // 菜单关闭后归还焦点到触发器
+    // hover 模式由鼠标驱动，自动抢焦点会打断用户在其它位置的输入，故不聚焦；
+    // click 模式打开后聚焦第一个菜单项，启用键盘导航
+    if (props.trigger !== 'hover') {
+      nextTick(() => {
+        const firstItem = floatingElRef.value?.querySelector<HTMLElement>(
+          '.aix-dropdown__item:not(.aix-dropdown__item--disabled)',
+        );
+        firstItem?.focus();
+      });
+    }
+  } else if (props.trigger !== 'hover') {
+    // 菜单关闭后归还焦点到触发器（仅 click 模式，与打开时聚焦对称）
     triggerRef.value?.focus();
   }
 });
