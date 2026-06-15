@@ -71,7 +71,11 @@
         "../../internal/vitest-config/*.{js,ts}",
         "package.json"
       ],
+<<<<<<< HEAD
       "outputs": [],
+=======
+      "outputs": ["coverage/**"],
+>>>>>>> 9c69cd5 (fix: 审计修复脚手架构建破损与若干工程配置问题)
       "cache": true
     }
   }
