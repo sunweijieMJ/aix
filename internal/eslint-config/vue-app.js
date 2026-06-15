@@ -52,14 +52,6 @@ export const config = [
       'vue/no-v-html': 'off',
       // vue组件的可选 props 不需要强制默认值
       'vue/require-default-prop': 'off',
-      // 【临时关闭，待全仓 typescript 收敛到单一版本后放开】
-      // 根因是双 TS 版本错位：@typescript-eslint 8.61 的 peer 拉入 typescript@6.0.3，
-      // projectService 用 6.0 建 program（prop 的 type 带 6.0 的 TypeFlags 位值），
-      // 而 eslint-plugin-vue 用项目钉的 5.9.3 解读 TypeFlags。6.0 重排了枚举（String 4→32，
-      // 而 5.9 的 32=Enum、NumberLike 含 Enum），于是 import 接口里的 string prop 被误判成
-      // Number，字符串默认值被误报 "must be a number"（如 popper 的 teleportTo / transition）。
-      // 默认值类型校验本就由 defineProps<T>() + vue-tsc 覆盖，此规则冗余，先禁用。
-      'vue/require-valid-default-prop': 'off',
       // 关闭强制自闭合式
       'vue/html-self-closing': 'off',
       // 是否要求在标签的右括号前换行
