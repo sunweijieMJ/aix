@@ -1,4 +1,5 @@
 import { h, type VNode } from 'vue';
+import { safeUrl } from './url';
 
 /**
  * markdown-it token 的最小结构（walker 与块切分共用；真实 Token 结构兼容）。
@@ -52,12 +53,15 @@ export const builtinMarkdownRenderers: MarkdownRenderers = {
   em: ({ renderChildren }) => h('em', renderChildren()),
   strong: ({ renderChildren }) => h('strong', renderChildren()),
   s: ({ renderChildren }) => h('s', renderChildren()),
-  link: ({ token, renderChildren }) =>
-    h(
-      'a',
-      { href: attr(token, 'href'), target: '_blank', rel: 'noopener noreferrer' },
-      renderChildren(),
-    ),
+  link: ({ token, renderChildren }) => {
+    // 协议白名单纵深防护：不再隐式依赖 markdown-it 默认 validateLink（mdPlugins 可能放宽它），
+    // 由 walker 自有不变量兜底。不安全协议（javascript: 等）降级为纯文本，保留链接文案不渲染 href。
+    // 注：链接无 data: 合法场景，故对 href 套 safeUrl 无副作用；image 的 src 因需放行 data:image 不在此处理。
+    const href = safeUrl(attr(token, 'href'));
+    return href
+      ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, renderChildren())
+      : h('span', renderChildren());
+  },
   code_inline: ({ token }) => h('code', token.content),
   fence: ({ token }) => h('pre', h('code', token.content)),
   code_block: ({ token }) => h('pre', h('code', token.content)),

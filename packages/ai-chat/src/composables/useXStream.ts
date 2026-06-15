@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue';
+import { ref, shallowRef, getCurrentScope, onScopeDispose } from 'vue';
 
 /** 将字节流解码并按 \n 切分为行（剔除行尾 \r），支持中断 */
 export async function* xStream(
@@ -179,6 +179,11 @@ export function useXStream() {
   let controller: AbortController | null = null;
 
   const cancel = () => controller?.abort();
+
+  // 组件卸载（scope 销毁）时中止进行中的流，避免 reader 持续读取、向已脱离的响应式对象继续写入。
+  // 与 useChat / useTypewriter / useAttachments / useVoiceInput 的 onScopeDispose 约定对齐；
+  // 在 setup 外调用（无活动 scope）时跳过注册，避免 Vue 告警。
+  if (getCurrentScope()) onScopeDispose(cancel);
 
   const start = async (
     readableStream: ReadableStream<Uint8Array>,
