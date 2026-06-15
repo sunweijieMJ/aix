@@ -29,6 +29,7 @@
     "eslint-plugin-turbo": "^2.9.18",
     "eslint-plugin-vue": "^10.9.2",
     "globals": "^17.6.0",
+    "typescript": "catalog:",
     "typescript-eslint": "^8.61.0"
   }
 }

@@ -48,17 +48,25 @@
     }
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx,vue}": [
-      "eslint --fix"
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
     ],
-    "*.{css,scss,less,vue}": [
-      "stylelint --fix"
+    "*.vue": [
+      "eslint --fix",
+      "stylelint --fix",
+      "prettier --write"
+    ],
+    "*.{css,scss,less}": [
+      "stylelint --fix",
+      "prettier --write"
     ],
     "*.md": [
-      "markdownlint-cli2 --no-globs"
+      "markdownlint-cli2 --no-globs",
+      "prettier --write"
     ],
-    "*": [
-      "pretty-quick --staged"
+    "*.{json,jsonc,yaml,yml,html}": [
+      "prettier --write"
     ]
   },
   "peerDependencies": {
@@ -113,7 +121,6 @@
     "mermaid": "^11.15.0",
     "postcss": "catalog:",
     "prettier": "catalog:",
-    "pretty-quick": "^4.2.2",
     "rimraf": "catalog:",
     "rollup": "catalog:",
     "rollup-plugin-dts": "^6.4.1",

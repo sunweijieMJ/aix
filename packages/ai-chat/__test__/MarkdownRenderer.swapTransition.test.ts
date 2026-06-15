@@ -1,7 +1,10 @@
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
-import { __resetMarkdownEngineCache } from '../src/composables/useMarkdownRenderer';
+import {
+  __resetMarkdownEngineCache,
+  loadMarkdownEngine,
+} from '../src/composables/useMarkdownRenderer';
 
 // 流式块"形态切换"（残片代码块 → KaTeX 公式）的高度 FLIP 过渡：
 // 两种盒子高度天然不同，切换瞬间用高度过渡取代跳变，消除底部跟随滚动下的抖动。
@@ -17,12 +20,18 @@ describe('MarkdownRenderer 流式形态切换高度过渡', () => {
     const w = mount(MarkdownRenderer, {
       props: { content: '$$ \\frac{a}{b}', streaming: true },
     });
-    // 流式中：残片以 latex 围栏代码块呈现
-    await vi.waitFor(() => expect(w.find('pre').exists()).toBe(true));
+    // 以引擎 ready 作同步点：math 渲染器属后台增量合入，settle 后再断言，不依赖 wall-clock 超时。
+    // loadMarkdownEngine() 命中组件同一缓存实例（allowHtml=false 且无 mdPlugins）。
+    const engine = await loadMarkdownEngine();
+    await engine!.ready;
+    await flushPromises();
+    // 流式中：残片以 latex 围栏代码块呈现（未闭合 → 非 math_block，走围栏降级）
+    expect(w.find('pre').exists()).toBe(true);
 
     // 闭合：同一顶层块原地从 pre 替换为 KaTeX 块
     await w.setProps({ content: '$$ \\frac{a}{b} $$' });
-    await vi.waitFor(() => expect(w.find('.aix-md-katex-block').exists()).toBe(true));
+    await flushPromises();
+    expect(w.find('.aix-md-katex-block').exists()).toBe(true);
 
     // 形态切换被检测到 → 新元素带高度过渡内联样式（FLIP 启动）
     const el = w.find('.aix-md-katex-block').element as HTMLElement;

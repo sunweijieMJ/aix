@@ -10,9 +10,7 @@
   "style": "./dist/vars/index.css",
   "sideEffects": [
     "*.css",
-    "dist/**/*.css",
-    "dist/index.js",
-    "dist/index.cjs"
+    "dist/**/*.css"
   ],
   "exports": {
     ".": {

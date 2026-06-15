@@ -1,6 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["**/.env.*local"],
+  "globalDependencies": ["**/.env.*local", "internal/typescript-config/*.json", "tsconfig.json"],
   "remoteCache": {
     "signature": true
   },
@@ -17,25 +17,7 @@
         "../../rollup.config.js"
       ],
       "outputs": ["**/dist/**", "**/lib/**", "**/es/**"],
-      "cache": false
-    },
-    "build:js": {
-      "dependsOn": ["^build"],
-      "inputs": [
-        "src/**/*.{ts,tsx,js,jsx,vue}",
-        "src/**/*.{css,scss,sass,less}",
-        "package.json",
-        "rollup.config.js",
-        "../../rollup.config.js"
-      ],
-      "outputs": ["**/dist/**", "**/lib/**", "**/es/**"],
-      "cache": false
-    },
-    "build:types": {
-      "dependsOn": ["build:js"],
-      "inputs": ["src/**/*.{ts,tsx,vue}", "tsconfig*.json", "../../tsconfig.json"],
-      "outputs": ["**/es/**/*.d.ts"],
-      "cache": false
+      "cache": true
     },
     "type-check": {
       "dependsOn": ["^build"],
@@ -48,7 +30,7 @@
         "package.json"
       ],
       "outputs": [],
-      "cache": false
+      "cache": true
     },
     "lint": {
       "inputs": [
@@ -61,7 +43,7 @@
         "../../tsconfig.json"
       ],
       "outputs": [],
-      "cache": false
+      "cache": true
     },
     "dev": {
       "cache": false,
@@ -84,7 +66,7 @@
         "../../internal/vitest-config/*.{js,ts}"
       ],
       "outputs": ["coverage/**"],
-      "cache": false
+      "cache": true
     }
   }
 }
