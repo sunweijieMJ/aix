@@ -34,7 +34,7 @@ export async function runPostProcess(config: ProjectConfig, destDir: string): Pr
       run('git', ['commit', '-m', 'chore: 初始化项目'], destDir);
       spinner.stop('Git 仓库初始化完成');
     } catch {
-      spinner.stop('Git 初始化失败（跳过）', 1);
+      spinner.stop('Git 初始化失败（跳过）');
     }
   }
 
@@ -46,7 +46,7 @@ export async function runPostProcess(config: ProjectConfig, destDir: string): Pr
       run(pm, ['install'], destDir);
       spinner.stop('依赖安装完成');
     } catch (err) {
-      spinner.stop('依赖安装失败', 1);
+      spinner.stop('依赖安装失败');
       throw new CreateAppError(
         'E_UNKNOWN',
         `${pm} install 执行失败`,

@@ -47,12 +47,12 @@
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "eslint": "*",
-    "glob": "*",
-    "rimraf": "*",
-    "tsx": "*",
-    "typescript": "*",
-    "vue": "*",
-    "vue-tsc": "*"
+    "eslint": "catalog:",
+    "glob": "catalog:",
+    "rimraf": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vue": "catalog:",
+    "vue-tsc": "catalog:"
   }
 }

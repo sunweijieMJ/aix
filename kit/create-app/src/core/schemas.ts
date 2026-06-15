@@ -13,9 +13,9 @@ export const TemplateConfigSchema = z.object({
   id: z.string(),
   platform: z.enum(['web', 'mobile']),
   compatibleCliVersions: z.string(),
-  variables: z.record(z.string()),
-  features: z.record(TemplateFeatureDefSchema),
-  entryFiles: z.record(z.string()),
+  variables: z.record(z.string(), z.string()),
+  features: z.record(z.string(), TemplateFeatureDefSchema),
+  entryFiles: z.record(z.string(), z.string()),
 });
 
 export type TemplateConfigInput = z.input<typeof TemplateConfigSchema>;

@@ -29,7 +29,9 @@ export async function runPrompts(
     const result = await text({
       message: '定制目录名（如 sysu、gzdx）',
       validate: (value) =>
-        PROJECT_CODE_REGEX.test(value) ? undefined : '只能包含小写字母、数字和连字符，且以字母开头',
+        value && PROJECT_CODE_REGEX.test(value)
+          ? undefined
+          : '只能包含小写字母、数字和连字符，且以字母开头',
     });
     if (isCancel(result)) {
       console.log(pc.yellow('\n已取消'));

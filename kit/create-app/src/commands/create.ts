@@ -61,7 +61,7 @@ export async function create(projectName: string | undefined, opts: CreateOption
       templateDir = await resolver.fetch(templateSource, { force: opts.force });
       spinner.stop('模板准备就绪');
     } catch (err) {
-      spinner.stop('模板拉取失败', 1);
+      spinner.stop('模板拉取失败');
       throw err;
     }
 

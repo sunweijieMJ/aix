@@ -50,7 +50,7 @@
     "@aix/icons": "workspace:^",
     "@aix/popper": "workspace:^",
     "@aix/theme": "workspace:^",
-    "pdfjs-dist": "^5.4.624"
+    "pdfjs-dist": "^6.0.227"
   },
   "peerDependencies": {
     "vue": "^3.5.31"
@@ -60,10 +60,10 @@
     "@kit/stylelint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "eslint": "*",
-    "rimraf": "*",
-    "stylelint": "*",
-    "tsx": "*",
-    "typescript": "*"
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "stylelint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   }
 }

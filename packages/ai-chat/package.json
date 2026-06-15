@@ -49,11 +49,11 @@
     "@aix/hooks": "workspace:^",
     "@aix/icons": "workspace:^",
     "@aix/theme": "workspace:^",
-    "virtua": "^0.39.0"
+    "virtua": "^0.49.1"
   },
   "optionalDependencies": {
     "@vscode/markdown-it-katex": "^1.1.2",
-    "dompurify": "^3.4.8",
+    "dompurify": "^3.4.10",
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
     "markdown-it": "^14.2.0",
@@ -67,15 +67,15 @@
     "@kit/stylelint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "@types/markdown-it": "*",
-    "@vue/test-utils": "*",
-    "eslint": "*",
-    "jsdom": "*",
-    "rimraf": "*",
-    "stylelint": "*",
-    "tsx": "*",
-    "typescript": "*",
-    "vitest": "*",
-    "vue-tsc": "*"
+    "@types/markdown-it": "catalog:",
+    "@vue/test-utils": "catalog:",
+    "eslint": "catalog:",
+    "jsdom": "catalog:",
+    "rimraf": "catalog:",
+    "stylelint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "vue-tsc": "catalog:"
   }
 }

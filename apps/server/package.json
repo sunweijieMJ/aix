@@ -35,15 +35,15 @@
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "@types/adm-zip": "^0.5.8",
-    "@types/node": "*",
-    "@vitest/coverage-v8": "*",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "drizzle-kit": "^0.31.10",
-    "eslint": "*",
-    "prettier": "*",
-    "rimraf": "*",
-    "tsdown": "*",
-    "tsx": "*",
-    "typescript": "*",
-    "vitest": "*"
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "rimraf": "catalog:",
+    "tsdown": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

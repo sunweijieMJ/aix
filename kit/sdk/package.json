@@ -29,10 +29,10 @@
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "@types/node": "*",
-    "eslint": "*",
-    "rimraf": "*",
-    "tsdown": "*",
-    "vitest": "*"
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
   }
 }

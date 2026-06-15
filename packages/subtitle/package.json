@@ -56,10 +56,10 @@
     "@kit/stylelint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "eslint": "*",
-    "rimraf": "*",
-    "stylelint": "*",
-    "tsx": "*",
-    "typescript": "*"
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "stylelint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   }
 }

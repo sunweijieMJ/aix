@@ -35,23 +35,24 @@
   },
   "dependencies": {
     "chalk": "^5.6.2",
-    "commander": "^14.0.3",
-    "diff": "^8.0.4",
+    "commander": "^15.0.0",
+    "diff": "^9.0.0",
     "glob": "^13.0.6",
     "gray-matter": "^4.0.3",
     "handlebars": "^4.7.9",
-    "inquirer": "^13.3.2"
+    "inquirer": "^14.0.2"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "@types/diff": "^8.0.0",
-    "@types/node": "*",
-    "eslint": "*",
-    "rimraf": "*",
-    "tsdown": "*",
-    "tsx": "*",
-    "vitest": "*"
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "tsdown": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }

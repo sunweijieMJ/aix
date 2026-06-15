@@ -51,10 +51,10 @@
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "eslint": "*",
-    "rimraf": "*",
-    "tsx": "*",
-    "typescript": "*"
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   },
   "license": "MIT"
 }

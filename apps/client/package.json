@@ -32,13 +32,13 @@
     "@kit/typescript-config": "workspace:^",
     "@kit/stylelint-config": "workspace:^",
     "@kit/visual-testing": "workspace:^",
-    "@vitejs/plugin-vue": "*",
-    "cross-env": "*",
-    "eslint": "*",
-    "stylelint": "*",
-    "tsx": "*",
-    "typescript": "*",
-    "vite": "*",
-    "vue-tsc": "*"
+    "@vitejs/plugin-vue": "catalog:",
+    "cross-env": "catalog:",
+    "eslint": "catalog:",
+    "stylelint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vue-tsc": "catalog:"
   }
 }

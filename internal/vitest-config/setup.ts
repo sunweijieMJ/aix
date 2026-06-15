@@ -40,3 +40,10 @@ global.localStorage = {
     return keys[index] ?? null;
   }),
 } as unknown as Storage;
+
+// ---------------【jsdom 缺失的 DOM API 补丁】---------------
+// jsdom 未实现 document.elementFromPoint，tiptap / ProseMirror 的坐标定位会调用它而抛
+// unhandled error（测试断言不受影响，但会污染 vitest 退出码）。补一个安全空实现。
+if (typeof document !== 'undefined' && !document.elementFromPoint) {
+  document.elementFromPoint = () => null;
+}

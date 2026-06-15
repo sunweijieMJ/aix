@@ -60,6 +60,9 @@ export function usePdfLoader(options: UsePdfLoaderOptions = {}): UsePdfLoaderRet
   const error = ref<Error | null>(null);
 
   let currentLoadingTask: ReturnType<PdfJs['getDocument']> | null = null;
+  // 已加载文档对应的 loadingTask：pdfjs 6.0 移除了 PDFDocumentProxy.destroy()，
+  // 需保留 task 引用，靠 loadingTask.destroy() 销毁文档与 worker
+  let documentLoadingTask: ReturnType<PdfJs['getDocument']> | null = null;
 
   /**
    * 加载 PDF 文档
@@ -83,13 +86,14 @@ export function usePdfLoader(options: UsePdfLoaderOptions = {}): UsePdfLoaderRet
         currentLoadingTask = null;
       }
 
-      // 销毁之前的文档
+      // 销毁之前的文档（pdfjs 6.0：经 loadingTask.destroy() 销毁文档与 worker）
       if (pdfDocument.value) {
         try {
-          await pdfDocument.value.destroy();
+          await documentLoadingTask?.destroy();
         } catch {
           // 忽略销毁错误
         }
+        documentLoadingTask = null;
         pdfDocument.value = null;
       }
 
@@ -98,6 +102,8 @@ export function usePdfLoader(options: UsePdfLoaderOptions = {}): UsePdfLoaderRet
 
       currentLoadingTask = lib.getDocument(loadingParams);
       const pdf = await currentLoadingTask.promise;
+      // 保留 task 用于后续销毁（pdfjs 6.0 文档销毁需经 loadingTask）
+      documentLoadingTask = currentLoadingTask;
       currentLoadingTask = null;
 
       if (!pdf?.numPages) {
@@ -140,13 +146,14 @@ export function usePdfLoader(options: UsePdfLoaderOptions = {}): UsePdfLoaderRet
       currentLoadingTask = null;
     }
 
-    // 销毁文档
+    // 销毁文档（pdfjs 6.0：经 loadingTask.destroy()）
     if (pdfDocument.value) {
       try {
-        await pdfDocument.value.destroy();
+        await documentLoadingTask?.destroy();
       } catch {
         // 忽略
       }
+      documentLoadingTask = null;
       pdfDocument.value = null;
     }
 

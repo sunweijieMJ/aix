@@ -48,10 +48,10 @@
   "dependencies": {
     "@aix/icons": "workspace:^",
     "@aix/theme": "workspace:^",
-    "video.js": "^8.23.6",
-    "hls.js": "^1.6.15",
+    "dashjs": "^5.2.0",
     "flv.js": "^1.6.2",
-    "dashjs": "^5.1.0"
+    "hls.js": "^1.6.16",
+    "video.js": "^8.23.7"
   },
   "peerDependencies": {
     "vue": "^3.5.31"
@@ -62,10 +62,10 @@
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "@types/video.js": "^7.3.58",
-    "eslint": "*",
-    "rimraf": "*",
-    "stylelint": "*",
-    "tsx": "*",
-    "typescript": "*"
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "stylelint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
   }
 }

@@ -15,7 +15,7 @@ export async function updateTemplates(): Promise<void> {
         await resolver.fetch(info.source, { force: true });
         spinner.stop(`${platform} 模板已更新`);
       } catch (err) {
-        spinner.stop(`${platform} 模板更新失败`, 1);
+        spinner.stop(`${platform} 模板更新失败`);
         p.log.warn(err instanceof Error ? err.message : String(err));
       }
     }
