@@ -16,9 +16,14 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./style": "./dist/vars/index.css",
     "./vars": "./dist/vars/index.css",
@@ -42,7 +47,7 @@
     "lint": "pnpm run lint:script && pnpm run lint:style",
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && pnpm run gen:css && rollup -c && pnpm run build:types",
+    "build": "pnpm run clean && pnpm run gen:css && pnpm run build:types && rollup -c",
     "build:types": "tsc --emitDeclarationOnly --outDir dist -p tsconfig.build.json",
     "clean": "rimraf dist tsconfig.tsbuildinfo"
   },

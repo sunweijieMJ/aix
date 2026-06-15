@@ -9,14 +9,24 @@
   "sideEffects": false,
   "exports": {
     ".": {
-      "types": "./es/index.d.ts",
-      "import": "./es/index.js",
-      "require": "./lib/index.cjs"
+      "import": {
+        "types": "./es/index.d.ts",
+        "default": "./es/index.js"
+      },
+      "require": {
+        "types": "./lib/index.d.cts",
+        "default": "./lib/index.cjs"
+      }
     },
     "./use-locale": {
-      "types": "./es/use-locale/index.d.ts",
-      "import": "./es/use-locale/index.js",
-      "require": "./lib/use-locale/index.cjs"
+      "import": {
+        "types": "./es/use-locale/index.d.ts",
+        "default": "./es/use-locale/index.js"
+      },
+      "require": {
+        "types": "./lib/use-locale/index.d.cts",
+        "default": "./lib/use-locale/index.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
@@ -29,7 +39,7 @@
     "lint": "eslint . --max-warnings 0",
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
+    "build": "pnpm run clean && pnpm run build:types && pnpm run build:js",
     "build:js": "rollup -c",
     "build:types": "tsc -p tsconfig.build.json",
     "clean": "rimraf dist es lib tsconfig.tsbuildinfo"

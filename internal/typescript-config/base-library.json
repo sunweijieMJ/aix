@@ -3,11 +3,11 @@
   "extends": "./base.json",
   "compilerOptions": {
     "declaration": true,
-    "declarationMap": true,
+    "declarationMap": false,
     "emitDeclarationOnly": true,
     "sourceMap": true,
     "inlineSources": true,
     "composite": true,
-    "removeComments": true
+    "removeComments": false
   }
 }

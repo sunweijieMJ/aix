@@ -1,8 +1,10 @@
 import autoprefixer from 'autoprefixer';
 import postcssImport from 'postcss-import';
 import { defineConfig } from 'rollup';
+import { dts } from 'rollup-plugin-dts';
 import esbuild from 'rollup-plugin-esbuild';
 import postcss from 'rollup-plugin-postcss';
+import { isStyleId, stripStyleImports } from '../../rollup.config.js';
 
 // CSS 入口配置
 const cssEntries = [
@@ -66,5 +68,21 @@ export default defineConfig([
     },
     plugins: [esbuildPlugin],
     external: ['fs/promises', 'path'],
+  },
+  // 类型声明（dual-package 修复）：tsc 产出的 dist/*.d.ts → bundle 成单文件
+  // dist/index.d.ts（内联无扩展名相对引用，修 node16 internal resolution）+ 派生
+  // dist/index.d.cts 给 CJS 入口（修 masquerading）。须在 build:types 之后运行，
+  // 故 build 顺序为 gen:css → build:types → rollup -c（本段）。
+  {
+    input: 'dist/index.d.ts',
+    output: [
+      { file: 'dist/index.d.ts', format: 'es' },
+      { file: 'dist/index.d.cts', format: 'es' },
+    ],
+    external: (id) => /^vue($|\/)/.test(id) || isStyleId(id),
+    plugins: [dts({ respectExternal: true }), stripStyleImports()],
+    onwarn(warning, warn) {
+      if (warning.code !== 'CIRCULAR_DEPENDENCY') warn(warning);
+    },
   },
 ]);
