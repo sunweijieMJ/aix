@@ -65,7 +65,7 @@
         "vitest.config.ts",
         "../../internal/vitest-config/*.{js,ts}"
       ],
-      "outputs": ["coverage/**"],
+      "outputs": [],
       "cache": true
     }
   }
