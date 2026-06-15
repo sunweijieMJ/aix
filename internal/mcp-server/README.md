@@ -510,7 +510,7 @@ internal/mcp-server/
 ├── 📁 dist/                         # 构建产物
 ├── 📁 examples/                     # 配置示例
 ├── 📄 package.json                  # 项目配置
-├── 📄 tsup.config.ts                # 构建配置
+├── 📄 tsdown.config.ts                # 构建配置
 ├── 📄 vitest.config.ts              # 测试配置
 └── 📄 README.md                     # 本文档
 ```

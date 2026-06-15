@@ -253,7 +253,7 @@ export class FigmaMcpProvider implements BaselineProvider {
 
     try {
       // MCP SDK is an optional peer dependency, loaded dynamically at runtime.
-      // Wrapping import() in a function with a parameter prevents bundlers (tsup/esbuild)
+      // Wrapping import() in a function with a parameter prevents bundlers (tsdown/rolldown)
       // from statically resolving the module path, avoiding build errors when SDK is absent.
       const { Client } = await importOptional('@modelcontextprotocol/sdk/client/index.js');
       const { StdioClientTransport } = await importOptional(

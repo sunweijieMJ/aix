@@ -127,7 +127,7 @@ pnpm gen <component-name>
 ├── prettier.config.js           # Prettier 代码格式化配置
 ├── stylelint.config.mjs         # Stylelint 样式检查配置
 ├── rollup.config.js             # 共享 Rollup 构建配置
-├── tsup.config.ts               # tsup 构建配置（工具包）
+├── tsdown.config.ts               # tsdown 构建配置（工具包）
 ├── turbo.json                   # Turborepo 任务编排配置
 ├── tsconfig.json                # TypeScript 根配置
 ├── vitest.config.ts             # Vitest 测试框架配置

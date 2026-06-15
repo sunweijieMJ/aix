@@ -9,7 +9,7 @@
   "scripts": {
     "start": "tsx watch src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "build": "npm run clean && tsup src/index.ts --format esm --dts",
+    "build": "npm run clean && tsdown --config-loader tsx",
     "prod": "node dist/index.js",
     "clean": "rimraf dist",
     "test": "vitest run",
@@ -41,7 +41,7 @@
     "eslint": "*",
     "prettier": "*",
     "rimraf": "*",
-    "tsup": "*",
+    "tsdown": "*",
     "tsx": "*",
     "typescript": "*",
     "vitest": "*"

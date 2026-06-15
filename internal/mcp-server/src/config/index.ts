@@ -22,7 +22,7 @@ import { validateServerConfig } from '../utils/validation';
  */
 function getMCPServerRoot(): string {
   const currentDir = dirname(fileURLToPath(import.meta.url));
-  // tsup 构建后输出到 dist/，开发时运行在 src/config/
+  // tsdown 构建后输出到 dist/，开发时运行在 src/config/
   const isInBuildDir = currentDir.includes('/dist') || currentDir.includes('\\dist');
   return isInBuildDir
     ? resolve(currentDir, '..') // dist/ → mcp-server/

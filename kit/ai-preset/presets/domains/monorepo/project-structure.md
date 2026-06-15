@@ -103,7 +103,7 @@ pnpm test                            # 全量测试
 
 - [ ] `package.json`（name, version, exports, files）
 - [ ] `tsconfig.json`（继承根配置）
-- [ ] 构建配置（rollup/tsup）
+- [ ] 构建配置（rollup/tsdown）
 - [ ] `src/index.ts` 入口
 - [ ] 测试目录和基础测试
 - [ ] 在 CI 中验证构建

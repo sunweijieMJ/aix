@@ -641,7 +641,7 @@ export class GenerateProcessor extends BaseProcessor {
   /**
    * 读取 @kit/i18n-tools 包的 version 字段，写入 plan 元数据。
    *
-   * 用 createRequire(import.meta.url) 是因为本包打包为 ESM（tsup 生成 dist/index.js），
+   * 用 createRequire(import.meta.url) 是因为本包打包为 ESM（tsdown 生成 dist/index.js），
    * 直接 import package.json 在 strict ESM 下需要 import assertion，跨 node 版本
    * 支持参差；createRequire 是更稳的 ESM 兼容写法。
    *

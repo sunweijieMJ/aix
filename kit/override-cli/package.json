@@ -30,7 +30,7 @@
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsup",
+    "build": "pnpm run clean && tsdown --config-loader tsx",
     "clean": "rimraf dist"
   },
   "dependencies": {
@@ -49,7 +49,7 @@
     "@types/prompts": "^2.4.9",
     "eslint": "*",
     "rimraf": "*",
-    "tsup": "*",
+    "tsdown": "*",
     "tsx": "*",
     "vitest": "*"
   }

@@ -562,7 +562,7 @@ kit/tracker/
 ├── __test__/                         # 单元测试（12 个文件 63 个用例）
 ├── package.json
 ├── tsconfig.json
-└── tsup.config.ts
+└── tsdown.config.ts
 ```
 
 **数据流：**

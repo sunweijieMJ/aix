@@ -28,7 +28,7 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
   const ext = lang;
 
   // 模板目录：templates-override/{lang}/overrides/
-  // tsup 打包后 __dirname = dist/，向上一级即包根目录
+  // tsdown 打包后 __dirname = dist/，向上一级即包根目录
   const templatesDir = path.resolve(__dirname, '..', 'templates-override', lang, 'overrides');
 
   const eta = new Eta({

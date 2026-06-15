@@ -18,11 +18,11 @@
     "dist"
   ],
   "scripts": {
-    "dev": "tsup --watch",
+    "dev": "tsdown --watch --config-loader tsx",
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsup",
+    "build": "pnpm run clean && tsdown --config-loader tsx",
     "clean": "rimraf dist"
   },
   "peerDependencies": {
@@ -41,7 +41,7 @@
     "@types/node": "*",
     "eslint": "*",
     "rimraf": "*",
-    "tsup": "*",
+    "tsdown": "*",
     "vitest": "*",
     "vue": "*",
     "vue-router": "*"
