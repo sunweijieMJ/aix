@@ -10,6 +10,8 @@ const eslintConfig: Linter.Config[] = [
       '**/es/**/*',
       '**/lib/**/*',
       '**/*.log',
+      // VitePress 构建缓存（含第三方库产物代码），非源文件，任何 eslint 范围都不应检查
+      '**/.vitepress/cache/**/*',
       'internal/mcp-server/data/**/*',
       'packages/icons/src/**/*',
     ],

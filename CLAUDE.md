@@ -46,7 +46,7 @@ aix/
 ```
 
 **关键规则**:
-- `packages/` 以 `@aix/` scope 发布，`internal/` 和 `kit/` 以 `@kit/` scope 发布
+- `packages/` 以 `@aix/` scope 发布，`internal/` 和 `kit/` 以 `@kit/` scope 发布（唯一例外：`internal/mcp-server` 是面向组件库的 MCP 服务，有意发布为 `@aix/mcp-server`）
 - 包间依赖使用 `workspace:^` 协议
 - 每个组件包独立 `rollup.config.js`，继承根配置
 
