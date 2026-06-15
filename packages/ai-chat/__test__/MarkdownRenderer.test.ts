@@ -1,8 +1,11 @@
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { h } from 'vue';
 import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
-import { __resetMarkdownEngineCache } from '../src/composables/useMarkdownRenderer';
+import {
+  __resetMarkdownEngineCache,
+  loadMarkdownEngine,
+} from '../src/composables/useMarkdownRenderer';
 import type { MarkdownRenderContext } from '../src/utils/markdownWalker';
 
 // 新架构：token→VNode walker + 块级渲染 + 数学；冷启动需等引擎动态 import，用 vi.waitFor 轮询。
@@ -28,7 +31,13 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
   // 后者顺带覆盖归一化已接线（归一化函数本身的细节断言在 normalizeMathDelimiters.test.ts）。
   it.each([['$$E=mc^2$$'], ['\\[ E=mc^2 \\]']])('数学公式 %s 渲染为 KaTeX', async (content) => {
     const w = mount(MarkdownRenderer, { props: { content } });
-    await vi.waitFor(() => expect(w.html()).toContain('katex'));
+    // 以引擎 ready 作同步点：math 渲染器（katex 库）属后台增量合入，settle 后版本号已 bump，
+    // 此处不依赖 wall-clock 超时（turbo 满负载并行下冷加载耗时不定，vi.waitFor 默认超时会偶发误判）。
+    // loadMarkdownEngine() 命中组件同一缓存实例（allowHtml=false 且无 mdPlugins）。
+    const engine = await loadMarkdownEngine();
+    await engine!.ready;
+    await flushPromises();
+    expect(w.html()).toContain('katex');
   });
 
   it('自定义 markdownRenderers 覆盖内置（扩展性核心）', async () => {

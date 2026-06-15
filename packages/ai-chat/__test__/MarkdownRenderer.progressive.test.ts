@@ -1,8 +1,11 @@
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { h } from 'vue';
 import MarkdownRenderer from '../src/components/MarkdownRenderer.vue';
-import { __resetMarkdownEngineCache } from '../src/composables/useMarkdownRenderer';
+import {
+  __resetMarkdownEngineCache,
+  loadMarkdownEngine,
+} from '../src/composables/useMarkdownRenderer';
 import type { MarkdownRenderContext } from '../src/utils/markdownWalker';
 
 // 组件级渐进加载契约：
@@ -78,8 +81,11 @@ describe('MarkdownRenderer 渐进加载（基础先行 + 增强增量生效）',
         markdownRenderers: probe,
       },
     });
-    // 基础引擎就绪：三个块均已渲染，代码块（非末块 → committed）为纯 pre>code
-    await vi.waitFor(() => expect(w.findAll('p').length).toBe(2));
+    // 基础引擎就绪（不等 hljs）：引擎实例 resolve 即为基础就绪同步点，三个块均已渲染，
+    // 代码块（非末块 → committed）为纯 pre>code。engine.ready 此刻仍挂起（loadCodeRenderers 等 hljs deferred）。
+    const engine = await loadMarkdownEngine();
+    await flushPromises();
+    expect(w.findAll('p').length).toBe(2);
     expect(w.find('code.hljs').exists()).toBe(false);
 
     // hljs 此刻才就绪
@@ -91,14 +97,18 @@ describe('MarkdownRenderer 渐进加载（基础先行 + 增强增量生效）',
       },
     });
     state.hljsResolved = true;
-    // committed 的代码块必须自动补上高亮（无 content 变化，仅渲染器版本号 bump）
-    await vi.waitFor(() => expect(w.find('code.hljs').exists()).toBe(true));
+    // committed 的代码块必须自动补上高亮（无 content 变化，仅渲染器版本号 bump）。
+    // engine.ready 在 hljs 合入（version bump）后兑现 → 确定性同步点，替代 wall-clock 超时。
+    await engine!.ready;
+    await flushPromises();
+    expect(w.find('code.hljs').exists()).toBe(true);
     expect(w.html()).toContain('hljs-keyword');
 
     // —— 版本号与流式无关：增强合入完成后，流式追加 chunk 不得重渲染 committed 首块 ——
     const rendersAfterMerge = firstBlockRenders;
     await w.setProps({ content: '第一段\n\n```js\nconst x = 1\n```\n\n尾段追加中' });
-    await vi.waitFor(() => expect(w.text()).toContain('尾段追加中'));
+    await flushPromises();
+    expect(w.text()).toContain('尾段追加中');
     expect(firstBlockRenders).toBe(rendersAfterMerge);
   });
 
