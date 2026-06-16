@@ -46,6 +46,7 @@
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {
+    "@aix/hooks": "workspace:^",
     "@aix/icons": "workspace:^",
     "@aix/theme": "workspace:^",
     "dashjs": "^5.2.0",

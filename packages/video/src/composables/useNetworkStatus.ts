@@ -1,4 +1,5 @@
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { useEventListener } from '@aix/hooks';
+import { ref, onMounted } from 'vue';
 
 /**
  * 网络连接类型
@@ -148,29 +149,10 @@ export function useNetworkStatus(options: NetworkStatusOptions = {}) {
     }
   }
 
-  /**
-   * 绑定事件监听
-   */
-  function bindEvents(): void {
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    if (connection) {
-      connection.addEventListener('change', handleConnectionChange);
-    }
-  }
-
-  /**
-   * 解绑事件监听
-   */
-  function unbindEvents(): void {
-    window.removeEventListener('online', handleOnline);
-    window.removeEventListener('offline', handleOffline);
-
-    if (connection) {
-      connection.removeEventListener('change', handleConnectionChange);
-    }
-  }
+  // 网络状态监听，组件卸载自动解绑；connection 可能不存在，getter 返回 null 时不绑定
+  useEventListener(window, 'online', handleOnline);
+  useEventListener(window, 'offline', handleOffline);
+  useEventListener(() => connection ?? null, 'change', handleConnectionChange);
 
   /**
    * 获取当前网络状态
@@ -194,12 +176,6 @@ export function useNetworkStatus(options: NetworkStatusOptions = {}) {
   onMounted(() => {
     // 初始化网络信息
     updateNetworkInfo();
-    // 绑定事件
-    bindEvents();
-  });
-
-  onBeforeUnmount(() => {
-    unbindEvents();
   });
 
   return {
