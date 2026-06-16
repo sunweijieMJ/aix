@@ -18,3 +18,6 @@ export * from './use-z-index';
 
 // 带自动清理的事件监听
 export * from './use-event-listener';
+
+// 带自动清理与环境守卫的 ResizeObserver
+export * from './use-resize-observer';

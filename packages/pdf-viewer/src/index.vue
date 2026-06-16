@@ -141,7 +141,7 @@
  *
  * 使用 pdfjs-dist 提供 PDF 预览功能，支持文本和图片选择
  */
-import { useLocale, useEventListener } from '@aix/hooks';
+import { useLocale, useEventListener, useResizeObserver } from '@aix/hooks';
 import { ContextMenu as PopperContextMenu, DropdownItem } from '@aix/popper';
 import type { ContextMenuExpose } from '@aix/popper';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
@@ -232,7 +232,6 @@ const continuousPageRefs = new Map<number, HTMLElement>();
 
 // 容器尺寸
 const containerSize = ref({ width: 0, height: 0 });
-let resizeObserver: ResizeObserver | null = null;
 let resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let isInitialRender = true;
 let isManualZoom = false;
@@ -897,28 +896,23 @@ watch(
   async () => {
     if (!pdfLoader.pdfDocument.value) return;
 
-    // 断开旧 ResizeObserver
-    if (resizeObserver) {
-      resizeObserver.disconnect();
-      resizeObserver = null;
-    }
-
     await nextTick();
 
-    // 重连到新容器
-    const newContainer =
-      mergedConfig.value.scrollMode === 'continuous'
-        ? continuousContentRef.value
-        : contentRef.value;
-
-    if (newContainer && mergedConfig.value.fitToContainer) {
-      resizeObserver = new ResizeObserver(debouncedResize);
-      resizeObserver.observe(newContainer);
-    }
-
-    // 初始化新模式渲染
+    // 初始化新模式渲染（ResizeObserver 由下方 useResizeObserver 响应式重连，无需手动处理）
     await initCurrentMode();
   },
+);
+
+// 容器尺寸变化时重算 fit 缩放；target 随 scrollMode/fitToContainer 响应式切换，
+// useResizeObserver 自动断开旧容器、观测新容器，并在卸载时 disconnect
+useResizeObserver(
+  () =>
+    mergedConfig.value.fitToContainer
+      ? mergedConfig.value.scrollMode === 'continuous'
+        ? continuousContentRef.value
+        : contentRef.value
+      : null,
+  debouncedResize,
 );
 
 // 键盘事件监听（缩放/翻页快捷键）；useEventListener 自动随组件卸载解绑
@@ -926,15 +920,6 @@ useEventListener(document, 'keydown', handleKeydown);
 
 onMounted(async () => {
   await nextTick();
-
-  // 观察正确的容器（根据滚动模式）
-  const observeContainer =
-    mergedConfig.value.scrollMode === 'continuous' ? continuousContentRef.value : contentRef.value;
-
-  if (observeContainer && mergedConfig.value.fitToContainer) {
-    resizeObserver = new ResizeObserver(debouncedResize);
-    resizeObserver.observe(observeContainer);
-  }
 
   if (props.source) {
     loadAndRender();
@@ -950,10 +935,6 @@ onUnmounted(() => {
   if (scrollDebounceTimer) {
     clearTimeout(scrollDebounceTimer);
     scrollDebounceTimer = null;
-  }
-  if (resizeObserver) {
-    resizeObserver.disconnect();
-    resizeObserver = null;
   }
   destroy();
 });
