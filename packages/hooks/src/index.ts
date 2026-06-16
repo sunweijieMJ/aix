@@ -15,3 +15,6 @@ export * from './use-click-outside';
 
 // 全局浮层 z-index 管理
 export * from './use-z-index';
+
+// 带自动清理的事件监听
+export * from './use-event-listener';
