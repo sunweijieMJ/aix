@@ -297,6 +297,24 @@ describe('ThemeScope', () => {
     wrapper.unmount();
   });
 
+  it('自定义 prefix 下 token 覆写跟随前缀、transition 类固定 aix', () => {
+    const { install } = createTheme({ persist: false, prefix: 'myapp' });
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: {
+        config: { seed: { colorPrimary: 'rgb(0 0 255)' }, transition: { enabled: true } },
+      },
+      slots: { default: '<span>x</span>' },
+    });
+
+    const container = wrapper.find('div');
+    expect(container.classes()).toContain('aix-theme-transition');
+    expect(container.classes()).not.toContain('myapp-theme-transition');
+    expect(wrapper.html()).toContain('--myapp-colorPrimary');
+
+    wrapper.unmount();
+  });
+
   // ========== 新增测试：inherit 继承机制 ==========
 
   it('should inherit parent seed when inherit=true (default)', () => {
