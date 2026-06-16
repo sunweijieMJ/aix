@@ -48,9 +48,9 @@ export interface ModelSelectorProps {
 </script>
 
 <script setup lang="ts">
-import { useNamespace } from '@aix/hooks';
+import { useNamespace, useClickOutside } from '@aix/hooks';
 import { ArrowDropDown } from '@aix/icons';
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import type { ModelOption } from '../types';
 
 const props = withDefaults(defineProps<ModelSelectorProps>(), {
@@ -160,12 +160,12 @@ const onMenuKeydown = (e: KeyboardEvent) => {
   }
 };
 
-// 点击组件外部关闭下拉
-const onDocClick = (e: MouseEvent) => {
-  if (open.value && root.value && !root.value.contains(e.target as Node)) closeMenu();
-};
-onMounted(() => document.addEventListener('click', onDocClick));
-onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
+// 点击组件外部关闭下拉（统一用 @aix/hooks 的 useClickOutside，仅在打开时监听）
+useClickOutside({
+  excludeRefs: computed(() => [root.value]),
+  handler: () => closeMenu(),
+  enabled: open,
+});
 </script>
 
 <style lang="scss">

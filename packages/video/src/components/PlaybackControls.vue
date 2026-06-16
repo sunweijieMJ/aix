@@ -113,8 +113,9 @@
 </template>
 
 <script setup lang="ts">
+import { useClickOutside } from '@aix/hooks';
 import { Play, Pause, VolumeUp, VolumeMute, Fullscreen, FullscreenExit } from '@aix/icons';
-import { ref, computed, watch, onBeforeUnmount } from 'vue';
+import { ref, computed, onBeforeUnmount } from 'vue';
 import { useControlsAutoHide } from '../composables/useControlsAutoHide';
 import type { PlayerState, ControlMethods } from '../types';
 
@@ -270,24 +271,13 @@ function handleSetRate(rate: number): void {
   rateMenuVisible.value = false;
 }
 
-// 点击外部关闭倍速菜单（仅在菜单打开时监听）
-function onDocumentClickForRate(event: MouseEvent): void {
-  const target = event.target as HTMLElement;
-  if (rateRef.value && !rateRef.value.contains(target)) {
+// 点击外部关闭倍速菜单（统一用 @aix/hooks 的 useClickOutside，仅在菜单打开时监听）
+useClickOutside({
+  excludeRefs: computed(() => [rateRef.value]),
+  handler: () => {
     rateMenuVisible.value = false;
-  }
-}
-
-watch(rateMenuVisible, (visible) => {
-  if (visible) {
-    document.addEventListener('click', onDocumentClickForRate, {
-      capture: true,
-    });
-  } else {
-    document.removeEventListener('click', onDocumentClickForRate, {
-      capture: true,
-    });
-  }
+  },
+  enabled: rateMenuVisible,
 });
 
 // ========================
@@ -338,9 +328,6 @@ onBeforeUnmount(() => {
   document.removeEventListener('touchmove', onDocumentTouchMove);
   document.removeEventListener('touchend', onDocumentTouchEnd);
   document.removeEventListener('touchcancel', onDocumentTouchEnd);
-  document.removeEventListener('click', onDocumentClickForRate, {
-    capture: true,
-  });
 });
 
 defineExpose({
