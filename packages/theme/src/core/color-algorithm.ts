@@ -205,20 +205,31 @@ export function parseColorWithAlpha(color: string): RGBA {
 }
 
 /**
+ * 将单个 RGB 通道约束到合法范围 [0, 255] 并取整
+ * 防止色板/混合等计算溢出（如深色 seed 派生出负值）后输出非法 CSS
+ */
+function clampChannel(n: number): number {
+  return Math.max(0, Math.min(255, Math.round(n)));
+}
+
+/**
  * 将 RGB 对象转换为字符串（CSS Color Module Level 4 语法）
  */
 export function rgbToString(rgb: RGB): string {
-  return `rgb(${rgb.r} ${rgb.g} ${rgb.b})`;
+  return `rgb(${clampChannel(rgb.r)} ${clampChannel(rgb.g)} ${clampChannel(rgb.b)})`;
 }
 
 /**
  * 将 RGBA 对象转换为字符串（CSS Color Module Level 4 语法）
  */
 export function rgbaToString(rgba: RGBA): string {
+  const r = clampChannel(rgba.r);
+  const g = clampChannel(rgba.g);
+  const b = clampChannel(rgba.b);
   if (rgba.a === 1) {
-    return `rgb(${rgba.r} ${rgba.g} ${rgba.b})`;
+    return `rgb(${r} ${g} ${b})`;
   }
-  return `rgb(${rgba.r} ${rgba.g} ${rgba.b} / ${rgba.a})`;
+  return `rgb(${r} ${g} ${b} / ${rgba.a})`;
 }
 
 /**

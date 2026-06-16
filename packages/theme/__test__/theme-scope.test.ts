@@ -98,29 +98,33 @@ describe('ThemeScope', () => {
 
   it('should generate unique scope class per instance', () => {
     const { install } = createTheme({ persist: false });
-    const wrapper1 = mount(ThemeScope, {
-      global: { plugins: [{ install }] },
-      slots: { default: '<span>1</span>' },
-    });
-    const wrapper2 = mount(ThemeScope, {
-      global: { plugins: [{ install }] },
-      slots: { default: '<span>2</span>' },
-    });
+    // 同一 app 内挂载两个 ThemeScope（基于 useId 生成 SSR 稳定且实例间唯一的 scopeClass）
+    const wrapper = mount(
+      {
+        render() {
+          return h('div', [
+            h(ThemeScope, null, { default: () => h('span', '1') }),
+            h(ThemeScope, null, { default: () => h('span', '2') }),
+          ]);
+        },
+      },
+      {
+        global: { plugins: [{ install }] },
+      },
+    );
 
-    const class1 = wrapper1
-      .find('div')
-      .classes()
-      .find((c) => c.startsWith('aix-scope-'));
-    const class2 = wrapper2
-      .find('div')
-      .classes()
-      .find((c) => c.startsWith('aix-scope-'));
+    const scopeClasses = wrapper.findAllComponents(ThemeScope).map((c) =>
+      c
+        .find('div')
+        .classes()
+        .find((cls) => cls.startsWith('aix-scope-')),
+    );
 
-    expect(class1).toBeDefined();
-    expect(class2).toBeDefined();
-    expect(class1).not.toBe(class2);
-    wrapper1.unmount();
-    wrapper2.unmount();
+    expect(scopeClasses).toHaveLength(2);
+    expect(scopeClasses[0]).toBeDefined();
+    expect(scopeClasses[1]).toBeDefined();
+    expect(scopeClasses[0]).not.toBe(scopeClasses[1]);
+    wrapper.unmount();
   });
 
   it('should inherit parent mode when no mode/algorithm specified', () => {
