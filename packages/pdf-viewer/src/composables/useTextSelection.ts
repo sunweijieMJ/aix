@@ -2,6 +2,7 @@
  * useTextSelection - 文字选择增强
  * @description 提供文字选择相关的功能
  */
+import { copyText } from '@aix/hooks';
 import { ref } from 'vue';
 
 export interface UseTextSelectionOptions {
@@ -68,26 +69,8 @@ export function useTextSelection(options: UseTextSelectionOptions = {}): UseText
   async function copyToClipboard(): Promise<boolean> {
     const text = selectedText.value;
     if (!text) return false;
-
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // 降级方案
-      try {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        return true;
-      } catch {
-        return false;
-      }
-    }
+    // copyText 内含 Clipboard API + execCommand 兜底（兼容 HTTP / 旧浏览器）
+    return copyText(text);
   }
 
   return {

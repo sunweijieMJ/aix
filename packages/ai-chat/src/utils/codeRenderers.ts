@@ -1,8 +1,7 @@
-import { useLocale } from '@aix/hooks';
+import { useLocale, useClipboard } from '@aix/hooks';
 import { Copy, Check } from '@aix/icons';
-import { defineComponent, h, ref, watch, onScopeDispose } from 'vue';
+import { defineComponent, h, ref, watch } from 'vue';
 import { locale } from '../locale';
-import { copyText } from './clipboard';
 import type { MarkdownRenderers } from './markdownWalker';
 
 /** highlight.js 最小接口（v11 兼容；依赖注入，不直接耦合其类型声明） */
@@ -62,21 +61,12 @@ export function createHighlightRenderers(hljs: HljsLike): MarkdownRenderers {
       const html = ref<string | null>(null);
       const { t } = useLocale(locale);
 
-      // 复制态：成功复制后短暂显示「已复制」，1.5s 后复位（与 BubbleActions 一致）
-      const copied = ref(false);
-      let copyTimer: ReturnType<typeof setTimeout> | null = null;
+      // 复制态：成功复制后短暂显示「已复制」，1.5s 后复位（useClipboard 内含兜底 + 自动重置）
+      const { copied, copy } = useClipboard();
       const onCopy = async () => {
-        // copyText 内含 Clipboard API + execCommand 兜底（兼容 HTTP / 旧浏览器）；两者皆失败则不给反馈
-        if (!(await copyText(props.code))) return;
-        copied.value = true;
-        if (copyTimer) clearTimeout(copyTimer);
-        copyTimer = setTimeout(() => {
-          copied.value = false;
-        }, 1500);
+        // copy 内含 Clipboard API + execCommand 兜底（兼容 HTTP / 旧浏览器）；两者皆失败则不给反馈
+        await copy(props.code);
       };
-      onScopeDispose(() => {
-        if (copyTimer) clearTimeout(copyTimer);
-      });
 
       watch(
         () => [props.code, props.lang, props.settled] as const,
