@@ -185,13 +185,14 @@ export function generateThemeTokens(config: ThemeConfig): ThemeTokens {
   }
 
   // 8. 重新应用用户覆写（最高优先级）
-  if (algos.length > 0) {
-    finalTokens = {
-      ...finalTokens,
-      ...mapOverrides,
-      ...aliasOverrides,
-    };
-  }
+  // 无条件重应用：step 6.5 注入的 presetTokens 会覆盖用户对 colorPreset* 的覆写，
+  // step 7 的算法也可能覆盖用户值，故此处统一兜底，确保用户覆写始终最高优先级
+  // （无算法时也需执行，否则 token.colorPresetXxx 覆写会被静默丢弃）
+  finalTokens = {
+    ...finalTokens,
+    ...mapOverrides,
+    ...aliasOverrides,
+  };
 
   return finalTokens;
 }
@@ -546,6 +547,12 @@ function applyCompactAlgorithm(tokens: ThemeTokens): ThemeTokens {
     fontSizeLG: compactAlias.fontSizeLG,
     fontSizeXL: compactAlias.fontSizeXL,
     fontSizeXXL: compactAlias.fontSizeXXL,
+
+    // 行高随字号同步：派生公式为 (fontSize + 8) / fontSize（恒定 8px 行距），
+    // fontSize 缩小后行高比需一并更新，否则行距偏离设计不变量
+    lineHeightSM: compactAlias.lineHeightSM,
+    lineHeight: compactAlias.lineHeight,
+    lineHeightLG: compactAlias.lineHeightLG,
 
     borderRadiusXS: compactAlias.borderRadiusXS,
     borderRadiusSM: compactAlias.borderRadiusSM,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTheme } from '../src/vue/theme-context';
-import { darkAlgorithm, compactAlgorithm } from '../src/core/define-theme';
+import { darkAlgorithm, darkMixAlgorithm, compactAlgorithm } from '../src/core/define-theme';
 import type { ThemeAlgorithm } from '../src/theme-types';
 
 describe('ThemeContext', () => {
@@ -115,6 +115,22 @@ describe('ThemeContext', () => {
       expect(newMode).toBe('light');
       expect(themeContext.mode).toBe('light');
     });
+
+    it('darkMixAlgorithm 明暗往返后应保留，不退化为普通 dark（回归）', () => {
+      const { themeContext } = createTheme({
+        initialConfig: { algorithm: darkMixAlgorithm },
+      });
+      expect(themeContext.mode).toBe('dark');
+      expect(themeContext.config.algorithm as ThemeAlgorithm[]).toContain(darkMixAlgorithm);
+
+      // 往返切换：dark → light → dark
+      themeContext.setMode('light');
+      themeContext.setMode('dark');
+
+      const algos = themeContext.config.algorithm as ThemeAlgorithm[];
+      expect(algos).toContain(darkMixAlgorithm);
+      expect(algos).not.toContain(darkAlgorithm);
+    });
   });
 
   describe('applyTheme', () => {
@@ -208,6 +224,20 @@ describe('ThemeContext', () => {
 
       expect(themeContext.mode).toBe('light');
       expect(mockRoot.setAttribute).toHaveBeenCalledWith('data-theme', 'light');
+    });
+  });
+
+  describe('dispose', () => {
+    it('应清理注入的 DOM 覆写与过渡 class（回归）', () => {
+      const { themeContext, dispose } = createTheme();
+      // 注入一个覆写，确保有 DOM 副作用
+      themeContext.setToken('colorPrimary', 'rgb(255 0 0)');
+
+      dispose();
+
+      // dispose 内调用 renderer.reset() → removeTransition 会移除过渡 class
+      // （正常流程 transition.enabled=true 只会 add，不会 remove，故此断言可区分）
+      expect(mockRoot.classList.remove).toHaveBeenCalled();
     });
   });
 
