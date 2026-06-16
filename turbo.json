@@ -14,7 +14,9 @@
         "package.json",
         "tsconfig*.json",
         "rollup.config.js",
-        "../../rollup.config.js"
+        "../../rollup.config.js",
+        "tsdown.config.ts",
+        "../../tsdown.config.ts"
       ],
       "outputs": ["**/dist/**", "**/lib/**", "**/es/**"],
       "cache": true
@@ -26,6 +28,7 @@
         "typings/**/*.d.ts",
         "stories/**/*.{ts,tsx,vue}",
         "__test__/**/*.{ts,tsx,vue}",
+        "*.config.ts",
         "tsconfig*.json",
         "package.json"
       ],
@@ -35,11 +38,14 @@
     "lint": {
       "inputs": [
         "src/**/*.{ts,tsx,js,jsx,vue}",
+        "src/**/*.{css,scss,sass,less}",
         "stories/**/*.{ts,tsx,vue}",
         "__test__/**/*.{ts,tsx,vue}",
         "eslint.config.ts",
         "../../eslint.config.ts",
         "../../internal/eslint-config/**/*.js",
+        "stylelint.config.ts",
+        "../../internal/stylelint-config/**",
         "package.json",
         "tsconfig.json",
         "../../tsconfig.json"
@@ -65,7 +71,8 @@
         "src/**/*.{ts,tsx,js,jsx,vue}",
         "__test__/**/*.{ts,tsx,js,jsx,vue}",
         "vitest.config.ts",
-        "../../internal/vitest-config/*.{js,ts}"
+        "../../internal/vitest-config/*.{js,ts}",
+        "package.json"
       ],
       "outputs": [],
       "cache": true
