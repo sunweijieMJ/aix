@@ -1704,6 +1704,9 @@ importers:
 
   packages/video:
     dependencies:
+      '@aix/hooks':
+        specifier: workspace:^
+        version: link:../hooks
       '@aix/icons':
         specifier: workspace:^
         version: link:../icons
