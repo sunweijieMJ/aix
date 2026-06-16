@@ -4,17 +4,17 @@
       <div
         class="aix-hexagon-node"
         :class="[
-          `aix-hexagon-node--${nodeState}`,
+          ns.m(nodeState),
           {
-            'aix-hexagon-node--clicking': clicking,
-            'aix-hexagon-node--dimmed': data?.dimmed,
+            [ns.m('clicking')]: clicking,
+            [ns.m('dimmed')]: data?.dimmed,
           },
         ]"
         :style="
           data?.selecting
             ? {
-              filter: `drop-shadow(0 0 4px ${data?.activeColor || multiColors[0] || data?.color || FALLBACK_COLOR})`,
-            }
+                filter: `drop-shadow(0 0 4px ${data?.activeColor || multiColors[0] || data?.color || FALLBACK_COLOR})`,
+              }
             : undefined
         "
         @click="onClick"
@@ -95,6 +95,7 @@
  * 六边形节点：与 CircleNode 行为一致，仅视觉不同；`context` 状态下内外填充对调。
  * 交互壳由 {@link BaseNode} 承载。
  */
+import { useNamespace } from '@aix/hooks';
 import type { NodeProps } from '@vue-flow/core';
 import { computed } from 'vue';
 import { DEFAULT_HEXAGON_SIZE, type NodeData } from '../../types';
@@ -103,6 +104,8 @@ import BaseNode from './BaseNode.vue';
 defineOptions({ name: 'AixHexagonNode', inheritAttrs: false });
 
 const props = defineProps<NodeProps<NodeData>>();
+
+const ns = useNamespace('hexagon-node');
 
 /** 六边形节点主色回退（无 data.color 时使用） */
 const FALLBACK_COLOR = '#963096';
