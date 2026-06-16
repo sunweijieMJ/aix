@@ -1,6 +1,11 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["**/.env.*local", "internal/typescript-config/*.json", "tsconfig.json"],
+  "globalDependencies": [
+    "**/.env.*local",
+    "internal/typescript-config/*.json",
+    "tsconfig.json",
+    "typings/**/*.d.ts"
+  ],
   "remoteCache": {
     "signature": true
   },
@@ -11,6 +16,7 @@
         "src/**/*.{ts,tsx,js,jsx,vue}",
         "src/**/*.{css,scss,sass,less}",
         "src/**/*.{json,md}",
+        "typings/**/*.d.ts",
         "package.json",
         "tsconfig*.json",
         "rollup.config.js",
@@ -71,6 +77,7 @@
         "src/**/*.{ts,tsx,js,jsx,vue}",
         "__test__/**/*.{ts,tsx,js,jsx,vue}",
         "vitest.config.ts",
+        "*.setup.ts",
         "../../internal/vitest-config/*.{js,ts}",
         "package.json"
       ],
