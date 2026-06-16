@@ -82,12 +82,11 @@ export interface BubbleActionsEmits {
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
-import { useNamespace } from '@aix/hooks';
+import { useNamespace, copyText } from '@aix/hooks';
 import { Copy, Check, Refresh, ThumbUp, ThumbDown } from '@aix/icons';
 import { ref, computed, onScopeDispose } from 'vue';
 import { locale } from '../locale';
 import type { ActionsItems, ActionItem, ChatMessage, MessageFeedback } from '../types';
-import { copyText } from '../utils/clipboard';
 
 const props = withDefaults(defineProps<BubbleActionsProps>(), {
   content: '',

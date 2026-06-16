@@ -80,3 +80,46 @@ describe('useClipboard', () => {
     scope.stop();
   });
 });
+
+describe('copyText 兜底路径', () => {
+  // jsdom 未实现 document.execCommand，直接赋值 mock
+  const setExec = (fn: ReturnType<typeof vi.fn>) => {
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: fn });
+    return fn;
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(navigator, 'clipboard');
+    Reflect.deleteProperty(document, 'execCommand');
+  });
+
+  it('优先用 Clipboard API：成功返回 true，不触发 execCommand', async () => {
+    const writeText = mockClipboard(() => Promise.resolve());
+    const exec = setExec(vi.fn().mockReturnValue(true));
+    expect(await copyText('hi')).toBe(true);
+    expect(writeText).toHaveBeenCalledWith('hi');
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it('Clipboard API 写入失败（权限被拒/非聚焦）→ 降级 execCommand', async () => {
+    const writeText = mockClipboard(() => Promise.reject(new Error('denied')));
+    const exec = setExec(vi.fn().mockReturnValue(true));
+    expect(await copyText('hi')).toBe(true);
+    expect(writeText).toHaveBeenCalled();
+    expect(exec).toHaveBeenCalledWith('copy');
+  });
+
+  it('无 Clipboard API（HTTP 非安全上下文/旧浏览器）→ 直接走 execCommand 兜底', async () => {
+    // 不设置 navigator.clipboard
+    const exec = setExec(vi.fn().mockReturnValue(true));
+    expect(await copyText('hi')).toBe(true);
+    expect(exec).toHaveBeenCalledWith('copy');
+  });
+
+  it('两条路径都失败 → 返回 false', async () => {
+    mockClipboard(() => Promise.reject(new Error('denied')));
+    setExec(vi.fn().mockReturnValue(false));
+    expect(await copyText('hi')).toBe(false);
+  });
+});
