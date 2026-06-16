@@ -538,3 +538,35 @@ window.addEventListener('aix-theme-change', (e) => {
   console.log('主题变化:', e.detail);
 });
 ```
+
+## 业务仓库：构建时生成品牌主题 CSS
+
+`@aix/theme` 可作为「主题引擎」给业务仓库复用：以品牌主色为 seed，构建时派生整套
+CSS 变量。推荐用一等公民函数 `generateThemeCSS`，避免手写 派生→diff→渲染 流水线。
+
+```ts
+// scripts/gen-theme.ts
+import { writeFileSync } from 'node:fs';
+import { generateThemeCSS } from '@aix/theme';
+
+const css = generateThemeCSS({
+  seed: { colorPrimary: 'rgb(0 88 38)' }, // 品牌主色
+  // prefix: 'myapp',                      // 可选：白标自定义前缀（默认 aix）
+});
+writeFileSync('public/assets/theme.css', css);
+```
+
+或用 CLI（产出带分组注释的参考 CSS/TS/JSON）：
+
+```bash
+npx aix-theme-export --output ./public/theme/ --prefix myapp
+```
+
+### 运行时自定义前缀的前提
+
+`createTheme({ prefix })` / `ThemeScope` 运行时只注入「覆写差异」变量。使用自定义
+前缀时，必须先用上面任一方式在构建时生成该前缀的**基础变量 CSS** 并引入页面，否则
+非覆写 token 没有对应的 `--<prefix>-*` 基础值。组件库自身组件始终消费 `--aix-*`。
+
+> 主题过渡动画（`.aix-theme-transition` / `--aix-transition-*`）是库基础设施，
+> 固定使用 `aix` 前缀，不随自定义 token 前缀变化。
