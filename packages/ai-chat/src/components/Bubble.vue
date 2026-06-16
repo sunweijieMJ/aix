@@ -96,9 +96,9 @@ export interface BubbleEmits {
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { Edit } from '@aix/icons';
 import { computed, watchEffect, useSlots, ref } from 'vue';
-import { useNamespace } from '../composables/useNamespace';
 import { locale } from '../locale';
 import type { BlockAction, BubbleProps, BubbleContentInfo, BlockRenderers } from '../types';
 import { messageText } from '../utils/helpers';

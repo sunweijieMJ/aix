@@ -48,9 +48,9 @@ export interface ModelSelectorProps {
 </script>
 
 <script setup lang="ts">
+import { useNamespace } from '@aix/hooks';
 import { ArrowDropDown } from '@aix/icons';
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import { useNamespace } from '../composables/useNamespace';
 import type { ModelOption } from '../types';
 
 const props = withDefaults(defineProps<ModelSelectorProps>(), {

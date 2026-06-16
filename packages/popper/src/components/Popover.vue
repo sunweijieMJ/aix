@@ -38,10 +38,10 @@
 </template>
 
 <script setup lang="ts">
+import { useZIndex } from '@aix/hooks';
 import { computed, ref, useId, watch, type CSSProperties } from 'vue';
 import { usePopper } from '../composables/usePopper';
 import { usePopperTrigger } from '../composables/usePopperTrigger';
-import { useZIndex } from '../composables/useZIndex';
 import type { PopoverProps, PopoverEmits, PopoverExpose } from '../types';
 
 defineOptions({

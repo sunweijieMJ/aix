@@ -20,8 +20,8 @@
 </template>
 
 <script setup lang="ts">
+import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
-import { useNamespace } from '../composables/useNamespace';
 import type { PromptItem } from '../types';
 
 const props = defineProps<{ items: PromptItem[] }>();

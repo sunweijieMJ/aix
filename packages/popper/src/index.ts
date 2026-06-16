@@ -45,9 +45,7 @@ export {
   usePopper,
   usePopperTrigger,
   createVirtualElement,
-  useClickOutside,
   createMenuKeyDown,
-  useZIndex,
 } from './composables';
 
 export type {
@@ -55,9 +53,7 @@ export type {
   UsePopperReturn,
   UsePopperTriggerOptions,
   UsePopperTriggerReturn,
-  UseClickOutsideOptions,
   MenuKeyboardOptions,
-  UseZIndexReturn,
 } from './composables';
 
 // 注入 Key

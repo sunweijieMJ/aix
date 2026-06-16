@@ -162,6 +162,7 @@ export interface SenderSlotScope {
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { Attachment, Mic } from '@aix/icons';
 import { ref, computed, watch, nextTick, reactive } from 'vue';
 // 发送按钮图标采用设计稿导出的本地 SVG 资源：默认态为纸飞机、输出中为停止圆点。
@@ -170,7 +171,6 @@ import sendIconUrl from '../assets/send-default.svg';
 import stopIconUrl from '../assets/send-streaming.svg';
 import { useAttachments } from '../composables/useAttachments';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
-import { useNamespace } from '../composables/useNamespace';
 import { useVoiceInput } from '../composables/useVoiceInput';
 import { locale } from '../locale';
 import type { AttachmentItem, VoiceConfig } from '../types';

@@ -40,6 +40,7 @@ export interface MarkdownRendererProps {
 </script>
 
 <script setup lang="ts">
+import { useNamespace } from '@aix/hooks';
 import {
   ref,
   shallowRef,
@@ -58,7 +59,6 @@ import {
   type MarkdownEngine,
   type MarkdownItPlugin,
 } from '../composables/useMarkdownRenderer';
-import { useNamespace } from '../composables/useNamespace';
 import { transitionHeight } from '../utils/heightTransition';
 import { imageRenderers } from '../utils/imageRenderers';
 import { normalizeMathDelimiters, protectStreamingMarkdown } from '../utils/markdown';

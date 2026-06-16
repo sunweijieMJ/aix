@@ -18,16 +18,6 @@
         "default": "./lib/index.cjs"
       }
     },
-    "./use-locale": {
-      "import": {
-        "types": "./es/use-locale/index.d.ts",
-        "default": "./es/use-locale/index.js"
-      },
-      "require": {
-        "types": "./lib/use-locale/index.d.cts",
-        "default": "./lib/use-locale/index.cjs"
-      }
-    },
     "./package.json": "./package.json"
   },
   "files": [

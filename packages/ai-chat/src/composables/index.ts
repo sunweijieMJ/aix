@@ -1,5 +1,3 @@
-// 注意：useNamespace 是包内私有 BEM 工具（前缀硬编码 aix-），不对外导出，
-// 组件经 '../composables/useNamespace' 直接 import 使用。
 export { xStream, sseStream, useXStream } from './useXStream';
 export type { SSEChunk } from './useXStream';
 export { useChat } from './useChat';
