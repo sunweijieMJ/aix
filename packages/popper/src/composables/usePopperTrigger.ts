@@ -1,5 +1,5 @@
-import { useClickOutside, useEventListener } from '@aix/hooks';
-import { ref, computed, onBeforeUnmount, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
+import { useClickOutside, useEventListener, useControllable, useTimeout } from '@aix/hooks';
+import { computed, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
 import type { TriggerType } from '../types';
 
 /** 事件处理器类型，兼容无参和带 Event 参数的回调 */
@@ -64,49 +64,31 @@ export function usePopperTrigger(options: UsePopperTriggerOptions): UsePopperTri
     floatingRef,
   } = options;
 
-  const internalOpen = ref(false);
-
-  // 受控模式：open prop 优先于内部状态
-  const isOpen = computed(() => {
-    const controlled = open != null ? toValue(open) : undefined;
-    return controlled !== undefined ? controlled : internalOpen.value;
+  // 受控/非受控状态：open prop 优先；受控时只通知外部不污染内部（含相等去重）
+  const { state: isOpen, setState: setOpen } = useControllable<boolean>({
+    prop: open,
+    defaultValue: false,
+    onChange: onOpenChange,
   });
 
-  let showTimer: ReturnType<typeof setTimeout> | null = null;
-  let hideTimer: ReturnType<typeof setTimeout> | null = null;
+  // 延迟显示/隐藏定时器：start 取当前 delay，组件卸载/scope 销毁自动清理
+  const showTimeout = useTimeout(() => {
+    if (toValue(disabled)) return;
+    setOpen(true);
+  }, showDelay);
+  const hideTimeout = useTimeout(() => setOpen(false), hideDelay);
 
   function clearTimers() {
-    if (showTimer) {
-      clearTimeout(showTimer);
-      showTimer = null;
-    }
-    if (hideTimer) {
-      clearTimeout(hideTimer);
-      hideTimer = null;
-    }
-  }
-
-  function setOpen(val: boolean) {
-    if (isOpen.value !== val) {
-      // 受控模式下只通知外部，不修改内部状态，避免切回非受控时状态污染
-      const controlled = open != null ? toValue(open) : undefined;
-      if (controlled === undefined) {
-        internalOpen.value = val;
-      }
-      onOpenChange?.(val);
-    }
+    showTimeout.stop();
+    hideTimeout.stop();
   }
 
   function show() {
     if (toValue(disabled)) return;
     clearTimers();
-
-    const delay = toValue(showDelay);
-    if (delay > 0) {
-      showTimer = setTimeout(() => {
-        if (toValue(disabled)) return;
-        setOpen(true);
-      }, delay);
+    // delay 为 0 时同步打开（setTimeout(fn, 0) 会推迟到下一 tick，故仍走分支）
+    if (toValue(showDelay) > 0) {
+      showTimeout.start();
     } else {
       setOpen(true);
     }
@@ -114,10 +96,8 @@ export function usePopperTrigger(options: UsePopperTriggerOptions): UsePopperTri
 
   function hide() {
     clearTimers();
-
-    const delay = toValue(hideDelay);
-    if (delay > 0) {
-      hideTimer = setTimeout(() => setOpen(false), delay);
+    if (toValue(hideDelay) > 0) {
+      hideTimeout.start();
     } else {
       setOpen(false);
     }
@@ -226,9 +206,7 @@ export function usePopperTrigger(options: UsePopperTriggerOptions): UsePopperTri
     return listeners;
   });
 
-  onBeforeUnmount(() => {
-    clearTimers();
-  });
+  // 定时器由 useTimeout 在 scope 销毁时自动清理，无需手动 onBeforeUnmount
 
   return {
     isOpen,
