@@ -21,3 +21,15 @@ export * from './use-event-listener';
 
 // 带自动清理与环境守卫的 ResizeObserver
 export * from './use-resize-observer';
+
+// 带自动清理的 setTimeout
+export * from './use-timeout';
+
+// 带自动清理的 setInterval
+export * from './use-interval';
+
+// 受控 / 非受控状态封装（v-model 包装）
+export * from './use-controllable';
+
+// 剪贴板复制（兜底 + copied 反馈态）
+export * from './use-clipboard';
