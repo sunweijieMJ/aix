@@ -1,6 +1,6 @@
 {
   "name": "@aix/mcp-server",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "MCP server for component library",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
