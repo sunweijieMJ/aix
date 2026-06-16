@@ -83,12 +83,12 @@
  * - 提供 `#bottom-bar` 具名插槽（默认渲染 `添加节点 / Controls / 搜索` 三件套），
  *   插槽 props 暴露 `addNode / openSearch / closeSearch / fitView / zoomIn / zoomOut`。
  */
-import { useLocale } from '@aix/hooks';
+import { useLocale, useEventListener } from '@aix/hooks';
 import { Background } from '@vue-flow/background';
 import { Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import type { EdgeChange, EdgeUpdateEvent, NodeChange } from '@vue-flow/core';
 import { MiniMap } from '@vue-flow/minimap';
-import { computed, markRaw, onMounted, onUnmounted, provide, ref } from 'vue';
+import { computed, markRaw, provide, ref } from 'vue';
 import '@vue-flow/minimap/dist/style.css';
 import ColorEdge from './components/edges/ColorEdge.vue';
 import FlowControls from './components/FlowControls.vue';
@@ -274,8 +274,8 @@ function onKeyDelete(event: KeyboardEvent) {
   if (blockedNodeIds.length) emit('node-delete-blocked', blockedNodeIds);
 }
 
-onMounted(() => window.addEventListener('keydown', onKeyDelete));
-onUnmounted(() => window.removeEventListener('keydown', onKeyDelete));
+// 监听键盘删除（Delete/Backspace）；useEventListener 自动随组件卸载解绑
+useEventListener(window, 'keydown', onKeyDelete);
 
 /** 内置节点类型（markRaw 避免 Vue 代理开销） */
 const builtInNodeTypes = {
