@@ -141,7 +141,7 @@
  *
  * 使用 pdfjs-dist 提供 PDF 预览功能，支持文本和图片选择
  */
-import { useLocale } from '@aix/hooks';
+import { useLocale, useEventListener } from '@aix/hooks';
 import { ContextMenu as PopperContextMenu, DropdownItem } from '@aix/popper';
 import type { ContextMenuExpose } from '@aix/popper';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
@@ -921,6 +921,9 @@ watch(
   },
 );
 
+// 键盘事件监听（缩放/翻页快捷键）；useEventListener 自动随组件卸载解绑
+useEventListener(document, 'keydown', handleKeydown);
+
 onMounted(async () => {
   await nextTick();
 
@@ -932,9 +935,6 @@ onMounted(async () => {
     resizeObserver = new ResizeObserver(debouncedResize);
     resizeObserver.observe(observeContainer);
   }
-
-  // 添加键盘事件监听
-  document.addEventListener('keydown', handleKeydown);
 
   if (props.source) {
     loadAndRender();
@@ -955,7 +955,6 @@ onUnmounted(() => {
     resizeObserver.disconnect();
     resizeObserver = null;
   }
-  document.removeEventListener('keydown', handleKeydown);
   destroy();
 });
 
