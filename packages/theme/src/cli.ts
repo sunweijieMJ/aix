@@ -16,9 +16,19 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import { applyDarkAlgorithm } from './core/define-theme';
-import { defaultSeedTokens, deriveMapTokens, deriveAliasTokens } from './core/seed-derivation';
+import {
+  DEFAULT_PRESET_COLORS,
+  defaultSeedTokens,
+  deriveMapTokens,
+  deriveAliasTokens,
+  derivePresetColorTokens,
+} from './core/seed-derivation';
 import { CSS_VAR_PREFIX } from './utils/css-var';
-import { BASE_TOKEN_GROUPS, SEMANTIC_TOKEN_GROUPS } from './utils/token-metadata';
+import {
+  BASE_TOKEN_GROUPS,
+  SEMANTIC_TOKEN_GROUPS,
+  generatePresetColorGroups,
+} from './utils/token-metadata';
 import type { BaseTokens, ThemeTokens } from './theme-types';
 
 // ============================================================
@@ -94,7 +104,13 @@ function prepareTokenData(customSeed?: Partial<typeof defaultSeedTokens>) {
 
   const darkTokens = applyDarkAlgorithm(fullLightTokens);
 
-  return { baseTokens, fullLightTokens, darkTokens };
+  // 预设色板（colorPresetXxx1..10）。属基础层 Token，亮/暗模式一致，
+  // 与 gen-css.ts 生成的 base-tokens.css 保持一致，避免导出参考文件漏变量
+  const presetColors = seed.presetColors ?? DEFAULT_PRESET_COLORS;
+  const presetColorTokens = derivePresetColorTokens(presetColors);
+  const presetGroups = generatePresetColorGroups(presetColors);
+
+  return { baseTokens, fullLightTokens, darkTokens, presetColorTokens, presetGroups };
 }
 
 // ============================================================
@@ -178,6 +194,10 @@ const SIZE_MAP: Record<string, string> = {
 };
 
 function getTokenJSDoc(key: string): string {
+  // 预设色板 token: colorPresetBlue1 → "预设色 Blue 1"
+  const presetMatch = key.match(/^colorPreset([A-Za-z]+?)(\d+)$/);
+  if (presetMatch) return `预设色 ${presetMatch[1]} ${presetMatch[2]}`;
+
   // 色盘 token: tokenCyan1 → "Cyan 1"
   const paletteMatch = key.match(/^token(Cyan|Blue|Purple|Green|Red|Orange|Gold|Gray)(\d+)$/);
   if (paletteMatch) return `${paletteMatch[1]} ${paletteMatch[2]}`;
@@ -242,7 +262,12 @@ function fmtVal(value: string | number): string {
 // CSS 生成
 // ============================================================
 
-function generateLightCSS(baseTokens: BaseTokens, fullLightTokens: ThemeTokens): string {
+function generateLightCSS(
+  baseTokens: BaseTokens,
+  fullLightTokens: ThemeTokens,
+  presetColorTokens: Record<string, string>,
+  presetGroups: Record<string, string[]>,
+): string {
   const lines: string[] = [
     '/**',
     ' * AIX 主题 Token - 亮色模式（全量解析值）',
@@ -258,6 +283,17 @@ function generateLightCSS(baseTokens: BaseTokens, fullLightTokens: ThemeTokens):
     lines.push(`  /* ========== ${groupName} ========== */`);
     for (const key of tokenKeys) {
       const value = baseTokens[key as keyof typeof baseTokens];
+      if (value !== undefined) {
+        lines.push(`  --${P}-${key}: ${fmtVal(value)};`);
+      }
+    }
+    lines.push('');
+  }
+
+  for (const [groupName, tokenKeys] of Object.entries(presetGroups)) {
+    lines.push(`  /* ========== ${groupName} ========== */`);
+    for (const key of tokenKeys) {
+      const value = presetColorTokens[key];
       if (value !== undefined) {
         lines.push(`  --${P}-${key}: ${fmtVal(value)};`);
       }
@@ -327,6 +363,8 @@ function generateJSON(
   baseTokens: BaseTokens,
   fullLightTokens: ThemeTokens,
   darkTokens: ThemeTokens,
+  presetColorTokens: Record<string, string>,
+  presetGroups: Record<string, string[]>,
 ): string {
   const buildGroup = (
     groups: Record<string, readonly string[]>,
@@ -353,6 +391,7 @@ function generateJSON(
       '全量 CSS 变量参考（自动生成）。运行 npx aix-theme-export --output <dir> 重新生成。',
     $prefix: P,
     base: buildGroup(BASE_TOKEN_GROUPS, baseTokens as unknown as Record<string, string | number>),
+    preset: buildGroup(presetGroups, presetColorTokens),
     light: buildGroup(
       SEMANTIC_TOKEN_GROUPS,
       fullLightTokens as unknown as Record<string, string | number>,
@@ -374,6 +413,8 @@ function generateTS(
   baseTokens: BaseTokens,
   fullLightTokens: ThemeTokens,
   darkTokens: ThemeTokens,
+  presetColorTokens: Record<string, string>,
+  presetGroups: Record<string, string[]>,
 ): string {
   const lines: string[] = [
     '/**',
@@ -411,6 +452,9 @@ function generateTS(
 
   for (const [groupName, tokenKeys] of Object.entries(BASE_TOKEN_GROUPS)) {
     addTokens(groupName, tokenKeys, baseTokens as unknown as Record<string, string | number>);
+  }
+  for (const [groupName, tokenKeys] of Object.entries(presetGroups)) {
+    addTokens(groupName, tokenKeys, presetColorTokens);
   }
   for (const [groupName, tokenKeys] of Object.entries(SEMANTIC_TOKEN_GROUPS)) {
     addTokens(groupName, tokenKeys, fullLightTokens as unknown as Record<string, string | number>);
@@ -482,14 +526,15 @@ async function main() {
 
   console.log(`\n🎨 导出主题 Token 到 ${output}`);
 
-  const { baseTokens, fullLightTokens, darkTokens } = prepareTokenData(customSeed);
+  const { baseTokens, fullLightTokens, darkTokens, presetColorTokens, presetGroups } =
+    prepareTokenData(customSeed);
 
   await fs.mkdir(output, { recursive: true });
 
   const files = [
     {
       name: 'theme-tokens.css',
-      content: generateLightCSS(baseTokens, fullLightTokens),
+      content: generateLightCSS(baseTokens, fullLightTokens, presetColorTokens, presetGroups),
     },
     {
       name: 'theme-tokens-dark.css',
@@ -497,11 +542,17 @@ async function main() {
     },
     {
       name: 'theme-tokens.ts',
-      content: generateTS(baseTokens, fullLightTokens, darkTokens),
+      content: generateTS(baseTokens, fullLightTokens, darkTokens, presetColorTokens, presetGroups),
     },
     {
       name: 'theme-tokens.json',
-      content: generateJSON(baseTokens, fullLightTokens, darkTokens),
+      content: generateJSON(
+        baseTokens,
+        fullLightTokens,
+        darkTokens,
+        presetColorTokens,
+        presetGroups,
+      ),
     },
   ];
 

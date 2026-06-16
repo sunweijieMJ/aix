@@ -18,6 +18,7 @@ import {
   onUnmounted,
   provide,
   ref,
+  useId,
   watch,
   type PropType,
 } from 'vue';
@@ -36,9 +37,6 @@ import {
 import { defaultSeedTokens } from '../core/seed-derivation';
 import { CSS_VAR_PREFIX } from '../utils/css-var';
 import type { ThemeConfig, ThemeMode, ThemeTokens } from '../theme-types';
-
-// 模块级计数器，确保多实例唯一性
-let _counter = 0;
 
 export default defineComponent({
   name: 'ThemeScope',
@@ -83,7 +81,9 @@ export default defineComponent({
     },
   },
   setup(props, { slots }) {
-    const scopeClass = `aix-scope-${++_counter}-${Math.random().toString(36).slice(2, 6)}`;
+    // 使用 Vue useId 生成 SSR/客户端一致的唯一标识，避免 hydration mismatch
+    // （useId 返回形如 'v-0' 的字符串，对 SSR 多请求与多实例均唯一）
+    const scopeClass = `aix-scope-${useId() ?? ''}`;
 
     const containerRef = ref<HTMLElement>();
     let renderer: ThemeDOMRenderer | null = null;
