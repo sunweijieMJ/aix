@@ -1,4 +1,5 @@
-import { ref, onBeforeUnmount, watch, toValue, type MaybeRefOrGetter, type Ref } from 'vue';
+import { useTimeout } from '@aix/hooks';
+import { ref, watch, toValue, type MaybeRefOrGetter, type Ref } from 'vue';
 
 export interface AutoHideOptions {
   /** 隐藏延迟（ms），默认 3000，0 表示禁用 */
@@ -26,25 +27,27 @@ export interface UseControlsAutoHideReturn {
  */
 export function useControlsAutoHide(options: AutoHideOptions = {}): UseControlsAutoHideReturn {
   const visible = ref(true);
-  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  // 自动隐藏定时器：start 取当前 delay，scope 销毁自动清理
+  const hideTimeout = useTimeout(
+    () => {
+      visible.value = false;
+    },
+    () => toValue(options.delay) ?? 3000,
+  );
 
   function clearTimer(): void {
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
-    }
+    hideTimeout.stop();
   }
 
   function startTimer(): void {
-    clearTimer();
     const delay = toValue(options.delay) ?? 3000;
     const enabled = toValue(options.enabled) ?? true;
-    if (!enabled || delay <= 0) return;
-
-    timer = setTimeout(() => {
-      visible.value = false;
-      timer = null;
-    }, delay);
+    if (!enabled || delay <= 0) {
+      hideTimeout.stop();
+      return;
+    }
+    hideTimeout.start();
   }
 
   function show(): void {
@@ -87,9 +90,7 @@ export function useControlsAutoHide(options: AutoHideOptions = {}): UseControlsA
   // 初始启动计时器
   startTimer();
 
-  onBeforeUnmount(() => {
-    clearTimer();
-  });
+  // 定时器由 useTimeout 在 scope 销毁时自动清理
 
   return {
     visible,
