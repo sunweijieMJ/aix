@@ -56,10 +56,14 @@ export default defineComponent({
       type: Boolean,
       default: true,
     },
-    /** CSS 变量前缀 */
+    /**
+     * CSS 变量前缀
+     * 默认 undefined：继承父级 ThemeContext 的 prefix（即 createTheme({ prefix }) 的值），
+     * 无父级时回退到 CSS_VAR_PREFIX。显式传入则覆盖继承。
+     */
     prefix: {
       type: String,
-      default: CSS_VAR_PREFIX,
+      default: undefined,
     },
     /** 容器标签类型（默认 'div'） */
     tag: {
@@ -82,6 +86,11 @@ export default defineComponent({
     const scopeClass = `aix-scope-${useId() ?? ''}`;
 
     const parentContext = useThemeContextOptional();
+
+    // 解析前缀：显式 props.prefix > 继承父级 prefix > 默认 CSS_VAR_PREFIX
+    // 若不继承父级自定义前缀，注入的 --<prefix>-* 变量名会与组件消费的变量名不匹配，
+    // 导致 scoped 覆写在自定义前缀场景下静默失效
+    const prefix = computed(() => props.prefix ?? parentContext?.prefix ?? CSS_VAR_PREFIX);
 
     // 合并配置：inherit=true 时合并父级，否则直接使用子级配置
     const mergedConfig = computed<ThemeConfig>(() => {
@@ -127,7 +136,7 @@ export default defineComponent({
     // 提供只读 scoped context（scoped 下通过 props 变更配置）
     const scopedContext: ThemeContext = {
       get prefix() {
-        return props.prefix;
+        return prefix.value;
       },
       get mode() {
         return resolvedMode.value;
@@ -164,7 +173,7 @@ export default defineComponent({
       const overrides = computeScopedOverrides(
         computedTokens.value,
         baselineTokens.value,
-        props.prefix,
+        prefix.value,
       );
       const selector = buildOverridesSelector(resolvedMode.value, scopeClass, false);
       return buildOverridesCss(selector, overrides);
@@ -180,7 +189,7 @@ export default defineComponent({
         { ...defaultSeedTokens, ...mergedConfig.value.seed },
         normalizeAlgorithm(mergedConfig.value.algorithm),
       );
-      return buildComponentOverridesCss(props.prefix, scopeClass, overrides);
+      return buildComponentOverridesCss(prefix.value, scopeClass, overrides);
     });
 
     // 过渡配置（兜底默认值），用于 render 时声明式绑定 class/CSS 变量
@@ -202,7 +211,7 @@ export default defineComponent({
       if (oCss) {
         children.push(
           h('style', {
-            id: `${props.prefix}-theme-overrides-${scopeClass}`,
+            id: `${prefix.value}-theme-overrides-${scopeClass}`,
             innerHTML: oCss,
           }),
         );
@@ -211,7 +220,7 @@ export default defineComponent({
       if (cCss) {
         children.push(
           h('style', {
-            id: `${props.prefix}-component-overrides-${scopeClass}`,
+            id: `${prefix.value}-component-overrides-${scopeClass}`,
             innerHTML: cCss,
           }),
         );
@@ -228,12 +237,12 @@ export default defineComponent({
           class: [
             scopeClass,
             props.transparent && 'aix-scope-transparent',
-            enabled && `${props.prefix}-theme-transition`,
+            enabled && `${prefix.value}-theme-transition`,
           ],
           style: enabled
             ? {
-                [`--${props.prefix}-transition-duration`]: `${duration}ms`,
-                [`--${props.prefix}-transition-easing`]: easing,
+                [`--${prefix.value}-transition-duration`]: `${duration}ms`,
+                [`--${prefix.value}-transition-easing`]: easing,
               }
             : undefined,
         },
