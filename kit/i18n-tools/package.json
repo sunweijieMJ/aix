@@ -3,6 +3,7 @@
   "version": "0.0.19",
   "description": "I18n automation tools for Vue/React projects",
   "type": "module",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {

@@ -74,6 +74,7 @@
     "stylelint": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
-    "vue": "catalog:"
+    "vue": "catalog:",
+    "vue-tsc": "catalog:"
   }
 }

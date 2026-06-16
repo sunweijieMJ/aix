@@ -60,6 +60,7 @@
     "rimraf": "catalog:",
     "stylelint": "catalog:",
     "tsx": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vue-tsc": "catalog:"
   }
 }

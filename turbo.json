@@ -35,6 +35,8 @@
     "lint": {
       "inputs": [
         "src/**/*.{ts,tsx,js,jsx,vue}",
+        "stories/**/*.{ts,tsx,vue}",
+        "__test__/**/*.{ts,tsx,vue}",
         "eslint.config.ts",
         "../../eslint.config.ts",
         "../../internal/eslint-config/**/*.js",

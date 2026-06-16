@@ -16,6 +16,9 @@
       "default": "./react-app.js"
     }
   },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0"
+  },
   "dependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.5.0",
