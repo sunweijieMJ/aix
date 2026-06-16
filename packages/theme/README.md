@@ -16,6 +16,7 @@ AIX Design System 主题系统，基于三层 Design Token 架构（Seed → Map
 - **SSR 支持**：提供防闪烁脚本和 SSR 工具函数
 - **主题验证**：内置配置验证器，确保 Token 格式正确
 - **持久化**：自动保存用户主题偏好到 localStorage
+- **构建时生成**：`generateThemeCSS` 函数与 `aix-theme-export` CLI，从 seed 一键生成整套 CSS 变量（含明暗、可白标自定义前缀），供业务仓库复用
 
 ## 安装
 
@@ -265,6 +266,52 @@ const customSeed = { ...defaultSeedTokens, colorPrimary: 'rgb(255 0 100)' };
 const mapTokens = deriveMapTokens(customSeed);
 const aliasTokens = deriveAliasTokens(mapTokens, customSeed);
 ```
+
+### generateThemeCSS - 构建时生成主题 CSS
+
+从 seed 派生整套主题 Token 并渲染为 CSS 字符串：亮色全量输出到 `lightSelector`，暗色仅输出与亮色不同的变量（diff）到 `darkSelector`。这是「构建时生成品牌主题 CSS」的规范入口，供业务仓库构建脚本与 CLI 复用，避免手写 派生→diff→渲染 流水线。
+
+```typescript
+import { generateThemeCSS } from '@aix/theme';
+
+const css = generateThemeCSS({
+  seed: { colorPrimary: 'rgb(0 88 38)' },
+  prefix: 'myapp',
+});
+// :root { --myapp-colorPrimary: ...; ... }
+// :root[data-theme='dark'],
+// .dark { --myapp-colorPrimary: ...; ... }
+```
+
+**选项 `GenerateThemeCSSOptions`：**
+
+| 选项 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| seed | `Partial<SeedTokens>` | `{}` | 种子覆写，与 `defaultSeedTokens` 合并 |
+| prefix | string | `'aix'` | CSS 变量前缀（白标场景生成 `--<prefix>-*`） |
+| lightSelector | string | `':root'` | 亮色块选择器 |
+| darkSelector | string | `":root[data-theme='dark'],\n.dark"` | 暗色块选择器 |
+| includeDark | boolean | `true` | 是否输出暗色块（仅含与亮色不同的 diff） |
+| includePresetColors | boolean | `true` | 是否包含预设色板 token（`colorPreset*`，仅亮色块） |
+
+### CLI - aix-theme-export
+
+CLI 在构建时导出主题文件（产出带分组注释的参考 CSS、TS 常量、JSON）。
+
+```bash
+npx aix-theme-export --output ./public/theme/ --prefix myapp --config ./seed.json
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `--output <路径>` | 是 | 输出目录 |
+| `--config <路径>` | 否 | 自定义 seed 配置文件（JSON） |
+| `--prefix <前缀>` | 否 | CSS 变量前缀，默认 `aix` |
+| `--help`, `-h` | 否 | 显示帮助 |
+
+输出文件：`theme-tokens.css`（亮色全量）、`theme-tokens-dark.css`（暗色覆盖）、`theme-tokens.ts`（类型化常量 + `cssVarPrefix`）、`theme-tokens.json`。
+
+> `generateThemeCSS` 输出干净的纯 CSS（适合脚本内联）；CLI 输出带分组注释的多文件参考产物。两者共用同一套底层派生逻辑。
 
 ### 颜色算法
 

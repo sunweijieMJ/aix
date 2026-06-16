@@ -1,15 +1,15 @@
 # @aix/hooks
 
-AIX 组件库的工具 Hooks 集合，提供国际化等通用功能。
+AIX 组件库的通用 Composition API Hooks 集合：国际化、DOM 生命周期封装、响应式状态、样式与浮层工具。
 
 ## 特性
 
-- 轻量级国际化实现
-- TypeScript 类型安全
-- 支持中文、英文
-- 组件级语言包
-- SSR 兼容
-- 支持语言持久化
+- **国际化**：轻量 i18n，组件级语言包，中/英文，SSR 兼容，可持久化
+- **生命周期安全**：事件监听、定时器、ResizeObserver 等均在卸载 / effect scope 销毁时自动清理
+- **响应式 target**：DOM 类 hook 的 target 支持 ref / getter，变化自动重绑，传 null 即停用
+- **SSR / 环境守卫**：无 `document` / `ResizeObserver`（SSR、jsdom）时安全空转，不抛错
+- **TypeScript**：完整类型定义与重载
+- **零额外依赖**：仅依赖 Vue
 
 ## 安装
 
@@ -17,7 +17,158 @@ AIX 组件库的工具 Hooks 集合，提供国际化等通用功能。
 pnpm add @aix/hooks
 ```
 
-## 快速开始
+## Hooks 一览
+
+| Hook | 分类 | 说明 |
+|------|------|------|
+| `createLocale` / `useLocale` / `useCommonLocale` | 国际化 | 组件级 i18n（详见下方「国际化」） |
+| `useNamespace` | 样式 | 生成 `.aix-` 前缀的 BEM class |
+| `useZIndex` | 浮层 | 全局递增 z-index 管理（模块级单例） |
+| `useEventListener` | DOM / 生命周期 | 自动清理的事件监听，target 响应式 |
+| `useResizeObserver` | DOM / 生命周期 | 自动清理 + 环境守卫的 ResizeObserver |
+| `useClickOutside` | DOM / 生命周期 | 点击外部检测（pointerdown + capture） |
+| `useTimeout` | 生命周期 | 自动清理的 setTimeout（restart 语义） |
+| `useInterval` | 生命周期 | 自动清理的 setInterval |
+| `useControllable` | 状态 | 受控 / 非受控（v-model）统一封装 |
+| `useClipboard` / `copyText` | 工具 | 剪贴板复制（降级兜底）+ copied 反馈态 |
+
+## 通用 Hooks
+
+### useNamespace
+
+生成 `.aix-` 前缀的 BEM class，避免各组件包手写模板字符串拼接、消除前缀硬编码漂移。
+
+```ts
+import { useNamespace } from '@aix/hooks';
+
+const ns = useNamespace('button');
+ns.b();                 // 'aix-button'
+ns.b('icon');           // 'aix-button-icon'
+ns.e('text');           // 'aix-button__text'
+ns.m('primary');        // 'aix-button--primary'
+ns.em('text', 'sm');    // 'aix-button__text--sm'
+ns.is('active');        // 'is-active'
+ns.is('active', false); // ''
+```
+
+### useZIndex
+
+全局递增 z-index 计数器，保证最后打开的浮层始终最高。基础值 `2000`（高于主题最高语义层级）。**模块级单例**——全库须共享同一份 `@aix/hooks` 实例，否则计数器分裂会导致叠放错乱。
+
+```ts
+import { useZIndex } from '@aix/hooks';
+
+const { currentZIndex, nextZIndex } = useZIndex();
+// currentZIndex: Readonly<Ref<number>>
+const z = nextZIndex(); // 打开浮层时调用，返回新的最高值
+```
+
+### useEventListener
+
+把「`addEventListener` → 卸载时 `removeEventListener`」样板封装掉。`target` 支持响应式（ref / getter / `MaybeRefOrGetter`）：变化时自动解绑旧的、绑定新的；为 `null` / `undefined` 时不绑定（可借此启停）。`event` 支持单个或多个。返回 `stop()` 手动停止。
+
+```ts
+import { useEventListener } from '@aix/hooks';
+
+useEventListener(window, 'keydown', onKey);          // 绑到 window，卸载自动清理
+useEventListener(elRef, 'click', onClick);            // 响应式 target：变化自动重绑
+useEventListener(document, ['pointerdown', 'pointerup'], onPointer, true); // 多事件 + capture
+const stop = useEventListener(() => (open.value ? window : null), 'keydown', onEsc); // 启停
+```
+
+### useResizeObserver
+
+封装「`new ResizeObserver` → `observe` → 卸载 `disconnect`」，并在无 `ResizeObserver`（SSR / jsdom）时安全空转。`target` 响应式，变化自动重新观测；为 `null` 时不观测。返回 `stop()`。
+
+```ts
+import { ref } from 'vue';
+import { useResizeObserver } from '@aix/hooks';
+
+const el = ref<HTMLElement | null>(null);
+useResizeObserver(el, (entries) => {
+  const { width, height } = entries[0].contentRect;
+});
+```
+
+### useClickOutside
+
+点击元素外部时触发回调，使用 `pointerdown` 在 capture 阶段监听 `document`（比 click 更快）。`enabled` 为 false / SSR 时自动解绑，卸载自动清理。返回 `stop()`。
+
+```ts
+import { computed } from 'vue';
+import { useClickOutside } from '@aix/hooks';
+
+useClickOutside({
+  excludeRefs: computed(() => [triggerRef.value, popupRef.value]), // 不算「外部」的元素
+  handler: () => (open.value = false),
+  enabled: open, // 可选，支持 ref / getter，默认 true
+});
+```
+
+### useTimeout
+
+自动清理的 `setTimeout`。`delay` 支持响应式（每次 `start` 取当前值）；`start()` 具备 **restart 语义**（先清旧定时器再启动），适合「活动即重置」的倒计时。
+
+```ts
+import { useTimeout } from '@aix/hooks';
+
+const { start, stop, isPending } = useTimeout(() => (copied.value = false), 1500);
+start(); // 1.5s 后回调；再次 start 重新计时
+// 选项：useTimeout(cb, delay, { immediate: true }) 创建即启动
+```
+
+返回 `{ isPending: Readonly<Ref<boolean>>, start(): void, stop(): void }`。
+
+### useInterval
+
+自动清理的 `setInterval`。`interval` 支持响应式；`start()` 同样具 restart 语义。
+
+```ts
+import { useInterval } from '@aix/hooks';
+
+const { start, stop, isActive } = useInterval(() => tick(), 1000);
+start();
+// 选项：useInterval(cb, interval, { immediate: true })
+```
+
+返回 `{ isActive: Readonly<Ref<boolean>>, start(): void, stop(): void }`。
+
+### useControllable
+
+统一处理带 v-model 的组件「外部传值则受控、否则用内部状态」的二态逻辑：受控时写入只 `emit` 不改内部（避免切回非受控时状态污染），非受控时读写内部 ref 并同步 emit；写入按 `Object.is` 去重。
+
+```ts
+import { useControllable } from '@aix/hooks';
+
+const props = defineProps<{ open?: boolean }>();
+const emit = defineEmits<{ 'update:open': [boolean] }>();
+
+const { state: open, setState } = useControllable({
+  prop: () => props.open,        // 受控值；undefined 走非受控
+  defaultValue: false,           // 非受控初始值
+  onChange: (v) => emit('update:open', v),
+});
+// open 是 WritableComputedRef<boolean>：open.value 可读可写，或 setState(true)
+```
+
+### useClipboard / copyText
+
+`copyText(text)` 是纯函数复制：优先异步 Clipboard API，不可用（非 HTTPS / 旧浏览器 / 权限被拒）时降级到 `document.execCommand('copy')`，返回是否成功。`useClipboard` 在其上叠加 `copied` 反馈态（成功后自动回落）。
+
+```ts
+import { useClipboard, copyText } from '@aix/hooks';
+
+// 带反馈态（用于「已复制」气泡）
+const { copy, copied } = useClipboard();        // 选项 { copiedDuration: 1500 }，0 则不自动回落
+await copy('hello');                            // copied 短暂置 true
+
+// 纯函数版（无响应式状态）
+const ok = await copyText('hello');             // => boolean
+```
+
+`useClipboard` 返回 `{ copied: Readonly<Ref<boolean>>, copy(text): Promise<boolean> }`。
+
+## 国际化（i18n）
 
 ### 1. 应用层配置
 
@@ -87,7 +238,7 @@ export const myComponentLocale: ComponentLocale<MyComponentLocale> = {
 };
 ```
 
-## API
+## 国际化 API
 
 ### createLocale
 
