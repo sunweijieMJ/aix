@@ -1,12 +1,12 @@
 <template>
   <button
     :class="[
-      'aix-button',
-      `aix-button--${type}`,
-      `aix-button--${size}`,
+      ns.b(),
+      ns.m(type),
+      ns.m(size),
       {
-        'aix-button--disabled': disabled,
-        'aix-button--loading': loading,
+        [ns.m('disabled')]: disabled,
+        [ns.m('loading')]: loading,
       },
     ]"
     :type="htmlType"
@@ -41,7 +41,10 @@
  *
  * 用于触发操作和提交表单。支持多种类型、尺寸和状态。
  */
+import { useNamespace } from '@aix/hooks';
 import type { ButtonProps, ButtonEmits } from './types';
+
+const ns = useNamespace('button');
 
 const props = withDefaults(defineProps<ButtonProps>(), {
   type: 'default',

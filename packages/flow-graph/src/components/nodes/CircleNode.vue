@@ -4,10 +4,10 @@
       <div
         class="aix-circle-node"
         :class="[
-          `aix-circle-node--${nodeState}`,
+          ns.m(nodeState),
           {
-            'aix-circle-node--clicking': clicking,
-            'aix-circle-node--dimmed': data?.dimmed,
+            [ns.m('clicking')]: clicking,
+            [ns.m('dimmed')]: data?.dimmed,
           },
         ]"
         :style="{
@@ -36,6 +36,7 @@
  * 圆形节点：默认节点类型。
  * 所有交互（点击 active / 右键菜单 / 上方 label / Handle）均由 {@link BaseNode} 承载。
  */
+import { useNamespace } from '@aix/hooks';
 import type { NodeProps } from '@vue-flow/core';
 import { DEFAULT_CIRCLE_SIZE, type NodeData } from '../../types';
 import BaseNode from './BaseNode.vue';
@@ -43,6 +44,8 @@ import BaseNode from './BaseNode.vue';
 defineOptions({ name: 'AixCircleNode', inheritAttrs: false });
 
 defineProps<NodeProps<NodeData>>();
+
+const ns = useNamespace('circle-node');
 
 /** 圆形节点主色回退（无 data.color 时使用） */
 const FALLBACK_COLOR = '#86909c';
