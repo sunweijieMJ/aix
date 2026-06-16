@@ -8,6 +8,9 @@
       "default": "./index.js"
     }
   },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0"
+  },
   "dependencies": {
     "prettier": "^3.8.4"
   }

@@ -12,6 +12,9 @@
       "default": "./vue-app.js"
     }
   },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0"
+  },
   "dependencies": {
     "postcss-html": "^1.8.1",
     "postcss-scss": "^4.0.9",

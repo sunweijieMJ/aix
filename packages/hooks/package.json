@@ -54,7 +54,8 @@
     "eslint": "catalog:",
     "rimraf": "catalog:",
     "tsx": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vue-tsc": "catalog:"
   },
   "license": "MIT"
 }
