@@ -89,7 +89,14 @@ export interface CreateThemeOptions {
   watchSystem?: boolean;
   /** 初始主题配置 */
   initialConfig?: ThemeConfig;
-  /** CSS 变量前缀，默认 'aix'（生成 --aix-colorPrimary 等） */
+  /**
+   * CSS 变量前缀，默认 'aix'（生成 --aix-colorPrimary 等）。
+   *
+   * 注意：运行时只注入「覆写差异」变量。使用自定义前缀时，须先用
+   * generateThemeCSS({ prefix }) 或 `aix-theme-export --prefix` 在构建时生成
+   * 该前缀的基础变量 CSS 并引入页面，否则非覆写 token 无对应 --<prefix>-* 基础值。
+   * 组件库自身组件消费 --aix-*；自定义前缀仅服务业务仓库自有 token 体系。
+   */
   prefix?: string;
   /** CSS 选择器兼容模式，'where' 使用 :where() 包裹以降低特异性 */
   cssCompatibility?: 'normal' | 'where';
