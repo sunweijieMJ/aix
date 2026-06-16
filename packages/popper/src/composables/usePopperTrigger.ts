@@ -1,3 +1,4 @@
+import { useClickOutside } from '@aix/hooks';
 import {
   ref,
   computed,
@@ -8,7 +9,6 @@ import {
   type MaybeRefOrGetter,
 } from 'vue';
 import type { TriggerType } from '../types';
-import { useClickOutside } from './useClickOutside';
 
 /** 事件处理器类型，兼容无参和带 Event 参数的回调 */
 type EventHandler = (event?: Event) => void;

@@ -40,8 +40,8 @@ export interface SourcesBlockProps {
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
-import { useNamespace } from '../../composables/useNamespace';
 import { locale } from '../../locale';
 import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
 import { safeUrl } from '../../utils/url';

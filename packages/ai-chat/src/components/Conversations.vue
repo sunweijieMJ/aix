@@ -81,9 +81,9 @@ export interface ConversationsEmits {
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { Add, Edit, Delete } from '@aix/icons';
 import { ref, computed, nextTick, watch } from 'vue';
-import { useNamespace } from '../composables/useNamespace';
 import { locale } from '../locale';
 import type { ConversationItem } from '../types';
 

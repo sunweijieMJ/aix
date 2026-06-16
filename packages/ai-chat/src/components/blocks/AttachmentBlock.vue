@@ -16,7 +16,7 @@ export interface AttachmentBlockProps {
 </script>
 
 <script setup lang="ts">
-import { useNamespace } from '../../composables/useNamespace';
+import { useNamespace } from '@aix/hooks';
 import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
 import AttachmentCard from '../AttachmentCard.vue';
 

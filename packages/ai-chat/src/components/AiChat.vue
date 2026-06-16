@@ -197,6 +197,7 @@ export interface AiChatEmits {
 </script>
 
 <script setup lang="ts">
+import { useNamespace } from '@aix/hooks';
 import { computed, ref, watch, useSlots } from 'vue';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
@@ -204,7 +205,6 @@ import type { ShouldFollow } from '../composables/useAutoScroll';
 import { useChat } from '../composables/useChat';
 import type { UseChatOptions } from '../composables/useChat';
 import type { MarkdownItPlugin } from '../composables/useMarkdownRenderer';
-import { useNamespace } from '../composables/useNamespace';
 import type {
   ChatMessage,
   RoleConfig,

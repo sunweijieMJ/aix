@@ -92,8 +92,8 @@ export interface ThoughtChainProps {
 </script>
 
 <script setup lang="ts">
+import { useNamespace } from '@aix/hooks';
 import { reactive, ref, useSlots, watch } from 'vue';
-import { useNamespace } from '../composables/useNamespace';
 import type { ThoughtChainItem, ThoughtChainResultChip } from '../types';
 import { safeUrl } from '../utils/url';
 import MarkdownRenderer from './MarkdownRenderer.vue';

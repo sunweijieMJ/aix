@@ -39,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { useClickOutside, useZIndex } from '@aix/popper';
+import { useClickOutside, useZIndex } from '@aix/hooks';
 import type { Editor } from '@tiptap/core';
 import { ref, computed, watch, nextTick } from 'vue';
 import type { RichTextEditorLocale } from '../locale/types';

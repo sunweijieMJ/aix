@@ -28,12 +28,11 @@
 </template>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
+import { useLocale, useZIndex } from '@aix/hooks';
 import { computed, nextTick, provide, ref, watch } from 'vue';
 import { createMenuKeyDown } from '../composables/useMenuKeyboard';
 import { usePopper } from '../composables/usePopper';
 import { usePopperTrigger, createVirtualElement } from '../composables/usePopperTrigger';
-import { useZIndex } from '../composables/useZIndex';
 import { locale as popperLocale } from '../locale';
 import { DROPDOWN_INJECTION_KEY } from '../types';
 import type { ContextMenuProps, ContextMenuEmits, ContextMenuExpose } from '../types';

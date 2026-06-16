@@ -23,8 +23,8 @@ export interface ThinkingProps {
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { ref, watch } from 'vue';
-import { useNamespace } from '../composables/useNamespace';
 import { locale } from '../locale';
 
 const props = withDefaults(defineProps<ThinkingProps>(), {

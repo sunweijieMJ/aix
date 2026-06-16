@@ -54,10 +54,10 @@
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { AttachFile, Close } from '@aix/icons';
 import { ref } from 'vue';
 import type { PendingAttachment } from '../composables/useAttachments';
-import { useNamespace } from '../composables/useNamespace';
 import { locale } from '../locale';
 import AttachmentCard from './AttachmentCard.vue';
 

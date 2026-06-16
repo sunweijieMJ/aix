@@ -6,6 +6,9 @@ import { ref, type Ref } from 'vue';
  * 保证每次调用 nextZIndex() 都返回递增值，
  * 最后打开的浮层始终拥有最高 z-index。
  * 基础值 2000 高于主题系统中所有语义层级 (max: --aix-zIndexMessage 1510)。
+ *
+ * 注意：这是模块级单例，全库须共享同一个 @aix/hooks 模块实例，
+ * 否则计数器分裂会导致浮层叠放顺序错乱。
  */
 let globalZIndex = 2000;
 

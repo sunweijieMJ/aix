@@ -42,11 +42,11 @@
 </template>
 
 <script setup lang="ts">
+import { useZIndex } from '@aix/hooks';
 import { computed, nextTick, provide, ref, useId, watch } from 'vue';
 import { createMenuKeyDown } from '../composables/useMenuKeyboard';
 import { usePopper } from '../composables/usePopper';
 import { usePopperTrigger } from '../composables/usePopperTrigger';
-import { useZIndex } from '../composables/useZIndex';
 import { DROPDOWN_INJECTION_KEY } from '../types';
 import type { DropdownProps, DropdownEmits, DropdownExpose } from '../types';
 import DropdownItem from './DropdownItem.vue';

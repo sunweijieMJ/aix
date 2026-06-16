@@ -27,7 +27,7 @@ export interface WelcomeProps {
 </script>
 
 <script setup lang="ts">
-import { useNamespace } from '../composables/useNamespace';
+import { useNamespace } from '@aix/hooks';
 
 withDefaults(defineProps<WelcomeProps>(), { align: 'center' });
 

@@ -90,7 +90,8 @@
 </template>
 
 <script setup lang="ts">
-import { Tooltip, usePopper, useZIndex } from '@aix/popper';
+import { useZIndex } from '@aix/hooks';
+import { Tooltip, usePopper } from '@aix/popper';
 import type { ChainedCommands, Editor } from '@tiptap/core';
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, toRef } from 'vue';
 import {

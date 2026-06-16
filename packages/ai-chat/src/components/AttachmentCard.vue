@@ -106,10 +106,10 @@ export interface AttachmentCardEmits {
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { Refresh, Close } from '@aix/icons';
 import { computed, ref, watch } from 'vue';
 import type { PendingAttachment } from '../composables/useAttachments';
-import { useNamespace } from '../composables/useNamespace';
 import { locale } from '../locale';
 import type { AttachmentItem } from '../types';
 import { getFileTypeMeta } from '../utils/fileTypes';
