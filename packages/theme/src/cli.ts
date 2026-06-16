@@ -45,6 +45,7 @@ aix-theme-export - 导出全量主题 Token 参考文件
 选项:
   --output <路径>   输出目录（必需）
   --config <路径>   自定义 seed 配置文件（JSON 格式，可选）
+  --prefix <前缀>   CSS 变量前缀（可选，默认 aix；白标场景生成 --<前缀>-*）
   --help, -h        显示帮助信息
 
 示例:
@@ -66,7 +67,7 @@ aix-theme-export - 导出全量主题 Token 参考文件
 `);
 }
 
-function parseArgs(): { output: string; configPath?: string } {
+function parseArgs(): { output: string; configPath?: string; prefix: string } {
   const args = process.argv.slice(2);
 
   if (args.includes('--help') || args.includes('-h')) {
@@ -85,7 +86,11 @@ function parseArgs(): { output: string; configPath?: string } {
   const configPath =
     configIndex !== -1 && args[configIndex + 1] ? path.resolve(args[configIndex + 1]!) : undefined;
 
-  return { output: path.resolve(args[outputIndex + 1]!), configPath };
+  const prefixIndex = args.indexOf('--prefix');
+  const prefix =
+    prefixIndex !== -1 && args[prefixIndex + 1] ? args[prefixIndex + 1]! : CSS_VAR_PREFIX;
+
+  return { output: path.resolve(args[outputIndex + 1]!), configPath, prefix };
 }
 
 // ============================================================
@@ -252,7 +257,8 @@ function getTokenJSDoc(key: string): string {
 // 格式化工具
 // ============================================================
 
-const P = CSS_VAR_PREFIX;
+// CLI 为一次性进程，前缀在 main() 解析 --prefix 后 set-once 注入，默认 aix
+let P = CSS_VAR_PREFIX;
 
 function fmtVal(value: string | number): string {
   return typeof value === 'number' ? String(value) : value;
@@ -509,7 +515,8 @@ function generateTS(
 // ============================================================
 
 async function main() {
-  const { output, configPath } = parseArgs();
+  const { output, configPath, prefix } = parseArgs();
+  P = prefix;
 
   let customSeed: Partial<typeof defaultSeedTokens> | undefined;
   if (configPath) {
