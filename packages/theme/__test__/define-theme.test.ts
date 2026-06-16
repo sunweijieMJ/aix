@@ -290,6 +290,23 @@ describe('define-theme', () => {
       );
       expect(diff.colorPrimary).toBeDefined();
     });
+
+    it('should derive preset color overrides from component seed.presetColors', () => {
+      const globalTokens = generateThemeTokens({});
+      const diff = generateComponentTokenOverrides(
+        {
+          seed: { presetColors: { Cyan: 'rgb(255 0 0)' } },
+          algorithm: true,
+        },
+        globalTokens,
+        defaultSeedTokens,
+        [],
+      );
+      // 组件级覆写 presetColors 应派生出 colorPresetCyan* 并进入 diff，
+      // 不应被静默丢弃（diff 与全局 token 比较，仅自定义色板会出现差异）
+      expect(diff.colorPresetCyan6).toBeDefined();
+      expect(diff.colorPresetCyan6).not.toBe(globalTokens.colorPresetCyan6);
+    });
   });
 
   describe('generateThemeTokens API', () => {

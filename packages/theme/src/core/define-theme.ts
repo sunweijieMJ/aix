@@ -593,6 +593,12 @@ export function generateComponentTokenOverrides(
     const map = deriveMapTokens(componentSeed);
     const alias = deriveAliasTokens(map, componentSeed);
     let componentTokens: ThemeTokens = { ...map, ...alias } as ThemeTokens;
+    // 派生预设色板，与全局管线 generateThemeTokens 保持一致，
+    // 否则组件级 seed.presetColors 覆写会被静默丢弃（类型允许传入但运行时无效）
+    const presetTokens = derivePresetColorTokens(
+      componentSeed.presetColors ?? DEFAULT_PRESET_COLORS,
+    );
+    componentTokens = { ...componentTokens, ...presetTokens };
     for (const algo of globalAlgorithms) {
       componentTokens = { ...componentTokens, ...algo(componentTokens) };
     }

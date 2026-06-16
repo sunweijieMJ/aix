@@ -268,6 +268,35 @@ describe('ThemeScope', () => {
     wrapper.unmount();
   });
 
+  it('should inherit parent custom prefix when prefix prop omitted', () => {
+    const { install } = createTheme({
+      persist: false,
+      prefix: 'myapp',
+      initialConfig: { seed: { colorPrimary: 'rgb(255 0 0)' } },
+    });
+
+    // 子级覆写 colorPrimary，但不显式传 prefix —— 应继承父级 'myapp' 前缀
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: {
+        config: { seed: { colorPrimary: 'rgb(0 0 255)' } },
+      },
+      slots: {
+        default: h(ContextCapture),
+      },
+    });
+
+    const html = wrapper.html();
+    // scoped 覆写必须使用父级自定义前缀，否则注入的变量名与组件消费的变量名不匹配，静默失效
+    expect(html).toContain('--myapp-colorPrimary');
+    expect(html).not.toContain('--aix-colorPrimary');
+
+    // scopedContext.prefix 也应返回继承的前缀
+    const ctx = wrapper.findComponent(ContextCapture).vm.ctx as ThemeContext;
+    expect(ctx.prefix).toBe('myapp');
+    wrapper.unmount();
+  });
+
   // ========== 新增测试：inherit 继承机制 ==========
 
   it('should inherit parent seed when inherit=true (default)', () => {
