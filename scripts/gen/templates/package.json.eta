@@ -54,11 +54,13 @@
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",<% if (it.tools.stylelint) { %>
     "@kit/stylelint-config": "workspace:^",<% } %>
+    "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "eslint": "catalog:",
     "rimraf": "catalog:",<% if (it.tools.stylelint) { %>
     "stylelint": "catalog:",<% } %>
     "tsx": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vue-tsc": "catalog:"
   }
 }
