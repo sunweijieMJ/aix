@@ -53,15 +53,15 @@ describe('ModelSelector', () => {
   });
 
   it('点击组件外部关闭已展开的菜单', async () => {
-    // 需挂到真实 DOM，document click 监听与 root.contains 判定才生效
+    // 需挂到真实 DOM，document pointerdown 监听与 root.contains 判定才生效
     const w = mount(ModelSelector, {
       props: { options, modelValue: 'Qwen3-Max' },
       attachTo: document.body,
     });
     await w.find('.aix-model-selector__trigger').trigger('click');
     expect(w.find('.aix-model-selector__menu').exists()).toBe(true);
-    // 派发一次 target 在组件外部（body）的 click
-    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // 派发一次 target 在组件外部（body）的 pointerdown（useClickOutside 用 pointerdown）
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     await w.vm.$nextTick();
     expect(w.find('.aix-model-selector__menu').exists()).toBe(false);
     w.unmount();
