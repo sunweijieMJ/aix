@@ -26,6 +26,55 @@ export interface ThemeDOMRendererOptions {
 }
 
 /**
+ * 构建 scoped/root 覆写选择器
+ * - scopeClass 存在：`.${scopeClass}[data-theme='${mode}']`
+ * - 否则：`:root[data-theme='${mode}']`，useWhere 时再包 `:where()` 降特异性
+ */
+export function buildOverridesSelector(
+  mode: ThemeMode,
+  scopeClass: string | null,
+  useWhere: boolean,
+): string {
+  if (scopeClass) return `.${scopeClass}[data-theme='${mode}']`;
+  const base = `:root[data-theme='${mode}']`;
+  return useWhere ? `:where(${base})` : base;
+}
+
+/**
+ * 构建覆写 CSS 文本（纯函数，供 DOMRenderer 与 ThemeScope render 同构复用）
+ * @returns 无覆写时返回空串
+ */
+export function buildOverridesCss(selector: string, overrides: Record<string, string>): string {
+  const keys = Object.keys(overrides);
+  if (keys.length === 0) return '';
+  const declarations = keys.map((key) => `  ${key}: ${overrides[key]};`).join('\n');
+  return `${selector} {\n${declarations}\n}`;
+}
+
+/**
+ * 构建组件级覆写 CSS 文本（纯函数）
+ * 生成 `.aix-{component}, :root[data-theme] .aix-{component}` 选择器，scoped 时前置作用域 class
+ * @returns 无覆写时返回空串
+ */
+export function buildComponentOverridesCss(
+  prefix: string,
+  scopeClass: string | null,
+  overrides: Record<string, Record<string, string>>,
+): string {
+  const scopePrefix = scopeClass ? `.${scopeClass} ` : '';
+  const blocks: string[] = [];
+  for (const [name, tokenOverrides] of Object.entries(overrides)) {
+    const keys = Object.keys(tokenOverrides);
+    if (keys.length === 0) continue;
+    const decls = keys.map((k) => `  --${prefix}-${k}: ${tokenOverrides[k]};`).join('\n');
+    blocks.push(
+      `${scopePrefix}.${prefix}-${name},\n:root[data-theme] ${scopePrefix}.${prefix}-${name} {\n${decls}\n}`,
+    );
+  }
+  return blocks.join('\n\n');
+}
+
+/**
  * 主题 DOM 渲染器
  * 通过 <style> 标签注入差异化 CSS 变量覆写，无自定义时零注入
  */
@@ -87,24 +136,13 @@ export class ThemeDOMRenderer {
   applyOverrides(mode: ThemeMode, overrides: Record<string, string>): void {
     if (!isBrowser()) return;
 
-    const keys = Object.keys(overrides);
+    const selector = buildOverridesSelector(mode, this.scopeClass, this.useWhere);
+    const cssText = buildOverridesCss(selector, overrides);
 
-    if (keys.length === 0) {
+    if (!cssText) {
       this.clearOverrides();
       return;
     }
-
-    // 构建 CSS 文本
-    const declarations = keys.map((key) => `  ${key}: ${overrides[key]};`).join('\n');
-
-    let selector: string;
-    if (this.scopeClass) {
-      selector = `.${this.scopeClass}[data-theme='${mode}']`;
-    } else {
-      const baseSelector = `:root[data-theme='${mode}']`;
-      selector = this.useWhere ? `:where(${baseSelector})` : baseSelector;
-    }
-    const cssText = `${selector} {\n${declarations}\n}`;
 
     // 复用或创建 style 标签
     if (!this.styleEl) {
@@ -166,21 +204,12 @@ export class ThemeDOMRenderer {
    */
   applyComponentOverrides(overrides: Record<string, Record<string, string>>): void {
     if (!isBrowser()) return;
-    const blocks: string[] = [];
-    const scopePrefix = this.scopeClass ? `.${this.scopeClass} ` : '';
 
-    for (const [name, tokenOverrides] of Object.entries(overrides)) {
-      const keys = Object.keys(tokenOverrides);
-      if (keys.length === 0) continue;
-      const decls = keys.map((k) => `  --${this.prefix}-${k}: ${tokenOverrides[k]};`).join('\n');
-      blocks.push(
-        `${scopePrefix}.${this.prefix}-${name},\n:root[data-theme] ${scopePrefix}.${this.prefix}-${name} {\n${decls}\n}`,
-      );
-    }
-
+    const cssText = buildComponentOverridesCss(this.prefix, this.scopeClass, overrides);
     const scopeSuffix = this.scopeClass ? `-${this.scopeClass}` : '';
     const styleId = `${this.prefix}-component-overrides${scopeSuffix}`;
-    if (blocks.length === 0) {
+
+    if (!cssText) {
       this.clearComponentOverrides();
       return;
     }
@@ -193,7 +222,7 @@ export class ThemeDOMRenderer {
       this.componentStyleEl.id = styleId;
       document.head.appendChild(this.componentStyleEl);
     }
-    this.componentStyleEl.textContent = blocks.join('\n\n');
+    this.componentStyleEl.textContent = cssText;
   }
 
   /**

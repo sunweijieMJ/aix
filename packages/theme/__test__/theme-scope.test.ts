@@ -197,7 +197,9 @@ describe('ThemeScope', () => {
 
   it('should clean up style tags on unmount', () => {
     const { install } = createTheme({ persist: false });
+    // attachTo body：scoped <style> 随容器进入文档，便于验证卸载后无残留
     const wrapper = mount(ThemeScope, {
+      attachTo: document.body,
       global: { plugins: [{ install }] },
       props: {
         config: { seed: { colorPrimary: 'rgb(255 0 0)' } },
@@ -211,8 +213,10 @@ describe('ThemeScope', () => {
       .classes()
       .find((c) => c.startsWith('aix-scope-'));
     expect(scopeClass).toBeDefined();
+    // 挂载后 scoped <style> 存在于文档中
+    expect(document.querySelectorAll(`style[id*="${scopeClass}"]`).length).toBeGreaterThan(0);
 
-    // 卸载
+    // 卸载：<style> 作为容器子节点由 Vue 自动移除，无需命令式清理
     wrapper.unmount();
 
     // 对应的 style 标签应已移除
@@ -234,10 +238,33 @@ describe('ThemeScope', () => {
       .find('div')
       .classes()
       .find((c) => c.startsWith('aix-scope-'));
-    // 检查注入的 style 标签包含 scoped 选择器
-    const styleEl = document.getElementById(`aix-theme-overrides-${scopeClass}`);
+    // scoped <style> 由 render 函数输出、位于容器内（SSR 同构），含 scoped 选择器
+    const styleEl = wrapper.element.querySelector(`style[id="aix-theme-overrides-${scopeClass}"]`);
     expect(styleEl).not.toBeNull();
     expect(styleEl?.textContent).toContain(`.${scopeClass}`);
+    wrapper.unmount();
+  });
+
+  it('should output scoped style and data-theme in render result (SSR-ready)', () => {
+    const { install } = createTheme({ persist: false });
+    const wrapper = mount(ThemeScope, {
+      global: { plugins: [{ install }] },
+      props: {
+        mode: 'dark',
+        config: { seed: { colorPrimary: 'rgb(255 0 0)' } },
+      },
+      slots: { default: '<span>test</span>' },
+    });
+
+    // render 输出本身即包含内联 <style>（等价于 SSR renderToString 会输出的内容），
+    // 而非旧版 onMounted 注入 document.head —— 这是消除 SSR 首屏 FOUC 的关键
+    const html = wrapper.html();
+    expect(html).toContain('<style');
+    expect(html).toContain('--aix-colorPrimary');
+    // 选择器中的单引号必须原样保留（用 innerHTML 注入，避免 SSR 文本转义成 &#39; 破坏选择器）
+    expect(html).toContain("[data-theme='dark']");
+    // data-theme 写在容器上，SSR 首屏即生效，scoped 选择器得以匹配
+    expect(wrapper.find('div').attributes('data-theme')).toBe('dark');
     wrapper.unmount();
   });
 
@@ -362,8 +389,10 @@ describe('ThemeScope', () => {
       .classes()
       .find((c) => c.startsWith('aix-scope-'));
 
-    // 应存在组件覆盖 style 标签
-    const componentStyleEl = document.getElementById(`aix-component-overrides-${scopeClass}`);
+    // 应存在组件覆盖 style 标签（位于容器内）
+    const componentStyleEl = wrapper.element.querySelector(
+      `style[id="aix-component-overrides-${scopeClass}"]`,
+    );
     expect(componentStyleEl).not.toBeNull();
     expect(componentStyleEl?.textContent).toContain('.aix-button');
     wrapper.unmount();
@@ -385,7 +414,7 @@ describe('ThemeScope', () => {
       .find('div')
       .classes()
       .find((c) => c.startsWith('aix-scope-'));
-    const styleEl = document.getElementById(`aix-theme-overrides-${scopeClass}`);
+    const styleEl = wrapper.element.querySelector(`style[id="aix-theme-overrides-${scopeClass}"]`);
     expect(styleEl).not.toBeNull();
 
     const cssText = styleEl?.textContent || '';

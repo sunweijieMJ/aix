@@ -9,30 +9,18 @@
  * - transparent: 默认 display:contents，不影响父级 flex/grid 布局
  * - 差异化注入：只注入与基线不同的 CSS 变量，而非全量 300+
  * - 组件级覆盖：支持 config.components 组件级主题覆写
- *
- * ⚠️ SSR 局限：scoped CSS 变量由 onMounted 内的 DOMRenderer 注入，服务端渲染
- * 阶段不执行，因此 ThemeScope 子树的差异化主题在**首屏（hydration 之前）不可见**，
- * 存在短暂闪烁（FOUC）。这不会导致 hydration mismatch（客户端是 mount 后追加
- * <style>），但首屏会先呈现父级/默认主题。根级 createTheme 通过
- * generateSSRInitScript / generateSSRStyleTag 提供了防闪烁手段，ThemeScope 暂无
- * 对应机制。若业务对嵌套主题首屏有强一致要求，应避免在 SSR 关键路径使用 ThemeScope，
- * 或等待后续将 scoped 样式改为 render 函数同构注入的版本。
+ * - SSR 同构：scoped/组件覆写 <style> 与 data-theme 由 render 函数输出，
+ *   服务端首屏即带 scoped 样式，无 FOUC；CSS 变量内容由确定性 computed 派生，
+ *   配合 useId 的稳定 scopeClass，客户端 hydration 不会 mismatch。
  */
-import {
-  computed,
-  defineComponent,
-  h,
-  onMounted,
-  onUnmounted,
-  provide,
-  ref,
-  useId,
-  watch,
-  type PropType,
-} from 'vue';
+import { computed, defineComponent, h, provide, useId, type PropType } from 'vue';
 import { THEME_INJECTION_KEY, type ThemeContext } from './theme-context';
 import { useThemeContextOptional } from './use-theme-context';
-import { ThemeDOMRenderer } from '../core/theme-dom-renderer';
+import {
+  buildOverridesCss,
+  buildOverridesSelector,
+  buildComponentOverridesCss,
+} from '../core/theme-dom-renderer';
 import {
   generateThemeTokens,
   generateAllComponentOverrides,
@@ -92,9 +80,6 @@ export default defineComponent({
     // 使用 Vue useId 生成 SSR/客户端一致的唯一标识，避免 hydration mismatch
     // （useId 返回形如 'v-0' 的字符串，对 SSR 多请求与多实例均唯一）
     const scopeClass = `aix-scope-${useId() ?? ''}`;
-
-    const containerRef = ref<HTMLElement>();
-    let renderer: ThemeDOMRenderer | null = null;
 
     const parentContext = useThemeContextOptional();
 
@@ -173,61 +158,87 @@ export default defineComponent({
 
     provide(THEME_INJECTION_KEY, scopedContext);
 
-    function syncToDOM() {
-      if (!renderer) return;
+    // 差异化 scoped 覆写 CSS（仅注入与基线不同的变量）。
+    // 改为 render 函数输出 <style>，使 SSR 首屏即带 scoped 样式、无 FOUC。
+    const overridesCss = computed(() => {
+      const overrides = computeScopedOverrides(
+        computedTokens.value,
+        baselineTokens.value,
+        props.prefix,
+      );
+      const selector = buildOverridesSelector(resolvedMode.value, scopeClass, false);
+      return buildOverridesCss(selector, overrides);
+    });
 
-      const transition = mergedConfig.value.transition;
+    // 组件级覆写 CSS
+    const componentOverridesCss = computed(() => {
       const components = mergedConfig.value.components;
-
-      const componentOverrides =
-        components && Object.keys(components).length > 0
-          ? generateAllComponentOverrides(
-              components,
-              computedTokens.value,
-              { ...defaultSeedTokens, ...mergedConfig.value.seed },
-              normalizeAlgorithm(mergedConfig.value.algorithm),
-            )
-          : undefined;
-
-      renderer.syncAll({
-        mode: resolvedMode.value,
-        transition: {
-          duration: transition?.duration ?? 200,
-          easing: transition?.easing ?? 'ease-in-out',
-          enabled: transition?.enabled ?? true,
-        },
-        overrides: computeScopedOverrides(computedTokens.value, baselineTokens.value, props.prefix),
-        componentOverrides,
-      });
-    }
-
-    onMounted(() => {
-      if (!containerRef.value) return;
-      renderer = new ThemeDOMRenderer({
-        prefix: props.prefix,
-        scopeClass,
-        container: containerRef.value,
-      });
-      syncToDOM();
+      if (!components || Object.keys(components).length === 0) return '';
+      const overrides = generateAllComponentOverrides(
+        components,
+        computedTokens.value,
+        { ...defaultSeedTokens, ...mergedConfig.value.seed },
+        normalizeAlgorithm(mergedConfig.value.algorithm),
+      );
+      return buildComponentOverridesCss(props.prefix, scopeClass, overrides);
     });
 
-    // 监听 resolvedMode、computedTokens 和 mergedConfig 的变化
-    // mergedConfig 包含 transition/components 等不影响 computedTokens 但需要同步到 DOM 的配置
-    watch([resolvedMode, computedTokens, mergedConfig], () => syncToDOM());
-
-    onUnmounted(() => {
-      renderer?.reset();
-      renderer = null;
+    // 过渡配置（兜底默认值），用于 render 时声明式绑定 class/CSS 变量
+    const transition = computed(() => {
+      const t = mergedConfig.value.transition;
+      return {
+        enabled: t?.enabled ?? true,
+        duration: t?.duration ?? 200,
+        easing: t?.easing ?? 'ease-in-out',
+      };
     });
 
-    return () =>
-      h(
+    return () => {
+      const children = [];
+      // 用 innerHTML 注入原始 CSS：<style> 是 raw-text 元素，若作为文本子节点，
+      // 真实 SSR(renderToString) 会对其做 HTML 转义，使选择器中的 ' 变成 &#39;
+      // 而浏览器不会在 raw-text 内解码实体，导致 scoped 选择器失效。innerHTML 走原样输出。
+      const oCss = overridesCss.value;
+      if (oCss) {
+        children.push(
+          h('style', {
+            id: `${props.prefix}-theme-overrides-${scopeClass}`,
+            innerHTML: oCss,
+          }),
+        );
+      }
+      const cCss = componentOverridesCss.value;
+      if (cCss) {
+        children.push(
+          h('style', {
+            id: `${props.prefix}-component-overrides-${scopeClass}`,
+            innerHTML: cCss,
+          }),
+        );
+      }
+      const slotContent = slots.default?.();
+      if (slotContent) children.push(slotContent);
+
+      const { enabled, duration, easing } = transition.value;
+      return h(
         props.tag,
         {
-          ref: containerRef,
-          class: [scopeClass, props.transparent && 'aix-scope-transparent'],
+          // data-theme 写在容器上，配合 scoped 选择器 .${scopeClass}[data-theme]
+          'data-theme': resolvedMode.value,
+          class: [
+            scopeClass,
+            props.transparent && 'aix-scope-transparent',
+            enabled && `${props.prefix}-theme-transition`,
+          ],
+          style: enabled
+            ? {
+                [`--${props.prefix}-transition-duration`]: `${duration}ms`,
+                [`--${props.prefix}-transition-easing`]: easing,
+              }
+            : undefined,
         },
-        slots.default?.(),
+        children,
       );
+    };
   },
 });
