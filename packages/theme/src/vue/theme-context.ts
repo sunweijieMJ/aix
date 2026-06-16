@@ -138,12 +138,15 @@ function hasDarkAlgorithm(algos: ThemeAlgorithm[]): boolean {
 function calculateAlgorithmForMode(
   mode: ThemeMode,
   currentAlgorithms: ThemeAlgorithm[],
+  darkAlgo: ThemeAlgorithm = darkAlgorithm,
 ): ThemeAlgorithm[] {
   // 过滤掉暗色算法
   const withoutDark = currentAlgorithms.filter((a) => !isDarkAlgorithm(a));
 
   if (mode === 'dark') {
-    return [darkAlgorithm, ...withoutDark];
+    // 使用调用方记住的暗色算法变体（darkAlgorithm / darkMixAlgorithm / 自定义），
+    // 而非硬编码 darkAlgorithm，避免明暗往返后退化
+    return [darkAlgo, ...withoutDark];
   }
   return withoutDark;
 }
@@ -202,6 +205,11 @@ export function createTheme(options?: CreateThemeOptions) {
       : initialAlgos;
   // 从算法推断初始 mode
   const resolvedInitialMode = hasDarkAlgorithm(resolvedInitialAlgos) ? 'dark' : initialMode;
+
+  // 记住用户选用的暗色算法变体（默认 darkAlgorithm），供 setMode 明暗往返时保留，
+  // 避免 darkMixAlgorithm / 自定义暗色算法在 light→dark 往返后退化为普通 darkAlgorithm
+  let preferredDarkAlgorithm: ThemeAlgorithm =
+    resolvedInitialAlgos.find(isDarkAlgorithm) ?? darkAlgorithm;
 
   const state = reactive<{
     mode: ThemeMode;
@@ -331,8 +339,12 @@ export function createTheme(options?: CreateThemeOptions) {
   const setMode = (newMode: ThemeMode) => {
     state.mode = newMode;
 
-    // 计算新算法（保留 compact 等非 dark 算法）
-    const newAlgorithm = calculateAlgorithmForMode(newMode, state.config.algorithm);
+    // 计算新算法（保留 compact 等非 dark 算法，暗色用记住的变体）
+    const newAlgorithm = calculateAlgorithmForMode(
+      newMode,
+      state.config.algorithm,
+      preferredDarkAlgorithm,
+    );
 
     state.config = {
       ...state.config,
@@ -375,6 +387,10 @@ export function createTheme(options?: CreateThemeOptions) {
     const algos = normalizeAlgorithm(config.algorithm);
     const newMode = hasDarkAlgorithm(algos) ? 'dark' : 'light';
     state.mode = newMode;
+
+    // 若新配置显式声明了暗色算法变体，记住它，供后续 setMode 往返保留
+    const explicitDark = algos.find(isDarkAlgorithm);
+    if (explicitDark) preferredDarkAlgorithm = explicitDark;
 
     // 更新配置（统一过渡配置存储）
     state.config = {
@@ -446,6 +462,8 @@ export function createTheme(options?: CreateThemeOptions) {
       transition: { ...DEFAULT_TRANSITION },
       components: {},
     };
+    // 暗色算法变体偏好也回到默认
+    preferredDarkAlgorithm = darkAlgorithm;
 
     // 应用到 DOM
     syncToDOM();
@@ -613,6 +631,8 @@ export function createTheme(options?: CreateThemeOptions) {
         cleanupFn();
         cleanupFn = null;
       }
+      // 清理注入的覆写 <style>、组件覆写 <style> 与过渡 class，避免 teardown 后 DOM 残留
+      renderer.reset();
     },
   };
 }

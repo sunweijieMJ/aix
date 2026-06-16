@@ -91,6 +91,19 @@ describe('theme-validator', () => {
       expect(invalid.valid).toBe(false);
     });
 
+    it('逗号分隔 RGB 合法色不应被误判为 alpha 越界（回归）', () => {
+      // 此前 alpha 提取正则会把 rgb(r, g, b) 末尾的蓝色分量当成 alpha 校验，
+      // 导致第三分量 > 1 的合法色（如 cyan 的逗号写法）被错误拒绝
+      for (const color of ['rgb(19, 194, 194)', 'rgb(22, 119, 255)', 'rgb(0, 0, 200)']) {
+        const result = validateThemeConfig({ token: { colorPrimary: color } });
+        expect(result.valid, `${color} 应为合法色`).toBe(true);
+      }
+      // 真正的 alpha 越界仍应被拦截
+      expect(validateThemeConfig({ token: { colorPrimary: 'rgb(19 194 194 / 1.5)' } }).valid).toBe(
+        false,
+      );
+    });
+
     // --- 过渡配置验证 ---
 
     it('transition.duration 不能为负', () => {

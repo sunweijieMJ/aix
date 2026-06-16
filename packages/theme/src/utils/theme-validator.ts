@@ -180,9 +180,10 @@ function validateColor(value: unknown, field: string): ValidationError | null {
     }
 
     // 验证 alpha 值范围 (0-1 或 0%-100%)
-    const alphaMatch = trimmed.match(/[,/]\s*([\d.]+%?)\s*\)$/);
-    if (alphaMatch) {
-      const alphaStr = alphaMatch[1]!;
+    // 复用 RGB_REGEX 第 5 捕获组提取 alpha：仅当存在第 4 个分量时才有 alpha，
+    // 避免把逗号分隔写法 rgb(r, g, b) 的蓝色分量（如 rgb(19, 194, 194) 的 194）误当 alpha 校验
+    const alphaStr = trimmed.match(RGB_REGEX)?.[5];
+    if (alphaStr) {
       if (alphaStr.endsWith('%')) {
         const percent = parseFloat(alphaStr);
         if (percent < 0 || percent > 100) {

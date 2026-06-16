@@ -27,6 +27,22 @@ describe('define-theme', () => {
       });
       expect(tokens.tokenCyan6).toBe('rgb(0 0 255)');
     });
+
+    it('无算法时也应保留 colorPreset* 用户覆写（回归）', () => {
+      // 此前 step 6.5 注入的 presetTokens 会覆盖用户覆写，
+      // 而 step 8 仅在有算法时重应用，导致无算法时覆写被静默丢弃
+      const noAlgo = generateThemeTokens({
+        token: { colorPresetCyan6: 'rgb(1 2 3)' },
+      });
+      expect(noAlgo.colorPresetCyan6).toBe('rgb(1 2 3)');
+
+      // 有算法时同样保留（确保行为一致）
+      const withAlgo = generateThemeTokens({
+        token: { colorPresetCyan6: 'rgb(1 2 3)' },
+        algorithm: darkAlgorithm,
+      });
+      expect(withAlgo.colorPresetCyan6).toBe('rgb(1 2 3)');
+    });
   });
 
   describe('CSS variable names completeness', () => {
@@ -91,6 +107,16 @@ describe('define-theme', () => {
 
       expect(combined.colorBgBase).toBe(darkTokens.colorBgBase);
       expect(combined.controlHeight).toBe(compactTokens.controlHeight);
+    });
+
+    it('compact 算法应同步缩小 lineHeight（随 fontSize 重派生，回归）', () => {
+      const base = generateThemeTokens({});
+      const compactTokens = generateThemeTokens({ algorithm: compactAlgorithm });
+      // fontSize 缩小后，行高比应随派生公式 (fontSize+8)/fontSize 一并更新，而非保持默认
+      expect(compactTokens.fontSize).not.toBe(base.fontSize);
+      expect(compactTokens.lineHeight).not.toBe(base.lineHeight);
+      expect(compactTokens.lineHeightSM).not.toBe(base.lineHeightSM);
+      expect(compactTokens.lineHeightLG).not.toBe(base.lineHeightLG);
     });
 
     it('custom algorithm function receives tokens and returns overrides', () => {
