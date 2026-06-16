@@ -88,6 +88,10 @@ export {
   computeScopedOverrides,
 } from './core/define-theme';
 
+// 构建时主题 CSS 生成（供业务仓库构建脚本与 CLI 复用）
+export { generateThemeCSS } from './core/generate-theme-css';
+export type { GenerateThemeCSSOptions } from './core/generate-theme-css';
+
 // 种子派生（三层 Token 架构）
 export {
   DEFAULT_PRESET_COLORS,
