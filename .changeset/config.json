@@ -8,5 +8,5 @@
   "baseBranch": "master",
   "updateInternalDependencies": "patch",
   "bumpVersionsWithWorkspaceProtocolOnly": true,
-  "ignore": []
+  "ignore": ["@aix/client", "@aix/server"]
 }
