@@ -1,13 +1,5 @@
-import { useClickOutside } from '@aix/hooks';
-import {
-  ref,
-  computed,
-  watch,
-  onBeforeUnmount,
-  toValue,
-  type Ref,
-  type MaybeRefOrGetter,
-} from 'vue';
+import { useClickOutside, useEventListener } from '@aix/hooks';
+import { ref, computed, onBeforeUnmount, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
 import type { TriggerType } from '../types';
 
 /** 事件处理器类型，兼容无参和带 Event 参数的回调 */
@@ -146,17 +138,11 @@ export function usePopperTrigger(options: UsePopperTriggerOptions): UsePopperTri
     }
   }
 
-  watch(
-    isOpen,
-    (val) => {
-      if (typeof document === 'undefined') return;
-      if (val) {
-        document.addEventListener('keydown', onKeyDown);
-      } else {
-        document.removeEventListener('keydown', onKeyDown);
-      }
-    },
-    { immediate: true },
+  // Esc 关闭：仅在打开时监听 document keydown；target 为 null（含 SSR 无 document）时自动解绑
+  useEventListener(
+    () => (isOpen.value && typeof document !== 'undefined' ? document : null),
+    'keydown',
+    onKeyDown,
   );
 
   // 点击外部关闭（click/contextmenu 触发模式）
@@ -242,9 +228,6 @@ export function usePopperTrigger(options: UsePopperTriggerOptions): UsePopperTri
 
   onBeforeUnmount(() => {
     clearTimers();
-    if (typeof document !== 'undefined') {
-      document.removeEventListener('keydown', onKeyDown);
-    }
   });
 
   return {
