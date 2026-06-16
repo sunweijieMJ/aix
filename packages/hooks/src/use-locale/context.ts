@@ -64,7 +64,8 @@ export function createLocale(defaultLocale: Locale = 'zh-CN', options: CreateLoc
   const localeContext = reactive<LocaleContext>({
     locale: defaultLocale,
     setLocale(newLocale: Locale) {
-      this.locale = newLocale;
+      // 用闭包引用 localeContext 而非 this，避免方法被解构调用时 this 丢失导致更新静默失效
+      localeContext.locale = newLocale;
       saveToStorage(newLocale);
     },
   });
