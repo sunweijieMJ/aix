@@ -95,7 +95,9 @@ export class ThemeDOMRenderer {
     this.useWhere = options.useWhere || false;
     this.scopeClass = options.scopeClass || null;
     this.root = options.container || getDocumentRoot();
-    this.transitionClass = `${this.prefix}-theme-transition`;
+    // transition 是库基础设施（静态 transition.css 固定 .aix-theme-transition），
+    // 与可配置的 token 前缀解耦，恒用库前缀 CSS_VAR_PREFIX
+    this.transitionClass = `${CSS_VAR_PREFIX}-theme-transition`;
   }
 
   /**
@@ -180,8 +182,8 @@ export class ThemeDOMRenderer {
 
     if (enabled) {
       this.root.classList.add(this.transitionClass);
-      this.root.style.setProperty(`--${this.prefix}-transition-duration`, `${duration}ms`);
-      this.root.style.setProperty(`--${this.prefix}-transition-easing`, easing);
+      this.root.style.setProperty(`--${CSS_VAR_PREFIX}-transition-duration`, `${duration}ms`);
+      this.root.style.setProperty(`--${CSS_VAR_PREFIX}-transition-easing`, easing);
     } else {
       this.removeTransition();
     }
@@ -194,8 +196,8 @@ export class ThemeDOMRenderer {
     if (!this.canAccessDOM() || !this.root?.classList) return;
 
     this.root.classList.remove(this.transitionClass);
-    this.root.style.removeProperty(`--${this.prefix}-transition-duration`);
-    this.root.style.removeProperty(`--${this.prefix}-transition-easing`);
+    this.root.style.removeProperty(`--${CSS_VAR_PREFIX}-transition-duration`);
+    this.root.style.removeProperty(`--${CSS_VAR_PREFIX}-transition-easing`);
   }
 
   /**

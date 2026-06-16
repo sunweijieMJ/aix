@@ -196,6 +196,19 @@ describe('ThemeDOMRenderer', () => {
 
       expect(mockRoot.classList.remove).toHaveBeenCalledWith('aix-theme-transition');
     });
+
+    it('自定义 prefix 下 transition 类名/变量仍固定为 aix（与 token 前缀解耦）', () => {
+      const r = new ThemeDOMRenderer({ prefix: 'myapp' });
+      r.applyTransition({ enabled: true, duration: 200, easing: 'ease-in-out' });
+
+      expect(mockRoot.classList.add).toHaveBeenCalledWith('aix-theme-transition');
+      expect(mockRoot.classList.add).not.toHaveBeenCalledWith('myapp-theme-transition');
+      expect(mockRoot.style.setProperty).toHaveBeenCalledWith('--aix-transition-duration', '200ms');
+      expect(mockRoot.style.setProperty).not.toHaveBeenCalledWith(
+        '--myapp-transition-duration',
+        '200ms',
+      );
+    });
   });
 
   describe('removeTransition', () => {

@@ -237,12 +237,13 @@ export default defineComponent({
           class: [
             scopeClass,
             props.transparent && 'aix-scope-transparent',
-            enabled && `${prefix.value}-theme-transition`,
+            // transition 固定库前缀 aix（与 token 前缀解耦，匹配静态 transition.css）
+            enabled && `${CSS_VAR_PREFIX}-theme-transition`,
           ],
           style: enabled
             ? {
-                [`--${prefix.value}-transition-duration`]: `${duration}ms`,
-                [`--${prefix.value}-transition-easing`]: easing,
+                [`--${CSS_VAR_PREFIX}-transition-duration`]: `${duration}ms`,
+                [`--${CSS_VAR_PREFIX}-transition-easing`]: easing,
               }
             : undefined,
         },
