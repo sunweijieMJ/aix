@@ -9,6 +9,14 @@
  * - transparent: 默认 display:contents，不影响父级 flex/grid 布局
  * - 差异化注入：只注入与基线不同的 CSS 变量，而非全量 300+
  * - 组件级覆盖：支持 config.components 组件级主题覆写
+ *
+ * ⚠️ SSR 局限：scoped CSS 变量由 onMounted 内的 DOMRenderer 注入，服务端渲染
+ * 阶段不执行，因此 ThemeScope 子树的差异化主题在**首屏（hydration 之前）不可见**，
+ * 存在短暂闪烁（FOUC）。这不会导致 hydration mismatch（客户端是 mount 后追加
+ * <style>），但首屏会先呈现父级/默认主题。根级 createTheme 通过
+ * generateSSRInitScript / generateSSRStyleTag 提供了防闪烁手段，ThemeScope 暂无
+ * 对应机制。若业务对嵌套主题首屏有强一致要求，应避免在 SSR 关键路径使用 ThemeScope，
+ * 或等待后续将 scoped 样式改为 render 函数同构注入的版本。
  */
 import {
   computed,
