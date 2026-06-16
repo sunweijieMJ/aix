@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createApp, defineComponent, nextTick, type ComponentPublicInstance } from 'vue';
+import { createApp, defineComponent, nextTick, ref, type ComponentPublicInstance } from 'vue';
 import {
   createLocale,
   useLocale,
@@ -38,6 +38,14 @@ describe('useLocale', () => {
       expect(localeContext.locale).toBe('zh-CN');
 
       localeContext.setLocale('en-US');
+      expect(localeContext.locale).toBe('en-US');
+    });
+
+    it('should setLocale correctly when method is destructured', () => {
+      const { localeContext } = createLocale('zh-CN');
+      // 解构调用：setLocale 脱离 localeContext 上下文，验证不依赖 this 也能正常更新
+      const { setLocale } = localeContext;
+      setLocale('en-US');
       expect(localeContext.locale).toBe('en-US');
     });
 
@@ -254,6 +262,32 @@ describe('useLocale', () => {
 
       // 组件应该仍然显示英文（因为有 override）
       expect(vm.t.greeting).toBe('Hello');
+    });
+
+    it('should track override when passed as a reactive Ref', async () => {
+      const { install } = createLocale('zh-CN');
+
+      const overrideRef = ref<'zh-CN' | 'en-US'>('en-US');
+      const TestComponent = defineComponent({
+        setup() {
+          const { t } = useLocale(testLocale, overrideRef);
+          return { t };
+        },
+        template: '<div>{{ t.greeting }}</div>',
+      });
+
+      const app = createApp(TestComponent);
+      app.use({ install });
+
+      const vm = app.mount(document.createElement('div')) as TestVM;
+
+      expect(vm.t.greeting).toBe('Hello');
+
+      // 动态修改 override Ref，组件文案应跟随切换
+      overrideRef.value = 'zh-CN';
+      await nextTick();
+
+      expect(vm.t.greeting).toBe('你好');
     });
 
     it('should support override in useCommonLocale', () => {
