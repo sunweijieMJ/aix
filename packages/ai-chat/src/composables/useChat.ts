@@ -329,7 +329,21 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           const finalErr = timedOut ? streamTimeoutError() : err;
           // 仍有重试额度：等待间隔后重试（其间被 abort 则放弃重试并判为 abort）。
           if (attempt < retryTimes) {
-            await new Promise((resolve) => setTimeout(resolve, retryInterval));
+            // 可中断等待：retry 间隔期间被 abort 立即唤醒，消除「已停止但气泡仍转圈、
+            // onAbort 延迟、isLoading=false 后可并发再发」的不一致窗口。
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(resolve, retryInterval);
+              // abort 时清掉定时器并立即唤醒；{ once: true } 触发后自动摘监听，
+              // 未触发（正常到期）则随本次请求的 ctrl 一起 GC，无残留。
+              ctrl.signal.addEventListener(
+                'abort',
+                () => {
+                  clearTimeout(timer);
+                  resolve();
+                },
+                { once: true },
+              );
+            });
             if (ctrl.signal.aborted) {
               if (ownsMsg()) {
                 aiMsg.status = 'abort';
@@ -424,7 +438,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     if (!textInserted) next.push(newText);
     msg.content = next;
     msg.status = 'local';
-    // 截断被编辑消息之后的全部消息，重建对话分支
+    // 截断被编辑消息之后的全部消息，重建对话分支；先清理被移除消息的请求归属记录，
+    // 避免其在途请求异步收尾时 ownsMsg() 仍为 true，对已脱离数组的消息误触发 onAbort / 写状态。
+    for (const removed of messages.value.slice(idx + 1)) msgOwners.delete(removed.id);
     messages.value.splice(idx + 1);
     // push 新 AI 占位并重新发起（runRequest 的 history=slice(0,aiIdx) 天然含编辑后用户消息）
     const aiId = genMsgId();
