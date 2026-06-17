@@ -64,6 +64,20 @@ describe('AiChat', () => {
     expect(w.findAll('.aix-bubble').length).toBeGreaterThanOrEqual(2);
   });
 
+  // 非受控回归：不绑 v-model:input 时输入框文本由内部状态持有（兼容 Vue 3.3 的关键场景，
+  // 实测 defineModel 在 3.3 非受控下打字会丢失；且守住「input prop 不设默认值」铁律）
+  it('非受控（不绑 v-model:input）：输入框文本保留并 emit update:input', async () => {
+    const request = vi.fn(async () => once('回答'));
+    const w = mount(AiChat, { props: { request } }); // 不传 input
+    const ta = w.find('textarea');
+    await ta.setValue('草稿文本');
+    await nextTick();
+    // 关键：内部状态持有，textarea 文本不丢失
+    expect((ta.element as HTMLTextAreaElement).value).toBe('草稿文本');
+    // 仍 emit，供使用方需要时升级为受控
+    expect(w.emitted('update:input')?.at(-1)).toEqual(['草稿文本']);
+  });
+
   it('1→N 拆分：默认操作条仅末子气泡显示（去重）', async () => {
     const request = vi.fn(async () => once('回答'));
     // 把 ai 消息拆成两个气泡（共享同一 SSOT 消息）

@@ -1,4 +1,4 @@
-import { watch, onScopeDispose, toValue, type MaybeRefOrGetter } from 'vue';
+import { watch, onScopeDispose, getCurrentScope, toValue, type MaybeRefOrGetter } from 'vue';
 
 /**
  * 带自动清理与环境守卫的 ResizeObserver
@@ -52,8 +52,10 @@ export function useResizeObserver(
     cleanup();
   };
 
-  // 第二参数 failSilently=true：在组件/effect scope 之外调用时不告警（由调用方手动 stop）
-  onScopeDispose(stop, true);
+  // 仅在存在 effect scope 时注册自动清理；scope 之外由调用方手动 stop（不告警）。
+  // 用 getCurrentScope 守卫而非 onScopeDispose 的 failSilently 第二参——后者是 Vue 3.5 才有的，
+  // 这样可在 Vue 3.3+ 全版本保持一致行为。
+  if (getCurrentScope()) onScopeDispose(stop);
 
   return stop;
 }

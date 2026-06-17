@@ -44,6 +44,18 @@ describe('ModelSelector', () => {
     expect(w.find('.aix-model-selector__menu').exists()).toBe(false);
   });
 
+  // 非受控回归：不绑 v-model 时由内部状态驱动（兼容 Vue 3.3 的关键，且守住「prop 不设默认值」铁律——
+  // 一旦给 modelValue 加默认值，useControllable 会永远判定受控、internal 失效，此用例在任何 Vue 版本都会失败）
+  it('非受控（不绑 v-model）：选中项由内部状态驱动并反映到标签', async () => {
+    const w = mount(ModelSelector, { props: { options } }); // 不传 modelValue
+    await w.find('.aix-model-selector__trigger').trigger('click');
+    await w.findAll('.aix-model-selector__option')[1]!.trigger('click');
+    // 仍 emit（供使用方需要时升级为受控）
+    expect(w.emitted('update:modelValue')![0]).toEqual(['DeepSeek-V3']);
+    // 关键：非受控下内部状态保留，标签更新为选中值（defineModel 在 Vue 3.3 非受控下会丢失）
+    expect(w.find('.aix-model-selector__label').text()).toBe('DeepSeek-V3');
+  });
+
   it('placement=top 时菜单加 --top 修饰', async () => {
     const w = mount(ModelSelector, { props: { options, placement: 'top' } });
     await w.find('.aix-model-selector__trigger').trigger('click');

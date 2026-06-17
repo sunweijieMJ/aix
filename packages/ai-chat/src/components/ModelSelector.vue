@@ -38,6 +38,12 @@
 
 <script lang="ts">
 export interface ModelSelectorProps {
+  /**
+   * 当前选中的 model value（v-model）。可选；不传走非受控，由组件内部维护选中态。
+   * 注意：不要设默认值——受控/非受控判定依赖此 prop 是否为 undefined（兼容 Vue 3.3 的 emit-only useModel），
+   * 默认值交由 useControllable 的 defaultValue 兜底。
+   */
+  modelValue?: string;
   /** 可选模型列表 */
   options: ModelOption[];
   /** 未选中时占位文案 */
@@ -45,10 +51,15 @@ export interface ModelSelectorProps {
   /** 下拉展开方向，默认 bottom；位于面板底部时用 top 向上弹出 */
   placement?: 'top' | 'bottom';
 }
+
+export interface ModelSelectorEmits {
+  /** 选中的 model value 变化（v-model） */
+  (e: 'update:modelValue', value: string): void;
+}
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useClickOutside } from '@aix/hooks';
+import { useNamespace, useClickOutside, useControllable } from '@aix/hooks';
 import { ArrowDropDown } from '@aix/icons';
 import { ref, computed, nextTick } from 'vue';
 import type { ModelOption } from '../types';
@@ -57,8 +68,14 @@ const props = withDefaults(defineProps<ModelSelectorProps>(), {
   placeholder: '',
   placement: 'bottom',
 });
-// v-model 绑定当前选中的 model value
-const model = defineModel<string>();
+const emit = defineEmits<ModelSelectorEmits>();
+// v-model 绑定当前选中的 model value。select() 内部写入，属「内部写入 + 支持非受控」场景，
+// 故用 useControllable 兼容 Vue 3.3（useModel emit-only 非受控下本地写入会丢失）。prop modelValue 须无默认值。
+const { state: model } = useControllable<string>({
+  prop: () => props.modelValue,
+  defaultValue: '',
+  onChange: (v) => emit('update:modelValue', v),
+});
 const ns = useNamespace('model-selector');
 
 const open = ref(false);

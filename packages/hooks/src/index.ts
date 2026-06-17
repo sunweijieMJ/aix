@@ -33,3 +33,6 @@ export * from './use-controllable';
 
 // 剪贴板复制（兜底 + copied 反馈态）
 export * from './use-clipboard';
+
+// 兼容 Vue 3.3+ 的唯一 id 生成(3.5+ 透传原生 useId,低版本回退计数器)
+export * from './use-id';

@@ -38,8 +38,8 @@
 </template>
 
 <script setup lang="ts">
-import { useZIndex } from '@aix/hooks';
-import { computed, ref, useId, watch, type CSSProperties } from 'vue';
+import { useId, useZIndex } from '@aix/hooks';
+import { computed, ref, watch, type CSSProperties } from 'vue';
 import { usePopper } from '../composables/usePopper';
 import { usePopperTrigger } from '../composables/usePopperTrigger';
 import type { PopoverProps, PopoverEmits, PopoverExpose } from '../types';

@@ -1035,7 +1035,7 @@ importers:
         specifier: ^0.49.1
         version: 0.49.1(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vue@3.5.38(typescript@5.9.3))
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
@@ -1109,7 +1109,7 @@ importers:
         specifier: workspace:^
         version: link:../theme
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
@@ -1230,7 +1230,7 @@ importers:
         specifier: ^1.2.3
         version: 1.2.3
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
@@ -1288,7 +1288,7 @@ importers:
         specifier: ^1.5.4
         version: 1.5.4(@vue-flow/core@1.48.2(vue@3.5.38(typescript@5.9.3)))(vue@3.5.38(typescript@5.9.3))
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
@@ -1325,7 +1325,7 @@ importers:
   packages/hooks:
     dependencies:
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
@@ -1404,7 +1404,7 @@ importers:
         specifier: ^6.0.227
         version: 6.0.227
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
@@ -1450,7 +1450,7 @@ importers:
         specifier: ^2.0.0
         version: 2.0.0(vue@3.5.38(typescript@5.9.3))
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
@@ -1571,7 +1571,7 @@ importers:
         specifier: ^0.9.0
         version: 0.9.0(@tiptap/core@3.26.1(@tiptap/pm@3.26.1))
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
@@ -1611,7 +1611,7 @@ importers:
         specifier: ^0.0.8
         version: 0.0.8
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':
@@ -1726,7 +1726,7 @@ importers:
         specifier: ^8.23.7
         version: 8.23.7
       vue:
-        specifier: ^3.5.31
+        specifier: ^3.3.0
         version: 3.5.38(typescript@5.9.3)
     devDependencies:
       '@kit/eslint-config':

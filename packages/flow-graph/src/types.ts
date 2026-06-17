@@ -280,6 +280,10 @@ export interface FlowConnection {
 
 /** FlowGraph 组件 Emits */
 export interface FlowGraphEmits {
+  /** 节点数组变化（v-model:nodes）；由 useControllable 在受控/非受控两态下统一上抛 */
+  'update:nodes': [nodes: FlowNode[]];
+  /** 边数组变化（v-model:edges）；由 useControllable 在受控/非受控两态下统一上抛 */
+  'update:edges': [edges: FlowEdge[]];
   /** 建立新连线（来自 VueFlow 的 `connect` 事件） */
   connect: [connection: FlowConnection];
   /** 节点被点击时触发，携带节点对象与原始事件 */

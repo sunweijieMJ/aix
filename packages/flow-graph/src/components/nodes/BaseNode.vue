@@ -101,9 +101,10 @@
  * - 视觉通过默认 slot 暴露 `{ size, nodeState, onClick }`，由子类渲染形状；
  * - Handle 的 pointer-events 由 `connectable` 控制。
  */
+import { useId } from '@aix/hooks';
 import { ContextMenu, DropdownItem, type ContextMenuExpose } from '@aix/popper';
 import { Handle, Position, useVueFlow, type HandleConnectable } from '@vue-flow/core';
-import { computed, inject, onScopeDispose, ref, toRef, useId, watch } from 'vue';
+import { computed, inject, onScopeDispose, ref, toRef, watch } from 'vue';
 import { useNodeInteraction } from '../../composables/useNodeInteraction';
 import zhCN from '../../locale/zh-CN';
 import {
@@ -203,8 +204,6 @@ const bodyRef = ref<HTMLElement | null>(null);
 /**
  * Hover 显示菜单：
  * - 每个 BaseNode 实例分配一个唯一 popper-class 后缀，便于在轮询时定位"自己"那个浮层；
- * - 用 Vue 3.5 的 useId() 生成稳定唯一 id，兼容 SSR 与 HMR；
- * - useId 形如 `v-0` / `:r0:`，统一替换非 token 字符以确保可作为 CSS 类名 / 选择器使用。
  */
 const menuId = useId().replace(/[^a-zA-Z0-9_-]/g, '_');
 const menuPopperClass = `aix-flow-node-menu aix-flow-node-menu--${menuId}`;

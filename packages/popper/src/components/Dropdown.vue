@@ -42,8 +42,8 @@
 </template>
 
 <script setup lang="ts">
-import { useZIndex } from '@aix/hooks';
-import { computed, nextTick, provide, ref, useId, watch } from 'vue';
+import { useId, useZIndex } from '@aix/hooks';
+import { computed, nextTick, provide, ref, watch } from 'vue';
 import { createMenuKeyDown } from '../composables/useMenuKeyboard';
 import { usePopper } from '../composables/usePopper';
 import { usePopperTrigger } from '../composables/usePopperTrigger';
