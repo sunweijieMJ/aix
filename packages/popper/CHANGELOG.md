@@ -1,5 +1,13 @@
 # @aix/popper
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies
+  - @aix/hooks@0.0.3
+  - @aix/theme@0.0.3
+
 ## 0.0.6
 
 ### Patch Changes

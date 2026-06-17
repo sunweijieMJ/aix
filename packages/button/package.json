@@ -1,6 +1,6 @@
 {
   "name": "@aix/button",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A Vue 3 Button component",
   "license": "MIT",
   "type": "module",

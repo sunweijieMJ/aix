@@ -1,5 +1,13 @@
 # @aix/button
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @aix/hooks@0.0.3
+  - @aix/theme@0.0.3
+
 ## 0.0.2
 
 ### Patch Changes

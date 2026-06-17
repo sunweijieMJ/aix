@@ -1,5 +1,14 @@
 # @aix/flow-graph
 
+## 0.0.39
+
+### Patch Changes
+
+- Updated dependencies
+  - @aix/hooks@0.0.3
+  - @aix/theme@0.0.3
+  - @aix/popper@0.0.7
+
 ## 0.0.38
 
 ### Patch Changes
