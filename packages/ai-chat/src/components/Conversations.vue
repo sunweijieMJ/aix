@@ -68,6 +68,12 @@ export interface ConversationsProps {
   groupable?: boolean;
   /** 新建按钮文案，缺省取 locale */
   newButtonText?: string;
+  /**
+   * 当前激活会话 id（v-model:activeKey）。可选；不传走非受控，由组件内部维护选中态。
+   * 注意：不要设默认值——受控/非受控判定依赖此 prop 是否为 undefined（兼容 Vue 3.3 的 emit-only useModel），
+   * 默认值交由 useControllable 的 defaultValue 兜底。
+   */
+  activeKey?: string;
 }
 export interface ConversationsEmits {
   /** 点击新建 */
@@ -76,12 +82,14 @@ export interface ConversationsEmits {
   (e: 'rename', id: string, label: string): void;
   /** 删除会话，携带 id */
   (e: 'delete', id: string): void;
+  /** 激活会话变化（v-model:activeKey） */
+  (e: 'update:activeKey', id: string): void;
 }
 </script>
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
-import { useNamespace } from '@aix/hooks';
+import { useNamespace, useControllable } from '@aix/hooks';
 import { Add, Edit, Delete } from '@aix/icons';
 import { ref, computed, nextTick, watch } from 'vue';
 import { locale } from '../locale';
@@ -89,8 +97,13 @@ import type { ConversationItem } from '../types';
 
 const props = withDefaults(defineProps<ConversationsProps>(), { groupable: false });
 const emit = defineEmits<ConversationsEmits>();
-// 当前激活会话 id（受控，v-model:activeKey）
-const activeKey = defineModel<string>('activeKey', { default: '' });
+// 当前激活会话 id（v-model:activeKey）。select() 会内部写入选中态，属「内部写入 + 支持非受控」场景，
+// 故用 useControllable 兼容 Vue 3.3（useModel emit-only 非受控下本地写入会丢失）。prop activeKey 须无默认值。
+const { state: activeKey } = useControllable<string>({
+  prop: () => props.activeKey,
+  defaultValue: '',
+  onChange: (v) => emit('update:activeKey', v),
+});
 const ns = useNamespace('conversations');
 const { t } = useLocale(locale);
 

@@ -60,7 +60,7 @@
     "mermaid": "^11.15.0"
   },
   "peerDependencies": {
-    "vue": "^3.5.31"
+    "vue": "^3.3.0"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",

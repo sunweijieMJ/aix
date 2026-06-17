@@ -25,8 +25,8 @@
 </template>
 
 <script setup lang="ts">
-import { useZIndex } from '@aix/hooks';
-import { computed, nextTick, ref, useId, watch } from 'vue';
+import { useId, useZIndex } from '@aix/hooks';
+import { computed, nextTick, ref, watch } from 'vue';
 import { usePopper } from '../composables/usePopper';
 import { usePopperTrigger } from '../composables/usePopperTrigger';
 import type { TooltipProps, TooltipEmits, TooltipExpose } from '../types';

@@ -1,12 +1,13 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { defineComponent } from 'vue';
+import { defineComponent, nextTick } from 'vue';
 import { FlowGraph } from '../src';
 
 vi.mock('@vue-flow/core', () => ({
   VueFlow: defineComponent({
     name: 'VueFlow',
-    emits: ['connect', 'paneDblClick'],
+    props: ['nodes', 'edges'],
+    emits: ['connect', 'paneDblClick', 'update:nodes', 'update:edges'],
     template: '<div class="vue-flow"><slot /></div>',
   }),
   Panel: defineComponent({
@@ -71,5 +72,19 @@ describe('FlowGraph 组件', () => {
     const edges = [{ id: 'e1', source: '1', target: '2' }];
     const wrapper = mount(FlowGraph, { props: { edges } });
     expect((wrapper.props() as Record<string, unknown>).edges).toEqual(edges);
+  });
+
+  // 非受控回归：不绑 v-model:nodes 时，VueFlow 内部变更经回写由 useControllable 内部状态持有
+  // （兼容 Vue 3.3 的关键——defineModel 在 3.3 非受控下回写会丢失，导致内部读到陈旧空数组）
+  it('非受控（不绑 v-model:nodes）：VueFlow 回写由内部状态持有并回传', async () => {
+    const wrapper = mount(FlowGraph); // 不传 nodes
+    const vueFlow = wrapper.findComponent({ name: 'VueFlow' });
+    const newNodes = [{ id: 'n1', position: { x: 1, y: 2 } }];
+    vueFlow.vm.$emit('update:nodes', newNodes);
+    await nextTick();
+    // 对外 emit
+    expect(wrapper.emitted('update:nodes')?.at(-1)).toEqual([newNodes]);
+    // 关键：内部状态持有，回传给 VueFlow 的 nodes prop 反映新值（非陈旧空数组）
+    expect(vueFlow.props('nodes')).toEqual(newNodes);
   });
 });

@@ -13,8 +13,18 @@
  *   服务端首屏即带 scoped 样式，无 FOUC；CSS 变量内容由确定性 computed 派生，
  *   配合 useId 的稳定 scopeClass，客户端 hydration 不会 mismatch。
  */
-import { computed, defineComponent, h, provide, useId, type PropType } from 'vue';
+import { computed, defineComponent, h, provide, type PropType } from 'vue';
+import * as Vue from 'vue';
 import { THEME_INJECTION_KEY, type ThemeContext } from './theme-context';
+
+// useId 仅 Vue 3.5+ 提供。为兼容 Vue 3.3/3.4（无 SSR hydration 一致性需求的纯 CSR 场景），
+// 用命名空间访问 + 回退自增计数器：3.5+ 走原生 useId（保留 SSR 同构能力），低版本回退本地唯一 id。
+// 注意：不要直接 `import { useId } from 'vue'`，否则在 vue<3.5 下会因缺少该导出导致打包失败。
+let scopeIdSeed = 0;
+const genScopeId = (): string => {
+  const useId = (Vue as { useId?: () => string }).useId;
+  return typeof useId === 'function' ? useId() : `f${(scopeIdSeed += 1)}`;
+};
 import { useThemeContextOptional } from './use-theme-context';
 import {
   buildOverridesCss,
@@ -81,9 +91,8 @@ export default defineComponent({
     },
   },
   setup(props, { slots }) {
-    // 使用 Vue useId 生成 SSR/客户端一致的唯一标识，避免 hydration mismatch
-    // （useId 返回形如 'v-0' 的字符串，对 SSR 多请求与多实例均唯一）
-    const scopeClass = `aix-scope-${useId() ?? ''}`;
+    // 生成 SSR/客户端一致的唯一标识，避免 hydration mismatch（3.5+ 用原生 useId，低版本回退计数器）
+    const scopeClass = `aix-scope-${genScopeId() ?? ''}`;
 
     const parentContext = useThemeContextOptional();
 

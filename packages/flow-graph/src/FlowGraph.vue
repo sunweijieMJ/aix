@@ -83,7 +83,7 @@
  * - 提供 `#bottom-bar` 具名插槽（默认渲染 `添加节点 / Controls / 搜索` 三件套），
  *   插槽 props 暴露 `addNode / openSearch / closeSearch / fitView / zoomIn / zoomOut`。
  */
-import { useLocale, useEventListener } from '@aix/hooks';
+import { useLocale, useEventListener, useControllable } from '@aix/hooks';
 import { Background } from '@vue-flow/background';
 import { Panel, VueFlow, useVueFlow } from '@vue-flow/core';
 import type { EdgeChange, EdgeUpdateEvent, NodeChange } from '@vue-flow/core';
@@ -132,8 +132,20 @@ const props = withDefaults(defineProps<FlowGraphProps>(), {
 });
 const emit = defineEmits<FlowGraphEmits>();
 
-const modelNodes = defineModel<FlowNode[]>('nodes', { default: () => [] });
-const modelEdges = defineModel<FlowEdge[]>('edges', { default: () => [] });
+// v-model:nodes / v-model:edges。内部多处读 modelNodes.value（碰撞检测 / 搜索 / 复制）并经
+// <VueFlow v-model:nodes> 回写，属「内部写入 + 支持非受控」场景。Vue 3.3 的 useModel 为 emit-only，
+// 非受控下回写丢失会让这些读取拿到陈旧空数组，故用 useControllable。prop nodes/edges 须保持无默认值
+// （FlowGraphProps 已声明 nodes?/edges? 且未进 withDefaults 默认值，符合要求）。
+const { state: modelNodes } = useControllable<FlowNode[]>({
+  prop: () => props.nodes,
+  defaultValue: [],
+  onChange: (v) => emit('update:nodes', v),
+});
+const { state: modelEdges } = useControllable<FlowEdge[]>({
+  prop: () => props.edges,
+  defaultValue: [],
+  onChange: (v) => emit('update:edges', v),
+});
 
 /** 栅格尺寸（px） */
 const gridSize = computed(() => props.gridSize ?? 40);

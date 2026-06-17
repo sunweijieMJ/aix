@@ -28,6 +28,17 @@ describe('Conversations', () => {
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
   });
 
+  // 非受控回归：不绑 v-model:activeKey 时由内部状态驱动（兼容 Vue 3.3 的关键，且守住「prop 不设默认值」铁律）
+  it('非受控（不绑 v-model:activeKey）：点击切换选中由内部状态驱动', async () => {
+    const w = mount(Conversations, { props: { items } }); // 不传 activeKey
+    const itemEls = w.findAll('.aix-conversations__item');
+    await itemEls[1]!.trigger('click');
+    // 仍 emit
+    expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
+    // 关键：非受控下内部状态保留，is-active 落到被点击项（defineModel 在 Vue 3.3 非受控下会丢失）
+    expect(w.findAll('.aix-conversations__item')[1]!.classes()).toContain('is-active');
+  });
+
   it('会话项键盘可达：role/tabindex、Enter/Space 选中、激活项标注 aria-current', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const itemEls = w.findAll('.aix-conversations__item');

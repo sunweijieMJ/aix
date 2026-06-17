@@ -106,6 +106,12 @@ export interface AiChatProps {
   parser?: UseChatOptions['parser'];
   /** 初始历史消息 */
   defaultMessages?: UseChatOptions['defaultMessages'];
+  /**
+   * 输入框文本（v-model:input）。可选；不传则走非受控，由组件内部维护草稿。
+   * 注意：不要设默认值——为兼容 Vue 3.3（useModel emit-only 语义），受控/非受控的判定
+   * 依赖此 prop 是否为 undefined，交由 useControllable 的 defaultValue 兜底。
+   */
+  input?: string;
   /** 角色气泡样式映射，优先级高于 provideAiChatConfig 的全局 roles */
   roles?: Record<string, RoleConfig>;
   /** 滚动跟随策略，优先级高于 provideAiChatConfig 的全局 shouldFollow */
@@ -193,11 +199,13 @@ export interface AiChatEmits {
   (e: 'feedback', payload: { id: string; value: MessageFeedback | null }): void;
   /** 某条 AI 消息逐字显示完毕，携带消息 id（流式打字机追平末尾时触发） */
   (e: 'typing-complete', id: string): void;
+  /** 输入框文本变化（v-model:input），由 useControllable 在受控/非受控两态下统一上抛 */
+  (e: 'update:input', value: string): void;
 }
 </script>
 
 <script setup lang="ts">
-import { useNamespace } from '@aix/hooks';
+import { useNamespace, useControllable } from '@aix/hooks';
 import { computed, ref, watch, useSlots } from 'vue';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
@@ -262,9 +270,18 @@ const hasHeader = computed(
 );
 
 // 受控模式：父组件可用 v-model:messages 接管消息列表（持久化 / 外部清空 / 跨组件共享）。
+// 此处刻意保留 defineModel：messagesModel 仅作对外镜像，UI 实际渲染 useChat 的 parsedMessages（SSOT），
+// 且与 useChat 内部数组共享引用（见下方 SSOT 桥接）。Vue 3.3 下非受控时镜像写入虽被 emit-only 丢弃，
+// 但 UI 不依赖它、受控/单向场景 emit 照常触发，故对该 SSOT 场景是优雅降级，无需 useControllable。
 const messagesModel = defineModel<ChatMessage[]>('messages', { default: () => [] });
-// 输入框文本受控：v-model:input 支持外部回填 / 发送失败保留 / 草稿持久化。
-const inputModel = defineModel<string>('input', { default: '' });
+// 输入框文本（v-model:input）：组件内部（Sender 回填、发送清空、草稿保留）会写入本 model，
+// 属于「内部写入 + 支持非受控」场景。Vue 3.3 的 useModel 为 emit-only，非受控下本地写入会丢失，
+// 故改用 useControllable：非受控时由内部 ref 持有、受控时只 emit。prop input 必须保持无默认值。
+const { state: inputModel } = useControllable<string>({
+  prop: () => props.input,
+  defaultValue: '',
+  onChange: (v) => emit('update:input', v),
+});
 const senderRef = ref<InstanceType<typeof Sender> | null>(null);
 
 const DEFAULT_ROLES: Record<string, RoleConfig> = {

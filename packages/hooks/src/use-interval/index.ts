@@ -1,4 +1,11 @@
-import { ref, onScopeDispose, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
+import {
+  ref,
+  onScopeDispose,
+  getCurrentScope,
+  toValue,
+  type Ref,
+  type MaybeRefOrGetter,
+} from 'vue';
 
 export interface UseIntervalFnOptions {
   /** 是否在调用 useInterval 时立即启动，默认 false（手动 start） */
@@ -56,8 +63,10 @@ export function useInterval(
 
   if (immediate) start();
 
-  // 第二参数 failSilently=true：在组件/effect scope 之外调用时不告警
-  onScopeDispose(stop, true);
+  // 仅在存在 effect scope 时注册自动清理；scope 之外由调用方手动 stop（不告警）。
+  // 用 getCurrentScope 守卫而非 onScopeDispose 的 failSilently 第二参——后者是 Vue 3.5 才有的，
+  // 这样可在 Vue 3.3+ 全版本保持一致行为。
+  if (getCurrentScope()) onScopeDispose(stop);
 
   return { isActive, start, stop };
 }
