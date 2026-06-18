@@ -15,7 +15,7 @@
           @retry="emit('retry', (item as ChatMessage).id)"
           @block-action="emit('block-action', $event)"
           @edit="emit('edit', (item as ChatMessage).id, $event)"
-          @typing-complete="emit('typing-complete', (item as ChatMessage).id)"
+          @typing-complete="handleTypingComplete((item as ChatMessage).id)"
         >
           <template v-if="$slots.content" #content="slotProps">
             <slot name="content" :item="item as ChatMessage" v-bind="slotProps" />
@@ -139,7 +139,11 @@ const resolveBubble = (item: ChatMessage): Partial<BubbleProps> => {
 // 解析单条气泡的 typing：仅对「本会话流式过且未中止」的消息开启；
 // 列表级 typing 为配置对象时透传配置（细化节奏），为 true 时传 true。
 const resolveTyping = (item: ChatMessage): boolean | BubbleTypingConfig => {
-  const active = !!props.typing && streamedIds.has(item.id) && item.status !== 'abort';
+  const active =
+    !!props.typing &&
+    streamedIds.has(item.id) &&
+    !completedIds.has(item.id) &&
+    item.status !== 'abort';
   if (!active) return false;
   return typeof props.typing === 'object' ? props.typing : true;
 };
@@ -149,7 +153,15 @@ const resolveTyping = (item: ChatMessage): boolean | BubbleTypingConfig => {
 // 纯历史消息（直接以 success 进入、从未 updating）不会被标记，故不会逐字重播。
 // 例外：status==='abort'（用户点击停止）时，上方 :typing 绑定会立即关闭打字机，
 // 让已接收文本一次性全显——点停止即"暂停"，而非继续把缓冲逐字打完。
+// 注：streamedIds 只负责「开启并维持」打字机；其「何时收尾关闭」由下方 completedIds 接管
+// （追平末尾后关闭，避免重挂载重播）——两者一开一关，共同界定打字机的生命周期。
 const streamedIds = reactive(new Set<string>());
+// 「已逐字播放完毕」的消息 id：消息进入终态（success/error）后，其打字机追平末尾会上抛
+// typing-complete（见 handleTypingComplete）——此时记入本集合，resolveTyping 据此关闭该消息的
+// typing。这样虚拟列表滚动卸载/重挂载该气泡时，内置 TextBlock 与自定义块渲染器都拿到 typing=false，
+// 不会从头重播。内置块本身有挂载快照保护，但自定义块渲染器（如业务的 QuestionCard 自管打字机）
+// 无此保护、尤其依赖本信号；统一在此关闭，免去各渲染器自造防重播守卫。
+const completedIds = reactive(new Set<string>());
 watch(
   () => props.items.map((m) => `${m.id}:${m.status}`).join(','),
   () => {
@@ -157,16 +169,32 @@ watch(
     const alive = new Set<string>();
     for (const m of props.items) {
       alive.add(m.id);
-      if (m.status === 'updating') streamedIds.add(m.id);
+      if (m.status === 'updating') {
+        streamedIds.add(m.id);
+        // 重新生成 / 续流（同 id 再次 updating）→ 复位完成标记，允许重新逐字。
+        completedIds.delete(m.id);
+      }
     }
     // 切会话 / 编辑截断等导致消息整体替换或移除后，丢弃已不在当前列表的旧 id，
-    // 避免 streamedIds 随会话历史单调增长（id 全局唯一，prune 不会误删仍在用的标记）。
+    // 避免 streamedIds / completedIds 随会话历史单调增长（id 全局唯一，prune 不会误删仍在用的标记）。
     for (const id of streamedIds) {
       if (!alive.has(id)) streamedIds.delete(id);
+    }
+    for (const id of completedIds) {
+      if (!alive.has(id)) completedIds.delete(id);
     }
   },
   { immediate: true },
 );
+
+// 某条消息逐字播放完成（Bubble 上抛 typing-complete）：仅当其已进入终态（非 loading/updating）
+// 时才登记为已完成并关闭 typing——流式中途的「追平」（源还会继续增长）不能关闭，否则后续增量
+// 不再逐字（这正是 streamedIds 持续保持 typing 的初衷）。无论是否登记都向上转发事件。
+const handleTypingComplete = (id: string) => {
+  const m = props.items.find((x) => x.id === id);
+  if (m && m.status !== 'loading' && m.status !== 'updating') completedIds.add(id);
+  emit('typing-complete', id);
+};
 
 // 委托给 virtua 官方 API：虚拟列表只渲染视口内项，DOM 索引对非可见项会静默失效
 const scrollToBubble = (index: number, smooth = false) => {
