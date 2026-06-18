@@ -17,6 +17,8 @@
         "src/**/*.{css,scss,sass,less}",
         "src/**/*.{json,md}",
         "typings/**/*.d.ts",
+        "assets/**",
+        "scripts/**",
         "package.json",
         "tsconfig*.json",
         "rollup.config.js",
@@ -64,11 +66,6 @@
       "persistent": true
     },
     "clean": {
-      "cache": false
-    },
-    "build:generate": {
-      "inputs": ["assets/**/*.svg", "scripts/**/*.ts", "package.json"],
-      "outputs": ["src/**"],
       "cache": false
     },
     "test": {
