@@ -228,6 +228,73 @@ describe('BubbleList', () => {
       expect(findByKey(w, 'a-ai').props('typing')).toBe(false);
     });
 
+    // 防回归（重挂载重播）：曾流式的消息进入终态后，其打字机追平末尾会上抛 typing-complete，
+    // 此后该消息应关闭 typing —— 使虚拟列表滚动卸载/重挂载时，内置块与自定义块都不再从头逐字。
+    it('终态消息逐字播放完成（typing-complete）后 typing=false', async () => {
+      const items: ChatMessage[] = [
+        { id: 'c-user', role: 'user', content: [textBlock('问')], status: 'local' },
+        { id: 'c-ai', role: 'ai', content: [textBlock('部分')], status: 'updating' },
+      ];
+      const w = mount(BubbleList, { props: { items: [...items], typing: true } });
+      await flushPromises();
+      expect(findByKey(w, 'c-ai').props('typing')).toBe(true);
+
+      // 流结束转 success：打字机可能仍在追赶，typing 仍应为 true
+      const finished = items.map((m) =>
+        m.id === 'c-ai'
+          ? { ...m, content: [textBlock('部分内容已完整')], status: 'success' as const }
+          : m,
+      );
+      await w.setProps({ items: finished });
+      await flushPromises();
+      expect(findByKey(w, 'c-ai').props('typing')).toBe(true);
+
+      // 打字机追平末尾 → Bubble 上抛 typing-complete → 此后该消息 typing 关闭
+      findByKey(w, 'c-ai').vm.$emit('typing-complete', { messageKey: 'c-ai' });
+      await flushPromises();
+      expect(findByKey(w, 'c-ai').props('typing')).toBe(false);
+    });
+
+    // 流式中途的「追平」（status 仍 updating，源还会继续增长）不能关闭 typing，
+    // 否则后续增量不再逐字（这正是 streamedIds 持续保持 typing 的初衷）。
+    it('updating 期间的 typing-complete 不关闭 typing', async () => {
+      const w = mount(BubbleList, {
+        props: {
+          items: [{ id: 'm', role: 'ai', content: [textBlock('增长中')], status: 'updating' }],
+          typing: true,
+        },
+      });
+      await flushPromises();
+      findByKey(w, 'm').vm.$emit('typing-complete', { messageKey: 'm' });
+      await flushPromises();
+      expect(findByKey(w, 'm').props('typing')).toBe(true);
+    });
+
+    // 完成后重新生成（onReload → 同 id 再次 updating）应复位完成标记、重新启用 typing。
+    it('完成关闭 typing 后再次 updating 应重新启用', async () => {
+      const w = mount(BubbleList, {
+        props: {
+          items: [{ id: 'r', role: 'ai', content: [textBlock('答')], status: 'updating' }],
+          typing: true,
+        },
+      });
+      await flushPromises();
+      await w.setProps({
+        items: [{ id: 'r', role: 'ai', content: [textBlock('答完整')], status: 'success' }],
+      });
+      await flushPromises();
+      findByKey(w, 'r').vm.$emit('typing-complete', { messageKey: 'r' });
+      await flushPromises();
+      expect(findByKey(w, 'r').props('typing')).toBe(false);
+
+      // 重新生成：同 id 回到 updating
+      await w.setProps({
+        items: [{ id: 'r', role: 'ai', content: [textBlock('重新')], status: 'updating' }],
+      });
+      await flushPromises();
+      expect(findByKey(w, 'r').props('typing')).toBe(true);
+    });
+
     // 防回归（streamedIds 不随会话切换泄漏）：某 id 流式过后切走会话应被 prune 清理；
     // 若之后另一会话复用同一 id 作为纯历史 success 消息，不应残留为 typing=true。
     it('切走会话后 streamedIds 被清理，复用同一 id 的历史消息不误判 typing', async () => {
