@@ -167,13 +167,13 @@ export class PickProcessor extends FileProcessor {
     translatedPath: string,
     analysisResult: ReturnType<typeof PickProcessor.prototype.analyzeTranslationStatus>,
   ): void {
-    FileUtils.writeJsonFile(untranslatedPath, analysisResult.untranslatedEntries);
+    FileUtils.writeTranslationsFile(untranslatedPath, analysisResult.untranslatedEntries);
     LoggerUtils.info(
       `📄 生成 ${FILES.UNTRANSLATED_JSON} 文件成功 (${this.getDirectoryDescription()})`,
     );
     LoggerUtils.info(`📝 待翻译条目: ${analysisResult.untranslatedCount} 个`);
 
-    FileUtils.writeJsonFile(translatedPath, analysisResult.translatedEntries);
+    FileUtils.writeTranslationsFile(translatedPath, analysisResult.translatedEntries);
     LoggerUtils.info(
       `📄 生成 ${FILES.TRANSLATIONS_JSON} 文件成功 (${this.getDirectoryDescription()})`,
     );

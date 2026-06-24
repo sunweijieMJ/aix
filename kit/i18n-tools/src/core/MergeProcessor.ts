@@ -243,7 +243,7 @@ export class MergeProcessor extends FileProcessor {
       ...existingTranslations,
       ...analysisResult.newlyTranslated,
     };
-    FileUtils.writeJsonFile(translatedPath, finalTranslations);
+    FileUtils.writeTranslationsFile(translatedPath, finalTranslations);
     LoggerUtils.info(
       `📄 已更新 ${FILES.TRANSLATIONS_JSON}，现有 ${Object.keys(finalTranslations).length} 个翻译条目`,
     );
@@ -257,7 +257,7 @@ export class MergeProcessor extends FileProcessor {
     analysisResult: ReturnType<typeof MergeProcessor.prototype.analyzeTranslationStatus>,
   ): void {
     if (analysisResult.stillUntranslatedCount > 0) {
-      FileUtils.writeJsonFile(filePath, analysisResult.stillUntranslated);
+      FileUtils.writeTranslationsFile(filePath, analysisResult.stillUntranslated);
       LoggerUtils.info(
         `📝 已更新 ${FILES.UNTRANSLATED_JSON}，剩余 ${analysisResult.stillUntranslatedCount} 个待翻译条目`,
       );
