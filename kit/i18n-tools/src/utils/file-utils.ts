@@ -225,7 +225,7 @@ export class FileUtils {
   static createOrEmptyFile(filePath: string, content: string = '{}'): void {
     FileUtils.ensureDirectoryExists(path.dirname(filePath));
     const contentWithNewline = content.endsWith('\n') ? content : content + '\n';
-    FileUtils.atomicWrite(filePath, contentWithNewline);
+    FileUtils.atomicWriteText(filePath, contentWithNewline);
   }
 
   /**
@@ -237,7 +237,7 @@ export class FileUtils {
    *      fsync 显式刷新内核缓冲区到物理介质，避免 rename 后断电仍丢内容。
    *      显式 utf8 编码可避免 Windows 下默认 ANSI 解码的 mojibake。
    */
-  private static atomicWrite(filePath: string, content: string): void {
+  static atomicWriteText(filePath: string, content: string): void {
     const dir = path.dirname(filePath);
     const tmpPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
     try {
@@ -278,7 +278,7 @@ export class FileUtils {
       FileUtils.ensureDirectoryExists(path.dirname(filePath));
     }
     const content = JSON.stringify(data, null, indent) + '\n';
-    FileUtils.atomicWrite(filePath, content);
+    FileUtils.atomicWriteText(filePath, content);
   }
 
   /** 类型声明文件不应被作为业务源码处理 */
