@@ -5,9 +5,44 @@ import { CommonASTUtils } from './common-ast-utils';
 import { FileUtils } from './file-utils';
 
 /**
- * 扫描源码目录，抽出所有 t()/$t() 调用使用的字面量 key。
- * 已剥离 namespace 前缀（i18next 'ns:key' → 'key'）、剔除注释中的调用。
- * doctor 对账与 prune 孤儿清理共用此口径。
+ * 各 i18n 库引用 key 的全部静态形式（捕获组 1 = key）。库无关：vue 项目不会有
+ * FormattedMessage、react 项目不会有 keypath，跨库同跑互不干扰。`id` 两条限定在
+ * FormattedMessage 标签 / formatMessage 调用上下文内，避免误吃普通 HTML/对象 id。
+ *
+ * 仍按「尽力而为」不覆盖动态形式（t(prefix+x) / :keypath="expr" / v-t="{path:x}"），
+ * 这些由 keys.dynamicKeyAllowlist 兜底——静态扫描本就无法解析。
+ */
+/**
+ * 函数调用 `t(...)` / `$t(...)`：捕获第一个实参表达式（到顶层第一个 `,` 或 `)` 止）。
+ * 随后从中提取所有字符串字面量，因此能覆盖：
+ *   - `t('k')`             → 'k'
+ *   - `t(cond ? 'a' : 'b')` → 'a' / 'b'（三元，两个 key 都算被引用）
+ * 在第一个逗号处停止，避免误吃 `t('k', { name: 'John' })` 里的插值值 'John'。
+ * 模板字符串 / 变量等动态形式自然不含字面量 → 不匹配（交给 dynamicKeyAllowlist）。
+ */
+const CALL_FIRST_ARG = /(?:\$t|(?<!\w)t)\s*\(\s*([^,)]*)/g;
+/** 从一段表达式文本里提取所有 'xxx' / "xxx" 字面量。 */
+const STRING_LITERAL = /['"]([^'"]+)['"]/g;
+
+/** 组件 / 属性形式（库无关，跨库同跑互不干扰；id 两条限定上下文避免误吃普通 id）。 */
+const ATTR_PATTERNS: RegExp[] = [
+  // vue-i18n 组件：<i18n-t keypath="k">
+  /\bkeypath\s*=\s*['"]([^'"]+)['"]/g,
+  // vue-i18n 指令：v-t="'k'"
+  /\bv-t\s*=\s*"'([^']+)'"/g,
+  // react-i18next 组件：<Trans i18nKey="k">
+  /\bi18nKey\s*=\s*['"]([^'"]+)['"]/g,
+  // react-intl 组件：<FormattedMessage id="k">（限标签内的 id）
+  /<FormattedMessage\b[^>]*?\bid\s*=\s*['"]([^'"]+)['"]/g,
+  // react-intl 调用：formatMessage({ id: 'k' })（限调用对象内的 id）
+  /\bformatMessage\s*\(\s*\{[^}]*?\bid\s*:\s*['"]([^'"]+)['"]/g,
+];
+
+/**
+ * 扫描源码目录，抽出所有 i18n key 引用：函数调用 `t()/$t()`（含三元等首参表达式）、
+ * vue 组件/指令 `<i18n-t keypath>`/`v-t`、react 组件/调用 `<Trans i18nKey>`/
+ * `<FormattedMessage id>`/`formatMessage({id})`。已剥离 namespace 前缀（'ns:key' →
+ * 'key'）、剔除注释中的引用。doctor 对账与 prune 孤儿清理共用此口径。
  */
 export function collectUsedKeys(config: ResolvedConfig, adapter: FrameworkAdapter): Set<string> {
   const used = new Set<string>();
@@ -19,17 +54,32 @@ export function collectUsedKeys(config: ResolvedConfig, adapter: FrameworkAdapte
     config.io.include,
     config.root,
   );
-  const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
+  const addKey = (raw: string): void => {
+    used.add(nsPrefix && raw.startsWith(nsPrefix) ? raw.slice(nsPrefix.length) : raw);
+  };
   for (const filePath of files) {
     try {
       const raw = fs.readFileSync(filePath, 'utf-8');
       const content = CommonASTUtils.stripComments(raw);
-      let match: RegExpExecArray | null;
-      while ((match = i18nKeyPattern.exec(content)) !== null) {
-        if (match[1]) {
-          used.add(
-            nsPrefix && match[1].startsWith(nsPrefix) ? match[1].slice(nsPrefix.length) : match[1],
-          );
+
+      // 1. 函数调用：取首参表达式里的全部字符串字面量
+      CALL_FIRST_ARG.lastIndex = 0;
+      let call: RegExpExecArray | null;
+      while ((call = CALL_FIRST_ARG.exec(content)) !== null) {
+        const firstArg = call[1] ?? '';
+        STRING_LITERAL.lastIndex = 0;
+        let lit: RegExpExecArray | null;
+        while ((lit = STRING_LITERAL.exec(firstArg)) !== null) {
+          if (lit[1]) addKey(lit[1]);
+        }
+      }
+
+      // 2. 组件 / 属性形式
+      for (const pattern of ATTR_PATTERNS) {
+        pattern.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = pattern.exec(content)) !== null) {
+          if (match[1]) addKey(match[1]);
         }
       }
     } catch {
