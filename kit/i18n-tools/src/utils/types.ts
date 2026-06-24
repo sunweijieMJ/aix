@@ -86,6 +86,8 @@ export enum ModeName {
   CSV_EXPORT = 'csv-export',
   /** CSV 回流模式 - 把翻译/审核好的 CSV 写回 untranslated.json */
   CSV_IMPORT = 'csv-import',
+  /** 清理模式 - 删除源码已不再引用的孤儿 key */
+  PRUNE = 'prune',
 }
 
 /**

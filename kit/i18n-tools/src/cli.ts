@@ -16,6 +16,7 @@ import {
   GeneratePlanWriter,
   MergeProcessor,
   PickProcessor,
+  PruneProcessor,
   RestoreProcessor,
   TranslateProcessor,
 } from './core';
@@ -209,6 +210,19 @@ const executeDoctor = async (
 };
 
 /**
+ * 执行 prune：删除源码已不再引用的孤儿 key。
+ */
+const executePrune = async (
+  config: ResolvedConfig,
+  adapter: FrameworkAdapter,
+  isCustom: boolean,
+  opts: { dryRun: boolean; ci: boolean },
+): Promise<void> => {
+  const processor = new PruneProcessor(config, isCustom, adapter, opts);
+  await processor.execute();
+};
+
+/**
  * 执行 csv-export：把 untranslated.json / translations.json 导出为 CSV。
  */
 const executeCsvExport = async (
@@ -277,6 +291,7 @@ const main = async (): Promise<void> => {
         ModeName.DOCTOR,
         ModeName.CSV_EXPORT,
         ModeName.CSV_IMPORT,
+        ModeName.PRUNE,
       ] as const,
       default: ModeName.GENERATE,
     })
@@ -363,6 +378,8 @@ const main = async (): Promise<void> => {
     .example('$0 --mode generate --coverage-threshold 95', 'CI 卡点：覆盖率不足 95% 则失败')
     .example('$0 --mode doctor', '体检 locale 文件健康度 + 源码对账')
     .example('$0 --mode doctor --ci', 'CI 模式：发现 error 即非零退出')
+    .example('$0 --mode prune --dry-run', '预览将删除的孤儿 key，不改文件')
+    .example('$0 --mode prune', '确认后从所有 locale 删除孤儿 key')
     .example('$0 --mode pick', '从国际化文件中提取未翻译的条目')
     .example('$0 --mode translate', '使用AI翻译服务翻译中文为英文')
     .example('$0 --mode merge --custom', '将定制目录的翻译结果合并回主文件')
@@ -490,7 +507,12 @@ export default defineConfig({
   // dry-run / apply-plan 仅在 generate 模式下生效。在其他模式下静默忽略
   // 比抛错更友好（兼容 automatic 串调 generate 的复杂场景），但显式提示
   // 避免用户写错命令时困惑。
-  if ((dryRun || applyPlanPath) && mode !== ModeName.GENERATE && mode !== ModeName.CSV_IMPORT) {
+  if (
+    (dryRun || applyPlanPath) &&
+    mode !== ModeName.GENERATE &&
+    mode !== ModeName.CSV_IMPORT &&
+    mode !== ModeName.PRUNE
+  ) {
     LoggerUtils.warn(
       `⚠️  --dry-run / --apply-plan 仅在 --mode generate 下生效，当前模式 ${mode}，将被忽略`,
     );
@@ -550,6 +572,9 @@ export default defineConfig({
         break;
       case ModeName.DOCTOR:
         await executeDoctor(config, adapter, custom, Boolean(argv.ci));
+        break;
+      case ModeName.PRUNE:
+        await executePrune(config, adapter, custom, { dryRun, ci: Boolean(argv.ci) });
         break;
       case ModeName.CSV_EXPORT:
         await executeCsvExport(config, custom, {
