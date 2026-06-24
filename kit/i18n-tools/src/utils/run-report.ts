@@ -110,9 +110,14 @@ export interface CoverageMetric {
  * 3. 错误字段统一走 safe-extract，避免泄露凭据。
  * 4. 文件名带时间戳 + command + pid，避免并发运行互相覆盖。
  */
+/** 警告的严重级别（doctor 的 missing-key=error / orphan=warning / lint=info 等）。 */
+export type ReportSeverity = 'error' | 'warning' | 'info';
+
 export class RunReport {
   private failures: FailureRecord[] = [];
   private warnings: string[] = [];
+  /** warnings 按 severity 的分项计数，写入 summary.bySeverity，供 CI / 人工区分严重程度。 */
+  private severityTally: Record<ReportSeverity, number> = { error: 0, warning: 0, info: 0 };
   private needsManual: ManualEntry[] = [];
   private coverage?: CoverageMetric;
 
@@ -128,8 +133,13 @@ export class RunReport {
     });
   }
 
-  addWarning(message: string): void {
+  /**
+   * 追加一条 warning。severity 仅影响 summary.bySeverity 的分项计数（不改变它进
+   * warnings 数组的事实）。未指定时按 'warning' 计——兼容 generate 等无分级的调用方。
+   */
+  addWarning(message: string, severity: ReportSeverity = 'warning'): void {
     this.warnings.push(message);
+    this.severityTally[severity] += 1;
   }
 
   /**
@@ -222,6 +232,9 @@ export class RunReport {
           failed: this.failures.length,
           warnings: this.warnings.length,
           needsManual: this.needsManual.length,
+          // 按 severity 分项：让日志读者 / CI 一眼看出有多少 error 级（会阻断）问题，
+          // 而非被合计的 warnings 数掩盖。failed 仍专指「处理崩溃数」，语义不变。
+          bySeverity: { ...this.severityTally },
         },
         coverage: this.coverage,
         failures: this.failures,

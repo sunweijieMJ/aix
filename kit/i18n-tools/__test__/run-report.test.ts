@@ -251,9 +251,28 @@ describe('RunReport', () => {
     expect(fs.existsSync(filePath!)).toBe(true);
 
     const payload = JSON.parse(fs.readFileSync(filePath!, 'utf-8'));
-    expect(payload.summary).toEqual({ failed: 0, warnings: 2, needsManual: 0 });
+    expect(payload.summary).toEqual({
+      failed: 0,
+      warnings: 2,
+      needsManual: 0,
+      bySeverity: { error: 0, warning: 2, info: 0 },
+    });
     expect(payload.warnings).toHaveLength(2);
     expect(payload.failures).toHaveLength(0);
+  });
+
+  it('addWarning 按 severity 计入 summary.bySeverity（failed 语义不变）', () => {
+    const report = new RunReport('doctor', rootDir);
+    report.addWarning('[missing-key] a: 缺失', 'error');
+    report.addWarning('[orphan-key] b: 未引用', 'warning');
+    report.addWarning('[locale-lint] c: 提示', 'info');
+    report.addWarning('[default] d: 未指定 severity'); // 默认计入 warning
+
+    const filePath = report.flush();
+    const payload = JSON.parse(fs.readFileSync(filePath!, 'utf-8'));
+    expect(payload.summary.bySeverity).toEqual({ error: 1, warning: 2, info: 1 });
+    expect(payload.summary.failed).toBe(0); // 无处理崩溃 → failed 仍为 0
+    expect(payload.summary.warnings).toBe(4); // warnings 总数不变
   });
 
   it('首次落盘自动生成 .i18n-tools/.gitignore，内容为 *', () => {

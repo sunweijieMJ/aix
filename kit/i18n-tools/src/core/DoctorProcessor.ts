@@ -360,7 +360,9 @@ export class DoctorProcessor extends BaseProcessor {
     for (const f of findings) {
       if (f.category === 'locale-lint') continue;
       const reason = accountingMap[f.category];
-      this.report.addWarning(`[${f.category}] ${f.key}: ${reason}`);
+      // 传入 severity：missing-key=error / orphan-key=untranslated=warning，
+      // 让 summary.bySeverity 如实反映 error 级数量（与 console / --ci 口径一致）。
+      this.report.addWarning(`[${f.category}] ${f.key}: ${reason}`, f.severity);
     }
   }
 
