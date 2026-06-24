@@ -50,6 +50,7 @@ export class InteractiveUtils {
         // 辅助：调试 / 体检
         { name: '· 还原多语言组件（调试）', value: ModeName.RESTORE },
         { name: '· 健康检查（doctor）', value: ModeName.DOCTOR },
+        { name: '· 清理孤儿 key（prune）', value: ModeName.PRUNE },
       ],
       default: defaultMode,
     });

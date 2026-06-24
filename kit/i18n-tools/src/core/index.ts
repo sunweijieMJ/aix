@@ -13,5 +13,7 @@ export type { CsvImportOptions } from './CsvImportProcessor';
 export { AutomaticProcessor } from './AutomaticProcessor';
 export { DoctorProcessor } from './DoctorProcessor';
 export type { DoctorCategory, DoctorFinding, DoctorSeverity } from './DoctorProcessor';
+export { PruneProcessor } from './PruneProcessor';
+export type { PruneOptions } from './PruneProcessor';
 export { GeneratePlanWriter } from './GeneratePlan';
 export type { GeneratePlan, GeneratePlanFileEntry, GeneratePlanHit } from './GeneratePlan';
