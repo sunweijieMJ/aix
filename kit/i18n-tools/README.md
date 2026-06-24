@@ -18,6 +18,7 @@ Vue/React 项目国际化自动化工具集，支持中文提取、语义化 ID 
 - **Dry-run 预览** - `--dry-run` 生成 plan 文件供 review，`--apply-plan` 回放已审核结果（指纹校验防止源码漂移）
 - **覆盖率指标** - generate 完成输出覆盖率 summary，支持 `--coverage-threshold` 在 CI 卡点
 - **健康体检** - `doctor` 子命令做 locale 结构 lint + 三类对账（孤儿 key / 缺失 key / 未翻译）
+- **CSV 人工翻译/审核闭环** - 把待翻译/已翻译条目导出为单文件 CSV（语言为列）发人翻译或审核，改完回流写回，作为 `translate` 的人工平替
 
 ## 安装
 
@@ -119,12 +120,21 @@ i18n-tools [选项]
 
 | 选项 | 说明 | 适用模式 |
 |------|------|---------|
-| `--dry-run` | 生成 plan 但不修改源码与语言文件（用于 review） | `generate` |
+| `--dry-run` | 生成 plan 但不修改源码与语言文件（用于 review）；csv-import 下表示仅预览不写回 | `generate` / `csv-import` |
 | `--apply-plan <path \| latest>` | 从指定 plan 回放，跳过 LLM 与 AST 解析；传 `latest` 自动找最近一次 | `generate` |
 | `--keep-plan` | apply 成功后保留 plan 目录（默认会自动清理） | `generate` |
 | `--plan-output-dir <dir>` | 自定义 dry-run 输出根目录（绕开 Windows 长路径等问题） | `generate` |
 | `--coverage-threshold <num>` | 覆盖率低于该百分比（0-100）则以退出码 2 退出 | `generate` / `automatic` |
-| `--ci` | 发现 error 级问题时以非零状态码退出 | `doctor` |
+| `--ci` | 发现 error 级问题时以非零状态码退出；csv-import 下表示跳过 y/N 确认 | `doctor` / `csv-import` |
+
+#### CSV 选项
+
+| 选项 | 说明 | 适用模式 |
+|------|------|---------|
+| `--source <untranslated\|translations>` | 导出数据源：`untranslated`（待翻，默认）/ `translations`（审核已翻） | `csv-export` |
+| `--filter <all\|untranslated\|translated>` | 按所选语言列过滤行（判据 `isValidTranslation`），默认 `all` | `csv-export` |
+| `--langs <a,b>` | 限定目标语言（逗号分隔）；不传 = 全部 `targets` | `csv-export` / `csv-import` |
+| `--output <path>` | export：输出路径/目录（默认 `<localesDir>/i18n.csv`）；import：输入 CSV 文件 | `csv-export` / `csv-import` |
 
 ### 操作模式
 
@@ -134,6 +144,8 @@ i18n-tools [选项]
 | `generate` | 代码生成 - 扫描源码提取中文并生成国际化调用 |
 | `pick` | 提取待翻译 - 从国际化文件中提取未翻译条目 |
 | `translate` | AI 翻译 - 调用 AI 服务将中文翻译为英文 |
+| `csv-export` | CSV 导出 - 把待翻译/已翻译条目导出为 CSV 发人翻译/审核（translate 的人工平替） |
+| `csv-import` | CSV 回流 - 把翻译/审核好的 CSV 写回 `untranslated.json` |
 | `merge` | 合并翻译 - 将翻译结果合并回主文件 |
 | `restore` | 代码还原 - 将国际化调用还原为中文 |
 | `export` | 语言包导出 - 生成最终的多语言文件 |
@@ -234,6 +246,29 @@ npx i18n-tools -m doctor --ci
 6. **restore** - 将国际化调用还原为中文
    - 输入：已国际化的源文件 + `zh-CN.json`
    - 输出：还原后的源文件（默认输出到 `<root>/restored/`）
+
+> 💡 中间的 **translate（AI 翻译）可换成人工翻译**：`pick` 后用 `csv-export` 导出 → 人工翻译/审核 → `csv-import` 回流写回 `untranslated.json` → 照常 `merge`。详见下节。
+
+## CSV 人工翻译/审核闭环
+
+把待翻译（或已翻译）条目导出为 CSV 发给他人翻译/审核，改完回流——相当于用人工翻译替换 `translate` 那步（参数详见 [CSV 选项](#csv-选项)）：
+
+```bash
+# 1. 导出：默认读 untranslated.json，写到 <localesDir>/i18n.csv（一个文件、语言为列）
+i18n-tools --mode csv-export                  # 全部目标语言
+i18n-tools --mode csv-export --langs en-US    # 只导 en-US
+i18n-tools --mode csv-export --source translations  # 审核已有译文（读 translations.json）
+
+# 2. 人工在 CSV 里填/改译文（Excel 可直接打开）
+
+# 3. 回流：写回 untranslated.json，再跑 merge 晋升
+i18n-tools --mode csv-import --output src/i18n/i18n.csv   # 加 --dry-run 仅预览
+i18n-tools --mode merge
+```
+
+- **列结构**：单语言 `key, 源语言, 目标语言, reason`；多语言 `key, 源语言, <各语言列>`（无 reason）。`reason` 仅在目标值是「非空垃圾值」时标 `invalid`，其余留空。
+- **编码**：UTF-8 带 BOM，Excel 直接打开不乱码。**修改后请「另存为 CSV UTF-8」**，否则回流会因非法编码报错。
+- **回流保守合并**：只有非空译文才写回，空单元格保留原值；CSV 多余的 key 警告并跳过（不新建）；源语言列只读。写回用原子写（temp+rename）。
 
 ## 配置参考
 
