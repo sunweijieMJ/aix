@@ -8,6 +8,8 @@ import { createFrameworkAdapter } from './adapters';
 import type { FrameworkAdapter } from './adapters';
 import {
   AutomaticProcessor,
+  CsvExportProcessor,
+  CsvImportProcessor,
   DoctorProcessor,
   ExportProcessor,
   GenerateProcessor,
@@ -200,6 +202,35 @@ const executeDoctor = async (
 };
 
 /**
+ * 执行 csv-export：把 untranslated.json / translations.json 导出为 CSV。
+ */
+const executeCsvExport = async (
+  config: ResolvedConfig,
+  isCustom: boolean,
+  opts: {
+    source: 'untranslated' | 'translations';
+    filter: 'all' | 'untranslated' | 'translated';
+    langs?: string[];
+    output?: string;
+  },
+): Promise<void> => {
+  const processor = new CsvExportProcessor(config, isCustom, opts);
+  await processor.execute();
+};
+
+/**
+ * 执行 csv-import：把 CSV 回流写回 untranslated.json。
+ */
+const executeCsvImport = async (
+  config: ResolvedConfig,
+  isCustom: boolean,
+  opts: { input: string; langs?: string[]; dryRun: boolean; ci: boolean },
+): Promise<void> => {
+  const processor = new CsvImportProcessor(config, isCustom, opts);
+  await processor.execute();
+};
+
+/**
  * 主函数 - 程序入口点
  */
 const main = async (): Promise<void> => {
@@ -237,6 +268,8 @@ const main = async (): Promise<void> => {
         ModeName.EXPORT,
         ModeName.RESTORE,
         ModeName.DOCTOR,
+        ModeName.CSV_EXPORT,
+        ModeName.CSV_IMPORT,
       ] as const,
       default: ModeName.GENERATE,
     })
@@ -288,10 +321,29 @@ const main = async (): Promise<void> => {
       type: 'boolean',
       default: false,
     })
+    .option('langs', {
+      describe: 'CSV：限定目标语言（逗号分隔，如 en-US,ja-JP）；不传则全部 target',
+      type: 'string',
+    })
+    .option('filter', {
+      describe: 'csv-export：按所选语言列过滤行（判据 isValidTranslation）',
+      choices: ['all', 'untranslated', 'translated'] as const,
+      default: 'all',
+    })
+    .option('source', {
+      describe: 'csv-export：数据源',
+      choices: ['untranslated', 'translations'] as const,
+      default: 'untranslated',
+    })
+    .option('output', {
+      describe: 'CSV：export 输出路径/目录，import 输入文件路径',
+      type: 'string',
+    })
     .help()
     .alias('help', 'h')
     .group(['config', 'mode', 'custom'], '📋 基本选项:')
     .group(['interactive', 'skip-llm'], '⚙️  高级选项:')
+    .group(['langs', 'filter', 'source', 'output'], '📊 CSV 选项:')
     .group(
       ['dry-run', 'apply-plan', 'keep-plan', 'plan-output-dir', 'coverage-threshold', 'ci'],
       '🩺 CI / Review 选项:',
@@ -308,6 +360,13 @@ const main = async (): Promise<void> => {
     .example('$0 --mode translate', '使用AI翻译服务翻译中文为英文')
     .example('$0 --mode merge --custom', '将定制目录的翻译结果合并回主文件')
     .example('$0 --mode export', '导出最终的多语言文件包')
+    .example('$0 --mode csv-export --langs en-US', '导出 en-US 待翻条目为 CSV')
+    .example(
+      '$0 --mode csv-export --source translations --langs ja-JP',
+      '导出 ja-JP 已翻条目供审核',
+    )
+    .example('$0 --mode csv-import --output ./i18n-en-US.csv', '把审核好的 CSV 回流写回')
+    .example('$0 --mode csv-import --output ./x.csv --dry-run', '回流前仅预览改动')
     .example('$0 --mode restore', '将国际化调用还原为中文（调试用）')
     .example('$0 -i', '启动交互式模式，逐步选择操作')
     .example('$0 --mode automatic', '启动全自动处理流程')
@@ -409,6 +468,16 @@ export default defineConfig({
   const coverageThreshold =
     (argv['coverage-threshold'] as number | undefined) ?? config.ci.coverageThreshold;
   const dryRun = Boolean(argv['dry-run']);
+  const langsArg = argv['langs'] as string | undefined;
+  const csvLangs = langsArg
+    ? langsArg
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : undefined;
+  const csvFilter = argv['filter'] as 'all' | 'untranslated' | 'translated';
+  const csvSource = argv['source'] as 'untranslated' | 'translations';
+  const csvOutput = argv['output'] as string | undefined;
   const applyPlanPath = argv['apply-plan'] as string | undefined;
   const keepPlan = Boolean(argv['keep-plan']);
   const planOutputDir = argv['plan-output-dir'] as string | undefined;
@@ -416,7 +485,7 @@ export default defineConfig({
   // dry-run / apply-plan 仅在 generate 模式下生效。在其他模式下静默忽略
   // 比抛错更友好（兼容 automatic 串调 generate 的复杂场景），但显式提示
   // 避免用户写错命令时困惑。
-  if ((dryRun || applyPlanPath) && mode !== ModeName.GENERATE) {
+  if ((dryRun || applyPlanPath) && mode !== ModeName.GENERATE && mode !== ModeName.CSV_IMPORT) {
     LoggerUtils.warn(
       `⚠️  --dry-run / --apply-plan 仅在 --mode generate 下生效，当前模式 ${mode}，将被忽略`,
     );
@@ -477,6 +546,32 @@ export default defineConfig({
       case ModeName.DOCTOR:
         await executeDoctor(config, adapter, custom, Boolean(argv.ci));
         break;
+      case ModeName.CSV_EXPORT:
+        await executeCsvExport(config, custom, {
+          source: csvSource,
+          filter: csvFilter,
+          langs: csvLangs,
+          output: csvOutput,
+        });
+        break;
+      case ModeName.CSV_IMPORT: {
+        let importInput = csvOutput;
+        if (!importInput) {
+          if (interactive) {
+            importInput = await InteractiveUtils.promptForCsvPath();
+          } else {
+            LoggerUtils.error('❌ csv-import 需要 --output 指定 CSV 文件路径');
+            process.exit(1);
+          }
+        }
+        await executeCsvImport(config, custom, {
+          input: importInput,
+          langs: csvLangs,
+          dryRun,
+          ci: Boolean(argv.ci),
+        });
+        break;
+      }
       default:
         LoggerUtils.error(`没有匹配的模式: ${mode}`);
     }

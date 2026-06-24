@@ -82,6 +82,10 @@ export enum ModeName {
   AUTOMATIC = 'automatic',
   /** Doctor 模式 - 健康度体检：locale 结构 + 对账（孤儿/缺失/未翻译） */
   DOCTOR = 'doctor',
+  /** CSV 导出模式 - 把待翻译/已翻译条目导出为 CSV 发人翻译或审核 */
+  CSV_EXPORT = 'csv-export',
+  /** CSV 回流模式 - 把翻译/审核好的 CSV 写回 untranslated.json */
+  CSV_IMPORT = 'csv-import',
 }
 
 /**

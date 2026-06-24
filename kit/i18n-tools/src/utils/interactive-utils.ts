@@ -1,3 +1,4 @@
+import fs from 'fs';
 import inquirer from 'inquirer';
 import { MODE_DESCRIPTIONS } from './constants';
 import { FileUtils } from './file-utils';
@@ -38,13 +39,17 @@ export class InteractiveUtils {
       name: 'mode',
       message: isCustom ? '请选择定制目录操作模式:' : '请选择操作模式:',
       choices: [
-        { name: '提取多语言组件', value: ModeName.GENERATE },
-        { name: '生成待翻译文件', value: ModeName.PICK },
-        { name: '翻译待翻译文件', value: ModeName.TRANSLATE },
-        { name: '合并翻译文件', value: ModeName.MERGE },
-        { name: '还原多语言组件', value: ModeName.RESTORE },
-        { name: '导出语言文件', value: ModeName.EXPORT },
-        { name: '健康检查（doctor）', value: ModeName.DOCTOR },
+        // 主流水线顺序：提取 → 拆分 →（AI 翻译 / CSV 人工翻译二选一）→ 合并 → 导出
+        { name: '① 提取多语言组件', value: ModeName.GENERATE },
+        { name: '② 生成待翻译文件', value: ModeName.PICK },
+        { name: '③ 翻译待翻译文件（AI）', value: ModeName.TRANSLATE },
+        { name: '③ 导出 CSV（发人翻译/审核）', value: ModeName.CSV_EXPORT },
+        { name: '③ 导入 CSV（回流写回待翻译文件）', value: ModeName.CSV_IMPORT },
+        { name: '④ 合并翻译文件', value: ModeName.MERGE },
+        { name: '⑤ 导出语言文件', value: ModeName.EXPORT },
+        // 辅助：调试 / 体检
+        { name: '· 还原多语言组件（调试）', value: ModeName.RESTORE },
+        { name: '· 健康检查（doctor）', value: ModeName.DOCTOR },
       ],
       default: defaultMode,
     });
@@ -159,5 +164,27 @@ export class InteractiveUtils {
       LoggerUtils.error(`提示输入路径时发生错误 (模式: ${mode})`, error);
       throw error;
     }
+  }
+
+  /**
+   * 提示用户输入要回流的 CSV 文件路径（csv-import 交互模式专用）。
+   * 校验：非空、以 .csv 结尾、文件存在。
+   */
+  static async promptForCsvPath(): Promise<string> {
+    const { csvPath } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'csvPath',
+        message: '请输入要回流的 CSV 文件路径:',
+        validate: (input: string) => {
+          const p = input.trim();
+          if (!p) return '请输入路径';
+          if (!p.toLowerCase().endsWith('.csv')) return '请输入 .csv 文件路径';
+          if (!fs.existsSync(p)) return `文件不存在: ${p}`;
+          return true;
+        },
+      },
+    ]);
+    return csvPath.trim();
   }
 }

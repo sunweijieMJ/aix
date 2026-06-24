@@ -30,4 +30,6 @@ export const MODE_DESCRIPTIONS: Record<string, string> = {
   [ModeName.RESTORE]: '代码还原 - 将国际化调用还原为中文（调试用）',
   [ModeName.EXPORT]: '语言包导出 - 生成最终的多语言文件',
   [ModeName.DOCTOR]: '健康检查 - 体检 locale 文件结构与源码对账',
+  [ModeName.CSV_EXPORT]: 'CSV 导出 - 把待翻译/已翻译条目导出为表格发人翻译或审核',
+  [ModeName.CSV_IMPORT]: 'CSV 回流 - 把翻译/审核好的 CSV 写回待翻译文件',
 };
