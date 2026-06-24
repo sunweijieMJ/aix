@@ -2,6 +2,11 @@
   "name": "@kit/prettier-config",
   "version": "0.0.2",
   "type": "module",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "types": "./index.d.ts",
