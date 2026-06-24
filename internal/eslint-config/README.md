@@ -4,7 +4,7 @@
 
 ## 特性
 
-- **ESLint 9 扁平化配置** - 使用最新的 Flat Config 格式，弃用 .eslintrc
+- **ESLint 10 扁平化配置** - 使用最新的 Flat Config 格式，弃用 .eslintrc
 - **TypeScript 严格检查** - 集成 typescript-eslint 推荐规则
 - **Prettier 兼容** - 自动禁用与 Prettier 冲突的规则
 - **Turborepo 规则** - 包含 Turborepo 相关的 lint 规则
@@ -65,7 +65,7 @@ export default config;
 **忽略目录**
 
 ```
-node_modules, deploy, build, dist, logs, es, lib, .rollup.cache
+node_modules, build, dist, logs, es, lib, .rollup.cache
 ```
 
 ### vue-app 配置特性
@@ -96,7 +96,7 @@ node_modules, deploy, build, dist, logs, es, lib, .rollup.cache
 | 特性 | 说明 |
 |------|------|
 | 路径解析 | TypeScript 路径解析支持 |
-| 别名支持 | `@` → `./src`，`~` → `./` |
+| 别名支持 | `@` → `./src` |
 | 自动排序 | 字母顺序，不区分大小写 |
 
 ## 规则说明
