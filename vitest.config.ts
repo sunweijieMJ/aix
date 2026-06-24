@@ -34,7 +34,7 @@ export default defineConfig({
       reportsDirectory: './coverage',
     },
     // 单元测试项目直接引用各包自己的 vitest.config.ts（单一事实来源）：
-    // 根口径与 turbo 包级口径跑的是同一份配置；项目名缺省取包目录名（全仓唯一）。
+    // 根口径与 turbo 包级口径跑的是同一份配置；项目名缺省取 package.json 的 name（全仓唯一）。
     // 无配置文件的包会被静默跳过——新建包务必带 vitest.config.ts（package-creator 模板已含）。
     projects: [
       'packages/*/vitest.config.ts',

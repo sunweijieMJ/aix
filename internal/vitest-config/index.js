@@ -7,7 +7,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 /** 共享 setup：fetch / localStorage mock、console.warn 过滤、console.error 静音 */
 const sharedSetup = path.join(dirname, 'setup.ts');
 
-/** 各环境通用的测试基座（项目名缺省取包目录名，全仓目录名唯一） */
+/** 各环境通用的测试基座（项目名缺省取 package.json 的 name，全仓 name 唯一） */
 const baseTest = {
   globals: true,
   passWithNoTests: true,
