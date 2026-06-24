@@ -1,8 +1,7 @@
-import fs from 'fs';
 import type { ResolvedConfig } from '../config';
+import { extractPlaceholderNames } from '../utils/placeholder-utils';
+import { collectUsedKeys, matchesDynamicAllowlist } from '../utils/source-key-scanner';
 import type { FrameworkAdapter } from '../adapters';
-import { CommonASTUtils } from '../utils/common-ast-utils';
-import { FileUtils } from '../utils/file-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { type LinterFinding, LocaleValueLinter } from '../utils/locale-value-linter';
 import { LoggerUtils } from '../utils/logger';
@@ -28,7 +27,9 @@ export type DoctorCategory =
   /** locale 中有 key 但源码无引用 */
   | 'orphan-key'
   /** target locale 的 value 与 source 相同（疑似未翻译） */
-  | 'untranslated';
+  | 'untranslated'
+  /** 译文与源文案的占位符名集不一致（漏=运行时插值失效） */
+  | 'placeholder-mismatch';
 
 export interface DoctorFinding {
   category: DoctorCategory;
@@ -98,7 +99,7 @@ export class DoctorProcessor extends BaseProcessor {
     findings.push(...this.runLinter(sourceMap));
 
     // 2. 三类对账：依赖源码扫描得到的 key 引用集合
-    const sourceKeys = this.collectUsedKeysFromSources();
+    const sourceKeys = collectUsedKeys(this.config, this.adapter);
     findings.push(...this.checkMissingKeys(sourceKeys, sourceMap));
     findings.push(...this.checkOrphanKeys(sourceKeys, sourceMap));
 
@@ -107,6 +108,7 @@ export class DoctorProcessor extends BaseProcessor {
       const targetMap =
         LanguageFileManager.readLocaleFile(this.config, this.isCustom, target) ?? {};
       findings.push(...this.checkUntranslated(sourceMap, targetMap, target));
+      findings.push(...this.checkPlaceholders(sourceMap, targetMap, target));
     }
 
     this.renderConsole(findings);
@@ -146,55 +148,6 @@ export class DoctorProcessor extends BaseProcessor {
   }
 
   /**
-   * 扫描 source 目录下所有源文件，抽出所有 t() / $t() 调用使用的字面量 key。
-   *
-   * 与 IdReuseResolver.scanExistingCallsInSources 共用同一套正则，但意图不同：
-   *  - 那里收集 existingIds 用于避免新 key 与硬编码冲突
-   *  - 这里收集已使用 key 集合用于做 missing / orphan 对账
-   *
-   * 重复抽出一份逻辑（而非提取共用工具）的原因：本方法返回 Set<string>，
-   * 与 IdReuseResolver 内部累积 Set + counter 状态不兼容，强行复用会让接口
-   * 多一个无意义的 reset 方法。重复 ~10 行简单正则匹配是合理代价。
-   */
-  private collectUsedKeysFromSources(): Set<string> {
-    const used = new Set<string>();
-    // i18next 库（vue-i18next / react-i18next）会把 t() 调用写成 'namespace:key'，
-    // 但 locale 文件按 'key' 存储。对账前剥掉配置的 namespace 前缀，否则配 namespace
-    // 时 missing-key / orphan-key 会系统性误报（甚至 --ci 下误卡流水线）。
-    const nsPrefix = this.config.framework.namespace ? `${this.config.framework.namespace}:` : '';
-    const files = FileUtils.getFrameworkFiles(
-      this.config.io.sourceDir,
-      this.adapter.getSupportedExtensions(),
-      this.config.io.exclude,
-      this.config.io.include,
-      this.config.root,
-    );
-    const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
-    for (const filePath of files) {
-      try {
-        const raw = fs.readFileSync(filePath, 'utf-8');
-        // 剥除注释，避免被注释掉的示例代码（如 // text: t('foo.bar')）被当成
-        // 真实引用统计，进而误报 missing-key。stripComments 保留字符串字面量
-        // 内容，正则仍可正确捕获 t('key') 中的 key。
-        const content = CommonASTUtils.stripComments(raw);
-        let match: RegExpExecArray | null;
-        while ((match = i18nKeyPattern.exec(content)) !== null) {
-          if (match[1]) {
-            used.add(
-              nsPrefix && match[1].startsWith(nsPrefix)
-                ? match[1].slice(nsPrefix.length)
-                : match[1],
-            );
-          }
-        }
-      } catch {
-        /* 读取失败的文件跳过，不影响其他文件的扫描结果 */
-      }
-    }
-    return used;
-  }
-
-  /**
    * missing-key：源码 t('xxx') 引用了 locale 不存在的 key。
    *
    * 这是最严重的问题（运行时会显示 'xxx' 字符串而非翻译），归 error 级。
@@ -203,7 +156,7 @@ export class DoctorProcessor extends BaseProcessor {
   private checkMissingKeys(sourceKeys: Set<string>, sourceMap: LocaleMap): DoctorFinding[] {
     const findings: DoctorFinding[] = [];
     for (const key of sourceKeys) {
-      if (this.matchesDynamicAllowlist(key)) continue;
+      if (matchesDynamicAllowlist(this.config, key)) continue;
       // 动态 key 场景：源码可能是 t(prefix + variable)，工具看到的字面量是 prefix
       // 之类的不完整 key。这里只对"完全等于 locale key"的字面量做严格匹配，
       // 否则会对所有动态 t() 调用噪声报警。
@@ -224,23 +177,6 @@ export class DoctorProcessor extends BaseProcessor {
   }
 
   /**
-   * 判定一个 key 是否匹配 keys.dynamicKeyAllowlist。
-   * 命中后跳过 missing-key / orphan-key 判定（用户已声明此前缀来自动态拼接）。
-   */
-  private matchesDynamicAllowlist(key: string): boolean {
-    const list = this.config.keys.dynamicKeyAllowlist;
-    if (list.length === 0) return false;
-    for (const pattern of list) {
-      if (typeof pattern === 'string') {
-        if (key.startsWith(pattern)) return true;
-      } else {
-        if (pattern.test(key)) return true;
-      }
-    }
-    return false;
-  }
-
-  /**
    * orphan-key：locale 中有 key 但源码不引用。归 warning 级（清理候选）。
    *
    * 同样受动态 key 限制：源码用 t(prefix + variable) 时静态扫描看不到对应
@@ -249,7 +185,7 @@ export class DoctorProcessor extends BaseProcessor {
   private checkOrphanKeys(sourceKeys: Set<string>, sourceMap: LocaleMap): DoctorFinding[] {
     const findings: DoctorFinding[] = [];
     for (const key of Object.keys(sourceMap)) {
-      if (this.matchesDynamicAllowlist(key)) continue;
+      if (matchesDynamicAllowlist(this.config, key)) continue;
       if (!sourceKeys.has(key)) {
         findings.push({
           category: 'orphan-key',
@@ -300,6 +236,56 @@ export class DoctorProcessor extends BaseProcessor {
             `source: ${this.preview(sourceValue)}`,
             `target [${target}]: ${this.preview(targetValue)}`,
             '疑似 translate 阶段漏处理；运行 `--mode translate` 重跑或人工补译',
+          ],
+          key,
+        });
+      }
+    }
+    return findings;
+  }
+
+  /**
+   * placeholder-mismatch：译文与源文案的占位符名集不一致。
+   *  - 源有、译无（漏占位符）→ error（运行时这些占位符不会被替换）
+   *  - 译有、源无（多出 / typo）→ warning
+   * 仅比较 source 与 target 都存在的 key（缺译归 missing-key，不重复）。
+   */
+  private checkPlaceholders(
+    sourceMap: LocaleMap,
+    targetMap: LocaleMap,
+    target: string,
+  ): DoctorFinding[] {
+    const findings: DoctorFinding[] = [];
+    for (const [key, sourceValue] of Object.entries(sourceMap)) {
+      const targetValue = targetMap[key];
+      if (targetValue === undefined) continue; // 缺译归 missing，不重复
+      if (typeof sourceValue !== 'string' || typeof targetValue !== 'string') continue;
+      const src = extractPlaceholderNames(sourceValue);
+      const tgt = extractPlaceholderNames(targetValue);
+      const missing = [...src].filter((n) => !tgt.has(n));
+      const extra = [...tgt].filter((n) => !src.has(n));
+      if (missing.length > 0) {
+        findings.push({
+          category: 'placeholder-mismatch',
+          severity: 'error',
+          title: `${key} (${target} 漏占位符 ${missing.map((n) => `{${n}}`).join(' ')})`,
+          details: [
+            `source: ${this.preview(sourceValue)}`,
+            `target [${target}]: ${this.preview(targetValue)}`,
+            '运行时这些占位符不会被替换，会显示原样或插值失败',
+          ],
+          key,
+        });
+      }
+      if (extra.length > 0) {
+        findings.push({
+          category: 'placeholder-mismatch',
+          severity: 'warning',
+          title: `${key} (${target} 多出占位符 ${extra.map((n) => `{${n}}`).join(' ')})`,
+          details: [
+            `source: ${this.preview(sourceValue)}`,
+            `target [${target}]: ${this.preview(targetValue)}`,
+            '源文案无此占位符，疑似 typo 或冗余',
           ],
           key,
         });
@@ -369,6 +355,7 @@ export class DoctorProcessor extends BaseProcessor {
       'missing-key': '源码引用的 key 在 locale 中缺失',
       'orphan-key': 'locale 中的 key 源码未引用',
       untranslated: '疑似未翻译（target = source）',
+      'placeholder-mismatch': '译文与源文案的占位符名集不一致',
     };
     for (const f of findings) {
       if (f.category === 'locale-lint') continue;

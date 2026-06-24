@@ -62,6 +62,39 @@ describe('DoctorProcessor', () => {
   const collectMessages = (spy: ReturnType<typeof vi.spyOn>): string =>
     spy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
 
+  it('placeholder-mismatch：译文漏占位符 → error，--ci 卡住', async () => {
+    writeSourceFile('P.vue', `<template>{{ t('cart.total') }}</template>`);
+    writeLocale('zh-CN', { 'cart.total': '共 {count} 件' });
+    writeLocale('en-US', { 'cart.total': 'total items' }); // 漏 {count}
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      ci: true,
+    });
+    await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
+    const all = collectMessages(infoSpy);
+    expect(all).toContain('[placeholder-mismatch]');
+    expect(all).toContain('cart.total');
+  });
+
+  it('placeholder-mismatch：译文多出占位符 → warning，--ci 不卡', async () => {
+    writeSourceFile('P.vue', `<template>{{ t('greet') }}</template>`);
+    writeLocale('zh-CN', { greet: '你好' });
+    writeLocale('en-US', { greet: 'Hi {name}' }); // 多出 {name}
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      ci: true,
+    });
+    await expect(proc.execute()).resolves.toBeUndefined();
+    expect(collectMessages(infoSpy)).toContain('[placeholder-mismatch]');
+  });
+
+  it('placeholder 一致 → 不报', async () => {
+    writeSourceFile('P.vue', `<template>{{ t('cart.total') }}</template>`);
+    writeLocale('zh-CN', { 'cart.total': '共 {count} 件' });
+    writeLocale('en-US', { 'cart.total': '{count} items' });
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir));
+    await proc.execute();
+    expect(collectMessages(infoSpy)).not.toContain('[placeholder-mismatch]');
+  });
+
   it("配置 namespace 时不把 t('ns:key') 误报为 missing-key", async () => {
     writeSourceFile('Login.vue', `<template><div>{{ $t('app:greeting') }}</div></template>`);
     writeLocale('zh-CN', { greeting: '你好' });
