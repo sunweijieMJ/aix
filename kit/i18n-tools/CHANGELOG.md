@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.20
+
+### Patch Changes
+
+- 新增导入导出csv功能
+
 ## 0.0.19
 
 ### Patch Changes
