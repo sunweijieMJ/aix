@@ -446,16 +446,21 @@ export class LanguageFileManager {
    * 校验扁平 key 集合是否存在前缀冲突。
    */
   private static assertNoPrefixConflict(flat: LocaleMap, separator: string): void {
-    const keys = Object.keys(flat).sort();
-    for (let i = 1; i < keys.length; i++) {
-      const prev = keys[i - 1]!;
-      const curr = keys[i]!;
-      if (curr.startsWith(prev + separator)) {
-        throw new Error(
-          `[i18n-tools] 嵌套输出存在前缀冲突：'${prev}' 同时作为叶子和 '${curr}' 的祖先。\n` +
-            `  unflatten 时叶子值会被子树覆盖，必然丢数据。\n` +
-            `  解决方案：重命名其中一个 key，或将 io.format 切换为 'flat'。`,
-        );
+    // 对每个 key 检查其所有真祖先路径是否也是叶子 key。
+    // 不能只比「排序相邻对」：若存在含 < 分隔符字符的 key（如分隔符为 '.' 时的
+    // 'a.b-c'）夹在 'a.b' 与 'a.b.c' 之间，相邻比较会漏掉这对祖先/子树冲突。
+    const keySet = new Set(Object.keys(flat));
+    for (const key of keySet) {
+      const parts = key.split(separator);
+      for (let i = 1; i < parts.length; i++) {
+        const ancestor = parts.slice(0, i).join(separator);
+        if (keySet.has(ancestor)) {
+          throw new Error(
+            `[i18n-tools] 嵌套输出存在前缀冲突：'${ancestor}' 同时作为叶子和 '${key}' 的祖先。\n` +
+              `  unflatten 时叶子值会被子树覆盖，必然丢数据。\n` +
+              `  解决方案：重命名其中一个 key，或将 io.format 切换为 'flat'。`,
+          );
+        }
       }
     }
   }

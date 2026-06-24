@@ -19,7 +19,14 @@ import {
   RestoreProcessor,
   TranslateProcessor,
 } from './core';
-import { InteractiveUtils, loadEnv, LoggerUtils, MODE_DESCRIPTIONS, ModeName } from './utils';
+import {
+  InteractiveUtils,
+  isModeExplicitlySet,
+  loadEnv,
+  LoggerUtils,
+  MODE_DESCRIPTIONS,
+  ModeName,
+} from './utils';
 
 type FrameworkInfo = { extensions: string[]; displayName: string; libraryName: string };
 
@@ -425,9 +432,7 @@ export default defineConfig({
   const custom = hasCustomLocale && Boolean(argv.custom);
 
   // 当显式指定了 --mode/-m 时，默认关闭交互模式；否则默认开启
-  const modeExplicitlySet = process.argv
-    .slice(2)
-    .some((arg) => arg === '--mode' || arg.startsWith('--mode=') || arg === '-m');
+  const modeExplicitlySet = isModeExplicitlySet(process.argv.slice(2));
   const interactive = argv.interactive ?? !modeExplicitlySet;
 
   // 交互模式处理

@@ -158,6 +158,10 @@ export class DoctorProcessor extends BaseProcessor {
    */
   private collectUsedKeysFromSources(): Set<string> {
     const used = new Set<string>();
+    // i18next 库（vue-i18next / react-i18next）会把 t() 调用写成 'namespace:key'，
+    // 但 locale 文件按 'key' 存储。对账前剥掉配置的 namespace 前缀，否则配 namespace
+    // 时 missing-key / orphan-key 会系统性误报（甚至 --ci 下误卡流水线）。
+    const nsPrefix = this.config.framework.namespace ? `${this.config.framework.namespace}:` : '';
     const files = FileUtils.getFrameworkFiles(
       this.config.io.sourceDir,
       this.adapter.getSupportedExtensions(),
@@ -175,7 +179,13 @@ export class DoctorProcessor extends BaseProcessor {
         const content = CommonASTUtils.stripComments(raw);
         let match: RegExpExecArray | null;
         while ((match = i18nKeyPattern.exec(content)) !== null) {
-          if (match[1]) used.add(match[1]);
+          if (match[1]) {
+            used.add(
+              nsPrefix && match[1].startsWith(nsPrefix)
+                ? match[1].slice(nsPrefix.length)
+                : match[1],
+            );
+          }
         }
       } catch {
         /* 读取失败的文件跳过，不影响其他文件的扫描结果 */

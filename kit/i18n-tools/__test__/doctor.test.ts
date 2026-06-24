@@ -62,6 +62,28 @@ describe('DoctorProcessor', () => {
   const collectMessages = (spy: ReturnType<typeof vi.spyOn>): string =>
     spy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
 
+  it("配置 namespace 时不把 t('ns:key') 误报为 missing-key", async () => {
+    writeSourceFile('Login.vue', `<template><div>{{ $t('app:greeting') }}</div></template>`);
+    writeLocale('zh-CN', { greeting: '你好' });
+    writeLocale('en-US', { greeting: 'Hello' });
+
+    const user: I18nToolsConfig = {
+      root: rootDir,
+      framework: { type: 'vue', library: 'vue-i18next', namespace: 'app', tImport: '@/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: localeDir, sourceDir, format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    };
+    const proc = new DoctorProcessor(resolveConfig(user));
+    await proc.execute();
+
+    // 剥掉 'app:' 前缀后 'greeting' 与 locale 对齐 → 不应出现 missing-key
+    const allMessages = collectMessages(infoSpy) + '\n' + collectMessages(successSpy);
+    expect(allMessages).not.toContain("t('app:greeting')");
+    expect(collectMessages(successSpy)).toContain('Doctor 检查通过');
+  });
+
   it('完全干净：source 与 target 完整对齐 → 检查通过', async () => {
     writeSourceFile('Login.vue', `<template><div>{{ t('greeting') }}</div></template>`);
     writeLocale('zh-CN', { greeting: '你好' });
