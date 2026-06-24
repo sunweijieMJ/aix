@@ -150,6 +150,7 @@ i18n-tools [选项]
 | `restore` | 代码还原 - 将国际化调用还原为中文 |
 | `export` | 语言包导出 - 生成最终的多语言文件 |
 | `doctor` | 健康检查 - 体检 locale 文件结构与源码对账 |
+| `prune` | 清理孤儿 key - 删除源码已不再引用的 locale 条目（dry-run + 确认） |
 
 ### 使用示例
 
@@ -660,10 +661,25 @@ npx i18n-tools -m doctor --ci     # CI 模式（有 error 即非零退出）
 | `missing-key` | **error** | 源码 `t('xxx')` 引用了 locale 不存在的 key（运行时显示 key 字符串） |
 | `orphan-key` | warning | locale 中的 key 源码无引用（清理候选；动态 key 可能误报，不自动删） |
 | `untranslated` | warning | target locale 的 value 与 source 完全相同且含中文（疑似漏译） |
+| `placeholder-mismatch` | error / warning | 译文与源占位符名集不一致：漏占位符（如译文丢了 `{count}`）= error；多出 = warning |
 | `locale-lint` | info / warning | 复用 `LocaleValueLinter.analyze`：语义重复 key、含 HTML、超长 value、跨模块复用候选、硬编码比较等 |
 
 **未翻译判定的保守策略**：仅当 source value 含中文字符且 target = source 时
 才报警，避免对纯英文/纯符号（如 `'TCP/IP'`、`'API'`、`'{count}'`）误判为漏译。
+
+### 清理孤儿 key（prune）
+
+`doctor` 能查出 orphan-key 但只读不删；`prune` 负责安全清理：
+
+```bash
+i18n-tools --mode prune --dry-run   # 预览将删哪些孤儿 key，不改文件
+i18n-tools --mode prune             # 确认(y/N)后从所有 locale 删除
+i18n-tools --mode prune --ci        # 非交互直接删（CI/脚本）
+```
+
+- 删除范围：源语言 + 所有目标语言的 locale 文件（含分桶布局），命中 `keys.dynamicKeyAllowlist` 的 key 跳过不删。
+- 不触碰 `translations.json` / `untranslated.json`（下次 `pick` 会从 locale 重新生成）。
+- 无 `.bak`：写回为原子写，恢复请用 git。
 
 ### 落盘日志（.i18n-tools/）
 
