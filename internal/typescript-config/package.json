@@ -2,5 +2,11 @@
   "name": "@kit/typescript-config",
   "version": "0.0.3",
   "type": "module",
-  "license": "MIT"
+  "license": "MIT",
+  "files": [
+    "base.json",
+    "base-app.json",
+    "base-library.json",
+    "README.md"
+  ]
 }

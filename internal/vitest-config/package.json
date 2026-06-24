@@ -2,6 +2,13 @@
   "name": "@kit/vitest-config",
   "version": "0.0.2",
   "type": "module",
+  "files": [
+    "index.js",
+    "setup.ts",
+    "index.d.ts",
+    "tsconfig.json",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "types": "./index.d.ts",

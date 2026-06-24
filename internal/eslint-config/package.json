@@ -2,6 +2,14 @@
   "name": "@kit/eslint-config",
   "version": "0.0.3",
   "type": "module",
+  "files": [
+    "base.js",
+    "common-rules.js",
+    "vue-app.js",
+    "react-app.js",
+    "index.d.ts",
+    "README.md"
+  ],
   "exports": {
     "./base": {
       "types": "./index.d.ts",
