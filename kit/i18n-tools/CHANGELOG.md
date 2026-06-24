@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.22
+
+### Patch Changes
+
+- 孤儿key匹配
+
 ## 0.0.21
 
 ### Patch Changes
