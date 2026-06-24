@@ -281,6 +281,23 @@ export class FileUtils {
     FileUtils.atomicWriteText(filePath, content);
   }
 
+  /**
+   * 写 translations.json / untranslated.json 这类「条目字典」文件：
+   * 落盘前按顶层 key 字母序排序，使顺序与「哪个步骤最后写」解耦。
+   *
+   * Why: pick 按源 locale 装配顺序写、merge 按「已有 + 末尾追加」写，两者顺序
+   * 不一致——merge 之后再跑 pick 会把追加的 key 重排回中部，产生大 no-op diff。
+   * 统一排序后，pick / merge / translate / csv-import 写出的顺序恒定一致。
+   * 内层值对象（{ zh, en, ... }）顺序保持不变。
+   */
+  static writeTranslationsFile(filePath: string, data: Record<string, unknown>): void {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(data).sort()) {
+      sorted[key] = data[key];
+    }
+    FileUtils.writeJsonFile(filePath, sorted);
+  }
+
   /** 类型声明文件不应被作为业务源码处理 */
   static isDeclarationFile(fileName: string): boolean {
     return fileName.endsWith('.d.ts') || fileName.endsWith('.d.mts') || fileName.endsWith('.d.cts');

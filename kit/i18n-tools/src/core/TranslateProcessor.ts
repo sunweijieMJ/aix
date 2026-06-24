@@ -70,7 +70,7 @@ export class TranslateProcessor extends FileProcessor {
       const glossaryFilled = this.applyGlossary(data, target);
       if (glossaryFilled > 0) {
         LoggerUtils.info(`📚 [${target}] 词表预填 ${glossaryFilled} 条，剩余条目走 LLM`);
-        FileUtils.writeJsonFile(targetPath, data);
+        FileUtils.writeTranslationsFile(targetPath, data);
       }
 
       const toTranslate = this.filterUntranslatedItems(data, target);
@@ -213,7 +213,7 @@ export class TranslateProcessor extends FileProcessor {
     }
 
     // 写入文件（每个 target 完成后落盘一次，便于断点续翻）
-    FileUtils.writeJsonFile(filePath, currentData);
+    FileUtils.writeTranslationsFile(filePath, currentData);
 
     return { totalTranslated, successBatches, totalBatches: batches.length, failedBatches };
   }

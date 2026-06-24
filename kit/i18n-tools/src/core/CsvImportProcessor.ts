@@ -122,7 +122,7 @@ export class CsvImportProcessor extends FileProcessor {
       }
     }
 
-    FileUtils.writeJsonFile(untranslatedPath, data);
+    FileUtils.writeTranslationsFile(untranslatedPath, data);
     LoggerUtils.success(`✅ 已写回 ${updated} 处译文到 ${untranslatedPath}`);
   }
 
