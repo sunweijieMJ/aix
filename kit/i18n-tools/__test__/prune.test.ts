@@ -87,6 +87,34 @@ describe('PruneProcessor', () => {
     expect(readLocale('en-US')).toEqual({ byKeypath: 'via keypath' });
   });
 
+  it('清理时 translations.json / untranslated.json 里的孤儿也一并删除', async () => {
+    writeSource('A.vue', `<template>{{ t('used') }}</template>`);
+    writeLocale('zh-CN', { used: '用', orphan: '没人用' });
+    writeLocale('en-US', { used: 'used', orphan: 'unused' });
+    // 中间字典文件含孤儿（{key: {locale: value}} 结构）
+    fs.writeFileSync(
+      path.join(localeDir, 'translations.json'),
+      JSON.stringify({
+        used: { 'zh-CN': '用', 'en-US': 'used' },
+        orphan: { 'zh-CN': '没人用', 'en-US': 'unused' },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ orphan: { 'zh-CN': '没人用', 'en-US': '' } }),
+    );
+
+    await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    const trans = JSON.parse(fs.readFileSync(path.join(localeDir, 'translations.json'), 'utf8'));
+    const untrans = JSON.parse(fs.readFileSync(path.join(localeDir, 'untranslated.json'), 'utf8'));
+    expect(trans).toEqual({ used: { 'zh-CN': '用', 'en-US': 'used' } }); // orphan 删了
+    expect(untrans).toEqual({}); // orphan 删了
+  });
+
   it('--dry-run 只预览不删', async () => {
     writeSource('A.vue', `<template>{{ t('used') }}</template>`);
     writeLocale('zh-CN', { used: '用', orphan: '没人用' });

@@ -1,10 +1,13 @@
+import fs from 'fs';
+import path from 'path';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
+import { FileUtils } from '../utils/file-utils';
 import { InteractiveUtils } from '../utils/interactive-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import { collectUsedKeys, matchesDynamicAllowlist } from '../utils/source-key-scanner';
-import type { LocaleMap } from '../utils/types';
+import type { LocaleMap, Translations } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
 
 export interface PruneOptions {
@@ -80,6 +83,27 @@ export class PruneProcessor extends BaseProcessor {
     for (const locale of locales) {
       this.pruneLocale(locale, orphanSet);
     }
+
+    // 中间字典文件（translations.json / untranslated.json）里的孤儿也一并删除，
+    // 与 locale 保持一致，避免遗留半清理状态（不依赖事后再跑 pick 自愈）。
+    this.pruneDictionaryFile(FileUtils.getTranslatedPath(this.config, this.isCustom), orphanSet);
+    this.pruneDictionaryFile(FileUtils.getUntranslatedPath(this.config, this.isCustom), orphanSet);
+  }
+
+  /** 从 translations.json / untranslated.json（{key: {locale: value}} 字典）删除孤儿 key。 */
+  private pruneDictionaryFile(filePath: string, orphanSet: Set<string>): void {
+    if (!fs.existsSync(filePath)) return;
+    const data = FileUtils.safeLoadJsonFile<Translations>(filePath, { silent: true });
+    let removed = 0;
+    for (const k of orphanSet) {
+      if (k in data) {
+        delete data[k];
+        removed++;
+      }
+    }
+    if (removed === 0) return;
+    FileUtils.writeTranslationsFile(filePath, data);
+    LoggerUtils.success(`✅ ${path.basename(filePath)}: 删除 ${removed} 个 key`);
   }
 
   /** 从单个 locale 删除孤儿 key 并写回（桶式复用既有桶写 + 孤儿桶清理）。 */
