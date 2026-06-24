@@ -72,6 +72,21 @@ describe('PruneProcessor', () => {
     expect(readLocale('en-US')).toEqual({ used: 'used' });
   });
 
+  it('仅被 <i18n-t keypath> 组件引用的 key 不删（防 keypath 误报）', async () => {
+    writeSource('A.vue', `<template><i18n-t keypath="byKeypath" tag="span"></i18n-t></template>`);
+    writeLocale('zh-CN', { byKeypath: '组件引用', orphan: '没人用' });
+    writeLocale('en-US', { byKeypath: 'via keypath', orphan: 'unused' });
+
+    await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    // byKeypath 经 <i18n-t keypath> 引用 → 不应被当孤儿删除；只删真正没人用的 orphan
+    expect(readLocale('zh-CN')).toEqual({ byKeypath: '组件引用' });
+    expect(readLocale('en-US')).toEqual({ byKeypath: 'via keypath' });
+  });
+
   it('--dry-run 只预览不删', async () => {
     writeSource('A.vue', `<template>{{ t('used') }}</template>`);
     writeLocale('zh-CN', { used: '用', orphan: '没人用' });
