@@ -1,5 +1,5 @@
 export { CommonASTUtils } from './common-ast-utils';
-export { formatWithPrettier } from './command-utils';
+export { formatWithPrettier, isModeExplicitlySet } from './command-utils';
 export { ConcurrencyController } from './concurrency-controller';
 export { loadEnv } from './env';
 export { FILES, CONFIG, MODE_DESCRIPTIONS } from './constants';

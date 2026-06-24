@@ -145,6 +145,21 @@ describe('io.format=nested 写入', () => {
     ).toThrow(/前缀冲突/);
   });
 
+  it('前缀冲突拦截：非相邻 key（含连字符）夹在中间也能检出', () => {
+    const config = makeConfig();
+    fs.mkdirSync(config.io.localesDir, { recursive: true });
+    // 'a.b-c'（'-'=0x2D < '.'=0x2E）排序后落在 'a.b' 与 'a.b.c' 之间，
+    // 旧的「仅比相邻对」逻辑会漏掉 'a.b'(叶) 与 'a.b.c'(子树) 的冲突 → 静默丢数据
+    expect(() =>
+      LanguageFileManager.writeLocaleFile(
+        config,
+        false,
+        { 'a.b': '叶子', 'a.b-c': '兄弟', 'a.b.c': '子树' },
+        'zh-CN',
+      ),
+    ).toThrow(/前缀冲突/);
+  });
+
   it('format=flat 时即使存在前缀冲突也不抛错（扁平不做 unflatten）', () => {
     const config = makeConfig({ io: { format: 'flat', localesDir: 'locale' } });
     fs.mkdirSync(config.io.localesDir, { recursive: true });
