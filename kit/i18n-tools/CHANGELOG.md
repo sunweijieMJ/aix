@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.23
+
+### Patch Changes
+
+- 优化脚本
+
 ## 0.0.22
 
 ### Patch Changes
