@@ -677,8 +677,7 @@ i18n-tools --mode prune             # 确认(y/N)后从所有 locale 删除
 i18n-tools --mode prune --ci        # 非交互直接删（CI/脚本）
 ```
 
-- 删除范围：源语言 + 所有目标语言的 locale 文件（含分桶布局），命中 `keys.dynamicKeyAllowlist` 的 key 跳过不删。
-- 不触碰 `translations.json` / `untranslated.json`（下次 `pick` 会从 locale 重新生成）。
+- 删除范围：源语言 + 所有目标语言的 locale 文件（含分桶布局），以及中间文件 `translations.json` / `untranslated.json`，一并清掉孤儿 key，保持状态一致。命中 `keys.dynamicKeyAllowlist` 的 key 跳过不删。
 - 无 `.bak`：写回为原子写，恢复请用 git。
 
 ### 落盘日志（.i18n-tools/）
