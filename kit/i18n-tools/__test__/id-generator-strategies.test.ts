@@ -43,6 +43,27 @@ describe('IdGenerator - PathStrategy', () => {
     expect(id).toBe('pages.home.submit');
   });
 
+  it('LLM 返回纯中文 id：sanitize 后为空时回退 hash，不产生尾随分隔符（回归 B4）', () => {
+    const gen = new IdGenerator(buildConfig());
+    // addDirectoryPrefixToId 直接消费 LLM 返回的 id；纯中文会被 sanitize 抹空
+    const id = gen.addDirectoryPrefixToId(
+      '/tmp/proj/src/pages/home/index.vue',
+      '商品列表',
+      new Set(),
+    );
+    expect(id.startsWith('pages.home.')).toBe(true);
+    // 语义段非空：不以分隔符结尾，且前缀后有内容
+    expect(id.endsWith('.')).toBe(false);
+    expect(id).toMatch(/^pages\.home\.t_[a-z0-9]+$/);
+  });
+
+  it('LLM 返回纯标点 id：同样回退 hash', () => {
+    const gen = new IdGenerator(buildConfig());
+    const id = gen.addDirectoryPrefixToId('/tmp/proj/src/main.vue', '。。。', new Set());
+    expect(id.endsWith('.')).toBe(false);
+    expect(id).toMatch(/^main\.t_[a-z0-9]+$/);
+  });
+
   it('skip 跳过前 N 段', () => {
     const gen = new IdGenerator(buildConfig({ keys: { prefix: { strategy: 'path', skip: 1 } } }));
     const id = gen.generateWithFilePath(

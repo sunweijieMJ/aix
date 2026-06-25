@@ -274,6 +274,17 @@ function sanitizeSemanticId(id: string, preserveCase: boolean = false): string {
 }
 
 /**
+ * 在 sanitizeSemanticId 基础上保证返回非空语义段。
+ *
+ * Why: LLM 可能违背 prompt 返回纯中文/纯标点的 id（如「商品列表」「。。。」），
+ * sanitizeSemanticId 会把它们抹成空串，导致 createFullId 产出 `prefix.`（尾随
+ * 分隔符）的畸形 key，运行时 t('prefix.') 无法命中。空串时回退到稳定 hash。
+ */
+function sanitizeSemanticForId(semanticPart: string): string {
+  return sanitizeSemanticId(semanticPart) || `t_${shortHash(semanticPart)}`;
+}
+
+/**
  * 提取语义部分（fallback / hash 兜底）。
  *
  * 流程：
@@ -382,7 +393,7 @@ export class IdGenerator {
       .map((seg) => cleanSegment(seg, true))
       .filter(Boolean)
       .join(this.separator);
-    const cleanedSemantic = sanitizeSemanticId(semanticPart);
+    const cleanedSemantic = sanitizeSemanticForId(semanticPart);
     const fullId = cleanedPrefix
       ? `${cleanedPrefix}${this.separator}${cleanedSemantic}`
       : cleanedSemantic;
@@ -391,7 +402,7 @@ export class IdGenerator {
 
   private createFullId(filePath: string, semanticPart: string, existingIds: Set<string>): string {
     const segments = this.strategy.derive(filePath, this.buildContext(filePath));
-    const cleanedSemantic = sanitizeSemanticId(semanticPart);
+    const cleanedSemantic = sanitizeSemanticForId(semanticPart);
     const prefix = segments.join(this.separator);
     const fullId = prefix ? `${prefix}${this.separator}${cleanedSemantic}` : cleanedSemantic;
     return ensureUniqueId(fullId, existingIds);
