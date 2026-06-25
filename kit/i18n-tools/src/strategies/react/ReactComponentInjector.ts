@@ -122,13 +122,36 @@ export class ReactComponentInjector implements IComponentInjector {
     transformations: Transformation[],
   ): void {
     const body = node.body;
-    if (body && ts.isBlock(body)) {
+    if (!body) return;
+
+    if (ts.isBlock(body)) {
       const injectionPos = body.getStart(sourceFile) + 1;
       const injectionText = `\n  ${this.library.hookDeclaration}`;
       transformations.push({
         start: injectionPos,
         end: injectionPos,
         text: injectionText,
+      });
+      return;
+    }
+
+    // 表达式体箭头组件（`() => <jsx/>`）没有 Block 可插入 hook 声明。
+    // 此时属性中的文案仍会被 ReactTransformer 替换为 t()/intl 调用，若不注入
+    // hook 就会产出引用未声明 t 的代码（运行时 `t is not defined`）。
+    // 解法：把表达式体包成块体 `=> { hookDecl return <expr>; }`。
+    // 只有 ArrowFunction 可能是表达式体；FunctionExpression 必带 Block。
+    if (ts.isArrowFunction(node)) {
+      const start = body.getStart(sourceFile);
+      const end = body.getEnd();
+      transformations.push({
+        start,
+        end: start,
+        text: `{\n  ${this.library.hookDeclaration}\n  return `,
+      });
+      transformations.push({
+        start: end,
+        end,
+        text: `;\n}`,
       });
     }
   }
