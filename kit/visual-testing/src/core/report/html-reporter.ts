@@ -90,7 +90,10 @@ export class HtmlReporter implements Reporter {
       );
     }
 
-    const eta = new Eta({ views: templateDir, autoEscape: false });
+    // 保留 eta 默认的自动转义（autoEscape: true）：模板中 LLM 输出的差异描述、
+    // 用户配置的 target/variant 名等均通过 <%= %> 输出，必须转义以防 HTML 注入。
+    // 唯一需要原样输出的可信内容是包内静态 css，模板里用 <%~ it.css %> 单独放行。
+    const eta = new Eta({ views: templateDir });
     const html = eta.render('./index.html.eta', {
       results,
       conclusion,

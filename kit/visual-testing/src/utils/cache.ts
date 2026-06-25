@@ -116,6 +116,21 @@ export class CacheManager {
     }
   }
 
+  /**
+   * 立即将缓存落盘并取消挂起的防抖写入。
+   *
+   * set() 用 500ms 防抖写盘，若进程在防抖窗口内退出，最后一次写入会丢失。
+   * 流程结束时应显式调用 flush()，确保本次新增的结果持久化（否则下次运行缓存未命中、重复付费）。
+   */
+  async flush(): Promise<void> {
+    if (!this.persistPath) return;
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    await this.saveToDisk();
+  }
+
   get<T>(key: string): T | null {
     const item = this.cache.get(key) as CacheItem<T> | undefined;
 

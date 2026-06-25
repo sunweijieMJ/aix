@@ -259,6 +259,13 @@ export class LLMCostController {
     return this.cache.getStats();
   }
 
+  /**
+   * 将缓存立即落盘（流程结束时调用，避免防抖写入在进程退出时丢失）。
+   */
+  async flush(): Promise<void> {
+    await this.cache.flush();
+  }
+
   private async buildCacheKey(baselinePath: string, actualPath: string): Promise<string> {
     try {
       const [h1, h2] = await Promise.all([hashFile(baselinePath), hashFile(actualPath)]);

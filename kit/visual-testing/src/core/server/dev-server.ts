@@ -30,6 +30,13 @@ export interface ServerConfig {
 export class DevServer {
   private process: ChildProcess | null = null;
   private config: ServerConfig;
+  /**
+   * 进程退出码快照。
+   * exit handler 会把 this.process 置空，若仅靠 this.process.exitCode 判断崩溃，
+   * 进程一退出引用即为 null，崩溃分支永远进不去。故单独记录退出码。
+   * null = 尚未退出。
+   */
+  private exitCode: number | null = null;
 
   constructor(config: ServerConfig) {
     this.config = config;
@@ -52,6 +59,9 @@ export class DevServer {
         throw new Error('Empty server command');
       }
 
+      // 启动新进程前重置退出码快照
+      this.exitCode = null;
+
       // 使用 shell 模式执行命令，支持带空格路径、引号参数和管道等 shell 语法
       this.process = spawn(command, {
         stdio: 'pipe',
@@ -72,9 +82,10 @@ export class DevServer {
         });
       }
 
-      // 监听进程退出，清空引用
+      // 监听进程退出：先记录退出码快照，再清空引用
       this.process.on('exit', (code) => {
         log.info(`Dev server exited with code ${code}`);
+        this.exitCode = code ?? 0;
         this.process = null;
       });
 
@@ -130,10 +141,10 @@ export class DevServer {
     const checkInterval = 500; // 每 500ms 检查一次
 
     while (Date.now() - startTime < timeout) {
-      // 检查进程是否已崩溃退出
-      if (this.process && this.process.exitCode !== null) {
+      // 检查进程是否已崩溃退出（用 exitCode 快照，因 exit handler 已将 this.process 置空）
+      if (this.exitCode !== null) {
         throw new Error(
-          `Dev server process exited unexpectedly with code ${this.process.exitCode}. Check your server command.`,
+          `Dev server process exited unexpectedly with code ${this.exitCode}. Check your server command.`,
         );
       }
 

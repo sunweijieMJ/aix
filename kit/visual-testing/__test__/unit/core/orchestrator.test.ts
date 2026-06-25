@@ -422,6 +422,39 @@ describe('VisualTestOrchestrator', () => {
       expect(results).toHaveLength(1);
       expect(results[0]!.variant).toBe('default'); // no @chromium suffix
     });
+
+    it('should give same-named variants distinct paths per theme (no baseline collision)', async () => {
+      orchestrator = new VisualTestOrchestrator(
+        mockConfig({
+          targets: [
+            {
+              name: 'button',
+              type: 'component',
+              variants: [
+                // 同名不同 theme：若 theme 不进 variant 名/路径，两者会共用 default.png 互相覆盖
+                { name: 'default', url: 'http://a', baseline: 'default.png', theme: 'light' },
+                { name: 'default', url: 'http://a', baseline: 'default.png', theme: 'dark' },
+              ],
+            },
+          ],
+        }),
+      );
+
+      const results = await orchestrator.runTests();
+
+      expect(results).toHaveLength(2);
+      // variant 名带上 @theme 后缀，彼此区分
+      expect(results.map((r) => r.variant).sort()).toEqual(['default@dark', 'default@light']);
+
+      // 基准图来源与输出路径均按 theme 派生，互不覆盖
+      const fetchSources = mockBaselineProvider.fetch.mock.calls.map((c) => c[0].source).sort();
+      expect(fetchSources).toEqual(['default@dark.png', 'default@light.png']);
+      const fetchOutputs = mockBaselineProvider.fetch.mock.calls.map((c) => c[0].outputPath).sort();
+      expect(fetchOutputs).toEqual([
+        '/tmp/baselines/button/default@dark.png',
+        '/tmp/baselines/button/default@light.png',
+      ]);
+    });
   });
 
   describe('error handling', () => {

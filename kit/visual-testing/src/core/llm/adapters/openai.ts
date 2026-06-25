@@ -6,15 +6,19 @@
  * 所有 prompt 构建、响应解析逻辑在 LLMClient 中统一处理。
  */
 
-import OpenAI from 'openai';
+// 仅类型导入（编译期擦除，不产生运行时依赖）；SDK 在首次调用时动态加载。
+import type OpenAI from 'openai';
 import { logger } from '../../../utils/logger';
+import { requireOptional } from '../../../utils/optional-import';
 import type { LLMConfig, VisionAdapter, ImageInput, VisionCallResult } from '../../../types/llm';
 
 const log = logger.child('openai-adapter');
 
 export class OpenAIAdapter implements VisionAdapter {
   readonly name = 'openai';
-  private client: OpenAI;
+  private client: OpenAI | null = null;
+  private readonly apiKey: string;
+  private readonly baseURL?: string;
 
   constructor(config: LLMConfig) {
     const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
@@ -23,10 +27,19 @@ export class OpenAIAdapter implements VisionAdapter {
         'OpenAI API key is required. Set OPENAI_API_KEY env or pass apiKey in config.',
       );
     }
-    this.client = new OpenAI({
-      apiKey,
-      baseURL: config.baseURL,
-    });
+    this.apiKey = apiKey;
+    this.baseURL = config.baseURL;
+  }
+
+  /**
+   * 懒加载 openai（可选依赖），缺失时抛出带安装指引的友好错误。
+   */
+  private async getClient(): Promise<OpenAI> {
+    if (this.client) return this.client;
+    const mod = await requireOptional<{ default: typeof OpenAI }>('openai', 'openai');
+    const OpenAICtor = mod.default;
+    this.client = new OpenAICtor({ apiKey: this.apiKey, baseURL: this.baseURL });
+    return this.client;
   }
 
   async chatWithImages(
@@ -52,7 +65,8 @@ export class OpenAIAdapter implements VisionAdapter {
     content.push({ type: 'text', text: prompt });
 
     log.debug(`Calling OpenAI API with model ${options.model}`);
-    const response = await this.client.chat.completions.create(
+    const client = await this.getClient();
+    const response = await client.chat.completions.create(
       {
         model: options.model,
         max_tokens: options.maxTokens,
@@ -86,7 +100,8 @@ export class OpenAIAdapter implements VisionAdapter {
     },
   ): Promise<VisionCallResult> {
     log.debug(`Calling OpenAI API (text) with model ${options.model}`);
-    const response = await this.client.chat.completions.create(
+    const client = await this.getClient();
+    const response = await client.chat.completions.create(
       {
         model: options.model,
         max_tokens: options.maxTokens,

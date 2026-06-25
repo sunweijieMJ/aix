@@ -49,6 +49,7 @@ interface TestTask {
   threshold?: number;
   viewport?: { width: number; height: number };
   browser?: 'chromium' | 'firefox' | 'webkit';
+  theme?: 'light' | 'dark';
 }
 
 /**
@@ -348,6 +349,7 @@ export class VisualTestOrchestrator {
         selector: task.selector,
         viewport: task.viewport,
         browser: task.browser,
+        theme: task.theme,
         waitStrategies: task.waitFor
           ? [{ type: 'selector', selector: task.waitFor, state: 'visible' }]
           : undefined,
@@ -504,6 +506,14 @@ export class VisualTestOrchestrator {
 
     for (const target of targets) {
       for (const variant of target.variants) {
+        // theme（light/dark）通过 emulateMedia 改变截图，必须像 viewport/browser 一样
+        // 体现在 variant 名与 baseline 路径中，否则同名不同 theme 的 variant 会共用同一
+        // 基准图，导致基准图互相覆盖、跨主题对比误报差异
+        const themedName = variant.theme ? `${variant.name}@${variant.theme}` : variant.name;
+        const themedBaseline = variant.theme
+          ? this.deriveThemeBaseline(variant.baseline, variant.theme)
+          : variant.baseline;
+
         // 构建基础任务列表（按 viewport 展开）
         const baseTasks: Omit<TestTask, 'browser'>[] = [];
 
@@ -512,26 +522,28 @@ export class VisualTestOrchestrator {
             baseTasks.push({
               target: target.name,
               targetType: target.type,
-              variant: `${variant.name}@${viewport.name}`,
+              variant: `${themedName}@${viewport.name}`,
               url: variant.url,
-              baseline: this.deriveViewportBaseline(variant.baseline, viewport.name),
+              baseline: this.deriveViewportBaseline(themedBaseline, viewport.name),
               selector: variant.selector,
               waitFor: variant.waitFor,
               threshold: variant.threshold,
               viewport: { width: viewport.width, height: viewport.height },
+              theme: variant.theme,
             });
           }
         } else {
           baseTasks.push({
             target: target.name,
             targetType: target.type,
-            variant: variant.name,
+            variant: themedName,
             url: variant.url,
-            baseline: variant.baseline,
+            baseline: themedBaseline,
             selector: variant.selector,
             waitFor: variant.waitFor,
             threshold: variant.threshold,
             viewport: variant.viewport,
+            theme: variant.theme,
           });
         }
 
@@ -639,6 +651,13 @@ export class VisualTestOrchestrator {
     } catch (error) {
       log.warn('Failed to dispose baseline provider', error);
     }
+
+    try {
+      // 将 LLM 结果缓存立即落盘，避免防抖写入在进程退出时丢失
+      await this.llmAnalyzer.dispose();
+    } catch (error) {
+      log.warn('Failed to dispose LLM analyzer', error);
+    }
   }
 
   // ---- 路径工具 ----
@@ -684,6 +703,24 @@ export class VisualTestOrchestrator {
       const ext = path.extname(baseline);
       const base = baseline.slice(0, -ext.length);
       return `${base}@${browserType}${ext}`;
+    }
+    return baseline;
+  }
+
+  /**
+   * 为多主题（light/dark）场景派生独立的 baseline 来源
+   *
+   * 字符串路径: `baselines/btn.png` → `baselines/btn@dark.png`
+   * 结构化来源: 保持不变（与 viewport/browser 一致，结构化 baseline 由各 variant 自行指定）
+   */
+  private deriveThemeBaseline(
+    baseline: string | { type: string; source: string; fileKey?: string },
+    theme: 'light' | 'dark',
+  ): typeof baseline {
+    if (typeof baseline === 'string') {
+      const ext = path.extname(baseline);
+      const base = baseline.slice(0, -ext.length);
+      return `${base}@${theme}${ext}`;
     }
     return baseline;
   }

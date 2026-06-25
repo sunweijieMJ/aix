@@ -5,15 +5,18 @@
  * 所有 prompt 构建、响应解析逻辑在 LLMClient 中统一处理。
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+// 仅类型导入（编译期擦除，不产生运行时依赖）；SDK 在首次调用时动态加载。
+import type Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../../../utils/logger';
+import { requireOptional } from '../../../utils/optional-import';
 import type { LLMConfig, VisionAdapter, ImageInput, VisionCallResult } from '../../../types/llm';
 
 const log = logger.child('anthropic-adapter');
 
 export class AnthropicAdapter implements VisionAdapter {
   readonly name = 'anthropic';
-  private client: Anthropic;
+  private client: Anthropic | null = null;
+  private readonly apiKey: string;
 
   constructor(config: LLMConfig) {
     const apiKey = config.apiKey || process.env.ANTHROPIC_API_KEY;
@@ -22,7 +25,21 @@ export class AnthropicAdapter implements VisionAdapter {
         'Anthropic API key is required. Set ANTHROPIC_API_KEY env or pass apiKey in config.',
       );
     }
-    this.client = new Anthropic({ apiKey });
+    this.apiKey = apiKey;
+  }
+
+  /**
+   * 懒加载 @anthropic-ai/sdk（可选依赖），缺失时抛出带安装指引的友好错误。
+   */
+  private async getClient(): Promise<Anthropic> {
+    if (this.client) return this.client;
+    const mod = await requireOptional<{ default: typeof Anthropic }>(
+      '@anthropic-ai/sdk',
+      '@anthropic-ai/sdk',
+    );
+    const AnthropicCtor = mod.default;
+    this.client = new AnthropicCtor({ apiKey: this.apiKey });
+    return this.client;
   }
 
   async chatWithImages(
@@ -58,7 +75,8 @@ export class AnthropicAdapter implements VisionAdapter {
     content.push({ type: 'text', text: prompt });
 
     log.debug(`Calling Anthropic API with model ${options.model}`);
-    const response = await this.client.messages.create(
+    const client = await this.getClient();
+    const response = await client.messages.create(
       {
         model: options.model,
         max_tokens: options.maxTokens,
@@ -91,7 +109,8 @@ export class AnthropicAdapter implements VisionAdapter {
     },
   ): Promise<VisionCallResult> {
     log.debug(`Calling Anthropic API (text) with model ${options.model}`);
-    const response = await this.client.messages.create(
+    const client = await this.getClient();
+    const response = await client.messages.create(
       {
         model: options.model,
         max_tokens: options.maxTokens,

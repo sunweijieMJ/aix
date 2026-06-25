@@ -93,6 +93,8 @@ const costControlSchema = z.object({
   diffThreshold: z.number().min(0).max(100).default(5),
   cacheEnabled: z.boolean().default(true),
   cacheTTL: z.number().positive().default(3600),
+  /** 可选：单次运行最大预算（USD），累计预估成本达到后停止调用 LLM */
+  maxBudget: z.number().positive().optional(),
 });
 
 const fallbackSchema = z.object({
