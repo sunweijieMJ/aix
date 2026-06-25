@@ -215,6 +215,38 @@ describe('DoctorProcessor', () => {
     await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
   });
 
+  it('hardcoded-comparison：独立 doctor 自扫源码检出比较运算中的中文（B5 gap 修复）', async () => {
+    // 源码里 status === '进行中'：中文是比较操作数（提取时被跳过），且该中文已是 locale 值。
+    // 修复前：检测依赖 generate 阶段填充的 drain，独立 doctor 永远扫不到。
+    writeSourceFile(
+      'Status.ts',
+      `export const label = (status: string): string => {\n  if (status === '进行中') return 'running';\n  return 'idle';\n};\n`,
+    );
+    writeLocale('zh-CN', { inProgress: '进行中' });
+    writeLocale('en-US', { inProgress: 'In Progress' });
+
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir));
+    await proc.execute();
+
+    const all = collectMessages(infoSpy);
+    expect(all).toContain('[hardcoded-comparison]');
+    expect(all).toContain('进行中');
+  });
+
+  it('hardcoded-comparison + CI 模式 → 抛错（error 门禁对独立 doctor 生效）', async () => {
+    writeSourceFile(
+      'Status.ts',
+      `export const label = (status: string): string => {\n  if (status === '已完成') return 'done';\n  return 'idle';\n};\n`,
+    );
+    writeLocale('zh-CN', { done: '已完成' });
+    writeLocale('en-US', { done: 'Done' });
+
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      ci: true,
+    });
+    await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
+  });
+
   it('CI 模式 + 仅 warning 级问题 → 不抛错（仅 error 才阻塞 CI）', async () => {
     writeSourceFile('R.vue', `<template>{{ t('greeting') }}</template>`);
     writeLocale('zh-CN', { greeting: '你好', orphan: '没人用' });

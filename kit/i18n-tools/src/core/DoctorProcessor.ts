@@ -3,6 +3,7 @@ import { extractPlaceholderNames } from '../utils/placeholder-utils';
 import { collectUsedKeys, matchesDynamicAllowlist } from '../utils/source-key-scanner';
 import type { FrameworkAdapter } from '../adapters';
 import { LanguageFileManager } from '../utils/language-file-manager';
+import { FileUtils } from '../utils/file-utils';
 import { type LinterFinding, LocaleValueLinter } from '../utils/locale-value-linter';
 import { LoggerUtils } from '../utils/logger';
 import type { LocaleMap } from '../utils/types';
@@ -91,6 +92,15 @@ export class DoctorProcessor extends BaseProcessor {
   private async _execute(): Promise<void> {
     const findings: DoctorFinding[] = [];
 
+    // 0. 填充 hardcoded-comparison 检测所需的比较操作数。
+    //    Why：findHardcodedComparisons 消费的是「提取阶段」记录的
+    //    drainSkippedComparisonOperands。独立 doctor 不经 generate，drain 恒空；
+    //    且 generate 自身会在写 report 时把 drain 消费掉（见 GenerateProcessor），
+    //    因此无论独立运行还是 generate 之后运行，doctor 的 lint 都拿不到比较操作数。
+    //    这里主动跑一次只读的提取扫描（不落盘、不调用 LLM）填充新鲜的 drain，
+    //    使 doctor 自给自足。
+    await this.populateComparisonOperands();
+
     // 1. locale value 结构性检查（复用 linter）
     const sourceMap =
       LanguageFileManager.readLocaleFile(this.config, this.isCustom, this.config.locales.source) ??
@@ -123,6 +133,27 @@ export class DoctorProcessor extends BaseProcessor {
         throw new Error(`Doctor CI check failed: ${errors} error(s)`);
       }
     }
+  }
+
+  /**
+   * 跑一次只读的提取扫描，填充 CommonASTUtils.drainSkippedComparisonOperands，
+   * 供 runLinter 的 hardcoded-comparison 检测消费。
+   *
+   * 复用提取器（含 Vue SFC / TS / JSX 的 AST 遍历与比较操作数识别），零重复实现；
+   * 提取本身不写文件、不调 LLM，仅在内存中产出结果（此处丢弃，只取其填充 drain 的副作用）。
+   */
+  private async populateComparisonOperands(): Promise<void> {
+    const files = FileUtils.getFrameworkFiles(
+      this.config.io.sourceDir,
+      this.adapter.getSupportedExtensions(),
+      this.config.io.exclude,
+      this.config.io.include,
+      this.config.root,
+    );
+    const extractor = this.adapter.getTextExtractor();
+    await extractor.extractFromFiles(files);
+    // 提取期 warning（如跳过含 HTML 的模板字符串）对 doctor 无意义，排空丢弃。
+    extractor.drainWarnings();
   }
 
   /** LocaleValueLinter.analyze → DoctorFinding（严重级别全部归 info） */
