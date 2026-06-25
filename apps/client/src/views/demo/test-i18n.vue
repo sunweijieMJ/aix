@@ -406,6 +406,13 @@ const fieldDisplayNames: Record<string, string> = {
   email: '电子邮箱地址',
 };
 void fieldDisplayNames;
+
+// ==================== 带前导注释的字面量（B1 回归：nodeToText 跳过 trivia）====================
+// 注释（块/行）不应阻断这些中文的提取与替换
+const commentedTitle = ref(/* 页面标题 */ '数据监控看板');
+const commentedHint = /* 输入提示 */ '请输入要查询的关键词';
+void commentedTitle.value;
+void commentedHint;
 </script>
 
 <style scoped lang="scss">

@@ -720,4 +720,28 @@ export const GLOSSARY_HITS = {
   unsavedChanges: '您有未保存的更改，确定要离开吗？',
 } as const;
 
+// ==================== 31. 带前导注释的字面量（B1 回归：nodeToText 须跳过 trivia）====================
+// Why：nodeToText 用 getStart 跳过前导块/行注释。若用 getFullStart，注释会混入节点文本，
+// shouldReplaceNode 比较失败 → 字面量虽生成了 key 却被静默漏替换。
+// 以下中文均"应被提取并替换"；注释本身不提取，也不应阻断替换。
+
+// ✅ const 初始化：块注释紧跟等号
+export const commentedGreeting = /* 问候语 */ '你好，欢迎光临本系统';
+
+// ✅ return 语句后带块注释
+export const getCommentedFarewell = (): string => {
+  return /* 告别语 */ '感谢使用，期待再次见到您';
+};
+
+// ✅ 对象 value 前带块注释
+export const COMMENTED_CONFIG = {
+  title: /* 配置标题 */ '系统设置中心面板',
+  subtitle: '管理您的个性化偏好', // 对照：无注释的普通 value
+};
+
+// ✅ 函数默认参数中带前导注释
+export const formatCommentedTip = (tip: string = /* 默认提示 */ '请填写完整的表单信息'): string => {
+  return tip;
+};
+
 console.log('测试函数模块加载完成'); // console调用不应该被提取
