@@ -23,6 +23,11 @@ export default defineConfig({
 
   server: {
     url: BASE_URL,
+    // 自动拉起 dev server（端口 5173），测试结束后自动关闭，无需手动开两个终端。
+    // 若想复用已手动启动的 dev server，把 autoStart 设为 false 即可。
+    command: 'pnpm dev',
+    autoStart: true,
+    timeout: 120_000,
   },
 
   screenshot: {
