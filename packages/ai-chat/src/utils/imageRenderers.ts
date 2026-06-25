@@ -7,8 +7,25 @@ import { locale } from '../locale';
 import { transitionHeight } from './heightTransition';
 import type { MarkdownRenderers, MdToken } from './markdownWalker';
 
-/** 已成功加载过的图片 URL：虚拟列表重挂载 / 同图复现时直接出图，不再闪骨架 */
+/**
+ * 已成功加载过的图片 URL（LRU 上限 200）：虚拟列表重挂载 / 同图复现时直接出图，不再闪骨架。
+ * 设上限避免长会话中不断出现新 URL 导致 Set 无界增长（与 diagramRenderers 的 svgCache 同策略）。
+ */
 const loadedUrls = new Set<string>();
+const LOADED_MAX = 200;
+/** 命中即刷新热度（移到末尾），保证 LRU 淘汰恒为最久未访问项 */
+const isLoaded = (url: string): boolean => {
+  if (!loadedUrls.has(url)) return false;
+  loadedUrls.delete(url);
+  loadedUrls.add(url);
+  return true;
+};
+const markLoaded = (url: string) => {
+  loadedUrls.delete(url); // 已存在则先删，保证重新插入到末尾刷新热度
+  loadedUrls.add(url);
+  // Set 迭代顺序即插入顺序（ES2015 规范保证），values().next() 取最旧键淘汰
+  if (loadedUrls.size > LOADED_MAX) loadedUrls.delete(loadedUrls.values().next().value!);
+};
 
 /** 测试用：清空已加载缓存 */
 export function __resetImageCache() {
@@ -32,16 +49,14 @@ const ImageBlock = defineComponent({
   setup(props) {
     // 失败占位兜底文案走 locale 体系（与 codeRenderers 一致），随语言切换响应式更新
     const { t } = useLocale(locale);
-    const status = ref<'loading' | 'loaded' | 'error'>(
-      loadedUrls.has(props.src) ? 'loaded' : 'loading',
-    );
+    const status = ref<'loading' | 'loaded' | 'error'>(isLoaded(props.src) ? 'loaded' : 'loading');
     // src 变化时复位（与 diagramRenderers 的 props 变化复位模式一致）：
     // 无 key 的同位置 patch 会复用本实例（消息编辑/重新生成后同位置换图），
     // 不复位则旧图的 error/loaded 态粘到新图——error 态下新图连预加载 img 都不渲染，永久卡死。
     watch(
       () => props.src,
       (src) => {
-        status.value = loadedUrls.has(src) ? 'loaded' : 'loading';
+        status.value = isLoaded(src) ? 'loaded' : 'loading';
       },
     );
     const wrapper = ref<HTMLElement | null>(null);
@@ -56,7 +71,7 @@ const ImageBlock = defineComponent({
       // jsdom 无布局（offsetHeight=0）由 transitionHeight 内部跳过，不影响测试与 SSR。
       const el = wrapper.value;
       const prevHeight = el?.offsetHeight ?? 0;
-      loadedUrls.add(props.src);
+      markLoaded(props.src);
       status.value = 'loaded';
       if (!el || !prevHeight) return;
       requestAnimationFrame(() => {
