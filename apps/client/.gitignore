@@ -26,3 +26,9 @@ dist
 # 操作系统
 .DS_Store
 Thumbs.db
+
+# 视觉测试产物（baselines 基准图需入 git，其余为每次运行的临时产物）
+.visual-test/actuals/
+.visual-test/diffs/
+.visual-test/reports/
+.visual-test/cache/

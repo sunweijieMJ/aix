@@ -1,6 +1,6 @@
 {
   "name": "@aix/client",
-  "version": "0.0.5",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "description": "AIX 组件库示例项目 - 模拟外部业务项目联调场景",
@@ -23,8 +23,8 @@
     "@aix/hooks": "workspace:^",
     "@aix/rich-text-editor": "workspace:^",
     "@aix/theme": "workspace:^",
-    "vue": "^3.5.31",
-    "vue-i18n": "^11.2.8"
+    "vue": "catalog:",
+    "vue-i18n": "^11.4.6"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
@@ -35,6 +35,7 @@
     "@vitejs/plugin-vue": "catalog:",
     "cross-env": "catalog:",
     "eslint": "catalog:",
+    "playwright": "^1.61.1",
     "stylelint": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
