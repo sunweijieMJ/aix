@@ -67,8 +67,11 @@ export {
   TranslateProcessor,
   MergeProcessor,
   ExportProcessor,
+  CsvExportProcessor,
+  CsvImportProcessor,
   AutomaticProcessor,
   DoctorProcessor,
+  PruneProcessor,
   GeneratePlanWriter,
 } from './core';
 export type {
@@ -78,6 +81,9 @@ export type {
   DoctorCategory,
   DoctorFinding,
   DoctorSeverity,
+  CsvExportOptions,
+  CsvImportOptions,
+  PruneOptions,
 } from './core';
 
 // ---- Adapters ----
