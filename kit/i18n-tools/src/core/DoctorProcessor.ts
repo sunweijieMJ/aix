@@ -135,9 +135,9 @@ export class DoctorProcessor extends BaseProcessor {
     this.linterFindings = lintFindings;
     return lintFindings.map((f: LinterFinding) => ({
       category: 'locale-lint',
-      // hardcoded-comparison 是 error 候选（运行时切语言后业务逻辑会失效），
-      // 其它 lint 发现都仅为 info——不阻塞业务。
-      severity: f.category === 'hardcoded-comparison' ? 'warning' : 'info',
+      // hardcoded-comparison 归为 error（运行时切语言后比较仍用硬编码原文，业务逻辑会失效，
+      // 是 doctor 唯一的 error-tier lint 类别，用于 CI 门禁）；其它 lint 发现仅为 info——不阻塞业务。
+      severity: f.category === 'hardcoded-comparison' ? 'error' : 'info',
       title: `[${f.category}] ${f.title}`,
       details: f.details,
       key: f.key,
