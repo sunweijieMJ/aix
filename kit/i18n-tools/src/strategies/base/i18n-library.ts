@@ -18,4 +18,13 @@ export interface BaseI18nLibrary {
   readonly hookName: string;
   /** 默认 Hook 声明语句（如 `const { t } = useI18n()`） */
   readonly hookDeclaration: string;
+  /**
+   * locale 文件中占位符是否使用双花括号 `{{name}}`（i18next 系：react-i18next /
+   * vue-i18next），否则使用单花括号 `{name}`（vue-i18n 的 named 格式 / react-intl 的 ICU）。
+   *
+   * Why: 工具内部统一以单花括号为规范形式生成/还原；写入 locale 前与从 locale 读出后，
+   * 由该标志决定是否在边界做单↔双花括号转换。若 react-i18next 写成单花括号，运行时
+   * 默认插值（双花括号）不会替换，会原样显示 `{name}`。
+   */
+  readonly usesDoubleBracePlaceholders: boolean;
 }

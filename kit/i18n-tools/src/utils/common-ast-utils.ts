@@ -348,7 +348,11 @@ export class CommonASTUtils {
    * @returns 源代码文本
    */
   static nodeToText(node: ts.Node, sourceFile: ts.SourceFile): string {
-    return sourceFile.text.substring(node.getFullStart(), node.getEnd()).trim();
+    // 用 getStart（跳过前导 trivia：空白与注释）而非 getFullStart。
+    // getFullStart 会把节点前的注释一并纳入，导致 `const msg = /* x */ '你好'`
+    // 这类带前导注释的字面量在 shouldReplaceNode 比较时首字符变成注释字符、
+    // 比较失败 → 提取阶段已生成 key 写入 locale，但替换阶段被静默跳过。
+    return sourceFile.text.substring(node.getStart(sourceFile), node.getEnd()).trim();
   }
 
   /**
@@ -942,6 +946,40 @@ export class CommonASTUtils {
    */
   static filterLiterals(templateVariables: string[]): string[] {
     return templateVariables.filter((varExpr) => !CommonASTUtils.isLiteralExpression(varExpr));
+  }
+
+  /**
+   * 占位符名匹配：标识符 / 含点的路径（如 `count`、`user.name`）。
+   * 与 createMessageWithOptions 写入的占位符名（来自 getVariableNameFromExpression）保持一致。
+   */
+  private static readonly PLACEHOLDER_NAME = '[A-Za-z0-9_$.]+';
+
+  /**
+   * 单花括号 `{name}` → 双花括号 `{{name}}`。
+   * 用于 i18next 系库（react-i18next / vue-i18next）写入 locale 前的边界转换。
+   *
+   * 幂等：用负向断言 `(?<!\{)...(?!\})` 跳过已是 `{{name}}` 的占位符，避免重复转换
+   * 成 `{{{name}}}`。Why 必须幂等：apply-plan 路径会把 dry-run 已转换的
+   * plan.localeDelta 再次喂入 updateLanguageFiles（commitToDisk 仍按 library 标志
+   * 转换），若非幂等就会三花括号畸形。
+   */
+  static toDoubleBracePlaceholders(message: string): string {
+    return message.replace(
+      new RegExp(`(?<!\\{)\\{(${CommonASTUtils.PLACEHOLDER_NAME})\\}(?!\\})`, 'g'),
+      '{{$1}}',
+    );
+  }
+
+  /**
+   * 双花括号 `{{name}}` → 单花括号 `{name}`。
+   * 用于 i18next 系库 restore 时把 locale 文本归一回内部规范形式，
+   * 复用既有的单花括号还原逻辑（React createStringOrTemplateNode / Vue 占位符正则）。
+   */
+  static toSingleBracePlaceholders(message: string): string {
+    return message.replace(
+      new RegExp(`\\{\\{\\s*(${CommonASTUtils.PLACEHOLDER_NAME})\\s*\\}\\}`, 'g'),
+      '{$1}',
+    );
   }
 
   /**

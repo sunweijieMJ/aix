@@ -17,6 +17,8 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   readonly packageName = 'react-i18next';
   readonly hookName = 'useTranslation';
   readonly hookDeclaration = 'const { t } = useTranslation();';
+  // react-i18next 默认插值语法是双花括号 `{{name}}`
+  readonly usesDoubleBracePlaceholders = true;
   readonly translationVarName = 't';
   readonly jsxComponentName = 'Trans';
   readonly jsxIdPropName = 'i18nKey';

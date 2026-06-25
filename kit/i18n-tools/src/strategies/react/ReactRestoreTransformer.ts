@@ -26,12 +26,28 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     this.tImport = tImport;
   }
 
+  /** 把 locale 文本中的双花括号占位符归一回单花括号（i18next 系库 restore 用） */
+  private static normalizeLocaleMap(localeMap: LocaleMap): LocaleMap {
+    const result: LocaleMap = {};
+    for (const [key, value] of Object.entries(localeMap)) {
+      result[key] =
+        typeof value === 'string' ? CommonASTUtils.toSingleBracePlaceholders(value) : value;
+    }
+    return result;
+  }
+
   transform(filePath: string, localeMap: LocaleMap): string {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
     const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
 
+    // i18next 系库 locale 用双花括号占位符，先归一回内部规范的单花括号，
+    // 复用既有的 createStringOrTemplateNode 单花括号还原逻辑。
+    const normalizedLocaleMap = this.library.usesDoubleBracePlaceholders
+      ? ReactRestoreTransformer.normalizeLocaleMap(localeMap)
+      : localeMap;
+
     const context: TransformContext = {
-      localeMap,
+      localeMap: normalizedLocaleMap,
       definedMessages: new Map(),
       hasChanges: false,
       sourceFile,
