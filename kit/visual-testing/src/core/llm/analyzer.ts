@@ -40,6 +40,7 @@ export class LLMAnalyzer {
       diffThreshold: config.costControl.diffThreshold,
       cacheEnabled: config.costControl.cacheEnabled,
       cacheTTL: config.costControl.cacheTTL,
+      maxBudget: config.costControl.maxBudget,
       cacheDir: options?.cacheDir,
     });
 
@@ -161,6 +162,14 @@ export class LLMAnalyzer {
    */
   reset(): void {
     this.costController.reset();
+  }
+
+  /**
+   * 释放资源（流程结束时调用）：将 LLM 结果缓存立即落盘，
+   * 避免防抖写入在进程退出时丢失，导致下次运行缓存未命中、重复付费。
+   */
+  async dispose(): Promise<void> {
+    await this.costController.flush();
   }
 
   /**

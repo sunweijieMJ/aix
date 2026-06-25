@@ -5,20 +5,16 @@
  * 支持多视口、选择器截取、动画禁用等功能。
  */
 
-import {
-  chromium,
-  firefox,
-  webkit,
-  type Browser,
-  type BrowserContext,
-  type Page,
-} from 'playwright';
+// 仅类型导入（编译期擦除）；浏览器启动器在 initialize() 中动态加载。
+// playwright 是 optional peerDependency，静态 import 会在模块加载阶段即崩溃。
+import type { Browser, BrowserContext, Page } from 'playwright';
 import path from 'node:path';
 import type { VisualTestConfig } from '../config/schema';
 import type { CaptureOptions, ScreenshotEngine, StabilityConfig } from '../../types/screenshot';
 import { StabilityHandler } from './stability-handler';
 import { PagePool } from './page-pool';
 import { ensureDir } from '../../utils/file';
+import { requireOptional } from '../../utils/optional-import';
 import { logger } from '../../utils/logger';
 
 const log = logger.child('PlaywrightEngine');
@@ -45,6 +41,12 @@ export class PlaywrightScreenshotEngine implements ScreenshotEngine {
     const browserConfigs = this.config.screenshot.browsers;
 
     log.info(`Launching ${browserConfigs.length} browser(s)...`);
+
+    // 懒加载 playwright（可选依赖），缺失时抛出带安装指引的友好错误
+    const { chromium, firefox, webkit } = await requireOptional<typeof import('playwright')>(
+      'playwright',
+      'playwright',
+    );
 
     for (const browserConfig of browserConfigs) {
       const browserType = browserConfig.type;

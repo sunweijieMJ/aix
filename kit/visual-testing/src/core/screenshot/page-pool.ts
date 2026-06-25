@@ -71,13 +71,10 @@ export class PagePool {
       // 达到上限，等待其他 Page 被释放（带超时）
       log.debug(`Page pool at max capacity (${totalPages}/${this.maxSize}), waiting...`);
       return new Promise<Page>((resolve, reject) => {
-        const timer = setTimeout(() => {
-          const idx = this.waitingQueue.findIndex((w) => w.resolve === resolve);
-          if (idx !== -1) this.waitingQueue.splice(idx, 1);
-          reject(new Error(`Page acquire timeout after ${this.acquireTimeout}ms`));
-        }, this.acquireTimeout);
-
-        this.waitingQueue.push({
+        // 先构造 waiter 对象，使超时分支能通过对象引用（indexOf）精确移除自身。
+        // 注意：不能用 `w.resolve === resolve` 比较——队列里存的是下方的包装闭包，
+        // 与 executor 的 resolve 并非同一引用，会导致超时项永远无法出队（page 泄漏）。
+        const waiter = {
           resolve: (page: Page) => {
             clearTimeout(timer);
             resolve(page);
@@ -86,7 +83,15 @@ export class PagePool {
             clearTimeout(timer);
             reject(error);
           },
-        });
+        };
+
+        const timer = setTimeout(() => {
+          const idx = this.waitingQueue.indexOf(waiter);
+          if (idx !== -1) this.waitingQueue.splice(idx, 1);
+          reject(new Error(`Page acquire timeout after ${this.acquireTimeout}ms`));
+        }, this.acquireTimeout);
+
+        this.waitingQueue.push(waiter);
       });
     }
 

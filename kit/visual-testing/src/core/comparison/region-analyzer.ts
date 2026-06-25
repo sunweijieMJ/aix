@@ -45,10 +45,17 @@ export function analyzeDiffRegions(diff: PNG): DiffRegion[] {
       for (let py = y; py < y + h; py++) {
         for (let px = x; px < x + w; px++) {
           const idx = (py * diff.width + px) * 4;
-          // 差异像素：红色通道 > 200（实际图特有）或绿色通道 > 200（基准图特有）
+          // pixelmatch 用 diffColor=[255,0,0]（实际图特有）/ diffColorAlt=[0,255,0]（基准图特有）
+          // 标记差异像素；未变化像素被画成灰阶（alpha 0.3，浅色背景接近白色 r=g=b>200），
+          // 抗锯齿像素被画成黄色 [255,255,0]。仅靠 `r>200||g>200` 会把灰色背景和黄色 AA
+          // 全部误判为差异，导致浅色 UI 上整图被聚类成差异区域。
+          // 因此必须匹配"纯红/纯绿"——单通道高、其余通道低——以排除背景与 AA。
           const r = diff.data[idx]!;
           const g = diff.data[idx + 1]!;
-          if (r > 200 || g > 200) {
+          const b = diff.data[idx + 2]!;
+          const isRed = r > 200 && g < 100 && b < 100;
+          const isGreen = g > 200 && r < 100 && b < 100;
+          if (isRed || isGreen) {
             diffPixels++;
           }
         }
