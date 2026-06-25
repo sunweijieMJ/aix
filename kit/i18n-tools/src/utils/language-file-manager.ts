@@ -476,6 +476,7 @@ export class LanguageFileManager {
     extractedStrings: ExtractedString[],
     keyBucketMap?: KeyBucketMap,
     report?: RunReport,
+    useDoubleBracePlaceholders: boolean = false,
   ): void {
     if (extractedStrings.length === 0) return;
 
@@ -502,10 +503,13 @@ export class LanguageFileManager {
 
       const rawMessage = extracted.processedMessage || extracted.original;
 
-      const { message } =
+      const built =
         extracted.isTemplateString && extracted.templateVariables
           ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
           : { message: rawMessage.replace(/^['"`]|['"`]$/g, '') };
+      const message = useDoubleBracePlaceholders
+        ? CommonASTUtils.toDoubleBracePlaceholders(built.message)
+        : built.message;
 
       if (!(extracted.semanticId in localeMap)) {
         newEntries[extracted.semanticId] = message;

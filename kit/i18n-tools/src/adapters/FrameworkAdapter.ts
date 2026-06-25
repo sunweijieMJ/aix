@@ -20,6 +20,8 @@ export interface FrameworkConfig {
   globalFunctionName?: string;
   /** Hook 名称（如 useI18n, useIntl） */
   hookName?: string;
+  /** locale 占位符是否用双花括号 `{{name}}`（i18next 系库），由具体 library 决定 */
+  usesDoubleBracePlaceholders?: boolean;
 }
 
 /**
@@ -132,6 +134,14 @@ export abstract class FrameworkAdapter {
    */
   getLibraryName(): string {
     return this.config.i18nLibrary;
+  }
+
+  /**
+   * 当前 i18n 库的 locale 占位符是否用双花括号 `{{name}}`（i18next 系）。
+   * 生成时决定写入 locale 前是否单→双转换；CLI/Processor 层据此驱动边界转换。
+   */
+  usesDoubleBracePlaceholders(): boolean {
+    return Boolean(this.config.usesDoubleBracePlaceholders);
   }
 
   /**

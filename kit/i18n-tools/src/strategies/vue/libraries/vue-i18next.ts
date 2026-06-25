@@ -7,6 +7,8 @@ import type { VueI18nLibrary } from './types';
 export class VueI18nextLibrary implements VueI18nLibrary {
   readonly packageName = 'vue-i18next';
   readonly hookName = 'useTranslation';
+  // vue-i18next 基于 i18next，默认插值用双花括号 `{{name}}`
+  readonly usesDoubleBracePlaceholders = true;
   readonly templateFunctionName = '$t';
   readonly supportsNamespace: boolean;
   readonly namespace: string;

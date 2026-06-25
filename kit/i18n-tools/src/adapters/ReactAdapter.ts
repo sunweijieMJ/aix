@@ -51,6 +51,7 @@ export class ReactAdapter extends FrameworkAdapter {
       i18nLibrary: library.packageName,
       globalFunctionName: library.globalFunctionName,
       hookName: library.hookName,
+      usesDoubleBracePlaceholders: library.usesDoubleBracePlaceholders,
     };
     super(config);
 

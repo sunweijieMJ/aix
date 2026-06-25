@@ -27,17 +27,33 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
     const ext = path.extname(filePath);
 
+    // i18next 系库（vue-i18next）locale 用双花括号占位符，先归一回单花括号，
+    // 复用既有的单花括号还原逻辑（占位符替换正则按 `{name}` 匹配）。
+    const map = this.library.usesDoubleBracePlaceholders
+      ? VueRestoreTransformer.normalizeLocaleMap(localeMap)
+      : localeMap;
+
     // .ts/.js 文件不是 Vue SFC，直接用 script 还原逻辑
     if (ext === '.ts' || ext === '.js') {
       return VueRestoreTransformer.restoreStandaloneScript(
         sourceText,
-        localeMap,
+        map,
         this.library,
         this.tImport,
       );
     }
 
-    return VueRestoreTransformer.restoreVueFile(sourceText, localeMap, this.library, this.tImport);
+    return VueRestoreTransformer.restoreVueFile(sourceText, map, this.library, this.tImport);
+  }
+
+  /** 把 locale 文本中的双花括号占位符归一回单花括号（i18next 系库 restore 用） */
+  private static normalizeLocaleMap(localeMap: LocaleMap): LocaleMap {
+    const result: LocaleMap = {};
+    for (const [key, value] of Object.entries(localeMap)) {
+      result[key] =
+        typeof value === 'string' ? CommonASTUtils.toSingleBracePlaceholders(value) : value;
+    }
+    return result;
   }
 
   /**

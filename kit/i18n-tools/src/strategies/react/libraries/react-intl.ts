@@ -17,6 +17,8 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   readonly packageName = 'react-intl';
   readonly hookName = 'useIntl';
   readonly hookDeclaration = 'const intl = useIntl();';
+  // react-intl 用 ICU 单花括号 `{name}`
+  readonly usesDoubleBracePlaceholders = false;
   readonly translationVarName = 'intl';
   readonly jsxComponentName = 'FormattedMessage';
   readonly jsxIdPropName = 'id';

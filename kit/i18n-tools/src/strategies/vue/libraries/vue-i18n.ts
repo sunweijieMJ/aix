@@ -8,6 +8,8 @@ export class VueI18nLibraryImpl implements VueI18nLibrary {
   readonly packageName = 'vue-i18n';
   readonly hookName = 'useI18n';
   readonly hookDeclaration = 'const { t } = useI18n();';
+  // vue-i18n 的 named 插值用单花括号 `{name}`
+  readonly usesDoubleBracePlaceholders = false;
   readonly templateFunctionName = '$t';
   readonly supportsNamespace = false;
   readonly namespace = '';
