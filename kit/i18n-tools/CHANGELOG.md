@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.24
+
+### Patch Changes
+
+- 修复react-i18n，优化
+
 ## 0.0.23
 
 ### Patch Changes
