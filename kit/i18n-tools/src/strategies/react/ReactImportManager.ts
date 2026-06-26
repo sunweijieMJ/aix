@@ -3,6 +3,7 @@ import ts from 'typescript';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { ExtractedString, TransformContext } from '../../utils/types';
 import type { ReactI18nLibrary } from './libraries';
+import { TRANSLATION_DEPENDENCY_HOOKS, resolveHookName } from './hooks-utils';
 
 /**
  * 类组件 HOC 注入时给内部类附加的后缀：`原类名 + WithOutIntl`。
@@ -377,12 +378,11 @@ export class ReactImportManager implements IImportManager {
    * 清理Hook依赖数组中的翻译变量引用 (AST)
    */
   static cleanupHookDependencies(node: ts.CallExpression, library: ReactI18nLibrary): ts.Node {
-    if (!ts.isIdentifier(node.expression)) {
-      return node;
-    }
-
-    const hookName = node.expression.text;
-    if (!['useCallback', 'useMemo', 'useEffect'].includes(hookName)) {
+    // 必须与 generate 端 HooksUtils.addTranslationVarToHooksDependencies 对称：
+    // 复用同一份 hook 名解析（兼容 React.useXxx）与列表（含 useLayoutEffect），
+    // 否则会漏清理 add 端已注入的依赖，留下指向已删除翻译变量的悬空引用。
+    const hookName = resolveHookName(node);
+    if (!hookName || !TRANSLATION_DEPENDENCY_HOOKS.includes(hookName)) {
       return node;
     }
 

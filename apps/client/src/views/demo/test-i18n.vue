@@ -274,6 +274,61 @@
       <div for="field-id" data-track="点击埋点不提取" aria-labelledby="hdr-id"></div>
     </section>
 
+    <!-- ==================== 18. <code> / <pre> 内的中文（负向用例）==================== -->
+    <section class="test-section">
+      <h2>18. &lt;code&gt; / &lt;pre&gt; 内的中文（不应被提取）</h2>
+      <!-- ❌ 不应提取：constants 的 SKIP_ELEMENTS 把 <code>/<pre> 整棵子树跳过，
+           内部中文是「代码 / 命令示例」，翻译会破坏其可复制性与正确性。本 section
+           断言以下 <code>/<pre> 内的中文不出现在任何 generate 产物中，且不会阻断
+           其外围同级文本的提取（与单测 code-pre-skip.test.ts 形成 e2e 对照）。 -->
+      <pre>启动命令：请先执行初始化脚本再继续</pre>
+      <code>这段行内代码里的中文不应被提取</code>
+      <p>
+        说明文字（应被提取）：
+        <code>保留原样的中文代码片段</code>
+        ，结尾文字（应被提取）
+      </p>
+    </section>
+
+    <!-- ==================== 19. 已国际化字符串的幂等跳过（重跑安全）==================== -->
+    <section class="test-section">
+      <h2>19. 已国际化（$t / t）—— 二次提取应跳过</h2>
+      <!-- ❌ 不应再次提取或二次包裹：以下已是 $t() / t() 调用，重跑 extract 必须幂等：
+           既不能把 key 字符串当作中文提取，也不能把调用包成 $t($t(...))。
+           template 走 $t（vue-i18n templateFunctionName），script 走模块级 t
+           （本项目 tImport=@/plugins/locale），两条路径都应被识别为「已国际化」而跳过。 -->
+      <p>{{ $t('views__demo__alreadyDone') }}</p>
+      <button :title="$t('views__demo__alreadyTitle')">
+        {{ $t('views__demo__alreadyBtn') }}
+      </button>
+      <p>{{ alreadyTranslatedText }}</p>
+    </section>
+
+    <!-- ==================== 20. 动态绑定属性中的中文（三元 / 模板字符串应提取）==================== -->
+    <section class="test-section">
+      <h2>20. 动态绑定属性中的中文</h2>
+      <!-- ✅ 应提取：与 section 2/12 的「静态属性 / 自定义指令」不同，这里走的是
+           VueTextExtractor 的「绑定属性表达式」路径——属性值本身是含中文的 TS 表达式。 -->
+      <div class="demo-row">
+        <!-- ✅ 应提取：:title 绑定三元的两个中文分支 -->
+        <button :title="isActive ? '点击以停用功能' : '点击以启用功能'">切换状态</button>
+        <!-- ✅ 应提取：:placeholder 绑定模板字符串中的中文（${fieldLabel} 保留为占位符）-->
+        <input :placeholder="`请输入${fieldLabel}，该项不能为空`" />
+        <!-- ✅ 应提取：:aria-label 绑定三元的中文分支（面向无障碍的可见文案）-->
+        <span :aria-label="isActive ? '当前功能已开启' : '当前功能已关闭'">●</span>
+      </div>
+    </section>
+
+    <!-- ==================== 21. 多段插值的 mixed-content（B4：3+ 插值同行合并）==================== -->
+    <section class="test-section">
+      <h2>21. 多段插值的混合文本</h2>
+      <!-- ✅ 应提取为单条：TEXT+INTERPOLATION 的 while 合并循环把同一行连续的
+           「文本 + 插值」拼成一个模板字符串（如 `${year}年${month}月${day}日 发布`），
+           变量保留为占位符、词序不变。现有 section 3 只覆盖单插值，此处验证 3+ 段合并。 -->
+      <p>{{ year }}年{{ month }}月{{ day }}日 发布</p>
+      <p>共 {{ totalCount }} 项、已读 {{ readCount }} 项、未读 {{ unreadCount }} 项</p>
+    </section>
+
     <!-- ==================== 测试说明 ==================== -->
     <div class="test-description">
       <h3>测试说明</h3>
@@ -289,6 +344,9 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue';
+// ✅ 已国际化路径：从配置的 tImport（@/plugins/locale）导入 t，
+//    用于 template section 19「已是 t() 调用 → 二次提取应跳过」的幂等回归。
+import { t } from '@/plugins/locale';
 
 // ==================== 接口定义 ====================
 interface TableItem {
@@ -339,6 +397,16 @@ const inputPlaceholder = ref('请输入内容');
 const inputValue = ref('');
 const dynamicSrc = ref('/dynamic-cover.png');
 const dynamicAlt = ref('动态封面：用户头像');
+// ✅ 应提取：作为 section 20 动态属性模板字符串的插值变量
+const fieldLabel = ref('用户昵称');
+
+// section 21 多段插值 mixed-content 的占位变量（数值，模板侧保留为占位符）
+const year = ref(2026);
+const month = ref(6);
+const day = ref(26);
+const totalCount = ref(20);
+const readCount = ref(8);
+const unreadCount = ref(12);
 
 const tableData = ref<TableItem[]>([
   { id: '1', name: '项目A', status: '进行中' },
@@ -361,6 +429,9 @@ const computedMessage = computed(() => `欢迎回来，${userName.value}`);
 const welcomeMessage = computed(() => `欢迎 ${userName.value} 使用系统`);
 const messageCount = computed(() => `您有 ${5} 条未读消息`);
 const timeRange = computed(() => `处理时间从 ${'开始'} 到 ${'结束'}`);
+
+// ❌ 不应再次提取：已是 t() 调用，二次 extract 必须幂等（见 template section 19）
+const alreadyTranslatedText = computed(() => t('views__demo__alreadyComputed'));
 
 // ==================== 事件处理 ====================
 const showMessage = (type: string, text: string) => {

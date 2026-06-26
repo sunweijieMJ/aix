@@ -311,6 +311,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     // 检查是否包含中文文本和表达式的混合内容
     let hasChineseText = false;
     let hasExpression = false;
+    let hasElementChild = false;
 
     for (const child of children) {
       if (ts.isJsxText(child)) {
@@ -320,11 +321,28 @@ export class ReactTextExtractor extends BaseTextExtractor {
         }
       } else if (ts.isJsxExpression(child) && child.expression) {
         hasExpression = true;
+      } else if (
+        ts.isJsxElement(child) ||
+        ts.isJsxSelfClosingElement(child) ||
+        ts.isJsxFragment(child)
+      ) {
+        // 嵌套元素子节点：下方混合内容构建循环只覆盖 JsxText / JsxExpression，
+        // 无法表达嵌套元素。若强行走混合内容路径，nested 元素及其文本会被静默
+        // 丢弃，且 ReactTransformer 会替换整个 children 区间（连带删除嵌套元素）
+        // —— 不可恢复的数据丢失。标记后退出混合内容提取（见下）。
+        hasElementChild = true;
       }
     }
 
     // 只有当包含中文文本且有表达式时，才进行混合内容处理
     if (!hasChineseText || !hasExpression) {
+      return null;
+    }
+
+    // 含嵌套元素子节点时放弃混合内容提取，返回 null 交回 visitNode 的子节点递归，
+    // 让 JsxText / 嵌套元素各自独立提取与转换。宁可生成多个碎片 key，也不破坏
+    // 源码结构 / 丢失嵌套中文。真正的 <Trans> 富文本映射作为后续增强另行实现。
+    if (hasElementChild) {
       return null;
     }
 

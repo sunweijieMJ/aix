@@ -205,6 +205,20 @@ export class TranslateProcessor extends FileProcessor {
         totalTranslated += translated;
         if (translated > 0) {
           successBatches++;
+        } else {
+          // LLM 返回了结构合法的批次，但 0 条写入（全部条目因占位符不一致被 mergeTranslations
+          // 丢弃，或 LLM 未返回任何译文）。此前这种「产出但全拒」既不计 success 也不计 failed
+          // → 不进 RunReport、不触发退出守卫；当所有批次/所有 target 都如此时，进程会以 exit 0
+          // 退出却什么都没写。计为失败并上报，让 CI 能发现「翻译跑了但一条没落」。
+          failedBatches.push(i + 1);
+          this.report.addFailure({
+            stage: 'translate',
+            batchIndex: i + 1,
+            keys: Object.keys(batches[i] ?? {}),
+            error: new Error(
+              `批次 ${i + 1} 未产出任何可用翻译（0 条写入；可能占位符不一致被丢弃或 LLM 未返回译文）[${targetLocale}]`,
+            ),
+          });
         }
       } catch (error) {
         LoggerUtils.error(

@@ -18,7 +18,10 @@ export const chineseKeyMap = {
   邮箱: 'email',
 };
 
-// ❌ 不应提取：computed property name（运行时确定的 key 路径）
+// ⚠️ 会被提取（已知限制，非 bug）：`'手机号'` 是个裸中文字符串字面量，提取器按值提取它。
+// 它随后被用作 [fieldKey] 的 computed key——但「变量会流向 computed key」这一点无法静态预料
+// （变量可能被层层传递 / 包装），故提取器不拦截。运行时该 key 会变成翻译后的字符串，属调用方
+// 反模式（computed key 应直接用英文常量）。对照：上方直接写法的对象 key（用户名/密码/邮箱）才被保护。
 const fieldKey = '手机号';
 export const fieldMap = {
   [fieldKey]: 'phone',

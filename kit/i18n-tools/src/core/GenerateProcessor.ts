@@ -453,6 +453,7 @@ export class GenerateProcessor extends BaseProcessor {
     results: Array<{ file: string; code: string }>,
     extractedStrings: ExtractedString[],
     keyBucketMap: Record<string, string> | undefined,
+    options?: { preFinalizedLocale?: boolean },
   ): Promise<void> {
     // 阶段 2：原子地写所有源码。任一写失败立即抛错，此时语言文件仍未更新，
     // 不会留下源码-语言文件不一致的污染态。
@@ -486,6 +487,7 @@ export class GenerateProcessor extends BaseProcessor {
       keyBucketMap,
       this.report,
       this.adapter?.getLibrary(),
+      { preFinalized: Boolean(options?.preFinalizedLocale) },
     );
 
     // 阶段 4：格式化是美化步骤，单个失败不影响数据正确性，仅警告。
@@ -728,9 +730,12 @@ export class GenerateProcessor extends BaseProcessor {
     }
 
     // 把 localeDelta 直接展开成 ExtractedString 列表（仅保留下游需要的字段）。
-    // updateLanguageFiles 读取的字段：semanticId / processedMessage / original /
-    // isTemplateString / templateVariables。这里把 message 直接放回 original，
-    // 跳过模板字符串重新生成 placeholder 的路径——plan.localeDelta 已经是最终值。
+    // plan.localeDelta 已是 writePlan 阶段 createMessageWithOptions + finalizeLocaleMessage
+    // 跑完的最终 locale 值，因此这里把 message 原样放进 original/processedMessage，
+    // 并通过 commitToDisk 的 preFinalizedLocale 标记让 updateLanguageFiles 跳过二次定稿。
+    // Why（关键）：syntheticStrings 不带 isTemplateString/templateVariables，若不打这个标记，
+    // updateLanguageFiles 会用空 placeholderMap 重新 finalize，把真实占位符 {x} 当字面量
+    // 二次转义（单花括号库写成 {'{'}x{'}'}），使 apply 结果偏离 dry-run 预览且运行时插值失效。
     const syntheticStrings: ExtractedString[] = Object.entries(plan.localeDelta).map(
       ([semanticId, message]) => ({
         original: message,
@@ -744,7 +749,9 @@ export class GenerateProcessor extends BaseProcessor {
       }),
     );
 
-    await this.commitToDisk(results, syntheticStrings, plan.keyBucketMap);
+    await this.commitToDisk(results, syntheticStrings, plan.keyBucketMap, {
+      preFinalizedLocale: true,
+    });
     LoggerUtils.success(
       `✅ Plan 回放完成：${plan.summary.files} 个文件、${plan.summary.newKeys} 个新 key`,
     );

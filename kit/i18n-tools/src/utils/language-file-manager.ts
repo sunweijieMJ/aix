@@ -58,7 +58,7 @@ export class LanguageFileManager {
       const data = FileUtils.safeLoadJsonFile<Record<string, any>>(filePath, {
         silent: true,
       });
-      result[locale] = FileUtils.flattenObject(data);
+      result[locale] = FileUtils.flattenObject(data, '', config.keys.separator);
     }
     return result;
   }
@@ -85,7 +85,10 @@ export class LanguageFileManager {
     const existingData = FileUtils.safeLoadJsonFile<Record<string, any>>(singleFilePath, {
       silent: true,
     });
-    const flatData = FileUtils.flattenObject(existingData) as LocaleMap;
+    // 用 keys.separator 展平，与 readBucketedLocaleFlat / unflattenObject 回写保持一致，
+    // 否则 flat 格式 + 非 '.' 分隔符 + 手写嵌套 JSON 时，本路径与往返安全路径会得到
+    // 不同的 flat key 集（a.b vs a/b），令 prune/merge 误判孤儿。
+    const flatData = FileUtils.flattenObject(existingData, '', config.keys.separator) as LocaleMap;
 
     if (Object.keys(flatData).length > 0) {
       const keyBucketMap = LanguageFileManager.buildKeyBucketMap(
@@ -351,7 +354,7 @@ export class LanguageFileManager {
     const layout = config.buckets?.layout ?? 'by-locale';
 
     this.iterateBucketedFiles(workingDir, locale, layout, (bucketName, data) => {
-      const flatData = FileUtils.flattenObject(data);
+      const flatData = FileUtils.flattenObject(data, '', config.keys.separator);
       for (const key of Object.keys(flatData)) {
         flat[key] = flatData[key];
         keyBucketMap[key] = bucketName;
@@ -523,6 +526,9 @@ export class LanguageFileManager {
    * @param report       - 可选：传入则把 LocaleValueLinter 的 warning 也写入 RunReport
    * @param library      - 可选：i18n 库（提供花括号策略 + 字面量转义），用于 locale 值定稿；
    *                       缺省时不做任何花括号转换/转义（按单花括号规范原样写）
+   * @param options.preFinalized - 可选：传入的 message 已是定稿后的最终 locale 值
+   *                       （createMessageWithOptions + finalizeLocaleMessage 已跑完），
+   *                       原样写入、跳过二次定稿。用于 apply-plan：plan.localeDelta 即最终值。
    */
   static updateLanguageFiles(
     config: ResolvedConfig,
@@ -531,6 +537,7 @@ export class LanguageFileManager {
     keyBucketMap?: KeyBucketMap,
     report?: RunReport,
     library?: { usesDoubleBracePlaceholders: boolean; escapeLiteralText: (text: string) => string },
+    options?: { preFinalized?: boolean },
   ): void {
     if (extractedStrings.length === 0) return;
 
@@ -557,20 +564,30 @@ export class LanguageFileManager {
 
       const rawMessage = extracted.processedMessage || extracted.original;
 
-      const built =
-        extracted.isTemplateString && extracted.templateVariables
-          ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
-          : {
-              message: rawMessage.replace(/^['"`]|['"`]$/g, ''),
-              placeholderMap: new Map<string, string>(),
-            };
-      const message = library
-        ? CommonASTUtils.finalizeLocaleMessage(
-            built.message,
-            built.placeholderMap.values(),
-            library,
-          )
-        : built.message;
+      // preFinalized：rawMessage 已是定稿后的最终 locale 值，必须原样写入。
+      // Why：apply-plan 的 syntheticStrings 不带 isTemplateString/templateVariables，
+      // 若再走 built + finalizeLocaleMessage，会用空 placeholderMap 把真实占位符 {x}
+      // 当字面量二次转义（单花括号库如 vue-i18n / react-intl 写成 {'{'}x{'}'}，
+      // 字面大括号则被双重转义），导致 apply 落盘与 dry-run 预览不一致、运行时插值失效。
+      let message: string;
+      if (options?.preFinalized) {
+        message = rawMessage;
+      } else {
+        const built =
+          extracted.isTemplateString && extracted.templateVariables
+            ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
+            : {
+                message: rawMessage.replace(/^['"`]|['"`]$/g, ''),
+                placeholderMap: new Map<string, string>(),
+              };
+        message = library
+          ? CommonASTUtils.finalizeLocaleMessage(
+              built.message,
+              built.placeholderMap.values(),
+              library,
+            )
+          : built.message;
+      }
 
       if (!(extracted.semanticId in localeMap)) {
         newEntries[extracted.semanticId] = message;

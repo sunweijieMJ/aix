@@ -1,1 +1,6 @@
-{}
+{
+  "views__demo__alreadyDone": "此文案已在上一轮国际化完成",
+  "views__demo__alreadyTitle": "已国际化的按钮标题",
+  "views__demo__alreadyBtn": "已国际化的按钮文本",
+  "views__demo__alreadyComputed": "已国际化的计算属性文案"
+}
