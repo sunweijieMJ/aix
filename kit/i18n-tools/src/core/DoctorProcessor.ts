@@ -29,6 +29,8 @@ export type DoctorCategory =
   | 'orphan-key'
   /** target locale 的 value 与 source 相同（疑似未翻译） */
   | 'untranslated'
+  /** 源 locale 有该 key（含中文）但某 target locale 完全缺失（代码已发布、翻译没准备好） */
+  | 'missing-target-key'
   /** 译文与源文案的占位符名集不一致（漏=运行时插值失效） */
   | 'placeholder-mismatch';
 
@@ -117,6 +119,7 @@ export class DoctorProcessor extends BaseProcessor {
     for (const target of this.config.locales.targets) {
       const targetMap =
         LanguageFileManager.readLocaleFile(this.config, this.isCustom, target) ?? {};
+      findings.push(...this.checkMissingTargetKeys(sourceMap, targetMap, target));
       findings.push(...this.checkUntranslated(sourceMap, targetMap, target));
       findings.push(...this.checkPlaceholders(sourceMap, targetMap, target));
     }
@@ -236,6 +239,45 @@ export class DoctorProcessor extends BaseProcessor {
           key,
         });
       }
+    }
+    return findings;
+  }
+
+  /**
+   * missing-target-key：源 locale 有该 key（含中文）但某 target locale 完全缺失。
+   *
+   * 这是 doctor「代码已发布、翻译没准备好」最常见的形态（generate 把 key 写进 source、
+   * 但还没跑 translate/merge），却落在既有对账盲区——checkMissingKeys 只查 source、
+   * checkUntranslated/checkPlaceholders 又在 target===undefined 时跳过。
+   *
+   * 保守策略（与 untranslated 一致）：仅当源 value 含中文且未被 keys.skip 命中才报，
+   * 避免对纯英文/符号（'API'、'TCP/IP'）这类「合理不翻译」的 key 噪报。归 warning 级
+   * （不阻断 CI；与 untranslated 同档），用户可据此补译。
+   */
+  private checkMissingTargetKeys(
+    sourceMap: LocaleMap,
+    targetMap: LocaleMap,
+    target: string,
+  ): DoctorFinding[] {
+    const chineseRegex = /[一-鿿]/;
+    const skipPredicate = this.config.keys.skip;
+    const findings: DoctorFinding[] = [];
+    for (const [key, sourceValue] of Object.entries(sourceMap)) {
+      if (key in targetMap) continue; // 已存在（无论是否已译）→ 由 untranslated/placeholder 接管
+      if (typeof sourceValue !== 'string') continue;
+      if (!chineseRegex.test(sourceValue)) continue; // 纯英文/符号缺失视为合理不翻译，不报
+      if (skipPredicate && skipPredicate(key, sourceValue)) continue;
+      findings.push({
+        category: 'missing-target-key',
+        severity: 'warning',
+        title: `${key} (${target} 缺失该 key)`,
+        details: [
+          `source [${this.config.locales.source}]: ${this.preview(sourceValue)}`,
+          `target [${target}]: <缺失>`,
+          '该 key 在目标语言完全缺失，运行时切到该语言会回退源文/显示 key；运行 `--mode translate` 或人工补译',
+        ],
+        key,
+      });
     }
     return findings;
   }
@@ -393,6 +435,7 @@ export class DoctorProcessor extends BaseProcessor {
       'missing-key': '源码引用的 key 在 locale 中缺失',
       'orphan-key': 'locale 中的 key 源码未引用',
       untranslated: '疑似未翻译（target = source）',
+      'missing-target-key': '源 locale 有该 key 但目标语言完全缺失',
       'placeholder-mismatch': '译文与源文案的占位符名集不一致',
     };
     for (const f of findings) {

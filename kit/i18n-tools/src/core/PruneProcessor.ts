@@ -51,16 +51,22 @@ export class PruneProcessor extends BaseProcessor {
     //   - 桶式：readLocaleFile 会把损坏桶经 safeLoadJsonFile 静默降级为 {}、永不返回 null，
     //     故 null 守卫对桶式失效。必须用 findCorruptBucketFile 单独探测（与 Pick/Merge 一致），
     //     否则会基于残缺 source 误判孤儿，并把损坏桶静默改名 .bak、源 key 从活跃 locale 消失（Bug #2）。
+    //
+    //   守卫覆盖 source + 所有 target：pruneLocale 会对每个 locale 都删除并整体重写桶文件，
+    //   target 桶损坏同样会被静默降级为 {}、命中孤儿后触发重写、损坏桶被改名 .bak 致 key 丢失。
+    //   只守 source 会在 target 桶损坏时重蹈 Bug #2。
     if (this.config.buckets) {
-      const corruptBucket = LanguageFileManager.findCorruptBucketFile(
-        this.config,
-        this.isCustom,
-        sourceLocale,
-      );
-      if (corruptBucket) {
-        throw new Error(
-          `源 locale「${sourceLocale}」的桶文件解析失败：${corruptBucket}，已中止 prune 以防误判孤儿 / 误删 key。请先修复 JSON 格式。`,
+      for (const locale of [sourceLocale, ...this.config.locales.targets]) {
+        const corruptBucket = LanguageFileManager.findCorruptBucketFile(
+          this.config,
+          this.isCustom,
+          locale,
         );
+        if (corruptBucket) {
+          throw new Error(
+            `locale「${locale}」的桶文件解析失败：${corruptBucket}，已中止 prune 以防误判孤儿 / 误删 key。请先修复 JSON 格式。`,
+          );
+        }
       }
     }
     const rawSourceMap = LanguageFileManager.readLocaleFile(

@@ -118,9 +118,16 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       restoredCode = restoredCode.slice(0, start) + content + restoredCode.slice(end);
     }
 
-    // 清理导入和 Hook 声明
-    restoredCode = this.cleanupImports(restoredCode, lib);
-    restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
+    // 清理 hook 来源：`useI18n` 库导入 + `const { t } = useI18n()` 声明是 t 的同一来源，
+    // 必须同进退。守卫：仅当 t 在还原后的 script 中已无值引用时才删除——t 由 hook 提供时，
+    // 若存在「locale 缺 key / 动态 key」未被还原的存活 t() 调用，删任一半都会产出未定义标识符
+    // （删声明 → 未定义 t；删 import → 未定义 useI18n）。下方模块 import 清理只守卫 import
+    // 绑定、保护不到 hook 绑定，故此处独立守卫。正常 restore（全部 key 命中、t() 清空）下
+    // t 已无引用，行为与原先一致。
+    if (this.isTNameUnusedInScript(restoredCode)) {
+      restoredCode = this.cleanupImports(restoredCode, lib);
+      restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
+    }
 
     // 清理模块顶层 `import { t } from <tImport>`：
     // generate 阶段对 `<script setup>` 走「模块 import」路径而非 useI18n hook，
@@ -130,8 +137,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     //
     // 守卫：仅当 t 在还原后的 script 中已无任何引用时才删除——若存在「locale 查不到、未被
     // 还原」的存活 t() 调用，t 仍被使用，删 import 会产出未定义 t（TS2304）。与 React 端
-    // ReactRestoreTransformer.finalizeTImport 对称。此处 hook 声明已在上一步清理，残留 t()
-    // 即真·存活引用。
+    // ReactRestoreTransformer.finalizeTImport 对称。
     if (tImport && this.isTImportUnusedInScript(restoredCode, tImport)) {
       restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport);
     }
@@ -154,6 +160,24 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       .join('\n');
     if (!scriptContent.trim()) return false;
     return CommonASTUtils.isImportedNameUnused(scriptContent, 'sfc.ts', tImport, 't');
+  }
+
+  /**
+   * 判断还原后的 SFC script 中，名为 `t` 的绑定是否已无值引用（残留 t() 调用）。
+   *
+   * 用于守卫 hook 声明 `const { t } = useI18n()` 的删除：t 由 hook 提供时，若仍有未被还原的
+   * t() 调用（locale 缺 key / 动态 key），删声明会产出未定义 t（TS2304）。与模块 import 的
+   * isTImportUnusedInScript 守卫互补——后者只认 import 绑定，认不出 hook 绑定。
+   * 无 script 块时返回 true（无引用，亦无可清理）。
+   */
+  private static isTNameUnusedInScript(restoredCode: string): boolean {
+    const { descriptor } = parseSFC(restoredCode);
+    const scriptContent = [descriptor.script, descriptor.scriptSetup]
+      .filter((b): b is NonNullable<typeof b> => Boolean(b))
+      .map((b) => b.content)
+      .join('\n');
+    if (!scriptContent.trim()) return true;
+    return CommonASTUtils.isLocalNameUnused(scriptContent, 'sfc.ts', 't');
   }
 
   /**
@@ -207,13 +231,22 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       return sourceText;
     }
 
-    // 清理库导入（vue-i18n 等）
-    restoredCode = this.cleanupImports(restoredCode, lib);
-    restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
+    // 清理 hook 来源：`useI18n` 库导入 + `const { t } = useI18n()` 声明必须同进退。
+    // 守卫：仅当 t 已无值引用时才删除（与 SFC 路径对称；locale 缺 key / 动态 key 时残留 t()
+    // 仍引用 t，删任一半都会产出未定义标识符）。
+    if (CommonASTUtils.isLocalNameUnused(restoredCode, 'standalone.ts', 't')) {
+      restoredCode = this.cleanupImports(restoredCode, lib);
+      restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
+    }
 
     // 清理自定义路径的 t 导入（如 import { t } from '@/plugins/locale'）。
-    // 复用 SFC 路径的 helper：可处理 `import { t }` 与 `import { t, i18n }` 混合形式
-    if (tImport) {
+    // 复用 SFC 路径的 helper：可处理 `import { t }` 与 `import { t, i18n }` 混合形式。
+    // 守卫：仅当 t 在还原后已无引用时才删除——存活的 t() 调用（locale 缺 key / 动态 key）
+    // 仍引用 t，删 import 会产出未定义 t（TS2304）。与 SFC 路径 / React 端对称。
+    if (
+      tImport &&
+      CommonASTUtils.isImportedNameUnused(restoredCode, 'standalone.ts', tImport, 't')
+    ) {
       restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport);
     }
 
@@ -302,14 +335,17 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       if (vars) {
         try {
           const restoredText = this.restoreTemplateWithVariables(text, vars as string, 'template');
-          // 带变量的还原保持动态绑定，使用 ${expr} 语法
-          return stash(`:${attrName}="\`${restoredText}\`"`);
+          // 带变量的还原保持动态绑定（:attr="`...`"），值是 JS 模板字面量。restoredText 的
+          // 字面段已在 restoreTemplateWithVariables 里转义过反引号/${；这里再把会终结外层双引号
+          // 属性的 " 转义为 &quot;（Vue 解析绑定属性前会先解 HTML 实体，&quot; 会还原成 "，
+          // 故表达式语义不变），避免引号失衡破坏标签。
+          return stash(`:${attrName}="\`${restoredText.replace(/"/g, '&quot;')}\`"`);
         } catch {
-          return stash(`${attrName}="${text}"`);
+          return stash(`${attrName}="${this.escapeAttrValue(text)}"`);
         }
       }
 
-      return stash(`${attrName}="${text}"`);
+      return stash(`${attrName}="${this.escapeAttrValue(text)}"`);
     });
 
     // 3. 匹配插值表达式内部残留的 $t() 调用（如三元表达式中的 $t 调用）
@@ -365,6 +401,21 @@ export class VueRestoreTransformer implements IRestoreTransformer {
    */
   private static escapeTemplateText(text: string): string {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  /**
+   * 还原到「静态属性值」（双引号包裹）时对 locale 值做属性转义。
+   *
+   * Why：pass 2 把 :attr="$t('k')" 还原成 attr="文本"。若文本含 `"` 会终结属性引号导致标签
+   * 解析错乱；含 `&`/`<`/`>` 则与提取阶段的实体解码不对称（提取把 `&amp;` 解成 `&`，还原须
+   * 反向编码才能往返）。`&` 必须最先替换，否则会把后续生成的 `&quot;` 等里的 `&` 二次转义。
+   */
+  private static escapeAttrValue(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
   }
 
   /**
@@ -444,7 +495,13 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // mustache=文本节点上下文：先对字面文本做 HTML 转义，再注入 `{{ expr }}`
     // （占位符 `{name}` 不含 `<>&`，转义不影响其匹配；先转义可避免把注入的
     // `{{ }}` 表达式也转义掉）。template=属性/JS 模板字面量上下文：不转义。
-    let result = syntax === 'mustache' ? this.escapeTemplateText(text) : text;
+    // mustache 文本节点：HTML 转义字面段。template（属性/JS 模板字面量）：转义会终结模板
+    // 字面量的 `\\` / 反引号 / `${`（与脚本侧 getI18nCallReplacementText 同口径），使字面段里
+    // 出现这些字符时不破坏生成的模板字面量；随后注入的 `${expr}` 在转义之后追加，不受影响。
+    let result =
+      syntax === 'mustache'
+        ? this.escapeTemplateText(text)
+        : text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
     varMap.forEach((expression, placeholder) => {
       const placeholderPattern = new RegExp(`\\{${placeholder}\\}`, 'g');
       const replacement = syntax === 'mustache' ? `{{ ${expression} }}` : `\${${expression}}`;

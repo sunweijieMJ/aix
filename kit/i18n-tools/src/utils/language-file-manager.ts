@@ -7,7 +7,7 @@ import { LoggerUtils } from './logger';
 import { LocaleValueLinter } from './locale-value-linter';
 import type { RunReport } from './run-report';
 import type { ExtractedString, ILangMap, LocaleMap } from './types';
-import { CommonASTUtils } from './common-ast-utils';
+import { CommonASTUtils, type SkippedTextLocation } from './common-ast-utils';
 
 type KeyBucketMap = Record<string, string>;
 
@@ -270,30 +270,6 @@ export class LanguageFileManager {
   }
 
   /**
-   * 读取单文件语言文件并返回 { flat, isNested }。
-   * 单文件场景下保留原结构信息（嵌套/扁平），供调用方决定写回格式。
-   */
-  static readFlatLocale(
-    filePath: string,
-    errorMessage?: string,
-  ): { flat: Record<string, string>; isNested: boolean } {
-    if (!fs.existsSync(filePath)) return { flat: {}, isNested: false };
-    const data = FileUtils.safeLoadJsonFile<Record<string, any>>(filePath, {
-      errorMessage,
-      silent: false,
-    });
-    if (Object.keys(data).length === 0) return { flat: {}, isNested: false };
-    const isNested = FileUtils.isNestedStructure(data);
-    const flattened = FileUtils.flattenObject(data);
-    const flat: Record<string, string> = Object.fromEntries(
-      Object.entries(flattened)
-        .filter(([, value]) => typeof value === 'string')
-        .map(([key, value]) => [key, String(value)]),
-    );
-    return { flat, isNested };
-  }
-
-  /**
    * 读取语言文件内容（单文件或桶式目录均支持）。
    *
    * 返回值始终是「扁平 map」（flat key → value）。上层（updateLanguageFiles /
@@ -521,6 +497,78 @@ export class LanguageFileManager {
   }
 
   /**
+   * 写盘前预检：在不修改任何文件的前提下，校验「现有 locale key ∪ 本轮新增 semanticId」
+   * 这组最终 key 在 nested 落盘下是否存在前缀冲突。
+   *
+   * Why：updateLanguageFiles 的前缀冲突校验发生在序列化落盘时；generate 的 commitToDisk
+   * 先写源码、后调 updateLanguageFiles，一旦此处抛错，源码已被改写而 locale 未更新，留下
+   * 「源码全是 t() 调用、locale 无对应 key」的不一致态（重跑找不到中文、需 git 回滚）。
+   * 把这种确定性、可预判的错误前移到源码尚未改写时暴露。
+   *
+   * 只看 key 不看 value（assertNoPrefixConflict 仅依赖 key），故无需复刻消息定稿逻辑。
+   * 分桶与 writeBucketedLocaleFile 同口径：逐桶序列化、逐桶校验——不同桶之间不构成冲突，
+   * 整张 key 集一起校验会过严误报。
+   */
+  static assertSerializableUpdate(
+    config: ResolvedConfig,
+    isCustom: boolean,
+    extractedStrings: ExtractedString[],
+    keyBucketMap?: KeyBucketMap,
+  ): void {
+    if (config.io.format === 'flat' || extractedStrings.length === 0) return;
+
+    let existing: LocaleMap;
+    if (config.buckets) {
+      existing = this.readBucketedLocaleWithBucketMap(config, isCustom).flat;
+    } else {
+      const read = this.readLocaleFile(config, isCustom);
+      if (read === null) return;
+      existing = read;
+    }
+
+    const finalKeys = new Set<string>(Object.keys(existing));
+    for (const e of extractedStrings) {
+      if (e.semanticId) finalKeys.add(e.semanticId);
+    }
+
+    const separator = config.keys.separator;
+    const toMap = (keys: Iterable<string>): LocaleMap => {
+      const m: LocaleMap = {};
+      for (const k of keys) m[k] = '';
+      return m;
+    };
+
+    if (!config.buckets) {
+      this.assertNoPrefixConflict(toMap(finalKeys), separator);
+      return;
+    }
+
+    // 桶式：按 effectiveKeyBucketMap 分组（caller 真实路径优先，其余虚拟反推），逐桶校验。
+    // 与 updateLanguageFiles 计算 effectiveKeyBucketMap 同口径。
+    const callerMap = keyBucketMap ?? {};
+    const virtualSource: LocaleMap = {};
+    // 与 updateLanguageFiles 的 rebucketSource 同口径：用真实 message 反推（部分 bucket 规则
+    // matchKey/match 依赖 message 内容；若用空串，含 message 判据的规则会把 key 分错桶，
+    // 导致预检与真实写盘分组不一致 → 误报中止/漏报冲突）。现有 key 取磁盘原值；本轮新增 key
+    // 正常都已落在 callerMap（caller 用真实 filePath 算），不会走到虚拟反推这一支。
+    for (const k of finalKeys) if (!(k in callerMap)) virtualSource[k] = existing[k] ?? '';
+    const virtualMap =
+      Object.keys(virtualSource).length > 0 ? this.buildKeyBucketMap(config, virtualSource) : {};
+    const effective: KeyBucketMap = { ...virtualMap, ...callerMap };
+    const defaultBucket = config.buckets.defaultBucket;
+
+    const groups = new Map<string, Set<string>>();
+    for (const k of finalKeys) {
+      const bucket = effective[k] ?? defaultBucket;
+      if (!groups.has(bucket)) groups.set(bucket, new Set());
+      groups.get(bucket)!.add(k);
+    }
+    for (const keys of groups.values()) {
+      this.assertNoPrefixConflict(toMap(keys), separator);
+    }
+  }
+
+  /**
    * 更新语言文件。
    * @param keyBucketMap - 可选：key → bucket，启用桶式写入
    * @param report       - 可选：传入则把 LocaleValueLinter 的 warning 也写入 RunReport
@@ -537,7 +585,7 @@ export class LanguageFileManager {
     keyBucketMap?: KeyBucketMap,
     report?: RunReport,
     library?: { usesDoubleBracePlaceholders: boolean; escapeLiteralText: (text: string) => string },
-    options?: { preFinalized?: boolean },
+    options?: { preFinalized?: boolean; skippedComparisons?: SkippedTextLocation[] },
   ): void {
     if (extractedStrings.length === 0) return;
 
@@ -641,7 +689,11 @@ export class LanguageFileManager {
     if (addedCount > 0) LoggerUtils.info(`   - 新增条目: ${addedCount}`);
     if (updatedCount > 0) LoggerUtils.info(`   - 更新条目: ${updatedCount}`);
 
-    // 落盘后做一次健康度 lint
-    LocaleValueLinter.lint(finalMap, report, { separator: config.keys.separator });
+    // 落盘后做一次健康度 lint。skippedComparisons：generate 已提前 drain 的快照，避免与
+    // coverage 争抢全局 collector；未传时 linter 回退到自行 drain（doctor 独立路径）。
+    LocaleValueLinter.lint(finalMap, report, {
+      separator: config.keys.separator,
+      skippedComparisons: options?.skippedComparisons,
+    });
   }
 }

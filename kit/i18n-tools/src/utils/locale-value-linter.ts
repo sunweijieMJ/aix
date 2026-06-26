@@ -1,4 +1,4 @@
-import { CommonASTUtils } from './common-ast-utils';
+import { CommonASTUtils, type SkippedTextLocation } from './common-ast-utils';
 import { LoggerUtils } from './logger';
 import { RunReport, type ManualCategory } from './run-report';
 import type { LocaleMap } from './types';
@@ -70,11 +70,15 @@ export class LocaleValueLinter {
    * 不做任何 I/O / console，便于 doctor 命令在不同 sink（CI 文本/JSON/HTML）
    * 上复用，也便于单测断言结构。
    *
-   * 注意：findHardcodedComparisons 会消费 CommonASTUtils.drainSkippedComparisonOperands。
-   * 因此 analyze 是「一次性」操作：同一进程内第二次跑会返回空 hardcoded-comparison
-   * 集合。如未来需要"重复 analyze"语义，需把 drain 解耦出去。
+   * 注意：未传 options.skippedComparisons 时，findHardcodedComparisons 会消费
+   * CommonASTUtils.drainSkippedComparisonOperands（doctor 独立路径即走此默认）。
+   * 调用方（如 generate）若已提前 drain 出快照，应通过 options.skippedComparisons 传入，
+   * 避免与其它消费者（coverage 统计）争抢这份「消费即清空」的全局状态。
    */
-  static analyze(localeMap: LocaleMap, options?: { separator?: string }): LinterFinding[] {
+  static analyze(
+    localeMap: LocaleMap,
+    options?: { separator?: string; skippedComparisons?: SkippedTextLocation[] },
+  ): LinterFinding[] {
     const findings: LinterFinding[] = [];
 
     for (const group of this.findSemanticDuplicates(localeMap)) {
@@ -121,7 +125,7 @@ export class LocaleValueLinter {
       }
     }
 
-    for (const c of this.findHardcodedComparisons(localeMap)) {
+    for (const c of this.findHardcodedComparisons(localeMap, options?.skippedComparisons)) {
       findings.push({
         category: 'hardcoded-comparison',
         title: `${c.filePath}:${c.line}:${c.column}`,
@@ -213,7 +217,11 @@ export class LocaleValueLinter {
    * 兼容入口：保持旧签名 lint(localeMap, report?, options?) 不变。
    * 内部直接组合 analyze + emit。新代码请优先用 analyze + emit。
    */
-  static lint(localeMap: LocaleMap, report?: RunReport, options?: { separator?: string }): void {
+  static lint(
+    localeMap: LocaleMap,
+    report?: RunReport,
+    options?: { separator?: string; skippedComparisons?: SkippedTextLocation[] },
+  ): void {
     const findings = this.analyze(localeMap, options);
     this.emit(findings, { console: true, report });
   }
@@ -225,16 +233,21 @@ export class LocaleValueLinter {
    * i18n 化（如 `tabs = [t('...')]`），而此处仍硬编码做 === 比较，运行时切语言
    * 后必然脱钩。
    *
-   * 注意：drain 是消耗性操作，调用后 collector 清空，避免下次 lint 重复报警。
+   * 入参 skippedSnapshot：调用方已提前 drain 出的快照（generate 路径用，避免与 coverage
+   * 争抢全局状态）。未传时回退到 drainSkippedComparisonOperands（doctor 独立路径），drain
+   * 是消耗性操作，调用后 collector 清空，避免下次 lint 重复报警。
    */
-  private static findHardcodedComparisons(localeMap: LocaleMap): Array<{
+  private static findHardcodedComparisons(
+    localeMap: LocaleMap,
+    skippedSnapshot?: SkippedTextLocation[],
+  ): Array<{
     text: string;
     filePath: string;
     line: number;
     column: number;
     matchedKeys: string[];
   }> {
-    const skipped = CommonASTUtils.drainSkippedComparisonOperands();
+    const skipped = skippedSnapshot ?? CommonASTUtils.drainSkippedComparisonOperands();
     if (skipped.length === 0) return [];
 
     // 反向索引 value → keys。同一 value 可能对应多个 key（重复中文），全部列出辅助定位。

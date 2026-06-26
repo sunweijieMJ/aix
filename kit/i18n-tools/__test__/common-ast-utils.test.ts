@@ -81,44 +81,22 @@ describe('CommonASTUtils.findLastImportLineIndex', () => {
   });
 });
 
-describe('CommonASTUtils 占位符花括号转换（B2）', () => {
-  it('单花括号 → 双花括号（i18next 系写盘）', () => {
-    expect(CommonASTUtils.toDoubleBracePlaceholders('共 {count} 项')).toBe('共 {{count}} 项');
-  });
-
-  it('多个占位符全部转换', () => {
-    expect(CommonASTUtils.toDoubleBracePlaceholders('{a} 到 {b}')).toBe('{{a}} 到 {{b}}');
-  });
-
+describe('CommonASTUtils 占位符花括号归一（toSingleBracePlaceholders）', () => {
   it('双花括号 → 单花括号（i18next 系 restore 归一）', () => {
     expect(CommonASTUtils.toSingleBracePlaceholders('共 {{count}} 项')).toBe('共 {count} 项');
     // 容忍内部空格
     expect(CommonASTUtils.toSingleBracePlaceholders('共 {{ count }} 项')).toBe('共 {count} 项');
   });
 
-  it('往返恒等：单 → 双 → 单', () => {
-    const single = '你有 {n} 条来自 {user} 的消息';
-    const double = CommonASTUtils.toDoubleBracePlaceholders(single);
-    expect(double).toBe('你有 {{n}} 条来自 {{user}} 的消息');
-    expect(CommonASTUtils.toSingleBracePlaceholders(double)).toBe(single);
+  it('多占位符 / 相邻占位符全部归一', () => {
+    expect(CommonASTUtils.toSingleBracePlaceholders('你有 {{n}} 条来自 {{user}} 的消息')).toBe(
+      '你有 {n} 条来自 {user} 的消息',
+    );
+    expect(CommonASTUtils.toSingleBracePlaceholders('{{a}}{{b}}')).toBe('{a}{b}');
   });
 
   it('无占位符文本不受影响', () => {
-    expect(CommonASTUtils.toDoubleBracePlaceholders('纯文本')).toBe('纯文本');
     expect(CommonASTUtils.toSingleBracePlaceholders('纯文本')).toBe('纯文本');
-  });
-
-  it('toDoubleBracePlaceholders 幂等：已是双花括号不再转换（防 apply-plan 双转畸形）', () => {
-    const once = CommonASTUtils.toDoubleBracePlaceholders('共 {count} 项');
-    expect(once).toBe('共 {{count}} 项');
-    // 再转一次（模拟 apply-plan 把已转换的 plan.localeDelta 重新喂入）保持不变
-    expect(CommonASTUtils.toDoubleBracePlaceholders(once)).toBe('共 {{count}} 项');
-    // 多占位符同样幂等
-    expect(CommonASTUtils.toDoubleBracePlaceholders('{{a}} 到 {{b}}')).toBe('{{a}} 到 {{b}}');
-  });
-
-  it('相邻占位符正确转换', () => {
-    expect(CommonASTUtils.toDoubleBracePlaceholders('{a}{b}')).toBe('{{a}}{{b}}');
   });
 });
 

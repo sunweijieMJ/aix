@@ -3,7 +3,7 @@ import path from 'path';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
 import { formatWithPrettier } from '../utils/command-utils';
-import { CommonASTUtils } from '../utils/common-ast-utils';
+import { CommonASTUtils, type SkippedTextLocation } from '../utils/common-ast-utils';
 import { FileUtils } from '../utils/file-utils';
 import { LLMClient } from '../utils/llm-client';
 import { InteractiveUtils } from '../utils/interactive-utils';
@@ -30,6 +30,12 @@ export class GenerateProcessor extends BaseProcessor {
   private llmClient: LLMClient;
   /** 是否为交互模式（自动模式下为 false，跳过确认提示） */
   private interactive: boolean;
+  /**
+   * 本轮提取出的「比较运算符跳过的中文」快照。提取后立即从 CommonASTUtils 全局 collector
+   * drain 到此处，供 commitToDisk（linter 交叉）与 recordAndRenderCoverage（覆盖率统计）
+   * 共享同一份——避免二者争抢「消费即清空」的全局状态导致后读者恒拿空数组。
+   */
+  private skippedComparisons: SkippedTextLocation[] = [];
 
   /**
    * 构造函数
@@ -110,6 +116,9 @@ export class GenerateProcessor extends BaseProcessor {
       // 把 extractor 累积的结构性 warning（如跳过含 HTML 的模板字符串）排空进 RunReport。
       // 终端已经实时打印过；这里只为落盘留痕到 `.i18n-tools/logs/`。
       for (const w of extractor.drainWarnings()) this.report.addWarning(w);
+      // 提取后立即 drain 比较运算符跳过项快照（在 apply/lint 之前），供 commitToDisk 与
+      // recordAndRenderCoverage 共享，避免 linter 抢先 drain 致覆盖率 skipped 恒为 0。
+      this.skippedComparisons = CommonASTUtils.drainSkippedComparisonOperands();
 
       if (extractedStrings.length === 0) {
         // 仍要汇报覆盖率：空提取也意味着「文件无中文 / 已全部国际化」，
@@ -175,6 +184,9 @@ export class GenerateProcessor extends BaseProcessor {
     // 同 runSingleFile：把 extractor 累积的结构性 warning 排空进 RunReport，
     // 落盘到 `<rootDir>/.i18n-tools/logs/` 便于事后回查。
     for (const w of extractor.drainWarnings()) this.report.addWarning(w);
+    // 提取后立即 drain 比较运算符跳过项快照（在 apply/lint 之前），供 commitToDisk 与
+    // recordAndRenderCoverage 共享，避免 linter 抢先 drain 致覆盖率 skipped 恒为 0。
+    this.skippedComparisons = CommonASTUtils.drainSkippedComparisonOperands();
 
     if (extractedStrings.length === 0) {
       this.recordAndRenderCoverage(frameworkFiles, [], null);
@@ -283,9 +295,18 @@ export class GenerateProcessor extends BaseProcessor {
     reuseResolver: IdReuseResolver,
   ): string {
     const messageForId = item.processedMessage || item.original;
-    const lookupKey = IdReuseResolver.normalizeKey(messageForId);
+    const normalized = IdReuseResolver.normalizeKey(messageForId);
 
-    // 优先级 1：本批次内已生成（同一原文跨文件复用，受同 prefix 约束）
+    // 优先级 1 缓存键：acrossDirectories=false 时必须带目录前缀，否则同一原文会跨目录命中
+    // 错误复用（把 order 模块的 key 种进 user 模块），绕过下方 pickReusableKey 的目录隔离。
+    // acrossDirectories=true 时全局复用本就是预期，用裸 normalized 即可。
+    // 用空格拼接安全无歧义：目录前缀是经 sanitize 的标识符段（不含空格），故空格分隔不会与
+    // 原文里的空格混淆造成碰撞。
+    const lookupKey = this.config.keys.reuse.acrossDirectories
+      ? normalized
+      : `${normalized} ${reuseResolver.getIdGenerator().getDirectoryPrefix(item.filePath) ?? ''}`;
+
+    // 优先级 1：本批次内同原文 + 同目录前缀已生成 → 直接复用
     const cached = textToIdMap.get(lookupKey);
     if (cached) return cached;
 
@@ -450,32 +471,85 @@ export class GenerateProcessor extends BaseProcessor {
    * 即能驱动 LanguageFileManager.updateLanguageFiles，AST 字段无需复刻）。
    */
   private async commitToDisk(
-    results: Array<{ file: string; code: string }>,
+    results: Array<{ file: string; code: string; originalContent?: string }>,
     extractedStrings: ExtractedString[],
     keyBucketMap: Record<string, string> | undefined,
     options?: { preFinalizedLocale?: boolean },
   ): Promise<void> {
-    // 阶段 2：原子地写所有源码。任一写失败立即抛错，此时语言文件仍未更新，
-    // 不会留下源码-语言文件不一致的污染态。
-    const writeFailures: Array<{ file: string; error: unknown }> = [];
-    for (const { file, code } of results) {
-      try {
-        fs.writeFileSync(file, code, 'utf-8');
-      } catch (error) {
-        LoggerUtils.error(`❌ 写入失败 ${FileUtils.getRelativePath(file)}:`, error);
-        writeFailures.push({ file, error });
-        this.report.addFailure({
-          stage: 'write',
-          file: FileUtils.getRelativePath(file),
-          error,
-        });
+    // 阶段 1.4（写源码前损坏守卫）：桶式读取默认 silent 降级（损坏 JSON 当 {}），generate
+    // 此前缺这层保护——损坏 bucket 的存量 key 会在重写时被静默丢弃/覆盖（连 .bak 都没有，真丢）。
+    // 与 Merge/Pick/Prune 的「损坏即中止」对齐，且必须前移到写源码之前，避免留下「源码已改、
+    // locale 未写」的不一致态。generate 仅更新 source locale，故只校验 source 桶。
+    if (this.config.buckets) {
+      const corruptBucket = LanguageFileManager.findCorruptBucketFile(this.config, this.isCustom);
+      if (corruptBucket) {
+        throw new Error(
+          `语言文件损坏，已中止 generate（避免覆盖丢失存量翻译，请用 git 修复后重试）: ${FileUtils.getRelativePath(corruptBucket)}`,
+        );
       }
     }
 
-    if (writeFailures.length > 0) {
+    // 阶段 1.5（写源码前预检）：把 nested 前缀冲突这类确定性、可预判的 locale 序列化错误
+    // 前移到源码尚未改写时暴露。否则先写源码、阶段 3 才在 updateLanguageFiles 内做前缀冲突
+    // 校验，一旦抛错会留下「源码已改、locale 未写」的不一致态（重跑找不到中文、需 git 回滚）。
+    LanguageFileManager.assertSerializableUpdate(
+      this.config,
+      this.isCustom,
+      extractedStrings,
+      keyBucketMap,
+    );
+
+    // 阶段 2：原子地写所有源码——单文件写失败立即停止并回滚已写文件，确保「要么全改、
+    // 要么全不改」；此时语言文件尚未更新，不会留下源码-语言文件不一致的污染态。
+    const written: Array<{ file: string; original: string }> = [];
+    let writeFailure: { file: string; error: unknown } | null = null;
+    for (const { file, code, originalContent } of results) {
+      // 回滚基线：commit 路径已带 originalContent；apply 路径未带，则即时读当前内容
+      // （apply 前已通过指纹校验，磁盘内容即原文）。读不到则无法保证可回滚，判失败不写。
+      let original: string;
+      try {
+        original = originalContent ?? fs.readFileSync(file, 'utf-8');
+      } catch (error) {
+        writeFailure = { file, error };
+        break;
+      }
+      try {
+        fs.writeFileSync(file, code, 'utf-8');
+        written.push({ file, original });
+      } catch (error) {
+        writeFailure = { file, error };
+        break;
+      }
+    }
+
+    if (writeFailure) {
+      LoggerUtils.error(
+        `❌ 写入失败 ${FileUtils.getRelativePath(writeFailure.file)}:`,
+        writeFailure.error,
+      );
+      this.report.addFailure({
+        stage: 'write',
+        file: FileUtils.getRelativePath(writeFailure.file),
+        error: writeFailure.error,
+      });
+      // 回滚已写文件至原始内容，恢复「全不改」状态
+      const rollbackFailures: string[] = [];
+      for (const { file, original } of written) {
+        try {
+          fs.writeFileSync(file, original, 'utf-8');
+        } catch (rbError) {
+          rollbackFailures.push(FileUtils.getRelativePath(file));
+          LoggerUtils.error(`❌ 回滚失败 ${FileUtils.getRelativePath(file)}:`, rbError);
+        }
+      }
+      const rollbackNote =
+        rollbackFailures.length > 0
+          ? `\n⚠️  以下 ${rollbackFailures.length} 个文件回滚失败，请用 git 手动还原:\n` +
+            rollbackFailures.map((f) => `  - ${f}`).join('\n')
+          : `\n（已写入的 ${written.length} 个源文件已回滚至原始内容，源码与语言文件均未变更）`;
       throw new Error(
-        `写入阶段有 ${writeFailures.length}/${results.length} 个文件失败（语言文件未变更）:\n` +
-          writeFailures.map((f) => `  - ${FileUtils.getRelativePath(f.file)}`).join('\n'),
+        `写入阶段失败（语言文件未变更）: ${FileUtils.getRelativePath(writeFailure.file)}` +
+          rollbackNote,
       );
     }
 
@@ -487,7 +561,11 @@ export class GenerateProcessor extends BaseProcessor {
       keyBucketMap,
       this.report,
       this.adapter?.getLibrary(),
-      { preFinalized: Boolean(options?.preFinalizedLocale) },
+      {
+        preFinalized: Boolean(options?.preFinalizedLocale),
+        // 把提取阶段 drain 的快照交给 linter，让它与 coverage 看到同一份比较运算符跳过项。
+        skippedComparisons: this.skippedComparisons,
+      },
     );
 
     // 阶段 4：格式化是美化步骤，单个失败不影响数据正确性，仅警告。
@@ -528,12 +606,8 @@ export class GenerateProcessor extends BaseProcessor {
       return;
     }
 
-    // commitToDisk 不需要 originalContent，剥掉以维持其入参契约稳定
-    await this.commitToDisk(
-      results.map(({ file, code }) => ({ file, code })),
-      extractedStrings,
-      keyBucketMap,
-    );
+    // 传入 originalContent 作为写失败时的回滚基线（commitToDisk 据此保证源码原子写）
+    await this.commitToDisk(results, extractedStrings, keyBucketMap);
   }
 
   /**
@@ -789,11 +863,11 @@ export class GenerateProcessor extends BaseProcessor {
     extractedStrings: ExtractedString[],
     reuseResolver: IdReuseResolver | null,
   ): void {
-    // 1. 把「比较运算符跳过的中文字面量」从 CommonASTUtils 静态缓存里 drain 出来
-    //    转成结构化 ManualEntry。注意 drain 是消耗性操作；LocaleValueLinter
-    //    后续 lint 阶段还会再 drain 一次，会得到空数组——意味着同一条记录不会
-    //    被报告两次。
-    const skippedComparisons = CommonASTUtils.drainSkippedComparisonOperands();
+    // 1. 用提取阶段已 drain 的快照（this.skippedComparisons）填充比较运算符跳过项的
+    //    结构化 ManualEntry 与覆盖率 skipped 计数。该快照在 extract 之后、apply/lint 之前
+    //    就已从全局 collector drain 出来，故不会被 commitToDisk 里的 LocaleValueLinter
+    //    抢先清空（两者共享同一份；linter 通过 options.skippedComparisons 拿到相同数据）。
+    const skippedComparisons = this.skippedComparisons;
     for (const item of skippedComparisons) {
       this.report.addManualEntry({
         category: 'comparison-operand',

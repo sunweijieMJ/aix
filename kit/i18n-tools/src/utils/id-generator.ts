@@ -2,7 +2,6 @@ import path from 'path';
 import { createHash } from 'crypto';
 import type {
   PrefixContext,
-  PrefixStrategyConfig,
   ResolvedConfig,
   ResolvedNestedPrefixStrategy,
   ResolvedPrefixStrategy,
@@ -435,6 +434,3 @@ export const __internal = {
   ensureUniqueId,
   shortHash,
 };
-
-// 类型再导出（向后兼容旧 import 路径）
-export type { PrefixStrategyConfig };
