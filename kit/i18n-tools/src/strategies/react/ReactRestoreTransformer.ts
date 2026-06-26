@@ -236,7 +236,8 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
       const visit = (node: ts.Node): ts.Node | ts.Node[] => {
         const parent = parentStack[parentStack.length - 1];
-        const inJsxChildContext = parent !== undefined && ts.isJsxElement(parent);
+        const inJsxChildContext =
+          parent !== undefined && (ts.isJsxElement(parent) || ts.isJsxFragment(parent));
         let currentNode = node;
 
         // 1. 重命名组件引用

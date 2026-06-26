@@ -47,9 +47,6 @@ export class VueAdapter extends FrameworkAdapter {
       type: 'vue',
       extensions: ['.vue', '.ts', '.js'],
       i18nLibrary: library.packageName,
-      globalFunctionName: library.templateFunctionName,
-      hookName: library.hookName,
-      usesDoubleBracePlaceholders: library.usesDoubleBracePlaceholders,
     });
 
     this.library = library;

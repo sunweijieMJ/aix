@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
 import { FileUtils } from '../utils/file-utils';
@@ -50,8 +51,54 @@ export class ExportProcessor extends FileProcessor {
     await this.performExport(finalOutputDir);
   }
 
+  /**
+   * 导出前损坏守卫：export 是发布最后一步，损坏 locale 若被 safeLoadJsonFile 静默当成 {}，
+   * 会导出空语言包覆盖上次产物；且末尾「验证」拿空 merged 与自己回读对账必然相等 → 伪报
+   * 「✅ 导出文件验证通过」。与 Pick/Merge/Prune 一致：源端（基础 + 定制目录）任一 locale
+   * 损坏即中止，绝不静默降级。
+   */
+  private assertNoCorruptSources(): void {
+    const allLocales = [this.config.locales.source, ...this.config.locales.targets];
+    const customDir = this.config.io.customDir;
+
+    const throwCorrupt = (filePath: string): never => {
+      throw new Error(
+        '语言文件损坏，已中止 export（避免导出空语言包覆盖已发布产物，请用 git 修复后重试）: ' +
+          FileUtils.getRelativePath(filePath),
+      );
+    };
+
+    if (this.config.buckets) {
+      for (const locale of allLocales) {
+        const corruptBase = LanguageFileManager.findCorruptBucketFile(this.config, false, locale);
+        if (corruptBase) throwCorrupt(corruptBase);
+        if (customDir) {
+          const corruptCustom = LanguageFileManager.findCorruptBucketFile(
+            this.config,
+            true,
+            locale,
+          );
+          if (corruptCustom) throwCorrupt(corruptCustom);
+        }
+      }
+      return;
+    }
+
+    const checkFlat = (filePath: string): void => {
+      if (!fs.existsSync(filePath)) return;
+      const content = fs.readFileSync(filePath, 'utf-8');
+      if (content.trim() === '') return;
+      if (FileUtils.safeParseJson(content) === null) throwCorrupt(filePath);
+    };
+    for (const locale of allLocales) {
+      checkFlat(path.join(this.config.io.localesDir, `${locale}.json`));
+      if (customDir) checkFlat(path.join(customDir, `${locale}.json`));
+    }
+  }
+
   private async performExport(outputDir: string): Promise<void> {
     try {
+      this.assertNoCorruptSources();
       if (this.config.buckets) {
         await this.performBucketedExport(outputDir);
       } else {
@@ -185,19 +232,61 @@ export class ExportProcessor extends FileProcessor {
     const sourceLocale = this.config.locales.source;
     const targets = this.config.locales.targets;
     const allLocales = [sourceLocale, ...targets];
+    const customLocaleDir = this.config.io.customDir;
 
     // getMessages 兼容单文件/桶式两种源格式（buckets 配置下首次会触发迁移）
-    const messages = LanguageFileManager.getMessages(this.config, false);
-    const sourceFlat = (messages[sourceLocale] ?? {}) as LocaleMap;
+    const baseMessages = LanguageFileManager.getMessages(this.config, false);
+    // 定制目录：桶式同样需合并 customDir，否则定制覆盖会被静默丢弃（与 performFlatExport 对称）。
+    const customMessages = customLocaleDir
+      ? LanguageFileManager.getMessages(this.config, true)
+      : ({} as ReturnType<typeof LanguageFileManager.getMessages>);
 
-    // 用 source 文本驱动分桶（与 generate/merge 一致）
+    // 冲突检测：定制包 key 不应与基础包重复（与 performFlatExport 同口径）
+    if (customLocaleDir) {
+      LoggerUtils.info('🔍 检查语言包冲突...');
+      const conflictsByLocale: Record<string, string[]> = {};
+      let totalConflicts = 0;
+      for (const locale of allLocales) {
+        const conflicts = FileUtils.findConflictingKeys(
+          (baseMessages[locale] ?? {}) as LocaleMap,
+          (customMessages[locale] ?? {}) as LocaleMap,
+        );
+        if (conflicts.length > 0) {
+          conflictsByLocale[locale] = conflicts;
+          totalConflicts += conflicts.length;
+        }
+      }
+      if (totalConflicts > 0) {
+        for (const [locale, conflicts] of Object.entries(conflictsByLocale)) {
+          LoggerUtils.error(
+            `${locale} 语言包存在 ${conflicts.length} 个冲突键: ${conflicts.join(', ')}`,
+          );
+        }
+        throw new Error('语言包存在冲突，请先解决冲突后再导出。定制包中的 key 不应与基础包重复。');
+      }
+      LoggerUtils.success('✅ 未发现语言包冲突');
+    }
+
+    // 合并 base + custom（custom 覆盖，冲突已在上方拦截，正常为并集）
+    const mergedByLocale = new Map<string, LocaleMap>();
+    for (const locale of allLocales) {
+      mergedByLocale.set(locale, {
+        ...((baseMessages[locale] ?? {}) as LocaleMap),
+        ...((customMessages[locale] ?? {}) as LocaleMap),
+      });
+    }
+
+    // 用合并后的 source 文本驱动分桶（与 generate/merge 一致；含定制 source key）
+    const sourceFlat = mergedByLocale.get(sourceLocale)!;
     const keyBucketMap = LanguageFileManager.buildKeyBucketMap(this.config, sourceFlat);
     const bucketCount = new Set(Object.values(keyBucketMap)).size;
 
     LoggerUtils.info('\n📊 桶式语言包统计:');
     for (const locale of allLocales) {
-      const flat = (messages[locale] ?? {}) as LocaleMap;
-      LoggerUtils.info(`   ${locale}: ${Object.keys(flat).length} 个条目`);
+      LoggerUtils.info(`   ${locale}: ${Object.keys(mergedByLocale.get(locale)!).length} 个条目`);
+    }
+    if (customLocaleDir) {
+      LoggerUtils.info(`📁 已合并定制目录 (${customLocaleDir})`);
     }
     LoggerUtils.info(`   桶数: ${bucketCount}`);
 
@@ -209,7 +298,7 @@ export class ExportProcessor extends FileProcessor {
       LanguageFileManager.writeLocaleFile(
         exportConfig,
         false,
-        (messages[locale] ?? {}) as LocaleMap,
+        mergedByLocale.get(locale)!,
         locale,
         keyBucketMap,
       );

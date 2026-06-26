@@ -417,9 +417,23 @@ export class VueTextExtractor extends BaseTextExtractor {
 
         if (attr.value && attr.value.content) {
           const text = attr.value.content.trim();
+          // 与文本节点 B1 对称：attr.value.content 已被 @vue/compiler-dom 解码（&amp; → &）。
+          // 若原始源码含实体，Transformer 用解码后的 original 拼正则去匹配仍含 &amp; 的源码会
+          // 失配 → 属性不被替换 + locale 多出孤儿 key。故 original 用「去引号的原始源码」让正则
+          // 能命中，processedMessage 用解码后文本作为 locale 值 / ID 源。
+          const rawSrc = attr.value.loc.source;
+          const rawInner =
+            rawSrc.length >= 2 &&
+            (rawSrc[0] === '"' || rawSrc[0] === "'") &&
+            rawSrc[rawSrc.length - 1] === rawSrc[0]
+              ? rawSrc.slice(1, -1)
+              : rawSrc;
+          const rawText = rawInner.trim();
+          const hasEntity = rawText !== text;
           if (text && this.shouldExtract(text, 'template')) {
             extractedStrings.push({
-              original: text,
+              original: hasEntity ? rawText : text,
+              processedMessage: hasEntity ? text : undefined,
               semanticId: '',
               filePath,
               line: attr.loc.start.line + lineOffset,

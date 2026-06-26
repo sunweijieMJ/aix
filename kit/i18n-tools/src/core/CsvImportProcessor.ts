@@ -68,20 +68,32 @@ export class CsvImportProcessor extends FileProcessor {
       throw new Error(`[i18n-tools] CSV 表头未匹配到任何目标语言列（${targets.join(', ')}）`);
     }
 
+    // 同时加载两份字典：CSV 既可能来自 untranslated（待翻）导出，也可能来自 translations
+    // （--source translations 审核已翻）导出。按 key 实际归属自动路由写回，避免「审核
+    // translations 导出的 CSV 回流时全部命中 untranslated.json 的 if(!entry) 被静默丢弃」。
     const untranslatedPath = FileUtils.getUntranslatedPath(this.config, this.isCustom);
-    const data = FileUtils.safeLoadJsonFile<Translations>(untranslatedPath, {
+    const translatedPath = FileUtils.getTranslatedPath(this.config, this.isCustom);
+    const untranslated = FileUtils.safeLoadJsonFile<Translations>(untranslatedPath, {
       errorMessage: '读取 untranslated.json 失败',
+    });
+    const translated = FileUtils.safeLoadJsonFile<Translations>(translatedPath, {
+      errorMessage: '读取 translations.json 失败',
     });
 
     // 应用保守合并，收集统计
     let updated = 0;
     let skippedEmpty = 0;
     const missingKeys: string[] = [];
+    let untranslatedDirty = false;
+    let translatedDirty = false;
 
     for (const row of rows.slice(1)) {
       const key = (row[keyIdx] ?? '').trim();
       if (key === '') continue;
-      const entry = data[key];
+      // 路由：优先 untranslated（待翻流程主路径），否则落到 translations（审核流程）。
+      // 二者 key 互斥（pick 按 hasUntranslated 二选一），不会双写。
+      const inUntranslated = Object.prototype.hasOwnProperty.call(untranslated, key);
+      const entry = inUntranslated ? untranslated[key] : translated[key];
       if (!entry) {
         missingKeys.push(key);
         continue;
@@ -94,11 +106,17 @@ export class CsvImportProcessor extends FileProcessor {
         }
         entry[col.name] = value;
         updated++;
+        if (inUntranslated) untranslatedDirty = true;
+        else translatedDirty = true;
       }
     }
 
+    const writeTargets: string[] = [];
+    if (untranslatedDirty) writeTargets.push(untranslatedPath);
+    if (translatedDirty) writeTargets.push(translatedPath);
+
     this.reportPreview(
-      untranslatedPath,
+      writeTargets.length > 0 ? writeTargets : [untranslatedPath, translatedPath],
       langCols.map((c) => c.name),
       updated,
       skippedEmpty,
@@ -114,16 +132,20 @@ export class CsvImportProcessor extends FileProcessor {
       return;
     }
     if (!this.options.ci) {
-      const ok =
-        await InteractiveUtils.promptForGenericConfirmation('确认写回 untranslated.json？');
+      const ok = await InteractiveUtils.promptForGenericConfirmation(
+        `确认写回 ${writeTargets.map((p) => FileUtils.getRelativePath(p)).join(' / ')}？`,
+      );
       if (!ok) {
         LoggerUtils.warn('操作已取消');
         return;
       }
     }
 
-    FileUtils.writeTranslationsFile(untranslatedPath, data);
-    LoggerUtils.success(`✅ 已写回 ${updated} 处译文到 ${untranslatedPath}`);
+    if (untranslatedDirty) FileUtils.writeTranslationsFile(untranslatedPath, untranslated);
+    if (translatedDirty) FileUtils.writeTranslationsFile(translatedPath, translated);
+    LoggerUtils.success(
+      `✅ 已写回 ${updated} 处译文到 ${writeTargets.map((p) => FileUtils.getRelativePath(p)).join(' / ')}`,
+    );
   }
 
   private readRows(): string[][] {
@@ -135,7 +157,7 @@ export class CsvImportProcessor extends FileProcessor {
   }
 
   private reportPreview(
-    targetPath: string,
+    targetPaths: string[],
     langs: string[],
     updated: number,
     skippedEmpty: number,
@@ -147,10 +169,10 @@ export class CsvImportProcessor extends FileProcessor {
     if (missingKeys.length > 0) {
       const sample = missingKeys.slice(0, 5).join(' / ');
       LoggerUtils.warn(
-        `  ⚠️  CSV 中存在但 untranslated.json 无此 key  ${missingKeys.length} 条：${sample}` +
+        `  ⚠️  CSV 中存在但 untranslated.json / translations.json 均无此 key  ${missingKeys.length} 条：${sample}` +
           (missingKeys.length > 5 ? ' …' : ''),
       );
     }
-    LoggerUtils.info(`  📄 目标文件: ${targetPath}`);
+    LoggerUtils.info(`  📄 目标文件: ${targetPaths.join(' / ')}`);
   }
 }

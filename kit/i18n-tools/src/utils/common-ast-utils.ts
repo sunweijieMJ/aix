@@ -3,6 +3,17 @@ import { CONFIG } from './constants';
 import { LoggerUtils } from './logger';
 
 /**
+ * 提取阶段记录的「被跳过的中文字面量」位置（比较运算操作数 / 嵌套插值中文）。
+ * 供 linter / coverage 跨阶段消费时共享同一份快照，避免依赖 drain 的消费顺序。
+ */
+export interface SkippedTextLocation {
+  text: string;
+  filePath: string;
+  line: number;
+  column: number;
+}
+
+/**
  * 通用 AST 工具类
  * 提供框架无关的 TypeScript AST 操作功能
  */
@@ -691,9 +702,15 @@ export class CommonASTUtils {
       return ts.factory.createStringLiteral(messageText);
     }
 
-    if (placeholderNames.length !== Object.keys(values).length) {
+    // 按「唯一占位符名」而非「出现次数」与 values 比对：同一变量在文案中重复出现
+    // （`欢迎 ${name}，再次 ${name}`）时，generate 侧 placeholderMap 以表达式为 key，
+    // values 只含 1 项，但 message 含 2 个同名占位符。若用出现次数比对会误判不匹配、
+    // 退化为字面串、丢失运行时变量。下方 span 循环按名查表达式，可天然复用同名占位符。
+    if (new Set(placeholderNames).size !== Object.keys(values).length) {
       LoggerUtils.warn(
-        `[Restore Warning] Mismatch between placeholders (${placeholderNames.length}) and variables (${
+        `[Restore Warning] Mismatch between placeholders (${
+          new Set(placeholderNames).size
+        }) and variables (${
           Object.keys(values).length
         }). Returning raw string. Template: "${messageText}"`,
       );
@@ -1087,22 +1104,6 @@ export class CommonASTUtils {
   private static readonly PLACEHOLDER_NAME = '[A-Za-z0-9_$.]+';
 
   /**
-   * 单花括号 `{name}` → 双花括号 `{{name}}`。
-   * 用于 i18next 系库（react-i18next / vue-i18next）写入 locale 前的边界转换。
-   *
-   * 幂等：用负向断言 `(?<!\{)...(?!\})` 跳过已是 `{{name}}` 的占位符，避免重复转换
-   * 成 `{{{name}}}`。Why 必须幂等：apply-plan 路径会把 dry-run 已转换的
-   * plan.localeDelta 再次喂入 updateLanguageFiles（commitToDisk 仍按 library 标志
-   * 转换），若非幂等就会三花括号畸形。
-   */
-  static toDoubleBracePlaceholders(message: string): string {
-    return message.replace(
-      new RegExp(`(?<!\\{)\\{(${CommonASTUtils.PLACEHOLDER_NAME})\\}(?!\\})`, 'g'),
-      '{{$1}}',
-    );
-  }
-
-  /**
    * 双花括号 `{{name}}` → 单花括号 `{name}`。
    * 用于 i18next 系库 restore 时把 locale 文本归一回内部规范形式，
    * 复用既有的单花括号还原逻辑（React createStringOrTemplateNode / Vue 占位符正则）。
@@ -1117,8 +1118,8 @@ export class CommonASTUtils {
   /**
    * 把内部规范消息（真占位符为单花括号 `{name}`）定稿成某 i18n 库的 locale 写入值。
    *
-   * 与 toDoubleBracePlaceholders 的盲正则不同，这里**占位符感知**：只有 `placeholderNames`
-   * 里的名字才算真占位符，其余 `{...}` 一律视为源文案里的字面量花括号。由此同时解决两类问题：
+   * **占位符感知**（区别于纯正则的盲转换）：只有 `placeholderNames` 里的名字才算真占位符，
+   * 其余 `{...}` 一律视为源文案里的字面量花括号。由此同时解决两类问题：
    *  - 双花括号库（react-i18next / vue-i18next）：只把真占位符转 `{{name}}`，字面量 `{x}`
    *    保持单花括号（i18next 单花括号即字面量），不再误把 `{config}` 这类文本转成插值。
    *  - 单花括号库（vue-i18n / react-intl）：真占位符保持 `{name}`，字面量花括号经
@@ -1586,6 +1587,32 @@ export class CommonASTUtils {
     return !usedUnshadowed;
   }
 
+  /**
+   * 判断名为 `name` 的标识符在 code 中是否已无任何「值引用」（不含其自身的声明 / 绑定名）。
+   *
+   * 与 isImportedNameUnused（针对 import 绑定、含遮蔽判定）互补：本方法面向「非 import
+   * 来源」的绑定，典型是 hook 解构 `const { t } = useI18n()`。restore 清理 hook 声明前调用——
+   * 若仍有未被还原的存活 `t(...)` 调用（locale 缺 key / 动态 key），则视为仍在使用，
+   * 不可删除声明，否则产出未定义 `t`（TS2304）。
+   *
+   * 保守取向：任意位置出现对 name 的值引用即判为「仍在使用」，宁可保留多余声明（lint 警告）
+   * 也不冒删除致编译错误的风险。
+   */
+  static isLocalNameUnused(code: string, filePath: string, name: string): boolean {
+    const sf = CommonASTUtils.parseSourceFile(code, filePath);
+    let used = false;
+    const visit = (n: ts.Node): void => {
+      if (used) return;
+      if (ts.isIdentifier(n) && n.text === name && CommonASTUtils.isIdentifierValueReference(n)) {
+        used = true;
+        return;
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return !used;
+  }
+
   /** 标识符是否处于「值引用」位置（排除声明名 / 绑定名 / 属性名 / 对象 key / import 说明符）。 */
   private static isIdentifierValueReference(id: ts.Identifier): boolean {
     const p = id.parent;
@@ -1605,14 +1632,36 @@ export class CommonASTUtils {
     return true;
   }
 
-  /** 引用 ref 是否被某个祖先函数作用域的局部声明（含参数）遮蔽了名为 name 的绑定。 */
+  /**
+   * 引用 ref 是否被某个「祖先作用域」的局部声明遮蔽了名为 name 的绑定。
+   *
+   * 关键：必须区分函数作用域与块级作用域——`const/let` 是块级，写在某个 if/块内的
+   * `const { t } = ...` 只遮蔽该块内的引用；同函数内、该块之外的引用仍解析到 module import。
+   * 旧实现把函数体内任意嵌套块的 const/let 都当成整个函数的声明，会误判块外引用被遮蔽，
+   * 进而把仍在使用的 import 删掉（TS2304）。
+   *
+   * 因此沿 ref 的祖先链逐层向上：
+   *  - 函数作用域：参数 + 函数体内 `var`（提升到整个函数，不含嵌套函数）遮蔽；
+   *  - 块作用域（Block / SourceFile / ModuleBlock）：仅该块「直属」语句里的 `let/const` 遮蔽。
+   */
   private static hasEnclosingLocalDeclaration(ref: ts.Node, name: string): boolean {
     let cur: ts.Node | undefined = ref.parent;
     while (cur) {
-      if (CommonASTUtils.isFunctionLikeScope(cur) && CommonASTUtils.scopeDeclaresLocal(cur, name)) {
-        return true;
+      if (CommonASTUtils.isFunctionLikeScope(cur)) {
+        if (CommonASTUtils.functionScopeDeclares(cur, name)) return true;
+      } else if (ts.isBlock(cur) || ts.isSourceFile(cur) || ts.isModuleBlock(cur)) {
+        if (CommonASTUtils.blockDirectlyDeclares(cur, name)) return true;
       }
       cur = cur.parent;
+    }
+    return false;
+  }
+
+  /** VariableDeclaration 是否为 `var`（既非 let 也非 const，故提升到整个函数作用域）。 */
+  private static isVarDeclaration(d: ts.VariableDeclaration): boolean {
+    const list = d.parent;
+    if (list && ts.isVariableDeclarationList(list)) {
+      return (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) === 0;
     }
     return false;
   }
@@ -1629,8 +1678,11 @@ export class CommonASTUtils {
     );
   }
 
-  /** 函数作用域（其参数 + 直属 body，不下钻内层函数）是否声明了名为 name 的局部绑定。 */
-  private static scopeDeclaresLocal(fn: ts.Node, name: string): boolean {
+  /**
+   * 函数作用域是否声明了名为 name 的绑定：参数 + 函数体内 `var`（提升到整个函数，含嵌套块
+   * 但不含嵌套函数）。`let/const` 是块级，由 blockDirectlyDeclares 在对应块处理，这里不计。
+   */
+  private static functionScopeDeclares(fn: ts.Node, name: string): boolean {
     const decl = fn as ts.FunctionLikeDeclaration;
     for (const p of decl.parameters ?? []) {
       if (CommonASTUtils.bindingDeclaresName(p.name, name)) return true;
@@ -1642,7 +1694,11 @@ export class CommonASTUtils {
       if (found) return;
       // 不下钻到内层函数：内层的局部声明不影响当前作用域对 name 的解析
       if (n !== body && CommonASTUtils.isFunctionLikeScope(n)) return;
-      if (ts.isVariableDeclaration(n) && CommonASTUtils.bindingDeclaresName(n.name, name)) {
+      if (
+        ts.isVariableDeclaration(n) &&
+        CommonASTUtils.isVarDeclaration(n) &&
+        CommonASTUtils.bindingDeclaresName(n.name, name)
+      ) {
         found = true;
         return;
       }
@@ -1650,6 +1706,25 @@ export class CommonASTUtils {
     };
     walk(body);
     return found;
+  }
+
+  /**
+   * 块作用域是否「直属」声明了名为 name 的 `let/const` 绑定（不下钻嵌套块/函数）。
+   * 入参可为 Block / SourceFile / ModuleBlock（均有 statements）。
+   */
+  private static blockDirectlyDeclares(block: ts.Node, name: string): boolean {
+    const statements = (block as ts.BlockLike).statements;
+    if (!statements) return false;
+    for (const stmt of statements) {
+      if (!ts.isVariableStatement(stmt)) continue;
+      const list = stmt.declarationList;
+      // 只认块级（let/const）；var 由 functionScopeDeclares 处理（提升语义）
+      if ((list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) === 0) continue;
+      for (const d of list.declarations) {
+        if (CommonASTUtils.bindingDeclaresName(d.name, name)) return true;
+      }
+    }
+    return false;
   }
 
   /** BindingName（标识符 / 对象解构 / 数组解构）是否绑定了名为 name 的局部变量。 */

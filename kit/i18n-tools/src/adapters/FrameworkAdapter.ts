@@ -17,12 +17,6 @@ export interface FrameworkConfig {
   displayName?: string;
   /** i18n 库名称 */
   i18nLibrary: string;
-  /** 全局函数名称（如 $t, getIntl） */
-  globalFunctionName?: string;
-  /** Hook 名称（如 useI18n, useIntl） */
-  hookName?: string;
-  /** locale 占位符是否用双花括号 `{{name}}`（i18next 系库），由具体 library 决定 */
-  usesDoubleBracePlaceholders?: boolean;
 }
 
 /**
@@ -104,20 +98,6 @@ export abstract class FrameworkAdapter {
   }
 
   /**
-   * 获取框架配置
-   */
-  getConfig(): FrameworkConfig {
-    return this.config;
-  }
-
-  /**
-   * 获取框架类型（具体值由各 Adapter 在 FrameworkConfig 中提供）
-   */
-  getType(): string {
-    return this.config.type;
-  }
-
-  /**
    * 获取支持的文件扩展名列表（含点号）。
    * 用于扫描目录、校验目标文件，使工具层不再硬编码框架。
    */
@@ -141,14 +121,6 @@ export abstract class FrameworkAdapter {
    */
   getLibraryName(): string {
     return this.config.i18nLibrary;
-  }
-
-  /**
-   * 当前 i18n 库的 locale 占位符是否用双花括号 `{{name}}`（i18next 系）。
-   * 生成时决定写入 locale 前是否单→双转换；CLI/Processor 层据此驱动边界转换。
-   */
-  usesDoubleBracePlaceholders(): boolean {
-    return Boolean(this.config.usesDoubleBracePlaceholders);
   }
 
   /**

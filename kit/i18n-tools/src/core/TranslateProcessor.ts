@@ -4,6 +4,7 @@ import { LLMClient } from '../utils/llm-client';
 import { FileUtils } from '../utils/file-utils';
 import { Glossary } from '../utils/glossary';
 import { LoggerUtils } from '../utils/logger';
+import { extractPlaceholderNames } from '../utils/placeholder-utils';
 import type { Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
 
@@ -300,8 +301,12 @@ export class TranslateProcessor extends FileProcessor {
 
       const sourceText = originalItem[sourceLocale];
       if (typeof sourceText === 'string' && sourceText) {
-        const expected = TranslateProcessor.extractPlaceholders(sourceText);
-        const actual = TranslateProcessor.extractPlaceholders(newValue);
+        // 用深度感知的 extractPlaceholderNames（与 doctor 同一套）只比对顶层参数名：
+        // 朴素正则 /\{([^{}]+)\}/ 无法处理 ICU `{count, plural, one {# item} ...}`，
+        // 会误采子消息字面量（# item / # items），译文子消息随语言改变即被判失配、
+        // 导致所有 plural/select 文案被永久丢弃、无法翻译。
+        const expected = extractPlaceholderNames(sourceText);
+        const actual = extractPlaceholderNames(newValue);
         if (!TranslateProcessor.placeholdersMatch(expected, actual)) {
           placeholderMismatches++;
           LoggerUtils.warn(
@@ -329,19 +334,6 @@ export class TranslateProcessor extends FileProcessor {
     }
 
     return translatedCount;
-  }
-
-  /**
-   * 提取文本中所有 `{xxx}` 形式的占位符 key 集合。
-   */
-  private static extractPlaceholders(text: string): Set<string> {
-    const set = new Set<string>();
-    const regex = /\{([^{}]+)\}/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      set.add(match[1]!.trim());
-    }
-    return set;
   }
 
   private static placeholdersMatch(a: Set<string>, b: Set<string>): boolean {
