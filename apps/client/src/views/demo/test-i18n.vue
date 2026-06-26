@@ -242,6 +242,38 @@
       </div>
     </section>
 
+    <!-- ==================== 16. 文本节点中的 HTML 实体（B1 回归）==================== -->
+    <section class="test-section">
+      <h2>16. 文本节点中的 HTML 实体</h2>
+      <!-- ✅ 应提取并替换：@vue/compiler-dom 会把 &copy;/&amp;/&nbsp; 等实体解码进文本节点
+           content。提取端 original 须保留「原始源码（含实体）」供 Transformer indexOf 匹配，
+           processedMessage / locale 值则用「解码后文案」（$t 渲染时输出 © 而非字面 &copy;）。
+           手动核对要点：
+             1) generate 后这两段中文被替换为 {{ $t('...') }}，源码里不再残留 &copy;/&amp;；
+             2) locale 文件中对应 key 的值是解码形态（含真正的 ©，而非 "&copy;" 字符串）；
+             3) 不得出现「生成了 key 却没替换源码」的孤儿 key。 -->
+      <p>版权&copy;所有 &amp; 保留所有规则</p>
+      <div>提示&nbsp;：请先阅读使用须知</div>
+    </section>
+
+    <!-- ==================== 17. 技术前缀撞车的静态属性（B2 回归）==================== -->
+    <section class="test-section">
+      <h2>17. 属性名前缀撞车</h2>
+      <!-- ✅ 应提取：以下属性名虽以技术词「前缀」开头，但本身是面向用户的自定义属性，
+           其中文值应被提取。技术属性名单必须用「精确相等」判定，不能用 startsWith，
+           否则会被误杀：forecast→'for'、namespace→'name'、typeahead→'type'、sizeLabel→'size'。 -->
+      <div
+        forecast="今日天气预报"
+        namespace="命名空间标签"
+        typeahead="智能联想提示"
+        sizeLabel="尺寸说明文字"
+      ></div>
+      <!-- ❌ 不应提取：真正的技术属性——精确命中名单（for）、data- 前缀、aria-*ID 引用。
+           注意 data-track 的值虽是中文，但 data- 属于「前缀模式」整体跳过，验证 B2 修复
+           没有误伤合法的前缀匹配。 -->
+      <div for="field-id" data-track="点击埋点不提取" aria-labelledby="hdr-id"></div>
+    </section>
+
     <!-- ==================== 测试说明 ==================== -->
     <div class="test-description">
       <h3>测试说明</h3>

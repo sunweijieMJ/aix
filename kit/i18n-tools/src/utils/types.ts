@@ -112,4 +112,9 @@ export interface TransformContext {
   /** 源文件 */
   sourceFile: ts.SourceFile;
   componentNameMap: Map<string, string>;
+  /**
+   * 类组件 HOC 注入时被改名为 `原名+WithOutIntl` 的内部类，其原 HOC 导出语句带 export 的，
+   * 内部类名记于此。restore 把内部类改回原名时据此恢复 export 修饰符（Bug B3）。
+   */
+  exportedHocInnerNames?: Set<string>;
 }

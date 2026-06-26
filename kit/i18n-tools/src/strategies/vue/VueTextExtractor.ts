@@ -174,10 +174,18 @@ export class VueTextExtractor extends BaseTextExtractor {
         // TEXT
         const textNode = node as TextNode;
         const text = textNode.content.trim();
+        // loc.source 是未解码的原始源码；@vue/compiler-dom 会把 HTML 实体（&copy; 等）
+        // 解码进 content。两者不一致时（即文本含实体）必须分别使用：
+        // - original 用原始源码 → Transformer 的 indexOf 才能在含 &copy; 的模板里匹配到，
+        //   否则替换失败、源码残留中文 + locale 多出孤儿 key（Bug B1）。
+        // - processedMessage 用解码后文本 → 作为 locale 值与 ID 源，$t 渲染时正确输出 ©。
+        const rawSource = textNode.loc.source.trim();
+        const hasEntity = rawSource !== text;
 
         if (text && this.shouldExtract(text, 'template', undefined, 'text-node')) {
           extractedStrings.push({
-            original: text,
+            original: hasEntity ? rawSource : text,
+            processedMessage: hasEntity ? text : undefined,
             semanticId: '',
             filePath,
             line: textNode.loc.start.line + lineOffset,
@@ -353,7 +361,15 @@ export class VueTextExtractor extends BaseTextExtractor {
     ];
 
     // 检查是否匹配技术属性
-    if (technicalAttrs.some((tech) => attrName.startsWith(tech) || attrName === tech)) {
+    // 仅对真正的「前缀模式」（以 - 结尾的 data-/v-，或指令符号 :/@/#）做前缀匹配；
+    // 其余是完整属性名，必须精确相等——否则 forecast 会被 'for' 误杀、namespace 被 'name' 误杀。
+    const isPrefixPattern = (tech: string): boolean =>
+      tech.endsWith('-') || tech === ':' || tech === '@' || tech === '#';
+    if (
+      technicalAttrs.some((tech) =>
+        isPrefixPattern(tech) ? attrName.startsWith(tech) : attrName === tech,
+      )
+    ) {
       return true;
     }
 

@@ -43,6 +43,32 @@ export class PickProcessor extends FileProcessor {
 
     const sourceLocale = this.config.locales.source;
     const targets = this.config.locales.targets;
+
+    // 源 locale 损坏防护（Bug B5）：getMessages 走 safeLoadJsonFile(silent)，损坏文件被
+    // 静默当成 {}。若放任继续，sourceMessages 为空 → 无条件写出两个空字典，销毁
+    // untranslated.json 里尚未 merge 的在途译文并伪报成功。损坏时中止，与 merge/prune 守卫对齐。
+    if (this.config.buckets) {
+      // 桶式：readLocaleFile 的 bucket 分支走 silent 降级、永不返回 null，需用
+      // findCorruptBucketFile 单独探测损坏桶（与 MergeProcessor 的桶式守卫一致）。
+      const corruptBucket = LanguageFileManager.findCorruptBucketFile(
+        this.config,
+        this.isCustom,
+        sourceLocale,
+      );
+      if (corruptBucket) {
+        throw new Error(
+          `源 locale「${sourceLocale}」的桶文件解析失败：${corruptBucket}，已中止 pick 以防销毁在途译文 / 伪报成功。请先修复 JSON 格式。`,
+        );
+      }
+    } else if (
+      LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) === null
+    ) {
+      // 单文件：readLocaleFile 区分「不存在 → {}」与「存在但解析失败 → null」。
+      throw new Error(
+        `源 locale「${sourceLocale}」解析失败，已中止 pick 以防销毁 untranslated.json 在途译文 / 伪报成功。请先修复 JSON 格式。`,
+      );
+    }
+
     const messages = LanguageFileManager.getMessages(this.config, this.isCustom);
     const sourceMessages = (messages[sourceLocale] || {}) as Record<string, string>;
 
