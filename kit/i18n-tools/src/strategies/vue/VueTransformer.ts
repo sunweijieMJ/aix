@@ -205,6 +205,21 @@ export class VueTransformer implements ITransformer {
   }
 
   /**
+   * 构造静态属性匹配正则：匹配整个 `attrName="value"`（含连字符属性名如
+   * `confirm-button-text`），并**容忍引号与值之间的首尾空白**。
+   *
+   * Why 容忍空白：extractFromAttributes 存入的 original 是 attr.value.content.trim()，
+   * 而源码里可能是 `title=" 确认"` / `title="\t确认"`。旧正则 `=["']确认["']` 要求引号
+   * 紧贴文本，padding 时失配 → chosen 为空 → 旧逻辑 fall through 到裸文本搜索，把
+   * `:title="$t(...)"` 插进引号内部，产出引号失衡的非法标记。`\s*` 让 trim 后的 original
+   * 仍能整体匹配 padded 属性，locale 值则保持 trim（不把词间距污染进文案）。
+   */
+  private buildStaticAttrPattern(original: string, flags = ''): RegExp {
+    const escaped = CommonASTUtils.escapeRegExp(original);
+    return new RegExp(`([\\w-]+)=(["'])\\s*${escaped}\\s*\\2`, flags);
+  }
+
+  /**
    * 在 template 中替换字符串
    * @param templateContent - template 内容
    * @param original - 原始字符串
@@ -231,12 +246,9 @@ export class VueTransformer implements ITransformer {
     // 检查是否是静态属性转换（replacement 以 : 开头）
     if (replacement.startsWith(':')) {
       // 静态属性转换：需要替换整个属性 attr="value" -> :attr="$t(...)"
-      // 查找属性模式：attrName="original"
-      // 使用 [\\w-]+ 来匹配包含连字符的属性名（如 confirm-button-text）
       // 同行内出现多个相同文本时（如 <span title="确认"><button title="确认">），
       // 需按 column 选中包含目标位置的那一处，避免 String.replace 总是命中第一处。
-      const escapedOriginal = CommonASTUtils.escapeRegExp(original);
-      const attrPattern = new RegExp(`([\\w-]+)=["']${escapedOriginal}["']`, 'g');
+      const attrPattern = this.buildStaticAttrPattern(original, 'g');
       let attrMatch: RegExpExecArray | null;
       let chosen: RegExpExecArray | null = null;
       while ((attrMatch = attrPattern.exec(targetLine)) !== null) {
@@ -257,6 +269,22 @@ export class VueTransformer implements ITransformer {
           targetLine.substring(start + chosen[0].length);
         return lines.join('\n');
       }
+
+      // 静态属性未在目标行命中：**绝不** fall through 到下方的引号/裸文本搜索——
+      // 那会把 `:attr="$t(...)"` 插进引号内部，毁掉标记（引号失衡）。只在附近行做
+      // 属性感知匹配（tryReplaceOnLine 对 `:` 前缀仅尝试属性正则），仍找不到就原样返回，
+      // 宁可漏替换也不破坏源码。
+      for (let delta = 1; delta <= 5; delta++) {
+        for (const tryIdx of [line + delta, line - delta]) {
+          if (tryIdx < 0 || tryIdx >= lines.length) continue;
+          const result = this.tryReplaceOnLine(lines[tryIdx]!, original, replacement);
+          if (result !== null) {
+            lines[tryIdx] = result;
+            return lines.join('\n');
+          }
+        }
+      }
+      return lines.join('\n');
     }
 
     // 检查 original 是否已经带引号（模板字符串、字符串字面量）
@@ -358,12 +386,14 @@ export class VueTransformer implements ITransformer {
   ): string | null {
     // 静态属性转换
     if (replacement.startsWith(':')) {
-      const escapedOriginal = CommonASTUtils.escapeRegExp(original);
-      const attrPattern = new RegExp(`([\\w-]+)=["']${escapedOriginal}["']`);
+      const attrPattern = this.buildStaticAttrPattern(original);
       const match = lineContent.match(attrPattern);
       if (match) {
         return lineContent.replace(match[0], replacement);
       }
+      // 静态属性未命中：不得 fall through 到下方引号/裸文本搜索（同样会插进引号内部
+      // 毁坏标记）。返回 null 表示本行无匹配，交由调用方继续找其他行或原样返回。
+      return null;
     }
 
     const hasQuotes =

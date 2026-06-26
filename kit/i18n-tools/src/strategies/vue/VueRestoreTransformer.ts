@@ -278,11 +278,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
         try {
           return stash(this.restoreTemplateWithVariables(text, vars as string, 'mustache'));
         } catch {
-          return stash(text);
+          return stash(this.escapeTemplateText(text));
         }
       }
 
-      return stash(text);
+      return stash(this.escapeTemplateText(text));
     });
 
     // 2. 匹配属性绑定 :attr="$t('key')" 或 :attr='$t("key")'（外/内引号任意组合）。
@@ -345,6 +345,26 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     );
 
     return restored;
+  }
+
+  /**
+   * 还原到「模板文本节点」时对 locale 值做 HTML 文本转义。
+   *
+   * Why：正向是 `{{ $t('k') }}` —— Vue 插值在运行时自动转义输出；restore 把它换成
+   * 静态文本节点后，locale 值里的 `<`/`>`/`&`（提取时由 @vue/compiler-dom 解码自
+   * `&lt;`/`&amp;` 等实体）会被模板编译器当作真实标签 / 实体解析，导致结构变样
+   * （如 `<code>` 变成真元素）。这里把它们重新转义，使 restore 与正向渲染对称。
+   *
+   * ⚠️ 仅用于「文本节点」上下文（pass 1 与 mixed-content 的 mustache 分支）。
+   * 属性绑定（pass 2）与脚本 / 三元里的 JS 字符串（pass 3）不得调用本函数——前者是
+   * 属性值转义规则、后者是 JS 字符串字面量，套 HTML 转义会污染数据。
+   * `&` 必须最先替换，否则会把后续生成的 `&lt;`/`&gt;` 里的 `&` 二次转义。
+   *
+   * 注：`©`/`&nbsp;`(U+00A0) 等不在 `<>&` 集合里 → 原样保留、渲染一致；真把 `©`
+   * 还原成 `&copy;` 不可能（解码有损，无从得知原实体），也无必要。
+   */
+  private static escapeTemplateText(text: string): string {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   /**
@@ -421,7 +441,10 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     syntax: 'mustache' | 'template',
   ): string {
     const varMap = this.parseVarMap(vars);
-    let result = text;
+    // mustache=文本节点上下文：先对字面文本做 HTML 转义，再注入 `{{ expr }}`
+    // （占位符 `{name}` 不含 `<>&`，转义不影响其匹配；先转义可避免把注入的
+    // `{{ }}` 表达式也转义掉）。template=属性/JS 模板字面量上下文：不转义。
+    let result = syntax === 'mustache' ? this.escapeTemplateText(text) : text;
     varMap.forEach((expression, placeholder) => {
       const placeholderPattern = new RegExp(`\\{${placeholder}\\}`, 'g');
       const replacement = syntax === 'mustache' ? `{{ ${expression} }}` : `\${${expression}}`;

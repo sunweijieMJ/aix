@@ -2,6 +2,40 @@ import ts from 'typescript';
 import type { ReactI18nLibrary } from './libraries';
 
 /**
+ * 需要把翻译变量纳入依赖数组的 hooks 列表。
+ *
+ * Why 抽成共享常量：generate 阶段 addTranslationVarToHooksDependencies（add）与
+ * restore 阶段 ReactImportManager.cleanupHookDependencies（remove）必须使用同一份
+ * 列表，否则 round-trip 非对称——例如 add 端含 useLayoutEffect 而 remove 端漏掉，
+ * 会在 restore 后留下指向已删除变量的悬空依赖（TS2304 / ReferenceError）。
+ */
+export const TRANSLATION_DEPENDENCY_HOOKS = [
+  'useCallback',
+  'useMemo',
+  'useEffect',
+  'useLayoutEffect',
+];
+
+/**
+ * 从 CallExpression 解析 hook 名，兼容裸 Identifier（`useEffect(...)`）与
+ * `React.useXxx` 成员调用形式。add / remove 两端共用，保证对称识别。
+ */
+export function resolveHookName(node: ts.CallExpression): string | undefined {
+  if (ts.isIdentifier(node.expression)) {
+    return node.expression.text;
+  }
+  if (
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === 'React' &&
+    ts.isIdentifier(node.expression.name)
+  ) {
+    return node.expression.name.text;
+  }
+  return undefined;
+}
+
+/**
  * React Hooks依赖项处理工具类
  * 提供hooks依赖项的添加和移除功能
  */
@@ -21,23 +55,9 @@ export class HooksUtils {
 
     const visitNode = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
-        let hookName: string | undefined;
+        const hookName = resolveHookName(node);
 
-        if (ts.isIdentifier(node.expression)) {
-          hookName = node.expression.text;
-        } else if (
-          ts.isPropertyAccessExpression(node.expression) &&
-          ts.isIdentifier(node.expression.expression) &&
-          node.expression.expression.text === 'React' &&
-          ts.isIdentifier(node.expression.name)
-        ) {
-          hookName = node.expression.name.text;
-        }
-
-        if (
-          hookName &&
-          ['useCallback', 'useMemo', 'useEffect', 'useLayoutEffect'].includes(hookName)
-        ) {
+        if (hookName && TRANSLATION_DEPENDENCY_HOOKS.includes(hookName)) {
           const needsVar = this.hookUsesTranslationVar(node, library);
           if (needsVar) {
             hooksToFix.push({

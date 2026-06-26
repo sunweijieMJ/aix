@@ -1,1 +1,6 @@
-{}
+{
+  "views__demo__alreadyDone": "This text was already internationalized in a prior cycle",
+  "views__demo__alreadyTitle": "Already internationalized button title",
+  "views__demo__alreadyBtn": "Already internationalized button",
+  "views__demo__alreadyComputed": "Already internationalized computed text"
+}
