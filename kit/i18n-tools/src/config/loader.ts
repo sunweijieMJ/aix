@@ -264,6 +264,8 @@ function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
       concurrency: Math.max(1, merged.concurrency ?? DEFAULT_LLM_TASK.concurrency),
       batchSize: Math.max(1, merged.batchSize ?? DEFAULT_LLM_TASK.batchSize),
       throttleMs: Math.max(0, merged.throttleMs ?? DEFAULT_LLM_TASK.throttleMs),
+      // prompt 是 LLMTaskConfig 专属字段（LLMSharedConfig 不含 prompt），
+      // 故只可能来自 task；merged.prompt 即 task.prompt，无需深合并。
       prompt: {
         system: merged.prompt?.system,
         user: merged.prompt?.user,
@@ -365,8 +367,10 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     localesDir: path.resolve(root, userConfig.io?.localesDir ?? DEFAULT_IO.localesDir),
     exportDir: userConfig.io?.exportDir ? path.resolve(root, userConfig.io.exportDir) : undefined,
     customDir: userConfig.io?.customDir ? path.resolve(root, userConfig.io.customDir) : undefined,
-    include: userConfig.io?.include ?? DEFAULT_IO.include,
-    exclude: userConfig.io?.exclude ?? DEFAULT_IO.exclude,
+    // 防御性拷贝：避免与 DEFAULT_IO 共享数组引用，下游若 push/splice 会污染默认值
+    // （与上方 localesTargets 的处理保持一致）。
+    include: [...(userConfig.io?.include ?? DEFAULT_IO.include)],
+    exclude: [...(userConfig.io?.exclude ?? DEFAULT_IO.exclude)],
     format: userConfig.io?.format ?? DEFAULT_IO.format,
     indent: Math.max(0, userConfig.io?.indent ?? DEFAULT_IO.indent),
     prettify: userConfig.io?.prettify ?? DEFAULT_IO.prettify,
@@ -393,7 +397,10 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
           }
         : { threshold: 0, namespace: 'common' },
     },
-    dynamicKeyAllowlist: userConfig.keys?.dynamicKeyAllowlist ?? DEFAULT_KEYS.dynamicKeyAllowlist,
+    // 防御性拷贝：同 io.include/exclude，避免与 DEFAULT_KEYS 共享数组引用。
+    dynamicKeyAllowlist: [
+      ...(userConfig.keys?.dynamicKeyAllowlist ?? DEFAULT_KEYS.dynamicKeyAllowlist),
+    ],
     skip: userConfig.keys?.skip,
   };
 
@@ -423,7 +430,8 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     io,
     keys,
     extract: {
-      filterPatterns: userConfig.extract?.filterPatterns ?? DEFAULT_EXTRACT.filterPatterns,
+      // 防御性拷贝：同上，避免与 DEFAULT_EXTRACT 共享数组引用。
+      filterPatterns: [...(userConfig.extract?.filterPatterns ?? DEFAULT_EXTRACT.filterPatterns)],
     },
     glossary: {
       file: userConfig.glossary?.file ? path.resolve(root, userConfig.glossary.file) : undefined,

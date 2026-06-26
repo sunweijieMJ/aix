@@ -37,24 +37,28 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     values?: Map<string, string>,
     includeDefaultMessage?: boolean,
     defaultMessage?: string,
+    isGlobalScope?: boolean,
   ): string {
     const key = this.namespace ? `${this.namespace}:${id}` : id;
+    // 组件内用 useTranslation 注入的 t；非组件（模块顶层）作用域没有 t，
+    // 必须用 i18next.t（globalFunctionName），否则产出 `t('...')` 运行时 t is not defined。
+    const fn = isGlobalScope ? this.globalFunctionName : this.translationVarName;
 
     if (values && values.size > 0) {
       const mapping = this.formatValuesMapping(values);
       if (includeDefaultMessage && defaultMessage) {
         const escaped = JSON.stringify(defaultMessage);
-        return `t('${key}', { defaultValue: ${escaped}, ${this.formatValuesMappingInline(values)} })`;
+        return `${fn}('${key}', { defaultValue: ${escaped}, ${this.formatValuesMappingInline(values)} })`;
       }
-      return `t('${key}', ${mapping})`;
+      return `${fn}('${key}', ${mapping})`;
     }
 
     if (includeDefaultMessage && defaultMessage) {
       const escaped = JSON.stringify(defaultMessage);
-      return `t('${key}', { defaultValue: ${escaped} })`;
+      return `${fn}('${key}', { defaultValue: ${escaped} })`;
     }
 
-    return `t('${key}')`;
+    return `${fn}('${key}')`;
   }
 
   generateJSXComponent(

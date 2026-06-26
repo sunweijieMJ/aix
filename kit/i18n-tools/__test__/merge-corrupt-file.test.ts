@@ -1,0 +1,133 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { MergeProcessor } from '../src/core/MergeProcessor';
+import { LoggerUtils } from '../src/utils/logger';
+import { resolveConfig } from '../src/config/loader';
+import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
+
+/**
+ * 回归：merge 阶段对「损坏的字典/语言文件」必须中止/跳过，绝不在内容未知时覆写。
+ *
+ * - #1 untranslated.json 损坏 → 抛错中止，原文件原样保留（旧实现走 safeLoadJsonFile
+ *   返回 {}，被当空文件，随后 createOrEmptyFile('{}') 静默清空在途译文）。
+ * - #3 桶式 target 语言包某 bucket 损坏 → 跳过该 target 写回，损坏文件原样保留
+ *   （与扁平路径 updateFlatLanguagePackage 的 `=== null` 中止口径对齐）。
+ */
+describe('MergeProcessor — 损坏文件保护', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-merge-corrupt-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function makeConfig(buckets = false): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...(buckets
+        ? {
+            buckets: {
+              rules: [{ name: 'order', matchKey: (key: string) => key.startsWith('order.') }],
+            },
+          }
+        : {}),
+    };
+    return resolveConfig(user);
+  }
+
+  // ============================== #1 扁平：损坏 untranslated.json ==============================
+
+  it('[#1] untranslated.json 损坏时抛错中止，且原文件不被覆写成 {}', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    // 尾逗号 + 未闭合括号 → 合法 JSON 解析失败
+    const corrupt = '{ "order.foo": { "zh-CN": "你好", "en-US": "Hello", }';
+    const untPath = path.join(localeDir, 'untranslated.json');
+    fs.writeFileSync(untPath, corrupt);
+    fs.writeFileSync(path.join(localeDir, 'translations.json'), '{}');
+
+    const processor = new MergeProcessor(makeConfig(), false);
+    await expect(processor.execute()).rejects.toThrow(/解析失败|JSON/);
+
+    // 关键断言：损坏文件内容原样保留，未被 createOrEmptyFile('{}') 销毁
+    expect(fs.readFileSync(untPath, 'utf-8')).toBe(corrupt);
+  });
+
+  it('[#1] untranslated.json 为空文件时按空处理，不抛错', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(path.join(localeDir, 'untranslated.json'), '   ');
+    fs.writeFileSync(path.join(localeDir, 'translations.json'), '{}');
+
+    const processor = new MergeProcessor(makeConfig(), false);
+    await expect(processor.execute()).resolves.toBeUndefined();
+  });
+
+  // ============================== #3 桶式：损坏 target bucket ==============================
+
+  it('[#3] 桶式 target 某 bucket 损坏时跳过该 target 写回，损坏文件原样保留', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+
+    // 一条「全部 target 已翻译」的条目 → 进入 newlyTranslated，触发 updateLanguagePackage
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ 'order.foo': { 'zh-CN': '你好', 'en-US': 'Hello' } }, null, 2),
+    );
+    fs.writeFileSync(path.join(localeDir, 'translations.json'), '{}');
+
+    // by-locale 布局：<localeDir>/<locale>/<bucket>.json。写一个损坏的 en-US bucket。
+    const enDir = path.join(localeDir, 'en-US');
+    fs.mkdirSync(enDir, { recursive: true });
+    const corruptBucket = path.join(enDir, 'order.json');
+    const corruptContent = '{ "order.bar": "Bar",,, }';
+    fs.writeFileSync(corruptBucket, corruptContent);
+
+    const processor = new MergeProcessor(makeConfig(true), false);
+    // 跳过该 target（不抛错，与扁平路径 return 口径一致）
+    await expect(processor.execute()).resolves.toBeUndefined();
+
+    // 关键断言：损坏 bucket 未被重写
+    expect(fs.readFileSync(corruptBucket, 'utf-8')).toBe(corruptContent);
+    // 报告了损坏错误
+    expect(LoggerUtils.error).toHaveBeenCalledWith(expect.stringMatching(/桶文件解析失败/));
+  });
+
+  it('[#3] 桶式 target 无损坏时正常写回翻译', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ 'order.foo': { 'zh-CN': '你好', 'en-US': 'Hello' } }, null, 2),
+    );
+    fs.writeFileSync(path.join(localeDir, 'translations.json'), '{}');
+
+    const processor = new MergeProcessor(makeConfig(true), false);
+    await expect(processor.execute()).resolves.toBeUndefined();
+
+    // en-US 桶目录下应写出包含该翻译的文件
+    const enDir = path.join(localeDir, 'en-US');
+    const files = fs.existsSync(enDir)
+      ? fs.readdirSync(enDir).filter((f) => f.endsWith('.json'))
+      : [];
+    const merged = files.reduce<Record<string, unknown>>((acc, f) => {
+      return { ...acc, ...JSON.parse(fs.readFileSync(path.join(enDir, f), 'utf-8')) };
+    }, {});
+    expect(JSON.stringify(merged)).toContain('Hello');
+  });
+});

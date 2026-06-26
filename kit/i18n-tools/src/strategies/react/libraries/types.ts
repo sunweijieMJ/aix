@@ -46,6 +46,9 @@ export interface ReactI18nLibrary extends BaseI18nLibrary {
     values?: Map<string, string>,
     includeDefaultMessage?: boolean,
     defaultMessage?: string,
+    // 是否处于非组件（模块顶层）作用域。react-i18next 此时须用 globalFunctionName
+    // （i18next.t），因为没有 useTranslation 注入的 t；组件内仍用 t。
+    isGlobalScope?: boolean,
   ): string;
 
   /**

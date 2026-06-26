@@ -103,7 +103,13 @@ export class IdReuseResolver {
       return this.allowGlobalReuse ? candidates[0] : undefined;
     }
 
-    const sameDirHit = candidates.find((k) => k.startsWith(currentPrefix));
+    // 必须带 separator 边界，否则 `pages.order` 会 startsWith 命中兄弟目录
+    // `pages.orderDetail.xxx`，把 order 目录的文案误复用到 orderDetail 的历史 key。
+    // 与下方 commonHit 的边界写法保持一致。
+    const dirSep = this.config.keys.separator;
+    const sameDirHit = candidates.find(
+      (k) => k === currentPrefix || k.startsWith(`${currentPrefix}${dirSep}`),
+    );
     if (sameDirHit) return sameDirHit;
 
     // 已被提升到 common 的 key：跨目录可见，避免新分配产生 _N 后缀

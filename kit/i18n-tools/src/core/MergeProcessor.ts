@@ -76,11 +76,22 @@ export class MergeProcessor extends FileProcessor {
       LoggerUtils.error(`❌ 待翻译文件不存在: ${filePath}`);
       return null;
     }
-    // safeLoadJsonFile 内部已吞掉 JSON 解析与 IO 异常并返回 null/默认值，
-    // 不会向上抛——历史上外层包裹的 try/catch 是死路径，已移除。
-    return FileUtils.safeLoadJsonFile<Translations>(filePath, {
-      errorMessage: '读取待翻译文件失败',
-    });
+    // 必须区分「损坏」与「空/缺失」：不能用 safeLoadJsonFile，因为它对解析失败
+    // 返回默认值 {}（而非 null），会让本文件被当成空文件继续——下游
+    // updateUntranslatedFile 随即用 '{}' 覆写、销毁在途译文（含已填/已翻译的
+    // target 值，pick 无法重生成）。这里有内容却解析失败时直接抛错中止 merge，
+    // 与 LanguageFileManager.readLocaleFile 的 null 语义、PruneProcessor 的中止
+    // 逻辑保持一致（防数据丢失/误判）。
+    const content = fs.readFileSync(filePath, 'utf-8');
+    if (content.trim() === '') return {};
+    const parsed = FileUtils.safeParseJson(content) as Translations | null;
+    if (parsed === null) {
+      throw new Error(
+        `待翻译文件解析失败（JSON 格式错误）: ${filePath}\n` +
+          '👉 为防止销毁在途翻译数据，已中止 merge。请修复该文件的 JSON 格式后重试。',
+      );
+    }
+    return parsed;
   }
 
   private loadExistingTranslations(filePath: string): Translations {
@@ -284,6 +295,22 @@ export class MergeProcessor extends FileProcessor {
 
   private updateBucketedLanguagePackage(newlyTranslated: Translations, target: string): void {
     const sourceLocale = this.config.locales.source;
+
+    // 损坏即中止：与扁平路径 updateFlatLanguagePackage 的 `=== null` 守卫对齐。
+    // 桶式读取默认 silent 降级（损坏当 {}），若不拦截，损坏 bucket 会在重写时被
+    // 静默丢弃。检测到损坏则跳过该 target，不做任何写回。
+    const corruptFile = LanguageFileManager.findCorruptBucketFile(
+      this.config,
+      this.isCustom,
+      target,
+    );
+    if (corruptFile) {
+      LoggerUtils.error(`❌ 目标语言桶文件解析失败（JSON 格式错误）: ${corruptFile}`);
+      LoggerUtils.error(
+        '👉 为防止数据丢失，本次不会更新该 target 的桶式语言包。请检查 JSON 格式。',
+      );
+      return;
+    }
 
     // 读取现有 target locale 数据
     const { flat: targetMessages } = LanguageFileManager.readBucketedLocaleWithBucketMap(
