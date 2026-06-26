@@ -104,6 +104,15 @@ export class TranslateProcessor extends FileProcessor {
       failedBatches: allFailedBatches,
       targets,
     });
+
+    // 全部批次失败时抛错（非零退出），与 restore（failedFiles>0）/ doctor（CI error>0）对齐，
+    // 避免 CI 把「所有翻译都失败」误判为成功（Bug B6）。部分失败（仍有成功）不抛错，
+    // 保留断点续翻设计——失败明细已落 RunReport，重跑会继续翻译剩余条目。
+    if (allFailedBatches.length > 0 && allSuccessBatches === 0) {
+      throw new Error(
+        `翻译全部 ${allFailedBatches.length} 个批次均失败（0 个成功），已中止。详见 RunReport 失败明细。`,
+      );
+    }
   }
 
   /**

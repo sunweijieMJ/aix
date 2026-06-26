@@ -1,7 +1,7 @@
 import fs from 'fs';
 import ts from 'typescript';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
-import { ReactImportManager } from './ReactImportManager';
+import { ReactImportManager, HOC_CLASS_SUFFIX } from './ReactImportManager';
 import { ReactTextExtractor } from './ReactTextExtractor';
 import type { MessageInfo, TransformContext, LocaleMap } from '../../utils/types';
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
@@ -58,6 +58,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       hasChanges: false,
       sourceFile,
       componentNameMap: new Map(),
+      exportedHocInnerNames: new Set(),
     };
 
     // 提取 defineMessages 中的消息定义
@@ -178,6 +179,16 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           const wrappedComponent = library.getHOCWrappedComponent(node.initializer);
           if (wrappedComponent) {
             context.componentNameMap.set(node.name.text, wrappedComponent);
+            // 类组件 HOC 约定：内部类名 = 原名 + 'WithOutIntl'。若该 HOC 导出语句带 export，
+            // 记录内部类名，供 unwrapHOC 把类改回原名时恢复 export（Bug B3）。
+            if (
+              wrappedComponent === node.name.text + HOC_CLASS_SUFFIX &&
+              ts.isVariableDeclarationList(node.parent) &&
+              ts.isVariableStatement(node.parent.parent) &&
+              node.parent.parent.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+            ) {
+              context.exportedHocInnerNames!.add(wrappedComponent);
+            }
           }
         }
       }

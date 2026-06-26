@@ -5,6 +5,13 @@ import { ExtractedString, TransformContext } from '../../utils/types';
 import type { ReactI18nLibrary } from './libraries';
 
 /**
+ * 类组件 HOC 注入时给内部类附加的后缀：`原类名 + WithOutIntl`。
+ * inject（ReactComponentInjector）与 restore（unwrapHOC / 预备遍历）必须共用同一约定，
+ * 否则两端命名不一致会导致 restore 无法还原类名 + 丢失 export（Bug B3）。
+ */
+export const HOC_CLASS_SUFFIX = 'WithOutIntl';
+
+/**
  * 管理i18n转换中所需的import语句和相关代码
  */
 export class ReactImportManager implements IImportManager {
@@ -108,17 +115,34 @@ export class ReactImportManager implements IImportManager {
       }
     }
 
-    // case 3: class _Comp ... (通常由HOC引入)
-    if (ts.isClassDeclaration(node) && node.name && node.name.text.startsWith('_')) {
-      const newName = node.name.text.substring(1);
-      return ts.factory.updateClassDeclaration(
-        node,
-        node.modifiers,
-        ts.factory.createIdentifier(newName),
-        node.typeParameters,
-        node.heritageClauses,
-        node.members,
-      );
+    // case 3: 类组件 HOC 把原类改名为 `原名 + WithOutIntl`（或旧约定 `_原名`），还原回原名。
+    if (ts.isClassDeclaration(node) && node.name) {
+      const innerName = node.name.text;
+      let originalName: string | undefined;
+      if (innerName.endsWith(HOC_CLASS_SUFFIX) && innerName.length > HOC_CLASS_SUFFIX.length) {
+        originalName = innerName.slice(0, -HOC_CLASS_SUFFIX.length);
+      } else if (innerName.startsWith('_')) {
+        originalName = innerName.substring(1);
+      }
+
+      if (originalName) {
+        // inject 时把 export 从类移到了 HOC 导出语句（export const X = HOC(XWithOutIntl)）。
+        // case 2 删除该导出语句后，若原本带 export，需把 export 还给类，否则模块对外 API 丢失。
+        const reExport = context.exportedHocInnerNames?.has(innerName);
+        const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+        const modifiers =
+          reExport && !hasExport
+            ? [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword), ...(node.modifiers ?? [])]
+            : node.modifiers;
+        return ts.factory.updateClassDeclaration(
+          node,
+          modifiers,
+          ts.factory.createIdentifier(originalName),
+          node.typeParameters,
+          node.heritageClauses,
+          node.members,
+        );
+      }
     }
 
     return node;
@@ -136,6 +160,11 @@ export class ReactImportManager implements IImportManager {
       const tagName = node.tagName;
       if (ts.isIdentifier(tagName) && context.componentNameMap.has(tagName.text)) {
         const newName = context.componentNameMap.get(tagName.text)!;
+        // 类组件 HOC：内部类名是 `公共名 + WithOutIntl` 的人造名，restore 会把内部类改回公共名，
+        // 故 JSX 用法应保持公共名不动；只有函数组件 HOC（内部名 ≠ 公共名）才需要把用法改名到内部名。
+        if (newName === tagName.text + HOC_CLASS_SUFFIX) {
+          return node;
+        }
         const newTagName = ts.factory.createIdentifier(newName);
 
         if (ts.isJsxOpeningElement(node)) {

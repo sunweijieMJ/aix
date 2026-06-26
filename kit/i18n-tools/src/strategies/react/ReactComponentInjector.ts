@@ -2,7 +2,7 @@ import type { IComponentInjector } from '../../adapters/FrameworkAdapter';
 import ts from 'typescript';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { ReactASTUtils } from './react-ast-utils';
-import type { ReactImportManager } from './ReactImportManager';
+import { type ReactImportManager, HOC_CLASS_SUFFIX } from './ReactImportManager';
 import type { ReactI18nLibrary } from './libraries';
 
 interface Transformation {
@@ -249,7 +249,7 @@ export class ReactComponentInjector implements IComponentInjector {
 
     // 4. 用 HOC 包裹组件
     const exportModifier = classNode.modifiers?.find((m) => m.kind === ts.SyntaxKind.ExportKeyword);
-    const tempClassName = `${className}WithOutIntl`;
+    const tempClassName = `${className}${HOC_CLASS_SUFFIX}`;
 
     if (classNode.name) {
       if (exportModifier) {

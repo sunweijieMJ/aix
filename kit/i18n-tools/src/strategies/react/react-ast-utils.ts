@@ -101,13 +101,56 @@ export class ReactASTUtils {
         ts.isArrowFunction(current) ||
         ts.isFunctionExpression(current)
       ) {
-        if (ReactASTUtils.isFunctionComponent(current)) {
+        // 仅当该函数是注入器（getComponentInfo）真正会注入 hook 的组件时才判 'function'。
+        // 否则（如模块顶层小写 renderXxx 这类返回 JSX 的工具函数）继续向上walk：
+        // - 若被某个真组件包裹 → 命中外层组件返回 'function'，裸 t() 经闭包可用；
+        // - 若一路到顶都不是组件 → 落到 'other'，由 import 管理器注入全局 import { t }，
+        //   避免产出引用未声明 t() 的代码（Bug B4）。
+        if (
+          ReactASTUtils.isFunctionComponent(current) &&
+          ReactASTUtils.isInjectableComponentFunction(current)
+        ) {
           return 'function';
         }
       }
       current = current.parent;
     }
     return 'other';
+  }
+
+  /**
+   * 判断一个函数是否会被 ReactComponentInjector 当作组件注入 hook。
+   * 必须与 getComponentInfo 的接受条件保持一致：
+   * - 命名函数声明：PascalCase 名
+   * - 箭头/函数表达式：绑定到 PascalCase 变量（含 forwardRef/memo 包裹），或匿名默认导出
+   */
+  static isInjectableComponentFunction(
+    func: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
+  ): boolean {
+    if (ts.isFunctionDeclaration(func)) {
+      return !!func.name && ReactASTUtils.isComponentName(func.name.text);
+    }
+
+    let host: ts.Node | undefined = func.parent;
+    // forwardRef/memo(() => …) → 取调用表达式的父级作为绑定宿主
+    if (
+      host &&
+      ts.isCallExpression(host) &&
+      ts.isIdentifier(host.expression) &&
+      ['forwardRef', 'memo'].includes(host.expression.text)
+    ) {
+      host = host.parent;
+    }
+    if (host) {
+      if (ts.isVariableDeclaration(host) && ts.isIdentifier(host.name)) {
+        return ReactASTUtils.isComponentName(host.name.text);
+      }
+      // export default (() => …)：injector 作为 DefaultExportedComponent 注入
+      if (ts.isExportAssignment(host)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   static isClassComponent(node: ts.ClassDeclaration): boolean {
