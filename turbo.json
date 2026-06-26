@@ -4,7 +4,8 @@
     "**/.env.*local",
     "internal/typescript-config/*.json",
     "tsconfig.json",
-    "typings/**/*.d.ts"
+    "typings/**/*.d.ts",
+    "pnpm-workspace.yaml"
   ],
   "remoteCache": {
     "signature": true
@@ -45,17 +46,10 @@
     },
     "lint": {
       "inputs": [
-        "src/**/*.{ts,tsx,js,jsx,vue}",
-        "src/**/*.{css,scss,sass,less}",
-        "stories/**/*.{ts,tsx,vue}",
-        "__test__/**/*.{ts,tsx,vue}",
-        "eslint.config.ts",
+        "$TURBO_DEFAULT$",
         "../../eslint.config.ts",
         "../../internal/eslint-config/**/*.js",
-        "stylelint.config.ts",
-        "../../internal/stylelint-config/**",
-        "package.json",
-        "tsconfig.json",
+        "../../internal/stylelint-config/*.js",
         "../../tsconfig.json"
       ],
       "outputs": [],
@@ -74,7 +68,6 @@
         "src/**/*.{ts,tsx,js,jsx,vue}",
         "__test__/**/*.{ts,tsx,js,jsx,vue}",
         "vitest.config.ts",
-        "*.setup.ts",
         "../../internal/vitest-config/*.{js,ts}",
         "package.json"
       ],
