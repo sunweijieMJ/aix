@@ -127,11 +127,33 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // restore 必须对称清理，否则 restore 后 t 不再被使用，遗留的 import
     // 会触发 ESLint `no-unused-vars` / TS unused warning。
     // 仅在 SFC 的 script/scriptSetup 范围内清理（template/style 不会含 import 语句）。
-    if (tImport) {
+    //
+    // 守卫：仅当 t 在还原后的 script 中已无任何引用时才删除——若存在「locale 查不到、未被
+    // 还原」的存活 t() 调用，t 仍被使用，删 import 会产出未定义 t（TS2304）。与 React 端
+    // ReactRestoreTransformer.finalizeTImport 对称。此处 hook 声明已在上一步清理，残留 t()
+    // 即真·存活引用。
+    if (tImport && this.isTImportUnusedInScript(restoredCode, tImport)) {
       restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport);
     }
 
     return restoredCode;
+  }
+
+  /**
+   * 判断还原后的 SFC 中，tImport 的 `t` 是否在 script 块里已无引用。
+   *
+   * .vue 整体不是合法 TS，无法直接解析；取 script/scriptSetup 块内容合并后（Vue3 SFC 多
+   * script 共享模块作用域）交给 CommonASTUtils.isImportedNameUnused 判定。无 script 块或无
+   * 该 import 时返回 false（无可清理）。
+   */
+  private static isTImportUnusedInScript(restoredCode: string, tImport: string): boolean {
+    const { descriptor } = parseSFC(restoredCode);
+    const scriptContent = [descriptor.script, descriptor.scriptSetup]
+      .filter((b): b is NonNullable<typeof b> => Boolean(b))
+      .map((b) => b.content)
+      .join('\n');
+    if (!scriptContent.trim()) return false;
+    return CommonASTUtils.isImportedNameUnused(scriptContent, 'sfc.ts', tImport, 't');
   }
 
   /**

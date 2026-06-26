@@ -82,4 +82,55 @@ describe('React generate 端到端（#1 import + #2 替换对称）', () => {
     expect(out).not.toMatch(/共 \{itemCount\} 项/);
     expect(out).toContain('<Trans');
   });
+
+  describe('注入收尾：清理被 useTranslation 遮蔽的 tImport t 死导入', () => {
+    it('组件内已用 tImport t + 注入 useTranslation → 删除未使用的 import { t }', async () => {
+      const out = await generate(
+        'shadowed.tsx',
+        `import { t } from '@/plugins/locale';\n` +
+          `export default function C() {\n` +
+          `  return <div title="新增标题">{t('existing.key')}</div>;\n` +
+          `}\n`,
+      );
+      // 注入了 useTranslation（为新增属性提供 t）
+      expect(out).toMatch(/const\s*\{\s*t\s*\}\s*=\s*useTranslation\(\)/);
+      // 关键：原 import { t } from '@/plugins/locale' 已被遮蔽 → 删除，避免 no-unused-vars
+      expect(out).not.toMatch(/from\s*['"]@\/plugins\/locale['"]/);
+      // 已有 i18n 调用原样保留（解析到注入的局部 t，运行时同一 i18next 实例不变）
+      expect(out).toContain("t('existing.key')");
+      // 新增属性被替换
+      expect(out).toMatch(/title=\{t\('views\.Demo\.k0'\)\}/);
+    });
+
+    it('模块级（组件外）仍使用 tImport t → 保留 import（不误删）', async () => {
+      const out = await generate(
+        'module-use.tsx',
+        `import { t } from '@/plugins/locale';\n` +
+          `const MODULE_LABEL = t('mod.label');\n` +
+          `export default function C() {\n` +
+          `  return <div title="新增标题">{MODULE_LABEL}</div>;\n` +
+          `}\n`,
+      );
+      expect(out).toMatch(/const\s*\{\s*t\s*\}\s*=\s*useTranslation\(\)/);
+      // 模块级 t('mod.label') 未被遮蔽 → import 必须保留
+      expect(out).toMatch(/import\s*\{\s*t\s*\}\s*from\s*['"]@\/plugins\/locale['"]/);
+      expect(out).toContain("t('mod.label')");
+    });
+
+    it('重命名注入（理论上别名 t）不在本工具范围；标准注入下别名 hook 不应误删', async () => {
+      // 重命名导入 `t as translate`：组件注入的 const { t } 不会遮蔽 translate → 保留
+      const out = await generate(
+        'renamed.tsx',
+        `import { t as translate } from '@/plugins/locale';\n` +
+          `export default function C() {\n` +
+          `  return <div title="新增标题">{translate('existing.key')}</div>;\n` +
+          `}\n`,
+      );
+      // translate 仍被使用，import 保留
+      expect(out).toMatch(
+        /import\s*\{\s*t\s+as\s+translate\s*\}\s*from\s*['"]@\/plugins\/locale['"]/,
+      );
+      expect(out).toContain("translate('existing.key')");
+    });
+  });
 });

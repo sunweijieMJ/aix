@@ -85,7 +85,28 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
     result.dispose();
 
+    // 收尾：删除 restore 后已无引用的 tImport `t` 导入（与 generate 侧 finalizeImports 对称）。
+    // 保守守卫：仅当 t 在还原后的整文件中已无任何引用时删除——若存在「locale 查不到、未被还原」
+    // 的存活 t() 调用，t 仍被使用，必须保留 import，否则产出 `Cannot find name 't'`（TS2304）。
+    transformedCode = this.finalizeTImport(transformedCode, filePath);
+
     return transformedCode;
+  }
+
+  /**
+   * restore 收尾：tImport 的全局函数 `t` 在还原后若已无任何引用，则删除其 import
+   * （独占则删整条，混合则仅摘 t、保留同路径其他命名）。
+   *
+   * 用 isImportedNameUnused 守卫：还原后 hook 声明已被清理、不存在遮蔽，故「仍有 t 引用」
+   * 必然是存活的 t() 调用（locale 查不到、未被还原），此时必须保留 import。与 generate 侧
+   * ReactImportManager.finalizeImports 对称——一个防死导入，一个防误删仍用的导入。
+   */
+  private finalizeTImport(code: string, filePath: string): string {
+    const funcName = this.library.globalFunctionName.split('.')[0]!;
+    if (!CommonASTUtils.isImportedNameUnused(code, filePath, this.tImport, funcName)) {
+      return code;
+    }
+    return CommonASTUtils.removeNamedImports(code, (m) => m === this.tImport, [funcName]);
   }
 
   /**
@@ -171,7 +192,6 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
    */
   private createTransformer(context: TransformContext): ts.TransformerFactory<ts.SourceFile> {
     const library = this.library;
-    const tImport = this.tImport;
 
     // 预备遍历，收集 HOC 组件的名称映射
     function prepass(node: ts.Node) {
@@ -305,9 +325,9 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             }
           }
 
-          // 清理导入
+          // 清理导入（仅整条移除 i18n 库 import；tImport 的 t 延后到收尾 pass 带守卫处理）
           if (ts.isImportDeclaration(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupImports(currentNode, tImport, library);
+            const cleanedNode = ReactImportManager.cleanupImports(currentNode, library);
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;

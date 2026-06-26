@@ -78,6 +78,13 @@ export class ReactTransformer implements ITransformer {
       this.library,
     );
 
+    // 注入收尾：清理被注入的 useTranslation t 遮蔽后变成未使用的 tImport `t` 死导入
+    // （必须在 inject 之后；遮蔽由注入产生）。Vue 端无此步——其 <script setup> 走模块
+    // import 而非注入 hook，不产生同名遮蔽。
+    if (this.importManager.finalizeImports) {
+      transformedCode = this.importManager.finalizeImports(transformedCode, filePath);
+    }
+
     return transformedCode;
   }
 

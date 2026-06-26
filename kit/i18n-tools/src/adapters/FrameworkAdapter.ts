@@ -84,6 +84,12 @@ export interface IComponentInjector {
 export interface IImportManager {
   handleGlobalImports(code: string, fileStrings: ExtractedString[], filePath?: string): string;
   addI18nImports(code: string, imports: string[]): string;
+  /**
+   * 全部注入完成后的收尾清理（可选）。React 端用于删除「被注入的 useTranslation t 遮蔽后
+   * 变成未使用」的 tImport `import { t }`，避免产出 ESLint no-unused-vars 的死导入。
+   * 必须在 componentInjector.inject 之后调用（遮蔽由注入产生）。
+   */
+  finalizeImports?(code: string, filePath: string): string;
 }
 
 /**

@@ -76,6 +76,26 @@ export class ReactImportManager implements IImportManager {
     return CommonASTUtils.mergeNamedImport(code, this.library.packageName, imports);
   }
 
+  /**
+   * 注入收尾：删除被 useTranslation 注入遮蔽后变成未使用的 tImport `t` 导入。
+   *
+   * 场景：组件原本 `import { t } from '@/plugins/locale'` 并在组件内用 t(...)；本工具
+   * 给组件注入 `const { t } = useTranslation()` 后，组件内的 t 全部解析到注入的局部 t，
+   * 原 import 沦为死导入（ESLint no-unused-vars，过不了 lint）。这里在确认 t 已无未遮蔽
+   * 引用后精准摘除（与 Vue restore 侧 cleanupPluginLocaleImport 同构）。
+   *
+   * 保守：若模块级（组件外）仍有 t 使用，isImportedNameUnused 返回 false，导入保留。
+   */
+  finalizeImports(code: string, filePath: string): string {
+    const funcName = this.library.globalFunctionName.split('.')[0]!;
+    if (!CommonASTUtils.isImportedNameUnused(code, filePath, this.tImport, funcName)) {
+      return code;
+    }
+    return CommonASTUtils.removeNamedImports(code, (moduleName) => moduleName === this.tImport, [
+      funcName,
+    ]);
+  }
+
   // ==================== 清理 AST 节点 ====================
 
   /**
@@ -268,65 +288,23 @@ export class ReactImportManager implements IImportManager {
   }
 
   /**
-   * 清理导入语句 (AST)
+   * 清理 i18n 库导入 (AST)：restore 时整条移除 `import ... from '<library.packageName>'`
+   * （react-i18next / react-intl 等工具注入的库导入，还原后必然无用）。
    *
-   * tImport 路径下：仅摘除工具注入的全局函数命名（library.globalFunctionName 的根标识符），
-   * 保留用户在同一路径下自有的其他命名导入。
-   * Why 精准：tImport 可能是用户的通用 utility 路径（如 `@/plugins/locale`），
-   * generate 阶段以 mergeNamedImport 把全局函数合并到现有 import，restore 时若整条删除
-   * 会把用户原有的其他命名导入也一并清掉，破坏编译。与 VueRestoreTransformer
-   * 的 cleanupPluginLocaleImport 行为对齐。
+   * 注意：tImport（如 `@/plugins/locale`）下的全局函数 `t` **不在此处理**。它可能是用户原有、
+   * 且仍被「locale 查不到而未被还原的存活 t() 调用」引用——若在逐节点遍历时无条件删除，会删掉
+   * 仍被使用的 import，产出 `Cannot find name 't'`（TS2304）。因此 tImport 的 `t` 清理延后到
+   * 「整文件还原完成、确认 t 已无任何引用」的收尾 pass（见 ReactRestoreTransformer.transform 末尾
+   * 的 finalizeTImport + CommonASTUtils.isImportedNameUnused 守卫），与 generate 侧
+   * ReactImportManager.finalizeImports 对称。
    */
-  static cleanupImports(
-    node: ts.ImportDeclaration,
-    tImport: string,
-    library: ReactI18nLibrary,
-  ): ts.Node {
+  static cleanupImports(node: ts.ImportDeclaration, library: ReactI18nLibrary): ts.Node {
     if (!node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier)) {
       return node;
     }
-
-    const moduleName = node.moduleSpecifier.text;
-
-    // 清理 i18n 库相关导入
-    if (moduleName === library.packageName) {
+    if (node.moduleSpecifier.text === library.packageName) {
       return ts.factory.createNotEmittedStatement(node);
     }
-
-    // 清理工具注入的全局函数 import：精准摘除 funcName，保留同路径其他命名
-    if (moduleName === tImport) {
-      const funcName = library.globalFunctionName.split('.')[0]!;
-      const namedBindings = node.importClause?.namedBindings;
-      if (!namedBindings || !ts.isNamedImports(namedBindings)) {
-        // 副作用 import / namespace import / default-only：不归工具管，原样保留
-        return node;
-      }
-      const remaining = namedBindings.elements.filter(
-        (el) => (el.propertyName ?? el.name).text !== funcName,
-      );
-      if (remaining.length === namedBindings.elements.length) {
-        // 不含目标命名，原样保留
-        return node;
-      }
-      if (remaining.length === 0 && !node.importClause?.name) {
-        return ts.factory.createNotEmittedStatement(node);
-      }
-      const newNamedImports = ts.factory.updateNamedImports(namedBindings, remaining);
-      const newImportClause = ts.factory.updateImportClause(
-        node.importClause!,
-        node.importClause!.isTypeOnly,
-        node.importClause!.name,
-        newNamedImports,
-      );
-      return ts.factory.updateImportDeclaration(
-        node,
-        node.modifiers,
-        newImportClause,
-        node.moduleSpecifier,
-        node.attributes,
-      );
-    }
-
     return node;
   }
 

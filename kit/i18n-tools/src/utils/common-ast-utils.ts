@@ -1525,6 +1525,148 @@ export class CommonASTUtils {
   }
 
   /**
+   * 判断「从 moduleName 具名导入的 importedName」在 code 中是否已无有效引用——
+   * 即所有同名标识符引用都被某个内层函数作用域的局部声明（如
+   * `const { t } = useTranslation()` / `const { t } = this.props`）遮蔽，导入沦为死导入。
+   *
+   * 用途：React generate 给组件注入 useTranslation 的 t 后，组件内原先引用 tImport 的 t
+   * 全被遮蔽，原 `import { t } from '@/plugins/locale'` 变成未使用导入（ESLint
+   * no-unused-vars，过不了 lint）。删除前必须确认「确实零未遮蔽引用」，避免误删模块级
+   * （组件外）仍在使用的导入。
+   *
+   * 保守语义：仅当「导入存在」且「不存在任何未被遮蔽的值引用」时返回 true；任一引用未被
+   * 遮蔽即返回 false（宁可漏删，不可误删）。重命名导入（`t as foo`）按本地名 foo 判定。
+   */
+  static isImportedNameUnused(
+    code: string,
+    filePath: string,
+    moduleName: string,
+    importedName: string,
+  ): boolean {
+    const sf = CommonASTUtils.parseSourceFile(code, filePath);
+
+    // 1. 找到 `import { ...importedName... } from moduleName`，取其本地名（处理 `as` 重命名）
+    let localName: string | undefined;
+    const findImport = (n: ts.Node): void => {
+      if (
+        ts.isImportDeclaration(n) &&
+        ts.isStringLiteral(n.moduleSpecifier) &&
+        n.moduleSpecifier.text === moduleName
+      ) {
+        const nb = n.importClause?.namedBindings;
+        if (nb && ts.isNamedImports(nb)) {
+          for (const el of nb.elements) {
+            const original = el.propertyName?.text ?? el.name.text;
+            if (original === importedName) localName = el.name.text;
+          }
+        }
+      }
+      ts.forEachChild(n, findImport);
+    };
+    findImport(sf);
+    if (!localName) return false;
+
+    // 2. 扫描所有「以本地名作为值引用」的标识符，逐个判断是否被内层局部声明遮蔽
+    const name = localName;
+    let usedUnshadowed = false;
+    const visit = (n: ts.Node): void => {
+      if (usedUnshadowed) return;
+      if (
+        ts.isIdentifier(n) &&
+        n.text === name &&
+        CommonASTUtils.isIdentifierValueReference(n) &&
+        !CommonASTUtils.hasEnclosingLocalDeclaration(n, name)
+      ) {
+        usedUnshadowed = true;
+        return;
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+    return !usedUnshadowed;
+  }
+
+  /** 标识符是否处于「值引用」位置（排除声明名 / 绑定名 / 属性名 / 对象 key / import 说明符）。 */
+  private static isIdentifierValueReference(id: ts.Identifier): boolean {
+    const p = id.parent;
+    if (!p) return false;
+    if (ts.isImportSpecifier(p) || ts.isImportClause(p)) return false;
+    if (ts.isBindingElement(p) && (p.name === id || p.propertyName === id)) return false;
+    if (ts.isVariableDeclaration(p) && p.name === id) return false;
+    if (ts.isParameter(p) && p.name === id) return false;
+    // 属性访问名（x.t）/ 限定名右侧 / 对象字面量 key / 各类成员名：非对该绑定的引用
+    if (ts.isPropertyAccessExpression(p) && p.name === id) return false;
+    if (ts.isQualifiedName(p) && p.right === id) return false;
+    if (ts.isPropertyAssignment(p) && p.name === id) return false;
+    if (ts.isPropertySignature(p) && p.name === id) return false;
+    if (ts.isPropertyDeclaration(p) && p.name === id) return false;
+    if (ts.isMethodDeclaration(p) && p.name === id) return false;
+    // 注：对象字面量简写 `{ t }`（ShorthandPropertyAssignment）是对 t 的真实值引用，保留为引用
+    return true;
+  }
+
+  /** 引用 ref 是否被某个祖先函数作用域的局部声明（含参数）遮蔽了名为 name 的绑定。 */
+  private static hasEnclosingLocalDeclaration(ref: ts.Node, name: string): boolean {
+    let cur: ts.Node | undefined = ref.parent;
+    while (cur) {
+      if (CommonASTUtils.isFunctionLikeScope(cur) && CommonASTUtils.scopeDeclaresLocal(cur, name)) {
+        return true;
+      }
+      cur = cur.parent;
+    }
+    return false;
+  }
+
+  private static isFunctionLikeScope(n: ts.Node): boolean {
+    return (
+      ts.isFunctionDeclaration(n) ||
+      ts.isFunctionExpression(n) ||
+      ts.isArrowFunction(n) ||
+      ts.isMethodDeclaration(n) ||
+      ts.isConstructorDeclaration(n) ||
+      ts.isGetAccessorDeclaration(n) ||
+      ts.isSetAccessorDeclaration(n)
+    );
+  }
+
+  /** 函数作用域（其参数 + 直属 body，不下钻内层函数）是否声明了名为 name 的局部绑定。 */
+  private static scopeDeclaresLocal(fn: ts.Node, name: string): boolean {
+    const decl = fn as ts.FunctionLikeDeclaration;
+    for (const p of decl.parameters ?? []) {
+      if (CommonASTUtils.bindingDeclaresName(p.name, name)) return true;
+    }
+    const body = decl.body;
+    if (!body) return false;
+    let found = false;
+    const walk = (n: ts.Node): void => {
+      if (found) return;
+      // 不下钻到内层函数：内层的局部声明不影响当前作用域对 name 的解析
+      if (n !== body && CommonASTUtils.isFunctionLikeScope(n)) return;
+      if (ts.isVariableDeclaration(n) && CommonASTUtils.bindingDeclaresName(n.name, name)) {
+        found = true;
+        return;
+      }
+      ts.forEachChild(n, walk);
+    };
+    walk(body);
+    return found;
+  }
+
+  /** BindingName（标识符 / 对象解构 / 数组解构）是否绑定了名为 name 的局部变量。 */
+  private static bindingDeclaresName(binding: ts.BindingName, name: string): boolean {
+    if (ts.isIdentifier(binding)) return binding.text === name;
+    if (ts.isObjectBindingPattern(binding)) {
+      return binding.elements.some((el) => CommonASTUtils.bindingDeclaresName(el.name, name));
+    }
+    if (ts.isArrayBindingPattern(binding)) {
+      return binding.elements.some(
+        (el) => ts.isBindingElement(el) && CommonASTUtils.bindingDeclaresName(el.name, name),
+      );
+    }
+    return false;
+  }
+
+  /**
    * 合并/插入命名导入：若代码中已存在 `import { ... } from packageName`，把新 names
    * 并入现有花括号；否则在最后一条 import 之后追加新 import 行。
    *
