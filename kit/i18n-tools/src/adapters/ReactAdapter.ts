@@ -35,6 +35,7 @@ export class ReactAdapter extends FrameworkAdapter {
   private restoreTransformer: ReactRestoreTransformer;
   private componentInjector: ReactComponentInjector;
   private importManager: ReactImportManager;
+  private library: ReturnType<typeof createReactI18nLibrary>;
 
   constructor(
     tImport: string = '@/plugins/locale',
@@ -55,6 +56,7 @@ export class ReactAdapter extends FrameworkAdapter {
     };
     super(config);
 
+    this.library = library;
     this.textExtractor = new ReactTextExtractor(library, options.filterPatterns ?? []);
     this.importManager = new ReactImportManager(tImport, library);
     this.componentInjector = new ReactComponentInjector(library, this.importManager);
@@ -82,5 +84,9 @@ export class ReactAdapter extends FrameworkAdapter {
 
   getImportManager(): IImportManager {
     return this.importManager;
+  }
+
+  getLibrary() {
+    return this.library;
   }
 }

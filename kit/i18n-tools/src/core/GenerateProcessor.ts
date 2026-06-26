@@ -485,7 +485,7 @@ export class GenerateProcessor extends BaseProcessor {
       extractedStrings,
       keyBucketMap,
       this.report,
-      this.adapter?.usesDoubleBracePlaceholders() ?? false,
+      this.adapter?.getLibrary(),
     );
 
     // 阶段 4：格式化是美化步骤，单个失败不影响数据正确性，仅警告。
@@ -559,7 +559,7 @@ export class GenerateProcessor extends BaseProcessor {
       byFile.get(normalized)!.push(s);
     }
 
-    const useDoubleBrace = this.adapter?.usesDoubleBracePlaceholders() ?? false;
+    const library = this.adapter?.getLibrary();
     const localeDelta: Record<string, string> = {};
     for (const item of extractedStrings) {
       if (!item.semanticId) continue;
@@ -567,9 +567,16 @@ export class GenerateProcessor extends BaseProcessor {
       const built =
         item.isTemplateString && item.templateVariables
           ? CommonASTUtils.createMessageWithOptions(raw, item.templateVariables)
-          : { message: raw.replace(/^['"`]|['"`]$/g, '') };
-      const message = useDoubleBrace
-        ? CommonASTUtils.toDoubleBracePlaceholders(built.message)
+          : {
+              message: raw.replace(/^['"`]|['"`]$/g, ''),
+              placeholderMap: new Map<string, string>(),
+            };
+      const message = library
+        ? CommonASTUtils.finalizeLocaleMessage(
+            built.message,
+            built.placeholderMap.values(),
+            library,
+          )
         : built.message;
       // 重复 semanticId 取首次（generateIdsForStrings 已经保证同原文 → 同 key，
       // 不同原文 → 不同 key；这里的 first-wins 是冗余防御）

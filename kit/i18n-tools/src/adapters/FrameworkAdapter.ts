@@ -1,4 +1,5 @@
 import type { ExtractedString, LocaleMap } from '../utils/types';
+import type { BaseI18nLibrary } from '../strategies/base/i18n-library';
 
 /**
  * 框架配置接口
@@ -168,4 +169,9 @@ export abstract class FrameworkAdapter {
    * 获取导入管理器
    */
   abstract getImportManager(): IImportManager;
+
+  /**
+   * 获取底层 i18n 库适配器（用于 locale 值定稿 / 还原：花括号策略、字面量转义）。
+   */
+  abstract getLibrary(): BaseI18nLibrary;
 }

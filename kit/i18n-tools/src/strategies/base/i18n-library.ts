@@ -27,4 +27,19 @@ export interface BaseI18nLibrary {
    * 默认插值（双花括号）不会替换，会原样显示 `{name}`。
    */
   readonly usesDoubleBracePlaceholders: boolean;
+
+  /**
+   * 转义一段「字面量文本」里的花括号，使其在该库运行时被当作普通字符而非插值占位符。
+   *
+   * 仅对**单花括号库**（vue-i18n / react-intl，单 `{` 即插值）需要：
+   *  - vue-i18n： `{` → `{'{'}`、`}` → `{'}'}`（vue-i18n 字面量插值语法）
+   *  - react-intl：`{` → `'{'`、`}` → `'}'`（ICU 引号转义）
+   * 双花括号库（react-i18next / vue-i18next，单 `{` 本就是字面量）为恒等。
+   *
+   * 注意：仅由 finalizeLocaleMessage 对**非占位符**文本段调用，不会碰到真占位符。
+   */
+  escapeLiteralText(text: string): string;
+
+  /** escapeLiteralText 的逆操作，restore 读回 locale 文本时还原字面量花括号。 */
+  unescapeLiteralText(text: string): string;
 }

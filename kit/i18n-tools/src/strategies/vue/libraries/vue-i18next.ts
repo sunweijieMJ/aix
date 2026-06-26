@@ -52,4 +52,13 @@ export class VueI18nextLibrary implements VueI18nLibrary {
   getHookDeclarationCleanupRegex(): RegExp {
     return /const\s*\{\s*t\s*\}\s*=\s*useTranslation\([^)]*\);?\n?/g;
   }
+
+  // 基于 i18next，单 `{` 本就是字面量（插值是双花括号 `{{name}}`），无需转义。
+  escapeLiteralText(text: string): string {
+    return text;
+  }
+
+  unescapeLiteralText(text: string): string {
+    return text;
+  }
 }

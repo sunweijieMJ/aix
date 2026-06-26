@@ -20,7 +20,6 @@ export class CommonASTUtils {
 
   /**
    * 把代码字符串中包裹在引号/反引号/JSX 表达式中的 `\uXXXX` Unicode 转义序列还原回字符。
-   * 之前 React/Vue 的 ImportManager 各有一份几乎相同的实现，此处统一。
    *
    * @param code      源代码文本
    * @param includeJsx 是否包含 JSX 表达式 `{'...'}` 这种括号包裹形式（仅 React 使用）
@@ -826,7 +825,7 @@ export class CommonASTUtils {
       return '';
     }
 
-    let templateText = '`';
+    let inner = '';
     for (const child of children) {
       if (ts.isJsxText(child)) {
         // 必须与 ReactTextExtractor.extractJsxMixedContent 的空白处理逐字一致：
@@ -835,15 +834,14 @@ export class CommonASTUtils {
         // 与提取端产出的 original 不相等，findExactStringNode 的 `=== originalText`
         // 比对失败 → 该 JSX 混合内容被静默漏替换（locale 写了 key 但源码残留中文）。
         if (!child.text.trim()) continue;
-        templateText += child.text.replace(/\s*\n\s*/g, ' ');
+        inner += child.text.replace(/\s*\n\s*/g, ' ');
       } else if (ts.isJsxExpression(child) && child.expression) {
         const expressionText = CommonASTUtils.nodeToText(child.expression, sourceFile);
-        templateText += `\${${expressionText}}`;
+        inner += `\${${expressionText}}`;
       }
     }
-    templateText += '`';
-
-    return templateText;
+    // 整体首尾去空白：与 extractJsxMixedContent 同步（边界换行压成的首尾空格不进 locale）。
+    return '`' + inner.trim() + '`';
   }
 
   /**
@@ -894,9 +892,8 @@ export class CommonASTUtils {
     originalText: string,
     _isTemplateString: boolean,
   ): boolean {
-    // 解码常见 JSON 风格转义（替代之前 `JSON.parse(\`"${str}"\`)` 的兜底匹配）。
-    // 旧实现遇到原文含 `"` 或孤立 `\` 时构造出非法 JSON 字符串，JSON.parse 抛错被
-    // catch 吞掉，导致包含中英混合引号的中文（如 `他说："你好"`）匹配失败。
+    // 逐条解码常见 JSON 风格转义。不用 `JSON.parse(\`"${str}"\`)`：原文含 `"` 或孤立
+    // `\` 时会构造出非法 JSON 串，解析抛错被吞 → 中英混合引号（如 `他说："你好"`）匹配失败。
     const decodeEscapes = (text: string) =>
       text
         // 先处理 \uXXXX，避免被后面的反斜杠规则吃掉
@@ -983,6 +980,40 @@ export class CommonASTUtils {
       new RegExp(`\\{\\{\\s*(${CommonASTUtils.PLACEHOLDER_NAME})\\s*\\}\\}`, 'g'),
       '{$1}',
     );
+  }
+
+  /**
+   * 把内部规范消息（真占位符为单花括号 `{name}`）定稿成某 i18n 库的 locale 写入值。
+   *
+   * 与 toDoubleBracePlaceholders 的盲正则不同，这里**占位符感知**：只有 `placeholderNames`
+   * 里的名字才算真占位符，其余 `{...}` 一律视为源文案里的字面量花括号。由此同时解决两类问题：
+   *  - 双花括号库（react-i18next / vue-i18next）：只把真占位符转 `{{name}}`，字面量 `{x}`
+   *    保持单花括号（i18next 单花括号即字面量），不再误把 `{config}` 这类文本转成插值。
+   *  - 单花括号库（vue-i18n / react-intl）：真占位符保持 `{name}`，字面量花括号经
+   *    `library.escapeLiteralText` 转义（vue-i18n→`{'{'}`，react-intl→ICU `'{'`），
+   *    避免运行时把正文里的 `{大括号}` 当成具名插值。
+   *
+   * restore 时由 `library.unescapeLiteralText` 反向还原。
+   */
+  static finalizeLocaleMessage(
+    message: string,
+    placeholderNames: Iterable<string>,
+    library: { usesDoubleBracePlaceholders: boolean; escapeLiteralText: (text: string) => string },
+  ): string {
+    const names = new Set<string>(placeholderNames);
+    let out = '';
+    let cursor = 0;
+    const tokenRe = /\{([^{}]*)\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = tokenRe.exec(message)) !== null) {
+      // 非真占位符：留在字面量段里，后续随该段一并转义
+      if (!names.has(m[1]!)) continue;
+      out += library.escapeLiteralText(message.slice(cursor, m.index));
+      out += library.usesDoubleBracePlaceholders ? `{{${m[1]}}}` : `{${m[1]}}`;
+      cursor = m.index + m[0]!.length;
+    }
+    out += library.escapeLiteralText(message.slice(cursor));
+    return out;
   }
 
   /**

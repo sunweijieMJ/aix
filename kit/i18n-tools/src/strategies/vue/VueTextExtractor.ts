@@ -10,6 +10,7 @@ import {
   type DirectiveNode,
 } from '@vue/compiler-dom';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
 import type { ExtractedString } from '../../utils/types';
@@ -121,6 +122,12 @@ export class VueTextExtractor extends BaseTextExtractor {
       if (node.type === 1) {
         // ELEMENT
         const elementNode = node as ElementNode;
+
+        // <code> / <pre> 内容是逐字代码 / 预格式文本，跳过整棵子树不提取
+        if (NON_EXTRACTABLE_ELEMENT_TAGS.has((elementNode.tag || '').toLowerCase())) {
+          i++;
+          continue;
+        }
 
         // 提取属性中的文本
         await this.extractFromAttributes(elementNode, extractedStrings, filePath, lineOffset);

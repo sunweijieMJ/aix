@@ -41,4 +41,14 @@ export class VueI18nLibraryImpl implements VueI18nLibrary {
   getHookDeclarationCleanupRegex(): RegExp {
     return /const\s*\{\s*t\s*\}\s*=\s*useI18n\(\);?\n?/g;
   }
+
+  // vue-i18n 单 `{` 即具名插值；字面量花括号用 `{'{'}` / `{'}'}` 转义。
+  // 单次 replace 避免对生成结果里的花括号二次处理。
+  escapeLiteralText(text: string): string {
+    return text.replace(/[{}]/g, (c) => (c === '{' ? "{'{'}" : "{'}'}"));
+  }
+
+  unescapeLiteralText(text: string): string {
+    return text.replace(/\{'\{'\}/g, '{').replace(/\{'\}'\}/g, '}');
+  }
 }

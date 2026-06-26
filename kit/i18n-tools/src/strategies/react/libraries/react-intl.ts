@@ -271,4 +271,14 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     });
     return `{ ${mappings.join(', ')} }`;
   }
+
+  // react-intl 用 ICU，单 `{` 是插值/语法字符。ICU 以单引号转义：`'{'` / `'}'`，
+  // 字面量单引号写成 `''`。（相邻字面量花括号属 ICU 引号的极端边界，不在此覆盖。）
+  escapeLiteralText(text: string): string {
+    return text.replace(/'/g, "''").replace(/[{}]/g, (c) => `'${c}'`);
+  }
+
+  unescapeLiteralText(text: string): string {
+    return text.replace(/'\{'/g, '{').replace(/'\}'/g, '}').replace(/''/g, "'");
+  }
 }

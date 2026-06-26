@@ -27,11 +27,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
     const ext = path.extname(filePath);
 
-    // i18next 系库（vue-i18next）locale 用双花括号占位符，先归一回单花括号，
-    // 复用既有的单花括号还原逻辑（占位符替换正则按 `{name}` 匹配）。
-    const map = this.library.usesDoubleBracePlaceholders
-      ? VueRestoreTransformer.normalizeLocaleMap(localeMap)
-      : localeMap;
+    // locale 值归一：i18next 系库双花括号占位符 → 单花括号；并把写盘时转义的
+    // 字面量花括号（vue-i18n 的 `{'{'}` 等）还原回普通 `{` `}`。
+    const map = VueRestoreTransformer.normalizeLocaleMap(localeMap, this.library);
 
     // .ts/.js 文件不是 Vue SFC，直接用 script 还原逻辑
     if (ext === '.ts' || ext === '.js') {
@@ -46,12 +44,21 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     return VueRestoreTransformer.restoreVueFile(sourceText, map, this.library, this.tImport);
   }
 
-  /** 把 locale 文本中的双花括号占位符归一回单花括号（i18next 系库 restore 用） */
-  private static normalizeLocaleMap(localeMap: LocaleMap): LocaleMap {
+  /**
+   * locale 值归一：双花括号占位符 → 单花括号（i18next 系库），再 unescape 字面量花括号。
+   * 与写盘的 finalizeLocaleMessage 对称。
+   */
+  private static normalizeLocaleMap(localeMap: LocaleMap, library: VueI18nLibrary): LocaleMap {
     const result: LocaleMap = {};
     for (const [key, value] of Object.entries(localeMap)) {
-      result[key] =
-        typeof value === 'string' ? CommonASTUtils.toSingleBracePlaceholders(value) : value;
+      if (typeof value !== 'string') {
+        result[key] = value;
+        continue;
+      }
+      const single = library.usesDoubleBracePlaceholders
+        ? CommonASTUtils.toSingleBracePlaceholders(value)
+        : value;
+      result[key] = library.unescapeLiteralText(single);
     }
     return result;
   }
