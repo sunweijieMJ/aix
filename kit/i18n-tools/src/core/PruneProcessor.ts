@@ -46,8 +46,20 @@ export class PruneProcessor extends BaseProcessor {
   private async run(): Promise<void> {
     const usedKeys = collectUsedKeys(this.config, this.adapter);
     const sourceLocale = this.config.locales.source;
-    const sourceMap =
-      LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) ?? {};
+    // readLocaleFile 对「文件不存在」返回 {}、对「存在但解析失败」返回 null。
+    // 这里必须区分：source 损坏时 orphans 会基于空集算出「无孤儿」→ 误报成功
+    // （甚至在内容未知时删 key）。故 null 时中止，绝不当成空 locale 继续。
+    const rawSourceMap = LanguageFileManager.readLocaleFile(
+      this.config,
+      this.isCustom,
+      sourceLocale,
+    );
+    if (rawSourceMap === null) {
+      throw new Error(
+        `源 locale「${sourceLocale}」解析失败，已中止 prune 以防误判孤儿 / 误删 key。请先修复 JSON 格式。`,
+      );
+    }
+    const sourceMap = rawSourceMap;
 
     const orphans = Object.keys(sourceMap).filter(
       (key) => !usedKeys.has(key) && !matchesDynamicAllowlist(this.config, key),

@@ -1,7 +1,12 @@
 import path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 import { resolveBuckets, resolveConfig } from '../src/config/loader';
-import { BUILTIN_CN_MAPPINGS } from '../src/config/defaults';
+import {
+  BUILTIN_CN_MAPPINGS,
+  DEFAULT_IO,
+  DEFAULT_KEYS,
+  DEFAULT_EXTRACT,
+} from '../src/config/defaults';
 import type { I18nToolsConfig } from '../src/config/types';
 
 // 最小可用 LLM 配置（多数测试不关心 LLM）
@@ -523,5 +528,42 @@ describe('resolveConfig - buckets + fixed prefix 警告', () => {
     });
     expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/'rules'.*与 buckets/));
     warnSpy.mockRestore();
+  });
+});
+
+describe('resolveConfig - 数组默认值防御性拷贝（不共享引用）', () => {
+  it('未配置时 io.include/exclude 不与 DEFAULT_IO 共享引用，mutate 不污染默认值', () => {
+    const beforeInclude = DEFAULT_IO.include.length;
+    const beforeExclude = DEFAULT_IO.exclude.length;
+    const r = resolveConfig(baseConfig);
+
+    expect(r.io.include).not.toBe(DEFAULT_IO.include);
+    expect(r.io.exclude).not.toBe(DEFAULT_IO.exclude);
+    expect(r.io.include).toEqual(DEFAULT_IO.include);
+
+    // 下游 mutate 解析结果不应回灌默认值
+    r.io.include.push('**/*.svelte');
+    r.io.exclude.push('**/garbage/**');
+    expect(DEFAULT_IO.include).toHaveLength(beforeInclude);
+    expect(DEFAULT_IO.exclude).toHaveLength(beforeExclude);
+  });
+
+  it('未配置时 keys.dynamicKeyAllowlist 与 extract.filterPatterns 不与 DEFAULT 共享引用', () => {
+    const r = resolveConfig(baseConfig);
+    expect(r.keys.dynamicKeyAllowlist).not.toBe(DEFAULT_KEYS.dynamicKeyAllowlist);
+    expect(r.extract.filterPatterns).not.toBe(DEFAULT_EXTRACT.filterPatterns);
+
+    r.keys.dynamicKeyAllowlist.push('foo.*');
+    r.extract.filterPatterns.push(/bar/);
+    expect(DEFAULT_KEYS.dynamicKeyAllowlist).toHaveLength(0);
+    expect(DEFAULT_EXTRACT.filterPatterns).toHaveLength(0);
+  });
+
+  it('两次 resolveConfig 产出的同名数组互相独立', () => {
+    const a = resolveConfig(baseConfig);
+    const b = resolveConfig(baseConfig);
+    expect(a.io.include).not.toBe(b.io.include);
+    a.io.include.push('only-in-a');
+    expect(b.io.include).not.toContain('only-in-a');
   });
 });

@@ -829,10 +829,13 @@ export class CommonASTUtils {
     let templateText = '`';
     for (const child of children) {
       if (ts.isJsxText(child)) {
-        const text = child.text.trim();
-        if (text) {
-          templateText += text;
-        }
+        // 必须与 ReactTextExtractor.extractJsxMixedContent 的空白处理逐字一致：
+        // 跳过纯空白节点，含内容的把换行+缩进压缩为单空格、但保留词间空格。
+        // 若此处用 trim() 去掉词间空格（「共 ${count} 项」→「共${count}项」），
+        // 与提取端产出的 original 不相等，findExactStringNode 的 `=== originalText`
+        // 比对失败 → 该 JSX 混合内容被静默漏替换（locale 写了 key 但源码残留中文）。
+        if (!child.text.trim()) continue;
+        templateText += child.text.replace(/\s*\n\s*/g, ' ');
       } else if (ts.isJsxExpression(child) && child.expression) {
         const expressionText = CommonASTUtils.nodeToText(child.expression, sourceFile);
         templateText += `\${${expressionText}}`;
@@ -1077,6 +1080,9 @@ export class CommonASTUtils {
     interface Frame {
       kind: FrameKind;
       braceDepth?: number;
+      // 块注释内容起点（`/*` 之后第一个字符的下标）。用于判定 `*/` 闭合时，
+      // 排除开头 `/*` 自身的 `*`，避免把 `/*/` 误判为完整闭合注释。
+      blockContentStart?: number;
     }
     const stack: Frame[] = [{ kind: 'none' }];
     const top = (): Frame => stack[stack.length - 1]!;
@@ -1107,7 +1113,8 @@ export class CommonASTUtils {
           continue;
         }
         if (ch === '/' && next === '*') {
-          stack.push({ kind: 'block' });
+          // 记录内容起点（跳过 `/*` 后的下标），闭合判定据此排除开头的 `*`。
+          stack.push({ kind: 'block', blockContentStart: i + 2 });
           out.push(' ');
           i += 2;
           continue;
@@ -1192,7 +1199,8 @@ export class CommonASTUtils {
 
       // 块注释：吃到 */，整段替空格（保留行结构以便行号不漂移）
       if (frame.kind === 'block') {
-        if (ch === '/' && code[i - 1] === '*' && i - 1 > 0) {
+        // 闭合要求 `*` 的下标 ≥ 内容起点，否则 `/*/` 会把开头 `/*` 的 `*` 误当 `*/`。
+        if (ch === '/' && code[i - 1] === '*' && i - 1 >= (frame.blockContentStart ?? 1)) {
           stack.pop();
         }
         out.push(ch === '\n' ? '\n' : ' ');

@@ -182,16 +182,31 @@ export class LanguageFileManager {
     locale: string,
     layout: 'by-locale' | 'by-bucket',
     onFile: (bucketName: string, data: Record<string, any>) => void,
+    onCorrupt?: (filePath: string) => void,
   ): void {
+    // 读取单个 bucket 文件。返回 undefined 表示「损坏且已交给 onCorrupt 处理，应跳过」。
+    // 未传 onCorrupt 时维持历史行为：损坏文件经 safeLoadJsonFile 静默退化为 {}。
+    const loadOne = (filePath: string): Record<string, any> | undefined => {
+      if (!onCorrupt) {
+        return FileUtils.safeLoadJsonFile<Record<string, any>>(filePath, { silent: true });
+      }
+      const content = fs.readFileSync(filePath, 'utf-8');
+      if (content.trim() === '') return {};
+      const parsed = FileUtils.safeParseJson(content) as Record<string, any> | null;
+      if (parsed === null) {
+        onCorrupt(filePath);
+        return undefined;
+      }
+      return parsed;
+    };
+
     if (layout === 'by-locale') {
       const dirPath = path.join(baseDir, locale);
       if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return;
       for (const file of fs.readdirSync(dirPath).filter((f) => f.endsWith('.json'))) {
         const bucketName = path.basename(file, '.json');
-        const data = FileUtils.safeLoadJsonFile<Record<string, any>>(path.join(dirPath, file), {
-          silent: true,
-        });
-        onFile(bucketName, data);
+        const data = loadOne(path.join(dirPath, file));
+        if (data !== undefined) onFile(bucketName, data);
       }
       return;
     }
@@ -201,9 +216,37 @@ export class LanguageFileManager {
       if (!entry.isDirectory()) continue;
       const langFile = path.join(baseDir, entry.name, `${locale}.json`);
       if (!fs.existsSync(langFile)) continue;
-      const data = FileUtils.safeLoadJsonFile<Record<string, any>>(langFile, { silent: true });
-      onFile(entry.name, data);
+      const data = loadOne(langFile);
+      if (data !== undefined) onFile(entry.name, data);
     }
+  }
+
+  /**
+   * 扫描某 locale 的所有桶文件，返回首个「有内容却解析失败」的文件路径；无损坏返回 null。
+   *
+   * 供 MergeProcessor 在写回桶式语言包前做「损坏即中止」保护——与单文件路径的
+   * `readLocaleFile` 返回 null 的语义对齐。桶式读取默认走 silent 降级（损坏当 {}），
+   * 缺这层保护会导致损坏 bucket 在重写时被静默丢弃。
+   */
+  static findCorruptBucketFile(
+    config: ResolvedConfig,
+    isCustom: boolean,
+    locale?: string,
+  ): string | null {
+    locale = locale || config.locales.source;
+    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
+    const layout = config.buckets?.layout ?? 'by-locale';
+    let corrupt: string | null = null;
+    this.iterateBucketedFiles(
+      workingDir,
+      locale,
+      layout,
+      () => {},
+      (filePath) => {
+        if (!corrupt) corrupt = filePath;
+      },
+    );
+    return corrupt;
   }
 
   /**
@@ -274,6 +317,15 @@ export class LanguageFileManager {
       }
       const content = fs.readFileSync(localeFilePath, 'utf-8');
       const parsed = FileUtils.safeParseJson(content);
+      // 文件存在但解析失败（非空内容却得到 null）：返回 null 表示「内容未知」，
+      // 与「文件不存在 → {}」区分开。否则 safeParseJson→null→flattenObject(null)→{}
+      // 会把损坏文件静默当成空 locale，导致 prune「假成功」地报告无孤儿、merge 丢数据。
+      // 调用方需对 null 显式处理（中止/不写回），不得直接 `?? {}` 吞掉。
+      if (parsed === null && content.trim() !== '') {
+        LoggerUtils.error(`❌ 语言文件解析失败（JSON 格式错误）: ${localeFilePath}`);
+        LoggerUtils.error('👉 为防止数据丢失/误判，本次不会把它当作空文件处理。请检查 JSON 格式。');
+        return null;
+      }
       // 用 keys.separator 展平，与 serialize 写回时的 unflattenObject 使用的
       // 分隔符保持一致——保证 nested 与 flat 之间往返无损。
       return FileUtils.flattenObject(parsed, '', config.keys.separator) as LocaleMap;

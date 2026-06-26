@@ -1,5 +1,22 @@
 import type { ResolvedConfig, ResolvedLLMTaskConfig } from '../config';
 
+/**
+ * 用字面量填充自定义 prompt 模板中的 `{token}` 占位符。
+ *
+ * Why split/join 而非 String.prototype.replace：
+ *  - replace 的字符串 replacement 会解析 `$&`/`$1`/`` $` ``/`$'`/`$$` 特殊序列，
+ *    待翻译文案里的 `$100`、`a$b` 等会被静默改写/丢字 → 模型收到错误文本。
+ *  - replace(string, string) 只替换首个匹配，模板里重复占位符时第二个不生效。
+ * split(token).join(value) 两个问题都规避：替换全部出现、value 按字面量插入。
+ */
+function fillTemplate(template: string, vars: Record<string, string>): string {
+  let out = template;
+  for (const [key, value] of Object.entries(vars)) {
+    out = out.split(`{${key}}`).join(value);
+  }
+  return out;
+}
+
 // =============================================================================
 // LLM Prompts
 //
@@ -85,9 +102,10 @@ export function getIdGenerationUserPrompt(
   task: ResolvedLLMTaskConfig,
 ): string {
   if (task.prompt.user) {
-    return task.prompt.user
-      .replace('{count}', String(textList.length))
-      .replace('{textList}', JSON.stringify(textList, null, 2));
+    return fillTemplate(task.prompt.user, {
+      count: String(textList.length),
+      textList: JSON.stringify(textList, null, 2),
+    });
   }
 
   const sourceName = getLocaleName(locales.source, locales);
@@ -146,7 +164,7 @@ export function getTranslationUserPrompt(
   targetLocale: string,
 ): string {
   if (task.prompt.user) {
-    return task.prompt.user.replace('{jsonText}', jsonText);
+    return fillTemplate(task.prompt.user, { jsonText });
   }
 
   const sourceName = getLocaleName(locales.source, locales);
