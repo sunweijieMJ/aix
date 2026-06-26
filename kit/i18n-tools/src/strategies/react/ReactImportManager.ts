@@ -45,12 +45,8 @@ export class ReactImportManager implements IImportManager {
 
   private addGlobalFunctionImport(code: string): string {
     const funcName = this.library.globalFunctionName.split('.')[0]!;
-    const escapedPath = CommonASTUtils.escapeRegExp(this.tImport);
-    if (
-      new RegExp(`import\\s*\\{.*${funcName}.*\\}\\s*from\\s*['"]${escapedPath}['"]`).test(code)
-    ) {
-      return code;
-    }
+    // mergeNamedImport 幂等且按命名精确去重，直接调用即可。不能用 `import {.*funcName.*}`
+    // 这类宽松正则预检——funcName='t' 时会误命中任何含字母 t 的同路径导入而漏注入。
     return CommonASTUtils.mergeNamedImport(code, this.tImport, [funcName]);
   }
 

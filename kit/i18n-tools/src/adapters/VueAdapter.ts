@@ -34,6 +34,7 @@ export class VueAdapter extends FrameworkAdapter {
   private restoreTransformer: VueRestoreTransformer;
   private componentInjector: VueComponentInjector;
   private importManager: VueImportManager;
+  private library: ReturnType<typeof createVueI18nLibrary>;
 
   constructor(
     tImport: string = '@/plugins/locale',
@@ -51,6 +52,7 @@ export class VueAdapter extends FrameworkAdapter {
       usesDoubleBracePlaceholders: library.usesDoubleBracePlaceholders,
     });
 
+    this.library = library;
     this.textExtractor = new VueTextExtractor(library, options.filterPatterns ?? []);
     this.importManager = new VueImportManager(tImport, library);
     this.componentInjector = new VueComponentInjector(library, this.importManager);
@@ -76,5 +78,9 @@ export class VueAdapter extends FrameworkAdapter {
 
   getImportManager(): IImportManager {
     return this.importManager;
+  }
+
+  getLibrary() {
+    return this.library;
   }
 }

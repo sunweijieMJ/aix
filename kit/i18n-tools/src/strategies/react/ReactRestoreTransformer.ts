@@ -26,12 +26,21 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     this.tImport = tImport;
   }
 
-  /** 把 locale 文本中的双花括号占位符归一回单花括号（i18next 系库 restore 用） */
-  private static normalizeLocaleMap(localeMap: LocaleMap): LocaleMap {
+  /**
+   * locale 值归一：双花括号占位符 → 单花括号（i18next 系库），再 unescape 字面量花括号。
+   * 与写盘的 finalizeLocaleMessage 对称。
+   */
+  private static normalizeLocaleMap(localeMap: LocaleMap, library: ReactI18nLibrary): LocaleMap {
     const result: LocaleMap = {};
     for (const [key, value] of Object.entries(localeMap)) {
-      result[key] =
-        typeof value === 'string' ? CommonASTUtils.toSingleBracePlaceholders(value) : value;
+      if (typeof value !== 'string') {
+        result[key] = value;
+        continue;
+      }
+      const single = library.usesDoubleBracePlaceholders
+        ? CommonASTUtils.toSingleBracePlaceholders(value)
+        : value;
+      result[key] = library.unescapeLiteralText(single);
     }
     return result;
   }
@@ -40,11 +49,8 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
     const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
 
-    // i18next 系库 locale 用双花括号占位符，先归一回内部规范的单花括号，
-    // 复用既有的 createStringOrTemplateNode 单花括号还原逻辑。
-    const normalizedLocaleMap = this.library.usesDoubleBracePlaceholders
-      ? ReactRestoreTransformer.normalizeLocaleMap(localeMap)
-      : localeMap;
+    // locale 值归一：i18next 系库双花括号 → 单花括号；并 unescape 写盘时转义的字面量花括号。
+    const normalizedLocaleMap = ReactRestoreTransformer.normalizeLocaleMap(localeMap, this.library);
 
     const context: TransformContext = {
       localeMap: normalizedLocaleMap,

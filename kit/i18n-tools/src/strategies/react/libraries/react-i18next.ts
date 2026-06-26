@@ -24,7 +24,9 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   readonly jsxIdPropName = 'i18nKey';
   readonly hocName = 'withTranslation';
   readonly hocPropsType = 'WithTranslation';
-  readonly globalFunctionName = 'i18next.t';
+  // 非组件（模块顶层）作用域使用从 tImport 注入的 t（import { t }），
+  // 与组件内 useTranslation 的 t 形态一致。
+  readonly globalFunctionName = 't';
 
   private namespace?: string;
 
@@ -40,8 +42,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     isGlobalScope?: boolean,
   ): string {
     const key = this.namespace ? `${this.namespace}:${id}` : id;
-    // 组件内用 useTranslation 注入的 t；非组件（模块顶层）作用域没有 t，
-    // 必须用 i18next.t（globalFunctionName），否则产出 `t('...')` 运行时 t is not defined。
+    // 组件内 t 来自 useTranslation hook，非组件 t 来自 import { t }；两种形态都是裸 t()。
     const fn = isGlobalScope ? this.globalFunctionName : this.translationVarName;
 
     if (values && values.size > 0) {
@@ -329,5 +330,14 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       mappings.push(`${placeholder}: ${expression}`);
     });
     return mappings.join(', ');
+  }
+
+  // i18next 单 `{` 本就是字面量（插值是双花括号 `{{name}}`），无需转义。
+  escapeLiteralText(text: string): string {
+    return text;
+  }
+
+  unescapeLiteralText(text: string): string {
+    return text;
   }
 }

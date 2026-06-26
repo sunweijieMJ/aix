@@ -521,6 +521,8 @@ export class LanguageFileManager {
    * 更新语言文件。
    * @param keyBucketMap - 可选：key → bucket，启用桶式写入
    * @param report       - 可选：传入则把 LocaleValueLinter 的 warning 也写入 RunReport
+   * @param library      - 可选：i18n 库（提供花括号策略 + 字面量转义），用于 locale 值定稿；
+   *                       缺省时不做任何花括号转换/转义（按单花括号规范原样写）
    */
   static updateLanguageFiles(
     config: ResolvedConfig,
@@ -528,7 +530,7 @@ export class LanguageFileManager {
     extractedStrings: ExtractedString[],
     keyBucketMap?: KeyBucketMap,
     report?: RunReport,
-    useDoubleBracePlaceholders: boolean = false,
+    library?: { usesDoubleBracePlaceholders: boolean; escapeLiteralText: (text: string) => string },
   ): void {
     if (extractedStrings.length === 0) return;
 
@@ -558,9 +560,16 @@ export class LanguageFileManager {
       const built =
         extracted.isTemplateString && extracted.templateVariables
           ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
-          : { message: rawMessage.replace(/^['"`]|['"`]$/g, '') };
-      const message = useDoubleBracePlaceholders
-        ? CommonASTUtils.toDoubleBracePlaceholders(built.message)
+          : {
+              message: rawMessage.replace(/^['"`]|['"`]$/g, ''),
+              placeholderMap: new Map<string, string>(),
+            };
+      const message = library
+        ? CommonASTUtils.finalizeLocaleMessage(
+            built.message,
+            built.placeholderMap.values(),
+            library,
+          )
         : built.message;
 
       if (!(extracted.semanticId in localeMap)) {

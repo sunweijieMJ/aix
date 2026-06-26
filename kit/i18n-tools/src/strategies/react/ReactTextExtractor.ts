@@ -1,6 +1,7 @@
 import fs from 'fs';
 import ts from 'typescript';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import { ReactASTUtils } from './react-ast-utils';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
@@ -149,6 +150,17 @@ export class ReactTextExtractor extends BaseTextExtractor {
     extractedStrings: ExtractedString[],
     filePath: string,
   ): Promise<void> {
+    // <code> / <pre> 内容是逐字代码 / 预格式文本，跳过整棵子树不提取
+    if (ts.isJsxElement(node)) {
+      const tagName = node.openingElement.tagName;
+      if (
+        ts.isIdentifier(tagName) &&
+        NON_EXTRACTABLE_ELEMENT_TAGS.has(tagName.text.toLowerCase())
+      ) {
+        return;
+      }
+    }
+
     // 优先处理JSX元素的混合内容
     if (ts.isJsxElement(node)) {
       const mixedContent = this.extractJsxMixedContent(node, sourceFile);
@@ -305,7 +317,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     }
 
     // 构建模板字符串格式的文本（使用${expression}格式）
-    let templateText = '`';
+    let inner = '';
     const templateVariables: string[] = [];
 
     for (const child of children) {
@@ -315,15 +327,18 @@ export class ReactTextExtractor extends BaseTextExtractor {
         // 的相邻空格是词间距，trim 掉会让 locale 文案变成「共${count}项」，
         // 中英混排丢词间距）。
         if (!child.text.trim()) continue;
-        templateText += child.text.replace(/\s*\n\s*/g, ' ');
+        inner += child.text.replace(/\s*\n\s*/g, ' ');
       } else if (ts.isJsxExpression(child) && child.expression) {
         const expressionText = CommonASTUtils.nodeToText(child.expression!, sourceFile);
         templateVariables.push(expressionText);
-        templateText += `\${${expressionText}}`;
+        inner += `\${${expressionText}}`;
       }
     }
 
-    templateText += '`';
+    // 整体首尾去空白（内部词间距保留）：边界换行/缩进会被压成首尾空格，不应进 locale。
+    // 必须与 CommonASTUtils.reconstructJsxMixedContent 的 trim 一致，否则
+    // findExactStringNode 的 `=== originalText` 失配 → 漏替换。
+    const templateText = '`' + inner.trim() + '`';
 
     return {
       text: templateText,

@@ -19,6 +19,13 @@ export const CONFIG = {
 } as const;
 
 /**
+ * 这些元素的内容是逐字代码 / 预格式文本，不参与 i18n 提取（含其所有后代节点）。
+ * Vue 模板与 React JSX 共用：遇到这些标签直接跳过整棵子树，避免把示例代码
+ * （如文档里的 `<code>&lt;script setup&gt;</code>`）灌进 locale。
+ */
+export const NON_EXTRACTABLE_ELEMENT_TAGS = new Set(['code', 'pre']);
+
+/**
  * 操作模式说明映射
  */
 export const MODE_DESCRIPTIONS: Record<string, string> = {
