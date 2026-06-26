@@ -419,26 +419,17 @@ export class CommonASTUtils {
 
     if (stringValue !== undefined) {
       return stringValue;
-    } else if (ts.isNumericLiteral(initializer)) {
-      return Number(initializer.text);
-    } else if (
-      ts.isIdentifier(initializer) ||
-      ts.isPropertyAccessExpression(initializer) ||
-      ts.isCallExpression(initializer)
-    ) {
-      if (sourceFile) {
-        return {
-          node: initializer,
-          text: CommonASTUtils.nodeToText(initializer, sourceFile),
-        };
-      }
-      return initializer;
-    } else if (sourceFile) {
-      const expressionText = CommonASTUtils.nodeToText(initializer, sourceFile);
-      return `{{${expressionText}}}`;
     }
-
-    return undefined;
+    if (ts.isNumericLiteral(initializer)) {
+      return Number(initializer.text);
+    }
+    // 其余任意表达式（标识符 / 属性访问 / 调用，以及 ?? / 三元 / 二元等复杂表达式）：
+    // 一律保留 AST 节点 + 源文本，供 restore 的 findExpressionForVariable 重建。
+    // 早先对复杂表达式返回 `{{text}}` 字符串会丢失节点，导致这类占位符 restore 失败。
+    if (sourceFile) {
+      return { node: initializer, text: CommonASTUtils.nodeToText(initializer, sourceFile) };
+    }
+    return initializer;
   }
 
   /**
@@ -583,16 +574,17 @@ export class CommonASTUtils {
   }
 
   /**
-   * 根据消息文本和变量值，创建一个字符串字面量或模板表达式节点
-   * @param messageText - 从语言文件中获取的、包含占位符的消息文本
-   * @param values - 包含变量名到其原始AST节点映射的对象
-   * @returns 创建的字符串字面量或模板表达式节点
+   * 把含单花括号占位符的文案切分为字面段与占位符名两个列表。
+   * `共 {a} 项 {b}` → `{ literalParts: ['共 ', ' 项 ', ''], placeholderNames: ['a', 'b'] }`。
+   * 不变式：`literalParts.length === placeholderNames.length + 1`（首尾必有字面段，可为空串）。
+   *
+   * createStringOrTemplateNode（模板字面量）与 createJsxFragmentFromTemplate（JSX 片段）
+   * 共用此切分，确保两条 restore 路径占位符解析口径一致。
    */
-  static createStringOrTemplateNode(messageText: string, values?: Record<string, any>): ts.Node {
-    if (!values || Object.keys(values).length === 0) {
-      return ts.factory.createStringLiteral(messageText);
-    }
-
+  private static parseTemplatePlaceholders(messageText: string): {
+    literalParts: string[];
+    placeholderNames: string[];
+  } {
     const literalParts: string[] = [];
     const placeholderNames: string[] = [];
     const regex = /\{([^}]+)\}/g;
@@ -604,6 +596,22 @@ export class CommonASTUtils {
       lastIndex = match.index + match[0].length;
     }
     literalParts.push(messageText.substring(lastIndex));
+    return { literalParts, placeholderNames };
+  }
+
+  /**
+   * 根据消息文本和变量值，创建一个字符串字面量或模板表达式节点
+   * @param messageText - 从语言文件中获取的、包含占位符的消息文本
+   * @param values - 包含变量名到其原始AST节点映射的对象
+   * @returns 创建的字符串字面量或模板表达式节点
+   */
+  static createStringOrTemplateNode(messageText: string, values?: Record<string, any>): ts.Node {
+    if (!values || Object.keys(values).length === 0) {
+      return ts.factory.createStringLiteral(messageText);
+    }
+
+    const { literalParts, placeholderNames } =
+      CommonASTUtils.parseTemplatePlaceholders(messageText);
 
     if (placeholderNames.length === 0) {
       return ts.factory.createStringLiteral(messageText);
@@ -647,6 +655,56 @@ export class CommonASTUtils {
     return ts.factory.createTemplateExpression(
       ts.factory.createTemplateHead(headText ?? ''),
       templateSpans,
+    );
+  }
+
+  /**
+   * 把含占位符的文案重建为 JSX 片段：`共 {itemCount} 项` → `<>共 {itemCount} 项</>`
+   * （文本段为 JsxText，占位符为 JsxExpression `{expr}`）。
+   *
+   * 用于 restore 时把「JSX 子节点位置、带 values 的 <Trans>」还原回 JSX 形态——
+   * 不能用 createStringOrTemplateNode 的模板字面量(`` `共 ${n}` ``)，否则在 JSX 子节点
+   * 位置会被当作字面文本渲染(反引号/`${}` 原样显示、变量不插值)。
+   *
+   * 返回 null 表示无法重建(无占位符 / 占位符与 values 不匹配 / 找不到表达式)，
+   * 调用方据此回退到原有路径。
+   */
+  static createJsxFragmentFromTemplate(
+    messageText: string,
+    values?: Record<string, any>,
+  ): ts.JsxFragment | null {
+    if (!values || Object.keys(values).length === 0) return null;
+
+    const { literalParts, placeholderNames } =
+      CommonASTUtils.parseTemplatePlaceholders(messageText);
+
+    if (placeholderNames.length === 0) return null;
+
+    const children: ts.JsxChild[] = [];
+    // 含 JSX 元字符（`<` `>` `{` `}`）的字面段不能直接当 JsxText（`<` 非法、`{}` 会被当
+    // 表达式容器），改用字符串表达式容器 `{'...'}` 原样承载。正常占位符文案（中文 + 已被
+    // 正则消费的花括号）走 JsxText 快路径，行为不变。
+    const pushText = (t: string): void => {
+      if (t.length === 0) return;
+      if (/[<>{}]/.test(t)) {
+        children.push(ts.factory.createJsxExpression(undefined, ts.factory.createStringLiteral(t)));
+      } else {
+        children.push(ts.factory.createJsxText(t, false));
+      }
+    };
+
+    pushText(literalParts[0] ?? '');
+    for (let i = 0; i < placeholderNames.length; i++) {
+      const expr = CommonASTUtils.findExpressionForVariable(placeholderNames[i]!, values);
+      if (!expr) return null;
+      children.push(ts.factory.createJsxExpression(undefined, expr));
+      pushText(literalParts[i + 1] ?? '');
+    }
+
+    return ts.factory.createJsxFragment(
+      ts.factory.createJsxOpeningFragment(),
+      children,
+      ts.factory.createJsxJsxClosingFragment(),
     );
   }
 
