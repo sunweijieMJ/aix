@@ -167,8 +167,15 @@ export class DoctorProcessor extends BaseProcessor {
     return lintFindings.map((f: LinterFinding) => ({
       category: 'locale-lint',
       // hardcoded-comparison 归为 error（运行时切语言后比较仍用硬编码原文，业务逻辑会失效，
-      // 是 doctor 唯一的 error-tier lint 类别，用于 CI 门禁）；其它 lint 发现仅为 info——不阻塞业务。
-      severity: f.category === 'hardcoded-comparison' ? 'error' : 'info',
+      // 是 doctor 唯一的 error-tier lint 类别，用于 CI 门禁）；
+      // nested-interpolation-chinese 归为 warning（渲染未翻译中文，是真实缺陷但仅展示层降级，
+      // 非逻辑失败，不阻断 CI）；其它 lint 发现仅为 info——不阻塞业务。
+      severity:
+        f.category === 'hardcoded-comparison'
+          ? 'error'
+          : f.category === 'nested-interpolation-chinese'
+            ? 'warning'
+            : 'info',
       title: `[${f.category}] ${f.title}`,
       details: f.details,
       key: f.key,

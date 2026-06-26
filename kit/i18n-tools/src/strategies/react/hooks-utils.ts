@@ -83,11 +83,11 @@ export class HooksUtils {
             code = code.slice(0, depsStart) + newDeps + code.slice(depsEnd);
           }
         }
-      } else if (hookCall.arguments.length === 1) {
-        const firstArg = hookCall.arguments[0]!;
-        const insertPos = firstArg.getEnd();
-        code = code.slice(0, insertPos) + `, [${varName}]` + code.slice(insertPos);
       }
+      // 单参 hook（如 `useEffect(fn)` 无依赖数组）语义是「每次渲染执行」，
+      // 不能擅自补 `, [t]` —— 那会把语义改成「仅 t 变化时执行」（≈仅首次），
+      // 且 restore 端只删数组里的 t、无法还原成无数组形态，破坏往返一致性。
+      // 故无依赖数组时保持原样不动。
     }
 
     return code;

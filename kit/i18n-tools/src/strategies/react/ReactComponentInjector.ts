@@ -176,7 +176,14 @@ export class ReactComponentInjector implements IComponentInjector {
         if (clause.token === ts.SyntaxKind.ExtendsKeyword && clause.types[0]) {
           const typeNode = clause.types[0];
           const typeName = typeNode.expression.getText(sourceFile);
-          if (typeName === 'Component' || typeName === 'React.Component') {
+          // 与 isClassComponent 对齐：PureComponent 也是类组件，HOC 注入后同样需要
+          // 在 Props 泛型上追加 WithTranslation，否则 this.props.t 类型检查报错。
+          if (
+            typeName === 'Component' ||
+            typeName === 'React.Component' ||
+            typeName === 'PureComponent' ||
+            typeName === 'React.PureComponent'
+          ) {
             if (typeNode.typeArguments && typeNode.typeArguments.length > 0) {
               const propsTypeArg = typeNode.typeArguments[0]!;
               if (!propsTypeArg.getText(sourceFile).includes(propsType)) {
@@ -249,13 +256,23 @@ export class ReactComponentInjector implements IComponentInjector {
 
     // 4. 用 HOC 包裹组件
     const exportModifier = classNode.modifiers?.find((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+    // `export default class Foo` 的修饰符是 [export, default]。仅删 export 会遗留孤立的
+    // `default` 关键字 → 产出 `default class FooWithOutIntl {...}`（语法错误，整文件无法编译）。
+    // 故需同时识别 default，并把删除范围扩到 default 末尾、HOC 导出改用 `export default`。
+    const defaultModifier = classNode.modifiers?.find(
+      (m) => m.kind === ts.SyntaxKind.DefaultKeyword,
+    );
     const tempClassName = `${className}${HOC_CLASS_SUFFIX}`;
 
     if (classNode.name) {
       if (exportModifier) {
+        // 删除 `export `（具名导出）或 `export default `（默认导出，含 default 关键字）
+        const removeEnd = defaultModifier
+          ? defaultModifier.getEnd() + 1
+          : exportModifier.getEnd() + 1;
         transformations.push({
           start: exportModifier.getStart(sourceFile),
-          end: exportModifier.getEnd() + 1,
+          end: removeEnd,
           text: '',
         });
       }
@@ -267,9 +284,15 @@ export class ReactComponentInjector implements IComponentInjector {
       });
 
       const hocWrapper = this.library.generateHOCWrapper(tempClassName);
-      const hocStatement = exportModifier
-        ? `\n\nexport const ${className} = ${hocWrapper};`
-        : `\nconst ${className} = ${hocWrapper};`;
+      let hocStatement: string;
+      if (defaultModifier) {
+        // 默认导出：还原为 `export default HOC(Inner)`，保持模块默认导出契约不变
+        hocStatement = `\n\nexport default ${hocWrapper};`;
+      } else if (exportModifier) {
+        hocStatement = `\n\nexport const ${className} = ${hocWrapper};`;
+      } else {
+        hocStatement = `\nconst ${className} = ${hocWrapper};`;
+      }
 
       transformations.push({
         start: classNode.getEnd(),

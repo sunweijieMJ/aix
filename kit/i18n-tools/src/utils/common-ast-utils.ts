@@ -84,10 +84,12 @@ export class CommonASTUtils {
     originalText: string;
     processedText: string;
     templateVariables: string[];
+    nestedChineseTexts: string[];
   } {
     let originalText = '`' + node.head.text;
     let processedText = '`' + node.head.text;
     const templateVariables: string[] = [];
+    const nestedChineseTexts: string[] = [];
 
     for (const span of node.templateSpans) {
       const expression = span.expression;
@@ -112,6 +114,12 @@ export class CommonASTUtils {
         }
         processedText += literalValue + span.literal.text;
       } else {
+        // 非字面量表达式整体当作占位符（{var}）。表达式子树内的中文字面量（如
+        // `${cond ? '内部错误' : '网络异常'}` 的两个分支）既不会被提取、也不会被内联，
+        // 而是作为运行时参数原样塞进占位符——切到非源语种后渲染出未翻译的中文（静默泄漏）。
+        // 这里把它们收集出来，供 extractor 记入诊断（nested-interpolation-chinese），
+        // 让 lint / doctor 显式暴露，而非自动改写（递归改三元风险高，交人工决策）。
+        nestedChineseTexts.push(...CommonASTUtils.collectNestedChineseLiterals(expression));
         templateVariables.push(expressionText);
         originalText += '${' + expressionText + '}' + span.literal.text;
         processedText += '${' + expressionText + '}' + span.literal.text;
@@ -122,7 +130,31 @@ export class CommonASTUtils {
       originalText: originalText + '`',
       processedText: processedText + '`',
       templateVariables,
+      nestedChineseTexts,
     };
+  }
+
+  /**
+   * 收集表达式子树内「会作为运行时值泄漏的中文字面量」。
+   *
+   * 仅收集非比较操作数的中文字符串字面量：比较操作数（`x === '已完成'`）是逻辑值、
+   * 不参与展示，由 isComparisonOperand 路径单独诊断；三元/逻辑表达式的展示分支
+   * （`cond ? '内部错误' : '网络异常'`）才是真正渲染给用户、需要 i18n 的文案。
+   */
+  private static collectNestedChineseLiterals(expression: ts.Node): string[] {
+    const out: string[] = [];
+    const walk = (n: ts.Node): void => {
+      if (
+        (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) &&
+        CONFIG.CHINESE_REGEX.test(n.text) &&
+        !CommonASTUtils.isComparisonOperand(n)
+      ) {
+        out.push(n.text);
+      }
+      ts.forEachChild(n, walk);
+    };
+    walk(expression);
+    return out;
   }
 
   /**
@@ -166,6 +198,48 @@ export class CommonASTUtils {
   }> {
     const items = Array.from(CommonASTUtils.skippedComparisonOperands.values());
     CommonASTUtils.skippedComparisonOperands.clear();
+    return items;
+  }
+
+  /**
+   * 被「插值表达式整体占位符化」吞掉的嵌套中文字面量位置。
+   *
+   * Why: `操作失败：${cond ? '内部错误' : '网络异常'}` 这类模板字符串，整段会被
+   *      processTemplateExpression 转成 `操作失败：{value}`，三元里的中文分支既不
+   *      提取、也不内联，而是作为运行时参数原样塞进 {value}——切到非源语种后渲染出
+   *      未翻译的中文，且没有任何告警（静默泄漏）。这里记录位置，lint / doctor 阶段
+   *      显式暴露，提示用户手动把分支拆成 t(...)。
+   *
+   * 与 skippedComparisonOperands 不同：本集合无需与 locale map 交叉——嵌套中文
+   * 必然是展示文案，泄漏即问题，全部上报。用 Map 去重。
+   */
+  private static skippedNestedChinese: Map<
+    string,
+    { text: string; filePath: string; line: number; column: number }
+  > = new Map();
+
+  /** 记录一处「被插值占位符吞掉的嵌套中文字面量」位置。供 extractor 调用。 */
+  static recordSkippedNestedChinese(
+    text: string,
+    filePath: string,
+    line: number,
+    column: number,
+  ): void {
+    const key = `${filePath}:${line}:${column}:${text}`;
+    if (!CommonASTUtils.skippedNestedChinese.has(key)) {
+      CommonASTUtils.skippedNestedChinese.set(key, { text, filePath, line, column });
+    }
+  }
+
+  /** 取出当前累积的嵌套中文记录并清空（供 lint 阶段一次性消费）。 */
+  static drainSkippedNestedChinese(): Array<{
+    text: string;
+    filePath: string;
+    line: number;
+    column: number;
+  }> {
+    const items = Array.from(CommonASTUtils.skippedNestedChinese.values());
+    CommonASTUtils.skippedNestedChinese.clear();
     return items;
   }
 
@@ -1459,10 +1533,13 @@ export class CommonASTUtils {
   static mergeNamedImport(code: string, packageName: string, names: string[]): string {
     if (names.length === 0) return code;
     const escapedPkg = CommonASTUtils.escapeRegExp(packageName);
-    // 全局匹配，捕获所有同包的 named import 语句（多条 import { A } from 'x'; import { B } from 'x';）
+    // 行首锚定（gm + `^[ \t]*import`）：只匹配作为「语句」出现在行首（允许缩进）的真实
+    // import，从而排除出现在注释（如 `// import { t } from 'x'`、块注释中的示例代码）
+    // 或字符串字面量里的 import 字样——它们都是行内文本，不会顶到行首。
+    // 不锚定会误把注释里的 import 当作重复项，再被下方删除逻辑误伤真实 import（Bug #8）。
     const importRegex = new RegExp(
-      `import\\s*\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"];?`,
-      'g',
+      `^[ \\t]*import\\s*\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"][ \\t]*;?`,
+      'gm',
     );
     const matches = [...code.matchAll(importRegex)];
 
@@ -1477,10 +1554,15 @@ export class CommonASTUtils {
       const merged = [...new Set([...existing, ...names])];
       const replacement = `import { ${merged.join(', ')} } from '${packageName}';`;
 
-      // 用合并后的语句替换第一处，删除其余同包导入语句以避免冗余
-      let result = code.replace(matches[0]![0], replacement);
-      for (let i = 1; i < matches.length; i++) {
-        result = result.replace(matches[i]![0], '');
+      // 用「位置切片」替换而非 String.replace(子串)：后者会从头重新搜索，当某条匹配文本
+      // 是另一条的子串时会替换错位置（Bug #8 的次因）。这里按 match.index 精确定位，
+      // 从后往前处理以保证前面的索引不被位移影响：首处替换为合并语句，其余删除。
+      let result = code;
+      for (let i = matches.length - 1; i >= 0; i--) {
+        const m = matches[i]!;
+        const start = m.index!;
+        const end = start + m[0].length;
+        result = result.slice(0, start) + (i === 0 ? replacement : '') + result.slice(end);
       }
       // 清理可能产生的连续空行
       return result.replace(/\n{3,}/g, '\n\n');

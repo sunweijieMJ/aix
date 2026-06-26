@@ -154,4 +154,29 @@ describe('PruneProcessor', () => {
 
     expect(readLocale('zh-CN')).toEqual({ used: '用', orphan: '没人用' }); // 取消 → 未删
   });
+
+  it('桶式：源 locale 桶文件损坏时中止，且不把损坏桶改名 .bak（Bug #2）', async () => {
+    writeSource('A.vue', `<template>{{ t('b1.used') }}</template>`);
+    const config = buildConfig(rootDir, sourceDir, localeDir, {
+      buckets: { rules: [{ name: 'b1', matchKey: (k: string) => k.startsWith('b1.') }] },
+    });
+    // 桶式 by-locale 布局：localeDir/<locale>/<bucket>.json
+    const zhDir = path.join(localeDir, 'zh-CN');
+    fs.mkdirSync(zhDir, { recursive: true });
+    const corruptBucket = path.join(zhDir, 'b1.json');
+    fs.writeFileSync(corruptBucket, '{ "b1.used": "用",, }'); // 损坏（尾逗号）
+    const enDir = path.join(localeDir, 'en-US');
+    fs.mkdirSync(enDir, { recursive: true });
+    fs.writeFileSync(path.join(enDir, 'b1.json'), JSON.stringify({ 'b1.used': 'used' }));
+
+    // 桶式下 readLocaleFile 会把损坏桶静默降级为 {} 永不返回 null，必须靠 findCorruptBucketFile
+    // 守卫中止，否则会误判孤儿并把损坏桶静默改名 .bak（源 key 从活跃 locale 消失）。
+    await expect(
+      new PruneProcessor(config, false, undefined, { dryRun: false, ci: true }).execute(),
+    ).rejects.toThrow(/桶文件解析失败|解析失败/);
+
+    // 关键断言：损坏桶原样保留，未被改名 .bak
+    expect(fs.existsSync(corruptBucket + '.bak')).toBe(false);
+    expect(fs.existsSync(corruptBucket)).toBe(true);
+  });
 });

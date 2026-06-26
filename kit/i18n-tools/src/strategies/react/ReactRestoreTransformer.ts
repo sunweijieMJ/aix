@@ -59,6 +59,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       sourceFile,
       componentNameMap: new Map(),
       exportedHocInnerNames: new Set(),
+      defaultExportedHocInnerNames: new Set(),
     };
 
     // 提取 defineMessages 中的消息定义
@@ -190,6 +191,18 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
               context.exportedHocInnerNames!.add(wrappedComponent);
             }
           }
+        }
+      }
+      // `export default HOC(FooWithOutIntl)`：记录内部类名，供 unwrapHOC 删除该默认导出语句、
+      // 并在类改回原名时恢复 `export default`（Bug #1 的 restore 配套）。
+      if (
+        ts.isExportAssignment(node) &&
+        !node.isExportEquals &&
+        ts.isCallExpression(node.expression)
+      ) {
+        const wrappedComponent = library.getHOCWrappedComponent(node.expression);
+        if (wrappedComponent && wrappedComponent.endsWith(HOC_CLASS_SUFFIX)) {
+          context.defaultExportedHocInnerNames!.add(wrappedComponent);
         }
       }
       ts.forEachChild(node, prepass);

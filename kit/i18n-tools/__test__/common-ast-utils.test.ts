@@ -143,3 +143,97 @@ describe('CommonASTUtils.stripComments', () => {
     expect(out).toContain(`t('keep')`);
   });
 });
+
+describe('CommonASTUtils.processTemplateExpression - 嵌套中文检测', () => {
+  function findTemplateExpression(code: string): {
+    node: ts.TemplateExpression;
+    sourceFile: ts.SourceFile;
+  } {
+    const sourceFile = CommonASTUtils.parseSourceFile(code, 'temp.ts');
+    let found: ts.TemplateExpression | undefined;
+    const visit = (n: ts.Node) => {
+      if (!found && ts.isTemplateExpression(n)) found = n;
+      ts.forEachChild(n, visit);
+    };
+    ts.forEachChild(sourceFile, visit);
+    if (!found) throw new Error('no template expression');
+    return { node: found, sourceFile };
+  }
+
+  it('三元分支中的中文（展示文案）被收集到 nestedChineseTexts', () => {
+    const { node, sourceFile } = findTemplateExpression(
+      "const x = `操作失败：${cond ? '内部错误' : '网络异常'}`;",
+    );
+    const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+    // 占位符化：处理后文案为 `操作失败：${...}`（变量整体占位）
+    expect(result.templateVariables.length).toBe(1);
+    // 关键：两个中文分支被收集供诊断，而非静默丢失
+    expect(result.nestedChineseTexts).toEqual(['内部错误', '网络异常']);
+  });
+
+  it('比较操作数中的中文不计入（由 hardcoded-comparison 单独诊断）', () => {
+    const { node, sourceFile } = findTemplateExpression(
+      "const x = `状态：${status === '已完成' ? a : b}`;",
+    );
+    const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+    // '已完成' 是 === 操作数，不算泄漏的展示文案
+    expect(result.nestedChineseTexts).toEqual([]);
+  });
+
+  it('纯变量插值（无嵌套中文）：nestedChineseTexts 为空', () => {
+    const { node, sourceFile } = findTemplateExpression('const x = `欢迎 ${userName} 回来`;');
+    const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+    expect(result.nestedChineseTexts).toEqual([]);
+  });
+
+  it('字面量插值被内联进文案，不算嵌套泄漏', () => {
+    const { node, sourceFile } = findTemplateExpression("const x = `从 ${'开始'} 到 ${'结束'}`;");
+    const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+    // 字面量被内联进 processedText（会进 locale 并被翻译），不属于泄漏
+    expect(result.processedText).toContain('开始');
+    expect(result.processedText).toContain('结束');
+    expect(result.nestedChineseTexts).toEqual([]);
+  });
+});
+
+describe('CommonASTUtils.mergeNamedImport', () => {
+  it('已存在同包 import：幂等去重，不重复注入', () => {
+    const code = `import React from 'react';\nimport { Trans } from 'react-i18next';\n\nconst X = 1;`;
+    const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['Trans', 'useTranslation']);
+    expect(out).toMatch(/import \{ Trans, useTranslation \} from 'react-i18next';/);
+    // 只有一条 react-i18next import
+    expect((out.match(/from 'react-i18next'/g) || []).length).toBe(1);
+  });
+
+  it('无同包 import：新增一行', () => {
+    const code = `import React from 'react';\n\nconst X = 1;`;
+    const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['Trans']);
+    expect(out).toMatch(/import \{ Trans \} from 'react-i18next';/);
+  });
+
+  it('注释中含 import 字样：不得误伤真实 import（Bug #8）', () => {
+    // 注释里的 import 字样（无分号，是真 import 的子串）曾导致 String.replace 把真 import 抠成 `;`
+    const code = [
+      `import React from 'react';`,
+      `import { Trans, useTranslation } from 'react-i18next';`,
+      `// 顶部已有 \`import { Trans, useTranslation } from 'react-i18next'\``,
+      ``,
+      `const X = 1;`,
+    ].join('\n');
+    const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['Trans']);
+    // 真实 import 完好（不被损坏成裸 `;`），且仍是一条
+    expect(out).toMatch(/^import \{ Trans, useTranslation \} from 'react-i18next';$/m);
+    expect(out).not.toMatch(/^;$/m);
+  });
+
+  it('字符串字面量中含 import 字样：同样不误伤', () => {
+    const code = [
+      `import { Trans } from 'react-i18next';`,
+      `const tip = "import { Trans } from 'react-i18next'";`,
+    ].join('\n');
+    const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['Trans']);
+    expect(out).toMatch(/^import \{ Trans \} from 'react-i18next';$/m);
+    // 字符串字面量原样保留
+    expect(out).toContain(`const tip = "import { Trans } from 'react-i18next'";`);
+  });
+});

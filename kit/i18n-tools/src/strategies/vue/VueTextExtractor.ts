@@ -592,6 +592,15 @@ export class VueTextExtractor extends BaseTextExtractor {
         text = result.processedText;
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
+        // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
+        for (const nested of result.nestedChineseTexts) {
+          CommonASTUtils.recordSkippedNestedChinese(
+            nested,
+            filePath,
+            directive.loc.start.line + lineOffset,
+            directive.loc.start.column,
+          );
+        }
       }
     }
 
@@ -714,6 +723,15 @@ export class VueTextExtractor extends BaseTextExtractor {
         text = result.processedText;
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
+        // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
+        for (const nested of result.nestedChineseTexts) {
+          CommonASTUtils.recordSkippedNestedChinese(
+            nested,
+            filePath,
+            interpolationNode.loc.start.line + lineOffset,
+            interpolationNode.loc.start.column,
+          );
+        }
       }
     }
 
@@ -817,6 +835,18 @@ export class VueTextExtractor extends BaseTextExtractor {
         processedText = result.processedText;
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
+        // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
+        if (result.nestedChineseTexts.length > 0) {
+          const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+          for (const nested of result.nestedChineseTexts) {
+            CommonASTUtils.recordSkippedNestedChinese(
+              nested,
+              filePath,
+              pos.line + 1 + lineOffset,
+              pos.character + 1,
+            );
+          }
+        }
       }
     }
     // 处理无替换模板字符串
