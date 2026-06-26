@@ -259,4 +259,44 @@ describe('LocaleValueLinter', () => {
       expect(lines).toContain('1 条');
     });
   });
+
+  describe('插值表达式内嵌套中文检测（nested-interpolation-chinese）', () => {
+    beforeEach(() => {
+      // 清空收集器，避免上一个测试遗留污染。
+      CommonASTUtils.drainSkippedNestedChinese();
+    });
+
+    it('记录到的嵌套中文无条件告警（无需与 locale map 交叉）', () => {
+      CommonASTUtils.recordSkippedNestedChinese('内部错误', '/proj/src/foo.vue', 42, 8);
+
+      // 故意给一个完全不相关的 locale map：嵌套中文仍应告警（与 hardcoded-comparison 不同）
+      LocaleValueLinter.lint({ 'a.b': '无关文案' });
+
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).toContain('[nested-interpolation-chinese]');
+      expect(lines).toContain('/proj/src/foo.vue:42:8');
+      expect(lines).toContain('"内部错误"');
+    });
+
+    it('drain 是消耗性操作：lint 后 collector 清空，不重复告警', () => {
+      CommonASTUtils.recordSkippedNestedChinese('网络异常', '/proj/a.vue', 1, 1);
+      LocaleValueLinter.lint({});
+      warnSpy.mockClear();
+
+      LocaleValueLinter.lint({});
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).not.toContain('nested-interpolation-chinese');
+    });
+
+    it('同一位置重复记录会去重（一次告警）', () => {
+      CommonASTUtils.recordSkippedNestedChinese('网络异常', '/proj/x.vue', 5, 3);
+      CommonASTUtils.recordSkippedNestedChinese('网络异常', '/proj/x.vue', 5, 3);
+
+      LocaleValueLinter.lint({});
+
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      const hits = (lines.match(/\/proj\/x\.vue:5:3/g) || []).length;
+      expect(hits).toBe(1);
+    });
+  });
 });

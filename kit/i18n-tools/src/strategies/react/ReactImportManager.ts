@@ -87,6 +87,14 @@ export class ReactImportManager implements IImportManager {
       if (library.isHOCCall(node.expression)) {
         const wrappedComponent = library.getHOCWrappedComponent(node.expression);
         if (wrappedComponent) {
+          // 类组件 HOC（内部名 = 原名+WithOutIntl）：原本是 `export default class Foo`，inject 时
+          // 拆成「class FooWithOutIntl + export default HOC(FooWithOutIntl)」。还原时删除这条默认导出
+          // 语句，由 case 3 把 `export default` 还给改回原名的类——否则会产出引用旧内部名的
+          // `export default FooWithOutIntl`（Bug #1 的 restore 配套）。
+          if (wrappedComponent.endsWith(HOC_CLASS_SUFFIX)) {
+            return ts.factory.createNotEmittedStatement(node);
+          }
+          // 函数组件 HOC：内部名即原名，直接解包为 `export default Foo`
           const arg = node.expression.arguments[0]!;
           return ts.factory.updateExportAssignment(node, node.modifiers, arg);
         }
@@ -126,14 +134,28 @@ export class ReactImportManager implements IImportManager {
       }
 
       if (originalName) {
-        // inject 时把 export 从类移到了 HOC 导出语句（export const X = HOC(XWithOutIntl)）。
-        // case 2 删除该导出语句后，若原本带 export，需把 export 还给类，否则模块对外 API 丢失。
-        const reExport = context.exportedHocInnerNames?.has(innerName);
+        // inject 时把 export 从类移到了 HOC 导出语句（export const X = HOC(XWithOutIntl) 或
+        // export default HOC(XWithOutIntl)）。case 1/case 2 删除该导出语句后，若原本带 export，
+        // 需把 export 还给类，否则模块对外 API 丢失。
+        const reExportDefault = context.defaultExportedHocInnerNames?.has(innerName);
+        const reExportNamed = context.exportedHocInnerNames?.has(innerName);
         const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
-        const modifiers =
-          reExport && !hasExport
-            ? [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword), ...(node.modifiers ?? [])]
-            : node.modifiers;
+        let modifiers: readonly ts.ModifierLike[] | undefined = node.modifiers;
+        if (!hasExport) {
+          if (reExportDefault) {
+            // 默认导出：还回 `export default`
+            modifiers = [
+              ts.factory.createModifier(ts.SyntaxKind.ExportKeyword),
+              ts.factory.createModifier(ts.SyntaxKind.DefaultKeyword),
+              ...(node.modifiers ?? []),
+            ];
+          } else if (reExportNamed) {
+            modifiers = [
+              ts.factory.createModifier(ts.SyntaxKind.ExportKeyword),
+              ...(node.modifiers ?? []),
+            ];
+          }
+        }
         return ts.factory.updateClassDeclaration(
           node,
           modifiers,

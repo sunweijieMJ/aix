@@ -230,6 +230,18 @@ export class ReactTextExtractor extends BaseTextExtractor {
         }
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
+        // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
+        if (result.nestedChineseTexts.length > 0) {
+          const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+          for (const nested of result.nestedChineseTexts) {
+            CommonASTUtils.recordSkippedNestedChinese(
+              nested,
+              filePath,
+              pos.line + 1,
+              pos.character + 1,
+            );
+          }
+        }
       }
     }
     // 处理无替换模板字符串

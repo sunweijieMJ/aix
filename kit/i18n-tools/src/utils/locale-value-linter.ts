@@ -137,6 +137,22 @@ export class LocaleValueLinter {
       });
     }
 
+    for (const c of this.findNestedInterpolationChinese()) {
+      findings.push({
+        category: 'nested-interpolation-chinese',
+        title: `${c.filePath}:${c.line}:${c.column}`,
+        details: [
+          `未提取的嵌套中文: ${JSON.stringify(c.text)}`,
+          '该中文位于插值表达式（如三元分支）内，会作为运行时参数渲染出未翻译原文',
+        ],
+        key: '<global>',
+        value: c.text,
+        file: c.filePath,
+        line: c.line,
+        column: c.column,
+      });
+    }
+
     return findings;
   }
 
@@ -243,6 +259,23 @@ export class LocaleValueLinter {
       }
     }
     return result;
+  }
+
+  /**
+   * 取出提取阶段记录的「被插值占位符吞掉的嵌套中文字面量」。
+   *
+   * 与 findHardcodedComparisons 不同，这里无需与 locale map 交叉：嵌套中文必然是
+   * 展示文案，作为运行时参数渲染出未翻译原文即问题，全部上报。
+   *
+   * 注意：drain 是消耗性操作，调用后 collector 清空，避免下次 lint 重复报警。
+   */
+  private static findNestedInterpolationChinese(): Array<{
+    text: string;
+    filePath: string;
+    line: number;
+    column: number;
+  }> {
+    return CommonASTUtils.drainSkippedNestedChinese();
   }
 
   /**

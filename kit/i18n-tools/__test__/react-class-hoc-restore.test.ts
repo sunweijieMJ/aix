@@ -86,4 +86,28 @@ export default Panel;
     expect(restored).not.toMatch(/export\s+class\s+Panel\b/);
     expect(restored).toContain('设置');
   });
+
+  it('默认导出的类组件：inject 不遗留孤立 default + restore 恢复 export default class（Bug #1）', async () => {
+    const original = `import React from 'react';
+export default class Foo extends React.Component {
+  render() {
+    return <div title="确定">x</div>;
+  }
+}
+`;
+    const { injected, restored } = await roundTrip(original);
+
+    // inject 端：走 HOC 路径，且不得遗留孤立的 `default class`（语法错误）
+    expect(injected).toContain('FooWithOutIntl');
+    expect(injected).toMatch(/export default injectIntl\(FooWithOutIntl\)/);
+    expect(injected, `inject 输出：\n${injected}`).not.toMatch(/default\s+class/);
+
+    // restore 端：恢复 `export default class Foo`，不残留内部名 / HOC / 旧引用
+    expect(restored, `还原输出：\n${restored}`).toMatch(/export\s+default\s+class\s+Foo\b/);
+    expect(restored).not.toContain('WithOutIntl');
+    expect(restored).not.toContain('injectIntl');
+    // 默认导出唯一，不得出现重复 export default
+    expect((restored.match(/export\s+default/g) || []).length).toBe(1);
+    expect(restored).toContain('确定');
+  });
 });

@@ -415,6 +415,45 @@ describe('resolveConfig - LLM 合并', () => {
     expect(r.llm.idGeneration.throttleMs).toBe(500);
     expect(r.llm.idGeneration.temperature).toBe(0.1);
   });
+
+  it('headers 深合并：shared 与任务级可加，不被整体覆盖（Bug #6）', () => {
+    const r = resolveConfig({
+      root: '/tmp/proj',
+      framework: { type: 'vue' },
+      llm: {
+        shared: { apiKey: 'k1', model: 'gpt-4o', headers: { Authorization: 'Bearer GLOBAL' } },
+        translation: { headers: { 'X-Trace': 'task-123' } },
+      },
+    });
+    // translation 同时含 shared 的鉴权头与任务级追踪头（不再丢失 Authorization）
+    expect(r.llm.translation.headers).toEqual({
+      Authorization: 'Bearer GLOBAL',
+      'X-Trace': 'task-123',
+    });
+    // idGeneration 未配任务级 headers：继承 shared
+    expect(r.llm.idGeneration.headers).toEqual({ Authorization: 'Bearer GLOBAL' });
+  });
+
+  it('任务级 headers 同名键覆盖 shared 同名键（覆盖语义仍保留）', () => {
+    const r = resolveConfig({
+      root: '/tmp/proj',
+      framework: { type: 'vue' },
+      llm: {
+        shared: { apiKey: 'k1', model: 'gpt-4o', headers: { 'X-Env': 'prod', Authorization: 'A' } },
+        translation: { headers: { 'X-Env': 'test' } },
+      },
+    });
+    expect(r.llm.translation.headers).toEqual({ 'X-Env': 'test', Authorization: 'A' });
+  });
+
+  it('均未配 headers：为 undefined（不产出空对象）', () => {
+    const r = resolveConfig({
+      root: '/tmp/proj',
+      framework: { type: 'vue' },
+      llm: { shared: { apiKey: 'k1', model: 'gpt-4o' } },
+    });
+    expect(r.llm.translation.headers).toBeUndefined();
+  });
 });
 
 describe('resolveConfig - merge.onLlmRejected 枚举', () => {

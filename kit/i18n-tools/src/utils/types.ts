@@ -117,4 +117,10 @@ export interface TransformContext {
    * 内部类名记于此。restore 把内部类改回原名时据此恢复 export 修饰符（Bug B3）。
    */
   exportedHocInnerNames?: Set<string>;
+  /**
+   * 通过 `export default HOC(原名+WithOutIntl)` 默认导出的内部类名记于此。
+   * restore 把内部类改回原名时据此恢复 `export default` 修饰符，并删除原 HOC 默认导出语句，
+   * 避免还原出引用旧内部名的 `export default FooWithOutIntl`（Bug #1 的 restore 配套）。
+   */
+  defaultExportedHocInnerNames?: Set<string>;
 }

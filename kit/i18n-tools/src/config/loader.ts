@@ -253,6 +253,10 @@ function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
     if (!merged.model) {
       merged.model = DEFAULT_LLM_MODEL;
     }
+    // headers 是可加性的（如全局 Authorization + 任务级追踪头），不能像 scalar 字段
+    // 那样被任务级整体覆盖。浅合并的 { ...shared, ...task } 会让 task.headers 完全
+    // 顶掉 shared.headers，导致鉴权头丢失。这里对 headers 单独做深合并。
+    const mergedHeaders = { ...(shared.headers ?? {}), ...(task?.headers ?? {}) };
     return {
       apiKey: merged.apiKey ?? '',
       baseURL: merged.baseURL,
@@ -260,7 +264,7 @@ function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
       timeout: merged.timeout ?? DEFAULT_LLM_TASK.timeout,
       maxRetries: merged.maxRetries ?? DEFAULT_LLM_TASK.maxRetries,
       temperature: merged.temperature ?? DEFAULT_LLM_TASK.temperature,
-      headers: merged.headers,
+      headers: Object.keys(mergedHeaders).length > 0 ? mergedHeaders : undefined,
       concurrency: Math.max(1, merged.concurrency ?? DEFAULT_LLM_TASK.concurrency),
       batchSize: Math.max(1, merged.batchSize ?? DEFAULT_LLM_TASK.batchSize),
       throttleMs: Math.max(0, merged.throttleMs ?? DEFAULT_LLM_TASK.throttleMs),

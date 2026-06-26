@@ -45,6 +45,7 @@ export interface FailureRecord {
  * - semantic-duplicate   语义重复 key（占位符变量名/空白差异）
  * - cross-module-reuse   跨模块复用候选（同一 value 多前缀使用）
  * - hardcoded-comparison 硬编码中文与已 i18n 文案比较（脱钩风险）
+ * - nested-interpolation-chinese 插值表达式内中文分支被占位符吞掉（运行时渲染未翻译中文）
  */
 export type ManualCategory =
   | 'comparison-operand'
@@ -54,7 +55,8 @@ export type ManualCategory =
   | 'long-value'
   | 'semantic-duplicate'
   | 'cross-module-reuse'
-  | 'hardcoded-comparison';
+  | 'hardcoded-comparison'
+  | 'nested-interpolation-chinese';
 
 /**
  * 单条「需要人工处理」记录。结构尽量贴合 IDE 跳转所需信息（file:line:column），
@@ -318,6 +320,7 @@ export class RunReport {
     'semantic-duplicate': '语义重复 key（占位符/空白差异）',
     'cross-module-reuse': '跨模块复用候选',
     'hardcoded-comparison': '硬编码中文 ↔ i18n 文案脱钩风险',
+    'nested-interpolation-chinese': '插值表达式内中文未提取（渲染未翻译中文）',
   };
 
   static readonly MANUAL_DEFAULT_SUGGESTIONS: Record<ManualCategory, string> = {
@@ -352,6 +355,11 @@ export class RunReport {
 运行时切语言后比较一定为假。建议改用 key 比较 / 索引比较 / 枚举常量：
     ❌  v-if="activeTab === '教学路径'"
     ✅  v-if="activeTabKey === 'teachingpath'"  或  v-if="activeIdx === 0"`,
+    'nested-interpolation-chinese': `插值表达式（三元 / 逻辑表达式等）内的中文分支不会被提取，
+也不会内联进 locale 文案，而是作为运行时参数原样塞进占位符——
+切到非源语种后会渲染出未翻译的中文。建议把分支各自 t() 化：
+    ❌  \`操作失败：\${cond ? '内部错误' : '网络异常'}\`
+    ✅  \`操作失败：\${cond ? t('xxx__internalError') : t('xxx__networkError')}\``,
   };
 
   private static safeExtractError(error: unknown): FailureRecord['error'] {

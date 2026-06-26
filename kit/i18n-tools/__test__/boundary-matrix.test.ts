@@ -130,6 +130,40 @@ const CASES: MatrixCase[] = [
     outContains: [/import\s*\{\s*t\s*\}\s*from/, /\bt\(/],
     outNotContains: ['你好欢迎'],
   },
+  {
+    // BUG:#1 — export default class 组件 HOC 注入须改产出 `export default HOC(...)`，
+    // 不得遗留孤立 `default class`（语法错误，整文件无法编译）。title 属性触发 HOC。
+    id: 'react_export_default_class',
+    framework: 'react',
+    library: 'react-i18next',
+    ext: 'tsx',
+    input: `export default class Foo extends React.Component {\n  render() { return <div title="中文标题">x</div>; }\n}\n`,
+    outContains: [/export default withTranslation\(\)\(/],
+    // 关键断言：不得出现孤立的 `default class`（删 export 时遗留 default 关键字）
+    outNotContains: [/default\s+class/],
+  },
+  {
+    // BUG:#3 — PureComponent 类组件注入 this.props.t 后，类型增广须同样追加 WithTranslation，
+    // 否则 this.props.t 类型检查失败。
+    id: 'react_pure_component_type',
+    framework: 'react',
+    library: 'react-i18next',
+    ext: 'tsx',
+    input: `export class Foo extends React.PureComponent {\n  render() { return <div title="中文标题">x</div>; }\n}\n`,
+    outContains: [/PureComponent<WithTranslation>/],
+  },
+  {
+    // BUG:#4 — 单参 useEffect（无依赖数组 = 每次渲染执行）体内用到 t 时，不得擅自补 `, [t]`
+    // （会把语义改成「仅 t 变化时」且 restore 不可逆）。title 触发 hook 注入，使 t 进入作用域。
+    id: 'react_single_arg_effect_no_deps',
+    framework: 'react',
+    library: 'react-i18next',
+    ext: 'tsx',
+    input: `export default function Panel() {\n  useEffect(() => { notify('保存成功'); });\n  return <div title="中文标题">x</div>;\n}\n`,
+    outContains: [/useTranslation\(/],
+    // 关键断言：单参 effect 不应被补依赖数组 [t]
+    outNotContains: [/\[t\]/],
+  },
 ];
 
 describe('边界矩阵：框架 × i18n库 × 文本形态（提取↔替换对称性）', () => {
