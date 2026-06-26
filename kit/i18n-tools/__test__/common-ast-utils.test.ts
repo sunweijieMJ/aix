@@ -196,6 +196,86 @@ describe('CommonASTUtils.processTemplateExpression - 嵌套中文检测', () => 
   });
 });
 
+describe('CommonASTUtils.isImportedNameUnused（作用域遮蔽判定）', () => {
+  const M = '@/plugins/locale';
+  const check = (code: string) => CommonASTUtils.isImportedNameUnused(code, 'f.tsx', M, 't');
+
+  it('组件内声明同名局部 t 遮蔽了导入 t → 未使用=true', () => {
+    const code = `import { t } from '${M}';
+function C() {
+  const { t } = useTranslation();
+  return t('a');
+}`;
+    expect(check(code)).toBe(true);
+  });
+
+  it('类组件 render 内 const { t } = this.props 遮蔽 → 未使用=true', () => {
+    const code = `import { t } from '${M}';
+class C extends Component {
+  render() {
+    const { t } = this.props;
+    return t('a');
+  }
+}`;
+    expect(check(code)).toBe(true);
+  });
+
+  it('模块级使用 t（无遮蔽）→ 未使用=false（保留导入）', () => {
+    const code = `import { t } from '${M}';
+const x = t('a');
+function C() {
+  const { t } = useTranslation();
+  return t('b');
+}`;
+    expect(check(code)).toBe(false);
+  });
+
+  it('重命名导入 t as tr：注入的 const { t } 不遮蔽 tr → 未使用=false', () => {
+    const code = `import { t as tr } from '${M}';
+function C() {
+  const { t } = useTranslation();
+  return tr('a');
+}`;
+    expect(check(code)).toBe(false);
+  });
+
+  it('解构重命名 const { t: hook } 不遮蔽导入 t → 未使用=false', () => {
+    const code = `import { t } from '${M}';
+function C() {
+  const { t: hook } = useTranslation();
+  return t('a');
+}`;
+    expect(check(code)).toBe(false);
+  });
+
+  it('对象字面量简写 { t } 是真实值引用 → 未使用=false', () => {
+    const code = `import { t } from '${M}';
+function C() {
+  const { t } = useTranslation();
+  const obj = { t };
+  return obj;
+}`;
+    // 顶层无引用，但组件内 { t } 简写引用的是被遮蔽的局部 t，导入 t 仍未被使用
+    expect(check(code)).toBe(true);
+  });
+
+  it('属性访问 obj.t 不算对导入 t 的引用 → 未使用=true', () => {
+    const code = `import { t } from '${M}';
+const obj = { t: 1 };
+function C() {
+  const { t } = useTranslation();
+  return obj.t + t('a');
+}`;
+    expect(check(code)).toBe(true);
+  });
+
+  it('无 tImport 的 t 导入 → 返回 false（无可清理）', () => {
+    const code = `import { useTranslation } from 'react-i18next';
+function C() { const { t } = useTranslation(); return t('a'); }`;
+    expect(check(code)).toBe(false);
+  });
+});
+
 describe('CommonASTUtils.mergeNamedImport', () => {
   it('已存在同包 import：幂等去重，不重复注入', () => {
     const code = `import React from 'react';\nimport { Trans } from 'react-i18next';\n\nconst X = 1;`;
