@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.25
+
+### Patch Changes
+
+- react等边界修复
+
 ## 0.0.24
 
 ### Patch Changes
