@@ -146,6 +146,16 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     const finalText = messageTemplate ?? messageInfo.defaultMessage ?? '';
 
     if (messageInfo.values && Object.keys(messageInfo.values).length > 0) {
+      // JSX 子节点位置：重建为 JSX 片段 `<>文本 {expr} 文本</>`，避免把模板字面量
+      // (`` `文本 ${expr}` ``)当作字面文本渲染。非 JSX 位置(如 attr={<Trans/>})
+      // 仍用模板字面量。
+      if (inJsxChildContext) {
+        const fragment = CommonASTUtils.createJsxFragmentFromTemplate(
+          finalText,
+          messageInfo.values,
+        );
+        if (fragment) return fragment;
+      }
       return CommonASTUtils.createStringOrTemplateNode(finalText, messageInfo.values);
     }
 
