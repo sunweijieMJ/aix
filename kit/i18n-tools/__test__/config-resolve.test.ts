@@ -316,6 +316,23 @@ describe('resolveConfig - locales 校验', () => {
     expect(r.locales.targets).toEqual(['en', 'ja', 'ko']);
   });
 
+  it('显式空 targets 数组抛错（区别于未配置回落默认）', () => {
+    // 回归：`targets: []` 旧实现被当作未配置、悄悄塞回 ['en-US']；
+    // 当 source 恰为默认目标时还会抛出引用未配置语种的误导性错误。
+    expect(() => resolveConfig({ ...baseConfig, locales: { targets: [] } })).toThrow(
+      /targets 不能为空数组/,
+    );
+    // 关键：错误信息不得提及用户从未配置的 'en-US'
+    expect(() =>
+      resolveConfig({ ...baseConfig, locales: { source: 'en-US', targets: [] } }),
+    ).toThrow(/targets 不能为空数组/);
+  });
+
+  it('未配置 targets → 仍回落默认（修复不影响默认路径）', () => {
+    const r = resolveConfig({ ...baseConfig, locales: { source: 'zh-CN' } });
+    expect(r.locales.targets).toEqual(['en-US']);
+  });
+
   it('names 合并', () => {
     const r = resolveConfig({
       ...baseConfig,

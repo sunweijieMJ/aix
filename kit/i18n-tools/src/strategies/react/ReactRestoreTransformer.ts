@@ -377,9 +377,14 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             }
           }
 
-          // 清理Hook依赖数组
+          // 清理Hook依赖数组（与上面的导入/变量清理共用 keepTranslationVar 守卫：
+          // 翻译变量被保留时不得从 deps 数组剥离 t，避免悬空 deps + 陈旧闭包）
           if (ts.isCallExpression(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupHookDependencies(currentNode, library);
+            const cleanedNode = ReactImportManager.cleanupHookDependencies(
+              currentNode,
+              library,
+              keepTranslationVar,
+            );
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
