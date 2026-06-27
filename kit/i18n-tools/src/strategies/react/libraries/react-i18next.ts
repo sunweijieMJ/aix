@@ -68,11 +68,16 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
    *
    * Why：i18next 默认插值语法是双花括号 `{{name}}`，单花括号被当作字面量。defaultValue /
    * defaults 仅在 locale 缺 key 时兜底渲染，若沿用单花括号占位符，缺 key 时会原样显示
-   * `你好 {name}` 而非替换变量。复用 finalizeLocaleMessage：只把真占位符（values 的 key）
-   * 转双花括号，正文里的字面 `{x}` 保持不动——与写入 locale 的值口径一致。
+   * `你好 {name}` 而非替换变量。复用 finalizeLocaleMessage：只把真占位符转双花括号，
+   * 正文里的字面 `{x}` 保持不动——与写入 locale 的值口径一致。
+   *
+   * 注意：values 的方向是 Map<表达式, 占位符名>（createMessageWithOptions 的 placeholderMap），
+   * finalizeLocaleMessage 需要的是消息里以 {x} 出现的「占位符名」，故必须传 values.values()
+   * 而非 keys()——成员访问 ${data.count}（名 count != 表达式 data.count）下传 keys() 会让真
+   * 占位符被当字面花括号，缺 key 时不插值。
    */
   private localizeDefaultMessage(defaultMessage: string, values?: Map<string, string>): string {
-    return CommonASTUtils.finalizeLocaleMessage(defaultMessage, values?.keys() ?? [], this);
+    return CommonASTUtils.finalizeLocaleMessage(defaultMessage, values?.values() ?? [], this);
   }
 
   generateJSXComponent(

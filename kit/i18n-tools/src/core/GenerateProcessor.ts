@@ -123,10 +123,10 @@ export class GenerateProcessor extends BaseProcessor {
       this.skippedComparisons = CommonASTUtils.drainSkippedComparisonOperands();
 
       if (extractedStrings.length === 0) {
-        // 仍要汇报覆盖率：空提取也意味着「文件无中文 / 已全部国际化」，
-        // 是一种有效结果。reuseResolver 此时为空（未做 scan），coverage 把
-        // 该文件归到「全已国际化」一侧。
-        this.recordAndRenderCoverage([filePath], [], null);
+        // 仍要汇报覆盖率：空提取也意味着「文件无中文 / 已全部国际化」，是一种有效结果。
+        // 必须扫描已有 t()/$t() 调用点填充 alreadyI18n，否则「已全量国际化 + 仅剩比较运算符
+        // 跳过项」的文件会因 skipped>0、alreadyI18n=0 被算成 0% 覆盖率，误触 --coverage-threshold。
+        this.recordAndRenderCoverage([filePath], [], this.buildCoverageScanResolver([filePath]));
         LoggerUtils.info('✅ 未发现需要提取的文本');
         return;
       }
@@ -191,7 +191,13 @@ export class GenerateProcessor extends BaseProcessor {
     this.skippedComparisons = CommonASTUtils.drainSkippedComparisonOperands();
 
     if (extractedStrings.length === 0) {
-      this.recordAndRenderCoverage(frameworkFiles, [], null);
+      // 同 runSingleFile：空提取分支也要扫描已有调用点，避免已国际化目录被比较运算符
+      // 跳过项把覆盖率拉到 0%（详见 buildCoverageScanResolver / recordAndRenderCoverage）。
+      this.recordAndRenderCoverage(
+        frameworkFiles,
+        [],
+        this.buildCoverageScanResolver(frameworkFiles),
+      );
       LoggerUtils.info('✅ 所有文件均未发现需要提取的文本');
       return;
     }
@@ -968,6 +974,17 @@ export class GenerateProcessor extends BaseProcessor {
       GeneratePlanWriter.cleanup(planDir);
       LoggerUtils.info(`🗑️  Plan 目录已清理：${planDir}（如需保留请使用 --keep-plan）`);
     }
+  }
+
+  /**
+   * 仅用于覆盖率统计的轻量 resolver：构造 IdReuseResolver 并扫描已有 t()/$t() 调用点，
+   * 不参与 ID 生成 / 落盘。供空提取分支（无 ExtractedString，故不会走 generateIdsForStrings）
+   * 复用——让 alreadyI18n 反映真实已国际化量，避免 skipped 把覆盖率误算成 0。
+   */
+  private buildCoverageScanResolver(filePaths: string[]): IdReuseResolver {
+    const resolver = new IdReuseResolver(this.config, this.isCustom);
+    resolver.scanExistingCallsInSources(filePaths);
+    return resolver;
   }
 
   /**
