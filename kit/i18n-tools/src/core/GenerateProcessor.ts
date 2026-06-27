@@ -130,7 +130,7 @@ export class GenerateProcessor extends BaseProcessor {
         return;
       }
 
-      const reuseResolver = await this.generateIdsForStrings(extractedStrings, skipLLM);
+      const reuseResolver = await this.generateIdsForStrings(extractedStrings, skipLLM, [filePath]);
       this.displayResults(extractedStrings);
 
       const shouldApply = this.interactive
@@ -195,7 +195,11 @@ export class GenerateProcessor extends BaseProcessor {
       return;
     }
 
-    const reuseResolver = await this.generateIdsForStrings(extractedStrings, skipLLM);
+    const reuseResolver = await this.generateIdsForStrings(
+      extractedStrings,
+      skipLLM,
+      frameworkFiles,
+    );
     this.displayResults(extractedStrings, true);
 
     const shouldApply = this.interactive
@@ -244,7 +248,7 @@ export class GenerateProcessor extends BaseProcessor {
       item.isTemplateString && item.templateVariables
         ? CommonASTUtils.createMessageWithOptions(raw, item.templateVariables)
         : {
-            message: raw.replace(/^['"`]|['"`]$/g, ''),
+            message: CommonASTUtils.stripMatchedDelimiters(raw, ['`']),
             placeholderMap: new Map<string, string>(),
           };
     const library = this.adapter?.getLibrary();
@@ -267,12 +271,16 @@ export class GenerateProcessor extends BaseProcessor {
   private async generateIdsForStrings(
     extractedStrings: ExtractedString[],
     skipLLM: boolean = false,
+    scannedFilePaths?: string[],
   ): Promise<IdReuseResolver> {
     const fileGroups = FileUtils.groupBy(extractedStrings, (str) => str.filePath);
     const textToIdMap = new Map<string, string>();
 
     const reuseResolver = new IdReuseResolver(this.config, this.isCustom);
-    reuseResolver.scanExistingCallsInSources(Object.keys(fileGroups));
+    // 覆盖率分子（已国际化调用点）应覆盖全部被扫描文件，而非仅「还含新中文」的文件。
+    // 否则已 100% 国际化的文件被算进扫描分母却不计其 t() 调用点 → 覆盖率被系统性低估，
+    // 会误触 --coverage-threshold 的 CI 卡点。无显式入参时回退到有提取的文件（兼容旧调用）。
+    reuseResolver.scanExistingCallsInSources(scannedFilePaths ?? Object.keys(fileGroups));
 
     const textGroups: Record<string, string[]> = {};
     Object.entries(fileGroups).forEach(([filePath, strings]) => {

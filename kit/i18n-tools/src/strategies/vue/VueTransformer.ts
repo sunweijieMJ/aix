@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
@@ -40,7 +41,13 @@ export class VueTransformer implements ITransformer {
    */
   transform(filePath: string, extractedStrings: ExtractedString[], sourceText?: string): string {
     sourceText = sourceText ?? fs.readFileSync(filePath, 'utf-8');
-    const fileStrings = extractedStrings.filter((s) => s.filePath === filePath);
+    // 归一两侧路径再比较（详见 ReactTransformer.transformText 的同款说明）：
+    // 避免 transformToMemory 规范化后的 filePath 与原样透传的 s.filePath 不等，
+    // 致单文件模式命中 0 条、源码未改却已写 locale。
+    const normalizedTarget = path.normalize(filePath);
+    const fileStrings = extractedStrings.filter(
+      (s) => path.normalize(s.filePath) === normalizedTarget,
+    );
 
     if (fileStrings.length === 0) {
       return sourceText;

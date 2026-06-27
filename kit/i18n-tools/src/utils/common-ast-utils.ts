@@ -1107,6 +1107,27 @@ export class CommonASTUtils {
   }
 
   /**
+   * 剥除「成对」的首尾定界符：仅当首尾是同一个定界符时才剥一层。
+   *
+   * Why 不用旧的 `replace(/^['"`]|['"`]$/g, '')`（首尾各无条件删一个字符）：
+   * 提取出的 original / JSX 文本本身不带定界引号，其内容若以 ASCII 引号收尾
+   * （如 `点击"提交"`）旧写法会把内容里的引号误删 —— 导致替换阶段两侧归一化
+   * 后不相等而静默跳过（locale 写了源码没改），或 locale 值永久丢字符。
+   * 成对判定（首尾必须同字符）对无定界符的内容值是 no-op。
+   *
+   * @param allow 允许作为定界符的字符集合，默认引号与反引号都认；locale 文案路径
+   *              传 `['`']` 只剥模板反引号（其入参是去定界符的内容或反引号模板）。
+   */
+  static stripMatchedDelimiters(text: string, allow: readonly string[] = ['"', "'", '`']): string {
+    if (text.length < 2) return text;
+    const first = text[0]!;
+    if (first === text[text.length - 1] && allow.includes(first)) {
+      return text.slice(1, -1);
+    }
+    return text;
+  }
+
+  /**
    * 决定是否应该替换一个给定的AST节点
    */
   static shouldReplaceNode(
@@ -1127,7 +1148,7 @@ export class CommonASTUtils {
         .replace(/\\'/g, "'");
 
     const normalizeText = (text: string) => {
-      text = text.replace(/^['"`]|['"`]$/g, '');
+      text = CommonASTUtils.stripMatchedDelimiters(text);
       text = text.replace(/\r?\n/g, '\n');
       text = decodeEscapes(text);
       return text;
@@ -1283,7 +1304,9 @@ export class CommonASTUtils {
     templateVariables?: string[],
   ): { message: string; placeholderMap: Map<string, string> } {
     const placeholderMap = new Map<string, string>();
-    let message = originalText.replace(/^['"`]|['"`]$/g, '');
+    // 仅剥模板反引号：入参是「合成的 backtick template」或去定界符的内容值，
+    // 内容里的 ASCII 引号（如 `点击"提交"`）必须原样保留，不能当定界符删掉。
+    let message = CommonASTUtils.stripMatchedDelimiters(originalText, ['`']);
 
     if (templateVariables && templateVariables.length > 0) {
       // 1. 先展开字面量插值：${'active'} → active

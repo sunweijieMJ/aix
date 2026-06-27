@@ -262,13 +262,15 @@ export class DoctorProcessor extends BaseProcessor {
     targetMap: LocaleMap,
     target: string,
   ): DoctorFinding[] {
-    const chineseRegex = /[一-鿿]/;
     const skipPredicate = this.config.keys.skip;
     const findings: DoctorFinding[] = [];
     for (const [key, sourceValue] of Object.entries(sourceMap)) {
-      if (key in targetMap) continue; // 已存在（无论是否已译）→ 由 untranslated/placeholder 接管
+      // 用 hasOwnProperty 而非 `in`：targetMap 是 flattenObject 出来的普通对象，`in` 会走
+      // 原型链，导致名为 'toString'/'constructor' 等 key 即使目标缺失也被误判为已存在。
+      // 与 checkMissingKeys/checkOrphanKeys 的判定纪律保持一致。
+      if (Object.prototype.hasOwnProperty.call(targetMap, key)) continue;
       if (typeof sourceValue !== 'string') continue;
-      if (!chineseRegex.test(sourceValue)) continue; // 纯英文/符号缺失视为合理不翻译，不报
+      if (!FileUtils.containsChinese(sourceValue)) continue; // 纯英文/符号缺失视为合理不翻译，不报
       if (skipPredicate && skipPredicate(key, sourceValue)) continue;
       findings.push({
         category: 'missing-target-key',
@@ -301,14 +303,13 @@ export class DoctorProcessor extends BaseProcessor {
     targetMap: LocaleMap,
     target: string,
   ): DoctorFinding[] {
-    const chineseRegex = /[一-鿿]/;
     const findings: DoctorFinding[] = [];
     const skipPredicate = this.config.keys.skip;
     for (const [key, sourceValue] of Object.entries(sourceMap)) {
       const targetValue = targetMap[key];
       if (targetValue === undefined) continue; // 缺译归 missing 类，不重复报
       if (typeof sourceValue !== 'string' || typeof targetValue !== 'string') continue;
-      if (!chineseRegex.test(sourceValue)) continue; // 源 value 无中文 → 不参与判定
+      if (!FileUtils.containsChinese(sourceValue)) continue; // 源 value 无中文 → 不参与判定
       if (skipPredicate && skipPredicate(key, sourceValue)) continue;
       if (sourceValue === targetValue) {
         findings.push({

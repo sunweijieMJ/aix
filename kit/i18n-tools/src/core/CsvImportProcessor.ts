@@ -36,6 +36,27 @@ export class CsvImportProcessor extends FileProcessor {
     return 'CSV 回流';
   }
 
+  /**
+   * 严格加载字典文件：缺失/空 → {}；有内容但 JSON 损坏 → 抛错中止。
+   *
+   * Why 不用 FileUtils.safeLoadJsonFile（损坏回退 {}）：损坏的 untranslated.json 会被
+   * 当成 0 条目，CSV 里本应命中的 key 全部落入 missingKeys，审核员翻好的译文被静默
+   * 丢弃却退出成功。与 CsvExportProcessor 的「损坏即中止」守卫对齐。
+   */
+  private loadDictStrict(filePath: string, label: string): Translations {
+    if (!fs.existsSync(filePath)) return {};
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    if (raw.trim() === '') return {};
+    const parsed = FileUtils.safeParseJson(raw) as Translations | null;
+    if (parsed === null) {
+      throw new Error(
+        `${label}解析失败（JSON 格式损坏）: ${filePath}\n` +
+          '👉 为防止把损坏字典误判为「无条目」而静默丢弃回流译文，已中止 csv-import。请先修复该文件的 JSON 格式后重试。',
+      );
+    }
+    return parsed;
+  }
+
   async execute(): Promise<void> {
     return this.executeWithLifecycle(() => this.run());
   }
@@ -73,12 +94,8 @@ export class CsvImportProcessor extends FileProcessor {
     // translations 导出的 CSV 回流时全部命中 untranslated.json 的 if(!entry) 被静默丢弃」。
     const untranslatedPath = FileUtils.getUntranslatedPath(this.config, this.isCustom);
     const translatedPath = FileUtils.getTranslatedPath(this.config, this.isCustom);
-    const untranslated = FileUtils.safeLoadJsonFile<Translations>(untranslatedPath, {
-      errorMessage: '读取 untranslated.json 失败',
-    });
-    const translated = FileUtils.safeLoadJsonFile<Translations>(translatedPath, {
-      errorMessage: '读取 translations.json 失败',
-    });
+    const untranslated = this.loadDictStrict(untranslatedPath, '读取 untranslated.json');
+    const translated = this.loadDictStrict(translatedPath, '读取 translations.json');
 
     // 应用保守合并，收集统计
     let updated = 0;

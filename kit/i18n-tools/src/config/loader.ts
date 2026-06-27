@@ -78,13 +78,19 @@ export async function loadConfigFile(configPath?: string): Promise<I18nToolsConf
 
   try {
     const ext = path.extname(resolvedPath);
+    // 规范成绝对路径再分发：jiti 对非绝对 specifier 以 loader 模块为基准解析（bare 名甚至
+    // 当成 node_modules 包），而 pathToFileURL 内部走 process.cwd()。若不统一，同一相对
+    // configPath 会因扩展名走不同分支而解析到不同文件甚至找不到（如 loadConfig('./i18n.config.ts')）。
+    const absPath = path.isAbsolute(resolvedPath)
+      ? resolvedPath
+      : path.resolve(process.cwd(), resolvedPath);
     let configModule: { default?: unknown } & Record<string, unknown>;
 
     if (ext === '.ts' || ext === '.mts' || ext === '.cts') {
       const jiti = createJiti(import.meta.url, { interopDefault: true });
-      configModule = (await jiti.import(resolvedPath)) as typeof configModule;
+      configModule = (await jiti.import(absPath)) as typeof configModule;
     } else {
-      const fileUrl = pathToFileURL(resolvedPath).href;
+      const fileUrl = pathToFileURL(absPath).href;
       configModule = await import(fileUrl);
     }
 
@@ -100,6 +106,22 @@ export async function loadConfigFile(configPath?: string): Promise<I18nToolsConf
 // =============================================================================
 // 子模块解析
 // =============================================================================
+
+/**
+ * 枚举白名单校验：收口 loader 中多处「typo 静默走默认分支、无诊断」的手写校验。
+ * loader 支持 JS 配置（运行时无 TS 字面量类型设防），故同级枚举一律 fail-fast。
+ */
+function validateEnum(
+  value: string,
+  allowed: readonly string[],
+  label: string,
+  opts: { context?: string; suffix?: string } = {},
+): void {
+  if (allowed.includes(value)) return;
+  const ctx = opts.context ? `${opts.context}: ` : '';
+  const list = allowed.map((s) => `'${s}'`).join(' | ');
+  throw new Error(`${ctx}${label} 取值非法: '${value}'（仅支持 ${list}${opts.suffix ?? ''}）`);
+}
 
 /**
  * 解析 framework 配置 + 与 library 做联合校验。
@@ -165,22 +187,13 @@ function resolveNestedPrefixStrategy(
     // 运行时无 TS 类型设防，typo 会静默走 id-generator 的 default 分支（as-is）而无诊断。
     // fileNameCase 允许传函数（自定义大小写转换），故仅在为字符串时校验取值。
     if (typeof fileNameCase === 'string') {
-      const validCase = ['as-is', 'camel', 'kebab', 'snake'];
-      if (!validCase.includes(fileNameCase)) {
-        throw new Error(
-          `${context}: fileNameCase 取值非法: '${fileNameCase}'` +
-            `（仅支持 ${validCase.map((s) => `'${s}'`).join(' | ')} 或自定义函数）`,
-        );
-      }
+      validateEnum(fileNameCase, ['as-is', 'camel', 'kebab', 'snake'], 'fileNameCase', {
+        context,
+        suffix: ' 或自定义函数',
+      });
     }
     const indexFile = p.indexFile ?? DEFAULT_KEYS.prefix.indexFile;
-    const validIndexFile = ['as-is', 'collapse-to-parent'];
-    if (!validIndexFile.includes(indexFile)) {
-      throw new Error(
-        `${context}: indexFile 取值非法: '${String(indexFile)}'` +
-          `（仅支持 ${validIndexFile.map((s) => `'${s}'`).join(' | ')}）`,
-      );
-    }
+    validateEnum(indexFile, ['as-is', 'collapse-to-parent'], 'indexFile', { context });
     return {
       strategy: 'path',
       anchor: p.anchor ?? DEFAULT_KEYS.prefix.anchor,
@@ -339,6 +352,21 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
     if (!hasMatch && !hasMatchKey) {
       throw new Error(`桶规则 "${rule.name}" 必须提供 match 或 matchKey 之一`);
     }
+    // 类型校验，与 prefix rules 的 match 校验对齐：JS 配置传错类型（如 matchKey: 'foo'）
+    // 否则会绕过本校验、在 BucketResolver 里抛「Invalid bucket rule」或运行时 TypeError。
+    if (hasMatch) {
+      const m = rule.match;
+      const okType =
+        typeof m === 'string' || Array.isArray(m) || m instanceof RegExp || typeof m === 'function';
+      if (!okType) {
+        throw new Error(
+          `桶规则 "${rule.name}" 的 match 类型非法：仅支持 string | string[] | RegExp | function`,
+        );
+      }
+    }
+    if (hasMatchKey && typeof rule.matchKey !== 'function') {
+      throw new Error(`桶规则 "${rule.name}" 的 matchKey 必须是函数 ((key) => boolean)`);
+    }
   }
 
   const defaultBucket = buckets.defaultBucket ?? DEFAULT_BUCKETS.defaultBucket;
@@ -351,11 +379,7 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
   }
 
   const layout = buckets.layout ?? DEFAULT_BUCKETS.layout;
-  if (layout !== 'by-locale' && layout !== 'by-bucket') {
-    throw new Error(
-      `buckets.layout 取值非法: '${String(layout)}'（仅支持 'by-locale' | 'by-bucket'）`,
-    );
-  }
+  validateEnum(layout, ['by-locale', 'by-bucket'], 'buckets.layout');
 
   return {
     rules: buckets.rules,
@@ -373,6 +397,17 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
  * 解析配置：合并用户配置与默认值，将相对路径转为绝对路径。
  */
 export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
+  // 顶层必填字段守卫：JS/TS 配置不经 TS 类型校验，缺失时下游会抛 path.resolve(undefined)
+  // 或 resolveFramework 读 undefined.type 之类的晦涩原生错误。这里先给出可操作的诊断。
+  // root 用空串还会被 path.resolve('') 静默当成 cwd，故一并拒绝空/纯空白。
+  if (typeof userConfig.root !== 'string' || userConfig.root.trim() === '') {
+    throw new Error('config.root 必填，且必须是非空字符串（项目根目录路径）。');
+  }
+  if (!userConfig.framework || typeof userConfig.framework !== 'object') {
+    throw new Error(
+      'config.framework 必填，且必须是对象（如 { type: "vue" } 或 { type: "react" }）。',
+    );
+  }
   const root = path.resolve(userConfig.root);
 
   // ---- locales ----
@@ -395,9 +430,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
 
   // ---- io ----
   const ioFormat = userConfig.io?.format ?? DEFAULT_IO.format;
-  if (ioFormat !== 'flat' && ioFormat !== 'nested') {
-    throw new Error(`io.format 取值非法: '${String(ioFormat)}'（仅支持 'flat' | 'nested'）`);
-  }
+  validateEnum(ioFormat, ['flat', 'nested'], 'io.format');
   const io = {
     sourceDir: path.resolve(root, userConfig.io?.sourceDir ?? DEFAULT_IO.sourceDir),
     localesDir: path.resolve(root, userConfig.io?.localesDir ?? DEFAULT_IO.localesDir),
