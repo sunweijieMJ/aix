@@ -367,11 +367,13 @@ export class VueRestoreTransformer implements IRestoreTransformer {
           const restoredText = this.restoreTemplateWithVariables(text, vars as string, 'template');
           return `\`${restoredText}\``;
         } catch {
-          return `'${text}'`;
+          return `'${VueRestoreTransformer.escapeForSingleQuoted(text)}'`;
         }
       }
 
-      return `'${text}'`;
+      // 与脚本侧 getI18nCallReplacementText、pass 1/2 同口径转义：text 是 locale 原值，
+      // 含 `'` 或 `\`（如英文 don't、含反斜杠路径）时未转义会生成语法错误表达式。
+      return `'${VueRestoreTransformer.escapeForSingleQuoted(text)}'`;
     });
 
     // 回填占位符

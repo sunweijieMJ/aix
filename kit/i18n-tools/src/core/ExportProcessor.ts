@@ -72,6 +72,15 @@ export class ExportProcessor extends FileProcessor {
       for (const locale of allLocales) {
         const corruptBase = LanguageFileManager.findCorruptBucketFile(this.config, false, locale);
         if (corruptBase) throwCorrupt(corruptBase);
+        // 还需校验「尚未迁移的遗留单文件」：getMessages 桶式分支会 migrateToBuckets，
+        // 它 silent 读遗留 <locale>.json，损坏则静默清空并 rename .bak → 导出空包覆盖
+        // 已发布产物。findCorruptBucketFile 只扫桶目录，扫不到遗留单文件。
+        const corruptLegacyBase = LanguageFileManager.findCorruptLegacySingleFile(
+          this.config,
+          false,
+          locale,
+        );
+        if (corruptLegacyBase) throwCorrupt(corruptLegacyBase);
         if (customDir) {
           const corruptCustom = LanguageFileManager.findCorruptBucketFile(
             this.config,
@@ -79,6 +88,12 @@ export class ExportProcessor extends FileProcessor {
             locale,
           );
           if (corruptCustom) throwCorrupt(corruptCustom);
+          const corruptLegacyCustom = LanguageFileManager.findCorruptLegacySingleFile(
+            this.config,
+            true,
+            locale,
+          );
+          if (corruptLegacyCustom) throwCorrupt(corruptLegacyCustom);
         }
       }
       return;

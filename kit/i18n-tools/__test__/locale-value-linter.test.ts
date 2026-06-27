@@ -4,6 +4,18 @@ import { LocaleValueLinter } from '../src/utils/locale-value-linter';
 import { LoggerUtils } from '../src/utils/logger';
 import { RunReport } from '../src/utils/run-report';
 
+/**
+ * 测试内联组合 analyze + emit：analyze 拿结构化 findings（内部 drain 全局 collector），
+ * emit 默认输出到 console + 可选 RunReport。24 处用例共用，避免重复展开两层调用。
+ */
+const analyzeAndEmit = (
+  localeMap: Parameters<typeof LocaleValueLinter.analyze>[0],
+  report?: RunReport,
+  options?: Parameters<typeof LocaleValueLinter.analyze>[1],
+): void => {
+  LocaleValueLinter.emit(LocaleValueLinter.analyze(localeMap, options), { console: true, report });
+};
+
 describe('LocaleValueLinter', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
@@ -17,7 +29,7 @@ describe('LocaleValueLinter', () => {
 
   describe('语义重复 key 检测', () => {
     it('识别占位符变量名不同但语义相同的多个 key', () => {
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'pages.components.nodeindexplusone': '节点{ni1}',
         'pages.components.nodeindexplusone_1': '节点 {_ni1}',
         'pages.components.nodeindexplusone_2': '节点 {nodeIndex1}',
@@ -35,7 +47,7 @@ describe('LocaleValueLinter', () => {
     });
 
     it('占位符两侧空白差异视为同形态', () => {
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'a.foo': '{count}条',
         'a.bar': '{count} 条',
         'a.baz': ' {count}  条 ',
@@ -49,7 +61,7 @@ describe('LocaleValueLinter', () => {
     });
 
     it('不含占位符、无空白的短文本不参与分组', () => {
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'a.x': '取消',
         'b.x': '取消',
       });
@@ -59,7 +71,7 @@ describe('LocaleValueLinter', () => {
     });
 
     it('没有重复时不输出告警', () => {
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'a.x': '你好 {name}',
         'b.y': '再见 {name}',
       });
@@ -70,7 +82,7 @@ describe('LocaleValueLinter', () => {
   describe('异常 value 检测', () => {
     it('value 含 HTML 标签时告警', () => {
       const htmlValue = `\n  <div style="color:red"><span>上次学到了这里</span></div>\n`;
-      LocaleValueLinter.lint({ 'pages.lasthere': htmlValue });
+      analyzeAndEmit({ 'pages.lasthere': htmlValue });
 
       const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
       expect(messages.some((m: string) => m.includes('含 HTML 标签'))).toBe(true);
@@ -78,14 +90,14 @@ describe('LocaleValueLinter', () => {
 
     it('value 超长时告警并附长度信息', () => {
       const longValue = '中'.repeat(250);
-      LocaleValueLinter.lint({ 'pages.long': longValue });
+      analyzeAndEmit({ 'pages.long': longValue });
 
       const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
       expect(messages.some((m: string) => m.includes('长度 250'))).toBe(true);
     });
 
     it('正常短文本不告警', () => {
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'a.x': '你好世界',
         'a.y': '请输入用户名',
       });
@@ -93,14 +105,14 @@ describe('LocaleValueLinter', () => {
     });
 
     it('误伤排除：不等式比较表达式（如 "x < 10"）不算 HTML', () => {
-      LocaleValueLinter.lint({ 'a.x': '当 x < 10 时显示提示' });
+      analyzeAndEmit({ 'a.x': '当 x < 10 时显示提示' });
       const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
       expect(messages.every((m: string) => !m.includes('含 HTML 标签'))).toBe(true);
     });
   });
 
   it('非 string value 被跳过（防御性）', () => {
-    LocaleValueLinter.lint({
+    analyzeAndEmit({
       'a.x': '正常文案',
       'a.y': 123 as unknown as string,
       'a.z': null as unknown as string,
@@ -110,7 +122,7 @@ describe('LocaleValueLinter', () => {
 
   it('传入 RunReport 时所有 warning 同步写入 report（落盘后可回查）', () => {
     const report = new RunReport('generate', '/tmp/nonexistent-test-only');
-    LocaleValueLinter.lint(
+    analyzeAndEmit(
       {
         'a.foo': '节点{a}',
         'a.bar': '节点 {b}',
@@ -131,7 +143,7 @@ describe('LocaleValueLinter', () => {
   });
 
   it('未传 RunReport 时仅 console 输出（向后兼容）', () => {
-    LocaleValueLinter.lint({
+    analyzeAndEmit({
       'a.foo': '节点{a}',
       'a.bar': '节点 {b}',
     });
@@ -141,7 +153,7 @@ describe('LocaleValueLinter', () => {
 
   describe('短碎片可疑 value', () => {
     it('命中长度 ≤ 3 且含标点的 value', () => {
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'a.all': '全部(',
         'a.percent': '%已学',
         'a.dot': '：',
@@ -158,7 +170,7 @@ describe('LocaleValueLinter', () => {
     });
 
     it('长 value 不会被误判为短碎片', () => {
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'a.long': '请输入用户名以继续操作',
       });
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
@@ -168,7 +180,7 @@ describe('LocaleValueLinter', () => {
 
   describe('跨模块复用候选检测', () => {
     it('separator 提供时，识别 ≥3 个前缀下重复出现的相同 value', () => {
-      LocaleValueLinter.lint(
+      analyzeAndEmit(
         {
           'pages.foo.confirm': '确定',
           'pages.bar.confirm': '确定',
@@ -186,7 +198,7 @@ describe('LocaleValueLinter', () => {
     });
 
     it('未提供 separator 时跳过跨模块检测', () => {
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'pages.foo.confirm': '确定',
         'pages.bar.confirm': '确定',
         'pages.baz.confirm': '确定',
@@ -210,7 +222,7 @@ describe('LocaleValueLinter', () => {
         24,
       );
 
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'pages.flippedcourse.components.teachingpath': '教学路径',
         'pages.flippedcourse.components.teachingscope': '教学范围',
       });
@@ -225,7 +237,7 @@ describe('LocaleValueLinter', () => {
     it('跳过的中文未出现在 locale map 中则不告警（避免对纯枚举常量的误报）', () => {
       CommonASTUtils.recordSkippedComparisonOperand('某种内部状态', '/proj/src/foo.vue', 10, 5);
 
-      LocaleValueLinter.lint({
+      analyzeAndEmit({
         'pages.foo.title': '标题',
       });
 
@@ -235,11 +247,11 @@ describe('LocaleValueLinter', () => {
 
     it('drain 是消耗性操作：lint 后 collector 应被清空，避免下次重复告警', () => {
       CommonASTUtils.recordSkippedComparisonOperand('完成', '/proj/a.vue', 1, 1);
-      LocaleValueLinter.lint({ 'a.done': '完成' });
+      analyzeAndEmit({ 'a.done': '完成' });
       warnSpy.mockClear();
 
       // 第二次 lint：collector 已空，不应再次告警
-      LocaleValueLinter.lint({ 'a.done': '完成' });
+      analyzeAndEmit({ 'a.done': '完成' });
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       expect(lines).not.toContain('硬编码中文');
     });
@@ -249,7 +261,7 @@ describe('LocaleValueLinter', () => {
       CommonASTUtils.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
       CommonASTUtils.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
 
-      LocaleValueLinter.lint({ 'common.cancel': '取消' });
+      analyzeAndEmit({ 'common.cancel': '取消' });
 
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       const hits = (lines.match(/\/proj\/x\.vue:5:3/g) || []).length;
@@ -270,7 +282,7 @@ describe('LocaleValueLinter', () => {
       CommonASTUtils.recordSkippedNestedChinese('内部错误', '/proj/src/foo.vue', 42, 8);
 
       // 故意给一个完全不相关的 locale map：嵌套中文仍应告警（与 hardcoded-comparison 不同）
-      LocaleValueLinter.lint({ 'a.b': '无关文案' });
+      analyzeAndEmit({ 'a.b': '无关文案' });
 
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       expect(lines).toContain('[nested-interpolation-chinese]');
@@ -280,10 +292,10 @@ describe('LocaleValueLinter', () => {
 
     it('drain 是消耗性操作：lint 后 collector 清空，不重复告警', () => {
       CommonASTUtils.recordSkippedNestedChinese('网络异常', '/proj/a.vue', 1, 1);
-      LocaleValueLinter.lint({});
+      analyzeAndEmit({});
       warnSpy.mockClear();
 
-      LocaleValueLinter.lint({});
+      analyzeAndEmit({});
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       expect(lines).not.toContain('nested-interpolation-chinese');
     });
@@ -292,7 +304,7 @@ describe('LocaleValueLinter', () => {
       CommonASTUtils.recordSkippedNestedChinese('网络异常', '/proj/x.vue', 5, 3);
       CommonASTUtils.recordSkippedNestedChinese('网络异常', '/proj/x.vue', 5, 3);
 
-      LocaleValueLinter.lint({});
+      analyzeAndEmit({});
 
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       const hits = (lines.match(/\/proj\/x\.vue:5:3/g) || []).length;

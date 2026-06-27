@@ -299,11 +299,18 @@ export class ReactImportManager implements IImportManager {
    * 的 finalizeTImport + CommonASTUtils.isImportedNameUnused 守卫），与 generate 侧
    * ReactImportManager.finalizeImports 对称。
    */
-  static cleanupImports(node: ts.ImportDeclaration, library: ReactI18nLibrary): ts.Node {
+  static cleanupImports(
+    node: ts.ImportDeclaration,
+    library: ReactI18nLibrary,
+    keepLibraryImport = false,
+  ): ts.Node {
     if (!node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier)) {
       return node;
     }
-    if (node.moduleSpecifier.text === library.packageName) {
+    // keepLibraryImport：还原后仍有未还原的翻译调用 / 组件存活（locale 缺 key），它们依赖
+    // useTranslation / useIntl / Trans / FormattedMessage 等具名导入。此时保留整条 import，
+    // 否则产出引用未定义标识符的不可编译代码（与下方 cleanupVariableStatements 守卫成对）。
+    if (node.moduleSpecifier.text === library.packageName && !keepLibraryImport) {
       return ts.factory.createNotEmittedStatement(node);
     }
     return node;
@@ -318,7 +325,19 @@ export class ReactImportManager implements IImportManager {
    *   3. 解构中仅保留翻译变量（如 `const { t } = ...`）整条移除；
    *      混合解构（如 `const { t, i18n } = ...`）则重建解构模式仅删除翻译项
    */
-  static cleanupVariableStatements(node: ts.VariableStatement, library: ReactI18nLibrary): ts.Node {
+  static cleanupVariableStatements(
+    node: ts.VariableStatement,
+    library: ReactI18nLibrary,
+    keepTranslationVar = false,
+  ): ts.Node {
+    // keepTranslationVar：还原后仍有未还原的翻译调用存活（locale 缺 key / 动态 key /
+    // t(变量)），翻译变量(t / intl)仍被引用。此时保留其 hook/global 声明与解构绑定，
+    // 否则删声明而调用尚存 → 产出 `Cannot find name 't'`（TS2304）。与 Vue 端
+    // isTNameUnusedInScript 守卫、本类 finalizeTImport 的 isImportedNameUnused 守卫对齐。
+    if (keepTranslationVar) {
+      return node;
+    }
+
     const next: ts.VariableDeclaration[] = [];
     let mutated = false;
 

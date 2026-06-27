@@ -45,10 +45,24 @@ export class TranslateProcessor extends FileProcessor {
       throw new Error(`待翻译文件不存在: ${targetPath}，请先运行 pick 命令生成。`);
     }
 
-    const data = FileUtils.safeLoadJsonFile<Translations>(targetPath, {
-      errorMessage: '读取待翻译文件失败',
-      logSuccess: true,
-    });
+    // 必须区分「损坏」与「空」：不能用 safeLoadJsonFile，它对解析失败回退 {}，
+    // 会让损坏的 untranslated.json 被当成空文件 → 打印「文件为空」→ exit 0 伪报
+    // 成功（CI 误判已全部翻译）。与 Merge/Pick/Export 的「损坏即中止」守卫对齐：
+    // 有内容却解析失败时抛错中止。
+    const rawContent = fs.readFileSync(targetPath, 'utf-8');
+    let data: Translations;
+    if (rawContent.trim() === '') {
+      data = {};
+    } else {
+      const parsed = FileUtils.safeParseJson(rawContent) as Translations | null;
+      if (parsed === null) {
+        throw new Error(
+          `待翻译文件解析失败（JSON 格式错误）: ${targetPath}\n` +
+            '👉 为防止把损坏文件误判为「已全部翻译」（CI 伪绿灯），已中止 translate。请修复该文件的 JSON 格式后重试。',
+        );
+      }
+      data = parsed;
+    }
     const totalCount = Object.keys(data).length;
 
     if (totalCount === 0) {

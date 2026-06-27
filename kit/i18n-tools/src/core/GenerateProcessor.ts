@@ -8,6 +8,7 @@ import { FileUtils } from '../utils/file-utils';
 import { LLMClient } from '../utils/llm-client';
 import { InteractiveUtils } from '../utils/interactive-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
+import { LocaleValueLinter } from '../utils/locale-value-linter';
 import { LoggerUtils } from '../utils/logger';
 import { BucketResolver } from '../utils/bucket-resolver';
 import { RunReport, type CoverageMetric } from '../utils/run-report';
@@ -487,6 +488,19 @@ export class GenerateProcessor extends BaseProcessor {
           `语言文件损坏，已中止 generate（避免覆盖丢失存量翻译，请用 git 修复后重试）: ${FileUtils.getRelativePath(corruptBucket)}`,
         );
       }
+    } else if (LanguageFileManager.readLocaleFile(this.config, this.isCustom) === null) {
+      // 非桶式同样需要前置守卫（与桶式 / PickProcessor 对齐）：source locale「有内容却
+      // 解析失败」时 readLocaleFile 返回 null，而阶段 3 的 updateLanguageFiles 对 null 静默
+      // return（不写、不抛）。若放任继续，会把源码改写成 t() 调用却一个 locale key 都不落、
+      // 且无异常触发回滚、命令仍报成功——留下「源码已改、locale 未写」的不一致态。
+      throw new Error(
+        `语言文件损坏，已中止 generate（避免源码已改写而 locale 未更新的不一致态，请用 git 修复后重试）: ${FileUtils.getRelativePath(
+          path.join(
+            FileUtils.getDirectoryPath(this.config, this.isCustom),
+            `${this.config.locales.source}.json`,
+          ),
+        )}`,
+      );
     }
 
     // 阶段 1.5（写源码前预检）：把 nested 前缀冲突这类确定性、可预判的 locale 序列化错误
@@ -554,19 +568,43 @@ export class GenerateProcessor extends BaseProcessor {
     }
 
     // 阶段 3：源码全部落盘后才更新语言文件，保持两者强一致。
-    LanguageFileManager.updateLanguageFiles(
-      this.config,
-      this.isCustom,
-      extractedStrings,
-      keyBucketMap,
-      this.report,
-      this.adapter?.getLibrary(),
-      {
-        preFinalized: Boolean(options?.preFinalizedLocale),
-        // 把提取阶段 drain 的快照交给 linter，让它与 coverage 看到同一份比较运算符跳过项。
-        skippedComparisons: this.skippedComparisons,
-      },
-    );
+    // updateLanguageFiles 失败（磁盘 I/O、权限、多 bucket 写到一半抛错等非确定性错误）时，
+    // 源码已落盘但 locale 未写，会留下「源码已变 t()、locale 缺失」的污染态，破坏阶段 2
+    // 宣称的「要么全改、要么全不改」。故与阶段 2 对称：捕获失败并按 written[] 回滚源码。
+    try {
+      LanguageFileManager.updateLanguageFiles(
+        this.config,
+        this.isCustom,
+        extractedStrings,
+        keyBucketMap,
+        this.report,
+        this.adapter?.getLibrary(),
+        {
+          preFinalized: Boolean(options?.preFinalizedLocale),
+          // 把提取阶段 drain 的快照交给 linter，让它与 coverage 看到同一份比较运算符跳过项。
+          skippedComparisons: this.skippedComparisons,
+        },
+      );
+    } catch (error) {
+      LoggerUtils.error('❌ 语言文件写入失败，回滚已写源码:', error);
+      this.report.addFailure({ stage: 'write', error });
+      const rollbackFailures: string[] = [];
+      for (const { file, original } of written) {
+        try {
+          fs.writeFileSync(file, original, 'utf-8');
+        } catch (rbError) {
+          rollbackFailures.push(FileUtils.getRelativePath(file));
+          LoggerUtils.error(`❌ 回滚失败 ${FileUtils.getRelativePath(file)}:`, rbError);
+        }
+      }
+      const rollbackNote =
+        rollbackFailures.length > 0
+          ? `\n⚠️  以下 ${rollbackFailures.length} 个文件回滚失败，请用 git 手动还原:\n` +
+            rollbackFailures.map((f) => `  - ${f}`).join('\n')
+          : `\n（已写入的 ${written.length} 个源文件已回滚至原始内容；但语言文件可能已部分写入` +
+            `（多 bucket 顺序落盘时中途失败），请用 git 核查 locale 是否残留本轮新增 key）`;
+      throw new Error(`语言文件写入阶段失败（源码已回滚）` + rollbackNote, { cause: error });
+    }
 
     // 阶段 4：格式化是美化步骤，单个失败不影响数据正确性，仅警告。
     if (this.config.io.prettify) {
@@ -724,6 +762,20 @@ export class GenerateProcessor extends BaseProcessor {
 
     GeneratePlanWriter.write(planDir, plan, transformedSources);
     GeneratePlanWriter.logPlanReadyMessage(planDir);
+
+    // dry-run 评审阶段就跑健康度 lint，与 commit 路径（updateLanguageFiles 内部）对称。
+    // Why: dry-run 不进 commitToDisk → 原本永远不会触达 LocaleValueLinter，导致 plan/RunReport
+    //      缺失所有 lint 类发现（nested-interpolation-chinese / html-tag-in-value / 语义重复…），
+    //      reviewer 决策是否 apply 时看不到这些告警，要等真正落盘后才暴露。apply-plan 路径
+    //      据此「信任 dry-run 已 lint 完」而不再重跑（见 applyFromPlan 注释）。
+    //   - localeDelta 即本轮新增 key→value，是与 commit 一致的诊断对象；
+    //   - skippedComparisons 传入提取阶段已 drain 的快照，避免与 coverage 争抢全局 collector；
+    //     nested 收集器此刻仍满（dry-run 未经其它消费者），由 analyze 内部 drain。
+    const lintFindings = LocaleValueLinter.analyze(localeDelta, {
+      separator: this.config.keys.separator,
+      skippedComparisons: this.skippedComparisons,
+    });
+    LocaleValueLinter.emit(lintFindings, { console: true, report: this.report });
   }
 
   /**
