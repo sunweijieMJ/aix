@@ -229,6 +229,31 @@ export class GenerateProcessor extends BaseProcessor {
   }
 
   /**
+   * 把一条提取结果规整为「最终 locale 形态」的文案：
+   *  - 模板串的 ${var} 占位符 → {var}（按 i18n 库做方言适配）、字面量插值内联；
+   *  - 普通字符串去除两端引号。
+   *
+   * Why（关键）：复用查找（resolveSemanticId）与 locale 落盘（buildLocaleDelta）必须用同一
+   * canonical 形态。否则模板/占位符串两边形态不一致——反查表（IdReuseResolver.loadFromLocaleFile
+   * 用 {var} 形态建表）永远 miss，跨运行重复生成 _N 后缀 key：旧 key（带译文）成孤儿、源码改指向
+   * 无译文的新 key。两处统一走本方法，杜绝形态漂移。
+   */
+  private toLocaleMessage(item: ExtractedString): string {
+    const raw = item.processedMessage || item.original;
+    const built =
+      item.isTemplateString && item.templateVariables
+        ? CommonASTUtils.createMessageWithOptions(raw, item.templateVariables)
+        : {
+            message: raw.replace(/^['"`]|['"`]$/g, ''),
+            placeholderMap: new Map<string, string>(),
+          };
+    const library = this.adapter?.getLibrary();
+    return library
+      ? CommonASTUtils.finalizeLocaleMessage(built.message, built.placeholderMap.values(), library)
+      : built.message;
+  }
+
+  /**
    * 为提取出的字符串分配语义 ID。
    *
    * 流程：
@@ -295,7 +320,9 @@ export class GenerateProcessor extends BaseProcessor {
     textToIdMap: Map<string, string>,
     reuseResolver: IdReuseResolver,
   ): string {
-    const messageForId = item.processedMessage || item.original;
+    // 复用查找键须用「最终 locale 形态」（{var} 占位符），与 buildLocaleDelta 落盘值及
+    // IdReuseResolver 反查表保持一致；否则占位符串跨运行重复生成 _N 后缀 key。
+    const messageForId = this.toLocaleMessage(item);
     const normalized = IdReuseResolver.normalizeKey(messageForId);
 
     // 优先级 1 缓存键：acrossDirectories=false 时必须带目录前缀，否则同一原文会跨目录命中
@@ -673,25 +700,11 @@ export class GenerateProcessor extends BaseProcessor {
       byFile.get(normalized)!.push(s);
     }
 
-    const library = this.adapter?.getLibrary();
     const localeDelta: Record<string, string> = {};
     for (const item of extractedStrings) {
       if (!item.semanticId) continue;
-      const raw = item.processedMessage || item.original;
-      const built =
-        item.isTemplateString && item.templateVariables
-          ? CommonASTUtils.createMessageWithOptions(raw, item.templateVariables)
-          : {
-              message: raw.replace(/^['"`]|['"`]$/g, ''),
-              placeholderMap: new Map<string, string>(),
-            };
-      const message = library
-        ? CommonASTUtils.finalizeLocaleMessage(
-            built.message,
-            built.placeholderMap.values(),
-            library,
-          )
-        : built.message;
+      // 与 resolveSemanticId 的复用查找键共用同一 canonical 形态（见 toLocaleMessage）
+      const message = this.toLocaleMessage(item);
       // 重复 semanticId 取首次（generateIdsForStrings 已经保证同原文 → 同 key，
       // 不同原文 → 不同 key；这里的 first-wins 是冗余防御）
       if (!(item.semanticId in localeDelta)) {

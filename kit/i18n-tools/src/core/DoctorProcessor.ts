@@ -439,7 +439,20 @@ export class DoctorProcessor extends BaseProcessor {
       'placeholder-mismatch': '译文与源文案的占位符名集不一致',
     };
     for (const f of findings) {
-      if (f.category === 'locale-lint') continue;
+      if (f.category === 'locale-lint') {
+        // lint 明细已由 LocaleValueLinter.emit 写入 needsManual。但 error 级 lint
+        // （hardcoded-comparison，doctor 唯一 error-tier lint）必须同时计入 bySeverity——
+        // 否则 --ci 闸门（按 findings 的 error 数退出）会以非零码失败，而落盘报告却写
+        // bySeverity.error=0，读 JSON 的看板误判为「健康」。warning/info 级 lint 不阻断
+        // CI，仍只保留在 needsManual，不重复进 warnings。
+        if (f.severity === 'error') {
+          this.report.addWarning(
+            `[${f.category}] ${f.key ?? f.title}（详见 needsManual）`,
+            'error',
+          );
+        }
+        continue;
+      }
       const reason = accountingMap[f.category];
       // 传入 severity：missing-key=error / orphan-key=untranslated=warning，
       // 让 summary.bySeverity 如实反映 error 级数量（与 console / --ci 口径一致）。

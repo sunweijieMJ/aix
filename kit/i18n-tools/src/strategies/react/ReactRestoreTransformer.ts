@@ -170,9 +170,15 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return CommonASTUtils.createStringOrTemplateNode(finalText, messageInfo.values);
     }
 
-    return inJsxChildContext
-      ? ts.factory.createJsxText(finalText, false)
-      : ts.factory.createStringLiteral(finalText);
+    if (inJsxChildContext) {
+      // JsxText 不能含 JSX 元字符（`<` 非法、`{}` 会被当表达式容器）。含元字符时改用字符串
+      // 表达式容器 `{'...'}` 原样承载，与 createJsxFragmentFromTemplate.pushText 同款守卫；
+      // 否则产出不可编译的 TSX（如文案 "1 < 2" / "点击 {这里}"）。
+      return /[<>{}]/.test(finalText)
+        ? ts.factory.createJsxExpression(undefined, ts.factory.createStringLiteral(finalText))
+        : ts.factory.createJsxText(finalText, false);
+    }
+    return ts.factory.createStringLiteral(finalText);
   }
 
   /**

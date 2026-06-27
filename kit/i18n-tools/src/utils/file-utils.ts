@@ -137,6 +137,11 @@ export class FileUtils {
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
         const keys = key.split(separator);
+        // 拒绝保留段名，杜绝原型链污染：键名可能来自手写 locale / CSV 回流等外部来源，
+        // 含 `__proto__` 中间段时 `current[k]` 会读到 Object.prototype 并被写穿。
+        if (keys.some((k) => k === '__proto__' || k === 'constructor' || k === 'prototype')) {
+          continue;
+        }
         let current = result;
 
         for (let i = 0; i < keys.length; i++) {
@@ -144,7 +149,15 @@ export class FileUtils {
           if (i === keys.length - 1) {
             current[k] = obj[key];
           } else {
-            current[k] = current[k] || {};
+            // 用 hasOwnProperty 判断容器是否已存在，而非 `|| {}`：后者对 toString 等
+            // 原型链属性名会误读到继承值，导致下钻到非自有对象。
+            if (
+              !Object.prototype.hasOwnProperty.call(current, k) ||
+              typeof current[k] !== 'object' ||
+              current[k] === null
+            ) {
+              current[k] = {};
+            }
             current = current[k];
           }
         }

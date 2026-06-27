@@ -143,7 +143,9 @@ export class TranslateProcessor extends FileProcessor {
     let filled = 0;
 
     for (const item of Object.values(data)) {
-      if (item[targetLocale]?.trim()) continue;
+      // 用 isValidTranslation 与 pick/merge 统一口径：纯标点/符号等「非空但无效」值应视为
+      // 未翻译（否则 trim() 真值判定会把它当已译跳过，该条目永远不会被 glossary/LLM 处理）。
+      if (FileUtils.isValidTranslation(item[targetLocale])) continue;
       const src = item[sourceLocale];
       if (typeof src !== 'string' || !src) continue;
       const hit = Glossary.lookup(glossary, src, targetLocale, normalize);
@@ -159,7 +161,9 @@ export class TranslateProcessor extends FileProcessor {
   private filterUntranslatedItems(data: Translations, targetLocale: string): Translations {
     const toTranslate: Translations = {};
     for (const [key, item] of Object.entries(data)) {
-      if (!item[targetLocale]?.trim()) {
+      // 与 pick/merge 统一用 isValidTranslation：非空但无效（纯标点/符号）的目标值
+      // 应继续进入翻译，而非被 trim() 真值判定误当已译跳过。
+      if (!FileUtils.isValidTranslation(item[targetLocale])) {
         toTranslate[key] = item;
       }
     }

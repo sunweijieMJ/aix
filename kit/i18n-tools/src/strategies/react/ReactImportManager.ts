@@ -341,7 +341,47 @@ export class ReactImportManager implements IImportManager {
     const next: ts.VariableDeclaration[] = [];
     let mutated = false;
 
+    // 从对象解构里剔除翻译变量；返回 null 表示该声明只含翻译项、应整条删除。
+    const stripTranslationBinding = (
+      declaration: ts.VariableDeclaration,
+    ): ts.VariableDeclaration | null => {
+      if (!ts.isObjectBindingPattern(declaration.name)) return declaration;
+      const varName = library.translationVarName;
+      const elements = declaration.name.elements.filter((element) => {
+        if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
+          return element.name.text !== varName;
+        }
+        return true;
+      });
+
+      if (elements.length === 0) return null;
+      if (elements.length === declaration.name.elements.length) return declaration;
+
+      return ts.factory.updateVariableDeclaration(
+        declaration,
+        ts.factory.createObjectBindingPattern(elements),
+        declaration.exclamationToken,
+        declaration.type,
+        declaration.initializer,
+      );
+    };
+
     for (const original of node.declarationList.declarations) {
+      // 混合解构 hook（如 `const { t, i18n } = useTranslation()`）：仅删翻译项、保留其余
+      // 绑定（i18n 等），而非随 hook 声明整条删除——否则存活的 i18n 引用会报 TS2304。
+      // 必须先于下面的整条删除分支处理：isHookDeclaration 对 `{ t }` 与 `{ t, i18n }`
+      // 都返回 true，若先命中整条删除分支，混合解构的保留逻辑将永不可达。
+      if (library.isHookDeclaration(original) && ts.isObjectBindingPattern(original.name)) {
+        const stripped = stripTranslationBinding(original);
+        if (stripped === null) {
+          mutated = true;
+          continue;
+        }
+        if (stripped !== original) mutated = true;
+        next.push(stripped);
+        continue;
+      }
+
       if (library.isHookDeclaration(original) || library.isGlobalFunctionDeclaration(original)) {
         mutated = true;
         continue;
@@ -350,27 +390,13 @@ export class ReactImportManager implements IImportManager {
       let declaration = original;
 
       if (ts.isObjectBindingPattern(declaration.name)) {
-        const varName = library.translationVarName;
-        const elements = declaration.name.elements.filter((element) => {
-          if (ts.isBindingElement(element) && ts.isIdentifier(element.name)) {
-            return element.name.text !== varName;
-          }
-          return true;
-        });
-
-        if (elements.length === 0) {
+        const stripped = stripTranslationBinding(declaration);
+        if (stripped === null) {
           mutated = true;
           continue;
         }
-
-        if (elements.length !== declaration.name.elements.length) {
-          declaration = ts.factory.updateVariableDeclaration(
-            declaration,
-            ts.factory.createObjectBindingPattern(elements),
-            declaration.exclamationToken,
-            declaration.type,
-            declaration.initializer,
-          );
+        if (stripped !== declaration) {
+          declaration = stripped;
           mutated = true;
         }
       }
