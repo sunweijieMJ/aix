@@ -149,7 +149,8 @@ export class RunReport {
    * 避免同一位置被多次扫描重复入库。
    */
   addManualEntry(entry: ManualEntry): void {
-    const key = `${entry.file}:${entry.line ?? ''}:${entry.column ?? ''}:${entry.category}:${entry.text}`;
+    // 复用 manualKey 生成去重键，避免与其内联同一格式串（改字段顺序/分隔符时静默失效）。
+    const key = RunReport.manualKey(entry);
     if (!this.needsManual.some((e) => RunReport.manualKey(e) === key)) {
       this.needsManual.push(entry);
     }

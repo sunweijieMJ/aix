@@ -202,53 +202,16 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {
-    let parent = node.parent;
-    while (parent) {
-      if (ts.isCallExpression(parent)) {
-        const expression = parent.expression;
+    return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
+      isI18nCall: (expression) =>
         // intl.formatMessage(...)
-        if (
-          ts.isPropertyAccessExpression(expression) &&
+        (ts.isPropertyAccessExpression(expression) &&
           ts.isIdentifier(expression.name) &&
-          expression.name.text === 'formatMessage'
-        ) {
-          return true;
-        }
+          expression.name.text === 'formatMessage') ||
         // defineMessages(...)
-        if (ts.isIdentifier(expression) && expression.text === 'defineMessages') {
-          return true;
-        }
-      }
-      // <FormattedMessage id={...} />
-      if (ts.isJsxAttribute(parent)) {
-        const jsxElement = parent.parent.parent;
-        if (
-          (ts.isJsxOpeningElement(jsxElement) || ts.isJsxSelfClosingElement(jsxElement)) &&
-          ts.isIdentifier(jsxElement.tagName) &&
-          jsxElement.tagName.text === 'FormattedMessage'
-        ) {
-          return true;
-        }
-      }
-      if (ts.isJsxElement(parent)) {
-        const openingElement = parent.openingElement;
-        if (
-          ts.isIdentifier(openingElement.tagName) &&
-          openingElement.tagName.text === 'FormattedMessage'
-        ) {
-          return true;
-        }
-      }
-      // 类型字面量与枚举成员值在编译期就被消费，不参与运行时本地化，应跳过提取。
-      if (ts.isLiteralTypeNode(parent) || ts.isEnumMember(parent)) {
-        return true;
-      }
-      if (ts.isBlock(parent) || ts.isFunctionLike(parent) || ts.isClassLike(parent)) {
-        return false;
-      }
-      parent = parent.parent;
-    }
-    return false;
+        (ts.isIdentifier(expression) && expression.text === 'defineMessages'),
+      componentTags: ['FormattedMessage'],
+    });
   }
 
   extractCallInfo(
