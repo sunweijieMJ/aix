@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import { CONFIG } from './constants';
 import { LoggerUtils } from './logger';
+import type { LocaleMap } from './types';
 
 /**
  * 提取阶段记录的「被跳过的中文字面量」位置（比较运算操作数 / 嵌套插值中文）。
@@ -1067,9 +1068,27 @@ export class CommonASTUtils {
    * 判断模板变量表达式是否是字面量（不需要作为 i18n 参数传入）
    * 字面量包括：字符串字面量、数字字面量、布尔值、null/undefined
    */
+  /**
+   * 「单个完整带引号字面量」判定。区别于 `/^['"`].*['"`]$/`（只看首尾字符）：
+   *  - 字符串字面量：首尾引号之间不得出现未转义的同种引号，否则 `'(' + count + ')'`
+   *    这类首尾恰为引号的【拼接表达式】会被误判为字面量（evalLiteralExpression 只切首尾字符
+   *    → 产出坏文本 `(' + count + '`、真变量 count 丢失）。
+   *  - 模板字符串：仅无插值 `${}` 的 NoSubstitutionTemplateLiteral 才算字面量；含 `${}`
+   *    的模板（如 `` `${a}-${b}` ``）是变量表达式，必须落到真变量路径。
+   */
+  private static readonly QUOTED_LITERAL_PATTERNS: readonly RegExp[] = [
+    /^'(?:[^'\\]|\\.)*'$/,
+    /^"(?:[^"\\]|\\.)*"$/,
+    /^`(?:[^`\\$]|\\.|\$(?!\{))*`$/,
+  ];
+
+  private static isQuotedLiteral(trimmed: string): boolean {
+    return CommonASTUtils.QUOTED_LITERAL_PATTERNS.some((re) => re.test(trimmed));
+  }
+
   static isLiteralExpression(varExpr: string): boolean {
     const trimmed = varExpr.trim();
-    if (/^['"`].*['"`]$/.test(trimmed)) return true;
+    if (CommonASTUtils.isQuotedLiteral(trimmed)) return true;
     if (/^\d+(\.\d+)?$/.test(trimmed)) return true;
     if (trimmed === 'true' || trimmed === 'false') return true;
     if (trimmed === 'null' || trimmed === 'undefined') return true;
@@ -1078,12 +1097,12 @@ export class CommonASTUtils {
 
   /**
    * 求值字面量表达式，返回其展开值（用于直接拼到 message 中）
-   * - 字符串字面量去掉外层引号
+   * - 字符串/无插值模板字面量去掉外层引号/反引号
    * - 其它字面量保持原文
    */
   static evalLiteralExpression(varExpr: string): string {
     const trimmed = varExpr.trim();
-    if (/^['"`].*['"`]$/.test(trimmed)) {
+    if (CommonASTUtils.isQuotedLiteral(trimmed)) {
       return trimmed.slice(1, -1);
     }
     return trimmed;
@@ -1113,6 +1132,35 @@ export class CommonASTUtils {
       new RegExp(`\\{\\{\\s*(${CommonASTUtils.PLACEHOLDER_NAME})\\s*\\}\\}`, 'g'),
       '{$1}',
     );
+  }
+
+  /**
+   * restore 读回 locale 时的值归一：i18next 系（双花括号）库先把占位符转单花括号，
+   * 再 unescape 写盘时转义的字面量花括号。与写盘的 finalizeLocaleMessage 对称。
+   *
+   * React/Vue 的 RestoreTransformer 共用，消除两端逐字节重复的私有 normalizeLocaleMap。
+   * library 仅需暴露 usesDoubleBracePlaceholders / unescapeLiteralText（BaseI18nLibrary 子集），
+   * 用结构化入参解耦，避免 utils 反向依赖 strategies 层。
+   */
+  static normalizeRestoreLocaleMap(
+    localeMap: LocaleMap,
+    library: {
+      usesDoubleBracePlaceholders: boolean;
+      unescapeLiteralText(text: string): string;
+    },
+  ): LocaleMap {
+    const result: LocaleMap = {};
+    for (const [key, value] of Object.entries(localeMap)) {
+      if (typeof value !== 'string') {
+        result[key] = value;
+        continue;
+      }
+      const single = library.usesDoubleBracePlaceholders
+        ? CommonASTUtils.toSingleBracePlaceholders(value)
+        : value;
+      result[key] = library.unescapeLiteralText(single);
+    }
+    return result;
   }
 
   /**
@@ -1507,10 +1555,19 @@ export class CommonASTUtils {
     // import，排除注释（`// import { t } from 'x'`）或字符串里的 import 字样——不锚定会
     // 把注释里的 import 当作匹配项删除，`\n?` 还会吞掉换行把下一行真实代码并入注释（Bug #8）。
     // 与姊妹方法 mergeNamedImport 的锚定口径保持一致。尾部 `;?` `\n?` 避免删除后留空行。
-    const importRegex = /^([ \t]*)import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"];?\n?/gm;
+    // 可选默认说明符 `import D, { … }`：捕获默认名 D 并在重写时保留，否则 default+named 形式
+    // 的死 t 摘不掉（regex 不匹配 → 残留 no-unused-vars）。
+    const importRegex =
+      /^([ \t]*)import\s*(?:([A-Za-z0-9_$]+)\s*,\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"];?\n?/gm;
     return code.replace(
       importRegex,
-      (match, indent: string, namedList: string, moduleName: string) => {
+      (
+        match,
+        indent: string,
+        defaultName: string | undefined,
+        namedList: string,
+        moduleName: string,
+      ) => {
         if (!isTargetModule(moduleName)) return match;
         const remaining = namedList
           .split(',')
@@ -1521,11 +1578,16 @@ export class CommonASTUtils {
             const original = entry.split(/\s+as\s+/)[0]!.trim();
             return !namesToRemove.includes(original);
           });
-        if (remaining.length === 0) return '';
         // 复用原始行尾分号/换行，保留风格一致
         const hasSemi = match.trimEnd().endsWith(';');
         const hasNewline = match.endsWith('\n');
-        return `${indent}import { ${remaining.join(', ')} } from '${moduleName}'${hasSemi ? ';' : ''}${hasNewline ? '\n' : ''}`;
+        const tail = `${hasSemi ? ';' : ''}${hasNewline ? '\n' : ''}`;
+        if (remaining.length === 0) {
+          // 无剩余具名项：存在默认导入则保留 `import D from 'pkg'`，否则整条删除
+          return defaultName ? `${indent}import ${defaultName} from '${moduleName}'${tail}` : '';
+        }
+        const prefix = defaultName ? `${defaultName}, ` : '';
+        return `${indent}import ${prefix}{ ${remaining.join(', ')} } from '${moduleName}'${tail}`;
       },
     );
   }
@@ -1759,8 +1821,10 @@ export class CommonASTUtils {
     // import，从而排除出现在注释（如 `// import { t } from 'x'`、块注释中的示例代码）
     // 或字符串字面量里的 import 字样——它们都是行内文本，不会顶到行首。
     // 不锚定会误把注释里的 import 当作重复项，再被下方删除逻辑误伤真实 import（Bug #8）。
+    // 可选默认说明符 `import D, { … }`：捕获默认名 D（组1），命名列表为组2。不识别会导致
+    // 已有 `import D, { t } from pkg` 匹配失败 → 误判为「不存在」而追加重复 import（TS2300）。
     const importRegex = new RegExp(
-      `^[ \\t]*import\\s*\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"][ \\t]*;?`,
+      `^[ \\t]*import\\s*(?:([A-Za-z0-9_$]+)\\s*,\\s*)?\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"][ \\t]*;?`,
       'gm',
     );
     const matches = [...code.matchAll(importRegex)];
@@ -1768,13 +1832,17 @@ export class CommonASTUtils {
     if (matches.length > 0) {
       // 收集所有已存在的命名导入并与新增合并去重
       const existing = matches.flatMap((m) =>
-        m[1]!
+        m[2]!
           .split(',')
           .map((imp) => imp.trim())
           .filter(Boolean),
       );
       const merged = [...new Set([...existing, ...names])];
-      const replacement = `import { ${merged.join(', ')} } from '${packageName}';`;
+      // 保留已存在的默认导入说明符（如 `import locale, { t } from pkg` 的 locale），
+      // 否则合并重写会丢掉默认导入。取首个出现的默认名。
+      const defaultName = matches.map((m) => m[1]).find(Boolean);
+      const prefix = defaultName ? `${defaultName}, ` : '';
+      const replacement = `import ${prefix}{ ${merged.join(', ')} } from '${packageName}';`;
 
       // 用「位置切片」替换而非 String.replace(子串)：后者会从头重新搜索，当某条匹配文本
       // 是另一条的子串时会替换错位置（Bug #8 的次因）。这里按 match.index 精确定位，

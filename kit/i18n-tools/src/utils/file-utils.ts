@@ -154,18 +154,6 @@ export class FileUtils {
     return result;
   }
 
-  static isNestedStructure(obj: Record<string, any>): boolean {
-    for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        const value = obj[key];
-        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   // =================================================================
   // File I/O Methods
   // =================================================================

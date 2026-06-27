@@ -26,31 +26,13 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     this.tImport = tImport;
   }
 
-  /**
-   * locale 值归一：双花括号占位符 → 单花括号（i18next 系库），再 unescape 字面量花括号。
-   * 与写盘的 finalizeLocaleMessage 对称。
-   */
-  private static normalizeLocaleMap(localeMap: LocaleMap, library: ReactI18nLibrary): LocaleMap {
-    const result: LocaleMap = {};
-    for (const [key, value] of Object.entries(localeMap)) {
-      if (typeof value !== 'string') {
-        result[key] = value;
-        continue;
-      }
-      const single = library.usesDoubleBracePlaceholders
-        ? CommonASTUtils.toSingleBracePlaceholders(value)
-        : value;
-      result[key] = library.unescapeLiteralText(single);
-    }
-    return result;
-  }
-
   transform(filePath: string, localeMap: LocaleMap): string {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
     const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
 
     // locale 值归一：i18next 系库双花括号 → 单花括号；并 unescape 写盘时转义的字面量花括号。
-    const normalizedLocaleMap = ReactRestoreTransformer.normalizeLocaleMap(localeMap, this.library);
+    // 与 Vue restore 共用 CommonASTUtils.normalizeRestoreLocaleMap（消除两端重复实现）。
+    const normalizedLocaleMap = CommonASTUtils.normalizeRestoreLocaleMap(localeMap, this.library);
 
     const context: TransformContext = {
       localeMap: normalizedLocaleMap,
@@ -291,13 +273,21 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
         currentNode = ReactImportManager.renameComponent(currentNode, context);
         if (currentNode !== node) context.hasChanges = true;
 
-        // 2. 解除 HOC
-        currentNode = ReactImportManager.unwrapHOC(currentNode, context, library);
-        if (currentNode !== node) context.hasChanges = true;
+        // 2-3. 解除 HOC + 清理 HOC Props 类型引用。
+        // 仅当无存活翻译用法时才执行：若某翻译调用/组件未被还原（locale 缺 key 等），它可能
+        // 依赖 HOC 注入的 intl/props（如 class 组件 `this.props.intl.formatMessage(...)`），此时
+        // 解除 HOC 会删掉 wrapper 与 WrappedComponentProps 类型 → intl 运行时 undefined + TS 报错，
+        // 正是 keepTranslationVar/keepLibraryImport 守卫要防止的不可编译输出。与下方
+        // cleanupImports/cleanupVariableStatements 的 keep* 守卫采用一致的保守策略。
+        if (!keepTranslationVar && !keepLibraryImport) {
+          // 2. 解除 HOC
+          currentNode = ReactImportManager.unwrapHOC(currentNode, context, library);
+          if (currentNode !== node) context.hasChanges = true;
 
-        // 3. 清理 HOC Props 类型引用
-        currentNode = ReactImportManager.cleanupHOCPropsType(currentNode, library);
-        if (currentNode !== node) context.hasChanges = true;
+          // 3. 清理 HOC Props 类型引用
+          currentNode = ReactImportManager.cleanupHOCPropsType(currentNode, library);
+          if (currentNode !== node) context.hasChanges = true;
+        }
 
         let nodeChanged = false;
 

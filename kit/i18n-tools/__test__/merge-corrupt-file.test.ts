@@ -108,6 +108,41 @@ describe('MergeProcessor — 损坏文件保护', () => {
     expect(LoggerUtils.error).toHaveBeenCalledWith(expect.stringMatching(/桶文件解析失败/));
   });
 
+  it('[#3b] 桶式 source 某 bucket 损坏时跳过该 target 写回，避免桶分布塌缩', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ 'order.foo': { 'zh-CN': '你好', 'en-US': 'Hello' } }, null, 2),
+    );
+    fs.writeFileSync(path.join(localeDir, 'translations.json'), '{}');
+
+    // 健康的 en-US target bucket → target 守卫通过，逼出 source 守卫这条路径
+    const enDir = path.join(localeDir, 'en-US');
+    fs.mkdirSync(enDir, { recursive: true });
+    const enBucket = path.join(enDir, 'order.json');
+    const enContent = JSON.stringify({ 'order.bar': 'Bar' });
+    fs.writeFileSync(enBucket, enContent);
+
+    // 损坏的 zh-CN source bucket（source 文本本应驱动 keyBucketMap 分桶）
+    const zhDir = path.join(localeDir, 'zh-CN');
+    fs.mkdirSync(zhDir, { recursive: true });
+    const corruptSource = path.join(zhDir, 'order.json');
+    const corruptContent = '{ "order.bar": "你好",,, }';
+    fs.writeFileSync(corruptSource, corruptContent);
+
+    const processor = new MergeProcessor(makeConfig(true), false);
+    // 跳过该 target（不抛错，与 target 守卫口径一致）
+    await expect(processor.execute()).resolves.toBeUndefined();
+
+    // 关键断言：source 损坏文件原样保留，且报告了 source 桶损坏
+    expect(fs.readFileSync(corruptSource, 'utf-8')).toBe(corruptContent);
+    expect(LoggerUtils.error).toHaveBeenCalledWith(expect.stringMatching(/源语言桶文件解析失败/));
+    // en-US target 未被以空 bucketMap 重写（order.foo 不会被塌缩写入）
+    expect(fs.readFileSync(enBucket, 'utf-8')).toBe(enContent);
+  });
+
   it('[#3] 桶式 target 无损坏时正常写回翻译', async () => {
     const localeDir = path.join(tmpDir, 'locale');
     fs.mkdirSync(localeDir, { recursive: true });
