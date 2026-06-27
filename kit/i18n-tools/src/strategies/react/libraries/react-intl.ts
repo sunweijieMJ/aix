@@ -261,10 +261,18 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   /**
    * in-code defaultMessage 与 locale 落盘值口径对齐：用 finalizeLocaleMessage 对非占位符的
    * 字面量花括号做 ICU 转义（`{`→`'{'`），避免文案含字面量大括号时 react-intl 运行时把它当
-   * 占位符起始而解析报错 / 与 locale 值不一致。真占位符（values 的 key）保持单花括号不变。
+   * 占位符起始而解析报错 / 与 locale 值不一致。真占位符保持单花括号不变。
+   *
+   * 注意：values 的方向是 Map<表达式, 占位符名>，finalizeLocaleMessage 需要「占位符名」，故传
+   * values.values() 而非 keys()——否则成员访问 ${data.count} 的真占位符 {count} 会被当字面量
+   * ICU 转义成 '{'count'}'，defaultMessage 不再插值。
    */
   private finalizeDefaultMessage(defaultMessage: string, values?: Map<string, string>): string {
-    return CommonASTUtils.finalizeLocaleMessage(defaultMessage, values ? values.keys() : [], this);
+    return CommonASTUtils.finalizeLocaleMessage(
+      defaultMessage,
+      values ? values.values() : [],
+      this,
+    );
   }
 
   // react-intl 用 ICU，单 `{` 是插值/语法字符。ICU 以单引号转义：`'{'` / `'}'`，

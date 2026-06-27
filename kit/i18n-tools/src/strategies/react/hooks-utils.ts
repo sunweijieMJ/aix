@@ -127,23 +127,30 @@ export class HooksUtils {
     const varName = library.translationVarName;
 
     const checkNode = (node: ts.Node): void => {
-      // 检查翻译变量的属性访问 (intl.formatMessage)
+      if (usesVar) return;
+
+      // 属性访问 `x.y`：只有「接收者 === 翻译变量」才算使用（intl.formatMessage、t.foo）。
+      // 关键：成员名 node.name 是属性名、不是对自由变量的引用，绝不能当作使用翻译变量——
+      // 否则 `props.t(...)` / `socket.intl` 这类与 i18n 无关的成员访问会被误判，进而给无关
+      // hook 的依赖数组注入作用域内不存在的 t/intl，产出 TS2304 / ReferenceError 的代码。
+      // 故这里只递归接收者 node.expression，跳过 node.name。
       if (ts.isPropertyAccessExpression(node)) {
         if (ts.isIdentifier(node.expression) && node.expression.text === varName) {
           usesVar = true;
           return;
         }
+        checkNode(node.expression);
+        return;
       }
 
-      // 检查直接使用翻译变量 (t('key'))
+      // 检查直接使用翻译变量 (t('key'))。注意 ElementAccessExpression `obj[t]` 不是
+      // PropertyAccessExpression，会落到下方 forEachChild，其索引标识符 t 仍被正确计为使用。
       if (ts.isIdentifier(node) && node.text === varName) {
         usesVar = true;
         return;
       }
 
-      if (!usesVar) {
-        ts.forEachChild(node, checkNode);
-      }
+      ts.forEachChild(node, checkNode);
     };
 
     checkNode(firstArg);
