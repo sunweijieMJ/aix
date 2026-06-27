@@ -289,8 +289,9 @@ export class ReactImportManager implements IImportManager {
   }
 
   /**
-   * 清理 i18n 库导入 (AST)：restore 时整条移除 `import ... from '<library.packageName>'`
-   * （react-i18next / react-intl 等工具注入的库导入，还原后必然无用）。
+   * 清理 i18n 库导入 (AST)：restore 时从 `import ... from '<library.packageName>'` 中**仅摘除
+   * 工具注入的 i18n 具名导入**（Trans / useTranslation / withTranslation / WithTranslation 等），
+   * 保留用户在同一行手写的其它导入（如 I18nextProvider / IntlProvider）；摘除后若整条变空则移除。
    *
    * 注意：tImport（如 `@/plugins/locale`）下的全局函数 `t` **不在此处理**。它可能是用户原有、
    * 且仍被「locale 查不到而未被还原的存活 t() 调用」引用——若在逐节点遍历时无条件删除，会删掉
@@ -310,10 +311,51 @@ export class ReactImportManager implements IImportManager {
     // keepLibraryImport：还原后仍有未还原的翻译调用 / 组件存活（locale 缺 key），它们依赖
     // useTranslation / useIntl / Trans / FormattedMessage 等具名导入。此时保留整条 import，
     // 否则产出引用未定义标识符的不可编译代码（与下方 cleanupVariableStatements 守卫成对）。
-    if (node.moduleSpecifier.text === library.packageName && !keepLibraryImport) {
+    if (node.moduleSpecifier.text !== library.packageName || keepLibraryImport) {
+      return node;
+    }
+
+    // 仅摘除工具注入的 i18n 具名导入（Trans / useTranslation / withTranslation / WithTranslation
+    // 等），保留用户在同一行从该包手写的其它导入（如 react-i18next 的 I18nextProvider /
+    // initReactI18next、react-intl 的 IntlProvider / createIntl）。此前无条件整条
+    // createNotEmittedStatement 会把这些非 i18n 导入一并删除，产出 `Cannot find name '...'`
+    // （TS2304）的不可编译代码——与 Vue 端 VueRestoreTransformer.cleanupImports 的精确摘除对齐。
+    const importClause = node.importClause;
+    if (!importClause) return node; // 副作用导入（无具名/默认绑定），原样保留
+
+    const named = importClause.namedBindings;
+    // 命名空间导入（import * as X）不含工具注入的具名项，整体保留
+    if (!named || !ts.isNamedImports(named)) return node;
+
+    const injectable = new Set(
+      library.getImportSpecifiers({ hasJsxComponent: true, hasHook: true, hasHOC: true }),
+    );
+    // 仅删除「未改名且命中注入集」的 specifier：改名导入（`import { Trans as T }`）一定是
+    // 用户代码（工具只注入裸名），故 propertyName 存在时一律保留。
+    const remaining = named.elements.filter(
+      (el) => el.propertyName !== undefined || !injectable.has(el.name.text),
+    );
+
+    if (remaining.length === named.elements.length) return node; // 无工具注入名可摘，保留
+
+    // 摘除后既无具名也无默认导入 → 整条移除
+    if (remaining.length === 0 && !importClause.name) {
       return ts.factory.createNotEmittedStatement(node);
     }
-    return node;
+
+    const newImportClause = ts.factory.updateImportClause(
+      importClause,
+      importClause.isTypeOnly,
+      importClause.name,
+      remaining.length > 0 ? ts.factory.updateNamedImports(named, remaining) : undefined,
+    );
+    return ts.factory.updateImportDeclaration(
+      node,
+      node.modifiers,
+      newImportClause,
+      node.moduleSpecifier,
+      node.attributes,
+    );
   }
 
   /**

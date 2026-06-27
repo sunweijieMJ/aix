@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import type { ReactI18nLibrary } from './types';
 import type { MessageInfo } from '../../../utils/types';
+import { ReactASTUtils } from '../react-ast-utils';
 import { CommonASTUtils } from '../../../utils/common-ast-utils';
 
 /**
@@ -182,32 +183,25 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   }
 
   componentUsesTranslation(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
-    let uses = false;
-    const visitor = (child: ts.Node) => {
-      if (ts.isCallExpression(child)) {
-        // t('key')
-        if (ts.isIdentifier(child.expression) && child.expression.text === 't') {
-          uses = true;
-        }
-      }
-      if (!uses) {
-        ts.forEachChild(child, visitor);
-      }
-    };
-    visitor(node);
-    return uses;
+    // 统计本组件自身作用域内（含普通回调闭包，但不含嵌套组件）的 t('key') 调用。
+    return ReactASTUtils.someWithinComponentScope(
+      node,
+      (child) =>
+        ts.isCallExpression(child) &&
+        ts.isIdentifier(child.expression) &&
+        child.expression.text === 't',
+    );
   }
 
   isTranslationAvailableInScope(node: ts.Node): boolean {
-    // 用 AST 判断作用域内是否已通过 useTranslation() 解构出本地变量 `t`。
-    // 旧实现用正则 `/const\s+\{\s*t\s*[,}]/` 要求 t 是解构首位，对极常见的
-    // `const { i18n, t } = useTranslation()`（t 非首位）漏判 → injector 误判 t
-    // 不在作用域而重复注入 `const { t } = useTranslation();` → 重声明、无法编译。
-    // 这里只认「本地绑定名为 t」的元素，因此与位置无关，且对 `const { t: x }`
-    // （t 被改名、本地无 t）正确返回 false。
-    let found = false;
-    const visit = (n: ts.Node): void => {
-      if (found) return;
+    // 用 AST 判断「本组件自身作用域内」是否已通过 useTranslation() 解构出本地变量 `t`。
+    // 只认本地绑定名为 t 的元素，因此与解构位置无关（`const { i18n, t } = useTranslation()`
+    // 也命中），且对 `const { t: x }`（t 被改名、本地无 t）正确返回 false。
+    //
+    // 关键：经 someWithinComponentScope 在嵌套组件边界停止下钻——嵌套组件各自的
+    // `const { t } = useTranslation()` 不算外层「已有 t」，否则外层会漏注入、其自身 t() 引用
+    // 未声明标识符。
+    return ReactASTUtils.someWithinComponentScope(node, (n) => {
       if (
         ts.isVariableDeclaration(n) &&
         n.initializer &&
@@ -216,17 +210,12 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
         n.initializer.expression.text === this.hookName &&
         ts.isObjectBindingPattern(n.name)
       ) {
-        for (const el of n.name.elements) {
-          if (ts.isIdentifier(el.name) && el.name.text === this.translationVarName) {
-            found = true;
-            break;
-          }
-        }
+        return n.name.elements.some(
+          (el) => ts.isIdentifier(el.name) && el.name.text === this.translationVarName,
+        );
       }
-      if (!found) ts.forEachChild(n, visit);
-    };
-    visit(node);
-    return found;
+      return false;
+    });
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {

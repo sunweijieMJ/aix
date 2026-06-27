@@ -488,9 +488,26 @@ export default defineConfig({
   }
   LoggerUtils.info(`⚡ 项目框架: ${config.framework.type} (${frameworkInfo.libraryName})`);
 
-  // CLI 优先：用户传 --coverage-threshold 时覆盖 config.ci.coverageThreshold
-  const coverageThreshold =
-    (argv['coverage-threshold'] as number | undefined) ?? config.ci.coverageThreshold;
+  // CLI 优先：用户传 --coverage-threshold 时覆盖 config.ci.coverageThreshold。
+  // 这里必须显式校验 CLI 入参：yargs `type: 'number'` 对 `--coverage-threshold abc`
+  // 会强转出 NaN，而 `NaN ?? x` 仍是 NaN（非 nullish），最终 `actualPct < NaN` 恒 false
+  // → CI 门禁被静默关闭（拼错却得到假绿）；>100 则恒触发退出。config.ci.coverageThreshold
+  // 已在 loader 里做过同样的 [0,100] + 有限数校验，CLI 路径此前漏了，这里补齐对齐。
+  const cliCoverageThreshold = argv['coverage-threshold'] as number | undefined;
+  if (
+    cliCoverageThreshold !== undefined &&
+    (!Number.isFinite(cliCoverageThreshold) ||
+      cliCoverageThreshold < 0 ||
+      cliCoverageThreshold > 100)
+  ) {
+    LoggerUtils.error(
+      `❌ --coverage-threshold 必须是 [0, 100] 区间的数字，实际收到: ${
+        Number.isNaN(cliCoverageThreshold) ? '非数字（无法解析）' : cliCoverageThreshold
+      }`,
+    );
+    process.exit(1);
+  }
+  const coverageThreshold = cliCoverageThreshold ?? config.ci.coverageThreshold;
   const dryRun = Boolean(argv['dry-run']);
   const langsArg = argv['langs'] as string | undefined;
   const csvLangs = langsArg

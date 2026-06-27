@@ -175,30 +175,54 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     return undefined;
   }
 
-  componentUsesTranslation(node: ts.Node, sourceFile: ts.SourceFile): boolean {
-    let uses = false;
-    const visitor = (child: ts.Node) => {
-      if (ts.isCallExpression(child)) {
-        const exprText = child.expression.getText(sourceFile);
-        if (exprText.endsWith('.formatMessage')) {
-          uses = true;
-        }
-      }
-      if (!uses) {
-        ts.forEachChild(child, visitor);
-      }
-    };
-    visitor(node);
-    return uses;
+  componentUsesTranslation(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
+    // 统计本组件自身作用域内（含普通回调闭包，但不含嵌套组件）的 <receiver>.formatMessage(...)。
+    return ReactASTUtils.someWithinComponentScope(
+      node,
+      (child) =>
+        ts.isCallExpression(child) &&
+        ts.isPropertyAccessExpression(child.expression) &&
+        ts.isIdentifier(child.expression.name) &&
+        child.expression.name.text === 'formatMessage',
+    );
   }
 
-  isTranslationAvailableInScope(node: ts.Node, sourceFile: ts.SourceFile): boolean {
-    const text = node.getText(sourceFile);
-    return (
-      /const\s+intl\s*=\s*useIntl/.test(text) ||
-      /props\.intl/.test(text) ||
-      /this\.props\.intl/.test(text)
-    );
+  isTranslationAvailableInScope(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
+    // 基于 AST、限定在本组件自身作用域内（不跨嵌套组件边界），与旧的整段 getText 正则等价：
+    //   /const\s+intl\s*=\s*useIntl/ | /props\.intl/ | /this\.props\.intl/
+    // 改 AST 后还顺带避免命中注释 / 字符串里的伪匹配，并修复「嵌套组件已有 intl → 外层被误判
+    // 已可用而漏注入」。
+    return ReactASTUtils.someWithinComponentScope(node, (n) => {
+      // const intl = useIntl()
+      if (
+        ts.isVariableDeclaration(n) &&
+        ts.isIdentifier(n.name) &&
+        n.name.text === this.translationVarName &&
+        n.initializer &&
+        ts.isCallExpression(n.initializer) &&
+        ts.isIdentifier(n.initializer.expression) &&
+        n.initializer.expression.text === 'useIntl'
+      ) {
+        return true;
+      }
+      // props.intl / this.props.intl（injectIntl HOC 注入的 intl）
+      if (
+        ts.isPropertyAccessExpression(n) &&
+        ts.isIdentifier(n.name) &&
+        n.name.text === this.translationVarName
+      ) {
+        const obj = n.expression;
+        if (ts.isIdentifier(obj) && obj.text === 'props') return true;
+        if (
+          ts.isPropertyAccessExpression(obj) &&
+          ts.isIdentifier(obj.name) &&
+          obj.name.text === 'props'
+        ) {
+          return true;
+        }
+      }
+      return false;
+    });
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {

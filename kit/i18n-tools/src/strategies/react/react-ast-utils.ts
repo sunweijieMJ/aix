@@ -147,6 +147,47 @@ export class ReactASTUtils {
     return false;
   }
 
+  /**
+   * 嵌套组件作用域边界：一个（非根的）函数 / 类节点本身就是 ReactComponentInjector 会
+   * 独立注入 hook/HOC 的组件。其内部的 hook 声明与 t/intl 用法属于该组件自身作用域，不能
+   * 算到外层组件头上：否则外层会因内层已有 t 被误判「已可用」而漏注入（→ 外层自身 t() 引用
+   * 未声明标识符），或因内层用了 t 被误判「需要」而多注入一个未用 hook。
+   *
+   * 普通回调（useEffect / onClick / map 等非组件函数）**不是**边界——注入到外层组件的 hook
+   * 在这些闭包内经词法作用域可用，故仍需继续下钻统计其中的 t 用法。
+   */
+  static isNestedComponentBoundary(n: ts.Node): boolean {
+    if (
+      (ts.isArrowFunction(n) || ts.isFunctionExpression(n) || ts.isFunctionDeclaration(n)) &&
+      ReactASTUtils.isInjectableComponentFunction(n)
+    ) {
+      return true;
+    }
+    if (ts.isClassDeclaration(n) && !!n.name && ReactASTUtils.isClassComponent(n)) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 在「单个组件自身的词法作用域」内查找：从 root 向下遍历，命中 predicate 即返回 true；
+   * 遇到嵌套组件边界（isNestedComponentBoundary）则不进入其子树。root 自身永不视为边界。
+   */
+  static someWithinComponentScope(root: ts.Node, predicate: (n: ts.Node) => boolean): boolean {
+    let found = false;
+    const walk = (n: ts.Node, isRoot: boolean): void => {
+      if (found) return;
+      if (!isRoot && ReactASTUtils.isNestedComponentBoundary(n)) return;
+      if (predicate(n)) {
+        found = true;
+        return;
+      }
+      ts.forEachChild(n, (c) => walk(c, false));
+    };
+    walk(root, true);
+    return found;
+  }
+
   static isClassComponent(node: ts.ClassDeclaration): boolean {
     if (!node.heritageClauses) {
       return false;
