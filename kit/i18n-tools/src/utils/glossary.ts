@@ -48,14 +48,14 @@ export class Glossary {
     // 文件已确认存在（上方 existsSync 守卫）。损坏 JSON 必须抛错而非静默吞成空词表——
     // 否则用户配了词表却因文件存坏导致所有 lookup 静默 miss、术语全部回退 LLM 而无从察觉，
     // 违反本方法文档承诺的 fail-fast 语义（safeLoadJsonFile 会把损坏静默降级为 {}，不可用）。
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const raw: RawGlossaryFile | null =
-      content.trim() === '' ? ({} as RawGlossaryFile) : FileUtils.safeParseJson(content);
-    if (raw === null) {
+    const cls = FileUtils.classifyJsonFile<RawGlossaryFile>(filePath);
+    if (cls.status === 'corrupt') {
       throw new Error(
         `词表文件解析失败（JSON 格式损坏，请修复后重试）: ${FileUtils.getRelativePath(filePath)}`,
       );
     }
+    // 空文件视为空词表；missing 已被上方 existsSync 守卫拦下，这里兜底也按空处理。
+    const raw: RawGlossaryFile = cls.status === 'ok' ? cls.data : ({} as RawGlossaryFile);
     if (typeof raw !== 'object') return null;
 
     // 简化版 string 形式默认对应「首个 target locale」；多目标场景下用户应用

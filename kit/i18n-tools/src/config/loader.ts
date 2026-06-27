@@ -394,6 +394,33 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
 // =============================================================================
 
 /**
+ * 强制安全排除集：用户提供 io.exclude 时会整体替换默认值（而非合并），易静默丢失对
+ * node_modules/.git 的排除——而 generate 会提取其中中文并改写源码，破坏依赖/git 内部文件。
+ * 这两项无论如何都并入，作为「绝不扫描/改写」的最小安全网。
+ */
+const FORCED_SAFE_EXCLUDES = ['node_modules', '.git'];
+
+/**
+ * 解析 io.exclude：
+ *  - 未配置 → 默认排除集（含测试/故事/构建产物）；
+ *  - 已配置 → 用户值整体替换默认，但强制并入 FORCED_SAFE_EXCLUDES；
+ *  - 对含 '/' 的 literal（非 glob）项给出告警：FileUtils.getFrameworkFiles 的 isExcluded
+ *    仅按 basename 单段匹配，`src/legacy` 这类路径式 literal 永远命中不了、会被静默忽略。
+ */
+function resolveExclude(userExclude: string[] | undefined): string[] {
+  if (!userExclude) return [...DEFAULT_IO.exclude];
+  for (const e of userExclude) {
+    if (typeof e === 'string' && !e.includes('*') && !e.includes('?') && e.includes('/')) {
+      console.warn(
+        `⚠️  配置警告：io.exclude 项 '${e}' 含 '/' 但不是 glob，排除按文件名单段匹配，永远命中不了、已被忽略。\n` +
+          `   如需排除目录请改用 glob（如 '**/${path.basename(e)}/**'）或仅写目录名（'${path.basename(e)}'）。`,
+      );
+    }
+  }
+  return [...new Set([...FORCED_SAFE_EXCLUDES, ...userExclude])];
+}
+
+/**
  * 解析配置：合并用户配置与默认值，将相对路径转为绝对路径。
  */
 export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
@@ -412,6 +439,12 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
 
   // ---- locales ----
   const localesSource = userConfig.locales?.source ?? DEFAULT_LOCALES.source;
+  // 空串/纯空白守卫：`source: ''` 因 `'' ?? default` 非 nullish 会被原样保留，下游所有
+  // `<lang>.json` / `<lang>/<bucket>.json` 落盘会产出名为 `.json` 的畸形（Unix 隐藏）文件，
+  // 且 source='' 时源文件读取异常。与 root/framework 的空串 fail-fast 对齐。
+  if (typeof localesSource !== 'string' || localesSource.trim() === '') {
+    throw new Error('locales.source 必须是非空字符串（源语种代码，如 "zh-CN"）。');
+  }
   // 显式空数组 `targets: []` 与「未配置」语义不同，不能混为一谈：未配置才回落默认值，
   // 显式空数组应直接报错——否则用户清空 targets 会被悄悄塞回 'en-US'，且当 source 恰为
   // 默认目标（如 { source: 'en-US', targets: [] }）时，下面的 source-in-targets 守卫会抛出
@@ -425,6 +458,14 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   // 防御性拷贝：避免下游误把 ResolvedConfig.locales.targets 与 DEFAULT_LOCALES.targets
   // 共享同一引用，进而通过 push/splice 污染默认值。
   const localesTargets = userTargets ? [...userTargets] : [...DEFAULT_LOCALES.targets];
+  // 逐项非空守卫：`targets: ['en-US', '']` 中的空串既不等于 source 也不算重复，会通过
+  // 下方 source-in-targets / 去重校验，但同样落出畸形 `.json` 文件名。与 source 守卫对齐。
+  const blankTarget = localesTargets.find((t) => typeof t !== 'string' || t.trim() === '');
+  if (blankTarget !== undefined) {
+    throw new Error(
+      `locales.targets 含空/非字符串语种：实际 targets=${JSON.stringify(localesTargets)}，每个目标语种必须是非空字符串。`,
+    );
+  }
   if (localesTargets.includes(localesSource)) {
     throw new Error(
       `locales.targets 不能包含 source 语种 '${localesSource}'：实际 targets=${JSON.stringify(localesTargets)}`,
@@ -446,7 +487,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     // 防御性拷贝：避免与 DEFAULT_IO 共享数组引用，下游若 push/splice 会污染默认值
     // （与上方 localesTargets 的处理保持一致）。
     include: [...(userConfig.io?.include ?? DEFAULT_IO.include)],
-    exclude: [...(userConfig.io?.exclude ?? DEFAULT_IO.exclude)],
+    exclude: resolveExclude(userConfig.io?.exclude),
     format: ioFormat,
     indent: Math.max(0, userConfig.io?.indent ?? DEFAULT_IO.indent),
     prettify: userConfig.io?.prettify ?? DEFAULT_IO.prettify,

@@ -220,10 +220,16 @@ export class VueTransformer implements ITransformer {
    * 紧贴文本，padding 时失配 → chosen 为空 → 旧逻辑 fall through 到裸文本搜索，把
    * `:title="$t(...)"` 插进引号内部，产出引号失衡的非法标记。`\s*` 让 trim 后的 original
    * 仍能整体匹配 padded 属性，locale 值则保持 trim（不把词间距污染进文案）。
+   *
+   * Why 兼容无引号：HTML/Vue 合法允许无引号属性值（`<el-button title=确认>`），
+   * @vue/compiler-dom 照常解析并提取（写入 locale），但旧正则强制引号无法匹配 →
+   * 转换阶段静默漏替换 → 孤儿 key + 源码残留中文。无引号分支 `${escaped}(?=[\s/>])`：
+   * 值紧贴 `=`（无引号值不能含空白），后随空白/`/`/`>` 才算属性值边界，仍由前缀
+   * `([\w-]+)=` 约束必须是「属性名=」形态，不会误吃正文。
    */
   private buildStaticAttrPattern(original: string, flags = ''): RegExp {
     const escaped = CommonASTUtils.escapeRegExp(original);
-    return new RegExp(`([\\w-]+)=(["'])\\s*${escaped}\\s*\\2`, flags);
+    return new RegExp(`([\\w-]+)=(?:(["'])\\s*${escaped}\\s*\\2|${escaped}(?=[\\s/>]))`, flags);
   }
 
   /**

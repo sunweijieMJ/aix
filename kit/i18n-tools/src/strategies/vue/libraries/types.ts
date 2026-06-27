@@ -64,5 +64,9 @@ export interface VueI18nLibrary extends BaseI18nLibrary {
   getHookDeclarationCleanupRegex(): RegExp;
 }
 
-/** 支持的 Vue i18n 库类型 */
-export type VueI18nLibraryType = 'vue-i18n' | 'vue-i18next';
+/**
+ * 支持的 Vue i18n 库（单一事实源）：union 类型由此 const 派生，工厂亦从此校验，
+ * 避免「类型 union / 工厂 switch」各维护一份导致漂移。
+ */
+export const VUE_I18N_LIBRARIES = ['vue-i18n', 'vue-i18next'] as const;
+export type VueI18nLibraryType = (typeof VUE_I18N_LIBRARIES)[number];

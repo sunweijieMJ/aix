@@ -3,7 +3,17 @@ import path from 'path';
 import picomatch from 'picomatch';
 import { CONFIG, FILES } from './constants';
 import { LoggerUtils } from './logger';
+import { normalizePosix } from './path-matcher';
 import type { ResolvedConfig } from '../config';
+
+/**
+ * classifyJsonFile 的判别式结果：四态明确区分，调用方据 status 分流。
+ */
+export type JsonFileClassification<T = any> =
+  | { status: 'missing' }
+  | { status: 'empty' }
+  | { status: 'corrupt' }
+  | { status: 'ok'; data: T };
 
 /**
  * 文件和文本操作工具类
@@ -27,6 +37,23 @@ export class FileUtils {
       LoggerUtils.error('JSON解析失败:', error);
       return null;
     }
+  }
+
+  /**
+   * 判别式 JSON 文件读取：区分「不存在 / 空 / 损坏 / 正常」四态，收口散落在 glossary 与
+   * language-file-manager 多处的「readFileSync → trim 判空 → safeParseJson → null 即损坏」骨架。
+   *
+   * 与 safeLoadJsonFile 的区别：后者把「不存在」「空」「损坏」一律降级为 defaultValue，
+   * 无法区分——凡需对损坏 fail-fast（抛错/中止/回调）的调用方都只能绕过它自己手写。
+   * 本方法把分类逻辑收一处，各调用方仅 switch on status、保留各自的后续动作。
+   */
+  static classifyJsonFile<T = any>(filePath: string): JsonFileClassification<T> {
+    if (!fs.existsSync(filePath)) return { status: 'missing' };
+    const content = fs.readFileSync(filePath, 'utf-8');
+    if (content.trim() === '') return { status: 'empty' };
+    const parsed = FileUtils.safeParseJson(content);
+    if (parsed === null) return { status: 'corrupt' };
+    return { status: 'ok', data: parsed as T };
   }
 
   static findConflictingKeys(
@@ -394,7 +421,7 @@ export class FileUtils {
     const isMatch = picomatch(patterns, { dot: true });
     return (filePath, baseDir) => {
       // 调用方传入的 filePath / baseDir 已经在 getFrameworkFiles 内统一 resolve 成绝对路径
-      const relativePath = path.relative(baseDir, filePath).replace(/\\/g, '/');
+      const relativePath = normalizePosix(path.relative(baseDir, filePath));
       return isMatch(relativePath);
     };
   }

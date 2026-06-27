@@ -639,7 +639,9 @@ export class CommonASTUtils {
     for (let i = parts.length - 1; i >= 0; i--) {
       let part = parts[i] ?? '';
       part = part.replace(/^['"`]|['"`]$/g, '');
-      part = part.replace(/[^\w\u4e00-\u9fa5]/g, '');
+      // \u4e0a\u754c \u9fff \u4e0e CONFIG.CHINESE_REGEX \u5bf9\u9f50\uff08\u539f \u9fa5 \u4f1a\u628a U+9FA6\u2013U+9FFF \u6269\u5145\u6c49\u5b57
+      // \u5f53\u975e\u4e2d\u6587\u5254\u9664\uff0c\u4e0e containsChinese \u5224\u5b9a\u53e3\u5f84\u4e0d\u4e00\u81f4\uff09\u3002
+      part = part.replace(/[^\w\u4e00-\u9fff]/g, '');
 
       if (part && !this.NON_SEMANTIC_SUFFIXES.has(part)) {
         if (this.isLowSignalIdentifier(part)) return 'value';
@@ -1248,12 +1250,27 @@ export class CommonASTUtils {
         result[key] = value;
         continue;
       }
-      const single = library.usesDoubleBracePlaceholders
-        ? CommonASTUtils.toSingleBracePlaceholders(value)
-        : value;
-      result[key] = library.unescapeLiteralText(single);
+      result[key] = CommonASTUtils.normalizeRestoreMessage(value, library);
     }
     return result;
+  }
+
+  /**
+   * 单条消息的 restore 归一（normalizeRestoreLocaleMap 的逐值实现）。
+   * 供 restore 兜底路径（locale 缺 key 时用源码 defaultMessage 当模板）复用同一口径，
+   * 避免双花括号 / 转义字面量花括号未归一就喂给单花括号解析逻辑而丢失占位符。
+   */
+  static normalizeRestoreMessage(
+    message: string,
+    library: {
+      usesDoubleBracePlaceholders: boolean;
+      unescapeLiteralText(text: string): string;
+    },
+  ): string {
+    const single = library.usesDoubleBracePlaceholders
+      ? CommonASTUtils.toSingleBracePlaceholders(message)
+      : message;
+    return library.unescapeLiteralText(single);
   }
 
   /**

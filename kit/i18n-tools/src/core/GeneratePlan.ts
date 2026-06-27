@@ -95,6 +95,19 @@ export interface GeneratePlan {
   localeDelta: Record<string, string>;
   /** key → bucket 名，仅启用 buckets 时非空；apply 阶段透传给 LanguageFileManager */
   keyBucketMap?: Record<string, string>;
+  /**
+   * 影响 locale 落盘形态的配置快照（buckets 开关 / 段分隔符 / 源语种）。
+   *
+   * 源文件指纹（entries[].sourceHash）只覆盖源码、不覆盖配置：dry-run 与 apply 之间若改了
+   * 这些配置，apply 会用 plan 里旧的 keyBucketMap 叠加新配置，写出与 dry-run 预览不一致的
+   * locale 形态（桶被开/关、嵌套分隔符变化、源 locale 文件名变化）。apply 时比对并告警。
+   * 可选：兼容缺该字段的旧 plan（缺失即跳过比对）。
+   */
+  outputShape?: {
+    bucketsEnabled: boolean;
+    separator: string;
+    source: string;
+  };
 }
 
 /**

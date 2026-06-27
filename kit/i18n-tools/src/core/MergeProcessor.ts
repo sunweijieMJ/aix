@@ -40,6 +40,12 @@ export class MergeProcessor extends FileProcessor {
 
     LoggerUtils.info(`正在合并翻译数据...`);
 
+    // 损坏即在写回前中止：performMerge 会先清空 untranslated.json 并写 translations.json，
+    // 之后才同步到 target locale；若把损坏 target locale 的检测留在 updateLanguagePackage 内部
+    // （那里只 log+return、不抛错），会出现 CI 伪成功（exit 0）+ 运行时漏译。与 Pick/Prune 的
+    // 「损坏即变更前抛错」口径对齐：source + 所有 target 任一损坏即 fail-fast。
+    this.assertLocalesNotCorrupt();
+
     if (!fs.existsSync(untranslatedPath)) {
       throw new Error(`待翻译文件不存在: ${untranslatedPath}，请先运行 pick 命令生成。`);
     }
@@ -284,6 +290,35 @@ export class MergeProcessor extends FileProcessor {
     } else {
       FileUtils.createOrEmptyFile(filePath, '{}');
       LoggerUtils.success(`🎉 所有条目已翻译完成，已清空 ${FILES.UNTRANSLATED_JSON}`);
+    }
+  }
+
+  /**
+   * 写回前损坏守卫：source + 所有 target locale 任一解析失败即抛错中止。
+   * 桶式用 findCorruptBucketFile（readLocaleFile 对损坏桶静默降级为 {} 永不返回 null）；
+   * 单文件用 readLocaleFile===null（区分「解析失败」与「不存在 → {}」）。与 PruneProcessor 一致。
+   */
+  private assertLocalesNotCorrupt(): void {
+    const locales = [this.config.locales.source, ...this.config.locales.targets];
+    for (const locale of locales) {
+      if (this.config.buckets) {
+        const corrupt = LanguageFileManager.findCorruptBucketFile(
+          this.config,
+          this.isCustom,
+          locale,
+        );
+        if (corrupt) {
+          throw new Error(
+            `locale「${locale}」的桶文件解析失败：${corrupt}\n` +
+              '👉 为避免 CI 伪成功与运行时漏译，已在写回前中止 merge。请先修复该文件的 JSON 格式后重试。',
+          );
+        }
+      } else if (LanguageFileManager.readLocaleFile(this.config, this.isCustom, locale) === null) {
+        throw new Error(
+          `locale「${locale}」解析失败（JSON 格式错误）\n` +
+            '👉 为避免 CI 伪成功与运行时漏译，已在写回前中止 merge。请先修复该文件的 JSON 格式后重试。',
+        );
+      }
     }
   }
 

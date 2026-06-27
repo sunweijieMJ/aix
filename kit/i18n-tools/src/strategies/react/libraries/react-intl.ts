@@ -36,7 +36,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     const call = 'intl.formatMessage';
     let descriptor = `{ id: '${id}'`;
     if (includeDefaultMessage && defaultMessage) {
-      const escaped = JSON.stringify(defaultMessage);
+      const escaped = JSON.stringify(this.finalizeDefaultMessage(defaultMessage, values));
       descriptor += `, defaultMessage: ${escaped}`;
     }
     descriptor += ' }';
@@ -58,7 +58,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     if (includeDefaultMessage && defaultMessage) {
       // 经 JSX 表达式容器 `{...}` 注入：JSON.stringify 产出 JS 字符串字面量（内部 " 转义为 \"），
       // 而 JSX 属性值是 HTML 风格、不解析反斜杠转义，直接拼属性遇到 " 会提前闭合 → JSX 语法错误。
-      const escaped = JSON.stringify(defaultMessage);
+      const escaped = JSON.stringify(this.finalizeDefaultMessage(defaultMessage, values));
       props += ` defaultMessage={${escaped}}`;
     }
     if (values && values.size > 0) {
@@ -256,6 +256,15 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
 
   private formatValuesMapping(values: Map<string, string>): string {
     return CommonASTUtils.formatValuesMapping(values);
+  }
+
+  /**
+   * in-code defaultMessage 与 locale 落盘值口径对齐：用 finalizeLocaleMessage 对非占位符的
+   * 字面量花括号做 ICU 转义（`{`→`'{'`），避免文案含字面量大括号时 react-intl 运行时把它当
+   * 占位符起始而解析报错 / 与 locale 值不一致。真占位符（values 的 key）保持单花括号不变。
+   */
+  private finalizeDefaultMessage(defaultMessage: string, values?: Map<string, string>): string {
+    return CommonASTUtils.finalizeLocaleMessage(defaultMessage, values ? values.keys() : [], this);
   }
 
   // react-intl 用 ICU，单 `{` 是插值/语法字符。ICU 以单引号转义：`'{'` / `'}'`，
