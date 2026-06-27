@@ -49,18 +49,30 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     if (values && values.size > 0) {
       const mapping = this.formatValuesMapping(values);
       if (includeDefaultMessage && defaultMessage) {
-        const escaped = JSON.stringify(defaultMessage);
+        const escaped = JSON.stringify(this.localizeDefaultMessage(defaultMessage, values));
         return `${fn}('${key}', { defaultValue: ${escaped}, ${this.formatValuesMappingInline(values)} })`;
       }
       return `${fn}('${key}', ${mapping})`;
     }
 
     if (includeDefaultMessage && defaultMessage) {
-      const escaped = JSON.stringify(defaultMessage);
+      const escaped = JSON.stringify(this.localizeDefaultMessage(defaultMessage, values));
       return `${fn}('${key}', { defaultValue: ${escaped} })`;
     }
 
     return `${fn}('${key}')`;
+  }
+
+  /**
+   * 把规范化的单花括号默认文案（`你好 {name}`）转成 i18next 运行时可插值的形态。
+   *
+   * Why：i18next 默认插值语法是双花括号 `{{name}}`，单花括号被当作字面量。defaultValue /
+   * defaults 仅在 locale 缺 key 时兜底渲染，若沿用单花括号占位符，缺 key 时会原样显示
+   * `你好 {name}` 而非替换变量。复用 finalizeLocaleMessage：只把真占位符（values 的 key）
+   * 转双花括号，正文里的字面 `{x}` 保持不动——与写入 locale 的值口径一致。
+   */
+  private localizeDefaultMessage(defaultMessage: string, values?: Map<string, string>): string {
+    return CommonASTUtils.finalizeLocaleMessage(defaultMessage, values?.keys() ?? [], this);
   }
 
   generateJSXComponent(
@@ -76,7 +88,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       // 经 JSX 表达式容器 `{...}` 注入：JSON.stringify 产出的是 JS 字符串字面量（内部 " 转义为
       // \"、换行为 \n），而 JSX 属性值是 HTML 风格、不解析反斜杠转义。若直接 `defaults="..\".."`
       // 拼成属性，文本含 " 会提前闭合属性 → 整文件 JSX 语法错误。用 {} 让其按 JS 字面量解析。
-      const escaped = JSON.stringify(defaultMessage);
+      const escaped = JSON.stringify(this.localizeDefaultMessage(defaultMessage, values));
       props += ` defaults={${escaped}}`;
     }
     if (values && values.size > 0) {

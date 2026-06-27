@@ -35,7 +35,7 @@ describe('flattenObject 读路径使用 keys.separator', () => {
     const config = resolveConfig({
       root,
       framework: { type: 'vue' },
-      locales: { source: 'zh-CN', targets: [] },
+      locales: { source: 'zh-CN' },
       io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
       keys: { separator: '/' },
       llm: { shared: { apiKey: 'x', model: 'm' } },
@@ -57,7 +57,7 @@ describe('flattenObject 读路径使用 keys.separator', () => {
     const config = resolveConfig({
       root,
       framework: { type: 'vue' },
-      locales: { source: 'zh-CN', targets: [] },
+      locales: { source: 'zh-CN' },
       io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
       keys: { separator: '/' },
       llm: { shared: { apiKey: 'x', model: 'm' } },

@@ -97,7 +97,11 @@ export class RestoreProcessor extends BaseProcessor {
       LoggerUtils.info(`📖 加载了 ${Object.keys(localeMap).length} 个语言条目`);
 
       let filesToProcess: string[];
-      if (targetFiles && targetFiles.length > 0) {
+      if (targetFiles !== undefined) {
+        // 用户显式指定了 target：即便解析为空（typo / 不存在的路径 / 空目录），也只处理这个
+        // （空）集合，绝不回退到全量扫描。否则 `restore <typo>` 会静默扫描整个 config.root，
+        // 配合 overwrite 就地改写整个项目——与用户「只还原这几个文件」的意图完全相反。
+        // 空集合由下方 `filesToProcess.length === 0` 早退分支优雅处理。
         filesToProcess = targetFiles;
       } else {
         filesToProcess = FileUtils.getFrameworkFiles(

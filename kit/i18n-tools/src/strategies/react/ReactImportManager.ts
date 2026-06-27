@@ -464,10 +464,22 @@ export class ReactImportManager implements IImportManager {
   /**
    * 清理Hook依赖数组中的翻译变量引用 (AST)
    */
-  static cleanupHookDependencies(node: ts.CallExpression, library: ReactI18nLibrary): ts.Node {
+  static cleanupHookDependencies(
+    node: ts.CallExpression,
+    library: ReactI18nLibrary,
+    keepTranslationVar: boolean = false,
+  ): ts.Node {
     // 必须与 generate 端 HooksUtils.addTranslationVarToHooksDependencies 对称：
     // 复用同一份 hook 名解析（兼容 React.useXxx）与列表（含 useLayoutEffect），
     // 否则会漏清理 add 端已注入的依赖，留下指向已删除翻译变量的悬空引用。
+    //
+    // 与 cleanupImports / cleanupVariableStatements 同样受 keepTranslationVar 守卫：
+    // 当某个 t() 调用因 key 缺失 / 动态 key 未被还原时，translation 变量声明与 import
+    // 都会被保留（keepTranslationVar=true），此时绝不能把 t 从依赖数组里删掉——否则
+    // 回调体仍引用 t 而 deps 漏了它，触发 exhaustive-deps 违规 + 语言切换时闭包陈旧。
+    if (keepTranslationVar) {
+      return node;
+    }
     const hookName = resolveHookName(node);
     if (!hookName || !TRANSLATION_DEPENDENCY_HOOKS.includes(hookName)) {
       return node;

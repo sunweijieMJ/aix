@@ -728,7 +728,10 @@ export class GenerateProcessor extends BaseProcessor {
       const message = this.toLocaleMessage(item);
       // 重复 semanticId 取首次（generateIdsForStrings 已经保证同原文 → 同 key，
       // 不同原文 → 不同 key；这里的 first-wins 是冗余防御）
-      if (!(item.semanticId in localeDelta)) {
+      // 用 hasOwnProperty 而非 `in`：`in` 走原型链，semanticId 为 'constructor' /
+      // 'toString' 等原型成员名时会假命中，导致该 key 被静默丢弃，apply 阶段把源码改成
+      // t('constructor') 却没有对应 locale 值（与 doctor checkMissingTargetKeys 同类修复）。
+      if (!Object.prototype.hasOwnProperty.call(localeDelta, item.semanticId)) {
         localeDelta[item.semanticId] = message;
       }
     }
@@ -797,12 +800,16 @@ export class GenerateProcessor extends BaseProcessor {
     GeneratePlanWriter.write(planDir, plan, transformedSources);
     GeneratePlanWriter.logPlanReadyMessage(planDir);
 
-    // dry-run 评审阶段就跑健康度 lint，与 commit 路径（updateLanguageFiles 内部）对称。
-    // Why: dry-run 不进 commitToDisk → 原本永远不会触达 LocaleValueLinter，导致 plan/RunReport
-    //      缺失所有 lint 类发现（nested-interpolation-chinese / html-tag-in-value / 语义重复…），
-    //      reviewer 决策是否 apply 时看不到这些告警，要等真正落盘后才暴露。apply-plan 路径
-    //      据此「信任 dry-run 已 lint 完」而不再重跑（见 applyFromPlan 注释）。
-    //   - localeDelta 即本轮新增 key→value，是与 commit 一致的诊断对象；
+    // dry-run 评审阶段先跑一遍健康度 lint，让 reviewer 在 plan/RunReport 里就能看到 lint 告警，
+    // 而非等真正落盘后才暴露。
+    // Why: dry-run 不进 commitToDisk → 原本永远不会触达 LocaleValueLinter。
+    // 注意口径差异（非完全等价于 commit 路径）：
+    //   - 此处只 lint localeDelta（本轮新增 key→value）；commit 路径 lint 的是
+    //     finalMap = {...已有 localeMap, ...新增}（全量合并 map）。因此跨 key 类检查
+    //     （findSemanticDuplicates / findHardcodedComparisons / findCrossModuleReuseCandidates）
+    //     在 dry-run 看不到「新 key 与既有 key 冲突」这类发现——它们会在 apply/commit 阶段
+    //     如实补报（apply 经 commitToDisk → updateLanguageFiles 会对全量 map 再跑一次 lint），
+    //     不会被静默吞掉，只是 dry-run 预览不完整。
     //   - skippedComparisons 传入提取阶段已 drain 的快照，避免与 coverage 争抢全局 collector；
     //     nested 收集器此刻仍满（dry-run 未经其它消费者），由 analyze 内部 drain。
     const lintFindings = LocaleValueLinter.analyze(localeDelta, {
@@ -839,9 +846,9 @@ export class GenerateProcessor extends BaseProcessor {
    *   2. 校验源文件 sha256 与 plan.entries[].sourceHash 一致
    *   3. 调用 commitToDisk 落盘
    *
-   * Why 不在 apply 路径再跑 LocaleValueLinter：plan 是 dry-run 当时的事实快照，
-   * apply 阶段只负责"原样落盘"，lint 应该在 dry-run 阶段就跑完（plan 中的
-   * localeDelta 已经是经过提取流程的最终值）。
+   * 关于 lint：apply 不重复解析 AST、不重跑 LLM，但确实会再跑一次 LocaleValueLinter——
+   * 它经 commitToDisk → updateLanguageFiles 对全量合并 map 做 lint（与普通 commit 同路径）。
+   * 这正好补齐 dry-run 阶段只 lint 增量 delta 看不到的跨 key 发现（见 writePlan 注释）。
    */
   /**
    * apply 完成后是否保留 plan 目录。

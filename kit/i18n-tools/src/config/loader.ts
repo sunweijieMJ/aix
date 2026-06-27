@@ -412,12 +412,19 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
 
   // ---- locales ----
   const localesSource = userConfig.locales?.source ?? DEFAULT_LOCALES.source;
+  // 显式空数组 `targets: []` 与「未配置」语义不同，不能混为一谈：未配置才回落默认值，
+  // 显式空数组应直接报错——否则用户清空 targets 会被悄悄塞回 'en-US'，且当 source 恰为
+  // 默认目标（如 { source: 'en-US', targets: [] }）时，下面的 source-in-targets 守卫会抛出
+  // 引用 'en-US' 这个用户从未配置过的语种的误导性错误。
+  const userTargets = userConfig.locales?.targets;
+  if (userTargets && userTargets.length === 0) {
+    throw new Error(
+      'locales.targets 不能为空数组：请至少配置一个目标语种，或删除该字段以使用默认值',
+    );
+  }
   // 防御性拷贝：避免下游误把 ResolvedConfig.locales.targets 与 DEFAULT_LOCALES.targets
   // 共享同一引用，进而通过 push/splice 污染默认值。
-  const localesTargets =
-    userConfig.locales?.targets && userConfig.locales.targets.length > 0
-      ? [...userConfig.locales.targets]
-      : [...DEFAULT_LOCALES.targets];
+  const localesTargets = userTargets ? [...userTargets] : [...DEFAULT_LOCALES.targets];
   if (localesTargets.includes(localesSource)) {
     throw new Error(
       `locales.targets 不能包含 source 语种 '${localesSource}'：实际 targets=${JSON.stringify(localesTargets)}`,

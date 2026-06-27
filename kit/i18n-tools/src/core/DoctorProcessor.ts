@@ -21,6 +21,8 @@ import { BaseProcessor } from './BaseProcessor';
 export type DoctorSeverity = 'error' | 'warning' | 'info';
 
 export type DoctorCategory =
+  /** locale 文件存在但 JSON 解析失败（损坏）——跳过依赖它的对账，避免误报 */
+  | 'corrupt-locale'
   /** locale-value-linter 已有的所有 ManualCategory */
   | 'locale-lint'
   /** 源码 t() 引用了不存在的 key（运行时会显示 key 字符串） */
@@ -103,25 +105,40 @@ export class DoctorProcessor extends BaseProcessor {
     //    使 doctor 自给自足。
     await this.populateComparisonOperands();
 
-    // 1. locale value 结构性检查（复用 linter）
-    const sourceMap =
-      LanguageFileManager.readLocaleFile(this.config, this.isCustom, this.config.locales.source) ??
-      {};
+    // 0.5 损坏 locale 守卫（与 Pick/Merge/Prune/Restore/Export 对齐）。
+    //    Why：readLocaleFile 对损坏文件单文件返回 null、桶式静默降级为 {}（永不 null）。
+    //    若直接 `?? {}` 吞掉，源损坏会把全部 key 误报为 missing-key（error，CI 因错误原因失败），
+    //    目标损坏会刷一堆假 missing-target-key（warning，不阻断 CI）并把真损坏掩盖成 exit 0——
+    //    体检工具出现假阴性。这里探测到损坏即报 error 级 finding 并跳过依赖该 locale 的对账。
+    const sourceLocale = this.config.locales.source;
+    const corruptSource = this.detectCorruptLocale(sourceLocale);
+    if (corruptSource) {
+      findings.push(this.buildCorruptFinding(sourceLocale, corruptSource, true));
+    } else {
+      // 1. locale value 结构性检查（复用 linter）
+      const sourceMap =
+        LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) ?? {};
 
-    findings.push(...this.runLinter(sourceMap));
+      findings.push(...this.runLinter(sourceMap));
 
-    // 2. 三类对账：依赖源码扫描得到的 key 引用集合
-    const sourceKeys = collectUsedKeys(this.config, this.adapter);
-    findings.push(...this.checkMissingKeys(sourceKeys, sourceMap));
-    findings.push(...this.checkOrphanKeys(sourceKeys, sourceMap));
+      // 2. 三类对账：依赖源码扫描得到的 key 引用集合
+      const sourceKeys = collectUsedKeys(this.config, this.adapter);
+      findings.push(...this.checkMissingKeys(sourceKeys, sourceMap));
+      findings.push(...this.checkOrphanKeys(sourceKeys, sourceMap));
 
-    // 多 target untranslated 对账：每个 target 独立检查
-    for (const target of this.config.locales.targets) {
-      const targetMap =
-        LanguageFileManager.readLocaleFile(this.config, this.isCustom, target) ?? {};
-      findings.push(...this.checkMissingTargetKeys(sourceMap, targetMap, target));
-      findings.push(...this.checkUntranslated(sourceMap, targetMap, target));
-      findings.push(...this.checkPlaceholders(sourceMap, targetMap, target));
+      // 多 target untranslated 对账：每个 target 独立检查
+      for (const target of this.config.locales.targets) {
+        const corruptTarget = this.detectCorruptLocale(target);
+        if (corruptTarget) {
+          findings.push(this.buildCorruptFinding(target, corruptTarget, false));
+          continue;
+        }
+        const targetMap =
+          LanguageFileManager.readLocaleFile(this.config, this.isCustom, target) ?? {};
+        findings.push(...this.checkMissingTargetKeys(sourceMap, targetMap, target));
+        findings.push(...this.checkUntranslated(sourceMap, targetMap, target));
+        findings.push(...this.checkPlaceholders(sourceMap, targetMap, target));
+      }
     }
 
     this.renderConsole(findings);
@@ -157,6 +174,41 @@ export class DoctorProcessor extends BaseProcessor {
     await extractor.extractFromFiles(files);
     // 提取期 warning（如跳过含 HTML 的模板字符串）对 doctor 无意义，排空丢弃。
     extractor.drainWarnings();
+  }
+
+  /**
+   * 探测某 locale 是否损坏（存在但 JSON 解析失败），返回首个损坏文件的绝对路径；
+   * 无损坏返回 null。复用 LanguageFileManager 既有探测原语，桶式 / 单文件口径一致：
+   *  - 桶式：findCorruptBucketFile（桶目录）+ findCorruptLegacySingleFile（遗留单文件）
+   *  - 单文件：readLocaleFile === null（区分「不存在 → {}」与「存在但解析失败 → null」）
+   */
+  private detectCorruptLocale(locale: string): string | null {
+    if (this.config.buckets) {
+      return (
+        LanguageFileManager.findCorruptBucketFile(this.config, this.isCustom, locale) ??
+        LanguageFileManager.findCorruptLegacySingleFile(this.config, this.isCustom, locale)
+      );
+    }
+    return LanguageFileManager.readLocaleFile(this.config, this.isCustom, locale) === null
+      ? `${locale}.json`
+      : null;
+  }
+
+  /** 构造损坏 locale 的 error 级发现（CI 模式据此非零退出，避免静默放行损坏文件）。 */
+  private buildCorruptFinding(locale: string, file: string, isSource: boolean): DoctorFinding {
+    return {
+      category: 'corrupt-locale',
+      severity: 'error',
+      title: `${isSource ? '源' : '目标'} locale「${locale}」文件解析失败（JSON 损坏）`,
+      details: [
+        `损坏文件: ${file}`,
+        isSource
+          ? '已跳过全部对账（源不可信）。请修复 JSON 格式后重跑 doctor。'
+          : '已跳过该目标语言的对账。请修复 JSON 格式后重跑 doctor。',
+      ],
+      key: locale,
+      file,
+    };
   }
 
   /** LocaleValueLinter.analyze → DoctorFinding（严重级别全部归 info） */
@@ -436,6 +488,7 @@ export class DoctorProcessor extends BaseProcessor {
 
     // 对账类发现：直接写为 warnings（不是 ManualCategory，避免污染）
     const accountingMap: Record<Exclude<DoctorCategory, 'locale-lint'>, string> = {
+      'corrupt-locale': 'locale 文件 JSON 解析失败（损坏）',
       'missing-key': '源码引用的 key 在 locale 中缺失',
       'orphan-key': 'locale 中的 key 源码未引用',
       untranslated: '疑似未翻译（target = source）',

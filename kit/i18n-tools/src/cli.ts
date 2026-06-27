@@ -523,18 +523,25 @@ export default defineConfig({
   const keepPlan = Boolean(argv['keep-plan']);
   const planOutputDir = argv['plan-output-dir'] as string | undefined;
 
-  // dry-run / apply-plan 仅在 generate 模式下生效。在其他模式下静默忽略
-  // 比抛错更友好（兼容 automatic 串调 generate 的复杂场景），但显式提示
-  // 避免用户写错命令时困惑。
+  // dry-run 与 apply-plan 的「生效模式集合」不同，必须分开提示：
+  //  - --dry-run 在 generate / csv-import / prune 三种模式都被真正消费（各自有预览语义），
+  //    仅在其余模式无意义；
+  //  - --apply-plan 只有 generate 分支消费，其它模式（含 csv-import / prune）一律忽略。
+  // 旧实现把二者并入同一条件并整体排除 csv-import/prune，导致 `--apply-plan --mode prune`
+  // 这类误用被静默丢弃、连警告都没有，违背该守卫「写错命令即提示」的初衷。
+  // 静默忽略本身比抛错更友好（兼容 automatic 串调 generate 的复杂场景），但要显式提示。
   if (
-    (dryRun || applyPlanPath) &&
+    dryRun &&
     mode !== ModeName.GENERATE &&
     mode !== ModeName.CSV_IMPORT &&
     mode !== ModeName.PRUNE
   ) {
     LoggerUtils.warn(
-      `⚠️  --dry-run / --apply-plan 仅在 --mode generate 下生效，当前模式 ${mode}，将被忽略`,
+      `⚠️  --dry-run 仅在 --mode generate / csv-import / prune 下生效，当前模式 ${mode}，将被忽略`,
     );
+  }
+  if (applyPlanPath && mode !== ModeName.GENERATE) {
+    LoggerUtils.warn(`⚠️  --apply-plan 仅在 --mode generate 下生效，当前模式 ${mode}，将被忽略`);
   }
   if (dryRun && applyPlanPath) {
     LoggerUtils.error('❌ --dry-run 与 --apply-plan 互斥，请只指定其一');
