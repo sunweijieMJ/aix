@@ -69,7 +69,9 @@ export default defineConfig({
     // 排除目录与文件：单段名（如 'node_modules'）走 literal 匹配，
     // 含 `*/?` 的模式走 picomatch glob 匹配。
     // 默认值会额外排除 *.config.* / 测试 / Storybook 等，可按需追加。
-    exclude: ['node_modules', 'dist', 'build', '.git', 'public', 'src/components'],
+    // 注：exclude 按「目录/文件 basename 单段」匹配，无法用 'src/components' 这类路径限定，
+    // 只能写目录名 'components'（命中任意层级的 components 目录）。
+    exclude: ['node_modules', 'dist', 'build', '.git', 'public', 'components'],
 
     // 语言文件序列化格式：
     //   'flat'  : { "views__demo__title": "标题" }

@@ -44,7 +44,7 @@ export class InteractiveUtils {
         { name: '② 生成待翻译文件', value: ModeName.PICK },
         { name: '③ 翻译待翻译文件（AI）', value: ModeName.TRANSLATE },
         { name: '③ 导出 CSV（发人翻译/审核）', value: ModeName.CSV_EXPORT },
-        { name: '③ 导入 CSV（回流写回待翻译文件）', value: ModeName.CSV_IMPORT },
+        { name: '③ 导入 CSV（回流写回 untranslated/translations）', value: ModeName.CSV_IMPORT },
         { name: '④ 合并翻译文件', value: ModeName.MERGE },
         { name: '⑤ 导出语言文件', value: ModeName.EXPORT },
         // 辅助：调试 / 体检
