@@ -574,7 +574,13 @@ export class VueTransformer implements ITransformer {
    * @returns 替换字符串
    */
   private generateScriptReplacement(extracted: ExtractedString, useThisQualifier: boolean): string {
-    const { semanticId, isTemplateString, templateVariables } = extracted;
+    const { isTemplateString, templateVariables } = extracted;
+
+    // 与 generateTemplateReplacement 对称：vue-i18next 配置 namespace 时，script 里的 t()/this.$t()
+    // 同样需要 `namespace:key` 前缀，否则当 namespace ≠ i18next defaultNS 时运行时解析失败（显示
+    // 原始 key/fallback），而等价的 template $t() 因已加前缀解析正常。vue-i18n（无 namespace）不受影响。
+    const ns = this.library?.namespace;
+    const semanticId = ns ? `${ns}:${extracted.semanticId}` : extracted.semanticId;
 
     // SFC Options API 走 this.$t（vue-i18n 全局注册的实例属性，data/methods/
     // computed/lifecycle 的 this 都指向组件实例）；其它情况（script setup、纯
@@ -609,10 +615,6 @@ export class VueTransformer implements ITransformer {
    * @returns 格式化后的变量映射字符串
    */
   private generateVariablesMapping(placeholderMap: Map<string, string>): string {
-    const mappings: string[] = [];
-    placeholderMap.forEach((placeholder, expression) => {
-      mappings.push(`${placeholder}: ${expression}`);
-    });
-    return `{ ${mappings.join(', ')} }`;
+    return CommonASTUtils.formatValuesMapping(placeholderMap);
   }
 }

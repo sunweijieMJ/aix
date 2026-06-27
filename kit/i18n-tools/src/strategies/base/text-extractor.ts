@@ -42,9 +42,11 @@ export abstract class BaseTextExtractor implements ITextExtractor {
   protected isRejectedByConfig(text: string): boolean {
     if (this.rejectPatterns.length === 0) return false;
     return this.rejectPatterns.some((re) => {
-      // RegExp 带 g 标志会在多次 test 间保留 lastIndex，跨字符串调用结果不稳定；
-      // 拷贝一份新建实例规避此副作用，对用户透明。
-      const probe = re.global ? new RegExp(re.source, re.flags.replace('g', '')) : re;
+      // RegExp 带 g 或 y(sticky) 标志会在多次 test 间保留 lastIndex，跨字符串调用结果不稳定
+      // （sticky 同样推进 lastIndex，会让同一输入交替返回 true/false）；拷贝一份剥除这两个状态
+      // 标志的新实例规避此副作用，对用户透明。
+      const probe =
+        re.global || re.sticky ? new RegExp(re.source, re.flags.replace(/[gy]/g, '')) : re;
       return probe.test(text);
     });
   }

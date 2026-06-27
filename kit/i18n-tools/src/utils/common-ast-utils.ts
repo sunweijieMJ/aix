@@ -31,6 +31,25 @@ export class CommonASTUtils {
   }
 
   /**
+   * 把「占位符名 → 表达式」映射拼成对象字面量字符串。
+   *
+   * `wrap=true`（默认）产出 `{ a: x, b: y }`；`wrap=false` 产出去花括号的内层
+   * `a: x, b: y`（react-i18next 函数调用路径的 inline 形态用）。
+   *
+   * Why: VueTransformer / react-i18next / react-intl 此前各自复制一份逐字相同的
+   *      forEach + `${k}: ${v}` 拼接，react-i18next 还多了个去花括号的 inline 变体，
+   *      已开始漂移。统一到本方法，间距/转义改动只需改一处。
+   */
+  static formatValuesMapping(values: Map<string, string>, options?: { wrap?: boolean }): string {
+    const mappings: string[] = [];
+    values.forEach((placeholder, expression) => {
+      mappings.push(`${placeholder}: ${expression}`);
+    });
+    const body = mappings.join(', ');
+    return options?.wrap === false ? body : `{ ${body} }`;
+  }
+
+  /**
    * 把代码字符串中包裹在引号/反引号/JSX 表达式中的 `\uXXXX` Unicode 转义序列还原回字符。
    *
    * @param code      源代码文本

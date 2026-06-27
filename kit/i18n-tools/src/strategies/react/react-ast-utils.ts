@@ -465,6 +465,13 @@ export class ReactASTUtils {
     expression: ts.Expression,
     definedMessages: Map<string, MessageInfo>,
   ): string | undefined {
+    // 生成端把 defaultMessage 经 JSX 表达式容器注入：`defaultMessage={"你好"}`
+    // （JSON.stringify 产出的 JS 字符串字面量，见 react-intl 适配器）。此时 expression 是
+    // StringLiteral 而非属性访问，需直接取字面量文本，否则 locale 缺 key 时兜底还原会丢失。
+    if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+      return expression.text;
+    }
+
     if (ts.isPropertyAccessExpression(expression)) {
       if (
         ts.isIdentifier(expression.expression) &&

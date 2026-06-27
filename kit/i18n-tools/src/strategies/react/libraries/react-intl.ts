@@ -2,6 +2,7 @@ import ts from 'typescript';
 import type { ReactI18nLibrary } from './types';
 import type { MessageInfo } from '../../../utils/types';
 import { ReactASTUtils } from '../react-ast-utils';
+import { CommonASTUtils } from '../../../utils/common-ast-utils';
 
 /**
  * react-intl 库适配器实现
@@ -267,11 +268,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   }
 
   private formatValuesMapping(values: Map<string, string>): string {
-    const mappings: string[] = [];
-    values.forEach((placeholder, expression) => {
-      mappings.push(`${placeholder}: ${expression}`);
-    });
-    return `{ ${mappings.join(', ')} }`;
+    return CommonASTUtils.formatValuesMapping(values);
   }
 
   // react-intl 用 ICU，单 `{` 是插值/语法字符。ICU 以单引号转义：`'{'` / `'}'`，

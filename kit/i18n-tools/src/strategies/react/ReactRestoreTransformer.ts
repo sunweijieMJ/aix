@@ -231,8 +231,26 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     // 标识符的不可编译代码。完整 localeMap 的常规往返两者均为 false，行为与既有一致。
     let keepTranslationVar = false;
     let keepLibraryImport = false;
+    // 混合解构 hook（`const { t, i18n } = useTranslation()`）中，cleanupVariableStatements 会剥掉
+    // 翻译项 t、保留 `const { i18n } = useTranslation()`；此时该声明仍引用库的具名导入
+    // （useTranslation），整条 import 必须保留，否则产出引用未定义符号的不可编译代码。此情形与
+    // 「翻译调用/组件存活」无关，故用独立标志，且仅作用于 import 清理、不影响 HOC 解除的 keep* 门控。
+    let keepLibraryImportForBinding = false;
     const survivalScan = (node: ts.Node): void => {
-      if (keepTranslationVar && keepLibraryImport) return;
+      if (keepTranslationVar && keepLibraryImport && keepLibraryImportForBinding) return;
+      if (ts.isVariableStatement(node)) {
+        for (const decl of node.declarationList.declarations) {
+          if (library.isHookDeclaration(decl) && ts.isObjectBindingPattern(decl.name)) {
+            const hasResidualBinding = decl.name.elements.some(
+              (element) =>
+                ts.isBindingElement(element) &&
+                ts.isIdentifier(element.name) &&
+                element.name.text !== library.translationVarName,
+            );
+            if (hasResidualBinding) keepLibraryImportForBinding = true;
+          }
+        }
+      }
       if (ts.isCallExpression(node) && library.isTranslationCall(node)) {
         const restored = this.transformTranslationCall(
           node,
@@ -338,7 +356,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             const cleanedNode = ReactImportManager.cleanupImports(
               currentNode,
               library,
-              keepLibraryImport,
+              keepLibraryImport || keepLibraryImportForBinding,
             );
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;

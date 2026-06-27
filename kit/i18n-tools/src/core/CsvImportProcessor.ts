@@ -82,6 +82,7 @@ export class CsvImportProcessor extends FileProcessor {
 
     // 应用保守合并，收集统计
     let updated = 0;
+    let unchanged = 0;
     let skippedEmpty = 0;
     const missingKeys: string[] = [];
     let untranslatedDirty = false;
@@ -92,8 +93,12 @@ export class CsvImportProcessor extends FileProcessor {
       if (key === '') continue;
       // 路由：优先 untranslated（待翻流程主路径），否则落到 translations（审核流程）。
       // 二者 key 互斥（pick 按 hasUntranslated 二选一），不会双写。
+      // 两个分支都必须走 hasOwnProperty 守卫：CSV 的 key 来自外部（翻译人员回传），若直接
+      // `translated[key]` 裸读，`key='__proto__'`（或 constructor/prototype）会取到 Object.prototype
+      // 这类继承值并绕过下方 `if (!entry)`，随后 `entry[col.name] = value` 即写穿原型链造成全局污染。
       const inUntranslated = Object.prototype.hasOwnProperty.call(untranslated, key);
-      const entry = inUntranslated ? untranslated[key] : translated[key];
+      const inTranslated = !inUntranslated && Object.prototype.hasOwnProperty.call(translated, key);
+      const entry = inUntranslated ? untranslated[key] : inTranslated ? translated[key] : undefined;
       if (!entry) {
         missingKeys.push(key);
         continue;
@@ -102,6 +107,12 @@ export class CsvImportProcessor extends FileProcessor {
         const value = row[col.idx] ?? '';
         if (value.trim() === '') {
           skippedEmpty++;
+          continue;
+        }
+        // 「将更新」只统计值真正变化的处数：原样回流（CSV 值与现值相同）计入「保持不变」
+        // 并跳过，避免预览把"导出后只改一两格"误报成全表改动，也避免无谓重写文件。
+        if (entry[col.name] === value) {
+          unchanged++;
           continue;
         }
         entry[col.name] = value;
@@ -119,6 +130,7 @@ export class CsvImportProcessor extends FileProcessor {
       writeTargets.length > 0 ? writeTargets : [untranslatedPath, translatedPath],
       langCols.map((c) => c.name),
       updated,
+      unchanged,
       skippedEmpty,
       missingKeys,
     );
@@ -128,7 +140,11 @@ export class CsvImportProcessor extends FileProcessor {
       return;
     }
     if (updated === 0) {
-      LoggerUtils.warn('没有可写回的非空译文，跳过写盘');
+      LoggerUtils.warn(
+        unchanged > 0
+          ? `没有需要写回的变更（${unchanged} 处非空译文均与现值一致），跳过写盘`
+          : '没有可写回的非空译文，跳过写盘',
+      );
       return;
     }
     if (!this.options.ci) {
@@ -160,11 +176,16 @@ export class CsvImportProcessor extends FileProcessor {
     targetPaths: string[],
     langs: string[],
     updated: number,
+    unchanged: number,
     skippedEmpty: number,
     missingKeys: string[],
   ): void {
     LoggerUtils.info('csv-import 预览：');
     LoggerUtils.info(`  ✏️  将更新   ${updated} 处译文 (${langs.join(', ')})`);
+    // 仅在存在「原样回流」时才打印，避免常规场景多一行噪声
+    if (unchanged > 0) {
+      LoggerUtils.info(`  ⟳  保持不变 ${unchanged} 处`);
+    }
     LoggerUtils.info(`  ⏭️  忽略空值 ${skippedEmpty} 条`);
     if (missingKeys.length > 0) {
       const sample = missingKeys.slice(0, 5).join(' / ');
