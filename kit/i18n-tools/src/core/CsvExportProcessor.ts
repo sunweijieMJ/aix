@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
 import { FileUtils } from '../utils/file-utils';
@@ -50,9 +51,29 @@ export class CsvExportProcessor extends FileProcessor {
         ? FileUtils.getTranslatedPath(this.config, this.isCustom)
         : FileUtils.getUntranslatedPath(this.config, this.isCustom);
 
-    const data = FileUtils.safeLoadJsonFile<Translations>(sourcePath, {
-      errorMessage: '读取 CSV 数据源失败',
-    });
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error(
+        `CSV 数据源不存在: ${sourcePath}，请先运行 ` +
+          `${this.options.source === 'translations' ? 'pick/merge' : 'pick'} 生成。`,
+      );
+    }
+    // 必须区分「损坏」与「空」：不能用 safeLoadJsonFile（解析失败回退 {}），否则损坏的数据源
+    // 会被当成 0 条目导出仅含表头的空 CSV 并伪报成功。与 Translate/Merge/Pick 的「损坏即中止」
+    // 守卫对齐：有内容却解析失败时抛错中止。
+    const rawContent = fs.readFileSync(sourcePath, 'utf-8');
+    let data: Translations;
+    if (rawContent.trim() === '') {
+      data = {};
+    } else {
+      const parsed = FileUtils.safeParseJson(rawContent) as Translations | null;
+      if (parsed === null) {
+        throw new Error(
+          `CSV 数据源解析失败（JSON 格式错误）: ${sourcePath}\n` +
+            '👉 为防止把损坏文件误判为「无可导出条目」，已中止 csv-export。请修复该文件的 JSON 格式后重试。',
+        );
+      }
+      data = parsed;
+    }
     const keys = Object.keys(data);
     LoggerUtils.info(`📊 数据源 ${path.basename(sourcePath)}：${keys.length} 个条目`);
 

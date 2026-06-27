@@ -305,8 +305,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     //    Why 用反向引用 \2：Vue 官方允许 `:attr='...'` 单引号写法，原先只匹配
     //    双引号外层时，单引号场景会绕过本 pass，被 pass 3 兜底替换为 'text'，
     //    输出 `:attr=''text''` 无效语法。
+    //    锚点用 `(?:v-bind)?:` 同时覆盖简写 `:attr=` 与完整 `v-bind:attr=`：完整写法下整体
+    //    匹配 `v-bind:attr=...` 并连同 `v-bind` 前缀一起替换为静态属性，避免只吃掉 `:attr`
+    //    残留 `v-bind` 拼出非法属性名 `v-bindattr`。
     const attrBindingRegex =
-      /:([\w-]+)=(["'])\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)\2/g;
+      /(?:v-bind)?:([\w-]+)=(["'])\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)\2/g;
 
     restored = restored.replace(attrBindingRegex, (match, attrName, _outer, key, vars) => {
       const text = lookupText(key as string);

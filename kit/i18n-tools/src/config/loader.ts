@@ -329,11 +329,18 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
     );
   }
 
+  const layout = buckets.layout ?? DEFAULT_BUCKETS.layout;
+  if (layout !== 'by-locale' && layout !== 'by-bucket') {
+    throw new Error(
+      `buckets.layout 取值非法: '${String(layout)}'（仅支持 'by-locale' | 'by-bucket'）`,
+    );
+  }
+
   return {
     rules: buckets.rules,
     defaultBucket,
     emitManifest: buckets.emitManifest ?? DEFAULT_BUCKETS.emitManifest,
-    layout: buckets.layout ?? DEFAULT_BUCKETS.layout,
+    layout,
   };
 }
 
@@ -366,6 +373,10 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   }
 
   // ---- io ----
+  const ioFormat = userConfig.io?.format ?? DEFAULT_IO.format;
+  if (ioFormat !== 'flat' && ioFormat !== 'nested') {
+    throw new Error(`io.format 取值非法: '${String(ioFormat)}'（仅支持 'flat' | 'nested'）`);
+  }
   const io = {
     sourceDir: path.resolve(root, userConfig.io?.sourceDir ?? DEFAULT_IO.sourceDir),
     localesDir: path.resolve(root, userConfig.io?.localesDir ?? DEFAULT_IO.localesDir),
@@ -375,7 +386,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     // （与上方 localesTargets 的处理保持一致）。
     include: [...(userConfig.io?.include ?? DEFAULT_IO.include)],
     exclude: [...(userConfig.io?.exclude ?? DEFAULT_IO.exclude)],
-    format: userConfig.io?.format ?? DEFAULT_IO.format,
+    format: ioFormat,
     indent: Math.max(0, userConfig.io?.indent ?? DEFAULT_IO.indent),
     prettify: userConfig.io?.prettify ?? DEFAULT_IO.prettify,
   };

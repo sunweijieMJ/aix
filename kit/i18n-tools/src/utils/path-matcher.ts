@@ -31,7 +31,13 @@ export function compileMatcher(match: PathMatchInput): (filePath: string) => boo
     return match;
   }
   if (match instanceof RegExp) {
-    return (fp) => match.test(fp);
+    // 去掉有状态标志（g/y）：matcher 会被缓存后对多个路径反复调用，带 g/y 的 RegExp.test()
+    // 会推进 lastIndex，导致对同一路径交替返回 true/false（分桶/前缀派生非确定性错配）。
+    const stateless =
+      match.global || match.sticky
+        ? new RegExp(match.source, match.flags.replace(/[gy]/g, ''))
+        : match;
+    return (fp) => stateless.test(fp);
   }
   if (typeof match === 'string' || Array.isArray(match)) {
     const isMatch = picomatch(match, { dot: true });
