@@ -26,8 +26,14 @@ describe('React restore — 类组件 injectIntl HOC 可逆（Bug B3）', () => 
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  /** inject（react-intl）→ 收集 locale → restore，返回还原后的源码。 */
-  async function roundTrip(original: string): Promise<{ injected: string; restored: string }> {
+  /**
+   * inject（react-intl）→ 收集 locale → restore，返回还原后的源码。
+   * omitKeys：从 locale 中剔除的 key，用于模拟「locale 缺 key」的不完整还原。
+   */
+  async function roundTrip(
+    original: string,
+    omitKeys: string[] = [],
+  ): Promise<{ injected: string; restored: string }> {
     const file = path.join(dir, 'G.tsx');
     fs.writeFileSync(file, original);
     const adapter = new ReactAdapter('@/plugins/locale', 'react-intl');
@@ -35,7 +41,10 @@ describe('React restore — 类组件 injectIntl HOC 可逆（Bug B3）', () => 
     strings.forEach((s: ExtractedString, i) => (s.semanticId = `k${i}`));
     const injected = adapter.getTransformer().transform(file, strings, original);
     const locale: Record<string, string> = {};
-    strings.forEach((s) => (locale[s.semanticId] = s.processedMessage || s.original));
+    strings.forEach((s) => {
+      if (omitKeys.includes(s.semanticId)) return;
+      locale[s.semanticId] = s.processedMessage || s.original;
+    });
 
     fs.writeFileSync(file, injected);
     const lib = createReactI18nLibrary('react-intl');
@@ -109,5 +118,31 @@ export default class Foo extends React.Component {
     // 默认导出唯一，不得出现重复 export default
     expect((restored.match(/export\s+default/g) || []).length).toBe(1);
     expect(restored).toContain('确定');
+  });
+
+  it('localeMap 不完整：存活的 this.props.intl 调用必须保留 HOC 包裹与 WrappedComponentProps（#1）', async () => {
+    // 两个可翻译文案 → k0/k1；还原时丢弃其一 → 对应 intl.formatMessage 无法还原而存活。
+    // 该存活调用读 this.props.intl，依赖 injectIntl HOC 注入的 intl 与 WrappedComponentProps 类型。
+    const original = `import React from 'react';
+export class Greeting extends React.Component {
+  render() {
+    return <div title="你好" aria-label="再见">x</div>;
+  }
+}
+`;
+    const { injected, restored } = await roundTrip(original, ['k1']);
+
+    // 前置确认：inject 走 HOC 路径并注入了 props 类型
+    expect(injected).toContain('injectIntl(GreetingWithOutIntl)');
+    expect(injected).toContain('WrappedComponentProps');
+
+    // 存活的翻译调用仍在（依赖 this.props.intl）
+    expect(restored, `还原输出：\n${restored}`).toContain('intl.formatMessage');
+    // 修复点：unwrapHOC / cleanupHOCPropsType 受存活守卫门控，HOC 包裹与 props 类型必须保留，
+    // 否则 this.props.intl 运行时 undefined + props 被剥成 {} 的 TS 报错（守卫本要防的破坏）。
+    expect(restored).toContain('injectIntl(GreetingWithOutIntl)');
+    expect(restored).toContain('WrappedComponentProps');
+    // 可还原的那一条仍被还原为中文（k0/k1 提取顺序无关，至少有一条恢复）
+    expect(restored).toMatch(/你好|再见/);
   });
 });

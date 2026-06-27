@@ -294,4 +294,84 @@ describe('CommonASTUtils.mergeNamedImport', () => {
     // 字符串字面量原样保留
     expect(out).toContain(`const tip = "import { Trans } from 'react-i18next'";`);
   });
+
+  it('默认+具名混合 import：并入现有花括号且保留默认导入，不追加重复行（#7）', () => {
+    const code = `import locale, { t } from '@/plugins/locale';\n\nconst X = 1;`;
+    const out = CommonASTUtils.mergeNamedImport(code, '@/plugins/locale', ['t']);
+    // 仍是一条 import（旧实现因 regex 不匹配 default+named 会再追加一行 → 两条）
+    expect((out.match(/from '@\/plugins\/locale'/g) || []).length).toBe(1);
+    // 默认导入 locale 必须保留
+    expect(out).toMatch(/import locale, \{ t \} from '@\/plugins\/locale';/);
+  });
+
+  it('默认+具名混合 import：并入新具名项时保留默认导入与既有具名（#7）', () => {
+    const code = `import i18n, { useTranslation } from 'react-i18next';\n`;
+    const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['Trans']);
+    expect((out.match(/from 'react-i18next'/g) || []).length).toBe(1);
+    expect(out).toMatch(/import i18n, \{ useTranslation, Trans \} from 'react-i18next';/);
+  });
+});
+
+describe('CommonASTUtils.removeNamedImports', () => {
+  const isPkg = (mod: string) => mod === '@/plugins/locale';
+
+  it('独占具名项：整条删除', () => {
+    const code = `import { t } from '@/plugins/locale';\nconst x = 1;\n`;
+    const out = CommonASTUtils.removeNamedImports(code, isPkg, ['t']);
+    expect(out).not.toMatch(/@\/plugins\/locale/);
+    expect(out).toContain('const x = 1;');
+  });
+
+  it('同行其他具名项：只摘 t，保留其余', () => {
+    const code = `import { t, other } from '@/plugins/locale';\n`;
+    const out = CommonASTUtils.removeNamedImports(code, isPkg, ['t']);
+    expect(out).toMatch(/import \{ other \} from '@\/plugins\/locale';/);
+  });
+
+  it('默认+具名混合：摘掉死 t 后保留默认导入 `import locale from pkg`（#7）', () => {
+    const code = `import locale, { t } from '@/plugins/locale';\n`;
+    const out = CommonASTUtils.removeNamedImports(code, isPkg, ['t']);
+    // 旧实现 regex 不匹配 default+named → 死 t 摘不掉、整行残留
+    expect(out).toMatch(/import locale from '@\/plugins\/locale';/);
+    expect(out).not.toMatch(/\{\s*t\s*\}/);
+  });
+
+  it('默认+具名混合且还有其他具名项：保留默认导入与其余具名', () => {
+    const code = `import locale, { t, fmt } from '@/plugins/locale';\n`;
+    const out = CommonASTUtils.removeNamedImports(code, isPkg, ['t']);
+    expect(out).toMatch(/import locale, \{ fmt \} from '@\/plugins\/locale';/);
+  });
+});
+
+describe('CommonASTUtils.isLiteralExpression / evalLiteralExpression（#6）', () => {
+  it('单个完整字符串字面量 → 字面量，求值去引号', () => {
+    expect(CommonASTUtils.isLiteralExpression(`'保存'`)).toBe(true);
+    expect(CommonASTUtils.isLiteralExpression(`"取消"`)).toBe(true);
+    expect(CommonASTUtils.evalLiteralExpression(`'保存'`)).toBe('保存');
+  });
+
+  it('无插值模板字面量 → 字面量；含插值的模板 → 非字面量', () => {
+    expect(CommonASTUtils.isLiteralExpression('`hello`')).toBe(true);
+    expect(CommonASTUtils.isLiteralExpression('`${a}-${b}`')).toBe(false);
+  });
+
+  it('首尾恰为引号的拼接表达式 → 非字面量（修复点：不再误判）', () => {
+    // 旧实现 /^['"`].*['"`]$/ 会误判为字面量，evalLiteralExpression 只切首尾字符
+    // → 产出坏文本 `(' + count + '`、真变量 count 丢失。
+    expect(CommonASTUtils.isLiteralExpression(`'(' + count + ')'`)).toBe(false);
+    expect(CommonASTUtils.isLiteralExpression(`'前缀' + name + '后缀'`)).toBe(false);
+  });
+
+  it('常见非字面量形式仍判为变量', () => {
+    expect(CommonASTUtils.isLiteralExpression(`count + '%'`)).toBe(false);
+    expect(CommonASTUtils.isLiteralExpression(`fn('x')`)).toBe(false);
+    expect(CommonASTUtils.isLiteralExpression('count')).toBe(false);
+  });
+
+  it('数字/布尔/null/undefined 仍判为字面量', () => {
+    expect(CommonASTUtils.isLiteralExpression('42')).toBe(true);
+    expect(CommonASTUtils.isLiteralExpression('3.14')).toBe(true);
+    expect(CommonASTUtils.isLiteralExpression('true')).toBe(true);
+    expect(CommonASTUtils.isLiteralExpression('null')).toBe(true);
+  });
 });

@@ -321,6 +321,22 @@ export class MergeProcessor extends FileProcessor {
       return;
     }
 
+    // 同样守卫 source locale 桶损坏：下方用 source 文本驱动 keyBucketMap 分桶，桶式读取默认
+    // silent 降级（损坏当 {}，见 readBucketedLocaleFlat），若 source 桶损坏会得到空表，导致
+    // 所有 key 塌缩进 defaultBucket、其余桶被 prune 成 .bak（伪报成功）。与 target 守卫对称。
+    const corruptSourceFile = LanguageFileManager.findCorruptBucketFile(
+      this.config,
+      this.isCustom,
+      sourceLocale,
+    );
+    if (corruptSourceFile) {
+      LoggerUtils.error(`❌ 源语言桶文件解析失败（JSON 格式错误）: ${corruptSourceFile}`);
+      LoggerUtils.error(
+        '👉 为防止桶分布塌缩，本次不会更新该 target 的桶式语言包。请检查 JSON 格式。',
+      );
+      return;
+    }
+
     // 读取现有 target locale 数据
     const { flat: targetMessages } = LanguageFileManager.readBucketedLocaleWithBucketMap(
       this.config,

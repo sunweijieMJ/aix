@@ -72,8 +72,11 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     let props = `i18nKey="${key}"`;
 
     if (includeDefaultMessage && defaultMessage) {
+      // 经 JSX 表达式容器 `{...}` 注入：JSON.stringify 产出的是 JS 字符串字面量（内部 " 转义为
+      // \"、换行为 \n），而 JSX 属性值是 HTML 风格、不解析反斜杠转义。若直接 `defaults="..\".."`
+      // 拼成属性，文本含 " 会提前闭合属性 → 整文件 JSX 语法错误。用 {} 让其按 JS 字面量解析。
       const escaped = JSON.stringify(defaultMessage);
-      props += ` defaults=${escaped}`;
+      props += ` defaults={${escaped}}`;
     }
     if (values && values.size > 0) {
       const mapping = this.formatValuesMapping(values);

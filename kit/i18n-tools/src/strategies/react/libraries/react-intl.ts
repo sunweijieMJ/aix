@@ -55,8 +55,10 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   ): string {
     let props = `id="${id}"`;
     if (includeDefaultMessage && defaultMessage) {
+      // 经 JSX 表达式容器 `{...}` 注入：JSON.stringify 产出 JS 字符串字面量（内部 " 转义为 \"），
+      // 而 JSX 属性值是 HTML 风格、不解析反斜杠转义，直接拼属性遇到 " 会提前闭合 → JSX 语法错误。
       const escaped = JSON.stringify(defaultMessage);
-      props += ` defaultMessage=${escaped}`;
+      props += ` defaultMessage={${escaped}}`;
     }
     if (values && values.size > 0) {
       const mapping = this.formatValuesMapping(values);
