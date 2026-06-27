@@ -101,6 +101,31 @@ describe('PickProcessor — 源 locale 损坏保护（Bug B5）', () => {
     expect(LoggerUtils.success).not.toHaveBeenCalled();
   });
 
+  it('[桶式] 尚未迁移的遗留单文件损坏时也抛错中止，不清空在途数据（#6）', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+
+    // 桶目录尚不存在（首次启用 buckets），仅有损坏的遗留单文件 zh-CN.json：
+    // 旧行为 → getMessages 触发 migrateToBuckets silent 读 → 当 {} → rename .bak → 清空在途译文。
+    const legacy = path.join(localeDir, 'zh-CN.json');
+    fs.writeFileSync(legacy, '{ "order.foo": "你好",, }', 'utf-8');
+
+    const inFlight = JSON.stringify(
+      { 'order.foo': { 'zh-CN': '你好', 'en-US': 'Hello(in-flight)' } },
+      null,
+      2,
+    );
+    const untPath = path.join(localeDir, 'untranslated.json');
+    fs.writeFileSync(untPath, inFlight);
+
+    const processor = new PickProcessor(makeConfig(true), false);
+    await expect(processor.execute()).rejects.toThrow(/解析失败|JSON|损坏/);
+
+    expect(fs.readFileSync(untPath, 'utf-8')).toBe(inFlight);
+    expect(fs.existsSync(`${legacy}.bak`)).toBe(false);
+    expect(LoggerUtils.success).not.toHaveBeenCalled();
+  });
+
   it('source locale 不存在（空目录）时按空处理，不抛错', async () => {
     const localeDir = path.join(tmpDir, 'locale');
     fs.mkdirSync(localeDir, { recursive: true });

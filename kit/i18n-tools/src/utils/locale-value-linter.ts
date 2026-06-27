@@ -8,8 +8,8 @@ import type { LocaleMap } from './types';
  * RunReport / doctor 命令的聚合视图）。
  *
  * Why 分层：
- *  - 原 lint() 同时承担「分析 + console.warn + 写 RunReport」三职，导致
- *    LanguageFileManager 与未来的 DoctorProcessor 无法复用纯分析逻辑——
+ *  - 若分析与输出耦合在单一入口（同时 console.warn + 写 RunReport），
+ *    LanguageFileManager 与 DoctorProcessor 就无法复用纯分析逻辑——
  *    Doctor 想拿结构化结果做 --fix 决策；语言文件落盘时只需要 console + report。
  *  - 拆分后 analyze 是纯函数，可独立单测；emit 是 sink 适配层。
  */
@@ -48,9 +48,6 @@ export interface LinterFinding {
 export class LocaleValueLinter {
   /** value 长度告警阈值（字符数）。超过即提示拆分。 */
   private static readonly LONG_VALUE_THRESHOLD = 200;
-
-  /** 命中即视为 value 含 HTML 标签。\w+ 至少匹配一个标签名字符。 */
-  private static readonly HTML_TAG_PATTERN = /<\s*\/?\s*[a-zA-Z][\w-]*(\s|>|\/)/;
 
   /**
    * 短碎片可疑 value：长度 ≤ 3 且 trim 后含至少一个标点。命中即提示"可能是
@@ -214,19 +211,6 @@ export class LocaleValueLinter {
   }
 
   /**
-   * 兼容入口：保持旧签名 lint(localeMap, report?, options?) 不变。
-   * 内部直接组合 analyze + emit。新代码请优先用 analyze + emit。
-   */
-  static lint(
-    localeMap: LocaleMap,
-    report?: RunReport,
-    options?: { separator?: string; skippedComparisons?: SkippedTextLocation[] },
-  ): void {
-    const findings = this.analyze(localeMap, options);
-    this.emit(findings, { console: true, report });
-  }
-
-  /**
    * 把提取阶段记录的「比较运算符跳过的中文字面量」与最终 locale map values 交叉。
    *
    * 命中条件：跳过的中文 text 等于某个 key 的 value —— 说明同句中文已在他处被
@@ -338,7 +322,9 @@ export class LocaleValueLinter {
     for (const [key, value] of Object.entries(localeMap)) {
       if (typeof value !== 'string') continue;
       const reasons: string[] = [];
-      if (this.HTML_TAG_PATTERN.test(value)) reasons.push('含 HTML 标签');
+      // 与提取期同源的 HTML 标签判据（CommonASTUtils），避免两份正则手工同步漂移：
+      // 提取放过 / lint 报警两端口径必须一致。
+      if (CommonASTUtils.templateLiteralContainsHtmlTags(value)) reasons.push('含 HTML 标签');
       if (value.length > this.LONG_VALUE_THRESHOLD) {
         reasons.push(`长度 ${value.length} > ${this.LONG_VALUE_THRESHOLD}`);
       }

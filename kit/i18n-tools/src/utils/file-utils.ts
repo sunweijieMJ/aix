@@ -18,7 +18,11 @@ export class FileUtils {
 
   static safeParseJson(content: string): any {
     try {
-      return JSON.parse(content);
+      // 剥离 UTF-8 BOM（U+FEFF）：Windows 外部编辑器（PowerShell 5.1、VS、记事本）写出的
+      // locale/glossary/translations 文件常带 BOM，带 BOM 的内容直接 JSON.parse 会抛错，
+      // 导致整条读链路误判文件损坏。此处单点收口，覆盖经 safeParseJson 的全部读路径。
+      const normalized = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+      return JSON.parse(normalized);
     } catch (error) {
       LoggerUtils.error('JSON解析失败:', error);
       return null;

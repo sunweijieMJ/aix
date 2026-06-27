@@ -60,6 +60,18 @@ export class PickProcessor extends FileProcessor {
           `源 locale「${sourceLocale}」的桶文件解析失败：${corruptBucket}，已中止 pick 以防销毁在途译文 / 伪报成功。请先修复 JSON 格式。`,
         );
       }
+      // 桶式还需校验遗留单文件：getMessages→migrateToBuckets 会 silent 读它，损坏则静默
+      // 当 {} 并 rename .bak，清空在途译文且伪报成功。findCorruptBucketFile 扫不到遗留单文件。
+      const corruptLegacy = LanguageFileManager.findCorruptLegacySingleFile(
+        this.config,
+        this.isCustom,
+        sourceLocale,
+      );
+      if (corruptLegacy) {
+        throw new Error(
+          `源 locale「${sourceLocale}」的遗留单文件解析失败：${corruptLegacy}，已中止 pick 以防销毁在途译文 / 伪报成功。请先修复 JSON 格式。`,
+        );
+      }
     } else if (
       LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) === null
     ) {

@@ -10,8 +10,9 @@ import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 
 /**
  * 回归：apply（落盘）路径下，applyTransformations 先于 recordAndRenderCoverage 执行，
- * 而前者链路里 LocaleValueLinter.lint 已把 CommonASTUtils.drainSkippedComparisonOperands()
- * 这个进程级 collector drain 空。于是 recordAndRenderCoverage 拿到空数组：
+ * 而前者链路里健康度 lint（LocaleValueLinter.analyze）已把
+ * CommonASTUtils.drainSkippedComparisonOperands() 这个进程级 collector drain 空。
+ * 于是 recordAndRenderCoverage 拿到空数组：
  *   - coverage.skipped 恒为 0；
  *   - total 分母缺 skipped → coverageRate 被系统性高估（CI --coverage-threshold 被架空）；
  *   - comparison-operand 待人工条目全部丢失。

@@ -99,10 +99,19 @@ export class MergeProcessor extends FileProcessor {
       LoggerUtils.info(`创建新的 ${FILES.TRANSLATIONS_JSON} 文件`);
       return {};
     }
-    return FileUtils.safeLoadJsonFile<Translations>(filePath, {
-      errorMessage: '读取现有translations文件失败，将创建新文件',
-      logSuccess: true,
-    });
+    // 必须区分「损坏」与「空」：不能用 safeLoadJsonFile，它对解析失败回退 {}，
+    // 随后 performMerge 的 {...existing, ...newly} 会用空对象覆写、销毁此前所有已合并
+    // 条目。与姊妹方法 loadUntranslatedData 保持一致：有内容却解析失败时中止 merge。
+    const content = fs.readFileSync(filePath, 'utf-8');
+    if (content.trim() === '') return {};
+    const parsed = FileUtils.safeParseJson(content) as Translations | null;
+    if (parsed === null) {
+      throw new Error(
+        `${FILES.TRANSLATIONS_JSON} 解析失败（JSON 格式错误）: ${filePath}\n` +
+          '👉 为防止销毁已合并的翻译条目，已中止 merge。请修复该文件的 JSON 格式后重试。',
+      );
+    }
+    return parsed;
   }
 
   /**

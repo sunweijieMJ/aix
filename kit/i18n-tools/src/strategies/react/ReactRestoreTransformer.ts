@@ -166,7 +166,13 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     }
 
     const messageTemplate = messageInfo.id ? localeMap[messageInfo.id] : undefined;
-    const finalText = messageTemplate ?? messageInfo.defaultMessage ?? '';
+    const finalText = messageTemplate ?? messageInfo.defaultMessage;
+    // 与 transformTranslationCall 的 `templateToUse === undefined → return null` 对称：
+    // id 查不到且无 defaultMessage 时返回 null 保留原组件，避免 `?? ''` 兜底把
+    // <Trans>/<FormattedMessage> 静默替换成空节点，造成不可恢复的 JSX 内容丢失。
+    if (finalText === undefined) {
+      return null;
+    }
 
     if (messageInfo.values && Object.keys(messageInfo.values).length > 0) {
       // JSX 子节点位置：重建为 JSX 片段 `<>文本 {expr} 文本</>`，避免把模板字面量
@@ -229,6 +235,47 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     }
     prepass(context.sourceFile);
 
+    // 还原存活性预扫描：判断还原后是否仍有「未被还原」的翻译调用 / 组件（locale 缺 key、
+    // 动态 key、t(变量) 等 → transformTranslationCall/Component 返回 null、原节点存活）。
+    //  - keepTranslationVar：任一翻译【调用】存活 → 翻译变量(t/intl)仍被引用，保留其声明
+    //  - keepLibraryImport：任一翻译【调用或组件】存活 → 其依赖的具名导入必须保留
+    // 皆为保守保留：宁可多留一条声明/导入（最多触发 no-unused lint），也不产出引用未定义
+    // 标识符的不可编译代码。完整 localeMap 的常规往返两者均为 false，行为与既有一致。
+    let keepTranslationVar = false;
+    let keepLibraryImport = false;
+    const survivalScan = (node: ts.Node): void => {
+      if (keepTranslationVar && keepLibraryImport) return;
+      if (ts.isCallExpression(node) && library.isTranslationCall(node)) {
+        const restored = this.transformTranslationCall(
+          node,
+          context.localeMap,
+          context.definedMessages,
+          context.sourceFile,
+        );
+        if (restored === null) {
+          keepTranslationVar = true;
+          keepLibraryImport = true;
+        }
+      } else if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
+        const opening = ts.isJsxElement(node) ? node.openingElement : node;
+        if (
+          ts.isIdentifier(opening.tagName) &&
+          library.isTranslationComponent(opening.tagName.text)
+        ) {
+          const restored = this.transformTranslationComponent(
+            node,
+            context.localeMap,
+            context.definedMessages,
+            context.sourceFile,
+            false,
+          );
+          if (restored === null) keepLibraryImport = true;
+        }
+      }
+      ts.forEachChild(node, survivalScan);
+    };
+    survivalScan(context.sourceFile);
+
     return (transformationContext: ts.TransformationContext) => {
       // 父节点栈：判断当前 visit 节点是否在 JsxElement.children 位置；
       // 在 JsxAttribute / JsxExpression 内部时不能用 JsxText 替换 SelfClosingElement。
@@ -269,46 +316,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           }
         }
 
-        // 处理对象字面量中的翻译调用
-        if (ts.isObjectLiteralExpression(currentNode)) {
-          const transformedProperties: ts.ObjectLiteralElementLike[] = [];
-          let objectChanged = false;
-
-          for (const prop of currentNode.properties) {
-            if (ts.isPropertyAssignment(prop)) {
-              let newInitializer = prop.initializer;
-
-              if (ts.isCallExpression(prop.initializer)) {
-                const transformedCall = this.transformTranslationCall(
-                  prop.initializer,
-                  context.localeMap,
-                  context.definedMessages,
-                  context.sourceFile,
-                );
-                if (transformedCall && ts.isExpression(transformedCall)) {
-                  newInitializer = transformedCall;
-                  objectChanged = true;
-                }
-              }
-
-              if (newInitializer !== prop.initializer) {
-                transformedProperties.push(
-                  ts.factory.createPropertyAssignment(prop.name, newInitializer),
-                );
-              } else {
-                transformedProperties.push(prop);
-              }
-            } else {
-              transformedProperties.push(prop);
-            }
-          }
-
-          if (objectChanged) {
-            context.hasChanges = true;
-            currentNode = ts.factory.createObjectLiteralExpression(transformedProperties);
-            nodeChanged = true;
-          }
-        }
+        // 对象字面量内的翻译调用（如 `{ label: t('key') }`）无需专门处理：
+        // 下方 ts.visitEachChild 会递归到每个属性 initializer，其中的 CallExpression
+        // 由上面的通用分支转换，产出与手工重建 ObjectLiteral 完全一致（且能覆盖
+        // 三元/嵌套等通用分支才处理的形态）。故此处不再重复实现。
 
         if (!nodeChanged) {
           // 转换翻译 JSX 组件
@@ -328,7 +339,11 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
           // 清理导入（仅整条移除 i18n 库 import；tImport 的 t 延后到收尾 pass 带守卫处理）
           if (ts.isImportDeclaration(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupImports(currentNode, library);
+            const cleanedNode = ReactImportManager.cleanupImports(
+              currentNode,
+              library,
+              keepLibraryImport,
+            );
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
@@ -337,7 +352,11 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
           // 清理变量声明
           if (ts.isVariableStatement(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupVariableStatements(currentNode, library);
+            const cleanedNode = ReactImportManager.cleanupVariableStatements(
+              currentNode,
+              library,
+              keepTranslationVar,
+            );
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;

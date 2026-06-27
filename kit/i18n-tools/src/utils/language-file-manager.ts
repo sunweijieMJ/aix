@@ -253,6 +253,29 @@ export class LanguageFileManager {
   }
 
   /**
+   * 桶式模式下，校验「尚未迁移的遗留单文件」`<dir>/<locale>.json` 是否损坏。
+   *
+   * Why：getMessages 的桶式分支会触发 migrateToBuckets，后者用 safeLoadJsonFile(silent)
+   * 读遗留单文件，损坏时**静默**当成 {} 并把文件 rename 成 `.bak` —— 存量数据从活跃集
+   * 消失（export 会因此导出空包覆盖已发布产物 / pick 会清空在途译文，且全程无报错）。
+   * findCorruptBucketFile 只扫桶目录、扫不到遗留单文件，故需本方法补位。
+   *
+   * @returns 损坏文件的绝对路径；不存在 / 空 / 可正常解析时返回 null。
+   */
+  static findCorruptLegacySingleFile(
+    config: ResolvedConfig,
+    isCustom: boolean,
+    locale?: string,
+  ): string | null {
+    locale = locale || config.locales.source;
+    const filePath = path.join(FileUtils.getDirectoryPath(config, isCustom), `${locale}.json`);
+    if (!fs.existsSync(filePath)) return null;
+    const content = fs.readFileSync(filePath, 'utf-8');
+    if (content.trim() === '') return null;
+    return FileUtils.safeParseJson(content) === null ? filePath : null;
+  }
+
+  /**
    * 读取桶式目录下所有 JSON 文件并合并为扁平 map。
    */
   private static readBucketedLocaleFlat(
@@ -690,10 +713,11 @@ export class LanguageFileManager {
     if (updatedCount > 0) LoggerUtils.info(`   - 更新条目: ${updatedCount}`);
 
     // 落盘后做一次健康度 lint。skippedComparisons：generate 已提前 drain 的快照，避免与
-    // coverage 争抢全局 collector；未传时 linter 回退到自行 drain（doctor 独立路径）。
-    LocaleValueLinter.lint(finalMap, report, {
+    // coverage 争抢全局 collector；未传时 analyze 回退到自行 drain（doctor 独立路径）。
+    const findings = LocaleValueLinter.analyze(finalMap, {
       separator: config.keys.separator,
       skippedComparisons: options?.skippedComparisons,
     });
+    LocaleValueLinter.emit(findings, { console: true, report });
   }
 }

@@ -1503,26 +1503,31 @@ export class CommonASTUtils {
     namesToRemove: string[],
   ): string {
     if (namesToRemove.length === 0) return code;
-    // 整行匹配；尾部 `;?` `\n?` 与原 getImportCleanupRegex 行为一致，
-    // 避免删除后留下空行。
-    const importRegex = /import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"];?\n?/g;
-    return code.replace(importRegex, (match, namedList: string, moduleName: string) => {
-      if (!isTargetModule(moduleName)) return match;
-      const remaining = namedList
-        .split(',')
-        .map((n) => n.trim())
-        .filter(Boolean)
-        // `useI18n as foo` 这类重命名导入：取 ` as ` 之前的原始名作为比对锚点
-        .filter((entry) => {
-          const original = entry.split(/\s+as\s+/)[0]!.trim();
-          return !namesToRemove.includes(original);
-        });
-      if (remaining.length === 0) return '';
-      // 复用原始行尾分号/换行，保留风格一致
-      const hasSemi = match.trimEnd().endsWith(';');
-      const hasNewline = match.endsWith('\n');
-      return `import { ${remaining.join(', ')} } from '${moduleName}'${hasSemi ? ';' : ''}${hasNewline ? '\n' : ''}`;
-    });
+    // 行首锚定（gm + `^[ \t]*import`）：只匹配作为「语句」出现在行首（允许缩进）的真实
+    // import，排除注释（`// import { t } from 'x'`）或字符串里的 import 字样——不锚定会
+    // 把注释里的 import 当作匹配项删除，`\n?` 还会吞掉换行把下一行真实代码并入注释（Bug #8）。
+    // 与姊妹方法 mergeNamedImport 的锚定口径保持一致。尾部 `;?` `\n?` 避免删除后留空行。
+    const importRegex = /^([ \t]*)import\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"];?\n?/gm;
+    return code.replace(
+      importRegex,
+      (match, indent: string, namedList: string, moduleName: string) => {
+        if (!isTargetModule(moduleName)) return match;
+        const remaining = namedList
+          .split(',')
+          .map((n) => n.trim())
+          .filter(Boolean)
+          // `useI18n as foo` 这类重命名导入：取 ` as ` 之前的原始名作为比对锚点
+          .filter((entry) => {
+            const original = entry.split(/\s+as\s+/)[0]!.trim();
+            return !namesToRemove.includes(original);
+          });
+        if (remaining.length === 0) return '';
+        // 复用原始行尾分号/换行，保留风格一致
+        const hasSemi = match.trimEnd().endsWith(';');
+        const hasNewline = match.endsWith('\n');
+        return `${indent}import { ${remaining.join(', ')} } from '${moduleName}'${hasSemi ? ';' : ''}${hasNewline ? '\n' : ''}`;
+      },
+    );
   }
 
   /**

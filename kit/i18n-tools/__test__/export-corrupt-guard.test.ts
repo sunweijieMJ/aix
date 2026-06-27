@@ -84,4 +84,28 @@ describe('ExportProcessor 损坏守卫', () => {
       /en-US.*(损坏|解析失败)|(损坏|解析失败).*en-US/,
     );
   });
+
+  it('桶式：尚未迁移的遗留单文件损坏 → 中止 export，不静默迁移成空包（#6）', async () => {
+    const config = buildConfig({
+      buckets: {
+        rules: [{ name: 'misc', matchKey: (k: string) => k.startsWith('zzz.') }],
+        defaultBucket: 'common',
+        emitManifest: false,
+        layout: 'by-locale',
+      },
+    });
+    // 桶目录尚不存在（首次启用 buckets），仅有遗留单文件，且 source 损坏：
+    // 旧行为 → getMessages 触发 migrateToBuckets silent 读 → 当 {} → rename .bak → 导出空包覆盖产物。
+    const legacy = path.join(localeDir, 'zh-CN.json');
+    fs.writeFileSync(legacy, '{ "a.b": "存量"', 'utf-8'); // 损坏
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ 'a.b': 'val' }), 'utf-8');
+
+    await expect(new ExportProcessor(config).execute()).rejects.toThrow(
+      /zh-CN.*(损坏|解析失败)|(损坏|解析失败).*zh-CN/,
+    );
+
+    // 守卫先于迁移触发：损坏遗留文件未被 rename 成 .bak，也没有导出空包
+    expect(fs.existsSync(`${legacy}.bak`)).toBe(false);
+    expect(fs.existsSync(path.join(exportDir, 'zh-CN'))).toBe(false);
+  });
 });

@@ -96,8 +96,13 @@ export function matchesDynamicAllowlist(config: ResolvedConfig, key: string): bo
   for (const pattern of list) {
     if (typeof pattern === 'string') {
       if (key.startsWith(pattern)) return true;
-    } else if (pattern.test(key)) {
-      return true;
+    } else {
+      // 用户可能传入带 /g 或 /y 的 RegExp。这些正则的 test() 有状态（lastIndex 在调用间
+      // 推进），而本函数会对成百上千个 key 复用同一正则对象，偏移非零时会对本应命中的
+      // key 误判 false → 受保护键被当孤儿，从所有 locale 与字典中永久删除（破坏性路径）。
+      // 每次匹配前归零，与本文件 ATTR_PATTERNS 的 lastIndex=0 写法一致。
+      pattern.lastIndex = 0;
+      if (pattern.test(key)) return true;
     }
   }
   return false;
