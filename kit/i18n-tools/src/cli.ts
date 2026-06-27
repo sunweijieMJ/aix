@@ -240,7 +240,7 @@ const executeCsvExport = async (
 };
 
 /**
- * 执行 csv-import：把 CSV 回流写回 untranslated.json。
+ * 执行 csv-import：把 CSV 回流写回 untranslated.json / translations.json（按 key 实际归属自动路由）。
  */
 const executeCsvImport = async (
   config: ResolvedConfig,
@@ -450,9 +450,11 @@ export default defineConfig({
   }
   const custom = hasCustomLocale && Boolean(argv.custom);
 
-  // 当显式指定了 --mode/-m 时，默认关闭交互模式；否则默认开启
+  // 当显式指定了 --mode/-m 时，默认关闭交互模式；否则默认开启。
+  // --ci 自述「非交互」，必须真正隐含非交互：否则 `i18n-tools --ci`（漏带 --mode）会在
+  // 无 TTY 的 CI 里进入 promptForTopLevelMode 卡死/报错。-i 显式开启仍优先（用户主动要交互）。
   const modeExplicitlySet = isModeExplicitlySet(process.argv.slice(2));
-  const interactive = argv.interactive ?? !modeExplicitlySet;
+  const interactive = argv.interactive ?? (!modeExplicitlySet && !argv.ci);
 
   // 交互模式处理
   if (interactive) {
@@ -564,6 +566,14 @@ export default defineConfig({
         break;
       case ModeName.GENERATE: {
         if (applyPlanPath) {
+          // apply-plan 仅回放 plan、不重算覆盖率，coverage 阈值在此路径恒不生效。
+          // 显式告警，避免「配了 --coverage-threshold 却以为已卡点」的假绿。
+          if (coverageThreshold !== undefined) {
+            LoggerUtils.warn(
+              `⚠️  --coverage-threshold（或 ci.coverageThreshold）在 --apply-plan 回放路径下不生效：\n` +
+                `   apply 只回放已审核的 plan、不重新计算覆盖率。如需覆盖率卡点，请在直跑 generate 时设置阈值。`,
+            );
+          }
           await executeApplyPlan(config, adapter, custom, applyPlanPath, keepPlan);
           break;
         }

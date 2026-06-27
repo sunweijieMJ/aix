@@ -193,14 +193,13 @@ export class LanguageFileManager {
       if (!onCorrupt) {
         return FileUtils.safeLoadJsonFile<Record<string, any>>(filePath, { silent: true });
       }
-      const content = fs.readFileSync(filePath, 'utf-8');
-      if (content.trim() === '') return {};
-      const parsed = FileUtils.safeParseJson(content) as Record<string, any> | null;
-      if (parsed === null) {
+      const cls = FileUtils.classifyJsonFile<Record<string, any>>(filePath);
+      if (cls.status === 'corrupt') {
         onCorrupt(filePath);
         return undefined;
       }
-      return parsed;
+      // missing/empty → 空桶（loadOne 仅在 readdirSync 命中的存在文件上调用，missing 罕见兜底）
+      return cls.status === 'ok' ? cls.data : {};
     };
 
     if (layout === 'by-locale') {
@@ -269,10 +268,8 @@ export class LanguageFileManager {
   ): string | null {
     locale = locale || config.locales.source;
     const filePath = path.join(FileUtils.getDirectoryPath(config, isCustom), `${locale}.json`);
-    if (!fs.existsSync(filePath)) return null;
-    const content = fs.readFileSync(filePath, 'utf-8');
-    if (content.trim() === '') return null;
-    return FileUtils.safeParseJson(content) === null ? filePath : null;
+    // 仅「存在且非空却解析失败」算损坏；不存在 / 空 / 正常都返回 null。
+    return FileUtils.classifyJsonFile(filePath).status === 'corrupt' ? filePath : null;
   }
 
   /**
@@ -313,23 +310,22 @@ export class LanguageFileManager {
 
     const localeFilePath = path.join(workingDir, `${locale}.json`);
     try {
-      if (!fs.existsSync(localeFilePath)) {
+      const cls = FileUtils.classifyJsonFile(localeFilePath);
+      if (cls.status === 'missing') {
         LoggerUtils.warn(`语言文件不存在，将创建新文件: ${localeFilePath}`);
         return {};
       }
-      const content = fs.readFileSync(localeFilePath, 'utf-8');
-      const parsed = FileUtils.safeParseJson(content);
-      // 文件存在但解析失败（非空内容却得到 null）：返回 null 表示「内容未知」，
-      // 与「文件不存在 → {}」区分开。否则 safeParseJson→null→flattenObject(null)→{}
-      // 会把损坏文件静默当成空 locale，导致 prune「假成功」地报告无孤儿、merge 丢数据。
+      // 文件存在但解析失败：返回 null 表示「内容未知」，与「文件不存在 → {}」区分开。
+      // 否则把损坏文件静默当成空 locale，会导致 prune「假成功」报告无孤儿、merge 丢数据。
       // 调用方需对 null 显式处理（中止/不写回），不得直接 `?? {}` 吞掉。
-      if (parsed === null && content.trim() !== '') {
+      if (cls.status === 'corrupt') {
         LoggerUtils.error(`❌ 语言文件解析失败（JSON 格式错误）: ${localeFilePath}`);
         LoggerUtils.error('👉 为防止数据丢失/误判，本次不会把它当作空文件处理。请检查 JSON 格式。');
         return null;
       }
-      // 用 keys.separator 展平，与 serialize 写回时的 unflattenObject 使用的
+      // 空文件 → {}。用 keys.separator 展平，与 serialize 写回时 unflattenObject 的
       // 分隔符保持一致——保证 nested 与 flat 之间往返无损。
+      const parsed = cls.status === 'ok' ? cls.data : {};
       return FileUtils.flattenObject(parsed, '', config.keys.separator) as LocaleMap;
     } catch (error) {
       LoggerUtils.error(`❌ 读取语言文件失败: ${localeFilePath}`, error);

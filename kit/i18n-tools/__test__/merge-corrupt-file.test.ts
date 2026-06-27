@@ -12,8 +12,9 @@ import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
  *
  * - #1 untranslated.json 损坏 → 抛错中止，原文件原样保留（旧实现走 safeLoadJsonFile
  *   返回 {}，被当空文件，随后 createOrEmptyFile('{}') 静默清空在途译文）。
- * - #3 桶式 target 语言包某 bucket 损坏 → 跳过该 target 写回，损坏文件原样保留
- *   （与扁平路径 updateFlatLanguagePackage 的 `=== null` 中止口径对齐）。
+ * - #3 桶式 source/target 语言包某 bucket 损坏 → 在写回前 fail-fast 抛错中止（M1：损坏检测
+ *   前移到 performMerge 之前的 assertLocalesNotCorrupt，避免「先清空 untranslated/写
+ *   translations、再静默跳过 target 写回」造成的 CI 伪成功 + 运行时漏译）。损坏文件原样保留。
  */
 describe('MergeProcessor — 损坏文件保护', () => {
   let tmpDir: string;
@@ -80,7 +81,7 @@ describe('MergeProcessor — 损坏文件保护', () => {
 
   // ============================== #3 桶式：损坏 target bucket ==============================
 
-  it('[#3] 桶式 target 某 bucket 损坏时跳过该 target 写回，损坏文件原样保留', async () => {
+  it('[#3] 桶式 target 某 bucket 损坏时写回前抛错中止，损坏文件原样保留', async () => {
     const localeDir = path.join(tmpDir, 'locale');
     fs.mkdirSync(localeDir, { recursive: true });
 
@@ -99,16 +100,14 @@ describe('MergeProcessor — 损坏文件保护', () => {
     fs.writeFileSync(corruptBucket, corruptContent);
 
     const processor = new MergeProcessor(makeConfig(true), false);
-    // 跳过该 target（不抛错，与扁平路径 return 口径一致）
-    await expect(processor.execute()).resolves.toBeUndefined();
+    // 写回前 fail-fast 抛错（M1：避免 CI 伪成功 + 运行时漏译）
+    await expect(processor.execute()).rejects.toThrow(/桶文件解析失败/);
 
-    // 关键断言：损坏 bucket 未被重写
+    // 关键断言：损坏 bucket 未被重写（抛错发生在任何写回前）
     expect(fs.readFileSync(corruptBucket, 'utf-8')).toBe(corruptContent);
-    // 报告了损坏错误
-    expect(LoggerUtils.error).toHaveBeenCalledWith(expect.stringMatching(/桶文件解析失败/));
   });
 
-  it('[#3b] 桶式 source 某 bucket 损坏时跳过该 target 写回，避免桶分布塌缩', async () => {
+  it('[#3b] 桶式 source 某 bucket 损坏时写回前抛错中止，避免桶分布塌缩', async () => {
     const localeDir = path.join(tmpDir, 'locale');
     fs.mkdirSync(localeDir, { recursive: true });
 
@@ -133,12 +132,11 @@ describe('MergeProcessor — 损坏文件保护', () => {
     fs.writeFileSync(corruptSource, corruptContent);
 
     const processor = new MergeProcessor(makeConfig(true), false);
-    // 跳过该 target（不抛错，与 target 守卫口径一致）
-    await expect(processor.execute()).resolves.toBeUndefined();
+    // 写回前 fail-fast 抛错：source（zh-CN）在 [source, ...targets] 中先被检出损坏
+    await expect(processor.execute()).rejects.toThrow(/zh-CN.*桶文件解析失败/);
 
-    // 关键断言：source 损坏文件原样保留，且报告了 source 桶损坏
+    // 关键断言：source 损坏文件原样保留
     expect(fs.readFileSync(corruptSource, 'utf-8')).toBe(corruptContent);
-    expect(LoggerUtils.error).toHaveBeenCalledWith(expect.stringMatching(/源语言桶文件解析失败/));
     // en-US target 未被以空 bucketMap 重写（order.foo 不会被塌缩写入）
     expect(fs.readFileSync(enBucket, 'utf-8')).toBe(enContent);
   });

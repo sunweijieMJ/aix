@@ -171,5 +171,9 @@ export interface ReactI18nLibrary extends BaseI18nLibrary {
   ): MessageInfo;
 }
 
-/** 支持的 React i18n 库类型 */
-export type ReactI18nLibraryType = 'react-intl' | 'react-i18next';
+/**
+ * 支持的 React i18n 库（单一事实源）：union 类型由此 const 派生，工厂亦从此校验，
+ * 避免「类型 union / 工厂 switch」各维护一份导致漂移。
+ */
+export const REACT_I18N_LIBRARIES = ['react-intl', 'react-i18next'] as const;
+export type ReactI18nLibraryType = (typeof REACT_I18N_LIBRARIES)[number];

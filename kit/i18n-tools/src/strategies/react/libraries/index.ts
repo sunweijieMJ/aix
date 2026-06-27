@@ -17,7 +17,12 @@ export function createReactI18nLibrary(
     case 'react-i18next':
       return new ReactI18nextLibrary(options);
     case 'react-intl':
-    default:
       return new ReactIntlLibrary();
+    default: {
+      // 显式 default 抛错（而非静默回退到 react-intl）：避免「loader 放行 / 工厂未覆盖」
+      // 时静默生成错误库。never 穷尽检查保证新增 union 成员必须补 case。
+      const _exhaustive: never = type;
+      throw new Error(`不支持的 React i18n 库: ${String(_exhaustive)}`);
+    }
   }
 }

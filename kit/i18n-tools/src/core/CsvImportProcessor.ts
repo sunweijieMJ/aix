@@ -19,7 +19,8 @@ export interface CsvImportOptions {
 }
 
 /**
- * CSV 回流处理器：把审核/翻译好的 CSV 写回 untranslated.json（= 人工版 translate）。
+ * CSV 回流处理器：把审核/翻译好的 CSV 写回 untranslated.json / translations.json
+ * （按 key 实际归属自动路由，= 人工版 translate）。
  *
  * 保守合并：非空译文覆盖；空单元格跳过保留原值；CSV 多余 key 警告不新建；
  * 源语言列忽略。写回前出预览报告，确认后用 writeJsonFile（内置原子写）落盘。
@@ -116,7 +117,10 @@ export class CsvImportProcessor extends FileProcessor {
       const inUntranslated = Object.prototype.hasOwnProperty.call(untranslated, key);
       const inTranslated = !inUntranslated && Object.prototype.hasOwnProperty.call(translated, key);
       const entry = inUntranslated ? untranslated[key] : inTranslated ? translated[key] : undefined;
-      if (!entry) {
+      // 非对象守卫：loadDictStrict 只校验整体 JSON 合法、不校验每条 entry 形态。手工破坏字典
+      // 使某 key 值为字符串/数字等真值非对象时，`!entry` 拦不住，后续 `entry[col.name] = value`
+      // 会对基本类型属性赋值在严格模式下抛 TypeError 崩溃整个 csv-import。并入 missingKeys 告警跳过。
+      if (!entry || typeof entry !== 'object') {
         missingKeys.push(key);
         continue;
       }

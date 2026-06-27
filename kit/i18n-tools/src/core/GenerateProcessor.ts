@@ -6,6 +6,7 @@ import { formatWithPrettier } from '../utils/command-utils';
 import { CommonASTUtils, type SkippedTextLocation } from '../utils/common-ast-utils';
 import { FileUtils } from '../utils/file-utils';
 import { LLMClient } from '../utils/llm-client';
+import { normalizePosix } from '../utils/path-matcher';
 import { InteractiveUtils } from '../utils/interactive-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { LocaleValueLinter } from '../utils/locale-value-linter';
@@ -426,7 +427,7 @@ export class GenerateProcessor extends BaseProcessor {
     for (const item of extractedStrings) {
       if (item.semanticId) {
         // glob 规则用相对路径（如 src/views/order/**），必须转成相对 root 的路径才能命中
-        const relPath = path.relative(this.config.root, item.filePath).replace(/\\/g, '/');
+        const relPath = normalizePosix(path.relative(this.config.root, item.filePath));
         keyBucketMap[item.semanticId] = resolver.resolve(
           relPath,
           item.semanticId,
@@ -795,6 +796,11 @@ export class GenerateProcessor extends BaseProcessor {
       entries,
       localeDelta,
       keyBucketMap,
+      outputShape: {
+        bucketsEnabled: Boolean(this.config.buckets),
+        separator: this.config.keys.separator,
+        source: this.config.locales.source,
+      },
     };
 
     GeneratePlanWriter.write(planDir, plan, transformedSources);
@@ -877,6 +883,36 @@ export class GenerateProcessor extends BaseProcessor {
       throw new Error(
         `Plan 目标目录 (${plan.isCustom ? 'custom' : 'main'}) 与当前 --custom 配置不一致，拒绝 apply。`,
       );
+    }
+
+    // 落盘形态配置漂移告警：指纹只覆盖源文件、不覆盖 buckets/separator/source。这些在
+    // dry-run 与 apply 之间被改过时，apply 会用 plan 旧 keyBucketMap 配新配置写出与预览
+    // 不一致的 locale 形态。低风险（源码仍逐字回放、指纹保护），故告警而非拒绝。
+    if (plan.outputShape) {
+      const current = {
+        bucketsEnabled: Boolean(this.config.buckets),
+        separator: this.config.keys.separator,
+        source: this.config.locales.source,
+      };
+      const diffs: string[] = [];
+      if (plan.outputShape.bucketsEnabled !== current.bucketsEnabled) {
+        diffs.push(
+          `buckets ${plan.outputShape.bucketsEnabled ? '开启' : '关闭'} → ${current.bucketsEnabled ? '开启' : '关闭'}`,
+        );
+      }
+      if (plan.outputShape.separator !== current.separator) {
+        diffs.push(`keys.separator '${plan.outputShape.separator}' → '${current.separator}'`);
+      }
+      if (plan.outputShape.source !== current.source) {
+        diffs.push(`locales.source '${plan.outputShape.source}' → '${current.source}'`);
+      }
+      if (diffs.length > 0) {
+        LoggerUtils.warn(
+          '⚠️  Plan 生成后影响 locale 落盘形态的配置已变化，apply 产出可能与 dry-run 预览不一致：',
+        );
+        for (const d of diffs) LoggerUtils.warn(`   - ${d}`);
+        LoggerUtils.warn('💡 如需与预览严格一致，请重新运行 `generate --dry-run` 后再 apply。');
+      }
     }
 
     const { mismatched } = GeneratePlanWriter.verifyFingerprint(plan);

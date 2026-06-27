@@ -128,7 +128,10 @@ export class PruneProcessor extends BaseProcessor {
     const data = FileUtils.safeLoadJsonFile<Translations>(filePath, { silent: true });
     let removed = 0;
     for (const k of orphanSet) {
-      if (k in data) {
+      // 用 hasOwnProperty.call 而非 `in`：`in` 走原型链，孤儿 key 恰为 'constructor'/
+      // 'toString' 等 Object.prototype 同名成员时会假命中，虚增 removed 并触发无谓重写。
+      // 与 Doctor/GenerateProcessor.writePlan 的口径一致。
+      if (Object.prototype.hasOwnProperty.call(data, k)) {
         delete data[k];
         removed++;
       }
@@ -148,7 +151,8 @@ export class PruneProcessor extends BaseProcessor {
       );
       let removed = 0;
       for (const k of orphanSet) {
-        if (k in flat) {
+        // hasOwnProperty.call 而非 `in`（避免原型链假命中，见 pruneDictionaryFile 注释）。
+        if (Object.prototype.hasOwnProperty.call(flat, k)) {
           delete flat[k];
           delete keyBucketMap[k];
           removed++;
@@ -164,7 +168,8 @@ export class PruneProcessor extends BaseProcessor {
       LanguageFileManager.readLocaleFile(this.config, this.isCustom, locale) ?? {};
     let removed = 0;
     for (const k of orphanSet) {
-      if (k in map) {
+      // hasOwnProperty.call 而非 `in`（避免原型链假命中，见 pruneDictionaryFile 注释）。
+      if (Object.prototype.hasOwnProperty.call(map, k)) {
         delete map[k];
         removed++;
       }

@@ -110,12 +110,25 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     }
 
     const messageTemplate = messageInfo.id ? localeMap[messageInfo.id] : undefined;
-    const templateToUse = messageTemplate ?? messageInfo.defaultMessage;
+    const templateToUse =
+      messageTemplate ?? this.normalizeDefaultMessage(messageInfo.defaultMessage);
     if (templateToUse === undefined) {
       return null;
     }
 
     return CommonASTUtils.createStringOrTemplateNode(templateToUse, messageInfo.values);
+  }
+
+  /**
+   * locale 缺 key 时用源码里的 defaultMessage 当兜底模板——但 localeMap 已在 transform()
+   * 入口经 normalizeRestoreLocaleMap 归一，defaultMessage 来自源码尚未归一（i18next 系为
+   * 双花括号 `{{name}}`、可能含写盘转义的字面量花括号）。不归一就喂给单花括号还原逻辑会把
+   * `{{name}}` 解析成字面量 `{name`、丢失运行时变量。这里套用同一口径补齐。
+   */
+  private normalizeDefaultMessage(defaultMessage: string | undefined): string | undefined {
+    return defaultMessage === undefined
+      ? undefined
+      : CommonASTUtils.normalizeRestoreMessage(defaultMessage, this.library);
   }
 
   /**
@@ -148,7 +161,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     }
 
     const messageTemplate = messageInfo.id ? localeMap[messageInfo.id] : undefined;
-    const finalText = messageTemplate ?? messageInfo.defaultMessage;
+    const finalText = messageTemplate ?? this.normalizeDefaultMessage(messageInfo.defaultMessage);
     // 与 transformTranslationCall 的 `templateToUse === undefined → return null` 对称：
     // id 查不到且无 defaultMessage 时返回 null 保留原组件，避免 `?? ''` 兜底把
     // <Trans>/<FormattedMessage> 静默替换成空节点，造成不可恢复的 JSX 内容丢失。

@@ -17,7 +17,12 @@ export function createVueI18nLibrary(
     case 'vue-i18next':
       return new VueI18nextLibrary(options);
     case 'vue-i18n':
-    default:
       return new VueI18nLibraryImpl();
+    default: {
+      // 显式 default 抛错（而非静默回退到 vue-i18n）：避免「loader 放行 / 工厂未覆盖」
+      // 时静默生成错误库。never 穷尽检查保证新增 union 成员必须补 case。
+      const _exhaustive: never = type;
+      throw new Error(`不支持的 Vue i18n 库: ${String(_exhaustive)}`);
+    }
   }
 }
