@@ -38,6 +38,7 @@ export const MODE_DESCRIPTIONS: Record<string, string> = {
   [ModeName.EXPORT]: '语言包导出 - 生成最终的多语言文件',
   [ModeName.DOCTOR]: '健康检查 - 体检 locale 文件结构与源码对账',
   [ModeName.CSV_EXPORT]: 'CSV 导出 - 把待翻译/已翻译条目导出为表格发人翻译或审核',
-  [ModeName.CSV_IMPORT]: 'CSV 回流 - 把翻译/审核好的 CSV 写回待翻译文件',
+  [ModeName.CSV_IMPORT]:
+    'CSV 回流 - 把翻译/审核好的 CSV 写回 untranslated/translations（按 key 归属自动路由）',
   [ModeName.PRUNE]: '清理孤儿 key - 删除源码已不再引用的 locale 条目',
 };
