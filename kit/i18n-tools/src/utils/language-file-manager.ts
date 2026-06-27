@@ -648,7 +648,7 @@ export class LanguageFileManager {
           extracted.isTemplateString && extracted.templateVariables
             ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
             : {
-                message: rawMessage.replace(/^['"`]|['"`]$/g, ''),
+                message: CommonASTUtils.stripMatchedDelimiters(rawMessage, ['`']),
                 placeholderMap: new Map<string, string>(),
               };
         message = library

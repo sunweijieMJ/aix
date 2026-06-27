@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import ts from 'typescript';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { ReactASTUtils } from './react-ast-utils';
@@ -49,7 +50,14 @@ export class ReactTransformer implements ITransformer {
     extractedStrings: ExtractedString[],
     sourceText: string,
   ): string {
-    const fileStrings = extractedStrings.filter((s) => s.filePath === filePath);
+    // 用 path.normalize 归一两侧再比较：上游 transformToMemory 会把 filePath 规范化
+    // （`./src/x.tsx` → `src/x.tsx`、Windows 下 `/`→`\`），而 ExtractedString.filePath
+    // 原样透传用户输入路径。若只用 === 严格比较，单文件模式下两者可能不等导致命中 0 条、
+    // 源码原样返回却仍写了 locale —— 静默的「源码/locale 不一致」。
+    const normalizedTarget = path.normalize(filePath);
+    const fileStrings = extractedStrings.filter(
+      (s) => path.normalize(s.filePath) === normalizedTarget,
+    );
 
     if (fileStrings.length === 0) {
       return sourceText;

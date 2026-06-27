@@ -91,10 +91,12 @@ export class PathPrefixStrategyImpl implements PrefixStrategy {
     const fileIndex = parts.length - 1;
     let dirParts = parts.slice(anchorIndex + 1, fileIndex);
 
-    // 文件直接在 anchor 下：用文件名（去扩展名）作为单段前缀
+    // 文件直接在 anchor 下：用文件名（去扩展名）作为单段前缀。
+    // 与 includeFile 分支一致地应用 fileNameCase——否则顶层文件（src/MyView.vue）
+    // 与子目录文件的前缀大小写规则不一致（前者 'MyView'、后者 'my-view'）。
     if (dirParts.length === 0) {
       const baseName = path.parse(parts[fileIndex]!).name;
-      return this.finalize([baseName], ctx);
+      return this.finalize([applyCase(baseName, this.options.fileNameCase)], ctx);
     }
 
     // skip / take 在 transform 之前应用
@@ -134,10 +136,8 @@ export class PathPrefixStrategyImpl implements PrefixStrategy {
     const transform = this.options.transform;
 
     for (let i = 0; i < segments.length; i++) {
-      let seg = segments[i]!;
-      seg = this.options.preserveHyphens
-        ? seg.replace(/[^a-zA-Z0-9-]/g, '')
-        : seg.replace(/[^a-zA-Z0-9]/g, '');
+      // 段清理收口到 cleanSegment（与 LLM/fixed 路径共用同一定义，避免字符集漂移）
+      let seg = cleanSegment(segments[i]!, this.options.preserveHyphens);
       if (!seg) continue;
 
       if (transform) {
@@ -308,7 +308,8 @@ function extractSemanticPart(text: string, mappings: Record<string, string>): st
 }
 
 /**
- * 段清理：与 PathStrategy.finalize 中的逻辑等价，独立函数供 LLM 路径使用。
+ * 段清理：path/LLM/fixed 各路径共用的唯一定义（PathStrategy.finalize 亦调用本函数），
+ * 收口字符集规则避免漂移。preserveHyphens=true 时保留连字符，否则一并抹除。
  */
 function cleanSegment(segment: string, preserveHyphens: boolean): string {
   return preserveHyphens
