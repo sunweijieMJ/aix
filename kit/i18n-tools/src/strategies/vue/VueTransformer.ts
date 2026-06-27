@@ -287,6 +287,31 @@ export class VueTransformer implements ITransformer {
       return lines.join('\n');
     }
 
+    // 多行文本节点：condense 解析下，跨行文本的 loc.source（即 original）含 `\n`，
+    // 而上方逐行 indexOf 永远无法在单行内命中（±5 行兜底亦逐行）。这里用
+    // (line, column) 推出绝对偏移在整段 template 内定位并整体替换；偏移不精确时
+    // 退化为全局查找，仍找不到则原样返回（宁可漏替换也不破坏源码）。
+    if (original.includes('\n')) {
+      let offset = column;
+      for (let i = 0; i < line; i++) {
+        offset += lines[i]!.length + 1; // +1：补回 split 去掉的换行符
+      }
+      if (templateContent.startsWith(original, offset)) {
+        return (
+          templateContent.slice(0, offset) +
+          replacement +
+          templateContent.slice(offset + original.length)
+        );
+      }
+      const idx = templateContent.indexOf(original);
+      if (idx !== -1) {
+        return (
+          templateContent.slice(0, idx) + replacement + templateContent.slice(idx + original.length)
+        );
+      }
+      return templateContent;
+    }
+
     // 检查 original 是否已经带引号（模板字符串、字符串字面量）
     const hasQuotes =
       (original.startsWith("'") && original.endsWith("'")) ||

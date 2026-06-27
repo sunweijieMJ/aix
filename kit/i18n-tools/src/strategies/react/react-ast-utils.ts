@@ -31,12 +31,6 @@ export class ReactASTUtils {
       if (ts.isJsxExpression(parent) && parent.parent && ts.isJsxAttribute(parent.parent)) {
         return 'jsx-attribute';
       }
-      if (ts.isJsxAttribute(parent) && parent.initializer === node) {
-        return 'jsx-attribute';
-      }
-      if (ts.isStringLiteral(node) && ts.isJsxAttribute(parent) && parent.initializer === node) {
-        return 'jsx-attribute';
-      }
       parent = parent.parent;
     }
 

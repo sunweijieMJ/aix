@@ -201,7 +201,10 @@ export class DoctorProcessor extends BaseProcessor {
       // 动态 key 场景：源码可能是 t(prefix + variable)，工具看到的字面量是 prefix
       // 之类的不完整 key。这里只对"完全等于 locale key"的字面量做严格匹配，
       // 否则会对所有动态 t() 调用噪声报警。
-      if (!(key in sourceMap)) {
+      // 用 hasOwnProperty 而非 `key in sourceMap`：sourceMap 是 flattenObject 产出的普通
+      // 对象，`in` 走原型链，会把 toString/constructor/valueOf 等与 Object.prototype 同名的
+      // key 误判为存在 → 漏报 missing-key（与下方 checkOrphanKeys 的 Object.keys 口径一致）。
+      if (!Object.prototype.hasOwnProperty.call(sourceMap, key)) {
         findings.push({
           category: 'missing-key',
           severity: 'error',
