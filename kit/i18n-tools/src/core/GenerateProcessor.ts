@@ -579,19 +579,10 @@ export class GenerateProcessor extends BaseProcessor {
         error: writeFailure.error,
       });
       // 回滚已写文件至原始内容，恢复「全不改」状态
-      const rollbackFailures: string[] = [];
-      for (const { file, original } of written) {
-        try {
-          fs.writeFileSync(file, original, 'utf-8');
-        } catch (rbError) {
-          rollbackFailures.push(FileUtils.getRelativePath(file));
-          LoggerUtils.error(`❌ 回滚失败 ${FileUtils.getRelativePath(file)}:`, rbError);
-        }
-      }
+      const rollbackFailures = this.rollbackWritten(written);
       const rollbackNote =
         rollbackFailures.length > 0
-          ? `\n⚠️  以下 ${rollbackFailures.length} 个文件回滚失败，请用 git 手动还原:\n` +
-            rollbackFailures.map((f) => `  - ${f}`).join('\n')
+          ? this.rollbackFailureNote(rollbackFailures)
           : `\n（已写入的 ${written.length} 个源文件已回滚至原始内容，源码与语言文件均未变更）`;
       throw new Error(
         `写入阶段失败（语言文件未变更）: ${FileUtils.getRelativePath(writeFailure.file)}` +
@@ -620,19 +611,10 @@ export class GenerateProcessor extends BaseProcessor {
     } catch (error) {
       LoggerUtils.error('❌ 语言文件写入失败，回滚已写源码:', error);
       this.report.addFailure({ stage: 'write', error });
-      const rollbackFailures: string[] = [];
-      for (const { file, original } of written) {
-        try {
-          fs.writeFileSync(file, original, 'utf-8');
-        } catch (rbError) {
-          rollbackFailures.push(FileUtils.getRelativePath(file));
-          LoggerUtils.error(`❌ 回滚失败 ${FileUtils.getRelativePath(file)}:`, rbError);
-        }
-      }
+      const rollbackFailures = this.rollbackWritten(written);
       const rollbackNote =
         rollbackFailures.length > 0
-          ? `\n⚠️  以下 ${rollbackFailures.length} 个文件回滚失败，请用 git 手动还原:\n` +
-            rollbackFailures.map((f) => `  - ${f}`).join('\n')
+          ? this.rollbackFailureNote(rollbackFailures)
           : `\n（已写入的 ${written.length} 个源文件已回滚至原始内容；但语言文件可能已部分写入` +
             `（多 bucket 顺序落盘时中途失败），请用 git 核查 locale 是否残留本轮新增 key）`;
       throw new Error(`语言文件写入阶段失败（源码已回滚）` + rollbackNote, { cause: error });
@@ -654,6 +636,32 @@ export class GenerateProcessor extends BaseProcessor {
     }
     LoggerUtils.success('✅ 应用转换完成');
     LoggerUtils.info(`✨ 处理文件列表: \n- ${results.map((r) => r.file).join('\n- ')}`);
+  }
+
+  /**
+   * 把 written[] 中已落盘的源文件逐个写回原始内容（事务回滚）。
+   * 返回回滚失败的文件相对路径列表，供调用方拼提示。
+   * 阶段 2（写源码失败）与阶段 3（写语言文件失败）共用同一回滚逻辑。
+   */
+  private rollbackWritten(written: { file: string; original: string }[]): string[] {
+    const rollbackFailures: string[] = [];
+    for (const { file, original } of written) {
+      try {
+        fs.writeFileSync(file, original, 'utf-8');
+      } catch (rbError) {
+        rollbackFailures.push(FileUtils.getRelativePath(file));
+        LoggerUtils.error(`❌ 回滚失败 ${FileUtils.getRelativePath(file)}:`, rbError);
+      }
+    }
+    return rollbackFailures;
+  }
+
+  /** 回滚存在失败时的统一提示文案（成功提示因阶段而异，由各调用方自行拼接）。 */
+  private rollbackFailureNote(rollbackFailures: string[]): string {
+    return (
+      `\n⚠️  以下 ${rollbackFailures.length} 个文件回滚失败，请用 git 手动还原:\n` +
+      rollbackFailures.map((f) => `  - ${f}`).join('\n')
+    );
   }
 
   /**

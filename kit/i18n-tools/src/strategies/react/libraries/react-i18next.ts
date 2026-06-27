@@ -230,50 +230,16 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {
-    let parent = node.parent;
-    while (parent) {
-      if (ts.isCallExpression(parent)) {
-        const expression = parent.expression;
+    return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
+      isI18nCall: (expression) =>
         // t('key')
-        if (ts.isIdentifier(expression) && expression.text === 't') {
-          return true;
-        }
+        (ts.isIdentifier(expression) && expression.text === 't') ||
         // i18next.t('key')
-        if (
-          ts.isPropertyAccessExpression(expression) &&
+        (ts.isPropertyAccessExpression(expression) &&
           ts.isIdentifier(expression.name) &&
-          expression.name.text === 't'
-        ) {
-          return true;
-        }
-      }
-      // <Trans i18nKey={...} />
-      if (ts.isJsxAttribute(parent)) {
-        const jsxElement = parent.parent.parent;
-        if (
-          (ts.isJsxOpeningElement(jsxElement) || ts.isJsxSelfClosingElement(jsxElement)) &&
-          ts.isIdentifier(jsxElement.tagName) &&
-          jsxElement.tagName.text === 'Trans'
-        ) {
-          return true;
-        }
-      }
-      if (ts.isJsxElement(parent)) {
-        const openingElement = parent.openingElement;
-        if (ts.isIdentifier(openingElement.tagName) && openingElement.tagName.text === 'Trans') {
-          return true;
-        }
-      }
-      // 类型字面量与枚举成员值在编译期就被消费，不参与运行时本地化，应跳过提取。
-      if (ts.isLiteralTypeNode(parent) || ts.isEnumMember(parent)) {
-        return true;
-      }
-      if (ts.isBlock(parent) || ts.isFunctionLike(parent) || ts.isClassLike(parent)) {
-        return false;
-      }
-      parent = parent.parent;
-    }
-    return false;
+          expression.name.text === 't'),
+      componentTags: ['Trans'],
+    });
   }
 
   extractCallInfo(

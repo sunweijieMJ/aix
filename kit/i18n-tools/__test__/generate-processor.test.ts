@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { GenerateProcessor } from '../src/core/GenerateProcessor';
 import { VueAdapter } from '../src/adapters/VueAdapter';
+import { LanguageFileManager } from '../src/utils/language-file-manager';
 import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
@@ -95,6 +96,28 @@ describe('GenerateProcessor 编排层', () => {
     expect(cov?.newlyGenerated).toBe(1);
     expect(cov?.skipped).toBe(0);
     expect(cov?.coverageRate).toBe(1);
+  });
+
+  it('阶段3 语言文件写入失败 → 已落盘的多个源文件全部回滚（覆盖 rollbackWritten）', async () => {
+    // 此前「事务回滚」测试 mock transform 抛错，发生在写盘之前（written 为空），
+    // 回滚循环从未被真正执行。这里 mock updateLanguageFiles 在源码已写盘后（阶段3）抛错，
+    // 真正驱动 written[] 的逐文件回滚——作为 rollbackWritten 抽取重构的特征护栏。
+    writeSource('A.vue', `<template><div>提交</div></template>\n`);
+    writeSource('B.vue', `<template><div>取消</div></template>\n`);
+    vi.spyOn(LanguageFileManager, 'updateLanguageFiles').mockImplementation(() => {
+      throw new Error('disk boom');
+    });
+
+    const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+    await expect(proc.execute(srcDir, true)).rejects.toThrow(/语言文件写入阶段失败/);
+
+    // 两个源文件都已回滚到原始中文，且不含 $t()
+    const a = fs.readFileSync(path.join(srcDir, 'A.vue'), 'utf-8');
+    const b = fs.readFileSync(path.join(srcDir, 'B.vue'), 'utf-8');
+    expect(a).toContain('提交');
+    expect(a).not.toContain('$t(');
+    expect(b).toContain('取消');
+    expect(b).not.toContain('$t(');
   });
 
   it('事务回滚：transform 阶段抛错 → 抛出且源码与语言文件均不变更', async () => {

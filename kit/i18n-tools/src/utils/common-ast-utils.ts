@@ -856,6 +856,59 @@ export class CommonASTUtils {
   }
 
   /**
+   * 「是否已国际化」父链遍历脚手架（react-i18next / react-intl 共用）。
+   *
+   * 从 node 沿 parent 向上走，命中以下任一即判定已国际化：
+   * - 一个 i18n 调用（由 isI18nCall 判定，库特定：t/i18next.t vs formatMessage/defineMessages）
+   * - 一个 i18n 组件（标签名 ∈ componentTags，库特定：Trans vs FormattedMessage）的属性或子节点
+   * - 类型字面量 / 枚举成员值（编译期消费，不参与运行时本地化，跳过提取）
+   * 遇到 Block / 函数 / 类作用域即停止并返回 false（已越过可能的 i18n 包裹）。
+   */
+  static isAlreadyInternationalizedByScaffold(
+    node: ts.Node,
+    options: {
+      isI18nCall: (expression: ts.Expression) => boolean;
+      componentTags: readonly string[];
+    },
+  ): boolean {
+    let parent = node.parent;
+    while (parent) {
+      if (ts.isCallExpression(parent) && options.isI18nCall(parent.expression)) {
+        return true;
+      }
+      // <Tag attr={...} />：属性挂在 opening/self-closing 元素上
+      if (ts.isJsxAttribute(parent)) {
+        const jsxElement = parent.parent.parent;
+        if (
+          (ts.isJsxOpeningElement(jsxElement) || ts.isJsxSelfClosingElement(jsxElement)) &&
+          ts.isIdentifier(jsxElement.tagName) &&
+          options.componentTags.includes(jsxElement.tagName.text)
+        ) {
+          return true;
+        }
+      }
+      if (ts.isJsxElement(parent)) {
+        const openingElement = parent.openingElement;
+        if (
+          ts.isIdentifier(openingElement.tagName) &&
+          options.componentTags.includes(openingElement.tagName.text)
+        ) {
+          return true;
+        }
+      }
+      // 类型字面量与枚举成员值在编译期就被消费，不参与运行时本地化，应跳过提取。
+      if (ts.isLiteralTypeNode(parent) || ts.isEnumMember(parent)) {
+        return true;
+      }
+      if (ts.isBlock(parent) || ts.isFunctionLike(parent) || ts.isClassLike(parent)) {
+        return false;
+      }
+      parent = parent.parent;
+    }
+    return false;
+  }
+
+  /**
    * 替换代码中的字符串
    * @param sourceText - 源代码文本
    * @param replacements - 替换项列表
