@@ -198,9 +198,35 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     return uses;
   }
 
-  isTranslationAvailableInScope(node: ts.Node, sourceFile: ts.SourceFile): boolean {
-    const text = node.getText(sourceFile);
-    return /const\s+\{\s*t\s*[,}]/.test(text) && text.includes('useTranslation');
+  isTranslationAvailableInScope(node: ts.Node): boolean {
+    // 用 AST 判断作用域内是否已通过 useTranslation() 解构出本地变量 `t`。
+    // 旧实现用正则 `/const\s+\{\s*t\s*[,}]/` 要求 t 是解构首位，对极常见的
+    // `const { i18n, t } = useTranslation()`（t 非首位）漏判 → injector 误判 t
+    // 不在作用域而重复注入 `const { t } = useTranslation();` → 重声明、无法编译。
+    // 这里只认「本地绑定名为 t」的元素，因此与位置无关，且对 `const { t: x }`
+    // （t 被改名、本地无 t）正确返回 false。
+    let found = false;
+    const visit = (n: ts.Node): void => {
+      if (found) return;
+      if (
+        ts.isVariableDeclaration(n) &&
+        n.initializer &&
+        ts.isCallExpression(n.initializer) &&
+        ts.isIdentifier(n.initializer.expression) &&
+        n.initializer.expression.text === this.hookName &&
+        ts.isObjectBindingPattern(n.name)
+      ) {
+        for (const el of n.name.elements) {
+          if (ts.isIdentifier(el.name) && el.name.text === this.translationVarName) {
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found) ts.forEachChild(n, visit);
+    };
+    visit(node);
+    return found;
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {

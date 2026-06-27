@@ -288,13 +288,18 @@ export class GenerateProcessor extends BaseProcessor {
       const idResults = await this.llmClient.generateSemanticIdsForFiles(textGroups, skipLLM);
 
       Object.entries(fileGroups).forEach(([filePath, strings]) => {
-        const ids = idResults[filePath] || [];
+        const rawIds = idResults[filePath] || [];
 
-        if (!skipLLM && ids.length !== strings.length) {
+        // 数量不匹配（LLM 丢/多一条）时，id_list 是位置数组，按位 ids[index] 取值会把
+        // 错位的有效 id 当语义 ID 写成 key。此处整文件丢弃 LLM 结果、强制本地回退，
+        // 兑现下方警告承诺（而非只警告却仍按位错配）。
+        const mismatched = !skipLLM && rawIds.length !== strings.length;
+        if (mismatched) {
           LoggerUtils.warn(
-            `[${FileUtils.getRelativePath(filePath)}] LLM返回的ID数量与文本数量不匹配 (期望 ${strings.length}, 收到 ${ids.length})，将使用本地ID生成进行回退。`,
+            `[${FileUtils.getRelativePath(filePath)}] LLM返回的ID数量与文本数量不匹配 (期望 ${strings.length}, 收到 ${rawIds.length})，将使用本地ID生成进行回退。`,
           );
         }
+        const ids = mismatched ? [] : rawIds;
 
         strings.forEach((item, index) => {
           item.semanticId = this.resolveSemanticId(item, ids[index], textToIdMap, reuseResolver);

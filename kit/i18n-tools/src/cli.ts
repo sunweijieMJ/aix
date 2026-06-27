@@ -339,7 +339,9 @@ const main = async (): Promise<void> => {
       type: 'string',
     })
     .option('ci', {
-      describe: 'CI 模式：仅 doctor 模式生效，发现 error 级问题时以非零状态码退出',
+      describe:
+        'CI 模式（非交互）：doctor 发现 error 级问题时以非零状态码退出；' +
+        'prune / csv-import 跳过破坏性写入前的二次确认，直接执行',
       type: 'boolean',
       default: false,
     })

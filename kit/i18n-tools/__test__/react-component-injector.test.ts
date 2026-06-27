@@ -88,6 +88,28 @@ const Badge = () => <span title={t('badge.desc')} />;`;
   expect(openBraces).toBe(closeBraces);
 });
 
+describe('ReactComponentInjector.injectHOC：表达式体箭头类成员（回归 #4）', () => {
+  it('类组件表达式体箭头成员使用 t()：注入 this.props 解构并包成块体，避免 t is not defined', () => {
+    const injector = buildInjector();
+    // renderLabel 是表达式体箭头属性成员，体内已被替换成裸 t()（模拟 transformer 输出）。
+    // injectHOC 旧逻辑用 `ts.isBlock(body)` 守卫，表达式体被跳过 → t 未从 this.props 解构。
+    const code = `import { Component } from 'react';
+class Panel extends Component {
+  renderLabel = () => t('panel.label');
+  render() {
+    return <div>{this.renderLabel()}</div>;
+  }
+}
+export default Panel;`;
+    const out = injector.inject(code);
+
+    // 必须为该成员注入 props 解构
+    expect(out).toContain('const { t } = this.props;');
+    // 表达式体被包成块体
+    expect(out).toMatch(/renderLabel\s*=\s*\(\)\s*=>\s*\{/);
+  });
+});
+
 it('【调试】检查同名表达式体组件的 transformations 是否重叠', () => {
   // 需要访问私有的 applyTransformations，通过修改源码注入日志
   // 或者通过反向工程来验证

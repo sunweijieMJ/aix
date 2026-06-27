@@ -247,6 +247,22 @@ describe('DoctorProcessor', () => {
     await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
   });
 
+  it('missing-key：源码引用与 Object.prototype 同名的 key（toString），locale 不存在时仍应报（回归 #7）', async () => {
+    // 旧实现 `if (!(key in sourceMap))` 用 in 运算符走原型链：sourceMap 是 flattenObject
+    // 产出的普通对象，继承 Object.prototype.toString 等，故 'toString' in sourceMap 恒为
+    // true → missing-key（doctor 唯一 error 级、CI 门禁）被静默漏报，而运行时实际显示 key 串。
+    writeSourceFile('Proto.vue', `<template><span>{{ t('toString') }}</span></template>`);
+    writeLocale('zh-CN', { greeting: '你好' });
+    writeLocale('en-US', { greeting: 'Hello' });
+
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir));
+    await proc.execute();
+
+    const all = collectMessages(infoSpy);
+    expect(all).toContain('[missing-key]');
+    expect(all).toContain('toString');
+  });
+
   it('CI 模式 + 仅 warning 级问题 → 不抛错（仅 error 才阻塞 CI）', async () => {
     writeSourceFile('R.vue', `<template>{{ t('greeting') }}</template>`);
     writeLocale('zh-CN', { greeting: '你好', orphan: '没人用' });

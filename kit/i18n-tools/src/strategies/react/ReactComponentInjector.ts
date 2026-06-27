@@ -243,13 +243,35 @@ export class ReactComponentInjector implements IComponentInjector {
           .getText(sourceFile)
           .includes(`const { ${varName} } = this.props`);
 
-        if (usesTranslation && !hasDeclaration && ts.isBlock(body)) {
-          const injectionPos = body.getStart(sourceFile) + 1;
-          transformations.push({
-            start: injectionPos,
-            end: injectionPos,
-            text: `\n    const { ${varName} } = this.props;\n`,
-          });
+        if (usesTranslation && !hasDeclaration) {
+          if (ts.isBlock(body)) {
+            const injectionPos = body.getStart(sourceFile) + 1;
+            transformations.push({
+              start: injectionPos,
+              end: injectionPos,
+              text: `\n    const { ${varName} } = this.props;\n`,
+            });
+          } else if (
+            ts.isPropertyDeclaration(member) &&
+            member.initializer &&
+            ts.isArrowFunction(member.initializer)
+          ) {
+            // 表达式体箭头类成员（`foo = () => t('x')`）无 Block：transformer 已把字面量
+            // 替换为裸 t()/intl 引用，若不注入解构则运行时 `t is not defined`。与 injectHook
+            // 的表达式体处理对称，把体包成块体并注入 this.props 解构。
+            const start = body.getStart(sourceFile);
+            const end = body.getEnd();
+            transformations.push({
+              start,
+              end: start,
+              text: `{\n    const { ${varName} } = this.props;\n    return `,
+            });
+            transformations.push({
+              start: end,
+              end,
+              text: `;\n  }`,
+            });
+          }
         }
       }
     }
