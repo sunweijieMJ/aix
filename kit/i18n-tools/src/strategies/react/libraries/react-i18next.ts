@@ -296,8 +296,20 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
 
       if (attrName === 'i18nKey' && ts.isStringLiteral(initializer)) {
         messageInfo.id = ReactI18nextLibrary.stripNamespacePrefix(initializer.text);
-      } else if (attrName === 'defaults' && ts.isStringLiteral(initializer)) {
-        messageInfo.defaultMessage = initializer.text;
+      } else if (attrName === 'defaults') {
+        // 生成端经 JSX 表达式容器注入 `defaults={"你好"}`（见本类 generateComponent 的
+        // `defaults={${JSON.stringify(...)}}`），initializer 是 JsxExpression 而非裸 StringLiteral。
+        // 仅匹配 ts.isStringLiteral 会永远取不到 defaultMessage，导致 locale 缺 key 时兜底还原失效。
+        if (ts.isStringLiteral(initializer)) {
+          messageInfo.defaultMessage = initializer.text;
+        } else if (
+          ts.isJsxExpression(initializer) &&
+          initializer.expression &&
+          (ts.isStringLiteral(initializer.expression) ||
+            ts.isNoSubstitutionTemplateLiteral(initializer.expression))
+        ) {
+          messageInfo.defaultMessage = initializer.expression.text;
+        }
       } else if (
         attrName === 'values' &&
         ts.isJsxExpression(initializer) &&
@@ -320,19 +332,11 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   }
 
   private formatValuesMapping(values: Map<string, string>): string {
-    const mappings: string[] = [];
-    values.forEach((placeholder, expression) => {
-      mappings.push(`${placeholder}: ${expression}`);
-    });
-    return `{ ${mappings.join(', ')} }`;
+    return CommonASTUtils.formatValuesMapping(values);
   }
 
   private formatValuesMappingInline(values: Map<string, string>): string {
-    const mappings: string[] = [];
-    values.forEach((placeholder, expression) => {
-      mappings.push(`${placeholder}: ${expression}`);
-    });
-    return mappings.join(', ');
+    return CommonASTUtils.formatValuesMapping(values, { wrap: false });
   }
 
   // i18next 单 `{` 本就是字面量（插值是双花括号 `{{name}}`），无需转义。

@@ -160,15 +160,36 @@ function resolveNestedPrefixStrategy(
 ): ResolvedNestedPrefixStrategy {
   if (!prefix || prefix.strategy === 'path') {
     const p = prefix ?? { strategy: 'path' as const };
+    const fileNameCase = p.fileNameCase ?? DEFAULT_KEYS.prefix.fileNameCase;
+    // 白名单校验（与 io.format / glossary.override 等同级枚举对齐）：loader 支持 JS 配置，
+    // 运行时无 TS 类型设防，typo 会静默走 id-generator 的 default 分支（as-is）而无诊断。
+    // fileNameCase 允许传函数（自定义大小写转换），故仅在为字符串时校验取值。
+    if (typeof fileNameCase === 'string') {
+      const validCase = ['as-is', 'camel', 'kebab', 'snake'];
+      if (!validCase.includes(fileNameCase)) {
+        throw new Error(
+          `${context}: fileNameCase 取值非法: '${fileNameCase}'` +
+            `（仅支持 ${validCase.map((s) => `'${s}'`).join(' | ')} 或自定义函数）`,
+        );
+      }
+    }
+    const indexFile = p.indexFile ?? DEFAULT_KEYS.prefix.indexFile;
+    const validIndexFile = ['as-is', 'collapse-to-parent'];
+    if (!validIndexFile.includes(indexFile)) {
+      throw new Error(
+        `${context}: indexFile 取值非法: '${String(indexFile)}'` +
+          `（仅支持 ${validIndexFile.map((s) => `'${s}'`).join(' | ')}）`,
+      );
+    }
     return {
       strategy: 'path',
       anchor: p.anchor ?? DEFAULT_KEYS.prefix.anchor,
       skip: Math.max(0, p.skip ?? DEFAULT_KEYS.prefix.skip),
       take: Math.max(0, p.take ?? DEFAULT_KEYS.prefix.take),
       includeFile: p.includeFile ?? DEFAULT_KEYS.prefix.includeFile,
-      fileNameCase: p.fileNameCase ?? DEFAULT_KEYS.prefix.fileNameCase,
+      fileNameCase,
       preserveHyphens: p.preserveHyphens ?? DEFAULT_KEYS.prefix.preserveHyphens,
-      indexFile: p.indexFile ?? DEFAULT_KEYS.prefix.indexFile,
+      indexFile,
       transform: p.transform,
     };
   }
@@ -469,6 +490,17 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     throw new Error(
       `merge.onLlmRejected 必须是 ${validRejected.map((s) => `'${s}'`).join(' | ')} 之一，` +
         `当前收到 '${resolved.merge.onLlmRejected}'。`,
+    );
+  }
+
+  // glossary.override：loader 支持 JS 配置（.js/.cjs/.mjs），TS 字面量类型在运行时不设防。
+  // 不校验时 typo（如 'allways'）会静默绕过 PickProcessor 的 `=== 'always'` 分支，回退到比默认
+  // 更弱的 when-empty 行为且零诊断。与 io.format / merge.onLlmRejected 等同级枚举对齐做白名单校验。
+  const validOverride = ['always', 'when-empty'];
+  if (!validOverride.includes(resolved.glossary.override)) {
+    throw new Error(
+      `glossary.override 必须是 ${validOverride.map((s) => `'${s}'`).join(' | ')} 之一，` +
+        `当前收到 '${String(resolved.glossary.override)}'。`,
     );
   }
 
