@@ -140,6 +140,18 @@ export interface ReactI18nLibrary extends BaseI18nLibrary {
   isTranslationAvailableInScope(node: ts.Node, sourceFile: ts.SourceFile): boolean;
 
   /**
+   * 检测作用域内是否已有「本地翻译绑定」——即生成代码发出的裸标识符（react-intl 的
+   * `intl`、react-i18next 的 `t`）已有实际本地声明（`const intl = useIntl()` /
+   * `const { t } = useTranslation()`）。
+   *
+   * 与 isTranslationAvailableInScope 的区别：后者对 react-intl 还把 `props.intl`/
+   * `this.props.intl` 成员访问算作「可用」（用于类组件判断是否已 injectIntl 包裹，避免
+   * 二次包裹）；但成员访问并不提供裸 `intl` 绑定，generator 发出的裸 `intl` 会未定义。
+   * 函数组件据此判定 needsIntl：仅有 props.intl 时仍需注入 `const intl = useIntl()`。
+   */
+  hasLocalTranslationBinding(node: ts.Node, sourceFile: ts.SourceFile): boolean;
+
+  /**
    * 检测节点是否已经国际化（避免重复处理）
    */
   isAlreadyInternationalized(node: ts.Node): boolean;

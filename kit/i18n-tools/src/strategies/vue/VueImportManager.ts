@@ -135,6 +135,15 @@ export class VueImportManager implements IImportManager {
       return code;
     }
 
+    // 目标块已有从 hook 解构出的本地 t（如用户手写 `const { t, locale } = useI18n()`），
+    // 再注入模块级 `import { t }` 会在同一模块作用域产生重复 t 声明（SyntaxError）。
+    // 此时 t 已可用（template/setup 调用都能命中），直接跳过注入。
+    // removeHookImportAndDeclaration 已先清掉工具自注入的「恰好 { t }」形态，故此处只会
+    // 命中含额外键的用户手写解构 —— 既修复双声明，又不影响工具自身的 hook→import 迁移。
+    if (this.hasLocalHookTBinding(block.content)) {
+      return code;
+    }
+
     const updatedScript = CommonASTUtils.mergeNamedImport(block.content, this.tImport, ['t']);
     return code.slice(0, block.start) + updatedScript + code.slice(block.end);
   }
@@ -197,6 +206,38 @@ export class VueImportManager implements IImportManager {
     const declareRe = /^[ \t]*declare[ \t]+const[ \t]+t[ \t]*:[^\n;]+;[ \t]*\r?\n?/gm;
     const voidRe = /^[ \t]*void[ \t]+t[ \t]*;[ \t]*\r?\n?/gm;
     return code.replace(declareRe, '').replace(voidRe, '');
+  }
+
+  /**
+   * 判断脚本块内是否已存在「从本库 hook 解构出的本地 t」绑定，如
+   * `const { t } = useI18n()` / `const { t, locale } = useI18n()` /
+   * `const { i18n, t } = useTranslation()`（hookName 来自 library，避免硬编码）。
+   *
+   * 用于在注入模块级 `import { t }` 前规避「本地解构 t + 模块 import t」双声明冲突。
+   * 关键：判定的是「本地绑定名」是否为 t —— `const { t: localT } = useI18n()` 把 t 重命名
+   * 为 localT，本地并无 t，应返回 false（否则会漏注入导致裸 t() 未声明）；`const
+   * { translate: t } = useI18n()` 把别名绑定到 t，则应返回 true。
+   */
+  private hasLocalHookTBinding(scriptContent: string): boolean {
+    const escapedHook = CommonASTUtils.escapeRegExp(this.library.hookName);
+    const destructureRe = new RegExp(`const\\s*\\{([^}]*)\\}\\s*=\\s*${escapedHook}\\s*\\(`, 'g');
+    let match: RegExpExecArray | null;
+    while ((match = destructureRe.exec(scriptContent)) !== null) {
+      const inner = match[1] ?? '';
+      for (const rawPart of inner.split(',')) {
+        const part = rawPart.trim();
+        if (!part) continue;
+        // 取本地绑定名：`key: local`（重命名）→ local；`name`（含默认值 `name = x`）→ name。
+        const localName = part.includes(':')
+          ? part
+              .slice(part.indexOf(':') + 1)
+              .split('=')[0]!
+              .trim()
+          : part.split('=')[0]!.trim();
+        if (localName === 't') return true;
+      }
+    }
+    return false;
   }
 
   /**

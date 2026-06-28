@@ -39,12 +39,18 @@ export class ReactComponentInjector implements IComponentInjector {
     const initialVisitor = (node: ts.Node) => {
       const componentInfo = ReactASTUtils.getComponentInfo(node);
       if (componentInfo) {
-        const hasIntl = this.library.isTranslationAvailableInScope(
+        const usesTranslation = this.library.componentUsesTranslation(
           componentInfo.node,
           initialSourceFile,
         );
-        const needsIntl =
-          !hasIntl && this.library.componentUsesTranslation(componentInfo.node, initialSourceFile);
+        // 函数组件按「是否已有本地翻译绑定」判定：仅有 props.intl（react-intl）时不算可用，
+        // 需注入 useIntl 让 generator 发出的裸 intl 有绑定（注入 useIntl 始终安全）。
+        // 类组件维持原判定（props.intl 视为已 injectIntl 包裹），避免二次 HOC 包裹。
+        const hasIntl =
+          componentInfo.type === 'function'
+            ? this.library.hasLocalTranslationBinding(componentInfo.node, initialSourceFile)
+            : this.library.isTranslationAvailableInScope(componentInfo.node, initialSourceFile);
+        const needsIntl = !hasIntl && usesTranslation;
 
         if (needsIntl) {
           const injectionType = componentInfo.type === 'function' ? 'hook' : 'hoc';

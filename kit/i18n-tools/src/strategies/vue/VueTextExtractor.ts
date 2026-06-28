@@ -505,8 +505,9 @@ export class VueTextExtractor extends BaseTextExtractor {
       return;
     }
 
-    // 使用 TypeScript AST 解析动态属性表达式
-    const sourceFile = CommonASTUtils.parseSourceFile(trimmed, 'temp.ts');
+    // 以表达式上下文解析动态属性表达式（绑定表达式本质是表达式）：避免内联对象字面量
+    // `{ '中文key': v }` 被当 Block 解析、其中文 KEY 被误提取。
+    const sourceFile = CommonASTUtils.parseExpressionSource(trimmed, 'temp.ts');
 
     const visit = async (node: ts.Node): Promise<void> => {
       // 提取字符串字面量
@@ -531,8 +532,10 @@ export class VueTextExtractor extends BaseTextExtractor {
           return;
         }
 
-        // 检查该节点是否已经在国际化调用中（如 $t('...') 或 t('...')）
+        // 经 isExtractableStringLiteral 排除对象字面量 KEY / 模块导入路径（翻译会破坏
+        // 数据结构 / 导入），与 script 段、React 端口径一致；再检查是否已在 i18n 调用中。
         if (
+          CommonASTUtils.isExtractableStringLiteral(node) &&
           !CommonASTUtils.isAlreadyInternationalized(node) &&
           this.shouldExtract(text, 'template')
         ) {
@@ -659,16 +662,18 @@ export class VueTextExtractor extends BaseTextExtractor {
         return;
       }
 
-      // 使用TypeScript AST解析插值表达式内容
-      // 这样可以准确提取三元表达式中的字符串（包括模板字符串）
-      const sourceFile = CommonASTUtils.parseSourceFile(content, 'temp.ts');
+      // 以表达式上下文解析插值内容：准确提取三元表达式中的字符串（含模板字符串），
+      // 并让内联对象字面量 `{ '中文key': v }` 正确成形（避免中文 KEY 被误提取）。
+      const sourceFile = CommonASTUtils.parseExpressionSource(content, 'temp.ts');
 
       const visit = async (node: ts.Node): Promise<void> => {
         // 提取字符串字面量
         if (ts.isStringLiteral(node)) {
           const text = node.text;
-          // 检查该节点是否已经在国际化调用中（如 $t('...') 或 t('...')）
+          // 经 isExtractableStringLiteral 排除对象 KEY / 导入路径 / 比较操作数，与其他
+          // 提取路径口径一致；再检查是否已在 i18n 调用中。
           if (
+            CommonASTUtils.isExtractableStringLiteral(node) &&
             !CommonASTUtils.isAlreadyInternationalized(node) &&
             this.shouldExtract(text, 'template')
           ) {

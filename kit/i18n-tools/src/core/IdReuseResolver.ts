@@ -3,6 +3,7 @@ import type { ResolvedConfig } from '../config';
 import { CommonASTUtils } from '../utils/common-ast-utils';
 import { IdGenerator } from '../utils/id-generator';
 import { LanguageFileManager } from '../utils/language-file-manager';
+import { scanKeyReferencesInContent } from '../utils/source-key-scanner';
 
 /**
  * 把原文规范化为查表键：去首尾空白、压缩空白序列。
@@ -58,21 +59,22 @@ export class IdReuseResolver {
   }
 
   /**
-   * 扫描多个源文件中已存在的 t() / $t() 调用，加入 existingIds。
+   * 扫描多个源文件中已存在的 i18n key 引用，加入 existingIds 并累计调用点（覆盖率分子）。
+   *
+   * 口径与 source-key-scanner（doctor/prune 对账）统一：除 `t()/$t()` 外，也覆盖
+   * react-intl 的 `intl.formatMessage({ id })` / `<FormattedMessage id>`、react-i18next
+   * 的 `<Trans i18nKey>`、vue 的 `<i18n-t keypath>` / `v-t`。此前仅认 `t()/$t()`，
+   * 导致 react-intl 项目 alreadyI18n 恒为 0、覆盖率被系统性低估而误触 CI 卡点。
    */
   scanExistingCallsInSources(filePaths: Iterable<string>): void {
     for (const filePath of filePaths) {
       try {
         const raw = fs.readFileSync(filePath, 'utf-8');
-        // 剥除注释，避免被注释掉的 t('foo') 污染 existingIds 与覆盖率统计
+        // 剥除注释，避免被注释掉的引用污染 existingIds 与覆盖率统计
         const content = CommonASTUtils.stripComments(raw);
-        const i18nKeyPattern = /(?:\$t|(?<!\w)t)\s*\(\s*['"]([^'"]+)['"]/g;
-        let match;
-        while ((match = i18nKeyPattern.exec(content)) !== null) {
-          if (match[1]) {
-            this.existingIds.add(match[1]);
-            this.existingCallSites++;
-          }
+        for (const ref of scanKeyReferencesInContent(content)) {
+          this.existingIds.add(ref);
+          this.existingCallSites++;
         }
       } catch {
         /* 忽略读取失败 */

@@ -225,6 +225,24 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     });
   }
 
+  hasLocalTranslationBinding(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
+    // 仅认本地 `const intl = useIntl()` 绑定（不含 props.intl/this.props.intl 成员访问）。
+    // generator 发出的裸 `intl.formatMessage` 需要这样一个本地绑定才不会未定义；函数组件
+    // 仅有 props.intl 时据此判定仍需注入 useIntl（注入 useIntl 在 IntlProvider 下始终安全，
+    // 且不涉及类组件的 injectIntl 二次包裹问题）。
+    return ReactASTUtils.someWithinComponentScope(node, (n) => {
+      return (
+        ts.isVariableDeclaration(n) &&
+        ts.isIdentifier(n.name) &&
+        n.name.text === this.translationVarName &&
+        !!n.initializer &&
+        ts.isCallExpression(n.initializer) &&
+        ts.isIdentifier(n.initializer.expression) &&
+        n.initializer.expression.text === 'useIntl'
+      );
+    });
+  }
+
   isAlreadyInternationalized(node: ts.Node): boolean {
     return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
       isI18nCall: (expression) =>
