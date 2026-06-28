@@ -10,7 +10,6 @@ export class VueI18nLibraryImpl implements VueI18nLibrary {
   readonly hookDeclaration = 'const { t } = useI18n();';
   // vue-i18n 的 named 插值用单花括号 `{name}`
   readonly usesDoubleBracePlaceholders = false;
-  readonly templateFunctionName = '$t';
   readonly supportsNamespace = false;
   readonly namespace = '';
 
@@ -18,20 +17,8 @@ export class VueI18nLibraryImpl implements VueI18nLibrary {
     return moduleName === 'vue-i18n';
   }
 
-  isHookDeclaration(callExpressionName: string): boolean {
-    return callExpressionName === 'useI18n';
-  }
-
-  generateImportStatement(): string {
-    return "import { useI18n } from 'vue-i18n';";
-  }
-
   generateHookDeclaration(): string {
     return 'const { t } = useI18n();';
-  }
-
-  getImportCheckRegex(): RegExp {
-    return /import\s*\{[^}]*useI18n[^}]*\}\s*from\s*['"]vue-i18n['"]/;
   }
 
   getHookDeclarationCheckRegex(): RegExp {

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { FileUtils } from './file-utils';
+import { extractSafeError } from './logger';
 
 /**
  * 失败发生的阶段（与三个 Processor 内已有的失败分支一一对应）：
@@ -364,12 +365,6 @@ export class RunReport {
   };
 
   private static safeExtractError(error: unknown): FailureRecord['error'] {
-    if (error instanceof Error) {
-      return { name: error.name, message: error.message };
-    }
-    if (typeof error === 'string') {
-      return { name: 'StringError', message: error };
-    }
-    return { name: 'NonError', message: Object.prototype.toString.call(error) };
+    return extractSafeError(error);
   }
 }

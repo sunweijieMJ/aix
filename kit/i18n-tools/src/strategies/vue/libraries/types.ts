@@ -13,9 +13,6 @@ import type { BaseI18nLibrary } from '../../base';
  * 与 React 端保持一致的命名约定。
  */
 export interface VueI18nLibrary extends BaseI18nLibrary {
-  /** 模板全局函数名（两者都是 $t） */
-  readonly templateFunctionName: string;
-
   /** 是否支持命名空间 */
   readonly supportsNamespace: boolean;
 
@@ -28,30 +25,11 @@ export interface VueI18nLibrary extends BaseI18nLibrary {
   isLibraryImport(moduleName: string): boolean;
 
   /**
-   * 检测变量声明是否为本库的 Hook 调用（用于 restore 清理）
-   * vue-i18n:    const { t } = useI18n()
-   * vue-i18next: const { t } = useTranslation()
-   */
-  isHookDeclaration(callExpressionName: string): boolean;
-
-  /**
-   * 生成导入语句
-   * vue-i18n:    import { useI18n } from 'vue-i18n'
-   * vue-i18next: import { useTranslation } from 'vue-i18next'
-   */
-  generateImportStatement(): string;
-
-  /**
    * 生成 Hook 声明语句
    * vue-i18n:    const { t } = useI18n();
    * vue-i18next: const { t } = useTranslation();  或  const { t } = useTranslation('namespace');
    */
   generateHookDeclaration(): string;
-
-  /**
-   * 生成导入正则（用于检测是否已导入）
-   */
-  getImportCheckRegex(): RegExp;
 
   /**
    * 生成 Hook 声明检查正则（用于检测是否已声明）

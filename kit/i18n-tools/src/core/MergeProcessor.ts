@@ -4,7 +4,7 @@ import { FILES } from '../utils/constants';
 import { FileUtils } from '../utils/file-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
-import type { Translations } from '../utils/types';
+import type { LocaleMap, Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
 
 /**
@@ -352,18 +352,7 @@ export class MergeProcessor extends FileProcessor {
       target,
     );
 
-    let updatedCount = 0;
-    for (const [key, data] of Object.entries(newlyTranslated)) {
-      const translatedValue = data[target];
-      if (
-        translatedValue &&
-        typeof translatedValue === 'string' &&
-        targetMessages[key] !== translatedValue
-      ) {
-        targetMessages[key] = translatedValue;
-        updatedCount++;
-      }
-    }
+    const updatedCount = MergeProcessor.applyTranslations(targetMessages, newlyTranslated, target);
 
     // 用 BucketResolver 重新计算 keyBucketMap：source locale 的文本驱动分桶，
     // 与 generate/export 阶段一致
@@ -385,13 +374,15 @@ export class MergeProcessor extends FileProcessor {
     LoggerUtils.info(`📄 已更新 [${target}] 桶式语言包，更新 ${updatedCount} 个条目`);
   }
 
-  private updateFlatLanguagePackage(newlyTranslated: Translations, target: string): void {
-    const targetMessages = LanguageFileManager.readLocaleFile(this.config, this.isCustom, target);
-    if (targetMessages === null) {
-      // 文件存在但解析失败：readLocaleFile 已打印错误
-      return;
-    }
-
+  /**
+   * 把 newlyTranslated 里某 target 语言的非空字符串译文写入 targetMessages，返回更新条目数。
+   * 桶式 / 扁平两条写回路径共用，仅 targetMessages 来源不同。
+   */
+  private static applyTranslations(
+    targetMessages: LocaleMap,
+    newlyTranslated: Translations,
+    target: string,
+  ): number {
     let updatedCount = 0;
     for (const [key, data] of Object.entries(newlyTranslated)) {
       const translatedValue = data[target];
@@ -404,6 +395,17 @@ export class MergeProcessor extends FileProcessor {
         updatedCount++;
       }
     }
+    return updatedCount;
+  }
+
+  private updateFlatLanguagePackage(newlyTranslated: Translations, target: string): void {
+    const targetMessages = LanguageFileManager.readLocaleFile(this.config, this.isCustom, target);
+    if (targetMessages === null) {
+      // 文件存在但解析失败：readLocaleFile 已打印错误
+      return;
+    }
+
+    const updatedCount = MergeProcessor.applyTranslations(targetMessages, newlyTranslated, target);
 
     LanguageFileManager.writeLocaleFile(this.config, this.isCustom, targetMessages, target);
     LoggerUtils.info(

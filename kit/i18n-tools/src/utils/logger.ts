@@ -1,6 +1,23 @@
 import chalk from 'chalk';
 
 /**
+ * 从任意抛出物安全提取 `{ name, message }`，不带出 stack / 整对象。
+ *
+ * OpenAI / Axios 等 SDK 抛出的错误对象在整体序列化时可能带出 URL token /
+ * Authorization header，因此统一只保留 name + message。LoggerUtils.error（控制台）
+ * 与 RunReport（落盘 FailureRecord）共用这一份策略，避免两处各写一遍导致漂移。
+ */
+export function extractSafeError(error: unknown): { name: string; message: string } {
+  if (error instanceof Error) {
+    return { name: error.name, message: error.message };
+  }
+  if (typeof error === 'string') {
+    return { name: 'StringError', message: error };
+  }
+  return { name: 'NonError', message: Object.prototype.toString.call(error) };
+}
+
+/**
  * 日志级别（数值越小越详细）
  */
 export enum LogLevel {
@@ -54,13 +71,8 @@ export class LoggerUtils {
       console.error(chalk.red(`[ERROR] ${message}`));
       return;
     }
-    const safe =
-      error instanceof Error
-        ? `${error.name}: ${error.message}`
-        : typeof error === 'string'
-          ? error
-          : `[non-Error: ${Object.prototype.toString.call(error)}]`;
-    console.error(chalk.red(`[ERROR] ${message} ${safe}`));
+    const { name, message: detail } = extractSafeError(error);
+    console.error(chalk.red(`[ERROR] ${message} ${name}: ${detail}`));
   }
 
   /**

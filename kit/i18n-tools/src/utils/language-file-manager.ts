@@ -202,25 +202,48 @@ export class LanguageFileManager {
       return cls.status === 'ok' ? cls.data : {};
     };
 
+    for (const { bucketName, filePath } of this.listBucketFilePaths(baseDir, locale, layout)) {
+      const data = loadOne(filePath);
+      if (data !== undefined) onFile(bucketName, data);
+    }
+  }
+
+  /**
+   * 枚举某 locale 涉及的所有 bucket 文件位置（不读取内容），返回 {桶名, 路径}。
+   *
+   * by-locale: `<baseDir>/<locale>/*.json`（桶名 = 文件名去 .json）
+   * by-bucket: `<baseDir>/<bucket>/<locale>.json`（桶名 = 桶目录名）
+   *
+   * iterateBucketedFiles（读内容回调）与 pruneOrphanBucketFiles（只需路径）共用，
+   * 避免两处各写一遍同样的目录遍历导致漂移。
+   */
+  private static listBucketFilePaths(
+    baseDir: string,
+    locale: string,
+    layout: 'by-locale' | 'by-bucket',
+  ): Array<{ bucketName: string; filePath: string }> {
+    const result: Array<{ bucketName: string; filePath: string }> = [];
     if (layout === 'by-locale') {
       const dirPath = path.join(baseDir, locale);
-      if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return;
-      for (const file of fs.readdirSync(dirPath).filter((f) => f.endsWith('.json'))) {
-        const bucketName = path.basename(file, '.json');
-        const data = loadOne(path.join(dirPath, file));
-        if (data !== undefined) onFile(bucketName, data);
+      if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return result;
+      for (const file of fs.readdirSync(dirPath)) {
+        if (!file.endsWith('.json')) continue;
+        result.push({
+          bucketName: path.basename(file, '.json'),
+          filePath: path.join(dirPath, file),
+        });
       }
-      return;
+      return result;
     }
     // by-bucket
-    if (!fs.existsSync(baseDir)) return;
+    if (!fs.existsSync(baseDir)) return result;
     for (const entry of fs.readdirSync(baseDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
       const langFile = path.join(baseDir, entry.name, `${locale}.json`);
       if (!fs.existsSync(langFile)) continue;
-      const data = loadOne(langFile);
-      if (data !== undefined) onFile(entry.name, data);
+      result.push({ bucketName: entry.name, filePath: langFile });
     }
+    return result;
   }
 
   /**
@@ -493,21 +516,7 @@ export class LanguageFileManager {
     layout: 'by-locale' | 'by-bucket',
     writtenPaths: Set<string>,
   ): void {
-    const candidates: string[] = [];
-    if (layout === 'by-locale') {
-      const dirPath = path.join(baseDir, locale);
-      if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return;
-      for (const file of fs.readdirSync(dirPath)) {
-        if (file.endsWith('.json')) candidates.push(path.join(dirPath, file));
-      }
-    } else {
-      if (!fs.existsSync(baseDir)) return;
-      for (const entry of fs.readdirSync(baseDir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        const langFile = path.join(baseDir, entry.name, `${locale}.json`);
-        if (fs.existsSync(langFile)) candidates.push(langFile);
-      }
-    }
+    const candidates = this.listBucketFilePaths(baseDir, locale, layout).map((c) => c.filePath);
 
     for (const candidate of candidates) {
       if (writtenPaths.has(path.resolve(candidate))) continue;
