@@ -245,9 +245,7 @@ export class ReactComponentInjector implements IComponentInjector {
 
       if (body) {
         const usesTranslation = this.library.componentUsesTranslation(body, sourceFile);
-        const hasDeclaration = body
-          .getText(sourceFile)
-          .includes(`const { ${varName} } = this.props`);
+        const hasDeclaration = this.bodyDestructuresProp(body, varName);
 
         if (usesTranslation && !hasDeclaration) {
           if (ts.isBlock(body)) {
@@ -328,6 +326,43 @@ export class ReactComponentInjector implements IComponentInjector {
         text: hocStatement,
       });
     }
+  }
+
+  /**
+   * 方法体内是否已从 `this.props` 解构出 varName。
+   *
+   * 取代脆弱的固定字符串 `includes('const { t } = this.props')` 匹配：后者只认单变量、
+   * 单空格的精确写法，对 `const { t, data } = this.props`、`const {t} = this.props` 等
+   * 合法形态一律漏判，导致在同一块作用域内重复注入 `const { t } = this.props`，块级
+   * 重复声明 t/intl → TS2451 不可编译。改用 AST：扫描体内任意「ObjectBindingPattern =
+   * this.props」且绑定名（而非源属性名）等于 varName 的声明。
+   *
+   * 注意比对的是 BindingElement.name（引入作用域的标识符），而非 propertyName：
+   * `const { t: tt } = this.props` 引入的是 tt 而非 t，不构成对 t 的重复声明。
+   */
+  private bodyDestructuresProp(body: ts.Block | ts.ConciseBody, varName: string): boolean {
+    let found = false;
+    const visit = (node: ts.Node): void => {
+      if (found) return;
+      if (
+        ts.isVariableDeclaration(node) &&
+        node.initializer &&
+        ts.isPropertyAccessExpression(node.initializer) &&
+        node.initializer.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        node.initializer.name.text === 'props' &&
+        ts.isObjectBindingPattern(node.name)
+      ) {
+        for (const element of node.name.elements) {
+          if (ts.isIdentifier(element.name) && element.name.text === varName) {
+            found = true;
+            return;
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(body);
+    return found;
   }
 
   private applyTransformations(code: string, transformations: Transformation[]): string {

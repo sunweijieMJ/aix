@@ -313,6 +313,8 @@ export class CommonASTUtils {
    *
    * 排除：
    * - 对象字面量属性 key（如 `{ '中文key': value }`，翻译会破坏数据结构）
+   * - 计算属性 KEY（如 `{ ['进行中']: v }`，字面量直接父节点是 ComputedPropertyName，
+   *   翻译后 key 变译文同样破坏数据结构——与非计算 key 对称）
    * - 计算属性访问的 key（如 `map['进行中']`，翻译后 `map[t(...)]` 返回译文，查找落空）
    * - 模块导入路径（import / require / external module reference）
    * - 比较运算符 / case 子句的操作数（翻译状态值会破坏分支判断）
@@ -328,6 +330,10 @@ export class CommonASTUtils {
     const parent = node.parent;
     if (!parent) return true;
     if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+    // 计算属性 KEY `{ ['进行中']: v }` / `class { ['进行中']() {} }`：字面量的直接父节点
+    // 是 ComputedPropertyName，PropertyAssignment 分支无法命中（其父才是）。提取后 key 变译文，
+    // 与非计算 key 同样破坏数据结构，需对称排除。
+    if (ts.isComputedPropertyName(parent) && parent.expression === node) return false;
     if (ts.isElementAccessExpression(parent) && parent.argumentExpression === node) return false;
     if (ts.isImportDeclaration(parent) || ts.isExternalModuleReference(parent)) return false;
     if (CommonASTUtils.isComparisonOperand(node)) return false;

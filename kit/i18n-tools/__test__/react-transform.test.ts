@@ -106,6 +106,58 @@ export default Panel;`;
   });
 });
 
+describe('ReactComponentInjector.injectHOC：已有 this.props 解构不得重复注入（审计 #3）', () => {
+  // 修复前用固定字符串 includes('const { t } = this.props') 检测已有解构，对多属性
+  // (`const { t, data }`) / 无空格 (`const {t}`) 等合法写法漏判 → 在同块重复注入
+  // `const { t } = this.props;`，块级重复声明 t → TS2451 不可编译。改用 AST 检测后免疫。
+  it('已有多属性解构 const { t, data } = this.props：不再重复注入', () => {
+    const injector = buildInjector();
+    const code = `import { Component } from 'react';
+class Panel extends Component {
+  render() {
+    const { t, data } = this.props;
+    return <div title={t('panel.label')}>{data}</div>;
+  }
+}
+export default Panel;`;
+    const out = injector.inject(code);
+
+    // 只保留原解构一处，不得再注入第二条 this.props 解构
+    expect(count(out, /=\s*this\.props/g)).toBe(1);
+    expect(out).toContain('const { t, data } = this.props;');
+    expect(out).not.toContain('const { t } = this.props;');
+  });
+
+  it('已有无空格解构 const {t} = this.props：不再重复注入', () => {
+    const injector = buildInjector();
+    const code = `import { Component } from 'react';
+class Panel extends Component {
+  render() {
+    const {t} = this.props;
+    return <div title={t('panel.label')} />;
+  }
+}
+export default Panel;`;
+    const out = injector.inject(code);
+
+    expect(count(out, /=\s*this\.props/g)).toBe(1);
+  });
+
+  it('确无解构时仍正常注入（既有行为保护）', () => {
+    const injector = buildInjector();
+    const code = `import { Component } from 'react';
+class Panel extends Component {
+  render() {
+    return <div title={t('panel.label')} />;
+  }
+}
+export default Panel;`;
+    const out = injector.inject(code);
+
+    expect(out).toContain('const { t } = this.props;');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 场景 2：ReactImportManager — 非组件作用域注入 import { t }
 // ---------------------------------------------------------------------------

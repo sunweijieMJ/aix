@@ -232,6 +232,52 @@ const handle = () => {
 
     expect(CommonASTUtils.drainSkippedNestedChinese()).toEqual([]);
   });
+
+  // 回归：动态属性 / 插值里的模板字符串与脚本段对齐——整段提取为单条、嵌套中文分支只记诊断，
+  // 不得再递归进分支字面量重复提取（修复前缺 return → '在线'/'离线' 被各提一条独立 key，
+  // 整段键沦为孤儿、同位置替换冲突，且诊断又称它们"未提取需手动处理"，自相矛盾）。
+  it('dynamic-attribute 模板字符串：整段提取 + 嵌套中文只记诊断，不重复提取分支', async () => {
+    const file = writeVue(
+      'C.vue',
+      "<template><div :title=\"`状态：${ok ? '在线' : '离线'}`\" /></template><script setup></script>",
+    );
+
+    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const result = await extractor.extractFromFile(file);
+
+    // 整段模板被提取为单条 isTemplateString 项
+    const tmpl = result.filter((r) => r.isTemplateString);
+    expect(tmpl).toHaveLength(1);
+    expect(tmpl[0]!.original).toContain('状态：');
+    // 分支字面量不得各自生成独立 key
+    expect(result.some((r) => !r.isTemplateString && r.original === '在线')).toBe(false);
+    expect(result.some((r) => !r.isTemplateString && r.original === '离线')).toBe(false);
+    // 两个中文分支记入诊断（与脚本路径一致）
+    const texts = CommonASTUtils.drainSkippedNestedChinese()
+      .map((d) => d.text)
+      .sort();
+    expect(texts).toEqual(['在线', '离线']);
+  });
+
+  it('interpolation 模板字符串：整段提取 + 嵌套中文只记诊断，不重复提取分支', async () => {
+    const file = writeVue(
+      'D.vue',
+      "<template><div>{{ `状态：${ok ? '在线' : '离线'}` }}</div></template><script setup></script>",
+    );
+
+    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const result = await extractor.extractFromFile(file);
+
+    const tmpl = result.filter((r) => r.isTemplateString);
+    expect(tmpl).toHaveLength(1);
+    expect(tmpl[0]!.original).toContain('状态：');
+    expect(result.some((r) => !r.isTemplateString && r.original === '在线')).toBe(false);
+    expect(result.some((r) => !r.isTemplateString && r.original === '离线')).toBe(false);
+    const texts = CommonASTUtils.drainSkippedNestedChinese()
+      .map((d) => d.text)
+      .sort();
+    expect(texts).toEqual(['在线', '离线']);
+  });
 });
 
 /**
@@ -499,6 +545,31 @@ const color = statusMap['进行中'];
       file,
       `export function f(statusMap: Record<string, string>) {
   return statusMap['进行中'];
+}`,
+    );
+    const result = await new ReactTextExtractor().extractFromFile(file);
+    expect(result.map((r) => r.original)).not.toContain('进行中');
+  });
+
+  it("Vue <script>：计算属性 KEY { ['中文']: v } 不被提取", async () => {
+    const file = path.join(tmpDir, 'C.vue');
+    fs.writeFileSync(
+      file,
+      `<template><div /></template>
+<script setup>
+const statusMap = { ['进行中']: 'green' };
+</script>`,
+    );
+    const result = await new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+    expect(result.map((r) => r.original)).not.toContain('进行中');
+  });
+
+  it("React .tsx：计算属性 KEY { ['中文']: v } 不被提取", async () => {
+    const file = path.join(tmpDir, 'C.tsx');
+    fs.writeFileSync(
+      file,
+      `export function f() {
+  return { ['进行中']: 'green' };
 }`,
     );
     const result = await new ReactTextExtractor().extractFromFile(file);

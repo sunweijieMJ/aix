@@ -191,6 +191,46 @@ describe('common-ast-utils', () => {
     });
   });
 
+  describe('CommonASTUtils.isExtractableStringLiteral — 计算属性 KEY 排除', () => {
+    // 取代码中「指定文本」的字符串字面量节点（按 node.text 精确定位，避免误取同名片段）
+    function findStringLiteral(code: string, text: string): ts.StringLiteral {
+      const sourceFile = CommonASTUtils.parseSourceFile(code, 'temp.ts');
+      let found: ts.StringLiteral | undefined;
+      const visit = (n: ts.Node) => {
+        if (!found && ts.isStringLiteral(n) && n.text === text) found = n;
+        ts.forEachChild(n, visit);
+      };
+      ts.forEachChild(sourceFile, visit);
+      if (!found) throw new Error(`no string literal: ${text}`);
+      return found;
+    }
+
+    it('计算属性 KEY `{ [‘进行中’]: v }` 不可提取（与非计算 key 对称）', () => {
+      const node = findStringLiteral(`const m = { ['进行中']: 1 };`, '进行中');
+      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(false);
+    });
+
+    it('类成员的计算属性名 `class { [‘进行中’]() {} }` 同样不可提取', () => {
+      const node = findStringLiteral(`class C { ['进行中']() {} }`, '进行中');
+      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(false);
+    });
+
+    it('非计算对象 key 仍不可提取（既有行为保护）', () => {
+      const node = findStringLiteral(`const m = { '进行中': 1 };`, '进行中');
+      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(false);
+    });
+
+    it('计算成员访问 `map[‘进行中’]` 不可提取（既有行为保护）', () => {
+      const node = findStringLiteral(`const c = map['进行中'];`, '进行中');
+      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(false);
+    });
+
+    it('普通展示文案仍可提取（不被新规则误伤）', () => {
+      const node = findStringLiteral(`const title = '请输入姓名';`, '请输入姓名');
+      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(true);
+    });
+  });
+
   describe('CommonASTUtils.isImportedNameUnused（作用域遮蔽判定）', () => {
     const M = '@/plugins/locale';
     const check = (code: string) => CommonASTUtils.isImportedNameUnused(code, 'f.tsx', M, 't');
