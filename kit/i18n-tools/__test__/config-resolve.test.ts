@@ -1,6 +1,8 @@
+import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import { describe, expect, it, vi } from 'vitest';
-import { resolveBuckets, resolveConfig } from '../src/config/loader';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadConfigFile, resolveBuckets, resolveConfig } from '../src/config/loader';
 import {
   BUILTIN_CN_MAPPINGS,
   DEFAULT_IO,
@@ -621,5 +623,313 @@ describe('resolveConfig - 数组默认值防御性拷贝（不共享引用）', 
     expect(a.io.include).not.toBe(b.io.include);
     a.io.include.push('only-in-a');
     expect(b.io.include).not.toContain('only-in-a');
+  });
+});
+
+/**
+ * 回归：loader 对 merge.onLlmRejected / locales / framework.library 等都做了枚举校验，但
+ * io.format 与 buckets.layout 直接 `?? 默认值` 透传，非法值（拼写错误等）会静默落入默认分支，
+ * 且 io.format 拼错还能绕过「nested 必须 separator='.'」守卫。修复：补齐枚举 fail-fast 校验。
+ */
+describe('resolveConfig — io.format / buckets.layout 枚举校验', () => {
+  it('io.format 非法值抛错', () => {
+    expect(() => resolveConfig({ ...baseConfig, io: { format: 'json' as never } })).toThrow(
+      /io\.format/,
+    );
+  });
+
+  it('io.format 拼写错误（nestd）抛错而非绕过 nested 守卫', () => {
+    expect(() => resolveConfig({ ...baseConfig, io: { format: 'nestd' as never } })).toThrow(
+      /io\.format/,
+    );
+  });
+
+  it('合法 io.format 通过', () => {
+    expect(() =>
+      resolveConfig({ ...baseConfig, io: { format: 'flat' }, keys: { separator: '__' } }),
+    ).not.toThrow();
+    expect(() => resolveConfig({ ...baseConfig, io: { format: 'nested' } })).not.toThrow();
+  });
+
+  it('buckets.layout 非法值抛错', () => {
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        buckets: { rules: [{ name: 'a', match: 'src/a/**' }], layout: 'bybucket' as never },
+      }),
+    ).toThrow(/buckets\.layout/);
+  });
+
+  it('合法 buckets.layout 通过', () => {
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        buckets: { rules: [{ name: 'a', match: 'src/a/**' }], layout: 'by-bucket' },
+      }),
+    ).not.toThrow();
+  });
+});
+
+/**
+ * 回归：loader 对 io.format / buckets.layout / merge.onLlmRejected 做了枚举白名单校验，但
+ * glossary.override / keys.prefix.fileNameCase / indexFile 只有 `?? default` 而从不校验。
+ * loader 显式支持 JS 配置（运行时无 TS 类型设防），typo 会静默落入弱默认行为且零诊断
+ * （例如 glossary.override='allways' 会静默回退到比默认更弱的 when-empty）。修复：补齐 fail-fast 校验。
+ */
+describe('resolveConfig — glossary.override 枚举校验', () => {
+  it('typo（allways）抛错而非静默回退 when-empty', () => {
+    expect(() =>
+      resolveConfig({ ...baseConfig, glossary: { override: 'allways' as never } }),
+    ).toThrow(/glossary\.override/);
+  });
+
+  it('合法取值通过', () => {
+    expect(() => resolveConfig({ ...baseConfig, glossary: { override: 'always' } })).not.toThrow();
+    expect(() =>
+      resolveConfig({ ...baseConfig, glossary: { override: 'when-empty' } }),
+    ).not.toThrow();
+  });
+
+  it('未配置 glossary（用默认 always）通过', () => {
+    expect(() => resolveConfig({ ...baseConfig })).not.toThrow();
+  });
+});
+
+describe('resolveConfig — keys.prefix.fileNameCase / indexFile 枚举校验', () => {
+  it('fileNameCase 非法字符串抛错', () => {
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        keys: { prefix: { strategy: 'path', fileNameCase: 'CamelCase' as never } },
+      }),
+    ).toThrow(/fileNameCase/);
+  });
+
+  it('fileNameCase 合法字符串通过', () => {
+    for (const c of ['as-is', 'camel', 'kebab', 'snake'] as const) {
+      expect(() =>
+        resolveConfig({ ...baseConfig, keys: { prefix: { strategy: 'path', fileNameCase: c } } }),
+      ).not.toThrow();
+    }
+  });
+
+  it('fileNameCase 传函数（自定义转换）不被误拦', () => {
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        keys: { prefix: { strategy: 'path', fileNameCase: (n: string) => n.toUpperCase() } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('indexFile 非法值抛错', () => {
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        keys: { prefix: { strategy: 'path', indexFile: 'collapse' as never } },
+      }),
+    ).toThrow(/indexFile/);
+  });
+
+  it('indexFile 合法值通过', () => {
+    for (const v of ['as-is', 'collapse-to-parent'] as const) {
+      expect(() =>
+        resolveConfig({ ...baseConfig, keys: { prefix: { strategy: 'path', indexFile: v } } }),
+      ).not.toThrow();
+    }
+  });
+});
+
+/**
+ * 回归（B14/B15）：
+ * - 顶层必填 root/framework 缺失时此前抛 path.resolve(undefined) 之类的晦涩原生错误，
+ *   且 root='' 会被 path.resolve('') 静默当成 cwd。修复：补清晰的 fail-fast 守卫。
+ * - bucket 的 match/matchKey 此前只校验存在/互斥，不校验类型（prefix rules 已校验），
+ *   错误类型会绕过到 BucketResolver 抛「Invalid bucket rule」或运行时 TypeError。修复：补类型校验。
+ */
+describe('resolveConfig — 顶层必填字段守卫', () => {
+  it('缺失 root 抛清晰错误', () => {
+    expect(() =>
+      resolveConfig({ framework: { type: 'vue' }, llm } as unknown as I18nToolsConfig),
+    ).toThrow(/config\.root/);
+  });
+
+  it('root 为空字符串抛错（避免被 path.resolve 静默当成 cwd）', () => {
+    expect(() => resolveConfig({ ...baseConfig, root: '' })).toThrow(/config\.root/);
+  });
+
+  it('缺失 framework 抛清晰错误', () => {
+    expect(() => resolveConfig({ root: TEST_ROOT, llm } as unknown as I18nToolsConfig)).toThrow(
+      /config\.framework/,
+    );
+  });
+});
+
+describe('resolveConfig — bucket match/matchKey 类型校验', () => {
+  it('matchKey 非函数抛错', () => {
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        buckets: { rules: [{ name: 'a', matchKey: 'foo' as never }] },
+      }),
+    ).toThrow(/matchKey/);
+  });
+
+  it('match 非法类型抛错', () => {
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        buckets: { rules: [{ name: 'a', match: 123 as never }] },
+      }),
+    ).toThrow(/match/);
+  });
+
+  it('合法 match / matchKey 通过', () => {
+    expect(() =>
+      resolveConfig({ ...baseConfig, buckets: { rules: [{ name: 'a', match: 'src/a/**' }] } }),
+    ).not.toThrow();
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        buckets: { rules: [{ name: 'b', matchKey: (k: string) => k.startsWith('b.') }] },
+      }),
+    ).not.toThrow();
+  });
+});
+
+/**
+ * 回归（B7）：loadConfigFile 按扩展名分发——.ts/.mts/.cts 走 jiti，其余走原生 import。
+ * jiti 对非绝对 specifier 以 loader 模块为基准解析（而非 cwd），原生 import 的 pathToFileURL
+ * 则按 cwd 解析。于是同一相对 configPath 因扩展名走不同基准 → 解析到不同文件甚至找不到
+ * （README 文档示例 loadConfig('./i18n.config.ts') 即踩中 jiti 分支）。
+ * 修复：分发前统一 path.resolve(cwd, configPath) 成绝对路径。
+ */
+describe('loadConfigFile — 相对 configPath 按 cwd 解析（.mts/jiti 分支）', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfg-rel-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('相对路径的 .mts 配置以 cwd 为基准解析并成功加载', async () => {
+    const abs = path.join(tmpDir, 'i18n.config.mts');
+    fs.writeFileSync(
+      abs,
+      `export default { root: '/tmp/b7-root', framework: { type: 'vue' }, ` +
+        `llm: { shared: { apiKey: 'x', model: 'm' } } };\n`,
+      'utf-8',
+    );
+
+    // 构造一个相对 cwd 的路径（修复前 jiti 会以 loader 模块为基准解析 → 找不到）
+    const rel = path.relative(process.cwd(), abs);
+    expect(path.isAbsolute(rel)).toBe(false);
+
+    const cfg = await loadConfigFile(rel);
+    expect(cfg?.root).toBe('/tmp/b7-root');
+    expect(cfg?.framework.type).toBe('vue');
+  });
+});
+
+/**
+ * 回归（审计修复）：loader 配置守卫
+ *  - 审计 ⑥：locales.source / 每个 target 的空串/纯空白必须 fail-fast（否则落出畸形 `.json`）。
+ *  - 审计 ③：用户提供 io.exclude 时整体替换默认值，必须强制并入 node_modules/.git 安全集；
+ *            含 '/' 的 literal exclude 仅按 basename 匹配、永远命中不了，应给出告警。
+ */
+describe('loader 配置守卫（审计修复 ③/⑥）', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const auditBase = (over: Partial<I18nToolsConfig> = {}): I18nToolsConfig => ({
+    root: process.cwd(),
+    framework: { type: 'vue' },
+    locales: { source: 'zh-CN', targets: ['en-US'] },
+    io: { localesDir: 'src/i18n', sourceDir: 'src' },
+    llm: { shared: { apiKey: 'x', model: 'm' } },
+    ...over,
+  });
+
+  it('locales.source 为空串 → 抛错', () => {
+    expect(() => resolveConfig(auditBase({ locales: { source: '', targets: ['en-US'] } }))).toThrow(
+      /locales\.source/,
+    );
+  });
+
+  it('locales.source 为纯空白 → 抛错', () => {
+    expect(() =>
+      resolveConfig(auditBase({ locales: { source: '  ', targets: ['en-US'] } })),
+    ).toThrow(/locales\.source/);
+  });
+
+  it('locales.targets 含空串 → 抛错', () => {
+    expect(() =>
+      resolveConfig(auditBase({ locales: { source: 'zh-CN', targets: ['en-US', ''] } })),
+    ).toThrow(/locales\.targets/);
+  });
+
+  it('合法 locales 不受影响', () => {
+    expect(() =>
+      resolveConfig(auditBase({ locales: { source: 'zh-CN', targets: ['en-US', 'ja-JP'] } })),
+    ).not.toThrow();
+  });
+
+  it('用户 io.exclude 强制并入 node_modules/.git 安全集', () => {
+    const resolved = resolveConfig(auditBase({ io: { exclude: ['legacy'] } }));
+    expect(resolved.io.exclude).toContain('node_modules');
+    expect(resolved.io.exclude).toContain('.git');
+    expect(resolved.io.exclude).toContain('legacy');
+  });
+
+  it('未配置 io.exclude → 保留含测试/故事/构建产物的完整默认集', () => {
+    const resolved = resolveConfig(auditBase());
+    expect(resolved.io.exclude).toContain('node_modules');
+    expect(resolved.io.exclude).toEqual(expect.arrayContaining(['**/*.test.*', '**/*.stories.*']));
+  });
+
+  it('含 "/" 的 literal exclude 给出告警（仅 basename 匹配命中不了）', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resolveConfig(auditBase({ io: { exclude: ['src/legacy'] } }));
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/src\/legacy/));
+  });
+
+  it('glob 形式的 exclude（含 \\*\\*）不触发告警', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resolveConfig(auditBase({ io: { exclude: ['**/legacy/**'] } }));
+    expect(warn).not.toHaveBeenCalledWith(expect.stringMatching(/命中不了/));
+  });
+});
+
+/**
+ * 回归（审计 Low）：keys.separator 为空串时必须 fail-fast。
+ *
+ * 根因（修复前）：`separator: userConfig.keys?.separator ?? DEFAULT` 对 '' 不兜底（'' 非
+ * nullish），flat 格式也不校验 separator（nested 才强制 '.'）。空串下 id-generator 用
+ * split('')/join('') 拼接 key 段：固定前缀被炸成逐字符，且 ['a','bc'] 与 ['ab','c'] 这类
+ * 不同段序列拼成同一 key（碰撞）。
+ */
+describe('config — keys.separator 空串校验', () => {
+  function separatorBase(separator: string): I18nToolsConfig {
+    return {
+      root: '/tmp/x',
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    };
+  }
+
+  it('separator = "" 时抛错', () => {
+    expect(() => resolveConfig(separatorBase(''))).toThrow(/separator 必须是非空字符串/);
+  });
+
+  it('正常 separator（"."）通过', () => {
+    expect(() => resolveConfig(separatorBase('.'))).not.toThrow();
+  });
+
+  it('多字符 separator（"__"）在 flat 下仍合法', () => {
+    expect(() => resolveConfig(separatorBase('__'))).not.toThrow();
   });
 });
