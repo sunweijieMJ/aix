@@ -55,8 +55,10 @@ export class ReactTextExtractor extends BaseTextExtractor {
       return;
     }
 
-    const arg = node.arguments[0]!;
-    if (!ts.isObjectLiteralExpression(arg)) {
+    // 零参 `defineMessages()` 时 arguments[0] 为 undefined；不可用非空断言后直接喂
+    // ts.isObjectLiteralExpression(undefined)（内部读 .kind 会抛 TypeError，中断整文件 restore）。
+    const arg = node.arguments[0];
+    if (!arg || !ts.isObjectLiteralExpression(arg)) {
       return;
     }
 
@@ -180,6 +182,15 @@ export class ReactTextExtractor extends BaseTextExtractor {
           templateVariables:
             mixedContent.templateVariables.length > 0 ? mixedContent.templateVariables : undefined,
         });
+        // 插值分支里的嵌套中文记入诊断（与模板字面量路径一致），供 lint/doctor 告警。
+        for (const nested of mixedContent.nestedChineseTexts) {
+          CommonASTUtils.recordSkippedNestedChinese(
+            nested,
+            filePath,
+            position.line + 1,
+            position.character + 1,
+          );
+        }
         // 处理了混合内容后，跳过子节点的单独处理
         return;
       }
@@ -302,6 +313,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     text: string;
     isTemplateString: boolean;
     templateVariables: string[];
+    nestedChineseTexts: string[];
   } | null {
     const children = node.children;
     if (!children || children.length === 0) {
@@ -349,6 +361,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     // 构建模板字符串格式的文本（使用${expression}格式）
     let inner = '';
     const templateVariables: string[] = [];
+    const nestedChineseTexts: string[] = [];
 
     for (const child of children) {
       if (ts.isJsxText(child)) {
@@ -362,6 +375,9 @@ export class ReactTextExtractor extends BaseTextExtractor {
         const expressionText = CommonASTUtils.nodeToText(child.expression!, sourceFile);
         templateVariables.push(expressionText);
         inner += `\${${expressionText}}`;
+        // 插值表达式里的中文分支（如 `{ok ? '成功' : '失败'}`）被整段当运行时变量塞进
+        // 占位符，既不提取也不内联 —— 与模板字面量路径对齐，记录到诊断集合避免静默泄漏。
+        nestedChineseTexts.push(...CommonASTUtils.collectNestedChineseLiterals(child.expression));
       }
     }
 
@@ -374,6 +390,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
       text: templateText,
       isTemplateString: true,
       templateVariables,
+      nestedChineseTexts,
     };
   }
 

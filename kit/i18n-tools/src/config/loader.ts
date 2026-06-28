@@ -585,6 +585,16 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     );
   }
 
+  // keys.separator 不得为空串：id-generator 用它 join/split key 段，空串会让 split('') 把
+  // 固定前缀炸成逐字符，并令 ['a','bc'] 与 ['ab','c'] 这类不同段序列拼成同一 key（碰撞）。
+  // 其它格式字段都已 validateEnum，唯独 separator 在 flat 路径下漏校验（nested 仅强制 '.'）。
+  if (typeof resolved.keys.separator !== 'string' || resolved.keys.separator.length === 0) {
+    throw new Error(
+      `keys.separator 必须是非空字符串，当前收到 '${String(resolved.keys.separator)}'。\n` +
+        `它用于拼接/拆分 key 段，空串会导致 key 段碰撞与前缀逐字符炸裂。`,
+    );
+  }
+
   // io.format='nested' 要求 separator='.'：vue-i18n 用 '.' 遍历嵌套 key
   if (resolved.io.format === 'nested' && resolved.keys.separator !== '.') {
     throw new Error(

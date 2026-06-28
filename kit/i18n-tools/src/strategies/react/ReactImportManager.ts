@@ -367,6 +367,50 @@ export class ReactImportManager implements IImportManager {
    *   3. 解构中仅保留翻译变量（如 `const { t } = ...`）整条移除；
    *      混合解构（如 `const { t, i18n } = ...`）则重建解构模式仅删除翻译项
    */
+  /**
+   * 判定变量声明的初始化器是否为 `this.props`——HOC 注入 `const { t/intl } = this.props` 的来源。
+   * 用于 cleanupVariableStatements 收窄通用解构清理，避免按名误删来源无关的同名解构。
+   */
+  private static isThisPropsInitializer(init: ts.Expression | undefined): boolean {
+    return (
+      init !== undefined &&
+      ts.isPropertyAccessExpression(init) &&
+      init.expression.kind === ts.SyntaxKind.ThisKeyword &&
+      ts.isIdentifier(init.name) &&
+      init.name.text === 'props'
+    );
+  }
+
+  /**
+   * 回调体内是否存在「翻译调用之外」对 varName 的引用。
+   * 翻译调用（t('key') / intl.formatMessage('key')）还原后整体替换为字符串，其被调表达式里的
+   * varName 引用会消失，不计为残留使用；其余任何对 varName 的引用（实参、成员访问等）都视为
+   * 残留使用，需保留依赖项。自顶向下遍历，不依赖 parent 指针（转换中新建子树可能未设 parent）。
+   */
+  private static callbackUsesVarOutsideTranslationCalls(
+    callback: ts.Expression | undefined,
+    varName: string,
+    library: ReactI18nLibrary,
+  ): boolean {
+    if (!callback) return false;
+    let found = false;
+    const visit = (node: ts.Node): void => {
+      if (found) return;
+      if (ts.isCallExpression(node) && library.isTranslationCall(node)) {
+        // 翻译调用：跳过被调表达式（t / intl.formatMessage 的 intl 接收者），仅检查其实参。
+        node.arguments.forEach(visit);
+        return;
+      }
+      if (ts.isIdentifier(node) && node.text === varName) {
+        found = true;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(callback);
+    return found;
+  }
+
   static cleanupVariableStatements(
     node: ts.VariableStatement,
     library: ReactI18nLibrary,
@@ -431,7 +475,15 @@ export class ReactImportManager implements IImportManager {
 
       let declaration = original;
 
-      if (ts.isObjectBindingPattern(declaration.name)) {
+      // 仅清理 HOC 注入的 `const { t/intl } = this.props`（见 ReactComponentInjector 的注入形态）。
+      // 必须用 this.props 初始化器收窄：否则会按名误删来源无关的同名解构——例如
+      // `const { t } = useTemperature()`（react-i18next，t 是温度）或 `const { intl } = useCtx()`
+      // （react-intl）——把整条不相关声明删掉，令该变量 undefined（TS2304 / 运行时 ReferenceError）。
+      // hook 解构由上面的 isHookDeclaration 分支处理，此处只剩 props 解构这一种合法形态。
+      if (
+        ts.isObjectBindingPattern(declaration.name) &&
+        ReactImportManager.isThisPropsInitializer(declaration.initializer)
+      ) {
         const stripped = stripTranslationBinding(declaration);
         if (stripped === null) {
           mutated = true;
@@ -491,6 +543,17 @@ export class ReactImportManager implements IImportManager {
     }
 
     const varName = library.translationVarName;
+
+    // 仅当回调体内 varName 的所有出现都是 i18n 翻译调用的被调表达式（t('key') /
+    // intl.formatMessage('key')，还原后整体→字符串、该引用随之消失）时，才从依赖数组剥离
+    // varName。若回调把同名变量当普通值使用（如 `useMemo(() => compute(t), [t])` 中 t 是温度），
+    // 还原不会动它，盲删 deps 会留下悬空依赖 + 陈旧闭包（exhaustive-deps 违规）。与
+    // cleanupVariableStatements 的 this.props 收窄同一思路：不按名误删来源无关的同名标识符。
+    const callback = node.arguments[0];
+    if (ReactImportManager.callbackUsesVarOutsideTranslationCalls(callback, varName, library)) {
+      return node;
+    }
+
     const filteredElements = depsArg.elements.filter((element) => {
       if (ts.isIdentifier(element) && element.text === varName) {
         return false;
