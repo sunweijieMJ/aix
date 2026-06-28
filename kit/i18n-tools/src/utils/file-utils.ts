@@ -56,6 +56,31 @@ export class FileUtils {
     return { status: 'ok', data: parsed as T };
   }
 
+  /**
+   * 严格加载「字典型」JSON 中间文件（untranslated / translations 等）：
+   *   - 不存在 / 空 → `{}`（视为「尚无条目」，安全继续）
+   *   - 损坏（存在且非空却解析失败）→ 抛错中止（绝不降级为 `{}`，否则下游会用空对象覆写、
+   *     销毁在途译文 / 把损坏误判为「无条目」而 CI 伪绿灯）
+   *   - 正常 → 解析结果
+   *
+   * 收口此前散落在 Merge / Translate / CsvExport / CsvImport 各处手写的
+   * 「readFileSync → trim 判空 → safeParseJson → null 即损坏」骨架。corrupt 报错信息由调用方
+   * 按场景定制（各命令对「会销毁什么」的描述不同）。
+   */
+  static loadJsonDictOrThrow<T = Record<string, unknown>>(
+    filePath: string,
+    buildCorruptMessage: (filePath: string) => string,
+  ): T {
+    const cls = FileUtils.classifyJsonFile<T>(filePath);
+    if (cls.status === 'corrupt') {
+      throw new Error(buildCorruptMessage(filePath));
+    }
+    if (cls.status === 'ok') {
+      return cls.data;
+    }
+    return {} as T;
+  }
+
   static findConflictingKeys(
     obj1: Record<string, any>,
     obj2: Record<string, any>,

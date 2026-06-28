@@ -22,8 +22,6 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   readonly usesDoubleBracePlaceholders = true;
   readonly translationVarName = 't';
   readonly jsxComponentName = 'Trans';
-  readonly jsxIdPropName = 'i18nKey';
-  readonly hocName = 'withTranslation';
   readonly hocPropsType = 'WithTranslation';
   // 非组件（模块顶层）作用域使用从 tImport 注入的 t（import { t }），
   // 与组件内 useTranslation 的 t 形态一致。

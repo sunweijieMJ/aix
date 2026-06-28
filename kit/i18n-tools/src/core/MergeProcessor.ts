@@ -51,7 +51,6 @@ export class MergeProcessor extends FileProcessor {
     }
 
     const untranslatedData = this.loadUntranslatedData(untranslatedPath);
-    if (!untranslatedData) return;
 
     const totalCount = Object.keys(untranslatedData).length;
     if (totalCount === 0) {
@@ -77,27 +76,18 @@ export class MergeProcessor extends FileProcessor {
     this.displayMergeResult(analysisResult);
   }
 
-  private loadUntranslatedData(filePath: string): Translations | null {
-    if (!fs.existsSync(filePath)) {
-      LoggerUtils.error(`❌ 待翻译文件不存在: ${filePath}`);
-      return null;
-    }
+  private loadUntranslatedData(filePath: string): Translations {
     // 必须区分「损坏」与「空/缺失」：不能用 safeLoadJsonFile，因为它对解析失败
-    // 返回默认值 {}（而非 null），会让本文件被当成空文件继续——下游
+    // 返回默认值 {}（而非抛错），会让本文件被当成空文件继续——下游
     // updateUntranslatedFile 随即用 '{}' 覆写、销毁在途译文（含已填/已翻译的
-    // target 值，pick 无法重生成）。这里有内容却解析失败时直接抛错中止 merge，
-    // 与 LanguageFileManager.readLocaleFile 的 null 语义、PruneProcessor 的中止
-    // 逻辑保持一致（防数据丢失/误判）。
-    const content = fs.readFileSync(filePath, 'utf-8');
-    if (content.trim() === '') return {};
-    const parsed = FileUtils.safeParseJson(content) as Translations | null;
-    if (parsed === null) {
-      throw new Error(
-        `待翻译文件解析失败（JSON 格式错误）: ${filePath}\n` +
-          '👉 为防止销毁在途翻译数据，已中止 merge。请修复该文件的 JSON 格式后重试。',
-      );
-    }
-    return parsed;
+    // target 值，pick 无法重生成）。loadJsonDictOrThrow 对「有内容却解析失败」抛错中止。
+    // （文件存在性已由 run() 在调用前校验，缺失视为 {} 不影响。）
+    return FileUtils.loadJsonDictOrThrow<Translations>(
+      filePath,
+      (p) =>
+        `待翻译文件解析失败（JSON 格式错误）: ${p}\n` +
+        '👉 为防止销毁在途翻译数据，已中止 merge。请修复该文件的 JSON 格式后重试。',
+    );
   }
 
   private loadExistingTranslations(filePath: string): Translations {
@@ -105,19 +95,14 @@ export class MergeProcessor extends FileProcessor {
       LoggerUtils.info(`创建新的 ${FILES.TRANSLATIONS_JSON} 文件`);
       return {};
     }
-    // 必须区分「损坏」与「空」：不能用 safeLoadJsonFile，它对解析失败回退 {}，
-    // 随后 performMerge 的 {...existing, ...newly} 会用空对象覆写、销毁此前所有已合并
-    // 条目。与姊妹方法 loadUntranslatedData 保持一致：有内容却解析失败时中止 merge。
-    const content = fs.readFileSync(filePath, 'utf-8');
-    if (content.trim() === '') return {};
-    const parsed = FileUtils.safeParseJson(content) as Translations | null;
-    if (parsed === null) {
-      throw new Error(
-        `${FILES.TRANSLATIONS_JSON} 解析失败（JSON 格式错误）: ${filePath}\n` +
-          '👉 为防止销毁已合并的翻译条目，已中止 merge。请修复该文件的 JSON 格式后重试。',
-      );
-    }
-    return parsed;
+    // 必须区分「损坏」与「空」：损坏时若降级为 {}，performMerge 的 {...existing, ...newly}
+    // 会用空对象覆写、销毁此前所有已合并条目。与姊妹方法一致：有内容却解析失败即中止。
+    return FileUtils.loadJsonDictOrThrow<Translations>(
+      filePath,
+      (p) =>
+        `${FILES.TRANSLATIONS_JSON} 解析失败（JSON 格式错误）: ${p}\n` +
+        '👉 为防止销毁已合并的翻译条目，已中止 merge。请修复该文件的 JSON 格式后重试。',
+    );
   }
 
   /**
@@ -295,31 +280,19 @@ export class MergeProcessor extends FileProcessor {
 
   /**
    * 写回前损坏守卫：source + 所有 target locale 任一解析失败即抛错中止。
-   * 桶式用 findCorruptBucketFile（readLocaleFile 对损坏桶静默降级为 {} 永不返回 null）；
-   * 单文件用 readLocaleFile===null（区分「解析失败」与「不存在 → {}」）。与 PruneProcessor 一致。
+   * 探测口径（桶式 / 遗留单文件 / 单文件）统一收口于 LanguageFileManager.findCorruptLocale。
    */
   private assertLocalesNotCorrupt(): void {
     const locales = [this.config.locales.source, ...this.config.locales.targets];
-    for (const locale of locales) {
-      if (this.config.buckets) {
-        const corrupt = LanguageFileManager.findCorruptBucketFile(
-          this.config,
-          this.isCustom,
-          locale,
-        );
-        if (corrupt) {
-          throw new Error(
-            `locale「${locale}」的桶文件解析失败：${corrupt}\n` +
-              '👉 为避免 CI 伪成功与运行时漏译，已在写回前中止 merge。请先修复该文件的 JSON 格式后重试。',
-          );
-        }
-      } else if (LanguageFileManager.readLocaleFile(this.config, this.isCustom, locale) === null) {
-        throw new Error(
-          `locale「${locale}」解析失败（JSON 格式错误）\n` +
-            '👉 为避免 CI 伪成功与运行时漏译，已在写回前中止 merge。请先修复该文件的 JSON 格式后重试。',
-        );
-      }
-    }
+    const suffix =
+      '\n👉 为避免 CI 伪成功与运行时漏译，已在写回前中止 merge。请先修复该文件的 JSON 格式后重试。';
+    LanguageFileManager.assertLocalesNotCorrupt(this.config, this.isCustom, locales, {
+      checkLegacy: true,
+      buildMessage: (locale, file) =>
+        this.config.buckets
+          ? `locale「${locale}」的桶文件解析失败：${file}${suffix}`
+          : `locale「${locale}」解析失败（JSON 格式错误）：${file}${suffix}`,
+    });
   }
 
   /**

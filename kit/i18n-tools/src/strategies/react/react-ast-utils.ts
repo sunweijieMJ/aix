@@ -360,17 +360,6 @@ export class ReactASTUtils {
     return undefined;
   }
 
-  static isFormatMessageCall(node: ts.CallExpression): boolean {
-    if (ts.isPropertyAccessExpression(node.expression)) {
-      const propName = node.expression.name;
-      if (ts.isIdentifier(propName) && propName.text === 'formatMessage') {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
   static extractFormatMessageInfo(
     node: ts.CallExpression,
     definedMessages: Map<string, MessageInfo>,

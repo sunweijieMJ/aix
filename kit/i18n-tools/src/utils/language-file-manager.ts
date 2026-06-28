@@ -273,6 +273,56 @@ export class LanguageFileManager {
   }
 
   /**
+   * 探测单个 locale 是否损坏（存在但 JSON 解析失败），返回首个损坏文件的绝对路径，
+   * 无损坏返回 null。收口此前散落在 Pick/Merge/Prune/Restore/Export/Generate/Doctor
+   * 各处、彼此靠注释互相「对齐」的损坏探测三分支——未来新增一类损坏源时只改这一处，
+   * 不再需要逐个 processor 手改而漏改。
+   *
+   *  - 桶式：findCorruptBucketFile（扫桶目录）；checkLegacy 时再查 findCorruptLegacySingleFile
+   *    —— getMessages→migrateToBuckets 会 silent 读遗留单文件、损坏则清空并 rename .bak，
+   *    凡会触发该路径的 processor 都须带上 checkLegacy。
+   *  - 单文件：readLocaleFile===null（区分「存在但解析失败」与「不存在 → {}」）。返回
+   *    真实文件路径，便于调用方在报错信息里直接展示。
+   */
+  static findCorruptLocale(
+    config: ResolvedConfig,
+    isCustom: boolean,
+    locale: string,
+    opts: { checkLegacy?: boolean } = {},
+  ): string | null {
+    if (config.buckets) {
+      const corruptBucket = this.findCorruptBucketFile(config, isCustom, locale);
+      if (corruptBucket) return corruptBucket;
+      if (opts.checkLegacy) {
+        const corruptLegacy = this.findCorruptLegacySingleFile(config, isCustom, locale);
+        if (corruptLegacy) return corruptLegacy;
+      }
+      return null;
+    }
+    const filePath = path.join(FileUtils.getDirectoryPath(config, isCustom), `${locale}.json`);
+    return this.readLocaleFile(config, isCustom, locale) === null ? filePath : null;
+  }
+
+  /**
+   * 写前损坏守卫：对给定 locale 集合逐一探测，任一损坏即抛错中止。message 由调用方按各自
+   * 语义构造（Pick/Merge/Prune/Restore 对损坏的后果描述不同），探测口径则统一收口于
+   * findCorruptLocale。
+   */
+  static assertLocalesNotCorrupt(
+    config: ResolvedConfig,
+    isCustom: boolean,
+    locales: string[],
+    opts: { checkLegacy?: boolean; buildMessage: (locale: string, file: string) => string },
+  ): void {
+    for (const locale of locales) {
+      const corrupt = this.findCorruptLocale(config, isCustom, locale, opts);
+      if (corrupt !== null) {
+        throw new Error(opts.buildMessage(locale, corrupt));
+      }
+    }
+  }
+
+  /**
    * 读取桶式目录下所有 JSON 文件并合并为扁平 map。
    */
   private static readBucketedLocaleFlat(

@@ -19,13 +19,9 @@ export interface ReactI18nLibrary extends BaseI18nLibrary {
 
   /** JSX 组件名: 'FormattedMessage' | 'Trans' */
   readonly jsxComponentName: string;
-  /** JSX 组件中 ID 属性名: 'id' | 'i18nKey' */
-  readonly jsxIdPropName: string;
 
   // ===== HOC (类组件) =====
 
-  /** HOC 函数名: 'injectIntl' | 'withTranslation' */
-  readonly hocName: string;
   /** HOC Props 类型名: 'WrappedComponentProps' | 'WithTranslation' */
   readonly hocPropsType: string;
 

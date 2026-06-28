@@ -217,8 +217,11 @@ export class VueImportManager implements IImportManager {
    * 关键：判定的是「本地绑定名」是否为 t —— `const { t: localT } = useI18n()` 把 t 重命名
    * 为 localT，本地并无 t，应返回 false（否则会漏注入导致裸 t() 未声明）；`const
    * { translate: t } = useI18n()` 把别名绑定到 t，则应返回 true。
+   *
+   * 同时被 VueComponentInjector.inject() 复用：注入 useI18n() hook 前需用同款判定排除
+   * 用户已手写的多键解构（如 `{ t, locale }`），否则会与之形成双 t 声明（SFC 编译失败）。
    */
-  private hasLocalHookTBinding(scriptContent: string): boolean {
+  hasLocalHookTBinding(scriptContent: string): boolean {
     const escapedHook = CommonASTUtils.escapeRegExp(this.library.hookName);
     const destructureRe = new RegExp(`const\\s*\\{([^}]*)\\}\\s*=\\s*${escapedHook}\\s*\\(`, 'g');
     let match: RegExpExecArray | null;
