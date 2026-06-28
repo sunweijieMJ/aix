@@ -278,3 +278,158 @@ describe('DoctorProcessor', () => {
     expect(all).toContain('[orphan-key]');
   });
 });
+
+/**
+ * 回归：doctor 的 --ci 退出码与持久化报告 summary.bySeverity 口径不一致。
+ *
+ * --ci 闸门按 `findings.filter(severity === 'error')` 统计（含 error 级 lint：
+ * hardcoded-comparison）；但 recordToReport 把 locale-lint 类发现整体跳过 addWarning，
+ * 只经 LocaleValueLinter.emit 写入 needsManual——其 error severity 从未进入 severityTally。
+ * 结果：进程以「N 个 error」失败退出，落盘报告却写 bySeverity.error=0，读 JSON 的看板会
+ * 误判为「健康」。修复：error 级 lint 发现须同时计入 bySeverity（与 --ci 同源）。
+ */
+describe('DoctorProcessor --ci 与报告 severity 口径一致', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-sev-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const readLatestReport = (): {
+    summary: { bySeverity: Record<string, number>; needsManual: number };
+  } => {
+    const logsDir = path.join(rootDir, '.i18n-tools', 'logs');
+    const file = fs
+      .readdirSync(logsDir)
+      .filter((f) => /^run-.*\.json$/.test(f))
+      .sort()
+      .pop();
+    if (!file) throw new Error('no report flushed');
+    return JSON.parse(fs.readFileSync(path.join(logsDir, file), 'utf-8'));
+  };
+
+  it('error 级 lint（hardcoded-comparison）计入 summary.bySeverity.error', async () => {
+    // 源码 status === '已完成'：比较操作数（提取时跳过），且 '已完成' 已是 locale 值
+    fs.writeFileSync(
+      path.join(sourceDir, 'Status.ts'),
+      `export const label = (status: string): string => {\n` +
+        `  if (status === '已完成') return 'done';\n` +
+        `  return 'idle';\n` +
+        `};\n`,
+    );
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify({ done: '已完成' }));
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ done: 'Done' }));
+
+    // ci=false：只产出报告、不抛错，便于读 summary
+    await new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      ci: false,
+    }).execute();
+
+    const report = readLatestReport();
+    // 修复前：bySeverity.error===0（与 --ci「1 个 error」矛盾）
+    expect(report.summary.bySeverity.error).toBe(1);
+    // 明细仍保留在 needsManual 中（不丢可操作信息）
+    expect(report.summary.needsManual).toBeGreaterThanOrEqual(1);
+  });
+});
+
+/**
+ * 回归：doctor 对账盲区——checkMissingKeys 只查 source locale，checkUntranslated/
+ * checkPlaceholders 又在 target===undefined 时 continue（注释「缺译归 missing 类」），
+ * 但 missing 类从不查 target。于是「源码+源 locale 都有该 key，却在某 target 完全缺失」
+ * 这一最常见的「代码已发布、翻译没准备好」场景被完全静默。
+ * 修复：新增 per-target 的 missing-target-key 检查（源 value 含中文且未被 skip 时）。
+ */
+describe('DoctorProcessor missing-target-key', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-mtk-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const all = (): string => infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+
+  it('源含中文 key、target locale 完全缺失 → 报 missing-target-key', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'P.vue'), `<template>{{ t('order.submit') }}</template>`);
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'order.submit': '提交订单' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({})); // target 缺该 key
+
+    await new DoctorProcessor(
+      buildConfig(rootDir, sourceDir, localeDir),
+      false,
+      undefined,
+      {},
+    ).execute();
+
+    expect(all()).toContain('[missing-target-key]');
+    expect(all()).toContain('order.submit');
+  });
+
+  it('target 已有该 key → 不报 missing-target-key', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'P.vue'), `<template>{{ t('order.submit') }}</template>`);
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'order.submit': '提交订单' }),
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'en-US.json'),
+      JSON.stringify({ 'order.submit': 'Submit' }),
+    );
+
+    await new DoctorProcessor(
+      buildConfig(rootDir, sourceDir, localeDir),
+      false,
+      undefined,
+      {},
+    ).execute();
+
+    expect(all()).not.toContain('[missing-target-key]');
+  });
+
+  it('源 value 纯英文/符号缺 target → 不噪报（无需翻译）', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'P.vue'), `<template>{{ t('proto') }}</template>`);
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify({ proto: 'TCP/IP' }));
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({}));
+
+    await new DoctorProcessor(
+      buildConfig(rootDir, sourceDir, localeDir),
+      false,
+      undefined,
+      {},
+    ).execute();
+
+    expect(all()).not.toContain('[missing-target-key]');
+  });
+});
