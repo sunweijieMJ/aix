@@ -565,6 +565,10 @@ export class VueTextExtractor extends BaseTextExtractor {
           lineOffset,
           directive,
         );
+        // 整段模板已作为单条提取、嵌套中文分支也已记入诊断；不得再递归进子节点，
+        // 否则分支字面量（`${cond ? '中文A' : '中文B'}`）会被重复提取成独立 key，
+        // 产出孤儿键 + 同位置替换冲突。与脚本路径 visitScriptNode push 后 return 对齐。
+        return;
       }
 
       // 收集子节点后逐个 await，避免 forEachChild 丢弃 Promise
@@ -700,6 +704,9 @@ export class VueTextExtractor extends BaseTextExtractor {
             lineOffset,
             interpolationNode,
           );
+          // 同 dynamic-attribute：整段模板已提取、嵌套中文已记诊断，禁止再递归进分支字面量
+          // 造成重复提取。与脚本路径对齐。
+          return;
         }
 
         // 收集子节点后逐个 await，避免 forEachChild 丢弃 Promise

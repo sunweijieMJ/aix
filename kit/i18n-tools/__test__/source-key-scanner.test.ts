@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { collectUsedKeys } from '../src/utils/source-key-scanner';
+import { collectUsedKeys, scanKeyReferencesInContent } from '../src/utils/source-key-scanner';
 import { createFrameworkAdapter } from '../src/adapters';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig } from '../src/config';
@@ -77,6 +77,37 @@ describe('collectUsedKeys — 全形式识别', () => {
     expect(used.has('a.no')).toBe(true);
     expect(used.has('a.greet')).toBe(true);
     expect(used.has('John')).toBe(false); // 第二实参的插值值不当 key
+  });
+
+  // 回归（审计 Bug #4）：key 字面量自身含逗号/右括号时，首参不得在字符串内部提前截断，
+  // 否则 key 漏采 → prune/doctor 误判孤儿并从所有 locale 永久删除（破坏性）。
+  describe('scanKeyReferencesInContent — key 含逗号/右括号不漏采', () => {
+    it("含逗号的 key t('已完成, 待处理') 被完整识别", () => {
+      expect(scanKeyReferencesInContent(`const m = t('已完成, 待处理');`)).toContain(
+        '已完成, 待处理',
+      );
+    });
+
+    it("含右括号的 key t('点击(此处)') 被完整识别", () => {
+      expect(scanKeyReferencesInContent(`const m = t('点击(此处)');`)).toContain('点击(此处)');
+    });
+
+    it('双引号包裹同样不被内部逗号/括号截断', () => {
+      const refs = scanKeyReferencesInContent(`const m = t("a, b)c");`);
+      expect(refs).toContain('a, b)c');
+    });
+
+    it('回归保护：第二实参选项对象的值仍不被当 key（逗号边界判定不破坏）', () => {
+      const refs = scanKeyReferencesInContent(`t('a.greet', { name: 'John' });`);
+      expect(refs).toContain('a.greet');
+      expect(refs).not.toContain('John');
+    });
+
+    it('回归保护：三元两分支仍都识别', () => {
+      const refs = scanKeyReferencesInContent(`t(cond ? 'a.yes' : 'a.no');`);
+      expect(refs).toContain('a.yes');
+      expect(refs).toContain('a.no');
+    });
   });
 
   it('react-i18next：t() / <Trans i18nKey> 都识别', () => {

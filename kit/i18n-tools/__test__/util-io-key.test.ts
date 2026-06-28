@@ -152,6 +152,69 @@ describe('flattenObject 读路径使用 keys.separator', () => {
 });
 
 // =============================================================================
+// bucket-migration-empty-source（审计 Bug #5）
+// =============================================================================
+/**
+ * 回归：桶式迁移时若 source 文件存在但内容为空 `{}`，target 不得把全部 key 落入
+ * defaultBucket。根因（修复前）：migrateToBuckets 用 `bucketingMessages ?? flatData`，
+ * `??` 只挡 null/undefined——空 source 迁移返回 `{}`（非 nullish），target 拿到空 map
+ * 驱动分桶 → buildKeyBucketMap({}) 为空 → 所有 key → defaultBucket，分桶规则丢失。
+ * 与「source 文件不存在」分支（返回 undefined → target 回退自身 flatData）行为不对称。
+ * 修复：bucketingMessages 为空对象时同样回退到 locale 自身 flatData。
+ */
+describe('桶式迁移：空 source {} 时 target 仍按规则分桶', () => {
+  let root: string;
+  let localeDir: string;
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'bucket-empty-source-'));
+    localeDir = path.join(root, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat', prettify: false },
+      keys: { separator: '.' },
+      buckets: {
+        rules: [{ name: 'order', matchKey: (k: string) => k.startsWith('order.') }],
+        defaultBucket: 'common',
+        emitManifest: false,
+        layout: 'by-locale',
+      },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  it('source 为 {} 时，target 的 order.* key 进 order 桶而非全落 common', () => {
+    // source 文件存在但内容为空 {}（合法磁盘状态，正是 bug 触发条件）
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), '{}');
+    // target 非空：order.list 应进 order 桶，user.name 进 common 桶
+    fs.writeFileSync(
+      path.join(localeDir, 'en-US.json'),
+      JSON.stringify({ 'order.list': 'List', 'user.name': 'Name' }),
+    );
+
+    LanguageFileManager.getMessages(makeConfig(), false);
+
+    // 修复后：en-US/order.json 存在且含 order.list（修复前该 key 被错落进 common）
+    const orderBucket = path.join(localeDir, 'en-US', 'order.json');
+    expect(fs.existsSync(orderBucket)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(orderBucket, 'utf-8'))).toHaveProperty('order.list');
+
+    // common 桶里不应再混入 order.list
+    const commonBucket = path.join(localeDir, 'en-US', 'common.json');
+    expect(JSON.parse(fs.readFileSync(commonBucket, 'utf-8'))).not.toHaveProperty('order.list');
+  });
+});
+
+// =============================================================================
 // translations-order
 // =============================================================================
 /**

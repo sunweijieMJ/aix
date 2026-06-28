@@ -91,9 +91,14 @@ export class LanguageFileManager {
     const flatData = FileUtils.flattenObject(existingData, '', config.keys.separator) as LocaleMap;
 
     if (Object.keys(flatData).length > 0) {
+      // bucketingMessages 为空对象 {} 时（source 文件存在但内容为 {}）也要回退到 locale
+      // 自身 flatData——否则 buildKeyBucketMap({}) 返回空 map，target 全部 key 落入
+      // defaultBucket，分桶规则丢失。与「source 文件不存在」分支（bucketingMessages=undefined
+      // → 同样回退 flatData）保持对称。`??` 只挡 null/undefined，挡不住空对象。
+      const hasBucketingSource = bucketingMessages && Object.keys(bucketingMessages).length > 0;
       const keyBucketMap = LanguageFileManager.buildKeyBucketMap(
         config,
-        bucketingMessages ?? flatData,
+        hasBucketingSource ? bucketingMessages : flatData,
       );
       LanguageFileManager.writeBucketedLocaleFile(config, baseDir, flatData, locale, keyBucketMap);
     } else {
