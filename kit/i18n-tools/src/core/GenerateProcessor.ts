@@ -517,25 +517,23 @@ export class GenerateProcessor extends BaseProcessor {
     // 此前缺这层保护——损坏 bucket 的存量 key 会在重写时被静默丢弃/覆盖（连 .bak 都没有，真丢）。
     // 与 Merge/Pick/Prune 的「损坏即中止」对齐，且必须前移到写源码之前，避免留下「源码已改、
     // locale 未写」的不一致态。generate 仅更新 source locale，故只校验 source 桶。
-    if (this.config.buckets) {
-      const corruptBucket = LanguageFileManager.findCorruptBucketFile(this.config, this.isCustom);
-      if (corruptBucket) {
-        throw new Error(
-          `语言文件损坏，已中止 generate（避免覆盖丢失存量翻译，请用 git 修复后重试）: ${FileUtils.getRelativePath(corruptBucket)}`,
-        );
-      }
-    } else if (LanguageFileManager.readLocaleFile(this.config, this.isCustom) === null) {
-      // 非桶式同样需要前置守卫（与桶式 / PickProcessor 对齐）：source locale「有内容却
-      // 解析失败」时 readLocaleFile 返回 null，而阶段 3 的 updateLanguageFiles 对 null 静默
-      // return（不写、不抛）。若放任继续，会把源码改写成 t() 调用却一个 locale key 都不落、
-      // 且无异常触发回滚、命令仍报成功——留下「源码已改、locale 未写」的不一致态。
+    // 非桶式同样需要前置守卫（与桶式 / PickProcessor 对齐）：source locale「有内容却
+    // 解析失败」时 readLocaleFile 返回 null，而阶段 3 的 updateLanguageFiles 对 null 静默
+    // return（不写、不抛）。若放任继续，会把源码改写成 t() 调用却一个 locale key 都不落、
+    // 且无异常触发回滚、命令仍报成功——留下「源码已改、locale 未写」的不一致态。
+    // 探测口径（桶式 / 遗留单文件 / 单文件）统一收口于 findCorruptLocale；generate 仅更新
+    // source locale，故只校验 source。
+    const corruptSource = LanguageFileManager.findCorruptLocale(
+      this.config,
+      this.isCustom,
+      this.config.locales.source,
+      { checkLegacy: true },
+    );
+    if (corruptSource) {
       throw new Error(
-        `语言文件损坏，已中止 generate（避免源码已改写而 locale 未更新的不一致态，请用 git 修复后重试）: ${FileUtils.getRelativePath(
-          path.join(
-            FileUtils.getDirectoryPath(this.config, this.isCustom),
-            `${this.config.locales.source}.json`,
-          ),
-        )}`,
+        this.config.buckets
+          ? `语言文件损坏，已中止 generate（避免覆盖丢失存量翻译，请用 git 修复后重试）: ${FileUtils.getRelativePath(corruptSource)}`
+          : `语言文件损坏，已中止 generate（避免源码已改写而 locale 未更新的不一致态，请用 git 修复后重试）: ${FileUtils.getRelativePath(corruptSource)}`,
       );
     }
 
@@ -737,7 +735,12 @@ export class GenerateProcessor extends BaseProcessor {
 
     for (const filePath of uniqueFilePaths) {
       const result = results.find((r) => r.file === filePath);
-      if (!result) continue; // 理论不会发生（transformToMemory 失败已抛错）
+      // 不变量：uniqueFilePaths 与 results 同源于 transformToMemory，任一文件 transform
+      // 失败已在该阶段抛错，故每个 filePath 必有对应 result。此处 fail-loud 而非静默
+      // skip——静默会写出缺转换源码的指纹条目，损坏 plan。
+      if (!result) {
+        throw new Error(`内部错误：plan 写入时缺少文件「${filePath}」的 transform 结果`);
+      }
 
       const relPosix = GeneratePlanWriter.toRelPosix(this.config.root, filePath);
       const transformedRef = `${GeneratePlanWriter.SOURCES_DIRNAME}/${relPosix}`;

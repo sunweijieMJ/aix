@@ -176,32 +176,17 @@ export class RestoreProcessor extends BaseProcessor {
 
   private loadLocaleMap(): LocaleMap {
     const sourceLocale = this.config.locales.source;
-    // 损坏守卫（与 Prune/Pick/Merge 一致）：必须区分「解析失败」与「真正为空/不存在」。
-    //   - 桶式：readLocaleFile 会把损坏桶经 safeLoadJsonFile 静默降级为 {}、永不返回 null，
-    //     故 null 守卫对桶式失效，需用 findCorruptBucketFile 单独探测。
-    //   - 单文件：readLocaleFile 对解析失败返回 null（与「文件不存在 → {}」区分）。
+    // 损坏守卫：restore 仅读 source locale（target 不参与还原），故只校验 source。
     // 否则损坏的 source locale 会被下游 `length === 0` 误判为「空」→ restore 静默 no-op
     // 且打印成功（exit 0），用户以为已还原、实则源码原封未动。
-    if (this.config.buckets) {
-      const corruptBucket = LanguageFileManager.findCorruptBucketFile(
-        this.config,
-        this.isCustom,
-        sourceLocale,
-      );
-      if (corruptBucket) {
-        throw new Error(
-          `源 locale「${sourceLocale}」的桶文件解析失败：${corruptBucket}，已中止还原以防误判为空而跳过。请先修复 JSON 格式。`,
-        );
-      }
-    }
-    // 统一走 LanguageFileManager，自动处理单文件和模块化两种源格式
-    const result = LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale);
-    if (result === null) {
-      throw new Error(
-        `源 locale「${sourceLocale}」解析失败，已中止还原以防误判为空而跳过。请先修复 JSON 格式。`,
-      );
-    }
-    return result;
+    // 探测口径（桶式 / 遗留单文件 / 单文件）统一收口于 findCorruptLocale。
+    LanguageFileManager.assertLocalesNotCorrupt(this.config, this.isCustom, [sourceLocale], {
+      checkLegacy: true,
+      buildMessage: (locale, file) =>
+        `源 locale「${locale}」解析失败：${file}，已中止还原以防误判为空而跳过。请先修复 JSON 格式。`,
+    });
+    // 守卫已确保非损坏，readLocaleFile 不会返回 null（仅「不存在/空 → {}」或解析结果）。
+    return LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) ?? {};
   }
 
   private async processFile(

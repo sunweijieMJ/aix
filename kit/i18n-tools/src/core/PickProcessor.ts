@@ -48,40 +48,17 @@ export class PickProcessor extends FileProcessor {
     // {}。源损坏 → sourceMessages 为空 → 写出两个空字典；任一 target 损坏 → 该 target 全部
     // key 在 analyzeTranslationStatus 里读成 undefined、判为未翻译 → 同样无条件覆写
     // untranslated.json，销毁尚未 merge 的在途译文并伪报成功。故 source 与所有 target 一并
-    // 校验，与 merge/prune 的 corrupt-abort 守卫对齐（旧实现仅校验 source、漏了 target）。
-    for (const locale of [sourceLocale, ...targets]) {
-      if (this.config.buckets) {
-        // 桶式：readLocaleFile 的 bucket 分支走 silent 降级、永不返回 null，需用
-        // findCorruptBucketFile 单独探测损坏桶（与 MergeProcessor 的桶式守卫一致）。
-        const corruptBucket = LanguageFileManager.findCorruptBucketFile(
-          this.config,
-          this.isCustom,
-          locale,
-        );
-        if (corruptBucket) {
-          throw new Error(
-            `locale「${locale}」的桶文件解析失败：${corruptBucket}，已中止 pick 以防销毁在途译文 / 伪报成功。请先修复 JSON 格式。`,
-          );
-        }
-        // 桶式还需校验遗留单文件：getMessages→migrateToBuckets 会 silent 读它，损坏则静默
-        // 当 {} 并 rename .bak，清空在途译文且伪报成功。findCorruptBucketFile 扫不到遗留单文件。
-        const corruptLegacy = LanguageFileManager.findCorruptLegacySingleFile(
-          this.config,
-          this.isCustom,
-          locale,
-        );
-        if (corruptLegacy) {
-          throw new Error(
-            `locale「${locale}」的遗留单文件解析失败：${corruptLegacy}，已中止 pick 以防销毁在途译文 / 伪报成功。请先修复 JSON 格式。`,
-          );
-        }
-      } else if (LanguageFileManager.readLocaleFile(this.config, this.isCustom, locale) === null) {
-        // 单文件：readLocaleFile 区分「不存在 → {}」与「存在但解析失败 → null」。
-        throw new Error(
-          `locale「${locale}」解析失败，已中止 pick 以防销毁 untranslated.json 在途译文 / 伪报成功。请先修复 JSON 格式。`,
-        );
-      }
-    }
+    // 校验（探测口径统一收口于 LanguageFileManager.findCorruptLocale）。
+    LanguageFileManager.assertLocalesNotCorrupt(
+      this.config,
+      this.isCustom,
+      [sourceLocale, ...targets],
+      {
+        checkLegacy: true,
+        buildMessage: (locale, file) =>
+          `locale「${locale}」解析失败：${file}，已中止 pick 以防销毁 untranslated.json 在途译文 / 伪报成功。请先修复 JSON 格式。`,
+      },
+    );
 
     const messages = LanguageFileManager.getMessages(this.config, this.isCustom);
     const sourceMessages = (messages[sourceLocale] || {}) as Record<string, string>;

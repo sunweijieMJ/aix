@@ -22,8 +22,6 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   readonly usesDoubleBracePlaceholders = false;
   readonly translationVarName = 'intl';
   readonly jsxComponentName = 'FormattedMessage';
-  readonly jsxIdPropName = 'id';
-  readonly hocName = 'injectIntl';
   readonly hocPropsType = 'WrappedComponentProps';
   readonly globalFunctionName = 'getIntl';
 

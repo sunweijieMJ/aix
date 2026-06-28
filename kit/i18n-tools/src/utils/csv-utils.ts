@@ -97,17 +97,17 @@ export function parseCsv(text: string): string[][] {
 
 /**
  * 严格按 UTF-8 解码文件 Buffer。非法字节（如 Excel 误存为 GBK）直接抛错，
- * 给出「另存为 CSV UTF-8」提示，避免静默乱码污染回写数据。剥离开头 BOM。
+ * 给出「另存为 CSV UTF-8」提示，避免静默乱码污染回写数据。
+ *
+ * BOM 无需手动剥离：TextDecoder 默认 ignoreBOM:false，解码时已吞掉开头的 U+FEFF。
  */
 export function decodeUtf8Strict(buf: Buffer, filePath: string): string {
-  let text: string;
   try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
   } catch {
     throw new Error(
       `[i18n-tools] CSV 文件不是合法 UTF-8 编码：${filePath}。` +
         `请用 Excel「另存为 → CSV UTF-8」后重试。`,
     );
   }
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }

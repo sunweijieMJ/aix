@@ -183,15 +183,9 @@ export class DoctorProcessor extends BaseProcessor {
    *  - 单文件：readLocaleFile === null（区分「不存在 → {}」与「存在但解析失败 → null」）
    */
   private detectCorruptLocale(locale: string): string | null {
-    if (this.config.buckets) {
-      return (
-        LanguageFileManager.findCorruptBucketFile(this.config, this.isCustom, locale) ??
-        LanguageFileManager.findCorruptLegacySingleFile(this.config, this.isCustom, locale)
-      );
-    }
-    return LanguageFileManager.readLocaleFile(this.config, this.isCustom, locale) === null
-      ? `${locale}.json`
-      : null;
+    return LanguageFileManager.findCorruptLocale(this.config, this.isCustom, locale, {
+      checkLegacy: true,
+    });
   }
 
   /** 构造损坏 locale 的 error 级发现（CI 模式据此非零退出，避免静默放行损坏文件）。 */

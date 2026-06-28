@@ -45,17 +45,12 @@ export class CsvImportProcessor extends FileProcessor {
    * 丢弃却退出成功。与 CsvExportProcessor 的「损坏即中止」守卫对齐。
    */
   private loadDictStrict(filePath: string, label: string): Translations {
-    if (!fs.existsSync(filePath)) return {};
-    const raw = fs.readFileSync(filePath, 'utf-8');
-    if (raw.trim() === '') return {};
-    const parsed = FileUtils.safeParseJson(raw) as Translations | null;
-    if (parsed === null) {
-      throw new Error(
-        `${label}解析失败（JSON 格式损坏）: ${filePath}\n` +
-          '👉 为防止把损坏字典误判为「无条目」而静默丢弃回流译文，已中止 csv-import。请先修复该文件的 JSON 格式后重试。',
-      );
-    }
-    return parsed;
+    return FileUtils.loadJsonDictOrThrow<Translations>(
+      filePath,
+      (p) =>
+        `${label}解析失败（JSON 格式损坏）: ${p}\n` +
+        '👉 为防止把损坏字典误判为「无条目」而静默丢弃回流译文，已中止 csv-import。请先修复该文件的 JSON 格式后重试。',
+    );
   }
 
   async execute(): Promise<void> {

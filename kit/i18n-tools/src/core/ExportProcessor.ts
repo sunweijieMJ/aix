@@ -1,4 +1,3 @@
-import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
 import { FileUtils } from '../utils/file-utils';
@@ -68,46 +67,21 @@ export class ExportProcessor extends FileProcessor {
       );
     };
 
-    if (this.config.buckets) {
-      for (const locale of allLocales) {
-        const corruptBase = LanguageFileManager.findCorruptBucketFile(this.config, false, locale);
-        if (corruptBase) throwCorrupt(corruptBase);
-        // 还需校验「尚未迁移的遗留单文件」：getMessages 桶式分支会 migrateToBuckets，
-        // 它 silent 读遗留 <locale>.json，损坏则静默清空并 rename .bak → 导出空包覆盖
-        // 已发布产物。findCorruptBucketFile 只扫桶目录，扫不到遗留单文件。
-        const corruptLegacyBase = LanguageFileManager.findCorruptLegacySingleFile(
-          this.config,
-          false,
-          locale,
-        );
-        if (corruptLegacyBase) throwCorrupt(corruptLegacyBase);
-        if (customDir) {
-          const corruptCustom = LanguageFileManager.findCorruptBucketFile(
-            this.config,
-            true,
-            locale,
-          );
-          if (corruptCustom) throwCorrupt(corruptCustom);
-          const corruptLegacyCustom = LanguageFileManager.findCorruptLegacySingleFile(
-            this.config,
-            true,
-            locale,
-          );
-          if (corruptLegacyCustom) throwCorrupt(corruptLegacyCustom);
-        }
-      }
-      return;
-    }
-
-    const checkFlat = (filePath: string): void => {
-      if (!fs.existsSync(filePath)) return;
-      const content = fs.readFileSync(filePath, 'utf-8');
-      if (content.trim() === '') return;
-      if (FileUtils.safeParseJson(content) === null) throwCorrupt(filePath);
-    };
+    // 基础目录（isCustom=false）+ 定制目录（isCustom=true，若配置）逐 locale 探测；
+    // 探测口径（桶式 / 遗留单文件 / 单文件）统一收口于 findCorruptLocale。桶式必须带
+    // checkLegacy：migrateToBuckets 会 silent 读遗留单文件、损坏则清空并 rename .bak →
+    // 导出空包覆盖已发布产物。
     for (const locale of allLocales) {
-      checkFlat(path.join(this.config.io.localesDir, `${locale}.json`));
-      if (customDir) checkFlat(path.join(customDir, `${locale}.json`));
+      const corruptBase = LanguageFileManager.findCorruptLocale(this.config, false, locale, {
+        checkLegacy: true,
+      });
+      if (corruptBase) throwCorrupt(corruptBase);
+      if (customDir) {
+        const corruptCustom = LanguageFileManager.findCorruptLocale(this.config, true, locale, {
+          checkLegacy: true,
+        });
+        if (corruptCustom) throwCorrupt(corruptCustom);
+      }
     }
   }
 

@@ -52,10 +52,16 @@ export class VueComponentInjector implements IComponentInjector {
     // 若 setup 块已存在 `import { t } from '<any>'`（通常由 handleGlobalImports
     // 先一步注入），t 已在模块作用域可用，无需再注入 useI18n() hook。
     // 否则会产生 TS2440: Import declaration conflicts with local declaration of 't'。
+    //
+    // 同理：若用户已手写从 hook 解构出的本地 t（含多键形态 `const { t, locale } =
+    // useI18n()`），t 已可用，再注入 `const { t } = useI18n()` 会双声明 t 致 SFC
+    // 编译失败。getHookDeclarationCheckRegex 只匹配恰好 `{ t }`，识别不出多键解构，
+    // 故此处复用 importManager.hasLocalHookTBinding（与 handleGlobalImports 同款判定）。
     if (descriptor?.scriptSetup) {
       const setupContent = descriptor.scriptSetup.content;
       if (
-        /import\s*\{[^}]*\bt\b(?:\s*as\s+\w+)?[^}]*\}\s*from\s*['"][^'"]+['"]/.test(setupContent)
+        /import\s*\{[^}]*\bt\b(?:\s*as\s+\w+)?[^}]*\}\s*from\s*['"][^'"]+['"]/.test(setupContent) ||
+        this.importManager.hasLocalHookTBinding(setupContent)
       ) {
         return code;
       }

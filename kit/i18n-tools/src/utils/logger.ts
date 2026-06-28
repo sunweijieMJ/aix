@@ -19,14 +19,6 @@ export class LoggerUtils {
   private static logLevel: LogLevel = LogLevel.INFO;
 
   /**
-   * 设置日志级别
-   * @param level - 日志级别
-   */
-  static setLogLevel(level: LogLevel): void {
-    LoggerUtils.logLevel = level;
-  }
-
-  /**
    * 记录信息日志
    * @param message - 日志消息
    */
@@ -49,12 +41,12 @@ export class LoggerUtils {
   /**
    * 记录错误日志
    * @param message - 日志消息
-   * @param error - 错误对象（仅取 name + message，DEBUG 级别下追加 stack）
+   * @param error - 错误对象（仅取 name + message）
    *
    * Why 不直接透传整对象：OpenAI / Axios 等 SDK 抛出的 error 对象的 toString /
    * 序列化结果里可能含完整 URL（带 query token）、请求 headers（含 Authorization），
    * 调用方频繁写 `LoggerUtils.error('xxx 失败:', error)` 会扩散凭据泄露风险。
-   * 这里强制只取安全字段，stack 仅在 DEBUG 模式输出。
+   * 这里强制只取安全字段，不输出 stack。
    */
   static error(message: string, error?: unknown): void {
     if (LoggerUtils.logLevel > LogLevel.ERROR) return;
@@ -69,9 +61,6 @@ export class LoggerUtils {
           ? error
           : `[non-Error: ${Object.prototype.toString.call(error)}]`;
     console.error(chalk.red(`[ERROR] ${message} ${safe}`));
-    if (LoggerUtils.logLevel <= LogLevel.DEBUG && error instanceof Error && error.stack) {
-      console.error(chalk.gray(error.stack));
-    }
   }
 
   /**
@@ -81,16 +70,6 @@ export class LoggerUtils {
   static success(message: string): void {
     if (LoggerUtils.logLevel <= LogLevel.SUCCESS) {
       console.log(chalk.green(`[SUCCESS] ${message}`));
-    }
-  }
-
-  /**
-   * 记录调试日志
-   * @param message - 日志消息
-   */
-  static debug(message: string): void {
-    if (LoggerUtils.logLevel <= LogLevel.DEBUG) {
-      console.log(chalk.gray(`[DEBUG] ${message}`));
     }
   }
 }
