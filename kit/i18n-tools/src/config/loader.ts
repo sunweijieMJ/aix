@@ -124,6 +124,16 @@ function validateEnum(
 }
 
 /**
+ * match 字段类型守卫：keys.prefix.rules[].match 与 buckets.rules[].match 共用同一组
+ * 合法形态（string | string[] | RegExp | function）。收口此前两处手工对齐的重复谓词。
+ */
+function isValidMatcher(m: unknown): boolean {
+  return (
+    typeof m === 'string' || Array.isArray(m) || m instanceof RegExp || typeof m === 'function'
+  );
+}
+
+/**
  * 解析 framework 配置 + 与 library 做联合校验。
  *
  * - type='vue' 时，library 必须 ∈ {vue-i18n, vue-i18next}
@@ -244,12 +254,9 @@ function resolvePrefixStrategy(prefix: PrefixStrategyConfig | undefined): Resolv
       if (rule.match === undefined || rule.match === null) {
         throw new Error(`keys.prefix.rules[${i}].match 缺失`);
       }
-      const m = rule.match;
-      const okType =
-        typeof m === 'string' || Array.isArray(m) || m instanceof RegExp || typeof m === 'function';
-      if (!okType) {
+      if (!isValidMatcher(rule.match)) {
         throw new Error(
-          `keys.prefix.rules[${i}].match 必须是 string | string[] | RegExp | function，实际 ${typeof m}`,
+          `keys.prefix.rules[${i}].match 必须是 string | string[] | RegExp | function，实际 ${typeof rule.match}`,
         );
       }
       return {
@@ -355,10 +362,7 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
     // 类型校验，与 prefix rules 的 match 校验对齐：JS 配置传错类型（如 matchKey: 'foo'）
     // 否则会绕过本校验、在 BucketResolver 里抛「Invalid bucket rule」或运行时 TypeError。
     if (hasMatch) {
-      const m = rule.match;
-      const okType =
-        typeof m === 'string' || Array.isArray(m) || m instanceof RegExp || typeof m === 'function';
-      if (!okType) {
+      if (!isValidMatcher(rule.match)) {
         throw new Error(
           `桶规则 "${rule.name}" 的 match 类型非法：仅支持 string | string[] | RegExp | function`,
         );

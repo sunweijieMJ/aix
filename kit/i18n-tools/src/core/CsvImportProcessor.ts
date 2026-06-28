@@ -4,7 +4,7 @@ import { FileUtils } from '../utils/file-utils';
 import { InteractiveUtils } from '../utils/interactive-utils';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
-import { decodeUtf8Strict, parseCsv } from '../utils/csv-utils';
+import { assertLangsAreTargets, decodeUtf8Strict, parseCsv } from '../utils/csv-utils';
 import { FileProcessor } from './FileProcessor';
 
 export interface CsvImportOptions {
@@ -79,14 +79,9 @@ export class CsvImportProcessor extends FileProcessor {
       .map((name, idx) => ({ name, idx }))
       .filter((c) => targets.includes(c.name));
     if (this.options.langs && this.options.langs.length > 0) {
-      // 与 csv-export 的 resolveLangs 口径一致：--langs 含未配置的目标语言直接报错，
-      // 而非静默丢弃——否则 CI 脚本里的拼写错误（如 en-US,typo）会悄悄只写一部分。
-      const invalid = this.options.langs.filter((l) => !targets.includes(l));
-      if (invalid.length > 0) {
-        throw new Error(
-          `[i18n-tools] --langs 含未配置的目标语言：${invalid.join(', ')}（可选：${targets.join(', ')}）`,
-        );
-      }
+      // 与 csv-export 的 resolveLangs 共用 assertLangsAreTargets：--langs 含未配置的目标
+      // 语言直接报错，而非静默丢弃——否则 CI 脚本里的拼写错误（如 en-US,typo）会悄悄只写一部分。
+      assertLangsAreTargets(targets, this.options.langs);
       langCols = langCols.filter((c) => this.options.langs!.includes(c.name));
     }
     if (langCols.length === 0) {
