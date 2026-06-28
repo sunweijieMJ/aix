@@ -640,20 +640,7 @@ export class LanguageFileManager {
       if (options?.preFinalized) {
         message = rawMessage;
       } else {
-        const built =
-          extracted.isTemplateString && extracted.templateVariables
-            ? CommonASTUtils.createMessageWithOptions(rawMessage, extracted.templateVariables)
-            : {
-                message: CommonASTUtils.stripMatchedDelimiters(rawMessage, ['`']),
-                placeholderMap: new Map<string, string>(),
-              };
-        message = library
-          ? CommonASTUtils.finalizeLocaleMessage(
-              built.message,
-              built.placeholderMap.values(),
-              library,
-            )
-          : built.message;
+        message = CommonASTUtils.buildLocaleMessage(extracted, library ?? undefined);
       }
 
       if (!(extracted.semanticId in localeMap)) {

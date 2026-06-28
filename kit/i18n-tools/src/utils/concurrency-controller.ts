@@ -12,24 +12,6 @@ export class ConcurrencyController {
   }
 
   /**
-   * 原地调整最大并发数；调高时主动拉起被阻塞的队列任务。
-   *
-   * Why: 之前 LLMClient.adjustConcurrency 直接 new 一个新 controller 替换字段，
-   *      旧 controller 中已 enqueue 但未启动的任务永远不会被消费，对应 Promise
-   *      永远 pending，造成翻译/ID 生成卡死。原地调整可保留队列与 running 状态。
-   */
-  setMaxConcurrency(maxConcurrency: number): void {
-    if (maxConcurrency < 1) return;
-    const previous = this.maxConcurrency;
-    this.maxConcurrency = maxConcurrency;
-    // 调高时按差值多拉起若干任务；调低时不抢占已运行任务，等其自然回落
-    if (maxConcurrency > previous) {
-      const slots = maxConcurrency - previous;
-      for (let i = 0; i < slots; i++) void this.process();
-    }
-  }
-
-  /**
    * 添加任务到队列
    * @param task - 异步任务函数
    * @returns Promise
