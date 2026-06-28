@@ -103,21 +103,17 @@ export class ReactTransformer implements ITransformer {
     const filePath = fileStrings[0]!.filePath;
     const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
 
-    // 按位置倒序排列，从后往前替换以避免位置偏移
-    const sortedStrings = fileStrings.sort((a, b) => {
-      const aPos = ts.getPositionOfLineAndCharacter(sourceFile, a.line - 1, a.column - 1);
-      const bPos = ts.getPositionOfLineAndCharacter(sourceFile, b.line - 1, b.column - 1);
-      return bPos - aPos;
-    });
-
-    // 收集所有有效的替换操作
+    // 收集所有有效的替换操作。
+    // 无需在此按位置排序：从后往前替换避免位置偏移由 CommonASTUtils.applyReplacements
+    // 内部统一完成（它会先按区间大小贪心去重、再按 start 倒序后应用），此处预排序对
+    // 最终产物无影响，且会原地 mutate 入参 fileStrings——故省去。
     const replacements: Array<{
       start: number;
       end: number;
       replacement: string;
     }> = [];
 
-    for (const extracted of sortedStrings) {
+    for (const extracted of fileStrings) {
       const position = ts.getPositionOfLineAndCharacter(
         sourceFile,
         extracted.line - 1,
