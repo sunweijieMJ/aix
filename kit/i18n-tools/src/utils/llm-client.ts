@@ -244,9 +244,9 @@ export class LLMClient {
         const jsonText = JSON.stringify(batch, null, 2);
 
         try {
-          const translatedJsonText = await this.translateJson(jsonText, targetLocale);
-          const translatedBatch: Translations = JSON.parse(translatedJsonText);
-          results[index] = translatedBatch;
+          // 复用 requestTranslation 的单次解析结果，避免对译文 JSON 二次 JSON.parse
+          const { parsed } = await this.requestTranslation(jsonText, targetLocale);
+          results[index] = parsed;
           successCount++;
 
           if (onProgress) {
@@ -276,9 +276,16 @@ export class LLMClient {
   }
 
   /**
-   * 翻译 JSON 文本（单目标）。
+   * 请求翻译并解析一次：返回 cleaned 文本与解析后的对象。
+   *
+   * 收口「chatCompletion → cleanJsonResponse → JSON.parse + 错误包装」唯一一处，
+   * 让 translateJson（保留 string 返回契约）与 batchTranslate（直接消费对象）复用同一次
+   * 解析结果——避免此前 batchTranslate 对 translateJson 返回串再次 JSON.parse 的重复解析。
    */
-  async translateJson(jsonText: string, targetLocale: string): Promise<string> {
+  private async requestTranslation(
+    jsonText: string,
+    targetLocale: string,
+  ): Promise<{ cleaned: string; parsed: Translations }> {
     const rawContent = await this.chatCompletion(
       getTranslationSystemPrompt(this.locales, this.task, targetLocale),
       getTranslationUserPrompt(jsonText, this.locales, this.task, targetLocale),
@@ -286,9 +293,8 @@ export class LLMClient {
 
     try {
       const cleaned = this.cleanJsonResponse(rawContent);
-      // 验证返回的是有效 JSON
-      JSON.parse(cleaned);
-      return cleaned;
+      const parsed = JSON.parse(cleaned) as Translations;
+      return { cleaned, parsed };
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new Error(`LLM 翻译返回的 JSON 解析失败: ${rawContent.slice(0, 200)}`, {
@@ -297,6 +303,13 @@ export class LLMClient {
       }
       throw error;
     }
+  }
+
+  /**
+   * 翻译 JSON 文本（单目标）。返回 cleaned JSON 字符串（公共 API，契约不变）。
+   */
+  async translateJson(jsonText: string, targetLocale: string): Promise<string> {
+    return (await this.requestTranslation(jsonText, targetLocale)).cleaned;
   }
 
   /**

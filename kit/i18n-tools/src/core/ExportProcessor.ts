@@ -262,7 +262,9 @@ export class ExportProcessor extends FileProcessor {
     // 用合并后的 source 文本驱动分桶（与 generate/merge 一致；含定制 source key）
     const sourceFlat = mergedByLocale.get(sourceLocale)!;
     const keyBucketMap = LanguageFileManager.buildKeyBucketMap(this.config, sourceFlat);
-    const bucketCount = new Set(Object.values(keyBucketMap)).size;
+    // 去重桶集合算一次后下传复用（统计 / index 文件 / manifest 三处共用，避免重复计算）
+    const bucketNames = [...new Set(Object.values(keyBucketMap))].sort();
+    const bucketCount = bucketNames.length;
 
     LoggerUtils.info('\n📊 桶式语言包统计:');
     for (const locale of allLocales) {
@@ -287,19 +289,11 @@ export class ExportProcessor extends FileProcessor {
       );
     }
 
-    const bucketNames = [...new Set(Object.values(keyBucketMap))].sort();
-
     // 每个语言目录生成 index.json，便于消费方按需懒加载
     this.writeLocaleIndexFiles(outputDir, allLocales, bucketNames, buckets.layout);
 
     if (buckets.emitManifest) {
-      this.writeManifest(
-        outputDir,
-        keyBucketMap,
-        allLocales,
-        buckets.layout,
-        buckets.defaultBucket,
-      );
+      this.writeManifest(outputDir, bucketNames, allLocales, buckets.layout, buckets.defaultBucket);
     }
 
     LoggerUtils.success('\n✅ 桶式语言包导出成功!');
@@ -323,12 +317,11 @@ export class ExportProcessor extends FileProcessor {
 
   private writeManifest(
     outputDir: string,
-    keyBucketMap: Record<string, string>,
+    bucketNames: string[],
     locales: string[],
     layout: 'by-locale' | 'by-bucket',
     defaultBucket: string,
   ): void {
-    const bucketNames = [...new Set(Object.values(keyBucketMap))].sort();
     const files: Record<string, Record<string, string>> = {};
 
     if (layout === 'by-bucket') {
