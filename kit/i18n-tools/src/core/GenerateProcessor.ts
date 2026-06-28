@@ -250,18 +250,7 @@ export class GenerateProcessor extends BaseProcessor {
    * 无译文的新 key。两处统一走本方法，杜绝形态漂移。
    */
   private toLocaleMessage(item: ExtractedString): string {
-    const raw = item.processedMessage || item.original;
-    const built =
-      item.isTemplateString && item.templateVariables
-        ? CommonASTUtils.createMessageWithOptions(raw, item.templateVariables)
-        : {
-            message: CommonASTUtils.stripMatchedDelimiters(raw, ['`']),
-            placeholderMap: new Map<string, string>(),
-          };
-    const library = this.adapter?.getLibrary();
-    return library
-      ? CommonASTUtils.finalizeLocaleMessage(built.message, built.placeholderMap.values(), library)
-      : built.message;
+    return CommonASTUtils.buildLocaleMessage(item, this.adapter?.getLibrary());
   }
 
   /**

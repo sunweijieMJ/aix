@@ -136,7 +136,10 @@ export class ExportProcessor extends FileProcessor {
 
     const loadFlat = (filePath: string, lang: string, type: '基础' | '自定义'): LocaleMap => {
       const raw = FileUtils.loadLanguageFile<Record<string, any>>(filePath, lang, type);
-      return FileUtils.flattenObject(raw) as LocaleMap;
+      // 必须用 config.keys.separator 展平：与 readLocaleFile / language-file-manager 的读路径同源。
+      // 漏传则默认 '.'，flat 格式 + 非 '.' 分隔符 + 磁盘嵌套 JSON 时导出 key（a.b）与运行时使用的
+      // key（a/b）不一致，导致导出包整片 missing-key 兜底（回归同 flatten-separator-consistency #12）。
+      return FileUtils.flattenObject(raw, '', this.config.keys.separator) as LocaleMap;
     };
 
     // 一次性加载所有 locale 的 base/custom

@@ -1,7 +1,7 @@
 import ts from 'typescript';
 import { CONFIG } from './constants';
 import { LoggerUtils } from './logger';
-import type { LocaleMap } from './types';
+import type { LocaleMap, ExtractedString } from './types';
 
 /**
  * 提取阶段记录的「被跳过的中文字面量」位置（比较运算操作数 / 嵌套插值中文）。
@@ -306,16 +306,22 @@ export class CommonASTUtils {
    *
    * 排除：
    * - 对象字面量属性 key（如 `{ '中文key': value }`，翻译会破坏数据结构）
+   * - 计算属性访问的 key（如 `map['进行中']`，翻译后 `map[t(...)]` 返回译文，查找落空）
    * - 模块导入路径（import / require / external module reference）
    * - 比较运算符 / case 子句的操作数（翻译状态值会破坏分支判断）
    *
-   * Why: React/Vue 两端 TextExtractor 此前各写一遍同样的三条排除条件，
+   * Why: React/Vue 两端 TextExtractor 此前各写一遍同样的排除条件，
    *      字面相同；统一到本工具方法避免维护漂移。
+   *
+   * 计算属性访问与对象字面量 key 是对称的：定义侧 `{ '进行中': x }` 已被 PropertyAssignment
+   * 分支排除并原样保留，访问侧 `map['进行中']` 若被提取替换为 `map[t(...)]`，运行时返回译文
+   * 导致与定义侧不匹配、查找失效——故同样排除（与 isComparisonOperand 守卫同一类不对称风险）。
    */
   static isExtractableStringLiteral(node: ts.StringLiteral): boolean {
     const parent = node.parent;
     if (!parent) return true;
     if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+    if (ts.isElementAccessExpression(parent) && parent.argumentExpression === node) return false;
     if (ts.isImportDeclaration(parent) || ts.isExternalModuleReference(parent)) return false;
     if (CommonASTUtils.isComparisonOperand(node)) return false;
     return true;
@@ -1317,6 +1323,38 @@ export class CommonASTUtils {
     }
     out += library.escapeLiteralText(message.slice(cursor));
     return out;
+  }
+
+  /**
+   * 把一条提取结果规整为「最终 locale 形态」的文案：
+   *  - 模板串的 ${var} 占位符 → {var}（按 i18n 库做方言适配）、字面量插值内联；
+   *  - 普通字符串去除两端反引号定界符；
+   *  - 提供 library 时再做花括号方言适配与字面量转义（finalizeLocaleMessage）。
+   *
+   * Why（关键）：复用查找（IdReuseResolver 建表 / resolveSemanticId）与 locale 落盘必须使用
+   * 同一 canonical 形态，否则模板/占位符串两边形态不一致——反查永远 miss，跨运行重复生成 _N
+   * 后缀 key（旧 key 带译文成孤儿、源码改指向无译文新 key）。GenerateProcessor.toLocaleMessage 与
+   * LanguageFileManager.updateLanguageFiles 两处共用本方法，杜绝形态漂移（此前两处逐字重复，
+   * 仅靠注释约束同步）。
+   */
+  static buildLocaleMessage(
+    extracted: Pick<
+      ExtractedString,
+      'original' | 'processedMessage' | 'isTemplateString' | 'templateVariables'
+    >,
+    library?: { usesDoubleBracePlaceholders: boolean; escapeLiteralText: (text: string) => string },
+  ): string {
+    const raw = extracted.processedMessage || extracted.original;
+    const built =
+      extracted.isTemplateString && extracted.templateVariables
+        ? CommonASTUtils.createMessageWithOptions(raw, extracted.templateVariables)
+        : {
+            message: CommonASTUtils.stripMatchedDelimiters(raw, ['`']),
+            placeholderMap: new Map<string, string>(),
+          };
+    return library
+      ? CommonASTUtils.finalizeLocaleMessage(built.message, built.placeholderMap.values(), library)
+      : built.message;
   }
 
   /**
