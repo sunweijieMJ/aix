@@ -109,7 +109,7 @@ i18n-tools [选项]
 
 | 选项 | 别名 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--config` | - | 配置文件路径 | `i18n.config.ts` |
+| `--config` | - | 配置文件路径 | 自动发现 `i18n.config.{ts,mts,cts,mjs,cjs,js}` |
 | `--mode` | `-m` | 操作模式 | `generate` |
 | `--custom` | `-c` | 操作定制目录 | `false` |
 | `--interactive` | `-i` | 交互模式 | 未指定 mode 时开启 |
@@ -120,12 +120,12 @@ i18n-tools [选项]
 
 | 选项 | 说明 | 适用模式 |
 |------|------|---------|
-| `--dry-run` | 生成 plan 但不修改源码与语言文件（用于 review）；csv-import 下表示仅预览不写回 | `generate` / `csv-import` |
+| `--dry-run` | 生成 plan 但不修改源码与语言文件（用于 review）；csv-import / prune 下表示仅预览不写回 | `generate` / `csv-import` / `prune` |
 | `--apply-plan <path \| latest>` | 从指定 plan 回放，跳过 LLM 与 AST 解析；传 `latest` 自动找最近一次 | `generate` |
 | `--keep-plan` | apply 成功后保留 plan 目录（默认会自动清理） | `generate` |
 | `--plan-output-dir <dir>` | 自定义 dry-run 输出根目录（绕开 Windows 长路径等问题） | `generate` |
 | `--coverage-threshold <num>` | 覆盖率低于该百分比（0-100）则以退出码 2 退出 | `generate` / `automatic` |
-| `--ci` | 发现 error 级问题时以非零状态码退出；csv-import 下表示跳过 y/N 确认 | `doctor` / `csv-import` |
+| `--ci` | doctor：发现 error 级问题时非零退出；csv-import / prune：跳过 y/N 确认直接执行 | `doctor` / `csv-import` / `prune` |
 
 #### CSV 选项
 
@@ -145,7 +145,7 @@ i18n-tools [选项]
 | `pick` | 提取待翻译 - 从国际化文件中提取未翻译条目 |
 | `translate` | AI 翻译 - 调用 AI 服务将中文翻译为英文 |
 | `csv-export` | CSV 导出 - 把待翻译/已翻译条目导出为 CSV 发人翻译/审核（translate 的人工平替） |
-| `csv-import` | CSV 回流 - 把翻译/审核好的 CSV 写回 `untranslated.json` |
+| `csv-import` | CSV 回流 - 把翻译/审核好的 CSV 写回（按 key 归属自动路由到 `untranslated.json` / `translations.json`） |
 | `merge` | 合并翻译 - 将翻译结果合并回主文件 |
 | `restore` | 代码还原 - 将国际化调用还原为中文 |
 | `export` | 语言包导出 - 生成最终的多语言文件 |
@@ -797,21 +797,24 @@ await auto.execute('src/views', false);
 | `MergeProcessor` | 合并翻译处理器 |
 | `ExportProcessor` | 导出处理器 |
 | `RestoreProcessor` | 还原处理器 |
+| `CsvExportProcessor` | CSV 导出处理器 |
+| `CsvImportProcessor` | CSV 回流处理器 |
 | `AutomaticProcessor` | 全自动处理器 |
 | `DoctorProcessor` | 健康检查处理器（locale lint + 三类对账） |
+| `PruneProcessor` | 孤儿 key 清理处理器 |
 
-### 导出的工具类
+> 另有基类 `BaseProcessor` 一并导出，供自定义处理器继承。
 
-| 工具类 | 说明 |
+### 其它导出
+
+| 导出 | 说明 |
 |--------|------|
-| `FileUtils` | 文件操作工具 |
-| `LoggerUtils` | 日志工具 |
-| `LLMClient` | LLM API 客户端 |
-| `IdGenerator` | ID 生成器 |
-| `LanguageFileManager` | 语言文件管理 |
-| `LocaleValueLinter` | locale value 静态检查（`analyze()` 纯函数 + `emit()` sink） |
-| `RunReport` | 运行期诊断报告（failure / warning / needsManual / coverage） |
 | `GeneratePlanWriter` | Plan 序列化/回读/指纹校验（dry-run/apply 用） |
+| `createFrameworkAdapter` / `ReactAdapter` / `VueAdapter` / `FrameworkAdapter` | 框架适配器（自定义提取/转换实现时通过其接口注入） |
+| `defineConfig` / `loadConfig` / `resolveConfig` / `loadConfigFile` / `findConfigFile` | 配置加载与解析 |
+| `DEFAULT_*` 常量 + 各 `*Config` 类型 | 配置默认值与 TypeScript 类型 |
+
+> 注：`FileUtils`、`LoggerUtils`、`LLMClient`、`IdGenerator`、`LanguageFileManager`、`LocaleValueLinter`、`RunReport` 等 `utils/*` 是**内部实现，不在公共 API 中导出**（避免内部重构演变成 breaking change）；需要扩展请通过 `FrameworkAdapter` 接口注入实现。
 
 ## 生成的文件结构
 
