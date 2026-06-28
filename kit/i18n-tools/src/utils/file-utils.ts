@@ -365,8 +365,13 @@ export class FileUtils {
     const files: string[] = [];
     const literalExcludes = new Set<string>();
     const globExcludes: picomatch.Matcher[] = [];
+    // 含路径分隔符的 exclude 模式（如 `src/legacy/**`）按相对路径匹配，与 include 对称；
+    // 单段模式（literal / `*.test.tsx` 等 basename glob）仍按文件名匹配并可剪枝目录。
+    const pathExcludes: string[] = [];
     for (const e of exclude) {
-      if (e.includes('*') || e.includes('?')) {
+      if (e.includes('/')) {
+        pathExcludes.push(e);
+      } else if (e.includes('*') || e.includes('?')) {
         // 仅匹配单段文件名（不跨越 / 分隔符），保持与原 simpleGlobToRegex 行为一致
         globExcludes.push(picomatch(e, { dot: true }));
       } else {
@@ -382,7 +387,12 @@ export class FileUtils {
       return false;
     };
 
-    const includeMatcher = include.length > 0 ? FileUtils.createIncludeMatcher(include) : null;
+    // 路径式 exclude 按相对 POSIX 路径匹配（不剪枝目录，仅在收集文件时排除——确保
+    // `src/legacy/**` 这类 include 侧本就支持的写法在 exclude 侧同样生效）。
+    const excludePathMatcher =
+      pathExcludes.length > 0 ? FileUtils.createPathGlobMatcher(pathExcludes) : null;
+
+    const includeMatcher = include.length > 0 ? FileUtils.createPathGlobMatcher(include) : null;
     // 解析为绝对路径，避免 dirPath / rootDir 形态不一致导致 path.relative 产出 `../..` 形态
     const absoluteDirPath = path.resolve(dirPath);
     const includeBase = path.resolve(rootDir ?? dirPath);
@@ -400,7 +410,11 @@ export class FileUtils {
         if (entry.isDirectory()) {
           walkDir(fullPath);
         } else if (entry.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
-          if (!includeMatcher || includeMatcher(fullPath, includeBase)) {
+          const includedByGlob = !includeMatcher || includeMatcher(fullPath, includeBase);
+          const excludedByPath = excludePathMatcher
+            ? excludePathMatcher(fullPath, includeBase)
+            : false;
+          if (includedByGlob && !excludedByPath) {
             files.push(fullPath);
           }
         }
@@ -412,10 +426,11 @@ export class FileUtils {
   }
 
   /**
-   * 创建 include 模式匹配器：编译期统一生成 picomatch，运行时仅做相对路径计算。
+   * 创建「相对路径 glob 匹配器」：编译期统一生成 picomatch，运行时仅做相对路径计算。
    * 使用 dot:true 让以 `.` 开头的目录/文件也能被模式命中；统一以 POSIX 风格相对路径喂入。
+   * include 与「含路径分隔符的 exclude」共用此匹配器，确保二者路径匹配语义对称。
    */
-  private static createIncludeMatcher(
+  private static createPathGlobMatcher(
     patterns: string[],
   ): (filePath: string, baseDir: string) => boolean {
     const isMatch = picomatch(patterns, { dot: true });

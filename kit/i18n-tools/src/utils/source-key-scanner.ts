@@ -39,6 +39,42 @@ const ATTR_PATTERNS: RegExp[] = [
 ];
 
 /**
+ * 从单段源码文本里抽出所有 i18n key 引用（库无关全量口径）：函数调用 `t()/$t()`
+ * 首参里的字符串字面量（含三元两分支）、vue `<i18n-t keypath>`/`v-t`、react
+ * `<Trans i18nKey>`/`<FormattedMessage id>`/`formatMessage({id})`。
+ *
+ * 不做 namespace 剥离、不去重，原样返回每个命中（按出现顺序）。调用方按需归一化/计数。
+ * collectUsedKeys（doctor/prune 对账）与 IdReuseResolver（覆盖率分子 + ID 复用）共用，
+ * 避免「t()/$t() only」窄正则与本全量口径漂移。传入文本应已剥离注释。
+ */
+export function scanKeyReferencesInContent(content: string): string[] {
+  const refs: string[] = [];
+
+  // 1. 函数调用：取首参表达式里的全部字符串字面量
+  CALL_FIRST_ARG.lastIndex = 0;
+  let call: RegExpExecArray | null;
+  while ((call = CALL_FIRST_ARG.exec(content)) !== null) {
+    const firstArg = call[1] ?? '';
+    STRING_LITERAL.lastIndex = 0;
+    let lit: RegExpExecArray | null;
+    while ((lit = STRING_LITERAL.exec(firstArg)) !== null) {
+      if (lit[1]) refs.push(lit[1]);
+    }
+  }
+
+  // 2. 组件 / 属性形式
+  for (const pattern of ATTR_PATTERNS) {
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(content)) !== null) {
+      if (match[1]) refs.push(match[1]);
+    }
+  }
+
+  return refs;
+}
+
+/**
  * 扫描源码目录，抽出所有 i18n key 引用：函数调用 `t()/$t()`（含三元等首参表达式）、
  * vue 组件/指令 `<i18n-t keypath>`/`v-t`、react 组件/调用 `<Trans i18nKey>`/
  * `<FormattedMessage id>`/`formatMessage({id})`。已剥离 namespace 前缀（'ns:key' →
@@ -61,26 +97,8 @@ export function collectUsedKeys(config: ResolvedConfig, adapter: FrameworkAdapte
     try {
       const raw = fs.readFileSync(filePath, 'utf-8');
       const content = CommonASTUtils.stripComments(raw);
-
-      // 1. 函数调用：取首参表达式里的全部字符串字面量
-      CALL_FIRST_ARG.lastIndex = 0;
-      let call: RegExpExecArray | null;
-      while ((call = CALL_FIRST_ARG.exec(content)) !== null) {
-        const firstArg = call[1] ?? '';
-        STRING_LITERAL.lastIndex = 0;
-        let lit: RegExpExecArray | null;
-        while ((lit = STRING_LITERAL.exec(firstArg)) !== null) {
-          if (lit[1]) addKey(lit[1]);
-        }
-      }
-
-      // 2. 组件 / 属性形式
-      for (const pattern of ATTR_PATTERNS) {
-        pattern.lastIndex = 0;
-        let match: RegExpExecArray | null;
-        while ((match = pattern.exec(content)) !== null) {
-          if (match[1]) addKey(match[1]);
-        }
+      for (const ref of scanKeyReferencesInContent(content)) {
+        addKey(ref);
       }
     } catch {
       /* 读取失败的文件跳过，不影响其他文件 */

@@ -172,7 +172,7 @@ export class CommonASTUtils {
    * 不参与展示，由 isComparisonOperand 路径单独诊断；三元/逻辑表达式的展示分支
    * （`cond ? '内部错误' : '网络异常'`）才是真正渲染给用户、需要 i18n 的文案。
    */
-  private static collectNestedChineseLiterals(expression: ts.Node): string[] {
+  static collectNestedChineseLiterals(expression: ts.Node): string[] {
     const out: string[] = [];
     const walk = (n: ts.Node): void => {
       if (
@@ -855,6 +855,18 @@ export class CommonASTUtils {
       true,
       CommonASTUtils.getScriptKind(filePath),
     );
+  }
+
+  /**
+   * 以「表达式上下文」解析一段源码片段（Vue 动态属性 / 插值绑定本质都是表达式）。
+   *
+   * 直接 parseSourceFile 是语句上下文：`{ '提示信息': msg }` 会被当成 Block 而非对象
+   * 字面量，里面的字符串失去 PropertyAssignment 父节点，isExtractableStringLiteral 的
+   * 对象-key 排除便无从生效，导致中文对象 KEY 被误当文案提取。包一层括号 `(${expr})`
+   * 强制按表达式解析，对象字面量、三元、序列等都得到正确的父节点结构。
+   */
+  static parseExpressionSource(sourceText: string, filePath: string): ts.SourceFile {
+    return CommonASTUtils.parseSourceFile(`(${sourceText})`, filePath);
   }
 
   /**

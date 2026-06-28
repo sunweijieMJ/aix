@@ -235,6 +235,12 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     });
   }
 
+  hasLocalTranslationBinding(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
+    // react-i18next 的 isTranslationAvailableInScope 本就只认本地 useTranslation 解构出的
+    // `t`（无 props.t 成员分支），与「本地绑定」语义一致，直接复用。
+    return this.isTranslationAvailableInScope(node);
+  }
+
   isAlreadyInternationalized(node: ts.Node): boolean {
     return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
       isI18nCall: (expression) =>
