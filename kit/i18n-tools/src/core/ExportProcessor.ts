@@ -132,38 +132,13 @@ export class ExportProcessor extends FileProcessor {
       );
     }
 
-    if (customLocaleDir) {
-      LoggerUtils.info('🔍 检查语言包冲突...');
-      const conflictsByLocale: Record<string, string[]> = {};
-      let totalConflicts = 0;
-      for (const locale of allLocales) {
-        const conflicts = FileUtils.findConflictingKeys(
-          baseByLocale.get(locale)!,
-          customByLocale.get(locale)!,
-        );
-        if (conflicts.length > 0) {
-          conflictsByLocale[locale] = conflicts;
-          totalConflicts += conflicts.length;
-        }
-      }
-
-      if (totalConflicts > 0) {
-        for (const [locale, conflicts] of Object.entries(conflictsByLocale)) {
-          LoggerUtils.error(
-            `${locale} 语言包存在 ${conflicts.length} 个冲突键: ${conflicts.join(', ')}`,
-          );
-        }
-        throw new Error('语言包存在冲突，请先解决冲突后再导出。定制包中的 key 不应与基础包重复。');
-      }
-      LoggerUtils.success('✅ 未发现语言包冲突');
-    }
+    const baseOf = (locale: string): LocaleMap => baseByLocale.get(locale)!;
+    const customOf = (locale: string): LocaleMap => customByLocale.get(locale)!;
+    if (customLocaleDir) ExportProcessor.checkLocaleConflicts(allLocales, baseOf, customOf);
 
     // 合并并落盘
     FileUtils.ensureDirectoryExists(outputDir);
-    const mergedByLocale = new Map<string, LocaleMap>();
-    for (const locale of allLocales) {
-      mergedByLocale.set(locale, { ...baseByLocale.get(locale)!, ...customByLocale.get(locale)! });
-    }
+    const mergedByLocale = ExportProcessor.mergeByLocale(allLocales, baseOf, customOf);
 
     LoggerUtils.info('\n📊 语言包统计信息:');
     LoggerUtils.info(`📁 基础语言包 (${this.config.io.localesDir}):`);
@@ -215,6 +190,49 @@ export class ExportProcessor extends FileProcessor {
   }
 
   /**
+   * 冲突检测：定制包 key 不应与基础包重复。flat / bucketed 两条导出路径共用，
+   * 仅 base/custom map 的来源不同（flat 从文件加载、bucketed 走 getMessages）。
+   */
+  private static checkLocaleConflicts(
+    allLocales: string[],
+    baseOf: (locale: string) => LocaleMap,
+    customOf: (locale: string) => LocaleMap,
+  ): void {
+    LoggerUtils.info('🔍 检查语言包冲突...');
+    const conflictsByLocale: Record<string, string[]> = {};
+    let totalConflicts = 0;
+    for (const locale of allLocales) {
+      const conflicts = FileUtils.findConflictingKeys(baseOf(locale), customOf(locale));
+      if (conflicts.length > 0) {
+        conflictsByLocale[locale] = conflicts;
+        totalConflicts += conflicts.length;
+      }
+    }
+    if (totalConflicts > 0) {
+      for (const [locale, conflicts] of Object.entries(conflictsByLocale)) {
+        LoggerUtils.error(
+          `${locale} 语言包存在 ${conflicts.length} 个冲突键: ${conflicts.join(', ')}`,
+        );
+      }
+      throw new Error('语言包存在冲突，请先解决冲突后再导出。定制包中的 key 不应与基础包重复。');
+    }
+    LoggerUtils.success('✅ 未发现语言包冲突');
+  }
+
+  /** 按 locale 合并 base + custom（custom 覆盖）。flat / bucketed 共用。 */
+  private static mergeByLocale(
+    allLocales: string[],
+    baseOf: (locale: string) => LocaleMap,
+    customOf: (locale: string) => LocaleMap,
+  ): Map<string, LocaleMap> {
+    const merged = new Map<string, LocaleMap>();
+    for (const locale of allLocales) {
+      merged.set(locale, { ...baseOf(locale), ...customOf(locale) });
+    }
+    return merged;
+  }
+
+  /**
    * 桶式导出：每个 (locale, bucket) 写一个文件；按 buckets.layout 决定层级。
    */
   private async performBucketedExport(outputDir: string): Promise<void> {
@@ -233,40 +251,13 @@ export class ExportProcessor extends FileProcessor {
       ? LanguageFileManager.getMessages(this.config, true)
       : ({} as ReturnType<typeof LanguageFileManager.getMessages>);
 
-    // 冲突检测：定制包 key 不应与基础包重复（与 performFlatExport 同口径）
-    if (customLocaleDir) {
-      LoggerUtils.info('🔍 检查语言包冲突...');
-      const conflictsByLocale: Record<string, string[]> = {};
-      let totalConflicts = 0;
-      for (const locale of allLocales) {
-        const conflicts = FileUtils.findConflictingKeys(
-          (baseMessages[locale] ?? {}) as LocaleMap,
-          (customMessages[locale] ?? {}) as LocaleMap,
-        );
-        if (conflicts.length > 0) {
-          conflictsByLocale[locale] = conflicts;
-          totalConflicts += conflicts.length;
-        }
-      }
-      if (totalConflicts > 0) {
-        for (const [locale, conflicts] of Object.entries(conflictsByLocale)) {
-          LoggerUtils.error(
-            `${locale} 语言包存在 ${conflicts.length} 个冲突键: ${conflicts.join(', ')}`,
-          );
-        }
-        throw new Error('语言包存在冲突，请先解决冲突后再导出。定制包中的 key 不应与基础包重复。');
-      }
-      LoggerUtils.success('✅ 未发现语言包冲突');
-    }
+    // 冲突检测 + 合并：与 performFlatExport 同口径，仅 base/custom 来源不同
+    const baseOf = (locale: string): LocaleMap => (baseMessages[locale] ?? {}) as LocaleMap;
+    const customOf = (locale: string): LocaleMap => (customMessages[locale] ?? {}) as LocaleMap;
+    if (customLocaleDir) ExportProcessor.checkLocaleConflicts(allLocales, baseOf, customOf);
 
     // 合并 base + custom（custom 覆盖，冲突已在上方拦截，正常为并集）
-    const mergedByLocale = new Map<string, LocaleMap>();
-    for (const locale of allLocales) {
-      mergedByLocale.set(locale, {
-        ...((baseMessages[locale] ?? {}) as LocaleMap),
-        ...((customMessages[locale] ?? {}) as LocaleMap),
-      });
-    }
+    const mergedByLocale = ExportProcessor.mergeByLocale(allLocales, baseOf, customOf);
 
     // 用合并后的 source 文本驱动分桶（与 generate/merge 一致；含定制 source key）
     const sourceFlat = mergedByLocale.get(sourceLocale)!;

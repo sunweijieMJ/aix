@@ -21,6 +21,7 @@ import {
   TranslateProcessor,
 } from './core';
 import {
+  FileUtils,
   InteractiveUtils,
   isModeExplicitlySet,
   loadEnv,
@@ -45,29 +46,70 @@ const getFrameworkInfo = (adapter: ReturnType<typeof createFrameworkAdapter>): F
 });
 
 /**
+ * 解析「要处理的文件/目录路径」。统一三种入口的非交互化：
+ *  1. 传了 --path：校验后直接使用（无效即 exit(1)，给出明确错误而非进入 prompt）；
+ *  2. 未传 --path 且 interactive：回退到 inquirer 询问；
+ *  3. 未传 --path 且非交互（显式 --mode / --ci / 无 TTY）：直接报错退出，
+ *     避免在 CI / 管道里调到 inquirer 卡死或 EOF 崩溃。
+ *
+ * 这是「非交互 ⇒ 绝不碰 inquirer」规则在 generate / restore / automatic 三条
+ * 路径上的落点（其余 prompt 早已包在 main 的 `if (interactive)` 内）。
+ */
+const resolveTargetPath = async (
+  mode: ModeName,
+  frameworkInfo: FrameworkInfo,
+  pathArg: string | undefined,
+  interactive: boolean,
+): Promise<string> => {
+  if (pathArg) {
+    const validation = FileUtils.validateTargetPath(
+      pathArg,
+      frameworkInfo.extensions,
+      frameworkInfo.displayName,
+    );
+    if (!validation.isValid) {
+      LoggerUtils.error(`❌ --path 无效：${validation.error || '无效路径'}（${pathArg}）`);
+      process.exit(1);
+    }
+    return pathArg;
+  }
+  if (interactive) {
+    return InteractiveUtils.promptForPath(
+      mode,
+      frameworkInfo.extensions,
+      frameworkInfo.displayName,
+    );
+  }
+  const action = mode === ModeName.RESTORE ? '还原' : '提取国际化文本';
+  LoggerUtils.error(
+    `❌ 非交互模式下（--mode / --ci）需用 --path 指定要${action}的文件或目录路径，` +
+      `例如：--path src/views/demo`,
+  );
+  process.exit(1);
+};
+
+/**
  * 执行generate操作（提取多语言组件）。
  * 返回 processor，便于 main 流程在执行后读取覆盖率指标判断 CI 阈值。
  *
  * dryRun 为 true 时不修改源码与语言文件，只在 `.i18n-tools/plans/` 下产 plan，
  * 用户 review 后用 `--apply-plan <path>` 回放即可正式落盘。
+ *
+ * 二次确认（GenerateProcessor 内部「是否继续分析这些文件？」）受 `interactive && !dryRun`
+ * 双门控：dry-run 永不交互（无条件 transform 到内存再写 plan），非交互模式（--mode/--ci）
+ * 也不再弹确认——否则在管道里第一个 path prompt 消费完 stdin 后，该确认会 EOF 崩溃。
  */
 const executeGenerate = async (
   config: ResolvedConfig,
-  frameworkInfo: FrameworkInfo,
   adapter: FrameworkAdapter,
   isCustom: boolean,
+  targetPath: string,
+  interactive: boolean,
   skipLLM: boolean = false,
   dryRun: boolean = false,
   planOutputDir?: string,
 ): Promise<GenerateProcessor> => {
-  const targetPath = await InteractiveUtils.promptForPath(
-    ModeName.GENERATE,
-    frameworkInfo.extensions,
-    frameworkInfo.displayName,
-  );
-  // dry-run 模式下 interactive=false：避免在 prompt 询问"是否应用转换"时
-  // 让用户误以为这会真的落盘——dry-run 总是无条件 transform 到内存再写 plan。
-  const processor = new GenerateProcessor(config, isCustom, !dryRun, adapter);
+  const processor = new GenerateProcessor(config, isCustom, interactive && !dryRun, adapter);
   const resolvedPlanDir = planOutputDir ? path.resolve(process.cwd(), planOutputDir) : undefined;
   await processor.execute(targetPath, skipLLM, { dryRun, planOutputDir: resolvedPlanDir });
   return processor;
@@ -150,15 +192,10 @@ const enforceCoverageThreshold = (
  */
 const executeRestore = async (
   config: ResolvedConfig,
-  frameworkInfo: FrameworkInfo,
   adapter: FrameworkAdapter,
   isCustom: boolean,
+  targetPath: string,
 ): Promise<void> => {
-  const targetPath = await InteractiveUtils.promptForPath(
-    ModeName.RESTORE,
-    frameworkInfo.extensions,
-    frameworkInfo.displayName,
-  );
   const processor = new RestoreProcessor(config, isCustom, adapter);
   await processor.execute([targetPath], path.dirname(targetPath), true);
 };
@@ -301,6 +338,13 @@ const main = async (): Promise<void> => {
       type: 'boolean',
       default: false,
     })
+    .option('path', {
+      alias: 'p',
+      describe:
+        '要处理的文件或目录路径（generate / restore / automatic）。' +
+        '非交互模式（--mode / --ci）下必填，避免在 CI / 管道里调起交互式路径询问',
+      type: 'string',
+    })
     .option('interactive', {
       alias: 'i',
       describe: '交互式选择操作选项（未指定 --mode 时默认开启）',
@@ -365,7 +409,7 @@ const main = async (): Promise<void> => {
     })
     .help()
     .alias('help', 'h')
-    .group(['config', 'mode', 'custom'], '📋 基本选项:')
+    .group(['config', 'mode', 'custom', 'path'], '📋 基本选项:')
     .group(['interactive', 'skip-llm'], '⚙️  高级选项:')
     .group(['langs', 'filter', 'source', 'output'], '📊 CSV 选项:')
     .group(
@@ -374,6 +418,10 @@ const main = async (): Promise<void> => {
     )
     .example('$0 --config ./i18n.config.ts', '指定配置文件')
     .example('$0 --mode generate', '扫描源码文件，提取中文并生成国际化调用')
+    .example(
+      '$0 --mode generate --path src/views/demo',
+      '非交互：指定路径直接提取（CI / 管道可用）',
+    )
     .example('$0 --mode generate --dry-run', 'Review 模式：生成 plan 但不修改源码')
     .example('$0 --mode generate --apply-plan latest', '回放最近一次 dry-run 生成的 plan')
     .example('$0 --mode generate --apply-plan ./plan.json --keep-plan', '回放并保留 plan 目录')
@@ -524,6 +572,7 @@ export default defineConfig({
   const applyPlanPath = argv['apply-plan'] as string | undefined;
   const keepPlan = Boolean(argv['keep-plan']);
   const planOutputDir = argv['plan-output-dir'] as string | undefined;
+  const pathArg = (argv['path'] as string | undefined)?.trim() || undefined;
 
   // dry-run 与 apply-plan 的「生效模式集合」不同，必须分开提示：
   //  - --dry-run 在 generate / csv-import / prune 三种模式都被真正消费（各自有预览语义），
@@ -554,10 +603,11 @@ export default defineConfig({
     switch (mode) {
       case ModeName.AUTOMATIC:
         {
-          const targetPath = await InteractiveUtils.promptForPath(
+          const targetPath = await resolveTargetPath(
             ModeName.AUTOMATIC,
-            frameworkInfo.extensions,
-            frameworkInfo.displayName,
+            frameworkInfo,
+            pathArg,
+            interactive,
           );
           const auto = new AutomaticProcessor(config, custom, adapter);
           await auto.execute(targetPath, skipLLM);
@@ -577,11 +627,18 @@ export default defineConfig({
           await executeApplyPlan(config, adapter, custom, applyPlanPath, keepPlan);
           break;
         }
+        const targetPath = await resolveTargetPath(
+          ModeName.GENERATE,
+          frameworkInfo,
+          pathArg,
+          interactive,
+        );
         const generator = await executeGenerate(
           config,
-          frameworkInfo,
           adapter,
           custom,
+          targetPath,
+          interactive,
           skipLLM,
           dryRun,
           planOutputDir,
@@ -603,9 +660,16 @@ export default defineConfig({
       case ModeName.EXPORT:
         await executeExport(config);
         break;
-      case ModeName.RESTORE:
-        await executeRestore(config, frameworkInfo, adapter, custom);
+      case ModeName.RESTORE: {
+        const targetPath = await resolveTargetPath(
+          ModeName.RESTORE,
+          frameworkInfo,
+          pathArg,
+          interactive,
+        );
+        await executeRestore(config, adapter, custom, targetPath);
         break;
+      }
       case ModeName.DOCTOR:
         await executeDoctor(config, adapter, custom, Boolean(argv.ci));
         break;

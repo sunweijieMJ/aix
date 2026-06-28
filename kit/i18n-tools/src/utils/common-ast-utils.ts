@@ -363,37 +363,17 @@ export class CommonASTUtils {
    * 调用方语义为"是否应跳过"，因此类型字面量/枚举成员返回 true（跳过）。
    */
   static isAlreadyInternationalized(node: ts.Node): boolean {
-    let parent = node.parent;
-    while (parent) {
-      if (ts.isCallExpression(parent)) {
-        const expression = parent.expression;
-
-        if (ts.isIdentifier(expression) && (expression.text === 't' || expression.text === '$t')) {
-          return true;
-        }
-
-        if (
-          ts.isPropertyAccessExpression(expression) &&
+    // 框架无关的 t()/$t()（标识符或成员调用，如 i18n.t / this.$t）即为已国际化。
+    // 复用 isAlreadyInternationalizedByScaffold 的父链遍历，componentTags 传空数组——
+    // 本场景不识别 i18n 组件标签，JSX 分支恒不命中、退化为纯调用判定。
+    return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
+      isI18nCall: (expression) =>
+        (ts.isIdentifier(expression) && (expression.text === 't' || expression.text === '$t')) ||
+        (ts.isPropertyAccessExpression(expression) &&
           ts.isIdentifier(expression.name) &&
-          (expression.name.text === 't' || expression.name.text === '$t')
-        ) {
-          return true;
-        }
-      }
-
-      // 类型字面量与枚举成员值在编译期就被消费，不参与运行时本地化，应跳过提取。
-      if (ts.isLiteralTypeNode(parent) || ts.isEnumMember(parent)) {
-        return true;
-      }
-
-      if (ts.isBlock(parent) || ts.isFunctionLike(parent) || ts.isClassLike(parent)) {
-        return false;
-      }
-
-      parent = parent.parent;
-    }
-
-    return false;
+          (expression.name.text === 't' || expression.name.text === '$t')),
+      componentTags: [],
+    });
   }
 
   /**

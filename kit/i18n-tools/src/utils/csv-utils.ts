@@ -56,6 +56,15 @@ export function parseCsv(text: string): string[][] {
     }
 
     if (ch === '"') {
+      // RFC4180：引号只能出现在字段起始。出现在非引号字段中部（如人工填入 `5" 屏幕`）
+      // 即为非法格式——此前会静默翻进引号模式吞掉后续逗号/换行甚至整行，导致回流丢数据
+      // 且仍报成功。这里直接报错，让用户修正而非静默损坏。
+      if (field !== '') {
+        throw new Error(
+          `[i18n-tools] CSV 格式非法：第 ${rows.length + 1} 行字段中部出现未转义的引号 (")。` +
+            `若单元格内容确需包含引号，请用引号包裹整个单元格并把内部引号写成两个（""）。`,
+        );
+      }
       inQuotes = true;
       i++;
       continue;
@@ -85,6 +94,14 @@ export function parseCsv(text: string): string[][] {
     }
     field += ch;
     i++;
+  }
+
+  // 引号在文件结束仍未闭合：同样是非法 CSV，静默 flush 会把跨行内容并成一格丢数据。
+  if (inQuotes) {
+    throw new Error(
+      `[i18n-tools] CSV 格式非法：第 ${rows.length + 1} 行存在未闭合的引号 (")，` +
+        `请检查是否有单元格漏写了结束引号。`,
+    );
   }
 
   // 无尾随换行时 flush 最后一个字段/行

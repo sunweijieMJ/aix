@@ -111,20 +111,34 @@ export class PruneProcessor extends BaseProcessor {
     this.pruneDictionaryFile(FileUtils.getUntranslatedPath(this.config, this.isCustom), orphanSet);
   }
 
+  /**
+   * 从一个 key→value 映射中删除孤儿 key，返回实际删除数。
+   * 用 hasOwnProperty.call 而非 `in`：`in` 走原型链，孤儿 key 恰为 'constructor'/
+   * 'toString' 等 Object.prototype 同名成员时会假命中，虚增计数并触发无谓重写。
+   * 与 Doctor/GenerateProcessor.writePlan 的口径一致。可选 secondary 用于桶式布局里
+   * 同步删除 keyBucketMap（仅当主表命中时才删，保持计数以主表为准）。
+   */
+  private static deleteOwnKeys(
+    primary: Record<string, unknown>,
+    orphanSet: Set<string>,
+    secondary?: Record<string, unknown>,
+  ): number {
+    let removed = 0;
+    for (const k of orphanSet) {
+      if (Object.prototype.hasOwnProperty.call(primary, k)) {
+        delete primary[k];
+        if (secondary) delete secondary[k];
+        removed++;
+      }
+    }
+    return removed;
+  }
+
   /** 从 translations.json / untranslated.json（{key: {locale: value}} 字典）删除孤儿 key。 */
   private pruneDictionaryFile(filePath: string, orphanSet: Set<string>): void {
     if (!fs.existsSync(filePath)) return;
     const data = FileUtils.safeLoadJsonFile<Translations>(filePath, { silent: true });
-    let removed = 0;
-    for (const k of orphanSet) {
-      // 用 hasOwnProperty.call 而非 `in`：`in` 走原型链，孤儿 key 恰为 'constructor'/
-      // 'toString' 等 Object.prototype 同名成员时会假命中，虚增 removed 并触发无谓重写。
-      // 与 Doctor/GenerateProcessor.writePlan 的口径一致。
-      if (Object.prototype.hasOwnProperty.call(data, k)) {
-        delete data[k];
-        removed++;
-      }
-    }
+    const removed = PruneProcessor.deleteOwnKeys(data, orphanSet);
     if (removed === 0) return;
     FileUtils.writeTranslationsFile(filePath, data);
     LoggerUtils.success(`✅ ${path.basename(filePath)}: 删除 ${removed} 个 key`);
@@ -138,15 +152,7 @@ export class PruneProcessor extends BaseProcessor {
         this.isCustom,
         locale,
       );
-      let removed = 0;
-      for (const k of orphanSet) {
-        // hasOwnProperty.call 而非 `in`（避免原型链假命中，见 pruneDictionaryFile 注释）。
-        if (Object.prototype.hasOwnProperty.call(flat, k)) {
-          delete flat[k];
-          delete keyBucketMap[k];
-          removed++;
-        }
-      }
+      const removed = PruneProcessor.deleteOwnKeys(flat, orphanSet, keyBucketMap);
       if (removed === 0) return;
       LanguageFileManager.writeLocaleFile(this.config, this.isCustom, flat, locale, keyBucketMap);
       LoggerUtils.success(`✅ ${locale}: 删除 ${removed} 个 key`);
@@ -155,14 +161,7 @@ export class PruneProcessor extends BaseProcessor {
 
     const map: LocaleMap =
       LanguageFileManager.readLocaleFile(this.config, this.isCustom, locale) ?? {};
-    let removed = 0;
-    for (const k of orphanSet) {
-      // hasOwnProperty.call 而非 `in`（避免原型链假命中，见 pruneDictionaryFile 注释）。
-      if (Object.prototype.hasOwnProperty.call(map, k)) {
-        delete map[k];
-        removed++;
-      }
-    }
+    const removed = PruneProcessor.deleteOwnKeys(map, orphanSet);
     if (removed === 0) return;
     LanguageFileManager.writeLocaleFile(this.config, this.isCustom, map, locale);
     LoggerUtils.success(`✅ ${locale}: 删除 ${removed} 个 key`);

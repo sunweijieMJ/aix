@@ -9,7 +9,6 @@ export class VueI18nextLibrary implements VueI18nLibrary {
   readonly hookName = 'useTranslation';
   // vue-i18next 基于 i18next，默认插值用双花括号 `{{name}}`
   readonly usesDoubleBracePlaceholders = true;
-  readonly templateFunctionName = '$t';
   readonly supportsNamespace: boolean;
   readonly namespace: string;
 
@@ -29,20 +28,8 @@ export class VueI18nextLibrary implements VueI18nLibrary {
     return moduleName === 'vue-i18next' || moduleName === 'i18next-vue';
   }
 
-  isHookDeclaration(callExpressionName: string): boolean {
-    return callExpressionName === 'useTranslation';
-  }
-
-  generateImportStatement(): string {
-    return `import { useTranslation } from '${this.packageName}';`;
-  }
-
   generateHookDeclaration(): string {
     return this.hookDeclaration;
-  }
-
-  getImportCheckRegex(): RegExp {
-    return /import\s*\{[^}]*useTranslation[^}]*\}\s*from\s*['"](?:vue-i18next|i18next-vue)['"]/;
   }
 
   getHookDeclarationCheckRegex(): RegExp {
