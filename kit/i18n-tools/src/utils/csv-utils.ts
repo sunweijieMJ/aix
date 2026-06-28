@@ -23,6 +23,21 @@ export function serializeCsv(rows: string[][]): string {
 }
 
 /**
+ * 校验 --langs 是否都属于已配置的 target 语种：含未配置项即抛错（而非静默丢弃），
+ * 否则 CI 脚本里的拼写错误（如 en-US,typo）会悄悄只写一部分。
+ * csv-export 的 resolveLangs 与 csv-import 共用同一口径，避免谓词与错误文案手工对齐漂移。
+ * 仅依赖字符串数组，保持本模块零依赖。
+ */
+export function assertLangsAreTargets(targets: readonly string[], langs: readonly string[]): void {
+  const invalid = langs.filter((l) => !targets.includes(l));
+  if (invalid.length > 0) {
+    throw new Error(
+      `[i18n-tools] --langs 含未配置的目标语言：${invalid.join(', ')}（可选：${targets.join(', ')}）`,
+    );
+  }
+}
+
+/**
  * 解析 RFC4180 CSV 文本为二维数组。
  * 支持引号内逗号/换行/双写引号；自动跳过开头 BOM；兼容 CRLF 与 LF。
  */

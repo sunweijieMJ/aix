@@ -4,7 +4,7 @@ import type { ResolvedConfig } from '../config';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
-import { serializeCsv } from '../utils/csv-utils';
+import { assertLangsAreTargets, serializeCsv } from '../utils/csv-utils';
 import { FileProcessor } from './FileProcessor';
 
 export interface CsvExportOptions {
@@ -79,12 +79,7 @@ export class CsvExportProcessor extends FileProcessor {
   private resolveLangs(): string[] {
     const targets = this.config.locales.targets;
     if (!this.options.langs || this.options.langs.length === 0) return targets;
-    const invalid = this.options.langs.filter((l) => !targets.includes(l));
-    if (invalid.length > 0) {
-      throw new Error(
-        `[i18n-tools] --langs 含未配置的目标语言：${invalid.join(', ')}（可选：${targets.join(', ')}）`,
-      );
-    }
+    assertLangsAreTargets(targets, this.options.langs);
     return this.options.langs;
   }
 

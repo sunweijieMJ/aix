@@ -313,9 +313,11 @@ export class MergeProcessor extends FileProcessor {
   private updateBucketedLanguagePackage(newlyTranslated: Translations, target: string): void {
     const sourceLocale = this.config.locales.source;
 
-    // 损坏即中止：与扁平路径 updateFlatLanguagePackage 的 `=== null` 守卫对齐。
-    // 桶式读取默认 silent 降级（损坏当 {}），若不拦截，损坏 bucket 会在重写时被
-    // 静默丢弃。检测到损坏则跳过该 target，不做任何写回。
+    // 冗余防御（normally unreachable）：真正 load-bearing 的损坏守卫是 mergeTranslationData()
+    // 顶层的 assertLocalesNotCorrupt（写回前对 source + 所有 target 做 checkLegacy 探测、损坏即抛错），
+    // 而 performMerge 只写 translations.json/untranslated.json、不触碰 locale 桶，故执行到这里时
+    // 桶文件必未损坏、下面两个 if 分支正常不会命中。保留此处 per-target 探测仅作 belt-and-suspenders：
+    // 万一顶层集中守卫被重构移除/绕过，这里仍能拦住「损坏 bucket 被 silent 降级当 {} 后静默丢弃」。
     const corruptFile = LanguageFileManager.findCorruptBucketFile(
       this.config,
       this.isCustom,
@@ -329,9 +331,9 @@ export class MergeProcessor extends FileProcessor {
       return;
     }
 
-    // 同样守卫 source locale 桶损坏：下方用 source 文本驱动 keyBucketMap 分桶，桶式读取默认
-    // silent 降级（损坏当 {}，见 readBucketedLocaleFlat），若 source 桶损坏会得到空表，导致
-    // 所有 key 塌缩进 defaultBucket、其余桶被 prune 成 .bak（伪报成功）。与 target 守卫对称。
+    // 同上：冗余的 source 桶损坏防御（顶层 assert 已覆盖 source，故正常不可达）。语义上若
+    // source 桶损坏被 silent 降级当 {}，下方用 source 文本驱动 keyBucketMap 分桶会得到空表，
+    // 导致所有 key 塌缩进 defaultBucket、其余桶被 prune 成 .bak（伪报成功）——保留作 safety net。
     const corruptSourceFile = LanguageFileManager.findCorruptBucketFile(
       this.config,
       this.isCustom,

@@ -284,7 +284,14 @@ export class CommonASTUtils {
    * @param node 字符串字面量节点（也支持其他可能作为操作数的节点）
    */
   static isComparisonOperand(node: ts.Node): boolean {
-    const parent = node.parent;
+    // 操作数被括号包裹时（如 `x === ('已完成')`、`case ('中文'):`），字面量的直接父节点是
+    // ParenthesizedExpression 而非比较表达式 / case 子句。逐层上透括号后再判定父节点，
+    // 否则守卫失效——比较用的中文被误提取成 t(...)，运行时比较分支永不命中。
+    let current: ts.Node = node;
+    while (current.parent && ts.isParenthesizedExpression(current.parent)) {
+      current = current.parent;
+    }
+    const parent = current.parent;
     if (parent && ts.isBinaryExpression(parent)) {
       const op = parent.operatorToken.kind;
       return (
@@ -295,7 +302,7 @@ export class CommonASTUtils {
       );
     }
     // case '中文': 中的字面量也是比较场景（switch-case 与 === 等价）
-    if (parent && ts.isCaseClause(parent) && parent.expression === node) {
+    if (parent && ts.isCaseClause(parent) && parent.expression === current) {
       return true;
     }
     return false;
