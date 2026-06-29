@@ -1,11 +1,11 @@
 import type { ExtractedString } from '../../utils/types';
 import type { ITextExtractor } from '../../adapters/FrameworkAdapter';
+import { stripStatefulFlags } from '../../utils/path-matcher';
 
 /**
  * 文本提取器抽象基类
  *
  * 提供 extractFromFiles 的默认串行实现，子类只需实现 extractFromFile。
- * 之前 Vue/React 各自维护一份相同的 for-await 样板，统一到本基类。
  *
  * 放置在 strategies/base/ 而非 adapters/，以维持"策略层提供具体实现、
  * 适配器层定义抽象接口"的分层语义。adapters/ 仍然导出此类作为公共出口。
@@ -42,12 +42,9 @@ export abstract class BaseTextExtractor implements ITextExtractor {
   protected isRejectedByConfig(text: string): boolean {
     if (this.rejectPatterns.length === 0) return false;
     return this.rejectPatterns.some((re) => {
-      // RegExp 带 g 或 y(sticky) 标志会在多次 test 间保留 lastIndex，跨字符串调用结果不稳定
-      // （sticky 同样推进 lastIndex，会让同一输入交替返回 true/false）；拷贝一份剥除这两个状态
-      // 标志的新实例规避此副作用，对用户透明。
-      const probe =
-        re.global || re.sticky ? new RegExp(re.source, re.flags.replace(/[gy]/g, '')) : re;
-      return probe.test(text);
+      // RegExp 带 g 或 y(sticky) 标志会在多次 test 间保留 lastIndex，跨字符串调用结果不稳定；
+      // 用剥除这两个状态标志的副本规避此副作用，对用户透明。
+      return stripStatefulFlags(re).test(text);
     });
   }
 

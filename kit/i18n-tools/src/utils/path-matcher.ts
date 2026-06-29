@@ -19,6 +19,17 @@ import picomatch from 'picomatch';
 export type PathMatchInput = string | string[] | RegExp | ((filePath: string) => boolean);
 
 /**
+ * 拷贝一份剥除有状态标志（g / sticky）的 RegExp。
+ *
+ * 带 g/y 的 RegExp 在多次 test() 间会保留并推进 lastIndex，对同一输入交替返回 true/false；
+ * 当同一正则对象被缓存后反复调用（归桶 / 配置黑名单匹配等）时会产生非确定结果。返回剥除
+ * g/y 的新实例，对调用方传入的原对象无副作用；无 g/y 时原样返回。
+ */
+export function stripStatefulFlags(re: RegExp): RegExp {
+  return re.global || re.sticky ? new RegExp(re.source, re.flags.replace(/[gy]/g, '')) : re;
+}
+
+/**
  * 编译为统一签名的 matcher。
  *
  * 注意：调用方在传入前应已规范化路径（POSIX 风格、相对 root），matcher 不再做归一化。
@@ -33,10 +44,7 @@ export function compileMatcher(match: PathMatchInput): (filePath: string) => boo
   if (match instanceof RegExp) {
     // 去掉有状态标志（g/y）：matcher 会被缓存后对多个路径反复调用，带 g/y 的 RegExp.test()
     // 会推进 lastIndex，导致对同一路径交替返回 true/false（分桶/前缀派生非确定性错配）。
-    const stateless =
-      match.global || match.sticky
-        ? new RegExp(match.source, match.flags.replace(/[gy]/g, ''))
-        : match;
+    const stateless = stripStatefulFlags(match);
     return (fp) => stateless.test(fp);
   }
   if (typeof match === 'string' || Array.isArray(match)) {

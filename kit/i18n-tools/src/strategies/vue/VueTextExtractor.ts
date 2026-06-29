@@ -685,8 +685,27 @@ export class VueTextExtractor extends BaseTextExtractor {
         // 提取字符串字面量
         if (ts.isStringLiteral(node)) {
           const text = node.text;
-          // 经 isExtractableStringLiteral 排除对象 KEY / 导入路径 / 比较操作数，与其他
-          // 提取路径口径一致；再检查是否已在 i18n 调用中。
+
+          // 跳过比较运算符 (===, !==, ==, !=) 中的字符串操作数
+          // 比较值应使用与 locale 无关的常量，提取后会导致数据与比较不同步
+          // 例如 {{ status === '进行中' ? '已完成' : '未完成' }}
+          if (CommonASTUtils.isComparisonOperand(node)) {
+            // 中文字面量被跳过：记录到诊断集合，lint 阶段与 locale map 交叉告警。
+            // 与 extractFromDynamicAttribute / script 段 / React 端口径一致，避免插值里
+            // 这种最常见的 `{{ x === '中文' ? ... }}` 写法静默漏报「比较失效」风险。
+            if (FileUtils.containsChinese(text)) {
+              CommonASTUtils.recordSkippedComparisonOperand(
+                text,
+                filePath,
+                interpolationNode.loc.start.line + lineOffset,
+                interpolationNode.loc.start.column,
+              );
+            }
+            return;
+          }
+
+          // 经 isExtractableStringLiteral 排除对象 KEY / 导入路径，与其他提取路径口径一致；
+          // 再检查是否已在 i18n 调用中。
           if (
             CommonASTUtils.isExtractableStringLiteral(node) &&
             !CommonASTUtils.isAlreadyInternationalized(node) &&

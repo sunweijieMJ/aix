@@ -63,6 +63,33 @@ export class PickProcessor extends FileProcessor {
     const messages = LanguageFileManager.getMessages(this.config, this.isCustom);
     const sourceMessages = (messages[sourceLocale] || {}) as Record<string, string>;
 
+    // 安全闸：源 locale 合法但为空（如被误清空 / 重置为 {}）时，下方分析会产出两个空字典并
+    // 无条件覆写 untranslated.json / translations.json，销毁尚未 merge 的在途译文且伪报成功。
+    // 上面的损坏守卫只拦 JSON 解析失败，挡不住「合法空」这一入口；此处与 PruneProcessor 的
+    // usedKeys===0 安全闸对齐：源为空且已存在非空在途文件时中止，宁可报错不静默破坏。
+    if (Object.keys(sourceMessages).length === 0) {
+      const existingUntranslated = FileUtils.safeLoadJsonFile<Record<string, unknown>>(
+        untranslatedPath,
+        { silent: true },
+      );
+      const existingTranslated = FileUtils.safeLoadJsonFile<Record<string, unknown>>(
+        translatedPath,
+        {
+          silent: true,
+        },
+      );
+      if (
+        Object.keys(existingUntranslated).length > 0 ||
+        Object.keys(existingTranslated).length > 0
+      ) {
+        throw new Error(
+          `源 locale「${sourceLocale}」为空（0 个条目），但已存在非空 ${FILES.UNTRANSLATED_JSON} / ` +
+            `${FILES.TRANSLATIONS_JSON}；已中止 pick 以防销毁在途译文。若确需以空源重置，` +
+            `请先手动清空或备份上述文件。`,
+        );
+      }
+    }
+
     LoggerUtils.info(
       `📋 开始分析语言条目，共 ${Object.keys(sourceMessages).length} 个 ${sourceLocale} 条目，目标 ${targets.length} 个语种`,
     );

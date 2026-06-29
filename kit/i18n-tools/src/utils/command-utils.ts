@@ -28,7 +28,6 @@ export function isModeExplicitlySet(args: string[]): boolean {
 
 /**
  * 使用 prettier + eslint 格式化单个文件。
- * Why 改为自由函数：原 CommandUtils 类只有这一个静态方法，类壳没有收益。
  */
 export async function formatWithPrettier(filePath: string): Promise<void> {
   LoggerUtils.info(`🎨  正在格式化: ${filePath}`);

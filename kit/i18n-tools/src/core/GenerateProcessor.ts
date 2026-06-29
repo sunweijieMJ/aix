@@ -995,8 +995,7 @@ export class GenerateProcessor extends BaseProcessor {
    * 这里把已知的两类「主动放弃」纳入 skipped：
    *  - drainSkippedComparisonOperands：=== / case 中跳过的中文字面量
    *  - extractor.drainWarnings 已在 runSingleFile/runDirectory 早期消费，
-   *    但未结构化；本期先用 RunReport 已有 warnings 数量做粗估。后续重构
-   *    drainWarnings → 结构化 ManualEntry 后会更精准。
+   *    但未结构化；用 RunReport 已有 warnings 数量做粗估。
    *
    * 同步把比较运算符跳过项作为 ManualEntry 写入 report，让最终落盘日志里
    * 用户能看到完整待人工清单。

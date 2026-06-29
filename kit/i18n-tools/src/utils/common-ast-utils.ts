@@ -638,8 +638,8 @@ export class CommonASTUtils {
     for (let i = parts.length - 1; i >= 0; i--) {
       let part = parts[i] ?? '';
       part = part.replace(/^['"`]|['"`]$/g, '');
-      // \u4e0a\u754c \u9fff \u4e0e CONFIG.CHINESE_REGEX \u5bf9\u9f50\uff08\u539f \u9fa5 \u4f1a\u628a U+9FA6\u2013U+9FFF \u6269\u5145\u6c49\u5b57
-      // \u5f53\u975e\u4e2d\u6587\u5254\u9664\uff0c\u4e0e containsChinese \u5224\u5b9a\u53e3\u5f84\u4e0d\u4e00\u81f4\uff09\u3002
+      // 上界用 \u4e00-\u9fff，与 CONFIG.CHINESE_REGEX 对齐：旧上界 U+9FA5 会把
+      // U+9FA6-U+9FFF 扩充汉字当非中文剔除，与 containsChinese 判定口径不一致。
       part = part.replace(/[^\w\u4e00-\u9fff]/g, '');
 
       if (part && !this.NON_SEMANTIC_SUFFIXES.has(part)) {
