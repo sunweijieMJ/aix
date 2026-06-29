@@ -259,3 +259,72 @@ describe('GenerateProcessor dry-run — 原型名 key 不被 `in` 去重丢弃',
     expect(plan.localeDelta['constructor']).toBe('提交');
   });
 });
+
+describe('GenerateProcessor nested — 原型名 key 段在写源码前 fail-fast', () => {
+  /**
+   * 回归（Bug 1）：io.format='nested'（默认值）下，serialize → unflattenObject 会静默丢弃
+   * 段名为 __proto__/constructor/prototype 的 key（原型污染防护，proto-safety 的 unflatten
+   * 用例已固化此行为）。但 generate 的 commitToDisk 先写源码、后写 locale：若不在写源码前
+   * 拦截这类 key，源码会被改成 t('constructor') 而 locale 静默丢失该 key → exit 0、无警告、
+   * 运行时永久 missing-key，破坏「源码与 locale 强一致」不变量。flat 模式正常、仅 nested 丢失
+   * 的非对称性证明这是缺陷而非固有限制。
+   *
+   * 修复：assertSerializableUpdate（写源码前预检）在 nested 模式对本轮新增 semanticId 的每个
+   * 段做保留段名校验，与前缀冲突同口径前移 fail-fast，使源码尚未改写时即暴露。
+   */
+  let rootDir: string;
+  let srcDir: string;
+  let localeDir: string;
+
+  // 空前缀（custom 返回 []）使 full id 等于裸 semantic 段 'constructor'
+  const buildConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { sourceDir: srcDir, localesDir: localeDir, format: 'nested', prettify: false },
+      keys: { separator: '.', prefix: { strategy: 'custom', resolve: () => [] } },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gen-nested-proto-'));
+    srcDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    // 预置空 locale，避免 readLocaleFile 返回 null 干扰（真实项目通常已有 locale 文件）
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), '{}');
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), '{}');
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it("nested 下 LLM 返回 id 'constructor' → 写源码前抛错，源文件保持原中文未改写", async () => {
+    const file = path.join(srcDir, 'A.vue');
+    const ORIGINAL = `<template><div>提交</div></template>\n`;
+    fs.writeFileSync(file, ORIGINAL, 'utf-8');
+
+    vi.spyOn(LLMClient.prototype, 'generateSemanticIdsForFiles').mockImplementation(
+      async (groups: Record<string, string[]>) => {
+        const out: Record<string, string[]> = {};
+        for (const fp of Object.keys(groups)) out[fp] = ['constructor'];
+        return out;
+      },
+    );
+
+    // 关键 1：写源码前 fail-fast（而非静默改源码、丢 locale、exit 0）
+    await expect(
+      new GenerateProcessor(buildConfig(), false, false).execute(file, false, {}),
+    ).rejects.toThrow();
+
+    // 关键 2：不变量——源码未被改写（仍是原中文，而非 t('constructor')）
+    expect(fs.readFileSync(file, 'utf-8')).toBe(ORIGINAL);
+  });
+});

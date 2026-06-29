@@ -1443,10 +1443,21 @@ export class CommonASTUtils {
     // - tpl       : 模板字符串外层（反引号内、非 ${} 段）
     // - tpl_expr  : 模板字符串内 ${...} 表达式区（属于代码上下文，需追踪 { 嵌套深度）
     // - line/block/html : 三类注释
-    type FrameKind = 'none' | 'dq' | 'sq' | 'tpl' | 'tpl_expr' | 'line' | 'block' | 'html';
+    type FrameKind =
+      | 'none'
+      | 'dq'
+      | 'sq'
+      | 'tpl'
+      | 'tpl_expr'
+      | 'line'
+      | 'block'
+      | 'html'
+      | 'regex';
     interface Frame {
       kind: FrameKind;
       braceDepth?: number;
+      // regex frame：是否处于字符类 [...] 内（内部的 / 不闭合正则）。
+      inCharClass?: boolean;
       // 块注释内容起点（`/*` 之后第一个字符的下标）。用于判定 `*/` 闭合时，
       // 排除开头 `/*` 自身的 `*`，避免把 `/*/` 误判为完整闭合注释。
       blockContentStart?: number;
@@ -1491,6 +1502,27 @@ export class CommonASTUtils {
           out.push(' ');
           i += 2;
           continue;
+        }
+        // 正则字面量 vs 除号：到此 `/` 既非 /* 也非 //。正则内部可能含引号或双斜杠
+        // （如 /'/、/['"]/、/a\/\//），若误当除号会让后续引号进入字符串态、注释失配 →
+        // 注释里的 t('key') 被误计入 used-key。按前一个有效 token 区分：表达式结束字符
+        // （标识符/数字/) ] } /引号）之后是除号，其余位置（行首/运算符/括号开）是正则起始。
+        if (ch === '/') {
+          let prev = '';
+          for (let j = out.length - 1; j >= 0; j--) {
+            const c = out[j]!;
+            if (c !== ' ' && c !== '\t' && c !== '\r' && c !== '\n') {
+              prev = c;
+              break;
+            }
+          }
+          if (prev === '' || !/[A-Za-z0-9_$)\]}'"`]/.test(prev)) {
+            stack.push({ kind: 'regex', inCharClass: false });
+            out.push(ch);
+            i++;
+            continue;
+          }
+          // 否则是除号：落到下方普通字符处理
         }
         if (ch === '<' && code.startsWith('!--', i + 1)) {
           stack.push({ kind: 'html' });
@@ -1558,6 +1590,44 @@ export class CommonASTUtils {
         }
         if (ch === '`') {
           stack.pop();
+        }
+        out.push(ch);
+        i++;
+        continue;
+      }
+
+      // 正则字面量：处理转义、字符类 [...]（内部 / 不闭合）、未转义 / 闭合；不跨行。
+      if (frame.kind === 'regex') {
+        if (ch === '\\') {
+          out.push(ch);
+          if (i + 1 < len) out.push(code[i + 1]!);
+          i += 2;
+          continue;
+        }
+        if (frame.inCharClass) {
+          if (ch === ']') frame.inCharClass = false;
+          out.push(ch);
+          i++;
+          continue;
+        }
+        if (ch === '[') {
+          frame.inCharClass = true;
+          out.push(ch);
+          i++;
+          continue;
+        }
+        if (ch === '/') {
+          stack.pop();
+          out.push(ch);
+          i++;
+          continue;
+        }
+        if (ch === '\n') {
+          // 正则不跨行：遇换行说明前面把除号误判为正则，回退结束该 frame，避免吞掉后续行。
+          stack.pop();
+          out.push('\n');
+          i++;
+          continue;
         }
         out.push(ch);
         i++;

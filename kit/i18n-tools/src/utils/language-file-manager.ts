@@ -579,6 +579,37 @@ export class LanguageFileManager {
     }
   }
 
+  /** nested 落盘 unflatten 会静默丢弃的原型保留段名（见 FileUtils.unflattenObject）。 */
+  private static readonly RESERVED_KEY_SEGMENTS = new Set([
+    '__proto__',
+    'constructor',
+    'prototype',
+  ]);
+
+  /**
+   * 校验本轮新增 semanticId 的每个分隔段不含原型保留名（__proto__/constructor/prototype）。
+   *
+   * Why：nested 落盘 unflattenObject 会静默丢弃含这些段的 key（原型污染防护）。generate 先写
+   * 源码后写 locale，这类 key 会留下「源码改成 t('...constructor')、locale 却无此 key」的永久
+   * missing-key 不一致态，且 exit 0 无警告。与 assertNoPrefixConflict 同口径前移、写源码前抛错。
+   */
+  private static assertNoReservedSegment(
+    extractedStrings: ExtractedString[],
+    separator: string,
+  ): void {
+    for (const e of extractedStrings) {
+      if (!e.semanticId) continue;
+      const bad = e.semanticId.split(separator).find((s) => this.RESERVED_KEY_SEGMENTS.has(s));
+      if (bad) {
+        throw new Error(
+          `[i18n-tools] 嵌套输出的 key '${e.semanticId}' 含原型保留段名 '${bad}'。\n` +
+            `  nested 落盘时该 key 会被 unflatten 静默丢弃（原型污染防护），导致源码已改写而 locale 缺失。\n` +
+            `  解决方案：调整该文案的 semanticId（避免 __proto__/constructor/prototype 段），或将 io.format 切换为 'flat'。`,
+        );
+      }
+    }
+  }
+
   /**
    * 写盘前预检：在不修改任何文件的前提下，校验「现有 locale key ∪ 本轮新增 semanticId」
    * 这组最终 key 在 nested 落盘下是否存在前缀冲突。
@@ -599,6 +630,13 @@ export class LanguageFileManager {
     keyBucketMap?: KeyBucketMap,
   ): void {
     if (config.io.format === 'flat' || extractedStrings.length === 0) return;
+
+    // nested 落盘时 unflattenObject 会静默丢弃段名为 __proto__/constructor/prototype 的 key
+    // （原型污染防护，见 FileUtils.unflattenObject）。generate 先写源码后写 locale，这类 key
+    // 会导致「源码已改成 t('...constructor')、locale 却无此 key」的永久 missing-key 不一致态。
+    // 与 assertNoPrefixConflict 同口径前移到写源码前 fail-fast。只校验本轮新增 semanticId，
+    // 故无需依赖现有 locale（新建项目 locale 不存在时同样能拦截）。
+    this.assertNoReservedSegment(extractedStrings, config.keys.separator);
 
     let existing: LocaleMap;
     if (config.buckets) {

@@ -205,6 +205,14 @@ export class LLMClient {
       }
 
       if (parsed.id_list && Array.isArray(parsed.id_list)) {
+        // id_list 是位置数组，必须与 textList 等长才能按位对齐。长度不符在此立即抛错让本批
+        // reject（→ allSettled 失败聚合 → 整文件本地回退），而非交给上层聚合长度校验——
+        // 后者在「多批数量互相补偿、合计相等」时会失效，导致跨批 semanticId 错位。
+        if (parsed.id_list.length !== textList.length) {
+          throw new Error(
+            `LLM 返回的 id_list 数量(${parsed.id_list.length})与文本数(${textList.length})不一致`,
+          );
+        }
         return (parsed.id_list as unknown[]).map((v) => (typeof v === 'string' ? v : ''));
       }
 
