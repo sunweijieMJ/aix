@@ -1,8 +1,10 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { LoggerUtils } from './logger';
 
-const execAsync = promisify(exec);
+// 用 execFile（参数以数组传递、不经 shell）而非 exec：避免文件路径含 `$`、反引号、`$(...)`、双引号
+// 等被 shell 解析或破坏引号闭合（`$` 等是合法文件名字符），导致格式化对合法路径静默失效。
+const execFileAsync = promisify(execFile);
 
 /**
  * 判断命令行参数里是否**显式**指定了 --mode/-m（用于决定未指定时是否默认开启交互模式）。
@@ -31,8 +33,8 @@ export function isModeExplicitlySet(args: string[]): boolean {
 export async function formatWithPrettier(filePath: string): Promise<void> {
   LoggerUtils.info(`🎨  正在格式化: ${filePath}`);
   try {
-    await execAsync(`npx prettier --write "${filePath}"`, { cwd: process.cwd() });
-    await execAsync(`npx eslint --fix "${filePath}"`, { cwd: process.cwd() });
+    await execFileAsync('npx', ['prettier', '--write', filePath], { cwd: process.cwd() });
+    await execFileAsync('npx', ['eslint', '--fix', filePath], { cwd: process.cwd() });
     LoggerUtils.success(`   - ✅  格式化成功`);
   } catch (error) {
     LoggerUtils.error(

@@ -96,6 +96,34 @@ describe('common-ast-utils', () => {
       ].join('\n');
       expect(result).toBe(expected);
     });
+
+    it('多行 import 续行注释含 } ：注释内的 } 不计入深度，边界停在真正闭合行', () => {
+      // countBraceDelta 若不跳过注释，行注释里的 } 会让 pendingDepth 提前归零，
+      // 边界锚定到注释行，注入的新 import 落入原 import 花括号内部 → 语法错误。
+      const lines = [`import {`, `  Foo, // a } comment`, `  Bar,`, `} from 'x';`, `const x = 1;`];
+      expect(CommonASTUtils.findLastImportLineIndex(lines)).toBe(3);
+    });
+
+    it('多行 import 续行块注释含 } ：注释内的 } 不计入深度', () => {
+      const lines = [`import {`, `  Foo, /* } */`, `} from 'x';`, `const x = 1;`];
+      expect(CommonASTUtils.findLastImportLineIndex(lines)).toBe(2);
+    });
+
+    it('appendImportLine：多行 import 续行注释含 } 时新 import 插到整条 import 之后', () => {
+      const code = [`import {`, `  Foo, // } here`, `  Bar,`, `} from 'x';`, `const x = 1;`].join(
+        '\n',
+      );
+      const result = CommonASTUtils.appendImportLine(code, `import { t } from '@/i18n';`);
+      const expected = [
+        `import {`,
+        `  Foo, // } here`,
+        `  Bar,`,
+        `} from 'x';`,
+        `import { t } from '@/i18n';`,
+        `const x = 1;`,
+      ].join('\n');
+      expect(result).toBe(expected);
+    });
   });
 
   describe('CommonASTUtils 占位符花括号归一（toSingleBracePlaceholders）', () => {

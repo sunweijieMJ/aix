@@ -1712,26 +1712,47 @@ export class CommonASTUtils {
   }
 
   /**
-   * 计算单行内净 `{` - `}` 数，跳过字符串字面量内部的括号。
+   * 计算单行内净 `{` - `}` 数，跳过字符串字面量与注释内部的括号。
    *
    * Why: 字符串内 `{`/`}`（如 `from '@/i18n{mock}'` 这种含特殊字符的别名路径、
    * 或字符串 payload 内含括号）若被计入大括号深度，会让 import 边界追踪错位，
    * 导致 `const { t } = useI18n()` 之类的注入落到错误行。
    *
+   * 同理注释内的 `}` 也必须跳过：多行 import 续行的行注释（`Foo, // a } comment`）
+   * 或块注释（`/* } *\/`）里的 `}` 若被计入，会让 pendingDepth 在真正闭合前提前归零，
+   * 边界锚定到注释行，新 import 被插进原 import 花括号内部 → 语法错误。
+   *
    * 不处理转义字符（`\\'`），对当前用途够用——import 行内出现 `\\'` 极罕见，
-   * 即便出错也只是行号偏差，不会破坏语义。
+   * 即便出错也只是行号偏差，不会破坏语义。块注释只在单行内追踪（import 续行内跨行
+   * 块注释极罕见），跨行未闭合块注释按「本行剩余为注释」保守跳过。
    */
   private static countBraceDelta(line: string): number {
     let delta = 0;
     let quote: '"' | "'" | '`' | null = null;
+    let inBlockComment = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
+      if (inBlockComment) {
+        if (ch === '*' && line[i + 1] === '/') {
+          inBlockComment = false;
+          i++; // 跳过 '/'
+        }
+        continue;
+      }
       if (quote !== null) {
         if (ch === '\\') {
           i++; // 跳过下一字符（处理 \" \' \` 等转义）
           continue;
         }
         if (ch === quote) quote = null;
+        continue;
+      }
+      // 注释起始（import 行内 `/` 只可能来自注释，不会是正则/除号）：
+      // 行注释 → 本行剩余全部忽略；块注释 → 进入跳过态。
+      if (ch === '/' && line[i + 1] === '/') break;
+      if (ch === '/' && line[i + 1] === '*') {
+        inBlockComment = true;
+        i++; // 跳过 '*'
         continue;
       }
       if (ch === '"' || ch === "'" || ch === '`') {

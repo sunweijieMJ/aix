@@ -602,20 +602,25 @@ export class VueTextExtractor extends BaseTextExtractor {
     lineOffset: number,
     directive: any,
   ): Promise<void> {
-    let text = '';
+    let originalText = '';
+    let processedText = '';
     let isTemplateString = false;
     const templateVariables: string[] = [];
 
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
-      text = node.text;
+      originalText = node.text;
+      processedText = node.text;
     } else if (ts.isTemplateExpression(node)) {
       // 复用 CommonASTUtils.processTemplateExpression：与脚本段、React 端走同一份
       // 字面量内联与占位符生成逻辑，避免双端漂移。
-      // template 段保留"内联字面量后的 text"用作 original（与原内联实现行为一致），
-      // 因为 VueTransformer 通过 line/column 定位、不需要按 original 文本匹配源码。
+      // original 必须存源码层形式（result.originalText，保留 `${expr}` 含字面量插值如 `${'X'}`），
+      // 因为 VueTransformer 按 original 在源码做文本匹配替换；processedMessage 存内联后的
+      // processedText（供 locale 值 / ID 生成）。两字段约定与脚本路径一致——否则含字面量插值时
+      // original=已内联文本与源码失配 → 整段绑定不被替换、源码残留中文（静默泄漏）。
       if (CommonASTUtils.templateLiteralsContainChinese(node)) {
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
-        text = result.processedText;
+        originalText = result.originalText;
+        processedText = result.processedText;
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
         // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
@@ -630,11 +635,12 @@ export class VueTextExtractor extends BaseTextExtractor {
       }
     }
 
-    if (text && this.shouldExtract(text, 'template')) {
+    if (originalText && this.shouldExtract(processedText || originalText, 'template')) {
       const argName =
         directive.arg && directive.arg.type === 4 ? (directive.arg as any).content : '';
       extractedStrings.push({
-        original: text,
+        original: originalText,
+        processedMessage: processedText !== originalText ? processedText : undefined,
         semanticId: '',
         filePath,
         line: directive.loc.start.line + lineOffset,
@@ -746,17 +752,21 @@ export class VueTextExtractor extends BaseTextExtractor {
     lineOffset: number,
     interpolationNode: InterpolationNode,
   ): Promise<void> {
-    let text = '';
+    let originalText = '';
+    let processedText = '';
     let isTemplateString = false;
     const templateVariables: string[] = [];
 
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
-      text = node.text;
+      originalText = node.text;
+      processedText = node.text;
     } else if (ts.isTemplateExpression(node)) {
-      // 复用 CommonASTUtils.processTemplateExpression（同动态属性段说明）
+      // 复用 CommonASTUtils.processTemplateExpression（同动态属性段说明）：original 存源码形式
+      // （含 `${expr}`）供 VueTransformer 文本匹配，processedMessage 存内联后文本供 locale/ID。
       if (CommonASTUtils.templateLiteralsContainChinese(node)) {
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
-        text = result.processedText;
+        originalText = result.originalText;
+        processedText = result.processedText;
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
         // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
@@ -772,9 +782,10 @@ export class VueTextExtractor extends BaseTextExtractor {
     }
 
     // 提取
-    if (text && this.shouldExtract(text, 'template')) {
+    if (originalText && this.shouldExtract(processedText || originalText, 'template')) {
       extractedStrings.push({
-        original: text,
+        original: originalText,
+        processedMessage: processedText !== originalText ? processedText : undefined,
         semanticId: '',
         filePath,
         line: interpolationNode.loc.start.line + lineOffset,

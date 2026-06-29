@@ -104,4 +104,31 @@ describe('Vue extract→transform→restore 回环', () => {
     const restored = await roundTrip(src, 'vue-i18next');
     expect(restored.trim()).toBe(src.trim());
   });
+
+  it('动态属性模板字符串含字面量插值：transform 必须替换中文（回归审计 #3）', async () => {
+    // 回归：含字面量插值（${'X'}）的模板字符串，extractor 存的 original 是内联后的
+    // processedText（第X${count}讲），而 VueTransformer 按 original 在源码文本匹配，
+    // 与源码 第${'X'}${count}讲 失配 → 整段绑定不被替换，源码残留中文（静默泄漏）。
+    const adapter = new VueAdapter('@/plugins/locale', 'vue-i18n');
+    const extractor = adapter.getTextExtractor();
+    const transformer = adapter.getTransformer();
+    // 注意：JS 双引号串不解析 ${}，反引号/单引号均为字面量
+    const src =
+      '<template>\n' +
+      '  <el-tag :title="`第${\'X\'}${count}讲`">x</el-tag>\n' +
+      '</template>\n' +
+      '<script setup>\nconst count = 3;\n</script>\n';
+    const fp = path.join(dir, 'D.vue');
+    fs.writeFileSync(fp, src, 'utf8');
+
+    const extracted = await extractor.extractFromFile(fp);
+    expect(extracted.length, '应提取到模板字符串').toBeGreaterThan(0);
+    extracted.forEach((e, i) => (e.semanticId = 'k' + i));
+
+    const transformed = transformer.transform(fp, extracted, src);
+    // 关键：中文被替换为 $t() 调用，源码不再残留中文 / 原模板串
+    expect(transformed, `transform 输出：\n${transformed}`).toContain('$t(');
+    expect(transformed).not.toContain('第');
+    expect(transformed).not.toContain('讲');
+  });
 });

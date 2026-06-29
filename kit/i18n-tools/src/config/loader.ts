@@ -458,6 +458,12 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   // 默认目标（如 { source: 'en-US', targets: [] }）时，下面的 source-in-targets 守卫会抛出
   // 引用 'en-US' 这个用户从未配置过的语种的误导性错误。
   const userTargets = userConfig.locales?.targets;
+  // 数组类型守卫：JS 配置漏写数组括号（`targets: 'en-US'`）时，字符串 length===5 会通过下面的
+  // 空数组守卫，[...'en-US'] 再把它逐字符展开成 ['e','n','-','U','S']，逐项非空 / source / 去重守卫
+  // 全部放行 → 为 5 个伪语种各落一份 locale（静默错误产物）。与该文件其余 fail-fast 守卫对齐。
+  if (userTargets !== undefined && !Array.isArray(userTargets)) {
+    throw new Error('locales.targets 必须是字符串数组（如 ["en-US"]）。');
+  }
   if (userTargets && userTargets.length === 0) {
     throw new Error(
       'locales.targets 不能为空数组：请至少配置一个目标语种，或删除该字段以使用默认值',
@@ -485,6 +491,14 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   }
 
   // ---- io ----
+  // 数组类型守卫（同 locales.targets）：字符串误写会被 [...str] 逐字符展开成无效 glob，
+  // 导致扫不到任何文件 / 排除集错乱，且全程无报错。
+  if (userConfig.io?.include !== undefined && !Array.isArray(userConfig.io.include)) {
+    throw new Error('io.include 必须是字符串数组（glob 列表，如 ["src/**/*.vue"]）。');
+  }
+  if (userConfig.io?.exclude !== undefined && !Array.isArray(userConfig.io.exclude)) {
+    throw new Error('io.exclude 必须是字符串数组（glob 列表，如 ["**/*.test.ts"]）。');
+  }
   const ioFormat = userConfig.io?.format ?? DEFAULT_IO.format;
   validateEnum(ioFormat, ['flat', 'nested'], 'io.format');
   const io = {

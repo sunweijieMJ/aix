@@ -295,6 +295,50 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     };
     survivalScan(context.sourceFile);
 
+    // 判定翻译变量(varName)是否经「成员访问」被用于非翻译用途（如 intl.formatNumber /
+    // intl.formatDate / intl.locale）。这正是 react-intl 缺口的精确特征：intl 是多用途对象，
+    // 还原 formatMessage 后这些成员用途仍引用 intl，删声明即产出未定义引用。
+    //
+    // 只认 `varName.<member>` 形式（且整体不是翻译调用 intl.formatMessage(...)），刻意不计裸标识符：
+    //  - react-i18next 的 t 是纯函数，仅以 t(...) 调用、或作为值出现在注入的依赖数组 `[t]` /
+    //    透传中——这些要么是翻译调用、要么是 restore 应当清理的机器注入，绝不会写成 `t.<member>`。
+    //    因此本守卫结构上不会误命中 t，react-i18next 的既有逐声明 / deps 清理不受影响。
+    //  - 翻译调用的接收者（intl.formatMessage）随还原整体消失，跳过其表达式只查实参。
+    const translationVarUsedOutsideTranslationCalls = (root: ts.Node): boolean => {
+      const varName = library.translationVarName;
+      let found = false;
+      const visit = (node: ts.Node): void => {
+        if (found) return;
+        if (ts.isCallExpression(node) && library.isTranslationCall(node)) {
+          node.arguments.forEach(visit);
+          return;
+        }
+        if (
+          ts.isPropertyAccessExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === varName
+        ) {
+          found = true;
+          return;
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(root);
+      return found;
+    };
+
+    // 翻译变量在「翻译调用之外」的引用守卫：survivalScan 仅把翻译【调用】计入存活，
+    // 但 react-intl 的 intl 是多用途对象——`const intl = useIntl()` 既可 intl.formatMessage(...)（翻译，
+    // 还原后消失），也可 intl.formatNumber/formatDate/locale 等（非翻译，还原不动）。若 formatMessage
+    // 全部可还原，keepTranslationVar 保持 false → 删 intl 声明与 useIntl 导入，残留的 intl.formatNumber
+    // 便引用未定义的 intl（TS2304 / 运行时 ReferenceError）。react-i18next 的 t 作为值被传递（如
+    // `[t]` 依赖、`<Child t={t} />`）同理。补一次全文件扫描：翻译变量在翻译调用之外仍被引用 → 保留
+    // 其声明与库导入（与既有 keep* 同为保守保留；变量仅用于可还原 formatMessage 时不命中、照常删除）。
+    if (!keepTranslationVar && translationVarUsedOutsideTranslationCalls(context.sourceFile)) {
+      keepTranslationVar = true;
+      keepLibraryImport = true;
+    }
+
     return (transformationContext: ts.TransformationContext) => {
       // 父节点栈：判断当前 visit 节点是否在 JsxElement.children 位置；
       // 在 JsxAttribute / JsxExpression 内部时不能用 JsxText 替换 SelfClosingElement。
