@@ -57,6 +57,24 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
     expect(result[0]!.templateVariables).toEqual(['totalCount']);
   });
 
+  it('首尾空格：合成 locale 值与 original 均去首尾空白（与单 TEXT 节点 trim 口径一致）', async () => {
+    const file = writeVue(
+      'WS.vue',
+      `<template><div>  全部({{ totalCount }})  </div></template><script setup></script>`,
+    );
+
+    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const result = await extractor.extractFromFile(file);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.templateContext).toBe('mixed-content');
+    // 关键：locale 值不含首尾空格（修复前 condense 保留的折叠空格会污染成 '` 全部(${totalCount}) `'）
+    expect(result[0]!.processedMessage).toBe('`全部(${totalCount})`');
+    // original 同步去首尾空白：Transformer 按 original 子串匹配时只命中中文片段，保留模板两侧空格
+    expect(result[0]!.original.startsWith('全部')).toBe(true);
+    expect(result[0]!.original.endsWith(')')).toBe(true);
+  });
+
   it('多插值：第 N 讲：', async () => {
     const file = writeVue(
       'B.vue',

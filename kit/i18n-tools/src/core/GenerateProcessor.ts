@@ -739,8 +739,11 @@ export class GenerateProcessor extends BaseProcessor {
     const transformedSources = new Map<string, string>();
     const entries: GeneratePlanFileEntry[] = [];
 
+    // uniqueFilePaths 与 results 同源等长，循环内逐个 results.find 是 O(n²)；预建索引后
+    // 取用 O(1)，大目录 dry-run（成百上千文件）时收益明显。
+    const resultByFile = new Map(results.map((r) => [r.file, r]));
     for (const filePath of uniqueFilePaths) {
-      const result = results.find((r) => r.file === filePath);
+      const result = resultByFile.get(filePath);
       // 不变量：uniqueFilePaths 与 results 同源于 transformToMemory，任一文件 transform
       // 失败已在该阶段抛错，故每个 filePath 必有对应 result。此处 fail-loud 而非静默
       // skip——静默会写出缺转换源码的指纹条目，损坏 plan。

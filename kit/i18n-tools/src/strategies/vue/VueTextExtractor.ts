@@ -249,14 +249,14 @@ export class VueTextExtractor extends BaseTextExtractor {
     );
     if (!hasChineseText) return false;
 
-    let synthetic = '`';
+    let body = '';
     let originalSrc = '';
     const templateVariables: string[] = [];
 
     for (const n of group) {
       if (n.type === 2) {
         const textNode = n as TextNode;
-        synthetic += textNode.content;
+        body += textNode.content;
         originalSrc += textNode.loc.source;
         continue;
       }
@@ -272,11 +272,18 @@ export class VueTextExtractor extends BaseTextExtractor {
       // 退回原路径让 extractFromInterpolation 走 AST 解构提取。
       if (/['"`]/.test(expr)) return false;
 
-      synthetic += '${' + expr + '}';
+      body += '${' + expr + '}';
       originalSrc += interp.loc.source;
       templateVariables.push(expr);
     }
-    synthetic += '`';
+
+    // 与单 TEXT 节点路径（textNode.content.trim()）口径一致：去掉复合句首尾空白，避免
+    // 源语言 locale 写入带首尾空格的脏值。originalSrc 同步 trim，使 Transformer 按 original
+    // 子串匹配替换时只命中中文片段、保留模板里的空白；column 相应跳过被去掉的前导空白
+    // （mixed-content 受单行约束，前导空白不含换行，故只调列不调行）。
+    const leadingWhitespace = originalSrc.length - originalSrc.trimStart().length;
+    const synthetic = '`' + body.trim() + '`';
+    originalSrc = originalSrc.trim();
 
     // 走 shouldExtract（含业务侧 rejectPatterns 兜底），把合成 message 作为 text-node 看待
     if (!this.shouldExtract(synthetic, 'template', undefined, 'text-node')) {
@@ -289,7 +296,7 @@ export class VueTextExtractor extends BaseTextExtractor {
       semanticId: '',
       filePath,
       line: first.loc.start.line + lineOffset,
-      column: first.loc.start.column,
+      column: first.loc.start.column + leadingWhitespace,
       context: 'template',
       componentType: 'setup',
       isTemplateString: true,

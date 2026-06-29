@@ -99,6 +99,19 @@ describe('Vue extract→transform→restore 回环', () => {
     expect(restored).not.toContain('$t(');
   });
 
+  // 带首尾空格的复合句：trim 修复后 original 只覆盖中文片段，transform 不再吞掉模板两侧
+  // 空格、column 仍准确命中替换位置，restore 中文复原后两侧空格逐字保留。
+  it('混合内容带首尾空格：中文复原、无 $t 残留、保留两侧空格（回归 trim 修复）', async () => {
+    const src = `<template>\n  <div>  全部({{ totalCount }})  </div>\n</template>\n`;
+    const restored = await roundTrip(src);
+    expect(restored).toContain('全部');
+    expect(restored).toContain('totalCount');
+    expect(restored).not.toContain('$t(');
+    // 前导/尾随各 2 空格保留（修复前 original 含空格、整段被替换 → 空格被吞）
+    expect(restored).toMatch(/<div>\s{2}全部/);
+    expect(restored).toMatch(/\)\s{2}<\/div>/);
+  });
+
   it('vue-i18next 回环：文本节点无损', async () => {
     const src = `<template>\n  <div>提交</div>\n</template>\n`;
     const restored = await roundTrip(src, 'vue-i18next');

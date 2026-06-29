@@ -301,22 +301,56 @@ export class MergeProcessor extends FileProcessor {
   private updateLanguagePackage(newlyTranslated: Translations): void {
     const targets = this.config.locales.targets;
 
-    for (const target of targets) {
-      if (this.config.buckets) {
-        this.updateBucketedLanguagePackage(newlyTranslated, target);
-      } else {
+    if (!this.config.buckets) {
+      for (const target of targets) {
         this.updateFlatLanguagePackage(newlyTranslated, target);
       }
+      return;
+    }
+
+    // 桶式路径：source 派生的损坏检查、读取、keyBucketMap 对所有 target 完全一致，提到
+    // 循环外算一次，避免原 per-target 重复造成的 O(targets × sourceSize) 读解析与分桶。
+    const sourceLocale = this.config.locales.source;
+
+    // 冗余防御（normally unreachable）：顶层 assertLocalesNotCorrupt 已覆盖 source。语义上若
+    // source 桶损坏被 silent 降级当 {}，下方用 source 文本驱动 keyBucketMap 分桶会得到空表，
+    // 导致所有 key 塌缩进 defaultBucket、其余桶被 prune 成 .bak（伪报成功）——保留作 safety net。
+    const corruptSourceFile = LanguageFileManager.findCorruptBucketFile(
+      this.config,
+      this.isCustom,
+      sourceLocale,
+    );
+    if (corruptSourceFile) {
+      LoggerUtils.error(`❌ 源语言桶文件解析失败（JSON 格式错误）: ${corruptSourceFile}`);
+      LoggerUtils.error('👉 为防止桶分布塌缩，本次不会更新桶式语言包。请检查 JSON 格式。');
+      return;
+    }
+
+    // source 文本驱动分桶（与 generate/export 一致）。source 非空时分桶表对所有 target 相同，
+    // 预算一次；为空时回退到各 target 的 targetMessages，留到 per-target 内部计算。
+    const sourceMessages = LanguageFileManager.readLocaleFile(
+      this.config,
+      this.isCustom,
+      sourceLocale,
+    );
+    const sharedKeyBucketMap = sourceMessages
+      ? LanguageFileManager.buildKeyBucketMap(this.config, sourceMessages)
+      : null;
+
+    for (const target of targets) {
+      this.updateBucketedLanguagePackage(newlyTranslated, target, sharedKeyBucketMap);
     }
   }
 
-  private updateBucketedLanguagePackage(newlyTranslated: Translations, target: string): void {
-    const sourceLocale = this.config.locales.source;
-
+  private updateBucketedLanguagePackage(
+    newlyTranslated: Translations,
+    target: string,
+    sharedKeyBucketMap: ReturnType<typeof LanguageFileManager.buildKeyBucketMap> | null,
+  ): void {
     // 冗余防御（normally unreachable）：真正 load-bearing 的损坏守卫是 mergeTranslationData()
     // 顶层的 assertLocalesNotCorrupt（写回前对 source + 所有 target 做 checkLegacy 探测、损坏即抛错），
     // 而 performMerge 只写 translations.json/untranslated.json、不触碰 locale 桶，故执行到这里时
-    // 桶文件必未损坏、下面两个 if 分支正常不会命中。保留此处 per-target 探测仅作 belt-and-suspenders：
+    // 桶文件必未损坏、下面的 if 分支正常不会命中。保留此处 per-target 探测仅作 belt-and-suspenders：
     // 万一顶层集中守卫被重构移除/绕过，这里仍能拦住「损坏 bucket 被 silent 降级当 {} 后静默丢弃」。
     const corruptFile = LanguageFileManager.findCorruptBucketFile(
       this.config,
@@ -331,22 +365,6 @@ export class MergeProcessor extends FileProcessor {
       return;
     }
 
-    // 同上：冗余的 source 桶损坏防御（顶层 assert 已覆盖 source，故正常不可达）。语义上若
-    // source 桶损坏被 silent 降级当 {}，下方用 source 文本驱动 keyBucketMap 分桶会得到空表，
-    // 导致所有 key 塌缩进 defaultBucket、其余桶被 prune 成 .bak（伪报成功）——保留作 safety net。
-    const corruptSourceFile = LanguageFileManager.findCorruptBucketFile(
-      this.config,
-      this.isCustom,
-      sourceLocale,
-    );
-    if (corruptSourceFile) {
-      LoggerUtils.error(`❌ 源语言桶文件解析失败（JSON 格式错误）: ${corruptSourceFile}`);
-      LoggerUtils.error(
-        '👉 为防止桶分布塌缩，本次不会更新该 target 的桶式语言包。请检查 JSON 格式。',
-      );
-      return;
-    }
-
     const { flat: targetMessages } = LanguageFileManager.readBucketedLocaleWithBucketMap(
       this.config,
       this.isCustom,
@@ -355,15 +373,9 @@ export class MergeProcessor extends FileProcessor {
 
     const updatedCount = MergeProcessor.applyTranslations(targetMessages, newlyTranslated, target);
 
-    // 用 BucketResolver 重新计算 keyBucketMap：source locale 的文本驱动分桶，
-    // 与 generate/export 阶段一致
-    const sourceMessages = LanguageFileManager.readLocaleFile(
-      this.config,
-      this.isCustom,
-      sourceLocale,
-    );
-    const messagesForBucketing = sourceMessages ?? targetMessages;
-    const keyBucketMap = LanguageFileManager.buildKeyBucketMap(this.config, messagesForBucketing);
+    // source 为空时无共享分桶表，回退到当前 target 的消息计算（与原回退语义一致）。
+    const keyBucketMap =
+      sharedKeyBucketMap ?? LanguageFileManager.buildKeyBucketMap(this.config, targetMessages);
 
     LanguageFileManager.writeLocaleFile(
       this.config,
