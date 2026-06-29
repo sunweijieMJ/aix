@@ -362,15 +362,6 @@ export class ReactImportManager implements IImportManager {
   }
 
   /**
-   * 清理变量声明语句 (AST)（由 library 适配器驱动）
-   *
-   * 三类清理：
-   *   1. Hook 声明（useIntl / useTranslation）整条移除
-   *   2. 全局函数声明（getIntl）整条移除
-   *   3. 解构中仅保留翻译变量（如 `const { t } = ...`）整条移除；
-   *      混合解构（如 `const { t, i18n } = ...`）则重建解构模式仅删除翻译项
-   */
-  /**
    * 判定变量声明的初始化器是否为 `this.props`——HOC 注入 `const { t/intl } = this.props` 的来源。
    * 用于 cleanupVariableStatements 收窄通用解构清理，避免按名误删来源无关的同名解构。
    */
@@ -414,6 +405,15 @@ export class ReactImportManager implements IImportManager {
     return found;
   }
 
+  /**
+   * 清理变量声明语句 (AST)（由 library 适配器驱动）
+   *
+   * 三类清理：
+   *   1. Hook 声明（useIntl / useTranslation）整条移除
+   *   2. 全局函数声明（getIntl）整条移除
+   *   3. 解构中仅保留翻译变量（如 `const { t } = ...`）整条移除；
+   *      混合解构（如 `const { t, i18n } = ...`）则重建解构模式仅删除翻译项
+   */
   static cleanupVariableStatements(
     node: ts.VariableStatement,
     library: ReactI18nLibrary,

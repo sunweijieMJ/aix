@@ -12,13 +12,6 @@ import type {
 import type { VueI18nLibrary } from './libraries';
 
 /**
- * Vue 代码转换器
- * 负责将提取的文本替换为 i18n 调用
- *
- * library / importManager / componentInjector 由 VueAdapter 注入，
- * 转换器自身不再持有 tImport 字符串，避免依赖蔓延。
- */
-/**
  * 从 from 起在一行内查找 pattern，但跳过紧邻比较运算符(=== / !== / == / !=)的命中。
  * 那是提取端有意跳过的「比较操作数」字面量（与 VueTextExtractor.isComparisonOperand 对称）：
  * 替换它会让运行时用译文做比较、分支永不命中，且真正的展示分支反而残留硬编码。
@@ -38,6 +31,13 @@ function indexOfSkippingComparison(line: string, pattern: string, from: number):
   return -1;
 }
 
+/**
+ * Vue 代码转换器
+ * 负责将提取的文本替换为 i18n 调用
+ *
+ * library / importManager / componentInjector 由 VueAdapter 注入，
+ * 转换器自身不持有 tImport 字符串，避免依赖蔓延。
+ */
 export class VueTransformer implements ITransformer {
   private library: VueI18nLibrary;
   private importManager: IImportManager;

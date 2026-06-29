@@ -136,7 +136,6 @@ export class ExportProcessor extends FileProcessor {
     const customOf = (locale: string): LocaleMap => customByLocale.get(locale)!;
     if (customLocaleDir) ExportProcessor.checkLocaleConflicts(allLocales, baseOf, customOf);
 
-    // 合并并落盘
     FileUtils.ensureDirectoryExists(outputDir);
     const mergedByLocale = ExportProcessor.mergeByLocale(allLocales, baseOf, customOf);
 

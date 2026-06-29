@@ -10,9 +10,8 @@ export class ReactASTUtils {
   /**
    * 判定一个标识符是否像 react-intl `defineMessages({ KEY: ... })` 的容器变量名。
    *
-   * 此前用 `name.includes('MESSAGE')` 大小写敏感的子串匹配，对常见命名
-   * （`messages` / `intlMessages` / `i18nMessages`）静默失效，导致 restore 时
-   * 丢失消息容器定义。改为大小写无关，集中在此处方便后续替换为 library 注入。
+   * 大小写无关匹配，覆盖 `messages` / `intlMessages` / `i18nMessages` 等命名，
+   * 避免漏匹配导致 restore 时丢失消息容器定义。
    */
   static isMessageContainerName(name: string): boolean {
     return /messages?/i.test(name);

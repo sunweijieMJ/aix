@@ -347,7 +347,6 @@ export class MergeProcessor extends FileProcessor {
       return;
     }
 
-    // 读取现有 target locale 数据
     const { flat: targetMessages } = LanguageFileManager.readBucketedLocaleWithBucketMap(
       this.config,
       this.isCustom,

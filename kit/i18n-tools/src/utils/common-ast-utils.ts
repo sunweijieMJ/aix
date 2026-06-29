@@ -575,11 +575,6 @@ export class CommonASTUtils {
   }
 
   /**
-   * 从表达式文本中提取一个合理的变量名
-   * @param expressionText - 表达式的源代码文本
-   * @returns 合理的变量名
-   */
-  /**
    * 非语义后缀集合：这些属性名/方法名不适合作为占位符名称
    */
   private static readonly NON_SEMANTIC_SUFFIXES = new Set([
@@ -1171,10 +1166,6 @@ export class CommonASTUtils {
   }
 
   /**
-   * 判断模板变量表达式是否是字面量（不需要作为 i18n 参数传入）
-   * 字面量包括：字符串字面量、数字字面量、布尔值、null/undefined
-   */
-  /**
    * 「单个完整带引号字面量」判定。区别于 `/^['"`].*['"`]$/`（只看首尾字符）：
    *  - 字符串字面量：首尾引号之间不得出现未转义的同种引号，否则 `'(' + count + ')'`
    *    这类首尾恰为引号的【拼接表达式】会被误判为字面量（evalLiteralExpression 只切首尾字符
@@ -1192,6 +1183,10 @@ export class CommonASTUtils {
     return CommonASTUtils.QUOTED_LITERAL_PATTERNS.some((re) => re.test(trimmed));
   }
 
+  /**
+   * 判断模板变量表达式是否是字面量（不需作为 i18n 参数传入）。
+   * 字面量包括：字符串字面量、数字字面量、布尔值、null / undefined。
+   */
   static isLiteralExpression(varExpr: string): boolean {
     const trimmed = varExpr.trim();
     if (CommonASTUtils.isQuotedLiteral(trimmed)) return true;

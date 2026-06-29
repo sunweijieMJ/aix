@@ -497,9 +497,6 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   }
 
   /**
-   * 还原带变量的模板字符串（用于文本节点，使用 Vue 模板插值语法 {{ }} ）
-   */
-  /**
    * 还原带变量的模板字符串。
    * - syntax='mustache'：用于 template 文本节点，输出 Vue 插值 `{{ expr }}`
    * - syntax='template'：用于属性绑定 / JS 模板字面量，输出 `${expr}`
@@ -510,12 +507,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     syntax: 'mustache' | 'template',
   ): string {
     const varMap = this.parseVarMap(vars);
-    // mustache=文本节点上下文：先对字面文本做 HTML 转义，再注入 `{{ expr }}`
-    // （占位符 `{name}` 不含 `<>&`，转义不影响其匹配；先转义可避免把注入的
-    // `{{ }}` 表达式也转义掉）。template=属性/JS 模板字面量上下文：不转义。
-    // mustache 文本节点：HTML 转义字面段。template（属性/JS 模板字面量）：转义会终结模板
-    // 字面量的 `\\` / 反引号 / `${`（与脚本侧 getI18nCallReplacementText 同口径），使字面段里
-    // 出现这些字符时不破坏生成的模板字面量；随后注入的 `${expr}` 在转义之后追加，不受影响。
+    // mustache（文本节点）：先对字面段做 HTML 转义，再注入 `{{ expr }}`（占位符 `{name}`
+    //   不含 `<>&`，转义不影响其匹配；先转义可避免把注入的 `{{ }}` 表达式也转义掉）。
+    // template（属性 / JS 模板字面量）：转义字面段里的 `\\` / 反引号 / `${`（与脚本侧
+    //   getI18nCallReplacementText 同口径，避免终结模板字面量），但不做 HTML 转义；
+    //   注入的 `${expr}` 在转义之后追加，不受影响。
     let result =
       syntax === 'mustache'
         ? this.escapeTemplateText(text)

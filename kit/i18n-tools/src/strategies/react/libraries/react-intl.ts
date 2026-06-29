@@ -186,10 +186,8 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   }
 
   isTranslationAvailableInScope(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
-    // 基于 AST、限定在本组件自身作用域内（不跨嵌套组件边界），与旧的整段 getText 正则等价：
-    //   /const\s+intl\s*=\s*useIntl/ | /props\.intl/ | /this\.props\.intl/
-    // 改 AST 后还顺带避免命中注释 / 字符串里的伪匹配，并修复「嵌套组件已有 intl → 外层被误判
-    // 已可用而漏注入」。
+    // 基于 AST、限定在本组件自身作用域内（不跨嵌套组件边界）：避免命中注释 / 字符串里的伪
+    // 匹配，并防止「嵌套组件已有 intl → 外层被误判已可用而漏注入」。
     return ReactASTUtils.someWithinComponentScope(node, (n) => {
       // const intl = useIntl()
       if (

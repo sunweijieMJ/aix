@@ -848,6 +848,15 @@ export class GenerateProcessor extends BaseProcessor {
   }
 
   /**
+   * apply 完成后是否保留 plan 目录。
+   *
+   * 默认 false（清理）：plan 的生命周期是「生成 → review → apply」，apply 完
+   * 即终结；保留只在事后追溯有少量价值，但单 plan 体积大（含 sources/）容易
+   * 累积。CLI 通过 `--keep-plan` 让用户显式保留。
+   */
+  private keepPlanAfterApply: boolean = false;
+
+  /**
    * apply-plan 入口：从已有 plan.json 直接回放，跳过 AST 解析与 LLM 调用。
    *
    * 流程：
@@ -859,15 +868,6 @@ export class GenerateProcessor extends BaseProcessor {
    * 它经 commitToDisk → updateLanguageFiles 对全量合并 map 做 lint（与普通 commit 同路径）。
    * 这正好补齐 dry-run 阶段只 lint 增量 delta 看不到的跨 key 发现（见 writePlan 注释）。
    */
-  /**
-   * apply 完成后是否保留 plan 目录。
-   *
-   * 默认 false（清理）：plan 的生命周期是「生成 → review → apply」，apply 完
-   * 即终结；保留只在事后追溯有少量价值，但单 plan 体积大（含 sources/）容易
-   * 累积。CLI 通过 `--keep-plan` 让用户显式保留。
-   */
-  private keepPlanAfterApply: boolean = false;
-
   async applyFromPlan(planPath: string, options: { keepPlan?: boolean } = {}): Promise<void> {
     this.keepPlanAfterApply = Boolean(options.keepPlan);
     return this.executeWithLifecycle(() => this._applyFromPlan(planPath));

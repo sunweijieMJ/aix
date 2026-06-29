@@ -243,7 +243,7 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
-   * 添加从 @/plugins/locale 导入 t 函数（用于纯 .ts/.js 文件）
+   * 从 tImport 配置路径导入 t 函数（用于纯 .ts/.js 文件）
    */
   private addPluginLocaleImport(code: string): string {
     // 同 addPluginLocaleImportToScript：已有任意路径的具名 t 导入即跳过，避免重复 t 声明。
