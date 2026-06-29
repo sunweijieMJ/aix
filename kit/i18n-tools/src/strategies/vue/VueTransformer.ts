@@ -23,11 +23,16 @@ import type { VueI18nLibrary } from './libraries';
  * 那是提取端有意跳过的「比较操作数」字面量（与 VueTextExtractor.isComparisonOperand 对称）：
  * 替换它会让运行时用译文做比较、分支永不命中，且真正的展示分支反而残留硬编码。
  * 跳过比较操作数位置，继续找下一处（即展示分支）。
+ *
+ * 比较符可能在命中点**之前**（右操作数 `x === '中'`）或**之后**（左操作数 / Yoda 写法
+ * `'中' === x`），两侧都要检测——只判一侧会漏掉 Yoda 写法，误把左操作数替换掉。
  */
 function indexOfSkippingComparison(line: string, pattern: string, from: number): number {
   let i = line.indexOf(pattern, from);
   while (i !== -1) {
-    if (!/[=!]==?$/.test(line.slice(0, i).trimEnd())) return i;
+    const isRightOperand = /[=!]==?$/.test(line.slice(0, i).trimEnd());
+    const isLeftOperand = /^(==|!=)=?/.test(line.slice(i + pattern.length).trimStart());
+    if (!isRightOperand && !isLeftOperand) return i;
     i = line.indexOf(pattern, i + 1);
   }
   return -1;

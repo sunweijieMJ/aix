@@ -66,6 +66,33 @@ describe('Vue transform 输出', () => {
     expect(out).not.toMatch(/\?\s*'保存'/);
   });
 
+  it('Yoda 写法（比较符在左侧）：替换命中展示分支，左侧比较操作数保持硬编码（回归 Bug2）', async () => {
+    // '编辑' === x 的左操作数 '编辑' 被提取端有意跳过（isComparisonOperand 对 === 两侧都识别），
+    // 只提取 else 展示分支的 '编辑'。旧实现的 indexOfSkippingComparison 跳过判据只看命中点之前
+    // 是否紧跟 ===（即右操作数），对左操作数（=== 在命中点之后）失效 → 误把左操作数替换成 $t()
+    // 使比较永不命中、分支失效，真正的 else 展示分支反而残留硬编码。
+    const out = await transformVue(
+      `<template>\n  <el-tag :type="'编辑' === x ? a : '编辑'">x</el-tag>\n</template>\n`,
+    );
+    // 左侧比较操作数必须保持硬编码字面量（不得被替换成 $t）
+    expect(out).toContain(`'编辑' === x`);
+    // 全文应只剩这一个硬编码 '编辑'（else 展示分支已替换为 $t），不残留第二个
+    expect((out.match(/'编辑'/g) ?? []).length).toBe(1);
+  });
+
+  it('已存在其它路径的具名 import { t } 时不注入重复 t 导入（回归 Bug3）', async () => {
+    // <script setup> 已从别的模块导入 t（用户手写或复用），工具仍按 tImport 路径注入
+    // import { t } 会在同一模块作用域产生重复 t 声明 → "Identifier 't' has already been declared"。
+    // 已存在检查旧实现只匹配 tImport 这一个路径，对其它路径的 import { t } 视而不见。
+    const out = await transformVue(
+      `<script setup>\nimport { t } from '@/other';\nconst msg = '你好';\n</script>\n`,
+    );
+    // 中文被替换为 t(...)（复用已有 t）
+    expect(out).toContain("t('k0')");
+    // 不得新增第二条具名 t 导入（同模块作用域重复声明 t 会 SyntaxError）
+    expect((out.match(/import\s*\{[^}]*\bt\b[^}]*\}\s*from/g) ?? []).length).toBe(1);
+  });
+
   it('静态属性 → :attr="$t(key)"', async () => {
     const out = await transformVue(
       `<template>\n  <el-button title="确认">x</el-button>\n</template>\n`,

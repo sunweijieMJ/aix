@@ -638,6 +638,94 @@ export const Bar = () => {
   });
 });
 
+describe('类组件已被 HOC 包裹时补解构、不二次包裹（Bug4 / Bug5）', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-class-wrapped-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('react-intl：已 injectIntl 包裹的 class 新增属性 → 注入 const { intl } = this.props，不二次 injectIntl（Bug4）', async () => {
+    const code = `import React from 'react';
+import { injectIntl, WrappedComponentProps } from 'react-intl';
+class App extends React.Component<WrappedComponentProps> {
+  render() {
+    return <div title={this.props.intl.formatMessage({ id: 'x' })} data-y="额外" />;
+  }
+}
+export default injectIntl(App);
+`;
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/i18n', 'react-intl');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+
+    // data-y 被替换为裸 intl.formatMessage
+    expect(out).toMatch(/data-y=\{intl\.formatMessage\(/);
+    // 关键 1：render 方法体注入 const { intl } = this.props（否则裸 intl 未定义 → ReferenceError）
+    expect(out).toMatch(/const\s*\{\s*intl\s*\}\s*=\s*this\.props/);
+    // 关键 2：不二次 injectIntl（仍只有用户那一处）
+    expect((out.match(/injectIntl\(/g) ?? []).length).toBe(1);
+  });
+
+  it('react-i18next：已 withTranslation 包裹的 class 新增属性 → 注入 const { t } = this.props，不二次 withTranslation（Bug5）', async () => {
+    const code = `import React from 'react';
+import { withTranslation, WithTranslation } from 'react-i18next';
+class App extends React.Component<WithTranslation> {
+  render() {
+    return <div title={this.props.t('x')} data-y="额外" />;
+  }
+}
+export default withTranslation()(App);
+`;
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/i18n', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+
+    // data-y 被替换为裸 t(...)
+    expect(out).toMatch(/data-y=\{t\(/);
+    // 关键 1：render 方法体注入 const { t } = this.props
+    expect(out).toMatch(/const\s*\{\s*t\s*\}\s*=\s*this\.props/);
+    // 关键 2：不二次 withTranslation（仍只有用户那一处 HOC 调用）
+    expect((out.match(/withTranslation\(\)/g) ?? []).length).toBe(1);
+  });
+});
+
+describe('JSX 文本碎片与相邻元素间的语义空格保留（Bug6）', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-jsx-space-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('"共 <b/>" 替换后保留 <Trans/> 与 <b> 之间的空格', async () => {
+    const code = `import React from 'react';
+export const C = () => {
+  return <div>共 <b>x</b></div>;
+};
+`;
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/i18n', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+
+    // "共" 被替换为 <Trans i18nKey="k0" />，与 <b> 之间的语义空格必须保留
+    // （旧实现用 JsxText.getEnd() 含尾部空白做替换区间，把空格一并吞掉 → 渲染 "共x"）。
+    expect(out).toMatch(/i18nKey="k0"\s*\/>\s<b>/);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 场景 10：GenerateProcessor 覆盖率 — react-intl 调用点计入分子（审计三轮 #5）
 // ---------------------------------------------------------------------------

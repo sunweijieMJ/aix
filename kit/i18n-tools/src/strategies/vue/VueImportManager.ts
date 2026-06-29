@@ -126,12 +126,11 @@ export class VueImportManager implements IImportManager {
     const allScriptContent = VueImportManager.collectAllScriptContent(code);
     if (!/(?:^|[^\w.$])t\s*\(/.test(allScriptContent)) return code;
 
-    const escapedPath = CommonASTUtils.escapeRegExp(this.tImport);
-    if (
-      new RegExp(`import\\s*\\{[^}]*\\bt\\b[^}]*\\}\\s*from\\s*['"]${escapedPath}['"]`).test(
-        block.content,
-      )
-    ) {
+    // 已存在从「任意模块」导入的具名 t（本工具 tImport 或用户手写的其它路径），再注入模块级
+    // import { t } 会在同一模块作用域产生重复 t 声明（SyntaxError）。旧实现只匹配 tImport 这一个
+    // 路径，对 `import { t } from '@/other'` 视而不见。改用任意路径 + allScriptContent 检测
+    // （双块共享模块作用域，仅看目标 block 会漏判），与 VueComponentInjector hook 路径同口径。
+    if (/import\s*\{[^}]*\bt\b[^}]*\}\s*from\s*['"][^'"]+['"]/.test(allScriptContent)) {
       return code;
     }
 
@@ -247,10 +246,9 @@ export class VueImportManager implements IImportManager {
    * 添加从 @/plugins/locale 导入 t 函数（用于纯 .ts/.js 文件）
    */
   private addPluginLocaleImport(code: string): string {
-    const escapedPath = CommonASTUtils.escapeRegExp(this.tImport);
-    if (
-      new RegExp(`import\\s*\\{[^}]*\\bt\\b[^}]*\\}\\s*from\\s*['"]${escapedPath}['"]`).test(code)
-    ) {
+    // 同 addPluginLocaleImportToScript：已有任意路径的具名 t 导入即跳过，避免重复 t 声明。
+    // 纯 .ts/.js 整个文件即模块作用域，直接检测 code。
+    if (/import\s*\{[^}]*\bt\b[^}]*\}\s*from\s*['"][^'"]+['"]/.test(code)) {
       return code;
     }
     return CommonASTUtils.mergeNamedImport(code, this.tImport, ['t']);

@@ -130,8 +130,17 @@ export class ReactTransformer implements ITransformer {
           const end = node.closingElement.getStart();
           replacements.push({ start, end, replacement });
         } else {
-          const start = node.getStart(sourceFile);
-          const end = node.getEnd();
+          let start = node.getStart(sourceFile);
+          let end = node.getEnd();
+
+          // JsxText 节点范围含与兄弟元素/标签之间的首尾空白，但 extracted.original 已 trim。
+          // 用整范围替换会吞掉这些语义空白（如 `共 <b/>` → 替换体紧贴 <b>，渲染丢失词间空格）。
+          // 故对 JsxText 把替换区间收缩到 trim 后的实际文本，保留首尾空白原样。
+          if (ts.isJsxText(node)) {
+            const raw = sourceText.slice(start, end);
+            start += raw.length - raw.trimStart().length;
+            end -= raw.length - raw.trimEnd().length;
+          }
 
           const originalNodeText = CommonASTUtils.nodeToText(node, sourceFile);
           const isTemplateString =
