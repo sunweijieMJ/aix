@@ -126,6 +126,36 @@ describe('CLI 入口守卫（cli.ts main）', () => {
   );
 
   it(
+    '--path 指向不存在的路径 → 非零退出（resolveTargetPath 路径校验守卫）',
+    () => {
+      const { code, out } = runCli(['--mode', 'generate', '--path', 'no/such/path/x.vue'], cfgDir);
+      expect(code).toBe(1);
+      expect(out).toMatch(/--path 无效/);
+    },
+    T,
+  );
+
+  it(
+    '非交互模式（--mode）未传 --path → 非零退出并提示需用 --path',
+    () => {
+      const { code, out } = runCli(['--mode', 'generate'], cfgDir);
+      expect(code).toBe(1);
+      expect(out).toMatch(/需用 --path/);
+    },
+    T,
+  );
+
+  it(
+    'csv-import 非交互且未传 --output → 非零退出',
+    () => {
+      const { code, out } = runCli(['--mode', 'csv-import'], cfgDir);
+      expect(code).toBe(1);
+      expect(out).toMatch(/csv-import 需要 --output/);
+    },
+    T,
+  );
+
+  it(
     '--help → 成功退出（确认守卫不是恒返回非零）',
     () => {
       const { code, out } = runCli(['--help'], cfgDir);
