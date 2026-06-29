@@ -366,6 +366,47 @@ describe('React restore — localeMap 不完整时 hook/global 声明守卫（#8
     expect(out).toMatch(/import\s*\{[^}]*useIntl[^}]*\}\s*from\s*['"]react-intl['"]/);
     expect(out).toContain("id: 'missing'");
   });
+
+  it('[react-intl] intl 用于 formatNumber 等非 formatMessage API → 即便 formatMessage 可还原也须保留 intl 声明', () => {
+    // 回归：survivalScan 仅认 intl.formatMessage 为翻译调用；若 formatMessage 能正常还原
+    // (restored !== null) 则 keepTranslationVar 保持 false → 删 const intl = useIntl() 与
+    // useIntl 导入，残留的 intl.formatNumber 引用未定义 intl（TS2304 / 运行时 ReferenceError）。
+    const out = restore(
+      `import { useIntl } from 'react-intl';\n` +
+        `export function Price({ amount }: { amount: number }) {\n` +
+        `  const intl = useIntl();\n` +
+        `  const price = intl.formatNumber(amount);\n` +
+        `  return <div>{intl.formatMessage({ id: 'k0' })}: {price}</div>;\n` +
+        `}\n`,
+      { k0: '价格' },
+      'react-intl',
+    );
+    // formatMessage 已还原为文案
+    expect(out).toContain('价格');
+    // 关键：intl 仍被 formatNumber 使用 → 声明与 import 必须保留
+    expect(out).toContain('intl.formatNumber(amount)');
+    expect(out, `还原输出：\n${out}`).toMatch(/const\s+intl\s*=\s*useIntl\(\)/);
+    expect(out).toMatch(/import\s*\{[^}]*useIntl[^}]*\}\s*from\s*['"]react-intl['"]/);
+    // 不得残留对未定义 intl 的引用（编译期 TS2304 的根因）
+    const sf = ts.createSourceFile('o.tsx', out, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    expect(
+      ((sf as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics ?? []).length,
+    ).toBe(0);
+  });
+
+  it('[react-intl] intl 仅用于可还原的 formatMessage → 仍移除声明（不回归）', () => {
+    const out = restore(
+      `import { useIntl } from 'react-intl';\n` +
+        `export function C() {\n` +
+        `  const intl = useIntl();\n` +
+        `  return <div>{intl.formatMessage({ id: 'k0' })}</div>;\n` +
+        `}\n`,
+      { k0: '你好' },
+      'react-intl',
+    );
+    expect(out).toContain('你好');
+    expect(out).not.toMatch(/useIntl/);
+  });
 });
 
 /**

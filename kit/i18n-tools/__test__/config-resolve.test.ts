@@ -335,6 +335,24 @@ describe('resolveConfig - locales 校验', () => {
     expect(r.locales.targets).toEqual(['en-US']);
   });
 
+  it('targets 误写字符串（JS 配置漏数组括号）抛错，不被逐字符展开', () => {
+    // 回归：`targets: 'en-US'` 旧实现 length===5 通过空数组守卫，[...'en-US'] 展开成
+    // ['e','n','-','U','S'] 五个伪语种，逐项非空 / source / 去重守卫全部放行 → 静默生成错误产物。
+    expect(() =>
+      // 故意传入非数组类型，绕过 TS 校验模拟 JS 配置文件
+      resolveConfig({ ...baseConfig, locales: { targets: 'en-US' as unknown as string[] } }),
+    ).toThrow(/targets 必须是.*数组/);
+  });
+
+  it('io.include / io.exclude 误写字符串抛错，不被逐字符展开', () => {
+    expect(() =>
+      resolveConfig({ ...baseConfig, io: { include: 'src/**' as unknown as string[] } }),
+    ).toThrow(/io\.include 必须是.*数组/);
+    expect(() =>
+      resolveConfig({ ...baseConfig, io: { exclude: 'dist/**' as unknown as string[] } }),
+    ).toThrow(/io\.exclude 必须是.*数组/);
+  });
+
   it('names 合并', () => {
     const r = resolveConfig({
       ...baseConfig,

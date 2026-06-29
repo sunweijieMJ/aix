@@ -236,7 +236,12 @@ export class GenerateProcessor extends BaseProcessor {
    * locale 文件中的 value 仍是原文「9. 消息提示」，仅 ID 命名脱敏。
    */
   private static cleanForLLM(text: string): string {
-    return text.replace(/^\s*\d+\s*[.、。)）:：、\s]+/, '').trim() || text;
+    // 剥离前导列表序号（「9. 消息提示」→「消息提示」）。首个分隔符要么是非小数点的列表标点，
+    // 要么是「后面不跟数字的点」——借 `\.(?!\d)` 排除小数：避免 `3.14元` 被 `\d+` 吃掉整数部分后
+    // 把小数点连同 `3` 一起删成 `14元`。首个分隔符之后才允许任意点号（如 `9... 提示`）。
+    return (
+      text.replace(/^\s*\d+(?:[、。)）:：、\s]|\.(?!\d))[.、。)）:：、\s]*/, '').trim() || text
+    );
   }
 
   /**

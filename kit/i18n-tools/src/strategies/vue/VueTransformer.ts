@@ -516,14 +516,12 @@ export class VueTransformer implements ITransformer {
 
     // 处理模板字符串（带变量插值）
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
-      // mixed-content（HTML 文本节点+插值复合句）的 `original` 是源码层形式（含 `{{ }}`），
-      // createMessageWithOptions 只识别 `${expr}` 形式，需要拿 processedMessage（合成的
-      // backtick template）作为输入；其余路径（dynamic-attribute、interpolation
-      // 中的 JS 模板字符串）的 `original` 已含 `${expr}`，保持现状。
-      const messageInput =
-        templateContext === 'mixed-content' && extracted.processedMessage
-          ? extracted.processedMessage
-          : extracted.original;
+      // createMessageWithOptions 需要「内联字面量后、仅含真正变量 `${expr}`」的形式：
+      //  - mixed-content：`original` 是源码层形式（含 `{{ }}`），用合成的 processedMessage；
+      //  - dynamic-attribute / interpolation：`original` 现存源码层模板串（含字面量插值如
+      //    `${'X'}`，供源码文本匹配），其内联后的 processedMessage 才是正确的消息输入。
+      // 统一优先取 processedMessage，无（纯变量插值、内联前后相同）时回落 original。
+      const messageInput = extracted.processedMessage ?? extracted.original;
       const { placeholderMap } = CommonASTUtils.createMessageWithOptions(
         messageInput,
         actualVariables,
