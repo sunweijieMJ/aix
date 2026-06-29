@@ -2,6 +2,7 @@ import fs from 'fs';
 import ts from 'typescript';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { ReactImportManager, HOC_CLASS_SUFFIX } from './ReactImportManager';
+import { TRANSLATION_DEPENDENCY_HOOKS, resolveHookName } from './hooks-utils';
 import { ReactTextExtractor } from './ReactTextExtractor';
 import type { MessageInfo, TransformContext, LocaleMap } from '../../utils/types';
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
@@ -24,6 +25,69 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   constructor(library: ReactI18nLibrary, tImport: string) {
     this.library = library;
     this.tImport = tImport;
+  }
+
+  /**
+   * 判断一个 Identifier 是否处于「值读取位置」（真正引用了同名变量），用于区分裸值引用与
+   * 声明 / 绑定名 / 对象键 / 成员名 / import-export 具名 / JSX 属性名等非引用位置。
+   *
+   * 依赖 parent 指针——本守卫作用于 CommonASTUtils.parseSourceFile（createSourceFile 的
+   * setParentNodes=true）解析出的原始 sourceFile，parent 完整可用。
+   * 注意：对象简写 `{ t }`（ShorthandPropertyAssignment.name）属值引用，不排除。
+   */
+  private isIdentifierValueReference(id: ts.Identifier): boolean {
+    const parent = id.parent;
+    if (!parent) return true;
+    // 声明 / 绑定名位置
+    if (
+      (ts.isBindingElement(parent) && (parent.name === id || parent.propertyName === id)) ||
+      (ts.isVariableDeclaration(parent) && parent.name === id) ||
+      (ts.isParameter(parent) && parent.name === id) ||
+      (ts.isFunctionDeclaration(parent) && parent.name === id) ||
+      (ts.isClassDeclaration(parent) && parent.name === id)
+    ) {
+      return false;
+    }
+    // 成员名 obj.t（接收者非 t）/ 对象键 { t: x } / JSX 属性名 t={...} / 限定名
+    if (ts.isPropertyAccessExpression(parent) && parent.name === id) return false;
+    if (ts.isPropertyAssignment(parent) && parent.name === id) return false;
+    if (ts.isJsxAttribute(parent) && parent.name === id) return false;
+    if (ts.isQualifiedName(parent) && parent.right === id) return false;
+    // import / export 具名（含别名两侧）
+    if (ts.isImportSpecifier(parent) || ts.isExportSpecifier(parent)) return false;
+    return true;
+  }
+
+  /** 变量声明（`const t = ...` 或 `const { t, ... } = ...`）是否绑定了名为 varName 的标识符。 */
+  private declarationBindsVar(decl: ts.VariableDeclaration, varName: string): boolean {
+    if (ts.isIdentifier(decl.name)) return decl.name.text === varName;
+    if (ts.isObjectBindingPattern(decl.name)) {
+      return decl.name.elements.some(
+        (element) => ts.isIdentifier(element.name) && element.name.text === varName,
+      );
+    }
+    return false;
+  }
+
+  /** 取 node 最近的函数式作用域（函数 / 箭头 / 方法 / 访问器），到顶则返回 SourceFile。 */
+  private enclosingScope(node: ts.Node): ts.Node {
+    let cur: ts.Node | undefined = node.parent;
+    while (cur) {
+      if (
+        ts.isFunctionDeclaration(cur) ||
+        ts.isFunctionExpression(cur) ||
+        ts.isArrowFunction(cur) ||
+        ts.isMethodDeclaration(cur) ||
+        ts.isConstructorDeclaration(cur) ||
+        ts.isGetAccessorDeclaration(cur) ||
+        ts.isSetAccessorDeclaration(cur) ||
+        ts.isSourceFile(cur)
+      ) {
+        return cur;
+      }
+      cur = cur.parent;
+    }
+    return node;
   }
 
   transform(filePath: string, localeMap: LocaleMap): string {
@@ -299,20 +363,63 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     // intl.formatDate / intl.locale）。这正是 react-intl 缺口的精确特征：intl 是多用途对象，
     // 还原 formatMessage 后这些成员用途仍引用 intl，删声明即产出未定义引用。
     //
-    // 只认 `varName.<member>` 形式（且整体不是翻译调用 intl.formatMessage(...)），刻意不计裸标识符：
-    //  - react-i18next 的 t 是纯函数，仅以 t(...) 调用、或作为值出现在注入的依赖数组 `[t]` /
-    //    透传中——这些要么是翻译调用、要么是 restore 应当清理的机器注入，绝不会写成 `t.<member>`。
-    //    因此本守卫结构上不会误命中 t，react-i18next 的既有逐声明 / deps 清理不受影响。
-    //  - 翻译调用的接收者（intl.formatMessage）随还原整体消失，跳过其表达式只查实参。
+    // 计入两类「翻译调用之外」对 varName 的引用：
+    //  1. 成员访问 `varName.<member>`（intl.formatNumber / intl.locale 等多用途对象成员）；
+    //  2. 裸标识符值引用（passToChild(t) / <Child t={t}/> / const x = t / 透传等手写用法）。
+    // 刻意排除的非引用 / 机器注入位置：
+    //  - 翻译调用接收者（t / intl.formatMessage）随还原整体消失，跳过其被调表达式、只查实参；
+    //  - 翻译依赖 hook（useCallback/useMemo/useEffect/useLayoutEffect）的依赖数组 `[t]` 是机器
+    //    注入的镜像项，由 cleanupHookDependencies 单独按「回调体是否真用 t」清理，不计为独立使用
+    //    （只查回调体，跳过 deps 数组），否则常规往返 `[t]` 删不掉；
+    //  - 声明 / 解构绑定名（尤其 `const { t } = useTranslation()` 自身）、对象键、成员名、
+    //    import/export 具名、JSX 属性名等非值读取位置（见 isIdentifierValueReference）。
+    //
+    // 关键：只在「绑定 varName 的 i18n hook 声明所在的函数作用域」内扫描，而非全文件——否则其它
+    // 组件里同名但来源无关的变量（如 `const { t } = useTemperature()`）会被按名误判为翻译变量的
+    // 使用，错误地阻止删除真正的 i18n 声明。无 hook 声明（如 standalone tImport 路径）则返回 false。
+    //
+    // 历史上本守卫只认成员访问、漏判裸标识符，导致 react-i18next 把 t 当裸值透传且全部 t() 可还原时
+    // 误删声明与 import、留下未定义 t（ReferenceError / TS2304）。与 ReactImportManager
+    // .callbackUsesVarOutsideTranslationCalls 的裸标识符判定口径对齐。
     const translationVarUsedOutsideTranslationCalls = (root: ts.Node): boolean => {
       const varName = library.translationVarName;
+
+      // 收集所有「绑定了 varName 的 i18n hook 声明」所属的函数作用域（去重）
+      const hookScopes = new Set<ts.Node>();
+      const collect = (node: ts.Node): void => {
+        if (ts.isVariableStatement(node)) {
+          for (const decl of node.declarationList.declarations) {
+            if (library.isHookDeclaration(decl) && this.declarationBindsVar(decl, varName)) {
+              hookScopes.add(this.enclosingScope(node));
+            }
+          }
+        }
+        ts.forEachChild(node, collect);
+      };
+      collect(root);
+      if (hookScopes.size === 0) return false;
+
       let found = false;
       const visit = (node: ts.Node): void => {
         if (found) return;
+        // 翻译调用：跳过被调表达式，仅查实参
         if (ts.isCallExpression(node) && library.isTranslationCall(node)) {
           node.arguments.forEach(visit);
           return;
         }
+        // 翻译依赖 hook：跳过依赖数组（arg[1]），其余（含回调体）正常遍历
+        if (ts.isCallExpression(node)) {
+          const hookName = resolveHookName(node);
+          if (hookName && TRANSLATION_DEPENDENCY_HOOKS.includes(hookName)) {
+            visit(node.expression);
+            node.arguments.forEach((arg, i) => {
+              if (i === 1 && ts.isArrayLiteralExpression(arg)) return;
+              visit(arg);
+            });
+            return;
+          }
+        }
+        // 成员访问 varName.<member> → 非翻译用途的残留引用
         if (
           ts.isPropertyAccessExpression(node) &&
           ts.isIdentifier(node.expression) &&
@@ -321,9 +428,21 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           found = true;
           return;
         }
+        // 裸标识符值引用（排除声明/键/成员名/import 等非引用位置）
+        if (
+          ts.isIdentifier(node) &&
+          node.text === varName &&
+          this.isIdentifierValueReference(node)
+        ) {
+          found = true;
+          return;
+        }
         ts.forEachChild(node, visit);
       };
-      visit(root);
+      for (const scope of hookScopes) {
+        if (found) break;
+        visit(scope);
+      }
       return found;
     };
 

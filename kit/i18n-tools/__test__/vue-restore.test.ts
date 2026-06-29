@@ -238,3 +238,66 @@ describe('VueRestoreTransformer — v-bind 完整语法还原', () => {
     expect(out).not.toContain('$t');
   });
 });
+
+/**
+ * 回归：还原**多键** hook 解构 `const { t, locale } = useI18n()` 且所有 t() 都能还原时，
+ * cleanupImports 无条件摘除 `import { useI18n }`，而 cleanupHookDeclarations 的正则
+ * `/const\s*\{\s*t\s*\}\s*=\s*useI18n\(\)/` 只匹配恰好单键 `{ t }`、对 `{ t, locale }` 不命中
+ * → 声明保留、import 被删 → `useI18n` 悬空（ReferenceError / TS2304）。
+ *
+ * 根因：isTNameUnusedInScript 仅看 t 还有无引用（还原后无引用即放行），删 import 这一步
+ * 缺少 generate 侧 VueImportManager.removeHookImportAndDeclaration 的 hookCallStillUsed 守卫
+ * （仍有 useI18n( 调用就不删 import）。典型 import/声明 不对称缺陷。
+ */
+describe('VueRestoreTransformer — 多键 useI18n 解构清理对称（回归）', () => {
+  const lib = new VueI18nLibraryImpl();
+
+  it('多键 const { t, locale } = useI18n() + 全部 t() 可还原 → 保留 import，不留悬空 useI18n', () => {
+    const code = `<script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+const { t, locale } = useI18n();
+const msg = t('m.hello');
+function toggle() { locale.value = 'en'; }
+</script>
+<template><div>{{ msg }}</div></template>`;
+    const out = VueRestoreTransformer.restoreVueFile(code, { 'm.hello': '你好' }, lib);
+
+    // 可还原的 t() 被替换为中文
+    expect(out).toContain('你好');
+    // locale 仍被 toggle 使用 → 含 useI18n() 的声明必须保留
+    expect(out).toContain('locale.value');
+    expect(out, `还原输出：\n${out}`).toMatch(/=\s*useI18n\(\)/);
+    // 关键：声明仍调用 useI18n() → 其 import 必须一并保留，否则 useI18n 未定义
+    expect(out, `还原输出：\n${out}`).toMatch(
+      /import\s*\{[^}]*useI18n[^}]*\}\s*from\s*['"]vue-i18n['"]/,
+    );
+  });
+
+  it('对照：单键 const { t } = useI18n() 全部可还原 → 声明与 import 一并清除（不回归）', () => {
+    const code = `<script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+const { t } = useI18n();
+const msg = t('m.hello');
+</script>
+<template><div>{{ msg }}</div></template>`;
+    const out = VueRestoreTransformer.restoreVueFile(code, { 'm.hello': '你好' }, lib);
+    expect(out).toContain('你好');
+    expect(out).not.toMatch(/useI18n\(\)/);
+    expect(out).not.toMatch(/import.*vue-i18n/);
+  });
+
+  it('standalone .ts 多键 const { t, locale } = useI18n() + 全部可还原 → 保留 import（姊妹路径同缺陷）', () => {
+    const code = `import { useI18n } from 'vue-i18n';
+const { t, locale } = useI18n();
+const msg = t('m.hello');
+function toggle() { locale.value = 'en'; }
+`;
+    const out = VueRestoreTransformer.restoreStandaloneScript(code, { 'm.hello': '你好' }, lib);
+    expect(out).toContain('你好');
+    expect(out).toContain('locale.value');
+    expect(out, `还原输出：\n${out}`).toMatch(/=\s*useI18n\(\)/);
+    expect(out, `还原输出：\n${out}`).toMatch(
+      /import\s*\{[^}]*useI18n[^}]*\}\s*from\s*['"]vue-i18n['"]/,
+    );
+  });
+});

@@ -107,8 +107,15 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 绑定、保护不到 hook 绑定，故此处独立守卫。正常 restore（全部 key 命中、t() 清空）下
     // t 已无引用，行为与原先一致。
     if (this.isTNameUnusedInScript(restoredCode)) {
-      restoredCode = this.cleanupImports(restoredCode, lib);
+      // 先清理 hook 声明（单键 `const { t } = useI18n()` 会被整条删除），再守卫删 import：
+      // 仅当清理后 script 里已无 hookName( 调用时才删导入。否则多键解构
+      // `const { t, locale } = useI18n()` 因声明清理正则只匹配单键 `{ t }` 而保留，其
+      // useI18n() 调用仍在，无条件删 import 会产出未定义 useI18n（ReferenceError / TS2304）。
+      // 与 generate 侧 VueImportManager.removeHookImportAndDeclaration 的 hookCallStillUsed 守卫对称。
       restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
+      if (!this.hookCallStillUsed(restoredCode, lib)) {
+        restoredCode = this.cleanupImports(restoredCode, lib);
+      }
     }
 
     // 清理模块顶层 `import { t } from <tImport>`：
@@ -160,6 +167,24 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       .join('\n');
     if (!scriptContent.trim()) return true;
     return CommonASTUtils.isLocalNameUnused(scriptContent, 'sfc.ts', 't');
+  }
+
+  /**
+   * 判断还原后的 SFC script 中，hook（library.hookName，如 useI18n / useTranslation）调用
+   * 是否仍存在。用于守卫 cleanupImports 删除 hook 导入：清理 hook 声明后若仍有 hookName(
+   * 调用（如多键解构 `const { t, locale } = useI18n()` 未被单键正则命中而保留），删其 import
+   * 会产出未定义标识符。与 generate 侧 VueImportManager.removeHookImportAndDeclaration 对称。
+   * 无 script 块时返回 false（无调用，亦无可保护）。
+   */
+  private static hookCallStillUsed(restoredCode: string, library: VueI18nLibrary): boolean {
+    const { descriptor } = parseSFC(restoredCode);
+    const scriptContent = [descriptor.script, descriptor.scriptSetup]
+      .filter((b): b is NonNullable<typeof b> => Boolean(b))
+      .map((b) => b.content)
+      .join('\n');
+    if (!scriptContent.trim()) return false;
+    const escapedHook = CommonASTUtils.escapeRegExp(library.hookName);
+    return new RegExp(`\\b${escapedHook}\\s*\\(`).test(scriptContent);
   }
 
   /**
@@ -217,8 +242,14 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 守卫：仅当 t 已无值引用时才删除（与 SFC 路径对称；locale 缺 key / 动态 key 时残留 t()
     // 仍引用 t，删任一半都会产出未定义标识符）。
     if (CommonASTUtils.isLocalNameUnused(restoredCode, 'standalone.ts', 't')) {
-      restoredCode = this.cleanupImports(restoredCode, lib);
+      // 先删 hook 声明，再守卫删 import：多键解构 `const { t, locale } = useI18n()` 因声明
+      // 清理正则只匹配单键 `{ t }` 而保留，其 useI18n() 调用仍在时不得删 import（否则未定义
+      // useI18n）。与 SFC 路径 / generate 侧 hookCallStillUsed 守卫对称。
       restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
+      const escapedHook = CommonASTUtils.escapeRegExp(lib.hookName);
+      if (!new RegExp(`\\b${escapedHook}\\s*\\(`).test(restoredCode)) {
+        restoredCode = this.cleanupImports(restoredCode, lib);
+      }
     }
 
     // 清理自定义路径的 t 导入（如 import { t } from '@/plugins/locale'）。
