@@ -78,8 +78,12 @@ export class PathPrefixStrategyImpl implements PrefixStrategy {
   derive(filePath: string, ctx: PrefixContext): string[] {
     if (!filePath) return [];
 
+    // 先相对 root 再切分：避免项目祖先目录恰好含与 anchor 同名的段（如项目位于 ~/src/proj/）时，
+    // findIndex 命中外层同名段，导致前缀污染（views → proj.src.views）+ 与桶反推口径不一致
+    // （buildKeyBucketMap / RulesPrefixStrategy 均先 path.relative，唯独此处此前吃绝对路径）。
+    const relativePath = path.relative(ctx.root, filePath);
     // 同时按 / 和 \ 切分以兼容跨平台
-    const parts = filePath.split(/[\\/]/).filter(Boolean);
+    const parts = relativePath.split(/[\\/]/).filter(Boolean);
 
     const anchor = this.options.anchor;
     const anchorIndex = parts.findIndex((p) => p === anchor);
