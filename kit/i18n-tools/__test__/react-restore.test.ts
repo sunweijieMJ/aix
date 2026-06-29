@@ -1005,3 +1005,86 @@ describe('React restore — 不误删来源无关的同名 t/intl', () => {
     expect(out).toMatch(/const\s+t\s*=\s*useTemp\(\)/);
   });
 });
+
+/**
+ * 回归：t 作为**裸标识符值**被引用（透传 / 赋值 / JSX 属性）而非翻译调用时，restore 的存活守卫
+ * translationVarUsedOutsideTranslationCalls 只识别成员访问 `t.<member>`、漏判裸 Identifier。
+ * 当文件内所有 t('key') 都能还原（无残留翻译调用）时 keepTranslationVar 保持 false →
+ * cleanupVariableStatements 删 `const { t } = useTranslation()`、cleanupImports 删 import，
+ * 却把裸 t 引用留下 → `t is not defined`（ReferenceError / TS2304）。
+ *
+ * 对比：同库 ReactImportManager.callbackUsesVarOutsideTranslationCalls 对裸 Identifier 判定正确
+ * （依赖数组 [t] 会被保留），两处口径相反正是缺陷特征。
+ * 修复时须排除解构绑定名 t 自身（const { t } 的 BindingElement.name 也是 Identifier t），
+ * 否则 keepTranslationVar 恒 true、常规往返删不掉声明（由本文件既有「全部可还原→删声明」用例守护）。
+ */
+describe('React restore — t 作为裸值引用时保留声明与 import（回归）', () => {
+  let dir: string;
+  const lib = createReactI18nLibrary('react-i18next');
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-restore-bare-t-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const restore = (code: string, locale: Record<string, string>): string => {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    return new ReactRestoreTransformer(lib, '@/plugins/locale').transform(file, locale);
+  };
+
+  it('passToChild(t) 裸值透传 + t() 全部可还原 → 保留 const { t } = useTranslation() 与 import', () => {
+    const out = restore(
+      `import { useTranslation } from 'react-i18next';\n` +
+        `export function Foo() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  const label = t('greeting');\n` +
+        `  passToChild(t);\n` +
+        `  return <div>{label}</div>;\n` +
+        `}\n`,
+      { greeting: '你好' },
+    );
+    // 可还原的被替换
+    expect(out).toContain('你好');
+    // 裸值引用仍在
+    expect(out).toContain('passToChild(t)');
+    // 关键：t 仍被裸值引用 → 声明与 import 必须保留，否则 t 未定义
+    expect(out, `还原输出：\n${out}`).toMatch(/const\s*\{\s*t\s*\}\s*=\s*useTranslation\(\)/);
+    expect(out, `还原输出：\n${out}`).toMatch(
+      /import\s*\{[^}]*useTranslation[^}]*\}\s*from\s*['"]react-i18next['"]/,
+    );
+  });
+
+  it('<Child t={t}/> JSX 属性裸值 + t() 全部可还原 → 保留声明与 import', () => {
+    const out = restore(
+      `import { useTranslation } from 'react-i18next';\n` +
+        `export function Foo() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  return <Child t={t} title={t('greeting')} />;\n` +
+        `}\n`,
+      { greeting: '你好' },
+    );
+    expect(out).toContain('你好');
+    expect(out).toMatch(/t=\{t\}/);
+    expect(out, `还原输出：\n${out}`).toMatch(/const\s*\{\s*t\s*\}\s*=\s*useTranslation\(\)/);
+    expect(out, `还原输出：\n${out}`).toMatch(
+      /import\s*\{[^}]*useTranslation[^}]*\}\s*from\s*['"]react-i18next['"]/,
+    );
+  });
+
+  it('对照：t 仅出现在可还原的翻译调用、无裸值引用 → 仍删声明与 import（不回归）', () => {
+    const out = restore(
+      `import { useTranslation } from 'react-i18next';\n` +
+        `export function Foo() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  return <div>{t('greeting')}</div>;\n` +
+        `}\n`,
+      { greeting: '你好' },
+    );
+    expect(out).toContain('你好');
+    expect(out).not.toContain("t('greeting')");
+    expect(out).not.toMatch(/useTranslation/);
+  });
+});
