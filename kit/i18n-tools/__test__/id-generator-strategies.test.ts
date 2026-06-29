@@ -33,6 +33,14 @@ describe('IdGenerator - PathStrategy', () => {
     expect(id).toBe('submit');
   });
 
+  it('绝对路径祖先含 anchor 同名段时，按 root 相对定位，不命中外层同名段', () => {
+    // 项目根 /tmp/src/app 的祖先恰好含 'src' 段；anchor 默认 'src'。
+    // 旧实现对绝对路径取「首个」src（命中外层 /tmp/src）→ 前缀污染成 'app.src.views' +
+    // 与桶反推口径（buildKeyBucketMap / RulesPrefixStrategy 均先 path.relative）不一致。
+    const gen = new IdGenerator(buildConfig({ root: '/tmp/src/app' }));
+    expect(gen.getDirectoryPrefix('/tmp/src/app/src/views/Foo.vue')).toBe('views');
+  });
+
   it('take 截断深度', () => {
     const gen = new IdGenerator(buildConfig({ keys: { prefix: { strategy: 'path', take: 2 } } }));
     const id = gen.generateWithFilePath(

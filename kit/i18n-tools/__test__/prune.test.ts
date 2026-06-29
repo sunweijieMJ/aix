@@ -179,4 +179,24 @@ describe('PruneProcessor', () => {
     expect(fs.existsSync(corruptBucket + '.bak')).toBe(false);
     expect(fs.existsSync(corruptBucket)).toBe(true);
   });
+
+  it('源目录无框架文件（usedKeys 为空）时中止，绝不清空 locale', async () => {
+    // 误配场景：sourceDir 存在但不含任何框架文件（只有 README.md），
+    // collectUsedKeys 扫描到 0 个 key。此时若不设安全闸，所有 key 会被判为孤儿，
+    // --ci 下静默清空全部 locale + 字典文件（破坏性最强、CI 可触发）。
+    writeSource('README.md', '# 文档\n这里写了 t("looksLikeKey") 但不是框架文件');
+    writeLocale('zh-CN', { a: '甲', b: '乙' });
+    writeLocale('en-US', { a: 'A', b: 'B' });
+
+    await expect(
+      new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+        dryRun: false,
+        ci: true,
+      }).execute(),
+    ).rejects.toThrow(/未扫描到任何|已中止 prune|防误删/);
+
+    // 关键断言：locale 原样保留，未被清空
+    expect(readLocale('zh-CN')).toEqual({ a: '甲', b: '乙' });
+    expect(readLocale('en-US')).toEqual({ a: 'A', b: 'B' });
+  });
 });

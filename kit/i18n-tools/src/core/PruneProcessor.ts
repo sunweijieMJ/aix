@@ -70,6 +70,18 @@ export class PruneProcessor extends BaseProcessor {
     const sourceMap =
       LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) ?? {};
 
+    // 安全闸：源码扫描到 0 个 key 引用，几乎必然是误配（sourceDir 路径写错 / include 过严 /
+    // 目录存在但不含框架文件）。此时所有 locale key 都会被判为孤儿，--ci 下更会跳过确认、
+    // 静默清空全部 locale + translations/untranslated.json，恢复只能靠 git。
+    // 宁可中止报错也不执行破坏性删除（与本流程「宁可中止不静默破坏」的一贯风格一致）。
+    // 放在损坏守卫之后：locale 文件损坏是更确定的数据完整性错误，应优先于「源码扫描空」拦截。
+    if (usedKeys.size === 0) {
+      throw new Error(
+        `源码未扫描到任何 i18n key 引用（sourceDir='${this.config.io.sourceDir}'），` +
+          `可能是源目录配置错误或目录不含框架文件；已中止 prune 以防误删全部 locale。`,
+      );
+    }
+
     const orphans = Object.keys(sourceMap).filter(
       (key) => !usedKeys.has(key) && !matchesDynamicAllowlist(this.config, key),
     );

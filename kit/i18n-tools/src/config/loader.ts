@@ -29,6 +29,8 @@ import type {
   ResolvedNestedPrefixStrategy,
   ResolvedPrefixStrategy,
 } from './types';
+import { VUE_I18N_LIBRARIES } from '../strategies/vue/libraries/types';
+import { REACT_I18N_LIBRARIES } from '../strategies/react/libraries/types';
 
 // =============================================================================
 // 配置文件加载与解析
@@ -143,7 +145,8 @@ function isValidMatcher(m: unknown): boolean {
 function resolveFramework(framework: FrameworkConfig): ResolvedConfig['framework'] {
   if (framework.type === 'vue') {
     const library = framework.library ?? DEFAULT_VUE_FRAMEWORK.library;
-    const allowed: ReadonlyArray<typeof library> = ['vue-i18n', 'vue-i18next'];
+    // 单一事实源：直接引用 SSOT 常量，避免与「类型 union / 工厂 switch」各维护一份导致漂移
+    const allowed = VUE_I18N_LIBRARIES;
     if (!allowed.includes(library)) {
       throw new Error(
         `framework.library 与 type='vue' 不匹配：实际 '${library}'，期望 ${allowed.map((s) => `'${s}'`).join(' | ')}`,
@@ -160,7 +163,8 @@ function resolveFramework(framework: FrameworkConfig): ResolvedConfig['framework
 
   if (framework.type === 'react') {
     const library = framework.library ?? DEFAULT_REACT_FRAMEWORK.library;
-    const allowed: ReadonlyArray<typeof library> = ['react-intl', 'react-i18next'];
+    // 单一事实源：直接引用 SSOT 常量，避免与「类型 union / 工厂 switch」各维护一份导致漂移
+    const allowed = REACT_I18N_LIBRARIES;
     if (!allowed.includes(library)) {
       throw new Error(
         `framework.library 与 type='react' 不匹配：实际 '${library}'，期望 ${allowed.map((s) => `'${s}'`).join(' | ')}`,
