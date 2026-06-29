@@ -53,6 +53,19 @@ describe('Vue transform 输出', () => {
     expect(out).not.toContain('>提交<');
   });
 
+  it('表达式内先比较后展示同一文案：替换命中展示分支，比较操作数保持硬编码（回归 #2）', async () => {
+    // status === '保存' 的 '保存' 被提取端有意跳过（比较操作数），只提取展示分支 ? '保存' 与 '保存中'。
+    // 旧实现替换 '保存' 时从指令起点 indexOf 命中更靠前的 === '保存' → 比较被改成 $t() 永不命中，
+    // 展示分支反而残留硬编码。
+    const out = await transformVue(
+      `<template>\n  <span :title="status === '保存' ? '保存' : '保存中'">x</span>\n</template>\n`,
+    );
+    // 比较操作数必须保持硬编码字面量
+    expect(out).toContain(`status === '保存'`);
+    // 展示分支的 '保存' 应被替换成 $t(...)，不得残留未替换的 ? '保存'
+    expect(out).not.toMatch(/\?\s*'保存'/);
+  });
+
   it('静态属性 → :attr="$t(key)"', async () => {
     const out = await transformVue(
       `<template>\n  <el-button title="确认">x</el-button>\n</template>\n`,

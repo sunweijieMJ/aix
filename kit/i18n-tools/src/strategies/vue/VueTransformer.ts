@@ -18,6 +18,21 @@ import type { VueI18nLibrary } from './libraries';
  * library / importManager / componentInjector 由 VueAdapter 注入，
  * 转换器自身不再持有 tImport 字符串，避免依赖蔓延。
  */
+/**
+ * 从 from 起在一行内查找 pattern，但跳过紧邻比较运算符(=== / !== / == / !=)的命中。
+ * 那是提取端有意跳过的「比较操作数」字面量（与 VueTextExtractor.isComparisonOperand 对称）：
+ * 替换它会让运行时用译文做比较、分支永不命中，且真正的展示分支反而残留硬编码。
+ * 跳过比较操作数位置，继续找下一处（即展示分支）。
+ */
+function indexOfSkippingComparison(line: string, pattern: string, from: number): number {
+  let i = line.indexOf(pattern, from);
+  while (i !== -1) {
+    if (!/[=!]==?$/.test(line.slice(0, i).trimEnd())) return i;
+    i = line.indexOf(pattern, i + 1);
+  }
+  return -1;
+}
+
 export class VueTransformer implements ITransformer {
   private library: VueI18nLibrary;
   private importManager: IImportManager;
@@ -347,7 +362,7 @@ export class VueTransformer implements ITransformer {
       // original 不带引号，需要在外面加引号查找（处理三元运算符场景）
       // 优先查找单引号版本
       const singleQuotePattern = `'${original}'`;
-      index = targetLine.indexOf(singleQuotePattern, column);
+      index = indexOfSkippingComparison(targetLine, singleQuotePattern, column);
       if (index !== -1) {
         // 在引号内的字符串（三元运算符内），替换整个 'text' 为 $t(...)
         // 注意：replacement 已经是 $t(...) 格式，不包含外层引号
@@ -360,7 +375,7 @@ export class VueTransformer implements ITransformer {
 
       // 查找双引号版本
       const doubleQuotePattern = `"${original}"`;
-      index = targetLine.indexOf(doubleQuotePattern, column);
+      index = indexOfSkippingComparison(targetLine, doubleQuotePattern, column);
       if (index !== -1) {
         lines[line] =
           targetLine.substring(0, index) +
