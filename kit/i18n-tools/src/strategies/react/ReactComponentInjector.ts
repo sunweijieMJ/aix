@@ -305,14 +305,38 @@ export class ReactComponentInjector implements IComponentInjector {
   }
 
   /**
-   * 类组件是否已被 HOC（injectIntl / withTranslation）包裹——以「本组件作用域内存在
-   * this.props.<translationVarName> 访问」为信号。已包裹时只需补方法体解构、不能二次包裹。
-   * 用 someWithinComponentScope 在嵌套组件边界停止，避免把内层组件的 this.props.t 误算到外层。
+   * 类组件是否已被 HOC（injectIntl / withTranslation）包裹。已包裹时只需补方法体解构、
+   * 绝不能二次包裹（否则 withTranslation()(withTranslation()(…)) 且类名反复叠加后缀）。
+   *
+   * 判定为「已包裹」需满足以下任一信号（缺一不可，三者覆盖手写与工具自身产出两种形态）：
+   *   1. extends 子句的 Props 泛型已含 hocPropsType（WithTranslation / WrappedComponentProps）——
+   *      这是本工具 HOC 注入留下的最强幂等标记（见 injectHOC 步骤 1），只要包裹过一次必然存在，
+   *      仅 restore 才会清除。与 injectHOC:218 的 `includes(propsType)` 守卫口径一致。
+   *   2. 作用域内存在 `this.props.<var>` 成员访问（用户手写 HOC 后直接用 this.props.t 的形态）。
+   *   3. 作用域内存在 `const { <var> } = this.props` 解构（工具自身首次注入产出的形态——
+   *      配合裸 t()/intl，类体内不会出现 this.props.t 成员访问，故信号 2 漏判，必须靠本信号兜底）。
+   *
+   * 信号 2、3 用 someWithinComponentScope 在嵌套组件边界停止，避免把内层组件的访问误算到外层。
    */
-  private classAlreadyWrappedByHOC(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
+  private classAlreadyWrappedByHOC(node: ts.Node, sourceFile: ts.SourceFile): boolean {
     const varName = this.library.translationVarName;
+    const propsType = this.library.hocPropsType;
+
+    // 信号 1：extends 泛型已含 HOC 注入的 propsType。
+    if (ts.isClassDeclaration(node) && node.heritageClauses) {
+      for (const clause of node.heritageClauses) {
+        if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+        for (const type of clause.types) {
+          if (type.typeArguments?.some((arg) => arg.getText(sourceFile).includes(propsType))) {
+            return true;
+          }
+        }
+      }
+    }
+
+    // 信号 2、3：作用域内的 this.props.<var> 成员访问，或 `const { <var> } = this.props` 解构。
     return ReactASTUtils.someWithinComponentScope(node, (n) => {
-      return (
+      if (
         ts.isPropertyAccessExpression(n) &&
         ts.isIdentifier(n.name) &&
         n.name.text === varName &&
@@ -320,7 +344,20 @@ export class ReactComponentInjector implements IComponentInjector {
         ts.isIdentifier(n.expression.name) &&
         n.expression.name.text === 'props' &&
         n.expression.expression.kind === ts.SyntaxKind.ThisKeyword
-      );
+      ) {
+        return true;
+      }
+      if (
+        ts.isVariableDeclaration(n) &&
+        n.initializer &&
+        ts.isPropertyAccessExpression(n.initializer) &&
+        n.initializer.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        n.initializer.name.text === 'props' &&
+        ts.isObjectBindingPattern(n.name)
+      ) {
+        return n.name.elements.some((el) => ts.isIdentifier(el.name) && el.name.text === varName);
+      }
+      return false;
     });
   }
 

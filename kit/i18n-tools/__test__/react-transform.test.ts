@@ -696,6 +696,80 @@ export default withTranslation()(App);
     // 关键 2：不二次 withTranslation（仍只有用户那一处 HOC 调用）
     expect((out.match(/withTranslation\(\)/g) ?? []).length).toBe(1);
   });
+
+  // 以下覆盖「工具自身首次注入产出的形态」再次重跑（增量工作流）：类体是
+  // `const { t } = this.props` 解构 + 裸 t()，没有任何 this.props.t 成员访问。
+  // 旧守卫只认 this.props.t 成员访问 → 漏判为「未包裹」→ 二次包裹（类名叠加 WithOutIntl
+  // 后缀 + 多一层 withTranslation()(…)）。回归这条缺口。
+  it('react-i18next：工具产出形态（解构 + WithTranslation 泛型）重跑 → 不二次包裹、类名不叠加（信号1）', async () => {
+    const code = `import React from 'react';
+import { withTranslation, WithTranslation } from 'react-i18next';
+class App extends React.Component<WithTranslation> {
+  render() {
+    const { t } = this.props;
+    return <div title={t('k0')} data-y="额外" />;
+  }
+}
+export default withTranslation()(App);
+`;
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/i18n', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+
+    // 不二次 withTranslation（仍只有原来那一处）
+    expect((out.match(/withTranslation\(\)/g) ?? []).length).toBe(1);
+    // 类名不被叠加 WithOutIntl 后缀
+    expect(out).not.toMatch(/WithOutIntl/);
+    expect(out).toMatch(/class App extends/);
+  });
+
+  it('react-intl：工具产出形态（解构 intl + WrappedComponentProps）重跑 → 不二次包裹（信号1）', async () => {
+    const code = `import React from 'react';
+import { injectIntl, WrappedComponentProps } from 'react-intl';
+class App extends React.Component<WrappedComponentProps> {
+  render() {
+    const { intl } = this.props;
+    return <div title={intl.formatMessage({ id: 'k0' })} data-y="额外" />;
+  }
+}
+export default injectIntl(App);
+`;
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/i18n', 'react-intl');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+
+    expect((out.match(/injectIntl\(/g) ?? []).length).toBe(1);
+    expect(out).not.toMatch(/WithOutIntl/);
+  });
+
+  it('react-i18next：仅解构、Props 无泛型的已包裹 class 重跑 → 靠解构信号兜底不二次包裹（信号3）', async () => {
+    const code = `import React from 'react';
+import { withTranslation } from 'react-i18next';
+class App extends React.Component {
+  render() {
+    const { t } = this.props;
+    return <div title={t('k0')} data-y="额外" />;
+  }
+}
+export default withTranslation()(App);
+`;
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/i18n', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+
+    // heritage 无泛型 + 无 this.props.t 成员访问，只能靠「const { t } = this.props」解构信号判定已包裹
+    expect((out.match(/withTranslation\(\)/g) ?? []).length).toBe(1);
+    expect(out).not.toMatch(/WithOutIntl/);
+  });
 });
 
 describe('JSX 文本碎片与相邻元素间的语义空格保留（Bug6）', () => {
