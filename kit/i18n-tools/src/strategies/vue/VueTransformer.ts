@@ -356,6 +356,9 @@ export class VueTransformer implements ITransformer {
     if (hasQuotes) {
       // 如果 original 已经带引号（如模板字符串 `text` 或已转义的字符串），直接查找
       index = targetLine.indexOf(original, column);
+      // column 越过字面量实际起点时从行首重试：带引号字面量确在本行却被漏过会跌到邻行
+      // fallback 致漏替换。与下方 else 分支裸文本回退（405-408 从 0 重试）对齐。
+      if (index === -1) index = targetLine.indexOf(original);
       if (index !== -1) {
         lines[line] =
           targetLine.substring(0, index) +
@@ -526,7 +529,7 @@ export class VueTransformer implements ITransformer {
         messageInput,
         actualVariables,
       );
-      const variablesMapping = this.generateVariablesMapping(placeholderMap);
+      const variablesMapping = CommonASTUtils.formatValuesMapping(placeholderMap);
 
       // 根据上下文生成不同格式
       switch (templateContext) {
@@ -657,20 +660,11 @@ export class VueTransformer implements ITransformer {
         extracted.original,
         actualVariables,
       );
-      const variablesMapping = this.generateVariablesMapping(placeholderMap);
+      const variablesMapping = CommonASTUtils.formatValuesMapping(placeholderMap);
       return `${tFunc}('${semanticId}', ${variablesMapping})`;
     } else {
       // 对于普通字符串（或所有变量都是字面量）
       return `${tFunc}('${semanticId}')`;
     }
-  }
-
-  /**
-   * 生成变量映射对象字符串
-   * @param placeholderMap - 从表达式到占位符名称的映射
-   * @returns 格式化后的变量映射字符串
-   */
-  private generateVariablesMapping(placeholderMap: Map<string, string>): string {
-    return CommonASTUtils.formatValuesMapping(placeholderMap);
   }
 }

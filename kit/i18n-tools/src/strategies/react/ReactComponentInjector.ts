@@ -416,6 +416,20 @@ export class ReactComponentInjector implements IComponentInjector {
           }
         }
       }
+      // 不下钻嵌套函数作用域：回调/嵌套函数里的 `const { t } = this.props` 只作用于该函数，
+      // 不构成对当前方法体顶层的声明。继续下钻会误判顶层"已解构"而跳过注入 → 顶层用到 t()
+      // 时运行时 `t is not defined`。块语句（if/for 等）不是函数边界，仍照常下钻。
+      if (
+        ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isGetAccessorDeclaration(node) ||
+        ts.isSetAccessorDeclaration(node) ||
+        ts.isConstructorDeclaration(node)
+      ) {
+        return;
+      }
       ts.forEachChild(node, visit);
     };
     visit(body);

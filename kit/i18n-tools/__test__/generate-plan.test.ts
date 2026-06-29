@@ -102,6 +102,19 @@ describe('GeneratePlanWriter', () => {
     expect(result.mismatched).toEqual([]);
   });
 
+  it('verifyFingerprint 返回已读原文内容（apply 回滚复用，避免二次读盘 TOCTOU）', () => {
+    const { plan, transformed } = makePlan({
+      'src/A2.vue': 'original content 2',
+    });
+    GeneratePlanWriter.write(planBaseDir, plan, transformed);
+
+    const result = GeneratePlanWriter.verifyFingerprint(plan);
+    expect(result.mismatched).toEqual([]);
+    // 校验阶段已 readFileSync 过的内容随返回值带出，供 apply 路径作 commitToDisk 的回滚
+    // 基线，消除「校验通过 → 写盘前再次读取」窗口被外部并发改动篡改回滚原文的风险。
+    expect(result.contents.get('src/A2.vue')).toBe('original content 2');
+  });
+
   it('verifyFingerprint 源文件被外部修改 → 命中 mismatched', () => {
     const { plan, transformed } = makePlan({
       'src/B.vue': 'original content',

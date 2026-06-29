@@ -90,9 +90,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     return node;
   }
 
-  transform(filePath: string, localeMap: LocaleMap): string {
-    const sourceText = fs.readFileSync(filePath, 'utf-8');
-    const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
+  transform(filePath: string, localeMap: LocaleMap, sourceText?: string): string {
+    // 优先用调用方已读取的内容，缺省才回退读盘（消除 RestoreProcessor 的二次读盘）。
+    const source = sourceText ?? fs.readFileSync(filePath, 'utf-8');
+    const sourceFile = CommonASTUtils.parseSourceFile(source, filePath);
 
     // locale 值归一：i18next 系库双花括号 → 单花括号；并 unescape 写盘时转义的字面量花括号。
     // 与 Vue restore 共用 CommonASTUtils.normalizeRestoreLocaleMap（消除两端重复实现）。
@@ -121,7 +122,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     const result = ts.transform(sourceFile, [transformer]);
 
     if (!context.hasChanges) {
-      return sourceText;
+      return source;
     }
 
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });

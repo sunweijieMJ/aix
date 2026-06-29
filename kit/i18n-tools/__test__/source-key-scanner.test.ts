@@ -110,6 +110,23 @@ describe('collectUsedKeys — 全形式识别', () => {
     });
   });
 
+  // 回归（审计：引号需配对）：STRING_LITERAL 此前 /['"]([^'"]+)['"]/ 不校验开闭引号同型，
+  // 双引号串含撇号（英文极常见，如 "Don't"）或单引号串含双引号会在内引号处截断 →
+  // key 漏采，进而被 prune/doctor 当孤儿从所有 locale 永久删除（破坏性）。
+  describe('scanKeyReferencesInContent — 引号需配对，含内引号的 key 不截断', () => {
+    it('双引号 key 含撇号 t("Don\'t") 完整识别（不截成 Don）', () => {
+      const refs = scanKeyReferencesInContent(`const m = t("Don't");`);
+      expect(refs).toContain("Don't");
+      expect(refs).not.toContain('Don');
+    });
+
+    it("单引号 key 含双引号 t('a\"b') 完整识别（不截成 a）", () => {
+      const refs = scanKeyReferencesInContent(`const m = t('a"b');`);
+      expect(refs).toContain('a"b');
+      expect(refs).not.toContain('a');
+    });
+  });
+
   it('react-i18next：t() / <Trans i18nKey> 都识别', () => {
     write(
       'App.tsx',

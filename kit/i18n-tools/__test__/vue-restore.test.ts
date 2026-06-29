@@ -16,6 +16,19 @@ describe('VueRestoreTransformer 模板还原', () => {
   const restore = (src: string, map: Record<string, string>, lib: VueI18nLibrary = vi18n): string =>
     VueRestoreTransformer.restoreVueFile(src, map, lib, '@/locale');
 
+  // 回归（审计：restore 二次读盘）：transform 应优先使用调用方已读取的 sourceText，
+  // 与 ITransformer 对齐。RestoreProcessor 已 readFileSync 一次用于比对，transform 内
+  // 再读同一文件属可避免的重复 IO。传入 sourceText 时不应再读盘。
+  it('transform 优先使用传入 sourceText，不再二次读盘（文件不在磁盘也能还原）', () => {
+    const src = `<script setup lang="ts">\nimport { t } from '@/locale';\nconst m = t('k');\n</script>\n`;
+    const out = new VueRestoreTransformer(vi18n, '@/locale').transform(
+      '/__no_such_dir__/Restore.vue', // 不存在：若实现仍 readFileSync 会抛 ENOENT
+      { k: '你好' },
+      src,
+    );
+    expect(out).toContain('你好');
+  });
+
   it('pass1：{{ $t(key) }} 文本插值 → 还原回文本节点中文', () => {
     const src = `<template>\n  <div>{{ $t('m.submit') }}</div>\n</template>\n`;
     const out = restore(src, { 'm.submit': '提交' });

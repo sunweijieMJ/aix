@@ -557,8 +557,9 @@ export class GenerateProcessor extends BaseProcessor {
     const written: Array<{ file: string; original: string }> = [];
     let writeFailure: { file: string; error: unknown } | null = null;
     for (const { file, code, originalContent } of results) {
-      // 回滚基线：commit 路径已带 originalContent；apply 路径未带，则即时读当前内容
-      // （apply 前已通过指纹校验，磁盘内容即原文）。读不到则无法保证可回滚，判失败不写。
+      // 回滚基线：commit 路径与 apply 路径均已带 originalContent（apply 取自 verifyFingerprint
+      // 校验时读取的同一快照，消除「校验→读取」窗口）。`??` 仅作防御性兜底；读不到则无法
+      // 保证可回滚，判失败不写。
       let original: string;
       try {
         original = originalContent ?? fs.readFileSync(file, 'utf-8');
@@ -918,7 +919,7 @@ export class GenerateProcessor extends BaseProcessor {
       }
     }
 
-    const { mismatched } = GeneratePlanWriter.verifyFingerprint(plan);
+    const { mismatched, contents } = GeneratePlanWriter.verifyFingerprint(plan);
     if (mismatched.length > 0) {
       LoggerUtils.error('❌ Plan 生成后以下源文件已被外部修改，拒绝 apply：');
       for (const f of mismatched) LoggerUtils.error(`   - ${f}`);
@@ -929,10 +930,16 @@ export class GenerateProcessor extends BaseProcessor {
     // 把 plan 还原成 commitToDisk 期望的入参：
     //   - results: 文件绝对路径 + transform 后代码
     //   - extractedStrings: 仅需 semanticId + 用于 message 还原的字段
-    const results: Array<{ file: string; code: string }> = [];
+    const results: Array<{ file: string; code: string; originalContent?: string }> = [];
     for (const entry of plan.entries) {
       const abs = GeneratePlanWriter.fromRelPosix(plan.root, entry.file);
-      results.push({ file: abs, code: transformedSources.get(entry.file)! });
+      // originalContent 取自 verifyFingerprint 已读取的同一份快照，作为 commitToDisk 的回滚
+      // 基线，避免写盘前再次 readFileSync 引入「校验→读取」窗口（详见 verifyFingerprint 注释）。
+      results.push({
+        file: abs,
+        code: transformedSources.get(entry.file)!,
+        originalContent: contents.get(entry.file),
+      });
     }
 
     // 把 localeDelta 直接展开成 ExtractedString 列表（仅保留下游需要的字段）。

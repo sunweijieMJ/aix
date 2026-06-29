@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import { TranslateProcessor } from '../src/core/TranslateProcessor';
 import { LLMClient } from '../src/utils/llm-client';
+import { Glossary } from '../src/utils/glossary';
 import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
@@ -103,6 +104,59 @@ describe('TranslateProcessor — 全失败应非零退出（Bug B6）', () => {
 
     const processor = new TranslateProcessor(makeConfig(1), false);
     await expect(processor.execute()).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * 回归（审计 medium：性能）：词表语言无关，N 个目标语种应共用一次加载，
+ * 而非在 per-target 循环里每轮 Glossary.load() 重复读盘+解析同一词表。
+ */
+describe('TranslateProcessor — glossary 多目标只加载一次', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-glossary-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('两个目标语种共用一份词表，Glossary.load 只调用一次（不随 target 重复读盘）', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    // 词表覆盖两个目标语种 → 两个 target 都靠词表填满，无需走 LLM
+    fs.writeFileSync(
+      path.join(tmpDir, 'glossary.json'),
+      JSON.stringify({ 你好: { 'en-US': 'Hello', 'ja-JP': 'こんにちは' } }),
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ 'a.b': { 'zh-CN': '你好' } }),
+    );
+
+    const config = resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US', 'ja-JP'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      glossary: { file: 'glossary.json' },
+    } satisfies I18nToolsConfig);
+
+    const loadSpy = vi.spyOn(Glossary, 'load');
+    const llmSpy = vi.spyOn(LLMClient.prototype, 'batchTranslate').mockResolvedValue([]);
+
+    await new TranslateProcessor(config, false).execute();
+
+    expect(loadSpy).toHaveBeenCalledTimes(1); // 旧实现按 target 调用 → 2 次
+    expect(llmSpy).not.toHaveBeenCalled(); // 词表已填满，无需 LLM
   });
 });
 

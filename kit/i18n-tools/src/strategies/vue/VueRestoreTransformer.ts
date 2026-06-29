@@ -23,8 +23,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   /**
    * 转换文件（实现接口方法）
    */
-  transform(filePath: string, localeMap: LocaleMap): string {
-    const sourceText = fs.readFileSync(filePath, 'utf-8');
+  transform(filePath: string, localeMap: LocaleMap, providedSource?: string): string {
+    // 优先用调用方已读取的内容，缺省才回退读盘（消除 RestoreProcessor 的二次读盘）。
+    const sourceText = providedSource ?? fs.readFileSync(filePath, 'utf-8');
     const ext = path.extname(filePath);
 
     // locale 值归一：i18next 系库双花括号占位符 → 单花括号；并把写盘时转义的

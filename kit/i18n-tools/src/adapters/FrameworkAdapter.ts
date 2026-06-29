@@ -58,7 +58,16 @@ export interface ITransformer {
  * 还原转换器接口
  */
 export interface IRestoreTransformer {
-  transform(filePath: string, localeMap: LocaleMap): string;
+  /**
+   * 还原源代码：把 i18n 调用还原回原始文本。
+   *
+   * @param filePath   - 原始文件路径（用于 SFC 解析、扩展名判定等）
+   * @param localeMap  - key → 原文 的映射
+   * @param sourceText - 可选：调用方已读取的原始内容。提供时跳过内部 readFileSync，
+   *                     与 ITransformer 对齐——RestoreProcessor 已读过一次用于比对，
+   *                     避免在 transform 内再读同一文件的重复 IO。
+   */
+  transform(filePath: string, localeMap: LocaleMap, sourceText?: string): string;
 }
 
 /**

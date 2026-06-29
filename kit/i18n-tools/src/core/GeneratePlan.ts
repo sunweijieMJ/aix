@@ -207,13 +207,21 @@ export class GeneratePlanWriter {
   /**
    * 校验 plan 中记录的 sourceHash 与当前磁盘文件一致。
    *
-   * 返回不一致的文件列表；空数组表示一致，可安全 apply。
+   * 返回不一致的文件列表（空数组表示一致，可安全 apply），以及校验过程中**已读取的**
+   * 各源文件原文内容（contents，键为 entry.file 相对路径，仅含校验通过的文件）。
    * 不一致意味着 plan 生成后源码被外部修改过——继续 apply 会用 plan 里旧的
-   * transform 结果覆盖新内容，产生静默丢失。所以这里只报告差异，由 caller
-   * 决定是否中止。
+   * transform 结果覆盖新内容，产生静默丢失。所以这里只报告差异，由 caller 决定是否中止。
+   *
+   * Why 带出 contents：apply 路径的 commitToDisk 需要原文作写失败回滚基线。若不复用此处
+   * 已读的内容、而在写盘前再次 readFileSync，则「校验通过 → 再次读取」之间存在窗口，
+   * 被外部并发改动时回滚会误用改动后的内容当原文（无声数据丢失）。复用同一份快照消除该窗口。
    */
-  static verifyFingerprint(plan: GeneratePlan): { mismatched: string[] } {
+  static verifyFingerprint(plan: GeneratePlan): {
+    mismatched: string[];
+    contents: Map<string, string>;
+  } {
     const mismatched: string[] = [];
+    const contents = new Map<string, string>();
     for (const entry of plan.entries) {
       const abs = path.join(plan.root, entry.file);
       if (!fs.existsSync(abs)) {
@@ -224,9 +232,11 @@ export class GeneratePlanWriter {
       const currentHash = this.sha256(current);
       if (currentHash !== entry.sourceHash) {
         mismatched.push(entry.file);
+      } else {
+        contents.set(entry.file, current);
       }
     }
-    return { mismatched };
+    return { mismatched, contents };
   }
 
   /**

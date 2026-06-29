@@ -53,6 +53,37 @@ describe('Vue transform 输出', () => {
     expect(out).not.toContain('>提交<');
   });
 
+  // 回归（审计 medium）：replaceInTemplate 的 hasQuotes 分支只 indexOf(original, column)，
+  // 缺少 else 分支（405-408）那样的「从行首重试」。当带引号字面量确在本行、但 column 越过其
+  // 起点时，旧实现会漏过本行、跌到邻行 fallback 致漏替换。直接测这条纯函数私有路径。
+  it('replaceInTemplate：带引号 original 在 column 之前 → 从行首重试命中并替换', () => {
+    const transformer = new VueTransformer(new VueI18nLibraryImpl(), null as never, null as never);
+    const tc = '<div>{{ `你好` }} 一些较长的后续内容用于把 column 推到字面量之后</div>';
+    // column 取行尾，越过 `你好` 的实际起点；旧实现 indexOf(original, column) 必然 miss
+    const out = (
+      transformer as unknown as {
+        replaceInTemplate: (c: string, o: string, r: string, line: number, col: number) => string;
+      }
+    ).replaceInTemplate(tc, '`你好`', "$t('k')", 0, tc.length);
+    expect(out).toContain("$t('k')");
+    expect(out).not.toContain('`你好`');
+  });
+
+  // 回归护栏（针对 #4 改动的边界担忧）：同行有多个相同带引号字面量、且 column 精确指向
+  // 目标那个时，indexOf(original, column) 直接命中目标，从行首重试分支不应触发——
+  // 即只替换目标、不误伤同行的其它相同字面量。证明本次改动不破坏正常定位。
+  it('replaceInTemplate：同行多个相同带引号字面量，column 精确时只替换目标那个', () => {
+    const transformer = new VueTransformer(new VueI18nLibraryImpl(), null as never, null as never);
+    const tc = '<span>`你好` 与 `你好`</span>';
+    const secondCol = tc.lastIndexOf('`你好`'); // 目标 = 第二个
+    const out = (
+      transformer as unknown as {
+        replaceInTemplate: (c: string, o: string, r: string, line: number, col: number) => string;
+      }
+    ).replaceInTemplate(tc, '`你好`', "$t('k')", 0, secondCol);
+    expect(out).toBe("<span>`你好` 与 $t('k')</span>"); // 第一个原样保留，仅第二个被替换
+  });
+
   it('表达式内先比较后展示同一文案：替换命中展示分支，比较操作数保持硬编码（回归 #2）', async () => {
     // status === '保存' 的 '保存' 被提取端有意跳过（比较操作数），只提取展示分支 ? '保存' 与 '保存中'。
     // 旧实现替换 '保存' 时从指令起点 indexOf 命中更靠前的 === '保存' → 比较被改成 $t() 永不命中，

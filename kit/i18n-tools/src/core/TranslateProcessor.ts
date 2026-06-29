@@ -2,7 +2,7 @@ import fs from 'fs';
 import type { ResolvedConfig } from '../config';
 import { LLMClient } from '../utils/llm-client';
 import { FileUtils } from '../utils/file-utils';
-import { Glossary } from '../utils/glossary';
+import { Glossary, type GlossaryMap } from '../utils/glossary';
 import { LoggerUtils } from '../utils/logger';
 import { extractPlaceholderNames } from '../utils/placeholder-utils';
 import type { Translations } from '../utils/types';
@@ -69,11 +69,15 @@ export class TranslateProcessor extends FileProcessor {
     let allTotalBatches = 0;
     const allFailedBatches: string[] = [];
 
+    // 词表语言无关，循环外加载一次即可（per-target lookup 仍按 target 取译文）。
+    // 旧实现在每个 target 迭代内 Glossary.load()，对 N 个目标重复读盘+解析同一词表。
+    const glossary = Glossary.load(this.config);
+
     for (const target of targets) {
       LoggerUtils.info(`\n══════ 翻译目标：${target} ══════`);
 
       // 词表预填（per-target）
-      const glossaryFilled = this.applyGlossary(data, target);
+      const glossaryFilled = this.applyGlossary(data, target, glossary);
       if (glossaryFilled > 0) {
         LoggerUtils.info(`📚 [${target}] 词表预填 ${glossaryFilled} 条，剩余条目走 LLM`);
         FileUtils.writeTranslationsFile(targetPath, data);
@@ -122,11 +126,14 @@ export class TranslateProcessor extends FileProcessor {
   }
 
   /**
-   * 加载词表并直接填入 data 中目标语种为空的条目。
-   * 返回填入的条目数；词表未配置或无命中时为 0。
+   * 用传入的（循环外预加载的）词表填入 data 中目标语种为空的条目。
+   * 返回填入的条目数；词表未配置（glossary 为 null）或无命中时为 0。
    */
-  private applyGlossary(data: Translations, targetLocale: string): number {
-    const glossary = Glossary.load(this.config);
+  private applyGlossary(
+    data: Translations,
+    targetLocale: string,
+    glossary: GlossaryMap | null,
+  ): number {
     if (!glossary) return 0;
 
     const sourceLocale = this.config.locales.source;

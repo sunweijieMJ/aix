@@ -122,6 +122,8 @@ export class RunReport {
   /** warnings 按 severity 的分项计数，写入 summary.bySeverity，供 CI / 人工区分严重程度。 */
   private severityTally: Record<ReportSeverity, number> = { error: 0, warning: 0, info: 0 };
   private needsManual: ManualEntry[] = [];
+  /** needsManual 已入库项的去重键集合，使 addManualEntry 去重为 O(1)（避免批量入库累积成 O(n²)）。 */
+  private needsManualKeys = new Set<string>();
   private coverage?: CoverageMetric;
 
   constructor(
@@ -151,8 +153,10 @@ export class RunReport {
    */
   addManualEntry(entry: ManualEntry): void {
     // 复用 manualKey 生成去重键，避免与其内联同一格式串（改字段顺序/分隔符时静默失效）。
+    // 用 Set 做 O(1) 去重：needsManual 仅追加、从不删除，故 Set 与数组天然同步。
     const key = RunReport.manualKey(entry);
-    if (!this.needsManual.some((e) => RunReport.manualKey(e) === key)) {
+    if (!this.needsManualKeys.has(key)) {
+      this.needsManualKeys.add(key);
       this.needsManual.push(entry);
     }
   }

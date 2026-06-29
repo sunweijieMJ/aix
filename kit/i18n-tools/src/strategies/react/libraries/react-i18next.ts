@@ -45,10 +45,10 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     const fn = isGlobalScope ? this.globalFunctionName : this.translationVarName;
 
     if (values && values.size > 0) {
-      const mapping = this.formatValuesMapping(values);
+      const mapping = CommonASTUtils.formatValuesMapping(values);
       if (includeDefaultMessage && defaultMessage) {
         const escaped = JSON.stringify(this.localizeDefaultMessage(defaultMessage, values));
-        return `${fn}('${key}', { defaultValue: ${escaped}, ${this.formatValuesMappingInline(values)} })`;
+        return `${fn}('${key}', { defaultValue: ${escaped}, ${CommonASTUtils.formatValuesMapping(values, { wrap: false })} })`;
       }
       return `${fn}('${key}', ${mapping})`;
     }
@@ -95,7 +95,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       props += ` defaults={${escaped}}`;
     }
     if (values && values.size > 0) {
-      const mapping = this.formatValuesMapping(values);
+      const mapping = CommonASTUtils.formatValuesMapping(values);
       props += ` values={${mapping}}`;
     }
     return `<Trans ${props} />`;
@@ -331,14 +331,6 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   private static stripNamespacePrefix(id: string): string {
     const colonIndex = id.indexOf(':');
     return colonIndex === -1 ? id : id.substring(colonIndex + 1);
-  }
-
-  private formatValuesMapping(values: Map<string, string>): string {
-    return CommonASTUtils.formatValuesMapping(values);
-  }
-
-  private formatValuesMappingInline(values: Map<string, string>): string {
-    return CommonASTUtils.formatValuesMapping(values, { wrap: false });
   }
 
   // i18next 单 `{` 本就是字面量（插值是双花括号 `{{name}}`），无需转义。

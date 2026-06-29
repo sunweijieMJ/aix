@@ -299,12 +299,16 @@ function sanitizeSemanticForId(semanticPart: string): string {
 function extractSemanticPart(text: string, mappings: Record<string, string>): string {
   const cleanText = text.replace(/[^一-鿿\w\s]/g, '').trim();
 
+  // 单次遍历：完全匹配立即返回（优先级最高，可短路）；同时记录首个部分匹配，
+  // 遍历结束仍无完全匹配时再用它。语义与原「先全量找完全、再全量找部分」一致。
+  let partialMatch: string | undefined;
   for (const [zh, en] of Object.entries(mappings)) {
     if (cleanText === zh) return en;
+    if (partialMatch === undefined && cleanText.includes(zh)) {
+      partialMatch = `${en}_${shortHash(cleanText)}`;
+    }
   }
-  for (const [zh, en] of Object.entries(mappings)) {
-    if (cleanText.includes(zh)) return `${en}_${shortHash(cleanText)}`;
-  }
+  if (partialMatch !== undefined) return partialMatch;
   if (!FileUtils.containsChinese(cleanText)) {
     return sanitizeSemanticId(cleanText);
   }

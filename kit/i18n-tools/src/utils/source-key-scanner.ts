@@ -26,8 +26,15 @@ import { FileUtils } from './file-utils';
  * STRING_LITERAL 匹配失败，该 key 漏采 → 被 prune/doctor 当孤儿从所有 locale 永久删除。
  */
 const CALL_FIRST_ARG = /(?:\$t|(?<!\w)t)\s*\(\s*((?:'[^']*'|"[^"]*"|[^,)])*)/g;
-/** 从一段表达式文本里提取所有 'xxx' / "xxx" 字面量。 */
-const STRING_LITERAL = /['"]([^'"]+)['"]/g;
+/**
+ * 从一段表达式文本里提取所有 'xxx' / "xxx" 字面量。
+ *
+ * 单/双引号分支独立匹配（捕获组 1 = 单引号内文，组 2 = 双引号内文），强制开闭引号同型。
+ * 旧写法 `/['"]([^'"]+)['"]/` 不要求配对，会在内引号处截断：双引号串含撇号
+ * （英文极常见 `"Don't"` → 只取 `Don`）、单引号串含双引号（`'a"b'` → 只取 `a`），
+ * 截断后的残缺 key 漏采 → 被 prune/doctor 当孤儿从所有 locale 永久删除（破坏性）。
+ */
+const STRING_LITERAL = /(?:'([^']*)'|"([^"]*)")/g;
 
 /** 组件 / 属性形式（库无关，跨库同跑互不干扰；id 两条限定上下文避免误吃普通 id）。 */
 const ATTR_PATTERNS: RegExp[] = [
@@ -63,7 +70,8 @@ export function scanKeyReferencesInContent(content: string): string[] {
     STRING_LITERAL.lastIndex = 0;
     let lit: RegExpExecArray | null;
     while ((lit = STRING_LITERAL.exec(firstArg)) !== null) {
-      if (lit[1]) refs.push(lit[1]);
+      const key = lit[1] ?? lit[2]; // 组 1=单引号内文 / 组 2=双引号内文，二者必有其一
+      if (key) refs.push(key); // 空串 key 无意义，跳过（与旧 `+` 量词的非空语义一致）
     }
   }
 

@@ -289,6 +289,28 @@ describe('React restore — Fragment 直接子节点的 <Trans>', () => {
 });
 
 /**
+ * 回归（审计：restore 二次读盘）：ReactRestoreTransformer.transform 应优先使用调用方
+ * 已读取的 sourceText，与 ITransformer 对齐。RestoreProcessor 已 readFileSync 一次用于
+ * 比对，transform 内再读同一文件属可避免的重复 IO。传入 sourceText 时不应再读盘。
+ */
+describe('React restore — transform 接受 sourceText 避免二次读盘', () => {
+  it('传入 sourceText 时不读盘（文件不存在也能还原）', () => {
+    const lib = createReactI18nLibrary('react-i18next');
+    const src =
+      `import { Trans } from 'react-i18next';\n` +
+      `export default function P() {\n` +
+      `  return <><Trans i18nKey="k.b" /></>;\n` +
+      `}`;
+    const out = new ReactRestoreTransformer(lib, '@/plugins/locale').transform(
+      '/__no_such_dir__/Restore.tsx', // 不存在：若实现仍 readFileSync 会抛 ENOENT
+      { 'k.b': '你好世界' },
+      src,
+    );
+    expect(out).toContain('你好世界');
+  });
+});
+
+/**
  * 回归（审查 #8）：restore 删除 hook/global 声明（const { t } = useTranslation() /
  * const intl = useIntl() / const intl = getIntl()）此前是无条件的，但 transformTranslationCall/
  * Component 在「locale 缺 key 且无 defaultMessage」时会保留存活调用 → 删声明而调用尚存

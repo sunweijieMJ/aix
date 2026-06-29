@@ -40,7 +40,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     descriptor += ' }';
 
     if (values && values.size > 0) {
-      const mapping = this.formatValuesMapping(values);
+      const mapping = CommonASTUtils.formatValuesMapping(values);
       return `${call}(${descriptor}, ${mapping})`;
     }
     return `${call}(${descriptor})`;
@@ -60,7 +60,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
       props += ` defaultMessage={${escaped}}`;
     }
     if (values && values.size > 0) {
-      const mapping = this.formatValuesMapping(values);
+      const mapping = CommonASTUtils.formatValuesMapping(values);
       props += ` values={${mapping}}`;
     }
     return `<FormattedMessage ${props} />`;
@@ -266,10 +266,6 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     sourceFile: ts.SourceFile,
   ): MessageInfo {
     return ReactASTUtils.extractFormattedMessageInfo(openingElement, definedMessages, sourceFile);
-  }
-
-  private formatValuesMapping(values: Map<string, string>): string {
-    return CommonASTUtils.formatValuesMapping(values);
   }
 
   /**

@@ -252,8 +252,18 @@ export class ReactASTUtils {
     const visit = (n: ts.Node) => {
       if (isReactFunction) return;
 
-      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
-        if (reactHooks.has(n.expression.text)) {
+      if (ts.isCallExpression(n)) {
+        // 裸 Identifier（`useState()`）与 `React.useXxx()` 命名空间形式都识别，
+        // 与 resolveHookName / isClassComponent 对 React. 前缀的处理保持一致。
+        const hookName = ts.isIdentifier(n.expression)
+          ? n.expression.text
+          : ts.isPropertyAccessExpression(n.expression) &&
+              ts.isIdentifier(n.expression.expression) &&
+              n.expression.expression.text === 'React' &&
+              ts.isIdentifier(n.expression.name)
+            ? n.expression.name.text
+            : undefined;
+        if (hookName && reactHooks.has(hookName)) {
           isReactFunction = true;
           return;
         }

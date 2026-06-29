@@ -202,7 +202,8 @@ export class RestoreProcessor extends BaseProcessor {
     // continue 双重静默会让 CI 把"全部失败"显示为成功。
     const restoreTransformer = this.adapter.getRestoreTransformer();
     const sourceText = fs.readFileSync(filePath, 'utf-8');
-    const transformedCode = restoreTransformer.transform(filePath, localeMap);
+    // 复用已读取的 sourceText，避免 transform 内对同一文件二次读盘（接口已与 ITransformer 对齐）。
+    const transformedCode = restoreTransformer.transform(filePath, localeMap, sourceText);
 
     if (transformedCode === sourceText) {
       LoggerUtils.info(`⚪ 跳过: ${FileUtils.getRelativePath(filePath)} (无需修改)`);
