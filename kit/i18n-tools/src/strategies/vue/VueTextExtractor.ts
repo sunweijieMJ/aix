@@ -571,8 +571,13 @@ export class VueTextExtractor extends BaseTextExtractor {
         return;
       }
 
-      // 收集子节点后逐个 await，避免 forEachChild 丢弃 Promise
-      for (const child of node.getChildren()) {
+      // forEachChild 只遍历语义子节点（跳过 trivia token），避免 getChildren 物化全量 token
+      // 子数组；visit 为 async 不能直接交给 forEachChild，故先同步收集再逐个 await。
+      const children: ts.Node[] = [];
+      node.forEachChild((c) => {
+        children.push(c);
+      });
+      for (const child of children) {
         await visit(child);
       }
     };
@@ -709,8 +714,13 @@ export class VueTextExtractor extends BaseTextExtractor {
           return;
         }
 
-        // 收集子节点后逐个 await，避免 forEachChild 丢弃 Promise
-        for (const child of node.getChildren()) {
+        // forEachChild 只遍历语义子节点（跳过 trivia token），避免 getChildren 物化全量 token
+        // 子数组；visit 为 async 不能直接交给 forEachChild，故先同步收集再逐个 await。
+        const children: ts.Node[] = [];
+        node.forEachChild((c) => {
+          children.push(c);
+        });
+        for (const child of children) {
           await visit(child);
         }
       };
@@ -908,8 +918,13 @@ export class VueTextExtractor extends BaseTextExtractor {
       return;
     }
 
-    // 递归处理子节点
-    const children = node.getChildren();
+    // 递归处理子节点：forEachChild 只遍历语义子节点（跳过 trivia token），避免 getChildren
+    // 物化含全部 token 的子数组、也不会为 token 多创建一层 visit 调用。visitScriptNode 为
+    // async，forEachChild 不会 await 回调，故先同步收集再逐个 await。
+    const children: ts.Node[] = [];
+    node.forEachChild((c) => {
+      children.push(c);
+    });
     for (const child of children) {
       await this.visitScriptNode(child, sourceFile, extractedStrings, lineOffset, filePath);
     }
