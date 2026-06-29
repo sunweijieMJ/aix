@@ -48,7 +48,10 @@ export class ReactImportManager implements IImportManager {
   }
 
   private needsGlobalFunction(fileStrings: ExtractedString[]): boolean {
-    return fileStrings.some((str) => str.componentType === 'other');
+    // jsx-text 会被替换成 JSX 组件（如 react-intl 的 <FormattedMessage>），不需要全局 t/intl。
+    // 必须排除它：否则 react-intl 对纯 jsx-text 的模块作用域文本也注入 const intl = getIntl();，
+    // 该声明永不被使用（no-unused-vars 失败），且因声明体引用 getIntl 无法被 finalizeImports 自愈。
+    return fileStrings.some((str) => str.componentType === 'other' && str.context !== 'jsx-text');
   }
 
   private addGlobalFunctionImport(code: string): string {

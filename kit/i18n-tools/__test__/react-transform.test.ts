@@ -211,6 +211,28 @@ describe('ReactImportManager — 非组件作用域注入 import { t }', () => {
     const out = mgr.handleGlobalImports(code, [makeStr({ componentType: 'function' })]);
     expect(out).not.toContain("from '@/plugins/locale'");
   });
+
+  it('[react-intl] 模块顶层 jsx-text → 不注入永不使用的死声明 const intl = getIntl()', () => {
+    // 模块顶层 JSX 文本（如 export const columns = [{ title: <span>姓名</span> }]）：
+    // componentType 向上到 SourceFile = 'other'，但 jsx-text 被替换成 <FormattedMessage>，
+    // 不需要 intl。若 needsGlobalFunction 不排除 jsx-text，会注入永不使用的
+    // const intl = getIntl(); → no-unused-vars 失败 + 模块加载期 getIntl() 可能抛错。
+    const intlMgr = new ReactImportManager('@/i18n', createReactI18nLibrary('react-intl'));
+    const code = `export const columns = [{ title: <FormattedMessage id="k" /> }];`;
+    const out = intlMgr.handleGlobalImports(code, [
+      makeStr({ componentType: 'other', context: 'jsx-text' }),
+    ]);
+    expect(out).not.toContain('const intl = getIntl()');
+  });
+
+  it('[react-intl] 模块顶层 js-code(非 jsx) → 仍注入 const intl = getIntl()（不误伤正常场景）', () => {
+    const intlMgr = new ReactImportManager('@/i18n', createReactI18nLibrary('react-intl'));
+    const code = `export const msg = intl.formatMessage({ id: 'k' });`;
+    const out = intlMgr.handleGlobalImports(code, [
+      makeStr({ componentType: 'other', context: 'js-code' }),
+    ]);
+    expect(out).toContain('const intl = getIntl()');
+  });
 });
 
 // ---------------------------------------------------------------------------
