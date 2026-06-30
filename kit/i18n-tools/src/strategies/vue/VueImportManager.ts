@@ -235,7 +235,13 @@ export class VueImportManager implements IImportManager {
    */
   hasLocalHookTBinding(scriptContent: string): boolean {
     const escapedHook = CommonASTUtils.escapeRegExp(this.library.hookName);
-    const destructureRe = new RegExp(`const\\s*\\{([^}]*)\\}\\s*=\\s*${escapedHook}\\s*\\(`, 'g');
+    // 行首锚定（^[ \t]* + gm）：只匹配作为语句出现在行首（允许缩进）的真实 hook 解构，排除
+    // 注释里的 `// const { t } = useI18n()`。否则误判「已有 hook 绑定」而漏注入 → 裸 t() 未声明。
+    // 与姊妹方法 CommonASTUtils.mergeNamedImport 的锚定口径一致。
+    const destructureRe = new RegExp(
+      `^[ \\t]*const\\s*\\{([^}]*)\\}\\s*=\\s*${escapedHook}\\s*\\(`,
+      'gm',
+    );
     let match: RegExpExecArray | null;
     while ((match = destructureRe.exec(scriptContent)) !== null) {
       const inner = match[1] ?? '';
@@ -264,7 +270,9 @@ export class VueImportManager implements IImportManager {
    * `import { foo as t }` 本地名是 t，返回 true。取代旧的 `\bt\b` 正则（会命中 `t as X` 的源名）。
    */
   hasNamedImportLocalT(scriptContent: string): boolean {
-    const importRe = /import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*['"][^'"]+['"]/g;
+    // 行首锚定（^[ \t]* + gm）：排除注释里的 `// import { t } from './old'`，否则误判「已有本地 t
+    // 导入」而跳过注入真正的 import { t } → 裸 t() 未声明。与 mergeNamedImport 同口径。
+    const importRe = /^[ \t]*import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*['"][^'"]+['"]/gm;
     let match: RegExpExecArray | null;
     while ((match = importRe.exec(scriptContent)) !== null) {
       const inner = match[1] ?? '';

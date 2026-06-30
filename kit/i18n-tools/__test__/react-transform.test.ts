@@ -937,3 +937,50 @@ export function C({ name }: { name: string }) {
     expect(CommonASTUtils.drainSkippedNestedChinese()).toEqual([]);
   });
 });
+
+/**
+ * 回归（审计 medium，ReactTextExtractor:167）：已有 <Trans> 富文本不得被二次包裹。
+ *
+ * 根因（修复前）：visitNode 的混合内容分支（中文文本 + 插值）不经 isAlreadyInternationalized
+ * 守卫直接提取。用户手写的 `<Trans>你好 {name} 欢迎</Trans>`（react-i18next 标准富文本）会被
+ * 当未翻译整段提取 → ReactTransformer 把 children 替换为新的 <Trans i18nKey.../>，产出嵌套
+ * 双重包裹的损坏代码（增量重跑 / 对已 i18n 文件运行时）。
+ *
+ * 修复：visitNode 识别翻译组件（<Trans> / <FormattedMessage>）后整棵跳过，不再走混合内容分支。
+ */
+describe('React 已有 <Trans> 富文本不被二次包裹（审计 medium）', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-trans-rewrap-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const run = async (code: string): Promise<{ strings: ExtractedString[]; injected: string }> => {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const injected = adapter.getTransformer().transform(file, strings, code);
+    return { strings, injected };
+  };
+
+  it('<Trans>中文 {插值} 中文</Trans> 不被提取、transform 不二次包裹', async () => {
+    const code = `import React from 'react';
+import { Trans } from 'react-i18next';
+export function C({ name }: { name: string }) {
+  return <div><Trans>你好 {name} 欢迎</Trans></div>;
+}
+`;
+    const { strings, injected } = await run(code);
+    // Trans 子树整棵跳过：不产生任何提取项
+    expect(strings).toEqual([]);
+    // 不得出现嵌套的 <Trans i18nKey.../>（二次包裹的标志）
+    expect(injected).not.toContain('i18nKey');
+    expect(injected).not.toMatch(/<Trans>\s*<Trans/);
+    // 原 Trans 富文本保持不变
+    expect(injected).toContain('<Trans>你好 {name} 欢迎</Trans>');
+  });
+});

@@ -161,6 +161,13 @@ export class ReactTextExtractor extends BaseTextExtractor {
       ) {
         return;
       }
+      // 已是翻译组件（<Trans> / <FormattedMessage>）：其 children 是用户手写的已国际化富文本，
+      // 整棵跳过。否则下方混合内容分支会把 `<Trans>你好 {name} 欢迎</Trans>` 当未翻译整段提取
+      // （该分支不经 isAlreadyInternationalized 守卫），ReactTransformer 据此二次包裹成嵌套
+      // <Trans>，在增量重跑 / 对已 i18n 文件运行时破坏源码。
+      if (ts.isIdentifier(tagName) && this.library?.isTranslationComponent(tagName.text)) {
+        return;
+      }
     }
 
     // 优先处理JSX元素的混合内容

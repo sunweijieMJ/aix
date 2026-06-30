@@ -398,6 +398,31 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
       expect((out.match(/from 'react-i18next'/g) || []).length).toBe(1);
       expect(out).toMatch(/import i18n, \{ useTranslation, Trans \} from 'react-i18next';/);
     });
+
+    // 回归（审计 medium，ReactComponentInjector:98 根因）：已有 `import type { X }` 时注入
+    // 同名命名导入不得重复引入（TS2300）。旧 importRegex 只认值导入，忽略 type-only import，
+    // 把 WithTranslation 当「不存在」再追加为值导入 → 重复标识符整文件无法编译。
+    it('已有 import type { X }：注入 HOC 命名导入不产生重复标识符（TS2300）', () => {
+      const code = `import type { WithTranslation } from 'react-i18next';\ninterface Props extends WithTranslation {}\n`;
+      const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', [
+        'withTranslation',
+        'WithTranslation',
+      ]);
+      // type-only 导入原样保留
+      expect(out).toContain(`import type { WithTranslation } from 'react-i18next';`);
+      // 只新增值 withTranslation；WithTranslation 不被作为值导入重复引入
+      expect(out).toMatch(/import \{ withTranslation \} from 'react-i18next';/);
+      // 全文 WithTranslation 仅出现 2 次（type import + interface extends），无第三处重复导入
+      expect((out.match(/WithTranslation/g) || []).length).toBe(2);
+    });
+
+    it('内联 { type X } 已存在：同名不重复注入', () => {
+      const code = `import { type WithTranslation, Foo } from 'react-i18next';\n`;
+      const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['WithTranslation']);
+      // WithTranslation 已以内联 type 形态存在 → 不再追加
+      expect((out.match(/WithTranslation/g) || []).length).toBe(1);
+      expect((out.match(/from 'react-i18next'/g) || []).length).toBe(1);
+    });
   });
 
   describe('CommonASTUtils.removeNamedImports', () => {

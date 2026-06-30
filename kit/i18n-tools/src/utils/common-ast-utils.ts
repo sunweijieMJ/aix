@@ -2067,6 +2067,26 @@ export class CommonASTUtils {
     );
     const matches = [...code.matchAll(importRegex)];
 
+    // 额外收集该包【所有】已存在的本地导入名，含 `import type { … }` 与内联 `{ type X }`
+    // ——上面的 importRegex 只认值导入（有意，避免把值并进 type import 触发 TS1361）。
+    // 用于把「已作为类型导入的同名标识符」从待新增集合中剔除，否则注入 HOC 命名导入
+    // （如 withTranslation, WithTranslation）会与已有 `import type { WithTranslation }`
+    // 产生 TS2300 重复标识符，整文件无法编译。
+    const anyImportRegex = new RegExp(
+      `^[ \\t]*import\\s+(?:type\\s+)?(?:[A-Za-z0-9_$]+\\s*,\\s*)?\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"]`,
+      'gm',
+    );
+    const existingNames = new Set<string>();
+    for (const m of code.matchAll(anyImportRegex)) {
+      for (const raw of m[1]!.split(',')) {
+        const part = raw.trim().replace(/^type\s+/, ''); // 去掉内联 type 修饰
+        if (!part) continue;
+        const local = /\sas\s/.test(part) ? part.split(/\sas\s/)[1]!.trim() : part;
+        if (local) existingNames.add(local);
+      }
+    }
+    const namesToAdd = names.filter((n) => !existingNames.has(n));
+
     if (matches.length > 0) {
       // 收集所有已存在的命名导入并与新增合并去重
       const existing = matches.flatMap((m) =>
@@ -2075,7 +2095,7 @@ export class CommonASTUtils {
           .map((imp) => imp.trim())
           .filter(Boolean),
       );
-      const merged = [...new Set([...existing, ...names])];
+      const merged = [...new Set([...existing, ...namesToAdd])];
       // 保留已存在的默认导入说明符（如 `import locale, { t } from pkg` 的 locale），
       // 否则合并重写会丢掉默认导入。取首个出现的默认名。
       const defaultName = matches.map((m) => m[1]).find(Boolean);
@@ -2095,7 +2115,9 @@ export class CommonASTUtils {
       // 清理可能产生的连续空行
       return result.replace(/\n{3,}/g, '\n\n');
     }
-    const importStatement = `import { ${names.join(', ')} } from '${packageName}';`;
+    // 无可合并的值导入：若待新增名全部已作为 type-only 导入存在，则无需追加（避免 TS2300）。
+    if (namesToAdd.length === 0) return code;
+    const importStatement = `import { ${namesToAdd.join(', ')} } from '${packageName}';`;
     return CommonASTUtils.appendImportLine(code, importStatement);
   }
 }

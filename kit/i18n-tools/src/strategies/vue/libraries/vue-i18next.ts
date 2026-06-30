@@ -37,7 +37,12 @@ export class VueI18nextLibrary implements VueI18nLibrary {
   }
 
   getHookDeclarationCleanupRegex(): RegExp {
-    return /const\s*\{\s*t\s*\}\s*=\s*useTranslation\([^)]*\);?\n?/g;
+    // 只匹配工具自身注入的形态：无参 `useTranslation()` 或单字符串命名空间参数
+    // `useTranslation('ns')`（见 hookDeclaration getter）。
+    // 旧实现用 `[^)]*` 非括号平衡：对用户手写的含选项 hook（如
+    // `useTranslation('ns', { fallback: fn() })`）只删到第一个 `)`，残留 ` });` 产出语法错误；
+    // 且会误吞 `useTranslation({ keyPrefix })` 等高级用法。收窄后这类一律不匹配、原样保留。
+    return /const\s*\{\s*t\s*\}\s*=\s*useTranslation\(\s*(?:'[^']*'|"[^"]*")?\s*\)\s*;?\n?/g;
   }
 
   // 基于 i18next，单 `{` 本就是字面量（插值是双花括号 `{{name}}`），无需转义。

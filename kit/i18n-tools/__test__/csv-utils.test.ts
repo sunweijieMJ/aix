@@ -42,6 +42,26 @@ describe('parseCsv', () => {
     expect(parseCsv(serializeCsv(rows))).toEqual(rows);
   });
 
+  // 回归（审计 medium，csv-utils:12）：CSV 注入防护。`=1+1`、`-50%`、`@提及` 等合法文案
+  // 此前原样写出，Excel 打开当公式/数字求值，回流时污染数据。修复：serializeCsv 前置 Tab 中和，
+  // parseCsv 对称剥除 → CSV 里不再裸前导危险字符，且 round-trip 无损。
+  it('CSV 注入防护：=+-@ 开头字段被中和且 round-trip 无损', () => {
+    const rows = [
+      ['key', 'zh', 'en'],
+      ['a', '=1+1', '-50%'],
+      ['b', '@提及', '+1'],
+      ['c', '\t本就含Tab', '正常文案'],
+    ];
+    const csv = serializeCsv(rows);
+    // CSV 文本里危险值被 "\t…" 包裹中和，不再以 = - + @ 裸开头
+    expect(csv).toContain('"\t=1+1"');
+    expect(csv).toContain('"\t-50%"');
+    expect(csv).not.toMatch(/(^|,)=1\+1/);
+    expect(csv).not.toMatch(/(^|,)-50%/);
+    // round-trip 完全无损（含原本即以 Tab 开头的值）
+    expect(parseCsv(csv)).toEqual(rows);
+  });
+
   it('LF 行尾与尾随空字段', () => {
     expect(parseCsv('a,\nb,c')).toEqual([
       ['a', ''],

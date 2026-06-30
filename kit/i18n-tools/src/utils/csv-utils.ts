@@ -8,12 +8,30 @@
 /** UTF-8 BOM。写出时前置，确保 Excel 双击打开中文不乱码。 */
 export const UTF8_BOM = '﻿';
 
-/** 单个字段按 RFC4180 转义：含逗号/引号/换行时用双引号包裹，内部引号双写。 */
+/**
+ * CSV 注入防护：以 = + - @ 或 Tab/CR 开头的字段，Excel 会当公式/数字求值或改显示格式
+ * （本工具特意加 BOM 兼容 Excel 双击打开），导致 `=SUM`、`-50%`、`@提及` 等【合法文案】
+ * 被篡改，保存回 CSV 后经 import 污染 translations.json。RFC 引号包裹无法解决（导入剥引号后
+ * Excel 仍求值）。标准做法是前置一个 Tab 中和（Excel 视为文本），parseCsv 解析时对称剥除，
+ * 保证 round-trip 无损。该正则集合包含 `\t` 本身，故原值即以 \t 开头时（export `\t\t…` →
+ * import 剥一个 → `\t…`）仍精确可逆。
+ */
+const CSV_INJECTION_LEAD = /^[=+\-@\t\r]/;
+
+/** 单个字段序列化：先做 CSV 注入中和，再按 RFC4180 转义（含逗号/引号/换行用双引号包裹）。 */
 function escapeField(field: string): string {
-  if (/[",\r\n]/.test(field)) {
-    return `"${field.replace(/"/g, '""')}"`;
+  const needsGuard = CSV_INJECTION_LEAD.test(field);
+  const guarded = needsGuard ? `\t${field}` : field;
+  // 注入中和字段强制加引号：避免裸前导 Tab 被 Excel/解析器修剪掉而失去防护。
+  if (needsGuard || /[",\r\n]/.test(guarded)) {
+    return `"${guarded.replace(/"/g, '""')}"`;
   }
-  return field;
+  return guarded;
+}
+
+/** escapeField 注入中和的逆操作：剥除 serializeCsv 前置的单个防护 Tab。 */
+function unguardField(field: string): string {
+  return field.startsWith('\t') ? field.slice(1) : field;
 }
 
 /** 将二维字符串数组序列化为 CSV 文本（含 BOM 前缀，CRLF 行分隔，结尾带换行）。 */
@@ -124,7 +142,8 @@ export function parseCsv(text: string): string[][] {
     row.push(field);
     rows.push(row);
   }
-  return rows;
+  // 对称剥除 serializeCsv 注入中和前置的防护 Tab，保证 round-trip 无损。
+  return rows.map((r) => r.map(unguardField));
 }
 
 /**

@@ -9,6 +9,7 @@ import {
 import { VueImportManager } from '../src/strategies/vue/VueImportManager';
 import { VueComponentInjector } from '../src/strategies/vue/VueComponentInjector';
 import { VueI18nLibraryImpl } from '../src/strategies/vue/libraries/vue-i18n';
+import { VueI18nextLibrary } from '../src/strategies/vue/libraries/vue-i18next';
 import type { ExtractedString } from '../src/utils/types';
 
 /**
@@ -142,6 +143,52 @@ const a = t('foo');
     // 全文只应有那一条来自 '@/other' 的具名 t 导入，不得新增 '@/i18n' 的 t 导入
     expect(out).not.toContain("from '@/i18n'");
     expect((out.match(/import\s*\{[^}]*\bt\b[^}]*\}\s*from/g) ?? []).length).toBe(1);
+  });
+
+  // 回归（审计 medium，VueImportManager:267）：注释里的 import { t } 不剥离会被正则误判为
+  // 「已有本地 t 导入」→ 漏注入真实 import → 裸 t() 运行时 ReferenceError。行首锚定后排除注释。
+  it('注释里的 import { t } 不得误判为已有本地 t → 仍注入真实 import', () => {
+    const code = `<template><div>{{ t('x') }}</div></template>
+<script setup>
+// import { t } from './old-locale';
+const a = t('foo');
+</script>`;
+    const out = newMgr().handleGlobalImports(code, [scriptString], 'f.vue');
+    expect(out).toMatch(/import\s*\{\s*t\s*\}\s*from\s*['"]@\/i18n['"]/);
+  });
+
+  // 回归（审计 medium，VueImportManager:238）：注释里的 const { t } = useI18n() 同理不得误判。
+  it('注释里的 const { t } = useI18n() 不得误判为已有 hook 绑定 → 仍注入真实 import', () => {
+    const code = `<template><div>{{ t('x') }}</div></template>
+<script setup>
+// const { t } = useI18n();
+const a = t('foo');
+</script>`;
+    const out = newMgr().handleGlobalImports(code, [scriptString], 'f.vue');
+    expect(out).toMatch(/import\s*\{\s*t\s*\}\s*from\s*['"]@\/i18n['"]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 审计 medium（vue-i18next:40）：hook 清理正则只匹配工具自注入形态，不误删用户手写含参 hook
+// ---------------------------------------------------------------------------
+describe('vue-i18next hook 清理正则只匹配工具注入形态（审计 medium）', () => {
+  const re = () => new VueI18nextLibrary().getHookDeclarationCleanupRegex();
+
+  it('清理工具注入的无参 / 单命名空间参数形态', () => {
+    expect(`const { t } = useTranslation();`.replace(re(), '')).toBe('');
+    expect(`const { t } = useTranslation('ns');`.replace(re(), '')).toBe('');
+  });
+
+  it('不误删含选项的用户手写 hook（嵌套括号），不残留被截断的 });', () => {
+    const userHook = `const { t } = useTranslation('ns', { keyPrefix: pick('a') });`;
+    // 旧实现 [^)]* 非括号平衡：只删到第一个 ) → 残留 ` });` 语法错误。收窄后整条保留。
+    expect(userHook.replace(re(), '')).toBe(userHook);
+  });
+
+  it('不误删对象参数形态 useTranslation({ keyPrefix })', () => {
+    const userHook = `const { t } = useTranslation({ keyPrefix: 'x' });`;
+    expect(userHook.replace(re(), '')).toBe(userHook);
   });
 });
 
