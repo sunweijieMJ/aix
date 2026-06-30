@@ -58,6 +58,7 @@ export class RestoreProcessor extends BaseProcessor {
 
   private async resolveTargetFiles(targets: string[]): Promise<string[]> {
     const files: string[] = [];
+    const unresolved: string[] = [];
 
     for (const target of targets) {
       try {
@@ -78,8 +79,20 @@ export class RestoreProcessor extends BaseProcessor {
           );
         }
       } catch (error) {
+        // 显式指定的 target 路径不存在 / 不可访问（如拼错文件名）。绝不能静默吞掉：
+        // 否则返回空集合，restoreFiles 走「没有找到需要处理的文件」早退、进程 exit 0，
+        // CI 会把「restore 目标拼错」误判为成功。计入失败收集器并在循环后硬失败，
+        // 与本类对处理失败 throw 非零退出的口径一致。
         LoggerUtils.error(`无法解析目标: ${target}`, error);
+        unresolved.push(target);
+        this.report.addFailure({ stage: 'restore', file: target, error });
       }
+    }
+
+    if (unresolved.length > 0) {
+      throw new Error(
+        `${unresolved.length} 个还原目标无法解析（路径不存在或不可访问）：${unresolved.join(', ')}`,
+      );
     }
 
     return files;

@@ -25,10 +25,13 @@ describe('formatWithPrettier — execFile 传参数组，避免 shell 解析路�
 
     // prettier + eslint 两次调用
     expect(execFileMock).toHaveBeenCalledTimes(2);
+    // Windows 上 npx 实为 npx.cmd（formatWithPrettier 按平台显式补 .cmd，见源码注释的
+    // CVE-2024-27980 缘由）；断言需平台感知，否则在 Windows 上恒失配。
+    const expectedBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';
     for (const call of execFileMock.mock.calls) {
       const [file, args] = call as unknown as [string, string[]];
       // 第一个参数是可执行程序名，而非整条命令串
-      expect(file).toBe('npx');
+      expect(file).toBe(expectedBin);
       expect(Array.isArray(args)).toBe(true);
       // 路径作为独立元素原样出现（未被转义 / 插值 / 拆分）
       expect(args).toContain(weird);

@@ -75,6 +75,16 @@ describe('RestoreProcessor 编排层', () => {
     await expect(proc.execute([file])).rejects.toThrow(/还原失败/);
   });
 
+  // 回归（restore #1）：显式指定的 target 路径不存在（拼错文件名）时，旧实现仅 log error、
+  // 返回空集合 → 走「没有找到需要处理的文件」早退、进程 exit 0，CI 误判 restore 成功。
+  // 修复：无法解析的 target 计入失败收集器并硬失败（非零退出）。
+  it('显式 target 不存在 → 硬失败（非零退出），不静默 exit 0', async () => {
+    const missing = path.join(srcDir, 'does-not-exist.vue');
+    await expect(
+      new RestoreProcessor(buildConfig(rootDir), false).execute([missing]),
+    ).rejects.toThrow(/无法解析/);
+  });
+
   it('默认输出到 <root>/restored/，原文件不被覆盖', async () => {
     const file = writeSource('A.vue', SRC);
     await new RestoreProcessor(buildConfig(rootDir), false).execute([file]);

@@ -474,6 +474,22 @@ describe('Vue 静态属性首尾空白 → transform 产出合法绑定', () => 
     const out = await run(`<template>\n  <a title="确认">x</a>\n</template>\n`);
     expect(out).toMatch(/:title="\$t\('k\d+'\)"/);
   });
+
+  // 回归（vue #2）：属性值跨行时（attr.loc.start.line 指向 `title=` 行、值在下一行），
+  // 逐行匹配与 ±5 行 fallback（均按单行）全部落空，旧实现原样返回 → locale 已写 key 但
+  // 源码静态属性未改写（孤儿 key + 中文残留，静默泄漏）。修复：多行属性走 (line,column)
+  // 绝对偏移 + 属性感知正则全局匹配整体替换。
+  it('多行静态属性 title="\\n  确认\\n"：跨行也能转成合法 :title 且无中文残留', async () => {
+    const out = await run(
+      `<template>\n  <el-button\n    title="\n      确认\n    "\n  >x</el-button>\n</template>\n`,
+    );
+    // 已替换成合法 :title 绑定
+    expect(out, `输出：\n${out}`).toMatch(/:title="\$t\('k\d+'\)"/);
+    // 中文不得残留（孤儿 key 的特征）
+    expect(out).not.toContain('确认');
+    // 不得破坏标记（不出现嵌套属性 / 失衡引号）
+    expect(out).not.toMatch(/title="[\s\S]*:title=/);
+  });
 });
 
 /**

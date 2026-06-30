@@ -307,8 +307,7 @@ export class VueTransformer implements ITransformer {
 
       // 静态属性未在目标行命中：**绝不** fall through 到下方的引号/裸文本搜索——
       // 那会把 `:attr="$t(...)"` 插进引号内部，毁掉标记（引号失衡）。只在附近行做
-      // 属性感知匹配（tryReplaceOnLine 对 `:` 前缀仅尝试属性正则），仍找不到就原样返回，
-      // 宁可漏替换也不破坏源码。
+      // 属性感知匹配（tryReplaceOnLine 对 `:` 前缀仅尝试属性正则）。
       for (let delta = 1; delta <= 5; delta++) {
         for (const tryIdx of [line + delta, line - delta]) {
           if (tryIdx < 0 || tryIdx >= lines.length) continue;
@@ -323,6 +322,38 @@ export class VueTransformer implements ITransformer {
             return lines.join('\n');
           }
         }
+      }
+
+      // 多行静态属性兜底：属性值跨行时（如 `title="\n  确认\n"`），上面的逐行匹配与
+      // ±5 行 fallback（均按单行）必然落空——且 original 是 trim 后的 `确认`、不含
+      // `\n`，下方文本节点的多行分支也不会接管。这里用 (line,column) 推绝对偏移，在整段
+      // template 上用同一「属性感知」正则（buildStaticAttrPattern 的 `\s*` 跨行匹配引号
+      // 内 padding）做全局匹配，选中包含目标偏移的那一处整体替换。仍用属性正则、不退化
+      // 为裸文本搜索，故不会破坏标记；找不到就原样返回（宁可漏替换也不破坏源码）。
+      // 不替换会导致 locale 已写入 key 但源码静态属性未改写 → 孤儿 key + 中文残留。
+      let targetOffset = column;
+      for (let i = 0; i < line; i++) {
+        targetOffset += lines[i]!.length + 1; // +1：补回 split 去掉的换行符
+      }
+      const multilinePattern = this.buildStaticAttrPattern(original, 'g');
+      let mlMatch: RegExpExecArray | null;
+      let mlChosen: RegExpExecArray | null = null;
+      while ((mlMatch = multilinePattern.exec(templateContent)) !== null) {
+        const start = mlMatch.index;
+        const end = start + mlMatch[0].length;
+        if (start <= targetOffset && targetOffset <= end) {
+          mlChosen = mlMatch;
+          break;
+        }
+        if (mlChosen === null) mlChosen = mlMatch; // 兜底：保持「命中第一处」行为
+      }
+      if (mlChosen) {
+        const start = mlChosen.index;
+        return (
+          templateContent.slice(0, start) +
+          replacement +
+          templateContent.slice(start + mlChosen[0].length)
+        );
       }
       return lines.join('\n');
     }

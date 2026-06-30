@@ -925,15 +925,19 @@ describe('RestoreProcessor — 显式 target 解析为空不回退全量扫描',
     expect(fs.readFileSync(file, 'utf-8')).toBe(SRC);
   });
 
-  it('传不存在的路径 + overwrite → 不改写项目里其它文件', async () => {
+  it('传不存在的路径 + overwrite → 硬失败（非零退出）且不改写项目里其它文件', async () => {
     const file = path.join(srcDir, 'A.vue');
     fs.writeFileSync(file, SRC, 'utf-8');
 
-    await new RestoreProcessor(buildConfig(rootDir), false).execute(
-      [path.join(srcDir, 'does-not-exist.vue')],
-      undefined,
-      true,
-    );
+    // restore #1 修复：不存在的显式 target 现在硬失败（不再静默 exit 0，避免 CI 把拼错
+    // 路径误判为成功）；但仍绝不回退全量扫描去 overwrite 其它文件——安全属性不变。
+    await expect(
+      new RestoreProcessor(buildConfig(rootDir), false).execute(
+        [path.join(srcDir, 'does-not-exist.vue')],
+        undefined,
+        true,
+      ),
+    ).rejects.toThrow(/无法解析/);
 
     expect(fs.readFileSync(file, 'utf-8')).toBe(SRC);
   });
