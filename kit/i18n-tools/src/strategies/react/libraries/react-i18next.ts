@@ -123,7 +123,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   }
 
   generateGlobalDeclaration(): string {
-    // react-i18next 非组件上下文直接使用 i18next 实例
+    // react-i18next 非组件上下文用从 import { t } 注入的裸 t，无需局部声明
     return '';
   }
 

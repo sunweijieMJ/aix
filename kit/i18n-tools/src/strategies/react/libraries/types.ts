@@ -27,7 +27,7 @@ export interface ReactI18nLibrary extends BaseI18nLibrary {
 
   // ===== 非组件上下文 =====
 
-  /** 全局函数名: 'getIntl' | 'i18next.t' */
+  /** 全局函数名: 'getIntl'（react-intl） | 't'（react-i18next，从 import { t } 注入） */
   readonly globalFunctionName: string;
 
   // ===== 代码生成 =====
@@ -43,7 +43,7 @@ export interface ReactI18nLibrary extends BaseI18nLibrary {
     includeDefaultMessage?: boolean,
     defaultMessage?: string,
     // 是否处于非组件（模块顶层）作用域。react-i18next 此时须用 globalFunctionName
-    // （i18next.t），因为没有 useTranslation 注入的 t；组件内仍用 t。
+    // （从 import { t } 注入的裸 t），因为模块顶层没有 useTranslation 解构出的 t；组件内仍用 t。
     isGlobalScope?: boolean,
   ): string;
 

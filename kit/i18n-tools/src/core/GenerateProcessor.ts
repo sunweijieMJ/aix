@@ -255,7 +255,7 @@ export class GenerateProcessor extends BaseProcessor {
    * 无译文的新 key。两处统一走本方法，杜绝形态漂移。
    */
   private toLocaleMessage(item: ExtractedString): string {
-    return CommonASTUtils.buildLocaleMessage(item, this.adapter?.getLibrary());
+    return CommonASTUtils.buildLocaleMessage(item, this.adapter.getLibrary());
   }
 
   /**
@@ -609,7 +609,7 @@ export class GenerateProcessor extends BaseProcessor {
         extractedStrings,
         keyBucketMap,
         this.report,
-        this.adapter?.getLibrary(),
+        this.adapter.getLibrary(),
         {
           preFinalized: Boolean(options?.preFinalizedLocale),
           // 把提取阶段 drain 的快照交给 linter，让它与 coverage 看到同一份比较运算符跳过项。
@@ -1000,12 +1000,12 @@ export class GenerateProcessor extends BaseProcessor {
    * 计算口径（以「中文片段调用点」为单位）：
    *   alreadyI18n      = 源码中已存在的 t()/$t() 调用点数（IdReuseResolver 扫到）
    *   newlyGenerated   = 本轮 extractor 提取出的 ExtractedString 条目数
-   *   skipped          = 工具主动放弃的（被 needsManual 拒收 + 命中黑名单等）
+   *   skipped          = 工具主动放弃的中文片段；当前仅统计比较运算符跳过项
    *
-   * 这里把已知的两类「主动放弃」纳入 skipped：
+   * skipped 计数当前只纳入一类「主动放弃」：
    *  - drainSkippedComparisonOperands：=== / case 中跳过的中文字面量
-   *  - extractor.drainWarnings 已在 runSingleFile/runDirectory 早期消费，
-   *    但未结构化；用 RunReport 已有 warnings 数量做粗估。
+   * （needsManual 拒收、黑名单命中、extractor.drainWarnings 等虽也是主动放弃，
+   *   但未纳入 skipped 计数，仅比较运算符项被结构化为下方 ManualEntry。）
    *
    * 同步把比较运算符跳过项作为 ManualEntry 写入 report，让最终落盘日志里
    * 用户能看到完整待人工清单。

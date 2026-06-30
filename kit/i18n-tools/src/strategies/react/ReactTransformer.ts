@@ -190,8 +190,9 @@ export class ReactTransformer implements ITransformer {
       ? ReactASTUtils.needsJsxWrapper(node, reactContext)
       : context === 'jsx-attribute';
 
-    // 非组件（模块顶层）作用域用 i18next.t；与 ReactImportManager.needsGlobalFunction
-    // 同样依据 componentType==='other'，保证「调用形态」与「注入的 import」一致。
+    // 非组件（模块顶层）作用域用各库的 globalFunctionName（react-i18next: 注入的裸 t；
+    // react-intl: getIntl）；与 ReactImportManager.needsGlobalFunction 同样依据
+    // componentType==='other'，保证「调用形态」与「注入的 import」一致。
     const isGlobalScope = extracted.componentType === 'other';
     const baseCall = this.library.generateFunctionCall(
       semanticId,
