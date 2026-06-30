@@ -667,6 +667,67 @@ describe('AiChat', () => {
     // 全局仅 1 个操作条（即 AI 那条）
     expect(w.findAll('.aix-bubble-actions')).toHaveLength(1);
   });
+
+  it('autoPlay + 流式 error 终态：stop 被调用（speakingId 不悬挂）', async () => {
+    const stopFn = vi.fn();
+    const synthesizer = () => ({ enqueue: vi.fn(), finish: vi.fn(), stop: stopFn });
+    const enc = new TextEncoder();
+    let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+    const request = vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          start: (c) => {
+            ctrl = c;
+          },
+        }),
+    );
+    const w = mount(AiChat, {
+      props: { request, speech: { autoPlay: true, synthesizer }, welcomeTitle: '你好' },
+    });
+
+    await w.find('textarea').setValue('问题');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+
+    // 喂入含句末标点的 chunk → AI 消息进入 updating，autoPlay 起播（speakingId 置位）
+    ctrl.enqueue(enc.encode('data: {"delta":"你好。"}\n\n'));
+    await flushPromises();
+    await w.vm.$nextTick();
+
+    // 流出错 → status 变 error → autoPlay watch 触发，修复应调用 speech.stop()
+    ctrl.error(new Error('network error'));
+    await flushPromises();
+    await w.vm.$nextTick();
+
+    expect(stopFn).toHaveBeenCalled();
+  });
+
+  it('speech 启用：ai+success 消息操作条出现朗读按钮，点击触发合成器', async () => {
+    const enqueue = vi.fn();
+    const synthesizer = () => ({ enqueue, finish: vi.fn(), stop: vi.fn() });
+    const w = mount(AiChat, {
+      props: {
+        request: async () => new Response(''),
+        speech: { synthesizer },
+        messages: [
+          {
+            id: 'a1',
+            role: 'ai',
+            status: 'success',
+            content: [{ id: 'b1', type: 'text', text: '你好世界' }],
+          },
+        ],
+      },
+    });
+    await flushPromises();
+    // 找到朗读按钮（aria-label=朗读）并点击
+    const speakBtn = w
+      .findAll('.aix-bubble-actions__btn')
+      .find((b) => b.attributes('aria-label') === '朗读');
+    expect(speakBtn).toBeTruthy();
+    await speakBtn!.trigger('click');
+    expect(enqueue).toHaveBeenCalledWith('你好世界');
+  });
 });
 
 describe('AiChat 交互块回传端到端', () => {

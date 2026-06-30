@@ -45,6 +45,18 @@
         </button>
       </template>
       <button
+        v-else-if="item.builtin && item.key === 'speak'"
+        type="button"
+        :class="[ns.e('btn'), ns.is('active', speaking)]"
+        :aria-label="speaking ? t.speakStopButton : t.speakButton"
+        :title="speaking ? t.speakStopButton : t.speakButton"
+        :aria-pressed="speaking"
+        @click="emit('speak')"
+      >
+        <VolumeOff v-if="speaking" />
+        <VolumeUp v-else />
+      </button>
+      <button
         v-else-if="!item.builtin"
         type="button"
         :class="ns.e('btn')"
@@ -64,12 +76,14 @@
 
 <script lang="ts">
 export interface BubbleActionsProps {
-  /** 操作项列表：字符串=内置预设（copy/regenerate/feedback），对象=自定义项；默认 ['copy','regenerate'] */
+  /** 操作项列表：字符串=内置预设（copy/regenerate/feedback/speak），对象=自定义项；默认 ['copy','regenerate'] */
   items?: ActionsItems;
   /** 'copy' 内置项的复制文本；提供后点击复制自动写入剪贴板并给出「已复制」反馈 */
   content?: string;
   /** 'feedback' 内置项的受控激活态，null 表示未反馈 */
   feedback?: MessageFeedback | null;
+  /** 'speak' 内置项的受控朗读态（true=正在朗读，按钮切换为停止） */
+  speaking?: boolean;
   /** 自定义项 onClick 的 ctx.message 来源（AiChat 接线时传入；独立使用可不传） */
   message?: ChatMessage;
 }
@@ -77,16 +91,17 @@ export interface BubbleActionsEmits {
   (e: 'copy'): void;
   (e: 'regenerate'): void;
   (e: 'feedback', value: MessageFeedback | null): void;
+  (e: 'speak'): void;
 }
 </script>
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace, copyText } from '@aix/hooks';
-import { Copy, Check, Refresh, ThumbUp, ThumbDown } from '@aix/icons';
+import { Copy, Check, Refresh, ThumbUp, ThumbDown, VolumeUp, VolumeOff } from '@aix/icons';
 import { ref, computed, onScopeDispose } from 'vue';
 import { locale } from '../locale';
-import type { ActionsItems, ActionItem, ChatMessage, MessageFeedback } from '../types';
+import type { ActionsItems, ActionItem, ActionKey, ChatMessage, MessageFeedback } from '../types';
 
 const props = withDefaults(defineProps<BubbleActionsProps>(), {
   content: '',
@@ -121,9 +136,7 @@ const toggleFeedback = (value: MessageFeedback) => {
   emit('feedback', props.feedback === value ? null : value);
 };
 
-type NormalizedItem =
-  | { builtin: true; key: 'copy' | 'regenerate' | 'feedback' }
-  | ({ builtin: false } & ActionItem);
+type NormalizedItem = { builtin: true; key: ActionKey } | ({ builtin: false } & ActionItem);
 
 const normalized = computed<NormalizedItem[]>(() =>
   props.items.map((it) =>

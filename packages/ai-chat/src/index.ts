@@ -61,6 +61,9 @@ export type {
 // 流式 Markdown 防闪烁 / 数学定界符归一化工具
 export { protectStreamingMarkdown, normalizeMathDelimiters } from './utils/markdown';
 
+// 朗读文本提取（markdown→纯文本，供自定义 getText 复用）
+export { stripMarkdownForSpeech } from './utils/stripMarkdownForSpeech';
+
 // URL 安全工具（协议白名单，供数据驱动的 href 场景复用）
 export { safeUrl } from './utils/url';
 

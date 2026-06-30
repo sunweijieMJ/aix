@@ -22,3 +22,5 @@ export type {
 } from './useAttachments';
 export { useVoiceInput } from './useVoiceInput';
 export type { UseVoiceInputOptions, UseVoiceInputReturn } from './useVoiceInput';
+export { useSpeech, createSpeechSynthesisSynthesizer } from './useSpeech';
+export type { UseSpeechOptions, UseSpeechReturn } from './useSpeech';

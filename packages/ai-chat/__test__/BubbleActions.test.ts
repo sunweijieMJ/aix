@@ -166,4 +166,19 @@ describe('BubbleActions', () => {
     const btns = w.findAll('button');
     expect(btns[btns.length - 1]!.classes()).toContain('extra');
   });
+
+  it("items 含 'speak'：渲染朗读按钮，点击抛 speak 事件", async () => {
+    const w = mount(BubbleActions, { props: { items: ['speak'] } });
+    const btn = w.find('.aix-bubble-actions__btn');
+    expect(btn.attributes('aria-label')).toBe('朗读');
+    await btn.trigger('click');
+    expect(w.emitted('speak')).toHaveLength(1);
+  });
+
+  it('speaking=true：朗读按钮切换为停止态（aria-pressed + 停止标签）', () => {
+    const w = mount(BubbleActions, { props: { items: ['speak'], speaking: true } });
+    const btn = w.find('.aix-bubble-actions__btn');
+    expect(btn.attributes('aria-label')).toBe('停止朗读');
+    expect(btn.attributes('aria-pressed')).toBe('true');
+  });
 });

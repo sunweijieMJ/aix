@@ -30,6 +30,8 @@ export const zhCN: AiChatLocale = {
   voiceButton: '语音输入',
   voiceStopButton: '停止语音输入',
   voiceListening: '正在聆听…',
+  speakButton: '朗读',
+  speakStopButton: '停止朗读',
   attachmentsTitle: '附件',
   attachmentPlaceholder: '点击或拖拽文件到此区域上传',
   attachmentPlaceholderHint: '支持图片、文档等多种格式',

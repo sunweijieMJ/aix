@@ -57,6 +57,10 @@ export interface AiChatLocale {
   voiceStopButton: string;
   /** 语音：聆听中占位文案 */
   voiceListening: string;
+  /** 语音播报：朗读消息按钮 */
+  speakButton: string;
+  /** 语音播报：停止朗读按钮 */
+  speakStopButton: string;
   /** 附件面板：标题 */
   attachmentsTitle: string;
   /** 附件面板：拖放区主提示文案（placeholder title） */

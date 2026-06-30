@@ -54,9 +54,11 @@
               :content="messageText(item)"
               :message="item"
               :feedback="(item.extra?.feedback as MessageFeedback | null) ?? null"
+              :speaking="speakingId === item.id"
               @copy="emit('copy', item)"
               @regenerate="onReload(item.id)"
               @feedback="onFeedback(item.id, $event)"
+              @speak="speech?.toggle(item)"
             />
           </slot>
         </template>
@@ -179,6 +181,12 @@ export interface AiChatProps {
   attachments?: UseAttachmentsOptions;
   /** 语音输入（opt-in），透传 Sender；不传则无麦克风按钮。视为静态配置 */
   voice?: boolean | VoiceConfig;
+  /**
+   * 语音播报（opt-in），透传内置 useSpeech；不传则无朗读按钮、不自动播报。
+   * true=全默认（speechSynthesis）；对象=自定义合成器 / autoPlay / getText 等。视为静态配置（setup 快照）。
+   * 注意：actions 为函数形态时不会自动追加内置 speak 项，需业务在返回数组中自行包含 'speak'；数组/默认形态会自动为 ai+success 且有可朗读文本的消息追加。
+   */
+  speech?: boolean | SpeechConfig;
 }
 export interface AiChatEmits {
   /** 用户发送消息（含点击快捷问题），携带文本与可选附件 */
@@ -213,6 +221,7 @@ import type { ShouldFollow } from '../composables/useAutoScroll';
 import { useChat } from '../composables/useChat';
 import type { UseChatOptions } from '../composables/useChat';
 import type { MarkdownItPlugin } from '../composables/useMarkdownRenderer';
+import { useSpeech } from '../composables/useSpeech';
 import type {
   ChatMessage,
   RoleConfig,
@@ -223,6 +232,7 @@ import type {
   ActionsItems,
   AttachmentItem,
   VoiceConfig,
+  SpeechConfig,
   SubBubbleMeta,
 } from '../types';
 import { messageText, attachmentBlock, textBlock } from '../utils/helpers';
@@ -430,6 +440,15 @@ const onFeedback = (id: string, value: MessageFeedback | null) => {
   emit('feedback', { id, value });
 };
 
+// 语音播报（opt-in，setup 快照，与 voice 对称）：仅 speech 存在时创建实例
+const speech = props.speech
+  ? useSpeech({ config: props.speech === true ? {} : props.speech })
+  : null;
+const speakingId = computed(() => speech?.speakingId.value ?? null);
+const speechAutoPlay = computed(
+  () => !!speech && (props.speech === true ? false : !!(props.speech as SpeechConfig).autoPlay),
+);
+
 // 消息操作条配置逻辑
 const DEFAULT_ACTIONS: ActionsItems = ['copy', 'regenerate'];
 
@@ -441,10 +460,13 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
     return r && r.length > 0 ? r : null;
   }
   if (item.role !== 'ai' || item.status !== 'success') return null;
-  // 1→N 拆分：默认操作条仅末子气泡显示，避免每个子气泡重复一条（函数形态由业务自控）
+  // 1→N 拆分：默认操作条仅末子气泡显示
   const sub = item.extra?.__sub as SubBubbleMeta | undefined;
   if (sub && sub.index < sub.count - 1) return null;
-  return a.length > 0 ? a : null;
+  const base: ActionsItems = a.length > 0 ? [...a] : [];
+  // speech 启用且该消息有可朗读文本时追加内置 speak（即便 base 为空也显示，speech 是独立 opt-in）
+  if (speech && speech.isSupported.value && speech.resolveText(item)) base.push('speak');
+  return base.length > 0 ? base : null;
 };
 
 // 每条消息的操作条配置（一次计算）：函数形态的用户函数每条消息每轮只调用一次，
@@ -456,10 +478,49 @@ const actionsMap = computed(() => {
   return map;
 });
 
-// 数组形态为空数组时整个 footer 模板都不挂（避免空 footer 节点）；函数形态恒挂、逐条判定
+// 数组形态为空数组时整个 footer 模板都不挂（避免空 footer 节点）；函数形态恒挂、逐条判定；
+// speech 启用时也须挂 footer 以呈现朗读按钮
 const actionsEnabled = computed(
-  () => typeof props.actions === 'function' || (props.actions ?? DEFAULT_ACTIONS).length > 0,
+  () =>
+    typeof props.actions === 'function' ||
+    (props.actions ?? DEFAULT_ACTIONS).length > 0 ||
+    !!speech,
 );
+
+// autoPlay：流式 AI 回复增量喂句。autoStartedId 记录"最近一条已自动起播的消息 id"，
+// 防止用户手动停止后被下一 chunk 重启。消息列表只增不回退、autoPlay 永远只作用于末条，
+// 故单个 id 足够（无需 Set，避免随会话无界增长）。
+let autoStartedId: string | null = null;
+if (speech) {
+  watch(
+    () => {
+      const list = parsedMessages.value;
+      const last = list[list.length - 1];
+      if (!last || last.role !== 'ai') return '';
+      // id + status + 文本长度 作为增量信号：消息增长或状态流转即触发
+      return `${last.id}:${last.status}:${messageText(last).length}`;
+    },
+    () => {
+      if (!speechAutoPlay.value) return;
+      const list = parsedMessages.value;
+      const last = list[list.length - 1];
+      if (!last || last.role !== 'ai') return;
+      if (last.status !== 'updating' && last.status !== 'success') {
+        // 终态 error/abort：若正在朗读本条流式回复，停止收尾——否则 feed 不再被调用，
+        // session.finish() 永不触发，speakingId 悬挂、会话卡死。
+        if (speech.speakingId.value === last.id) speech.stop();
+        return;
+      }
+      if (autoStartedId !== last.id) {
+        autoStartedId = last.id;
+        speech.feed(last);
+      } else if (speech.speakingId.value === last.id) {
+        // 仅当仍在朗读本条时续喂（用户手动停止后 speakingId 置空 → 不重启）
+        speech.feed(last);
+      }
+    },
+  );
+}
 
 defineExpose({
   messages,

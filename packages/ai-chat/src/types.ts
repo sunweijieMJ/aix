@@ -291,11 +291,11 @@ export type ContentBlock =
   | (BlockBase & { type: 'attachment'; items: AttachmentItem[] });
 
 /** 内置消息操作预设 key */
-export type ActionKey = 'copy' | 'regenerate' | 'feedback';
+export type ActionKey = 'copy' | 'regenerate' | 'feedback' | 'speak';
 
 /** 自定义消息操作项 */
 export interface ActionItem {
-  /** 唯一 key；不要与内置预设 key（copy/regenerate/feedback）同名，否则 v-for key 冲突 */
+  /** 唯一 key；不要与内置预设 key（copy/regenerate/feedback/speak）同名，否则 v-for key 冲突 */
   key: string;
   /** 按钮文案（tooltip + aria-label），a11y 必填 */
   label: string;
@@ -334,5 +334,66 @@ export interface VoiceConfig {
   /** 识别语言，默认取 navigator.language */
   lang?: string;
   /** 识别失败（权限拒绝/网络/启动失败等）回调；状态仍自动复位，toast 等提示由业务做 */
+  onError?: (error: unknown) => void;
+}
+
+// ──────────────────────────────────────────────
+// 语音播报类型（useSpeech 使用）
+// ──────────────────────────────────────────────
+
+/** 自定义合成器收到的上下文（参数 + 生命周期回调） */
+export interface SpeechSynthesizerCtx {
+  /** 朗读语言（透传 SpeechConfig.lang） */
+  lang?: string;
+  /** 语速 */
+  rate?: number;
+  /** 音调 */
+  pitch?: number;
+  /** 音量 */
+  volume?: number;
+  /** 音色标识（云端 voice id / 浏览器 voiceURI 或 name） */
+  voice?: string;
+  /** 首段真正发声时触发（用于 UI 起播态） */
+  onStart: () => void;
+  /** 队列耗尽且已 finish（自然播完）时触发 */
+  onEnd: () => void;
+  /** 合成 / 播放出错 */
+  onError: (error: unknown) => void;
+}
+
+/** 一次朗读会话句柄 */
+export interface SpeechSession {
+  /** 追加一段待朗读文本（增量分句后多次调用 / 整段一次调用） */
+  enqueue: (text: string) => void;
+  /** 标记没有更多文本（流结束）；队列放空后触发 ctx.onEnd */
+  finish: () => void;
+  /** 立即停止并清空队列 */
+  stop: () => void;
+}
+
+/** 自定义合成器工厂：启动一次会话并返回句柄（对接讯飞/阿里云等云端 TTS） */
+export type SpeechSynthesizer = (ctx: SpeechSynthesizerCtx) => SpeechSession;
+
+export interface SpeechConfig {
+  /** 自定义合成器；缺省用浏览器 speechSynthesis */
+  synthesizer?: SpeechSynthesizer;
+  /** 朗读语言，默认取 navigator.language */
+  lang?: string;
+  /** 语速 */
+  rate?: number;
+  /** 音调 */
+  pitch?: number;
+  /** 音量 */
+  volume?: number;
+  /** 音色标识 */
+  voice?: string;
+  /**
+   * 自定义要朗读的文本（默认：stripMarkdownForSpeech(messageText(m))）。
+   * 返回空串则该消息不显示朗读按钮。
+   */
+  getText?: (m: ChatMessage) => string;
+  /** 是否自动朗读流式 AI 回复，默认 false */
+  autoPlay?: boolean;
+  /** 合成 / 播放失败回调；状态仍自动复位，toast 等提示由业务做 */
   onError?: (error: unknown) => void;
 }

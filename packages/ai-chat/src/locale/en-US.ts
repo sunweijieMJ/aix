@@ -30,6 +30,8 @@ export const enUS: AiChatLocale = {
   voiceButton: 'Voice input',
   voiceStopButton: 'Stop voice input',
   voiceListening: 'Listening…',
+  speakButton: 'Read aloud',
+  speakStopButton: 'Stop reading',
   attachmentsTitle: 'Attachments',
   attachmentPlaceholder: 'Click or drag files here to upload',
   attachmentPlaceholderHint: 'Supports images, documents and more',
