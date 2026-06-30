@@ -8,7 +8,7 @@ import { TRANSLATION_DEPENDENCY_HOOKS, resolveHookName } from './hooks-utils';
 /**
  * 类组件 HOC 注入时给内部类附加的后缀：`原类名 + WithOutIntl`。
  * inject（ReactComponentInjector）与 restore（unwrapHOC / 预备遍历）必须共用同一约定，
- * 否则两端命名不一致会导致 restore 无法还原类名 + 丢失 export（Bug B3）。
+ * 否则两端命名不一致会导致 restore 无法还原类名 + 丢失 export。
  */
 export const HOC_CLASS_SUFFIX = 'WithOutIntl';
 
@@ -114,7 +114,7 @@ export class ReactImportManager implements IImportManager {
           // 类组件 HOC（内部名 = 原名+WithOutIntl）：原本是 `export default class Foo`，inject 时
           // 拆成「class FooWithOutIntl + export default HOC(FooWithOutIntl)」。还原时删除这条默认导出
           // 语句，由 case 3 把 `export default` 还给改回原名的类——否则会产出引用旧内部名的
-          // `export default FooWithOutIntl`（Bug #1 的 restore 配套）。
+          // `export default FooWithOutIntl`。
           if (wrappedComponent.endsWith(HOC_CLASS_SUFFIX)) {
             return ts.factory.createNotEmittedStatement(node);
           }
@@ -320,9 +320,9 @@ export class ReactImportManager implements IImportManager {
 
     // 仅摘除工具注入的 i18n 具名导入（Trans / useTranslation / withTranslation / WithTranslation
     // 等），保留用户在同一行从该包手写的其它导入（如 react-i18next 的 I18nextProvider /
-    // initReactI18next、react-intl 的 IntlProvider / createIntl）。此前无条件整条
-    // createNotEmittedStatement 会把这些非 i18n 导入一并删除，产出 `Cannot find name '...'`
-    // （TS2304）的不可编译代码——与 Vue 端 VueRestoreTransformer.cleanupImports 的精确摘除对齐。
+    // initReactI18next、react-intl 的 IntlProvider / createIntl）。整条 createNotEmittedStatement
+    // 会把这些非 i18n 导入一并删除，产出 `Cannot find name '...'`（TS2304）的不可编译代码——
+    // 故按具名精确摘除，与 Vue 端 VueRestoreTransformer.cleanupImports 对齐。
     const importClause = node.importClause;
     if (!importClause) return node; // 副作用导入（无具名/默认绑定），原样保留
 

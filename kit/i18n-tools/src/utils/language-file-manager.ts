@@ -302,9 +302,8 @@ export class LanguageFileManager {
 
   /**
    * 探测单个 locale 是否损坏（存在但 JSON 解析失败），返回首个损坏文件的绝对路径，
-   * 无损坏返回 null。收口此前散落在 Pick/Merge/Prune/Restore/Export/Generate/Doctor
-   * 各处、彼此靠注释互相「对齐」的损坏探测三分支——未来新增一类损坏源时只改这一处，
-   * 不再需要逐个 processor 手改而漏改。
+   * 无损坏返回 null。统一 Pick/Merge/Prune/Restore/Export/Generate/Doctor 共用的损坏探测
+   * 三分支——新增一类损坏源时只改这一处，不必逐个 processor 手改而漏改。
    *
    *  - 桶式：findCorruptBucketFile（扫桶目录）；checkLegacy 时再查 findCorruptLegacySingleFile
    *    —— getMessages→migrateToBuckets 会 silent 读遗留单文件、损坏则清空并 rename .bak，

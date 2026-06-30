@@ -106,7 +106,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 若存在「locale 缺 key / 动态 key」未被还原的存活 t() 调用，删任一半都会产出未定义标识符
     // （删声明 → 未定义 t；删 import → 未定义 useI18n）。下方模块 import 清理只守卫 import
     // 绑定、保护不到 hook 绑定，故此处独立守卫。正常 restore（全部 key 命中、t() 清空）下
-    // t 已无引用，行为与原先一致。
+    // t 已无引用，照常清理。
     if (this.isTNameUnusedInScript(restoredCode)) {
       // 先清理 hook 声明（单键 `const { t } = useI18n()` 会被整条删除），再守卫删 import：
       // 仅当清理后 script 里已无 hookName( 调用时才删导入。否则多键解构
@@ -334,8 +334,8 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     // 2. 匹配属性绑定 :attr="$t('key')" 或 :attr='$t("key")'（外/内引号任意组合）。
     //    还原为静态属性 attr="文本"。vars 段支持单层嵌套花括号。
-    //    Why 用反向引用 \2：Vue 官方允许 `:attr='...'` 单引号写法，原先只匹配
-    //    双引号外层时，单引号场景会绕过本 pass，被 pass 3 兜底替换为 'text'，
+    //    Why 用反向引用 \2 匹配内外同种引号：Vue 官方允许 `:attr='...'` 单引号写法；
+    //    若只匹配双引号外层，单引号场景会绕过本 pass、被 pass 3 兜底替换为 'text'，
     //    输出 `:attr=''text''` 无效语法。
     //    锚点用 `(?:v-bind)?:` 同时覆盖简写 `:attr=` 与完整 `v-bind:attr=`：完整写法下整体
     //    匹配 `v-bind:attr=...` 并连同 `v-bind` 前缀一起替换为静态属性，避免只吃掉 `:attr`
@@ -659,9 +659,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   /**
    * 清理工具注入的 hook 导入（仅摘除 library.hookName，不动同一行的其他命名导入）。
    *
-   * Why 不再用 library.getImportCleanupRegex 直接 replace 成空串：那种粗粒度
-   * 删除整条 import 的方式，会把用户手写的 `import { useI18n, createI18n }
-   * from 'vue-i18n'` 中的 createI18n 一并删除，下游编译报错。
+   * Why 用 removeNamedImports 精确摘除而非整条 replace：粗粒度删除整条 import 会把用户
+   * 手写的 `import { useI18n, createI18n } from 'vue-i18n'` 中的 createI18n 一并删除，
+   * 下游编译报错。
    */
   private static cleanupImports(code: string, library: VueI18nLibrary): string {
     return CommonASTUtils.removeNamedImports(

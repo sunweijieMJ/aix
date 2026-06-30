@@ -44,7 +44,7 @@ export class PickProcessor extends FileProcessor {
     const sourceLocale = this.config.locales.source;
     const targets = this.config.locales.targets;
 
-    // locale 损坏防护（Bug B5）：getMessages 走 safeLoadJsonFile(silent)，损坏文件被静默当成
+    // locale 损坏防护：getMessages 走 safeLoadJsonFile(silent)，损坏文件被静默当成
     // {}。源损坏 → sourceMessages 为空 → 写出两个空字典；任一 target 损坏 → 该 target 全部
     // key 在 analyzeTranslationStatus 里读成 undefined、判为未翻译 → 同样无条件覆写
     // untranslated.json，销毁尚未 merge 的在途译文并伪报成功。故 source 与所有 target 一并

@@ -63,7 +63,7 @@ export class FileUtils {
    *     销毁在途译文 / 把损坏误判为「无条目」而 CI 伪绿灯）
    *   - 正常 → 解析结果
    *
-   * 收口此前散落在 Merge / Translate / CsvExport / CsvImport 各处手写的
+   * 统一 Merge / Translate / CsvExport / CsvImport 共用的
    * 「readFileSync → trim 判空 → safeParseJson → null 即损坏」骨架。corrupt 报错信息由调用方
    * 按场景定制（各命令对「会销毁什么」的描述不同）。
    */

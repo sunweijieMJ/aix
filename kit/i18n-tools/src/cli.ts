@@ -542,7 +542,7 @@ export default defineConfig({
   // 这里必须显式校验 CLI 入参：yargs `type: 'number'` 对 `--coverage-threshold abc`
   // 会强转出 NaN，而 `NaN ?? x` 仍是 NaN（非 nullish），最终 `actualPct < NaN` 恒 false
   // → CI 门禁被静默关闭（拼错却得到假绿）；>100 则恒触发退出。config.ci.coverageThreshold
-  // 已在 loader 里做过同样的 [0,100] + 有限数校验，CLI 路径此前漏了，这里补齐对齐。
+  // 已在 loader 里做过同样的 [0,100] + 有限数校验，CLI 入参同样需要做。
   const cliCoverageThreshold = argv['coverage-threshold'] as number | undefined;
   if (
     cliCoverageThreshold !== undefined &&

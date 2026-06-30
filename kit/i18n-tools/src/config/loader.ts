@@ -127,7 +127,7 @@ function validateEnum(
 
 /**
  * match 字段类型守卫：keys.prefix.rules[].match 与 buckets.rules[].match 共用同一组
- * 合法形态（string | string[] | RegExp | function）。收口此前两处手工对齐的重复谓词。
+ * 合法形态（string | string[] | RegExp | function）。两处共用本谓词，避免重复定义漂移。
  */
 function isValidMatcher(m: unknown): boolean {
   return (

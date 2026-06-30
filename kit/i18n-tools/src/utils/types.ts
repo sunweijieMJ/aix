@@ -114,13 +114,13 @@ export interface TransformContext {
   componentNameMap: Map<string, string>;
   /**
    * 类组件 HOC 注入时被改名为 `原名+WithOutIntl` 的内部类，其原 HOC 导出语句带 export 的，
-   * 内部类名记于此。restore 把内部类改回原名时据此恢复 export 修饰符（Bug B3）。
+   * 内部类名记于此。restore 把内部类改回原名时据此恢复 export 修饰符。
    */
   exportedHocInnerNames?: Set<string>;
   /**
    * 通过 `export default HOC(原名+WithOutIntl)` 默认导出的内部类名记于此。
    * restore 把内部类改回原名时据此恢复 `export default` 修饰符，并删除原 HOC 默认导出语句，
-   * 避免还原出引用旧内部名的 `export default FooWithOutIntl`（Bug #1 的 restore 配套）。
+   * 避免还原出引用旧内部名的 `export default FooWithOutIntl`。
    */
   defaultExportedHocInnerNames?: Set<string>;
 }

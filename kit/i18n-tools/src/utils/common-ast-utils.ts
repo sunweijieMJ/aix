@@ -22,9 +22,9 @@ export class CommonASTUtils {
   /**
    * 对字符串做正则元字符转义，用于把任意文本嵌入 `new RegExp(...)` 模板。
    *
-   * Why: React/Vue 多个 ImportManager / Transformer / RestoreTransformer 此前
-   *      各自内联 `replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`，已经出现字符集
-   *      不一致（个别位置漏掉 `*` `?`）。统一到本方法消除漂移。
+   * Why: React/Vue 多个 ImportManager / Transformer / RestoreTransformer 共用，
+   *      避免各自内联 `replace(/[.*+?^${}()|[\]\\]/g, '\\$&')` 导致字符集不一致
+   *      （个别位置漏掉 `*` `?`）。
    */
   static escapeRegExp(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -36,9 +36,9 @@ export class CommonASTUtils {
    * `wrap=true`（默认）产出 `{ a: x, b: y }`；`wrap=false` 产出去花括号的内层
    * `a: x, b: y`（react-i18next 函数调用路径的 inline 形态用）。
    *
-   * Why: VueTransformer / react-i18next / react-intl 此前各自复制一份逐字相同的
-   *      forEach + `${k}: ${v}` 拼接，react-i18next 还多了个去花括号的 inline 变体，
-   *      已开始漂移。统一到本方法，间距/转义改动只需改一处。
+   * Why: VueTransformer / react-i18next / react-intl 共用，避免各自复制一份
+   *      forEach + `${k}: ${v}` 拼接（react-i18next 还有去花括号的 inline 变体）导致漂移；
+   *      间距/转义改动只需改一处。
    */
   static formatValuesMapping(values: Map<string, string>, options?: { wrap?: boolean }): string {
     const mappings: string[] = [];
@@ -104,9 +104,8 @@ export class CommonASTUtils {
    *
    * templateVariables 仅包含「真正的变量表达式」，不含字面量。
    *
-   * 此前 React 与 Vue 的实现并不一致：Vue 端会内联字面量，React 端把所有 spans
-   * 都当作变量。统一到本方法后，行为对齐，避免「`Hello${'world'}`」这类被错误
-   * 拆成两个占位符的问题。
+   * React 与 Vue 共用本方法保证行为一致：字面量插值（如 `Hello${'world'}`）内联回 text，
+   * 仅真正的变量表达式作占位符，避免被错误拆成两个占位符。
    */
   static processTemplateExpression(
     node: ts.TemplateExpression,
@@ -319,8 +318,7 @@ export class CommonASTUtils {
    * - 模块导入路径（import / require / external module reference）
    * - 比较运算符 / case 子句的操作数（翻译状态值会破坏分支判断）
    *
-   * Why: React/Vue 两端 TextExtractor 此前各写一遍同样的排除条件，
-   *      字面相同；统一到本工具方法避免维护漂移。
+   * Why: React/Vue 两端 TextExtractor 共用本方法，避免各写一遍相同的排除条件而维护漂移。
    *
    * 计算属性访问与对象字面量 key 是对称的：定义侧 `{ '进行中': x }` 已被 PropertyAssignment
    * 分支排除并原样保留，访问侧 `map['进行中']` 若被提取替换为 `map[t(...)]`，运行时返回译文
@@ -1322,8 +1320,7 @@ export class CommonASTUtils {
    * Why（关键）：复用查找（IdReuseResolver 建表 / resolveSemanticId）与 locale 落盘必须使用
    * 同一 canonical 形态，否则模板/占位符串两边形态不一致——反查永远 miss，跨运行重复生成 _N
    * 后缀 key（旧 key 带译文成孤儿、源码改指向无译文新 key）。GenerateProcessor.toLocaleMessage 与
-   * LanguageFileManager.updateLanguageFiles 两处共用本方法，杜绝形态漂移（此前两处逐字重复，
-   * 仅靠注释约束同步）。
+   * LanguageFileManager.updateLanguageFiles 两处共用本方法，杜绝形态漂移。
    */
   static buildLocaleMessage(
     extracted: Pick<
@@ -1669,8 +1666,8 @@ export class CommonASTUtils {
   /**
    * 在文本行数组中查找最后一条 import 语句的行号；没有则返回 -1。
    *
-   * Why: React 与 Vue 的 ImportManager 都需要这个能力来确定"插入新 import 的锚点"，
-   * 此前两端各自实现（一份反向遍历、一份正向遍历），结果等价但维护两份易漂移。
+   * Why: React 与 Vue 的 ImportManager 都需要这个能力来确定"插入新 import 的锚点"，共用本方法
+   * 避免两端各自实现而维护漂移。
    */
   static findLastImportLineIndex(lines: string[]): number {
     // 多行 import（如 `import {\n  A,\n  B,\n} from 'x'`）只用 startsWith('import ')
@@ -1794,7 +1791,7 @@ export class CommonASTUtils {
     if (namesToRemove.length === 0) return code;
     // 行首锚定（gm + `^[ \t]*import`）：只匹配作为「语句」出现在行首（允许缩进）的真实
     // import，排除注释（`// import { t } from 'x'`）或字符串里的 import 字样——不锚定会
-    // 把注释里的 import 当作匹配项删除，`\n?` 还会吞掉换行把下一行真实代码并入注释（Bug #8）。
+    // 把注释里的 import 当作匹配项删除，`\n?` 还会吞掉换行把下一行真实代码并入注释。
     // 与姊妹方法 mergeNamedImport 的锚定口径保持一致。尾部 `;?` `\n?` 避免删除后留空行。
     // 可选默认说明符 `import D, { … }`：捕获默认名 D 并在重写时保留，否则 default+named 形式
     // 的死 t 摘不掉（regex 不匹配 → 残留 no-unused-vars）。
@@ -2061,7 +2058,7 @@ export class CommonASTUtils {
     // 行首锚定（gm + `^[ \t]*import`）：只匹配作为「语句」出现在行首（允许缩进）的真实
     // import，从而排除出现在注释（如 `// import { t } from 'x'`、块注释中的示例代码）
     // 或字符串字面量里的 import 字样——它们都是行内文本，不会顶到行首。
-    // 不锚定会误把注释里的 import 当作重复项，再被下方删除逻辑误伤真实 import（Bug #8）。
+    // 不锚定会误把注释里的 import 当作重复项，再被下方删除逻辑误伤真实 import。
     // 可选默认说明符 `import D, { … }`：捕获默认名 D（组1），命名列表为组2。不识别会导致
     // 已有 `import D, { t } from pkg` 匹配失败 → 误判为「不存在」而追加重复 import（TS2300）。
     const importRegex = new RegExp(
@@ -2086,7 +2083,7 @@ export class CommonASTUtils {
       const replacement = `import ${prefix}{ ${merged.join(', ')} } from '${packageName}';`;
 
       // 用「位置切片」替换而非 String.replace(子串)：后者会从头重新搜索，当某条匹配文本
-      // 是另一条的子串时会替换错位置（Bug #8 的次因）。这里按 match.index 精确定位，
+      // 是另一条的子串时会替换错位置。这里按 match.index 精确定位，
       // 从后往前处理以保证前面的索引不被位移影响：首处替换为合并语句，其余删除。
       let result = code;
       for (let i = matches.length - 1; i >= 0; i--) {

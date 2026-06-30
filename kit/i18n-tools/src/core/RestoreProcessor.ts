@@ -197,9 +197,8 @@ export class RestoreProcessor extends BaseProcessor {
   ): Promise<boolean> {
     const actualOutputPath = outputPath || filePath;
 
-    // 不再 try/catch 吞错：让异常向上传播到 restoreFiles 的循环处理器，
-    // 由其计入 failedFiles 并最终非零退出。此前内部 return false 与上层
-    // continue 双重静默会让 CI 把"全部失败"显示为成功。
+    // 不吞错：让异常向上传播到 restoreFiles 的循环处理器，由其计入 failedFiles 并最终
+    // 非零退出。内部 return false 与上层 continue 的双重静默会让 CI 把"全部失败"显示为成功。
     const restoreTransformer = this.adapter.getRestoreTransformer();
     const sourceText = fs.readFileSync(filePath, 'utf-8');
     // 复用已读取的 sourceText，避免 transform 内对同一文件二次读盘（接口已与 ITransformer 对齐）。

@@ -177,7 +177,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         // loc.source 是未解码的原始源码；@vue/compiler-dom 会把 HTML 实体（&copy; 等）
         // 解码进 content。两者不一致时（即文本含实体）必须分别使用：
         // - original 用原始源码 → Transformer 的 indexOf 才能在含 &copy; 的模板里匹配到，
-        //   否则替换失败、源码残留中文 + locale 多出孤儿 key（Bug B1）。
+        //   否则替换失败、源码残留中文 + locale 多出孤儿 key。
         // - processedMessage 用解码后文本 → 作为 locale 值与 ID 源，$t 渲染时正确输出 ©。
         const rawSource = textNode.loc.source.trim();
         const hasEntity = rawSource !== text;
@@ -1009,12 +1009,10 @@ export class VueTextExtractor extends BaseTextExtractor {
 
     // 如果字符串包含中文，则提取。
     //
-    // 注意：曾尝试过滤"短碎片 + 标点"型残渣（如 "吧！" "嗯。" "哦~"），理由是
-    // `<p>{{ msg }}吧！</p>` 这类被 AST 切出的尾巴文本节点 LLM 难翻译，会沉到
-    // untranslated.json 里。但实践中误伤了真实文案——例如「开启你的学习计划<span>
-    // …</span>吧！」里末尾"吧！"是必须翻译的句尾语气词，过滤后线上残留中文。
-    // 权衡下选择"宁多勿漏"：让句尾片段进入提取流程，即便 LLM 翻不好也只是
-    // untranslated.json 多一项噪音，不会导致线上漏翻。
+    // 不过滤"短碎片 + 标点"型残渣（如 "吧！" "嗯。" "哦~"）：句尾片段（如「开启你的学习
+    // 计划<span>…</span>吧！」末尾的"吧！"）是必须翻译的句尾语气词，过滤会导致线上残留中文。
+    // 故"宁多勿漏"：让句尾片段进入提取流程，即便 LLM 翻不好也只是 untranslated.json 多一项
+    // 噪音，不会导致线上漏翻。
     if (FileUtils.containsChinese(str)) {
       return true;
     }

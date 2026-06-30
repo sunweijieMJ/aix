@@ -273,7 +273,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           if (wrappedComponent) {
             context.componentNameMap.set(node.name.text, wrappedComponent);
             // 类组件 HOC 约定：内部类名 = 原名 + 'WithOutIntl'。若该 HOC 导出语句带 export，
-            // 记录内部类名，供 unwrapHOC 把类改回原名时恢复 export（Bug B3）。
+            // 记录内部类名，供 unwrapHOC 把类改回原名时恢复 export。
             if (
               wrappedComponent === node.name.text + HOC_CLASS_SUFFIX &&
               ts.isVariableDeclarationList(node.parent) &&
@@ -286,7 +286,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
         }
       }
       // `export default HOC(FooWithOutIntl)`：记录内部类名，供 unwrapHOC 删除该默认导出语句、
-      // 并在类改回原名时恢复 `export default`（Bug #1 的 restore 配套）。
+      // 并在类改回原名时恢复 `export default`。
       if (
         ts.isExportAssignment(node) &&
         !node.isExportEquals &&

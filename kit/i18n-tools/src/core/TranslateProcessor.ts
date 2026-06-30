@@ -116,7 +116,7 @@ export class TranslateProcessor extends FileProcessor {
     });
 
     // 全部批次失败时抛错（非零退出），与 restore（failedFiles>0）/ doctor（CI error>0）对齐，
-    // 避免 CI 把「所有翻译都失败」误判为成功（Bug B6）。部分失败（仍有成功）不抛错，
+    // 避免 CI 把「所有翻译都失败」误判为成功。部分失败（仍有成功）不抛错，
     // 保留断点续翻设计——失败明细已落 RunReport，重跑会继续翻译剩余条目。
     if (allFailedBatches.length > 0 && allSuccessBatches === 0) {
       throw new Error(
@@ -224,9 +224,9 @@ export class TranslateProcessor extends FileProcessor {
           successBatches++;
         } else {
           // LLM 返回了结构合法的批次，但 0 条写入（全部条目因占位符不一致被 mergeTranslations
-          // 丢弃，或 LLM 未返回任何译文）。此前这种「产出但全拒」既不计 success 也不计 failed
-          // → 不进 RunReport、不触发退出守卫；当所有批次/所有 target 都如此时，进程会以 exit 0
-          // 退出却什么都没写。计为失败并上报，让 CI 能发现「翻译跑了但一条没落」。
+          // 丢弃，或 LLM 未返回任何译文）。这种「产出但全拒」若既不计 success 也不计 failed，
+          // 就不进 RunReport、不触发退出守卫；当所有批次/所有 target 都如此时，进程会以 exit 0
+          // 退出却什么都没写。故计为失败并上报，让 CI 能发现「翻译跑了但一条没落」。
           failedBatches.push(i + 1);
           this.report.addFailure({
             stage: 'translate',

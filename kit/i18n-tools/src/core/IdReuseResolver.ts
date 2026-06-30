@@ -63,8 +63,8 @@ export class IdReuseResolver {
    *
    * 口径与 source-key-scanner（doctor/prune 对账）统一：除 `t()/$t()` 外，也覆盖
    * react-intl 的 `intl.formatMessage({ id })` / `<FormattedMessage id>`、react-i18next
-   * 的 `<Trans i18nKey>`、vue 的 `<i18n-t keypath>` / `v-t`。此前仅认 `t()/$t()`，
-   * 导致 react-intl 项目 alreadyI18n 恒为 0、覆盖率被系统性低估而误触 CI 卡点。
+   * 的 `<Trans i18nKey>`、vue 的 `<i18n-t keypath>` / `v-t`。若只认 `t()/$t()`，
+   * react-intl 项目 alreadyI18n 会恒为 0、覆盖率被系统性低估而误触 CI 卡点。
    */
   scanExistingCallsInSources(filePaths: Iterable<string>): void {
     for (const filePath of filePaths) {

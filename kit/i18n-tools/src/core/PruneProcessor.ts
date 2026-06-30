@@ -50,11 +50,11 @@ export class PruneProcessor extends BaseProcessor {
     //   - 单文件：readLocaleFile 对「解析失败」返回 null（与「文件不存在 → {}」区分），下方据此中止。
     //   - 桶式：readLocaleFile 会把损坏桶经 safeLoadJsonFile 静默降级为 {}、永不返回 null，
     //     故 null 守卫对桶式失效。必须用 findCorruptBucketFile 单独探测（与 Pick/Merge 一致），
-    //     否则会基于残缺 source 误判孤儿，并把损坏桶静默改名 .bak、源 key 从活跃 locale 消失（Bug #2）。
+    //     否则会基于残缺 source 误判孤儿，并把损坏桶静默改名 .bak、源 key 从活跃 locale 消失。
     //
     //   守卫覆盖 source + 所有 target：pruneLocale 会对每个 locale 都删除并整体重写桶文件，
     //   target 桶损坏同样会被静默降级为 {}、命中孤儿后触发重写、损坏桶被改名 .bak 致 key 丢失。
-    //   只守 source 会在 target 桶损坏时重蹈 Bug #2。
+    //   只守 source 会在 target 桶损坏时重蹈上述「静默改名 .bak、key 丢失」的问题。
     // 探测口径（桶式 / 遗留单文件 / 单文件）统一收口于 findCorruptLocale。
     LanguageFileManager.assertLocalesNotCorrupt(
       this.config,

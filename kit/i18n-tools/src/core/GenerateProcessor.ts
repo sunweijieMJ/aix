@@ -232,7 +232,7 @@ export class GenerateProcessor extends BaseProcessor {
    * 把原文清理成「给 LLM 看的版本」：去除前导序号噪音。
    *
    * 例：「9. 消息提示」→「消息提示」。LLM 据此生成 `messagePrompt` 而非
-   * `messagePrompt9`（原先 LLM 把 9 挪到末尾，sanitize 也无法去除）。
+   * `messagePrompt9`（LLM 会把序号 9 挪到末尾，sanitize 也无法去除）。
    * locale 文件中的 value 仍是原文「9. 消息提示」，仅 ID 命名脱敏。
    */
   private static cleanForLLM(text: string): string {
@@ -518,8 +518,8 @@ export class GenerateProcessor extends BaseProcessor {
     keyBucketMap: Record<string, string> | undefined,
     options?: { preFinalizedLocale?: boolean },
   ): Promise<void> {
-    // 阶段 1.4（写源码前损坏守卫）：桶式读取默认 silent 降级（损坏 JSON 当 {}），generate
-    // 此前缺这层保护——损坏 bucket 的存量 key 会在重写时被静默丢弃/覆盖（连 .bak 都没有，真丢）。
+    // 阶段 1.4（写源码前损坏守卫）：桶式读取默认 silent 降级（损坏 JSON 当 {}）；缺这层守卫时，
+    // 损坏 bucket 的存量 key 会在重写时被静默丢弃/覆盖（连 .bak 都没有，真丢）。
     // 与 Merge/Pick/Prune 的「损坏即中止」对齐，且必须前移到写源码之前，避免留下「源码已改、
     // locale 未写」的不一致态。generate 仅更新 source locale，故只校验 source 桶。
     // 非桶式同样需要前置守卫（与桶式 / PickProcessor 对齐）：source locale「有内容却

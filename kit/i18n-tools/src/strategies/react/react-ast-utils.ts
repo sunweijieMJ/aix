@@ -98,7 +98,7 @@ export class ReactASTUtils {
         // 否则（如模块顶层小写 renderXxx 这类返回 JSX 的工具函数）继续向上walk：
         // - 若被某个真组件包裹 → 命中外层组件返回 'function'，裸 t() 经闭包可用；
         // - 若一路到顶都不是组件 → 落到 'other'，由 import 管理器注入全局 import { t }，
-        //   避免产出引用未声明 t() 的代码（Bug B4）。
+        //   避免产出引用未声明 t() 的代码。
         if (
           ReactASTUtils.isFunctionComponent(current) &&
           ReactASTUtils.isInjectableComponentFunction(current)
