@@ -31,9 +31,13 @@ export function isModeExplicitlySet(args: string[]): boolean {
  */
 export async function formatWithPrettier(filePath: string): Promise<void> {
   LoggerUtils.info(`🎨  正在格式化: ${filePath}`);
+  // Windows 上 npx 实为 npx.cmd：execFile 不经 shell、不解析 PATHEXT，直接 spawn 'npx'
+  // 会 ENOENT（且 Node 在 CVE-2024-27980 后对 .cmd 经 spawn 的隐式解析更严）。必须按平台
+  // 显式补 .cmd 后缀，否则 Windows 用户即便已装 prettier/eslint 也会格式化静默失败。
+  const npxBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';
   try {
-    await execFileAsync('npx', ['prettier', '--write', filePath], { cwd: process.cwd() });
-    await execFileAsync('npx', ['eslint', '--fix', filePath], { cwd: process.cwd() });
+    await execFileAsync(npxBin, ['prettier', '--write', filePath], { cwd: process.cwd() });
+    await execFileAsync(npxBin, ['eslint', '--fix', filePath], { cwd: process.cwd() });
     LoggerUtils.success(`   - ✅  格式化成功`);
   } catch (error) {
     LoggerUtils.error(

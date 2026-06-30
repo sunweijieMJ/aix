@@ -84,6 +84,24 @@ describe('Vue transform 输出', () => {
     expect(out).toBe("<span>`你好` 与 $t('k')</span>"); // 第一个原样保留，仅第二个被替换
   });
 
+  // 回归（审计 HIGH，VueTransformer:385）：文本节点（无引号 original）此前会先查找带引号版本
+  // `"全部"`，indexOf 从文本节点 column 向后误命中【同行后方未被提取的带引号技术属性值】
+  // （value 是技术属性被跳过提取，源码保留 `value="全部"`），把属性毁成非法 `value={{ $t() }}`，
+  // 而真正的文本节点'全部'未被替换 → 源码残留中文 + locale 孤儿 key。
+  // 修复：按 templateContext 收窄引号搜索（仅 dynamic-attribute / interpolation）。
+  it('文本节点替换不得误命中同行带引号技术属性值（HIGH 回归）', async () => {
+    const out = await transformVue(
+      `<template>\n  <label>全部<input value="全部" /></label>\n</template>\n`,
+    );
+    // 文本节点被正确替换为 $t
+    expect(out).toContain("{{ $t('k0') }}");
+    // 技术属性 value 原样保留，未被毁成非法无引号绑定
+    expect(out).toContain('value="全部"');
+    expect(out).not.toMatch(/value=\{\{/);
+    // 文本节点的中文不应残留在 <label> 直接子文本位置
+    expect(out).not.toMatch(/<label>\s*全部/);
+  });
+
   it('表达式内先比较后展示同一文案：替换命中展示分支，比较操作数保持硬编码（回归 #2）', async () => {
     // status === '保存' 的 '保存' 被提取端有意跳过（比较操作数），只提取展示分支 ? '保存' 与 '保存中'。
     // 旧实现替换 '保存' 时从指令起点 indexOf 命中更靠前的 === '保存' → 比较被改成 $t() 永不命中，

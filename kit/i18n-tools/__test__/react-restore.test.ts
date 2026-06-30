@@ -416,6 +416,44 @@ describe('React restore — localeMap 不完整时 hook/global 声明守卫（#8
     ).toBe(0);
   });
 
+  // 回归（审计 HIGH，ReactRestoreTransformer:393）：类组件 intl 来自 `const { intl } = this.props`
+  // （injectIntl HOC 注入），不是 hook 声明 → 此前 hookScopes 为空、守卫在 401 行直接返回 false，
+  // 走不到成员访问扫描 → 误删 `const { intl } = this.props` 并解除 HOC，残留 intl.formatNumber 未定义。
+  // 函数组件等价场景已有守卫（上一用例）；此处补类组件对称路径。
+  it('[react-intl] 类组件 intl 用于 formatNumber → 即便 formatMessage 可还原也须保留 this.props 解构与 HOC', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { injectIntl, WrappedComponentProps } from 'react-intl';\n` +
+        `class PriceInner extends React.Component<WrappedComponentProps & { amount: number }> {\n` +
+        `  render() {\n` +
+        `    const { intl } = this.props;\n` +
+        `    const price = intl.formatNumber(this.props.amount);\n` +
+        `    return <div>{intl.formatMessage({ id: 'k0' })}: {price}</div>;\n` +
+        `  }\n` +
+        `}\n` +
+        `export const Price = injectIntl(PriceInner);\n`,
+      { k0: '价格' },
+      'react-intl',
+    );
+    // formatMessage 已还原为文案
+    expect(out, `还原输出：\n${out}`).toContain('价格');
+    // 关键：intl 仍被 formatNumber 使用 → this.props 解构与 injectIntl 包裹必须保留
+    expect(out).toContain('intl.formatNumber(this.props.amount)');
+    expect(out, `还原输出：\n${out}`).toMatch(/const\s*\{\s*intl\s*\}\s*=\s*this\.props/);
+    expect(out).toMatch(/injectIntl\(/);
+    // 不得出现对未定义 intl 的引用（TS2304 根因）
+    const sfClass = ts.createSourceFile(
+      'o.tsx',
+      out,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    expect(
+      ((sfClass as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics ?? []).length,
+    ).toBe(0);
+  });
+
   it('[react-intl] intl 仅用于可还原的 formatMessage → 仍移除声明（不回归）', () => {
     const out = restore(
       `import { useIntl } from 'react-intl';\n` +

@@ -69,6 +69,25 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     return false;
   }
 
+  /**
+   * 类组件路径：translationVar 来自 `const { intl } = this.props`（injectIntl / withTranslation
+   * HOC 注入），它不是 i18n hook 声明，故 isHookDeclaration 不认。但它同样是 translationVar 的绑定
+   * 来源，守卫必须把其所在作用域纳入「翻译调用之外是否仍被引用」的扫描——否则函数组件 `const intl =
+   * useIntl()` 有守卫、类组件这条对称路径却漏判，导致 intl.formatNumber 等非翻译用法被忽略，
+   * cleanupVariableStatements 误删该绑定 + unwrapHOC 解除 injectIntl，残留未定义的 intl（TS2304 /
+   * ReferenceError）。仅认初始化器恰为 `this.props` 的绑定，不影响 standalone tImport 路径。
+   */
+  private declarationBindsVarFromThisProps(decl: ts.VariableDeclaration, varName: string): boolean {
+    if (!this.declarationBindsVar(decl, varName)) return false;
+    const init = decl.initializer;
+    return (
+      !!init &&
+      ts.isPropertyAccessExpression(init) &&
+      init.expression.kind === ts.SyntaxKind.ThisKeyword &&
+      init.name.text === 'props'
+    );
+  }
+
   /** 取 node 最近的函数式作用域（函数 / 箭头 / 方法 / 访问器），到顶则返回 SourceFile。 */
   private enclosingScope(node: ts.Node): ts.Node {
     let cur: ts.Node | undefined = node.parent;
@@ -390,7 +409,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       const collect = (node: ts.Node): void => {
         if (ts.isVariableStatement(node)) {
           for (const decl of node.declarationList.declarations) {
-            if (library.isHookDeclaration(decl) && this.declarationBindsVar(decl, varName)) {
+            if (
+              (library.isHookDeclaration(decl) && this.declarationBindsVar(decl, varName)) ||
+              this.declarationBindsVarFromThisProps(decl, varName)
+            ) {
               hookScopes.add(this.enclosingScope(node));
             }
           }

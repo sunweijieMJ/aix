@@ -224,6 +224,7 @@ export class VueTransformer implements ITransformer {
         replacement,
         localLine,
         localColumn,
+        extracted.templateContext,
       );
     }
 
@@ -267,6 +268,7 @@ export class VueTransformer implements ITransformer {
     replacement: string,
     line: number,
     column: number,
+    templateContext?: ExtractedString['templateContext'],
   ): string {
     const lines = templateContent.split('\n');
 
@@ -310,7 +312,12 @@ export class VueTransformer implements ITransformer {
       for (let delta = 1; delta <= 5; delta++) {
         for (const tryIdx of [line + delta, line - delta]) {
           if (tryIdx < 0 || tryIdx >= lines.length) continue;
-          const result = this.tryReplaceOnLine(lines[tryIdx]!, original, replacement);
+          const result = this.tryReplaceOnLine(
+            lines[tryIdx]!,
+            original,
+            replacement,
+            templateContext,
+          );
           if (result !== null) {
             lines[tryIdx] = result;
             return lines.join('\n');
@@ -367,40 +374,51 @@ export class VueTransformer implements ITransformer {
         return lines.join('\n');
       }
     } else {
-      // original 不带引号，需要在外面加引号查找（处理三元运算符场景）
-      // 优先查找单引号版本
-      const singleQuotePattern = `'${original}'`;
-      index = indexOfSkippingComparison(targetLine, singleQuotePattern, column);
-      if (index !== -1) {
-        // 在引号内的字符串（三元运算符内），替换整个 'text' 为 $t(...)
-        // 注意：replacement 已经是 $t(...) 格式，不包含外层引号
-        lines[line] =
-          targetLine.substring(0, index) +
-          replacement +
-          targetLine.substring(index + singleQuotePattern.length);
-        return lines.join('\n');
-      }
+      // 引号包裹搜索仅对「源码里本就带引号的字符串字面量」上下文有意义：
+      // dynamic-attribute（`:attr="'文案'"`）与 interpolation（`{{ ok ? '成功' : '失败' }}`）。
+      // text-node / mixed-content 的 original 是模板原文（无引号），绝不能套引号搜索——否则
+      // doubleQuotePattern 的 indexOf 会从 column 向后误命中【同行后方未被提取的带引号技术属性值】
+      // （如 `<label>全部<input value="全部"/>`），把属性毁成非法 `value={{ $t() }}` 且漏译文本节点、
+      // 在 locale 留下孤儿 key。故按 templateContext 收窄引号搜索范围。
+      const searchQuoted =
+        templateContext === 'dynamic-attribute' || templateContext === 'interpolation';
 
-      // 查找双引号版本
-      const doubleQuotePattern = `"${original}"`;
-      index = indexOfSkippingComparison(targetLine, doubleQuotePattern, column);
-      if (index !== -1) {
-        lines[line] =
-          targetLine.substring(0, index) +
-          replacement +
-          targetLine.substring(index + doubleQuotePattern.length);
-        return lines.join('\n');
-      }
+      if (searchQuoted) {
+        // original 不带引号，需要在外面加引号查找（处理三元运算符 / 动态属性字符串字面量场景）
+        // 优先查找单引号版本
+        const singleQuotePattern = `'${original}'`;
+        index = indexOfSkippingComparison(targetLine, singleQuotePattern, column);
+        if (index !== -1) {
+          // 在引号内的字符串（三元运算符内），替换整个 'text' 为 $t(...)
+          // 注意：replacement 已经是 $t(...) 格式，不包含外层引号
+          lines[line] =
+            targetLine.substring(0, index) +
+            replacement +
+            targetLine.substring(index + singleQuotePattern.length);
+          return lines.join('\n');
+        }
 
-      // 查找反引号版本（处理无变量模板字符串场景）
-      const backtickPattern = `\`${original}\``;
-      index = targetLine.indexOf(backtickPattern, column);
-      if (index !== -1) {
-        lines[line] =
-          targetLine.substring(0, index) +
-          replacement +
-          targetLine.substring(index + backtickPattern.length);
-        return lines.join('\n');
+        // 查找双引号版本
+        const doubleQuotePattern = `"${original}"`;
+        index = indexOfSkippingComparison(targetLine, doubleQuotePattern, column);
+        if (index !== -1) {
+          lines[line] =
+            targetLine.substring(0, index) +
+            replacement +
+            targetLine.substring(index + doubleQuotePattern.length);
+          return lines.join('\n');
+        }
+
+        // 查找反引号版本（处理无变量模板字符串场景）
+        const backtickPattern = `\`${original}\``;
+        index = targetLine.indexOf(backtickPattern, column);
+        if (index !== -1) {
+          lines[line] =
+            targetLine.substring(0, index) +
+            replacement +
+            targetLine.substring(index + backtickPattern.length);
+          return lines.join('\n');
+        }
       }
 
       // 如果没有找到带引号的版本，查找原始字符串（处理文本节点场景）
@@ -422,7 +440,12 @@ export class VueTransformer implements ITransformer {
     for (let delta = 1; delta <= 5; delta++) {
       for (const tryIdx of [line + delta, line - delta]) {
         if (tryIdx < 0 || tryIdx >= lines.length) continue;
-        const result = this.tryReplaceOnLine(lines[tryIdx]!, original, replacement);
+        const result = this.tryReplaceOnLine(
+          lines[tryIdx]!,
+          original,
+          replacement,
+          templateContext,
+        );
         if (result !== null) {
           lines[tryIdx] = result;
           return lines.join('\n');
@@ -444,6 +467,7 @@ export class VueTransformer implements ITransformer {
     lineContent: string,
     original: string,
     replacement: string,
+    templateContext?: ExtractedString['templateContext'],
   ): string | null {
     // 静态属性转换
     if (replacement.startsWith(':')) {
@@ -474,16 +498,19 @@ export class VueTransformer implements ITransformer {
       return null;
     }
 
-    // 尝试各种引号包裹
-    for (const quote of ["'", '"', '`']) {
-      const quoted = `${quote}${original}${quote}`;
-      const index = lineContent.indexOf(quoted);
-      if (index !== -1) {
-        return (
-          lineContent.substring(0, index) +
-          replacement +
-          lineContent.substring(index + quoted.length)
-        );
+    // 尝试各种引号包裹（仅 dynamic-attribute / interpolation：原文带引号的字符串字面量）。
+    // 与 replaceInTemplate 同因：text-node / mixed-content 套引号会误命中同行带引号属性值。
+    if (templateContext === 'dynamic-attribute' || templateContext === 'interpolation') {
+      for (const quote of ["'", '"', '`']) {
+        const quoted = `${quote}${original}${quote}`;
+        const index = lineContent.indexOf(quoted);
+        if (index !== -1) {
+          return (
+            lineContent.substring(0, index) +
+            replacement +
+            lineContent.substring(index + quoted.length)
+          );
+        }
       }
     }
 
