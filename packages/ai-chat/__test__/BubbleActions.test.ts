@@ -182,3 +182,36 @@ describe('BubbleActions', () => {
     expect(btn.attributes('aria-pressed')).toBe('true');
   });
 });
+
+describe('BubbleActions — 分支切换器', () => {
+  it('branch.count>1 渲染 ‹ i/n ›，点击两端 emit switch-branch', async () => {
+    const w = mount(BubbleActions, {
+      props: { items: [], branch: { index: 1, count: 3 } },
+    });
+    expect(w.find('.aix-bubble-actions__branch').exists()).toBe(true);
+    expect(w.text()).toContain('2/3');
+    const btns = w.findAll('.aix-bubble-actions__branch button');
+    await btns[0]!.trigger('click'); // ‹
+    await btns[1]!.trigger('click'); // ›
+    expect(w.emitted('switch-branch')).toEqual([[-1], [1]]);
+  });
+
+  it('count<=1 不渲染切换器；首/尾版本对应按钮禁用', () => {
+    const single = mount(BubbleActions, { props: { items: [], branch: { index: 0, count: 1 } } });
+    expect(single.find('.aix-bubble-actions__branch').exists()).toBe(false);
+
+    const first = mount(BubbleActions, { props: { items: [], branch: { index: 0, count: 2 } } });
+    const fbtns = first.findAll('.aix-bubble-actions__branch button');
+    expect((fbtns[0]!.element as HTMLButtonElement).disabled).toBe(true); // ‹ 禁用
+    expect((fbtns[1]!.element as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('branchDisabled 时两端按钮均禁用（流式中）', () => {
+    const w = mount(BubbleActions, {
+      props: { items: [], branch: { index: 1, count: 3 }, branchDisabled: true },
+    });
+    const btns = w.findAll('.aix-bubble-actions__branch button');
+    expect((btns[0]!.element as HTMLButtonElement).disabled).toBe(true);
+    expect((btns[1]!.element as HTMLButtonElement).disabled).toBe(true);
+  });
+});

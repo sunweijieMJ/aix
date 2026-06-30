@@ -7,7 +7,14 @@ import {
   type ComputedRef,
   type WritableComputedRef,
 } from 'vue';
-import type { ChatMessage, Conversation, ConversationItem, MessageStatus } from '../types';
+import type {
+  ChatMessage,
+  Conversation,
+  ConversationItem,
+  MessageStatus,
+  ExportedTree,
+} from '../types';
+import { createMessageTree } from './messageTree';
 
 // 流式中的非终态：恢复时无活跃流推进，须复位
 const IN_FLIGHT_STATUS = new Set<MessageStatus>(['loading', 'updating']);
@@ -20,19 +27,28 @@ const IN_FLIGHT_STATUS = new Set<MessageStatus>(['loading', 'updating']);
  */
 function reconcileStuckMessages(list: Conversation[]): Conversation[] {
   return list.map((conv) => {
-    // 防御持久化脏数据：会话 messages 字段缺失/非数组（外部篡改、旧结构迁移、手工写入）时归一为空数组，
-    // 否则下方 .map 会对 undefined 调用抛 TypeError，发生在同步初始化阶段会直接中断 setup
+    if (conv.tree) {
+      // 树模式：复位树内节点的卡死状态
+      let changed = false;
+      const nodes = conv.tree.nodes.map((n) => {
+        if (n.message?.status && IN_FLIGHT_STATUS.has(n.message.status)) {
+          changed = true;
+          return { ...n, message: { ...n.message, status: 'error' as MessageStatus } };
+        }
+        return n;
+      });
+      return changed ? { ...conv, tree: { ...conv.tree, nodes } } : conv;
+    }
+    // 扁平 messages 模式：防御持久化脏数据（缺失/非数组时归一为空数组），复位卡死状态
     if (!Array.isArray(conv.messages)) {
       return { ...conv, messages: [] };
     }
     let changed = false;
-    const messages = conv.messages.map((m) => {
-      if (m.status && IN_FLIGHT_STATUS.has(m.status)) {
-        changed = true;
-        return { ...m, status: 'error' as MessageStatus };
-      }
-      return m;
-    });
+    const messages = conv.messages.map((m) =>
+      m.status && IN_FLIGHT_STATUS.has(m.status)
+        ? ((changed = true), { ...m, status: 'error' as MessageStatus })
+        : m,
+    );
     return changed ? { ...conv, messages } : conv;
   });
 }
@@ -63,6 +79,8 @@ export interface UseConversationsReturn {
   active: ComputedRef<Conversation | undefined>;
   /** 当前会话消息（可写）：绑给 AiChat 的 v-model:messages */
   activeMessages: WritableComputedRef<ChatMessage[]>;
+  /** 当前会话的对话树（可写）：绑给 AiChat 的 v-model:tree。读时若会话仅有旧 messages 则迁移为线性树。 */
+  activeTree: WritableComputedRef<ExportedTree | undefined>;
   /** 会话列表元数据（不含 messages）：绑给 Conversations 列表 UI */
   items: ComputedRef<ConversationItem[]>;
   /** 新建会话并激活，返回新 id */
@@ -73,6 +91,18 @@ export interface UseConversationsReturn {
   rename: (id: string, label: string) => void;
   /** 切换激活会话（id 不存在时忽略） */
   setActive: (id: string) => void;
+}
+
+/** 从 ExportedTree 还原 active path（从 headId 沿 parentId 回溯，反转） */
+function rebuildActivePath(data: ExportedTree): ChatMessage[] {
+  const byId = new Map(data.nodes.map((n) => [n.id, n]));
+  const path: ChatMessage[] = [];
+  let cur = byId.get(data.headId);
+  while (cur) {
+    path.push(cur.message);
+    cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+  }
+  return path.reverse();
 }
 
 let uid = 0;
@@ -100,6 +130,25 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     set: (msgs) => {
       const c = active.value;
       if (c) c.messages = msgs;
+    },
+  });
+
+  // 旧扁平 messages → 线性树（迁移）；已有 tree 直接用。
+  const activeTree = computed<ExportedTree | undefined>({
+    get: () => {
+      const c = active.value;
+      if (!c) return undefined;
+      if (c.tree) return c.tree;
+      // 迁移：用 messageTree 把扁平 messages 转线性树导出
+      const t = createMessageTree(Array.isArray(c.messages) ? c.messages : []);
+      return t.exportTree();
+    },
+    set: (data) => {
+      const c = active.value;
+      if (!c || !data) return;
+      c.tree = data;
+      // 同步 messages 为 active path，兼容仅读 messages 的旧消费方
+      c.messages = data.nodes.length ? rebuildActivePath(data) : [];
     },
   });
 
@@ -175,6 +224,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     activeKey,
     active,
     activeMessages,
+    activeTree,
     items,
     create,
     remove,

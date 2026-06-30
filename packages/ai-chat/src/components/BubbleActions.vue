@@ -1,5 +1,28 @@
 <template>
   <div :class="ns.b()">
+    <div v-if="branch && branch.count > 1" :class="ns.e('branch')">
+      <button
+        type="button"
+        :class="ns.e('branch-btn')"
+        :disabled="branchDisabled || branch.index === 0"
+        :aria-label="t.prevBranch"
+        :title="t.prevBranch"
+        @click="emit('switch-branch', -1)"
+      >
+        ‹
+      </button>
+      <span :class="ns.e('branch-label')">{{ branch.index + 1 }}/{{ branch.count }}</span>
+      <button
+        type="button"
+        :class="ns.e('branch-btn')"
+        :disabled="branchDisabled || branch.index === branch.count - 1"
+        :aria-label="t.nextBranch"
+        :title="t.nextBranch"
+        @click="emit('switch-branch', 1)"
+      >
+        ›
+      </button>
+    </div>
     <template v-for="item in normalized" :key="item.key">
       <button
         v-if="item.builtin && item.key === 'copy'"
@@ -86,12 +109,18 @@ export interface BubbleActionsProps {
   speaking?: boolean;
   /** 自定义项 onClick 的 ctx.message 来源（AiChat 接线时传入；独立使用可不传） */
   message?: ChatMessage;
+  /** 分支元信息：count>1 时渲染 ‹ i/n › 切换器 */
+  branch?: BranchMeta;
+  /** 切换器是否禁用（流式中由上层传 true） */
+  branchDisabled?: boolean;
 }
 export interface BubbleActionsEmits {
   (e: 'copy'): void;
   (e: 'regenerate'): void;
   (e: 'feedback', value: MessageFeedback | null): void;
   (e: 'speak'): void;
+  /** 切换分支版本：dir=-1 上一个 / 1 下一个 */
+  (e: 'switch-branch', dir: -1 | 1): void;
 }
 </script>
 
@@ -101,7 +130,14 @@ import { useNamespace, copyText } from '@aix/hooks';
 import { Copy, Check, Refresh, ThumbUp, ThumbDown, VolumeUp, VolumeOff } from '@aix/icons';
 import { ref, computed, onScopeDispose } from 'vue';
 import { locale } from '../locale';
-import type { ActionsItems, ActionItem, ActionKey, ChatMessage, MessageFeedback } from '../types';
+import type {
+  ActionsItems,
+  ActionItem,
+  ActionKey,
+  ChatMessage,
+  MessageFeedback,
+  BranchMeta,
+} from '../types';
 
 const props = withDefaults(defineProps<BubbleActionsProps>(), {
   content: '',
@@ -190,6 +226,45 @@ const onCustomClick = (item: ActionItem) => {
 
   &__feedback.is-active {
     color: var(--aix-colorPrimary);
+  }
+
+  &__branch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--aix-marginXXS);
+    color: var(--aix-colorTextTertiary);
+    font-size: var(--aix-fontSizeSM);
+  }
+
+  &__branch-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--aix-controlHeightSM);
+    height: var(--aix-controlHeightSM);
+    padding: 0;
+    border: none;
+    border-radius: var(--aix-borderRadiusSM);
+    background: transparent;
+    color: var(--aix-colorTextTertiary);
+    font-size: var(--aix-fontSize);
+    line-height: 1;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background-color: var(--aix-colorFillTertiary);
+      color: var(--aix-colorText);
+    }
+
+    &:disabled {
+      color: var(--aix-colorTextQuaternary);
+      cursor: not-allowed;
+    }
+  }
+
+  &__branch-label {
+    min-width: 28px;
+    text-align: center;
   }
 }
 

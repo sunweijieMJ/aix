@@ -36,4 +36,6 @@ export const enUS: AiChatLocale = {
   attachmentPlaceholder: 'Click or drag files here to upload',
   attachmentPlaceholderHint: 'Supports images, documents and more',
   attachmentsCollapse: 'Collapse attachments panel',
+  prevBranch: 'Previous version',
+  nextBranch: 'Next version',
 };

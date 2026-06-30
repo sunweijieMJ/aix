@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { effectScope, nextTick } from 'vue';
+import { createMessageTree } from '../src/composables/messageTree';
 import {
   useConversations,
   localStorageConversationStorage,
   type ConversationStorage,
 } from '../src/composables/useConversations';
-import type { Conversation } from '../src/types';
+import type { Conversation, ChatMessage } from '../src/types';
 import { textMessage, messageText } from '../src/utils/helpers';
 
 const conv = (id: string, label: string): Conversation => ({
@@ -259,5 +260,32 @@ describe('useConversations', () => {
     });
     expect(api.conversations.value).toHaveLength(1);
     expect(api.conversations.value[0]!.id).toBe('d1');
+  });
+});
+
+describe('useConversations — 树持久化与迁移', () => {
+  const msg = (id: string): ChatMessage => ({
+    id,
+    role: 'user',
+    status: 'success',
+    content: [{ id: `b-${id}`, type: 'text', text: id }],
+  });
+
+  it('旧扁平 messages 会话经 activeTree 迁移为线性树', () => {
+    const storage = {
+      load: () => [{ id: 'c1', label: '会话', messages: [msg('m1'), msg('m2')] }] as never,
+      save: () => {},
+    };
+    const c = useConversations({ storage });
+    const tree = c.activeTree.value!;
+    expect(tree.nodes.map((n) => n.id)).toEqual(['m1', 'm2']);
+    expect(tree.headId).toBe('m2');
+  });
+
+  it('写入 activeTree 后存回 conversation.tree，下次 load 直接用 tree', () => {
+    const t = createMessageTree([msg('m1')]);
+    const c = useConversations({ defaultConversations: [{ id: 'c1', label: 'x', messages: [] }] });
+    c.activeTree.value = t.exportTree();
+    expect(c.conversations.value[0]!.tree?.headId).toBe('m1');
   });
 });

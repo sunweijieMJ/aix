@@ -36,4 +36,6 @@ export const zhCN: AiChatLocale = {
   attachmentPlaceholder: '点击或拖拽文件到此区域上传',
   attachmentPlaceholderHint: '支持图片、文档等多种格式',
   attachmentsCollapse: '收起附件面板',
+  prevBranch: '上一个版本',
+  nextBranch: '下一个版本',
 };

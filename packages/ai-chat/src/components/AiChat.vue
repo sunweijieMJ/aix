@@ -45,20 +45,23 @@
         </template>
         <!-- 消息操作：通过 actions prop 配置（默认 ['copy','regenerate']），
              数组形态仅对 ai+success 消息渲染，函数形态按消息细粒度控制；
-             可用 #footer slot 覆盖，设为 [] 关闭。仅在需要时挂载 footer slot，避免空 footer 节点。 -->
-        <template v-if="actionsEnabled || $slots.footer" #footer="{ item }">
+             可用 #footer slot 覆盖，设为 [] 关闭。branchAware 确保分支切换器可按需出现。 -->
+        <template v-if="actionsEnabled || branchAware || $slots.footer" #footer="{ item }">
           <slot name="footer" :item="item">
             <BubbleActions
-              v-if="actionsMap.get(item.id)"
-              :items="actionsMap.get(item.id)!"
+              v-if="actionsMap.get(item.id) || branchMap.get(item.id)"
+              :items="actionsMap.get(item.id) ?? []"
               :content="messageText(item)"
               :message="item"
               :feedback="(item.extra?.feedback as MessageFeedback | null) ?? null"
               :speaking="speakingId === item.id"
+              :branch="branchMap.get(item.id)"
+              :branch-disabled="isLoading"
               @copy="emit('copy', item)"
               @regenerate="onReload(item.id)"
               @feedback="onFeedback(item.id, $event)"
               @speak="speech?.toggle(item)"
+              @switch-branch="switchBranch(item.id, $event)"
             />
           </slot>
         </template>
@@ -187,6 +190,12 @@ export interface AiChatProps {
    * 注意：actions 为函数形态时不会自动追加内置 speak 项，需业务在返回数组中自行包含 'speak'；数组/默认形态会自动为 ai+success 且有可朗读文本的消息追加。
    */
   speech?: boolean | SpeechConfig;
+  /**
+   * 对话树（v-model:tree）：分支感知的持久化通道，绑 useConversations.activeTree。
+   * 不传则不参与树级持久化。同时绑 v-model:messages 与 v-model:tree 时以 tree 为准；
+   * 推荐持久化场景用 tree，两者择一。
+   */
+  tree?: ExportedTree;
 }
 export interface AiChatEmits {
   /** 用户发送消息（含点击快捷问题），携带文本与可选附件 */
@@ -209,12 +218,14 @@ export interface AiChatEmits {
   (e: 'typing-complete', id: string): void;
   /** 输入框文本变化（v-model:input），由 useControllable 在受控/非受控两态下统一上抛 */
   (e: 'update:input', value: string): void;
+  /** 对话树结构变化（v-model:tree），用于持久化分支 */
+  (e: 'update:tree', value: ExportedTree): void;
 }
 </script>
 
 <script setup lang="ts">
 import { useNamespace, useControllable } from '@aix/hooks';
-import { computed, ref, watch, useSlots } from 'vue';
+import { computed, ref, watch, useSlots, getCurrentInstance } from 'vue';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
 import type { ShouldFollow } from '../composables/useAutoScroll';
@@ -234,6 +245,7 @@ import type {
   VoiceConfig,
   SpeechConfig,
   SubBubbleMeta,
+  ExportedTree,
 } from '../types';
 import { messageText, attachmentBlock, textBlock } from '../utils/helpers';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
@@ -368,6 +380,11 @@ const {
   setMessages,
   updateBlock,
   setFeedback,
+  branches,
+  switchBranch,
+  getBranches,
+  exportTree,
+  importTree,
 } = useChat({
   request: props.request,
   streamMode: props.streamMode,
@@ -393,24 +410,55 @@ const onSend = (text: string, attachments?: AttachmentItem[]) => {
   return sendMessage(text);
 };
 
-// v-model:messages 桥接（useChat 内部 ref 为 SSOT，mutate 才能保持响应式）：
-// - 受控（父传入非空初始）时以外部为准；否则让外部 model 指向内部数组，二者共享同一引用，
-//   后续 push / 流式 mutate 同时对内外可见，无需逐字回传（性能友好）。
-// - 仅在引用替换（setMessages / 父整体替换）时双向同步，避免 deep watch 开销。
+// v-model:messages 桥接：messages 现为对话树派生的只读 computed。
+// - 受控（父传入非空初始）时导入为线性树；
+// - 否则把当前 active path 镜像给外部 model。
+// active path 引用仅在结构变化（增节点/切分支）时变，watch 同步即可，无需 deep。
 if (messagesModel.value.length > 0) {
   setMessages(messagesModel.value);
 } else {
   messagesModel.value = messages.value;
 }
+// 是否绑定了 v-model:tree：以 tree 为权威持久化通道时，messages 仅作只读镜像输出，
+// 不再反向导入——否则两条桥接在同一 flush 同时回写父级两个 model，messages model 会被
+// prop 回灌成 []，触发 setMessages([]) 把内部树清空（亦是「同绑即崩」的根因）。
+// 用编译后的 vnode props 探测：v-model:tree 必带 onUpdate:tree 监听，初值为 undefined 也能识别。
+const vnodeProps = getCurrentInstance()?.vnode.props;
+const isTreeBound = !!vnodeProps && ('onUpdate:tree' in vnodeProps || 'tree' in vnodeProps);
 watch(messages, (v) => {
   if (v !== messagesModel.value) messagesModel.value = v;
 });
 watch(messagesModel, (v) => {
+  // tree 受控时禁用 messages 反向导入（tree 通道唯一权威），仅保留 messages 输出镜像。
+  if (isTreeBound) return;
   if (v && v !== messages.value) {
     // 外部整体替换消息列表（典型：切换会话）时，若仍有在途请求先中断，
-    // 避免旧流继续 mutate 已脱离的旧数组、isLoading 紊乱。
+    // 避免旧流继续 mutate 已脱离的旧对象、isLoading 紊乱。
     if (isLoading.value) abort();
     setMessages(v);
+  }
+});
+
+// v-model:tree 桥接：分支感知的持久化通道。
+// 受控时以 tree 为准（优先于 messages），外部替换整体 tree 时（切会话）导入；
+// 结构变化（增节点/切分支）时导出回父。同时绑 v-model:messages 与 v-model:tree 时，tree 优先。
+const treeModel = defineModel<ExportedTree | undefined>('tree');
+// 受控：父提供初始 tree 时导入（优先于 messages）
+if (treeModel.value && treeModel.value.nodes.length) {
+  importTree(treeModel.value);
+}
+// 结构变化（增节点/切分支）时导出回父；branches 引用变化是结构变化的可靠信号
+watch([messages, branches], () => {
+  treeModel.value = exportTree();
+});
+// 外部整体替换 tree（切会话）时导入；空树（切到新会话/空白会话）同样需要导入以清空内部树
+watch(treeModel, (v) => {
+  if (!v) return;
+  const cur = exportTree();
+  // 空树（切到新会话）也需导入以清空内部树；仅在结构不同时才导入，避免与导出 watch 产生抖动
+  if (v.headId !== cur.headId || v.nodes.length !== cur.nodes.length) {
+    if (isLoading.value) abort();
+    importTree(v);
   }
 });
 
@@ -486,6 +534,21 @@ const actionsEnabled = computed(
     (props.actions ?? DEFAULT_ACTIONS).length > 0 ||
     !!speech,
 );
+
+// 每条可见消息的分支元信息（branches 按逻辑消息 id 键；getBranches 内部已解析派生 id）
+const branchMap = computed(() => {
+  const map = new Map<string, ReturnType<typeof getBranches>>();
+  for (const item of parsedMessages.value) {
+    const sub = item.extra?.__sub as SubBubbleMeta | undefined;
+    // 1→N 拆分：分支切换器仅在末子气泡显示（与操作条同规则），避免每个子气泡各挂一个
+    map.set(item.id, sub && sub.index < sub.count - 1 ? undefined : getBranches(item.id));
+  }
+  return map;
+});
+
+// 存在实际分支（有多版本）或加载中时，footer 需对所有消息（含用户消息）可挂载，
+// 以便分支切换器在任意位置出现；isLoading 纳入避免分支生成期间切换器闪烁重挂。
+const branchAware = computed(() => branches.value.size > 0 || isLoading.value);
 
 // autoPlay：流式 AI 回复增量喂句。autoStartedId 记录"最近一条已自动起播的消息 id"，
 // 防止用户手动停止后被下一 chunk 重启。消息列表只增不回退、autoPlay 永远只作用于末条，

@@ -562,13 +562,16 @@ describe('AiChat', () => {
     expect(footers.map((f) => f.text())).toContain('ai');
   });
 
-  it('editable：编辑用户消息并保存触发 onEdit（截断后续 + 重新请求）+ emit edit', async () => {
+  it('editable：编辑用户消息并保存触发 onEdit（产生兄弟分支 + 重新请求）+ emit edit', async () => {
     let call = 0;
     const request = vi.fn(async () => once(call++ === 0 ? '一答' : '二答'));
     const w = mount(AiChat, { props: { request, editable: true, welcomeTitle: '你好' } });
     await w.find('textarea').setValue('原问题');
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();
+
+    // 编辑前捕获原始用户消息 id（edit 事件应携带此 id，体现无损分支语义）
+    const originalMsgId = (w.vm as unknown as { messages: ChatMessage[] }).messages[0]!.id;
 
     const editBtn = w.find('.aix-bubble__edit-btn');
     expect(editBtn.exists()).toBe(true);
@@ -578,11 +581,18 @@ describe('AiChat', () => {
     await flushPromises();
 
     expect(request).toHaveBeenCalledTimes(2);
-    // 编辑保存后首条消息即被改写的用户消息
-    const editedMsg = w.vm.messages[0]!;
-    expect(w.emitted('edit')![0]).toEqual([{ id: editedMsg.id, text: '改后问题' }]);
-    expect(messageText(editedMsg)).toBe('改后问题');
-    expect(w.vm.messages).toHaveLength(2);
+    // edit 事件携带原始消息 id（编辑前捕获），不是新分支的 id
+    expect(w.emitted('edit')![0]).toEqual([{ id: originalMsgId, text: '改后问题' }]);
+    // active path 上 index 0 是新的用户消息（兄弟分支），显示改后文本
+    expect(messageText((w.vm as unknown as { messages: ChatMessage[] }).messages[0]!)).toBe(
+      '改后问题',
+    );
+    // active path 仍为 2 条（新用户消息 + 新 AI 消息）
+    expect((w.vm as unknown as { messages: unknown[] }).messages).toHaveLength(2);
+    // 区分新旧语义的关键断言：编辑后 active path 上被编辑消息的 id 是新生成的兄弟节点 id，与编辑前不同
+    expect((w.vm as unknown as { messages: ChatMessage[] }).messages[0]!.id).not.toBe(
+      originalMsgId,
+    );
   });
 
   // Bug 防回归：流式期间 useChat.onEdit 被守卫拒绝（消息未改写未重发），

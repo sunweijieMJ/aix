@@ -69,4 +69,8 @@ export interface AiChatLocale {
   attachmentPlaceholderHint: string;
   /** 附件面板：收起按钮 */
   attachmentsCollapse: string;
+  /** 上一个版本切换按钮的无障碍标签 */
+  prevBranch: string;
+  /** 下一个版本切换按钮的无障碍标签 */
+  nextBranch: string;
 }

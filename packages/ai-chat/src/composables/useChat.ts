@@ -1,13 +1,16 @@
-import { ref, computed, onScopeDispose, type Ref } from 'vue';
+import { ref, computed, onScopeDispose, type Ref, type ComputedRef } from 'vue';
 import type {
   ChatMessage,
   ContentBlock,
   ParsedChunk,
   MessageFeedback,
   SubBubbleMeta,
+  BranchMeta,
+  ExportedTree,
 } from '../types';
 import { genMsgId, genBlockId } from '../utils/helpers';
 import { flatParseChunk } from '../utils/parsers';
+import { createMessageTree, ROOT_ID, type MessageTreeApi } from './messageTree';
 import { xStream, sseStream, type SSEChunk } from './useXStream';
 
 export interface UseChatRequestCtx {
@@ -63,8 +66,8 @@ export interface UseChatOptions {
 }
 
 export interface UseChatReturn {
-  /** 数据层原始消息（SSOT，按 id 增删改 / 流式 mutate 的对象） */
-  messages: Ref<ChatMessage[]>;
+  /** UI 渲染消息（active path），由对话树派生的只读 computed */
+  messages: ComputedRef<ChatMessage[]>;
   /** UI 渲染消息：未设置 parser 时与 messages 同引用；设置后为 parser 映射结果 */
   parsedMessages: Ref<ChatMessage[]>;
   isLoading: Ref<boolean>;
@@ -77,8 +80,8 @@ export interface UseChatReturn {
   onSend: (input: string | ContentBlock[]) => Promise<void>;
   onReload: (id: string) => Promise<void>;
   /**
-   * 编辑用户消息内容、截断其后历史并重新生成。
-   * 返回是否受理（与 updateBlock 返回命中与否同构）：true 表示已改写消息并截断重发；
+   * 编辑用户消息内容，产生兄弟分支并重新生成（不再截断旧分支）。
+   * 返回是否受理（与 updateBlock 返回命中与否同构）：true 表示已新建兄弟用户节点并重发；
    * false 表示被守卫拒绝（流式进行中 / id 未命中 / 非 user 消息），消息未做任何改动，
    * 上层（如 AiChat.onEditMessage）可据此跳过对外透出，避免业务误持久化。
    * 注：由 void 改为 boolean 属兼容性增强，旧调用方忽略返回值不受影响。
@@ -90,6 +93,16 @@ export interface UseChatReturn {
   updateBlock: (messageId: string, blockId: string, patch: Record<string, unknown>) => boolean;
   /** 设置某条消息的赞/踩反馈，就地写回 extra.feedback（null 取消） */
   setFeedback: (id: string, value: MessageFeedback | null) => void;
+  /** 逻辑消息 id → 分支元信息（仅多版本时有） */
+  branches: ComputedRef<Map<string, BranchMeta>>;
+  /** 切换某消息所在层分支（dir=-1/1）；流式中或越界返回 false */
+  switchBranch: (id: string, dir: -1 | 1) => boolean;
+  /** 取某消息分支元信息（接受派生气泡 id，内部解析回父消息） */
+  getBranches: (id: string) => BranchMeta | undefined;
+  /** 导出可持久化的树（扁平节点表 + headId） */
+  exportTree: () => ExportedTree;
+  /** 导入树（覆盖当前；切会话/恢复用） */
+  importTree: (data: ExportedTree) => void;
 }
 
 /** 把流式增量并入 AI 消息内容块：末尾同 type 则追加，否则新开带 id 的 block */
@@ -127,8 +140,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   }
   // 按模式选分帧器并统一调用签名：sse → SSEChunk，line → string
   const callParse = parseChunk as (unit: SSEChunk | string) => ParsedChunk;
-  // 内部 ref 为消息状态唯一来源（mutate 即响应式）；受控由 AiChat 层用引用桥接到 v-model。
-  const messages = ref<ChatMessage[]>([...defaultMessages]);
+  // 对话树为消息状态唯一来源（SSOT）；messages 是从树派生的只读 active path computed。
+  const tree: MessageTreeApi = createMessageTree(defaultMessages);
+  const messages = tree.activePath;
   // 渲染消息：无 parser 时直接复用 messages 引用（零开销、完全等价）；有则按 parser 映射。
   // id 稳定性由 useChat 接管：1→1 时强制复用父 id（见下，sub.id 即便不同也覆盖为 m.id），
   // 故 parser 未保留原始消息 id 也不会破坏编辑/重生成/块动作的 id 定位，无需运行时告警。
@@ -187,7 +201,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   const msgOwners = new Map<string, AbortController>();
 
   const setMessages = (m: ChatMessage[]) => {
-    messages.value = m;
+    tree.importFlat(m);
   };
 
   /**
@@ -200,7 +214,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     blockId: string,
     patch: Record<string, unknown>,
   ): boolean => {
-    const msg = messages.value.find((m) => m.id === resolveParentId(messageId));
+    const msg = tree.getMessage(resolveParentId(messageId));
     const blk = msg?.content.find((b) => b.id === blockId);
     if (blk) {
       Object.assign(blk, patch);
@@ -214,7 +228,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   };
 
   const setFeedback = (id: string, value: MessageFeedback | null) => {
-    const msg = messages.value.find((m) => m.id === resolveParentId(id));
+    const msg = tree.getMessage(resolveParentId(id));
     if (!msg) return;
     // 就地响应式写回，保留 extra 其他字段
     msg.extra = { ...msg.extra, feedback: value };
@@ -236,16 +250,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       // 重试循环：仅当「非 abort 的错误」且仍有重试额度时再次发起；abort 立即停止、不重试。
       // 沿用同一个 ctrl（停止按钮仍生效），并在每次重试前清空已累积内容，避免半截内容叠加。
       for (let attempt = 0; ; attempt += 1) {
-        // 每轮按 id 重新定位 AI 占位消息（而非缓存对象引用）：外部用 setMessages / 切会话
-        // 整体替换 messages 后，缓存的旧代理会与新数组失配。按 id 重定位若未命中，说明该
-        // 消息已被移除 → 放弃本次（finally 复位 isLoading），避免向脱离对象写入、或把整个
-        // 新数组误当历史发给后端。命中得到的是当前数组内的响应式代理，mutate 才能驱动 DOM。
+        // 每轮按 id 从树取 AI 占位消息：树中的消息对象是响应式代理，mutate 能驱动 DOM。
+        // 取不到说明消息已被移除（切会话等场景）→ 放弃本次（finally 复位 isLoading）。
+        const aiMsg = tree.getMessage(aiMsgId);
+        if (!aiMsg) return;
+        // 历史 = active path 中 aiMsg 之前的部分（active path 即当前分支）
         const idx = messages.value.findIndex((m) => m.id === aiMsgId);
-        if (idx === -1) return;
-        const aiMsg = messages.value[idx] as ChatMessage;
-        // 仅把待生成 AI 消息**之前**的历史交给 request：排除刚 push 的空 AI 占位（content:[]），
-        // 多数对话后端不接受以空 assistant 消息结尾的 history。
-        const history = messages.value.slice(0, idx);
+        const history = idx >= 0 ? messages.value.slice(0, idx) : [];
         // 流静默看门狗：重试循环沿用同一个用户 ctrl（停止按钮语义），超时不能 abort ctrl，
         // 否则后续重试拿到的是已 aborted 的信号。启用 streamTimeout 时每次 attempt 建内层
         // attemptCtrl（用户 abort 经监听单向联动），超时只杀当前尝试、保持可重试。
@@ -384,69 +395,66 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     if (isLoading.value) return;
     const content: ContentBlock[] =
       typeof input === 'string' ? [{ id: genBlockId(), type: 'text', text: input }] : input;
-    messages.value.push({
-      id: genMsgId(),
-      role: 'user',
-      content,
-      status: 'local',
-    });
+    const userId = genMsgId();
+    // 在当前 head 下延展：新用户消息挂在 head，AI 占位再挂在用户消息下
+    tree.appendMessage(tree.headId.value, { id: userId, role: 'user', content, status: 'local' });
     const aiId = genMsgId();
-    messages.value.push({ id: aiId, role: 'ai', content: [], status: 'loading' });
-    // 只把占位消息的 id 交给 runRequest，由其每轮从 messages 按 id 重新定位响应式代理，
-    // 避免缓存对象引用在外部整体替换 messages 后失配。
+    tree.appendMessage(userId, { id: aiId, role: 'ai', content: [], status: 'loading' });
     await runRequest(aiId);
   };
 
   const onReload = async (id: string) => {
     if (isLoading.value) return;
-    // 解析（可能的）派生气泡 id 回父消息 id，再按 SSOT 定位
     const pid = resolveParentId(id);
-    const idx = messages.value.findIndex((m) => m.id === pid);
-    if (idx === -1) return;
-    const aiMsg = messages.value[idx] as ChatMessage;
-    // 守卫：onReload 仅用于重生成 AI 回复，避免误传 user 消息 id 清空用户输入内容。
-    if (aiMsg.role === 'user') return;
-    aiMsg.content = [];
-    aiMsg.status = 'loading';
-    await runRequest(pid);
+    const node = tree.getMessage(pid);
+    if (!node) return;
+    // 守卫：onReload 仅用于重生成 AI 回复，避免误传 user 消息 id
+    if (node.role === 'user') return;
+    const parentId = tree.parentOf(pid);
+    if (parentId == null) return; // AI 消息必有 user 父，为 null 说明结构异常
+    // 新增兄弟 AI 节点（旧回复保留在树中，用户可切回）
+    const aiId = genMsgId();
+    tree.appendMessage(parentId, { id: aiId, role: 'ai', content: [], status: 'loading' });
+    await runRequest(aiId);
   };
 
   const onEdit = async (id: string, text: string): Promise<boolean> => {
     // 各守卫拒绝路径返回 false（未受理、消息零改动），供上层跳过对外透出
     if (isLoading.value) return false;
-    // 解析（可能的）派生气泡 id 回父消息 id，再按 SSOT 定位
-    const idx = messages.value.findIndex((m) => m.id === resolveParentId(id));
-    if (idx === -1) return false;
-    const msg = messages.value[idx] as ChatMessage;
+    const pid = resolveParentId(id);
+    const node = tree.getMessage(pid);
+    if (!node) return false;
     // 守卫：仅用户消息可编辑重发，避免误改 AI 回复内容
-    if (msg.role !== 'user') return false;
+    if (node.role !== 'user') return false;
     // 文本块合并改写为单 text block（编辑 UI 的草稿即全部文本块拼接），
     // 非文本块（attachment 等）原位保留，不静默丢弃
     const newText: ContentBlock = { id: genBlockId(), type: 'text', text };
     const next: ContentBlock[] = [];
-    let textInserted = false;
-    for (const block of msg.content) {
+    let inserted = false;
+    for (const block of node.content) {
       if (block.type === 'text') {
-        if (!textInserted) {
+        if (!inserted) {
           next.push(newText);
-          textInserted = true;
+          inserted = true;
         }
       } else {
         next.push(block);
       }
     }
-    if (!textInserted) next.push(newText);
-    msg.content = next;
-    msg.status = 'local';
-    // 截断被编辑消息之后的全部消息，重建对话分支；先清理被移除消息的请求归属记录，
-    // 避免其在途请求异步收尾时 ownsMsg() 仍为 true，对已脱离数组的消息误触发 onAbort / 写状态。
-    for (const removed of messages.value.slice(idx + 1)) msgOwners.delete(removed.id);
-    messages.value.splice(idx + 1);
-    // push 新 AI 占位并重新发起（runRequest 的 history=slice(0,aiIdx) 天然含编辑后用户消息）
+    if (!inserted) next.push(newText);
+    // 在同一 parent 下新增 user 兄弟（旧用户消息及其子树保留）
+    const parentId = tree.parentOf(pid);
+    const newUserId = genMsgId();
+    tree.appendMessage(parentId ?? ROOT_ID, {
+      id: newUserId,
+      role: 'user',
+      content: next,
+      status: 'local',
+    });
     const aiId = genMsgId();
-    messages.value.push({ id: aiId, role: 'ai', content: [], status: 'loading' });
+    tree.appendMessage(newUserId, { id: aiId, role: 'ai', content: [], status: 'loading' });
     await runRequest(aiId);
-    return true; // 已受理：消息改写 + 截断重发均已执行
+    return true; // 已受理：新增兄弟分支 + 重发均已执行
   };
 
   const abort = () => {
@@ -462,6 +470,15 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   // 向已脱离的响应式对象继续写入（与 useTypewriter 的 onScopeDispose 对齐）。
   onScopeDispose(() => controller?.abort());
 
+  /** 切换某消息所在层分支（流式中禁用） */
+  const switchBranch = (id: string, dir: -1 | 1): boolean => {
+    if (isLoading.value) return false;
+    return tree.switchBranch(resolveParentId(id), dir);
+  };
+
+  /** 取某消息分支元信息（接受派生气泡 id，内部解析回父消息） */
+  const getBranches = (id: string) => tree.getBranches(resolveParentId(id));
+
   return {
     messages,
     parsedMessages,
@@ -473,5 +490,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     setMessages,
     updateBlock,
     setFeedback,
+    branches: tree.branches,
+    switchBranch,
+    getBranches,
+    exportTree: tree.exportTree,
+    importTree: tree.importTree,
   };
 }

@@ -52,6 +52,8 @@ export interface Conversation {
   timestamp?: number;
   /** 该会话的消息列表 */
   messages: ChatMessage[];
+  /** 该会话的对话树（分支持久化）。存在时优先于 messages；旧数据仅有 messages 时按线性树迁移。 */
+  tree?: ExportedTree;
 }
 
 /** 会话列表项（仅元数据，不含 messages），供 Conversations 列表 UI 使用 */
@@ -396,4 +398,29 @@ export interface SpeechConfig {
   autoPlay?: boolean;
   /** 合成 / 播放失败回调；状态仍自动复位，toast 等提示由业务做 */
   onError?: (error: unknown) => void;
+}
+
+// ──────────────────────────────────────────────
+// 对话树 / 分支（messageTree 使用）
+// ──────────────────────────────────────────────
+
+/** 对话树节点：扁平存储，parentId 互链；node.id === message.id，ROOT 节点 message 为 null */
+export interface MessageNode {
+  id: string;
+  parentId: string;
+  message: ChatMessage | null;
+  /** 子分支 id（有序）；同一 parent 下多个 child = 兄弟版本 */
+  childIds: string[];
+}
+
+/** 分支元信息（供切换器渲染）：当前序号与兄弟总数 */
+export interface BranchMeta {
+  index: number;
+  count: number;
+}
+
+/** 树的可持久化形态：扁平节点表 + 当前激活叶子 id */
+export interface ExportedTree {
+  nodes: { id: string; parentId: string; message: ChatMessage }[];
+  headId: string;
 }
