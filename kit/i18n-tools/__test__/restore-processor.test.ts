@@ -124,6 +124,26 @@ describe('RestoreProcessor 编排层', () => {
     expect(fs.readFileSync(restored, 'utf-8')).toContain('你好');
   });
 
+  it('非 overwrite 模式：目标在 sourceDir 之外 → 拒绝（不逃逸输出目录）', async () => {
+    // 在 rootDir 之外的兄弟目录建一个可还原文件，作为显式 target 传入
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'restore-outside-'));
+    try {
+      const outsideFile = path.join(outsideDir, 'Evil.vue');
+      fs.writeFileSync(outsideFile, SRC, 'utf-8');
+
+      // path.relative(root, outsideFile) 产出 `../..`，映射到 restored/ 会逃逸——应被拒绝，
+      // 计入 failedFiles 后以「还原失败」非零退出，而非把内容写到输出目录之外。
+      await expect(
+        new RestoreProcessor(buildConfig(rootDir), false).execute([outsideFile]),
+      ).rejects.toThrow(/还原失败/);
+
+      // 原文件未被改动，且未在越界位置写出任何还原产物
+      expect(fs.readFileSync(outsideFile, 'utf-8')).toBe(SRC);
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
   it('无 i18n 调用的文件 → 判为无需修改，不产出', async () => {
     const file = writeSource('Plain.vue', `<template>\n  <div>hello</div>\n</template>\n`);
     await new RestoreProcessor(buildConfig(rootDir), false).execute([file]);

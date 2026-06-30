@@ -162,10 +162,36 @@ export class ReactASTUtils {
     ) {
       return true;
     }
-    if (ts.isClassDeclaration(n) && !!n.name && ReactASTUtils.isClassComponent(n)) {
-      return true;
+    if (ts.isClassDeclaration(n) && ReactASTUtils.isClassComponent(n)) {
+      // 具名类组件，或匿名默认导出类组件（getComponentInfo 同样会为其注入 HOC）均算边界。
+      if (n.name || n.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) {
+        return true;
+      }
     }
     return false;
+  }
+
+  /**
+   * 组件函数是否通过解构形参绑定了名为 varName 的本地变量，如
+   * `({ t }: WithTranslation) => …`（withTranslation HOC 把 t 作为 prop 传入）、
+   * `({ intl }: WrappedComponentProps) => …`（injectIntl）。用于在注入
+   * useTranslation()/useIntl() 前规避「形参 t/intl + hook 解构」同作用域双声明。
+   * 仅认本地绑定名（el.name 恒为本地名）：`{ t }` → true；`{ t: localT }`（t 改名）→ false；
+   * `{ x: t }` → true。
+   */
+  static componentParamBindsVar(node: ts.Node, varName: string): boolean {
+    if (
+      !ts.isArrowFunction(node) &&
+      !ts.isFunctionExpression(node) &&
+      !ts.isFunctionDeclaration(node)
+    ) {
+      return false;
+    }
+    return node.parameters.some(
+      (param) =>
+        ts.isObjectBindingPattern(param.name) &&
+        param.name.elements.some((el) => ts.isIdentifier(el.name) && el.name.text === varName),
+    );
   }
 
   /**
@@ -314,6 +340,18 @@ export class ReactASTUtils {
       if (ReactASTUtils.isComponentName(node.name.text)) {
         return { name: node.name.text, type: 'class', node };
       }
+    }
+
+    // 匿名默认导出类组件：`export default class extends React.Component {…}` 无 name token，
+    // 命名分支漏判 → 不注入 HOC，但 getComponentType 仍判 'class' 产出裸 t()/intl（未定义）。
+    // 赋合成名 DefaultExportedComponent（与默认导出函数组件分支对齐），由 injectHOC 命名后包裹。
+    if (
+      ts.isClassDeclaration(node) &&
+      !node.name &&
+      ReactASTUtils.isClassComponent(node) &&
+      node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)
+    ) {
+      return { name: 'DefaultExportedComponent', type: 'class', node };
     }
 
     if (

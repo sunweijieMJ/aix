@@ -222,6 +222,11 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   }
 
   hasLocalTranslationBinding(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
+    // 函数组件经 injectIntl 把 intl 作为 prop 解构传入（`({ intl }: WrappedComponentProps) => …`）
+    // 时，intl 已是本地形参绑定；若漏判会再注入 `const intl = useIntl()` 与形参同作用域双声明。
+    if (ReactASTUtils.componentParamBindsVar(node, this.translationVarName)) {
+      return true;
+    }
     // 仅认本地 `const intl = useIntl()` 绑定（不含 props.intl/this.props.intl 成员访问）。
     // generator 发出的裸 `intl.formatMessage` 需要这样一个本地绑定才不会未定义；函数组件
     // 仅有 props.intl 时据此判定仍需注入 useIntl（注入 useIntl 在 IntlProvider 下始终安全，

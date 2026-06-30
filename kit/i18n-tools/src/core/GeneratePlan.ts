@@ -149,8 +149,15 @@ export class GeneratePlanWriter {
     const sourcesDir = path.join(baseDir, this.SOURCES_DIRNAME);
     FileUtils.ensureDirectoryExists(sourcesDir);
 
+    const sourcesRoot = path.resolve(sourcesDir);
     for (const [relPath, code] of transformedSources) {
       const target = path.join(sourcesDir, relPath);
+      // 防御：relPath 异常含 `..`（文件落在 config.root 之外）会让 join 逃逸 sourcesDir，
+      // 把 plan 源码写到计划目录之外。解析后校验仍在 sourcesDir 内，越界则拒绝整次写出。
+      const resolved = path.resolve(target);
+      if (resolved !== sourcesRoot && !resolved.startsWith(sourcesRoot + path.sep)) {
+        throw new Error(`Plan 源码相对路径越界，拒绝写出：${relPath}`);
+      }
       FileUtils.ensureDirectoryExists(path.dirname(target));
       fs.writeFileSync(target, code, 'utf-8');
     }

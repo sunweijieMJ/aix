@@ -77,6 +77,25 @@ describe('GeneratePlanWriter', () => {
     expect(transformedSources.get('src/Login.vue')).toContain('// transformed');
   });
 
+  it('transformedSources 含越界相对路径（../）→ 拒绝写出，不逃逸 sources 目录', () => {
+    const plan = {
+      schemaVersion: 2,
+      command: 'generate',
+      finishedAt: new Date().toISOString(),
+      root: rootDir,
+      isCustom: false,
+      framework: 'vue',
+      summary: { files: 0, hits: 0, newKeys: 0 },
+      entries: [],
+      localeDelta: {},
+    } as GeneratePlan;
+    const transformed = new Map<string, string>([['../evil.ts', 'pwned']]);
+
+    expect(() => GeneratePlanWriter.write(planBaseDir, plan, transformed)).toThrow(/越界/);
+    // 不得在 sources 目录之外（planBaseDir 下）写出 evil 文件
+    expect(fs.existsSync(path.join(planBaseDir, 'evil.ts'))).toBe(false);
+  });
+
   it('schemaVersion 不识别时拒绝读取', () => {
     const { plan, transformed } = makePlan({
       'src/Foo.vue': '<template>x</template>',

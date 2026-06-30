@@ -301,6 +301,32 @@ export class ReactComponentInjector implements IComponentInjector {
         end: classNode.getEnd(),
         text: hocStatement,
       });
+    } else if (defaultModifier) {
+      // 匿名默认导出类组件（`export default class extends React.Component {…}`）无 name
+      // token：在 `class` 关键字后插入合成类名、剥离 `export default`，再追加
+      // `export default HOC(Inner)`，与具名默认导出路径产出相同形态（restore 同样可逆）。
+      const classKeyword = classNode
+        .getChildren(sourceFile)
+        .find((child) => child.kind === ts.SyntaxKind.ClassKeyword);
+      if (!classKeyword) return;
+
+      const removeStart = (exportModifier ?? defaultModifier).getStart(sourceFile);
+      transformations.push({
+        start: removeStart,
+        end: defaultModifier.getEnd() + 1,
+        text: '',
+      });
+      transformations.push({
+        start: classKeyword.getEnd(),
+        end: classKeyword.getEnd(),
+        text: ` ${tempClassName}`,
+      });
+      const hocWrapper = this.library.generateHOCWrapper(tempClassName);
+      transformations.push({
+        start: classNode.getEnd(),
+        end: classNode.getEnd(),
+        text: `\n\nexport default ${hocWrapper};`,
+      });
     }
   }
 
@@ -374,8 +400,19 @@ export class ReactComponentInjector implements IComponentInjector {
     const varName = this.library.translationVarName;
     for (const member of classNode.members) {
       let body: ts.Block | ts.ConciseBody | undefined;
-      if (ts.isMethodDeclaration(member)) {
+      let isConstructor = false;
+      // 方法 / 访问器（getter/setter）成员体内的裸 t()/intl 同样需要 this.props 解构，
+      // 否则 `get label() { return t('x'); }`、constructor 里 `this.state = { x: t('y') }`
+      // 会引用未声明的 t（getComponentType 对类组件任意后代均判 'class' → 产出裸 t()）。
+      if (
+        ts.isMethodDeclaration(member) ||
+        ts.isGetAccessorDeclaration(member) ||
+        ts.isSetAccessorDeclaration(member)
+      ) {
         body = member.body;
+      } else if (ts.isConstructorDeclaration(member)) {
+        body = member.body;
+        isConstructor = true;
       } else if (
         ts.isPropertyDeclaration(member) &&
         member.initializer &&
@@ -390,7 +427,20 @@ export class ReactComponentInjector implements IComponentInjector {
 
         if (usesTranslation && !hasDeclaration) {
           if (ts.isBlock(body)) {
-            const injectionPos = body.getStart(sourceFile) + 1;
+            let injectionPos = body.getStart(sourceFile) + 1;
+            if (isConstructor) {
+              // this.props 只有在 super() 调用后才被父类赋值：把解构插到 super(...) 语句
+              // 之后，否则 constructor 顶部读 this.props 得到 undefined，t 仍未定义。
+              const superStmt = body.statements.find(
+                (stmt) =>
+                  ts.isExpressionStatement(stmt) &&
+                  ts.isCallExpression(stmt.expression) &&
+                  stmt.expression.expression.kind === ts.SyntaxKind.SuperKeyword,
+              );
+              if (superStmt) {
+                injectionPos = superStmt.getEnd();
+              }
+            }
             transformations.push({
               start: injectionPos,
               end: injectionPos,

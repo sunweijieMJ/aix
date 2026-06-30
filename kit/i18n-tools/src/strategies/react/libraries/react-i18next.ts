@@ -234,6 +234,11 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   }
 
   hasLocalTranslationBinding(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
+    // 函数组件经 withTranslation 把 t 作为 prop 解构传入（`({ t }: WithTranslation) => …`）时，
+    // t 已是本地形参绑定；若漏判会再注入 `const { t } = useTranslation()` 与形参同作用域双声明。
+    if (ReactASTUtils.componentParamBindsVar(node, this.translationVarName)) {
+      return true;
+    }
     // react-i18next 的 isTranslationAvailableInScope 本就只认本地 useTranslation 解构出的
     // `t`（无 props.t 成员分支），与「本地绑定」语义一致，直接复用。
     return this.isTranslationAvailableInScope(node);

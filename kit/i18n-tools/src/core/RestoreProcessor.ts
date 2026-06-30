@@ -129,9 +129,21 @@ export class RestoreProcessor extends BaseProcessor {
 
       for (const filePath of filesToProcess) {
         try {
-          const outputPath = options.overwrite
-            ? filePath
-            : path.join(options.outputDir, path.relative(options.sourceDir, filePath));
+          let outputPath: string;
+          if (options.overwrite) {
+            outputPath = filePath;
+          } else {
+            const relative = path.relative(options.sourceDir, filePath);
+            // 防御：显式传入 sourceDir 之外的 target 时，path.relative 产出 `../..`，
+            // join 后会逃逸 outputDir、把内容写到目标目录之外。拒绝此类文件（计入
+            // failedFiles，非零退出），而非静默写到非预期位置。
+            if (relative.startsWith('..') || path.isAbsolute(relative)) {
+              throw new Error(
+                `目标文件位于源目录之外，非 overwrite 模式无法安全映射到输出目录：${filePath}`,
+              );
+            }
+            outputPath = path.join(options.outputDir, relative);
+          }
 
           const wasModified = await this.processFile(filePath, localeMap, options, outputPath);
           processedCount++;

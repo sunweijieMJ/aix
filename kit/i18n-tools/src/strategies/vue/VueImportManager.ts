@@ -105,6 +105,19 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
+   * 为「仅 <script setup>」补齐模块级 `import { t } from tImport`：先清工具注入的 hook 残留，
+   * 再注入模块 import。与 handleGlobalImports 的 hasSetup 分支同口径。
+   *
+   * 供 VueComponentInjector.inject 在「中文仅在 template、但 setup 内有裸 t() 需绑定」——即
+   * handleGlobalImports 因无 script 字符串早退——的场景复用，避免回落到 useI18n hook 注入
+   * （与统一策略不一致）。幂等：内部 addPluginLocaleImportToScript 已对「已有本地 t 绑定」早退。
+   */
+  applySetupModuleImport(code: string): string {
+    const cleaned = this.removeHookImportAndDeclaration(code);
+    return this.addPluginLocaleImportToScript(cleaned, 'setupOnly');
+  }
+
+  /**
    * 若指定 SFC <script> 块内含裸 t() 调用，向该块顶部注入 `import { t } from
    * tImport`。已存在则跳过。
    *
@@ -126,11 +139,11 @@ export class VueImportManager implements IImportManager {
     const allScriptContent = VueImportManager.collectAllScriptContent(code);
     if (!/(?:^|[^\w.$])t\s*\(/.test(allScriptContent)) return code;
 
-    // 已存在从「任意模块」导入的具名 t（本工具 tImport 或用户手写的其它路径），再注入模块级
+    // 已存在从「任意模块」导入的具名本地 t（本工具 tImport 或用户手写的其它路径），再注入模块级
     // import { t } 会在同一模块作用域产生重复 t 声明（SyntaxError）。旧实现只匹配 tImport 这一个
     // 路径，对 `import { t } from '@/other'` 视而不见。改用任意路径 + allScriptContent 检测
     // （双块共享模块作用域，仅看目标 block 会漏判），与 VueComponentInjector hook 路径同口径。
-    if (/import\s*\{[^}]*\bt\b[^}]*\}\s*from\s*['"][^'"]+['"]/.test(allScriptContent)) {
+    if (this.hasNamedImportLocalT(allScriptContent)) {
       return code;
     }
 
@@ -243,12 +256,38 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
+   * 脚本内是否存在「本地绑定名为 t」的具名 import，如 `import { t } from 'x'` /
+   * `import { foo as t } from 'x'`。用于在注入模块级 `import { t }` 前规避双声明冲突。
+   *
+   * 关键：判定的是「本地绑定名」而非源名。`import { t as translate }` 的本地名是 translate，
+   * 本地并无 t，应返回 false —— 否则会误判「已有 t」而跳过注入，使裸 t() 未声明；
+   * `import { foo as t }` 本地名是 t，返回 true。取代旧的 `\bt\b` 正则（会命中 `t as X` 的源名）。
+   */
+  hasNamedImportLocalT(scriptContent: string): boolean {
+    const importRe = /import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*['"][^'"]+['"]/g;
+    let match: RegExpExecArray | null;
+    while ((match = importRe.exec(scriptContent)) !== null) {
+      const inner = match[1] ?? '';
+      for (const rawPart of inner.split(',')) {
+        const part = rawPart.trim();
+        if (!part) continue;
+        // 本地绑定名：`orig as local` → local；`name`（去掉 type-only 修饰）→ name。
+        const localName = /\sas\s/.test(part)
+          ? part.split(/\sas\s/)[1]!.trim()
+          : part.replace(/^type\s+/, '').trim();
+        if (localName === 't') return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * 从 tImport 配置路径导入 t 函数（用于纯 .ts/.js 文件）
    */
   private addPluginLocaleImport(code: string): string {
-    // 同 addPluginLocaleImportToScript：已有任意路径的具名 t 导入即跳过，避免重复 t 声明。
+    // 同 addPluginLocaleImportToScript：已有任意路径的具名本地 t 导入即跳过，避免重复 t 声明。
     // 纯 .ts/.js 整个文件即模块作用域，直接检测 code。
-    if (/import\s*\{[^}]*\bt\b[^}]*\}\s*from\s*['"][^'"]+['"]/.test(code)) {
+    if (this.hasNamedImportLocalT(code)) {
       return code;
     }
     return CommonASTUtils.mergeNamedImport(code, this.tImport, ['t']);

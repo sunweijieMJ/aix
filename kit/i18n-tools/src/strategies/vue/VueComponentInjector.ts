@@ -60,7 +60,7 @@ export class VueComponentInjector implements IComponentInjector {
     if (descriptor?.scriptSetup) {
       const setupContent = descriptor.scriptSetup.content;
       if (
-        /import\s*\{[^}]*\bt\b(?:\s*as\s+\w+)?[^}]*\}\s*from\s*['"][^'"]+['"]/.test(setupContent) ||
+        this.importManager.hasNamedImportLocalT(setupContent) ||
         this.importManager.hasLocalHookTBinding(setupContent)
       ) {
         return code;
@@ -71,12 +71,13 @@ export class VueComponentInjector implements IComponentInjector {
       return code;
     }
 
-    let updatedCode = this.importManager.addI18nImports(code, [this.library.hookName]);
-
-    // 委托给 VueImportManager 处理 Hook 声明，避免重复实现
-    updatedCode = this.importManager.addHookDeclaration(updatedCode);
-
-    return updatedCode;
+    // 与 VueImportManager「仅 <script setup> 统一走模块 import、不注入 useI18n hook」策略对齐
+    // （见 handleGlobalImports 的 hasSetup 分支）。此前这里注入 useI18n hook —— 但该路径仅在
+    // 「中文只在 template、handleGlobalImports 因无 script 字符串早退」时才会触发（有 script 字符串
+    // 时 handleGlobalImports 已注入 import { t }，下方守卫提前 return）。结果是产物形态取决于中文
+    // 在 template 还是 script，自相矛盾，且对手写的 plain `const t` 易双声明。改为统一补模块 import，
+    // 复用同一套「清 hook 残留 + 注入 import { t }」逻辑。
+    return this.importManager.applySetupModuleImport(code);
   }
 
   /**

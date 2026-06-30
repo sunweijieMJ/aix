@@ -744,7 +744,7 @@ export class LanguageFileManager {
         message = CommonASTUtils.buildLocaleMessage(extracted, library ?? undefined);
       }
 
-      if (!(extracted.semanticId in localeMap)) {
+      if (!Object.prototype.hasOwnProperty.call(localeMap, extracted.semanticId)) {
         newEntries[extracted.semanticId] = message;
         addedCount++;
       } else if (localeMap[extracted.semanticId] !== message) {
@@ -768,7 +768,9 @@ export class LanguageFileManager {
       const callerMap = keyBucketMap ?? {};
       const rebucketSource: LocaleMap = {};
       for (const key of Object.keys(finalMap)) {
-        if (!(key in callerMap)) rebucketSource[key] = finalMap[key] ?? '';
+        if (!Object.prototype.hasOwnProperty.call(callerMap, key)) {
+          rebucketSource[key] = finalMap[key] ?? '';
+        }
       }
       const rebucket =
         Object.keys(rebucketSource).length > 0
