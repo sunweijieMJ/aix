@@ -673,8 +673,13 @@ export class VueTransformer implements ITransformer {
         const isTemplateString =
           extracted.original.startsWith('`') && extracted.original.endsWith('`');
 
+        // script 侧节点为 StringLiteral / 模板串，源码侧均含定界符；extracted.original 仅模板串
+        // 是源码形式、其余为裸内容 → 据此控制裸内容侧不剥定界符，避免内容自带成对引号被误剥。
         if (
-          CommonASTUtils.shouldReplaceNode(originalNodeText, extracted.original, isTemplateString)
+          CommonASTUtils.shouldReplaceNode(originalNodeText, extracted.original, isTemplateString, {
+            nodeDelimited: !ts.isJsxText(node),
+            originalDelimited: isTemplateString,
+          })
         ) {
           replacements.push({ start, end, replacement });
         }

@@ -145,8 +145,18 @@ export class ReactTransformer implements ITransformer {
           const originalNodeText = CommonASTUtils.nodeToText(node, sourceFile);
           const isTemplateString =
             extracted.original.startsWith('`') && extracted.original.endsWith('`');
+          // JsxText 源码侧无定界符；extracted.original 仅模板串（反引号包裹）是源码形式、其余为裸内容。
+          // 据此精确控制两侧是否剥定界符，避免内容自带成对引号时被误剥导致漏替换。
           if (
-            CommonASTUtils.shouldReplaceNode(originalNodeText, extracted.original, isTemplateString)
+            CommonASTUtils.shouldReplaceNode(
+              originalNodeText,
+              extracted.original,
+              isTemplateString,
+              {
+                nodeDelimited: !ts.isJsxText(node),
+                originalDelimited: isTemplateString,
+              },
+            )
           ) {
             replacements.push({ start, end, replacement });
           }

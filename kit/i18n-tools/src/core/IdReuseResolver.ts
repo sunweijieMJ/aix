@@ -117,7 +117,11 @@ export class IdReuseResolver {
     // 已被提升到 common 的 key：跨目录可见，避免新分配产生 _N 后缀
     const promote = this.config.keys.reuse.promoteToCommon;
     if (promote && promote.threshold >= 2) {
-      const ns = promote.namespace || 'common';
+      // 复用 getCommonNamespace()（?? 'common'）与「生成端」保持同一解析口径：
+      // 此前这里用 `promote.namespace || 'common'`，当 namespace 被显式配成空串 ''
+      // 时会被退回 'common'，而生成端用 ?? 保留 ''、产出无前缀提升键，导致 commonHit
+      // 永远命中不到、提升键跨运行累积 _N 后缀、去重收益失效。
+      const ns = this.getCommonNamespace();
       const sep = this.config.keys.separator;
       const commonHit = candidates.find((k) => k === ns || k.startsWith(`${ns}${sep}`));
       if (commonHit) return commonHit;

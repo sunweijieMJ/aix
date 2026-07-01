@@ -984,3 +984,75 @@ export function C({ name }: { name: string }) {
     expect(injected).toContain('<Trans>你好 {name} 欢迎</Trans>');
   });
 });
+
+/**
+ * 回归 Bug-1（多 agent 审计 + 自验）：字面量「值本身被同种 ASCII 引号包裹」时漏替换。
+ *
+ * 旧实现 shouldReplaceNode 对裸内容侧 originalText 也剥成对定界符 → 值为 `"草稿"` 的字符串
+ * 被误剥成 `草稿`，与带定界符源码侧归一化后不等 → 静默跳过替换（locale 写了 key、源码残留中文）。
+ * 端到端覆盖 findExactStringNode（定位节点）与 transform 内 shouldReplaceNode（复验）两处协同。
+ */
+describe('字面量内容自带成对 ASCII 引号的端到端替换（回归 Bug-1）', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-bug1-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('值为 "草稿"（双引号包裹）的字符串字面量被替换为 t()，中文不残留', async () => {
+    const code = `import React from 'react';
+export const Foo = () => {
+  const label = '"草稿"';
+  return <span>{label}</span>;
+};
+`;
+    const file = path.join(dir, 'Foo.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/i18n', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+
+    // 必须真正替换：出现 t(' 调用，且源码不再残留中文
+    expect(out).toMatch(/=\s*t\(/);
+    expect(out).not.toContain('草稿');
+  });
+
+  it('值为 ‘提交’（单引号包裹）同样被替换', async () => {
+    const code = `import React from 'react';
+export const Bar = () => {
+  const label = "'提交'";
+  return <span>{label}</span>;
+};
+`;
+    const file = path.join(dir, 'Bar.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/i18n', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+
+    expect(out).toMatch(/=\s*t\(/);
+    expect(out).not.toContain('提交');
+  });
+
+  it('控制用例：普通中文字符串仍被正常替换（防过度修复回归）', async () => {
+    const code = `import React from 'react';
+export const Baz = () => {
+  const label = '你好世界';
+  return <span>{label}</span>;
+};
+`;
+    const file = path.join(dir, 'Baz.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/i18n', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+
+    expect(out).toMatch(/=\s*t\(/);
+    expect(out).not.toContain('你好世界');
+  });
+});

@@ -1000,9 +1000,15 @@ export class CommonASTUtils {
       }
     }
 
+    // 此处 originalText 是提取阶段存的裸内容（StringLiteral 的 node.text），不含源码定界符；
+    // nodeText 是含定界符的源码片段 → 仅源码侧剥定界符，裸内容侧不剥（见 shouldReplaceNode 注释）。
     if (ts.isStringLiteral(node)) {
       const nodeText = CommonASTUtils.nodeToText(node, sourceFile);
-      if (CommonASTUtils.shouldReplaceNode(nodeText, originalText, false)) {
+      if (
+        CommonASTUtils.shouldReplaceNode(nodeText, originalText, false, {
+          originalDelimited: false,
+        })
+      ) {
         return node;
       }
 
@@ -1010,7 +1016,11 @@ export class CommonASTUtils {
       while (parent) {
         if (ts.isStringLiteral(parent)) {
           const parentText = CommonASTUtils.nodeToText(parent, sourceFile);
-          if (CommonASTUtils.shouldReplaceNode(parentText, originalText, false)) {
+          if (
+            CommonASTUtils.shouldReplaceNode(parentText, originalText, false, {
+              originalDelimited: false,
+            })
+          ) {
             return parent;
           }
         }
@@ -1018,17 +1028,28 @@ export class CommonASTUtils {
       }
     }
 
+    // JsxText：源码侧本身就是无定界符的裸文本，两侧都不剥（避免内容自带成对引号被误剥）。
     if (ts.isJsxText(node)) {
       const nodeText = CommonASTUtils.nodeToText(node, sourceFile);
-      if (CommonASTUtils.shouldReplaceNode(nodeText, originalText, false)) {
+      if (
+        CommonASTUtils.shouldReplaceNode(nodeText, originalText, false, {
+          nodeDelimited: false,
+          originalDelimited: false,
+        })
+      ) {
         return node;
       }
     }
 
-    // 处理无变量模板字符串（`文本` 没有 ${} 的场景）
+    // 处理无变量模板字符串（`文本` 没有 ${} 的场景）。能走到这里说明 originalText 非反引号包裹
+    // （反引号原文已在上方分支处理并返回），即裸内容 → 仅源码侧（带反引号）剥定界符。
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
       const nodeText = CommonASTUtils.nodeToText(node, sourceFile);
-      if (CommonASTUtils.shouldReplaceNode(nodeText, originalText, false)) {
+      if (
+        CommonASTUtils.shouldReplaceNode(nodeText, originalText, false, {
+          originalDelimited: false,
+        })
+      ) {
         return node;
       }
     }
@@ -1140,6 +1161,7 @@ export class CommonASTUtils {
     nodeText: string,
     originalText: string,
     _isTemplateString: boolean,
+    opts?: { nodeDelimited?: boolean; originalDelimited?: boolean },
   ): boolean {
     // 逐条解码常见 JSON 风格转义。不用 `JSON.parse(\`"${str}"\`)`：原文含 `"` 或孤立
     // `\` 时会构造出非法 JSON 串，解析抛错被吞 → 中英混合引号（如 `他说："你好"`）匹配失败。
@@ -1153,14 +1175,27 @@ export class CommonASTUtils {
         .replace(/\\"/g, '"')
         .replace(/\\'/g, "'");
 
-    const normalizeText = (text: string) => {
-      text = CommonASTUtils.stripMatchedDelimiters(text);
+    // nodeDelimited / originalDelimited 默认 true：保持历史「两侧都剥一层成对定界符」的行为，
+    // 未显式标注的调用点完全不受影响。仅当调用方明确知道「该侧是不含源码定界符的裸内容」
+    // （如提取阶段存的 StringLiteral node.text）时传 false。
+    //
+    // Why：stripMatchedDelimiters 对「首尾恰为同种 ASCII 引号/反引号」的内容也会剥一层。
+    // 当字面量的值本身被同种引号包裹（源码 `'"提示"'`，值即 `"提示"`），裸内容侧被误当作
+    // 带定界符再剥一层 → 归一化后 `提示` ≠ 带定界符源码侧的 `"提示"` → 静默漏替换
+    // （提取阶段已写入 locale key，源码却残留中文，形成孤儿）。对裸内容侧关掉剥定界符即可。
+    const nodeDelimited = opts?.nodeDelimited ?? true;
+    const originalDelimited = opts?.originalDelimited ?? true;
+
+    const normalizeText = (text: string, delimited: boolean) => {
+      if (delimited) text = CommonASTUtils.stripMatchedDelimiters(text);
       text = text.replace(/\r?\n/g, '\n');
       text = decodeEscapes(text);
       return text;
     };
 
-    return normalizeText(nodeText) === normalizeText(originalText);
+    return (
+      normalizeText(nodeText, nodeDelimited) === normalizeText(originalText, originalDelimited)
+    );
   }
 
   /**

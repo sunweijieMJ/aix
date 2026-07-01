@@ -954,3 +954,26 @@ describe('RestoreProcessor — 显式 target 解析为空不回退全量扫描',
     expect(out).not.toContain("t('k')");
   });
 });
+
+describe('CommonASTUtils.findExactStringNode — 内容自带成对 ASCII 引号（回归 Bug-1）', () => {
+  it('字符串值本身被同种 ASCII 双引号包裹（"提示"）仍能精确命中 StringLiteral 节点', () => {
+    // 源码：单引号字符串，其值（node.text）恰为 `"提示"`，首尾是 ASCII 双引号。
+    // 旧实现对裸内容 originalText 也剥成对定界符 → "提示" 被误剥成 提示 →
+    // 与 nodeText 归一化后不等 → 静默漏替换（locale 写了 key、源码残留中文）。
+    const source = `const x = '"提示"';`;
+    const sf = ts.createSourceFile('t.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const pos = source.indexOf('提示');
+    const node = CommonASTUtils.findExactStringNode(sf, pos, '"提示"');
+    expect(node).toBeDefined();
+    expect(ts.isStringLiteral(node!)).toBe(true);
+  });
+
+  it('普通中文字符串（内容无成对引号）不受影响', () => {
+    const source = `const x = '你好';`;
+    const sf = ts.createSourceFile('t.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const pos = source.indexOf('你好');
+    const node = CommonASTUtils.findExactStringNode(sf, pos, '你好');
+    expect(node).toBeDefined();
+    expect(ts.isStringLiteral(node!)).toBe(true);
+  });
+});
