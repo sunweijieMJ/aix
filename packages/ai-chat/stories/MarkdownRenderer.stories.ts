@@ -302,6 +302,28 @@ export const Math: Story = {
 };
 
 /**
+ * 化学方程式（KaTeX + mhchem）：`\ce{}` 写化学式/反应式、`\pu{}` 写带单位物理量，
+ * 写在 `$...$` / `$$...$$` 内即可。mhchem 内置于 `katex` 包、随 katex 一同按需加载，无需额外依赖。
+ */
+export const Chemistry: Story = {
+  args: {
+    content: [
+      '水的电离：$\\ce{H2O}$，硫酸根离子 $\\ce{SO4^2-}$。',
+      '',
+      '氢气燃烧（块级反应式）：',
+      '',
+      '$$ \\ce{2H2 + O2 -> 2H2O} $$',
+      '',
+      '碳酸钙受热分解（箭头上标注反应条件）：',
+      '',
+      '$$ \\ce{CaCO3 ->[\\Delta] CaO + CO2 ^} $$',
+      '',
+      '配位化合物 $\\ce{[Cu(NH3)4]^2+}$ 与物理量 $\\pu{123 J/mol}$。',
+    ].join('\n'),
+  },
+};
+
+/**
  * 自定义 markdown 渲染器（`markdownRenderers` 扩展点）：覆盖内置 `fence`，把代码块换成带语言标签的卡片。
  */
 export const CustomRenderers: Story = {

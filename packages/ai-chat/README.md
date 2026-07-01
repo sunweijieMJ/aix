@@ -271,6 +271,8 @@ import 'katex/dist/katex.min.css';
 - 个别环境 katex 安装失败 → 公式原样保留为文本，markdown 其余部分照常渲染（与 `markdown-it` 缺失时同样的降级风格）。
 - 流式渲染时未闭合的 `$$` 残片会被自动隐藏，闭合后再呈现为公式，避免半截裸 LaTeX 闪烁。
 
+**化学方程式（mhchem）**：`\ce{...}`（化学式/反应式）与 `\pu{...}`（带单位物理量）开箱支持——写在 `$...$` / `$$...$$` 内即可，如 `$\ce{2H2 + O2 -> 2H2O}$`、离子 `$\ce{SO4^2-}$`、`$\pu{123 J/mol}$`。mhchem 是 `katex` 包内置的 contrib 扩展，随 katex 一同按需加载、无需额外依赖；个别环境加载失败时仅化学式降级、普通公式不受影响。注意 `\ce`/`\pu` 须包裹在数学定界符内（裸写不渲染，与其它裸 LaTeX 行为一致）。
+
 ### 自定义 markdown 渲染器（`markdownRenderers`）
 
 每种 markdown token（`paragraph` / `heading` / `fence` / `math_block` / `table` / …）都对应一个渲染器，可通过 `AiChat` / `MarkdownRenderer` 的 `markdownRenderers` 扩展或覆盖（优先级高于内置，与 `provideAiChatConfig.markdownRenderers` 全局配置合并）：

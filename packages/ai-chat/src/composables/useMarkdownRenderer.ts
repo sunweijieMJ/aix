@@ -125,6 +125,16 @@ async function loadMathRenderers(katexEnabled: boolean): Promise<MarkdownRendere
   try {
     const katexLib = await import('katex');
     const katex = (katexLib.default ?? katexLib) as unknown as KatexLike;
+    // mhchem 化学式扩展：注册 \ce / \pu 宏到 katex 单例（patch 副作用式 import）。
+    // 化学方程式本就写在 $...$ / $$...$$ 内（如 $\ce{2H2 + O2 -> 2H2O}$），随现有 math 管线渲染。
+    // mhchem 内置于 katex 包（无需新增依赖），只搭 katex 的懒加载便车——非数学对话全程零成本。
+    // 独立 try 隔离：mhchem 加载失败仅让 \ce/\pu 走 KaTeX 未知宏提示（throwOnError:false 下不中断），
+    // 普通公式照常渲染，与 katex/highlight/mermaid 缺失同款静默降级、互不连累。
+    try {
+      await import('katex/contrib/mhchem');
+    } catch {
+      // mhchem 不可用：\ce{} / \pu{} 降级为 KaTeX 提示；普通公式不受影响
+    }
     const renderers = createMathRenderers(katex);
     // 自动注入 KaTeX 样式（副作用式 import）：装了 katex 即获得正确排版，无需手动引入。
     // 打包器不支持 CSS import / SSR 等场景失败时忽略——回退为手动 `import 'katex/dist/katex.min.css'`。
