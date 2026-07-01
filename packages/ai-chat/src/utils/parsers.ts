@@ -1,5 +1,5 @@
 import type { SSEChunk } from '../composables/useXStream';
-import type { ParsedChunk } from '../types';
+import type { ParsedChunk, ToolEventDelta } from '../types';
 
 /**
  * SSE 事件单元解析工厂与内置预设。
@@ -16,16 +16,18 @@ export interface CreateParseChunkOptions {
   pickDelta?: (json: unknown) => string | undefined;
   /** 判定该增量归属的流式块类型（text / reasoning），默认 text */
   pickBlockType?: (json: unknown) => 'text' | 'reasoning' | undefined;
+  /** 从已解析的 JSON 报文中取工具事件（供自定义扁平后端接入工具调用）；返回 undefined 表示本事件不含工具增量 */
+  pickTool?: (json: unknown) => ToolEventDelta | undefined;
 }
 
 /**
  * 通用 SSE 事件解析工厂：负责 `doneSignal` 识别与 JSON.parse 容错，
- * 报文结构适配交给 pickDelta / pickBlockType。非 JSON 的 data 回退为整行文本增量（兼容纯文本流）。
+ * 报文结构适配交给 pickDelta / pickBlockType / pickTool。非 JSON 的 data 回退为整行文本增量（兼容纯文本流）。
  */
 export function createParseChunk(
   options: CreateParseChunkOptions = {},
 ): (chunk: SSEChunk) => ParsedChunk {
-  const { doneSignal = '[DONE]', pickDelta, pickBlockType } = options;
+  const { doneSignal = '[DONE]', pickDelta, pickBlockType, pickTool } = options;
   return (chunk: SSEChunk): ParsedChunk => {
     const data = chunk.data;
     if (!data) return {};
@@ -37,6 +39,8 @@ export function createParseChunk(
       // 非 JSON：整行作为文本增量（兼容后端直接推纯文本而非 JSON 的情形）
       return { delta: data };
     }
+    const tool = pickTool?.(json);
+    if (tool) return { tool };
     const delta = pickDelta
       ? pickDelta(json)
       : ((json as { delta?: string; content?: string })?.delta ??
@@ -55,20 +59,58 @@ export const flatParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChunk
 
 /**
  * OpenAI 兼容预设：读取 `choices[0].delta.content`；
- * 若仅有 `reasoning_content`（思维链增量）则归入 reasoning 块。结束信号 `[DONE]`。
+ * 若仅有 `reasoning_content`（思维链增量）则归入 reasoning 块；
+ * `delta.tool_calls` 归入工具事件通道，`finish_reason:'tool_calls'` 视为参数结束信号。
+ * 结束信号 `[DONE]`。
+ *
+ * 未走 createParseChunk 工厂：工具分支需要在读取文本增量之前短路返回，
+ * 工厂的 pickDelta/pickBlockType 组合无法自然表达「命中工具则跳过文本」的优先级，故显式实现。
  */
-export const openaiParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChunk({
-  pickDelta: (json) => {
-    const d = (json as { choices?: { delta?: { content?: string; reasoning_content?: string } }[] })
-      ?.choices?.[0]?.delta;
-    return d?.content ?? d?.reasoning_content ?? undefined;
-  },
-  pickBlockType: (json) => {
-    const d = (json as { choices?: { delta?: { content?: string; reasoning_content?: string } }[] })
-      ?.choices?.[0]?.delta;
-    return d?.reasoning_content && !d?.content ? 'reasoning' : 'text';
-  },
-});
+export function openaiParseChunk(chunk: SSEChunk): ParsedChunk {
+  const data = chunk.data;
+  if (!data) return {};
+  if (data === '[DONE]') return { done: true };
+  let json: {
+    choices?: {
+      delta?: {
+        content?: string;
+        reasoning_content?: string;
+        tool_calls?: {
+          index?: number;
+          id?: string;
+          function?: { name?: string; arguments?: string };
+        }[];
+      };
+      finish_reason?: string;
+    }[];
+  };
+  try {
+    json = JSON.parse(data);
+  } catch {
+    // 非 JSON：整行作为文本增量（兼容后端直接推纯文本而非 JSON 的情形）
+    return { delta: data };
+  }
+  const choice = json.choices?.[0];
+  const tc = choice?.delta?.tool_calls?.[0];
+  if (tc) {
+    return {
+      tool: {
+        index: tc.index ?? 0,
+        toolCallId: tc.id,
+        toolName: tc.function?.name,
+        argsTextDelta: tc.function?.arguments,
+      },
+    };
+  }
+  // finish_reason 无法精确给出具体 index（可能存在多个并行工具调用）；为保持 parseChunk 纯函数，
+  // 简化为固定发 index 0 的 argsDone。多并行工具的收尾建议由后端显式事件驱动，
+  // 或改用 Responses API 的 `.done` 语义事件替代本预设。
+  if (choice?.finish_reason === 'tool_calls') return { tool: { index: 0, argsDone: true } };
+  const d = choice?.delta;
+  if (d?.reasoning_content && !d.content)
+    return { delta: d.reasoning_content, blockType: 'reasoning' };
+  return { delta: d?.content ?? '', blockType: 'text' };
+}
 
 /**
  * Anthropic（Claude Messages SSE）兼容预设：**按 `event` 字段路由**（SSE 事件单元的价值体现）。
@@ -77,11 +119,46 @@ export const openaiParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChu
  */
 export function anthropicParseChunk(chunk: SSEChunk): ParsedChunk {
   if (chunk.event === 'message_stop') return { done: true };
+
+  if (chunk.event === 'content_block_start') {
+    try {
+      const j = JSON.parse(chunk.data) as {
+        index?: number;
+        content_block?: { type?: string; id?: string; name?: string };
+      };
+      if (j.content_block?.type === 'tool_use') {
+        return {
+          tool: {
+            index: j.index ?? 0,
+            toolCallId: j.content_block.id,
+            toolName: j.content_block.name,
+          },
+        };
+      }
+    } catch {
+      /* 忽略无法解析的 start */
+    }
+    return {};
+  }
+
+  if (chunk.event === 'content_block_stop') {
+    try {
+      const j = JSON.parse(chunk.data) as { index?: number };
+      return { tool: { index: j.index ?? 0, argsDone: true } };
+    } catch {
+      return {};
+    }
+  }
+
   if (chunk.event === 'content_block_delta') {
     try {
-      const d = (
-        JSON.parse(chunk.data) as { delta?: { type?: string; text?: string; thinking?: string } }
-      )?.delta;
+      const j = JSON.parse(chunk.data) as {
+        index?: number;
+        delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
+      };
+      const d = j.delta;
+      if (d?.type === 'input_json_delta')
+        return { tool: { index: j.index ?? 0, argsTextDelta: d.partial_json ?? '' } };
       if (d?.type === 'thinking_delta' && d.thinking)
         return { delta: d.thinking, blockType: 'reasoning' };
       if (d?.text) return { delta: d.text, blockType: 'text' };

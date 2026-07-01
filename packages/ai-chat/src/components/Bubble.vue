@@ -44,6 +44,7 @@
                   :info="info"
                   :typing="typing"
                   :on-block-action="handleBlockAction"
+                  :tool-renderers="toolRenderers"
                   @typing-complete="handleTypingComplete"
                 >
                   <!-- 透传消费方提供的「非保留」具名插槽（约定 <块类型>-<内部slot>）给块渲染器，
@@ -107,6 +108,7 @@ import ReasoningBlock from './blocks/ReasoningBlock.vue';
 import SourcesBlock from './blocks/SourcesBlock.vue';
 import TextBlock from './blocks/TextBlock.vue';
 import ThoughtChainBlock from './blocks/ThoughtChainBlock.vue';
+import ToolUseBlock from './blocks/ToolUseBlock.vue';
 
 const props = withDefaults(defineProps<BubbleProps>(), {
   content: () => [],
@@ -147,6 +149,7 @@ const builtinRenderers: BlockRenderers = {
   'thought-chain': ThoughtChainBlock,
   sources: SourcesBlock,
   attachment: AttachmentBlock,
+  tool_use: ToolUseBlock,
 };
 const renderers = computed<BlockRenderers>(() => ({
   ...builtinRenderers,

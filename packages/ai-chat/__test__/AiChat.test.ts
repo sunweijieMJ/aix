@@ -5,7 +5,7 @@ import AiChat from '../src/components/AiChat.vue';
 import BubbleList from '../src/components/BubbleList.vue';
 import { provideAiChatConfig } from '../src/composables/useAiChatConfig';
 import type { FollowContext } from '../src/composables/useAutoScroll';
-import type { ChatMessage, VoiceRecognizerCtx, VoiceRecognizer } from '../src/types';
+import type { ChatMessage, ContentBlock, VoiceRecognizerCtx, VoiceRecognizer } from '../src/types';
 import {
   textBlock,
   textMessage,
@@ -363,6 +363,40 @@ describe('AiChat', () => {
     await flushPromises();
     expect(w2.find('.from-props').exists()).toBe(true);
     expect(w2.find('.from-config').exists()).toBe(false);
+  });
+
+  // Task 8：AiChat 顶层 toolRenderers（与 blockRenderers 并列的独立注册表）透传给 BubbleList，
+  // 按 tool_use 块的 toolName 路由到自定义渲染器
+  it('toolRenderers 透传并对指定 toolName 生效', async () => {
+    const Custom = defineComponent({
+      props: { block: { type: Object, required: true } },
+      setup: () => () => h('div', { class: 'quiz' }, 'QUIZ'),
+    });
+    const msgs: ChatMessage[] = [
+      { id: 'u', role: 'user', content: [{ id: 't', type: 'text', text: 'hi' }] },
+      {
+        id: 'ai',
+        role: 'ai',
+        status: 'success',
+        content: [
+          {
+            id: 'b',
+            type: 'tool_use',
+            toolCallId: 'c',
+            toolName: 'generate_quiz',
+            state: 'output-available',
+            input: {},
+            output: {},
+          } as ContentBlock,
+        ],
+      },
+    ];
+    const request = vi.fn(async () => new ReadableStream());
+    const w = mount(AiChat, {
+      props: { request, defaultMessages: msgs, toolRenderers: { generate_quiz: Custom } },
+    });
+    await nextTick();
+    expect(w.find('.quiz').exists()).toBe(true);
   });
 
   it('v-model:messages 受控：外部更新 messages 即时反映到视图', async () => {

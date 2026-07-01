@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { ContentBlock } from '../src/types';
 import {
   genBlockId,
   textBlock,
@@ -8,6 +9,7 @@ import {
   createMessage,
   messageText,
   attachmentBlock,
+  toolFollowLen,
 } from '../src/utils/helpers';
 
 describe('helpers', () => {
@@ -60,5 +62,52 @@ describe('helpers', () => {
     expect(b.items).toEqual(items);
     expect(b.items).toBe(items); // 无拷贝保留引用，锁定合约
     expect(b.id).toBeTruthy();
+  });
+
+  describe('toolFollowLen', () => {
+    const toolBlock = (
+      overrides: Partial<Extract<ContentBlock, { type: 'tool_use' }>> = {},
+    ): Extract<ContentBlock, { type: 'tool_use' }> => ({
+      id: genBlockId(),
+      type: 'tool_use',
+      toolCallId: 'c1',
+      toolName: 'x',
+      state: 'input-streaming',
+      ...overrides,
+    });
+
+    it('无 tool_use 块时返回 0', () => {
+      const blocks: ContentBlock[] = [textBlock('hi'), reasoningBlock('think')];
+      expect(toolFollowLen(blocks)).toBe(0);
+    });
+
+    it('累加单个 tool_use 块的 argsText 长度', () => {
+      const blocks: ContentBlock[] = [toolBlock({ argsText: '{"a":1' })];
+      expect(toolFollowLen(blocks)).toBe(6);
+    });
+
+    it('output 存在时额外 +1', () => {
+      const blocks: ContentBlock[] = [
+        toolBlock({ state: 'output-available', argsText: '{"a":1}', output: 'ok' }),
+      ];
+      expect(toolFollowLen(blocks)).toBe(8); // argsText 长度 7 + output 存在 1
+    });
+
+    it('多个 tool_use 块的贡献累加', () => {
+      const blocks: ContentBlock[] = [
+        toolBlock({ argsText: 'abc' }), // 3
+        toolBlock({ state: 'output-available', argsText: 'ab', output: 1 }), // 2 + 1
+      ];
+      expect(toolFollowLen(blocks)).toBe(6);
+    });
+
+    it('混合其他类型块时只统计 tool_use 块', () => {
+      const blocks: ContentBlock[] = [
+        textBlock('正文'),
+        toolBlock({ argsText: 'abcd' }),
+        sourcesBlock([{ title: 's' }]),
+      ];
+      expect(toolFollowLen(blocks)).toBe(4);
+    });
   });
 });

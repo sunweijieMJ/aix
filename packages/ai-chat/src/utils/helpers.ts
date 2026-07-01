@@ -83,3 +83,12 @@ export const messageText = (m: ChatMessage): string =>
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
     .map((b) => b.text)
     .join('');
+
+/** 工具块对自动滚动跟随的贡献：argsText 长度 + output 存在性（避免对大结果反复 stringify） */
+export function toolFollowLen(blocks: ContentBlock[]): number {
+  let n = 0;
+  for (const b of blocks) {
+    if (b.type === 'tool_use') n += (b.argsText?.length ?? 0) + (b.output != null ? 1 : 0);
+  }
+  return n;
+}

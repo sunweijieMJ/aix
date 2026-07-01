@@ -91,3 +91,59 @@ describe('parsers', () => {
     });
   });
 });
+
+describe('parseChunk — 工具分支', () => {
+  it('anthropic content_block_start(tool_use) → 起始工具事件', () => {
+    const r = anthropicParseChunk({
+      event: 'content_block_start',
+      data: JSON.stringify({
+        index: 1,
+        content_block: { type: 'tool_use', id: 'toolu_1', name: 'get_weather' },
+      }),
+    });
+    expect(r).toMatchObject({ tool: { index: 1, toolCallId: 'toolu_1', toolName: 'get_weather' } });
+  });
+
+  it('anthropic input_json_delta → argsTextDelta', () => {
+    const r = anthropicParseChunk({
+      event: 'content_block_delta',
+      data: JSON.stringify({
+        index: 1,
+        delta: { type: 'input_json_delta', partial_json: '{"city":' },
+      }),
+    });
+    expect(r).toMatchObject({ tool: { index: 1, argsTextDelta: '{"city":' } });
+  });
+
+  it('anthropic content_block_stop → argsDone', () => {
+    const r = anthropicParseChunk({
+      event: 'content_block_stop',
+      data: JSON.stringify({ index: 1 }),
+    });
+    expect(r).toMatchObject({ tool: { index: 1, argsDone: true } });
+  });
+
+  it('openai delta.tool_calls 首片 → id+name+argsTextDelta', () => {
+    const r = openaiParseChunk({
+      data: JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: [{ index: 0, id: 'call_1', function: { name: 'f', arguments: '{"a"' } }],
+            },
+          },
+        ],
+      }),
+    });
+    expect(r).toMatchObject({
+      tool: { index: 0, toolCallId: 'call_1', toolName: 'f', argsTextDelta: '{"a"' },
+    });
+  });
+
+  it('openai finish_reason=tool_calls → argsDone', () => {
+    const r = openaiParseChunk({
+      data: JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),
+    });
+    expect(r).toMatchObject({ tool: { argsDone: true } });
+  });
+});

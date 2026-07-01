@@ -46,6 +46,9 @@ export {
 } from './utils/parsers';
 export type { CreateParseChunkOptions } from './utils/parsers';
 
+// 工具调用（tool_use）纯 reducer：把 ToolEventDelta 并入消息内容块，供自定义协议接入复用
+export { applyToolEvent, type ToolReduceCtx } from './utils/toolBlocks';
+
 // 带中间件 / 超时的 fetch 包装（鉴权注入、响应校验、超时复用）
 export { createXFetch } from './utils/x-fetch';
 export type { XFetch, OnRequest, OnResponse, OnError, CreateXFetchOptions } from './utils/x-fetch';

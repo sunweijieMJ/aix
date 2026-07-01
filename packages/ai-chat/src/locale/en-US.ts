@@ -38,4 +38,7 @@ export const enUS: AiChatLocale = {
   attachmentsCollapse: 'Collapse attachments panel',
   prevBranch: 'Previous version',
   nextBranch: 'Next version',
+  toolInput: 'Input',
+  toolOutput: 'Output',
+  toolError: 'Error',
 };

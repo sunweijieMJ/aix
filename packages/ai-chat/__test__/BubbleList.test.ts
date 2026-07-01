@@ -386,4 +386,32 @@ describe('BubbleList', () => {
     });
     expect(w.find('.rich').text()).toBe('R:步骤一');
   });
+
+  it('把 toolRenderers 透传给 Bubble，命中的 toolName 交由自定义渲染器接管', () => {
+    const toolItems: ChatMessage[] = [
+      {
+        id: 'm-tool',
+        role: 'ai',
+        status: 'success',
+        content: [
+          {
+            id: 'b1',
+            type: 'tool_use',
+            toolCallId: 'c1',
+            toolName: 'search',
+            state: 'output-available',
+            output: 'ok',
+          },
+        ],
+      },
+    ];
+    const CustomTool = defineComponent({
+      name: 'CustomTool',
+      setup: () => () => h('span', { class: 'custom-tool' }, 'custom'),
+    });
+    const w = mount(BubbleList, {
+      props: { items: toolItems, toolRenderers: { search: CustomTool } },
+    });
+    expect(w.find('.custom-tool').text()).toBe('custom');
+  });
 });

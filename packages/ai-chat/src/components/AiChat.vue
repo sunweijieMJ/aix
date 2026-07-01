@@ -33,6 +33,7 @@
         :should-follow="shouldFollow"
         :typing="config.enableTyping"
         :block-renderers="blockRenderers"
+        :tool-renderers="toolRenderers"
         :editable="bubbleEditable"
         @retry="onReload"
         @block-action="onBlockAction"
@@ -123,6 +124,8 @@ export interface AiChatProps {
   shouldFollow?: ShouldFollow;
   /** 块渲染器注册表（扩展/覆盖内置 text/reasoning 渲染），优先级高于 provideAiChatConfig 的全局 blockRenderers */
   blockRenderers?: BlockRenderers;
+  /** 工具调用（tool_use）渲染器注册表，按 toolName 路由，优先级高于 provideAiChatConfig 的全局 toolRenderers */
+  toolRenderers?: BlockRenderers;
   /** 欢迎页快捷问题，点击后以其 label 作为消息自动发送 */
   prompts?: PromptItem[];
   /** 顶部标题栏标题文案；传入（或提供 header* 插槽）时渲染标题栏，默认不渲染 */
@@ -329,6 +332,13 @@ const blockRenderers = computed<BlockRenderers>(() => ({
   ...props.blockRenderers,
 }));
 
+// 工具调用渲染器合并优先级：组件 props.toolRenderers > 全局 provideAiChatConfig.toolRenderers
+// （与 blockRenderers 并列的独立注册表，专供 tool_use 块按 toolName 路由）
+const toolRenderers = computed<BlockRenderers>(() => ({
+  ...config.value.toolRenderers,
+  ...props.toolRenderers,
+}));
+
 // markdown 级配置（markdownRenderers / allowHtml）经"全局 + 组件 props"合并后重新 provide 给子树，
 // 供气泡内深层的 TextBlock / ReasoningBlock 的 MarkdownRenderer 注入消费。
 // 优先级：内置默认 < 全局 provideAiChatConfig < 组件 props（与 roles/blockRenderers 一致）。
@@ -385,6 +395,7 @@ const {
   getBranches,
   exportTree,
   importTree,
+  resume,
 } = useChat({
   request: props.request,
   streamMode: props.streamMode,
@@ -593,6 +604,7 @@ defineExpose({
   abort,
   setMessages,
   updateBlock,
+  resume,
   // 透传 Sender 命令式能力，便于外部聚焦 / 清空输入框
   focus: () => senderRef.value?.focus(),
   clear: () => senderRef.value?.clear(),

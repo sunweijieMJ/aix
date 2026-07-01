@@ -10,12 +10,15 @@ import type {
 } from '../types';
 import { genMsgId, genBlockId } from '../utils/helpers';
 import { flatParseChunk } from '../utils/parsers';
+import { applyToolEvent, toArray, type ToolReduceCtx } from '../utils/toolBlocks';
 import { createMessageTree, ROOT_ID, type MessageTreeApi } from './messageTree';
 import { xStream, sseStream, type SSEChunk } from './useXStream';
 
 export interface UseChatRequestCtx {
   messages: ChatMessage[];
   signal: AbortSignal;
+  /** 续流负载（resume 调用时透传，fresh 请求恒为 undefined），业务自定义形状 */
+  resume?: unknown;
 }
 
 export interface UseChatOptions {
@@ -32,7 +35,9 @@ export interface UseChatOptions {
    * `delta` / `content`，识别 `[DONE]`）；对接 OpenAI/Anthropic 用 `openaiParseChunk` /
    * `anthropicParseChunk`，或经 `createParseChunk` 自定义。`line` 模式收原始行字符串。
    */
-  parseChunk?: ((chunk: SSEChunk) => ParsedChunk) | ((line: string) => ParsedChunk);
+  parseChunk?:
+    | ((chunk: SSEChunk) => ParsedChunk | ParsedChunk[])
+    | ((line: string) => ParsedChunk | ParsedChunk[]);
   /**
    * 渲染消息转换器：把「数据层原始消息」映射为「UI 渲染消息」，解耦后端格式与展示形状。
    * 默认不设置（渲染消息即原始消息，零开销）。
@@ -103,6 +108,12 @@ export interface UseChatReturn {
   exportTree: () => ExportedTree;
   /** 导入树（覆盖当前；切会话/恢复用） */
   importTree: (data: ExportedTree) => void;
+  /**
+   * 续流：向已存在的 AI 消息续写（不新建节点），用于工具调用 HITL 确认等场景。
+   * id 接受派生气泡 id（内部解析回父消息）；payload 透传给 request 的 resume 字段。
+   * 返回是否受理：isLoading 时 / id 未命中 / 非 AI 消息 → false，未做任何改动。
+   */
+  resume: (id: string, payload?: unknown) => Promise<boolean>;
 }
 
 /** 把流式增量并入 AI 消息内容块：末尾同 type 则追加，否则新开带 id 的 block */
@@ -139,7 +150,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     );
   }
   // 按模式选分帧器并统一调用签名：sse → SSEChunk，line → string
-  const callParse = parseChunk as (unit: SSEChunk | string) => ParsedChunk;
+  const callParse = parseChunk as (unit: SSEChunk | string) => ParsedChunk | ParsedChunk[];
   // 对话树为消息状态唯一来源（SSOT）；messages 是从树派生的只读 active path computed。
   const tree: MessageTreeApi = createMessageTree(defaultMessages);
   const messages = tree.activePath;
@@ -234,7 +245,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     msg.extra = { ...msg.extra, feedback: value };
   };
 
-  const runRequest = async (aiMsgId: string) => {
+  const runRequestInto = async (
+    aiMsgId: string,
+    opts: { fresh: boolean; resumePayload?: unknown },
+  ) => {
+    const { fresh, resumePayload } = opts;
     // 每次请求持有自己的局部 controller（ctrl）：内部分支一律基于 ctrl，
     // 避免被「abort 后立即重发」的新请求改写全局 controller 后误判 abort 状态。
     const ctrl = new AbortController();
@@ -246,6 +261,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     // 开发期护栏：parseChunk 返回携带 delta 的非法 blockType 时增量会被丢弃，
     // 本次请求仅告警一次，避免逐 chunk 刷屏。
     let warnedBadBlockType = false;
+    // 每请求工具事件累积上下文：provider 流内 index → 本地 blockId，跟随本次请求生命周期
+    const toolCtx: ToolReduceCtx = { indexToBlockId: new Map(), genBlockId };
+    // 续流基线：进入时快照已有内容长度，重试时只丢本段新增内容（保留 resume 前的既有块）；
+    // fresh 请求 baseLen 恒为 0，等价于原「整体清空」语义。
+    const entryMsg = tree.getMessage(aiMsgId);
+    const baseLen = entryMsg ? entryMsg.content.length : 0;
+    // 续流：进入即把消息状态置为 updating（在已有内容之上继续，而非重新走 loading 占位）
+    if (!fresh && entryMsg) entryMsg.status = 'updating';
     try {
       // 重试循环：仅当「非 abort 的错误」且仍有重试额度时再次发起；abort 立即停止、不重试。
       // 沿用同一个 ctrl（停止按钮仍生效），并在每次重试前清空已累积内容，避免半截内容叠加。
@@ -280,10 +303,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           });
         try {
           if (attempt > 0) {
-            aiMsg.content = [];
-            aiMsg.status = 'loading';
+            // splice(baseLen) 只丢弃本段（fresh 或 resume）新增内容：fresh 的 baseLen=0，
+            // 等价于原「整体清空」；resume 的 baseLen>0，保留续流前已持久化的既有块。
+            aiMsg.content.splice(baseLen);
+            aiMsg.status = fresh ? 'loading' : 'updating';
           }
-          const res = await request({ messages: history, signal });
+          const res = await request({ messages: history, signal, resume: resumePayload });
           const stream = res instanceof Response ? res.body : res;
           if (!stream) throw new Error('[ai-chat] request 未返回可读流');
           armWatchdog(); // 拿到流即起表，覆盖「连首个 chunk 都不来」的卡死
@@ -291,28 +316,39 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             streamMode === 'line' ? xStream(stream, signal) : sseStream(stream, signal);
           for await (const unit of frames) {
             armWatchdog(); // 每收到一个单元重置：只看数据间隔，不限制总时长
-            const { delta, blockType = 'text', block, done } = callParse(unit);
-            if (delta) {
-              // 类型已收窄为 'text' | 'reasoning'；此守卫是运行时兜底——parseChunk 由使用方提供，
-              // 运行时可能违反类型返回非文本块类型，此时丢弃 delta 而非把脏数据塞进 appendDelta。
-              if (blockType === 'text' || blockType === 'reasoning') {
-                appendDelta(aiMsg, blockType, delta);
-              } else if (!warnedBadBlockType) {
-                warnedBadBlockType = true;
-                console.warn(
-                  `[ai-chat] parseChunk 返回了携带 delta 的非法 blockType "${blockType}"（仅支持 'text' | 'reasoning'），该增量已被丢弃。如需流式非文本块请改用 block 字段。`,
-                );
+            // parseChunk 允许返回单个 ParsedChunk 或数组（1 个流单元翻译出多个增量事件），
+            // 统一归一为数组后逐个应用；内层 for 的 break 无法跳出外层 for await，
+            // 用 ended 标记 done 后在内层循环结束时再 break 外层。
+            let ended = false;
+            for (const parsed of toArray(callParse(unit))) {
+              const { delta, blockType = 'text', block, tool, done } = parsed;
+              if (delta) {
+                // 类型已收窄为 'text' | 'reasoning'；此守卫是运行时兜底——parseChunk 由使用方提供，
+                // 运行时可能违反类型返回非文本块类型，此时丢弃 delta 而非把脏数据塞进 appendDelta。
+                if (blockType === 'text' || blockType === 'reasoning') {
+                  appendDelta(aiMsg, blockType, delta);
+                } else if (!warnedBadBlockType) {
+                  warnedBadBlockType = true;
+                  console.warn(
+                    `[ai-chat] parseChunk 返回了携带 delta 的非法 blockType "${blockType}"（仅支持 'text' | 'reasoning'），该增量已被丢弃。如需流式非文本块请改用 block 字段。`,
+                  );
+                }
+                // 收到首个有效增量后才切到 updating；在此之前保持 loading（三点动画），
+                // 避免首个 chunk 无文本（如 role-only）时出现空白气泡。
+                if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
               }
-              // 收到首个有效增量后才切到 updating；在此之前保持 loading（三点动画），
-              // 避免首个 chunk 无文本（如 role-only）时出现空白气泡。
-              if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
+              if (block) {
+                // 一次性追加非流式块（如 sources）；缺 id 时补全 id 保证 key 稳定
+                aiMsg.content.push(block.id ? block : { ...block, id: genBlockId() });
+                if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
+              }
+              if (tool) {
+                applyToolEvent(aiMsg, tool, toolCtx);
+                if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
+              }
+              if (done) ended = true;
             }
-            if (block) {
-              // 一次性追加非流式块（如 sources）；缺 id 时补全 id 保证 key 稳定
-              aiMsg.content.push(block.id ? block : { ...block, id: genBlockId() });
-              if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
-            }
-            if (done) break;
+            if (ended) break;
           }
           // 看门狗触发时 xStream 对 abort 是优雅收尾（reader.cancel → 循环正常退出），
           // 须先于 abort/success 判定抛出超时错误，交给 catch 走可重试路径。
@@ -400,7 +436,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     tree.appendMessage(tree.headId.value, { id: userId, role: 'user', content, status: 'local' });
     const aiId = genMsgId();
     tree.appendMessage(userId, { id: aiId, role: 'ai', content: [], status: 'loading' });
-    await runRequest(aiId);
+    await runRequestInto(aiId, { fresh: true });
   };
 
   const onReload = async (id: string) => {
@@ -415,7 +451,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     // 新增兄弟 AI 节点（旧回复保留在树中，用户可切回）
     const aiId = genMsgId();
     tree.appendMessage(parentId, { id: aiId, role: 'ai', content: [], status: 'loading' });
-    await runRequest(aiId);
+    await runRequestInto(aiId, { fresh: true });
   };
 
   const onEdit = async (id: string, text: string): Promise<boolean> => {
@@ -453,13 +489,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     });
     const aiId = genMsgId();
     tree.appendMessage(newUserId, { id: aiId, role: 'ai', content: [], status: 'loading' });
-    await runRequest(aiId);
+    await runRequestInto(aiId, { fresh: true });
     return true; // 已受理：新增兄弟分支 + 重发均已执行
   };
 
   const abort = () => {
     // 同步复位 loading：使命令式「停止后立即重发」不被 onSend/onReload 的 isLoading 守卫
-    // 静默丢弃。runRequest 的 finally 以 controller 归属判断，不会回写已被新请求接管的状态；
+    // 静默丢弃。runRequestInto 的 finally 以 controller 归属判断，不会回写已被新请求接管的状态；
     // 此处置 controller=null，旧请求的 abort 分支仍基于其局部 ctrl 正确触发 onAbort。
     controller?.abort();
     controller = null;
@@ -479,6 +515,19 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   /** 取某消息分支元信息（接受派生气泡 id，内部解析回父消息） */
   const getBranches = (id: string) => tree.getBranches(resolveParentId(id));
 
+  /**
+   * 续流：向已存在的 AI 消息续写（如工具调用 HITL 确认后继续跑）。与 onSend/onReload/onEdit
+   * 共用同一个 isLoading 并发守卫（单写者不变量），不新建任何消息节点。
+   */
+  const resume = async (id: string, payload?: unknown): Promise<boolean> => {
+    if (isLoading.value) return false;
+    const pid = resolveParentId(id);
+    const node = tree.getMessage(pid);
+    if (!node || node.role !== 'ai') return false;
+    await runRequestInto(pid, { fresh: false, resumePayload: payload });
+    return true;
+  };
+
   return {
     messages,
     parsedMessages,
@@ -495,5 +544,6 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     getBranches,
     exportTree: tree.exportTree,
     importTree: tree.importTree,
+    resume,
   };
 }

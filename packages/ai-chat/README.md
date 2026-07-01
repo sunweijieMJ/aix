@@ -4,7 +4,7 @@ Vue 3 AI 对话组件库。提供可组合、可扩展的 AI 对话 UI：**原�
 
 - **原子组件**：`Bubble` / `BubbleList` / `Sender` / `Welcome` / `Prompts` / `Thinking` / `MarkdownRenderer`
 - **组合预设**：`AiChat`（开箱即用的整套对话界面）
-- **逻辑 hooks**：`useChat` / `useXStream` / `useTypewriter` / `useAutoScroll` / `useConversations` / `useAttachments` / `useVoiceInput` / `useAiChatConfig`
+- **逻辑 hooks**：`useChat` / `useXStream` / `useTypewriter` / `useAutoScroll` / `useConversations` / `useAttachments` / `useVoiceInput`（ASR 语音输入）/ `useSpeech`（TTS 语音播报）/ `useAiChatConfig`
 - **协议无关**：`useChat` 不绑死请求实现，传入 `request` 函数 + 可选 `parseChunk`，换模型/协议只改 `parseChunk`
 - **样式隔离**：`.aix-` BEM 命名空间，颜色/间距/圆角全部走 `@aix/theme` 的 `var(--aix-*)` CSS 变量
 - **按需加载**：Markdown 渲染相关依赖随包自动安装、运行时动态 `import` 渐进加载——未用到的能力不进入首屏（`mermaid` 仅在内容出现 mermaid 围栏时才加载）；个别环境安装失败时对应能力自动降级，不阻断安装
@@ -54,7 +54,7 @@ const request = ({ messages, signal }: { messages: ChatMessage[]; signal: AbortS
 </template>
 ```
 
-`AiChat` 默认按 **SSE 事件**解析流（`streamMode: 'sse'`，空行切事件 + 解析 `event`/`data`/`id`），并以**扁平结构**预设读取 `data` 顶层 `delta` / `content`。对接 OpenAI / Anthropic 等只需换内置预设 `openaiParseChunk` / `anthropicParseChunk`，或自定义 `parseChunk`（见下文）。`AiChat` 还支持 `v-model:messages` 受控消息列表，并通过 `defineExpose` 暴露 `messages` / `isLoading` / `onSend` / `onReload` / `abort` / `setMessages` / `updateBlock`，以及透传 Sender 的 `focus` / `clear`，可用模板 ref 获取。
+`AiChat` 默认按 **SSE 事件**解析流（`streamMode: 'sse'`，空行切事件 + 解析 `event`/`data`/`id`），并以**扁平结构**预设读取 `data` 顶层 `delta` / `content`。对接 OpenAI / Anthropic 等只需换内置预设 `openaiParseChunk` / `anthropicParseChunk`，或自定义 `parseChunk`（见下文）。`AiChat` 还支持 `v-model:messages` 受控消息列表，并通过 `defineExpose` 暴露 `messages` / `isLoading` / `onSend` / `onReload` / `abort` / `setMessages` / `updateBlock` / `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」），以及透传 Sender 的 `focus` / `clear`，可用模板 ref 获取。
 
 ## 全局注册（插件）
 
@@ -78,10 +78,10 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 
 | 组件 | 说明 | 关键 props |
 |------|------|-----------|
-| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?`；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`typing-complete`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
-| `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?`；slot `content` |
-| `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `contentRender`；slot `avatar`/`header`/`content`/`footer` |
-| `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?`；emit `submit`/`cancel`/`update:modelValue`；expose `focus`/`clear`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
+| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`typing-complete`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
+| `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `blockRenderers?` / `toolRenderers?`；slot `content` |
+| `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `contentRender` / `blockRenderers?` / `toolRenderers?`；slot `avatar`/`header`/`content`/`footer` |
+| `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）；emit `submit`/`cancel`/`update:modelValue`；expose `focus`/`clear`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
 | `Welcome` | 欢迎/空态 | `icon?` / `title?` / `description?`；slot `icon`/`extra` |
 | `Prompts` | 提示词列表 | `items`；emit `select` |
 | `Thinking` | 可折叠的思考过程 | `content?` / `title?` / `expanded?`；slot 默认 |
@@ -95,8 +95,9 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 默认 `streamMode: 'sse'`：按 SSE 规范以**空行（`\n\n`）切事件**、解析 `event` / `data` / `id` 字段，`parseChunk` 收到结构化 `SSEChunk`（`{ event?, data, id?, retry? }`）。换模型/协议只需替换 `parseChunk` 或换内置预设：
 
 - `flatParseChunk`（默认）：读 `data` 顶层 `delta` / `content`，识别 `[DONE]`
-- `openaiParseChunk`：读 `choices[0].delta.content`，`reasoning_content` 归 reasoning 块
-- `anthropicParseChunk`：**按 `event` 字段路由**（`content_block_delta` 的 text/thinking 分流、`message_stop` 结束）——SSE 事件单元让 `event` 与 `data` 正确关联
+- `openaiParseChunk`：读 `choices[0].delta.content`，`reasoning_content` 归 reasoning 块，`delta.tool_calls` 归工具事件
+- `anthropicParseChunk`：**按 `event` 字段路由**（`content_block_delta` 的 text/thinking 分流、`tool_use` 块的 start/`input_json_delta`/stop、`message_stop` 结束）——SSE 事件单元让 `event` 与 `data` 正确关联
+- 三个预设均已支持工具调用解析（`tool_use` 块），自定义后端可用 `createParseChunk({ pickTool })` 接入——详见「工具调用（tool_use）」
 
 ```ts
 import { useChat, openaiParseChunk, createParseChunk } from '@aix/ai-chat';
@@ -207,11 +208,102 @@ const roles = {
 - **不提供则无副作用**：未提供该插槽时不会向块内部注入空插槽（例如不会让 `ThoughtChain` 误判「有正文」而强制展开步骤）。
 - **扩展自有块**：自定义块渲染器若想暴露内部插槽，只需在其模板中按同样约定接收并转发（`<template v-if="$slots['<块类型>-xxx']" #xxx="sp"><slot name="<块类型>-xxx" v-bind="sp" /></template>`）。
 
+## 工具调用（tool_use）
+
+面向「**后端跑 agentic 循环**」的部署形态：前端一次 AI 回复里会陆续收到 `text` / `reasoning` / `tool_use` / `tool_result` 混合的连续流，组件负责**解析、装配、渲染、承载交互**（前端不执行工具、不自驱循环）。工具调用是消息 `content` 里的一等公民块 `tool_use`（内置渲染器 `ToolUseBlock`，可折叠卡片），随对话树持久化、刷新/切会话完整还原。
+
+### 数据模型
+
+`tool_use` 块把「调用 + 结果」合并进同一个块（后端已完成 `toolCallId ↔ tool_result` 配对）：
+
+```ts
+{ id, type: 'tool_use';
+  toolCallId: string;   // 协议侧调用 id（toolu_xxx / call_xxx）：配对结果、并行去重、resume 关联
+  toolName: string;     // 工具名：toolRenderers 按它路由
+  state: ToolUseState;  // input-streaming | input-available | awaiting-approval | executing | output-available | output-error
+  argsText?: string;    // 流式拼参时的原始未闭合 JSON（展示用，parse 失败不影响）
+  input?: unknown;      // 参数对象（整体给时直接落 / 流式拼参齐全后解析出）
+  output?: unknown;     // 工具结果（字符串或结构化对象）
+  errorText?: string;  }
+```
+
+`awaiting-approval` / `executing` 为前端执行/审批（Layer 2）预留，本期数据模型留形、行为不依赖。
+
+### 协议接入：`parseChunk` 产出工具增量
+
+内置预设已支持工具解析，`parseChunk` 保持**纯翻译**，跨事件累积由内部纯 reducer 完成：
+
+- `anthropicParseChunk`：`content_block_start`(tool_use) → 建块；`input_json_delta` → 拼参分片；`content_block_stop` → 参数结束。
+- `openaiParseChunk`：`delta.tool_calls[i]` → 拼参；`finish_reason:'tool_calls'` → 参数结束（多并行工具收尾建议由后端显式事件驱动，见下方限制）。
+- **自定义后端**：`createParseChunk({ pickTool })` 传一个 `(json) => ToolEventDelta | undefined`，或自行在 `parseChunk` 里返回 `{ tool }`。「请求含参先到、结果后到」的后端直接映射：工具请求 → `{ index, toolCallId, toolName, input }`、工具结果 → `{ index, toolCallId, output }`（结果事件**须带 `toolCallId`** 以支持跨请求/续流命中已建的块）。
+
+`parseChunk` 可返回**单个** `ParsedChunk` 或**数组**（一个流事件表达多件事，如 text + tool 同帧），内部统一归一，旧的单对象返回照常工作。装配纯函数 `applyToolEvent` / 类型 `ToolReduceCtx` 也对外导出，供完全自定义的流水线复用。
+
+### 按 toolName 路由自定义渲染器：`toolRenderers`
+
+与 `blockRenderers`（按 `block.type`）平行的一层注册表（按 `toolName`）。`ToolUseBlock` 命中 `toolRenderers[toolName]` 则整块委托、未命中落默认可折叠卡片。合并优先级同 `blockRenderers`：全局 `provideAiChatConfig.toolRenderers` < 组件 `props.toolRenderers`。
+
+```vue
+<script setup lang="ts">
+import { markRaw } from 'vue';
+import { AiChat } from '@aix/ai-chat';
+import QuizCard from './QuizCard.vue'; // 拿到 { block, info, onBlockAction }，用 block.output 渲染业务卡片
+const toolRenderers = { generate_quiz: markRaw(QuizCard) };
+</script>
+
+<template>
+  <AiChat :request="request" :parse-chunk="parseChunk" :tool-renderers="toolRenderers" />
+</template>
+```
+
+自定义渲染器拿到完整 `tool_use` 块（`input`/`output`/`state`）+ `info` + `onBlockAction`，学生作答等交互经 `onBlockAction({ blockId, type, patch })` 回写——与既有交互块同一套管线（`AiChat` 内部先 `updateBlock` 命中才向上 emit `block-action`）。
+
+### 人工确认（HITL）+ `resume` 续流
+
+组件不内置确认表单 schema，只提供 `resume` 一个原语：**向已存在的 AI 消息续写，不新建节点**。适用于「后端在确认点关流①、前端确认后带续跑参数重发流②、接着写同一条 AI 消息」的**分段流**后端。
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue';
+import { AiChat, type BlockActionPayload } from '@aix/ai-chat';
+const chatRef = ref<InstanceType<typeof AiChat>>();
+
+// 用户在确认块作答 → onBlockAction 上抛 → 按 messageKey 续流（payload 由业务与后端约定：traceId / 上次事件 id / 用户填写内容等）
+const onBlockAction = (p: BlockActionPayload) => {
+  chatRef.value?.resume(String(p.messageKey), { approved: p.action.type === 'approve' });
+};
+</script>
+
+<template>
+  <AiChat ref="chatRef" :request="request" :parse-chunk="parseChunk"
+    :tool-renderers="toolRenderers" @block-action="onBlockAction" />
+</template>
+```
+
+`request` 的 ctx 会带 `resume` 载荷（fresh 请求恒为 `undefined`），业务据此改打续跑接口：`request: ({ messages, signal, resume }) => resume ? postResume(resume) : postFresh(...)`。
+
+约束与语义：
+
+- **单写者不变量**：`resume` 靠 `isLoading===false` 守卫，只可能在上一段流完全落定后启动，两段请求永不并发写同一条消息；`isLoading` 时 / id 未命中 / 非 AI 消息 → 返回 `false` 且不做任何改动。
+- **仅分段流需要**：确认期间不关流的「单条长流」后端全程 `isLoading=true`，工具块经内部装配持续更新，用不上也不能用 `resume`。
+- **`onFinish` 按流段触发**（含每次 `resume` 段完成），**≠「整个 AI 回合结束」**。需要区分「最终完成 vs 段完成」的业务应以后端自身 done 语义判定。
+
+### 跨轮历史序列化（可选）
+
+仅当后端**无状态、每轮回传完整历史**时需要：`createOpenAIRequest` 的默认 `transformMessages` 会把历史里的 tool_use 块还原成 `tool_calls` + `role:'tool'` 消息（顺序 `assistant(tool_calls) → tool → tool`）。若后端按会话 id 自存历史（前端只送新用户消息），无需关心。
+
+> ⚠️ 若历史里含**尚未产出结果**（`output == null`）的 tool_use（如中断在工具执行前的回合），默认序列化会生成有 `tool_calls` 却无配对 `role:'tool'` 的 assistant 消息，OpenAI 会报错——此形态请自定义 `transformMessages` 跳过未完成回合。
+
+### 已知限制（设计权衡）
+
+- **OpenAI 并行工具收尾**：`openaiParseChunk` 从 `finish_reason:'tool_calls'` 无法精确给出各 index，仅对 index 0 发参数结束信号；多并行工具请由后端显式事件驱动收尾，或改用带 `.done` 语义的 Responses API 事件自定义 `parseChunk`。
+- **超大 output 持久化**：默认全量随树持久化，超大结果需业务侧截断/omit，避免撑爆 localStorage。
+
 ## 组合式 hooks
 
 | Hook | 说明 |
 |------|------|
-| `useChat(options)` | 消息流托管。返回 `messages` / `parsedMessages`（经 `parser` 映射的渲染消息）/ `isLoading` / `onSend` / `onReload` / `onEdit`（编辑并重新生成）/ `abort` / `setMessages` / `updateBlock`（按 id 回写块补丁）/ `setFeedback`（赞/踩）。`options`: `request` / `streamMode?`（`'sse'` 默认 / `'line'`）/ `parseChunk?` / `parser?` / `defaultMessages?` / `onFinish?` / `onError?` / `onAbort?` / `retryTimes?` / `retryInterval?` / `streamTimeout?`（流静默超时） |
+| `useChat(options)` | 消息流托管。返回 `messages` / `parsedMessages`（经 `parser` 映射的渲染消息）/ `isLoading` / `onSend` / `onReload` / `onEdit`（编辑并重新生成）/ `abort` / `setMessages` / `updateBlock`（按 id 回写块补丁）/ `setFeedback`（赞/踩）/ `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」）/ `exportTree` / `importTree` / `switchBranch` 等。`options`: `request` / `streamMode?`（`'sse'` 默认 / `'line'`）/ `parseChunk?` / `parser?` / `defaultMessages?` / `onFinish?` / `onError?` / `onAbort?` / `retryTimes?` / `retryInterval?` / `streamTimeout?`（流静默超时） |
 | `sseStream(stream, signal?)` | 按 SSE 规范把字节流解析为结构化事件（空行切事件 + `event`/`data`/`id` 字段）的异步生成器，支持中断；`useChat` 的 `sse` 模式（默认）用它 |
 | `xStream(stream, signal?)` | 将 `ReadableStream<Uint8Array>` 解码并按行（`\n`）切分的异步生成器，支持中断；`useChat` 的 `line` 模式用它 |
 | `useXStream()` | `xStream` 的响应式封装：`lines` / `isStreaming` / `error` / `start` / `cancel` |
@@ -220,7 +312,8 @@ const roles = {
 | `useAiChatConfig()` / `provideAiChatConfig(config)` | provide/inject 全局配置 |
 | `useConversations(options?)` | 多会话托管（SSOT + 可选持久化）。返回 `conversations` / `activeKey` / `active` / `activeMessages`（绑 `AiChat` 的 `v-model:messages`）/ `items`（绑 `Conversations`）/ `create` / `remove` / `rename`。配合 `localStorageConversationStorage` 持久化 |
 | `useAttachments(options)` | 附件上传托管。返回 `items` / `add` / `remove` / `retry` / `clear` / `isUploading` / `drain`（取出已完成项随消息发送）。`options`: `upload` / `accept?` / `maxCount?` / `maxSize?` |
-| `useVoiceInput(options)` | 语音识别输入。返回 `status` / `isSupported` / `start` / `stop` / `toggle`。缺省用浏览器 Web Speech API，可注入自定义 `recognizer` 对接讯飞/阿里云等 ASR |
+| `useVoiceInput(options)` | 语音识别输入（ASR）。返回 `status` / `isSupported` / `start` / `stop` / `toggle`。缺省用浏览器 Web Speech API，可注入自定义 `recognizer` 对接讯飞/阿里云等 ASR |
+| `useSpeech(options)` | 语音播报（TTS）。返回 `speakingId` / `isSupported` / `toggle`（手动点读：再点同条停、点别条切）/ `feed`（autoPlay 流式增量分句朗读）/ `stop` / `resolveText`。缺省用浏览器 `speechSynthesis`，可注入自定义 `synthesizer` 对接讯飞/阿里云等云端 TTS |
 
 ### 打字机效果
 
@@ -239,6 +332,65 @@ provideAiChatConfig({ enableTyping: false });
 ```
 
 逐字追平源文本时触发 `typing-complete` 事件（`Bubble` 携带 `{ messageKey }`，`BubbleList` / `AiChat` 携带消息 `id`），可用于动画结束后再渲染操作条等。注意流式下源持续增长，每追平一次都会触发，最终一次即「整段打完」。也可直接用 `useTypewriter(source, { enabled, step, interval, onComplete })` 组合到自定义渲染中（`enabled` 支持响应式）。
+
+### 语音输入与播报（ASR / TTS）
+
+语音能力**双向对称、均为 opt-in**：输入侧 `voice`（ASR，麦克风转文字）、输出侧 `speech`（TTS，朗读 AI 回复）。两者默认走浏览器原生 API，也都可注入自定义引擎对接讯飞 / 阿里云等云端服务——不传对应 prop 则完全无开销、不渲染任何按钮。
+
+```vue
+<template>
+  <AiChat
+    :request="request"
+    voice
+    :speech="{ autoPlay: true, rate: 1.1 }"
+  />
+</template>
+```
+
+**语音输入 `voice`（ASR）**——`true` 用浏览器 Web Speech API，对象可配 `recognizer`（自定义识别器）/ `lang` / `onError`。`Sender` 会显示麦克风按钮，识别中间结果实时回填输入框、定稿追加：
+
+```ts
+import type { VoiceConfig } from '@aix/ai-chat';
+// 对接自定义 ASR：recognizer 工厂启动识别并返回 { stop }
+const voice: VoiceConfig = {
+  recognizer: (ctx) => {
+    const sdk = startMyAsr({ lang: ctx.lang });
+    sdk.on('partial', (t) => ctx.onResult(t, false)); // 中间结果（可被覆盖）
+    sdk.on('final', (t) => ctx.onResult(t, true)); // 一段定稿
+    sdk.on('error', ctx.onError);
+    sdk.on('close', ctx.onEnd);
+    return { stop: () => sdk.stop() };
+  },
+};
+```
+
+**语音播报 `speech`（TTS）**——`true` 用浏览器 `speechSynthesis`，对象可配 `synthesizer`（自定义合成器）/ `lang` / `rate` / `pitch` / `volume` / `voice`（音色）/ `getText`（自定义朗读文本，默认 `stripMarkdownForSpeech` 剥离 markdown 标记）/ `autoPlay` / `onError`。启用后 ai 消息操作条自动追加**朗读按钮**（内置 `speak` 项，再点停止）：
+
+- **手动点读**：点朗读按钮整段一次性朗读；点另一条切换、点同一条停止。
+- **`autoPlay: true`**：流式 AI 回复**边收边读**——内部按句末边界（中英标点 / 换行 / 分号，且不切断小数）分句，只朗读完整句，`status: 'success'` 时 flush 余下文本；用户手动停止后不会被下个 chunk 重启。
+- **自定义合成器**：`synthesizer` 是会话式工厂，返回 `{ enqueue, finish, stop }`，框架按句 `enqueue`、流结束 `finish`：
+
+```ts
+import type { SpeechConfig } from '@aix/ai-chat';
+const speech: SpeechConfig = {
+  autoPlay: true,
+  synthesizer: (ctx) => {
+    const player = createMyTtsPlayer({ lang: ctx.lang, voice: ctx.voice, rate: ctx.rate });
+    player.on('start', ctx.onStart); // 首段发声 → UI 起播态
+    player.on('drained', ctx.onEnd); // 队列放空且已 finish → 自然播完
+    player.on('error', ctx.onError);
+    return {
+      enqueue: (text) => player.push(text),
+      finish: () => player.markEnd(),
+      stop: () => player.dispose(),
+    };
+  },
+};
+```
+
+> 仅用 hook 自行拼装时：`useVoiceInput` / `useSpeech` 可脱离 `AiChat` 单独使用；`createSpeechSynthesisSynthesizer()` 导出了内置 speechSynthesis 合成器工厂、`stripMarkdownForSpeech(text)` 导出了默认朗读文本提取，可在自定义实现中复用。
+>
+> ⚠️ 流式 + 默认 `getText`（每次对增长原文重新 `stripMarkdown`）下，若某 markdown 标记跨已朗读句末边界、后续 chunk 才闭合，个别字符理论上可能重读/漏读——概率低且已作为设计权衡接受。
 
 ### ⚠️ 扩展点说明
 
@@ -313,6 +465,6 @@ const markdownRenderers: MarkdownRenderers = {
 
 ## 能力范围
 
-已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入**（`useVoiceInput`，可对接自定义 ASR）、**模型切换**（`ModelSelector`）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）。
+已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）。
 
 **暂未包含**：结构化输入（SlotConfig）、富文本 @ 提及、多 Provider class 等，后续版本迭代。

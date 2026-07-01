@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { UseChatOptions } from '../src/composables/useChat';
 import type { ChatMessage } from '../src/types';
-import { createOpenAIRequest } from '../src/utils/openai';
+import { createOpenAIRequest, defaultTransformMessages } from '../src/utils/openai';
 
 const msgs = (): ChatMessage[] => [
   { id: 'u1', role: 'user', content: [{ id: 'b1', type: 'text', text: '你好' }] },
@@ -165,5 +165,87 @@ describe('createOpenAIRequest', () => {
       request: createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' }),
     };
     expect(typeof options.request).toBe('function');
+  });
+});
+
+describe('defaultTransformMessages', () => {
+  it('普通消息行为不变：仅拼接 text 块，reasoning 不计入', () => {
+    const out = defaultTransformMessages(msgs());
+    expect(out).toEqual([
+      { role: 'user', content: '你好' },
+      { role: 'assistant', content: '回答' },
+    ]);
+  });
+
+  it('tool_use 块 → tool_calls + tool 消息', () => {
+    const toolMsgs: ChatMessage[] = [
+      {
+        id: 'ai',
+        role: 'ai',
+        content: [
+          { id: 't', type: 'text', text: '我查一下' },
+          {
+            id: 'b',
+            type: 'tool_use',
+            toolCallId: 'call_1',
+            toolName: 'get_weather',
+            state: 'output-available',
+            input: { city: '北京' },
+            output: '晴',
+          },
+        ],
+      },
+    ];
+    const out = defaultTransformMessages(toolMsgs);
+    const assistant = out.find((m) => m.role === 'assistant');
+    expect(assistant).toMatchObject({
+      role: 'assistant',
+      content: '我查一下',
+      tool_calls: [
+        {
+          id: 'call_1',
+          type: 'function',
+          function: { name: 'get_weather', arguments: JSON.stringify({ city: '北京' }) },
+        },
+      ],
+    });
+    expect(out.find((m) => m.role === 'tool')).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_1',
+      content: '晴',
+    });
+  });
+
+  it('tool_use 块无 output 时不追加 tool 消息，output 为对象时 JSON.stringify', () => {
+    const toolMsgs: ChatMessage[] = [
+      {
+        id: 'ai',
+        role: 'ai',
+        content: [
+          {
+            id: 'b1',
+            type: 'tool_use',
+            toolCallId: 'call_1',
+            toolName: 'noop',
+            state: 'input-available',
+            input: {},
+          },
+          {
+            id: 'b2',
+            type: 'tool_use',
+            toolCallId: 'call_2',
+            toolName: 'get_weather',
+            state: 'output-available',
+            input: {},
+            output: { temp: 28 },
+          },
+        ],
+      },
+    ];
+    const out = defaultTransformMessages(toolMsgs);
+    const toolMessages = out.filter((m) => m.role === 'tool');
+    expect(toolMessages).toEqual([
+      { role: 'tool', tool_call_id: 'call_2', content: JSON.stringify({ temp: 28 }) },
+    ]);
   });
 });

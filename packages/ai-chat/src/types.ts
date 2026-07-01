@@ -59,6 +59,19 @@ export interface Conversation {
 /** 会话列表项（仅元数据，不含 messages），供 Conversations 列表 UI 使用 */
 export type ConversationItem = Omit<Conversation, 'messages'>;
 
+/** 一个流事件翻译出的工具增量。parseChunk 保持纯翻译，跨事件累积由 useChat 侧完成 */
+export interface ToolEventDelta {
+  /** 关联键：provider 流内索引（Anthropic 内容块 index / OpenAI tool_calls index） */
+  index: number;
+  toolCallId?: string;
+  toolName?: string;
+  argsTextDelta?: string;
+  input?: unknown;
+  argsDone?: boolean;
+  output?: unknown;
+  errorText?: string;
+}
+
 /** 流 chunk 解析结果 */
 export interface ParsedChunk {
   /** 本次增量文本 */
@@ -72,6 +85,8 @@ export interface ParsedChunk {
   blockType?: 'text' | 'reasoning';
   /** 一次性追加的非流式块（如 sources） */
   block?: ContentBlock;
+  /** 工具调用增量 */
+  tool?: ToolEventDelta;
   /** 标记流结束 */
   done?: boolean;
 }
@@ -135,6 +150,8 @@ export interface BubbleProps {
   typing?: boolean | BubbleTypingConfig;
   /** block 渲染器注册表：块类型 → 组件，用于扩展新块类型或覆盖内置 text/reasoning 渲染 */
   blockRenderers?: BlockRenderers;
+  /** 工具渲染器注册表：toolName → 组件，透传给内置 ToolUseBlock 做按名路由 */
+  toolRenderers?: BlockRenderers;
   /** 是否允许内联编辑（仅对 role==='user' 的气泡生效），默认 false */
   editable?: boolean;
 }
@@ -149,11 +166,14 @@ export type BlockRenderers = Record<string, Component>;
 /**
  * 角色级可配的气泡字段（仅样式/渲染类：placement/variant/shape/avatar/contentRender/blockRenderers）。
  * 类型即文档地排除列表级收口的字段：content/role/status/loading/itemKey 由消息数据驱动，
- * typing/editable 由列表级策略收口（打字机只对本会话流式过的消息开启、editable 绑定 edit→重发语义）——
+ * typing/editable/toolRenderers 由列表级策略收口（打字机只对本会话流式过的消息开启、editable 绑定 edit→重发语义、toolRenderers 由列表级绑定）——
  * 这些键在 BubbleList 模板中被显式绑定覆盖，role 级传入会静默无效，故从类型上禁止。
  */
 export type RoleBubbleConfig = Partial<
-  Omit<BubbleProps, 'content' | 'role' | 'status' | 'loading' | 'itemKey' | 'typing' | 'editable'>
+  Omit<
+    BubbleProps,
+    'content' | 'role' | 'status' | 'loading' | 'itemKey' | 'typing' | 'editable' | 'toolRenderers'
+  >
 >;
 
 /** 角色 → 气泡样式映射，支持静态对象或按消息动态返回（BubbleList + AiChat 共享） */
@@ -284,13 +304,39 @@ export interface BlockBase {
   id: string;
 }
 
+/** 工具调用生命周期状态（awaiting-approval / executing 为 Layer 2 预留） */
+export type ToolUseState =
+  | 'input-streaming'
+  | 'input-available'
+  | 'awaiting-approval'
+  | 'executing'
+  | 'output-available'
+  | 'output-error';
+
 /** 消息内容块（有序、可扩展）。预留扩展：tool_use / image / 业务自定义块只需新增联合成员 */
 export type ContentBlock =
   | (BlockBase & { type: 'text'; text: string })
   | (BlockBase & { type: 'reasoning'; text: string })
   | (BlockBase & { type: 'sources'; items: SourceItem[] })
   | (BlockBase & { type: 'thought-chain'; items: ThoughtChainItem[] })
-  | (BlockBase & { type: 'attachment'; items: AttachmentItem[] });
+  | (BlockBase & { type: 'attachment'; items: AttachmentItem[] })
+  | (BlockBase & {
+      type: 'tool_use';
+      /** 协议侧调用 id（toolu_xxx / call_xxx）：配对结果、并行去重、resume 关联 */
+      toolCallId: string;
+      /** 工具名：toolRenderers 按它路由 */
+      toolName: string;
+      /** 生命周期状态 */
+      state: ToolUseState;
+      /** 原始未完成 JSON（流式拼参时展示用，不怕 parse 失败） */
+      argsText?: string;
+      /** 参数对象（整体给时直接落 / 流式拼参齐全后解析出） */
+      input?: unknown;
+      /** 工具结果 */
+      output?: unknown;
+      /** 出错文案 */
+      errorText?: string;
+    });
 
 /** 内置消息操作预设 key */
 export type ActionKey = 'copy' | 'regenerate' | 'feedback' | 'speak';

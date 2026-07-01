@@ -13,6 +13,8 @@ export interface AiChatConfig {
   shouldFollow?: ShouldFollow;
   /** 全局块渲染器注册表，被 AiChat 合并后透传给 BubbleList（组件 props.blockRenderers 优先） */
   blockRenderers?: BlockRenderers;
+  /** 全局工具调用（tool_use）渲染器注册表，被 AiChat 合并后透传给 BubbleList（组件 props.toolRenderers 优先） */
+  toolRenderers?: BlockRenderers;
   /** 全局 markdown token 渲染器注册表，经 AiChat 注入到气泡内 MarkdownRenderer（组件 props 优先） */
   markdownRenderers?: MarkdownRenderers;
   /** 是否允许渲染原始 HTML（经 DOMPurify 消毒），默认 false；经 AiChat 注入到 MarkdownRenderer */

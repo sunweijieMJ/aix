@@ -38,4 +38,7 @@ export const zhCN: AiChatLocale = {
   attachmentsCollapse: '收起附件面板',
   prevBranch: '上一个版本',
   nextBranch: '下一个版本',
+  toolInput: '输入',
+  toolOutput: '输出',
+  toolError: '错误',
 };

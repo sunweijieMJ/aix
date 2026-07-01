@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { nextTick, h, defineComponent } from 'vue';
 import Bubble from '../src/components/Bubble.vue';
-import type { BlockActionHandler } from '../src/types';
+import type { BlockActionHandler, ContentBlock } from '../src/types';
 import { textBlock, sourcesBlock, thoughtChainBlock } from '../src/utils/helpers';
 
 describe('Bubble', () => {
@@ -267,5 +267,24 @@ describe('Bubble 内联编辑', () => {
     await w.find('.aix-bubble__edit-cancel').trigger('click');
     expect(w.find('textarea.aix-bubble__edit-input').exists()).toBe(false);
     expect(w.emitted('edit')).toBeUndefined();
+  });
+});
+
+describe('Bubble tool_use 块渲染', () => {
+  it('渲染 tool_use 块（内置 ToolUseBlock）', () => {
+    const content: ContentBlock[] = [
+      {
+        id: 'b1',
+        type: 'tool_use',
+        toolCallId: 'c1',
+        toolName: 'search',
+        state: 'output-available',
+        input: {},
+        output: 'ok',
+      } as ContentBlock,
+    ];
+    const w = mount(Bubble, { props: { content, role: 'ai' } });
+    expect(w.find('.aix-tool-use').exists()).toBe(true);
+    expect(w.text()).toContain('search');
   });
 });

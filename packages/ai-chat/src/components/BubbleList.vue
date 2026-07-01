@@ -12,6 +12,7 @@
           :loading="(item as ChatMessage).status === 'loading'"
           :typing="resolveTyping(item as ChatMessage)"
           :editable="editable && (item as ChatMessage).role === 'user'"
+          :tool-renderers="toolRenderers"
           @retry="emit('retry', (item as ChatMessage).id)"
           @block-action="emit('block-action', $event)"
           @edit="emit('edit', (item as ChatMessage).id, $event)"
@@ -64,6 +65,8 @@ export interface BubbleListProps {
   typing?: boolean | BubbleTypingConfig;
   /** 块渲染器注册表：透传给各 Bubble，与 roles 内的 blockRenderers 合并（role 级更具体，优先） */
   blockRenderers?: BlockRenderers;
+  /** 工具渲染器注册表：toolName → 组件，透传给各 Bubble 供内置 ToolUseBlock 按名路由 */
+  toolRenderers?: BlockRenderers;
   /** 是否允许用户气泡内联编辑，透传给各 Bubble（仅 user 角色生效） */
   editable?: boolean;
 }
@@ -95,6 +98,7 @@ import type {
   BlockActionPayload,
   BubbleTypingConfig,
 } from '../types';
+import { toolFollowLen } from '../utils/helpers';
 import Bubble from './Bubble.vue';
 
 const props = withDefaults(defineProps<BubbleListProps>(), {
@@ -238,7 +242,8 @@ watch(
   () => {
     const blocks = props.items[props.items.length - 1]?.content;
     if (!blocks) return '';
-    return `${blocks.length}:${blocks.reduce((n, b) => n + ('text' in b ? b.text.length : 0), 0)}`;
+    const textLen = blocks.reduce((n, b) => n + ('text' in b ? b.text.length : 0), 0);
+    return `${blocks.length}:${textLen}:${toolFollowLen(blocks)}`;
   },
   () => nextTick(() => follow('streaming')),
 );

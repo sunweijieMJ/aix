@@ -73,4 +73,10 @@ export interface AiChatLocale {
   prevBranch: string;
   /** 下一个版本切换按钮的无障碍标签 */
   nextBranch: string;
+  /** 工具调用块：输入参数区标题 */
+  toolInput: string;
+  /** 工具调用块：输出结果区标题 */
+  toolOutput: string;
+  /** 工具调用块：错误信息区标题 */
+  toolError: string;
 }
