@@ -313,6 +313,12 @@ export type ToolUseState =
   | 'output-available'
   | 'output-error';
 
+/** 图表渲染引擎（判别键）。MVP 仅 echarts；function-plot 为数学函数图像专用副库，分期接入 */
+export type ChartEngine = 'echarts' | 'function-plot';
+
+/** ECharts 统计图种类（仅 echarts 引擎有此维度：决定骨架占位形态 + 二次动态 import 哪个图表子模块） */
+export type EChartsChartKind = 'bar' | 'line' | 'pie' | 'scatter' | 'radar';
+
 /** 消息内容块（有序、可扩展）。预留扩展：tool_use / image / 业务自定义块只需新增联合成员 */
 export type ContentBlock =
   | (BlockBase & { type: 'text'; text: string })
@@ -336,6 +342,27 @@ export type ContentBlock =
       output?: unknown;
       /** 出错文案 */
       errorText?: string;
+    })
+  | (BlockBase & {
+      type: 'chart';
+      /** 渲染引擎（判别键）；MVP 仅 echarts，function-plot 分期扩展本联合 */
+      engine: 'echarts';
+      /** 统计图种类：决定骨架占位形态 + 二次动态 import 哪个图表子模块 */
+      kind: EChartsChartKind;
+      /**
+       * ECharts option 对象。刻意用 unknown 不静态耦合 EChartsOption 类型
+       * （echarts 是 optionalDependency，静态 import 其类型在未安装环境会 TS2307），
+       * 与 MermaidLike/KatexLike 同 DI 策略；运行时校验后 setOption。
+       */
+      spec: unknown;
+      /** 可选标题（无障碍标签 & 卡片头部展示） */
+      title?: string;
+      /** 无障碍文字替代：屏幕阅读器朗读的图表描述 / 数据摘要，作 role="img" 的 aria-label */
+      alt?: string;
+      /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式拼 spec 期间为 loading */
+      state?: 'loading' | 'ready' | 'error';
+      /** 交互回写用（切换图型/取点等经 BlockAction 上抛）；无交互需求可不填 */
+      interactive?: boolean;
     });
 
 /** 内置消息操作预设 key */

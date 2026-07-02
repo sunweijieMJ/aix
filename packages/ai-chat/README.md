@@ -7,7 +7,7 @@ Vue 3 AI 对话组件库。提供可组合、可扩展的 AI 对话 UI：**原�
 - **逻辑 hooks**：`useChat` / `useXStream` / `useTypewriter` / `useAutoScroll` / `useConversations` / `useAttachments` / `useVoiceInput`（ASR 语音输入）/ `useSpeech`（TTS 语音播报）/ `useAiChatConfig`
 - **协议无关**：`useChat` 不绑死请求实现，传入 `request` 函数 + 可选 `parseChunk`，换模型/协议只改 `parseChunk`
 - **样式隔离**：`.aix-` BEM 命名空间，颜色/间距/圆角全部走 `@aix/theme` 的 `var(--aix-*)` CSS 变量
-- **按需加载**：Markdown 渲染相关依赖随包自动安装、运行时动态 `import` 渐进加载——未用到的能力不进入首屏（`mermaid` 仅在内容出现 mermaid 围栏时才加载）；个别环境安装失败时对应能力自动降级，不阻断安装
+- **按需加载**：Markdown 渲染相关依赖随包自动安装、运行时动态 `import` 渐进加载——未用到的能力不进入首屏（`mermaid` 仅在 mermaid 围栏、`echarts` 仅在 ` ```chart ` 围栏 / 结构化图表块出现时才加载）；个别环境安装失败时对应能力自动降级，不阻断安装
 
 ## 安装
 
@@ -15,7 +15,7 @@ Vue 3 AI 对话组件库。提供可组合、可扩展的 AI 对话 UI：**原�
 pnpm add @aix/ai-chat
 ```
 
-Markdown 渲染的六个增强依赖（`markdown-it` / `highlight.js` / `katex` / `@vscode/markdown-it-katex` / `mermaid` / `dompurify`）声明为 `optionalDependencies`，pnpm/npm 会**随包自动安装、开箱即用**，无需手动添加；运行时按需动态加载（详见下文「Markdown 渲染」），个别环境某项安装失败时仅该项能力静默降级（如 `markdown-it` 缺失 → 纯文本），不阻断安装、互不连累。
+Markdown 渲染的七个增强依赖（`markdown-it` / `highlight.js` / `katex` / `@vscode/markdown-it-katex` / `mermaid` / `dompurify` / `echarts`）声明为 `optionalDependencies`，pnpm/npm 会**随包自动安装、开箱即用**，无需手动添加；运行时按需动态加载（详见下文「Markdown 渲染」），个别环境某项安装失败时仅该项能力静默降级（如 `markdown-it` 缺失 → 纯文本），不阻断安装、互不连累。
 
 组件样式依赖 `@aix/theme` 的 CSS 变量，使用前需引入主题样式：
 
@@ -401,9 +401,9 @@ const speech: SpeechConfig = {
 
 `MarkdownRenderer` 用 `markdown-it` 把富文本解析为 **token 流**，再经自研 walker 渲染为 **Vue 节点**（而非整串 `v-html`）：
 
-- 六个增强依赖随包自动安装、开箱即用；个别环境 `markdown-it` 安装失败时自动降级为纯文本并控制台提示一次。
+- 七个增强依赖随包自动安装、开箱即用；个别环境 `markdown-it` 安装失败时自动降级为纯文本并控制台提示一次。
 - **块级增量渲染**：按顶层块（段落/标题/代码/公式/表格…）渲染，已完成的块冻结不重渲染，流式时**新块经 `<TransitionGroup>` 淡入**（公式/代码等原子块完成时平滑出现，文字仍逐字打字机），长流式不整段重解析。
-- **渐进加载，不阻塞首帧**：依赖均为动态 `import`、不打进主 chunk。基础引擎（`markdown-it` 等轻量项）就绪即渲染富文本骨架；`highlight.js` / `katex` 后台加载、就绪后已渲染内容自动补上高亮/公式排版；`mermaid` 仅在内容出现 ` ```mermaid ` 围栏时才加载——未用到的能力不会进入首屏。
+- **渐进加载，不阻塞首帧**：依赖均为动态 `import`、不打进主 chunk。基础引擎（`markdown-it` 等轻量项）就绪即渲染富文本骨架；`highlight.js` / `katex` 后台加载、就绪后已渲染内容自动补上高亮/公式排版；`mermaid` 仅在 ` ```mermaid ` 围栏、`echarts` 仅在 ` ```chart ` 围栏或结构化图表块出现时才加载——未用到的能力不会进入首屏。
 
 ### 代码高亮与代码块头部（highlight.js）
 
@@ -465,6 +465,6 @@ const markdownRenderers: MarkdownRenderers = {
 
 ## 能力范围
 
-已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）。
+已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）、**ECharts 图表**（`echarts` 随包自动安装；` ```chart ` 围栏承载 ECharts option JSON、或结构化 `chart` 块，按需加载并以 canvas 活实例渲染统计图（柱/折/饼/散点/雷达）；虚拟列表滚动按活实例 `dispose`/重建而非缓存静态图；缺失时围栏维持代码块、结构化块降级为 `alt` 文字。数学函数图像 function-plot 分期接入）。
 
 **暂未包含**：结构化输入（SlotConfig）、富文本 @ 提及、多 Provider class 等，后续版本迭代。

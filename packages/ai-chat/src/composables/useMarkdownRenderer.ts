@@ -1,4 +1,5 @@
 import { ref, type Ref } from 'vue';
+import { createLazyChartRenderers, importECharts } from '../utils/chartRenderers';
 import { createHighlightRenderers, type HljsLike } from '../utils/codeRenderers';
 import { createLazyDiagramRenderers, type MermaidLike } from '../utils/diagramRenderers';
 import { createHtmlRenderers, type DomPurifyLike } from '../utils/htmlRenderers';
@@ -69,6 +70,8 @@ export interface MarkdownEngine {
   htmlRenderers: MarkdownRenderers;
   /** 图表渲染器：`fence:mermaid` 懒加载包装始终注册，mermaid 模块在首个围栏渲染时才 import；未安装时围栏静默维持代码块 */
   diagramRenderers: MarkdownRenderers;
+  /** ECharts 图表渲染器：`fence:chart` 懒加载包装始终注册，echarts 模块在首个 ```chart 围栏渲染时才 import；未安装时围栏静默维持代码块 */
+  chartRenderers: MarkdownRenderers;
   /** 代码高亮渲染器（初始为空；highlight.js 后台就绪时合入通用 fence，不可用则维持空 → 代码块维持纯 pre>code） */
   codeRenderers: MarkdownRenderers;
   /**
@@ -232,6 +235,8 @@ async function assembleEngine(
       // fence:mermaid 懒加载包装即刻注册（不 import mermaid）：围栏 token 始终有归属渲染器，
       // mermaid 模块在首个围栏渲染时才加载（见 importMermaid / createLazyDiagramRenderers）
       diagramRenderers: createLazyDiagramRenderers(importMermaid),
+      // fence:chart 懒加载包装即刻注册（不 import echarts）：echarts 在首个 ```chart 围栏渲染时才加载
+      chartRenderers: createLazyChartRenderers(importECharts),
       codeRenderers: {},
       renderersVersion,
       ready: Promise.resolve(),

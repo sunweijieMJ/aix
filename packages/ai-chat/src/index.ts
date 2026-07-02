@@ -91,6 +91,7 @@ export {
   sourcesBlock,
   thoughtChainBlock,
   attachmentBlock,
+  chartBlock,
   textMessage,
   createMessage,
   messageText,

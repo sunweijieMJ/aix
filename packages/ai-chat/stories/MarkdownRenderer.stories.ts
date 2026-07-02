@@ -441,3 +441,58 @@ export const MermaidStreaming: Story = {
     });
   },
 };
+
+const chartContent = `下面是各季度销量对比：
+
+\`\`\`chart
+{
+  "xAxis": { "type": "category", "data": ["一季度", "二季度", "三季度", "四季度"] },
+  "yAxis": { "type": "value" },
+  "series": [{ "type": "bar", "data": [120, 200, 150, 260] }]
+}
+\`\`\`
+`;
+
+/**
+ * ECharts 图表：\`echarts\` 随包自动安装，内容首次出现 \`\`\`chart 围栏时才按需加载并以 canvas 活实例渲染；
+ * 未安装时维持代码块（静默降级），JSON 非法回落为代码块（虚线边框提示）。
+ */
+export const Chart: Story = {
+  args: { content: chartContent },
+  play: async ({ canvasElement }) => {
+    await waitFor(() => expect(canvasElement.querySelector('.aix-md-chart canvas')).toBeTruthy(), {
+      timeout: 10000,
+    });
+  },
+};
+
+/**
+ * ECharts 流式演示：option JSON 逐字输出期间按代码块展示（半截 JSON 绝不喂渲染器），
+ * 围栏闭合固化后才 parse 并出图（FLIP 高度过渡）——与 mermaid 同款「settled 后出图」防闪烁策略。
+ */
+export const ChartStreaming: Story = {
+  render: () => ({
+    components: { MarkdownRenderer },
+    setup() {
+      const content = ref('');
+      const streaming = ref(true);
+      let i = 0;
+      const timer = setInterval(() => {
+        content.value = chartContent.slice(0, (i += 6));
+        if (i >= chartContent.length) {
+          streaming.value = false;
+          clearInterval(timer);
+        }
+      }, 50);
+      onUnmounted(() => clearInterval(timer));
+      return { content, streaming };
+    },
+    template: '<MarkdownRenderer :content="content" :streaming="streaming" />',
+  }),
+  play: async ({ canvasElement }) => {
+    // 流式结束后围栏固化 → 出图
+    await waitFor(() => expect(canvasElement.querySelector('.aix-md-chart canvas')).toBeTruthy(), {
+      timeout: 12000,
+    });
+  },
+};

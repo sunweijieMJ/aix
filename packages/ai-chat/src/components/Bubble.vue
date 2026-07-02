@@ -104,6 +104,7 @@ import { locale } from '../locale';
 import type { BlockAction, BubbleProps, BubbleContentInfo, BlockRenderers } from '../types';
 import { messageText } from '../utils/helpers';
 import AttachmentBlock from './blocks/AttachmentBlock.vue';
+import ChartBlock from './blocks/ChartBlock.vue';
 import ReasoningBlock from './blocks/ReasoningBlock.vue';
 import SourcesBlock from './blocks/SourcesBlock.vue';
 import TextBlock from './blocks/TextBlock.vue';
@@ -150,6 +151,7 @@ const builtinRenderers: BlockRenderers = {
   sources: SourcesBlock,
   attachment: AttachmentBlock,
   tool_use: ToolUseBlock,
+  chart: ChartBlock,
 };
 const renderers = computed<BlockRenderers>(() => ({
   ...builtinRenderers,

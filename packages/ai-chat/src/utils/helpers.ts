@@ -57,6 +57,28 @@ export const attachmentBlock = (
   items,
 });
 
+/** 创建图表块（结构化路径，MVP 仅 echarts）。spec 为 ECharts option 对象；opts 补标题 / alt / 态 / 交互 */
+export const chartBlock = (
+  kind: Extract<ContentBlock, { type: 'chart' }>['kind'],
+  spec: unknown,
+  opts?: {
+    title?: string;
+    alt?: string;
+    state?: 'loading' | 'ready' | 'error';
+    interactive?: boolean;
+  },
+): Extract<ContentBlock, { type: 'chart' }> => ({
+  id: genBlockId(),
+  type: 'chart',
+  engine: 'echarts',
+  kind,
+  spec,
+  ...(opts?.title !== undefined ? { title: opts.title } : {}),
+  ...(opts?.alt !== undefined ? { alt: opts.alt } : {}),
+  ...(opts?.state !== undefined ? { state: opts.state } : {}),
+  ...(opts?.interactive !== undefined ? { interactive: opts.interactive } : {}),
+});
+
 /** 构造单 text block 的消息（最常用，纯文本场景） */
 export const textMessage = (role: MessageRole, text: string): ChatMessage => ({
   id: genMsgId(),

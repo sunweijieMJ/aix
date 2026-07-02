@@ -41,4 +41,6 @@ export const enUS: AiChatLocale = {
   toolInput: 'Input',
   toolOutput: 'Output',
   toolError: 'Error',
+  chartLabel: 'Chart',
+  chartError: 'Chart cannot be rendered',
 };

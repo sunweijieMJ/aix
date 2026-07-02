@@ -41,4 +41,6 @@ export const zhCN: AiChatLocale = {
   toolInput: '输入',
   toolOutput: '输出',
   toolError: '错误',
+  chartLabel: '图表',
+  chartError: '图表无法渲染',
 };

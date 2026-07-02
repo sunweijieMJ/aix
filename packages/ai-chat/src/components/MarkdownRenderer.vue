@@ -127,6 +127,7 @@ const mergedRenderers = computed<MarkdownRenderers>(() => {
     ...engine.value?.htmlRenderers,
     ...engine.value?.codeRenderers,
     ...engine.value?.diagramRenderers,
+    ...engine.value?.chartRenderers,
     ...props.markdownRenderers,
   };
 });
@@ -448,6 +449,18 @@ const MarkdownBlock = defineComponent({
 
 /* 语法错误的 mermaid 源码块：虚线边框提示异常（源码本身仍可读） */
 .aix-md-mermaid-source--error {
+  border-style: dashed;
+}
+
+/* ECharts 围栏图表：固定高度容器——ECharts 活实例 init 需非零高度（比运行时查 clientHeight 更稳） */
+.aix-md-chart {
+  width: 100%;
+  min-height: 300px;
+  margin: 0.6em 0;
+}
+
+/* JSON 非法的 chart 源码块：虚线边框提示异常（源码本身仍可读） */
+.aix-md-chart-source--error {
   border-style: dashed;
 }
 

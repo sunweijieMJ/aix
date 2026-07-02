@@ -79,4 +79,8 @@ export interface AiChatLocale {
   toolOutput: string;
   /** 工具调用块：错误信息区标题 */
   toolError: string;
+  /** 图表块：无障碍默认标签（无 title/alt 时） */
+  chartLabel: string;
+  /** 图表块：无法渲染时的降级文案 */
+  chartError: string;
 }

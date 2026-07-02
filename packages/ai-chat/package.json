@@ -54,6 +54,7 @@
   "optionalDependencies": {
     "@vscode/markdown-it-katex": "^1.1.2",
     "dompurify": "^3.4.10",
+    "echarts": "^6.1.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
     "markdown-it": "^14.2.0",
