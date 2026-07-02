@@ -1,0 +1,160 @@
+import type { Meta, StoryObj } from '@storybook/vue3';
+import { expect, screen, userEvent, waitFor } from 'storybook/test';
+import { AiChat } from '../src';
+import type { ChatMessage } from '../src/types';
+
+/** 简易流式应答：把收到的最后一条 user 消息内容回显（含拍平后的 blockquote，便于观察注入效果） */
+function echoStream(text: string): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder();
+  return new ReadableStream({
+    start(c) {
+      c.enqueue(enc.encode(`data: ${JSON.stringify({ delta: text })}\n\n`));
+      c.enqueue(enc.encode('data: [DONE]\n\n'));
+      c.close();
+    },
+  });
+}
+
+const HISTORY: ChatMessage[] = [
+  {
+    id: 'ai-1',
+    role: 'ai',
+    status: 'success',
+    content: [
+      {
+        id: 'b1',
+        type: 'text',
+        text: '快速排序的**平均时间复杂度**是 `O(n log n)`，最坏情况会退化到 O(n²)。选取随机基准可以有效规避最坏情况。',
+      },
+    ],
+  },
+];
+
+const meta: Meta<typeof AiChat> = {
+  title: 'AI Chat/Quote',
+  tags: ['autodocs'],
+  component: AiChat,
+  render: (args) => ({
+    components: { AiChat },
+    setup: () => ({ args }),
+    template: `<div style="height: 480px"><AiChat v-bind="args" /></div>`,
+  }),
+  args: {
+    defaultMessages: HISTORY,
+    request: async (ctx: { messages: ChatMessage[] }) => {
+      const last = ctx.messages.at(-1)!;
+      const text = last.content
+        .map((b) => ('text' in b ? b.text : ''))
+        .filter(Boolean)
+        .join('\n\n');
+      return echoStream(`收到（引用已拍平进上文）：\n\n${text}`);
+    },
+  },
+};
+
+export default meta;
+type Story = StoryObj<typeof AiChat>;
+
+/** PC 拖选出工具条：解释/追问/翻译/复制 */
+export const PCSelection: Story = {
+  play: async ({ canvasElement }) => {
+    const target = await waitFor(() => {
+      const el = canvasElement.querySelector('[data-aix-block-id]');
+      if (!el) throw new Error('等待气泡渲染');
+      return el;
+    });
+    // 程序化选中首个文本节点前 6 个字符并触发 selectionchange（模拟拖选收尾）
+    const textNode = target.firstChild!;
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 6);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    document.dispatchEvent(new Event('selectionchange'));
+    await waitFor(() => expect(document.querySelector('.aix-quote-toolbar')).toBeInTheDocument());
+    // 点「解释」→ chip 出现
+    await userEvent.click(document.querySelector<HTMLButtonElement>('.aix-quote-toolbar button')!);
+    await waitFor(() =>
+      expect(canvasElement.querySelector('.aix-quote-chip')).toBeInTheDocument(),
+    );
+  },
+};
+
+/** PC 操作栏整条引用 → chip → 发送 → user 消息内 QuoteBlock 展示 */
+export const WholeMessageQuote: Story = {
+  play: async ({ canvas, canvasElement }) => {
+    await userEvent.click(await canvas.findByRole('button', { name: '引用' }));
+    await waitFor(() =>
+      expect(canvasElement.querySelector('.aix-quote-chip')).toBeInTheDocument(),
+    );
+    await userEvent.type(canvas.getByRole('textbox'), '请再展开讲讲{enter}');
+    await waitFor(() =>
+      expect(canvasElement.querySelector('.aix-quote-block')).toBeInTheDocument(),
+    );
+  },
+};
+
+/**
+ * 移动端长按完整链路：单指长按 → QuoteSheet 浮出 → 点选「解释」→ chip 出现且 sheet 收起。
+ * `quote.longPressDelay` 缩短为 300ms 仅为缩短演示等待时间，链路与默认 500ms 完全一致（配置真实生效）。
+ *
+ * 注：仓库 .storybook/main.ts 未注册 @storybook/addon-viewport（仅 addon-links/addon-docs/addon-vitest），
+ * 故不加 `parameters.viewport`。建议在浏览器开发者工具切到设备模拟（移动视口）下查看/回放本 story，
+ * 触摸手势本身与视口尺寸无关，不影响 play 函数的断言有效性。
+ */
+export const MobileLongPress: Story = {
+  args: {
+    quote: { longPressDelay: 300 },
+  },
+  play: async ({ canvasElement }) => {
+    const target = await waitFor(() => {
+      const el = canvasElement.querySelector<HTMLElement>('[data-aix-block-id]');
+      if (!el) throw new Error('等待气泡渲染');
+      return el;
+    });
+
+    // 模拟单指长按：优先用真实 TouchEvent/Touch 构造（Chromium 内核浏览器支持），
+    // 不支持时降级为普通 Event + 手动挂 touches 属性（与 useTextSelection 单测同法），
+    // useTextSelection 只读取 e.touches[0].clientX/clientY，两条路径对其而言等价。
+    const dispatchTouch = (type: string, clientX = 20, clientY = 20) => {
+      if (typeof TouchEvent !== 'undefined' && typeof Touch !== 'undefined') {
+        const touch = new Touch({ identifier: 0, target, clientX, clientY });
+        target.dispatchEvent(
+          new TouchEvent(type, { bubbles: true, cancelable: true, touches: [touch] }),
+        );
+      } else {
+        const e = new Event(type, { bubbles: true, cancelable: true }) as Event & {
+          touches: { clientX: number; clientY: number }[];
+        };
+        Object.defineProperty(e, 'touches', { value: [{ clientX, clientY }] });
+        target.dispatchEvent(e);
+      }
+    };
+
+    // 单指按下，开始 300ms 长按计时（不移动、不提前松开）
+    dispatchTouch('touchstart');
+
+    // longPressDelay=300ms，留足余量等待 QuoteSheet 浮出（Teleport 到 body，不在 canvasElement 内）
+    await waitFor(
+      () => expect(document.querySelector('.aix-quote-sheet')).toBeInTheDocument(),
+      { timeout: 1000 },
+    );
+
+    // 点 sheet 里的「解释」→ chip 出现在 Sender header，菜单关闭
+    await userEvent.click(screen.getByRole('menuitem', { name: '解释' }));
+    await waitFor(() => {
+      expect(canvasElement.querySelector('.aix-quote-chip')).toBeInTheDocument();
+      expect(document.querySelector('.aix-quote-sheet')).not.toBeInTheDocument();
+    });
+  },
+};
+
+/** 关闭划词（quote=false）与关闭操作栏注入（pcQuoteAction=false）的对照 */
+export const Disabled: Story = {
+  args: { quote: false },
+  play: async ({ canvas }) => {
+    await expect(canvas.queryByRole('button', { name: '引用' })).not.toBeInTheDocument();
+  },
+};

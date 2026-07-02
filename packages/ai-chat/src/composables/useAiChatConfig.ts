@@ -1,5 +1,5 @@
 import { provide, inject, computed, reactive, type InjectionKey, type ComputedRef } from 'vue';
-import type { RoleConfig, BlockRenderers } from '../types';
+import type { RoleConfig, BlockRenderers, QuoteConfig } from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
 import type { ShouldFollow } from './useAutoScroll';
 import type { MarkdownItPlugin } from './useMarkdownRenderer';
@@ -21,13 +21,17 @@ export interface AiChatConfig {
   allowHtml?: boolean;
   /** 注入的 markdown-it 插件（扩展新语法，如脚注/容器）；经 AiChat 注入到气泡内 MarkdownRenderer */
   mdPlugins?: MarkdownItPlugin[];
+  /** 划词引用/追问统一配置（组件 props.quote 覆盖），undefined 视为启用默认 */
+  quote?: QuoteConfig;
 }
 
 const DEFAULT_CONFIG: AiChatConfig = { enableTyping: true };
 
 export const AI_CHAT_CONFIG_KEY: InjectionKey<AiChatConfig> = Symbol('aix-ai-chat-config');
 
-export function provideAiChatConfig(config: Partial<AiChatConfig>) {
+export function provideAiChatConfig(config: Partial<AiChatConfig>): AiChatConfig {
+  // 显式标注返回类型：避免 reactive() 推断出的 UnwrapNestedRefs 类型在 dts bundle 时
+  // 因引用 @vue/shared 内部类型而不可具名（TS2742）
   const merged = reactive<AiChatConfig>({ ...DEFAULT_CONFIG, ...config });
   provide(AI_CHAT_CONFIG_KEY, merged);
   return merged;

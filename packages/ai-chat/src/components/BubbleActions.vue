@@ -79,6 +79,17 @@
         <VolumeOff v-if="speaking" />
         <VolumeUp v-else />
       </button>
+      <!-- 内置 quote 操作：整条引用该消息 -->
+      <button
+        v-else-if="item.builtin && item.key === 'quote'"
+        type="button"
+        :class="ns.e('btn')"
+        :aria-label="t.quoteButton"
+        :title="t.quoteButton"
+        @click="emit('quote')"
+      >
+        <Reply />
+      </button>
       <button
         v-else-if="!item.builtin"
         type="button"
@@ -119,6 +130,8 @@ export interface BubbleActionsEmits {
   (e: 'regenerate'): void;
   (e: 'feedback', value: MessageFeedback | null): void;
   (e: 'speak'): void;
+  /** 内置 quote 操作：整条引用该消息（AiChat 接线构造 Quote 进 pendingQuotes） */
+  (e: 'quote'): void;
   /** 切换分支版本：dir=-1 上一个 / 1 下一个 */
   (e: 'switch-branch', dir: -1 | 1): void;
 }
@@ -127,7 +140,7 @@ export interface BubbleActionsEmits {
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace, copyText } from '@aix/hooks';
-import { Copy, Check, Refresh, ThumbUp, ThumbDown, VolumeUp, VolumeOff } from '@aix/icons';
+import { Copy, Check, Refresh, Reply, ThumbUp, ThumbDown, VolumeUp, VolumeOff } from '@aix/icons';
 import { ref, computed, onScopeDispose } from 'vue';
 import { locale } from '../locale';
 import type {

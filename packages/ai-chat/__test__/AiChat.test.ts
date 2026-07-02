@@ -554,10 +554,10 @@ describe('AiChat', () => {
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();
 
-    // AI 气泡 footer 出现操作区（复制 + 重新生成）
+    // AI 气泡 footer 出现操作区（复制 + 重新生成 + 内置 quote 自动注入，见 Task 12 策略 A）
     const actions = w.find('.aix-bubble-actions');
     expect(actions.exists()).toBe(true);
-    expect(actions.findAll('.aix-bubble-actions__btn')).toHaveLength(2);
+    expect(actions.findAll('.aix-bubble-actions__btn')).toHaveLength(3);
 
     // 点击重新生成 → onReload → 第二次请求
     await actions.findAll('.aix-bubble-actions__btn')[1]!.trigger('click');
@@ -568,7 +568,9 @@ describe('AiChat', () => {
 
   it('actions=[] 不渲染操作条', async () => {
     const request = vi.fn(async () => once('答'));
-    const w = mount(AiChat, { props: { request, actions: [] } });
+    // quote 默认启用会自动注入内置 quote 项（策略 A，见 Task 12），与本用例意图（验证空数组关闭操作条）
+    // 是两个正交开关，显式关闭 quote 以隔离变量
+    const w = mount(AiChat, { props: { request, actions: [], quote: false } });
     await w.find('textarea').setValue('问');
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();

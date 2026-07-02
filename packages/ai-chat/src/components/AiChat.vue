@@ -28,6 +28,7 @@
       </Welcome>
       <BubbleList
         v-else
+        ref="bubbleListRef"
         :items="parsedMessages"
         :roles="roles"
         :should-follow="shouldFollow"
@@ -63,6 +64,7 @@
               @feedback="onFeedback(item.id, $event)"
               @speak="speech?.toggle(item)"
               @switch-branch="switchBranch(item.id, $event)"
+              @quote="onQuoteMessage(item)"
             />
           </slot>
         </template>
@@ -72,6 +74,29 @@
           <slot :name="name" v-bind="sp" />
         </template>
       </BubbleList>
+      <template v-if="quoteMenu.visible.value">
+        <slot
+          name="quote-menu"
+          :items="quoteMenu.items.value"
+          :invoke="quoteMenu.invoke"
+          :close="quoteMenu.close"
+          :mode="quoteMenu.mode.value"
+          :selection="active"
+          :trigger="trigger"
+        >
+          <QuoteMenu
+            :items="quoteMenu.items.value"
+            :source="quoteMenu.source.value"
+            :mode="quoteMenu.mode.value"
+            :get-rect="active?.getRect"
+            :point="trigger?.point"
+            :toolbar="resolvedQuote.toolbar"
+            :sheet="resolvedQuote.sheet"
+            @invoke="quoteMenu.invoke"
+            @close="quoteMenu.close"
+          />
+        </slot>
+      </template>
     </div>
     <Sender
       ref="senderRef"
@@ -82,9 +107,42 @@
       :submit-type="submitType"
       :attachments="attachments"
       :voice="voice"
+      :allow-empty-submit="pendingQuotes.length > 0"
       @submit="onSend"
       @cancel="abort"
-    />
+    >
+      <template v-if="pendingQuotes.length" #header>
+        <div :class="ns.e('quote-chips')">
+          <QuoteChip
+            v-for="q in visibleQuotes"
+            :key="q.id"
+            :quote="q"
+            @remove="removeQuote(q.id)"
+            @locate="locateAnchor(q.anchor)"
+          />
+          <button
+            v-if="!chipsExpanded && hiddenChipCount > 0"
+            type="button"
+            :class="ns.e('quote-chips-toggle')"
+            :aria-label="t.quoteChipsExpand"
+            :title="t.quoteChipsExpand"
+            @click="chipsExpanded = true"
+          >
+            +{{ hiddenChipCount }}
+          </button>
+          <button
+            v-else-if="chipsExpanded && hiddenChipCount > 0"
+            type="button"
+            :class="ns.e('quote-chips-toggle')"
+            :aria-label="t.quoteChipsCollapse"
+            :title="t.quoteChipsCollapse"
+            @click="chipsExpanded = false"
+          >
+            {{ t.quoteChipsCollapse }}
+          </button>
+        </div>
+      </template>
+    </Sender>
   </div>
 </template>
 
@@ -199,6 +257,11 @@ export interface AiChatProps {
    * 推荐持久化场景用 tree，两者择一。
    */
   tree?: ExportedTree;
+  /**
+   * 划词引用/追问（默认启用）。false 关闭；对象按 QuoteConfig 细配，
+   * 与全局 provideAiChatConfig().quote 合并（props 优先）。视为静态配置（setup 快照）。
+   */
+  quote?: QuoteConfig | boolean;
 }
 export interface AiChatEmits {
   /** 用户发送消息（含点击快捷问题），携带文本与可选附件 */
@@ -227,15 +290,18 @@ export interface AiChatEmits {
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useControllable } from '@aix/hooks';
-import { computed, ref, watch, useSlots, getCurrentInstance } from 'vue';
+import { useNamespace, useControllable, useLocale, copyText } from '@aix/hooks';
+import { computed, ref, watch, useSlots, getCurrentInstance, provide } from 'vue';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
 import type { ShouldFollow } from '../composables/useAutoScroll';
 import { useChat } from '../composables/useChat';
 import type { UseChatOptions } from '../composables/useChat';
 import type { MarkdownItPlugin } from '../composables/useMarkdownRenderer';
+import { useQuoteMenu, QUOTE_LOCATE_KEY } from '../composables/useQuoteMenu';
 import { useSpeech } from '../composables/useSpeech';
+import { useTextSelection } from '../composables/useTextSelection';
+import { locale } from '../locale';
 import type {
   ChatMessage,
   RoleConfig,
@@ -249,22 +315,47 @@ import type {
   SpeechConfig,
   SubBubbleMeta,
   ExportedTree,
+  Quote,
+  QuoteAnchor,
+  QuoteConfig,
 } from '../types';
-import { messageText, attachmentBlock, textBlock } from '../utils/helpers';
+import { messageText, attachmentBlock, textBlock, quoteBlock, genQuoteId } from '../utils/helpers';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
+import { upsertQuote } from '../utils/quoteDedupe';
+import { highlightRange, highlightElement } from '../utils/quoteHighlight';
+import { flattenQuoteBlocks } from '../utils/quotePrompt';
+import { findTextRange, offsetsToRange } from '../utils/textRange';
 import BubbleActions from './BubbleActions.vue';
 import BubbleList from './BubbleList.vue';
 import Prompts from './Prompts.vue';
+import QuoteChip from './QuoteChip.vue';
+import QuoteMenu from './QuoteMenu.vue';
 import Sender from './Sender.vue';
 import Welcome from './Welcome.vue';
 
 const props = withDefaults(defineProps<AiChatProps>(), {
   actionsTrigger: 'always',
+  // 显式给 undefined 默认值（而非不声明）：quote 联合类型含 boolean，Vue 对「类型含 Boolean
+  // 且无 default」的 prop 有隐式转换——未传时会被自动转成 false 而非 undefined（boolean casting），
+  // 导致 resolvedQuote 无法区分「未配置（应启用默认）」与「显式 quote={false}（应关闭）」。
+  // 显式声明 default:undefined 可关闭该转换，让未传时 props.quote 保持真正的 undefined。
+  quote: undefined,
 });
 const emit = defineEmits<AiChatEmits>();
 const ns = useNamespace('ai-chat');
 const config = useAiChatConfig();
 const slots = useSlots();
+const { t } = useLocale(locale);
+
+// 划词引用配置：全局 config.quote < 组件 props.quote；boolean 简写归一化
+const resolvedQuote = computed<
+  Required<Pick<QuoteConfig, 'enable' | 'pcQuoteAction' | 'maxVisibleChips'>> & QuoteConfig
+>(() => {
+  const fromProps: QuoteConfig =
+    props.quote === false ? { enable: false } : props.quote === true || props.quote == null ? {} : props.quote;
+  const merged: QuoteConfig = { ...config.value.quote, ...fromProps };
+  return { enable: true, pcQuoteAction: true, maxVisibleChips: 3, ...merged };
+});
 
 // AiChat 自身消费的保留插槽（标题栏 + 欢迎/内容/底部）；其余具名插槽透传给 BubbleList（最终落到块渲染器内部 slot）。
 const AICHAT_RESERVED_SLOTS = [
@@ -277,6 +368,7 @@ const AICHAT_RESERVED_SLOTS = [
   'welcome-extra',
   'content',
   'footer',
+  'quote-menu',
 ];
 const blockSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !AICHAT_RESERVED_SLOTS.includes(n)),
@@ -397,7 +489,10 @@ const {
   importTree,
   resume,
 } = useChat({
-  request: props.request,
+  // 请求期把 quote 块拍平成 blockquote 文本给 business（纯函数，不 mutate SSOT，见设计 §2.1）；
+  // 无 quote 块时逐条直通，零开销
+  request: (ctx) =>
+    props.request({ ...ctx, messages: flattenQuoteBlocks(ctx.messages, resolvedQuote.value.toPrompt) }),
   streamMode: props.streamMode,
   parseChunk: props.parseChunk,
   parser: props.parser,
@@ -410,15 +505,127 @@ const {
   onAbort: (m) => emit('abort', m),
 });
 
-// 包一层：对外抛 send 事件后再委托 useChat（UI 提交、快捷问题、命令式调用统一走此入口）
-const onSend = (text: string, attachments?: AttachmentItem[]) => {
-  if (attachments?.length) {
-    emit('send', text, attachments);
-    const blocks = [attachmentBlock(attachments), ...(text ? [textBlock(text)] : [])];
-    return sendMessage(blocks);
+// ==================== 划词引用 / 追问 ====================
+
+// 待发引用（唯一归属 AiChat：它 own input model + senderRef；L2 经注入的 insertQuote 写入）
+const pendingQuotes = ref<Quote[]>([]);
+// 锚点去重 + 意图更新（见 utils/quoteDedupe）：同一段文字反复引用只保留一条 chip
+const insertQuote = (q: Quote) => {
+  pendingQuotes.value = upsertQuote(pendingQuotes.value, q);
+};
+const removeQuote = (id: string) => {
+  pendingQuotes.value = pendingQuotes.value.filter((q) => q.id !== id);
+};
+
+// chip 折叠：超过 maxVisibleChips 收起为「+N」，点击展开；数量回落到阈值内（含发送后清空）自动复位
+const chipsExpanded = ref(false);
+const hiddenChipCount = computed(() =>
+  Math.max(0, pendingQuotes.value.length - resolvedQuote.value.maxVisibleChips),
+);
+const visibleQuotes = computed(() => {
+  const max = resolvedQuote.value.maxVisibleChips;
+  return chipsExpanded.value || pendingQuotes.value.length <= max
+    ? pendingQuotes.value
+    : pendingQuotes.value.slice(0, max);
+});
+watch(pendingQuotes, (list) => {
+  if (list.length <= resolvedQuote.value.maxVisibleChips) chipsExpanded.value = false;
+});
+
+const bubbleListRef = ref<InstanceType<typeof BubbleList> | null>(null);
+const quoteRoot = computed(() => bubbleListRef.value?.scrollElement?.() ?? null);
+
+// L1：检测（BubbleList 渲染后 quoteRoot 才非空，watch immediate 装配在 useTextSelection 内部处理）
+const { active, trigger, clear: clearSelection } = useTextSelection({
+  root: quoteRoot,
+  enabled: () => resolvedQuote.value.enable,
+  longPressDelay: resolvedQuote.value.longPressDelay,
+  contextChars: 32,
+  keyboard: resolvedQuote.value.keyboard,
+  roles: () => resolvedQuote.value.roles ?? ['ai'],
+  excludeSelector: resolvedQuote.value.excludeSelector,
+});
+
+// 回链：滚到消息 → 等挂载 → 块内文本搜索还原 Range 高亮（主路径），偏移快路径兜底，
+// 整条引用/未命中 → 整气泡高亮降级（见设计 §6）
+const locateAnchor = async (anchor: QuoteAnchor) => {
+  const el = await bubbleListRef.value?.scrollToBubble(anchor.source.messageId, { smooth: true });
+  if (!el) return; // 派生 id 不在当前分支等 → 优雅降级不高亮
+  const isWhole = anchor.start == null && !anchor.source.blockId;
+  if (isWhole) {
+    highlightElement(el);
+    return;
   }
-  emit('send', text);
-  return sendMessage(text);
+  const host =
+    (anchor.source.blockId &&
+      el.querySelector<HTMLElement>(`[data-aix-block-id="${CSS.escape(anchor.source.blockId)}"]`)) ||
+    el.querySelector<HTMLElement>('.aix-bubble__content') ||
+    el;
+  const range =
+    findTextRange(host, anchor.exact, anchor.prefix, anchor.suffix) ??
+    (anchor.start != null && anchor.end != null ? offsetsToRange(host, anchor.start, anchor.end) : null);
+  if (range) highlightRange(range);
+  else highlightElement(el);
+};
+
+// L2：控制器（依赖注入，见 useQuoteMenu 契约）
+const quoteMenu = useQuoteMenu({
+  selection: active,
+  trigger,
+  actions: () => resolvedQuote.value.actions,
+  insertQuote,
+  setSenderValue: (text) => senderRef.value?.setValue(text),
+  focusSender: () => {
+    senderRef.value?.focus();
+    // 选区保全由 QuoteToolbar 的 mousedown.prevent 覆盖菜单交互期间；动作完成聚焦输入框时
+    // 应让选区自然清除，否则 preserve() 触发 selectionchange 会导致菜单重弹（且造成选区高亮残留）
+  },
+  copy: copyText,
+  onLocate: locateAnchor,
+  messageFor: (id) => parsedMessages.value.find((m) => m.id === id),
+});
+
+// 菜单关闭时同步清 L1 目标（下次交互重新产出）；滚动即关闭（virtua 回收锚点会失效）
+watch(quoteMenu.visible, (v) => {
+  if (!v) clearSelection();
+});
+watch(
+  quoteRoot,
+  (el, _old, onCleanup) => {
+    if (!el) return;
+    const onScroll = () => clearSelection();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onCleanup(() => el.removeEventListener('scroll', onScroll));
+  },
+  { immediate: true },
+);
+
+// PC 操作栏整条引用：与移动长按整条走完全同一条 L2 出口（insertQuote → chip → focus）
+const onQuoteMessage = (item: ChatMessage) => {
+  insertQuote({
+    id: genQuoteId(),
+    anchor: { source: { messageId: item.id, role: item.role }, exact: messageText(item) },
+  });
+  senderRef.value?.focus();
+};
+
+// 历史 quote 块 / chip 的回链通道（QuoteBlock inject 消费）
+provide(QUOTE_LOCATE_KEY, (q: Quote) => locateAnchor(q.anchor));
+
+// 包一层：对外抛 send 事件后再委托 useChat；pendingQuotes 打包成一等 quote 块前置进 content
+// （单源真源，无 extra.quotes；见设计 §2.1），发送即清空
+const onSend = (text: string, attachments?: AttachmentItem[]) => {
+  const quotes = pendingQuotes.value;
+  if (attachments?.length) emit('send', text, attachments);
+  else emit('send', text);
+  if (!quotes.length && !attachments?.length) return sendMessage(text);
+  const blocks = [
+    ...(quotes.length ? [quoteBlock(quotes)] : []),
+    ...(attachments?.length ? [attachmentBlock(attachments)] : []),
+    ...(text ? [textBlock(text)] : []),
+  ];
+  pendingQuotes.value = [];
+  return sendMessage(blocks);
 };
 
 // v-model:messages 桥接：messages 现为对话树派生的只读 computed。
@@ -523,6 +730,10 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
   const sub = item.extra?.__sub as SubBubbleMeta | undefined;
   if (sub && sub.index < sub.count - 1) return null;
   const base: ActionsItems = a.length > 0 ? [...a] : [];
+  // quote 启用且未被业务显式声明时自动注入（策略 A）；函数形态不自动注入（与 speak 同规则）
+  if (resolvedQuote.value.enable && resolvedQuote.value.pcQuoteAction && !base.includes('quote')) {
+    base.push('quote');
+  }
   // speech 启用且该消息有可朗读文本时追加内置 speak（即便 base 为空也显示，speech 是独立 opt-in）
   if (speech && speech.isSupported.value && speech.resolveText(item)) base.push('speak');
   return base.length > 0 ? base : null;
@@ -543,7 +754,8 @@ const actionsEnabled = computed(
   () =>
     typeof props.actions === 'function' ||
     (props.actions ?? DEFAULT_ACTIONS).length > 0 ||
-    !!speech,
+    !!speech ||
+    (resolvedQuote.value.enable && resolvedQuote.value.pcQuoteAction),
 );
 
 // 每条可见消息的分支元信息（branches 按逻辑消息 id 键；getBranches 内部已解析派生 id）
@@ -668,6 +880,80 @@ defineExpose({
 
   &__sender {
     margin: var(--aix-paddingSM) var(--aix-padding) var(--aix-padding);
+  }
+
+  &__quote-chips {
+    display: flex;
+    flex-wrap: wrap;
+
+    // flex 默认 align-items:stretch 会把同一行内高度较小的 chip 拉伸到与最高元素同高
+    // （换行后第二行出现高度不一致的视觉问题）；显式 flex-start 阻断拉伸，让每个 chip/toggle 按自身内容定高。
+    align-items: flex-start;
+    gap: var(--aix-marginXXS);
+    padding: var(--aix-paddingXXS) var(--aix-paddingXS) 0;
+  }
+
+  &__quote-chips-toggle {
+    display: inline-flex;
+    box-sizing: border-box;
+    flex: none;
+    align-items: center;
+
+    // 与 .aix-quote-chip 共用同一控件高度 token 定死等高（padding/行高巧合对齐不可靠）
+    height: var(--aix-controlHeightSM);
+    padding: 0 var(--aix-paddingXS);
+    border: 1px solid var(--aix-colorBorderSecondary);
+    border-radius: var(--aix-borderRadiusSM);
+    background-color: var(--aix-colorFillTertiary);
+    color: var(--aix-colorTextSecondary);
+    font-size: var(--aix-fontSizeSM);
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--aix-colorPrimaryBorder);
+      color: var(--aix-colorPrimary);
+    }
+  }
+}
+
+/* 回链临时高亮（quoteHighlight.ts 挂载）：子范围高亮层 + 整气泡淡出，两种形态样式各自独立 */
+.aix-quote-highlight {
+  position: absolute;
+  z-index: 1;
+  animation: aix-quote-fade-bg 2s var(--aix-motionEaseInOut) forwards;
+  border-radius: var(--aix-borderRadiusXS);
+  background-color: var(--aix-colorPrimaryBg);
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+.aix-quote-highlight-fade {
+  animation: aix-quote-fade 2s var(--aix-motionEaseInOut) forwards;
+}
+
+/* 子范围高亮：纯背景淡出，不描边，避免长文本 getClientRects 多矩形逐个描边出现一堆框 */
+@keyframes aix-quote-fade-bg {
+  0%,
+  60% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 整气泡降级形态：保留描边脉冲，视觉上区别于纯背景高亮 */
+@keyframes aix-quote-fade {
+  0%,
+  60% {
+    opacity: 1;
+    box-shadow: 0 0 0 2px var(--aix-colorPrimaryBorder, var(--aix-colorPrimary));
+  }
+
+  100% {
+    opacity: 0.999; /* 整气泡形态保持可见，仅描边淡出；高亮层由 JS 定时移除 */
+    box-shadow: none;
   }
 }
 </style>

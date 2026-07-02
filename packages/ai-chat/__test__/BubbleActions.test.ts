@@ -183,6 +183,21 @@ describe('BubbleActions', () => {
   });
 });
 
+describe('内置 quote 操作', () => {
+  it('items 含 quote 时渲染引用按钮，点击 emit quote', async () => {
+    const w = mount(BubbleActions, { props: { items: ['quote', 'copy'] } });
+    const btn = w.find('button[aria-label="引用"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(w.emitted('quote')).toHaveLength(1);
+  });
+
+  it('默认 items 不含 quote（注入由 AiChat 的 pcQuoteAction 决定）', () => {
+    const w = mount(BubbleActions);
+    expect(w.find('button[aria-label="引用"]').exists()).toBe(false);
+  });
+});
+
 describe('BubbleActions — 分支切换器', () => {
   it('branch.count>1 渲染 ‹ i/n ›，点击两端 emit switch-branch', async () => {
     const w = mount(BubbleActions, {

@@ -8,6 +8,10 @@ import Conversations from './components/Conversations.vue';
 import MarkdownRenderer from './components/MarkdownRenderer.vue';
 import ModelSelector from './components/ModelSelector.vue';
 import Prompts from './components/Prompts.vue';
+import QuoteSheet from './components/quote/QuoteSheet.vue';
+import QuoteToolbar from './components/quote/QuoteToolbar.vue';
+import QuoteChip from './components/QuoteChip.vue';
+import QuoteMenu from './components/QuoteMenu.vue';
 import Sender from './components/Sender.vue';
 import Skeleton from './components/Skeleton.vue';
 import Thinking from './components/Thinking.vue';
@@ -32,7 +36,12 @@ export {
   AiChat,
   Conversations,
   Skeleton,
+  QuoteMenu,
+  QuoteChip,
 };
+
+// 划词引用默认皮肤（toolbar/sheet 单端换肤时作为 fallback/对照参考，见 QuoteMenuProps.toolbar/sheet）
+export { QuoteToolbar, QuoteSheet };
 
 // composables
 export * from './composables';
@@ -95,7 +104,14 @@ export {
   textMessage,
   createMessage,
   messageText,
+  quoteBlock,
+  genQuoteId,
 } from './utils/helpers';
+
+// 划词引用：默认 quote → prompt 拼装 / 消息内 quote 提取工具（供自定义 toPrompt / 消息渲染复用）
+export { defaultQuoteToPrompt, flattenQuoteBlocks, getQuotes } from './utils/quotePrompt';
+// 划词引用：锚点去重 + 意图更新纯函数（AiChat 内部 insertQuote 复用，供自定义引用入口复用同一策略）
+export { upsertQuote } from './utils/quoteDedupe';
 
 // 共享类型（含 ChatMessage / BubbleProps / RoleConfig / PromptItem / ContentBlock / SourceItem / BlockBase 等）
 export * from './types';
@@ -117,6 +133,10 @@ export type {
   AttachmentCardEmits,
   AttachmentCardItem,
 } from './components/AttachmentCard.vue';
+export type { QuoteMenuProps, QuoteMenuEmits } from './components/QuoteMenu.vue';
+export type { QuoteChipProps, QuoteChipEmits } from './components/QuoteChip.vue';
+export type { QuoteToolbarProps, QuoteToolbarEmits } from './components/quote/QuoteToolbar.vue';
+export type { QuoteSheetProps, QuoteSheetEmits } from './components/quote/QuoteSheet.vue';
 
 // locale
 export { locale as aiChatLocale, zhCN, enUS } from './locale';
@@ -137,6 +157,8 @@ const components = {
   AiChat,
   Conversations,
   Skeleton,
+  QuoteMenu,
+  QuoteChip,
 };
 
 // 插件：全局注册时加 Aix 前缀

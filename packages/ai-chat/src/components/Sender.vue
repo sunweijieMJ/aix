@@ -67,7 +67,7 @@
       <button
         type="button"
         :class="[ns.e('send'), ns.is('streaming', loading)]"
-        :disabled="disabled || (!loading && (isUploading || (!inner.trim() && !hasDone)))"
+        :disabled="disabled || (!loading && (isUploading || (!inner.trim() && !hasDone && !allowEmptySubmit)))"
         :aria-label="loading ? t.stopButton : isUploading ? t.attachmentUploading : t.sendButton"
         :title="loading ? t.stopButton : isUploading ? t.attachmentUploading : t.sendButton"
         @click="onSendClick"
@@ -124,6 +124,8 @@ export interface SenderProps {
    * 视为静态配置（setup 快照），运行时切换不生效。
    */
   voice?: boolean | VoiceConfig;
+  /** 有外部附加内容（如引用 chip）时允许空文本提交，默认 false */
+  allowEmptySubmit?: boolean;
 }
 export interface SenderEmits {
   /** 输入框文本变化（v-model 同步） */
@@ -181,6 +183,7 @@ const props = withDefaults(defineProps<SenderProps>(), {
   loading: false,
   disabled: false,
   submitType: 'enter',
+  allowEmptySubmit: false,
 });
 const emit = defineEmits<SenderEmits>();
 const ns = useNamespace('sender');
@@ -466,7 +469,8 @@ const doSubmit = () => {
   const text = inner.value.trim();
   // 纯附件发送：text 可空，但须有已传完附件；上传中一律不可发
   if (props.loading || props.disabled || isUploading.value) return;
-  if (!text && !hasDone.value) return;
+  // allowEmptySubmit：有外部附加内容（如引用 chip）时放行空文本提交
+  if (!text && !hasDone.value && !props.allowEmptySubmit) return;
   // 提交时自动停止语音聆听（守卫之后，确认能提交时再停）
   if (voice?.status.value === 'listening') voice.stop();
   const atts = attach ? attach.drain() : undefined;
@@ -530,9 +534,17 @@ defineSlots<{
   footer?: (props: SenderSlotScope) => unknown;
 }>();
 
+/** 命令式写入输入框（划词 ask 的 prompt 注入等）；与 onInput 全同路径（含高度自适应），受控/非受控一致 */
+const setValue = (text: string) => {
+  inner.value = text;
+  emit('update:modelValue', text);
+  autosize();
+};
+
 defineExpose({
   focus: () => textareaRef.value?.focus(),
   clear,
+  setValue,
   // 仅供单测验证面板高度过渡的快速 toggle 竞态（VTU 取 Transition 内节点不便，直接单元级调用）
   __onPanelEnter: onPanelEnter,
   __onPanelLeave: onPanelLeave,
