@@ -61,6 +61,20 @@ describe('Bubble', () => {
     expect(w.find('.aix-bubble__error').exists()).toBe(false);
   });
 
+  it('根元素带 data-aix-message-id / data-aix-role，text 块带 data-aix-block-id', () => {
+    const w = mount(Bubble, {
+      props: {
+        itemKey: 'm1',
+        role: 'ai',
+        content: [{ id: 'b1', type: 'text', text: 'hello' }],
+      },
+    });
+    const root = w.find('.aix-bubble');
+    expect(root.attributes('data-aix-message-id')).toBe('m1');
+    expect(root.attributes('data-aix-role')).toBe('ai');
+    expect(w.find('[data-aix-block-id="b1"]').exists()).toBe(true);
+  });
+
   describe('typing 打字机', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());

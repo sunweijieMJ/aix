@@ -1,5 +1,6 @@
 <template>
   <MarkdownRenderer
+    :data-aix-block-id="block.id"
     :content="displayContent"
     :streaming="streaming"
     :markdown-renderers="config.markdownRenderers"

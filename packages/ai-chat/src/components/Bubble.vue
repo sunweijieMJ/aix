@@ -1,5 +1,9 @@
 <template>
-  <div :class="[ns.b(), ns.m(placement)]">
+  <div
+    :class="[ns.b(), ns.m(placement)]"
+    :data-aix-message-id="itemKey != null && itemKey !== '' ? String(itemKey) : undefined"
+    :data-aix-role="role"
+  >
     <div v-if="avatar || $slots.avatar" :class="ns.e('avatar')">
       <slot name="avatar"><img :src="avatar" alt="" /></slot>
     </div>
@@ -105,6 +109,7 @@ import type { BlockAction, BubbleProps, BubbleContentInfo, BlockRenderers } from
 import { messageText } from '../utils/helpers';
 import AttachmentBlock from './blocks/AttachmentBlock.vue';
 import ChartBlock from './blocks/ChartBlock.vue';
+import QuoteBlock from './blocks/QuoteBlock.vue';
 import ReasoningBlock from './blocks/ReasoningBlock.vue';
 import SourcesBlock from './blocks/SourcesBlock.vue';
 import TextBlock from './blocks/TextBlock.vue';
@@ -152,6 +157,7 @@ const builtinRenderers: BlockRenderers = {
   attachment: AttachmentBlock,
   tool_use: ToolUseBlock,
   chart: ChartBlock,
+  quote: QuoteBlock,
 };
 const renderers = computed<BlockRenderers>(() => ({
   ...builtinRenderers,

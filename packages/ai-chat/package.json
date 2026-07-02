@@ -48,6 +48,7 @@
   "dependencies": {
     "@aix/hooks": "workspace:^",
     "@aix/icons": "workspace:^",
+    "@aix/popper": "workspace:^",
     "@aix/theme": "workspace:^",
     "virtua": "^0.49.1"
   },

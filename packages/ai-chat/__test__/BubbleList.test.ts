@@ -61,12 +61,36 @@ describe('BubbleList', () => {
     expect(typeof vm.scrollToBubble).toBe('function');
   });
 
-  it('scrollToBubble 委托给 virtua 的 scrollToIndex', () => {
+  it('scrollToBubble 按 messageId 解析下标并委托 virtua，返回 Promise', async () => {
     scrollToIndexMock.mockClear();
     const w = mount(BubbleList, { props: { items } });
-    const vm = w.vm as unknown as { scrollToBubble: (i: number, s?: boolean) => void };
-    vm.scrollToBubble(1, true);
+    const vm = w.vm as unknown as {
+      scrollToBubble: (
+        messageId: string,
+        opts?: { smooth?: boolean; timeoutMs?: number },
+      ) => Promise<HTMLElement | null>;
+    };
+    // items 中第二条消息 id 为 '2'（沿用本文件现有 items 构造）
+    const p = vm.scrollToBubble('2', { smooth: true });
     expect(scrollToIndexMock).toHaveBeenCalledWith(1, { smooth: true });
+    // jsdom 中气泡已实际挂载（无虚拟化裁剪），应 resolve 出根元素
+    await expect(p).resolves.toBeInstanceOf(HTMLElement);
+  });
+
+  it('scrollToBubble 未知 messageId 直接 resolve null 且不滚动', async () => {
+    scrollToIndexMock.mockClear();
+    const w = mount(BubbleList, { props: { items } });
+    const vm = w.vm as unknown as {
+      scrollToBubble: (messageId: string) => Promise<HTMLElement | null>;
+    };
+    await expect(vm.scrollToBubble('not-exist')).resolves.toBeNull();
+    expect(scrollToIndexMock).not.toHaveBeenCalled();
+  });
+
+  it('暴露 scrollElement 取滚动容器', () => {
+    const w = mount(BubbleList, { props: { items } });
+    const vm = w.vm as unknown as { scrollElement: () => HTMLElement | null };
+    expect(vm.scrollElement()).toBeInstanceOf(HTMLElement);
   });
 
   it('Bubble 重试事件冒泡为带消息 id 的 retry', async () => {

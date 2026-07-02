@@ -200,9 +200,32 @@ const handleTypingComplete = (id: string) => {
   emit('typing-complete', id);
 };
 
-// 委托给 virtua 官方 API：虚拟列表只渲染视口内项，DOM 索引对非可见项会静默失效
-const scrollToBubble = (index: number, smooth = false) => {
+/**
+ * 按 messageId 定位并等挂载（回链契约）：
+ * - messageId 基于渲染视图 items（含 parser 1→N 派生 id），找不到 → resolve null；
+ * - virtua 只认下标，先 findIndex 再 scrollToIndex；
+ * - 虚拟列表滚过去才渲染，rAF 轮询等目标气泡出现在 DOM，超时（默认 500ms）降级 null。
+ */
+const scrollToBubble = (
+  messageId: string,
+  opts: { smooth?: boolean; timeoutMs?: number } = {},
+): Promise<HTMLElement | null> => {
+  const { smooth = false, timeoutMs = 500 } = opts;
+  const index = props.items.findIndex((m) => m.id === messageId);
+  if (index < 0) return Promise.resolve(null);
   virtualizerRef.value?.scrollToIndex(index, { smooth });
+  return new Promise((resolve) => {
+    const startedAt = performance.now();
+    const tick = () => {
+      const el = scrollRef.value?.querySelector<HTMLElement>(
+        `[data-aix-message-id="${CSS.escape(messageId)}"]`,
+      );
+      if (el) return resolve(el);
+      if (performance.now() - startedAt > timeoutMs) return resolve(null);
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
 };
 
 // 首屏挂载：等 Virtualizer 完成首次渲染后同步滚动态，避免初始硬编码的
@@ -254,6 +277,8 @@ defineExpose({
   scrollToBubble,
   scrollState,
   unreadCount,
+  /** 滚动容器（划词检测 L1 的监听根 + 滚动即关闭菜单的事件源） */
+  scrollElement: () => scrollRef.value,
 });
 </script>
 
