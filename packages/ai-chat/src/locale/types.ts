@@ -83,4 +83,22 @@ export interface AiChatLocale {
   chartLabel: string;
   /** 图表块：无法渲染时的降级文案 */
   chartError: string;
+  /** 消息操作栏：整条引用按钮 */
+  quoteButton: string;
+  /** 划词菜单：解释 */
+  quoteExplain: string;
+  /** 划词菜单：追问 */
+  quoteAsk: string;
+  /** 划词菜单：翻译 */
+  quoteTranslate: string;
+  /** 划词工具条的无障碍标签 */
+  quoteToolbarLabel: string;
+  /** 引用预览 chip：移除按钮 */
+  quoteRemove: string;
+  /** 用户消息内引用块的标题 */
+  quoteBlockTitle: string;
+  /** 引用 chip 折叠：展开其余引用按钮的无障碍标签/title */
+  quoteChipsExpand: string;
+  /** 引用 chip 折叠：收起按钮文案 */
+  quoteChipsCollapse: string;
 }

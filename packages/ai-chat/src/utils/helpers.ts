@@ -4,6 +4,7 @@ import type {
   ContentBlock,
   MessageRole,
   MessageStatus,
+  Quote,
   SourceItem,
   ThoughtChainItem,
 } from '../types';
@@ -78,6 +79,17 @@ export const chartBlock = (
   ...(opts?.state !== undefined ? { state: opts.state } : {}),
   ...(opts?.interactive !== undefined ? { interactive: opts.interactive } : {}),
 });
+
+/** quote 块工厂：pendingQuotes → 一等 quote 块（发送时前置进 content） */
+export const quoteBlock = (quotes: Quote[]): ContentBlock => ({
+  id: genBlockId(),
+  type: 'quote',
+  quotes,
+});
+
+let quoteIdSeed = 0;
+/** 引用 id：运行时全局唯一（模块级计数器）（chip v-for key / 删除定位） */
+export const genQuoteId = (): string => `q-${++quoteIdSeed}`;
 
 /** 构造单 text block 的消息（最常用，纯文本场景） */
 export const textMessage = (role: MessageRole, text: string): ChatMessage => ({

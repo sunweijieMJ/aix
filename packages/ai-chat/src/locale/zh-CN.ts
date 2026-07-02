@@ -43,4 +43,13 @@ export const zhCN: AiChatLocale = {
   toolError: '错误',
   chartLabel: '图表',
   chartError: '图表无法渲染',
+  quoteButton: '引用',
+  quoteExplain: '解释',
+  quoteAsk: '追问',
+  quoteTranslate: '翻译',
+  quoteToolbarLabel: '划词菜单',
+  quoteRemove: '移除引用',
+  quoteBlockTitle: '引用',
+  quoteChipsExpand: '展开其余引用',
+  quoteChipsCollapse: '收起',
 };

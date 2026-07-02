@@ -174,7 +174,10 @@
     "unocss",
     "bfdadc",
     "fef",
-    "qwen"
+    "qwen",
+    "longpress",
+    "mql",
+    "sel"
   ],
   "patterns": [
     {

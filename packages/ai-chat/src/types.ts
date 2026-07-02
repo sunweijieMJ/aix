@@ -304,6 +304,36 @@ export interface BlockBase {
   id: string;
 }
 
+// ==================== 引用 / 划词追问 ====================
+
+/** 引用锚点：exact 为主（LLM 可见 + 回链文本搜索），偏移/选择器为冗余快路径 */
+export interface QuoteAnchor {
+  source: { messageId: string; blockId?: string; role?: MessageRole };
+  /** 归一化选中文本（整条引用时为整条消息文本） */
+  exact: string;
+  /** 选中前 ~contextChars 字符（文本搜索消歧，抗漂移） */
+  prefix?: string;
+  /** 选中后 ~contextChars 字符 */
+  suffix?: string;
+  /** 块内字符偏移（含），纯文本块精确高亮快路径；整条引用无此字段 */
+  start?: number;
+  /** 块内字符偏移（不含） */
+  end?: number;
+}
+
+export interface Quote {
+  id: string;
+  anchor: QuoteAnchor;
+  /** explain / ask / translate / 业务自定义 */
+  intent?: string;
+}
+
+/** 一等内容块：引用的唯一真源（非 text，onEdit 原位保留；请求期经 toPrompt 拍平） */
+export interface QuoteBlock extends BlockBase {
+  type: 'quote';
+  quotes: Quote[];
+}
+
 /** 工具调用生命周期状态（awaiting-approval / executing 为 Layer 2 预留） */
 export type ToolUseState =
   | 'input-streaming'
@@ -363,14 +393,15 @@ export type ContentBlock =
       state?: 'loading' | 'ready' | 'error';
       /** 交互回写用（切换图型/取点等经 BlockAction 上抛）；无交互需求可不填 */
       interactive?: boolean;
-    });
+    })
+  | QuoteBlock;
 
 /** 内置消息操作预设 key */
-export type ActionKey = 'copy' | 'regenerate' | 'feedback' | 'speak';
+export type ActionKey = 'copy' | 'regenerate' | 'feedback' | 'speak' | 'quote';
 
 /** 自定义消息操作项 */
 export interface ActionItem {
-  /** 唯一 key；不要与内置预设 key（copy/regenerate/feedback/speak）同名，否则 v-for key 冲突 */
+  /** 唯一 key；不要与内置预设 key（copy/regenerate/feedback/speak/quote）同名，否则 v-for key 冲突 */
   key: string;
   /** 按钮文案（tooltip + aria-label），a11y 必填 */
   label: string;
@@ -383,6 +414,71 @@ export interface ActionItem {
 
 /** 操作条配置：字符串 = 内置预设，对象 = 自定义项，顺序即渲染顺序 */
 export type ActionsItems = (ActionKey | ActionItem)[];
+
+/** 划词浮层内置动作 key（与 BubbleActions 的 ActionKey 是两套并存注册表，勿混淆） */
+export type QuoteActionKey = 'explain' | 'ask' | 'translate' | 'copy';
+
+/** 划词动作执行上下文：三条出口以「是否写 textarea」区分——insertQuote 仅加 chip、
+ *  ask 加 chip + 可选注入 textarea、copy 仅复制 */
+export interface QuoteActionContext {
+  quote: Quote;
+  /** 按 source.messageId 从渲染视图 parsedMessages 解析（可能是派生气泡 id） */
+  message?: ChatMessage;
+  insertQuote: (q?: Quote) => void;
+  ask: (q?: Quote, prompt?: string) => void;
+  copy: (text?: string) => void;
+  close: () => void;
+}
+
+export interface QuoteActionItem {
+  /** 勿与内置 key（explain/ask/translate/copy）撞名 */
+  key: string;
+  /** 按钮文案 / aria-label（a11y 必填） */
+  label: string;
+  icon?: Component;
+  disabled?: boolean;
+  onClick: (ctx: QuoteActionContext) => void;
+}
+
+export type QuoteActionsItems = (QuoteActionKey | QuoteActionItem)[];
+
+/** L2 解析后的统一渲染形态：皮肤按此渲染按钮，不关心 key 是内置还是自定义 */
+export interface ResolvedQuoteAction {
+  key: string;
+  label: string;
+  icon?: Component;
+  disabled?: boolean;
+}
+
+/** 统一定制入口 AiChatConfig.quote / AiChat prop quote */
+export interface QuoteConfig {
+  /** 总开关，默认 true */
+  enable?: boolean;
+  /** 划词浮层动作，默认 ['explain','ask','translate','copy'] */
+  actions?: QuoteActionsItems;
+  /** 是否往 BubbleActions 自动注入内置 'quote'（PC 引整条），默认 true */
+  pcQuoteAction?: boolean;
+  /** 移动精选实现（P2 预留，首版不接线） */
+  mobileSelection?: 'custom' | 'native';
+  /** 长按出菜单延时 ms，默认 500 */
+  longPressDelay?: number;
+  /** 精选初选粒度（P2 预留，首版不接线） */
+  granularity?: 'word' | 'sentence';
+  /** 键盘选区唤出，默认 true */
+  keyboard?: boolean;
+  /** 启用角色，默认 ['ai'] */
+  roles?: MessageRole[];
+  /** 追加排除选择器（内置已排除 a/button/input 等交互元素） */
+  excludeSelector?: string;
+  /** quote 块 → LLM 可见文本 的拼装器，默认 blockquote */
+  toPrompt?: (quotes: Quote[]) => string;
+  /** 深度换肤：替换 PC 工具条组件（props/emits 与 QuoteToolbar 一致） */
+  toolbar?: Component;
+  /** 深度换肤：替换移动 sheet 组件（props/emits 与 QuoteSheet 一致） */
+  sheet?: Component;
+  /** 引用 chip 折叠阈值：超过该数量收起为「+N」，默认 3；设 Infinity 关闭折叠 */
+  maxVisibleChips?: number;
+}
 
 // ──────────────────────────────────────────────
 // 语音识别类型（useVoiceInput 使用）

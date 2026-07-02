@@ -43,4 +43,13 @@ export const enUS: AiChatLocale = {
   toolError: 'Error',
   chartLabel: 'Chart',
   chartError: 'Chart cannot be rendered',
+  quoteButton: 'Quote',
+  quoteExplain: 'Explain',
+  quoteAsk: 'Ask',
+  quoteTranslate: 'Translate',
+  quoteToolbarLabel: 'Selection menu',
+  quoteRemove: 'Remove quote',
+  quoteBlockTitle: 'Quoted',
+  quoteChipsExpand: 'Show all quotes',
+  quoteChipsCollapse: 'Collapse',
 };
