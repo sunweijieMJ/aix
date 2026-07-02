@@ -26,3 +26,13 @@ export { useSpeech, createSpeechSynthesisSynthesizer } from './useSpeech';
 export type { UseSpeechOptions, UseSpeechReturn } from './useSpeech';
 export { createMessageTree, ROOT_ID } from './messageTree';
 export type { MessageTreeApi } from './messageTree';
+export { useTextSelection } from './useTextSelection';
+export type {
+  UseTextSelectionOptions,
+  ActiveSelection,
+  LongPressTrigger,
+  UseTextSelectionReturn,
+} from './useTextSelection';
+export { useQuoteMenu, QUOTE_LOCATE_KEY } from './useQuoteMenu';
+export type { UseQuoteMenuOptions, UseQuoteMenuReturn } from './useQuoteMenu';
+export { usePlatform } from './usePlatform';
