@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick } from 'vue';
 import { FlowGraph } from '../src';
 
+const { addNodesMock } = vi.hoisted(() => ({ addNodesMock: vi.fn() }));
+
 vi.mock('@vue-flow/core', () => ({
   VueFlow: defineComponent({
     name: 'VueFlow',
@@ -18,7 +20,7 @@ vi.mock('@vue-flow/core', () => ({
     updateEdge: vi.fn(),
     updateNodeData: vi.fn(),
     removeNodes: vi.fn(),
-    addNodes: vi.fn(),
+    addNodes: addNodesMock,
     getNodes: { value: [] },
     fitView: vi.fn(),
     zoomIn: vi.fn(),
@@ -86,5 +88,18 @@ describe('FlowGraph 组件', () => {
     expect(wrapper.emitted('update:nodes')?.at(-1)).toEqual([newNodes]);
     // 关键：内部状态持有，回传给 VueFlow 的 nodes prop 反映新值（非陈旧空数组）
     expect(vueFlow.props('nodes')).toEqual(newNodes);
+  });
+
+  // 回归：createNode 曾把 data.size 预置为圆形默认尺寸，节点后续被 setNodeType 切换成
+  // 六边形等类型时，BaseNode 会优先读这个残留的旧尺寸而非类型默认尺寸，导致渲染尺寸错误
+  // （需刷新页面重新拉取数据、data.size 变回 undefined 才会恢复正常）。
+  // data 必须留空，让尺寸始终由 node.type 动态决定。
+  it('addNode 新建的节点 data 不预置 size，避免类型切换后残留旧尺寸', () => {
+    addNodesMock.mockClear();
+    const wrapper = mount(FlowGraph);
+    (wrapper.vm as unknown as { addNode: () => void }).addNode();
+    expect(addNodesMock).toHaveBeenCalledTimes(1);
+    const [nodes] = addNodesMock.mock.calls[0] as [Array<{ data?: Record<string, unknown> }>];
+    expect(nodes[0]?.data).toEqual({});
   });
 });

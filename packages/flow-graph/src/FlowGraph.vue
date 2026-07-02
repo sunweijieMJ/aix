@@ -323,10 +323,13 @@ function createNode(x: number, y: number): FlowNode {
     }
   }
 
+  // data 不预置 size：size 是「业务显式自定义尺寸」的覆盖字段，留空才能让 setNodeType/
+  // calcOrthogonalWaypoints/BaseNode 在节点类型切换时始终按 node.type 取对应默认尺寸，
+  // 避免创建时的圆形尺寸被烙进 data 后，切换成六边形等类型时残留旧尺寸
   const node: FlowNode = {
     id: createNodeId(),
     position: { x: px, y: py },
-    data: { size: nodeSize.value },
+    data: {},
   };
   // 必须走 addNodes 而非直接改 modelNodes：v-model 写入会被 vue-flow 静默 setNodes 替换、
   // 不会派发 nodesChange，外层订阅的 @node-add 收不到。addNodes 会走 createAdditionChange
