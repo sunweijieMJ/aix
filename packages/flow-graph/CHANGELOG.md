@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.40
+
+### Patch Changes
+
+- 六边形启动size
+
 ## 0.0.39
 
 ### Patch Changes
