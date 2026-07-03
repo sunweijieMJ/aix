@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.41
+
+### Patch Changes
+
+- 同步节点默认size
+
 ## 0.0.40
 
 ### Patch Changes
