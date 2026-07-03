@@ -34,6 +34,8 @@ export interface QuoteToolbarProps {
   items: ResolvedQuoteAction[];
   /** 定位锚：选区包围盒（视口坐标） */
   getAnchorRect: () => DOMRect;
+  /** 虚拟锚点宿主元素（VirtualElement.contextElement）：供 autoUpdate 挂滚动祖先监听 */
+  contextEl?: HTMLElement | null;
 }
 export interface QuoteToolbarEmits {
   (e: 'invoke', key: string): void;
@@ -63,6 +65,8 @@ const { referenceRef, floatingRef, floatingStyles } = usePopper({
 watchEffect(() => {
   referenceRef.value = {
     getBoundingClientRect: props.getAnchorRect,
+    // contextElement 让 autoUpdate 挂上锚点侧滚动祖先监听（选区所在消息列表滚动时跟随）
+    contextElement: props.contextEl ?? undefined,
   } as unknown as HTMLElement;
 });
 

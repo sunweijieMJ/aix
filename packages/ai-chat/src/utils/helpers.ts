@@ -6,6 +6,7 @@ import type {
   MessageStatus,
   Quote,
   SourceItem,
+  SuggestionItem,
   ThoughtChainItem,
 } from '../types';
 
@@ -117,6 +118,11 @@ export const messageText = (m: ChatMessage): string =>
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')
     .map((b) => b.text)
     .join('');
+
+/** 追问建议归一化：字符串条目 → { text }，对象透传（双通道共用） */
+export const normalizeSuggestions = (
+  input: Array<string | SuggestionItem>,
+): SuggestionItem[] => input.map((s) => (typeof s === 'string' ? { text: s } : s));
 
 /** 工具块对自动滚动跟随的贡献：argsText 长度 + output 存在性（避免对大结果反复 stringify） */
 export function toolFollowLen(blocks: ContentBlock[]): number {

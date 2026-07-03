@@ -101,4 +101,12 @@ export interface AiChatLocale {
   quoteChipsExpand: string;
   /** 引用 chip 折叠：收起按钮文案 */
   quoteChipsCollapse: string;
+  /** 触发菜单：菜单标题无障碍标签 */
+  triggerMenuLabel: string;
+  /** 触发菜单：无匹配结果空态文案 */
+  triggerMenuEmpty: string;
+  /** 触发菜单：加载中占位文案 */
+  triggerMenuLoading: string;
+  /** 追问建议：面板标题 */
+  suggestionsLabel: string;
 }

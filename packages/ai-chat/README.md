@@ -78,10 +78,10 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 
 | 组件 | 说明 | 关键 props |
 |------|------|-----------|
-| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`typing-complete`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
+| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `suggestions?`（追问建议，见「追问建议」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
 | `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `blockRenderers?` / `toolRenderers?`；slot `content` |
 | `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `contentRender` / `blockRenderers?` / `toolRenderers?`；slot `avatar`/`header`/`content`/`footer` |
-| `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）；emit `submit`/`cancel`/`update:modelValue`；expose `focus`/`clear`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
+| `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）/ `triggers?`（@提及/斜杠命令触发菜单）；emit `submit`（第三参 `meta?: SubmitMeta` 携带 mention 实体，见「触发菜单」）/`cancel`/`update:modelValue`；expose `focus`/`clear`/`setValue`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
 | `Welcome` | 欢迎/空态 | `icon?` / `title?` / `description?`；slot `icon`/`extra` |
 | `Prompts` | 提示词列表 | `items`；emit `select` |
 | `Thinking` | 可折叠的思考过程 | `content?` / `title?` / `expanded?`；slot 默认 |
@@ -89,6 +89,8 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 | `Conversations` | 会话列表（可分组 + 行内重命名 + 删除） | `items` / `groupable?` / `newButtonText?`；`v-model:activeKey` 受控选中；emit `create`/`rename`/`delete` |
 | `ModelSelector` | 模型下拉选择器（roving tabindex 键盘导航） | `options` / `placeholder?` / `placement?`；`v-model` 绑定选中 value |
 | `AttachmentCard` | 单个附件卡（输入区预览 / 气泡回显共用） | `item` / `removable?`；emit `remove`/`retry` |
+| `Suggestions` | 追问建议 chips（可独立使用，也内置于 `AiChat`） | `items: SuggestionItem[]`；emit `select`；slot 默认（覆盖单项文案渲染） |
+| `TriggerMenu` | 触发菜单受控展示层（Sender 内置使用；导出供自定义触发 UI 复用） | `items` / `loading` / `activeIndex` / `menuId` / `getAnchorRect` |
 
 ## 自定义协议 / 换模型
 
@@ -299,6 +301,103 @@ const onBlockAction = (p: BlockActionPayload) => {
 - **OpenAI 并行工具收尾**：`openaiParseChunk` 从 `finish_reason:'tool_calls'` 无法精确给出各 index，仅对 index 0 发参数结束信号；多并行工具请由后端显式事件驱动收尾，或改用带 `.done` 语义的 Responses API 事件自定义 `parseChunk`。
 - **超大 output 持久化**：默认全量随树持久化，超大结果需业务侧截断/omit，避免撑爆 localStorage。
 
+## 触发菜单（@提及 / 斜杠命令）
+
+`Sender`（及透传的 `AiChat`）的 `triggers` prop（opt-in）：按字符触发的候选菜单，用于 @提及协作者、/ 斜杠命令等场景。视为静态配置（setup 快照），运行时切换不生效，与 `attachments`/`voice` 同约定。
+
+### 配置：`TriggerConfig` / `TriggerItem`
+
+```ts
+import type { TriggerConfig } from '@aix/ai-chat';
+
+const triggers: TriggerConfig[] = [
+  // @ 提及：items 传数组走本地过滤，传函数走同步/异步搜索（Promise 期间菜单展示 loading 态）
+  {
+    char: '@',
+    items: async (query) => {
+      const list = await searchMembers(query);
+      return list.map((m) => ({ value: m.id, label: m.name, icon: m.avatar, description: m.title }));
+    },
+  },
+  // / 斜杠命令：insertText 回填文本 / onSelect 命令式行为，二者可并存
+  {
+    char: '/',
+    items: [
+      { value: 'translate', label: '/翻译', insertText: '请翻译：' },
+      { value: 'clear', label: '/清空', onSelect: ({ clear }) => clear() },
+    ],
+  },
+];
+```
+
+```vue
+<AiChat :request="request" :triggers="triggers" @send="onSend" />
+```
+
+- **候选来源**：`items` 为数组时按 `label` / `value` 对检索词做忽略大小写的本地过滤；为函数时同步/异步均可——异步期间菜单展示 loading 态，检索词变化时用竞态令牌丢弃过期结果，加载失败静默关闭菜单并 console.warn 一次。
+- **回填规则**：选中项最终插入串 = `(keepTrigger ? 触发字符 : '') + (insertText ?? 缺省值)`；`insertText` 缺省值 `'@'` → `` `${label} ` ``、其余触发字符 → `''`（等价「仅清除已键入的触发段」）；`keepTrigger` 缺省 `'@'` → `true`、其余 → `false`。`onSelect` 可与 `insertText` 并存，用于命令式副作用（清空输入、打开弹窗等），回调拿到 `{ item, trigger, query, clear, setValue }`。
+- **触发位置（`position`）**：缺省规则 `'@'` → `'anywhere'`（要求触发字符前一字符是空白或行首，防邮箱地址误触）、其余字符（含 `'/'`）→ `'start'`——**仅行首触发**，正文中键入不弹菜单；可显式传 `position` 覆盖缺省。
+- **重复 `char`**：同一 `char` 在 `triggers` 数组中出现多次，后者覆盖前者，并在开发环境 console.warn 一次。
+
+### `meta.mentions` 契约
+
+`@` 触发选中的候选会记录为 mention 实体，随消息一并提交：`Sender` 的 `submit` 事件与 `AiChat` 的 `send` 事件都新增第三个可选参数 `meta?: SubmitMeta`（`{ mentions?: MentionEntity[] }`，`MentionEntity = { value, label, trigger }`）：
+
+```ts
+const onSend = (text: string, attachments?: AttachmentItem[], meta?: SubmitMeta) => {
+  meta?.mentions?.forEach((m) => console.log(m.trigger, m.value, m.label));
+};
+```
+
+- **提交文本经 `trim()`**：若 mention 位于文本末尾，回填时自动追加的尾随空格**不会**保留在提交文本里；`meta.mentions` 不受影响——即便可见文本（回填瞬间的输入框内容）与提交文本相差一个尾随空格，mention 实体仍完整随 `meta` 上抛。
+- **配额校验**：mention 按「文本中完整出现次数」计数，手动删改/重复文本时超额条目按选中顺序先进先出保留、后进先出丢弃。
+- **整体删除**：光标（无选区）恰在完整 mention token 末尾时，Backspace 整体删除该 token（含自动追加的尾随空格），而非逐字符删除。
+
+### 已知权衡：textarea 路线无 token 高亮
+
+`Sender` 仍是原生 `<textarea>`，mention token（如 `@张三`）以**纯文本**形式存在于输入框内，不做富文本高亮 / 不可编辑整体。已知影响与缓解：
+
+- 用户可以把光标插入 token 中间手动编辑，破坏 token 完整性——配额校验按「完整出现次数」计数，被破坏的 token 自然不再计入 `meta.mentions`。
+- 光标在完整 token 末尾按 Backspace 会整体删除该 token（含尾随空格），缓解逐字删除产生半截 token 的体验问题。
+- 如需真正的富文本 @ 提及（不可拆分拖拽的 token、高亮着色等），需业务自行实现富文本编辑器替换 `Sender`，本包当前不提供该形态（见「能力范围」）。
+
+## 追问建议（Follow-up Suggestions）
+
+`AiChat` 的 `suggestions` prop（opt-in）：`true` 为全默认，或传对象 `{ fillOnly?, max? }` 细配。展示为消息列表下方、输入框上方的 chips，点击可发送或回填。
+
+### 双通道
+
+- **通道②（持久化）**：`parseChunk` 返回的 `suggestions` 字段（`Array<string | SuggestionItem>`）随任意帧下发，收到即整体覆盖写入该条 AI 消息（后到覆盖先到，含 resume 分段流），随对话树持久化，刷新 / 切会话可还原。
+
+```ts
+// parseChunk 收尾帧携带 suggestions（字符串条目会被内部 normalizeSuggestions 归一为 { text }）
+const parseChunk = (chunk): ParsedChunk => ({ ...parseDelta(chunk), suggestions: chunk.suggestions });
+```
+
+- **通道①（临时）**：`AiChat` 通过 `defineExpose` 暴露 `setSuggestions(items)`，命令式立即展示，不持久化、发送即清（含点击建议本身触发的发送）、优先于通道②。
+
+```vue
+<script setup lang="ts">
+import { ref } from 'vue';
+import { AiChat } from '@aix/ai-chat';
+const chatRef = ref<InstanceType<typeof AiChat>>();
+chatRef.value?.setSuggestions(['能再展开讲讲吗？', '有相关文档吗？']);
+</script>
+<template><AiChat ref="chatRef" :request="request" suggestions /></template>
+```
+
+### 展示规则
+
+- 仅取**最后一条 AI 消息**的建议（通道②）或临时建议（通道①，优先级更高）。
+- `isLoading` 期间抑制：流式回复进行中不展示建议，避免遮挡打字机；流结束后出现。
+- 发送后立即清空（含点击建议本身触发的发送）；通道①临时建议同样被清除。
+
+### `fillOnly` / `max`
+
+- `fillOnly`（默认 `false`）：点击建议默认直接发送；设为 `true` 后点击只把文本回填进输入框，交由用户编辑后再手动发送。
+- `max`（默认 `5`）：可见建议条数上限，超出部分仅在展示层截断（不影响已持久化的完整列表）。
+- 独立使用 `Suggestions` 组件（脱离 `AiChat`）时无 `fillOnly` / `max` 语义，纯受控展示：传 `items: SuggestionItem[]`，监听 `select` 自行处理点击（发送 / 回填 / 埋点等）。
+
 ## 组合式 hooks
 
 | Hook | 说明 |
@@ -465,6 +564,6 @@ const markdownRenderers: MarkdownRenderers = {
 
 ## 能力范围
 
-已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）、**ECharts 图表**（`echarts` 随包自动安装；` ```chart ` 围栏承载 ECharts option JSON、或结构化 `chart` 块，按需加载并以 canvas 活实例渲染统计图（柱/折/饼/散点/雷达）；虚拟列表滚动按活实例 `dispose`/重建而非缓存静态图；缺失时围栏维持代码块、结构化块降级为 `alt` 文字。数学函数图像 function-plot 分期接入）。
+已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**@ 提及/斜杠命令（textarea 触发菜单）**（`Sender`/`AiChat` 的 `triggers` prop：本地过滤或异步搜索候选、`insertText`/`onSelect` 双行为、`meta.mentions` 结构化回传，见「触发菜单」）、**追问建议**（`AiChat` 的 `suggestions` prop：`parseChunk` 下发 + `setSuggestions` 命令式注入双通道，chips 点击发送或回填，见「追问建议」）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）、**ECharts 图表**（`echarts` 随包自动安装；` ```chart ` 围栏承载 ECharts option JSON、或结构化 `chart` 块，按需加载并以 canvas 活实例渲染统计图（柱/折/饼/散点/雷达）；虚拟列表滚动按活实例 `dispose`/重建而非缓存静态图；缺失时围栏维持代码块、结构化块降级为 `alt` 文字。数学函数图像 function-plot 分期接入）。
 
-**暂未包含**：结构化输入（SlotConfig）、富文本 @ 提及、多 Provider class 等，后续版本迭代。
+**暂未包含**：结构化输入（SlotConfig）、多 Provider class 等，后续版本迭代。

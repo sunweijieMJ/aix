@@ -1063,6 +1063,7 @@ describe('AiChat 附件接线', () => {
     const sendArgs = w.emitted('send')![0] as [string, unknown];
     expect(sendArgs[0]).toBe('');
     expect(Array.isArray(sendArgs[1])).toBe(true);
+    expect(sendArgs).toHaveLength(2); // 无 meta 时保持旧签名：不携带第三参
 
     // 断言用户消息 content 仅 1 块且 type === 'attachment'
     const vm = w.vm as unknown as { messages: ChatMessage[] };

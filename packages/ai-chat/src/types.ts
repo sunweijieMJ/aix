@@ -25,6 +25,8 @@ export interface ChatMessage {
   status?: MessageStatus;
   /** 有序内容块（由 string 切换而来） */
   content: ContentBlock[];
+  /** 追问建议（parseChunk 流内下发落库，随消息树持久化）；展示规则见 AiChat */
+  suggestions?: SuggestionItem[];
   /** 任意业务附加信息；约定 feedback?: MessageFeedback | null 存赞/踩态，error 存原始错误 */
   extra?: Record<string, unknown>;
 }
@@ -87,6 +89,11 @@ export interface ParsedChunk {
   block?: ContentBlock;
   /** 工具调用增量 */
   tool?: ToolEventDelta;
+  /**
+   * 追问建议（通道②流内下发）：收到即整体覆盖该条消息的 suggestions（后到覆盖先到，
+   * 含 resume 分段流）；字符串条目会被归一为 SuggestionItem
+   */
+  suggestions?: Array<string | SuggestionItem>;
   /** 标记流结束 */
   done?: boolean;
 }
@@ -478,6 +485,71 @@ export interface QuoteConfig {
   sheet?: Component;
   /** 引用 chip 折叠阈值：超过该数量收起为「+N」，默认 3；设 Infinity 关闭折叠 */
   maxVisibleChips?: number;
+}
+
+// ============ 触发菜单（@提及 / 斜杠命令） ============
+
+/** 触发菜单选中回调上下文 */
+export interface TriggerSelectCtx {
+  item: TriggerItem;
+  /** 触发字符 */
+  trigger: string;
+  /** 选中时的检索词（触发字符之后到光标） */
+  query: string;
+  /** 清空输入框 */
+  clear: () => void;
+  /** 命令式改写输入框内容 */
+  setValue: (text: string) => void;
+}
+
+/** 触发菜单候选项 */
+export interface TriggerItem {
+  value: string;
+  label: string;
+  icon?: Component;
+  description?: string;
+  /**
+   * 选中后回填文本，**不含触发字符**（前缀由 keepTrigger 统一控制，避免双写歧义）。
+   * 缺省：触发字符为 '@' 时为 `${label} `；其余为 ''（即仅清除已键入的触发段）
+   */
+  insertText?: string;
+  /** 命令式行为（如 /清空会话）；与 insertText 可并存 */
+  onSelect?: (ctx: TriggerSelectCtx) => void;
+  /** 插入时是否保留触发字符前缀（最终插入 = keepTrigger ? char+insertText : insertText）。默认 '@'→true，其余→false */
+  keepTrigger?: boolean;
+}
+
+/** 单个触发字符的配置（Sender props.triggers 条目） */
+export interface TriggerConfig {
+  /** 触发字符，单字符（'@' | '/' | 自定义）；重复 char 后者覆盖前者并 dev warn */
+  char: string;
+  /** 触发位置：'anywhere' 任意位置（前一字符须空白/行首）/ 'start' 仅行首。默认 '@'→anywhere，其余→start */
+  position?: 'anywhere' | 'start';
+  /** 候选：静态数组（按 label/value 含 query 过滤，忽略大小写）或（异步）函数 */
+  items: TriggerItem[] | ((query: string) => TriggerItem[] | Promise<TriggerItem[]>);
+}
+
+/** 提交时随 submit/send meta 上抛的 mention 实体 */
+export interface MentionEntity {
+  value: string;
+  label: string;
+  /** 来源触发字符 */
+  trigger: string;
+}
+
+/** Sender submit / AiChat send 第三/四参的扩展元信息 */
+export interface SubmitMeta {
+  mentions?: MentionEntity[];
+}
+
+// ============ 追问建议（Follow-up Suggestions） ============
+
+export interface SuggestionItem {
+  /** 点击后发送/回填的文本 */
+  text: string;
+  /** 展示文案，缺省取 text */
+  label?: string;
+  icon?: Component;
 }
 
 // ──────────────────────────────────────────────

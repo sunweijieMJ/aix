@@ -3,6 +3,7 @@
     :is="skin"
     :items="items"
     :get-anchor-rect="anchorRect"
+    :context-el="contextEl"
     @invoke="(key: string) => emit('invoke', key)"
     @close="emit('close')"
   />
@@ -18,6 +19,8 @@ export interface QuoteMenuProps {
   getRect?: () => DOMRect;
   /** 长按触点（sheet 锚点，source=longpress 时必传） */
   point?: { x: number; y: number };
+  /** 虚拟锚点宿主元素（透传给皮肤的 contextEl）：供 autoUpdate 挂滚动祖先监听 */
+  contextEl?: HTMLElement | null;
   /** 深度换肤：仅替换单端皮肤，L2 逻辑复用 */
   toolbar?: Component;
   sheet?: Component;

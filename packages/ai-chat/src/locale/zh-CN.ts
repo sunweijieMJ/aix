@@ -52,4 +52,8 @@ export const zhCN: AiChatLocale = {
   quoteBlockTitle: '引用',
   quoteChipsExpand: '展开其余引用',
   quoteChipsCollapse: '收起',
+  triggerMenuLabel: '候选菜单',
+  triggerMenuEmpty: '无匹配结果',
+  triggerMenuLoading: '加载中…',
+  suggestionsLabel: '猜你想问',
 };

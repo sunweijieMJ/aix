@@ -548,7 +548,14 @@ export const EditFeedbackAndSubmitType: Story = {
       }),
     ],
   },
-  play: async ({ canvas, args, step }) => {
+  play: async ({ canvas, args, step, canvasElement }) => {
+    // 先等 Markdown 引擎就绪（正文渲染为 <p>）再开始交互：冷启动 runner 里引擎在 play 中途
+    // 就绪会触发气泡重渲染 + virtua 重挂，编辑态 Bubble 实例被销毁，已抓取的编辑框/保存按钮
+    // 变成脱离 DOM 的僵尸节点（点击不产生 emit）——Quote PC Selection 同源问题
+    await waitFor(
+      () => expect(canvasElement.querySelector('.aix-bubble p')).toBeInTheDocument(),
+      { timeout: 8000 },
+    );
     // 1) actions 含 feedback：对历史 AI 回复点「赞同」→ 受控高亮 + emit('feedback')
     await step('赞踩反馈（actions feedback）', async () => {
       // 虚拟列表异步渲染：findBy 轮询；过渡期可能 pointer-events:none，关指针检查避免 flaky
@@ -577,7 +584,9 @@ export const EditFeedbackAndSubmitType: Story = {
       await userEvent.click(canvas.getByRole('button', { name: '保存' }), {
         pointerEventsCheck: 0,
       });
-      await expect(args.onEdit).toHaveBeenCalledTimes(1);
+      // AiChat 的 onEditMessage 在 `await onEdit(...)` 之后才对外 emit('edit')——存在异步边界，
+      // 点击后同步断言必 0 次，须 waitFor 轮询
+      await waitFor(() => expect(args.onEdit).toHaveBeenCalledTimes(1), { timeout: 3000 });
       // 重发后渲染新答案（对比表格表头「维度」）
       await canvas.findByText(/维度/, undefined, { timeout: 12000 });
       // 等本轮流式结束（「停止」消失），避免下一步被 Sender loading 守卫拦截

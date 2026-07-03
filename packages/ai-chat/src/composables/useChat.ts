@@ -8,7 +8,7 @@ import type {
   BranchMeta,
   ExportedTree,
 } from '../types';
-import { genMsgId, genBlockId } from '../utils/helpers';
+import { genMsgId, genBlockId, normalizeSuggestions } from '../utils/helpers';
 import { flatParseChunk } from '../utils/parsers';
 import { applyToolEvent, toArray, type ToolReduceCtx } from '../utils/toolBlocks';
 import { createMessageTree, ROOT_ID, type MessageTreeApi } from './messageTree';
@@ -321,7 +321,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             // 用 ended 标记 done 后在内层循环结束时再 break 外层。
             let ended = false;
             for (const parsed of toArray(callParse(unit))) {
-              const { delta, blockType = 'text', block, tool, done } = parsed;
+              const { delta, blockType = 'text', block, tool, done, suggestions } = parsed;
               if (delta) {
                 // 类型已收窄为 'text' | 'reasoning'；此守卫是运行时兜底——parseChunk 由使用方提供，
                 // 运行时可能违反类型返回非文本块类型，此时丢弃 delta 而非把脏数据塞进 appendDelta。
@@ -345,6 +345,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               if (tool) {
                 applyToolEvent(aiMsg, tool, toolCtx);
                 if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
+              }
+              if (suggestions) {
+                // 通道②：收到即整体覆盖（spec：后到覆盖先到，含 resume 分段流）；
+                // 展示由 AiChat 层的 isLoading 抑制，此处无需缓冲到 finalize
+                aiMsg.suggestions = normalizeSuggestions(suggestions);
               }
               if (done) ended = true;
             }

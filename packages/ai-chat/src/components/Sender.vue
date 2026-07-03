@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rootRef"
     :class="[
       ns.b(),
       ns.is('disabled', disabled),
@@ -48,8 +49,15 @@
         :aria-label="isListening ? t.voiceListening : placeholder || t.senderPlaceholder"
         :disabled="disabled"
         rows="1"
+        :aria-controls="menuOpen ? menuId : undefined"
+        :aria-activedescendant="
+          menuOpen && menuItems.length ? `${menuId}-option-${menuActiveIndex}` : undefined
+        "
         @input="onInput"
         @keydown="onKeydown"
+        @keyup="onCursorMove"
+        @click="onCursorMove"
+        @blur="onBlur"
         @paste="onPaste"
         @compositionend="onCompositionEnd"
       />
@@ -75,6 +83,18 @@
         <span :class="ns.e('send-icon')" :style="sendIconStyle" aria-hidden="true" />
       </button>
     </div>
+    <!-- 触发菜单（@提及 / 斜杠命令等）：opt-in，未配置 triggers 时 menuOpen 恒为 false 不渲染 -->
+    <TriggerMenu
+      v-if="menuOpen"
+      :items="menuItems"
+      :loading="menuLoading"
+      :active-index="menuActiveIndex"
+      :menu-id="menuId"
+      :get-anchor-rect="menuAnchorRect"
+      :context-el="textareaRef"
+      @update:active-index="menuActiveIndex = $event"
+      @select="applyTriggerSelect"
+    />
     <!-- 底部工具栏：附件启用 或 提供 toolbar slot 时渲染 -->
     <div v-if="$slots.toolbar || attach" :class="ns.e('toolbar')">
       <!-- 回形针按钮：附件启用时显示，点击 toggle 面板；收起且有条目时带数量徽标 -->
@@ -126,6 +146,11 @@ export interface SenderProps {
   voice?: boolean | VoiceConfig;
   /** 有外部附加内容（如引用 chip）时允许空文本提交，默认 false */
   allowEmptySubmit?: boolean;
+  /**
+   * 触发菜单（opt-in）：@提及 / 斜杠命令等按字符触发的候选菜单。
+   * 视为静态配置（setup 快照），运行时切换不生效——与 attachments/voice 约定一致。
+   */
+  triggers?: TriggerConfig[];
 }
 export interface SenderEmits {
   /** 输入框文本变化（v-model 同步） */
@@ -134,7 +159,7 @@ export interface SenderEmits {
    * 提交发送：text 当前文本（可为空串=纯附件发送）；attachments 仅在启用附件且有已传完条目时存在。
    * error 态附件不随本次发送消耗，留在预览区等待用户重试或删除。
    */
-  (e: 'submit', v: string, attachments?: AttachmentItem[]): void;
+  (e: 'submit', v: string, attachments?: AttachmentItem[], meta?: SubmitMeta): void;
   /** 取消 / 停止（loading 态下点停止按钮触发） */
   (e: 'cancel'): void;
 }
@@ -160,6 +185,10 @@ export interface SenderSlotScope {
   /** 当前输入框文本 */
   value: string;
 }
+
+// 触发菜单实例 id 自增计数器：置于模块顶层（非 setup 块），保证多实例 menuId 唯一，
+// 且不因组件重新 setup（如 keep-alive 重建）而重置。
+let triggerMenuUid = 0;
 </script>
 
 <script setup lang="ts">
@@ -173,10 +202,13 @@ import sendIconUrl from '../assets/send-default.svg';
 import stopIconUrl from '../assets/send-streaming.svg';
 import { useAttachments } from '../composables/useAttachments';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
+import { useTriggerDetect } from '../composables/useTriggerDetect';
 import { useVoiceInput } from '../composables/useVoiceInput';
 import { locale } from '../locale';
-import type { AttachmentItem, VoiceConfig } from '../types';
+import type { AttachmentItem, MentionEntity, SubmitMeta, TriggerConfig, TriggerItem, VoiceConfig } from '../types';
+import { getCaretRect } from '../utils/caretRect';
 import AttachmentsPanel from './AttachmentsPanel.vue';
+import TriggerMenu from './TriggerMenu.vue';
 
 const props = withDefaults(defineProps<SenderProps>(), {
   modelValue: '',
@@ -191,6 +223,119 @@ const { t } = useLocale(locale);
 
 // 附件状态机：未启用时为 null，模板/逻辑全部以 attach 为开关，零开销（静态配置，setup 快照）
 const attach = props.attachments ? useAttachments(props.attachments) : null;
+
+// ============ 触发菜单（静态配置，setup 快照；未配置时 trig 为 null 零开销） ============
+const triggers = (() => {
+  if (!props.triggers?.length) return [];
+  const seen = new Set<string>();
+  for (const tc of props.triggers) {
+    if (seen.has(tc.char)) {
+      console.warn(`[ai-chat] Sender triggers 触发字符 "${tc.char}" 重复，后者将覆盖前者`);
+      break; // 只 warn 一次
+    }
+    seen.add(tc.char);
+  }
+  return props.triggers;
+})();
+const trig = triggers.length ? useTriggerDetect(triggers) : null;
+const menuOpen = computed(() => !!trig?.active.value);
+const menuItems = ref<TriggerItem[]>([]);
+const menuLoading = ref(false);
+const menuActiveIndex = ref(0);
+const menuId = `aix-trigger-menu-${++triggerMenuUid}`;
+// 旁路数组：选中即 push，不反解析文本；提交按出现次数配额校验、Backspace 整体删除时移除对应条目
+const selectedMentions: MentionEntity[] = [];
+let itemsToken = 0; // 异步 items 竞态令牌
+let warnedItemsError = false;
+
+// detection 变化 → 解析候选：静态数组按 query 过滤；函数支持同步/异步（令牌防竞态）
+if (trig) {
+  watch(trig.detection, async (det) => {
+    if (!det) {
+      itemsToken++; // 关闭即作废在途异步结果，防迟到 Promise 回写陈旧候选
+      menuItems.value = [];
+      menuLoading.value = false;
+      return;
+    }
+    menuActiveIndex.value = 0;
+    const token = ++itemsToken;
+    const src = det.config.items;
+    if (Array.isArray(src)) {
+      const q = det.query.toLowerCase();
+      menuItems.value = q
+        ? src.filter(
+            (it) => it.label.toLowerCase().includes(q) || it.value.toLowerCase().includes(q),
+          )
+        : src;
+      menuLoading.value = false;
+      return;
+    }
+    try {
+      const r = src(det.query);
+      let list: TriggerItem[];
+      if (r instanceof Promise) {
+        // 异步加载窗口内清空旧候选：菜单此时只渲染「加载中…」，旧列表不可见——
+        // 不清空则 Enter/↑↓ 仍作用于陈旧候选，aria-activedescendant 也会悬空指向不存在的 option
+        menuItems.value = [];
+        menuLoading.value = true;
+        list = await r;
+      } else {
+        list = r;
+      }
+      if (token !== itemsToken) return; // 竞态：query 已变化，丢弃旧结果
+      menuItems.value = list;
+      menuLoading.value = false;
+    } catch (err) {
+      if (token !== itemsToken) return;
+      trig.clear();
+      menuLoading.value = false;
+      if (!warnedItemsError) {
+        warnedItemsError = true;
+        console.warn('[ai-chat] Sender triggers items 加载失败，菜单已关闭。', err);
+      }
+    }
+  });
+}
+
+// 触发检测统一入口：语音聆听中不进入触发态（双向互斥，spec §5.1-7）
+const runDetect = () => {
+  if (!trig) return;
+  if (isListening.value) {
+    trig.clear();
+    return;
+  }
+  const el = textareaRef.value;
+  if (!el) return;
+  trig.detect(inner.value, el.selectionStart ?? inner.value.length);
+};
+
+// 光标移动（方向键 keyup / 鼠标 click）时复检：等值保持语义保证无效移动不重置菜单
+// 组词中的 keyup 不复检（与 onInput/onKeydown 的 IME 守卫同口径；keyCode 229 兼容）：
+// 否则组词期间浏览器每键触发 keyup（isComposing=true），会以拼音预览文本（如 @zhang）逐键误检测。
+const onCursorMove = (e: KeyboardEvent | MouseEvent) => {
+  const ke = e as KeyboardEvent;
+  if (ke.isComposing || ke.keyCode === 229) return;
+  runDetect();
+};
+
+// 失焦关闭（菜单 mousedown.prevent 保焦点，点菜单项不会触发 blur）
+const onBlur = () => trig?.clear();
+
+// 菜单锚点：@ 用 caret rect，'/' 或测量失败降级 Sender 整框
+const rootRef = ref<HTMLElement | null>(null);
+const menuAnchorRect = (): DOMRect => {
+  const el = textareaRef.value;
+  const det = trig?.detection.value;
+  if (el && det && det.char === '@') {
+    const r = getCaretRect(el, det.startIndex);
+    if (r) return r;
+  }
+  return (
+    rootRef.value?.getBoundingClientRect() ??
+    el?.getBoundingClientRect() ??
+    new DOMRect(0, 0, 0, 0)
+  );
+};
 
 // 面板展开态：回形针 toggle / add 自动展开 / drain 后自动收起 / 根拖入自动展开
 const panelOpen = ref(false);
@@ -426,6 +571,7 @@ const onMicClick = () => {
   if (voice.status.value === 'listening') {
     voice.stop();
   } else {
+    trig?.clear(); // 菜单与语音互斥（spec §5.1-7）
     committedBase = inner.value; // 从当前输入内容续写
     voice.start();
   }
@@ -439,6 +585,7 @@ watch(
     const isExternalRewrite = v !== inner.value;
     inner.value = v;
     if (isExternalRewrite && voice?.status.value === 'listening') restartVoiceFrom(v);
+    if (isExternalRewrite) trig?.clear(); // 外部改写内容：触发上下文已失效
     nextTick(autosize);
   },
   // immediate：父组件以非空多行初值挂载时（v-model:input 回填草稿/发送失败保留内容），
@@ -455,6 +602,11 @@ const onInput = (e: Event) => {
     restartVoiceFrom(inner.value);
   }
   autosize();
+  // 触发检测：组词中不检测（同语音重启守卫）；粘贴产生的 input 不进入触发态（spec §5.1-8）
+  if (!(e as InputEvent).isComposing) {
+    if ((e as InputEvent).inputType === 'insertFromPaste') trig?.clear();
+    else runDetect();
+  }
 };
 
 // IME 组词结束：落字成为新基线并重启会话（组词期间 onInput 因 isComposing 被跳过）。
@@ -463,6 +615,7 @@ const onCompositionEnd = (e: Event) => {
   inner.value = (e.target as HTMLTextAreaElement).value;
   emit('update:modelValue', inner.value);
   if (voice?.status.value === 'listening') restartVoiceFrom(inner.value);
+  runDetect(); // 落字后统一检测
 };
 
 const doSubmit = () => {
@@ -474,26 +627,156 @@ const doSubmit = () => {
   // 提交时自动停止语音聆听（守卫之后，确认能提交时再停）
   if (voice?.status.value === 'listening') voice.stop();
   const atts = attach ? attach.drain() : undefined;
-  // 无附件（或 drain 结果为空）时不传第三参数，保持与旧签名完全兼容
-  if (atts?.length) {
-    emit('submit', text, atts);
-  } else {
-    emit('submit', text);
-  }
+  const meta = collectMentions(text);
+  // meta 存在才携带第三参：无 meta 时保持旧签名（一/两参）完全兼容
+  if (meta) emit('submit', text, atts?.length ? atts : undefined, meta);
+  else if (atts?.length) emit('submit', text, atts);
+  else emit('submit', text);
+  selectedMentions.length = 0;
+  trig?.clear();
   inner.value = '';
   emit('update:modelValue', '');
   nextTick(autosize);
 };
 
+// 选中候选：replaceWithMeasure 式回填（spec §5.1-2）——
+// 最终插入串 = (keepTrigger ? char : '') + insertText；纯 onSelect 项等价 insertText=''，
+// 已键入的触发段一并移除。走 setValue 同路径（autosize/v-model/语音基线）。
+const applyTriggerSelect = (item: TriggerItem) => {
+  const det = trig!.detection.value;
+  const el = textareaRef.value;
+  if (!det || !el) return;
+  const isAt = det.char === '@';
+  const keep = item.keepTrigger ?? isAt;
+  const body = item.insertText ?? (isAt ? `${item.label} ` : '');
+  const ins = (keep ? det.char : '') + body;
+  const cursor = el.selectionStart ?? det.startIndex + 1 + det.query.length;
+  const next = inner.value.slice(0, det.startIndex) + ins + inner.value.slice(cursor);
+  setValue(next);
+  const caret = det.startIndex + ins.length;
+  nextTick(() => {
+    el.setSelectionRange(caret, caret);
+    el.focus();
+    // 插入后若新文本/光标仍构成触发上下文（自定义 insertText 无尾随空白，如插入 '#话题'），
+    // Enter 选中的 keyup 复检会立刻以新 query 重开菜单——而鼠标点选无 keyup 不会，行为不一致。
+    // 此处主动对插入后的上下文 detect+dismiss（同一 tick 内完成，menuOpen 批量更新无闪烁）：
+    // 同签名复检保持关闭；用户继续键入改变 query 时照常解除驳回。默认回填带尾随空格时
+    // detect 为 null，本段为无害空操作。
+    trig!.detect(next, caret);
+    if (trig!.active.value) trig!.dismiss();
+  });
+  if (isAt) {
+    // 旁路数组记录（配额校验/整体删除见 Task 6）。自定义 insertText 与默认 token
+    // 文本（@label）不一致时，提交配额校验会自然将其丢弃——记录无副作用。
+    selectedMentions.push({ value: item.value, label: item.label, trigger: det.char });
+  }
+  item.onSelect?.({ item, trigger: det.char, query: det.query, clear, setValue });
+  trig!.clear();
+};
+
+// ============ mention 旁路数组语义（spec §5.1-3/4）：不反解析文本 ============
+const mentionTokenText = (m: MentionEntity) => `${m.trigger}${m.label}`;
+
+// Backspace 整体删除的匹配：光标前文本以某完整 token（含/不含尾随空格）结尾，
+// 多候选取最长（'@张三丰 ' 优先于 '@张三'），返回被删除的整段文本
+const findMentionTokenEnd = (before: string): string | null => {
+  let best: string | null = null;
+  for (const m of selectedMentions) {
+    const t = mentionTokenText(m);
+    for (const cand of [`${t} `, t]) {
+      if (before.endsWith(cand) && (!best || cand.length > best.length)) best = cand;
+    }
+  }
+  return best;
+};
+
+const removeOneMention = (token: string) => {
+  const norm = token.trimEnd();
+  const idx = selectedMentions.findIndex((m) => mentionTokenText(m) === norm);
+  if (idx >= 0) selectedMentions.splice(idx, 1);
+};
+
+// token 完整出现次数：后随字符须为空白或文本结尾（'@张三' 不匹配 '@张三丰' 内部）
+const countOccurrences = (text: string, token: string): number => {
+  let n = 0;
+  for (let i = text.indexOf(token); i >= 0; i = text.indexOf(token, i + token.length)) {
+    const after = text[i + token.length];
+    if (after === undefined || /\s/.test(after)) n++;
+  }
+  return n;
+};
+
+// 出现次数配额校验：每种 token 保留数 = min(条目数, 文本中完整出现次数)；
+// 超额条目（被手动删改）按数组顺序先进先出保留、后进先出丢弃
+const collectMentions = (text: string): SubmitMeta | undefined => {
+  if (!selectedMentions.length) return undefined;
+  const budget = new Map<string, number>();
+  const out: MentionEntity[] = [];
+  for (const m of selectedMentions) {
+    const token = mentionTokenText(m);
+    if (!budget.has(token)) budget.set(token, countOccurrences(text, token));
+    const left = budget.get(token)!;
+    if (left > 0) {
+      budget.set(token, left - 1);
+      out.push(m);
+    }
+  }
+  return out.length ? { mentions: out } : undefined;
+};
+
 const onKeydown = (e: KeyboardEvent) => {
-  // Esc 停止语音聆听
+  // ① IME 守卫最先：组词中 Enter/↑↓/Esc 归输入法（keyCode 229 兼容部分浏览器）。
+  //    原「语音 Esc」从守卫前移到守卫后，属 spec 声明的行为修正：组词中 Esc 归输入法取消组词。
+  if (e.isComposing || e.keyCode === 229) return;
+  // ② 菜单拦截段：菜单打开时接管导航/选中/关闭
+  if (menuOpen.value) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const len = menuItems.value.length;
+      if (len) {
+        menuActiveIndex.value =
+          (menuActiveIndex.value + (e.key === 'ArrowDown' ? 1 : len - 1)) % len;
+      }
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault(); // 空列表回车也消费按键：关菜单不提交
+      const item = menuItems.value[menuActiveIndex.value];
+      if (item) applyTriggerSelect(item);
+      else trig!.clear();
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      // 必须 dismiss 而非 clear：Esc keydown 关闭后，同一按键的 keyup 会走
+      // onCursorMove 复检——文本/光标未变，clear 会导致菜单立刻重开
+      trig!.dismiss();
+      return;
+    }
+    if (e.key === 'Tab') trig!.clear(); // 关菜单但放行焦点移动（焦点走了，keyup 不落回 textarea）
+  }
+  // ②.5 Backspace 整体删除：光标（无选区）恰在完整 mention token 末尾时整体切除
+  if (e.key === 'Backspace' && selectedMentions.length) {
+    const el = e.target as HTMLTextAreaElement;
+    const pos = el.selectionStart ?? 0;
+    if (pos > 0 && pos === el.selectionEnd) {
+      const token = findMentionTokenEnd(inner.value.slice(0, pos));
+      if (token) {
+        e.preventDefault();
+        setValue(inner.value.slice(0, pos - token.length) + inner.value.slice(pos));
+        const caret = pos - token.length;
+        nextTick(() => el.setSelectionRange(caret, caret));
+        removeOneMention(token);
+        return;
+      }
+    }
+  }
+  // ③ 语音 Esc 停止聆听（原逻辑，位序后移见 ①）
   if (e.key === 'Escape' && voice?.status.value === 'listening') {
     voice.stop();
     return;
   }
-  // IME 输入法组词期间（拼音/假名选词）按 Enter 仅用于确认候选词，不应触发提交。
-  // keyCode 229 兼容部分浏览器在组词时不设置 isComposing 的情况。
-  if (e.isComposing || e.keyCode === 229) return;
+  // ④ Enter 提交判定（原逻辑不变）
   if (e.key !== 'Enter') return;
   const wantShift = props.submitType === 'shiftEnter';
   const matched = wantShift ? e.shiftKey : !e.shiftKey;
@@ -512,6 +795,8 @@ const clear = () => {
   inner.value = '';
   emit('update:modelValue', '');
   nextTick(autosize);
+  trig?.clear();
+  selectedMentions.length = 0;
 };
 
 // prefix / header / toolbar / footer 作用域插槽上下文：回传动作句柄 + 受控状态，

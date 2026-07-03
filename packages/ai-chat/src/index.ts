@@ -14,8 +14,10 @@ import QuoteChip from './components/QuoteChip.vue';
 import QuoteMenu from './components/QuoteMenu.vue';
 import Sender from './components/Sender.vue';
 import Skeleton from './components/Skeleton.vue';
+import Suggestions from './components/Suggestions.vue';
 import Thinking from './components/Thinking.vue';
 import ThoughtChain from './components/ThoughtChain.vue';
+import TriggerMenu from './components/TriggerMenu.vue';
 import Welcome from './components/Welcome.vue';
 
 // 组件（不带 Aix 前缀）
@@ -38,6 +40,8 @@ export {
   Skeleton,
   QuoteMenu,
   QuoteChip,
+  TriggerMenu,
+  Suggestions,
 };
 
 // 划词引用默认皮肤（toolbar/sheet 单端换肤时作为 fallback/对照参考，见 QuoteMenuProps.toolbar/sheet）
@@ -45,6 +49,16 @@ export { QuoteToolbar, QuoteSheet };
 
 // composables
 export * from './composables';
+
+// 触发菜单（@提及 / 斜杠命令）L1 检测状态托管：纯状态、无 DOM 副作用，供自定义触发 UI 复用同一检测逻辑
+export { useTriggerDetect } from './composables/useTriggerDetect';
+
+// 触发菜单：反向扫描检测算法与位置解析规则（position 缺省规则），供自定义触发 UI / 单测复用
+export { detectTrigger, resolvePosition } from './utils/triggerDetect';
+export type { TriggerDetection } from './utils/triggerDetect';
+
+// 触发菜单：textarea 内指定下标字符的视口坐标测量（@ 锚点定位的镜像 div 测量法），供自定义菜单实现复用
+export { getCaretRect } from './utils/caretRect';
 
 // SSE parseChunk 工厂与内置预设（扁平 / OpenAI 兼容）
 export {
@@ -106,6 +120,7 @@ export {
   messageText,
   quoteBlock,
   genQuoteId,
+  normalizeSuggestions,
 } from './utils/helpers';
 
 // 划词引用：默认 quote → prompt 拼装 / 消息内 quote 提取工具（供自定义 toPrompt / 消息渲染复用）
@@ -137,6 +152,8 @@ export type { QuoteMenuProps, QuoteMenuEmits } from './components/QuoteMenu.vue'
 export type { QuoteChipProps, QuoteChipEmits } from './components/QuoteChip.vue';
 export type { QuoteToolbarProps, QuoteToolbarEmits } from './components/quote/QuoteToolbar.vue';
 export type { QuoteSheetProps, QuoteSheetEmits } from './components/quote/QuoteSheet.vue';
+export type { TriggerMenuProps, TriggerMenuEmits } from './components/TriggerMenu.vue';
+export type { SuggestionsProps, SuggestionsEmits } from './components/Suggestions.vue';
 
 // locale
 export { locale as aiChatLocale, zhCN, enUS } from './locale';
@@ -159,6 +176,8 @@ const components = {
   Skeleton,
   QuoteMenu,
   QuoteChip,
+  TriggerMenu,
+  Suggestions,
 };
 
 // 插件：全局注册时加 Aix 前缀

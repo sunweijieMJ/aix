@@ -344,6 +344,7 @@ describe('Sender', () => {
       const payload = w.emitted('submit')?.[0];
       expect(payload?.[0]).toBe('帮我总结');
       expect(payload?.[1]).toMatchObject([{ name: 'a.pdf', url: '/f/a.pdf' }]);
+      expect(payload).toHaveLength(2); // 无 meta 时保持旧签名：不携带第三参
       await w.vm.$nextTick();
       // drain 清空 + 面板自动收起
       expect(w.findAll('.aix-attachment-card')).toHaveLength(0);

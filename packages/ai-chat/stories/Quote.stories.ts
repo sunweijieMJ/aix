@@ -63,21 +63,44 @@ export const PCSelection: Story = {
       if (!el) throw new Error('等待气泡渲染');
       return el;
     });
-    // 程序化选中首个文本节点前 6 个字符并触发 selectionchange（模拟拖选收尾）
-    const textNode = target.firstChild!;
+    // 程序化选中首个"足长"文本节点前 6 个字符并触发 selectionchange（模拟拖选收尾）。
+    // 两个坑：① 不能用 target.firstChild——引擎就绪后块容器以注释节点开头、正文包在 <p> 里，
+    // 对注释建 range 得到空选区；② 必须先等 Markdown 引擎就绪（<strong> 出现）再选——
+    // 冷启动 runner 里若选中降级态纯文本节点，引擎就绪重渲染会把节点换掉、选区塌缩为 collapsed
+    await waitFor(() => expect(target.querySelector('strong')).toBeInTheDocument(), {
+      timeout: 5000,
+    });
+    const textNode = await waitFor(() => {
+      const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+      let node: Node | null;
+      while ((node = walker.nextNode())) {
+        if ((node.textContent ?? '').trim().length >= 6) return node;
+      }
+      throw new Error('等待正文文本节点渲染');
+    });
     const range = document.createRange();
     range.setStart(textNode, 0);
     range.setEnd(textNode, 6);
     const sel = window.getSelection()!;
     sel.removeAllRanges();
     sel.addRange(range);
-    target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    // 完整按压序列：L1 以 pointerdown 建立 pressTarget 按压上下文，仅发 pointerup 会被忽略
+    target.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse', isPrimary: true }),
+    );
+    target.dispatchEvent(
+      new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse', isPrimary: true }),
+    );
     document.dispatchEvent(new Event('selectionchange'));
-    await waitFor(() => expect(document.querySelector('.aix-quote-toolbar')).toBeInTheDocument());
+    // 冷启动 runner 下 L1 防抖读取 + 渲染可超过 waitFor 默认 1s，显式放宽
+    await waitFor(() => expect(document.querySelector('.aix-quote-toolbar')).toBeInTheDocument(), {
+      timeout: 5000,
+    });
     // 点「解释」→ chip 出现
     await userEvent.click(document.querySelector<HTMLButtonElement>('.aix-quote-toolbar button')!);
-    await waitFor(() =>
-      expect(canvasElement.querySelector('.aix-quote-chip')).toBeInTheDocument(),
+    await waitFor(
+      () => expect(canvasElement.querySelector('.aix-quote-chip')).toBeInTheDocument(),
+      { timeout: 3000 },
     );
   },
 };

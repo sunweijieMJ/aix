@@ -52,4 +52,8 @@ export const enUS: AiChatLocale = {
   quoteBlockTitle: 'Quoted',
   quoteChipsExpand: 'Show all quotes',
   quoteChipsCollapse: 'Collapse',
+  triggerMenuLabel: 'Suggestions',
+  triggerMenuEmpty: 'No matches',
+  triggerMenuLoading: 'Loading…',
+  suggestionsLabel: 'Suggested questions',
 };

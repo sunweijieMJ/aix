@@ -90,6 +90,7 @@
             :mode="quoteMenu.mode.value"
             :get-rect="active?.getRect"
             :point="trigger?.point"
+            :context-el="quoteRoot"
             :toolbar="resolvedQuote.toolbar"
             :sheet="resolvedQuote.sheet"
             @invoke="quoteMenu.invoke"
@@ -98,6 +99,12 @@
         </slot>
       </template>
     </div>
+    <Suggestions
+      v-if="visibleSuggestions.length"
+      :class="ns.e('suggestions')"
+      :items="visibleSuggestions"
+      @select="onSuggestionSelect"
+    />
     <Sender
       ref="senderRef"
       v-model="inputModel"
@@ -107,6 +114,7 @@
       :submit-type="submitType"
       :attachments="attachments"
       :voice="voice"
+      :triggers="triggers"
       :allow-empty-submit="pendingQuotes.length > 0"
       @submit="onSend"
       @cancel="abort"
@@ -262,10 +270,17 @@ export interface AiChatProps {
    * 与全局 provideAiChatConfig().quote 合并（props 优先）。视为静态配置（setup 快照）。
    */
   quote?: QuoteConfig | boolean;
+  /** 触发菜单配置（@提及/斜杠命令），直通 Sender；静态配置（setup 快照） */
+  triggers?: TriggerConfig[];
+  /**
+   * 追问建议（opt-in）：true 全默认；对象可配 fillOnly（点击仅回填不发送）/ max（上限，默认 5）。
+   * 联合类型含 boolean：withDefaults 必须显式 default undefined（同 quote 的坑）
+   */
+  suggestions?: boolean | { fillOnly?: boolean; max?: number };
 }
 export interface AiChatEmits {
-  /** 用户发送消息（含点击快捷问题），携带文本与可选附件 */
-  (e: 'send', text: string, attachments?: AttachmentItem[]): void;
+  /** 用户发送消息（含点击快捷问题），携带文本与可选附件、可选扩展元信息（如 mention 实体） */
+  (e: 'send', text: string, attachments?: AttachmentItem[], meta?: SubmitMeta): void;
   /** 单条 AI 回复成功完成，携带该消息 */
   (e: 'finish', message: ChatMessage): void;
   /** 请求出错，携带该消息 */
@@ -286,12 +301,23 @@ export interface AiChatEmits {
   (e: 'update:input', value: string): void;
   /** 对话树结构变化（v-model:tree），用于持久化分支 */
   (e: 'update:tree', value: ExportedTree): void;
+  /** 点击追问建议（发送/回填之前触发，供埋点） */
+  (e: 'suggestion-select', item: SuggestionItem): void;
 }
 </script>
 
 <script setup lang="ts">
 import { useNamespace, useControllable, useLocale, copyText } from '@aix/hooks';
-import { computed, ref, watch, useSlots, getCurrentInstance, provide } from 'vue';
+import {
+  computed,
+  ref,
+  shallowRef,
+  toRaw,
+  watch,
+  useSlots,
+  getCurrentInstance,
+  provide,
+} from 'vue';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
 import type { ShouldFollow } from '../composables/useAutoScroll';
@@ -318,8 +344,18 @@ import type {
   Quote,
   QuoteAnchor,
   QuoteConfig,
+  TriggerConfig,
+  SubmitMeta,
+  SuggestionItem,
 } from '../types';
-import { messageText, attachmentBlock, textBlock, quoteBlock, genQuoteId } from '../utils/helpers';
+import {
+  messageText,
+  attachmentBlock,
+  textBlock,
+  quoteBlock,
+  genQuoteId,
+  normalizeSuggestions,
+} from '../utils/helpers';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
 import { upsertQuote } from '../utils/quoteDedupe';
 import { highlightRange, highlightElement } from '../utils/quoteHighlight';
@@ -331,6 +367,7 @@ import Prompts from './Prompts.vue';
 import QuoteChip from './QuoteChip.vue';
 import QuoteMenu from './QuoteMenu.vue';
 import Sender from './Sender.vue';
+import Suggestions from './Suggestions.vue';
 import Welcome from './Welcome.vue';
 
 const props = withDefaults(defineProps<AiChatProps>(), {
@@ -340,6 +377,8 @@ const props = withDefaults(defineProps<AiChatProps>(), {
   // 导致 resolvedQuote 无法区分「未配置（应启用默认）」与「显式 quote={false}（应关闭）」。
   // 显式声明 default:undefined 可关闭该转换，让未传时 props.quote 保持真正的 undefined。
   quote: undefined,
+  // suggestions 同款联合类型含 boolean 的坑，同上显式声明 default:undefined。
+  suggestions: undefined,
 });
 const emit = defineEmits<AiChatEmits>();
 const ns = useNamespace('ai-chat');
@@ -505,6 +544,52 @@ const {
   onAbort: (m) => emit('abort', m),
 });
 
+// ============ 追问建议（spec §5.2）============
+const resolvedSuggestions = computed(() => {
+  const s = props.suggestions;
+  if (!s) return null;
+  return { fillOnly: false, max: 5, ...(s === true ? {} : s) };
+});
+// 通道①临时建议（不持久化，发送即清）
+const tempSuggestions = shallowRef<SuggestionItem[] | null>(null);
+/**
+ * 命令式立即展示临时建议（通道①，优先于通道②）。
+ * 传空数组时置 null，语义为「归位到通道②」（显示最后一条 AI 消息自带的建议，若有）。
+ */
+const setSuggestions = (items: Array<string | SuggestionItem>) => {
+  tempSuggestions.value = items.length ? normalizeSuggestions(items) : null;
+};
+// 任何新流开始（发送/重生成/编辑重发/续流）即清通道①临时建议，与「发送即清」同语义；
+// 覆盖 onReload/onEdit/resume 等不经 onSend 包装的新流起点。onSend 里既有的清理保留（防御性双保险）。
+watch(isLoading, (v) => {
+  if (v) tempSuggestions.value = null;
+});
+// 通道②宿主：最后一条 AI 消息（用 useChat 原始 messages，不经 parser 映射）
+const lastAiMessage = computed(() => {
+  const list = messages.value;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const item = list[i];
+    if (item?.role === 'ai') return item;
+  }
+  return null;
+});
+const visibleSuggestions = computed(() => {
+  const cfg = resolvedSuggestions.value;
+  if (!cfg || isLoading.value) return [];
+  const list = tempSuggestions.value ?? lastAiMessage.value?.suggestions ?? [];
+  return list.slice(0, cfg.max);
+});
+const onSuggestionSelect = (item: SuggestionItem) => {
+  emit('suggestion-select', item);
+  const cfg = resolvedSuggestions.value;
+  if (cfg?.fillOnly) {
+    senderRef.value?.setValue(item.text);
+    senderRef.value?.focus();
+  } else {
+    onSend(item.text); // 复用内部发送路径（quote/附件打包、send 事件、发送即清除）
+  }
+};
+
 // ==================== 划词引用 / 追问 ====================
 
 // 待发引用（唯一归属 AiChat：它 own input model + senderRef；L2 经注入的 insertQuote 写入）
@@ -614,9 +699,12 @@ provide(QUOTE_LOCATE_KEY, (q: Quote) => locateAnchor(q.anchor));
 
 // 包一层：对外抛 send 事件后再委托 useChat；pendingQuotes 打包成一等 quote 块前置进 content
 // （单源真源，无 extra.quotes；见设计 §2.1），发送即清空
-const onSend = (text: string, attachments?: AttachmentItem[]) => {
+const onSend = (text: string, attachments?: AttachmentItem[], meta?: SubmitMeta) => {
   const quotes = pendingQuotes.value;
-  if (attachments?.length) emit('send', text, attachments);
+  tempSuggestions.value = null; // 发送即清除通道①临时建议（含点击建议本身）
+  // meta 存在才携带第三参：无 meta 时保持旧签名（一/两参）完全兼容
+  if (meta) emit('send', text, attachments?.length ? attachments : undefined, meta);
+  else if (attachments?.length) emit('send', text, attachments);
   else emit('send', text);
   if (!quotes.length && !attachments?.length) return sendMessage(text);
   const blocks = [
@@ -649,11 +737,15 @@ watch(messages, (v) => {
 watch(messagesModel, (v) => {
   // tree 受控时禁用 messages 反向导入（tree 通道唯一权威），仅保留 messages 输出镜像。
   if (isTreeBound) return;
-  if (v && v !== messages.value) {
+  // 身份判等必须用 toRaw：父侧若把 model 存进深响应式源（如 useConversations 的会话仓库），
+  // 回灌的 v 是同一数组的 reactive proxy——直接 !== 恒真，会与上方镜像输出 watch 形成
+  // setMessages ⇄ 镜像 的无限乒乓（Maximum recursive updates，流式期每帧结构变化即触发）。
+  if (v && toRaw(v) !== toRaw(messages.value)) {
     // 外部整体替换消息列表（典型：切换会话）时，若仍有在途请求先中断，
     // 避免旧流继续 mutate 已脱离的旧对象、isLoading 紊乱。
     if (isLoading.value) abort();
     setMessages(v);
+    tempSuggestions.value = null; // 切会话：旧会话的通道①临时建议不得跨会话残留显示
   }
 });
 
@@ -677,6 +769,7 @@ watch(treeModel, (v) => {
   if (v.headId !== cur.headId || v.nodes.length !== cur.nodes.length) {
     if (isLoading.value) abort();
     importTree(v);
+    tempSuggestions.value = null; // 切会话：旧会话的通道①临时建议不得跨会话残留显示
   }
 });
 
@@ -814,9 +907,15 @@ defineExpose({
   onSend,
   onReload,
   abort,
-  setMessages,
+  // 包一层：外部经 ref 直设消息（如切会话）不经 v-model watch / isLoading 上升沿，
+  // 须在此同步清掉通道①临时建议，防旧会话建议跨会话残留
+  setMessages: (m: ChatMessage[]) => {
+    tempSuggestions.value = null;
+    setMessages(m);
+  },
   updateBlock,
   resume,
+  setSuggestions,
   // 透传 Sender 命令式能力，便于外部聚焦 / 清空输入框
   focus: () => senderRef.value?.focus(),
   clear: () => senderRef.value?.clear(),
@@ -880,6 +979,11 @@ defineExpose({
 
   &__sender {
     margin: var(--aix-paddingSM) var(--aix-padding) var(--aix-padding);
+  }
+
+  &__suggestions {
+    flex: none;
+    padding: var(--aix-paddingXS) var(--aix-paddingSM) 0;
   }
 
   &__quote-chips {
