@@ -1,7 +1,13 @@
 import { useVueFlow } from '@vue-flow/core';
 import { computed, inject, nextTick, onScopeDispose, ref, type Ref } from 'vue';
-import { FlowNodeDeleteBlockedKey, FlowSnapContextKey, type NodeData } from '../types';
-import { createNodeId } from '../utils';
+import {
+  DEFAULT_CIRCLE_SIZE,
+  DEFAULT_HEXAGON_SIZE,
+  FlowNodeDeleteBlockedKey,
+  FlowSnapContextKey,
+  type NodeData,
+} from '../types';
+import { createNodeId, getNodeHalf } from '../utils';
 
 /** {@link useNodeInteraction} 的入参 */
 export interface UseNodeInteractionOptions {
@@ -91,10 +97,10 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
     if (!node) return;
     const newId = createNodeId(`${node.id}-copy`);
     const step = snap?.gridSize.value ?? 40;
+    const nodeSize = snap?.nodeSize.value ?? DEFAULT_CIRCLE_SIZE;
+    const hexagonSize = snap?.hexagonSize.value ?? DEFAULT_HEXAGON_SIZE;
     // 与 onNodeDragStop 保持一致：优先用 data.size，否则按节点类型取默认尺寸
-    const defaultSize =
-      node.type === 'hexagon' ? (snap?.hexagonSize.value ?? 40) : (snap?.nodeSize.value ?? 28);
-    const half = (node.data?.size ?? defaultSize) / 2;
+    const half = getNodeHalf(node, nodeSize, hexagonSize);
 
     function snapPos(x: number, y: number) {
       if (!snap?.snapEnabled.value) return { x, y };
@@ -104,11 +110,20 @@ export function useNodeInteraction(options: UseNodeInteractionOptions): UseNodeI
       };
     }
 
-    // 从偏移一格开始，找第一个不与现有节点完全重叠的位置
-    const existingPositions = new Set(getNodes.value.map((n) => `${n.position.x},${n.position.y}`));
+    // 从偏移一格开始，找第一个与现有节点都不重叠的位置。按各节点真实半径比较中心点距离，
+    // 不能只比较左上角坐标是否完全相等——画布上可能混有圆形/六边形等不同尺寸的节点，
+    // 精确字符串匹配会漏判「左上角不同但中心点重叠」的情况（同 FlowGraph.createNode 的教训）
+    const overlapsExisting = (x: number, y: number) =>
+      getNodes.value.some((n) => {
+        const nHalf = getNodeHalf(n, nodeSize, hexagonSize);
+        return (
+          Math.hypot(x + half - (n.position.x + nHalf), y + half - (n.position.y + nHalf)) <
+          half + nHalf
+        );
+      });
     let offset = step;
     let pos = snapPos(node.position.x + offset, node.position.y + offset);
-    while (existingPositions.has(`${pos.x},${pos.y}`)) {
+    while (overlapsExisting(pos.x, pos.y)) {
       offset += step;
       pos = snapPos(node.position.x + offset, node.position.y + offset);
     }

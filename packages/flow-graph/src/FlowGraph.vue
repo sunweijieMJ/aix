@@ -115,7 +115,7 @@ import {
   type FlowGraphProps,
   type FlowNode,
 } from './types';
-import { createNodeId } from './utils';
+import { createNodeId, getNodeHalf } from './utils';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 
@@ -315,8 +315,15 @@ function createNode(x: number, y: number): FlowNode {
   let px = baseX;
   let py = baseY;
   if (snap) {
-    const existing = new Set(modelNodes.value.map((n) => `${n.position.x},${n.position.y}`));
-    for (let r = 0; existing.has(`${px},${py}`); r++) {
+    // 按各节点真实半径（六边形与圆形尺寸不同）比较中心点距离，不能只比较左上角坐标是否
+    // 完全相等——不同类型节点左上角坐标不同时，中心点仍可能重叠（见 setNodeType 切换类型时
+    // 对 position 的居中修正，会让 position 基准整体平移，脱离本函数假定的圆形网格对齐）
+    const overlapsExisting = (cx: number, cy: number) =>
+      modelNodes.value.some((n) => {
+        const nHalf = getNodeHalf(n, nodeSize.value, hexagonSize.value);
+        return Math.hypot(cx - (n.position.x + nHalf), cy - (n.position.y + nHalf)) < half + nHalf;
+      });
+    for (let r = 0; overlapsExisting(px + half, py + half); r++) {
       const angle = r * 2.4;
       px = Math.round((baseX + half + (r + 1) * step * Math.cos(angle)) / step) * step - half;
       py = Math.round((baseY + half + (r + 1) * step * Math.sin(angle)) / step) * step - half;
@@ -357,7 +364,16 @@ function addNode() {
     const angle = r * 2.4;
     px = cx + r * MIN_DIST * Math.cos(angle);
     py = cy + r * MIN_DIST * Math.sin(angle);
-    if (existing.every((n) => Math.hypot(n.position.x - px, n.position.y - py) >= MIN_DIST)) break;
+    // 候选点 (px, py) 与 existing 都是"中心点"语义：existing 需按各自真实半径换算成中心点
+    // 再比较，不能直接用 n.position（左上角坐标）比较，否则六边形等大尺寸节点的中心距离
+    // 会被系统性低估，实际视觉间距远小于 MIN_DIST
+    if (
+      existing.every((n) => {
+        const nHalf = getNodeHalf(n, nodeSize.value, hexagonSize.value);
+        return Math.hypot(n.position.x + nHalf - px, n.position.y + nHalf - py) >= MIN_DIST;
+      })
+    )
+      break;
   }
   createNode(px, py);
 }
@@ -372,8 +388,7 @@ function onNodeDragStart({ node }: { node: FlowNode }) {
 /** 节点拖拽结束：若开启吸附，将节点中心对齐到栅格；若目标位置与其他节点重叠则回退原位 */
 function onNodeDragStop({ node }: { node: FlowNode }) {
   if (!snapEnabled.value) return;
-  const size = node.type === 'hexagon' ? hexagonSize.value : nodeSize.value;
-  const half = size / 2;
+  const half = getNodeHalf(node, nodeSize.value, hexagonSize.value);
   const step = gridSize.value;
   const snappedCx = Math.round((node.position.x + half) / step) * step;
   const snappedCy = Math.round((node.position.y + half) / step) * step;
@@ -381,8 +396,7 @@ function onNodeDragStop({ node }: { node: FlowNode }) {
   const snappedY = snappedCy - half;
   const occupied = modelNodes.value.some((n) => {
     if (n.id === node.id) return false;
-    const nSize = n.type === 'hexagon' ? hexagonSize.value : nodeSize.value;
-    const nHalf = nSize / 2;
+    const nHalf = getNodeHalf(n, nodeSize.value, hexagonSize.value);
     return n.position.x + nHalf === snappedCx && n.position.y + nHalf === snappedCy;
   });
   if (occupied) {

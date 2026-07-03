@@ -102,4 +102,36 @@ describe('FlowGraph 组件', () => {
     const [nodes] = addNodesMock.mock.calls[0] as [Array<{ data?: Record<string, unknown> }>];
     expect(nodes[0]?.data).toEqual({});
   });
+
+  // 回归：addNode/createNode 曾固定按圆形半径(14)做网格判重，未考虑六边形节点(半径 20)。
+  // 六边形起点节点的 position 基准（经 setNodeType 居中修正）与圆形节点相差 6px，
+  // 精确字符串匹配判重会漏判，导致新节点与起点节点视觉完全重合。
+  it('画布上已有六边形起点节点时，addNode 新建的节点不应与其视觉重合', () => {
+    addNodesMock.mockClear();
+    // 六边形节点：真实中心 (100, 100)，与下方构造的视口中心重合——复现「选中起点后加节点」场景
+    const hexagonNode = { id: 'start', type: 'hexagon', position: { x: 80, y: 80 }, data: {} };
+    const wrapper = mount(FlowGraph, {
+      props: { nodes: [hexagonNode], gridSize: 100, snapGrid: true },
+    });
+
+    const pane = document.createElement('div');
+    pane.className = 'vue-flow__pane';
+    vi.spyOn(pane, 'getBoundingClientRect').mockReturnValue({
+      width: 200,
+      height: 200,
+    } as DOMRect);
+    document.body.appendChild(pane);
+
+    (wrapper.vm as unknown as { addNode: () => void }).addNode();
+
+    const [nodes] = addNodesMock.mock.calls[0] as [Array<{ position: { x: number; y: number } }>];
+    const [newNode] = nodes;
+    const newCenter = { x: newNode!.position.x + 14, y: newNode!.position.y + 14 };
+    const hexCenter = { x: hexagonNode.position.x + 20, y: hexagonNode.position.y + 20 };
+    const dist = Math.hypot(newCenter.x - hexCenter.x, newCenter.y - hexCenter.y);
+    // 两节点半径之和为 34px，小于此距离视觉上就会重叠；修复前该场景 dist === 0（完全重合）
+    expect(dist).toBeGreaterThanOrEqual(34);
+
+    document.body.removeChild(pane);
+  });
 });

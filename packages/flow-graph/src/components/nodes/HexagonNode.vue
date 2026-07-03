@@ -1,5 +1,5 @@
 <template>
-  <BaseNode v-bind="$props" :default-size="DEFAULT_HEXAGON_SIZE" :fallback-color="FALLBACK_COLOR">
+  <BaseNode v-bind="$props" :default-size="defaultSize" :fallback-color="FALLBACK_COLOR">
     <template #default="{ size, nodeState, clicking, onClick }">
       <div
         class="aix-hexagon-node"
@@ -97,8 +97,8 @@
  */
 import { useNamespace } from '@aix/hooks';
 import type { NodeProps } from '@vue-flow/core';
-import { computed } from 'vue';
-import { DEFAULT_HEXAGON_SIZE, type NodeData } from '../../types';
+import { computed, inject } from 'vue';
+import { DEFAULT_HEXAGON_SIZE, FlowSnapContextKey, type NodeData } from '../../types';
 import BaseNode from './BaseNode.vue';
 
 defineOptions({ name: 'AixHexagonNode', inheritAttrs: false });
@@ -106,6 +106,11 @@ defineOptions({ name: 'AixHexagonNode', inheritAttrs: false });
 const props = defineProps<NodeProps<NodeData>>();
 
 const ns = useNamespace('hexagon-node');
+
+// 读取 FlowGraph 的 `defaultHexagonSize` 覆盖值，不能写死 DEFAULT_HEXAGON_SIZE——原因同
+// CircleNode：渲染尺寸必须与 createNode/addNode 等位置计算假定的尺寸保持一致
+const snap = inject(FlowSnapContextKey, null);
+const defaultSize = computed(() => snap?.hexagonSize.value ?? DEFAULT_HEXAGON_SIZE);
 
 /** 六边形节点主色回退（无 data.color 时使用） */
 const FALLBACK_COLOR = '#963096';

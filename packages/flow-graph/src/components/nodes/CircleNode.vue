@@ -1,5 +1,5 @@
 <template>
-  <BaseNode v-bind="$props" :default-size="DEFAULT_CIRCLE_SIZE" :fallback-color="FALLBACK_COLOR">
+  <BaseNode v-bind="$props" :default-size="defaultSize" :fallback-color="FALLBACK_COLOR">
     <template #default="{ size, nodeState, clicking, onClick }">
       <div
         class="aix-circle-node"
@@ -38,7 +38,8 @@
  */
 import { useNamespace } from '@aix/hooks';
 import type { NodeProps } from '@vue-flow/core';
-import { DEFAULT_CIRCLE_SIZE, type NodeData } from '../../types';
+import { computed, inject } from 'vue';
+import { DEFAULT_CIRCLE_SIZE, FlowSnapContextKey, type NodeData } from '../../types';
 import BaseNode from './BaseNode.vue';
 
 defineOptions({ name: 'AixCircleNode', inheritAttrs: false });
@@ -46,6 +47,12 @@ defineOptions({ name: 'AixCircleNode', inheritAttrs: false });
 defineProps<NodeProps<NodeData>>();
 
 const ns = useNamespace('circle-node');
+
+// 读取 FlowGraph 的 `defaultNodeSize` 覆盖值，不能写死 DEFAULT_CIRCLE_SIZE——否则业务传入
+// defaultNodeSize 自定义尺寸时，实际渲染尺寸与 createNode/addNode 等位置计算假定的尺寸不一致，
+// 会导致新建/复制节点的重叠判断按错误尺寸计算
+const snap = inject(FlowSnapContextKey, null);
+const defaultSize = computed(() => snap?.nodeSize.value ?? DEFAULT_CIRCLE_SIZE);
 
 /** 圆形节点主色回退（无 data.color 时使用） */
 const FALLBACK_COLOR = '#86909c';

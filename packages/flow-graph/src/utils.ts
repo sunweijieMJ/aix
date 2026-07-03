@@ -31,6 +31,21 @@ export function calcOrthogonalWaypoints(
 }
 
 /**
+ * 计算节点的实际半径（px）：优先取节点自定义的 `data.size`，否则按 `type` 取对应的
+ * 默认圆形/六边形尺寸。节点重叠判断（新建避重、拖拽吸附）必须用此函数取真实半径，
+ * 不能假定所有节点都是同一尺寸——六边形起点与默认圆形节点尺寸不同，位置基准也不同
+ * （见 `setNodeType` 切换类型时对 position 的居中修正）。
+ */
+export function getNodeHalf(
+  node: Pick<FlowNode, 'type' | 'data'>,
+  nodeSize: number,
+  hexagonSize: number,
+): number {
+  const size = node.data?.size ?? (node.type === 'hexagon' ? hexagonSize : nodeSize);
+  return size / 2;
+}
+
+/**
  * 生成唯一节点 id。优先使用 `crypto.randomUUID`，不可用时降级到 `Date.now + 随机`。
  * @param prefix - id 前缀，默认 `node`
  */
