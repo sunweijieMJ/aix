@@ -148,6 +148,57 @@ const writeChangesetFile = (
   return `${changesetId}.md`;
 };
 
+// 非交互创建参数：供 AI/CI 等无 TTY 场景绕过 inquirer 直接写 changeset 文件
+export interface NonInteractiveChangesetOptions {
+  /** 要包含的包 */
+  packages: string[];
+  /** 版本升级类型: patch | minor | major */
+  bumpType: string;
+  /** 变更说明 */
+  summary: string;
+}
+
+// 非交互创建 changeset（校验包名/版本类型/摘要后直接写文件，不弹任何 inquirer 提示）
+export const createChangesetNonInteractive = (
+  projectRoot: string,
+  options: NonInteractiveChangesetOptions,
+): boolean => {
+  const { packages, bumpType, summary } = options;
+
+  const validBumpTypes = new Set(['patch', 'minor', 'major']);
+  if (!validBumpTypes.has(bumpType)) {
+    throw new Error(`无效的版本类型 "${bumpType}"，可选值: patch, minor, major`);
+  }
+
+  if (!summary.trim()) {
+    throw new Error('变更说明不能为空');
+  }
+
+  if (packages.length === 0) {
+    throw new Error('请至少指定一个包（--packages）');
+  }
+
+  const publishablePackages = getPublishablePackages(projectRoot);
+  const publishableNames = new Set(publishablePackages.map((pkg) => pkg.name));
+  const unknownPackages = packages.filter((name) => !publishableNames.has(name));
+  if (unknownPackages.length > 0) {
+    throw new Error(`以下包不存在或不可发布: ${unknownPackages.join(', ')}`);
+  }
+
+  const filename = writeChangesetFile(
+    projectRoot,
+    packages.map((pkg) => ({ pkg, bumpType })),
+    summary.trim(),
+  );
+
+  console.log(chalk.green(`✅ 已创建 changeset: ${filename}`));
+  console.log(chalk.gray(`  版本类型: ${bumpType.toUpperCase()}`));
+  console.log(chalk.gray(`  受影响的包: ${packages.join(', ')}`));
+  console.log(chalk.gray(`  变更说明: ${summary.trim()}`));
+
+  return true;
+};
+
 // 创建 changeset，返回是否实际创建（中文交互版）
 export const createChangeset = async (
   projectRoot: string,

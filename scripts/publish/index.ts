@@ -29,13 +29,16 @@ import { getWorkspacePackages } from './workspace.js';
 import {
   setupReleaseMode,
   createChangeset,
+  createChangesetNonInteractive,
   updateVersion,
   getChangedPackages,
   getVersionBumpedPackages,
   detectPackages,
   getPreReleaseTag,
+  type NonInteractiveChangesetOptions,
 } from './changeset.js';
 import { buildPackages } from './build.js';
+import { runQualityGates } from './gates.js';
 
 // 获取当前脚本所在的目录
 const __filename = fileURLToPath(import.meta.url);
@@ -73,6 +76,10 @@ const parseArgs = () => {
     skipPrompts: false, // 是否跳过所有确认提示
     dryRun: false, // 干运行模式，只显示将要发布的包，不实际发布
     help: false, // 显示帮助信息
+    packages: '', // 非交互创建 changeset：逗号分隔的包名
+    bump: '', // 非交互创建 changeset：版本类型 patch/minor/major
+    summary: '', // 非交互创建 changeset：变更说明
+    skipGates: false, // 是否跳过发布前质量门禁 (test/type-check/lint)
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -89,6 +96,17 @@ const parseArgs = () => {
       result.skipPrompts = true;
     } else if (arg === '--dry-run' || arg === '-d') {
       result.dryRun = true;
+    } else if (arg === '--packages' || arg === '-p') {
+      result.packages = args[i + 1] || '';
+      i++;
+    } else if (arg === '--bump' || arg === '-b') {
+      result.bump = args[i + 1] || '';
+      i++;
+    } else if (arg === '--summary' || arg === '-s') {
+      result.summary = args[i + 1] || '';
+      i++;
+    } else if (arg === '--skip-gates') {
+      result.skipGates = true;
     }
   }
 
@@ -109,9 +127,13 @@ ${chalk.yellow('选项:')}
   -a, --action <action> 指定操作类型
   -y, --yes            跳过所有确认提示，自动选择默认选项
   -d, --dry-run        干运行模式，只显示将要发布的包，不实际发布
+  -p, --packages <list> 非交互创建 changeset：逗号分隔的包名 (配合 create/full 使用)
+  -b, --bump <type>    非交互创建 changeset：版本类型 patch/minor/major
+  -s, --summary <text> 非交互创建 changeset：变更说明
+  --skip-gates         跳过发布前质量门禁 (test/type-check/lint)，仅用于已单独校验过的重跑场景
 
 ${chalk.yellow('操作类型:')}
-  full                 完整发布流程（创建 changeset → 更新版本 → 构建 → 发布）
+  full                 完整发布流程（质量门禁 → 创建 changeset → 更新版本 → 构建 → 发布）
   create               仅创建 changeset
   version              仅更新版本号
   publish              仅构建并发布
@@ -121,7 +143,9 @@ ${chalk.yellow('操作类型:')}
 ${chalk.yellow('示例:')}
   pnpm pre                   # 启动交互式菜单
   pnpm pre -a full -m beta   # 执行完整的 beta 发布流程
-  pnpm pre -a create         # 只创建 changeset
+  pnpm pre -a create         # 只创建 changeset（交互式）
+  pnpm pre -a create -p "@aix/button,@aix/hooks" -b patch -s "修复 xxx 问题"  # 非交互创建 changeset
+  pnpm pre -a full -y -p "@aix/button" -b patch -s "修复 xxx 问题"           # 全流程非交互执行
   pnpm pre -a publish -y     # 构建并发布，使用默认选项
   pnpm pre -a publish -d     # 预览将要发布的包（不实际发布）
   pnpm pre -a deprecate      # 废弃指定包版本
@@ -230,19 +254,42 @@ const publishPackages = async (
   await postPublishGitActions(projectRoot, skipPrompts, committed);
 };
 
+// 从 CLI 参数中提取非交互创建 changeset 的输入（--packages/--bump/--summary 任一给出即视为意图使用非交互路径）
+const buildChangesetInput = (
+  args: ReturnType<typeof parseArgs>,
+): NonInteractiveChangesetOptions | undefined => {
+  if (!args.packages && !args.bump && !args.summary) return undefined;
+  return {
+    packages: args.packages
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean),
+    bumpType: args.bump,
+    summary: args.summary,
+  };
+};
+
+interface ExecuteOptions {
+  skipPrompts: boolean;
+  dryRun: boolean;
+  changesetInput?: NonInteractiveChangesetOptions;
+  skipGates: boolean;
+}
+
 // 执行指定操作
-const executeAction = async (
-  action: string,
-  mode: string,
-  skipPrompts: boolean,
-  dryRun: boolean,
-) => {
+const executeAction = async (action: string, mode: string, options: ExecuteOptions) => {
+  const { skipPrompts, dryRun, changesetInput, skipGates } = options;
+
   switch (action.toLowerCase()) {
     case 'full':
-      await runFullProcess(skipPrompts, mode, dryRun);
+      await runFullProcess(skipPrompts, mode, dryRun, changesetInput, skipGates);
       break;
     case 'create':
-      await createChangeset(projectRoot, skipPrompts);
+      if (changesetInput) {
+        createChangesetNonInteractive(projectRoot, changesetInput);
+      } else {
+        await createChangeset(projectRoot, skipPrompts);
+      }
       break;
     case 'version':
       checkWorkspace(projectRoot);
@@ -259,6 +306,7 @@ const executeAction = async (
         // 检测结果为空属预期，跳过构建并交由 publishPackages 的防护分支确认后继续
         packages = await detectPackages(projectRoot, { allowEmpty: true });
         if (packages.size > 0) {
+          runQualityGates(projectRoot, skipGates);
           await buildPackages(projectRoot, packages);
         } else {
           console.log(chalk.yellow('未检测到版本变更，跳过构建（可能为上次发布失败后的重跑）'));
@@ -290,7 +338,12 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
   }
 
   if (args.action) {
-    await executeAction(args.action, args.mode, args.skipPrompts, args.dryRun);
+    await executeAction(args.action, args.mode, {
+      skipPrompts: args.skipPrompts,
+      dryRun: args.dryRun,
+      changesetInput: buildChangesetInput(args),
+      skipGates: args.skipGates,
+    });
     return;
   }
 
@@ -328,11 +381,22 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
   }
 
   // 统一走 executeAction，模式选择由 setupReleaseMode 内部处理
-  await executeAction(action, '', args.skipPrompts, args.dryRun);
+  await executeAction(action, '', {
+    skipPrompts: args.skipPrompts,
+    dryRun: args.dryRun,
+    changesetInput: buildChangesetInput(args),
+    skipGates: args.skipGates,
+  });
 };
 
 // 完整发布流程
-const runFullProcess = async (skipPrompts = false, mode = '', dryRun = false) => {
+const runFullProcess = async (
+  skipPrompts = false,
+  mode = '',
+  dryRun = false,
+  changesetInput?: NonInteractiveChangesetOptions,
+  skipGates = false,
+) => {
   // Dry-run 模式跳过所有检查，直接显示待发布的包
   if (dryRun) {
     await publishPackages(skipPrompts, true);
@@ -341,6 +405,7 @@ const runFullProcess = async (skipPrompts = false, mode = '', dryRun = false) =>
 
   checkNpmLogin(NPM_REGISTRY);
   checkWorkspace(projectRoot);
+  runQualityGates(projectRoot, skipGates);
 
   // 模式设置必须在 checkWorkspace 之后，因为 changeset pre enter 会修改 pre.json
   await setupReleaseMode(projectRoot, mode, skipPrompts);
@@ -349,7 +414,9 @@ const runFullProcess = async (skipPrompts = false, mode = '', dryRun = false) =>
   const initialChangedPackages = await getChangedPackages(projectRoot);
   if (!initialChangedPackages.size) {
     console.log(chalk.yellow('未检测到现有的 changeset 文件，需要先创建'));
-    const created = await createChangeset(projectRoot, skipPrompts);
+    const created = changesetInput
+      ? createChangesetNonInteractive(projectRoot, changesetInput)
+      : await createChangeset(projectRoot, skipPrompts);
     if (!created) {
       throw new Error('未创建任何 changeset，发布流程终止');
     }
@@ -357,8 +424,12 @@ const runFullProcess = async (skipPrompts = false, mode = '', dryRun = false) =>
     if (!afterCreate.size) {
       throw new Error('未创建任何 changeset，发布流程终止');
     }
+  } else if (changesetInput) {
+    // 已有 changeset，但调用方显式传入了 --packages/--bump/--summary：
+    // 视为明确意图，仍按指定内容追加一个 changeset，避免误用遗留的旧 changeset 文件
+    createChangesetNonInteractive(projectRoot, changesetInput);
   } else if (!skipPrompts) {
-    // 已有 changeset：仅在交互模式下询问是否追加新的 changeset
+    // 已有 changeset 且未显式指定：仅在交互模式下询问是否追加新的 changeset
     // skipPrompts 下直接复用已有 changeset，避免卡在 inquirer 的必填输入
     await createChangeset(projectRoot, skipPrompts);
   }
