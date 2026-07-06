@@ -53,10 +53,10 @@ function reconcileStuckMessages(list: Conversation[]): Conversation[] {
   });
 }
 
-/** 会话持久化适配器（同步）：load 在初始化时调用，save 在会话变更防抖后调用 */
+/** 会话持久化适配器：load/save 均可返回同步值或 Promise，内部统一用 Promise.resolve(...).then(...) 处理，实现方无需关心同步/异步 */
 export interface ConversationStorage {
-  load(): Conversation[] | null | undefined;
-  save(list: Conversation[]): void;
+  load(): Conversation[] | null | undefined | Promise<Conversation[] | null | undefined>;
+  save(list: Conversation[]): void | Promise<void>;
 }
 
 export interface UseConversationsOptions {
@@ -83,6 +83,8 @@ export interface UseConversationsReturn {
   activeTree: WritableComputedRef<ExportedTree | undefined>;
   /** 会话列表元数据（不含 messages）：绑给 Conversations 列表 UI */
   items: ComputedRef<ConversationItem[]>;
+  /** storage.load() 解析完成前为 true；未提供 storage 时恒为 false */
+  isLoading: Ref<boolean>;
   /** 新建会话并激活，返回新 id */
   create: (init?: Partial<Omit<Conversation, 'id'>>) => string;
   /** 删除会话；若删的是当前会话则激活切到第一个（无则置空） */
@@ -116,12 +118,41 @@ const genConvId = () => `conv-${Date.now().toString(36)}-${(uid += 1)}`;
 export function useConversations(options: UseConversationsOptions = {}): UseConversationsReturn {
   const { storage, saveDebounce = 300, newTitle = '新对话' } = options;
 
-  const loaded = storage?.load() ?? null;
-  // Array.isArray 防御自定义 storage 返回非数组（如字符串会被 [...str] 展开成无效会话）
-  const init =
-    Array.isArray(loaded) && loaded.length ? loaded : (options.defaultConversations ?? []);
-  const conversations = ref<Conversation[]>(reconcileStuckMessages(init));
+  const isLoading = ref(false);
+  const conversations = ref<Conversation[]>(
+    reconcileStuckMessages(options.defaultConversations ?? []),
+  );
   const activeKey = ref<string>(conversations.value[0]?.id ?? '');
+
+  // load 完成前若本地已发生变更（create/remove/rename/写入消息等），说明用户已经在操作，
+  // 不能再用 load 结果整体覆盖，否则会静默丢弃这段时间的操作（真实后端场景下 load 可能耗时明显）
+  let localDirty = false;
+  // load 落地这次对 conversations 的赋值只是把刚读到的数据放进去，不是「变更」，不需要再触发一次防抖 save
+  let suppressNextSave = false;
+
+  // Array.isArray 防御自定义 storage 返回非数组（如字符串会被 [...str] 展开成无效会话）
+  const applyLoaded = (loaded: Conversation[] | null | undefined) => {
+    if (localDirty) return;
+    if (!Array.isArray(loaded) || !loaded.length) return; // 无有效数据：维持初始化时已用 defaultConversations 算好的状态
+    suppressNextSave = true;
+    conversations.value = reconcileStuckMessages(loaded);
+    // resolve 后原 activeKey 可能已不在新列表里（或初始为空），回填为第一条
+    if (!conversations.value.some((c) => c.id === activeKey.value)) {
+      activeKey.value = conversations.value[0]?.id ?? '';
+    }
+  };
+
+  if (storage) {
+    isLoading.value = true;
+    Promise.resolve(storage.load())
+      .then(applyLoaded)
+      .catch((err) => {
+        console.warn('[ai-chat] 会话列表加载失败:', err);
+      })
+      .finally(() => {
+        isLoading.value = false;
+      });
+  }
 
   const active = computed(() => conversations.value.find((c) => c.id === activeKey.value));
 
@@ -129,7 +160,10 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     get: () => active.value?.messages ?? [],
     set: (msgs) => {
       const c = active.value;
-      if (c) c.messages = msgs;
+      if (c) {
+        localDirty = true;
+        c.messages = msgs;
+      }
     },
   });
 
@@ -146,6 +180,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     set: (data) => {
       const c = active.value;
       if (!c || !data) return;
+      localDirty = true;
       c.tree = data;
       // 同步 messages 为 active path，兼容仅读 messages 的旧消费方
       c.messages = data.nodes.length ? rebuildActivePath(data) : [];
@@ -164,6 +199,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
   const resolveTitle = () => (typeof newTitle === 'function' ? newTitle() : newTitle);
 
   const create = (initConv: Partial<Omit<Conversation, 'id'>> = {}) => {
+    localDirty = true;
     const id = genConvId();
     // 新会话置顶，符合「最近的在最上」的常见习惯
     conversations.value.unshift({
@@ -180,29 +216,42 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
   const remove = (id: string) => {
     const idx = conversations.value.findIndex((c) => c.id === id);
     if (idx === -1) return;
+    localDirty = true;
     conversations.value.splice(idx, 1);
     if (activeKey.value === id) activeKey.value = conversations.value[0]?.id ?? '';
   };
 
   const rename = (id: string, label: string) => {
     const c = conversations.value.find((x) => x.id === id);
-    if (c) c.label = label;
+    if (c) {
+      localDirty = true;
+      c.label = label;
+    }
   };
 
   const setActive = (id: string) => {
     if (conversations.value.some((c) => c.id === id)) activeKey.value = id;
   };
 
-  // 持久化：会话深变更后防抖保存（含消息流式 mutate）。
+  // 持久化：会话深变更后防抖保存（含消息流式 mutate）。save 可能返回 Promise，统一 fire-and-forget。
   if (storage) {
+    const persist = (list: Conversation[]) => {
+      Promise.resolve(storage.save(list)).catch((err) => {
+        console.warn('[ai-chat] 会话持久化失败，本次变更未保存:', err);
+      });
+    };
     let timer: ReturnType<typeof setTimeout> | null = null;
     watch(
       conversations,
       () => {
+        if (suppressNextSave) {
+          suppressNextSave = false; // 这次触发是 load 落地，不是用户变更，跳过这次保存
+          return;
+        }
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
           timer = null; // 置空标记「无待保存变更」，否则 dispose flush 会重复落盘
-          storage.save(conversations.value);
+          persist(conversations.value);
         }, saveDebounce);
       },
       { deep: true },
@@ -214,7 +263,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
       if (timer) {
         clearTimeout(timer);
         timer = null;
-        storage.save(conversations.value);
+        persist(conversations.value);
       }
     });
   }
@@ -226,6 +275,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     activeMessages,
     activeTree,
     items,
+    isLoading,
     create,
     remove,
     rename,
@@ -259,8 +309,15 @@ function createSafeReplacer(): (key: string, value: unknown) => unknown {
   };
 }
 
-/** 基于 localStorage 的会话持久化适配器（JSON 序列化，容错配额/隐私模式异常） */
-export function localStorageConversationStorage(key: string): ConversationStorage {
+/**
+ * 基于 localStorage 的会话持久化适配器（JSON 序列化，容错配额/隐私模式异常）。
+ * 返回类型比 `ConversationStorage` 更精确（load/save 均为同步），
+ * 结构上仍可赋值给 `useConversations({ storage })`；直接调用方（如测试）也能拿到精确的同步类型，无需处理 Promise 分支。
+ */
+export function localStorageConversationStorage(key: string): {
+  load(): Conversation[] | null;
+  save(list: Conversation[]): void;
+} {
   return {
     load() {
       try {

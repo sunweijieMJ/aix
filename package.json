@@ -67,7 +67,7 @@
       "prettier --write"
     ],
     "*.{json,jsonc,yaml,yml,html}": [
-      "prettier --write"
+      "prettier --write --ignore-unknown"
     ]
   },
   "peerDependencies": {
