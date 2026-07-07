@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.6
+
+### Patch Changes
+
+- 增强优化Send组件
+
 ## 0.0.5
 
 ### Patch Changes
