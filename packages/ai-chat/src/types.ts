@@ -370,7 +370,17 @@ export type EChartsChartKind = 'bar' | 'line' | 'pie' | 'scatter' | 'radar';
 /** 消息内容块（有序、可扩展）。预留扩展：tool_use / image / 业务自定义块只需新增联合成员 */
 export type ContentBlock =
   | (BlockBase & { type: 'text'; text: string })
-  | (BlockBase & { type: 'reasoning'; text: string })
+  | (BlockBase & {
+      type: 'reasoning';
+      text: string;
+      /** 思考起点（epoch ms），由 useChat 在该 reasoning 块首次创建时打点 */
+      startedAt?: number;
+      /**
+       * 思考终点（epoch ms），由 useChat 在思考被顶替（转正文/工具/其它块）或消息终态
+       * 落定时打点；undefined 表示仍在思考，或该块并非由 useChat 计时产生（历史/业务自建数据）
+       */
+      endedAt?: number;
+    })
   | (BlockBase & { type: 'sources'; items: SourceItem[] })
   | (BlockBase & { type: 'thought-chain'; items: ThoughtChainItem[] })
   | (BlockBase & { type: 'attachment'; items: AttachmentItem[] })

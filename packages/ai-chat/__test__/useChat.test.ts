@@ -401,6 +401,108 @@ describe('useChat', () => {
     expect((blocks[1] as Extract<ContentBlock, { type: 'text' }>).text).toBe('T1T2');
   });
 
+  // 思考耗时数据层化：reasoning 块的 startedAt/endedAt 由 useChat 打点、随内容持久化，
+  // 不再靠展示层现算——见 docs/superpowers/specs/2026-07-07-reasoning-duration-data-layer-design.md
+  it('reasoning 转正文时：reasoning 块拿到 startedAt，转场时被打上 endedAt', async () => {
+    const request = vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('R1\nT1\n'));
+            c.close();
+          },
+        }),
+    );
+    let phase: 'r' | 't' = 'r';
+    const { messages, onSend } = useChat({
+      request,
+      streamMode: 'line',
+      parseChunk: (raw: string): ParsedChunk => {
+        const line = raw.trim();
+        if (line === 'T1') phase = 't';
+        return { delta: line, blockType: phase === 'r' ? 'reasoning' : 'text' };
+      },
+    });
+    await onSend('go');
+    const reasoningBlock = messages.value[1]!.content[0] as Extract<
+      ContentBlock,
+      { type: 'reasoning' }
+    >;
+    expect(typeof reasoningBlock.startedAt).toBe('number');
+    expect(typeof reasoningBlock.endedAt).toBe('number');
+    expect(reasoningBlock.endedAt!).toBeGreaterThanOrEqual(reasoningBlock.startedAt!);
+  });
+
+  it('末块是未封口的 reasoning：流以 success 结束时自动补写 endedAt', async () => {
+    const request = vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('R1\n'));
+            c.close();
+          },
+        }),
+    );
+    const { messages, onSend } = useChat({
+      request,
+      streamMode: 'line',
+      parseChunk: (raw: string): ParsedChunk => ({ delta: raw.trim(), blockType: 'reasoning' }),
+    });
+    await onSend('go');
+    const aiMsg = messages.value[1]!;
+    expect(aiMsg.status).toBe('success');
+    const reasoningBlock = aiMsg.content[0] as Extract<ContentBlock, { type: 'reasoning' }>;
+    expect(reasoningBlock.type).toBe('reasoning');
+    expect(typeof reasoningBlock.endedAt).toBe('number');
+  });
+
+  it('末块是未封口的 reasoning：流中途出错（非 abort）时自动补写 endedAt', async () => {
+    const request = vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('R1\n'));
+            setTimeout(() => c.error(new Error('boom')), 10);
+          },
+        }),
+    );
+    const { messages, onSend } = useChat({
+      request,
+      streamMode: 'line',
+      parseChunk: (raw: string): ParsedChunk => ({ delta: raw.trim(), blockType: 'reasoning' }),
+    });
+    await onSend('go');
+    const aiMsg = messages.value[1]!;
+    expect(aiMsg.status).toBe('error');
+    const reasoningBlock = aiMsg.content[0] as Extract<ContentBlock, { type: 'reasoning' }>;
+    expect(typeof reasoningBlock.endedAt).toBe('number');
+  });
+
+  it('末块是未封口的 reasoning：流被 abort 时自动补写 endedAt', async () => {
+    const request = vi.fn(
+      async () =>
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('R1\n'));
+            // 不主动 close：abort() 后由 xStream 的 reader.cancel() 结束流，走 abort 分支
+          },
+        }),
+    );
+    const { messages, onSend, abort } = useChat({
+      request,
+      streamMode: 'line',
+      parseChunk: (raw: string): ParsedChunk => ({ delta: raw.trim(), blockType: 'reasoning' }),
+    });
+    const p = onSend('go');
+    await new Promise((r) => setTimeout(r, 20)); // 等首个 chunk 被消费
+    abort();
+    await p;
+    const aiMsg = messages.value[1]!;
+    expect(aiMsg.status).toBe('abort');
+    const reasoningBlock = aiMsg.content[0] as Extract<ContentBlock, { type: 'reasoning' }>;
+    expect(typeof reasoningBlock.endedAt).toBe('number');
+  });
+
   it('abort 后同步立即 onSend 不被 isLoading 守卫丢弃，且旧请求收尾不污染新请求', async () => {
     let call = 0;
     const request = vi.fn(async ({ signal }: { signal: AbortSignal }) => {

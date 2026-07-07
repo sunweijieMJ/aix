@@ -7,6 +7,7 @@ export const enUS: AiChatLocale = {
   retryButton: 'Retry',
   thinking: 'Thinking…',
   thoughtTitle: 'Thought process',
+  thoughtDurationSuffix: ' ({s}s)',
   copyButton: 'Copy',
   copiedButton: 'Copied',
   regenerateButton: 'Regenerate',

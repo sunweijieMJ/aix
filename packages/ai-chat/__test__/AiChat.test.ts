@@ -556,7 +556,7 @@ describe('AiChat', () => {
     await flushPromises();
 
     // AI 气泡 footer 出现操作区（复制 + 重新生成 + 内置 quote 自动注入，见 Task 12 策略 A）
-    // 用户消息现在也默认挂载操作条（copy/edit/delete），需限定到 AI 气泡（--start）以定位到目标操作区
+    // 用户消息现在也默认挂载操作条（copy/edit），需限定到 AI 气泡（--start）以定位到目标操作区
     const actions = w.findAll('.aix-bubble--start')[0]!.find('.aix-bubble-actions');
     expect(actions.exists()).toBe(true);
     expect(actions.findAll('.aix-bubble-actions__btn')).toHaveLength(3);
@@ -584,7 +584,7 @@ describe('AiChat', () => {
     // 用户消息的操作条是固定默认值，不受 actions 数组形态影响
     const userBubble = w.findAll('.aix-bubble--end')[0]!;
     const btns = userBubble.findAll('.aix-bubble-actions__btn');
-    expect(btns.map((b) => b.attributes('aria-label'))).toEqual(['复制', '编辑', '删除']);
+    expect(btns.map((b) => b.attributes('aria-label'))).toEqual(['复制', '编辑']);
   });
 
   it('#footer 作用域 slot 覆盖默认操作并收到对应消息 item', async () => {
@@ -606,7 +606,7 @@ describe('AiChat', () => {
     expect(footers.map((f) => f.text())).toContain('ai');
   });
 
-  it('用户消息默认操作条为 [copy, edit, delete]', async () => {
+  it('用户消息默认操作条为 [copy, edit]', async () => {
     const request = vi.fn(async () => once('答'));
     const w = mount(AiChat, { props: { request } });
     await w.find('textarea').setValue('问题');
@@ -614,10 +614,10 @@ describe('AiChat', () => {
     await flushPromises();
     const userBubble = w.findAll('.aix-bubble--end')[0]!;
     const btns = userBubble.findAll('.aix-bubble-actions__btn');
-    expect(btns.map((b) => b.attributes('aria-label'))).toEqual(['复制', '编辑', '删除']);
+    expect(btns.map((b) => b.attributes('aria-label'))).toEqual(['复制', '编辑']);
   });
 
-  it('流式进行中，用户消息默认操作条收窄为 [copy, delete]（编辑入口隐藏，避免草稿被静默丢弃）', async () => {
+  it('流式进行中，用户消息默认操作条收窄为 [copy]（编辑入口隐藏，避免草稿被静默丢弃）', async () => {
     let ctrl!: ReadableStreamDefaultController<Uint8Array>;
     const request = vi.fn(async () => new ReadableStream<Uint8Array>({ start: (c) => (ctrl = c) }));
     const w = mount(AiChat, { props: { request } });
@@ -626,14 +626,14 @@ describe('AiChat', () => {
     await flushPromises(); // 流挂起：isLoading 保持 true
     const userBubble = w.findAll('.aix-bubble--end')[0]!;
     const btns = userBubble.findAll('.aix-bubble-actions__btn');
-    expect(btns.map((b) => b.attributes('aria-label'))).toEqual(['复制', '删除']);
+    expect(btns.map((b) => b.attributes('aria-label'))).toEqual(['复制']);
     ctrl.close();
     await flushPromises();
 
     const userBubbleAfter = w.findAll('.aix-bubble--end')[0]!;
     expect(
       userBubbleAfter.findAll('.aix-bubble-actions__btn').map((b) => b.attributes('aria-label')),
-    ).toEqual(['复制', '编辑', '删除']);
+    ).toEqual(['复制', '编辑']);
   });
 
   it('点击用户消息的编辑按钮 → 进入内联编辑态 → 保存触发 onEdit（产生兄弟分支 + 重新请求）+ emit edit', async () => {
@@ -685,9 +685,11 @@ describe('AiChat', () => {
     await flushPromises();
   });
 
-  it('点击用户消息的删除按钮 → emit delete(message)，不改动 messages', async () => {
+  // 用户消息默认操作条不再含 delete（见上方"用户消息默认操作条为 [copy, edit]"），
+  // 这里用函数形态 actions 显式为该消息追加 delete，覆盖 BubbleActions → AiChat 的 emit 接线本身仍然生效
+  it('点击用户消息的删除按钮（业务通过函数形态 actions 显式开启）→ emit delete(message)，不改动 messages', async () => {
     const request = vi.fn(async () => once('答'));
-    const w = mount(AiChat, { props: { request } });
+    const w = mount(AiChat, { props: { request, actions: () => ['copy', 'edit', 'delete'] } });
     await w.find('textarea').setValue('问题');
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();
@@ -716,7 +718,7 @@ describe('AiChat', () => {
     const userBubble = w.findAll('.aix-bubble--end')[0]!;
     expect(
       userBubble.findAll('.aix-bubble-actions__btn').map((b) => b.attributes('aria-label')),
-    ).toEqual(['复制', '编辑', '删除']); // 用户消息依旧是固定默认值，未被 ['copy'] 这个数组影响
+    ).toEqual(['复制', '编辑']); // 用户消息依旧是固定默认值，未被 ['copy'] 这个数组影响
   });
 
   it('actions 含 feedback：点击赞写回 extra.feedback 并 emit feedback', async () => {

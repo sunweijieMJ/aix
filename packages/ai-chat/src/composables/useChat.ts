@@ -116,13 +116,29 @@ export interface UseChatReturn {
   resume: (id: string, payload?: unknown) => Promise<boolean>;
 }
 
+/**
+ * 末块若为未封口的 reasoning（endedAt 为空）则打上 endedAt；否则空操作，可安全重复调用。
+ * 调用时机：即将结束当前 reasoning 独占末块地位的那一刻（转场到其它块类型 / 消息终态落定）。
+ */
+function sealReasoning(msg: ChatMessage) {
+  const last = msg.content[msg.content.length - 1];
+  if (last && last.type === 'reasoning' && last.endedAt == null) {
+    last.endedAt = Date.now();
+  }
+}
+
 /** 把流式增量并入 AI 消息内容块：末尾同 type 则追加，否则新开带 id 的 block */
 function appendDelta(msg: ChatMessage, blockType: 'text' | 'reasoning', delta: string) {
   const last = msg.content[msg.content.length - 1];
   if (last && last.type === blockType) {
     last.text += delta;
   } else {
-    msg.content.push({ id: genBlockId(), type: blockType, text: delta });
+    sealReasoning(msg);
+    const block: ContentBlock =
+      blockType === 'reasoning'
+        ? { id: genBlockId(), type: 'reasoning', text: delta, startedAt: Date.now() }
+        : { id: genBlockId(), type: 'text', text: delta };
+    msg.content.push(block);
   }
 }
 
@@ -360,11 +376,17 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
               }
               if (block) {
+                sealReasoning(aiMsg);
                 // 一次性追加非流式块（如 sources）；缺 id 时补全 id 保证 key 稳定
-                aiMsg.content.push(block.id ? block : { ...block, id: genBlockId() });
+                const b = block.id ? block : { ...block, id: genBlockId() };
+                // 业务经 block 字段一次性提供 reasoning 内容（而非走 delta 累积）时，缺时间戳则
+                // 按创建时刻补写；已自带时间戳（业务自行计时）则不覆盖。
+                if (b.type === 'reasoning' && b.startedAt == null) b.startedAt = Date.now();
+                aiMsg.content.push(b);
                 if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
               }
               if (tool) {
+                sealReasoning(aiMsg);
                 applyToolEvent(aiMsg, tool, toolCtx);
                 if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
               }
@@ -382,10 +404,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           if (timedOut) throw streamTimeoutError();
           if (ctrl.signal.aborted) {
             if (ownsMsg()) {
+              sealReasoning(aiMsg);
               aiMsg.status = 'abort';
               onAbort?.(aiMsg);
             }
           } else if (ownsMsg()) {
+            sealReasoning(aiMsg);
             aiMsg.status = 'success';
             onFinish?.(aiMsg);
           }
@@ -394,6 +418,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 中断优先于重试：被 abort 直接判为 abort，不再重试。
           if (ctrl.signal.aborted) {
             if (ownsMsg()) {
+              sealReasoning(aiMsg);
               aiMsg.status = 'abort';
               onAbort?.(aiMsg);
             }
@@ -420,6 +445,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             });
             if (ctrl.signal.aborted) {
               if (ownsMsg()) {
+                sealReasoning(aiMsg);
                 aiMsg.status = 'abort';
                 onAbort?.(aiMsg);
               }
@@ -431,6 +457,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 并兜底打到控制台，避免错误被静默吞掉导致线上无法排障）。
           console.error('[ai-chat] request failed:', finalErr);
           if (ownsMsg()) {
+            sealReasoning(aiMsg);
             aiMsg.status = 'error';
             aiMsg.extra = { ...aiMsg.extra, error: finalErr };
             onError?.(aiMsg, finalErr);

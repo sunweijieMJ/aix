@@ -846,10 +846,10 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
     return r && r.length > 0 ? r : null;
   }
   if (item.role === 'user') {
-    // 固定默认值，不受 props.actions 数组内容影响（数组形态历史语义只配置 AI 消息）；
-    // isLoading 时收窄为 [copy, delete]——原本气泡自带铅笔按钮在全局 loading 时整个不渲染
+    // 固定默认值（不含 delete），不受 props.actions 数组内容影响（数组形态历史语义只配置 AI 消息）；
+    // isLoading 时收窄为 [copy]——原本气泡自带铅笔按钮在全局 loading 时整个不渲染
     // （避免草稿在 loading 期间被静默丢弃），这里保留同等的"隐藏入口"效果。
-    return isLoading.value ? ['copy', 'delete'] : ['copy', 'edit', 'delete'];
+    return isLoading.value ? ['copy'] : ['copy', 'edit'];
   }
   if (item.role !== 'ai' || item.status !== 'success') return null;
   // 1→N 拆分：默认操作条仅末子气泡显示
@@ -876,7 +876,7 @@ const actionsMap = computed(() => {
 
 // 数组形态为空数组时整个 footer 模板都不挂（避免空 footer 节点）；函数形态恒挂、逐条判定；
 // speech 启用时也须挂 footer 以呈现朗读按钮；
-// 用户消息的操作条为固定默认值（['copy','edit','delete']，加载中为 ['copy','delete']），
+// 用户消息的操作条为固定默认值（['copy','edit']，加载中为 ['copy']），
 // 不受 props.actions 数组形态影响（数组形态只作用于 AI 消息），
 // 因此只要消息列表中存在用户消息，footer 就必须挂载，避免 actions=[] 时连用户消息的固定操作条也被误挂断
 const actionsEnabled = computed(

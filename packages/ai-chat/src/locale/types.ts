@@ -11,6 +11,8 @@ export interface AiChatLocale {
   thinking: string;
   /** 思考完成后折叠面板标题 */
   thoughtTitle: string;
+  /** 思考耗时后缀模板，{s} 替换为秒数，拼接在 thoughtTitle 之后，如"（用时34秒）" */
+  thoughtDurationSuffix: string;
   /** 复制消息按钮 */
   copyButton: string;
   /** 复制成功反馈文案 */

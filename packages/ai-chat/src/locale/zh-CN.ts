@@ -7,6 +7,7 @@ export const zhCN: AiChatLocale = {
   retryButton: '重试',
   thinking: '思考中…',
   thoughtTitle: '思考过程',
+  thoughtDurationSuffix: '（用时{s}秒）',
   copyButton: '复制',
   copiedButton: '已复制',
   regenerateButton: '重新生成',
