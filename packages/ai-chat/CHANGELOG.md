@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.8
+
+### Patch Changes
+
+- 增加思考耗时
+
 ## 0.0.7
 
 ### Patch Changes
