@@ -426,3 +426,76 @@ export const ToolbarScopedActions: Story = {
     await waitFor(() => expect(canvas.getByText(/最近发送：你好/)).toBeTruthy(), { timeout: 5000 });
   },
 };
+
+// ──────────────────────────────────────────────
+// toolbarItems 混排（内置 attach/voice + 自定义组件）
+// ──────────────────────────────────────────────
+
+const ModelBadge = {
+  props: ['sender'],
+  template:
+    '<button type="button" class="model-badge" :disabled="sender.disabled">模型: GPT-4</button>',
+};
+
+/**
+ * ToolbarItemsMixed：toolbarItems 内置 'voice'/'attach' 与自定义组件混排，
+ * 顺序即渲染顺序；自定义组件通过 `sender` prop（非展开合并）读取受控状态。
+ * 发送键固定在工具栏行最右（与工具项同行），未显式插入 'spacer' 时自动补在发送键前。
+ * play：断言工具栏行第 2 个子节点是自定义模型徽标（顺序验证：voice → model → attach），
+ * 且发送键始终是该行最后一个子节点。
+ */
+export const ToolbarItemsMixed: Story = {
+  render: () => ({
+    components: { Sender },
+    setup: () => ({
+      toolbarItems: ['voice', { key: 'model', component: ModelBadge }, 'attach'],
+      attachments: { upload: async (f: File) => ({ name: f.name, url: `/f/${f.name}` }) },
+      voice: { recognizer: mockRecognizer },
+    }),
+    template: `
+      <Sender
+        placeholder="输入消息…"
+        :toolbar-items="toolbarItems"
+        :attachments="attachments"
+        :voice="voice"
+      />
+    `,
+  }),
+  play: async ({ canvasElement }) => {
+    const toolbar = canvasElement.querySelector('.aix-sender__toolbar') as HTMLElement;
+    await waitFor(() => expect(toolbar.children.length).toBeGreaterThan(0), { timeout: 3000 });
+    expect((toolbar.children[1] as HTMLElement).classList.contains('model-badge')).toBe(true);
+    expect(
+      toolbar.children[toolbar.children.length - 1]!.classList.contains('aix-sender__send'),
+    ).toBe(true);
+  },
+};
+
+/**
+ * ToolbarItemsSpacer：显式插入内置 'spacer' 占位符，把工具栏行切分成左右两组——
+ * spacer 之前的项靠左，之后的项（含发送键）被推到最右。
+ * play：断言语音按钮在左侧分组、模型徽标与发送键在右侧分组（均在 spacer 之后）。
+ */
+export const ToolbarItemsSpacer: Story = {
+  render: () => ({
+    components: { Sender },
+    setup: () => ({
+      toolbarItems: ['voice', 'spacer', { key: 'model', component: ModelBadge }],
+      voice: { recognizer: mockRecognizer },
+    }),
+    template: `
+      <Sender placeholder="输入消息…" :toolbar-items="toolbarItems" :voice="voice" />
+    `,
+  }),
+  play: async ({ canvasElement }) => {
+    const toolbar = canvasElement.querySelector('.aix-sender__toolbar') as HTMLElement;
+    await waitFor(() => expect(toolbar.children.length).toBe(4), { timeout: 3000 });
+    // 顺序：voice(左) → spacer(切分点) → model-badge(右) → send(右)
+    expect((toolbar.children[0] as HTMLElement).getAttribute('aria-label')).toBe('语音输入');
+    expect(
+      (toolbar.children[1] as HTMLElement).classList.contains('aix-sender__toolbar-spacer'),
+    ).toBe(true);
+    expect((toolbar.children[2] as HTMLElement).classList.contains('model-badge')).toBe(true);
+    expect((toolbar.children[3] as HTMLElement).classList.contains('aix-sender__send')).toBe(true);
+  },
+};

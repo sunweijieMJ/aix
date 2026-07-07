@@ -115,6 +115,7 @@
       :attachments="attachments"
       :voice="voice"
       :triggers="triggers"
+      :toolbar-items="toolbarItems"
       :allow-empty-submit="pendingQuotes.length > 0"
       @submit="onSend"
       @cancel="abort"
@@ -149,6 +150,12 @@
             {{ t.quoteChipsCollapse }}
           </button>
         </div>
+      </template>
+      <template v-if="$slots.toolbar" #toolbar="scope">
+        <slot name="toolbar" v-bind="scope" />
+      </template>
+      <template v-if="$slots.prefix" #prefix="scope">
+        <slot name="prefix" v-bind="scope" />
       </template>
     </Sender>
   </div>
@@ -272,6 +279,8 @@ export interface AiChatProps {
   quote?: QuoteConfig | boolean;
   /** 触发菜单配置（@提及/斜杠命令），直通 Sender；静态配置（setup 快照） */
   triggers?: TriggerConfig[];
+  /** 工具栏项（内置 attach/voice + 自定义对象混排），直通 Sender；不传则用 Sender 默认值 ['attach','voice'] */
+  toolbarItems?: SenderToolbarItems;
   /**
    * 追问建议（opt-in）：true 全默认；对象可配 fillOnly（点击仅回填不发送）/ max（上限，默认 5）。
    * 联合类型含 boolean：withDefaults 必须显式 default undefined（同 quote 的坑）
@@ -368,6 +377,7 @@ import Prompts from './Prompts.vue';
 import QuoteChip from './QuoteChip.vue';
 import QuoteMenu from './QuoteMenu.vue';
 import Sender from './Sender.vue';
+import type { SenderToolbarItems } from './Sender.vue';
 import Suggestions from './Suggestions.vue';
 import Welcome from './Welcome.vue';
 
@@ -413,6 +423,8 @@ const AICHAT_RESERVED_SLOTS = [
   'content',
   'footer',
   'quote-menu',
+  'toolbar',
+  'prefix',
 ];
 const blockSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !AICHAT_RESERVED_SLOTS.includes(n)),

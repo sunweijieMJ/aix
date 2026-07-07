@@ -4,7 +4,7 @@
     :class="[
       ns.b(),
       ns.is('disabled', disabled),
-      ns.is('has-toolbar', !!$slots.toolbar || !!attach),
+      ns.is('has-toolbar', !!$slots.toolbar || hasVisibleToolbarItems),
     ]"
     @drop="onDrop"
     @dragover="onDragOver"
@@ -61,27 +61,6 @@
         @paste="onPaste"
         @compositionend="onCompositionEnd"
       />
-      <button
-        v-if="showMic"
-        type="button"
-        :class="[ns.e('mic'), ns.is('listening', isListening)]"
-        :aria-label="isListening ? t.voiceStopButton : t.voiceButton"
-        :title="isListening ? t.voiceStopButton : t.voiceButton"
-        :disabled="disabled"
-        @click="onMicClick"
-      >
-        <Mic />
-      </button>
-      <button
-        type="button"
-        :class="[ns.e('send'), ns.is('streaming', loading)]"
-        :disabled="disabled || (!loading && (isUploading || (!inner.trim() && !hasDone && !allowEmptySubmit)))"
-        :aria-label="loading ? t.stopButton : isUploading ? t.attachmentUploading : t.sendButton"
-        :title="loading ? t.stopButton : isUploading ? t.attachmentUploading : t.sendButton"
-        @click="onSendClick"
-      >
-        <span :class="ns.e('send-icon')" :style="sendIconStyle" aria-hidden="true" />
-      </button>
     </div>
     <!-- 触发菜单（@提及 / 斜杠命令等）：opt-in，未配置 triggers 时 menuOpen 恒为 false 不渲染 -->
     <TriggerMenu
@@ -95,24 +74,61 @@
       @update:active-index="menuActiveIndex = $event"
       @select="applyTriggerSelect"
     />
-    <!-- 底部工具栏：附件启用 或 提供 toolbar slot 时渲染 -->
-    <div v-if="$slots.toolbar || attach" :class="ns.e('toolbar')">
-      <!-- 回形针按钮：附件启用时显示，点击 toggle 面板；收起且有条目时带数量徽标 -->
-      <button
-        v-if="attach"
-        type="button"
-        :class="[ns.e('attach-btn'), ns.is('active', panelOpen)]"
-        :aria-label="t.attachButton"
-        :title="t.attachButton"
-        :disabled="disabled"
-        @click="panelOpen = !panelOpen"
-      >
-        <Attachment />
-        <span v-if="!panelOpen && attach.items.value.length > 0" :class="ns.e('attach-badge')">
-          {{ attach.items.value.length }}
-        </span>
-      </button>
+    <!-- 底部工具栏：始终渲染（承载发送键）；内置项（attach/voice）/自定义项/toolbar slot 默认全部靠左，
+         发送键固定在最右——未显式插入 'spacer' 时靠 CSS margin-left:auto 自动推到最右；
+         数组里显式放了 'spacer'，则改由该占位符切分左右分组（其后内容含发送键被推到右侧），见下方补充的隐式 spacer 判断 -->
+    <div :class="ns.e('toolbar')">
+      <template v-for="item in toolbarItems" :key="typeof item === 'string' ? item : item.key">
+        <button
+          v-if="item === 'attach' && attach"
+          type="button"
+          :class="[ns.e('attach-btn'), ns.is('active', panelOpen)]"
+          :aria-label="t.attachButton"
+          :title="t.attachButton"
+          :disabled="disabled"
+          @click="panelOpen = !panelOpen"
+        >
+          <Attachment />
+          <span v-if="!panelOpen && attach.items.value.length > 0" :class="ns.e('attach-badge')">
+            {{ attach.items.value.length }}
+          </span>
+        </button>
+        <button
+          v-else-if="item === 'voice' && showMic"
+          type="button"
+          :class="[ns.e('mic'), ns.is('listening', isListening)]"
+          :aria-label="isListening ? t.voiceStopButton : t.voiceButton"
+          :title="isListening ? t.voiceStopButton : t.voiceButton"
+          :disabled="disabled"
+          @click="onMicClick"
+        >
+          <Mic />
+        </button>
+        <span v-else-if="item === 'spacer'" :class="ns.e('toolbar-spacer')" aria-hidden="true" />
+        <component
+          :is="item.component"
+          v-else-if="typeof item === 'object'"
+          v-bind="item.props"
+          :sender="slotScope"
+        />
+      </template>
       <slot name="toolbar" v-bind="slotScope" />
+      <!-- 未显式放 spacer 时，在发送键前补一个隐式 spacer：与显式 spacer 走同一套 CSS 机制，
+           而不是单独给发送键加 margin-left:auto——避免两种推右方式并存、多个 auto margin 分摊空间的歧义 -->
+      <span v-if="!hasExplicitSpacer" :class="ns.e('toolbar-spacer')" aria-hidden="true" />
+      <button
+        type="button"
+        :class="[ns.e('send'), ns.is('streaming', loading)]"
+        :disabled="
+          disabled ||
+          (!loading && (isUploading || (!inner.trim() && !hasDone && !allowEmptySubmit)))
+        "
+        :aria-label="loading ? t.stopButton : isUploading ? t.attachmentUploading : t.sendButton"
+        :title="loading ? t.stopButton : isUploading ? t.attachmentUploading : t.sendButton"
+        @click="onSendClick"
+      >
+        <span :class="ns.e('send-icon')" :style="sendIconStyle" aria-hidden="true" />
+      </button>
     </div>
     <!-- 底部扩展区：位于工具栏之下，用于字数统计 / 提示语 / 自定义页脚等 -->
     <div v-if="$slots.footer" :class="ns.e('footer')">
@@ -122,6 +138,24 @@
 </template>
 
 <script lang="ts">
+/**
+ * 工具栏内置项：'attach' 附件按钮 / 'voice' 语音按钮，实际是否渲染仍分别由 attachments/voice prop 决定；
+ * 'spacer' 是纯布局占位符（不产生可见内容），插入到数组中希望左右分组的位置——
+ * 其之前的项（含 'spacer' 本身）靠左，之后的项（含发送键）被推到最右侧。
+ * 不插入 'spacer' 时行为不变：所有项靠左，发送键始终固定在最右。
+ */
+export type ToolbarBuiltinKey = 'attach' | 'voice' | 'spacer';
+
+/** 工具栏自定义项：任意 Vue 组件；受控状态经独立 `sender` prop 注入，不与 props 合并（见 Task 2） */
+export interface ToolbarItem {
+  key: string;
+  component: Component;
+  props?: Record<string, unknown>;
+}
+
+/** 工具栏项数组：内置字符串项与自定义对象项混排，渲染顺序 = 数组顺序 */
+export type SenderToolbarItems = (ToolbarBuiltinKey | ToolbarItem)[];
+
 export interface SenderProps {
   /** 输入框文本（v-model），受控 */
   modelValue?: string;
@@ -151,6 +185,11 @@ export interface SenderProps {
    * 视为静态配置（setup 快照），运行时切换不生效——与 attachments/voice 约定一致。
    */
   triggers?: TriggerConfig[];
+  /**
+   * 工具栏项：内置 'attach'/'voice' 与自定义对象混排，渲染顺序 = 数组顺序。
+   * 'attach'/'voice' 是位置占位符，实际是否出内容仍分别由 attachments/voice prop 决定。
+   */
+  toolbarItems?: SenderToolbarItems;
 }
 export interface SenderEmits {
   /** 输入框文本变化（v-model 同步） */
@@ -196,6 +235,7 @@ import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { Attachment, Mic } from '@aix/icons';
 import { ref, computed, watch, nextTick, reactive } from 'vue';
+import type { Component } from 'vue';
 // 发送按钮图标采用设计稿导出的本地 SVG 资源：默认态为纸飞机、输出中为停止圆点。
 // 以 CSS mask 渲染，使图标颜色随按钮 color（主题变量）变化，而非 SVG 内置色，符合主题系统约定。
 import sendIconUrl from '../assets/send-default.svg';
@@ -205,7 +245,14 @@ import type { UseAttachmentsOptions } from '../composables/useAttachments';
 import { useTriggerDetect } from '../composables/useTriggerDetect';
 import { useVoiceInput } from '../composables/useVoiceInput';
 import { locale } from '../locale';
-import type { AttachmentItem, MentionEntity, SubmitMeta, TriggerConfig, TriggerItem, VoiceConfig } from '../types';
+import type {
+  AttachmentItem,
+  MentionEntity,
+  SubmitMeta,
+  TriggerConfig,
+  TriggerItem,
+  VoiceConfig,
+} from '../types';
 import { getCaretRect } from '../utils/caretRect';
 import AttachmentsPanel from './AttachmentsPanel.vue';
 import TriggerMenu from './TriggerMenu.vue';
@@ -216,6 +263,7 @@ const props = withDefaults(defineProps<SenderProps>(), {
   disabled: false,
   submitType: 'enter',
   allowEmptySubmit: false,
+  toolbarItems: () => ['attach', 'voice'] as SenderToolbarItems,
 });
 const emit = defineEmits<SenderEmits>();
 const ns = useNamespace('sender');
@@ -331,9 +379,7 @@ const menuAnchorRect = (): DOMRect => {
     if (r) return r;
   }
   return (
-    rootRef.value?.getBoundingClientRect() ??
-    el?.getBoundingClientRect() ??
-    new DOMRect(0, 0, 0, 0)
+    rootRef.value?.getBoundingClientRect() ?? el?.getBoundingClientRect() ?? new DOMRect(0, 0, 0, 0)
   );
 };
 
@@ -546,6 +592,38 @@ const voice = props.voice
 
 const isListening = computed(() => voice?.status.value === 'listening');
 const showMic = computed(() => !!voice && voice.isSupported.value);
+
+// 工具栏项是否产出可见内容：'attach'/'voice' 由各自的 opt-in prop 决定；'spacer' 是不可见的纯布局占位符，
+// 不计入"有内容"；对象项视为总会渲染内容。用于根 class is-has-toolbar 的语义（"工具栏是否有除发送键外的内容"）
+const toolbarItemVisible = (item: SenderToolbarItems[number]) => {
+  if (item === 'attach') return !!attach;
+  if (item === 'voice') return showMic.value;
+  if (item === 'spacer') return false;
+  return true;
+};
+const hasVisibleToolbarItems = computed(() => props.toolbarItems.some(toolbarItemVisible));
+// 数组里是否已显式放置 'spacer'：放了就不再在发送键前自动补一个——由消费方自己决定左右分组的切分点
+const hasExplicitSpacer = computed(() => props.toolbarItems.includes('spacer'));
+
+// 开发期提示：字符串项既非 'attach'/'voice'/'spacer' 也非对象项时（如拼错的 key）渲染时会被静默跳过，
+// 每个无效值只警告一次，避免拼写错误长期无提示地"消失"
+const warnedInvalidToolbarItems = new Set<string>();
+watch(
+  () => props.toolbarItems,
+  (items) => {
+    for (const item of items) {
+      if (typeof item === 'string' && item !== 'attach' && item !== 'voice' && item !== 'spacer') {
+        if (!warnedInvalidToolbarItems.has(item)) {
+          warnedInvalidToolbarItems.add(item);
+          console.warn(
+            `[ai-chat] Sender toolbarItems 中的 "${item}" 不是有效内置项（仅支持 'attach'/'voice'/'spacer'），也不是对象项，已跳过渲染`,
+          );
+        }
+      }
+    }
+  },
+  { immediate: true },
+);
 
 // 聆听中文本被手动改写时重启识别会话：旧会话在途的 interim/final 被令牌守卫丢弃（防重复拼接），
 // 以改写后的内容为新基线继续聆听。调用方须先确认 voice 处于 listening 态。
@@ -867,7 +945,7 @@ defineExpose({
     box-shadow: none;
   }
 
-  /* 输入行：前缀 + 文本域 + 发送按钮 */
+  /* 输入行：前缀 + 文本域（发送按钮已挪至下方工具栏行，见 &__toolbar） */
   &__main {
     display: flex;
     align-items: flex-end;
@@ -889,12 +967,18 @@ defineExpose({
     padding-bottom: var(--aix-paddingXXS);
   }
 
-  /* 底部工具栏行 */
+  /* 底部工具栏行：始终渲染，左侧工具项 + 发送键共享一行；左右分组由 &__toolbar-spacer 撑开 */
   &__toolbar {
     display: flex;
     align-items: center;
     gap: var(--aix-sizeXS);
     padding-top: var(--aix-paddingXXS);
+  }
+
+  /* 工具栏行的左右分组占位符：显式插入的 'spacer' 或未插入时自动补在发送键前的隐式占位符，
+     共用同一条规则——撑满剩余空间，把自身之后的内容（含发送键）推到行最右侧 */
+  &__toolbar-spacer {
+    flex: 1 1 auto;
   }
 
   /* 底部扩展区（字数统计 / 提示语等），在工具栏之下 */
@@ -969,16 +1053,16 @@ defineExpose({
     display: none;
   }
 
-  /* 麦克风按钮：输入行内，发送按钮左侧 */
+  /* 麦克风按钮：工具栏行内，与附件按钮同尺寸 */
   &__mic {
     display: inline-flex;
     flex: none;
     align-items: center;
     justify-content: center;
-    width: var(--aix-controlHeight);
-    height: var(--aix-controlHeight);
+    width: var(--aix-controlHeightSM);
+    height: var(--aix-controlHeightSM);
     border: none;
-    border-radius: var(--aix-borderRadiusLG);
+    border-radius: var(--aix-borderRadiusSM);
     background-color: transparent;
     color: var(--aix-colorTextTertiary);
     cursor: pointer;
@@ -989,7 +1073,7 @@ defineExpose({
     }
 
     &:hover:not(:disabled) {
-      background-color: var(--aix-colorFillSecondary);
+      background-color: var(--aix-colorFillTertiary);
       color: var(--aix-colorText);
     }
 

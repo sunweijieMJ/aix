@@ -774,6 +774,68 @@ describe('AiChat', () => {
     await speakBtn!.trigger('click');
     expect(enqueue).toHaveBeenCalledWith('你好世界');
   });
+
+  it('toolbarItems 透传给 Sender，渲染自定义工具栏项', () => {
+    const Custom = { template: '<button class="custom-item">x</button>' };
+    const request = vi.fn(async () => once('回答'));
+    const w = mount(AiChat, {
+      props: { request, toolbarItems: [{ key: 'x', component: Custom }] },
+    });
+    expect(w.find('.aix-sender .custom-item').exists()).toBe(true);
+  });
+
+  it('#toolbar / #prefix 插槽转发给 Sender，不被块插槽通用逻辑误吞', () => {
+    const request = vi.fn(async () => once('回答'));
+    const w = mount(AiChat, {
+      props: { request },
+      slots: {
+        toolbar: '<button class="ins">灵感</button>',
+        prefix: '<span class="pre">+</span>',
+      },
+    });
+    expect(w.find('.aix-sender__toolbar .ins').exists()).toBe(true);
+    expect(w.find('.aix-sender__prefix .pre').exists()).toBe(true);
+  });
+
+  it('#toolbar 不泄漏给 BubbleList 的块渲染器（直接验证 AICHAT_RESERVED_SLOTS 修复，而非仅验证 Sender 收到内容）', async () => {
+    const ToolbarProbe = defineComponent({
+      props: { block: { type: Object, required: true } },
+      setup(_props, { slots }) {
+        return () =>
+          h('div', { class: 'toolbar-probe' }, [
+            slots.toolbar
+              ? slots.toolbar()
+              : h('span', { class: 'toolbar-probe-fallback' }, 'fallback'),
+          ]);
+      },
+    });
+    const request = vi.fn(async () => once('回答'));
+    const w = mount(AiChat, {
+      props: {
+        request,
+        blockRenderers: { probe: ToolbarProbe },
+        defaultMessages: [
+          {
+            id: 'm1',
+            role: 'ai',
+            status: 'success',
+            content: [{ id: 'b1', type: 'probe' }],
+          },
+        ] as never,
+      },
+      slots: {
+        toolbar: '<button class="ins">灵感</button>',
+      },
+    });
+    await nextTick();
+    // Sender 的工具栏行仍正常收到内容（既有行为不变）
+    expect(w.find('.aix-sender__toolbar .ins').exists()).toBe(true);
+    // 关键断言：块渲染器内部的 toolbar slot 从未被 Bubble.vue 绑定过——渲染的是回退内容，
+    // 而不是 AiChat 顶层传入的 .ins 按钮。若 'toolbar' 仍残留在 AICHAT_RESERVED_SLOTS 之外
+    // （即修复未生效），blockSlotNames 会把它转发给 Bubble → ToolbarProbe，这里就会断言失败。
+    expect(w.find('.toolbar-probe .toolbar-probe-fallback').exists()).toBe(true);
+    expect(w.find('.toolbar-probe .ins').exists()).toBe(false);
+  });
 });
 
 describe('AiChat 交互块回传端到端', () => {

@@ -82,9 +82,12 @@ describe('Sender', () => {
     expect(w.emitted('submit')).toBeUndefined();
   });
 
-  it('未提供 toolbar slot 时不渲染工具栏行（向后兼容）', () => {
+  it('未提供 toolbar slot 且内置项均未启用时，工具栏行仍渲染但只有发送键（承载发送键，始终存在）', () => {
     const w = mount(Sender);
-    expect(w.find('.aix-sender__toolbar').exists()).toBe(false);
+    const toolbar = w.find('.aix-sender__toolbar');
+    expect(toolbar.exists()).toBe(true);
+    expect(toolbar.find('.aix-sender__send').exists()).toBe(true);
+    expect(toolbar.findAll('.aix-sender__attach-btn, .aix-sender__mic').length).toBe(0);
     expect(w.classes()).not.toContain('is-has-toolbar');
   });
 
@@ -607,6 +610,145 @@ describe('Sender', () => {
       });
       await w.find('.do-clear').trigger('click');
       expect(w.emitted('update:modelValue')!.at(-1)).toEqual(['']);
+    });
+  });
+
+  describe('toolbarItems', () => {
+    const fakeRecognizer = () => {
+      let ctx: VoiceRecognizerCtx | null = null;
+      const recognizer: VoiceRecognizer = (c) => {
+        ctx = c;
+        return { stop: vi.fn(() => ctx?.onEnd()) };
+      };
+      return recognizer;
+    };
+    const instantUpload = vi.fn(async (f: File) => ({ name: f.name, url: `/f/${f.name}` }));
+
+    it('语音启用时，麦克风渲染在工具栏行内，不再出现在主输入行', () => {
+      const w = mount(Sender, { props: { voice: { recognizer: fakeRecognizer() } } });
+      expect(w.find('.aix-sender__toolbar [aria-label="语音输入"]').exists()).toBe(true);
+      expect(w.find('.aix-sender__main [aria-label="语音输入"]').exists()).toBe(false);
+    });
+
+    it('默认顺序 ["attach","voice"]：同时启用附件与语音时，附件按钮在前', () => {
+      const w = mount(Sender, {
+        props: {
+          attachments: { upload: instantUpload },
+          voice: { recognizer: fakeRecognizer() },
+        },
+      });
+      const buttons = w.findAll('.aix-sender__toolbar button');
+      expect(buttons.length).toBeGreaterThanOrEqual(2);
+      expect(buttons[0]!.attributes('aria-label')).toBe('添加附件');
+      expect(buttons[1]!.attributes('aria-label')).toBe('语音输入');
+    });
+
+    it('自定义顺序 ["voice","attach"]：语音按钮渲染在附件按钮之前', () => {
+      const w = mount(Sender, {
+        props: {
+          toolbarItems: ['voice', 'attach'],
+          attachments: { upload: instantUpload },
+          voice: { recognizer: fakeRecognizer() },
+        },
+      });
+      const buttons = w.findAll('.aix-sender__toolbar button');
+      expect(buttons.length).toBeGreaterThanOrEqual(2);
+      expect(buttons[0]!.attributes('aria-label')).toBe('语音输入');
+      expect(buttons[1]!.attributes('aria-label')).toBe('添加附件');
+    });
+
+    it('默认 toolbarItems（attach+voice）均未启用时，工具栏行内不出现 attach/voice 按钮（只剩发送键）', () => {
+      const w = mount(Sender);
+      const toolbar = w.find('.aix-sender__toolbar');
+      expect(toolbar.exists()).toBe(true);
+      expect(toolbar.findAll('.aix-sender__attach-btn, .aix-sender__mic').length).toBe(0);
+      expect(toolbar.find('.aix-sender__send').exists()).toBe(true);
+    });
+
+    it('自定义组件项：按 item.component 渲染并透传 item.props', () => {
+      const Custom = {
+        props: ['label'],
+        template: '<button class="custom-item">{{ label }}</button>',
+      };
+      const w = mount(Sender, {
+        props: { toolbarItems: [{ key: 'model', component: Custom, props: { label: '模型' } }] },
+      });
+      expect(w.find('.aix-sender__toolbar .custom-item').text()).toBe('模型');
+    });
+
+    it('sender scope 以独立 prop 传入，不覆盖自定义组件自身同名 prop（disabled 场景）', () => {
+      const Custom = {
+        props: ['disabled', 'sender'],
+        template: '<div class="custom-item">{{ disabled }}-{{ sender.disabled }}</div>',
+      };
+      const w = mount(Sender, {
+        props: {
+          disabled: true, // Sender 整体禁用 → sender.disabled 应为 true
+          toolbarItems: [{ key: 'x', component: Custom, props: { disabled: false } }], // 业务自己的 disabled=false 不应被覆盖
+        },
+      });
+      expect(w.find('.custom-item').text()).toBe('false-true');
+    });
+
+    it('自定义项与内置项混排：["attach", 自定义, "voice"] 渲染顺序与数组顺序一致', () => {
+      const Custom = { template: '<button class="custom-item">model</button>' };
+      const w = mount(Sender, {
+        props: {
+          attachments: { upload: instantUpload },
+          voice: { recognizer: fakeRecognizer() },
+          toolbarItems: ['attach', { key: 'model', component: Custom }, 'voice'],
+        },
+      });
+      const items = w.findAll('.aix-sender__toolbar > *');
+      expect(items[0]!.attributes('aria-label')).toBe('添加附件');
+      expect(items[1]!.classes()).toContain('custom-item');
+      expect(items[2]!.attributes('aria-label')).toBe('语音输入');
+    });
+
+    it('未显式插入 spacer 时，发送键始终是工具栏行的最后一个子节点（隐式补在发送键前）', () => {
+      const w = mount(Sender, {
+        props: {
+          attachments: { upload: instantUpload },
+          toolbarItems: ['attach'],
+        },
+      });
+      const items = w.findAll('.aix-sender__toolbar > *');
+      expect(items.at(-1)!.classes()).toContain('aix-sender__send');
+      // 只有隐式补的这一个 spacer，没有重复
+      expect(w.findAll('.aix-sender__toolbar-spacer').length).toBe(1);
+    });
+
+    it('显式插入 "spacer"：切分左右分组，且不再重复补隐式 spacer', () => {
+      const Custom = { template: '<button class="custom-item">model</button>' };
+      const w = mount(Sender, {
+        props: {
+          attachments: { upload: instantUpload },
+          voice: { recognizer: fakeRecognizer() },
+          toolbarItems: ['attach', { key: 'model', component: Custom }, 'spacer', 'voice'],
+        },
+      });
+      const items = w.findAll('.aix-sender__toolbar > *');
+      // 顺序：attach、model、spacer、voice、send —— spacer 前的靠左，之后的（含发送键）在右
+      expect(items[0]!.attributes('aria-label')).toBe('添加附件');
+      expect(items[1]!.classes()).toContain('custom-item');
+      expect(items[2]!.classes()).toContain('aix-sender__toolbar-spacer');
+      expect(items[3]!.attributes('aria-label')).toBe('语音输入');
+      expect(items[4]!.classes()).toContain('aix-sender__send');
+      // 只有消费方显式放的这一个 spacer，不会再补隐式的
+      expect(w.findAll('.aix-sender__toolbar-spacer').length).toBe(1);
+    });
+
+    it('spacer 不计入 is-has-toolbar 的"有可见内容"判断', () => {
+      const w = mount(Sender, { props: { toolbarItems: ['spacer'] } });
+      // attach/voice 均未启用，唯一的项是不可见的 spacer —— 不应被判定为"有工具栏内容"
+      expect(w.classes()).not.toContain('is-has-toolbar');
+    });
+
+    it('spacer 是合法内置项，不触发"无效 toolbarItems"警告', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mount(Sender, { props: { toolbarItems: ['spacer', 'attach'] } });
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
   });
 });
