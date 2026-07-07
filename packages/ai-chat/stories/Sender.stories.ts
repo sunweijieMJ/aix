@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { fn, expect, userEvent, waitFor } from 'storybook/test';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Sender, ModelSelector } from '../src';
 import type { VoiceRecognizer } from '../src';
 
@@ -431,27 +431,38 @@ export const ToolbarScopedActions: Story = {
 // toolbarItems 混排（内置 attach/voice + 自定义组件）
 // ──────────────────────────────────────────────
 
-const ModelBadge = {
-  props: ['sender'],
-  template:
-    '<button type="button" class="model-badge" :disabled="sender.disabled">模型: GPT-4</button>',
-};
-
 /**
- * ToolbarItemsMixed：toolbarItems 内置 'voice'/'attach' 与自定义组件混排，
- * 顺序即渲染顺序；自定义组件通过 `sender` prop（非展开合并）读取受控状态。
+ * ToolbarItemsMixed：toolbarItems 内置 'voice'/'attach' 与自定义组件（真实的 ModelSelector 下拉选择器）混排，
+ * 顺序即渲染顺序；ModelSelector 的 v-model 通过 item.props 的 modelValue + 'onUpdate:modelValue' 手动接线
+ * （toolbarItems 整体是 computed，selectedModel 变化会重新生成带最新 modelValue 的数组）。
  * 发送键固定在工具栏行最右（与工具项同行），未显式插入 'spacer' 时自动补在发送键前。
- * play：断言工具栏行第 2 个子节点是自定义模型徽标（顺序验证：voice → model → attach），
- * 且发送键始终是该行最后一个子节点。
+ * play：展开下拉 → 选择另一模型 → 断言当前模型值更新；并断言发送键始终是该行最后一个子节点。
  */
 export const ToolbarItemsMixed: Story = {
   render: () => ({
-    components: { Sender },
-    setup: () => ({
-      toolbarItems: ['voice', { key: 'model', component: ModelBadge }, 'attach'],
-      attachments: { upload: async (f: File) => ({ name: f.name, url: `/f/${f.name}` }) },
-      voice: { recognizer: mockRecognizer },
-    }),
+    components: { Sender, ModelSelector },
+    setup: () => {
+      const selectedModel = ref('Qwen3-Max');
+      const toolbarItems = computed(() => [
+        'voice',
+        {
+          key: 'model',
+          component: ModelSelector,
+          props: {
+            options: MODEL_OPTIONS,
+            modelValue: selectedModel.value,
+            'onUpdate:modelValue': (v: string) => (selectedModel.value = v),
+            placement: 'bottom',
+          },
+        },
+        'attach',
+      ]);
+      return {
+        toolbarItems,
+        attachments: { upload: async (f: File) => ({ name: f.name, url: `/f/${f.name}` }) },
+        voice: { recognizer: mockRecognizer },
+      };
+    },
     template: `
       <Sender
         placeholder="输入消息…"
@@ -461,28 +472,62 @@ export const ToolbarItemsMixed: Story = {
       />
     `,
   }),
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, canvas }) => {
     const toolbar = canvasElement.querySelector('.aix-sender__toolbar') as HTMLElement;
     await waitFor(() => expect(toolbar.children.length).toBeGreaterThan(0), { timeout: 3000 });
-    expect((toolbar.children[1] as HTMLElement).classList.contains('model-badge')).toBe(true);
+    expect((toolbar.children[1] as HTMLElement).classList.contains('aix-model-selector')).toBe(
+      true,
+    );
     expect(
       toolbar.children[toolbar.children.length - 1]!.classList.contains('aix-sender__send'),
     ).toBe(true);
+
+    // 展开下拉、选另一个模型，证明自定义工具项能真的响应交互（而不是静态展示）
+    await canvas.findByText('Qwen3-Max');
+    await userEvent.click(canvas.getByText('Qwen3-Max'));
+    const body = canvasElement.ownerDocument.body;
+    const opt = await waitFor(
+      () => {
+        const el = Array.from(body.querySelectorAll('*')).find(
+          (e) =>
+            e.textContent?.trim() === 'DeepSeek-V3' && (e as HTMLElement).offsetParent !== null,
+        ) as HTMLElement | undefined;
+        if (!el) throw new Error('DeepSeek-V3 选项未出现');
+        return el;
+      },
+      { timeout: 3000 },
+    );
+    await userEvent.click(opt, { pointerEventsCheck: 0 });
+    await canvas.findByText('DeepSeek-V3', undefined, { timeout: 3000 });
   },
 };
 
 /**
  * ToolbarItemsSpacer：显式插入内置 'spacer' 占位符，把工具栏行切分成左右两组——
  * spacer 之前的项靠左，之后的项（含发送键）被推到最右。
- * play：断言语音按钮在左侧分组、模型徽标与发送键在右侧分组（均在 spacer 之后）。
+ * play：断言语音按钮在左侧分组、ModelSelector 与发送键在右侧分组（均在 spacer 之后）。
  */
 export const ToolbarItemsSpacer: Story = {
   render: () => ({
-    components: { Sender },
-    setup: () => ({
-      toolbarItems: ['voice', 'spacer', { key: 'model', component: ModelBadge }],
-      voice: { recognizer: mockRecognizer },
-    }),
+    components: { Sender, ModelSelector },
+    setup: () => {
+      const selectedModel = ref('Qwen3-Max');
+      const toolbarItems = computed(() => [
+        'voice',
+        'spacer',
+        {
+          key: 'model',
+          component: ModelSelector,
+          props: {
+            options: MODEL_OPTIONS,
+            modelValue: selectedModel.value,
+            'onUpdate:modelValue': (v: string) => (selectedModel.value = v),
+            placement: 'bottom',
+          },
+        },
+      ]);
+      return { toolbarItems, voice: { recognizer: mockRecognizer } };
+    },
     template: `
       <Sender placeholder="输入消息…" :toolbar-items="toolbarItems" :voice="voice" />
     `,
@@ -490,12 +535,14 @@ export const ToolbarItemsSpacer: Story = {
   play: async ({ canvasElement }) => {
     const toolbar = canvasElement.querySelector('.aix-sender__toolbar') as HTMLElement;
     await waitFor(() => expect(toolbar.children.length).toBe(4), { timeout: 3000 });
-    // 顺序：voice(左) → spacer(切分点) → model-badge(右) → send(右)
+    // 顺序：voice(左) → spacer(切分点) → ModelSelector(右) → send(右)
     expect((toolbar.children[0] as HTMLElement).getAttribute('aria-label')).toBe('语音输入');
     expect(
       (toolbar.children[1] as HTMLElement).classList.contains('aix-sender__toolbar-spacer'),
     ).toBe(true);
-    expect((toolbar.children[2] as HTMLElement).classList.contains('model-badge')).toBe(true);
+    expect((toolbar.children[2] as HTMLElement).classList.contains('aix-model-selector')).toBe(
+      true,
+    );
     expect((toolbar.children[3] as HTMLElement).classList.contains('aix-sender__send')).toBe(true);
   },
 };

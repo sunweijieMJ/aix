@@ -159,8 +159,10 @@ export interface BubbleProps {
   blockRenderers?: BlockRenderers;
   /** 工具渲染器注册表：toolName → 组件，透传给内置 ToolUseBlock 做按名路由 */
   toolRenderers?: BlockRenderers;
-  /** 是否允许内联编辑（仅对 role==='user' 的气泡生效），默认 false */
-  editable?: boolean;
+  /** 是否处于内联编辑态（受控，由外部驱动进入/退出——见 BubbleList.startEdit） */
+  editing?: boolean;
+  /** 编辑态下是否禁止保存（如全局请求进行中），true 时点击保存无效果、保留草稿与编辑态 */
+  saveDisabled?: boolean;
 }
 
 /**
@@ -173,13 +175,22 @@ export type BlockRenderers = Record<string, Component>;
 /**
  * 角色级可配的气泡字段（仅样式/渲染类：placement/variant/shape/avatar/contentRender/blockRenderers）。
  * 类型即文档地排除列表级收口的字段：content/role/status/loading/itemKey 由消息数据驱动，
- * typing/editable/toolRenderers 由列表级策略收口（打字机只对本会话流式过的消息开启、editable 绑定 edit→重发语义、toolRenderers 由列表级绑定）——
+ * typing/editing/saveDisabled/toolRenderers 由列表级策略收口（打字机只对本会话流式过的消息开启、
+ * editing/saveDisabled 绑定编辑态与全局 loading 语义、toolRenderers 由列表级绑定）——
  * 这些键在 BubbleList 模板中被显式绑定覆盖，role 级传入会静默无效，故从类型上禁止。
  */
 export type RoleBubbleConfig = Partial<
   Omit<
     BubbleProps,
-    'content' | 'role' | 'status' | 'loading' | 'itemKey' | 'typing' | 'editable' | 'toolRenderers'
+    | 'content'
+    | 'role'
+    | 'status'
+    | 'loading'
+    | 'itemKey'
+    | 'typing'
+    | 'editing'
+    | 'saveDisabled'
+    | 'toolRenderers'
   >
 >;
 
@@ -404,11 +415,11 @@ export type ContentBlock =
   | QuoteBlock;
 
 /** 内置消息操作预设 key */
-export type ActionKey = 'copy' | 'regenerate' | 'feedback' | 'speak' | 'quote';
+export type ActionKey = 'copy' | 'regenerate' | 'feedback' | 'speak' | 'quote' | 'edit' | 'delete';
 
 /** 自定义消息操作项 */
 export interface ActionItem {
-  /** 唯一 key；不要与内置预设 key（copy/regenerate/feedback/speak/quote）同名，否则 v-for key 冲突 */
+  /** 唯一 key；不要与内置预设 key（copy/regenerate/feedback/speak/quote/edit/delete）同名，否则 v-for key 冲突 */
   key: string;
   /** 按钮文案（tooltip + aria-label），a11y 必填 */
   label: string;

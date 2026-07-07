@@ -24,7 +24,7 @@ const meta: Meta<typeof AiChat> = {
       description: {
         component:
           '演示 AiChat 多版本分支能力：重新生成与编辑用户消息均走无损分支树，气泡操作条出现 ‹ i/n › 切换器。' +
-          '配置 `actions` 含 `regenerate` 即可开启重新生成；`editable` 开启用户消息编辑；' +
+          '配置 `actions` 含 `regenerate` 即可开启重新生成；用户消息默认操作条内置 `edit`（非流式期间），无需额外配置；' +
           '`v-model:tree` 绑定 `ExportedTree` ref，结构变化时自动同步。',
       },
     },
@@ -155,7 +155,6 @@ export const EditBranch: Story = {
           :request="request"
           :parse-chunk="branchParseChunk"
           :actions="['copy', 'regenerate']"
-          :editable="true"
           v-model:tree="tree"
           placeholder="输入消息发送，然后编辑用户消息体验分支…"
           welcome-title="编辑消息分支演示"
@@ -188,7 +187,7 @@ export const EditBranch: Story = {
       editArea.focus();
       editArea.select();
       await userEvent.type(editArea, '修改后的问题', { skipClick: true });
-      await userEvent.click(canvas.getByRole('button', { name: '保存' }), {
+      await userEvent.click(canvas.getByRole('button', { name: '保存编辑' }), {
         pointerEventsCheck: 0,
       });
       await waitFor(() => expect(canvas.getByText(/第 2 个版本的回复/)).toBeInTheDocument(), {

@@ -224,63 +224,83 @@ describe('Bubble slot 透传到块渲染器', () => {
   });
 });
 
-describe('Bubble 内联编辑', () => {
-  it('editable 且 user 角色时显示编辑按钮', () => {
+describe('Bubble 内联编辑（editing 受控 prop）', () => {
+  it('editing=true 且 user 角色时显示内联编辑框，textarea 初值为原文', () => {
     const w = mount(Bubble, {
-      props: { content: [textBlock('hi')], role: 'user', editable: true },
+      props: { content: [textBlock('原始内容')], role: 'user', editing: true },
     });
-    expect(w.find('.aix-bubble__edit-btn').exists()).toBe(true);
-  });
-
-  it('editable 但 ai 角色不显示编辑按钮', () => {
-    const w = mount(Bubble, { props: { content: [textBlock('hi')], role: 'ai', editable: true } });
-    expect(w.find('.aix-bubble__edit-btn').exists()).toBe(false);
-  });
-
-  it('未开启 editable 不显示编辑按钮', () => {
-    const w = mount(Bubble, { props: { content: [textBlock('hi')], role: 'user' } });
-    expect(w.find('.aix-bubble__edit-btn').exists()).toBe(false);
-  });
-
-  it('点击编辑进入编辑态，textarea 初值为原文', async () => {
-    const w = mount(Bubble, {
-      props: { content: [textBlock('原始内容')], role: 'user', editable: true },
-    });
-    await w.find('.aix-bubble__edit-btn').trigger('click');
     const ta = w.find('textarea.aix-bubble__edit-input');
     expect(ta.exists()).toBe(true);
     expect((ta.element as HTMLTextAreaElement).value).toBe('原始内容');
   });
 
+  it('editing=false（默认）不显示内联编辑框', () => {
+    const w = mount(Bubble, { props: { content: [textBlock('hi')], role: 'user' } });
+    expect(w.find('textarea.aix-bubble__edit-input').exists()).toBe(false);
+  });
+
+  it('不再自带独立编辑按钮（入口已移交 BubbleActions，见 Task 2）', () => {
+    const w = mount(Bubble, { props: { content: [textBlock('hi')], role: 'user' } });
+    expect(w.find('.aix-bubble__edit-btn').exists()).toBe(false);
+  });
+
   it('保存非空内容 emit edit 并退出编辑态', async () => {
     const w = mount(Bubble, {
-      props: { content: [textBlock('old')], role: 'user', editable: true },
+      props: { content: [textBlock('old')], role: 'user', editing: true },
     });
-    await w.find('.aix-bubble__edit-btn').trigger('click');
     await w.find('textarea.aix-bubble__edit-input').setValue('new text');
     await w.find('.aix-bubble__edit-save').trigger('click');
     expect(w.emitted('edit')).toEqual([['new text']]);
-    expect(w.find('textarea.aix-bubble__edit-input').exists()).toBe(false);
+    expect(w.emitted('editing-change')).toEqual([[false]]);
   });
 
   it('保存空白内容不 emit', async () => {
     const w = mount(Bubble, {
-      props: { content: [textBlock('old')], role: 'user', editable: true },
+      props: { content: [textBlock('old')], role: 'user', editing: true },
     });
-    await w.find('.aix-bubble__edit-btn').trigger('click');
     await w.find('textarea.aix-bubble__edit-input').setValue('   ');
     await w.find('.aix-bubble__edit-save').trigger('click');
     expect(w.emitted('edit')).toBeUndefined();
   });
 
-  it('取消编辑退出且不 emit', async () => {
+  it('取消编辑 emit editing-change(false) 且不 emit edit', async () => {
     const w = mount(Bubble, {
-      props: { content: [textBlock('old')], role: 'user', editable: true },
+      props: { content: [textBlock('old')], role: 'user', editing: true },
     });
-    await w.find('.aix-bubble__edit-btn').trigger('click');
     await w.find('.aix-bubble__edit-cancel').trigger('click');
-    expect(w.find('textarea.aix-bubble__edit-input').exists()).toBe(false);
+    expect(w.emitted('editing-change')).toEqual([[false]]);
     expect(w.emitted('edit')).toBeUndefined();
+  });
+
+  it('saveDisabled=true 时点击保存不 emit edit、不退出编辑态（保留草稿）', async () => {
+    const w = mount(Bubble, {
+      props: { content: [textBlock('old')], role: 'user', editing: true, saveDisabled: true },
+    });
+    await w.find('textarea.aix-bubble__edit-input').setValue('new text');
+    await w.find('.aix-bubble__edit-save').trigger('click');
+    expect(w.emitted('edit')).toBeUndefined();
+    expect(w.emitted('editing-change')).toBeUndefined();
+    // 草稿仍在（编辑框还开着）
+    expect(w.find('textarea.aix-bubble__edit-input').exists()).toBe(true);
+  });
+
+  it('editing prop 从 false 变 true 时，draft 重新取当前 content 的最新文本', async () => {
+    const w = mount(Bubble, {
+      props: { content: [textBlock('第一版')], role: 'user', editing: false },
+    });
+    await w.setProps({ content: [textBlock('第二版')], editing: true });
+    const ta = w.find('textarea.aix-bubble__edit-input');
+    expect((ta.element as HTMLTextAreaElement).value).toBe('第二版');
+  });
+
+  it('editing=true 时隐藏 footer（避免草稿未保存时被同排的删除等操作误触）', async () => {
+    const w = mount(Bubble, {
+      props: { content: [textBlock('old')], role: 'user', editing: false },
+      slots: { footer: () => h('button', { class: 'fake-delete' }, '删除') },
+    });
+    expect(w.find('.fake-delete').exists()).toBe(true);
+    await w.setProps({ editing: true });
+    expect(w.find('.fake-delete').exists()).toBe(false);
   });
 });
 

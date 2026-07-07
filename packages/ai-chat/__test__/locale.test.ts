@@ -13,6 +13,7 @@ describe('locale', () => {
   it('包含必要文案', () => {
     expect(locale['zh-CN'].senderPlaceholder).toBeTruthy();
     expect(locale['en-US'].sendButton).toBeTruthy();
+    expect(locale['zh-CN'].deleteButton).toBeTruthy();
   });
 
   it('运行时切换 locale：Sender 占位符随 setLocale 更新为对应语言', async () => {

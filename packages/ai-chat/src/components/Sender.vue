@@ -75,8 +75,8 @@
       @select="applyTriggerSelect"
     />
     <!-- 底部工具栏：始终渲染（承载发送键）；内置项（attach/voice）/自定义项/toolbar slot 默认全部靠左，
-         发送键固定在最右——未显式插入 'spacer' 时靠 CSS margin-left:auto 自动推到最右；
-         数组里显式放了 'spacer'，则改由该占位符切分左右分组（其后内容含发送键被推到右侧），见下方补充的隐式 spacer 判断 -->
+         发送键固定在最右——未显式插入 'spacer' 时，由下方补的隐式 spacer 元素把发送键推到最右；
+         数组里显式放了 'spacer'，则改由该占位符切分左右分组（其后内容含发送键被推到右侧） -->
     <div :class="ns.e('toolbar')">
       <template v-for="item in toolbarItems" :key="typeof item === 'string' ? item : item.key">
         <button
@@ -1053,14 +1053,14 @@ defineExpose({
     display: none;
   }
 
-  /* 麦克风按钮：工具栏行内，与附件按钮同尺寸 */
+  /* 麦克风按钮 */
   &__mic {
     display: inline-flex;
     flex: none;
     align-items: center;
     justify-content: center;
-    width: var(--aix-controlHeightSM);
-    height: var(--aix-controlHeightSM);
+    width: var(--aix-controlHeight);
+    height: var(--aix-controlHeight);
     border: none;
     border-radius: var(--aix-borderRadiusSM);
     background-color: transparent;
@@ -1083,14 +1083,14 @@ defineExpose({
     }
   }
 
-  /* 回形针按钮：工具栏内；展开态 is-active 主色高亮（参照 mic is-listening） */
+  /* 回形针按钮：工具栏内，与发送键同尺寸；展开态 is-active 主色高亮（参照 mic is-listening） */
   &__attach-btn {
     display: inline-flex;
     position: relative;
     align-items: center;
     justify-content: center;
-    width: var(--aix-controlHeightSM);
-    height: var(--aix-controlHeightSM);
+    width: var(--aix-controlHeight);
+    height: var(--aix-controlHeight);
     padding: 0;
     border: none;
     border-radius: var(--aix-borderRadiusSM);

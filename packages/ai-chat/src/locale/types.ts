@@ -23,10 +23,13 @@ export interface AiChatLocale {
   dislikeButton: string;
   /** 编辑按钮（结果卡片） */
   editButton: string;
-  /** 退出编辑 */
-  exitEdit: string;
-  /** 保存 */
-  saveButton: string;
+  /** 内联编辑框的取消按钮 */
+  cancelButton: string;
+  /** 内联编辑框的确认按钮无障碍标签：按钮文案复用 sendButton（显示"发送"），
+   * 但两者在同一气泡内可能同时可见（编辑中的消息 + 底部 Sender），aria-label 需区分，避免 role+name 撞车导致无法定位 */
+  editSaveButton: string;
+  /** 删除消息按钮 */
+  deleteButton: string;
   /** 回到底部按钮的无障碍标签 */
   backToBottom: string;
   /** 请求出错时气泡内展示的错误文案 */

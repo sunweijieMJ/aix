@@ -235,24 +235,38 @@ const SourcesDemo = defineComponent({
 });
 
 /**
- * Editable：用户气泡内联编辑。editable=true 时，hover 气泡后出现「编辑」按钮；
- * 点击后切换为可编辑输入框，确认后 emit edit 事件。
- * play 断言：初始无编辑输入框 → 点击编辑按钮 → 输入框出现。
+ * Editing：受控编辑态演示。editing 现在是外部驱动的受控 prop——Bubble 自身不再有触发按钮
+ * （触发入口已整合进 BubbleActions 的内置 edit 项）。本 story 用一个外部按钮模拟业务侧的触发，
+ * 展示 Bubble 收到 editing=true 时切换为内联编辑框，textarea 初值为原文。
+ * play 断言：初始无编辑输入框 → 点击外部触发按钮 → 输入框出现且初值正确。
  */
-export const Editable: Story = {
-  args: {
-    content: [textBlock('可编辑的用户消息')],
-    role: 'user',
-    editable: true,
-  },
+export const Editing: Story = {
+  render: () => ({
+    components: { Bubble },
+    setup: () => {
+      const editing = ref(false);
+      return { editing, content: [textBlock('可编辑的用户消息')] };
+    },
+    template: `
+      <div>
+        <button type="button" @click="editing = true">触发编辑（模拟 BubbleActions 的 edit 点击）</button>
+        <Bubble
+          :content="content"
+          role="user"
+          :editing="editing"
+          @editing-change="editing = $event"
+        />
+      </div>
+    `,
+  }),
   play: async ({ canvas }) => {
     // 初始：编辑输入框不在 DOM 中
     await expect(canvas.queryByRole('textbox')).toBeNull();
-    // 点击「编辑」按钮
-    const editBtn = await canvas.findByRole('button', { name: '编辑' });
-    await userEvent.click(editBtn);
-    // 点击后，内联编辑输入框出现
-    await canvas.findByRole('textbox');
+    // 点击外部触发按钮（模拟业务侧 BubbleActions 的 edit 点击）
+    await userEvent.click(canvas.getByText('触发编辑（模拟 BubbleActions 的 edit 点击）'));
+    // 点击后，内联编辑输入框出现，且初值为原文
+    const ta = await canvas.findByRole('textbox');
+    expect((ta as HTMLTextAreaElement).value).toBe('可编辑的用户消息');
   },
 };
 

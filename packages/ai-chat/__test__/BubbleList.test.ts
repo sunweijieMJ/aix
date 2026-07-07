@@ -1,6 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { describe, it, expect, vi } from 'vitest';
-import { defineComponent } from 'vue';
+import { defineComponent, nextTick } from 'vue';
 import { h } from 'vue';
 import Bubble from '../src/components/Bubble.vue';
 import BubbleList from '../src/components/BubbleList.vue';
@@ -377,19 +377,29 @@ describe('BubbleList', () => {
     expect(bubbles[1]!.classes()).toContain('aix-bubble--start');
   });
 
-  it('editable 时仅 user 气泡显示编辑按钮，点击保存冒泡为带 id 的 edit', async () => {
-    const w = mount(BubbleList, { props: { items, editable: true } });
-    const editBtns = w.findAll('.aix-bubble__edit-btn');
-    expect(editBtns).toHaveLength(1); // 仅 user 气泡（items[0]）
-    await editBtns[0]!.trigger('click');
-    await w.find('textarea.aix-bubble__edit-input').setValue('改后');
+  it('startEdit(id) 使对应气泡进入受控编辑态，保存冒泡为带 id 的 edit', async () => {
+    const w = mount(BubbleList, { props: { items } });
+    (w.vm as unknown as { startEdit: (id: string) => void }).startEdit('1');
+    await nextTick();
+    const ta = w.find('textarea.aix-bubble__edit-input');
+    expect(ta.exists()).toBe(true);
+    await ta.setValue('改后');
     await w.find('.aix-bubble__edit-save').trigger('click');
     expect(w.emitted('edit')![0]).toEqual(['1', '改后']); // [id, text]
   });
 
-  it('未开启 editable 时不显示任何编辑按钮', () => {
+  it('默认（未调用 startEdit）任何气泡都不处于编辑态', () => {
     const w = mount(BubbleList, { props: { items } });
-    expect(w.findAll('.aix-bubble__edit-btn')).toHaveLength(0);
+    expect(w.find('textarea.aix-bubble__edit-input').exists()).toBe(false);
+  });
+
+  it('saveDisabled 透传给每个 Bubble', async () => {
+    const w = mount(BubbleList, { props: { items, saveDisabled: true } });
+    (w.vm as unknown as { startEdit: (id: string) => void }).startEdit('1');
+    await nextTick();
+    await w.find('textarea.aix-bubble__edit-input').setValue('改后');
+    await w.find('.aix-bubble__edit-save').trigger('click');
+    expect(w.emitted('edit')).toBeUndefined(); // saveDisabled 拒绝保存
   });
 
   it('透传非保留命名插槽到每个 Bubble 的块渲染器', () => {

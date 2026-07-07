@@ -9,7 +9,14 @@
     </div>
     <div :class="ns.e('wrapper')">
       <div v-if="$slots.header" :class="ns.e('header')"><slot name="header" /></div>
-      <div :class="[ns.e('content'), ns.em('content', variant), ns.em('content', shape)]">
+      <div
+        :class="[
+          ns.e('content'),
+          ns.em('content', variant),
+          ns.em('content', shape),
+          ns.is('editing', editing),
+        ]"
+      >
         <span v-if="loading" :class="ns.e('loading')">
           <i
             v-for="i in 3"
@@ -27,15 +34,17 @@
           />
           <div :class="ns.e('edit-actions')">
             <button type="button" :class="ns.e('edit-cancel')" @click="cancelEdit">
-              {{ t.exitEdit }}
+              {{ t.cancelButton }}
             </button>
             <button
               type="button"
               :class="ns.e('edit-save')"
-              :disabled="!editable"
+              :aria-label="t.editSaveButton"
+              :title="t.editSaveButton"
+              :disabled="saveDisabled"
               @click="saveEdit"
             >
-              {{ t.saveButton }}
+              {{ t.sendButton }}
             </button>
           </div>
         </div>
@@ -74,17 +83,8 @@
           </span>
         </template>
       </div>
-      <button
-        v-if="canEdit && !editing"
-        type="button"
-        :class="ns.e('edit-btn')"
-        :aria-label="t.editButton"
-        :title="t.editButton"
-        @click="enterEdit"
-      >
-        <Edit />
-      </button>
-      <div v-if="$slots.footer" :class="ns.e('footer')"><slot name="footer" /></div>
+      <!-- 编辑态期间隐藏 footer（复制/编辑/删除等操作条）：避免草稿未保存时被同排的「删除」误删 -->
+      <div v-if="$slots.footer && !editing" :class="ns.e('footer')"><slot name="footer" /></div>
     </div>
   </div>
 </template>
@@ -109,7 +109,6 @@ export interface BubbleEmits {
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
-import { Edit } from '@aix/icons';
 import { computed, watch, watchEffect, useSlots, ref } from 'vue';
 import { locale } from '../locale';
 import type { BlockAction, BubbleProps, BubbleContentInfo, BlockRenderers } from '../types';
@@ -195,27 +194,28 @@ const renderedNode = computed(() =>
   props.contentRender ? props.contentRender(props.content, info.value) : null,
 );
 
-// 内联编辑：仅 user 气泡且 editable、非 loading 时可进入
-const canEdit = computed(() => props.editable && props.role === 'user' && !props.loading);
-const editing = ref(false);
+// 内联编辑：editing 是受控 prop（由 BubbleList.startEdit 驱动进入），Bubble 自身只管 draft 文本与保存/取消。
 const draft = ref('');
-// 编辑态进出上抛列表层：使其把该行标记为常驻挂载，避免虚拟滚动回收销毁行内草稿
-watch(editing, (v) => emit('editing-change', v));
-const enterEdit = () => {
-  draft.value = messageText({ id: '', role: props.role ?? 'ai', content: props.content ?? [] });
-  editing.value = true;
-};
+// editing 由 false→true 时（外部请求进入编辑态）重新取当前 content 的最新文本作为草稿基线
+watch(
+  () => props.editing,
+  (v) => {
+    if (v)
+      draft.value = messageText({ id: '', role: props.role ?? 'ai', content: props.content ?? [] });
+  },
+  { immediate: true }, // 挂载时若 editing 已为 true（如 BubbleList 已在 editingIds 中）也需取到初值，而非等下一次翻转
+);
 const saveEdit = () => {
-  // editable 在编辑框打开期间被外部翻 false（如流式进行中）时，上层 onEdit 守卫会拒绝保存；
-  // 此处不退出编辑态、不 emit，保留编辑框与草稿，待恢复可编辑后再提交，避免草稿被静默丢弃。
-  if (!props.editable) return;
+  // saveDisabled 在编辑框打开期间被外部翻 true（如流式进行中）时，上层 onEdit 守卫会拒绝保存；
+  // 此处不 emit editing-change、不 emit edit，保留编辑框与草稿，待恢复可保存后再提交，避免草稿被静默丢弃。
+  if (props.saveDisabled) return;
   const text = draft.value.trim();
   if (!text) return; // 空内容不提交
   emit('edit', text);
-  editing.value = false;
+  emit('editing-change', false);
 };
 const cancelEdit = () => {
-  editing.value = false;
+  emit('editing-change', false);
 };
 </script>
 
@@ -322,63 +322,41 @@ const cancelEdit = () => {
     box-shadow: none;
   }
 
+  /* 编辑态：统一换回中性描边+底色，不再沿用角色专属着色（如用户气泡的主色浅底）——
+     深色主题下 colorPrimaryBg 是较重的暗色调，与编辑框内保存按钮的主色又形成第二次撞色，观感差；
+     编辑态在这里之后声明以覆盖上面 --end &__content--filled 的着色（同优先级取源码顺序） */
+  &__content.is-editing {
+    border-color: var(--aix-colorBorder);
+    background-color: var(--aix-colorBgContainer);
+    box-shadow: none;
+  }
+
   &__footer {
     padding: 0 var(--aix-paddingXXS);
-  }
-
-  &__edit-btn {
-    display: inline-flex;
-    align-items: center;
-    align-self: flex-end;
-    justify-content: center;
-    width: var(--aix-controlHeightSM);
-    height: var(--aix-controlHeightSM);
-    padding: 0;
-    transition: opacity var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
-    border: none;
-    border-radius: var(--aix-borderRadiusSM);
-    opacity: 0;
-    background: transparent;
-    color: var(--aix-colorTextTertiary);
-    cursor: pointer;
-
-    svg {
-      width: 16px;
-      height: 16px;
-    }
-
-    &:hover {
-      background-color: var(--aix-colorFillTertiary);
-      color: var(--aix-colorText);
-    }
-  }
-
-  &__wrapper:hover &__edit-btn,
-  &__edit-btn:focus-visible {
-    opacity: 1;
   }
 
   &__edit {
     display: flex;
     flex-direction: column;
-    gap: var(--aix-marginXXS);
+    gap: var(--aix-marginSM);
     min-width: 240px;
   }
 
+  // 编辑框本身不再自带边框/背景——直接融入外层气泡卡片（.aix-bubble__content 已提供圆角+底色），
+  // 避免「卡片里再嵌一层卡片」的双层边框观感
   &__edit-input {
     width: 100%;
-    padding: var(--aix-paddingXS);
-    border: 1px solid var(--aix-colorBorder);
-    border-radius: var(--aix-borderRadiusSM);
-    background-color: var(--aix-colorBgContainer);
+    min-height: calc(var(--aix-lineHeight) * var(--aix-fontSize) * 2);
+    padding: 0;
+    border: none;
+    background: transparent;
     color: var(--aix-colorText);
     font-family: inherit;
     font-size: var(--aix-fontSize);
     line-height: var(--aix-lineHeight);
-    resize: vertical;
+    resize: none;
 
     &:focus {
-      border-color: var(--aix-colorPrimary);
       outline: none;
     }
   }
@@ -386,34 +364,42 @@ const cancelEdit = () => {
   &__edit-actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--aix-sizeXS);
+    gap: var(--aix-marginXS);
   }
 
   &__edit-cancel,
   &__edit-save {
-    padding: 2px var(--aix-paddingSM);
-    border: 1px solid var(--aix-colorBorder);
-    border-radius: var(--aix-borderRadiusSM);
-    background: transparent;
-    color: var(--aix-colorText);
+    display: inline-flex;
+    align-items: center;
+    height: var(--aix-controlHeightSM);
+    padding: 0 var(--aix-paddingSM);
+    transition: background-color var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
+    border: none;
+    border-radius: 999px;
     font-size: var(--aix-fontSizeSM);
     cursor: pointer;
   }
 
+  &__edit-cancel {
+    background-color: var(--aix-colorFillSecondary);
+    color: var(--aix-colorText);
+
+    &:hover {
+      background-color: var(--aix-colorFill);
+    }
+  }
+
   &__edit-save {
-    border-color: transparent;
     background-color: var(--aix-colorPrimary);
     color: var(--aix-colorTextLight);
+
+    &:hover:not(:disabled) {
+      background-color: var(--aix-colorPrimaryHover);
+    }
 
     &:disabled {
       opacity: 0.6;
       cursor: not-allowed;
-    }
-  }
-
-  @media (hover: none) {
-    &__edit-btn {
-      opacity: 1;
     }
   }
 

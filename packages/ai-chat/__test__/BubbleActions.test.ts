@@ -12,6 +12,33 @@ describe('BubbleActions', () => {
     });
   });
 
+  describe('edit/delete 内置项', () => {
+    it("items 含 'edit' 时渲染编辑按钮，点击 emit edit", async () => {
+      const w = mount(BubbleActions, { props: { items: ['edit'] } });
+      const btn = w.find('[aria-label="编辑"]');
+      expect(btn.exists()).toBe(true);
+      await btn.trigger('click');
+      expect(w.emitted('edit')).toBeTruthy();
+    });
+
+    it("items 含 'delete' 时渲染删除按钮，点击 emit delete", async () => {
+      const w = mount(BubbleActions, { props: { items: ['delete'] } });
+      const btn = w.find('[aria-label="删除"]');
+      expect(btn.exists()).toBe(true);
+      await btn.trigger('click');
+      expect(w.emitted('delete')).toBeTruthy();
+    });
+
+    it("['copy','edit','delete'] 按数组顺序渲染三个按钮", () => {
+      const w = mount(BubbleActions, { props: { items: ['copy', 'edit', 'delete'] } });
+      const btns = w.findAll('.aix-bubble-actions__btn');
+      expect(btns).toHaveLength(3);
+      expect(btns[0]!.attributes('aria-label')).toBe('复制');
+      expect(btns[1]!.attributes('aria-label')).toBe('编辑');
+      expect(btns[2]!.attributes('aria-label')).toBe('删除');
+    });
+  });
+
   it('默认渲染复制 + 重新生成两个按钮', () => {
     const w = mount(BubbleActions);
     expect(w.findAll('.aix-bubble-actions__btn')).toHaveLength(2);

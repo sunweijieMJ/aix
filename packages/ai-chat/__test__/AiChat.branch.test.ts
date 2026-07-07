@@ -47,7 +47,8 @@ describe('AiChat — 分支切换器贯通', () => {
     (w.vm as unknown as { onSend: (t: string) => Promise<void> }).onSend('问题');
     await flush();
     // 触发重新生成，产生第 2 个版本（此时 AI 消息有 branches）
-    await w.find('.aix-bubble-actions [aria-label]').trigger('click');
+    // 用户消息现在也默认挂载操作条，需用 aria-label 精确定位「重新生成」按钮，避免误点到用户消息的操作
+    await w.find('[aria-label="重新生成"]').trigger('click');
     await flush();
     // 关键断言：整组 2 个子气泡中，只有末子气泡显示分支切换器（非末子气泡 branchMap 置 undefined）
     expect(w.findAll('.aix-bubble-actions__branch').length).toBe(1);
@@ -58,8 +59,8 @@ describe('AiChat — 分支切换器贯通', () => {
     const w = mount(AiChat, { props: { request, parseChunk, actions: ['regenerate'] } });
     (w.vm as unknown as { onSend: (t: string) => Promise<void> }).onSend('问题');
     await flush();
-    // 触发重新生成
-    await w.find('.aix-bubble-actions [aria-label]').trigger('click'); // regenerate 按钮（首个 action）
+    // 触发重新生成（用户消息现在也默认挂载操作条，需用 aria-label 精确定位，避免误点用户消息的操作）
+    await w.find('[aria-label="重新生成"]').trigger('click');
     await flush();
     expect(w.find('.aix-bubble-actions__branch').exists()).toBe(true);
     expect(w.text()).toContain('2/2');

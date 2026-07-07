@@ -512,13 +512,13 @@ export const GeneratingProcess: Story = {
 };
 
 /**
- * EditFeedbackAndSubmitType：编排层三能力集成（editable / actions(feedback) / submitType）。
+ * EditFeedbackAndSubmitType：编排层三能力集成（编辑重发（用户消息默认操作条内置）/ actions(feedback) / submitType）。
  *
  * 一个 play 串联 AiChat 编排层对外的三组能力与事件，补齐 FullInteractionFlow（流式/中断/重试）
  * 未覆盖的「消息后处理」路径：
  * 1. **赞踩反馈**（`actions: ['copy','regenerate','feedback']`）：对历史 AI 回复点「赞同」，受控写回 `extra.feedback` 高亮，
  *    并对外 `emit('feedback', { id, value })`。
- * 2. **编辑重发**（`editable`）：编辑用户消息并保存 → 截断后续重新生成，对外 `emit('edit', { id, text })`。
+ * 2. **编辑重发**（用户消息默认操作条内置 `edit`，无需 prop 开启）：编辑用户消息并保存 → 截断后续重新生成，对外 `emit('edit', { id, text })`。
  * 3. **提交方式**（`submitType='shiftEnter'`）：普通 Enter 仅换行不发送，Shift+Enter 才触发发送
  *    （对外 `emit('send', text)`）。
  *
@@ -528,12 +528,11 @@ export const GeneratingProcess: Story = {
 export const EditFeedbackAndSubmitType: Story = {
   args: {
     request: assistantRequest(),
-    editable: true,
     actions: ['copy', 'regenerate', 'feedback'],
     submitType: 'shiftEnter',
     welcomeTitle: '编辑重发 · 赞踩反馈 · Shift+Enter 提交',
     welcomeDescription:
-      '演示 AiChat 编排层 editable / actions(feedback) / submitType 三能力与对外事件',
+      '演示 AiChat 编排层内置编辑重发（用户消息默认操作条）/ actions(feedback) / submitType 三能力与对外事件',
     placeholder: '输入消息，Shift+Enter 发送，Enter 换行…',
     prompts: undefined,
     // 对外事件间谍（v-bind="args" 会把 onXxx 注册为监听器）
@@ -552,10 +551,9 @@ export const EditFeedbackAndSubmitType: Story = {
     // 先等 Markdown 引擎就绪（正文渲染为 <p>）再开始交互：冷启动 runner 里引擎在 play 中途
     // 就绪会触发气泡重渲染 + virtua 重挂，编辑态 Bubble 实例被销毁，已抓取的编辑框/保存按钮
     // 变成脱离 DOM 的僵尸节点（点击不产生 emit）——Quote PC Selection 同源问题
-    await waitFor(
-      () => expect(canvasElement.querySelector('.aix-bubble p')).toBeInTheDocument(),
-      { timeout: 8000 },
-    );
+    await waitFor(() => expect(canvasElement.querySelector('.aix-bubble p')).toBeInTheDocument(), {
+      timeout: 8000,
+    });
     // 1) actions 含 feedback：对历史 AI 回复点「赞同」→ 受控高亮 + emit('feedback')
     await step('赞踩反馈（actions feedback）', async () => {
       // 虚拟列表异步渲染：findBy 轮询；过渡期可能 pointer-events:none，关指针检查避免 flaky
@@ -566,8 +564,8 @@ export const EditFeedbackAndSubmitType: Story = {
       await waitFor(() => expect(like).toHaveAttribute('aria-pressed', 'true'));
     });
 
-    // 2) editable：编辑用户消息并保存 → 截断重发 + emit('edit')
-    await step('编辑重发（editable）', async () => {
+    // 2) 编辑用户消息并保存 → 截断重发 + emit('edit')（用户消息默认操作条内置 edit，无需 prop 开启）
+    await step('编辑重发', async () => {
       const editBtn = await canvas.findByRole('button', { name: '编辑' }, { timeout: 8000 });
       await userEvent.click(editBtn, { pointerEventsCheck: 0 });
       // 编辑态 textarea 的 aria-label 为「编辑」，与底部 Sender 输入框区分
@@ -581,7 +579,7 @@ export const EditFeedbackAndSubmitType: Story = {
       await userEvent.type(editArea, 'Composition API 和 Options API 有什么区别', {
         skipClick: true,
       });
-      await userEvent.click(canvas.getByRole('button', { name: '保存' }), {
+      await userEvent.click(canvas.getByRole('button', { name: '保存编辑' }), {
         pointerEventsCheck: 0,
       });
       // AiChat 的 onEditMessage 在 `await onEdit(...)` 之后才对外 emit('edit')——存在异步边界，

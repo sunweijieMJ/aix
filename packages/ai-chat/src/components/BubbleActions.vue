@@ -91,6 +91,26 @@
         <Reply />
       </button>
       <button
+        v-else-if="item.builtin && item.key === 'edit'"
+        type="button"
+        :class="ns.e('btn')"
+        :aria-label="t.editButton"
+        :title="t.editButton"
+        @click="emit('edit')"
+      >
+        <Edit />
+      </button>
+      <button
+        v-else-if="item.builtin && item.key === 'delete'"
+        type="button"
+        :class="ns.e('btn')"
+        :aria-label="t.deleteButton"
+        :title="t.deleteButton"
+        @click="emit('delete')"
+      >
+        <Delete />
+      </button>
+      <button
         v-else-if="!item.builtin"
         type="button"
         :class="ns.e('btn')"
@@ -134,13 +154,28 @@ export interface BubbleActionsEmits {
   (e: 'quote'): void;
   /** 切换分支版本：dir=-1 上一个 / 1 下一个 */
   (e: 'switch-branch', dir: -1 | 1): void;
+  /** 内置 edit 操作：请求进入内联编辑态（不是保存——保存是 Bubble 内部 saveEdit 的事，走独立事件通道） */
+  (e: 'edit'): void;
+  /** 内置 delete 操作：请求删除该消息，只上抛不改数据 */
+  (e: 'delete'): void;
 }
 </script>
 
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace, copyText } from '@aix/hooks';
-import { Copy, Check, Refresh, Reply, ThumbUp, ThumbDown, VolumeUp, VolumeOff } from '@aix/icons';
+import {
+  Copy,
+  Check,
+  Refresh,
+  Reply,
+  ThumbUp,
+  ThumbDown,
+  VolumeUp,
+  VolumeOff,
+  Edit,
+  Delete,
+} from '@aix/icons';
 import { ref, computed, onScopeDispose } from 'vue';
 import { locale } from '../locale';
 import type {

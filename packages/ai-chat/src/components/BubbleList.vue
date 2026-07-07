@@ -11,7 +11,8 @@
           :status="(item as ChatMessage).status"
           :loading="(item as ChatMessage).status === 'loading'"
           :typing="resolveTyping(item as ChatMessage)"
-          :editable="editable && (item as ChatMessage).role === 'user'"
+          :editing="editingIds.has((item as ChatMessage).id)"
+          :save-disabled="saveDisabled"
           :tool-renderers="toolRenderers"
           @retry="emit('retry', (item as ChatMessage).id)"
           @block-action="emit('block-action', $event)"
@@ -68,8 +69,8 @@ export interface BubbleListProps {
   blockRenderers?: BlockRenderers;
   /** 工具渲染器注册表：toolName → 组件，透传给各 Bubble 供内置 ToolUseBlock 按名路由 */
   toolRenderers?: BlockRenderers;
-  /** 是否允许用户气泡内联编辑，透传给各 Bubble（仅 user 角色生效） */
-  editable?: boolean;
+  /** 编辑态下是否禁止保存（如全局请求进行中），透传给每个 Bubble */
+  saveDisabled?: boolean;
 }
 export interface BubbleListEmits {
   /** 某条消息点击重试，携带消息 id */
@@ -301,6 +302,8 @@ defineExpose({
   unreadCount,
   /** 滚动容器（划词检测 L1 的监听根 + 滚动即关闭菜单的事件源） */
   scrollElement: () => scrollRef.value,
+  /** 请求某条消息进入内联编辑态（由业务/AiChat 在 BubbleActions 的 edit 点击时调用） */
+  startEdit: (id: string) => editingIds.add(id),
 });
 </script>
 

@@ -35,7 +35,7 @@
         :typing="config.enableTyping"
         :block-renderers="blockRenderers"
         :tool-renderers="toolRenderers"
-        :editable="bubbleEditable"
+        :save-disabled="isLoading"
         @retry="onReload"
         @block-action="onBlockAction"
         @edit="onEditMessage"
@@ -65,6 +65,8 @@
               @speak="speech?.toggle(item)"
               @switch-branch="switchBranch(item.id, $event)"
               @quote="onQuoteMessage(item)"
+              @edit="bubbleListRef?.startEdit(item.id)"
+              @delete="emit('delete', item)"
             />
           </slot>
         </template>
@@ -223,8 +225,6 @@ export interface AiChatProps {
   actions?: ActionsItems | ((message: ChatMessage) => ActionsItems | null);
   /** 消息操作的显示时机：'always' 常驻显示（默认），'hover' 仅悬浮气泡或键盘聚焦内部按钮时显示（触屏设备始终显示） */
   actionsTrigger?: 'always' | 'hover';
-  /** 是否允许用户消息内联编辑重发，默认 false */
-  editable?: boolean;
   /**
    * 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试。
    * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
@@ -302,6 +302,8 @@ export interface AiChatEmits {
   (e: 'block-action', payload: BlockActionPayload): void;
   /** 用户消息编辑保存（已截断后续并重新生成），携带 id 与新文本 */
   (e: 'edit', payload: { id: string; text: string }): void;
+  /** 请求删除某条消息（只上抛，不改动 messages/分支树——是否真的移除、是否同步后端，完全交给业务） */
+  (e: 'delete', message: ChatMessage): void;
   /** AI 回复赞/踩反馈变化，携带 id 与值（null 取消），供业务持久化 */
   (e: 'feedback', payload: { id: string; value: MessageFeedback | null }): void;
   /** 某条 AI 消息逐字显示完毕，携带消息 id（流式打字机追平末尾时触发） */
@@ -818,9 +820,6 @@ const onEditMessage = async (id: string, text: string) => {
   if (accepted) emit('edit', { id, text });
 };
 
-// 编辑入口与全局加载态联动：流式期间隐藏编辑按钮，从源头避免「保存被守卫静默丢弃」的入口
-const bubbleEditable = computed(() => !!props.editable && !isLoading.value);
-
 // 赞/踩反馈：写回 extra（驱动高亮），再对外透出供持久化
 const onFeedback = (id: string, value: MessageFeedback | null) => {
   setFeedback(id, value);
@@ -846,6 +845,12 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
     const r = a(item);
     return r && r.length > 0 ? r : null;
   }
+  if (item.role === 'user') {
+    // 固定默认值，不受 props.actions 数组内容影响（数组形态历史语义只配置 AI 消息）；
+    // isLoading 时收窄为 [copy, delete]——原本气泡自带铅笔按钮在全局 loading 时整个不渲染
+    // （避免草稿在 loading 期间被静默丢弃），这里保留同等的"隐藏入口"效果。
+    return isLoading.value ? ['copy', 'delete'] : ['copy', 'edit', 'delete'];
+  }
   if (item.role !== 'ai' || item.status !== 'success') return null;
   // 1→N 拆分：默认操作条仅末子气泡显示
   const sub = item.extra?.__sub as SubBubbleMeta | undefined;
@@ -870,13 +875,17 @@ const actionsMap = computed(() => {
 });
 
 // 数组形态为空数组时整个 footer 模板都不挂（避免空 footer 节点）；函数形态恒挂、逐条判定；
-// speech 启用时也须挂 footer 以呈现朗读按钮
+// speech 启用时也须挂 footer 以呈现朗读按钮；
+// 用户消息的操作条为固定默认值（['copy','edit','delete']，加载中为 ['copy','delete']），
+// 不受 props.actions 数组形态影响（数组形态只作用于 AI 消息），
+// 因此只要消息列表中存在用户消息，footer 就必须挂载，避免 actions=[] 时连用户消息的固定操作条也被误挂断
 const actionsEnabled = computed(
   () =>
     typeof props.actions === 'function' ||
     (props.actions ?? DEFAULT_ACTIONS).length > 0 ||
     !!speech ||
-    (resolvedQuote.value.enable && resolvedQuote.value.pcQuoteAction),
+    (resolvedQuote.value.enable && resolvedQuote.value.pcQuoteAction) ||
+    parsedMessages.value.some((m) => m.role === 'user'),
 );
 
 // 每条可见消息的分支元信息（branches 按逻辑消息 id 键；getBranches 内部已解析派生 id）

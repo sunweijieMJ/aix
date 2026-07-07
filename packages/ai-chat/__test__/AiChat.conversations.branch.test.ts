@@ -88,7 +88,7 @@ describe('AiChat × 分支持久化集成', () => {
     expect(w.text()).toContain('回复1');
 
     // 重新生成 → 第 2 个版本分支
-    await w.find('.aix-bubble-actions [aria-label]').trigger('click');
+    await w.find('[aria-label="重新生成"]').trigger('click'); // 用户消息现在也默认挂载操作条，需精确定位
     await flush();
 
     expect(errSpy).not.toHaveBeenCalled(); // 无递归更新 / 错误
@@ -123,7 +123,7 @@ describe('AiChat × 分支持久化集成', () => {
     (chat.vm as unknown as { onSend: (t: string) => Promise<void> }).onSend('问题');
     await flush();
     // 在 c1 制造分支
-    await w.find('.aix-bubble-actions [aria-label]').trigger('click');
+    await w.find('[aria-label="重新生成"]').trigger('click'); // 用户消息现在也默认挂载操作条，需精确定位
     await flush();
     expect(w.text()).toContain('2/2');
 
