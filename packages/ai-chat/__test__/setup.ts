@@ -1,8 +1,11 @@
 import { vi } from 'vitest';
 
-// jsdom 不实现 scrollTo，在此 mock 以避免 Unhandled Rejection
+// jsdom 不实现 scrollTo / scrollIntoView，在此 mock 以避免 Unhandled Rejection
 if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.scrollTo) {
   HTMLElement.prototype.scrollTo = () => {};
+}
+if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => {};
 }
 
 // jsdom 不提供全局 CSS.escape（BubbleList.scrollToBubble 用它安全拼接属性选择器，

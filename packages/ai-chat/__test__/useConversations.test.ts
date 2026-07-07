@@ -266,6 +266,47 @@ describe('useConversations', () => {
       await new Promise((resolve) => setTimeout(resolve, 30)); // 跨过防抖窗口
       expect(save).not.toHaveBeenCalled();
     });
+
+    it('慢保存串行化：save 在飞期间的新变更以最新数据续跑，不被旧快照乱序覆盖', async () => {
+      // 手动控制每次 save 的 resolve 时机，模拟慢的异步持久化（远端 HTTP）
+      const savedOrder: string[] = [];
+      const resolvers: Array<() => void> = [];
+      const storage: ConversationStorage = {
+        load: () => [conv('x', 'X')],
+        save: (list) => {
+          savedOrder.push(list[0]!.label); // 记录发起 save 时的数据快照
+          return new Promise<void>((resolve) => {
+            resolvers.push(resolve);
+          });
+        },
+      };
+      const c = useConversations({ storage, saveDebounce: 10 });
+      await flushAsync(); // 等初始化 load 完成
+
+      // 第一次变更 → save A 发起（慢，先不 resolve）
+      c.rename('x', 'A');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(savedOrder).toEqual(['A']);
+
+      // save A 在飞期间连续两次变更：串行化下均不立即发起，仅折叠为一次 pending（最新数据）
+      c.rename('x', 'B');
+      await new Promise((r) => setTimeout(r, 20));
+      c.rename('x', 'C');
+      await new Promise((r) => setTimeout(r, 20));
+      expect(savedOrder).toEqual(['A']); // B、C 都在等 A，未重叠发起
+
+      // 完成 save A → 用最新快照续跑：折叠掉中间的 B，只落最新的 C
+      resolvers[0]!();
+      await flushAsync();
+      expect(savedOrder).toEqual(['A', 'C']);
+
+      // 完成 save C → 无更多 pending，不再续跑
+      resolvers[1]!();
+      await flushAsync();
+      expect(savedOrder).toEqual(['A', 'C']);
+      // 最终落地的是最后一次变更的数据
+      expect(savedOrder[savedOrder.length - 1]).toBe('C');
+    });
   });
 
   describe('localStorageConversationStorage', () => {
@@ -384,5 +425,33 @@ describe('useConversations — 树持久化与迁移', () => {
     const c = useConversations({ defaultConversations: [{ id: 'c1', label: 'x', messages: [] }] });
     c.activeTree.value = t.exportTree();
     expect(c.conversations.value[0]!.tree?.headId).toBe('m1');
+  });
+
+  it('树模式恢复：tree 节点与 messages 镜像的卡死状态都被复位为 error', async () => {
+    // 流式中刷新 → 反序列化后 tree 与 messages 镜像成两份独立对象，两处都停在 updating 假加载态
+    const stuck = (id: string): ChatMessage => ({
+      id,
+      role: 'ai',
+      status: 'updating',
+      content: [{ id: `b-${id}`, type: 'text', text: id }],
+    });
+    const stored = [
+      {
+        id: 'c1',
+        label: '会话',
+        timestamp: 1,
+        tree: {
+          nodes: [{ id: 'm1', parentId: '', message: stuck('m1') }],
+          headId: 'm1',
+        },
+        messages: [stuck('m1')], // 镜像：与树内节点是各自独立的对象
+      },
+    ] as unknown as Conversation[];
+    const storage = { load: () => stored, save: () => {} };
+    const c = useConversations({ storage });
+    await flushAsync();
+    const restored = c.conversations.value[0]!;
+    expect(restored.tree!.nodes[0]!.message.status).toBe('error'); // 树内节点复位
+    expect(restored.messages[0]!.status).toBe('error'); // 镜像同样复位（回归护栏）
   });
 });

@@ -8,7 +8,7 @@ import type { ChatMessage } from '../src/types';
 vi.mock('virtua/vue', () => ({
   Virtualizer: {
     name: 'Virtualizer',
-    props: ['data'],
+    props: ['data', 'keepMounted'],
     setup(props: any, { slots }: any) {
       return () => (props.data as unknown[]).map((item, i) => slots.default?.({ item, index: i }));
     },
@@ -16,7 +16,9 @@ vi.mock('virtua/vue', () => ({
 }));
 
 // 永不返回数据的挂起流（隔离请求副作用；按既有 AiChat 测试的 request mock 模式微调）
-const pendingRequest = vi.fn(async () => new Response(new ReadableStream({ start() {} }), { status: 200 }));
+const pendingRequest = vi.fn(
+  async () => new Response(new ReadableStream({ start() {} }), { status: 200 }),
+);
 
 const aiMsg = (over: Partial<ChatMessage> = {}): ChatMessage => ({
   id: 'a1',

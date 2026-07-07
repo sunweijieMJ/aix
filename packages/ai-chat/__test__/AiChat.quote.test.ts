@@ -8,8 +8,11 @@ import type { ChatMessage } from '../src/types';
 vi.mock('virtua/vue', () => ({
   Virtualizer: {
     name: 'Virtualizer',
-    props: ['data'],
-    setup(props: { data: unknown[] }, { slots }: { slots: Record<string, (p: unknown) => unknown> }) {
+    props: ['data', 'keepMounted'],
+    setup(
+      props: { data: unknown[] },
+      { slots }: { slots: Record<string, (p: unknown) => unknown> },
+    ) {
       return () => (props.data as unknown[]).map((item, i) => slots.default?.({ item, index: i }));
     },
   },
@@ -188,7 +191,11 @@ describe('AiChat quote 接线', () => {
         role: 'user',
         status: 'local',
         content: [
-          { id: 'qb', type: 'quote', quotes: [{ id: 'q', anchor: { source: { messageId: 'x' }, exact: '旧引文' } }] },
+          {
+            id: 'qb',
+            type: 'quote',
+            quotes: [{ id: 'q', anchor: { source: { messageId: 'x' }, exact: '旧引文' } }],
+          },
           { id: 'tb', type: 'text', text: '旧问题' },
         ],
       },

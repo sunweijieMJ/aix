@@ -10,7 +10,8 @@ import {
 /** 富文本容器：跨内联节点（strong/code）是核心场景 */
 const makeContainer = (): HTMLElement => {
   const el = document.createElement('div');
-  el.innerHTML = '快速排序的<strong>平均时间复杂度</strong>是 <code>O(n log n)</code>，最坏情况退化。';
+  el.innerHTML =
+    '快速排序的<strong>平均时间复杂度</strong>是 <code>O(n log n)</code>，最坏情况退化。';
   document.body.appendChild(el);
   return el;
 };
@@ -58,6 +59,20 @@ describe('findTextRange（回链主路径）', () => {
   it('未命中返回 null', () => {
     const el = makeContainer();
     expect(findTextRange(el, '不存在的文本')).toBeNull();
+  });
+
+  it('英文重复文本 + 词边界空格：保留 prefix 尾/suffix 头的空格，命中第二处而非第一处', () => {
+    const el = document.createElement('div');
+    el.textContent = 'The cat sat. The cat ran.';
+    document.body.appendChild(el);
+    const full = el.textContent!;
+    // 第二个 cat 的原始偏移；prefix/suffix 取自原文直接切片（边界紧邻空格）
+    const second = full.indexOf('cat', full.indexOf('cat') + 1);
+    const r = findTextRange(el, 'cat', full.slice(0, second), full.slice(second + 3));
+    expect(r).not.toBeNull();
+    const off = rangeToOffsets(el, r!)!;
+    expect(off.start).toBe(second); // 命中第二个 cat，而非降级为纯 exact 命中第一个
+    expect(off.end).toBe(second + 3);
   });
 
   it('空白容差：DOM 原始文本含换行/缩进，归一化后的 exact 仍能命中', () => {

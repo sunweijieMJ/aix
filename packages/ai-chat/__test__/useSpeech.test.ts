@@ -129,6 +129,42 @@ describe('useSpeech', () => {
     expect(s.resolveText(m)).toBe('标题 粗');
   });
 
+  it('toggle：enqueue 内同步调用 onError 不抛异常，onError 收到通知且状态复位', () => {
+    const onError = vi.fn();
+    const finish = vi.fn();
+    const err = new Error('synth failed');
+    // 合成器在 enqueue 内同步报错（云端 TTS 参数非法等场景）
+    const synthesizer: SpeechSynthesizer = (ctx): SpeechSession => ({
+      enqueue: () => ctx.onError(err),
+      finish,
+      stop: () => {},
+    });
+    const s = useSpeech({ config: { synthesizer, onError } });
+    expect(() => s.toggle(aiMsg('m1', '你好'))).not.toThrow();
+    expect(onError).toHaveBeenCalledWith(err);
+    // onError 已置空会话，不应再触碰 finish
+    expect(finish).not.toHaveBeenCalled();
+    expect(s.speakingId.value).toBe(null);
+  });
+
+  it('feed：enqueue 内同步 onError 不抛异常且中止后续 finish，状态复位', () => {
+    const onError = vi.fn();
+    const finish = vi.fn();
+    const err = new Error('synth failed');
+    const synthesizer: SpeechSynthesizer = (ctx): SpeechSession => ({
+      enqueue: () => ctx.onError(err),
+      finish,
+      stop: () => {},
+    });
+    const s = useSpeech({
+      config: { synthesizer, onError, getText: (m) => (m.content[0] as { text: string }).text },
+    });
+    expect(() => s.feed(aiMsg('m1', '第一句。', 'success'))).not.toThrow();
+    expect(onError).toHaveBeenCalledWith(err);
+    expect(finish).not.toHaveBeenCalled();
+    expect(s.speakingId.value).toBe(null);
+  });
+
   it('onScopeDispose 自动停止', () => {
     const { synthesizer, stop } = fakeSynth();
     const scope = effectScope();

@@ -10,6 +10,12 @@ import type {
   ThoughtChainItem,
 } from '../types';
 
+/**
+ * 气泡内容区选择器：划词捕获钳制、引用高亮宿主、回链定位均以内容区为锚，
+ * 与 Bubble.vue 模板的 __content 元素耦合，统一从此常量引用（改 class 名只动这一处）。
+ */
+export const BUBBLE_CONTENT_SELECTOR = '.aix-bubble__content';
+
 let blockUid = 0;
 /** block 稳定唯一 id（单调递增，保证同一毫秒内也不重复） */
 export const genBlockId = (): string => `blk-${Date.now()}-${blockUid++}`;
@@ -120,9 +126,8 @@ export const messageText = (m: ChatMessage): string =>
     .join('');
 
 /** 追问建议归一化：字符串条目 → { text }，对象透传（双通道共用） */
-export const normalizeSuggestions = (
-  input: Array<string | SuggestionItem>,
-): SuggestionItem[] => input.map((s) => (typeof s === 'string' ? { text: s } : s));
+export const normalizeSuggestions = (input: Array<string | SuggestionItem>): SuggestionItem[] =>
+  input.map((s) => (typeof s === 'string' ? { text: s } : s));
 
 /** 工具块对自动滚动跟随的贡献：argsText 长度 + output 存在性（避免对大结果反复 stringify） */
 export function toolFollowLen(blocks: ContentBlock[]): number {

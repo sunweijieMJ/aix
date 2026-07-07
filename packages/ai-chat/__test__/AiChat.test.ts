@@ -18,7 +18,7 @@ import {
 vi.mock('virtua/vue', () => ({
   Virtualizer: {
     name: 'Virtualizer',
-    props: ['data'],
+    props: ['data', 'keepMounted'],
     setup(props: any, { slots }: any) {
       return () => (props.data as unknown[]).map((item, i) => slots.default?.({ item, index: i }));
     },

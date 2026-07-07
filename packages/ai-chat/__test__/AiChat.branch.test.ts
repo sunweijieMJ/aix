@@ -8,7 +8,7 @@ import type { ParsedChunk, ChatMessage, ExportedTree } from '../src/types';
 vi.mock('virtua/vue', () => ({
   Virtualizer: {
     name: 'Virtualizer',
-    props: ['data'],
+    props: ['data', 'keepMounted'],
     setup(
       props: { data: unknown[] },
       { slots }: { slots: Record<string, (p: unknown) => unknown> },

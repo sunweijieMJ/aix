@@ -349,6 +349,7 @@ import type {
   SuggestionItem,
 } from '../types';
 import {
+  BUBBLE_CONTENT_SELECTOR,
   messageText,
   attachmentBlock,
   textBlock,
@@ -391,7 +392,11 @@ const resolvedQuote = computed<
   Required<Pick<QuoteConfig, 'enable' | 'pcQuoteAction' | 'maxVisibleChips'>> & QuoteConfig
 >(() => {
   const fromProps: QuoteConfig =
-    props.quote === false ? { enable: false } : props.quote === true || props.quote == null ? {} : props.quote;
+    props.quote === false
+      ? { enable: false }
+      : props.quote === true || props.quote == null
+        ? {}
+        : props.quote;
   const merged: QuoteConfig = { ...config.value.quote, ...fromProps };
   return { enable: true, pcQuoteAction: true, maxVisibleChips: 3, ...merged };
 });
@@ -531,7 +536,10 @@ const {
   // 请求期把 quote 块拍平成 blockquote 文本给 business（纯函数，不 mutate SSOT，见设计 §2.1）；
   // 无 quote 块时逐条直通，零开销
   request: (ctx) =>
-    props.request({ ...ctx, messages: flattenQuoteBlocks(ctx.messages, resolvedQuote.value.toPrompt) }),
+    props.request({
+      ...ctx,
+      messages: flattenQuoteBlocks(ctx.messages, resolvedQuote.value.toPrompt),
+    }),
   streamMode: props.streamMode,
   parseChunk: props.parseChunk,
   parser: props.parser,
@@ -621,7 +629,11 @@ const bubbleListRef = ref<InstanceType<typeof BubbleList> | null>(null);
 const quoteRoot = computed(() => bubbleListRef.value?.scrollElement?.() ?? null);
 
 // L1：检测（BubbleList 渲染后 quoteRoot 才非空，watch immediate 装配在 useTextSelection 内部处理）
-const { active, trigger, clear: clearSelection } = useTextSelection({
+const {
+  active,
+  trigger,
+  clear: clearSelection,
+} = useTextSelection({
   root: quoteRoot,
   enabled: () => resolvedQuote.value.enable,
   longPressDelay: resolvedQuote.value.longPressDelay,
@@ -643,12 +655,16 @@ const locateAnchor = async (anchor: QuoteAnchor) => {
   }
   const host =
     (anchor.source.blockId &&
-      el.querySelector<HTMLElement>(`[data-aix-block-id="${CSS.escape(anchor.source.blockId)}"]`)) ||
-    el.querySelector<HTMLElement>('.aix-bubble__content') ||
+      el.querySelector<HTMLElement>(
+        `[data-aix-block-id="${CSS.escape(anchor.source.blockId)}"]`,
+      )) ||
+    el.querySelector<HTMLElement>(BUBBLE_CONTENT_SELECTOR) ||
     el;
   const range =
     findTextRange(host, anchor.exact, anchor.prefix, anchor.suffix) ??
-    (anchor.start != null && anchor.end != null ? offsetsToRange(host, anchor.start, anchor.end) : null);
+    (anchor.start != null && anchor.end != null
+      ? offsetsToRange(host, anchor.start, anchor.end)
+      : null);
   if (range) highlightRange(range);
   else highlightElement(el);
 };

@@ -30,8 +30,7 @@ const selectText = (node: Node, from: number, to: number) => {
   document.dispatchEvent(new Event('selectionchange'));
 };
 
-const firstTextNode = (selector: string): Node =>
-  document.querySelector(selector)!.firstChild!;
+const firstTextNode = (selector: string): Node => document.querySelector(selector)!.firstChild!;
 
 let scope: EffectScope;
 beforeEach(() => {
@@ -142,6 +141,77 @@ describe('useTextSelection / PC 拖选', () => {
     // 钳制后 range 终点落在气泡容器上，不在 blockEl(b1) 内，rangeToOffsets 判定退化为 null
     expect(a.anchor.start).toBeUndefined();
     expect(a.anchor.end).toBeUndefined();
+  });
+
+  it('跨消息选区钳制到内容区末尾：气泡 footer 文本不混入 exact，偏移换算不退化', async () => {
+    // 气泡根在 content 之后含 footer（模拟分支切换器 "‹ 1/2 ›" 的真实文本节点）；
+    // content 内无 block 打标，故 offsetHost 退回 content。钳到 content 末尾使终点留在
+    // offsetHost 内，rangeToOffsets 才能成立、getContext 得以计算出 prefix
+    document.body.innerHTML = `
+      <div id="root">
+        <div class="aix-bubble" data-aix-message-id="ai-1" data-aix-role="ai">
+          <div class="aix-bubble__content">人工智能回答的正文内容</div>
+          <div class="aix-bubble__footer">‹ 1/2 ›</div>
+        </div>
+        <div class="aix-bubble" data-aix-message-id="u-1" data-aix-role="user">
+          <div class="aix-bubble__content">用户说的话</div>
+        </div>
+      </div>`;
+    const root = document.getElementById('root') as HTMLElement;
+    const r = setup(root);
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    const range = document.createRange();
+    // 从内容区偏移 2 起选（留出前缀），终点落在后一条消息内 → 跨消息选区（原始终点越过 footer）
+    range.setStart(
+      document.querySelector('[data-aix-message-id="ai-1"] .aix-bubble__content')!.firstChild!,
+      2,
+    );
+    range.setEnd(
+      document.querySelector('[data-aix-message-id="u-1"] .aix-bubble__content')!.firstChild!,
+      2,
+    );
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    vi.runAllTimers();
+    await nextTick();
+    expect(r.active.value).not.toBeNull();
+    const a = r.active.value!;
+    expect(a.text).toBe('智能回答的正文内容'); // 只含气泡 A 内容区文本
+    expect(a.text).not.toContain('1/2'); // footer 分支切换器文本不混入
+    expect(a.text).not.toContain('用户说的话');
+    // 终点钳到内容区末尾（仍在 offsetHost=content 内），rangeToOffsets 不再返回 null，
+    // getContext 据此算出前缀；无 block 打标故 anchor.start/end 按设计仍为消息级（undefined）
+    expect(a.anchor.prefix).toBe('人工');
+    expect(a.anchor.start).toBeUndefined();
+  });
+
+  it('选区整体位于内容区之前（header 插槽内选词）→ 不钳制，exact 不向前扩张成整段正文', async () => {
+    // 钳制用终点边界比较而非 contains：终点在 content 之前时 setEnd 会把选区向前
+    // 「扩张」成「header 选中点 → 整段正文」，此场景必须保持原选区不动
+    document.body.innerHTML = `
+      <div id="root">
+        <div class="aix-bubble" data-aix-message-id="ai-1" data-aix-role="ai">
+          <div class="aix-bubble__header">助手昵称与时间戳</div>
+          <div class="aix-bubble__content">人工智能回答的正文内容</div>
+        </div>
+      </div>`;
+    const root = document.getElementById('root') as HTMLElement;
+    const r = setup(root);
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    const headerText = document.querySelector('.aix-bubble__header')!.firstChild!;
+    const range = document.createRange();
+    range.setStart(headerText, 0);
+    range.setEnd(headerText, 4); // 仅选中 header 内的「助手昵称」
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    vi.runAllTimers();
+    await nextTick();
+    expect(r.active.value).not.toBeNull();
+    expect(r.active.value!.text).toBe('助手昵称'); // 未被扩张成「助手昵称…正文内容」
   });
 
   it('选区收窄为 collapsed 时同步清空 savedRange，避免 preserve() 恢复过期选区', () => {

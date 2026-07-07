@@ -53,4 +53,18 @@ describe('ToolUseBlock', () => {
     });
     expect(w.find('.custom-tool').exists()).toBe(true);
   });
+
+  it('toolName 为原型链键（constructor）时回退默认卡片，不误当渲染器', () => {
+    const w = mount(ToolUseBlock, {
+      props: {
+        block: block({ toolName: 'constructor' }),
+        info: { role: 'ai', key: 'ai1' },
+        // toolRenderers 未自有声明 'constructor'，沿原型链能取到 Object.prototype.constructor
+        toolRenderers: {},
+      },
+    });
+    // 落到默认可折叠卡片而非把原型函数当组件渲染
+    expect(w.find('.aix-tool-use').exists()).toBe(true);
+    expect(w.text()).toContain('constructor');
+  });
 });

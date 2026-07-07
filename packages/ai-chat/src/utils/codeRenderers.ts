@@ -2,6 +2,7 @@ import { useLocale, useClipboard } from '@aix/hooks';
 import { Copy, Check } from '@aix/icons';
 import { defineComponent, h, ref, watch } from 'vue';
 import { locale } from '../locale';
+import { createLruCache } from './lruCache';
 import type { MarkdownRenderers } from './markdownWalker';
 
 /** highlight.js 最小接口（v11 兼容；依赖注入，不直接耦合其类型声明） */
@@ -18,21 +19,7 @@ export interface HljsLike {
 }
 
 // 高亮结果缓存（LRU 上限 50）。虚拟列表重挂载 / 同段复现时不重高亮。
-const htmlCache = new Map<string, string>();
-const CACHE_MAX = 50;
-const cacheGet = (key: string): string | undefined => {
-  const hit = htmlCache.get(key);
-  if (hit !== undefined) {
-    htmlCache.delete(key);
-    htmlCache.set(key, hit); // 刷新热度
-  }
-  return hit;
-};
-const cacheSet = (key: string, html: string) => {
-  htmlCache.set(key, html);
-  // LRU 淘汰：Map 迭代顺序即插入顺序，keys().next() 取最旧键；cacheGet 命中会把热键移到末尾。
-  if (htmlCache.size > CACHE_MAX) htmlCache.delete(htmlCache.keys().next().value!);
-};
+const htmlCache = createLruCache<string, string>(50);
 
 /** 缓存键：lang 与 code 用空格连接。lang 取自 token.info 首段（已 trim 无空格），故分隔唯一无碰撞。 */
 const cacheKey = (lang: string, code: string): string => `${lang} ${code}`;
@@ -77,7 +64,7 @@ export function createHighlightRenderers(hljs: HljsLike): MarkdownRenderers {
             return;
           }
           const key = cacheKey(lang, code);
-          const hit = cacheGet(key);
+          const hit = htmlCache.get(key);
           if (hit !== undefined) {
             html.value = hit;
             return;
@@ -87,7 +74,7 @@ export function createHighlightRenderers(hljs: HljsLike): MarkdownRenderers {
               lang && hljs.getLanguage(lang)
                 ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
                 : hljs.highlightAuto(code).value;
-            cacheSet(key, out);
+            htmlCache.set(key, out);
             html.value = out;
           } catch {
             // 高亮失败（非法代码 / 语言加载异常）：维持纯代码块，不破坏整段渲染

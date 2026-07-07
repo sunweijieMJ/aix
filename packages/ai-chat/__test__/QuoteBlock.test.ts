@@ -22,6 +22,12 @@ describe('QuoteBlock', () => {
     expect(rows[0]!.text()).toContain('引文一');
   });
 
+  it('quotes 为空数组时整块不渲染（不显示孤立标题）', () => {
+    const empty: QuoteBlockType = { id: 'qb-empty', type: 'quote', quotes: [] };
+    const w = mount(QuoteBlock, { props: { block: empty } });
+    expect(w.find('.aix-quote-block').exists()).toBe(false);
+  });
+
   it('点击某条引用调用注入的 locate；未注入时点击不抛错', async () => {
     const locate = vi.fn();
     const w = mount(QuoteBlock, {

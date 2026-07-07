@@ -1,7 +1,7 @@
 <template>
   <div :class="ns.b()" :style="{ maxHeight }">
     <div ref="scrollRef" :class="ns.e('scroll')" @scroll="computeState">
-      <Virtualizer ref="virtualizerRef" v-slot="{ item }" :data="items">
+      <Virtualizer ref="virtualizerRef" v-slot="{ item }" :data="items" :keep-mounted="keepMounted">
         <Bubble
           :key="(item as ChatMessage).id"
           v-bind="resolveBubble(item as ChatMessage)"
@@ -16,6 +16,7 @@
           @retry="emit('retry', (item as ChatMessage).id)"
           @block-action="emit('block-action', $event)"
           @edit="emit('edit', (item as ChatMessage).id, $event)"
+          @editing-change="handleEditingChange((item as ChatMessage).id, $event)"
           @typing-complete="handleTypingComplete((item as ChatMessage).id)"
         >
           <template v-if="$slots.content" #content="slotProps">
@@ -124,10 +125,27 @@ const scrollRef = ref<HTMLElement | null>(null);
 const virtualizerRef = ref<VirtualizerHandle | null>(null);
 const { scrollState, unreadCount, computeState, scrollToBottom, follow, observeContent } =
   useAutoScroll(scrollRef, {
-    // 传 getter 而非快照，使运行时切换 :auto-scroll 生效
+    // 传 getter 而非快照，使运行时切换 :auto-scroll / :should-follow 生效
     autoScroll: () => props.autoScroll,
-    shouldFollow: props.shouldFollow,
+    shouldFollow: () => props.shouldFollow,
   });
+
+// 处于内联编辑态的消息 id：虚拟列表滚动会回收离开视口的行并销毁其行内编辑草稿，
+// 故把编辑中的行下标经 keepMounted 交给 Virtualizer 常驻挂载，滚出再滚回草稿不丢
+//（与 streamedIds 提升打字机状态同构：编辑态用保挂载而非提升状态）。
+const editingIds = reactive(new Set<string>());
+const handleEditingChange = (id: string, editing: boolean) => {
+  if (editing) editingIds.add(id);
+  else editingIds.delete(id);
+};
+const keepMounted = computed<number[]>(() => {
+  if (editingIds.size === 0) return [];
+  const idx: number[] = [];
+  props.items.forEach((m, i) => {
+    if (editingIds.has(m.id)) idx.push(i);
+  });
+  return idx;
+});
 
 // 单次解析角色级 props 并合入块渲染器（避免此前 resolveBubbleProps 被调两次 / 角色函数执行两次）。
 // 块渲染器合并优先级：list 级 < role 级（role 更具体）；Bubble 内部再叠加内置默认。
@@ -186,6 +204,10 @@ watch(
     }
     for (const id of completedIds) {
       if (!alive.has(id)) completedIds.delete(id);
+    }
+    // 编辑中的消息若被移除（切会话 / 截断），一并从编辑集合剪除，避免 keepMounted 残留失效下标
+    for (const id of editingIds) {
+      if (!alive.has(id)) editingIds.delete(id);
     }
   },
   { immediate: true },

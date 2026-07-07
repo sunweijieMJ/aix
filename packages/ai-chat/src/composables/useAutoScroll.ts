@@ -1,4 +1,4 @@
-import { ref, toValue, onScopeDispose, type Ref, type MaybeRefOrGetter } from 'vue';
+import { ref, isRef, toValue, onScopeDispose, type Ref, type MaybeRefOrGetter } from 'vue';
 
 export type ScrollState = 'AT_BOTTOM' | 'SCROLLED_UP' | 'HAS_NEW_MESSAGES';
 export type FollowReason = 'own-message' | 'new-message' | 'streaming';
@@ -20,7 +20,11 @@ export const defaultShouldFollow: ShouldFollow = ({ reason, scrollState, autoScr
 
 export interface UseAutoScrollOptions {
   threshold?: number; // 距底多少 px 视为 AT_BOTTOM，默认 40
-  shouldFollow?: ShouldFollow;
+  /**
+   * 自定义跟随策略，默认 defaultShouldFollow；求值为 undefined 时回退默认策略。
+   * 三种形态均可：裸策略函数、ref、getter（返回策略）——后两者支持运行时切换。
+   */
+  shouldFollow?: MaybeRefOrGetter<ShouldFollow | undefined>;
   /** 是否自动跟随，默认 true；支持响应式（ref / getter），便于父组件运行时切换 */
   autoScroll?: MaybeRefOrGetter<boolean>;
 }
@@ -29,7 +33,7 @@ export function useAutoScroll(
   scrollEl: Ref<HTMLElement | null>,
   options: UseAutoScrollOptions = {},
 ) {
-  const { threshold = 40, shouldFollow = defaultShouldFollow, autoScroll = true } = options;
+  const { threshold = 40, shouldFollow, autoScroll = true } = options;
   const scrollState = ref<ScrollState>('AT_BOTTOM');
   const unreadCount = ref(0);
 
@@ -100,9 +104,21 @@ export function useAutoScroll(
     else clearSmoothPending(); // 瞬时滚动立即到底，贴底意图随之达成
   };
 
+  // 归一 shouldFollow 的三种合法形态并求值：ref 取 .value；函数则先以 ctx 调用——
+  // getter（忽略参数）返回策略函数，再以 ctx 求值；裸策略函数直接返回 boolean。
+  // getter 与裸策略同为函数、静态无法区分，只能按返回值类型分流；求得 undefined 回退默认策略。
+  const evalShouldFollow = (ctx: FollowContext): boolean => {
+    const opt = isRef(shouldFollow) ? shouldFollow.value : shouldFollow;
+    if (typeof opt !== 'function') return defaultShouldFollow(ctx);
+    const r = (opt as (c: FollowContext) => ShouldFollow | boolean | undefined)(ctx);
+    if (typeof r === 'function') return r(ctx);
+    return typeof r === 'boolean' ? r : defaultShouldFollow(ctx);
+  };
+
   /** 在消息变化时调用：根据策略决定贴底，否则累计未读 */
   const follow = (reason: FollowReason, smooth = false) => {
-    const ok = shouldFollow({
+    // 每次求值取当前策略（getter/ref 运行时切换即时生效）
+    const ok = evalShouldFollow({
       reason,
       scrollState: scrollState.value,
       autoScroll: toValue(autoScroll),

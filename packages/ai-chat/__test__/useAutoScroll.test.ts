@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ref } from 'vue';
 import { defaultShouldFollow, useAutoScroll } from '../src/composables/useAutoScroll';
+import type { ShouldFollow } from '../src/composables/useAutoScroll';
 
 /** 构造一个可控滚动尺寸的伪元素（jsdom 不提供真实布局） */
 function mockEl(
@@ -117,6 +118,35 @@ describe('useAutoScroll', () => {
     follow('new-message');
     expect(scrollState.value).toBe('HAS_NEW_MESSAGES');
     expect(unreadCount.value).toBe(1);
+  });
+
+  it('shouldFollow 三种形态均生效：裸策略函数（旧 API）/ getter / ref', () => {
+    // 裸策略：直接按 FollowContext 求值，不被误当 getter 零参调用
+    const el1 = ref(mockEl({ scrollTop: 0 }));
+    const bare = useAutoScroll(el1, { shouldFollow: ({ reason }) => reason === 'own-message' });
+    bare.follow('own-message');
+    expect(bare.scrollState.value).toBe('AT_BOTTOM');
+    bare.follow('new-message');
+    expect(bare.scrollState.value).toBe('HAS_NEW_MESSAGES');
+
+    // getter：运行时切换策略即时生效；求得 undefined 回退默认策略
+    const el2 = ref(mockEl({ scrollTop: 0 }));
+    const strategy = ref<ShouldFollow | undefined>(() => false);
+    const viaGetter = useAutoScroll(el2, { shouldFollow: () => strategy.value });
+    viaGetter.follow('new-message');
+    expect(viaGetter.scrollState.value).toBe('HAS_NEW_MESSAGES');
+    strategy.value = () => true;
+    viaGetter.follow('new-message');
+    expect(viaGetter.scrollState.value).toBe('AT_BOTTOM');
+    strategy.value = undefined; // 回退默认：new-message 且 autoScroll 默认 true → 跟随
+    viaGetter.follow('new-message');
+    expect(viaGetter.scrollState.value).toBe('AT_BOTTOM');
+
+    // ref：取 .value 作为策略
+    const el3 = ref(mockEl({ scrollTop: 0 }));
+    const viaRef = useAutoScroll(el3, { shouldFollow: ref<ShouldFollow>(() => false) });
+    viaRef.follow('new-message');
+    expect(viaRef.scrollState.value).toBe('HAS_NEW_MESSAGES');
   });
 });
 

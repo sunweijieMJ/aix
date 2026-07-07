@@ -23,6 +23,7 @@
 import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
 import type { PromptItem } from '../types';
+import { isImageSource } from '../utils/url';
 
 const props = defineProps<{ items: PromptItem[] }>();
 defineEmits<{ (e: 'select', item: PromptItem): void }>();
@@ -31,7 +32,8 @@ const ns = useNamespace('prompts');
 
 // 任一项含 icon/description 即为富卡片布局（纵向标题+描述），否则为紧凑标签流式布局
 const rich = computed(() => props.items.some((it) => it.icon || it.description));
-const isImg = (icon: string) => /^(https?:|data:|\/|\.)/.test(icon);
+// icon 是图片地址还是 emoji/文本，走共享判定（与 SourcesBlock 的 favicon 同口径）
+const isImg = isImageSource;
 </script>
 
 <style lang="scss">

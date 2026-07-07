@@ -147,10 +147,10 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
     spokenLen = 0;
   };
 
-  /** 启动新会话（不 enqueue 内容）；返回是否成功 */
-  const startSession = (id: string): boolean => {
+  /** 启动新会话（不 enqueue 内容）；返回新建的会话对象，无可用合成器时返回 null */
+  const startSession = (id: string): SpeechSession | null => {
     const synthesizer = config.synthesizer ?? defaultSynthesizer;
-    if (!synthesizer) return false;
+    if (!synthesizer) return null;
     const token = ++currentSession;
     session = synthesizer({
       lang: config.lang ?? (typeof navigator !== 'undefined' ? navigator.language : undefined),
@@ -178,7 +178,7 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
     });
     speakingId.value = id; // 乐观置位，按钮即时反馈
     spokenLen = 0;
-    return true;
+    return session;
   };
 
   const toggle = (message: ChatMessage) => {
@@ -190,18 +190,24 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
     stop(); // 停旧
     const text = resolveText(message);
     if (!text) return;
-    if (!startSession(message.id)) return;
-    session!.enqueue(text);
+    const s = startSession(message.id);
+    if (!s) return;
+    s.enqueue(text);
+    // enqueue 内同步触发 onError 会将 session 置空并复位游标；此时不再推进游标与 finish，
+    // 避免解引用 null 抛错、以及 spokenLen 覆盖 onError 刚重置的游标
+    if (session !== s) return;
     spokenLen = text.length;
-    session!.finish();
+    s.finish();
   };
 
   const feed = (message: ChatMessage) => {
     if (!isSupported.value) return;
+    let s = session;
     if (speakingId.value !== message.id) {
       stop(); // 停旧（若有）
-      if (!startSession(message.id)) return;
+      s = startSession(message.id);
     }
+    if (!s) return;
     // 注：spokenLen 是 getText 输出文本的字符游标。默认 getText 对增长中的原文重新 stripMarkdown，
     // 若某 markdown 标记跨已朗读句末边界且后续 chunk 才闭合，前缀理论上可变，个别字符可能重读/漏读。
     // 流式 markdown 场景概率低、spec 已接受此权衡，故不在此重排游标。
@@ -210,16 +216,19 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
     const boundary = lastBoundary(tail);
     if (boundary !== -1) {
       const complete = tail.slice(0, boundary + 1);
-      session!.enqueue(complete);
+      s.enqueue(complete);
+      // enqueue 内同步触发 onError 会将 session 置空并复位游标；此时中止后续 enqueue→finish→游标推进链
+      if (session !== s) return;
       spokenLen += complete.length;
     }
     if (message.status === 'success') {
       const rest = full.slice(spokenLen);
       if (rest.trim()) {
-        session!.enqueue(rest);
+        s.enqueue(rest);
+        if (session !== s) return;
         spokenLen += rest.length;
       }
-      session!.finish();
+      s.finish();
     }
   };
 

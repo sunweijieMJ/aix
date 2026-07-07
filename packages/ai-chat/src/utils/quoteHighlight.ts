@@ -8,6 +8,8 @@
  * 样式类挂在 AiChat.vue 的全局样式里（.aix-quote-highlight*，见 Task 12）。
  */
 
+import { BUBBLE_CONTENT_SELECTOR } from './helpers';
+
 const FADE_CLASS = 'aix-quote-highlight-fade';
 
 /** 整气泡形态的淡出定时器登记表：重复触发时先清旧定时器，避免类被提前移除或动画不重播 */
@@ -72,7 +74,7 @@ export const highlightRange = (range: Range, duration = 2000): void => {
       ? range.startContainer
       : range.startContainer.parentElement;
   // 定位容器：气泡内容元素自带 position:relative；找不到则降级整体高亮
-  const host = startEl?.closest<HTMLElement>('.aix-bubble__content');
+  const host = startEl?.closest<HTMLElement>(BUBBLE_CONTENT_SELECTOR);
   if (!host) {
     if (startEl instanceof HTMLElement) highlightElement(startEl, duration);
     return;

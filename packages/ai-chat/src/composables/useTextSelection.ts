@@ -1,6 +1,7 @@
 import { ref, watch, toValue, onScopeDispose } from 'vue';
 import type { MaybeRefOrGetter, Ref } from 'vue';
 import type { MessageRole, QuoteAnchor } from '../types';
+import { BUBBLE_CONTENT_SELECTOR } from '../utils/helpers';
 import { normalizeText, rangeToOffsets, getContext } from '../utils/textRange';
 
 export interface UseTextSelectionOptions {
@@ -45,8 +46,7 @@ export interface UseTextSelectionReturn {
 }
 
 /** 落点在这些元素内不触发划词（链接/按钮/表单等交互元素） */
-const DEFAULT_EXCLUDE =
-  'a,button,input,textarea,select,[role="button"],[contenteditable="true"]';
+const DEFAULT_EXCLUDE = 'a,button,input,textarea,select,[role="button"],[contenteditable="true"]';
 
 /** selectionchange 去抖 / pointerup 后读选区的延时（等浏览器完成选区收敛） */
 const READ_DELAY = 120;
@@ -74,8 +74,7 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
 
   /** 节点 → 命中的气泡根（角色过滤 + 排除交互元素 + 限定在 root 内），未命中 null */
   const bubbleOf = (node: Node | null): HTMLElement | null => {
-    const el: Element | null =
-      node instanceof Element ? node : (node?.parentElement ?? null);
+    const el: Element | null = node instanceof Element ? node : (node?.parentElement ?? null);
     if (!el || el.closest(exclude)) return null;
     const bubble = el.closest<HTMLElement>('[data-aix-message-id]');
     if (!bubble) return null;
@@ -106,10 +105,17 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
       active.value = null;
       return;
     }
-    // 选区跨多消息：钳制到起点所在消息（固定行为，见设计 §0）
     const range = raw.cloneRange();
-    if (!bubble.contains(raw.endContainer)) {
-      range.setEnd(bubble, bubble.childNodes.length);
+    const contentEl = bubble.querySelector<HTMLElement>(BUBBLE_CONTENT_SELECTOR) ?? bubble;
+    // 选区终点越过内容区末尾（跨消息拖选、落入 footer 的分支切换器/自定义 action 文本等，
+    // 这些 UI 文本在文档序上位于 content 之后）：钳制到起点消息内容区末尾，避免 UI 文本被
+    // Range.toString() 拼进 exact，同时让终点落回内容区内，偏移换算不因终点越出而退化。
+    // 用边界比较而非 contains：终点在内容区之前（如选区整体在 header 插槽内）时不钳制，
+    // 否则 setEnd 会把选区向前扩张成「header 选中点 → 整段正文」。
+    const contentRange = document.createRange();
+    contentRange.selectNodeContents(contentEl);
+    if (range.compareBoundaryPoints(Range.END_TO_END, contentRange) > 0) {
+      range.setEnd(contentEl, contentEl.childNodes.length);
     }
     const text = normalizeText(range.toString());
     if (!text) {
@@ -121,7 +127,6 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
         ? range.startContainer
         : range.startContainer.parentElement;
     const blockEl = startEl?.closest<HTMLElement>('[data-aix-block-id]') ?? null;
-    const contentEl = bubble.querySelector<HTMLElement>('.aix-bubble__content') ?? bubble;
     // 偏移仅在块内有意义（回链快路径按块还原）；无块打标的内容退回消息级 anchor
     const offsetHost = blockEl ?? contentEl;
     const offsets = rangeToOffsets(offsetHost, range);
@@ -194,7 +199,7 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
     pressTimer = setTimeout(() => {
       const bubble = bubbleOf(pressTarget as Node | null);
       if (!bubble || !pressPoint) return;
-      const contentEl = bubble.querySelector<HTMLElement>('.aix-bubble__content') ?? bubble;
+      const contentEl = bubble.querySelector<HTMLElement>(BUBBLE_CONTENT_SELECTOR) ?? bubble;
       trigger.value = {
         point: pressPoint,
         defaultTarget: {

@@ -7,6 +7,21 @@
 /** 折叠空白 + 去首尾：选区文本与搜索文本统一口径 */
 export const normalizeText = (s: string): string => s.replace(/\s+/g, ' ').trim();
 
+/**
+ * 归一化 prefix/suffix：内部连续空白折叠为单个空格，但只去掉「远离 exact 一侧」的边界空白，
+ * 保留「贴着 exact 一侧」的边界空白。
+ * W3C TextQuoteSelector 的不变式是 prefix + exact + suffix 为原文直接拼接；exact 已两端 trim，
+ * 故 prefix 与 exact、exact 与 suffix 之间的分隔空白落在 prefix 尾部 / suffix 头部。若像
+ * normalizeText 那样把它一并 trim 掉，而折叠后的 haystack 里这枚空格仍在，拼出的 pattern 就缺一格，
+ * indexOf 必然落空并逐级降级到纯 exact，导致重复文本命中错误位置。保留该边界空格可让各降级层
+ * （prefix+exact+suffix / prefix+exact / exact+suffix）都在正确位置命中。
+ */
+const normalizeContext = (s: string, side: 'prefix' | 'suffix'): string => {
+  const collapsed = s.replace(/\s+/g, ' ');
+  // 折叠后首尾至多各剩一个空格：prefix 去头部（保尾部与 exact 相邻的空格），suffix 去尾部（保头部）
+  return side === 'prefix' ? collapsed.replace(/^ /, '') : collapsed.replace(/ $/, '');
+};
+
 const textNodesOf = (container: Element): Text[] => {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
@@ -109,17 +124,21 @@ export const findTextRange = (
 ): Range | null => {
   const normExact = normalizeText(exact);
   if (!normExact) return null;
-  const normPrefix = prefix ? normalizeText(prefix) : undefined;
-  const normSuffix = suffix ? normalizeText(suffix) : undefined;
+  const normPrefix = prefix ? normalizeContext(prefix, 'prefix') : undefined;
+  const normSuffix = suffix ? normalizeContext(suffix, 'suffix') : undefined;
 
   const full = container.textContent ?? '';
   const { norm, map } = buildNormalizedIndex(full);
 
   const attempts: { pattern: string; offsetInPattern: number }[] = [];
   if (normPrefix && normSuffix) {
-    attempts.push({ pattern: normPrefix + normExact + normSuffix, offsetInPattern: normPrefix.length });
+    attempts.push({
+      pattern: normPrefix + normExact + normSuffix,
+      offsetInPattern: normPrefix.length,
+    });
   }
-  if (normPrefix) attempts.push({ pattern: normPrefix + normExact, offsetInPattern: normPrefix.length });
+  if (normPrefix)
+    attempts.push({ pattern: normPrefix + normExact, offsetInPattern: normPrefix.length });
   if (normSuffix) attempts.push({ pattern: normExact + normSuffix, offsetInPattern: 0 });
   attempts.push({ pattern: normExact, offsetInPattern: 0 });
 

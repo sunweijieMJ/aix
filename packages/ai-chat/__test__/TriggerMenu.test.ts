@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { nextTick } from 'vue';
 import TriggerMenu from '../src/components/TriggerMenu.vue';
 import type { TriggerItem } from '../src/types';
 
@@ -60,6 +61,25 @@ describe('TriggerMenu', () => {
     mountMenu({ ...base, items: [] });
     expect(q('[role="listbox"]')?.textContent).toContain('无匹配结果');
     expect(qa('[role="option"]')).toHaveLength(0);
+  });
+
+  it('高亮下标变化时把对应选项滚入可视区（scrollIntoView block:nearest）', async () => {
+    // jsdom 无布局也未定义 scrollIntoView，直接挂 mock 以断言被调用
+    const scrollSpy = vi.fn();
+    const proto = HTMLElement.prototype as { scrollIntoView?: unknown };
+    const original = proto.scrollIntoView;
+    proto.scrollIntoView = scrollSpy;
+    try {
+      const w = mountMenu(base);
+      await w.setProps({ activeIndex: 1 });
+      await nextTick();
+      expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' });
+      // 滚动的是第 2 个选项元素（对应 activeIndex=1）
+      const opt1 = qa('[role="option"]')[1]!;
+      expect(scrollSpy.mock.instances).toContain(opt1);
+    } finally {
+      proto.scrollIntoView = original;
+    }
   });
 
   it('传送到 body：菜单不在组件宿主内、卸载后不残留', () => {

@@ -91,6 +91,18 @@ const floatingElRef = ref<HTMLElement | null>(null);
 watch(floatingElRef, (el) => {
   floatingRef.value = el;
 });
+
+// 键盘导航为 aria-activedescendant 模式（焦点不进菜单），浏览器不会自动把高亮项滚入可视区，
+// 长列表键盘上下移时高亮项会滑出 max-height 视窗成为盲选，故在高亮下标变化时手动滚动。
+// flush:'post' 确保 DOM 已按新 activeIndex 渲染；items 异步更新时以空引用守卫兜底。
+watch(
+  () => props.activeIndex,
+  (i) => {
+    const options = floatingElRef.value?.querySelectorAll<HTMLElement>('[role="option"]');
+    options?.[i]?.scrollIntoView({ block: 'nearest' });
+  },
+  { flush: 'post' },
+);
 </script>
 
 <style lang="scss">

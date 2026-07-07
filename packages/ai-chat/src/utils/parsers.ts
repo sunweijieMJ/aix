@@ -66,7 +66,7 @@ export const flatParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChunk
  * 未走 createParseChunk 工厂：工具分支需要在读取文本增量之前短路返回，
  * 工厂的 pickDelta/pickBlockType 组合无法自然表达「命中工具则跳过文本」的优先级，故显式实现。
  */
-export function openaiParseChunk(chunk: SSEChunk): ParsedChunk {
+export function openaiParseChunk(chunk: SSEChunk): ParsedChunk | ParsedChunk[] {
   const data = chunk.data;
   if (!data) return {};
   if (data === '[DONE]') return { done: true };
@@ -91,16 +91,21 @@ export function openaiParseChunk(chunk: SSEChunk): ParsedChunk {
     return { delta: data };
   }
   const choice = json.choices?.[0];
-  const tc = choice?.delta?.tool_calls?.[0];
-  if (tc) {
-    return {
+  const toolCalls = choice?.delta?.tool_calls;
+  if (toolCalls && toolCalls.length > 0) {
+    // 单条工具增量保持既有单对象返回形态；同一 chunk 携带多条并行工具增量
+    // （批量聚合网关会把多路 tool_calls 合进一帧）时逐条映射为独立工具事件返回数组，
+    // 由 useChat 侧 toArray 展开，避免 index 1+ 的 id/name 被丢弃。
+    // index 缺省回退到数组下标，作为并行工具的关联键兜底。
+    const toEvent = (tc: NonNullable<typeof toolCalls>[number], i: number): ParsedChunk => ({
       tool: {
-        index: tc.index ?? 0,
+        index: tc.index ?? i,
         toolCallId: tc.id,
         toolName: tc.function?.name,
         argsTextDelta: tc.function?.arguments,
       },
-    };
+    });
+    return toolCalls.length === 1 ? toEvent(toolCalls[0]!, 0) : toolCalls.map(toEvent);
   }
   // finish_reason 无法精确给出具体 index（可能存在多个并行工具调用）；为保持 parseChunk 纯函数，
   // 简化为固定发 index 0 的 argsDone。多并行工具的收尾建议由后端显式事件驱动，

@@ -44,7 +44,7 @@ import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
 import { locale } from '../../locale';
 import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
-import { safeUrl } from '../../utils/url';
+import { safeUrl, isImageSource } from '../../utils/url';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block，关闭属性继承避免多余 attr 落到根元素。
 defineOptions({ inheritAttrs: false });
@@ -59,9 +59,9 @@ const links = computed(() =>
   props.block.items.map((item) => ({ ...item, href: safeUrl(item.url) })),
 );
 
-// icon 既可能是 favicon 链接（http/https/data/协议相对/绝对路径），也可能是 emoji/短文本。
-// 前者用 <img> 渲染，后者直接作为文本，避免把 emoji 误当图片地址。
-const isImageIcon = (icon?: string): boolean => !!icon && /^(https?:\/\/|data:|\/\/|\/)/.test(icon);
+// icon 既可能是 favicon 链接，也可能是 emoji/短文本：前者用 <img> 渲染，后者直接作为文本。
+// 走共享判定（与 Prompts 的 icon 同口径），同一字符串在两处渲染一致。
+const isImageIcon = isImageSource;
 </script>
 
 <style lang="scss">

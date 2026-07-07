@@ -140,6 +140,46 @@ describe('parseChunk — 工具分支', () => {
     });
   });
 
+  it('openai 同帧多条并行 tool_calls → 逐条映射为工具事件数组（不丢弃 index 1+）', () => {
+    const r = openaiParseChunk({
+      data: JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_1', function: { name: 'f0', arguments: '{"a"' } },
+                { index: 1, id: 'call_2', function: { name: 'f1', arguments: '{"b"' } },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+    expect(Array.isArray(r)).toBe(true);
+    expect(r).toMatchObject([
+      { tool: { index: 0, toolCallId: 'call_1', toolName: 'f0', argsTextDelta: '{"a"' } },
+      { tool: { index: 1, toolCallId: 'call_2', toolName: 'f1', argsTextDelta: '{"b"' } },
+    ]);
+  });
+
+  it('openai 多条 tool_calls 缺 index：回退数组下标作关联键', () => {
+    const r = openaiParseChunk({
+      data: JSON.stringify({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { id: 'call_1', function: { name: 'f0' } },
+                { id: 'call_2', function: { name: 'f1' } },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+    expect(r).toMatchObject([{ tool: { index: 0 } }, { tool: { index: 1 } }]);
+  });
+
   it('openai finish_reason=tool_calls → argsDone', () => {
     const r = openaiParseChunk({
       data: JSON.stringify({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }),

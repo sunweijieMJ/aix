@@ -5,27 +5,17 @@ import { defineComponent, h, ref, watch, onBeforeUnmount } from 'vue';
 import Skeleton from '../components/Skeleton.vue';
 import { locale } from '../locale';
 import { transitionHeight } from './heightTransition';
+import { createLruCache } from './lruCache';
 import type { MarkdownRenderers, MdToken } from './markdownWalker';
 
 /**
  * 已成功加载过的图片 URL（LRU 上限 200）：虚拟列表重挂载 / 同图复现时直接出图，不再闪骨架。
- * 设上限避免长会话中不断出现新 URL 导致 Set 无界增长（与 diagramRenderers 的 svgCache 同策略）。
+ * 「是否加载过」是集合语义，故以 value 恒为 true 的占位形式复用共享 LRU 工厂（与 svgCache 同策略）；
+ * has 命中即刷新热度，越界淘汰最久未访问项，避免长会话中新 URL 无界增长。
  */
-const loadedUrls = new Set<string>();
-const LOADED_MAX = 200;
-/** 命中即刷新热度（移到末尾），保证 LRU 淘汰恒为最久未访问项 */
-const isLoaded = (url: string): boolean => {
-  if (!loadedUrls.has(url)) return false;
-  loadedUrls.delete(url);
-  loadedUrls.add(url);
-  return true;
-};
-const markLoaded = (url: string) => {
-  loadedUrls.delete(url); // 已存在则先删，保证重新插入到末尾刷新热度
-  loadedUrls.add(url);
-  // Set 迭代顺序即插入顺序（ES2015 规范保证），values().next() 取最旧键淘汰
-  if (loadedUrls.size > LOADED_MAX) loadedUrls.delete(loadedUrls.values().next().value!);
-};
+const loadedUrls = createLruCache<string, true>(200);
+const isLoaded = (url: string): boolean => loadedUrls.has(url);
+const markLoaded = (url: string) => loadedUrls.set(url, true);
 
 /** 测试用：清空已加载缓存 */
 export function __resetImageCache() {

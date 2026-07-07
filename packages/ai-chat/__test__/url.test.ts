@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { safeUrl } from '../src/utils/url';
+import { safeUrl, isImageSource } from '../src/utils/url';
 
 describe('safeUrl', () => {
   // --- 安全协议：原样放行 ---
@@ -49,5 +49,27 @@ describe('safeUrl', () => {
   it('空 / undefined 返回 undefined', () => {
     expect(safeUrl(undefined)).toBeUndefined();
     expect(safeUrl('')).toBeUndefined();
+  });
+});
+
+describe('isImageSource', () => {
+  it('完整协议 / data / 绝对与相对路径判为图片', () => {
+    expect(isImageSource('https://a.com/icon.png')).toBe(true);
+    expect(isImageSource('http://a.com/icon.png')).toBe(true);
+    expect(isImageSource('HTTPS://a.com/icon.png')).toBe(true);
+    expect(isImageSource('data:image/png;base64,x')).toBe(true);
+    expect(isImageSource('/static/icon.png')).toBe(true);
+    expect(isImageSource('//cdn.a.com/icon.png')).toBe(true);
+    expect(isImageSource('./icon.png')).toBe(true);
+    expect(isImageSource('../icons/a.png')).toBe(true);
+  });
+
+  it('emoji / 占位文本 / 残缺协议判为文本', () => {
+    expect(isImageSource('🔥')).toBe(false);
+    expect(isImageSource('...')).toBe(false); // '.' 开头但非 ./ 相对路径
+    expect(isImageSource('https:foo')).toBe(false); // 缺 // 的残缺协议
+    expect(isImageSource('icon')).toBe(false);
+    expect(isImageSource('')).toBe(false);
+    expect(isImageSource(undefined)).toBe(false);
   });
 });

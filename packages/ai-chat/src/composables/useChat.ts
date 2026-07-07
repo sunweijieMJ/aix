@@ -126,6 +126,14 @@ function appendDelta(msg: ChatMessage, blockType: 'text' | 'reasoning', delta: s
   }
 }
 
+/**
+ * 深拷贝内容块，供重试回滚时把 resume 既有块恢复到进入快照。
+ * 内容块均为可持久化的纯数据（随消息树序列化落库），JSON 深拷贝即可完整复制其结构。
+ */
+function cloneBlock(block: ContentBlock): ContentBlock {
+  return JSON.parse(JSON.stringify(block)) as ContentBlock;
+}
+
 export function useChat(options: UseChatOptions): UseChatReturn {
   const {
     request,
@@ -263,13 +271,21 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     let warnedBadBlockType = false;
     // 每请求工具事件累积上下文：provider 流内 index → 本地 blockId，跟随本次请求生命周期
     const toolCtx: ToolReduceCtx = { indexToBlockId: new Map(), genBlockId };
-    // 续流基线：进入时快照已有内容长度，重试时只丢本段新增内容（保留 resume 前的既有块）；
-    // fresh 请求 baseLen 恒为 0，等价于原「整体清空」语义。
+    // 续流基线：进入时快照已有内容长度，重试回滚以此为界只清本段新增内容；
+    // fresh 请求 baseLen 恒为 0，等价于整体清空。
     const entryMsg = tree.getMessage(aiMsgId);
     const baseLen = entryMsg ? entryMsg.content.length : 0;
     // 续流：进入即把消息状态置为 updating（在已有内容之上继续，而非重新走 loading 占位）
     if (!fresh && entryMsg) entryMsg.status = 'updating';
     try {
+      // resume 既有块进入快照（深拷贝）：appendDelta 会把同型 delta 就地并入既有末尾块、
+      // applyToolEvent 会按 toolCallId 命中既有 tool_use 块累加 argsText / 落 output，这些就地改动
+      // 无法被 splice(baseLen) 撤销；重试回滚时用这份快照把 [0, baseLen) 既有块整体还原到进入态。
+      // fresh 请求 baseLen=0，快照为空数组。构建放在 try 内：块内容可经 updateBlock 写入任意值，
+      // 深拷贝遇不可 JSON 序列化数据（循环引用等）抛错时走统一错误路径，finally 正常复位 isLoading。
+      const baseSnapshot: ContentBlock[] = entryMsg
+        ? entryMsg.content.slice(0, baseLen).map(cloneBlock)
+        : [];
       // 重试循环：仅当「非 abort 的错误」且仍有重试额度时再次发起；abort 立即停止、不重试。
       // 沿用同一个 ctrl（停止按钮仍生效），并在每次重试前清空已累积内容，避免半截内容叠加。
       for (let attempt = 0; ; attempt += 1) {
@@ -303,9 +319,15 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           });
         try {
           if (attempt > 0) {
-            // splice(baseLen) 只丢弃本段（fresh 或 resume）新增内容：fresh 的 baseLen=0，
-            // 等价于原「整体清空」；resume 的 baseLen>0，保留续流前已持久化的既有块。
-            aiMsg.content.splice(baseLen);
+            // 重试前彻底清空本段内容：整段 splice 替换——[0, baseLen) 既有块换回进入快照的新克隆
+            // （每次重试重新克隆，避免本次流的就地累加污染快照、影响后续重试），baseLen 之后本段
+            // 新增的整块随之移除。fresh 请求快照为空，等价于清空全部内容。回滚后从干净的进入态重新
+            // 累积，既不会重复既有内容，也不残留上次尝试的半截增量。
+            aiMsg.content.splice(0, aiMsg.content.length, ...baseSnapshot.map(cloneBlock));
+            // index→blockId 映射一并清空：上次尝试新建的块已被回滚移除，残留映射会让新流的
+            // 非工具块 stop 事件（仅 index + argsDone）绕过 applyToolEvent 的空事件守卫，
+            // 凭已不存在的 blockId 走新建分支产出空工具块。新尝试的流从头编号，按需重新登记。
+            toolCtx.indexToBlockId.clear();
             aiMsg.status = fresh ? 'loading' : 'updating';
           }
           const res = await request({ messages: history, signal, resume: resumePayload });

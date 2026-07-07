@@ -1,5 +1,6 @@
 <template>
-  <div :class="ns.b()">
+  <!-- 空 quotes 不渲染，避免显示孤立的空标题（与 SourcesBlock / AttachmentBlock 对齐） -->
+  <div v-if="block.quotes.length" :class="ns.b()">
     <div :class="ns.e('title')">{{ t.quoteBlockTitle }}</div>
     <blockquote
       v-for="q in block.quotes"

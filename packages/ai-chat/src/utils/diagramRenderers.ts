@@ -1,4 +1,5 @@
 import { defineComponent, h, ref, shallowRef, watch, type ShallowRef } from 'vue';
+import { createLruCache } from './lruCache';
 import type { MarkdownRenderers } from './markdownWalker';
 
 /** mermaid 库最小接口（v10/v11 兼容；依赖注入，不直接耦合其类型声明） */
@@ -9,22 +10,7 @@ export interface MermaidLike {
 }
 
 // 渲染结果缓存：source → svg（LRU 上限 50）。虚拟列表重挂载 / 同图复现时不重渲染。
-const svgCache = new Map<string, string>();
-const CACHE_MAX = 50;
-const cacheGet = (key: string): string | undefined => {
-  const hit = svgCache.get(key);
-  if (hit !== undefined) {
-    svgCache.delete(key);
-    svgCache.set(key, hit); // 刷新热度
-  }
-  return hit;
-};
-const cacheSet = (key: string, svg: string) => {
-  svgCache.set(key, svg);
-  // LRU 淘汰：Map 迭代顺序即插入顺序（ES2015 规范保证），keys().next() 取到最旧键；
-  // cacheGet 命中时会 delete+set 把热键移到末尾，故此处淘汰的恒为最久未访问项。
-  if (svgCache.size > CACHE_MAX) svgCache.delete(svgCache.keys().next().value!);
-};
+const svgCache = createLruCache<string, string>(50);
 
 // mermaid.render 要求全局唯一 id
 let renderSeq = 0;
@@ -77,7 +63,7 @@ function buildDiagramRenderers(source: MermaidSource): MarkdownRenderers {
           }
           if (!settled || svg.value) return;
           // 缓存命中不依赖 mermaid 实例：跨引擎复用已渲染结果
-          const hit = cacheGet(code);
+          const hit = svgCache.get(code);
           if (hit !== undefined) {
             svg.value = hit;
             return;
@@ -88,7 +74,7 @@ function buildDiagramRenderers(source: MermaidSource): MarkdownRenderers {
             await mermaid.parse(code);
             const { svg: out } = await mermaid.render(`aix-mermaid-${renderSeq++}`, code);
             if (code !== props.code) return; // 异步期间内容已变（防御）：丢弃过期结果
-            cacheSet(code, out);
+            svgCache.set(code, out);
             svg.value = out;
           } catch {
             // 语法错误 / 渲染失败（含 jsdom 无布局）：维持代码块展示

@@ -29,7 +29,12 @@
             <button type="button" :class="ns.e('edit-cancel')" @click="cancelEdit">
               {{ t.exitEdit }}
             </button>
-            <button type="button" :class="ns.e('edit-save')" @click="saveEdit">
+            <button
+              type="button"
+              :class="ns.e('edit-save')"
+              :disabled="!editable"
+              @click="saveEdit"
+            >
               {{ t.saveButton }}
             </button>
           </div>
@@ -94,6 +99,8 @@ export interface BubbleEmits {
   (e: 'block-action', payload: { messageKey: string | number; action: BlockAction }): void;
   /** 用户消息内联编辑保存，携带新文本（由 AiChat 调 onEdit） */
   (e: 'edit', text: string): void;
+  /** 进入/退出内联编辑态：供列表层保持该行挂载（虚拟滚动回收该行会销毁行内草稿） */
+  (e: 'editing-change', editing: boolean): void;
   /** 某文本块逐字显示完毕（携带所属消息 key），供上层在动画结束后再渲染操作条等 */
   (e: 'typing-complete', payload: { messageKey: string | number }): void;
 }
@@ -103,7 +110,7 @@ export interface BubbleEmits {
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { Edit } from '@aix/icons';
-import { computed, watchEffect, useSlots, ref } from 'vue';
+import { computed, watch, watchEffect, useSlots, ref } from 'vue';
 import { locale } from '../locale';
 import type { BlockAction, BubbleProps, BubbleContentInfo, BlockRenderers } from '../types';
 import { messageText } from '../utils/helpers';
@@ -192,11 +199,16 @@ const renderedNode = computed(() =>
 const canEdit = computed(() => props.editable && props.role === 'user' && !props.loading);
 const editing = ref(false);
 const draft = ref('');
+// 编辑态进出上抛列表层：使其把该行标记为常驻挂载，避免虚拟滚动回收销毁行内草稿
+watch(editing, (v) => emit('editing-change', v));
 const enterEdit = () => {
   draft.value = messageText({ id: '', role: props.role ?? 'ai', content: props.content ?? [] });
   editing.value = true;
 };
 const saveEdit = () => {
+  // editable 在编辑框打开期间被外部翻 false（如流式进行中）时，上层 onEdit 守卫会拒绝保存；
+  // 此处不退出编辑态、不 emit，保留编辑框与草稿，待恢复可编辑后再提交，避免草稿被静默丢弃。
+  if (!props.editable) return;
   const text = draft.value.trim();
   if (!text) return; // 空内容不提交
   emit('edit', text);
@@ -392,6 +404,11 @@ const cancelEdit = () => {
     border-color: transparent;
     background-color: var(--aix-colorPrimary);
     color: var(--aix-colorTextLight);
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
   }
 
   @media (hover: none) {

@@ -64,7 +64,13 @@ const props = defineProps<ToolUseBlockProps>();
 const ns = useNamespace('tool-use');
 const { t } = useLocale(locale);
 const expanded = ref(true);
-const delegate = computed<Component | undefined>(() => props.toolRenderers?.[props.block.toolName]);
+// toolName 来自不可信流数据，用 Object.hasOwn 做自有属性校验，避免 'constructor'/'toString'
+// 等原型链上的键命中被误当渲染器（__proto__ 本就不在自有属性中，hasOwn 一并挡住）
+const delegate = computed<Component | undefined>(() =>
+  props.toolRenderers && Object.hasOwn(props.toolRenderers, props.block.toolName)
+    ? props.toolRenderers[props.block.toolName]
+    : undefined,
+);
 const pending = computed(
   () =>
     props.block.state === 'input-streaming' ||

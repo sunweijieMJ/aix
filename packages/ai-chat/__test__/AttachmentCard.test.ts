@@ -40,6 +40,18 @@ describe('AttachmentCard', () => {
     expect(w.emitted('retry')).toHaveLength(1);
   });
 
+  it('error 图片卡渲染重试按钮并 emit retry（mask 之上可点）', async () => {
+    const w = mount(AttachmentCard, {
+      props: {
+        item: { ...base, name: 'p.png', mime: 'image/png', url: '/f/p.png', status: 'error' },
+      },
+    });
+    const btn = w.find('.aix-attachment-card__btn');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(w.emitted('retry')).toHaveLength(1);
+  });
+
   it('error 有 error 字段时根元素 title 渲染错误信息', () => {
     const w = mount(AttachmentCard, {
       props: { item: { ...base, status: 'error', error: new Error('网络超时') } },

@@ -26,3 +26,14 @@ export const safeUrl = (url?: string): string | undefined => {
   }
   return url;
 };
+
+/**
+ * 判定 icon 类字段（emoji / 图片地址二义）的字符串是否为图片地址，供 <img :src> 与文本渲染分流。
+ * Prompts 与 SourcesBlock 的 icon 字段共用此判定，保证同一字符串在两处渲染一致。
+ *
+ * 判为图片：`http(s)://`、`data:`、绝对路径 `/`（含协议相对 `//`）、相对路径 `./` `../` 开头；
+ * 判为文本：其余一律视为 emoji / 占位文本（如 `...`）——`https:foo` 这类缺 `//` 的残缺协议
+ * 串也按文本处理，避免渲染成必然加载失败的裂图。
+ */
+export const isImageSource = (icon?: string): boolean =>
+  !!icon && /^(https?:\/\/|data:|\.{1,2}\/|\/)/i.test(icon);

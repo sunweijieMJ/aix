@@ -19,6 +19,13 @@ import { createMessageTree } from './messageTree';
 // 流式中的非终态：恢复时无活跃流推进，须复位
 const IN_FLIGHT_STATUS = new Set<MessageStatus>(['loading', 'updating']);
 
+/** 复位单条消息的卡死状态：非终态（loading/updating）→ error 克隆，其余原样返回原引用（供调用方按引用判定是否变更） */
+function reconcileStatus(m: ChatMessage): ChatMessage {
+  return m.status && IN_FLIGHT_STATUS.has(m.status)
+    ? { ...m, status: 'error' as MessageStatus }
+    : m;
+}
+
 /**
  * 初始化/恢复时复位「卡在流式中」的消息：持久化的会话可能在上次流式途中被刷新，
  * 恢复后这些消息停在 loading/updating 非终态、却无活跃流推进 → 表现为「永远加载中」假态。
@@ -28,27 +35,36 @@ const IN_FLIGHT_STATUS = new Set<MessageStatus>(['loading', 'updating']);
 function reconcileStuckMessages(list: Conversation[]): Conversation[] {
   return list.map((conv) => {
     if (conv.tree) {
-      // 树模式：复位树内节点的卡死状态
+      // 树模式：树内节点与 messages 镜像反序列化后成两份独立对象，须一并复位卡死状态，
+      // 否则仅读 messages 的旧消费方仍会读到停在 updating 的假加载态。
       let changed = false;
       const nodes = conv.tree.nodes.map((n) => {
-        if (n.message?.status && IN_FLIGHT_STATUS.has(n.message.status)) {
-          changed = true;
-          return { ...n, message: { ...n.message, status: 'error' as MessageStatus } };
-        }
-        return n;
+        if (!n.message) return n;
+        const fixed = reconcileStatus(n.message);
+        if (fixed === n.message) return n;
+        changed = true;
+        return { ...n, message: fixed };
       });
-      return changed ? { ...conv, tree: { ...conv.tree, nodes } } : conv;
+      // messages 镜像是 activeTree.set 同步出的 active path，兼容仅读 messages 的旧消费方
+      const messages = Array.isArray(conv.messages)
+        ? conv.messages.map((m) => {
+            const fixed = reconcileStatus(m);
+            if (fixed !== m) changed = true;
+            return fixed;
+          })
+        : conv.messages;
+      return changed ? { ...conv, tree: { ...conv.tree, nodes }, messages } : conv;
     }
     // 扁平 messages 模式：防御持久化脏数据（缺失/非数组时归一为空数组），复位卡死状态
     if (!Array.isArray(conv.messages)) {
       return { ...conv, messages: [] };
     }
     let changed = false;
-    const messages = conv.messages.map((m) =>
-      m.status && IN_FLIGHT_STATUS.has(m.status)
-        ? ((changed = true), { ...m, status: 'error' as MessageStatus })
-        : m,
-    );
+    const messages = conv.messages.map((m) => {
+      const fixed = reconcileStatus(m);
+      if (fixed !== m) changed = true;
+      return fixed;
+    });
     return changed ? { ...conv, messages } : conv;
   });
 }
@@ -233,12 +249,34 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     if (conversations.value.some((c) => c.id === id)) activeKey.value = id;
   };
 
-  // 持久化：会话深变更后防抖保存（含消息流式 mutate）。save 可能返回 Promise，统一 fire-and-forget。
+  // 持久化：会话深变更后防抖保存（含消息流式 mutate）。save 可能返回 Promise，串行化避免慢保存乱序覆盖。
   if (storage) {
+    // 串行化 save：同一时刻至多一个 save 在飞。在飞期间的新变更只记录最新快照（pending，
+    // 折叠中间快照、last-write-wins），待当前 save 结束（无论成败）再以最新数据发起下一次。
+    // 避免慢的异步持久化（如远端 HTTP）两次请求重叠、旧快照后落地整体覆盖新数据。
+    let saving = false;
+    let pending: Conversation[] | null = null;
+    const runSave = (list: Conversation[]) => {
+      saving = true;
+      Promise.resolve(storage.save(list))
+        .catch((err) => {
+          console.warn('[ai-chat] 会话持久化失败，本次变更未保存:', err);
+        })
+        .finally(() => {
+          saving = false;
+          if (pending) {
+            const next = pending;
+            pending = null;
+            runSave(next); // 用在飞期间累积的最新快照续跑，保证最终落地的是最后一次数据
+          }
+        });
+    };
     const persist = (list: Conversation[]) => {
-      Promise.resolve(storage.save(list)).catch((err) => {
-        console.warn('[ai-chat] 会话持久化失败，本次变更未保存:', err);
-      });
+      if (saving) {
+        pending = list; // 有 save 在飞：仅记录最新快照，待其结束后续跑
+        return;
+      }
+      runSave(list);
     };
     let timer: ReturnType<typeof setTimeout> | null = null;
     watch(
@@ -257,8 +295,8 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
       { deep: true },
     );
     // dispose 时 flush 而非丢弃：防抖窗口内的最后一段变更（流式期间防抖被持续重置，
-    // 卸载若发生在流结束后的窗口内，丢的可能是整条刚完成的回复）立即落盘。
-    // 浏览器强杀（刷新/关 tab）仍可能丢窗口内数据，由 load 时 reconcileStuckMessages 兜底。
+    // 卸载若发生在流结束后的窗口内，丢的可能是整条刚完成的回复）立即落盘，同样经串行队列，
+    // 保证 flush 数据最终落地。浏览器强杀（刷新/关 tab）仍可能丢窗口内数据，由 load 时 reconcileStuckMessages 兜底。
     onScopeDispose(() => {
       if (timer) {
         clearTimeout(timer);

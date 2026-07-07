@@ -30,7 +30,7 @@ vi.mock('../src/composables/useAutoScroll', async (importOriginal) => {
 vi.mock('virtua/vue', () => ({
   Virtualizer: defineComponent({
     name: 'VirtualizerWrapper',
-    props: ['data'],
+    props: ['data', 'keepMounted'],
     setup(props: any, { slots, expose }: any) {
       expose({ scrollToIndex: scrollToIndexMock });
       return () => (props.data as unknown[]).map((item, i) => slots.default?.({ item, index: i }));

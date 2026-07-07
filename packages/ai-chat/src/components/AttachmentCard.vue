@@ -367,6 +367,30 @@ const errorTitle = computed(() => {
     }
   }
 
+  // 图片卡 error 态：重试按钮绝对居中浮于 mask 之上。
+  // 一是脱离常规流，不再作为 flex 子项挤压 width:100% 的满铺缩略图；
+  // 二是与 mask 同为定位元素且在其后，绘制序在上，命中不被 mask 拦截。
+  &--image &__btn {
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    left: 50%;
+    width: var(--aix-controlHeight);
+    height: var(--aix-controlHeight);
+    transform: translate(-50%, -50%);
+    color: var(--aix-colorWhite);
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    &:hover {
+      background-color: transparent;
+      color: var(--aix-colorWhite);
+    }
+  }
+
   // 删除按钮：右上角凸出，hover/focus-within 时显示
   &__remove {
     display: inline-flex;
