@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.7
+
+### Patch Changes
+
+- 增强send配置功能
+
 ## 0.0.6
 
 ### Patch Changes
