@@ -4,7 +4,7 @@ import {
   __resetMarkdownEngineCache,
 } from '../src/composables/useMarkdownRenderer';
 
-// 渐进加载契约：基础引擎（markdown-it + katex 插件 + dompurify）就绪即返回，
+// 渐进加载契约：基础引擎（markdown-it + katex 插件）就绪即返回，
 // 不等待重量级增强依赖（highlight.js / katex 库）；增强项后台 settle 后增量合入并递增版本号；
 // mermaid 更进一步——引擎装配阶段完全不 import，首个 ```mermaid 围栏真正渲染时才发起。
 // 通过「手动 resolve 的 deferred 模块 mock」精确控制增强依赖的落定时机。

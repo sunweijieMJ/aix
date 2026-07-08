@@ -29,7 +29,7 @@ export interface MarkdownRendererProps {
   streaming?: boolean;
   /** markdown token 渲染器注册表（扩展/覆盖内置块渲染，如 fence/math/自定义），优先级高于内置 */
   markdownRenderers?: MarkdownRenderers;
-  /** 是否允许渲染原始 HTML（经 DOMPurify 消毒；未装 dompurify 则降级为转义文本），默认 false */
+  /** 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），默认 false */
   allowHtml?: boolean;
   /**
    * 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）。视为静态配置：
@@ -462,6 +462,109 @@ const MarkdownBlock = defineComponent({
 /* JSON 非法的 chart 源码块：虚线边框提示异常（源码本身仍可读） */
 .aix-md-chart-source--error {
   border-style: dashed;
+}
+
+/* HTML Sandbox：sandbox iframe 渲染原始 HTML（allow-scripts，无 allow-same-origin，隔离父页面） */
+.aix-md-html-sandbox {
+  margin: 0.6em 0;
+  overflow: hidden;
+  border: 1px solid var(--aix-colorBorderSecondary);
+  border-radius: var(--aix-borderRadius);
+  background-color: var(--aix-colorBgContainer);
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--aix-marginXS);
+    min-height: 28px;
+    padding: var(--aix-paddingXXS) var(--aix-paddingSM);
+    border-bottom: 1px solid var(--aix-colorBorderSecondary);
+    background-color: var(--aix-colorFillTertiary);
+  }
+
+  &__tabs {
+    display: inline-flex;
+    gap: var(--aix-marginXXS);
+  }
+
+  &__tab {
+    padding: 2px var(--aix-paddingXS);
+    transition: all var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
+    border: none;
+    border-radius: var(--aix-borderRadiusSM);
+    background: transparent;
+    color: var(--aix-colorTextTertiary);
+    font-size: var(--aix-fontSizeSM);
+    cursor: pointer;
+
+    &.is-active {
+      background: var(--aix-colorFillSecondary);
+      color: var(--aix-colorText);
+    }
+  }
+
+  &__actions {
+    display: inline-flex;
+    gap: var(--aix-marginXXS);
+  }
+
+  &__action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    transition: all var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
+    border: none;
+    border-radius: var(--aix-borderRadiusSM);
+    background: transparent;
+    color: var(--aix-colorTextTertiary);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--aix-colorFillSecondary);
+      color: var(--aix-colorText);
+    }
+
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  &__body {
+    position: relative;
+  }
+
+  &__frame {
+    display: block;
+    width: 100%;
+    border: none;
+  }
+
+  &__code {
+    max-height: 320px;
+    margin: 0;
+    padding: var(--aix-paddingSM);
+    overflow: auto;
+    color: var(--aix-colorText);
+    font-size: var(--aix-fontSizeSM);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* 未固化（流式中）的原始 HTML 源码块，与其余围栏渲染器展示形态一致 */
+.aix-md-html-sandbox-source {
+  margin: 0.6em 0;
+  padding: var(--aix-paddingSM) var(--aix-padding);
+  overflow-x: auto;
+  border: 1px solid var(--aix-colorBorderSecondary);
+  border-radius: var(--aix-borderRadius);
+  background-color: var(--aix-colorFillTertiary);
+  font-size: var(--aix-fontSizeSM);
 }
 
 /* 内置图片骨架：加载期 shimmer 占位，就绪后淡入；失败占位框不裂图 */

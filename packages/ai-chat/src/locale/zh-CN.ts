@@ -25,6 +25,8 @@ export const zhCN: AiChatLocale = {
   renameConversation: '重命名',
   deleteConversation: '删除',
   noConversations: '暂无会话',
+  conversationsSearchPlaceholder: '搜索会话',
+  conversationsSearchEmpty: '无匹配结果',
   attachButton: '添加附件',
   attachmentUploading: '附件上传中',
   attachmentRetry: '重试上传',
@@ -58,4 +60,7 @@ export const zhCN: AiChatLocale = {
   triggerMenuEmpty: '无匹配结果',
   triggerMenuLoading: '加载中…',
   suggestionsLabel: '猜你想问',
+  htmlSandboxPreview: '预览',
+  htmlSandboxCode: '代码',
+  htmlSandboxOpenNewWindow: '新窗口打开',
 };

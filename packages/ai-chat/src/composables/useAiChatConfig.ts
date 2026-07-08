@@ -17,7 +17,7 @@ export interface AiChatConfig {
   toolRenderers?: BlockRenderers;
   /** 全局 markdown token 渲染器注册表，经 AiChat 注入到气泡内 MarkdownRenderer（组件 props 优先） */
   markdownRenderers?: MarkdownRenderers;
-  /** 是否允许渲染原始 HTML（经 DOMPurify 消毒），默认 false；经 AiChat 注入到 MarkdownRenderer */
+  /** 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），默认 false；经 AiChat 注入到 MarkdownRenderer */
   allowHtml?: boolean;
   /** 注入的 markdown-it 插件（扩展新语法，如脚注/容器）；经 AiChat 注入到气泡内 MarkdownRenderer */
   mdPlugins?: MarkdownItPlugin[];

@@ -48,6 +48,10 @@ export interface AiChatLocale {
   deleteConversation: string;
   /** 会话列表空态 */
   noConversations: string;
+  /** 会话搜索框 placeholder / 无障碍标签 */
+  conversationsSearchPlaceholder: string;
+  /** 会话搜索无匹配结果时的空态文案 */
+  conversationsSearchEmpty: string;
   /** 附件：添加附件按钮 */
   attachButton: string;
   /** 附件：上传中提示（发送按钮 title） */
@@ -114,4 +118,10 @@ export interface AiChatLocale {
   triggerMenuLoading: string;
   /** 追问建议：面板标题 */
   suggestionsLabel: string;
+  /** HTML Sandbox：预览标签页 */
+  htmlSandboxPreview: string;
+  /** HTML Sandbox：代码标签页 */
+  htmlSandboxCode: string;
+  /** HTML Sandbox：新窗口打开按钮 */
+  htmlSandboxOpenNewWindow: string;
 }

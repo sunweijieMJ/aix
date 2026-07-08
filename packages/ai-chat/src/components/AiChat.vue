@@ -246,7 +246,7 @@ export interface AiChatProps {
    */
   markdownRenderers?: MarkdownRenderers;
   /**
-   * 是否允许渲染原始 HTML（经 DOMPurify 消毒），默认 false；注入到气泡内 MarkdownRenderer。
+   * 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），默认 false；注入到气泡内 MarkdownRenderer。
    * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
    */
   allowHtml?: boolean;

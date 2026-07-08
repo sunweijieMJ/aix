@@ -56,6 +56,44 @@ export const List: Story = {
   },
 };
 
+/** 内置搜索：按 label 模糊匹配（大小写不敏感），与 groupable 可叠加使用 */
+export const Searchable: Story = {
+  render: () => ({
+    components: { Conversations },
+    setup: () => {
+      const activeKey = ref('a');
+      const items = ref([...demoItems]);
+      return { activeKey, items };
+    },
+    template: `
+      <div style="width:260px;height:420px;border:1px solid var(--aix-colorBorderSecondary);border-radius:12px;overflow:hidden">
+        <Conversations
+          :items="items"
+          v-model:activeKey="activeKey"
+          groupable
+          searchable
+          @create="items.unshift({ id: 'n'+Date.now(), label: '新对话', group: '今天' })"
+          @delete="(id) => { items = items.filter(i => i.id !== id) }"
+          @rename="(id, label) => { const it = items.find(i => i.id === id); if (it) it.label = label }"
+        />
+      </div>
+    `,
+  }),
+  play: async ({ canvas }) => {
+    await canvas.findByText('梵高《向日葵》赏析');
+    const input = await canvas.findByPlaceholderText('搜索会话');
+    await userEvent.type(input, 'type');
+    // 输入英文关键字后：仅命中「TypeScript 类型体操」，其余两项被过滤
+    await waitFor(() => expect(canvas.queryByText('梵高《向日葵》赏析')).toBeNull());
+    await canvas.findByText('TypeScript 类型体操');
+    expect(canvas.queryByText('上周的方案讨论')).toBeNull();
+    // 清空后恢复全部会话
+    await userEvent.clear(input);
+    await canvas.findByText('梵高《向日葵》赏析');
+    await canvas.findByText('上周的方案讨论');
+  },
+};
+
 // ============ 集成：useConversations × Conversations × AiChat ============
 
 /** 把一段文本按扁平 SSE 协议流式输出 */

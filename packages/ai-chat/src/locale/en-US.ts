@@ -25,6 +25,8 @@ export const enUS: AiChatLocale = {
   renameConversation: 'Rename',
   deleteConversation: 'Delete',
   noConversations: 'No conversations',
+  conversationsSearchPlaceholder: 'Search conversations',
+  conversationsSearchEmpty: 'No matches',
   attachButton: 'Attach file',
   attachmentUploading: 'Uploading attachments',
   attachmentRetry: 'Retry upload',
@@ -58,4 +60,7 @@ export const enUS: AiChatLocale = {
   triggerMenuEmpty: 'No matches',
   triggerMenuLoading: 'Loading…',
   suggestionsLabel: 'Suggested questions',
+  htmlSandboxPreview: 'Preview',
+  htmlSandboxCode: 'Code',
+  htmlSandboxOpenNewWindow: 'Open in new window',
 };

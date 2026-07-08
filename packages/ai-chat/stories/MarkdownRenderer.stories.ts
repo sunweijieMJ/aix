@@ -348,14 +348,15 @@ export const CustomRenderers: Story = {
 };
 
 /**
- * 原始 HTML（`allowHtml`）：开启后块级 HTML 经 DOMPurify 消毒渲染，危险属性/脚本被去除。
- * `dompurify` 随包自动安装；默认关闭时原始 HTML 转义为文本。
+ * 原始 HTML（`allowHtml`）：开启后块级 HTML 经 `<iframe sandbox="allow-scripts">` 隔离渲染——
+ * 不消毒内容，但 iframe 不带 allow-same-origin，脚本拿不到父页面 DOM/cookie。
+ * 默认关闭时原始 HTML 转义为文本。渲染块提供代码/预览切换、新窗口打开。
  */
 export const AllowHtml: Story = {
   args: {
     allowHtml: true,
     content:
-      '后端下发的 HTML 卡片：\n\n<div style="padding:8px;border:1px solid var(--aix-colorBorder);border-radius:6px">这是 <strong>HTML</strong> 卡片，<img src="x" onerror="alert(1)"> 中的危险属性已被消毒。</div>',
+      '后端下发的 HTML 卡片：\n\n<div style="padding:12px;border:1px solid #ddd;border-radius:6px">\n  <p>这是一张 <strong>HTML</strong> 卡片，按钮里的脚本会在沙箱 iframe 内执行：</p>\n  <button onclick="this.textContent=\'已点击\'">点我</button>\n</div>',
   },
 };
 

@@ -2,7 +2,7 @@ import { ref, type Ref } from 'vue';
 import { createLazyChartRenderers, importECharts } from '../utils/chartRenderers';
 import { createHighlightRenderers, type HljsLike } from '../utils/codeRenderers';
 import { createLazyDiagramRenderers, type MermaidLike } from '../utils/diagramRenderers';
-import { createHtmlRenderers, type DomPurifyLike } from '../utils/htmlRenderers';
+import { createHtmlRenderers } from '../utils/htmlRenderers';
 import type { MarkdownRenderers, MdToken } from '../utils/markdownWalker';
 import { createMathRenderers, type KatexLike } from '../utils/mathRenderers';
 
@@ -41,7 +41,7 @@ async function createMarkdownIt(html: boolean, plugins: MarkdownItPlugin[] = [])
   }
   // 用户插件在内置（katex）之后挂载，可注入新语法 / 扩展规则。
   // 逐个 try/catch 隔离：单个插件抛错只跳过该插件，不连累整个引擎降级为纯文本
-  // （与 katex/mermaid/dompurify 的逐项独立降级一致）。
+  // （与 katex/mermaid 的逐项独立降级一致）。
   for (const entry of plugins) {
     try {
       const [fn, ...params] = Array.isArray(entry) ? entry : [entry];
@@ -57,7 +57,7 @@ async function createMarkdownIt(html: boolean, plugins: MarkdownItPlugin[] = [])
  * 流式 markdown 渲染引擎：暴露 token→VNode walker 所需的 markdown-it 解析能力 + 各类渲染器。
  * 只返回"零件"，由 MarkdownRenderer 装配。
  *
- * 渐进装配：引擎在**基础项**（markdown-it + katex 插件 + dompurify，均轻量）就绪时即返回，
+ * 渐进装配：引擎在**基础项**（markdown-it + katex 插件，均轻量）就绪时即返回，
  * 富文本骨架立即可渲染；**增强项**（katex / highlight.js，体积大）后台加载、settle 后原地合入
  * 对应渲染器集合并递增 `renderersVersion`；mermaid 更进一步——首个 ```mermaid 围栏渲染时才加载。
  */
@@ -66,7 +66,7 @@ export interface MarkdownEngine {
   md: { parse(src: string, env: unknown): MdToken[] };
   /** 数学渲染器（初始为空；katex 库后台就绪时合入 math_inline/math_block，不可用则维持空 → 公式降级为文本） */
   mathRenderers: MarkdownRenderers;
-  /** 原始 HTML 渲染器（allowHtml 且 dompurify 可用时含 html_block，否则为空 → 裸 HTML 转义为文本；属基础项，引擎返回时已定型） */
+  /** 原始 HTML 渲染器（allowHtml 时含 html_block/fence:html，经 sandbox iframe 隔离渲染，不依赖 DOMPurify；属基础项，引擎返回时已定型） */
   htmlRenderers: MarkdownRenderers;
   /** 图表渲染器：`fence:mermaid` 懒加载包装始终注册，mermaid 模块在首个围栏渲染时才 import；未安装时围栏静默维持代码块 */
   diagramRenderers: MarkdownRenderers;
@@ -94,7 +94,7 @@ let pluginEngineCache = new WeakMap<object, Map<boolean, Promise<MarkdownEngine 
 
 /**
  * 动态装配 markdown 引擎；未安装 markdown-it 返回 null（调用方降级纯文本）。
- * @param allowHtml 是否允许原始 HTML（启用 markdown-it html:true 并经 DOMPurify 消毒），默认 false
+ * @param allowHtml 是否允许原始 HTML（启用 markdown-it html:true，经 sandbox iframe 隔离渲染），默认 false
  * @param plugins 注入的 markdown-it 插件（透传给 md.use）；省略则走 allowHtml 级共享缓存
  */
 export function loadMarkdownEngine(
@@ -153,22 +153,6 @@ async function loadMathRenderers(katexEnabled: boolean): Promise<MarkdownRendere
   }
 }
 
-/** 原始 HTML 渲染器：allowHtml 且 dompurify 可用时启用，否则空 → 裸 HTML 经 walker 兜底转义为文本 */
-async function loadHtmlRenderers(allowHtml: boolean): Promise<MarkdownRenderers> {
-  if (!allowHtml) return {};
-  try {
-    const purifyMod = await import('dompurify');
-    const purify = (purifyMod.default ?? purifyMod) as unknown as DomPurifyLike;
-    return createHtmlRenderers(purify);
-  } catch {
-    // 安全兜底：allowHtml 但无 dompurify → 不提供 html 渲染器，裸 HTML 经 walker 兜底转义为文本
-    console.warn(
-      '[ai-chat] allowHtml 需要 dompurify，未安装 → 原始 HTML 降级为转义文本。如需启用请安装 dompurify。',
-    );
-    return {};
-  }
-}
-
 /**
  * mermaid 惰性加载器：交给 createLazyDiagramRenderers，在首个 ```mermaid 围栏真正渲染时才执行。
  * 与内容无关的对话（绝大多数）全程不为 mermaid（单包最重的可选依赖）付出任何下载/解析成本。
@@ -210,10 +194,8 @@ async function assembleEngine(
 ): Promise<MarkdownEngine | null> {
   try {
     const { md, katexEnabled } = await createMarkdownIt(allowHtml, plugins);
-    // 基础项之二：dompurify 体积小且关乎 allowHtml 的安全语义（消毒缺位时必须从首帧起就转义），
-    // 随基础引擎一并就绪，避免「先渲染转义文本、消毒器到位后再换富 HTML」的闪变。
-    // loadHtmlRenderers 内部已 try/catch（缺依赖降级 {} 并告警），.catch 仅作结构性兜底。
-    const htmlRenderers = await loadHtmlRenderers(allowHtml).catch((): MarkdownRenderers => ({}));
+    // 原始 HTML 渲染器：sandbox iframe 隔离渲染，无外部依赖，随基础引擎同步就绪
+    const htmlRenderers = allowHtml ? createHtmlRenderers() : {};
 
     const renderersVersion = ref(0);
     /**

@@ -3,7 +3,8 @@
  *
  * AiChat 全链路 SSE 流式演示：一条自定义协议的 SSE 流串起**所有内容块能力**——
  * reasoning 思维链 → tool_use 工具调用 → sources 引用来源 → text（Markdown 全要素：
- * 标题/表格/行内+块级 KaTeX 公式/mermaid 围栏/```chart 围栏/引用/链接）→ chart 结构化图表块。
+ * 标题/表格/行内+块级 KaTeX 公式/mermaid 围栏/```chart 围栏/```html 围栏（HTML Sandbox）/
+ * 引用/链接）→ chart 结构化图表块。
  *
  * 原理：AiChat 默认 `streamMode:'sse'`，request 返回 `ReadableStream<Uint8Array>`；
  * 协议层（事件边界/`data:`）由内部 `sseStream` 处理，自定义 `parseChunk` 把每个事件翻译成
@@ -140,6 +141,15 @@ graph LR
 {"xAxis":{"type":"category","data":["1887","1888","1889"]},"yAxis":{"type":"value"},"series":[{"type":"line","data":[2,7,4],"smooth":true}]}
 \`\`\`
 
+### 互动卡片（HTML Sandbox）
+
+\`\`\`html
+<div style="padding:12px;border:1px solid #ddd;border-radius:8px;font-family:sans-serif;">
+  <p style="margin:0 0 8px;">向日葵系列共存世 7 幅，点击查看藏馆彩蛋：</p>
+  <button onclick="this.textContent='阿姆斯特丹梵高博物馆 🌻'">查看藏馆</button>
+</div>
+\`\`\`
+
 > 「我想用向日葵装饰我的画室。」——梵高
 
 参考 [梵高博物馆](https://www.vangoghmuseum.nl)。`;
@@ -188,8 +198,8 @@ const SHOWCASE_SSE = [
 
 /**
  * 发送任意消息触发回放：一条 SSE 流依次流式呈现思维链、工具调用、引用来源、
- * Markdown 全要素正文（含 KaTeX / mermaid / ```chart 围栏）、以及结构化图表块。
- * 回放节奏可调（ms/chunk）。
+ * Markdown 全要素正文（含 KaTeX / mermaid / ```chart 围栏 / ```html 围栏 HTML Sandbox）、
+ * 以及结构化图表块。回放节奏可调（ms/chunk）。
  */
 export const AllCapabilities: Story = {
   render: () => ({
@@ -203,7 +213,7 @@ export const AllCapabilities: Story = {
     template: `
       <div style="display:flex;flex-direction:column;height:100vh;background:var(--aix-colorBgLayout);">
         <div style="flex:none;padding:8px 16px;font-size:13px;color:var(--aix-colorTextSecondary);border-bottom:1px solid var(--aix-colorBorderSecondary);">
-          全能力流式演示：发送任意消息，观察 reasoning → tool_use → sources → Markdown（KaTeX/mermaid/chart 围栏）→ 结构化图表块 依次流式呈现。
+          全能力流式演示：发送任意消息，观察 reasoning → tool_use → sources → Markdown（KaTeX/mermaid/chart/html Sandbox 围栏）→ 结构化图表块 依次流式呈现。
           回放间隔 <input v-model.number="stepMs" type="number" min="0" step="20" style="width:72px;" /> ms/chunk
         </div>
         <div style="flex:1;min-height:0;">
@@ -211,8 +221,9 @@ export const AllCapabilities: Story = {
             :request="request"
             :parse-chunk="showcaseParseChunk"
             :typing="true"
+            allow-html
             welcome-title="全能力流式演示"
-            welcome-description="发送任意消息，一条 SSE 流串起思维链 / 工具调用 / 引用 / Markdown 全要素 / 图表"
+            welcome-description="发送任意消息，一条 SSE 流串起思维链 / 工具调用 / 引用 / Markdown 全要素 / HTML Sandbox / 图表"
             placeholder="随便输入点什么，触发全能力回放…"
           />
         </div>

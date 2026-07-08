@@ -31,7 +31,7 @@ const aiMsg = (text: string): ChatMessage => ({
 describe('AiChat 贯通 allowHtml / markdownRenderers', () => {
   beforeEach(() => __resetMarkdownEngineCache());
 
-  it('allowHtml 透传到气泡内的 MarkdownRenderer → 渲染消毒后的块级 HTML', async () => {
+  it('allowHtml 透传到气泡内的 MarkdownRenderer → 渲染为 sandbox iframe', async () => {
     const w = mount(AiChat, {
       props: {
         request,
@@ -39,7 +39,8 @@ describe('AiChat 贯通 allowHtml / markdownRenderers', () => {
         allowHtml: true,
       },
     });
-    await vi.waitFor(() => expect(w.find('div.card').exists()).toBe(true));
+    await vi.waitFor(() => expect(w.find('iframe').exists()).toBe(true));
+    expect(w.find('iframe').attributes('srcdoc')).toContain('卡片内容');
   });
 
   it('allowHtml 默认 false → 原始 HTML 不生成元素', async () => {

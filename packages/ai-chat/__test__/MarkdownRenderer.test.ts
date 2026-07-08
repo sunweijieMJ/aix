@@ -87,12 +87,14 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
     await vi.waitFor(() => expect(w.find('a').attributes('href')).toBe('https://example.com'));
   });
 
-  it('allowHtml=true 渲染消毒后的块级 HTML', async () => {
+  it('allowHtml=true 渲染为 sandbox iframe（内容不再落入外层 DOM）', async () => {
     const w = mount(MarkdownRenderer, {
       props: { content: '<div class="card">卡片内容</div>', allowHtml: true },
     });
-    await vi.waitFor(() => expect(w.find('div.card').exists()).toBe(true));
-    expect(w.find('div.card').text()).toContain('卡片内容');
+    await vi.waitFor(() => expect(w.find('iframe').exists()).toBe(true));
+    expect(w.find('div.card').exists()).toBe(false); // 内容在 iframe srcdoc 内，非外层 DOM
+    expect(w.find('iframe').attributes('srcdoc')).toContain('卡片内容');
+    expect(w.find('iframe').attributes('sandbox')).toBe('allow-scripts');
   });
 
   it('allowHtml=false（默认）原始 HTML 被转义为文本，不生成元素', async () => {
@@ -103,16 +105,18 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
     expect(w.text()).toContain('卡片内容');
   });
 
-  it('allowHtml=true 仍消毒 XSS（块级 HTML 内的 onerror 去除）', async () => {
+  it('allowHtml=true：块级 HTML 原样进 sandbox iframe，不做消毒（隔离而非净化的安全模型）', async () => {
     const w = mount(MarkdownRenderer, {
       props: {
         content: '<div class="danger"><img src=y onerror="alert(1)"></div>',
         allowHtml: true,
       },
     });
-    // 等块级 HTML 消毒渲染就绪（div.danger 出现），再断言危险属性已去除
-    await vi.waitFor(() => expect(w.find('div.danger').exists()).toBe(true));
-    expect(w.html()).not.toContain('onerror');
+    await vi.waitFor(() => expect(w.find('iframe').exists()).toBe(true));
+    // 不再消毒：onerror 原样进入 iframe srcdoc（安全边界来自 sandbox 隔离，不是内容净化）
+    expect(w.find('iframe').attributes('srcdoc')).toContain('onerror');
+    // 但 iframe 不带 allow-same-origin：脚本执行拿不到父页面 DOM/cookie
+    expect(w.find('iframe').attributes('sandbox')).not.toContain('allow-same-origin');
   });
 
   it('流式时非末块 info.committed=true、末块 false；流式结束后全部 true', async () => {

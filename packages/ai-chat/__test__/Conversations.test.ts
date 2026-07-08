@@ -136,4 +136,39 @@ describe('Conversations', () => {
     const w = mount(Conversations, { props: { items: [] } });
     expect(w.find('.aix-conversations__empty').exists()).toBe(true);
   });
+
+  it('searchable=false（默认）不渲染搜索框', () => {
+    const w = mount(Conversations, { props: { items } });
+    expect(w.find('.aix-conversations__search-input').exists()).toBe(false);
+  });
+
+  it('searchable=true：按 label 模糊匹配（大小写不敏感）过滤会话', async () => {
+    const w = mount(Conversations, { props: { items, searchable: true } });
+    const input = w.find('.aix-conversations__search-input');
+    expect(input.exists()).toBe(true);
+    await input.setValue('ts');
+    const labels = w.findAll('.aix-conversations__label').map((el) => el.text());
+    expect(labels).toEqual(['TS 类型体操']);
+  });
+
+  it('搜索无匹配结果时显示无匹配文案（区别于「暂无会话」空态文案）', async () => {
+    const w = mount(Conversations, { props: { items, searchable: true } });
+    await w.find('.aix-conversations__search-input').setValue('不存在的关键字');
+    expect(w.find('.aix-conversations__empty').text()).toBe('无匹配结果');
+  });
+
+  it('groupable + searchable：先过滤再分组，未命中分组不渲染组标题', async () => {
+    const w = mount(Conversations, { props: { items, searchable: true, groupable: true } });
+    await w.find('.aix-conversations__search-input').setValue('历史');
+    const groups = w.findAll('.aix-conversations__group');
+    expect(groups.map((g) => g.text())).toEqual(['更早']);
+    expect(w.findAll('.aix-conversations__item')).toHaveLength(1);
+  });
+
+  it('searchPlaceholder 自定义占位文案', () => {
+    const w = mount(Conversations, {
+      props: { items, searchable: true, searchPlaceholder: '搜一搜' },
+    });
+    expect(w.find('.aix-conversations__search-input').attributes('placeholder')).toBe('搜一搜');
+  });
 });

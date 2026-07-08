@@ -5,6 +5,17 @@
       <span>{{ newButtonText || t.newConversation }}</span>
     </button>
 
+    <div v-if="searchable" :class="ns.e('search')">
+      <Search :class="ns.e('search-icon')" />
+      <input
+        v-model="searchQuery"
+        type="text"
+        :class="ns.e('search-input')"
+        :placeholder="searchPlaceholder || t.conversationsSearchPlaceholder"
+        :aria-label="searchPlaceholder || t.conversationsSearchPlaceholder"
+      />
+    </div>
+
     <div :class="ns.e('list')">
       <template v-for="grp in grouped" :key="grp.key || '__default'">
         <div v-if="grp.key" :class="ns.e('group')">{{ grp.key }}</div>
@@ -55,7 +66,9 @@
           </template>
         </div>
       </template>
-      <div v-if="items.length === 0" :class="ns.e('empty')">{{ t.noConversations }}</div>
+      <div v-if="filteredItems.length === 0" :class="ns.e('empty')">
+        {{ items.length === 0 ? t.noConversations : t.conversationsSearchEmpty }}
+      </div>
     </div>
   </div>
 </template>
@@ -66,6 +79,10 @@ export interface ConversationsProps {
   items: ConversationItem[];
   /** 是否按 group 字段分组渲染，默认 false */
   groupable?: boolean;
+  /** 是否显示内置搜索框（按 label 模糊匹配、大小写不敏感，纯本地过滤），默认 false */
+  searchable?: boolean;
+  /** 搜索框 placeholder，缺省取 locale */
+  searchPlaceholder?: string;
   /** 新建按钮文案，缺省取 locale */
   newButtonText?: string;
   /**
@@ -90,12 +107,15 @@ export interface ConversationsEmits {
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace, useControllable } from '@aix/hooks';
-import { Add, Edit, Delete } from '@aix/icons';
+import { Add, Edit, Delete, IconSearch as Search } from '@aix/icons';
 import { ref, computed, nextTick, watch } from 'vue';
 import { locale } from '../locale';
 import type { ConversationItem } from '../types';
 
-const props = withDefaults(defineProps<ConversationsProps>(), { groupable: false });
+const props = withDefaults(defineProps<ConversationsProps>(), {
+  groupable: false,
+  searchable: false,
+});
 const emit = defineEmits<ConversationsEmits>();
 // 当前激活会话 id（v-model:activeKey）。select() 会内部写入选中态，属「内部写入 + 支持非受控」场景，
 // 故用 useControllable 兼容 Vue 3.3（useModel emit-only 非受控下本地写入会丢失）。prop activeKey 须无默认值。
@@ -107,11 +127,21 @@ const { state: activeKey } = useControllable<string>({
 const ns = useNamespace('conversations');
 const { t } = useLocale(locale);
 
-// 按 group 分组（保持首次出现顺序）；非分组态归为单组（key 为空，不渲染组标题）
+// 内置搜索（纯本地过滤）：按 label 大小写不敏感子串匹配。searchable=false 时 searchQuery
+// 恒为空串，filteredItems 退化为 props.items，与未开启搜索前行为完全一致（零破坏性）。
+const searchQuery = ref('');
+const filteredItems = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return props.items;
+  return props.items.filter((it) => it.label.toLowerCase().includes(q));
+});
+
+// 按 group 分组（保持首次出现顺序）；非分组态归为单组（key 为空，不渲染组标题）。
+// 基于过滤后的列表分组：先过滤再分组，搜索与分组可叠加使用。
 const grouped = computed(() => {
-  if (!props.groupable) return [{ key: '', items: props.items }];
+  if (!props.groupable) return [{ key: '', items: filteredItems.value }];
   const map = new Map<string, ConversationItem[]>();
-  for (const it of props.items) {
+  for (const it of filteredItems.value) {
     const k = it.group ?? '';
     if (!map.has(k)) map.set(k, []);
     map.get(k)!.push(it);
@@ -213,6 +243,42 @@ const cancelRename = () => {
     &:hover {
       border-color: var(--aix-colorPrimaryBorderHover);
       color: var(--aix-colorPrimary);
+    }
+  }
+
+  &__search {
+    display: flex;
+    position: relative;
+    flex: none;
+    align-items: center;
+  }
+
+  &__search-icon {
+    position: absolute;
+    left: var(--aix-paddingXS);
+    width: 14px;
+    height: 14px;
+    color: var(--aix-colorTextTertiary);
+    pointer-events: none;
+  }
+
+  &__search-input {
+    width: 100%;
+    height: var(--aix-controlHeight);
+    padding: 0 var(--aix-paddingXS) 0 28px;
+    border: 1px solid var(--aix-colorBorderSecondary);
+    border-radius: var(--aix-borderRadiusLG);
+    outline: none;
+    background: transparent;
+    color: var(--aix-colorText);
+    font-size: var(--aix-fontSize);
+
+    &:focus {
+      border-color: var(--aix-colorPrimary);
+    }
+
+    &::placeholder {
+      color: var(--aix-colorTextQuaternary);
     }
   }
 
