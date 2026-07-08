@@ -15,7 +15,7 @@ Vue 3 AI 对话组件库。提供可组合、可扩展的 AI 对话 UI：**原�
 pnpm add @aix/ai-chat
 ```
 
-Markdown 渲染的七个增强依赖（`markdown-it` / `highlight.js` / `katex` / `@vscode/markdown-it-katex` / `mermaid` / `dompurify` / `echarts`）声明为 `optionalDependencies`，pnpm/npm 会**随包自动安装、开箱即用**，无需手动添加；运行时按需动态加载（详见下文「Markdown 渲染」），个别环境某项安装失败时仅该项能力静默降级（如 `markdown-it` 缺失 → 纯文本），不阻断安装、互不连累。
+Markdown 渲染的六个增强依赖（`markdown-it` / `highlight.js` / `katex` / `@vscode/markdown-it-katex` / `mermaid` / `echarts`）声明为 `optionalDependencies`，pnpm/npm 会**随包自动安装、开箱即用**，无需手动添加；运行时按需动态加载（详见下文「Markdown 渲染」），个别环境某项安装失败时仅该项能力静默降级（如 `markdown-it` 缺失 → 纯文本），不阻断安装、互不连累。
 
 组件样式依赖 `@aix/theme` 的 CSS 变量，使用前需引入主题样式：
 
@@ -548,15 +548,16 @@ const markdownRenderers: MarkdownRenderers = {
 
 ### 原始 HTML（`allowHtml`，默认关闭）
 
-默认 `allowHtml=false`：源码中的原始 HTML 标签**被转义为文本**，零 XSS 面。需要渲染后端可信的富 HTML 时，开启 `allowHtml` 即可——`dompurify` 随包自动安装，块级 HTML 经 DOMPurify 消毒后渲染：
+默认 `allowHtml=false`：源码中的原始 HTML 标签**被转义为文本**，零风险面。需要渲染原始 HTML（含交互脚本）时，开启 `allowHtml` 即可——块级 HTML（`html_block` / ```html 围栏）经沙箱 `<iframe sandbox="allow-scripts">` 渲染，**不消毒、不注入当前页面 DOM**：
 
 ```vue
 <AiChat :request="request" allow-html />
 ```
 
-- 仅消毒**块级** HTML（如 `<div>`/`<details>`/`<table>`）；行内裸标签（`<b>` 等）当前丢弃保留文本。
-- 安全兜底：开启 `allowHtml` 但个别环境 **`dompurify` 缺失时绝不输出未消毒 HTML**，自动降级为转义文本并告警。
-- 也可经 `provideAiChatConfig({ allowHtml: true })` 全局开启（组件 `allow-html` prop 优先）。
+- iframe **不带** `allow-same-origin`：脚本可执行，但拿不到父页面的 DOM / cookie / localStorage，也无法跳转顶层页面或弹窗——安全边界来自隔离，而非内容净化。
+- 仅隔离**块级** HTML；行内裸标签（`<b>` 等）当前丢弃保留文本。
+- 内容高度经 `postMessage` 自适应；渲染块提供代码/预览切换、新窗口打开。
+- 无需额外依赖（不再需要 `dompurify`）。也可经 `provideAiChatConfig({ allowHtml: true })` 全局开启（组件 `allow-html` prop 优先）。
 
 ## 主题
 
