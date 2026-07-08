@@ -15,7 +15,7 @@ import type { ExportedTree, ParsedChunk } from '../src';
  */
 
 const meta: Meta<typeof AiChat> = {
-  title: 'AI Chat/消息分支',
+  title: 'AI Chat/场景演示/消息分支',
   tags: ['autodocs'],
   component: AiChat,
   parameters: {

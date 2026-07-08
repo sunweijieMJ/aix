@@ -31,7 +31,7 @@ const HISTORY: ChatMessage[] = [
 ];
 
 const meta: Meta<typeof AiChat> = {
-  title: 'AI Chat/Quote',
+  title: 'AI Chat/场景演示/划词引用',
   tags: ['autodocs'],
   component: AiChat,
   render: (args) => ({
@@ -109,9 +109,7 @@ export const PCSelection: Story = {
 export const WholeMessageQuote: Story = {
   play: async ({ canvas, canvasElement }) => {
     await userEvent.click(await canvas.findByRole('button', { name: '引用' }));
-    await waitFor(() =>
-      expect(canvasElement.querySelector('.aix-quote-chip')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(canvasElement.querySelector('.aix-quote-chip')).toBeInTheDocument());
     await userEvent.type(canvas.getByRole('textbox'), '请再展开讲讲{enter}');
     await waitFor(() =>
       expect(canvasElement.querySelector('.aix-quote-block')).toBeInTheDocument(),
@@ -160,10 +158,9 @@ export const MobileLongPress: Story = {
     dispatchTouch('touchstart');
 
     // longPressDelay=300ms，留足余量等待 QuoteSheet 浮出（Teleport 到 body，不在 canvasElement 内）
-    await waitFor(
-      () => expect(document.querySelector('.aix-quote-sheet')).toBeInTheDocument(),
-      { timeout: 1000 },
-    );
+    await waitFor(() => expect(document.querySelector('.aix-quote-sheet')).toBeInTheDocument(), {
+      timeout: 1000,
+    });
 
     // 点 sheet 里的「解释」→ chip 出现在 Sender header，菜单关闭
     await userEvent.click(screen.getByRole('menuitem', { name: '解释' }));

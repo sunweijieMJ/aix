@@ -140,7 +140,7 @@ const shellRender: Meta<typeof AiChat>['render'] = (args) => ({
  *   jsdom / 不支持的浏览器下 isSupported=false，对应按钮自动隐藏（非报错）。
  */
 const meta: Meta<typeof AiChat> = {
-  title: 'AI Chat/AiChat',
+  title: 'AI Chat/场景演示/语音能力',
   component: AiChat,
   parameters: {
     layout: 'fullscreen',

@@ -17,7 +17,7 @@ import { messageText } from '../src/utils/helpers';
  * - `OpenAICompatible`：真实对接 DeepSeek（OpenAI 兼容），演示换后端只改 proxy target。
  */
 const meta: Meta<typeof AiChat> = {
-  title: 'AI Chat/数据层能力',
+  title: 'AI Chat/场景演示/数据层能力',
   tags: ['autodocs'],
   component: AiChat,
   parameters: { layout: 'fullscreen' },

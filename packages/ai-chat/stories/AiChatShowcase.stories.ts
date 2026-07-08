@@ -17,7 +17,7 @@ import { AiChat, sourcesBlock, chartBlock } from '../src';
 import type { UseChatOptions, ParsedChunk } from '../src';
 
 const meta: Meta<typeof AiChat> = {
-  title: 'AI Chat/全能力流式演示',
+  title: 'AI Chat/场景演示/全能力流式演示',
   component: AiChat,
   parameters: { layout: 'fullscreen' },
 };

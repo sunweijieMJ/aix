@@ -136,7 +136,7 @@ const attachmentItems: AttachmentItem[] = [
 // ──────────────────────────────────────────────
 
 const meta: Meta<TextBlockProps> = {
-  title: 'AI Chat/ContentBlocks',
+  title: 'AI Chat/组件/ContentBlocks',
   tags: ['autodocs'],
   component: TextBlock,
   parameters: {
@@ -320,6 +320,22 @@ export const ThoughtChainWithSlot: TcStory = {
   play: async ({ canvas }) => {
     const cards = await canvas.findAllByText(/命中/);
     await expect(cards.length).toBeGreaterThanOrEqual(2);
+  },
+};
+
+/**
+ * ThoughtChainBlock · Loading：`block.items` 为空数组时（Agent 仍在规划步骤、尚无第一个
+ * step），展示共享进度指示器 `LoadingDots` 占位，而非渲染空白的 `ThoughtChain`。
+ */
+export const ThoughtChainLoading: TcStory = {
+  render: () => ({
+    components: { ThoughtChainBlock },
+    setup: () => ({ block: asTcBlock([]) }),
+    template: `<ThoughtChainBlock :block="block" />`,
+  }),
+  play: async ({ canvasElement }) => {
+    await expect(canvasElement.querySelector('.aix-loading-dots')).toBeTruthy();
+    await expect(canvasElement.querySelector('.aix-thought-chain')).toBeNull();
   },
 };
 

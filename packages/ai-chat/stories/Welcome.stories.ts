@@ -4,7 +4,7 @@ import { Welcome, Prompts } from '../src';
 import type { PromptItem } from '../src';
 
 const meta: Meta<typeof Welcome> = {
-  title: 'AI Chat/Welcome',
+  title: 'AI Chat/组件/Welcome',
   tags: ['autodocs'],
   component: Welcome,
   args: {

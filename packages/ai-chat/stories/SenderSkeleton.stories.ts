@@ -6,7 +6,7 @@ import { SenderSkeleton } from '../src';
  * 未就绪时，用它替代真实 Sender 展示，就绪后切换回 `<Sender>`。无 props，纯静态展示。
  */
 const meta: Meta<typeof SenderSkeleton> = {
-  title: 'AI Chat/SenderSkeleton',
+  title: 'AI Chat/组件/SenderSkeleton',
   tags: ['autodocs'],
   component: SenderSkeleton,
 };

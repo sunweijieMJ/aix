@@ -7,7 +7,7 @@ import { LoadingDots } from '../src';
  * 与结构骨架（Skeleton）不同：骨架回答「这里将会是什么形状」，本组件回答「系统正在做事」。
  */
 const meta: Meta<typeof LoadingDots> = {
-  title: 'AI Chat/LoadingDots',
+  title: 'AI Chat/组件/LoadingDots',
   tags: ['autodocs'],
   component: LoadingDots,
 };

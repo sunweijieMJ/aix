@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/vue3';
 import { expect, waitFor } from 'storybook/test';
 import { h, ref, onMounted, onUnmounted } from 'vue';
 import { MarkdownRenderer } from '../src';
-import { fullReportMarkdown } from './fullReportMarkdown';
+import { fullReportMarkdown } from './fixtures/fullReportMarkdown';
 
 /**
  * MarkdownRenderer 组件展示 Markdown 内容。
@@ -12,7 +12,7 @@ import { fullReportMarkdown } from './fullReportMarkdown';
  * 个别环境依赖安装失败时，组件会自动降级为纯文本渲染（直接显示原始 Markdown 语法字符串）。
  */
 const meta: Meta<typeof MarkdownRenderer> = {
-  title: 'AI Chat/MarkdownRenderer',
+  title: 'AI Chat/组件/MarkdownRenderer',
   tags: ['autodocs'],
   component: MarkdownRenderer,
   parameters: {

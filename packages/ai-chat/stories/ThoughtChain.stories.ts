@@ -48,7 +48,7 @@ const steps: ThoughtChainItem[] = [
 ];
 
 const meta: Meta<ThoughtChainProps> = {
-  title: 'AI Chat/ThoughtChain',
+  title: 'AI Chat/组件/ThoughtChain',
   tags: ['autodocs'],
   component: ThoughtChain,
   argTypes: { items: { control: false } },

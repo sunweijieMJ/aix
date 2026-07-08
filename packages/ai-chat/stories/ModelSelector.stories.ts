@@ -11,7 +11,7 @@ const options: ModelOption[] = [
 ];
 
 const meta: Meta<typeof ModelSelector> = {
-  title: 'AI Chat/ModelSelector',
+  title: 'AI Chat/组件/ModelSelector',
   tags: ['autodocs'],
   component: ModelSelector,
   args: { options, modelValue: 'Qwen3-Max' },

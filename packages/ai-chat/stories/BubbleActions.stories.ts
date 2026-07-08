@@ -5,7 +5,7 @@ import { markRaw } from 'vue';
 import { BubbleActions } from '../src';
 
 const meta: Meta<typeof BubbleActions> = {
-  title: 'AI Chat/BubbleActions',
+  title: 'AI Chat/组件/BubbleActions',
   tags: ['autodocs'],
   component: BubbleActions,
   args: {

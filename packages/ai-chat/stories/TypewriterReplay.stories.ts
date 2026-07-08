@@ -170,7 +170,7 @@ const RemountPanel = defineComponent({
 });
 
 const meta: Meta = {
-  title: 'AI Chat/打字机重挂载重播',
+  title: 'AI Chat/调试工具/打字机重挂载重播',
   tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
@@ -194,7 +194,7 @@ type Story = StoryObj;
  * - 自定义块（无守卫）：重挂载后**从头重播**（bug）。
  * - 自定义块（带守卫）：重挂载后**直接全显**（修复范式）。
  */
-export const 重挂载对比: Story = {
+export const RemountComparison: Story = {
   render: () => ({
     components: { Bubble, RemountPanel, NaiveCustomCard, GuardedCustomCard },
     setup: () => ({ content: [textBlock(FULL)] }),
@@ -218,7 +218,7 @@ export const 重挂载对比: Story = {
  * 自动化复现：自定义块（无守卫）在重挂载后从空串重新逐字。
  * 用 data-initial（挂载时快照）作无竞态断言——重挂载后仍为空串即证明会重播。
  */
-export const 自定义块重播复现: Story = {
+export const CustomBlockReplayRepro: Story = {
   render: () => ({
     components: { RemountPanel, NaiveCustomCard },
     template: `
@@ -256,7 +256,7 @@ export const 自定义块重播复现: Story = {
 /**
  * 自动化校验修复：自定义块（带守卫）首播完成后，重挂载直接全显、不再重播。
  */
-export const 自定义块守卫修复: Story = {
+export const CustomBlockGuardFix: Story = {
   render: () => ({
     components: { RemountPanel, GuardedCustomCard },
     template: `

@@ -12,7 +12,7 @@ import { Skeleton } from '../src';
  * committed 未就绪 → Skeleton；就绪 → 真实内容；失败 → 回落占位。
  */
 const meta: Meta<typeof Skeleton> = {
-  title: 'AI Chat/Skeleton',
+  title: 'AI Chat/组件/Skeleton',
   tags: ['autodocs'],
   component: Skeleton,
 };

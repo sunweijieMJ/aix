@@ -354,7 +354,7 @@ const staticRequest = (ctx: UseChatRequestCtx) => Promise.resolve(sseFrom([], ct
 // ════════════════════════════════════════════════════════════
 
 const meta: Meta<typeof AiChat> = {
-  title: 'AI Chat/工具调用（tool_use）',
+  title: 'AI Chat/场景演示/工具调用（tool_use）',
   tags: ['autodocs'],
   component: AiChat,
   parameters: {

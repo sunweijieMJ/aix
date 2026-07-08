@@ -299,7 +299,7 @@ const shortcodeRequest = ({ signal }: { signal: AbortSignal }) =>
   );
 
 const meta: Meta<typeof AiChat> = {
-  title: 'AI Chat/扩展能力',
+  title: 'AI Chat/场景演示/扩展能力',
   tags: ['autodocs'],
   component: AiChat,
   parameters: {

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/vue3';
 import { ref } from 'vue';
 import { AiChat, openaiParseChunk } from '../src';
 import type { UseChatOptions } from '../src';
-import { fullReportMarkdown } from './fullReportMarkdown';
+import { fullReportMarkdown } from './fixtures/fullReportMarkdown';
 
 /**
  * SSE 原文回放（调试工具型 story）
@@ -15,7 +15,7 @@ import { fullReportMarkdown } from './fullReportMarkdown';
  * CRLF）全部由内部 `sseStream` 完成，与真实网络流走完全相同的链路；增量提取交给内置 `openaiParseChunk`。
  */
 const meta: Meta<typeof AiChat> = {
-  title: 'AI Chat/SSE 原文回放',
+  title: 'AI Chat/调试工具/SSE 原文回放',
   component: AiChat,
   parameters: { layout: 'fullscreen' },
 };

@@ -68,7 +68,7 @@ const RADAR = {
 };
 
 const meta: Meta<typeof ChartBlock> = {
-  title: 'AI Chat/图表块（chart）',
+  title: 'AI Chat/组件/图表块（chart）',
   component: ChartBlock,
 };
 export default meta;

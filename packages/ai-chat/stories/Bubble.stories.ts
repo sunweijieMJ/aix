@@ -7,7 +7,7 @@ import type { ContentBlock, SourceItem } from '../src/types';
 import { textBlock, reasoningBlock, sourcesBlock } from '../src/utils/helpers';
 
 const meta: Meta<BubbleProps> = {
-  title: 'AI Chat/Bubble',
+  title: 'AI Chat/组件/Bubble',
   tags: ['autodocs'],
   component: Bubble,
   args: { content: [textBlock('你好，我是 AI 助手')], placement: 'start', variant: 'filled' },

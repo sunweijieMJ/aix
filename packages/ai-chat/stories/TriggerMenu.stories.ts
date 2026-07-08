@@ -13,7 +13,7 @@ import type { TriggerItem } from '../src';
  * `triggers` 视为静态配置（setup 快照），运行时切换不生效，与 attachments/voice 约定一致。
  */
 const meta: Meta<typeof Sender> = {
-  title: 'AI Chat/触发菜单（@提及 & 斜杠命令）',
+  title: 'AI Chat/组件/触发菜单（@提及 & 斜杠命令）',
   tags: ['autodocs'],
   component: Sender,
   args: {

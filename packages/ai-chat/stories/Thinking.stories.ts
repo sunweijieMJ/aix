@@ -3,7 +3,7 @@ import { expect, userEvent } from 'storybook/test';
 import { Thinking } from '../src';
 
 const meta: Meta<typeof Thinking> = {
-  title: 'AI Chat/Thinking',
+  title: 'AI Chat/组件/Thinking',
   tags: ['autodocs'],
   component: Thinking,
   args: {

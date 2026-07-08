@@ -17,7 +17,7 @@ const imageUrl =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='68' height='68'><rect width='68' height='68' fill='%234096ff'/><text x='34' y='40' font-size='12' fill='white' text-anchor='middle'>IMG</text></svg>";
 
 const meta: Meta<typeof AttachmentCard> = {
-  title: 'AI Chat/AttachmentCard',
+  title: 'AI Chat/组件/AttachmentCard',
   tags: ['autodocs'],
   component: AttachmentCard,
   args: {
