@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.10
+
+### Patch Changes
+
+- 增加骨架效果
+
 ## 0.0.9
 
 ### Patch Changes
