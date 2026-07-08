@@ -168,7 +168,7 @@ describe('AiChat', () => {
       await flushPromises();
       await vi.advanceTimersByTimeAsync(1000);
       // 关键：断言 DOM 实际渲染，而不是只读 messages 数据
-      expect(w.find('.aix-bubble__loading').exists()).toBe(false);
+      expect(w.find('.aix-loading-dots').exists()).toBe(false);
       expect(w.text()).toContain('回答内容XYZ');
     } finally {
       vi.useRealTimers();
@@ -189,7 +189,7 @@ describe('AiChat', () => {
       await flushPromises();
       await vi.advanceTimersByTimeAsync(1000); // 等打字机把就地累加后的完整内容播完
       // 关键：三个 delta 经 last.text += delta 就地累加，需真正反映到 DOM
-      expect(w.find('.aix-bubble__loading').exists()).toBe(false);
+      expect(w.find('.aix-loading-dots').exists()).toBe(false);
       expect(w.text()).toContain('Hello world');
     } finally {
       vi.useRealTimers();
@@ -251,7 +251,7 @@ describe('AiChat', () => {
       // 关键：未调用 advanceTimersByTime；打字机若生效 displayed 仍停在 ''。
       // enableTyping=false 时 TextBlock 直接取 block.text，故完整文本立即落到 DOM。
       expect(w.text()).toContain('完整答案ABC');
-      expect(w.find('.aix-bubble__loading').exists()).toBe(false);
+      expect(w.find('.aix-loading-dots').exists()).toBe(false);
     } finally {
       vi.useRealTimers();
     }

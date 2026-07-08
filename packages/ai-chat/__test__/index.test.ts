@@ -32,7 +32,7 @@ describe('包入口', () => {
 
   // 锁定文档化命名决策（README「全局注册」章节）：install 以 Aix 前缀注册全部组件。
   // 防回归：前缀模板串或 components 映射被改坏时，现有测试不报、业务方全局注册解析失败才暴露。
-  // 断言清单须与 src/index.ts 的 components 映射逐一对齐（当前 18 个），新增/移除组件时同步改这里，
+  // 断言清单须与 src/index.ts 的 components 映射逐一对齐（当前 20 个），新增/移除组件时同步改这里，
   // 不再硬编码标题数字，避免清单漂移而标题未跟着变。
   it('install 以 Aix 前缀全局注册全部组件', () => {
     const app = createApp({ render: () => null });
@@ -45,12 +45,14 @@ describe('包入口', () => {
       'BubbleActions',
       'BubbleList',
       'Conversations',
+      'LoadingDots',
       'MarkdownRenderer',
       'ModelSelector',
       'Prompts',
       'QuoteChip',
       'QuoteMenu',
       'Sender',
+      'SenderSkeleton',
       'Skeleton',
       'Thinking',
       'ThoughtChain',
@@ -58,7 +60,7 @@ describe('包入口', () => {
       'TriggerMenu',
       'Suggestions',
     ];
-    expect(names).toHaveLength(18); // 与 src/index.ts 的 components 映射条目数一致，防少加/多加
+    expect(names).toHaveLength(20); // 与 src/index.ts 的 components 映射条目数一致，防少加/多加
     for (const name of names) {
       expect(registered, `Aix${name} 未全局注册`).toHaveProperty(`Aix${name}`);
     }

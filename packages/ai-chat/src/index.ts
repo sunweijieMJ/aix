@@ -5,6 +5,7 @@ import Bubble from './components/Bubble.vue';
 import BubbleActions from './components/BubbleActions.vue';
 import BubbleList from './components/BubbleList.vue';
 import Conversations from './components/Conversations.vue';
+import LoadingDots from './components/LoadingDots.vue';
 import MarkdownRenderer from './components/MarkdownRenderer.vue';
 import ModelSelector from './components/ModelSelector.vue';
 import Prompts from './components/Prompts.vue';
@@ -13,6 +14,7 @@ import QuoteToolbar from './components/quote/QuoteToolbar.vue';
 import QuoteChip from './components/QuoteChip.vue';
 import QuoteMenu from './components/QuoteMenu.vue';
 import Sender from './components/Sender.vue';
+import SenderSkeleton from './components/SenderSkeleton.vue';
 import Skeleton from './components/Skeleton.vue';
 import Suggestions from './components/Suggestions.vue';
 import Thinking from './components/Thinking.vue';
@@ -29,6 +31,7 @@ export {
   BubbleList,
   BubbleActions,
   Sender,
+  SenderSkeleton,
   Welcome,
   Prompts,
   Thinking,
@@ -38,6 +41,7 @@ export {
   AiChat,
   Conversations,
   Skeleton,
+  LoadingDots,
   QuoteMenu,
   QuoteChip,
   TriggerMenu,
@@ -172,6 +176,7 @@ const components = {
   BubbleList,
   BubbleActions,
   Sender,
+  SenderSkeleton,
   Welcome,
   Prompts,
   Thinking,
@@ -181,6 +186,7 @@ const components = {
   AiChat,
   Conversations,
   Skeleton,
+  LoadingDots,
   QuoteMenu,
   QuoteChip,
   TriggerMenu,

@@ -59,7 +59,7 @@ describe('ChartBlock（结构化图表块）', () => {
     const w = mount(ChartBlock, {
       props: { block: chartBlock('bar', OPTION, { state: 'loading' }), info },
     });
-    expect(w.find('.aix-chart-block__skeleton').exists()).toBe(true);
+    expect(w.find('.aix-skeleton').exists()).toBe(true);
     expect(w.find('.aix-chart-block__canvas').exists()).toBe(false);
   });
 

@@ -67,4 +67,21 @@ describe('ToolUseBlock', () => {
     expect(w.find('.aix-tool-use').exists()).toBe(true);
     expect(w.text()).toContain('constructor');
   });
+
+  it('input-available/executing 态展示 LoadingDots 进度指示', () => {
+    const w = mount(ToolUseBlock, {
+      props: { block: block({ state: 'input-available' }), info: { role: 'ai', key: 'ai1' } },
+    });
+    expect(w.find('.aix-loading-dots').exists()).toBe(true);
+  });
+
+  it('output-available 态不展示 LoadingDots', () => {
+    const w = mount(ToolUseBlock, {
+      props: {
+        block: block({ state: 'output-available', output: 'ok' }),
+        info: { role: 'ai', key: 'ai1' },
+      },
+    });
+    expect(w.find('.aix-loading-dots').exists()).toBe(false);
+  });
 });

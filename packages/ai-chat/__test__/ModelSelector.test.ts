@@ -177,4 +177,11 @@ describe('ModelSelector', () => {
       w.unmount();
     });
   });
+
+  it('loading=true 且展开时，菜单渲染骨架占位而非真实选项', async () => {
+    const w = mount(ModelSelector, { props: { options, modelValue: 'Qwen3-Max', loading: true } });
+    await w.find('.aix-model-selector__trigger').trigger('click');
+    expect(w.find('.aix-skeleton').exists()).toBe(true);
+    expect(w.find('.aix-model-selector__option').exists()).toBe(false);
+  });
 });

@@ -1,5 +1,7 @@
 <template>
-  <ThoughtChain :items="block.items">
+  <!-- items 为空：Agent 步骤规划中、尚无第一个 step，展示共享进度指示器占位 -->
+  <LoadingDots v-if="!block.items?.length" />
+  <ThoughtChain v-else :items="block.items">
     <!-- 命名约定映射：消费方在上层提供 #thought-chain-item-content，
          落到 ThoughtChain 内部的 #item-content 作用域 slot（携带 item/index）。
          用 v-if 守卫：仅当确实提供时才转发，避免凭空让 ThoughtChain.hasBody 误判为真。 -->
@@ -22,6 +24,7 @@ export interface ThoughtChainBlockProps {
 
 <script setup lang="ts">
 import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
+import LoadingDots from '../LoadingDots.vue';
 import ThoughtChain from '../ThoughtChain.vue';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block，

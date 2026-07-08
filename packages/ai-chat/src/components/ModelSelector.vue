@@ -20,18 +20,21 @@
       role="listbox"
       @keydown="onMenuKeydown"
     >
-      <button
-        v-for="(opt, i) in normalized"
-        :key="opt.value"
-        type="button"
-        role="option"
-        :aria-selected="opt.value === model"
-        :tabindex="i === activeIndex ? 0 : -1"
-        :class="[ns.e('option'), ns.is('active', opt.value === model)]"
-        @click="select(opt.value)"
-      >
-        {{ opt.label }}
-      </button>
+      <Skeleton v-if="loading" :rows="3" />
+      <template v-else>
+        <button
+          v-for="(opt, i) in normalized"
+          :key="opt.value"
+          type="button"
+          role="option"
+          :aria-selected="opt.value === model"
+          :tabindex="i === activeIndex ? 0 : -1"
+          :class="[ns.e('option'), ns.is('active', opt.value === model)]"
+          @click="select(opt.value)"
+        >
+          {{ opt.label }}
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -50,6 +53,8 @@ export interface ModelSelectorProps {
   placeholder?: string;
   /** 下拉展开方向，默认 bottom；位于面板底部时用 top 向上弹出 */
   placement?: 'top' | 'bottom';
+  /** 选项加载态：为 true 且下拉展开时，菜单渲染骨架占位而非真实选项，默认 false */
+  loading?: boolean;
 }
 
 export interface ModelSelectorEmits {
@@ -63,10 +68,12 @@ import { useNamespace, useClickOutside, useControllable } from '@aix/hooks';
 import { ArrowDropDown } from '@aix/icons';
 import { ref, computed, nextTick } from 'vue';
 import type { ModelOption } from '../types';
+import Skeleton from './Skeleton.vue';
 
 const props = withDefaults(defineProps<ModelSelectorProps>(), {
   placeholder: '',
   placement: 'bottom',
+  loading: false,
 });
 const emit = defineEmits<ModelSelectorEmits>();
 // v-model 绑定当前选中的 model value。select() 内部写入，属「内部写入 + 支持非受控」场景，

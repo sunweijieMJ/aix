@@ -17,7 +17,8 @@
     </div>
 
     <div :class="ns.e('list')">
-      <template v-for="grp in grouped" :key="grp.key || '__default'">
+      <Skeleton v-if="loading" :rows="5" />
+      <template v-for="grp in grouped" v-else :key="grp.key || '__default'">
         <div v-if="grp.key" :class="ns.e('group')">{{ grp.key }}</div>
         <div
           v-for="item in grp.items"
@@ -66,7 +67,7 @@
           </template>
         </div>
       </template>
-      <div v-if="filteredItems.length === 0" :class="ns.e('empty')">
+      <div v-if="!loading && filteredItems.length === 0" :class="ns.e('empty')">
         {{ items.length === 0 ? t.noConversations : t.conversationsSearchEmpty }}
       </div>
     </div>
@@ -77,6 +78,8 @@
 export interface ConversationsProps {
   /** 会话列表元数据（来自 useConversations.items） */
   items: ConversationItem[];
+  /** 加载态：为 true 时列表区域渲染骨架占位，忽略 items，默认 false */
+  loading?: boolean;
   /** 是否按 group 字段分组渲染，默认 false */
   groupable?: boolean;
   /** 是否显示内置搜索框（按 label 模糊匹配、大小写不敏感，纯本地过滤），默认 false */
@@ -111,8 +114,10 @@ import { Add, Edit, Delete, IconSearch as Search } from '@aix/icons';
 import { ref, computed, nextTick, watch } from 'vue';
 import { locale } from '../locale';
 import type { ConversationItem } from '../types';
+import Skeleton from './Skeleton.vue';
 
 const props = withDefaults(defineProps<ConversationsProps>(), {
+  loading: false,
   groupable: false,
   searchable: false,
 });

@@ -171,4 +171,12 @@ describe('Conversations', () => {
     });
     expect(w.find('.aix-conversations__search-input').attributes('placeholder')).toBe('搜一搜');
   });
+
+  it('loading=true 时列表区域渲染骨架占位，忽略 items', () => {
+    const w = mount(Conversations, { props: { items, loading: true } });
+    expect(w.find('.aix-skeleton').exists()).toBe(true);
+    expect(w.find('.aix-conversations__item').exists()).toBe(false);
+    // 顶部新建按钮不受影响
+    expect(w.find('.aix-conversations__new').exists()).toBe(true);
+  });
 });

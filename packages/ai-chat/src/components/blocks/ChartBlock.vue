@@ -1,13 +1,13 @@
 <template>
   <div :class="ns.b()" role="img" :aria-label="ariaLabel">
     <div v-if="block.title" :class="ns.e('title')">{{ block.title }}</div>
-    <!-- loading：骨架占位（固定高度，防列表滚动跳动） -->
-    <div v-if="loading" :class="ns.e('skeleton')" />
+    <!-- loading：结构骨架占位（固定高度，防列表滚动跳动），复用通用 Skeleton -->
+    <Skeleton v-if="loading" loading height="300px" />
     <!-- error / 非法 spec：降级为 alt 文字（教育无障碍：alt 即文字版数据） -->
     <div v-else-if="degraded" :class="ns.e('fallback')">{{ block.alt || t.chartError }}</div>
     <!-- 就绪：活实例容器；出图前叠骨架，避免空容器观感 -->
     <div v-else ref="container" :class="ns.e('canvas')">
-      <div v-if="!rendered" :class="[ns.e('skeleton'), ns.is('overlay')]" />
+      <Skeleton v-if="!rendered" loading height="300px" :class="ns.is('overlay')" />
     </div>
   </div>
 </template>
@@ -37,6 +37,7 @@ import type {
   EChartsChartKind,
 } from '../../types';
 import { getSharedECharts, importECharts } from '../../utils/chartRenderers';
+import Skeleton from '../Skeleton.vue';
 
 // 注册表统一向渲染器透传 block/info/typing/onBlockAction；关闭属性继承避免多余 attr 落到根元素。
 defineOptions({ inheritAttrs: false });
@@ -84,22 +85,9 @@ const ariaLabel = computed(() => props.block.alt || props.block.title || t.value
     position: relative;
     width: 100%;
     height: 300px;
-  }
 
-  &__skeleton {
-    min-height: 300px;
-    animation: aix-chart-shimmer 1.4s ease infinite;
-    border-radius: var(--aix-borderRadius);
-    background: linear-gradient(
-      90deg,
-      var(--aix-colorFillTertiary) 25%,
-      var(--aix-colorFillSecondary) 37%,
-      var(--aix-colorFillTertiary) 63%
-    );
-    background-size: 400% 100%;
-
-    // canvas 内出图前的 overlay：绝对定位盖满固定高度容器
-    &.is-overlay {
+    // canvas 内出图前的 Skeleton overlay：绝对定位盖满固定高度容器
+    .aix-skeleton.is-overlay {
       position: absolute;
       inset: 0;
     }
@@ -117,16 +105,6 @@ const ariaLabel = computed(() => props.block.alt || props.block.title || t.value
     color: var(--aix-colorTextTertiary);
     font-size: var(--aix-fontSizeSM);
     text-align: center;
-  }
-}
-
-@keyframes aix-chart-shimmer {
-  0% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0 50%;
   }
 }
 </style>

@@ -10,7 +10,7 @@
   <div v-else :class="ns.b()">
     <button type="button" :class="ns.e('header')" @click="expanded = !expanded">
       <span :class="ns.e('name')">{{ block.toolName || 'Tool' }}</span>
-      <span v-if="pending" :class="ns.e('spinner')" />
+      <LoadingDots v-if="pending" />
       <span :class="[ns.e('caret'), ns.is('open', expanded)]">▾</span>
     </button>
     <div v-show="expanded" :class="ns.e('body')">
@@ -55,6 +55,7 @@ import type {
   BlockActionHandler,
   BlockRenderers,
 } from '../../types';
+import LoadingDots from '../LoadingDots.vue';
 
 // 注册表统一向渲染器透传 block/info/typing；关闭属性继承避免多余 attr 落到根元素。
 defineOptions({ inheritAttrs: false });
@@ -113,15 +114,6 @@ const outputText = computed(() => fmt(props.block.output));
     cursor: pointer;
   }
 
-  &__spinner {
-    width: 12px;
-    height: 12px;
-    animation: aix-tool-use-spin 0.8s linear infinite;
-    border: 2px solid var(--aix-colorBorderSecondary);
-    border-radius: 50%;
-    border-top-color: var(--aix-colorPrimary);
-  }
-
   &__caret {
     margin-left: auto;
     transition: transform var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
@@ -158,12 +150,6 @@ const outputText = computed(() => fmt(props.block.output));
     font-size: var(--aix-fontSizeSM);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-  }
-}
-
-@keyframes aix-tool-use-spin {
-  to {
-    transform: rotate(360deg);
   }
 }
 </style>

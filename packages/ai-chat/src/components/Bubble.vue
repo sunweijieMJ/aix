@@ -17,14 +17,7 @@
           ns.is('editing', editing),
         ]"
       >
-        <span v-if="loading" :class="ns.e('loading')">
-          <i
-            v-for="i in 3"
-            :key="i"
-            :class="ns.e('dot')"
-            :style="{ animationDelay: `${i * 0.15}s` }"
-          />
-        </span>
+        <LoadingDots v-if="loading" />
         <div v-else-if="editing" :class="ns.e('edit')">
           <textarea
             v-model="draft"
@@ -121,6 +114,7 @@ import SourcesBlock from './blocks/SourcesBlock.vue';
 import TextBlock from './blocks/TextBlock.vue';
 import ThoughtChainBlock from './blocks/ThoughtChainBlock.vue';
 import ToolUseBlock from './blocks/ToolUseBlock.vue';
+import LoadingDots from './LoadingDots.vue';
 
 const props = withDefaults(defineProps<BubbleProps>(), {
   content: () => [],
@@ -426,33 +420,6 @@ const cancelEdit = () => {
       border-color: var(--aix-colorError);
       background-color: var(--aix-colorErrorBg);
     }
-  }
-
-  &__loading {
-    display: inline-flex;
-    gap: 5px;
-    padding: var(--aix-paddingXXS) 0;
-  }
-
-  &__dot {
-    width: 6px;
-    height: 6px;
-    animation: aix-bubble-wave 1.2s infinite ease-in-out;
-    border-radius: 50%;
-    background-color: var(--aix-colorTextTertiary);
-  }
-}
-
-@keyframes aix-bubble-wave {
-  0%,
-  100% {
-    transform: translateY(-2px);
-    opacity: 0.6;
-  }
-
-  50% {
-    transform: translateY(2px);
-    opacity: 1;
   }
 }
 </style>

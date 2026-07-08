@@ -27,8 +27,7 @@ type Story = StoryObj<typeof AiChat>;
 
 const wrapperStyle =
   'display:flex;justify-content:center;box-sizing:border-box;min-height:100vh;padding:24px;background:var(--aix-colorBgLayout);';
-const panelStyle =
-  'display:flex;flex-direction:column;gap:12px;width:100%;max-width:720px;';
+const panelStyle = 'display:flex;flex-direction:column;gap:12px;width:100%;max-width:720px;';
 const chatBoxStyle =
   'height:520px;overflow:hidden;border:1px solid var(--aix-colorBorderSecondary);border-radius:12px;background:var(--aix-colorBgContainer);';
 
@@ -132,9 +131,13 @@ export const DualChannel: Story = {
     await userEvent.keyboard('{Enter}');
     // 通道②：流结束后收尾帧的 suggestions 渲染为 chips
     await canvas.findByText('这是什么原理？', undefined, { timeout: 5000 });
-    expect(canvas.getAllByRole('button', { name: /通道|原理|示例|方案/ }).length).toBeGreaterThan(0);
+    expect(canvas.getAllByRole('button', { name: /通道|原理|示例|方案/ }).length).toBeGreaterThan(
+      0,
+    );
     // 通道①：点击注入按钮，临时建议立即展示（覆盖通道②）
-    await userEvent.click(canvas.getByRole('button', { name: '注入临时建议（通道①，setSuggestions）' }));
+    await userEvent.click(
+      canvas.getByRole('button', { name: '注入临时建议（通道①，setSuggestions）' }),
+    );
     await canvas.findByText('临时建议 A（通道①）');
     expect(canvas.queryByText('这是什么原理？')).toBeNull();
   },
@@ -207,7 +210,11 @@ export const StandaloneWithSlot: Story = {
     components: { Suggestions },
     setup() {
       const picked = ref('');
-      return { items: CUSTOM_ITEMS, picked, onSelect: (item: SuggestionItem) => (picked.value = item.text) };
+      return {
+        items: CUSTOM_ITEMS,
+        picked,
+        onSelect: (item: SuggestionItem) => (picked.value = item.text),
+      };
     },
     template: `
       <div style="padding:16px">
@@ -225,4 +232,23 @@ export const StandaloneWithSlot: Story = {
     await userEvent.click(canvas.getByText('这个接口有限流吗？', { exact: false }));
     await canvas.findByText(/最近选择：rate-limit-explain/);
   },
+};
+
+// ──────────────────────────────────────────────
+// 场景四：Suggestions 加载态（独立使用）
+// ──────────────────────────────────────────────
+
+/**
+ * Loading：脱离 AiChat 单独演示 Suggestions 的加载态骨架——追问建议异步生成期间，
+ * `loading=true` 时忽略 `items`，渲染 3 个占位胶囊代替空白。
+ */
+export const Loading: Story = {
+  render: () => ({
+    components: { Suggestions },
+    template: `
+      <div style="padding:16px">
+        <Suggestions :items="[]" loading />
+      </div>
+    `,
+  }),
 };

@@ -55,4 +55,11 @@ describe('ThoughtChainBlock', () => {
     expect(w.find('.aix-thought-chain__body').exists()).toBe(false);
     expect(w.find('.aix-thought-chain__arrow').exists()).toBe(false);
   });
+
+  it('items 为空时展示 LoadingDots 占位（Agent 步骤规划中），不渲染 ThoughtChain', () => {
+    const emptyBlock = thoughtChainBlock([]) as Extract<ContentBlock, { type: 'thought-chain' }>;
+    const w = mount(ThoughtChainBlock, { props: { block: emptyBlock } });
+    expect(w.find('.aix-loading-dots').exists()).toBe(true);
+    expect(w.find('.aix-thought-chain').exists()).toBe(false);
+  });
 });

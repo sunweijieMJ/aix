@@ -449,3 +449,24 @@ describe('BubbleList', () => {
     expect(w.find('.custom-tool').text()).toBe('custom');
   });
 });
+
+describe('BubbleList loading（整体骨架占位）', () => {
+  it('loading=true 时渲染 3 条骨架气泡，不渲染 Virtualizer/真实 items', () => {
+    const items: ChatMessage[] = [
+      { id: '1', role: 'user', content: [textBlock('真实消息')], status: 'success' },
+    ];
+    const w = mount(BubbleList, { props: { items, loading: true } });
+    expect(w.findAll('.aix-bubble-list__skeleton-item')).toHaveLength(3);
+    expect(w.find('.aix-skeleton').exists()).toBe(true);
+    expect(w.text()).not.toContain('真实消息');
+  });
+
+  it('loading=false（默认）时正常渲染 items', () => {
+    const items: ChatMessage[] = [
+      { id: '1', role: 'user', content: [textBlock('真实消息')], status: 'success' },
+    ];
+    const w = mount(BubbleList, { props: { items } });
+    expect(w.find('.aix-bubble-list__skeleton-item').exists()).toBe(false);
+    expect(w.text()).toContain('真实消息');
+  });
+});

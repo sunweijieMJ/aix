@@ -171,3 +171,15 @@ export const WithChatHistory: StoryObj = {
     await waitFor(() => expect(canvas.queryByText(/流式回答/)).toBeNull(), { timeout: 5000 });
   },
 };
+
+/** 加载中：loading=true 时列表区域渲染骨架占位，忽略 items（会话列表从后端拉取中使用） */
+export const Loading: Story = {
+  render: () => ({
+    components: { Conversations },
+    template: `
+      <div style="width:260px;height:420px;border:1px solid var(--aix-colorBorderSecondary);border-radius:12px;overflow:hidden">
+        <Conversations :items="[]" loading />
+      </div>
+    `,
+  }),
+};

@@ -30,4 +30,10 @@ describe('Suggestions', () => {
     });
     expect(w.find('b').text()).toBe('自定义它的参数怎么传？');
   });
+
+  it('loading=true 时渲染 3 个骨架胶囊，不渲染真实 items', () => {
+    const w = mount(Suggestions, { props: { items, loading: true } });
+    expect(w.findAll('.aix-skeleton')).toHaveLength(3);
+    expect(w.find('.aix-suggestions__item').exists()).toBe(false);
+  });
 });

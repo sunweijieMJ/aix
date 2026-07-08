@@ -128,3 +128,11 @@ export const WithError: Story = {
     await expect(retry).toBeInTheDocument();
   },
 };
+
+/** 首屏加载：loading=true 时渲染骨架占位气泡，不渲染 items（历史消息拉取中使用） */
+export const LoadingSkeleton: Story = {
+  args: {
+    loading: true,
+    items: [],
+  },
+};

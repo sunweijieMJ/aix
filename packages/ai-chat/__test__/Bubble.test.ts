@@ -34,9 +34,10 @@ describe('Bubble', () => {
     expect(el.text()).toBe('1:success');
   });
 
-  it('loading 时显示加载点，不显示 content', () => {
+  it('loading 时显示 LoadingDots，不显示 content', () => {
     const w = mount(Bubble, { props: { content: [textBlock('x')], loading: true } });
-    expect(w.find('.aix-bubble__loading').exists()).toBe(true);
+    expect(w.find('.aix-loading-dots').exists()).toBe(true);
+    expect(w.text()).not.toContain('x');
   });
 
   it('content 作用域 slot 覆盖默认渲染并拿到 blocks/info', () => {

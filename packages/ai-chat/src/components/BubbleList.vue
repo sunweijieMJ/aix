@@ -1,50 +1,63 @@
 <template>
   <div :class="ns.b()" :style="{ maxHeight }">
-    <div ref="scrollRef" :class="ns.e('scroll')" @scroll="computeState">
-      <Virtualizer ref="virtualizerRef" v-slot="{ item }" :data="items" :keep-mounted="keepMounted">
-        <Bubble
-          :key="(item as ChatMessage).id"
-          v-bind="resolveBubble(item as ChatMessage)"
-          :item-key="(item as ChatMessage).id"
-          :content="(item as ChatMessage).content"
-          :role="(item as ChatMessage).role"
-          :status="(item as ChatMessage).status"
-          :loading="(item as ChatMessage).status === 'loading'"
-          :typing="resolveTyping(item as ChatMessage)"
-          :editing="editingIds.has((item as ChatMessage).id)"
-          :save-disabled="saveDisabled"
-          :tool-renderers="toolRenderers"
-          @retry="emit('retry', (item as ChatMessage).id)"
-          @block-action="emit('block-action', $event)"
-          @edit="emit('edit', (item as ChatMessage).id, $event)"
-          @editing-change="handleEditingChange((item as ChatMessage).id, $event)"
-          @typing-complete="handleTypingComplete((item as ChatMessage).id)"
-        >
-          <template v-if="$slots.content" #content="slotProps">
-            <slot name="content" :item="item as ChatMessage" v-bind="slotProps" />
-          </template>
-          <!-- 转发 footer 作用域 slot：补齐消息操作（复制/重生成等）的逃生口 -->
-          <template v-if="$slots.footer" #footer>
-            <slot name="footer" :item="item as ChatMessage" />
-          </template>
-          <!-- 透传块插槽：把非保留（content/footer 之外）具名插槽原样转发给每个 Bubble，
-               最终落到块渲染器内部 slot（如 thought-chain-item-content → item-content）。 -->
-          <template v-for="name in passthroughSlotNames" :key="name" #[name]="sp">
-            <slot :name="name" v-bind="sp" />
-          </template>
-        </Bubble>
-      </Virtualizer>
+    <div v-if="loading" :class="ns.e('skeleton')">
+      <div v-for="i in 3" :key="i" :class="[ns.e('skeleton-item'), ns.is('end', i % 2 === 0)]">
+        <div v-if="i % 2 !== 0" :class="ns.e('skeleton-avatar')" />
+        <Skeleton :rows="2" :class="ns.e('skeleton-content')" />
+      </div>
     </div>
-    <button
-      v-if="scrollState !== 'AT_BOTTOM'"
-      type="button"
-      :class="ns.e('back')"
-      :aria-label="t.backToBottom"
-      @click="scrollToBottom(true)"
-    >
-      <span v-if="unreadCount">{{ unreadCount }}</span>
-      ↓
-    </button>
+    <template v-else>
+      <div ref="scrollRef" :class="ns.e('scroll')" @scroll="computeState">
+        <Virtualizer
+          ref="virtualizerRef"
+          v-slot="{ item }"
+          :data="items"
+          :keep-mounted="keepMounted"
+        >
+          <Bubble
+            :key="(item as ChatMessage).id"
+            v-bind="resolveBubble(item as ChatMessage)"
+            :item-key="(item as ChatMessage).id"
+            :content="(item as ChatMessage).content"
+            :role="(item as ChatMessage).role"
+            :status="(item as ChatMessage).status"
+            :loading="(item as ChatMessage).status === 'loading'"
+            :typing="resolveTyping(item as ChatMessage)"
+            :editing="editingIds.has((item as ChatMessage).id)"
+            :save-disabled="saveDisabled"
+            :tool-renderers="toolRenderers"
+            @retry="emit('retry', (item as ChatMessage).id)"
+            @block-action="emit('block-action', $event)"
+            @edit="emit('edit', (item as ChatMessage).id, $event)"
+            @editing-change="handleEditingChange((item as ChatMessage).id, $event)"
+            @typing-complete="handleTypingComplete((item as ChatMessage).id)"
+          >
+            <template v-if="$slots.content" #content="slotProps">
+              <slot name="content" :item="item as ChatMessage" v-bind="slotProps" />
+            </template>
+            <!-- 转发 footer 作用域 slot：补齐消息操作（复制/重生成等）的逃生口 -->
+            <template v-if="$slots.footer" #footer>
+              <slot name="footer" :item="item as ChatMessage" />
+            </template>
+            <!-- 透传块插槽：把非保留（content/footer 之外）具名插槽原样转发给每个 Bubble，
+               最终落到块渲染器内部 slot（如 thought-chain-item-content → item-content）。 -->
+            <template v-for="name in passthroughSlotNames" :key="name" #[name]="sp">
+              <slot :name="name" v-bind="sp" />
+            </template>
+          </Bubble>
+        </Virtualizer>
+      </div>
+      <button
+        v-if="scrollState !== 'AT_BOTTOM'"
+        type="button"
+        :class="ns.e('back')"
+        :aria-label="t.backToBottom"
+        @click="scrollToBottom(true)"
+      >
+        <span v-if="unreadCount">{{ unreadCount }}</span>
+        ↓
+      </button>
+    </template>
   </div>
 </template>
 
@@ -52,6 +65,8 @@
 export interface BubbleListProps {
   /** 消息列表（渲染数据源，经 virtua 虚拟化渲染为气泡） */
   items: ChatMessage[];
+  /** 整体加载态：为 true 时渲染骨架占位气泡，不渲染 items（历史消息拉取中使用），默认 false */
+  loading?: boolean;
   /** 角色样式映射：角色 → 气泡默认 props（头像 / 位置 / 变体等） */
   roles?: Record<string, RoleConfig>;
   /** 是否自动滚动跟随新消息，默认 true */
@@ -102,8 +117,10 @@ import type {
 } from '../types';
 import { toolFollowLen } from '../utils/helpers';
 import Bubble from './Bubble.vue';
+import Skeleton from './Skeleton.vue';
 
 const props = withDefaults(defineProps<BubbleListProps>(), {
+  loading: false,
   autoScroll: true,
   maxHeight: '100%',
   typing: false,
@@ -254,7 +271,9 @@ const scrollToBubble = (
 // 首屏挂载：等 Virtualizer 完成首次渲染后同步滚动态，避免初始硬编码的
 // AT_BOTTOM 与真实 DOM 不一致（否则带初始历史消息时回到底部按钮会被误隐藏，
 // 首次 streaming 也会被误判为贴底）。开启 autoScroll 时直接贴底，更符合对话场景。
-onMounted(() => {
+// 抽成具名函数：loading=true 时 scrollRef 尚未挂载（骨架屏分支），下方 watch 在
+// loading 转为 false、真实滚动容器挂载后重新调用一次，避免贴底与 ResizeObserver 钉底永久失效。
+const syncScrollState = () => {
   nextTick(() => {
     if (props.autoScroll) {
       scrollToBottom();
@@ -265,7 +284,14 @@ onMounted(() => {
     // 消除"跟随时机错位"导致的抖动与不贴底（无 ResizeObserver 环境自动空转）。
     observeContent(scrollRef.value?.firstElementChild as HTMLElement | null);
   });
-});
+};
+onMounted(syncScrollState);
+watch(
+  () => props.loading,
+  (loading, prevLoading) => {
+    if (prevLoading && !loading) syncScrollState();
+  },
+);
 
 // 消息数量变化 → 判定是否为用户自己的消息或新消息。
 // 注意：一次 onSend 会同时新增 user 消息 + ai 占位（末条恒为 ai），
@@ -318,6 +344,35 @@ defineExpose({
     flex: 1;
     padding: var(--aix-padding);
     overflow-y: auto;
+  }
+
+  &__skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--aix-paddingLG);
+    padding: var(--aix-padding);
+  }
+
+  &__skeleton-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--aix-sizeSM);
+
+    &.is-end {
+      flex-direction: row-reverse;
+    }
+  }
+
+  &__skeleton-avatar {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background-color: var(--aix-colorFillTertiary);
+  }
+
+  &__skeleton-content {
+    max-width: min(420px, 100%);
   }
 
   &__back {
