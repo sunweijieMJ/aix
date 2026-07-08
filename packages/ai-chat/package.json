@@ -1,6 +1,6 @@
 {
   "name": "@aix/ai-chat",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "A Vue 3 AI chat component package",
   "license": "MIT",
   "type": "module",

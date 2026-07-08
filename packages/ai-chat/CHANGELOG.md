@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.9
+
+### Patch Changes
+
+- 新增html预览、会话搜索
+
 ## 0.0.8
 
 ### Patch Changes
