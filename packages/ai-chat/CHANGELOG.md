@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.11
+
+### Patch Changes
+
+- 增加image类型，增强图表
+
 ## 0.0.10
 
 ### Patch Changes
