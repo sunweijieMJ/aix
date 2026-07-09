@@ -25,6 +25,7 @@ describe('包入口', () => {
     expect(api.resolvePosition).toBeTypeOf('function');
     expect(api.getCaretRect).toBeTypeOf('function');
     expect(api.normalizeSuggestions).toBeTypeOf('function');
+    expect(api.imageBlock).toBeTypeOf('function');
   });
   it('default 是带 install 的插件', () => {
     expect(plugin.install).toBeTypeOf('function');

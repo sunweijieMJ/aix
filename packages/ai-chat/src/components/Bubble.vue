@@ -110,6 +110,7 @@ import type { BlockAction, BubbleProps, BubbleContentInfo, BlockRenderers } from
 import { messageText } from '../utils/helpers';
 import AttachmentBlock from './blocks/AttachmentBlock.vue';
 import ChartBlock from './blocks/ChartBlock.vue';
+import ImageBlock from './blocks/ImageBlock.vue';
 import QuoteBlock from './blocks/QuoteBlock.vue';
 import ReasoningBlock from './blocks/ReasoningBlock.vue';
 import SourcesBlock from './blocks/SourcesBlock.vue';
@@ -159,6 +160,7 @@ const builtinRenderers: BlockRenderers = {
   attachment: AttachmentBlock,
   tool_use: ToolUseBlock,
   chart: ChartBlock,
+  image: ImageBlock,
   quote: QuoteBlock,
 };
 const renderers = computed<BlockRenderers>(() => ({

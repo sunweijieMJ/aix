@@ -9,6 +9,7 @@ import {
   createMessage,
   messageText,
   attachmentBlock,
+  imageBlock,
   toolFollowLen,
 } from '../src/utils/helpers';
 
@@ -108,6 +109,28 @@ describe('helpers', () => {
         sourcesBlock([{ title: 's' }]),
       ];
       expect(toolFollowLen(blocks)).toBe(4);
+    });
+  });
+
+  describe('imageBlock', () => {
+    it('生成 type=image 块，携带 id 与 images', () => {
+      const images = [{ url: 'https://a.com/1.png' }, { url: 'https://a.com/2.png' }];
+      const block = imageBlock(images);
+      expect(block.type).toBe('image');
+      expect(block.id).toBeTruthy();
+      expect(block.images).toBe(images);
+      expect(block.state).toBeUndefined();
+      expect(block.errorText).toBeUndefined();
+    });
+
+    it('opts.state / opts.errorText 按传入值写入，不传则不出现在对象上', () => {
+      const loading = imageBlock([], { state: 'loading' });
+      expect(loading.state).toBe('loading');
+      expect('errorText' in loading).toBe(false);
+
+      const errored = imageBlock([], { state: 'error', errorText: '生成失败' });
+      expect(errored.state).toBe('error');
+      expect(errored.errorText).toBe('生成失败');
     });
   });
 });

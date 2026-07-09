@@ -119,6 +119,7 @@ export {
   thoughtChainBlock,
   attachmentBlock,
   chartBlock,
+  imageBlock,
   textMessage,
   createMessage,
   messageText,

@@ -1,121 +1,20 @@
-import { useLocale } from '@aix/hooks';
-import { defineComponent, h, ref, watch, onBeforeUnmount } from 'vue';
-// 务实取舍：与 diagramRenderers 同理——本文件是「组件工厂」（ImageBlock 即组件），
-// 复用 components 层的 Skeleton 保证占位动效全包一致。
-import Skeleton from '../components/Skeleton.vue';
-import { locale } from '../locale';
-import { transitionHeight } from './heightTransition';
-import { createLruCache } from './lruCache';
+import { h } from 'vue';
+import ImageThumb from '../components/ImageThumb.vue';
 import type { MarkdownRenderers, MdToken } from './markdownWalker';
 
-/**
- * 已成功加载过的图片 URL（LRU 上限 200）：虚拟列表重挂载 / 同图复现时直接出图，不再闪骨架。
- * 「是否加载过」是集合语义，故以 value 恒为 true 的占位形式复用共享 LRU 工厂（与 svgCache 同策略）；
- * has 命中即刷新热度，越界淘汰最久未访问项，避免长会话中新 URL 无界增长。
- */
-const loadedUrls = createLruCache<string, true>(200);
-const isLoaded = (url: string): boolean => loadedUrls.has(url);
-const markLoaded = (url: string) => loadedUrls.set(url, true);
-
-/** 测试用：清空已加载缓存 */
-export function __resetImageCache() {
-  loadedUrls.clear();
-}
+export { __resetImageCache } from './imageLoadedCache';
 
 const attr = (token: MdToken, name: string): string | undefined =>
   token.attrs?.find((a) => a[0] === name)?.[1];
 
 /**
- * 内置图片渲染器（骨架占位版）：
- * 骨架 shimmer（隐藏预加载）→ onload 高度平滑过渡 + 淡入 → onerror 占位框 + alt（不裂图）。
+ * 内置图片渲染器：`image` token → 骨架占位版缩略图（ImageThumb 组件）。
  * 经 MarkdownRenderer 合并注册，用户 markdownRenderers.image 仍可整体覆盖。
+ * 加载状态机与结构化 `image` 块渲染器（components/blocks/ImageBlock.vue）共用同一个 ImageThumb。
  */
-const ImageBlock = defineComponent({
-  name: 'AixImageBlock',
-  props: {
-    src: { type: String, required: true },
-    alt: { type: String, default: '' },
-  },
-  setup(props) {
-    // 失败占位兜底文案走 locale 体系（与 codeRenderers 一致），随语言切换响应式更新
-    const { t } = useLocale(locale);
-    const status = ref<'loading' | 'loaded' | 'error'>(isLoaded(props.src) ? 'loaded' : 'loading');
-    // src 变化时复位（与 diagramRenderers 的 props 变化复位模式一致）：
-    // 无 key 的同位置 patch 会复用本实例（消息编辑/重新生成后同位置换图），
-    // 不复位则旧图的 error/loaded 态粘到新图——error 态下新图连预加载 img 都不渲染，永久卡死。
-    watch(
-      () => props.src,
-      (src) => {
-        status.value = isLoaded(src) ? 'loaded' : 'loading';
-      },
-    );
-    const wrapper = ref<HTMLElement | null>(null);
-
-    let cancelFlip: (() => void) | null = null;
-    // 卸载时打断进行中的过渡：清理兜底定时器与监听，不持有已脱离元素
-    onBeforeUnmount(() => cancelFlip?.());
-
-    const onLoad = () => {
-      if (status.value !== 'loading') return;
-      // 高度平滑过渡（共享 FLIP）：记录骨架高 → 切换重渲染后（rAF）测真实高做 transition。
-      // jsdom 无布局（offsetHeight=0）由 transitionHeight 内部跳过，不影响测试与 SSR。
-      const el = wrapper.value;
-      const prevHeight = el?.offsetHeight ?? 0;
-      markLoaded(props.src);
-      status.value = 'loaded';
-      if (!el || !prevHeight) return;
-      requestAnimationFrame(() => {
-        cancelFlip?.();
-        cancelFlip = transitionHeight(el, prevHeight);
-      });
-    };
-    const onError = () => {
-      status.value = 'error';
-    };
-    // 缓存命中直出的 <img> 实际加载仍可能失败（CDN 过期/网络变化）：
-    // 切失败占位并清缓存（后续挂载回骨架重试），兑现「不裂图」承诺
-    const onLoadedError = () => {
-      loadedUrls.delete(props.src);
-      status.value = 'error';
-    };
-
-    return () => {
-      if (status.value === 'error' || !props.src) {
-        // 失败占位：保留占位框与 alt 文案，避免浏览器默认裂图
-        return h('span', { class: 'aix-md-image aix-md-image--error', role: 'img' }, [
-          h('span', { 'aria-hidden': 'true' }, '🖼'),
-          props.alt || props.src || t.value.imageLoadError,
-        ]);
-      }
-      if (status.value === 'loaded') {
-        return h('span', { ref: wrapper, class: 'aix-md-image' }, [
-          h('img', {
-            class: 'aix-md-image__img',
-            src: props.src,
-            alt: props.alt,
-            onError: onLoadedError,
-          }),
-        ]);
-      }
-      // 骨架态：shimmer 占位 + 隐藏的预加载 img（触发 onload/onerror）
-      return h('span', { ref: wrapper, class: 'aix-md-image aix-md-image--loading' }, [
-        h(Skeleton, { loading: true, height: '96px' }),
-        h('img', {
-          class: 'aix-md-image__preload',
-          src: props.src,
-          alt: '',
-          'aria-hidden': 'true',
-          onLoad,
-          onError,
-        }),
-      ]);
-    };
-  },
-});
-
 export const imageRenderers: MarkdownRenderers = {
   image: ({ token }) => {
     const src = attr(token, 'src') ?? '';
-    return h(ImageBlock, { src, alt: token.content || (attr(token, 'alt') ?? '') });
+    return h(ImageThumb, { src, alt: token.content || (attr(token, 'alt') ?? '') });
   },
 };

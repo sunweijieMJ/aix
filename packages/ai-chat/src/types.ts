@@ -378,7 +378,17 @@ export type EChartsChartKind =
   | 'tree'
   | 'treemap';
 
-/** 消息内容块（有序、可扩展）。预留扩展：tool_use / image / 业务自定义块只需新增联合成员 */
+/** 图片条目（image 块的单张图片） */
+export interface ImageItem {
+  /** 图片地址 */
+  url: string;
+  /** 无障碍替代文本，可选；缺失时渲染层降级为通用文案 */
+  alt?: string;
+  /** 缩略图地址（多图网格用），缺省直接用 url */
+  thumbnail?: string;
+}
+
+/** 消息内容块（有序、可扩展）。预留扩展：业务自定义块只需新增联合成员 */
 export type ContentBlock =
   | (BlockBase & { type: 'text'; text: string })
   | (BlockBase & {
@@ -432,6 +442,15 @@ export type ContentBlock =
       state?: 'loading' | 'ready' | 'error';
       /** 交互回写用（切换图型/取点等经 BlockAction 上抛）；无交互需求可不填 */
       interactive?: boolean;
+    })
+  | (BlockBase & {
+      type: 'image';
+      /** 图片列表，支持单图（长度 1）与多图 gallery（如生图工具一次产出多个变体） */
+      images: ImageItem[];
+      /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式生图期间为 loading。缺省按 ready 处理 */
+      state?: 'loading' | 'ready' | 'error';
+      /** 出错文案 */
+      errorText?: string;
     })
   | QuoteBlock;
 

@@ -124,4 +124,14 @@ export interface AiChatLocale {
   htmlSandboxCode: string;
   /** HTML Sandbox：新窗口打开按钮 */
   htmlSandboxOpenNewWindow: string;
+  /** 图片预览 Modal：对话框无障碍标签 */
+  imagePreviewLabel: string;
+  /** 图片预览 Modal：关闭按钮 */
+  imagePreviewClose: string;
+  /** 图片预览 Modal：下载按钮 */
+  imagePreviewDownload: string;
+  /** 图片预览 Modal：上一张按钮 */
+  imagePreviewPrev: string;
+  /** 图片预览 Modal：下一张按钮 */
+  imagePreviewNext: string;
 }

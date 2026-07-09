@@ -63,4 +63,9 @@ export const zhCN: AiChatLocale = {
   htmlSandboxPreview: '预览',
   htmlSandboxCode: '代码',
   htmlSandboxOpenNewWindow: '新窗口打开',
+  imagePreviewLabel: '图片预览',
+  imagePreviewClose: '关闭',
+  imagePreviewDownload: '下载图片',
+  imagePreviewPrev: '上一张',
+  imagePreviewNext: '下一张',
 };

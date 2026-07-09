@@ -2,6 +2,7 @@ import type {
   AttachmentItem,
   ChatMessage,
   ContentBlock,
+  ImageItem,
   MessageRole,
   MessageStatus,
   Quote,
@@ -85,6 +86,21 @@ export const chartBlock = (
   ...(opts?.alt !== undefined ? { alt: opts.alt } : {}),
   ...(opts?.state !== undefined ? { state: opts.state } : {}),
   ...(opts?.interactive !== undefined ? { interactive: opts.interactive } : {}),
+});
+
+/** 创建图片块（结构化路径，支持单图/多图 gallery）。images 为图片列表；opts 补态 / 出错文案 */
+export const imageBlock = (
+  images: ImageItem[],
+  opts?: {
+    state?: 'loading' | 'ready' | 'error';
+    errorText?: string;
+  },
+): Extract<ContentBlock, { type: 'image' }> => ({
+  id: genBlockId(),
+  type: 'image',
+  images,
+  ...(opts?.state !== undefined ? { state: opts.state } : {}),
+  ...(opts?.errorText !== undefined ? { errorText: opts.errorText } : {}),
 });
 
 /** quote 块工厂：pendingQuotes → 一等 quote 块（发送时前置进 content） */

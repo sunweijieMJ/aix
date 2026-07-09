@@ -63,4 +63,9 @@ export const enUS: AiChatLocale = {
   htmlSandboxPreview: 'Preview',
   htmlSandboxCode: 'Code',
   htmlSandboxOpenNewWindow: 'Open in new window',
+  imagePreviewLabel: 'Image preview',
+  imagePreviewClose: 'Close',
+  imagePreviewDownload: 'Download image',
+  imagePreviewPrev: 'Previous image',
+  imagePreviewNext: 'Next image',
 };
