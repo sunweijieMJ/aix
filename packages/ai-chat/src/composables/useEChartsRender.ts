@@ -37,22 +37,30 @@ export async function ensureChartType(core: EChartsLike, kind: EChartsChartKind)
   try {
     const charts = (await import('echarts/charts')) as Record<string, unknown>;
     const comps = (await import('echarts/components')) as Record<string, unknown>;
-    // radar 用 RadarComponent（极坐标系），其余统计图用 GridComponent（直角坐标系）；pie 无需坐标系
-    const perKind: Record<EChartsChartKind, { chart: string; coord?: string }> = {
-      bar: { chart: 'BarChart', coord: 'GridComponent' },
-      line: { chart: 'LineChart', coord: 'GridComponent' },
-      scatter: { chart: 'ScatterChart', coord: 'GridComponent' },
+    // radar 用 RadarComponent（极坐标系），bar/line/scatter/heatmap 用 GridComponent（直角坐标系）；
+    // pie/funnel/gauge/graph/tree/treemap 无需坐标系（自带布局，非直角/极坐标）；
+    // heatmap 额外需要 VisualMapComponent 做取值→颜色的映射，否则色阶不生效。
+    const perKind: Record<EChartsChartKind, { chart: string; components?: string[] }> = {
+      bar: { chart: 'BarChart', components: ['GridComponent'] },
+      line: { chart: 'LineChart', components: ['GridComponent'] },
+      scatter: { chart: 'ScatterChart', components: ['GridComponent'] },
       pie: { chart: 'PieChart' },
-      radar: { chart: 'RadarChart', coord: 'RadarComponent' },
+      radar: { chart: 'RadarChart', components: ['RadarComponent'] },
+      funnel: { chart: 'FunnelChart' },
+      gauge: { chart: 'GaugeChart' },
+      heatmap: { chart: 'HeatmapChart', components: ['GridComponent', 'VisualMapComponent'] },
+      graph: { chart: 'GraphChart' },
+      tree: { chart: 'TreeChart' },
+      treemap: { chart: 'TreemapChart' },
     };
-    const { chart, coord } = perKind[kind];
+    const { chart, components } = perKind[kind];
     const exts: unknown[] = [
       charts[chart],
       comps.TitleComponent,
       comps.TooltipComponent,
       comps.LegendComponent,
     ];
-    if (coord) exts.push(comps[coord]);
+    if (components) exts.push(...components.map((name) => comps[name]));
     core.use(exts.filter(Boolean));
     usedKinds.add(kind);
   } catch {
@@ -65,7 +73,19 @@ export function inferKind(option: Record<string, unknown>): EChartsChartKind {
   const series = option.series;
   const first = Array.isArray(series) ? series[0] : series;
   const type = (first as { type?: string } | undefined)?.type;
-  const known: EChartsChartKind[] = ['bar', 'line', 'pie', 'scatter', 'radar'];
+  const known: EChartsChartKind[] = [
+    'bar',
+    'line',
+    'pie',
+    'scatter',
+    'radar',
+    'funnel',
+    'gauge',
+    'heatmap',
+    'graph',
+    'tree',
+    'treemap',
+  ];
   return known.includes(type as EChartsChartKind) ? (type as EChartsChartKind) : 'line';
 }
 

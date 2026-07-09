@@ -64,6 +64,34 @@ describe('AiChat', () => {
     expect(w.findAll('.aix-bubble').length).toBeGreaterThanOrEqual(2);
   });
 
+  it('historyLoading=true 且消息为空：渲染 BubbleList 骨架屏而非 Welcome', () => {
+    const request = vi.fn(async () => once('回答'));
+    const w = mount(AiChat, { props: { request, welcomeTitle: '你好', historyLoading: true } });
+    expect(w.find('.aix-welcome').exists()).toBe(false);
+    expect(w.find('.aix-bubble-list__skeleton').exists()).toBe(true);
+  });
+
+  it('historyLoading=false（默认）且消息为空：保持原行为显示 Welcome，不受影响', () => {
+    const request = vi.fn(async () => once('回答'));
+    const w = mount(AiChat, { props: { request, welcomeTitle: '你好' } });
+    expect(w.find('.aix-welcome').exists()).toBe(true);
+    expect(w.find('.aix-bubble-list__skeleton').exists()).toBe(false);
+  });
+
+  it('historyLoading=true 且已有陈旧消息（如切换会话瞬间）：仍展示骨架屏而非陈旧内容', () => {
+    const request = vi.fn(async () => once('回答'));
+    const w = mount(AiChat, {
+      props: {
+        request,
+        welcomeTitle: '你好',
+        historyLoading: true,
+        messages: [textMessage('user', '上一个会话的消息')],
+      },
+    });
+    expect(w.find('.aix-bubble-list__skeleton').exists()).toBe(true);
+    expect(w.text()).not.toContain('上一个会话的消息');
+  });
+
   // 非受控回归：不绑 v-model:input 时输入框文本由内部状态持有（兼容 Vue 3.3 的关键场景，
   // 实测 defineModel 在 3.3 非受控下打字会丢失；且守住「input prop 不设默认值」铁律）
   it('非受控（不绑 v-model:input）：输入框文本保留并 emit update:input', async () => {

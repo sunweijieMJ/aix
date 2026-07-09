@@ -62,6 +62,20 @@ describe('Bubble', () => {
     expect(w.find('.aix-bubble__error').exists()).toBe(false);
   });
 
+  it('status=updating：内容区带 aria-live/aria-atomic，供屏幕阅读器感知流式更新', () => {
+    const w = mount(Bubble, { props: { status: 'updating', content: [textBlock('流式中')] } });
+    const content = w.find('.aix-bubble__content');
+    expect(content.attributes('aria-live')).toBe('polite');
+    expect(content.attributes('aria-atomic')).toBe('false');
+  });
+
+  it('非 updating 状态：内容区不带 aria-live（避免虚拟列表滚动回收时误播报）', () => {
+    const w = mount(Bubble, { props: { status: 'success', content: [textBlock('已完成')] } });
+    const content = w.find('.aix-bubble__content');
+    expect(content.attributes('aria-live')).toBeUndefined();
+    expect(content.attributes('aria-atomic')).toBeUndefined();
+  });
+
   it('根元素带 data-aix-message-id / data-aix-role，text 块带 data-aix-block-id', () => {
     const w = mount(Bubble, {
       props: {

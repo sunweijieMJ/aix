@@ -361,6 +361,50 @@ export const AllowHtml: Story = {
 };
 
 /**
+ * 回归：未走 ```html 围栏、直接裸写的**完整 HTML 文档**（含 DOCTYPE 声明、head/body 段
+ * 与内部空行）。CommonMark 的 html_block 规则按标签名/空行切割——DOCTYPE 声明本行含闭合
+ * 尖括号会立即收尾，紧邻的 html 标签又要等到下一个空行才收尾，一份排版正常的文档几乎必然
+ * 被拆成多个顶层块。修复前会渲染出好几个互不相关的沙箱预览；修复后应只有一个 iframe、
+ * 内容为完整文档。
+ *
+ * ⚠️ 注意：本 story 描述注释故意不写反引号包裹的尖括号标签名（如 `<head>`）——Storybook
+ * autodocs 的 Description 渲染器会把这类文本当作原始 HTML 注入 DOM（产生 head/body/html
+ * 嵌在 `<p>` 里的非法嵌套），在文档聚合页与其它 setInterval 驱动的流式 story 共存时会
+ * 引发持续的水合修复开销、拖垮整页（复现过程见 git log / PR 描述）。
+ */
+export const AllowHtmlFullDocument: Story = {
+  args: {
+    allowHtml: true,
+    content: [
+      '模型直接吐出的完整网页（未加 ```html 围栏）：',
+      '',
+      '<!DOCTYPE html>',
+      '<html>',
+      '<head>',
+      '<title>示例页面</title>',
+      '<style>body{font-family:sans-serif;padding:12px}</style>',
+      '</head>',
+      '',
+      '<body>',
+      '<h1>你好</h1>',
+      '<p>这应该整份渲染在同一个 iframe 里。</p>',
+      '</body>',
+      '</html>',
+    ].join('\n'),
+  },
+  play: async ({ canvasElement }) => {
+    await waitFor(
+      () => {
+        const frames = canvasElement.querySelectorAll('iframe');
+        expect(frames.length).toBe(1);
+        expect(frames[0]?.getAttribute('srcdoc')).toContain('你好');
+      },
+      { timeout: 5000 },
+    );
+  },
+};
+
+/**
  * 内置图片骨架：图片 markdown 渲染为「shimmer 骨架 → 加载完成平滑过渡出图」，
  * 不再突然撑开页面；加载失败渲染占位框 + alt 文案（不裂图）。
  * 已加载过的 URL 有缓存（虚拟列表滚动复现不再闪骨架）。

@@ -14,7 +14,11 @@
       </slot>
     </div>
     <div :class="ns.e('body')">
-      <Welcome v-if="messages.length === 0" :title="welcomeTitle" :description="welcomeDescription">
+      <Welcome
+        v-if="messages.length === 0 && !historyLoading"
+        :title="welcomeTitle"
+        :description="welcomeDescription"
+      >
         <!-- 透传 Welcome 的图标/标题/描述具名插槽，供业务做品牌图标与富文本标题（如局部主色着色）。 -->
         <template v-if="$slots['welcome-icon']" #icon><slot name="welcome-icon" /></template>
         <template v-if="$slots['welcome-title']" #title><slot name="welcome-title" /></template>
@@ -36,6 +40,7 @@
         :block-renderers="blockRenderers"
         :tool-renderers="toolRenderers"
         :save-disabled="isLoading"
+        :loading="historyLoading"
         @retry="onReload"
         @block-action="onBlockAction"
         @edit="onEditMessage"
@@ -187,6 +192,13 @@ export interface AiChatProps {
   parser?: UseChatOptions['parser'];
   /** 初始历史消息 */
   defaultMessages?: UseChatOptions['defaultMessages'];
+  /**
+   * 历史消息加载中：true 时消息区渲染骨架屏（占位假气泡），而不是空消息态的 Welcome 或
+   * 真实 BubbleList；用于业务从远端异步恢复会话历史时的过渡态（如接入 useConversations
+   * 异步 storage.load，配合其 isLoading 传入本 prop）。默认 false（不生效时行为不变：
+   * messages 为空显示 Welcome，否则显示 BubbleList）。透传给 BubbleList 的 loading prop。
+   */
+  historyLoading?: boolean;
   /**
    * 输入框文本（v-model:input）。可选；不传则走非受控，由组件内部维护草稿。
    * 注意：不要设默认值——为兼容 Vue 3.3（useModel emit-only 语义），受控/非受控的判定

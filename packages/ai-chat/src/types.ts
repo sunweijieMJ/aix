@@ -365,7 +365,18 @@ export type ToolUseState =
 export type ChartEngine = 'echarts' | 'function-plot';
 
 /** ECharts 统计图种类（仅 echarts 引擎有此维度：决定骨架占位形态 + 二次动态 import 哪个图表子模块） */
-export type EChartsChartKind = 'bar' | 'line' | 'pie' | 'scatter' | 'radar';
+export type EChartsChartKind =
+  | 'bar'
+  | 'line'
+  | 'pie'
+  | 'scatter'
+  | 'radar'
+  | 'funnel'
+  | 'gauge'
+  | 'heatmap'
+  | 'graph'
+  | 'tree'
+  | 'treemap';
 
 /** 消息内容块（有序、可扩展）。预留扩展：tool_use / image / 业务自定义块只需新增联合成员 */
 export type ContentBlock =

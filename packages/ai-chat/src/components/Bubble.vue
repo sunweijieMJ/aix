@@ -16,6 +16,8 @@
           ns.em('content', shape),
           ns.is('editing', editing),
         ]"
+        :aria-live="isUpdating ? 'polite' : undefined"
+        :aria-atomic="isUpdating ? 'false' : undefined"
       >
         <LoadingDots v-if="loading" />
         <div v-else-if="editing" :class="ns.e('edit')">
@@ -183,6 +185,9 @@ const info = computed<BubbleContentInfo>(() => ({
   role: props.role,
   key: props.itemKey ?? '',
 }));
+
+// 流式更新中：驱动内容区 aria-live 播报，仅此状态挂载（虚拟列表回收其它行不会误播报）
+const isUpdating = computed(() => props.status === 'updating');
 
 const renderedNode = computed(() =>
   props.contentRender ? props.contentRender(props.content, info.value) : null,

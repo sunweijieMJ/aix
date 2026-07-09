@@ -5,6 +5,7 @@ import { createLazyDiagramRenderers, type MermaidLike } from '../utils/diagramRe
 import { createHtmlRenderers } from '../utils/htmlRenderers';
 import type { MarkdownRenderers, MdToken } from '../utils/markdownWalker';
 import { createMathRenderers, type KatexLike } from '../utils/mathRenderers';
+import { isDarkMode } from '../utils/themeMode';
 
 /**
  * 内部共享：动态加载 markdown-it 并尽力挂载 KaTeX 插件。
@@ -167,16 +168,29 @@ async function importMermaid(): Promise<MermaidLike | null> {
   }
 }
 
-/** 代码高亮渲染器：highlight.js 可用时启用通用 fence（含主题样式自动注入），否则空 → 维持纯 pre>code */
+/**
+ * 代码高亮渲染器：highlight.js 可用时启用通用 fence（含主题样式自动注入），否则空 → 维持纯 pre>code。
+ * 主题样式随 @aix/theme 当前明暗模式选取对应 hljs 内置主题，避免暗色模式下浅色语法配色刺眼。
+ *
+ * 注意与 useEChartsRender.withTheme 的取舍并不对称、程度更重：engine 走 engineCache 模块级单例
+ * （每 allowHtml 维度全局仅装配一次），这里选中的 CSS 文件是一次性副作用 import，之后永不再读——
+ * 运行时切换明暗**不会**像 ECharts 那样"下次重绘自动收敛到新主题"，而是永久停留在应用启动时刻
+ * 探测到的模式，直到整页刷新。真要支持热切换需要把已注入的 <link>/<style> 卸载并换成另一份，
+ * highlight.js 的静态主题 CSS 不是为此设计的，MVP 阶段判定收益不足以承担这个复杂度。
+ */
 async function loadCodeRenderers(): Promise<MarkdownRenderers> {
   try {
     const hljsMod = await import('highlight.js');
     const hljs = (hljsMod.default ?? hljsMod) as unknown as HljsLike;
     const renderers = createHighlightRenderers(hljs);
-    // 自动注入默认主题样式（副作用式 import）：装了 highlight.js 即获得配色，无需手动引入。
+    // 自动注入主题样式（副作用式 import）：装了 highlight.js 即获得配色，无需手动引入。
     // 失败时忽略——可在应用入口手动引入任一 `highlight.js/styles/*.css` 覆盖。
     try {
-      await import('highlight.js/styles/github.css');
+      if (isDarkMode()) {
+        await import('highlight.js/styles/github-dark.css');
+      } else {
+        await import('highlight.js/styles/github.css');
+      }
     } catch {
       // CSS 自动注入失败：请在应用入口手动引入 highlight.js 主题样式
     }

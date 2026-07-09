@@ -17,6 +17,12 @@ vi.mock('echarts/charts', () => ({
   PieChart: {},
   ScatterChart: {},
   RadarChart: {},
+  FunnelChart: {},
+  GaugeChart: {},
+  HeatmapChart: {},
+  GraphChart: {},
+  TreeChart: {},
+  TreemapChart: {},
 }));
 vi.mock('echarts/components', () => ({
   GridComponent: {},
@@ -24,6 +30,7 @@ vi.mock('echarts/components', () => ({
   LegendComponent: {},
   TitleComponent: {},
   RadarComponent: {},
+  VisualMapComponent: {},
 }));
 
 // ECharts 经依赖注入（非模块 mock），纯对象假实现即可
@@ -119,6 +126,79 @@ describe('createChartRenderers（ECharts 围栏渲染器）', () => {
     expect(core.init).toHaveBeenCalledTimes(1);
     w.unmount();
     expect(instance.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('回归：series.type=funnel 按 funnel 推断，注册 FunnelChart 而非误判成 line 的 LineChart', async () => {
+    const { core } = makeECharts();
+    const FUNNEL = '{"series":[{"type":"funnel","data":[{"value":1,"name":"a"}]}]}';
+    const w = mountFence(createChartRenderers(core), FUNNEL, { streaming: false });
+    await flush();
+    expect(w.find('.aix-md-chart').exists()).toBe(true);
+    const { FunnelChart, LineChart } = await import('echarts/charts');
+    const usedExts = (core.use as ReturnType<typeof vi.fn>).mock.calls[0]![0] as unknown[];
+    expect(usedExts).toContain(FunnelChart);
+    expect(usedExts).not.toContain(LineChart);
+  });
+
+  it('回归：series.type=gauge 按 gauge 推断，注册 GaugeChart 而非误判成 line 的 LineChart', async () => {
+    const { core } = makeECharts();
+    const GAUGE = '{"series":[{"type":"gauge","data":[{"value":75}]}]}';
+    const w = mountFence(createChartRenderers(core), GAUGE, { streaming: false });
+    await flush();
+    expect(w.find('.aix-md-chart').exists()).toBe(true);
+    const { GaugeChart, LineChart } = await import('echarts/charts');
+    const usedExts = (core.use as ReturnType<typeof vi.fn>).mock.calls[0]![0] as unknown[];
+    expect(usedExts).toContain(GaugeChart);
+    expect(usedExts).not.toContain(LineChart);
+  });
+
+  it('series.type=heatmap：注册 HeatmapChart + GridComponent + VisualMapComponent（色阶映射依赖后者）', async () => {
+    const { core } = makeECharts();
+    const HEATMAP = '{"series":[{"type":"heatmap","data":[[0,0,5]]}]}';
+    const w = mountFence(createChartRenderers(core), HEATMAP, { streaming: false });
+    await flush();
+    expect(w.find('.aix-md-chart').exists()).toBe(true);
+    const { HeatmapChart } = await import('echarts/charts');
+    const { GridComponent, VisualMapComponent } = await import('echarts/components');
+    const usedExts = (core.use as ReturnType<typeof vi.fn>).mock.calls[0]![0] as unknown[];
+    expect(usedExts).toContain(HeatmapChart);
+    expect(usedExts).toContain(GridComponent);
+    expect(usedExts).toContain(VisualMapComponent);
+  });
+
+  it('series.type=graph：注册 GraphChart，自带布局不需要坐标系组件', async () => {
+    const { core } = makeECharts();
+    const GRAPH = '{"series":[{"type":"graph","data":[{"name":"a"}],"links":[]}]}';
+    const w = mountFence(createChartRenderers(core), GRAPH, { streaming: false });
+    await flush();
+    expect(w.find('.aix-md-chart').exists()).toBe(true);
+    const { GraphChart } = await import('echarts/charts');
+    const { GridComponent } = await import('echarts/components');
+    const usedExts = (core.use as ReturnType<typeof vi.fn>).mock.calls[0]![0] as unknown[];
+    expect(usedExts).toContain(GraphChart);
+    expect(usedExts).not.toContain(GridComponent);
+  });
+
+  it('series.type=tree：注册 TreeChart', async () => {
+    const { core } = makeECharts();
+    const TREE = '{"series":[{"type":"tree","data":[{"name":"root"}]}]}';
+    const w = mountFence(createChartRenderers(core), TREE, { streaming: false });
+    await flush();
+    expect(w.find('.aix-md-chart').exists()).toBe(true);
+    const { TreeChart } = await import('echarts/charts');
+    const usedExts = (core.use as ReturnType<typeof vi.fn>).mock.calls[0]![0] as unknown[];
+    expect(usedExts).toContain(TreeChart);
+  });
+
+  it('series.type=treemap：注册 TreemapChart', async () => {
+    const { core } = makeECharts();
+    const TREEMAP = '{"series":[{"type":"treemap","data":[{"name":"root","value":1}]}]}';
+    const w = mountFence(createChartRenderers(core), TREEMAP, { streaming: false });
+    await flush();
+    expect(w.find('.aix-md-chart').exists()).toBe(true);
+    const { TreemapChart } = await import('echarts/charts');
+    const usedExts = (core.use as ReturnType<typeof vi.fn>).mock.calls[0]![0] as unknown[];
+    expect(usedExts).toContain(TreemapChart);
   });
 });
 

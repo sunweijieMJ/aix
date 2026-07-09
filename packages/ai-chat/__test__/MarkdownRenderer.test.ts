@@ -119,6 +119,22 @@ describe('MarkdownRenderer（块级 + walker + 数学）', () => {
     expect(w.find('iframe').attributes('sandbox')).not.toContain('allow-same-origin');
   });
 
+  it(
+    '回归：完整 HTML 文档（含内部空行，未走 ```html 围栏）渲染为单个 iframe，' +
+      '而不是被 CommonMark 空行切割规则拆成多个沙箱预览块',
+    async () => {
+      const html =
+        '<!DOCTYPE html>\n<html>\n<head>\n<title>t</title>\n</head>\n\n' +
+        '<body>\n<p>完整页面</p>\n</body>\n</html>';
+      const w = mount(MarkdownRenderer, { props: { content: html, allowHtml: true } });
+      await vi.waitFor(() => expect(w.find('iframe').exists()).toBe(true));
+      expect(w.findAll('iframe')).toHaveLength(1);
+      const srcdoc = w.find('iframe').attributes('srcdoc') ?? '';
+      expect(srcdoc).toContain('<!DOCTYPE html>');
+      expect(srcdoc).toContain('完整页面');
+    },
+  );
+
   it('流式时非末块 info.committed=true、末块 false；流式结束后全部 true', async () => {
     const probe = {
       paragraph: ({ renderChildren, info }: MarkdownRenderContext) =>

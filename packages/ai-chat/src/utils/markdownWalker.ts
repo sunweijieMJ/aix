@@ -116,6 +116,38 @@ function renderNode(
 }
 
 /**
+ * 从 startIdx 起，返回连续 html_block token 游程的最后一个下标（含 startIdx 本身；
+ * 其后紧邻的不是 html_block 则原样返回 startIdx）。splitMarkdownBlocks.ts 按顶层块的
+ * 行号范围合并、这里再按 token 数组合并 content——两处操作的对象和产出物不同（源码切片
+ * vs 合成 token），不能合并成一个函数，但"游程边界"是同一份定义，抽出来复用，避免两处
+ * while 循环独立演化、日后只改一处导致重新裂开（见 mergeHtmlBlock 场景说明）。
+ */
+export function htmlBlockRunEnd(tokens: readonly { type: string }[], startIdx: number): number {
+  let endIdx = startIdx;
+  while (endIdx + 1 < tokens.length && tokens[endIdx + 1]!.type === 'html_block') {
+    endIdx++;
+  }
+  return endIdx;
+}
+
+/**
+ * 从 startIdx 起合并连续的 html_block token 为一个合成 token（content 以空行拼接，
+ * 复原原始文档的段落间距）。单块（无相邻 html_block）时原样返回、不分配新对象。
+ * 见 splitMarkdownBlocks.ts 同名注释：一份完整 HTML 文档独立重解析后仍会产出多个
+ * html_block token（CommonMark 空行切割规则与切片粒度无关），故渲染时需再合并一次。
+ */
+function mergeHtmlBlock(tokens: MdToken[], startIdx: number): { token: MdToken; nextIdx: number } {
+  const first = tokens[startIdx]!;
+  const endIdx = htmlBlockRunEnd(tokens, startIdx);
+  if (endIdx === startIdx) return { token: first, nextIdx: startIdx + 1 };
+  const content = tokens
+    .slice(startIdx, endIdx + 1)
+    .map((t) => t.content)
+    .join('\n\n');
+  return { token: { ...first, content }, nextIdx: endIdx + 1 };
+}
+
+/**
  * 把 markdown-it 扁平 token 流（含 inline.children）渲染为 Vue VNode 列表。
  * 按 token.type（去 `_open`）查注册表分发，容器递归、inline 下钻、未注册降级。
  */
@@ -133,6 +165,10 @@ export function renderMarkdownTokens(
       const inner = tokens.slice(i + 1, closeIdx);
       out.push(...renderNode(token, () => renderMarkdownTokens(inner, ctx), renderers, info));
       i = closeIdx + 1;
+    } else if (token.type === 'html_block') {
+      const { token: merged, nextIdx } = mergeHtmlBlock(tokens, i);
+      out.push(...renderNode(merged, () => [], renderers, info));
+      i = nextIdx;
     } else {
       if (token.type === 'inline') {
         out.push(...renderMarkdownTokens(token.children ?? [], ctx));

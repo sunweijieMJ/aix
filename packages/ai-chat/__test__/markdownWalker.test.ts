@@ -133,4 +133,57 @@ describe('renderMarkdownTokens（token→VNode walker）', () => {
       expect(html).not.toContain('generic');
     });
   });
+
+  describe('html_block 合并（allowHtml 场景）', () => {
+    const mdHtml = new MarkdownIt({ html: true, linkify: true, breaks: true });
+    const renderHtml = (src: string, renderers: MarkdownRenderers = {}) => {
+      const tokens = mdHtml.parse(src, {}) as unknown as MdToken[];
+      const Harness = defineComponent({
+        render: () =>
+          h('div', renderMarkdownTokens(tokens, { renderers, info: { streaming: false } })),
+      });
+      return mount(Harness).html();
+    };
+
+    it(
+      '回归：完整 HTML 文档（<!DOCTYPE> 自行收尾 + <html> 另起 html_block）只调用一次渲染器，' +
+        'content 拼回完整文档，而不是分片各调一次',
+      () => {
+        const html = '<!DOCTYPE html>\n<html>\n<body>\n<p>hi</p>\n</body>\n</html>';
+        const calls: string[] = [];
+        renderHtml(html, {
+          html_block: ({ token }) => {
+            calls.push(token.content);
+            return h('div', { class: 'sandbox' }, token.content);
+          },
+        });
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toContain('<!DOCTYPE html>');
+        expect(calls[0]).toContain('</html>');
+      },
+    );
+
+    it('html_block 后紧跟普通段落：只合并 html_block 本身，不吞掉后续段落', () => {
+      const src = '<!DOCTYPE html>\n<html>\n<body>hi</body>\n</html>\n\n之后的说明';
+      const html = renderHtml(src, {
+        html_block: ({ token }) => h('div', { class: 'sandbox' }, token.content),
+      });
+      expect(html).toContain('之后的说明');
+      expect(html.match(/class="sandbox"/g)).toHaveLength(1);
+    });
+
+    it('单个 html_block（无相邻块）保持原 token 引用，不做无谓拷贝', () => {
+      const html = '<div>hello</div>';
+      let seen: MdToken | null = null;
+      renderHtml(html, {
+        html_block: ({ token }) => {
+          seen = token;
+          return h('div');
+        },
+      });
+      const tokens = mdHtml.parse(html, {}) as unknown as MdToken[];
+      expect(seen).not.toBeNull();
+      expect((seen as unknown as MdToken).content).toBe(tokens[0]!.content);
+    });
+  });
 });

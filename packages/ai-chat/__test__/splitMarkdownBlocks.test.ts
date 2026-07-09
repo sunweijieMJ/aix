@@ -43,3 +43,33 @@ describe('splitMarkdownBlocks（顶层块源码切片）', () => {
     expect(split('已完成段落\n\n未完成的段')).toEqual(['已完成段落', '未完成的段']);
   });
 });
+
+describe('splitMarkdownBlocks（html:true 时合并相邻 html_block）', () => {
+  const mdHtml = new MarkdownIt({ html: true, linkify: true, breaks: true });
+  const splitHtml = (src: string) => splitMarkdownBlocks(mdHtml, src);
+
+  it(
+    '回归：<!DOCTYPE html> 单独一行会自行收尾（本行含 >），紧邻的 <html>...</html> 另起一个 ' +
+      'html_block——未合并时会被裂成两块；合并后整份文档仍是一个块',
+    () => {
+      const html = '<!DOCTYPE html>\n<html>\n<body>\n<p>hi</p>\n</body>\n</html>';
+      expect(splitHtml(html)).toEqual([html]);
+    },
+  );
+
+  it('回归：文档内部有空行（常见的排版换行）时，未合并会按空行裂成更多块；合并后仍是一个块', () => {
+    const html =
+      '<!DOCTYPE html>\n<html>\n<head>\n<title>t</title>\n</head>\n\n<body>\n<p>hi</p>\n</body>\n</html>';
+    expect(splitHtml(html)).toEqual([html]);
+  });
+
+  it('html_block 后紧跟普通 markdown 段落：只合并 html_block 本身，段落仍独立成块', () => {
+    const html = '<!DOCTYPE html>\n<html>\n<body>\n<p>hi</p>\n</body>\n</html>';
+    expect(splitHtml(`${html}\n\n之后的说明`)).toEqual([html, '之后的说明']);
+  });
+
+  it('```html 围栏不受影响：围栏内容原样整体捕获，不会被当成 html_block 拆分', () => {
+    const fenced = '```html\n<!DOCTYPE html>\n<html>\n\n<body>hi</body>\n</html>\n```';
+    expect(splitHtml(fenced)).toEqual([fenced]);
+  });
+});
