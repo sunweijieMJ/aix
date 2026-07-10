@@ -142,6 +142,39 @@ describe('Vue transform 输出', () => {
     expect((out.match(/import\s*\{[^}]*\bt\b[^}]*\}\s*from/g) ?? []).length).toBe(1);
   });
 
+  it('已存在默认导入 `import t from` 时不注入重复 t 导入（Bug 2）', async () => {
+    // 旧实现 hasNamedImportLocalT 只认花括号命名列表，对默认导入的本地 t 视而不见 → 仍注入
+    // `import { t }` → 同模块作用域出现两个 t 声明 → SFC 编译失败。
+    const out = await transformVue(
+      `<script setup>\nimport t from '@/legacy-i18n';\nconst msg = '你好';\n</script>\n`,
+    );
+    // 保留用户默认导入，不再注入具名 t 导入
+    expect(out).toContain("import t from '@/legacy-i18n'");
+    expect(out).not.toMatch(/import\s*\{\s*t\s*\}\s*from/);
+  });
+
+  it('已存在 default+named 混合导入 `import t, { x } from` 时不注入重复 t（Bug 2）', async () => {
+    const out = await transformVue(
+      `<script setup>\nimport t, { createI18n } from '@/legacy-i18n';\nconst msg = '你好';\n</script>\n`,
+    );
+    expect(out).toContain("import t, { createI18n } from '@/legacy-i18n'");
+    // 不得再注入本工具的 `import { t } from '@/plugins/locale'`
+    expect(out).not.toMatch(/import\s*\{\s*t\s*\}\s*from\s*['"]@\/plugins\/locale['"]/);
+  });
+
+  it('已存在命名空间导入 `import * as t from` 时不注入重复 t（Bug 2）', async () => {
+    const out = await transformVue(
+      `<script setup>\nimport * as t from '@/legacy-i18n';\nconst msg = '你好';\n</script>\n`,
+    );
+    expect(out).toContain("import * as t from '@/legacy-i18n'");
+    expect(out).not.toMatch(/import\s*\{\s*t\s*\}\s*from/);
+  });
+
+  it('回归：普通场景（无既有 t）仍正常注入模块 import { t }', async () => {
+    const out = await transformVue(`<script setup>\nconst msg = '你好';\n</script>\n`);
+    expect(out).toMatch(/import\s*\{\s*t\s*\}\s*from\s*['"]@\/plugins\/locale['"]/);
+  });
+
   it('静态属性 → :attr="$t(key)"', async () => {
     const out = await transformVue(
       `<template>\n  <el-button title="确认">x</el-button>\n</template>\n`,

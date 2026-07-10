@@ -346,6 +346,20 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             );
             if (hasResidualBinding) keepLibraryImportForBinding = true;
           }
+          // 改名的 hook 声明（如 react-intl `const myIntl = useIntl()`，绑定名非 translationVarName）
+          // 经 isHookDeclaration 收窄后不再被删（Bug 1），但它仍引用库的具名导入（useIntl）。若不保留
+          // 整条 import，摘除 useIntl 后该声明引用未定义符号（TS2304）。用初始化器调用 hookName、且
+          // 非标准 hook 声明来识别。仅认 hookName（非 globalFunctionName），避免 react-i18next 的
+          // globalFunctionName='t' 把 `const x = t('key')`（可还原翻译调用）误判为需保留导入。
+          if (
+            decl.initializer &&
+            ts.isCallExpression(decl.initializer) &&
+            ts.isIdentifier(decl.initializer.expression) &&
+            decl.initializer.expression.text === library.hookName &&
+            !library.isHookDeclaration(decl)
+          ) {
+            keepLibraryImportForBinding = true;
+          }
         }
       }
       if (ts.isCallExpression(node) && library.isTranslationCall(node)) {
@@ -492,17 +506,24 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           parent !== undefined && (ts.isJsxElement(parent) || ts.isJsxFragment(parent));
         let currentNode = node;
 
-        // 1. 重命名组件引用
-        currentNode = ReactImportManager.renameComponent(currentNode, context);
-        if (currentNode !== node) context.hasChanges = true;
-
-        // 2-3. 解除 HOC + 清理 HOC Props 类型引用。
+        // 1-3. 重命名组件引用 + 解除 HOC + 清理 HOC Props 类型引用。
         // 仅当无存活翻译用法时才执行：若某翻译调用/组件未被还原（locale 缺 key 等），它可能
         // 依赖 HOC 注入的 intl/props（如 class 组件 `this.props.intl.formatMessage(...)`），此时
         // 解除 HOC 会删掉 wrapper 与 WrappedComponentProps 类型 → intl 运行时 undefined + TS 报错，
         // 正是 keepTranslationVar/keepLibraryImport 守卫要防止的不可编译输出。与下方
         // cleanupImports/cleanupVariableStatements 的 keep* 守卫采用一致的保守策略。
+        //
+        // 重命名（步骤 1）必须与解除 HOC（步骤 2）受同一守卫门控：二者是一对逆操作——把
+        // `<Injected/>` 改回 `<MyComp/>` 只有在同时解除 HOC 包裹语句时才自洽。守卫为 true 时
+        // HOC 包裹语句被保留（`const Injected = injectIntl(MyComp)`），若仍单独重命名 JSX 引用
+        // 会绕过 HOC 渲染裸类，运行时 this.props.intl undefined。故三步同门控。
+        // 注：工具自产形态（XxxWithOutIntl 后缀）在 renameComponent/unwrapHOC 内各有提前 return，
+        // 常规往返（守卫为 false）行为不变。
         if (!keepTranslationVar && !keepLibraryImport) {
+          // 1. 重命名组件引用
+          currentNode = ReactImportManager.renameComponent(currentNode, context);
+          if (currentNode !== node) context.hasChanges = true;
+
           // 2. 解除 HOC
           currentNode = ReactImportManager.unwrapHOC(currentNode, context, library);
           if (currentNode !== node) context.hasChanges = true;

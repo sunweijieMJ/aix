@@ -155,6 +155,25 @@ describe('DoctorProcessor', () => {
     expect(all).toContain('unused');
   });
 
+  it('orphan-key：非字符串 value（数字/数组/null）不崩溃且照常报告', async () => {
+    writeSourceFile('Bar.vue', `<template><div>{{ t('greeting') }}</div></template>`);
+    // 手写 locale 常见形态：数字 / 数组 / null 值。flattenObject 会原样保留这些叶子值，
+    // checkOrphanKeys 的 preview 若假定 string 会在 .replace 上抛 TypeError 崩掉整个 doctor。
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ greeting: '你好', count: 5, steps: ['a', 'b'], empty: null }),
+    );
+    writeLocale('en-US', { greeting: 'Hello' });
+
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir));
+    await proc.execute();
+
+    const all = collectMessages(infoSpy);
+    expect(all).toContain('[orphan-key]');
+    expect(all).toContain('count');
+    expect(all).toContain('steps');
+  });
+
   it('untranslated：target value 与 source value 完全相同（含中文）', async () => {
     writeSourceFile('Z.vue', `<template>{{ t('a') }}{{ t('b') }}</template>`);
     writeLocale('zh-CN', { a: '完成', b: 'TCP/IP' });

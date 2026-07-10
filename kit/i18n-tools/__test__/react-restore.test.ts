@@ -1148,3 +1148,115 @@ describe('React restore — t 作为裸值引用时保留声明与 import（回�
     expect(out).not.toMatch(/useTranslation/);
   });
 });
+
+/**
+ * Bug 1：react-intl restore 误删「改名的」useIntl 声明 → ReferenceError。
+ *
+ * `const myIntl = useIntl()`（绑定名非 intl）时，isTranslationCall 只认 receiver 为 intl，
+ * `myIntl.formatMessage(...)` 不会被还原（正确）。但删除侧（isHookDeclaration）旧逻辑只看
+ * `Identifier = useIntl()`、不校验绑定名，导致声明与 import 被删、调用残留 → myIntl 未定义。
+ * 与 react-i18next 端 `const { t: tr } = useTranslation()` 会被保留的行为对齐。
+ */
+describe('React restore — react-intl 改名 useIntl 声明保守保留（Bug 1）', () => {
+  let dir: string;
+  const lib = createReactI18nLibrary('react-intl');
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-restore-renamed-intl-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const restore = (code: string, locale: Record<string, string>): string => {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    return new ReactRestoreTransformer(lib, '@/plugins/locale').transform(file, locale);
+  };
+
+  it('const myIntl = useIntl()：声明、import、调用全部保留（不产出未定义标识符）', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { useIntl } from 'react-intl';\n` +
+        `export const App = () => {\n` +
+        `  const myIntl = useIntl();\n` +
+        `  return <div>{myIntl.formatMessage({ id: 'a' })}</div>;\n` +
+        `};\n`,
+      { a: '你好' },
+    );
+    // 声明保留
+    expect(out, `还原输出：\n${out}`).toMatch(/const\s+myIntl\s*=\s*useIntl\(\)/);
+    // import 保留
+    expect(out, `还原输出：\n${out}`).toMatch(
+      /import\s*\{[^}]*useIntl[^}]*\}\s*from\s*['"]react-intl['"]/,
+    );
+    // 调用原样保留（改名 intl 不被还原）
+    expect(out).toContain("myIntl.formatMessage({ id: 'a' })");
+    expect(out).not.toContain('你好');
+  });
+
+  it('对照：标准 const intl = useIntl() 且调用可还原 → 照常删声明与 import（不回归）', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { useIntl } from 'react-intl';\n` +
+        `export const App = () => {\n` +
+        `  const intl = useIntl();\n` +
+        `  return <div>{intl.formatMessage({ id: 'a' })}</div>;\n` +
+        `};\n`,
+      { a: '你好' },
+    );
+    expect(out).toContain('你好');
+    expect(out).not.toMatch(/useIntl/);
+    expect(out).not.toContain('formatMessage');
+  });
+});
+
+/**
+ * Bug 3：renameComponent 未受 keep 守卫门控，与 unwrapHOC 不对称。
+ *
+ * 用户手写函数式 HOC（injectIntl）+ locale 缺 key 时，keep 守卫为 true → `const Injected = ...`
+ * 被保留（正确），unwrapHOC/cleanupHOCPropsType 也被跳过；但 renameComponent 在守卫外无条件执行，
+ * 把 `<Injected />` 改成 `<MyComp />` → 绕过 HOC 渲染裸类，运行时 this.props.intl undefined。
+ */
+describe('React restore — renameComponent 受 keep 守卫门控（Bug 3）', () => {
+  let dir: string;
+  const lib = createReactI18nLibrary('react-intl');
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-restore-rename-guard-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const restore = (code: string, locale: Record<string, string>): string => {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    return new ReactRestoreTransformer(lib, '@/plugins/locale').transform(file, locale);
+  };
+
+  const hocSource =
+    `import { injectIntl } from 'react-intl';\n` +
+    `class MyComp extends React.Component {\n` +
+    `  render() { return <div>{this.props.intl.formatMessage({ id: 'missing.key' })}</div>; }\n` +
+    `}\n` +
+    `const Injected = injectIntl(MyComp);\n` +
+    `export const App = () => <Injected />;\n`;
+
+  it('locale 缺 key（keep 守卫触发）：<Injected /> 保持原样，不被改名为 <MyComp />', () => {
+    const out = restore(hocSource, { other: '你好' });
+    // 守卫触发：HOC 包裹声明保留
+    expect(out, `还原输出：\n${out}`).toContain('const Injected = injectIntl(MyComp)');
+    // 关键：JSX 引用不得被改名绕过 HOC
+    expect(out, `还原输出：\n${out}`).toMatch(/<Injected\s*\/>/);
+    expect(out).not.toMatch(/<MyComp\s*\/>/);
+  });
+
+  it('对照：locale 完整时正常还原（不回归）', () => {
+    const out = restore(hocSource, { 'missing.key': '你好' });
+    // 完整还原：文案落地
+    expect(out).toContain('你好');
+    // 无存活翻译用法 → HOC 解除、类名复原
+    expect(out).not.toContain('injectIntl');
+  });
+});

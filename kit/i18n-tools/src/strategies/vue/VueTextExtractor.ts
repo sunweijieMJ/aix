@@ -109,6 +109,27 @@ export class VueTextExtractor extends BaseTextExtractor {
    * @param filePath - 文件路径
    * @param lineOffset - 行偏移量
    */
+  /**
+   * 元素是否带 v-pre 指令。
+   *
+   * @vue/compiler-dom 在 parse 阶段消费 v-pre 并从 props 移除（不保留 DIRECTIVE 节点），
+   * 无法从 props 检测；改为扫描元素「开标签」源码。用属性名锚定的正则匹配 v-pre，避免把
+   * 属性值里的 `v-pre`（如 `:title="v-pre-x"`）误判。开标签边界取「元素起点 → 第一个子节点
+   * 起点」，而非按第一个 `>` 截断——后者会被属性值里的 `>`（如 `:x="a>b"`）骗到。
+   */
+  private static hasVPreDirective(node: ElementNode): boolean {
+    const src = node.loc.source;
+    let openTag = src;
+    const firstChild = node.children[0];
+    if (firstChild) {
+      const len = firstChild.loc.start.offset - node.loc.start.offset;
+      if (len > 0 && len <= src.length) {
+        openTag = src.slice(0, len);
+      }
+    }
+    return /(?:^|\s)v-pre(?=[\s/>=]|$)/.test(openTag);
+  }
+
   private async traverseTemplateNode(
     nodes: any[],
     extractedStrings: ExtractedString[],
@@ -125,6 +146,16 @@ export class VueTextExtractor extends BaseTextExtractor {
 
         // <code> / <pre> 内容是逐字代码 / 预格式文本，跳过整棵子树不提取
         if (NON_EXTRACTABLE_ELEMENT_TAGS.has((elementNode.tag || '').toLowerCase())) {
+          i++;
+          continue;
+        }
+
+        // v-pre 子树：Vue 编译期跳过该元素及其后代的编译，`{{ }}` 按纯文本原样输出。
+        // @vue/compiler-dom 在 parse 阶段就消费掉 v-pre 并从 props 中移除（不像其它指令保留
+        // DIRECTIVE 节点），且把子内容整体解析成一个含 `{{ }}` 字面量的 TEXT 节点。若不跳过，
+        // 会把整段（连同 `{{ raw }}`）提取成 key，transform 后变 `{{ $t('k0') }}`，页面直接
+        // 渲染这串字符。故与 code/pre 同处跳过整棵子树。
+        if (VueTextExtractor.hasVPreDirective(elementNode)) {
           i++;
           continue;
         }
@@ -507,14 +538,17 @@ export class VueTextExtractor extends BaseTextExtractor {
   ): Promise<void> {
     const trimmed = content.trim();
 
-    // 跳过已经国际化的调用（如 $t('...') 或 t('...')）
-    if (this.isVueI18nCall(trimmed)) {
-      return;
-    }
-
     // 以表达式上下文解析动态属性表达式（绑定表达式本质是表达式）：避免内联对象字面量
     // `{ '中文key': v }` 被当 Block 解析、其中文 KEY 被误提取。
     const sourceFile = CommonASTUtils.parseExpressionSource(trimmed, 'temp.ts');
+
+    // 仅当整个表达式「就是单个 i18n 调用」时才整体跳过。旧粗筛（以 $t( 开头或含 .t(
+    // 即整体 return）会把混合表达式（如 `$t('a') + '：中文后缀'`）连同中文一起漏掉。
+    // 收窄为精确的顶层判定后，混合表达式落到下方 AST 逐节点处理：i18n 调用参数内的
+    // key 由 isAlreadyInternationalized 保护、不会被重复提取，非调用部分的中文正常提取。
+    if (this.isSingleI18nCallExpression(sourceFile)) {
+      return;
+    }
 
     const visit = async (node: ts.Node): Promise<void> => {
       // 提取字符串字面量
@@ -615,6 +649,15 @@ export class VueTextExtractor extends BaseTextExtractor {
     const templateVariables: string[] = [];
 
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      // 与 script 侧对称：含 HTML 标签的整段模板拒绝提取并告警，避免 HTML/CSS/SVG 灌进 locale value。
+      // template 侧此前缺这道守卫，`:content="`<b>加粗</b>提示`"` 会把整段 HTML 提进 locale 且无告警。
+      if (
+        FileUtils.containsChinese(node.text) &&
+        CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
+      ) {
+        this.warnHtmlInTemplateLiteralAtLine(directive.loc.start.line + lineOffset, filePath);
+        return;
+      }
       originalText = node.text;
       processedText = node.text;
     } else if (ts.isTemplateExpression(node)) {
@@ -625,6 +668,11 @@ export class VueTextExtractor extends BaseTextExtractor {
       // processedText（供 locale 值 / ID 生成）。两字段约定与脚本路径一致——否则含字面量插值时
       // original=已内联文本与源码失配 → 整段绑定不被替换、源码残留中文（静默泄漏）。
       if (CommonASTUtils.templateLiteralsContainChinese(node)) {
+        // 与 script 侧对称的 HTML 守卫：含 HTML 标签整段拒绝提取并告警。
+        if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
+          this.warnHtmlInTemplateLiteralAtLine(directive.loc.start.line + lineOffset, filePath);
+          return;
+        }
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
         originalText = result.originalText;
         processedText = result.processedText;
@@ -679,14 +727,16 @@ export class VueTextExtractor extends BaseTextExtractor {
       // SIMPLE_EXPRESSION
       const content = interpolationNode.content.content.trim();
 
-      // 跳过已经国际化的调用（如 $t('...') 或 t('...')）
-      if (this.isVueI18nCall(content)) {
-        return;
-      }
-
       // 以表达式上下文解析插值内容：准确提取三元表达式中的字符串（含模板字符串），
       // 并让内联对象字面量 `{ '中文key': v }` 正确成形（避免中文 KEY 被误提取）。
       const sourceFile = CommonASTUtils.parseExpressionSource(content, 'temp.ts');
+
+      // 仅当整个插值「就是单个 i18n 调用」时才整体跳过。旧粗筛（以 $t( 开头或含 .t(
+      // 即整体 return）会把 `$t('a') + '：中文后缀'`、`obj.t(x) ? '进行中' : '已结束'`
+      // 这类混合/三元表达式里的中文一起漏掉。收窄后交给下方 AST 逐节点处理。
+      if (this.isSingleI18nCallExpression(sourceFile)) {
+        return;
+      }
 
       const visit = async (node: ts.Node): Promise<void> => {
         // 提取字符串字面量
@@ -784,12 +834,31 @@ export class VueTextExtractor extends BaseTextExtractor {
     const templateVariables: string[] = [];
 
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      // 与 script / 动态属性侧对称：含 HTML 标签的整段模板拒绝提取并告警。
+      if (
+        FileUtils.containsChinese(node.text) &&
+        CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
+      ) {
+        this.warnHtmlInTemplateLiteralAtLine(
+          interpolationNode.loc.start.line + lineOffset,
+          filePath,
+        );
+        return;
+      }
       originalText = node.text;
       processedText = node.text;
     } else if (ts.isTemplateExpression(node)) {
       // 复用 CommonASTUtils.processTemplateExpression（同动态属性段说明）：original 存源码形式
       // （含 `${expr}`）供 VueTransformer 文本匹配，processedMessage 存内联后文本供 locale/ID。
       if (CommonASTUtils.templateLiteralsContainChinese(node)) {
+        // 与 script 侧对称的 HTML 守卫：含 HTML 标签整段拒绝提取并告警。
+        if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
+          this.warnHtmlInTemplateLiteralAtLine(
+            interpolationNode.loc.start.line + lineOffset,
+            filePath,
+          );
+          return;
+        }
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
         originalText = result.originalText;
         processedText = result.processedText;
@@ -1146,6 +1215,33 @@ export class VueTextExtractor extends BaseTextExtractor {
    * @param expression - 表达式字符串
    * @returns 是否是 i18n 调用
    */
+  /**
+   * 精确判定：解析后的表达式「整体就是单个 i18n 调用」（$t('k') / t('k') / this.$t('k') / obj.t('k')）。
+   *
+   * 用于替代 isVueI18nCall 字符串粗筛在提取入口处的整体跳过判定：粗筛只要以 $t( 开头或含 .t(
+   * 即整体 return，会误吞混合表达式（`$t('a') + '中文'`、`obj.t(x) ? '中A' : '中B'`）里的中文。
+   * parseExpressionSource 会把片段包一层括号，故顶层是单个 ExpressionStatement → 括号表达式。
+   */
+  private isSingleI18nCallExpression(sourceFile: ts.SourceFile): boolean {
+    if (sourceFile.statements.length !== 1) return false;
+    const stmt = sourceFile.statements[0]!;
+    if (!ts.isExpressionStatement(stmt)) return false;
+    let expr: ts.Expression = stmt.expression;
+    while (ts.isParenthesizedExpression(expr)) {
+      expr = expr.expression;
+    }
+    if (!ts.isCallExpression(expr)) return false;
+    const callee = expr.expression;
+    if (ts.isIdentifier(callee)) {
+      return callee.text === 't' || callee.text === '$t';
+    }
+    // this.$t(...) / obj.t(...) 等成员调用：末段方法名为 t/$t 即视为 i18n 调用
+    if (ts.isPropertyAccessExpression(callee)) {
+      return callee.name.text === 't' || callee.name.text === '$t';
+    }
+    return false;
+  }
+
   private isVueI18nCall(expression: string): boolean {
     const trimmed = expression.trim();
 
@@ -1178,7 +1274,17 @@ export class VueTextExtractor extends BaseTextExtractor {
     filePath: string,
   ): void {
     const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
-    const line = pos.line + 1 + lineOffset;
+    this.warnHtmlInTemplateLiteralAtLine(pos.line + 1 + lineOffset, filePath);
+  }
+
+  /**
+   * 「含 HTML 模板字符串拒绝提取」warning 的行号变体。
+   *
+   * template 侧（动态属性 / 插值）的模板字符串是用 parseExpressionSource 单独解析的临时
+   * sourceFile，节点位置相对该临时片段而非 SFC，无法直接算出真实行号；改由调用方传入
+   * 指令 / 插值节点的真实行号（loc.start.line + lineOffset），复用与 script 侧同一文案。
+   */
+  private warnHtmlInTemplateLiteralAtLine(line: number, filePath: string): void {
     const msg =
       `⚠️ 跳过含 HTML 标签的模板字符串提取：${FileUtils.getRelativePath(filePath)}:${line}\n` +
       `   原因：整段提取会把 HTML / CSS / SVG 灌进 i18n value，多语言下样式结构不可控。\n` +

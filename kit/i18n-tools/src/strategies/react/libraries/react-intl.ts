@@ -129,8 +129,14 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   }
 
   isHookDeclaration(declaration: ts.VariableDeclaration): boolean {
+    // 必须是 `const intl = useIntl()`——绑定名收窄为 translationVarName（intl），与
+    // isTranslationCall 只认 receiver 为 intl 对齐。否则改名声明 `const myIntl = useIntl()`
+    // 会被删除侧（cleanupVariableStatements）当作可删 hook 整条移除，而 myIntl.formatMessage(...)
+    // 不被还原（receiver 非 intl）→ 残留调用引用未定义的 myIntl（TS2304 / ReferenceError）。
+    // 保守保留改名声明，与 react-i18next 端 `const { t: tr } = useTranslation()` 被保留一致。
     if (
       ts.isIdentifier(declaration.name) &&
+      declaration.name.text === this.translationVarName &&
       declaration.initializer &&
       ts.isCallExpression(declaration.initializer)
     ) {
@@ -141,8 +147,11 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   }
 
   isGlobalFunctionDeclaration(declaration: ts.VariableDeclaration): boolean {
+    // 同 isHookDeclaration：仅认标准 `const intl = getIntl()`（绑定名为 intl），
+    // 改名声明保守保留，避免删声明后残留 <name>.formatMessage 引用未定义标识符。
     if (
       ts.isIdentifier(declaration.name) &&
+      declaration.name.text === this.translationVarName &&
       declaration.initializer &&
       ts.isCallExpression(declaration.initializer)
     ) {

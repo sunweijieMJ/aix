@@ -112,6 +112,44 @@ export class ReactASTUtils {
   }
 
   /**
+   * 字符串是否位于类的「非箭头函数属性初始化器」中（Bug 2）。
+   *
+   * 注入器（ReactComponentInjector.injectClassMethodDestructure）只为方法体 / 构造器 /
+   * 访问器 / 直接箭头函数属性注入 `const { t } = this.props`。普通属性初始化器
+   * （`label = t('k')`、`label = cond ? '' : ''`、`label = arr.map(x => t('k'))` 等）
+   * 在类字段求值时没有 t/intl 绑定，直接替换成裸调用会产出未定义标识符（TS2304）。
+   *
+   * 判定：自 node 向上找最近的「注入边界」祖先——
+   *  - 方法 / getter / setter / 构造器 → 注入器会在其体内注入绑定 → 返回 false（有绑定）；
+   *  - 类属性声明 PropertyDeclaration：
+   *      · 初始化器是直接箭头函数（`foo = () => …`）→ 注入器会注入到箭头体 → false；
+   *      · 否则（普通值初始化器 / 嵌套函数调用等）→ 无绑定 → 返回 true（应跳过提取）；
+   *  - 到达类声明或源文件仍未命中属性 → false（保守，不影响非属性场景）。
+   */
+  static isInClassNonArrowPropertyInitializer(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (
+        ts.isMethodDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current) ||
+        ts.isConstructorDeclaration(current)
+      ) {
+        return false;
+      }
+      if (ts.isPropertyDeclaration(current)) {
+        // 初始化器是直接箭头函数 → 注入器会为其注入 this.props 解构，有绑定，不跳过。
+        return !(current.initializer !== undefined && ts.isArrowFunction(current.initializer));
+      }
+      if (ts.isClassLike(current) || ts.isSourceFile(current)) {
+        return false;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /**
    * 判断一个函数是否会被 ReactComponentInjector 当作组件注入 hook。
    * 必须与 getComponentInfo 的接受条件保持一致：
    * - 命名函数声明：PascalCase 名

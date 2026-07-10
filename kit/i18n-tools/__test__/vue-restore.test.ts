@@ -314,3 +314,52 @@ function toggle() { locale.value = 'en'; }
     );
   });
 });
+
+/**
+ * 回归（Bug 1）：对象简写 `{ count }` 的变量还原。旧实现 script 侧只认 PropertyAssignment、
+ * template 侧 parseVarMap 对无冒号 segment 直接 continue，简写形态下 varMap 为空 → 占位符
+ * `{count}` 被当字面量塞进字符串，变量丢失。修复后简写应与 `{ count: count }` 同形态还原。
+ * 另：`{ ...rest }` 之类不可解析形态应保守保留 $t 调用不还原（宁可漏还原也不破坏源码）。
+ */
+describe('VueRestoreTransformer — 对象简写变量还原（Bug 1）', () => {
+  const vi18n = new VueI18nLibraryImpl();
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, vi18n, '@/locale');
+
+  it('script 侧：`t(k, { count })` 简写 → 模板字面量 `共 ${count} 项`（与非简写同形态）', () => {
+    const src = `<script setup lang="ts">\nimport { t } from '@/locale';\nconst count = 3;\nconst msg = t('list.count', { count });\n</script>\n`;
+    const out = restore(src, { 'list.count': '共 {count} 项' });
+    expect(out).toContain('const msg = `共 ${count} 项`');
+    // 不得字面化为单引号串（占位符 {count} 未替换成变量）
+    expect(out).not.toContain("'共 {count} 项'");
+    expect(out).not.toContain("t('list.count'");
+  });
+
+  it('script 侧：非简写 `{ count: count }` 结果一致（对照）', () => {
+    const src = `<script setup lang="ts">\nimport { t } from '@/locale';\nconst count = 3;\nconst msg = t('list.count', { count: count });\n</script>\n`;
+    const out = restore(src, { 'list.count': '共 {count} 项' });
+    expect(out).toContain('const msg = `共 ${count} 项`');
+  });
+
+  it('template 侧：`{{ $t(k, { count }) }}` 简写 → `共 {{ count }} 项`', () => {
+    const src = `<template>\n  <div>{{ $t('list.count', { count }) }}</div>\n</template>\n`;
+    const out = restore(src, { 'list.count': '共 {count} 项' });
+    expect(out).toContain('共 {{ count }} 项');
+    expect(out).not.toContain('$t');
+    expect(out).not.toContain('{count}');
+  });
+
+  it('script 侧：`{ ...rest }` 无法解析 → 保守保留原 $t 调用不还原', () => {
+    const src = `<script setup lang="ts">\nimport { t } from '@/locale';\nconst msg = t('list.count', { ...rest });\n</script>\n`;
+    const out = restore(src, { 'list.count': '共 {count} 项' });
+    expect(out).toContain("t('list.count', { ...rest })");
+    expect(out).not.toContain('共 {count} 项');
+  });
+
+  it('template 侧：`{ ...rest }` 无法解析 → 保守保留原 $t 调用不还原', () => {
+    const src = `<template>\n  <div>{{ $t('list.count', { ...rest }) }}</div>\n</template>\n`;
+    const out = restore(src, { 'list.count': '共 {count} 项' });
+    expect(out).toContain("$t('list.count', { ...rest })");
+    expect(out).not.toContain('共 {count} 项');
+  });
+});

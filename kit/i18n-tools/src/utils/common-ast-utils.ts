@@ -1078,11 +1078,12 @@ export class CommonASTUtils {
     for (const child of children) {
       if (ts.isJsxText(child)) {
         // 必须与 ReactTextExtractor.extractJsxMixedContent 的空白处理逐字一致：
-        // 跳过纯空白节点，含内容的把换行+缩进压缩为单空格、但保留词间空格。
-        // 若此处用 trim() 去掉词间空格（「共 ${count} 项」→「共${count}项」），
+        // 仅跳过【含换行】的纯空白节点（JSX 折叠删除），不含换行的纯空白（相邻插值间的
+        // 单个空格）保留，含内容的把换行+缩进压缩为单空格、但保留词间空格。
+        // 若此处两端逻辑不一致（如漏掉相邻插值间的空格「共 ${a} ${b} 项」→「共 ${a}${b} 项」），
         // 与提取端产出的 original 不相等，findExactStringNode 的 `=== originalText`
         // 比对失败 → 该 JSX 混合内容被静默漏替换（locale 写了 key 但源码残留中文）。
-        if (!child.text.trim()) continue;
+        if (!child.text.trim() && /\n/.test(child.text)) continue;
         inner += child.text.replace(/\s*\n\s*/g, ' ');
       } else if (ts.isJsxExpression(child) && child.expression) {
         const expressionText = CommonASTUtils.nodeToText(child.expression, sourceFile);
@@ -1464,6 +1465,26 @@ export class CommonASTUtils {
     const len = code.length;
     let i = 0;
 
+    // 「后接表达式」的关键字：其后的 `/` 是正则字面量起点而非除号。
+    // 不列入则 `return /"/.test(url)` 的 `/` 被当除号 → `"` 进入字符串态、URL 里的 `//`
+    // 被误当行注释 → 同行 t('key') 整段被剥除 → source-key-scanner 漏采 → prune 误删在用 key。
+    const REGEX_PRECEDING_KEYWORDS = new Set([
+      'return',
+      'case',
+      'typeof',
+      'instanceof',
+      'in',
+      'of',
+      'do',
+      'else',
+      'void',
+      'delete',
+      'throw',
+      'yield',
+      'await',
+      'new',
+    ]);
+
     // 状态栈：栈顶为当前所处的语法上下文，支持模板字符串 ${...} 内嵌套字符串/模板/注释。
     // - none      : 代码区
     // - dq/sq     : 双/单引号字符串
@@ -1536,14 +1557,29 @@ export class CommonASTUtils {
         // （标识符/数字/) ] } /引号）之后是除号，其余位置（行首/运算符/括号开）是正则起始。
         if (ch === '/') {
           let prev = '';
+          let prevIdx = -1;
           for (let j = out.length - 1; j >= 0; j--) {
             const c = out[j]!;
             if (c !== ' ' && c !== '\t' && c !== '\r' && c !== '\n') {
               prev = c;
+              prevIdx = j;
               break;
             }
           }
-          if (prev === '' || !/[A-Za-z0-9_$)\]}'"`]/.test(prev)) {
+          let isRegexStart = prev === '' || !/[A-Za-z0-9_$)\]}'"`]/.test(prev);
+          // 关键字回看：前一有效字符是标识符字符时，仅凭「是标识符 → 除号」不足——
+          // `return /re/`、`typeof /re/` 里的 `/` 其实是正则起点。向前扫出完整标识符，
+          // 若属于 REGEX_PRECEDING_KEYWORDS 则改判为正则。前置 `.` 视为属性访问（如
+          // `obj.in / 2`）不回看，避免把 `.in`/`.of` 等属性名误当关键字。
+          if (!isRegexStart && /[A-Za-z0-9_$]/.test(prev)) {
+            let k = prevIdx;
+            while (k >= 0 && /[A-Za-z0-9_$]/.test(out[k]!)) k--;
+            const word = out.slice(k + 1, prevIdx + 1).join('');
+            if (out[k] !== '.' && REGEX_PRECEDING_KEYWORDS.has(word)) {
+              isRegexStart = true;
+            }
+          }
+          if (isRegexStart) {
             stack.push({ kind: 'regex', inCharClass: false });
             out.push(ch);
             i++;
@@ -1818,6 +1854,18 @@ export class CommonASTUtils {
    * @param isTargetModule  判断某个 `from 'X'` 是否属于目标库（支持包名别名）
    * @param namesToRemove   要从命名列表中摘除的名字（精确匹配，trim 后比对）
    */
+  /**
+   * 剥离命名导入花括号内的注释（块注释与 `// ...` 行注释），再交给调用方 split(',')。
+   * Why：多行 import 常带行注释（`useI18n, // 组合式 API`），直接对花括号内容 split(',')
+   * + trim 会把注释文本并进导入名；重写为单行时首个 `//` 会吞掉后续导入名与 from →
+   * 产出语法损坏、无法编译的代码。取舍：重写为单行时注释自然丢弃——保语法正确优先于保注释。
+   */
+  private static stripImportListComments(namedList: string): string {
+    return namedList
+      .replace(/\/\*[\s\S]*?\*\//g, '') // 块注释
+      .replace(/\/\/[^\n]*/g, ''); // 行注释：吃到行尾
+  }
+
   static removeNamedImports(
     code: string,
     isTargetModule: (moduleName: string) => boolean,
@@ -1842,7 +1890,7 @@ export class CommonASTUtils {
         moduleName: string,
       ) => {
         if (!isTargetModule(moduleName)) return match;
-        const remaining = namedList
+        const remaining = CommonASTUtils.stripImportListComments(namedList)
           .split(',')
           .map((n) => n.trim())
           .filter(Boolean)
@@ -2113,7 +2161,7 @@ export class CommonASTUtils {
     );
     const existingNames = new Set<string>();
     for (const m of code.matchAll(anyImportRegex)) {
-      for (const raw of m[1]!.split(',')) {
+      for (const raw of CommonASTUtils.stripImportListComments(m[1]!).split(',')) {
         const part = raw.trim().replace(/^type\s+/, ''); // 去掉内联 type 修饰
         if (!part) continue;
         const local = /\sas\s/.test(part) ? part.split(/\sas\s/)[1]!.trim() : part;
@@ -2125,7 +2173,7 @@ export class CommonASTUtils {
     if (matches.length > 0) {
       // 收集所有已存在的命名导入并与新增合并去重
       const existing = matches.flatMap((m) =>
-        m[2]!
+        CommonASTUtils.stripImportListComments(m[2]!)
           .split(',')
           .map((imp) => imp.trim())
           .filter(Boolean),

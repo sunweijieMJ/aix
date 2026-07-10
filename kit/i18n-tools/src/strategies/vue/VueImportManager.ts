@@ -286,6 +286,22 @@ export class VueImportManager implements IImportManager {
         if (localName === 't') return true;
       }
     }
+
+    // 默认导入 `import t from 'x'` / `import t, { x } from 'x'` 与命名空间导入
+    // `import * as t from 'x'` 同样在模块作用域绑定本地名 t。旧实现只认花括号命名列表，
+    // 对这两种形态视而不见 → 仍注入 `import { t }` → 同作用域重复声明 t → SFC 编译失败。
+    // 默认导入：`import` 后第一个标识符即默认本地名（`{`/`*` 不属 [\w$]，不会误匹配纯命名/纯命名空间）。
+    const defaultImportRe =
+      /^[ \t]*import\s+([\w$]+)\s*(?:,\s*(?:\{[^}]*\}|\*\s+as\s+[\w$]+))?\s*from\s*['"][^'"]+['"]/gm;
+    while ((match = defaultImportRe.exec(scriptContent)) !== null) {
+      if (match[1] === 't') return true;
+    }
+    // 命名空间导入：`import * as t from 'x'` 的本地名是 as 后的标识符。
+    const namespaceImportRe = /^[ \t]*import\s+\*\s+as\s+([\w$]+)\s*from\s*['"][^'"]+['"]/gm;
+    while ((match = namespaceImportRe.exec(scriptContent)) !== null) {
+      if (match[1] === 't') return true;
+    }
+
     return false;
   }
 

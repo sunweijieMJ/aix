@@ -323,7 +323,10 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
       if (vars) {
         try {
-          return stash(this.restoreTemplateWithVariables(text, vars as string, 'mustache'));
+          const restoredText = this.restoreTemplateWithVariables(text, vars as string, 'mustache');
+          // null = vars 段含无法安全还原的形态（如 `...rest`）→ 保留原 $t 调用不还原
+          if (restoredText === null) return match;
+          return stash(restoredText);
         } catch {
           return stash(this.escapeTemplateText(text));
         }
@@ -352,6 +355,8 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       if (vars) {
         try {
           const restoredText = this.restoreTemplateWithVariables(text, vars as string, 'template');
+          // null = vars 段含无法安全还原的形态（如 `...rest`）→ 保留原绑定不还原
+          if (restoredText === null) return match;
           // 带变量的还原保持动态绑定（:attr="`...`"），值是 JS 模板字面量。restoredText 的
           // 字面段已在 restoreTemplateWithVariables 里转义过反引号/${；这里再把会终结外层双引号
           // 属性的 " 转义为 &quot;（Vue 解析绑定属性前会先解 HTML 实体，&quot; 会还原成 "，
@@ -382,6 +387,8 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       if (vars) {
         try {
           const restoredText = this.restoreTemplateWithVariables(text, vars as string, 'template');
+          // null = vars 段含无法安全还原的形态（如 `...rest`）→ 保留原 $t 调用不还原
+          if (restoredText === null) return match;
           return `\`${restoredText}\``;
         } catch {
           return `'${VueRestoreTransformer.escapeForSingleQuoted(text)}'`;
@@ -440,7 +447,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   /**
    * 解析变量映射
    */
-  private static parseVarMap(vars: string): Map<string, string> {
+  private static parseVarMap(vars: string): Map<string, string> | null {
     const varMap = new Map<string, string>();
 
     // 剥掉最外层 `{}`、去掉首尾空白
@@ -488,7 +495,17 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       const trimmed = seg.trim();
       if (!trimmed) continue;
       const colonIdx = trimmed.indexOf(':');
-      if (colonIdx === -1) continue;
+      if (colonIdx === -1) {
+        // 无冒号 segment：合法标识符即对象简写 `{ count }`（等价 `count: count`），
+        // 占位符名与变量名同名。此前直接 continue 丢弃 → varMap 缺项 → 占位符被字面化。
+        // 但 `...rest` 展开、方法简写 `foo() {}` 等无法安全还原成具体占位符映射，
+        // 返回 null 让上游保守保留原 $t 调用（宁可漏还原也不破坏源码）。
+        if (/^[A-Za-z_$][\w$]*$/.test(trimmed)) {
+          varMap.set(trimmed, trimmed);
+          continue;
+        }
+        return null;
+      }
       const key = trimmed.slice(0, colonIdx).trim();
       const value = trimmed.slice(colonIdx + 1).trim();
       if (key) varMap.set(key, value);
@@ -506,8 +523,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     text: string,
     vars: string,
     syntax: 'mustache' | 'template',
-  ): string {
+  ): string | null {
     const varMap = this.parseVarMap(vars);
+    // parseVarMap 返回 null：vars 段含无法安全还原的形态（如 `...rest` 展开）。
+    // 透传 null 让上游保留原 $t 调用不还原，避免占位符字面化 / 变量丢失。
+    if (varMap === null) return null;
     // mustache（文本节点）：先对字面段做 HTML 转义，再注入 `{{ expr }}`（占位符 `{name}`
     //   不含 `<>&`，转义不影响其匹配；先转义可避免把注入的 `{{ }}` 表达式也转义掉）。
     // template（属性 / JS 模板字面量）：转义字面段里的 `\\` / 反引号 / `${`（与脚本侧
@@ -624,6 +644,15 @@ export class VueRestoreTransformer implements IRestoreTransformer {
           if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
             const exprText = CommonASTUtils.nodeToText(prop.initializer, sourceFile);
             varMap.set(prop.name.text, exprText);
+          } else if (ts.isShorthandPropertyAssignment(prop)) {
+            // 对象简写 `{ count }` 等价于 `{ count: count }`：占位符名与变量名同名。
+            // 不补这一分支，简写会被整体忽略 → varMap 为空 → 落到下方「简单替换」把
+            // 占位符 `{count}` 当普通字面量塞进单引号串，变量丢失、译文里残留花括号。
+            varMap.set(prop.name.text, prop.name.text);
+          } else if (ts.isSpreadAssignment(prop)) {
+            // 展开 `{ ...rest }` 无法静态解析成具体占位符映射，强行还原会丢变量或把
+            // 占位符字面化。宁可保留原 $t 调用不还原（返回 null），也不破坏源码语义。
+            return null;
           }
         }
 

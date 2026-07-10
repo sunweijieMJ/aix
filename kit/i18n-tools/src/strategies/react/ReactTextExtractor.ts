@@ -284,6 +284,21 @@ export class ReactTextExtractor extends BaseTextExtractor {
       const context = ReactASTUtils.getNodeContext(node);
       const position = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
 
+      // Bug 2：类组件「非箭头函数属性初始化器」中的字符串（如 `label = '草稿'`、
+      // `label = <div title="草稿"/>`）。注入器只为方法体/构造器/访问器/箭头属性注入
+      // `const { t } = this.props`，此类初始化器求值时无 t/intl 绑定，替换成裸 t()/intl 会
+      // 产出未定义标识符（TS2304）。按全库「宁可漏提取，绝不产出坏代码」原则跳过并告警，
+      // 交由人工改写（如挪进 render()/getter，或改用 this.props.t）。jsx-text 走 <Trans>/
+      // <FormattedMessage> 组件形态、不依赖 t/intl 绑定，故不在此跳过。
+      if (
+        componentType === 'class' &&
+        context !== 'jsx-text' &&
+        ReactASTUtils.isInClassNonArrowPropertyInitializer(node)
+      ) {
+        this.warnClassPropertyInitializer(node, sourceFile);
+        return;
+      }
+
       extractedStrings.push({
         original: text,
         processedMessage,
@@ -377,11 +392,13 @@ export class ReactTextExtractor extends BaseTextExtractor {
 
     for (const child of children) {
       if (ts.isJsxText(child)) {
-        // 纯空白（缩进/换行）的 JsxText 跳过；含内容的把换行+缩进压缩为单空格，
-        // 但保留文本与表达式之间的语义空格（如「共 {count} 项」中 `共 ` / ` 项`
-        // 的相邻空格是词间距，trim 掉会让 locale 文案变成「共${count}项」，
-        // 中英混排丢词间距）。
-        if (!child.text.trim()) continue;
+        // 纯空白 JsxText：仅当【含换行】时跳过——JSX 语义下含换行的纯空白会被折叠删除；
+        // 不含换行的纯空白（相邻插值间的单个空格，如「{a} {b}」）会保留渲染，跳过会丢失
+        // 词间空格 → 与转换端重建结果不一致导致漏替换。含内容的把换行+缩进压成单空格，
+        // 保留文本与表达式之间的语义空格（如「共 {count} 项」的相邻空格是词间距，
+        // trim 掉会让 locale 文案变成「共${count}项」，中英混排丢词间距）。
+        // ⚠️ 此空白处理必须与 CommonASTUtils.reconstructJsxMixedContent 逐字一致。
+        if (!child.text.trim() && /\n/.test(child.text)) continue;
         inner += child.text.replace(/\s*\n\s*/g, ' ');
       } else if (ts.isJsxExpression(child) && child.expression) {
         const expressionText = CommonASTUtils.nodeToText(child.expression!, sourceFile);
@@ -417,6 +434,22 @@ export class ReactTextExtractor extends BaseTextExtractor {
       `⚠️ 跳过含 HTML 标签的模板字符串提取：${FileUtils.getRelativePath(sourceFile.fileName)}:${line}\n` +
       `   原因：整段提取会把 HTML / CSS / SVG 灌进 i18n value，多语言下样式结构不可控。\n` +
       `   建议：把 t() 调用缩到具体中文文案上。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
+  }
+
+  /**
+   * 输出「类组件非箭头属性初始化器跳过提取」的 warning（Bug 2），附文件路径与行号。
+   * 仅跳过本节点、不抛错；同时走 console 与 RunReport，供 doctor / lint 汇总人工处理。
+   */
+  private warnClassPropertyInitializer(node: ts.Node, sourceFile: ts.SourceFile): void {
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const line = pos.line + 1;
+    const msg =
+      `⚠️ 跳过类组件属性初始化器中的文案提取：${FileUtils.getRelativePath(sourceFile.fileName)}:${line}\n` +
+      `   原因：类字段初始化时无 t/intl 绑定（注入器只处理方法体/构造器/访问器/箭头属性），\n` +
+      `        直接替换会产出未定义标识符（TS2304）。\n` +
+      `   建议：把文案挪进 render()/方法/getter，或改用 this.props.t / this.props.intl。`;
     LoggerUtils.warn(msg);
     this.recordWarning(msg);
   }

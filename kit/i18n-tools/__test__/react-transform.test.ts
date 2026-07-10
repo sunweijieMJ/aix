@@ -6,6 +6,7 @@ import path from 'path';
 import { ReactComponentInjector } from '../src/strategies/react/ReactComponentInjector';
 import { ReactImportManager } from '../src/strategies/react/ReactImportManager';
 import { ReactRestoreTransformer } from '../src/strategies/react/ReactRestoreTransformer';
+import { ReactTextExtractor } from '../src/strategies/react/ReactTextExtractor';
 import { createReactI18nLibrary } from '../src/strategies/react/libraries';
 import type { ReactI18nLibraryType } from '../src/strategies/react/libraries';
 import { HooksUtils } from '../src/strategies/react/hooks-utils';
@@ -1054,5 +1055,104 @@ export const Baz = () => {
 
     expect(out).toMatch(/=\s*t\(/);
     expect(out).not.toContain('你好世界');
+  });
+});
+
+/**
+ * Bug 2：类组件「非箭头函数属性初始化器」中的字符串。
+ *
+ * getComponentType 对类任意后代判 'class' → transformer 产出裸 t()/intl，但注入器只为
+ * 方法体/构造器/访问器/箭头属性注入 `const { t } = this.props`，普通属性初始化器无绑定
+ * → 输出 `label = t('k')` / `label = intl.formatMessage(...)` 引用未定义标识符（TS2304）。
+ *
+ * 采用「极小化」路线（route b）：提取端跳过此类字符串并告警（宁可漏提取，绝不产坏代码）；
+ * 方法体 / 箭头函数属性等有绑定的形态行为不变（回归）。
+ */
+describe('Bug 2：类组件非箭头属性初始化器跳过提取 + 告警', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-class-prop-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function run(code: string, libType: ReactI18nLibraryType) {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const extractor = new ReactTextExtractor(createReactI18nLibrary(libType), []);
+    const strings = await extractor.extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `demo.k${i}`));
+    const adapter = new ReactAdapter('@/plugins/locale', libType);
+    const out = adapter.getTransformer().transform(file, strings, code);
+    return { strings, out, warnings: extractor.drainWarnings() };
+  }
+
+  it('react-i18next：label = 中文 → 不提取、不产出裸 t()、原文保留并告警', async () => {
+    const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  label = '草稿';
+  render() { return <div>{this.label}</div>; }
+}
+`;
+    const { strings, out, warnings } = await run(code, 'react-i18next');
+    // 未提取该字符串
+    expect(strings.some((s) => s.original === '草稿')).toBe(false);
+    // 不产出无绑定的裸 t()
+    expect(out).not.toMatch(/=\s*t\(/);
+    // 原文保留（未被破坏）
+    expect(out).toContain("label = '草稿'");
+    // 告警产出
+    expect(warnings.length).toBeGreaterThan(0);
+  });
+
+  it('react-intl：label = 中文 → 不提取、不产出裸 intl.formatMessage()', async () => {
+    const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  label = '草稿';
+  render() { return <div>{this.label}</div>; }
+}
+`;
+    const { strings, out } = await run(code, 'react-intl');
+    expect(strings.some((s) => s.original === '草稿')).toBe(false);
+    expect(out).not.toContain('intl.formatMessage');
+    expect(out).toContain("label = '草稿'");
+  });
+
+  it('static 属性同样跳过（求值时无实例 this.props 语义）', async () => {
+    const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  static label = '草稿';
+  render() { return <div>{Foo.label}</div>; }
+}
+`;
+    const { strings, out } = await run(code, 'react-i18next');
+    expect(strings.some((s) => s.original === '草稿')).toBe(false);
+    expect(out).not.toMatch(/=\s*t\(/);
+  });
+
+  it('回归：箭头函数属性成员照常提取并注入绑定', async () => {
+    const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  renderLabel = () => '草稿';
+  render() { return <div>{this.renderLabel()}</div>; }
+}
+`;
+    const { strings, out } = await run(code, 'react-i18next');
+    // 箭头属性内文案照常提取
+    expect(strings.some((s) => s.original === '草稿')).toBe(true);
+    // 生成裸 t() 并注入 this.props 解构
+    expect(out).toContain("t('demo.k0')");
+    expect(out).toContain('const { t } = this.props;');
+  });
+
+  it('回归：方法体内文案照常提取', async () => {
+    const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  render() { return <div title="草稿">x</div>; }
+}
+`;
+    const { strings } = await run(code, 'react-i18next');
+    expect(strings.some((s) => s.original === '草稿')).toBe(true);
   });
 });

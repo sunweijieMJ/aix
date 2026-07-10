@@ -35,3 +35,43 @@ describe('stripComments — 正则字面量盲区（Bug7）', () => {
     expect(usedKeys(code)).toEqual(['keep']);
   });
 });
+
+/**
+ * 回归（关键字后正则字面量）：旧启发式仅看前一个非空白字符是否「表达式结束字符」，
+ * `return /"/.test(url)` 中 `/` 前是 `n`（return 末字符，标识符字符）→ 误判除号 →
+ * `"` 进入字符串态、URL 里的 `//` 被当行注释 → 同行 t('key') 整段被剥除 →
+ * source-key-scanner 漏采 → prune 误删在用 key（破坏用户数据）。
+ *
+ * 修复：前一字符是标识符字符时，向前扫出完整标识符，若属于 {return,case,typeof,...}
+ * 等「后接表达式」的关键字，则判为正则起点而非除号。
+ */
+describe('stripComments — 关键字后的正则字面量（Bug1）', () => {
+  const usedKeys = (code: string): string[] =>
+    scanKeyReferencesInContent(CommonASTUtils.stripComments(code));
+
+  it('return 后含引号的正则不吞掉同行 t()（实证复现用例）', () => {
+    const code = `function f(url) {\n  return /"/.test(url) ? "https://a.com" : t('key1');\n}`;
+    expect(usedKeys(code)).toEqual(['key1']);
+  });
+
+  it('case 后的正则被正确识别、其后注释被剥离', () => {
+    const code = `switch (x) {\n  case /'/.test(y):\n    // t('fakeInComment')\n    t('caseKey');\n}`;
+    expect(usedKeys(code)).toEqual(['caseKey']);
+  });
+
+  it('typeof 后的正则被正确识别、其后注释被剥离', () => {
+    const code = `const y = typeof /'/;\n// t('fakeInComment')\nt('typeofKey');`;
+    expect(usedKeys(code)).toEqual(['typeofKey']);
+  });
+
+  it('真实除法不受关键字回看影响（回归）', () => {
+    // `c / d` 前一标识符是 `c`（非关键字）→ 除号；即使同行更早处出现过 return 关键字
+    const code = `const x = a / b; return c / d;\n// t('divComment')\nt('divKey');`;
+    expect(usedKeys(code)).toEqual(['divKey']);
+  });
+
+  it('标识符恰以关键字为后缀仍判除号（如 noreturn / 2）（回归）', () => {
+    const code = `const noreturn = 1; const z = noreturn / 2;\n// t('nrComment')\nt('nrKey');`;
+    expect(usedKeys(code)).toEqual(['nrKey']);
+  });
+});

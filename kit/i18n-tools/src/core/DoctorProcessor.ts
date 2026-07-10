@@ -511,8 +511,12 @@ export class DoctorProcessor extends BaseProcessor {
     }
   }
 
-  private preview(value: string): string {
-    const single = value.replace(/\s+/g, ' ').trim();
+  private preview(value: unknown): string {
+    // 手写 locale 的叶子值可能不是字符串（数字/数组/null，flattenObject 原样保留）。
+    // checkOrphanKeys 不像其余 check 有 typeof 前置过滤（孤儿判定不依赖 value 类型，
+    // 非字符串孤儿同样应报告），这里必须兜住，否则单个脏值让整个 doctor 崩溃。
+    const text = typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value));
+    const single = text.replace(/\s+/g, ' ').trim();
     return single.length > 80 ? `${single.slice(0, 80)}…` : single;
   }
 }

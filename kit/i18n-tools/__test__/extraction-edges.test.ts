@@ -607,3 +607,150 @@ const statusMap = { ['进行中']: 'green' };
     expect(result.map((r) => r.original)).toContain('请输入姓名');
   });
 });
+
+/**
+ * 回归（Bug 3）：混合表达式的粗筛收窄。旧实现只要表达式以 $t( 开头或任意位置含 .t(
+ * 就整体跳过，会把 `$t('a') + '中文'`、`obj.t(x) ? '中A' : '中B'` 里的中文一起漏掉。
+ * 收窄为「整个表达式就是单个 i18n 调用」才跳过后，混合表达式里的中文应正常提取，
+ * 而纯 i18n 调用（含调用参数里的 key）不应被提取。
+ */
+describe('VueTextExtractor — 混合表达式中的中文提取（i18n 粗筛收窄）', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-mixed-i18n-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+  const extract = async (content: string) => {
+    const file = path.join(tmpDir, 'M.vue');
+    fs.writeFileSync(file, content);
+    return new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+  };
+
+  it('插值：`$t(a) + 中文后缀` 中的中文被提取（$t 调用参数不被提取）', async () => {
+    const result = await extract(`<template><div>{{ $t('a') + '：中文后缀' }}</div></template>`);
+    const originals = result.map((r) => r.original);
+    expect(originals).toContain('：中文后缀');
+    expect(originals).not.toContain('a');
+  });
+
+  it('插值：三元 `obj.t(x) ? 中A : 中B` 两个分支中文都被提取', async () => {
+    const result = await extract(
+      `<template><div>{{ obj.t(x) ? '进行中' : '已结束' }}</div></template>`,
+    );
+    const originals = result.map((r) => r.original);
+    expect(originals).toContain('进行中');
+    expect(originals).toContain('已结束');
+  });
+
+  it('动态属性：`$t(a) + 中文` 中的中文被提取', async () => {
+    const result = await extract(
+      `<template><el-x :title="$t('a') + '追加说明'"></el-x></template>`,
+    );
+    expect(result.map((r) => r.original)).toContain('追加说明');
+  });
+
+  it('回归：纯 `{{ $t(a) }}` 调用仍不提取', async () => {
+    const result = await extract(`<template><div>{{ $t('a') }}</div></template>`);
+    expect(result).toHaveLength(0);
+  });
+
+  it('回归：纯 `:title="$t(a)"` 调用仍不提取', async () => {
+    const result = await extract(`<template><el-x :title="$t('a')"></el-x></template>`);
+    expect(result).toHaveLength(0);
+  });
+});
+
+/**
+ * 回归（Bug 4）：v-pre 子树不提取。Vue 编译期跳过 v-pre 元素及后代的编译，`{{ }}` 按纯文本
+ * 原样输出；若提取会把整段（连同 `{{ raw }}`）变成 `{{ $t('k') }}`，页面直接渲染这串字符。
+ */
+describe('VueTextExtractor — v-pre 子树跳过', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-vpre-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+  const extract = async (content: string) => {
+    const file = path.join(tmpDir, 'P.vue');
+    fs.writeFileSync(file, content);
+    return new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+  };
+
+  it('v-pre 元素文本（含 mustache）不被提取', async () => {
+    const result = await extract(`<template><span v-pre>中文说明{{ raw }}</span></template>`);
+    expect(result).toHaveLength(0);
+  });
+
+  it('v-pre 内层子元素文本同样跳过（整棵子树）', async () => {
+    const result = await extract(
+      `<template><div v-pre><p>提示信息</p><span>{{ x }}</span></div></template>`,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it('误伤防护：属性值里的 v-pre 字符串不触发跳过，正常提取', async () => {
+    const result = await extract(
+      `<template><span :title="'v-pre-mode'">正常文案</span></template>`,
+    );
+    expect(result.map((r) => r.original)).toContain('正常文案');
+  });
+
+  it('控制用例：无 v-pre 的相邻元素照常提取', async () => {
+    const result = await extract(
+      `<template><div><span v-pre>{{ raw }}原样</span><span>需要翻译</span></div></template>`,
+    );
+    const originals = result.map((r) => r.original);
+    expect(originals).toContain('需要翻译');
+    expect(originals).not.toContain('{{ raw }}原样');
+  });
+});
+
+/**
+ * 回归（Bug 5）：template 侧模板字符串的「含 HTML 拒绝提取」守卫，与 script 侧对称。
+ * 动态属性 / 插值里的含 HTML 模板字符串此前缺守卫，会把整段 HTML 灌进 locale 且无告警。
+ */
+describe('VueTextExtractor — template 模板字符串含 HTML 跳过（与 script 侧对称）', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  let tmpDir: string;
+  beforeEach(() => {
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-tmpl-html-'));
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+  const extract = async (content: string) => {
+    const file = path.join(tmpDir, 'H.vue');
+    fs.writeFileSync(file, content);
+    return new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+  };
+  const hasHtmlWarn = () =>
+    warnSpy.mock.calls
+      .map((c: unknown[]) => String(c[0]))
+      .some((m: string) => m.includes('HTML 标签的模板字符串'));
+
+  it('动态属性：含 HTML 的模板字符串跳过提取并 warn', async () => {
+    const result = await extract(
+      '<template><el-x :content="`<b>加粗提示</b>请注意`"></el-x></template>',
+    );
+    expect(result).toHaveLength(0);
+    expect(hasHtmlWarn()).toBe(true);
+  });
+
+  it('插值：含 HTML 的模板字符串跳过提取并 warn', async () => {
+    const result = await extract('<template><div>{{ `<b>加粗</b>提示` }}</div></template>');
+    expect(result).toHaveLength(0);
+    expect(hasHtmlWarn()).toBe(true);
+  });
+
+  it('回归：动态属性里不含 HTML 的模板字符串照常提取，不告警', async () => {
+    const result = await extract('<template><el-x :content="`总计${n}项`"></el-x></template>');
+    expect(result.map((r) => r.original)).toContain('`总计${n}项`');
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
