@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.27
+
+### Patch Changes
+
+- d831537: 修复 React.memo/forwardRef 命名空间形式未识别为组件、双花括号库单花括号字面量文本被误当占位符导致翻译失真两个 Bug
+
 ## 0.0.26
 
 ### Patch Changes
