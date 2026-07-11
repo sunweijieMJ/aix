@@ -87,15 +87,18 @@ LLM_API_KEY=sk-your-api-key
 ### 3. 运行工具
 
 ```bash
-# 交互模式（推荐首次使用）
+# 交互模式（推荐首次使用；逐步选择模式与路径）
 npx i18n-tools -i
 
-# 全自动流程
-npx i18n-tools --mode automatic
+# 全自动流程（显式 --mode 默认非交互，须用 --path 指定处理路径）
+npx i18n-tools --mode automatic --path src/views
 
 # 指定模式
-npx i18n-tools --mode generate
+npx i18n-tools --mode generate --path src/views
 ```
+
+> 显式传 `--mode`（或 `--ci`）即进入非交互模式：generate / restore / automatic
+> 必须同时传 `--path`，否则直接报错退出（不会调起交互式路径询问，避免 CI / 管道卡死）。
 
 ## 命令行用法
 
@@ -111,8 +114,9 @@ i18n-tools [选项]
 |------|------|------|--------|
 | `--config` | - | 配置文件路径 | 自动发现 `i18n.config.{ts,mts,cts,mjs,cjs,js}` |
 | `--mode` | `-m` | 操作模式 | `generate` |
+| `--path` | `-p` | 要处理的文件或目录路径（generate / restore / automatic）；非交互模式下必填 | - |
 | `--custom` | `-c` | 操作定制目录 | `false` |
-| `--interactive` | `-i` | 交互模式 | 未指定 mode 时开启 |
+| `--interactive` | `-i` | 交互模式 | 未指定 mode 且未传 `--ci` 时开启 |
 | `--skip-llm` | - | 跳过 LLM，使用本地 ID 生成 | `false` |
 | `--help` | `-h` | 显示帮助 | - |
 
@@ -156,12 +160,13 @@ i18n-tools [选项]
 
 ```bash
 # 扫描单个文件
-npx i18n-tools -m generate
-# 然后输入文件路径：src/views/Login.vue
+npx i18n-tools -m generate --path src/views/Login.vue
 
 # 扫描整个目录
-npx i18n-tools -m generate
-# 然后输入目录路径：src/views
+npx i18n-tools -m generate --path src/views
+
+# 交互式选择路径（不传 --mode 时默认进入交互模式）
+npx i18n-tools -i
 
 # 处理定制目录的翻译
 npx i18n-tools -m merge --custom
@@ -231,6 +236,8 @@ npx i18n-tools -m doctor --ci
 2. **pick** - 从语言文件中提取未翻译的条目
    - 输入：`zh-CN.json` + `en-US.json`
    - 输出：`untranslated.json`（待翻译）+ `translations.json`（已翻译）
+   - 在途译文保护：重跑 pick 时，`untranslated.json` 中 translate 已写入、
+     尚未 merge 的译文会原样保留（源文案未变时），不会被置空重翻
 
 3. **translate** - 调用 AI 服务翻译
    - 输入：`untranslated.json`
@@ -246,7 +253,8 @@ npx i18n-tools -m doctor --ci
 
 6. **restore** - 将国际化调用还原为中文
    - 输入：已国际化的源文件 + `zh-CN.json`
-   - 输出：还原后的源文件（默认输出到 `<root>/restored/`）
+   - 输出：CLI 模式**就地覆盖**原文件（调试用，建议配合 git 使用）；
+     程序化调用默认输出到 `<root>/restored/`（`overwrite: false`）
 
 > 💡 中间的 **translate（AI 翻译）可换成人工翻译**：`pick` 后用 `csv-export` 导出 → 人工翻译/审核 → `csv-import` 回流写回 `untranslated.json` → 照常 `merge`。详见下节。
 
@@ -553,17 +561,25 @@ export default defineConfig({
 控制语言文件序列化为扁平 key 还是嵌套树形 JSON：
 
 ```typescript
-io: { format: 'nested' }    // 默认；要求 keys.separator='.'
-// 或
-io: { format: 'flat', /* ... */ }, keys: { separator: '__' }
+// 'nested'（默认）：要求 keys.separator = '.'
+export default defineConfig({
+  io: { format: 'nested' },
+  keys: { separator: '.' },
+});
+
+// 'flat'：separator 可自由选择（如 '__'）
+export default defineConfig({
+  io: { format: 'flat' },
+  keys: { separator: '__' },
+});
 ```
 
 ```json
-// 'nested'（默认）
+// 'nested' + '.' 的落盘产物
 { "views": { "order": { "submit": "提交" } } }
 
-// 'flat'
-{ "views.order.submit": "提交" }
+// 'flat' + '__' 的落盘产物
+{ "views__order__submit": "提交" }
 ```
 
 注：影响 generate / merge / export 全部产物。`flat` + `__` 与 `nested` + `.` 是两套自洽组合；混用会被 loader 拦截（nested 必须用 `.` 分隔）。
@@ -658,7 +674,9 @@ npx i18n-tools -m doctor --ci     # CI 模式（有 error 即非零退出）
 
 | 类别 | 严重级别 | 触发条件 |
 |------|---------|---------|
+| `corrupt-locale` | **error** | locale 文件 JSON 解析失败（真损坏会掩盖其余检查，故前置且为 error） |
 | `missing-key` | **error** | 源码 `t('xxx')` 引用了 locale 不存在的 key（运行时显示 key 字符串） |
+| `missing-target-key` | warning | source 有、target locale 完全缺失的 key（切语言时回退源文/显示 key；跑 `translate` 或人工补译） |
 | `orphan-key` | warning | locale 中的 key 源码无引用（清理候选；动态 key 可能误报，不自动删） |
 | `untranslated` | warning | target locale 的 value 与 source 完全相同且含中文（疑似漏译） |
 | `placeholder-mismatch` | error / warning | 译文与源占位符名集不一致：漏占位符（如译文丢了 `{count}`）= error；多出 = warning |
@@ -941,7 +959,13 @@ export default defineConfig({
 
 ### Q: restore 模式会覆盖原文件吗？
 
-默认不会。还原后的文件输出到 `<root>/restored/` 目录。如果需要覆盖原文件，可以在程序化调用时设置 `overwrite: true`。
+**CLI 的 `--mode restore` 会就地覆盖原文件**（还原是调试用途，配合 git 可随时找回）。
+程序化调用 `RestoreProcessor.execute(targets, outputDir, overwrite)` 的默认行为相反：
+`overwrite` 默认 `false`，还原结果输出到 `<root>/restored/`，不动原文件。
+
+另注意：restore 还原的是**全部** `t()`/`$t()` 调用，不区分"本轮 generate 生成"还是
+历史存量——对含存量国际化调用的目录执行 restore，存量调用也会一并还原为中文
+（其变为无引用的 `import { t }` 会被顺带清理）。
 
 ### Q: 如何配置不同的源语言和目标语言？
 
@@ -987,14 +1011,18 @@ dry-run 的成本。
 ### Q: doctor 报了 orphan-key，但其实是动态 key（`t(prefix + name)`）
 
 工具的源码扫描基于静态正则，无法识别动态拼接的 key，因此动态 key 引用的
-locale 条目会被误报为 orphan。当前策略：
+locale 条目会被误报为 orphan。处理方式：
 
-- 默认仅 warning 级，不阻塞 CI
-- 不提供 `--fix` 自动删除（明确建议"删除前请人工确认"）
-- 后续可考虑加 `noOrphanCheck` 白名单配置
+- 配置 `keys.dynamicKeyAllowlist`（字符串前缀或 RegExp）声明动态 key 的命名空间，
+  doctor 对命中的 key 跳过 orphan 判定，`prune` 同样跳过不删
+- orphan-key 默认仅 warning 级，不阻塞 CI（`--ci` 只对 error 级退出非零）
+- doctor 本身只读不删；确认无误后用 `prune` 清理（`--dry-run` 预览 → 确认删除）
 
-如果业务大量使用动态 key，建议把 `doctor` 当作 PR 的辅助 review 工具，
-而非 CI 必经环节；或仅启用 `--ci` 关注 missing-key（仍是 error 级）。
+```typescript
+keys: {
+  dynamicKeyAllowlist: ['common__', /^views__\w+__dynamic_/],
+}
+```
 
 ### Q: 覆盖率指标里的"跳过/待人工"具体是哪些？
 
