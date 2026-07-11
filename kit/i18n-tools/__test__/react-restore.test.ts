@@ -467,6 +467,45 @@ describe('React restore — localeMap 不完整时 hook/global 声明守卫（#8
     expect(out).toContain('你好');
     expect(out).not.toMatch(/useIntl/);
   });
+
+  // 回归：translationVar 的第三种合法绑定来源——模块级 `const intl = getIntl()`（工具为
+  // 'other' 作用域生成的标准形态）。此前 translationVarUsedOutsideTranslationCalls 的
+  // collect 只收 useIntl hook 与 this.props 两类绑定，getIntl 声明所在作用域不被扫描 →
+  // hookScopes 为空直接返回 false → intl.formatNumber 残留引用未被察觉 →
+  // cleanupVariableStatements 按 isGlobalFunctionDeclaration 删除声明、finalizeTImport
+  // 再删 import，产出悬空 intl（TS2304 / ReferenceError）。
+  it('[react-intl] 模块级 getIntl 声明 + intl 用于 formatNumber → 即便 formatMessage 可还原也须保留声明与 import', () => {
+    const out = restore(
+      `import { getIntl } from '@/plugins/locale';\n` +
+        `const intl = getIntl();\n` +
+        `export function formatPrice(amount: number) {\n` +
+        `  const price = intl.formatNumber(amount);\n` +
+        `  return intl.formatMessage({ id: 'k0' }) + price;\n` +
+        `}\n`,
+      { k0: '价格' },
+      'react-intl',
+    );
+    // formatMessage 已还原为文案
+    expect(out).toContain('价格');
+    // 关键：intl 仍被 formatNumber 使用 → getIntl 声明与其 import 必须保留
+    expect(out).toContain('intl.formatNumber(amount)');
+    expect(out, `还原输出：\n${out}`).toMatch(/const\s+intl\s*=\s*getIntl\(\)/);
+    expect(out).toMatch(/import\s*\{[^}]*getIntl[^}]*\}\s*from\s*['"]@\/plugins\/locale['"]/);
+  });
+
+  it('[react-intl] 模块级 getIntl 声明仅用于可还原的 formatMessage → 仍移除声明与 import（不回归）', () => {
+    const out = restore(
+      `import { getIntl } from '@/plugins/locale';\n` +
+        `const intl = getIntl();\n` +
+        `export function label() {\n` +
+        `  return intl.formatMessage({ id: 'k0' });\n` +
+        `}\n`,
+      { k0: '价格' },
+      'react-intl',
+    );
+    expect(out).toContain('价格');
+    expect(out).not.toMatch(/getIntl/);
+  });
 });
 
 /**

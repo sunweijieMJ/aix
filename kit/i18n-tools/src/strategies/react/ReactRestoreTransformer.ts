@@ -88,6 +88,25 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     );
   }
 
+  /**
+   * translationVar 的全部合法绑定来源（单一判定点，勿在调用处各自枚举）：
+   *  1. i18n hook 声明：`const { t } = useTranslation()` / `const intl = useIntl()`；
+   *  2. 全局函数声明：`const intl = getIntl()`（react-intl 模块级 'other' 作用域的标准注入形态）；
+   *  3. HOC 注入的 props 解构：`const { t/intl } = this.props`。
+   *
+   * 不变量：本方法必须覆盖 ReactImportManager.cleanupVariableStatements 会删除的每一种声明
+   * 形态——任何可能被删除的绑定，其作用域都必须先经「翻译调用之外是否仍被引用」扫描，否则
+   * 删声明后残留引用未定义标识符（TS2304）。历史上 hook / this.props / getIntl 三处曾分散在
+   * 各调用点枚举，先后漏掉 this.props 与 getIntl 各出过一次同型 Bug，故收口于此。
+   */
+  private declarationBindsTranslationVar(decl: ts.VariableDeclaration, varName: string): boolean {
+    return (
+      ((this.library.isHookDeclaration(decl) || this.library.isGlobalFunctionDeclaration(decl)) &&
+        this.declarationBindsVar(decl, varName)) ||
+      this.declarationBindsVarFromThisProps(decl, varName)
+    );
+  }
+
   /** 取 node 最近的函数式作用域（函数 / 箭头 / 方法 / 访问器），到顶则返回 SourceFile。 */
   private enclosingScope(node: ts.Node): ts.Node {
     let cur: ts.Node | undefined = node.parent;
@@ -408,9 +427,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     //  - 声明 / 解构绑定名（尤其 `const { t } = useTranslation()` 自身）、对象键、成员名、
     //    import/export 具名、JSX 属性名等非值读取位置（见 isIdentifierValueReference）。
     //
-    // 关键：只在「绑定 varName 的 i18n hook 声明所在的函数作用域」内扫描，而非全文件——否则其它
-    // 组件里同名但来源无关的变量（如 `const { t } = useTemperature()`）会被按名误判为翻译变量的
-    // 使用，错误地阻止删除真正的 i18n 声明。无 hook 声明（如 standalone tImport 路径）则返回 false。
+    // 关键：只在「绑定 varName 的合法声明（hook / getIntl 全局声明 / this.props 解构，见
+    // declarationBindsTranslationVar）所在的函数作用域」内扫描，而非全文件——否则其它组件里
+    // 同名但来源无关的变量（如 `const { t } = useTemperature()`）会被按名误判为翻译变量的
+    // 使用，错误地阻止删除真正的 i18n 声明。无绑定声明（如 standalone tImport 路径）则返回 false。
     //
     // 历史上本守卫只认成员访问、漏判裸标识符，导致 react-i18next 把 t 当裸值透传且全部 t() 可还原时
     // 误删声明与 import、留下未定义 t（ReferenceError / TS2304）。与 ReactImportManager
@@ -418,15 +438,12 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     const translationVarUsedOutsideTranslationCalls = (root: ts.Node): boolean => {
       const varName = library.translationVarName;
 
-      // 收集所有「绑定了 varName 的 i18n hook 声明」所属的函数作用域（去重）
+      // 收集所有「绑定了 varName 的合法声明（hook / getIntl / this.props）」所属的函数作用域（去重）
       const hookScopes = new Set<ts.Node>();
       const collect = (node: ts.Node): void => {
         if (ts.isVariableStatement(node)) {
           for (const decl of node.declarationList.declarations) {
-            if (
-              (library.isHookDeclaration(decl) && this.declarationBindsVar(decl, varName)) ||
-              this.declarationBindsVarFromThisProps(decl, varName)
-            ) {
+            if (this.declarationBindsTranslationVar(decl, varName)) {
               hookScopes.add(this.enclosingScope(node));
             }
           }
