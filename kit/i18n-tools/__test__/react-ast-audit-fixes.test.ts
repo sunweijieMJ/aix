@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
 import { ReactASTUtils } from '../src/strategies/react/react-ast-utils';
 import { ReactComponentInjector } from '../src/strategies/react/ReactComponentInjector';
+import { ReactImportManager } from '../src/strategies/react/ReactImportManager';
+import { createReactI18nLibrary } from '../src/strategies/react/libraries';
 
 function parseTsx(code: string): ts.SourceFile {
   return ts.createSourceFile('c.tsx', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -87,5 +89,60 @@ describe('ReactComponentInjector.bodyDestructuresProp — 不跨嵌套函数作�
       'render',
     );
     expect(call(body)).toBe(true);
+  });
+});
+
+/**
+ * 回归：isForwardRefOrMemoCallee 此前（isFunctionComponent /
+ * isInjectableComponentFunction / getFunctionNodeFromInitializer 三处重复实现）
+ * 只认裸 Identifier 形式的 forwardRef/memo 调用（`memo(...)`），漏认命名空间访问
+ * 形式（`React.memo(...)`）——与同库 isClassComponent 对 React.Component /
+ * React.PureComponent 的判定方式不一致。命名空间形式下 getComponentInfo 认不出
+ * 组件，注入器不会注入 useTranslation()，但文案提取仍会产出裸 t() 调用，
+ * 运行时 `t is not defined`。
+ */
+describe('ReactASTUtils.isForwardRefOrMemoCallee — React.memo/forwardRef 命名空间形式', () => {
+  it('React.memo(...) → 识别为函数组件', () => {
+    const fn = firstFunctionNode(`const C = React.memo(() => <span>{t('x')}</span>);`);
+    expect(ReactASTUtils.isFunctionComponent(fn)).toBe(true);
+  });
+
+  it('React.forwardRef(...) → 识别为函数组件', () => {
+    const fn = firstFunctionNode(
+      `const C = React.forwardRef((props, ref) => <span ref={ref}>{t('x')}</span>);`,
+    );
+    expect(ReactASTUtils.isFunctionComponent(fn)).toBe(true);
+  });
+
+  it('回归保护：裸 memo(...) / forwardRef(...) 仍识别', () => {
+    const memoFn = firstFunctionNode(`const C = memo(() => <span>{t('x')}</span>);`);
+    expect(ReactASTUtils.isFunctionComponent(memoFn)).toBe(true);
+
+    const fwdFn = firstFunctionNode(
+      `const C = forwardRef((props, ref) => <span ref={ref}>{t('x')}</span>);`,
+    );
+    expect(ReactASTUtils.isFunctionComponent(fwdFn)).toBe(true);
+  });
+});
+
+describe('ReactComponentInjector.inject：React.memo/forwardRef 命名空间形式端到端注入', () => {
+  const buildInjector = () => {
+    const library = createReactI18nLibrary('react-i18next');
+    const importManager = new ReactImportManager('@/plugins/locale', library);
+    return new ReactComponentInjector(library, importManager);
+  };
+
+  it('React.memo(() => {...}) 内的 t() 调用应被注入 useTranslation hook', () => {
+    const injector = buildInjector();
+    const code = `const Card = React.memo(() => {\n  return <span title={t('card.title')} />;\n});`;
+    const out = injector.inject(code);
+    expect(out).toContain('const { t } = useTranslation();');
+  });
+
+  it('React.forwardRef((props, ref) => {...}) 内的 t() 调用应被注入 useTranslation hook', () => {
+    const injector = buildInjector();
+    const code = `const Field = React.forwardRef((props, ref) => {\n  return <span ref={ref} title={t('field.title')} />;\n});`;
+    const out = injector.inject(code);
+    expect(out).toContain('const { t } = useTranslation();');
   });
 });

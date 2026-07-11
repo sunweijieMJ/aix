@@ -167,8 +167,7 @@ export class ReactASTUtils {
     if (
       host &&
       ts.isCallExpression(host) &&
-      ts.isIdentifier(host.expression) &&
-      ['forwardRef', 'memo'].includes(host.expression.text)
+      ReactASTUtils.isForwardRefOrMemoCallee(host.expression)
     ) {
       host = host.parent;
     }
@@ -284,14 +283,33 @@ export class ReactASTUtils {
     return false;
   }
 
+  /**
+   * 判断一个调用表达式的被调用者是否是 forwardRef/memo：兼容具名导入的裸标识符
+   * 调用（`memo(...)`）与命名空间访问调用（`React.memo(...)`）两种写法。
+   * 与 isClassComponent 对 `React.Component`/`React.PureComponent` 的判定方式对齐。
+   */
+  static isForwardRefOrMemoCallee(expression: ts.Expression): boolean {
+    if (ts.isIdentifier(expression)) {
+      return ['forwardRef', 'memo'].includes(expression.text);
+    }
+    if (
+      ts.isPropertyAccessExpression(expression) &&
+      ts.isIdentifier(expression.expression) &&
+      expression.expression.text === 'React' &&
+      ts.isIdentifier(expression.name)
+    ) {
+      return ['forwardRef', 'memo'].includes(expression.name.text);
+    }
+    return false;
+  }
+
   static isFunctionComponent(
     node: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
   ): boolean {
     if (
       node.parent &&
       ts.isCallExpression(node.parent) &&
-      ts.isIdentifier(node.parent.expression) &&
-      ['forwardRef', 'memo'].includes(node.parent.expression.text)
+      ReactASTUtils.isForwardRefOrMemoCallee(node.parent.expression)
     ) {
       return true;
     }
@@ -434,8 +452,7 @@ export class ReactASTUtils {
     }
     if (
       ts.isCallExpression(initializer) &&
-      ts.isIdentifier(initializer.expression) &&
-      ['forwardRef', 'memo'].includes(initializer.expression.text)
+      ReactASTUtils.isForwardRefOrMemoCallee(initializer.expression)
     ) {
       const arg = initializer.arguments[0];
       if (arg && (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg))) {
