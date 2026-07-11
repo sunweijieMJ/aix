@@ -14,7 +14,9 @@ const INTENT_INSTRUCTION: Record<string, string> = {
 export const defaultQuoteToPrompt = (quotes: Quote[]): string =>
   quotes
     .map((q) => {
-      const blockquote = q.anchor.exact
+      // 优先原文 rawText：划词产生的 exact 经 normalizeText 折叠（不含 \n），
+      // 直接使用会丢失代码块换行与缩进；整条引用等未折叠场景回退 exact
+      const blockquote = (q.anchor.rawText ?? q.anchor.exact)
         .split('\n')
         .map((line) => `> ${line}`)
         .join('\n');

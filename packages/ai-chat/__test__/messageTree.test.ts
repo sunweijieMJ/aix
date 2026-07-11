@@ -91,4 +91,22 @@ describe('messageTree — 分支', () => {
     expect(t2.switchBranch('a2', -1)).toBe(true);
     expect(t2.activePath.value.map((m) => m.id)).toEqual(['u1', 'a1']);
   });
+
+  // 防御回归：localStorage 被篡改/损坏使 parentId 成环时，importTree 的向上回溯、
+  // activePath/branches 的向上 while 均无访问集——同步死循环直接挂死主线程。
+  // 自家 exportTree 不会产生环，本用例守护的是对持久化脏数据的防御。
+  it('importTree 对循环 parentId 的脏数据不死循环（读 activePath/branches 亦然）', () => {
+    const t = createMessageTree();
+    t.importTree({
+      headId: 'a',
+      nodes: [
+        { id: 'a', parentId: 'b', message: msg('a', 'ai') },
+        { id: 'b', parentId: 'a', message: msg('b', 'ai') },
+      ],
+    });
+    // 同步执行能走到这里即证明回溯未挂死；读取派生态同样不得死循环
+    expect(Array.isArray(t.activePath.value)).toBe(true);
+    expect(t.branches.value).toBeInstanceOf(Map);
+    expect(t.switchBranch('a', 1)).toBe(false); // findLeaf 向下走 activeChild 同样有环风险
+  });
 });

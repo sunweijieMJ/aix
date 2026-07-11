@@ -20,9 +20,9 @@
       <AttachmentsPanel
         v-if="panelOpen"
         :items="attach.items.value"
-        @pick="openFilePicker"
+        @pick="onPanelPick"
         @drop="onPanelDrop"
-        @remove="attach.remove"
+        @remove="onPanelRemove"
         @retry="onPanelRetry"
         @close="panelOpen = false"
       />
@@ -389,20 +389,32 @@ const panelOpen = ref(false);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const openFilePicker = () => fileInputRef.value?.click();
 const onFileChange = (e: Event) => {
-  if (props.disabled) return; // disabled 覆盖附件全部交互
   const input = e.target as HTMLInputElement;
-  if (input.files?.length) attach?.add(input.files);
+  const files = input.files ? Array.from(input.files) : [];
+  // 清空必须先于 disabled 早退：若早退跳过清空，恢复可用后再选同名文件时
+  // 原生 change 不触发（value 未变），该文件将静默无法添加
   input.value = ''; // 允许重复选同一文件
+  if (props.disabled) return; // disabled 覆盖附件全部交互
+  if (files.length) attach?.add(files);
 };
 const onDrop = (e: DragEvent) => {
-  if (!attach || props.disabled || !e.dataTransfer?.files.length) return;
+  if (!attach) return;
+  // preventDefault 不受 disabled 约束：dragover 已宣告本区域为 drop target，
+  // 此处若因 disabled 早退不阻止默认行为，浏览器会导航打开该文件、整页被替换
   e.preventDefault();
+  if (props.disabled || !e.dataTransfer?.files.length) return;
   attach.add(e.dataTransfer.files);
 };
-// 面板内拖放/重试事件被面板 stopPropagation、不经根级守卫，须单独受 disabled 约束——
+// 面板内 pick/拖放/remove/重试事件被面板 stopPropagation、不经根级守卫，须单独受 disabled 约束——
 // 面板可在可用态展开后才被禁用（如表单提交期间），此时附件交互应一并失效
+const onPanelPick = () => {
+  if (!props.disabled) openFilePicker();
+};
 const onPanelDrop = (files: FileList | File[]) => {
   if (!props.disabled) attach?.add(files);
+};
+const onPanelRemove = (id: string) => {
+  if (!props.disabled) attach?.remove(id);
 };
 const onPanelRetry = (id: string) => {
   if (!props.disabled) attach?.retry(id);
@@ -901,7 +913,9 @@ defineSlots<{
 const setValue = (text: string) => {
   inner.value = text;
   emit('update:modelValue', text);
-  autosize();
+  // nextTick 后再量高：同步 autosize 读到的是 DOM 旧内容——受控模式有 modelValue
+  // 回声 watch 纠正，非受控（不绑 v-model）时高度会滞留旧值直到下次用户输入
+  void nextTick(autosize);
 };
 
 defineExpose({

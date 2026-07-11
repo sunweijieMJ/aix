@@ -58,7 +58,8 @@
                   :typing="typing"
                   :on-block-action="handleBlockAction"
                   :tool-renderers="toolRenderers"
-                  @typing-complete="handleTypingComplete"
+                  @typing-complete="onBlockTypingComplete(block)"
+                  @keep-mounted-change="handleKeepMountedChange"
                 >
                   <!-- 透传消费方提供的「非保留」具名插槽（约定 <块类型>-<内部slot>）给块渲染器，
                        由其映射到内部组件对应 slot。v-for 仅遍历实际存在的插槽，不产生幽灵插槽。 -->
@@ -98,6 +99,8 @@ export interface BubbleEmits {
   (e: 'editing-change', editing: boolean): void;
   /** 某文本块逐字显示完毕（携带所属消息 key），供上层在动画结束后再渲染操作条等 */
   (e: 'typing-complete', payload: { messageKey: string | number }): void;
+  /** 块级浮层（如图片预览 Modal）开合：供列表层保持该行挂载，免被虚拟滚动回收销毁 */
+  (e: 'keep-mounted-change', payload: { messageKey: string | number; active: boolean }): void;
 }
 </script>
 
@@ -106,7 +109,13 @@ import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { computed, watch, watchEffect, useSlots, ref } from 'vue';
 import { locale } from '../locale';
-import type { BlockAction, BubbleProps, BubbleContentInfo, BlockRenderers } from '../types';
+import type {
+  BlockAction,
+  BubbleProps,
+  BubbleContentInfo,
+  BlockRenderers,
+  ContentBlock,
+} from '../types';
 import { messageText } from '../utils/helpers';
 import AttachmentBlock from './blocks/AttachmentBlock.vue';
 import ChartBlock from './blocks/ChartBlock.vue';
@@ -136,8 +145,53 @@ const emit = defineEmits<BubbleEmits>();
 const handleBlockAction = (action: BlockAction) =>
   emit('block-action', { messageKey: props.itemKey ?? '', action });
 
-// 块渲染器（TextBlock）逐字打完上抛 → 补齐所属消息 key 后向上转发
-const handleTypingComplete = () => emit('typing-complete', { messageKey: props.itemKey ?? '' });
+// —— 消息级 typing-complete 聚合 ——
+// 块渲染器在「追平当下源文本」时上抛块级 typing-complete，但追平可能早于消息终态
+// （最后 token 与 done 帧间隔 > 打字机 interval 时必现），其后打字机已 stop、不再有任何 tick；
+// 多块并存时，先追平的块也不代表整条消息播完。故不能逐条原样转发：按块聚合，
+// 记录各 text/reasoning 块的追平长度（尾块追平后源又增长则记录失效，等再次追平刷新），
+// 终态且全部有效追平时才上抛一次消息级事件（BubbleList 据此登记 completedIds 关闭 typing）。
+const completedLens = new Map<string, number>();
+const settledFired = ref(false);
+const isTerminal = computed(() => props.status !== 'loading' && props.status !== 'updating');
+const typingBlockIds = computed(() =>
+  props.content.filter((b) => b.type === 'text' || b.type === 'reasoning').map((b) => b.id),
+);
+const blockTextLen = (id: string) => {
+  const blk = props.content.find((b) => b.id === id);
+  return blk && 'text' in blk && typeof blk.text === 'string' ? blk.text.length : 0;
+};
+const fireIfSettled = () => {
+  if (settledFired.value || !isTerminal.value) return;
+  const ids = typingBlockIds.value;
+  if (!ids.length || !ids.every((id) => completedLens.get(id) === blockTextLen(id))) return;
+  settledFired.value = true;
+  emit('typing-complete', { messageKey: props.itemKey ?? '' });
+};
+// 块级浮层开合（图片预览等）→ 补齐所属消息 key 后向上转发，由 BubbleList 落 keepMounted
+const handleKeepMountedChange = (active: boolean) =>
+  emit('keep-mounted-change', { messageKey: props.itemKey ?? '', active });
+
+const onBlockTypingComplete = (block: ContentBlock) => {
+  if (block.type === 'text' || block.type === 'reasoning') {
+    completedLens.set(block.id, block.text.length);
+    fireIfSettled();
+    return;
+  }
+  // 自定义类型块：完成集合无法预知，沿用旧语义直接转发（BubbleList 终态时登记）；
+  // 消息含内置打字块时则不转发，避免自定义块先完成而内置块仍在逐字时提前关闭 typing
+  if (!typingBlockIds.value.length) emit('typing-complete', { messageKey: props.itemKey ?? '' });
+};
+watch(isTerminal, (terminal) => {
+  if (terminal) {
+    // 追平早于终态的场景：块级事件已在 updating 期记录，此刻补判整条消息是否播完
+    fireIfSettled();
+  } else {
+    // 重新生成/续流（同 id 回到 updating）：复位聚合状态，允许再次完成
+    completedLens.clear();
+    settledFired.value = false;
+  }
+});
 
 const ns = useNamespace('bubble');
 const { t } = useLocale(locale);

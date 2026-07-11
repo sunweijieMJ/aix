@@ -751,4 +751,75 @@ describe('Sender', () => {
       warn.mockRestore();
     });
   });
+
+  // ── disabled 附件守卫（回归：拖放导航 / pick / remove / 同名文件）────────
+  describe('disabled 附件守卫（回归）', () => {
+    const instantUpload = vi.fn(async (f: File) => ({ name: f.name, url: `/f/${f.name}` }));
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('disabled 态根区域 drop：阻止浏览器默认导航（preventDefault）且不 add', async () => {
+      const w = mount(Sender, {
+        props: { attachments: { upload: instantUpload }, disabled: true },
+      });
+      const ev = new Event('drop', { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, 'dataTransfer', {
+        value: { files: [new File(['x'], 'a.pdf')] },
+      });
+      w.find('.aix-sender').element.dispatchEvent(ev);
+      await flushPromises();
+      // 未阻止默认行为 → 浏览器导航打开文件、SPA 被整页替换
+      expect(ev.defaultPrevented).toBe(true);
+      expect(instantUpload).not.toHaveBeenCalled();
+    });
+
+    it('disabled 后面板 placeholder pick 不打开文件选择框', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      await w.find('[aria-label="添加附件"]').trigger('click'); // 可用态先展开面板
+      const clickSpy = vi.spyOn(w.find('input[type="file"]').element as HTMLInputElement, 'click');
+      await w.setProps({ disabled: true });
+      await w.find('.aix-attachments-panel__placeholder').trigger('click');
+      expect(clickSpy).not.toHaveBeenCalled();
+    });
+
+    it('disabled 后面板 remove 不删除附件卡片', async () => {
+      const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+      const input = w.find('input[type="file"]');
+      Object.defineProperty(input.element, 'files', {
+        value: [new File(['x'], 'a.pdf')],
+        configurable: true,
+      });
+      await input.trigger('change');
+      await flushPromises();
+      expect(w.findAll('.aix-attachment-card')).toHaveLength(1);
+      await w.setProps({ disabled: true });
+      await w.find('[aria-label="删除附件"]').trigger('click');
+      await flushPromises();
+      expect(w.findAll('.aix-attachment-card')).toHaveLength(1);
+    });
+
+    it('disabled 期间触发 change 也要清空 input.value（否则恢复后同名文件永久无法添加）', async () => {
+      const w = mount(Sender, {
+        props: { attachments: { upload: instantUpload }, disabled: true },
+      });
+      const input = w.find('input[type="file"]');
+      let val = 'C:\\fakepath\\a.pdf';
+      Object.defineProperty(input.element, 'value', {
+        get: () => val,
+        set: (v: string) => {
+          val = v;
+        },
+        configurable: true,
+      });
+      Object.defineProperty(input.element, 'files', {
+        value: [new File(['x'], 'a.pdf')],
+        configurable: true,
+      });
+      await input.trigger('change');
+      expect(instantUpload).not.toHaveBeenCalled(); // disabled：不 add
+      expect(val).toBe(''); // 但 value 必须清空，否则原生 change 对同名文件不再触发
+    });
+  });
 });

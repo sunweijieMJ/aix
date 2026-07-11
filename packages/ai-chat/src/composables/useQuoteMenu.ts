@@ -138,9 +138,10 @@ export function useQuoteMenu(options: UseQuoteMenuOptions): UseQuoteMenuReturn {
         options.focusSender();
         close();
       },
-      // copy：仅复制，不加 chip、不聚焦
+      // copy：仅复制，不加 chip、不聚焦。优先原文 rawText——exact 已折叠空白，
+      // 多行选区（代码块）直接复制 exact 会变成单行
       copy: (text?: string) => {
-        void options.copy(text ?? quote.anchor.exact);
+        void options.copy(text ?? quote.anchor.rawText ?? quote.anchor.exact);
         close();
       },
       close,

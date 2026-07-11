@@ -19,6 +19,10 @@ export interface ReasoningBlockProps {
   /** 打字机：`true` 默认节奏 / 配置对象 `{ step, interval }` / `false` 不逐字，默认 false */
   typing?: boolean | BubbleTypingConfig;
 }
+export interface ReasoningBlockEmits {
+  /** 思考文本逐字显示完毕（追平源文本）时触发，参与 Bubble 的消息级完成聚合 */
+  (e: 'typing-complete'): void;
+}
 </script>
 
 <script setup lang="ts">
@@ -35,6 +39,7 @@ import Thinking from '../Thinking.vue';
 defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(defineProps<ReasoningBlockProps>(), { typing: false });
+const emit = defineEmits<ReasoningBlockEmits>();
 const { t } = useLocale(locale);
 // 注入 AiChat 注入的 markdown 级配置（markdownRenderers / allowHtml）透传给 MarkdownRenderer
 const config = useAiChatConfig();
@@ -49,6 +54,9 @@ const { displayed } = useTypewriter(text, {
   enabled: typingEnabled,
   step: typingOpts.value.step,
   interval: typingOpts.value.interval,
+  // 与 TextBlock 对齐：追平即上抛。否则纯 reasoning 消息永远进不了 BubbleList 的
+  // completedIds，typing 常开、虚拟列表重挂载时自定义块重播
+  onComplete: () => emit('typing-complete'),
 });
 const displayContent = computed(() => (typingEnabled.value ? displayed.value : props.block.text));
 

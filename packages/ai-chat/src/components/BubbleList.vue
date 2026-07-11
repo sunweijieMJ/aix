@@ -31,6 +31,7 @@
             @edit="emit('edit', (item as ChatMessage).id, $event)"
             @editing-change="handleEditingChange((item as ChatMessage).id, $event)"
             @typing-complete="handleTypingComplete((item as ChatMessage).id)"
+            @keep-mounted-change="handleKeepMountedChange((item as ChatMessage).id, $event.active)"
           >
             <template v-if="$slots.content" #content="slotProps">
               <slot name="content" :item="item as ChatMessage" v-bind="slotProps" />
@@ -156,11 +157,21 @@ const handleEditingChange = (id: string, editing: boolean) => {
   if (editing) editingIds.add(id);
   else editingIds.delete(id);
 };
+// 块级浮层（图片预览等 Teleport Modal 挂在块渲染器内部）打开中的消息 id：
+// 与编辑态同构地保挂载，否则宿主行被回收时 Modal 连同打开状态一起销毁。
+// 计数而非布尔：同一消息可有多个块同时打开浮层（如多个 image 块）。
+const retainedCounts = reactive(new Map<string, number>());
+const handleKeepMountedChange = (id: string, active: boolean) => {
+  const cur = retainedCounts.get(id) ?? 0;
+  if (active) retainedCounts.set(id, cur + 1);
+  else if (cur <= 1) retainedCounts.delete(id);
+  else retainedCounts.set(id, cur - 1);
+};
 const keepMounted = computed<number[]>(() => {
-  if (editingIds.size === 0) return [];
+  if (editingIds.size === 0 && retainedCounts.size === 0) return [];
   const idx: number[] = [];
   props.items.forEach((m, i) => {
-    if (editingIds.has(m.id)) idx.push(i);
+    if (editingIds.has(m.id) || retainedCounts.has(m.id)) idx.push(i);
   });
   return idx;
 });
@@ -226,6 +237,10 @@ watch(
     // 编辑中的消息若被移除（切会话 / 截断），一并从编辑集合剪除，避免 keepMounted 残留失效下标
     for (const id of editingIds) {
       if (!alive.has(id)) editingIds.delete(id);
+    }
+    // 浮层保挂载计数同理：宿主消息已不在列表时剪除（块随消息销毁，不会再上抛 false）
+    for (const id of retainedCounts.keys()) {
+      if (!alive.has(id)) retainedCounts.delete(id);
     }
   },
   { immediate: true },

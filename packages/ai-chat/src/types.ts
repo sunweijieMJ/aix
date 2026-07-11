@@ -329,6 +329,11 @@ export interface QuoteAnchor {
   source: { messageId: string; blockId?: string; role?: MessageRole };
   /** 归一化选中文本（整条引用时为整条消息文本） */
   exact: string;
+  /**
+   * 选区原文（未折叠空白、保留换行）。exact 经 normalizeText 折叠仅作回链匹配口径，
+   * 复制与 toPrompt 拼装优先使用本字段，避免代码块/多段落引用丢失换行与缩进
+   */
+  rawText?: string;
   /** 选中前 ~contextChars 字符（文本搜索消歧，抗漂移） */
   prefix?: string;
   /** 选中后 ~contextChars 字符 */

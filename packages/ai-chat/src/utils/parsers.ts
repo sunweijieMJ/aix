@@ -112,8 +112,15 @@ export function openaiParseChunk(chunk: SSEChunk): ParsedChunk | ParsedChunk[] {
   // 或改用 Responses API 的 `.done` 语义事件替代本预设。
   if (choice?.finish_reason === 'tool_calls') return { tool: { index: 0, argsDone: true } };
   const d = choice?.delta;
-  if (d?.reasoning_content && !d.content)
-    return { delta: d.reasoning_content, blockType: 'reasoning' };
+  // 同帧同时携带 reasoning_content 与 content（聚合网关合帧）时两者都保留：
+  // reasoning 在前（与 DeepSeek 分帧时序一致），返回数组由 useChat 侧 toArray 展开
+  if (d?.reasoning_content && d.content) {
+    return [
+      { delta: d.reasoning_content, blockType: 'reasoning' },
+      { delta: d.content, blockType: 'text' },
+    ];
+  }
+  if (d?.reasoning_content) return { delta: d.reasoning_content, blockType: 'reasoning' };
   return { delta: d?.content ?? '', blockType: 'text' };
 }
 

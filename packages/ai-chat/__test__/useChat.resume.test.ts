@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { useChat } from '../src/composables/useChat';
 import type { ParsedChunk } from '../src/types';
@@ -72,6 +72,50 @@ describe('useChat — resume 续流', () => {
       output: '已确认',
     });
     expect(ai.content.some((b) => b.type === 'text' && b.text === '完成')).toBe(true);
+  });
+
+  // 回归：resume 只校验 role==='ai' 不校验激活路径——目标被 reload 顶替（非激活分支）时
+  // history 为空仍照常发起请求，续写的内容用户永远看不见（消息不在渲染路径）
+  it('resume 目标不在激活路径（被 reload 顶替的旧分支）→ 拒绝且不发起请求', async () => {
+    let n = 0;
+    const request = vi.fn(() =>
+      Promise.resolve(stream([JSON.stringify({ delta: `回复${(n += 1)}` }), '[DONE]'])),
+    );
+    const chat = useChat({ request, parseChunk });
+    await chat.onSend('问题');
+    await flush();
+    const ai1 = chat.messages.value[1]!.id;
+    await chat.onReload(ai1); // 生成兄弟分支并激活，ai1 脱离激活路径
+    await flush();
+    expect(chat.messages.value[1]!.id).not.toBe(ai1);
+    const calls = request.mock.calls.length;
+    await expect(chat.resume(ai1)).resolves.toBe(false);
+    expect(request.mock.calls.length).toBe(calls);
+  });
+
+  // 回归：baseSnapshot 深拷贝在外层 try 内、但外层 try 只有 finally——块内容经
+  // updateBlock 可写入任意值（循环引用等），JSON 深拷贝抛错会以 unhandled rejection
+  // 逃逸，且消息状态永久卡在 updating（无活跃流推进的假加载态）、onError 不触发
+  it('resume 快照深拷贝抛错：消息落 error 终态并触发 onError，不卡 updating', async () => {
+    const onError = vi.fn();
+    const chat = useChat({
+      request: () => Promise.resolve(stream([JSON.stringify({ delta: '内容' }), '[DONE]'])),
+      parseChunk,
+      onError,
+    });
+    await chat.onSend('q');
+    await flush();
+    const ai = chat.messages.value[1]!;
+    expect(ai.status).toBe('success');
+    // 业务经 updateBlock 可写入任意值：构造循环引用使 JSON 深拷贝必抛
+    const blk = ai.content[0]! as unknown as { extra?: Record<string, unknown> };
+    blk.extra = {};
+    blk.extra.self = blk.extra;
+    await expect(chat.resume(ai.id)).resolves.toBe(true);
+    await flush();
+    expect(ai.status).toBe('error');
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(chat.isLoading.value).toBe(false);
   });
 
   it('isLoading 时 resume 被拒（并发守卫）', async () => {

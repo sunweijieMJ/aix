@@ -13,6 +13,8 @@ export function __resetHtmlSandboxId(): void {
 }
 
 const MIN_FRAME_HEIGHT = 60;
+// 高度上限：恶意/异常内容可自报任意 scrollHeight（如 1e9），无上限会撑爆页面布局
+const MAX_FRAME_HEIGHT = 20000;
 const RESIZE_MESSAGE_TYPE = 'aix-html-sandbox-resize';
 
 /** 转义 `&`/`"`：把 srcdoc 文档整体塞进另一层 HTML 的双引号属性值时用（新窗口打开场景） */
@@ -60,15 +62,21 @@ const HtmlSandboxBlock = defineComponent({
     const instanceId = `aix-html-sandbox-${sandboxIdCounter++}`;
     const mode = ref<'preview' | 'code'>('preview');
     const frameHeight = ref(MIN_FRAME_HEIGHT);
+    const frameEl = ref<HTMLIFrameElement | null>(null);
 
     const srcDoc = computed(() => buildSrcDoc(props.code, instanceId));
 
     const onMessage = (e: MessageEvent) => {
+      // 归属校验以 e.source 为准：type/id 可被同页任意 iframe/窗口伪造（instanceId 是
+      // 可预测的自增序列，双 bundle 场景计数器各自从 0 起还会碰撞），仅凭 id 匹配
+      // 等于把沙箱高度控制权交给整个页面
+      const win = frameEl.value?.contentWindow;
+      if (!win || e.source !== win) return;
       const data = e.data as { type?: string; id?: string; height?: number } | null;
       if (!data || data.type !== RESIZE_MESSAGE_TYPE || data.id !== instanceId) return;
       const height = Number(data.height);
       if (Number.isFinite(height) && height > 0) {
-        frameHeight.value = Math.max(MIN_FRAME_HEIGHT, Math.ceil(height));
+        frameHeight.value = Math.min(MAX_FRAME_HEIGHT, Math.max(MIN_FRAME_HEIGHT, Math.ceil(height)));
       }
     };
     onMounted(() => window.addEventListener('message', onMessage));
@@ -132,6 +140,7 @@ const HtmlSandboxBlock = defineComponent({
 
       const body = h('div', { class: 'aix-md-html-sandbox__body' }, [
         h('iframe', {
+          ref: frameEl,
           class: 'aix-md-html-sandbox__frame',
           sandbox: 'allow-scripts',
           srcdoc: srcDoc.value,

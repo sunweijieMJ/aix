@@ -117,6 +117,16 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
     if (range.compareBoundaryPoints(Range.END_TO_END, contentRange) > 0) {
       range.setEnd(contentEl, contentEl.childNodes.length);
     }
+    // 对称钳制起点：从 header（角色名/时间戳等，文档序上位于 content 之前）按下拖到正文时，
+    // header UI 文本会被拼进 exact 头部、且回链搜索必然失配。仅当选区确实跨入内容区
+    // （终点不在内容区之前）才钳制——选区整体在 header 内时保持原选区不动（既有契约：
+    // header 内选词可原样引用，不得被钳制 collapse 或向后扩张）。
+    if (
+      range.compareBoundaryPoints(Range.START_TO_START, contentRange) < 0 &&
+      contentRange.comparePoint(range.endContainer, range.endOffset) >= 0
+    ) {
+      range.setStart(contentEl, 0);
+    }
     const text = normalizeText(range.toString());
     if (!text) {
       active.value = null;
@@ -140,6 +150,8 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
         role: bubble.dataset.aixRole as MessageRole | undefined,
       },
       exact: text,
+      // 原文另存：exact 折叠空白仅作匹配口径，复制/toPrompt 需保留换行（代码块缩进等）
+      rawText: range.toString(),
       prefix: context?.prefix || undefined,
       suffix: context?.suffix || undefined,
       start: blockEl ? offsets?.start : undefined,
@@ -208,6 +220,7 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
             role: bubble.dataset.aixRole as MessageRole | undefined,
           },
           exact: normalizeText(contentEl.textContent ?? ''),
+          rawText: contentEl.textContent ?? '',
         },
         contextElement: bubble,
       };

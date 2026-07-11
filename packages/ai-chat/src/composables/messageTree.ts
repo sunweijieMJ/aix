@@ -48,13 +48,20 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
   };
   reset();
 
+  // 所有沿 parentId/activeChild 的遍历都带访问集防环：自家 exportTree 不会产生环，
+  // 但 importTree 吃的是持久化数据（localStorage 可被篡改/损坏），成环会同步死循环挂死主线程
   /** 沿 activeChild 指针从 startId 向下走到叶子 */
   const findLeaf = (startId: string): string => {
+    const seen = new Set<string>();
     let cur = startId;
     for (;;) {
       const next = activeChild.get(cur);
-      if (next && nodes.has(next)) cur = next;
-      else return cur;
+      if (next && nodes.has(next) && !seen.has(next)) {
+        seen.add(next);
+        cur = next;
+      } else {
+        return cur;
+      }
     }
   };
 
@@ -71,8 +78,10 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
 
   const activePath = computed<ChatMessage[]>(() => {
     const path: ChatMessage[] = [];
+    const seen = new Set<string>();
     let cur = nodes.get(headId.value);
-    while (cur && cur.id !== ROOT_ID) {
+    while (cur && cur.id !== ROOT_ID && !seen.has(cur.id)) {
+      seen.add(cur.id);
       if (cur.message) path.push(cur.message);
       cur = nodes.get(cur.parentId);
     }
@@ -81,8 +90,10 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
 
   const branches = computed<Map<string, BranchMeta>>(() => {
     const map = new Map<string, BranchMeta>();
+    const seen = new Set<string>();
     let cur = nodes.get(headId.value);
-    while (cur && cur.id !== ROOT_ID) {
+    while (cur && cur.id !== ROOT_ID && !seen.has(cur.id)) {
+      seen.add(cur.id);
       const parent = nodes.get(cur.parentId);
       const sibs = parent ? parent.childIds : [];
       if (sibs.length > 1 && cur.message) {
@@ -149,8 +160,10 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
     }
     headId.value = nodes.has(data.headId) ? data.headId : ROOT_ID;
     // 还原激活路径：从 head 向上把每层 activeChild 指向路径上的子
+    const seen = new Set<string>();
     let cur = nodes.get(headId.value);
-    while (cur && cur.id !== ROOT_ID) {
+    while (cur && cur.id !== ROOT_ID && !seen.has(cur.id)) {
+      seen.add(cur.id);
       activeChild.set(cur.parentId, cur.id);
       cur = nodes.get(cur.parentId);
     }

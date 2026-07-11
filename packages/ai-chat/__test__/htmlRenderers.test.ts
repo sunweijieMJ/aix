@@ -95,10 +95,13 @@ describe('createHtmlRenderers（HTML Sandbox：iframe sandbox 渲染）', () => 
     const w = mountBlock('html_block', blockToken('<div>x</div>'), { streaming: false });
     const id = w.find('.aix-md-html-sandbox').attributes('data-sandbox-id')!;
     expect(id).toBeTruthy();
+    const frameWin = (w.find('iframe').element as HTMLIFrameElement).contentWindow;
+    expect(frameWin).toBeTruthy();
 
     window.dispatchEvent(
       new MessageEvent('message', {
         data: { type: 'aix-html-sandbox-resize', id: 'other-id', height: 999 },
+        source: frameWin,
       }),
     );
     await nextTick();
@@ -107,10 +110,46 @@ describe('createHtmlRenderers（HTML Sandbox：iframe sandbox 渲染）', () => 
     window.dispatchEvent(
       new MessageEvent('message', {
         data: { type: 'aix-html-sandbox-resize', id, height: 240 },
+        source: frameWin,
       }),
     );
     await nextTick();
     expect((w.find('iframe').element as HTMLElement).style.height).toBe('240px');
+    w.unmount();
+  });
+
+  // 回归（安全）：归属只查 type/id——id 是可预测的自增序列（双 bundle 场景还会碰撞），
+  // 同页任意第三方 iframe/窗口可伪造 resize 消息操纵沙箱高度（布局级 DoS）。
+  // 必须校验 e.source 是本实例 iframe 的 contentWindow。
+  it('source 非本 iframe contentWindow 的伪造消息被忽略', async () => {
+    const w = mountBlock('html_block', blockToken('<div>x</div>'), { streaming: false });
+    const id = w.find('.aix-md-html-sandbox').attributes('data-sandbox-id')!;
+
+    // 伪造方拿不到沙箱 contentWindow：source 为 null（跨窗口伪造的典型形态）
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'aix-html-sandbox-resize', id, height: 555 },
+      }),
+    );
+    await nextTick();
+    expect((w.find('iframe').element as HTMLElement).style.height).not.toBe('555px');
+    w.unmount();
+  });
+
+  it('超大 height 被 clamp（恶意内容自报 1e9 不得撑爆页面布局）', async () => {
+    const w = mountBlock('html_block', blockToken('<div>x</div>'), { streaming: false });
+    const id = w.find('.aix-md-html-sandbox').attributes('data-sandbox-id')!;
+    const frameWin = (w.find('iframe').element as HTMLIFrameElement).contentWindow;
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'aix-html-sandbox-resize', id, height: 1e9 },
+        source: frameWin,
+      }),
+    );
+    await nextTick();
+    const px = parseInt((w.find('iframe').element as HTMLElement).style.height, 10);
+    expect(px).toBeLessThanOrEqual(20000);
     w.unmount();
   });
 

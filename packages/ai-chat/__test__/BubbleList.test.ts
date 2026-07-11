@@ -470,3 +470,19 @@ describe('BubbleList loading（整体骨架占位）', () => {
     expect(w.text()).toContain('真实消息');
   });
 });
+
+// 回归：图片预览（Teleport 全屏 Modal）挂在块渲染器内部，宿主行被 virtua 回收时
+// Modal 连同状态一起销毁——预览打开期间该行必须与编辑态同构地进入 keepMounted
+describe('BubbleList 块级浮层保挂载（keep-mounted-change）', () => {
+  it('Bubble 上抛 keep-mounted-change(active:true) → 该行进入 keepMounted；false 后移除', async () => {
+    const w = mount(BubbleList, { props: { items } });
+    const bubble = w.findAllComponents(Bubble).find((b) => b.props('itemKey') === '2')!;
+    bubble.vm.$emit('keep-mounted-change', { messageKey: '2', active: true });
+    await nextTick();
+    const virtualizer = w.findComponent({ name: 'VirtualizerWrapper' });
+    expect(virtualizer.props('keepMounted')).toContain(1);
+    bubble.vm.$emit('keep-mounted-change', { messageKey: '2', active: false });
+    await nextTick();
+    expect(virtualizer.props('keepMounted') ?? []).not.toContain(1);
+  });
+});

@@ -64,6 +64,21 @@ describe('ImageBlock（结构化图片块）', () => {
     expect(w.find('.aix-image-block__grid').exists()).toBe(false);
   });
 
+  // 回归：预览打开期间宿主行被 virtua 回收会连同 Teleport Modal 一起销毁——
+  // ImageBlock 须上抛 keep-mounted-change，经 Bubble 转发到 BubbleList 的 keepMounted
+  it('打开预览上抛 keep-mounted-change(true)，关闭上抛 false', async () => {
+    const w = mount(ImageBlock, {
+      props: { block: imageBlock([{ url: 'https://a.com/1.png' }]), info },
+      attachTo: document.body,
+    });
+    await w.find('.aix-image-block__trigger').trigger('click');
+    expect(w.emitted('keep-mounted-change')?.[0]).toEqual([true]);
+    document.querySelector<HTMLElement>('.aix-image-preview__mask')!.click();
+    await w.vm.$nextTick();
+    expect(w.emitted('keep-mounted-change')?.[1]).toEqual([false]);
+    w.unmount();
+  });
+
   it('点击缩略图后 block 转为 loading（如复用同一 block id 重新生成）：已打开的预览自动收起', async () => {
     const block = imageBlock([
       { url: 'https://a.com/1.png', alt: '一' },

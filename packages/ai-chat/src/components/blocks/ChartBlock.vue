@@ -3,8 +3,10 @@
     <div v-if="block.title" :class="ns.e('title')">{{ block.title }}</div>
     <!-- loading：结构骨架占位（固定高度，防列表滚动跳动），复用通用 Skeleton -->
     <Skeleton v-if="loading" loading height="300px" />
-    <!-- error / 非法 spec：降级为 alt 文字（教育无障碍：alt 即文字版数据） -->
-    <div v-else-if="degraded" :class="ns.e('fallback')">{{ block.alt || t.chartError }}</div>
+    <!-- error / 非法 spec / 渲染失败（setOption 抛错、不支持的图表类型）：降级为 alt 文字 -->
+    <div v-else-if="degraded || renderFailed" :class="ns.e('fallback')">
+      {{ block.alt || t.chartError }}
+    </div>
     <!-- 就绪：活实例容器；出图前叠骨架，避免空容器观感 -->
     <div v-else ref="container" :class="ns.e('canvas')">
       <Skeleton v-if="!rendered" loading height="300px" :class="ns.is('overlay')" />
@@ -64,7 +66,14 @@ const option = computed<Record<string, unknown> | null>(() =>
   !loading.value && !degraded.value && isPlainObject(props.block.spec) ? props.block.spec : null,
 );
 
-const { rendered } = useEChartsRender({ container, option, kind, echarts: echartsSource.instance });
+// renderFailed：setOption 抛错等渲染期失败（failed 按 option 身份记忆，换新 spec 自动允许重试）。
+// 注意不能把 renderFailed 反馈进上方 option computed——option 变 null 会清失败态形成重试死循环
+const { rendered, failed: renderFailed } = useEChartsRender({
+  container,
+  option,
+  kind,
+  echarts: echartsSource.instance,
+});
 
 const ariaLabel = computed(() => props.block.alt || props.block.title || t.value.chartLabel);
 </script>

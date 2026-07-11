@@ -119,6 +119,33 @@ describe('createChartRenderers（ECharts 围栏渲染器）', () => {
     expect(core.init).not.toHaveBeenCalled();
   });
 
+  // 回归：模型输出的任意 JSON 直接喂 setOption——部分畸形结构会 throw，async effect
+  // reject 成 unhandled rejection，且 rendered 永假 → 围栏留下空白容器
+  it('setOption 抛错：降级回代码块 + --error，释放实例，不产生 unhandled rejection', async () => {
+    const { core, instance } = makeECharts();
+    instance.setOption.mockImplementation(() => {
+      throw new Error('bad option structure');
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const w = mountFence(createChartRenderers(core), OPTION, { streaming: false });
+    await flush();
+    expect(w.find('pre.aix-md-chart-source--error').exists()).toBe(true);
+    expect(w.find('.aix-md-chart').exists()).toBe(false);
+    expect(instance.dispose).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  // 回归：inferKind 对清单外 series 类型回退 'line'——加载错子模块，产出 300px 空白容器
+  it('series 类型不在支持清单（candlestick）：维持代码块 --error，不出空白容器', async () => {
+    const { core } = makeECharts();
+    const w = mountFence(createChartRenderers(core), '{"series":[{"type":"candlestick"}]}', {
+      streaming: false,
+    });
+    await flush();
+    expect(w.find('pre.aix-md-chart-source--error').exists()).toBe(true);
+    expect(w.find('.aix-md-chart').exists()).toBe(false);
+  });
+
   it('组件卸载：dispose 释放活实例', async () => {
     const { core, instance } = makeECharts();
     const w = mountFence(createChartRenderers(core), OPTION, { streaming: false });
@@ -240,5 +267,26 @@ describe('createLazyChartRenderers（ECharts 惰性加载）', () => {
     await flush();
     expect(w.find('pre.aix-md-chart-source').exists()).toBe(true);
     expect(w.find('pre.aix-md-chart-source--error').exists()).toBe(false);
+  });
+
+  // 回归：started 标记失败后不复位——stale chunk 404 一次，后续所有 chart 围栏/块
+  // 永久维持降级直到刷新页面
+  it('loader 失败后允许重试：下一个围栏挂载重新加载并成功出图', async () => {
+    const { core } = makeECharts();
+    let calls = 0;
+    const loader = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('stale chunk 404');
+      return core;
+    });
+    const renderers = createLazyChartRenderers(loader);
+    const w1 = mountFence(renderers, OPTION, { streaming: false });
+    await flush();
+    expect(w1.find('pre.aix-md-chart-source').exists()).toBe(true);
+    expect(loader).toHaveBeenCalledTimes(1);
+    const w2 = mountFence(renderers, OPTION, { streaming: false });
+    await flush();
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(w2.find('.aix-md-chart').exists()).toBe(true);
   });
 });

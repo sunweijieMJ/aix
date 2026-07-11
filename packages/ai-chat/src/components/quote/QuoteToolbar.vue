@@ -81,6 +81,16 @@ watch(floatingElRef, (el) => {
 
 // roving tabindex：←/→ 移动焦点，Esc 关闭（焦点归还由选区保全兜底）
 const focusIndex = ref(0);
+// items 变化时重置 roving 起点到首个可用项：越界（items 动态缩短）会使所有按钮
+// tabindex=-1、Tab 无法进入工具条；首项 disabled 时 tabindex=0 落在不可聚焦元素上
+watch(
+  () => props.items,
+  (items) => {
+    const first = items.findIndex((it) => !it.disabled);
+    focusIndex.value = first === -1 ? 0 : first;
+  },
+  { immediate: true },
+);
 const onKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') {
     emit('close');
@@ -89,7 +99,14 @@ const onKeydown = (e: KeyboardEvent) => {
   if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
   e.preventDefault();
   const len = props.items.length;
-  focusIndex.value = (focusIndex.value + (e.key === 'ArrowRight' ? 1 : len - 1)) % len;
+  const delta = e.key === 'ArrowRight' ? 1 : len - 1;
+  // 逐步前进并跳过 disabled 项（最多绕一圈，全 disabled 时留在原地）
+  let next = focusIndex.value;
+  for (let step = 0; step < len; step += 1) {
+    next = (next + delta) % len;
+    if (!props.items[next]?.disabled) break;
+  }
+  focusIndex.value = next;
   const btns = (e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('button');
   btns[focusIndex.value]?.focus();
 };

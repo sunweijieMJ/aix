@@ -297,11 +297,26 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       // resume 既有块进入快照（深拷贝）：appendDelta 会把同型 delta 就地并入既有末尾块、
       // applyToolEvent 会按 toolCallId 命中既有 tool_use 块累加 argsText / 落 output，这些就地改动
       // 无法被 splice(baseLen) 撤销；重试回滚时用这份快照把 [0, baseLen) 既有块整体还原到进入态。
-      // fresh 请求 baseLen=0，快照为空数组。构建放在 try 内：块内容可经 updateBlock 写入任意值，
-      // 深拷贝遇不可 JSON 序列化数据（循环引用等）抛错时走统一错误路径，finally 正常复位 isLoading。
-      const baseSnapshot: ContentBlock[] = entryMsg
-        ? entryMsg.content.slice(0, baseLen).map(cloneBlock)
-        : [];
+      // fresh 请求 baseLen=0，快照为空数组。
+      let baseSnapshot: ContentBlock[];
+      try {
+        baseSnapshot = entryMsg ? entryMsg.content.slice(0, baseLen).map(cloneBlock) : [];
+      } catch (err) {
+        // 块内容可经 updateBlock 写入任意值，深拷贝遇不可 JSON 序列化数据（循环引用等）
+        // 会抛错。外层 try 只有 finally：直接上抛会以 unhandled rejection 逃逸、onError
+        // 不触发、消息永久卡在 updating 假加载态——此处显式落统一错误终态。
+        console.error('[ai-chat] request failed:', err);
+        if (entryMsg && ownsMsg()) {
+          sealReasoning(entryMsg);
+          entryMsg.status = 'error';
+          entryMsg.extra = { ...entryMsg.extra, error: err };
+          onError?.(entryMsg, err);
+        }
+        return;
+      }
+      // 重试回滚基线含 suggestions：失败尝试的半截流可能已写入陈旧追问建议，
+      // 只回滚 content 会让它在最终 success 后照常展示
+      const baseSuggestions = entryMsg?.suggestions ? [...entryMsg.suggestions] : undefined;
       // 重试循环：仅当「非 abort 的错误」且仍有重试额度时再次发起；abort 立即停止、不重试。
       // 沿用同一个 ctrl（停止按钮仍生效），并在每次重试前清空已累积内容，避免半截内容叠加。
       for (let attempt = 0; ; attempt += 1) {
@@ -344,6 +359,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             // 非工具块 stop 事件（仅 index + argsDone）绕过 applyToolEvent 的空事件守卫，
             // 凭已不存在的 blockId 走新建分支产出空工具块。新尝试的流从头编号，按需重新登记。
             toolCtx.indexToBlockId.clear();
+            // suggestions 一并还原到进入快照：上次尝试写入的陈旧建议不得跨尝试残留
+            aiMsg.suggestions = baseSuggestions ? [...baseSuggestions] : undefined;
             aiMsg.status = fresh ? 'loading' : 'updating';
           }
           const res = await request({ messages: history, signal, resume: resumePayload });
@@ -578,6 +595,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const pid = resolveParentId(id);
     const node = tree.getMessage(pid);
     if (!node || node.role !== 'ai') return false;
+    // 目标须在激活路径上：被 reload 顶替的旧分支消息不在渲染路径，续写用户不可见，
+    // 且按激活路径截取的 history 会是空数组（findIndex 落 -1），发出去的是无上下文请求
+    if (!messages.value.some((m) => m.id === pid)) return false;
     await runRequestInto(pid, { fresh: false, resumePayload: payload });
     return true;
   };

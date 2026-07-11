@@ -221,5 +221,29 @@ describe('createDiagramRenderers（mermaid 流程图渲染器）', () => {
       expect(w.find('pre.aix-md-mermaid-source').exists()).toBe(true);
       expect(w.find('pre.aix-md-mermaid-source--error').exists()).toBe(false);
     });
+
+    // 回归：started 标记失败后不复位——发版 stale chunk 404 / 弱网抖动一次，
+    // 后续所有 mermaid 围栏永久维持代码块直到刷新页面
+    it('loader 失败后允许重试：下一个围栏挂载重新加载并成功出图', async () => {
+      const m = makeMermaid();
+      let calls = 0;
+      const loader = vi.fn(async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('stale chunk 404');
+        return m;
+      });
+      const renderers = createLazyDiagramRenderers(loader);
+      const w1 = mountFence(renderers, 'graph TD', { streaming: false });
+      await flush();
+      expect(w1.find('pre.aix-md-mermaid-source').exists()).toBe(true);
+      expect(loader).toHaveBeenCalledTimes(1);
+      // 新围栏挂载 → ensure 重试 → 成功后共享实例落定，两个围栏都升级出图
+      const w2 = mountFence(renderers, 'graph LR', { streaming: false });
+      await flush();
+      await flush();
+      expect(loader).toHaveBeenCalledTimes(2);
+      expect(w2.find('.aix-md-mermaid svg').exists()).toBe(true);
+      expect(w1.find('.aix-md-mermaid svg').exists()).toBe(true);
+    });
   });
 });

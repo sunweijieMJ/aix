@@ -41,6 +41,15 @@ describe('defaultQuoteToPrompt', () => {
       '请解释以下引用内容：\n> A\n\n> B',
     );
   });
+  // 回归：划词产生的 exact 经 normalizeText 折叠（永不含 \n），代码块/多段落引用
+  // 发给 LLM 会丢失换行与缩进——anchor.rawText 保存选区原文，拼装时优先使用
+  it('anchor 含 rawText 时优先用原文拼装（保留换行）', () => {
+    const quote: Quote = {
+      id: 'q-raw',
+      anchor: { source: { messageId: 'm1' }, exact: 'const a = 1; const b = 2;', rawText: 'const a = 1;\nconst b = 2;' },
+    };
+    expect(defaultQuoteToPrompt([quote])).toBe('> const a = 1;\n> const b = 2;');
+  });
 });
 
 describe('flattenQuoteBlocks', () => {

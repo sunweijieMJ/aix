@@ -102,4 +102,19 @@ describe('ChartBlock（结构化图表块）', () => {
     });
     expect(w.find('.aix-chart-block__title').text()).toBe('销售占比');
   });
+
+  // 回归：setOption 抛错时 rendered 永假 → Skeleton overlay 永驻假加载态
+  it('setOption 抛错：降级为 fallback 文字，不留永驻骨架', async () => {
+    const { core, instance } = makeECharts();
+    instance.setOption.mockImplementation(() => {
+      throw new Error('bad option structure');
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    __setSharedEChartsForTest(core);
+    const w = mount(ChartBlock, { props: { block: chartBlock('bar', OPTION), info } });
+    await flush();
+    expect(w.find('.aix-chart-block__fallback').exists()).toBe(true);
+    expect(w.find('.aix-skeleton').exists()).toBe(false);
+    errSpy.mockRestore();
+  });
 });

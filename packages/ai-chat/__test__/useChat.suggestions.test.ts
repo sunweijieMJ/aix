@@ -65,4 +65,42 @@ describe('useChat suggestions 通道', () => {
     const aiNode = tree.nodes.find((n) => n.message.role === 'ai');
     expect(aiNode?.message.suggestions).toEqual([{ text: '追问A' }]);
   });
+
+  // 回归：重试回滚只 splice 了 content，失败半截流写入的 suggestions 残留，
+  // 最终 success（isLoading 复位、展示抑制解除）后陈旧追问建议照常展示
+  it('重试回滚：失败尝试写入的 suggestions 不残留到最终成功结果', async () => {
+    let attempt = 0;
+    const enc = new TextEncoder();
+    const chat = useChat({
+      request: async () => {
+        attempt += 1;
+        if (attempt === 1) {
+          // 第一轮：先落 suggestions 再流错误（pull 保证增量先被消费）
+          let sent = false;
+          return new ReadableStream<Uint8Array>({
+            pull(c) {
+              if (!sent) {
+                sent = true;
+                c.enqueue(enc.encode(`data: ${JSON.stringify({ suggestions: ['陈旧追问'] })}\n\n`));
+              } else {
+                c.error(new Error('boom'));
+              }
+            },
+          });
+        }
+        return sseFrames([{ delta: '成功' }, { done: true }]);
+      },
+      parseChunk: passthroughParseChunk,
+      retryTimes: 1,
+      retryInterval: 1,
+    });
+    await chat.onSend('q');
+    // 等待重试间隔（真实 setTimeout）+ 第二轮流完成
+    await new Promise((r) => setTimeout(r, 30));
+    for (let i = 0; i < 12; i++) await nextTick();
+    const ai = chat.messages.value[1]!;
+    expect(attempt).toBe(2);
+    expect(ai.status).toBe('success');
+    expect(ai.suggestions).toBeUndefined();
+  });
 });

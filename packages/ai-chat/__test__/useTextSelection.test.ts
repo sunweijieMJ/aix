@@ -48,6 +48,62 @@ const setup = (root: HTMLElement, extra: Record<string, unknown> = {}) =>
   scope.run(() => useTextSelection({ root: ref(root), ...extra }))!;
 
 describe('useTextSelection / PC 拖选', () => {
+  // 回归：exact 经 normalizeText 折叠空白（匹配口径），代码块等含 \n 的选区
+  // 原文必须另存 rawText，否则复制/发送给 LLM 丢失换行与缩进
+  it('多行选区（代码块）：anchor.rawText 保留原文换行，exact 折叠为匹配口径', async () => {
+    document.body.innerHTML = `
+      <div id="root">
+        <div class="aix-bubble" data-aix-message-id="ai-9" data-aix-role="ai">
+          <div class="aix-bubble__content">
+            <div data-aix-block-id="b9"><pre>const a = 1;
+const b = 2;</pre></div>
+          </div>
+        </div>
+      </div>`;
+    const root = document.getElementById('root') as HTMLElement;
+    const r = setup(root);
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    const pre = document.querySelector('pre')!.firstChild!;
+    selectText(pre, 0, (pre.textContent ?? '').length);
+    vi.runAllTimers();
+    await nextTick();
+    const a = r.active.value!;
+    expect(a.anchor.rawText).toBe('const a = 1;\nconst b = 2;');
+    expect(a.anchor.exact).toBe('const a = 1; const b = 2;');
+  });
+
+  // 回归：终点越界钳制只处理了「end 越过内容区末尾」，起点在 header（文档序上位于
+  // content 之前的 UI 文本：角色名/时间戳等）时不对称——header 文本被拼进 exact 头部
+  it('起点在 header UI 文本时钳制到内容区起点，exact 不混入 header 文本', async () => {
+    document.body.innerHTML = `
+      <div id="root">
+        <div class="aix-bubble" data-aix-message-id="ai-h" data-aix-role="ai">
+          <div class="aix-bubble__header">智能助手</div>
+          <div class="aix-bubble__content">
+            <div data-aix-block-id="bh">正文内容若干字</div>
+          </div>
+        </div>
+      </div>`;
+    const root = document.getElementById('root') as HTMLElement;
+    const r = setup(root);
+    root.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    // 从 header 文本按下、拖到正文第 4 字松手
+    const headerText = document.querySelector('.aix-bubble__header')!.firstChild!;
+    const contentText = document.querySelector('[data-aix-block-id="bh"]')!.firstChild!;
+    const range = document.createRange();
+    range.setStart(headerText, 0);
+    range.setEnd(contentText, 4);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    vi.runAllTimers();
+    await nextTick();
+    const a = r.active.value!;
+    expect(a.anchor.exact).toBe('正文内容');
+    expect(a.anchor.exact).not.toContain('智能助手');
+  });
+
   it('AI 气泡内选区 → active，anchor 携带 messageId/blockId/exact/偏移/上下文', async () => {
     const root = buildDom();
     const r = setup(root);

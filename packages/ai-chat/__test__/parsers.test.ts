@@ -34,11 +34,17 @@ describe('parsers', () => {
       const r = openaiParseChunk(sse('{"choices":[{"delta":{"reasoning_content":"想一下"}}]}'));
       expect(r).toEqual({ delta: '想一下', blockType: 'reasoning' });
     });
-    it('content 与 reasoning_content 同时存在时优先 content（text）', () => {
+    // 行为变更（2026-07）：旧实现同帧只取 content、reasoning 增量被静默丢弃——
+    // DeepSeek 等主流实现分帧发送不受影响，但聚合网关会合帧。现改为返回数组两者都保留
+    //（reasoning 在前，与分帧时序一致），由 useChat 侧 toArray 展开。
+    it('content 与 reasoning_content 同帧时两者都保留（数组，reasoning 在前）', () => {
       const r = openaiParseChunk(
         sse('{"choices":[{"delta":{"content":"答","reasoning_content":"思"}}]}'),
       );
-      expect(r).toEqual({ delta: '答', blockType: 'text' });
+      expect(r).toEqual([
+        { delta: '思', blockType: 'reasoning' },
+        { delta: '答', blockType: 'text' },
+      ]);
     });
     it('结束帧（空 delta）与 [DONE]', () => {
       expect(openaiParseChunk(sse('{"choices":[{"delta":{},"finish_reason":"stop"}]}'))).toEqual({

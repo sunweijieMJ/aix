@@ -119,6 +119,21 @@ describe('useQuoteMenu / 内置动作（以「是否写 textarea」区分三条�
     expect(menu.visible.value).toBe(false);
   });
 
+  // 回归：exact 已被 normalizeText 折叠成单行，复制多行选区（代码块等）必须用原文
+  it('copy：anchor 含 rawText 时优先复制原文（保留换行）', async () => {
+    const { selection, menu } = setup();
+    selection.value = makeActive({
+      anchor: {
+        source: { messageId: 'ai-1', blockId: 'b1', role: 'ai' },
+        exact: '第一行 第二行',
+        rawText: '第一行\n第二行',
+      },
+    });
+    await nextTick();
+    menu.invoke('copy');
+    expect(di.copy).toHaveBeenCalledWith('第一行\n第二行');
+  });
+
   it('menu 态（长按整条）下动作作用于 defaultTarget', async () => {
     const { trigger, menu } = setup();
     trigger.value = makeTrigger();

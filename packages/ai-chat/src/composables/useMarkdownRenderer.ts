@@ -112,6 +112,7 @@ export function loadMarkdownEngine(
     if (!pending) {
       pending = assembleEngine(allowHtml, plugins);
       byHtml.set(allowHtml, pending);
+      evictOnFailure(byHtml, allowHtml, pending);
     }
     return pending;
   }
@@ -119,8 +120,24 @@ export function loadMarkdownEngine(
   if (!pending) {
     pending = assembleEngine(allowHtml);
     engineCache.set(allowHtml, pending);
+    evictOnFailure(engineCache, allowHtml, pending);
   }
   return pending;
+}
+
+/**
+ * 失败结果不缓存：装配落定为 null（markdown-it 加载失败）时把该 Promise 从缓存剔除，
+ * 让后续调用重新尝试——发版 stale chunk 404 / 弱网抖动一次不应让整页 markdown 永久
+ * 降级纯文本直到刷新。真正未安装的场景重试同样落 null，行为不变仅多一次尝试成本。
+ */
+function evictOnFailure(
+  cache: Map<boolean, Promise<MarkdownEngine | null>>,
+  key: boolean,
+  pending: Promise<MarkdownEngine | null>,
+): void {
+  void pending.then((engine) => {
+    if (!engine && cache.get(key) === pending) cache.delete(key);
+  });
 }
 
 /** 数学渲染器：katex 插件已启用时按需加载 katex 库（含样式自动注入），不可用则返回空 → 公式降级文本 */

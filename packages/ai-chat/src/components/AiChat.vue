@@ -774,7 +774,10 @@ if (messagesModel.value.length > 0) {
 const vnodeProps = getCurrentInstance()?.vnode.props;
 const isTreeBound = !!vnodeProps && ('onUpdate:tree' in vnodeProps || 'tree' in vnodeProps);
 watch(messages, (v) => {
-  if (v !== messagesModel.value) messagesModel.value = v;
+  // toRaw 判等与下方反向 watch 对齐：父侧深响应式仓库回灌的是同一数组的 reactive proxy，
+  // 裸 !== 对 proxy 恒真。当前 activePath 每次重算都产出新数组，此守卫两种写法结果相同，
+  // 属防御一致性——若未来出现同一数组回声路径，裸判等会退化为重复回写
+  if (toRaw(v) !== toRaw(messagesModel.value)) messagesModel.value = v;
 });
 watch(messagesModel, (v) => {
   // tree 受控时禁用 messages 反向导入（tree 通道唯一权威），仅保留 messages 输出镜像。

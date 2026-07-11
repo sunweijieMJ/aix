@@ -115,11 +115,26 @@ const close = () => {
   setOpen(false);
   emit('close');
 };
+// 边界导航后按钮变 disabled 会被浏览器抛弃焦点（落回 body）：dialog 根上的 keydown
+// （Esc/←/→/Tab）全部失效，Esc 关不掉、焦点陷阱破口——焦点丢失或落在 disabled 元素上时
+// 移回 dialog 根（tabindex=-1 可编程聚焦），键盘继续可用
+const restoreKeyboardFocus = () => {
+  void nextTick(() => {
+    const root = dialogEl.value;
+    if (!root) return;
+    const ae = document.activeElement;
+    if (!ae || ae === document.body || (ae instanceof HTMLButtonElement && ae.disabled)) {
+      root.focus();
+    }
+  });
+};
 const prev = () => {
   if (currentIndex.value > 0) setIndex(currentIndex.value - 1);
+  restoreKeyboardFocus();
 };
 const next = () => {
   if (currentIndex.value < props.images.length - 1) setIndex(currentIndex.value + 1);
+  restoreKeyboardFocus();
 };
 
 // 焦点管理：打开时把焦点移入对话框，关闭时归还给触发元素（Modal 是本包首个真正的全屏

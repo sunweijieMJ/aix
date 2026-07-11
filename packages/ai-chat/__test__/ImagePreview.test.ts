@@ -131,4 +131,21 @@ describe('ImagePreview（图片预览 Modal）', () => {
 
     w.unmount();
   });
+
+  // 回归：连点「下一张」到末张时按钮变 disabled，浏览器把焦点抛回 body——
+  // dialog 根上的 keydown（Esc/←/→/Tab）全部失效，Esc 关不掉、焦点陷阱破口
+  it('导航到边界使按钮 disabled 后，焦点移回对话框内可聚焦处，键盘不失效', async () => {
+    const w = mountPreview({ index: undefined }); // 非受控 index，点击可自增
+    const nextBtn = document.querySelector<HTMLButtonElement>('.aix-image-preview__nav-next')!;
+    nextBtn.focus();
+    nextBtn.click(); // 0 → 1
+    await nextTick();
+    nextBtn.click(); // 1 → 2（末张）→ 按钮 disabled
+    await nextTick();
+    await nextTick();
+    const ae = document.activeElement as HTMLElement;
+    expect((ae as HTMLButtonElement).disabled ?? false).toBe(false);
+    expect(document.querySelector('.aix-image-preview')!.contains(ae)).toBe(true);
+    w.unmount();
+  });
 });

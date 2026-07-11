@@ -35,10 +35,17 @@ export function getSharedECharts(load: () => Promise<EChartsLike | null>): Chart
         started = true;
         load()
           .then((echarts) => {
-            if (echarts) instance.value = echarts;
+            if (echarts) {
+              instance.value = echarts;
+            } else {
+              // 未装 / 加载失败落 null：复位 started 允许下一个图表挂载时重试——
+              // stale chunk 404 一次不应让后续所有图表永久降级（重试成本仅一次 import）
+              started = false;
+            }
           })
           .catch(() => {
-            // 未装 / 加载失败：维持 null（围栏→代码块，结构化→降级），不产生未处理 rejection
+            // 加载意外失败：维持 null（围栏→代码块，结构化→降级），不产生未处理 rejection，允许重试
+            started = false;
           });
       },
     };
@@ -101,16 +108,26 @@ function buildChartRenderers(source: ChartSource): MarkdownRenderers {
         { immediate: true },
       );
 
-      useEChartsRender({ container, option, echarts: source.instance });
+      const { failed: renderFailed } = useEChartsRender({
+        container,
+        option,
+        echarts: source.instance,
+      });
 
       return () => {
-        // option 合法且引擎就绪 → 渲染活实例容器；否则维持代码块（JSON 非法加 --error）
-        if (option.value && source.instance.value) {
+        // option 合法且引擎就绪且未渲染失败 → 渲染活实例容器；
+        // 否则维持代码块（JSON 非法 / setOption 抛错 / 不支持的图表类型加 --error）
+        if (option.value && source.instance.value && !renderFailed.value) {
           return h('div', { class: 'aix-md-chart', ref: container });
         }
         return h(
           'pre',
-          { class: ['aix-md-chart-source', failed.value && 'aix-md-chart-source--error'] },
+          {
+            class: [
+              'aix-md-chart-source',
+              (failed.value || renderFailed.value) && 'aix-md-chart-source--error',
+            ],
+          },
           h('code', props.code),
         );
       };

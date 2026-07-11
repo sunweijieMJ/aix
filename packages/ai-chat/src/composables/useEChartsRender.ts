@@ -68,11 +68,16 @@ export async function ensureChartType(core: EChartsLike, kind: EChartsChartKind)
   }
 }
 
-/** 从 option.series[0].type 推断图表类型（围栏路径无显式 kind 时用），无法识别回退 'line' */
-export function inferKind(option: Record<string, unknown>): EChartsChartKind {
+/**
+ * 从 option.series[0].type 推断图表类型（围栏路径无显式 kind 时用）。
+ * 未给 type（dataset 驱动等）回退 'line'；**明确给了清单外类型**（如 candlestick）返回 null——
+ * 此前回退 'line' 会加载错子模块，产出一块无任何反馈的空白容器，应交由调用方降级。
+ */
+export function inferKind(option: Record<string, unknown>): EChartsChartKind | null {
   const series = option.series;
   const first = Array.isArray(series) ? series[0] : series;
   const type = (first as { type?: string } | undefined)?.type;
+  if (type === undefined) return 'line';
   const known: EChartsChartKind[] = [
     'bar',
     'line',
@@ -86,7 +91,7 @@ export function inferKind(option: Record<string, unknown>): EChartsChartKind {
     'tree',
     'treemap',
   ];
-  return known.includes(type as EChartsChartKind) ? (type as EChartsChartKind) : 'line';
+  return known.includes(type as EChartsChartKind) ? (type as EChartsChartKind) : null;
 }
 
 /**
@@ -147,8 +152,16 @@ export interface UseEChartsRenderParams {
  * option/容器/引擎任一变化即重算——首次 init + 后续 setOption 复用实例；
  * ResizeObserver 跟随容器尺寸；组件卸载 dispose 释放（虚拟列表重挂载重建，靠 overscan 摊薄）。
  */
-export function useEChartsRender(params: UseEChartsRenderParams): { rendered: Ref<boolean> } {
+export function useEChartsRender(params: UseEChartsRenderParams): {
+  rendered: Ref<boolean>;
+  /** 当前 option 渲染失败（setOption 抛错 / 不支持的图表类型）：供调用方降级展示 */
+  failed: Ref<boolean>;
+} {
   const rendered = ref(false);
+  const failed = ref(false);
+  // 失败按 option 身份记忆：调用方失败后通常会隐藏容器（el 变 null 触发本 effect 重入），
+  // 若无记忆直接复位 failed 会形成「降级→复位→重试→再失败」的死循环；换新 option 才允许重试
+  let failedOption: Record<string, unknown> | null = null;
   let chart: EChartsInstance | null = null;
   let ro: ResizeObserver | null = null;
 
@@ -171,12 +184,30 @@ export function useEChartsRender(params: UseEChartsRenderParams): { rendered: Re
     const option = params.option.value;
     const echarts = params.echarts.value;
     const kind = params.kind?.value;
+    // 换了新 option：清除失败记忆允许重试
+    if (option && option !== failedOption) {
+      failedOption = null;
+      failed.value = false;
+    }
     // 无容器 / 无 option / 库未就绪 → 释放已有实例，维持降级
     if (!el || !option || !echarts) {
       teardown();
       return;
     }
-    await ensureChartType(echarts, kind ?? inferKind(option));
+    // 该 option 已判失败：维持降级不重试（防与调用方的容器隐藏互相触发死循环）
+    if (failedOption === option) {
+      teardown();
+      return;
+    }
+    const resolvedKind = kind ?? inferKind(option);
+    if (!resolvedKind) {
+      // series 类型明确不在支持清单：降级，避免加载错子模块后产出空白容器
+      failedOption = option;
+      failed.value = true;
+      teardown();
+      return;
+    }
+    await ensureChartType(echarts, resolvedKind);
     // 异步落定期间容器 / option 已变：丢弃过期结果，避免往错误实例 setOption
     if (params.container.value !== el || params.option.value !== option) return;
     if (!chart) {
@@ -201,10 +232,19 @@ export function useEChartsRender(params: UseEChartsRenderParams): { rendered: Re
         ro.observe(el);
       }
     }
-    chart.setOption(withTheme(option, el), true);
-    rendered.value = true;
+    try {
+      chart.setOption(withTheme(option, el), true);
+      rendered.value = true;
+    } catch (err) {
+      // option 是模型输出的任意 JSON：部分畸形结构（如 dataset 格式错误）setOption 会 throw，
+      // 不接住会成为 unhandled rejection 且 rendered 永假（骨架/空白容器永驻）
+      console.error('[ai-chat] ECharts setOption 失败，图表已降级:', err);
+      failedOption = option;
+      failed.value = true;
+      teardown();
+    }
   });
 
   onBeforeUnmount(teardown);
-  return { rendered };
+  return { rendered, failed };
 }

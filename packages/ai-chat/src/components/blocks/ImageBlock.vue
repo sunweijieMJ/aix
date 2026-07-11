@@ -35,6 +35,13 @@ export interface ImageBlockProps {
   /** 交互动作回调（注册表统一透传，本组件暂不消费——纯展示，无回写） */
   onBlockAction?: BlockActionHandler;
 }
+export interface ImageBlockEmits {
+  /**
+   * 预览 Modal 开合：true 时请求列表层保持宿主行挂载（keepMounted）。
+   * Teleport Modal 挂在块渲染器内部，宿主行被 virtua 回收会连同 Modal 与打开状态一起销毁
+   */
+  (e: 'keep-mounted-change', active: boolean): void;
+}
 </script>
 
 <script setup lang="ts">
@@ -50,6 +57,7 @@ import Skeleton from '../Skeleton.vue';
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps<ImageBlockProps>();
+const emit = defineEmits<ImageBlockEmits>();
 const ns = useNamespace('image-block');
 const { t } = useLocale(locale);
 
@@ -61,6 +69,8 @@ const fallbackText = computed(() => props.block.errorText || t.value.imageLoadEr
 
 const previewOpen = ref(false);
 const previewIndex = ref(0);
+// 预览开合上抛：经 Bubble 转发到 BubbleList，预览期间宿主行进 keepMounted 免被虚拟列表回收
+watch(previewOpen, (open) => emit('keep-mounted-change', open));
 // e 显式打到被点击的缩略图按钮上再打开预览：Safari 默认不给鼠标点击的 <button> 赋键盘焦点，
 // 若单纯依赖 document.activeElement，ImagePreview 关闭时的焦点归还会落到错误元素。
 const openAt = (i: number, e: MouseEvent) => {
@@ -116,8 +126,10 @@ watch(
     gap: var(--aix-marginXS);
   }
 
-  &__grid &__trigger :deep(img),
-  &__grid &__trigger :deep(.aix-md-image) {
+  // 非 scoped 样式禁用 :deep()：它是 scoped 编译期特性，此处原样输出为无效伪类，
+  // 且选择器列表任一无效会使整条规则被浏览器丢弃（网格缩略图裁切全部失效）
+  &__grid &__trigger img,
+  &__grid &__trigger .aix-md-image {
     width: 100%;
     height: 96px;
     object-fit: cover;
