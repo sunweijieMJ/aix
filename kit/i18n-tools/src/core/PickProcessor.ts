@@ -63,15 +63,23 @@ export class PickProcessor extends FileProcessor {
     const messages = LanguageFileManager.getMessages(this.config, this.isCustom);
     const sourceMessages = (messages[sourceLocale] || {}) as Record<string, string>;
 
+    // 在途译文保护（读入口）：translate 会把 LLM 译文写回 untranslated.json、由 merge 才合入
+    // locale。这里必须严格读取——损坏时中止（与 merge/translate 的 loadJsonDictOrThrow 口径
+    // 一致）：损坏文件里同样可能藏着在途译文，降级为 {} 再覆写等于销毁且无提示。
+    // 读取结果同时供下方「合法空源」安全闸与 analyzeTranslationStatus 的保留逻辑复用。
+    const existingUntranslated = FileUtils.loadJsonDictOrThrow<Translations>(
+      untranslatedPath,
+      (p) =>
+        `待翻译文件解析失败（JSON 格式错误）: ${p}\n` +
+        '👉 该文件可能含 translate 已写入、尚未 merge 的在途译文；已中止 pick 以防覆写销毁。' +
+        '请修复 JSON 格式后重试。',
+    );
+
     // 安全闸：源 locale 合法但为空（如被误清空 / 重置为 {}）时，下方分析会产出两个空字典并
     // 无条件覆写 untranslated.json / translations.json，销毁尚未 merge 的在途译文且伪报成功。
     // 上面的损坏守卫只拦 JSON 解析失败，挡不住「合法空」这一入口；此处与 PruneProcessor 的
     // usedKeys===0 安全闸对齐：源为空且已存在非空在途文件时中止，宁可报错不静默破坏。
     if (Object.keys(sourceMessages).length === 0) {
-      const existingUntranslated = FileUtils.safeLoadJsonFile<Record<string, unknown>>(
-        untranslatedPath,
-        { silent: true },
-      );
       const existingTranslated = FileUtils.safeLoadJsonFile<Record<string, unknown>>(
         translatedPath,
         {
@@ -101,6 +109,7 @@ export class PickProcessor extends FileProcessor {
       sourceMessages,
       messages as unknown as Record<string, Record<string, string>>,
       glossary,
+      existingUntranslated,
     );
     this.saveFiles(untranslatedPath, translatedPath, analysisResult);
     this.displayResults(analysisResult);
@@ -120,6 +129,7 @@ export class PickProcessor extends FileProcessor {
     sourceMessages: Record<string, string>,
     allMessages: Record<string, Record<string, string>>,
     glossary: GlossaryMap | null,
+    inFlight: Translations = {},
   ): {
     untranslatedEntries: Translations;
     translatedEntries: Translations;
@@ -127,6 +137,7 @@ export class PickProcessor extends FileProcessor {
     translatedCount: number;
     glossaryHits: number;
     glossaryOverrides: number;
+    preservedInFlight: number;
     perTargetUntranslated: Record<string, number>;
   } {
     const sourceLocale = this.config.locales.source;
@@ -136,6 +147,7 @@ export class PickProcessor extends FileProcessor {
     const translatedEntries: Translations = {};
     let glossaryHits = 0;
     let glossaryOverrides = 0;
+    let preservedInFlight = 0;
     const perTargetUntranslated: Record<string, number> = Object.fromEntries(
       targets.map((t) => [t, 0]),
     );
@@ -177,9 +189,27 @@ export class PickProcessor extends FileProcessor {
         if (finalValue !== undefined) {
           perTargetValue[target] = finalValue;
         } else {
-          perTargetValue[target] = typeof existing === 'string' ? existing : '';
-          hasUntranslated = true;
-          perTargetUntranslated[target] = (perTargetUntranslated[target] ?? 0) + 1;
+          // 在途译文保护：locale 无有效值、词表也未命中时，若旧 untranslated.json 已有
+          // translate 写入的有效译文，且源文案未变（变了说明译文已陈旧、不可复用），原样
+          // 保留——否则重跑 pick 会把 LLM 已产出、尚未 merge 的译文静默清空。
+          // 条目仍留在 untranslated.json（hasUntranslated=true）等 merge 合入；translate
+          // 对已填有效值的条目会经 isValidTranslation 跳过，不会重复翻译。
+          // 优先级：词表 > 在途译文 > 置空待翻（词表命中走不到本分支，天然高于在途）。
+          const inFlightEntry = inFlight[key];
+          const inFlightValue = inFlightEntry?.[target];
+          if (
+            inFlightEntry?.[sourceLocale] === sourceValue &&
+            typeof inFlightValue === 'string' &&
+            FileUtils.isValidTranslation(inFlightValue)
+          ) {
+            perTargetValue[target] = inFlightValue;
+            hasUntranslated = true;
+            preservedInFlight++;
+          } else {
+            perTargetValue[target] = typeof existing === 'string' ? existing : '';
+            hasUntranslated = true;
+            perTargetUntranslated[target] = (perTargetUntranslated[target] ?? 0) + 1;
+          }
         }
       }
 
@@ -202,6 +232,7 @@ export class PickProcessor extends FileProcessor {
       translatedCount: Object.keys(translatedEntries).length,
       glossaryHits,
       glossaryOverrides,
+      preservedInFlight,
       perTargetUntranslated,
     };
   }
@@ -274,6 +305,11 @@ export class PickProcessor extends FileProcessor {
       LoggerUtils.info(
         `   📚 词表命中: ${analysisResult.glossaryHits} 个` +
           ` (覆盖原值: ${analysisResult.glossaryOverrides})`,
+      );
+    }
+    if (analysisResult.preservedInFlight > 0) {
+      LoggerUtils.info(
+        `   🛡️  在途译文保留: ${analysisResult.preservedInFlight} 处（translate 已翻、待 merge，未计入待翻译数)`,
       );
     }
   }
