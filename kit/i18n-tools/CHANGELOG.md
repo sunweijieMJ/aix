@@ -1,5 +1,11 @@
 # @kit/i18n-tools
 
+## 0.0.26
+
+### Patch Changes
+
+- 处理边界问题
+
 ## 0.0.25
 
 ### Patch Changes

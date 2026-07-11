@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.12
+
+### Patch Changes
+
+- 优化修复bug
+
 ## 0.0.11
 
 ### Patch Changes
