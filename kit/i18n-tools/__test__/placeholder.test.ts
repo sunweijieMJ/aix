@@ -83,6 +83,37 @@ describe('extractPlaceholderNames — 顶层参数名（ICU 友好）', () => {
 });
 
 /**
+ * 回归（Bug 1）：extractPlaceholderNames 新增 usesDoubleBrace 参数——双花括号库
+ * （react-i18next / vue-i18next）下，孤立的单花括号 `{word}` 不是插值占位符，只是
+ * 字面量文本，不应参与占位符名集采集。此前不区分库语法，单花括号里只要是 ASCII
+ * 标识符就会被当占位符，导致「源文中文字面量花括号（空集）↔ 译文英文字面量花括号
+ * （非空集）」被判定占位符不匹配，正确的翻译被错误拦截丢弃。
+ */
+describe('extractPlaceholderNames — usesDoubleBrace 参数（双花括号库单花括号非占位符）', () => {
+  it('双花括号库：单花括号内容（含 ASCII）不进名集', () => {
+    expect(extractPlaceholderNames('Text containing {braces}', true)).toEqual(new Set());
+    expect(extractPlaceholderNames('包含{大括号}的文本', true)).toEqual(new Set());
+  });
+
+  it('双花括号库：只有 {{name}} 才是真占位符', () => {
+    expect(extractPlaceholderNames('Welcome {{userName}}, {{count}} items', true)).toEqual(
+      new Set(['userName', 'count']),
+    );
+  });
+
+  it('双花括号库：单花括号与真占位符混合，只采真占位符', () => {
+    expect(extractPlaceholderNames('共 {{count}} 项，含{说明}文本', true)).toEqual(
+      new Set(['count']),
+    );
+  });
+
+  it('单花括号库（默认 / false）：行为不变，单花括号 ASCII 内容仍算占位符', () => {
+    expect(extractPlaceholderNames('Text containing {braces}')).toEqual(new Set(['braces']));
+    expect(extractPlaceholderNames('Text containing {braces}', false)).toEqual(new Set(['braces']));
+  });
+});
+
+/**
  * 文本里的「字面量花括号」不能被运行时当成具名插值占位符。
  *  - 单花括号库（vue-i18n / react-intl，单 `{` 即插值）：字面量花括号需转义。
  *  - 双花括号库（react-i18next / vue-i18next，单 `{` 即字面量）：字面量保持单花括号，

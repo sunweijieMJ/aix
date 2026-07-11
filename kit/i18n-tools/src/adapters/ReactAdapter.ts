@@ -50,6 +50,7 @@ export class ReactAdapter extends FrameworkAdapter {
       // 用 library.packageName 而非入参 libraryType，避免后续新增 library
       // 时 packageName 与枚举值不一致导致 FrameworkConfig.i18nLibrary 错位
       i18nLibrary: library.packageName,
+      usesDoubleBracePlaceholders: library.usesDoubleBracePlaceholders,
     };
     super(config);
 

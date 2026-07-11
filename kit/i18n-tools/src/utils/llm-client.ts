@@ -21,6 +21,13 @@ export class LLMClient {
   private openai: OpenAI;
   private task: ResolvedLLMTaskConfig;
   private locales: ResolvedConfig['locales'];
+  /**
+   * 当前 i18n 库的插值占位符语法是否为双花括号 `{{name}}`（react-i18next /
+   * vue-i18next）。用于翻译 prompt 精确描述占位符规则，避免把源文里恰好出现
+   * 的单花括号字面量文本误当占位符保护，导致其内容（可能是中文）漏翻译。
+   * 仅翻译任务需要（ID 生成 prompt 不涉及占位符规则），默认 false 保持旧行为。
+   */
+  private usesDoubleBracePlaceholders: boolean;
 
   /**
    * 外层任务并发控制器：用于 generateSemanticIdsForFiles / batchTranslate
@@ -43,9 +50,14 @@ export class LLMClient {
   /** 上一次实际派发请求的时间戳，用于实现 throttleMs 限流 */
   private lastCallTimestamp: number = 0;
 
-  constructor(task: ResolvedLLMTaskConfig, locales: ResolvedConfig['locales']) {
+  constructor(
+    task: ResolvedLLMTaskConfig,
+    locales: ResolvedConfig['locales'],
+    usesDoubleBracePlaceholders: boolean = false,
+  ) {
     this.task = task;
     this.locales = locales;
+    this.usesDoubleBracePlaceholders = usesDoubleBracePlaceholders;
 
     this.openai = new OpenAI({
       apiKey: task.apiKey,
@@ -295,7 +307,12 @@ export class LLMClient {
     targetLocale: string,
   ): Promise<{ cleaned: string; parsed: Translations }> {
     const rawContent = await this.chatCompletion(
-      getTranslationSystemPrompt(this.locales, this.task, targetLocale),
+      getTranslationSystemPrompt(
+        this.locales,
+        this.task,
+        targetLocale,
+        this.usesDoubleBracePlaceholders,
+      ),
       getTranslationUserPrompt(jsonText, this.locales, this.task, targetLocale),
     );
 

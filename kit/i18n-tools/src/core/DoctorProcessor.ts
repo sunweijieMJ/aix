@@ -386,12 +386,13 @@ export class DoctorProcessor extends BaseProcessor {
     target: string,
   ): DoctorFinding[] {
     const findings: DoctorFinding[] = [];
+    const usesDoubleBrace = this.adapter.getUsesDoubleBracePlaceholders();
     for (const [key, sourceValue] of Object.entries(sourceMap)) {
       const targetValue = targetMap[key];
       if (targetValue === undefined) continue; // 缺译归 missing，不重复
       if (typeof sourceValue !== 'string' || typeof targetValue !== 'string') continue;
-      const src = extractPlaceholderNames(sourceValue);
-      const tgt = extractPlaceholderNames(targetValue);
+      const src = extractPlaceholderNames(sourceValue, usesDoubleBrace);
+      const tgt = extractPlaceholderNames(targetValue, usesDoubleBrace);
       const missing = [...src].filter((n) => !tgt.has(n));
       const extra = [...tgt].filter((n) => !src.has(n));
       if (missing.length > 0) {

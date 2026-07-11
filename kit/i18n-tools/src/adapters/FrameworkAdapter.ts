@@ -17,6 +17,13 @@ export interface FrameworkConfig {
   displayName?: string;
   /** i18n 库名称 */
   i18nLibrary: string;
+  /**
+   * 该 i18n 库的插值占位符语法是否为双花括号 `{{name}}`（否则为单花括号 `{name}`）。
+   * 与具体 library 实现的 `usesDoubleBracePlaceholders` 保持一致，由各 Adapter
+   * 在构造时透传。供 Doctor 的占位符校验、Translate 的 LLM prompt 使用，
+   * 使其无需实例化具体 library 也能拿到该库的占位符语法约定。
+   */
+  usesDoubleBracePlaceholders: boolean;
 }
 
 /**
@@ -130,6 +137,19 @@ export abstract class FrameworkAdapter {
    */
   getLibraryName(): string {
     return this.config.i18nLibrary;
+  }
+
+  /**
+   * 当前 i18n 库的插值占位符语法是否为双花括号 `{{name}}`。
+   * CLI / Doctor / Translate 层使用，避免硬编码 library 名称到语法约定的映射。
+   *
+   * 命名带 get 前缀（而非与 FrameworkConfig.usesDoubleBracePlaceholders 同名）：
+   * 避免方法名与同一个类里 `this.config.usesDoubleBracePlaceholders` 字段撞名——
+   * 撞名时若未来有调用方误写成属性访问（漏掉调用括号），拿到的是函数引用，
+   * 在布尔上下文里恒为真值，TS 不会报错，会静默走错分支。
+   */
+  getUsesDoubleBracePlaceholders(): boolean {
+    return this.config.usesDoubleBracePlaceholders;
   }
 
   /**

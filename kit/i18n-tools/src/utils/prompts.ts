@@ -114,11 +114,23 @@ export function getIdGenerationUserPrompt(
 
 /**
  * 翻译 System Prompt（单目标语种）
+ *
+ * @param usesDoubleBracePlaceholders - 当前 i18n 库的插值语法是否为双花括号
+ *   `{{name}}`（react-i18next / vue-i18next）；否则为单花括号 `{name}`
+ *   （vue-i18n / react-intl ICU）。与 `extractPlaceholderNames` 的同名参数
+ *   同源（均取自 library.usesDoubleBracePlaceholders），两处必须保持一致：
+ *   prompt 告诉模型"什么是占位符、什么可以正常翻译"，validator 用同一套
+ *   标准校验译文，标准不一致会导致 validator 拒绝模型认为正确的输出，
+ *   或放行模型未受保护、错误处理的文本（后者正是本参数要修复的问题——
+ *   双花括号库下，模型此前把源文里恰好出现的单花括号内容当占位符原样保留，
+ *   validator 用同一套 ASCII 标识符规则也判断不出，中文/非标识符内容就
+ *   混进了目标语言的 locale 文件）。
  */
 export function getTranslationSystemPrompt(
   locales: ResolvedConfig['locales'],
   task: ResolvedLLMTaskConfig,
   targetLocale: string,
+  usesDoubleBracePlaceholders: boolean = false,
 ): string {
   if (task.prompt.system) {
     return task.prompt.system;
@@ -128,23 +140,35 @@ export function getTranslationSystemPrompt(
   const sourceName = getLocaleName(sourceCode, locales);
   const targetName = getLocaleName(targetLocale, locales);
 
-  return `You are a professional translator. Translate the ${sourceName} values (${sourceCode}) in the given JSON to ${targetName} (${targetLocale}).
-
-Rules:
-1. Keep the JSON structure exactly the same
-2. Only translate ${sourceCode} values to ${targetLocale}, do not modify keys or ${sourceCode} values
-3. If ${targetLocale} already has a value, keep it unchanged
-4. Translations should be natural and professional
-5. CRITICAL — NEVER translate interpolation placeholders. The text inside curly braces \`{...}\` is a variable identifier that must be preserved EXACTLY:
+  const placeholderRules = usesDoubleBracePlaceholders
+    ? `5. CRITICAL — interpolation placeholders use DOUBLE curly braces \`{{name}}\`. The text inside \`{{...}}\` is a variable identifier that must be preserved EXACTLY:
+   - Do NOT translate the words inside \`{{}}\` (e.g., \`{{userName}}\` must NOT become \`{{user name}}\` or \`{{用户名}}\`)
+   - Do NOT change case (\`{{count}}\` must NOT become \`{{Count}}\`)
+   - Do NOT add/remove spaces or punctuation inside \`{{}}\`
+   - Do NOT split or merge placeholders
+   - The set of \`{{...}}\` placeholders in your output MUST be identical to the input (same names, same count)
+   - A SINGLE curly brace like \`{word}\` (not doubled) is ordinary literal text, NOT a placeholder — translate everything inside it normally, just like the surrounding text`
+    : `5. CRITICAL — NEVER translate interpolation placeholders. The text inside curly braces \`{...}\` is a variable identifier that must be preserved EXACTLY:
    - Do NOT translate the words inside \`{}\` (e.g., \`{userName}\` must NOT become \`{user name}\` or \`{用户名}\`)
    - Do NOT change case (\`{count}\` must NOT become \`{Count}\`)
    - Do NOT add/remove spaces or punctuation inside \`{}\`
    - Do NOT split or merge placeholders
-   - The set of placeholders in your output MUST be identical to the input (same names, same count)
-6. NEVER translate HTML tags like <strong>, <br/>, <span> — keep them as-is
-7. Return valid JSON only, no markdown code fences
+   - The set of placeholders in your output MUST be identical to the input (same names, same count)`;
 
-Example (correct):
+  const examples = usesDoubleBracePlaceholders
+    ? `Example (correct — double-brace placeholder preserved):
+Input: {"loginWelcome": {"${sourceCode}": "欢迎 {{userName}}，您有 {{count}} 条消息", "${targetLocale}": ""}}
+Output: {"loginWelcome": {"${sourceCode}": "欢迎 {{userName}}，您有 {{count}} 条消息", "${targetLocale}": "Welcome {{userName}}, you have {{count}} messages"}}
+
+Example (correct — single brace is ordinary text, translate it normally):
+Input: {"specialText": {"${sourceCode}": "包含{大括号}的文本", "${targetLocale}": ""}}
+Output: {"specialText": {"${sourceCode}": "包含{大括号}的文本", "${targetLocale}": "Text containing braces"}}
+
+Example (WRONG — double-brace placeholder translated, do not do this):
+Input  placeholder: \`{{内部错误网络异常}}\`
+WRONG output:       \`{{internal error network exception}}\`   ← runtime cannot match this key
+RIGHT output:       \`{{内部错误网络异常}}\`                    ← keep identifier verbatim`
+    : `Example (correct):
 Input: {"loginWelcome": {"${sourceCode}": "欢迎 {userName}，您有 {count} 条消息", "${targetLocale}": ""}}
 Output: {"loginWelcome": {"${sourceCode}": "欢迎 {userName}，您有 {count} 条消息", "${targetLocale}": "Welcome {userName}, you have {count} messages"}}
 
@@ -152,6 +176,19 @@ Example (WRONG — placeholder translated, do not do this):
 Input  placeholder: \`{内部错误网络异常}\`
 WRONG output:       \`{internal error network exception}\`   ← runtime cannot match this key
 RIGHT output:       \`{内部错误网络异常}\`                    ← keep identifier verbatim`;
+
+  return `You are a professional translator. Translate the ${sourceName} values (${sourceCode}) in the given JSON to ${targetName} (${targetLocale}).
+
+Rules:
+1. Keep the JSON structure exactly the same
+2. Only translate ${sourceCode} values to ${targetLocale}, do not modify keys or ${sourceCode} values
+3. If ${targetLocale} already has a value, keep it unchanged
+4. Translations should be natural and professional
+${placeholderRules}
+6. NEVER translate HTML tags like <strong>, <br/>, <span> — keep them as-is
+7. Return valid JSON only, no markdown code fences
+
+${examples}`;
 }
 
 /**

@@ -7,6 +7,7 @@ import { LoggerUtils } from '../utils/logger';
 import { extractPlaceholderNames } from '../utils/placeholder-utils';
 import type { Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
+import { resolveUsesDoubleBracePlaceholders } from '../adapters';
 
 /**
  * 翻译处理器
@@ -19,11 +20,18 @@ import { FileProcessor } from './FileProcessor';
 export class TranslateProcessor extends FileProcessor {
   private llmClient: LLMClient;
   private batchConfig: { size: number; delay: number };
+  /** 当前 i18n 库插值语法是否为双花括号，占位符校验与 LLM prompt 共用同一份判定 */
+  private usesDoubleBracePlaceholders: boolean;
 
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     super(config, isCustom);
+    this.usesDoubleBracePlaceholders = resolveUsesDoubleBracePlaceholders(config.framework);
     // LLM 任务级配置（concurrency/batchSize/throttleMs/prompt）已内化在 task
-    this.llmClient = new LLMClient(config.llm.translation, config.locales);
+    this.llmClient = new LLMClient(
+      config.llm.translation,
+      config.locales,
+      this.usesDoubleBracePlaceholders,
+    );
     this.batchConfig = {
       size: config.llm.translation.batchSize,
       delay: config.llm.translation.throttleMs,
@@ -321,8 +329,8 @@ export class TranslateProcessor extends FileProcessor {
         // 朴素正则 /\{([^{}]+)\}/ 无法处理 ICU `{count, plural, one {# item} ...}`，
         // 会误采子消息字面量（# item / # items），译文子消息随语言改变即被判失配、
         // 导致所有 plural/select 文案被永久丢弃、无法翻译。
-        const expected = extractPlaceholderNames(sourceText);
-        const actual = extractPlaceholderNames(newValue);
+        const expected = extractPlaceholderNames(sourceText, this.usesDoubleBracePlaceholders);
+        const actual = extractPlaceholderNames(newValue, this.usesDoubleBracePlaceholders);
         if (!TranslateProcessor.placeholdersMatch(expected, actual)) {
           placeholderMismatches++;
           LoggerUtils.warn(

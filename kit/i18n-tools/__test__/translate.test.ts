@@ -309,6 +309,104 @@ describe('TranslateProcessor — ICU 占位符校验（#6）', () => {
 });
 
 /**
+ * 回归（Bug 1）：双花括号库（react-i18next）下，源文里恰好出现的字面量单花括号
+ * （非插值，如「包含{大括号}的文本」）此前被 extractPlaceholderNames 按无库区分的
+ * 通用规则处理——源文侧因中文不匹配 ASCII 标识符正则而判定为空占位符集，一旦译文
+ * 侧把字面量花括号里的内容译成英文（ASCII 能匹配上）就被判定「占位符不匹配」丢弃，
+ * 导致这类文案永远翻译不出来、只能反复重试。
+ *
+ * 根因是 prompt（见 getTranslationSystemPrompt）与校验器（extractPlaceholderNames）
+ * 对「单花括号在双花括号库下到底算不算占位符」认知不一致。修复后二者统一：双花括号库下
+ * 单花括号一律视为字面量文本，只有 `{{name}}` 才是真占位符。
+ */
+describe('TranslateProcessor — 双花括号库下单花括号字面量文本不应被当占位符（Bug 1）', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'translate-brace-literal-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'react', library: 'react-i18next' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  const writeUntranslated = (entries: Translations): void => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(path.join(localeDir, 'untranslated.json'), JSON.stringify(entries, null, 2));
+  };
+  const readUntranslated = (): Translations =>
+    JSON.parse(fs.readFileSync(path.join(tmpDir, 'locale', 'untranslated.json'), 'utf-8'));
+
+  it('单花括号字面量文本正常翻译（含翻译后的英文单词）不再被误判占位符丢弃', async () => {
+    const source = '包含{大括号}的文本';
+    const translated = 'Text containing {braces}';
+    writeUntranslated({ 'a.b': { 'zh-CN': source, 'en-US': '' } });
+
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b) => {
+          const out: Translations = {};
+          for (const k of Object.keys(b)) out[k] = { 'en-US': translated };
+          return out;
+        }),
+    );
+
+    await expect(new TranslateProcessor(makeConfig(), false).execute()).resolves.toBeUndefined();
+    expect(readUntranslated()['a.b']!['en-US']).toBe(translated);
+  });
+
+  it('回归保护：真双花括号占位符 {{name}} 丢失仍应被正确拦截丢弃', async () => {
+    const source = '欢迎 {{name}}';
+    const wrong = 'Welcome'; // 丢了 {{name}}
+    writeUntranslated({ 'a.b': { 'zh-CN': source, 'en-US': '' } });
+
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b) => {
+          const out: Translations = {};
+          for (const k of Object.keys(b)) out[k] = { 'en-US': wrong };
+          return out;
+        }),
+    );
+
+    await expect(new TranslateProcessor(makeConfig(), false).execute()).rejects.toThrow();
+    expect(readUntranslated()['a.b']!['en-US']).toBe('');
+  });
+
+  it('回归保护：真双花括号占位符 {{name}} 正确保留仍应通过校验', async () => {
+    const source = '欢迎 {{name}}，共 {{count}} 条';
+    const translated = 'Welcome {{name}}, {{count}} items total';
+    writeUntranslated({ 'a.b': { 'zh-CN': source, 'en-US': '' } });
+
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b) => {
+          const out: Translations = {};
+          for (const k of Object.keys(b)) out[k] = { 'en-US': translated };
+          return out;
+        }),
+    );
+
+    await expect(new TranslateProcessor(makeConfig(), false).execute()).resolves.toBeUndefined();
+    expect(readUntranslated()['a.b']!['en-US']).toBe(translated);
+  });
+});
+
+/**
  * 回归：translate 原用 `item[target]?.trim()` 判定是否已译，与 pick/merge 的 isValidTranslation
  * 口径不一致。当目标值是「非空但无效」（纯标点/符号，如 '——'）时，trim() 为真 → translate 误当
  * 已译跳过，该条目永远不会被翻译。修复：translate 侧统一改用 isValidTranslation。
