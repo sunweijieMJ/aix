@@ -206,20 +206,24 @@ export class VueTransformer implements ITransformer {
       return b.column - a.column;
     });
 
-    let transformedTemplate = templateContent;
+    // 只拆一次行数组、循环内由 replaceInLines 原地修改、结束后 join 一次：
+    // 此前每个字符串都对整段 template split('\n') + join('\n')，O(条目数 × 模板长度)，
+    // 大 SFC 多文案时是可观的重复拷贝。倒序处理保证后续条目的 (line, column) 不受
+    // 已完成替换影响（多行兜底分支改变行数时也只影响其后的行）。
+    const lines = templateContent.split('\n');
 
     for (const extracted of sortedStrings) {
       const replacement = this.generateTemplateReplacement(extracted);
       const localLine = extracted.line - lineOffset - 1;
-      // @vue/compiler-dom 给的 column 是 1-based，replaceInTemplate 内部所有
+      // @vue/compiler-dom 给的 column 是 1-based，replaceInLines 内部所有
       // indexOf / 范围比较都按 0-based 处理，必须减 1。否则文本节点位于行末时，
       // indexOf 会从下一字符起找不到原文，落入"全行重新搜索"的兜底分支，把同行
       // 前面（如 v-tooltip 字符串字面量内部）出现的相同子串误替换。
       const localColumn = extracted.column - 1;
 
       // 在 template 内容中查找并替换
-      transformedTemplate = this.replaceInTemplate(
-        transformedTemplate,
+      this.replaceInLines(
+        lines,
         extracted.original,
         replacement,
         localLine,
@@ -229,7 +233,7 @@ export class VueTransformer implements ITransformer {
     }
 
     // 返回转换后的 template 内容
-    return transformedTemplate;
+    return lines.join('\n');
   }
 
   /**
@@ -254,7 +258,8 @@ export class VueTransformer implements ITransformer {
   }
 
   /**
-   * 在 template 中替换字符串
+   * 在 template 中替换字符串（string → string 的薄包装，供单条替换场景/既有测试使用；
+   * 批量替换请直接用 replaceInLines 摊销 split/join 成本）
    * @param templateContent - template 内容
    * @param original - 原始字符串
    * @param replacement - 替换字符串
@@ -271,9 +276,33 @@ export class VueTransformer implements ITransformer {
     templateContext?: ExtractedString['templateContext'],
   ): string {
     const lines = templateContent.split('\n');
+    this.replaceInLines(lines, original, replacement, line, column, templateContext);
+    return lines.join('\n');
+  }
 
+  /** 以 next 的内容整体覆写 lines（原地），供多行兜底分支在整段替换后回写行数组。 */
+  private static overwriteLines(lines: string[], next: string): void {
+    const nextLines = next.split('\n');
+    lines.length = nextLines.length;
+    for (let i = 0; i < nextLines.length; i++) lines[i] = nextLines[i]!;
+  }
+
+  /**
+   * 在 template 行数组中原地查找并替换单个字符串。
+   * 匹配逻辑与原 replaceInTemplate 完全一致，仅把「每次 split/join 整段模板」改为
+   * 调用方持有行数组、本方法原地修改；两个多行兜底分支（跨行静态属性 / 跨行文本节点）
+   * 需要整段内容做正则或偏移定位时，才临时 join 一次（罕见路径，成本可接受）。
+   */
+  private replaceInLines(
+    lines: string[],
+    original: string,
+    replacement: string,
+    line: number,
+    column: number,
+    templateContext?: ExtractedString['templateContext'],
+  ): void {
     if (line < 0 || line >= lines.length) {
-      return templateContent;
+      return;
     }
 
     const targetLine = lines[line]!;
@@ -302,7 +331,7 @@ export class VueTransformer implements ITransformer {
           targetLine.substring(0, start) +
           replacement +
           targetLine.substring(start + chosen[0].length);
-        return lines.join('\n');
+        return;
       }
 
       // 静态属性未在目标行命中：**绝不** fall through 到下方的引号/裸文本搜索——
@@ -319,7 +348,7 @@ export class VueTransformer implements ITransformer {
           );
           if (result !== null) {
             lines[tryIdx] = result;
-            return lines.join('\n');
+            return;
           }
         }
       }
@@ -335,6 +364,8 @@ export class VueTransformer implements ITransformer {
       for (let i = 0; i < line; i++) {
         targetOffset += lines[i]!.length + 1; // +1：补回 split 去掉的换行符
       }
+      // 罕见路径才需要整段内容：此处临时 join 一次做跨行正则定位
+      const templateContent = lines.join('\n');
       const multilinePattern = this.buildStaticAttrPattern(original, 'g');
       let mlMatch: RegExpExecArray | null;
       let mlChosen: RegExpExecArray | null = null;
@@ -349,13 +380,14 @@ export class VueTransformer implements ITransformer {
       }
       if (mlChosen) {
         const start = mlChosen.index;
-        return (
+        VueTransformer.overwriteLines(
+          lines,
           templateContent.slice(0, start) +
-          replacement +
-          templateContent.slice(start + mlChosen[0].length)
+            replacement +
+            templateContent.slice(start + mlChosen[0].length),
         );
       }
-      return lines.join('\n');
+      return;
     }
 
     // 多行文本节点：condense 解析下，跨行文本的 loc.source（即 original）含 `\n`，
@@ -367,20 +399,27 @@ export class VueTransformer implements ITransformer {
       for (let i = 0; i < line; i++) {
         offset += lines[i]!.length + 1; // +1：补回 split 去掉的换行符
       }
+      // 罕见路径才需要整段内容：此处临时 join 一次做绝对偏移定位
+      const templateContent = lines.join('\n');
       if (templateContent.startsWith(original, offset)) {
-        return (
+        VueTransformer.overwriteLines(
+          lines,
           templateContent.slice(0, offset) +
-          replacement +
-          templateContent.slice(offset + original.length)
+            replacement +
+            templateContent.slice(offset + original.length),
         );
+        return;
       }
       const idx = templateContent.indexOf(original);
       if (idx !== -1) {
-        return (
-          templateContent.slice(0, idx) + replacement + templateContent.slice(idx + original.length)
+        VueTransformer.overwriteLines(
+          lines,
+          templateContent.slice(0, idx) +
+            replacement +
+            templateContent.slice(idx + original.length),
         );
       }
-      return templateContent;
+      return;
     }
 
     // 检查 original 是否已经带引号（模板字符串、字符串字面量）
@@ -402,7 +441,7 @@ export class VueTransformer implements ITransformer {
           targetLine.substring(0, index) +
           replacement +
           targetLine.substring(index + original.length);
-        return lines.join('\n');
+        return;
       }
     } else {
       // 引号包裹搜索仅对「源码里本就带引号的字符串字面量」上下文有意义：
@@ -426,7 +465,7 @@ export class VueTransformer implements ITransformer {
             targetLine.substring(0, index) +
             replacement +
             targetLine.substring(index + singleQuotePattern.length);
-          return lines.join('\n');
+          return;
         }
 
         // 查找双引号版本
@@ -437,7 +476,7 @@ export class VueTransformer implements ITransformer {
             targetLine.substring(0, index) +
             replacement +
             targetLine.substring(index + doubleQuotePattern.length);
-          return lines.join('\n');
+          return;
         }
 
         // 查找反引号版本（处理无变量模板字符串场景）
@@ -448,7 +487,7 @@ export class VueTransformer implements ITransformer {
             targetLine.substring(0, index) +
             replacement +
             targetLine.substring(index + backtickPattern.length);
-          return lines.join('\n');
+          return;
         }
       }
 
@@ -463,7 +502,7 @@ export class VueTransformer implements ITransformer {
           targetLine.substring(0, index) +
           replacement +
           targetLine.substring(index + original.length);
-        return lines.join('\n');
+        return;
       }
     }
 
@@ -479,12 +518,10 @@ export class VueTransformer implements ITransformer {
         );
         if (result !== null) {
           lines[tryIdx] = result;
-          return lines.join('\n');
+          return;
         }
       }
     }
-
-    return lines.join('\n');
   }
 
   /**
