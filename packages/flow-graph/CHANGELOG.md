@@ -1,5 +1,11 @@
 # @aix/flow-graph
 
+## 0.0.42
+
+### Patch Changes
+
+- fc42b26: 新增导出 findFreeNodePosition：抽取 createNode 的网格对齐与避重叠算法为独立纯函数，供业务方补齐缺失坐标节点时复用
+
 ## 0.0.41
 
 ### Patch Changes
