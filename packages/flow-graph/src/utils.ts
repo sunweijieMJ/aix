@@ -46,6 +46,48 @@ export function getNodeHalf(
 }
 
 /**
+ * 在栅格上为新节点寻找一个不与 `existingNodes` 重叠的位置：以 `seed`（默认原点）为中心，
+ * 按黄金角螺旋在栅格点上逐圈搜索，直到候选中心与所有已有节点中心的距离都不小于两者半径之和。
+ * 返回值是节点左上角坐标（= 栅格对齐后的中心 - 半径），与 `FlowNode.position` 语义一致，可直接赋值。
+ *
+ * 与 `FlowGraph.createNode`（双击空白 / 工具栏新建按钮）共用同一份算法，业务方在补齐后端缺失坐标
+ * （如列表页新增节点时未落库坐标）时也应调用本函数，而不是自行拍一个坐标——否则会绕开网格对齐与
+ * 避重叠，重新引入"新节点偏离十字交叉点 / 与已有节点重叠"的问题。
+ */
+export function findFreeNodePosition(
+  existingNodes: FlowNode[],
+  options: {
+    /** 栅格尺寸（px），需与画布 `gridSize` 保持一致 */
+    gridSize: number;
+    /** 新节点的圆形尺寸（px），用于换算半径 */
+    nodeSize: number;
+    /** 已有六边形节点的尺寸（px），用于按真实半径判重叠；不传时退化为 `nodeSize` */
+    hexagonSize?: number;
+    /** 期望的中心点（画布坐标系），默认原点 */
+    seed?: { x: number; y: number };
+  },
+): { x: number; y: number } {
+  const { gridSize: step, nodeSize, hexagonSize = nodeSize, seed = { x: 0, y: 0 } } = options;
+  const half = nodeSize / 2;
+  const baseX = Math.round(seed.x / step) * step - half;
+  const baseY = Math.round(seed.y / step) * step - half;
+
+  let px = baseX;
+  let py = baseY;
+  const overlapsExisting = (cx: number, cy: number) =>
+    existingNodes.some((n) => {
+      const nHalf = getNodeHalf(n, nodeSize, hexagonSize);
+      return Math.hypot(cx - (n.position.x + nHalf), cy - (n.position.y + nHalf)) < half + nHalf;
+    });
+  for (let r = 0; overlapsExisting(px + half, py + half); r++) {
+    const angle = r * 2.4;
+    px = Math.round((baseX + half + (r + 1) * step * Math.cos(angle)) / step) * step - half;
+    py = Math.round((baseY + half + (r + 1) * step * Math.sin(angle)) / step) * step - half;
+  }
+  return { x: px, y: py };
+}
+
+/**
  * 生成唯一节点 id。优先使用 `crypto.randomUUID`，不可用时降级到 `Date.now + 随机`。
  * @param prefix - id 前缀，默认 `node`
  */

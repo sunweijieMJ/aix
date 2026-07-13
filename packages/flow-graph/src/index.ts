@@ -21,7 +21,7 @@ export {
 } from './composables/useNodeInteraction';
 
 // 工具函数
-export { calcOrthogonalWaypoints, createNodeId, setNodeType } from './utils';
+export { calcOrthogonalWaypoints, createNodeId, findFreeNodePosition, setNodeType } from './utils';
 
 // 常量
 export { DEFAULT_CIRCLE_SIZE, DEFAULT_HEXAGON_SIZE } from './types';

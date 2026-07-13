@@ -115,7 +115,7 @@ import {
   type FlowGraphProps,
   type FlowNode,
 } from './types';
-import { createNodeId, getNodeHalf } from './utils';
+import { createNodeId, findFreeNodePosition, getNodeHalf } from './utils';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
 
@@ -308,26 +308,18 @@ const mergedEdgeTypes = computed(() => ({ ...builtInEdgeTypes, ...(props.edgeTyp
 function createNode(x: number, y: number): FlowNode {
   const half = nodeSize.value / 2;
   const snap = snapEnabled.value;
-  const step = gridSize.value;
-  const baseX = snap ? Math.round(x / step) * step - half : x - half;
-  const baseY = snap ? Math.round(y / step) * step - half : y - half;
 
-  let px = baseX;
-  let py = baseY;
+  // 栅格对齐 + 避重叠算法收口在 findFreeNodePosition（utils.ts），与业务方补齐缺失坐标时
+  // 复用同一份实现，避免出现"新节点默认坐标不在网格交叉点上 / 与已有节点重叠"的不一致
+  let px = x - half;
+  let py = y - half;
   if (snap) {
-    // 按各节点真实半径（六边形与圆形尺寸不同）比较中心点距离，不能只比较左上角坐标是否
-    // 完全相等——不同类型节点左上角坐标不同时，中心点仍可能重叠（见 setNodeType 切换类型时
-    // 对 position 的居中修正，会让 position 基准整体平移，脱离本函数假定的圆形网格对齐）
-    const overlapsExisting = (cx: number, cy: number) =>
-      modelNodes.value.some((n) => {
-        const nHalf = getNodeHalf(n, nodeSize.value, hexagonSize.value);
-        return Math.hypot(cx - (n.position.x + nHalf), cy - (n.position.y + nHalf)) < half + nHalf;
-      });
-    for (let r = 0; overlapsExisting(px + half, py + half); r++) {
-      const angle = r * 2.4;
-      px = Math.round((baseX + half + (r + 1) * step * Math.cos(angle)) / step) * step - half;
-      py = Math.round((baseY + half + (r + 1) * step * Math.sin(angle)) / step) * step - half;
-    }
+    ({ x: px, y: py } = findFreeNodePosition(modelNodes.value, {
+      gridSize: gridSize.value,
+      nodeSize: nodeSize.value,
+      hexagonSize: hexagonSize.value,
+      seed: { x, y },
+    }));
   }
 
   // data 不预置 size：size 是「业务显式自定义尺寸」的覆盖字段，留空才能让 setNodeType/
