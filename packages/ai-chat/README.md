@@ -78,7 +78,7 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 
 | 组件 | 说明 | 关键 props |
 |------|------|-----------|
-| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `suggestions?`（追问建议，见「追问建议」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
+| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
 | `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `blockRenderers?` / `toolRenderers?`；slot `content` |
 | `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `contentRender` / `blockRenderers?` / `toolRenderers?`；slot `avatar`/`header`/`content`/`footer` |
 | `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）/ `triggers?`（@提及/斜杠命令触发菜单）；emit `submit`（第三参 `meta?: SubmitMeta` 携带 mention 实体，见「触发菜单」）/`cancel`/`update:modelValue`；expose `focus`/`clear`/`setValue`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
@@ -360,6 +360,22 @@ const onSend = (text: string, attachments?: AttachmentItem[], meta?: SubmitMeta)
 - 用户可以把光标插入 token 中间手动编辑，破坏 token 完整性——配额校验按「完整出现次数」计数，被破坏的 token 自然不再计入 `meta.mentions`。
 - 光标在完整 token 末尾按 Backspace 会整体删除该 token（含尾随空格），缓解逐字删除产生半截 token 的体验问题。
 - 如需真正的富文本 @ 提及（不可拆分拖拽的 token、高亮着色等），需业务自行实现富文本编辑器替换 `Sender`，本包当前不提供该形态（见「能力范围」）。
+
+## 划词引用（Quote）
+
+`AiChat` 的 `quote` prop 是 opt-in 能力，默认关闭；未开启时不注册选区、长按或上下文菜单监听，也不会向 AI 消息操作条注入“引用”按钮。
+
+传 `true` 启用默认能力：PC 划词或移动端长按会显示“解释 / 追问 / 翻译 / 复制”，AI 成功消息的操作条会追加整条引用按钮。传对象可通过 `actions`、`pcQuoteAction`、`roles`、`longPressDelay`、`maxVisibleChips` 等字段细化；对象默认视为开启，显式 `enable:false` 时关闭。
+
+```vue
+<!-- 开启全部默认引用动作 -->
+<AiChat :request="request" quote />
+
+<!-- 保留划词引用，但不提供翻译动作 -->
+<AiChat :request="request" :quote="{ actions: ['explain', 'ask', 'copy'] }" />
+```
+
+也可以通过 `provideAiChatConfig({ quote: { ... } })` 全局开启或配置；组件 `quote` 优先于全局配置，因此全局关闭后仍可在单个组件上传 `quote=true` 重新开启。关闭只影响新增引用的交互入口，历史消息中的结构化 `quote` 块仍会正常渲染，并在发起请求时拍平为 LLM 可见文本。
 
 ## 追问建议（Follow-up Suggestions）
 

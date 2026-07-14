@@ -1,7 +1,9 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { describe, it, expect, vi } from 'vitest';
+import { defineComponent, h } from 'vue';
 import AiChat from '../src/components/AiChat.vue';
-import type { ChatMessage } from '../src/types';
+import { provideAiChatConfig } from '../src/composables/useAiChatConfig';
+import type { ChatMessage, QuoteConfig } from '../src/types';
 
 // BubbleList 内部依赖 virtua 做虚拟滚动，jsdom 无真实布局测量；
 // 与既有 AiChat.*.test.ts 同口径：直接渲染全部 data，绕开虚拟化。
@@ -41,18 +43,53 @@ const mountChat = (extra: Record<string, unknown> = {}) => {
   // 使下方 request.mock.calls.at(-1)![0] 取值有合法类型可转换。
   const request = vi.fn(async (_ctx: unknown) => sse());
   const w = mount(AiChat, {
-    props: { request, defaultMessages: [aiMsg], ...extra },
+    props: { request, defaultMessages: [aiMsg], quote: true, ...extra },
     attachTo: document.body,
   });
   return { w, request };
 };
 
+const mountWithGlobalQuote = (globalQuote: QuoteConfig, quote?: boolean | QuoteConfig) => {
+  const Host = defineComponent({
+    setup() {
+      provideAiChatConfig({ quote: globalQuote });
+      return () =>
+        h(AiChat, {
+          request: async () => sse(),
+          defaultMessages: [aiMsg],
+          quote,
+        });
+    },
+  });
+  return mount(Host);
+};
+
 describe('AiChat quote 接线', () => {
-  it('pcQuoteAction 默认注入：AI 消息操作栏出现引用按钮；quote:false 时不注入', async () => {
-    const { w } = mountChat();
-    expect(w.find('button[aria-label="引用"]').exists()).toBe(true);
-    const { w: w2 } = mountChat({ quote: false });
-    expect(w2.find('button[aria-label="引用"]').exists()).toBe(false);
+  it('默认关闭，不向 AI 消息操作栏注入引用按钮', () => {
+    const { w } = mountChat({ quote: undefined });
+    expect(w.find('button[aria-label="引用"]').exists()).toBe(false);
+  });
+
+  it('quote=true 显式开启；quote:false 显式关闭', () => {
+    expect(mountChat().w.find('button[aria-label="引用"]').exists()).toBe(true);
+    expect(mountChat({ quote: false }).w.find('button[aria-label="引用"]').exists()).toBe(false);
+  });
+
+  it('组件 quote 布尔值覆盖全局 enable', () => {
+    expect(
+      mountWithGlobalQuote({ enable: false }, true).find('button[aria-label="引用"]').exists(),
+    ).toBe(true);
+    expect(
+      mountWithGlobalQuote({ enable: true }, false).find('button[aria-label="引用"]').exists(),
+    ).toBe(false);
+  });
+
+  it('全局 quote 对象未显式提供 enable 时视为开启', () => {
+    expect(
+      mountWithGlobalQuote({ actions: ['copy'] })
+        .find('button[aria-label="引用"]')
+        .exists(),
+    ).toBe(true);
   });
 
   it('quote.pcQuoteAction=false 仅关操作栏注入，划词仍可用', () => {
@@ -201,7 +238,7 @@ describe('AiChat quote 接线', () => {
       },
       aiMsg,
     ];
-    const { w } = mountChat({ defaultMessages: history });
+    const { w } = mountChat({ defaultMessages: history, quote: false });
     expect(w.find('.aix-quote-block').text()).toContain('旧引文');
   });
 });

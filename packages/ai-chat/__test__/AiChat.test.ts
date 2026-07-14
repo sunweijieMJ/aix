@@ -583,11 +583,11 @@ describe('AiChat', () => {
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();
 
-    // AI 气泡 footer 出现操作区（复制 + 重新生成 + 内置 quote 自动注入，见 Task 12 策略 A）
+    // AI 气泡 footer 出现默认操作区（复制 + 重新生成）；quote 为 opt-in，不再自动注入
     // 用户消息现在也默认挂载操作条（copy/edit），需限定到 AI 气泡（--start）以定位到目标操作区
     const actions = w.findAll('.aix-bubble--start')[0]!.find('.aix-bubble-actions');
     expect(actions.exists()).toBe(true);
-    expect(actions.findAll('.aix-bubble-actions__btn')).toHaveLength(3);
+    expect(actions.findAll('.aix-bubble-actions__btn')).toHaveLength(2);
 
     // 点击重新生成 → onReload → 第二次请求
     await actions.findAll('.aix-bubble-actions__btn')[1]!.trigger('click');
@@ -598,9 +598,7 @@ describe('AiChat', () => {
 
   it('actions=[] 只关闭 AI 消息的操作条，用户消息仍是固定默认值', async () => {
     const request = vi.fn(async () => once('答'));
-    // quote 默认启用会自动注入内置 quote 项（策略 A，见 Task 12），与本用例意图（验证空数组关闭 AI 操作条）
-    // 是两个正交开关，显式关闭 quote 以隔离变量
-    const w = mount(AiChat, { props: { request, actions: [], quote: false } });
+    const w = mount(AiChat, { props: { request, actions: [] } });
     await w.find('textarea').setValue('问');
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();
@@ -733,9 +731,7 @@ describe('AiChat', () => {
   // 用户消息永远拿固定默认值，不会被这个数组"顺便"影响到（哪怕数组里没有 edit/delete 也一样）
   it('数组形态 actions 只影响 AI 消息，用户消息默认操作条不受影响', async () => {
     const request = vi.fn(async () => once('答'));
-    // quote 默认启用会自动注入内置 quote 项（策略 A，见 Task 12），与本用例意图（验证数组形态的作用范围）
-    // 是两个正交开关，显式关闭 quote 以隔离变量
-    const w = mount(AiChat, { props: { request, actions: ['copy'], quote: false } });
+    const w = mount(AiChat, { props: { request, actions: ['copy'] } });
     await w.find('textarea').setValue('问题');
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await flushPromises();

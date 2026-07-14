@@ -40,6 +40,7 @@ const meta: Meta<typeof AiChat> = {
     template: `<div style="height: 480px"><AiChat v-bind="args" /></div>`,
   }),
   args: {
+    quote: true,
     defaultMessages: HISTORY,
     request: async (ctx: { messages: ChatMessage[] }) => {
       const last = ctx.messages.at(-1)!;
@@ -171,7 +172,7 @@ export const MobileLongPress: Story = {
   },
 };
 
-/** 关闭划词（quote=false）与关闭操作栏注入（pcQuoteAction=false）的对照 */
+/** 显式关闭划词（quote=false）的对照 */
 export const Disabled: Story = {
   args: { quote: false },
   play: async ({ canvas }) => {

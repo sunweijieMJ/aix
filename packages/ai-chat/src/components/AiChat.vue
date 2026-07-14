@@ -292,7 +292,7 @@ export interface AiChatProps {
    */
   tree?: ExportedTree;
   /**
-   * 划词引用/追问（默认启用）。false 关闭；对象按 QuoteConfig 细配，
+   * 划词引用/追问（opt-in，默认关闭）。true 开启默认能力；false 关闭；对象按 QuoteConfig 细配并默认视为开启，
    * 与全局 provideAiChatConfig().quote 合并（props 优先）。视为静态配置（setup 快照）。
    */
   quote?: QuoteConfig | boolean;
@@ -406,7 +406,7 @@ const props = withDefaults(defineProps<AiChatProps>(), {
   actionsTrigger: 'always',
   // 显式给 undefined 默认值（而非不声明）：quote 联合类型含 boolean，Vue 对「类型含 Boolean
   // 且无 default」的 prop 有隐式转换——未传时会被自动转成 false 而非 undefined（boolean casting），
-  // 导致 resolvedQuote 无法区分「未配置（应启用默认）」与「显式 quote={false}（应关闭）」。
+  // 导致 resolvedQuote 无法区分「未配置（应继承全局/内置默认）」与「显式 quote={false}（应关闭）」。
   // 显式声明 default:undefined 可关闭该转换，让未传时 props.quote 保持真正的 undefined。
   quote: undefined,
   // suggestions 同款联合类型含 boolean 的坑，同上显式声明 default:undefined。
@@ -418,18 +418,25 @@ const config = useAiChatConfig();
 const slots = useSlots();
 const { t } = useLocale(locale);
 
-// 划词引用配置：全局 config.quote < 组件 props.quote；boolean 简写归一化
+// 划词引用配置：内置默认关闭 < 全局 config.quote < 组件 props.quote；
+// true/false 分别显式开启/关闭，对象配置默认视为开启（除非 enable:false）。
+const normalizeQuoteConfig = (value: QuoteConfig | boolean | undefined): QuoteConfig => {
+  if (value == null) return {};
+  if (typeof value === 'boolean') return { enable: value };
+  return { ...value, enable: value.enable ?? true };
+};
+
 const resolvedQuote = computed<
   Required<Pick<QuoteConfig, 'enable' | 'pcQuoteAction' | 'maxVisibleChips'>> & QuoteConfig
 >(() => {
-  const fromProps: QuoteConfig =
-    props.quote === false
-      ? { enable: false }
-      : props.quote === true || props.quote == null
-        ? {}
-        : props.quote;
-  const merged: QuoteConfig = { ...config.value.quote, ...fromProps };
-  return { enable: true, pcQuoteAction: true, maxVisibleChips: 3, ...merged };
+  const fromProps = props.quote == null ? {} : normalizeQuoteConfig(props.quote);
+  return {
+    enable: false,
+    pcQuoteAction: true,
+    maxVisibleChips: 3,
+    ...normalizeQuoteConfig(config.value.quote),
+    ...fromProps,
+  };
 });
 
 // AiChat 自身消费的保留插槽（标题栏 + 欢迎/内容/底部）；其余具名插槽透传给 BubbleList（最终落到块渲染器内部 slot）。

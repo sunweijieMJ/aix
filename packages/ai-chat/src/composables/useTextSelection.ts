@@ -273,11 +273,22 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
     listeners.length = 0;
   };
 
+  /** 清理划词状态与在途计时器，但不折叠用户当前 DOM 选区（供禁用/卸载路径使用） */
+  const resetInternal = () => {
+    active.value = null;
+    trigger.value = null;
+    savedRange = null;
+    if (readTimer) clearTimeout(readTimer);
+    readTimer = null;
+    cancelPress();
+  };
+
   watch(
-    () => toValue(options.root),
-    (root) => {
+    () => [toValue(options.root), enabled()] as const,
+    ([root, isEnabled]) => {
       unbindAll();
-      if (!root) return;
+      resetInternal();
+      if (!root || !isEnabled) return;
       bind(root, 'pointerup', onPointerUp as EventListener);
       bind(document, 'selectionchange', onSelectionChange as EventListener);
       // 长按分支恒装配（触屏事件只在触屏设备产生，无需预判平台；
@@ -293,19 +304,14 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
 
   onScopeDispose(() => {
     unbindAll();
-    if (readTimer) clearTimeout(readTimer);
-    cancelPress();
+    resetInternal();
   });
 
   const clear = () => {
-    active.value = null;
-    trigger.value = null;
-    savedRange = null;
+    resetInternal();
     // 防 clear 后 pending 读取复活选区（滚动关闭/动作关闭的闭环保障）：
     // clear() 调用前若刚有 selectionchange 调度了 readTimer（120ms 去抖），
     // 不取消的话定时器会照常触发 readSelection 把 active 重新置回非 null
-    if (readTimer) clearTimeout(readTimer);
-    readTimer = null;
     // 主动折叠 DOM 选区：菜单关闭后若残留选区，任何后续 selectionchange（如聚焦输入框）
     // 都会把它重新读回 active 导致菜单重开；折叠后 readSelection 走 collapsed 分支幂等收敛
     window.getSelection?.()?.removeAllRanges();

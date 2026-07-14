@@ -21,7 +21,7 @@ export interface AiChatConfig {
   allowHtml?: boolean;
   /** 注入的 markdown-it 插件（扩展新语法，如脚注/容器）；经 AiChat 注入到气泡内 MarkdownRenderer */
   mdPlugins?: MarkdownItPlugin[];
-  /** 划词引用/追问统一配置（组件 props.quote 覆盖），undefined 视为启用默认 */
+  /** 划词引用/追问统一配置（opt-in；组件 props.quote 覆盖），undefined 视为关闭 */
   quote?: QuoteConfig;
 }
 

@@ -39,6 +39,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   scope.stop();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   window.getSelection()?.removeAllRanges();
   document.body.innerHTML = '';
@@ -155,6 +156,33 @@ const b = 2;</pre></div>
     selectText(firstTextNode('[data-aix-block-id="b1"]'), 0, 4);
     vi.runAllTimers();
     expect(r.active.value).toBeNull();
+  });
+
+  it('enabled=false 不绑定监听，运行时开启和关闭会装卸监听', async () => {
+    const root = buildDom();
+    const enabled = ref(false);
+    const rootAdd = vi.spyOn(root, 'addEventListener');
+    const rootRemove = vi.spyOn(root, 'removeEventListener');
+    const documentAdd = vi.spyOn(document, 'addEventListener');
+    const documentRemove = vi.spyOn(document, 'removeEventListener');
+
+    setup(root, { enabled });
+    expect(rootAdd).not.toHaveBeenCalledWith('pointerup', expect.any(Function), undefined);
+    expect(documentAdd).not.toHaveBeenCalledWith(
+      'selectionchange',
+      expect.any(Function),
+      undefined,
+    );
+
+    enabled.value = true;
+    await nextTick();
+    expect(rootAdd).toHaveBeenCalledWith('pointerup', expect.any(Function), undefined);
+    expect(documentAdd).toHaveBeenCalledWith('selectionchange', expect.any(Function), undefined);
+
+    enabled.value = false;
+    await nextTick();
+    expect(rootRemove).toHaveBeenCalledWith('pointerup', expect.any(Function), undefined);
+    expect(documentRemove).toHaveBeenCalledWith('selectionchange', expect.any(Function), undefined);
   });
 
   it('无近期指针活动的选区变化（keyboard 默认 true）→ source=keyboard', () => {

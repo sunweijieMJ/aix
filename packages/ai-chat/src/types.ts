@@ -515,7 +515,7 @@ export interface ResolvedQuoteAction {
 
 /** 统一定制入口 AiChatConfig.quote / AiChat prop quote */
 export interface QuoteConfig {
-  /** 总开关，默认 true */
+  /** 总开关；未配置 quote 时默认 false，传入 QuoteConfig 对象时默认 true */
   enable?: boolean;
   /** 划词浮层动作，默认 ['explain','ask','translate','copy'] */
   actions?: QuoteActionsItems;
