@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.13
+
+### Patch Changes
+
+- footer渲染
+
 ## 0.0.12
 
 ### Patch Changes
