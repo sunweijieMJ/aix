@@ -98,6 +98,26 @@ describe('GenerateProcessor 编排层', () => {
     expect(cov?.coverageRate).toBe(1);
   });
 
+  it('skipLLM=true 时无需 apiKey，仍可完成本地 ID 生成', async () => {
+    const file = writeSource('NoKey.vue', VUE_FILE);
+    const config = buildConfig(rootDir, {
+      llm: { shared: { apiKey: '', model: 'm' } },
+    });
+
+    await new GenerateProcessor(config, false, false).execute(file, true);
+
+    expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
+    expect(Object.values(readZh())).toContain('提交');
+  });
+
+  it('显式目标路径不存在时抛错，避免命令以成功状态结束', async () => {
+    const missingPath = path.join(rootDir, 'src', 'Missing.vue');
+
+    await expect(
+      new GenerateProcessor(buildConfig(rootDir), false, false).execute(missingPath, true),
+    ).rejects.toThrow(/路径不存在|不存在/);
+  });
+
   it('阶段3 语言文件写入失败 → 已落盘的多个源文件全部回滚（覆盖 rollbackWritten）', async () => {
     // 此前「事务回滚」测试 mock transform 抛错，发生在写盘之前（written 为空），
     // 回滚循环从未被真正执行。这里 mock updateLanguageFiles 在源码已写盘后（阶段3）抛错，
@@ -214,6 +234,22 @@ describe('GenerateProcessor 编排层', () => {
     await expect(
       new GenerateProcessor(customCfg, true, false).applyFromPlan(planJson),
     ).rejects.toThrow(/配置不一致/);
+  });
+
+  it('apply-plan 根目录守卫：plan.root 与当前 config.root 不一致时拒绝', async () => {
+    const file = writeSource('A.vue', VUE_FILE);
+    const planJson = await makePlan(buildConfig(rootDir), file);
+    const otherRoot = path.join(rootDir, 'other-project');
+    fs.mkdirSync(path.join(otherRoot, 'src'), { recursive: true });
+    fs.mkdirSync(path.join(otherRoot, 'locale'), { recursive: true });
+
+    await expect(
+      new GenerateProcessor(buildConfig(otherRoot), false, false).applyFromPlan(planJson, {
+        keepPlan: true,
+      }),
+    ).rejects.toThrow(/根目录/);
+
+    expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
   });
 
   it('覆盖率：源码已存在 $t() 调用点计入 alreadyI18n', async () => {

@@ -25,7 +25,8 @@ import { FileUtils } from './file-utils';
  * `t('点击(此处)')`）不会被误当作首参边界提前截断——否则首参被截成残缺片段、引号不闭合，
  * STRING_LITERAL 匹配失败，该 key 漏采 → 被 prune/doctor 当孤儿从所有 locale 永久删除。
  */
-const CALL_FIRST_ARG = /(?:\$t|(?<!\w)t)\s*\(\s*((?:'[^']*'|"[^"]*"|[^,)])*)/g;
+const CALL_FIRST_ARG =
+  /(?:\$t|(?<!\w)t)\s*\(\s*((?:'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|[^,)])*)/g;
 /**
  * 从一段表达式文本里提取所有 'xxx' / "xxx" 字面量。
  *
@@ -34,7 +35,40 @@ const CALL_FIRST_ARG = /(?:\$t|(?<!\w)t)\s*\(\s*((?:'[^']*'|"[^"]*"|[^,)])*)/g;
  * （英文极常见 `"Don't"` → 只取 `Don`）、单引号串含双引号（`'a"b'` → 只取 `a`），
  * 截断后的残缺 key 漏采 → 被 prune/doctor 当孤儿从所有 locale 永久删除（破坏性）。
  */
-const STRING_LITERAL = /(?:'([^']*)'|"([^"]*)")/g;
+const STRING_LITERAL = /(?:'((?:\\[\s\S]|[^'\\])*)'|"((?:\\[\s\S]|[^"\\])*)")/g;
+
+/**
+ * 把字符串字面量内部文本按 JavaScript 常用转义语义还原为运行时 key。
+ * scanner 只接收已经去掉外层引号的内容，因此不使用 eval；同时覆盖 unicode/hex、
+ * 换行续接和常见单字符转义。未知转义按 JavaScript 非严格字符串的行为保留被转义字符。
+ */
+function decodeStringLiteralContent(content: string): string {
+  return content.replace(
+    /\\(?:\r\n|[\n\r\u2028\u2029]|u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([\s\S]))/g,
+    (
+      _match,
+      codePoint: string | undefined,
+      unicode: string | undefined,
+      hex: string | undefined,
+      escaped: string | undefined,
+    ) => {
+      if (codePoint !== undefined) return String.fromCodePoint(Number.parseInt(codePoint, 16));
+      if (unicode !== undefined) return String.fromCharCode(Number.parseInt(unicode, 16));
+      if (hex !== undefined) return String.fromCharCode(Number.parseInt(hex, 16));
+      if (escaped === undefined) return ''; // 反斜杠 + 换行：字符串续行
+      const simpleEscapes: Record<string, string> = {
+        b: '\b',
+        f: '\f',
+        n: '\n',
+        r: '\r',
+        t: '\t',
+        v: '\v',
+        '0': '\0',
+      };
+      return simpleEscapes[escaped] ?? escaped;
+    },
+  );
+}
 
 /** 组件 / 属性形式（库无关，跨库同跑互不干扰；id 两条限定上下文避免误吃普通 id）。 */
 const ATTR_PATTERNS: RegExp[] = [
@@ -70,7 +104,8 @@ export function scanKeyReferencesInContent(content: string): string[] {
     STRING_LITERAL.lastIndex = 0;
     let lit: RegExpExecArray | null;
     while ((lit = STRING_LITERAL.exec(firstArg)) !== null) {
-      const key = lit[1] ?? lit[2]; // 组 1=单引号内文 / 组 2=双引号内文，二者必有其一
+      const rawKey = lit[1] ?? lit[2]; // 组 1=单引号内文 / 组 2=双引号内文，二者必有其一
+      const key = rawKey === undefined ? undefined : decodeStringLiteralContent(rawKey);
       if (key) refs.push(key); // 空串 key 无意义，跳过（与旧 `+` 量词的非空语义一致）
     }
   }
@@ -113,8 +148,8 @@ export function collectUsedKeys(config: ResolvedConfig, adapter: FrameworkAdapte
       for (const ref of scanKeyReferencesInContent(content)) {
         addKey(ref);
       }
-    } catch {
-      /* 读取失败的文件跳过，不影响其他文件 */
+    } catch (error) {
+      throw new Error(`读取或扫描源码失败，已中止 key 对账：${filePath}`, { cause: error });
     }
   }
   return used;

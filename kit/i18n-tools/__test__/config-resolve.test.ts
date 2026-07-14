@@ -491,6 +491,53 @@ describe('resolveConfig - LLM 合并', () => {
     });
     expect(r.llm.translation.headers).toBeUndefined();
   });
+
+  it.each([
+    ['concurrency', Number.NaN],
+    ['concurrency', Number.POSITIVE_INFINITY],
+    ['concurrency', 1.5],
+    ['batchSize', 0],
+    ['batchSize', 2.5],
+    ['throttleMs', -1],
+    ['throttleMs', Number.POSITIVE_INFINITY],
+    ['timeout', 0],
+    ['maxRetries', 1.5],
+    ['temperature', Number.NaN],
+  ] as const)('拒绝无效任务数值 %s=%s', (field, value) => {
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        llm: {
+          ...llm,
+          idGeneration: { [field]: value },
+        },
+      }),
+    ).toThrow(new RegExp(`llm\\.idGeneration\\.${field}`));
+  });
+
+  it('拒绝从 shared 继承的无效数值', () => {
+    expect(() =>
+      resolveConfig({
+        ...baseConfig,
+        llm: { shared: { ...llm.shared, timeout: Number.POSITIVE_INFINITY } },
+      }),
+    ).toThrow(/llm\.idGeneration\.timeout/);
+  });
+
+  it('允许具有明确语义的零值与有限小数', () => {
+    const r = resolveConfig({
+      ...baseConfig,
+      llm: {
+        ...llm,
+        idGeneration: { maxRetries: 0, throttleMs: 0, temperature: 0.25 },
+      },
+    });
+    expect(r.llm.idGeneration).toMatchObject({
+      maxRetries: 0,
+      throttleMs: 0,
+      temperature: 0.25,
+    });
+  });
 });
 
 describe('resolveConfig - merge.onLlmRejected 枚举', () => {

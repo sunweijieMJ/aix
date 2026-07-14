@@ -199,4 +199,32 @@ describe('PruneProcessor', () => {
     expect(readLocale('zh-CN')).toEqual({ a: '甲', b: '乙' });
     expect(readLocale('en-US')).toEqual({ a: 'A', b: 'B' });
   });
+
+  it('部分源码读取失败时整体中止，不基于残缺扫描结果删除 key', async () => {
+    writeSource('A.vue', `<template>{{ t('used') }}</template>`);
+    writeSource('B.vue', `<template>{{ t('mustKeep') }}</template>`);
+    writeLocale('zh-CN', { used: '使用中', mustKeep: '必须保留' });
+    writeLocale('en-US', { used: 'Used', mustKeep: 'Must keep' });
+
+    const originalReadFileSync = fs.readFileSync;
+    vi.spyOn(fs, 'readFileSync').mockImplementation(((
+      filePath: fs.PathOrFileDescriptor,
+      ...args: unknown[]
+    ) => {
+      if (String(filePath).endsWith(`${path.sep}B.vue`)) {
+        throw new Error('EACCES: permission denied');
+      }
+      return originalReadFileSync(filePath, ...(args as [any]));
+    }) as typeof fs.readFileSync);
+
+    await expect(
+      new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+        dryRun: false,
+        ci: true,
+      }).execute(),
+    ).rejects.toThrow(/B\.vue|读取源码/);
+
+    expect(readLocale('zh-CN')).toEqual({ used: '使用中', mustKeep: '必须保留' });
+    expect(readLocale('en-US')).toEqual({ used: 'Used', mustKeep: 'Must keep' });
+  });
 });

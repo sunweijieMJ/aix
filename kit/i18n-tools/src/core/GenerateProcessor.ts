@@ -93,8 +93,7 @@ export class GenerateProcessor extends BaseProcessor {
       this.adapter.getDisplayName(),
     );
     if (!validation.isValid) {
-      LoggerUtils.error(`❌ ${validation.error}`);
-      return;
+      throw new Error(validation.error ?? `无效的目标路径: ${targetPath}`);
     }
 
     if (validation.type === 'file') {
@@ -879,7 +878,9 @@ export class GenerateProcessor extends BaseProcessor {
 
   private async _applyFromPlan(planPath: string): Promise<void> {
     LoggerUtils.info(`📂 加载 Plan: ${planPath}`);
-    const { plan, transformedSources } = GeneratePlanWriter.read(planPath);
+    const { plan, transformedSources } = GeneratePlanWriter.read(planPath, {
+      expectedRoot: this.config.root,
+    });
 
     if (plan.framework !== this.config.framework.type) {
       throw new Error(
@@ -978,8 +979,9 @@ export class GenerateProcessor extends BaseProcessor {
       LoggerUtils.info(`📁 已保留 Plan 目录（--keep-plan）：${path.dirname(planPath)}`);
     } else {
       const planDir = path.dirname(planPath);
-      GeneratePlanWriter.cleanup(planDir);
-      LoggerUtils.info(`🗑️  Plan 目录已清理：${planDir}（如需保留请使用 --keep-plan）`);
+      if (GeneratePlanWriter.cleanup(planDir)) {
+        LoggerUtils.info(`🗑️  Plan 目录已清理：${planDir}（如需保留请使用 --keep-plan）`);
+      }
     }
   }
 

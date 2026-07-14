@@ -290,14 +290,67 @@ function resolvePrefixStrategy(prefix: PrefixStrategyConfig | undefined): Resolv
  *   - 真正调 LLM 的命令在 `LLMClient.chatCompletion` 入口做 lazy 校验，给出精确错误。
  * 这样避免「用户只想跑 doctor 也被强制配置 apiKey」的体验问题。
  */
+function assertValidNumericConfig(
+  value: unknown,
+  field: string,
+  expected: string,
+  predicate: (value: number) => boolean,
+): asserts value is number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || !predicate(value)) {
+    throw new Error(`${field} 必须是${expected}，实际收到: ${String(value)}`);
+  }
+}
+
 function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
   const shared = llm?.shared ?? {};
 
-  const resolveTask = (task: LLMTaskConfig | undefined): ResolvedLLMTaskConfig => {
+  const resolveTask = (
+    task: LLMTaskConfig | undefined,
+    context: 'llm.idGeneration' | 'llm.translation',
+  ): ResolvedLLMTaskConfig => {
     const merged: LLMTaskConfig = { ...shared, ...task };
     if (!merged.model) {
       merged.model = DEFAULT_LLM_MODEL;
     }
+    const timeout = merged.timeout ?? DEFAULT_LLM_TASK.timeout;
+    const maxRetries = merged.maxRetries ?? DEFAULT_LLM_TASK.maxRetries;
+    const temperature = merged.temperature ?? DEFAULT_LLM_TASK.temperature;
+    const concurrency = merged.concurrency ?? DEFAULT_LLM_TASK.concurrency;
+    const batchSize = merged.batchSize ?? DEFAULT_LLM_TASK.batchSize;
+    const throttleMs = merged.throttleMs ?? DEFAULT_LLM_TASK.throttleMs;
+
+    assertValidNumericConfig(timeout, `${context}.timeout`, '有限正数', (value) => value > 0);
+    assertValidNumericConfig(
+      maxRetries,
+      `${context}.maxRetries`,
+      '非负整数',
+      (value) => value >= 0 && Number.isInteger(value),
+    );
+    assertValidNumericConfig(
+      temperature,
+      `${context}.temperature`,
+      '有限非负数',
+      (value) => value >= 0,
+    );
+    assertValidNumericConfig(
+      concurrency,
+      `${context}.concurrency`,
+      '正整数',
+      (value) => value > 0 && Number.isInteger(value),
+    );
+    assertValidNumericConfig(
+      batchSize,
+      `${context}.batchSize`,
+      '正整数',
+      (value) => value > 0 && Number.isInteger(value),
+    );
+    assertValidNumericConfig(
+      throttleMs,
+      `${context}.throttleMs`,
+      '有限非负数',
+      (value) => value >= 0,
+    );
+
     // headers 是可加性的（如全局 Authorization + 任务级追踪头），不能像 scalar 字段
     // 那样被任务级整体覆盖。浅合并的 { ...shared, ...task } 会让 task.headers 完全
     // 顶掉 shared.headers，导致鉴权头丢失。这里对 headers 单独做深合并。
@@ -306,13 +359,13 @@ function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
       apiKey: merged.apiKey ?? '',
       baseURL: merged.baseURL,
       model: merged.model,
-      timeout: merged.timeout ?? DEFAULT_LLM_TASK.timeout,
-      maxRetries: merged.maxRetries ?? DEFAULT_LLM_TASK.maxRetries,
-      temperature: merged.temperature ?? DEFAULT_LLM_TASK.temperature,
+      timeout,
+      maxRetries,
+      temperature,
       headers: Object.keys(mergedHeaders).length > 0 ? mergedHeaders : undefined,
-      concurrency: Math.max(1, merged.concurrency ?? DEFAULT_LLM_TASK.concurrency),
-      batchSize: Math.max(1, merged.batchSize ?? DEFAULT_LLM_TASK.batchSize),
-      throttleMs: Math.max(0, merged.throttleMs ?? DEFAULT_LLM_TASK.throttleMs),
+      concurrency,
+      batchSize,
+      throttleMs,
       // prompt 是 LLMTaskConfig 专属字段（LLMSharedConfig 不含 prompt），
       // 故只可能来自 task；merged.prompt 即 task.prompt，无需深合并。
       prompt: {
@@ -323,8 +376,8 @@ function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
   };
 
   return {
-    idGeneration: resolveTask(llm?.idGeneration),
-    translation: resolveTask(llm?.translation),
+    idGeneration: resolveTask(llm?.idGeneration, 'llm.idGeneration'),
+    translation: resolveTask(llm?.translation, 'llm.translation'),
   };
 }
 

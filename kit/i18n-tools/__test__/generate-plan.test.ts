@@ -173,6 +173,48 @@ describe('GeneratePlanWriter', () => {
     expect(() => GeneratePlanWriter.read(planPath)).toThrow(/转换后源码缺失/);
   });
 
+  it('read 拒绝 transformedCodeRef 逃逸 sources 目录', () => {
+    const { plan, transformed } = makePlan({
+      'src/E.vue': 'x',
+    });
+    GeneratePlanWriter.write(planBaseDir, plan, transformed);
+
+    const outsideRef = path.join(path.dirname(planBaseDir), 'outside.ts');
+    fs.writeFileSync(outsideRef, 'outside');
+    const planPath = path.join(planBaseDir, GeneratePlanWriter.PLAN_FILENAME);
+    const raw = JSON.parse(fs.readFileSync(planPath, 'utf-8'));
+    raw.entries[0].transformedCodeRef = '../outside.ts';
+    fs.writeFileSync(planPath, JSON.stringify(raw));
+
+    expect(() => GeneratePlanWriter.read(planPath)).toThrow(/越界/);
+  });
+
+  it('verifyFingerprint 拒绝 entry.file 逃逸 plan.root', () => {
+    const outside = path.join(path.dirname(rootDir), `${path.basename(rootDir)}-outside.vue`);
+    fs.writeFileSync(outside, 'outside');
+    const plan: GeneratePlan = {
+      schemaVersion: 2,
+      command: 'generate',
+      finishedAt: new Date().toISOString(),
+      root: rootDir,
+      isCustom: false,
+      framework: 'vue',
+      summary: { files: 1, hits: 0, newKeys: 0 },
+      entries: [
+        {
+          file: `../${path.basename(outside)}`,
+          hits: [],
+          transformedCodeRef: 'sources/outside.vue',
+          sourceHash: GeneratePlanWriter.sha256('outside'),
+        },
+      ],
+      localeDelta: {},
+    };
+
+    expect(() => GeneratePlanWriter.verifyFingerprint(plan)).toThrow(/越界/);
+    fs.unlinkSync(outside);
+  });
+
   it('toRelPosix 与 fromRelPosix 互逆（Windows 反斜杠不漏）', () => {
     const abs = path.join(rootDir, 'src', 'a', 'b.vue');
     const rel = GeneratePlanWriter.toRelPosix(rootDir, abs);
@@ -238,6 +280,18 @@ describe('GeneratePlanWriter', () => {
       GeneratePlanWriter.cleanup(dir);
       expect(fs.existsSync(dir)).toBe(false);
       expect(fs.existsSync(path.join(plansRoot, '.last.json'))).toBe(false);
+    });
+
+    it('cleanup 拒绝删除没有工具所有权标记的任意目录', () => {
+      const arbitraryDir = path.join(rootDir, 'shared');
+      const sentinel = path.join(arbitraryDir, 'user-file.txt');
+      fs.mkdirSync(arbitraryDir, { recursive: true });
+      fs.writeFileSync(sentinel, 'must keep');
+
+      GeneratePlanWriter.cleanup(arbitraryDir);
+
+      expect(fs.existsSync(arbitraryDir)).toBe(true);
+      expect(fs.readFileSync(sentinel, 'utf-8')).toBe('must keep');
     });
 
     it('cleanup 不会清掉指向其它 plan 的 .last.json', () => {

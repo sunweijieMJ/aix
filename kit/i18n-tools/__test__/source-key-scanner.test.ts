@@ -127,6 +127,23 @@ describe('collectUsedKeys — 全形式识别', () => {
     });
   });
 
+  describe('scanKeyReferencesInContent — JavaScript 字符串转义', () => {
+    it('单引号 key 中的转义单引号被完整识别并解码', () => {
+      const refs = scanKeyReferencesInContent(String.raw`const m = t('don\'t.key');`);
+      expect(refs).toContain("don't.key");
+    });
+
+    it('双引号 key 中的转义双引号被完整识别并解码', () => {
+      const refs = scanKeyReferencesInContent(String.raw`const m = t("say\"hi.key");`);
+      expect(refs).toContain('say"hi.key');
+    });
+
+    it('key 中的转义反斜杠还原为单个反斜杠', () => {
+      const refs = scanKeyReferencesInContent(String.raw`const m = t('path\\key');`);
+      expect(refs).toContain('path\\key');
+    });
+  });
+
   it('react-i18next：t() / <Trans i18nKey> 都识别', () => {
     write(
       'App.tsx',

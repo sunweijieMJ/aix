@@ -333,9 +333,10 @@ export class MergeProcessor extends FileProcessor {
       this.isCustom,
       sourceLocale,
     );
-    const sharedKeyBucketMap = sourceMessages
-      ? LanguageFileManager.buildKeyBucketMap(this.config, sourceMessages)
-      : null;
+    const sharedKeyBucketMap =
+      sourceMessages && Object.keys(sourceMessages).length > 0
+        ? LanguageFileManager.buildKeyBucketMap(this.config, sourceMessages)
+        : null;
 
     for (const target of targets) {
       this.updateBucketedLanguagePackage(newlyTranslated, target, sharedKeyBucketMap);

@@ -532,6 +532,32 @@ describe('MergeProcessor — 损坏文件保护', () => {
     }, {});
     expect(JSON.stringify(merged)).toContain('Hello');
   });
+
+  it('[#3c] 源语言桶为空时沿用目标语言分桶，避免原有 key 塌缩到默认桶', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ 'order.foo': { 'zh-CN': '你好', 'en-US': 'Hello' } }, null, 2),
+    );
+    fs.writeFileSync(path.join(localeDir, 'translations.json'), '{}');
+
+    // 源语言目录存在但没有任何消息；目标语言已有 order 桶，必须保留其分桶信息。
+    fs.mkdirSync(path.join(localeDir, 'zh-CN'), { recursive: true });
+    const enDir = path.join(localeDir, 'en-US');
+    fs.mkdirSync(enDir, { recursive: true });
+    const orderBucket = path.join(enDir, 'order.json');
+    fs.writeFileSync(orderBucket, JSON.stringify({ 'order.existing': 'Existing' }, null, 2));
+
+    await new MergeProcessor(mergeConfig(true), false).execute();
+
+    expect(JSON.parse(fs.readFileSync(orderBucket, 'utf-8'))).toEqual({
+      'order.existing': 'Existing',
+      'order.foo': 'Hello',
+    });
+    const commonBucket = path.join(enDir, 'common.json');
+    expect(fs.existsSync(commonBucket)).toBe(false);
+  });
 });
 
 // ============================================================================

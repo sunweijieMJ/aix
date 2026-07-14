@@ -125,6 +125,8 @@ export class GeneratePlanWriter {
   static readonly PLAN_FILENAME = 'plan.json';
   /** transform 后源码的存放子目录 */
   static readonly SOURCES_DIRNAME = 'sources';
+  /** 标识目录由本工具创建；同时记录创建时绝对路径，防止 plan 被移动后误删新父目录。 */
+  static readonly OWNERSHIP_FILENAME = '.i18n-tools-plan.json';
   /**
    * `<plansRoot>/.last.json` 记录最近一次 dry-run 写入的 plan 目录绝对路径。
    *
@@ -146,6 +148,10 @@ export class GeneratePlanWriter {
    */
   static write(baseDir: string, plan: GeneratePlan, transformedSources: Map<string, string>): void {
     FileUtils.ensureDirectoryExists(baseDir);
+    FileUtils.writeJsonFile(path.join(baseDir, this.OWNERSHIP_FILENAME), {
+      schemaVersion: 1,
+      planDir: path.resolve(baseDir),
+    });
     const sourcesDir = path.join(baseDir, this.SOURCES_DIRNAME);
     FileUtils.ensureDirectoryExists(sourcesDir);
 
@@ -182,7 +188,10 @@ export class GeneratePlanWriter {
    * @param planPath plan.json 的绝对路径
    * @returns plan 主结构 + (entry → transform 后代码) 的 Map
    */
-  static read(planPath: string): {
+  static read(
+    planPath: string,
+    options: { expectedRoot?: string } = {},
+  ): {
     plan: GeneratePlan;
     transformedSources: Map<string, string>;
   } {
@@ -195,11 +204,26 @@ export class GeneratePlanWriter {
         `Plan schemaVersion=${plan.schemaVersion} 不受支持。请重新运行 generate --dry-run 生成新版 plan。`,
       );
     }
+    if (options.expectedRoot && path.resolve(plan.root) !== path.resolve(options.expectedRoot)) {
+      throw new Error(
+        `Plan 根目录 (${plan.root}) 与当前配置根目录 (${options.expectedRoot}) 不一致，拒绝 apply。`,
+      );
+    }
 
     const baseDir = path.dirname(planPath);
+    const sourcesRoot = path.resolve(baseDir, this.SOURCES_DIRNAME);
     const transformedSources = new Map<string, string>();
     for (const entry of plan.entries) {
-      const refPath = path.join(baseDir, entry.transformedCodeRef);
+      const refPath = this.resolveRelativeWithin(
+        baseDir,
+        entry.transformedCodeRef,
+        'Plan transformedCodeRef',
+      );
+      if (!this.isWithin(sourcesRoot, refPath)) {
+        throw new Error(
+          `Plan transformedCodeRef 越界，必须位于 ${this.SOURCES_DIRNAME}/ 内：${entry.transformedCodeRef}`,
+        );
+      }
       if (!fs.existsSync(refPath)) {
         throw new Error(
           `Plan 引用的转换后源码缺失：${entry.transformedCodeRef}（绝对路径 ${refPath}）。Plan 目录可能不完整。`,
@@ -230,7 +254,7 @@ export class GeneratePlanWriter {
     const mismatched: string[] = [];
     const contents = new Map<string, string>();
     for (const entry of plan.entries) {
-      const abs = path.join(plan.root, entry.file);
+      const abs = this.fromRelPosix(plan.root, entry.file);
       if (!fs.existsSync(abs)) {
         mismatched.push(`${entry.file} (文件不存在)`);
         continue;
@@ -275,7 +299,28 @@ export class GeneratePlanWriter {
 
   /** 把 plan 内相对路径解析回绝对路径（适配 windows 反斜杠） */
   static fromRelPosix(rootDir: string, relPosix: string): string {
-    return path.join(rootDir, ...relPosix.split('/'));
+    return this.resolveRelativeWithin(rootDir, relPosix, 'Plan 源文件路径');
+  }
+
+  /** 解析相对路径并保证结果仍在 root 内，供 plan 读写两端复用。 */
+  private static resolveRelativeWithin(
+    rootDir: string,
+    relativePath: string,
+    label: string,
+  ): string {
+    if (!relativePath || path.isAbsolute(relativePath)) {
+      throw new Error(`${label} 必须是非空相对路径：${relativePath}`);
+    }
+    const root = path.resolve(rootDir);
+    const resolved = path.resolve(root, ...relativePath.split('/'));
+    if (!this.isWithin(root, resolved) || resolved === root) {
+      throw new Error(`${label} 越界：${relativePath}`);
+    }
+    return resolved;
+  }
+
+  private static isWithin(root: string, candidate: string): boolean {
+    return candidate === root || candidate.startsWith(root + path.sep);
   }
 
   /**
@@ -327,8 +372,23 @@ export class GeneratePlanWriter {
    *
    * 失败不抛错——清理只是空间维护，失败时打 warn 即可，不阻塞主流程。
    */
-  static cleanup(planDir: string): void {
+  static cleanup(planDir: string): boolean {
     try {
+      const resolvedPlanDir = path.resolve(planDir);
+      const markerPath = path.join(resolvedPlanDir, this.OWNERSHIP_FILENAME);
+      if (!fs.existsSync(markerPath)) {
+        LoggerUtils.warn(`⚠️  跳过清理未标记为工具所有的目录：${resolvedPlanDir}`);
+        return false;
+      }
+      const marker = JSON.parse(fs.readFileSync(markerPath, 'utf-8')) as {
+        schemaVersion?: number;
+        planDir?: string;
+      };
+      if (marker.schemaVersion !== 1 || path.resolve(marker.planDir ?? '') !== resolvedPlanDir) {
+        LoggerUtils.warn(`⚠️  跳过清理所有权标记无效或目录已移动的 Plan：${resolvedPlanDir}`);
+        return false;
+      }
+
       const plansRoot = path.dirname(planDir);
       const pointerPath = path.join(plansRoot, this.LAST_POINTER_FILENAME);
       if (fs.existsSync(pointerPath)) {
@@ -348,8 +408,10 @@ export class GeneratePlanWriter {
         }
       }
       fs.rmSync(planDir, { recursive: true, force: true });
+      return true;
     } catch (error) {
       LoggerUtils.warn(`⚠️  清理 plan 目录失败（已忽略）${planDir}: ${error}`);
+      return false;
     }
   }
 

@@ -18,7 +18,7 @@ import type { Translations } from './types';
  * 支持 OpenAI dialect 扩展。
  */
 export class LLMClient {
-  private openai: OpenAI;
+  private openai?: OpenAI;
   private task: ResolvedLLMTaskConfig;
   private locales: ResolvedConfig['locales'];
   /**
@@ -59,14 +59,6 @@ export class LLMClient {
     this.locales = locales;
     this.usesDoubleBracePlaceholders = usesDoubleBracePlaceholders;
 
-    this.openai = new OpenAI({
-      apiKey: task.apiKey,
-      baseURL: task.baseURL,
-      timeout: task.timeout,
-      maxRetries: task.maxRetries,
-      defaultHeaders: task.headers,
-    });
-
     this.outerController = new ConcurrencyController(task.concurrency);
     this.innerController = new ConcurrencyController(task.concurrency);
   }
@@ -97,8 +89,17 @@ export class LLMClient {
         '调用 LLM 但未配置 apiKey。请在配置文件的 llm.shared 或对应任务（llm.idGeneration / llm.translation）中设置 apiKey。',
       );
     }
+
+    const openai = (this.openai ??= new OpenAI({
+      apiKey: this.task.apiKey,
+      baseURL: this.task.baseURL,
+      timeout: this.task.timeout,
+      maxRetries: this.task.maxRetries,
+      defaultHeaders: this.task.headers,
+    }));
+
     await this.throttle();
-    const response = await this.openai.chat.completions.create({
+    const response = await openai.chat.completions.create({
       model: this.task.model,
       messages: [
         { role: 'system', content: systemPrompt },

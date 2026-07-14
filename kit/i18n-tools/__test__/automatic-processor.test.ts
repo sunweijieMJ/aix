@@ -27,7 +27,7 @@ describe('AutomaticProcessor 编排', () => {
   let rootDir: string;
   let calls: string[];
 
-  const buildConfig = (root: string, exportDir?: string): ResolvedConfig =>
+  const buildConfig = (root: string, exportDir?: string, apiKey: string = 'x'): ResolvedConfig =>
     resolveConfig({
       root,
       framework: { type: 'vue', library: 'vue-i18n', tImport: '@/locale' },
@@ -40,7 +40,7 @@ describe('AutomaticProcessor 编排', () => {
         prettify: false,
       },
       keys: { separator: '.' },
-      llm: { shared: { apiKey: 'x', model: 'm' } },
+      llm: { shared: { apiKey, model: 'm' } },
     } satisfies I18nToolsConfig);
 
   beforeEach(() => {
@@ -83,6 +83,12 @@ describe('AutomaticProcessor 编排', () => {
     const cfg = buildConfig(rootDir, path.join(rootDir, 'public', 'locale'));
     await new AutomaticProcessor(cfg, false).execute('src', true);
     expect(calls).toEqual(['generate', 'pick', 'translate', 'merge', 'export']);
+  });
+
+  it('skipLLM=true 时空 apiKey 不应阻断纯本地步骤', async () => {
+    await new AutomaticProcessor(buildConfig(rootDir, undefined, ''), false).execute('src', true);
+
+    expect(calls).toEqual(['generate', 'pick', 'translate', 'merge']);
   });
 
   it('某步骤失败 → 包装成「在 <step> 步骤中断」并保留 cause', async () => {
