@@ -80,7 +80,7 @@
         </template>
       </div>
       <!-- 编辑态期间隐藏 footer（复制/编辑/删除等操作条）：避免草稿未保存时被同排的「删除」误删 -->
-      <div v-if="$slots.footer && !editing" :class="ns.e('footer')"><slot name="footer" /></div>
+      <div v-if="hasFooterContent && !editing" :class="ns.e('footer')"><slot name="footer" /></div>
     </div>
   </div>
 </template>
@@ -107,7 +107,7 @@ export interface BubbleEmits {
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
-import { computed, watch, watchEffect, useSlots, ref } from 'vue';
+import { computed, watch, watchEffect, useSlots, ref, Comment } from 'vue';
 import { locale } from '../locale';
 import type {
   BlockAction,
@@ -202,6 +202,15 @@ const RESERVED_SLOTS = ['avatar', 'header', 'content', 'footer'];
 const blockSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !RESERVED_SLOTS.includes(n)),
 );
+
+// footer 是否有实际内容：消费方（如按角色/状态条件显示操作条）常常「声明了 footer 插槽，
+// 但某些消息渲染为空」（如 v-if 为 user 消息不出操作条）。只判断插槽是否声明会让这些消息
+// 也套上 __footer 包裹 div，在 flex 布局的 &__wrapper 上多出一份 gap 间距。这里改为渲染一次
+// 插槽、检查是否产出非注释节点，按「有没有实际内容」决定是否包裹。
+const hasFooterContent = computed(() => {
+  const nodes = slots.footer?.();
+  return !!nodes && nodes.some((vnode) => vnode.type !== Comment);
+});
 
 // 块渲染注册表：内置 text → TextBlock、reasoning → ReasoningBlock（折叠思考过程）、
 // thought-chain → ThoughtChainBlock（Agent 步骤时间线），与 props.blockRenderers 合并（用户优先，可覆盖内置）。
