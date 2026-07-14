@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.14
+
+### Patch Changes
+
+- 插槽问题
+
 ## 0.0.13
 
 ### Patch Changes
