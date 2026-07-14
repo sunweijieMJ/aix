@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.15
+
+### Patch Changes
+
+- 修改默认配置
+
 ## 0.0.14
 
 ### Patch Changes
