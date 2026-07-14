@@ -107,7 +107,7 @@ export interface BubbleEmits {
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
-import { computed, watch, watchEffect, useSlots, ref, Comment } from 'vue';
+import { computed, watch, watchEffect, useSlots, ref, Comment, Fragment, isVNode } from 'vue';
 import { locale } from '../locale';
 import type {
   BlockAction,
@@ -203,13 +203,32 @@ const blockSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !RESERVED_SLOTS.includes(n)),
 );
 
+// 判断单个 vnode 是否有实际内容：
+// - Comment（v-if 为 false）视为空；
+// - Fragment / 普通元素都递归看 children 是否全空——
+//  消费方为规避 Vue renderSlot 的「插槽产出全是 Comment 就判定插槽未提供」陷阱
+//  （见 AiChat.vue 的 <slot name="footer"><BubbleActions ... /></slot> 兜底机制），
+//  常会包一层恒定渲染的占位标签（如 <div style="display:contents">）再在内部 v-if；
+//  这种写法编译后占位标签的 children 是长度为 1 的数组（真实 vnode 或 Comment 占位），
+//  并非空数组，因此必须递归判断子节点而非只看数组是否为空。
+// - 无 children（如 <img/> 等自闭合真实内容标签）视为有内容。
+function hasVNodeContent(vnode: unknown): boolean {
+  if (!isVNode(vnode)) return true;
+  if (vnode.type === Comment) return false;
+  if (vnode.type === Fragment || typeof vnode.type === 'string') {
+    if (!Array.isArray(vnode.children)) return true;
+    return vnode.children.some(hasVNodeContent);
+  }
+  return true;
+}
+
 // footer 是否有实际内容：消费方（如按角色/状态条件显示操作条）常常「声明了 footer 插槽，
 // 但某些消息渲染为空」（如 v-if 为 user 消息不出操作条）。只判断插槽是否声明会让这些消息
 // 也套上 __footer 包裹 div，在 flex 布局的 &__wrapper 上多出一份 gap 间距。这里改为渲染一次
-// 插槽、检查是否产出非注释节点，按「有没有实际内容」决定是否包裹。
+// 插槽、检查是否产出有实际内容的节点，按「有没有实际内容」决定是否包裹。
 const hasFooterContent = computed(() => {
   const nodes = slots.footer?.();
-  return !!nodes && nodes.some((vnode) => vnode.type !== Comment);
+  return !!nodes && nodes.some(hasVNodeContent);
 });
 
 // 块渲染注册表：内置 text → TextBlock、reasoning → ReasoningBlock（折叠思考过程）、

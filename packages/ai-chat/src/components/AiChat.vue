@@ -52,28 +52,35 @@
         </template>
         <!-- 消息操作：通过 actions prop 配置（默认 ['copy','regenerate']），
              数组形态仅对 ai+success 消息渲染，函数形态按消息细粒度控制；
-             可用 #footer slot 覆盖，设为 [] 关闭。branchAware 确保分支切换器可按需出现。 -->
+             可用 #footer slot 覆盖，设为 [] 关闭。branchAware 确保分支切换器可按需出现。
+             注意：这里故意不用 <slot name="footer"><BubbleActions .../></slot> 原生 fallback 写法——
+             Vue 的 renderSlot 会在插槽渲染结果「全是 Comment 节点」时（如消费方按条件 v-if 为某些
+             消息不出操作条）自动判定为「插槽未提供」而启用 fallback，导致消费方明确要求「这条消息不
+             显示任何操作」时，反而被强行套上内置 BubbleActions。改为一次性判断「消费方是否提供了
+             footer 插槽」（$slots.footer，只看有没有声明，不逐条看渲染结果），提供了就完全交由消费方
+             决定每条消息展示什么（包括显式不展示），未提供时才用内置默认。 -->
         <template v-if="actionsEnabled || branchAware || $slots.footer" #footer="{ item }">
-          <slot name="footer" :item="item">
-            <BubbleActions
-              v-if="actionsMap.get(item.id) || branchMap.get(item.id)"
-              :items="actionsMap.get(item.id) ?? []"
-              :content="messageText(item)"
-              :message="item"
-              :feedback="(item.extra?.feedback as MessageFeedback | null) ?? null"
-              :speaking="speakingId === item.id"
-              :branch="branchMap.get(item.id)"
-              :branch-disabled="isLoading"
-              @copy="emit('copy', item)"
-              @regenerate="onReload(item.id)"
-              @feedback="onFeedback(item.id, $event)"
-              @speak="speech?.toggle(item)"
-              @switch-branch="switchBranch(item.id, $event)"
-              @quote="onQuoteMessage(item)"
-              @edit="bubbleListRef?.startEdit(item.id)"
-              @delete="emit('delete', item)"
-            />
-          </slot>
+          <template v-if="$slots.footer">
+            <slot name="footer" :item="item" />
+          </template>
+          <BubbleActions
+            v-else-if="actionsMap.get(item.id) || branchMap.get(item.id)"
+            :items="actionsMap.get(item.id) ?? []"
+            :content="messageText(item)"
+            :message="item"
+            :feedback="(item.extra?.feedback as MessageFeedback | null) ?? null"
+            :speaking="speakingId === item.id"
+            :branch="branchMap.get(item.id)"
+            :branch-disabled="isLoading"
+            @copy="emit('copy', item)"
+            @regenerate="onReload(item.id)"
+            @feedback="onFeedback(item.id, $event)"
+            @speak="speech?.toggle(item)"
+            @switch-branch="switchBranch(item.id, $event)"
+            @quote="onQuoteMessage(item)"
+            @edit="bubbleListRef?.startEdit(item.id)"
+            @delete="emit('delete', item)"
+          />
         </template>
         <!-- 透传块插槽：把非保留具名插槽（约定 <块类型>-<内部slot>）逐层下传，
              经 BubbleList → Bubble 最终落到块渲染器内部 slot。 -->
