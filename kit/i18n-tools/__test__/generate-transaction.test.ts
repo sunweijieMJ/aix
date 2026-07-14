@@ -8,6 +8,7 @@ import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 import type { ExtractedString } from '../src/utils/types';
+import { VueAdapter } from '../src/adapters/VueAdapter';
 
 /**
  * #8 generate 事务加固：
@@ -189,6 +190,41 @@ describe('GenerateProcessor 事务加固（#8）', () => {
     expect(src).toContain('提交'); // 仍是原始中文
     expect(src).not.toContain('$t('); // 未被替换
     expect(fs.existsSync(zhPath())).toBe(false); // 语言文件未生成
+  });
+
+  it('提取后源码被外部修改 → 中止且不覆盖外部修改、不写语言文件', async () => {
+    const file = writeSource('Drift.vue', VUE_FILE);
+    const externalEdit = `<!-- editor edit -->\n${VUE_FILE}`;
+    const adapter = new VueAdapter('@/locale', 'vue-i18n');
+    const extractor = adapter.getTextExtractor();
+    const realExtract = extractor.extractFromFile.bind(extractor);
+    vi.spyOn(extractor, 'extractFromFile').mockImplementation(async (target) => {
+      const strings = await realExtract(target);
+      fs.writeFileSync(target, externalEdit, 'utf-8');
+      return strings;
+    });
+
+    await expect(
+      new GenerateProcessor(buildConfig(rootDir), false, false, adapter).execute(file, true),
+    ).rejects.toThrow(/源码已变化/);
+
+    expect(fs.readFileSync(file, 'utf-8')).toBe(externalEdit);
+    expect(fs.existsSync(zhPath())).toBe(false);
+  });
+
+  it('转换完成后、提交前源码被外部修改 → 中止且保留外部修改', async () => {
+    const file = writeSource('LateDrift.vue', VUE_FILE);
+    const externalEdit = `<!-- late editor edit -->\n${VUE_FILE}`;
+    vi.spyOn(LanguageFileManager, 'assertSerializableUpdate').mockImplementation(() => {
+      fs.writeFileSync(file, externalEdit, 'utf-8');
+    });
+
+    await expect(
+      new GenerateProcessor(buildConfig(rootDir), false, false).execute(file, true),
+    ).rejects.toThrow(/源码已变化/);
+
+    expect(fs.readFileSync(file, 'utf-8')).toBe(externalEdit);
+    expect(fs.existsSync(zhPath())).toBe(false);
   });
 
   // ---------- (b) 阶段2 原子写：写失败 → 已写文件回滚 ----------

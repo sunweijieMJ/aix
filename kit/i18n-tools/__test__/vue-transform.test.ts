@@ -211,6 +211,45 @@ describe('Vue transform 输出', () => {
   });
 });
 
+describe('VueTransformer 替换完整性', () => {
+  it('script 已提取条目的源码位置失效时抛错，不静默生成孤儿 locale key', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vue-stale-hit-'));
+    try {
+      const file = path.join(dir, 'Stale.vue');
+      const source = `<script setup>\nconst untouched = 'x';\nconst label = '你好';\n</script>\n`;
+      fs.writeFileSync(file, source, 'utf-8');
+      const adapter = new VueAdapter('@/plugins/locale', 'vue-i18n');
+      const strings = await adapter.getTextExtractor().extractFromFile(file);
+      expect(strings).toHaveLength(1);
+      strings[0]!.semanticId = 'demo.label';
+      strings[0]!.line = 2;
+      strings[0]!.column = 1;
+
+      expect(() => adapter.getTransformer().transform(file, strings, source)).toThrow(/无法定位/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('template 已提取条目的原文失效时抛错，不静默生成孤儿 locale key', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vue-stale-template-hit-'));
+    try {
+      const file = path.join(dir, 'Stale.vue');
+      const source = `<template>\n  <div>你好</div>\n</template>\n`;
+      fs.writeFileSync(file, source, 'utf-8');
+      const adapter = new VueAdapter('@/plugins/locale', 'vue-i18n');
+      const strings = await adapter.getTextExtractor().extractFromFile(file);
+      expect(strings).toHaveLength(1);
+      strings[0]!.semanticId = 'demo.label';
+      strings[0]!.original = '已经消失的中文';
+
+      expect(() => adapter.getTransformer().transform(file, strings, source)).toThrow(/无法定位/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 /**
  * 单 <script setup> 场景的 t 注入策略：
  *

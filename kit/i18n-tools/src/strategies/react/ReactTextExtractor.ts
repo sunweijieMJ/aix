@@ -152,6 +152,25 @@ export class ReactTextExtractor extends BaseTextExtractor {
     extractedStrings: ExtractedString[],
     filePath: string,
   ): Promise<void> {
+    if (
+      ts.isCallExpression(node) &&
+      (this.library?.isTranslationCall(node) ?? CommonASTUtils.isCommonI18nCall(node))
+    ) {
+      for (const item of CommonASTUtils.collectRuntimeChineseLiteralsFromI18nCall(node)) {
+        const pos = ts.getLineAndCharacterOfPosition(sourceFile, item.node.getStart(sourceFile));
+        CommonASTUtils.recordSkippedNestedChinese(
+          item.text,
+          filePath,
+          pos.line + 1,
+          pos.character + 1,
+        );
+      }
+    }
+
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
+      this.recordRuntimeChineseInTranslationComponent(node, sourceFile, filePath);
+    }
+
     // <code> / <pre> 内容是逐字代码 / 预格式文本，跳过整棵子树不提取
     if (ts.isJsxElement(node)) {
       const tagName = node.openingElement.tagName;
@@ -190,13 +209,19 @@ export class ReactTextExtractor extends BaseTextExtractor {
             mixedContent.templateVariables.length > 0 ? mixedContent.templateVariables : undefined,
         });
         // 插值分支里的嵌套中文记入诊断（与模板字面量路径一致），供 lint/doctor 告警。
-        for (const nested of mixedContent.nestedChineseTexts) {
+        for (const [nestedIndex, nested] of mixedContent.nestedChineseTexts.entries()) {
           CommonASTUtils.recordSkippedNestedChinese(
             nested,
             filePath,
             position.line + 1,
             position.character + 1,
+            nestedIndex,
           );
+          this.recordManualSkip({
+            category: 'nested-interpolation',
+            message: `${filePath}:${position.line + 1}:${position.character + 1}:${nestedIndex}:${nested}`,
+            count: 1,
+          });
         }
         // 处理了混合内容后，跳过子节点的单独处理
         return;
@@ -251,13 +276,19 @@ export class ReactTextExtractor extends BaseTextExtractor {
         // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
         if (result.nestedChineseTexts.length > 0) {
           const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
-          for (const nested of result.nestedChineseTexts) {
+          for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
             CommonASTUtils.recordSkippedNestedChinese(
               nested,
               filePath,
               pos.line + 1,
               pos.character + 1,
+              nestedIndex,
             );
+            this.recordManualSkip({
+              category: 'nested-interpolation',
+              message: `${filePath}:${pos.line + 1}:${pos.character + 1}:${nestedIndex}:${nested}`,
+              count: 1,
+            });
           }
         }
       }
@@ -324,6 +355,40 @@ export class ReactTextExtractor extends BaseTextExtractor {
     });
     for (const child of children) {
       await this.visitNode(child, sourceFile, extractedStrings, filePath);
+    }
+  }
+
+  /** 记录 <Trans>/<FormattedMessage> 的 values 属性中仍残留的中文运行时分支。 */
+  private recordRuntimeChineseInTranslationComponent(
+    node: ts.JsxElement | ts.JsxSelfClosingElement,
+    sourceFile: ts.SourceFile,
+    filePath: string,
+  ): void {
+    const opening = ts.isJsxElement(node) ? node.openingElement : node;
+    if (
+      !ts.isIdentifier(opening.tagName) ||
+      !this.library?.isTranslationComponent(opening.tagName.text)
+    ) {
+      return;
+    }
+
+    const valuesAttribute = opening.attributes.properties.find(
+      (property): property is ts.JsxAttribute =>
+        ts.isJsxAttribute(property) &&
+        ts.isIdentifier(property.name) &&
+        property.name.text === 'values',
+    );
+    const initializer = valuesAttribute?.initializer;
+    if (!initializer || !ts.isJsxExpression(initializer) || !initializer.expression) return;
+
+    for (const literal of CommonASTUtils.collectNestedChineseLiteralNodes(initializer.expression)) {
+      const pos = ts.getLineAndCharacterOfPosition(sourceFile, literal.getStart(sourceFile));
+      CommonASTUtils.recordSkippedNestedChinese(
+        literal.text,
+        filePath,
+        pos.line + 1,
+        pos.character + 1,
+      );
     }
   }
 
@@ -436,6 +501,12 @@ export class ReactTextExtractor extends BaseTextExtractor {
       `   建议：把 t() 调用缩到具体中文文案上。`;
     LoggerUtils.warn(msg);
     this.recordWarning(msg);
+    this.recordManualSkip({
+      category: 'html-template',
+      message: msg,
+      count: 1,
+      dedupeKey: `${sourceFile.fileName}:${node.getStart(sourceFile)}`,
+    });
   }
 
   /**
@@ -452,5 +523,11 @@ export class ReactTextExtractor extends BaseTextExtractor {
       `   建议：把文案挪进 render()/方法/getter，或改用 this.props.t / this.props.intl。`;
     LoggerUtils.warn(msg);
     this.recordWarning(msg);
+    this.recordManualSkip({
+      category: 'class-property',
+      message: msg,
+      count: 1,
+      dedupeKey: `${sourceFile.fileName}:${node.getStart(sourceFile)}`,
+    });
   }
 }

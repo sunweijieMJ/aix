@@ -88,18 +88,18 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     return 'const intl = getIntl();';
   }
 
-  isTranslationCall(node: ts.CallExpression): boolean {
+  private isTranslationExpression(expression: ts.Expression): boolean {
     // 必须形如 <receiver>.formatMessage(...)，且 receiver 是合法的 intl 持有者：
     //   - intl.formatMessage(...)            // useIntl / getIntl 产物
     //   - props.intl.formatMessage(...)      // injectIntl HOC（函数组件）
     //   - this.props.intl.formatMessage(...) // injectIntl HOC（类组件）
     // Why: 仅按方法名匹配会把任意 obj.formatMessage(...) 误判为翻译调用，
     // 配合参数中带 id 字段的对象，restore 阶段可能静默改写业务代码。
-    if (!ts.isPropertyAccessExpression(node.expression)) return false;
-    const propName = node.expression.name;
+    if (!ts.isPropertyAccessExpression(expression)) return false;
+    const propName = expression.name;
     if (!ts.isIdentifier(propName) || propName.text !== 'formatMessage') return false;
 
-    const receiver = node.expression.expression;
+    const receiver = expression.expression;
     // intl.formatMessage(...)
     if (ts.isIdentifier(receiver) && receiver.text === this.translationVarName) {
       return true;
@@ -122,6 +122,10 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
       }
     }
     return false;
+  }
+
+  isTranslationCall(node: ts.CallExpression): boolean {
+    return this.isTranslationExpression(node.expression);
   }
 
   isTranslationComponent(tagName: string): boolean {
@@ -256,10 +260,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   isAlreadyInternationalized(node: ts.Node): boolean {
     return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
       isI18nCall: (expression) =>
-        // intl.formatMessage(...)
-        (ts.isPropertyAccessExpression(expression) &&
-          ts.isIdentifier(expression.name) &&
-          expression.name.text === 'formatMessage') ||
+        this.isTranslationExpression(expression) ||
         // defineMessages(...)
         (ts.isIdentifier(expression) && expression.text === 'defineMessages'),
       componentTags: ['FormattedMessage'],

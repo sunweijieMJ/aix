@@ -98,6 +98,124 @@ describe('GenerateProcessor 编排层', () => {
     expect(cov?.coverageRate).toBe(1);
   });
 
+  it('仅含需人工处理的 HTML 中文模板时覆盖率不是 100%', async () => {
+    const file = writeSource(
+      'Html.vue',
+      '<script setup>\nconst html = `<div><span>提示</span></div>`;\n</script>\n',
+    );
+    const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+
+    await proc.execute(file, true);
+
+    expect(proc.getCoverage()).toMatchObject({
+      totalChineseSegments: 1,
+      newlyGenerated: 0,
+      skipped: 1,
+      coverageRate: 0,
+    });
+  });
+
+  it('覆盖率待人工数量与落盘报告明细严格一致', async () => {
+    const file = writeSource(
+      'ManualReport.vue',
+      '<script setup>\nconst html = `<div><span>提示</span></div>`;\n</script>\n',
+    );
+    const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+
+    await proc.execute(file, true);
+
+    const logsDir = path.join(rootDir, '.i18n-tools', 'logs');
+    const reportName = fs.readdirSync(logsDir).find((name) => name.endsWith('.json'));
+    expect(reportName).toBeTruthy();
+    const report = JSON.parse(fs.readFileSync(path.join(logsDir, reportName!), 'utf-8'));
+    expect(report.needsManual).toHaveLength(proc.getCoverage()!.skipped);
+    expect(report.summary.needsManual).toBe(proc.getCoverage()!.skipped);
+  });
+
+  it('覆盖率摘要不把 locale 健康度发现混入 skipped 待人工数量', async () => {
+    const file = writeSource(
+      'CoverageManual.vue',
+      "<script setup>\nconst label = '提交';\nconst html = `<div>提示</div>`;\n</script>\n",
+    );
+    fs.writeFileSync(zhPath(), JSON.stringify({ existingHtml: '<b>已有提示</b>' }), 'utf-8');
+    const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+
+    await proc.execute(file, true);
+
+    expect(proc.getCoverage()?.skipped).toBe(1);
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('覆盖率待人工 1 条'));
+  });
+
+  it('同一行的两个 HTML 中文模板分别计入人工跳过覆盖率', async () => {
+    const file = writeSource(
+      'TwoHtml.vue',
+      '<script setup>\nconst a = `<div>提示一</div>`; const b = `<span>提示二</span>`;\n</script>\n',
+    );
+    const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+
+    await proc.execute(file, true);
+
+    expect(proc.getCoverage()).toMatchObject({
+      totalChineseSegments: 2,
+      newlyGenerated: 0,
+      skipped: 2,
+      coverageRate: 0,
+    });
+  });
+
+  it('模板插值分支中的嵌套中文计入人工跳过覆盖率', async () => {
+    const file = writeSource(
+      'Nested.vue',
+      "<script setup>\nconst ok = true;\nconst msg = `操作失败：${ok ? '内部错误' : '网络异常'}`;\n</script>\n",
+    );
+    const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+
+    await proc.execute(file, true);
+
+    expect(proc.getCoverage()).toMatchObject({
+      totalChineseSegments: 3,
+      newlyGenerated: 1,
+      skipped: 2,
+    });
+    expect(proc.getCoverage()?.coverageRate).toBeCloseTo(1 / 3);
+  });
+
+  it('重复 generate 后嵌套中文仍计入待人工，覆盖率口径保持不变', async () => {
+    const file = writeSource(
+      'NestedRerun.vue',
+      "<script setup>\nconst ok = true;\nconst msg = `操作失败：${ok ? '内部错误' : '网络异常'}`;\n</script>\n",
+    );
+    const first = new GenerateProcessor(buildConfig(rootDir), false, false);
+    await first.execute(file, true);
+
+    const second = new GenerateProcessor(buildConfig(rootDir), false, false);
+    await second.execute(file, true);
+
+    expect(second.getCoverage()).toMatchObject({
+      totalChineseSegments: first.getCoverage()!.totalChineseSegments,
+      alreadyI18n: 1,
+      newlyGenerated: 0,
+      skipped: first.getCoverage()!.skipped,
+      coverageRate: first.getCoverage()!.coverageRate,
+    });
+  });
+
+  it('同一模板中内容相同的两个嵌套中文调用点分别计数', async () => {
+    const file = writeSource(
+      'DuplicateNested.vue',
+      "<script setup>\nconst ok = true;\nconst msg = `操作失败：${ok ? '错误' : '错误'}`;\n</script>\n",
+    );
+    const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+
+    await proc.execute(file, true);
+
+    expect(proc.getCoverage()).toMatchObject({
+      totalChineseSegments: 3,
+      newlyGenerated: 1,
+      skipped: 2,
+    });
+  });
+
   it('skipLLM=true 时无需 apiKey，仍可完成本地 ID 生成', async () => {
     const file = writeSource('NoKey.vue', VUE_FILE);
     const config = buildConfig(rootDir, {
@@ -176,6 +294,35 @@ describe('GenerateProcessor 编排层', () => {
     expect(Object.values(plan.localeDelta)).toContain('提交');
   });
 
+  it('dry-run plan 的 newKeys 只统计 locale 中尚不存在的 key', async () => {
+    const file = writeSource('ExistingPlan.vue', VUE_FILE);
+    const firstPlanJson = await makePlan(buildConfig(rootDir), file);
+    const firstPlan = JSON.parse(fs.readFileSync(firstPlanJson, 'utf-8'));
+    fs.writeFileSync(zhPath(), JSON.stringify(firstPlan.localeDelta), 'utf-8');
+    fs.rmSync(planRoot, { recursive: true, force: true });
+    fs.mkdirSync(planRoot, { recursive: true });
+
+    const secondPlanJson = await makePlan(buildConfig(rootDir), file);
+    const secondPlan = JSON.parse(fs.readFileSync(secondPlanJson, 'utf-8'));
+
+    expect(secondPlan.summary.newKeys).toBe(0);
+    expect(Object.keys(secondPlan.localeDelta)).toHaveLength(1);
+  });
+
+  it('dry-run 遇到损坏的 source locale 时拒绝生成不可回放 plan', async () => {
+    const file = writeSource('CorruptLocale.vue', VUE_FILE);
+    fs.writeFileSync(zhPath(), '{ broken json', 'utf-8');
+
+    await expect(
+      new GenerateProcessor(buildConfig(rootDir), false, false).execute(file, true, {
+        dryRun: true,
+        planOutputDir: planRoot,
+      }),
+    ).rejects.toThrow(/语言文件损坏/);
+
+    expect(fs.readdirSync(planRoot).some((name) => name.startsWith('generate-'))).toBe(false);
+  });
+
   it('apply-plan happy path：回放 plan → 源码替换 + 语言文件写入（不触 LLM/AST）', async () => {
     const file = writeSource('A.vue', VUE_FILE);
     const planJson = await makePlan(buildConfig(rootDir), file);
@@ -186,6 +333,20 @@ describe('GenerateProcessor 编排层', () => {
 
     expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
     expect(Object.values(readZh())).toContain('提交');
+  });
+
+  it('apply-plan 按实际 locale 差集报告新增 key 数', async () => {
+    const file = writeSource('ExistingLocale.vue', VUE_FILE);
+    const planJson = await makePlan(buildConfig(rootDir), file);
+    const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+    // 模拟 dry-run 后由其他分支/流程先写入了 plan 中的全部 key。
+    fs.writeFileSync(zhPath(), JSON.stringify(plan.localeDelta), 'utf-8');
+
+    await new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson);
+
+    expect(LoggerUtils.success).toHaveBeenCalledWith(
+      expect.stringContaining('Plan 回放完成：1 个文件、0 个新 key'),
+    );
   });
 
   it('apply-plan 指纹守卫：plan 生成后源文件被改 → 拒绝 apply，不覆盖改动', async () => {

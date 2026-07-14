@@ -10,7 +10,8 @@ export function loadEnv(): void {
   while (dir !== path.dirname(dir)) {
     const envPath = path.join(dir, '.env');
     if (fs.existsSync(envPath)) {
-      dotenv.config({ path: envPath });
+      // CLI 的 --version/--help 必须保持机器可读，不能被 dotenv v17 的注入提示污染 stdout。
+      dotenv.config({ path: envPath, quiet: true });
       return;
     }
     dir = path.dirname(dir);

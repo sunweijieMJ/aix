@@ -222,7 +222,7 @@ export class VueTransformer implements ITransformer {
       const localColumn = extracted.column - 1;
 
       // 在 template 内容中查找并替换
-      this.replaceInLines(
+      const replaced = this.replaceInLines(
         lines,
         extracted.original,
         replacement,
@@ -230,6 +230,11 @@ export class VueTransformer implements ITransformer {
         localColumn,
         extracted.templateContext,
       );
+      if (!replaced) {
+        throw new Error(
+          `无法定位已提取文本的模板节点，已中止转换: ${extracted.filePath}:${extracted.line}:${extracted.column}「${extracted.original}」`,
+        );
+      }
     }
 
     // 返回转换后的 template 内容
@@ -276,7 +281,9 @@ export class VueTransformer implements ITransformer {
     templateContext?: ExtractedString['templateContext'],
   ): string {
     const lines = templateContent.split('\n');
-    this.replaceInLines(lines, original, replacement, line, column, templateContext);
+    if (!this.replaceInLines(lines, original, replacement, line, column, templateContext)) {
+      throw new Error(`无法定位已提取文本的模板节点，已中止转换: 「${original}」`);
+    }
     return lines.join('\n');
   }
 
@@ -300,9 +307,9 @@ export class VueTransformer implements ITransformer {
     line: number,
     column: number,
     templateContext?: ExtractedString['templateContext'],
-  ): void {
+  ): boolean {
     if (line < 0 || line >= lines.length) {
-      return;
+      return false;
     }
 
     const targetLine = lines[line]!;
@@ -331,7 +338,7 @@ export class VueTransformer implements ITransformer {
           targetLine.substring(0, start) +
           replacement +
           targetLine.substring(start + chosen[0].length);
-        return;
+        return true;
       }
 
       // 静态属性未在目标行命中：**绝不** fall through 到下方的引号/裸文本搜索——
@@ -348,7 +355,7 @@ export class VueTransformer implements ITransformer {
           );
           if (result !== null) {
             lines[tryIdx] = result;
-            return;
+            return true;
           }
         }
       }
@@ -386,8 +393,9 @@ export class VueTransformer implements ITransformer {
             replacement +
             templateContent.slice(start + mlChosen[0].length),
         );
+        return true;
       }
-      return;
+      return false;
     }
 
     // 多行文本节点：condense 解析下，跨行文本的 loc.source（即 original）含 `\n`，
@@ -408,7 +416,7 @@ export class VueTransformer implements ITransformer {
             replacement +
             templateContent.slice(offset + original.length),
         );
-        return;
+        return true;
       }
       const idx = templateContent.indexOf(original);
       if (idx !== -1) {
@@ -418,8 +426,9 @@ export class VueTransformer implements ITransformer {
             replacement +
             templateContent.slice(idx + original.length),
         );
+        return true;
       }
-      return;
+      return false;
     }
 
     // 检查 original 是否已经带引号（模板字符串、字符串字面量）
@@ -441,7 +450,7 @@ export class VueTransformer implements ITransformer {
           targetLine.substring(0, index) +
           replacement +
           targetLine.substring(index + original.length);
-        return;
+        return true;
       }
     } else {
       // 引号包裹搜索仅对「源码里本就带引号的字符串字面量」上下文有意义：
@@ -465,7 +474,7 @@ export class VueTransformer implements ITransformer {
             targetLine.substring(0, index) +
             replacement +
             targetLine.substring(index + singleQuotePattern.length);
-          return;
+          return true;
         }
 
         // 查找双引号版本
@@ -476,7 +485,7 @@ export class VueTransformer implements ITransformer {
             targetLine.substring(0, index) +
             replacement +
             targetLine.substring(index + doubleQuotePattern.length);
-          return;
+          return true;
         }
 
         // 查找反引号版本（处理无变量模板字符串场景）
@@ -487,7 +496,7 @@ export class VueTransformer implements ITransformer {
             targetLine.substring(0, index) +
             replacement +
             targetLine.substring(index + backtickPattern.length);
-          return;
+          return true;
         }
       }
 
@@ -502,7 +511,7 @@ export class VueTransformer implements ITransformer {
           targetLine.substring(0, index) +
           replacement +
           targetLine.substring(index + original.length);
-        return;
+        return true;
       }
     }
 
@@ -518,10 +527,11 @@ export class VueTransformer implements ITransformer {
         );
         if (result !== null) {
           lines[tryIdx] = result;
-          return;
+          return true;
         }
       }
     }
+    return false;
   }
 
   /**
@@ -719,7 +729,15 @@ export class VueTransformer implements ITransformer {
           })
         ) {
           replacements.push({ start, end, replacement });
+        } else {
+          throw new Error(
+            `无法验证已提取文本的源码节点，已中止转换: ${extracted.filePath}:${extracted.line}:${extracted.column}「${extracted.original}」`,
+          );
         }
+      } else {
+        throw new Error(
+          `无法定位已提取文本的源码节点，已中止转换: ${extracted.filePath}:${extracted.line}:${extracted.column}「${extracted.original}」`,
+        );
       }
     }
 

@@ -17,7 +17,9 @@ describe('ExportProcessor 桶式导出合并 customDir', () => {
   let customDir: string;
   let outDir: string;
 
-  const buildConfig = (): ResolvedConfig =>
+  const buildConfig = (
+    bucketOverrides: Partial<NonNullable<I18nToolsConfig['buckets']>> = {},
+  ): ResolvedConfig =>
     resolveConfig({
       root: rootDir,
       framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
@@ -35,6 +37,7 @@ describe('ExportProcessor 桶式导出合并 customDir', () => {
         defaultBucket: 'common',
         emitManifest: false,
         layout: 'by-locale',
+        ...bucketOverrides,
       },
       llm: { shared: { apiKey: 'x', model: 'm' } },
     } satisfies I18nToolsConfig);
@@ -107,5 +110,43 @@ describe('ExportProcessor 桶式导出合并 customDir', () => {
       'utf-8',
     );
     await expect(new ExportProcessor(buildConfig()).execute(outDir)).rejects.toThrow(/冲突/);
+  });
+
+  it('by-locale：目标语言独有 key 的默认桶进入实际文件、index 和 manifest', async () => {
+    fs.writeFileSync(path.join(baseDir, 'zh-CN.json'), '{}', 'utf-8');
+    fs.writeFileSync(path.join(baseDir, 'en-US.json'), JSON.stringify({ extra: 'Extra' }), 'utf-8');
+    fs.writeFileSync(path.join(customDir, 'zh-CN.json'), '{}', 'utf-8');
+    fs.writeFileSync(path.join(customDir, 'en-US.json'), '{}', 'utf-8');
+
+    await new ExportProcessor(buildConfig({ emitManifest: true })).execute(outDir);
+
+    expect(fs.existsSync(path.join(outDir, 'en-US', 'common.json'))).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(outDir, 'en-US', 'index.json'), 'utf-8'))).toEqual({
+      buckets: ['common'],
+    });
+    expect(JSON.parse(fs.readFileSync(path.join(outDir, 'zh-CN', 'index.json'), 'utf-8'))).toEqual({
+      buckets: [],
+    });
+    const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'manifest.json'), 'utf-8'));
+    expect(manifest.buckets).toEqual(['common']);
+    expect(manifest.files['en-US']).toEqual({ common: 'en-US/common.json' });
+    expect(manifest.files['zh-CN']).toEqual({});
+  });
+
+  it('by-bucket：manifest 只列出实际拥有该桶的 locale，不生成虚假路径', async () => {
+    fs.writeFileSync(path.join(baseDir, 'zh-CN.json'), '{}', 'utf-8');
+    fs.writeFileSync(path.join(baseDir, 'en-US.json'), JSON.stringify({ extra: 'Extra' }), 'utf-8');
+    fs.writeFileSync(path.join(customDir, 'zh-CN.json'), '{}', 'utf-8');
+    fs.writeFileSync(path.join(customDir, 'en-US.json'), '{}', 'utf-8');
+
+    await new ExportProcessor(buildConfig({ emitManifest: true, layout: 'by-bucket' })).execute(
+      outDir,
+    );
+
+    expect(fs.existsSync(path.join(outDir, 'common', 'en-US.json'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'common', 'zh-CN.json'))).toBe(false);
+    const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'manifest.json'), 'utf-8'));
+    expect(manifest.buckets).toEqual(['common']);
+    expect(manifest.files.common).toEqual({ 'en-US': 'common/en-US.json' });
   });
 });

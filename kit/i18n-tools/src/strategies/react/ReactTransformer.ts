@@ -159,8 +159,16 @@ export class ReactTransformer implements ITransformer {
             )
           ) {
             replacements.push({ start, end, replacement });
+          } else {
+            throw new Error(
+              `无法验证已提取文本的源码节点，已中止转换: ${filePath}:${extracted.line}:${extracted.column}「${extracted.original}」`,
+            );
           }
         }
+      } else {
+        throw new Error(
+          `无法定位已提取文本的源码节点，已中止转换: ${filePath}:${extracted.line}:${extracted.column}「${extracted.original}」`,
+        );
       }
     }
     return CommonASTUtils.applyReplacements(sourceText, replacements);

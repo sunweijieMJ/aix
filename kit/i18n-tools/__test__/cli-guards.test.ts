@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import toolPackage from '../package.json';
 
 /**
  * CLI 入口层（cli.ts main）守卫的黑盒 e2e。
@@ -161,6 +162,23 @@ describe('CLI 入口守卫（cli.ts main）', () => {
       const { code, out } = runCli(['--help'], cfgDir);
       expect(code).toBe(0);
       expect(out).toMatch(/国际化工具集|--mode/);
+    },
+    T,
+  );
+
+  it(
+    '--version → 输出 i18n-tools 自身版本，不受消费项目 package.json 影响',
+    () => {
+      fs.writeFileSync(
+        path.join(cfgDir, 'package.json'),
+        JSON.stringify({ name: 'consumer-app', version: '9.9.9' }),
+      );
+      fs.writeFileSync(path.join(cfgDir, '.env'), 'I18N_TOOLS_VERSION_TEST=1\n', 'utf-8');
+
+      const { code, out } = runCli(['--version'], cfgDir);
+
+      expect(code).toBe(0);
+      expect(out.trim()).toBe(toolPackage.version);
     },
     T,
   );

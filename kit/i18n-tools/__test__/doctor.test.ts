@@ -252,6 +252,22 @@ describe('DoctorProcessor', () => {
     expect(all).toContain('进行中');
   });
 
+  it('locale-lint 同组混合严重级别时标题展示组内最高级别', async () => {
+    writeSourceFile(
+      'Status.ts',
+      `export const done = (status: string): boolean => status === '已完成';\n`,
+    );
+    writeLocale('zh-CN', { html: '<b>提示</b>', done: '已完成' });
+    writeLocale('en-US', { html: '<b>Tip</b>', done: 'Done' });
+
+    await new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir)).execute();
+
+    const localeLintHeading = infoSpy.mock.calls
+      .map((call: unknown[]) => String(call[0]))
+      .find((message: string) => message.includes('[locale-lint]'));
+    expect(localeLintHeading).toMatch(/^🚨/);
+  });
+
   it('hardcoded-comparison + CI 模式 → 抛错（error 门禁对独立 doctor 生效）', async () => {
     writeSourceFile(
       'Status.ts',

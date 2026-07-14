@@ -12,6 +12,8 @@ export interface SkippedTextLocation {
   filePath: string;
   line: number;
   column: number;
+  /** 同一外层表达式中位置和文本相同时的稳定分支标识，仅用于去重。 */
+  occurrence?: number;
 }
 
 /**
@@ -172,19 +174,77 @@ export class CommonASTUtils {
    * （`cond ? '内部错误' : '网络异常'`）才是真正渲染给用户、需要 i18n 的文案。
    */
   static collectNestedChineseLiterals(expression: ts.Node): string[] {
-    const out: string[] = [];
+    return CommonASTUtils.collectNestedChineseLiteralNodes(expression).map((node) => node.text);
+  }
+
+  /** collectNestedChineseLiterals 的带节点版本，供需要精确行列的诊断路径使用。 */
+  static collectNestedChineseLiteralNodes(
+    expression: ts.Node,
+  ): Array<ts.StringLiteral | ts.NoSubstitutionTemplateLiteral> {
+    const out: Array<ts.StringLiteral | ts.NoSubstitutionTemplateLiteral> = [];
     const walk = (n: ts.Node): void => {
       if (
         (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) &&
         CONFIG.CHINESE_REGEX.test(n.text) &&
         !CommonASTUtils.isComparisonOperand(n)
       ) {
-        out.push(n.text);
+        out.push(n);
       }
       ts.forEachChild(n, walk);
     };
     walk(expression);
     return out;
+  }
+
+  /**
+   * 收集翻译调用运行时参数中的中文字符串。
+   *
+   * 第一个参数承载 key/message descriptor，属于翻译调用本身；从第二个参数开始才是
+   * values/options 等运行时数据。这里仅扫描后者，并排除 defaultMessage/defaultValue/
+   * defaults 这类已经由 i18n 库管理的默认文案字段。用于增量重跑时继续暴露第一次
+   * generate 留在参数表达式里的中文分支，保证覆盖率口径幂等。
+   */
+  static collectRuntimeChineseLiteralsFromI18nCall(
+    call: ts.CallExpression,
+  ): Array<{ text: string; node: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral }> {
+    const out: Array<{
+      text: string;
+      node: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral;
+    }> = [];
+    const defaultFields = new Set(['defaultMessage', 'defaultValue', 'defaults']);
+
+    const walk = (node: ts.Node): void => {
+      if (ts.isPropertyAssignment(node)) {
+        const name =
+          ts.isIdentifier(node.name) || ts.isStringLiteral(node.name) ? node.name.text : '';
+        if (defaultFields.has(name)) return;
+      }
+      if (
+        (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
+        CONFIG.CHINESE_REGEX.test(node.text) &&
+        !CommonASTUtils.isComparisonOperand(node)
+      ) {
+        out.push({ text: node.text, node });
+        return;
+      }
+      ts.forEachChild(node, walk);
+    };
+
+    for (const argument of call.arguments.slice(1)) walk(argument);
+    return out;
+  }
+
+  /** 框架无关的 t/$t 调用判定，供提取守卫和增量诊断复用。 */
+  static isCommonI18nCall(node: ts.CallExpression): boolean {
+    return CommonASTUtils.isCommonI18nCallee(node.expression);
+  }
+
+  private static isCommonI18nCallee(expression: ts.Expression): boolean {
+    return (
+      (ts.isIdentifier(expression) && (expression.text === 't' || expression.text === '$t')) ||
+      (ts.isPropertyAccessExpression(expression) &&
+        (expression.name.text === 't' || expression.name.text === '$t'))
+    );
   }
 
   /**
@@ -243,10 +303,7 @@ export class CommonASTUtils {
    * 与 skippedComparisonOperands 不同：本集合无需与 locale map 交叉——嵌套中文
    * 必然是展示文案，泄漏即问题，全部上报。用 Map 去重。
    */
-  private static skippedNestedChinese: Map<
-    string,
-    { text: string; filePath: string; line: number; column: number }
-  > = new Map();
+  private static skippedNestedChinese: Map<string, SkippedTextLocation> = new Map();
 
   /** 记录一处「被插值占位符吞掉的嵌套中文字面量」位置。供 extractor 调用。 */
   static recordSkippedNestedChinese(
@@ -254,20 +311,16 @@ export class CommonASTUtils {
     filePath: string,
     line: number,
     column: number,
+    occurrence?: number,
   ): void {
-    const key = `${filePath}:${line}:${column}:${text}`;
+    const key = `${filePath}:${line}:${column}:${occurrence ?? ''}:${text}`;
     if (!CommonASTUtils.skippedNestedChinese.has(key)) {
-      CommonASTUtils.skippedNestedChinese.set(key, { text, filePath, line, column });
+      CommonASTUtils.skippedNestedChinese.set(key, { text, filePath, line, column, occurrence });
     }
   }
 
   /** 取出当前累积的嵌套中文记录并清空（供 lint 阶段一次性消费）。 */
-  static drainSkippedNestedChinese(): Array<{
-    text: string;
-    filePath: string;
-    line: number;
-    column: number;
-  }> {
+  static drainSkippedNestedChinese(): SkippedTextLocation[] {
     const items = Array.from(CommonASTUtils.skippedNestedChinese.values());
     CommonASTUtils.skippedNestedChinese.clear();
     return items;
@@ -378,11 +431,7 @@ export class CommonASTUtils {
     // 复用 isAlreadyInternationalizedByScaffold 的父链遍历，componentTags 传空数组——
     // 本场景不识别 i18n 组件标签，JSX 分支恒不命中、退化为纯调用判定。
     return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
-      isI18nCall: (expression) =>
-        (ts.isIdentifier(expression) && (expression.text === 't' || expression.text === '$t')) ||
-        (ts.isPropertyAccessExpression(expression) &&
-          ts.isIdentifier(expression.name) &&
-          (expression.name.text === 't' || expression.name.text === '$t')),
+      isI18nCall: (expression) => CommonASTUtils.isCommonI18nCallee(expression),
       componentTags: [],
     });
   }
@@ -939,12 +988,9 @@ export class CommonASTUtils {
         (selected) => replacement.start < selected.end && replacement.end > selected.start,
       );
       if (overlapping) {
-        // 静默丢弃会让"明明提取了却没替换成功"的现象难以排查；告警便于定位
-        // 调用方（如 findExactStringNode 同时返回了重叠节点）的语义问题
-        LoggerUtils.warn(
-          `跳过重叠替换: [${replacement.start},${replacement.end}] 与 [${overlapping.start},${overlapping.end}] 冲突，保留范围更大的项`,
+        throw new Error(
+          `检测到重叠替换: [${replacement.start},${replacement.end}] 与 [${overlapping.start},${overlapping.end}] 冲突，已中止以避免静默丢失翻译调用点`,
         );
-        continue;
       }
       validReplacements.push(replacement);
     }

@@ -205,7 +205,7 @@ export class DoctorProcessor extends BaseProcessor {
     };
   }
 
-  /** LocaleValueLinter.analyze → DoctorFinding（严重级别全部归 info） */
+  /** LocaleValueLinter.analyze → DoctorFinding（按类别映射 error / warning / info） */
   private runLinter(sourceMap: LocaleMap): DoctorFinding[] {
     const lintFindings = LocaleValueLinter.analyze(sourceMap, {
       separator: this.config.keys.separator,
@@ -453,8 +453,12 @@ export class DoctorProcessor extends BaseProcessor {
     }
 
     for (const [category, list] of byCategory) {
-      const icon =
-        list[0]!.severity === 'error' ? '🚨' : list[0]!.severity === 'warning' ? '⚠️ ' : 'ℹ️ ';
+      const groupSeverity = list.some((finding) => finding.severity === 'error')
+        ? 'error'
+        : list.some((finding) => finding.severity === 'warning')
+          ? 'warning'
+          : 'info';
+      const icon = groupSeverity === 'error' ? '🚨' : groupSeverity === 'warning' ? '⚠️ ' : 'ℹ️ ';
       LoggerUtils.info('');
       LoggerUtils.info(`${icon} [${category}] 共 ${list.length} 条`);
       for (const f of list) {

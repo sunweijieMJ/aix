@@ -26,6 +26,15 @@ export interface FrameworkConfig {
   usesDoubleBracePlaceholders: boolean;
 }
 
+/** 提取器明确判定需要人工处理、因而未生成翻译调用的文本统计。 */
+export interface ManualSkipDiagnostic {
+  category: 'html-template' | 'class-property' | 'nested-interpolation';
+  message: string;
+  count: number;
+  /** 同类展示文案不足以区分调用点时使用的稳定去重键。 */
+  dedupeKey?: string;
+}
+
 /**
  * 文本提取器接口
  */
@@ -37,6 +46,8 @@ export interface ITextExtractor {
    * 调用方（GenerateProcessor）负责把 warning 写入 RunReport 以供事后回查。
    */
   drainWarnings(): string[];
+  /** 取出并清空本轮需要人工处理的结构化跳过项，供覆盖率统计。 */
+  drainManualSkips(): ManualSkipDiagnostic[];
 }
 
 // BaseTextExtractor 的实现已下沉至 strategies/base/text-extractor.ts，

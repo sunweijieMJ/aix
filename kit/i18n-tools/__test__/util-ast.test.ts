@@ -14,11 +14,23 @@ import { RestoreProcessor } from '../src/core/RestoreProcessor';
 import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
+import type { ITextExtractor } from '../src/adapters/FrameworkAdapter';
 
 // =============================================================================
 // common-ast-utils
 // =============================================================================
 describe('common-ast-utils', () => {
+  describe('CommonASTUtils.applyReplacements', () => {
+    it('替换区间重叠时抛错，避免静默丢弃已生成语言 key 对应的调用点', () => {
+      expect(() =>
+        CommonASTUtils.applyReplacements('abcdef', [
+          { start: 1, end: 5, replacement: 'X' },
+          { start: 2, end: 4, replacement: 'Y' },
+        ]),
+      ).toThrow(/重叠替换/);
+    });
+  });
+
   describe('CommonASTUtils.nodeToText', () => {
     function findFirstStringLiteral(code: string): {
       node: ts.StringLiteral;
@@ -562,6 +574,12 @@ describe('strip-matched-delimiters', () => {
  * 交替返回 true/false，过滤判定非确定。修复：global || sticky 时都剥除（replace(/[gy]/g,'')）。
  */
 describe('text-extractor-sticky-regex', () => {
+  it('ITextExtractor 强制所有内置 extractor 实现结构化人工跳过能力', () => {
+    type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
+    const drainManualSkipsIsOptional: IsOptional<ITextExtractor, 'drainManualSkips'> = false;
+    expect(drainManualSkipsIsOptional).toBe(false);
+  });
+
   class ProbeExtractor extends BaseTextExtractor {
     constructor(patterns: RegExp[]) {
       super(patterns);

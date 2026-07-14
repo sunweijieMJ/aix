@@ -261,8 +261,17 @@ export class ExportProcessor extends FileProcessor {
     // 用合并后的 source 文本驱动分桶（与 generate/merge 一致；含定制 source key）
     const sourceFlat = mergedByLocale.get(sourceLocale)!;
     const keyBucketMap = LanguageFileManager.buildKeyBucketMap(this.config, sourceFlat);
-    // 去重桶集合算一次后下传复用（统计 / index 文件 / manifest 三处共用，避免重复计算）
-    const bucketNames = [...new Set(Object.values(keyBucketMap))].sort();
+    // 清单必须来自每个 locale 实际写出的桶，而不是只看 source 的 keyBucketMap：目标语言
+    // 独有 key 会按 writeBucketedLocaleFile 规则落 defaultBucket，也必须进入 index/manifest。
+    const localeBuckets = new Map<string, string[]>();
+    for (const locale of allLocales) {
+      const actualBuckets = new Set<string>();
+      for (const key of Object.keys(mergedByLocale.get(locale)!)) {
+        actualBuckets.add(keyBucketMap[key] ?? buckets.defaultBucket);
+      }
+      localeBuckets.set(locale, [...actualBuckets].sort());
+    }
+    const bucketNames = [...new Set([...localeBuckets.values()].flat())].sort();
     const bucketCount = bucketNames.length;
 
     LoggerUtils.info('\n📊 桶式语言包统计:');
@@ -289,10 +298,17 @@ export class ExportProcessor extends FileProcessor {
     }
 
     // 每个语言目录生成 index.json，便于消费方按需懒加载
-    this.writeLocaleIndexFiles(outputDir, allLocales, bucketNames, buckets.layout);
+    this.writeLocaleIndexFiles(outputDir, allLocales, localeBuckets, buckets.layout);
 
     if (buckets.emitManifest) {
-      this.writeManifest(outputDir, bucketNames, allLocales, buckets.layout, buckets.defaultBucket);
+      this.writeManifest(
+        outputDir,
+        bucketNames,
+        allLocales,
+        localeBuckets,
+        buckets.layout,
+        buckets.defaultBucket,
+      );
     }
 
     LoggerUtils.success('\n✅ 桶式语言包导出成功!');
@@ -303,13 +319,13 @@ export class ExportProcessor extends FileProcessor {
   private writeLocaleIndexFiles(
     outputDir: string,
     locales: string[],
-    bucketNames: string[],
+    localeBuckets: Map<string, string[]>,
     layout: 'by-locale' | 'by-bucket',
   ): void {
     if (layout !== 'by-locale') return;
     for (const locale of locales) {
       FileUtils.writeJsonFile(path.join(outputDir, locale, 'index.json'), {
-        buckets: bucketNames,
+        buckets: localeBuckets.get(locale) ?? [],
       });
     }
   }
@@ -318,6 +334,7 @@ export class ExportProcessor extends FileProcessor {
     outputDir: string,
     bucketNames: string[],
     locales: string[],
+    localeBuckets: Map<string, string[]>,
     layout: 'by-locale' | 'by-bucket',
     defaultBucket: string,
   ): void {
@@ -327,13 +344,15 @@ export class ExportProcessor extends FileProcessor {
       for (const bucket of bucketNames) {
         files[bucket] = {};
         for (const locale of locales) {
-          files[bucket][locale] = `${bucket}/${locale}.json`;
+          if (localeBuckets.get(locale)?.includes(bucket)) {
+            files[bucket][locale] = `${bucket}/${locale}.json`;
+          }
         }
       }
     } else {
       for (const locale of locales) {
         files[locale] = {};
-        for (const bucket of bucketNames) {
+        for (const bucket of localeBuckets.get(locale) ?? []) {
           files[locale][bucket] = `${locale}/${bucket}.json`;
         }
       }

@@ -1,5 +1,5 @@
 import type { ExtractedString } from '../../utils/types';
-import type { ITextExtractor } from '../../adapters/FrameworkAdapter';
+import type { ITextExtractor, ManualSkipDiagnostic } from '../../adapters/FrameworkAdapter';
 import { stripStatefulFlags } from '../../utils/path-matcher';
 
 /**
@@ -24,6 +24,7 @@ import { stripStatefulFlags } from '../../utils/path-matcher';
  */
 export abstract class BaseTextExtractor implements ITextExtractor {
   private pendingWarnings: string[] = [];
+  private pendingManualSkips = new Map<string, ManualSkipDiagnostic>();
   private readonly rejectPatterns: readonly RegExp[];
 
   constructor(rejectPatterns: readonly RegExp[] = []) {
@@ -61,10 +62,25 @@ export abstract class BaseTextExtractor implements ITextExtractor {
     this.pendingWarnings.push(message);
   }
 
+  /** 记录一类需要人工处理的跳过项；相同 category + 去重键在同一轮提取中只计一次。 */
+  protected recordManualSkip(diagnostic: ManualSkipDiagnostic): void {
+    const key = `${diagnostic.category}:${diagnostic.dedupeKey ?? diagnostic.message}`;
+    if (!this.pendingManualSkips.has(key)) {
+      this.pendingManualSkips.set(key, diagnostic);
+    }
+  }
+
   /** 取出累积的 warning 并清空缓冲区，供 Processor 写入 RunReport。 */
   drainWarnings(): string[] {
     const out = this.pendingWarnings;
     this.pendingWarnings = [];
+    return out;
+  }
+
+  /** 取出累积的人工跳过项并清空缓冲区。 */
+  drainManualSkips(): ManualSkipDiagnostic[] {
+    const out = Array.from(this.pendingManualSkips.values());
+    this.pendingManualSkips.clear();
     return out;
   }
 }

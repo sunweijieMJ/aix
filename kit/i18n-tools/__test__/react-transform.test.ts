@@ -374,6 +374,13 @@ describe('react-i18next.isAlreadyInternationalized', () => {
   it('i18next.t(...) 调用内 → true', () => {
     expect(check(`const b = i18next.t('已存在B');`, '已存在B')).toBe(true);
   });
+  it('props.t / this.props.t HOC 调用内 → true', () => {
+    expect(check(`const a = props.t('已存在P');`, '已存在P')).toBe(true);
+    expect(check(`const b = this.props.t('已存在T');`, '已存在T')).toBe(true);
+  });
+  it('普通业务对象 router.t(...) 调用内 → false', () => {
+    expect(check(`const b = router.t('待提取B');`, '待提取B')).toBe(false);
+  });
   it('<Trans> 元素内文本 → true', () => {
     expect(check(`const c = <Trans i18nKey="k">已存在C</Trans>;`, '已存在C')).toBe(true);
   });
@@ -397,6 +404,19 @@ describe('react-intl.isAlreadyInternationalized', () => {
     expect(
       check(`const a = intl.formatMessage({ id: 'x', defaultMessage: '已存在A' });`, '已存在A'),
     ).toBe(true);
+  });
+  it('props.intl / this.props.intl.formatMessage(...) 内 → true', () => {
+    expect(
+      check(`const a = props.intl.formatMessage({ defaultMessage: '已存在P' });`, '已存在P'),
+    ).toBe(true);
+    expect(
+      check(`const b = this.props.intl.formatMessage({ defaultMessage: '已存在T' });`, '已存在T'),
+    ).toBe(true);
+  });
+  it('普通 formatter.formatMessage(...) 调用内 → false', () => {
+    expect(
+      check(`const a = formatter.formatMessage({ defaultMessage: '待提取F' });`, '待提取F'),
+    ).toBe(false);
   });
   it('defineMessages(...) 内 → true', () => {
     expect(
@@ -1085,7 +1105,12 @@ describe('Bug 2：类组件非箭头属性初始化器跳过提取 + 告警', ()
     strings.forEach((s, i) => (s.semanticId = `demo.k${i}`));
     const adapter = new ReactAdapter('@/plugins/locale', libType);
     const out = adapter.getTransformer().transform(file, strings, code);
-    return { strings, out, warnings: extractor.drainWarnings() };
+    return {
+      strings,
+      out,
+      warnings: extractor.drainWarnings(),
+      manualSkips: extractor.drainManualSkips(),
+    };
   }
 
   it('react-i18next：label = 中文 → 不提取、不产出裸 t()、原文保留并告警', async () => {
@@ -1117,6 +1142,14 @@ export class Foo extends Component {
     expect(strings.some((s) => s.original === '草稿')).toBe(false);
     expect(out).not.toContain('intl.formatMessage');
     expect(out).toContain("label = '草稿'");
+  });
+
+  it('同一行两个类字段文案分别计入人工跳过项', async () => {
+    const code = `import React, { Component } from 'react';
+export class Foo extends Component { first = '甲'; second = '乙'; render() { return <div />; } }
+`;
+    const { manualSkips } = await run(code, 'react-i18next');
+    expect(manualSkips.filter((item) => item.category === 'class-property')).toHaveLength(2);
   });
 
   it('static 属性同样跳过（求值时无实例 this.props 语义）', async () => {
@@ -1154,5 +1187,26 @@ export class Foo extends Component {
 `;
     const { strings } = await run(code, 'react-i18next');
     expect(strings.some((s) => s.original === '草稿')).toBe(true);
+  });
+});
+
+describe('ReactTransformer 替换完整性', () => {
+  it('已提取条目的源码位置失效时抛错，不静默生成孤儿 locale key', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-stale-hit-'));
+    try {
+      const file = path.join(dir, 'stale.ts');
+      const source = `const untouched = 'x';\nexport const label = '你好';\n`;
+      fs.writeFileSync(file, source, 'utf-8');
+      const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next');
+      const strings = await adapter.getTextExtractor().extractFromFile(file);
+      expect(strings).toHaveLength(1);
+      strings[0]!.semanticId = 'demo.label';
+      strings[0]!.line = 1;
+      strings[0]!.column = 1;
+
+      expect(() => adapter.getTransformer().transform(file, strings, source)).toThrow(/无法定位/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

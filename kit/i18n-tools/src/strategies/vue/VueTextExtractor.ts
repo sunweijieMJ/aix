@@ -546,11 +546,30 @@ export class VueTextExtractor extends BaseTextExtractor {
     // 即整体 return）会把混合表达式（如 `$t('a') + '：中文后缀'`）连同中文一起漏掉。
     // 收窄为精确的顶层判定后，混合表达式落到下方 AST 逐节点处理：i18n 调用参数内的
     // key 由 isAlreadyInternationalized 保护、不会被重复提取，非调用部分的中文正常提取。
-    if (this.isSingleI18nCallExpression(sourceFile)) {
+    const existingI18nCall = this.getSingleI18nCallExpression(sourceFile);
+    if (existingI18nCall) {
+      this.recordRuntimeChineseInI18nCall(
+        existingI18nCall,
+        sourceFile,
+        filePath,
+        lineOffset,
+        directive.loc.start.line,
+        directive.loc.start.column,
+      );
       return;
     }
 
     const visit = async (node: ts.Node): Promise<void> => {
+      if (ts.isCallExpression(node) && CommonASTUtils.isCommonI18nCall(node)) {
+        this.recordRuntimeChineseInI18nCall(
+          node,
+          sourceFile,
+          filePath,
+          lineOffset,
+          directive.loc.start.line,
+          directive.loc.start.column,
+        );
+      }
       // 提取字符串字面量
       if (ts.isStringLiteral(node)) {
         const text = node.text;
@@ -655,7 +674,11 @@ export class VueTextExtractor extends BaseTextExtractor {
         FileUtils.containsChinese(node.text) &&
         CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
       ) {
-        this.warnHtmlInTemplateLiteralAtLine(directive.loc.start.line + lineOffset, filePath);
+        this.warnHtmlInTemplateLiteralAtLine(
+          directive.loc.start.line + lineOffset,
+          filePath,
+          `${directive.loc.start.offset}:${node.getStart(sourceFile)}`,
+        );
         return;
       }
       originalText = node.text;
@@ -670,7 +693,11 @@ export class VueTextExtractor extends BaseTextExtractor {
       if (CommonASTUtils.templateLiteralsContainChinese(node)) {
         // 与 script 侧对称的 HTML 守卫：含 HTML 标签整段拒绝提取并告警。
         if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
-          this.warnHtmlInTemplateLiteralAtLine(directive.loc.start.line + lineOffset, filePath);
+          this.warnHtmlInTemplateLiteralAtLine(
+            directive.loc.start.line + lineOffset,
+            filePath,
+            `${directive.loc.start.offset}:${node.getStart(sourceFile)}`,
+          );
           return;
         }
         const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
@@ -679,13 +706,21 @@ export class VueTextExtractor extends BaseTextExtractor {
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
         // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
-        for (const nested of result.nestedChineseTexts) {
+        const nestedNodes = CommonASTUtils.collectNestedChineseLiteralNodes(node);
+        for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
+          const occurrence = nestedNodes[nestedIndex]?.getStart(sourceFile) ?? nestedIndex;
           CommonASTUtils.recordSkippedNestedChinese(
             nested,
             filePath,
             directive.loc.start.line + lineOffset,
             directive.loc.start.column,
+            occurrence,
           );
+          this.recordManualSkip({
+            category: 'nested-interpolation',
+            message: `${filePath}:${directive.loc.start.line + lineOffset}:${directive.loc.start.column}:${occurrence}:${nested}`,
+            count: 1,
+          });
         }
       }
     }
@@ -734,11 +769,30 @@ export class VueTextExtractor extends BaseTextExtractor {
       // 仅当整个插值「就是单个 i18n 调用」时才整体跳过。旧粗筛（以 $t( 开头或含 .t(
       // 即整体 return）会把 `$t('a') + '：中文后缀'`、`obj.t(x) ? '进行中' : '已结束'`
       // 这类混合/三元表达式里的中文一起漏掉。收窄后交给下方 AST 逐节点处理。
-      if (this.isSingleI18nCallExpression(sourceFile)) {
+      const existingI18nCall = this.getSingleI18nCallExpression(sourceFile);
+      if (existingI18nCall) {
+        this.recordRuntimeChineseInI18nCall(
+          existingI18nCall,
+          sourceFile,
+          filePath,
+          lineOffset,
+          interpolationNode.loc.start.line,
+          interpolationNode.loc.start.column,
+        );
         return;
       }
 
       const visit = async (node: ts.Node): Promise<void> => {
+        if (ts.isCallExpression(node) && CommonASTUtils.isCommonI18nCall(node)) {
+          this.recordRuntimeChineseInI18nCall(
+            node,
+            sourceFile,
+            filePath,
+            lineOffset,
+            interpolationNode.loc.start.line,
+            interpolationNode.loc.start.column,
+          );
+        }
         // 提取字符串字面量
         if (ts.isStringLiteral(node)) {
           const text = node.text;
@@ -842,6 +896,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         this.warnHtmlInTemplateLiteralAtLine(
           interpolationNode.loc.start.line + lineOffset,
           filePath,
+          `${interpolationNode.loc.start.offset}:${node.getStart(sourceFile)}`,
         );
         return;
       }
@@ -856,6 +911,7 @@ export class VueTextExtractor extends BaseTextExtractor {
           this.warnHtmlInTemplateLiteralAtLine(
             interpolationNode.loc.start.line + lineOffset,
             filePath,
+            `${interpolationNode.loc.start.offset}:${node.getStart(sourceFile)}`,
           );
           return;
         }
@@ -865,13 +921,21 @@ export class VueTextExtractor extends BaseTextExtractor {
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
         // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
-        for (const nested of result.nestedChineseTexts) {
+        const nestedNodes = CommonASTUtils.collectNestedChineseLiteralNodes(node);
+        for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
+          const occurrence = nestedNodes[nestedIndex]?.getStart(sourceFile) ?? nestedIndex;
           CommonASTUtils.recordSkippedNestedChinese(
             nested,
             filePath,
             interpolationNode.loc.start.line + lineOffset,
             interpolationNode.loc.start.column,
+            occurrence,
           );
+          this.recordManualSkip({
+            category: 'nested-interpolation',
+            message: `${filePath}:${interpolationNode.loc.start.line + lineOffset}:${interpolationNode.loc.start.column}:${occurrence}:${nested}`,
+            count: 1,
+          });
         }
       }
     }
@@ -939,6 +1003,9 @@ export class VueTextExtractor extends BaseTextExtractor {
     lineOffset: number,
     filePath: string,
   ): Promise<void> {
+    if (ts.isCallExpression(node) && CommonASTUtils.isCommonI18nCall(node)) {
+      this.recordRuntimeChineseInI18nCall(node, sourceFile, filePath, lineOffset);
+    }
     let originalText = ''; // 保持源代码原样（用于转换时匹配）
     let processedText = ''; // 内联字面量后的文本（用于locale和ID）
     let isTemplateString = false;
@@ -980,13 +1047,19 @@ export class VueTextExtractor extends BaseTextExtractor {
         // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
         if (result.nestedChineseTexts.length > 0) {
           const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
-          for (const nested of result.nestedChineseTexts) {
+          for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
             CommonASTUtils.recordSkippedNestedChinese(
               nested,
               filePath,
               pos.line + 1 + lineOffset,
               pos.character + 1,
+              nestedIndex,
             );
+            this.recordManualSkip({
+              category: 'nested-interpolation',
+              message: `${filePath}:${pos.line + 1 + lineOffset}:${pos.character + 1}:${nestedIndex}:${nested}`,
+              count: 1,
+            });
           }
         }
       }
@@ -1222,24 +1295,36 @@ export class VueTextExtractor extends BaseTextExtractor {
    * 即整体 return，会误吞混合表达式（`$t('a') + '中文'`、`obj.t(x) ? '中A' : '中B'`）里的中文。
    * parseExpressionSource 会把片段包一层括号，故顶层是单个 ExpressionStatement → 括号表达式。
    */
-  private isSingleI18nCallExpression(sourceFile: ts.SourceFile): boolean {
-    if (sourceFile.statements.length !== 1) return false;
+  private getSingleI18nCallExpression(sourceFile: ts.SourceFile): ts.CallExpression | undefined {
+    if (sourceFile.statements.length !== 1) return undefined;
     const stmt = sourceFile.statements[0]!;
-    if (!ts.isExpressionStatement(stmt)) return false;
+    if (!ts.isExpressionStatement(stmt)) return undefined;
     let expr: ts.Expression = stmt.expression;
     while (ts.isParenthesizedExpression(expr)) {
       expr = expr.expression;
     }
-    if (!ts.isCallExpression(expr)) return false;
-    const callee = expr.expression;
-    if (ts.isIdentifier(callee)) {
-      return callee.text === 't' || callee.text === '$t';
+    if (!ts.isCallExpression(expr)) return undefined;
+    return CommonASTUtils.isCommonI18nCall(expr) ? expr : undefined;
+  }
+
+  /** 增量重跑时记录 t/$t 的 values/options 参数中仍残留的中文。 */
+  private recordRuntimeChineseInI18nCall(
+    call: ts.CallExpression,
+    sourceFile: ts.SourceFile,
+    filePath: string,
+    lineOffset: number,
+    baseLine = 1,
+    baseColumn = 0,
+  ): void {
+    for (const item of CommonASTUtils.collectRuntimeChineseLiteralsFromI18nCall(call)) {
+      const pos = ts.getLineAndCharacterOfPosition(sourceFile, item.node.getStart(sourceFile));
+      CommonASTUtils.recordSkippedNestedChinese(
+        item.text,
+        filePath,
+        baseLine + pos.line + lineOffset,
+        (pos.line === 0 ? baseColumn : 0) + pos.character + 1,
+      );
     }
-    // this.$t(...) / obj.t(...) 等成员调用：末段方法名为 t/$t 即视为 i18n 调用
-    if (ts.isPropertyAccessExpression(callee)) {
-      return callee.name.text === 't' || callee.name.text === '$t';
-    }
-    return false;
   }
 
   private isVueI18nCall(expression: string): boolean {
@@ -1274,7 +1359,11 @@ export class VueTextExtractor extends BaseTextExtractor {
     filePath: string,
   ): void {
     const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
-    this.warnHtmlInTemplateLiteralAtLine(pos.line + 1 + lineOffset, filePath);
+    this.warnHtmlInTemplateLiteralAtLine(
+      pos.line + 1 + lineOffset,
+      filePath,
+      node.getStart(sourceFile),
+    );
   }
 
   /**
@@ -1284,7 +1373,11 @@ export class VueTextExtractor extends BaseTextExtractor {
    * sourceFile，节点位置相对该临时片段而非 SFC，无法直接算出真实行号；改由调用方传入
    * 指令 / 插值节点的真实行号（loc.start.line + lineOffset），复用与 script 侧同一文案。
    */
-  private warnHtmlInTemplateLiteralAtLine(line: number, filePath: string): void {
+  private warnHtmlInTemplateLiteralAtLine(
+    line: number,
+    filePath: string,
+    sourceOffset?: string | number,
+  ): void {
     const msg =
       `⚠️ 跳过含 HTML 标签的模板字符串提取：${FileUtils.getRelativePath(filePath)}:${line}\n` +
       `   原因：整段提取会把 HTML / CSS / SVG 灌进 i18n value，多语言下样式结构不可控。\n` +
@@ -1292,5 +1385,11 @@ export class VueTextExtractor extends BaseTextExtractor {
       `     \`<span>\${t('key')}</span>\` 替代 \`t('key')\` 包整个 \`<div>...</div>\``;
     LoggerUtils.warn(msg);
     this.recordWarning(msg);
+    this.recordManualSkip({
+      category: 'html-template',
+      message: msg,
+      count: 1,
+      dedupeKey: `${filePath}:${sourceOffset ?? line}`,
+    });
   }
 }

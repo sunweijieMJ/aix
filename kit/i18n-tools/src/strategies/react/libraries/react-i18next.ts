@@ -127,24 +127,35 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     return '';
   }
 
-  isTranslationCall(node: ts.CallExpression): boolean {
+  private isTranslationExpression(expression: ts.Expression): boolean {
     // t('key')
-    if (ts.isIdentifier(node.expression) && node.expression.text === 't') {
+    if (ts.isIdentifier(expression) && expression.text === 't') {
       return true;
     }
-    // 仅 i18next.t('key') —— 不能放宽到所有 obj.t() 形态，否则 router.t()、
-    // store.t() 等同名方法会被 RestoreTransformer 当作 i18n 调用替换为
-    // locale 文案，破坏业务代码（且静默无报错）。
+    // 成员调用只识别 react-i18next 的明确持有者：i18next.t(...)，以及
+    // withTranslation HOC 注入的 props.t(...) / this.props.t(...)。不能放宽到所有
+    // obj.t()，否则 router.t()、store.t() 等业务方法会被 RestoreTransformer 误改。
     if (
-      ts.isPropertyAccessExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === 'i18next' &&
-      ts.isIdentifier(node.expression.name) &&
-      node.expression.name.text === 't'
+      ts.isPropertyAccessExpression(expression) &&
+      ts.isIdentifier(expression.name) &&
+      expression.name.text === 't'
     ) {
-      return true;
+      const receiver = expression.expression;
+      if (ts.isIdentifier(receiver)) {
+        return receiver.text === 'i18next' || receiver.text === 'props';
+      }
+      return (
+        ts.isPropertyAccessExpression(receiver) &&
+        receiver.expression.kind === ts.SyntaxKind.ThisKeyword &&
+        ts.isIdentifier(receiver.name) &&
+        receiver.name.text === 'props'
+      );
     }
     return false;
+  }
+
+  isTranslationCall(node: ts.CallExpression): boolean {
+    return this.isTranslationExpression(node.expression);
   }
 
   isTranslationComponent(tagName: string): boolean {
@@ -246,13 +257,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
 
   isAlreadyInternationalized(node: ts.Node): boolean {
     return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
-      isI18nCall: (expression) =>
-        // t('key')
-        (ts.isIdentifier(expression) && expression.text === 't') ||
-        // i18next.t('key')
-        (ts.isPropertyAccessExpression(expression) &&
-          ts.isIdentifier(expression.name) &&
-          expression.name.text === 't'),
+      isI18nCall: (expression) => this.isTranslationExpression(expression),
       componentTags: ['Trans'],
     });
   }

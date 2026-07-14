@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
+import type { ManualSkipDiagnostic } from '../adapters/FrameworkAdapter';
 import { formatWithPrettier } from '../utils/command-utils';
 import { CommonASTUtils, type SkippedTextLocation } from '../utils/common-ast-utils';
 import { FileUtils } from '../utils/file-utils';
@@ -38,6 +39,10 @@ export class GenerateProcessor extends BaseProcessor {
    * 共享同一份——避免二者争抢「消费即清空」的全局状态导致后读者恒拿空数组。
    */
   private skippedComparisons: SkippedTextLocation[] = [];
+  /** 本轮插值表达式中无法安全自动改写的嵌套中文。 */
+  private skippedNestedChinese: SkippedTextLocation[] = [];
+  /** 本轮由 extractor 结构化上报、需要人工处理的跳过项。 */
+  private manualSkips: ManualSkipDiagnostic[] = [];
 
   /**
    * 构造函数
@@ -113,13 +118,16 @@ export class GenerateProcessor extends BaseProcessor {
 
     try {
       const extractor = this.adapter.getTextExtractor();
+      const sourceSnapshots = this.captureSourceSnapshots([filePath]);
       const extractedStrings = await extractor.extractFromFile(filePath);
       // 把 extractor 累积的结构性 warning（如跳过含 HTML 的模板字符串）排空进 RunReport。
       // 终端已经实时打印过；这里只为落盘留痕到 `.i18n-tools/logs/`。
       for (const w of extractor.drainWarnings()) this.report.addWarning(w);
+      this.manualSkips = extractor.drainManualSkips();
       // 提取后立即 drain 比较运算符跳过项快照（在 apply/lint 之前），供 commitToDisk 与
       // recordAndRenderCoverage 共享，避免 linter 抢先 drain 致覆盖率 skipped 恒为 0。
       this.skippedComparisons = CommonASTUtils.drainSkippedComparisonOperands();
+      this.skippedNestedChinese = CommonASTUtils.drainSkippedNestedChinese();
 
       if (extractedStrings.length === 0) {
         // 仍要汇报覆盖率：空提取也意味着「文件无中文 / 已全部国际化」，是一种有效结果。
@@ -138,7 +146,7 @@ export class GenerateProcessor extends BaseProcessor {
         : true;
 
       if (shouldApply) {
-        await this.applyTransformations([filePath], extractedStrings);
+        await this.applyTransformations([filePath], extractedStrings, sourceSnapshots);
         LoggerUtils.success(`✅ 转换完成！`);
       }
 
@@ -181,13 +189,16 @@ export class GenerateProcessor extends BaseProcessor {
     }
 
     const extractor = this.adapter.getTextExtractor();
+    const sourceSnapshots = this.captureSourceSnapshots(frameworkFiles);
     const extractedStrings = await extractor.extractFromFiles(frameworkFiles);
     // 同 runSingleFile：把 extractor 累积的结构性 warning 排空进 RunReport，
     // 落盘到 `<rootDir>/.i18n-tools/logs/` 便于事后回查。
     for (const w of extractor.drainWarnings()) this.report.addWarning(w);
+    this.manualSkips = extractor.drainManualSkips();
     // 提取后立即 drain 比较运算符跳过项快照（在 apply/lint 之前），供 commitToDisk 与
     // recordAndRenderCoverage 共享，避免 linter 抢先 drain 致覆盖率 skipped 恒为 0。
     this.skippedComparisons = CommonASTUtils.drainSkippedComparisonOperands();
+    this.skippedNestedChinese = CommonASTUtils.drainSkippedNestedChinese();
 
     if (extractedStrings.length === 0) {
       // 同 runSingleFile：空提取分支也要扫描已有调用点，避免已国际化目录被比较运算符
@@ -220,7 +231,7 @@ export class GenerateProcessor extends BaseProcessor {
       const processedFiles = Array.from(
         new Set(extractedStrings.map((s) => path.normalize(s.filePath))),
       );
-      await this.applyTransformations(processedFiles, extractedStrings);
+      await this.applyTransformations(processedFiles, extractedStrings, sourceSnapshots);
       LoggerUtils.success(`✅ 转换完成！处理了 ${processedFiles.length} 个文件`);
     }
 
@@ -452,6 +463,15 @@ export class GenerateProcessor extends BaseProcessor {
     return keyBucketMap;
   }
 
+  /** 在提取前固定源码快照，后续转换只允许消费同一份内容。 */
+  private captureSourceSnapshots(filePaths: string[]): Map<string, string> {
+    const snapshots = new Map<string, string>();
+    for (const filePath of filePaths) {
+      snapshots.set(path.normalize(filePath), fs.readFileSync(filePath, 'utf-8'));
+    }
+    return snapshots;
+  }
+
   /**
    * 阶段 1：把所有源文件 transform 到内存。
    *
@@ -464,6 +484,7 @@ export class GenerateProcessor extends BaseProcessor {
   private transformToMemory(
     filePaths: string[],
     extractedStrings: ExtractedString[],
+    sourceSnapshots?: Map<string, string>,
   ): {
     results: Array<{ file: string; code: string; originalContent: string }>;
     uniqueFilePaths: string[];
@@ -481,6 +502,12 @@ export class GenerateProcessor extends BaseProcessor {
         // 这样保证 plan 中记录的 sourceHash 与 transformedSources 来自同一文件快照，
         // 消除「transform 内部读 → writePlan 又读」窗口被外部并发改动导致的不一致。
         const originalContent = fs.readFileSync(filePath, 'utf-8');
+        const extractedSnapshot = sourceSnapshots?.get(path.normalize(filePath));
+        if (extractedSnapshot !== undefined && originalContent !== extractedSnapshot) {
+          throw new Error(
+            `源码已变化，已中止转换以避免覆盖外部修改: ${FileUtils.getRelativePath(filePath)}`,
+          );
+        }
         const code = transformer.transform(filePath, extractedStrings, originalContent);
         results.push({ file: filePath, code, originalContent });
       } catch (error) {
@@ -497,7 +524,12 @@ export class GenerateProcessor extends BaseProcessor {
     if (failures.length > 0) {
       throw new Error(
         `转换阶段有 ${failures.length}/${uniqueFilePaths.length} 个文件失败（语言文件未变更）:\n` +
-          failures.map((f) => `  - ${FileUtils.getRelativePath(f.file)}`).join('\n'),
+          failures
+            .map(
+              (f) =>
+                `  - ${FileUtils.getRelativePath(f.file)}: ${f.error instanceof Error ? f.error.message : String(f.error)}`,
+            )
+            .join('\n'),
       );
     }
 
@@ -561,7 +593,17 @@ export class GenerateProcessor extends BaseProcessor {
       // 保证可回滚，判失败不写。
       let original: string;
       try {
-        original = originalContent ?? fs.readFileSync(file, 'utf-8');
+        const currentContent = fs.readFileSync(file, 'utf-8');
+        original = originalContent ?? currentContent;
+        if (currentContent !== original) {
+          writeFailure = {
+            file,
+            error: new Error(
+              `源码已变化，已中止写入以避免覆盖外部修改: ${FileUtils.getRelativePath(file)}`,
+            ),
+          };
+          break;
+        }
       } catch (error) {
         writeFailure = { file, error };
         break;
@@ -592,8 +634,11 @@ export class GenerateProcessor extends BaseProcessor {
           ? this.rollbackFailureNote(rollbackFailures)
           : `\n（已写入的 ${written.length} 个源文件已回滚至原始内容，源码与语言文件均未变更）`;
       throw new Error(
-        `写入阶段失败（语言文件未变更）: ${FileUtils.getRelativePath(writeFailure.file)}` +
-          rollbackNote,
+        `写入阶段失败（语言文件未变更）: ${FileUtils.getRelativePath(writeFailure.file)}: ${
+          writeFailure.error instanceof Error
+            ? writeFailure.error.message
+            : String(writeFailure.error)
+        }` + rollbackNote,
       );
     }
 
@@ -681,10 +726,15 @@ export class GenerateProcessor extends BaseProcessor {
   private async applyTransformations(
     filePaths: string[],
     extractedStrings: ExtractedString[],
+    sourceSnapshots?: Map<string, string>,
   ): Promise<void> {
     LoggerUtils.info(`\n🔄 开始应用转换...`);
     const keyBucketMap = this.buildKeyBucketMap(extractedStrings);
-    const { results, uniqueFilePaths } = this.transformToMemory(filePaths, extractedStrings);
+    const { results, uniqueFilePaths } = this.transformToMemory(
+      filePaths,
+      extractedStrings,
+      sourceSnapshots,
+    );
 
     if (this.runMode === 'dry-run') {
       this.writePlan(uniqueFilePaths, results, extractedStrings, keyBucketMap);
@@ -783,6 +833,10 @@ export class GenerateProcessor extends BaseProcessor {
       });
     }
 
+    const existingLocaleKeys = this.readCurrentSourceLocaleKeys();
+    const newKeyCount = Object.keys(localeDelta).filter(
+      (key) => !existingLocaleKeys.has(key),
+    ).length;
     const plan: GeneratePlan = {
       schemaVersion: 2,
       command: 'generate',
@@ -797,7 +851,7 @@ export class GenerateProcessor extends BaseProcessor {
       summary: {
         files: entries.length,
         hits: entries.reduce((sum, e) => sum + e.hits.length, 0),
-        newKeys: Object.keys(localeDelta).length,
+        newKeys: newKeyCount,
       },
       entries,
       localeDelta,
@@ -966,11 +1020,16 @@ export class GenerateProcessor extends BaseProcessor {
       }),
     );
 
+    const localeKeysBeforeApply = this.readCurrentSourceLocaleKeys();
     await this.commitToDisk(results, syntheticStrings, plan.keyBucketMap, {
       preFinalizedLocale: true,
     });
+    const localeKeysAfterApply = this.readCurrentSourceLocaleKeys();
+    const appliedNewKeys = Object.keys(plan.localeDelta).filter(
+      (key) => !localeKeysBeforeApply.has(key) && localeKeysAfterApply.has(key),
+    ).length;
     LoggerUtils.success(
-      `✅ Plan 回放完成：${plan.summary.files} 个文件、${plan.summary.newKeys} 个新 key`,
+      `✅ Plan 回放完成：${plan.summary.files} 个文件、${appliedNewKeys} 个新 key`,
     );
 
     // 默认清理 plan 目录：commitToDisk 成功后 plan 已无价值，保留只会累积。
@@ -983,6 +1042,28 @@ export class GenerateProcessor extends BaseProcessor {
         LoggerUtils.info(`🗑️  Plan 目录已清理：${planDir}（如需保留请使用 --keep-plan）`);
       }
     }
+  }
+
+  /** 读取 apply 前后的 source locale key，用真实磁盘差集生成回放统计。 */
+  private readCurrentSourceLocaleKeys(): Set<string> {
+    const corruptSource = LanguageFileManager.findCorruptLocale(
+      this.config,
+      this.isCustom,
+      this.config.locales.source,
+      { checkLegacy: true },
+    );
+    if (corruptSource) {
+      throw new Error(
+        `语言文件损坏，已中止 generate（无法可靠计算或回放 locale 差集）: ${FileUtils.getRelativePath(corruptSource)}`,
+      );
+    }
+    const localeMap = this.config.buckets
+      ? LanguageFileManager.readBucketedLocaleWithBucketMap(this.config, this.isCustom).flat
+      : LanguageFileManager.readLocaleFile(this.config, this.isCustom);
+    if (localeMap === null) {
+      throw new Error('语言文件读取失败，已中止 generate（无法可靠计算或回放 locale 差集）');
+    }
+    return new Set(Object.keys(localeMap));
   }
 
   /**
@@ -1002,15 +1083,13 @@ export class GenerateProcessor extends BaseProcessor {
    * 计算口径（以「中文片段调用点」为单位）：
    *   alreadyI18n      = 源码中已存在的 t()/$t() 调用点数（IdReuseResolver 扫到）
    *   newlyGenerated   = 本轮 extractor 提取出的 ExtractedString 条目数
-   *   skipped          = 工具主动放弃的中文片段；当前仅统计比较运算符跳过项
+   *   skipped          = 工具确认属于文案、但无法安全自动改写的中文片段
    *
-   * skipped 计数当前只纳入一类「主动放弃」：
-   *  - drainSkippedComparisonOperands：=== / case 中跳过的中文字面量
-   * （needsManual 拒收、黑名单命中、extractor.drainWarnings 等虽也是主动放弃，
-   *   但未纳入 skipped 计数，仅比较运算符项被结构化为下方 ManualEntry。）
+   * skipped 当前纳入比较运算符、嵌套插值中文、HTML 模板和类属性初始化器；注释、
+   * console、import、类型字面量和用户 filterPatterns 等明确排除项不进入覆盖率分母。
    *
-   * 同步把比较运算符跳过项作为 ManualEntry 写入 report，让最终落盘日志里
-   * 用户能看到完整待人工清单。
+   * 同步把上述源码级跳过项作为 ManualEntry 写入 report，让最终落盘日志里能看到
+   * 与 coverage.skipped 同口径的完整待人工清单。
    */
   private recordAndRenderCoverage(
     scannedFilePaths: string[],
@@ -1034,9 +1113,41 @@ export class GenerateProcessor extends BaseProcessor {
       });
     }
 
+    for (const item of this.skippedNestedChinese) {
+      this.report.addManualEntry({
+        category: 'nested-interpolation-chinese',
+        file: FileUtils.getRelativePath(item.filePath),
+        line: item.line,
+        column: item.column,
+        text: item.text,
+        dedupeKey: item.occurrence === undefined ? undefined : String(item.occurrence),
+        reason: '插值表达式内的中文会作为运行时参数原样渲染，工具无法安全递归改写',
+        suggestion: RunReport.MANUAL_DEFAULT_SUGGESTIONS['nested-interpolation-chinese'],
+      });
+    }
+
+    const extractorManualSkips = this.manualSkips.filter(
+      (item) => item.category !== 'nested-interpolation',
+    );
+    for (const item of extractorManualSkips) {
+      const category = item.category === 'html-template' ? 'html-in-template' : 'class-property';
+      for (let index = 0; index < item.count; index++) {
+        this.report.addManualEntry({
+          category,
+          file: '<source>',
+          text: item.count === 1 ? item.message : `${item.message} #${index + 1}`,
+          reason: item.message,
+          suggestion: RunReport.MANUAL_DEFAULT_SUGGESTIONS[category],
+        });
+      }
+    }
+
     const alreadyI18n = reuseResolver?.getExistingCallSiteCount() ?? 0;
     const newlyGenerated = extractedStrings.length;
-    const skipped = skippedComparisons.length;
+    const skipped =
+      skippedComparisons.length +
+      this.skippedNestedChinese.length +
+      extractorManualSkips.reduce((sum, item) => sum + item.count, 0);
     const total = alreadyI18n + newlyGenerated + skipped;
     const coverageRate = total === 0 ? 1 : (alreadyI18n + newlyGenerated) / total;
 
@@ -1075,11 +1186,11 @@ export class GenerateProcessor extends BaseProcessor {
     LoggerUtils.info(`🎯 当前覆盖率   ${ratePct}`);
 
     // 按 category 聚合「待人工处理」清单
-    const groups = this.report.groupManualByCategory();
+    const groups = this.report.groupCoverageManualByCategory();
     const entryCount = Object.values(groups).reduce((s, arr) => s + arr.length, 0);
     if (entryCount > 0) {
       LoggerUtils.info('');
-      LoggerUtils.warn(`⚠️  待人工处理 ${entryCount} 条（详见 .i18n-tools/logs/）`);
+      LoggerUtils.warn(`⚠️  覆盖率待人工 ${entryCount} 条（详见 .i18n-tools/logs/）`);
       for (const [category, list] of Object.entries(groups)) {
         const label = RunReport.MANUAL_LABELS[category as keyof typeof RunReport.MANUAL_LABELS];
         LoggerUtils.warn(

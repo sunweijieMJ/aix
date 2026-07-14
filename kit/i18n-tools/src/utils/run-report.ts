@@ -52,6 +52,7 @@ export type ManualCategory =
   | 'comparison-operand'
   | 'mixed-content'
   | 'html-in-template'
+  | 'class-property'
   | 'html-tag-in-value'
   | 'long-value'
   | 'semantic-duplicate'
@@ -75,6 +76,8 @@ export interface ManualEntry {
   reason: string;
   /** 推荐修复模板（多行字符串，含 ❌/✅ 对照） */
   suggestion?: string;
+  /** 行列和文本相同时用于区分多个独立调用点，不参与用户定位展示。 */
+  dedupeKey?: string;
 }
 
 /**
@@ -85,9 +88,10 @@ export interface ManualEntry {
  *   totalChineseSegments = alreadyI18n + newlyGenerated + skipped
  *   coverageRate         = (alreadyI18n + newlyGenerated) / totalChineseSegments
  *
- * 其中 skipped 包含被 needsManual 各 category 拒收的、以及命中黑名单（注释、
- * console、import、type literal 等）的中文。当 totalChineseSegments = 0 时
- * coverageRate 返回 1（无内容默认视为完全覆盖，避免 NaN）。
+ * 其中 skipped 只包含工具确认属于待翻译文案、但因安全或结构限制需要人工处理的
+ * 中文（如比较运算符、HTML 模板、嵌套插值）。console、import、类型字面量及用户
+ * filterPatterns 等明确排除项不进入分母。当 totalChineseSegments = 0 时 coverageRate
+ * 返回 1（无内容默认视为完全覆盖，避免 NaN）。
  */
 export interface CoverageMetric {
   scannedFiles: number;
@@ -184,6 +188,22 @@ export class RunReport {
     return groups;
   }
 
+  /** 只返回会进入 generate coverage.skipped 的源码级人工项。 */
+  groupCoverageManualByCategory(): Record<string, ManualEntry[]> {
+    const coverageCategories = new Set<ManualCategory>([
+      'comparison-operand',
+      'nested-interpolation-chinese',
+      'html-in-template',
+      'class-property',
+    ]);
+    const groups: Record<string, ManualEntry[]> = {};
+    for (const entry of this.needsManual) {
+      if (!coverageCategories.has(entry.category)) continue;
+      (groups[entry.category] ||= []).push(entry);
+    }
+    return groups;
+  }
+
   hasFailures(): boolean {
     return this.failures.length > 0;
   }
@@ -197,7 +217,7 @@ export class RunReport {
   }
 
   private static manualKey(e: ManualEntry): string {
-    return `${e.file}:${e.line ?? ''}:${e.column ?? ''}:${e.category}:${e.text}`;
+    return `${e.file}:${e.line ?? ''}:${e.column ?? ''}:${e.category}:${e.text}:${e.dedupeKey ?? ''}`;
   }
 
   /**
@@ -321,6 +341,7 @@ export class RunReport {
     'comparison-operand': '比较运算符跳过的中文字面量',
     'mixed-content': '混合内容字符串（无法机械拆分）',
     'html-in-template': '模板字符串含 HTML 标签',
+    'class-property': '类组件属性初始化器缺少翻译绑定',
     'html-tag-in-value': 'locale value 含 HTML 标签',
     'long-value': 'locale value 过长',
     'semantic-duplicate': '语义重复 key（占位符/空白差异）',
@@ -344,6 +365,8 @@ export class RunReport {
 建议改造源码：模板字符串包裹结构，只把文案放入 t() 调用：
     ❌  innerHTML = \`<span class="x">\${title}</span>\`
     ✅  innerHTML = \`<span class="x">\${t('xxx')}</span>\``,
+    'class-property': `类组件属性初始化时没有可用的 t/intl 绑定，直接替换会生成未定义标识符。
+建议把文案移入 render()/方法/getter，或使用已注入的 this.props.t / this.props.intl。`,
     'html-tag-in-value': `locale value 已经混入了 HTML 标签，翻译质量难保证。
 处理方式同 html-in-template：把样式结构留在源码模板，t() 只包文案。`,
     'long-value': `locale value 超过 200 字符。长文本翻译质量差且不便维护。

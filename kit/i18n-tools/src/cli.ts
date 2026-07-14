@@ -32,6 +32,13 @@ import {
 
 type FrameworkInfo = { extensions: string[]; displayName: string; libraryName: string };
 
+/** CLI 版本必须绑定工具包自身，不能让 yargs 从消费项目的 package.json 猜测。 */
+const TOOL_VERSION = (() => {
+  const packagePath = new URL('../package.json', import.meta.url);
+  const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf-8')) as { version: string };
+  return pkg.version;
+})();
+
 /**
  * 提取框架展示信息，避免 CLI 层直接耦合具体扩展名/展示名。
  *
@@ -296,6 +303,7 @@ const main = async (): Promise<void> => {
 
   const yargsObj = yargs(hideBin(process.argv))
     .scriptName('i18n-tools')
+    .version(TOOL_VERSION)
     .usage(
       `🌐 国际化工具集 - 自动化多语言处理
 

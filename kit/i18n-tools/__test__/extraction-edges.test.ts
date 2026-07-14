@@ -8,6 +8,7 @@ import { CommonASTUtils } from '../src/utils/common-ast-utils';
 import { LoggerUtils } from '../src/utils/logger';
 import { ReactAdapter } from '../src/adapters/ReactAdapter';
 import { VueAdapter } from '../src/adapters/VueAdapter';
+import { createReactI18nLibrary } from '../src/strategies/react/libraries';
 
 /**
  * 提取阶段的边界回归集合，覆盖：
@@ -251,6 +252,88 @@ const handle = () => {
     expect(CommonASTUtils.drainSkippedNestedChinese()).toEqual([]);
   });
 
+  it('Vue 模板中的既有 $t values 参数仍记录嵌套中文', async () => {
+    const file = writeVue(
+      'Existing.vue',
+      `<template><div>{{ $t('error.message', { value: ok ? '内部错误' : '网络异常' }) }}</div></template>`,
+    );
+
+    await new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+
+    expect(
+      CommonASTUtils.drainSkippedNestedChinese()
+        .map((item) => item.text)
+        .sort(),
+    ).toEqual(['内部错误', '网络异常']);
+  });
+
+  it('Vue 模板混合表达式中的既有 $t values 参数仍记录嵌套中文', async () => {
+    const file = writeVue(
+      'ExistingMixed.vue',
+      `<template><div>{{ $t('error.message', { value: ok ? '内部错误' : '网络异常' }) + suffix }}</div></template>`,
+    );
+
+    await new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+
+    expect(
+      CommonASTUtils.drainSkippedNestedChinese()
+        .map((item) => item.text)
+        .sort(),
+    ).toEqual(['内部错误', '网络异常']);
+  });
+
+  it('Vue 同一插值中的多个模板分别保留相同嵌套中文调用点', async () => {
+    const file = writeVue(
+      'DuplicateNestedTemplates.vue',
+      `<template><div>{{ ok ? \`前\${cond ? '错误' : '失败'}\` : \`后\${other ? '错误' : '失败'}\` }}</div></template>`,
+    );
+    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+
+    await extractor.extractFromFile(file);
+
+    expect(
+      CommonASTUtils.drainSkippedNestedChinese()
+        .map((item) => item.text)
+        .sort(),
+    ).toEqual(['失败', '失败', '错误', '错误']);
+    expect(
+      extractor.drainManualSkips().filter((item) => item.category === 'nested-interpolation'),
+    ).toHaveLength(4);
+  });
+
+  it('React 中的既有 t values 参数仍记录嵌套中文', async () => {
+    const file = path.join(tmpDir, 'Existing.tsx');
+    fs.writeFileSync(
+      file,
+      `export const text = t('error.message', { value: ok ? '内部错误' : '网络异常' });`,
+    );
+
+    await new ReactTextExtractor().extractFromFile(file);
+
+    expect(
+      CommonASTUtils.drainSkippedNestedChinese()
+        .map((item) => item.text)
+        .sort(),
+    ).toEqual(['内部错误', '网络异常']);
+  });
+
+  it('React 翻译组件的 values 属性仍记录嵌套中文', async () => {
+    const file = path.join(tmpDir, 'ExistingComponent.tsx');
+    fs.writeFileSync(
+      file,
+      `export const view = <Trans i18nKey="error.message" values={{ value: ok ? '内部错误' : '网络异常' }} />;`,
+    );
+
+    const library = createReactI18nLibrary('react-i18next', { namespace: 'app' });
+    await new ReactTextExtractor(library).extractFromFile(file);
+
+    expect(
+      CommonASTUtils.drainSkippedNestedChinese()
+        .map((item) => item.text)
+        .sort(),
+    ).toEqual(['内部错误', '网络异常']);
+  });
+
   // 回归：动态属性 / 插值里的模板字符串与脚本段对齐——整段提取为单条、嵌套中文分支只记诊断，
   // 不得再递归进分支字面量重复提取（修复前缺 return → '在线'/'离线' 被各提一条独立 key，
   // 整段键沦为孤儿、同位置替换冲突，且诊断又称它们"未提取需手动处理"，自相矛盾）。
@@ -429,6 +512,12 @@ const html = \`<div><span>提示</span></div>\`;
       expect(warnings[0]).toContain('HTML 标签的模板字符串');
       // drain 后缓冲区应清空，幂等回放
       expect(extractor.drainWarnings()).toHaveLength(0);
+
+      const manualSkips = extractor.drainManualSkips();
+      expect(manualSkips).toEqual([
+        expect.objectContaining({ category: 'html-template', count: 1 }),
+      ]);
+      expect(extractor.drainManualSkips()).toHaveLength(0);
     });
   });
 
@@ -746,6 +835,22 @@ describe('VueTextExtractor — template 模板字符串含 HTML 跳过（与 scr
     const result = await extract('<template><div>{{ `<b>加粗</b>提示` }}</div></template>');
     expect(result).toHaveLength(0);
     expect(hasHtmlWarn()).toBe(true);
+  });
+
+  it('同一动态表达式中的两个 HTML 模板分别计入人工跳过项', async () => {
+    const file = path.join(tmpDir, 'TwoHtml.vue');
+    fs.writeFileSync(
+      file,
+      '<template><el-x :content="ok ? `<b>甲</b>` : `<i>乙</i>`"></el-x></template>',
+    );
+    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+
+    const result = await extractor.extractFromFile(file);
+
+    expect(result).toHaveLength(0);
+    expect(
+      extractor.drainManualSkips().filter((item) => item.category === 'html-template'),
+    ).toHaveLength(2);
   });
 
   it('回归：动态属性里不含 HTML 的模板字符串照常提取，不告警', async () => {
