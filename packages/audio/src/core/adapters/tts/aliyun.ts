@@ -254,12 +254,12 @@ export class AliyunTTS extends BaseTTSAdapter {
     this.ws!.send(
       JSON.stringify({
         type: 'start',
-        userNid: this.config.userNid ?? '',
-        assistantNid: this.config.assistantNid ?? '',
+        userNid: this.config.userNid ?? '', // 用户nid，开始播报时必填
+        assistantNid: this.config.assistantNid ?? '', // 助手nid，开始播报时必填
         ttsVoiceType: this.config.ttsVoiceType ?? this.config.defaultVoice ?? '',
-        messageId: crypto.randomUUID().replace(/-/g, ''),
-        segmentId: this.segmentId++,
-        message: text,
+        messageId: crypto.randomUUID().replace(/-/g, ''), // 消息id
+        segmentId: this.segmentId++, // 文本分段id
+        message: text, // 播报文本，开始播报时必填
       }),
     );
   }
