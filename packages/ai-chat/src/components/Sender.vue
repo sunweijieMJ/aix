@@ -234,7 +234,7 @@ let triggerMenuUid = 0;
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { Attachment, Mic } from '@aix/icons';
-import { ref, computed, watch, nextTick, reactive } from 'vue';
+import { ref, computed, watch, nextTick, reactive, onUnmounted } from 'vue';
 import type { Component } from 'vue';
 // 发送按钮图标采用设计稿导出的本地 SVG 资源：默认态为纸飞机、输出中为停止圆点。
 // 以 CSS mask 渲染，使图标颜色随按钮 color（主题变量）变化，而非 SVG 内置色，符合主题系统约定。
@@ -568,13 +568,56 @@ const sendIconStyle = computed(() => {
   };
 });
 
-// 自适应高度：内容增减时按 scrollHeight 撑高，上限由 CSS max-height 接管（超出后内部滚动）
+// 自适应高度：内容增减时按 scrollHeight 撑高，上限由 CSS max-height 接管（超出后内部滚动）。
+//
+// 用一个脱离文档流、不可见的镜像 textarea 承接"height:auto 塌陷→按 scrollHeight 重新撑高"这次
+// 测量，而不是直接在真实输入框（正在聚焦，且可能身处很长的会话/虚拟消息列表旁边）上做——
+// 之前的写法会让真实输入框经历一次真实的高度塌陷再撑高，这个两段式变化牵连整个 flex 布局
+// （包括旁边可能高达数千像素的虚拟列表），曾观测到在内容很重的长会话页面上，这次重排会导致
+// 刚聚焦的输入框出现一次瞬间 blur→重新 focus 的抖动——普通直接输入不易察觉，但中文拼音输入法
+// 组词过程中会因此被打断（表现为"打字打着打着突然失焦"）。
+// 镜像元素用 position:fixed 脱离文档流，自身尺寸变化不会牵连页面其余布局；测出目标高度后只
+// 对真实输入框做一次单向赋值（height 直接改成目标像素值），真实输入框自己不再经历塌陷态。
+let mirrorEl: HTMLTextAreaElement | null = null;
+const getMirror = (): HTMLTextAreaElement | null => {
+  if (mirrorEl) return mirrorEl;
+  // 挂在组件自己的根节点下（而非 document.body）：position:fixed 已经让它脱离文档流，
+  // 不需要借宿全局 body 也能不影响页面其余布局；挂在自己子树下顺带保证组件卸载时
+  // （无论是否触发 onUnmounted）都会随根节点一起被移除，不会残留野节点。
+  if (!rootRef.value) return null;
+  const el = document.createElement('textarea');
+  el.setAttribute('aria-hidden', 'true');
+  el.tabIndex = -1;
+  // 复用同一份 CSS class：字体/内边距/边框/行高等影响换行与高度测量的样式直接与真实输入框保持一致，
+  // 不需要逐条手动同步（max-height/overflow 在下面用内联样式覆盖掉，测量不受它们影响）。
+  el.className = 'aix-sender__input';
+  Object.assign(el.style, {
+    position: 'fixed',
+    top: '0',
+    left: '0',
+    visibility: 'hidden',
+    pointerEvents: 'none',
+    height: 'auto',
+    maxHeight: 'none',
+    zIndex: '-1',
+    boxSizing: 'border-box',
+  });
+  rootRef.value.appendChild(el);
+  mirrorEl = el;
+  return el;
+};
 const autosize = () => {
   const el = textareaRef.value;
-  if (!el) return;
-  el.style.height = 'auto';
-  el.style.height = `${el.scrollHeight}px`;
+  const mirror = getMirror();
+  if (!el || !mirror) return;
+  mirror.style.width = `${el.clientWidth}px`;
+  mirror.value = el.value;
+  el.style.height = `${mirror.scrollHeight}px`;
 };
+onUnmounted(() => {
+  mirrorEl?.remove();
+  mirrorEl = null;
+});
 
 // 语音定稿/预览写入：committedBase = 开始聆听时已有文本 + 已定稿段；interim 在其后实时预览
 let committedBase = '';

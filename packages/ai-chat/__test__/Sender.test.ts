@@ -47,6 +47,70 @@ describe('Sender', () => {
     expect(w.emitted('submit')).toBeUndefined();
   });
 
+  describe('autosize（隐藏镜像元素测量高度，不直接塌陷/撑高真实输入框自身）', () => {
+    /**
+     * 回归动机：直接在真实（可能正聚焦）输入框上做 height:auto→scrollHeight 的两段式重排，
+     * 在内容很重的长会话/虚拟列表页面上，曾观测到会牵连整个 flex 布局并导致输入框瞬间
+     * blur→重新 focus（中文拼音组词因此被打断）。改为镜像元素测量后，真实输入框的高度
+     * 只会被单向赋成目标像素值，不会经历中间的塌陷态，也不牵连页面其余布局。
+     */
+    // 镜像挂在组件自己的根节点下（非 document.body），查询一律限定在 w.element 子树内，
+    // 避免同文件里其它未调用 unmount() 的用例残留的镜像节点造成串扰。
+    it('用隐藏镜像 textarea 测量高度：真实输入框的高度取自镜像的 scrollHeight，而非自身', async () => {
+      const w = mount(Sender, { attachTo: document.body });
+      const taEl = w.find('textarea').element as HTMLTextAreaElement;
+      // 镜像由挂载时 modelValue 的 immediate watch 经 nextTick(autosize) 延迟创建，需先等一轮
+      await nextTick();
+
+      const mirror = w.element.querySelector(
+        'textarea[aria-hidden="true"]',
+      ) as HTMLTextAreaElement | null;
+      expect(mirror).toBeTruthy();
+      expect(mirror).not.toBe(taEl);
+
+      // 真实输入框自身的 scrollHeight 故意 mock 成与镜像不同的值：若高度仍从它自己身上量，
+      // 结果会是 9999px——只有走镜像才会得到 88px，藉此证明测量路径确实换到了镜像上。
+      Object.defineProperty(taEl, 'scrollHeight', { configurable: true, get: () => 9999 });
+      Object.defineProperty(mirror!, 'scrollHeight', { configurable: true, get: () => 88 });
+
+      await w.find('textarea').setValue('第一行\n第二行');
+
+      expect(mirror!.value).toBe('第一行\n第二行'); // 内容同步给镜像用于测量
+      expect(taEl.style.height).toBe('88px'); // 高度来自镜像，不是真实输入框自身的 9999
+      w.unmount();
+    });
+
+    it('镜像宽度跟随真实输入框的 clientWidth 同步，保证换行/高度测量准确', async () => {
+      const w = mount(Sender, { attachTo: document.body });
+      const taEl = w.find('textarea').element as HTMLTextAreaElement;
+      Object.defineProperty(taEl, 'clientWidth', { configurable: true, get: () => 240 });
+
+      await w.find('textarea').setValue('x');
+
+      const mirror = w.element.querySelector('textarea[aria-hidden="true"]') as HTMLTextAreaElement;
+      expect(mirror.style.width).toBe('240px');
+      w.unmount();
+    });
+
+    it('组件卸载时清理镜像元素，不残留在 DOM 中', async () => {
+      const w = mount(Sender, { attachTo: document.body });
+      await nextTick();
+      const mirror = w.element.querySelector('textarea[aria-hidden="true"]');
+      expect(mirror).toBeTruthy();
+      w.unmount();
+      expect(mirror!.isConnected).toBe(false);
+    });
+
+    it('镜像元素不可聚焦、不出现在无障碍树中（tabIndex=-1 + aria-hidden）', async () => {
+      const w = mount(Sender, { attachTo: document.body });
+      await nextTick();
+      const mirror = w.element.querySelector('textarea[aria-hidden="true"]') as HTMLTextAreaElement;
+      expect(mirror.tabIndex).toBe(-1);
+      expect(mirror.getAttribute('aria-hidden')).toBe('true');
+      w.unmount();
+    });
+  });
+
   it('暴露的 focus() 使 textarea 获得焦点', () => {
     const w = mount(Sender, { attachTo: document.body });
     (w.vm as unknown as { focus: () => void }).focus();

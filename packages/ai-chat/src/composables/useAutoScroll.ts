@@ -54,6 +54,13 @@ export function useAutoScroll(
   // 仍保留 MAX_FRAMES 保底上限，避免内容持续异常增长时无限轮询。
   // 标记清除时机：①连续几帧 scrollHeight 不再变化（内容已稳定）②用户 wheel/touchmove
   // 主动输入打断 ③MAX_FRAMES 保底上限（内容持续异常变化时也不至永久轮询）。
+  //
+  // 修复③：本轮询是否开启，与 scrollToBottom 这次调用是不是 smooth CSS 动画无关（虽然变量/
+  // 函数名仍叫 smoothPending/beginSmoothPending，但语义已扩展为"贴底轮询"，不再局限于
+  // smooth 动画期间）。典型场景是刷新页面：BubbleList 挂载时的瞬时（非 smooth）
+  // scrollToBottom() 若命中最后一条是自定义卡片消息，同样需要这轮询去追后续几帧才测量
+  // 出来的真实高度，否则会停在卡片中间——只有"是否已有轮询在跑"才决定要不要开启，
+  // 与是否 smooth 动画无关（见 scrollToBottom 内的判断）。
   const STABLE_FRAMES_TO_SETTLE = 4; // 连续 4 帧（约 64ms@60fps）高度不变视为已稳定
   const MAX_SETTLE_FRAMES = 60; // 保底上限（约 1s@60fps）
   let smoothPending = false;
@@ -124,10 +131,17 @@ export function useAutoScroll(
     if (distance <= threshold) {
       scrollState.value = 'AT_BOTTOM';
       unreadCount.value = 0;
-      clearSmoothPending(); // 已真正到底：贴底意图达成
+      // 修复④：贴底轮询正在进行时，"此刻恰好到底"不等于"内容已经稳定"——批量插入多条
+      // 消息（如刷新页面一次性加载几十条历史、含若干张卡片）过程中，我们自己每帧调用的
+      // el.scrollTo() 几乎必然异步触发浏览器原生 scroll 事件，而这类事件很容易恰好命中
+      // "刚 snap 过去、暂时追平"的瞬间——若不加判断会在这里把轮询提前清掉，之后内容继续
+      // 变高（如下一张卡片渲染完成）时就没人再追，最终停在半途。轮询是否结束交给它自己
+      // 的连续稳定帧判定（或用户 wheel/touchmove 主动打断），这里只在没有轮询在跑时才
+      // 视为"意图达成"顺带清理。
+      if (!smoothPending) clearSmoothPending();
       return;
     }
-    // smooth 贴底动画进行中：途中 scroll 事件不把乐观 AT_BOTTOM 翻回 SCROLLED_UP（见上）
+    // smooth 贴底动画/贴底轮询进行中：途中 scroll 事件不把乐观 AT_BOTTOM 翻回 SCROLLED_UP（见上）
     if (smoothPending) return;
     scrollState.value = 'SCROLLED_UP';
   };
@@ -138,8 +152,17 @@ export function useAutoScroll(
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     scrollState.value = 'AT_BOTTOM';
     unreadCount.value = 0;
-    if (smooth) beginSmoothPending(el);
-    else clearSmoothPending(); // 瞬时滚动立即到底，贴底意图随之达成
+    // 贴底轮询是否要开始，与这次滚动是不是 smooth 动画无关：虚拟列表/自定义卡片的异步
+    // 撑高不会因为这次滚动是瞬时的就不发生——典型场景是刷新页面：BubbleList 挂载时
+    // syncScrollState 调 scrollToBottom()（不传 smooth，即瞬时），若最后一条恰好是内容
+    // 复杂的自定义卡片消息，首屏这次瞬时滚动读到的 scrollHeight 往往还是虚拟列表给的
+    // 估算值，卡片真实高度要再等几帧测量才更新——不开启轮询就没人再追，停在卡片中间。
+    // 只有「当前没有轮询在跑」时才启动一轮：插入新消息时 items.length watcher
+    // （own/new-message）与末条消息内容 watcher（streaming）几乎同时触发，若后者也无条件
+    // 重启轮询，会把前者刚起步的轮询计时器打断重置；流式逐 token 输出时同理，每个 token
+    // 都会触发一次 streaming 校正，不应每次都重开一轮。已有轮询在跑时，这次调用只做一次
+    // 瞬时位置校正，由 tick() 自己的稳定帧数/帧数上限判断何时收尾。
+    if (!smoothPending) beginSmoothPending(el);
   };
 
   // 归一 shouldFollow 的三种合法形态并求值：ref 取 .value；函数则先以 ctx 调用——

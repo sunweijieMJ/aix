@@ -14,9 +14,58 @@ function mockEl(
     scrollTo(opt: { top?: number }) {
       if (typeof opt?.top === 'number') el.scrollTop = opt.top;
     },
+    // scrollToBottom 现在无论 smooth 与否都可能起一轮贴底轮询（见修复③），会挂 wheel/
+    // touchmove 监听——这里只关心滚动位置/状态断言的用例不需要真的追踪监听，给空实现
+    // 即可，避免调用方因为这个精简 mock 缺方法而报错。
+    addEventListener() {},
+    removeEventListener() {},
     ...o,
   };
   return el as unknown as HTMLElement;
+}
+
+/**
+ * 可手动驱动的 requestAnimationFrame mock：贴底意图收尾改为 rAF 轮询后，测试需要精确
+ * 控制"第几帧"发生了什么（而不是依赖真实 ~16ms 延迟或 vitest fake timers 是否覆盖 rAF），
+ * 故直接替换全局 rAF/cAF，用队列 + runFrame() 单步推进。
+ */
+function mockRaf() {
+  const queue: Array<() => void> = [];
+  const prevRAF = globalThis.requestAnimationFrame;
+  const prevCAF = globalThis.cancelAnimationFrame;
+  let idSeq = 0;
+  const idToCb = new Map<number, () => void>();
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    const id = (idSeq += 1);
+    const wrapped = () => cb(0);
+    idToCb.set(id, wrapped);
+    queue.push(wrapped);
+    return id;
+  }) as typeof requestAnimationFrame;
+  globalThis.cancelAnimationFrame = ((id: number) => {
+    const cb = idToCb.get(id);
+    if (cb) {
+      const i = queue.indexOf(cb);
+      if (i >= 0) queue.splice(i, 1);
+    }
+    idToCb.delete(id);
+  }) as typeof cancelAnimationFrame;
+  return {
+    /** 执行队列里最早排入、尚未执行的一帧回调（不存在则空操作） */
+    runFrame: () => queue.shift()?.(),
+    /** 排空当前队列里所有已排入的帧（含执行过程中新排入的），用于让贴底轮询跑到自然收尾 */
+    drain: (maxFrames = 100) => {
+      let n = 0;
+      while (queue.length && n < maxFrames) {
+        queue.shift()?.();
+        n += 1;
+      }
+    },
+    restore: () => {
+      globalThis.requestAnimationFrame = prevRAF;
+      globalThis.cancelAnimationFrame = prevCAF;
+    },
+  };
 }
 
 describe('defaultShouldFollow', () => {
@@ -182,42 +231,6 @@ describe('useAutoScroll smooth 贴底意图（快速流式期间贴底跟随不�
   }
   const asEl = (el: ReturnType<typeof smoothMockEl>) => ref(el as unknown as HTMLElement);
 
-  /**
-   * 可手动驱动的 requestAnimationFrame mock：贴底意图收尾改为 rAF 轮询后，测试需要精确
-   * 控制"第几帧"发生了什么（而不是依赖真实 ~16ms 延迟或 vitest fake timers 是否覆盖 rAF），
-   * 故直接替换全局 rAF/cAF，用队列 + runFrame() 单步推进。
-   */
-  function mockRaf() {
-    const queue: Array<() => void> = [];
-    const prevRAF = globalThis.requestAnimationFrame;
-    const prevCAF = globalThis.cancelAnimationFrame;
-    let idSeq = 0;
-    const idToCb = new Map<number, () => void>();
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
-      const id = (idSeq += 1);
-      const wrapped = () => cb(0);
-      idToCb.set(id, wrapped);
-      queue.push(wrapped);
-      return id;
-    }) as typeof requestAnimationFrame;
-    globalThis.cancelAnimationFrame = ((id: number) => {
-      const cb = idToCb.get(id);
-      if (cb) {
-        const i = queue.indexOf(cb);
-        if (i >= 0) queue.splice(i, 1);
-      }
-      idToCb.delete(id);
-    }) as typeof cancelAnimationFrame;
-    return {
-      /** 执行队列里最早排入、尚未执行的一帧回调（不存在则空操作） */
-      runFrame: () => queue.shift()?.(),
-      restore: () => {
-        globalThis.requestAnimationFrame = prevRAF;
-        globalThis.cancelAnimationFrame = prevCAF;
-      },
-    };
-  }
-
   it('smooth 动画途中 scroll 事件不把乐观 AT_BOTTOM 翻回 SCROLLED_UP', () => {
     const el = smoothMockEl();
     const { scrollToBottom, computeState, scrollState } = useAutoScroll(asEl(el));
@@ -239,15 +252,27 @@ describe('useAutoScroll smooth 贴底意图（快速流式期间贴底跟随不�
     expect(el.scrollTop).toBe(2000); // 瞬时重定目标，最终真正贴底（不停在过期底部 1000）
   });
 
-  it('真正到底后贴底意图清除：之后用户滚上去能正常翻 SCROLLED_UP', () => {
-    const el = smoothMockEl();
-    const { scrollToBottom, computeState, scrollState } = useAutoScroll(asEl(el));
-    scrollToBottom(true);
-    el.scrollTop = 500; // 动画完成到底（distance=0）
-    computeState(); // 到底 → 清除标记
-    el.scrollTop = 0; // 用户滚到顶
-    computeState();
-    expect(scrollState.value).toBe('SCROLLED_UP'); // 守卫不会永久吞掉用户滚动
+  it('真正到底后贴底轮询自然收尾：之后用户滚上去能正常翻 SCROLLED_UP', () => {
+    // 修复④回归：轮询进行中"此刻恰好到底"不等于"内容已稳定"（批量加载多条消息时，
+    // 我们自己 scrollTo 触发的原生 scroll 事件很容易恰好命中"刚追平"的瞬间），
+    // 不能因为这一下 computeState 判到 distance<=threshold 就提前清掉轮询——
+    // 必须等轮询自己走完稳定帧判定才算真正结束，之后 computeState 才会正常响应用户滚动。
+    const raf = mockRaf();
+    try {
+      const el = smoothMockEl();
+      const { scrollToBottom, computeState, scrollState } = useAutoScroll(asEl(el));
+      scrollToBottom(true);
+      el.scrollTop = 500; // 动画完成到底（distance=0）
+      computeState(); // 此刻恰好到底，但轮询仍在跑，不会被这一下提前清除
+      expect(scrollState.value).toBe('AT_BOTTOM');
+      raf.drain(); // 内容全程未变化，轮询自己很快连续 4 帧判定稳定并收尾
+
+      el.scrollTop = 0; // 用户滚到顶
+      computeState();
+      expect(scrollState.value).toBe('SCROLLED_UP'); // 守卫不会永久吞掉用户滚动
+    } finally {
+      raf.restore();
+    }
   });
 
   it('用户 wheel 输入打断贴底意图：状态按真实位置重算，后续 streaming 不再跟随', () => {
@@ -327,6 +352,96 @@ describe('useAutoScroll smooth 贴底意图（快速流式期间贴底跟随不�
     }
   });
 
+  it('刷新页面等瞬时（非 smooth）首屏滚动场景：同样会持续轮询追高，直到真正贴底（修复③）', () => {
+    // 复现真实 bug：BubbleList 挂载时 syncScrollState 调用的是 scrollToBottom()（不传 smooth，
+    // 即瞬时/behavior:auto），不是 items.length watcher 那条 smooth=true 的路径。若最后一条
+    // 恰好是内容复杂的自定义卡片消息，首屏这次瞬时滚动读到的 scrollHeight 往往还是虚拟列表
+    // 给的估算值，真实高度要再等几帧才测量出来——旧实现只有 smooth=true 才会起轮询追高，
+    // 瞬时滚动这条路径完全没有轮询兜底，会停在卡片中间。
+    const raf = mockRaf();
+    try {
+      const el = smoothMockEl();
+      const { scrollToBottom, scrollState } = useAutoScroll(asEl(el));
+      scrollToBottom(); // 瞬时：smooth 默认 false，auto 立即跳到当时的 scrollHeight
+      expect(el.scrollTop).toBe(1000);
+
+      el.scrollHeight = 1400; // 卡片真实高度分帧测量出来，比首屏估算的更高
+      raf.runFrame();
+      expect(el.scrollTop).toBe(1400); // 瞬时滚动之后依然有轮询在追高，不是"滚一次就不管了"
+
+      el.scrollHeight = 1600;
+      raf.runFrame();
+      expect(el.scrollTop).toBe(1600);
+
+      for (let i = 0; i < 4; i += 1) raf.runFrame();
+      expect(scrollState.value).toBe('AT_BOTTOM');
+      expect(el.scrollTop).toBe(1600); // 最终真正贴底，而不是停在估算高度
+    } finally {
+      raf.restore();
+    }
+  });
+
+  it('轮询进行中原生 scroll 事件恰好命中"刚追平"瞬间：不应提前结束轮询（修复④）', () => {
+    // 复现真实 bug：批量加载多条历史消息（含若干卡片）时，我们自己每帧 el.scrollTo() 之后，
+    // 浏览器几乎必然异步补发一次原生 scroll 事件（此处用直接调用 computeState() 模拟）——
+    // 这类事件很容易恰好读到"刚 snap 过去、暂时追平"的瞬间（distance<=threshold）。若这一下
+    // 就把轮询清掉，之后内容继续变高（如下一张卡片渲染完成）就没人再追，最终停在半途。
+    const raf = mockRaf();
+    try {
+      const el = smoothMockEl();
+      const { scrollToBottom, computeState, scrollState } = useAutoScroll(asEl(el));
+      scrollToBottom(true); // 排入第 1 帧轮询
+
+      el.scrollHeight = 6765; // 第 1 帧：内容大幅增高（如批量渲染出的历史消息+卡片）
+      raf.runFrame();
+      expect(el.scrollTop).toBe(6765); // 立即重定目标追上
+
+      // 模拟浏览器为上面这次 el.scrollTo() 异步补发的原生 scroll 事件：此刻 scrollTop 恰好
+      // 追平 scrollHeight，distance=0，但内容马上还会继续变高（下一张卡片还没渲染完）
+      computeState();
+      expect(scrollState.value).toBe('AT_BOTTOM'); // 判定没错，但轮询不能因此被提前掐掉
+
+      el.scrollHeight = 8152; // 第 2 帧：内容继续增高（另一张卡片渲染完成）
+      raf.runFrame();
+      expect(el.scrollTop).toBe(8152); // 若轮询被提前掐掉，这里会仍停在 6765（bug 复现值）
+
+      for (let i = 0; i < 4; i += 1) raf.runFrame();
+      expect(scrollState.value).toBe('AT_BOTTOM');
+      expect(el.scrollTop).toBe(8152); // 最终真正贴底
+    } finally {
+      raf.restore();
+    }
+  });
+
+  it('新消息插入引发多个 watcher 几乎同时 follow：不应互相打断，贴底轮询继续追高直到真正稳定', () => {
+    // 复现真实场景（BubbleList.vue）：插入新消息时 items.length watcher（own/new-message，
+    // smooth=true）与末条消息内容 watcher（streaming，smooth=false，因为"末条消息"换成了
+    // 刚插入的新消息，其内容统计值也跟着变化）几乎同时触发。后者不应该把前者刚起步、
+    // 一帧都还没轮询过的贴底轮询提前打断，否则虚拟列表/自定义卡片后续继续撑高时就没人
+    // 再追，最终会停在内容中间（这正是修复前复现到的真实 bug）。
+    const raf = mockRaf();
+    try {
+      const el = smoothMockEl();
+      const { scrollToBottom, follow, scrollState } = useAutoScroll(asEl(el));
+      scrollToBottom(true); // own/new-message：排入第 1 帧轮询
+      follow('streaming'); // 几乎同时触发的另一个 watcher：smooth=false 的瞬时校正
+
+      el.scrollHeight = 1400; // 虚拟列表/自定义卡片继续异步撑高
+      raf.runFrame();
+      expect(el.scrollTop).toBe(1400); // 若轮询被打断，这里会仍停在初始 1000（bug 复现值）
+
+      el.scrollHeight = 1600;
+      raf.runFrame();
+      expect(el.scrollTop).toBe(1600);
+
+      for (let i = 0; i < 4; i += 1) raf.runFrame();
+      expect(scrollState.value).toBe('AT_BOTTOM');
+      expect(el.scrollTop).toBe(1600); // 最终真正贴底，而不是停在中途
+    } finally {
+      raf.restore();
+    }
+  });
+
   it('环境无 requestAnimationFrame 时安全空转（不抛错，直接按即时位置判定）', () => {
     const prevRAF = globalThis.requestAnimationFrame;
     const prevCAF = globalThis.cancelAnimationFrame;
@@ -357,6 +472,7 @@ describe('useAutoScroll observeContent（内容增高时钉底）', () => {
     }
     const prev = (globalThis as any).ResizeObserver;
     (globalThis as any).ResizeObserver = RO;
+    const raf = mockRaf();
     try {
       const el = mockEl({ scrollHeight: 1000, scrollTop: 500, clientHeight: 500 }); // 距底=0 → AT_BOTTOM
       const { observeContent, computeState, scrollState } = useAutoScroll(ref(el));
@@ -368,6 +484,11 @@ describe('useAutoScroll observeContent（内容增高时钉底）', () => {
       cb();
       expect(el.scrollTop).toBe(2000); // 已贴底
 
+      // cb() 触发的 follow('streaming') 现在也会起一轮贴底轮询（修复③：轮询是否开启与
+      // smooth 无关），需要先让它在内容不再变化后自然收尾（连续 4 帧稳定），
+      // 期间 computeState 不受用户滚动影响是设计内的短暂保护窗口，排空后才是「真正静止」态。
+      raf.drain();
+
       el.scrollTop = 0; // 用户滚到顶
       computeState();
       expect(scrollState.value).toBe('SCROLLED_UP');
@@ -376,6 +497,7 @@ describe('useAutoScroll observeContent（内容增高时钉底）', () => {
       expect(el.scrollTop).toBe(0); // 不贴底
     } finally {
       (globalThis as any).ResizeObserver = prev;
+      raf.restore();
     }
   });
 

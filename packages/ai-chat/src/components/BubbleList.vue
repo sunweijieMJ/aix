@@ -359,6 +359,13 @@ defineExpose({
     flex: 1;
     padding: var(--aix-padding);
     overflow-y: auto;
+
+    // 关掉浏览器默认的滚动锚定：Sender 自适应高度（autosize）在长会话/虚拟列表场景下
+    // 哪怕只改动 1px 高度，也会挤压本容器的可用高度，触发浏览器自动纠正 scrollTop 来
+    // 保持视觉内容不跳动——这次纠正伴随的重排会在某些浏览器下导致刚聚焦的 Sender 输入框
+    // 出现一次瞬间 blur→重新 focus 的抖动（用户体感为"打字打着打着突然失焦"）。
+    // 本容器自己的贴底/跟随已经由 useAutoScroll 全权接管，不需要浏览器再插手纠正。
+    overflow-anchor: none;
   }
 
   &__skeleton {

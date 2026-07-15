@@ -16,9 +16,12 @@ describe('Sender.setValue', () => {
   it('setValue 后高度按新内容计算（非受控使用，无 modelValue 回声纠正）', async () => {
     const w = mount(Sender);
     const ta = w.find('textarea').element as HTMLTextAreaElement;
-    // jsdom scrollHeight 恒 0：按当前 DOM value 行数模拟真实滚动高度
-    Object.defineProperty(ta, 'scrollHeight', {
-      get: () => 20 * ta.value.split('\n').length,
+    await w.vm.$nextTick(); // 等镜像元素创建（挂载时 immediate watch 经 nextTick 触发）
+    const mirror = w.element.querySelector('textarea[aria-hidden="true"]') as HTMLTextAreaElement;
+    // jsdom scrollHeight 恒 0：按镜像当前 value 行数模拟真实滚动高度
+    // （高度改由镜像测量，镜像 value 在 autosize 里同步自真实输入框，故按它模拟）
+    Object.defineProperty(mirror, 'scrollHeight', {
+      get: () => 20 * mirror.value.split('\n').length,
       configurable: true,
     });
     (w.vm as unknown as { setValue: (t: string) => void }).setValue('一\n二\n三');
