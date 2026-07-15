@@ -245,19 +245,6 @@ const MarkdownBlock = defineComponent({
     margin-bottom: 0;
   }
 
-  /* 流式尾光标：流式渲染态下在末块行尾渲染一个闪烁竖条，强化"正在输出"感知。
-     纯 CSS（::after）不侵入内容；末块为文本时内联于行尾，代码/表格等块则紧随其后。 */
-  &.is-streaming > :last-child::after {
-    content: '';
-    display: inline-block;
-    width: 0.5em;
-    height: 1em;
-    margin-left: 1px;
-    transform: translateY(0.12em);
-    animation: aix-md-cursor-blink 1s steps(2, start) infinite;
-    background: currentColor;
-  }
-
   p {
     margin: 0.5em 0;
   }
@@ -607,12 +594,6 @@ const MarkdownBlock = defineComponent({
 
   to {
     opacity: 1;
-  }
-}
-
-@keyframes aix-md-cursor-blink {
-  50% {
-    opacity: 0;
   }
 }
 

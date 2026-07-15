@@ -48,16 +48,21 @@
           </Bubble>
         </Virtualizer>
       </div>
-      <button
-        v-if="scrollState !== 'AT_BOTTOM'"
-        type="button"
-        :class="ns.e('back')"
-        :aria-label="t.backToBottom"
-        @click="scrollToBottom(true)"
-      >
-        <span v-if="unreadCount">{{ unreadCount }}</span>
-        ↓
-      </button>
+      <Transition :name="ns.e('back')">
+        <button
+          v-if="scrollState !== 'AT_BOTTOM'"
+          type="button"
+          :class="ns.e('back')"
+          :aria-label="t.backToBottom"
+          :title="t.backToBottom"
+          @click="scrollToBottom(true)"
+        >
+          <ArrowDownward />
+          <span v-if="unreadCount" :class="ns.e('back-badge')">
+            {{ unreadCount > 99 ? '99+' : unreadCount }}
+          </span>
+        </button>
+      </Transition>
     </template>
   </div>
 </template>
@@ -103,6 +108,7 @@ export interface BubbleListEmits {
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
+import { ArrowDownward } from '@aix/icons';
 import { Virtualizer } from 'virtua/vue';
 import { ref, reactive, watch, nextTick, onMounted, computed, useSlots } from 'vue';
 import { useAutoScroll } from '../composables/useAutoScroll';
@@ -403,38 +409,64 @@ defineExpose({
     right: var(--aix-padding);
     bottom: var(--aix-padding);
     align-items: center;
+    justify-content: center;
+    width: var(--aix-controlHeightLG);
     height: var(--aix-controlHeightLG);
-    padding: 0 var(--aix-padding);
+    padding: 0;
     transition:
       transform var(--aix-motionDurationFast) var(--aix-motionEaseInOut),
-      box-shadow var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
+      box-shadow var(--aix-motionDurationFast) var(--aix-motionEaseInOut),
+      color var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
     border: 1px solid var(--aix-colorBorderSecondary);
-    border-radius: 999px;
+    border-radius: 50%;
     background-color: color-mix(in sRGB, var(--aix-colorBgElevated) 86%, transparent);
     box-shadow: var(--aix-shadowMD);
-    color: var(--aix-colorText);
-    font-size: var(--aix-fontSizeSM);
+    color: var(--aix-colorTextSecondary);
     cursor: pointer;
-    gap: var(--aix-marginXXS);
     backdrop-filter: blur(8px);
 
     &:hover {
-      transform: translateY(-1px);
+      transform: translateY(-2px);
       box-shadow: var(--aix-shadowLG);
+      color: var(--aix-colorText);
     }
 
-    span {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 18px;
+    svg {
+      width: 18px;
       height: 18px;
-      padding: 0 5px;
-      border-radius: 999px;
-      background-color: var(--aix-colorPrimary);
-      color: var(--aix-colorTextLight);
-      font-size: var(--aix-fontSizeXS);
     }
+  }
+
+  &__back-badge {
+    display: inline-flex;
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border: 2px solid var(--aix-colorBgContainer);
+    border-radius: 999px;
+    background-color: var(--aix-colorPrimary);
+    color: var(--aix-colorTextLight);
+    font-size: var(--aix-fontSizeXS);
+    line-height: 14px;
+  }
+
+  /* 回到底部按钮出现 / 消失过渡：淡入 + 轻微上滑，避免滚动状态切换时硬切 */
+  &__back-enter-active,
+  &__back-leave-active {
+    transition:
+      opacity var(--aix-motionDurationFast) var(--aix-motionEaseInOut),
+      transform var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
+  }
+
+  &__back-enter-from,
+  &__back-leave-to {
+    transform: translateY(8px) scale(0.9);
+    opacity: 0;
   }
 }
 </style>
