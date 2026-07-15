@@ -53,5 +53,5 @@ export const ToggleOnClick: Story = {
 
 /** 自定义标题 */
 export const CustomTitle: Story = {
-  args: { title: '深度推理中', expanded: true },
+  args: { title: '深度推理中...', expanded: true },
 };
