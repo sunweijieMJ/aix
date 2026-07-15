@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { ref } from 'vue';
 import { defaultShouldFollow, useAutoScroll } from '../src/composables/useAutoScroll';
 import type { ShouldFollow } from '../src/composables/useAutoScroll';
@@ -182,6 +182,42 @@ describe('useAutoScroll smooth 贴底意图（快速流式期间贴底跟随不�
   }
   const asEl = (el: ReturnType<typeof smoothMockEl>) => ref(el as unknown as HTMLElement);
 
+  /**
+   * 可手动驱动的 requestAnimationFrame mock：贴底意图收尾改为 rAF 轮询后，测试需要精确
+   * 控制"第几帧"发生了什么（而不是依赖真实 ~16ms 延迟或 vitest fake timers 是否覆盖 rAF），
+   * 故直接替换全局 rAF/cAF，用队列 + runFrame() 单步推进。
+   */
+  function mockRaf() {
+    const queue: Array<() => void> = [];
+    const prevRAF = globalThis.requestAnimationFrame;
+    const prevCAF = globalThis.cancelAnimationFrame;
+    let idSeq = 0;
+    const idToCb = new Map<number, () => void>();
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      const id = (idSeq += 1);
+      const wrapped = () => cb(0);
+      idToCb.set(id, wrapped);
+      queue.push(wrapped);
+      return id;
+    }) as typeof requestAnimationFrame;
+    globalThis.cancelAnimationFrame = ((id: number) => {
+      const cb = idToCb.get(id);
+      if (cb) {
+        const i = queue.indexOf(cb);
+        if (i >= 0) queue.splice(i, 1);
+      }
+      idToCb.delete(id);
+    }) as typeof cancelAnimationFrame;
+    return {
+      /** 执行队列里最早排入、尚未执行的一帧回调（不存在则空操作） */
+      runFrame: () => queue.shift()?.(),
+      restore: () => {
+        globalThis.requestAnimationFrame = prevRAF;
+        globalThis.cancelAnimationFrame = prevCAF;
+      },
+    };
+  }
+
   it('smooth 动画途中 scroll 事件不把乐观 AT_BOTTOM 翻回 SCROLLED_UP', () => {
     const el = smoothMockEl();
     const { scrollToBottom, computeState, scrollState } = useAutoScroll(asEl(el));
@@ -227,20 +263,84 @@ describe('useAutoScroll smooth 贴底意图（快速流式期间贴底跟随不�
     expect(el.scrollTop).toBe(200); // 用户已主动离开底部，不再跟随
   });
 
-  it('500ms 保底超时后贴底意图清除，不会永久守护过期状态', () => {
-    vi.useFakeTimers();
+  it('内容不再变化后（连续 4 帧稳定）贴底意图收尾，按真实位置计算', () => {
+    // 对应原 500ms 超时用例的语义：动画实际没追上（scrollTop 停在 200，scrollHeight 不再变），
+    // 收尾时用真实位置揭示 SCROLLED_UP，而不会永久假装 AT_BOTTOM。
+    const raf = mockRaf();
     try {
       const el = smoothMockEl();
-      const { scrollToBottom, computeState, scrollState } = useAutoScroll(asEl(el));
-      scrollToBottom(true);
-      el.scrollTop = 200;
-      computeState();
-      expect(scrollState.value).toBe('AT_BOTTOM'); // 超时前仍受守护
-      vi.advanceTimersByTime(500); // 保底超时
-      computeState();
-      expect(scrollState.value).toBe('SCROLLED_UP'); // 超时后按真实位置计算
+      const { scrollToBottom, scrollState } = useAutoScroll(asEl(el));
+      scrollToBottom(true); // smooth：scrollTop 暂不移动，排入第 1 帧轮询
+      el.scrollTop = 200; // 模拟动画卡在半途；scrollHeight 全程不变（1000）
+      for (let i = 0; i < 4; i += 1) raf.runFrame(); // 连续 4 帧高度未变 → 收尾
+      expect(scrollState.value).toBe('SCROLLED_UP'); // 收尾用 computeState 按真实位置计算
     } finally {
-      vi.useRealTimers();
+      raf.restore();
+    }
+  });
+
+  it('内容持续异常增长超过保底帧数上限：仍会收尾，不会永久轮询', () => {
+    const raf = mockRaf();
+    try {
+      const el = smoothMockEl();
+      const { scrollToBottom, scrollState } = useAutoScroll(asEl(el));
+      scrollToBottom(true); // 排入第 1 帧
+      // 每帧都变高，stableFrames 永远清零，只能靠 MAX_SETTLE_FRAMES（60）上限收尾
+      for (let i = 0; i < 60; i += 1) {
+        el.scrollHeight += 10;
+        raf.runFrame();
+      }
+      expect(scrollState.value).toBe('AT_BOTTOM'); // 每帧都重定目标追上，收尾时已在（当时的）底部
+      // 收尾后不再排入新帧：轮询已停止，不再响应后续变化
+      const before = el.scrollTop;
+      el.scrollHeight += 10;
+      raf.runFrame();
+      expect(el.scrollTop).toBe(before);
+    } finally {
+      raf.restore();
+    }
+  });
+
+  it('虚拟列表新行分几帧才测量出真实高度：持续轮询直到稳定才收尾，最终真正贴底', () => {
+    // 复现原 bug 场景：插入一条自定义卡片消息后，虚拟列表先给一个偏低的估算高度，
+    // 真实（更高的）高度要再过几帧测量/布局后才反映到 scrollHeight。
+    const raf = mockRaf();
+    try {
+      const el = smoothMockEl();
+      const { scrollToBottom, scrollState } = useAutoScroll(asEl(el));
+      scrollToBottom(true); // smooth：scrollTop 暂不移动，排入第 1 帧轮询；lastHeight 记为当前 1000
+
+      el.scrollHeight = 1400; // 第 1 帧：虚拟列表测量出卡片真实高度，比估算的更高
+      raf.runFrame();
+      expect(el.scrollTop).toBe(1400); // 发现变化，立即瞬时重定目标追上新底部
+
+      el.scrollHeight = 1600; // 第 2 帧：布局又有一次微调（如内部异步内容继续撑高）
+      raf.runFrame();
+      expect(el.scrollTop).toBe(1600);
+
+      // 之后不再变化：连续 STABLE_FRAMES_TO_SETTLE（4）帧后应收尾并稳定在 AT_BOTTOM
+      for (let i = 0; i < 4; i += 1) raf.runFrame();
+      expect(scrollState.value).toBe('AT_BOTTOM');
+      expect(el.scrollTop).toBe(1600); // 最终真正停在卡片底部，而不是过期的估算高度
+    } finally {
+      raf.restore();
+    }
+  });
+
+  it('环境无 requestAnimationFrame 时安全空转（不抛错，直接按即时位置判定）', () => {
+    const prevRAF = globalThis.requestAnimationFrame;
+    const prevCAF = globalThis.cancelAnimationFrame;
+    (globalThis as any).requestAnimationFrame = undefined;
+    (globalThis as any).cancelAnimationFrame = undefined;
+    try {
+      const el = smoothMockEl();
+      const { scrollToBottom, scrollState } = useAutoScroll(asEl(el));
+      expect(() => scrollToBottom(true)).not.toThrow();
+      // 没有 rAF 可用：不开贴底意图窗口，scrollToBottom 内已乐观置位的 AT_BOTTOM 保留
+      expect(scrollState.value).toBe('AT_BOTTOM');
+    } finally {
+      globalThis.requestAnimationFrame = prevRAF;
+      globalThis.cancelAnimationFrame = prevCAF;
     }
   });
 });

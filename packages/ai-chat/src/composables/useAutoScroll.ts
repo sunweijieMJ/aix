@@ -38,22 +38,33 @@ export function useAutoScroll(
   const unreadCount = ref(0);
 
   // ── smooth 贴底意图 ─────────────────────────────────────────────
-  // 修复：scrollToBottom(true) 一次性取调用瞬间的 scrollHeight 为目标并乐观置 AT_BOTTOM，
+  // 修复①：scrollToBottom(true) 一次性取调用瞬间的 scrollHeight 为目标并乐观置 AT_BOTTOM，
   // 但 smooth 动画途中的 scroll 事件经 computeState 按真实位置计算会把状态翻回 SCROLLED_UP，
   // 此后流式增高触发的 follow('streaming') 因 defaultShouldFollow 要求 AT_BOTTOM 全部不跟随，
   // 动画期间内容增高 >threshold 时最终停在过期底部、贴底跟随被打断。
   // 引入"贴底意图进行中"标记：存续期间 computeState 不把乐观 AT_BOTTOM 翻回 SCROLLED_UP。
-  // 标记清除时机：①已真正到底（distance<=threshold）②用户 wheel/touchmove 主动输入打断
-  // ③500ms 保底超时（动画异常未到底也不至永久守护）。
+  //
+  // 修复②：虚拟列表（virtua）新插入、此前从未测量过的行（如自定义卡片消息）在刚挂载时
+  // 常常只有估算高度，真实高度要等它被测量/布局后才更新到 scrollHeight——这个过程可能跨多帧，
+  // 且不保证在固定时长内完成。原先用一次性 500ms setTimeout 兜底清除贴底意图：若测量耗时
+  // 超过 500ms，意图被提前清掉，之后 scrollHeight 继续变化时 computeState 会把状态误判为
+  // SCROLLED_UP，导致后续 follow('streaming') 不再跟随，最终停在卡片中间、没有真正贴底。
+  // 改为 rAF 轮询 scrollHeight：每帧发现变化就重新瞬时 snap 到新底部并刷新计时，直到连续
+  // STABLE_FRAMES 帧不再变化（内容已测量/布局稳定）才收尾，不依赖对测量耗时的猜测；
+  // 仍保留 MAX_FRAMES 保底上限，避免内容持续异常增长时无限轮询。
+  // 标记清除时机：①连续几帧 scrollHeight 不再变化（内容已稳定）②用户 wheel/touchmove
+  // 主动输入打断 ③MAX_FRAMES 保底上限（内容持续异常变化时也不至永久轮询）。
+  const STABLE_FRAMES_TO_SETTLE = 4; // 连续 4 帧（约 64ms@60fps）高度不变视为已稳定
+  const MAX_SETTLE_FRAMES = 60; // 保底上限（约 1s@60fps）
   let smoothPending = false;
-  let smoothTimer: ReturnType<typeof setTimeout> | null = null;
+  let settleRaf: ReturnType<typeof requestAnimationFrame> | null = null;
   let smoothTarget: HTMLElement | null = null;
 
   const clearSmoothPending = () => {
     smoothPending = false;
-    if (smoothTimer) {
-      clearTimeout(smoothTimer);
-      smoothTimer = null;
+    if (settleRaf !== null) {
+      cancelAnimationFrame(settleRaf);
+      settleRaf = null;
     }
     if (smoothTarget) {
       smoothTarget.removeEventListener('wheel', interruptSmooth);
@@ -69,14 +80,41 @@ export function useAutoScroll(
   };
 
   const beginSmoothPending = (el: HTMLElement) => {
-    clearSmoothPending(); // 先清上一次未完成的意图（监听/timer），防重复挂载
+    clearSmoothPending(); // 先清上一次未完成的意图（监听/rAF），防重复挂载
+    // 非浏览器环境（SSR / 无 rAF 的测试环境）没有真正的 smooth 动画，没必要也不能开这个
+    // 轮询窗口——直接放弃，回退到 computeState 的即时判定，避免调用不存在的
+    // requestAnimationFrame 抛错（与 observeContent 对 ResizeObserver 的安全空转风格一致）。
+    if (typeof requestAnimationFrame === 'undefined') return;
     smoothPending = true;
     smoothTarget = el;
     // BubbleList 仅接线 @scroll → computeState，无用户输入事件入口；在此对滚动容器
     // 直挂 wheel/touchmove（passive，不影响滚动性能），意图清除时同步解绑
     el.addEventListener('wheel', interruptSmooth, { passive: true });
     el.addEventListener('touchmove', interruptSmooth, { passive: true });
-    smoothTimer = setTimeout(clearSmoothPending, 500);
+
+    let lastHeight = el.scrollHeight;
+    let stableFrames = 0;
+    let frame = 0;
+    const tick = () => {
+      // 已被打断（wheel/touchmove）或真正到底（computeState 清除）：停止轮询
+      if (!smoothPending || smoothTarget !== el) return;
+      if (el.scrollHeight !== lastHeight) {
+        lastHeight = el.scrollHeight;
+        stableFrames = 0;
+        // 内容还在变高：瞬时重定目标到最新底部，不再用 smooth（避免动画反复被打断显得卡顿）
+        el.scrollTo({ top: el.scrollHeight, behavior: 'auto' });
+      } else {
+        stableFrames += 1;
+      }
+      frame += 1;
+      if (stableFrames >= STABLE_FRAMES_TO_SETTLE || frame >= MAX_SETTLE_FRAMES) {
+        clearSmoothPending();
+        computeState(); // 按最终真实位置收尾定态
+        return;
+      }
+      settleRaf = requestAnimationFrame(tick);
+    };
+    settleRaf = requestAnimationFrame(tick);
   };
 
   const computeState = () => {
@@ -147,7 +185,7 @@ export function useAutoScroll(
   };
   onScopeDispose(() => {
     ro?.disconnect();
-    clearSmoothPending(); // 组件卸载时清理保底 timer 与 wheel/touchmove 监听
+    clearSmoothPending(); // 组件卸载时清理 rAF 轮询与 wheel/touchmove 监听
   });
 
   return { scrollState, unreadCount, computeState, scrollToBottom, follow, observeContent };
