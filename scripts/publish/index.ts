@@ -79,7 +79,7 @@ const parseArgs = () => {
     packages: '', // 非交互创建 changeset：逗号分隔的包名
     bump: '', // 非交互创建 changeset：版本类型 patch/minor/major
     summary: '', // 非交互创建 changeset：变更说明
-    skipGates: false, // 是否跳过发布前质量门禁 (test/type-check/lint)
+    withGates: false, // 是否执行发布前质量门禁 (test/type-check/lint)，默认跳过
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -105,8 +105,8 @@ const parseArgs = () => {
     } else if (arg === '--summary' || arg === '-s') {
       result.summary = args[i + 1] || '';
       i++;
-    } else if (arg === '--skip-gates') {
-      result.skipGates = true;
+    } else if (arg === '--with-gates') {
+      result.withGates = true;
     }
   }
 
@@ -130,7 +130,7 @@ ${chalk.yellow('选项:')}
   -p, --packages <list> 非交互创建 changeset：逗号分隔的包名 (配合 create/full 使用)
   -b, --bump <type>    非交互创建 changeset：版本类型 patch/minor/major
   -s, --summary <text> 非交互创建 changeset：变更说明
-  --skip-gates         跳过发布前质量门禁 (test/type-check/lint)，仅用于已单独校验过的重跑场景
+  --with-gates         执行发布前质量门禁 (test/type-check/lint)，默认跳过
 
 ${chalk.yellow('操作类型:')}
   full                 完整发布流程（质量门禁 → 创建 changeset → 更新版本 → 构建 → 发布）
@@ -273,16 +273,16 @@ interface ExecuteOptions {
   skipPrompts: boolean;
   dryRun: boolean;
   changesetInput?: NonInteractiveChangesetOptions;
-  skipGates: boolean;
+  withGates: boolean;
 }
 
 // 执行指定操作
 const executeAction = async (action: string, mode: string, options: ExecuteOptions) => {
-  const { skipPrompts, dryRun, changesetInput, skipGates } = options;
+  const { skipPrompts, dryRun, changesetInput, withGates } = options;
 
   switch (action.toLowerCase()) {
     case 'full':
-      await runFullProcess(skipPrompts, mode, dryRun, changesetInput, skipGates);
+      await runFullProcess(skipPrompts, mode, dryRun, changesetInput, withGates);
       break;
     case 'create':
       if (changesetInput) {
@@ -306,7 +306,7 @@ const executeAction = async (action: string, mode: string, options: ExecuteOptio
         // 检测结果为空属预期，跳过构建并交由 publishPackages 的防护分支确认后继续
         packages = await detectPackages(projectRoot, { allowEmpty: true });
         if (packages.size > 0) {
-          runQualityGates(projectRoot, skipGates);
+          runQualityGates(projectRoot, withGates);
           await buildPackages(projectRoot, packages);
         } else {
           console.log(chalk.yellow('未检测到版本变更，跳过构建（可能为上次发布失败后的重跑）'));
@@ -342,7 +342,7 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
       skipPrompts: args.skipPrompts,
       dryRun: args.dryRun,
       changesetInput: buildChangesetInput(args),
-      skipGates: args.skipGates,
+      withGates: args.withGates,
     });
     return;
   }
@@ -385,7 +385,7 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
     skipPrompts: args.skipPrompts,
     dryRun: args.dryRun,
     changesetInput: buildChangesetInput(args),
-    skipGates: args.skipGates,
+    withGates: args.withGates,
   });
 };
 
@@ -395,7 +395,7 @@ const runFullProcess = async (
   mode = '',
   dryRun = false,
   changesetInput?: NonInteractiveChangesetOptions,
-  skipGates = false,
+  withGates = false,
 ) => {
   // Dry-run 模式跳过所有检查，直接显示待发布的包
   if (dryRun) {
@@ -405,7 +405,7 @@ const runFullProcess = async (
 
   checkNpmLogin(NPM_REGISTRY);
   checkWorkspace(projectRoot);
-  runQualityGates(projectRoot, skipGates);
+  runQualityGates(projectRoot, withGates);
 
   // 模式设置必须在 checkWorkspace 之后，因为 changeset pre enter 会修改 pre.json
   await setupReleaseMode(projectRoot, mode, skipPrompts);

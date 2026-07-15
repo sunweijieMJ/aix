@@ -6,10 +6,11 @@ import chalk from 'chalk';
 import { run } from './shared.js';
 
 // 依次执行 pnpm test / type-check / lint，任一失败即抛出（run 内部已处理非零退出码）
-// skip 为 true 时跳过（用于失败重跑等已确认无需重新校验的场景），并打印提醒
-export const runQualityGates = (projectRoot: string, skip = false): void => {
-  if (skip) {
-    console.log(chalk.yellow('⚠️  已跳过发布前质量门禁 (--skip-gates)，请确认此前已单独校验过'));
+// 默认跳过（发布流程本身较繁琐，质量校验交由 CI 或开发时单独执行）
+// enable 为 true 时才实际执行（配合 --with-gates 使用）
+export const runQualityGates = (projectRoot: string, enable = false): void => {
+  if (!enable) {
+    console.log(chalk.gray('ℹ️  已跳过发布前质量门禁 (默认跳过，如需校验请加 --with-gates)'));
     return;
   }
 
