@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.16
+
+### Patch Changes
+
+- 监听滚动到底部
+
 ## 0.0.15
 
 ### Patch Changes
