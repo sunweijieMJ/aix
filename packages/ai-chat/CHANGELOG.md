@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.17
+
+### Patch Changes
+
+- 默认滚动及失焦问题
+
 ## 0.0.16
 
 ### Patch Changes
