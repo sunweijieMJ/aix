@@ -134,7 +134,12 @@ export const createMessage = (
   ...(opts?.extra !== undefined ? { extra: opts.extra } : {}),
 });
 
-/** 提取消息可复制纯文本：仅拼接 text block（不含 reasoning/sources） */
+/**
+ * 提取消息的 text block 原文（markdown 源码，未剥离语法符号），不含 reasoning/sources。
+ * 用途较广：API 导出（openai.ts）、编辑态回填草稿、划词锚点原文、消息操作条"复制源码"——
+ * 这些场景都需要原始 markdown。若要给用户展示/复制"看起来干净"的纯文本（去加粗/标题/引用等符号），
+ * 见 stripMarkdownForCopy（复制按钮用）/ stripMarkdownForSpeech（朗读用）。
+ */
 export const messageText = (m: ChatMessage): string =>
   m.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')

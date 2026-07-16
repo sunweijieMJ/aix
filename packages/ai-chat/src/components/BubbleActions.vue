@@ -28,11 +28,23 @@
         v-if="item.builtin && item.key === 'copy'"
         type="button"
         :class="ns.e('btn')"
-        :aria-label="copied ? t.copiedButton : t.copyButton"
-        :title="copied ? t.copiedButton : t.copyButton"
+        :aria-label="copiedKey === 'copy' ? t.copiedButton : t.copyButton"
+        :title="copiedKey === 'copy' ? t.copiedButton : t.copyButton"
         @click="onCopy"
       >
-        <Check v-if="copied" />
+        <Check v-if="copiedKey === 'copy'" />
+        <Copy v-else />
+      </button>
+      <!-- opt-in：复制原始 markdown 源码，不在默认 items 里，需消费方显式加入 actions 才会渲染 -->
+      <button
+        v-else-if="item.builtin && item.key === 'copySource'"
+        type="button"
+        :class="ns.e('btn')"
+        :aria-label="copiedKey === 'copySource' ? t.copiedButton : t.copySourceButton"
+        :title="copiedKey === 'copySource' ? t.copiedButton : t.copySourceButton"
+        @click="onCopySource"
+      >
+        <Check v-if="copiedKey === 'copySource'" />
         <Copy v-else />
       </button>
       <button
@@ -134,6 +146,11 @@ export interface BubbleActionsProps {
   items?: ActionsItems;
   /** 'copy' 内置项的复制文本；提供后点击复制自动写入剪贴板并给出「已复制」反馈 */
   content?: string;
+  /**
+   * 'copySource' 内置项的复制文本（原始 markdown 源码，未剥离语法符号）；未传时退化用 content。
+   * 该内置项默认不在 items 里，需消费方显式加入才会渲染（如 `actions: ['copy', 'copySource', 'regenerate']`）。
+   */
+  sourceContent?: string;
   /** 'feedback' 内置项的受控激活态，null 表示未反馈 */
   feedback?: MessageFeedback | null;
   /** 'speak' 内置项的受控朗读态（true=正在朗读，按钮切换为停止） */
@@ -147,6 +164,8 @@ export interface BubbleActionsProps {
 }
 export interface BubbleActionsEmits {
   (e: 'copy'): void;
+  /** 内置 copySource 操作：复制原始 markdown 源码 */
+  (e: 'copy-source'): void;
   (e: 'regenerate'): void;
   (e: 'feedback', value: MessageFeedback | null): void;
   (e: 'speak'): void;
@@ -195,20 +214,32 @@ const emit = defineEmits<BubbleActionsEmits>();
 const ns = useNamespace('bubble-actions');
 const { t } = useLocale(locale);
 
-const copied = ref(false);
+// 用具体 key（而非单一布尔）区分是哪个复制按钮触发了反馈：copy/copySource 各自独立高亮，
+// 避免共用一个 copied 布尔导致两个按钮同时显示「已复制」勾选态。
+const copiedKey = ref<'copy' | 'copySource' | null>(null);
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-const onCopy = async () => {
-  // 有文本时用 copyText 复制（内含 Clipboard API + execCommand 兜底，兼容 HTTP / 旧浏览器）；
-  // 两条路径都失败视为硬失败：静默降级，不显示「已复制」也不抛 copy。
-  // 无 content 时跳过复制、仍抛 copy 事件，交由使用方自定义复制逻辑（逃生口）。
-  if (props.content && !(await copyText(props.content))) return;
-  copied.value = true;
+// 有文本时用 copyText 复制（内含 Clipboard API + execCommand 兜底，兼容 HTTP / 旧浏览器）；
+// 两条路径都失败视为硬失败：静默降级，不显示「已复制」也不抛事件。
+// 无文本时跳过复制、仍抛事件，交由使用方自定义复制逻辑（逃生口）。
+const markCopied = (key: 'copy' | 'copySource') => {
+  copiedKey.value = key;
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
-    copied.value = false;
+    copiedKey.value = null;
   }, 1500);
+};
+const onCopy = async () => {
+  if (props.content && !(await copyText(props.content))) return;
+  markCopied('copy');
   emit('copy');
+};
+// sourceContent 未传时退化用 content：独立使用 BubbleActions（未走 AiChat 接线）时仍有兜底行为
+const onCopySource = async () => {
+  const text = props.sourceContent ?? props.content;
+  if (text && !(await copyText(text))) return;
+  markCopied('copySource');
+  emit('copy-source');
 };
 
 onScopeDispose(() => {

@@ -66,13 +66,15 @@
           <BubbleActions
             v-else-if="actionsMap.get(item.id) || branchMap.get(item.id)"
             :items="actionsMap.get(item.id) ?? []"
-            :content="messageText(item)"
+            :content="stripMarkdownForCopy(messageText(item))"
+            :source-content="messageText(item)"
             :message="item"
             :feedback="(item.extra?.feedback as MessageFeedback | null) ?? null"
             :speaking="speakingId === item.id"
             :branch="branchMap.get(item.id)"
             :branch-disabled="isLoading"
             @copy="emit('copy', item)"
+            @copy-source="emit('copy-source', item)"
             @regenerate="onReload(item.id)"
             @feedback="onFeedback(item.id, $event)"
             @speak="speech?.toggle(item)"
@@ -317,6 +319,8 @@ export interface AiChatEmits {
   (e: 'abort', message: ChatMessage): void;
   /** 复制某条 AI 回复（默认操作触发），携带该消息 */
   (e: 'copy', message: ChatMessage): void;
+  /** 复制某条 AI 回复的原始 markdown 源码（opt-in 的 copySource 操作触发），携带该消息 */
+  (e: 'copy-source', message: ChatMessage): void;
   /** 交互块动作上抛（如单选作答 / 编辑保存），供业务方做持久化 / 判分 */
   (e: 'block-action', payload: BlockActionPayload): void;
   /** 用户消息编辑保存（已截断后续并重新生成），携带 id 与新文本 */
@@ -391,6 +395,7 @@ import type { MarkdownRenderers } from '../utils/markdownWalker';
 import { upsertQuote } from '../utils/quoteDedupe';
 import { highlightRange, highlightElement } from '../utils/quoteHighlight';
 import { flattenQuoteBlocks } from '../utils/quotePrompt';
+import { stripMarkdownForCopy } from '../utils/stripMarkdownForCopy';
 import { findTextRange, offsetsToRange } from '../utils/textRange';
 import BubbleActions from './BubbleActions.vue';
 import BubbleList from './BubbleList.vue';

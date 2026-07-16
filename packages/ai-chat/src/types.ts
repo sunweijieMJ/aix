@@ -460,11 +460,19 @@ export type ContentBlock =
   | QuoteBlock;
 
 /** 内置消息操作预设 key */
-export type ActionKey = 'copy' | 'regenerate' | 'feedback' | 'speak' | 'quote' | 'edit' | 'delete';
+export type ActionKey =
+  | 'copy'
+  | 'copySource'
+  | 'regenerate'
+  | 'feedback'
+  | 'speak'
+  | 'quote'
+  | 'edit'
+  | 'delete';
 
 /** 自定义消息操作项 */
 export interface ActionItem {
-  /** 唯一 key；不要与内置预设 key（copy/regenerate/feedback/speak/quote/edit/delete）同名，否则 v-for key 冲突 */
+  /** 唯一 key；不要与内置预设 key（copy/copySource/regenerate/feedback/speak/quote/edit/delete）同名，否则 v-for key 冲突 */
   key: string;
   /** 按钮文案（tooltip + aria-label），a11y 必填 */
   label: string;
