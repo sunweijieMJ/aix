@@ -1,0 +1,57 @@
+{
+  "name": "@kit/i18n-runtime",
+  "version": "0.0.1",
+  "description": "运行时 DOM 扫描机翻引擎，零业务代码侵入的门户网站国际化方案",
+  "author": "<sunweijie@able-elec.com>",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vue": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsdown --watch --config-loader tsx",
+    "lint": "eslint . --max-warnings 0",
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest --run",
+    "build": "pnpm run clean && tsdown --config-loader tsx && tsdown --config-loader tsx --config tsdown.config.cdn.ts",
+    "clean": "rimraf dist"
+  },
+  "peerDependencies": {
+    "vue": "^3.5.31",
+    "vue-router": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vue": {
+      "optional": true
+    },
+    "vue-router": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "fake-indexeddb": "^6.2.2",
+    "rimraf": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:",
+    "vue": "catalog:",
+    "vue-router": "catalog:"
+  }
+}
