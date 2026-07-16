@@ -133,8 +133,9 @@ export function createEngine(): I18nRuntimeEngine {
       } catch (err) {
         // 翻译失败不写入 packStore、不记录 registry，这批候选保持"未翻译"状态，
         // 下次扫描（路由切换/新的 mutation）会因为命中不到缓存而自然重新入队重试。
+        // 注意：这里不能 return——本批次里可能还混有其它已经命中缓存的候选（比如内容
+        // 与页面别处已翻译文本相同），它们不该被这次翻译失败连累，必须走到下面的循环正常写回。
         console.error('[i18n-runtime] 批量翻译失败，本批候选将在下次扫描时自动重试:', err);
-        return;
       }
     }
 

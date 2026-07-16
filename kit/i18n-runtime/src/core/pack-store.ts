@@ -19,6 +19,8 @@ export interface PackStoreOptions {
 export class PackStore {
   private readonly memory = new Map<string, Map<string, string>>();
   private readonly options: PackStoreOptions;
+  /** 按 lang 串行化 L2 的读-改-写，避免并发 setMany/hydrate 互相用旧快照整体覆盖丢失对方的词条 */
+  private readonly writeQueue = new Map<string, Promise<void>>();
 
   constructor(options: PackStoreOptions) {
     this.options = options;
@@ -35,7 +37,7 @@ export class PackStore {
       if (remote && remote.version !== cached?.version) {
         const data = this.remoteToPackData(remote);
         this.loadIntoMemory(lang, data);
-        await this.options.storage.set(lang, data);
+        await this.persistMerge(lang, data);
       }
     } catch {
       // L3 拉取失败，静默降级使用已有 L2/L1 缓存
@@ -54,11 +56,38 @@ export class PackStore {
     this.memory.set(lang, bucket);
 
     const now = Date.now();
-    const existing = (await this.options.storage.get(lang)) ?? { version: '', entries: {} };
+    const entries: PackData['entries'] = {};
     for (const [hash, translation] of Object.entries(translations)) {
-      existing.entries[hash] = { translation, lastUsedAt: now };
+      entries[hash] = { translation, lastUsedAt: now };
     }
-    await this.options.storage.set(lang, existing);
+    await this.persistMerge(lang, { version: '', entries }, { keepVersion: true });
+  }
+
+  /**
+   * 把 L2 的"读旧数据 -> 合并 -> 写回"接到同一个 lang 的队尾串行执行，
+   * 保证同一时刻只有一次读改写在途，后写入的一定合并在先写入的结果之上，不会互相覆盖丢词条。
+   * hydrate 场景默认用 patch.version 更新版本号；setMany 场景传 keepVersion 保留已持久化的版本号。
+   */
+  private persistMerge(
+    lang: string,
+    patch: PackData,
+    options: { keepVersion?: boolean } = {},
+  ): Promise<void> {
+    const previous = this.writeQueue.get(lang) ?? Promise.resolve();
+    const next = previous
+      .catch(() => {
+        // 上一次写入失败不应该让队列永久卡死，后续写入仍要能正常执行
+      })
+      .then(async () => {
+        const existing = (await this.options.storage.get(lang)) ?? { version: '', entries: {} };
+        const merged: PackData = {
+          version: options.keepVersion ? existing.version : patch.version,
+          entries: { ...existing.entries, ...patch.entries },
+        };
+        await this.options.storage.set(lang, merged);
+      });
+    this.writeQueue.set(lang, next);
+    return next;
   }
 
   private loadIntoMemory(lang: string, data: PackData): void {

@@ -186,6 +186,63 @@ describe('createEngine', () => {
     vi.useRealTimers();
   });
 
+  it('同一批候选里，未缓存部分翻译失败不应连累已缓存部分的正常写回', async () => {
+    vi.useFakeTimers();
+    let translateCallCount = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/pack')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ code: 0, data: { version: 'v1', entries: {} } }),
+        });
+      }
+      translateCallCount += 1;
+      if (translateCallCount === 2) {
+        return Promise.resolve({ ok: false, status: 500 });
+      }
+      const body = JSON.parse(init!.body as string) as {
+        items: Array<{ hash: string; text: string }>;
+      };
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          code: 0,
+          data: {
+            translations: body.items.map((item) => ({ hash: item.hash, translation: 'hello' })),
+          },
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const engine = createEngine();
+    engine.start({ provider: 'backend', apiBase: '/api/i18n', languages: ['en'] });
+    await engine.setLanguage('en');
+    await vi.advanceTimersByTimeAsync(500);
+    expect(document.body.querySelector('p')!.textContent).toBe('hello');
+
+    // 同一个 mutation 批次里新增两个节点：一个内容跟已翻译过的"你好"相同（应命中缓存，
+    // 不需要网络请求），一个是全新内容"再见"（未缓存，这次翻译请求会失败）
+    const container = document.createElement('div');
+    const cachedHitEl = document.createElement('p');
+    cachedHitEl.textContent = '你好';
+    const newTextEl = document.createElement('span');
+    newTextEl.textContent = '再见';
+    container.appendChild(cachedHitEl);
+    container.appendChild(newTextEl);
+    document.body.appendChild(container);
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    // "再见"翻译失败，保持原文，等待下次扫描重试（预期行为）
+    expect(newTextEl.textContent).toBe('再见');
+    // "你好"命中缓存，不应该被同批次里"再见"的翻译失败连累，应该正常写回译文
+    expect(cachedHitEl.textContent).toBe('hello');
+
+    engine.stop();
+    vi.useRealTimers();
+  });
+
   it('重复调用 start() 应被幂等忽略并打印 warn，不重新装配', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const engine1 = createEngine();
@@ -201,12 +258,10 @@ describe('createEngine', () => {
   it('stop() 后 setLanguage 触发的 scanFull 不应再通过 routeWatcher 响应路由切换', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: true,
-          json: async () => ({ code: 0, data: { translations: [] } }),
-        }),
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ code: 0, data: { translations: [] } }),
+      }),
     );
 
     const engine = createEngine();
