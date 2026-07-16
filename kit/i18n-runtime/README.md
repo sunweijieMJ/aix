@@ -1,0 +1,154 @@
+# @kit/i18n-runtime
+
+运行时 DOM 扫描机翻引擎：零业务代码侵入地为历史 Vue3 SPA 门户提供类 Google 翻译的国际化效果。
+
+## 三种接入方式
+
+### 1. npm + Vue 插件（推荐，能修改 main.ts 的项目）
+
+```ts
+import { createApp } from 'vue';
+import { createI18nRuntimePlugin } from '@kit/i18n-runtime/vue';
+import router from './router';
+
+const app = createApp(App);
+app.use(router);
+app.use(
+  createI18nRuntimePlugin({
+    provider: 'backend',
+    apiBase: '/api/i18n',
+    languages: ['en', 'ja', 'ko'],
+    router, // 传入后用 router.afterEach 监听路由切换，比 history monkey-patch 更干净
+    initialLanguage: 'en', // 可选，不传则保持显示原文，由业务自行调用 setLanguage
+  }),
+);
+app.mount('#app');
+```
+
+组件内切换语言：
+
+```ts
+import { useI18nRuntime } from '@kit/i18n-runtime/vue';
+
+const i18nRuntime = useI18nRuntime();
+i18nRuntime.setLanguage('ja');
+```
+
+### 2. npm + React Provider（能修改入口文件的 React 项目）
+
+```tsx
+import { createRoot } from 'react-dom/client';
+import { I18nRuntimeProvider } from '@kit/i18n-runtime/react';
+import App from './App';
+
+createRoot(document.getElementById('root')!).render(
+  <I18nRuntimeProvider
+    provider="backend"
+    apiBase="/api/i18n"
+    languages={['en', 'ja', 'ko']}
+    initialLanguage="en" // 可选，不传则保持显示原文，由业务自行调用 setLanguage
+  >
+    <App />
+  </I18nRuntimeProvider>,
+);
+```
+
+组件内切换语言：
+
+```tsx
+import { useI18nRuntime } from '@kit/i18n-runtime/react';
+
+function LanguageSwitcher() {
+  const i18nRuntime = useI18nRuntime();
+  return <button onClick={() => i18nRuntime.setLanguage('ja')}>日本語</button>;
+}
+```
+
+> React 路由方案分散（React Router / TanStack Router / Next.js 等），没有统一的钩子可用，`I18nRuntimeProvider` 不提供 router 集成，统一走 `history.pushState`/`popstate` 监听（对任何 SPA 路由方案都生效）。该封装面向纯客户端 SPA，不做 SSR/RSC 适配；如需在 Next.js 里使用，请在自己的入口文件按需加 `'use client'`。
+
+### 3. script 标签（完全不能改动业务代码的历史页面）
+
+```html
+<script
+  src="https://your-cdn/i18n-runtime.global.iife.js"
+  data-provider="backend"
+  data-api-base="/api/i18n"
+  data-languages="en,ja,ko"
+  data-initial-language="en"
+></script>
+```
+
+页面加载后可通过 `window.I18nRuntime.setLanguage('ja')` 切换语言。
+
+## 配置项
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `provider` | `'backend' \| 'libretranslate'` | 主翻译服务 |
+| `fallbackProvider` | `'backend' \| 'libretranslate'` | 可选，主 provider 报错时降级调用一次 |
+| `apiBase` | `string` | `provider`/`fallbackProvider` 为 `backend` 时必填 |
+| `libretranslateUrl` | `string` | `provider`/`fallbackProvider` 为 `libretranslate` 时必填 |
+| `languages` | `string[]` | 支持的目标语言列表 |
+| `sourceLang` | `string` | 默认 `'zh'` |
+| `router` | `Router` | 可选，Vue Router 实例（仅插件接入方式） |
+| `debounceMs` | `number` | 默认 `200` |
+| `maxBatchSize` | `number` | 默认 `50` |
+| `storage` | `'localStorage' \| 'indexedDB' \| PackStorageAdapter` | 默认 `'localStorage'` |
+| `maxEntries` | `number` | 仅在 `storage: 'localStorage'`（默认）时生效，L2 单语言最大条目数，默认 `2000`，超出 LRU 淘汰；`storage: 'indexedDB'` 时该配置被忽略（并打印一次 console.warn），IndexedDB 容量远大于 localStorage 不需要淘汰兜底 |
+
+## 排除翻译
+
+- 标准属性：`<div translate="no">品牌名</div>`
+- 自定义属性：`<div data-i18n-skip>不翻译</div>`
+
+## 后端接口契约
+
+`provider: 'backend'` 时，需要后端实现以下两个接口（实现见 `src/core/translator/backend.ts` 与 `src/core/engine.ts`）。
+
+### `POST {apiBase}/translate` — 批量翻译并持久化
+
+请求体：
+
+```json
+{
+  "items": [{ "hash": "1a2b3c4d", "text": "共 {N0} 条" }],
+  "sourceLang": "zh",
+  "targetLang": "en"
+}
+```
+
+- `hash` 由前端本地计算（FNV-1a 32 位），后端只需原样存储、原样返回，不需要也不应该重新计算或用它反查原文
+- `text` 是归一化后的原文——数字/日期序列已被替换成 `{N0}`、`{N1}` 这类占位符（实现见 `src/core/normalizer.ts`，目的是避免同一模板因分页/计数等数字不同被当成不同原文反复翻译），后端调用机翻引擎时应原样传入，返回的译文也必须原样保留这些占位符 token，前端会在写回 DOM 前做占位符回填
+- HTTP 状态码非 `2xx`，或响应体 `code !== 0`，均视为本次批量翻译失败；失败不影响页面正常显示原文，前端会在下次扫描时自动重试
+
+响应体：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "translations": [{ "hash": "1a2b3c4d", "translation": "{N0} in total" }]
+  }
+}
+```
+
+- 失败时可用 `message` 字段描述错误原因（仅用于前端 `console.error` 日志，不会展示给用户）
+- `translations` 里缺失的 hash（比如翻译引擎跳过了某条）会被视为未翻译，等下次扫描自然重新入队重试，不会用原文顶替译文写入缓存
+
+### `GET {apiBase}/pack?lang=xx` — 拉取语言包
+
+响应体：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "version": "2026-07-16T10:00:00Z",
+    "entries": { "1a2b3c4d": "{N0} in total" }
+  }
+}
+```
+
+- `version` 由后端自行生成（时间戳、自增号、内容 hash 均可），前端只做字符串比较：与本地缓存（L2）已有的 version 不同就整包替换本地缓存，相同则直接跳过，不做语义解析
+- `entries` 是该语言的全量 `hash -> translation` 映射
+- HTTP 状态码非 `2xx`，或响应体 `code !== 0`，均视为拉取失败；此时静默降级使用本地已有的 L1/L2 缓存，不阻塞、不抛出未捕获异常
