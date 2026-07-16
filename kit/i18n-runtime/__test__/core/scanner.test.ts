@@ -275,6 +275,58 @@ describe('Scanner.observe', () => {
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
     expect(texts).toContain('业务渲染了新原文');
   });
+
+  it('data-i18n-skip 容器整体作为新增子树插入时，内部文本不应被采集', async () => {
+    document.body.innerHTML = '';
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: 0 });
+    scanner.observe(document.body);
+
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-i18n-skip', '');
+    wrapper.innerHTML = '<p>不应该被翻译的内容</p>';
+    document.body.appendChild(wrapper);
+
+    await flushMicrotasks();
+    scanner.disconnect();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).not.toContain('不应该被翻译的内容');
+  });
+
+  it('已存在的 data-i18n-skip 容器内动态新增子节点，不应被采集（容器本身未变化，只是内部增量新增）', async () => {
+    document.body.innerHTML = '<div data-i18n-skip></div>';
+    const skipContainer = document.querySelector('[data-i18n-skip]')!;
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: 0 });
+    scanner.observe(document.body);
+
+    const p = document.createElement('p');
+    p.textContent = '动态插入的不该翻译的文本';
+    skipContainer.appendChild(p);
+
+    await flushMicrotasks();
+    scanner.disconnect();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).not.toContain('动态插入的不该翻译的文本');
+  });
+
+  it('已存在的 data-i18n-skip 容器内已有文本节点发生 characterData 变化，不应被采集', async () => {
+    document.body.innerHTML = '<div data-i18n-skip><p>初始文本</p></div>';
+    const textNode = document.querySelector('[data-i18n-skip] p')!.firstChild as Text;
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: 0 });
+    scanner.observe(document.body);
+
+    textNode.textContent = '改变后的文本不该翻译';
+
+    await flushMicrotasks();
+    scanner.disconnect();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).not.toContain('改变后的文本不该翻译');
+  });
 });
 
 describe('Scanner.disconnect', () => {

@@ -68,12 +68,10 @@ describe('bootstrap', () => {
   it('传了 data-initial-language 时应自动调用一次 setLanguage', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: true,
-          json: async () => ({ code: 0, data: { translations: [] } }),
-        }),
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ code: 0, data: { translations: [] } }),
+      }),
     );
     const script = createScript({
       provider: 'backend',
@@ -93,5 +91,20 @@ describe('bootstrap', () => {
     const engine = bootstrap(script);
 
     expect(engine.getLanguage()).toBe('zh');
+  });
+
+  it('script 标签被重复引入时，第二次 bootstrap 应复用真正在跑的第一个 engine，而不是暴露一个从未 start 成功的空壳', async () => {
+    const script1 = createScript({ provider: 'backend', apiBase: '/api/i18n', languages: 'en' });
+    const engine1 = bootstrap(script1);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const script2 = createScript({ provider: 'backend', apiBase: '/api/i18n', languages: 'ja' });
+    const engine2 = bootstrap(script2);
+    warnSpy.mockRestore();
+
+    expect(engine2).toBe(engine1);
+    expect((window as unknown as Record<string, unknown>).I18nRuntime).toBe(engine1);
+    // 修复前：这里会因为 engine2 从未真正 start 而抛错
+    await expect(engine2.setLanguage('en')).resolves.not.toThrow();
   });
 });

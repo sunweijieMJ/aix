@@ -84,4 +84,34 @@ describe('I18nRuntimeProvider', () => {
 
     expect(stopSpy).toHaveBeenCalledOnce();
   });
+
+  it('<I18nRuntimeProvider> 被重复挂载时，第二个 Provider 应复用真正在跑的第一个 engine', async () => {
+    let engine1: I18nRuntimeEngine | undefined;
+    let engine2: I18nRuntimeEngine | undefined;
+    function Capture1(): ReactNode {
+      engine1 = useI18nRuntime();
+      return null;
+    }
+    function Capture2(): ReactNode {
+      engine2 = useI18nRuntime();
+      return null;
+    }
+
+    render(
+      <I18nRuntimeProvider provider="backend" apiBase="/api/i18n" languages={['en']}>
+        <Capture1 />
+      </I18nRuntimeProvider>,
+    );
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    render(
+      <I18nRuntimeProvider provider="backend" apiBase="/api/i18n" languages={['ja']}>
+        <Capture2 />
+      </I18nRuntimeProvider>,
+    );
+
+    // 修复前：engine2 会是一个从未真正 start 成功的空壳
+    await waitFor(() => expect(engine2).toBe(engine1));
+    warnSpy.mockRestore();
+  });
 });

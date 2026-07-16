@@ -1,5 +1,10 @@
 import { inject, type App, type InjectionKey, type Plugin } from 'vue';
-import { createEngine, type I18nRuntimeConfig, type I18nRuntimeEngine } from '../core/engine.js';
+import {
+  createEngine,
+  getActiveEngine,
+  type I18nRuntimeConfig,
+  type I18nRuntimeEngine,
+} from '../core/engine.js';
 
 export interface I18nRuntimePluginOptions extends I18nRuntimeConfig {
   /** install 完成后自动调用一次 setLanguage(initialLanguage)，不传则保持显示原文，由业务自行调用 */
@@ -14,14 +19,18 @@ export function createI18nRuntimePlugin(options: I18nRuntimePluginOptions): Plug
       const engine = createEngine();
       const { initialLanguage, ...config } = options;
       engine.start(config);
+      // app.use(plugin) 被重复调用时 engine.start() 会被 guard 拦截，这个新建实例永远
+      // 不会真正运行，必须 provide "当前真正在跑的那个 engine"，否则子组件 useI18nRuntime()
+      // 拿到的会是一个从未 start 成功的空壳实例，调用 setLanguage 会一直报错。
+      const activeEngine = getActiveEngine() ?? engine;
 
       if (initialLanguage) {
-        engine.setLanguage(initialLanguage).catch((err) => {
+        activeEngine.setLanguage(initialLanguage).catch((err) => {
           console.error('[i18n-runtime] 初始语言设置失败:', err);
         });
       }
 
-      app.provide(I18N_RUNTIME_INJECTION_KEY, engine);
+      app.provide(I18N_RUNTIME_INJECTION_KEY, activeEngine);
     },
   };
 }

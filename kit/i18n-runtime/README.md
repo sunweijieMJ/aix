@@ -103,4 +103,52 @@ function LanguageSwitcher() {
 
 ## 后端接口契约
 
-详见设计文档 `docs/superpowers/specs/2026-07-15-i18n-runtime-design.md`「后端接口规范」一节：`POST {apiBase}/translate` 批量翻译并持久化、`GET {apiBase}/pack?lang=xx` 拉取语言包。hash 由前端本地计算并作为请求的一部分传给后端，后端只需原样存储、原样返回。
+`provider: 'backend'` 时，需要后端实现以下两个接口（实现见 `src/core/translator/backend.ts` 与 `src/core/engine.ts`）。
+
+### `POST {apiBase}/translate` — 批量翻译并持久化
+
+请求体：
+
+```json
+{
+  "items": [{ "hash": "1a2b3c4d", "text": "共 {N0} 条" }],
+  "sourceLang": "zh",
+  "targetLang": "en"
+}
+```
+
+- `hash` 由前端本地计算（FNV-1a 32 位），后端只需原样存储、原样返回，不需要也不应该重新计算或用它反查原文
+- `text` 是归一化后的原文——数字/日期序列已被替换成 `{N0}`、`{N1}` 这类占位符（实现见 `src/core/normalizer.ts`，目的是避免同一模板因分页/计数等数字不同被当成不同原文反复翻译），后端调用机翻引擎时应原样传入，返回的译文也必须原样保留这些占位符 token，前端会在写回 DOM 前做占位符回填
+- HTTP 状态码非 `2xx`，或响应体 `code !== 0`，均视为本次批量翻译失败；失败不影响页面正常显示原文，前端会在下次扫描时自动重试
+
+响应体：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "translations": [{ "hash": "1a2b3c4d", "translation": "{N0} in total" }]
+  }
+}
+```
+
+- 失败时可用 `message` 字段描述错误原因（仅用于前端 `console.error` 日志，不会展示给用户）
+- `translations` 里缺失的 hash（比如翻译引擎跳过了某条）会被视为未翻译，等下次扫描自然重新入队重试，不会用原文顶替译文写入缓存
+
+### `GET {apiBase}/pack?lang=xx` — 拉取语言包
+
+响应体：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "version": "2026-07-16T10:00:00Z",
+    "entries": { "1a2b3c4d": "{N0} in total" }
+  }
+}
+```
+
+- `version` 由后端自行生成（时间戳、自增号、内容 hash 均可），前端只做字符串比较：与本地缓存（L2）已有的 version 不同就整包替换本地缓存，相同则直接跳过，不做语义解析
+- `entries` 是该语言的全量 `hash -> translation` 映射
+- HTTP 状态码非 `2xx`，或响应体 `code !== 0`，均视为拉取失败；此时静默降级使用本地已有的 L1/L2 缓存，不阻塞、不抛出未捕获异常

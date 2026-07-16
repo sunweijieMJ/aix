@@ -58,19 +58,42 @@ function defaultScheduleIdle(work: () => void): void {
   }
 }
 
+function isElementSkipped(el: Element): boolean {
+  if (SKIP_TAGS.has(el.tagName)) return true;
+  if (el.getAttribute('translate') === 'no') return true;
+  if (el.hasAttribute('data-i18n-skip')) return true;
+  if (el.hasAttribute('contenteditable') && el.getAttribute('contenteditable') !== 'false') {
+    return true;
+  }
+  return false;
+}
+
 function acceptNode(node: Node): number {
   if (node.nodeType === Node.ELEMENT_NODE) {
-    const el = node as Element;
-    if (SKIP_TAGS.has(el.tagName)) return NodeFilter.FILTER_REJECT;
-    if (el.getAttribute('translate') === 'no') return NodeFilter.FILTER_REJECT;
-    if (el.hasAttribute('data-i18n-skip')) return NodeFilter.FILTER_REJECT;
-    if (el.hasAttribute('contenteditable') && el.getAttribute('contenteditable') !== 'false') {
-      return NodeFilter.FILTER_REJECT;
-    }
+    if (isElementSkipped(node as Element)) return NodeFilter.FILTER_REJECT;
     // 元素本身也 ACCEPT（供属性扫描），且允许继续遍历子节点
     return NodeFilter.FILTER_ACCEPT;
   }
   return NodeFilter.FILTER_ACCEPT;
+}
+
+/**
+ * MutationObserver 增量扫描专用：判断 node 自身或其任意祖先是否处于排除区域内。
+ *
+ * scanFull() 的 TreeWalker 从 document.body 出发一路往下走，天然会先经过跳过标记所在的
+ * 祖先节点、被 FILTER_REJECT 挡住整棵子树，不需要额外的祖先链检查。但 MutationObserver
+ * 场景不同：新增/变化的节点本身就是遍历的起点（TreeWalker 的 root 从不参与自身的 filter
+ * 判定），如果排除标记挂在一个早就存在于 DOM 里的祖先容器上（容器本身没变化，只是它内部
+ * 增量新增/修改了内容），只检查新增节点自身永远发现不了这层排除关系。必须显式沿父链向上找。
+ */
+function isInsideSkippedSubtree(node: Node): boolean {
+  let el: Element | null =
+    node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+  while (el) {
+    if (isElementSkipped(el)) return true;
+    el = el.parentElement;
+  }
+  return false;
 }
 
 /**
@@ -130,7 +153,7 @@ export class Scanner {
     this.observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'characterData' && mutation.target.nodeType === Node.TEXT_NODE) {
-          this.collect(mutation.target);
+          if (!isInsideSkippedSubtree(mutation.target)) this.collect(mutation.target);
           continue;
         }
         if (mutation.type === 'childList') {
@@ -150,6 +173,10 @@ export class Scanner {
   }
 
   private scanSubtree(root: Node): void {
+    // root 自身携带跳过标记，或者身处一个早就存在的跳过容器内部（容器本身没变化，只是
+    // 内部增量新增/修改了内容）：两种情况都必须整体放弃，不能只挡 root 自己却继续遍历子孙。
+    if (isInsideSkippedSubtree(root)) return;
+
     if (root.nodeType === Node.TEXT_NODE) {
       this.collect(root);
       return;
@@ -159,7 +186,7 @@ export class Scanner {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
       acceptNode,
     });
-    if (acceptNode(root) !== NodeFilter.FILTER_REJECT) this.collect(root);
+    this.collect(root);
     let node: Node | null;
     while ((node = walker.nextNode())) this.collect(node);
   }

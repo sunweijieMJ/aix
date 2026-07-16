@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createEngine } from '../../src/core/engine.js';
+import { createEngine, getActiveEngine } from '../../src/core/engine.js';
 
 describe('createEngine', () => {
   beforeEach(() => {
@@ -253,6 +253,25 @@ describe('createEngine', () => {
 
     expect(warnSpy).toHaveBeenCalledOnce();
     engine1.stop();
+  });
+
+  it('getActiveEngine() 在重复 start() 场景下应返回真正启动成功的那个 engine，而不是被 guard 拦截的空壳', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const engine1 = createEngine();
+    engine1.start({ provider: 'backend', apiBase: '/api/i18n', languages: ['en'] });
+
+    const engine2 = createEngine();
+    engine2.start({ provider: 'backend', apiBase: '/api/i18n', languages: ['ja'] });
+
+    // 被 guard 拦截的 engine2 从未真正 start，调用 setLanguage 应该抛错
+    await expect(engine2.setLanguage('ja')).rejects.toThrow('start()');
+
+    // 而 getActiveEngine() 应该拿到真正在跑的 engine1，可以正常 setLanguage
+    expect(getActiveEngine()).toBe(engine1);
+    await expect(getActiveEngine()!.setLanguage('en')).resolves.not.toThrow();
+
+    engine1.stop();
+    expect(getActiveEngine()).toBeUndefined();
   });
 
   it('stop() 后 setLanguage 触发的 scanFull 不应再通过 routeWatcher 响应路由切换', async () => {

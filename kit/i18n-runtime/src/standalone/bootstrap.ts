@@ -1,4 +1,9 @@
-import { createEngine, type I18nRuntimeConfig, type I18nRuntimeEngine } from '../core/engine.js';
+import {
+  createEngine,
+  getActiveEngine,
+  type I18nRuntimeConfig,
+  type I18nRuntimeEngine,
+} from '../core/engine.js';
 import type { ProviderName } from '../types.js';
 import type { StorageOption } from '../core/storage/index.js';
 
@@ -35,13 +40,17 @@ export function bootstrap(script: HTMLScriptElement): I18nRuntimeEngine {
 
   const engine = createEngine();
   engine.start(config);
-  (window as unknown as Record<string, unknown>).I18nRuntime = engine;
+  // script 标签被重复引入时 engine.start() 会被 guard 拦截、这个新建实例永远不会真正运行，
+  // 必须把 window.I18nRuntime 指向"当前真正在跑的那个 engine"，否则业务后续调用
+  // window.I18nRuntime.setLanguage() 会一直拿到一个从未 start 成功的空壳实例而报错。
+  const activeEngine = getActiveEngine() ?? engine;
+  (window as unknown as Record<string, unknown>).I18nRuntime = activeEngine;
 
   if (initialLanguage) {
-    engine.setLanguage(initialLanguage).catch((err) => {
+    activeEngine.setLanguage(initialLanguage).catch((err) => {
       console.error('[i18n-runtime] 初始语言设置失败:', err);
     });
   }
 
-  return engine;
+  return activeEngine;
 }

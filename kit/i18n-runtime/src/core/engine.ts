@@ -37,6 +37,19 @@ export interface I18nRuntimeEngine {
 
 const GLOBAL_GUARD_KEY = '__I18N_RUNTIME_STARTED__';
 
+/**
+ * 重复启动场景下（如 CDN script 标签被误引入两次、app.use(plugin) 被误调用两次），
+ * 拿到"当前真正处于运行状态的那个 engine"，而不是刚 new 出来但被 guard 拦截、
+ * 永远没有 start 成功的空壳实例——三个接入层（standalone/plugin/plugin-react）
+ * 用这个函数决定该把哪个 engine 暴露给业务代码。
+ */
+export function getActiveEngine(): I18nRuntimeEngine | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return (window as unknown as Record<string, unknown>)[GLOBAL_GUARD_KEY] as
+    | I18nRuntimeEngine
+    | undefined;
+}
+
 function validateConfig(config: I18nRuntimeConfig): void {
   if (config.provider === 'backend' && !config.apiBase) {
     throw new Error('[i18n-runtime] provider 为 backend 时必须传 apiBase');
@@ -145,12 +158,9 @@ export function createEngine(): I18nRuntimeEngine {
     }
   }
 
-  return {
+  const engine: I18nRuntimeEngine = {
     start(userConfig: I18nRuntimeConfig) {
-      if (
-        typeof window !== 'undefined' &&
-        (window as unknown as Record<string, unknown>)[GLOBAL_GUARD_KEY]
-      ) {
+      if (typeof window !== 'undefined' && getActiveEngine()) {
         console.warn('[i18n-runtime] 已经启动过一次，本次 start() 调用被忽略');
         return;
       }
@@ -189,7 +199,7 @@ export function createEngine(): I18nRuntimeEngine {
 
       started = true;
       if (typeof window !== 'undefined')
-        (window as unknown as Record<string, unknown>)[GLOBAL_GUARD_KEY] = true;
+        (window as unknown as Record<string, unknown>)[GLOBAL_GUARD_KEY] = engine;
     },
 
     stop() {
@@ -198,8 +208,10 @@ export function createEngine(): I18nRuntimeEngine {
       routeWatcher?.stop();
       started = false;
       observing = false;
-      if (typeof window !== 'undefined')
-        (window as unknown as Record<string, unknown>)[GLOBAL_GUARD_KEY] = false;
+      // 只清自己占的全局标记——避免误把另一个正在运行的 engine（同页面被重复 start
+      // 拦截后，业务复用的是那一个实例）的标记也清掉
+      if (typeof window !== 'undefined' && getActiveEngine() === engine)
+        (window as unknown as Record<string, unknown>)[GLOBAL_GUARD_KEY] = undefined;
     },
 
     async setLanguage(lang: string) {
@@ -236,4 +248,6 @@ export function createEngine(): I18nRuntimeEngine {
       return () => set.delete(cb);
     },
   };
+
+  return engine;
 }

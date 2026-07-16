@@ -42,12 +42,10 @@ describe('createI18nRuntimePlugin', () => {
   it('传入 initialLanguage 时应在 install 后自动调用一次 setLanguage', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: true,
-          json: async () => ({ code: 0, data: { translations: [] } }),
-        }),
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ code: 0, data: { translations: [] } }),
+      }),
     );
     document.body.innerHTML = '<p>你好</p>';
 
@@ -87,5 +85,28 @@ describe('createI18nRuntimePlugin', () => {
       languages: ['en'],
     });
     app.unmount();
+  });
+
+  it('app.use(plugin) 被重复调用时，第二次 install 应复用真正在跑的第一个 engine', () => {
+    document.body.innerHTML = '';
+    const { app: app1, getEngine: getEngine1 } = mountWithPlugin({
+      provider: 'backend',
+      apiBase: '/api/i18n',
+      languages: ['en'],
+    });
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { app: app2, getEngine: getEngine2 } = mountWithPlugin({
+      provider: 'backend',
+      apiBase: '/api/i18n',
+      languages: ['ja'],
+    });
+    warnSpy.mockRestore();
+
+    // 修复前：这里会拿到一个从未真正 start 成功的空壳 engine
+    expect(getEngine2()).toBe(getEngine1());
+
+    app1.unmount();
+    app2.unmount();
   });
 });
