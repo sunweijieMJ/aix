@@ -769,7 +769,14 @@ const doSubmit = () => {
   trig?.clear();
   inner.value = '';
   emit('update:modelValue', '');
-  nextTick(autosize);
+  // 显式补焦：与本文件其余"改写输入框内容后重新聚焦"的路径（setValue+focus、quote 插入）对齐——
+  // 不能只依赖浏览器保留焦点的隐式行为，Enter 提交这一刻常伴随周边 DOM 结构变化（如发出首条
+  // 消息触发 Welcome→BubbleList 切换、pendingQuotes 清空导致 header 插槽显隐），足以让 textarea
+  // 静默失焦且无人纠正；对已 disabled 的输入框调用 focus() 是浏览器原生空操作，无需额外判断。
+  nextTick(() => {
+    autosize();
+    textareaRef.value?.focus();
+  });
 };
 
 // 选中候选：replaceWithMeasure 式回填（spec §5.1-2）——
