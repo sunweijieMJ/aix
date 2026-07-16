@@ -10,6 +10,7 @@ export const zhCN: AiChatLocale = {
   thoughtDurationSuffix: '（用时{s}秒）',
   copyButton: '复制',
   copiedButton: '已复制',
+  copySourceButton: '复制 Markdown 源码',
   regenerateButton: '重新生成',
   likeButton: '赞同',
   dislikeButton: '反对',

@@ -17,6 +17,8 @@ export interface AiChatLocale {
   copyButton: string;
   /** 复制成功反馈文案 */
   copiedButton: string;
+  /** 复制 markdown 源码按钮（opt-in，需消费方在 actions 中显式加入 'copySource' 才会渲染） */
+  copySourceButton: string;
   /** 重新生成回复按钮 */
   regenerateButton: string;
   /** 赞按钮（AI 回复反馈） */

@@ -10,6 +10,7 @@ export const enUS: AiChatLocale = {
   thoughtDurationSuffix: ' ({s}s)',
   copyButton: 'Copy',
   copiedButton: 'Copied',
+  copySourceButton: 'Copy Markdown source',
   regenerateButton: 'Regenerate',
   likeButton: 'Good response',
   dislikeButton: 'Bad response',

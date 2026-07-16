@@ -93,6 +93,7 @@ export { protectStreamingMarkdown, normalizeMathDelimiters } from './utils/markd
 
 // 朗读文本提取（markdown→纯文本，供自定义 getText 复用）
 export { stripMarkdownForSpeech } from './utils/stripMarkdownForSpeech';
+export { stripMarkdownForCopy } from './utils/stripMarkdownForCopy';
 
 // URL 安全工具（协议白名单，供数据驱动的 href 场景复用）
 export { safeUrl } from './utils/url';
