@@ -2,7 +2,7 @@
 
 运行时 DOM 扫描机翻引擎：零业务代码侵入地为历史 Vue3 SPA 门户提供类 Google 翻译的国际化效果。
 
-## 两种接入方式
+## 三种接入方式
 
 ### 1. npm + Vue 插件（推荐，能修改 main.ts 的项目）
 
@@ -34,7 +34,39 @@ const i18nRuntime = useI18nRuntime();
 i18nRuntime.setLanguage('ja');
 ```
 
-### 2. script 标签（完全不能改动业务代码的历史页面）
+### 2. npm + React Provider（能修改入口文件的 React 项目）
+
+```tsx
+import { createRoot } from 'react-dom/client';
+import { I18nRuntimeProvider } from '@kit/i18n-runtime/react';
+import App from './App';
+
+createRoot(document.getElementById('root')!).render(
+  <I18nRuntimeProvider
+    provider="backend"
+    apiBase="/api/i18n"
+    languages={['en', 'ja', 'ko']}
+    initialLanguage="en" // 可选，不传则保持显示原文，由业务自行调用 setLanguage
+  >
+    <App />
+  </I18nRuntimeProvider>,
+);
+```
+
+组件内切换语言：
+
+```tsx
+import { useI18nRuntime } from '@kit/i18n-runtime/react';
+
+function LanguageSwitcher() {
+  const i18nRuntime = useI18nRuntime();
+  return <button onClick={() => i18nRuntime.setLanguage('ja')}>日本語</button>;
+}
+```
+
+> React 路由方案分散（React Router / TanStack Router / Next.js 等），没有统一的钩子可用，`I18nRuntimeProvider` 不提供 router 集成，统一走 `history.pushState`/`popstate` 监听（对任何 SPA 路由方案都生效）。该封装面向纯客户端 SPA，不做 SSR/RSC 适配；如需在 Next.js 里使用，请在自己的入口文件按需加 `'use client'`。
+
+### 3. script 标签（完全不能改动业务代码的历史页面）
 
 ```html
 <script
