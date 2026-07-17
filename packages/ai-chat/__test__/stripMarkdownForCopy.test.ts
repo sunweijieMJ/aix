@@ -58,6 +58,17 @@ describe('stripMarkdownForCopy', () => {
     });
   });
 
+  describe('单反引号行内代码同样受保护（与围栏代码块保持一致）', () => {
+    it('行内代码里的双下划线标识符不被当作加粗吃掉', () => {
+      expect(stripMarkdownForCopy('字段 `__init__` 是构造方法')).toBe('字段 __init__ 是构造方法');
+    });
+    it('行内代码里的 * 和 # 等特殊字符原样保留，只去掉外层反引号', () => {
+      expect(stripMarkdownForCopy('写法 `*args, **kwargs` 和 `#不是标题`')).toBe(
+        '写法 *args, **kwargs 和 #不是标题',
+      );
+    });
+  });
+
   describe('非代码文本里的下划线/星号边界（避免误伤标识符与算式）', () => {
     it('数字中间的下划线不被当作斜体标记（非代码场景）', () => {
       expect(stripMarkdownForCopy('2_3_4 变量名')).toBe('2_3_4 变量名');

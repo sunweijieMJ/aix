@@ -40,7 +40,9 @@ export async function* xStream(
     // flush 前再判一次，保持「中断后不向消费方追加残留半行」的一致语义。
     if (signal?.aborted) return;
     buffer += decoder.decode(); // flush 残留字节
-    const tail = buffer.trim();
+    // 与逐行处理循环（第 33 行）保持一致的空白语义：只剥可能残留的行尾 \r，
+    // 不整体 trim——否则残留内容首尾的语义空白（如末尾恰好是空格）会被静默吃掉。
+    const tail = buffer.replace(/\r$/, '');
     if (tail) yield tail;
   } finally {
     signal?.removeEventListener('abort', onAbort);

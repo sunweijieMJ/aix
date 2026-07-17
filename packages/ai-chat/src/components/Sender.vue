@@ -591,6 +591,7 @@ const getMirror = (): HTMLTextAreaElement | null => {
   // 复用同一份 CSS class：字体/内边距/边框/行高等影响换行与高度测量的样式直接与真实输入框保持一致，
   // 不需要逐条手动同步（max-height/overflow 在下面用内联样式覆盖掉，测量不受它们影响）。
   el.className = 'aix-sender__input';
+  el.rows = 1; // 与真实输入框模板声明的 rows="1" 保持一致，否则浏览器默认 rows=2 会让空/单行内容的测量高度虚高
   Object.assign(el.style, {
     position: 'fixed',
     top: '0',

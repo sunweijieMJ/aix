@@ -62,6 +62,15 @@ describe('xStream', () => {
     expect(lines[0]).not.toContain('�');
   });
 
+  it('末尾未被 \\n 终结的残留内容保留首尾空白（不做整体 trim）', async () => {
+    // 逐行处理只剥行尾 \r（第 33 行），不 trim 首尾空白；flush 收尾应与之语义一致。
+    // 构造最后一段不以 \n 结尾、且首尾带有语义空白的残留内容，锁定该一致性。
+    const rs = streamFrom(['data: a\n', '  keep space  ']);
+    const lines: string[] = [];
+    for await (const line of xStream(rs)) lines.push(line);
+    expect(lines).toEqual(['data: a', '  keep space  ']);
+  });
+
   it('abort 后停止产出', async () => {
     const ctrl = new AbortController();
     const rs = streamFrom(['data: a\n', 'data: b\n']);

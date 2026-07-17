@@ -194,4 +194,41 @@ describe('useChat — continueGenerate 继续生成', () => {
     expect(chat.messages.value[1]!.status).toBe('abort');
     expect(await chat.continueGenerate(aiId)).toBe(true);
   });
+
+  // 回归 Bug：停止后不点"继续生成"，而是直接发新一轮对话——onSend 恒在当前 head（即这条
+  // abort 消息）下延展，新一轮对话被挂到旧消息下面。旧消息仍在激活路径 messages 里（在场景
+  // 上仍"可见可点"），但它已不是链尾。此时对它调用 continueGenerate 必须被拒绝：否则会用
+  // 它位置之前的历史发起续写请求（丢失之后已发生的新对话轮次），且续写内容错误写回这条旧消息。
+  it('abort 消息之后又挂了新一轮对话（非链尾）→ continueGenerate 拒绝，无副作用', async () => {
+    let call = 0;
+    const request = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      call += 1;
+      if (call === 1) return Promise.resolve(hangingAbortableStream('部分回答', signal));
+      return Promise.resolve(stream(['{"delta":"新一轮回复"}', '[DONE]']));
+    });
+    const chat = useChat({ request });
+    const p = chat.onSend('问题1');
+    await new Promise((r) => setTimeout(r, 10));
+    chat.abort();
+    await p;
+    const oldAiId = chat.messages.value[1]!.id;
+    expect(chat.messages.value[1]!.status).toBe('abort');
+
+    // 不点"继续生成"，直接发新一轮对话——挂在旧 abort 消息之下
+    await chat.onSend('问题2');
+    await flush();
+    expect(chat.messages.value).toHaveLength(4); // user1, ai1(abort), user2, ai2
+    expect(chat.messages.value[1]!.id).toBe(oldAiId);
+    expect(chat.messages.value[1]!.status).toBe('abort'); // 旧消息仍是 abort 态，仍在激活路径上
+    expect(request).toHaveBeenCalledTimes(2);
+
+    const before = chat.messages.value.length;
+    const ok = await chat.continueGenerate(oldAiId);
+    expect(ok).toBe(false); // 非链尾，被拒绝
+    await flush();
+    expect(chat.messages.value.length).toBe(before); // 无新节点
+    expect(chat.messages.value[1]!.id).toBe(oldAiId);
+    expect(chat.messages.value[1]!.status).toBe('abort'); // 旧消息状态未被续写覆盖
+    expect(request).toHaveBeenCalledTimes(2); // 未发起第三次请求
+  });
 });

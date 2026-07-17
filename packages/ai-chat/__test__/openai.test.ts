@@ -248,4 +248,58 @@ describe('defaultTransformMessages', () => {
       { role: 'tool', tool_call_id: 'call_2', content: JSON.stringify({ temp: 28 }) },
     ]);
   });
+
+  it('output 合法为 null（查无结果）时仍需生成配对的 tool 消息', () => {
+    const toolMsgs: ChatMessage[] = [
+      {
+        id: 'ai',
+        role: 'ai',
+        content: [
+          {
+            id: 'b1',
+            type: 'tool_use',
+            toolCallId: 'call_1',
+            toolName: 'search_user',
+            state: 'output-available',
+            input: { name: '张三' },
+            output: null,
+          },
+        ],
+      },
+    ];
+    const out = defaultTransformMessages(toolMsgs);
+    // 每个 assistant 声明的 tool_call_id 都必须有配对的 role:'tool' 消息
+    const assistant = out.find((m) => m.role === 'assistant');
+    const callIds = assistant?.tool_calls?.map((c) => c.id) ?? [];
+    const toolMessages = out.filter((m) => m.role === 'tool');
+    expect(toolMessages.map((m) => m.tool_call_id)).toEqual(callIds);
+    expect(toolMessages).toEqual([{ role: 'tool', tool_call_id: 'call_1', content: 'null' }]);
+  });
+
+  it('state 为 output-error（调用失败）时仍需生成配对的 tool 消息，内容含 errorText', () => {
+    const toolMsgs: ChatMessage[] = [
+      {
+        id: 'ai',
+        role: 'ai',
+        content: [
+          {
+            id: 'b1',
+            type: 'tool_use',
+            toolCallId: 'call_1',
+            toolName: 'get_weather',
+            state: 'output-error',
+            input: { city: '北京' },
+            errorText: '工具执行超时',
+          },
+        ],
+      },
+    ];
+    const out = defaultTransformMessages(toolMsgs);
+    const assistant = out.find((m) => m.role === 'assistant');
+    const callIds = assistant?.tool_calls?.map((c) => c.id) ?? [];
+    const toolMessages = out.filter((m) => m.role === 'tool');
+    expect(toolMessages.map((m) => m.tool_call_id)).toEqual(callIds);
+    expect(toolMessages).toHaveLength(1);
+    expect(toolMessages[0]!.content).toContain('工具执行超时');
+  });
 });

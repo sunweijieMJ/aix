@@ -660,6 +660,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     if (!node || node.role !== 'ai' || node.status !== 'abort') return false;
     // 目标须在激活路径上，理由同 resume：非激活路径续写用户不可见，且 history 会是空数组
     if (!messages.value.some((m) => m.id === pid)) return false;
+    // 目标须是激活路径的最后一条（链尾）：若停止后未点"继续生成"而是直接发了新消息 / 编辑
+    // 重发，新一轮对话会挂在这条旧 abort 消息之下（onSend 恒在当前 head 下延展），旧消息
+    // 仍在新 head 的祖先链上、仍在 messages 里可见可点，但此时续写会以其位置**之前**的历史
+    // 发起请求（不含之后已发生的新对话轮次），且续写内容错误写回这条旧消息，导致新对话丢失/错乱。
+    if (messages.value[messages.value.length - 1]?.id !== pid) return false;
     await runRequestInto(pid, { fresh: false, continuation: true });
     return true;
   };

@@ -72,4 +72,24 @@ describe('Bubble 消息级 typing-complete 聚合（回归：completedIds 时序
     await advance(600);
     expect(w.emitted('typing-complete')).toBeTruthy();
   });
+
+  it('纯 tool_use 消息（无 text/reasoning 块）终态到达后仍需上抛消息级 typing-complete', async () => {
+    // content 全部由非 text/reasoning 类型块组成时，typingBlockIds 恒为空数组，
+    // 空集合的 every() 语义上视为「已追平」，不应因 !ids.length 提前 return 而永久卡住。
+    const toolBlock: ContentBlock = {
+      id: 'tool-1',
+      type: 'tool_use',
+      toolCallId: 'call_1',
+      toolName: 'search',
+      state: 'output-available',
+    };
+    const w = mount(Bubble, {
+      props: { itemKey: 'm3', content: [toolBlock], status: 'updating', typing: true },
+    });
+    await nextTick();
+    // 流 done：status 转终态，不存在任何 text/reasoning 块需要追平
+    await w.setProps({ status: 'success' });
+    await nextTick();
+    expect(w.emitted('typing-complete')).toBeTruthy();
+  });
 });

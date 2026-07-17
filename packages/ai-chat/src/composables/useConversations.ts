@@ -111,12 +111,18 @@ export interface UseConversationsReturn {
   setActive: (id: string) => void;
 }
 
-/** 从 ExportedTree 还原 active path（从 headId 沿 parentId 回溯，反转） */
+/** 从 ExportedTree 还原 active path（从 headId 沿 parentId 回溯，反转）。
+ * 与 messageTree.ts 同类回溯一致，带访问集防环：data 来自业务方回写（v-model:tree），
+ * 持久化脏数据/自定义 storage 实现 bug/多标签页写入竞态都可能使 parentId 成环，
+ * 无防护会 while(cur) 同步死循环挂死主线程。
+ */
 function rebuildActivePath(data: ExportedTree): ChatMessage[] {
   const byId = new Map(data.nodes.map((n) => [n.id, n]));
   const path: ChatMessage[] = [];
+  const seen = new Set<string>();
   let cur = byId.get(data.headId);
-  while (cur) {
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
     path.push(cur.message);
     cur = cur.parentId ? byId.get(cur.parentId) : undefined;
   }

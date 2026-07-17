@@ -8,21 +8,31 @@
  * 场景代码往往正是用户想要的内容，整段丢弃是不可接受的信息丢失；而如果只去围栏标记、代码
  * 内容仍混在同一个字符串里跑剩余正则，行内的反引号/下划线/井号注释等合法代码字符会被
  * 误当 markdown 语法吃掉（如 `__init__`、`# comment`、模板字符串反引号），因此必须先把代码
- * 内容摘出来，跳过语法剥离，最后再原样拼回。
+ * 内容摘出来，跳过语法剥离，最后再原样拼回。单反引号行内代码同理，见 stripProse 内部处理。
  */
 const CLOSED_FENCE_RE = /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n([\s\S]*?)^[ \t]{0,3}\1[^\n]*$\n?/gm;
 // 未闭合围栏（流式中断）：只在某一段"非代码文本"里查找一次，用来把该段尾部的
 // "开围栏行 + 已产出但未闭合的代码" 拆开——开围栏行之前的散文仍要剥离，代码部分原样保留。
 const UNCLOSED_FENCE_RE = /^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n([\s\S]*)$/m;
+// 行内代码占位符：用 U+0000（NUL 控制字符）包裹序号。真实文本不可能天然包含控制字符，
+// 不会和正文里恰好出现的"空格+数字+空格"（如"共 12 个"）撞车而误替换；U+0000 也不属于
+// \w，不会被后续加粗/斜体正则里的 (?<![\w_]) 边界判断误伤。
+const INLINE_CODE_PLACEHOLDER_RE = /\u0000(\d+)\u0000/g;
 
-const stripProse = (text: string): string =>
-  text
+const stripProse = (text: string): string => {
+  // 行内代码 `code`：与围栏代码块同理，代码内容不能混进剩余正则一起跑——先摘出来存进数组，
+  // 原地换成占位符，等语法剥离流水线跑完，再换回原始代码内容（只去外层反引号，内容原样保留）。
+  const inlineCodes: string[] = [];
+  const withPlaceholders = text.replace(/`([^`\n]+)`/g, (_match, code: string) => {
+    const index = inlineCodes.push(code) - 1;
+    return `\u0000${index}\u0000`;
+  });
+
+  const stripped = withPlaceholders
     // 图片 ![alt](url) → alt（须先于链接处理）
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     // 链接 [text](url) → text
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    // 行内代码 `code` → code（限单行内配对）
-    .replace(/`([^`\n]+)`/g, '$1')
     // 加粗 **x** → x：要求内容首尾非空白，避免把两侧带空格的 ** 当成强调符号误吃
     .replace(/\*\*(\S(?:.*?\S)?)\*\*/g, '$1')
     // 加粗 __x__ → x：额外要求左右不紧贴字母数字/下划线，避免误吃双下划线标识符（如 __init__）
@@ -43,6 +53,12 @@ const stripProse = (text: string): string =>
     .replace(/^\s{0,3}\d+\.\s+/gm, '')
     // 水平分割线（--- *** ___）
     .replace(/^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/gm, '');
+
+  return stripped.replace(
+    INLINE_CODE_PLACEHOLDER_RE,
+    (_match, index: string) => inlineCodes[Number(index)] ?? '',
+  );
+};
 
 // 一段"非代码文本"里可能尾随一个未闭合围栏（流式中断）：围栏之前的散文照常剥离，
 // 围栏本身连同其后已产出的代码原样保留，不进入 stripProse。

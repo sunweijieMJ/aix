@@ -918,7 +918,13 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
   // 放最前面（恢复操作优先级最高）。!base.includes('continue') 防重复：'continue' 是合法
   // ActionKey，业务可能已在 actions 数组里显式声明它（如想自定义位置），此时尊重业务的
   // 显式位置，不再 unshift 出第二个（否则 v-for :key="item.key" 撞重复，渲染错乱）。
-  if (item.status === 'abort' && a.length > 0 && !base.includes('continue')) {
+  // 额外要求该消息是激活路径链尾：停止后未点"继续生成"而是直接发了新消息 / 编辑重发时，
+  // 这条旧 abort 消息仍留在渲染路径里（新一轮对话挂在它下面），但 useChat.continueGenerate
+  // 已按链尾守卫拒绝对它续写，此处同步不再展示这个点了也没用的按钮。parsedMessages 已是
+  // 按 activePath 顺序排列的数组（含 1→N 展开），其最后一项恒为链尾消息（组）的最后子气泡，
+  // 直接比较末项 id 即可，无需额外查树。
+  const isChainTail = parsedMessages.value[parsedMessages.value.length - 1]?.id === item.id;
+  if (item.status === 'abort' && a.length > 0 && !base.includes('continue') && isChainTail) {
     base.unshift('continue');
   }
   return base.length > 0 ? base : null;

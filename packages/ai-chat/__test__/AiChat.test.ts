@@ -583,6 +583,54 @@ describe('AiChat', () => {
     expect(w.vm.messages[1]!.id).toBe(aiId); // 未新建气泡
   });
 
+  // 回归 Bug：停止后不点"继续生成"，而是直接发新一轮对话——新一轮对话挂在旧 abort 消息之下
+  // （旧消息仍在渲染路径 messages 上，气泡仍然可见），但它已不是链尾。此时不应再展示"继续生成"
+  // 按钮（点了也会被 useChat.continueGenerate 的链尾守卫拒绝，是个死按钮）。
+  it('abort 消息之后又发起新一轮对话（非链尾）：旧消息气泡不再显示继续生成按钮', async () => {
+    let call = 0;
+    const request = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      call += 1;
+      if (call === 1) {
+        return Promise.resolve(
+          new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('data: {"delta":"部分回答"}\n\n'));
+              signal.addEventListener('abort', () =>
+                c.error(new DOMException('Aborted', 'AbortError')),
+              );
+            },
+          }),
+        );
+      }
+      return Promise.resolve(once(`回复${call}`));
+    });
+    const w = mount(AiChat, { props: { request, welcomeTitle: '你好' } });
+    await w.find('textarea').setValue('问题1');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    await w.vm.$nextTick();
+
+    (w.vm as unknown as { abort: () => void }).abort();
+    await flushPromises();
+    expect(w.vm.messages[1]!.status).toBe('abort');
+
+    // 不点"继续生成"，直接发新一轮对话
+    await w.find('textarea').setValue('问题2');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    await w.vm.$nextTick();
+
+    expect(w.vm.messages).toHaveLength(4);
+    expect(w.vm.messages[1]!.status).toBe('abort'); // 旧消息仍是 abort 态
+
+    const aiBubbles = w.findAll('.aix-bubble--start');
+    expect(aiBubbles).toHaveLength(2);
+    // 旧（非链尾）abort 消息不应再显示"继续生成"
+    expect(aiBubbles[0]!.find('button[aria-label="继续生成"]').exists()).toBe(false);
+    // 新一轮 AI 回复非 abort 态，本就不该有继续生成
+    expect(aiBubbles[1]!.find('button[aria-label="继续生成"]').exists()).toBe(false);
+  });
+
   it('actions: [] 时，停止态也不显示继续生成按钮（完全遵守 actions 配置）', async () => {
     const request = vi.fn(({ signal }: { signal: AbortSignal }) =>
       Promise.resolve(

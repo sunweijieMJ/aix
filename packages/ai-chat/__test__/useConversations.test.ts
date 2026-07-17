@@ -6,7 +6,7 @@ import {
   localStorageConversationStorage,
   type ConversationStorage,
 } from '../src/composables/useConversations';
-import type { Conversation, ChatMessage } from '../src/types';
+import type { Conversation, ChatMessage, ExportedTree } from '../src/types';
 import { textMessage, messageText } from '../src/utils/helpers';
 
 const conv = (id: string, label: string): Conversation => ({
@@ -454,4 +454,27 @@ describe('useConversations — 树持久化与迁移', () => {
     expect(restored.tree!.nodes[0]!.message.status).toBe('error'); // 树内节点复位
     expect(restored.messages[0]!.status).toBe('error'); // 镜像同样复位（回归护栏）
   });
+
+  // 防御回归：与 messageTree.ts 的 importTree/activePath/branches/findLeaf 同类，
+  // rebuildActivePath 沿 parentId 回溯也须防环——业务方经 v-model:tree 回写的脏数据
+  // （localStorage 损坏/自定义 storage 实现有 bug/多标签页写入竞态）可能使 parentId 成环，
+  // 无访问集保护会 while(cur) 同步死循环挂死主线程。设 2s 超时使其在未修复时可控失败而非真挂死。
+  it('activeTree 写入循环 parentId 的脏数据时 rebuildActivePath 不死循环', () => {
+    const cyclic: ExportedTree = {
+      nodes: [
+        { id: 'A', parentId: 'C', message: msg('A') },
+        { id: 'B', parentId: 'A', message: msg('B') },
+        { id: 'C', parentId: 'B', message: msg('C') },
+      ],
+      headId: 'C',
+    };
+    const c = useConversations({
+      defaultConversations: [{ id: 'c1', label: 'x', messages: [] }],
+    });
+    expect(() => {
+      c.activeTree.value = cyclic;
+    }).not.toThrow();
+    // 同步执行能走到这里即证明回溯未挂死；结果长度不应超过节点总数
+    expect(c.conversations.value[0]!.messages.length).toBeLessThanOrEqual(cyclic.nodes.length);
+  }, 2000);
 });

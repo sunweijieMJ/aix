@@ -164,7 +164,10 @@ const blockTextLen = (id: string) => {
 const fireIfSettled = () => {
   if (settledFired.value || !isTerminal.value) return;
   const ids = typingBlockIds.value;
-  if (!ids.length || !ids.every((id) => completedLens.get(id) === blockTextLen(id))) return;
+  // 空集合的 every() 恒为 true（vacuous truth）：内容全为非 text/reasoning 块
+  // （纯 tool_use/chart/image 等）时视为「没有需要追平的块」，终态到达即算播完，
+  // 不能因 ids 为空而提前 return，否则该消息永远等不到消息级 typing-complete。
+  if (!ids.every((id) => completedLens.get(id) === blockTextLen(id))) return;
   settledFired.value = true;
   emit('typing-complete', { messageKey: props.itemKey ?? '' });
 };
