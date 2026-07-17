@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.19
+
+### Patch Changes
+
+- 优化边界问题
+
 ## 0.0.18
 
 ### Patch Changes
