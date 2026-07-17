@@ -68,6 +68,12 @@ export interface UseChatOptions {
    * 适合流式长回答；请求头阶段的超时仍由 request 实现方（如 createXFetch）负责。
    */
   streamTimeout?: number;
+  /**
+   * 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案。不写入消息树、不在 UI
+   * 展示，仅作为 request() 的 history 最后一条 user 消息。
+   * 默认："请从刚才中断的地方继续往下写，不要重复已经写过的内容。"
+   */
+  continuePrompt?: string;
 }
 
 export interface UseChatReturn {
@@ -114,6 +120,13 @@ export interface UseChatReturn {
    * 返回是否受理：isLoading 时 / id 未命中 / 非 AI 消息 → false，未做任何改动。
    */
   resume: (id: string, payload?: unknown) => Promise<boolean>;
+  /**
+   * 继续生成：向被用户手动停止（status==='abort'）的 AI 消息续写，不新建节点，视觉上拼接到
+   * 同一气泡。与 resume 的区别：会把该消息已生成的内容连同一条隐藏续写指令一并作为 history
+   * 发给 request()，不依赖后端会话状态记住前情。
+   * 返回是否受理：非 abort / 非 AI 消息 / isLoading 时 / 不在激活路径 → false，未做任何改动。
+   */
+  continueGenerate: (id: string) => Promise<boolean>;
 }
 
 /**
@@ -163,6 +176,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     retryTimes = 0,
     retryInterval = 1000,
     streamTimeout = 0,
+    continuePrompt = '请从刚才中断的地方继续往下写，不要重复已经写过的内容。',
   } = options;
   // 开发期护栏（与 updateBlock 未命中 / 非法 blockType 同风格）：line 模式漏配 parseChunk
   // 是静默死流——默认 flatParseChunk 对行字符串取 .data 恒 undefined → 每行空增量 →
@@ -271,9 +285,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
   const runRequestInto = async (
     aiMsgId: string,
-    opts: { fresh: boolean; resumePayload?: unknown },
+    opts: { fresh: boolean; resumePayload?: unknown; continuation?: boolean },
   ) => {
-    const { fresh, resumePayload } = opts;
+    const { fresh, resumePayload, continuation } = opts;
     // 每次请求持有自己的局部 controller（ctrl）：内部分支一律基于 ctrl，
     // 避免被「abort 后立即重发」的新请求改写全局 controller 后误判 abort 状态。
     const ctrl = new AbortController();
@@ -317,6 +331,32 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       // 重试回滚基线含 suggestions：失败尝试的半截流可能已写入陈旧追问建议，
       // 只回滚 content 会让它在最终 success 后照常展示
       const baseSuggestions = entryMsg?.suggestions ? [...entryMsg.suggestions] : undefined;
+      // continuation 模式的历史：把这条消息自身「进入时的快照」（baseSnapshot，而非实时内容）
+      // + 一条隐藏的续写指令拼进去，只在循环外算一次、所有 attempt 共用。不能像 fresh/resume
+      // 那样放到循环内重新读 messages.value——那样重试时会把上一次失败尝试残留的半截内容
+      // （回滚 splice 发生在循环内、晚于历史读取）当成"已生成内容"发给模型。
+      // idx>=0 防御：与下方 fresh/resume 分支的写法保持一致（findIndex 未命中时不做
+      // slice(0, -1)，那会静默丢弃 active path 最后一条消息而非产出空历史）。当前唯一
+      // 调用方 continueGenerate 在同步代码段内已校验过该消息存在于激活路径，此处理论上
+      // 不会命中 -1，纯防御性对齐，避免未来重构在两次访问间插入 await 后变成真实 bug。
+      const continuationIdx = messages.value.findIndex((m) => m.id === aiMsgId);
+      const continuationHistory: ChatMessage[] | null =
+        continuation && entryMsg
+          ? [
+              ...(continuationIdx >= 0 ? messages.value.slice(0, continuationIdx) : []),
+              // status 显式收敛为终态 'success'：entryMsg 此刻已被置为 'updating'（见上方
+              // `entryMsg.status = 'updating'`），直接展开会让发给模型的历史里出现一条
+              // status 为 'updating' 的 assistant 轮次，语义不自洽（纯展示/序列化层面，
+              // request() 通常只读 role+content，但作为 history 对象应保持自身状态一致）。
+              { ...entryMsg, content: baseSnapshot, status: 'success' },
+              {
+                id: genMsgId(),
+                role: 'user',
+                content: [{ id: genBlockId(), type: 'text', text: continuePrompt }],
+                status: 'success',
+              },
+            ]
+          : null;
       // 重试循环：仅当「非 abort 的错误」且仍有重试额度时再次发起；abort 立即停止、不重试。
       // 沿用同一个 ctrl（停止按钮仍生效），并在每次重试前清空已累积内容，避免半截内容叠加。
       for (let attempt = 0; ; attempt += 1) {
@@ -324,9 +364,15 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         // 取不到说明消息已被移除（切会话等场景）→ 放弃本次（finally 复位 isLoading）。
         const aiMsg = tree.getMessage(aiMsgId);
         if (!aiMsg) return;
-        // 历史 = active path 中 aiMsg 之前的部分（active path 即当前分支）
-        const idx = messages.value.findIndex((m) => m.id === aiMsgId);
-        const history = idx >= 0 ? messages.value.slice(0, idx) : [];
+        // 历史 = active path 中 aiMsg 之前的部分（active path 即当前分支）；
+        // continuation 模式直接复用循环外算好的 continuationHistory，不重新计算
+        // （原因见上方注释：避免重试时带上未回滚的脏内容）。
+        const history = continuation
+          ? continuationHistory!
+          : (() => {
+              const idx = messages.value.findIndex((m) => m.id === aiMsgId);
+              return idx >= 0 ? messages.value.slice(0, idx) : [];
+            })();
         // 流静默看门狗：重试循环沿用同一个用户 ctrl（停止按钮语义），超时不能 abort ctrl，
         // 否则后续重试拿到的是已 aborted 的信号。启用 streamTimeout 时每次 attempt 建内层
         // attemptCtrl（用户 abort 经监听单向联动），超时只杀当前尝试、保持可重试。
@@ -602,6 +648,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     return true;
   };
 
+  /**
+   * 继续生成：向被手动停止（status==='abort'）的 AI 消息续写。与 resume 不同，
+   * 发给 request() 的 history 会带上这条消息自身已生成的内容（+ 隐藏续写指令），
+   * 不依赖后端会话状态记住前情，适配无状态后端。
+   */
+  const continueGenerate = async (id: string): Promise<boolean> => {
+    if (isLoading.value) return false;
+    const pid = resolveParentId(id);
+    const node = tree.getMessage(pid);
+    if (!node || node.role !== 'ai' || node.status !== 'abort') return false;
+    // 目标须在激活路径上，理由同 resume：非激活路径续写用户不可见，且 history 会是空数组
+    if (!messages.value.some((m) => m.id === pid)) return false;
+    await runRequestInto(pid, { fresh: false, continuation: true });
+    return true;
+  };
+
   return {
     messages,
     parsedMessages,
@@ -619,5 +681,6 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     exportTree: tree.exportTree,
     importTree: tree.importTree,
     resume,
+    continueGenerate,
   };
 }

@@ -57,6 +57,17 @@
       >
         <Refresh />
       </button>
+      <!-- 内置 continue 操作：向被手动停止（status==='abort'）的消息续写，由 AiChat 按 status 自动注入 -->
+      <button
+        v-else-if="item.builtin && item.key === 'continue'"
+        type="button"
+        :class="ns.e('btn')"
+        :aria-label="t.continueButton"
+        :title="t.continueButton"
+        @click="emit('continue')"
+      >
+        <Play />
+      </button>
       <template v-else-if="item.builtin && item.key === 'feedback'">
         <button
           type="button"
@@ -167,6 +178,8 @@ export interface BubbleActionsEmits {
   /** 内置 copySource 操作：复制原始 markdown 源码 */
   (e: 'copy-source'): void;
   (e: 'regenerate'): void;
+  /** 内置 continue 操作：向被手动停止（status==='abort'）的消息续写 */
+  (e: 'continue'): void;
   (e: 'feedback', value: MessageFeedback | null): void;
   (e: 'speak'): void;
   /** 内置 quote 操作：整条引用该消息（AiChat 接线构造 Quote 进 pendingQuotes） */
@@ -187,6 +200,7 @@ import {
   Copy,
   Check,
   Refresh,
+  Play,
   Reply,
   ThumbUp,
   ThumbDown,

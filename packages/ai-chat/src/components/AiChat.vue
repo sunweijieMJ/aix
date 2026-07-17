@@ -76,6 +76,7 @@
             @copy="emit('copy', item)"
             @copy-source="emit('copy-source', item)"
             @regenerate="onReload(item.id)"
+            @continue="continueGenerate(item.id)"
             @feedback="onFeedback(item.id, $event)"
             @speak="speech?.toggle(item)"
             @switch-branch="switchBranch(item.id, $event)"
@@ -256,6 +257,12 @@ export interface AiChatProps {
    * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
    */
   retryInterval?: UseChatOptions['retryInterval'];
+  /**
+   * 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案；透传给 useChat。
+   * 默认见 useChat 的 continuePrompt 说明。
+   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   */
+  continuePrompt?: UseChatOptions['continuePrompt'];
   /**
    * 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。
    * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
@@ -550,12 +557,18 @@ watch(
 // （父组件每次渲染产生新引用），进 watch 会持续误报，故只在 props 注释中声明静态语义，不做运行时检测。
 let warnedStaticChatConfig = false;
 watch(
-  () => [props.streamMode, props.retryTimes, props.retryInterval, props.streamTimeout],
+  () => [
+    props.streamMode,
+    props.retryTimes,
+    props.retryInterval,
+    props.streamTimeout,
+    props.continuePrompt,
+  ],
   () => {
     if (warnedStaticChatConfig) return;
     warnedStaticChatConfig = true;
     console.warn(
-      '[ai-chat] streamMode / retryTimes / retryInterval / streamTimeout（以及 request / parseChunk / parser）为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
+      '[ai-chat] streamMode / retryTimes / retryInterval / streamTimeout / continuePrompt（以及 request / parseChunk / parser）为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
     );
   },
 );
@@ -577,6 +590,7 @@ const {
   exportTree,
   importTree,
   resume,
+  continueGenerate,
 } = useChat({
   // 请求期把 quote 块拍平成 blockquote 文本给 business（纯函数，不 mutate SSOT，见设计 §2.1）；
   // 无 quote 块时逐条直通，零开销
@@ -592,6 +606,7 @@ const {
   retryTimes: props.retryTimes,
   retryInterval: props.retryInterval,
   streamTimeout: props.streamTimeout,
+  continuePrompt: props.continuePrompt,
   onFinish: (m) => emit('finish', m),
   onError: (m) => emit('error', m),
   onAbort: (m) => emit('abort', m),
@@ -885,7 +900,9 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
     // （避免草稿在 loading 期间被静默丢弃），这里保留同等的"隐藏入口"效果。
     return isLoading.value ? ['copy'] : ['copy', 'edit'];
   }
-  if (item.role !== 'ai' || item.status !== 'success') return null;
+  // abort（用户手动停止）与 success 复用同一套操作条：停止后仍可复制/重新生成/点赞点踩/朗读/引用，
+  // 并按需追加 'continue'（见下）；error 态走 Bubble.vue 独立的内联重试条，不受本函数影响。
+  if (item.role !== 'ai' || (item.status !== 'success' && item.status !== 'abort')) return null;
   // 1→N 拆分：默认操作条仅末子气泡显示
   const sub = item.extra?.__sub as SubBubbleMeta | undefined;
   if (sub && sub.index < sub.count - 1) return null;
@@ -896,6 +913,14 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
   }
   // speech 启用且该消息有可朗读文本时追加内置 speak（即便 base 为空也显示，speech 是独立 opt-in）
   if (speech && speech.isSupported.value && speech.resolveText(item)) base.push('speak');
+  // continue 完全遵守 actions 配置（与 quote/speak 不同，不是独立 opt-in）：
+  // 仅当 actions 非空（业务未显式传 actions: [] 关闭操作条）且消息处于 abort 态时才追加，
+  // 放最前面（恢复操作优先级最高）。!base.includes('continue') 防重复：'continue' 是合法
+  // ActionKey，业务可能已在 actions 数组里显式声明它（如想自定义位置），此时尊重业务的
+  // 显式位置，不再 unshift 出第二个（否则 v-for :key="item.key" 撞重复，渲染错乱）。
+  if (item.status === 'abort' && a.length > 0 && !base.includes('continue')) {
+    base.unshift('continue');
+  }
   return base.length > 0 ? base : null;
 };
 
@@ -986,6 +1011,7 @@ defineExpose({
   },
   updateBlock,
   resume,
+  continueGenerate,
   setSuggestions,
   // 透传 Sender 命令式能力，便于外部聚焦 / 清空输入框
   focus: () => senderRef.value?.focus(),
