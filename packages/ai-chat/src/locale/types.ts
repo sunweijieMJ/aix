@@ -21,6 +21,8 @@ export interface AiChatLocale {
   copySourceButton: string;
   /** 重新生成回复按钮 */
   regenerateButton: string;
+  /** 继续生成按钮（停止后接着写，仅 status==='abort' 时出现） */
+  continueButton: string;
   /** 赞按钮（AI 回复反馈） */
   likeButton: string;
   /** 踩按钮（AI 回复反馈） */

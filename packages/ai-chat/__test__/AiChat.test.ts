@@ -537,6 +537,180 @@ describe('AiChat', () => {
     expect(w.emitted('finish')).toBeFalsy();
   });
 
+  // 回归：停止后的气泡应恢复 BubbleActions（与 success 一致）并前置"继续生成"按钮，
+  // 点击后内容拼接到同一气泡、status 回到 success，不新建气泡
+  it('停止后 BubbleActions 恢复且前置继续生成按钮；点击继续生成后内容拼接、status 回到 success', async () => {
+    let call = 0;
+    const request = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      call += 1;
+      if (call === 1) {
+        return Promise.resolve(
+          new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('data: {"delta":"部分回答"}\n\n'));
+              signal.addEventListener('abort', () =>
+                c.error(new DOMException('Aborted', 'AbortError')),
+              );
+            },
+          }),
+        );
+      }
+      return Promise.resolve(once('续写内容'));
+    });
+    const w = mount(AiChat, { props: { request, welcomeTitle: '你好' } });
+    await w.find('textarea').setValue('问题');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    await w.vm.$nextTick();
+
+    (w.vm as unknown as { abort: () => void }).abort();
+    await flushPromises();
+
+    const aiId = w.vm.messages[1]!.id;
+    expect(w.vm.messages[1]!.status).toBe('abort');
+
+    const aiBubble = w.findAll('.aix-bubble--start')[0]!;
+    const labels = aiBubble
+      .findAll('.aix-bubble-actions__btn')
+      .map((b) => b.attributes('aria-label'));
+    expect(labels).toEqual(['继续生成', '复制', '重新生成']); // continue 前置，其余同 success
+
+    await aiBubble.find('[aria-label="继续生成"]').trigger('click');
+    await flushPromises();
+
+    expect(messageText(w.vm.messages[1]!)).toBe('部分回答续写内容');
+    expect(w.vm.messages[1]!.status).toBe('success');
+    expect(w.vm.messages[1]!.id).toBe(aiId); // 未新建气泡
+  });
+
+  it('actions: [] 时，停止态也不显示继续生成按钮（完全遵守 actions 配置）', async () => {
+    const request = vi.fn(({ signal }: { signal: AbortSignal }) =>
+      Promise.resolve(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {"delta":"部分"}\n\n'));
+            signal.addEventListener('abort', () =>
+              c.error(new DOMException('Aborted', 'AbortError')),
+            );
+          },
+        }),
+      ),
+    );
+    const w = mount(AiChat, { props: { request, actions: [], welcomeTitle: '你好' } });
+    await w.find('textarea').setValue('问题');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    await w.vm.$nextTick();
+    (w.vm as unknown as { abort: () => void }).abort();
+    await flushPromises();
+
+    const aiBubble = w.findAll('.aix-bubble--start')[0]!;
+    expect(aiBubble.find('.aix-bubble-actions').exists()).toBe(false);
+  });
+
+  // 回归：1→N 拆分场景下，abort 态的 continue 按钮同样只应在末子气泡出现，
+  // 遵守既有的"操作条仅末子气泡显示"规则（sub 判断先于 continue 注入执行）
+  it('1→N 拆分 + 停止：继续生成按钮仅在末子气泡出现', async () => {
+    const request = vi.fn(({ signal }: { signal: AbortSignal }) =>
+      Promise.resolve(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {"delta":"部分"}\n\n'));
+            signal.addEventListener('abort', () =>
+              c.error(new DOMException('Aborted', 'AbortError')),
+            );
+          },
+        }),
+      ),
+    );
+    // 把 ai 消息拆成两个气泡（共享同一 SSOT 消息，status 一并透传）
+    const parser = (m: ChatMessage): ChatMessage | ChatMessage[] =>
+      m.role === 'ai' ? [{ ...m }, { ...m }] : m;
+    const w = mount(AiChat, { props: { request, parser, welcomeTitle: '你好' } });
+    await w.find('textarea').setValue('问题');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    await w.vm.$nextTick();
+    (w.vm as unknown as { abort: () => void }).abort();
+    await flushPromises();
+
+    // user(1) + ai 拆 2 = 3 个气泡；continue 按钮只应在其中 1 个气泡（末子气泡）出现
+    const aiBubbles = w.findAll('.aix-bubble--start');
+    expect(aiBubbles).toHaveLength(2);
+    const continueButtons = w.findAll('button[aria-label="继续生成"]');
+    expect(continueButtons).toHaveLength(1);
+    expect(aiBubbles[0]!.find('button[aria-label="继续生成"]').exists()).toBe(false);
+    expect(aiBubbles[1]!.find('button[aria-label="继续生成"]').exists()).toBe(true);
+  });
+
+  // 回归：函数形态 actions 由业务全权决定，不自动注入 continue（与数组形态不同规则），
+  // 即便消息处于 abort 态、函数返回的列表里没有 'continue' 也不应凭空出现
+  it('函数形态 actions + abort：不自动注入 continue（业务未在返回值里包含则不出现）', async () => {
+    const request = vi.fn(({ signal }: { signal: AbortSignal }) =>
+      Promise.resolve(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {"delta":"部分"}\n\n'));
+            signal.addEventListener('abort', () =>
+              c.error(new DOMException('Aborted', 'AbortError')),
+            );
+          },
+        }),
+      ),
+    );
+    const w = mount(AiChat, {
+      props: {
+        request,
+        actions: (m: ChatMessage) => (m.role === 'ai' ? ['regenerate'] : null),
+        welcomeTitle: '你好',
+      },
+    });
+    await w.find('textarea').setValue('问题');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    await w.vm.$nextTick();
+    (w.vm as unknown as { abort: () => void }).abort();
+    await flushPromises();
+
+    const aiBubble = w.findAll('.aix-bubble--start')[0]!;
+    expect(aiBubble.find('button[aria-label="继续生成"]').exists()).toBe(false);
+    expect(aiBubble.find('button[aria-label="重新生成"]').exists()).toBe(true);
+  });
+
+  // 回归 Bug：'continue' 是合法 ActionKey，业务可能显式把它写进静态 actions 数组
+  // （例如想自定义按钮顺序）；此时 abort 态的自动注入不应再 unshift 出第二个 'continue'，
+  // 否则 BubbleActions 的 v-for :key="item.key" 撞重复渲染出两个"继续生成"按钮
+  it("actions 数组显式包含 'continue' + abort：不重复渲染，按业务声明的位置显示", async () => {
+    const request = vi.fn(({ signal }: { signal: AbortSignal }) =>
+      Promise.resolve(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('data: {"delta":"部分"}\n\n'));
+            signal.addEventListener('abort', () =>
+              c.error(new DOMException('Aborted', 'AbortError')),
+            );
+          },
+        }),
+      ),
+    );
+    const w = mount(AiChat, {
+      props: { request, actions: ['copy', 'continue', 'regenerate'], welcomeTitle: '你好' },
+    });
+    await w.find('textarea').setValue('问题');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    await w.vm.$nextTick();
+    (w.vm as unknown as { abort: () => void }).abort();
+    await flushPromises();
+
+    const aiBubble = w.findAll('.aix-bubble--start')[0]!;
+    const labels = aiBubble
+      .findAll('.aix-bubble-actions__btn')
+      .map((b) => b.attributes('aria-label'));
+    // 只出现一次"继续生成"，且保持业务声明的位置（copy, continue, regenerate），不被前置
+    expect(labels).toEqual(['复制', '继续生成', '重新生成']);
+  });
+
   // v-model:input —— 双向绑定到 Sender 的 modelValue
   it('v-model:input 同步：传入值回填到 Sender，且输入触发 update:input', async () => {
     const request = vi.fn(async () => once('x'));

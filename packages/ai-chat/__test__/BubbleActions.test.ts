@@ -257,3 +257,18 @@ describe('BubbleActions — 分支切换器', () => {
     expect((btns[1]!.element as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+describe('内置 continue 操作', () => {
+  it("items 含 'continue' 时渲染继续生成按钮，点击 emit continue", async () => {
+    const w = mount(BubbleActions, { props: { items: ['continue', 'copy'] } });
+    const btn = w.find('button[aria-label="继续生成"]');
+    expect(btn.exists()).toBe(true);
+    await btn.trigger('click');
+    expect(w.emitted('continue')).toHaveLength(1);
+  });
+
+  it('默认 items 不含 continue（是否注入由 AiChat 按 status===abort 决定）', () => {
+    const w = mount(BubbleActions);
+    expect(w.find('button[aria-label="继续生成"]').exists()).toBe(false);
+  });
+});
