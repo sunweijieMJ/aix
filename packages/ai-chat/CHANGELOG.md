@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.18
+
+### Patch Changes
+
+- 优化中断生成，复制
+
 ## 0.0.17
 
 ### Patch Changes
