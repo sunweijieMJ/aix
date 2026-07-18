@@ -32,6 +32,34 @@ describe('upsertQuote（锚点去重 + 意图更新）', () => {
     expect(result[0]).toEqual({ id: 'q1', anchor: anchor(), intent: 'translate' });
   });
 
+  it('不同块（blockId 不同）即使同文本同偏移也照常累积，不误合并', () => {
+    // 场景：一条消息被工具调用切成多个 text 块，两块开头都是同一个词（块内偏移相同）
+    const q1: Quote = {
+      id: 'q1',
+      anchor: anchor({ source: { messageId: 'ai-1', blockId: 'b1' } }),
+      intent: 'explain',
+    };
+    const q2: Quote = {
+      id: 'q2',
+      anchor: anchor({ source: { messageId: 'ai-1', blockId: 'b2' } }),
+      intent: 'translate',
+    };
+    const result = upsertQuote([q1], q2);
+    expect(result).toHaveLength(2);
+    expect(result.map((q) => q.id)).toEqual(['q1', 'q2']);
+    // q1 的锚点与 intent 不被 q2 篡改
+    expect(result[0]).toEqual(q1);
+  });
+
+  it('blockId 均缺省（整条消息级锚点）时维持原有去重语义', () => {
+    const q1: Quote = { id: 'q1', anchor: anchor(), intent: 'explain' };
+    const q2: Quote = { id: 'q2', anchor: anchor(), intent: 'translate' };
+    const result = upsertQuote([q1], q2);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe('q1');
+    expect(result[0]!.intent).toBe('translate');
+  });
+
   it('不同锚点（不同消息/不同文本/不同偏移）照常累积', () => {
     const q1: Quote = { id: 'q1', anchor: anchor() };
     const q2: Quote = { id: 'q2', anchor: anchor({ source: { messageId: 'ai-2' } }) };

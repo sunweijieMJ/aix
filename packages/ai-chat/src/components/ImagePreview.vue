@@ -111,6 +111,15 @@ const { state: currentIndex, setState: setIndex } = useControllable<number>({
 
 const active = computed(() => props.images[currentIndex.value]);
 
+// images 变短（如上游列表被替换/删图）时当前下标可能越界 → active 变 undefined，
+// 图片与下载按钮消失只剩导航的空白帧。钳制到末张；经 setIndex 通知，受控父组件可同步回填。
+watch(
+  () => props.images.length,
+  (len) => {
+    if (len > 0 && currentIndex.value > len - 1) setIndex(len - 1);
+  },
+);
+
 const close = () => {
   setOpen(false);
   emit('close');

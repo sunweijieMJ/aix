@@ -67,6 +67,33 @@ describe('ImagePreview（图片预览 Modal）', () => {
     w.unmount();
   });
 
+  it('images 变短导致当前下标越界时钳制到末张，不停留在空白帧', async () => {
+    // 非受控模式（不传 index）：内部维护下标，切到第 3 张
+    const loc = createLocale('zh-CN');
+    const w = mount(ImagePreview, {
+      props: { images: IMAGES, open: true },
+      attachTo: document.body,
+      global: { provide: { [LOCALE_INJECTION_KEY]: loc.localeContext } },
+    });
+    const nextBtn = document.querySelector<HTMLButtonElement>('.aix-image-preview__nav-next')!;
+    nextBtn.click();
+    await nextTick();
+    nextBtn.click();
+    await nextTick();
+    let img = document.querySelector<HTMLImageElement>('.aix-image-preview__image')!;
+    expect(img.src).toBe('https://a.com/3.png');
+    // 图片数组从 3 张缩到 2 张：下标 2 越界，应钳制到末张（下标 1）而非空白帧
+    await w.setProps({ images: IMAGES.slice(0, 2) });
+    await nextTick();
+    img = document.querySelector<HTMLImageElement>('.aix-image-preview__image')!;
+    expect(img).not.toBeNull();
+    expect(img.src).toBe('https://a.com/2.png');
+    // 钳制经 setIndex 走通知通道，受控父组件也能同步回填
+    const indexEvents = w.emitted('update:index')!;
+    expect(indexEvents[indexEvents.length - 1]).toEqual([1]);
+    w.unmount();
+  });
+
   it('第一张时左箭头禁用', () => {
     const w = mountPreview({ index: 0 });
     expect(

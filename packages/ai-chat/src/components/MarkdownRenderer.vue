@@ -48,6 +48,7 @@ import {
   watch,
   defineComponent,
   getCurrentInstance,
+  onBeforeUnmount,
   onBeforeUpdate,
   onUpdated,
   h,
@@ -215,6 +216,9 @@ const MarkdownBlock = defineComponent({
       cancelFlip?.(); // 重复触发先打断上一次过渡
       cancelFlip = transitionHeight(el, prevHeight);
     });
+    // 过渡进行中卸载（流式结束换 key / 虚拟列表滚出）：立即打断，释放兜底定时器
+    // 对已脱离 DOM 元素的引用（与 ImageThumb 的同款清理对齐）
+    onBeforeUnmount(() => cancelFlip?.());
 
     return () => {
       const nodes = renderMarkdownTokens(tokens.value, {

@@ -230,6 +230,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
       group: initConv.group,
       timestamp: initConv.timestamp ?? Date.now(),
       messages: initConv.messages ?? [],
+      tree: initConv.tree,
     });
     activeKey.value = id;
     return id;
@@ -285,8 +286,27 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
       runSave(list);
     };
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // 触发源收窄为「列表指纹 + 活跃会话 deep」而非对 conversations 整体 { deep: true }：
+    // 活跃会话经 v-model 桥接共享的活消息引用被流式逐 chunk mutate，整仓 deep watch 会在
+    // 每次 flush 全量深遍历所有会话（含全部非活跃会话）做依赖收集，会话仓库越大流式越卡——
+    // 防抖只挡住 save 的 I/O，挡不住遍历本身。收窄后逐 chunk 遍历成本 = O(活跃会话)。
+    // - 指纹（O(会话数) 字符串拼接）覆盖 create/remove/rename 及任意会话的结构性变化；
+    // - active 走 deep 覆盖流式内容 mutate 与 activeMessages/activeTree 回写。
+    // 语义收窄：绕过本 composable API 直接深改「非活跃」会话的消息内容不再自动触发保存
+    // （其结构性变化仍触发）；该用法不在公开 API 面内。
     watch(
-      conversations,
+      [
+        () =>
+          conversations.value
+            .map(
+              (c) =>
+                `${c.id}${c.label}${c.group ?? ''}${c.timestamp}${
+                  Array.isArray(c.messages) ? c.messages.length : 0
+                }${c.tree?.nodes.length ?? 0}`,
+            )
+            .join(''),
+        active,
+      ],
       () => {
         if (suppressNextSave) {
           suppressNextSave = false; // 这次触发是 load 落地，不是用户变更，跳过这次保存

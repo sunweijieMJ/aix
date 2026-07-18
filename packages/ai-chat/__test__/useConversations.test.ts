@@ -122,9 +122,87 @@ describe('useConversations', () => {
     expect(c.activeKey.value).toBe('a'); // 无效 id 不切
   });
 
+  it('流式 mutate 当前会话内容时不深遍历非活跃会话（持久化 watch 不再随 chunk 全仓库 traverse）', async () => {
+    // 非活跃会话消息内容埋 getter 探针：deep watcher 的依赖收集遍历一旦触达就会读它
+    let inactiveReads = 0;
+    const spyBlock: Record<string, unknown> = { id: 'b-spy', type: 'text' };
+    Object.defineProperty(spyBlock, 'text', {
+      get() {
+        inactiveReads += 1;
+        return '非活跃内容';
+      },
+      enumerable: true,
+      configurable: true,
+    });
+    const inactiveMsg = {
+      id: 'mb',
+      role: 'ai',
+      status: 'success',
+      content: [spyBlock],
+    } as unknown as ChatMessage;
+    const storage: ConversationStorage = { load: () => null, save: () => {} };
+    const c = useConversations({
+      storage,
+      defaultConversations: [
+        { id: 'a', label: 'A', timestamp: 1, messages: [textMessage('ai', '正在流式')] },
+        { id: 'b', label: 'B', timestamp: 2, messages: [inactiveMsg] },
+      ],
+    });
+    await flushAsync();
+    await nextTick();
+    inactiveReads = 0; // 初始化期的依赖收集遍历不计，只看流式期
+    expect(c.activeKey.value).toBe('a');
+    // 模拟流式：逐 chunk 就地 mutate 活跃会话（a）的消息内容，每 chunk 独立 flush
+    const block = c.conversations.value[0]!.messages[0]!.content[0] as { text: string };
+    for (let i = 0; i < 5; i++) {
+      block.text += `chunk${i}`;
+      await nextTick();
+    }
+    expect(inactiveReads).toBe(0);
+  });
+
   describe('持久化 storage', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
+
+    it('流式就地 mutate 活跃会话消息内容仍触发防抖保存（deep 语义保留在活跃会话）', async () => {
+      const saved: Conversation[][] = [];
+      const storage: ConversationStorage = {
+        load: () => [conv('x', 'X')],
+        save: (list) => {
+          saved.push(JSON.parse(JSON.stringify(list)));
+        },
+      };
+      const c = useConversations({ storage, saveDebounce: 100 });
+      await vi.advanceTimersByTimeAsync(0);
+      // 模拟流式共享活引用：直接深改活跃会话的消息文本（不经 activeMessages setter）
+      const block = c.conversations.value[0]!.messages[0]!.content[0] as { text: string };
+      block.text = '流式追加后的完整回复';
+      await nextTick();
+      vi.advanceTimersByTime(100);
+      expect(saved).toHaveLength(1);
+      expect((saved[0]![0]!.messages[0]!.content[0] as { text: string }).text).toBe(
+        '流式追加后的完整回复',
+      );
+    });
+
+    it('重命名非活跃会话仍触发防抖保存（列表元数据变化被指纹覆盖）', async () => {
+      const saved: Conversation[][] = [];
+      const storage: ConversationStorage = {
+        load: () => [conv('a', 'A'), conv('b', 'B')],
+        save: (list) => {
+          saved.push(JSON.parse(JSON.stringify(list)));
+        },
+      };
+      const c = useConversations({ storage, saveDebounce: 100 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(c.activeKey.value).toBe('a');
+      c.rename('b', 'B2'); // 改的是非活跃会话
+      await nextTick();
+      vi.advanceTimersByTime(100);
+      expect(saved).toHaveLength(1);
+      expect(saved[0]![1]!.label).toBe('B2');
+    });
 
     it('初始化从 storage.load 读取，变更后防抖 save', async () => {
       const saved: Conversation[][] = [];
@@ -418,6 +496,18 @@ describe('useConversations — 树持久化与迁移', () => {
     const tree = c.activeTree.value!;
     expect(tree.nodes.map((n) => n.id)).toEqual(['m1', 'm2']);
     expect(tree.headId).toBe('m2');
+  });
+
+  it('create 传入 tree 时透传保留（类型接受 tree，实现不得静默丢弃分支数据）', () => {
+    const t = createMessageTree([msg('m1'), msg('m2')]);
+    const exported = t.exportTree();
+    const c = useConversations();
+    const id = c.create({ messages: [msg('m1'), msg('m2')], tree: exported });
+    // conversations 是深响应式 ref，读回的是 proxy，按结构相等断言
+    const created = c.conversations.value.find((x) => x.id === id)!;
+    expect(created.tree).toStrictEqual(exported);
+    // activeTree 读取走已存 tree（含分支结构），而非从 messages 重新迁移线性树
+    expect(c.activeTree.value).toStrictEqual(exported);
   });
 
   it('写入 activeTree 后存回 conversation.tree，下次 load 直接用 tree', () => {

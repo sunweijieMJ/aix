@@ -750,10 +750,12 @@ const quoteMenu = useQuoteMenu({
 watch(quoteMenu.visible, (v) => {
   if (!v) clearSelection();
 });
+// 仅在划词开启时装配：clearSelection 会 removeAllRanges 清掉浏览器原生选区，
+// 无守卫时未启用 quote 的消费方「选中文本 → 滚动 → 复制」也会被误清
 watch(
-  quoteRoot,
-  (el, _old, onCleanup) => {
-    if (!el) return;
+  [quoteRoot, () => resolvedQuote.value.enable],
+  ([el, enable], _old, onCleanup) => {
+    if (!el || !enable) return;
     const onScroll = () => clearSelection();
     el.addEventListener('scroll', onScroll, { passive: true });
     onCleanup(() => el.removeEventListener('scroll', onScroll));

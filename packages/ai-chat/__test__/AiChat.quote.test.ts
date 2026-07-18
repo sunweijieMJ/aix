@@ -97,6 +97,28 @@ describe('AiChat quote 接线', () => {
     expect(w.find('button[aria-label="引用"]').exists()).toBe(false);
   });
 
+  it('quote 未开启时滚动消息区不清除浏览器原生选区（不干扰用户选中文本复制）', async () => {
+    const removeAllRanges = vi.spyOn(Selection.prototype, 'removeAllRanges');
+    const { w } = mountChat({ quote: undefined }); // 默认关闭划词引用
+    await flushPromises();
+    const scrollEl = w.find('.aix-bubble-list__scroll');
+    expect(scrollEl.exists()).toBe(true);
+    await scrollEl.trigger('scroll');
+    expect(removeAllRanges).not.toHaveBeenCalled();
+    removeAllRanges.mockRestore();
+    w.unmount();
+  });
+
+  it('quote 开启时滚动仍清除划词选区（virtua 回收后锚点失效，滚动即清是设计意图）', async () => {
+    const removeAllRanges = vi.spyOn(Selection.prototype, 'removeAllRanges');
+    const { w } = mountChat(); // quote: true
+    await flushPromises();
+    await w.find('.aix-bubble-list__scroll').trigger('scroll');
+    expect(removeAllRanges).toHaveBeenCalled();
+    removeAllRanges.mockRestore();
+    w.unmount();
+  });
+
   it('点引用按钮 → Sender header 出现 chip（整条文本，intent 无）；点 × 移除', async () => {
     const { w } = mountChat();
     await w.find('button[aria-label="引用"]').trigger('click');
