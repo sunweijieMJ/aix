@@ -363,3 +363,73 @@ describe('VueRestoreTransformer — 对象简写变量还原（Bug 1）', () => 
     expect(out).not.toContain('共 {count} 项');
   });
 });
+
+/**
+ * Bug：restoreTemplate 三个 pass 对整段 template 全文正则替换，不避开 code/pre/v-pre——
+ * 而提取端明确跳过这些逐字区（NON_EXTRACTABLE_ELEMENT_TAGS + v-pre 子树），其内容从未被
+ * generate 动过。只要 key 存在于 localeMap，pass 3 就会把示例代码 `t('key')` 改写成译文，
+ * 破坏文档型页面的逐字内容。修复：restore 前按提取端同款规则先 stash 逐字区再回填。
+ */
+describe('逐字区保护：code/pre/v-pre 不被 restore 改写', () => {
+  const lib = new VueI18nLibraryImpl();
+  const run = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, '@/locale');
+
+  it("<code> 内的 t('key') 字面文本保持原样，区外照常还原", () => {
+    const src = `<template>\n  <code>调用 t('home.title') 取标题</code>\n  <div>{{ $t('home.title') }}</div>\n</template>\n`;
+    const out = run(src, { 'home.title': '首页标题' });
+    expect(out, `还原输出：\n${out}`).toContain(`<code>调用 t('home.title') 取标题</code>`);
+    expect(out).toContain('<div>首页标题</div>');
+  });
+
+  it('<pre> 内的插值形态 {{ $t(...) }} 同样保持原样', () => {
+    const src = `<template>\n  <pre>{{ $t('a') }} 是插值语法示例</pre>\n</template>\n`;
+    const out = run(src, { a: '文本' });
+    expect(out, `还原输出：\n${out}`).toContain(`<pre>{{ $t('a') }} 是插值语法示例</pre>`);
+  });
+
+  it('v-pre 子树（含嵌套元素）整体保持原样', () => {
+    const src = `<template>\n  <div v-pre><span>{{ $t('a') }}</span> 与 t('a')</div>\n  <p>{{ $t('a') }}</p>\n</template>\n`;
+    const out = run(src, { a: '文本' });
+    expect(out, `还原输出：\n${out}`).toContain(
+      `<div v-pre><span>{{ $t('a') }}</span> 与 t('a')</div>`,
+    );
+    expect(out).toContain('<p>文本</p>');
+  });
+
+  it('属性值里的 " v-pre " 不误判为指令，元素照常还原', () => {
+    const src = `<template>\n  <div title="enable v-pre mode">{{ $t('a') }}</div>\n</template>\n`;
+    const out = run(src, { a: '文本' });
+    expect(out, `还原输出：\n${out}`).toContain('文本');
+    expect(out).not.toContain('$t');
+  });
+
+  it('<code-editor> 等以 code 开头的组件名不受保护规则误伤', () => {
+    const src = `<template>\n  <code-editor :title="$t('a')">x</code-editor>\n</template>\n`;
+    const out = run(src, { a: '标题' });
+    expect(out, `还原输出：\n${out}`).toContain('title="标题"');
+    expect(out).not.toContain('$t');
+  });
+});
+
+/**
+ * 回归（中文占位符一等化的连带缺口）：parseVarMap 的对象简写判定是纯 ASCII 正则，
+ * `$t('key', { 数量 })`（中文简写变量，ESLint object-shorthand 常见产物）走不进简写
+ * 分支而整体返回 null → 模板侧永远不还原，与脚本侧 AST 路径（已处理中文 shorthand）
+ * 行为不一致。字符集与 PLACEHOLDER_NAME/getVariableNameFromExpression 对齐（一-鿿）。
+ */
+describe('parseVarMap — 中文简写变量', () => {
+  const lib = new VueI18nLibraryImpl();
+
+  it('{{ $t(key, { 数量 }) }} → 还原为插值 {{ 数量 }}', () => {
+    const src = `<template>\n  <div>{{ $t('c.total', { 数量 }) }}</div>\n</template>\n`;
+    const out = VueRestoreTransformer.restoreVueFile(
+      src,
+      { 'c.total': '共{数量}个' },
+      lib,
+      '@/locale',
+    );
+    expect(out, `还原输出：\n${out}`).toContain('共{{ 数量 }}个');
+    expect(out).not.toContain('$t');
+  });
+});

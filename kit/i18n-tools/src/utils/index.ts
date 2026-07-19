@@ -12,7 +12,7 @@ export { InteractiveUtils } from './interactive-utils';
 export { LanguageFileManager } from './language-file-manager';
 export { LocaleValueLinter } from './locale-value-linter';
 export type { LinterFinding } from './locale-value-linter';
-export { LoggerUtils, LogLevel } from './logger';
+export { LoggerUtils } from './logger';
 export { BucketResolver } from './bucket-resolver';
 export { RunReport } from './run-report';
 export type {

@@ -340,7 +340,7 @@ export class VueImportManager implements IImportManager {
     const block = VueImportManager.findScriptBlock(code, { setupOnly: true });
     if (!block) return code;
 
-    const declaration = this.library.generateHookDeclaration() + '\n';
+    const declaration = this.library.hookDeclaration + '\n';
     const lines = block.content.split('\n');
 
     // 优先以"最后一条 import 之后"作为锚点；只有完全没有 import 时才寻找首个非空非注释行。

@@ -278,6 +278,9 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
 
     const valuesArg = node.arguments[1];
     if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
+      if (CommonASTUtils.objectLiteralHasSpread(valuesArg)) {
+        messageInfo.hasUnresolvableValues = true;
+      }
       const props = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
       // react-i18next 约定：values.defaultValue 实为默认翻译文本，上提到 defaultMessage，
       // 不参与占位符替换。仅在为字符串时上提，其他形态保持 undefined。
@@ -328,6 +331,9 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
         initializer.expression &&
         ts.isObjectLiteralExpression(initializer.expression)
       ) {
+        if (CommonASTUtils.objectLiteralHasSpread(initializer.expression)) {
+          messageInfo.hasUnresolvableValues = true;
+        }
         messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
           initializer.expression,
           sourceFile,

@@ -228,3 +228,82 @@ describe('PruneProcessor', () => {
     expect(readLocale('en-US')).toEqual({ used: 'Used', mustKeep: 'Must keep' });
   });
 });
+
+/**
+ * 回归（本轮 readLocaleFile 遗留兜底的连带影响）：buckets 迁移窗口内 prune 的孤儿判定
+ * 走 readLocaleFile（含遗留单文件），删除却走 readBucketedLocaleWithBucketMap（桶式只读）——
+ * legacy-only 孤儿报得出来但永远删不掉，而 translations/untranslated.json 却被真删，
+ * 落入半清理循环。修复：检测到未迁移遗留文件时中止，提示先完成迁移（宁可中止不静默破坏）。
+ */
+describe('PruneProcessor — buckets 迁移窗口守卫', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prune-window-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('遗留单文件未迁移 → 中止并提示先完成迁移，locale 不被触碰', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'A.vue'), `<template>{{ t('used') }}</template>`);
+    // 遗留单文件（未迁移、无 .bak），桶目录不存在
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ used: '用', orphan: '没人用' }),
+    );
+    const config = buildConfig(rootDir, sourceDir, localeDir, {
+      buckets: {
+        rules: [{ name: 'order', matchKey: (k: string) => k.startsWith('order.') }],
+        defaultBucket: 'common',
+        emitManifest: false,
+        layout: 'by-locale',
+      },
+    } as Partial<I18nToolsConfig>);
+
+    await expect(
+      new PruneProcessor(config, false, undefined, { dryRun: false, ci: true }).execute(),
+    ).rejects.toThrow(/迁移/);
+
+    // 数据不被触碰
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf8'))).toEqual({
+      used: '用',
+      orphan: '没人用',
+    });
+  });
+
+  it('已迁移（.bak 存在、桶目录就绪）→ 正常执行不受守卫影响', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'A.vue'), `<template>{{ t('used') }}</template>`);
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json.bak'), '{}');
+    fs.mkdirSync(path.join(localeDir, 'zh-CN'), { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN', 'common.json'),
+      JSON.stringify({ used: '用', orphan: '没人用' }),
+    );
+    const config = buildConfig(rootDir, sourceDir, localeDir, {
+      buckets: {
+        rules: [{ name: 'order', matchKey: (k: string) => k.startsWith('order.') }],
+        defaultBucket: 'common',
+        emitManifest: false,
+        layout: 'by-locale',
+      },
+    } as Partial<I18nToolsConfig>);
+
+    await new PruneProcessor(config, false, undefined, { dryRun: false, ci: true }).execute();
+
+    expect(
+      JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN', 'common.json'), 'utf8')),
+    ).toEqual({ used: '用' });
+  });
+});

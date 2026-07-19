@@ -8,6 +8,7 @@ import { ReactComponentInjector } from '../src/strategies/react/ReactComponentIn
 import { ReactImportManager } from '../src/strategies/react/ReactImportManager';
 import { createReactI18nLibrary } from '../src/strategies/react/libraries';
 import type { ReactI18nLibraryType } from '../src/strategies/react/libraries/types';
+import { ReactAdapter } from '../src/adapters/ReactAdapter';
 
 /**
  * React defaultMessage / 占位符 / JSX 转义 / 还原回退
@@ -275,5 +276,48 @@ describe('React defaultMessage / 占位符 / JSX 转义 / 还原回退', () => {
       expect(out).toContain('新译文');
       expect(out).not.toContain('旧默认');
     });
+  });
+});
+
+/**
+ * Bug：ReactTransformer.generateReplacement 把 extracted.original 传给
+ * createMessageWithOptions，而字面量插值（`${'全部'}`）在提取端只内联进 processedMessage、
+ * 不进 templateVariables → createMessageWithOptions 无从展开 → defaultMessage 残留
+ * `${'全部'}`，与 locale 落盘值（buildLocaleMessage 用 processedMessage || original）不一致；
+ * locale 缺 key 兜底时渲染出错误文本。Vue 端（VueTransformer）已统一优先取 processedMessage。
+ */
+describe('React defaultMessage 消息源 — processedMessage 优先（与 locale 口径一致）', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-dm-src-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function transformWithDefaultMessage(original: string): Promise<string> {
+    const file = path.join(dir, 'M.tsx');
+    fs.writeFileSync(file, original);
+    const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next', {
+      includeDefaultMessage: true,
+    });
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    return adapter.getTransformer().transform(file, strings, original);
+  }
+
+  it('纯字面量插值：defaultValue 内联为最终文本，不残留 ${...}', async () => {
+    const original = "const msg = `已选择${'全部'}项目`;\n";
+    const out = await transformWithDefaultMessage(original);
+    expect(out, `转换输出：\n${out}`).toContain('已选择全部项目');
+    expect(out).not.toContain("${'全部'}");
+  });
+
+  it('字面量 + 真实变量混合：字面量内联、真实变量保持占位符', async () => {
+    const original = "const msg = `已选择${'全部'}${count}项`;\n";
+    const out = await transformWithDefaultMessage(original);
+    // i18next 系 defaultValue 中真占位符为双花括号
+    expect(out, `转换输出：\n${out}`).toContain('已选择全部{{count}}项');
+    expect(out).not.toContain("${'全部'}");
   });
 });

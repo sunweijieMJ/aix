@@ -2,8 +2,12 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { LoggerUtils } from './logger';
 
-// 用 execFile（参数以数组传递、不经 shell）而非 exec：避免文件路径含 `$`、反引号、`$(...)`、双引号
-// 等被 shell 解析或破坏引号闭合（`$` 等是合法文件名字符），导致格式化对合法路径静默失效。
+// spawn 方式按平台分叉（见 formatWithPrettier 内注释）：
+//  - 非 Windows：execFile 参数以数组传递、不经 shell——路径含 `$`、反引号、`$(...)` 等
+//    shell 元字符时原样传递，不会被解析或破坏引号闭合。
+//  - Windows：必须经 shell 执行 npx.cmd（Node 对 .cmd 禁止无 shell spawn），路径自行加
+//    双引号防拆参。已知限制：cmd 在双引号内仍会做 %VAR% 环境变量展开，路径含成对百分号
+//    且恰好命中已定义变量名时会作用于错误路径（软失败，仅影响格式化）。
 const execFileAsync = promisify(execFile);
 
 /**
@@ -31,13 +35,18 @@ export function isModeExplicitlySet(args: string[]): boolean {
  */
 export async function formatWithPrettier(filePath: string): Promise<void> {
   LoggerUtils.info(`🎨  正在格式化: ${filePath}`);
-  // Windows 上 npx 实为 npx.cmd：execFile 不经 shell、不解析 PATHEXT，直接 spawn 'npx'
-  // 会 ENOENT（且 Node 在 CVE-2024-27980 后对 .cmd 经 spawn 的隐式解析更严）。必须按平台
-  // 显式补 .cmd 后缀，否则 Windows 用户即便已装 prettier/eslint 也会格式化静默失败。
-  const npxBin = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+  // Windows 上 npx 实为 npx.cmd，且 CVE-2024-27980 修复后的 Node（≥18.20.2/20.12.2/21.7.3）
+  // 禁止不带 shell 选项直接 spawn .cmd/.bat（一律抛 EINVAL），必须开 shell。shell 模式下
+  // Node 不做参数转义（cmd 会按空格拆参），路径需自行加双引号；Windows 文件名不允许含
+  // 双引号，包一层即可安全（cmd 的特殊字符 & < > | ^ 在引号内均失效）。
+  // 非 Windows 保持不经 shell：参数以数组原样传递，路径含 $、反引号等也不会被解析。
+  const isWindows = process.platform === 'win32';
+  const npxBin = isWindows ? 'npx.cmd' : 'npx';
+  const fileArg = isWindows ? `"${filePath}"` : filePath;
+  const options = { cwd: process.cwd(), shell: isWindows };
   try {
-    await execFileAsync(npxBin, ['prettier', '--write', filePath], { cwd: process.cwd() });
-    await execFileAsync(npxBin, ['eslint', '--fix', filePath], { cwd: process.cwd() });
+    await execFileAsync(npxBin, ['prettier', '--write', fileArg], options);
+    await execFileAsync(npxBin, ['eslint', '--fix', fileArg], options);
     LoggerUtils.success(`   - ✅  格式化成功`);
   } catch (error) {
     LoggerUtils.error(

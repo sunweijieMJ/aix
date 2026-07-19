@@ -539,10 +539,27 @@ export class CommonASTUtils {
         if (key) {
           props[key] = CommonASTUtils.getPropertyValue(property.initializer, sourceFile);
         }
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        // 对象简写 `{ count }` 等价于 `{ count: count }`：值即同名标识符节点。
+        // 不补这一分支，手写/被 ESLint object-shorthand 改写的 values 会被静默丢弃 →
+        // restore 端 values 为空 → 占位符整体字面化、变量引用被删且无告警。
+        props[property.name.text] = sourceFile
+          ? { node: property.name, text: property.name.text }
+          : property.name;
       }
+      // SpreadAssignment 无法静态解析成键值对，由 objectLiteralHasSpread 单独探测，
+      // restore 端据此保留原调用（与 Vue 端 VueRestoreTransformer 的处理对齐）。
     }
 
     return props;
+  }
+
+  /**
+   * 对象字面量是否含展开属性 `{ ...rest }`。restore 端在含展开时无法静态重建完整
+   * values 映射，应保留原 i18n 调用不还原，而非丢着变量强行字面化。
+   */
+  static objectLiteralHasSpread(node: ts.ObjectLiteralExpression): boolean {
+    return node.properties.some((property) => ts.isSpreadAssignment(property));
   }
 
   /**
@@ -1299,9 +1316,11 @@ export class CommonASTUtils {
 
   /**
    * 占位符名匹配：标识符 / 含点的路径（如 `count`、`user.name`）。
-   * 与 createMessageWithOptions 写入的占位符名（来自 getVariableNameFromExpression）保持一致。
+   * 与 createMessageWithOptions 写入的占位符名（来自 getVariableNameFromExpression）保持一致——
+   * 后者有意保留中文标识符（`一-鿿`，中文变量名是合法 JS），故这里必须同字符集，
+   * 否则 `共{{数量}}个` 在 restore 归一时不被识别，双花括号库往返丢变量。
    */
-  private static readonly PLACEHOLDER_NAME = '[A-Za-z0-9_$.]+';
+  private static readonly PLACEHOLDER_NAME = '[A-Za-z0-9_$.一-鿿]+';
 
   /**
    * 双花括号 `{{name}}` → 单花括号 `{name}`。
@@ -2048,7 +2067,7 @@ export class CommonASTUtils {
   }
 
   /** 标识符是否处于「值引用」位置（排除声明名 / 绑定名 / 属性名 / 对象 key / import 说明符）。 */
-  private static isIdentifierValueReference(id: ts.Identifier): boolean {
+  static isIdentifierValueReference(id: ts.Identifier): boolean {
     const p = id.parent;
     if (!p) return false;
     if (ts.isImportSpecifier(p) || ts.isImportClause(p)) return false;
@@ -2086,6 +2105,32 @@ export class CommonASTUtils {
       } else if (ts.isBlock(cur) || ts.isSourceFile(cur) || ts.isModuleBlock(cur)) {
         if (CommonASTUtils.blockDirectlyDeclares(cur, name)) return true;
       }
+      cur = cur.parent;
+    }
+    return false;
+  }
+
+  /**
+   * hasEnclosingLocalDeclaration 的有界变体：只查 ref 到 boundary（含）之间的作用域链。
+   *
+   * 用于 hook 依赖注入的遮蔽判定——boundary 传 hook 回调节点：回调**内部**声明的同名绑定
+   * （回调参数 `t => ...`、回调体 `const t = ...`）遮蔽引用，说明该引用不是翻译变量；而
+   * boundary **之外**（组件层）的声明正是翻译变量自身的合法绑定（`const { t } = useTranslation()`，
+   * 含工具即将注入的形态），不能当作遮蔽，否则常规注入全部失效。
+   */
+  static hasLocalDeclarationWithin(ref: ts.Node, name: string, boundary: ts.Node): boolean {
+    // ref 就是 boundary 自身（如 useCallback(t, deps) 直传标识符）：不存在"回调内部"，
+    // 遮蔽不可能成立。不提前返回的话下方循环从 parent 起步永远遇不到 boundary，
+    // 会把 boundary 之外（组件层）的翻译绑定误判为遮蔽。
+    if (ref === boundary) return false;
+    let cur: ts.Node | undefined = ref.parent;
+    while (cur) {
+      if (CommonASTUtils.isFunctionLikeScope(cur)) {
+        if (CommonASTUtils.functionScopeDeclares(cur, name)) return true;
+      } else if (ts.isBlock(cur) || ts.isSourceFile(cur) || ts.isModuleBlock(cur)) {
+        if (CommonASTUtils.blockDirectlyDeclares(cur, name)) return true;
+      }
+      if (cur === boundary) return false;
       cur = cur.parent;
     }
     return false;

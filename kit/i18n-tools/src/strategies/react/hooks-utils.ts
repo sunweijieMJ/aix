@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { CommonASTUtils } from '../../utils/common-ast-utils';
 import type { ReactI18nLibrary } from './libraries';
 
 /**
@@ -135,7 +136,11 @@ export class HooksUtils {
       // hook 的依赖数组注入作用域内不存在的 t/intl，产出 TS2304 / ReferenceError 的代码。
       // 故这里只递归接收者 node.expression，跳过 node.name。
       if (ts.isPropertyAccessExpression(node)) {
-        if (ts.isIdentifier(node.expression) && node.expression.text === varName) {
+        if (
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === varName &&
+          !CommonASTUtils.hasLocalDeclarationWithin(node.expression, varName, firstArg)
+        ) {
           usesVar = true;
           return;
         }
@@ -145,7 +150,15 @@ export class HooksUtils {
 
       // 检查直接使用翻译变量 (t('key'))。注意 ElementAccessExpression `obj[t]` 不是
       // PropertyAccessExpression，会落到下方 forEachChild，其索引标识符 t 仍被正确计为使用。
-      if (ts.isIdentifier(node) && node.text === varName) {
+      // 仅计「值引用位置」且「未被回调内局部声明遮蔽」的标识符：回调参数 `t => t.name`、
+      // 对象 key `{ t: 1 }`、回调体 `const t = ...` 都不是对翻译变量的引用——按名硬匹配会给
+      // 无翻译绑定的组件 hook 注入未定义的 t（TS2304 / ReferenceError），且 restore 删不掉。
+      if (
+        ts.isIdentifier(node) &&
+        node.text === varName &&
+        CommonASTUtils.isIdentifierValueReference(node) &&
+        !CommonASTUtils.hasLocalDeclarationWithin(node, varName, firstArg)
+      ) {
         usesVar = true;
         return;
       }

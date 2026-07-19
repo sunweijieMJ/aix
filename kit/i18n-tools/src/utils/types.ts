@@ -97,6 +97,11 @@ export interface MessageInfo {
   id?: string;
   defaultMessage?: string;
   values?: Record<string, any>;
+  /**
+   * values 含无法静态解析的形态（如展开 `{ ...rest }`）。restore 端见此标志应
+   * 保留原 i18n 调用/组件不还原，避免占位符与残缺 values 匹配后丢变量或字面化。
+   */
+  hasUnresolvableValues?: boolean;
 }
 
 /**

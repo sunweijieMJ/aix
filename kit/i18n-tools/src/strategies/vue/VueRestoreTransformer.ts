@@ -3,6 +3,7 @@ import path from 'path';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import type { LocaleMap } from '../../utils/types';
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
 import type { VueI18nLibrary } from './libraries';
@@ -309,6 +310,12 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       return token;
     };
 
+    // 0. 逐字区保护：与提取端同款跳过规则（NON_EXTRACTABLE_ELEMENT_TAGS 的 code/pre +
+    //    v-pre 子树）。这些区域的内容从未被 generate 改写，其中形似 t('key') 的示例代码 /
+    //    `{{ }}` 字面文本绝不能被下方三个 pass 当残留 i18n 调用替换。先整段 stash，
+    //    pass 3 之后统一回填。
+    restored = VueRestoreTransformer.stashVerbatimRegions(restored, stash);
+
     // 1. 匹配 {{ $t('key') }} 或 {{ t('key') }} 或 {{ $t('key', { vars }) }}
     //    仅匹配整个插值内容为单个 $t 调用的情况
     //    vars 段支持单层嵌套花括号（如 { obj: { a: 1 } }）
@@ -410,6 +417,61 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   }
 
   /**
+   * 把 template 中的逐字区（`<code>`/`<pre>` 元素、带 v-pre 指令的元素）整段 stash 成
+   * PUA 占位符，使后续正则 pass 不触碰其内容。与 VueTextExtractor 的提取跳过规则对称。
+   *
+   * 实现要点：
+   *  - 开标签用引号感知的正则匹配，属性值里的 `>`（如 `:x="a>b"`）不会截断标签；
+   *  - v-pre 判定前先剥掉引号包裹的属性值，`title="enable v-pre mode"` 不误判；
+   *  - 结束标签按同名标签深度平衡查找，嵌套同名元素不会提前截断；
+   *  - 未闭合（找不到配对结束标签）时放弃保护该起点，保持原行为。
+   */
+  private static stashVerbatimRegions(content: string, stash: (text: string) => string): string {
+    const openTagRe = /<([A-Za-z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+    let out = '';
+    let cursor = 0;
+    let m: RegExpExecArray | null;
+
+    while ((m = openTagRe.exec(content)) !== null) {
+      const tag = m[1]!;
+      const attrs = m[2]!;
+      const isVerbatim =
+        NON_EXTRACTABLE_ELEMENT_TAGS.has(tag.toLowerCase()) ||
+        /(?:^|\s)v-pre(?=[\s/>=]|$)/.test(attrs.replace(/"[^"]*"|'[^']*'/g, '""'));
+      // 自闭合无子内容，标签本身不含可被误替换的文本，无需保护
+      if (!isVerbatim || attrs.trimEnd().endsWith('/')) continue;
+
+      // 从开标签之后按深度平衡找同名结束标签（大小写不敏感，与 HTML 解析一致）
+      const pairRe = new RegExp(
+        `<${tag}(?=[\\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>|</${tag}\\s*>`,
+        'gi',
+      );
+      pairRe.lastIndex = openTagRe.lastIndex;
+      let depth = 1;
+      let end = -1;
+      let pair: RegExpExecArray | null;
+      while ((pair = pairRe.exec(content)) !== null) {
+        if (pair[0].startsWith('</')) {
+          depth--;
+          if (depth === 0) {
+            end = pairRe.lastIndex;
+            break;
+          }
+        } else if (!/\/\s*>$/.test(pair[0])) {
+          depth++;
+        }
+      }
+      if (end === -1) continue;
+
+      out += content.slice(cursor, m.index) + stash(content.slice(m.index, end));
+      cursor = end;
+      openTagRe.lastIndex = end;
+    }
+
+    return out + content.slice(cursor);
+  }
+
+  /**
    * 还原到「模板文本节点」时对 locale 值做 HTML 文本转义。
    *
    * Why：正向是 `{{ $t('k') }}` —— Vue 插值在运行时自动转义输出；restore 把它换成
@@ -500,7 +562,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
         // 占位符名与变量名同名。此前直接 continue 丢弃 → varMap 缺项 → 占位符被字面化。
         // 但 `...rest` 展开、方法简写 `foo() {}` 等无法安全还原成具体占位符映射，
         // 返回 null 让上游保守保留原 $t 调用（宁可漏还原也不破坏源码）。
-        if (/^[A-Za-z_$][\w$]*$/.test(trimmed)) {
+        // 字符集含中文（一-鿿）：中文变量名是合法 JS 且生成端保留其为占位符名，
+        // 与 PLACEHOLDER_NAME / getVariableNameFromExpression 同口径。
+        if (/^[A-Za-z_$一-鿿][\w$一-鿿]*$/.test(trimmed)) {
           varMap.set(trimmed, trimmed);
           continue;
         }

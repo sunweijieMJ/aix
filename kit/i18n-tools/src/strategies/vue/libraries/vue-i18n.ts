@@ -17,10 +17,6 @@ export class VueI18nLibraryImpl implements VueI18nLibrary {
     return moduleName === 'vue-i18n';
   }
 
-  generateHookDeclaration(): string {
-    return 'const { t } = useI18n();';
-  }
-
   getHookDeclarationCheckRegex(): RegExp {
     return /const\s*\{\s*t\s*\}\s*=\s*useI18n\(\)/;
   }

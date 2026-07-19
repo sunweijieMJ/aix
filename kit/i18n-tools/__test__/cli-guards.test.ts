@@ -183,3 +183,40 @@ describe('CLI 入口守卫（cli.ts main）', () => {
     T,
   );
 });
+
+/**
+ * Bug：ExportProcessor 的报错文案引导用户「通过 CLI --output 显式指定」输出目录，
+ * 但 cli 的 EXPORT 分支从不把 argv.output 传给 processor.execute() —— 用户照做后
+ * 仍报同一个错误。接线后 --output 对 export 模式生效。
+ */
+describe('export --output 接线（e2e）', () => {
+  let proj: string;
+
+  beforeAll(() => {
+    proj = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-cli-export-'));
+    fs.writeFileSync(path.join(proj, 'i18n.config.mjs'), VALID_CONFIG, 'utf-8');
+    const localeDir = path.join(proj, 'i18n');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(path.join(localeDir, 'zh.json'), JSON.stringify({ a: '你好' }));
+    fs.writeFileSync(path.join(localeDir, 'en.json'), JSON.stringify({ a: 'Hello' }));
+  });
+
+  afterAll(() => {
+    fs.rmSync(proj, { recursive: true, force: true });
+  });
+
+  it(
+    '未配置 io.exportDir 时 --output 生效：导出成功且文件落在指定目录',
+    () => {
+      const outDir = path.join(proj, 'dist-locale');
+      const { code, out } = runCli(['--mode', 'export', '--output', outDir], proj);
+      expect(code, `CLI 输出：\n${out}`).toBe(0);
+      expect(fs.existsSync(path.join(outDir, 'zh.json'))).toBe(true);
+      expect(fs.existsSync(path.join(outDir, 'en.json'))).toBe(true);
+      expect(JSON.parse(fs.readFileSync(path.join(outDir, 'zh.json'), 'utf-8'))).toEqual({
+        a: '你好',
+      });
+    },
+    T,
+  );
+});

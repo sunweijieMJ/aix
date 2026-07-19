@@ -208,11 +208,13 @@ const executeRestore = async (
 };
 
 /**
- * 执行export操作（导出语言包）
+ * 执行export操作（导出语言包）。
+ * outputDir 来自 CLI --output（可选）：不传时 ExportProcessor 回退 io.exportDir，
+ * 两者皆缺才报错——与其报错文案「或通过 CLI --output 显式指定」保持一致。
  */
-const executeExport = async (config: ResolvedConfig): Promise<void> => {
+const executeExport = async (config: ResolvedConfig, outputDir?: string): Promise<void> => {
   const processor = new ExportProcessor(config);
-  await processor.execute();
+  await processor.execute(outputDir);
 };
 
 /**
@@ -412,7 +414,8 @@ const main = async (): Promise<void> => {
       default: 'untranslated',
     })
     .option('output', {
-      describe: 'CSV：export 输出路径/目录，import 输入文件路径',
+      describe:
+        'export/csv-export 输出目录（export 模式覆盖 io.exportDir），csv-import 输入文件路径',
       type: 'string',
     })
     .help()
@@ -666,7 +669,7 @@ export default defineConfig({
         await executeMerge(config, custom);
         break;
       case ModeName.EXPORT:
-        await executeExport(config);
+        await executeExport(config, csvOutput);
         break;
       case ModeName.RESTORE: {
         const targetPath = await resolveTargetPath(

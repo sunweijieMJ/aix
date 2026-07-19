@@ -1210,3 +1210,61 @@ describe('ReactTransformer 替换完整性', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// hookUsesTranslationVar 作用域遮蔽误报
+// ---------------------------------------------------------------------------
+/**
+ * Bug：hookUsesTranslationVar 对任意同名标识符置 usesVar=true，不区分声明位置与遮蔽。
+ * 回调参数 `t => t.name`、对象 key `{ t: 1 }`、回调内局部 `const t = ...` 都会被误判为
+ * 使用翻译变量，给无翻译调用的组件 hook 注入作用域内不存在的 `t` → TS2304 / ReferenceError，
+ * 且 restore 端按「回调体是否用 t」判定，坏 deps 无法往返清除。
+ * 修复：只统计「值引用位置 + 未被回调内局部声明遮蔽」的引用。
+ */
+describe('hookUsesTranslationVar 作用域遮蔽误报', () => {
+  it('回调参数遮蔽：items.map(t => t.name) 不注入 t', () => {
+    const lib = createReactI18nLibrary('react-i18next');
+    const code = `useMemo(() => items.map(t => t.name), [items]);`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, lib);
+    expect(out).toContain('[items]');
+    expect(out).not.toContain('items, t');
+  });
+
+  it('对象字面量 key：() => ({ t: 1 }) 不注入 t', () => {
+    const lib = createReactI18nLibrary('react-i18next');
+    const code = `useMemo(() => ({ t: 1 }), [a]);`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, lib);
+    expect(out).toContain('[a]');
+    expect(out).not.toContain('a, t');
+  });
+
+  it('回调内局部声明遮蔽：const t = fmt(); t(1) 不注入外层 t', () => {
+    const lib = createReactI18nLibrary('react-i18next');
+    const code = `useEffect(() => { const t = fmt(); t(1); }, [a]);`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, lib);
+    expect(out).toContain('[a]');
+    expect(out).not.toContain('a, t');
+  });
+
+  it('混合：回调外层真用 t、内层箭头参数遮蔽，仍正确注入', () => {
+    const lib = createReactI18nLibrary('react-i18next');
+    const code = `useMemo(() => { const v = t('x'); return items.map(t => t.name + v); }, [items]);`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, lib);
+    expect(out).toContain('[items, t]');
+  });
+});
+
+/**
+ * 回归（本轮遮蔽修复的边界缺口）：hook 第一参数**就是**标识符 t（useCallback(t, [deps])
+ * 直传形态）时，hasLocalDeclarationWithin 的 boundary 是 ref 自身而非祖先，向上遍历永远
+ * 遇不到边界 → 组件层 `const { t } = useTranslation()` 被误判为"回调内遮蔽" → 漏注入依赖。
+ * ref === boundary 时不存在回调体，遮蔽不可能成立，应直接判定为使用。
+ */
+describe('hookUsesTranslationVar — 直传 t 形态', () => {
+  it('useCallback(t, [deps])：t 仍应注入依赖数组', () => {
+    const lib = createReactI18nLibrary('react-i18next');
+    const code = `const { t } = useTranslation();\nconst fn = useCallback(t, [deps]);`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, lib);
+    expect(out).toContain('[deps, t]');
+  });
+});

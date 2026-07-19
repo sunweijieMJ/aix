@@ -181,9 +181,12 @@ export class ReactTransformer implements ITransformer {
     const { semanticId, context, isTemplateString, templateVariables } = extracted;
     const includeDefaultMessage = this.includeDefaultMessage;
 
-    // 获取 defaultMessage 内容
+    // 获取 defaultMessage 内容。优先 processedMessage（字面量插值 `${'全部'}` 已在提取端
+    // 内联，且不在 templateVariables 里，传 original 时 createMessageWithOptions 无从展开、
+    // 会残留在 defaultMessage 中）；`||` 与 locale 落盘路径 buildLocaleMessage 同口径，
+    // 保证 defaultMessage 恒等于 locale 值。Vue 端 VueTransformer 已是同款取法。
     const { message, placeholderMap } = CommonASTUtils.createMessageWithOptions(
-      extracted.original,
+      extracted.processedMessage || extracted.original,
       templateVariables,
     );
     const defaultMsg = includeDefaultMessage ? message : undefined;

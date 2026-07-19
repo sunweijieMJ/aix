@@ -474,13 +474,20 @@ export class ReactASTUtils {
 
     if (ts.isObjectLiteralExpression(arg)) {
       const props = CommonASTUtils.extractObjectLiteralProperties(arg, sourceFile);
+      // 只接受字符串字面量：简写变量（`{ id, defaultMessage }`）经 shorthand 分支会变成
+      // {node,text} 对象，属动态描述符、无法静态还原——置 undefined 让 isValidMessage
+      // 拦下保留原调用，否则对象流入 normalizeRestoreMessage 对非字符串调 .replace 抛
+      // TypeError 中断整文件 restore。
       messageInfo = {
-        id: props.id,
-        defaultMessage: props.defaultMessage,
+        id: typeof props.id === 'string' ? props.id : undefined,
+        defaultMessage: typeof props.defaultMessage === 'string' ? props.defaultMessage : undefined,
       };
 
       const valuesArg = node.arguments[1];
       if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
+        if (CommonASTUtils.objectLiteralHasSpread(valuesArg)) {
+          messageInfo.hasUnresolvableValues = true;
+        }
         messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
       }
     } else if (ReactASTUtils.isMessageReference(arg)) {
@@ -491,6 +498,9 @@ export class ReactASTUtils {
 
       const valuesArg = node.arguments[1];
       if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
+        if (CommonASTUtils.objectLiteralHasSpread(valuesArg)) {
+          messageInfo.hasUnresolvableValues = true;
+        }
         messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
       }
     }
@@ -560,6 +570,9 @@ export class ReactASTUtils {
           attribute.initializer.expression &&
           ts.isObjectLiteralExpression(attribute.initializer.expression)
         ) {
+          if (CommonASTUtils.objectLiteralHasSpread(attribute.initializer.expression)) {
+            messageInfo.hasUnresolvableValues = true;
+          }
           messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
             attribute.initializer.expression,
             sourceFile,
