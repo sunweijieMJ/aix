@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.21
+
+### Patch Changes
+
+- BubbleAction
+
 ## 0.0.20
 
 ### Patch Changes
