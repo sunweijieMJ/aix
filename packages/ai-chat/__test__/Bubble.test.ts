@@ -319,6 +319,56 @@ describe('Bubble 内联编辑（editing 受控 prop）', () => {
   });
 });
 
+describe('Bubble footer 内容响应式（hasFooterContent 依赖多层转发 slot 时的 status 变化）', () => {
+  // 复现真实场景（AiChat.vue / BubbleList.vue 的实际写法）：每层都按
+  // `v-if="$slots.footer"` 判断是否转发，并用 `<slot name="footer" :item="item" />`
+  // 把作用域插槽再转发一层——业务模板 → AiChat → BubbleList → Bubble，一路都是这个模式。
+  // 用同样写法的两层转发组件模拟这条链路，验证 status 变化后 footer 会正确出现/消失。
+  const Forwarder = defineComponent({
+    props: { item: { type: Object, required: true } },
+    template: `
+      <div>
+        <template v-if="$slots.footer">
+          <slot name="footer" :item="item" />
+        </template>
+      </div>
+    `,
+  });
+
+  it('status 从 loading 变为 abort 后，经多层转发的 footer 插槽应重新出现', async () => {
+    const w = mount(
+      {
+        components: { Forwarder, Bubble },
+        props: ['status'],
+        template: `
+          <Forwarder :item="{ status }">
+            <template #footer="{ item }">
+              <Forwarder :item="item">
+                <template #footer="{ item: it2 }">
+                  <Bubble role="ai" :status="it2.status" :content="content">
+                    <template #footer>
+                      <button v-if="it2.status === 'success' || it2.status === 'abort'" class="act">
+                        操作
+                      </button>
+                    </template>
+                  </Bubble>
+                </template>
+              </Forwarder>
+            </template>
+          </Forwarder>
+        `,
+        data() {
+          return { content: [textBlock('hi')] };
+        },
+      },
+      { props: { status: 'loading' } },
+    );
+    expect(w.find('.act').exists()).toBe(false);
+    await w.setProps({ status: 'abort' });
+    expect(w.find('.act').exists()).toBe(true);
+  });
+});
+
 describe('Bubble tool_use 块渲染', () => {
   it('渲染 tool_use 块（内置 ToolUseBlock）', () => {
     const content: ContentBlock[] = [

@@ -230,6 +230,12 @@ function hasVNodeContent(vnode: unknown): boolean {
 // 也套上 __footer 包裹 div，在 flex 布局的 &__wrapper 上多出一份 gap 间距。这里改为渲染一次
 // 插槽、检查是否产出有实际内容的节点，按「有没有实际内容」决定是否包裹。
 const hasFooterContent = computed(() => {
+  // 显式读一次 status：footer 内容真正的条件判断（如按 status 决定是否显示操作条）
+  // 往往写在消费方经多层 <slot> 转发过来的插槽内容里（Bubble → BubbleList → AiChat → 业务）。
+  // 深层转发链路上对 status 的读取不会被 Vue 记为本 computed 的依赖，导致 status 变化后
+  // （如 loading → abort）本值仍停留在旧的缓存结果上、footer 不会随之出现。这里在自身
+  // 作用域内直接读一次 props.status，强制建立依赖，绕开嵌套转发插槽的响应式追踪缺口。
+  void props.status;
   const nodes = slots.footer?.();
   return !!nodes && nodes.some(hasVNodeContent);
 });
