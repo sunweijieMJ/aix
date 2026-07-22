@@ -59,6 +59,8 @@ export interface I18nRuntimeEngine {
   stop(): void;
   setLanguage(lang: string): Promise<void>;
   getLanguage(): string;
+  /** 手动注册额外的根节点（用于 closed shadow root 或业务显式管理的 shadow root） */
+  addRoot(root: Node): void;
   on(event: I18nRuntimeEvent, cb: (node: Text) => void): () => void;
 }
 
@@ -235,6 +237,8 @@ export function createEngine(): I18nRuntimeEngine {
         debounceMs: userConfig.debounceMs,
         maxBatchSize: userConfig.maxBatchSize,
         extraAttrs: userConfig.extraAttrs,
+        getCached: (hash) => packStore!.get(currentLang, hash),
+        onCacheHit: (candidate, translation) => applyCandidate(candidate, translation, currentLang),
         onBatch: (candidates) => {
           void handleBatch(candidates);
         },
@@ -291,6 +295,11 @@ export function createEngine(): I18nRuntimeEngine {
 
     getLanguage() {
       return currentLang;
+    },
+
+    addRoot(root: Node) {
+      if (!started || !scanner) return;
+      scanner.addRoot(root);
     },
 
     on(event, cb) {

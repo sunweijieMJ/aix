@@ -27,7 +27,7 @@ export function ensureOriginalAttrRecorded(el: Element, attrName: string, origin
 export function markAttrTranslated(el: Element, attrName: string, translated: string): void {
   el.setAttribute(TRANSLATED_ATTR_PREFIX + attrName, translated);
 }
-const DEFAULT_DEBOUNCE_MS = 200;
+const DEFAULT_DEBOUNCE_MS = 50;
 const DEFAULT_MAX_BATCH_SIZE = 50;
 const FULL_SCAN_CHUNK_SIZE = 200;
 
@@ -42,6 +42,12 @@ export interface ScannerOptions {
   extraAttrs?: string[];
   /** 默认 requestIdleCallback（降级 setTimeout），测试可注入同步调度器 */
   scheduleIdle?: (work: () => void) => void;
+  /** scanFull 首个 chunk 的调度器，默认 requestAnimationFrame（降级 setTimeout），测试可注入同步调度器 */
+  scheduleFirst?: (work: () => void) => void;
+  /** L1 内存缓存查询——命中时跳过 debounce 队列，立即写回节点，消除"先显原文再显译文"的停顿 */
+  getCached?: (hash: string) => string | undefined;
+  /** getCached 命中时的同步写回回调 */
+  onCacheHit?: (candidate: TranslationCandidate, translation: string) => void;
 }
 
 function defaultScheduleIdle(work: () => void): void {
@@ -52,13 +58,19 @@ function defaultScheduleIdle(work: () => void): void {
   }
 }
 
+function defaultScheduleRaf(work: () => void): void {
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => work());
+  } else {
+    setTimeout(work, 0);
+  }
+}
+
 function isElementSkipped(el: Element): boolean {
   if (SKIP_TAGS.has(el.tagName)) return true;
   if (el.getAttribute('translate') === 'no') return true;
   if (el.hasAttribute('data-i18n-skip')) return true;
-  if (el.hasAttribute('contenteditable') && el.getAttribute('contenteditable') !== 'false') {
-    return true;
-  }
+  // contenteditable 元素的属性仍需翻译（如 data-placeholder），只跳过其文本内容（在 collectText 里处理）
   return false;
 }
 
@@ -96,13 +108,21 @@ function isInsideSkippedSubtree(node: Node): boolean {
  * （原因见本文件所在任务的说明：写属性不产生 mutation，天然无环路问题）。
  */
 export class Scanner {
-  private readonly options: Required<Omit<ScannerOptions, 'scheduleIdle' | 'targetLang'>> & {
+  private readonly options: Required<
+    Omit<
+      ScannerOptions,
+      'scheduleIdle' | 'scheduleFirst' | 'targetLang' | 'getCached' | 'onCacheHit'
+    >
+  > & {
     scheduleIdle: (work: () => void) => void;
+    scheduleFirst: (work: () => void) => void;
+    getCached?: (hash: string) => string | undefined;
+    onCacheHit?: (candidate: TranslationCandidate, translation: string) => void;
   };
   private targetLang: string;
   private readonly queue: TranslationCandidate[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
-  private observer: MutationObserver | undefined;
+  private readonly observers: MutationObserver[] = [];
   private stopped = false;
 
   constructor(options: ScannerOptions) {
@@ -114,6 +134,9 @@ export class Scanner {
       onBatch: options.onBatch,
       extraAttrs: options.extraAttrs ?? [],
       scheduleIdle: options.scheduleIdle ?? defaultScheduleIdle,
+      scheduleFirst: options.scheduleFirst ?? defaultScheduleRaf,
+      getCached: options.getCached,
+      onCacheHit: options.onCacheHit,
     };
     this.targetLang = options.targetLang;
   }
@@ -129,11 +152,16 @@ export class Scanner {
     });
 
     const step = (): void => {
-      if (this.stopped) return; // disconnect() 之后不再继续这条分片扫描链
+      if (this.stopped) return;
       let processed = 0;
       let node: Node | null;
       while (processed < FULL_SCAN_CHUNK_SIZE && (node = walker.nextNode())) {
         this.collect(node);
+        // 发现 open shadow root，递归扫描
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const sr = (node as Element).shadowRoot;
+          if (sr) this.scanFull(sr);
+        }
         processed += 1;
       }
       if (processed === FULL_SCAN_CHUNK_SIZE) {
@@ -141,27 +169,56 @@ export class Scanner {
       }
     };
 
-    this.options.scheduleIdle(step);
+    this.options.scheduleFirst(step);
   }
 
   observe(root: Node): void {
-    this.observer = new MutationObserver((mutations) => {
+    this.observeRoot(root);
+    // 对已存在的 shadow root 也建立观察
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const sr = (node as Element).shadowRoot;
+      if (sr) this.observeRoot(sr);
+    }
+  }
+
+  /** 为单个根节点（含 shadow root）建立 MutationObserver */
+  private observeRoot(root: Node): void {
+    const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'characterData' && mutation.target.nodeType === Node.TEXT_NODE) {
           if (!isInsideSkippedSubtree(mutation.target)) this.collect(mutation.target);
           continue;
         }
         if (mutation.type === 'childList') {
-          mutation.addedNodes.forEach((added) => this.scanSubtree(added));
+          mutation.addedNodes.forEach((added) => {
+            this.scanSubtree(added);
+            // 新增节点如果带 shadow root，也要进入扫描和观察
+            if (added.nodeType === Node.ELEMENT_NODE) {
+              const sr = (added as Element).shadowRoot;
+              if (sr) {
+                this.scanFull(sr);
+                this.observeRoot(sr);
+              }
+            }
+          });
         }
       }
     });
-    this.observer.observe(root, { childList: true, subtree: true, characterData: true });
+    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    this.observers.push(observer);
+  }
+
+  /** 手动注册额外的根节点（用于 closed shadow root 或业务已知的 shadow root） */
+  addRoot(root: Node): void {
+    this.scanFull(root);
+    this.observeRoot(root);
   }
 
   disconnect(): void {
-    this.observer?.disconnect();
-    this.observer = undefined;
+    this.observers.forEach((obs) => obs.disconnect());
+    this.observers.length = 0;
     this.stopped = true;
     clearTimeout(this.debounceTimer);
     this.queue.length = 0; // 丢弃尚未 flush 的候选，避免 stop 之后还持有 DOM 引用、还写 DOM
@@ -197,6 +254,11 @@ export class Scanner {
   }
 
   private collectText(node: Text): void {
+    // 跳过 contenteditable 元素内的文本节点（用户正在编辑的内容）
+    if (node.parentElement?.closest('[contenteditable]:not([contenteditable="false"])')) {
+      return;
+    }
+
     // 翻译源优先取已记录的原文——但仅当 textContent 与上次写回的译文一致时才可信
     // （说明自那以后没人动过这个节点，语言切换场景下必须从真正的原文重新翻译，
     // 否则会把上一次的译文当成新原文做"二次翻译"）。
@@ -252,6 +314,17 @@ export class Scanner {
   }
 
   private enqueue(candidate: TranslationCandidate): void {
+    if (this.stopped) return;
+
+    // L1 缓存命中：同步写回，跳过 debounce 队列，消除"先显原文再显译文"的停顿
+    if (this.options.getCached && this.options.onCacheHit) {
+      const cached = this.options.getCached(candidate.hash);
+      if (cached !== undefined) {
+        this.options.onCacheHit(candidate, cached);
+        return;
+      }
+    }
+
     // 不按 hash 去重丢弃候选——内容相同的多个节点/属性都要各自入队，否则排在后面的会被
     // 静默丢弃、永远翻译不到。真正的去重（避免同一 hash 重复请求翻译服务）在 engine 的
     // handleBatch 里按 hash 对请求体做，而不是在这里对候选本身做。
