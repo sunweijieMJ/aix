@@ -1,6 +1,6 @@
 {
   "name": "@kit/i18n-runtime",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "运行时 DOM 扫描机翻引擎，零业务代码侵入的网站国际化方案",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
