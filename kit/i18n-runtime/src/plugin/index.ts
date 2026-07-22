@@ -25,9 +25,17 @@ export function createI18nRuntimePlugin(options: I18nRuntimePluginOptions): Plug
       const activeEngine = getActiveEngine() ?? engine;
 
       if (initialLanguage) {
-        activeEngine.setLanguage(initialLanguage).catch((err) => {
-          console.error('[i18n-runtime] 初始语言设置失败:', err);
-        });
+        const doSetLanguage = () =>
+          activeEngine.setLanguage(initialLanguage).catch((err) => {
+            console.error('[i18n-runtime] 初始语言设置失败:', err);
+          });
+
+        // 有 router 时等初始导航完成再设语言，否则 getCurrentPath 拿到的是 '/'
+        if (config.router && 'isReady' in config.router) {
+          (config.router as { isReady: () => Promise<void> }).isReady().then(doSetLanguage);
+        } else {
+          doSetLanguage();
+        }
       }
 
       app.provide(I18N_RUNTIME_INJECTION_KEY, activeEngine);
