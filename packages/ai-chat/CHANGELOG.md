@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.22
+
+### Patch Changes
+
+- 内容块类型注册表
+
 ## 0.0.21
 
 ### Patch Changes
