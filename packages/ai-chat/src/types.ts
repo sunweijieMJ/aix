@@ -351,12 +351,6 @@ export interface Quote {
   intent?: string;
 }
 
-/** 一等内容块：引用的唯一真源（非 text，onEdit 原位保留；请求期经 toPrompt 拍平） */
-export interface QuoteBlock extends BlockBase {
-  type: 'quote';
-  quotes: Quote[];
-}
-
 /** 工具调用生命周期状态（awaiting-approval / executing 为 Layer 2 预留） */
 export type ToolUseState =
   | 'input-streaming'
@@ -393,71 +387,91 @@ export interface ImageItem {
   thumbnail?: string;
 }
 
-/** 消息内容块（有序、可扩展）。预留扩展：业务自定义块只需新增联合成员 */
-export type ContentBlock =
-  | (BlockBase & { type: 'text'; text: string })
-  | (BlockBase & {
-      type: 'reasoning';
-      text: string;
-      /** 思考起点（epoch ms），由 useChat 在该 reasoning 块首次创建时打点 */
-      startedAt?: number;
-      /**
-       * 思考终点（epoch ms），由 useChat 在思考被顶替（转正文/工具/其它块）或消息终态
-       * 落定时打点；undefined 表示仍在思考，或该块并非由 useChat 计时产生（历史/业务自建数据）
-       */
-      endedAt?: number;
-    })
-  | (BlockBase & { type: 'sources'; items: SourceItem[] })
-  | (BlockBase & { type: 'thought-chain'; items: ThoughtChainItem[] })
-  | (BlockBase & { type: 'attachment'; items: AttachmentItem[] })
-  | (BlockBase & {
-      type: 'tool_use';
-      /** 协议侧调用 id（toolu_xxx / call_xxx）：配对结果、并行去重、resume 关联 */
-      toolCallId: string;
-      /** 工具名：toolRenderers 按它路由 */
-      toolName: string;
-      /** 生命周期状态 */
-      state: ToolUseState;
-      /** 原始未完成 JSON（流式拼参时展示用，不怕 parse 失败） */
-      argsText?: string;
-      /** 参数对象（整体给时直接落 / 流式拼参齐全后解析出） */
-      input?: unknown;
-      /** 工具结果 */
-      output?: unknown;
-      /** 出错文案 */
-      errorText?: string;
-    })
-  | (BlockBase & {
-      type: 'chart';
-      /** 渲染引擎（判别键）；MVP 仅 echarts，function-plot 分期扩展本联合 */
-      engine: 'echarts';
-      /** 统计图种类：决定骨架占位形态 + 二次动态 import 哪个图表子模块 */
-      kind: EChartsChartKind;
-      /**
-       * ECharts option 对象。刻意用 unknown 不静态耦合 EChartsOption 类型
-       * （echarts 是 optionalDependency，静态 import 其类型在未安装环境会 TS2307），
-       * 与 MermaidLike/KatexLike 同 DI 策略；运行时校验后 setOption。
-       */
-      spec: unknown;
-      /** 可选标题（无障碍标签 & 卡片头部展示） */
-      title?: string;
-      /** 无障碍文字替代：屏幕阅读器朗读的图表描述 / 数据摘要，作 role="img" 的 aria-label */
-      alt?: string;
-      /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式拼 spec 期间为 loading */
-      state?: 'loading' | 'ready' | 'error';
-      /** 交互回写用（切换图型/取点等经 BlockAction 上抛）；无交互需求可不填 */
-      interactive?: boolean;
-    })
-  | (BlockBase & {
-      type: 'image';
-      /** 图片列表，支持单图（长度 1）与多图 gallery（如生图工具一次产出多个变体） */
-      images: ImageItem[];
-      /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式生图期间为 loading。缺省按 ready 处理 */
-      state?: 'loading' | 'ready' | 'error';
-      /** 出错文案 */
-      errorText?: string;
-    })
-  | QuoteBlock;
+/**
+ * 内容块类型注册表：支持业务侧通过 module augmentation 扩展自定义块类型。
+ * 每个条目的值类型是该块类型的额外字段（不含 BlockBase 的 id 和 type）。
+ *
+ * 业务侧扩展示例：
+ * ```ts
+ * declare module '@aix/ai-chat' {
+ *   interface ContentBlockRegistry {
+ *     'my-custom-block': { customField: string };
+ *   }
+ * }
+ * ```
+ */
+export interface ContentBlockRegistry {
+  text: { text: string };
+  reasoning: {
+    text: string;
+    /** 思考起点（epoch ms），由 useChat 在该 reasoning 块首次创建时打点 */
+    startedAt?: number;
+    /**
+     * 思考终点（epoch ms），由 useChat 在思考被顶替（转正文/工具/其它块）或消息终态
+     * 落定时打点；undefined 表示仍在思考，或该块并非由 useChat 计时产生（历史/业务自建数据）
+     */
+    endedAt?: number;
+  };
+  sources: { items: SourceItem[] };
+  'thought-chain': { items: ThoughtChainItem[] };
+  attachment: { items: AttachmentItem[] };
+  tool_use: {
+    /** 协议侧调用 id（toolu_xxx / call_xxx）：配对结果、并行去重、resume 关联 */
+    toolCallId: string;
+    /** 工具名：toolRenderers 按它路由 */
+    toolName: string;
+    /** 生命周期状态 */
+    state: ToolUseState;
+    /** 原始未完成 JSON（流式拼参时展示用，不怕 parse 失败） */
+    argsText?: string;
+    /** 参数对象（整体给时直接落 / 流式拼参齐全后解析出） */
+    input?: unknown;
+    /** 工具结果 */
+    output?: unknown;
+    /** 出错文案 */
+    errorText?: string;
+  };
+  chart: {
+    /** 渲染引擎（判别键）；MVP 仅 echarts，function-plot 分期扩展本联合 */
+    engine: 'echarts';
+    /** 统计图种类：决定骨架占位形态 + 二次动态 import 哪个图表子模块 */
+    kind: EChartsChartKind;
+    /**
+     * ECharts option 对象。刻意用 unknown 不静态耦合 EChartsOption 类型
+     * （echarts 是 optionalDependency，静态 import 其类型在未安装环境会 TS2307），
+     * 与 MermaidLike/KatexLike 同 DI 策略；运行时校验后 setOption。
+     */
+    spec: unknown;
+    /** 可选标题（无障碍标签 & 卡片头部展示） */
+    title?: string;
+    /** 无障碍文字替代：屏幕阅读器朗读的图表描述 / 数据摘要，作 role="img" 的 aria-label */
+    alt?: string;
+    /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式拼 spec 期间为 loading */
+    state?: 'loading' | 'ready' | 'error';
+    /** 交互回写用（切换图型/取点等经 BlockAction 上抛）；无交互需求可不填 */
+    interactive?: boolean;
+  };
+  image: {
+    /** 图片列表，支持单图（长度 1）与多图 gallery（如生图工具一次产出多个变体） */
+    images: ImageItem[];
+    /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式生图期间为 loading。缺省按 ready 处理 */
+    state?: 'loading' | 'ready' | 'error';
+    /** 出错文案 */
+    errorText?: string;
+  };
+  quote: { quotes: Quote[] };
+}
+
+/**
+ * 消息内容块（有序、可扩展）。从 ContentBlockRegistry 派生，业务侧可通过
+ * module augmentation 扩展注册表来添加自定义块类型，扩展后 ContentBlock 自动包含新类型。
+ */
+export type ContentBlock = {
+  [K in keyof ContentBlockRegistry]: BlockBase & { type: K } & ContentBlockRegistry[K];
+}[keyof ContentBlockRegistry];
+
+/** 引用内容块类型（向后兼容的命名导出） */
+export type QuoteBlock = Extract<ContentBlock, { type: 'quote' }>;
 
 /** 内置消息操作预设 key */
 export type ActionKey =
