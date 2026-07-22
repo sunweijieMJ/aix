@@ -134,7 +134,7 @@ export class Scanner {
       onBatch: options.onBatch,
       extraAttrs: options.extraAttrs ?? [],
       scheduleIdle: options.scheduleIdle ?? defaultScheduleIdle,
-      scheduleFirst: options.scheduleFirst ?? defaultScheduleRaf,
+      scheduleFirst: options.scheduleFirst ?? options.scheduleIdle ?? defaultScheduleRaf,
       getCached: options.getCached,
       onCacheHit: options.onCacheHit,
     };
