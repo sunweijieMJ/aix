@@ -95,6 +95,23 @@ function LanguageSwitcher() {
 | `maxBatchSize` | `number` | 默认 `50` |
 | `storage` | `'localStorage' \| 'indexedDB' \| PackStorageAdapter` | 默认 `'localStorage'` |
 | `maxEntries` | `number` | 仅在 `storage: 'localStorage'`（默认）时生效，L2 单语言最大条目数，默认 `2000`，超出 LRU 淘汰；`storage: 'indexedDB'` 时该配置被忽略（并打印一次 console.warn），IndexedDB 容量远大于 localStorage 不需要淘汰兜底 |
+| `extraAttrs` | `string[]` | 除 `placeholder` / `title` / `alt` 之外，额外需要翻译的 HTML 属性名，如 `['data-placeholder']` |
+| `glossary` | `string[]` | 全局术语表，翻译时传给后端，防止品牌名/专有名词被翻译 |
+| `getCurrentPath` | `() => string` | 获取当前路由路径的回调函数，返回值会随翻译请求和语言包请求传给后端（用于按页面分组缓存）；不传则路径为空 |
+| `backendOptions` | `object` | backend provider 的接口自定义配置，见下方详细说明 |
+
+### backendOptions 配置项（仅 provider 为 'backend' 时生效）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `translatePath` | `string` | 翻译接口路径，默认 `'/translate'` |
+| `packPath` | `string` | 语言包接口路径，默认 `'/pack'` |
+| `headers` | `Record<string, string>` | 附加到所有请求的自定义 headers |
+| `transformRequest` | `(req) => unknown` | 自定义翻译请求入参转换，返回值作为请求体 |
+| `transformResponse` | `(raw) => TranslateBatchResult` | 自定义翻译响应出参转换 |
+| `translateFetcher` | `(req) => Promise<TranslateBatchResult>` | 完全自定义翻译请求函数（设置后 translatePath/headers/transform 对翻译均无效） |
+| `transformPackResponse` | `(raw) => RemotePack \| null` | 自定义语言包响应解析；不传则按默认 `{code, data}` 格式解析 |
+| `packFetcher` | `(lang) => Promise<RemotePack \| null>` | 完全自定义语言包请求函数（设置后 packPath/headers/transformPackResponse 对语言包请求均无效） |
 
 ## 排除翻译
 
@@ -113,12 +130,16 @@ function LanguageSwitcher() {
 {
   "items": [{ "hash": "1a2b3c4d", "text": "共 {N0} 条" }],
   "sourceLang": "zh",
-  "targetLang": "en"
+  "targetLang": "en",
+  "path": "/home",
+  "glossary": ["PolyMas", "智慧树"]
 }
 ```
 
 - `hash` 由前端本地计算（FNV-1a 32 位），后端只需原样存储、原样返回，不需要也不应该重新计算或用它反查原文
 - `text` 是归一化后的原文——数字/日期序列已被替换成 `{N0}`、`{N1}` 这类占位符（实现见 `src/core/normalizer.ts`，目的是避免同一模板因分页/计数等数字不同被当成不同原文反复翻译），后端调用机翻引擎时应原样传入，返回的译文也必须原样保留这些占位符 token，前端会在写回 DOM 前做占位符回填
+- `path`（可选）：当前页面路径，由前端通过 `getCurrentPath()` 回调提供，后端可据此按页面分组缓存翻译结果
+- `glossary`（可选）：术语表，后端在翻译时应确保这些词不被翻译
 - HTTP 状态码非 `2xx`，或响应体 `code !== 0`，均视为本次批量翻译失败；失败不影响页面正常显示原文，前端会在下次扫描时自动重试
 
 响应体：
@@ -135,7 +156,7 @@ function LanguageSwitcher() {
 - 失败时可用 `message` 字段描述错误原因（仅用于前端 `console.error` 日志，不会展示给用户）
 - `translations` 里缺失的 hash（比如翻译引擎跳过了某条）会被视为未翻译，等下次扫描自然重新入队重试，不会用原文顶替译文写入缓存
 
-### `GET {apiBase}/pack?lang=xx` — 拉取语言包
+### `GET {apiBase}/pack?lang=xx&path=xx` — 拉取语言包
 
 响应体：
 

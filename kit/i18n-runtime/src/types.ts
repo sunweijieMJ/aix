@@ -30,6 +30,8 @@ export interface TranslateBatchRequest {
   items: Array<{ hash: string; text: string }>;
   sourceLang: string;
   targetLang: string;
+  /** 当前页面路由路径，后端可据此按页面分组缓存翻译结果 */
+  path?: string;
   glossary?: string[];
 }
 
@@ -49,7 +51,7 @@ export type TranslatableAttr = 'placeholder' | 'title' | 'alt';
 export interface TranslationCandidate {
   kind: 'text' | 'attr';
   node: Text | Element;
-  attrName?: TranslatableAttr;
+  attrName?: string;
   hash: string;
   normalizedText: string;
   /** Scanner 收集候选那一刻实际使用的原文（归一化前），engine 写回译文时必须用这份快照

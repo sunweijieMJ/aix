@@ -4,7 +4,7 @@ import type {
   TranslateBatchResult,
   TranslateProvider,
 } from '../../types.js';
-import { BackendProvider } from './backend.js';
+import { BackendProvider, type BackendProviderConfig } from './backend.js';
 import { LibreTranslateProvider } from './libretranslate.js';
 
 export { BackendProvider } from './backend.js';
@@ -17,8 +17,20 @@ export interface ProviderConfig {
   libretranslateUrl?: string;
 }
 
-export function createProvider(name: ProviderName, config: ProviderConfig): TranslateProvider {
-  if (name === 'backend') return new BackendProvider({ apiBase: config.apiBase! });
+export function createProvider(
+  name: ProviderName,
+  config: ProviderConfig,
+  backendOptions?: Pick<
+    BackendProviderConfig,
+    'translatePath' | 'headers' | 'transformRequest' | 'transformResponse' | 'translateFetcher'
+  >,
+): TranslateProvider {
+  if (name === 'backend') {
+    return new BackendProvider({
+      apiBase: config.apiBase!,
+      ...backendOptions,
+    });
+  }
   return new LibreTranslateProvider({ libretranslateUrl: config.libretranslateUrl! });
 }
 

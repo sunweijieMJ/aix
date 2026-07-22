@@ -15,11 +15,7 @@ const TRANSLATED_ATTR_PREFIX = 'data-i18n-translated-';
  * engine（Task 9）应用属性翻译结果前调用：首次翻译某属性时把原文记录到 data-i18n-orig-*，
  * 之后语言切换才能从这里取回真正的原文，而不是把上一次的译文当新原文。幂等，重复调用无副作用。
  */
-export function ensureOriginalAttrRecorded(
-  el: Element,
-  attrName: TranslatableAttr,
-  original: string,
-): void {
+export function ensureOriginalAttrRecorded(el: Element, attrName: string, original: string): void {
   const key = ORIGINAL_ATTR_PREFIX + attrName;
   if (!el.hasAttribute(key)) el.setAttribute(key, original);
 }
@@ -28,11 +24,7 @@ export function ensureOriginalAttrRecorded(
  * engine 每次把译文写回属性后调用：记下这次写回的值，供下次扫描判断属性是否被业务改写过。
  * 每次写回都要覆盖（不像 ensureOriginalAttrRecorded 那样幂等），因为译文本身随语言切换而变化。
  */
-export function markAttrTranslated(
-  el: Element,
-  attrName: TranslatableAttr,
-  translated: string,
-): void {
+export function markAttrTranslated(el: Element, attrName: string, translated: string): void {
   el.setAttribute(TRANSLATED_ATTR_PREFIX + attrName, translated);
 }
 const DEFAULT_DEBOUNCE_MS = 200;
@@ -46,6 +38,8 @@ export interface ScannerOptions {
   debounceMs?: number;
   maxBatchSize?: number;
   onBatch: (candidates: TranslationCandidate[]) => void;
+  /** 除 placeholder/title/alt 之外，额外需要翻译的 HTML 属性名，如 ['data-placeholder'] */
+  extraAttrs?: string[];
   /** 默认 requestIdleCallback（降级 setTimeout），测试可注入同步调度器 */
   scheduleIdle?: (work: () => void) => void;
 }
@@ -118,6 +112,7 @@ export class Scanner {
       debounceMs: options.debounceMs ?? DEFAULT_DEBOUNCE_MS,
       maxBatchSize: options.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE,
       onBatch: options.onBatch,
+      extraAttrs: options.extraAttrs ?? [],
       scheduleIdle: options.scheduleIdle ?? defaultScheduleIdle,
     };
     this.targetLang = options.targetLang;
@@ -227,7 +222,8 @@ export class Scanner {
   }
 
   private collectAttrs(el: Element): void {
-    for (const attrName of ATTR_NAMES) {
+    const allAttrs = [...ATTR_NAMES, ...(this.options.extraAttrs ?? [])] as string[];
+    for (const attrName of allAttrs) {
       const origKey = ORIGINAL_ATTR_PREFIX + attrName;
       const translatedKey = TRANSLATED_ATTR_PREFIX + attrName;
       const storedOriginal = el.getAttribute(origKey);

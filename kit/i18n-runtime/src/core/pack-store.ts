@@ -2,7 +2,7 @@ import type { PackData, PackStorageAdapter, RemotePack } from '../types.js';
 
 export interface PackStoreOptions {
   storage: PackStorageAdapter;
-  fetchRemotePack: (lang: string) => Promise<RemotePack | null>;
+  fetchRemotePack: (lang: string, path?: string) => Promise<RemotePack | null>;
 }
 
 /**
@@ -26,14 +26,14 @@ export class PackStore {
     this.options = options;
   }
 
-  async hydrate(lang: string): Promise<void> {
+  async hydrate(lang: string, path?: string): Promise<void> {
     const cached = await this.options.storage.get(lang);
     if (cached) {
       this.loadIntoMemory(lang, cached);
     }
 
     try {
-      const remote = await this.options.fetchRemotePack(lang);
+      const remote = await this.options.fetchRemotePack(lang, path);
       if (remote && remote.version !== cached?.version) {
         const data = this.remoteToPackData(remote);
         this.loadIntoMemory(lang, data);
