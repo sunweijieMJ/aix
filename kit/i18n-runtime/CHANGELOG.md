@@ -1,5 +1,11 @@
 # @kit/i18n-runtime
 
+## 0.0.4
+
+### Patch Changes
+
+- router ready
+
 ## 0.0.3
 
 ### Patch Changes
