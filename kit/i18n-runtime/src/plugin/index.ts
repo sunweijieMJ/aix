@@ -30,9 +30,13 @@ export function createI18nRuntimePlugin(options: I18nRuntimePluginOptions): Plug
             console.error('[i18n-runtime] 初始语言设置失败:', err);
           });
 
-        // 有 router 时等初始导航完成再设语言，否则 getCurrentPath 拿到的是 '/'
-        if (config.router && 'isReady' in config.router) {
-          (config.router as { isReady: () => Promise<void> }).isReady().then(doSetLanguage);
+        if (config.router) {
+          // 等第一次路由导航完成后再设语言（beforeMount 时 app 还未 mount，isReady() 此时不会 resolve）
+          // afterEach 在初始导航完成后触发，此时 getCurrentPath 能拿到真实路由路径
+          const unsubscribe = config.router.afterEach(() => {
+            unsubscribe();
+            doSetLanguage();
+          });
         } else {
           doSetLanguage();
         }
