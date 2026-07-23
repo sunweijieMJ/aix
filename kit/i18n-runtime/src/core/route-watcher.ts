@@ -6,6 +6,8 @@ export interface RouteWatcher {
 /** 只依赖 vue-router 里用得到的这一个方法，避免把整个 vue-router 类型定义硬耦合进来 */
 export interface MinimalRouter {
   afterEach(cb: () => void): () => void;
+  /** Vue Router 4 原生方法；初始导航已完成时立即 resolve，否则等完成后 resolve */
+  isReady?: () => Promise<void>;
 }
 
 /**

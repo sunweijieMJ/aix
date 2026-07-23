@@ -25,18 +25,24 @@ export function createI18nRuntimePlugin(options: I18nRuntimePluginOptions): Plug
       const activeEngine = getActiveEngine() ?? engine;
 
       if (initialLanguage) {
-        const doSetLanguage = () =>
+        const doSetLanguage = () => {
           activeEngine.setLanguage(initialLanguage).catch((err) => {
             console.error('[i18n-runtime] 初始语言设置失败:', err);
           });
+        };
 
-        if (config.router) {
-          // 等第一次路由导航完成后再设语言（beforeMount 时 app 还未 mount，isReady() 此时不会 resolve）
-          // afterEach 在初始导航完成后触发，此时 getCurrentPath 能拿到真实路由路径
-          const unsubscribe = config.router.afterEach(() => {
-            unsubscribe();
-            doSetLanguage();
-          });
+        if (options.router) {
+          // 用 isReady()：初始导航已完成时立即 resolve，否则等完成后 resolve；
+          // 两种情况都覆盖，避免 afterEach 在"导航已完成才注册插件"时永远不触发
+          const ready = options.router.isReady
+            ? options.router.isReady()
+            : new Promise<void>((resolve) => {
+                const unsub = options.router!.afterEach(() => {
+                  unsub();
+                  resolve();
+                });
+              });
+          ready.then(doSetLanguage).catch(doSetLanguage);
         } else {
           doSetLanguage();
         }
