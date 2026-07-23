@@ -1,5 +1,11 @@
 # @kit/i18n-runtime
 
+## 0.0.6
+
+### Patch Changes
+
+- 添加shadow dom配置
+
 ## 0.0.5
 
 ### Patch Changes
