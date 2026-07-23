@@ -1,5 +1,11 @@
 # @kit/i18n-runtime
 
+## 0.0.5
+
+### Patch Changes
+
+- getPath
+
 ## 0.0.4
 
 ### Patch Changes
