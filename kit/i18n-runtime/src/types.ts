@@ -7,6 +7,12 @@ export interface NodeState {
 
 export interface PackEntry {
   translation: string;
+  /**
+   * 该词条最近一次“写入 L2”的时间戳（setMany 落盘 / 远端 pack 拉取时更新），
+   * 命中读取（PackStore.get）时并不刷新。因此 LocalStorageAdapter 的淘汰实际是
+   * 按“最久未写入”排序，是对 LRU 的近似而非严格 LRU——命中读取不刷新时间戳是
+   * 有意为之，避免每次读命中都触发一次 localStorage 写放大。
+   */
   lastUsedAt: number;
 }
 

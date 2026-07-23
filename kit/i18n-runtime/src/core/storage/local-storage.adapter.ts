@@ -8,8 +8,11 @@ export interface LocalStorageAdapterOptions {
 }
 
 /**
- * localStorage 是缓存而非权威源（L3 后端才是），配额溢出时按 lastUsedAt 做 LRU 淘汰
+ * localStorage 是缓存而非权威源（L3 后端才是），配额溢出时按 lastUsedAt 排序淘汰旧词条
  * 而不是放弃整个缓存：被淘汰的词条下次命中时重新走翻译流程，只影响命中率不影响正确性。
+ *
+ * 注意：lastUsedAt 只在写入时更新、读命中不刷新（见 PackEntry 注释），所以这里是按
+ * “最久未写入”排序的近似 LRU，而非严格意义的 LRU。对缓存命中率无实质影响，属有意取舍。
  */
 export class LocalStorageAdapter implements PackStorageAdapter {
   private readonly maxEntries: number;
