@@ -29,6 +29,8 @@ export interface I18nRuntimeConfig {
   glossary?: string[];
   /** 获取当前路由路径的回调函数，返回值会随翻译请求和语言包请求传给后端；不传则路径为空 */
   getCurrentPath?: () => string;
+  /** 是否扫描 open shadow root 内的文本，默认 true；设为 false 可关闭所有 shadow DOM 翻译 */
+  scanShadowDOM?: boolean;
   /** backend provider 的接口自定义配置（仅当 provider 为 'backend' 时生效） */
   backendOptions?: {
     /** 翻译接口路径，默认 '/translate' */
@@ -237,6 +239,7 @@ export function createEngine(): I18nRuntimeEngine {
         debounceMs: userConfig.debounceMs,
         maxBatchSize: userConfig.maxBatchSize,
         extraAttrs: userConfig.extraAttrs,
+        scanShadowDOM: userConfig.scanShadowDOM,
         getCached: (hash) => packStore!.get(currentLang, hash),
         onCacheHit: (candidate, translation) => applyCandidate(candidate, translation, currentLang),
         onBatch: (candidates) => {

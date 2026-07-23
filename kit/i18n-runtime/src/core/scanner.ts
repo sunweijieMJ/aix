@@ -48,6 +48,8 @@ export interface ScannerOptions {
   getCached?: (hash: string) => string | undefined;
   /** getCached 命中时的同步写回回调 */
   onCacheHit?: (candidate: TranslationCandidate, translation: string) => void;
+  /** 是否扫描 open shadow root，默认 true；false 时跳过所有 shadow DOM */
+  scanShadowDOM?: boolean;
 }
 
 function defaultScheduleIdle(work: () => void): void {
@@ -133,6 +135,7 @@ export class Scanner {
       maxBatchSize: options.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE,
       onBatch: options.onBatch,
       extraAttrs: options.extraAttrs ?? [],
+      scanShadowDOM: options.scanShadowDOM ?? true,
       scheduleIdle: options.scheduleIdle ?? defaultScheduleIdle,
       scheduleFirst: options.scheduleFirst ?? options.scheduleIdle ?? defaultScheduleRaf,
       getCached: options.getCached,
@@ -157,8 +160,7 @@ export class Scanner {
       let node: Node | null;
       while (processed < FULL_SCAN_CHUNK_SIZE && (node = walker.nextNode())) {
         this.collect(node);
-        // 发现 open shadow root，递归扫描
-        if (node.nodeType === Node.ELEMENT_NODE) {
+        if (this.options.scanShadowDOM && node.nodeType === Node.ELEMENT_NODE) {
           const sr = (node as Element).shadowRoot;
           if (sr) this.scanFull(sr);
         }
@@ -174,6 +176,7 @@ export class Scanner {
 
   observe(root: Node): void {
     this.observeRoot(root);
+    if (!this.options.scanShadowDOM) return;
     // 对已存在的 shadow root 也建立观察
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
     let node: Node | null;
@@ -195,7 +198,7 @@ export class Scanner {
           mutation.addedNodes.forEach((added) => {
             this.scanSubtree(added);
             // 新增节点如果带 shadow root，也要进入扫描和观察
-            if (added.nodeType === Node.ELEMENT_NODE) {
+            if (this.options.scanShadowDOM && added.nodeType === Node.ELEMENT_NODE) {
               const sr = (added as Element).shadowRoot;
               if (sr) {
                 this.scanFull(sr);
@@ -240,7 +243,17 @@ export class Scanner {
     });
     this.collect(root);
     let node: Node | null;
-    while ((node = walker.nextNode())) this.collect(node);
+    while ((node = walker.nextNode())) {
+      this.collect(node);
+      // TreeWalker 无法穿越 shadow DOM 边界，遇到 shadow host 时手动递归进入
+      if (this.options.scanShadowDOM && node.nodeType === Node.ELEMENT_NODE) {
+        const sr = (node as Element).shadowRoot;
+        if (sr) {
+          this.scanFull(sr);
+          this.observeRoot(sr);
+        }
+      }
+    }
   }
 
   private collect(node: Node): void {
