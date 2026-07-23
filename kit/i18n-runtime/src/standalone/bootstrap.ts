@@ -7,6 +7,19 @@ import {
 import type { ProviderName } from '../types.js';
 import type { StorageOption } from '../core/storage/index.js';
 
+/**
+ * 逗号分隔的 data-* 解析成字符串数组；未传（undefined）时返回 undefined 以走配置默认，
+ * 传了但内容为空（如 data-glossary="" 或纯逗号）时也返回 undefined，避免下发无意义的空数组。
+ */
+function parseList(value: string | undefined): string[] | undefined {
+  if (value === undefined) return undefined;
+  const list = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return list.length > 0 ? list : undefined;
+}
+
 export function parseConfigFromDataset(
   dataset: DOMStringMap,
 ): I18nRuntimeConfig & { initialLanguage?: string } {
@@ -26,6 +39,12 @@ export function parseConfigFromDataset(
     maxBatchSize: dataset.maxBatchSize ? Number(dataset.maxBatchSize) : undefined,
     storage: dataset.storage as StorageOption | undefined,
     maxEntries: dataset.maxEntries ? Number(dataset.maxEntries) : undefined,
+    // data-extra-attrs / data-glossary 逗号分隔；未传则由 engine 走默认（不翻额外属性 / 无术语表）
+    extraAttrs: parseList(dataset.extraAttrs),
+    glossary: parseList(dataset.glossary),
+    // data-scan-shadow-dom：未传保持默认 true，仅显式设为 "false" 时关闭 shadow DOM 扫描
+    scanShadowDOM:
+      dataset.scanShadowDom === undefined ? undefined : dataset.scanShadowDom !== 'false',
     initialLanguage: dataset.initialLanguage,
   };
 }

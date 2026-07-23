@@ -48,6 +48,37 @@ describe('parseConfigFromDataset', () => {
     const config = parseConfigFromDataset({} as DOMStringMap);
     expect(config.languages).toEqual([]);
   });
+
+  it('应解析 data-extra-attrs / data-glossary 为去空格去空项的数组', () => {
+    const config = parseConfigFromDataset({
+      languages: 'en',
+      extraAttrs: 'data-placeholder, data-tip ,',
+      glossary: 'AIX, ByteDance',
+    } as DOMStringMap);
+
+    expect(config.extraAttrs).toEqual(['data-placeholder', 'data-tip']);
+    expect(config.glossary).toEqual(['AIX', 'ByteDance']);
+  });
+
+  it('未传 extraAttrs/glossary 时应为 undefined（走 engine 默认），空串也归一为 undefined', () => {
+    const config = parseConfigFromDataset({ languages: 'en', glossary: ' , ' } as DOMStringMap);
+    expect(config.extraAttrs).toBeUndefined();
+    expect(config.glossary).toBeUndefined();
+  });
+
+  it('data-scan-shadow-dom 未传保持默认（undefined），显式 "false" 才关闭，其它值视为开启', () => {
+    expect(
+      parseConfigFromDataset({ languages: 'en' } as DOMStringMap).scanShadowDOM,
+    ).toBeUndefined();
+    expect(
+      parseConfigFromDataset({ languages: 'en', scanShadowDom: 'false' } as DOMStringMap)
+        .scanShadowDOM,
+    ).toBe(false);
+    expect(
+      parseConfigFromDataset({ languages: 'en', scanShadowDom: 'true' } as DOMStringMap)
+        .scanShadowDOM,
+    ).toBe(true);
+  });
 });
 
 describe('bootstrap', () => {
