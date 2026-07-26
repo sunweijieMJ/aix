@@ -91,12 +91,13 @@ function LanguageSwitcher() {
 | `languages` | `string[]` | 支持的目标语言列表 |
 | `sourceLang` | `string` | 默认 `'zh'` |
 | `router` | `Router` | 可选，Vue Router 实例（仅插件接入方式） |
-| `debounceMs` | `number` | 默认 `200` |
+| `debounceMs` | `number` | 攒批防抖间隔，默认 `50` |
 | `maxBatchSize` | `number` | 默认 `50` |
 | `storage` | `'localStorage' \| 'indexedDB' \| PackStorageAdapter` | 默认 `'localStorage'` |
 | `maxEntries` | `number` | 仅在 `storage: 'localStorage'`（默认）时生效，L2 单语言最大条目数，默认 `2000`，超出 LRU 淘汰；`storage: 'indexedDB'` 时该配置被忽略（并打印一次 console.warn），IndexedDB 容量远大于 localStorage 不需要淘汰兜底 |
 | `extraAttrs` | `string[]` | 除 `placeholder` / `title` / `alt` 之外，额外需要翻译的 HTML 属性名，如 `['data-placeholder']` |
 | `glossary` | `string[]` | 全局术语表，翻译时传给后端，防止品牌名/专有名词被翻译 |
+| `scanShadowDOM` | `boolean` | 是否扫描 open shadow root 内的文本，默认 `true`；设为 `false` 关闭所有 shadow DOM 翻译（script 标签方式对应 `data-scan-shadow-dom="false"`） |
 | `getCurrentPath` | `() => string` | 获取当前路由路径的回调函数，返回值会随翻译请求和语言包请求传给后端（用于按页面分组缓存）；不传则路径为空 |
 | `backendOptions` | `object` | backend provider 的接口自定义配置，见下方详细说明 |
 
@@ -115,8 +116,18 @@ function LanguageSwitcher() {
 
 ## 排除翻译
 
+手动排除（整棵子树，含元素自身的属性）：
+
 - 标准属性：`<div translate="no">品牌名</div>`
 - 自定义属性：`<div data-i18n-skip>不翻译</div>`
+
+标记挂在 shadow host 上时对其 shadow root 内部同样生效。
+
+默认自动排除：
+
+- `<script>` / `<style>` / `<noscript>` 整棵子树
+- `<textarea>` 和 `contenteditable` 元素的**文本内容**（那是用户表单值，翻译会篡改待提交的数据）；但它们的 `placeholder` / `title` 等属性仍会正常翻译
+- 不含任何 Unicode 字母的文本（纯数字、纯符号、纯空白）
 
 ## 后端接口契约
 
@@ -170,6 +181,8 @@ function LanguageSwitcher() {
 }
 ```
 
-- `version` 由后端自行生成（时间戳、自增号、内容 hash 均可），前端只做字符串比较：与本地缓存（L2）已有的 version 不同就整包替换本地缓存，相同则直接跳过，不做语义解析
+- `version` 由后端自行生成（时间戳、自增号、内容 hash 均可），前端只做字符串比较：与本地缓存（L2）已有的 version 相同就直接跳过，不同则把整包 `entries` **合并**进本地缓存（同 hash 以远端为准），不做语义解析
+- 注意合并语义的取舍：本地不会因为远端少了某个 hash 就删掉它（并发的 `/translate` 结果可能还没落盘，整包覆盖会把它们冲掉）。因此**修改**译文能即时生效，**删除**译文不会同步到已有客户端，只会等 `maxEntries` LRU 淘汰。需要强制清除时请换一个 `hash`（即改动原文）或提升 `maxEntries` 之外的手段
+- 译文为空字符串的词条会被丢弃、不进缓存（写回 DOM 等于抹掉页面内容），等同于该 hash 未翻译
 - `entries` 是该语言的全量 `hash -> translation` 映射
 - HTTP 状态码非 `2xx`，或响应体 `code !== 0`，均视为拉取失败；此时静默降级使用本地已有的 L1/L2 缓存，不阻塞、不抛出未捕获异常
