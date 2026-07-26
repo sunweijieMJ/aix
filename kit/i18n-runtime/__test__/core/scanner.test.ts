@@ -86,6 +86,47 @@ describe('Scanner.scanFull', () => {
     expect(texts).toEqual(['正常文本']);
   });
 
+  it('扫描根节点自身带跳过标记时，它的属性和整棵子树都不应被采集', () => {
+    // TreeWalker 的 root 不参与自身的 filter 判定，root 上的跳过标记必须显式检查一次，
+    // 否则 <body data-i18n-skip>（整页临时关闭翻译）这种用法会完全失效
+    document.body.setAttribute('data-i18n-skip', '');
+    document.body.innerHTML = `<p>整页都不该翻译</p>`;
+    document.body.setAttribute('title', '也不该翻译的提示');
+    const onBatch = vi.fn();
+    vi.useFakeTimers();
+    createScanner(onBatch).scanFull(document.body);
+    vi.runAllTimers();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    document.body.removeAttribute('data-i18n-skip');
+    document.body.removeAttribute('title');
+    expect(texts).toEqual([]);
+  });
+
+  it('scanFull 不应采集扫描根自身的属性（只有 addRoot 显式传入的 root 才连自身一起采集）', () => {
+    document.body.innerHTML = `<p>正常文本</p>`;
+    document.body.setAttribute('title', 'body 自身的提示');
+    const onBatch = vi.fn();
+    vi.useFakeTimers();
+    createScanner(onBatch).scanFull(document.body);
+    vi.runAllTimers();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    document.body.removeAttribute('title');
+    expect(texts).toEqual(['正常文本']);
+  });
+
+  it('应跳过 textarea 内的文本（那是用户表单值，翻译会篡改提交内容）', () => {
+    document.body.innerHTML = `<textarea>用户草稿内容</textarea><p>正常文本</p>`;
+    const onBatch = vi.fn();
+    vi.useFakeTimers();
+    createScanner(onBatch).scanFull(document.body);
+    vi.runAllTimers();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toEqual(['正常文本']);
+  });
+
   it('应收集 placeholder/title/alt 属性为 attr candidate', () => {
     document.body.innerHTML = `<input placeholder="请输入姓名" /><img alt="示意图" /><span title="提示文案"></span>`;
     const onBatch = vi.fn();
@@ -326,6 +367,126 @@ describe('Scanner.observe', () => {
 
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
     expect(texts).not.toContain('改变后的文本不该翻译');
+  });
+
+  it('同一个 shadow root 被反复扫描到时不应重复建立 MutationObserver（否则 observer 泄漏、候选成倍放大）', async () => {
+    document.body.innerHTML = '';
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<span>影子里的初始文本</span>';
+    const wrapper = document.createElement('section');
+    wrapper.appendChild(host);
+
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: 0 });
+    scanner.observe(document.body);
+
+    // 模拟 v-if / keep-alive 反复切换：同一个 shadow host 随父容器多次进出 DOM，
+    // 每次进入都会被 scanSubtree 重新走到，但 shadow root 始终是同一个对象
+    for (let i = 0; i < 3; i++) {
+      document.body.appendChild(wrapper);
+      await flushMicrotasks();
+      wrapper.remove();
+      await flushMicrotasks();
+    }
+    document.body.appendChild(wrapper);
+    await flushMicrotasks();
+
+    onBatch.mockClear();
+    const p = document.createElement('p');
+    p.textContent = '影子里新增的文本';
+    shadow.appendChild(p);
+    await flushMicrotasks();
+    scanner.disconnect();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    // 重复注册 observer 会让同一次 mutation 被回调多次，候选按注册次数成倍出现
+    expect(texts).toEqual(['影子里新增的文本']);
+  });
+
+  it('新增节点自身就是带 data-i18n-skip 的 shadow host 时，其 shadow root 内容不应被扫描', async () => {
+    document.body.innerHTML = '';
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: 0 });
+    scanner.observe(document.body);
+
+    // MutationObserver 的 childList 分支对 addedNode 自身的 shadowRoot 单独走一遍
+    // scanFull(sr)，这条路径必须也能看见挂在 host 上的跳过标记
+    const host = document.createElement('div');
+    host.setAttribute('data-i18n-skip', '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<span>影子里不该翻译的文本</span>';
+    document.body.appendChild(host);
+
+    await flushMicrotasks();
+    scanner.disconnect();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toEqual([]);
+  });
+
+  it('shadow host 带 data-i18n-skip 时，shadow root 内部的增量变化也不应被采集', async () => {
+    document.body.innerHTML = '';
+    const host = document.createElement('div');
+    host.setAttribute('data-i18n-skip', '');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<span>影子里的初始文本</span>';
+    document.body.appendChild(host);
+
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: 0 });
+    scanner.observe(document.body);
+
+    const p = document.createElement('p');
+    p.textContent = '影子里新增的文本';
+    shadow.appendChild(p);
+
+    await flushMicrotasks();
+    scanner.disconnect();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    // 跳过标记挂在 shadow host 上，parentElement 上溯到不了 host，必须显式跨 shadow 边界判断
+    expect(texts).toEqual([]);
+  });
+});
+
+describe('Scanner.addRoot', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.useRealTimers();
+  });
+
+  function flushMicrotasks(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  it('addRoot 传入元素时应采集该元素自身的属性（TreeWalker 不会 yield root 自身）', async () => {
+    const input = document.createElement('input');
+    input.setAttribute('placeholder', '请输入姓名');
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: 0 });
+
+    scanner.addRoot(input);
+    await flushMicrotasks();
+    scanner.disconnect();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toEqual(['请输入姓名']);
+  });
+
+  it('addRoot 传入 shadow host 元素时应采集其 shadow root 内的文本', async () => {
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<span>影子里的文本</span>';
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: 0 });
+
+    scanner.addRoot(host);
+    await flushMicrotasks();
+    scanner.disconnect();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toContain('影子里的文本');
   });
 });
 

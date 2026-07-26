@@ -4,6 +4,12 @@ import { isTranslatable, normalize } from './normalizer.js';
 import type { TranslatableAttr, TranslationCandidate } from '../types.js';
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT']);
+/**
+ * 这些元素的**文本内容**是用户表单值而非展示文案，翻译会篡改用户即将提交的数据，
+ * 必须跳过；但它们的 placeholder/title 等属性仍然是展示文案，照常翻译——
+ * 所以不能放进 SKIP_TAGS（那会连属性一起跳过），只在 collectText 里挡住。
+ */
+const TEXT_SKIP_SELECTOR = 'textarea, [contenteditable]:not([contenteditable="false"])';
 const ATTR_NAMES: TranslatableAttr[] = ['placeholder', 'title', 'alt'];
 /** 属性没有 WeakMap 可挂（node-registry 只认 Text 节点），原文存到同名 data-i18n-orig-* 属性上，
  *  跟随元素生命周期，元素销毁时自动一起消失，不需要额外清理 */
@@ -93,13 +99,20 @@ function acceptNode(node: Node): number {
  * 场景不同：新增/变化的节点本身就是遍历的起点（TreeWalker 的 root 从不参与自身的 filter
  * 判定），如果排除标记挂在一个早就存在于 DOM 里的祖先容器上（容器本身没变化，只是它内部
  * 增量新增/修改了内容），只检查新增节点自身永远发现不了这层排除关系。必须显式沿父链向上找。
+ *
+ * 上溯必须跨过 shadow 边界：ShadowRoot 的 parentNode 为 null（顶层子元素的 parentElement
+ * 也是 null），父链会在这里断掉，导致挂在 shadow host 上的跳过标记对 shadow 内部完全失效。
+ * 走到 ShadowRoot 时改走 host 继续往上，才能让 skip 语义在 shadow DOM 里保持一致。
  */
 function isInsideSkippedSubtree(node: Node): boolean {
-  let el: Element | null =
-    node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
-  while (el) {
-    if (isElementSkipped(el)) return true;
-    el = el.parentElement;
+  // 起点直接用 node 自身，循环里再按 nodeType 决定是否参与判定：这样 Text（跳过判定走父链）、
+  // Element（判定自身）、ShadowRoot（跳到 host 继续）三种起点都能统一处理。
+  // 起点若是 ShadowRoot 而这里先取了 parentNode（恒为 null），就会漏掉 host 上的跳过标记。
+  let current: Node | null = node;
+  while (current) {
+    if (current.nodeType === Node.ELEMENT_NODE && isElementSkipped(current as Element)) return true;
+    // 普通节点走 parentNode；ShadowRoot 的 parentNode 为 null，改跳到它的 host 继续上溯
+    current = current.parentNode ?? ((current as ShadowRoot).host as Node | undefined) ?? null;
   }
   return false;
 }
@@ -125,6 +138,13 @@ export class Scanner {
   private readonly queue: TranslationCandidate[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly observers: MutationObserver[] = [];
+  /**
+   * 已建立观察的根节点，用于防止同一个 root 被重复 observe。
+   * shadow host 随父容器反复进出 DOM（v-if / keep-alive）时，每次进入都会被 scanSubtree
+   * 重新走到，但它的 shadowRoot 始终是同一个对象、上一个 observer 也仍然有效——不去重就会
+   * 线性堆积 observer，同一次 mutation 被回调 N 次，候选成倍放大。
+   */
+  private readonly observedRoots = new WeakSet<Node>();
   private stopped = false;
 
   constructor(options: ScannerOptions) {
@@ -149,13 +169,38 @@ export class Scanner {
     this.targetLang = lang;
   }
 
-  scanFull(root: Node): void {
+  /**
+   * @param options.includeRoot 是否连 root 自身的属性一起采集。默认 false：常规全量扫描
+   *   传的是 document.body 这类容器，采集它自身的属性没有意义。addRoot() 场景必须传 true——
+   *   业务把待翻译的元素本身交了过来，漏掉它自己的 placeholder/title 等于这次调用白调。
+   */
+  scanFull(root: Node, options: { includeRoot?: boolean } = {}): void {
+    // root 自身（或它的某个祖先）带跳过标记时整体放弃，和 scanSubtree 保持对称。
+    // TreeWalker 的 root 从不参与自身的 filter 判定，不在这里显式挡一次的话，
+    // root 上的跳过标记对它自己的属性和整棵子树都会失效（<body data-i18n-skip> 直接没用）。
+    if (isInsideSkippedSubtree(root)) return;
+
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
       acceptNode,
     });
 
+    // TreeWalker 从不 yield 自己的 root，root 自身的属性和它挂着的 shadow root 都得显式
+    // 处理一次。漏掉这一步时 addRoot(element) 会整体失效——业务传进来待翻译的那个元素本身，
+    // 属性不会被采集，shadow root 也完全扫不到。
+    // 注意 shadow 递归与 includeRoot 无关：进入 root 的 shadow 树扫的是"root 内部的内容"，
+    // 不是"root 自身"，document.body 这类容器也没有 shadow root，放开不会有副作用。
+    let rootHandled = false;
+
     const step = (): void => {
       if (this.stopped) return;
+      if (!rootHandled) {
+        rootHandled = true;
+        if (options.includeRoot) this.collect(root);
+        if (this.options.scanShadowDOM && root.nodeType === Node.ELEMENT_NODE) {
+          const rootShadow = (root as Element).shadowRoot;
+          if (rootShadow) this.scanFull(rootShadow);
+        }
+      }
       let processed = 0;
       let node: Node | null;
       while (processed < FULL_SCAN_CHUNK_SIZE && (node = walker.nextNode())) {
@@ -177,8 +222,9 @@ export class Scanner {
   observe(root: Node): void {
     this.observeRoot(root);
     if (!this.options.scanShadowDOM) return;
-    // 对已存在的 shadow root 也建立观察
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    // 对已存在的 shadow root 也建立观察；同样要带 acceptNode（对齐 scanFull/scanSubtree），
+    // 否则会给标记了跳过的 host 也建起 observer，白白观察一棵永远不会被采集的子树
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, { acceptNode });
     let node: Node | null;
     while ((node = walker.nextNode())) {
       const sr = (node as Element).shadowRoot;
@@ -186,8 +232,11 @@ export class Scanner {
     }
   }
 
-  /** 为单个根节点（含 shadow root）建立 MutationObserver */
+  /** 为单个根节点（含 shadow root）建立 MutationObserver；同一个 root 只会建立一次 */
   private observeRoot(root: Node): void {
+    if (this.observedRoots.has(root)) return;
+    this.observedRoots.add(root);
+
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'characterData' && mutation.target.nodeType === Node.TEXT_NODE) {
@@ -215,7 +264,8 @@ export class Scanner {
 
   /** 手动注册额外的根节点（用于 closed shadow root 或业务已知的 shadow root） */
   addRoot(root: Node): void {
-    this.scanFull(root);
+    // includeRoot：业务显式交过来的这个节点本身也要翻，不能只翻它的子孙
+    this.scanFull(root, { includeRoot: true });
     this.observeRoot(root);
   }
 
@@ -267,8 +317,8 @@ export class Scanner {
   }
 
   private collectText(node: Text): void {
-    // 跳过 contenteditable 元素内的文本节点（用户正在编辑的内容）
-    if (node.parentElement?.closest('[contenteditable]:not([contenteditable="false"])')) {
+    // 跳过 textarea / contenteditable 内的文本节点（用户表单值，不是展示文案）
+    if (node.parentElement?.closest(TEXT_SKIP_SELECTOR)) {
       return;
     }
 
