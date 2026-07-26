@@ -182,10 +182,16 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     get: () => active.value?.messages ?? [],
     set: (msgs) => {
       const c = active.value;
-      if (c) {
-        localDirty = true;
-        c.messages = msgs;
-      }
+      if (!c) return;
+      // 「空 → 空」是无效写入，直接忽略（不置脏、不赋值）：AiChat 的 v-model:messages 桥接
+      // 在 setup 期会把内部尚且为空的 active path 镜像回写过来（见 AiChat.vue 的 SSOT 桥接），
+      // 若据此置 localDirty，异步 storage.load() 的结果会被 applyLoaded 整体丢弃（违反
+      // 「load 有数据时以 load 为准」），且之后任意一次用户变更都会把空的默认会话写回
+      // storage、覆盖已持久化的真实历史（数据丢失，而非仅不展示）。
+      // 用户主动清空（旧值非空 → 新值空）是有意义的变更，不在此列，照常置脏并赋值。
+      if (msgs.length === 0 && (c.messages?.length ?? 0) === 0) return;
+      localDirty = true;
+      c.messages = msgs;
     },
   });
 

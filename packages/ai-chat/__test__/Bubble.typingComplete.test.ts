@@ -92,4 +92,59 @@ describe('Bubble 消息级 typing-complete 聚合（回归：completedIds 时序
     await nextTick();
     expect(w.emitted('typing-complete')).toBeTruthy();
   });
+
+  // 上一条（纯 tool_use / ids 为空）的对称情形：ids 非空、但其中某块文本长度为 0。
+  // useTypewriter.fireComplete 有 `len > 0` 守卫，空源永不上抛块级完成事件 →
+  // completedLens 里没有该块的记录（undefined），与 blockTextLen 的 0 判不相等 →
+  // fireIfSettled 恒不满足，消息级 typing-complete 永不触发（BubbleList.completedIds
+  // 不登记 → typing 常开 → 虚拟列表重挂载时自定义块渲染器重播）。
+  // 空块可由业务 parser 的 1→N 拆分、或自定义 parseChunk 经 block 字段下发产生。
+  it.each([
+    ['空 text 块在末位', [textBlock('你好'), { ...textBlock(''), id: 'empty-tail' }]],
+    ['空 text 块在首位', [{ ...textBlock(''), id: 'empty-head' }, textBlock('你好')]],
+    [
+      '空 reasoning 块',
+      [textBlock('正文'), { id: 'empty-reasoning', type: 'reasoning', text: '' } as ContentBlock],
+    ],
+  ])('%s 不阻塞消息级 typing-complete', async (_name, content) => {
+    const w = mount(Bubble, {
+      props: {
+        itemKey: 'm4',
+        content: content as ContentBlock[],
+        status: 'updating',
+        typing: true,
+      },
+    });
+    await advance(600); // 非空块追平
+    await w.setProps({ status: 'success' });
+    await advance(300);
+    expect(w.emitted('typing-complete')).toBeTruthy();
+  });
+
+  it('空块场景仍遵守「未追平不上抛」：非空块尚在逐字时不得提前完成', async () => {
+    const long = '这是一段较长的输出内容，需要打字机较长时间才能追平。'.repeat(20);
+    const w = mount(Bubble, {
+      props: {
+        itemKey: 'm5',
+        content: [
+          { ...textBlock(''), id: 'e1' },
+          { ...textBlock(''), id: 'long' },
+        ],
+        status: 'updating',
+        typing: true,
+      },
+    });
+    await nextTick();
+    await w.setProps({
+      content: [
+        { ...textBlock(''), id: 'e1' },
+        { ...textBlock(long), id: 'long' },
+      ],
+      status: 'success',
+    });
+    await advance(150); // 长块远未追平
+    expect(w.emitted('typing-complete')).toBeUndefined();
+    await advance(long.length * 40);
+    expect(w.emitted('typing-complete')).toBeTruthy();
+  });
 });

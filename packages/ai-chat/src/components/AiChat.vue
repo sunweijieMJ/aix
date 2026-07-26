@@ -778,6 +778,12 @@ provide(QUOTE_LOCATE_KEY, (q: Quote) => locateAnchor(q.anchor));
 // 包一层：对外抛 send 事件后再委托 useChat；pendingQuotes 打包成一等 quote 块前置进 content
 // （单源真源，无 extra.quotes；见设计 §2.1），发送即清空
 const onSend = (text: string, attachments?: AttachmentItem[], meta?: SubmitMeta) => {
+  // 并发守卫与 useChat.onSend 的 isLoading 守卫对齐：本函数是命令式公开 API（defineExpose）
+  // 的入口，流式期间被外部调用时下游会静默拒收，若仍往下走就会 ① 抛出一个消息根本没发出的
+  // send 事件（业务据此埋点/持久化即失真）② 清空用户攒好的 pendingQuotes 且不可恢复。
+  // 提前返回让「未受理」在此收敛，与 onEditMessage / onBlockAction 的「仅受理时才对外透出」
+  // 同一原则。Sender 内部路径本就有 doSubmit 守卫，不受影响。
+  if (isLoading.value) return;
   const quotes = pendingQuotes.value;
   tempSuggestions.value = null; // 发送即清除通道①临时建议（含点击建议本身）
   // meta 存在才携带第三参：无 meta 时保持旧签名（一/两参）完全兼容

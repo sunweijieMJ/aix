@@ -263,4 +263,51 @@ describe('AiChat quote 接线', () => {
     const { w } = mountChat({ defaultMessages: history, quote: false });
     expect(w.find('.aix-quote-block').text()).toContain('旧引文');
   });
+
+  // 回归：defineExpose 的 onSend 是文档化公开 API（README「通过 defineExpose 暴露
+  // messages / isLoading / onSend / ...」），但它无条件 emit('send') 并清空 pendingQuotes，
+  // 而内部 useChat.onSend 有 isLoading 守卫会静默拒收 → 流式期间调用会：
+  // ① 抛出一个消息根本没发出的 send 事件（业务据此埋点/持久化即失真）
+  // ② 把用户攒好的引用 chip 清空且不可恢复。
+  // Sender 内部路径（loading 期按 Enter）有 doSubmit 守卫，不受影响。
+  it('流式进行中调用 exposed onSend：不抛 send 事件、不清空引用 chip', async () => {
+    // 永不产出数据的流：把 isLoading 钉在 true
+    const request = vi.fn(async () => new ReadableStream<Uint8Array>({ start() {} }));
+    const w = mount(AiChat, {
+      props: { request, defaultMessages: [aiMsg], quote: true },
+      attachTo: document.body,
+    });
+    const vm = w.vm as unknown as { onSend: (t: string) => unknown; isLoading: boolean };
+
+    void vm.onSend('第一条');
+    await flushPromises();
+    expect(vm.isLoading).toBe(true);
+    const sendCountBefore = w.emitted('send')!.length;
+
+    // 攒一个引用 chip（走与 PC 操作栏完全相同的出口）
+    await w.find('button[aria-label="引用"]').trigger('click');
+    expect(w.findAll('.aix-quote-chip')).toHaveLength(1);
+
+    void vm.onSend('流式期间插队的第二条');
+    await flushPromises();
+
+    // 消息未新增（useChat 守卫拒收）→ 对外事件与待发引用都必须保持原样
+    expect(w.emitted('send')!.length).toBe(sendCountBefore);
+    expect(w.findAll('.aix-quote-chip')).toHaveLength(1);
+  });
+
+  it('非流式时 exposed onSend 照常工作（守卫不得误伤正常路径）', async () => {
+    const { w } = mountChat();
+    const vm = w.vm as unknown as { onSend: (t: string) => unknown; messages: ChatMessage[] };
+    await w.find('button[aria-label="引用"]').trigger('click');
+    expect(w.findAll('.aix-quote-chip')).toHaveLength(1);
+
+    await vm.onSend('正常发送');
+    await flushPromises();
+
+    expect(w.emitted('send')).toHaveLength(1);
+    const user = vm.messages.find((m) => m.role === 'user')!;
+    expect(user.content.map((b) => b.type)).toEqual(['quote', 'text']);
+    expect(w.findAll('.aix-quote-chip')).toHaveLength(0); // 发送成功才清空
+  });
 });

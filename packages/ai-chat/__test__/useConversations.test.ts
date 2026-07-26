@@ -336,6 +336,74 @@ describe('useConversations', () => {
       expect(c.conversations.value.map((x) => x.id)).toEqual([newId]);
     });
 
+    // 回归：AiChat 挂载期会把内部空 active path 镜像回写给 v-model:messages（见 AiChat.vue
+    // 的 SSOT 桥接），这次「空 → 空」的无效写入落到 activeMessages setter 上，若被计为
+    // localDirty，异步 storage.load() 的结果会被 applyLoaded 整体丢弃，违反「load 有数据
+    // 时以 load 为准」的契约；更严重的是之后任意一次用户变更都会把空默认写回 storage，
+    // 覆盖已持久化的真实历史（数据丢失，而非仅不展示）。
+    it('空数组写入 activeMessages 不计为本地变更，不丢弃 load 结果', async () => {
+      let resolveLoad!: (v: Conversation[]) => void;
+      const storage: ConversationStorage = {
+        load: () =>
+          new Promise<Conversation[]>((resolve) => {
+            resolveLoad = resolve;
+          }),
+        save: () => {},
+      };
+      const c = useConversations({
+        // 与远端同 id 的空壳会话（常见接法：先渲染占位再异步补历史）
+        defaultConversations: [{ id: 'x', label: '新对话', messages: [] }],
+        storage,
+      });
+      // 模拟 AiChat 挂载期的镜像回写：内部消息为空 → 写回空数组
+      c.activeMessages.value = [];
+      resolveLoad([conv('x', 'X')]);
+      await flushAsync();
+      expect(c.activeMessages.value).toHaveLength(1);
+      expect(messageText(c.activeMessages.value[0]!)).toBe('X 的消息');
+    });
+
+    it('非空写入 activeMessages 仍计为本地变更（不得因上条修复而放宽）', async () => {
+      let resolveLoad!: (v: Conversation[]) => void;
+      const storage: ConversationStorage = {
+        load: () =>
+          new Promise<Conversation[]>((resolve) => {
+            resolveLoad = resolve;
+          }),
+        save: () => {},
+      };
+      const c = useConversations({
+        defaultConversations: [{ id: 'x', label: '新对话', messages: [] }],
+        storage,
+      });
+      c.activeMessages.value = [textMessage('user', '用户已经开始输入')];
+      resolveLoad([conv('x', 'X')]);
+      await flushAsync();
+      // 用户已有真实操作：load 的旧快照不得整体覆盖
+      expect(messageText(c.activeMessages.value[0]!)).toBe('用户已经开始输入');
+    });
+
+    it('空数组覆盖已有消息时仍计为本地变更（真实清空语义不被吞掉）', async () => {
+      let resolveLoad!: (v: Conversation[]) => void;
+      const storage: ConversationStorage = {
+        load: () =>
+          new Promise<Conversation[]>((resolve) => {
+            resolveLoad = resolve;
+          }),
+        save: () => {},
+      };
+      const c = useConversations({
+        // 初始已有消息，用户主动清空 → 空数组写入是有意义的变更
+        defaultConversations: [conv('x', 'X')],
+        storage,
+      });
+      expect(c.activeMessages.value).toHaveLength(1);
+      c.activeMessages.value = [];
+      resolveLoad([conv('x', 'X')]);
+      await flushAsync();
+      expect(c.activeMessages.value).toHaveLength(0);
+    });
+
     it('load 落地本身不触发防抖 save，仅用户后续变更才触发', async () => {
       const save = vi.fn();
       const storage: ConversationStorage = { load: () => [conv('x', 'X')], save };

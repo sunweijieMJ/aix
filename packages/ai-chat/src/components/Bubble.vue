@@ -167,7 +167,14 @@ const fireIfSettled = () => {
   // 空集合的 every() 恒为 true（vacuous truth）：内容全为非 text/reasoning 块
   // （纯 tool_use/chart/image 等）时视为「没有需要追平的块」，终态到达即算播完，
   // 不能因 ids 为空而提前 return，否则该消息永远等不到消息级 typing-complete。
-  if (!ids.every((id) => completedLens.get(id) === blockTextLen(id))) return;
+  //
+  // 未登记的块按追平长度 0 参与比较（`?? 0`）：useTypewriter.fireComplete 有 `len > 0`
+  // 守卫，**空文本块永不上抛块级完成事件**，completedLens 里没有它的记录。若按 undefined
+  // 直接比较，空块（blockTextLen 为 0）恒不满足，整条消息的完成聚合被永久阻塞——这是上面
+  // 「ids 为空即 vacuous truth」的对称情形（ids 非空但块长度为 0）。空块可由业务 parser 的
+  // 1→N 拆分、或自定义 parseChunk 经 block 字段下发产生。
+  // 非空块仍需真实追平才算数：其 blockTextLen > 0，`?? 0` 不会让它被误判为已完成。
+  if (!ids.every((id) => (completedLens.get(id) ?? 0) === blockTextLen(id))) return;
   settledFired.value = true;
   emit('typing-complete', { messageKey: props.itemKey ?? '' });
 };
