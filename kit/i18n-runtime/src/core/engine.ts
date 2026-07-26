@@ -81,7 +81,22 @@ export function getActiveEngine(): I18nRuntimeEngine | undefined {
     | undefined;
 }
 
+const VALID_PROVIDERS: readonly ProviderName[] = ['backend', 'libretranslate'];
+
 function validateConfig(config: I18nRuntimeConfig): void {
+  // 必须先校验枚举值：createProvider 是 if/else 结构，认不出的 provider 会静默落到
+  // libretranslate 分支、带着 undefined 的 url 去请求。standalone 尤其容易踩到
+  // （data-provider="" 是空串而不是 undefined，绕得过 ?? 'backend' 默认值）
+  if (!VALID_PROVIDERS.includes(config.provider)) {
+    throw new Error(
+      `[i18n-runtime] 不支持的 provider: ${String(config.provider)}，可选值: ${VALID_PROVIDERS.join(', ')}`,
+    );
+  }
+  if (config.fallbackProvider !== undefined && !VALID_PROVIDERS.includes(config.fallbackProvider)) {
+    throw new Error(
+      `[i18n-runtime] 不支持的 fallbackProvider: ${String(config.fallbackProvider)}，可选值: ${VALID_PROVIDERS.join(', ')}`,
+    );
+  }
   if (config.provider === 'backend' && !config.apiBase) {
     throw new Error('[i18n-runtime] provider 为 backend 时必须传 apiBase');
   }
@@ -138,6 +153,12 @@ export function createEngine(): I18nRuntimeEngine {
   let currentLang = '';
   let started = false;
   let observing = false;
+  /**
+   * 每次 start() 自增，用于识别"这批在途翻译属于哪一轮运行"。
+   * 光判断 started 布尔值不够：stop() 后立刻 start()（React StrictMode 的 unmount/remount
+   * 就是这个时序）它又变回 true，上一轮的在途批次会被当成运行中继续写回 DOM。
+   */
+  let runId = 0;
   const listeners = new Map<I18nRuntimeEvent, Set<(node: Text) => void>>();
 
   function emit(event: I18nRuntimeEvent, node: Text): void {
@@ -153,6 +174,15 @@ export function createEngine(): I18nRuntimeEngine {
 
     if (candidate.kind === 'text') {
       const node = candidate.node as Text;
+      // <option> 没有显式 value 属性时，表单提交值直接取自它的文本内容，改文本会连带
+      // 改掉提交值。option 文本又是必须翻译的展示文案（下拉框），不能像 textarea 那样
+      // 整体跳过，所以在写回前把浏览器此刻算出的 value（即原文）固化成显式属性：
+      // 显示层照常显示译文，提交值保持原文不变。用 tagName 而不是 instanceof，
+      // 避免跨 realm（iframe）时 instanceof 判定失效。
+      const parent = node.parentElement;
+      if (parent?.tagName === 'OPTION' && !parent.hasAttribute('value')) {
+        parent.setAttribute('value', (parent as HTMLOptionElement).value);
+      }
       node.textContent = restored;
       registry!.record(node, {
         originalText: candidate.originalText,
@@ -172,6 +202,7 @@ export function createEngine(): I18nRuntimeEngine {
 
   async function handleBatch(candidates: TranslationCandidate[]): Promise<void> {
     const lang = currentLang;
+    const batchRunId = runId;
     const sourceLang = config!.sourceLang ?? 'zh';
 
     const missing = candidates.filter((c) => packStore!.get(lang, c.hash) === undefined);
@@ -201,6 +232,14 @@ export function createEngine(): I18nRuntimeEngine {
         console.error('[i18n-runtime] 批量翻译失败，本批候选将在下次扫描时自动重试:', err);
       }
     }
+
+    // 翻译是异步的，等待期间业务可能已经调用 stop()：那时 scanner 已 disconnect、
+    // 尚未出队的候选也被丢弃，运行时对外的承诺是"不再改写 DOM"。已经出队的这批必须在
+    // 这里一并止步，否则 stop() 之后页面仍会突然被改写。译文本身已写进 packStore，
+    // 缓存不浪费，下次 start() 能直接命中。
+    // runId 比对额外挡住"stop() 后又 start()"的情况：那时 started 已经回到 true，
+    // 但这批候选属于上一轮运行（DOM 节点可能都已被卸载），不该由它来写。
+    if (!started || runId !== batchRunId) return;
 
     for (const candidate of candidates) {
       const translation = packStore!.get(lang, candidate.hash);
@@ -252,6 +291,7 @@ export function createEngine(): I18nRuntimeEngine {
         : createHistoryPatchWatcher();
 
       started = true;
+      runId += 1;
       if (typeof window !== 'undefined')
         (window as unknown as Record<string, unknown>)[GLOBAL_GUARD_KEY] = engine;
     },

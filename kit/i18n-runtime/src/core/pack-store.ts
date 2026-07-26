@@ -6,13 +6,30 @@ export interface PackStoreOptions {
 }
 
 /**
+ * 空译文一律不进缓存。机翻引擎对纯符号、超长截断、后端异常等输入会返回空串或纯空白，
+ * 而下游 engine 是按"查得到就写回 DOM"工作的——写回等于把页面文本和 placeholder
+ * 直接抹掉。在这里（唯一的数据入口）挡住，L1/L2 就永远不含空译文，下游所有消费点
+ * 不必各自防御；被丢掉的 hash 视为未翻译，下次扫描会自然重新入队重试。
+ *
+ * 判空用 trim() 而不是 falsy：`'0'` 是合法译文（计数、编号、纯数字标签），
+ * 用 `!translation` 会把它连带误杀。注意只用于判定可用性，不改写译文本身，
+ * 前后空白对某些语言（如需要空格分隔的拼接场景）是有意义的。
+ */
+function isUsableTranslation(translation: string): boolean {
+  return typeof translation === 'string' && translation.trim() !== '';
+}
+
+/**
  * 语言包三层缓存编排：
  * L1 内存 Map（当前会话最快查询）
  * L2 可插拔持久化存储（Task 4，默认 localStorage）
  * L3 后端（权威源，通过 fetchRemotePack 拉取）
  *
  * hydrate() 启动流程：优先用 L2（version 匹配可离线可用），
- * 同时异步请求 L3 校验 version，不一致则整包替换 L1+L2。
+ * 同时异步请求 L3 校验 version，不一致则把 L3 整包合并进 L1+L2（同 hash 以 L3 为准）。
+ * 注意是合并而非替换：并发的 setMany() 结果可能还没落盘，整包覆盖会把它们冲掉
+ * （见 loadIntoMemory / persistMerge 注释）。代价是远端删除的词条不会同步删除，
+ * 只会等 LocalStorageAdapter 的 maxEntries 淘汰——这是有意的取舍。
  * L3 请求失败静默降级使用已有 L2/L1 缓存，不阻塞、不抛错——
  * 翻译失败不应影响门户页面正常使用。
  */
@@ -49,15 +66,19 @@ export class PackStore {
   }
 
   async setMany(lang: string, translations: Record<string, string>): Promise<void> {
+    const accepted = Object.entries(translations).filter(([, translation]) =>
+      isUsableTranslation(translation),
+    );
+
     const bucket = this.memory.get(lang) ?? new Map<string, string>();
-    for (const [hash, translation] of Object.entries(translations)) {
+    for (const [hash, translation] of accepted) {
       bucket.set(hash, translation);
     }
     this.memory.set(lang, bucket);
 
     const now = Date.now();
     const entries: PackData['entries'] = {};
-    for (const [hash, translation] of Object.entries(translations)) {
+    for (const [hash, translation] of accepted) {
       entries[hash] = { translation, lastUsedAt: now };
     }
     await this.persistMerge(lang, { version: '', entries }, { keepVersion: true });
@@ -106,6 +127,7 @@ export class PackStore {
     const now = Date.now();
     const entries: PackData['entries'] = {};
     for (const [hash, translation] of Object.entries(remote.entries)) {
+      if (!isUsableTranslation(translation)) continue;
       entries[hash] = { translation, lastUsedAt: now };
     }
     return { version: remote.version, entries };

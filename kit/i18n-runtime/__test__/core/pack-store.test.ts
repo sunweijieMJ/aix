@@ -164,6 +164,52 @@ describe('PackStore', () => {
     expect(persisted!.entries.xyz?.translation).toBe('concurrent-value'); // L2 也不应该丢并发写入
   });
 
+  it('setMany 应丢弃空字符串译文，不写入 L1/L2（空译文写回 DOM 等于抹掉页面内容）', async () => {
+    const storage = createMemoryStorage();
+    const fetchRemotePack = vi
+      .fn<(lang: string) => Promise<RemotePack | null>>()
+      .mockResolvedValue(null);
+    const store = new PackStore({ storage, fetchRemotePack });
+
+    await store.setMany('en', { empty: '', ok: 'hello' });
+
+    expect(store.get('en', 'empty')).toBeUndefined();
+    expect(store.get('en', 'ok')).toBe('hello');
+    const persisted = await storage.get('en');
+    expect(persisted!.entries.empty).toBeUndefined();
+    expect(persisted!.entries.ok?.translation).toBe('hello');
+  });
+
+  it('setMany 应丢弃纯空白译文，但必须保留 "0" 这类合法译文（不能用 falsy 判断）', async () => {
+    const storage = createMemoryStorage();
+    const fetchRemotePack = vi
+      .fn<(lang: string) => Promise<RemotePack | null>>()
+      .mockResolvedValue(null);
+    const store = new PackStore({ storage, fetchRemotePack });
+
+    await store.setMany('en', { blank: '   ', newline: '\n\t', zero: '0', ok: 'hello' });
+
+    // 纯空白写回 DOM 和空串一样是把内容抹掉，视觉上文本就消失了
+    expect(store.get('en', 'blank')).toBeUndefined();
+    expect(store.get('en', 'newline')).toBeUndefined();
+    // "0" 是合法译文（计数、编号等），falsy 判断会把它误杀
+    expect(store.get('en', 'zero')).toBe('0');
+    expect(store.get('en', 'ok')).toBe('hello');
+  });
+
+  it('hydrate 应丢弃 L3 语言包里的空字符串译文', async () => {
+    const storage = createMemoryStorage();
+    const fetchRemotePack = vi
+      .fn<(lang: string) => Promise<RemotePack | null>>()
+      .mockResolvedValue({ version: 'v1', entries: { empty: '', ok: 'hello' } });
+    const store = new PackStore({ storage, fetchRemotePack });
+
+    await store.hydrate('en');
+
+    expect(store.get('en', 'empty')).toBeUndefined();
+    expect(store.get('en', 'ok')).toBe('hello');
+  });
+
   it('未 hydrate/setMany 过的 hash，get 应返回 undefined', async () => {
     const storage = createMemoryStorage();
     const fetchRemotePack = vi

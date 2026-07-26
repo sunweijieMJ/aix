@@ -8,6 +8,12 @@ describe('createEngine', () => {
   });
 
   afterEach(() => {
+    // 用例中途断言失败时，写在用例末尾的 engine.stop() 不会执行，残留 engine 会继续用
+    // MutationObserver 观察 document.body，把自己 L1 里的旧译文写进下一个用例刚建好的 DOM
+    getActiveEngine()?.stop();
+    // 同理放在 afterEach 而不是各用例末尾：fake timers 泄漏会让下一个依赖真实定时器的
+    // 用例直接超时，排查成本很高
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     document.body.innerHTML = '';
@@ -19,6 +25,25 @@ describe('createEngine', () => {
   it('start() 时 provider 为 backend 却未传 apiBase 应立即抛错（fail-fast）', () => {
     const engine = createEngine();
     expect(() => engine.start({ provider: 'backend', languages: ['en'] })).toThrow('apiBase');
+  });
+
+  it('start() 时 provider 传入不认识的值应立即抛错（否则会静默降级成另一个 provider 打空请求）', () => {
+    const engine = createEngine();
+    expect(() => engine.start({ provider: 'sometranslator' as never, languages: ['en'] })).toThrow(
+      'provider',
+    );
+  });
+
+  it('start() 时 fallbackProvider 传入不认识的值应立即抛错', () => {
+    const engine = createEngine();
+    expect(() =>
+      engine.start({
+        provider: 'backend',
+        apiBase: '/api/i18n',
+        fallbackProvider: 'sometranslator' as never,
+        languages: ['en'],
+      }),
+    ).toThrow('fallbackProvider');
   });
 
   it('start() 时 languages 为空数组应立即抛错', () => {
@@ -272,6 +297,168 @@ describe('createEngine', () => {
 
     engine1.stop();
     expect(getActiveEngine()).toBeUndefined();
+  });
+
+  it('翻译没有 value 属性的 <option> 时应把原文固化进 value，显示译文但表单提交值不变', async () => {
+    // <option> 未显式声明 value 时，表单提交值取自它的文本内容，
+    // 直接改文本会连带改掉提交值——但 option 文本本身是必须翻译的展示文案，不能像
+    // textarea 那样整体跳过，只能在写回前把原值固化下来
+    vi.useFakeTimers();
+    document.body.innerHTML = `<select><option>中文选项</option><option value="fixed">固定值</option></select>`;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (url.includes('/pack')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ code: 0, data: { version: 'v1', entries: {} } }),
+          });
+        }
+        const body = JSON.parse(init!.body as string) as {
+          items: Array<{ hash: string; text: string }>;
+        };
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            code: 0,
+            data: {
+              translations: body.items.map((item) => ({
+                hash: item.hash,
+                translation: `EN(${item.text})`,
+              })),
+            },
+          }),
+        });
+      }),
+    );
+
+    const engine = createEngine();
+    engine.start({ provider: 'backend', apiBase: '/api/i18n', languages: ['en'] });
+    await engine.setLanguage('en');
+    await vi.advanceTimersByTimeAsync(500);
+
+    const options = document.querySelectorAll('option');
+    expect(options[0]!.textContent).toBe('EN(中文选项)'); // 显示层照常翻译
+    expect(options[0]!.value).toBe('中文选项'); // 提交值必须保持原文
+    expect(options[1]!.textContent).toBe('EN(固定值)');
+    expect(options[1]!.value).toBe('fixed'); // 本来就有 value 的不受影响
+
+    engine.stop();
+  });
+
+  it('provider 返回空字符串译文时不应写回 DOM，页面应保持原文', async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<p>你好</p><input placeholder="请输入" />';
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/pack')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ code: 0, data: { version: 'v1', entries: {} } }),
+        });
+      }
+      const body = JSON.parse(init!.body as string) as {
+        items: Array<{ hash: string; text: string }>;
+      };
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          code: 0,
+          // 机翻引擎对某些输入会返回空串（纯符号/超长截断/后端异常），
+          // 空串被当成有效译文写回等于把页面内容抹掉
+          data: { translations: body.items.map((item) => ({ hash: item.hash, translation: '' })) },
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const engine = createEngine();
+    engine.start({ provider: 'backend', apiBase: '/api/i18n', languages: ['en'] });
+    await engine.setLanguage('en');
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(document.body.querySelector('p')!.textContent).toBe('你好');
+    expect(document.body.querySelector('input')!.getAttribute('placeholder')).toBe('请输入');
+
+    engine.stop();
+    vi.useRealTimers();
+  });
+
+  it('stop() 之后在途翻译请求返回不应再改写 DOM', async () => {
+    let resolveTranslate: () => void = () => {};
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/pack')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ code: 0, data: { version: 'v1', entries: {} } }),
+        });
+      }
+      const body = JSON.parse(init!.body as string) as {
+        items: Array<{ hash: string; text: string }>;
+      };
+      // 翻译请求悬挂，直到测试在 stop() 之后手动放行，模拟"请求在途时业务卸载了运行时"
+      return new Promise((resolve) => {
+        resolveTranslate = () =>
+          resolve({
+            ok: true,
+            json: async () => ({
+              code: 0,
+              data: {
+                translations: body.items.map((item) => ({ hash: item.hash, translation: 'hello' })),
+              },
+            }),
+          });
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const engine = createEngine();
+    engine.start({ provider: 'backend', apiBase: '/api/i18n', languages: ['en'] });
+    await engine.setLanguage('en');
+    // 必须等到翻译请求真的发出（scanFull 的 rAF + 攒批 debounce 都跑完、候选已出队）才能
+    // stop()，否则 disconnect() 清空的是还没出队的队列，根本走不到"await 之后仍写 DOM"那条路径
+    await vi.waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/translate'))).toBe(true),
+    );
+
+    engine.stop();
+    resolveTranslate();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(document.body.querySelector('p')!.textContent).toBe('你好');
+  });
+
+  it('stop() 后立刻重新 start()，上一轮的在途翻译批次不应写回 DOM', async () => {
+    // React StrictMode 的 unmount/remount 就是这个时序：只判断 started 布尔值不够，
+    // 重启后它又是 true，旧批次会当成"运行中"继续写回（译文还会经由闭包写进新的 packStore）
+    let release: () => void = () => {};
+    const translateFetcher = vi.fn().mockImplementation(
+      (req: { items: Array<{ hash: string; text: string }> }) =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              translations: req.items.map((item) => ({ hash: item.hash, translation: 'hello' })),
+            });
+        }),
+    );
+    const config = {
+      provider: 'backend' as const,
+      apiBase: '/api/i18n',
+      languages: ['en'],
+      backendOptions: { packFetcher: async () => null, translateFetcher },
+    };
+
+    const engine = createEngine();
+    engine.start(config);
+    await engine.setLanguage('en');
+    await vi.waitFor(() => expect(translateFetcher).toHaveBeenCalled());
+
+    engine.stop();
+    engine.start(config); // 立刻重启，此时 started 又变回 true
+    release();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(document.body.querySelector('p')!.textContent).toBe('你好');
+    engine.stop();
   });
 
   it('stop() 后 setLanguage 触发的 scanFull 不应再通过 routeWatcher 响应路由切换', async () => {
