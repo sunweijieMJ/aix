@@ -1,7 +1,7 @@
 import type { NodeRegistry } from './node-registry.js';
 import { hashText } from './hash.js';
 import { isTranslatable, normalize } from './normalizer.js';
-import type { TranslatableAttr, TranslationCandidate } from '../types.js';
+import type { ShouldTranslate, TranslatableAttr, TranslationCandidate } from '../types.js';
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT']);
 /**
@@ -37,6 +37,30 @@ const DEFAULT_DEBOUNCE_MS = 50;
 const DEFAULT_MAX_BATCH_SIZE = 50;
 const FULL_SCAN_CHUNK_SIZE = 200;
 
+/**
+ * 这两个可选调优参数从 script 标签的 data-* 解析而来时极易变成非法值：
+ * `data-debounce-ms="50ms"` → NaN、`data-max-batch-size=""` → 0。二者都会静默劣化攒批：
+ * NaN 传给 setTimeout 等价于 0ms 防抖，`queue.length >= 0` 则恒为 true——
+ * 结果都是页面上每个文本节点各发一次翻译请求。回落默认值并告警，而不是抛错：
+ * 一个可选参数写错，不该让整个页面失去翻译能力。
+ * debounceMs 允许 0（立即 flush 是合法配置），maxBatchSize 至少为 1。
+ */
+function normalizeNumericOption(
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  name: string,
+): number {
+  if (value === undefined) return fallback;
+  if (!Number.isFinite(value) || value < min) {
+    console.warn(
+      `[i18n-runtime] ${name} 需要是不小于 ${min} 的数字，收到 ${String(value)}，已回落为默认值 ${fallback}`,
+    );
+    return fallback;
+  }
+  return Math.floor(value);
+}
+
 export interface ScannerOptions {
   registry: NodeRegistry;
   sourceLang: string;
@@ -56,6 +80,8 @@ export interface ScannerOptions {
   onCacheHit?: (candidate: TranslationCandidate, translation: string) => void;
   /** 是否扫描 open shadow root，默认 true；false 时跳过所有 shadow DOM */
   scanShadowDOM?: boolean;
+  /** 按内容决定是否翻译，返回 false 则该候选既不出网也不改写 DOM */
+  shouldTranslate?: ShouldTranslate;
 }
 
 function defaultScheduleIdle(work: () => void): void {
@@ -126,13 +152,19 @@ export class Scanner {
   private readonly options: Required<
     Omit<
       ScannerOptions,
-      'scheduleIdle' | 'scheduleFirst' | 'targetLang' | 'getCached' | 'onCacheHit'
+      | 'scheduleIdle'
+      | 'scheduleFirst'
+      | 'targetLang'
+      | 'getCached'
+      | 'onCacheHit'
+      | 'shouldTranslate'
     >
   > & {
     scheduleIdle: (work: () => void) => void;
     scheduleFirst: (work: () => void) => void;
     getCached?: (hash: string) => string | undefined;
     onCacheHit?: (candidate: TranslationCandidate, translation: string) => void;
+    shouldTranslate?: ShouldTranslate;
   };
   private targetLang: string;
   private readonly queue: TranslationCandidate[] = [];
@@ -151,8 +183,13 @@ export class Scanner {
     this.options = {
       registry: options.registry,
       sourceLang: options.sourceLang,
-      debounceMs: options.debounceMs ?? DEFAULT_DEBOUNCE_MS,
-      maxBatchSize: options.maxBatchSize ?? DEFAULT_MAX_BATCH_SIZE,
+      debounceMs: normalizeNumericOption(options.debounceMs, DEFAULT_DEBOUNCE_MS, 0, 'debounceMs'),
+      maxBatchSize: normalizeNumericOption(
+        options.maxBatchSize,
+        DEFAULT_MAX_BATCH_SIZE,
+        1,
+        'maxBatchSize',
+      ),
       onBatch: options.onBatch,
       extraAttrs: options.extraAttrs ?? [],
       scanShadowDOM: options.scanShadowDOM ?? true,
@@ -160,6 +197,7 @@ export class Scanner {
       scheduleFirst: options.scheduleFirst ?? options.scheduleIdle ?? defaultScheduleRaf,
       getCached: options.getCached,
       onCacheHit: options.onCacheHit,
+      shouldTranslate: options.shouldTranslate,
     };
     this.targetLang = options.targetLang;
   }
@@ -198,7 +236,7 @@ export class Scanner {
         if (options.includeRoot) this.collect(root);
         if (this.options.scanShadowDOM && root.nodeType === Node.ELEMENT_NODE) {
           const rootShadow = (root as Element).shadowRoot;
-          if (rootShadow) this.scanFull(rootShadow);
+          if (rootShadow) this.enterShadowRoot(rootShadow);
         }
       }
       let processed = 0;
@@ -207,7 +245,7 @@ export class Scanner {
         this.collect(node);
         if (this.options.scanShadowDOM && node.nodeType === Node.ELEMENT_NODE) {
           const sr = (node as Element).shadowRoot;
-          if (sr) this.scanFull(sr);
+          if (sr) this.enterShadowRoot(sr);
         }
         processed += 1;
       }
@@ -232,6 +270,18 @@ export class Scanner {
     }
   }
 
+  /**
+   * 进入一棵 shadow 树：扫描内容 + 建立观察，两件事必须成对做。
+   *
+   * observe() 的 TreeWalker 跨不过 shadow 边界，MutationObserver 也不穿透 shadow 边界，
+   * 所以嵌套 shadow root（shadow 里再挂 shadow）唯一能被发现的路径就是这里的手动递归。
+   * 只扫不观察的话，这类 shadow 树只在首屏被采集一次，之后的动态内容永远翻译不到。
+   */
+  private enterShadowRoot(shadowRoot: ShadowRoot): void {
+    this.scanFull(shadowRoot);
+    this.observeRoot(shadowRoot);
+  }
+
   /** 为单个根节点（含 shadow root）建立 MutationObserver；同一个 root 只会建立一次 */
   private observeRoot(root: Node): void {
     if (this.observedRoots.has(root)) return;
@@ -249,10 +299,7 @@ export class Scanner {
             // 新增节点如果带 shadow root，也要进入扫描和观察
             if (this.options.scanShadowDOM && added.nodeType === Node.ELEMENT_NODE) {
               const sr = (added as Element).shadowRoot;
-              if (sr) {
-                this.scanFull(sr);
-                this.observeRoot(sr);
-              }
+              if (sr) this.enterShadowRoot(sr);
             }
           });
         }
@@ -298,10 +345,7 @@ export class Scanner {
       // TreeWalker 无法穿越 shadow DOM 边界，遇到 shadow host 时手动递归进入
       if (this.options.scanShadowDOM && node.nodeType === Node.ELEMENT_NODE) {
         const sr = (node as Element).shadowRoot;
-        if (sr) {
-          this.scanFull(sr);
-          this.observeRoot(sr);
-        }
+        if (sr) this.enterShadowRoot(sr);
       }
     }
   }
@@ -332,6 +376,8 @@ export class Scanner {
     const stale = state !== undefined && node.textContent !== state.translatedText;
     const text = state && !stale ? state.originalText : (node.textContent ?? '');
     if (!isTranslatable(text)) return;
+    // 业务级排除（敏感信息脱敏等）：在入队之前拦掉，保证被拒的文本既不出网也不改写 DOM
+    if (this.options.shouldTranslate && !this.options.shouldTranslate(text, node)) return;
     if (this.options.registry.shouldSkip(node, this.targetLang)) return;
 
     const { normalized, restore } = normalize(text);
@@ -361,6 +407,7 @@ export class Scanner {
       const stale = storedOriginal !== null && current !== storedTranslated;
       const original = storedOriginal !== null && !stale ? storedOriginal : current;
       if (!original || !isTranslatable(original)) continue;
+      if (this.options.shouldTranslate && !this.options.shouldTranslate(original, el)) continue;
 
       const { normalized, restore } = normalize(original);
       const hash = hashText(`${normalized}:${this.options.sourceLang}`);
@@ -378,6 +425,15 @@ export class Scanner {
 
   private enqueue(candidate: TranslationCandidate): void {
     if (this.stopped) return;
+
+    // 目标语言就是源语言：要显示的内容就是 candidate.originalText 本身（registry 或
+    // data-i18n-orig-* 里已经记着），本地直接还原即可，不需要也不应该经过翻译服务——
+    // 走网络的话既白打一次 sourceLang === targetLang 的请求，页面文案还会变成后端
+    // 对"翻译成自己"这种输入的任意返回值，而不是用户最初写的原文。
+    if (this.targetLang === this.options.sourceLang) {
+      this.options.onCacheHit?.(candidate, candidate.originalText);
+      return;
+    }
 
     // L1 缓存命中：同步写回，跳过 debounce 队列，消除"先显原文再显译文"的停顿
     if (this.options.getCached && this.options.onCacheHit) {

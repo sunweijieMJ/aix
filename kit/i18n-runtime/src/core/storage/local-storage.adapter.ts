@@ -8,6 +8,26 @@ export interface LocalStorageAdapterOptions {
 }
 
 /**
+ * evict() 用 `length <= limit` 判断 + `slice(0, limit)`，limit 一旦是 NaN 或 <= 0，
+ * 前者恒为 false、后者返回空数组，结果是每次写入都把整包淘汰干净——L2 永久失效、
+ * 每次访问都全量重翻，而且完全没有报错，极难察觉。
+ *
+ * 非法值主要来自 script 标签接入：`data-max-entries="2k"` 会 Number() 成 NaN，
+ * `data-max-entries=""` 会成 0，都是很容易写出来的笔误。这里回落默认值并告警，
+ * 而不是抛错——一个可选调优参数写错，不该让整个页面失去翻译能力。
+ */
+function normalizeMaxEntries(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_MAX_ENTRIES;
+  if (!Number.isFinite(value) || value <= 0) {
+    console.warn(
+      `[i18n-runtime] maxEntries 需要是正数，收到 ${String(value)}，已回落为默认值 ${DEFAULT_MAX_ENTRIES}`,
+    );
+    return DEFAULT_MAX_ENTRIES;
+  }
+  return Math.floor(value);
+}
+
+/**
  * localStorage 是缓存而非权威源（L3 后端才是），配额溢出时按 lastUsedAt 排序淘汰旧词条
  * 而不是放弃整个缓存：被淘汰的词条下次命中时重新走翻译流程，只影响命中率不影响正确性。
  *
@@ -18,7 +38,7 @@ export class LocalStorageAdapter implements PackStorageAdapter {
   private readonly maxEntries: number;
 
   constructor(options: LocalStorageAdapterOptions = {}) {
-    this.maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
+    this.maxEntries = normalizeMaxEntries(options.maxEntries);
   }
 
   async get(lang: string): Promise<PackData | null> {

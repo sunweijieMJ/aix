@@ -236,6 +236,50 @@ describe('Scanner.scanFull', () => {
   });
 });
 
+describe('Scanner 数值配置容错', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('maxBatchSize 为 0（如 data-max-batch-size=""）时应回落默认值，而不是每个候选各发一批', () => {
+    // `queue.length >= 0` 恒为 true，等于攒批彻底失效：页面上每一个文本节点
+    // 都会变成一次独立的翻译请求
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    document.body.innerHTML = '<p>第一段</p><p>第二段</p><p>第三段</p>';
+    const onBatch = vi.fn();
+    vi.useFakeTimers();
+    createScanner(onBatch, { maxBatchSize: 0 }).scanFull(document.body);
+    vi.runAllTimers();
+
+    expect(onBatch).toHaveBeenCalledTimes(1);
+    expect(onBatch.mock.calls[0]![0]).toHaveLength(3);
+  });
+
+  it('debounceMs 为 NaN（如 data-debounce-ms="50ms"）时应回落默认值，而不是退化成零防抖', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    document.body.innerHTML = '';
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: Number('50ms') });
+    scanner.observe(document.body);
+
+    // 两次相隔很近的 DOM 变更：默认 50ms 防抖下应该攒成一批；
+    // 退化成 setTimeout(fn, NaN)（等价 0ms）则会各自成批
+    const first = document.createElement('p');
+    first.textContent = '先出现的文本';
+    document.body.appendChild(first);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const second = document.createElement('p');
+    second.textContent = '后出现的文本';
+    document.body.appendChild(second);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    scanner.disconnect();
+
+    expect(onBatch).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('Scanner.observe', () => {
   afterEach(() => {
     document.body.innerHTML = '';
@@ -402,6 +446,37 @@ describe('Scanner.observe', () => {
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
     // 重复注册 observer 会让同一次 mutation 被回调多次，候选按注册次数成倍出现
     expect(texts).toEqual(['影子里新增的文本']);
+  });
+
+  it('嵌套 shadow root（shadow 里再挂 shadow）内的增量内容也应被采集', async () => {
+    document.body.innerHTML = '';
+    // observe() 的 TreeWalker 跨不过第一层 shadow 边界，只能看见 sr1；sr1 上的 observer
+    // 虽然 subtree:true，但 MutationObserver 同样不穿透 shadow 边界，看不见 sr2 内部。
+    // 唯一能发现 sr2 的路径是 scanFull 的手动递归，所以它必须顺带把 sr2 也 observe 上，
+    // 否则 sr2 只在首屏被扫一次，之后的动态内容永远翻译不到。
+    const host1 = document.createElement('div');
+    document.body.appendChild(host1);
+    const sr1 = host1.attachShadow({ mode: 'open' });
+    const host2 = document.createElement('div');
+    sr1.appendChild(host2);
+    const sr2 = host2.attachShadow({ mode: 'open' });
+    sr2.innerHTML = '<span>嵌套影子里的初始文本</span>';
+
+    const onBatch = vi.fn();
+    const scanner = createScanner(onBatch, { debounceMs: 0 });
+    scanner.observe(document.body);
+    scanner.scanFull(document.body);
+    await flushMicrotasks();
+
+    onBatch.mockClear();
+    const p = document.createElement('p');
+    p.textContent = '嵌套影子里新增的文本';
+    sr2.appendChild(p);
+    await flushMicrotasks();
+    scanner.disconnect();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toEqual(['嵌套影子里新增的文本']);
   });
 
   it('新增节点自身就是带 data-i18n-skip 的 shadow host 时，其 shadow root 内容不应被扫描', async () => {

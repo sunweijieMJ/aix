@@ -54,6 +54,19 @@ export type ProviderName = 'backend' | 'libretranslate';
 
 export type TranslatableAttr = 'placeholder' | 'title' | 'alt';
 
+/**
+ * 按内容/DOM 位置决定某段文本是否参与翻译，返回 false 则整条候选被丢弃——
+ * 既不会发给翻译服务，也不会被写回 DOM。
+ *
+ * 主要用途是敏感信息脱敏：运行时按设计会把页面上所有可见文本发送到配置的翻译服务，
+ * 姓名、邮箱、地址等个人信息也不例外。`translate="no"` / `data-i18n-skip` 只能按
+ * DOM 区域静态排除，这个钩子补上"按内容动态判断"的能力。
+ *
+ * @param text 归一化前的原文
+ * @param node 文本候选传 Text 节点；属性候选传属性所在的 Element
+ */
+export type ShouldTranslate = (text: string, node: Node) => boolean;
+
 export interface TranslationCandidate {
   kind: 'text' | 'attr';
   node: Text | Element;

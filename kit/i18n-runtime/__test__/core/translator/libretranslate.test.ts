@@ -36,6 +36,27 @@ describe('LibreTranslateProvider', () => {
     ]);
   });
 
+  it('返回条数少于请求条数时，缺失的条目应整条省略而不是用原文顶替', async () => {
+    // 用原文顶替的话，原文会作为"有效译文"写进 L1/L2 永久缓存，该词条从此再也不会重试，
+    // 页面上这段文字永久保持原文。契约是"缺失的 hash 视为未翻译，下次扫描自然重试"
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ translatedText: ['hello'] }) }),
+    );
+
+    const provider = new LibreTranslateProvider({ libretranslateUrl: 'http://localhost:5000' });
+    const result = await provider.translate({
+      items: [
+        { hash: 'h1', text: '你好' },
+        { hash: 'h2', text: '世界' },
+      ],
+      sourceLang: 'zh',
+      targetLang: 'en',
+    });
+
+    expect(result.translations).toEqual([{ hash: 'h1', translation: 'hello' }]);
+  });
+
   it('LibreTranslate 单文本场景（旧版返回字符串而非数组）也应正确解析', async () => {
     vi.stubGlobal(
       'fetch',

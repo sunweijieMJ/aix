@@ -42,11 +42,15 @@ export class LibreTranslateProvider implements TranslateProvider {
       ? body.translatedText
       : [body.translatedText];
 
+    // 返回条数少于请求条数时，缺失的条目整条省略，不能用原文顶替：原文是非空字符串，
+    // 会通过 PackStore 的"可用译文"检查写进 L1/L2 永久缓存，该 hash 从此稳定命中、
+    // 再也不会重新请求翻译，页面上这段文字就永久停留在原文。省略掉则视为未翻译，
+    // 下次扫描自然重新入队重试——与 /translate 接口"缺失的 hash 视为未翻译"契约一致。
     return {
-      translations: req.items.map((item, index) => ({
-        hash: item.hash,
-        translation: translatedTexts[index] ?? item.text,
-      })),
+      translations: req.items.flatMap((item, index) => {
+        const translation = translatedTexts[index];
+        return typeof translation === 'string' ? [{ hash: item.hash, translation }] : [];
+      }),
     };
   }
 }

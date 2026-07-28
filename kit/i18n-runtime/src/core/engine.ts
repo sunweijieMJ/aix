@@ -1,4 +1,4 @@
-import type { ProviderName, RemotePack, TranslationCandidate } from '../types.js';
+import type { ProviderName, RemotePack, ShouldTranslate, TranslationCandidate } from '../types.js';
 import { NodeRegistry } from './node-registry.js';
 import { PackStore } from './pack-store.js';
 import { resolveStorageAdapter, type StorageOption } from './storage/index.js';
@@ -31,6 +31,13 @@ export interface I18nRuntimeConfig {
   getCurrentPath?: () => string;
   /** 是否扫描 open shadow root 内的文本，默认 true；设为 false 可关闭所有 shadow DOM 翻译 */
   scanShadowDOM?: boolean;
+  /**
+   * 按内容/DOM 位置决定某段文本是否参与翻译，返回 false 则该候选既不发给翻译服务、
+   * 也不会被写回 DOM。用于个人信息脱敏等场景——运行时按设计会把页面上所有可见文本
+   * 发送到翻译服务，`translate="no"` / `data-i18n-skip` 只能按区域静态排除，
+   * 这个钩子补上按内容动态判断的能力。
+   */
+  shouldTranslate?: ShouldTranslate;
   /** backend provider 的接口自定义配置（仅当 provider 为 'backend' 时生效） */
   backendOptions?: {
     /** 翻译接口路径，默认 '/translate' */
@@ -63,6 +70,12 @@ export interface I18nRuntimeEngine {
   getLanguage(): string;
   /** 手动注册额外的根节点（用于 closed shadow root 或业务显式管理的 shadow root） */
   addRoot(root: Node): void;
+  /**
+   * 清空已缓存的语言包（L1 内存 + L2 持久化）。不传 lang 则清掉所有已缓存的语言。
+   * 译文可能包含页面上的个人信息，用户登出时应调用一次。不会回滚页面上已写入的译文，
+   * 需要恢复原文请先 `await setLanguage(sourceLang)`。
+   */
+  clearCache(lang?: string): Promise<void>;
   on(event: I18nRuntimeEvent, cb: (node: Text) => void): () => void;
 }
 
@@ -118,7 +131,11 @@ function createFetchRemotePack(
   apiBase: string | undefined,
   backendOptions?: I18nRuntimeConfig['backendOptions'],
 ) {
-  return async (lang: string, path?: string): Promise<RemotePack | null> => {
+  // 语言包是「按语言的全量 hash -> translation 映射」，不按路由分片：L2 只按 lang 存储、
+  // version 也只按 lang 比对。若请求上带 path、后端又真的按 path 返回子集，第二个页面的
+  // 整包会因为 version 与第一个页面相同而被 hydrate 静默丢弃。path 只对 /translate 有意义
+  // （后端据此按页面分组缓存翻译结果），对 /pack 是个陷阱，这里不下发。
+  return async (lang: string): Promise<RemotePack | null> => {
     if (backendOptions?.packFetcher) {
       return backendOptions.packFetcher(lang);
     }
@@ -126,7 +143,6 @@ function createFetchRemotePack(
     const packPath = backendOptions?.packPath ?? '/pack';
     const url = new URL(`${apiBase}${packPath}`, window.location.origin);
     url.searchParams.set('lang', lang);
-    if (path) url.searchParams.set('path', path);
 
     const response = await fetch(url.toString(), {
       headers: backendOptions?.headers,
@@ -239,7 +255,10 @@ export function createEngine(): I18nRuntimeEngine {
     // 缓存不浪费，下次 start() 能直接命中。
     // runId 比对额外挡住"stop() 后又 start()"的情况：那时 started 已经回到 true，
     // 但这批候选属于上一轮运行（DOM 节点可能都已被卸载），不该由它来写。
-    if (!started || runId !== batchRunId) return;
+    // lang 比对挡住"翻译在途时切了语言"：这批译文属于上一个语言，写回等于把页面
+    // 刚显示好的新语言文案覆盖成旧语言。MutationObserver 事后能自愈回来，但用户会
+    // 看见一次明显的语言闪烁。译文已进 packStore，下次切回这个语言直接命中缓存。
+    if (!started || runId !== batchRunId || lang !== currentLang) return;
 
     for (const candidate of candidates) {
       const translation = packStore!.get(lang, candidate.hash);
@@ -279,6 +298,7 @@ export function createEngine(): I18nRuntimeEngine {
         maxBatchSize: userConfig.maxBatchSize,
         extraAttrs: userConfig.extraAttrs,
         scanShadowDOM: userConfig.scanShadowDOM,
+        shouldTranslate: userConfig.shouldTranslate,
         getCached: (hash) => packStore!.get(currentLang, hash),
         onCacheHit: (candidate, translation) => applyCandidate(candidate, translation, currentLang),
         onBatch: (candidates) => {
@@ -312,9 +332,13 @@ export function createEngine(): I18nRuntimeEngine {
       if (!started || !config || !scanner || !packStore || !routeWatcher) {
         throw new Error('[i18n-runtime] 必须先调用 start() 才能 setLanguage()');
       }
-      if (!config.languages.includes(lang)) {
+      // languages 是"目标语言列表"，业务通常不会把页面原文语言也列进去。但切回源语言
+      // 是纯本地还原（原文都在 registry / data-i18n-orig-* 里），永远是合法操作——
+      // 不在这里放行的话，语言下拉框里根本选不回原文。
+      const sourceLang = config.sourceLang ?? 'zh';
+      if (lang !== sourceLang && !config.languages.includes(lang)) {
         throw new Error(
-          `[i18n-runtime] 不支持的语言: ${lang}，可选值: ${config.languages.join(', ')}`,
+          `[i18n-runtime] 不支持的语言: ${lang}，可选值: ${[...new Set([sourceLang, ...config.languages])].join(', ')}`,
         );
       }
 
@@ -324,15 +348,13 @@ export function createEngine(): I18nRuntimeEngine {
       if (!observing) {
         scanner.observe(document.body);
         routeWatcher.start(() => {
-          const path = config!.getCurrentPath?.();
-          void packStore!.hydrate(currentLang, path);
+          void packStore!.hydrate(currentLang);
           scanner!.scanFull(document.body);
         });
         observing = true;
       }
 
-      const currentPath = config!.getCurrentPath?.();
-      await packStore.hydrate(lang, currentPath);
+      await packStore.hydrate(lang);
       scanner.scanFull(document.body);
     },
 
@@ -343,6 +365,22 @@ export function createEngine(): I18nRuntimeEngine {
     addRoot(root: Node) {
       if (!started || !scanner) return;
       scanner.addRoot(root);
+    },
+
+    async clearCache(lang?: string) {
+      if (!packStore) return;
+      // 不指定语言时，清掉 config.languages 和 L1 里出现过的所有语言（含源语言：
+      // 切回源语言虽然不产生译文，但它可能因为 hydrate 在 L2 里留过一份空包）
+      const targets = lang
+        ? [lang]
+        : [
+            ...new Set([
+              ...(config?.languages ?? []),
+              config?.sourceLang ?? 'zh',
+              ...packStore.cachedLanguages(),
+            ]),
+          ];
+      await Promise.all(targets.map((target) => packStore!.clear(target)));
     },
 
     on(event, cb) {

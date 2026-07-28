@@ -72,6 +72,71 @@ describe('PackStore', () => {
     expect(store.get('en', 'abc')).toBe('hello');
   });
 
+  it('clear 应同时移除 L1 内存与 L2 持久化数据', async () => {
+    const data = new Map<string, PackData>();
+    const storage: PackStorageAdapter = {
+      get: async (lang) => data.get(lang) ?? null,
+      set: async (lang, value) => {
+        data.set(lang, value);
+      },
+      clear: async (lang) => {
+        data.delete(lang);
+      },
+    };
+    const store = new PackStore({ storage, fetchRemotePack: async () => null });
+    await store.setMany('en', { abc: 'hello' });
+    expect(store.get('en', 'abc')).toBe('hello');
+
+    await store.clear('en');
+
+    expect(store.get('en', 'abc')).toBeUndefined();
+    expect(await storage.get('en')).toBeNull();
+  });
+
+  it('clear 遇到未实现 clear() 的 adapter 时仍应清掉 L1，且不抛错', async () => {
+    const storage: PackStorageAdapter = { get: async () => null, set: async () => {} };
+    const store = new PackStore({ storage, fetchRemotePack: async () => null });
+    await store.setMany('en', { abc: 'hello' });
+
+    await expect(store.clear('en')).resolves.not.toThrow();
+    expect(store.get('en', 'abc')).toBeUndefined();
+  });
+
+  it('L2 读取抛错时 hydrate 不应失败，应降级为仅使用远端语言包', async () => {
+    // IndexedDB 在隐私模式/被企业策略禁用时 open 就会抛，localStorage 在部分浏览器的
+    // 无痕模式下 getItem 也会抛。L2 只是缓存不是权威源，它挂掉不该让整个翻译流程停摆
+    const storage: PackStorageAdapter = {
+      get: async () => {
+        throw new DOMException('storage 不可用');
+      },
+      set: async () => {},
+    };
+    const fetchRemotePack = vi
+      .fn<(lang: string) => Promise<RemotePack | null>>()
+      .mockResolvedValue({ version: 'v1', entries: { abc: 'hello' } });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const store = new PackStore({ storage, fetchRemotePack });
+    await expect(store.hydrate('en')).resolves.not.toThrow();
+
+    expect(store.get('en', 'abc')).toBe('hello');
+  });
+
+  it('L2 写入抛错时 setMany 不应失败，L1 仍应保留译文', async () => {
+    const storage: PackStorageAdapter = {
+      get: async () => null,
+      set: async () => {
+        throw new DOMException('storage 不可用');
+      },
+    };
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const store = new PackStore({ storage, fetchRemotePack: async () => null });
+    await expect(store.setMany('en', { abc: 'hello' })).resolves.not.toThrow();
+
+    expect(store.get('en', 'abc')).toBe('hello');
+  });
+
   it('setMany 写入后应立即可通过 get 读取，并持久化到 L2', async () => {
     const storage = createMemoryStorage();
     const fetchRemotePack = vi

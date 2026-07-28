@@ -24,6 +24,7 @@ export type {
   TranslateBatchResult,
   TranslatableAttr,
   TranslationCandidate,
+  ShouldTranslate,
   PackData,
   PackEntry,
   PackStorageAdapter,

@@ -2,7 +2,8 @@ import type { PackData, PackStorageAdapter, RemotePack } from '../types.js';
 
 export interface PackStoreOptions {
   storage: PackStorageAdapter;
-  fetchRemotePack: (lang: string, path?: string) => Promise<RemotePack | null>;
+  /** 语言包按语言整包拉取，不按路由分片——L2 存储与 version 比对都只以 lang 为粒度 */
+  fetchRemotePack: (lang: string) => Promise<RemotePack | null>;
 }
 
 /**
@@ -43,14 +44,14 @@ export class PackStore {
     this.options = options;
   }
 
-  async hydrate(lang: string, path?: string): Promise<void> {
-    const cached = await this.options.storage.get(lang);
+  async hydrate(lang: string): Promise<void> {
+    const cached = await this.readCache(lang);
     if (cached) {
       this.loadIntoMemory(lang, cached);
     }
 
     try {
-      const remote = await this.options.fetchRemotePack(lang, path);
+      const remote = await this.options.fetchRemotePack(lang);
       if (remote && remote.version !== cached?.version) {
         const data = this.remoteToPackData(remote);
         this.loadIntoMemory(lang, data);
@@ -63,6 +64,25 @@ export class PackStore {
 
   get(lang: string, hash: string): string | undefined {
     return this.memory.get(lang)?.get(hash);
+  }
+
+  /** 已经缓存过的语言（L1 视角），供 clearCache() 在不指定语言时全量清理 */
+  cachedLanguages(): string[] {
+    return [...this.memory.keys()];
+  }
+
+  /**
+   * 清空某个语言的 L1 + L2。用于用户登出等场景：译文里可能含有页面上的个人信息，
+   * 需要能主动从浏览器本地缓存中抹掉。L2 的 clear 是 PackStorageAdapter 上的可选方法，
+   * 自定义 adapter 可以不实现——那种情况下至少保证 L1 被清掉，且不抛错。
+   */
+  async clear(lang: string): Promise<void> {
+    this.memory.delete(lang);
+    try {
+      await this.options.storage.clear?.(lang);
+    } catch (err) {
+      console.warn('[i18n-runtime] 本地语言包缓存清理失败:', err);
+    }
   }
 
   async setMany(lang: string, translations: Record<string, string>): Promise<void> {
@@ -85,6 +105,23 @@ export class PackStore {
   }
 
   /**
+   * L2 是缓存不是权威源：读失败必须静默降级成"本地没有缓存"，继续走 L1/L3。
+   *
+   * IndexedDB 在隐私模式、企业策略禁用、跨域 iframe 里 open 就会抛；localStorage 在
+   * 部分浏览器的无痕模式下 getItem 同样会抛。这个异常若原样抛出去，engine.setLanguage()
+   * 会整体 reject、后面的 scanFull() 根本不执行——一个纯缓存层不可用，却导致全站不翻译。
+   * 路由回调里的 hydrate 还是 void 调用，抛出去就是一次未捕获的 Promise rejection。
+   */
+  private async readCache(lang: string): Promise<PackData | null> {
+    try {
+      return await this.options.storage.get(lang);
+    } catch (err) {
+      console.warn('[i18n-runtime] 本地语言包缓存读取失败，已降级为仅使用远端语言包:', err);
+      return null;
+    }
+  }
+
+  /**
    * 把 L2 的"读旧数据 -> 合并 -> 写回"接到同一个 lang 的队尾串行执行，
    * 保证同一时刻只有一次读改写在途，后写入的一定合并在先写入的结果之上，不会互相覆盖丢词条。
    * hydrate 场景默认用 patch.version 更新版本号；setMany 场景传 keepVersion 保留已持久化的版本号。
@@ -100,12 +137,19 @@ export class PackStore {
         // 上一次写入失败不应该让队列永久卡死，后续写入仍要能正常执行
       })
       .then(async () => {
-        const existing = (await this.options.storage.get(lang)) ?? { version: '', entries: {} };
+        const existing = (await this.readCache(lang)) ?? { version: '', entries: {} };
         const merged: PackData = {
           version: options.keepVersion ? existing.version : patch.version,
           entries: { ...existing.entries, ...patch.entries },
         };
-        await this.options.storage.set(lang, merged);
+        try {
+          await this.options.storage.set(lang, merged);
+        } catch (err) {
+          // 同理，落盘失败只损失下次会话的命中率，L1 里的译文已经可用。
+          // 不吞掉的话 setMany 会 reject，engine 那边会把它当成"批量翻译失败"记日志，
+          // 而实际上翻译是成功的，误导排查方向。
+          console.warn('[i18n-runtime] 本地语言包缓存写入失败，本次译文仅保留在内存中:', err);
+        }
       });
     this.writeQueue.set(lang, next);
     return next;
