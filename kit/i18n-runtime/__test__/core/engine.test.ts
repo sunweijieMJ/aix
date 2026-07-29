@@ -924,6 +924,190 @@ describe('createEngine', () => {
     vi.useRealTimers();
   });
 
+  it('pendingClass：候选入队等待翻译时应加上该 class，写回译文后应摘掉', async () => {
+    vi.useFakeTimers();
+    let resolveTranslate: (() => void) | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.includes('/pack')) {
+          return {
+            ok: true,
+            json: async () => ({ code: 0, data: { version: 'v1', entries: {} } }),
+          };
+        }
+        const body = JSON.parse(init!.body as string) as {
+          items: Array<{ hash: string; text: string }>;
+        };
+        return new Promise((resolve) => {
+          resolveTranslate = () =>
+            resolve({
+              ok: true,
+              json: async () => ({
+                code: 0,
+                data: {
+                  translations: body.items.map((item) => ({
+                    hash: item.hash,
+                    translation: 'hello',
+                  })),
+                },
+              }),
+            });
+        });
+      }),
+    );
+
+    const engine = createEngine();
+    engine.start({
+      provider: 'backend',
+      apiBase: '/api/i18n',
+      languages: ['en'],
+      pendingClass: 'i18n-loading',
+    });
+    await engine.setLanguage('en');
+    await vi.advanceTimersByTimeAsync(500); // rAF + debounce 跑完，候选已出队发出请求
+
+    const p = document.body.querySelector('p')!;
+    expect(p.classList.contains('i18n-loading')).toBe(true);
+
+    resolveTranslate!();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(p.classList.contains('i18n-loading')).toBe(false);
+    expect(p.textContent).toBe('hello');
+
+    engine.stop();
+    vi.useRealTimers();
+  });
+
+  it('pendingClass：翻译请求失败也应摘掉 class（不能因为失败卡在加载态）', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string) => {
+        if (url.includes('/pack')) {
+          return {
+            ok: true,
+            json: async () => ({ code: 0, data: { version: 'v1', entries: {} } }),
+          };
+        }
+        return { ok: false, status: 500 };
+      }),
+    );
+
+    const engine = createEngine();
+    engine.start({
+      provider: 'backend',
+      apiBase: '/api/i18n',
+      languages: ['en'],
+      pendingClass: 'i18n-loading',
+    });
+    await engine.setLanguage('en');
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(document.body.querySelector('p')!.classList.contains('i18n-loading')).toBe(false);
+
+    engine.stop();
+    vi.useRealTimers();
+  });
+
+  it('pendingClass：同一元素上多个候选（placeholder + title）应按引用计数，全部结束才摘 class', async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<input placeholder="请输入姓名" title="请输入姓名说明">';
+    let releasePlaceholder: (() => void) | undefined;
+    let releaseTitle: (() => void) | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.includes('/pack')) {
+          return {
+            ok: true,
+            json: async () => ({ code: 0, data: { version: 'v1', entries: {} } }),
+          };
+        }
+        const body = JSON.parse(init!.body as string) as {
+          items: Array<{ hash: string; text: string }>;
+        };
+        const text = body.items[0]!.text;
+        return new Promise((resolve) => {
+          const respond = () =>
+            resolve({
+              ok: true,
+              json: async () => ({
+                code: 0,
+                data: {
+                  translations: body.items.map((item) => ({
+                    hash: item.hash,
+                    translation: `EN(${item.text})`,
+                  })),
+                },
+              }),
+            });
+          if (text.includes('说明')) releaseTitle = respond;
+          else releasePlaceholder = respond;
+        });
+      }),
+    );
+
+    const engine = createEngine();
+    engine.start({
+      provider: 'backend',
+      apiBase: '/api/i18n',
+      languages: ['en'],
+      pendingClass: 'i18n-loading',
+      // 强制每个候选各自成一批（各自一次 handleBatch），才能让 placeholder/title
+      // 用不同时机 resolve，观察引用计数是否正确——否则它们会被攒进同一批一起完成
+      maxBatchSize: 1,
+    });
+    await engine.setLanguage('en');
+    await vi.advanceTimersByTimeAsync(500);
+
+    const input = document.body.querySelector('input')!;
+    expect(input.classList.contains('i18n-loading')).toBe(true);
+
+    releasePlaceholder!();
+    await vi.advanceTimersByTimeAsync(500);
+    // title 候选仍在等待，class 不能被 placeholder 的完成提前摘掉
+    expect(input.classList.contains('i18n-loading')).toBe(true);
+
+    releaseTitle!();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(input.classList.contains('i18n-loading')).toBe(false);
+
+    engine.stop();
+    vi.useRealTimers();
+  });
+
+  it('pendingClass：命中 terminology/L1 缓存/源语言还原的候选是同步完成，不应挂上 class', async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = '<h1>超级智能体平台</h1>';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ code: 0, data: { version: 'v1', entries: {} } }),
+      }),
+    );
+
+    const engine = createEngine();
+    engine.start({
+      provider: 'backend',
+      apiBase: '/api/i18n',
+      languages: ['en'],
+      pendingClass: 'i18n-loading',
+      terminology: { 超级智能体平台: { en: 'Super Agent Platform' } },
+    });
+    await engine.setLanguage('en');
+    await vi.advanceTimersByTimeAsync(500);
+
+    const h1 = document.body.querySelector('h1')!;
+    expect(h1.textContent).toBe('Super Agent Platform');
+    expect(h1.classList.contains('i18n-loading')).toBe(false);
+
+    engine.stop();
+    vi.useRealTimers();
+  });
+
   it('stop() 后 setLanguage 触发的 scanFull 不应再通过 routeWatcher 响应路由切换', async () => {
     vi.stubGlobal(
       'fetch',

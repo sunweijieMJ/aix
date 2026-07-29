@@ -99,6 +99,7 @@ function LanguageSwitcher() {
 | `glossary` | `string[]` | 全局术语表，翻译时传给后端，防止品牌名/专有名词被翻译 |
 | `shouldTranslate` | `(text: string, node: Node) => boolean` | 按内容/DOM 位置决定是否翻译，返回 `false` 的候选既不出网也不改写 DOM。用于个人信息脱敏，见「数据流向与隐私」 |
 | `scanShadowDOM` | `boolean` | 是否扫描 open shadow root 内的文本，默认 `true`；设为 `false` 关闭所有 shadow DOM 翻译（script 标签方式对应 `data-scan-shadow-dom="false"`） |
+| `pendingClass` | `string` | 候选等待翻译期间（已入队、网络请求在途）给所在元素加上的 class，写回/失败/`stop()` 后自动摘掉；不传则不做任何标记，见「翻译加载态」（script 标签方式对应 `data-pending-class`） |
 | `getCurrentPath` | `() => string` | 获取当前路由路径的回调函数，返回值随**翻译请求**传给后端（后端可据此按页面分组缓存翻译结果）；不随语言包请求下发，原因见 `/pack` 一节；不传则路径为空 |
 | `backendOptions` | `object` | backend provider 的接口自定义配置，见下方详细说明 |
 
@@ -127,6 +128,34 @@ function LanguageSwitcher() {
 | `addRoot(node)` | 手动注册额外的扫描根。用于 closed shadow root，以及**宿主元素已在 DOM 中、之后才 `attachShadow()` 的组件**——`attachShadow()` 不产生 MutationObserver 记录，这类 shadow 树扫不到，需要业务显式注册 |
 | `on('node-translated', cb)` | 监听文本节点被写入译文，返回取消订阅函数 |
 | `stop()` | 停止扫描与观察。不会回滚页面上已写入的译文 |
+
+## 翻译加载态
+
+切换语言时，攒批 + 出网翻译有网络延迟，这段时间文案会保持原文不变。配置 `pendingClass` 后，
+候选进入等待翻译状态时会给它所在的元素加上这个 class，写回译文/请求失败/`stop()` 后自动摘掉，
+业务只需要写 CSS，不用监听任何事件：
+
+```ts
+createI18nRuntimePlugin({
+  pendingClass: 'i18n-loading',
+  // ...
+});
+```
+
+```css
+.i18n-loading {
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+/* 或用伪元素做 spinner、骨架屏等任意自定义交互 */
+```
+
+命中固定译文（`terminology` / `data-i18n-fixed-*`）、L1 内存缓存、或目标语言等于源语言（本地
+还原）的候选是同步完成的，没有等待期，不会挂上这个 class。
+
+class 挂在文本节点的 `parentElement`（Text 节点本身没有 `classList`）或属性所在的元素上。
+同一个元素上可能同时有多个候选在等待（如一段内容被拆成多个文本节点、或 `placeholder`/`title`
+同时在翻译），按引用计数管理，只有全部候选都结束等待才会真正摘掉 class。
 
 ## 排除翻译
 

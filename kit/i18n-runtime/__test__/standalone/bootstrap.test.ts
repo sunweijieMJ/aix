@@ -79,6 +79,16 @@ describe('parseConfigFromDataset', () => {
         .scanShadowDOM,
     ).toBe(true);
   });
+
+  it('应解析 data-pending-class，未传时为 undefined', () => {
+    expect(
+      parseConfigFromDataset({ languages: 'en', pendingClass: 'i18n-loading' } as DOMStringMap)
+        .pendingClass,
+    ).toBe('i18n-loading');
+    expect(
+      parseConfigFromDataset({ languages: 'en' } as DOMStringMap).pendingClass,
+    ).toBeUndefined();
+  });
 });
 
 describe('bootstrap', () => {

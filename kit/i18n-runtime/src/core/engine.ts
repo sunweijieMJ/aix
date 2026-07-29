@@ -52,6 +52,18 @@ export interface I18nRuntimeConfig {
    * 这个钩子补上按内容动态判断的能力。
    */
   shouldTranslate?: ShouldTranslate;
+  /**
+   * 候选进入"等待翻译"状态（已入队，即将发起或已发起网络请求）时，给它所在的元素加上这个
+   * class；该候选结束等待（写回译文/请求失败/被 stop() 丢弃）时自动摘掉。用于业务自定义
+   * loading 交互（骨架屏、透明度过渡、伪元素 spinner 等），业务只需写 CSS，不需要监听事件。
+   *
+   * 命中固定译文（terminology/data-i18n-fixed-*）、L1 缓存、或目标语言等于源语言的候选是
+   * 同步完成，没有等待期，不会触发这个 class。
+   *
+   * 同一个元素上可能同时挂多个候选（如一段文本被拆成多个 Text 节点、或 placeholder/title
+   * 同时在翻译），按引用计数管理：只有当挂在该元素上的候选全部结束等待，才会真正摘掉 class。
+   */
+  pendingClass?: string;
   /** backend provider 的接口自定义配置（仅当 provider 为 'backend' 时生效） */
   backendOptions?: {
     /** 翻译接口路径，默认 '/translate' */
@@ -190,9 +202,35 @@ export function createEngine(): I18nRuntimeEngine {
    */
   let runId = 0;
   const listeners = new Map<I18nRuntimeEvent, Set<(node: Text) => void>>();
+  /** pendingClass 的引用计数：同一个元素上可能同时挂多个候选（拆分的多个文本节点、
+   *  或 placeholder/title 同时在翻译），必须等全部结束等待才能真正摘掉 class */
+  const pendingCounts = new WeakMap<Element, number>();
 
   function emit(event: I18nRuntimeEvent, node: Text): void {
     listeners.get(event)?.forEach((cb) => cb(node));
+  }
+
+  /** 文本候选记在其父元素上（Text 节点没有 classList），属性候选记在属性所在元素本身上 */
+  function pendingElement(candidate: TranslationCandidate): Element | null {
+    if (candidate.kind === 'attr') return candidate.node as Element;
+    return (candidate.node as Text).parentElement;
+  }
+
+  function adjustPending(candidates: TranslationCandidate[], delta: 1 | -1): void {
+    const className = config?.pendingClass;
+    if (!className) return;
+    for (const candidate of candidates) {
+      const el = pendingElement(candidate);
+      if (!el) continue;
+      const next = (pendingCounts.get(el) ?? 0) + delta;
+      if (next <= 0) {
+        pendingCounts.delete(el);
+        el.classList.remove(className);
+      } else {
+        pendingCounts.set(el, next);
+        el.classList.add(className);
+      }
+    }
   }
 
   function applyCandidate(
@@ -235,48 +273,55 @@ export function createEngine(): I18nRuntimeEngine {
     const batchRunId = runId;
     const sourceLang = config!.sourceLang ?? 'zh';
 
-    const missing = candidates.filter((c) => packStore!.get(lang, c.hash) === undefined);
-    if (missing.length > 0) {
-      // 按 hash 去重再发给 translator——多个候选（如两个内容相同的按钮）可能共享同一个 hash，
-      // 不应该把同一段文本重复发给翻译服务；候选本身在 Scanner.enqueue 里已经不会被丢弃，
-      // 这里只是避免请求体里出现重复条目，应用译文时仍会遍历全部 candidates 逐一写回。
-      const uniqueMissing = new Map<string, string>();
-      for (const c of missing) uniqueMissing.set(c.hash, c.normalizedText);
+    // 这批候选从这里开始进入"等待翻译"状态，直到函数退出（无论成功/失败/被下面的
+    // runId 校验提前 return）都要摘掉，用 try/finally 保证不会有任何出口漏摘。
+    adjustPending(candidates, 1);
+    try {
+      const missing = candidates.filter((c) => packStore!.get(lang, c.hash) === undefined);
+      if (missing.length > 0) {
+        // 按 hash 去重再发给 translator——多个候选（如两个内容相同的按钮）可能共享同一个 hash，
+        // 不应该把同一段文本重复发给翻译服务；候选本身在 Scanner.enqueue 里已经不会被丢弃，
+        // 这里只是避免请求体里出现重复条目，应用译文时仍会遍历全部 candidates 逐一写回。
+        const uniqueMissing = new Map<string, string>();
+        for (const c of missing) uniqueMissing.set(c.hash, c.normalizedText);
 
-      try {
-        const result = await translator!.translate({
-          items: [...uniqueMissing].map(([hash, text]) => ({ hash, text })),
-          sourceLang,
-          targetLang: lang,
-          path: config!.getCurrentPath?.(),
-          glossary: config!.glossary,
-        });
-        const translations: Record<string, string> = {};
-        for (const item of result.translations) translations[item.hash] = item.translation;
-        await packStore!.setMany(lang, translations);
-      } catch (err) {
-        // 翻译失败不写入 packStore、不记录 registry，这批候选保持"未翻译"状态，
-        // 下次扫描（路由切换/新的 mutation）会因为命中不到缓存而自然重新入队重试。
-        // 注意：这里不能 return——本批次里可能还混有其它已经命中缓存的候选（比如内容
-        // 与页面别处已翻译文本相同），它们不该被这次翻译失败连累，必须走到下面的循环正常写回。
-        console.error('[i18n-runtime] 批量翻译失败，本批候选将在下次扫描时自动重试:', err);
+        try {
+          const result = await translator!.translate({
+            items: [...uniqueMissing].map(([hash, text]) => ({ hash, text })),
+            sourceLang,
+            targetLang: lang,
+            path: config!.getCurrentPath?.(),
+            glossary: config!.glossary,
+          });
+          const translations: Record<string, string> = {};
+          for (const item of result.translations) translations[item.hash] = item.translation;
+          await packStore!.setMany(lang, translations);
+        } catch (err) {
+          // 翻译失败不写入 packStore、不记录 registry，这批候选保持"未翻译"状态，
+          // 下次扫描（路由切换/新的 mutation）会因为命中不到缓存而自然重新入队重试。
+          // 注意：这里不能 return——本批次里可能还混有其它已经命中缓存的候选（比如内容
+          // 与页面别处已翻译文本相同），它们不该被这次翻译失败连累，必须走到下面的循环正常写回。
+          console.error('[i18n-runtime] 批量翻译失败，本批候选将在下次扫描时自动重试:', err);
+        }
       }
-    }
 
-    // 翻译是异步的，等待期间业务可能已经调用 stop()：那时 scanner 已 disconnect、
-    // 尚未出队的候选也被丢弃，运行时对外的承诺是"不再改写 DOM"。已经出队的这批必须在
-    // 这里一并止步，否则 stop() 之后页面仍会突然被改写。译文本身已写进 packStore，
-    // 缓存不浪费，下次 start() 能直接命中。
-    // runId 比对额外挡住"stop() 后又 start()"的情况：那时 started 已经回到 true，
-    // 但这批候选属于上一轮运行（DOM 节点可能都已被卸载），不该由它来写。
-    // lang 比对挡住"翻译在途时切了语言"：这批译文属于上一个语言，写回等于把页面
-    // 刚显示好的新语言文案覆盖成旧语言。MutationObserver 事后能自愈回来，但用户会
-    // 看见一次明显的语言闪烁。译文已进 packStore，下次切回这个语言直接命中缓存。
-    if (!started || runId !== batchRunId || lang !== currentLang) return;
+      // 翻译是异步的，等待期间业务可能已经调用 stop()：那时 scanner 已 disconnect、
+      // 尚未出队的候选也被丢弃，运行时对外的承诺是"不再改写 DOM"。已经出队的这批必须在
+      // 这里一并止步，否则 stop() 之后页面仍会突然被改写。译文本身已写进 packStore，
+      // 缓存不浪费，下次 start() 能直接命中。
+      // runId 比对额外挡住"stop() 后又 start()"的情况：那时 started 已经回到 true，
+      // 但这批候选属于上一轮运行（DOM 节点可能都已被卸载），不该由它来写。
+      // lang 比对挡住"翻译在途时切了语言"：这批译文属于上一个语言，写回等于把页面
+      // 刚显示好的新语言文案覆盖成旧语言。MutationObserver 事后能自愈回来，但用户会
+      // 看见一次明显的语言闪烁。译文已进 packStore，下次切回这个语言直接命中缓存。
+      if (!started || runId !== batchRunId || lang !== currentLang) return;
 
-    for (const candidate of candidates) {
-      const translation = packStore!.get(lang, candidate.hash);
-      if (translation !== undefined) applyCandidate(candidate, translation, lang);
+      for (const candidate of candidates) {
+        const translation = packStore!.get(lang, candidate.hash);
+        if (translation !== undefined) applyCandidate(candidate, translation, lang);
+      }
+    } finally {
+      adjustPending(candidates, -1);
     }
   }
 

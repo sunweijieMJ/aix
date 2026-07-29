@@ -45,6 +45,7 @@ export function parseConfigFromDataset(
     // data-scan-shadow-dom：未传保持默认 true，仅显式设为 "false" 时关闭 shadow DOM 扫描
     scanShadowDOM:
       dataset.scanShadowDom === undefined ? undefined : dataset.scanShadowDom !== 'false',
+    pendingClass: dataset.pendingClass,
     initialLanguage: dataset.initialLanguage,
   };
 }
