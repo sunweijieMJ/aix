@@ -115,6 +115,40 @@ describe('createEngine', () => {
     vi.useRealTimers();
   });
 
+  it('terminology 命中时应直接写回固定译文，不请求翻译接口（pack 拉取仍正常发生）', async () => {
+    vi.useFakeTimers();
+    const translateMock = vi.fn();
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/pack')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ code: 0, data: { version: 'v1', entries: {} } }),
+        });
+      }
+      translateMock(init);
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ code: 0, data: { translations: [] } }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const engine = createEngine();
+    engine.start({
+      provider: 'backend',
+      apiBase: '/api/i18n',
+      languages: ['en'],
+      terminology: { 你好: { en: 'Fixed Hello' } },
+    });
+    await engine.setLanguage('en');
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(document.body.querySelector('p')!.textContent).toBe('Fixed Hello');
+    expect(translateMock).not.toHaveBeenCalled(); // 唯一的候选被 terminology 短路，不应触发 /translate
+    engine.stop();
+    vi.useRealTimers();
+  });
+
   it('业务改写已翻译节点后重新翻译，registry 记录的 originalText 应跟着更新为新内容，切换语言时不会用旧原文重新翻译', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {

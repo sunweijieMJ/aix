@@ -1,7 +1,12 @@
 import type { NodeRegistry } from './node-registry.js';
 import { hashText } from './hash.js';
 import { isTranslatable, normalize } from './normalizer.js';
-import type { ShouldTranslate, TranslatableAttr, TranslationCandidate } from '../types.js';
+import type {
+  ShouldTranslate,
+  TranslatableAttr,
+  Terminology,
+  TranslationCandidate,
+} from '../types.js';
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT']);
 /**
@@ -11,6 +16,33 @@ const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT']);
  */
 const TEXT_SKIP_SELECTOR = 'textarea, [contenteditable]:not([contenteditable="false"])';
 const ATTR_NAMES: TranslatableAttr[] = ['placeholder', 'title', 'alt'];
+/**
+ * 元素级固定译文属性前缀：`data-i18n-fixed-{lang}="固定译文"`，命中优先级高于全局
+ * terminology——挂在具体元素上的声明比全局配置更具体，应该赢。
+ *
+ * 必须直接标在"拥有这段内容的元素"本身上（文本节点看其 parentElement，属性候选看属性
+ * 所在的 el 自身），不做 closest() 向上查找：容器内一旦同时存在多段不同文本/属性，
+ * 向上查找会把它们全部静默覆盖成同一个固定译文，且没有任何报错提示，是个隐蔽的踩坑点。
+ */
+const FIXED_TRANSLATION_ATTR_PREFIX = 'data-i18n-fixed-';
+
+/**
+ * 依次查找"元素级固定译文" -> "全局术语表"，命中即返回固定译文，用于在入队前短路：
+ * 不出网、不查机翻缓存，直接当作已翻译内容处理。两者都未命中返回 undefined，
+ * 交由后续正常翻译流程处理。
+ */
+function resolveFixedTranslation(
+  originalText: string,
+  node: Node,
+  targetLang: string,
+  terminology: Terminology | undefined,
+): string | undefined {
+  const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+  const value = el?.getAttribute(FIXED_TRANSLATION_ATTR_PREFIX + targetLang);
+  if (value) return value;
+  return terminology?.[originalText]?.[targetLang];
+}
+
 /** 属性没有 WeakMap 可挂（node-registry 只认 Text 节点），原文存到同名 data-i18n-orig-* 属性上，
  *  跟随元素生命周期，元素销毁时自动一起消失，不需要额外清理 */
 const ORIGINAL_ATTR_PREFIX = 'data-i18n-orig-';
@@ -82,6 +114,8 @@ export interface ScannerOptions {
   scanShadowDOM?: boolean;
   /** 按内容决定是否翻译，返回 false 则该候选既不出网也不改写 DOM */
   shouldTranslate?: ShouldTranslate;
+  /** 全局固定译文术语表：原文 -> {lang: 固定译文}，见 I18nRuntimeConfig.terminology 注释 */
+  terminology?: Terminology;
 }
 
 function defaultScheduleIdle(work: () => void): void {
@@ -158,6 +192,7 @@ export class Scanner {
       | 'getCached'
       | 'onCacheHit'
       | 'shouldTranslate'
+      | 'terminology'
     >
   > & {
     scheduleIdle: (work: () => void) => void;
@@ -165,6 +200,7 @@ export class Scanner {
     getCached?: (hash: string) => string | undefined;
     onCacheHit?: (candidate: TranslationCandidate, translation: string) => void;
     shouldTranslate?: ShouldTranslate;
+    terminology?: Terminology;
   };
   private targetLang: string;
   private readonly queue: TranslationCandidate[] = [];
@@ -198,6 +234,7 @@ export class Scanner {
       getCached: options.getCached,
       onCacheHit: options.onCacheHit,
       shouldTranslate: options.shouldTranslate,
+      terminology: options.terminology,
     };
     this.targetLang = options.targetLang;
   }
@@ -432,6 +469,19 @@ export class Scanner {
     // 对"翻译成自己"这种输入的任意返回值，而不是用户最初写的原文。
     if (this.targetLang === this.options.sourceLang) {
       this.options.onCacheHit?.(candidate, candidate.originalText);
+      return;
+    }
+
+    // 固定译文命中（元素级 data-i18n-fixed-{lang} 或全局 terminology）优先级高于机翻缓存——
+    // 人工指定的译法应该无条件覆盖机器结果，且不出网、不落 packStore，config 改了立刻生效。
+    const fixed = resolveFixedTranslation(
+      candidate.originalText,
+      candidate.node,
+      this.targetLang,
+      this.options.terminology,
+    );
+    if (fixed !== undefined) {
+      this.options.onCacheHit?.(candidate, fixed);
       return;
     }
 

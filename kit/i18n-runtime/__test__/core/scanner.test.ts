@@ -19,14 +19,22 @@ describe('ensureOriginalAttrRecorded', () => {
 
 function createScanner(
   onBatch: (c: unknown[]) => void,
-  overrides: Partial<{ debounceMs: number; maxBatchSize: number }> = {},
+  overrides: Partial<{
+    debounceMs: number;
+    maxBatchSize: number;
+    targetLang: string;
+    terminology: Record<string, Record<string, string>>;
+    onCacheHit: (candidate: unknown, translation: string) => void;
+  }> = {},
 ) {
   return new Scanner({
     registry: new NodeRegistry(),
     sourceLang: 'zh',
-    targetLang: 'en',
+    targetLang: overrides.targetLang ?? 'en',
     debounceMs: overrides.debounceMs,
     maxBatchSize: overrides.maxBatchSize,
+    terminology: overrides.terminology,
+    onCacheHit: overrides.onCacheHit as never,
     onBatch,
     scheduleIdle: (work) => work(), // 测试用同步调度器，避免依赖 requestIdleCallback
   });
@@ -522,6 +530,108 @@ describe('Scanner.observe', () => {
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
     // 跳过标记挂在 shadow host 上，parentElement 上溯到不了 host，必须显式跨 shadow 边界判断
     expect(texts).toEqual([]);
+  });
+});
+
+describe('Scanner 固定译文（terminology / data-i18n-fixed-*）', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.useRealTimers();
+  });
+
+  it('命中全局 terminology 时应同步走 onCacheHit，不进入 onBatch 翻译队列', () => {
+    document.body.innerHTML = `<h1>超级智能体平台</h1>`;
+    const onBatch = vi.fn();
+    const onCacheHit = vi.fn();
+    createScanner(onBatch, {
+      onCacheHit,
+      terminology: { 超级智能体平台: { en: 'Super Agent Platform' } },
+    }).scanFull(document.body);
+
+    expect(onBatch).not.toHaveBeenCalled();
+    expect(onCacheHit).toHaveBeenCalledTimes(1);
+    const [candidate, translation] = onCacheHit.mock.calls[0]!;
+    expect(translation).toBe('Super Agent Platform');
+    expect((candidate as any).originalText).toBe('超级智能体平台');
+  });
+
+  it('terminology 未覆盖当前目标语言时应回落到正常翻译流程', () => {
+    document.body.innerHTML = `<h1>超级智能体平台</h1>`;
+    const onBatch = vi.fn();
+    const onCacheHit = vi.fn();
+    vi.useFakeTimers();
+    createScanner(onBatch, {
+      onCacheHit,
+      terminology: { 超级智能体平台: { ja: '超スマートエージェントプラットフォーム' } },
+    }).scanFull(document.body); // targetLang 默认 'en'，terminology 只配了 'ja'
+    vi.runAllTimers();
+
+    expect(onCacheHit).not.toHaveBeenCalled();
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toEqual(['超级智能体平台']);
+  });
+
+  it('元素级 data-i18n-fixed-{lang} 应优先于全局 terminology', () => {
+    document.body.innerHTML = `<h1 data-i18n-fixed-en="Fixed On Element">超级智能体平台</h1>`;
+    const onBatch = vi.fn();
+    const onCacheHit = vi.fn();
+    createScanner(onBatch, {
+      onCacheHit,
+      terminology: { 超级智能体平台: { en: 'From Terminology' } },
+    }).scanFull(document.body);
+
+    expect(onBatch).not.toHaveBeenCalled();
+    expect(onCacheHit).toHaveBeenCalledTimes(1);
+    const [, translation] = onCacheHit.mock.calls[0]!;
+    expect(translation).toBe('Fixed On Element');
+  });
+
+  it('data-i18n-fixed-{lang} 只对直接持有该文本的父元素生效，不通过 closest() 向上蔓延', () => {
+    // 必须直接标在拥有内容的元素本身，不能标在外层容器上——否则容器内其它不相关的
+    // 文本/属性会被静默覆盖成同一个固定译文
+    document.body.innerHTML = `
+      <div data-i18n-fixed-en="Wrapped Fixed Text">
+        <span>超级智能体平台</span>
+      </div>`;
+    const onBatch = vi.fn();
+    const onCacheHit = vi.fn();
+    vi.useFakeTimers();
+    createScanner(onBatch, { onCacheHit }).scanFull(document.body);
+    vi.runAllTimers();
+
+    expect(onCacheHit).not.toHaveBeenCalled();
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toEqual(['超级智能体平台']);
+  });
+
+  it('容器内包含多段不同内容时，data-i18n-fixed-{lang} 不应覆盖到不相关的子元素', () => {
+    document.body.innerHTML = `
+      <div data-i18n-fixed-en="Fixed Heading Text">
+        <h1>超级智能体平台</h1>
+        <input placeholder="请输入姓名" />
+      </div>`;
+    const onBatch = vi.fn();
+    const onCacheHit = vi.fn();
+    vi.useFakeTimers();
+    createScanner(onBatch, { onCacheHit }).scanFull(document.body);
+    vi.runAllTimers();
+
+    expect(onCacheHit).not.toHaveBeenCalled();
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toEqual(expect.arrayContaining(['超级智能体平台', '请输入姓名']));
+  });
+
+  it('data-i18n-fixed-{lang} 只对声明的目标语言生效，其它语言仍走正常翻译', () => {
+    document.body.innerHTML = `<h1 data-i18n-fixed-ja="固定日文">超级智能体平台</h1>`;
+    const onBatch = vi.fn();
+    const onCacheHit = vi.fn();
+    vi.useFakeTimers();
+    createScanner(onBatch, { onCacheHit, targetLang: 'en' }).scanFull(document.body);
+    vi.runAllTimers();
+
+    expect(onCacheHit).not.toHaveBeenCalled();
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toEqual(['超级智能体平台']);
   });
 });
 

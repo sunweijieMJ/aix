@@ -67,6 +67,13 @@ export type TranslatableAttr = 'placeholder' | 'title' | 'alt';
  */
 export type ShouldTranslate = (text: string, node: Node) => boolean;
 
+/**
+ * 固定译文术语表：原文 -> {lang: 固定译文}。用于品牌名/标题等需要人工指定译法、
+ * 不依赖机翻的场景，命中后直接替换、不出网、不落 packStore 缓存。
+ * 按精确原文字符串匹配，不做数字占位符归一化，只适合不含变量的固定文案。
+ */
+export type Terminology = Record<string, Record<string, string>>;
+
 export interface TranslationCandidate {
   kind: 'text' | 'attr';
   node: Text | Element;

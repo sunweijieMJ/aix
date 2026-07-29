@@ -1,4 +1,10 @@
-import type { ProviderName, RemotePack, ShouldTranslate, TranslationCandidate } from '../types.js';
+import type {
+  ProviderName,
+  RemotePack,
+  ShouldTranslate,
+  Terminology,
+  TranslationCandidate,
+} from '../types.js';
 import { NodeRegistry } from './node-registry.js';
 import { PackStore } from './pack-store.js';
 import { resolveStorageAdapter, type StorageOption } from './storage/index.js';
@@ -25,8 +31,16 @@ export interface I18nRuntimeConfig {
   maxEntries?: number;
   /** 除 placeholder/title/alt 之外，额外需要翻译的 HTML 属性名，如 ['data-placeholder'] */
   extraAttrs?: string[];
-  /** 全局术语表，翻译时传给后端，防止品牌名/专有名词被翻译 */
+  /** 全局术语表，翻译时传给后端，防止品牌名/专有名词被翻译（保留原文，不指定译文） */
   glossary?: string[];
+  /**
+   * 固定译文术语表：原文 -> {lang: 固定译文}，用于品牌名/标题等需要人工指定译法、
+   * 不依赖机翻的场景。与 glossary 不同，这里是"替换成指定译文"而不是"保留原文"。
+   * 命中优先级高于机翻缓存和实时翻译，低于元素级 `data-i18n-fixed-{lang}` 属性
+   * （更具体的声明应该赢）。按精确原文字符串匹配，不做数字占位符归一化，
+   * 只适合不含变量的固定文案；命中的候选不出网、不落 packStore 缓存。
+   */
+  terminology?: Terminology;
   /** 获取当前路由路径的回调函数，返回值会随翻译请求和语言包请求传给后端；不传则路径为空 */
   getCurrentPath?: () => string;
   /** 是否扫描 open shadow root 内的文本，默认 true；设为 false 可关闭所有 shadow DOM 翻译 */
@@ -299,6 +313,7 @@ export function createEngine(): I18nRuntimeEngine {
         extraAttrs: userConfig.extraAttrs,
         scanShadowDOM: userConfig.scanShadowDOM,
         shouldTranslate: userConfig.shouldTranslate,
+        terminology: userConfig.terminology,
         getCached: (hash) => packStore!.get(currentLang, hash),
         onCacheHit: (candidate, translation) => applyCandidate(candidate, translation, currentLang),
         onBatch: (candidates) => {

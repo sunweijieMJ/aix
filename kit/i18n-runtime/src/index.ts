@@ -25,6 +25,7 @@ export type {
   TranslatableAttr,
   TranslationCandidate,
   ShouldTranslate,
+  Terminology,
   PackData,
   PackEntry,
   PackStorageAdapter,
