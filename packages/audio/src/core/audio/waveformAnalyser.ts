@@ -28,16 +28,22 @@ export class WaveformAnalyser {
   private animationId: number | null = null;
   private config: Required<WaveformAnalyserConfig>;
   private dataArray: Uint8Array<ArrayBuffer> | null = null;
+  /** AudioContext 是否归本实例所有：外部注入的由注入方负责关闭 */
+  private ownsContext = true;
 
   constructor(config: WaveformAnalyserConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
   /**
-   * 连接音频流，初始化 AudioContext
+   * 连接音频流
+   * @param stream - 音频流
+   * @param context - 可选的外部 AudioContext（由 AudioSourceHub 提供）。
+   *   传入时复用该上下文，destroy() 不会将其关闭，避免同一次录音开多个 AudioContext。
    */
-  connect(stream: MediaStream): void {
-    this.audioContext = new AudioContext();
+  connect(stream: MediaStream, context?: AudioContext): void {
+    this.ownsContext = !context;
+    this.audioContext = context ?? new AudioContext();
     this.source = this.audioContext.createMediaStreamSource(stream);
     this.analyser = this.audioContext.createAnalyser();
 
@@ -117,7 +123,7 @@ export class WaveformAnalyser {
     this.stop();
     this.source?.disconnect();
     this.analyser?.disconnect();
-    this.audioContext?.close();
+    if (this.ownsContext) this.audioContext?.close();
     this.audioContext = null;
     this.analyser = null;
     this.source = null;

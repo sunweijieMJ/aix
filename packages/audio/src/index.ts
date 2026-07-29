@@ -20,11 +20,18 @@ export { BaseTTSAdapter } from './core/adapters/tts/base';
 export { BrowserTTS } from './core/adapters/tts/browser';
 export { AliyunTTS } from './core/adapters/tts/aliyun';
 export { ProxyTTS } from './core/adapters/tts/proxy';
-export type { ASRAdapter } from './core/adapters/asr/base';
+export type {
+  ASRAdapter,
+  ASRAudioSourceMode,
+  PCMAudioSource,
+  Unsubscribe,
+} from './core/adapters/asr/base';
 export type { TTSAdapter } from './core/adapters/tts/base';
 
 // ── 音频核心 ─────────────────────────────────────────────────────────────────
 export { Recorder } from './core/audio/recorder';
+export { AudioSourceHub } from './core/audio/audioSourceHub';
+export type { AudioSourceHubConfig } from './core/audio/audioSourceHub';
 export { WaveformAnalyser } from './core/audio/waveformAnalyser';
 export { Resampler } from './core/audio/resampler';
 export { VAD } from './core/audio/vad';

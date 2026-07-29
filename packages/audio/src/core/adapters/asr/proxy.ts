@@ -5,19 +5,42 @@
  *   ws-proxy：后端全链路透传，前端连接后端 WebSocket
  */
 import type { ASROptions, ASRResult } from '../../../types';
-import { BaseASRAdapter } from './base';
+import {
+  BaseASRAdapter,
+  type ASRAudioSourceMode,
+  type PCMAudioSource,
+  type Unsubscribe,
+} from './base';
 
 export class ProxyASR extends BaseASRAdapter {
+  /** 自身不采集音频，必须由编排层注入音源或手动调用 sendAudio() */
+  readonly audioSource: ASRAudioSourceMode = 'external';
+
   private ws: WebSocket | null = null;
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 5;
   private readonly reconnectDelays = [1000, 2000, 4000, 8000, 16000];
+
+  private pcmSource: PCMAudioSource | null = null;
+  private pcmUnsubscribe: Unsubscribe | null = null;
+  /**
+   * 掉线前是否处于识别中，决定重连成功后要不要自动重发 start 帧。
+   * 只重连而不重发 start，后端不会建立识别任务，音频推过去石沉大海。
+   */
+  private shouldResumeOnReconnect = false;
 
   constructor(options: ASROptions) {
     super(options);
     if (!options.auth) {
       throw new Error('ProxyASR 需要 auth 配置');
     }
+  }
+
+  attachAudioSource(source: PCMAudioSource | null): void {
+    this.detachPCM();
+    this.pcmSource = source;
+    // 已在识别中则立即接上，否则等 start() 时再订阅
+    if (source && this._state === 'recording') this.subscribePCM();
   }
 
   async connect(): Promise<void> {
@@ -33,8 +56,9 @@ export class ProxyASR extends BaseASRAdapter {
   }
 
   disconnect(): void {
-    this.ws?.close();
-    this.ws = null;
+    this.shouldResumeOnReconnect = false;
+    this.detachPCM();
+    this.closeSocket();
     this.setState('idle');
   }
 
@@ -42,23 +66,29 @@ export class ProxyASR extends BaseASRAdapter {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket 未连接');
     }
+    this.shouldResumeOnReconnect = true;
     this.ws.send(
       JSON.stringify({
         type: 'start',
         config: {
-          sampleRate: this.options.sampleRate || 16000,
+          sampleRate: this.pcmSource?.sampleRate ?? this.options.sampleRate ?? 16000,
           language: this.options.language || 'zh-CN',
         },
       }),
     );
     this.setState('recording');
+    // 开始识别后才订阅音源，避免 start 帧之前就把音频发出去
+    this.subscribePCM();
   }
 
   stop(): void {
+    this.shouldResumeOnReconnect = false;
+    this.detachPCM();
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'stop' }));
-      this.setState('stopped');
     }
+    // 无论 ws 是否可用都要落到 stopped，否则 onclose 会误判为异常掉线而重连
+    this.setState('stopped');
   }
 
   sendAudio(audioData: ArrayBuffer): void {
@@ -69,12 +99,33 @@ export class ProxyASR extends BaseASRAdapter {
 
   destroy(): void {
     this.disconnect();
-    this.resultCallbacks = [];
-    this.errorCallbacks = [];
-    this.stateCallbacks = [];
+    this.pcmSource = null;
+    this.clearCallbacks();
   }
 
   // ── 内部 ──────────────────────────────────────────────────────────────────────
+
+  /** 订阅共享音源，把 PCM 帧转发给后端 */
+  private subscribePCM(): void {
+    if (!this.pcmSource || this.pcmUnsubscribe) return;
+    this.pcmUnsubscribe = this.pcmSource.onPCM((frame) => this.sendAudio(frame));
+  }
+
+  private detachPCM(): void {
+    this.pcmUnsubscribe?.();
+    this.pcmUnsubscribe = null;
+  }
+
+  /** 关闭 WebSocket 并摘掉事件处理器，防止重连时旧连接的回调继续触发 */
+  private closeSocket(): void {
+    if (!this.ws) return;
+    this.ws.onopen = null;
+    this.ws.onmessage = null;
+    this.ws.onerror = null;
+    this.ws.onclose = null;
+    this.ws.close();
+    this.ws = null;
+  }
 
   /** 根据 auth 模式解析最终 WebSocket URL */
   private async resolveWebSocketUrl(): Promise<string> {
@@ -103,6 +154,8 @@ export class ProxyASR extends BaseASRAdapter {
 
   private connectWebSocket(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
+      // 重连时先摘掉旧连接，否则旧 socket 与其 handler 会一直残留
+      this.closeSocket();
       this.ws = new WebSocket(url);
 
       this.ws.onopen = () => {
@@ -151,7 +204,12 @@ export class ProxyASR extends BaseASRAdapter {
       this.setState('reconnecting');
       const delay = this.reconnectDelays[this.reconnectAttempts++];
       setTimeout(() => {
-        this.connect().catch((err) => this.emitError(err));
+        this.connect()
+          .then(() => {
+            // 只重连而不重发 start 帧，后端不会建立识别任务 → 静默假死
+            if (this.shouldResumeOnReconnect) this.start();
+          })
+          .catch((err) => this.emitError(err));
       }, delay);
     } else {
       this.setState('error');

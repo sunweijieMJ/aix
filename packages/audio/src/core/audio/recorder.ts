@@ -11,6 +11,8 @@ export interface RecorderEvents {
   onStop?: (result: RecordingResult) => void;
   onError?: (error: Error) => void;
   onStateChange?: (state: RecorderState) => void;
+  /** 达到 maxDuration 被自动停止时触发（在 onStop 之前） */
+  onMaxDuration?: () => void;
 }
 
 const DEFAULT_CONFIG: Required<RecorderConfig> = {
@@ -20,24 +22,49 @@ const DEFAULT_CONFIG: Required<RecorderConfig> = {
   mimeType: '', // 自动检测
 };
 
+/** 剔除值为 undefined 的键，避免展开时把默认值覆盖掉 */
+function stripUndefined<T extends object>(input: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(input).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
+}
+
 export class Recorder {
   private config: Required<RecorderConfig>;
   private mediaStream: MediaStream | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
-  private startTime = 0;
   private events: RecorderEvents = {};
 
+  /** 本段（上次 start/resume 起）的开始时刻 */
+  private segmentStart = 0;
+  /** 此前各段累计的净录音时长（毫秒），不含暂停 */
+  private accumulatedMs = 0;
+  /** maxDuration 倒计时句柄 */
+  private maxDurationTimer: ReturnType<typeof setTimeout> | null = null;
+  /** 音轨是否归本实例所有：外部注入的流由注入方负责释放 */
+  private ownsStream = true;
+
   constructor(config: RecorderConfig = {}, events: RecorderEvents = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    // 显式传 undefined 应与不传等价，直接展开会把默认值覆盖成 undefined
+    this.config = { ...DEFAULT_CONFIG, ...stripUndefined(config) };
     this.events = events;
   }
 
   /**
-   * 请求麦克风权限并初始化
+   * 初始化录音器
+   * @param stream - 可选的外部 MediaStream（由 AudioSourceHub 提供）。
+   *   传入时复用该流，不再重复申请麦克风权限，且 destroy() 不会停止其音轨。
    */
-  async init(): Promise<void> {
+  async init(stream?: MediaStream): Promise<void> {
+    if (stream) {
+      this.mediaStream = stream;
+      this.ownsStream = false;
+      return;
+    }
+
     try {
+      this.ownsStream = true;
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: this.config.sampleRate,
@@ -67,7 +94,8 @@ export class Recorder {
       this.mediaRecorder = new MediaRecorder(this.mediaStream, mimeType ? { mimeType } : {});
 
       this.chunks = [];
-      this.startTime = Date.now();
+      this.accumulatedMs = 0;
+      this.segmentStart = Date.now();
 
       this.mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
@@ -97,6 +125,7 @@ export class Recorder {
       };
 
       this.mediaRecorder.start(100); // 每 100ms 收集一次数据
+      this.scheduleMaxDuration();
     } catch (error) {
       const err = error instanceof Error ? error : new Error('启动录音失败');
       this.events.onError?.(err);
@@ -108,27 +137,40 @@ export class Recorder {
    * 停止录音
    */
   stop(): void {
+    this.clearMaxDurationTimer();
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.settleSegment();
       this.mediaRecorder.stop();
     }
   }
 
   /**
-   * 暂停录音
+   * 暂停录音（同时挂起 maxDuration 倒计时）
    */
   pause(): void {
     if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      this.settleSegment();
+      this.clearMaxDurationTimer();
       this.mediaRecorder.pause();
     }
   }
 
   /**
-   * 恢复录音
+   * 恢复录音（按剩余时长续算 maxDuration）
    */
   resume(): void {
     if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
+      this.segmentStart = Date.now();
       this.mediaRecorder.resume();
+      this.scheduleMaxDuration();
     }
+  }
+
+  /**
+   * 已录制的净时长（秒），不含暂停时段
+   */
+  getDuration(): number {
+    return this.elapsedMs() / 1000;
   }
 
   /**
@@ -149,8 +191,12 @@ export class Recorder {
    * 销毁录音器，释放麦克风资源
    */
   destroy(): void {
+    this.clearMaxDurationTimer();
     this.stop();
-    this.mediaStream?.getTracks().forEach((track) => track.stop());
+    // 外部注入的流由注入方（AudioSourceHub）释放，此处不越权停止
+    if (this.ownsStream) {
+      this.mediaStream?.getTracks().forEach((track) => track.stop());
+    }
     this.mediaStream = null;
     this.mediaRecorder = null;
     this.chunks = [];
@@ -158,8 +204,47 @@ export class Recorder {
 
   // ── 内部 ──────────────────────────────────────────────────────────────────────
 
+  /** 结算当前录音段到累计时长，并停表 */
+  private settleSegment(): void {
+    if (this.segmentStart === 0) return;
+    this.accumulatedMs += Date.now() - this.segmentStart;
+    this.segmentStart = 0;
+  }
+
+  /** 当前净录音时长（毫秒），包含正在进行的段 */
+  private elapsedMs(): number {
+    const running = this.segmentStart === 0 ? 0 : Date.now() - this.segmentStart;
+    return this.accumulatedMs + running;
+  }
+
+  /** 按剩余时长调度自动停止 */
+  private scheduleMaxDuration(): void {
+    this.clearMaxDurationTimer();
+    const limitMs = this.config.maxDuration * 1000;
+    if (!Number.isFinite(limitMs) || limitMs <= 0) return;
+
+    const remaining = limitMs - this.elapsedMs();
+    this.maxDurationTimer = setTimeout(
+      () => {
+        this.maxDurationTimer = null;
+        this.events.onMaxDuration?.();
+        this.stop();
+      },
+      Math.max(0, remaining),
+    );
+  }
+
+  private clearMaxDurationTimer(): void {
+    if (this.maxDurationTimer) {
+      clearTimeout(this.maxDurationTimer);
+      this.maxDurationTimer = null;
+    }
+  }
+
   private handleStop(): void {
-    const duration = (Date.now() - this.startTime) / 1000;
+    // 净时长：排除暂停时段，与 useSpeech 的计时口径一致
+    this.settleSegment();
+    const duration = this.accumulatedMs / 1000;
     const mimeType = this.mediaRecorder?.mimeType || 'audio/webm';
     const blob = new Blob(this.chunks, { type: mimeType });
     const url = URL.createObjectURL(blob);

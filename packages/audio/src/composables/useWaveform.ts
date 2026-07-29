@@ -18,11 +18,16 @@ export function useWaveform() {
 
   // ── 采集控制 ─────────────────────────────────────────────────────────────────
 
-  function startCapture(stream: MediaStream): void {
+  /**
+   * 开始采集波形
+   * @param stream - 音频流
+   * @param context - 可选的共享 AudioContext（由 AudioSourceHub 提供），避免重复创建
+   */
+  function startCapture(stream: MediaStream, context?: AudioContext): void {
     stopCapture();
     fullSamples = [];
     analyser = new WaveformAnalyser({ fftSize: 256, smoothingTimeConstant: 0.8 });
-    analyser.connect(stream);
+    analyser.connect(stream, context);
     isCapturing.value = true;
 
     // analyser 以 rAF 频率采样，但每 90ms 才更新一次 UI，80点 × 90ms ≈ 7.2s 滚动窗口
@@ -82,6 +87,20 @@ export function useWaveform() {
     return result;
   }
 
+  /**
+   * 获取当前实时能量（0-1），未在采集中时返回 0
+   * 供 VAD 静音检测使用
+   */
+  function getEnergy(): number {
+    if (!analyser) return 0;
+    try {
+      return analyser.getEnergy();
+    } catch {
+      // analyser 已销毁或尚未连接
+      return 0;
+    }
+  }
+
   /** 加载静态波形数据（播放已录内容时使用） */
   function loadStatic(data: number[]): void {
     points.value = [...data];
@@ -107,6 +126,7 @@ export function useWaveform() {
     snapshot,
     fullSnapshot,
     loadStatic,
+    getEnergy,
     reset,
   };
 }

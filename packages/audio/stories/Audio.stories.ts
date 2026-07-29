@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import AudioPlayer from '../src/components/AudioPlayer/index.vue';
 import WaveformCanvas from '../src/components/WaveformCanvas/index.vue';
 
@@ -115,13 +115,16 @@ export const WaveformProgress: WaveformStory = {
     setup() {
       const progress = ref(0);
       const data = generateWaveform(80, 'speech');
-      let raf: number;
+      let raf = 0;
 
       const animate = () => {
         progress.value = (progress.value + 0.003) % 1;
         raf = requestAnimationFrame(animate);
       };
       animate();
+
+      // story 切走后必须停掉动画，否则 rAF 循环会一直跑下去
+      onUnmounted(() => cancelAnimationFrame(raf));
 
       return { progress, data };
     },

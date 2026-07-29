@@ -91,8 +91,7 @@ export class BrowserTTS extends BaseTTSAdapter {
 
   destroy(): void {
     this.stop();
-    this.stateCallbacks = [];
-    this.errorCallbacks = [];
+    this.clearCallbacks();
     this.utterance = null;
   }
 

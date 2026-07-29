@@ -1,10 +1,11 @@
 /**
  * WaveformCanvas 单元测试
- * jsdom 中 Canvas 2D API 方法均为 no-op，测试重心在组件渲染和 props 传递
+ * 本文件聚焦渲染与 props 传递；绘制逻辑的断言见 WaveformCanvasDraw.test.ts
  */
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import WaveformCanvas from '../src/components/WaveformCanvas/index.vue';
+import { stubCanvas2D } from './helpers/canvasStub';
 
 // jsdom 不支持 ResizeObserver，提供简单 stub（必须用 class/function，不能用箭头函数）
 class MockResizeObserver {
@@ -13,6 +14,12 @@ class MockResizeObserver {
   disconnect = vi.fn();
 }
 vi.stubGlobal('ResizeObserver', MockResizeObserver);
+
+// jsdom 的 getContext() 返回 null，会让 draw() 直接早退（"不报错"其实是没执行）。
+// 装上 2D 上下文桩，这些用例才真正走过绘制路径。
+beforeEach(() => {
+  stubCanvas2D();
+});
 
 describe('WaveformCanvas', () => {
   describe('渲染', () => {

@@ -60,7 +60,11 @@ export interface ASROptions {
   language?: string;
   /** 是否启用中间结果，默认 true */
   enableInterimResults?: boolean;
-  /** 最大静音时长（秒） */
+  /**
+   * 最大静音时长（秒）
+   * 配置后 `useSpeech` 会启用 VAD 静音检测，持续静音达到该时长自动停止录音。
+   * 不配置则不启用检测。
+   */
   maxSilenceDuration?: number;
 }
 
@@ -119,7 +123,7 @@ export interface RecorderConfig {
   sampleRate?: number;
   /** 声道数，默认 1 */
   channels?: number;
-  /** 最大录音时长（秒），默认 60 */
+  /** 最大录音时长（秒），默认 60。达到后自动停止并触发 onMaxDuration */
   maxDuration?: number;
   /** MIME 类型，空字符串时自动检测 */
   mimeType?: string;
@@ -179,7 +183,14 @@ export interface SpeechConfig {
   asr?: ASROptions;
   /** TTS 配置 */
   tts?: TTSProviderOptions;
-  /** 降级策略 */
+  /** 录音配置 */
+  recorder?: RecorderConfig;
+  /** VAD 静音检测配置（需同时设置 asr.maxSilenceDuration 才会启用） */
+  vad?: VADConfig;
+  /**
+   * 降级策略：供应商连接失败时自动切换到浏览器原生实现
+   * 降级后 `didFallback` 会置为 true
+   */
   fallback?: {
     /** ASR 失败时降级到浏览器原生 */
     asr?: 'browser';
@@ -230,4 +241,6 @@ export interface AudioPlayerEmits {
   (e: 'pause'): void;
   (e: 'ended'): void;
   (e: 'timeupdate', time: number): void;
+  /** 加载或播放失败（含自动播放被浏览器拦截） */
+  (e: 'error', error: Error): void;
 }

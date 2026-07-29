@@ -26,7 +26,8 @@ export class VAD {
 
   /**
    * 开始检测
-   * @param getEnergy - 获取当前能量值的函数（0-100）
+   * @param getEnergy - 获取当前能量值的函数，返回 **0-1** 归一化值
+   *   （与 `WaveformAnalyser.getEnergy()` 一致，内部会换算为 0-100 再比对 threshold）
    * @param callback - 状态变化回调（说话↔静音 切换时触发）
    */
   start(getEnergy: () => number, callback: VADCallback): void {

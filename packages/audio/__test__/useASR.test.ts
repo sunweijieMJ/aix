@@ -10,21 +10,42 @@ import type { ASRResult, ASRState } from '../src/types';
 
 // ── Mock ProviderManager ─────────────────────────────────────────────────────
 
+/**
+ * 桩适配器：模拟真实适配器的状态机契约
+ * 状态由适配器自身派发（start → recording、stop → stopped、错误 → error），
+ * composable 只做订阅，不再手写状态，桩必须同样遵守这套契约才测得准
+ */
+const stateListeners: Array<(s: ASRState) => void> = [];
+
+function emitState(next: ASRState): void {
+  mockAdapter.state = next;
+  stateListeners.forEach((cb) => cb(next));
+}
+
 const mockAdapter = {
   state: 'idle' as ASRState,
+  audioSource: 'internal' as const,
   connect: vi.fn().mockResolvedValue(undefined),
-  start: vi.fn(),
-  stop: vi.fn(),
+  start: vi.fn(() => emitState('recording')),
+  stop: vi.fn(() => emitState('stopped')),
   destroy: vi.fn(),
-  onResult: vi.fn(),
-  onError: vi.fn(),
-  onStateChange: vi.fn(),
+  clearCallbacks: vi.fn(),
+  onResult: vi.fn(() => () => {}),
+  onError: vi.fn(() => () => {}),
+  onStateChange: vi.fn((cb: (s: ASRState) => void) => {
+    stateListeners.push(cb);
+    return () => {
+      const i = stateListeners.indexOf(cb);
+      if (i !== -1) stateListeners.splice(i, 1);
+    };
+  }),
 };
 
 vi.mock('../src/core/manager', () => ({
   ProviderManager: vi.fn(function MockProviderManager(this: object) {
     Object.assign(this, {
       getASR: vi.fn().mockReturnValue(mockAdapter),
+      peekASR: vi.fn().mockReturnValue(mockAdapter),
       switchASR: vi.fn().mockReturnValue(mockAdapter),
       destroy: vi.fn(),
     });
@@ -33,10 +54,20 @@ vi.mock('../src/core/manager', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // 重置回调存储
-  mockAdapter.onResult.mockImplementation(vi.fn());
-  mockAdapter.onError.mockImplementation(vi.fn());
-  mockAdapter.onStateChange.mockImplementation(vi.fn());
+  stateListeners.length = 0;
+  mockAdapter.state = 'idle';
+  // clearAllMocks 会清掉实现，重新装回状态机契约
+  mockAdapter.start.mockImplementation(() => emitState('recording'));
+  mockAdapter.stop.mockImplementation(() => emitState('stopped'));
+  mockAdapter.onResult.mockImplementation(() => () => {});
+  mockAdapter.onError.mockImplementation(() => () => {});
+  mockAdapter.onStateChange.mockImplementation((cb: (s: ASRState) => void) => {
+    stateListeners.push(cb);
+    return () => {
+      const i = stateListeners.indexOf(cb);
+      if (i !== -1) stateListeners.splice(i, 1);
+    };
+  });
 });
 
 // ── 辅助：在 Vue 组件中执行 composable ────────────────────────────────────────
@@ -161,7 +192,7 @@ describe('useASR', () => {
   });
 
   describe('onError 回调处理', () => {
-    it('适配器错误应更新 error.value 并设置 state=error', async () => {
+    it('适配器错误应更新 error.value', async () => {
       const asr = mountASR();
       await asr.connect();
 
@@ -170,7 +201,43 @@ describe('useASR', () => {
       onErrorCallback(err);
 
       expect(asr.error.value).toBe(err);
+    });
+
+    it('state 由适配器派发的 error 状态驱动，composable 不自行写入', async () => {
+      const asr = mountASR();
+      await asr.connect();
+
+      emitState('error');
+
       expect(asr.state.value).toBe('error');
+    });
+  });
+
+  describe('订阅生命周期（回归 #1：识别文本 N 倍累积）', () => {
+    it('重复 connect() 不应重复注册回调', async () => {
+      const asr = mountASR();
+
+      await asr.connect();
+      await asr.connect();
+      await asr.connect();
+
+      // 每次 connect 都会先释放旧订阅，最终只剩一份存活的状态回调
+      expect(stateListeners).toHaveLength(1);
+    });
+
+    it('三轮 connect + 单次识别结果，文本不应累积翻倍', async () => {
+      const asr = mountASR();
+
+      for (let session = 0; session < 3; session++) {
+        await asr.connect();
+        // 取最近一次注册的 onResult 回调，模拟适配器派发结果
+        const calls = mockAdapter.onResult.mock.calls;
+        const latest = calls[calls.length - 1]![0] as (r: ASRResult) => void;
+        latest({ text: '你好', isFinal: true });
+      }
+
+      // 每轮各喂入一次「你好」，三轮应恰好三次，而非 1+2+3=6 次
+      expect(asr.finalText.value).toBe('你好你好你好');
     });
   });
 });

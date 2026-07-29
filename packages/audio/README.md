@@ -6,7 +6,7 @@ Vue 3 语音 SDK：ASR 语音识别、TTS 语音合成、录音、波形可视�
 
 - 🎙️ **ASR 语音识别**：支持浏览器原生 / 阿里云 / WebSocket 代理，双 Buffer 结果（中间结果 + 最终结果）
 - 🔊 **TTS 语音合成**：支持浏览器原生 / 阿里云 WebSocket / HTTP 代理
-- 🎚️ **录音管理**：VAD 静音检测、重采样、最大时长控制
+- 🎚️ **录音管理**：VAD 静音自动停止、最大时长控制、单一麦克风音源共享
 - 📊 **波形可视化**：实时录音波形 + 静态回放波形，Canvas 渲染
 - 🧩 **Headless 优先**：所有能力均以 Composable 形式提供，UI 层完全可替换
 - 🔌 **适配器架构**：可扩展的 ASR / TTS 适配器基类，方便接入自定义供应商
@@ -110,10 +110,37 @@ const speech = useSpeech({
     provider: 'aliyun',
     wsEndpoint: 'wss://your-backend/tts',
   },
-  // 供应商失败时降级到浏览器原生
+  // 最大录音时长（秒），达到后自动停止，reachedMaxDuration 置为 true
+  recorder: { maxDuration: 120 },
+  // 供应商失败时降级到浏览器原生，降级后 asrDidFallback / ttsDidFallback 置为 true
   fallback: { asr: 'browser', tts: 'browser' },
 });
 ```
+
+### 自动停止：最大时长与静音检测
+
+```typescript
+const speech = useSpeech({
+  asr: {
+    provider: 'browser',
+    // 持续静音 3 秒自动停止录音（不配置则不启用检测）
+    maxSilenceDuration: 3,
+  },
+  // 最长录制 60 秒（useSpeech 不配置时默认 300 秒；直接用 Recorder 时默认 60 秒，0 表示不限时）
+  recorder: { maxDuration: 60 },
+  // 可选：调整静音判定灵敏度
+  vad: { threshold: 10 },
+});
+
+// 停止后可区分是用户主动停止还是自动停止
+watch(speech.isRecording, (recording) => {
+  if (recording) return;
+  if (speech.reachedMaxDuration.value) console.log('已达最大录音时长');
+  if (speech.reachedSilenceTimeout.value) console.log('检测到长时间静音');
+});
+```
+
+暂停期间不计入 `maxDuration` 配额，`duration` 与 `recordingResult.duration` 均为**净录音时长**（不含暂停时段）。
 
 **返回值**
 
@@ -127,8 +154,14 @@ const speech = useSpeech({
 | `ttsState` | `Ref<TTSState>` | TTS 状态机 |
 | `ttsError` | `Ref<Error \| null>` | TTS 错误 |
 | `isSpeaking` | `ComputedRef<boolean>` | TTS 是否正在播放 |
+| `asrDidFallback` | `Ref<boolean>` | ASR 是否已降级到兜底供应商 |
+| `ttsDidFallback` | `Ref<boolean>` | TTS 是否已降级到兜底供应商 |
 | `isRecording` | `Ref<boolean>` | 是否录音中 |
-| `duration` | `Ref<number>` | 录音时长（秒） |
+| `isPaused` | `Ref<boolean>` | 是否已暂停 |
+| `duration` | `Ref<number>` | 净录音时长（秒，不含暂停时段） |
+| `reachedMaxDuration` | `Ref<boolean>` | 本轮是否因达到最大时长被自动停止 |
+| `reachedSilenceTimeout` | `Ref<boolean>` | 本轮是否因静音超时被自动停止 |
+| `isVoiceActive` | `Ref<boolean>` | VAD 判定的用户说话状态（需配置 `maxSilenceDuration`） |
 | `formattedDuration` | `ComputedRef<string>` | 格式化时长，如 `"01:23"` |
 | `recordingResult` | `Ref<RecordingResult \| null>` | 录音结果（停止后填充） |
 | `waveformData` | `Ref<number[]>` | 实时波形数据点（0-1） |
@@ -190,6 +223,8 @@ stopRecognition();
 | `stopRecognition()` | `() => void` | 停止识别 |
 | `resetText()` | `() => void` | 清空识别结果 |
 | `switchProvider(opts)` | `(opts: ASROptions) => Promise<void>` | 切换 ASR 供应商 |
+| `attachAudioSource(src)` | `(src: PCMAudioSource \| null) => void` | 注入共享音源，供需要外部推流的适配器使用 |
+| `getAdapter()` | `() => ASRAdapter` | 获取底层适配器（高级场景逃生舱） |
 
 ---
 
@@ -260,6 +295,7 @@ const waveformData = fullSnapshot(80);
 | `snapshot()` | `() => number[]` | 当前窗口快照 |
 | `fullSnapshot(barCount?)` | `(barCount?: number) => number[]` | 完整录音降采样快照，默认 80 点 |
 | `loadStatic(data)` | `(data: number[]) => void` | 加载外部波形数据 |
+| `getEnergy()` | `() => number` | 当前实时能量（0-1），供 VAD 使用 |
 | `reset()` | `() => void` | 重置所有状态 |
 
 ---
@@ -309,6 +345,17 @@ const waveformData = [0.2, 0.5, 0.8, 0.3, 0.6, 0.9, 0.4]; // 0-1 归一化
 | `pause` | - | 暂停播放 |
 | `ended` | - | 播放结束 |
 | `timeupdate` | `number` | 播放进度更新，返回当前时间（秒） |
+| `error` | `Error` | 加载或播放失败（含自动播放被浏览器拦截） |
+
+**无障碍**
+
+播放按钮带随状态变化的 `aria-label`；进度条是可聚焦的 `role="slider"`，支持键盘操作：
+
+| 按键 | 行为 |
+|------|------|
+| `←` / `→` | 后退 / 前进 5 秒 |
+| `Home` / `End` | 跳到开头 / 结尾 |
+| `空格` / `Enter` | 播放 / 暂停 |
 
 ---
 
@@ -342,8 +389,8 @@ import { WaveformCanvas } from '@aix/audio';
 | `progress` | `number` | `0` | 播放进度（0-1），控制激活颜色的覆盖范围 |
 | `width` | `number` | `0` | 画布宽度（px），`0` 表示自适应父容器 |
 | `height` | `number` | `32` | 画布高度（px） |
-| `barWidth` | `number` | `3` | 柱宽（px） |
-| `barGap` | `number` | `2` | 柱间间距（px） |
+| `barWidth` | `number` | `2` | 柱宽（px） |
+| `barGap` | `number` | `4` | 柱间间距（px） |
 | `activeColor` | `string` | `var(--aix-colorPrimary)` | 已播放部分颜色 |
 | `inactiveColor` | `string` | `var(--aix-colorFillSecondary)` | 未播放部分颜色 |
 
@@ -363,17 +410,41 @@ import { WaveformCanvas } from '@aix/audio';
 
 #### 阿里云 ASR 配置
 
+支持两种鉴权方式。
+
+**方式一：Token 代理（推荐）** —— 前端不持有密钥，连接前向后端换取 token：
+
 ```typescript
 useSpeech({
   asr: {
     provider: 'aliyun',
     auth: {
-      // Token 代理模式：前端请求后端签名，后端返回含 wsUrl 的 token
       mode: 'token-proxy',
       tokenEndpoint: '/api/asr/token',
     },
     sampleRate: 16000,
     language: 'zh-CN',
+  },
+});
+```
+
+后端 `POST /api/asr/token` 需返回：
+
+```jsonc
+{
+  "token": "阿里云 NLS token",   // 必填（除非直接给 wsUrl）
+  "wsUrl": "wss://...",          // 可选，指定后直接用它连接
+  "appKey": "阿里云项目 appKey"  // 可选，用于 StartTranscription
+}
+```
+
+**方式二：Token 直传** —— 业务层自行获取 token 后传入：
+
+```typescript
+useSpeech({
+  asr: {
+    provider: 'aliyun',
+    auth: { mode: 'direct', token: '<业务层获取的 token>', appKey: 'xxx' },
   },
 });
 ```
@@ -415,25 +486,97 @@ useSpeech({
 });
 ```
 
+**WebSocket 协议**
+
+| 方向 | 内容 | 说明 |
+|------|------|------|
+| 上行 | `{ type: 'start', userNid, assistantNid, ttsVoiceType, messageId, segmentId, message }` | 开始合成 |
+| 上行 | `{ type: 'stop' }` | 停止合成 |
+| 下行 | `{ type: 'connecting_success' }` | 握手完成（10 秒内未收到视为超时） |
+| 下行 | `ArrayBuffer` | 音频分片 |
+| 下行 | `{ type: 'end' }` | **音频已发完** |
+
+> ⚠️ 后端**应当**在音频发送完毕后下发结束信号（`end` / `finish` / `finished` /
+> `synthesis_complete` / `complete` 均可识别）。没有该信号时，播放器只能靠"队列排空后静默
+> 1.5 秒"来兜底判完——网络严重抖动时可能提前判定播放结束。
+>
+> ⚠️ 音频分片经 `decodeAudioData` 解码，**要求每个分片可独立解码**（如完整的 mp3 帧）。
+> 若后端下发的是裸 PCM 或需要拼接才能解码的容器分片，需要另行适配。
+
 ### 自定义适配器
 
-继承基类实现自定义 ASR 供应商：
+继承基类实现自定义 ASR 供应商。`BaseASRAdapter` 有 5 个抽象方法必须全部实现：
 
 ```typescript
 import { BaseASRAdapter } from '@aix/audio';
-import type { ASRAdapter } from '@aix/audio';
+import type { ASRAdapter, ASRAudioSourceMode, PCMAudioSource } from '@aix/audio';
 
 class MyASRAdapter extends BaseASRAdapter implements ASRAdapter {
+  // 声明音频来源，编排层据此决定是否推流（详见下节）
+  readonly audioSource: ASRAudioSourceMode = 'external';
+
+  private source: PCMAudioSource | null = null;
+  private off: (() => void) | null = null;
+
   async connect(): Promise<void> {
-    // 建立连接
+    // 建立连接，完成后 this.setState('ready')
+  }
+  disconnect(): void {
+    // 断开连接
   }
   start(): void {
-    // 开始识别
+    // 开始识别，并订阅编排层注入的音源
+    this.off = this.source?.onPCM((frame) => this.upload(frame)) ?? null;
+    this.setState('recording');
   }
   stop(): void {
-    // 停止识别
+    this.off?.();
+    this.off = null;
+    this.setState('stopped');
+  }
+  destroy(): void {
+    this.disconnect();
+    this.clearCallbacks();
+  }
+
+  attachAudioSource(source: PCMAudioSource | null): void {
+    this.source = source;
   }
 }
+```
+
+> **状态机约定**：`state` 由适配器通过 `this.setState()` 单向派发，Composable 只订阅不写入。
+> 自定义适配器务必在 start/stop/error 时正确 `setState`，否则 UI 状态不会更新。
+
+### 音频来源契约
+
+`ASRAdapter.audioSource` 告诉编排层音频从哪来，`useSpeech` 据此决定是否推流：
+
+| 取值 | 含义 | 内置适配器 |
+|------|------|-----------|
+| `internal` | 适配器内部自采麦克风，编排层不推流 | `BrowserASR` |
+| `external` | 必须由编排层推送 PCM，否则收不到任何音频 | `ProxyASR` |
+| `managed` | 可自采，也接受注入的共享音源（优先用注入的） | `AliyunASR` |
+
+`useSpeech` 内部由 `AudioSourceHub` 统一持有**一路** `getUserMedia` 与**一个** `AudioContext`，
+同时供给录音器、波形分析和流式 ASR，避免同一次录音重复占用麦克风。
+
+单独使用 `useASR` 时可自行注入：
+
+```typescript
+import { useASR, AudioSourceHub } from '@aix/audio';
+
+const asr = useASR({ provider: 'proxy', auth: { mode: 'ws-proxy', wsEndpoint: 'wss://gw/asr' } });
+const hub = new AudioSourceHub({ sampleRate: 16000 });
+
+await hub.init();          // 唯一一次 getUserMedia
+await asr.connect();
+asr.attachAudioSource(hub); // external/managed 适配器自此开始收到音频
+asr.startRecognition();
+
+// 结束后
+asr.stopRecognition();
+hub.destroy();             // 释放麦克风
 ```
 
 ---

@@ -3,6 +3,7 @@
  * 所有 TTS 供应商适配器必须实现此接口
  */
 import type { TTSState, TTSOptions } from '../../../types';
+import { removeCallback, type Unsubscribe } from '../asr/base';
 
 export interface TTSAdapter {
   /** 当前状态 */
@@ -15,10 +16,15 @@ export interface TTSAdapter {
   resume(): void;
   /** 停止播放 */
   stop(): void;
-  /** 注册状态变化回调 */
-  onStateChange(callback: (state: TTSState) => void): void;
-  /** 注册错误回调 */
-  onError(callback: (error: Error) => void): void;
+  /**
+   * 注册状态变化回调
+   * 返回取消订阅函数；返回 void 的旧实现仍可工作，但调用方无法注销订阅
+   */
+  onStateChange(callback: (state: TTSState) => void): Unsubscribe | void;
+  /** 注册错误回调，返回取消订阅函数 */
+  onError(callback: (error: Error) => void): Unsubscribe | void;
+  /** 清空所有已注册回调 */
+  clearCallbacks?(): void;
   /** 销毁适配器 */
   destroy(): void;
 }
@@ -38,20 +44,28 @@ export abstract class BaseTTSAdapter implements TTSAdapter {
   protected setState(state: TTSState): void {
     if (this._state !== state) {
       this._state = state;
-      this.stateCallbacks.forEach((cb) => cb(state));
+      // 复制一份再遍历，避免回调内注销订阅导致遍历错位
+      [...this.stateCallbacks].forEach((cb) => cb(state));
     }
   }
 
   protected emitError(error: Error): void {
-    this.errorCallbacks.forEach((cb) => cb(error));
+    [...this.errorCallbacks].forEach((cb) => cb(error));
   }
 
-  onStateChange(callback: (state: TTSState) => void): void {
+  onStateChange(callback: (state: TTSState) => void): Unsubscribe {
     this.stateCallbacks.push(callback);
+    return () => removeCallback(this.stateCallbacks, callback);
   }
 
-  onError(callback: (error: Error) => void): void {
+  onError(callback: (error: Error) => void): Unsubscribe {
     this.errorCallbacks.push(callback);
+    return () => removeCallback(this.errorCallbacks, callback);
+  }
+
+  clearCallbacks(): void {
+    this.stateCallbacks = [];
+    this.errorCallbacks = [];
   }
 
   abstract speak(text: string, options?: TTSOptions): Promise<void>;

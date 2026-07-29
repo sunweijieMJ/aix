@@ -3,7 +3,7 @@
  * 兼容性最广（Chrome/Edge），但 Firefox/iOS Safari 不支持，作为兜底方案
  */
 import type { ASROptions, ASRResult } from '../../../types';
-import { BaseASRAdapter } from './base';
+import { BaseASRAdapter, type ASRAudioSourceMode } from './base';
 
 // Web Speech API 本地类型补充（lib.dom 未完整导出）
 interface SpeechRecognitionEvent extends Event {
@@ -38,6 +38,9 @@ declare global {
 }
 
 export class BrowserASR extends BaseASRAdapter {
+  /** Web Speech API 内部自行采集麦克风，编排层无需也无法推流 */
+  readonly audioSource: ASRAudioSourceMode = 'internal';
+
   private recognition: SpeechRecognition | null = null;
   private isSupported = false;
 
@@ -76,6 +79,7 @@ export class BrowserASR extends BaseASRAdapter {
       this.recognition.start();
       this.setState('recording');
     } catch (error) {
+      this.setState('error');
       this.emitError(error instanceof Error ? error : new Error('启动识别失败'));
     }
   }
@@ -89,9 +93,7 @@ export class BrowserASR extends BaseASRAdapter {
 
   destroy(): void {
     this.disconnect();
-    this.resultCallbacks = [];
-    this.errorCallbacks = [];
-    this.stateCallbacks = [];
+    this.clearCallbacks();
   }
 
   private setupEventHandlers(): void {

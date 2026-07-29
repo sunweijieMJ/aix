@@ -4,6 +4,8 @@
     :width="actualWidth * dpr"
     :height="height * dpr"
     class="aix-waveform-canvas"
+    role="img"
+    :aria-label="ariaLabel"
     :style="{ width: `${actualWidth}px`, height: `${height}px` }"
   />
 </template>
@@ -14,8 +16,13 @@
  * 接收归一化波形数据点（0-1），用 Canvas 绘制条形波形
  * 样式通过 CSS Variables 完全暴露，消费方可覆盖
  */
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { WaveformCanvasProps } from '../../types';
+
+/** 无法解析 CSS 变量时的兜底色（对应 --aix-colorTextQuaternary 默认值） */
+const FALLBACK_COLOR = '#c9cdd4';
+/** width 未指定时的初始宽度（px），随后由 ResizeObserver 接管 */
+const DEFAULT_WIDTH = 320;
 
 const props = withDefaults(defineProps<WaveformCanvasProps>(), {
   data: () => [],
@@ -24,7 +31,7 @@ const props = withDefaults(defineProps<WaveformCanvasProps>(), {
   height: 32,
   barGap: 4,
   barWidth: 2,
-  inactiveColor: 'var(--aix-waveform-inactive, var(--aix-colorTextQuaternary, #c9cdd4))',
+  inactiveColor: `var(--aix-waveform-inactive, var(--aix-colorTextQuaternary, ${FALLBACK_COLOR}))`,
   activeColor: 'var(--aix-waveform-active, var(--aix-colorPrimary, #1677ff))',
 });
 
@@ -33,32 +40,61 @@ defineOptions({ name: 'AixWaveformCanvas' });
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 let ctx: CanvasRenderingContext2D | null = null;
 let containerObserver: ResizeObserver | null = null;
-const actualWidth = ref(props.width || 320);
+const actualWidth = ref(props.width || DEFAULT_WIDTH);
 const dpr = window.devicePixelRatio || 1;
+
+const ariaLabel = computed(() => {
+  if (!props.data?.length) return '音频波形（暂无数据）';
+  const percent = Math.round((props.progress ?? 0) * 100);
+  return `音频波形，播放进度 ${percent}%`;
+});
 
 onMounted(() => {
   if (!canvasRef.value) return;
   ctx = canvasRef.value.getContext('2d');
-
-  if (!props.width) {
-    // 自适应父容器宽度
-    containerObserver = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width;
-      if (width) {
-        actualWidth.value = Math.floor(width);
-        nextTick(() => draw());
-      }
-    });
-    containerObserver.observe(canvasRef.value.parentElement!);
-    actualWidth.value = canvasRef.value.parentElement?.clientWidth || 320;
-  }
-
+  syncWidthSource();
   nextTick(() => draw());
 });
 
 onUnmounted(() => {
-  containerObserver?.disconnect();
+  stopObservingContainer();
 });
+
+/**
+ * width prop 在指定值与自适应之间切换时，重建宽度来源
+ * （旧实现只在 onMounted 读一次，运行时改 :width 完全无效）
+ */
+function syncWidthSource() {
+  stopObservingContainer();
+
+  if (props.width) {
+    actualWidth.value = props.width;
+    return;
+  }
+
+  const parent = canvasRef.value?.parentElement;
+  if (!parent) {
+    actualWidth.value = DEFAULT_WIDTH;
+    return;
+  }
+
+  containerObserver = new ResizeObserver((entries) => {
+    const width = entries[0]?.contentRect.width;
+    if (width) {
+      actualWidth.value = Math.floor(width);
+      nextTick(() => draw());
+    }
+  });
+  containerObserver.observe(parent);
+  actualWidth.value = parent.clientWidth || DEFAULT_WIDTH;
+}
+
+function stopObservingContainer() {
+  containerObserver?.disconnect();
+  containerObserver = null;
+}
+
+watch(() => props.width, syncWidthSource);
 
 watch([() => props.data, () => props.progress, actualWidth], () => draw(), { flush: 'post' });
 
@@ -81,6 +117,11 @@ function draw() {
   const centerY = height / 2;
   const progressIndex = Math.floor(barCount * props.progress);
 
+  // 每帧只解析两次颜色。放在循环内会对每根柱子调用 getComputedStyle，
+  // 触发数十次样式重算，录音期间按 rAF 频率绘制时开销显著
+  const activeColor = resolveColor(props.activeColor);
+  const inactiveColor = resolveColor(props.inactiveColor);
+
   ctx.globalAlpha = 1;
 
   if (data.length <= barCount) {
@@ -88,8 +129,7 @@ function draw() {
     const emptyCount = barCount - data.length;
     for (let i = 0; i < barCount; i++) {
       const x = Math.round(i * (barWidth + barGap));
-      ctx.fillStyle =
-        i < progressIndex ? resolveColor(props.activeColor) : resolveColor(props.inactiveColor);
+      ctx.fillStyle = i < progressIndex ? activeColor : inactiveColor;
 
       if (i < emptyCount) {
         roundRect(ctx, x, Math.round(centerY - 1), barWidth, 2, barWidth / 2);
@@ -108,8 +148,7 @@ function draw() {
       const barHeight = Math.max(2, Math.round(value * height));
       const x = Math.round(i * (barWidth + barGap));
       const y = Math.round(centerY - barHeight / 2);
-      ctx.fillStyle =
-        i < progressIndex ? resolveColor(props.activeColor) : resolveColor(props.inactiveColor);
+      ctx.fillStyle = i < progressIndex ? activeColor : inactiveColor;
       roundRect(ctx, x, y, barWidth, barHeight, barWidth / 2);
       ctx.fill();
     }
@@ -165,13 +204,13 @@ function roundRect(
 function resolveColor(color: string): string {
   if (!color.startsWith('var(')) return color;
   const match = color.match(/var\((--[\w-]+)(?:,\s*([^)]+))?\)/);
-  if (!match) return '#c9cdd4';
+  if (!match) return FALLBACK_COLOR;
   const [, varName, cssFallback] = match;
-  if (!varName) return '#c9cdd4';
+  if (!varName) return FALLBACK_COLOR;
   const resolved = canvasRef.value
     ? getComputedStyle(canvasRef.value).getPropertyValue(varName).trim()
     : '';
-  return resolved || cssFallback?.trim() || '#c9cdd4';
+  return resolved || cssFallback?.trim() || FALLBACK_COLOR;
 }
 </script>
 

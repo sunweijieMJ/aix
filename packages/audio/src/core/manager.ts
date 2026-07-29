@@ -57,6 +57,11 @@ export class ProviderManager {
     return this.asrAdapter;
   }
 
+  /** 获取已存在的适配器，不触发惰性创建（清理路径专用，避免误建实例或抛配置错误） */
+  peekASR(): ASRAdapter | null {
+    return this.asrAdapter;
+  }
+
   switchASR(options: ASROptions): ASRAdapter {
     const adapter = this.createASR(options);
     this.setASR(adapter);
