@@ -135,6 +135,22 @@ describe('Scanner.scanFull', () => {
     expect(texts).toEqual(['正常文本']);
   });
 
+  it('contenteditable="true" 容器内显式声明 contenteditable="false" 的子元素（如富文本 @提及标签）应仍被翻译', () => {
+    // 典型场景：富文本编辑器整体 contenteditable="true"，内部插入的 @提及/表情等不可编辑
+    // 挂件用 contenteditable="false" 显式声明。closest() 版本的判断会跳过最近的 false
+    // 声明继续往上找到外层 true，误判为表单值而跳过；应改为按"最近声明"生效
+    document.body.innerHTML = `<div contenteditable="true">你好 <span contenteditable="false">@智能备课专员</span> 请帮忙</div>`;
+    const onBatch = vi.fn();
+    vi.useFakeTimers();
+    createScanner(onBatch).scanFull(document.body);
+    vi.runAllTimers();
+
+    const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
+    expect(texts).toContain('@智能备课专员');
+    expect(texts).not.toContain('你好');
+    expect(texts).not.toContain('请帮忙');
+  });
+
   it('应收集 placeholder/title/alt 属性为 attr candidate', () => {
     document.body.innerHTML = `<input placeholder="请输入姓名" /><img alt="示意图" /><span title="提示文案"></span>`;
     const onBatch = vi.fn();

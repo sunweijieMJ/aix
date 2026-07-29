@@ -9,13 +9,31 @@ import type {
 } from '../types.js';
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT']);
-/**
- * 这些元素的**文本内容**是用户表单值而非展示文案，翻译会篡改用户即将提交的数据，
- * 必须跳过；但它们的 placeholder/title 等属性仍然是展示文案，照常翻译——
- * 所以不能放进 SKIP_TAGS（那会连属性一起跳过），只在 collectText 里挡住。
- */
-const TEXT_SKIP_SELECTOR = 'textarea, [contenteditable]:not([contenteditable="false"])';
 const ATTR_NAMES: TranslatableAttr[] = ['placeholder', 'title', 'alt'];
+
+/**
+ * 判断某个文本节点是否落在"用户表单值"区域内（textarea 或 contenteditable="true"），
+ * 这类文本内容翻译会篡改用户即将提交的数据，必须跳过；但它们的 placeholder/title 等
+ * 属性仍然是展示文案，照常翻译——所以不能放进 SKIP_TAGS（那会连属性一起跳过）。
+ *
+ * 不能用 `el.closest('[contenteditable]:not([contenteditable="false"])')` 实现：closest()
+ * 按选择器找"最近的匹配祖先"，而这个选择器本身排除了 contenteditable="false" 的元素，
+ * 于是 closest() 会跳过最近的 false 声明、继续往上找到外层的 true 声明——等价于把
+ * `<div contenteditable="true"><span contenteditable="false">@提及</span></div>` 这种
+ * 富文本编辑器里显式声明为不可编辑的子元素（如 @提及 标签）误判为可编辑表单值而跳过翻译。
+ * 必须手动逐层上溯，命中"最近的" contenteditable 声明就按它的值决定，不再继续往上找。
+ */
+function isInsideEditableTextRegion(startEl: Element | null): boolean {
+  let current: Element | null = startEl;
+  while (current) {
+    if (current.tagName === 'TEXTAREA') return true;
+    if (current.hasAttribute('contenteditable')) {
+      return current.getAttribute('contenteditable') !== 'false';
+    }
+    current = current.parentElement;
+  }
+  return false;
+}
 /**
  * 元素级固定译文属性前缀：`data-i18n-fixed-{lang}="固定译文"`，命中优先级高于全局
  * terminology——挂在具体元素上的声明比全局配置更具体，应该赢。
@@ -398,8 +416,10 @@ export class Scanner {
   }
 
   private collectText(node: Text): void {
-    // 跳过 textarea / contenteditable 内的文本节点（用户表单值，不是展示文案）
-    if (node.parentElement?.closest(TEXT_SKIP_SELECTOR)) {
+    // 跳过 textarea / contenteditable="true" 内的文本节点（用户表单值，不是展示文案）；
+    // 逐层上溯到最近的 contenteditable 声明为准，false 声明的子树（如富文本里的 @提及标签）
+    // 不受外层 true 影响，仍参与翻译
+    if (isInsideEditableTextRegion(node.parentElement)) {
       return;
     }
 
