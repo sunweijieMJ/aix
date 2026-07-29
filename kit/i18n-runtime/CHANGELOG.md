@@ -1,5 +1,11 @@
 # @kit/i18n-runtime
 
+## 0.0.8
+
+### Patch Changes
+
+- 支持固定译文
+
 ## 0.0.7
 
 ### Patch Changes
