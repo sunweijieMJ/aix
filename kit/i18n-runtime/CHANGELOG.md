@@ -1,5 +1,11 @@
 # @kit/i18n-runtime
 
+## 0.0.9
+
+### Patch Changes
+
+- 修复富文本 contenteditable=false 子元素误判为表单值
+
 ## 0.0.8
 
 ### Patch Changes
