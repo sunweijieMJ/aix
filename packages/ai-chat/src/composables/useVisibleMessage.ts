@@ -154,11 +154,13 @@ export function useVisibleMessage(options: UseVisibleMessageOptions): UseVisible
       observed.add(el);
       observer?.observe(el);
     };
-    const forgetEl = (el: Element) => {
-      if (!observed.delete(el)) return;
+    /** 摘除观测；返回是否真的摘到了东西（供调用方判断要不要重算活跃项） */
+    const forgetEl = (el: Element): boolean => {
+      if (!observed.delete(el)) return false;
       observer?.unobserve(el);
       const id = (el as HTMLElement).dataset?.aixMessageId;
       if (id) intersecting.delete(id);
+      return true;
     };
     for (const el of rootEl.querySelectorAll<HTMLElement>('[data-aix-message-id]')) {
       observeIfWanted(el);
@@ -173,9 +175,12 @@ export function useVisibleMessage(options: UseVisibleMessageOptions): UseVisible
       for (const r of records) {
         for (const n of r.removedNodes) {
           if (!(n instanceof Element)) continue;
-          forgetEl(n);
-          for (const el of n.querySelectorAll('[data-aix-message-id]')) forgetEl(el);
-          changed = true;
+          // 只有真的摘掉了被观测的行才需要重算：observe 的是 subtree，流式期 markdown 的
+          // TransitionGroup 会持续增删块元素，无条件置位会让每个 chunk 都空跑一次 pickLowest
+          if (forgetEl(n)) changed = true;
+          for (const el of n.querySelectorAll('[data-aix-message-id]')) {
+            if (forgetEl(el)) changed = true;
+          }
         }
         for (const n of r.addedNodes) {
           if (!(n instanceof Element)) continue;

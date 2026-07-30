@@ -408,7 +408,9 @@ const cancelEdit = () => {
        本容器的直接子元素，一条消息含多个文本块时（如 [text, tool_use, text]）会渲染
        出多个 .aix-markdown，用后代选择器会让中间的文本块也一起呼吸。
        末块非文本块（tool_use / chart / image）时不命中，由其自身的加载态表达进度。
-       :where() 压低优先级，业务可无痛覆盖。 */
+       markdown 引擎未就绪 / 未装 markdown-it 的降级分支里 .aix-markdown 只含文本节点、
+       没有元素子节点，末层 :last-child 匹配不到 → 降级期不呼吸，是已知且可接受的取舍。
+       :where() 只压低 .aix-markdown 这一位的优先级，业务可无痛覆盖。 */
     &.is-tail-idle > :where(.aix-markdown):last-child > :last-child {
       animation: aix-bubble-tail-breathe 2s var(--aix-motionEaseInOut) infinite;
     }

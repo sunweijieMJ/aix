@@ -7,18 +7,20 @@
       :class="[ns.e('trigger'), ns.is('warn', isWarn)]"
       :aria-label="t.contextWindowLabel"
       :aria-expanded="open"
-      aria-haspopup="dialog"
       @click="toggle"
     >
       <DataUsage :class="ns.e('icon')" />
       <span :class="ns.e('summary')">{{ summary }}</span>
     </button>
+    <!-- role 用 group 而非 dialog：这是个非模态的 disclosure，打开时焦点刻意留在触发器上
+         （用量条是「瞥一眼」的信息，不该抢走输入焦点）。声明 dialog 会让 AT 用户预期焦点
+         自动移入并被困住，与实际行为不符；aria-expanded + 带名字的 group 才是这里的语义。 -->
     <div
       v-if="open"
       ref="floatingElRef"
       :class="ns.e('panel')"
       :style="floatingStyles"
-      role="dialog"
+      role="group"
       :aria-label="t.contextWindowTitle"
     >
       <div :class="ns.e('panel-title')">{{ t.contextWindowTitle }}</div>
@@ -53,8 +55,10 @@ export interface ContextWindowProps {
   /** 上下文窗口总量 */
   total?: number;
   /**
-   * 展示用占比（0–1）。缺省由 used/total 计算；
-   * total 为 0 时按 0 处理（不产生 NaN/Infinity）。
+   * 展示用占比（0–1）。缺省由 used/total 计算；total 为 0 时按 0 处理（不产生 NaN/Infinity）。
+   *
+   * 后端只回百分比、不回 token 数时可只传本项：`total` 为 0 即视为「窗口总量未知」，
+   * 摘要与用量文案一并退化为纯百分比，不会显示无意义的 `0/0`。
    */
   percent?: number;
   /** 是否提供「压缩会话」入口，默认 false */
@@ -131,18 +135,29 @@ const isWarn = computed(() => ratio.value >= props.warnRatio);
 const percentText = computed(() => `${Math.round(ratio.value * 100)}%`);
 const fillWidth = computed(() => `${ratio.value * 100}%`);
 
-const summary = computed(() => `${format.value(props.used)}/${format.value(props.total)}`);
+// 窗口总量未知（total 为 0）：token 文案退化为纯百分比。
+// 宿主只拿得到比例（后端不回 token 数）时只传 percent 即可，不会看到无意义的 `0/0`；
+// 占比本身仍由 ratio 统一裁决（percent 优先），文案与进度条不会各说各话。
+const unknownTotal = computed(() => !props.total);
+
+const summary = computed(() =>
+  unknownTotal.value
+    ? percentText.value
+    : `${format.value(props.used)}/${format.value(props.total)}`,
+);
 const usageText = computed(() =>
-  t.value.contextWindowUsage
-    .replace('{used}', format.value(props.used))
-    .replace('{total}', format.value(props.total))
-    .replace('{percent}', percentText.value),
+  unknownTotal.value
+    ? t.value.contextWindowUsagePercent.replace('{percent}', percentText.value)
+    : t.value.contextWindowUsage
+        .replace('{used}', format.value(props.used))
+        .replace('{total}', format.value(props.total))
+        .replace('{percent}', percentText.value),
 );
 
 const toggle = () => (open.value = !open.value);
 
-// Esc 关闭并把焦点还给触发器：面板是 role="dialog"，键盘用户进去后必须有出路
-// （与 ModelSelector 的 Escape 约定一致），否则只能靠鼠标点外部关闭。
+// Esc 关闭并把焦点还给触发器：键盘用户 Tab 进面板后必须有出路（与 ModelSelector 的
+// Escape 约定一致），否则只能靠鼠标点外部关闭。
 const close = () => {
   open.value = false;
   triggerElRef.value?.focus();

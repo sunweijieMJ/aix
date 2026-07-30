@@ -42,6 +42,31 @@ describe('ContextWindow', () => {
     expect(w.find('.aix-context-window__bar-fill').attributes('style')).toContain('width: 60%');
   });
 
+  // 宿主只拿得到比例（后端不回 token 数）：文案不能显示无意义的 0/0，
+  // 否则进度条走 60%、文案写 0/0，两处各说各话
+  it('只传 percent（total 未知）时摘要与用量文案退化为纯百分比', async () => {
+    const w = mount(ContextWindow, { props: { percent: 0.6 } });
+    expect(w.find('.aix-context-window__summary').text()).toBe('60%');
+    await open(w);
+    expect(w.find('.aix-context-window__bar-fill').attributes('style')).toContain('width: 60%');
+    const usage = w.find('.aix-context-window__usage').text();
+    expect(usage).toContain('60%');
+    expect(usage).not.toContain('0/0');
+    expect(usage).not.toContain('0 / 0');
+  });
+
+  it('total 未知且无 percent 时摘要为 0%，不显示 0/0', () => {
+    const w = mount(ContextWindow, { props: { used: 500 } });
+    expect(w.find('.aix-context-window__summary').text()).toBe('0%');
+  });
+
+  it('total 已知时摘要仍走 used/total 文案', async () => {
+    const w = mount(ContextWindow, { props: { used: 8000, total: 32000, percent: 0.6 } });
+    expect(w.find('.aix-context-window__summary').text()).toBe('8k/32k');
+    await open(w);
+    expect(w.find('.aix-context-window__usage').text()).toContain('8k');
+  });
+
   // 除零防御：total 未知（0）时不能产生 NaN/Infinity 污染 style 与 aria
   it('total 为 0 时占比按 0，不产生 NaN', async () => {
     const w = mount(ContextWindow, { props: { used: 500, total: 0 } });
@@ -116,11 +141,11 @@ describe('ContextWindow', () => {
   it('Esc 关闭面板并把焦点还给触发器（与 ModelSelector 同一套键盘约定）', async () => {
     const w = mount(ContextWindow, { props: { used: 5, total: 10 }, attachTo: document.body });
     await open(w);
-    expect(w.find('[role="dialog"]').exists()).toBe(true);
+    expect(w.find('.aix-context-window__panel').exists()).toBe(true);
 
     // 真实路径：点开后焦点在触发器上，Esc 由触发器冒泡到根节点
     await w.find('.aix-context-window__trigger').trigger('keydown', { key: 'Escape' });
-    expect(w.find('[role="dialog"]').exists()).toBe(false);
+    expect(w.find('.aix-context-window__panel').exists()).toBe(false);
     expect(document.activeElement).toBe(w.find('.aix-context-window__trigger').element);
     w.unmount();
   });
@@ -134,11 +159,19 @@ describe('ContextWindow', () => {
     w.unmount();
   });
 
+  // 非模态 disclosure：打开时焦点刻意留在触发器上，故用 aria-expanded + 带名字的 group，
+  // 不声明 dialog（那会让 AT 用户预期焦点自动移入）
   it('面板含无障碍标签与进度条语义', async () => {
     const w = mount(ContextWindow, { props: { used: 5, total: 10 } });
-    expect(w.find('.aix-context-window__trigger').attributes('aria-expanded')).toBe('false');
+    const trigger = w.find('.aix-context-window__trigger');
+    expect(trigger.attributes('aria-expanded')).toBe('false');
+    expect(trigger.attributes('aria-haspopup')).toBeUndefined();
     await open(w);
-    expect(w.find('[role="dialog"]').exists()).toBe(true);
+    expect(w.find('.aix-context-window__trigger').attributes('aria-expanded')).toBe('true');
+    expect(w.find('[role="dialog"]').exists()).toBe(false);
+    const panel = w.find('.aix-context-window__panel');
+    expect(panel.attributes('role')).toBe('group');
+    expect(panel.attributes('aria-label')).toBeTruthy();
     const bar = w.find('[role="progressbar"]');
     expect(bar.attributes('aria-valuemin')).toBe('0');
     expect(bar.attributes('aria-valuemax')).toBe('100');

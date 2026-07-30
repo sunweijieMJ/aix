@@ -76,6 +76,50 @@ describe('useConfirmDeadline', () => {
     dispose();
   });
 
+  it('createdAt 前推 = 续期：已触发标记清空，整条时间线从头再走一遍', async () => {
+    const spies = makeSpies();
+    const createdAt = ref(Date.now());
+    const { result, dispose } = withScope(() =>
+      useConfirmDeadline({ createdAt, timeout: TIMELINE, active: true, ...spies }),
+    );
+
+    vi.advanceTimersByTime(75_000);
+    expect(spies.order).toEqual(['hint']);
+    expect(result.hinted.value).toBe(true);
+
+    // 宿主把计时起点推到「此刻」：新一轮从头开始，hinted 一并回落
+    createdAt.value = Date.now();
+    await nextTick();
+    expect(result.hinted.value).toBe(false);
+
+    vi.advanceTimersByTime(74_999);
+    expect(spies.onHint).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(spies.onHint).toHaveBeenCalledTimes(2);
+
+    // 续期后的 autoFill / autoSubmit 同样不会被上一轮的 fired 吞掉
+    vi.advanceTimersByTime(45_000);
+    expect(spies.order).toEqual(['hint', 'hint', 'autoFill', 'autoSubmit']);
+    expect(result.autoFilled.value).toBe(true);
+    dispose();
+  });
+
+  it('cancel() 不可逆：续期也不会让已撤销的时间线复活', async () => {
+    const spies = makeSpies();
+    const createdAt = ref(Date.now());
+    const { result, dispose } = withScope(() =>
+      useConfirmDeadline({ createdAt, timeout: TIMELINE, active: true, ...spies }),
+    );
+
+    result.cancel();
+    createdAt.value = Date.now() + 1000;
+    await nextTick();
+
+    vi.advanceTimersByTime(600_000);
+    expect(spies.order).toEqual([]);
+    dispose();
+  });
+
   it('挂载即超时：createdAt 已远早于全部节点 → 立即按序补发', () => {
     const spies = makeSpies();
     const { dispose } = withScope(() =>

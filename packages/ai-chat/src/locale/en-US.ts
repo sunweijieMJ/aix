@@ -73,6 +73,7 @@ export const enUS: AiChatLocale = {
   contextWindowLabel: 'Context usage',
   contextWindowTitle: 'Context window',
   contextWindowUsage: '{used} / {total} used ({percent})',
+  contextWindowUsagePercent: '{percent} used',
   contextCompress: 'Compress conversation',
   contextCompressing: 'Compressing…',
   outlineLabel: 'Conversation outline',

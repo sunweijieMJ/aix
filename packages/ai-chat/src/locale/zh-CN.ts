@@ -73,6 +73,7 @@ export const zhCN: AiChatLocale = {
   contextWindowLabel: '上下文用量',
   contextWindowTitle: '上下文窗口',
   contextWindowUsage: '已用 {used} / {total}（{percent}）',
+  contextWindowUsagePercent: '已用 {percent}',
   contextCompress: '压缩当前会话',
   contextCompressing: '压缩中…',
   outlineLabel: '对话大纲',

@@ -116,6 +116,34 @@ export const Compressible: StoryObj = {
   },
 };
 
+/**
+ * 只知比例：后端只回百分比、不回 token 数时只传 `percent`。
+ * `total` 为 0 视为窗口总量未知，摘要与用量文案一并退化为纯百分比，不显示无意义的 `0/0`。
+ */
+export const PercentOnly: StoryObj = {
+  render: () => ({
+    components: { ContextWindow },
+    template: `
+      <div style="padding:80px 16px 16px">
+        <ContextWindow :percent="0.6" />
+      </div>
+    `,
+  }),
+  play: async ({ canvasElement }) => {
+    const trigger = canvasElement.querySelector<HTMLElement>('.aix-context-window__trigger');
+    await waitFor(() => expect(trigger).toBeTruthy());
+    await expect(trigger!.textContent?.trim()).toBe('60%');
+
+    await userEvent.click(trigger!);
+    const usage = canvasElement.querySelector<HTMLElement>('.aix-context-window__usage');
+    await waitFor(() => expect(usage).toBeTruthy());
+    await expect(usage!.textContent).toContain('60%');
+    await expect(usage!.textContent).not.toContain('0/0');
+    const fill = canvasElement.querySelector<HTMLElement>('.aix-context-window__bar-fill');
+    await expect(fill!.style.width).toBe('60%');
+  },
+};
+
 /** total 未知（0）：占比按 0 处理，不产生 NaN */
 export const UnknownTotal: StoryObj = {
   render: () => ({

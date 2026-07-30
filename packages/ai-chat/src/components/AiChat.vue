@@ -93,9 +93,12 @@
           <slot :name="name" v-bind="sp" />
         </template>
       </BubbleList>
-      <!-- 对话大纲：absolute 贴右侧，不参与流式布局故不挤压气泡宽度 -->
+      <!-- 对话大纲：absolute 贴右侧，不参与流式布局故不挤压气泡宽度。
+           判空看 entries 而非 messages：MessageOutline 根节点是带 aria-label 的 <nav> 地标，
+           条目为空时渲染出来会让屏幕阅读器念出一个空导航区。开场只有一条 assistant 欢迎语
+           （默认 filter 只收 user 消息）或宿主自定义 filter 一条都没命中时，都会撞上。 -->
       <MessageOutline
-        v-if="outlineEnabled && messages.length > 0"
+        v-if="outlineEnabled && outlineState.entries.value.length > 0"
         :class="ns.e('outline')"
         :entries="outlineState.windowed.value"
         :active-id="visible.activeId.value"

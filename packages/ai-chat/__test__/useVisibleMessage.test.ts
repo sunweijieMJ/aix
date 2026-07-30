@@ -247,6 +247,40 @@ describe('useVisibleMessage', () => {
     dispose();
   });
 
+  // domObserver 是 subtree 观测：流式期 markdown 的 TransitionGroup 会持续增删块元素，
+  // 若「移除了任意元素」就重算活跃项，每个 chunk 都要空跑一次 pickLowest。
+  // 用 ids getter 的调用次数当探针——pickLowest 内部会 toValue(ids)。
+  it('移除的元素不在观测集合中时不重算活跃项', async () => {
+    const root = buildRoot(['m1', 'm2']);
+    let idsReads = 0;
+    const { result, dispose } = withScope(() =>
+      useVisibleMessage({
+        root: ref(root),
+        ids: () => {
+          idsReads++;
+          return ['m1', 'm2'];
+        },
+      }),
+    );
+    await nextTick();
+    FakeIO.latest().emit([{ id: 'm1', top: 10 }]);
+    expect(result.activeId.value).toBe('m1');
+
+    // 模拟 markdown 块重排：在被观测的行内部增删一个无 data-aix-message-id 的元素
+    const row = root.querySelector('[data-aix-message-id="m1"]')!;
+    const blockEl = document.createElement('div');
+    blockEl.className = 'aix-markdown__block';
+    row.appendChild(blockEl);
+    await new Promise((r) => setTimeout(r, 0));
+
+    const before = idsReads;
+    blockEl.remove();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(idsReads).toBe(before);
+    expect(result.activeId.value).toBe('m1');
+    dispose();
+  });
+
   it('不在 ids 中的行不被观测', async () => {
     const root = buildRoot(['m1']);
     const { dispose } = withScope(() => useVisibleMessage({ root: ref(root), ids: ref(['m1']) }));

@@ -404,6 +404,8 @@ awaiting --用户点提交--> [block-intent] --宿主置--> submitting --请求�
 
 > ⚠️ 补发是无差别的：配了 `autoSubmitAt` 的 `awaiting` 卡在**重新挂载**时（如刷新页面加载历史），若 `createdAt` 早已超过节点就会当场走完时间线并上抛提交意图。不希望如此的话，持久化时就应把已废弃的卡落为 `expired`。
 
+**续期**：把块的 `createdAt` 改成新的时刻即视为「新一轮计时」，已触发标记与提示/已填充标记一并清空，时间线从头再走一遍。反之手动作答触发的撤销是不可逆的——用户已接管，续期也不会把自动代填/代交放回来。
+
 ### 提交载荷
 
 ```ts
@@ -568,7 +570,13 @@ const toolbarItems = [
 
 超过 `warnRatio`（默认 0.8）进入告警配色；`total` 为 0（窗口未知）时占比按 0 处理，不产生 `NaN` / `Infinity`。
 
-面板定位走 `@aix/popper`（`fixed` 策略 + flip/shift）：不会被工具栏或对话容器的 `overflow` 裁掉，上方空间不足时自动翻到下方。键盘可达：Esc 关闭并把焦点还给触发器，点击组件外部同样关闭。
+后端只回百分比、不回 token 数时，只传 `percent` 即可——`total` 为 0 视为「窗口总量未知」，摘要与用量文案一并退化为纯百分比（`60%` / `已用 60%`），不会显示无意义的 `0/0`：
+
+```vue
+<ContextWindow :percent="0.6" />
+```
+
+面板定位走 `@aix/popper`（`fixed` 策略 + flip/shift）：不会被工具栏或对话容器的 `overflow` 裁掉，上方空间不足时自动翻到下方。键盘可达：Esc 关闭并把焦点还给触发器，点击组件外部同样关闭。面板是非模态 disclosure（打开时焦点刻意留在触发器上，用量是「瞥一眼」的信息），故语义用 `aria-expanded` + `role="group"`，不声明 `role="dialog"`。
 
 ## 对话大纲导航（MessageOutline）
 

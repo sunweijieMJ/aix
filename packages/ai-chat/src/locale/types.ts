@@ -144,6 +144,8 @@ export interface AiChatLocale {
   contextWindowTitle: string;
   /** 上下文用量：已用/总量描述，占位符 {used} / {total} / {percent} */
   contextWindowUsage: string;
+  /** 上下文用量：窗口总量未知（total 为 0）时的占比描述，占位符 {percent} */
+  contextWindowUsagePercent: string;
   /** 上下文用量：压缩会话按钮 */
   contextCompress: string;
   /** 上下文用量：压缩进行中 */

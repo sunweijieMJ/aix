@@ -101,6 +101,26 @@ describe('AiChat 对话大纲集成', () => {
     expect(w.findComponent(MessageOutline).exists()).toBe(false);
   });
 
+  // MessageOutline 根节点是带 aria-label 的 <nav> 地标：条目为空还渲染出来，
+  // 屏幕阅读器会念出「对话大纲」导航区却什么都没有。判空必须看 entries 而非 messages。
+  it('有消息但无刻度时不渲染大纲：开场只有 assistant 欢迎语', async () => {
+    const messages: ChatMessage[] = [
+      { id: 'a0', role: 'ai', status: 'success', content: [textBlock('你好，有什么可以帮你？')] },
+    ];
+    const w = mount(AiChat, { props: { request, messages, outline: true } });
+    await nextTick();
+    expect(w.findComponent(MessageOutline).exists()).toBe(false);
+    expect(w.find('nav.aix-message-outline').exists()).toBe(false);
+  });
+
+  it('有消息但自定义 filter 一条都没命中时不渲染大纲', async () => {
+    const w = mount(AiChat, {
+      props: { request, messages: msgs(2), outline: { filter: () => false } },
+    });
+    await nextTick();
+    expect(w.findComponent(MessageOutline).exists()).toBe(false);
+  });
+
   it('自定义 filter 生效', async () => {
     const w = mount(AiChat, {
       props: {
