@@ -75,7 +75,7 @@ describe('useVisibleMessage', () => {
     dispose();
   });
 
-  it('取视口内最靠下的一条作为 activeId', async () => {
+  it('取视口内最靠下（消息顺序最靠后）的一条作为 activeId', async () => {
     const root = buildRoot(['m1', 'm2', 'm3']);
     const { result, dispose } = withScope(() =>
       useVisibleMessage({ root: ref(root), ids: ref(['m1', 'm2', 'm3']) }),
@@ -83,10 +83,10 @@ describe('useVisibleMessage', () => {
     await nextTick();
     FakeIO.latest().emit([
       { id: 'm1', top: 10 },
-      { id: 'm2', top: 200 },
-      { id: 'm3', top: 120 },
+      { id: 'm2', top: 120 },
+      { id: 'm3', top: 200 },
     ]);
-    expect(result.activeId.value).toBe('m2');
+    expect(result.activeId.value).toBe('m3');
     dispose();
   });
 
@@ -295,6 +295,142 @@ describe('useVisibleMessage', () => {
     );
     await nextTick();
     expect(result.activeId.value).toBeUndefined();
+    dispose();
+  });
+});
+
+describe('useVisibleMessage — 活跃项按消息顺序判定（不依赖已过期的坐标）', () => {
+  beforeEach(() => {
+    FakeIO.instances = [];
+    vi.stubGlobal('IntersectionObserver', FakeIO);
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.unstubAllGlobals();
+  });
+
+  // IntersectionObserver 在 threshold:0 下只在「进出视口」时投递记录，一直停在视口内的行
+  // 不会再有新记录 —— 存下来的 boundingClientRect.top 是它**进入那一刻**的坐标，之后一直过期。
+  // 连续下滚时各行都是「从下沿进入」，记录到的 top 彼此接近甚至相同，按坐标比大小会退化成
+  // 「谁先进集合谁赢」，活跃项反而停在更靠上的消息。改按 ids（即文档流）顺序取最靠后的一条。
+  it('多行记录到相同 top（各自进入视口那一刻的坐标）→ 取消息顺序最靠后的一条', async () => {
+    const root = buildRoot(['m1', 'm2', 'm3']);
+    const { result, dispose } = withScope(() =>
+      useVisibleMessage({ root, ids: ['m1', 'm2', 'm3'] }),
+    );
+    await nextTick();
+
+    // 三行先后从视口下沿进入，记录到的 top 相同
+    FakeIO.latest().emit([{ id: 'm1', top: 700 }]);
+    FakeIO.latest().emit([{ id: 'm2', top: 700 }]);
+    FakeIO.latest().emit([{ id: 'm3', top: 700 }]);
+    await nextTick();
+
+    expect(result.activeId.value).toBe('m3');
+    dispose();
+  });
+
+  it('乱序投递也按消息顺序判定，与记录到的坐标无关', async () => {
+    const root = buildRoot(['m1', 'm2', 'm3']);
+    const { result, dispose } = withScope(() =>
+      useVisibleMessage({ root, ids: ['m1', 'm2', 'm3'] }),
+    );
+    await nextTick();
+
+    // 故意给「靠后的消息」一个更小的 top（模拟其记录早已过期）
+    FakeIO.latest().emit([
+      { id: 'm3', top: 10 },
+      { id: 'm1', top: 900 },
+    ]);
+    await nextTick();
+
+    expect(result.activeId.value).toBe('m3');
+    dispose();
+  });
+});
+
+describe('useVisibleMessage — 导航闸门在滚动静默后自动解除', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    FakeIO.instances = [];
+    vi.stubGlobal('IntersectionObserver', FakeIO);
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  // 平滑滚动的动画时长远超「目标行挂载」的时刻，调用方拿到 scrollToBubble 的 resolve
+  // 就解闸会让观测在动画途中把高亮抢走。闸门改由「滚动静默」自行解除。
+  it('滚动持续期间闸门保持关闭（每次 scroll 重置静默计时）', async () => {
+    const root = buildRoot(['m1', 'm2', 'm3']);
+    const { result, dispose } = withScope(() =>
+      useVisibleMessage({ root, ids: ['m1', 'm2', 'm3'] }),
+    );
+    await nextTick();
+
+    result.beginNavigate('m1');
+    expect(result.activeId.value).toBe('m1');
+
+    // 每 100ms 一次滚动事件，持续 500ms：静默计时被不断重置，闸门不解
+    for (let i = 0; i < 5; i++) {
+      vi.advanceTimersByTime(100);
+      root.dispatchEvent(new Event('scroll'));
+    }
+    FakeIO.latest().emit([{ id: 'm3', top: 300 }]);
+    await nextTick();
+    expect(result.activeId.value).toBe('m1');
+    dispose();
+  });
+
+  it('滚动静默后自动解闸，观测回写恢复', async () => {
+    const root = buildRoot(['m1', 'm2', 'm3']);
+    const { result, dispose } = withScope(() =>
+      useVisibleMessage({ root, ids: ['m1', 'm2', 'm3'] }),
+    );
+    await nextTick();
+
+    result.beginNavigate('m1');
+    root.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(1000);
+
+    FakeIO.latest().emit([{ id: 'm3', top: 300 }]);
+    await nextTick();
+    expect(result.activeId.value).toBe('m3');
+    dispose();
+  });
+
+  it('始终没有滚动事件（目标已在视口内）→ 静默计时到点即解闸', async () => {
+    const root = buildRoot(['m1', 'm2']);
+    const { result, dispose } = withScope(() => useVisibleMessage({ root, ids: ['m1', 'm2'] }));
+    await nextTick();
+
+    result.beginNavigate('m1');
+    vi.advanceTimersByTime(1000);
+
+    FakeIO.latest().emit([{ id: 'm2', top: 300 }]);
+    await nextTick();
+    expect(result.activeId.value).toBe('m2');
+    dispose();
+  });
+
+  it('滚动事件不断但超过最长锁定时长 → 兜底解闸，闸门不会永久持有', async () => {
+    const root = buildRoot(['m1', 'm2', 'm3']);
+    const { result, dispose } = withScope(() =>
+      useVisibleMessage({ root, ids: ['m1', 'm2', 'm3'] }),
+    );
+    await nextTick();
+
+    result.beginNavigate('m1');
+    // 持续滚动 5s（如用户接管滚轮、或惯性滚动不停）
+    for (let i = 0; i < 50; i++) {
+      vi.advanceTimersByTime(100);
+      root.dispatchEvent(new Event('scroll'));
+    }
+    FakeIO.latest().emit([{ id: 'm3', top: 300 }]);
+    await nextTick();
+    expect(result.activeId.value).toBe('m3');
     dispose();
   });
 });

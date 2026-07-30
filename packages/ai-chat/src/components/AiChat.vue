@@ -755,16 +755,18 @@ const visible = useVisibleMessage({
   enabled: outlineEnabled,
 });
 
-// 点击刻度：闸门 → 定位 → 解闸，避免滚动途经的消息把高亮抢走
+// 点击刻度：上闸门 → 定位；解闸交给 useVisibleMessage 的「滚动静默」判定。
+// 刻意不在成功路径上调 endNavigate——scrollToBubble 在**目标行挂载**时就 resolve，
+// 而 smooth 滚动的动画还要几百毫秒，此时解闸会让观测在动画途中把高亮抢走（正是闸门要防的事）。
 const onOutlineSelect = async (entry: OutlineEntry) => {
   visible.beginNavigate(entry.messageId);
-  // finally 不可省：scrollToBubble 是同步函数，其内部 virtualizer.scrollToIndex 若同步抛错
-  // （组件卸载 / 下标越界等边界态），异常会逃逸并跳过 endNavigate，导致闸门永久锁死、
-  // 活跃高亮再也不更新且无自恢复路径。
   try {
     await bubbleListRef.value?.scrollToBubble(entry.messageId, { smooth: true });
-  } finally {
+  } catch (err) {
+    // 定位失败（组件卸载 / 下标越界等边界态）→ 根本不会发生滚动，立即解闸；
+    // 不解的话要等兜底超时，期间活跃高亮停更。闸门自身另有最长持有时长保底，不会死锁。
     visible.endNavigate(entry.messageId);
+    throw err;
   }
 };
 

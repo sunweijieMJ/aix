@@ -113,6 +113,27 @@ describe('ContextWindow', () => {
     expect(globalThis.fetch).toBe(spy);
   });
 
+  it('Esc 关闭面板并把焦点还给触发器（与 ModelSelector 同一套键盘约定）', async () => {
+    const w = mount(ContextWindow, { props: { used: 5, total: 10 }, attachTo: document.body });
+    await open(w);
+    expect(w.find('[role="dialog"]').exists()).toBe(true);
+
+    // 真实路径：点开后焦点在触发器上，Esc 由触发器冒泡到根节点
+    await w.find('.aix-context-window__trigger').trigger('keydown', { key: 'Escape' });
+    expect(w.find('[role="dialog"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(w.find('.aix-context-window__trigger').element);
+    w.unmount();
+  });
+
+  it('弹层定位交给 @aix/popper（fixed 策略，不被祖先 overflow 裁剪）', async () => {
+    const w = mount(ContextWindow, { props: { used: 5, total: 10 }, attachTo: document.body });
+    await open(w);
+    const panel = w.find('.aix-context-window__panel').element as HTMLElement;
+    // floating-ui 同步写入 position/top/left，自绘的 absolute 面板不会有这些内联样式
+    expect(panel.style.position).toBe('fixed');
+    w.unmount();
+  });
+
   it('面板含无障碍标签与进度条语义', async () => {
     const w = mount(ContextWindow, { props: { used: 5, total: 10 } });
     expect(w.find('.aix-context-window__trigger').attributes('aria-expanded')).toBe('false');

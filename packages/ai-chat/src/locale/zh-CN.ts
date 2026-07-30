@@ -82,6 +82,7 @@ export const zhCN: AiChatLocale = {
   confirmSubmitting: '提交中…',
   confirmSubmitted: '已提交',
   confirmExpired: '该确认已失效',
+  confirmRequiredMark: '必填',
   confirmRequired: '请先完成必填项',
   confirmHint: '需要帮您选一个吗？',
   confirmAutoFilled: '已按默认选项自动填写',

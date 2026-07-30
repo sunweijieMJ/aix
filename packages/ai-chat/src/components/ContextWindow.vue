@@ -1,6 +1,8 @@
 <template>
-  <div ref="root" :class="[ns.b(), ns.is('open', open)]">
+  <!-- keydown 挂根节点而非面板：点开后焦点仍在触发器上，Esc 需由触发器冒泡上来才收得到 -->
+  <div ref="root" :class="[ns.b(), ns.is('open', open)]" @keydown.escape.stop="close">
     <button
+      ref="triggerElRef"
       type="button"
       :class="[ns.e('trigger'), ns.is('warn', isWarn)]"
       :aria-label="t.contextWindowLabel"
@@ -11,7 +13,14 @@
       <DataUsage :class="ns.e('icon')" />
       <span :class="ns.e('summary')">{{ summary }}</span>
     </button>
-    <div v-if="open" :class="ns.e('panel')" role="dialog" :aria-label="t.contextWindowTitle">
+    <div
+      v-if="open"
+      ref="floatingElRef"
+      :class="ns.e('panel')"
+      :style="floatingStyles"
+      role="dialog"
+      :aria-label="t.contextWindowTitle"
+    >
       <div :class="ns.e('panel-title')">{{ t.contextWindowTitle }}</div>
       <div
         :class="ns.e('bar')"
@@ -67,7 +76,8 @@ export interface ContextWindowEmits {
 <script setup lang="ts">
 import { useLocale, useNamespace, useClickOutside } from '@aix/hooks';
 import { DataUsage } from '@aix/icons';
-import { ref, computed } from 'vue';
+import { usePopper } from '@aix/popper';
+import { ref, computed, watch } from 'vue';
 import { locale } from '../locale';
 
 const props = withDefaults(defineProps<ContextWindowProps>(), {
@@ -83,6 +93,25 @@ const ns = useNamespace('context-window');
 const { t } = useLocale(locale);
 const root = ref<HTMLElement | null>(null);
 const open = ref(false);
+
+// 弹层定位交给 @aix/popper（包内 TriggerMenu / QuoteToolbar 同款）：
+// strategy 'fixed' + flip/shift 默认开启，面板不会被工具栏/对话容器的 overflow 裁掉，
+// 上方空间不足时自动翻到下方。自绘 `position:absolute; bottom:100%` 做不到这两件事。
+const { referenceRef, floatingRef, floatingStyles } = usePopper({
+  placement: 'top-start',
+  strategy: 'fixed',
+  offset: 8,
+});
+// 本地模板 ref 桥接（同 QuoteToolbar 先例）：双 <script> 块下直接绑 usePopper 的 Ref
+// 会触发 vue-tsc noUnusedLocals 误报
+const triggerElRef = ref<HTMLElement | null>(null);
+const floatingElRef = ref<HTMLElement | null>(null);
+watch(triggerElRef, (el) => {
+  referenceRef.value = el;
+});
+watch(floatingElRef, (el) => {
+  floatingRef.value = el;
+});
 
 /** 默认格式化：<1000 直接取整，否则 k 单位并去掉多余的 .0 */
 const defaultFormatter = (n: number): string => {
@@ -111,6 +140,13 @@ const usageText = computed(() =>
 );
 
 const toggle = () => (open.value = !open.value);
+
+// Esc 关闭并把焦点还给触发器：面板是 role="dialog"，键盘用户进去后必须有出路
+// （与 ModelSelector 的 Escape 约定一致），否则只能靠鼠标点外部关闭。
+const close = () => {
+  open.value = false;
+  triggerElRef.value?.focus();
+};
 
 const onCompress = () => {
   if (props.compressing) return;
@@ -162,17 +198,15 @@ useClickOutside({
     font-variant-numeric: tabular-nums;
   }
 
+  // 定位（position/top/left）由 floating-ui 以内联样式写入，此处只管外观
   &__panel {
-    position: absolute;
     z-index: 10;
-    bottom: calc(100% + var(--aix-marginXXS));
-    left: 0;
     min-width: 200px;
     padding: var(--aix-paddingSM);
     border: 1px solid var(--aix-colorBorderSecondary);
     border-radius: var(--aix-borderRadiusLG);
     background-color: var(--aix-colorBgElevated);
-    box-shadow: var(--aix-boxShadowSecondary);
+    box-shadow: var(--aix-shadowMD);
   }
 
   &__panel-title {

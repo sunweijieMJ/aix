@@ -568,6 +568,8 @@ const toolbarItems = [
 
 超过 `warnRatio`（默认 0.8）进入告警配色；`total` 为 0（窗口未知）时占比按 0 处理，不产生 `NaN` / `Infinity`。
 
+面板定位走 `@aix/popper`（`fixed` 策略 + flip/shift）：不会被工具栏或对话容器的 `overflow` 裁掉，上方空间不足时自动翻到下方。键盘可达：Esc 关闭并把焦点还给触发器，点击组件外部同样关闭。
+
 ## 对话大纲导航（MessageOutline）
 
 长会话右侧的提问刻度条：悬浮看摘要、点击定位到该轮提问。默认关闭：
@@ -585,10 +587,10 @@ const toolbarItems = [
 三层分离，可单独复用：
 
 - `useMessageOutline`：纯派生（`messages` → `entries` + 按 `activeId` 居中裁剪的 `windowed`），无 DOM
-- `useVisibleMessage`：`IntersectionObserver` 观测 `[data-aix-message-id]` 取活跃项，自带「点击定位期间屏蔽回写」的闸门；无 `IntersectionObserver` 的环境（SSR / jsdom）安全空转
+- `useVisibleMessage`：`IntersectionObserver` 观测 `[data-aix-message-id]`，取「仍在视口内、消息顺序最靠后」的一条作为活跃项（`ids` 需与文档流顺序一致；刻意不按坐标比大小——IO 只在进出视口时投递记录，存下的坐标会立刻过期）。自带「点击定位期间屏蔽回写」的闸门，闸门在**滚动静默后自动解除**，并有最长持有时长兜底；无 `IntersectionObserver` 的环境（SSR / jsdom）安全空转
 - `MessageOutline`：受控展示，`emit('select')`，不自己找滚动容器、不自己滚动、不自己观测
 
-`AiChat` 只做接线（`select` → `BubbleList.scrollToBubble`）。切分支导致激活路径整体改变时，活跃项会重置而非悬空；纯图片 / 附件等无文字消息的摘要回退到 locale 文案而不是空串。
+`AiChat` 只做接线（`select` → `BubbleList.scrollToBubble`）——注意 `scrollToBubble` 在**目标行挂载**时就 resolve，而平滑滚动的动画还要几百毫秒，所以解闸不能挂在它的 resolve 上（自定义大纲 UI 复用时同理）。切分支导致激活路径整体改变时，活跃项会重置而非悬空；纯图片 / 附件等无文字消息的摘要回退到 locale 文案而不是空串。
 
 ## 组合式 hooks
 

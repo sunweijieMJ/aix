@@ -162,6 +162,8 @@ export interface AiChatLocale {
   confirmSubmitted: string;
   /** 确认卡：已失效（超时 / 被后续确认卡顶替）只读态说明 */
   confirmExpired: string;
+  /** 确认卡：必填星号的无障碍名（短标签，与整句校验提示 confirmRequired 分开） */
+  confirmRequiredMark: string;
   /** 确认卡：必填项未完成的校验提示 */
   confirmRequired: string;
   /** 确认卡：长时间未作答的提示文案（hintAt 到点） */

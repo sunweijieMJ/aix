@@ -389,6 +389,13 @@ describe('UserConfirmBlock — 无障碍', () => {
     expect(label.text()).toContain('补充说明');
   });
 
+  it('必填星号的无障碍名是「必填」，而不是整句校验提示', () => {
+    const { wrapper } = mountCard({
+      fields: [{ name: 'n', question: 'q', type: 'text', required: true }],
+    });
+    expect(wrapper.find('.aix-user-confirm__required').attributes('aria-label')).toBe('必填');
+  });
+
   it('必填校验提示用 role="alert" 播报', async () => {
     const { wrapper } = mountCard({
       fields: [{ name: 'n', question: 'q', type: 'text', required: true }],

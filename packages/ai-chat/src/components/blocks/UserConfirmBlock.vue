@@ -11,7 +11,11 @@
         <fieldset v-if="field.type !== 'text'" :class="ns.e('field')">
           <legend :class="ns.e('question')">
             {{ field.question }}
-            <span v-if="field.required" :class="ns.e('required')" :aria-label="t.confirmRequired">
+            <span
+              v-if="field.required"
+              :class="ns.e('required')"
+              :aria-label="t.confirmRequiredMark"
+            >
               *
             </span>
           </legend>
@@ -30,7 +34,11 @@
         <div v-else :class="ns.e('field')">
           <label :class="ns.e('question')" :for="`${uid}-${field.name}`">
             {{ field.question }}
-            <span v-if="field.required" :class="ns.e('required')" :aria-label="t.confirmRequired">
+            <span
+              v-if="field.required"
+              :class="ns.e('required')"
+              :aria-label="t.confirmRequiredMark"
+            >
               *
             </span>
           </label>
