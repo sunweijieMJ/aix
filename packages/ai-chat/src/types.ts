@@ -172,7 +172,9 @@ export interface BubbleProps {
 
 /**
  * 块渲染器注册表：块类型 → 渲染组件。
- * 渲染器统一接收 props：`block`（当前内容块，必有）、`info`（气泡上下文）、`typing`（是否打字机态）。
+ * 渲染器统一接收 props：`block`（当前内容块，必有）、`info`（气泡上下文）、`typing`（是否打字机态），
+ * 以及两个可选的上抛回调 `onBlockAction`（改自己的数据，自动落地）/ `onBlockIntent`（需宿主处置的
+ * 意图，不落地）——两者语义分工见 BlockIntent。
  * 与内置注册表（text/reasoning）合并时用户优先，故可覆盖内置渲染。
  */
 export type BlockRenderers = Record<string, Component>;
@@ -231,6 +233,37 @@ export interface BlockActionPayload {
   messageKey: string | number;
   /** 块动作内容（目标块 id / 类型 / 补丁） */
   action: BlockAction;
+}
+
+/**
+ * 块意图信封：块上抛「需要宿主处置」的意图（非数据补丁），组件库不自动落地任何状态。
+ *
+ * 与 BlockAction 的分工必须分清，两者是并存的两条通道：
+ * | 通道 | 语义 | 组件库行为 |
+ * |---|---|---|
+ * | `BlockAction` | 改我自己的数据 | 自动 `updateBlock` 落地 patch |
+ * | `BlockIntent` | 我需要你做件事 | 不动数据，逐层转发到 AiChat 的 `block-intent` emit |
+ *
+ * 典型用例：确认卡「改答案」走 action（数据补丁），「点提交」走 intent（宿主自行续流）。
+ */
+export interface BlockIntent {
+  /** 发出意图的块 id */
+  blockId: string;
+  /** 意图类型，由块自定义（如 'submit' | 'drill-down' | 'retry'） */
+  type: string;
+  /** 意图载荷，由块自定义 */
+  payload?: unknown;
+}
+
+/** 块意图回调（渲染器统一可选 prop，与 onBlockAction 同形） */
+export type BlockIntentHandler = (intent: BlockIntent) => void;
+
+/** Bubble 向上转发的块意图载荷（携带所属消息 key） */
+export interface BlockIntentPayload {
+  /** 意图所属消息的 key（通常为消息 id） */
+  messageKey: string | number;
+  /** 块意图内容（来源块 id / 类型 / 载荷） */
+  intent: BlockIntent;
 }
 
 /** 模型选项（ModelSelector 用） */
@@ -392,6 +425,58 @@ export type EChartsChartKind =
   | 'tree'
   | 'treemap';
 
+// ==================== 用户确认卡（user_confirm） ====================
+
+/**
+ * 确认卡生命周期状态。
+ *
+ * **可交互性只看本状态 + createdAt 超时判定，不看消息 status**：确认卡的提交通常是
+ * 「流已收尾后再续流」（Last-Event-ID resume），「消息 success + 卡片 awaiting」恰恰是
+ * 用户应该填写的状态；若按 `info.status === 'success'` 禁用，卡片一出现就变只读，功能直接废掉。
+ */
+export type UserConfirmState =
+  /** 待填，可交互 */
+  | 'awaiting'
+  /** 已提交、宿主请求在途：冻结不可交互（对应 V5 的 frozen） */
+  | 'submitting'
+  /** 已提交，只读回显答案 */
+  | 'submitted'
+  /** 超时 / 被后续确认卡顶替，只读且不可提交 */
+  | 'expired';
+
+/** 确认卡的单个字段 */
+export interface ConfirmField {
+  /** 字段名（同一卡内唯一，提交时作为答案键） */
+  name: string;
+  /** 问题文案（渲染为 label / fieldset legend） */
+  question: string;
+  /** 控件类型：单选 / 多选 / 文本 */
+  type: 'radio' | 'checkbox' | 'text';
+  /** 候选项（radio / checkbox 用） */
+  options?: string[];
+  /** 默认值：超时自动填充（autoFillAt）时按此写入 answer */
+  defaultValue?: string | string[];
+  /** 是否必填：为空时阻止提交 */
+  required?: boolean;
+  /** 当前答案（改答案经 BlockAction 回写）；非 awaiting 态按此只读回显 */
+  answer?: string | string[];
+}
+
+/**
+ * 确认卡超时时间线（各节点为**相对 createdAt 的 ms 偏移**，缺省即不启用该节点）。
+ *
+ * 全部节点按 createdAt 的绝对时刻计算，配合 visibilitychange 补偿，
+ * 后台标签页 setTimeout 被节流 / 挂起后回前台仍会按已流逝时间补发。
+ */
+export interface ConfirmTimeoutConfig {
+  /** 提示「需要帮您选一个吗」的时刻，缺省不提示 */
+  hintAt?: number;
+  /** 按 defaultValue 自动填充并标记的时刻，缺省不自动填充 */
+  autoFillAt?: number;
+  /** 自动提交时刻；到点上抛 `submit` 意图并带 `autoFill: true`，缺省不自动提交 */
+  autoSubmitAt?: number;
+}
+
 /** 图片条目（image 块的单张图片） */
 export interface ImageItem {
   /** 图片地址 */
@@ -475,6 +560,27 @@ export interface ContentBlockRegistry {
     errorText?: string;
   };
   quote: { quotes: Quote[] };
+  user_confirm: {
+    /** 表单 id，宿主提交时回传后端 */
+    formId: string;
+    /** 卡片标题 */
+    title?: string;
+    /** 字段列表 */
+    fields: ConfirmField[];
+    /** 生命周期状态（唯一的可交互性闸门之一，另一个是 createdAt 超时） */
+    state: UserConfirmState;
+    /**
+     * 创建时刻（epoch ms）；超时策略以此为基准，缺省则不启用超时。
+     * 用 epoch ms 而非后端时间字符串：与 reasoning.startedAt/endedAt 同口径，无时区解析歧义。
+     */
+    createdAt?: number;
+    /**
+     * 该卡自己的超时时间线（数据驱动，随消息持久化）；缺省不启用超时。
+     * 放在块数据上而非组件 prop：渲染器契约只透传 block/info/typing/onBlockAction/onBlockIntent，
+     * 每张卡可有各自的节奏，且直接用 <Bubble> 时无需额外接线。
+     */
+    timeout?: ConfirmTimeoutConfig;
+  };
 }
 
 /**

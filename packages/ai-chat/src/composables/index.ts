@@ -20,6 +20,8 @@ export { useVisibleMessage } from './useVisibleMessage';
 export type { UseVisibleMessageOptions, UseVisibleMessageReturn } from './useVisibleMessage';
 export { useIdleWhileStreaming } from './useIdleWhileStreaming';
 export type { UseIdleWhileStreamingOptions } from './useIdleWhileStreaming';
+export { useConfirmDeadline } from './useConfirmDeadline';
+export type { UseConfirmDeadlineOptions, UseConfirmDeadlineReturn } from './useConfirmDeadline';
 export { provideAiChatConfig, useAiChatConfig, AI_CHAT_CONFIG_KEY } from './useAiChatConfig';
 export type { AiChatConfig } from './useAiChatConfig';
 export { useConversations, localStorageConversationStorage } from './useConversations';

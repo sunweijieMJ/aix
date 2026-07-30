@@ -44,6 +44,7 @@
         :loading="historyLoading"
         @retry="onReload"
         @block-action="onBlockAction"
+        @block-intent="emit('block-intent', $event)"
         @edit="onEditMessage"
         @typing-complete="emit('typing-complete', $event)"
       >
@@ -350,6 +351,12 @@ export interface AiChatEmits {
   (e: 'copy-source', message: ChatMessage): void;
   /** 交互块动作上抛（如单选作答 / 编辑保存），供业务方做持久化 / 判分 */
   (e: 'block-action', payload: BlockActionPayload): void;
+  /**
+   * 交互块**意图**上抛（如确认卡点提交），供业务方处置——组件库不据此改动任何数据。
+   * 与 block-action 的分工见 BlockIntent 类型注释：action 是「改我的数据」（自动落地），
+   * intent 是「我需要你做件事」（如带 Last-Event-ID 的续流），落地与否完全由业务决定。
+   */
+  (e: 'block-intent', payload: BlockIntentPayload): void;
   /** 用户消息编辑保存（已截断后续并重新生成），携带 id 与新文本 */
   (e: 'edit', payload: { id: string; text: string }): void;
   /** 请求删除某条消息（只上抛，不改动 messages/分支树——是否真的移除、是否同步后端，完全交给业务） */
@@ -402,6 +409,7 @@ import type {
   PromptItem,
   BlockRenderers,
   BlockActionPayload,
+  BlockIntentPayload,
   MessageFeedback,
   ActionsItems,
   AttachmentItem,

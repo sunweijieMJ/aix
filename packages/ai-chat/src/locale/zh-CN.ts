@@ -77,4 +77,12 @@ export const zhCN: AiChatLocale = {
   contextCompressing: '压缩中…',
   outlineLabel: '对话大纲',
   outlineUntitled: '（无文字内容）',
+  confirmTitle: '待确认信息',
+  confirmSubmit: '提交',
+  confirmSubmitting: '提交中…',
+  confirmSubmitted: '已提交',
+  confirmExpired: '该确认已失效',
+  confirmRequired: '请先完成必填项',
+  confirmHint: '需要帮您选一个吗？',
+  confirmAutoFilled: '已按默认选项自动填写',
 };

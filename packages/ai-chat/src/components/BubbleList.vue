@@ -29,6 +29,7 @@
             :tool-renderers="toolRenderers"
             @retry="emit('retry', (item as ChatMessage).id)"
             @block-action="emit('block-action', $event)"
+            @block-intent="emit('block-intent', $event)"
             @edit="emit('edit', (item as ChatMessage).id, $event)"
             @editing-change="handleEditingChange((item as ChatMessage).id, $event)"
             @typing-complete="handleTypingComplete((item as ChatMessage).id)"
@@ -96,6 +97,8 @@ export interface BubbleListEmits {
   (e: 'retry', id: string): void;
   /** 透传 Bubble 的块动作 */
   (e: 'block-action', payload: BlockActionPayload): void;
+  /** 透传 Bubble 的块意图（不改数据，交更上层处置） */
+  (e: 'block-intent', payload: BlockIntentPayload): void;
   /** 某条用户消息编辑保存，携带消息 id 与新文本 */
   (e: 'edit', id: string, text: string): void;
   /** 某条消息逐字显示完毕，携带消息 id（流式打字机追平末尾时触发） */
@@ -117,6 +120,7 @@ import type {
   BubbleProps,
   BlockRenderers,
   BlockActionPayload,
+  BlockIntentPayload,
   BubbleTypingConfig,
 } from '../types';
 import { contentFingerprint } from '../utils/contentFingerprint';

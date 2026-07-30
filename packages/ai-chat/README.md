@@ -78,9 +78,9 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 
 | 组件 | 说明 | 关键 props |
 |------|------|-----------|
-| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
-| `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `blockRenderers?` / `toolRenderers?`；slot `content` |
-| `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `contentRender` / `blockRenderers?` / `toolRenderers?`；slot `avatar`/`header`/`content`/`footer` |
+| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）/ `tailBreathing?`（末尾静默呼吸，默认关闭，见「末尾静默呼吸」）/ `outline?`（对话大纲导航，默认关闭，见「对话大纲导航」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`block-intent`（块意图，见「块交互的两条通道」）/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
+| `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `tailBreathing?` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；expose `scrollToBubble(messageId)`；slot `content` |
+| `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `tailBreathing?` / `contentRender` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；slot `avatar`/`header`/`content`/`footer` |
 | `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）/ `triggers?`（@提及/斜杠命令触发菜单）；emit `submit`（第三参 `meta?: SubmitMeta` 携带 mention 实体，见「触发菜单」）/`cancel`/`update:modelValue`；expose `focus`/`clear`/`setValue`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
 | `Welcome` | 欢迎/空态 | `icon?` / `title?` / `description?`；slot `icon`/`extra` |
 | `Prompts` | 提示词列表 | `items`；emit `select` |
@@ -91,6 +91,8 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 | `AttachmentCard` | 单个附件卡（输入区预览 / 气泡回显共用） | `item` / `removable?`；emit `remove`/`retry` |
 | `Suggestions` | 追问建议 chips（可独立使用，也内置于 `AiChat`） | `items: SuggestionItem[]`；emit `select`；slot 默认（覆盖单项文案渲染） |
 | `TriggerMenu` | 触发菜单受控展示层（Sender 内置使用；导出供自定义触发 UI 复用） | `items` / `loading` / `activeIndex` / `menuId` / `getAnchorRect` |
+| `ContextWindow` | 上下文用量条（纯受控展示 + 可选「压缩会话」入口，作为 Sender 的 `toolbarItems` 注入） | `used` / `total` / `percent?` / `compressible?` / `compressing?` / `formatter?` / `warnRatio?`；emit `compress`（见「上下文用量条」） |
+| `MessageOutline` | 对话大纲刻度条（受控展示，不自己找滚动容器、不自己观测） | `entries` / `activeId?`；emit `select`（见「对话大纲导航」） |
 
 ## 自定义协议 / 换模型
 
@@ -183,12 +185,53 @@ const roles = {
 
 ## 块渲染与富内容插槽穿透
 
-一条消息的 `content` 是**有序内容块**（`ContentBlock[]`）。`Bubble` 内部用单一**块渲染器注册表**按 `block.type` 分发渲染，内置 `text` / `reasoning` / `sources` / `thought-chain` / `attachment` 五类，可通过 `blockRenderers` 扩展或覆盖（业务自定义块如选择题卡片即走此扩展点）：
+一条消息的 `content` 是**有序内容块**（`ContentBlock[]`）。`Bubble` 内部用单一**块渲染器注册表**按 `block.type` 分发渲染，内置十类：
+
+| 块类型 | 说明 |
+|--------|------|
+| `text` | 正文（Markdown 渲染，支持打字机逐字） |
+| `reasoning` | 思考过程（默认折叠，带思考耗时） |
+| `sources` | 引用来源列表 |
+| `thought-chain` | Agent 执行步骤时间线 |
+| `attachment` | 用户消息携带的已上传附件 |
+| `tool_use` | 工具调用（见「工具调用（tool_use）」） |
+| `chart` | 结构化图表（ECharts） |
+| `image` | 单图 / 多图 gallery |
+| `quote` | 划词引用（见「划词引用」） |
+| `user_confirm` | 用户确认卡（见「用户确认卡（user_confirm）」） |
+
+可通过 `blockRenderers` 扩展新类型或覆盖内置渲染（业务自定义块如选择题卡片即走此扩展点）：
 
 ```ts
 // 扩展新块类型 / 覆盖内置渲染器（组件级 props.blockRenderers，或全局 provideAiChatConfig.blockRenderers）
 <AiChat :request="request" :block-renderers="{ 'my-card': MyCardRenderer }" />
 ```
+
+渲染器统一收到 `block` / `info`（气泡上下文）/ `typing`，以及下面两个上抛回调。
+
+### 块交互的两条通道
+
+交互型块有两种「向上说话」的方式，**语义与组件库行为完全不同，不要混用**：
+
+| 通道 | 渲染器 prop | 语义 | 组件库行为 |
+|------|------------|------|-----------|
+| `BlockAction` | `onBlockAction({ blockId, type, patch })` | 改我自己的数据 | 自动 `updateBlock` 就地合并 patch，**命中后**再 emit `block-action` 供业务持久化 |
+| `BlockIntent` | `onBlockIntent({ blockId, type, payload })` | 我需要你做件事 | **不动任何数据**，逐层转发为 `AiChat` 的 `block-intent` emit，落地与否完全由业务决定 |
+
+确认卡两条都用：改答案走 action（组件库落地），点提交走 intent（宿主自行发请求 / 带 `Last-Event-ID` 续流）。
+
+```ts
+// @block-action：已落地的数据补丁，业务只需同步后端
+// @block-intent：需要业务处置的意图，组件库什么都没改
+const onBlockIntent = async (payload: BlockIntentPayload) => {
+  if (payload.intent.type !== 'submit') return;
+  const id = String(payload.messageKey);
+  chatRef.value?.updateBlock(id, payload.intent.blockId, { state: 'submitting' });
+  await chatRef.value?.resume(id, payload.intent.payload); // 续流，不新建消息节点
+};
+```
+
+> `onBlockIntent` 是**可选** prop，现有自定义渲染器不受影响；不监听 `block-intent` 时意图静默丢弃（组件库本就不落地任何东西）。
 
 ### 命名插槽穿透块内部（`<块类型>-<内部slot名>`）
 
@@ -300,6 +343,75 @@ const onBlockAction = (p: BlockActionPayload) => {
 
 - **OpenAI 并行工具收尾**：`openaiParseChunk` 从 `finish_reason:'tool_calls'` 无法精确给出各 index，仅对 index 0 发参数结束信号；多并行工具请由后端显式事件驱动收尾，或改用带 `.done` 语义的 Responses API 事件自定义 `parseChunk`。
 - **超大 output 持久化**：默认全量随树持久化，超大结果需业务侧截断/omit，避免撑爆 localStorage。
+
+## 用户确认卡（user_confirm）
+
+AI 在继续之前需要用户拍板时（确认偏好、补充参数等）下发的表单卡片。组件库只负责**块类型 + 卡片 UI + 超时策略 + 答案回写**，**提交本身留在宿主**——提交往往意味着带 `Last-Event-ID` 的续流或业务侧状态机变更，组件库不做假设。
+
+### 数据模型
+
+```ts
+{ id, type: 'user_confirm';
+  formId: string;                    // 表单 id，宿主提交时回传后端
+  title?: string;
+  fields: ConfirmField[];            // { name, question, type: 'radio'|'checkbox'|'text', options?, defaultValue?, required?, answer? }
+  state: 'awaiting' | 'submitting' | 'submitted' | 'expired';
+  createdAt?: number;                // epoch ms；超时时间线的基准，缺省则不启用超时
+  timeout?: ConfirmTimeoutConfig;    // { hintAt?, autoFillAt?, autoSubmitAt? }，相对 createdAt 的 ms 偏移
+}
+```
+
+用 `userConfirmBlock(formId, fields, opts?)` 构造（`field.name` 需在同一张卡内唯一，重名会让选项分组与答案回写一起错乱，开发期有告警）：
+
+```ts
+import { userConfirmBlock } from '@aix/ai-chat';
+
+userConfirmBlock('trip-form', fields, {
+  title: '出行偏好确认',
+  createdAt: Date.now(),
+  timeout: { hintAt: 75_000, autoFillAt: 105_000, autoSubmitAt: 120_000 },
+});
+```
+
+### 可交互性只看 `state` + 超时，**不看消息 status**
+
+这是最容易写错的一处：确认卡的提交通常发生在**流已经收尾之后**（正因如此才需要 resume 续流），所以「消息 `success` + 卡片 `awaiting`」恰恰是用户**应该**填写的状态。若按 `info.status === 'success'` 禁用，卡片一出现就变只读，功能直接废掉。闸门只有两个：卡片自己的 `state`，以及 `createdAt` 的超时判定。
+
+历史消息不会误提交：已处理的卡片持久化时就是 `submitted` / `expired`（`state` 非 `awaiting` 即整条时间线不启用）。
+
+### 状态流转（宿主的责任）
+
+```text
+awaiting --用户点提交--> [block-intent] --宿主置--> submitting --请求返回--> submitted
+                                                       └--请求失败--> awaiting（卡片解冻，可重试）
+```
+
+组件在上抛 `submit` 意图后会**立即本地冻结**防连点；解冻信号是 `state` 由非 `awaiting` **回到** `awaiting`。因此宿主收到意图后**必须推进 `state`**，否则失败时卡片会一直停在「提交中」。
+
+### 顶替规则（内置，无需宿主处理）
+
+同一条消息内落地新的 `user_confirm` 块时，`useChat` 会自动把更早的 `awaiting` 卡置为 `expired`（幂等，照 `sealReasoning` 的形状）。避免多张卡同时可交互、都能提交。只管消息内，不做跨消息扫描——跨消息场景由下面的超时机制自然覆盖。
+
+### 超时时间线
+
+`timeout` 的三个节点都是**相对 `createdAt` 的 ms 偏移**，缺省即不启用该节点：
+
+- `hintAt`：展示「需要帮您选一个吗？」提示
+- `autoFillAt`：按 `defaultValue` 自动填充并标记（走 `BlockAction` 落地）
+- `autoSubmitAt`：自动提交，`payload.autoFill` 为 `true`，跳过必填校验（是否受理由宿主判断）
+
+**任何手动作答都会撤销整条时间线**。三重兜底（后台标签页的 `setTimeout` 会被节流甚至挂起，这是正确性问题）：全部按 `createdAt` 的绝对时刻计算、`visibilitychange` 回前台按已流逝时间重排、每次排程前把已过点未触发的节点按序补发。
+
+> ⚠️ 补发是无差别的：配了 `autoSubmitAt` 的 `awaiting` 卡在**重新挂载**时（如刷新页面加载历史），若 `createdAt` 早已超过节点就会当场走完时间线并上抛提交意图。不希望如此的话，持久化时就应把已废弃的卡落为 `expired`。
+
+### 提交载荷
+
+```ts
+// intent.payload
+{ formId: string; fields: ConfirmField[]; autoFill?: true }
+```
+
+时间线逻辑封装在 `useConfirmDeadline`（**块类型无关**），后续 `tool_use` 的 `awaiting-approval` 可直接复用同一套 deadline，不必重复机制。
 
 ## 触发菜单（@提及 / 斜杠命令）
 
@@ -414,17 +526,85 @@ chatRef.value?.setSuggestions(['能再展开讲讲吗？', '有相关文档吗�
 - `max`（默认 `5`）：可见建议条数上限，超出部分仅在展示层截断（不影响已持久化的完整列表）。
 - 独立使用 `Suggestions` 组件（脱离 `AiChat`）时无 `fillOnly` / `max` 语义，纯受控展示：传 `items: SuggestionItem[]`，监听 `select` 自行处理点击（发送 / 回填 / 埋点等）。
 
+## 末尾静默呼吸（tailBreathing）
+
+流式输出中途停顿（模型在想、工具在跑）时，末块文字做明暗呼吸，和「已经说完」区分开。默认关闭：
+
+```vue
+<AiChat :request="request" tail-breathing />
+<!-- 默认静默阈值 3000ms -->
+<AiChat :request="request" :tail-breathing="{ idleMs: 2000 }" />
+```
+
+也可 `provideAiChatConfig({ tailBreathing: true })` 全局开启（组件 prop 优先）。
+
+判定放在**气泡层**而非块内：一条消息是 `ContentBlock[]`，形如 `[text, tool_use, text]` 时，首个 `text` 在工具开始流式后就不再增长——若各块自行判定，会出现「中间块呼吸、真正在输出的末块不呼吸」。气泡层持有完整 `content`，指纹（`contentFingerprint`，与自动滚动跟随同一口径）覆盖全部块，末块由 CSS 后代选择器命中。**自定义块渲染器无需改造即可获得该行为**。动画尊重 `prefers-reduced-motion`。
+
+## 上下文用量条（ContextWindow）
+
+展示「已用 / 上下文窗口总量」，可选提供「压缩会话」入口。**纯受控**：不发任何请求、不碰全局状态，`used` / `total` 由业务传入，点击压缩只 `emit('compress')`。
+
+无需改 `Sender`，作为 `toolbarItems` 的自定义项注入即可：
+
+```vue
+<script setup lang="ts">
+import { ContextWindow } from '@aix/ai-chat';
+import { markRaw, ref } from 'vue';
+
+const used = ref(12000);
+const toolbarItems = [
+  'attach',
+  'voice',
+  {
+    key: 'ctx',
+    component: markRaw(ContextWindow),
+    props: { used, total: 128000, compressible: true, onCompress: doCompress },
+  },
+];
+</script>
+
+<template><AiChat :request="request" :toolbar-items="toolbarItems" /></template>
+```
+
+超过 `warnRatio`（默认 0.8）进入告警配色；`total` 为 0（窗口未知）时占比按 0 处理，不产生 `NaN` / `Infinity`。
+
+## 对话大纲导航（MessageOutline）
+
+长会话右侧的提问刻度条：悬浮看摘要、点击定位到该轮提问。默认关闭：
+
+```vue
+<AiChat :request="request" outline />
+<AiChat
+  :request="request"
+  :outline="{ window: 8, filter: (m) => m.role === 'user', toLabel: (m) => summarize(m) }"
+/>
+```
+
+同样支持 `provideAiChatConfig({ outline: true })` 全局开启（组件 prop 优先）。`window` 是滑动窗口半径（默认 8，传 `Infinity` 全量展示），长会话下刻度条不会撑爆。
+
+三层分离，可单独复用：
+
+- `useMessageOutline`：纯派生（`messages` → `entries` + 按 `activeId` 居中裁剪的 `windowed`），无 DOM
+- `useVisibleMessage`：`IntersectionObserver` 观测 `[data-aix-message-id]` 取活跃项，自带「点击定位期间屏蔽回写」的闸门；无 `IntersectionObserver` 的环境（SSR / jsdom）安全空转
+- `MessageOutline`：受控展示，`emit('select')`，不自己找滚动容器、不自己滚动、不自己观测
+
+`AiChat` 只做接线（`select` → `BubbleList.scrollToBubble`）。切分支导致激活路径整体改变时，活跃项会重置而非悬空；纯图片 / 附件等无文字消息的摘要回退到 locale 文案而不是空串。
+
 ## 组合式 hooks
 
 | Hook | 说明 |
 |------|------|
-| `useChat(options)` | 消息流托管。返回 `messages` / `parsedMessages`（经 `parser` 映射的渲染消息）/ `isLoading` / `onSend` / `onReload` / `onEdit`（编辑并重新生成）/ `abort` / `setMessages` / `updateBlock`（按 id 回写块补丁）/ `setFeedback`（赞/踩）/ `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」）/ `exportTree` / `importTree` / `switchBranch` 等。`options`: `request` / `streamMode?`（`'sse'` 默认 / `'line'`）/ `parseChunk?` / `parser?` / `defaultMessages?` / `onFinish?` / `onError?` / `onAbort?` / `retryTimes?` / `retryInterval?` / `streamTimeout?`（流静默超时） |
+| `useChat(options)` | 消息流托管。返回 `messages` / `parsedMessages`（经 `parser` 映射的渲染消息）/ `isLoading` / `onSend` / `onReload` / `onEdit`（编辑并重新生成）/ `abort` / `setMessages` / `updateBlock`（按 id 回写块补丁）/ `setFeedback`（赞/踩）/ `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」）/ `exportTree` / `importTree` / `switchBranch` 等。内置块级规则：`reasoning` 转场自动封口计时、同一条消息内新 `user_confirm` 落地时自动顶替更早的待填卡（见「用户确认卡」）。`options`: `request` / `streamMode?`（`'sse'` 默认 / `'line'`）/ `parseChunk?` / `parser?` / `defaultMessages?` / `onFinish?` / `onError?` / `onAbort?` / `retryTimes?` / `retryInterval?` / `streamTimeout?`（流静默超时） |
 | `sseStream(stream, signal?)` | 按 SSE 规范把字节流解析为结构化事件（空行切事件 + `event`/`data`/`id` 字段）的异步生成器，支持中断；`useChat` 的 `sse` 模式（默认）用它 |
 | `xStream(stream, signal?)` | 将 `ReadableStream<Uint8Array>` 解码并按行（`\n`）切分的异步生成器，支持中断；`useChat` 的 `line` 模式用它 |
 | `useXStream()` | `xStream` 的响应式封装：`lines` / `isStreaming` / `error` / `start` / `cancel` |
 | `useTypewriter(source, options?)` | 打字机逐字渲染（保留前缀），返回 `displayed` / `stop`。已内置到 `Bubble`（见 `typing` prop），`options.enabled` 支持响应式开关 |
 | `useAutoScroll(scrollEl, options?)` | 滚动状态机 + 跟随策略（own-message / new-message / streaming 三分流） |
-| `useAiChatConfig()` / `provideAiChatConfig(config)` | provide/inject 全局配置 |
+| `useMessageOutline(options)` | 对话大纲纯派生：`messages` → `entries`（全量）/ `windowed`（按 `activeId` 居中裁剪）。`options`: `messages` / `filter?` / `toLabel?` / `window?` / `activeId`（见「对话大纲导航」） |
+| `useVisibleMessage(options)` | 以 `IntersectionObserver` 观测 `[data-aix-message-id]` 取当前活跃消息，内置「点击定位期间屏蔽回写」闸门；无 IO 的环境安全空转 |
+| `useIdleWhileStreaming(options)` | 「流式中但内容已停止增长」检测（末尾静默呼吸的判定内核）。`options`: `streaming` / `fingerprint` / `idleMs?` |
+| `useConfirmDeadline(options)` | 确认卡超时时间线（提示 → 自动填充 → 自动提交），**块类型无关**，含绝对时刻 / `visibilitychange` 补偿 / 排程前补发三重兜底。返回 `hinted` / `autoFilled` / `cancel` |
+| `useAiChatConfig()` / `provideAiChatConfig(config)` | provide/inject 全局配置（含 `tailBreathing` / `outline` 等 opt-in 能力的全局通道，组件 props 优先） |
 | `useConversations(options?)` | 多会话托管（SSOT + 可选持久化）。返回 `conversations` / `activeKey` / `active` / `activeMessages`（绑 `AiChat` 的 `v-model:messages`）/ `items`（绑 `Conversations`）/ `isLoading`（`storage.load()` 解析完成前为 `true`，未提供 `storage` 时恒为 `false`）/ `create` / `remove` / `rename`。`storage.load`/`save` 可返回同步值或 `Promise`（内部统一用 `Promise.resolve(...).then(...)` 处理），配合内置 `localStorageConversationStorage` 或自定义异步适配器（对接真实后端）持久化 |
 | `useAttachments(options)` | 附件上传托管。返回 `items` / `add` / `remove` / `retry` / `clear` / `isUploading` / `drain`（取出已完成项随消息发送）。`options`: `upload` / `accept?` / `maxCount?` / `maxSize?` |
 | `useVoiceInput(options)` | 语音识别输入（ASR）。返回 `status` / `isSupported` / `start` / `stop` / `toggle`。缺省用浏览器 Web Speech API，可注入自定义 `recognizer` 对接讯飞/阿里云等 ASR |
@@ -584,6 +764,6 @@ const markdownRenderers: MarkdownRenderers = {
 
 ## 能力范围
 
-已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**@ 提及/斜杠命令（textarea 触发菜单）**（`Sender`/`AiChat` 的 `triggers` prop：本地过滤或异步搜索候选、`insertText`/`onSelect` 双行为、`meta.mentions` 结构化回传，见「触发菜单」）、**追问建议**（`AiChat` 的 `suggestions` prop：`parseChunk` 下发 + `setSuggestions` 命令式注入双通道，chips 点击发送或回填，见「追问建议」）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）、**ECharts 图表**（`echarts` 随包自动安装；` ```chart ` 围栏承载 ECharts option JSON、或结构化 `chart` 块，按需加载并以 canvas 活实例渲染统计图（柱/折/饼/散点/雷达/漏斗/仪表盘/热力图/关系图/树图/矩形树图，`EChartsChartKind` 联合类型）；虚拟列表滚动按活实例 `dispose`/重建而非缓存静态图；缺失时围栏维持代码块、结构化块降级为 `alt` 文字。地图、K 线图等更多图表类型分期接入；数学函数图像 function-plot 分期接入）。
+已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**@ 提及/斜杠命令（textarea 触发菜单）**（`Sender`/`AiChat` 的 `triggers` prop：本地过滤或异步搜索候选、`insertText`/`onSelect` 双行为、`meta.mentions` 结构化回传，见「触发菜单」）、**追问建议**（`AiChat` 的 `suggestions` prop：`parseChunk` 下发 + `setSuggestions` 命令式注入双通道，chips 点击发送或回填，见「追问建议」）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）、**ECharts 图表**（`echarts` 随包自动安装；` ```chart ` 围栏承载 ECharts option JSON、或结构化 `chart` 块，按需加载并以 canvas 活实例渲染统计图（柱/折/饼/散点/雷达/漏斗/仪表盘/热力图/关系图/树图/矩形树图，`EChartsChartKind` 联合类型）；虚拟列表滚动按活实例 `dispose`/重建而非缓存静态图；缺失时围栏维持代码块、结构化块降级为 `alt` 文字。地图、K 线图等更多图表类型分期接入；数学函数图像 function-plot 分期接入）、**用户确认卡 user_confirm**（内置卡片 UI + 四态生命周期 + 消息内顶替 + 可配超时时间线；提交经 `BlockIntent` 交宿主处置，见「用户确认卡（user_confirm）」）、**末尾静默呼吸**（`tailBreathing`，流式停顿时末块文字呼吸）、**上下文用量条**（`ContextWindow`，纯受控 + `compress` 事件，作为 `toolbarItems` 注入）、**对话大纲导航**（`outline` + `MessageOutline`，滑动窗口刻度条 + 点击定位）。
 
 **暂未包含**：结构化输入（SlotConfig）、多 Provider class 等，后续版本迭代。

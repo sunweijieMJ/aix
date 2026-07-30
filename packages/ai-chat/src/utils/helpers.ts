@@ -1,6 +1,8 @@
 import type {
   AttachmentItem,
   ChatMessage,
+  ConfirmField,
+  ConfirmTimeoutConfig,
   ContentBlock,
   ImageItem,
   MessageRole,
@@ -9,6 +11,7 @@ import type {
   SourceItem,
   SuggestionItem,
   ThoughtChainItem,
+  UserConfirmState,
 } from '../types';
 
 /**
@@ -101,6 +104,30 @@ export const imageBlock = (
   images,
   ...(opts?.state !== undefined ? { state: opts.state } : {}),
   ...(opts?.errorText !== undefined ? { errorText: opts.errorText } : {}),
+});
+
+/**
+ * 创建用户确认卡块（待用户填写并提交的表单卡片）。
+ * state 缺省为 'awaiting'；配 createdAt + timeout 才启用超时时间线（提示/自动填充/自动提交）。
+ */
+export const userConfirmBlock = (
+  formId: string,
+  fields: ConfirmField[],
+  opts?: {
+    title?: string;
+    state?: UserConfirmState;
+    createdAt?: number;
+    timeout?: ConfirmTimeoutConfig;
+  },
+): Extract<ContentBlock, { type: 'user_confirm' }> => ({
+  id: genBlockId(),
+  type: 'user_confirm',
+  formId,
+  fields,
+  state: opts?.state ?? 'awaiting',
+  ...(opts?.title !== undefined ? { title: opts.title } : {}),
+  ...(opts?.createdAt !== undefined ? { createdAt: opts.createdAt } : {}),
+  ...(opts?.timeout !== undefined ? { timeout: opts.timeout } : {}),
 });
 
 /** quote 块工厂：pendingQuotes → 一等 quote 块（发送时前置进 content） */

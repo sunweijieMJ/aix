@@ -77,4 +77,12 @@ export const enUS: AiChatLocale = {
   contextCompressing: 'Compressing…',
   outlineLabel: 'Conversation outline',
   outlineUntitled: '(no text content)',
+  confirmTitle: 'Confirmation required',
+  confirmSubmit: 'Submit',
+  confirmSubmitting: 'Submitting…',
+  confirmSubmitted: 'Submitted',
+  confirmExpired: 'This confirmation has expired',
+  confirmRequired: 'Please complete the required fields',
+  confirmHint: 'Want help picking one?',
+  confirmAutoFilled: 'Auto-filled with the default options',
 };

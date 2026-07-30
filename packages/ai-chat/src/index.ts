@@ -26,7 +26,7 @@ import Welcome from './components/Welcome.vue';
 
 // 组件（不带 Aix 前缀）
 // 注意：内置内容块组件（TextBlock / ReasoningBlock / ThoughtChainBlock / SourcesBlock /
-// AttachmentBlock）是 Bubble 块注册表的实现细节，不对外导出——扩展请通过 blockRenderers 注册自定义渲染器。
+// AttachmentBlock / UserConfirmBlock）是 Bubble 块注册表的实现细节，不对外导出——扩展请通过 blockRenderers 注册自定义渲染器。
 export {
   AttachmentCard,
   Bubble,
@@ -128,6 +128,7 @@ export {
   attachmentBlock,
   chartBlock,
   imageBlock,
+  userConfirmBlock,
   textMessage,
   createMessage,
   messageText,

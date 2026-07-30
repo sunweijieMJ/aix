@@ -140,6 +140,29 @@ function sealReasoning(msg: ChatMessage) {
   }
 }
 
+/**
+ * 同一条消息内新 user_confirm 落地时，把仍为 awaiting 的**早期**确认块置 expired。
+ * 幂等（重复调用是空操作），可在每次追加块后无条件调用。
+ *
+ * 内置而非交给宿主：漏做就会出现多张卡同时可交互、都能提交。
+ * 只管消息内、不做跨消息扫描——让 useChat 去改历史消息的块侵入性明显偏大；跨消息场景由
+ * 卡片自身的 createdAt 超时（挂载即补发时间线）自然覆盖。
+ */
+function supersedeConfirms(msg: ChatMessage) {
+  let lastIdx = -1;
+  for (let i = msg.content.length - 1; i >= 0; i--) {
+    if (msg.content[i]!.type === 'user_confirm') {
+      lastIdx = i;
+      break;
+    }
+  }
+  if (lastIdx < 0) return;
+  for (let i = 0; i < lastIdx; i++) {
+    const b = msg.content[i]!;
+    if (b.type === 'user_confirm' && b.state === 'awaiting') b.state = 'expired';
+  }
+}
+
 /** 把流式增量并入 AI 消息内容块：末尾同 type 则追加，否则新开带 id 的 block */
 function appendDelta(msg: ChatMessage, blockType: 'text' | 'reasoning', delta: string) {
   const last = msg.content[msg.content.length - 1];
@@ -446,6 +469,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 // 按创建时刻补写；已自带时间戳（业务自行计时）则不覆盖。
                 if (b.type === 'reasoning' && b.startedAt == null) b.startedAt = Date.now();
                 aiMsg.content.push(b);
+                // 新确认卡落地即顶替本条消息内更早的待填卡（幂等，非确认卡时为空操作）
+                if (b.type === 'user_confirm') supersedeConfirms(aiMsg);
                 if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
               }
               if (tool) {

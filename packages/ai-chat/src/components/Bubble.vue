@@ -58,6 +58,7 @@
                   :info="info"
                   :typing="typing"
                   :on-block-action="handleBlockAction"
+                  :on-block-intent="handleBlockIntent"
                   :tool-renderers="toolRenderers"
                   @typing-complete="onBlockTypingComplete(block)"
                   @keep-mounted-change="handleKeepMountedChange"
@@ -94,6 +95,8 @@ export interface BubbleEmits {
   (e: 'retry'): void;
   /** 交互块上抛的动作（携带所属消息 key），由 AiChat 调 updateBlock */
   (e: 'block-action', payload: { messageKey: string | number; action: BlockAction }): void;
+  /** 交互块上抛的意图（携带所属消息 key）：不改数据，逐层转发交宿主处置 */
+  (e: 'block-intent', payload: { messageKey: string | number; intent: BlockIntent }): void;
   /** 用户消息内联编辑保存，携带新文本（由 AiChat 调 onEdit） */
   (e: 'edit', text: string): void;
   /** 进入/退出内联编辑态：供列表层保持该行挂载（虚拟滚动回收该行会销毁行内草稿） */
@@ -113,6 +116,7 @@ import { useIdleWhileStreaming } from '../composables/useIdleWhileStreaming';
 import { locale } from '../locale';
 import type {
   BlockAction,
+  BlockIntent,
   BubbleProps,
   BubbleContentInfo,
   BlockRenderers,
@@ -129,6 +133,7 @@ import SourcesBlock from './blocks/SourcesBlock.vue';
 import TextBlock from './blocks/TextBlock.vue';
 import ThoughtChainBlock from './blocks/ThoughtChainBlock.vue';
 import ToolUseBlock from './blocks/ToolUseBlock.vue';
+import UserConfirmBlock from './blocks/UserConfirmBlock.vue';
 import LoadingDots from './LoadingDots.vue';
 
 const props = withDefaults(defineProps<BubbleProps>(), {
@@ -147,6 +152,10 @@ const emit = defineEmits<BubbleEmits>();
 // 交互渲染器经统一回调上抛动作；补齐所属消息 key 后向上转发，由 AiChat 落到 useChat.updateBlock。
 const handleBlockAction = (action: BlockAction) =>
   emit('block-action', { messageKey: props.itemKey ?? '', action });
+
+// 意图通道：与 action 对称补齐消息 key 后转发；组件库不据此改任何数据（见 BlockIntent 注释的分工表）。
+const handleBlockIntent = (intent: BlockIntent) =>
+  emit('block-intent', { messageKey: props.itemKey ?? '', intent });
 
 // —— 消息级 typing-complete 聚合 ——
 // 块渲染器在「追平当下源文本」时上抛块级 typing-complete，但追平可能早于消息终态
@@ -263,6 +272,7 @@ const builtinRenderers: BlockRenderers = {
   chart: ChartBlock,
   image: ImageBlock,
   quote: QuoteBlock,
+  user_confirm: UserConfirmBlock,
 };
 const renderers = computed<BlockRenderers>(() => ({
   ...builtinRenderers,
