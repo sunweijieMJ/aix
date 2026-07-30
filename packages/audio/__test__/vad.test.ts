@@ -54,6 +54,52 @@ describe('VAD', () => {
     vad.stop();
   });
 
+  it('全程未出声也应在静音时长达标后通知一次', () => {
+    const events: VADEvent[] = [];
+    const vad = new VAD({ threshold: 10, silenceDuration: 1000, sampleInterval: 100 });
+
+    // 用户开麦后一言不发：靠"说话→静音"边沿判定会永远等不到通知，
+    // maxSilenceDuration 自动停录对这种场景整个失效
+    vad.start(
+      () => 0,
+      (e) => events.push(e),
+    );
+
+    vi.advanceTimersByTime(900);
+    expect(events).toHaveLength(0); // 未达阈值时长不误报
+
+    vi.advanceTimersByTime(200);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.isSilent).toBe(true);
+
+    // 同一段静音只通知一次
+    vi.advanceTimersByTime(5000);
+    expect(events).toHaveLength(1);
+    vad.stop();
+  });
+
+  it('说话后再次静音应重新通知', () => {
+    const events: VADEvent[] = [];
+    let energy = 0;
+    const vad = new VAD({ threshold: 10, silenceDuration: 1000, sampleInterval: 100 });
+
+    vad.start(
+      () => energy,
+      (e) => events.push(e),
+    );
+    vi.advanceTimersByTime(1100); // 初始静音通知
+    expect(events.map((e) => e.isSilent)).toEqual([true]);
+
+    energy = 0.5; // 开始说话
+    vi.advanceTimersByTime(200);
+    expect(events.map((e) => e.isSilent)).toEqual([true, false]);
+
+    energy = 0; // 再次静音
+    vi.advanceTimersByTime(1100);
+    expect(events.map((e) => e.isSilent)).toEqual([true, false, true]);
+    vad.stop();
+  });
+
   it('说话↔静音切换才触发回调，不会每次采样都触发', () => {
     const events: VADEvent[] = [];
     const vad = new VAD({ threshold: 10, sampleInterval: 100 });

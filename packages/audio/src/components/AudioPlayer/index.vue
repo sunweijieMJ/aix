@@ -240,9 +240,19 @@ function stopProgressTimer() {
 
 function destroyAudio() {
   pause();
+  if (audio) {
+    // 摘掉回调并断源，否则旧实例会继续缓冲、加载失败还会派发到已切换的 src 上
+    audio.onloadedmetadata = null;
+    audio.onended = null;
+    audio.onerror = null;
+    audio.ontimeupdate = null;
+    audio.removeAttribute('src');
+  }
   audio = null;
   currentTime.value = 0;
   progress.value = 0;
+  // 不复位会短暂沿用上一条音频的时长：显示错误时间，且能按旧时长 seek
+  totalDuration.value = 0;
 }
 
 /** 时长是否已知且可用于换算进度（排除 Infinity / NaN / 0） */

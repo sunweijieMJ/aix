@@ -49,6 +49,12 @@ class PCMQueuePlayer {
   private drainTimer: ReturnType<typeof setTimeout> | null = null;
   /** 播放代次：stop() 后递增，用于丢弃旧 source 的残余 onended */
   private generation = 0;
+  /**
+   * 用户是否主动暂停。
+   * 流式场景下暂停期间仍会有新 chunk 到达，playNext() 若无条件 resume()
+   * 就会把用户暂停的 AudioContext 重新唤醒——按了暂停声音却继续播
+   */
+  private userPaused = false;
 
   /**
    * 队列排空后等待多久判定播放结束（毫秒）
@@ -64,6 +70,7 @@ class PCMQueuePlayer {
       this.audioContext = new AudioContext();
     }
     this.endOfStream = false;
+    this.userPaused = false;
   }
 
   push(buffer: ArrayBuffer): void {
@@ -84,16 +91,19 @@ class PCMQueuePlayer {
 
   /** 暂停播放（Web Audio 需挂起整个 AudioContext） */
   async suspend(): Promise<void> {
+    this.userPaused = true;
     if (this.audioContext?.state === 'running') await this.audioContext.suspend();
   }
 
   /** 恢复播放 */
   async resume(): Promise<void> {
+    this.userPaused = false;
     if (this.audioContext?.state === 'suspended') await this.audioContext.resume();
   }
 
   stop(): void {
     this.generation++;
+    this.userPaused = false;
     this.clearDrainTimer();
     try {
       this.currentSource?.stop();
@@ -126,6 +136,16 @@ class PCMQueuePlayer {
    */
   private handleQueueDrained(): void {
     this.isPlaying = false;
+
+    // 暂停期间队列排空不代表播完，推迟判定直到用户恢复
+    if (this.userPaused) {
+      this.clearDrainTimer();
+      this.drainTimer = setTimeout(() => {
+        this.drainTimer = null;
+        this.handleQueueDrained();
+      }, this.drainTimeout);
+      return;
+    }
 
     if (this.endOfStream) {
       this.clearDrainTimer();
@@ -162,7 +182,8 @@ class PCMQueuePlayer {
 
     try {
       const ctx = this.audioContext!;
-      if (ctx.state === 'suspended') await ctx.resume();
+      // 用户暂停期间不唤醒上下文：source 照常挂上，resume() 后接着播
+      if (ctx.state === 'suspended' && !this.userPaused) await ctx.resume();
 
       const audioBuffer = await ctx.decodeAudioData(merged.buffer);
       // 解码期间被 stop() 打断，丢弃本批，避免停止后又响起来
@@ -209,6 +230,23 @@ export class AliyunTTS extends BaseTTSAdapter {
   /** 握手超时（毫秒）：服务端不回 connecting_success 时兜底，避免 speak() 永久挂起 */
   private readonly handshakeTimeout = 10_000;
 
+  /**
+   * 合成超时（毫秒）：握手成功后服务端迟迟不推音频时兜底。
+   * 只覆盖"首个音频包到达之前"，音频开始流入后由队列与结束信号接管
+   */
+  private readonly synthesisTimeout = 20_000;
+  private synthesisTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * 结束信号先于任何音频到达时的宽限期（毫秒）
+   *
+   * 「一个音频包都没收到就收到结束信号」有两种成因，协议上无法区分（`end` 不带 segmentId）：
+   *   1. 空文本 / 合成失败，后端直接给结束信号 —— 必须结算，否则 speak() 永久挂起
+   *   2. 同一条连接上**上一段**迟到的结束信号 —— 不能结算，本段音频还在路上
+   * 因此不立即结算，等一个宽限期：期间有音频进来就按 2 处理，交回正常的播完流程
+   */
+  private readonly emptyEndGrace = 1500;
+
   constructor(options: TTSProviderOptions) {
     super();
     if (!options.wsEndpoint) {
@@ -231,6 +269,7 @@ export class AliyunTTS extends BaseTTSAdapter {
       this.player.connect();
       this.hasReceivedAudio = false;
       this.sendStartSynthesis(text);
+      this.startSynthesisTimer();
       this.setState('playing');
 
       await new Promise<void>((resolve, reject) => {
@@ -262,6 +301,7 @@ export class AliyunTTS extends BaseTTSAdapter {
     if (this.ws?.readyState === WebSocket.OPEN && this.isReady) {
       this.ws.send(JSON.stringify({ type: 'stop' }));
     }
+    this.clearSynthesisTimer();
     this.player.stop();
     this.hasReceivedAudio = false;
 
@@ -275,6 +315,7 @@ export class AliyunTTS extends BaseTTSAdapter {
   destroy(): void {
     this.stop();
     this.clearReadyTimer();
+    this.clearSynthesisTimer();
     this.settleReady(new Error('TTS 适配器已销毁'));
     this.closeSocket();
     this.player.destroy();
@@ -308,6 +349,23 @@ export class AliyunTTS extends BaseTTSAdapter {
     if (this.readyTimer) {
       clearTimeout(this.readyTimer);
       this.readyTimer = null;
+    }
+  }
+
+  /** 起算合成超时：服务端只回握手、不推音频时把 speak() 从挂起中救出来 */
+  private startSynthesisTimer(): void {
+    this.clearSynthesisTimer();
+    this.synthesisTimer = setTimeout(() => {
+      this.synthesisTimer = null;
+      if (this.hasReceivedAudio) return; // 音频已在流入，交给队列与结束信号
+      this.settleSpeak(new Error('TTS 合成超时：服务端未返回音频'));
+    }, this.synthesisTimeout);
+  }
+
+  private clearSynthesisTimer(): void {
+    if (this.synthesisTimer) {
+      clearTimeout(this.synthesisTimer);
+      this.synthesisTimer = null;
     }
   }
 
@@ -381,8 +439,14 @@ export class AliyunTTS extends BaseTTSAdapter {
           this.hasReceivedAudio = true;
           this.player.push(msg.data as unknown as ArrayBuffer);
         } else if (msg.type && END_OF_STREAM_TYPES.has(msg.type)) {
-          // 服务端告知音频发完，队列播完即真正结束
-          this.player.markEndOfStream();
+          if (this.hasReceivedAudio) {
+            // 服务端告知本段音频发完，队列播完即真正结束
+            this.player.markEndOfStream();
+          } else {
+            // 本段还没有任何音频，这个信号归属不明（见 emptyEndGrace）：
+            // 此时把它当作本段结束会让首个 chunk 一播完就判完，剩下的音频全被丢弃
+            this.scheduleEmptyEndSettle();
+          }
         }
       } catch {
         console.error('[AliyunTTS] 解析消息失败:', event.data);
@@ -404,10 +468,30 @@ export class AliyunTTS extends BaseTTSAdapter {
     );
   }
 
+  /**
+   * 播放结束（队列播完 / 收到本段的结束信号）
+   *
+   * hasReceivedAudio 守卫必须保留：它同时拦掉主动 stop 后的残余回调，
+   * 以及上一段播完后迟到的排空定时器（那时新一轮 speak() 可能已在等待）。
+   * 「只回结束信号、没有任何音频」不走这里，由 scheduleEmptyEndSettle 结算
+   */
   private handlePlaybackFinished(): void {
-    if (!this.hasReceivedAudio) return; // 主动 stop 后的残余回调
+    if (!this.hasReceivedAudio) return;
+    this.clearSynthesisTimer();
     this.hasReceivedAudio = false;
-    this.setState('idle');
+    if (this._state !== 'idle') this.setState('idle');
     this.settleSpeak();
+  }
+
+  /** 结束信号先于任何音频到达：等一个宽限期，期间仍无音频才按"空合成"结算 */
+  private scheduleEmptyEndSettle(): void {
+    // 复用合成超时的句柄：两者互斥（都在等本段的首个音频包），且这里的判定更快
+    this.clearSynthesisTimer();
+    this.synthesisTimer = setTimeout(() => {
+      this.synthesisTimer = null;
+      if (this.hasReceivedAudio) return; // 是上一段迟到的信号，本段音频已在流入
+      if (this._state !== 'idle') this.setState('idle');
+      this.settleSpeak();
+    }, this.emptyEndGrace);
   }
 }

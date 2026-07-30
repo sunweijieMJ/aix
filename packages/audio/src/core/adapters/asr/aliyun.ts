@@ -62,6 +62,16 @@ export class AliyunASR extends BaseASRAdapter {
    * 靠 _state 推断会在第一次重连失败后丢失恢复意图。
    */
   private shouldResumeOnReconnect = false;
+  /** 重连倒计时句柄：不持有就无法在 stop/destroy 时取消，销毁后仍会爬起来重连 */
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * 是否允许自动重连：连接**成功建立过**才置位。
+   * 首次 connect() 就失败属于调用方的事（如 useASR 会转而降级），
+   * 适配器再自行重连只会和降级后的适配器抢资源。
+   */
+  private autoReconnect = false;
+  /** 已销毁：拦住销毁前排队的异步重连 */
+  private disposed = false;
 
   constructor(options: ASROptions) {
     super(options);
@@ -101,6 +111,8 @@ export class AliyunASR extends BaseASRAdapter {
 
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
+        // 连接真正建立过，之后的异常掉线才值得自动重连
+        this.autoReconnect = true;
         this.setState('ready');
         resolve();
       };
@@ -163,6 +175,8 @@ export class AliyunASR extends BaseASRAdapter {
 
   stop(): void {
     this.shouldResumeOnReconnect = false;
+    this.autoReconnect = false;
+    this.clearReconnectTimer();
     this.cleanupAudio();
 
     if (this.ws?.readyState === WebSocket.OPEN && this.taskId) {
@@ -185,12 +199,15 @@ export class AliyunASR extends BaseASRAdapter {
 
   disconnect(): void {
     this.shouldResumeOnReconnect = false;
+    this.autoReconnect = false;
+    this.clearReconnectTimer();
     this.cleanupAudio();
     this.closeSocket();
     this.setState('idle');
   }
 
   destroy(): void {
+    this.disposed = true;
     this.stop();
     this.closeSocket();
     this.pcmSource = null;
@@ -367,7 +384,16 @@ export class AliyunASR extends BaseASRAdapter {
     this.ws = null;
   }
 
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
   private handleDisconnect(): void {
+    if (this.disposed || !this.autoReconnect) return;
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       this.setState('error');
       this.emitError(new Error('阿里 NLS 重连次数已达上限'));
@@ -383,7 +409,10 @@ export class AliyunASR extends BaseASRAdapter {
     const delay = this.reconnectDelays[this.reconnectAttempts] ?? 1000;
     this.reconnectAttempts++;
 
-    setTimeout(() => {
+    this.clearReconnectTimer();
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.disposed || !this.autoReconnect) return;
       this.connect()
         .then(() => {
           // 仅重连 WebSocket 而不重发 StartTranscription 会导致静默假死：

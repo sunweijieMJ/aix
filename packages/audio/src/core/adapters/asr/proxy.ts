@@ -28,6 +28,16 @@ export class ProxyASR extends BaseASRAdapter {
    * 只重连而不重发 start，后端不会建立识别任务，音频推过去石沉大海。
    */
   private shouldResumeOnReconnect = false;
+  /** 重连倒计时句柄：不持有就无法在 stop/destroy 时取消，销毁后仍会爬起来重连 */
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * 是否允许自动重连：连接**成功建立过**才置位。
+   * 首次 connect() 就失败属于调用方的事（如 useASR 会转而降级），
+   * 适配器再自行重连只会和降级后的适配器抢资源。
+   */
+  private autoReconnect = false;
+  /** 已销毁：拦住销毁前排队的异步重连 */
+  private disposed = false;
 
   constructor(options: ASROptions) {
     super(options);
@@ -57,6 +67,8 @@ export class ProxyASR extends BaseASRAdapter {
 
   disconnect(): void {
     this.shouldResumeOnReconnect = false;
+    this.autoReconnect = false;
+    this.clearReconnectTimer();
     this.detachPCM();
     this.closeSocket();
     this.setState('idle');
@@ -83,6 +95,8 @@ export class ProxyASR extends BaseASRAdapter {
 
   stop(): void {
     this.shouldResumeOnReconnect = false;
+    this.autoReconnect = false;
+    this.clearReconnectTimer();
     this.detachPCM();
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'stop' }));
@@ -98,12 +112,20 @@ export class ProxyASR extends BaseASRAdapter {
   }
 
   destroy(): void {
+    this.disposed = true;
     this.disconnect();
     this.pcmSource = null;
     this.clearCallbacks();
   }
 
   // ── 内部 ──────────────────────────────────────────────────────────────────────
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
 
   /** 订阅共享音源，把 PCM 帧转发给后端 */
   private subscribePCM(): void {
@@ -145,7 +167,9 @@ export class ProxyASR extends BaseASRAdapter {
       if (!response.ok) {
         throw new Error(`获取 Token 失败: ${response.statusText}`);
       }
-      const data = await response.json();
+      const data: { wsUrl?: string } = await response.json();
+      // 不校验会直接 new WebSocket(undefined)，连到一个 "undefined" 相对地址上
+      if (!data.wsUrl) throw new Error('Token 代理未返回 wsUrl');
       return data.wsUrl;
     }
 
@@ -160,6 +184,8 @@ export class ProxyASR extends BaseASRAdapter {
 
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
+        // 连接真正建立过，之后的异常掉线才值得自动重连
+        this.autoReconnect = true;
         resolve();
       };
 
@@ -198,12 +224,16 @@ export class ProxyASR extends BaseASRAdapter {
   }
 
   private handleDisconnect(): void {
+    if (this.disposed || !this.autoReconnect) return;
     if (this._state === 'stopped' || this._state === 'idle') return;
 
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.setState('reconnecting');
       const delay = this.reconnectDelays[this.reconnectAttempts++];
-      setTimeout(() => {
+      this.clearReconnectTimer();
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        if (this.disposed || !this.autoReconnect) return;
         this.connect()
           .then(() => {
             // 只重连而不重发 start 帧，后端不会建立识别任务 → 静默假死

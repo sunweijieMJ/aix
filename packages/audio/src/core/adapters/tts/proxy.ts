@@ -114,7 +114,13 @@ export class ProxyTTS extends BaseTTSAdapter {
 
   resume(): void {
     if (this.audio && this.audio.paused) {
-      this.audio.play();
+      // play() 的 rejection 不接会产生 unhandled rejection，且状态错误地停在 playing
+      void this.audio.play().catch((err: unknown) => {
+        const error = err instanceof Error ? err : new Error('音频恢复播放失败');
+        this.setState('error');
+        this.emitError(error);
+        this.settleSpeak?.(error);
+      });
       this.setState('playing');
     }
   }

@@ -177,7 +177,8 @@
     "qwen",
     "longpress",
     "mql",
-    "sel"
+    "sel",
+    "preroll"
   ],
   "patterns": [
     {

@@ -30,6 +30,7 @@ export type { TTSAdapter } from './core/adapters/tts/base';
 
 // ── 音频核心 ─────────────────────────────────────────────────────────────────
 export { Recorder } from './core/audio/recorder';
+export type { RecorderState, RecorderEvents } from './core/audio/recorder';
 export { AudioSourceHub } from './core/audio/audioSourceHub';
 export type { AudioSourceHubConfig } from './core/audio/audioSourceHub';
 export { WaveformAnalyser } from './core/audio/waveformAnalyser';

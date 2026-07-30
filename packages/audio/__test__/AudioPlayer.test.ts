@@ -17,8 +17,13 @@ class FakeAudio {
   onloadedmetadata: (() => void) | null = null;
   onended: (() => void) | null = null;
   ontimeupdate: (() => void) | null = null;
+  onerror: (() => void) | null = null;
   play = vi.fn(() => Promise.resolve());
   pause = vi.fn();
+  /** 组件销毁音频时会摘掉 src 断开缓冲，桩需与 HTMLMediaElement 一致 */
+  removeAttribute = vi.fn((name: string) => {
+    if (name === 'src') this.src = '';
+  });
 
   constructor(public src: string) {
     FakeAudio.instances.push(this);
@@ -166,6 +171,30 @@ describe('AudioPlayer 时长显示', () => {
 
     expect(revoke).toHaveBeenCalledWith('blob:one');
     revoke.mockRestore();
+  });
+
+  it('切换 src 应复位时长，不沿用上一条音频的时间', async () => {
+    const wrapper = mountPlayer();
+    FakeAudio.instances[0]!.loadMetadata(120);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain('02:00');
+
+    await wrapper.setProps({ src: 'https://cdn/b.webm' });
+
+    // 修复前 totalDuration 不复位：新音频元数据到达前显示旧时长，还能按旧时长 seek
+    expect(wrapper.text()).toContain('00:00');
+    expect(wrapper.text()).not.toContain('02:00');
+  });
+
+  it('销毁音频时应摘掉回调并断开 src，避免旧实例继续缓冲', async () => {
+    const wrapper = mountPlayer();
+    const first = FakeAudio.instances[0]!;
+
+    await wrapper.setProps({ src: 'https://cdn/b.webm' });
+
+    expect(first.removeAttribute).toHaveBeenCalledWith('src');
+    expect(first.onended).toBeNull();
+    expect(first.onerror).toBeNull();
   });
 
   it('时长未知时点击进度条不应把 currentTime 写成 Infinity/NaN', async () => {

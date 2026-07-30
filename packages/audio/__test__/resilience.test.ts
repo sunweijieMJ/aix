@@ -229,6 +229,25 @@ describe('AliyunASR 重连恢复识别（回归 #12）', () => {
     expect(last.textFrames().some((f) => f.includes('StartTranscription'))).toBe(true);
   });
 
+  it('destroy() 后排队中的重连不应再建连接', async () => {
+    vi.useFakeTimers();
+
+    const asr = new AliyunASR({ provider: 'aliyun', auth: { mode: 'direct', token: 't' } });
+    const connecting = asr.connect();
+    await vi.advanceTimersByTimeAsync(1);
+    await connecting;
+    asr.start();
+
+    FakeWS.instances[0]!.drop(); // 排入一次重连
+    asr.destroy(); // 使用方已放弃这个适配器
+    const count = FakeWS.instances.length;
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // 定时器句柄不持有就取消不掉，销毁后的适配器会自己爬起来重连
+    expect(FakeWS.instances.length).toBe(count);
+  });
+
   it('主动 stop 后掉线不应触发重连', async () => {
     vi.useFakeTimers();
 
@@ -273,6 +292,65 @@ describe('ProxyASR 重连恢复识别', () => {
     expect(asr.state).toBe('recording');
   });
 
+  it('destroy() 后排队中的重连不应再建连接', async () => {
+    vi.useFakeTimers();
+
+    const asr = new ProxyASR({
+      provider: 'proxy',
+      auth: { mode: 'ws-proxy', wsEndpoint: 'wss://gw' },
+    });
+    const connecting = asr.connect();
+    await vi.advanceTimersByTimeAsync(1);
+    await connecting;
+    asr.start();
+
+    FakeWS.instances[0]!.drop();
+    asr.destroy();
+    const count = FakeWS.instances.length;
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(FakeWS.instances.length).toBe(count);
+  });
+
+  it('首次连接就失败时不应自行重连（交由调用方降级）', async () => {
+    vi.useFakeTimers();
+    FakeWS.failNext = true;
+
+    const asr = new ProxyASR({
+      provider: 'proxy',
+      auth: { mode: 'ws-proxy', wsEndpoint: 'wss://gw' },
+    });
+    // 处理器要同步挂上，否则 rejection 会被当成未处理错误
+    const settled = asr.connect().then(
+      () => 'resolved',
+      () => 'rejected',
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await settled).toBe('rejected');
+
+    const count = FakeWS.instances.length;
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    // 调用方已转去降级，适配器再自行重连只会和降级后的适配器抢资源
+    expect(FakeWS.instances.length).toBe(count);
+  });
+
+  it('token 代理未返回 wsUrl 时应报错而不是连到 undefined', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({ token: 't' }) })),
+    );
+
+    const asr = new ProxyASR({
+      provider: 'proxy',
+      auth: { mode: 'token-proxy', tokenEndpoint: '/api/asr/token' },
+    });
+
+    await expect(asr.connect()).rejects.toThrowError(/wsUrl/);
+    expect(FakeWS.instances).toHaveLength(0);
+  });
+
   it('主动 stop 后掉线不应重连', async () => {
     vi.useFakeTimers();
 
@@ -302,9 +380,9 @@ describe('AliyunTTS 流式播放（回归 #9 / #10）', () => {
     return new AliyunTTS({ provider: 'aliyun', wsEndpoint: 'wss://backend/tts' });
   }
 
-  async function speakUntilPlaying(tts: AliyunTTS) {
+  async function speakUntilPlaying(tts: AliyunTTS, text = '你好') {
     const box = { settled: false };
-    void tts.speak('你好').then(
+    void tts.speak(text).then(
       () => (box.settled = true),
       () => (box.settled = true),
     );
@@ -358,5 +436,96 @@ describe('AliyunTTS 流式播放（回归 #9 / #10）', () => {
     await tick();
     expect(tts.state).toBe('playing');
     expect(audio.resumedCount).toBeGreaterThan(0);
+  });
+
+  it('暂停期间到达的新音频包不应把播放唤醒', async () => {
+    const tts = createTTS();
+    await speakUntilPlaying(tts);
+    FakeWS.instances[0]!.onmessage?.({ data: new ArrayBuffer(64) });
+    await tick(10);
+
+    tts.pause();
+    await tick();
+    const resumesAfterPause = audio.resumedCount;
+
+    // 流式合成里暂停后必然还有 chunk 在路上，
+    // playNext() 无条件 resume() 会把用户暂停的上下文重新唤醒 —— 按了暂停声音却继续播
+    FakeWS.instances[0]!.onmessage?.({ data: new ArrayBuffer(64) });
+    await tick(20);
+
+    expect(audio.resumedCount).toBe(resumesAfterPause);
+    expect(tts.state).toBe('paused');
+
+    // 恢复后仍能继续播放
+    tts.resume();
+    await tick();
+    expect(audio.resumedCount).toBeGreaterThan(resumesAfterPause);
+    expect(tts.state).toBe('playing');
+  });
+
+  it('服务端只回结束信号、未推任何音频时 speak() 也应结算', async () => {
+    const tts = createTTS();
+    const box = await speakUntilPlaying(tts);
+
+    // 合成失败/空文本时后端可能直接给结束信号，
+    // 用 hasReceivedAudio 当守卫会让 speak() 永久挂起
+    FakeWS.instances[0]!.onmessage?.({ data: JSON.stringify({ type: 'end' }) });
+    await tick(20);
+    expect(box.settled).toBe(false); // 宽限期内先等一等，可能是上一段迟到的信号
+
+    await tick(1600); // 宽限期过去仍无音频 → 按空合成结算
+    expect(box.settled).toBe(true);
+    expect(tts.state).toBe('idle');
+  });
+
+  it('上一段迟到的结束信号不应结算新一轮 speak()', async () => {
+    const tts = createTTS();
+    const first = await speakUntilPlaying(tts, '第一段');
+    FakeWS.instances[0]!.onmessage?.({ data: new ArrayBuffer(64) });
+    await tick(10);
+    FakeWS.instances[0]!.onmessage?.({ data: JSON.stringify({ type: 'end' }) });
+    await tick(10);
+    expect(first.settled).toBe(true);
+
+    // 第二段复用同一条连接（握手已完成，直接进入 playing）
+    const second = { settled: false };
+    void tts.speak('第二段').then(
+      () => (second.settled = true),
+      () => (second.settled = true),
+    );
+    await tick(5);
+    expect(tts.state).toBe('playing');
+
+    // 服务端把第一段的结束信号迟发过来：无条件结算会让第二段提前 resolve、状态打成 idle，
+    // 而它的音频这时才刚开始到
+    FakeWS.instances[0]!.onmessage?.({ data: JSON.stringify({ type: 'end' }) });
+    await tick(20);
+    FakeWS.instances[0]!.onmessage?.({ data: new ArrayBuffer(64) });
+    await tick(20);
+
+    expect(second.settled).toBe(false);
+    expect(tts.state).toBe('playing');
+
+    // 第二段自己播完后才结算
+    await tick(1600);
+    expect(second.settled).toBe(true);
+    expect(tts.state).toBe('idle');
+  });
+
+  it('服务端握手后一直不推音频时 speak() 应超时报错', async () => {
+    vi.useFakeTimers();
+    const tts = createTTS();
+
+    let failure: Error | null = null;
+    void tts.speak('你好').catch((err: Error) => (failure = err));
+    await vi.advanceTimersByTimeAsync(1);
+    FakeWS.instances[0]!.onmessage?.({ data: JSON.stringify({ type: 'connecting_success' }) });
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(failure).toBeNull(); // 合成中，不能过早判失败
+    await vi.advanceTimersByTimeAsync(25_000);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(tts.state).toBe('error');
   });
 });

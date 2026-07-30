@@ -138,6 +138,227 @@ describe('useSpeech 麦克风生命周期（回归 N1）', () => {
   });
 });
 
+describe('useSpeech 会话竞态', () => {
+  /** 真实浏览器的 MediaRecorder.onstop 是异步的，同步桩会让竞态窗口消失 */
+  function stubAsyncMediaRecorder(stopDelay = 30) {
+    class AsyncMediaRecorder {
+      state: 'inactive' | 'recording' | 'paused' = 'inactive';
+      mimeType = 'audio/webm';
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      onerror: ((e: unknown) => void) | null = null;
+      onstart: (() => void) | null = null;
+      onpause: (() => void) | null = null;
+      onresume: (() => void) | null = null;
+
+      static isTypeSupported(): boolean {
+        return true;
+      }
+      start(): void {
+        this.state = 'recording';
+        this.onstart?.();
+        this.ondataavailable?.({ data: new Blob(['audio'], { type: 'audio/webm' }) });
+      }
+      stop(): void {
+        this.state = 'inactive';
+        setTimeout(() => this.onstop?.(), stopDelay);
+      }
+      pause(): void {
+        this.state = 'paused';
+        this.onpause?.();
+      }
+      resume(): void {
+        this.state = 'recording';
+        this.onresume?.();
+      }
+    }
+    vi.stubGlobal('MediaRecorder', AsyncMediaRecorder);
+  }
+
+  it('stopRecording 未结束就重新开始，不应拆掉新一轮录音', async () => {
+    stubAsyncMediaRecorder();
+    const { speech } = mountSpeech();
+
+    await speech.startRecording();
+
+    // 用户点了停止又立刻重新开始：旧的收尾流程还在等 onstop 回填
+    const stopping = speech.stopRecording();
+    await speech.startRecording();
+
+    const contextsAfterRestart = audio.contextCount;
+    await stopping;
+
+    // 修复前：迟到的收尾按"当前"字段释放，把新一轮的麦克风和 AudioContext 一并拆掉，
+    // 结果是 isRecording=true 但已断麦的假死状态
+    expect(speech.isRecording.value).toBe(true);
+    expect(mic.liveTrackCount).toBe(1);
+    expect(audio.closedCount).toBeLessThan(contextsAfterRestart);
+
+    await speech.stopRecording();
+    expect(mic.liveTrackCount).toBe(0);
+  });
+
+  it('等麦克风权限期间重新开始，被取代那一轮的音轨也要归还', async () => {
+    const { speech } = mountSpeech();
+
+    // isRecording 要到 recorder.start() 才置位，等授权弹窗期间第二次点击拦不住
+    const first = speech.startRecording();
+    const second = speech.startRecording();
+    await Promise.all([first, second]);
+
+    expect(mic.callCount).toBe(2);
+    await speech.stopRecording();
+
+    // 被取代那一轮的 hub 在流到手之前就被 destroy 过（那时无轨可停），
+    // 不补一次归还，这条音轨会一直活着 —— 录音红点常亮到刷新页面
+    expect(mic.liveTrackCount).toBe(0);
+  });
+
+  it('建连期间用户停止录音，不应在资源释放后才启动识别', async () => {
+    // ASR 建连要几百毫秒，用户完全可能在这期间就点了停止
+    let openSocket: (() => void) | null = null;
+    class SlowWS {
+      static OPEN = 1;
+      readyState = 0;
+      binaryType = '';
+      sent: Array<string | ArrayBuffer> = [];
+      onopen: (() => void) | null = null;
+      onmessage: ((e: { data: unknown }) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onclose: (() => void) | null = null;
+      constructor(public url: string) {
+        openSocket = () => {
+          this.readyState = 1;
+          this.onopen?.();
+        };
+      }
+      send(d: string | ArrayBuffer) {
+        this.sent.push(d);
+      }
+      close() {
+        this.readyState = 3;
+        this.onclose?.();
+      }
+      textFrames() {
+        return this.sent.filter((d): d is string => typeof d === 'string');
+      }
+    }
+    const sockets: SlowWS[] = [];
+    vi.stubGlobal(
+      'WebSocket',
+      class extends SlowWS {
+        constructor(url: string) {
+          super(url);
+          sockets.push(this);
+        }
+      },
+    );
+
+    const { speech } = mountSpeech({
+      asr: { provider: 'proxy', auth: { mode: 'ws-proxy', wsEndpoint: 'wss://gw' } },
+    });
+
+    const starting = speech.startRecording();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(speech.isRecording.value).toBe(true); // 已在录，正等建连
+
+    await speech.stopRecording();
+    openSocket!(); // 建连在停止之后才完成
+    await starting;
+
+    // 代次守卫只挡"被新一轮取代"，挡不住"本轮已停止"：
+    // 修复前会继续 attach + start，识别在无音源的情况下跑起来，
+    // state 卡在 recording、后端凭空多一个已开启的识别任务
+    expect(speech.state.value).not.toBe('recording');
+    expect(sockets[0]!.textFrames().some((f) => f.includes('"start"'))).toBe(false);
+    expect(mic.liveTrackCount).toBe(0);
+  });
+
+  it('被取代的那一轮结果不应覆盖新一轮，且要撤销其 ObjectURL', async () => {
+    stubAsyncMediaRecorder();
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:stale');
+
+    const { speech } = mountSpeech();
+    await speech.startRecording();
+
+    const stopping = speech.stopRecording();
+    await speech.startRecording();
+    const before = revoke.mock.calls.length;
+    await stopping;
+
+    // 旧一轮的录音结果被丢弃，但它的 ObjectURL 必须释放，否则 Blob 一直被引用
+    expect(revoke.mock.calls.length).toBeGreaterThan(before);
+    expect(speech.recordingResult.value).toBeNull();
+
+    await speech.stopRecording();
+    revoke.mockRestore();
+  });
+});
+
+describe('useSpeech 配置透传与容错', () => {
+  it('recorder 配置应完整透传给 Recorder，而不只有 maxDuration', async () => {
+    const constructed: Array<{ mimeType?: string }> = [];
+    class RecordingMediaRecorder {
+      state: 'inactive' | 'recording' | 'paused' = 'inactive';
+      mimeType: string;
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      onerror: ((e: unknown) => void) | null = null;
+      onstart: (() => void) | null = null;
+      onpause: (() => void) | null = null;
+      onresume: (() => void) | null = null;
+
+      static isTypeSupported(): boolean {
+        return true;
+      }
+      constructor(_stream: unknown, options?: { mimeType?: string }) {
+        this.mimeType = options?.mimeType ?? 'audio/webm';
+        constructed.push({ mimeType: options?.mimeType });
+      }
+      start(): void {
+        this.state = 'recording';
+        this.onstart?.();
+      }
+      stop(): void {
+        this.state = 'inactive';
+        this.onstop?.();
+      }
+      pause(): void {}
+      resume(): void {}
+    }
+    vi.stubGlobal('MediaRecorder', RecordingMediaRecorder);
+
+    const { speech } = mountSpeech({
+      asr: { provider: 'browser' },
+      recorder: { mimeType: 'audio/mp4', maxDuration: 30 },
+    });
+    await speech.startRecording();
+
+    // 修复前只取 maxDuration，mimeType 被静默丢弃
+    expect(constructed[0]?.mimeType).toBe('audio/mp4');
+    await speech.stopRecording();
+  });
+
+  it('ASR 连接失败不应连累录音本身', async () => {
+    // BrowserASR 在无 SpeechRecognition 的环境里 connect() 会抛错
+    vi.stubGlobal('SpeechRecognition', undefined);
+    vi.stubGlobal('webkitSpeechRecognition', undefined);
+
+    const { speech } = mountSpeech();
+    await speech.startRecording();
+
+    // 麦克风已就绪，音频照录；错误只经 asrError 暴露
+    expect(speech.isRecording.value).toBe(true);
+    expect(speech.asrError.value).toBeInstanceOf(Error);
+    expect(mic.liveTrackCount).toBe(1);
+
+    const result = await speech.stopRecording();
+    expect(result).not.toBeNull();
+    expect(mic.liveTrackCount).toBe(0);
+  });
+});
+
 describe('useSpeech 自动停止（回归 #7 / #15）', () => {
   it('达到最大录音时长应自动停止并标记原因', async () => {
     vi.useFakeTimers();
@@ -177,6 +398,23 @@ describe('useSpeech 自动停止（回归 #7 / #15）', () => {
 
     // 静音累计超过 1 秒
     await vi.advanceTimersByTimeAsync(800);
+
+    expect(speech.reachedSilenceTimeout.value).toBe(true);
+    expect(speech.isRecording.value).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('用户全程未出声也应触发静音超时自动停止', async () => {
+    vi.useFakeTimers();
+    const { speech } = mountSpeech({
+      asr: { provider: 'browser', maxSilenceDuration: 1 },
+    });
+
+    await speech.startRecording();
+    audio.setInputLevel(0); // 开麦后一言不发
+
+    // 修复前靠"说话→静音"边沿判定，这种场景永远不会自动停止
+    await vi.advanceTimersByTimeAsync(1500);
 
     expect(speech.reachedSilenceTimeout.value).toBe(true);
     expect(speech.isRecording.value).toBe(false);

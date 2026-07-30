@@ -125,11 +125,27 @@ export function useASR(options?: ASROptions, fallbackProvider?: 'browser') {
   }
 
   /**
+   * 当前适配器是否需要编排层推流（audioSource 为 external/managed）
+   *
+   * 编排层据此决定要不要为它准备共享音源与预滚动缓冲；
+   * 适配器构造失败（配置有误）时按"不需要"处理，交由 connect() 走降级
+   */
+  function needsAudioSource(): boolean {
+    try {
+      return manager.getASR().audioSource !== 'internal';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * 向适配器注入共享 PCM 音源，仅 external/managed 适配器有效
    * 解绑（传 null）时不触发适配器惰性创建，避免清理路径反而建出新实例
    */
   function attachAudioSource(source: PCMAudioSource | null): void {
     const adapter = source ? manager.getASR() : manager.peekASR();
+    // audioSource 省略时按 internal 处理（旧适配器兼容），internal 不推流
+    if (source && adapter?.audioSource === 'internal') return;
     adapter?.attachAudioSource?.(source);
   }
 
@@ -155,5 +171,6 @@ export function useASR(options?: ASROptions, fallbackProvider?: 'browser') {
     switchProvider,
     getAdapter,
     attachAudioSource,
+    needsAudioSource,
   };
 }

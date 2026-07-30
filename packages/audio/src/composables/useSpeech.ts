@@ -14,6 +14,12 @@ import { useWaveform } from './useWaveform';
 /** 未显式配置时的最大录音时长（秒） */
 const DEFAULT_MAX_DURATION = 300;
 
+/**
+ * 流式 ASR 的预滚动缓冲时长（毫秒）
+ * 建连 + 服务端确认要几百毫秒，这段时间说的话不缓存就整段丢失（首句丢字）
+ */
+const ASR_PREROLL_MS = 3000;
+
 export function useSpeech(config: SpeechConfig = {}) {
   const asr = useASR(config.asr, config.fallback?.asr);
   const tts = useTTS(config.tts, config.fallback?.tts);
@@ -37,6 +43,14 @@ export function useSpeech(config: SpeechConfig = {}) {
   let vad: VAD | null = null;
   let durationTimer: ReturnType<typeof setInterval> | null = null;
   let waveformSnapshot: number[] = [];
+  /**
+   * 录音会话代次
+   *
+   * stopRecording() 要等 MediaRecorder 的 onstop 回填结果（异步），这期间用户完全
+   * 可能重新开始录音。没有代次保护时，迟到的收尾流程会把**新一轮**的麦克风与
+   * AudioContext 一并释放，新录音变成"UI 显示录音中、实际已断麦"的假死状态
+   */
+  let sessionId = 0;
 
   // ── 计算属性 ─────────────────────────────────────────────────────────────────
   const formattedDuration = computed(() => {
@@ -51,6 +65,12 @@ export function useSpeech(config: SpeechConfig = {}) {
 
     // 上一轮可能残留未释放的 recorder / 音源，先彻底清理再开新一轮
     cleanupRecording();
+    const session = ++sessionId;
+    /**
+     * 本轮的音源必须另用局部变量持有：被新一轮取代后 `audioHub` 已指向对方的实例，
+     * 只有这个引用还能销毁本轮自己的资源
+     */
+    let hub: AudioSourceHub | null = null;
 
     try {
       // 撤销上一轮录音的 ObjectURL，否则反复录音会持续泄漏 Blob 引用
@@ -65,26 +85,47 @@ export function useSpeech(config: SpeechConfig = {}) {
 
       const sampleRate = config.asr?.sampleRate ?? 16000;
 
-      // 唯一一次 getUserMedia，下面三个消费者共用这一路流
-      audioHub = new AudioSourceHub({ sampleRate, channels: 1 });
-      const stream = await audioHub.init();
+      // 唯一一次 getUserMedia，下面三个消费者共用这一路流。
+      // 只有需要编排层推流的适配器才开预滚动缓冲，BrowserASR 自采麦克风用不上
+      hub = new AudioSourceHub({
+        sampleRate,
+        channels: 1,
+        prerollMs: asr.needsAudioSource() ? ASR_PREROLL_MS : 0,
+      });
+      audioHub = hub;
+      const stream = await hub.init();
+      // 等权限期间已被新一轮取代。新一轮的 cleanupRecording() 在音轨到手之前就
+      // destroy 过一次（那时无轨可停），这里必须再销毁一次，否则麦克风永久泄漏
+      if (session !== sessionId) {
+        hub.destroy();
+        return;
+      }
 
       recorder = new Recorder(
         {
           sampleRate,
           channels: 1,
+          // 消费方配置的 mimeType / 声道等一并透传，此前只认 maxDuration
+          ...config.recorder,
           maxDuration: config.recorder?.maxDuration ?? DEFAULT_MAX_DURATION,
         },
         {
           onStop: (result: RecordingResult) => {
+            if (session !== sessionId) {
+              // 本轮已被取代，结果丢弃前先撤销 URL，否则 Blob 一直被引用
+              URL.revokeObjectURL(result.url);
+              return;
+            }
             recordingResult.value = { ...result, waveform: [...waveformSnapshot] };
           },
           onError: (err) => {
+            if (session !== sessionId) return;
             asr.error.value = err;
-            stopRecording();
+            void stopRecording();
           },
           onMaxDuration: () => {
             // 录音器已自行停止，这里同步编排层状态
+            if (session !== sessionId) return;
             reachedMaxDuration.value = true;
             void stopRecording();
           },
@@ -101,12 +142,28 @@ export function useSpeech(config: SpeechConfig = {}) {
 
       startSilenceDetection();
 
-      await asr.connect();
-      // 需要外部推流的适配器（ProxyASR / 注入模式的 AliyunASR）在此接上共享音源，
-      // BrowserASR 自采麦克风，attachAudioSource 对它是无操作
-      asr.attachAudioSource(audioHub);
-      asr.startRecognition();
+      // 识别链路失败不该连累录音本身：麦克风已就绪，音频照录，
+      // 只把错误通过 asrError 暴露出去（此前会整轮丢弃，用户白录一段）
+      try {
+        await asr.connect();
+        // 建连期间本轮可能已经结束（用户点停 / VAD 静音 / 达到 maxDuration）或被新一轮
+        // 取代。此时再 attach + start，识别会在没有音源的情况下跑起来：state 卡在
+        // recording、后端凭空多一个已开启的识别任务，socket 一断还会反复重连
+        if (session !== sessionId || !isRecording.value) return;
+        // 需要外部推流的适配器（ProxyASR / 注入模式的 AliyunASR）在此接上共享音源，
+        // 连接期间缓存的预滚动音频会一并补发
+        asr.attachAudioSource(audioHub);
+        asr.startRecognition();
+      } catch (err) {
+        asr.error.value = err instanceof Error ? err : new Error('语音识别启动失败');
+      }
     } catch (err) {
+      // 本轮已被取代：错误与清理都归新一轮，这里只回收本轮自己的资源，
+      // 否则 cleanupRecording() 会把新一轮的麦克风一并拆掉
+      if (session !== sessionId) {
+        hub?.destroy();
+        return;
+      }
       asr.error.value = err instanceof Error ? err : new Error('启动录音失败');
       cleanupRecording();
     }
@@ -115,6 +172,9 @@ export function useSpeech(config: SpeechConfig = {}) {
   // ── 停止录音 ─────────────────────────────────────────────────────────────────
   async function stopRecording(): Promise<RecordingResult | null> {
     if (!isRecording.value) return recordingResult.value;
+
+    // 同步区间：新一轮录音只可能在下面的 await 之后插入，此处状态更新是安全的
+    const session = sessionId;
 
     asr.stopRecognition();
     stopSilenceDetection();
@@ -126,16 +186,18 @@ export function useSpeech(config: SpeechConfig = {}) {
     recorder?.stop();
 
     // 必须等结果回填后再释放资源：Recorder.onstop 依赖 MediaRecorder 存活
-    await waitForRecordingResult();
+    await waitForRecordingResult(session);
 
     // 释放麦克风。缺了这步音轨会一直活着（浏览器录音红点常亮），
-    // 且下一次 startRecording 会再开一路流，逐次泄漏
-    releaseAudioResources();
+    // 且下一次 startRecording 会再开一路流，逐次泄漏。
+    // 传代次：本轮若已被新一轮取代，释放的就该是别人的资源，必须跳过
+    releaseAudioResources(session);
 
     return recordingResult.value;
   }
 
-  function waitForRecordingResult(): Promise<void> {
+  /** 等待本轮 onstop 回填结果；本轮被新一轮取代时立即返回，不再空等满 3 秒 */
+  function waitForRecordingResult(session: number): Promise<void> {
     return new Promise((resolve) => {
       if (recordingResult.value) {
         resolve();
@@ -146,7 +208,7 @@ export function useSpeech(config: SpeechConfig = {}) {
       let elapsed = 0;
       const timer = setInterval(() => {
         elapsed += interval;
-        if (recordingResult.value || elapsed >= maxWait) {
+        if (recordingResult.value || elapsed >= maxWait || session !== sessionId) {
           clearInterval(timer);
           resolve();
         }
@@ -197,15 +259,25 @@ export function useSpeech(config: SpeechConfig = {}) {
   }
 
   // ── 供应商切换 ────────────────────────────────────────────────────────────────
-  function setProvider(
+  /**
+   * 运行时切换供应商
+   *
+   * ASR 切换要重新建连，因此返回 Promise。失败不向外抛：调用点多是 UI 事件处理器，
+   * 抛出只会变成 unhandledrejection；错误统一经 `asrError` 暴露
+   */
+  async function setProvider(
     type: 'asr' | 'tts',
     providerOptions: SpeechConfig['asr'] | SpeechConfig['tts'],
-  ): void {
+  ): Promise<void> {
     if (type === 'asr') {
-      asr.switchProvider({
-        ...config.asr,
-        ...(providerOptions as SpeechConfig['asr']),
-      } as NonNullable<SpeechConfig['asr']>);
+      try {
+        await asr.switchProvider({
+          ...config.asr,
+          ...(providerOptions as SpeechConfig['asr']),
+        } as NonNullable<SpeechConfig['asr']>);
+      } catch (err) {
+        asr.error.value = err instanceof Error ? err : new Error('切换 ASR 供应商失败');
+      }
     } else {
       tts.switchProvider({
         ...config.tts,
@@ -269,8 +341,12 @@ export function useSpeech(config: SpeechConfig = {}) {
   /**
    * 释放音频采集链路：波形分析 → 录音器 → 共享音源
    * 顺序不能颠倒，音源 destroy() 会停掉音轨，先停消费者更干净
+   *
+   * @param session - 发起释放时的会话代次。已被新一轮录音取代时直接跳过，
+   *   否则迟到的收尾会拆掉新会话的麦克风。不传表示"无条件释放当前资源"
    */
-  function releaseAudioResources(): void {
+  function releaseAudioResources(session?: number): void {
+    if (session !== undefined && session !== sessionId) return;
     stopSilenceDetection();
     waveform.stopCapture();
     asr.attachAudioSource(null);

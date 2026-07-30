@@ -124,8 +124,10 @@ const speech = useSpeech({
   asr: {
     provider: 'browser',
     // 持续静音 3 秒自动停止录音（不配置则不启用检测）
+    // 计时自开始录音起算：用户全程没出声同样会在 3 秒后停止
     maxSilenceDuration: 3,
   },
+  // 录音配置整体透传给 Recorder（maxDuration / mimeType / channels 等）
   // 最长录制 60 秒（useSpeech 不配置时默认 300 秒；直接用 Recorder 时默认 60 秒，0 表示不限时）
   recorder: { maxDuration: 60 },
   // 可选：调整静音判定灵敏度
@@ -141,6 +143,15 @@ watch(speech.isRecording, (recording) => {
 ```
 
 暂停期间不计入 `maxDuration` 配额，`duration` 与 `recordingResult.duration` 均为**净录音时长**（不含暂停时段）。
+
+**行为约定**
+
+- 录音与识别相互独立：ASR 连接失败只会写入 `asrError`，录音照常进行，`stopRecording()` 仍返回完整音频。
+- 流式 ASR（`proxy` / `aliyun`）建连期间的音频会被缓存并在连上后补发，避免第一句话丢字。
+- `stopRecording()` 未 resolve 前重新 `startRecording()` 是安全的：旧一轮的收尾不会释放新一轮的麦克风，
+  被取代那轮的录音结果直接丢弃（其 ObjectURL 会自动撤销），其麦克风音轨照样归还。
+- 等麦克风授权期间重复 `startRecording()` 也是安全的（授权弹窗期间按钮往往还没禁用）。
+- ASR 建连未完成就 `stopRecording()` 时不会再启动识别，`state` 不会停留在 `recording`。
 
 **返回值**
 
@@ -175,7 +186,7 @@ watch(speech.isRecording, (recording) => {
 | `pauseSpeaking()` | `() => void` | 暂停 TTS |
 | `resumeSpeaking()` | `() => void` | 恢复 TTS |
 | `stopSpeaking()` | `() => void` | 停止 TTS |
-| `setProvider(type, opts)` | `(type: 'asr' \| 'tts', opts) => void` | 运行时切换供应商 |
+| `setProvider(type, opts)` | `(type: 'asr' \| 'tts', opts) => Promise<void>` | 运行时切换供应商。ASR 需重新建连故返回 Promise；切换失败不抛出，错误经 `asrError` 暴露 |
 | `setWaveformProgress(v)` | `(v: number) => void` | 设置波形进度（播放回放时使用） |
 | `loadWaveform(data)` | `(data: number[]) => void` | 加载静态波形数据 |
 
@@ -223,7 +234,9 @@ stopRecognition();
 | `stopRecognition()` | `() => void` | 停止识别 |
 | `resetText()` | `() => void` | 清空识别结果 |
 | `switchProvider(opts)` | `(opts: ASROptions) => Promise<void>` | 切换 ASR 供应商 |
-| `attachAudioSource(src)` | `(src: PCMAudioSource \| null) => void` | 注入共享音源，供需要外部推流的适配器使用 |
+| `didFallback` | `Ref<boolean>` | 是否已降级到兜底供应商 |
+| `attachAudioSource(src)` | `(src: PCMAudioSource \| null) => void` | 注入共享音源，供需要外部推流的适配器使用（`internal` 适配器自动跳过） |
+| `needsAudioSource()` | `() => boolean` | 当前适配器是否需要编排层推流（`audioSource !== 'internal'`） |
 | `getAdapter()` | `() => ASRAdapter` | 获取底层适配器（高级场景逃生舱） |
 
 ---
@@ -493,12 +506,16 @@ useSpeech({
 | 上行 | `{ type: 'start', userNid, assistantNid, ttsVoiceType, messageId, segmentId, message }` | 开始合成 |
 | 上行 | `{ type: 'stop' }` | 停止合成 |
 | 下行 | `{ type: 'connecting_success' }` | 握手完成（10 秒内未收到视为超时） |
-| 下行 | `ArrayBuffer` | 音频分片 |
-| 下行 | `{ type: 'end' }` | **音频已发完** |
+| 下行 | `ArrayBuffer` | 音频分片（握手后 20 秒内未收到任何音频，`speak()` 以超时报错结束） |
+| 下行 | `{ type: 'end' }` | **音频已发完**（即使一个音频分片都没发，`speak()` 也会在 1.5 秒宽限期后正常结算，不会挂起） |
 
 > ⚠️ 后端**应当**在音频发送完毕后下发结束信号（`end` / `finish` / `finished` /
 > `synthesis_complete` / `complete` 均可识别）。没有该信号时，播放器只能靠"队列排空后静默
 > 1.5 秒"来兜底判完——网络严重抖动时可能提前判定播放结束。
+>
+> ⚠️ 结束信号不带 `segmentId`，因此「本段还没收到任何音频就收到结束信号」这一种情况无法区分是
+> **空合成**还是**上一段迟到的信号**：适配器会等 1.5 秒宽限期，期间有音频进来就按后者处理，
+> 不会把新一段提前判完。连续多段合成时后端最好为每段新建连接，或在结束信号里回带 `segmentId`。
 >
 > ⚠️ 音频分片经 `decodeAudioData` 解码，**要求每个分片可独立解码**（如完整的 mp3 帧）。
 > 若后端下发的是裸 PCM 或需要拼接才能解码的容器分片，需要另行适配。
@@ -561,13 +578,25 @@ class MyASRAdapter extends BaseASRAdapter implements ASRAdapter {
 `useSpeech` 内部由 `AudioSourceHub` 统一持有**一路** `getUserMedia` 与**一个** `AudioContext`，
 同时供给录音器、波形分析和流式 ASR，避免同一次录音重复占用麦克风。
 
+**AudioSourceHub 配置**
+
+| 配置 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `sampleRate` | `number` | `16000` | 目标采样率。浏览器不接受该约束时（Safari 常见）内部自动重采样，`hub.sampleRate` 恒为此值，适配器据此向服务端申报 |
+| `channels` | `number` | `1` | 声道数 |
+| `prerollMs` | `number` | `0` | 预滚动缓冲时长。大于 0 时从 `init()` 起缓存音频，首个订阅者接入时补发，用于消除建连期间的丢字。`useSpeech` 对流式适配器默认启用 3000ms |
+
+> `init()` 在等授权期间被 `destroy()` 时会 reject，并把迟到的音轨就地归还 —— 那一刻还没有音轨可停，
+> 不补这一次归还，麦克风会一直活着（浏览器录音红点常亮）。
+
 单独使用 `useASR` 时可自行注入：
 
 ```typescript
 import { useASR, AudioSourceHub } from '@aix/audio';
 
 const asr = useASR({ provider: 'proxy', auth: { mode: 'ws-proxy', wsEndpoint: 'wss://gw/asr' } });
-const hub = new AudioSourceHub({ sampleRate: 16000 });
+// 建连期间的音频先缓存，接上后补发，避免第一句话丢字
+const hub = new AudioSourceHub({ sampleRate: 16000, prerollMs: 3000 });
 
 await hub.init();          // 唯一一次 getUserMedia
 await asr.connect();
