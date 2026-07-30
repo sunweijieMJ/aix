@@ -1,5 +1,5 @@
 import { provide, inject, computed, reactive, type InjectionKey, type ComputedRef } from 'vue';
-import type { RoleConfig, BlockRenderers, QuoteConfig } from '../types';
+import type { RoleConfig, BlockRenderers, QuoteConfig, OutlineOptions } from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
 import type { ShouldFollow } from './useAutoScroll';
 import type { MarkdownItPlugin } from './useMarkdownRenderer';
@@ -23,6 +23,16 @@ export interface AiChatConfig {
   mdPlugins?: MarkdownItPlugin[];
   /** 划词引用/追问统一配置（opt-in；组件 props.quote 覆盖），undefined 视为关闭 */
   quote?: QuoteConfig;
+  /**
+   * 末尾静默呼吸全局开关（opt-in；组件 props.tailBreathing 覆盖）。
+   * 流式输出停顿时末块文字明暗呼吸，提示「仍在生成」。默认关闭。
+   */
+  tailBreathing?: boolean | { idleMs?: number };
+  /**
+   * 对话大纲导航全局开关（opt-in；组件 props.outline 覆盖）。
+   * 右侧提问刻度条 + 点击定位。默认关闭。
+   */
+  outline?: boolean | OutlineOptions;
 }
 
 const DEFAULT_CONFIG: AiChatConfig = { enableTyping: true };

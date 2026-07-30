@@ -15,6 +15,7 @@
           ns.em('content', variant),
           ns.em('content', shape),
           ns.is('editing', editing),
+          ns.is('tail-idle', tailIdle),
         ]"
         :aria-live="isUpdating ? 'polite' : undefined"
         :aria-atomic="isUpdating ? 'false' : undefined"
@@ -108,6 +109,7 @@ export interface BubbleEmits {
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { computed, watch, watchEffect, useSlots, ref, Comment, Fragment, isVNode } from 'vue';
+import { useIdleWhileStreaming } from '../composables/useIdleWhileStreaming';
 import { locale } from '../locale';
 import type {
   BlockAction,
@@ -116,6 +118,7 @@ import type {
   BlockRenderers,
   ContentBlock,
 } from '../types';
+import { contentFingerprint } from '../utils/contentFingerprint';
 import { messageText } from '../utils/helpers';
 import AttachmentBlock from './blocks/AttachmentBlock.vue';
 import ChartBlock from './blocks/ChartBlock.vue';
@@ -289,6 +292,24 @@ const info = computed<BubbleContentInfo>(() => ({
 // 流式更新中：驱动内容区 aria-live 播报，仅此状态挂载（虚拟列表回收其它行不会误播报）
 const isUpdating = computed(() => props.status === 'updating');
 
+// 末尾静默呼吸：判定必须在气泡层而非块内——一条消息是 ContentBlock[]，
+// 形如 [text, tool_use, text] 时，首个 text 在工具开始流式后就不再增长，
+// 若各块自行判定，会出现「中间块呼吸、真正在输出的末块不呼吸」。
+// 气泡层持有完整 content，指纹覆盖全部块，末块由 CSS 后代选择器命中。
+const tailBreathingEnabled = computed(() => !!props.tailBreathing);
+const tailIdleMs = computed(() =>
+  typeof props.tailBreathing === 'object' ? (props.tailBreathing.idleMs ?? 3000) : 3000,
+);
+const isStreamingContent = computed(
+  () => props.status === 'loading' || props.status === 'updating',
+);
+const idle = useIdleWhileStreaming({
+  streaming: isStreamingContent,
+  fingerprint: () => contentFingerprint(props.content),
+  idleMs: tailIdleMs,
+});
+const tailIdle = computed(() => tailBreathingEnabled.value && idle.value);
+
 const renderedNode = computed(() =>
   props.contentRender ? props.contentRender(props.content, info.value) : null,
 );
@@ -371,6 +392,16 @@ const cancelEdit = () => {
     font-size: var(--aix-fontSize);
     line-height: var(--aix-lineHeight);
     overflow-wrap: break-word;
+
+    /* 末尾静默呼吸：输出停顿时末块文字做明暗呼吸，与「已说完」区分。
+       必须用「直接子元素 + :last-child」限定到最后一个块——各块渲染器的根元素都是
+       本容器的直接子元素，一条消息含多个文本块时（如 [text, tool_use, text]）会渲染
+       出多个 .aix-markdown，用后代选择器会让中间的文本块也一起呼吸。
+       末块非文本块（tool_use / chart / image）时不命中，由其自身的加载态表达进度。
+       :where() 压低优先级，业务可无痛覆盖。 */
+    &.is-tail-idle > :where(.aix-markdown):last-child > :last-child {
+      animation: aix-bubble-tail-breathe 2s var(--aix-motionEaseInOut) infinite;
+    }
 
     /* AI 气泡：白底卡片，细边 + 极轻阴影，在浅灰背景上浮起 */
     &--filled {
@@ -525,6 +556,25 @@ const cancelEdit = () => {
       border-color: var(--aix-colorError);
       background-color: var(--aix-colorErrorBg);
     }
+  }
+}
+
+/* 末尾静默呼吸：正文色 ⇄ 次级色往复，暗示「仍在生成」 */
+@keyframes aix-bubble-tail-breathe {
+  0%,
+  100% {
+    color: var(--aix-colorText);
+  }
+
+  50% {
+    color: var(--aix-colorTextTertiary);
+  }
+}
+
+/* 尊重系统「减少动态效果」设置：关闭呼吸动画（选择器须与上方一致，否则降级不生效） */
+@media (prefers-reduced-motion: reduce) {
+  .aix-bubble__content.is-tail-idle > :where(.aix-markdown):last-child > :last-child {
+    animation: none;
   }
 }
 </style>

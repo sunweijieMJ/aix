@@ -6,6 +6,20 @@ export { useTypewriter } from './useTypewriter';
 export type { TypewriterOptions } from './useTypewriter';
 export { useAutoScroll, defaultShouldFollow } from './useAutoScroll';
 export type { ScrollState, FollowReason, FollowContext, ShouldFollow } from './useAutoScroll';
+export {
+  useMessageOutline,
+  defaultOutlineFilter,
+  defaultOutlineToLabel,
+} from './useMessageOutline';
+export type {
+  OutlineEntry,
+  UseMessageOutlineOptions,
+  UseMessageOutlineReturn,
+} from './useMessageOutline';
+export { useVisibleMessage } from './useVisibleMessage';
+export type { UseVisibleMessageOptions, UseVisibleMessageReturn } from './useVisibleMessage';
+export { useIdleWhileStreaming } from './useIdleWhileStreaming';
+export type { UseIdleWhileStreamingOptions } from './useIdleWhileStreaming';
 export { provideAiChatConfig, useAiChatConfig, AI_CHAT_CONFIG_KEY } from './useAiChatConfig';
 export type { AiChatConfig } from './useAiChatConfig';
 export { useConversations, localStorageConversationStorage } from './useConversations';

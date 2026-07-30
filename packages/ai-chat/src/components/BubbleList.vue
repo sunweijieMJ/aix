@@ -23,6 +23,7 @@
             :status="(item as ChatMessage).status"
             :loading="(item as ChatMessage).status === 'loading'"
             :typing="resolveTyping(item as ChatMessage)"
+            :tail-breathing="tailBreathing"
             :editing="editingIds.has((item as ChatMessage).id)"
             :save-disabled="saveDisabled"
             :tool-renderers="toolRenderers"
@@ -81,6 +82,8 @@ export interface BubbleListProps {
    * 传配置对象 `{ step, interval }` 可细化逐字节奏（透传给各气泡的打字机）。
    */
   typing?: boolean | BubbleTypingConfig;
+  /** 末尾静默呼吸：透传给各 Bubble（见 BubbleProps.tailBreathing） */
+  tailBreathing?: boolean | { idleMs?: number };
   /** 块渲染器注册表：透传给各 Bubble，与 roles 内的 blockRenderers 合并（role 级更具体，优先） */
   blockRenderers?: BlockRenderers;
   /** 工具渲染器注册表：toolName → 组件，透传给各 Bubble 供内置 ToolUseBlock 按名路由 */
@@ -116,7 +119,7 @@ import type {
   BlockActionPayload,
   BubbleTypingConfig,
 } from '../types';
-import { toolFollowLen } from '../utils/helpers';
+import { contentFingerprint } from '../utils/contentFingerprint';
 import Bubble from './Bubble.vue';
 import Skeleton from './Skeleton.vue';
 
@@ -323,15 +326,10 @@ watch(
 
 // 末条内容流式增长 → streaming 跟随。
 // content 切为 ContentBlock[] 后，流式是「就地 mutate（last.text += delta）+ push」，
-// 数组引用不变，故不能直接 watch content 引用；改为追踪「块数 + 各块文本总长」，
+// 数组引用不变，故不能直接 watch content 引用；改为追踪内容增长指纹，
 // 任一增长都触发跟随，等价于此前 watch 字符串内容增长的行为。
 watch(
-  () => {
-    const blocks = props.items[props.items.length - 1]?.content;
-    if (!blocks) return '';
-    const textLen = blocks.reduce((n, b) => n + ('text' in b ? b.text.length : 0), 0);
-    return `${blocks.length}:${textLen}:${toolFollowLen(blocks)}`;
-  },
+  () => contentFingerprint(props.items[props.items.length - 1]?.content),
   () => nextTick(() => follow('streaming')),
 );
 

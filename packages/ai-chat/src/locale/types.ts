@@ -138,4 +138,18 @@ export interface AiChatLocale {
   imagePreviewPrev: string;
   /** 图片预览 Modal：下一张按钮 */
   imagePreviewNext: string;
+  /** 上下文用量：触发器无障碍标签 */
+  contextWindowLabel: string;
+  /** 上下文用量：面板标题 */
+  contextWindowTitle: string;
+  /** 上下文用量：已用/总量描述，占位符 {used} / {total} / {percent} */
+  contextWindowUsage: string;
+  /** 上下文用量：压缩会话按钮 */
+  contextCompress: string;
+  /** 上下文用量：压缩进行中 */
+  contextCompressing: string;
+  /** 对话大纲：导航区无障碍标签 */
+  outlineLabel: string;
+  /** 对话大纲：无文本消息（纯图片/附件）的兜底摘要 */
+  outlineUntitled: string;
 }

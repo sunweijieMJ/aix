@@ -70,4 +70,11 @@ export const enUS: AiChatLocale = {
   imagePreviewDownload: 'Download image',
   imagePreviewPrev: 'Previous image',
   imagePreviewNext: 'Next image',
+  contextWindowLabel: 'Context usage',
+  contextWindowTitle: 'Context window',
+  contextWindowUsage: '{used} / {total} used ({percent})',
+  contextCompress: 'Compress conversation',
+  contextCompressing: 'Compressing…',
+  outlineLabel: 'Conversation outline',
+  outlineUntitled: '(no text content)',
 };

@@ -4,9 +4,11 @@ import AttachmentCard from './components/AttachmentCard.vue';
 import Bubble from './components/Bubble.vue';
 import BubbleActions from './components/BubbleActions.vue';
 import BubbleList from './components/BubbleList.vue';
+import ContextWindow from './components/ContextWindow.vue';
 import Conversations from './components/Conversations.vue';
 import LoadingDots from './components/LoadingDots.vue';
 import MarkdownRenderer from './components/MarkdownRenderer.vue';
+import MessageOutline from './components/MessageOutline.vue';
 import ModelSelector from './components/ModelSelector.vue';
 import Prompts from './components/Prompts.vue';
 import QuoteSheet from './components/quote/QuoteSheet.vue';
@@ -46,6 +48,8 @@ export {
   QuoteChip,
   TriggerMenu,
   Suggestions,
+  ContextWindow,
+  MessageOutline,
 };
 
 // 划词引用默认皮肤（toolbar/sheet 单端换肤时作为 fallback/对照参考，见 QuoteMenuProps.toolbar/sheet）
@@ -90,6 +94,9 @@ export type {
 
 // 流式 Markdown 防闪烁 / 数学定界符归一化工具
 export { protectStreamingMarkdown, normalizeMathDelimiters } from './utils/markdown';
+
+// 内容块增长指纹（自动滚动跟随 / 末尾静默判定共用口径）
+export { contentFingerprint } from './utils/contentFingerprint';
 
 // 朗读文本提取（markdown→纯文本，供自定义 getText 复用）
 export { stripMarkdownForSpeech } from './utils/stripMarkdownForSpeech';
@@ -167,6 +174,8 @@ export type { QuoteToolbarProps, QuoteToolbarEmits } from './components/quote/Qu
 export type { QuoteSheetProps, QuoteSheetEmits } from './components/quote/QuoteSheet.vue';
 export type { TriggerMenuProps, TriggerMenuEmits } from './components/TriggerMenu.vue';
 export type { SuggestionsProps, SuggestionsEmits } from './components/Suggestions.vue';
+export type { ContextWindowProps, ContextWindowEmits } from './components/ContextWindow.vue';
+export type { MessageOutlineProps, MessageOutlineEmits } from './components/MessageOutline.vue';
 
 // locale
 export { locale as aiChatLocale, zhCN, enUS } from './locale';
@@ -193,6 +202,8 @@ const components = {
   QuoteChip,
   TriggerMenu,
   Suggestions,
+  ContextWindow,
+  MessageOutline,
 };
 
 // 插件：全局注册时加 Aix 前缀

@@ -159,6 +159,11 @@ export interface BubbleProps {
   blockRenderers?: BlockRenderers;
   /** 工具渲染器注册表：toolName → 组件，透传给内置 ToolUseBlock 做按名路由 */
   toolRenderers?: BlockRenderers;
+  /**
+   * 末尾静默呼吸：流式输出停顿时让末块文字做明暗呼吸，提示「仍在生成」而非已说完。
+   * `true` 用默认 3000ms 阈值；传 `{ idleMs }` 自定义。默认 `false`（不改变视觉）。
+   */
+  tailBreathing?: boolean | { idleMs?: number };
   /** 是否处于内联编辑态（受控，由外部驱动进入/退出——见 BubbleList.startEdit） */
   editing?: boolean;
   /** 编辑态下是否禁止保存（如全局请求进行中），true 时点击保存无效果、保留草稿与编辑态 */
@@ -196,6 +201,16 @@ export type RoleBubbleConfig = Partial<
 
 /** 角色 → 气泡样式映射，支持静态对象或按消息动态返回（BubbleList + AiChat 共享） */
 export type RoleConfig = RoleBubbleConfig | ((item: ChatMessage) => RoleBubbleConfig);
+
+/** 对话大纲导航配置（AiChat.outline / AiChatConfig.outline 共用） */
+export interface OutlineOptions {
+  /** 滑动窗口半径，默认 8；传 Infinity 全量展示 */
+  window?: number;
+  /** 哪些消息进大纲，默认 role === 'user' */
+  filter?: (m: ChatMessage) => boolean;
+  /** 摘要提取，默认取消息文本并截断 */
+  toLabel?: (m: ChatMessage) => string;
+}
 
 /** 块交互动作信封：交互型渲染器经 onBlockAction 上抛，逐层转发到 useChat.updateBlock */
 export interface BlockAction {

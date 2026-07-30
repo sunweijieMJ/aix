@@ -37,6 +37,7 @@
         :roles="roles"
         :should-follow="shouldFollow"
         :typing="config.enableTyping"
+        :tail-breathing="tailBreathing"
         :block-renderers="blockRenderers"
         :tool-renderers="toolRenderers"
         :save-disabled="isLoading"
@@ -91,6 +92,14 @@
           <slot :name="name" v-bind="sp" />
         </template>
       </BubbleList>
+      <!-- 对话大纲：absolute 贴右侧，不参与流式布局故不挤压气泡宽度 -->
+      <MessageOutline
+        v-if="outlineEnabled && messages.length > 0"
+        :class="ns.e('outline')"
+        :entries="outlineState.windowed.value"
+        :active-id="visible.activeId.value"
+        @select="onOutlineSelect"
+      />
       <template v-if="quoteMenu.visible.value">
         <slot
           name="quote-menu"
@@ -219,6 +228,17 @@ export interface AiChatProps {
   roles?: Record<string, RoleConfig>;
   /** 滚动跟随策略，优先级高于 provideAiChatConfig 的全局 shouldFollow */
   shouldFollow?: ShouldFollow;
+  /**
+   * 末尾静默呼吸：流式输出停顿时末块文字明暗呼吸，提示「仍在生成」。
+   * `true` 用默认 3000ms 阈值；传 `{ idleMs }` 自定义。优先级高于 provideAiChatConfig 的全局 tailBreathing。
+   */
+  tailBreathing?: boolean | { idleMs?: number };
+  /**
+   * 对话大纲导航：右侧提问刻度条，点击定位到对应提问。
+   * `true` 用默认配置；传对象可定制窗口半径 / 入选规则 / 摘要提取。
+   * 优先级高于 provideAiChatConfig 的全局 outline。
+   */
+  outline?: boolean | OutlineOptions;
   /** 块渲染器注册表（扩展/覆盖内置 text/reasoning 渲染），优先级高于 provideAiChatConfig 的全局 blockRenderers */
   blockRenderers?: BlockRenderers;
   /** 工具调用（tool_use）渲染器注册表，按 toolName 路由，优先级高于 provideAiChatConfig 的全局 toolRenderers */
@@ -365,9 +385,16 @@ import type { ShouldFollow } from '../composables/useAutoScroll';
 import { useChat } from '../composables/useChat';
 import type { UseChatOptions } from '../composables/useChat';
 import type { MarkdownItPlugin } from '../composables/useMarkdownRenderer';
+import {
+  useMessageOutline,
+  defaultOutlineFilter,
+  defaultOutlineToLabel,
+} from '../composables/useMessageOutline';
+import type { OutlineEntry } from '../composables/useMessageOutline';
 import { useQuoteMenu, QUOTE_LOCATE_KEY } from '../composables/useQuoteMenu';
 import { useSpeech } from '../composables/useSpeech';
 import { useTextSelection } from '../composables/useTextSelection';
+import { useVisibleMessage } from '../composables/useVisibleMessage';
 import { locale } from '../locale';
 import type {
   ChatMessage,
@@ -388,6 +415,7 @@ import type {
   TriggerConfig,
   SubmitMeta,
   SuggestionItem,
+  OutlineOptions,
 } from '../types';
 import {
   BUBBLE_CONTENT_SELECTOR,
@@ -406,6 +434,7 @@ import { stripMarkdownForCopy } from '../utils/stripMarkdownForCopy';
 import { findTextRange, offsetsToRange } from '../utils/textRange';
 import BubbleActions from './BubbleActions.vue';
 import BubbleList from './BubbleList.vue';
+import MessageOutline from './MessageOutline.vue';
 import Prompts from './Prompts.vue';
 import QuoteChip from './QuoteChip.vue';
 import QuoteMenu from './QuoteMenu.vue';
@@ -512,6 +541,17 @@ const roles = computed<Record<string, RoleConfig>>(() => ({
 // 滚动跟随策略覆盖优先级：组件 props.shouldFollow > 全局 provideAiChatConfig.shouldFollow
 // （均未提供时传 undefined，由 BubbleList/useAutoScroll 回退内置 defaultShouldFollow）
 const shouldFollow = computed(() => props.shouldFollow ?? config.value.shouldFollow);
+
+// 末尾静默呼吸覆盖优先级：组件 props.tailBreathing > 全局 provideAiChatConfig.tailBreathing
+// （均未提供时为 undefined，Bubble 内按关闭处理）
+const tailBreathing = computed(() => props.tailBreathing ?? config.value.tailBreathing);
+
+// 对话大纲：覆盖优先级同上；true 视为启用并取默认配置
+const resolvedOutline = computed(() => props.outline ?? config.value.outline);
+const outlineEnabled = computed(() => !!resolvedOutline.value);
+const outlineOpts = computed<OutlineOptions>(() =>
+  typeof resolvedOutline.value === 'object' ? resolvedOutline.value : {},
+);
 
 // 块渲染器合并优先级：组件 props.blockRenderers > 全局 provideAiChatConfig.blockRenderers
 // （Bubble 内部再叠加内置 text/reasoning 默认渲染器）
@@ -687,6 +727,38 @@ watch(pendingQuotes, (list) => {
 
 const bubbleListRef = ref<InstanceType<typeof BubbleList> | null>(null);
 const quoteRoot = computed(() => bubbleListRef.value?.scrollElement?.() ?? null);
+
+// ── 对话大纲：条目派生（纯计算）+ 可视区观测（DOM）分离，AiChat 只做接线 ──
+// 命名避开同名 prop `outline`（vue/no-dupe-keys：模板里会指向歧义）
+const outlineState = useMessageOutline({
+  messages: parsedMessages,
+  // 两个 wrapper 都是「每次调用才读配置」的稳定函数，缺省回落到导出的同一份默认实现。
+  // 不能写成 `opts.toLabel ? (m) => opts.toLabel!(m) : undefined`——三元只在 setup 求值一次，
+  // 运行时把 toLabel 去掉后包装器仍在、函数体读到 undefined 会抛 TypeError；
+  // 反之运行时新增也不会生效。默认值也不在此处重写，避免与 composable 内的默认口径漂移。
+  filter: (m) => (outlineOpts.value.filter ?? defaultOutlineFilter)(m),
+  toLabel: (m) => (outlineOpts.value.toLabel ?? defaultOutlineToLabel)(m),
+  window: () => outlineOpts.value.window ?? 8,
+  activeId: () => visible.activeId.value,
+});
+const visible = useVisibleMessage({
+  root: quoteRoot,
+  ids: () => outlineState.entries.value.map((e) => e.messageId),
+  enabled: outlineEnabled,
+});
+
+// 点击刻度：闸门 → 定位 → 解闸，避免滚动途经的消息把高亮抢走
+const onOutlineSelect = async (entry: OutlineEntry) => {
+  visible.beginNavigate(entry.messageId);
+  // finally 不可省：scrollToBubble 是同步函数，其内部 virtualizer.scrollToIndex 若同步抛错
+  // （组件卸载 / 下标越界等边界态），异常会逃逸并跳过 endNavigate，导致闸门永久锁死、
+  // 活跃高亮再也不更新且无自恢复路径。
+  try {
+    await bubbleListRef.value?.scrollToBubble(entry.messageId, { smooth: true });
+  } finally {
+    visible.endNavigate(entry.messageId);
+  }
+};
 
 // L1：检测（BubbleList 渲染后 quoteRoot 才非空，watch immediate 装配在 useTextSelection 内部处理）
 const {
@@ -1083,9 +1155,19 @@ defineExpose({
 
   &__body {
     display: flex;
+    position: relative;
     flex: 1;
     flex-direction: column;
     min-height: 0;
+  }
+
+  /* 大纲绝对定位贴右侧，脱离流式布局故不挤压气泡宽度 */
+  &__outline {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    right: var(--aix-paddingXS);
+    transform: translateY(-50%);
   }
 
   &__sender {

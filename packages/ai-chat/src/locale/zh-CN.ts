@@ -70,4 +70,11 @@ export const zhCN: AiChatLocale = {
   imagePreviewDownload: '下载图片',
   imagePreviewPrev: '上一张',
   imagePreviewNext: '下一张',
+  contextWindowLabel: '上下文用量',
+  contextWindowTitle: '上下文窗口',
+  contextWindowUsage: '已用 {used} / {total}（{percent}）',
+  contextCompress: '压缩当前会话',
+  contextCompressing: '压缩中…',
+  outlineLabel: '对话大纲',
+  outlineUntitled: '（无文字内容）',
 };
