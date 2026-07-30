@@ -652,6 +652,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   // glossary.override：loader 支持 JS 配置（.js/.cjs/.mjs），TS 字面量类型在运行时不设防。
   // 不校验时 typo（如 'allways'）会静默绕过 PickProcessor 的 `=== 'always'` 分支，回退到比默认
   // 更弱的 when-empty 行为且零诊断。与 io.format / merge.onLlmRejected 等同级枚举对齐做白名单校验。
+  // cspell:ignore allways —— 上方注释里的 typo 示例，不入全局词典以免掩盖真实拼写错误
   const validOverride = ['always', 'when-empty'];
   if (!validOverride.includes(resolved.glossary.override)) {
     throw new Error(

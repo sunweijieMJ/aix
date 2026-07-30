@@ -360,6 +360,7 @@ const runDetect = () => {
 // 光标移动（方向键 keyup / 鼠标 click）时复检：等值保持语义保证无效移动不重置菜单
 // 组词中的 keyup 不复检（与 onInput/onKeydown 的 IME 守卫同口径；keyCode 229 兼容）：
 // 否则组词期间浏览器每键触发 keyup（isComposing=true），会以拼音预览文本（如 @zhang）逐键误检测。
+// cspell:ignore zhang —— 上方注释里的拼音片段示例，非词汇
 const onCursorMove = (e: KeyboardEvent | MouseEvent) => {
   const ke = e as KeyboardEvent;
   if (ke.isComposing || ke.keyCode === 229) return;

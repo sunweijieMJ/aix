@@ -18,6 +18,8 @@ const execFileAsync = promisify(execFile);
  * CI 用 `-m=generate` 时被误判为「未指定 mode」→ 默认开交互 → 无 TTY 卡住。
  *
  * @param args 通常传 `process.argv.slice(2)`
+ *
+ * cspell:ignore mgenerate —— 短选项贴值写法示例，非词汇
  */
 export function isModeExplicitlySet(args: string[]): boolean {
   return args.some(

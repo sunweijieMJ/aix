@@ -350,6 +350,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     //    锚点用 `(?:v-bind)?:` 同时覆盖简写 `:attr=` 与完整 `v-bind:attr=`：完整写法下整体
     //    匹配 `v-bind:attr=...` 并连同 `v-bind` 前缀一起替换为静态属性，避免只吃掉 `:attr`
     //    残留 `v-bind` 拼出非法属性名 `v-bindattr`。
+    // cspell:ignore bindattr —— 上方注释里的非法属性名示例，非词汇
     const attrBindingRegex =
       /(?:v-bind)?:([\w-]+)=(["'])\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)\2/g;
 
