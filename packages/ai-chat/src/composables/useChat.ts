@@ -1,4 +1,4 @@
-import { ref, computed, onScopeDispose, type Ref, type ComputedRef } from 'vue';
+import { ref, computed, effectScope, onScopeDispose, type Ref, type ComputedRef } from 'vue';
 import type {
   ChatMessage,
   ContentBlock,
@@ -49,6 +49,8 @@ export interface UseChatOptions {
    * 否则交互块回写无法命中 SSOT 父消息块。
    * 父消息的 extra 会自动合并到渲染消息（parser 输出的同名键优先），故 parser 无需手动
    * 透传 feedback 等由 useChat 写回 SSOT 的字段。
+   * 须为**纯函数**（同输入同输出）：结果按消息逐条缓存，仅在该消息对象 / 下标 / parser 读到的
+   * 响应式数据发生变化时才重算；读取 `Date.now()`、外部计数器等非响应式来源的实现会拿到旧结果。
    */
   parser?: (message: ChatMessage, index: number) => ChatMessage | ChatMessage[];
   defaultMessages?: ChatMessage[];
@@ -219,15 +221,38 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   // 渲染消息：无 parser 时直接复用 messages 引用（零开销、完全等价）；有则按 parser 映射。
   // id 稳定性由 useChat 接管：1→1 时强制复用父 id（见下，sub.id 即便不同也覆盖为 m.id），
   // 故 parser 未保留原始消息 id 也不会破坏编辑/重生成/块动作的 id 定位，无需运行时告警。
-  // 渲染视图 + 派生气泡 id → 父消息 id 映射，单 computed 同时产出（纯函数；map 随视图一起失效）。
+  // 渲染视图 + 派生气泡 id → 父消息 id 映射一并产出（map 随视图一起失效）。
   // 1→1：复用父 id（回写直接命中 SSOT，map 不记录）；1→N：派生 `${父id}__${序号}` 并记录映射。
+  //
+  // 关键：**每条源消息各持一个 computed**，而不是把整份列表塞进单个 computed。
+  // 后者下，任一消息的内容被就地 mutate（流式每个 chunk 都会）就让整份视图失效，
+  // parser 要对全量历史重跑一遍 —— 实测 42 条消息的会话每个 chunk 就是 42 次 parser 调用
+  // 外加 42 个新消息对象，随历史长度线性劣化，正好砸在"长会话 + 1→N 拆分"这个重度场景上。
+  // 拆到每条之后 Vue 的依赖追踪精确到单条消息：流式期间只有正在增长的那条重算，其余直接
+  // 复用上一帧的对象（顺带让下游 Bubble 的 props 保持引用稳定，不再逐帧全量重渲染）。
+  //
+  // 逐条 computed 惰性创建，故必须显式挂在这个**游离 scope** 上，否则归属「碰巧第一个读到它
+  // 的那个组件」的 scope（组件 setup 内直接读、watch getter 首次收集、生命周期钩子里读都会
+  // 命中）。该组件卸载 → scope.stop()，而 vue < 3.5 的 computed 被 stop 后 dirty 标记不再
+  // 推进，.value 永久返回旧值；缓存却活到 useChat 结束，重新挂载后同 source/index 仍会命中
+  // 这条已冻结的缓存。peer 是 vue ^3.3（headless 用法下 useChat 常建在 store / app 级
+  // composable 里而由子组件读），所以这个区间在承诺范围内，不能只依赖 3.5 的新实现兜底。
+  const parserMemoScope = parser ? effectScope(true) : null;
   const parsedState = parser
-    ? computed(() => {
-        const list: ChatMessage[] = [];
-        const map = new Map<string, string>();
-        messages.value.forEach((m, i) => {
-          const r = parser(m, i);
-          const subs = Array.isArray(r) ? r : [r];
+    ? (() => {
+        interface ParsedEntry {
+          /** 源消息对象引用：被 setMessages / importTree 整体换掉时须重建，否则 computed 闭包住已脱离树的旧对象 */
+          source: ChatMessage;
+          /** 源消息在激活路径中的下标（parser 第二参） */
+          index: number;
+          /** 该条消息映射出的渲染气泡（已完成 id 归属、extra 合并、__sub 位置元信息） */
+          bubbles: ComputedRef<ChatMessage[]>;
+        }
+        const cache = new Map<string, ParsedEntry>();
+
+        /** 单条消息 → 渲染气泡的归一化（逐条逻辑，与拆分前完全一致） */
+        const toBubbles = (m: ChatMessage, i: number): ChatMessage[] => {
+          const subs = toArray(parser(m, i));
           if (subs.length <= 1) {
             const sub = subs[0] ?? m;
             // useChat 接管 message-level id（强制复用父 id，回写无需映射），并合并父消息
@@ -235,29 +260,63 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             // 的字段仍能到达渲染层，避免点赞高亮 / 互斥取消静默失效。
             // 父 extra 为空时不做合并（不引入空对象），id 又一致则原样复用（零开销路径）。
             const extra = m.extra ? { ...m.extra, ...sub.extra } : sub.extra;
-            list.push(sub.id === m.id && extra === sub.extra ? sub : { ...sub, id: m.id, extra });
-          } else {
-            // 1→N：首个子气泡复用父 id（单→拆转换不 remount、不闪烁），其余派生稳定 id；
-            // 子气泡继承父消息会话状态，并带 __sub 位置信息（供操作条按「仅末气泡」去重）。
-            const count = subs.length;
-            subs.forEach((sub, bi) => {
-              const derivedId = bi === 0 ? m.id : `${m.id}__${bi}`;
-              if (bi > 0) map.set(derivedId, m.id);
-              // __sub 元信息使用公共类型 SubBubbleMeta 显式标注，与消费侧（AiChat 操作条去重）对齐
-              const subMeta: SubBubbleMeta = { index: bi, count };
-              list.push({
-                ...sub,
-                id: derivedId,
-                status: m.status,
-                // 合并父消息 extra（parser 同名键优先，与 1→1 分支一致）；__sub 最后写入，
-                // 保证位置元信息不被合并覆盖。
-                extra: { ...m.extra, ...sub.extra, __sub: subMeta },
-              });
-            });
+            return [sub.id === m.id && extra === sub.extra ? sub : { ...sub, id: m.id, extra }];
           }
+          // 1→N：首个子气泡复用父 id（单→拆转换不 remount、不闪烁），其余派生稳定 id；
+          // 子气泡继承父消息会话状态，并带 __sub 位置信息（供操作条按「仅末气泡」去重）。
+          const count = subs.length;
+          return subs.map((sub, bi) => {
+            // __sub 元信息使用公共类型 SubBubbleMeta 显式标注，与消费侧（AiChat 操作条去重）对齐
+            const subMeta: SubBubbleMeta = { index: bi, count };
+            return {
+              ...sub,
+              id: bi === 0 ? m.id : `${m.id}__${bi}`,
+              status: m.status,
+              // 合并父消息 extra（parser 同名键优先，与 1→1 分支一致）；__sub 最后写入，
+              // 保证位置元信息不被合并覆盖。
+              extra: { ...m.extra, ...sub.extra, __sub: subMeta },
+            };
+          });
+        };
+
+        const bubblesOf = (m: ChatMessage, i: number): ChatMessage[] => {
+          const hit = cache.get(m.id);
+          // 复用条件：同一消息对象 + 下标未变。下标只随结构变化（追加节点 / 切分支 / 换会话）
+          // 而变，流式逐 chunk 走不到重建分支，故重建成本可忽略。
+          // 刻意不把 index 做成 ref：在外层 computed 求值期写 ref 会反过来令它依赖的内层
+          // computed 失效，形成自激循环。
+          if (hit && hit.source === m && hit.index === i) return hit.bubbles.value;
+          const entry: ParsedEntry = {
+            source: m,
+            index: i,
+            // 挂到游离 scope（见上）：run 只切换 activeEffectScope，不影响外层 computed 的
+            // 依赖收集，故此处建的 computed 照常被外层追踪。
+            bubbles: parserMemoScope!.run(() => computed(() => toBubbles(m, i)))!,
+          };
+          cache.set(m.id, entry);
+          return entry.bubbles.value;
+        };
+
+        return computed(() => {
+          const list: ChatMessage[] = [];
+          const map = new Map<string, string>();
+          const alive = new Set<string>();
+          messages.value.forEach((m, i) => {
+            alive.add(m.id);
+            for (const bubble of bubblesOf(m, i)) {
+              // 1→1 与 1→N 的首个子气泡都复用父 id（回写直接命中 SSOT，无需记映射）；
+              // 其余派生 id 记入映射，供 resolveParentId 解析回父消息。
+              if (bubble.id !== m.id) map.set(bubble.id, m.id);
+              list.push(bubble);
+            }
+          });
+          // 剪掉已离开激活路径的缓存（切分支 / 切会话 / 编辑重发），避免随会话历史无界增长
+          for (const id of cache.keys()) {
+            if (!alive.has(id)) cache.delete(id);
+          }
+          return { list, map };
         });
-        return { list, map };
-      })
+      })()
     : null;
 
   const parsedMessages: Ref<ChatMessage[]> = parsedState
@@ -646,8 +705,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   };
 
   // 组件卸载（scope 销毁）时中止进行中的流，避免 reader 持续读取、
-  // 向已脱离的响应式对象继续写入（与 useTypewriter 的 onScopeDispose 对齐）。
-  onScopeDispose(() => controller?.abort());
+  // 向已脱离的响应式对象继续写入（与 useTypewriter 的 onScopeDispose 对齐）；
+  // 顺带停掉逐条缓存所在的游离 scope（它不挂在任何父 scope 上，须显式回收）。
+  onScopeDispose(() => {
+    controller?.abort();
+    parserMemoScope?.stop();
+  });
 
   /** 切换某消息所在层分支（流式中禁用） */
   const switchBranch = (id: string, dir: -1 | 1): boolean => {
