@@ -387,3 +387,38 @@ describe('Bubble tool_use 块渲染', () => {
     expect(w.text()).toContain('search');
   });
 });
+
+describe('Bubble 块渲染器查表的原型链加固', () => {
+  // 回归：注册表是对象字面量，继承 Object.prototype。此前用 `renderers[block.type]` 直接下标，
+  // 'constructor' / 'toString' / '__proto__' 这些原型链上的键会取到真值 —— 既绕过「未注册渲染器」
+  // 的开发期告警（静默），又把原型上的函数/对象当组件渲染，气泡里吐出 `[object Object]`。
+  // block.type 来自流数据与持久化对话树（localStorage 可被篡改/损坏），并非不可达路径。
+  // 与 ToolUseBlock 按 toolName 路由的 Object.hasOwn 加固保持一致。
+  it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])(
+    'type="%s" 不命中原型链上的键：跳过渲染并给出未注册告警',
+    async (protoKey) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const w = mount(Bubble, {
+        props: { content: [{ id: 'b1', type: protoKey, text: 'x' } as unknown as ContentBlock] },
+      });
+      await nextTick();
+      // 不得渲染出原型对象/函数被当组件的产物
+      expect(w.text()).not.toContain('[object Object]');
+      expect(w.find('.aix-bubble__content').text()).toBe('');
+      // 开发期护栏必须照常触发（此前被真值查表结果吞掉）
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`"${protoKey}"`));
+      warn.mockRestore();
+    },
+  );
+
+  it('自定义 blockRenderers 注册的自有键仍正常命中', () => {
+    const Custom = defineComponent({ setup: () => () => h('div', { class: 'custom' }, 'ok') });
+    const w = mount(Bubble, {
+      props: {
+        content: [{ id: 'b1', type: 'my-block' } as unknown as ContentBlock],
+        blockRenderers: { 'my-block': Custom },
+      },
+    });
+    expect(w.find('.custom').exists()).toBe(true);
+  });
+});

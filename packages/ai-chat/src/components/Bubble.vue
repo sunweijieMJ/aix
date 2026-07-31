@@ -49,11 +49,11 @@
             <component :is="renderedNode" v-if="contentRender" />
             <template v-else>
               <!-- 单一注册表分发：内置 text/reasoning/sources/thought-chain/attachment 与用户 blockRenderers
-                   合并后统一查表，无对应渲染器的块（如业务自定义未注册类型）安全跳过（开发期 console.warn 提示）。 -->
+                   合并后统一查表，无对应渲染器的块（如业务自定义未注册类型）安全跳过（开发期 devWarn 提示）。 -->
               <template v-for="block in content" :key="block.id">
                 <component
-                  :is="renderers[block.type]"
-                  v-if="renderers[block.type]"
+                  :is="rendererOf(block.type)"
+                  v-if="rendererOf(block.type)"
                   :block="block"
                   :info="info"
                   :typing="typing"
@@ -123,6 +123,7 @@ import type {
   ContentBlock,
 } from '../types';
 import { contentFingerprint } from '../utils/contentFingerprint';
+import { devWarn } from '../utils/devWarn';
 import { messageText } from '../utils/helpers';
 import AttachmentBlock from './blocks/AttachmentBlock.vue';
 import ChartBlock from './blocks/ChartBlock.vue';
@@ -279,14 +280,25 @@ const renderers = computed<BlockRenderers>(() => ({
   ...props.blockRenderers,
 }));
 
+/**
+ * 按块类型取渲染器。必须走 Object.hasOwn 而非直接下标（与 ToolUseBlock 按 toolName 路由
+ * 同款加固）：注册表是对象字面量，继承 Object.prototype，直接下标会让 'constructor' /
+ * 'toString' / 'valueOf' / '__proto__' 这些**原型链上的键取到真值**——block.type 来自流数据
+ * 与持久化的对话树（localStorage 可被篡改/损坏），一旦撞上就同时踩两个坑：绕过下方
+ * 「未注册渲染器」的开发期告警（静默），且把原型上的函数/对象当组件渲染，气泡里吐出
+ * `[object Object]` 之类的垃圾内容，排查成本极高。
+ */
+const rendererOf = (type: string): BlockRenderers[string] | undefined =>
+  Object.hasOwn(renderers.value, type) ? renderers.value[type] : undefined;
+
 // 开发期提示：内容块无对应渲染器时跳过渲染并告警（每种类型仅一次），
 // 避免如未注册的 sources 块被静默丢弃而难以排查。
 const warnedTypes = new Set<string>();
 watchEffect(() => {
   for (const block of props.content ?? []) {
-    if (!renderers.value[block.type] && !warnedTypes.has(block.type)) {
+    if (!rendererOf(block.type) && !warnedTypes.has(block.type)) {
       warnedTypes.add(block.type);
-      console.warn(
+      devWarn(
         `[AiChat] 内容块类型 "${block.type}" 没有注册渲染器，已跳过渲染。请通过 blockRenderers 注册对应组件。`,
       );
     }
