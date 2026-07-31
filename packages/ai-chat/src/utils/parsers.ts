@@ -26,9 +26,9 @@ export interface CreateParseChunkOptions {
  */
 export function createParseChunk(
   options: CreateParseChunkOptions = {},
-): (chunk: SSEChunk) => ParsedChunk {
+): (chunk: SSEChunk) => ParsedChunk | ParsedChunk[] {
   const { doneSignal = '[DONE]', pickDelta, pickBlockType, pickTool } = options;
-  return (chunk: SSEChunk): ParsedChunk => {
+  return (chunk: SSEChunk): ParsedChunk | ParsedChunk[] => {
     const data = chunk.data;
     if (!data) return {};
     if (data === doneSignal) return { done: true };
@@ -40,13 +40,19 @@ export function createParseChunk(
       return { delta: data };
     }
     const tool = pickTool?.(json);
-    if (tool) return { tool };
     const delta = pickDelta
       ? pickDelta(json)
       : ((json as { delta?: string; content?: string })?.delta ??
         (json as { content?: string })?.content ??
         '');
     const blockType = pickBlockType?.(json);
+    // 同帧正文不能因为"命中工具"就被丢掉：聚合网关合帧时正文与工具事件会落在同一个 chunk，
+    // 早退会静默吃掉这段正文（与 openaiParseChunk 的 content + tool_calls 同帧是同一类问题，
+    // 此处回填同款修复）。文本置于工具事件之前：模型先说话再发起调用，块顺序应与之一致。
+    if (tool) {
+      if (!delta) return { tool };
+      return [blockType ? { delta, blockType } : { delta }, { tool }];
+    }
     return blockType ? { delta: delta ?? '', blockType } : { delta: delta ?? '' };
   };
 }
@@ -55,7 +61,7 @@ export function createParseChunk(
  * 扁平结构预设（库默认）：读取 data 中顶层 `delta` / `content`，结束信号 `[DONE]`。
  * 形如 `data: {"delta":"..."}` 或 `data: {"content":"..."}`。
  */
-export const flatParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChunk();
+export const flatParseChunk: (chunk: SSEChunk) => ParsedChunk | ParsedChunk[] = createParseChunk();
 
 /**
  * OpenAI 兼容预设：读取 `choices[0].delta.content`；

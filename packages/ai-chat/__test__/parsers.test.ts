@@ -95,6 +95,49 @@ describe('parsers', () => {
       // 默认 [DONE] 不再是结束信号，作为普通 JSON/文本处理
       expect(parse(sse('[DONE]'))).toEqual({ delta: '[DONE]' });
     });
+
+    it('pickTool 命中且无正文时返回单个工具事件', () => {
+      const parse = createParseChunk({
+        pickDelta: (j) => (j as { text?: string }).text,
+        pickTool: (j) =>
+          (j as { tool?: string }).tool
+            ? { index: 0, toolName: (j as { tool: string }).tool }
+            : undefined,
+      });
+      expect(parse(sse('{"tool":"search"}'))).toEqual({ tool: { index: 0, toolName: 'search' } });
+    });
+
+    // 行为变更（2026-07）：旧实现 `if (tool) return { tool }` 早退，同帧正文被静默丢弃。
+    // 与 openaiParseChunk 已修复的「content 与 tool_calls 同帧」是同一类问题（聚合网关合帧），
+    // 这里把同款修复回填到工厂：两者都保留，正文在前（模型先说话再发起调用，块顺序应与之一致）。
+    it('pickTool 与 pickDelta 同帧命中时正文不被丢弃（数组，正文在前）', () => {
+      const parse = createParseChunk({
+        pickDelta: (j) => (j as { text?: string }).text,
+        pickTool: (j) =>
+          (j as { tool?: string }).tool
+            ? { index: 0, toolName: (j as { tool: string }).tool }
+            : undefined,
+      });
+      expect(parse(sse('{"text":"先说一句","tool":"search"}'))).toEqual([
+        { delta: '先说一句' },
+        { tool: { index: 0, toolName: 'search' } },
+      ]);
+    });
+
+    it('同帧命中且指定 pickBlockType 时正文带上块类型', () => {
+      const parse = createParseChunk({
+        pickDelta: (j) => (j as { text?: string }).text,
+        pickBlockType: () => 'reasoning',
+        pickTool: (j) =>
+          (j as { tool?: string }).tool
+            ? { index: 0, toolName: (j as { tool: string }).tool }
+            : undefined,
+      });
+      expect(parse(sse('{"text":"想一下","tool":"search"}'))).toEqual([
+        { delta: '想一下', blockType: 'reasoning' },
+        { tool: { index: 0, toolName: 'search' } },
+      ]);
+    });
   });
 });
 

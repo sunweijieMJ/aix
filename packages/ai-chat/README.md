@@ -281,6 +281,7 @@ const onBlockIntent = async (payload: BlockIntentPayload) => {
 - `anthropicParseChunk`：`content_block_start`(tool_use) → 建块；`input_json_delta` → 拼参分片；`content_block_stop` → 参数结束。
 - `openaiParseChunk`：`delta.tool_calls[i]` → 拼参；`finish_reason:'tool_calls'` → 参数结束（多并行工具收尾建议由后端显式事件驱动，见下方限制）。
 - **自定义后端**：`createParseChunk({ pickTool })` 传一个 `(json) => ToolEventDelta | undefined`，或自行在 `parseChunk` 里返回 `{ tool }`。「请求含参先到、结果后到」的后端直接映射：工具请求 → `{ index, toolCallId, toolName, input }`、工具结果 → `{ index, toolCallId, output }`（结果事件**须带 `toolCallId`** 以支持跨请求/续流命中已建的块）。
+  同一帧里 `pickDelta` 与 `pickTool` 同时命中（聚合网关合帧）时两者都保留，返回 `[{ delta }, { tool }]`（正文在前，与 `openaiParseChunk` 同口径），由 `useChat` 侧 `toArray` 展开——正文不会因为命中工具而被丢弃。因此 `createParseChunk` / `flatParseChunk` 的返回类型是 `ParsedChunk | ParsedChunk[]`；直接调用它们（而非交给 `useChat`）的代码需用 `toArray` 归一。
 
 `parseChunk` 可返回**单个** `ParsedChunk` 或**数组**（一个流事件表达多件事，如 text + tool 同帧），内部统一归一，旧的单对象返回照常工作。装配纯函数 `applyToolEvent` / 类型 `ToolReduceCtx` 也对外导出，供完全自定义的流水线复用。
 
