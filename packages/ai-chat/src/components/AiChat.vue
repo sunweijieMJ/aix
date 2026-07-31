@@ -927,9 +927,15 @@ watch(messagesModel, (v) => {
 // 受控时以 tree 为准（优先于 messages），外部替换整体 tree 时（切会话）导入；
 // 结构变化（增节点/切分支）时导出回父。同时绑 v-model:messages 与 v-model:tree 时，tree 优先。
 const treeModel = defineModel<ExportedTree | undefined>('tree');
+// 外部树数据的入口归一：nodes 非数组（持久化被截断 / 篡改 / 自定义 storage 只写了半截）
+// 按空树处理，与 messageTree.importTree、useConversations 的脏数据口径一致——
+// 这两处此前直接读 .nodes.length，损坏数据会在挂载或 watch 回调里抛穿整个渲染。
+const safeTree = (v: ExportedTree | undefined): ExportedTree =>
+  v && Array.isArray(v.nodes) ? v : { nodes: [], headId: ROOT_ID };
 // 受控：父提供初始 tree 时导入（优先于 messages）
-if (treeModel.value && treeModel.value.nodes.length) {
-  importTree(treeModel.value);
+const initialTree = safeTree(treeModel.value);
+if (initialTree.nodes.length) {
+  importTree(initialTree);
 }
 // 结构变化（增节点/切分支）时导出回父；branches 引用变化是结构变化的可靠信号。
 // 未绑 v-model:tree 时整条通道空转：exportTree 是 O(节点数) 的全量快照，而写入的 model
@@ -946,7 +952,7 @@ watch(treeModel, (v) => {
   // 会话」时返回 undefined（典型触发点是 remove() 删掉最后一个会话 → activeKey 置空 →
   // active 为 undefined）。此处若放过，内部树纹丝不动，已删会话的消息继续留在视图上；
   // 而 isTreeBound 为真时 messages 的反向导入已被禁用（见上方 watch），没有第二条路兜底。
-  const next = v ?? { nodes: [], headId: ROOT_ID };
+  const next = safeTree(v);
   const cur = exportTree();
   // 仅在结构不同时才导入，避免与导出 watch 产生抖动
   if (next.headId !== cur.headId || next.nodes.length !== cur.nodes.length) {

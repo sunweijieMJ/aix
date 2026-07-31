@@ -147,6 +147,17 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
 
   const importTree = (data: ExportedTree): void => {
     reset();
+    // 入口归一：data 缺失 / nodes 非数组（持久化被截断、篡改，或自定义 storage 只写了半截）
+    // 按空树处理而非抛穿调用方——本函数下面整条脏数据防线（根 id 冲突丢弃、孤儿·自指改挂、
+    // 遍历防环）的前提就是「吃的是不可信数据」，入口这一步不能反倒是硬失败。
+    // 语义与导入空树一致：清空当前树，不残留上一个会话的内容。
+    if (!data || !Array.isArray(data.nodes)) {
+      console.warn(
+        '[ai-chat] messageTree.importTree 收到的树数据缺少 nodes 数组，已按空树处理。' +
+          '通常意味着持久化的对话树数据已损坏。',
+      );
+      return;
+    }
     // 根哨兵由 reset() 建立，持久化数据里混入的同 id 节点必须丢弃（exportTree 不会产出，
     // 只可能来自被篡改/损坏的数据）：否则它先覆盖掉哨兵，再在下面的修复分支里被挂到「自己」
     // 名下，根成为自己的子节点 —— 一条本无兄弟版本的顶层消息会凭空长出「1/2」分支切换器。

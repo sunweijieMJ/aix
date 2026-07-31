@@ -33,7 +33,21 @@ function reconcileStatus(m: ChatMessage): ChatMessage {
  * 仅克隆需改动的消息/会话，终态消息与会话保持原引用（最小变更）。
  */
 function reconcileStuckMessages(list: Conversation[]): Conversation[] {
-  return list.map((conv) => {
+  return list.map((rawConv) => {
+    // 树数据损坏（nodes 非数组）：丢弃整棵树、回退到扁平 messages 分支（activeTree 的 getter
+    // 会按 messages 重新迁移出线性树，消息内容不丢）。与下方 messages 非数组的归一同一口径——
+    // 此前这里直接 .map 会抛：同步 defaultConversations 路径炸在 setup 里，异步 storage.load
+    // 路径则被 .catch 吞成「加载失败」，用户看到空列表、之后的变更还会把空列表写回 storage
+    // 覆盖真实历史。属 messageTree.importTree 那条脏数据防线（根 id 冲突 / 孤儿改挂 / 防环）
+    // 在本文件的遗漏补齐。
+    let conv = rawConv;
+    if (rawConv.tree && !Array.isArray(rawConv.tree.nodes)) {
+      console.warn(
+        `[ai-chat] 会话 "${rawConv.id}" 的对话树数据损坏（nodes 非数组），已丢弃该树并回退到扁平 messages。` +
+          '通常意味着持久化数据不完整或已损坏。',
+      );
+      conv = { ...rawConv, tree: undefined };
+    }
     if (conv.tree) {
       // 树模式：树内节点与 messages 镜像反序列化后成两份独立对象，须一并复位卡死状态，
       // 否则仅读 messages 的旧消费方仍会读到停在 updating 的假加载态。
@@ -156,8 +170,12 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
   const applyLoaded = (loaded: Conversation[] | null | undefined) => {
     if (localDirty) return;
     if (!Array.isArray(loaded) || !loaded.length) return; // 无有效数据：维持初始化时已用 defaultConversations 算好的状态
+    // 先归一化、成功后再置位 suppressNextSave：反过来写的话，归一化一旦抛错，标记会停在
+    // true 且列表纹丝不动——它随后会吃掉用户第一次真实变更的保存，直到第二次变更才落盘，
+    // 中间那次静默丢失。
+    const next = reconcileStuckMessages(loaded);
     suppressNextSave = true;
-    conversations.value = reconcileStuckMessages(loaded);
+    conversations.value = next;
     // resolve 后原 activeKey 可能已不在新列表里（或初始为空），回填为第一条
     if (!conversations.value.some((c) => c.id === activeKey.value)) {
       activeKey.value = conversations.value[0]?.id ?? '';
@@ -166,7 +184,10 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
 
   if (storage) {
     isLoading.value = true;
-    Promise.resolve(storage.load())
+    // load() 用 async IIFE 包起来而不是裸 Promise.resolve(storage.load())：契约允许 load 返回
+    // 同步值，同步实现抛错（自定义 storage 里 JSON.parse 损坏数据等）会在 Promise.resolve 之前
+    // 就抛出、绕过下方 .catch 直接炸穿宿主组件的 setup。包一层后同步/异步失败走同一条降级路径。
+    void (async () => storage.load())()
       .then(applyLoaded)
       .catch((err) => {
         console.warn('[ai-chat] 会话列表加载失败:', err);
