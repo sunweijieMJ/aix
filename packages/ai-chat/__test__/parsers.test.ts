@@ -193,3 +193,64 @@ describe('parseChunk — 工具分支', () => {
     expect(r).toMatchObject({ tool: { argsDone: true } });
   });
 });
+
+// 回归：聚合网关会把多路增量合进一帧，同帧的 content / reasoning_content 不得因为
+// "命中 tool_calls" 就被静默丢弃（早退分支曾直接 return 工具事件，正文凭空消失）
+describe('openaiParseChunk — tool_calls 与文本同帧', () => {
+  it('同帧的 content 与 tool_calls 都产出，且文本在工具事件之前', () => {
+    const r = openaiParseChunk(
+      sse(
+        JSON.stringify({
+          choices: [
+            {
+              delta: {
+                content: '正在为你查询…',
+                tool_calls: [{ index: 0, id: 'call_1', function: { name: 'search' } }],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    expect(Array.isArray(r)).toBe(true);
+    expect(r).toEqual([
+      { delta: '正在为你查询…', blockType: 'text' },
+      { tool: { index: 0, toolCallId: 'call_1', toolName: 'search', argsTextDelta: undefined } },
+    ]);
+  });
+
+  it('同帧的 reasoning_content + content + tool_calls 三者齐出，顺序为思考→正文→工具', () => {
+    const r = openaiParseChunk(
+      sse(
+        JSON.stringify({
+          choices: [
+            {
+              delta: {
+                reasoning_content: '先查一下',
+                content: '好的',
+                tool_calls: [{ index: 0, id: 'call_1', function: { name: 'search' } }],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    expect((r as { delta?: string; tool?: unknown }[]).map((e) => e.delta ?? '<tool>')).toEqual([
+      '先查一下',
+      '好的',
+      '<tool>',
+    ]);
+  });
+
+  it('无同帧文本时仍保持单工具事件的单对象返回形态（向后兼容）', () => {
+    const r = openaiParseChunk(
+      sse(
+        JSON.stringify({
+          choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', function: { name: 'f' } }] } }],
+        }),
+      ),
+    );
+    expect(Array.isArray(r)).toBe(false);
+    expect(r).toMatchObject({ tool: { toolCallId: 'c1' } });
+  });
+});

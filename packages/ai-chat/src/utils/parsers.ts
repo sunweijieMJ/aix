@@ -63,8 +63,11 @@ export const flatParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChunk
  * `delta.tool_calls` 归入工具事件通道，`finish_reason:'tool_calls'` 视为参数结束信号。
  * 结束信号 `[DONE]`。
  *
- * 未走 createParseChunk 工厂：工具分支需要在读取文本增量之前短路返回，
- * 工厂的 pickDelta/pickBlockType 组合无法自然表达「命中工具则跳过文本」的优先级，故显式实现。
+ * 同一 chunk 同时携带 `content` / `reasoning_content` / `tool_calls`（聚合网关合帧）时三者
+ * 都保留，按 reasoning → text → tool 的顺序返回数组，由 useChat 侧 toArray 展开。
+ *
+ * 未走 createParseChunk 工厂：一帧可产出多个增量事件，
+ * 工厂的 pickDelta/pickBlockType/pickTool 组合只能表达「单帧单事件」，故显式实现。
  */
 export function openaiParseChunk(chunk: SSEChunk): ParsedChunk | ParsedChunk[] {
   const data = chunk.data;
@@ -105,7 +108,16 @@ export function openaiParseChunk(chunk: SSEChunk): ParsedChunk | ParsedChunk[] {
         argsTextDelta: tc.function?.arguments,
       },
     });
-    return toolCalls.length === 1 ? toEvent(toolCalls[0]!, 0) : toolCalls.map(toEvent);
+    const events: ParsedChunk[] = toolCalls.map(toEvent);
+    // 同帧文本增量不能因为"命中工具"就被丢掉：聚合网关合帧时 content /
+    // reasoning_content 可能与 tool_calls 出现在同一个 chunk 里，早退会静默吃掉这段正文。
+    // 与下方 reasoning_content + content 同帧的处理同一口径（都返回数组由 toArray 展开）。
+    // 文本置于工具事件之前：模型先说话再发起调用，块顺序应与之一致。
+    const d = choice?.delta;
+    if (d?.content) events.unshift({ delta: d.content, blockType: 'text' });
+    if (d?.reasoning_content)
+      events.unshift({ delta: d.reasoning_content, blockType: 'reasoning' });
+    return events.length === 1 ? events[0]! : events;
   }
   // finish_reason 无法精确给出具体 index（可能存在多个并行工具调用）；为保持 parseChunk 纯函数，
   // 简化为固定发 index 0 的 argsDone。多并行工具的收尾建议由后端显式事件驱动，
