@@ -110,3 +110,66 @@ describe('messageTree — 分支', () => {
     expect(t.switchBranch('a', 1)).toBe(false); // findLeaf 向下走 activeChild 同样有环风险
   });
 });
+
+// 回归：持久化数据可能被截断/篡改，出现 parentId 指向不存在节点（或自指）的孤儿。
+// 早期实现只是跳过不挂 childIds —— 节点连同子链从任何路径不可达，且 exportTree 把悬空
+// parentId 原样写回，损坏会一直传染下去。
+describe('messageTree — importTree 脏数据修复', () => {
+  it('父节点缺失的孤儿被改挂到根，内容不丢且导出数据自洽', () => {
+    const t = createMessageTree();
+    t.importTree({
+      nodes: [
+        { id: 'a', parentId: ROOT_ID, message: msg('a', 'user') },
+        { id: 'c', parentId: 'ghost', message: msg('c', 'ai') },
+      ],
+      headId: 'c',
+    });
+    // c 挂到根后自成一条路径；a 仍在树中、可经切分支到达
+    expect(t.activePath.value.map((m) => m.id)).toEqual(['c']);
+    expect(t.getMessage('a')).toBeTruthy();
+    expect(t.getBranches('c')).toEqual({ index: 1, count: 2 });
+    // 导出的数据里不再残留悬空 parentId
+    const dumped = t.exportTree();
+    const ids = new Set([ROOT_ID, ...dumped.nodes.map((n) => n.id)]);
+    expect(dumped.nodes.every((n) => ids.has(n.parentId))).toBe(true);
+  });
+
+  it('自指 parentId 同样归一到根，不产生自环 childIds', () => {
+    const t = createMessageTree();
+    t.importTree({
+      nodes: [{ id: 'a', parentId: 'a', message: msg('a', 'user') }],
+      headId: 'a',
+    });
+    expect(t.activePath.value.map((m) => m.id)).toEqual(['a']);
+    expect(t.parentOf('a')).toBeNull();
+    expect(t.exportTree().nodes[0]!.parentId).toBe(ROOT_ID);
+  });
+
+  it('与根哨兵同 id 的脏节点被丢弃，根不会成为自己的子节点', () => {
+    const t = createMessageTree();
+    t.importTree({
+      nodes: [
+        { id: 'a', parentId: ROOT_ID, message: msg('a', 'user') },
+        // 覆盖掉哨兵后再被「父节点缺失」分支挂到自己名下 → 根进了自己的 childIds，
+        // 于是 a 凭空多出一个兄弟版本，UI 上长出「1/2」分支切换器
+        { id: ROOT_ID, parentId: 'ghost', message: msg('r', 'ai') },
+      ],
+      headId: 'a',
+    });
+    expect(t.activePath.value.map((m) => m.id)).toEqual(['a']);
+    expect(t.getBranches('a')).toBeUndefined();
+    expect(t.exportTree().nodes.map((n) => n.id)).toEqual(['a']);
+  });
+
+  it('结构完好的数据不触发修复，往返后 parentId 原样保留', () => {
+    const t = createMessageTree();
+    t.importTree({
+      nodes: [
+        { id: 'u1', parentId: ROOT_ID, message: msg('u1', 'user') },
+        { id: 'a1', parentId: 'u1', message: msg('a1', 'ai') },
+      ],
+      headId: 'a1',
+    });
+    expect(t.exportTree().nodes.map((n) => n.parentId)).toEqual([ROOT_ID, 'u1']);
+  });
+});
