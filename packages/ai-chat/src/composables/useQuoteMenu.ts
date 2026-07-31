@@ -14,6 +14,7 @@ import type {
   QuoteAnchor,
   ResolvedQuoteAction,
 } from '../types';
+import { devWarn } from '../utils/devWarn';
 import { genQuoteId } from '../utils/helpers';
 import type { ActiveSelection, LongPressTrigger } from './useTextSelection';
 
@@ -92,18 +93,42 @@ export function useQuoteMenu(options: UseQuoteMenuOptions): UseQuoteMenuReturn {
     visible.value = !!a;
   });
 
+  // 未知内置 key 只告警一次（本 computed 会随 locale / actions 变化反复求值，逐次告警会刷屏）
+  const warnedUnknown = new Set<string>();
+
   const resolved = computed<(ResolvedQuoteAction & { _item: QuoteActionKey | QuoteActionItem })[]>(
-    () =>
-      (toValue(options.actions) ?? DEFAULT_ACTIONS).map((it) =>
-        typeof it === 'string'
-          ? {
-              key: it,
-              label: BUILTIN[it].label(t.value),
-              icon: BUILTIN[it].icon,
-              _item: it,
-            }
-          : { key: it.key, label: it.label, icon: it.icon, disabled: it.disabled, _item: it },
-      ),
+    () => {
+      const out: (ResolvedQuoteAction & { _item: QuoteActionKey | QuoteActionItem })[] = [];
+      for (const it of toValue(options.actions) ?? DEFAULT_ACTIONS) {
+        if (typeof it !== 'string') {
+          out.push({
+            key: it.key,
+            label: it.label,
+            icon: it.icon,
+            disabled: it.disabled,
+            _item: it,
+          });
+          continue;
+        }
+        // 必须走 Object.hasOwn 而非直接下标（与 Bubble.rendererOf / ToolUseBlock 同款加固）：
+        // BUILTIN 是对象字面量、继承 Object.prototype，而 actions 可能来自后端配置或 JS 消费方
+        // （TS 侧有 QuoteActionKey 约束，但类型挡不住运行时）。直接下标时未知 key 取到 undefined、
+        // 'toString'/'valueOf' 这类原型链键取到函数，两种都会在 .label(...) 上抛穿整个划词菜单。
+        // 跳过而非抛出，与 BubbleActions 对未知内置 key 的静默降级保持一致。
+        if (!Object.hasOwn(BUILTIN, it)) {
+          if (!warnedUnknown.has(it)) {
+            warnedUnknown.add(it);
+            devWarn(
+              `[ai-chat] quote actions 中的 "${it}" 不是内置动作（仅支持 explain/ask/translate/copy），` +
+                '也不是自定义对象项，已跳过渲染。',
+            );
+          }
+          continue;
+        }
+        out.push({ key: it, label: BUILTIN[it].label(t.value), icon: BUILTIN[it].icon, _item: it });
+      }
+      return out;
+    },
   );
   const items = computed<ResolvedQuoteAction[]>(() =>
     resolved.value.map(({ key, label, icon, disabled }) => ({ key, label, icon, disabled })),

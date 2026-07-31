@@ -186,7 +186,15 @@ const keepMounted = computed<number[]>(() => {
 // 单次解析角色级 props 并合入块渲染器（避免此前 resolveBubbleProps 被调两次 / 角色函数执行两次）。
 // 块渲染器合并优先级：list 级 < role 级（role 更具体）；Bubble 内部再叠加内置默认。
 const resolveBubble = (item: ChatMessage): Partial<BubbleProps> => {
-  const cfg = props.roles?.[item.role];
+  // 必须走 Object.hasOwn 而非直接下标（与 Bubble.rendererOf / ToolUseBlock 按 toolName 路由
+  // 同款加固）：roles 是对象字面量、继承 Object.prototype，而 item.role 的类型
+  // MessageRole 明确开放给任意字符串，来源与 block.type 一样是流数据与持久化的对话树
+  // （localStorage 可被篡改/损坏）。直接下标会让 'toString'/'valueOf'/'hasOwnProperty' 这类
+  // 原型链上的键取到**函数**，于是走进下面的「函数形态角色配置」分支被当配置函数调用——
+  // 轻则把返回值（如 '[object Object]' 字符串）展开成 0/1/2… 下标属性 v-bind 到气泡上，
+  // 重则直接抛错打崩整条消息列表的渲染。
+  const cfg =
+    props.roles && Object.hasOwn(props.roles, item.role) ? props.roles[item.role] : undefined;
   const roleProps = typeof cfg === 'function' ? cfg(item) : (cfg ?? {});
   return {
     ...roleProps,
