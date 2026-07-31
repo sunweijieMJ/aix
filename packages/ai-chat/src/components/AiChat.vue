@@ -65,11 +65,12 @@
           <template v-if="$slots.footer">
             <slot name="footer" :item="item" />
           </template>
+          <!-- 刻意不传 content / source-content：BubbleActions 在点到复制键的那一刻才按
+               message 现算复制文本。此前在这里预先算好，会让流式期间每次重渲染都对全文重扫一遍
+               markdown（有分支版本的消息在流式中也挂着操作条），详见其 resolveCopyText 注释。 -->
           <BubbleActions
             v-else-if="actionsMap.get(item.id) || branchMap.get(item.id)"
             :items="actionsMap.get(item.id) ?? []"
-            :content="stripMarkdownForCopy(messageText(item))"
-            :source-content="messageText(item)"
             :message="item"
             :feedback="(item.extra?.feedback as MessageFeedback | null) ?? null"
             :speaking="speakingId === item.id"
@@ -443,7 +444,6 @@ import type { MarkdownRenderers } from '../utils/markdownWalker';
 import { upsertQuote } from '../utils/quoteDedupe';
 import { highlightRange, highlightElement } from '../utils/quoteHighlight';
 import { flattenQuoteBlocks } from '../utils/quotePrompt';
-import { stripMarkdownForCopy } from '../utils/stripMarkdownForCopy';
 import { findTextRange, offsetsToRange } from '../utils/textRange';
 import BubbleActions from './BubbleActions.vue';
 import BubbleList from './BubbleList.vue';

@@ -272,3 +272,58 @@ describe('内置 continue 操作', () => {
     expect(w.find('button[aria-label="继续生成"]').exists()).toBe(false);
   });
 });
+
+// 回归：复制文本改为点击那一刻才求值（此前由 AiChat 在模板里逐帧预先 strip 全文 markdown，
+// 流式期间对挂着操作条的消息退化成逐帧 O(全文)）
+describe('BubbleActions — 复制文本惰性求值', () => {
+  const mdMessage = {
+    id: 'm1',
+    role: 'ai' as const,
+    content: [{ id: 'b1', type: 'text' as const, text: '## 标题\n这是 **加粗** 文本' }],
+  };
+
+  it('未传 content 时按 message 现算并剥离 markdown', async () => {
+    const w = mount(BubbleActions, { props: { items: ['copy'], message: mdMessage } });
+    await w.find('button').trigger('click');
+    await flushPromises();
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('标题\n这是 加粗 文本');
+    expect(w.emitted('copy')).toHaveLength(1);
+  });
+
+  it('copySource 未传 sourceContent 时复制 message 的原始 markdown', async () => {
+    const w = mount(BubbleActions, { props: { items: ['copySource'], message: mdMessage } });
+    await w.find('button').trigger('click');
+    await flushPromises();
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('## 标题\n这是 **加粗** 文本');
+    expect(w.emitted('copy-source')).toHaveLength(1);
+  });
+
+  it('显式传入的 content 优先于 message 派生值', async () => {
+    const w = mount(BubbleActions, {
+      props: { items: ['copy'], message: mdMessage, content: '业务自定义文本' },
+    });
+    await w.find('button').trigger('click');
+    await flushPromises();
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('业务自定义文本');
+  });
+
+  it('重渲染不重复剥离 markdown（流式期逐帧 O(全文) 的回归护栏）', async () => {
+    let reads = 0;
+    const probed = {
+      ...mdMessage,
+      get content() {
+        reads += 1;
+        return mdMessage.content;
+      },
+    };
+    const w = mount(BubbleActions, { props: { items: ['copy'], message: probed } });
+    // 剥离结果若在渲染期算出，也会作为文本泄漏到 DOM
+    expect(w.html()).not.toContain('加粗');
+    const afterMount = reads;
+    // 流式期间父级会持续重渲染；复制文本不该随之反复重算
+    for (const feedback of ['like', 'dislike', null] as const) {
+      await w.setProps({ feedback });
+    }
+    expect(reads).toBe(afterMount);
+  });
+});

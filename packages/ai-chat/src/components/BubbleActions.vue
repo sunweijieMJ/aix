@@ -155,10 +155,15 @@
 export interface BubbleActionsProps {
   /** 操作项列表：字符串=内置预设（copy/regenerate/feedback/speak），对象=自定义项；默认 ['copy','regenerate'] */
   items?: ActionsItems;
-  /** 'copy' 内置项的复制文本；提供后点击复制自动写入剪贴板并给出「已复制」反馈 */
+  /**
+   * 'copy' 内置项的复制文本；提供后点击复制自动写入剪贴板并给出「已复制」反馈。
+   * 未提供但传了 `message` 时，点击的那一刻按 `stripMarkdownForCopy(messageText(message))` 现算
+   * （复制是低频动作，不值得为它逐帧预先剥离全文 markdown）。
+   */
   content?: string;
   /**
-   * 'copySource' 内置项的复制文本（原始 markdown 源码，未剥离语法符号）；未传时退化用 content。
+   * 'copySource' 内置项的复制文本（原始 markdown 源码，未剥离语法符号）；
+   * 未传时依次退化为 `messageText(message)` → content。
    * 该内置项默认不在 items 里，需消费方显式加入才会渲染（如 `actions: ['copy', 'copySource', 'regenerate']`）。
    */
   sourceContent?: string;
@@ -219,9 +224,11 @@ import type {
   MessageFeedback,
   BranchMeta,
 } from '../types';
+import { messageText } from '../utils/helpers';
+import { stripMarkdownForCopy } from '../utils/stripMarkdownForCopy';
 
+// content 刻意不给默认值：需要区分「未提供」（可回落到 message 现算）与「显式传空串」（不复制）
 const props = withDefaults(defineProps<BubbleActionsProps>(), {
-  content: '',
   items: () => ['copy', 'regenerate'],
 });
 const emit = defineEmits<BubbleActionsEmits>();
@@ -243,14 +250,25 @@ const markCopied = (key: 'copy' | 'copySource') => {
     copiedKey.value = null;
   }, 1500);
 };
+// 复制文本在**点击那一刻**才求值，不由上层逐帧预先算好：AiChat 此前在模板里写
+// `:content="stripMarkdownForCopy(messageText(item))"`，于是每次父级重渲染都要对全文重扫一遍
+// markdown —— 流式期间只要该消息挂着操作条（如它有分支版本，切换器要求 footer 常挂），
+// 就退化成逐帧 O(全文)。显式传入的 content / sourceContent 始终优先，独立使用的既有行为不变。
+const resolveCopyText = (): string =>
+  props.content ?? (props.message ? stripMarkdownForCopy(messageText(props.message)) : '');
+// sourceContent 未传时依次退化：message 原始 markdown → content（后者保留给只传了 content
+// 而未传 message 的独立用法；message 传了但取不出文本，如整条只有工具块时也走这条退化）
+const resolveSourceText = (): string =>
+  props.sourceContent ?? ((props.message && messageText(props.message)) || props.content || '');
+
 const onCopy = async () => {
-  if (props.content && !(await copyText(props.content))) return;
+  const text = resolveCopyText();
+  if (text && !(await copyText(text))) return;
   markCopied('copy');
   emit('copy');
 };
-// sourceContent 未传时退化用 content：独立使用 BubbleActions（未走 AiChat 接线）时仍有兜底行为
 const onCopySource = async () => {
-  const text = props.sourceContent ?? props.content;
+  const text = resolveSourceText();
   if (text && !(await copyText(text))) return;
   markCopied('copySource');
   emit('copy-source');
