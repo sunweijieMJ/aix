@@ -100,6 +100,7 @@ import type {
   BlockIntentHandler,
   ConfirmField,
 } from '../../types';
+import { devWarn } from '../../utils/devWarn';
 
 // 注册表统一向渲染器透传 block/info/typing/onBlockAction/onBlockIntent；关闭属性继承避免多余 attr 落到根元素。
 defineOptions({ inheritAttrs: false });
@@ -228,7 +229,7 @@ watchEffect(() => {
     .filter((name) => (seen.has(name) ? true : (seen.add(name), false)));
   if (!duplicated.length) return;
   warnedDuplicate = true;
-  console.warn(
+  devWarn(
     `[ai-chat] user_confirm 块（formId="${props.block.formId}"）存在重名字段：${[
       ...new Set(duplicated),
     ].join('、')}。field.name 需在同一张卡内唯一，否则选项分组与答案回写都会错乱。`,

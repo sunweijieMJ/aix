@@ -428,6 +428,7 @@ import type {
   SuggestionItem,
   OutlineOptions,
 } from '../types';
+import { devWarn } from '../utils/devWarn';
 import {
   BUBBLE_CONTENT_SELECTOR,
   messageText,
@@ -597,7 +598,7 @@ watch(
   () => {
     if (warnedStaticMdConfig) return;
     warnedStaticMdConfig = true;
-    console.warn(
+    devWarn(
       '[ai-chat] markdownRenderers / allowHtml / mdPlugins 为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
     );
   },
@@ -618,7 +619,7 @@ watch(
   () => {
     if (warnedStaticChatConfig) return;
     warnedStaticChatConfig = true;
-    console.warn(
+    devWarn(
       '[ai-chat] streamMode / retryTimes / retryInterval / streamTimeout / continuePrompt（以及 request / parseChunk / parser）为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
     );
   },

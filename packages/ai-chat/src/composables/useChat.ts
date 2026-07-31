@@ -8,6 +8,7 @@ import type {
   BranchMeta,
   ExportedTree,
 } from '../types';
+import { devWarn } from '../utils/devWarn';
 import { genMsgId, genBlockId, normalizeSuggestions } from '../utils/helpers';
 import { flatParseChunk } from '../utils/parsers';
 import { applyToolEvent, toArray, type ToolReduceCtx } from '../utils/toolBlocks';
@@ -205,7 +206,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   // 是静默死流——默认 flatParseChunk 对行字符串取 .data 恒 undefined → 每行空增量 →
   // 空内容 success，全程无报错，是最难排查的配置错误形态。
   if (streamMode === 'line' && !options.parseChunk) {
-    console.warn(
+    devWarn(
       '[ai-chat] streamMode="line" 未提供 parseChunk：默认解析器只识别 SSE 事件，' +
         '行字符串将被全部丢弃（回复恒为空）。请传入 parseChunk，如 (line) => ({ delta: line })。',
     );
@@ -293,7 +294,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       return true;
     }
     // 开发期提示：messageId/blockId 未命中，便于业务方排查误传的 id（与未注册渲染器告警同风格）
-    console.warn(
+    devWarn(
       `[ai-chat] updateBlock 未找到目标块（messageId="${messageId}", blockId="${blockId}"），本次更新被忽略。`,
     );
     return false;
@@ -453,7 +454,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                   appendDelta(aiMsg, blockType, delta);
                 } else if (!warnedBadBlockType) {
                   warnedBadBlockType = true;
-                  console.warn(
+                  devWarn(
                     `[ai-chat] parseChunk 返回了携带 delta 的非法 blockType "${blockType}"（仅支持 'text' | 'reasoning'），该增量已被丢弃。如需流式非文本块请改用 block 字段。`,
                   );
                 }

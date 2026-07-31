@@ -254,6 +254,7 @@ import type {
   VoiceConfig,
 } from '../types';
 import { getCaretRect } from '../utils/caretRect';
+import { devWarn } from '../utils/devWarn';
 import AttachmentsPanel from './AttachmentsPanel.vue';
 import TriggerMenu from './TriggerMenu.vue';
 
@@ -278,7 +279,7 @@ const triggers = (() => {
   const seen = new Set<string>();
   for (const tc of props.triggers) {
     if (seen.has(tc.char)) {
-      console.warn(`[ai-chat] Sender triggers 触发字符 "${tc.char}" 重复，后者将覆盖前者`);
+      devWarn(`[ai-chat] Sender triggers 触发字符 "${tc.char}" 重复，后者将覆盖前者`);
       break; // 只 warn 一次
     }
     seen.add(tc.char);
@@ -672,7 +673,7 @@ watch(
       if (typeof item === 'string' && item !== 'attach' && item !== 'voice' && item !== 'spacer') {
         if (!warnedInvalidToolbarItems.has(item)) {
           warnedInvalidToolbarItems.add(item);
-          console.warn(
+          devWarn(
             `[ai-chat] Sender toolbarItems 中的 "${item}" 不是有效内置项（仅支持 'attach'/'voice'/'spacer'），也不是对象项，已跳过渲染`,
           );
         }
