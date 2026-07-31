@@ -51,4 +51,18 @@ export type {
 } from './useTextSelection';
 export { useQuoteMenu, QUOTE_LOCATE_KEY } from './useQuoteMenu';
 export type { UseQuoteMenuOptions, UseQuoteMenuReturn } from './useQuoteMenu';
+// 划词三层的编排层（AiChat 用的就是它）：自建对话外壳时可直接复用整套接线，
+// 不必从 useTextSelection / useQuoteMenu 重新拼
+export { useQuoteBinding } from './useQuoteBinding';
+export type {
+  UseQuoteBindingOptions,
+  UseQuoteBindingReturn,
+  ResolvedQuoteConfig,
+} from './useQuoteBinding';
+export { useSuggestions } from './useSuggestions';
+export type {
+  SuggestionsConfig,
+  UseSuggestionsOptions,
+  UseSuggestionsReturn,
+} from './useSuggestions';
 export { usePlatform } from './usePlatform';

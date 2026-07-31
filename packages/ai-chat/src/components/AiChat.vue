@@ -379,17 +379,8 @@ export interface AiChatEmits {
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useControllable, useLocale, copyText } from '@aix/hooks';
-import {
-  computed,
-  ref,
-  shallowRef,
-  toRaw,
-  watch,
-  useSlots,
-  getCurrentInstance,
-  provide,
-} from 'vue';
+import { useNamespace, useControllable, useLocale } from '@aix/hooks';
+import { computed, ref, toRaw, watch, useSlots, getCurrentInstance } from 'vue';
 import { ROOT_ID } from '../composables/messageTree';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
@@ -403,9 +394,9 @@ import {
   defaultOutlineToLabel,
 } from '../composables/useMessageOutline';
 import type { OutlineEntry } from '../composables/useMessageOutline';
-import { useQuoteMenu, QUOTE_LOCATE_KEY } from '../composables/useQuoteMenu';
+import { useQuoteBinding } from '../composables/useQuoteBinding';
 import { useSpeech } from '../composables/useSpeech';
-import { useTextSelection } from '../composables/useTextSelection';
+import { useSuggestions } from '../composables/useSuggestions';
 import { useVisibleMessage } from '../composables/useVisibleMessage';
 import { locale } from '../locale';
 import type {
@@ -422,8 +413,6 @@ import type {
   SpeechConfig,
   SubBubbleMeta,
   ExportedTree,
-  Quote,
-  QuoteAnchor,
   QuoteConfig,
   TriggerConfig,
   SubmitMeta,
@@ -431,20 +420,9 @@ import type {
   OutlineOptions,
 } from '../types';
 import { devWarn } from '../utils/devWarn';
-import {
-  BUBBLE_CONTENT_SELECTOR,
-  messageText,
-  attachmentBlock,
-  textBlock,
-  quoteBlock,
-  genQuoteId,
-  normalizeSuggestions,
-} from '../utils/helpers';
+import { messageText, attachmentBlock, textBlock, quoteBlock } from '../utils/helpers';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
-import { upsertQuote } from '../utils/quoteDedupe';
-import { highlightRange, highlightElement } from '../utils/quoteHighlight';
 import { flattenQuoteBlocks } from '../utils/quotePrompt';
-import { findTextRange, offsetsToRange } from '../utils/textRange';
 import BubbleActions from './BubbleActions.vue';
 import BubbleList from './BubbleList.vue';
 import MessageOutline from './MessageOutline.vue';
@@ -666,79 +644,31 @@ const {
 });
 
 // ============ 追问建议（spec §5.2）============
-const resolvedSuggestions = computed(() => {
-  const s = props.suggestions;
-  if (!s) return null;
-  return { fillOnly: false, max: 5, ...(s === true ? {} : s) };
-});
-// 通道①临时建议（不持久化，发送即清）
-const tempSuggestions = shallowRef<SuggestionItem[] | null>(null);
-/**
- * 命令式立即展示临时建议（通道①，优先于通道②）。
- * 传空数组时置 null，语义为「归位到通道②」（显示最后一条 AI 消息自带的建议，若有）。
- */
-const setSuggestions = (items: Array<string | SuggestionItem>) => {
-  tempSuggestions.value = items.length ? normalizeSuggestions(items) : null;
-};
-// 任何新流开始（发送/重生成/编辑重发/续流）即清通道①临时建议，与「发送即清」同语义；
-// 覆盖 onReload/onEdit/resume 等不经 onSend 包装的新流起点。onSend 里既有的清理保留（防御性双保险）。
-watch(isLoading, (v) => {
-  if (v) tempSuggestions.value = null;
-});
-// 通道②宿主：最后一条 AI 消息（用 useChat 原始 messages，不经 parser 映射）
-const lastAiMessage = computed(() => {
-  const list = messages.value;
-  for (let i = list.length - 1; i >= 0; i--) {
-    const item = list[i];
-    if (item?.role === 'ai') return item;
-  }
-  return null;
-});
-const visibleSuggestions = computed(() => {
-  const cfg = resolvedSuggestions.value;
-  if (!cfg || isLoading.value) return [];
-  const list = tempSuggestions.value ?? lastAiMessage.value?.suggestions ?? [];
-  return list.slice(0, cfg.max);
-});
-const onSuggestionSelect = (item: SuggestionItem) => {
-  emit('suggestion-select', item);
-  const cfg = resolvedSuggestions.value;
-  if (cfg?.fillOnly) {
-    senderRef.value?.setValue(item.text);
+// 双通道状态机在 useSuggestions 内；此处只做接线（配置来源、消息来源、回填/发送出口）。
+// 通道②读 useChat 的原始 messages 而非 parsedMessages：1→N 拆分时末气泡未必带 suggestions。
+const {
+  visible: visibleSuggestions,
+  setSuggestions,
+  clearTemp: clearTempSuggestions,
+  select: onSuggestionSelect,
+} = useSuggestions({
+  config: () => props.suggestions,
+  messages,
+  isLoading,
+  fill: (text) => {
+    senderRef.value?.setValue(text);
     senderRef.value?.focus();
-  } else {
-    onSend(item.text); // 复用内部发送路径（quote/附件打包、send 事件、发送即清除）
-  }
-};
+  },
+  // 复用内部发送路径（quote/附件打包、send 事件、发送即清除）；
+  // 包一层箭头而非直接传引用：onSend 定义在下方，此处仍处于 TDZ。
+  send: (text) => onSend(text),
+  onSelect: (item) => emit('suggestion-select', item),
+});
 
 // ==================== 划词引用 / 追问 ====================
 
-// 待发引用（唯一归属 AiChat：它 own input model + senderRef；L2 经注入的 insertQuote 写入）
-const pendingQuotes = ref<Quote[]>([]);
-// 锚点去重 + 意图更新（见 utils/quoteDedupe）：同一段文字反复引用只保留一条 chip
-const insertQuote = (q: Quote) => {
-  pendingQuotes.value = upsertQuote(pendingQuotes.value, q);
-};
-const removeQuote = (id: string) => {
-  pendingQuotes.value = pendingQuotes.value.filter((q) => q.id !== id);
-};
-
-// chip 折叠：超过 maxVisibleChips 收起为「+N」，点击展开；数量回落到阈值内（含发送后清空）自动复位
-const chipsExpanded = ref(false);
-const hiddenChipCount = computed(() =>
-  Math.max(0, pendingQuotes.value.length - resolvedQuote.value.maxVisibleChips),
-);
-const visibleQuotes = computed(() => {
-  const max = resolvedQuote.value.maxVisibleChips;
-  return chipsExpanded.value || pendingQuotes.value.length <= max
-    ? pendingQuotes.value
-    : pendingQuotes.value.slice(0, max);
-});
-watch(pendingQuotes, (list) => {
-  if (list.length <= resolvedQuote.value.maxVisibleChips) chipsExpanded.value = false;
-});
-
 const bubbleListRef = ref<InstanceType<typeof BubbleList> | null>(null);
+// 消息列表滚动容器：划词检测根 / 回链高亮宿主 / 大纲可视区观测 root 三处共用
 const quoteRoot = computed(() => bubbleListRef.value?.scrollElement?.() ?? null);
 
 // ── 对话大纲：条目派生（纯计算）+ 可视区观测（DOM）分离，AiChat 只做接线 ──
@@ -775,92 +705,29 @@ const onOutlineSelect = async (entry: OutlineEntry) => {
   }
 };
 
-// L1：检测（BubbleList 渲染后 quoteRoot 才非空，watch immediate 装配在 useTextSelection 内部处理）
+// 划词引用 / 追问的整套接线（L1 检测 → L2 菜单 → chip 暂存 → 回链高亮）在 useQuoteBinding 内；
+// AiChat 只提供它需要的宿主能力：滚动容器、滚动定位、消息查询、输入框写入 / 聚焦。
 const {
+  pendingQuotes,
+  visibleQuotes,
+  hiddenChipCount,
+  chipsExpanded,
+  removeQuote,
+  clearQuotes,
+  locateAnchor,
+  quoteMessage: onQuoteMessage,
+  menu: quoteMenu,
   active,
   trigger,
-  clear: clearSelection,
-} = useTextSelection({
+} = useQuoteBinding({
+  config: resolvedQuote,
   root: quoteRoot,
-  enabled: () => resolvedQuote.value.enable,
-  longPressDelay: resolvedQuote.value.longPressDelay,
-  contextChars: 32,
-  keyboard: resolvedQuote.value.keyboard,
-  roles: () => resolvedQuote.value.roles ?? ['ai'],
-  excludeSelector: resolvedQuote.value.excludeSelector,
-});
-
-// 回链：滚到消息 → 等挂载 → 块内文本搜索还原 Range 高亮（主路径），偏移快路径兜底，
-// 整条引用/未命中 → 整气泡高亮降级（见设计 §6）
-const locateAnchor = async (anchor: QuoteAnchor) => {
-  const el = await bubbleListRef.value?.scrollToBubble(anchor.source.messageId, { smooth: true });
-  if (!el) return; // 派生 id 不在当前分支等 → 优雅降级不高亮
-  const isWhole = anchor.start == null && !anchor.source.blockId;
-  if (isWhole) {
-    highlightElement(el);
-    return;
-  }
-  const host =
-    (anchor.source.blockId &&
-      el.querySelector<HTMLElement>(
-        `[data-aix-block-id="${CSS.escape(anchor.source.blockId)}"]`,
-      )) ||
-    el.querySelector<HTMLElement>(BUBBLE_CONTENT_SELECTOR) ||
-    el;
-  const range =
-    findTextRange(host, anchor.exact, anchor.prefix, anchor.suffix) ??
-    (anchor.start != null && anchor.end != null
-      ? offsetsToRange(host, anchor.start, anchor.end)
-      : null);
-  if (range) highlightRange(range);
-  else highlightElement(el);
-};
-
-// L2：控制器（依赖注入，见 useQuoteMenu 契约）
-const quoteMenu = useQuoteMenu({
-  selection: active,
-  trigger,
-  actions: () => resolvedQuote.value.actions,
-  insertQuote,
-  setSenderValue: (text) => senderRef.value?.setValue(text),
-  focusSender: () => {
-    senderRef.value?.focus();
-    // 选区保全由 QuoteToolbar 的 mousedown.prevent 覆盖菜单交互期间；动作完成聚焦输入框时
-    // 应让选区自然清除，否则 preserve() 触发 selectionchange 会导致菜单重弹（且造成选区高亮残留）
-  },
-  copy: copyText,
-  onLocate: locateAnchor,
+  scrollToBubble: (id) =>
+    bubbleListRef.value?.scrollToBubble(id, { smooth: true }) ?? Promise.resolve(null),
   messageFor: (id) => parsedMessages.value.find((m) => m.id === id),
+  setSenderValue: (text) => senderRef.value?.setValue(text),
+  focusSender: () => senderRef.value?.focus(),
 });
-
-// 菜单关闭时同步清 L1 目标（下次交互重新产出）；滚动即关闭（virtua 回收锚点会失效）
-watch(quoteMenu.visible, (v) => {
-  if (!v) clearSelection();
-});
-// 仅在划词开启时装配：clearSelection 会 removeAllRanges 清掉浏览器原生选区，
-// 无守卫时未启用 quote 的消费方「选中文本 → 滚动 → 复制」也会被误清
-watch(
-  [quoteRoot, () => resolvedQuote.value.enable],
-  ([el, enable], _old, onCleanup) => {
-    if (!el || !enable) return;
-    const onScroll = () => clearSelection();
-    el.addEventListener('scroll', onScroll, { passive: true });
-    onCleanup(() => el.removeEventListener('scroll', onScroll));
-  },
-  { immediate: true },
-);
-
-// PC 操作栏整条引用：与移动长按整条走完全同一条 L2 出口（insertQuote → chip → focus）
-const onQuoteMessage = (item: ChatMessage) => {
-  insertQuote({
-    id: genQuoteId(),
-    anchor: { source: { messageId: item.id, role: item.role }, exact: messageText(item) },
-  });
-  senderRef.value?.focus();
-};
-
-// 历史 quote 块 / chip 的回链通道（QuoteBlock inject 消费）
-provide(QUOTE_LOCATE_KEY, (q: Quote) => locateAnchor(q.anchor));
 
 // 包一层：对外抛 send 事件后再委托 useChat；pendingQuotes 打包成一等 quote 块前置进 content
 // （单源真源，无 extra.quotes；见设计 §2.1），发送即清空
@@ -872,7 +739,7 @@ const onSend = (text: string, attachments?: AttachmentItem[], meta?: SubmitMeta)
   // 同一原则。Sender 内部路径本就有 doSubmit 守卫，不受影响。
   if (isLoading.value) return;
   const quotes = pendingQuotes.value;
-  tempSuggestions.value = null; // 发送即清除通道①临时建议（含点击建议本身）
+  clearTempSuggestions(); // 发送即清除通道①临时建议（含点击建议本身）
   // meta 存在才携带第三参：无 meta 时保持旧签名（一/两参）完全兼容
   if (meta) emit('send', text, attachments?.length ? attachments : undefined, meta);
   else if (attachments?.length) emit('send', text, attachments);
@@ -883,7 +750,7 @@ const onSend = (text: string, attachments?: AttachmentItem[], meta?: SubmitMeta)
     ...(attachments?.length ? [attachmentBlock(attachments)] : []),
     ...(text ? [textBlock(text)] : []),
   ];
-  pendingQuotes.value = [];
+  clearQuotes();
   return sendMessage(blocks);
 };
 
@@ -919,7 +786,7 @@ watch(messagesModel, (v) => {
     // 避免旧流继续 mutate 已脱离的旧对象、isLoading 紊乱。
     if (isLoading.value) abort();
     setMessages(v);
-    tempSuggestions.value = null; // 切会话：旧会话的通道①临时建议不得跨会话残留显示
+    clearTempSuggestions(); // 切会话：旧会话的通道①临时建议不得跨会话残留显示
   }
 });
 
@@ -958,7 +825,7 @@ watch(treeModel, (v) => {
   if (next.headId !== cur.headId || next.nodes.length !== cur.nodes.length) {
     if (isLoading.value) abort();
     importTree(next);
-    tempSuggestions.value = null; // 切会话：旧会话的通道①临时建议不得跨会话残留显示
+    clearTempSuggestions(); // 切会话：旧会话的通道①临时建议不得跨会话残留显示
   }
 });
 
@@ -1122,7 +989,7 @@ defineExpose({
   // 包一层：外部经 ref 直设消息（如切会话）不经 v-model watch / isLoading 上升沿，
   // 须在此同步清掉通道①临时建议，防旧会话建议跨会话残留
   setMessages: (m: ChatMessage[]) => {
-    tempSuggestions.value = null;
+    clearTempSuggestions();
     setMessages(m);
   },
   updateBlock,
