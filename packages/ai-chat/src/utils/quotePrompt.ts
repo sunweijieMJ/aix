@@ -27,9 +27,7 @@ export const defaultQuoteToPrompt = (quotes: Quote[]): string =>
 
 /** 遍历 content 取出全部结构化引用（业务在自定义 request 里自行拼装时用） */
 export const getQuotes = (message: ChatMessage): Quote[] =>
-  message.content
-    .filter((b): b is QuoteBlock => b.type === 'quote')
-    .flatMap((b) => b.quotes);
+  message.content.filter((b): b is QuoteBlock => b.type === 'quote').flatMap((b) => b.quotes);
 
 /**
  * 请求期把 quote 块拍平成 text 块（LLM 可见），存储/渲染层保持结构化。

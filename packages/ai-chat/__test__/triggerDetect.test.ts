@@ -26,7 +26,11 @@ describe('detectTrigger', () => {
   });
 
   it('/ 仅行首触发：前面全空白可触发', () => {
-    expect(detectTrigger('  /tr', 5, [slash])).toMatchObject({ char: '/', startIndex: 2, query: 'tr' });
+    expect(detectTrigger('  /tr', 5, [slash])).toMatchObject({
+      char: '/',
+      startIndex: 2,
+      query: 'tr',
+    });
   });
 
   it('/ 正文中不触发（路径/分数不误弹）', () => {

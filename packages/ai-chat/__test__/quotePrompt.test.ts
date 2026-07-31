@@ -46,7 +46,11 @@ describe('defaultQuoteToPrompt', () => {
   it('anchor 含 rawText 时优先用原文拼装（保留换行）', () => {
     const quote: Quote = {
       id: 'q-raw',
-      anchor: { source: { messageId: 'm1' }, exact: 'const a = 1; const b = 2;', rawText: 'const a = 1;\nconst b = 2;' },
+      anchor: {
+        source: { messageId: 'm1' },
+        exact: 'const a = 1; const b = 2;',
+        rawText: 'const a = 1;\nconst b = 2;',
+      },
     };
     expect(defaultQuoteToPrompt([quote])).toBe('> const a = 1;\n> const b = 2;');
   });
@@ -77,7 +81,11 @@ describe('flattenQuoteBlocks', () => {
   });
 
   it('无 quote 块的消息返回原引用（零开销直通）', () => {
-    const plain: ChatMessage = { id: 'a1', role: 'ai', content: [{ id: 't', type: 'text', text: 'hi' }] };
+    const plain: ChatMessage = {
+      id: 'a1',
+      role: 'ai',
+      content: [{ id: 't', type: 'text', text: 'hi' }],
+    };
     expect(flattenQuoteBlocks([plain])[0]).toBe(plain);
   });
 

@@ -33,9 +33,8 @@ describe('normalizeSuggestions', () => {
 
 describe('useChat suggestions 通道', () => {
   it('parseChunk 返回 suggestions：收到即写入该条 AI 消息', async () => {
-    const request = vi.fn(
-      async () =>
-        sseFrames([{ delta: '你好' }, { suggestions: ['追问1', '追问2'], done: true }]),
+    const request = vi.fn(async () =>
+      sseFrames([{ delta: '你好' }, { suggestions: ['追问1', '追问2'], done: true }]),
     );
     const { messages, onSend } = useChat({ request, parseChunk: passthroughParseChunk });
     await onSend('hi');
@@ -45,8 +44,8 @@ describe('useChat suggestions 通道', () => {
   });
 
   it('多次下发整体覆盖（后到覆盖先到）', async () => {
-    const request = vi.fn(
-      async () => sseFrames([{ suggestions: ['旧'] }, { suggestions: ['新'], done: true }]),
+    const request = vi.fn(async () =>
+      sseFrames([{ suggestions: ['旧'] }, { suggestions: ['新'], done: true }]),
     );
     const { messages, onSend } = useChat({ request, parseChunk: passthroughParseChunk });
     await onSend('hi');
@@ -55,8 +54,8 @@ describe('useChat suggestions 通道', () => {
   });
 
   it('exportTree 序列化包含 suggestions（持久化还原）', async () => {
-    const request = vi.fn(
-      async () => sseFrames([{ delta: 'ok' }, { suggestions: ['追问A'], done: true }]),
+    const request = vi.fn(async () =>
+      sseFrames([{ delta: 'ok' }, { suggestions: ['追问A'], done: true }]),
     );
     const { onSend, exportTree } = useChat({ request, parseChunk: passthroughParseChunk });
     await onSend('hi');

@@ -9,10 +9,7 @@ import {
 describe('mergeLineRects', () => {
   it('同一行的多个矩形合并为 1 个联合矩形', () => {
     // 两个矩形垂直重叠远超过较小高度的 50%，视为同一行
-    const rects = [
-      new DOMRect(0, 0, 50, 20),
-      new DOMRect(50, 2, 40, 18),
-    ] as DOMRect[];
+    const rects = [new DOMRect(0, 0, 50, 20), new DOMRect(50, 2, 40, 18)] as DOMRect[];
     const merged = mergeLineRects(rects);
     expect(merged).toHaveLength(1);
     expect(merged[0]).toMatchObject({ left: 0, top: 0, right: 90, bottom: 20 });
@@ -25,7 +22,11 @@ describe('mergeLineRects', () => {
   });
 
   it('零宽高矩形被过滤', () => {
-    const rects = [new DOMRect(0, 0, 0, 20), new DOMRect(0, 0, 20, 0), new DOMRect(0, 0, 30, 20)] as DOMRect[];
+    const rects = [
+      new DOMRect(0, 0, 0, 20),
+      new DOMRect(0, 0, 20, 0),
+      new DOMRect(0, 0, 30, 20),
+    ] as DOMRect[];
     const merged = mergeLineRects(rects);
     expect(merged).toHaveLength(1);
   });
@@ -41,7 +42,8 @@ describe('clearQuoteHighlights', () => {
   });
 
   it('移除所有 .aix-quote-highlight 节点', () => {
-    document.body.innerHTML = '<div class="aix-quote-highlight"></div><div class="aix-quote-highlight"></div>';
+    document.body.innerHTML =
+      '<div class="aix-quote-highlight"></div><div class="aix-quote-highlight"></div>';
     expect(document.querySelectorAll('.aix-quote-highlight')).toHaveLength(2);
     clearQuoteHighlights();
     expect(document.querySelectorAll('.aix-quote-highlight')).toHaveLength(0);

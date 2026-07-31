@@ -108,9 +108,7 @@ describe('Sender 触发菜单', () => {
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await nextTick();
     expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('');
-    expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ trigger: '/', query: '清' }),
-    );
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ trigger: '/', query: '清' }));
     w.unmount();
   });
 
@@ -138,7 +136,9 @@ describe('Sender 触发菜单', () => {
     const fn = vi
       .fn()
       .mockImplementationOnce(() => Promise.resolve([{ value: 'a', label: 'Alice' }]))
-      .mockImplementationOnce(() => new Promise<{ value: string; label: string }[]>((r) => (resolveB = r)));
+      .mockImplementationOnce(
+        () => new Promise<{ value: string; label: string }[]>((r) => (resolveB = r)),
+      );
     const w = mount(Sender, {
       props: { triggers: [{ char: '@', items: fn }] },
       attachTo: document.body,

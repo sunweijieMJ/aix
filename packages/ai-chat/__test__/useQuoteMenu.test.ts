@@ -7,7 +7,12 @@ import type { Quote, QuoteActionContext } from '../src/types';
 
 const makeActive = (over: Partial<ActiveSelection> = {}): ActiveSelection => ({
   text: '选中文本',
-  anchor: { source: { messageId: 'ai-1', blockId: 'b1', role: 'ai' }, exact: '选中文本', start: 0, end: 4 },
+  anchor: {
+    source: { messageId: 'ai-1', blockId: 'b1', role: 'ai' },
+    exact: '选中文本',
+    start: 0,
+    end: 4,
+  },
   getRect: () => new DOMRect(0, 0, 10, 10),
   getClientRects: () => [],
   contextElement: document.createElement('div'),

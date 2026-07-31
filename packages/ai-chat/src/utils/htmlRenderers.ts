@@ -76,7 +76,10 @@ const HtmlSandboxBlock = defineComponent({
       if (!data || data.type !== RESIZE_MESSAGE_TYPE || data.id !== instanceId) return;
       const height = Number(data.height);
       if (Number.isFinite(height) && height > 0) {
-        frameHeight.value = Math.min(MAX_FRAME_HEIGHT, Math.max(MIN_FRAME_HEIGHT, Math.ceil(height)));
+        frameHeight.value = Math.min(
+          MAX_FRAME_HEIGHT,
+          Math.max(MIN_FRAME_HEIGHT, Math.ceil(height)),
+        );
       }
     };
     onMounted(() => window.addEventListener('message', onMessage));
