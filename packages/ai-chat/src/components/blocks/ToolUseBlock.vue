@@ -6,6 +6,7 @@
     :info="info"
     :typing="typing"
     :on-block-action="onBlockAction"
+    :on-block-intent="onBlockIntent"
   />
   <div v-else :class="ns.b()">
     <button type="button" :class="ns.e('header')" @click="expanded = !expanded">
@@ -40,6 +41,14 @@ export interface ToolUseBlockProps {
   typing?: boolean;
   /** 交互动作回调（注册表统一透传，转发给命中的自定义渲染器） */
   onBlockAction?: BlockActionHandler;
+  /**
+   * 块意图回调（注册表统一透传，转发给命中的自定义渲染器）。
+   * 必须显式声明为 prop：本组件 inheritAttrs:false，未声明会让 Bubble 传下来的
+   * on-block-intent 落进 attrs 被丢弃，自定义工具渲染器便拿不到 intent 通道——
+   * 工具审批（state='awaiting-approval'）这类「改数据走 action、点提交走 intent」的场景
+   * 因此走不通（与 UserConfirmBlock 的双通道保持同构）。
+   */
+  onBlockIntent?: BlockIntentHandler;
   /** 按 toolName 路由到自定义渲染器；命中则整块委托，未命中落到默认可折叠卡片 */
   toolRenderers?: BlockRenderers;
 }
@@ -53,6 +62,7 @@ import type {
   ContentBlock,
   BubbleContentInfo,
   BlockActionHandler,
+  BlockIntentHandler,
   BlockRenderers,
 } from '../../types';
 import LoadingDots from '../LoadingDots.vue';

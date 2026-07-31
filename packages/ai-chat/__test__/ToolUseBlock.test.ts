@@ -1,8 +1,8 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect } from 'vitest';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, markRaw } from 'vue';
 import ToolUseBlock from '../src/components/blocks/ToolUseBlock.vue';
-import type { ContentBlock } from '../src/types';
+import type { BlockAction, BlockIntent, ContentBlock } from '../src/types';
 
 type ToolUseContentBlock = Extract<ContentBlock, { type: 'tool_use' }>;
 
@@ -83,5 +83,76 @@ describe('ToolUseBlock', () => {
       },
     });
     expect(w.find('.aix-loading-dots').exists()).toBe(false);
+  });
+
+  // 回归：Bubble 对所有注册渲染器都传 on-block-intent，但 ToolUseBlock 此前既未声明该 prop
+  // （inheritAttrs:false 下落进 attrs 被丢弃）、也未转发给 delegate，导致 toolRenderers 注册的
+  // 组件是唯一拿不到 intent 通道的渲染器类型——工具审批（ToolUseState.'awaiting-approval'）
+  // 这类「改数据走 action、点提交走 intent」的场景因此走不通。
+  it('委托自定义渲染器时透传 onBlockIntent，意图可上抛', async () => {
+    const Custom = defineComponent({
+      props: {
+        block: { type: Object, required: true },
+        onBlockIntent: { type: Function, default: undefined },
+      },
+      setup: (p) => () =>
+        h(
+          'button',
+          {
+            class: 'approve',
+            onClick: () =>
+              (p.onBlockIntent as ((i: BlockIntent) => void) | undefined)?.({
+                blockId: (p.block as ToolUseContentBlock).id,
+                type: 'approve',
+              }),
+          },
+          'approve',
+        ),
+    });
+    const intents: BlockIntent[] = [];
+    const w = mount(ToolUseBlock, {
+      props: {
+        block: block({ state: 'awaiting-approval' }),
+        info: { role: 'ai', key: 'ai1' },
+        toolRenderers: { search: markRaw(Custom) },
+        onBlockIntent: (i: BlockIntent) => intents.push(i),
+      },
+    });
+    await w.find('.approve').trigger('click');
+    expect(intents).toEqual([{ blockId: 'b1', type: 'approve' }]);
+  });
+
+  it('委托自定义渲染器时透传 onBlockAction，数据补丁可上抛', async () => {
+    const Custom = defineComponent({
+      props: {
+        block: { type: Object, required: true },
+        onBlockAction: { type: Function, default: undefined },
+      },
+      setup: (p) => () =>
+        h(
+          'button',
+          {
+            class: 'answer',
+            onClick: () =>
+              (p.onBlockAction as ((a: BlockAction) => void) | undefined)?.({
+                blockId: (p.block as ToolUseContentBlock).id,
+                type: 'answer',
+                patch: { output: 'B' },
+              }),
+          },
+          'answer',
+        ),
+    });
+    const actions: BlockAction[] = [];
+    const w = mount(ToolUseBlock, {
+      props: {
+        block: block({}),
+        info: { role: 'ai', key: 'ai1' },
+        toolRenderers: { search: markRaw(Custom) },
+        onBlockAction: (a: BlockAction) => actions.push(a),
+      },
+    });
+    await w.find('.answer').trigger('click');
+    expect(actions).toEqual([{ blockId: 'b1', type: 'answer', patch: { output: 'B' } }]);
   });
 });

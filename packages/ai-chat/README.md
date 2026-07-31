@@ -302,7 +302,10 @@ const toolRenderers = { generate_quiz: markRaw(QuizCard) };
 </template>
 ```
 
-自定义渲染器拿到完整 `tool_use` 块（`input`/`output`/`state`）+ `info` + `onBlockAction`，学生作答等交互经 `onBlockAction({ blockId, type, patch })` 回写——与既有交互块同一套管线（`AiChat` 内部先 `updateBlock` 命中才向上 emit `block-action`）。
+自定义渲染器拿到完整 `tool_use` 块（`input`/`output`/`state`）+ `info` + `onBlockAction` + `onBlockIntent`，与内置块渲染器的契约完全一致（见「块交互的两条通道」）：
+
+- 学生作答等**改自己数据**的交互经 `onBlockAction({ blockId, type, patch })` 回写——`AiChat` 内部先 `updateBlock` 命中才向上 emit `block-action`；
+- **需要宿主处置**的交互（工具审批放行、点提交后带 `Last-Event-ID` 续流等）经 `onBlockIntent({ blockId, type, payload })` 上抛到 `AiChat` 的 `block-intent`，组件库不据此改动任何数据。配合 `state: 'awaiting-approval'` 即可实现工具调用的人工审批卡。
 
 ### 人工确认（HITL）+ `resume` 续流
 
