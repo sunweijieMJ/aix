@@ -4,6 +4,7 @@ import { defineComponent, h } from 'vue';
 import AiChat from '../src/components/AiChat.vue';
 import { provideAiChatConfig } from '../src/composables/useAiChatConfig';
 import type { ChatMessage, QuoteConfig } from '../src/types';
+import { messageText } from '../src/utils/helpers';
 
 // BubbleList 内部依赖 virtua 做虚拟滚动，jsdom 无真实布局测量；
 // 与既有 AiChat.*.test.ts 同口径：直接渲染全部 data，绕开虚拟化。
@@ -157,10 +158,13 @@ describe('AiChat quote 接线', () => {
     await flushPromises();
     const ctx = request.mock.calls.at(-1)![0] as { messages: ChatMessage[] };
     const sentUser = ctx.messages.find((m) => m.role === 'user')!;
+    // 尾随空行是必要的：下游取文本（messageText）以 '' 拼接相邻 text 块，
+    // 不带分隔时用户的「追问」会粘进最后一行 blockquote 被吞成引文的一部分
     expect(sentUser.content[0]).toMatchObject({
       type: 'text',
-      text: '> 这是 AI 的回答内容',
+      text: '> 这是 AI 的回答内容\n\n',
     });
+    expect(messageText(sentUser)).toBe('> 这是 AI 的回答内容\n\n追问');
     // SSOT 中仍是结构化 quote 块（纯函数保证）
     const ssotUser = (w.vm as unknown as { messages: ChatMessage[] }).messages.find(
       (m) => m.role === 'user',
@@ -178,7 +182,7 @@ describe('AiChat quote 接线', () => {
     await flushPromises();
     const ctx = request.mock.calls.at(-1)![0] as { messages: ChatMessage[] };
     const sentUser = ctx.messages.find((m) => m.role === 'user')!;
-    expect(sentUser.content[0]).toMatchObject({ text: '【引】这是 AI 的回答内容' });
+    expect(sentUser.content[0]).toMatchObject({ text: '【引】这是 AI 的回答内容\n\n' });
   });
 
   it('有 chip 无文字也能发送：user 消息仅含 quote 块，请求文本含指令/blockquote，chip 清空', async () => {

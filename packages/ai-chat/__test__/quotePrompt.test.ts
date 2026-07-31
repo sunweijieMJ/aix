@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ChatMessage, Quote } from '../src/types';
+import { messageText } from '../src/utils/helpers';
 import { defaultQuoteToPrompt, flattenQuoteBlocks, getQuotes } from '../src/utils/quotePrompt';
 
 const q = (exact: string, intent?: string): Quote => ({
@@ -66,9 +67,9 @@ describe('flattenQuoteBlocks', () => {
     ],
   };
 
-  it('quote 块拍平为 text 块，其余原样', () => {
+  it('quote 块拍平为 text 块，其余原样（后有正文，故带空行分隔）', () => {
     const out = flattenQuoteBlocks([msg]);
-    expect(out[0]!.content[0]).toEqual({ id: 'b1', type: 'text', text: '> 被引用文本' });
+    expect(out[0]!.content[0]).toEqual({ id: 'b1', type: 'text', text: '> 被引用文本\n\n' });
     expect(out[0]!.content[1]).toEqual(msg.content[1]);
   });
 
@@ -91,7 +92,53 @@ describe('flattenQuoteBlocks', () => {
 
   it('支持自定义 toPrompt', () => {
     const out = flattenQuoteBlocks([msg], (quotes) => `<quote>${quotes[0]!.anchor.exact}</quote>`);
-    expect(out[0]!.content[0]).toMatchObject({ type: 'text', text: '<quote>被引用文本</quote>' });
+    expect(out[0]!.content[0]).toMatchObject({
+      type: 'text',
+      text: '<quote>被引用文本</quote>\n\n',
+    });
+  });
+
+  // 回归：拍平后 quote 与用户提问是**两个相邻 text 块**，而下游取文本的 messageText 以 ''
+  // 拼接。缺分隔时提问会直接粘在最后一行 blockquote 后面（`> 被引用文本用户追问`），
+  // 在 Markdown 语义下被吞进引文——模型看到的是"一段被引用的话"而非"引文 + 问题"。
+  it('拍平结果与紧随的提问之间保留空行（messageText 拼接不粘连）', () => {
+    const out = flattenQuoteBlocks([msg]);
+    expect(messageText(out[0]!)).toBe('> 被引用文本\n\n用户追问');
+  });
+
+  it('多个 quote 块相邻时彼此也不粘连', () => {
+    const twoQuotes: ChatMessage = {
+      id: 'u3',
+      role: 'user',
+      content: [
+        { id: 'b1', type: 'quote', quotes: [q('引用甲')] },
+        { id: 'b2', type: 'quote', quotes: [q('引用乙')] },
+        { id: 'b3', type: 'text', text: '提问' },
+      ],
+    };
+    expect(messageText(flattenQuoteBlocks([twoQuotes])[0]!)).toBe('> 引用甲\n\n> 引用乙\n\n提问');
+  });
+
+  // 分隔只在"后面确实还有文本"时才补，避免纯引用发送（allowEmptySubmit）时拖一串空行
+  it('quote 块之后没有文本块时不追加多余分隔', () => {
+    const quoteOnly: ChatMessage = {
+      id: 'u4',
+      role: 'user',
+      content: [{ id: 'b1', type: 'quote', quotes: [q('只有引用')] }],
+    };
+    expect(messageText(flattenQuoteBlocks([quoteOnly])[0]!)).toBe('> 只有引用');
+  });
+
+  it('quote 块之后只有附件块（非文本）时同样不追加分隔', () => {
+    const withAttachment: ChatMessage = {
+      id: 'u5',
+      role: 'user',
+      content: [
+        { id: 'b1', type: 'quote', quotes: [q('引用')] },
+        { id: 'b2', type: 'attachment', items: [{ id: 'f1', name: 'a.pdf' }] },
+      ],
+    };
+    expect(messageText(flattenQuoteBlocks([withAttachment])[0]!)).toBe('> 引用');
   });
 });
 
