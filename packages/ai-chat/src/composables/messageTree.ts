@@ -130,9 +130,26 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
   const importFlat = (messages: ChatMessage[]): void => {
     reset();
     let parentId = ROOT_ID;
+    // 重复 id 归一（与 importTree 的脏数据防线同口径）：入参同样来自不可信来源
+    // （defaultMessages / v-model:messages / 持久化的 conversation.messages）。
+    // 不设防时后写节点会覆盖先写的、连带丢掉它的 childIds，回溯又被 seen 防环截断——
+    // 表现为激活路径顺序错乱且丢消息，且全程无报错。保留首次出现、丢弃其余。
+    const seen = new Set<string>();
+    let duplicated = 0;
     for (const m of messages) {
+      if (seen.has(m.id)) {
+        duplicated += 1;
+        continue;
+      }
+      seen.add(m.id);
       appendMessage(parentId, m);
       parentId = m.id;
+    }
+    if (duplicated > 0) {
+      console.warn(
+        `[ai-chat] messageTree.importFlat 丢弃了 ${duplicated} 条 id 重复的消息（保留首次出现）。` +
+          '消息 id 必须唯一，否则激活路径的顺序与完整性无法保证。',
+      );
     }
   };
 
@@ -162,10 +179,26 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
     // 只可能来自被篡改/损坏的数据）：否则它先覆盖掉哨兵，再在下面的修复分支里被挂到「自己」
     // 名下，根成为自己的子节点 —— 一条本无兄弟版本的顶层消息会凭空长出「1/2」分支切换器。
     // 它的子节点不受影响：parentId 指向 ROOT_ID 仍能命中哨兵，子树内容不丢。
-    const incoming = data.nodes.filter((n) => n.id !== ROOT_ID);
-    if (incoming.length !== data.nodes.length) {
+    const withoutRoot = data.nodes.filter((n) => n.id !== ROOT_ID);
+    if (withoutRoot.length !== data.nodes.length) {
       console.warn(
         `[ai-chat] messageTree.importTree 丢弃了 id 与根哨兵（"${ROOT_ID}"）冲突的节点。` +
+          '通常意味着持久化的对话树数据已损坏。',
+      );
+    }
+    // 重复 id 同样必须丢弃（保留首次出现）：后写的节点覆盖先写的，而下面重建 childIds 时
+    // 会按原数组逐条 push，同一 id 被塞进父节点两次 —— 一条本无兄弟版本的消息就凭空长出
+    // 「1/2」分支切换器，与上面根哨兵冲突是同一类症状。
+    const seenIds = new Set<string>();
+    const incoming: typeof withoutRoot = [];
+    for (const n of withoutRoot) {
+      if (seenIds.has(n.id)) continue;
+      seenIds.add(n.id);
+      incoming.push(n);
+    }
+    if (incoming.length !== withoutRoot.length) {
+      console.warn(
+        `[ai-chat] messageTree.importTree 丢弃了 ${withoutRoot.length - incoming.length} 个 id 重复的节点（保留首次出现）。` +
           '通常意味着持久化的对话树数据已损坏。',
       );
     }
