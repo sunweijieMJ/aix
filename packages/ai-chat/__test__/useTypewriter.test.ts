@@ -65,6 +65,30 @@ describe('useTypewriter', () => {
     expect(displayed.value).toBe('abcdef'); // 关闭后立即全显
   });
 
+  // 特征化用例（为「每帧 O(n) → 数字游标」重构补的安全网）：
+  // enabled 由开→关会直接把 displayed 赋成完整源文本，游标实现必须在该分支同步推进游标，
+  // 否则重新开启后源再增长时会从错误位置续接（表现为重播或字符错位）。
+  it('enabled 关闭全显后重新开启，源继续增长时从当前位置续接', async () => {
+    const source = ref('');
+    const enabled = ref(true);
+    const { displayed } = useTypewriter(source, { step: 1, interval: 10, enabled });
+    source.value = 'abcdef';
+    await nextTick();
+    vi.advanceTimersByTime(10);
+    expect(displayed.value.length).toBeLessThan(6); // 仍在逐帧途中
+    enabled.value = false;
+    await nextTick();
+    expect(displayed.value).toBe('abcdef'); // 关闭 → 立即全显
+    enabled.value = true;
+    await nextTick();
+    source.value = 'abcdefghi';
+    await nextTick();
+    vi.advanceTimersByTime(10);
+    expect(displayed.value).toBe('abcdefg'); // 从已显示的 6 个字符续接一步
+    vi.advanceTimersByTime(20);
+    expect(displayed.value).toBe('abcdefghi');
+  });
+
   it('stop() 停止逐帧推进', async () => {
     const source = ref('');
     const { displayed, stop } = useTypewriter(source, { step: 1, interval: 10 });
