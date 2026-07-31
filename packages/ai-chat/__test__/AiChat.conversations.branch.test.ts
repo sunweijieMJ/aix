@@ -62,6 +62,31 @@ describe('AiChat × 分支持久化集成', () => {
     expect(w.text()).not.toContain('问题');
   });
 
+  // 回归：tree 置 undefined 与置空树同义，同样必须清空视图。
+  // useConversations.activeTree 的 getter 在「没有激活会话」时返回 undefined——典型触发点是
+  // remove() 删掉最后一个会话（activeKey 置空 → active 为 undefined）。此前 `if (!v) return`
+  // 把 undefined 一并挡掉，已删会话的消息继续留在屏幕上；且 tree 绑定时 messages 反向导入
+  // 已被禁用，没有第二条路兜底。
+  it('仅绑 v-model:tree：外部置 undefined（删掉最后一个会话）后视图清空', async () => {
+    n = 0;
+    const w = mount(AiChat, {
+      props: {
+        request,
+        parseChunk,
+        tree: undefined,
+        'onUpdate:tree': (v: ExportedTree) => w.setProps({ tree: v }),
+      },
+    });
+    (w.vm as unknown as { onSend: (t: string) => Promise<void> }).onSend('问题');
+    await flush();
+    expect(w.text()).toContain('回复1');
+
+    await w.setProps({ tree: undefined });
+    await flush();
+    expect(w.text()).not.toContain('回复1');
+    expect(w.text()).not.toContain('问题');
+  });
+
   // 分支持久化的支持接法是「仅绑 v-model:tree」（spec §8「二者择一」：v-model:messages 的
   // setMessages 会 importFlat 拍平树、破坏分支，故分支场景必须用 tree 通道）。
   // 回归：重新生成产生分支不应触发递归更新崩溃，分支应正常出现。

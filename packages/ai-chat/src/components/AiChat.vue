@@ -389,6 +389,7 @@ import {
   getCurrentInstance,
   provide,
 } from 'vue';
+import { ROOT_ID } from '../composables/messageTree';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 import type { UseAttachmentsOptions } from '../composables/useAttachments';
 import type { ShouldFollow } from '../composables/useAutoScroll';
@@ -930,18 +931,27 @@ const treeModel = defineModel<ExportedTree | undefined>('tree');
 if (treeModel.value && treeModel.value.nodes.length) {
   importTree(treeModel.value);
 }
-// 结构变化（增节点/切分支）时导出回父；branches 引用变化是结构变化的可靠信号
+// 结构变化（增节点/切分支）时导出回父；branches 引用变化是结构变化的可靠信号。
+// 未绑 v-model:tree 时整条通道空转：exportTree 是 O(节点数) 的全量快照，而写入的 model
+// 既无人读也无监听可 emit，长会话里每次结构变化白跑一趟。
 watch([messages, branches], () => {
+  if (!isTreeBound) return;
   treeModel.value = exportTree();
 });
-// 外部整体替换 tree（切会话）时导入；空树（切到新会话/空白会话）同样需要导入以清空内部树
+// 外部整体替换 tree（切会话）时导入；空树 / undefined（切到新会话、或已无激活会话）
+// 同样需要导入以清空内部树
 watch(treeModel, (v) => {
-  if (!v) return;
+  if (!isTreeBound) return;
+  // undefined 与空树同义，不能提前返回：useConversations.activeTree 的 getter 在「没有激活
+  // 会话」时返回 undefined（典型触发点是 remove() 删掉最后一个会话 → activeKey 置空 →
+  // active 为 undefined）。此处若放过，内部树纹丝不动，已删会话的消息继续留在视图上；
+  // 而 isTreeBound 为真时 messages 的反向导入已被禁用（见上方 watch），没有第二条路兜底。
+  const next = v ?? { nodes: [], headId: ROOT_ID };
   const cur = exportTree();
-  // 空树（切到新会话）也需导入以清空内部树；仅在结构不同时才导入，避免与导出 watch 产生抖动
-  if (v.headId !== cur.headId || v.nodes.length !== cur.nodes.length) {
+  // 仅在结构不同时才导入，避免与导出 watch 产生抖动
+  if (next.headId !== cur.headId || next.nodes.length !== cur.nodes.length) {
     if (isLoading.value) abort();
-    importTree(v);
+    importTree(next);
     tempSuggestions.value = null; // 切会话：旧会话的通道①临时建议不得跨会话残留显示
   }
 });
