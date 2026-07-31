@@ -264,6 +264,10 @@ describe('useConversations', () => {
   });
 
   describe('异步 storage 支持', () => {
+    // 本组下面三条用例改用 fake timers（各自在用例内 useFakeTimers），此处统一复位。
+    // 未安装 fake timers 的用例调用 useRealTimers 是无害空操作。
+    afterEach(() => vi.useRealTimers());
+
     it('未提供 storage：isLoading 恒为 false，conversations 同步可用', () => {
       const c = useConversations({ defaultConversations: [conv('a', 'A')] });
       expect(c.isLoading.value).toBe(false);
@@ -309,11 +313,15 @@ describe('useConversations', () => {
         load: () => [conv('x', 'X')],
         save: () => Promise.reject(new Error('write failed')),
       };
+      // 冻结定时器：storage 的 load/save 都是同步的，防抖窗口是这里唯一的时间因素，
+      // 用真实定时器睡 30ms 去等 10ms 防抖只有 20ms 余量，满负载 CI 下迟到即挂（本条在
+      // pre-commit 钩子里间歇性失败过）。改为显式推进虚拟时钟，结果与机器快慢无关。
+      vi.useFakeTimers();
       const c = useConversations({ storage, saveDebounce: 10 });
-      await flushAsync(); // 等待初始化的异步 load 完成
+      await vi.advanceTimersByTimeAsync(0); // 等待初始化的异步 load 完成
       c.rename('x', 'X2');
-      await new Promise((resolve) => setTimeout(resolve, 30)); // 等过 10ms 防抖窗口
-      await flushAsync();
+      await vi.advanceTimersByTimeAsync(10); // 跨过 10ms 防抖窗口
+      await vi.advanceTimersByTimeAsync(0); // 排空 save 的 rejection 处理
       expect(warn).toHaveBeenCalledWith(
         '[ai-chat] 会话持久化失败，本次变更未保存:',
         expect.any(Error),
@@ -407,9 +415,10 @@ describe('useConversations', () => {
     it('load 落地本身不触发防抖 save，仅用户后续变更才触发', async () => {
       const save = vi.fn();
       const storage: ConversationStorage = { load: () => [conv('x', 'X')], save };
+      vi.useFakeTimers();
       useConversations({ storage, saveDebounce: 10 });
-      await flushAsync();
-      await new Promise((resolve) => setTimeout(resolve, 30)); // 跨过防抖窗口
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(30); // 跨过防抖窗口
       expect(save).not.toHaveBeenCalled();
     });
 
@@ -426,29 +435,33 @@ describe('useConversations', () => {
           });
         },
       };
+      // 必须冻结定时器：B/C 两次变更后「防抖是否已触发」在外部完全不可观测（只是把 pending
+      // 换成了新快照），无法用轮询等条件，只能依赖时间——真实定时器下每个 20ms 睡眠都是一次
+      // 对 10ms 防抖的赌博，赌输就整条断言链崩。虚拟时钟把它变成确定性推进。
+      vi.useFakeTimers();
       const c = useConversations({ storage, saveDebounce: 10 });
-      await flushAsync(); // 等初始化 load 完成
+      await vi.advanceTimersByTimeAsync(0); // 等初始化 load 完成
 
       // 第一次变更 → save A 发起（慢，先不 resolve）
       c.rename('x', 'A');
-      await new Promise((r) => setTimeout(r, 20));
+      await vi.advanceTimersByTimeAsync(20);
       expect(savedOrder).toEqual(['A']);
 
       // save A 在飞期间连续两次变更：串行化下均不立即发起，仅折叠为一次 pending（最新数据）
       c.rename('x', 'B');
-      await new Promise((r) => setTimeout(r, 20));
+      await vi.advanceTimersByTimeAsync(20);
       c.rename('x', 'C');
-      await new Promise((r) => setTimeout(r, 20));
+      await vi.advanceTimersByTimeAsync(20);
       expect(savedOrder).toEqual(['A']); // B、C 都在等 A，未重叠发起
 
       // 完成 save A → 用最新快照续跑：折叠掉中间的 B，只落最新的 C
       resolvers[0]!();
-      await flushAsync();
+      await vi.advanceTimersByTimeAsync(0);
       expect(savedOrder).toEqual(['A', 'C']);
 
       // 完成 save C → 无更多 pending，不再续跑
       resolvers[1]!();
-      await flushAsync();
+      await vi.advanceTimersByTimeAsync(0);
       expect(savedOrder).toEqual(['A', 'C']);
       // 最终落地的是最后一次变更的数据
       expect(savedOrder[savedOrder.length - 1]).toBe('C');

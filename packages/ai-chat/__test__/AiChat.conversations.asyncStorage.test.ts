@@ -89,9 +89,23 @@ describe('AiChat + useConversations 异步 storage 接线（回归：load 结果
     return { wrapper, api: () => api };
   };
 
-  const settle = async (ms = 40) => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-    await flushPromises();
+  /**
+   * 轮询等到条件成立（上限 2s），取代「睡固定毫秒赌余量」。
+   *
+   * 原先统一用 settle(40)：要在 40ms 里跨过 storage 的 10ms load 延迟 + 5ms 保存防抖，
+   * 余量只有几十毫秒。本地单跑必绿，但 pre-commit 钩子 / CI 上 turbo 还在并发构建、
+   * 118 个测试文件同时在跑，真实定时器迟到几十毫秒是常态，断言就会在数据尚未落地时执行——
+   * 该文件在钩子里间歇性挂掉的正是这一条（「load 生效后的用户变更不会用空默认覆盖」）。
+   * 改成等条件而非等时间后，用例与机器快慢彻底解耦，且快机器上反而更快返回。
+   */
+  const waitFor = async (cond: () => boolean, timeout = 2000) => {
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      await flushPromises();
+      if (cond()) return;
+      if (Date.now() > deadline) throw new Error('waitFor 超时：条件始终未成立');
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
   };
 
   it('defaultConversations 含空会话时，storage.load 的远端历史仍然生效', async () => {
@@ -100,8 +114,7 @@ describe('AiChat + useConversations 异步 storage 接线（回归：load 结果
       defaultConversations: [{ id: 'c1', label: '新对话', messages: [] }],
       storage,
     });
-    await settle();
-    expect(api().active.value?.label).toBe('远端会话');
+    await waitFor(() => api().active.value?.label === '远端会话');
     expect(api().active.value?.messages).toHaveLength(1);
   });
 
@@ -112,9 +125,9 @@ describe('AiChat + useConversations 异步 storage 接线（回归：load 结果
       storage,
       saveDebounce: 5,
     });
-    await settle();
+    await waitFor(() => api().active.value?.label === '远端会话');
     api().rename('c1', '用户改名'); // 一次普通用户操作即触发防抖落盘
-    await settle();
+    await waitFor(() => saved.at(-1)?.[0]?.label === '用户改名');
     const last = saved.at(-1);
     expect(last?.[0]?.label).toBe('用户改名');
     // 关键：落盘内容必须保留远端历史，而不是被空的 defaultConversations 覆盖
@@ -127,14 +140,14 @@ describe('AiChat + useConversations 异步 storage 接线（回归：load 结果
       { defaultConversations: [{ id: 'c1', label: '新对话', messages: [] }], storage },
       'tree',
     );
-    await settle();
+    await waitFor(() => api().active.value?.messages.length === 1);
     expect(api().active.value?.messages).toHaveLength(1);
   });
 
   it('不传 defaultConversations（推荐用法）同样正常（既有行为）', async () => {
     const { storage } = makeAsyncStorage();
     const { api } = mountWith({ storage });
-    await settle();
+    await waitFor(() => api().active.value?.messages.length === 1);
     expect(api().active.value?.messages).toHaveLength(1);
   });
 
@@ -149,7 +162,8 @@ describe('AiChat + useConversations 异步 storage 接线（回归：load 结果
     api().activeMessages.value = [
       { id: 'local-1', role: 'user', content: [{ id: 'lb1', type: 'text', text: '本地输入' }] },
     ];
-    await settle(60);
+    // 等 load 真正落定（isLoading 翻 false）而非睡 60ms：既确保守卫已被检验过，也不受机器快慢影响
+    await waitFor(() => api().isLoading.value === false);
     expect(api().active.value?.messages).toHaveLength(1);
     expect(api().active.value?.messages[0]?.id).toBe('local-1');
   });
