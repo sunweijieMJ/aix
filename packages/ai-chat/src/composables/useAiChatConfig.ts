@@ -1,4 +1,11 @@
-import { provide, inject, computed, reactive, type InjectionKey, type ComputedRef } from 'vue';
+import {
+  provide,
+  inject,
+  computed,
+  shallowReactive,
+  type InjectionKey,
+  type ComputedRef,
+} from 'vue';
 import type { RoleConfig, BlockRenderers, QuoteConfig, OutlineOptions } from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
 import type { ShouldFollow } from './useAutoScroll';
@@ -40,9 +47,16 @@ const DEFAULT_CONFIG: AiChatConfig = { enableTyping: true };
 export const AI_CHAT_CONFIG_KEY: InjectionKey<AiChatConfig> = Symbol('aix-ai-chat-config');
 
 export function provideAiChatConfig(config: Partial<AiChatConfig>): AiChatConfig {
-  // 显式标注返回类型：避免 reactive() 推断出的 UnwrapNestedRefs 类型在 dts bundle 时
+  // 必须是 shallowReactive 而非 reactive：深层代理会把配置里的**组件对象**一并包成
+  // reactive 代理（blockRenderers / toolRenderers 的值、roles[*].blockRenderers、
+  // quote.toolbar / quote.sheet 都是 Component），随后 `<component :is="...">` 拿到的
+  // 是代理而非原组件 —— Vue 会在每次建 vnode 时告警「Vue received a Component that was
+  // made a reactive object」并 toRaw 兜底（渲染结果正确，但控制台刷屏 + 无谓开销）。
+  // 逐个 markRaw 覆盖不全（roles 可为运行时返回配置的函数），从根上用浅层代理才干净。
+  // 语义上也更贴切：本配置是一袋整体替换的选项，不存在"就地深改某一项"的用法。
+  // 显式标注返回类型：避免 shallowReactive() 推断出的类型在 dts bundle 时
   // 因引用 @vue/shared 内部类型而不可具名（TS2742）
-  const merged = reactive<AiChatConfig>({ ...DEFAULT_CONFIG, ...config });
+  const merged = shallowReactive<AiChatConfig>({ ...DEFAULT_CONFIG, ...config });
   provide(AI_CHAT_CONFIG_KEY, merged);
   return merged;
 }

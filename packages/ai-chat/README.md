@@ -614,11 +614,26 @@ const toolbarItems = [
 | `useVisibleMessage(options)` | 以 `IntersectionObserver` 观测 `[data-aix-message-id]` 取当前活跃消息，内置「点击定位期间屏蔽回写」闸门；无 IO 的环境安全空转 |
 | `useIdleWhileStreaming(options)` | 「流式中但内容已停止增长」检测（末尾静默呼吸的判定内核）。`options`: `streaming` / `fingerprint` / `idleMs?` |
 | `useConfirmDeadline(options)` | 确认卡超时时间线（提示 → 自动填充 → 自动提交），**块类型无关**，含绝对时刻 / `visibilitychange` 补偿 / 排程前补发三重兜底。返回 `hinted` / `autoFilled` / `cancel` |
-| `useAiChatConfig()` / `provideAiChatConfig(config)` | provide/inject 全局配置（含 `tailBreathing` / `outline` 等 opt-in 能力的全局通道，组件 props 优先） |
+| `useAiChatConfig()` / `provideAiChatConfig(config)` | provide/inject 全局配置（含 `tailBreathing` / `outline` 等 opt-in 能力的全局通道，组件 props 优先）。返回值是 **`shallowReactive`**：只有顶层键的赋值是响应式的，见下方说明 |
 | `useConversations(options?)` | 多会话托管（SSOT + 可选持久化）。返回 `conversations` / `activeKey` / `active` / `activeMessages`（绑 `AiChat` 的 `v-model:messages`）/ `items`（绑 `Conversations`）/ `isLoading`（`storage.load()` 解析完成前为 `true`，未提供 `storage` 时恒为 `false`）/ `create` / `remove` / `rename`。`storage.load`/`save` 可返回同步值或 `Promise`（内部统一用 `Promise.resolve(...).then(...)` 处理），配合内置 `localStorageConversationStorage` 或自定义异步适配器（对接真实后端）持久化 |
 | `useAttachments(options)` | 附件上传托管。返回 `items` / `add` / `remove` / `retry` / `clear` / `isUploading` / `drain`（取出已完成项随消息发送）。`options`: `upload` / `accept?` / `maxCount?` / `maxSize?` |
 | `useVoiceInput(options)` | 语音识别输入（ASR）。返回 `status` / `isSupported` / `start` / `stop` / `toggle`。缺省用浏览器 Web Speech API，可注入自定义 `recognizer` 对接讯飞/阿里云等 ASR |
 | `useSpeech(options)` | 语音播报（TTS）。返回 `speakingId` / `isSupported` / `toggle`（手动点读：再点同条停、点别条切）/ `feed`（autoPlay 流式增量分句朗读）/ `stop` / `resolveText`。缺省用浏览器 `speechSynthesis`，可注入自定义 `synthesizer` 对接讯飞/阿里云等云端 TTS |
+
+### 全局配置的响应式粒度
+
+`provideAiChatConfig(config)` 返回的对象是 `shallowReactive` 的：**只有顶层键的整体赋值**会触发更新，就地深改嵌套字段不会。
+
+```ts
+const cfg = provideAiChatConfig({ quote: { enabled: true } });
+
+cfg.quote = { ...cfg.quote, enabled: false }; // ✅ 顶层整体替换，生效
+cfg.enableTyping = false; // ✅ 顶层标量，生效
+cfg.quote.enabled = false; // ❌ 就地深改，不会触发更新
+cfg.roles.ai.placement = 'end'; // ❌ 同上
+```
+
+配置里的 `blockRenderers` / `toolRenderers` / `roles[*].blockRenderers` / `quote.toolbar` / `quote.sheet` 的值都是**组件对象**，深层代理会把它们一并包成 reactive 代理，`<component :is>` 每次建 vnode 都要告警「Vue received a Component that was made a reactive object」并 `toRaw` 兜底。浅层代理从根上避免这一点，语义上也贴合「整袋替换的选项」。
 
 ### 打字机效果
 
