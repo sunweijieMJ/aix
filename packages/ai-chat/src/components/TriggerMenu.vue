@@ -5,13 +5,16 @@
        注意：主题变量从 :root/[data-theme] 继承不受影响，但局部 ThemeScope 场景的作用域
        token 不会跟随（与各组件库 teleport 弹层的通行权衡一致）。 -->
   <Teleport to="body">
+    <!-- role 随有无候选项切换：listbox 的子元素只应是 option/group，加载 / 空态时把状态文案
+         塞进 listbox 属结构违规。此时本就没有可选项，整块按状态区暴露更贴切——role="status"
+         自带 polite 活动区语义，「加载中 / 无匹配结果」还能被自动播报。 -->
     <div
       :id="menuId"
       ref="floatingElRef"
       :class="ns.b()"
       :style="floatingStyles"
-      role="listbox"
-      :aria-label="t.triggerMenuLabel"
+      :role="hasOptions ? 'listbox' : 'status'"
+      :aria-label="hasOptions ? t.triggerMenuLabel : undefined"
       @mousedown.prevent
     >
       <div v-if="loading" :class="ns.e('status')">{{ t.triggerMenuLoading }}</div>
@@ -63,7 +66,7 @@ export interface TriggerMenuEmits {
 <script setup lang="ts">
 import { useLocale, useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
-import { ref, watch, watchEffect } from 'vue';
+import { computed, ref, watch, watchEffect } from 'vue';
 import { locale } from '../locale';
 import type { TriggerItem } from '../types';
 
@@ -71,6 +74,9 @@ const props = defineProps<TriggerMenuProps>();
 const emit = defineEmits<TriggerMenuEmits>();
 const ns = useNamespace('trigger-menu');
 const { t } = useLocale(locale);
+
+// 有可选项时才是 listbox；加载中 / 空结果时整块降级为状态区（见模板注释）
+const hasOptions = computed(() => !props.loading && props.items.length > 0);
 
 // 虚拟参考元素（同 QuoteToolbar 先例）：caret/整框没有稳定真实元素，用闭包桥接
 const { referenceRef, floatingRef, floatingStyles } = usePopper({

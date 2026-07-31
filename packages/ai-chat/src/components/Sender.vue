@@ -41,6 +41,11 @@
       <span v-if="$slots.prefix" :class="ns.e('prefix')">
         <slot name="prefix" v-bind="slotScope" />
       </span>
+      <!-- 触发菜单的 combobox 语义：仅在配置了 triggers 时声明，不给普通输入框凭空加弹层语义。
+           刻意**不加 role="combobox"**——ARIA 1.2 虽允许 textbox 承担该角色，但多行 combobox
+           在各屏幕阅读器上的实现差异大，改 role 有让「多行文本框」这一更关键信息不再播报的风险。
+           aria-haspopup + aria-expanded 已补齐「有弹层 / 当前开合」的可感知性（与包内
+           ContextWindow / ModelSelector 的 aria-expanded 约定一致），是收益最高、风险最低的一档。 -->
       <textarea
         ref="textareaRef"
         :class="ns.e('input')"
@@ -49,6 +54,8 @@
         :aria-label="isListening ? t.voiceListening : placeholder || t.senderPlaceholder"
         :disabled="disabled"
         rows="1"
+        :aria-haspopup="trig ? 'listbox' : undefined"
+        :aria-expanded="trig ? menuOpen : undefined"
         :aria-controls="menuOpen ? menuId : undefined"
         :aria-activedescendant="
           menuOpen && menuItems.length ? `${menuId}-option-${menuActiveIndex}` : undefined
