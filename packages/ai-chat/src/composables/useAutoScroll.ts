@@ -134,11 +134,11 @@ export function useAutoScroll(
       // 修复④：贴底轮询正在进行时，"此刻恰好到底"不等于"内容已经稳定"——批量插入多条
       // 消息（如刷新页面一次性加载几十条历史、含若干张卡片）过程中，我们自己每帧调用的
       // el.scrollTo() 几乎必然异步触发浏览器原生 scroll 事件，而这类事件很容易恰好命中
-      // "刚 snap 过去、暂时追平"的瞬间——若不加判断会在这里把轮询提前清掉，之后内容继续
-      // 变高（如下一张卡片渲染完成）时就没人再追，最终停在半途。轮询是否结束交给它自己
-      // 的连续稳定帧判定（或用户 wheel/touchmove 主动打断），这里只在没有轮询在跑时才
-      // 视为"意图达成"顺带清理。
-      if (!smoothPending) clearSmoothPending();
+      // "刚 snap 过去、暂时追平"的瞬间——若在这里把轮询清掉，之后内容继续变高（如下一张
+      // 卡片渲染完成）时就没人再追，最终停在半途。所以这里**不做任何清理**：轮询何时结束
+      // 完全交给它自己的连续稳定帧判定（或用户 wheel/touchmove 主动打断）。
+      // 无轮询在跑时也无需清理——smoothPending 只在 clearSmoothPending() 内被置 false，
+      // 且它同时清掉 settleRaf 与 smoothTarget，三者恒同进同出。
       return;
     }
     // smooth 贴底动画/贴底轮询进行中：途中 scroll 事件不把乐观 AT_BOTTOM 翻回 SCROLLED_UP（见上）
