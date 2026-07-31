@@ -20,15 +20,12 @@
       <Skeleton v-if="loading" :rows="5" />
       <template v-for="grp in grouped" v-else :key="grp.key || '__default'">
         <div v-if="grp.key" :class="ns.e('group')">{{ grp.key }}</div>
+        <!-- 行是无语义容器：它内部有重命名 / 删除按钮与重命名输入框，而 ARIA 禁止 button
+             角色包含交互式后代。主操作（选中）交给下面的原生 <button>，键盘可达性由平台负责。 -->
         <div
           v-for="item in grp.items"
           :key="item.id"
           :class="[ns.e('item'), ns.is('active', item.id === activeKey)]"
-          role="button"
-          tabindex="0"
-          :aria-current="item.id === activeKey ? 'true' : undefined"
-          @click="select(item.id)"
-          @keydown="onItemKeydown($event, item.id)"
         >
           <input
             v-if="editingId === item.id"
@@ -43,7 +40,14 @@
             @input="editingLabel = ($event.target as HTMLInputElement).value"
           />
           <template v-else>
-            <span :class="ns.e('label')">{{ item.label }}</span>
+            <button
+              type="button"
+              :class="ns.e('label')"
+              :aria-current="item.id === activeKey ? 'true' : undefined"
+              @click="select(item.id)"
+            >
+              {{ item.label }}
+            </button>
             <span :class="ns.e('actions')">
               <button
                 type="button"
@@ -159,16 +163,9 @@ const select = (id: string) => {
   if (editingId.value == null) activeKey.value = id;
 };
 
-// 会话项键盘激活（Enter/Space）：仅处理落在项本体上的按键——
-// 编辑输入框/操作按钮等子元素的按键会冒泡到这里，不做 target 守卫的话，
-// 重命名 Enter 会误触选中切换、输入框打空格会被 preventDefault 吞掉。
-const onItemKeydown = (e: KeyboardEvent, id: string) => {
-  if (e.target !== e.currentTarget) return;
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    select(id);
-  }
-};
+// 注：选中项的键盘激活（Enter/Space）不再由本组件处理——主操作已是原生 <button>，
+// 由浏览器负责，连带消除了「子元素按键冒泡到行上误触选中 / 输入框空格被 preventDefault 吞掉」
+// 这一类需要 target 守卫才能绕开的问题。
 
 // ===== 行内重命名 =====
 const editingId = ref<string | null>(null);
@@ -306,7 +303,6 @@ const cancelRename = () => {
     transition: background-color var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
     border-radius: var(--aix-borderRadius);
     color: var(--aix-colorText);
-    cursor: pointer;
     gap: var(--aix-marginXXS);
 
     &:hover {
@@ -317,20 +313,31 @@ const cancelRename = () => {
       background: var(--aix-colorFillSecondary);
       font-weight: var(--aix-fontWeightStrong);
     }
+  }
+
+  /* 主操作（选中）：原生 button 去掉浏览器默认外观，铺满行内剩余空间。
+     行本身不再可点，故 cursor / 聚焦环都落在这里。 */
+  &__label {
+    flex: 1;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+    border: none;
+    border-radius: var(--aix-borderRadius);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--aix-fontSize);
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
 
     /* 键盘聚焦环（与 AttachmentsPanel 占位区一致）；列表项相邻，offset 内收避免环重叠 */
     &:focus-visible {
       outline: 2px solid var(--aix-colorPrimary);
       outline-offset: -2px;
     }
-  }
-
-  &__label {
-    flex: 1;
-    overflow: hidden;
-    font-size: var(--aix-fontSize);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   &__edit-input {
@@ -355,8 +362,10 @@ const cancelRename = () => {
     gap: var(--aix-marginXXS);
   }
 
+  /* 焦点落在行内任意位置（含主操作 button）即显现操作按钮：
+     键盘用户 Tab 到会话行时就能看到重命名 / 删除，而不必先盲跳进去才显形。 */
   &__item:hover &__actions,
-  &__actions:focus-within {
+  &__item:focus-within &__actions {
     opacity: 1;
   }
 

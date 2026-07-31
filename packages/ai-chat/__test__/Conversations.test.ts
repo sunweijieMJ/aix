@@ -21,10 +21,10 @@ describe('Conversations', () => {
   it('点击会话项更新 activeKey（v-model），激活项加 is-active', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const itemEls = w.findAll('.aix-conversations__item');
-    // 初始 a 激活
+    // 初始 a 激活（is-active 仍标在行上，供样式钩子使用）
     expect(itemEls[0]!.classes()).toContain('is-active');
-    // 点击 b
-    await itemEls[1]!.trigger('click');
+    // 点击 b 的主操作
+    await itemEls[1]!.find('.aix-conversations__label').trigger('click');
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
   });
 
@@ -32,27 +32,39 @@ describe('Conversations', () => {
   it('非受控（不绑 v-model:activeKey）：点击切换选中由内部状态驱动', async () => {
     const w = mount(Conversations, { props: { items } }); // 不传 activeKey
     const itemEls = w.findAll('.aix-conversations__item');
-    await itemEls[1]!.trigger('click');
+    await itemEls[1]!.find('.aix-conversations__label').trigger('click');
     // 仍 emit
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
     // 关键：非受控下内部状态保留，is-active 落到被点击项（defineModel 在 Vue 3.3 非受控下会丢失）
     expect(w.findAll('.aix-conversations__item')[1]!.classes()).toContain('is-active');
   });
 
-  it('会话项键盘可达：role/tabindex、Enter/Space 选中、激活项标注 aria-current', async () => {
+  // 行为变更（2026-07）：会话行此前是 role="button" + tabindex="0"，内部却嵌着重命名 / 删除
+  // 两个 <button> 和重命名 <input>——ARIA 明确禁止 button 角色包含交互式后代，屏幕阅读器
+  // 对这种结构的呈现不可预期（子按钮可能读不到、或整行的可访问名被子元素文本污染）。
+  // 改为：行本身退回无语义容器，主操作（选中）由原生 <button> 承担——键盘可达性交还平台，
+  // 不再需要自己维护 tabindex 与 Enter/Space 处理。
+  it('会话项主操作是原生 button，行本身不再声明 button 角色（ARIA 禁止嵌套交互元素）', () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
-    const itemEls = w.findAll('.aix-conversations__item');
-    const firstItem = itemEls[0]!;
-    const secondItem = itemEls[1]!;
-    // 主操作（选中切换）必须可聚焦、可被辅助技术识别为可交互元素
-    expect(firstItem.attributes('role')).toBe('button');
-    expect(firstItem.attributes('tabindex')).toBe('0');
-    expect(firstItem.attributes('aria-current')).toBe('true');
-    expect(secondItem.attributes('aria-current')).toBeUndefined();
-    // Enter / Space 激活
-    await secondItem.trigger('keydown', { key: 'Enter' });
+    const rows = w.findAll('.aix-conversations__item');
+    // 行是容器：不得再有 button 角色 / tabindex，否则它与内部的操作按钮构成非法嵌套
+    expect(rows[0]!.attributes('role')).toBeUndefined();
+    expect(rows[0]!.attributes('tabindex')).toBeUndefined();
+    // 主操作是真 button：天然可聚焦、Enter/Space 由浏览器处理
+    const label = rows[0]!.find('.aix-conversations__label');
+    expect(label.element.tagName).toBe('BUTTON');
+    expect(label.attributes('type')).toBe('button');
+    // 激活态标注在承担该操作的元素上
+    expect(label.attributes('aria-current')).toBe('true');
+    expect(rows[1]!.find('.aix-conversations__label').attributes('aria-current')).toBeUndefined();
+  });
+
+  it('点击会话项主操作切换选中', async () => {
+    const w = mount(Conversations, { props: { items, activeKey: 'a' } });
+    const rows = w.findAll('.aix-conversations__item');
+    await rows[1]!.find('.aix-conversations__label').trigger('click');
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
-    await itemEls[2]!.trigger('keydown', { key: ' ' });
+    await rows[2]!.find('.aix-conversations__label').trigger('click');
     expect(w.emitted('update:activeKey')?.[1]).toEqual(['c']);
   });
 
@@ -108,7 +120,10 @@ describe('Conversations', () => {
     // editingId 不得残留，否则 select 守卫会全局阻断会话切换
     await w.setProps({ items: items.filter((it) => it.id !== 'a') });
     // 点击剩余首项（b）应正常切换选中
-    await w.findAll('.aix-conversations__item')[0]!.trigger('click');
+    await w
+      .findAll('.aix-conversations__item')[0]!
+      .find('.aix-conversations__label')
+      .trigger('click');
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
   });
 
@@ -121,8 +136,11 @@ describe('Conversations', () => {
     // items 更新但被编辑的 a 仍在：编辑态保持
     await w.setProps({ items: [...items, { id: 'd', label: '新会话', group: '今天' }] });
     expect(w.find('.aix-conversations__edit-input').exists()).toBe(true);
-    // 编辑期间点击其他项仍被守卫拦截（既有行为不回归）
-    await w.findAll('.aix-conversations__item')[1]!.trigger('click');
+    // 编辑期间点击其他项的主操作仍被守卫拦截（既有行为不回归）
+    await w
+      .findAll('.aix-conversations__item')[1]!
+      .find('.aix-conversations__label')
+      .trigger('click');
     expect(w.emitted('update:activeKey')).toBeUndefined();
   });
 
