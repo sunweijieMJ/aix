@@ -1,4 +1,12 @@
-import { ref, computed, effectScope, onScopeDispose, type Ref, type ComputedRef } from 'vue';
+import {
+  ref,
+  computed,
+  effectScope,
+  onScopeDispose,
+  type Ref,
+  type ComputedRef,
+  type EffectScope,
+} from 'vue';
 import type {
   ChatMessage,
   ContentBlock,
@@ -237,6 +245,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   // 推进，.value 永久返回旧值；缓存却活到 useChat 结束，重新挂载后同 source/index 仍会命中
   // 这条已冻结的缓存。peer 是 vue ^3.3（headless 用法下 useChat 常建在 store / app 级
   // composable 里而由子组件读），所以这个区间在承诺范围内，不能只依赖 3.5 的新实现兜底。
+  //
+  // 每条再各自持有一个**子 scope**，而不是所有 computed 共用上面这一个：vue < 3.5 的
+  // computed 内建 ReactiveEffect，其构造函数无条件 recordEffectScope 进当前 scope.effects，
+  // 而剪枝只 delete 了 Map —— effect（连同闭包持有的整条 ChatMessage）会一直留在数组里，
+  // 随切分支 / 切会话 / 编辑重发单调增长。子 scope 让剪枝能连同 computed 一起回收：
+  // 非游离子 scope 的 stop() 会把自己从父 scope 的 scopes 数组里摘除（swap-with-last），
+  // 不留残骸；父 scope stop 时照常级联停子。vue 3.5 的 computed 不进 scope.effects，
+  // 这层对它是无副作用的空转。
   const parserMemoScope = parser ? effectScope(true) : null;
   const parsedState = parser
     ? (() => {
@@ -247,6 +263,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           index: number;
           /** 该条消息映射出的渲染气泡（已完成 id 归属、extra 合并、__sub 位置元信息） */
           bubbles: ComputedRef<ChatMessage[]>;
+          /** 该条独占的子 scope：剪枝 / 重建时 stop()，连同其中的 computed 一并回收 */
+          scope: EffectScope;
         }
         const cache = new Map<string, ParsedEntry>();
 
@@ -286,12 +304,17 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 刻意不把 index 做成 ref：在外层 computed 求值期写 ref 会反过来令它依赖的内层
           // computed 失效，形成自激循环。
           if (hit && hit.source === m && hit.index === i) return hit.bubbles.value;
+          // 同 id 但对象 / 下标已变（setMessages 换掉同 id 消息、切分支改下标）：旧条目就此作废，
+          // 先回收它的 scope 再重建，否则被顶替的 computed 同样无人回收。
+          hit?.scope.stop();
+          // 每条一个子 scope，挂在游离 scope 下（见上）：run 只切换 activeEffectScope，
+          // 不影响外层 computed 的依赖收集，故此处建的 computed 照常被外层追踪。
+          const scope = parserMemoScope!.run(() => effectScope())!;
           const entry: ParsedEntry = {
             source: m,
             index: i,
-            // 挂到游离 scope（见上）：run 只切换 activeEffectScope，不影响外层 computed 的
-            // 依赖收集，故此处建的 computed 照常被外层追踪。
-            bubbles: parserMemoScope!.run(() => computed(() => toBubbles(m, i)))!,
+            scope,
+            bubbles: scope.run(() => computed(() => toBubbles(m, i)))!,
           };
           cache.set(m.id, entry);
           return entry.bubbles.value;
@@ -310,9 +333,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               list.push(bubble);
             }
           });
-          // 剪掉已离开激活路径的缓存（切分支 / 切会话 / 编辑重发），避免随会话历史无界增长
-          for (const id of cache.keys()) {
-            if (!alive.has(id)) cache.delete(id);
+          // 剪掉已离开激活路径的缓存（切分支 / 切会话 / 编辑重发），避免随会话历史无界增长。
+          // 必须连同该条的子 scope 一起 stop：只 delete Map 的话，vue < 3.5 下 computed 的
+          // effect 仍留在 scope 里，闭包持有的整条消息也跟着不被回收（见上方 scope 说明）。
+          for (const [id, entry] of cache) {
+            if (!alive.has(id)) {
+              entry.scope.stop();
+              cache.delete(id);
+            }
           }
           return { list, map };
         });
