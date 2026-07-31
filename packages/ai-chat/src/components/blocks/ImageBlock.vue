@@ -46,7 +46,7 @@ export interface ImageBlockEmits {
 
 <script setup lang="ts">
 import { useLocale, useNamespace } from '@aix/hooks';
-import { computed, ref, watch } from 'vue';
+import { computed, onScopeDispose, ref, watch } from 'vue';
 import { locale } from '../../locale';
 import type { BlockActionHandler, BubbleContentInfo, ContentBlock } from '../../types';
 import ImagePreview from '../ImagePreview.vue';
@@ -71,6 +71,13 @@ const previewOpen = ref(false);
 const previewIndex = ref(0);
 // 预览开合上抛：经 Bubble 转发到 BubbleList，预览期间宿主行进 keepMounted 免被虚拟列表回收
 watch(previewOpen, (open) => emit('keep-mounted-change', open));
+// 卸载兜底：BubbleList 的 keepMounted 计数只在收到 false 时回落，而它按**消息 id** 记账。
+// 若本块在预览打开期间被卸载（如 updateBlock 把该块换成别的类型）、宿主消息却仍在列表里，
+// 列表层的「消息已不在列表」剪枝也够不到它，那一行会永久保持强制挂载。此处补发一次 false。
+onScopeDispose(() => {
+  if (previewOpen.value) emit('keep-mounted-change', false);
+});
+
 // e 显式打到被点击的缩略图按钮上再打开预览：Safari 默认不给鼠标点击的 <button> 赋键盘焦点，
 // 若单纯依赖 document.activeElement，ImagePreview 关闭时的焦点归还会落到错误元素。
 const openAt = (i: number, e: MouseEvent) => {

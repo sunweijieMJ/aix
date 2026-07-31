@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import ImageBlock from '../src/components/blocks/ImageBlock.vue';
 import type { BubbleContentInfo } from '../src/types';
 import { imageBlock } from '../src/utils/helpers';
@@ -77,6 +77,33 @@ describe('ImageBlock（结构化图片块）', () => {
     await w.vm.$nextTick();
     expect(w.emitted('keep-mounted-change')?.[1]).toEqual([false]);
     w.unmount();
+  });
+
+  // 回归：BubbleList 的 keepMounted 计数只在收到 false 时回落。块在预览打开期间被卸载
+  // （如 updateBlock 把该块换成别的类型，而宿主消息仍在列表里）时不补发 false，
+  // 那一行就永久留在 keepMounted 集合里——消息还在，列表层的 prune 也清不掉它。
+  // 注：这两例经真实监听器 prop 观察，而不是 wrapper.emitted()——后者在 unmount() 之后
+  // 取到的记录不完整（实测只剩卸载那一次），跨卸载的断言不可靠。
+  it('预览打开期间组件被卸载：补发 keep-mounted-change(false)，不让计数悬空', async () => {
+    const onKeepMountedChange = vi.fn();
+    const w = mount(ImageBlock, {
+      props: { block: imageBlock([{ url: 'https://a.com/1.png' }]), info, onKeepMountedChange },
+      attachTo: document.body,
+    });
+    await w.find('.aix-image-block__trigger').trigger('click');
+    expect(onKeepMountedChange.mock.calls).toEqual([[true]]);
+    w.unmount();
+    expect(onKeepMountedChange.mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('预览未打开时卸载：不发多余的 keep-mounted-change', () => {
+    const onKeepMountedChange = vi.fn();
+    const w = mount(ImageBlock, {
+      props: { block: imageBlock([{ url: 'https://a.com/1.png' }]), info, onKeepMountedChange },
+      attachTo: document.body,
+    });
+    w.unmount();
+    expect(onKeepMountedChange).not.toHaveBeenCalled();
   });
 
   it('点击缩略图后 block 转为 loading（如复用同一 block id 重新生成）：已打开的预览自动收起', async () => {
