@@ -209,7 +209,10 @@
     "vad",
     "vnode",
     "zhangsan",
-    "zrender"
+    "zrender",
+    "TDZ",
+    "Rspack",
+    "DCE"
   ],
   "patterns": [
     {
