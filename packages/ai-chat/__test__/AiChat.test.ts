@@ -1441,3 +1441,37 @@ describe('AiChat 附件接线', () => {
     expect(w.find('[aria-label="添加附件"]').exists()).toBe(false);
   });
 });
+
+// request 不是 setup 快照：AiChat 内部转发的是 `(ctx) => props.request(...)` 闭包，
+// 每次发请求才读 prop。prop 注释与 README「对话中途换模型」据此声明「改 request 即可、
+// 无需 :key 重建」——本用例锁住该契约，防日后有人把闭包"优化"成快照后文档静默失真
+// （重建组件会丢掉整棵对话树，是代价很高的错误引导）。
+describe('AiChat request 的响应式粒度', () => {
+  it('运行时替换 request，下一轮发送即命中新实现（无需重建组件）', async () => {
+    const first = vi.fn(async () => once('来自模型A'));
+    const second = vi.fn(async () => once('来自模型B'));
+
+    const w = mount(AiChat, { props: { request: first } });
+    await nextTick();
+    const vm = w.vm as unknown as {
+      onSend: (t: string) => Promise<void>;
+      messages: ChatMessage[];
+    };
+
+    await vm.onSend('q1');
+    await flushPromises();
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(messageText(vm.messages[1]!)).toBe('来自模型A');
+
+    // 仅替换 prop，不动 key、不重建实例
+    await w.setProps({ request: second });
+    await vm.onSend('q2');
+    await flushPromises();
+
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).toHaveBeenCalledTimes(1); // 旧实现不再被调用
+    expect(messageText(vm.messages[3]!)).toBe('来自模型B');
+    // 对话树未被重建：两轮共 4 条消息都还在
+    expect(vm.messages).toHaveLength(4);
+  });
+});

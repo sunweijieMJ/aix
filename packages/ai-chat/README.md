@@ -119,6 +119,34 @@ const b = useChat({
 });
 ```
 
+### 对话中途换模型：改 `request` 即可，**不要** `:key` 重建
+
+`request` 是**每次发请求那一刻才读取**的（`AiChat` 内部转发的是 `(ctx) => props.request(...)` 闭包），
+所以在自己的实现里读一个响应式变量就能中途换模型 / 换后端：
+
+```vue
+<script setup lang="ts">
+const model = ref('gpt-4o');
+
+// 每次发送才求值，切 model 立即对下一轮生效
+const request = ({ messages, signal }) =>
+  fetch('/api/chat', {
+    method: 'POST',
+    signal,
+    body: JSON.stringify({ model: model.value, messages }),
+  });
+</script>
+
+<template>
+  <ModelSelector v-model="model" :options="models" />
+  <AiChat :request="request" />
+</template>
+```
+
+> ⚠️ 不要用 `<AiChat :key="model" ... />` 强制重建来换模型 —— 重建会丢掉整棵对话树（连同全部分支版本）。
+> 只有当新旧后端的**流格式也不同**、需要连 `parseChunk` / `streamMode` 一起换时才必须重建实例，
+> 因为那两个确实是挂载时快照。
+
 ### 便利工厂：`createOpenAIRequest`（可选）
 
 `request` 完全由你掌控以保证**协议无关**，但对接 OpenAI 兼容后端（OpenAI / DeepSeek / 通义等）时，可用 `createOpenAIRequest` 便利工厂免去手写 fetch——传 `baseURL` / `model` / `apiKey` 即得到符合 `request` 签名的流式请求函数（自动拼 `/chat/completions`、注入 `Authorization: Bearer`、置 `stream:true`，并把 `ChatMessage[]` 映射为 OpenAI `messages`），配合内置 `openaiParseChunk` 使用：

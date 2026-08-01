@@ -195,8 +195,15 @@
 <script lang="ts">
 export interface AiChatProps {
   /**
-   * 发起请求，返回字节流或 Response（必填）；透传给 useChat。
-   * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
+   * 发起请求，返回字节流或 Response（必填）。
+   *
+   * **每次发请求那一刻才读取本 prop，运行时替换即刻生效**——内部并非把它快照进 useChat，
+   * 而是转发一层闭包 `(ctx) => props.request(...)`（见下方 useChat 接线处）。
+   * 因此「对话中途换模型 / 换后端」不需要 `:key` 强制重建 AiChat（重建会丢掉整棵对话树），
+   * 在自己的 request 实现里读一个响应式变量即可，用法见 README「自定义协议 / 换模型」。
+   *
+   * 注意与 parseChunk / streamMode 的区别：那两个是真正的 setup 快照（见其各自注释）。
+   * 仅当新旧后端的**流格式也不同**时才需要连同 parseChunk 一起换，那种场景才必须重建实例。
    */
   request: UseChatOptions['request'];
   /**
@@ -335,7 +342,14 @@ export interface AiChatProps {
   tree?: ExportedTree;
   /**
    * 划词引用/追问（opt-in，默认关闭）。true 开启默认能力；false 关闭；对象按 QuoteConfig 细配并默认视为开启，
-   * 与全局 provideAiChatConfig().quote 合并（props 优先）。视为静态配置（setup 快照）。
+   * 与全局 provideAiChatConfig().quote 合并（props 优先）。
+   *
+   * 响应式粒度是**混合**的（此前笼统标作「setup 快照」，与实现不符，故在此逐项写明）：
+   * - 运行时可变：`enable` / `roles` / `actions` / `pcQuoteAction` / `maxVisibleChips` /
+   *   `toPrompt` / `toolbar` / `sheet` —— 均在使用那一刻经 getter 或 computed 读取；
+   * - setup 快照：`longPressDelay` / `keyboard` / `excludeSelector` —— 在 useTextSelection
+   *   装配时一次性取值（见 useQuoteBinding 传参处），运行时改需重建组件；
+   * - 尚未接线：`mobileSelection` / `granularity`（P2 预留，传了也不生效）。
    */
   quote?: QuoteConfig | boolean;
   /** 触发菜单配置（@提及/斜杠命令），直通 Sender；静态配置（setup 快照） */
@@ -591,9 +605,13 @@ watch(
   },
 );
 
-// 开发期护栏（同上）：useChat 的配置项也是 setup 时快照（useChat 内一次性解构），运行时改 props 静默不生效。
-// 仅原始类型 prop 进 watch；request / parseChunk / parser 为函数 prop，业务常以内联箭头函数传入
+// 开发期护栏（同上）：useChat 的配置项是 setup 时快照（useChat 内一次性解构），运行时改 props 静默不生效。
+// 仅原始类型 prop 进 watch；parseChunk / parser 为函数 prop，业务常以内联箭头函数传入
 // （父组件每次渲染产生新引用），进 watch 会持续误报，故只在 props 注释中声明静态语义，不做运行时检测。
+//
+// request **不在**本护栏覆盖范围内，因为它根本不是快照：上方接线处转发的是
+// `(ctx) => props.request(...)` 闭包，每次请求才读 prop。此处若把它算进告警文案，
+// 会把业务往「换模型要 :key 重建组件」这条错误路子上引——而重建会丢掉整棵对话树。
 let warnedStaticChatConfig = false;
 watch(
   () => [
@@ -607,7 +625,7 @@ watch(
     if (warnedStaticChatConfig) return;
     warnedStaticChatConfig = true;
     devWarn(
-      '[ai-chat] streamMode / retryTimes / retryInterval / streamTimeout / continuePrompt（以及 request / parseChunk / parser）为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
+      '[ai-chat] streamMode / retryTimes / retryInterval / streamTimeout / continuePrompt（以及 parseChunk / parser）为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。注意 request 不在此列——它每次请求才读取，换模型 / 换后端直接改 request 即可，无需重建。',
     );
   },
 );
