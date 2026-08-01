@@ -81,6 +81,32 @@ describe('useConversations — tree.nodes 脏数据', () => {
     expect(saved[saved.length - 1]!.some((c) => c.label === '新会话')).toBe(true);
   });
 
+  // 树分支此前只做 `Array.isArray(...) ? map : 原样透传`，与扁平分支的 `→ []` 归一不对称。
+  // activeMessages 的 `?? []` 只挡得住 null/undefined：被损坏成字符串的 messages 会让
+  // AiChat 的 `messagesModel.value.length > 0` 成立并 setMessages(字符串)，importFlat
+  // 逐字符迭代出一棵 id 全 undefined 的垃圾树。
+  it('树模式下 messages 非数组（脏数据）归一为空数组，与扁平分支同口径', () => {
+    const r = useConversations({
+      defaultConversations: [
+        {
+          id: 'c1',
+          label: '会话一',
+          messages: '不是数组' as never,
+          tree: {
+            nodes: [
+              { id: 'm1', parentId: '__root__', message: { id: 'm1', role: 'user', content: [] } },
+            ],
+            headId: 'm1',
+          },
+        },
+      ],
+    });
+    expect(r.conversations.value[0]!.messages).toEqual([]);
+    // 树本身不受影响，内容不丢
+    expect(r.conversations.value[0]!.tree!.nodes).toHaveLength(1);
+    expect(r.activeMessages.value).toEqual([]);
+  });
+
   it('对照：正常 tree 数据不受影响', () => {
     const r = useConversations({
       defaultConversations: [

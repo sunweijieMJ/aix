@@ -90,8 +90,12 @@ export interface UseChatOptions {
 export interface UseChatReturn {
   /** UI 渲染消息（active path），由对话树派生的只读 computed */
   messages: ComputedRef<ChatMessage[]>;
-  /** UI 渲染消息：未设置 parser 时与 messages 同引用；设置后为 parser 映射结果 */
-  parsedMessages: Ref<ChatMessage[]>;
+  /**
+   * UI 渲染消息：未设置 parser 时与 messages 同引用；设置后为 parser 映射结果。
+   * 与 messages 同为**只读派生值**（两个分支都是 computed），故类型与 messages 对齐为
+   * ComputedRef——此前标成可写的 Ref 属类型失真：消费方赋值只会拿到 Vue 的只读告警后静默失败。
+   */
+  parsedMessages: ComputedRef<ChatMessage[]>;
   isLoading: Ref<boolean>;
   /**
    * 发送消息：string 为便捷形态（内部包单 text 块）；ContentBlock[] 供附件/富输入。
@@ -347,7 +351,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       })()
     : null;
 
-  const parsedMessages: Ref<ChatMessage[]> = parsedState
+  const parsedMessages: ComputedRef<ChatMessage[]> = parsedState
     ? computed(() => parsedState.value.list)
     : messages;
 

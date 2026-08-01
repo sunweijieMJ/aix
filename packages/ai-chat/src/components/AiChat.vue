@@ -323,6 +323,14 @@ export interface AiChatProps {
    * 对话树（v-model:tree）：分支感知的持久化通道，绑 useConversations.activeTree。
    * 不传则不参与树级持久化。同时绑 v-model:messages 与 v-model:tree 时以 tree 为准；
    * 推荐持久化场景用 tree，两者择一。
+   *
+   * `update:tree` 的触发口径（对外契约，两种宿主用法都成立）：
+   * 结构变化（增节点/切分支）、每轮请求落终态（finish/error/abort）、交互块回写命中、
+   * 赞踩反馈写回 —— 各触发一次；**流式逐 chunk 不触发**（否则每个 token 一次全量快照）。
+   * emit 出去的 message 是活的响应式代理，故：
+   * - 持有引用 + 深度侦听（useConversations 即如此）→ 任意时刻都是最新内容；
+   * - 在回调里快照 / 序列化（`@update:tree="v => api.save(JSON.stringify(v))"`）→ 靠「落终态」
+   *   这一档拿到完整数据，落库的永远是已收尾的轮次。
    */
   tree?: ExportedTree;
   /**
@@ -638,9 +646,22 @@ const {
   retryInterval: props.retryInterval,
   streamTimeout: props.streamTimeout,
   continuePrompt: props.continuePrompt,
-  onFinish: (m) => emit('finish', m),
-  onError: (m) => emit('error', m),
-  onAbort: (m) => emit('abort', m),
+  // 每轮请求落终态后先同步一次树（见 syncTree 契约②），再对外抛事件：宿主的 finish/error/
+  // abort 处理器跑起来时 v-model:tree 已是定稿数据，两条通道不会各说各话。
+  // syncTree 声明在下方（依赖同样声明在下方的 treeModel），此处经闭包在回调触发时才求值——
+  // 回调恒在请求异步收尾时调用，那时 setup 早已跑完，不会撞上暂时性死区。
+  onFinish: (m) => {
+    syncTree();
+    emit('finish', m);
+  },
+  onError: (m) => {
+    syncTree();
+    emit('error', m);
+  },
+  onAbort: (m) => {
+    syncTree();
+    emit('abort', m);
+  },
 });
 
 // ============ 追问建议（spec §5.2）============
@@ -804,13 +825,31 @@ const initialTree = safeTree(treeModel.value);
 if (initialTree.nodes.length) {
   importTree(initialTree);
 }
-// 结构变化（增节点/切分支）时导出回父；branches 引用变化是结构变化的可靠信号。
-// 未绑 v-model:tree 时整条通道空转：exportTree 是 O(节点数) 的全量快照，而写入的 model
-// 既无人读也无监听可 emit，长会话里每次结构变化白跑一趟。
-watch([messages, branches], () => {
+/**
+ * 把当前树导出回父（v-model:tree）。未绑 v-model:tree 时整条通道空转：exportTree 是
+ * O(节点数) 的全量快照，而写入的 model 既无人读也无监听可 emit，白跑一趟。
+ *
+ * **触发口径即对外契约**。exportTree() 产出的 message 是活的响应式代理，而本函数刻意只在
+ * 下列离散时刻触发，不随流式逐 chunk 触发（那会让每个 token 都跑一次全量快照）：
+ *   ① 结构变化（增节点 / 切分支）——由下方 watch 驱动；
+ *   ② 单轮请求落终态（finish / error / abort）——此刻状态与内容均已定稿；
+ *   ③ 交互块回写命中（updateBlock，如确认卡作答）；
+ *   ④ 赞踩反馈写回（setFeedback）。
+ * 于是宿主的两种用法都成立：
+ *   - 持有引用 + 深度侦听（useConversations 即如此）：任意时刻都是最新内容；
+ *   - 在回调里快照 / 序列化（`@update:tree="v => api.save(JSON.stringify(v))"`）：靠 ②③④
+ *     这几档拿到完整数据。
+ * ② 是本函数存在的主因：只按 ① 触发时（引入本函数前的行为），AI 占位节点入树那一刻就是
+ * 最后一次结构变化——其后整段流式内容与 updating→success 都不改变树结构、不再 emit，
+ * 快照式宿主会静默持久化一条 `content: []` 且 `status: 'loading'` 的 AI 消息，
+ * 下次加载还会被 reconcileStuckMessages 判为卡死改成 error，用户看到一条空的失败回复。
+ */
+const syncTree = () => {
   if (!isTreeBound) return;
   treeModel.value = exportTree();
-});
+};
+// ① 结构变化（增节点/切分支）；branches 引用变化是结构变化的可靠信号。
+watch([messages, branches], syncTree);
 // 外部整体替换 tree（切会话）时导入；空树 / undefined（切到新会话、或已无激活会话）
 // 同样需要导入以清空内部树
 watch(treeModel, (v) => {
@@ -836,7 +875,10 @@ const onPromptSelect = (item: PromptItem) => onSend(item.label);
 // 避免未命中（误传 id）时业务据空动作持久化、与实际消息状态不一致。
 const onBlockAction = (payload: BlockActionPayload) => {
   const hit = updateBlock(String(payload.messageKey), payload.action.blockId, payload.action.patch);
-  if (hit) emit('block-action', payload);
+  if (hit) {
+    syncTree(); // 契约③：块回写是就地 mutate，不改变树结构，须显式同步
+    emit('block-action', payload);
+  }
 };
 
 // 用户消息编辑：先截断重发（驱动 DOM），仅当 useChat 受理（返回 true）时再对外透出供持久化，
@@ -849,6 +891,7 @@ const onEditMessage = async (id: string, text: string) => {
 // 赞/踩反馈：写回 extra（驱动高亮），再对外透出供持久化
 const onFeedback = (id: string, value: MessageFeedback | null) => {
   setFeedback(id, value);
+  syncTree(); // 契约④：extra.feedback 写回同样不改变树结构
   emit('feedback', { id, value });
 };
 
@@ -992,7 +1035,13 @@ defineExpose({
     clearTempSuggestions();
     setMessages(m);
   },
-  updateBlock,
+  // 包一层：命令式回写块与走 onBlockAction 是同一类 mutate（不改变树结构），
+  // 须同样同步 v-model:tree（契约③），否则经 ref 直接改块的宿主会漏持久化
+  updateBlock: (messageId: string, blockId: string, patch: Record<string, unknown>) => {
+    const hit = updateBlock(messageId, blockId, patch);
+    if (hit) syncTree();
+    return hit;
+  },
   resume,
   continueGenerate,
   setSuggestions,

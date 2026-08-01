@@ -604,6 +604,47 @@ const toolbarItems = [
 
 `AiChat` 只做接线（`select` → `BubbleList.scrollToBubble`）——注意 `scrollToBubble` 在**目标行挂载**时就 resolve，而平滑滚动的动画还要几百毫秒，所以解闸不能挂在它的 resolve 上（自定义大纲 UI 复用时同理）。切分支导致激活路径整体改变时，活跃项会重置而非悬空；纯图片 / 附件等无文字消息的摘要回退到 locale 文案而不是空串。
 
+## 会话持久化（`v-model:tree`）
+
+`AiChat` 有两条对外的持久化通道，**择一使用**：
+
+| 通道 | 语义 | 适用 |
+|------|------|------|
+| `v-model:tree` | 完整对话树（含所有分支版本），`ExportedTree` | 需要保留「重新生成 / 编辑重发」产生的兄弟版本 |
+| `v-model:messages` | 仅当前激活路径的扁平消息数组 | 不需要分支历史的简单场景 |
+
+同时绑定两者时以 `tree` 为准（`messages` 退化为只读镜像输出，不再反向导入）。
+
+最省事的接法是配 `useConversations`，它已经处理好下面全部细节：
+
+```vue
+<AiChat v-model:tree="conv.activeTree" :request="request" />
+```
+
+### `update:tree` 的触发口径（自定义持久化时必读）
+
+emit 出去的 `message` 是**活的响应式代理**，而 `update:tree` 只在下列离散时刻触发，**流式逐 chunk 不触发**（否则每个 token 都要跑一次 O(节点数) 的全量快照）：
+
+1. 结构变化（新增消息节点 / 切换分支）
+2. 每轮请求落终态（`finish` / `error` / `abort`）
+3. 交互块回写命中（`block-action`，或命令式 `updateBlock`）
+4. 赞踩反馈写回
+
+于是两种宿主写法都成立：
+
+```ts
+// ① 持有引用 + 深度侦听（useConversations 即如此）：任意时刻都是最新内容
+const tree = ref<ExportedTree>();
+watch(tree, () => save(tree.value), { deep: true });
+```
+
+```vue
+<!-- ② 在回调里快照 / 序列化：靠第 2~4 档拿到完整数据，落库的永远是已收尾的轮次 -->
+<AiChat :tree="tree" :request="request" @update:tree="(v) => api.save(JSON.stringify(v))" />
+```
+
+> ⚠️ 写法 ② 依赖「落终态」这一档。若你自行实现类似的导出通道（如 fork 本组件），只按「结构变化」导出会踩到一个静默的数据丢失：AI 占位节点入树那一刻就是最后一次结构变化，其后整段流式内容与 `updating → success` 都不改变树结构，落库的会是一条 `content: []` 且 `status: 'loading'` 的 AI 消息——下次加载还会被 `reconcileStuckMessages` 判为卡死改成 `error`，用户看到一条空的失败回复。
+
 ## 组合式 hooks
 
 | Hook | 说明 |
@@ -619,7 +660,7 @@ const toolbarItems = [
 | `useIdleWhileStreaming(options)` | 「流式中但内容已停止增长」检测（末尾静默呼吸的判定内核）。`options`: `streaming` / `fingerprint` / `idleMs?` |
 | `useConfirmDeadline(options)` | 确认卡超时时间线（提示 → 自动填充 → 自动提交），**块类型无关**，含绝对时刻 / `visibilitychange` 补偿 / 排程前补发三重兜底。返回 `hinted` / `autoFilled` / `cancel` |
 | `useAiChatConfig()` / `provideAiChatConfig(config)` | provide/inject 全局配置（含 `tailBreathing` / `outline` 等 opt-in 能力的全局通道，组件 props 优先）。返回值是 **`shallowReactive`**：只有顶层键的赋值是响应式的，见下方说明 |
-| `useConversations(options?)` | 多会话托管（SSOT + 可选持久化）。返回 `conversations` / `activeKey` / `active` / `activeMessages`（绑 `AiChat` 的 `v-model:messages`）/ `items`（绑 `Conversations`）/ `isLoading`（`storage.load()` 解析完成前为 `true`，未提供 `storage` 时恒为 `false`）/ `create` / `remove` / `rename`。`storage.load`/`save` 可返回同步值或 `Promise`（内部统一用 `Promise.resolve(...).then(...)` 处理），配合内置 `localStorageConversationStorage` 或自定义异步适配器（对接真实后端）持久化 |
+| `useConversations(options?)` | 多会话托管（SSOT + 可选持久化）。返回 `conversations` / `activeKey` / `active` / `activeMessages`（绑 `AiChat` 的 `v-model:messages`）/ `activeTree`（绑 `v-model:tree`，分支感知，见「会话持久化」；读时若会话仅有旧 `messages` 会自动迁移为线性树）/ `items`（绑 `Conversations`）/ `isLoading`（`storage.load()` 解析完成前为 `true`，未提供 `storage` 时恒为 `false`）/ `create` / `remove` / `rename` / `setActive`。`storage.load`/`save` 可返回同步值或 `Promise`（内部统一用 `Promise.resolve(...).then(...)` 处理），配合内置 `localStorageConversationStorage` 或自定义异步适配器（对接真实后端）持久化 |
 | `useAttachments(options)` | 附件上传托管。返回 `items` / `add` / `remove` / `retry` / `clear` / `isUploading` / `drain`（取出已完成项随消息发送）。`options`: `upload` / `accept?` / `maxCount?` / `maxSize?` |
 | `useVoiceInput(options)` | 语音识别输入（ASR）。返回 `status` / `isSupported` / `start` / `stop` / `toggle`。缺省用浏览器 Web Speech API，可注入自定义 `recognizer` 对接讯飞/阿里云等 ASR |
 | `useSpeech(options)` | 语音播报（TTS）。返回 `speakingId` / `isSupported` / `toggle`（手动点读：再点同条停、点别条切）/ `feed`（autoPlay 流式增量分句朗读）/ `stop` / `resolveText`。缺省用浏览器 `speechSynthesis`，可注入自定义 `synthesizer` 对接讯飞/阿里云等云端 TTS |

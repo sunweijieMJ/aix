@@ -59,14 +59,22 @@ function reconcileStuckMessages(list: Conversation[]): Conversation[] {
         changed = true;
         return { ...n, message: fixed };
       });
-      // messages 镜像是 activeTree.set 同步出的 active path，兼容仅读 messages 的旧消费方
-      const messages = Array.isArray(conv.messages)
-        ? conv.messages.map((m) => {
-            const fixed = reconcileStatus(m);
-            if (fixed !== m) changed = true;
-            return fixed;
-          })
-        : conv.messages;
+      // messages 镜像是 activeTree.set 同步出的 active path，兼容仅读 messages 的旧消费方。
+      // 非数组（持久化脏数据）归一为空数组，与下方扁平分支同一口径——此前原样透传，
+      // 而 activeMessages 的 `?? []` 只挡得住 null/undefined：一个被损坏成字符串的 messages
+      // 会让 AiChat 的 `messagesModel.value.length > 0` 成立并 setMessages(字符串)，
+      // importFlat 逐字符迭代出一棵 id 全为 undefined 的垃圾树。
+      let messages = conv.messages;
+      if (!Array.isArray(messages)) {
+        messages = [];
+        changed = true;
+      } else {
+        messages = messages.map((m) => {
+          const fixed = reconcileStatus(m);
+          if (fixed !== m) changed = true;
+          return fixed;
+        });
+      }
       return changed ? { ...conv, tree: { ...conv.tree, nodes }, messages } : conv;
     }
     // 扁平 messages 模式：防御持久化脏数据（缺失/非数组时归一为空数组），复位卡死状态
