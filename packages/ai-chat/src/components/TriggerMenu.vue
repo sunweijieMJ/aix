@@ -20,10 +20,15 @@
       <div v-if="loading" :class="ns.e('status')">{{ t.triggerMenuLoading }}</div>
       <div v-else-if="!items.length" :class="ns.e('status')">{{ t.triggerMenuEmpty }}</div>
       <template v-else>
+        <!-- key 用下标而非 item.value：TriggerItem.value 没有唯一性约束（类型上只是 string，
+             候选常来自后端搜索接口），重名 value 会让 v-for key 撞车 → Vue 告警 + 列表渲染错乱。
+             下标本就是本菜单的身份口径——option 的 id 与 aria-activedescendant 指向的都是
+             `${menuId}-option-${i}`，键盘导航的 activeIndex 也是下标；且候选在 query 变化时
+             是整体替换（非局部增删），选项本身无内部状态，用下标不会产生复用错位。 -->
         <div
           v-for="(item, i) in items"
           :id="`${menuId}-option-${i}`"
-          :key="item.value"
+          :key="i"
           :class="[ns.e('item'), ns.is('active', i === activeIndex)]"
           role="option"
           :aria-selected="i === activeIndex"

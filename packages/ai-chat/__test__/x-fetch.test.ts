@@ -254,3 +254,59 @@ describe('中间件链与 onError', () => {
     expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('/api?x=1');
   });
 });
+
+describe('外部 signal 上的联动监听在请求结束后摘除', () => {
+  // { once: true } 只保证「触发后」自摘；请求正常完成（从未 abort）时监听会一直挂着。
+  // useChat 每请求新建 controller 故无实际泄漏，但 createXFetch 是公开导出的——宿主
+  // 复用一个长生命周期 signal（整页级取消令牌）反复调用时，监听会随调用次数单调增长。
+  const countAbortListeners = (ctrl: AbortController) => {
+    let added = 0;
+    let removed = 0;
+    const s = ctrl.signal;
+    const origAdd = s.addEventListener.bind(s);
+    const origRemove = s.removeEventListener.bind(s);
+    vi.spyOn(s, 'addEventListener').mockImplementation((t, f, o) => {
+      if (t === 'abort') added += 1;
+      return origAdd(t, f as EventListener, o);
+    });
+    vi.spyOn(s, 'removeEventListener').mockImplementation((t, f, o) => {
+      if (t === 'abort') removed += 1;
+      return origRemove(t, f as EventListener, o);
+    });
+    return () => ({ added, removed });
+  };
+
+  it('请求成功后监听数归零（复用同一 signal 多次调用不累积）', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('ok')),
+    );
+    const ctrl = new AbortController();
+    const stat = countAbortListeners(ctrl);
+    const xfetch = createXFetch({ timeout: 5000 });
+
+    for (let i = 0; i < 3; i++) await xfetch('/api', { signal: ctrl.signal });
+
+    const { added, removed } = stat();
+    expect(added).toBe(3);
+    expect(removed).toBe(3); // 摘干净，不随调用次数累积
+  });
+
+  it('请求失败路径同样摘除', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('network');
+      }),
+    );
+    const ctrl = new AbortController();
+    const stat = countAbortListeners(ctrl);
+    const xfetch = createXFetch({ timeout: 5000 });
+
+    await expect(xfetch('/api', { signal: ctrl.signal })).rejects.toThrow('network');
+
+    const { added, removed } = stat();
+    expect(added).toBe(1);
+    expect(removed).toBe(1);
+  });
+});

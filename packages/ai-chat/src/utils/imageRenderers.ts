@@ -1,6 +1,7 @@
 import { h } from 'vue';
 import ImageThumb from '../components/ImageThumb.vue';
 import type { MarkdownRenderers, MdToken } from './markdownWalker';
+import { safeImageSrc } from './url';
 
 export { __resetImageCache } from './imageLoadedCache';
 
@@ -14,7 +15,10 @@ const attr = (token: MdToken, name: string): string | undefined =>
  */
 export const imageRenderers: MarkdownRenderers = {
   image: ({ token }) => {
-    const src = attr(token, 'src') ?? '';
+    // 与 walker 内置 image 渲染器同一条白名单（放行 data:image/*，拦 javascript: 等）：
+    // 本渲染器在 MarkdownRenderer 里覆盖了内置那份，若只加固内置的等于没加固。
+    // 不安全 src 归一为空串——ImageThumb 对空 src 走「失败占位 + alt」分支，不裂图。
+    const src = safeImageSrc(attr(token, 'src')) ?? '';
     return h(ImageThumb, { src, alt: token.content || (attr(token, 'alt') ?? '') });
   },
 };

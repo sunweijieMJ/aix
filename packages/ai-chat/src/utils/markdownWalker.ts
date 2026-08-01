@@ -1,5 +1,5 @@
 import { h, type VNode } from 'vue';
-import { safeUrl } from './url';
+import { safeImageSrc, safeUrl } from './url';
 
 /**
  * markdown-it token 的最小结构（walker 与块切分共用；真实 Token 结构兼容）。
@@ -56,7 +56,8 @@ export const builtinMarkdownRenderers: MarkdownRenderers = {
   link: ({ token, renderChildren }) => {
     // 协议白名单纵深防护：不再隐式依赖 markdown-it 默认 validateLink（mdPlugins 可能放宽它），
     // 由 walker 自有不变量兜底。不安全协议（javascript: 等）降级为纯文本，保留链接文案不渲染 href。
-    // 注：链接无 data: 合法场景，故对 href 套 safeUrl 无副作用；image 的 src 因需放行 data:image 不在此处理。
+    // 注：链接无 data: 合法场景，故对 href 直接套 safeUrl；image 的 src 需放行 data:image，
+    // 走 safeImageSrc 这个同源变体（见下方 image 渲染器），两处口径一致。
     const href = safeUrl(attr(token, 'href'));
     return href
       ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, renderChildren())
@@ -76,7 +77,13 @@ export const builtinMarkdownRenderers: MarkdownRenderers = {
   tr: ({ renderChildren }) => h('tr', renderChildren()),
   th: ({ renderChildren }) => h('th', renderChildren()),
   td: ({ renderChildren }) => h('td', renderChildren()),
-  image: ({ token }) => h('img', { src: attr(token, 'src'), alt: token.content }),
+  // src 过图片白名单（放行 data:image/*）：与上方 link 的理由相同——不再隐式依赖
+  // markdown-it 默认 validateLink（mdPlugins 可能放宽它），由 walker 自有不变量兜底。
+  // 不安全协议降级为纯 alt 文本，与 link 降级为 span 同构。
+  image: ({ token }) => {
+    const src = safeImageSrc(attr(token, 'src'));
+    return src ? h('img', { src, alt: token.content }) : token.content;
+  },
 };
 
 /**
