@@ -56,9 +56,9 @@
                   :rel="chipHref(chip) ? 'noopener noreferrer' : undefined"
                 >
                   <img
-                    v-if="chip.thumbnail"
+                    v-if="chipThumb(chip)"
                     :class="ns.e('chip-thumb')"
-                    :src="chip.thumbnail"
+                    :src="chipThumb(chip)"
                     alt=""
                   />
                   <span v-else-if="chip.icon" :class="ns.e('chip-icon')">{{ chip.icon }}</span>
@@ -95,7 +95,7 @@ export interface ThoughtChainProps {
 import { useNamespace } from '@aix/hooks';
 import { reactive, ref, useSlots, watch } from 'vue';
 import type { ThoughtChainItem, ThoughtChainResultChip } from '../types';
-import { safeUrl } from '../utils/url';
+import { safeImageSrc, safeUrl } from '../utils/url';
 import MarkdownRenderer from './MarkdownRenderer.vue';
 
 const props = withDefaults(defineProps<ThoughtChainProps>(), {
@@ -140,6 +140,10 @@ watch(
 // chip 链接可能来自模型/检索结果（不可信），渲染前经 safeUrl 协议白名单过滤（与 SourcesBlock 同构）：
 // 安全 url 渲染为可点击 <a>，不安全（如 javascript:）则返回 undefined → 降级为 <div> 纯展示。
 const chipHref = (chip: ThoughtChainResultChip): string | undefined => safeUrl(chip.url);
+// 缩略图同样来自检索结果（不可信），走图片白名单（放行 data:image/* 与 blob:，拦 javascript: 等）；
+// 不安全则整个 <img> 不渲染，回落到下方 chip.icon / 纯文本分支
+const chipThumb = (chip: ThoughtChainResultChip): string | undefined =>
+  safeImageSrc(chip.thumbnail);
 
 // 有可折叠内容才显示箭头与正文区：item.content / item.result 或外部提供了 item-content slot
 const hasBody = (item: ThoughtChainItem): boolean =>

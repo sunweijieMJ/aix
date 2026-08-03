@@ -102,8 +102,9 @@ export { contentFingerprint } from './utils/contentFingerprint';
 export { stripMarkdownForSpeech } from './utils/stripMarkdownForSpeech';
 export { stripMarkdownForCopy } from './utils/stripMarkdownForCopy';
 
-// URL 安全工具（协议白名单，供数据驱动的 href 场景复用）
-export { safeUrl } from './utils/url';
+// URL 安全工具（协议白名单，供数据驱动的 href / img src 场景复用）
+// safeUrl 面向导航型 href；safeImageSrc 面向图片 src 与强制下载链接（额外放行 data:image/* 与 blob:）
+export { safeUrl, safeImageSrc } from './utils/url';
 
 // 自定义 markdown 渲染器（用于 AiChat / MarkdownRenderer 的 markdownRenderers 扩展点）
 export type {

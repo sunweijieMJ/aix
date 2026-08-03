@@ -20,9 +20,9 @@
             {{ currentIndex + 1 }} / {{ images.length }}
           </span>
           <a
-            v-if="active"
+            v-if="activeHref"
             :class="ns.e('action')"
-            :href="active.url"
+            :href="activeHref"
             download
             :aria-label="t.imagePreviewDownload"
             :title="t.imagePreviewDownload"
@@ -49,7 +49,7 @@
         >
           <ArrowLeft />
         </button>
-        <img v-if="active" :class="ns.e('image')" :src="active.url" :alt="active.alt || ''" />
+        <img v-if="activeHref" :class="ns.e('image')" :src="activeHref" :alt="active?.alt || ''" />
         <button
           v-if="images.length > 1"
           type="button"
@@ -87,6 +87,7 @@ import { ArrowLeft, ArrowRight, Close, Download } from '@aix/icons';
 import { computed, nextTick, ref, watch } from 'vue';
 import { locale } from '../locale';
 import type { ImageItem } from '../types';
+import { safeImageSrc } from '../utils/url';
 
 // open 是纯 boolean 类型 prop：Vue 对「无显式 default 的 Boolean 类型 prop」在缺省时会隐式
 // cast 成 false（而非 undefined），若不显式声明 default: undefined，useControllable 的
@@ -110,6 +111,15 @@ const { state: currentIndex, setState: setIndex } = useControllable<number>({
 });
 
 const active = computed(() => props.images[currentIndex.value]);
+/**
+ * 协议白名单：images 来自模型 / 生图工具输出（不可信）。此前 `<a :href="active.url" download>`
+ * 是全包唯一一处未过白名单的 href —— `javascript:` 会原样渲染成可点击链接，构成点击型 XSS
+ * （`<img src>` 不执行脚本，但同一份 url 走 href 就会）。
+ * 用 safeImageSrc 而非 safeUrl：图片预览的下载入口必须放行 `data:image/*` 与 `blob:`
+ * （生图工具与本地预览的常规形态），且这里恒带 `download` 属性、不是导航型链接。
+ * 不安全 url 归一为 undefined → 下载按钮与图片一并不渲染，而不是渲染一个可点的坏链接。
+ */
+const activeHref = computed(() => safeImageSrc(active.value?.url));
 
 // images 变短（如上游列表被替换/删图）时当前下标可能越界 → active 变 undefined，
 // 图片与下载按钮消失只剩导航的空白帧。钳制到末张；经 setIndex 通知，受控父组件可同步回填。

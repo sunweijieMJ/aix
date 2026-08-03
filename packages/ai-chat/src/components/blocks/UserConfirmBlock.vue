@@ -19,6 +19,11 @@
               *
             </span>
           </legend>
+          <!-- 刻意保持「<label> 包裹控件」的隐式关联，不加 for/id：uid 来自 useId()，它只保证
+               **单个 Vue app 内**唯一。同页多 app（微前端、Storybook 多故事、单测逐个 mount）
+               会重开计数产生同 id，而 HTML 规范里 for 的优先级高于后代查找——一旦撞 id，点击
+               标签就会跑去激活**另一张卡**的同名控件，比隐式关联更脆。隐式关联只认 DOM 后代
+               关系，天然不受 id 碰撞影响。 -->
           <label v-for="option in field.options ?? []" :key="option" :class="ns.e('option')">
             <input
               :type="field.type"
@@ -91,7 +96,10 @@ export interface UserConfirmBlockProps {
 <script setup lang="ts">
 import { useNamespace, useLocale, useId } from '@aix/hooks';
 import { computed, ref, watch, watchEffect } from 'vue';
-import { useConfirmDeadline } from '../../composables/useConfirmDeadline';
+import {
+  useConfirmDeadline,
+  type UseConfirmDeadlineReturn,
+} from '../../composables/useConfirmDeadline';
 import { locale } from '../../locale';
 import type {
   ContentBlock,
@@ -157,9 +165,28 @@ const patchFields = (fields: ConfirmField[]) => {
   props.onBlockAction?.({ blockId: props.block.id, type: 'answer', patch: { fields } });
 };
 
+/**
+ * 撤销整条超时时间线的可变句柄。
+ *
+ * 必须late-bind，不能直接闭包 `deadline`：useConfirmDeadline 的装配 watch 是
+ * `immediate: true`，会在**构造函数返回之前**同步跑一次 flush 补发已过点的节点
+ * （契约见其文档「挂载时 createdAt 已远超时」——刷新页面恢复久置会话时必然命中）。
+ * 补发 autoSubmit 会同步回调进下方的 submit() → 访问尚在 TDZ 的 `deadline` 常量，
+ * 直接抛 ReferenceError 打崩整个气泡的渲染。
+ *
+ * 构造期（deadlineApi 尚为 null）的 cancel 记为待办，构造一返回立即补发一次：
+ * 两者之间是同步直线代码，不存在可插入的时机，故语义与直接 cancel 完全等价。
+ */
+let deadlineApi: UseConfirmDeadlineReturn | null = null;
+let cancelPending = false;
+const cancelDeadline = () => {
+  if (deadlineApi) deadlineApi.cancel();
+  else cancelPending = true;
+};
+
 /** 任何手动交互都撤销整条超时时间线（与 V5 一致：用户已接管，不再自动代填/代交） */
 const onManualInput = () => {
-  deadline.cancel();
+  cancelDeadline();
   invalid.value = false;
 };
 
@@ -195,7 +222,7 @@ const submit = (autoFill: boolean) => {
     return;
   }
   invalid.value = false;
-  deadline.cancel();
+  cancelDeadline();
   sent.value = true;
   props.onBlockIntent?.({
     blockId: props.block.id,
@@ -214,6 +241,9 @@ const deadline = useConfirmDeadline({
   onAutoFill: () => patchFields(applyDefaults(props.block.fields)),
   onAutoSubmit: () => submit(true),
 });
+// 绑定真实句柄，并补发构造期（同步 flush 补发节点时）积压的 cancel（见 cancelDeadline 注释）
+deadlineApi = deadline;
+if (cancelPending) deadline.cancel();
 const hintVisible = computed(() => deadline.hinted.value && interactive.value);
 const autoFilled = deadline.autoFilled;
 
@@ -271,8 +301,11 @@ watchEffect(() => {
     gap: var(--aix-marginSM);
   }
 
-  // fieldset 自带的边框/内边距在卡片内是噪音，统一清零后按本组件节奏排版
+  // fieldset 自带的边框/内边距在卡片内是噪音，统一清零后按本组件节奏排版。
+  // min-width:0 不可省：fieldset 的 UA 默认 min-width 是 min-content（唯一有此行为的元素），
+  // 作为 flex item 时会被撑到「最长选项文本不折行」的宽度、顶破卡片。
   &__field {
+    min-width: 0;
     margin: 0;
     padding: 0;
     border: none;
@@ -294,13 +327,46 @@ watchEffect(() => {
     display: flex;
     align-items: center;
     gap: var(--aix-marginXXS);
-    padding: var(--aix-paddingXXS) 0;
+
+    // 负外边距把命中区横向撑满整行（含卡片内边距），同时保持文字视觉位置不动：
+    // 点击热区覆盖整行而不只是"方框 + 文字"那一小截
+    margin: 0 calc(-1 * var(--aix-paddingXS));
+    padding: var(--aix-paddingXXS) var(--aix-paddingXS);
+    transition: background-color var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
+    border-radius: var(--aix-borderRadiusSM);
     color: var(--aix-colorText);
     font-size: var(--aix-fontSize);
     cursor: pointer;
 
+    // 关键：禁掉文字的可选中性。<label> 包裹控件时点文字本应激活控件，但只要按下后指针有
+    // 几像素位移，浏览器就把这次交互判定为「文本选择」而不是 click，label 的激活行为随之
+    // 不触发——用户体感正是「点方框有效、点文字没反应」（点方框不会进入选词逻辑，所以稳定生效）。
+    // 选项文本是控件标签而非可摘抄内容，禁止选中既修掉这个问题，也符合原生控件的一贯行为。
+    user-select: none;
+
+    // 可点性反馈：整行悬浮底色。此前整行虽可点却没有任何视觉提示，
+    // 用户不会意识到文字也是热区，遇到上面的选词打断就更会归因为"点不动"。
+    &:hover {
+      background-color: var(--aix-colorFillTertiary);
+    }
+
+    // 只读态（提交后 / 已失效）：既无可点观感也无 hover 反馈
+    &:has(input:disabled) {
+      cursor: default;
+
+      &:hover {
+        background-color: transparent;
+      }
+    }
+
     input:disabled {
       cursor: default;
+    }
+
+    // 长选项文本按容器宽度折行，而不是把整行撑出卡片（flex item 默认 min-width:auto 不肯收缩）
+    .aix-user-confirm__option-label {
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
 
     // 只读态（提交后 / 已失效）不再有可点观感
@@ -309,8 +375,14 @@ watchEffect(() => {
     }
   }
 
+  // box-sizing 必须显式声明：@aix/theme 不做全局 border-box 重置（包内 quote-chips-toggle /
+  // Sender 镜像同样各自显式声明）。缺省的 content-box 下 width:100% 只算内容宽，
+  // 左右各 paddingSM + 1px 边框全额外溢出，输入框会顶破卡片内边距横向越界——
+  // 「其他要求」这类长文本字段最明显。max-width 兜住父级被挤窄时的二次溢出。
   &__text {
+    box-sizing: border-box;
     width: 100%;
+    max-width: 100%;
     height: var(--aix-controlHeight);
     padding: 0 var(--aix-paddingSM);
     transition: border-color var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
