@@ -10,7 +10,7 @@ import { textBlock } from '../src';
  * ============================
  *
  * 长会话滚动久了就失去方位感——想回到「第三个问题」只能凭记忆手动翻。大纲把每次提问
- * 抽成右侧一条刻度，常态只露短横线不遮正文，hover / 命中时才展开摘要，点击即定位。
+ * 抽成右侧一条刻度，常态只露短横线不遮正文，hover / 聚焦时在侧边浮层展示摘要，点击即定位。
  *
  * 【三层职责分离】
  * - `useMessageOutline`：纯派生。从消息列表筛出提问、生成摘要、按活跃项做滑动窗口裁剪。
@@ -39,7 +39,7 @@ const entries: OutlineEntry[] = [
   { messageId: 'u4', label: '如何在组合式 API 里做状态共享', ordinal: 4 },
 ];
 
-/** 受控展示：hover 展开摘要，点击 emit select */
+/** 受控展示：hover 弹出摘要浮层，点击 emit select */
 export const Standalone: StoryObj = {
   render: () => ({
     components: { MessageOutline },
@@ -64,8 +64,18 @@ export const Standalone: StoryObj = {
     await waitFor(() => expect(ticks.length).toBe(4));
     // 第二条为当前活跃
     await expect(ticks[1]!.classList.contains('is-active')).toBe(true);
-    // 无文字内容的提问回退到兜底文案
-    await expect(ticks[2]!.textContent).toContain('无文字内容');
+    // 无文字内容的提问回退到兜底文案。摘要不再内联在轨道里（改由 hover 浮层承载），
+    // 故这里改测刻度的无障碍名；浮层本身 Teleport 到 body，要从 document 上取。
+    await expect(ticks[2]!.getAttribute('aria-label')).toContain('无文字内容');
+
+    await userEvent.hover(ticks[2]!);
+    await waitFor(() =>
+      expect(document.querySelector('.aix-message-outline__tip')!.textContent).toContain(
+        '无文字内容',
+      ),
+    );
+    await userEvent.unhover(ticks[2]!);
+    await waitFor(() => expect(document.querySelector('.aix-message-outline__tip')).toBeNull());
 
     await userEvent.click(ticks[3]!);
     await waitFor(() => expect(ticks[3]!.classList.contains('is-active')).toBe(true));
@@ -179,7 +189,8 @@ export const CustomFilter: StoryObj = {
     await waitFor(() =>
       expect(canvasElement.querySelectorAll('.aix-message-outline__tick').length).toBe(3),
     );
-    const first = canvasElement.querySelector('.aix-message-outline__tick-text');
-    await expect(first!.textContent).toContain('问：');
+    // 摘要不再内联在轨道里（改由 hover 浮层承载），无障碍名仍带摘要，可据此断言
+    const first = canvasElement.querySelector('.aix-message-outline__tick');
+    await expect(first!.getAttribute('aria-label')).toContain('问：');
   },
 };

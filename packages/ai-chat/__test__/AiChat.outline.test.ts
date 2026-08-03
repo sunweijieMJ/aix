@@ -278,10 +278,18 @@ describe('MessageOutline 组件', () => {
     expect(ticks[1]!.attributes('aria-current')).toBe('true');
   });
 
-  // 纯图片/附件消息 label 为空，需兜底文案而非留空刻度
-  it('label 为空时回退到兜底文案', () => {
-    const w = mount(MessageOutline, { props: { entries } });
-    expect(w.findAll('.aix-message-outline__tick-text')[1]!.text()).toBe('（无文字内容）');
+  // 纯图片/附件消息 label 为空，需兜底文案而非留空刻度。
+  // 摘要不再内联在轨道里（改由 hover 浮层承载），故这里改测刻度的无障碍名与浮层内容。
+  it('label 为空时回退到兜底文案', async () => {
+    const w = mount(MessageOutline, { props: { entries }, attachTo: document.body });
+    const ticks = w.findAll('.aix-message-outline__tick');
+    expect(ticks[1]!.attributes('aria-label')).toBe('（无文字内容）');
+
+    await ticks[1]!.trigger('mouseenter');
+    expect(document.querySelector('.aix-message-outline__tip')!.textContent!.trim()).toBe(
+      '（无文字内容）',
+    );
+    w.unmount();
   });
 
   it('点击 emit select 并携带条目', async () => {

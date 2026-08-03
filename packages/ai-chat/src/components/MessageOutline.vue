@@ -3,10 +3,12 @@
     <ul :class="ns.e('list')">
       <li v-for="(entry, i) in entries" :key="entry.messageId" :class="ns.e('item')">
         <button
+          :ref="(el) => setTickEl(i, el)"
           type="button"
           :class="[ns.e('tick'), ns.is('active', entry.messageId === activeId)]"
           :style="waveStyle(i)"
-          :title="labelOf(entry)"
+          :aria-label="labelOf(entry)"
+          :aria-describedby="waveIndex === i ? tooltipId : undefined"
           :aria-current="entry.messageId === activeId ? 'true' : undefined"
           @click="emit('select', entry)"
           @mouseenter="focusWave(i)"
@@ -14,11 +16,27 @@
           @focus="focusWave(i)"
           @blur="blurWave(i)"
         >
+          <!-- 常态只有这一条刻度线：摘要文案改由下方浮层承载，不再在轨道里原地展开
+               （原地展开会把整条轨道推宽、挤压正文，且长摘要只能截断） -->
           <span :class="ns.e('tick-mark')" aria-hidden="true" />
-          <span :class="ns.e('tick-text')">{{ labelOf(entry) }}</span>
         </button>
       </li>
     </ul>
+    <!-- 摘要浮层：Teleport 到 body 而非留在 nav 内 —— AiChat 给本组件的定位容器带
+         `transform: translateY(-50%)`，而 transform 会成为 fixed 定位的包含块，
+         浮层若留在其内，floating-ui 算出的视口坐标会整体偏移；顺带也躲开父级 overflow 裁剪。 -->
+    <Teleport to="body">
+      <div
+        v-if="hoveredEntry"
+        :id="tooltipId"
+        ref="floatingElRef"
+        role="tooltip"
+        :class="ns.e('tip')"
+        :style="floatingStyles"
+      >
+        {{ labelOf(hoveredEntry) }}
+      </div>
+    </Teleport>
   </nav>
 </template>
 
@@ -39,16 +57,19 @@ export interface MessageOutlineEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace } from '@aix/hooks';
-import { ref } from 'vue';
+import { useId, useLocale, useNamespace } from '@aix/hooks';
+import { usePopper } from '@aix/popper';
+import { computed, ref, watch } from 'vue';
+import type { ComponentPublicInstance } from 'vue';
 import type { OutlineEntry } from '../composables/useMessageOutline';
 import { locale } from '../locale';
 
-withDefaults(defineProps<MessageOutlineProps>(), { entries: () => [] });
+const props = withDefaults(defineProps<MessageOutlineProps>(), { entries: () => [] });
 const emit = defineEmits<MessageOutlineEmits>();
 
 const ns = useNamespace('message-outline');
 const { t } = useLocale(locale);
+const tooltipId = `aix-outline-tip-${useId()}`;
 
 // 纯图片/附件消息派生不出摘要，回退到本地化文案而非留空（否则刻度只有一个光秃秃的点）
 const labelOf = (entry: OutlineEntry) => entry.label || t.value.outlineUntitled;
@@ -80,6 +101,35 @@ const waveStyle = (i: number) => {
     '--aix-outline-dist': String(Math.min(distance, AMPLITUDE_FALLOFF.length)),
   };
 };
+
+// ── 波峰摘要浮层：跟随当前波峰所在刻度定位 ──
+// 刻度元素引用表（非响应式数组即可：定位只在 waveIndex 变化时读一次，不参与渲染）
+const tickEls: (HTMLElement | null)[] = [];
+const setTickEl = (i: number, el: Element | ComponentPublicInstance | null) => {
+  tickEls[i] = (el as HTMLElement | null) ?? null;
+};
+
+const hoveredEntry = computed(() =>
+  waveIndex.value == null ? null : (props.entries[waveIndex.value] ?? null),
+);
+
+// strategy 'fixed' + flip/shift：贴着视口右缘的窄轨道上，左侧空间不足时自动翻边、
+// 上下溢出时自动收进视口，比自绘 absolute 定位可靠
+const { referenceRef, floatingRef, floatingStyles } = usePopper({
+  placement: 'left',
+  strategy: 'fixed',
+  offset: 10,
+});
+// 波峰移动即换锚点元素，浮层随之重新定位
+watch(waveIndex, (i) => {
+  referenceRef.value = i == null ? null : (tickEls[i] ?? null);
+});
+// 本地模板 ref 桥接到 usePopper 的 floatingRef（同 QuoteToolbar / ContextWindow 先例）：
+// 双 <script> 块下直接绑 usePopper 解构出的 Ref 会触发 vue-tsc noUnusedLocals 误报
+const floatingElRef = ref<HTMLElement | null>(null);
+watch(floatingElRef, (el) => {
+  floatingRef.value = el;
+});
 </script>
 
 <style lang="scss">
@@ -108,8 +158,6 @@ const waveStyle = (i: number) => {
   &__tick {
     display: flex;
     align-items: center;
-    gap: var(--aix-sizeXS);
-    max-width: 200px;
 
     /* 纵向 padding 代替 list 的 gap（见上），横向保持原值 */
     padding: 4px var(--aix-paddingXXS);
@@ -117,13 +165,6 @@ const waveStyle = (i: number) => {
     background: transparent;
     cursor: pointer;
     pointer-events: auto;
-
-    /* 文本默认收起，hover/active 才展开——常态只露刻度线，不遮挡正文 */
-    &:hover .aix-message-outline__tick-text,
-    &.is-active .aix-message-outline__tick-text {
-      max-width: 180px;
-      opacity: 1;
-    }
 
     /* 波峰与当前活跃项：主色 + 满不透明度。opacity 必须显式拉满——它平时由振幅系数插值
        （0.45～1），活跃项在指针停在别处时振幅为 0，不覆盖就会是一枚"淡掉的主色刻度"。 */
@@ -159,34 +200,40 @@ const waveStyle = (i: number) => {
     opacity: calc(0.45 + var(--aix-outline-wave, 0) * 0.55);
     background-color: var(--aix-colorBorder);
   }
-
-  &__tick-text {
-    max-width: 0;
-    overflow: hidden;
-
-    /* 与刻度同一条回弹曲线，避免"线条已经弹到位、文字还在匀速爬"的两套节奏 */
-    transition:
-      max-width 340ms cubic-bezier(0.34, 1.4, 0.5, 1),
-      opacity 220ms ease-out;
-    opacity: 0;
-    color: var(--aix-colorTextSecondary);
-    font-size: var(--aix-fontSizeSM);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 }
 
-/* 尊重系统「减少动态效果」设置：去掉展开过渡，并整体关闭声波放大——
-   只保留「当前项 / 悬浮项高亮」这一层必要反馈。仅去掉 transition 是不够的：
-   那样振幅仍在生效，只是从平滑扩张变成瞬间跳变，对该设置的用户反而更刺激。 */
-@media (prefers-reduced-motion: reduce) {
-  .aix-message-outline__tick-text,
-  .aix-message-outline__tick-mark {
-    transition: none;
-  }
+/* 波峰摘要浮层（Teleport 到 body，故与 .aix-message-outline 平级而非嵌套）。
+   定宽 + 高度自适应：定宽让长短摘要的浮层左缘对齐、指针纵向扫过时不会左右抽动；
+   高度交给内容，长摘要折行完整展示而不是截断（这正是从轨道内联文案换成浮层的目的）。 */
+.aix-message-outline__tip {
+  z-index: var(--aix-zIndexTooltip);
 
+  /* 定宽 + 自适应高度 */
+  box-sizing: border-box;
+  width: 220px;
+  padding: var(--aix-paddingXS) var(--aix-paddingSM);
+  border: 1px solid var(--aix-colorBorderSecondary);
+  border-radius: var(--aix-borderRadius);
+  background-color: var(--aix-colorBgElevated);
+  box-shadow: var(--aix-shadowMD);
+  color: var(--aix-colorText);
+  font-size: var(--aix-fontSizeSM);
+  line-height: var(--aix-lineHeightSM);
+
+  /* 纯提示层：不接指针事件，避免浮层盖住轨道后把 mouseleave 吃掉导致波峰卡住 */
+  pointer-events: none;
+
+  /* 长词/URL 不撑破定宽 */
+  overflow-wrap: anywhere;
+}
+
+/* 尊重系统「减少动态效果」设置：整体关闭声波放大，只保留「当前项 / 悬浮项高亮」这层必要反馈
+   （摘要浮层照常展示——它是信息而非动效）。仅去掉 transition 是不够的：那样振幅仍在生效，
+   只是从平滑扩张变成瞬间跳变，对该设置的用户反而更刺激。 */
+@media (prefers-reduced-motion: reduce) {
   .aix-message-outline__tick-mark {
     width: 14px;
+    transition: none;
     transition-delay: 0s;
     opacity: 1;
   }

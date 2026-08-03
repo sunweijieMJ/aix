@@ -5,7 +5,7 @@
     :aria-label="title"
   >
     <div v-if="block.title" :class="ns.e('title')">{{ block.title }}</div>
-    <div :class="ns.e('fields')">
+    <div ref="fieldsEl" :class="ns.e('fields')">
       <template v-for="field in block.fields" :key="field.name">
         <!-- 选项组：原生 fieldset/legend 关联问题与选项，天然键盘可达、屏幕阅读器可正确播报组名 -->
         <fieldset v-if="field.type !== 'text'" :class="ns.e('field')">
@@ -95,7 +95,7 @@ export interface UserConfirmBlockProps {
 
 <script setup lang="ts">
 import { useNamespace, useLocale, useId } from '@aix/hooks';
-import { computed, ref, watch, watchEffect } from 'vue';
+import { computed, onMounted, onUpdated, ref, watch, watchEffect } from 'vue';
 import {
   useConfirmDeadline,
   type UseConfirmDeadlineReturn,
@@ -156,6 +156,39 @@ const isAnswered = (f: ConfirmField): boolean =>
 
 const isChecked = (f: ConfirmField, option: string): boolean =>
   Array.isArray(f.answer) ? f.answer.includes(option) : f.answer === option;
+
+/**
+ * 每次渲染后**无条件**把选项控件的 DOM 状态拉回数据态。
+ *
+ * 单选「有时要点两次才选中」的根因：`:checked` 是**差分**绑定，Vue 只在「上一帧 vnode 值 ≠
+ * 这一帧 vnode 值」时才写 DOM。而 radio 是这里唯一带原生副作用的控件——同组另一个 radio 被选中
+ * 时，浏览器会**静默**把当前这个的 `el.checked` 置 false，Vue 对此一无所知，vnode 仍记着 true。
+ * 于是数据说「选中 A」、DOM 却空着，且此后任何重渲染的差分都是 true→true 被跳过，永远修不回来；
+ * 用户再点一次 A 才让 DOM 重新变 true——观感正是「点两次才选中」。多选没有跨兄弟副作用，故不复现。
+ *
+ * 差分绑定救不了这种带外改动，只能在渲染后重新断言一次。这也正是 Vue 自家 v-model 对表单控件
+ * 走指令钩子而非普通 prop 差分的原因；本组件是纯受控的（值只来自 props.block.fields），
+ * 「渲染后 DOM 必须等于数据」本就是它该守的不变量。
+ *
+ * 挂在 onMounted/onUpdated 而非 watchPostEffect：后者只在**自己读到的响应式依赖**变化时重跑，
+ * 而带外改动根本不经过响应式系统（浏览器直接写 DOM），依赖不动就不会重跑，修不到。
+ * 「每次本组件渲染后」才是与该不变量对齐的时机。仅在不一致时才写，不产生多余 DOM 操作。
+ */
+const fieldsEl = ref<HTMLElement | null>(null);
+const syncControlsToData = () => {
+  const root = fieldsEl.value;
+  if (!root) return;
+  for (const f of props.block.fields) {
+    if (f.type === 'text') continue;
+    const selector = `input[name="${CSS.escape(`${uid}-${f.name}`)}"]`;
+    for (const el of root.querySelectorAll<HTMLInputElement>(selector)) {
+      const want = isChecked(f, el.value);
+      if (el.checked !== want) el.checked = want;
+    }
+  }
+};
+onMounted(syncControlsToData);
+onUpdated(syncControlsToData);
 
 /**
  * 回写答案：**不 mutate props**，整份 fields 作为补丁经 BlockAction 上抛，

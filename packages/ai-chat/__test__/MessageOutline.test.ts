@@ -1,7 +1,10 @@
-import { mount } from '@vue/test-utils';
-import { describe, it, expect } from 'vitest';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { describe, it, expect, afterEach } from 'vitest';
 import MessageOutline from '../src/components/MessageOutline.vue';
 import type { OutlineEntry } from '../src/composables/useMessageOutline';
+
+// 摘要浮层 Teleport 到 body，未卸载的实例会把浮层留在 body 上污染后续用例的 document 查询
+enableAutoUnmount(afterEach);
 
 const entries: OutlineEntry[] = Array.from({ length: 6 }, (_, i) => ({
   messageId: `m${i}`,
@@ -15,11 +18,19 @@ const distOf = (el: Element) =>
   Number((el as HTMLElement).style.getPropertyValue('--aix-outline-dist'));
 
 describe('MessageOutline', () => {
-  it('渲染刻度与摘要，空 label 回退本地化文案', () => {
+  it('常态只渲染刻度线，不在轨道内渲染摘要文案', () => {
+    const w = mount(MessageOutline, { props: { entries } });
+    expect(w.findAll('.aix-message-outline__tick-mark')).toHaveLength(6);
+    // 摘要改由浮层承载，轨道内不再有文案节点
+    expect(w.find('.aix-message-outline__tick-text').exists()).toBe(false);
+    expect(document.querySelector('.aix-message-outline__tip')).toBeNull();
+  });
+
+  it('刻度的无障碍名取摘要，空 label 回退本地化文案', () => {
     const w = mount(MessageOutline, {
       props: { entries: [{ messageId: 'm0', label: '', ordinal: 1 }] },
     });
-    expect(w.find('.aix-message-outline__tick-text').text()).toBeTruthy();
+    expect(w.find('.aix-message-outline__tick').attributes('aria-label')).toBeTruthy();
   });
 
   it('点击刻度上抛 select，携带对应条目', async () => {
@@ -105,6 +116,47 @@ describe('MessageOutline', () => {
 
       expect(waveOf(ticks[3]!.element)).toBe(1);
       expect(waveOf(ticks[2]!.element)).toBeGreaterThan(0);
+    });
+
+    it('波峰摘要浮层：hover 才出现，内容取该条摘要，并经 aria-describedby 关联', async () => {
+      const w = mount(MessageOutline, { props: { entries }, attachTo: document.body });
+      const ticks = w.findAll('.aix-message-outline__tick');
+      await ticks[2]!.trigger('mouseenter');
+
+      const tip = document.querySelector('.aix-message-outline__tip');
+      expect(tip).not.toBeNull();
+      expect(tip!.textContent!.trim()).toBe('问题 2');
+      expect(tip!.getAttribute('role')).toBe('tooltip');
+      // 只有当前波峰那一条关联浮层
+      expect(ticks[2]!.attributes('aria-describedby')).toBe(tip!.id);
+      expect(ticks[1]!.attributes('aria-describedby')).toBeUndefined();
+
+      await ticks[2]!.trigger('mouseleave');
+      expect(document.querySelector('.aix-message-outline__tip')).toBeNull();
+      w.unmount();
+    });
+
+    it('波峰摘要浮层：键盘聚焦同样呈现，波峰平移时内容跟着换', async () => {
+      const w = mount(MessageOutline, { props: { entries }, attachTo: document.body });
+      const ticks = w.findAll('.aix-message-outline__tick');
+      await ticks[0]!.trigger('focus');
+      expect(document.querySelector('.aix-message-outline__tip')!.textContent!.trim()).toBe(
+        '问题 0',
+      );
+
+      await ticks[4]!.trigger('mouseenter');
+      expect(document.querySelector('.aix-message-outline__tip')!.textContent!.trim()).toBe(
+        '问题 4',
+      );
+      w.unmount();
+    });
+
+    it('组件卸载后浮层不残留在 body 上', async () => {
+      const w = mount(MessageOutline, { props: { entries }, attachTo: document.body });
+      await w.findAll('.aix-message-outline__tick')[1]!.trigger('mouseenter');
+      expect(document.querySelector('.aix-message-outline__tip')).not.toBeNull();
+      w.unmount();
+      expect(document.querySelector('.aix-message-outline__tip')).toBeNull();
     });
 
     it('离开当前波峰后整列复位', async () => {
