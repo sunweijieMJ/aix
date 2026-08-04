@@ -324,16 +324,36 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           return entry.bubbles.value;
         };
 
+        // 已告警过的碰撞 id：本 computed 会随流式反复求值，逐次告警会刷屏
+        const warnedCollisions = new Set<string>();
+
         return computed(() => {
           const list: ChatMessage[] = [];
           const map = new Map<string, string>();
+          // 先收齐全部真实消息 id 再遍历：碰撞检测要看的是「派生 id 是否撞上**任意**一条真实
+          // 消息」，边遍历边填的集合只覆盖到当前下标之前，漏判后半段。
           const alive = new Set<string>();
+          for (const m of messages.value) alive.add(m.id);
           messages.value.forEach((m, i) => {
-            alive.add(m.id);
             for (const bubble of bubblesOf(m, i)) {
               // 1→1 与 1→N 的首个子气泡都复用父 id（回写直接命中 SSOT，无需记映射）；
               // 其余派生 id 记入映射，供 resolveParentId 解析回父消息。
-              if (bubble.id !== m.id) map.set(bubble.id, m.id);
+              if (bubble.id !== m.id) {
+                // 派生 id（`${父id}__${序号}`）撞上一条真实消息 id：内置 genMsgId 产出
+                // `msg-<ts>-<n>` 不可能撞，但 defaultMessages / importTree 吃的是外部数据，
+                // 其中完全可能存在名为 `u1__1` 的消息。撞上时 parsedMessages 会出现重复 id
+                // （v-for key 冲突），且 resolveParentId 会把那条真实消息的回写 / 重生成 /
+                // 分支切换全部错误地解析到 `u1` 上——全程无报错，极难排查，故显式告警。
+                if (alive.has(bubble.id) && !warnedCollisions.has(bubble.id)) {
+                  warnedCollisions.add(bubble.id);
+                  devWarn(
+                    `[ai-chat] parser 1→N 的派生气泡 id "${bubble.id}" 与一条真实消息 id 冲突，` +
+                      '该消息的块回写 / 重新生成 / 分支切换会被错误解析到父消息 ' +
+                      `"${m.id}" 上。请避免使用形如 \`<其它消息id>__<数字>\` 的消息 id。`,
+                  );
+                }
+                map.set(bubble.id, m.id);
+              }
               list.push(bubble);
             }
           });
@@ -692,6 +712,19 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     // 各守卫拒绝路径返回 false（未受理、消息零改动），供上层跳过对外透出
     if (isLoading.value) return false;
     const pid = resolveParentId(id);
+    // 守卫：只接受 SSOT 消息 id，不接受 parser 1→N 的**非首个**派生气泡 id。
+    // 下方改写语义是「把父消息的全部 text 块合并为单个 text 块」，而派生气泡只持有父消息的
+    // 一个切片；用它的草稿去改写父消息会静默丢掉其余段落（编辑第 2 段 → 第 1 段消失）。
+    // 首个子气泡复用父 id（pid === id），照常放行；1→1 与无 parser 场景不受影响。
+    // AiChat 侧已按 __sub 只给末子气泡挂操作条，但命令式调用（chatRef.onEdit）绕得过 UI，
+    // 故不变量收在这里而非上层。
+    if (pid !== id) {
+      devWarn(
+        `[ai-chat] onEdit 收到派生气泡 id "${id}"（parser 1→N 拆分产物），已拒绝：` +
+          `编辑须以 SSOT 消息 id "${pid}" 发起，否则父消息的其余文本块会被静默丢弃。`,
+      );
+      return false;
+    }
     const node = tree.getMessage(pid);
     if (!node) return false;
     // 守卫：仅用户消息可编辑重发，避免误改 AI 回复内容

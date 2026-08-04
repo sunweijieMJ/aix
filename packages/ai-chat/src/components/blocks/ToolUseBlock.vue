@@ -1,13 +1,24 @@
 <template>
+  <!-- 委托自定义工具渲染器。除五个契约 prop 外还须透传 $attrs 与块插槽，否则 toolRenderers
+       比 blockRenderers 少两条通道（Bubble 是把 @typing-complete / @keep-mounted-change 与
+       块插槽直接挂在「块渲染器」上的，对 tool_use 而言那个组件是本组件而非委托目标）：
+       本组件 inheritAttrs:false，不显式 v-bind 就等于把这些监听器整个吃掉——自定义工具卡里
+       的 Teleport 浮层（同内置 ImageBlock 的图片预览）因此拿不到 keepMounted，虚拟列表回收
+       宿主行时会连同打开状态一起销毁。 -->
   <component
     :is="delegate"
     v-if="delegate"
+    v-bind="$attrs"
     :block="block"
     :info="info"
     :typing="typing"
     :on-block-action="onBlockAction"
     :on-block-intent="onBlockIntent"
-  />
+  >
+    <template v-for="name in slotNames" :key="name" #[name]="sp">
+      <slot :name="name" v-bind="sp" />
+    </template>
+  </component>
   <div v-else :class="ns.b()">
     <button type="button" :class="ns.e('header')" @click="expanded = !expanded">
       <span :class="ns.e('name')">{{ block.toolName || 'Tool' }}</span>
@@ -56,7 +67,7 @@ export interface ToolUseBlockProps {
 
 <script setup lang="ts">
 import { useNamespace, useLocale } from '@aix/hooks';
-import { computed, ref, type Component } from 'vue';
+import { computed, ref, useSlots, type Component } from 'vue';
 import { locale } from '../../locale';
 import type {
   ContentBlock,
@@ -74,6 +85,10 @@ const props = defineProps<ToolUseBlockProps>();
 
 const ns = useNamespace('tool-use');
 const { t } = useLocale(locale);
+const slots = useSlots();
+// 本组件自身不消费任何具名插槽（默认卡片是纯数据渲染），故收到的全部插槽都属于「块插槽穿透」
+// 链路（AiChat → BubbleList → Bubble → 块渲染器），原样转交委托目标。
+const slotNames = computed(() => Object.keys(slots));
 const expanded = ref(true);
 // toolName 来自不可信流数据，用 Object.hasOwn 做自有属性校验，避免 'constructor'/'toString'
 // 等原型链上的键命中被误当渲染器（__proto__ 本就不在自有属性中，hasOwn 一并挡住）

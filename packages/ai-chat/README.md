@@ -330,7 +330,7 @@ const toolRenderers = { generate_quiz: markRaw(QuizCard) };
 </template>
 ```
 
-自定义渲染器拿到完整 `tool_use` 块（`input`/`output`/`state`）+ `info` + `onBlockAction` + `onBlockIntent`，与内置块渲染器的契约完全一致（见「块交互的两条通道」）：
+自定义渲染器拿到完整 `tool_use` 块（`input`/`output`/`state`）+ `info` + `onBlockAction` + `onBlockIntent`，与内置块渲染器的契约完全一致（见「块交互的两条通道」）——**事件与块插槽两条通道同样对等**：委托目标 emit 的 `keep-mounted-change`（浮层开合，让虚拟列表保持宿主行挂载）与 `typing-complete` 会逐层上抛，穿透下来的块插槽也原样转交。即同一个组件注册为 `toolRenderers` 还是 `blockRenderers`，拿到的能力完全一样。
 
 - 学生作答等**改自己数据**的交互经 `onBlockAction({ blockId, type, patch })` 回写——`AiChat` 内部先 `updateBlock` 命中才向上 emit `block-action`；
 - **需要宿主处置**的交互（工具审批放行、点提交后带 `Last-Event-ID` 续流等）经 `onBlockIntent({ blockId, type, payload })` 上抛到 `AiChat` 的 `block-intent`，组件库不据此改动任何数据。配合 `state: 'awaiting-approval'` 即可实现工具调用的人工审批卡。
@@ -641,7 +641,14 @@ const toolbarItems = [
 | `v-model:tree` | 完整对话树（含所有分支版本），`ExportedTree` | 需要保留「重新生成 / 编辑重发」产生的兄弟版本 |
 | `v-model:messages` | 仅当前激活路径的扁平消息数组 | 不需要分支历史的简单场景 |
 
-同时绑定两者时以 `tree` 为准（`messages` 退化为只读镜像输出，不再反向导入）。
+同时绑定两者时以 `tree` 为准（`messages` 退化为只读镜像输出，不再反向导入）。走哪条通道由「是否绑定了 `tree`」自动推断（读编译后的 vnode props，`v-model:tree` 与单向 `:tree` 都能识别），常规模板写法无需干预。
+
+若推断失准（用 `h()` / JSX 手写 vnode、或经高阶组件 `v-bind="$attrs"` 中转），用 `treeMode` 显式声明：
+
+```vue
+<!-- 强制走 tree 通道；:tree-mode="false" 则强制走 messages 通道 -->
+<AiChat :tree="tree" :tree-mode="true" :request="request" @update:tree="save" />
+```
 
 最省事的接法是配 `useConversations`，它已经处理好下面全部细节：
 

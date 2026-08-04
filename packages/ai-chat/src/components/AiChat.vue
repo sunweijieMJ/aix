@@ -341,6 +341,17 @@ export interface AiChatProps {
    */
   tree?: ExportedTree;
   /**
+   * 显式声明是否以 `tree` 为权威持久化通道（默认由是否绑定 `v-model:tree` 自动推断）。
+   *
+   * 为真时：`messages` 只作只读镜像输出、不再反向导入内部树（两条桥接同时回写会让 messages
+   * model 被 prop 回灌成 `[]`，进而清空整棵树）。
+   *
+   * 自动推断读的是编译后的 vnode props（`'onUpdate:tree' in props`），覆盖 `v-model:tree` /
+   * 单向 `:tree` 两种写法，绝大多数场景无需管本 prop。仅当推断不适用时才显式声明——典型是
+   * 用 `h()` / JSX 手写 vnode、或经高阶组件 `v-bind="$attrs"` 中转导致监听器形态不同。
+   */
+  treeMode?: boolean;
+  /**
    * 划词引用/追问（opt-in，默认关闭）。true 开启默认能力；false 关闭；对象按 QuoteConfig 细配并默认视为开启，
    * 与全局 provideAiChatConfig().quote 合并（props 优先）。
    *
@@ -465,6 +476,10 @@ const props = withDefaults(defineProps<AiChatProps>(), {
   quote: undefined,
   // suggestions 同款联合类型含 boolean 的坑，同上显式声明 default:undefined。
   suggestions: undefined,
+  // treeMode 是纯 boolean prop，同款 boolean casting 坑更甚：未传时会被自动转成 false 而非
+  // undefined，导致「未显式声明」被误读为「显式关闭 tree 模式」，把 v-model:tree 的自动推断
+  // 整个短路掉（绑了 tree 也不生效）。显式 default:undefined 关闭该转换。
+  treeMode: undefined,
 });
 const emit = defineEmits<AiChatEmits>();
 const ns = useNamespace('ai-chat');
@@ -806,8 +821,11 @@ if (messagesModel.value.length > 0) {
 // 不再反向导入——否则两条桥接在同一 flush 同时回写父级两个 model，messages model 会被
 // prop 回灌成 []，触发 setMessages([]) 把内部树清空（亦是「同绑即崩」的根因）。
 // 用编译后的 vnode props 探测：v-model:tree 必带 onUpdate:tree 监听，初值为 undefined 也能识别。
+// props.treeMode 显式声明时优先于探测（见其 prop 注释）：探测依赖编译后的 vnode 形态，
+// h()/JSX 手写、经高阶组件 $attrs 中转等场景可能失准，留一个不依赖私有 API 的逃生口。
 const vnodeProps = getCurrentInstance()?.vnode.props;
-const isTreeBound = !!vnodeProps && ('onUpdate:tree' in vnodeProps || 'tree' in vnodeProps);
+const isTreeBound =
+  props.treeMode ?? (!!vnodeProps && ('onUpdate:tree' in vnodeProps || 'tree' in vnodeProps));
 watch(messages, (v) => {
   // toRaw 判等与下方反向 watch 对齐：父侧深响应式仓库回灌的是同一数组的 reactive proxy，
   // 裸 !== 对 proxy 恒真。当前 activePath 每次重算都产出新数组，此守卫两种写法结果相同，
@@ -932,6 +950,12 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
     const r = a(item);
     return r && r.length > 0 ? r : null;
   }
+  // 1→N 拆分：默认操作条仅末子气泡显示。必须在角色分支**之前**判定，对所有角色一致
+  // （与 branchMap 同规则）——此前只放在下方 AI 分支里，user 消息被 parser 拆分时每个子气泡
+  // 都会拿到 edit 按钮，而 useChat.onEdit 按 resolveParentId 解析回父消息后语义是「把父消息
+  // 的全部 text 块合并改写为单块」，于是用非首个子气泡进入编辑再保存会静默丢掉其余段落。
+  const sub = item.extra?.__sub as SubBubbleMeta | undefined;
+  if (sub && sub.index < sub.count - 1) return null;
   if (item.role === 'user') {
     // 固定默认值（不含 delete），不受 props.actions 数组内容影响（数组形态历史语义只配置 AI 消息）；
     // isLoading 时收窄为 [copy]——原本气泡自带铅笔按钮在全局 loading 时整个不渲染
@@ -941,9 +965,6 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
   // abort（用户手动停止）与 success 复用同一套操作条：停止后仍可复制/重新生成/点赞点踩/朗读/引用，
   // 并按需追加 'continue'（见下）；error 态走 Bubble.vue 独立的内联重试条，不受本函数影响。
   if (item.role !== 'ai' || (item.status !== 'success' && item.status !== 'abort')) return null;
-  // 1→N 拆分：默认操作条仅末子气泡显示
-  const sub = item.extra?.__sub as SubBubbleMeta | undefined;
-  if (sub && sub.index < sub.count - 1) return null;
   const base: ActionsItems = a.length > 0 ? [...a] : [];
   // quote 启用且未被业务显式声明时自动注入（策略 A）；函数形态不自动注入（与 speak 同规则）
   if (resolvedQuote.value.enable && resolvedQuote.value.pcQuoteAction && !base.includes('quote')) {
