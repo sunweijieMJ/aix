@@ -82,8 +82,9 @@
 export interface UserConfirmBlockProps {
   /** user_confirm 类型的 block */
   block: Extract<ContentBlock, { type: 'user_confirm' }>;
-  /** 气泡上下文（status/role/key）；**刻意不参与可交互性判定**，见下方 interactive 注释 */
-  info: BubbleContentInfo;
+  /** 气泡上下文（status/role/key）；**刻意不参与可交互性判定**，见下方 interactive 注释。
+   *  可选性与 BlockRendererProps 契约对齐——本组件不读它，声明为必填只会让单独挂载测试多传一个无用 prop */
+  info?: BubbleContentInfo;
   /** 打字机态：确认卡不逐字，仅注册表统一透传，本组件不消费 */
   typing?: boolean;
   /** 改答案（数据补丁）：逐层转发到 useChat.updateBlock 落地 */

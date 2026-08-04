@@ -18,8 +18,8 @@
 export interface ChartBlockProps {
   /** chart 类型的 block */
   block: Extract<ContentBlock, { type: 'chart' }>;
-  /** 气泡上下文（status/role/key）；交互回写按 info.key 定位消息 */
-  info: BubbleContentInfo;
+  /** 气泡上下文（status/role/key）；本组件暂不消费，可选性与 BlockRendererProps 契约对齐 */
+  info?: BubbleContentInfo;
   /** 打字机态：图表不逐字，仅注册表统一透传，本组件不消费 */
   typing?: boolean;
   /** 交互动作回调（切换图型/取点等经此上抛，逐层到 useChat.updateBlock） */

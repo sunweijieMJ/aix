@@ -70,6 +70,63 @@ describe('AiChat — 分支切换器贯通', () => {
     expect(w.text()).toContain('1/2');
     expect(w.text()).toContain('回复1');
   });
+
+  /**
+   * 分支导航此前只有内置切换器能走到：自定义 #footer / actions 接管操作条后，宿主
+   * 没有任何命令式入口可以切分支。这里锁住新增的 expose 面。
+   */
+  it('命令式 switchBranch / getBranches 可用，且与内置切换器同一套状态', async () => {
+    n = 0;
+    const w = mount(AiChat, { props: { request, parseChunk, actions: ['regenerate'] } });
+    const vm = w.vm as unknown as {
+      onSend: (t: string) => Promise<void>;
+      messages: ChatMessage[];
+      switchBranch: (id: string, dir: -1 | 1) => boolean;
+      getBranches: (id: string) => { index: number; count: number } | undefined;
+    };
+    await vm.onSend('问题');
+    await flush();
+    await w.find('[aria-label="重新生成"]').trigger('click');
+    await flush();
+
+    const aiId = vm.messages[vm.messages.length - 1]!.id;
+    expect(vm.getBranches(aiId)).toEqual({ index: 1, count: 2 });
+
+    // 命令式切回上一版本，UI 同步跟随（两条路径共用 useChat 的同一棵树）
+    expect(vm.switchBranch(aiId, -1)).toBe(true);
+    await flush();
+    expect(w.text()).toContain('1/2');
+    expect(w.text()).toContain('回复1');
+
+    // 越界不循环，返回 false
+    expect(vm.switchBranch(vm.messages[vm.messages.length - 1]!.id, -1)).toBe(false);
+  });
+
+  it('命令式 setFeedback 写回并同步 v-model:tree，但不回抛 feedback 事件（防埋点重复计数）', async () => {
+    n = 0;
+    const w = mount(AiChat, {
+      props: { request, parseChunk, 'onUpdate:tree': (_v: ExportedTree) => {} },
+    });
+    const vm = w.vm as unknown as {
+      onSend: (t: string) => Promise<void>;
+      messages: ChatMessage[];
+      setFeedback: (id: string, value: 'like' | 'dislike' | null) => void;
+    };
+    await vm.onSend('问题');
+    await flush();
+
+    const aiId = vm.messages[vm.messages.length - 1]!.id;
+    const treeEmitsBefore = w.emitted('update:tree')!.length;
+
+    vm.setFeedback(aiId, 'like');
+    await flush();
+
+    expect(vm.messages[vm.messages.length - 1]!.extra?.feedback).toBe('like');
+    // 契约④：extra 写回不改变树结构，须显式 syncTree，否则宿主漏持久化
+    expect(w.emitted('update:tree')!.length).toBeGreaterThan(treeEmitsBefore);
+    // 调用方即宿主，不回声
+    expect(w.emitted('feedback')).toBeUndefined();
+  });
 });
 
 describe('AiChat — v-model:tree 空会话切换', () => {

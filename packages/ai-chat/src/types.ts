@@ -172,10 +172,13 @@ export interface BubbleProps {
 
 /**
  * 块渲染器注册表：块类型 → 渲染组件。
- * 渲染器统一接收 props：`block`（当前内容块，必有）、`info`（气泡上下文）、`typing`（是否打字机态），
- * 以及两个可选的上抛回调 `onBlockAction`（改自己的数据，自动落地）/ `onBlockIntent`（需宿主处置的
- * 意图，不落地）——两者语义分工见 BlockIntent。
+ * 渲染器接收的 props 契约见 `BlockRendererProps`（自定义渲染器直接用它声明 props 即可）。
  * 与内置注册表（text/reasoning）合并时用户优先，故可覆盖内置渲染。
+ *
+ * 注：值类型刻意保持宽松的 `Component`，不按 key 收窄到 `BlockRendererProps<K>`——
+ * Vue 的 `Component` 在 `<component :is>` 分发场景下不承载可用的 props 泛型，收窄只会得到
+ * 一个"看着严格、实际不校验"的类型。类型收益放在**渲染器作者侧**（下方 BlockRendererProps），
+ * 那里 `defineProps` 能真正吃到精确的 block 类型。
  */
 export type BlockRenderers = Record<string, Component>;
 
@@ -264,6 +267,35 @@ export interface BlockIntentPayload {
   messageKey: string | number;
   /** 块意图内容（来源块 id / 类型 / 载荷） */
   intent: BlockIntent;
+}
+
+/**
+ * 块渲染器的 props 契约。Bubble 向**每一个**块渲染器（内置与自定义一视同仁）传入这五个 prop，
+ * 此前只在 `BlockRenderers` 的注释里以散文描述、没有类型承载，各实现只能各写一遍。
+ *
+ * 自定义块渲染器按块类型实例化即可拿到精确收窄的 `block`：
+ * ```ts
+ * // 先经 module augmentation 扩展 ContentBlockRegistry，再：
+ * const props = defineProps<BlockRendererProps<'my-block'>>();
+ * props.block.customField; // 已收窄到该块类型，无需手写 Extract
+ * ```
+ * 需要额外 prop 时用交叉类型追加（`BlockRendererProps<'tool_use'> & { toolRenderers?: BlockRenderers }`）。
+ *
+ * 泛型缺省为全部块类型：不关心具体类型（如通用日志/调试渲染器）时可直接写 `BlockRendererProps`。
+ */
+export interface BlockRendererProps<
+  K extends keyof ContentBlockRegistry = keyof ContentBlockRegistry,
+> {
+  /** 当前内容块，按块类型精确收窄；必有 */
+  block: Extract<ContentBlock, { type: K }>;
+  /** 气泡上下文（状态 / 角色 / 所属消息 key）。Bubble 恒会传，声明为可选是为了让渲染器可被单独挂载测试 */
+  info?: BubbleContentInfo;
+  /** 打字机态：非文本块通常不消费，但注册表统一透传，故契约里保留 */
+  typing?: boolean | BubbleTypingConfig;
+  /** 「改我自己的数据」：patch 经 useChat.updateBlock 自动落地 */
+  onBlockAction?: BlockActionHandler;
+  /** 「我需要宿主做件事」：不动数据，逐层转发到 AiChat 的 block-intent（分工见 BlockIntent） */
+  onBlockIntent?: BlockIntentHandler;
 }
 
 /** 模型选项（ModelSelector 用） */

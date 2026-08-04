@@ -54,7 +54,26 @@ const request = ({ messages, signal }: { messages: ChatMessage[]; signal: AbortS
 </template>
 ```
 
-`AiChat` 默认按 **SSE 事件**解析流（`streamMode: 'sse'`，空行切事件 + 解析 `event`/`data`/`id`），并以**扁平结构**预设读取 `data` 顶层 `delta` / `content`。对接 OpenAI / Anthropic 等只需换内置预设 `openaiParseChunk` / `anthropicParseChunk`，或自定义 `parseChunk`（见下文）。`AiChat` 还支持 `v-model:messages` 受控消息列表，并通过 `defineExpose` 暴露 `messages` / `isLoading` / `onSend` / `onReload` / `abort` / `setMessages` / `updateBlock` / `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」），以及透传 Sender 的 `focus` / `clear`，可用模板 ref 获取。
+`AiChat` 默认按 **SSE 事件**解析流（`streamMode: 'sse'`，空行切事件 + 解析 `event`/`data`/`id`），并以**扁平结构**预设读取 `data` 顶层 `delta` / `content`。对接 OpenAI / Anthropic 等只需换内置预设 `openaiParseChunk` / `anthropicParseChunk`，或自定义 `parseChunk`（见下文）。`AiChat` 还支持 `v-model:messages` 受控消息列表。
+
+### 命令式 API（模板 ref）
+
+```ts
+const chatRef = ref<InstanceType<typeof AiChat>>();
+```
+
+| 分类 | API |
+|------|-----|
+| 状态读取 | `messages`（当前激活路径）/ `isLoading` |
+| 发送与流控 | `onSend(text, attachments?, meta?)` / `onReload(id)` 重新生成 / `abort()` / `resume(id, payload?)` 工具调用 HITL 续流（见「工具调用（tool_use）」）/ `continueGenerate(id)` 向被手动停止（`status==='abort'`）的回复续写 |
+| 消息与块写回 | `setMessages(messages)` / `updateBlock(messageId, blockId, patch)` 返回是否命中目标块 / `setFeedback(id, value)` 赞踩，`null` 取消 |
+| 分支导航 | `switchBranch(id, dir)`，`dir` 取 `-1`/`1`，越界或流式进行中返回 `false` / `getBranches(id)` 取 `{ index, count }`，无多版本时为 `undefined` |
+| 追问建议 | `setSuggestions(items)` 通道①临时建议（见「追问建议」） |
+| 输入框透传 | `focus()` / `clear()` |
+
+> `updateBlock` / `setFeedback` 命令式调用与走内置 UI **等价**（同样会同步 `v-model:tree`），但**不会**回抛对应的 `block-action` / `feedback` 事件——调用方即宿主，回抛只是回声，还会让同一次操作在业务的埋点 / 持久化里被记两遍。
+>
+> `switchBranch` 改的是树结构，由 `v-model:tree` 的结构变化通道自动同步，无需额外处理。
 
 ## 全局注册（插件）
 
@@ -235,7 +254,40 @@ const roles = {
 <AiChat :request="request" :block-renderers="{ 'my-card': MyCardRenderer }" />
 ```
 
-渲染器统一收到 `block` / `info`（气泡上下文）/ `typing`，以及下面两个上抛回调。
+### 渲染器的 props 契约：`BlockRendererProps`
+
+`Bubble` 向**每一个**块渲染器（内置与自定义一视同仁）传入同一组 props。直接用导出的
+`BlockRendererProps<K>` 声明即可，`block` 会按块类型精确收窄，不必手写 `Extract`：
+
+```ts
+// ① 先经 module augmentation 把新块类型登记进注册表，ContentBlock 联合会自动包含它
+declare module '@aix/ai-chat' {
+  interface ContentBlockRegistry {
+    'my-card': { question: string; options: string[]; answer?: string };
+  }
+}
+
+// ② MyCardRenderer.vue —— block 已收窄到 my-card，直接点出自定义字段
+import type { BlockRendererProps } from '@aix/ai-chat';
+
+const props = defineProps<BlockRendererProps<'my-card'>>();
+props.block.options; // ✅ string[]
+props.block.text; // ❌ 类型报错：text 不在 my-card 上
+```
+
+| prop | 说明 |
+|------|------|
+| `block` | 当前内容块，按泛型参数收窄；**必有** |
+| `info?` | 气泡上下文 `{ status, role, key }` |
+| `typing?` | 打字机态；非文本块通常不消费，但注册表统一透传 |
+| `onBlockAction?` / `onBlockIntent?` | 两条上抛通道，语义见下节 |
+
+需要额外 prop 时用交叉类型追加，如 `BlockRendererProps<'tool_use'> & { toolRenderers?: BlockRenderers }`；
+写通用渲染器（日志 / 调试）不关心具体类型时省略泛型即可，`block` 退化为全部块类型的联合。
+
+> 注册表 `BlockRenderers` 的值类型仍是宽松的 `Component`，**不**按 key 收窄——Vue 的 `Component`
+> 在 `<component :is>` 分发场景下不承载可用的 props 泛型，收窄只会得到一个"看着严格、实际不校验"
+> 的类型。类型收益放在渲染器作者侧（即上面的 `defineProps`），那里才真正生效。
 
 ### 块交互的两条通道
 

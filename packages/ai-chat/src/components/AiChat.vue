@@ -1093,6 +1093,18 @@ defineExpose({
   resume,
   continueGenerate,
   setSuggestions,
+  // 分支导航：此前只有内置 BubbleActions 的切换器能走到，自定义 #footer / actions 拿不到入口。
+  // switchBranch 改的是树结构，contract ① 的 watch([messages, branches]) 会自动 syncTree，
+  // 故此处无需（也不该）再显式同步一次。
+  switchBranch,
+  getBranches,
+  // 赞踩写回：与上方 updateBlock 包装同一策略——补 syncTree（契约④，extra 写回不改变树结构），
+  // 但**不** emit 'feedback'。调用方就是宿主自己，回抛给它只是回声，还会让「UI 点击」与
+  // 「命令式调用」在业务的埋点/持久化里各记一次。
+  setFeedback: (id: string, value: MessageFeedback | null) => {
+    setFeedback(id, value);
+    syncTree();
+  },
   // 透传 Sender 命令式能力，便于外部聚焦 / 清空输入框
   focus: () => senderRef.value?.focus(),
   clear: () => senderRef.value?.clear(),
