@@ -42,7 +42,22 @@
             <template v-if="$slots.footer" #footer>
               <slot name="footer" :item="item as ChatMessage" />
             </template>
-            <!-- 透传块插槽：把非保留（content/footer 之外）具名插槽原样转发给每个 Bubble，
+            <!-- header / avatar / error 单独显式转发（不走下面的通用穿透）：这三个是**消息级**
+                 插槽，业务几乎必然要读整条 ChatMessage（发送者名、时间戳、extra.error），
+                 而 Bubble 只持有 role/status/itemKey，给不出 item。
+                 刻意不在通用穿透里统一补 item：那会把 item 注入到所有块插槽上，而块插槽的
+                 作用域来自各块渲染器（如 thought-chain-item-content 的 item 是 ThoughtChainItem），
+                 同名不同义，届时 item 指代什么将取决于是哪个块，是更糟的歧义。 -->
+            <template v-if="$slots.header" #header="sp">
+              <slot name="header" :item="item as ChatMessage" v-bind="sp" />
+            </template>
+            <template v-if="$slots.avatar" #avatar="sp">
+              <slot name="avatar" :item="item as ChatMessage" v-bind="sp" />
+            </template>
+            <template v-if="$slots.error" #error="sp">
+              <slot name="error" :item="item as ChatMessage" v-bind="sp" />
+            </template>
+            <!-- 透传块插槽：把非保留（上述几个之外）具名插槽原样转发给每个 Bubble，
                最终落到块渲染器内部 slot（如 thought-chain-item-content → item-content）。 -->
             <template v-for="name in passthroughSlotNames" :key="name" #[name]="sp">
               <slot :name="name" v-bind="sp" />
@@ -143,9 +158,11 @@ const ns = useNamespace('bubble-list');
 const { t } = useLocale(locale);
 const slots = useSlots();
 
-// BubbleList 自身消费 content/footer；其余具名插槽透传给每个 Bubble（最终落到块渲染器内部 slot）。
+// BubbleList 自身显式转发 content/footer/header/avatar/error（前两个补 item，后三个见模板注释）；
+// 其余具名插槽原样透传给每个 Bubble（最终落到块渲染器内部 slot）。
+const OWN_SLOTS = ['content', 'footer', 'header', 'avatar', 'error'];
 const passthroughSlotNames = computed(() =>
-  Object.keys(slots).filter((n) => n !== 'content' && n !== 'footer'),
+  Object.keys(slots).filter((n) => !OWN_SLOTS.includes(n)),
 );
 const scrollRef = ref<HTMLElement | null>(null);
 const virtualizerRef = ref<VirtualizerHandle | null>(null);

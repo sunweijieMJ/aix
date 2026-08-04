@@ -4,11 +4,15 @@
     :data-aix-message-id="itemKey != null && itemKey !== '' ? String(itemKey) : undefined"
     :data-aix-role="role"
   >
+    <!-- avatar / header 插槽带 info 作用域：Bubble 只持有 role/status/itemKey，完整消息由
+         BubbleList 在转发时补 item（气泡本身拿不到 ChatMessage，见其转发处注释）。 -->
     <div v-if="avatar || $slots.avatar" :class="ns.e('avatar')">
-      <slot name="avatar"><img :src="avatar" alt="" /></slot>
+      <slot name="avatar" :info="info"><img :src="avatar" alt="" /></slot>
     </div>
     <div :class="ns.e('wrapper')">
-      <div v-if="$slots.header" :class="ns.e('header')"><slot name="header" /></div>
+      <div v-if="$slots.header" :class="ns.e('header')">
+        <slot name="header" :info="info" />
+      </div>
       <div
         :class="[
           ns.e('content'),
@@ -72,13 +76,22 @@
               </template>
             </template>
           </slot>
-          <!-- 出错态：提示 + 重试入口（点击向上冒泡，由 AiChat 调 onReload） -->
-          <span v-if="status === 'error'" :class="ns.e('error')">
-            <span :class="ns.e('error-text')">{{ t.errorMessage }}</span>
-            <button type="button" :class="ns.e('retry')" @click="emit('retry')">
-              {{ t.retryButton }}
-            </button>
-          </span>
+          <!-- 出错态：提示 + 重试入口（点击向上冒泡，由 AiChat 调 onReload）。
+               开放 error 插槽让业务换成自己的错误 UI（错误码、限流/鉴权分支等）——此前错误条是
+               content 插槽的**兄弟节点**，覆写 content 也盖不住它。
+               用 $slots.error 显式二选一而不是 <slot> 的 fallback 写法：Vue 的 renderSlot 会在
+               插槽产出「全是 Comment 节点」时（业务按错误类型 v-if 只在部分情况下渲染）判定为
+               「未提供插槽」而启用 fallback，于是业务明确表示「这种错误不显示提示」时反而被强行
+               套回内置错误条（与 AiChat footer 插槽踩过的是同一个坑）。 -->
+          <template v-if="status === 'error'">
+            <slot v-if="$slots.error" name="error" :info="info" :retry="() => emit('retry')" />
+            <span v-else :class="ns.e('error')">
+              <span :class="ns.e('error-text')">{{ t.errorMessage }}</span>
+              <button type="button" :class="ns.e('retry')" @click="emit('retry')">
+                {{ t.retryButton }}
+              </button>
+            </span>
+          </template>
         </template>
       </div>
       <!-- 编辑态期间隐藏 footer（复制/编辑/删除等操作条）：避免草稿未保存时被同排的「删除」误删 -->

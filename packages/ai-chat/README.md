@@ -97,7 +97,7 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 
 | 组件 | 说明 | 关键 props |
 |------|------|-----------|
-| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `toolbarItems?`（工具栏项与顺序，直通 Sender）/ `senderIcons?`（覆盖 Sender 内置按钮图标，见「自定义内置按钮」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）/ `tailBreathing?`（末尾静默呼吸，默认关闭，见「末尾静默呼吸」）/ `outline?`（对话大纲导航，默认关闭，见「对话大纲导航」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`block-intent`（块意图，见「块交互的两条通道」）/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
+| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `toolbarItems?`（工具栏项与顺序，直通 Sender）/ `senderIcons?`（覆盖 Sender 内置按钮图标，见「自定义内置按钮」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）/ `tailBreathing?`（末尾静默呼吸，默认关闭，见「末尾静默呼吸」）/ `outline?`（对话大纲导航，默认关闭，见「对话大纲导航」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`block-intent`（块意图，见「块交互的两条通道」）/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer`/`bubble-header`/`avatar`/`error`（消息级，见「消息级插槽」）+ 块插槽穿透（见「块渲染与富内容插槽穿透」） |
 | `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `tailBreathing?` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；expose `scrollToBubble(messageId)`；slot `content` |
 | `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `tailBreathing?` / `contentRender` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；slot `avatar`/`header`/`content`/`footer` |
 | `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）/ `triggers?`（@提及/斜杠命令触发菜单）；emit `submit`（第三参 `meta?: SubmitMeta` 携带 mention 实体，见「触发菜单」）/`cancel`/`update:modelValue`；expose `focus`/`clear`/`setValue`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
@@ -387,6 +387,49 @@ const onBlockIntent = async (payload: BlockIntentPayload) => {
 ```
 
 > `onBlockIntent` 是**可选** prop，现有自定义渲染器不受影响；不监听 `block-intent` 时意图静默丢弃（组件库本就不落地任何东西）。
+
+### 消息级插槽（发送者名 / 时间戳 / 头像 / 出错态）
+
+除了内容区（`content`）与操作条（`footer`），气泡还开放三个消息级插槽，**作用域都带整条
+`item: ChatMessage`**（时间戳、发送者等业务字段放 `extra` 即可读到）与 `info`（`role`/`status`/`key`）：
+
+| 插槽 | 位置 | 额外作用域 | 未提供时 |
+|------|------|-----------|---------|
+| `bubble-header` | 气泡上方 | — | 整块不渲染（不留空隙） |
+| `avatar` | 头像位 | — | 渲染 `roles[*].avatar` 指定的图片 |
+| `error` | 气泡内、内容之后 | `retry()` | 内置「出错了 + 重试」条 |
+
+```vue
+<AiChat :request="request">
+  <!-- 发送者名 + 时间戳 -->
+  <template #bubble-header="{ item, info }">
+    <span v-if="info.role === 'ai'">助手</span>
+    <span v-else>{{ item.extra?.sender }}</span>
+    <time>{{ formatTime(item.extra?.ts) }}</time>
+  </template>
+
+  <!-- 按消息渲染不同头像（首字母圆形 / 在线徽标 / Agent 类型角标） -->
+  <template #avatar="{ item }">
+    <MyAvatar :user="item.extra?.sender" :online="item.extra?.online" />
+  </template>
+
+  <!-- 按错误码分支展示，而不是千篇一律的「出错了」 -->
+  <template #error="{ item, retry }">
+    <MyError :code="(item.extra?.error as ApiError)?.code" @retry="retry" />
+  </template>
+</AiChat>
+```
+
+> **为什么叫 `bubble-header` 而不是 `header`**：`AiChat` 的 `header` 已被顶部标题栏占用。
+> 此前这导致 `Bubble` 的 `header` 插槽在 `AiChat` 下完全不可达——想显示发送者名或时间戳无路可走。
+> `content` / `footer` 不带前缀，是因为它们在 `AiChat` 这层本就没有第二种含义。
+>
+> 三个插槽在 `<BubbleList>` / `<Bubble>` 上直接使用时分别叫 `header` / `avatar` / `error`
+> （`Bubble` 层拿不到完整 `ChatMessage`，故只有 `info`，`item` 由 `BubbleList` 转发时补上）。
+>
+> `error` 插槽提供后**完全接管**出错态展示：即便你的插槽在某些错误下渲染为空，也不会回落到
+> 内置错误条（内部用 `$slots.error` 显式判断，规避了 Vue `renderSlot` 把「产出全是注释节点」
+> 误判为「未提供插槽」的陷阱）。
 
 ### 命名插槽穿透块内部（`<块类型>-<内部slot名>`）
 

@@ -52,6 +52,18 @@
         <template v-if="$slots.content" #content="slotProps">
           <slot name="content" v-bind="slotProps" />
         </template>
+        <!-- 气泡上方的消息级头部（发送者名 / 时间戳 / 业务徽标）。
+             名字带 bubble- 前缀而非直接叫 header：AiChat 的 header 已被顶部标题栏占用，
+             此前这导致 Bubble 的 header 插槽在 AiChat 下**完全不可达**（被 AICHAT_RESERVED_SLOTS
+             拦下、不进块插槽穿透），业务想显示发送者名或时间戳无路可走。
+             content / footer 之所以没有前缀，是它们在 AiChat 这层本就没有第二种含义。 -->
+        <template v-if="$slots['bubble-header']" #header="sp">
+          <slot name="bubble-header" v-bind="sp" />
+        </template>
+        <!-- 出错态自定义（错误码 / 限流与鉴权分支等）；未提供时回退内置的「出错了 + 重试」条 -->
+        <template v-if="$slots.error" #error="sp">
+          <slot name="error" v-bind="sp" />
+        </template>
         <!-- 消息操作：通过 actions prop 配置（默认 ['copy','regenerate']），
              数组形态仅对 ai+success 消息渲染，函数形态按消息细粒度控制；
              可用 #footer slot 覆盖，设为 [] 关闭。branchAware 确保分支切换器可按需出现。
@@ -528,6 +540,9 @@ const AICHAT_RESERVED_SLOTS = [
   'welcome-extra',
   'content',
   'footer',
+  // 气泡级插槽：由下方模板显式转发给 BubbleList，不能再进块插槽穿透（否则重复声明）
+  'bubble-header',
+  'error',
   'quote-menu',
   'toolbar',
   'prefix',
