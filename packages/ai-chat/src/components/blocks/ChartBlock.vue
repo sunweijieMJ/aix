@@ -93,7 +93,10 @@ const ariaLabel = computed(() => props.block.alt || props.block.title || t.value
   &__canvas {
     position: relative;
     width: 100%;
-    height: 300px;
+
+    /* 与 ```chart 围栏路径（.aix-md-chart）共用同一变量：一次覆盖同时作用于结构化 chart 块
+       与 markdown 围栏图表，避免两条渲染路径高度不一致 */
+    height: var(--aix-chart-block-height, 300px);
 
     // canvas 内出图前的 Skeleton overlay：绝对定位盖满固定高度容器
     .aix-skeleton.is-overlay {

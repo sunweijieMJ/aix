@@ -919,6 +919,61 @@ const markdownRenderers: MarkdownRenderers = {
 
 所有样式基于 `@aix/theme` 的语义 token CSS 变量（颜色 `--aix-color*`、间距 `--aix-padding*`/`--aix-size*`、圆角 `--aix-borderRadius*`、动效 `--aix-motionDuration*`）。切换 `@aix/theme` 的明暗主题即可联动，无需额外配置。
 
+> 已知限制：代码高亮（highlight.js）的主题样式是**应用启动时一次性探测明暗**注入的静态 CSS，
+> 运行时切换深浅色不会跟随，需刷新整页。ECharts 图表无此问题（每次 `setOption` 重读 CSS 变量）。
+
+## 样式定制
+
+三层能力，按「改动范围从大到小」选用：
+
+| 层 | 手段 | 适用 |
+|----|------|------|
+| ① 换肤 | 覆盖 `@aix/theme` 的语义 token | 颜色 / 间距 / 圆角 / 动效的整体风格 |
+| ② 尺寸旋钮 | 覆盖下表的组件级 CSS 变量 | 布局尺寸（气泡宽度、输入框高度等） |
+| ③ 类覆盖 | 直接写 `.aix-*` 选择器 | 前两层没覆盖到的任意样式 |
+
+第 ③ 层之所以好用，是因为本包**不使用 `scoped`、不使用 `!important`**，选择器绝大多数只有 1–2 层嵌套——直接写同名 class 即可覆盖，无需 `:deep()`、无需拼特异度。
+
+### 组件级尺寸变量
+
+| 变量 | 默认值 | 作用 |
+|------|--------|------|
+| `--aix-bubble-max-width` | `min(680px, 100%)` | 气泡内容区最大宽度 |
+| `--aix-bubble-avatar-size` | `36px` | 头像尺寸（骨架屏占位同步跟随） |
+| `--aix-sender-max-height` | `160px` | 输入框自适应高度上限，超出后内部滚动 |
+| `--aix-chart-block-height` | `300px` | 图表高度（结构化 `chart` 块与 ` ```chart ` 围栏共用） |
+| `--aix-attachment-card-width` | `248px` | 附件卡片宽度 |
+| `--aix-tool-use-max-height` | `320px` | 工具调用入参 / 结果区滚动上限 |
+| `--aix-trigger-menu-max-height` | `240px` | 触发菜单候选列表滚动上限 |
+
+**在任意祖先元素上设值即可生效**，可全局也可局部：
+
+```css
+/* 全局：宽屏布局放宽气泡与输入框 */
+:root {
+  --aix-bubble-max-width: 900px;
+  --aix-sender-max-height: 320px;
+}
+
+/* 局部：只让侧栏里的这个会话用紧凑尺寸 */
+.sidebar-chat {
+  --aix-bubble-max-width: 100%;
+  --aix-bubble-avatar-size: 24px;
+  --aix-attachment-card-width: 200px;
+}
+```
+
+> **为什么能在任意祖先设值**：这些变量在组件内部只以 `var(--x, 默认值)` 的形式被读取，
+> **从未被声明**。CSS 自定义属性的层叠规则里，元素自身的声明会压过从祖先继承的值——
+> 若把默认值声明在 `.aix-bubble` 上，你写 `:root { --aix-bubble-max-width: 900px }` 反而会被
+> 静默忽略。纯 fallback 形态避开了这个陷阱，代价是变量在 devtools 里默认不可见（以本表为准）。
+>
+> 命名上刻意用 kebab-case，与 camelCase 的主题 token（`--aix-colorPrimary`）区分开：
+> 前者是**组件旋钮**，后者是**设计系统 token**。
+>
+> 表内每个变量都是长期契约（加容易、删是破坏性变更），故按「确有定制需求」收敛，
+> 未穷举所有内部尺寸。缺你需要的请提 issue，不建议自行猜测未文档化的变量名。
+
 ## 能力范围
 
 已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**@ 提及/斜杠命令（textarea 触发菜单）**（`Sender`/`AiChat` 的 `triggers` prop：本地过滤或异步搜索候选、`insertText`/`onSelect` 双行为、`meta.mentions` 结构化回传，见「触发菜单」）、**追问建议**（`AiChat` 的 `suggestions` prop：`parseChunk` 下发 + `setSuggestions` 命令式注入双通道，chips 点击发送或回填，见「追问建议」）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）、**ECharts 图表**（`echarts` 随包自动安装；` ```chart ` 围栏承载 ECharts option JSON、或结构化 `chart` 块，按需加载并以 canvas 活实例渲染统计图（柱/折/饼/散点/雷达/漏斗/仪表盘/热力图/关系图/树图/矩形树图，`EChartsChartKind` 联合类型）；虚拟列表滚动按活实例 `dispose`/重建而非缓存静态图；缺失时围栏维持代码块、结构化块降级为 `alt` 文字。地图、K 线图等更多图表类型分期接入；数学函数图像 function-plot 分期接入）、**用户确认卡 user_confirm**（内置卡片 UI + 四态生命周期 + 消息内顶替 + 可配超时时间线；提交经 `BlockIntent` 交宿主处置，见「用户确认卡（user_confirm）」）、**末尾静默呼吸**（`tailBreathing`，流式停顿时末块文字呼吸）、**上下文用量条**（`ContextWindow`，纯受控 + `compress` 事件，作为 `toolbarItems` 注入）、**对话大纲导航**（`outline` + `MessageOutline`，滑动窗口刻度条 + 点击定位）。

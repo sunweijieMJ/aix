@@ -1065,7 +1065,10 @@ defineExpose({
 
   &__input {
     flex: 1;
-    max-height: 160px;
+
+    /* 自适应高度的上限（超出后内部滚动）。autosize 用镜像 textarea 量高、再单向赋值给真实
+       输入框，本上限由 CSS 接管，故调大本变量即可放宽输入框，无需改任何 JS */
+    max-height: var(--aix-sender-max-height, 160px);
     padding: var(--aix-paddingXS);
     overflow-y: auto;
     border: none;

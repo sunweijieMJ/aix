@@ -459,7 +459,9 @@ const MarkdownBlock = defineComponent({
 /* ECharts 围栏图表：固定高度容器——ECharts 活实例 init 需非零高度（比运行时查 clientHeight 更稳） */
 .aix-md-chart {
   width: 100%;
-  min-height: 300px;
+
+  /* 与结构化 chart 块（.aix-chart-block__canvas）共用同一变量，一次覆盖两条渲染路径同步 */
+  min-height: var(--aix-chart-block-height, 300px);
   margin: 0.6em 0;
 }
 

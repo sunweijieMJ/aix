@@ -123,7 +123,9 @@ watch(
   flex-direction: column;
   min-width: 180px;
   max-width: 320px;
-  max-height: 240px;
+
+  /* 候选列表滚动上限：候选项较多（如全员 @ 提及）时可放宽 */
+  max-height: var(--aix-trigger-menu-max-height, 240px);
   padding: var(--aix-paddingXXS);
   overflow-y: auto;
   border: 1px solid var(--aix-colorBorderSecondary);

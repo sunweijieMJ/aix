@@ -397,8 +397,11 @@ defineExpose({
 
   &__skeleton-avatar {
     flex: none;
-    width: 36px;
-    height: 36px;
+
+    /* 与真实头像共用同一变量（见 Bubble.vue __avatar）：宿主调大头像时骨架屏占位同步跟随，
+       否则加载态与就绪态之间会出现一次尺寸跳变 */
+    width: var(--aix-bubble-avatar-size, 36px);
+    height: var(--aix-bubble-avatar-size, 36px);
     border-radius: 50%;
     background-color: var(--aix-colorFillTertiary);
   }

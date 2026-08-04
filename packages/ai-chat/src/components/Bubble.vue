@@ -377,8 +377,14 @@ const cancelEdit = () => {
 
     img {
       display: block;
-      width: 36px;
-      height: 36px;
+
+      /* 组件级尺寸旋钮（见 README「样式定制」）：只写 var() fallback、**不声明默认值**——
+         默认值一旦声明在组件根上，元素自身的声明会压过从祖先继承的值，宿主写
+         `:root { --aix-bubble-avatar-size: 48px }` 就会被静默忽略。纯 fallback 形态下
+         该变量从未被声明，宿主在任意祖先设值都能继承生效，且无特异度冲突。
+         BubbleList 的骨架屏头像共用本变量，保证占位与真实头像同步。 */
+      width: var(--aix-bubble-avatar-size, 36px);
+      height: var(--aix-bubble-avatar-size, 36px);
       border: 1px solid var(--aix-colorBorderSecondary);
       border-radius: 50%;
       background-color: var(--aix-colorFillTertiary);
@@ -405,7 +411,9 @@ const cancelEdit = () => {
 
   &__content {
     position: relative;
-    max-width: min(680px, 100%);
+
+    /* 组件级尺寸旋钮（见 README「样式定制」与上方 __avatar 的说明） */
+    max-width: var(--aix-bubble-max-width, min(680px, 100%));
     padding: var(--aix-paddingSM) var(--aix-padding);
     transition:
       border-color var(--aix-motionDurationMid) var(--aix-motionEaseInOut),

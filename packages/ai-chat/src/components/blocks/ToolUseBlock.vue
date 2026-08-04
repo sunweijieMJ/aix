@@ -167,7 +167,8 @@ const outputText = computed(() => fmt(props.block.output));
   }
 
   &__code {
-    max-height: 320px;
+    /* 工具入参 / 结果区的滚动上限：大 JSON 结果场景常需放宽 */
+    max-height: var(--aix-tool-use-max-height, 320px);
     margin: 0;
     padding: var(--aix-paddingSM);
     overflow: auto;
