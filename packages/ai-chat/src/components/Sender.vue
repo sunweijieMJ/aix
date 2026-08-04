@@ -15,17 +15,25 @@
     <div v-if="$slots.header" :class="ns.e('header')">
       <slot name="header" v-bind="slotScope" />
     </div>
-    <!-- 附件面板：展开收起带高度过渡（JS hooks 读 scrollHeight；jsdom 高度 0 自然短路） -->
+    <!-- 附件面板：展开收起带高度过渡（JS hooks 读 scrollHeight；jsdom 高度 0 自然短路）。
+         内层固定包一个由 Sender 自己持有的 div 再放 slot——过渡 hooks 直接对单个 el 写
+         height/overflow，若让插槽内容直接充当过渡节点，业务写多根 / fragment 时 Transition
+         拿不到唯一 el，会静默丢失高度动画。包一层后宿主爱写几个根节点都不影响。
+         这里用 <slot> 原生 fallback 写法即可（不同于 Bubble error / AiChat footer 的显式二选一）：
+         附件面板不存在「提供了插槽但期望渲染空」的语义，撞不上 renderSlot 的全 Comment 陷阱。 -->
     <Transition v-if="attach" :css="false" @enter="onPanelEnter" @leave="onPanelLeave">
-      <AttachmentsPanel
-        v-if="panelOpen"
-        :items="attach.items.value"
-        @pick="onPanelPick"
-        @drop="onPanelDrop"
-        @remove="onPanelRemove"
-        @retry="onPanelRetry"
-        @close="panelOpen = false"
-      />
+      <div v-if="panelOpen" :class="ns.e('attachments')">
+        <slot name="attachments-panel" v-bind="attachmentScope!">
+          <AttachmentsPanel
+            :items="attach.items.value"
+            @pick="onPanelPick"
+            @drop="onPanelDrop"
+            @remove="onPanelRemove"
+            @retry="onPanelRetry"
+            @close="panelOpen = false"
+          />
+        </slot>
+      </div>
     </Transition>
     <!-- 隐藏文件 input：附件启用时挂载 -->
     <input
@@ -33,7 +41,7 @@
       ref="fileInputRef"
       type="file"
       multiple
-      :accept="props.attachments?.accept"
+      :accept="acceptAttr"
       :class="ns.e('file-input')"
       @change="onFileChange"
     />
@@ -184,8 +192,16 @@ export interface SenderProps {
   /**
    * 附件能力（opt-in）：不传则完全不渲染附件 UI。传入后启用回形针按钮 / 拖拽 / 粘贴上传。
    * 视为静态配置（setup 快照建状态机），运行时切换不生效——与 markdownRenderers 约定一致。
+   *
+   * 两种传法：
+   * - **配置对象**（`UseAttachmentsOptions`）：Sender 内部自行 `useAttachments`，最省事。
+   * - **已创建的实例**（`UseAttachmentsReturn`）：宿主自己持有状态，把附件 UI 放到 Sender
+   *   之外（页面顶部工具条等）也能复用同一份 items —— 发送时的 `drain()`、上传中禁发守卫
+   *   仍由 Sender 走这份实例，不会各持一份而分叉。
+   *
+   * 二者靠 `'drain' in v` 判别（`UseAttachmentsOptions` 无同名字段，不会误判）。
    */
-  attachments?: UseAttachmentsOptions;
+  attachments?: UseAttachmentsOptions | UseAttachmentsReturn;
   /**
    * 语音输入（opt-in）：true=全默认（Web Speech API + navigator.language）；对象=自定义识别器/语言。
    * 不传则不渲染麦克风按钮；浏览器不支持且未注入识别器时按钮自动隐藏。
@@ -287,6 +303,38 @@ export interface SenderSlotScope {
   voiceSupported: boolean;
 }
 
+/**
+ * `#attachments-panel` 作用域插槽回传的上下文：整块换掉内置附件面板 UI，但**共用 Sender 内部的
+ * useAttachments 实例**——发送时的 `drain()`、上传中禁发守卫、条目清空后自动收起面板、
+ * 根级拖放 / 粘贴入列，全部原样保留，业务只需要画界面。
+ *
+ * 与 `SenderSlotScope` 的分工：那个是「替换附件**按钮**」（开合面板的入口），
+ * 这个是「替换附件**面板**」（面板里长什么样）。两者互不依赖，可单用也可合用。
+ *
+ * 所有动作句柄都已内建 `disabled` 守卫（面板可在展开后才被禁用，如表单提交期间），
+ * 自定义 UI 不必自己重做这层判断。
+ */
+export interface SenderAttachmentsSlotScope {
+  /** 待发附件列表（含 uploading / done / error 过程态与进度） */
+  items: PendingAttachment[];
+  /** 打开原生文件选择器 */
+  pick: () => void;
+  /** 追加文件（自定义拖放 / 粘贴区调用），走与内置面板同一条 add 通道（含类型、数量、大小校验） */
+  add: (files: FileList | File[]) => void;
+  /** 移除指定条目（同时中断其进行中的上传） */
+  remove: (id: string) => void;
+  /** 重试失败条目 */
+  retry: (id: string) => void;
+  /** 收起面板 */
+  close: () => void;
+  /** 是否有条目正在上传（发送键据此禁用，自定义 UI 可同步提示） */
+  isUploading: boolean;
+  /** 文件类型过滤（input accept 语法），透传自附件配置 / 实例 */
+  accept?: string;
+  /** Sender 是否处于禁用态 */
+  disabled: boolean;
+}
+
 // 触发菜单实例 id 自增计数器：置于模块顶层（非 setup 块），保证多实例 menuId 唯一，
 // 且不因组件重新 setup（如 keep-alive 重建）而重置。
 let triggerMenuUid = 0;
@@ -303,7 +351,11 @@ import type { Component } from 'vue';
 import sendIconUrl from '../assets/send-default.svg';
 import stopIconUrl from '../assets/send-streaming.svg';
 import { useAttachments } from '../composables/useAttachments';
-import type { UseAttachmentsOptions } from '../composables/useAttachments';
+import type {
+  UseAttachmentsOptions,
+  UseAttachmentsReturn,
+  PendingAttachment,
+} from '../composables/useAttachments';
 import { useTriggerDetect } from '../composables/useTriggerDetect';
 import { useVoiceInput } from '../composables/useVoiceInput';
 import { locale } from '../locale';
@@ -332,8 +384,17 @@ const emit = defineEmits<SenderEmits>();
 const ns = useNamespace('sender');
 const { t } = useLocale(locale);
 
-// 附件状态机：未启用时为 null，模板/逻辑全部以 attach 为开关，零开销（静态配置，setup 快照）
-const attach = props.attachments ? useAttachments(props.attachments) : null;
+// 附件状态机：未启用时为 null，模板/逻辑全部以 attach 为开关，零开销（静态配置，setup 快照）。
+// 传实例时直接复用宿主那份（不再 useAttachments），保证 drain / isUploading 与宿主 UI 同源。
+const attach = props.attachments
+  ? 'drain' in props.attachments
+    ? props.attachments
+    : useAttachments(props.attachments)
+  : null;
+
+// 原生 `<input accept>` 的过滤值：配置对象直接取，实例走其 accept 回显字段（见 UseAttachmentsReturn.accept）。
+// 取不到时只是原生选择器不预过滤，useAttachments.add 内的 matchesAccept 仍会兜底拒收。
+const acceptAttr = props.attachments?.accept;
 
 // ============ 触发菜单（静态配置，setup 快照；未配置时 trig 为 null 零开销） ============
 const triggers = (() => {
@@ -507,6 +568,25 @@ const onPaste = (e: ClipboardEvent) => {
 
 const hasDone = computed(() => !!attach && attach.items.value.some((it) => it.status === 'done'));
 const isUploading = computed(() => attach?.isUploading.value ?? false);
+
+// #attachments-panel 作用域插槽上下文：换掉面板 UI，但共用**同一份** useAttachments 实例与
+// onPanel* 系列的 disabled 守卫，故自定义 UI 天然继承「面板展开后才被禁用」的约束，
+// 也不会与发送时的 drain / 上传中禁发守卫分叉。未启用附件时为 null（插槽本就不渲染）。
+const attachmentScope = attach
+  ? reactive({
+      items: attach.items,
+      pick: onPanelPick,
+      add: onPanelDrop,
+      remove: onPanelRemove,
+      retry: onPanelRetry,
+      close: () => {
+        panelOpen.value = false;
+      },
+      isUploading,
+      accept: acceptAttr,
+      disabled: computed(() => props.disabled),
+    })
+  : null;
 
 // 自动展开/收起：条目数增长且面板关闭 → 展开（add 路径含拖放/粘贴/选择）；变为 0（drain
 // 或全部 remove）→ 收起。
@@ -1049,6 +1129,12 @@ defineSlots<{
   header?: (props: SenderSlotScope) => unknown;
   toolbar?: (props: SenderSlotScope) => unknown;
   footer?: (props: SenderSlotScope) => unknown;
+  /**
+   * 替换内置附件面板 UI（仅在启用附件且面板展开时渲染），见 SenderAttachmentsSlotScope。
+   * 刻意**不叫** `attachments`：Vue 的组件类型会把同名 slot 与 prop 合并成交叉类型，
+   * 与 `attachments` prop 撞名会让该 prop 变得无法赋值（vue-tsc 报 not assignable to 'undefined'）。
+   */
+  'attachments-panel'?: (props: SenderAttachmentsSlotScope) => unknown;
 }>();
 
 /** 命令式写入输入框（划词 ask 的 prompt 注入等）；与 onInput 全同路径（含高度自适应），受控/非受控一致 */

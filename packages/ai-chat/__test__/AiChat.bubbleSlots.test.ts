@@ -165,3 +165,62 @@ describe('气泡头像插槽 — avatar 补作用域', () => {
     expect(w.find('.aix-bubble__avatar .av').text()).toBe('王五-user');
   });
 });
+
+/**
+ * 深度思考 UI 定制的贯通验证：reasoning-* 是「块插槽穿透」（<块类型>-<内部slot>）的一员，
+ * 需经 AiChat → BubbleList → Bubble → ReasoningBlock → Thinking 五层原样落地。
+ * 与 thought-chain-item-content 的差别在于作用域被 ReasoningBlock 增补过（elapsed / streaming），
+ * 这条链路上任一层若把作用域吃掉或改写，自定义标题就拿不到耗时。
+ */
+describe('块插槽穿透 — reasoning-*（深度思考 UI）', () => {
+  const reasoningMsg = (over: Partial<ChatMessage> = {}): ChatMessage =>
+    msg({
+      id: 'r-msg',
+      content: [
+        { id: 'rb', type: 'reasoning', text: '思考中的内容', startedAt: 1000, endedAt: 4000 },
+      ],
+      ...over,
+    });
+
+  it('reasoning-title 经 AiChat 五层落到 Thinking 标题，并带 elapsed', async () => {
+    const w = mount(AiChat, {
+      props: { request: idleRequest, defaultMessages: [reasoningMsg()] },
+      slots: {
+        'reasoning-title': ({ elapsed }: { elapsed: number | null }) =>
+          h('b', { class: 'deep-title' }, `深度思考 ${elapsed}s`),
+      },
+    });
+    await flushPromises();
+    expect(w.find('.deep-title').text()).toBe('深度思考 3s');
+    expect(w.text()).not.toContain('思考过程');
+  });
+
+  it('reasoning-body 经 AiChat 贯通，替换折叠区正文', async () => {
+    const w = mount(AiChat, {
+      props: {
+        request: idleRequest,
+        // 流式中且数据层未打 endedAt → 思考仍在进行 → 折叠面板自动展开，正文可见
+        defaultMessages: [
+          reasoningMsg({
+            status: 'updating',
+            content: [{ id: 'rb', type: 'reasoning', text: '思考中的内容', startedAt: 1000 }],
+          }),
+        ],
+      },
+      slots: {
+        'reasoning-body': ({ text }: { text: string }) => h('pre', { class: 'deep-body' }, text),
+      },
+    });
+    await flushPromises();
+    expect(w.find('.deep-body').text()).toBe('思考中的内容');
+  });
+
+  it('不提供 reasoning-* 时内置思考 UI 完全不变（穿透无副作用）', async () => {
+    const w = mount(AiChat, {
+      props: { request: idleRequest, defaultMessages: [reasoningMsg()] },
+    });
+    await flushPromises();
+    expect(w.find('.aix-thinking__header').text()).toContain('思考过程');
+    expect(w.find('.aix-thinking__arrow').exists()).toBe(true);
+  });
+});

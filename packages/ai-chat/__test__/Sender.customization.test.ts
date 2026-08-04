@@ -3,7 +3,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { h, nextTick } from 'vue';
 import AiChat from '../src/components/AiChat.vue';
 import Sender from '../src/components/Sender.vue';
-import type { SenderSlotScope } from '../src/components/Sender.vue';
+import type { SenderSlotScope, SenderAttachmentsSlotScope } from '../src/components/Sender.vue';
+import { useAttachments } from '../src/composables/useAttachments';
 import type { VoiceRecognizer, VoiceRecognizerCtx } from '../src/types';
 
 vi.mock('virtua/vue', () => ({
@@ -222,5 +223,135 @@ describe('AiChat — senderIcons 直通', () => {
     expect(w.find('svg.chat-attach').exists()).toBe(true);
     expect(w.find('svg.chat-send').exists()).toBe(true);
     expect(w.find('.aix-sender__send-icon').exists()).toBe(false);
+  });
+});
+
+// ============ 附件面板 UI 定制（C）============
+// 内置 AttachmentsPanel 此前是 Sender 的实现细节：无插槽、未导出，业务只能改 CSS。
+// 而「自建」路线也是断的——attachments prop 只收配置对象，Sender 内部自持 useAttachments 实例，
+// 宿主另建一份的话，发送时的 drain()、上传中禁发守卫、自动收起、根级拖放/粘贴全部对不上。
+// 现开放 #attachments-panel 作用域插槽（换 UI、共用同一实例）与实例注入（换持有者）两条路。
+
+describe('Sender — #attachments-panel 插槽（C1：换 UI，共用内部实例）', () => {
+  const mountPanel = (slotFn: (s: SenderAttachmentsSlotScope) => unknown, props = {}) =>
+    mount(Sender, {
+      props: { attachments: { upload: instantUpload, accept: '.png' }, ...props },
+      slots: { 'attachments-panel': slotFn as never },
+    });
+
+  /** 面板仅在展开时渲染：经 slotScope 的 toggleAttachments 打开 */
+  const openPanel = async (w: ReturnType<typeof mountPanel>) => {
+    await w.find('.aix-sender__attach-btn').trigger('click');
+    await nextTick();
+  };
+
+  it('提供插槽时替换内置面板，未提供时回退内置面板', async () => {
+    const custom = mountPanel(() => h('div', { class: 'my-panel' }, 'custom'));
+    await openPanel(custom);
+    expect(custom.find('.my-panel').exists()).toBe(true);
+    expect(custom.find('.aix-attachments-panel').exists()).toBe(false);
+
+    const fallback = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+    await fallback.find('.aix-sender__attach-btn').trigger('click');
+    await nextTick();
+    expect(fallback.find('.aix-attachments-panel').exists()).toBe(true);
+  });
+
+  it('作用域回传 items / isUploading / accept / disabled 与动作句柄', async () => {
+    let scope!: SenderAttachmentsSlotScope;
+    const w = mountPanel((s) => {
+      scope = s;
+      return h('div', { class: 'my-panel' });
+    });
+    await openPanel(w);
+    expect(scope.accept).toBe('.png');
+    expect(scope.disabled).toBe(false);
+    expect(scope.items).toEqual([]);
+    expect(typeof scope.pick).toBe('function');
+    expect(typeof scope.add).toBe('function');
+    expect(typeof scope.remove).toBe('function');
+    expect(typeof scope.retry).toBe('function');
+    expect(typeof scope.close).toBe('function');
+  });
+
+  it('scope.add 入列的附件参与发送（与内置面板同一份实例，drain 拿得到）', async () => {
+    let scope!: SenderAttachmentsSlotScope;
+    const w = mountPanel((s) => {
+      scope = s;
+      return h('div', { class: 'my-panel' });
+    });
+    await openPanel(w);
+    scope.add([new File(['x'], 'a.png', { type: 'image/png' })]);
+    await nextTick();
+    await nextTick(); // 等 instantUpload 落 done
+    expect(scope.items).toHaveLength(1);
+    await w.find('textarea').setValue('带附件');
+    await w.find('.aix-sender__send').trigger('click');
+    const [, attachments] = w.emitted('submit')![0] as [string, unknown[]];
+    expect(attachments).toHaveLength(1);
+    expect((attachments[0] as { name: string }).name).toBe('a.png');
+  });
+
+  it('scope.close 收起面板', async () => {
+    let scope!: SenderAttachmentsSlotScope;
+    const w = mountPanel((s) => {
+      scope = s;
+      return h('div', { class: 'my-panel' });
+    });
+    await openPanel(w);
+    expect(w.find('.my-panel').exists()).toBe(true);
+    scope.close();
+    await nextTick();
+    expect(w.find('.my-panel').exists()).toBe(false);
+  });
+
+  it('动作句柄继承 disabled 守卫（面板展开后才被禁用时，add 不再入列）', async () => {
+    let scope!: SenderAttachmentsSlotScope;
+    const w = mountPanel((s) => {
+      scope = s;
+      return h('div', { class: 'my-panel' });
+    });
+    await openPanel(w);
+    await w.setProps({ disabled: true });
+    scope.add([new File(['x'], 'b.png', { type: 'image/png' })]);
+    await nextTick();
+    expect(scope.items).toHaveLength(0);
+  });
+
+  it('插槽内容可以是多个根节点（Transition 的过渡节点由 Sender 自己持有）', async () => {
+    const w = mountPanel(() => [h('div', { class: 'r1' }), h('div', { class: 'r2' })]);
+    await openPanel(w);
+    expect(w.find('.aix-sender__attachments').exists()).toBe(true);
+    expect(w.find('.r1').exists()).toBe(true);
+    expect(w.find('.r2').exists()).toBe(true);
+  });
+});
+
+describe('Sender — attachments 接受已创建实例（C2：换持有者）', () => {
+  it('注入实例后与宿主共用 items，发送时 drain 同一份', async () => {
+    const inst = useAttachments({ upload: instantUpload, accept: '.png' });
+    const w = mount(Sender, { props: { attachments: inst } });
+    // 宿主侧直接入列（模拟 Sender 之外的自绘上传区）
+    inst.add([new File(['x'], 'outside.png', { type: 'image/png' })]);
+    await nextTick();
+    await nextTick();
+    expect(inst.items.value).toHaveLength(1);
+    await w.find('textarea').setValue('hi');
+    await w.find('.aix-sender__send').trigger('click');
+    const [, attachments] = w.emitted('submit')![0] as [string, unknown[]];
+    expect((attachments[0] as { name: string }).name).toBe('outside.png');
+    // drain 走的是同一份实例，宿主侧列表随之清空
+    expect(inst.items.value).toHaveLength(0);
+  });
+
+  it('注入实例时 accept 仍喂给原生 input（回归：实例不含 accept 会静默丢过滤）', () => {
+    const inst = useAttachments({ upload: instantUpload, accept: '.pdf,.png' });
+    const w = mount(Sender, { props: { attachments: inst } });
+    expect(w.find('input[type=file]').attributes('accept')).toBe('.pdf,.png');
+  });
+
+  it('传配置对象时行为不变（回归）', () => {
+    const w = mount(Sender, { props: { attachments: { upload: instantUpload, accept: '.pdf' } } });
+    expect(w.find('input[type=file]').attributes('accept')).toBe('.pdf');
   });
 });

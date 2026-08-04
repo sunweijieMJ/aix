@@ -39,6 +39,14 @@ export interface UseAttachmentsReturn {
   isUploading: ComputedRef<boolean>;
   /** 取出全部 done 条目（剥离过程态字段）并从列表移除，发送时调用 */
   drain: () => AttachmentItem[];
+  /**
+   * 回显传入的 `accept`（不参与任何内部逻辑，内部过滤走闭包里的 options.accept）。
+   * 存在的理由：`Sender` 支持直接注入本实例（而非配置对象），此时它拿不到原始 options，
+   * 却仍要把 accept 喂给隐藏 `<input accept>` 做原生选择器过滤。缺了它只会**软降级**
+   * （文件仍会被 add 里的 matchesAccept 拒掉并触发 onReject），但体验从「选不中」退化成
+   * 「选了才被拒」，故补上这一路回显。
+   */
+  accept?: string;
 }
 
 /** 判断文件是否匹配 input accept 语法（".ext" / "type/subtype" / "type/*"）；accept 为空视为全匹配 */
@@ -165,5 +173,5 @@ export function useAttachments(options: UseAttachmentsOptions): UseAttachmentsRe
     });
   }
 
-  return { items, add, remove, retry, clear, isUploading, drain };
+  return { items, add, remove, retry, clear, isUploading, drain, accept };
 }

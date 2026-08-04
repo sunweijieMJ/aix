@@ -432,3 +432,62 @@ export const MarkdownItPlugins: Story = {
     await waitFor(() => expect(canvas.getByText(/⚡AIX/)).toBeTruthy(), { timeout: 5000 });
   },
 };
+
+/** 场景 5：只换思考区外观（reasoning-* 插槽穿透，不接管渲染器） */
+export const ReasoningSlots: Story = {
+  name: '5. 只换思考区外观（插槽穿透）',
+  args: {
+    request: customProtocolRequest,
+    parseChunk: customParseChunk,
+    welcomeTitle: '自定义深度思考 UI',
+    welcomeDescription: '用 reasoning-* 插槽只换标题与箭头，打字机 / 计时 / 自动展开全部保留',
+    placeholder: '输入消息…',
+    prompts: PROMPT_1,
+  },
+  render: (args) => ({
+    components: { AiChat },
+    setup: () => ({ args }),
+    template: `
+      <div style="display:flex;justify-content:center;box-sizing:border-box;min-height:100vh;padding:24px;background:var(--aix-colorBgLayout);">
+        <div style="display:flex;flex-direction:column;width:100%;max-width:720px;height:600px;overflow:hidden;border:1px solid var(--aix-colorBorderSecondary);border-radius:14px;background:var(--aix-colorBgContainer);box-shadow:var(--aix-shadowMD);">
+          <AiChat v-bind="args">
+            <!-- elapsed / streaming 由 reasoning 块从数据层推导后增补进作用域 -->
+            <template #reasoning-title="{ elapsed, streaming }">
+              <span style="display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;background:var(--aix-colorPrimaryBg);color:var(--aix-colorPrimary);font-size:12px;">
+                <span v-if="streaming" style="width:6px;height:6px;border-radius:50%;background:currentColor;"></span>
+                {{ streaming ? '深度思考中' : (elapsed == null ? '深度思考' : '已思考 ' + elapsed + 's') }}
+              </span>
+            </template>
+            <template #reasoning-arrow="{ open }">
+              <span style="font-size:12px;color:var(--aix-colorTextTertiary);">
+                {{ open ? '收起' : '展开' }}
+              </span>
+            </template>
+          </AiChat>
+        </div>
+      </div>
+    `,
+  }),
+  parameters: {
+    docs: {
+      description: {
+        story:
+          '与场景 2 的对照：那里用 `blockRenderers` **接管**整个 reasoning 渲染（自己实现外观与流式呈现），' +
+          '这里只用 `#reasoning-title` / `#reasoning-arrow` **换局部**——打字机、思考耗时计时、' +
+          '流式中自动展开、终态自动折叠全部仍由内置实现负责。作用域里的 `elapsed`（思考耗时秒数，' +
+          '进行中每秒刷新、`endedAt` 后定格）与 `streaming`（思考本身是否仍在进行，比消息级 status 更精确）' +
+          '由 reasoning 块增补，`Thinking` 自身无从得知。',
+      },
+    },
+  },
+  play: async ({ canvas }) => {
+    const ta = canvas.getByRole('textbox');
+    await userEvent.click(ta);
+    await userEvent.type(ta, '换协议怎么做');
+    await userEvent.keyboard('{Enter}');
+    // 自定义思考标题出现（流式中先显示「深度思考中」）
+    await waitFor(() => expect(canvas.getByText(/深度思考/)).toBeTruthy(), { timeout: 5000 });
+    // 内置标题「思考过程」被替换掉
+    await expect(canvas.queryByText(/思考过程/)).not.toBeInTheDocument();
+  },
+};

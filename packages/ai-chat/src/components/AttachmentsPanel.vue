@@ -52,6 +52,28 @@
   </div>
 </template>
 
+<script lang="ts">
+// 类型声明独立成块（与 Bubble / Sender / AttachmentCard 同约定）：本组件已对外导出，
+// 其 Props/Emits 需能被 index.ts 稳定 re-export。
+export interface AttachmentsPanelProps {
+  /** 待发附件列表（含上传过程态） */
+  items: PendingAttachment[];
+}
+
+export interface AttachmentsPanelEmits {
+  /** 点击占位区：请求打开文件选择器 */
+  (e: 'pick'): void;
+  /** 拖放落入面板的文件 */
+  (e: 'drop', files: FileList | File[]): void;
+  /** 移除指定条目 */
+  (e: 'remove', id: string): void;
+  /** 重试失败条目 */
+  (e: 'retry', id: string): void;
+  /** 收起面板 */
+  (e: 'close'): void;
+}
+</script>
+
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
@@ -60,18 +82,6 @@ import { ref } from 'vue';
 import type { PendingAttachment } from '../composables/useAttachments';
 import { locale } from '../locale';
 import AttachmentCard from './AttachmentCard.vue';
-
-export interface AttachmentsPanelProps {
-  items: PendingAttachment[];
-}
-
-export interface AttachmentsPanelEmits {
-  (e: 'pick'): void;
-  (e: 'drop', files: FileList | File[]): void;
-  (e: 'remove', id: string): void;
-  (e: 'retry', id: string): void;
-  (e: 'close'): void;
-}
 
 defineProps<AttachmentsPanelProps>();
 const emit = defineEmits<AttachmentsPanelEmits>();

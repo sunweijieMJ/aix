@@ -1,11 +1,17 @@
 <template>
   <div :class="ns.b()">
     <button type="button" :class="ns.e('header')" :aria-expanded="open" @click="open = !open">
-      <span>{{ title || t.thinking }}</span>
-      <span :class="[ns.e('arrow'), ns.is('open', open)]">▾</span>
+      <!-- 标题 / 箭头各开一个插槽：只想换其一时不必接管整个折叠壳（展开态、a11y、动效都还在）。
+           作用域给 open——箭头几乎必然要按开合换图形，标题也常需要按开合换文案。 -->
+      <span>
+        <slot name="title" :open="open">{{ title || t.thinking }}</slot>
+      </span>
+      <slot name="arrow" :open="open">
+        <span :class="[ns.e('arrow'), ns.is('open', open)]">▾</span>
+      </slot>
     </button>
     <div v-if="open" :class="ns.e('body')">
-      <slot>{{ content }}</slot>
+      <slot :open="open">{{ content }}</slot>
     </div>
   </div>
 </template>
@@ -31,6 +37,15 @@ const props = withDefaults(defineProps<ThinkingProps>(), {
   content: '',
   expanded: false,
 });
+
+defineSlots<{
+  /** 折叠面板正文（覆盖 content 文本渲染） */
+  default?: (props: { open: boolean }) => unknown;
+  /** 标题区（覆盖 title / i18n 回退文案） */
+  title?: (props: { open: boolean }) => unknown;
+  /** 展开箭头（覆盖内置 ▾ 字符） */
+  arrow?: (props: { open: boolean }) => unknown;
+}>();
 
 const ns = useNamespace('thinking');
 const { t } = useLocale(locale);

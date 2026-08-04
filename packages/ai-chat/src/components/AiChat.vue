@@ -201,6 +201,10 @@
       <template v-if="$slots.prefix" #prefix="scope">
         <slot name="prefix" v-bind="scope" />
       </template>
+      <!-- 自定义附件面板 UI：原样转发给 Sender（作用域见 SenderAttachmentsSlotScope） -->
+      <template v-if="$slots['attachments-panel']" #attachments-panel="scope">
+        <slot name="attachments-panel" v-bind="scope" />
+      </template>
     </Sender>
   </div>
 </template>
@@ -546,6 +550,7 @@ const AICHAT_RESERVED_SLOTS = [
   'quote-menu',
   'toolbar',
   'prefix',
+  'attachments-panel',
 ];
 const blockSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !AICHAT_RESERVED_SLOTS.includes(n)),

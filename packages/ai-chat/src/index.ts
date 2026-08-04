@@ -1,6 +1,7 @@
 import type { App } from 'vue';
 import AiChat from './components/AiChat.vue';
 import AttachmentCard from './components/AttachmentCard.vue';
+import AttachmentsPanel from './components/AttachmentsPanel.vue';
 import Bubble from './components/Bubble.vue';
 import BubbleActions from './components/BubbleActions.vue';
 import BubbleList from './components/BubbleList.vue';
@@ -29,6 +30,7 @@ import Welcome from './components/Welcome.vue';
 // AttachmentBlock / UserConfirmBlock）是 Bubble 块注册表的实现细节，不对外导出——扩展请通过 blockRenderers 注册自定义渲染器。
 export {
   AttachmentCard,
+  AttachmentsPanel,
   Bubble,
   BubbleList,
   BubbleActions,
@@ -152,6 +154,7 @@ export type {
   SenderProps,
   SenderEmits,
   SenderSlotScope,
+  SenderAttachmentsSlotScope,
   ToolbarBuiltinKey,
   ToolbarItem,
   SenderToolbarItems,
@@ -171,6 +174,12 @@ export type {
   AttachmentCardEmits,
   AttachmentCardItem,
 } from './components/AttachmentCard.vue';
+// 内置附件面板：既是 Sender 的默认皮肤，也作为自绘 #attachments-panel 时的对照参考
+// （同 QuoteToolbar / QuoteSheet 的处理方式）
+export type {
+  AttachmentsPanelProps,
+  AttachmentsPanelEmits,
+} from './components/AttachmentsPanel.vue';
 export type { QuoteMenuProps, QuoteMenuEmits } from './components/QuoteMenu.vue';
 export type { QuoteChipProps, QuoteChipEmits } from './components/QuoteChip.vue';
 export type { QuoteToolbarProps, QuoteToolbarEmits } from './components/quote/QuoteToolbar.vue';
@@ -186,6 +195,7 @@ export type { AiChatLocale } from './locale';
 
 const components = {
   AttachmentCard,
+  AttachmentsPanel,
   Bubble,
   BubbleList,
   BubbleActions,
