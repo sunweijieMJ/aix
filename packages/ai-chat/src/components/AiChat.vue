@@ -957,6 +957,15 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
   const sub = item.extra?.__sub as SubBubbleMeta | undefined;
   if (sub && sub.index < sub.count - 1) return null;
   if (item.role === 'user') {
+    // 被 parser 拆过的用户消息不给 edit：上面的去重只放行**末**子气泡，而 1→N 时只有首个子
+    // 气泡复用父 id（其余为派生 id `${父id}__${序号}`），故走到这里的 sub 恒为派生 id ——
+    // useChat.onEdit 明确拒绝派生 id（见其守卫），于是这个按钮点得开、写得进、保存时被守卫
+    // 拒绝，编辑框照常收起而内容纹丝不动，草稿静默丢失（生产构建 devWarn 被 DCE，连控制台
+    // 线索都没有）。与其留一个「看得见点不动」的入口，不如不给——这与 onEdit 守卫「不允许用
+    // 切片改写父消息」的意图一致。
+    // 若将来要支持拆分消息的编辑，需让**草稿基线与回写目标都解析到父消息**（气泡只持有父消息
+    // 的一个切片，直接拿它的草稿改写父消息就是 onEdit 守卫要防的那种静默丢段落）。
+    if (sub) return ['copy'];
     // 固定默认值（不含 delete），不受 props.actions 数组内容影响（数组形态历史语义只配置 AI 消息）；
     // isLoading 时收窄为 [copy]——原本气泡自带铅笔按钮在全局 loading 时整个不渲染
     // （避免草稿在 loading 期间被静默丢弃），这里保留同等的"隐藏入口"效果。

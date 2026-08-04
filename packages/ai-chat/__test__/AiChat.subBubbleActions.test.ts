@@ -38,13 +38,16 @@ const twoBlockUser: ChatMessage = {
 };
 
 /**
- * Bug 防回归：1→N 的「仅末子气泡显示操作条」去重此前只写在 AI 分支里，user 分支先一步
- * return 掉了。于是被拆分的用户消息每个子气泡都挂编辑按钮，而 useChat.onEdit 会按
- * resolveParentId 解析回父消息、把父消息的全部 text 块塌成该子气泡那一段——用非首个子气泡
- * 编辑再保存会静默丢掉其余段落。去重须对所有角色一致（与 branchMap 同规则）。
+ * Bug 防回归①：1→N 的「仅末子气泡显示操作条」去重此前只写在 AI 分支里，user 分支先一步
+ * return 掉了。于是被拆分的用户消息每个子气泡都挂编辑按钮。去重须对所有角色一致（与 branchMap 同规则）。
+ *
+ * Bug 防回归②：仅做上面的去重还不够——1→N 时只有**首个**子气泡复用父 id，末子气泡恒为派生 id
+ * `${父id}__${序号}`，而 useChat.onEdit 明确拒绝派生 id。于是「只在末子气泡挂 edit」等于把编辑
+ * 入口精确地留在了那个必定被拒的气泡上：点得开、写得进、保存时被守卫拒绝，编辑框照常收起而内容
+ * 不变，草稿静默丢失（生产构建下 devWarn 被 DCE，无任何线索）。故被拆分的用户消息不给 edit。
  */
 describe('AiChat — 1→N 拆分时的操作条去重', () => {
-  it('被拆分的用户消息只有末子气泡挂操作条', async () => {
+  it('被拆分的用户消息只有末子气泡挂操作条，且不含必定失效的 edit', async () => {
     const w = mount(AiChat, {
       props: { request: idleRequest, parser: splitByBlock, defaultMessages: [twoBlockUser] },
     });
@@ -55,7 +58,22 @@ describe('AiChat — 1→N 拆分时的操作条去重', () => {
     expect(bubbles[0]!.findAll('.aix-bubble-actions__btn')).toHaveLength(0);
     expect(
       bubbles[1]!.findAll('.aix-bubble-actions__btn').map((b) => b.attributes('aria-label')),
-    ).toEqual(['复制', '编辑']);
+    ).toEqual(['复制']);
+  });
+
+  // 守住「入口不存在」这个不变量的**后果**而非仅其表象：只要 edit 还挂在派生 id 的气泡上，
+  // 这条就会红——即便将来有人把上面的 aria-label 断言改宽。
+  it('被拆分的用户消息不存在能进入编辑态的入口（草稿静默丢失的根因）', async () => {
+    const w = mount(AiChat, {
+      props: { request: idleRequest, parser: splitByBlock, defaultMessages: [twoBlockUser] },
+    });
+    await flushPromises();
+
+    const editBtn = w
+      .findAll('.aix-bubble--end .aix-bubble-actions__btn')
+      .find((b) => b.attributes('aria-label') === '编辑');
+    expect(editBtn).toBeUndefined();
+    expect(w.findAll('.aix-bubble__edit-input')).toHaveLength(0);
   });
 
   it('未拆分的用户消息操作条不受影响', async () => {

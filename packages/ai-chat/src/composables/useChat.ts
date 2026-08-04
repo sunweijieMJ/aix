@@ -716,8 +716,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     // 下方改写语义是「把父消息的全部 text 块合并为单个 text 块」，而派生气泡只持有父消息的
     // 一个切片；用它的草稿去改写父消息会静默丢掉其余段落（编辑第 2 段 → 第 1 段消失）。
     // 首个子气泡复用父 id（pid === id），照常放行；1→1 与无 parser 场景不受影响。
-    // AiChat 侧已按 __sub 只给末子气泡挂操作条，但命令式调用（chatRef.onEdit）绕得过 UI，
-    // 故不变量收在这里而非上层。
+    // AiChat 侧对被拆分的用户消息**根本不挂 edit 入口**（曾经只挂在末子气泡上——而末子气泡
+    // 恒为派生 id，等于把入口精确留在必被本守卫拒绝的那个气泡上，点开能写、保存静默丢草稿）。
+    // 本守卫仍是最终不变量：headless 直接用 useChat 的调用方绕得过任何 UI 层策略。
     if (pid !== id) {
       devWarn(
         `[ai-chat] onEdit 收到派生气泡 id "${id}"（parser 1→N 拆分产物），已拒绝：` +

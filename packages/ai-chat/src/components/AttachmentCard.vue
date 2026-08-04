@@ -8,7 +8,7 @@
       <img
         v-if="!thumbError"
         :class="ns.e('thumb')"
-        :src="item.url"
+        :src="thumbSrc"
         :alt="item.name"
         @error="thumbError = true"
       />
@@ -113,13 +113,20 @@ import type { PendingAttachment } from '../composables/useAttachments';
 import { locale } from '../locale';
 import type { AttachmentItem } from '../types';
 import { getFileTypeMeta } from '../utils/fileTypes';
+import { safeImageSrc } from '../utils/url';
 
 const props = withDefaults(defineProps<AttachmentCardProps>(), { removable: false });
 const emit = defineEmits<AttachmentCardEmits>();
 const ns = useNamespace('attachment-card');
 const { t } = useLocale(locale);
 
-const isImage = computed(() => !!props.item.url && (props.item.mime ?? '').startsWith('image/'));
+// 缩略图 src 过协议白名单：item.url 来自宿主 upload() 的返回值**以及**持久化后恢复的
+// attachment 块（对话树可能来自 localStorage——包内其余各处都按不可信数据对待）。
+// 与 ImageThumb 为结构化 image 块所做的收口是同一件事，这里补齐附件路径。
+const thumbSrc = computed(() => safeImageSrc(props.item.url));
+// 图片卡的判定连带要求 src 过了白名单：未过则退回文件卡分支（类型图标 + 文件名），
+// 而不是渲染一个 src 为空的 <img> 裂图——降级形态与 thumbError 回退保持一致。
+const isImage = computed(() => !!thumbSrc.value && (props.item.mime ?? '').startsWith('image/'));
 
 // 缩略图加载失败标记；换源（如重试上传得到新 url）后重置，给新地址重新加载的机会
 const thumbError = ref(false);

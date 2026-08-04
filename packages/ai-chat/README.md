@@ -684,7 +684,7 @@ watch(tree, () => save(tree.value), { deep: true });
 
 | Hook | 说明 |
 |------|------|
-| `useChat(options)` | 消息流托管。返回 `messages` / `parsedMessages`（经 `parser` 映射的渲染消息）/ `isLoading` / `onSend` / `onReload` / `onEdit`（编辑并重新生成）/ `abort` / `setMessages` / `updateBlock`（按 id 回写块补丁）/ `setFeedback`（赞/踩）/ `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」）/ `exportTree` / `importTree` / `switchBranch` 等。内置块级规则：`reasoning` 转场自动封口计时、同一条消息内新 `user_confirm` 落地时自动顶替更早的待填卡（见「用户确认卡」）。`options`: `request` / `streamMode?`（`'sse'` 默认 / `'line'`）/ `parseChunk?` / `parser?` / `defaultMessages?` / `onFinish?` / `onError?` / `onAbort?` / `retryTimes?` / `retryInterval?` / `streamTimeout?`（流静默超时） |
+| `useChat(options)` | 消息流托管。返回 `messages` / `parsedMessages`（经 `parser` 映射的渲染消息）/ `isLoading` / `onSend` / `onReload` / `onEdit`（编辑并重新生成，**拒绝 `parser` 1→N 的派生气泡 id**——派生气泡只持有父消息的一个切片，用它改写会静默丢掉其余段落）/ `abort` / `setMessages` / `updateBlock`（按 id 回写块补丁）/ `setFeedback`（赞/踩）/ `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」）/ `continueGenerate`（向被手动停止的回复续写，把已生成内容 + 隐藏续写指令一并作为 history 发出，不依赖后端记忆前情）/ `branches` / `getBranches` / `switchBranch` / `exportTree` / `importTree`。内置块级规则：`reasoning` 转场自动封口计时、同一条消息内新 `user_confirm` 落地时自动顶替更早的待填卡（见「用户确认卡」）。`options`: `request` / `streamMode?`（`'sse'` 默认 / `'line'`）/ `parseChunk?` / `parser?` / `defaultMessages?` / `onFinish?` / `onError?` / `onAbort?` / `retryTimes?` / `retryInterval?` / `streamTimeout?`（流静默超时） |
 | `sseStream(stream, signal?)` | 按 SSE 规范把字节流解析为结构化事件（空行切事件 + `event`/`data`/`id` 字段）的异步生成器，支持中断；`useChat` 的 `sse` 模式（默认）用它 |
 | `xStream(stream, signal?)` | 将 `ReadableStream<Uint8Array>` 解码并按行（`\n`）切分的异步生成器，支持中断；`useChat` 的 `line` 模式用它 |
 | `useXStream()` | `xStream` 的响应式封装：`lines` / `isStreaming` / `error` / `start` / `cancel` |
