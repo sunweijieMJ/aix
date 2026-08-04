@@ -147,6 +147,7 @@
       :voice="voice"
       :triggers="triggers"
       :toolbar-items="toolbarItems"
+      :icons="senderIcons"
       :allow-empty-submit="pendingQuotes.length > 0"
       @submit="onSend"
       @cancel="abort"
@@ -368,6 +369,14 @@ export interface AiChatProps {
   /** 工具栏项（内置 attach/voice + 自定义对象混排），直通 Sender；不传则用 Sender 默认值 ['attach','voice'] */
   toolbarItems?: SenderToolbarItems;
   /**
+   * 覆盖 Sender 内置按钮图标（附件 / 语音 / 发送 / 停止），直通 Sender 的 `icons` prop。
+   *
+   * 命名上刻意加 `sender` 前缀、不沿用同名直通的惯例（`toolbarItems` / `triggers` 那样）：
+   * AiChat 这一层还有消息操作条图标（`ActionItem.icon`）、划词菜单图标等多套图标，
+   * 裸叫 `icons` 会被读成「全局图标表」，与实际作用域不符。
+   */
+  senderIcons?: SenderIcons;
+  /**
    * 追问建议（opt-in）：true 全默认；对象可配 fillOnly（点击仅回填不发送）/ max（上限，默认 5）。
    * 联合类型含 boolean：withDefaults 必须显式 default undefined（同 quote 的坑）
    */
@@ -463,7 +472,7 @@ import Prompts from './Prompts.vue';
 import QuoteChip from './QuoteChip.vue';
 import QuoteMenu from './QuoteMenu.vue';
 import Sender from './Sender.vue';
-import type { SenderToolbarItems } from './Sender.vue';
+import type { SenderIcons, SenderToolbarItems } from './Sender.vue';
 import Suggestions from './Suggestions.vue';
 import Welcome from './Welcome.vue';
 

@@ -155,6 +155,7 @@ export type {
   ToolbarBuiltinKey,
   ToolbarItem,
   SenderToolbarItems,
+  SenderIcons,
 } from './components/Sender.vue';
 export type { BubbleListProps, BubbleListEmits } from './components/BubbleList.vue';
 export type { AiChatProps, AiChatEmits } from './components/AiChat.vue';

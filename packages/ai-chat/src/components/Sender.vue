@@ -93,9 +93,12 @@
           :aria-label="t.attachButton"
           :title="t.attachButton"
           :disabled="disabled"
-          @click="panelOpen = !panelOpen"
+          @click="toggleAttachments"
         >
-          <Attachment />
+          <!-- aria-hidden：图标在此纯装饰，按钮的可及名来自 aria-label；@aix/icons 自身不声明
+               （580 个图标无一自带），自定义图标更不可能，故统一在使用侧标注。
+               @aix/icons 的 svg 根挂了 v-bind="$attrs"，属性能正确落到根元素上。 -->
+          <component :is="icons?.attach ?? Attachment" aria-hidden="true" />
           <span v-if="!panelOpen && attach.items.value.length > 0" :class="ns.e('attach-badge')">
             {{ attach.items.value.length }}
           </span>
@@ -107,9 +110,9 @@
           :aria-label="isListening ? t.voiceStopButton : t.voiceButton"
           :title="isListening ? t.voiceStopButton : t.voiceButton"
           :disabled="disabled"
-          @click="onMicClick"
+          @click="toggleVoice"
         >
-          <Mic />
+          <component :is="icons?.voice ?? Mic" aria-hidden="true" />
         </button>
         <span v-else-if="item === 'spacer'" :class="ns.e('toolbar-spacer')" aria-hidden="true" />
         <component
@@ -134,7 +137,11 @@
         :title="loading ? t.stopButton : isUploading ? t.attachmentUploading : t.sendButton"
         @click="onSendClick"
       >
-        <span :class="ns.e('send-icon')" :style="sendIconStyle" aria-hidden="true" />
+        <!-- 自定义图标存在时直出组件；否则走内置 CSS mask（形状来自本地 SVG，颜色随 currentColor
+             主题着色）。注意内置那条是**内联 style**，外部样式表要盖它得带 !important——
+             这正是提供 icons prop 的原因之一。 -->
+        <component :is="sendIcon" v-if="sendIcon" aria-hidden="true" />
+        <span v-else :class="ns.e('send-icon')" :style="sendIconStyle" aria-hidden="true" />
       </button>
     </div>
     <!-- 底部扩展区：位于工具栏之下，用于字数统计 / 提示语 / 自定义页脚等 -->
@@ -197,6 +204,37 @@ export interface SenderProps {
    * 'attach'/'voice' 是位置占位符，实际是否出内容仍分别由 attachments/voice prop 决定。
    */
   toolbarItems?: SenderToolbarItems;
+  /**
+   * 覆盖内置按钮图标（仅换图标，按钮行为与 a11y 文案不变）。
+   * 未提供的键回退内置图标，故可只换其中一两个。
+   *
+   * 想连**交互行为**一起接管（换按钮而非换图标）时，改用 `toolbarItems` 里的自定义对象项，
+   * 或 `#toolbar` 插槽——两者都能从 `SenderSlotScope` 拿到 `toggleAttachments` /
+   * `toggleVoice` 等动作，完整复刻内置按钮。
+   *
+   * 传入组件建议用 `markRaw()` 包裹，避免组件对象进入响应式系统触发 Vue 告警
+   * （与 ActionItem.icon 同约定）；图形建议用 `fill="currentColor"`，才能随按钮状态
+   * （可发送 / 禁用 / 输出中）与主题一起变色——内置图标与 @aix/icons 全系都是这个约定。
+   * 使用侧会统一补 `aria-hidden="true"`（图标纯装饰，可及名来自按钮的 aria-label）。
+   */
+  icons?: SenderIcons;
+}
+
+/**
+ * 内置按钮的图标覆写表。
+ *
+ * `send` / `stop` **按状态各自独立回退**：只提供 `send` 时，流式输出中仍用内置停止图标，
+ * 而不是拿发送图标去冒充停止——那会让「正在输出、点此停止」这个语义彻底反过来。
+ */
+export interface SenderIcons {
+  /** 附件按钮（回形针） */
+  attach?: Component;
+  /** 语音按钮（麦克风）；聆听态复用同一图标，由 `.is-listening` 类着色区分 */
+  voice?: Component;
+  /** 发送按钮的默认态图标 */
+  send?: Component;
+  /** 发送按钮在流式输出中的图标（停止） */
+  stop?: Component;
 }
 export interface SenderEmits {
   /** 输入框文本变化（v-model 同步） */
@@ -230,6 +268,23 @@ export interface SenderSlotScope {
   recording: boolean;
   /** 当前输入框文本 */
   value: string;
+
+  // ── 以下用于「自定义按钮完整替代内置 attach / voice 项」──
+  // 只换图标不必用这些（见 SenderProps.icons）；把 'attach' / 'voice' 从 toolbarItems 摘掉、
+  // 改用自定义对象项或 #toolbar 插槽自绘按钮时，这些是复刻内置行为与视觉所需的最小集。
+
+  /** 切换附件面板；未启用附件（未传 attachments）或 disabled 时为空操作 */
+  toggleAttachments: () => void;
+  /** 附件面板当前是否展开（内置按钮据此上 is-active 高亮） */
+  attachmentsOpen: boolean;
+  /** 待发附件数（内置按钮据此渲染角标） */
+  attachmentCount: number;
+  /** 是否启用了附件能力（未传 attachments prop 时为 false，自定义按钮据此决定要不要渲染） */
+  attachmentsEnabled: boolean;
+  /** 切换语音聆听（起播 / 停止）；语音不可用或 disabled 时为空操作 */
+  toggleVoice: () => void;
+  /** 语音是否可用（注入了识别器，或浏览器支持 Web Speech API；内置按钮据此决定是否渲染） */
+  voiceSupported: boolean;
 }
 
 // 触发菜单实例 id 自增计数器：置于模块顶层（非 setup 块），保证多实例 menuId 唯一，
@@ -563,6 +618,10 @@ const inner = ref(props.modelValue);
 
 // 按状态切换 mask 图标（输出中=停止，否则=发送）。mask 相关属性全部走内联样式（含 -webkit- 前缀），
 // 避免依赖构建期 autoprefixer，确保在 Storybook / Safari 下也能正确渲染。
+// 发送键的自定义图标：按当前状态**各自独立**取值——只传了 send 时，流式态取到 undefined
+// 便回退内置停止图标，而不是拿发送图标去冒充停止（那会让「正在输出、点此停止」语义反过来）。
+const sendIcon = computed(() => (props.loading ? props.icons?.stop : props.icons?.send));
+
 const sendIconStyle = computed(() => {
   const img = `url("${props.loading ? stopIconUrl : sendIconUrl}")`;
   return {
@@ -718,6 +777,21 @@ const onMicClick = () => {
     committedBase = inner.value; // 从当前输入内容续写
     voice.start();
   }
+};
+
+// ── 附件 / 语音的唯一动作实现：内置按钮、slotScope、defineExpose 三条入口共用 ──
+// 内置按钮本可以直接改 panelOpen / 调 onMicClick（模板上的 :disabled 已拦住点击），但那样
+// 就有两份等价逻辑，日后只改一处就会与命令式入口的行为悄悄分叉，故统一收敛到这里。
+// disabled 守卫对内置按钮是冗余的（按钮已 disabled），对命令式入口（自定义按钮 / ref 调用）
+// 则是必需的——它们绕得过 DOM 禁用态。与面板内 onPanelPick / onPanelDrop / onPanelRemove
+// 的 disabled 约束同口径。
+const toggleAttachments = () => {
+  if (!attach || props.disabled) return;
+  panelOpen.value = !panelOpen.value;
+};
+const toggleVoice = () => {
+  if (props.disabled) return;
+  onMicClick(); // 自身已含「未启用语音则空操作」守卫
 };
 
 watch(
@@ -960,6 +1034,14 @@ const slotScope = reactive({
   disabled: computed(() => props.disabled),
   recording: isListening,
   value: inner,
+  // 附件 / 语音的开关与状态：让自定义按钮能完整替代内置 attach / voice 项（见 SenderSlotScope）
+  toggleAttachments,
+  attachmentsOpen: panelOpen,
+  attachmentCount: computed(() => attach?.items.value.length ?? 0),
+  // attach 是 setup 快照（null 表示未启用附件），非响应式，故直接取布尔而非 computed
+  attachmentsEnabled: !!attach,
+  toggleVoice,
+  voiceSupported: showMic,
 });
 
 defineSlots<{
@@ -982,6 +1064,9 @@ defineExpose({
   focus: () => textareaRef.value?.focus(),
   clear,
   setValue,
+  // 与 slotScope 同源：外部持 ref 时也能开关附件面板 / 语音（如把入口放在 Sender 之外的工具条）
+  toggleAttachments,
+  toggleVoice,
   // 仅供单测验证面板高度过渡的快速 toggle 竞态（VTU 取 Transition 内节点不便，直接单元级调用）
   __onPanelEnter: onPanelEnter,
   __onPanelLeave: onPanelLeave,
@@ -1103,6 +1188,14 @@ defineExpose({
     background-color: var(--aix-colorFillSecondary);
     color: var(--aix-colorPrimary);
     cursor: pointer;
+
+    /* icons.send / icons.stop 传入的自定义 SVG：与内置 mask 图标（&__send-icon）等大，
+       且同样继承 currentColor 主题着色。内置图标是 <span> 不是 <svg>，不受本规则影响。
+       与 &__mic svg / &__attach-btn svg 的既有写法一致。 */
+    svg {
+      width: 16px;
+      height: 16px;
+    }
 
     &:hover:not(:disabled) {
       background-color: var(--aix-colorFill);

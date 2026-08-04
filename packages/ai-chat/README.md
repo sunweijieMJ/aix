@@ -97,7 +97,7 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 
 | 组件 | 说明 | 关键 props |
 |------|------|-----------|
-| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）/ `tailBreathing?`（末尾静默呼吸，默认关闭，见「末尾静默呼吸」）/ `outline?`（对话大纲导航，默认关闭，见「对话大纲导航」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`block-intent`（块意图，见「块交互的两条通道」）/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
+| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `toolbarItems?`（工具栏项与顺序，直通 Sender）/ `senderIcons?`（覆盖 Sender 内置按钮图标，见「自定义内置按钮」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）/ `tailBreathing?`（末尾静默呼吸，默认关闭，见「末尾静默呼吸」）/ `outline?`（对话大纲导航，默认关闭，见「对话大纲导航」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`block-intent`（块意图，见「块交互的两条通道」）/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
 | `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `tailBreathing?` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；expose `scrollToBubble(messageId)`；slot `content` |
 | `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `tailBreathing?` / `contentRender` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；slot `avatar`/`header`/`content`/`footer` |
 | `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）/ `triggers?`（@提及/斜杠命令触发菜单）；emit `submit`（第三参 `meta?: SubmitMeta` 携带 mention 实体，见「触发菜单」）/`cancel`/`update:modelValue`；expose `focus`/`clear`/`setValue`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
@@ -215,7 +215,7 @@ const roles = {
 
 ### Sender 工具栏作用域插槽（自定义动作按钮）
 
-`Sender` 的 `prefix` / `header` / `toolbar` / `footer` 插槽都是**作用域插槽**，回传动作句柄与受控状态 `SenderSlotScope`：`{ send, cancel, clear, loading, disabled, recording, value }`。业务可在官方发送/停止键旁加自定义按钮（模型选择、联网开关、深度思考开关等）并**复用发送/停止/清空逻辑与 loading 态**，无需自己实现：
+`Sender` 的 `prefix` / `header` / `toolbar` / `footer` 插槽都是**作用域插槽**，回传动作句柄与受控状态 `SenderSlotScope`：`{ send, cancel, clear, loading, disabled, recording, value }`，外加用于替代内置附件 / 语音按钮的 `{ toggleAttachments, attachmentsOpen, attachmentCount, attachmentsEnabled, toggleVoice, voiceSupported }`（见下节）。业务可在官方发送/停止键旁加自定义按钮（模型选择、联网开关、深度思考开关等）并**复用发送/停止/清空逻辑与 loading 态**，无需自己实现：
 
 ```vue
 <Sender placeholder="输入消息…" @submit="onSend">
@@ -229,6 +229,81 @@ const roles = {
 ```
 
 > `send()` 复用了点击发送键的全部守卫（loading / disabled / 上传中 / 空内容时不发）；`cancel()` 等价 loading 态点停止键。
+
+### 自定义内置按钮：换图标 vs 换按钮
+
+按需求深浅分两档，**只想换图标不必自建按钮**：
+
+**① 只换图标 —— `icons` prop**（经 `AiChat` 用时是 `senderIcons`）
+
+按钮行为、禁用逻辑、`aria-label` 全部保持内置，只替换图形。未提供的键回退内置图标：
+
+```vue
+<script setup>
+import { markRaw } from 'vue';
+import { Paperclip, Send } from './my-icons';
+// 建议 markRaw：组件对象进响应式系统会触发 Vue 告警（同 ActionItem.icon 约定）
+const icons = { attach: markRaw(Paperclip), send: markRaw(Send) };
+</script>
+
+<template>
+  <Sender :icons="icons" />
+  <!-- 经 AiChat 时： <AiChat :sender-icons="icons" /> -->
+</template>
+```
+
+| 键 | 作用 |
+|----|------|
+| `attach` | 附件按钮（回形针） |
+| `voice` | 语音按钮（麦克风）；聆听态复用同一图标，由 `.is-listening` 着色区分 |
+| `send` | 发送按钮默认态 |
+| `stop` | 发送按钮在流式输出中的停止态 |
+
+> `send` / `stop` **各自独立回退**：只提供 `send` 时，流式态仍用内置停止图标——不会拿发送图标
+> 去冒充停止，否则「正在输出、点此停止」的语义会整个反过来。
+
+**② 连行为一起接管 —— 自建按钮**
+
+把 `'attach'` / `'voice'` 从 `toolbarItems` 里摘掉，改用自定义对象项或 `#toolbar` 插槽自绘。
+`SenderSlotScope` 为此提供了复刻内置按钮所需的**动作与状态**：
+
+| 字段 | 说明 |
+|------|------|
+| `toggleAttachments()` | 开合附件面板；未启用附件或 `disabled` 时为空操作 |
+| `attachmentsOpen` | 面板是否展开（内置按钮据此上 `is-active`） |
+| `attachmentCount` | 待发附件数（内置按钮据此渲染角标） |
+| `attachmentsEnabled` | 是否传了 `attachments` prop（决定自定义按钮要不要渲染） |
+| `toggleVoice()` | 起停语音聆听；不可用或 `disabled` 时为空操作 |
+| `voiceSupported` | 语音是否可用（注入了识别器或浏览器支持） |
+
+```vue
+<Sender :attachments="attachments" :toolbar-items="[]">
+  <template #toolbar="s">
+    <button v-if="s.attachmentsEnabled" :class="{ on: s.attachmentsOpen }" @click="s.toggleAttachments()">
+      <MyPaperclip />
+      <sup v-if="s.attachmentCount">{{ s.attachmentCount }}</sup>
+    </button>
+    <button v-if="s.voiceSupported" :class="{ rec: s.recording }" @click="s.toggleVoice()">
+      <MyMic />
+    </button>
+  </template>
+</Sender>
+```
+
+两个 `toggle*` 同时也在 `defineExpose` 上，便于把入口放到 `Sender` 之外的工具条里。
+
+### 按钮位置
+
+`toolbarItems` 的**数组顺序即渲染顺序**，内置项与自定义组件项可混排；`'spacer'` 是纯布局占位符，
+用于切分左右分组（其后的内容含发送键被推到最右）。不放 `'spacer'` 时所有项靠左、发送键固定最右。
+
+```ts
+// 语音、模型选择器靠左；spacer 之后的附件按钮与发送键靠右
+['voice', { key: 'model', component: ModelSelector }, 'spacer', 'attach']
+```
+
+> 发送键在 API 上固定于最右。确需挪位时，工具栏是 flex 容器，用 CSS `order` 即可：
+> `.aix-sender__send { order: -1 }`。
 
 ## 块渲染与富内容插槽穿透
 
