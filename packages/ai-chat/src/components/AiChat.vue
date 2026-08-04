@@ -1129,9 +1129,10 @@ defineExpose({
     setFeedback(id, value);
     syncTree();
   },
-  // 透传 Sender 命令式能力，便于外部聚焦 / 清空输入框
+  // 透传 Sender 命令式能力，便于外部聚焦 / 清空输入框 / 开关附件面板
   focus: () => senderRef.value?.focus(),
   clear: () => senderRef.value?.clear(),
+  toggleAttachments: () => senderRef.value?.toggleAttachments(),
 });
 </script>
 
