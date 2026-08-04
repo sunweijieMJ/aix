@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { nextTick } from 'vue';
+import { nextTick, defineComponent, h } from 'vue';
 import ReasoningBlock from '../src/components/blocks/ReasoningBlock.vue';
 import Bubble from '../src/components/Bubble.vue';
 import type { ContentBlock } from '../src/types';
@@ -143,6 +143,77 @@ describe('Bubble 消息级 typing-complete 聚合（回归：completedIds 时序
       status: 'success',
     });
     await advance(150); // 长块远未追平
+    expect(w.emitted('typing-complete')).toBeUndefined();
+    await advance(long.length * 40);
+    expect(w.emitted('typing-complete')).toBeTruthy();
+  });
+
+  // ==========================================================================
+  // blockRenderers 覆盖内置 text/reasoning 的场景。
+  // `typing-complete` 是内置 TextBlock / ReasoningBlock 与本聚合之间的私有约定，从未写进对外的
+  // BlockRendererProps 契约——业务覆盖这两类渲染器时不会（也无从得知要）上抛该事件。若聚合按
+  // block.type 一刀切收集，completedLens 永远缺这一条，消息级 typing-complete 永不触发 →
+  // BubbleList 不登记 completedIds → typing 常开、虚拟列表回收重挂载时重播。
+  // 故聚合按「渲染器同一性」收集：谁接管渲染，谁自己决定何时算播完。
+  // ==========================================================================
+  /** 模拟业务自定义渲染器：正常渲染文本，但**从不**上抛 typing-complete */
+  const SilentRenderer = defineComponent({
+    name: 'SilentRenderer',
+    inheritAttrs: false,
+    props: { block: { type: Object, required: true } },
+    setup: (p) => () => h('div', { class: 'custom-block' }, (p.block as { text?: string }).text),
+  });
+
+  it('覆盖 text 渲染器（自定义渲染器不上抛块级事件）：终态后仍上抛消息级 typing-complete', async () => {
+    const w = mount(Bubble, {
+      props: {
+        itemKey: 'm6',
+        content: [textBlock('由业务自定义渲染器接管的正文')],
+        status: 'updating',
+        typing: true,
+        blockRenderers: { text: SilentRenderer },
+      },
+    });
+    await nextTick();
+    await w.setProps({ status: 'success' });
+    await advance(300);
+    expect(w.emitted('typing-complete')).toBeTruthy();
+  });
+
+  it('覆盖 reasoning 渲染器：纯 reasoning 消息终态后仍上抛消息级 typing-complete', async () => {
+    const w = mount(Bubble, {
+      props: {
+        itemKey: 'm7',
+        content: [{ id: 'r-1', type: 'reasoning', text: '被接管的思考过程' } as ContentBlock],
+        status: 'updating',
+        typing: true,
+        blockRenderers: { reasoning: SilentRenderer },
+      },
+    });
+    await nextTick();
+    await w.setProps({ status: 'success' });
+    await advance(300);
+    expect(w.emitted('typing-complete')).toBeTruthy();
+  });
+
+  it('只覆盖 reasoning 时，仍走内置渲染的 text 块依旧须追平后才上抛（不得因覆盖而提前完成）', async () => {
+    const long = '这是一段较长的正文内容，需要打字机较长时间才能追平。'.repeat(20);
+    const reasoning = { id: 'r-2', type: 'reasoning', text: '被接管的思考' } as ContentBlock;
+    const w = mount(Bubble, {
+      props: {
+        itemKey: 'm8',
+        content: [reasoning, { ...textBlock(''), id: 't-2' }],
+        status: 'updating',
+        typing: true,
+        blockRenderers: { reasoning: SilentRenderer },
+      },
+    });
+    await nextTick();
+    await w.setProps({
+      content: [reasoning, { ...textBlock(long), id: 't-2' }],
+      status: 'success',
+    });
+    await advance(150); // 内置 text 块远未追平
     expect(w.emitted('typing-complete')).toBeUndefined();
     await advance(long.length * 40);
     expect(w.emitted('typing-complete')).toBeTruthy();

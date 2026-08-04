@@ -171,6 +171,41 @@ const handleBlockAction = (action: BlockAction) =>
 const handleBlockIntent = (intent: BlockIntent) =>
   emit('block-intent', { messageKey: props.itemKey ?? '', intent });
 
+// 块渲染注册表：内置 text → TextBlock、reasoning → ReasoningBlock（折叠思考过程）、
+// thought-chain → ThoughtChainBlock（Agent 步骤时间线），与 props.blockRenderers 合并（用户优先，可覆盖内置）。
+// 收敛为单一注册表，避免内置类型硬编码先于注册表导致无法覆盖、内置与扩展走两套机制。
+//
+// 位置说明：本段刻意排在下方「typing-complete 聚合」之前——聚合的 typingBlockIds 需要判断
+// 某个 text/reasoning 块是否仍走内置渲染器。const 有 TDZ，虽然 computed 惰性求值下当前恰好
+// 不会在 setup 期读到，但那是「碰巧没炸」而非安全，故按依赖顺序排列。
+const builtinRenderers: BlockRenderers = {
+  text: TextBlock,
+  reasoning: ReasoningBlock,
+  'thought-chain': ThoughtChainBlock,
+  sources: SourcesBlock,
+  attachment: AttachmentBlock,
+  tool_use: ToolUseBlock,
+  chart: ChartBlock,
+  image: ImageBlock,
+  quote: QuoteBlock,
+  user_confirm: UserConfirmBlock,
+};
+const renderers = computed<BlockRenderers>(() => ({
+  ...builtinRenderers,
+  ...props.blockRenderers,
+}));
+
+/**
+ * 按块类型取渲染器。必须走 Object.hasOwn 而非直接下标（与 ToolUseBlock 按 toolName 路由
+ * 同款加固）：注册表是对象字面量，继承 Object.prototype，直接下标会让 'constructor' /
+ * 'toString' / 'valueOf' / '__proto__' 这些**原型链上的键取到真值**——block.type 来自流数据
+ * 与持久化的对话树（localStorage 可被篡改/损坏），一旦撞上就同时踩两个坑：绕过下方
+ * 「未注册渲染器」的开发期告警（静默），且把原型上的函数/对象当组件渲染，气泡里吐出
+ * `[object Object]` 之类的垃圾内容，排查成本极高。
+ */
+const rendererOf = (type: string): BlockRenderers[string] | undefined =>
+  Object.hasOwn(renderers.value, type) ? renderers.value[type] : undefined;
+
 // —— 消息级 typing-complete 聚合 ——
 // 块渲染器在「追平当下源文本」时上抛块级 typing-complete，但追平可能早于消息终态
 // （最后 token 与 done 帧间隔 > 打字机 interval 时必现），其后打字机已 stop、不再有任何 tick；
@@ -180,8 +215,20 @@ const handleBlockIntent = (intent: BlockIntent) =>
 const completedLens = new Map<string, number>();
 const settledFired = ref(false);
 const isTerminal = computed(() => props.status !== 'loading' && props.status !== 'updating');
+// 只统计**仍走内置渲染器**的 text/reasoning 块。`typing-complete` 是内置 TextBlock /
+// ReasoningBlock 与本聚合之间的私有约定，从未写进对外的 BlockRendererProps 契约；若按块类型
+// 一刀切收集，业务经 blockRenderers 覆盖 text/reasoning 后，其自定义渲染器（不知道要上抛该
+// 事件）会让 completedLens 永远缺这一条 → 消息级 typing-complete 永不触发 → BubbleList 不登记
+// completedIds → typing 常开、虚拟列表回收重挂载时重播。覆盖内置渲染器是文档明示的扩展点，
+// 故这里按渲染器同一性排除：谁接管了渲染，谁自己决定何时算播完，不再阻塞整条消息的完成聚合。
 const typingBlockIds = computed(() =>
-  props.content.filter((b) => b.type === 'text' || b.type === 'reasoning').map((b) => b.id),
+  props.content
+    .filter(
+      (b) =>
+        (b.type === 'text' || b.type === 'reasoning') &&
+        renderers.value[b.type] === builtinRenderers[b.type],
+    )
+    .map((b) => b.id),
 );
 const blockTextLen = (id: string) => {
   const blk = props.content.find((b) => b.id === id);
@@ -209,12 +256,15 @@ const handleKeepMountedChange = (active: boolean) =>
   emit('keep-mounted-change', { messageKey: props.itemKey ?? '', active });
 
 const onBlockTypingComplete = (block: ContentBlock) => {
-  if (block.type === 'text' || block.type === 'reasoning') {
-    completedLens.set(block.id, block.text.length);
+  // 归属判定与 typingBlockIds 同源（而非再按 block.type 判一次）：只有**仍走内置渲染器**的
+  // text/reasoning 块参与长度聚合；被 blockRenderers 覆盖的同类块与自定义类型块一视同仁，
+  // 落到下方「直接转发」分支——两处口径必须一致，否则会把不在 ids 里的块记进 completedLens。
+  if (typingBlockIds.value.includes(block.id)) {
+    completedLens.set(block.id, blockTextLen(block.id));
     fireIfSettled();
     return;
   }
-  // 自定义类型块：完成集合无法预知，沿用旧语义直接转发（BubbleList 终态时登记）；
+  // 自定义类型块 / 被覆盖的内置块：完成集合无法预知，沿用旧语义直接转发（BubbleList 终态时登记）；
   // 消息含内置打字块时则不转发，避免自定义块先完成而内置块仍在逐字时提前关闭 typing
   if (!typingBlockIds.value.length) emit('typing-complete', { messageKey: props.itemKey ?? '' });
 };
@@ -272,37 +322,6 @@ const hasFooterContent = computed(() => {
   const nodes = slots.footer?.();
   return !!nodes && nodes.some(hasVNodeContent);
 });
-
-// 块渲染注册表：内置 text → TextBlock、reasoning → ReasoningBlock（折叠思考过程）、
-// thought-chain → ThoughtChainBlock（Agent 步骤时间线），与 props.blockRenderers 合并（用户优先，可覆盖内置）。
-// 收敛为单一注册表，避免内置类型硬编码先于注册表导致无法覆盖、内置与扩展走两套机制。
-const builtinRenderers: BlockRenderers = {
-  text: TextBlock,
-  reasoning: ReasoningBlock,
-  'thought-chain': ThoughtChainBlock,
-  sources: SourcesBlock,
-  attachment: AttachmentBlock,
-  tool_use: ToolUseBlock,
-  chart: ChartBlock,
-  image: ImageBlock,
-  quote: QuoteBlock,
-  user_confirm: UserConfirmBlock,
-};
-const renderers = computed<BlockRenderers>(() => ({
-  ...builtinRenderers,
-  ...props.blockRenderers,
-}));
-
-/**
- * 按块类型取渲染器。必须走 Object.hasOwn 而非直接下标（与 ToolUseBlock 按 toolName 路由
- * 同款加固）：注册表是对象字面量，继承 Object.prototype，直接下标会让 'constructor' /
- * 'toString' / 'valueOf' / '__proto__' 这些**原型链上的键取到真值**——block.type 来自流数据
- * 与持久化的对话树（localStorage 可被篡改/损坏），一旦撞上就同时踩两个坑：绕过下方
- * 「未注册渲染器」的开发期告警（静默），且把原型上的函数/对象当组件渲染，气泡里吐出
- * `[object Object]` 之类的垃圾内容，排查成本极高。
- */
-const rendererOf = (type: string): BlockRenderers[string] | undefined =>
-  Object.hasOwn(renderers.value, type) ? renderers.value[type] : undefined;
 
 // 开发期提示：内容块无对应渲染器时跳过渲染并告警（每种类型仅一次），
 // 避免如未注册的 sources 块被静默丢弃而难以排查。
