@@ -168,7 +168,11 @@ export type { ThoughtChainProps } from './components/ThoughtChain.vue';
 export type { ModelSelectorProps } from './components/ModelSelector.vue';
 export type { MarkdownRendererProps } from './components/MarkdownRenderer.vue';
 export type { SkeletonProps } from './components/Skeleton.vue';
-export type { ConversationsProps, ConversationsEmits } from './components/Conversations.vue';
+export type {
+  ConversationsProps,
+  ConversationsEmits,
+  ConversationsItemSlotScope,
+} from './components/Conversations.vue';
 export type {
   AttachmentCardProps,
   AttachmentCardEmits,

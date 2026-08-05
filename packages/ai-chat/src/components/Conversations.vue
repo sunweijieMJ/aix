@@ -39,6 +39,13 @@
             @blur="confirmRename"
             @input="editingLabel = ($event.target as HTMLInputElement).value"
           />
+          <!-- 整行内容自定义（置顶徽标 / 时间戳 / 更多菜单等）。行容器与 is-active 仍由本组件持有，
+               保证选中态与 hover 观感一致；重命名态优先于本插槽（内联输入框是组件的受控内部状态，
+               自定义 UI 经作用域里的 rename() 进入该态；不想用内置重命名的实现从不调用它即可）。
+               用 $slots.item 显式二选一而非 <slot> 的原生 fallback 写法：消费方按条件只为部分会话
+               渲染自定义行时，Vue 的 renderSlot 会因「产出全是 Comment」判定插槽未提供而强行套回
+               内置行（与 Bubble error / AiChat footer 踩过的是同一个坑）。 -->
+          <slot v-else-if="$slots.item" name="item" v-bind="itemScope(item)" />
           <template v-else>
             <button
               type="button"
@@ -48,31 +55,40 @@
             >
               {{ item.label }}
             </button>
+            <!-- 操作区容器由本组件持有：自定义操作按钮据此继承「hover 行 / 键盘聚焦行才显现」
+                 的既有观感（见下方 &__actions 的 opacity 规则），无需消费方自行复刻 -->
             <span :class="ns.e('actions')">
-              <button
-                type="button"
-                :class="ns.e('action')"
-                :aria-label="t.renameConversation"
-                :title="t.renameConversation"
-                @click.stop="startRename(item)"
-              >
-                <Edit />
-              </button>
-              <button
-                type="button"
-                :class="ns.e('action')"
-                :aria-label="t.deleteConversation"
-                :title="t.deleteConversation"
-                @click.stop="emit('delete', item.id)"
-              >
-                <Delete />
-              </button>
+              <slot v-if="$slots['item-actions']" name="item-actions" v-bind="itemScope(item)" />
+              <template v-else>
+                <button
+                  type="button"
+                  :class="ns.e('action')"
+                  :aria-label="t.renameConversation"
+                  :title="t.renameConversation"
+                  @click.stop="startRename(item)"
+                >
+                  <Edit />
+                </button>
+                <button
+                  type="button"
+                  :class="ns.e('action')"
+                  :aria-label="t.deleteConversation"
+                  :title="t.deleteConversation"
+                  @click.stop="emit('delete', item.id)"
+                >
+                  <Delete />
+                </button>
+              </template>
             </span>
           </template>
         </div>
       </template>
       <div v-if="!loading && filteredItems.length === 0" :class="ns.e('empty')">
-        {{ items.length === 0 ? t.noConversations : t.conversationsSearchEmpty }}
+        <!-- 空态区分「一条会话都没有」与「搜索无结果」，交由 searching 标志让消费方分流文案 / 插画 -->
+        <slot v-if="$slots.empty" name="empty" :searching="items.length > 0" />
+        <template v-else>
+          {{ items.length === 0 ? t.noConversations : t.conversationsSearchEmpty }}
+        </template>
       </div>
     </div>
   </div>
@@ -99,6 +115,25 @@ export interface ConversationsProps {
    */
   activeKey?: string;
 }
+/**
+ * `#item` / `#item-actions` 作用域：会话元数据 + 三个已绑定到该条的动作句柄。
+ *
+ * 三个句柄与内置按钮走**同一条实现**（含「重命名期间不切换选中」这类守卫），
+ * 自定义 UI 不必自行复刻，也不会与内置行为分叉。
+ */
+export interface ConversationsItemSlotScope {
+  /** 该条会话元数据 */
+  item: ConversationItem;
+  /** 是否为当前激活会话（行容器的 is-active 由组件自己加，此处供自定义内容做次级样式） */
+  active: boolean;
+  /** 选中该会话（与点击内置标题按钮等价；重命名进行中时为空操作） */
+  select: () => void;
+  /** 进入内联重命名态（内置输入框接管该行，确认后 emit rename） */
+  rename: () => void;
+  /** 请求删除该会话（emit delete，只上抛不改数据，与内置删除按钮等价） */
+  remove: () => void;
+}
+
 export interface ConversationsEmits {
   /** 点击新建 */
   (e: 'create'): void;
@@ -211,6 +246,26 @@ const confirmRename = (e: Event) => {
 const cancelRename = () => {
   editingId.value = null;
 };
+
+// ===== 插槽作用域 =====
+// 每次渲染新建对象（列表规模小，开销可忽略），换来的是句柄天然绑定到当前条目、
+// 消费方不必回传 id，也不会拿到过期闭包。
+const itemScope = (item: ConversationItem): ConversationsItemSlotScope => ({
+  item,
+  active: item.id === activeKey.value,
+  select: () => select(item.id),
+  rename: () => startRename(item),
+  remove: () => emit('delete', item.id),
+});
+
+defineSlots<{
+  /** 替换整行内容（行容器与 is-active 仍由组件持有）；重命名态优先于本插槽 */
+  item?: (props: ConversationsItemSlotScope) => unknown;
+  /** 仅替换操作按钮区，保留内置标题按钮；`#item` 提供时本插槽不生效 */
+  'item-actions'?: (props: ConversationsItemSlotScope) => unknown;
+  /** 空态；searching 为 true 表示「有会话但搜索无结果」，false 表示「一条会话都没有」 */
+  empty?: (props: { searching: boolean }) => unknown;
+}>();
 </script>
 
 <style lang="scss">
