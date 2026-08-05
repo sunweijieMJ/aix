@@ -40,9 +40,14 @@ export interface AiChatConfig {
    * 右侧提问刻度条 + 点击定位。默认关闭。
    */
   outline?: boolean | OutlineOptions;
+  /**
+   * 深度思考计时精度（保留小数位数），默认 2。
+   * 设为 0 表示整数秒，1 表示保留 1 位小数（如 3.5秒），2 表示保留 2 位（如 3.58秒）。
+   */
+  timePrecision?: number;
 }
 
-const DEFAULT_CONFIG: AiChatConfig = { enableTyping: true };
+const DEFAULT_CONFIG: AiChatConfig = { enableTyping: true, timePrecision: 2 };
 
 export const AI_CHAT_CONFIG_KEY: InjectionKey<AiChatConfig> = Symbol('aix-ai-chat-config');
 

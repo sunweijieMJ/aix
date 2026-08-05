@@ -97,28 +97,37 @@ const messageStreaming = computed(
 const isStreamingStatus = computed(() => messageStreaming.value && !props.block.endedAt);
 
 // 耗时展示：起止时间戳来自数据层（props.block.startedAt/endedAt，由 useChat 打点、随消息
-// 内容一起可持久化），本组件只负责思考进行中每秒刷新一次展示；历史消息 / 业务自建 block
+// 内容一起可持久化），本组件只负责思考进行中定时刷新展示；历史消息 / 业务自建 block
 // 没有 startedAt 时不展示耗时（title 回退为纯标题）。
+// 计时精度由 config.timePrecision 控制（默认 2），精度决定刷新间隔：
+//   0 位小数 → 每 1000ms 刷一次；1 位 → 100ms；2 位 → 10ms；以此类推。
+const precision = computed(() => Math.max(0, Math.round(config.value.timePrecision ?? 2)));
+const tickInterval = computed(() => Math.max(10, 1000 / Math.pow(10, precision.value)));
+
 const tickedAt = ref<number | null>(null);
 const { start: startTicking, stop: stopTicking } = useInterval(() => {
   tickedAt.value = Date.now();
-}, 1000);
+}, tickInterval);
 watch(isStreamingStatus, (active) => (active ? startTicking() : stopTicking()), {
   immediate: true,
 });
 
+// 根据精度格式化秒数：精度 0 → 整数，≥1 → 保留对应小数位
 const elapsedSeconds = computed(() => {
   const start = props.block.startedAt;
   if (start == null) return null;
   const end = props.block.endedAt ?? tickedAt.value ?? Date.now();
-  return Math.max(1, Math.round((end - start) / 1000));
+  const raw = Math.max(0, (end - start) / 1000);
+  return precision.value === 0
+    ? String(Math.max(1, Math.round(raw)))
+    : raw.toFixed(precision.value);
 });
 
 const title = computed(() => {
   const base = t.value.thoughtTitle;
   return elapsedSeconds.value === null
     ? base
-    : base + t.value.thoughtDurationSuffix.replace('{s}', String(elapsedSeconds.value));
+    : base + t.value.thoughtDurationSuffix.replace('{s}', elapsedSeconds.value);
 });
 
 // MarkdownRenderer 的 streaming 与 TextBlock 同款推导：消息仍在流式或打字机未追平，
@@ -131,6 +140,7 @@ const streaming = computed(
 // (block.startedAt/endedAt) 与 info.status 推导的，内部组件无从得知。
 // elapsed 为 null 表示无耗时数据（历史消息 / 业务自建 block 没打 startedAt），
 // 与 title 回退纯标题的口径一致，自定义标题据此决定要不要显示耗时。
+// 类型为 string | null（含小数时为格式化后字符串，便于直接显示）。
 const extraScope = computed(() => ({
   elapsed: elapsedSeconds.value,
   streaming: isStreamingStatus.value,

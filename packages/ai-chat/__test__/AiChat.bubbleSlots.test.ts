@@ -186,12 +186,12 @@ describe('块插槽穿透 — reasoning-*（深度思考 UI）', () => {
     const w = mount(AiChat, {
       props: { request: idleRequest, defaultMessages: [reasoningMsg()] },
       slots: {
-        'reasoning-title': ({ elapsed }: { elapsed: number | null }) =>
+        'reasoning-title': ({ elapsed }: { elapsed: string | null }) =>
           h('b', { class: 'deep-title' }, `深度思考 ${elapsed}s`),
       },
     });
     await flushPromises();
-    expect(w.find('.deep-title').text()).toBe('深度思考 3s');
+    expect(w.find('.deep-title').text()).toBe('深度思考 3.00s');
     expect(w.text()).not.toContain('思考过程');
   });
 

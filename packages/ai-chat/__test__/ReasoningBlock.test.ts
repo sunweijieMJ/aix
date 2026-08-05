@@ -87,17 +87,17 @@ describe('ReasoningBlock', () => {
           info: info('success'),
         },
       });
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时5秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时5.00秒）');
     });
 
-    it('未满 1 秒时向下取整展示为 1 秒（避免刚开始思考就显示"0秒"）', () => {
+    it('不满 1 秒时按实际精度展示（默认 2 位小数）', () => {
       const w = mount(ReasoningBlock, {
         props: {
           block: { ...block, startedAt: 1_700_000_000_000, endedAt: 1_700_000_000_400 },
           info: info('success'),
         },
       });
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时1秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时0.40秒）');
     });
 
     it('流式中（尚无 endedAt）标题随时间推移展示耗时；数据层打上 endedAt 后立即定格', async () => {
@@ -106,17 +106,17 @@ describe('ReasoningBlock', () => {
       const w = mount(ReasoningBlock, {
         props: { block: { ...block, startedAt: 1_700_000_000_000 }, info: info('updating') },
       });
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时1秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时0.00秒）');
 
       await vi.advanceTimersByTimeAsync(3000);
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时3秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时3.00秒）');
 
       // 数据层打上 endedAt：耗时立即定格为 endedAt - startedAt，不再跟随后续 tick 增长
       await w.setProps({
         block: { ...block, startedAt: 1_700_000_000_000, endedAt: 1_700_000_005_000 },
       });
       await vi.advanceTimersByTimeAsync(15_000);
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时5秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时5.00秒）');
     });
   });
 });
@@ -147,8 +147,8 @@ describe('ReasoningBlock — 思考 UI 插槽穿透', () => {
         },
       },
     });
-    expect(w.find('.my-title').text()).toBe('思考 5s');
-    expect(scopes[0]).toMatchObject({ elapsed: 5, streaming: false, open: false });
+    expect(w.find('.my-title').text()).toBe('思考 5.00s');
+    expect(scopes[0]).toMatchObject({ elapsed: '5.00', streaming: false, open: false });
     // 内置标题（含 i18n 的「思考过程」）不再出现
     expect(w.text()).not.toContain('思考过程');
   });
