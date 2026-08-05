@@ -284,7 +284,12 @@ const { t } = useLocale(locale);
 const slots = useSlots();
 
 // Bubble 自身消费的保留插槽；其余具名插槽视为「块插槽」透传给块渲染器。
-const RESERVED_SLOTS = ['avatar', 'header', 'content', 'footer'];
+// 必须与 AiChat 的 AICHAT_RESERVED_SLOTS、BubbleList 的 OWN_SLOTS 保持口径一致——
+// 三层里任一层漏掉某个消息级插槽，它就会在那一层被降级为「块插槽」继续下传：
+// 'error' 曾漏在这里，于是声明了同名内部插槽的自定义块渲染器（图表 / 工具卡的错误态是很
+// 自然的设计）会在**所有**消息上（含 success）把消息级出错 UI 渲染进块体内，
+// ToolUseBlock 还会把它原样转交给 toolRenderers 的委托目标，且全程无报错。
+const RESERVED_SLOTS = ['avatar', 'header', 'content', 'footer', 'error'];
 const blockSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !RESERVED_SLOTS.includes(n)),
 );

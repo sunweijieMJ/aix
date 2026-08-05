@@ -224,3 +224,66 @@ describe('块插槽穿透 — reasoning-*（深度思考 UI）', () => {
     expect(w.find('.aix-thinking__arrow').exists()).toBe(true);
   });
 });
+
+/**
+ * 保留插槽的边界回归：`error` 是**消息级**插槽，由 AiChat / BubbleList / Bubble 三层各自
+ * 显式转发（见各自的 AICHAT_RESERVED_SLOTS / OWN_SLOTS / RESERVED_SLOTS）。
+ * 三张保留名单必须口径一致——Bubble 这份此前漏了 'error'，于是它被当成「块插槽」
+ * 经 blockSlotNames 透传给**每一个**块渲染器：声明了同名内部插槽的自定义块（图表 / 工具卡
+ * 的错误态是很自然的设计）会在**所有**消息上（含 success）把消息级出错 UI 渲染进块体内，
+ * 且 ToolUseBlock 会把它原样再转交给 toolRenderers 的委托目标。全程无报错。
+ */
+describe('保留插槽边界 — error 不得泄漏进块渲染器', () => {
+  const SlotProbe = {
+    name: 'SlotProbe',
+    props: { block: { type: Object, required: true } },
+
+    setup(_p: unknown, ctx: any) {
+      const slots = ctx.slots as Record<string, ((p: unknown) => unknown) | undefined>;
+      return () =>
+        h('div', { class: 'probe' }, [
+          h('i', { class: 'probe__flag' }, slots.error ? 'LEAKED' : 'CLEAN'),
+
+          slots.error ? h('div', { class: 'probe__leak' }, slots.error({}) as any) : null,
+        ]);
+    },
+  };
+
+  const probeMsg = (): ChatMessage => ({
+    id: 'p1',
+    role: 'ai',
+    status: 'success',
+    content: [{ id: 'pb', type: 'probe' } as never],
+  });
+
+  it('提供 #error 时，自定义块渲染器不应收到名为 error 的插槽', async () => {
+    const w = mount(AiChat, {
+      props: {
+        request: idleRequest,
+        defaultMessages: [probeMsg()],
+
+        blockRenderers: { probe: SlotProbe as any },
+      },
+      slots: { error: () => h('em', { class: 'consumer-error' }, '业务出错态') },
+    });
+    await flushPromises();
+    expect(w.find('.probe__flag').text()).toBe('CLEAN');
+    // success 态的消息里绝不该出现消息级出错 UI
+    expect(w.find('.consumer-error').exists()).toBe(false);
+  });
+
+  it('#error 仍正常落到出错态消息的气泡上（修复不得误伤既有通道）', async () => {
+    const w = mount(AiChat, {
+      props: {
+        request: idleRequest,
+        defaultMessages: [msg({ status: 'error' })],
+      },
+      slots: {
+        error: ({ info }: { info: BubbleContentInfo }) =>
+          h('em', { class: 'consumer-error' }, `出错:${info.role}`),
+      },
+    });
+    await flushPromises();
+    expect(w.find('.aix-bubble__content .consumer-error').text()).toBe('出错:ai');
+  });
+});
