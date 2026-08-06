@@ -1,5 +1,5 @@
 <template>
-  <div :class="[ns.b(), ns.m(align)]">
+  <div :class="[ns.b(), ns.m(align), ns.is('fill-height', fillHeight)]">
     <div v-if="icon || $slots.icon" :class="ns.e('icon')">
       <slot name="icon"><img :src="icon" alt="" /></slot>
     </div>
@@ -23,15 +23,31 @@ export interface WelcomeProps {
   description?: string;
   /** 对齐方式：center 居中空态（默认）/ start 左对齐（用于带在顶部的引导语） */
   align?: 'center' | 'start';
+  /**
+   * 是否用 flex 上下 auto margin 在纵向撑满的容器（如 AiChat body）中垂直居中，默认跟随 `align`
+   * （`center` 时为 `true`、`start` 时为 `false`，与此前 `align` 单挑三个维度时的默认表现一致）。
+   *
+   * 与 `align` 独立：此前 `align: 'start'` 恒不带 `margin: auto 0`，想要「左对齐 + 垂直居中」
+   * （如面板顶部左对齐但仍在空白区居中的引导语）做不到，只能整段覆盖 `.aix-welcome--start`。
+   * 显式传入本 prop 可覆盖跟随 `align` 的默认值，与对齐方式任意组合。
+   */
+  fillHeight?: boolean;
 }
 </script>
 
 <script setup lang="ts">
 import { useNamespace } from '@aix/hooks';
+import { computed } from 'vue';
 
-withDefaults(defineProps<WelcomeProps>(), { align: 'center' });
+const props = withDefaults(defineProps<WelcomeProps>(), {
+  align: 'center',
+  // 显式 undefined 默认值（联合类型含 boolean 的 prop 若不声明会被隐式转换成 false，
+  // 与 AiChat.vue quote/suggestions/treeMode 同款坑），交由下方 computed 落回跟随 align 的默认值
+  fillHeight: undefined,
+});
 
 const ns = useNamespace('welcome');
+const fillHeight = computed(() => props.fillHeight ?? props.align === 'center');
 </script>
 
 <style lang="scss">
@@ -40,12 +56,9 @@ const ns = useNamespace('welcome');
   flex-direction: column;
   gap: var(--aix-sizeXS);
 
-  /* 居中空态（默认）：水平垂直居中 */
+  /* 居中空态（默认）：水平对齐 + 文本居中；纵向撑满由独立的 fillHeight 维度控制（见下方 is-fill-height） */
   &--center {
     align-items: center;
-
-    /* 作为空态置于 AiChat body（flex 列）中时，auto 上下边距使其垂直居中 */
-    margin: auto 0;
     padding: var(--aix-paddingXL) var(--aix-padding);
     text-align: center;
   }
@@ -54,6 +67,12 @@ const ns = useNamespace('welcome');
   &--start {
     align-items: flex-start;
     text-align: left;
+  }
+
+  /* 纵向撑满时用 flex 上下 auto margin 在容器（如 AiChat body）中垂直居中，与 align 独立正交，
+     默认跟随 align（center 时开、start 时关，见 WelcomeProps.fillHeight），可显式覆盖任意组合 */
+  &.is-fill-height {
+    margin: auto 0;
   }
 
   &__icon {

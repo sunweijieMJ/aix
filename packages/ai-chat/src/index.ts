@@ -183,6 +183,7 @@ export type {
 export type {
   AttachmentsPanelProps,
   AttachmentsPanelEmits,
+  AttachmentsPanelIcons,
 } from './components/AttachmentsPanel.vue';
 export type { QuoteMenuProps, QuoteMenuEmits } from './components/QuoteMenu.vue';
 export type { QuoteChipProps, QuoteChipEmits } from './components/QuoteChip.vue';

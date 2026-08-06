@@ -44,6 +44,29 @@ describe('Welcome', () => {
     expect(start.find('.aix-welcome').classes()).toContain('aix-welcome--start');
   });
 
+  // fillHeight 与 align 是两个独立维度：此前 align 单挑对齐方向 + 文本对齐 + 纵向撑满三件事，
+  // align:'start' 恒不带 margin:auto 撑满，「左对齐但仍垂直居中」的组合做不到。
+  describe('fillHeight（与 align 独立正交）', () => {
+    it('未传时跟随 align 的默认表现：center 撑满、start 不撑满（回归）', () => {
+      const center = mount(Welcome, { props: { title: '你好' } });
+      expect(center.find('.aix-welcome').classes()).toContain('is-fill-height');
+      const start = mount(Welcome, { props: { title: '你好', align: 'start' } });
+      expect(start.find('.aix-welcome').classes()).not.toContain('is-fill-height');
+    });
+
+    it('显式传入可覆盖跟随 align 的默认值：start + fillHeight=true（左对齐但垂直居中）', () => {
+      const w = mount(Welcome, { props: { title: '你好', align: 'start', fillHeight: true } });
+      expect(w.find('.aix-welcome').classes()).toContain('aix-welcome--start');
+      expect(w.find('.aix-welcome').classes()).toContain('is-fill-height');
+    });
+
+    it('显式传入可覆盖跟随 align 的默认值：center + fillHeight=false（居中但不撑满）', () => {
+      const w = mount(Welcome, { props: { title: '你好', fillHeight: false } });
+      expect(w.find('.aix-welcome').classes()).toContain('aix-welcome--center');
+      expect(w.find('.aix-welcome').classes()).not.toContain('is-fill-height');
+    });
+  });
+
   it('title 具名 slot 覆盖 title prop（支持富标题）', () => {
     const w = mount(Welcome, {
       props: { title: '纯文本' },

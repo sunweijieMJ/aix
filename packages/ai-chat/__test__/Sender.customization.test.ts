@@ -226,6 +226,71 @@ describe('AiChat — senderIcons 直通', () => {
   });
 });
 
+// ============ D：icons.attachmentUpload / attachmentClose 覆盖内置附件面板图标 ============
+// 此前内置 AttachmentsPanel 的上传占位图标 / 收起按钮图标无法通过 icons 换，只能整个接管
+// #attachments-panel 插槽（换 UI）或写 CSS（svg{display:none} + ::before 背景图，脱离主题变色）。
+// 现与 attach/voice/send/stop 走同一套「只换图标不必自建 UI」的 icons 通道。
+
+describe('Sender — icons.attachmentUpload / attachmentClose（D）', () => {
+  const openPanel = async (w: ReturnType<typeof mount>) => {
+    await w.find('.aix-sender__attach-btn').trigger('click');
+    await nextTick();
+  };
+
+  it('提供时覆盖内置附件面板的上传占位图标与收起按钮图标', async () => {
+    const w = mount(Sender, {
+      props: {
+        attachments: { upload: instantUpload },
+        icons: { attachmentUpload: StubIcon('my-upload'), attachmentClose: StubIcon('my-close') },
+      },
+    });
+    await openPanel(w);
+    expect(w.find('svg.my-upload').exists()).toBe(true);
+    expect(w.find('svg.my-close').exists()).toBe(true);
+    // 仅换图标：面板按钮的 aria-label 与内置文案照旧
+    expect(w.find('[aria-label="收起附件面板"]').exists()).toBe(true);
+  });
+
+  it('未提供时行为不变，回退内置图标（回归）', async () => {
+    const w = mount(Sender, { props: { attachments: { upload: instantUpload } } });
+    await openPanel(w);
+    expect(w.find('.aix-attachments-panel__placeholder-icon svg').exists()).toBe(true);
+    expect(w.find('.aix-attachments-panel__close svg').exists()).toBe(true);
+  });
+
+  it('提供了 #attachments-panel 插槽（整体换 UI）时不生效——图标是内置面板的实现细节', async () => {
+    const w = mount(Sender, {
+      props: {
+        attachments: { upload: instantUpload },
+        icons: { attachmentUpload: StubIcon('my-upload') },
+      },
+      slots: { 'attachments-panel': () => h('div', { class: 'my-panel' }) },
+    });
+    await openPanel(w);
+    expect(w.find('.my-panel').exists()).toBe(true);
+    expect(w.find('svg.my-upload').exists()).toBe(false);
+  });
+});
+
+describe('AiChat — senderIcons 直通附件面板图标', () => {
+  it('senderIcons.attachmentUpload/attachmentClose 落到内置附件面板上', async () => {
+    const w = mount(AiChat, {
+      props: {
+        request: async () => new ReadableStream<Uint8Array>({ start: (c) => c.close() }),
+        attachments: { upload: instantUpload },
+        senderIcons: {
+          attachmentUpload: StubIcon('chat-upload'),
+          attachmentClose: StubIcon('chat-close'),
+        },
+      },
+    });
+    await w.find('.aix-sender__attach-btn').trigger('click');
+    await nextTick();
+    expect(w.find('svg.chat-upload').exists()).toBe(true);
+    expect(w.find('svg.chat-close').exists()).toBe(true);
+  });
+});
+
 // ============ 附件面板 UI 定制（C）============
 // 内置 AttachmentsPanel 此前是 Sender 的实现细节：无插槽、未导出，业务只能改 CSS。
 // 而「自建」路线也是断的——attachments prop 只收配置对象，Sender 内部自持 useAttachments 实例，

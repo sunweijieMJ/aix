@@ -153,6 +153,32 @@ describe('ReasoningBlock — 思考 UI 插槽穿透', () => {
     expect(w.text()).not.toContain('思考过程');
   });
 
+  it('reasoning-icon 渲染在标题前，且拿得到 elapsed / streaming / open', () => {
+    const scopes: Record<string, unknown>[] = [];
+    const w = mount(ReasoningBlock, {
+      props: {
+        block: reasoning({ startedAt: Date.now() - 5000, endedAt: Date.now() }),
+        info: { status: 'success', role: 'ai', key: 'm1' },
+      },
+      slots: {
+        'reasoning-icon': (sp: Record<string, unknown>) => {
+          scopes.push(sp);
+          return h('i', { class: 'my-icon' });
+        },
+      },
+    });
+    expect(w.find('.my-icon').exists()).toBe(true);
+    expect(scopes[0]).toMatchObject({ elapsed: '5.00', streaming: false, open: false });
+  });
+
+  it('不提供 reasoning-icon 时无副作用：标题前不出现空白图标区', () => {
+    const w = mount(ReasoningBlock, {
+      props: { block: reasoning(), info: { status: 'success', role: 'ai', key: 'm1' } },
+    });
+    expect(w.find('.my-icon').exists()).toBe(false);
+    expect(w.find('.aix-thinking__header').text()).toContain('思考过程');
+  });
+
   it('reasoning-arrow 覆盖展开箭头（内置 ▾ 消失）', () => {
     const w = mount(ReasoningBlock, {
       props: { block: reasoning() },

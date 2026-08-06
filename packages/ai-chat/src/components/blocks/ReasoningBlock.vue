@@ -1,11 +1,14 @@
 <template>
   <Thinking :title="title" :expanded="isStreamingStatus">
-    <!-- 按 <块类型>-<内部slot> 约定把消费方插槽转发进 Thinking。三处都是 v-if 条件转发：
-         无条件转发会向 Thinking 注入空插槽，把标题/箭头渲染成空白（README 承诺「不提供则无副作用」）。
+    <!-- 按 <块类型>-<内部slot> 约定把消费方插槽转发进 Thinking。四处都是 v-if 条件转发：
+         无条件转发会向 Thinking 注入空插槽，把图标/标题/箭头渲染成空白（README 承诺「不提供则无副作用」）。
          与 ThoughtChainBlock 纯 v-bind="sp" 的差别：thought-chain 要透出的 item/index 就在内部组件
          的作用域里，而思考耗时 elapsed 与「思考是否仍在进行」streaming 是本块从数据层
          (block.startedAt/endedAt) + info.status 推导出来的，Thinking 无从得知，故此处**增补**作用域。
          elapsed 尤其关键：不给的话「用时 N 秒」只能靠改 i18n 文案，做不成胶囊标签之类的自定义形态。 -->
+    <template v-if="$slots['reasoning-icon']" #icon="sp">
+      <slot name="reasoning-icon" v-bind="{ ...sp, ...extraScope }" />
+    </template>
     <template v-if="$slots['reasoning-title']" #title="sp">
       <slot name="reasoning-title" v-bind="{ ...sp, ...extraScope }" />
     </template>

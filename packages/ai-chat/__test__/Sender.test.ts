@@ -825,6 +825,23 @@ describe('Sender', () => {
       expect(warn).not.toHaveBeenCalled();
       warn.mockRestore();
     });
+
+    it('autoSpacer=false 且未显式放置 spacer 时，不补隐式 spacer（业务完全自绘布局场景）', () => {
+      const w = mount(Sender, { props: { toolbarItems: [], autoSpacer: false } });
+      expect(w.findAll('.aix-sender__toolbar-spacer').length).toBe(0);
+      // 发送键仍照常渲染，只是没有 spacer 把它推到最右
+      expect(w.find('.aix-sender__send').exists()).toBe(true);
+    });
+
+    it('autoSpacer 默认 true：未传时行为不变（回归）', () => {
+      const w = mount(Sender, { props: { toolbarItems: [] } });
+      expect(w.findAll('.aix-sender__toolbar-spacer').length).toBe(1);
+    });
+
+    it('autoSpacer=false 但显式放置了 spacer 时，显式 spacer 仍渲染', () => {
+      const w = mount(Sender, { props: { toolbarItems: ['spacer'], autoSpacer: false } });
+      expect(w.findAll('.aix-sender__toolbar-spacer').length).toBe(1);
+    });
   });
 
   // ── disabled 附件守卫（回归：拖放导航 / pick / remove / 同名文件）────────

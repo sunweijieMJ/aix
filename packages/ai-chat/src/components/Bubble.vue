@@ -472,21 +472,23 @@ const cancelEdit = () => {
       animation: aix-bubble-tail-breathe 2s var(--aix-motionEaseInOut) infinite;
     }
 
-    /* AI 气泡：白底卡片，细边 + 极轻阴影，在浅灰背景上浮起 */
+    /* AI 气泡：白底卡片，细边 + 极轻阴影，在浅灰背景上浮起。
+       圆角走组件级尺寸旋钮 --aix-bubble-content-radius（见 README「样式定制」），
+       fallback 到原有 --aix-borderRadiusLG，未设置时行为不变 */
     &--filled {
       border: 1px solid var(--aix-colorBorderSecondary);
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
       background-color: var(--aix-colorBgContainer);
       box-shadow: var(--aix-shadowXS);
     }
 
     &--outlined {
       border: 1px solid var(--aix-colorBorder);
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
     }
 
     &--shadow {
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
       background-color: var(--aix-colorBgContainer);
       box-shadow: var(--aix-shadowSM);
     }
@@ -497,11 +499,11 @@ const cancelEdit = () => {
     }
 
     &--round {
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
     }
 
     &--corner {
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
     }
   }
 

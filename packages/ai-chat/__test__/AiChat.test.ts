@@ -1282,6 +1282,21 @@ describe('AiChat 顶部 header', () => {
     expect(header.find('.aix-ai-chat__header-title').exists()).toBe(false);
   });
 
+  // 回归：__header 容器本身不带默认视觉（padding/border-bottom），下沉到 __header-default——
+  // 业务提供 #header 完全接管内容时，不会带着内置视觉，不必再手动 reset 容器样式
+  it('header slot 完全覆盖时，不渲染内置的 __header-default 包裹层', () => {
+    const w = mount(AiChat, {
+      props: { request: req() },
+      slots: { header: '<div class="biz-header">自定义头</div>' },
+    });
+    expect(w.find('.aix-ai-chat__header-default').exists()).toBe(false);
+  });
+
+  it('未提供 header slot（走内置默认内容）时，渲染 __header-default 包裹层承载默认视觉', () => {
+    const w = mount(AiChat, { props: { request: req(), headerTitle: 'AI助手' } });
+    expect(w.find('.aix-ai-chat__header-default').exists()).toBe(true);
+  });
+
   it('header 具名插槽不被当作块插槽透传给 BubbleList', () => {
     // header/header-icon/header-extra 属 AiChat 保留插槽，不应出现在块插槽穿透路径
     const w = mount(AiChat, {

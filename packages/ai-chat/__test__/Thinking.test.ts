@@ -53,4 +53,20 @@ describe('Thinking', () => {
     await btn.trigger('click');
     expect(btn.attributes('aria-expanded')).toBe('true');
   });
+
+  it('icon 插槽渲染在标题前，拿得到 open 作用域', async () => {
+    const w = mount(Thinking, {
+      props: { content: 'x' },
+      slots: { icon: (sp: { open: boolean }) => `[icon:${sp.open}]` },
+    });
+    expect(w.find('.aix-thinking__header').text()).toContain('[icon:false]');
+    await w.find('.aix-thinking__header').trigger('click');
+    expect(w.find('.aix-thinking__header').text()).toContain('[icon:true]');
+  });
+
+  it('不提供 icon 插槽时无副作用（不占位、不渲染任何内置内容）', () => {
+    const w = mount(Thinking, { props: { content: 'x' } });
+    // 无内置图标形态可断言存在性，只需确认标题文案不受影响即可回归
+    expect(w.find('.aix-thinking__header').text()).toContain('思考中…');
+  });
 });

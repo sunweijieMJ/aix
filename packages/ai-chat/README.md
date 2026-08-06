@@ -101,7 +101,7 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 | `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `tailBreathing?` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；expose `scrollToBubble(messageId)`；slot `content` |
 | `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `tailBreathing?` / `contentRender` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；slot `avatar`/`header`/`content`/`footer` |
 | `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）/ `triggers?`（@提及/斜杠命令触发菜单）；emit `submit`（第三参 `meta?: SubmitMeta` 携带 mention 实体，见「触发菜单」）/`cancel`/`update:modelValue`；expose `focus`/`clear`/`setValue`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」）、`attachments-panel` 换附件面板 UI（见「自定义附件面板 UI」） |
-| `Welcome` | 欢迎/空态 | `icon?` / `title?` / `description?`；slot `icon`/`extra` |
+| `Welcome` | 欢迎/空态 | `icon?` / `title?` / `description?` / `align?`（`center`\|`start`）/ `fillHeight?`（纵向撑满时垂直居中，默认跟随 `align`，与其独立正交）；slot `icon`/`title`/`description`/`extra` |
 | `Prompts` | 提示词列表 | `items`；emit `select` |
 | `Thinking` | 可折叠的思考过程 | `content?` / `title?` / `expanded?`；slot `title`/`arrow`/默认（见「自定义深度思考 UI」） |
 | `MarkdownRenderer` | Markdown 渲染（缺依赖降级纯文本） | `content` / `streaming?`（流式防闪烁整修）/ `markdownRenderers?` / `allowHtml?` / `mdPlugins?`（注入 markdown-it 插件） |
@@ -258,6 +258,8 @@ const icons = { attach: markRaw(Paperclip), send: markRaw(Send) };
 | `voice` | 语音按钮（麦克风）；聆听态复用同一图标，由 `.is-listening` 着色区分 |
 | `send` | 发送按钮默认态 |
 | `stop` | 发送按钮在流式输出中的停止态 |
+| `attachmentUpload` | 内置附件面板的上传占位图标；仅在未提供 `#attachments-panel` 插槽（走内置面板）时生效 |
+| `attachmentClose` | 内置附件面板的收起按钮图标；仅在未提供 `#attachments-panel` 插槽（走内置面板）时生效 |
 
 > `send` / `stop` **各自独立回退**：只提供 `send` 时，流式态仍用内置停止图标——不会拿发送图标
 > 去冒充停止，否则「正在输出、点此停止」的语义会整个反过来。
@@ -297,9 +299,10 @@ const icons = { attach: markRaw(Paperclip), send: markRaw(Send) };
 上一节换的是附件**按钮**（开合面板的入口），这一节换的是附件**面板**（面板里长什么样）。
 两者互不依赖，可单用也可合用。按改动范围分三档：
 
-**① 只调尺寸/配色** —— 覆盖 `.aix-attachments-panel` / `.aix-attachment-card` 类与
+**① 只调尺寸/配色/图标** —— 覆盖 `.aix-attachments-panel` / `.aix-attachment-card` 类与
 `--aix-attachment-card-width`，改文案则覆盖 i18n 的 `attachmentsTitle` / `attachmentPlaceholder`
-/ `attachmentPlaceholderHint`。
+/ `attachmentPlaceholderHint`；换上传占位 / 收起按钮的图标见上节 `icons.attachmentUpload` /
+`icons.attachmentClose`（经 `AiChat` 用时是 `senderIcons`），无需接管整个面板。
 
 **② 换整个面板 UI —— `#attachments-panel` 作用域插槽**
 
@@ -367,6 +370,11 @@ const attachments = useAttachments({ upload, accept: '.pdf,.png' });
 
 > 发送键在 API 上固定于最右。确需挪位时，工具栏是 flex 容器，用 CSS `order` 即可：
 > `.aix-sender__send { order: -1 }`。
+>
+> 未显式放置 `'spacer'` 时，默认会在发送键前自动补一个隐式 spacer（把发送键推到最右）。
+> 完全接管 `#toolbar`（`toolbarItems: []`）自绘全部布局时，这个隐式 spacer 会插在插槽内容与
+> 发送键之间打乱自定义分组，设 `:auto-spacer="false"` 可一步关闭，不必再显式放 `'spacer'`
+> 占位后又用 CSS 把它隐藏掉。不影响显式放置的 `'spacer'`。
 
 ## 块渲染与富内容插槽穿透
 
@@ -512,6 +520,7 @@ const onBlockIntent = async (payload: BlockIntentPayload) => {
 | 插槽名 | 落点 | 作用域 |
 |--------|------|--------|
 | `thought-chain-item-content` | `ThoughtChain` 每个步骤的正文区 | `{ item, index }` |
+| `reasoning-icon` | 深度思考折叠面板标题前的**图标区**（无内置默认内容，不提供则不占位） | `{ open, elapsed, streaming }` |
 | `reasoning-title` | 深度思考折叠面板的**标题** | `{ open, elapsed, streaming }` |
 | `reasoning-arrow` | 深度思考折叠面板的**展开箭头** | `{ open, elapsed, streaming }` |
 | `reasoning-body` | 深度思考折叠面板的**正文**（替换内置 Markdown 渲染） | `{ open, elapsed, streaming, text, displayed }` |
@@ -523,7 +532,10 @@ const onBlockIntent = async (payload: BlockIntentPayload) => {
 
 ```vue
 <AiChat :request="request">
-  <!-- 把「思考过程（用时 5 秒）」换成胶囊标签 -->
+  <!-- 把「思考过程（用时 5 秒）」换成带图标的胶囊标签 -->
+  <template #reasoning-icon="{ streaming }">
+    <MyCheckCircle v-if="!streaming" />
+  </template>
   <template #reasoning-title="{ elapsed, streaming }">
     <MyChip :loading="streaming">{{ streaming ? '深度思考中' : `已思考 ${elapsed}s` }}</MyChip>
   </template>
@@ -541,10 +553,10 @@ const onBlockIntent = async (payload: BlockIntentPayload) => {
   比消息级 `status` 更精确：思考早已结束但消息仍在输出正文时为 `false`。
 - `text` / `displayed`（仅 `reasoning-body`）：思考原文 / 打字机当前进度文本。
 
-> 这三个插槽的作用域**不是纯透传**：`open` 来自内部的 `Thinking`，而 `elapsed` / `streaming`
+> 这四个插槽的作用域**不是纯透传**：`open` 来自内部的 `Thinking`，而 `elapsed` / `streaming`
 > 由 `reasoning` 块从数据层（`block.startedAt` / `endedAt`）推导后**增补**进来，`Thinking` 自身无从得知。
 >
-> `Thinking` 作为独立组件导出时，其 `title` / `arrow` / 默认插槽也已开放，可脱离 `reasoning` 块单独复用。
+> `Thinking` 作为独立组件导出时，其 `icon` / `title` / `arrow` / 默认插槽也已开放，可脱离 `reasoning` 块单独复用。
 
 约定与边界：
 
@@ -1162,7 +1174,11 @@ const markdownRenderers: MarkdownRenderers = {
 |------|--------|------|
 | `--aix-bubble-max-width` | `min(680px, 100%)` | 气泡内容区最大宽度 |
 | `--aix-bubble-avatar-size` | `36px` | 头像尺寸（骨架屏占位同步跟随） |
+| `--aix-bubble-content-radius` | `--aix-borderRadiusLG` | 气泡内容区圆角（filled/outlined/shadow/round/corner 变体共用） |
 | `--aix-sender-max-height` | `160px` | 输入框自适应高度上限，超出后内部滚动 |
+| `--aix-sender-min-height` | `0` | 输入框自适应高度下限，内容更少时仍撑住这个高度 |
+| `--aix-sender-send-width` | `--aix-controlHeight` | 发送按钮宽度，可与高度分别定制 |
+| `--aix-sender-send-height` | `--aix-controlHeight` | 发送按钮高度，可与宽度分别定制 |
 | `--aix-chart-block-height` | `300px` | 图表高度（结构化 `chart` 块与 ` ```chart ` 围栏共用） |
 | `--aix-attachment-card-width` | `248px` | 附件卡片宽度 |
 | `--aix-tool-use-max-height` | `320px` | 工具调用入参 / 结果区滚动上限 |

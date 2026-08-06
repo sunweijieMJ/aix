@@ -39,7 +39,7 @@ export const zhCN: AiChatLocale = {
   speakButton: '朗读',
   speakStopButton: '停止朗读',
   attachmentsTitle: '附件',
-  attachmentPlaceholder: '点击或拖拽文件到此区域上传',
+  attachmentPlaceholder: '上传文件',
   attachmentPlaceholderHint: '支持图片、文档等多种格式',
   attachmentsCollapse: '收起附件面板',
   prevBranch: '上一个版本',

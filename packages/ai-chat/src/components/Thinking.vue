@@ -1,8 +1,11 @@
 <template>
   <div :class="ns.b()">
     <button type="button" :class="ns.e('header')" :aria-expanded="open" @click="open = !open">
-      <!-- 标题 / 箭头各开一个插槽：只想换其一时不必接管整个折叠壳（展开态、a11y、动效都还在）。
-           作用域给 open——箭头几乎必然要按开合换图形，标题也常需要按开合换文案。 -->
+      <!-- 图标 / 标题 / 箭头各开一个插槽：只想换其一时不必接管整个折叠壳（展开态、a11y、动效都还在）。
+           作用域给 open——箭头几乎必然要按开合换图形，标题也常需要按开合换文案。
+           icon 不提供时不占位（无 fallback、无包裹元素），与 arrow/title 的「不提供则无副作用」约定一致，
+           区别在于 arrow/title 有内置默认内容作 fallback，而图标本就不是内置形态的一部分。 -->
+      <slot name="icon" :open="open" />
       <span>
         <slot name="title" :open="open">{{ title || t.thinking }}</slot>
       </span>
@@ -41,6 +44,8 @@ const props = withDefaults(defineProps<ThinkingProps>(), {
 defineSlots<{
   /** 折叠面板正文（覆盖 content 文本渲染） */
   default?: (props: { open: boolean }) => unknown;
+  /** 标题前的图标区（无内置默认内容，不提供时不占位） */
+  icon?: (props: { open: boolean }) => unknown;
   /** 标题区（覆盖 title / i18n 回退文案） */
   title?: (props: { open: boolean }) => unknown;
   /** 展开箭头（覆盖内置 ▾ 字符） */

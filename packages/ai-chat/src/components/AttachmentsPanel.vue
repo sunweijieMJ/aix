@@ -17,7 +17,8 @@
         :title="t.attachmentsCollapse"
         @click="emit('close')"
       >
-        <Close />
+        <!-- icons.close 存在时换图；按钮行为/a11y 文案不变，图标本身纯装饰（同 Sender icons 约定） -->
+        <component :is="icons?.close ?? Close" aria-hidden="true" />
       </button>
     </div>
 
@@ -32,7 +33,7 @@
     >
       <!-- 三段式（对齐 adx PlaceholderUploader）：图标 / title / description 居中竖排 -->
       <span :class="ns.e('placeholder-icon')" aria-hidden="true">
-        <AttachFile />
+        <component :is="icons?.upload ?? AttachFile" />
       </span>
       <span :class="ns.e('placeholder-title')">{{ t.attachmentPlaceholder }}</span>
       <span :class="ns.e('placeholder-hint')">{{ t.attachmentPlaceholderHint }}</span>
@@ -55,9 +56,22 @@
 <script lang="ts">
 // 类型声明独立成块（与 Bubble / Sender / AttachmentCard 同约定）：本组件已对外导出，
 // 其 Props/Emits 需能被 index.ts 稳定 re-export。
+/**
+ * 内置附件面板的图标覆写表（与 `SenderIcons` 同约定：只换图形，按钮行为 / a11y 文案不变，
+ * 未提供的键回退内置图标）。
+ */
+export interface AttachmentsPanelIcons {
+  /** 上传占位区的图标 */
+  upload?: Component;
+  /** 收起面板按钮的图标 */
+  close?: Component;
+}
+
 export interface AttachmentsPanelProps {
   /** 待发附件列表（含上传过程态） */
   items: PendingAttachment[];
+  /** 覆盖内置图标（上传占位 / 收起按钮），见 `AttachmentsPanelIcons` */
+  icons?: AttachmentsPanelIcons;
 }
 
 export interface AttachmentsPanelEmits {
@@ -79,6 +93,7 @@ import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { AttachFile, Close } from '@aix/icons';
 import { ref } from 'vue';
+import type { Component } from 'vue';
 import type { PendingAttachment } from '../composables/useAttachments';
 import { locale } from '../locale';
 import AttachmentCard from './AttachmentCard.vue';

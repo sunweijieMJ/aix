@@ -26,6 +26,7 @@
         <slot name="attachments-panel" v-bind="attachmentScope!">
           <AttachmentsPanel
             :items="attach.items.value"
+            :icons="{ upload: icons?.attachmentUpload, close: icons?.attachmentClose }"
             @pick="onPanelPick"
             @drop="onPanelDrop"
             @remove="onPanelRemove"
@@ -132,8 +133,13 @@
       </template>
       <slot name="toolbar" v-bind="slotScope" />
       <!-- 未显式放 spacer 时，在发送键前补一个隐式 spacer：与显式 spacer 走同一套 CSS 机制，
-           而不是单独给发送键加 margin-left:auto——避免两种推右方式并存、多个 auto margin 分摊空间的歧义 -->
-      <span v-if="!hasExplicitSpacer" :class="ns.e('toolbar-spacer')" aria-hidden="true" />
+           而不是单独给发送键加 margin-left:auto——避免两种推右方式并存、多个 auto margin 分摊空间的歧义。
+           autoSpacer=false 时业务已完全自绘布局，不再补这个隐式占位符（见其 prop 注释）。 -->
+      <span
+        v-if="!hasExplicitSpacer && autoSpacer"
+        :class="ns.e('toolbar-spacer')"
+        aria-hidden="true"
+      />
       <button
         type="button"
         :class="[ns.e('send'), ns.is('streaming', loading)]"
@@ -221,6 +227,16 @@ export interface SenderProps {
    */
   toolbarItems?: SenderToolbarItems;
   /**
+   * 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，默认 true。
+   *
+   * 业务完全接管 `#toolbar`（`toolbarItems: []`，不使用任何内置 attach/voice 项）自绘全部
+   * 布局时，隐式 spacer 会插在 slot 内容与发送键之间，把业务自己的左右分组打乱；此前唯一的
+   * 关闭办法是显式声明 `toolbarItems: ['spacer']` 占位、再用 `:deep(.aix-sender__toolbar-spacer)
+   * { display: none }` 把它隐藏掉。设为 `false` 可一步到位不再补隐式 spacer，无需这道 hack。
+   * 不影响显式放置的 'spacer'（那始终按数组顺序渲染）。
+   */
+  autoSpacer?: boolean;
+  /**
    * 覆盖内置按钮图标（仅换图标，按钮行为与 a11y 文案不变）。
    * 未提供的键回退内置图标，故可只换其中一两个。
    *
@@ -251,6 +267,10 @@ export interface SenderIcons {
   send?: Component;
   /** 发送按钮在流式输出中的图标（停止） */
   stop?: Component;
+  /** 内置附件面板的上传占位图标；仅在未提供 `#attachments-panel` 插槽（走内置 AttachmentsPanel）时生效 */
+  attachmentUpload?: Component;
+  /** 内置附件面板的收起按钮图标；仅在未提供 `#attachments-panel` 插槽（走内置 AttachmentsPanel）时生效 */
+  attachmentClose?: Component;
 }
 export interface SenderEmits {
   /** 输入框文本变化（v-model 同步） */
@@ -379,6 +399,7 @@ const props = withDefaults(defineProps<SenderProps>(), {
   submitType: 'enter',
   allowEmptySubmit: false,
   toolbarItems: () => ['attach', 'voice'] as SenderToolbarItems,
+  autoSpacer: true,
 });
 const emit = defineEmits<SenderEmits>();
 const ns = useNamespace('sender');
@@ -1237,6 +1258,9 @@ defineExpose({
   &__input {
     flex: 1;
 
+    /* 自适应高度的下限（内容更少时仍撑住这个高度）。默认 0 等价于此前"无强制最小高度"的行为 */
+    min-height: var(--aix-sender-min-height, 0);
+
     /* 自适应高度的上限（超出后内部滚动）。autosize 用镜像 textarea 量高、再单向赋值给真实
        输入框，本上限由 CSS 接管，故调大本变量即可放宽输入框，无需改任何 JS */
     max-height: var(--aix-sender-max-height, 160px);
@@ -1263,8 +1287,11 @@ defineExpose({
     flex: none;
     align-items: center;
     justify-content: center;
-    width: var(--aix-controlHeight);
-    height: var(--aix-controlHeight);
+
+    /* 组件级尺寸旋钮（见 README「样式定制」）：只写 var() fallback、不声明默认值，
+       与 --aix-bubble-max-width 等既有旋钮同约定，可分别定制宽高 */
+    width: var(--aix-sender-send-width, var(--aix-controlHeight));
+    height: var(--aix-sender-send-height, var(--aix-controlHeight));
     transition:
       background-color var(--aix-motionDurationFast) var(--aix-motionEaseInOut),
       color var(--aix-motionDurationFast) var(--aix-motionEaseInOut),

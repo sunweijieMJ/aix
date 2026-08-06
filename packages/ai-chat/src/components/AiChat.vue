@@ -1,16 +1,21 @@
 <template>
   <div :class="[ns.b(), ns.is('actions-hover', actionsTrigger === 'hover')]">
     <!-- 可选标题栏：传 headerTitle/headerIcon 或提供 header* 任一插槽时渲染。
-         默认布局为 [图标] 标题 …… [extra]；header slot 可完全覆盖。关闭等交互由业务填 header-extra。 -->
+         默认布局为 [图标] 标题 …… [extra]；header slot 可完全覆盖。关闭等交互由业务填 header-extra。
+         容器（__header）本身不带默认视觉（padding/border-bottom）——那些下沉到内置默认内容的
+         包裹层（__header-default）上。这样业务提供 #header 完全接管内容时，容器天然零样式，
+         不必再 reset padding/border-bottom 才能让自己的布局生效（此前两者都长在容器上）。 -->
     <div v-if="hasHeader" :class="ns.e('header')">
       <slot name="header">
-        <span v-if="headerIcon || $slots['header-icon']" :class="ns.e('header-icon')">
-          <slot name="header-icon"><img :src="headerIcon" alt="" /></slot>
-        </span>
-        <span :class="ns.e('header-title')">{{ headerTitle }}</span>
-        <span v-if="$slots['header-extra']" :class="ns.e('header-extra')">
-          <slot name="header-extra" />
-        </span>
+        <div :class="ns.e('header-default')">
+          <span v-if="headerIcon || $slots['header-icon']" :class="ns.e('header-icon')">
+            <slot name="header-icon"><img :src="headerIcon" alt="" /></slot>
+          </span>
+          <span :class="ns.e('header-title')">{{ headerTitle }}</span>
+          <span v-if="$slots['header-extra']" :class="ns.e('header-extra')">
+            <slot name="header-extra" />
+          </span>
+        </div>
       </slot>
     </div>
     <div :class="ns.e('body')">
@@ -159,6 +164,7 @@
       :voice="voice"
       :triggers="triggers"
       :toolbar-items="toolbarItems"
+      :auto-spacer="autoSpacer"
       :icons="senderIcons"
       :allow-empty-submit="pendingQuotes.length > 0"
       @submit="onSend"
@@ -385,6 +391,11 @@ export interface AiChatProps {
   /** 工具栏项（内置 attach/voice + 自定义对象混排），直通 Sender；不传则用 Sender 默认值 ['attach','voice'] */
   toolbarItems?: SenderToolbarItems;
   /**
+   * 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，直通 Sender，默认 true。
+   * 见 `SenderProps.autoSpacer` 说明。
+   */
+  autoSpacer?: boolean;
+  /**
    * 覆盖 Sender 内置按钮图标（附件 / 语音 / 发送 / 停止），直通 Sender 的 `icons` prop。
    *
    * 命名上刻意加 `sender` 前缀、不沿用同名直通的惯例（`toolbarItems` / `triggers` 那样）：
@@ -505,6 +516,10 @@ const props = withDefaults(defineProps<AiChatProps>(), {
   // undefined，导致「未显式声明」被误读为「显式关闭 tree 模式」，把 v-model:tree 的自动推断
   // 整个短路掉（绑了 tree 也不生效）。显式 default:undefined 关闭该转换。
   treeMode: undefined,
+  // autoSpacer 同款纯 boolean prop 坑：不显式声明会被自动转成 false，覆盖掉 Sender 自身的
+  // 默认值 true，导致未传时隐式 spacer 永久消失（默认渲染行为被破坏）。显式 default:undefined
+  // 让未传时透传的是 undefined，由 Sender 的 withDefaults 落回其默认值 true。
+  autoSpacer: undefined,
 });
 const emit = defineEmits<AiChatEmits>();
 const ns = useNamespace('ai-chat');
@@ -1149,10 +1164,18 @@ defineExpose({
   min-height: 0;
   background-color: var(--aix-colorBgLayout, var(--aix-colorBgContainer));
 
-  /* 可选标题栏：底部细分隔线，左图标 + 标题，右侧 extra（关闭等）靠边 */
+  /* 标题栏容器：本身零样式（不带 padding/border-bottom），只负责「渲染或不渲染」。
+     默认视觉下沉到 __header-default（#header 未被业务接管时的内置内容包裹层），
+     业务提供 #header 完全接管内容时不会带着这份视觉，不必再手动 reset。 */
   &__header {
     display: flex;
     flex: none;
+  }
+
+  /* 内置标题栏内容：底部细分隔线，左图标 + 标题，右侧 extra（关闭等）靠边 */
+  &__header-default {
+    display: flex;
+    flex: 1;
     align-items: center;
     gap: var(--aix-sizeXS);
     padding: var(--aix-paddingSM) var(--aix-padding);
