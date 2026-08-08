@@ -10,7 +10,6 @@
     @drop="onDrop"
     @dragover="onDragOver"
     @dragenter="onRootDragEnter"
-    @dragleave="onRootDragLeave"
   >
     <!-- 顶部扩展区：常用于附件预览 / 引用上下文等，位于输入行上方 -->
     <div v-if="$slots.header" :class="ns.e('header')">
@@ -609,14 +608,8 @@ const onDragOver = (e: DragEvent) => {
 const onRootDragEnter = () => {
   if (attach && !props.disabled && !panelOpen.value) panelOpen.value = true;
 };
-// 真实离开判定：relatedTarget 仍在根内（子元素间移动）不算离开——与面板同模式防闪烁。
-// 此处不收起面板（拖拽离开不应关闭已展开面板），仅保留守卫语义占位，避免误触发其他逻辑。
-const onRootDragLeave = (e: DragEvent) => {
-  if (!attach) return;
-  const el = e.currentTarget as HTMLElement;
-  if (el.contains(e.relatedTarget as Node | null)) return;
-  // 拖拽真实离开根区域：无副作用（面板展开态保持），守卫仅为对齐面板防闪烁模式
-};
+// 注：根区域刻意不监听 dragleave —— 拖拽离开不应收起已展开的面板，故无事可做。
+// 面板自身的 drag-in 高亮防闪烁（relatedTarget 仍在内部不算离开）由 AttachmentsPanel 接管。
 const onPaste = (e: ClipboardEvent) => {
   if (!attach || props.disabled || !e.clipboardData?.files.length) return;
   e.preventDefault(); // 文件粘贴接管；纯文本粘贴不受影响
@@ -969,7 +962,8 @@ const doSubmit = () => {
   if (voice?.status.value === 'listening') voice.stop();
   const atts = attach ? attach.drain() : undefined;
   const meta = collectMentions(text);
-  // meta 存在才携带第三参：无 meta 时保持旧签名（一/两参）完全兼容
+  // 按实际有值的参数个数分档 emit，不补尾随 undefined（理由同 AiChat.onSend）：
+  // emit 的实参个数是可观测契约，本仓有 11 条用例直接断言 emitted 数组的长度。
   if (meta) emit('submit', text, atts?.length ? atts : undefined, meta);
   else if (atts?.length) emit('submit', text, atts);
   else emit('submit', text);

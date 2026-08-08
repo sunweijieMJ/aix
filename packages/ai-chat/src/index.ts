@@ -169,7 +169,9 @@ export type {
   SenderIcons,
 } from './components/Sender.vue';
 export type { BubbleListProps, BubbleListEmits } from './components/BubbleList.vue';
-export type { AiChatProps, AiChatEmits } from './components/AiChat.vue';
+// BubbleFooterActions 是 #footer 作用域插槽回传的 `actions` 句柄集类型——自绘操作条的业务
+// 必然要给它标类型，此前声明在 AiChat.vue 内却未经此处导出，等于拿不到。
+export type { AiChatProps, AiChatEmits, BubbleFooterActions } from './components/AiChat.vue';
 export type { WelcomeProps } from './components/Welcome.vue';
 export type { ThinkingProps } from './components/Thinking.vue';
 export type { ThoughtChainProps } from './components/ThoughtChain.vue';

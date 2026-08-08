@@ -158,10 +158,9 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
       pitch: config.pitch,
       volume: config.volume,
       voice: config.voice,
-      onStart: () => {
-        // speakingId 已在起播时乐观置位；此处仅为接口完整，令牌失配则忽略
-        if (token !== currentSession) return;
-      },
+      // 空实现：speakingId 已在下方起播时乐观置位（按钮需即时反馈，不能等首段真正发声），
+      // 故本回调无事可做；SpeechSynthesizerCtx 要求必填，保留空函数。
+      onStart: () => {},
       onEnd: () => {
         if (token !== currentSession) return;
         speakingId.value = null;

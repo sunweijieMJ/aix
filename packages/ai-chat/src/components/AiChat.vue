@@ -987,7 +987,9 @@ const onSend = (text: string, attachments?: AttachmentItem[], meta?: SubmitMeta)
   if (isLoading.value) return;
   const quotes = pendingQuotes.value;
   clearTempSuggestions(); // 发送即清除通道①临时建议（含点击建议本身）
-  // meta 存在才携带第三参：无 meta 时保持旧签名（一/两参）完全兼容
+  // 按实际有值的参数个数分档 emit，不补尾随 undefined：emit 的实参个数是可观测契约
+  // （消费方的 `emitted('send')[0]` 断言、`(...args) => args.length` 都看得见），
+  // 无附件时多抛两个 undefined 会破坏既有接入方。
   if (meta) emit('send', text, attachments?.length ? attachments : undefined, meta);
   else if (attachments?.length) emit('send', text, attachments);
   else emit('send', text);
