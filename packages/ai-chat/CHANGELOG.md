@@ -1,5 +1,11 @@
 # @aix/ai-chat
 
+## 0.0.25
+
+### Patch Changes
+
+- 增强定制化能力
+
 ## 0.0.24
 
 ### Patch Changes
