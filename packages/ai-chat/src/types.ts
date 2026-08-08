@@ -449,7 +449,17 @@ export interface Quote {
   intent?: string;
 }
 
-/** 工具调用生命周期状态（awaiting-approval / executing 为 Layer 2 预留） */
+/**
+ * 工具调用生命周期状态。
+ *
+ * 内置 `ToolUseBlock` 的默认卡片对各状态的处理：
+ * - `input-streaming` / `input-available` / `executing`：显示加载点（"进行中"）；
+ * - `output-available` / `output-error`：分别渲染结果区 / 错误区；
+ * - `awaiting-approval`：**默认卡片不渲染任何审批 UI**（既无加载点也无同意/拒绝按钮）。
+ *   该状态是给自定义 `toolRenderers` 用的——审批交互的形态（按钮文案、二次确认、超时策略）
+ *   高度依赖业务，故不预设；实现时"改参数走 onBlockAction、点提交走 onBlockIntent"，
+ *   与内置 UserConfirmBlock 的双通道同构，超时可直接复用 useConfirmDeadline。
+ */
 export type ToolUseState =
   | 'input-streaming'
   | 'input-available'
@@ -458,7 +468,13 @@ export type ToolUseState =
   | 'output-available'
   | 'output-error';
 
-/** 图表渲染引擎（判别键）。MVP 仅 echarts；function-plot 为数学函数图像专用副库，分期接入 */
+/**
+ * @deprecated 请勿使用：本类型与实际的 `chart` 块字段**不兼容**。
+ * `ContentBlockRegistry['chart'].engine` 已收窄为字面量 `'echarts'`，故把
+ * `ChartEngine` 类型的值赋给 chart 块的 `engine` 会直接类型报错（`'function-plot'` 不可赋值）。
+ * 需要标注该字段时请直接用 `'echarts'`，或 `Extract<ContentBlock, { type: 'chart' }>['engine']`。
+ * 本别名仅为兼容早期导出保留，function-plot 引擎接入时会重新设计。
+ */
 export type ChartEngine = 'echarts' | 'function-plot';
 
 /** ECharts 统计图种类（仅 echarts 引擎有此维度：决定骨架占位形态 + 二次动态 import 哪个图表子模块） */
@@ -715,11 +731,17 @@ export interface QuoteConfig {
   actions?: QuoteActionsItems;
   /** 是否往 BubbleActions 自动注入内置 'quote'（PC 引整条），默认 true */
   pcQuoteAction?: boolean;
-  /** 移动精选实现（P2 预留，首版不接线） */
+  /**
+   * @deprecated 尚未实现：本字段未接入任何逻辑，传入不产生任何效果。保留仅为占位，
+   * 实际移动端选区行为由 `longPressDelay` 与浏览器原生选区决定。
+   */
   mobileSelection?: 'custom' | 'native';
   /** 长按出菜单延时 ms，默认 500 */
   longPressDelay?: number;
-  /** 精选初选粒度（P2 预留，首版不接线） */
+  /**
+   * @deprecated 尚未实现：本字段未接入任何逻辑，传入不产生任何效果。
+   * 选区粒度当前完全由浏览器原生行为决定。
+   */
   granularity?: 'word' | 'sentence';
   /** 键盘选区唤出，默认 true */
   keyboard?: boolean;

@@ -180,6 +180,33 @@ function sealReasoning(msg: ChatMessage) {
 }
 
 /**
+ * 消息落终态时，把仍停在 `input-streaming`、但 `argsText` 已是完整 JSON 的 tool_use 块
+ * 收尾为 `input-available`。幂等（无待收尾块时为空操作）。
+ *
+ * 存在的理由是**参数结束信号天然给不全**：`argsDone` 由 parseChunk 翻译，而 parseChunk 是
+ * 无跨事件状态的纯函数，拿不到"这一帧该给哪些 index 发结束"的全局信息。OpenAI 的
+ * `finish_reason:'tool_calls'` 是整条 choice 级的、不带 index，内置 `openaiParseChunk` 只能
+ * 固定发 `index:0`——于是并行工具调用时 index≥1 的块永远收不到 argsDone，`applyToolEvent`
+ * 也就永远不会把 argsText 解析成 input，工具卡卡在"参数流式中"、宿主拿不到参数无法执行。
+ *
+ * 收尾放在 useChat 而非解析层，正是因为只有这里知道"流已经结束了"。
+ * JSON 未闭合（坏流 / 真被截断）则原样保留 input-streaming，与 applyToolEvent 的 argsDone
+ * 分支同口径——不猜、不伪造 input，argsText 仍可展示。
+ */
+function sealToolArgs(msg: ChatMessage) {
+  for (const b of msg.content) {
+    if (b.type === 'tool_use' && b.state === 'input-streaming' && b.input == null && b.argsText) {
+      try {
+        b.input = JSON.parse(b.argsText);
+        b.state = 'input-available';
+      } catch {
+        /* 未闭合 JSON：保持 input-streaming，argsText 仍可展示 */
+      }
+    }
+  }
+}
+
+/**
  * 同一条消息内新 user_confirm 落地时，把仍为 awaiting 的**早期**确认块置 expired。
  * 幂等（重复调用是空操作），可在每次追加块后无条件调用。
  *
@@ -656,11 +683,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           if (ctrl.signal.aborted) {
             if (ownsMsg()) {
               sealReasoning(aiMsg);
+              sealToolArgs(aiMsg);
               aiMsg.status = 'abort';
               onAbort?.(aiMsg);
             }
           } else if (ownsMsg()) {
             sealReasoning(aiMsg);
+            sealToolArgs(aiMsg);
             aiMsg.status = 'success';
             onFinish?.(aiMsg);
           }
@@ -670,6 +699,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           if (ctrl.signal.aborted) {
             if (ownsMsg()) {
               sealReasoning(aiMsg);
+              sealToolArgs(aiMsg);
               aiMsg.status = 'abort';
               onAbort?.(aiMsg);
             }
@@ -697,6 +727,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             if (ctrl.signal.aborted) {
               if (ownsMsg()) {
                 sealReasoning(aiMsg);
+                sealToolArgs(aiMsg);
                 aiMsg.status = 'abort';
                 onAbort?.(aiMsg);
               }
@@ -709,6 +740,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           console.error('[ai-chat] request failed:', finalErr);
           if (ownsMsg()) {
             sealReasoning(aiMsg);
+            sealToolArgs(aiMsg);
             aiMsg.status = 'error';
             aiMsg.extra = { ...aiMsg.extra, error: finalErr };
             onError?.(aiMsg, finalErr);

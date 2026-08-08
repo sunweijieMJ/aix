@@ -579,6 +579,45 @@ describe('useConversations — 树持久化与迁移', () => {
     expect(tree.headId).toBe('m2');
   });
 
+  it('读 activeTree 不得改写源 messages（getter 必须无副作用）', () => {
+    // 迁移路径会经 messageTree.appendMessage 给缺 createdAt 的消息补写时间戳。
+    // 若直接把 c.messages 喂进去，"读一个 computed"就变成了"写用户数据"，且写的是本
+    // computed 刚读过的响应式依赖 → 当场自失效（首次重读要整棵树重建），配了 storage
+    // 时还会调度一次用户从未触发的 save。
+    const c = useConversations({
+      defaultConversations: [{ id: 'c1', label: 'x', messages: [msg('m1'), msg('m2')] }],
+    });
+    const source = c.conversations.value[0]!.messages;
+    expect(source.every((m) => m.createdAt == null)).toBe(true);
+
+    const tree = c.activeTree.value!;
+    // ① 源消息保持原样（时间戳只落在导出树的副本上）
+    expect(source.every((m) => m.createdAt == null)).toBe(true);
+    expect(tree.nodes.every((n) => typeof n.message.createdAt === 'number')).toBe(true);
+    // ② 无自失效：连续读取命中缓存、返回同一对象
+    expect(c.activeTree.value).toBe(tree);
+    // ③ 迁移结果本身仍然正确
+    expect(tree.nodes.map((n) => n.id)).toEqual(['m1', 'm2']);
+    expect(tree.headId).toBe('m2');
+    // ④ 浅拷贝只换消息外壳，content 数组仍共享引用（不复制块数据）
+    expect(tree.nodes[0]!.message.content).toBe(source[0]!.content);
+  });
+
+  it('读 activeTree 不触发持久化 save（副作用回归）', async () => {
+    const save = vi.fn();
+    const c = useConversations({
+      defaultConversations: [{ id: 'c1', label: 'x', messages: [msg('m1')] }],
+      storage: { load: () => null, save },
+      saveDebounce: 0,
+    });
+    await flushAsync();
+    save.mockClear();
+    void c.activeTree.value;
+    void c.activeTree.value;
+    await flushAsync();
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it('create 传入 tree 时透传保留（类型接受 tree，实现不得静默丢弃分支数据）', () => {
     const t = createMessageTree([msg('m1'), msg('m2')]);
     const exported = t.exportTree();
