@@ -21,6 +21,7 @@ export const zhCN: AiChatLocale = {
   deleteButton: '删除',
   backToBottom: '回到底部',
   errorMessage: '出错了，请重试',
+  abortedEmpty: '已停止生成',
   imageLoadError: '图片加载失败',
   sourcesTitle: '引用来源',
   newConversation: '新建会话',

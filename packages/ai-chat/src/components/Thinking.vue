@@ -1,5 +1,5 @@
 <template>
-  <div :class="ns.b()">
+  <div :class="[ns.b(), ns.m(variant)]">
     <button type="button" :class="ns.e('header')" :aria-expanded="open" @click="open = !open">
       <!-- 图标 / 标题 / 箭头各开一个插槽：只想换其一时不必接管整个折叠壳（展开态、a11y、动效都还在）。
            作用域给 open——箭头几乎必然要按开合换图形，标题也常需要按开合换文案。
@@ -20,6 +20,9 @@
 </template>
 
 <script lang="ts">
+/** 折叠面板外观形态，见 `ThinkingProps.variant` */
+export type ThinkingVariant = 'card' | 'capsule' | 'plain';
+
 export interface ThinkingProps {
   /** 思维链内容（可用默认 slot 覆盖） */
   content?: string;
@@ -27,6 +30,19 @@ export interface ThinkingProps {
   title?: string;
   /** 初始是否展开，默认 false */
   expanded?: boolean;
+  /**
+   * 外观形态，默认 `'card'`（行为完全不变）：
+   *
+   * - `'card'`：整体一个描边卡片，头部撑满、与正文之间一条分隔线；
+   * - `'capsule'`：头部收成 hug 宽度的胶囊（不再撑满一行），正文独立成一个圆角浅底块——
+   *   当下多数 AI 产品的思考区就长这样；
+   * - `'plain'`：不带任何容器视觉，只保留折叠行为与间距，交给宿主完全自绘。
+   *
+   * 此前只有 card 一种，胶囊形态的设计稿只能整段覆写 `.aix-thinking` /
+   * `.aix-thinking__header` / `.aix-thinking__body`（去边框、改 inline-flex、重画圆角），
+   * 每个接入方重复一遍。
+   */
+  variant?: ThinkingVariant;
 }
 </script>
 
@@ -39,6 +55,7 @@ import { locale } from '../locale';
 const props = withDefaults(defineProps<ThinkingProps>(), {
   content: '',
   expanded: false,
+  variant: 'card',
 });
 
 defineSlots<{
@@ -69,27 +86,18 @@ watch(
 
 <style lang="scss">
 .aix-thinking {
-  overflow: hidden;
-  border: 1px solid var(--aix-colorBorderSecondary);
-  border-radius: var(--aix-borderRadiusLG);
-  background-color: var(--aix-colorFillQuaternary);
-
+  /* 三种形态共有的部分：头部是个可点的按钮，正文是次级文本。
+     容器视觉（边框 / 圆角 / 底色）与头尾的具体排布下沉到各 variant，
+     这样 plain 天然零视觉，不必先 reset 再自绘。 */
   &__header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: var(--aix-paddingSM) var(--aix-padding);
     transition: background-color var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
     border: none;
     background: transparent;
     color: var(--aix-colorTextSecondary);
     font-size: var(--aix-fontSize);
     cursor: pointer;
-
-    &:hover {
-      background-color: var(--aix-colorFillTertiary);
-    }
   }
 
   &__arrow {
@@ -102,11 +110,76 @@ watch(
   }
 
   &__body {
-    padding: var(--aix-paddingSM) var(--aix-padding);
-    border-top: 1px solid var(--aix-colorBorderSecondary);
     color: var(--aix-colorTextSecondary);
     font-size: var(--aix-fontSize);
     line-height: var(--aix-lineHeight);
+  }
+
+  /* ── card（默认）：整体一个描边卡片，头部撑满，正文以分隔线相接 ── */
+  &--card {
+    overflow: hidden;
+    border: 1px solid var(--aix-colorBorderSecondary);
+    border-radius: var(--aix-borderRadiusLG);
+    background-color: var(--aix-colorFillQuaternary);
+
+    .aix-thinking__header {
+      justify-content: space-between;
+      width: 100%;
+      padding: var(--aix-paddingSM) var(--aix-padding);
+
+      &:hover {
+        background-color: var(--aix-colorFillTertiary);
+      }
+    }
+
+    .aix-thinking__body {
+      padding: var(--aix-paddingSM) var(--aix-padding);
+      border-top: 1px solid var(--aix-colorBorderSecondary);
+    }
+  }
+
+  /* ── capsule：头部收成 hug 宽度的胶囊，正文独立成一个圆角浅底块。
+     容器自身不能有 overflow:hidden —— 胶囊的圆角要能正常显示，正文块也要能与头部错开。 ── */
+  &--capsule {
+    .aix-thinking__header {
+      display: inline-flex;
+      justify-content: flex-start;
+      width: auto;
+      padding: var(--aix-paddingXS) var(--aix-paddingSM);
+      border-radius: 999px;
+      background-color: var(--aix-colorFillTertiary);
+      font-size: var(--aix-fontSizeSM);
+      gap: var(--aix-marginXXS);
+
+      &:hover {
+        background-color: var(--aix-colorFill);
+      }
+    }
+
+    .aix-thinking__body {
+      margin-top: var(--aix-marginXXS);
+      padding: var(--aix-paddingXS) var(--aix-paddingSM);
+      border-radius: var(--aix-borderRadiusLG);
+      background-color: var(--aix-colorFillQuaternary);
+      color: var(--aix-colorTextTertiary);
+      font-size: var(--aix-fontSizeSM);
+    }
+  }
+
+  /* ── plain：无容器视觉，只保留折叠行为与最基本的间距。
+     头部同样收成 hug 宽度（撑满一行却没有任何底色，点击热区会大得莫名其妙）。 ── */
+  &--plain {
+    .aix-thinking__header {
+      display: inline-flex;
+      justify-content: flex-start;
+      width: auto;
+      padding: 0;
+      gap: var(--aix-marginXXS);
+    }
+
+    .aix-thinking__body {
+      margin-top: var(--aix-marginXXS);
+    }
   }
 }
 </style>

@@ -6,6 +6,7 @@ import {
   type InjectionKey,
   type ComputedRef,
 } from 'vue';
+import type { ThinkingVariant } from '../components/Thinking.vue';
 import type { RoleConfig, BlockRenderers, QuoteConfig, OutlineOptions } from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
 import type { ShouldFollow } from './useAutoScroll';
@@ -45,6 +46,14 @@ export interface AiChatConfig {
    * 设为 0 表示整数秒，1 表示保留 1 位小数（如 3.5秒），2 表示保留 2 位（如 3.58秒）。
    */
   timePrecision?: number;
+  /**
+   * 深度思考（reasoning 块）折叠面板的外观形态，默认 `'card'`。
+   *
+   * 走配置注入而非 props：ReasoningBlock 由块渲染器注册表实例化，AiChat 无法直接给它传 prop
+   * （注册表统一只透传 block/info/typing 等固定契约）。AiChat 的 `reasoningVariant` prop
+   * 最终落到这里。
+   */
+  reasoningVariant?: ThinkingVariant;
 }
 
 const DEFAULT_CONFIG: AiChatConfig = { enableTyping: true, timePrecision: 2 };

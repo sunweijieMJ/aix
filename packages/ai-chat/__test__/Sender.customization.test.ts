@@ -199,13 +199,21 @@ describe('Sender — icons 覆盖内置图标（B）', () => {
     expect(w.find('.aix-sender__send-icon').exists()).toBe(false);
   });
 
-  it('不传 icons 时行为完全不变（内置 mask 图标照常）', () => {
+  /**
+   * 内置图标的 mask 图源已从**内联 style** 迁到样式表（`--aix-sender-send-icon` /
+   * `--aix-sender-stop-icon` 的 var() fallback），故这里不再断言内联样式——
+   * 内联优先级压过一切外部样式表，正是它让「用 CSS 换图标」这条路走不通
+   * （业务写 background-image 会被内置 mask 按纸飞机轮廓裁掉）。
+   * 现在的契约是：不传 icons 时渲染内置 span 节点、且**不带任何内联样式**，
+   * 外观完全由样式表决定，宿主在任意祖先设变量都能生效。
+   */
+  it('不传 icons 时渲染内置图标节点，且不再挂内联样式（改由样式表 + CSS 变量驱动）', () => {
     const w = mount(Sender, {
       props: { attachments: { upload: instantUpload }, voice: { recognizer: fakeRecognizer() } },
     });
     const icon = w.find('.aix-sender__send-icon');
     expect(icon.exists()).toBe(true);
-    expect(icon.attributes('style')).toContain('mask-image');
+    expect(icon.attributes('style')).toBeUndefined();
   });
 });
 
@@ -418,5 +426,26 @@ describe('Sender — attachments 接受已创建实例（C2：换持有者）', 
   it('传配置对象时行为不变（回归）', () => {
     const w = mount(Sender, { props: { attachments: { upload: instantUpload, accept: '.pdf' } } });
     expect(w.find('input[type=file]').attributes('accept')).toBe('.pdf');
+  });
+});
+
+// ============ variant：外观形态（批次3-3.1） ============
+describe('Sender — variant 外观形态', () => {
+  it('默认 card：根节点带 --card 修饰类（既有接入方行为不变）', () => {
+    const w = mount(Sender);
+    expect(w.find('.aix-sender--card').exists()).toBe(true);
+    expect(w.find('.aix-sender--plain').exists()).toBe(false);
+  });
+
+  it('plain：换成 --plain 修饰类，卡片视觉（边框/圆角/阴影）随之整组失效', () => {
+    const w = mount(Sender, { props: { variant: 'plain' } });
+    expect(w.find('.aix-sender--plain').exists()).toBe(true);
+    expect(w.find('.aix-sender--card').exists()).toBe(false);
+  });
+
+  it('variant 可运行时切换（不是 setup 快照）', async () => {
+    const w = mount(Sender, { props: { variant: 'card' } });
+    await w.setProps({ variant: 'plain' });
+    expect(w.find('.aix-sender--plain').exists()).toBe(true);
   });
 });

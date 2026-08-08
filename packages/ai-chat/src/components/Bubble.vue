@@ -86,12 +86,22 @@
           <template v-if="status === 'error'">
             <slot v-if="$slots.error" name="error" :info="info" :retry="() => emit('retry')" />
             <span v-else :class="ns.e('error')">
-              <span :class="ns.e('error-text')">{{ t.errorMessage }}</span>
+              <span :class="ns.e('error-text')">{{ errorText || t.errorMessage }}</span>
               <button type="button" :class="ns.e('retry')" @click="emit('retry')">
                 {{ t.retryButton }}
               </button>
             </span>
           </template>
+          <!-- 中断且一个内容块都没收到：补一条占位，否则气泡是纯空白框（loading 已为 false，
+               不出加载点；content 为空，不出任何块）。判据刻意用「一个块都没有」而非「没有文本」——
+               停在思考阶段时 content 里有 reasoning 块，那不是空气泡，不该再叠一句「已停止生成」。
+               locale.abortedEmpty 置空串即关闭本占位（业务想自己往 content 里塞兜底文案时用）。 -->
+          <span
+            v-else-if="status === 'abort' && !content.length && t.abortedEmpty"
+            :class="ns.e('aborted')"
+          >
+            {{ t.abortedEmpty }}
+          </span>
         </template>
       </div>
       <!-- 编辑态期间隐藏 footer（复制/编辑/删除等操作条）：避免草稿未保存时被同排的「删除」误删 -->
@@ -610,6 +620,14 @@ const cancelEdit = () => {
     gap: var(--aix-sizeXS);
     margin-top: var(--aix-marginXXS);
     color: var(--aix-colorError);
+    font-size: var(--aix-fontSizeSM);
+  }
+
+  /* 中断空消息占位：次级文本色，与错误条区分（这不是错误，是用户自己停的） */
+  &__aborted {
+    display: inline-flex;
+    align-items: center;
+    color: var(--aix-colorTextTertiary);
     font-size: var(--aix-fontSizeSM);
   }
 

@@ -69,6 +69,11 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
     const id = message.id;
     const parent = nodes.get(parentId);
     if (!parent) throw new Error(`[ai-chat] messageTree.appendMessage 未找到父节点 "${parentId}"`);
+    // 创建时刻：本函数是全库唯一的消息入树口（新发送 / 重生成 / 编辑重发 / importFlat 逐条重建
+    // 都经此处），故补写只此一处即可。**仅在缺失时补**——importFlat / importTree 恢复的历史
+    // 消息自带真实时间，覆写会把整段历史的时间戳压成「本次加载时刻」。
+    // 在 nodes.set 之前 mutate：此刻 message 还是普通对象，不触发任何响应式更新。
+    if (message.createdAt == null) message.createdAt = Date.now();
     nodes.set(id, { id, parentId, message, childIds: [] });
     parent.childIds.push(id);
     activeChild.set(parentId, id);

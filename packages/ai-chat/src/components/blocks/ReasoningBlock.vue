@@ -1,5 +1,5 @@
 <template>
-  <Thinking :title="title" :expanded="isStreamingStatus">
+  <Thinking :title="title" :expanded="isStreamingStatus" :variant="config.reasoningVariant">
     <!-- 按 <块类型>-<内部slot> 约定把消费方插槽转发进 Thinking。四处都是 v-if 条件转发：
          无条件转发会向 Thinking 注入空插槽，把图标/标题/箭头渲染成空白（README 承诺「不提供则无副作用」）。
          与 ThoughtChainBlock 纯 v-bind="sp" 的差别：thought-chain 要透出的 item/index 就在内部组件

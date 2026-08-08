@@ -104,6 +104,11 @@ export { contentFingerprint } from './utils/contentFingerprint';
 export { stripMarkdownForSpeech } from './utils/stripMarkdownForSpeech';
 export { stripMarkdownForCopy } from './utils/stripMarkdownForCopy';
 
+// 剪贴板写入（Clipboard API + execCommand 兜底，兼容 HTTP / 旧浏览器；返回是否成功）。
+// 内置 BubbleActions 的复制键与划词菜单的「复制」走的就是它——此前只在包内使用而未对外导出，
+// 于是自绘操作条（#footer 接管）的业务只能照着重写一遍同样的降级逻辑。
+export { copyText } from '@aix/hooks';
+
 // URL 安全工具（协议白名单，供数据驱动的 href / img src 场景复用）
 // safeUrl 面向导航型 href；safeImageSrc 面向图片 src 与强制下载链接（额外放行 data:image/* 与 blob:）
 export { safeUrl, safeImageSrc } from './utils/url';
@@ -119,6 +124,9 @@ export type {
 
 // markdown-it 插件注入类型（用于 AiChat / MarkdownRenderer 的 mdPlugins 扩展点，注入新语法）
 export type { MarkdownItPlugin } from './composables/useMarkdownRenderer';
+
+// 自定义块渲染器的样板收敛（自动声明契约 props + 关闭属性继承）
+export { defineBlockRenderer } from './utils/defineBlockRenderer';
 
 // content block 构造/提取 helpers
 export {

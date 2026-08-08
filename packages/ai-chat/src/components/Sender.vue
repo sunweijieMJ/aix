@@ -3,6 +3,7 @@
     ref="rootRef"
     :class="[
       ns.b(),
+      ns.m(variant),
       ns.is('disabled', disabled),
       ns.is('has-toolbar', !!$slots.toolbar || hasVisibleToolbarItems),
     ]"
@@ -32,7 +33,12 @@
             @remove="onPanelRemove"
             @retry="onPanelRetry"
             @close="panelOpen = false"
-          />
+          >
+            <!-- 只换上传占位区（比整块接管 #attachments-panel 轻得多，拖放/进度/卡片全保留） -->
+            <template v-if="$slots['attachments-placeholder']" #placeholder="sp">
+              <slot name="attachments-placeholder" v-bind="sp" />
+            </template>
+          </AttachmentsPanel>
         </slot>
       </div>
     </Transition>
@@ -107,7 +113,7 @@
           <!-- aria-hidden：图标在此纯装饰，按钮的可及名来自 aria-label；@aix/icons 自身不声明
                （580 个图标无一自带），自定义图标更不可能，故统一在使用侧标注。
                @aix/icons 的 svg 根挂了 v-bind="$attrs"，属性能正确落到根元素上。 -->
-          <component :is="icons?.attach ?? Attachment" aria-hidden="true" />
+          <component :is="resolveIcon(icons?.attach, Attachment)" aria-hidden="true" />
           <span v-if="!panelOpen && attach.items.value.length > 0" :class="ns.e('attach-badge')">
             {{ attach.items.value.length }}
           </span>
@@ -121,7 +127,7 @@
           :disabled="disabled"
           @click="toggleVoice"
         >
-          <component :is="icons?.voice ?? Mic" aria-hidden="true" />
+          <component :is="resolveIcon(icons?.voice, Mic)" aria-hidden="true" />
         </button>
         <span v-else-if="item === 'spacer'" :class="ns.e('toolbar-spacer')" aria-hidden="true" />
         <component
@@ -152,10 +158,12 @@
         @click="onSendClick"
       >
         <!-- 自定义图标存在时直出组件；否则走内置 CSS mask（形状来自本地 SVG，颜色随 currentColor
-             主题着色）。注意内置那条是**内联 style**，外部样式表要盖它得带 !important——
-             这正是提供 icons prop 的原因之一。 -->
+             主题着色）。mask 图源走 --aix-sender-send-icon / --aix-sender-stop-icon 两个变量，
+             默认值以 var() fallback 形式写在样式表里（见文末），**不再是内联 style**：
+             内联优先级压过一切外部样式表，此前想换图标只能带 !important，或者干脆盖不掉
+             （业务写 background-image 会被内置 mask 按纸飞机轮廓裁掉，看着像"换了但形状不对"）。 -->
         <component :is="sendIcon" v-if="sendIcon" aria-hidden="true" />
-        <span v-else :class="ns.e('send-icon')" :style="sendIconStyle" aria-hidden="true" />
+        <span v-else :class="ns.e('send-icon')" aria-hidden="true" />
       </button>
     </div>
     <!-- 底部扩展区：位于工具栏之下，用于字数统计 / 提示语 / 自定义页脚等 -->
@@ -183,6 +191,9 @@ export interface ToolbarItem {
 
 /** 工具栏项数组：内置字符串项与自定义对象项混排，渲染顺序 = 数组顺序 */
 export type SenderToolbarItems = (ToolbarBuiltinKey | ToolbarItem)[];
+
+/** 输入框外观形态：'card' 圆角描边卡片（默认）/ 'plain' 贴边通栏，见 `SenderProps.variant` */
+export type SenderVariant = 'card' | 'plain';
 
 export interface SenderProps {
   /** 输入框文本（v-model），受控 */
@@ -250,7 +261,34 @@ export interface SenderProps {
    * 使用侧会统一补 `aria-hidden="true"`（图标纯装饰，可及名来自按钮的 aria-label）。
    */
   icons?: SenderIcons;
+  /**
+   * 外观形态，默认 `'card'`（行为完全不变）：
+   *
+   * - `'card'`：圆角描边卡片 + 阴影 + 悬停/聚焦主色描边，适合居中对话页里「浮在内容之上」的输入框；
+   * - `'plain'`：去掉边框 / 圆角 / 阴影 / 悬停与聚焦描边，只保留内边距与布局，
+   *   适合侧边栏、移动端、全屏页这类**贴边通栏**形态（分隔线交由宿主自己画，位置与颜色各家不同）。
+   *
+   * 此前只有 card 一种形态，非居中场景的接入方只能整段覆写
+   * `.aix-sender { border: none; border-radius: 0; box-shadow: none; ... }`，
+   * 且每加一个接入方就要重写一遍。配合 `--aix-sender-padding` / `--aix-sender-gap` /
+   * `--aix-sender-input-padding` / `--aix-sender-toolbar-padding` 四个尺寸旋钮，
+   * 通栏形态基本不必再写 `:deep`。
+   */
+  variant?: SenderVariant;
 }
+
+/**
+ * 单个图标的取值：Vue 组件，或图片地址（URL / data-URI，按 `<img>` 渲染）。
+ *
+ * 放开字符串是为了与同组件的 `headerIcon`（AiChat 层）等既有取值口径一致——
+ * 此前只收组件，业务哪怕只想换一张图，也得写 `() => h(MyIconWrapper, { name: 'x' })` 包一层。
+ *
+ * 注意两种形态的着色能力不同：组件形态（推荐 `fill="currentColor"`）会随按钮状态
+ * （可发送 / 禁用 / 输出中）与主题一起变色；`<img>` 形态是位图/独立着色的矢量图，
+ * 颜色固定，不参与主题联动。要主题联动又不想写组件时，改用 CSS 变量换 mask 图源
+ * （`--aix-sender-send-icon` / `--aix-sender-stop-icon`）。
+ */
+export type SenderIconSource = Component | string;
 
 /**
  * 内置按钮的图标覆写表。
@@ -260,17 +298,17 @@ export interface SenderProps {
  */
 export interface SenderIcons {
   /** 附件按钮（回形针） */
-  attach?: Component;
+  attach?: SenderIconSource;
   /** 语音按钮（麦克风）；聆听态复用同一图标，由 `.is-listening` 类着色区分 */
-  voice?: Component;
+  voice?: SenderIconSource;
   /** 发送按钮的默认态图标 */
-  send?: Component;
+  send?: SenderIconSource;
   /** 发送按钮在流式输出中的图标（停止） */
-  stop?: Component;
+  stop?: SenderIconSource;
   /** 内置附件面板的上传占位图标；仅在未提供 `#attachments-panel` 插槽（走内置 AttachmentsPanel）时生效 */
-  attachmentUpload?: Component;
+  attachmentUpload?: SenderIconSource;
   /** 内置附件面板的收起按钮图标；仅在未提供 `#attachments-panel` 插槽（走内置 AttachmentsPanel）时生效 */
-  attachmentClose?: Component;
+  attachmentClose?: SenderIconSource;
 }
 export interface SenderEmits {
   /** 输入框文本变化（v-model 同步） */
@@ -366,10 +404,6 @@ import { useNamespace } from '@aix/hooks';
 import { Attachment, Mic } from '@aix/icons';
 import { ref, computed, watch, nextTick, reactive, onUnmounted } from 'vue';
 import type { Component } from 'vue';
-// 发送按钮图标采用设计稿导出的本地 SVG 资源：默认态为纸飞机、输出中为停止圆点。
-// 以 CSS mask 渲染，使图标颜色随按钮 color（主题变量）变化，而非 SVG 内置色，符合主题系统约定。
-import sendIconUrl from '../assets/send-default.svg';
-import stopIconUrl from '../assets/send-streaming.svg';
 import { useAttachments } from '../composables/useAttachments';
 import type {
   UseAttachmentsOptions,
@@ -389,6 +423,7 @@ import type {
 } from '../types';
 import { getCaretRect } from '../utils/caretRect';
 import { devWarn } from '../utils/devWarn';
+import { resolveIcon } from '../utils/resolveIcon';
 import AttachmentsPanel from './AttachmentsPanel.vue';
 import TriggerMenu from './TriggerMenu.vue';
 
@@ -400,6 +435,7 @@ const props = withDefaults(defineProps<SenderProps>(), {
   allowEmptySubmit: false,
   toolbarItems: () => ['attach', 'voice'] as SenderToolbarItems,
   autoSpacer: true,
+  variant: 'card',
 });
 const emit = defineEmits<SenderEmits>();
 const ns = useNamespace('sender');
@@ -717,25 +753,12 @@ const onPanelLeave = (el: Element, done: () => void) => {
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const inner = ref(props.modelValue);
 
-// 按状态切换 mask 图标（输出中=停止，否则=发送）。mask 相关属性全部走内联样式（含 -webkit- 前缀），
-// 避免依赖构建期 autoprefixer，确保在 Storybook / Safari 下也能正确渲染。
 // 发送键的自定义图标：按当前状态**各自独立**取值——只传了 send 时，流式态取到 undefined
 // 便回退内置停止图标，而不是拿发送图标去冒充停止（那会让「正在输出、点此停止」语义反过来）。
-const sendIcon = computed(() => (props.loading ? props.icons?.stop : props.icons?.send));
-
-const sendIconStyle = computed(() => {
-  const img = `url("${props.loading ? stopIconUrl : sendIconUrl}")`;
-  return {
-    maskImage: img,
-    maskRepeat: 'no-repeat',
-    maskPosition: 'center',
-    maskSize: 'contain',
-    WebkitMaskImage: img,
-    WebkitMaskRepeat: 'no-repeat',
-    WebkitMaskPosition: 'center',
-    WebkitMaskSize: 'contain',
-  };
-});
+// 内置 mask 图标的图源已改由样式表内的 CSS 变量提供（见文末 &__send-icon），此处不再产出内联样式。
+// 无自定义时返回 undefined（未给 fallback），模板据此 v-if 落到内置 CSS mask 分支——
+// 那个兜底不是组件形态，给不出可用的 fallback 参数。
+const sendIcon = computed(() => resolveIcon(props.loading ? props.icons?.stop : props.icons?.send));
 
 // 自适应高度：内容增减时按 scrollHeight 撑高，上限由 CSS max-height 接管（超出后内部滚动）。
 //
@@ -1156,6 +1179,11 @@ defineSlots<{
    * 与 `attachments` prop 撞名会让该 prop 变得无法赋值（vue-tsc 报 not assignable to 'undefined'）。
    */
   'attachments-panel'?: (props: SenderAttachmentsSlotScope) => unknown;
+  /**
+   * 只替换**内置**附件面板里的上传占位区（比整块接管 `attachments-panel` 轻得多：
+   * 拖放高亮、文件卡片列表、进度与重试全部保留）。仅在走内置面板时生效。
+   */
+  'attachments-placeholder'?: (props: { pick: () => void; dragIn: boolean }) => unknown;
 }>();
 
 /** 命令式写入输入框（划词 ask 的 prompt 注入等）；与 onInput 全同路径（含高度自适应），受控/非受控一致 */
@@ -1181,35 +1209,59 @@ defineExpose({
 </script>
 
 <style lang="scss">
+/* 发送 / 停止图标以 data URI 内联，而**不是** url('../assets/send-default.svg')：
+   本仓构建链路里 rollup-plugin-postcss 没有挂 postcss-url，SCSS 中的相对 url() 既不会被重写
+   也不会发射资源文件——产物 es/index.css 会留下一条指向包外不存在路径的引用，图标直接空掉
+   （已实测）。内联同时保证「宿主只 import 一个 css 即可」这件事继续成立，不必额外拷贝资源目录。
+   两张图都只作 mask 形状用，颜色由 &__send-icon 的 background-color: currentColor 提供，
+   SVG 内的 fill 值不参与最终呈现（保留原值只为与源文件逐字一致，便于日后比对替换）。 */
+$aix-send-icon-default: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M6.44986 10.3999C6.16986 10.6719 6.12186 11.12 6.36186 11.4401L8.53789 14.5127C9.30591 15.6009 10.9859 15.3528 11.4099 14.0806L15.114 2.94248C15.538 1.67824 14.322 0.46201 13.05 0.88609L1.92179 4.59879C0.641774 5.02287 0.40177 6.70319 1.48979 7.47133L4.56183 9.63974C4.88184 9.87179 5.32984 9.83178 5.60185 9.55973L10.0259 5.14289C10.2499 4.91085 10.6339 4.91085 10.8659 5.14289C11.0899 5.36694 11.0899 5.75101 10.8659 5.98305L6.44986 10.3999Z' fill='%2386909C'/%3E%3C/svg%3E");
+$aix-send-icon-stop: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cg clip-path='url(%23clip0_328_4555)'%3E%3Cmask id='mask0_328_4555' style='mask-type:luminance' maskUnits='userSpaceOnUse' x='0' y='0' width='16' height='16'%3E%3Cpath d='M16 0H0V16H16V0Z' fill='white'/%3E%3C/mask%3E%3Cg mask='url(%23mask0_328_4555)'%3E%3Cpath d='M12 8C12 10.2091 10.2091 12 8 12C5.79086 12 4 10.2091 4 8C4 5.79086 5.79086 4 8 4C10.2091 4 12 5.79086 12 8Z' fill='%231546F2'/%3E%3Cpath d='M14.3333 8.00008C14.3333 4.50228 11.4978 1.66675 7.99996 1.66675C4.50216 1.66675 1.66663 4.50228 1.66663 8.00008C1.66663 11.4979 4.50216 14.3334 7.99996 14.3334V15.3334C3.94987 15.3334 0.666626 12.0502 0.666626 8.00008C0.666626 3.94999 3.94987 0.666748 7.99996 0.666748C12.05 0.666748 15.3333 3.94999 15.3333 8.00008C15.3333 12.0502 12.05 15.3334 7.99996 15.3334V14.3334C11.4978 14.3334 14.3333 11.4979 14.3333 8.00008Z' fill='%231546F2'/%3E%3C/g%3E%3C/g%3E%3Cdefs%3E%3CclipPath id='clip0_328_4555'%3E%3Crect width='16' height='16' fill='white'/%3E%3C/clipPath%3E%3C/defs%3E%3C/svg%3E");
+
 .aix-sender {
   display: flex;
   flex-direction: column;
-  padding: var(--aix-paddingXS) var(--aix-paddingXS) var(--aix-paddingXS) var(--aix-paddingSM);
-  transition:
-    border-color var(--aix-motionDurationMid) var(--aix-motionEaseInOut),
-    box-shadow var(--aix-motionDurationMid) var(--aix-motionEaseInOut);
-  border: 1px solid var(--aix-colorBorderSecondary);
-  border-radius: var(--aix-borderRadiusLG);
+
+  /* 组件级尺寸旋钮（见 README「样式定制」）：只写 var() fallback、不单独声明默认值 */
+  padding: var(
+    --aix-sender-padding,
+    var(--aix-paddingXS) var(--aix-paddingXS) var(--aix-paddingXS) var(--aix-paddingSM)
+  );
   background-color: var(--aix-colorBgContainer);
-  box-shadow: var(--aix-shadowSM);
-  gap: var(--aix-sizeXS);
-
-  /* 悬停主色描边，给出"可输入"的预期反馈；聚焦态由下方 focus-within 接管
-     （置于 focus-within 之前：同特异度下既悬停又聚焦时 focus-within 胜出，保留焦点环）。 */
-  &:hover:not(.is-disabled) {
-    border-color: var(--aix-colorPrimaryHover, var(--aix-colorPrimary));
-  }
-
-  /* 聚焦时主色描边 + 焦点环，给出清晰的输入焦点反馈 */
-  &:focus-within {
-    border-color: var(--aix-colorPrimary);
-    box-shadow: 0 0 0 var(--aix-controlOutlineWidth) var(--aix-controlOutline);
-  }
+  gap: var(--aix-sender-gap, var(--aix-sizeXS));
 
   &.is-disabled {
     background-color: var(--aix-colorBgContainerDisabled);
     box-shadow: none;
   }
+
+  /* ── card（默认）：圆角描边卡片 + 阴影，浮在内容之上 ── */
+  &--card {
+    transition:
+      border-color var(--aix-motionDurationMid) var(--aix-motionEaseInOut),
+      box-shadow var(--aix-motionDurationMid) var(--aix-motionEaseInOut);
+    border: 1px solid var(--aix-colorBorderSecondary);
+    border-radius: var(--aix-borderRadiusLG);
+    box-shadow: var(--aix-shadowSM);
+
+    /* 悬停主色描边，给出"可输入"的预期反馈；聚焦态由下方 focus-within 接管
+       （置于 focus-within 之前：同特异度下既悬停又聚焦时 focus-within 胜出，保留焦点环）。 */
+    &:hover:not(.is-disabled) {
+      border-color: var(--aix-colorPrimaryHover, var(--aix-colorPrimary));
+    }
+
+    /* 聚焦时主色描边 + 焦点环，给出清晰的输入焦点反馈 */
+    &:focus-within {
+      border-color: var(--aix-colorPrimary);
+      box-shadow: 0 0 0 var(--aix-controlOutlineWidth) var(--aix-controlOutline);
+    }
+  }
+
+  /* ── plain（.aix-sender--plain）：贴边通栏形态。
+     它的样式就是「上面这些基础声明本身」——不追加边框 / 圆角 / 阴影 / 悬停与聚焦描边，
+     因此没有对应的规则块（写一个空规则只会被 stylelint 拦下）。
+     也刻意不代画分隔线（border-top 之类）：位置（上/下）、颜色、要不要，各家设计稿都不同，
+     组件画了反而多一次覆盖，宿主直接在 .aix-sender--plain 上加自己的边即可。 ── */
 
   /* 输入行：前缀 + 文本域（发送按钮已挪至下方工具栏行，见 &__toolbar） */
   &__main {
@@ -1233,12 +1285,13 @@ defineExpose({
     padding-bottom: var(--aix-paddingXXS);
   }
 
-  /* 底部工具栏行：始终渲染，左侧工具项 + 发送键共享一行；左右分组由 &__toolbar-spacer 撑开 */
+  /* 底部工具栏行：始终渲染，左侧工具项 + 发送键共享一行；左右分组由 &__toolbar-spacer 撑开。
+     padding 走旋钮：业务自绘 toolbar 时常需要它与 sender 自身 padding 不再叠加（置 0） */
   &__toolbar {
     display: flex;
     align-items: center;
+    padding: var(--aix-sender-toolbar-padding, var(--aix-paddingXXS) 0 0);
     gap: var(--aix-sizeXS);
-    padding-top: var(--aix-paddingXXS);
   }
 
   /* 工具栏行的左右分组占位符：显式插入的 'spacer' 或未插入时自动补在发送键前的隐式占位符，
@@ -1264,7 +1317,9 @@ defineExpose({
     /* 自适应高度的上限（超出后内部滚动）。autosize 用镜像 textarea 量高、再单向赋值给真实
        输入框，本上限由 CSS 接管，故调大本变量即可放宽输入框，无需改任何 JS */
     max-height: var(--aix-sender-max-height, 160px);
-    padding: var(--aix-paddingXS);
+
+    /* 旋钮：plain 形态下 sender 自身已给了足够留白，输入框再叠一层 padding 就偏了，置 0 即可 */
+    padding: var(--aix-sender-input-padding, var(--aix-paddingXS));
     overflow-y: auto;
     border: none;
     outline: none;
@@ -1302,10 +1357,13 @@ defineExpose({
     color: var(--aix-colorPrimary);
     cursor: pointer;
 
-    /* icons.send / icons.stop 传入的自定义 SVG：与内置 mask 图标（&__send-icon）等大，
-       且同样继承 currentColor 主题着色。内置图标是 <span> 不是 <svg>，不受本规则影响。
-       与 &__mic svg / &__attach-btn svg 的既有写法一致。 */
-    svg {
+    /* icons.send / icons.stop 传入的自定义图标：与内置 mask 图标（&__send-icon）等大。
+       svg 与 img 并列——icons.* 现在也接受图片地址（见 SenderIconSource），两种形态都得被
+       约束到同一尺寸，否则换成 <img> 后按钮会被原图尺寸撑变形。
+       组件（svg）形态另继承 currentColor 主题着色；图片形态颜色固定。
+       内置图标是 <span> 不是 <svg>/<img>，不受本规则影响。 */
+    svg,
+    img {
       width: 16px;
       height: 16px;
     }
@@ -1324,11 +1382,24 @@ defineExpose({
     }
   }
 
-  /* 图标本体：以 mask 取设计 SVG 形状，背景填 currentColor 实现主题着色（mask 图与定位见内联 style）。 */
+  /* 图标本体：以 mask 取设计 SVG 形状，背景填 currentColor 实现主题着色。
+     图源走组件级旋钮 --aix-sender-send-icon / --aix-sender-stop-icon，默认值只以 var() 的
+     fallback 形式出现、**不单独声明**（与 --aix-bubble-avatar-size 等既有旋钮同约定，见 README
+     「样式定制」）：一旦在本元素上声明默认值，宿主写在任意祖先上的同名变量都会被就近覆盖掉。
+     -webkit- 前缀交由构建期 autoprefixer 补（本仓 postcss 已挂，且 stylelint 的
+     property-no-vendor-prefix 明令不手写前缀）——这与此前内联样式的做法不同：那时属性写在 JS 里，
+     根本过不了 postcss，只能自己带上 WebkitMask*。 */
   &__send-icon {
     width: 16px;
     height: 16px;
     background-color: currentColor;
+    mask: var(--aix-sender-send-icon, #{$aix-send-icon-default}) no-repeat center / contain;
+  }
+
+  /* 输出中：换成停止图标。选择器落在发送键的 is-streaming 上（图标本身无状态类），
+     特异度高于上面的 mask 简写，故与源码顺序无关地生效 */
+  &__send.is-streaming &__send-icon {
+    mask-image: var(--aix-sender-stop-icon, #{$aix-send-icon-stop});
   }
 
   /* 隐藏文件选择 input */
@@ -1350,7 +1421,9 @@ defineExpose({
     color: var(--aix-colorTextTertiary);
     cursor: pointer;
 
-    svg {
+    /* svg / img 并列见 &__send 的说明 */
+    svg,
+    img {
       width: 16px;
       height: 16px;
     }
@@ -1381,7 +1454,9 @@ defineExpose({
     color: var(--aix-colorTextTertiary);
     cursor: pointer;
 
-    svg {
+    /* svg / img 并列见 &__send 的说明 */
+    svg,
+    img {
       width: 16px;
       height: 16px;
     }

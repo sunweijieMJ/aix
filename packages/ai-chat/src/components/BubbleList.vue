@@ -10,10 +10,23 @@
       <div ref="scrollRef" :class="ns.e('scroll')" @scroll="computeState">
         <Virtualizer
           ref="virtualizerRef"
-          v-slot="{ item }"
+          v-slot="{ item, index }"
           :data="items"
           :keep-mounted="keepMounted"
         >
+          <!-- 行级插槽：渲染在 .aix-bubble **之外**、占满整行宽度。
+               消息时间戳、日期分隔线、未读分割线这类内容必须整行居中，而 Bubble 的 #header
+               挂在 __wrapper 内、受气泡自身对齐（user 侧是 align-items:flex-end）约束，
+               只能贴在气泡角上——业务此前只能靠 align-self 折中，且注释里明说想要的整行做不到。
+               prev 一并给出：算「距上一条超过 N 分钟才显示时间」不必再自己维护全表派生。 -->
+          <div v-if="$slots['row-before']" :class="ns.e('row-before')">
+            <slot
+              name="row-before"
+              :item="item as ChatMessage"
+              :index="index as number"
+              :prev="items[(index as number) - 1]"
+            />
+          </div>
           <Bubble
             :key="(item as ChatMessage).id"
             v-bind="resolveBubble(item as ChatMessage)"
@@ -27,6 +40,7 @@
             :editing="editingIds.has((item as ChatMessage).id)"
             :save-disabled="saveDisabled"
             :tool-renderers="toolRenderers"
+            :error-text="resolveErrorText(item as ChatMessage)"
             @retry="emit('retry', (item as ChatMessage).id)"
             @block-action="emit('block-action', $event)"
             @block-intent="emit('block-intent', $event)"
@@ -54,8 +68,16 @@
             <template v-if="$slots.avatar" #avatar="sp">
               <slot name="avatar" :item="item as ChatMessage" v-bind="sp" />
             </template>
+            <!-- error 额外补一个 error 作用域：业务接管错误 UI 的第一件事必然是读原始错误，
+                 而它埋在 extra.error 里（约定见 ChatMessage.extra），逐个业务自己去翻既啰嗦
+                 又容易漏掉「err 可能是字符串而非 Error」这一层。 -->
             <template v-if="$slots.error" #error="sp">
-              <slot name="error" :item="item as ChatMessage" v-bind="sp" />
+              <slot
+                name="error"
+                :item="item as ChatMessage"
+                :error="(item as ChatMessage).extra?.error"
+                v-bind="sp"
+              />
             </template>
             <!-- 透传块插槽：把非保留（上述几个之外）具名插槽原样转发给每个 Bubble，
                最终落到块渲染器内部 slot（如 thought-chain-item-content → item-content）。 -->
@@ -106,6 +128,12 @@ export interface BubbleListProps {
   toolRenderers?: BlockRenderers;
   /** 编辑态下是否禁止保存（如全局请求进行中），透传给每个 Bubble */
   saveDisabled?: boolean;
+  /**
+   * 出错文案解析：按整条消息算出内置错误条要显示的文字，逐条传给 Bubble 的 `errorText`。
+   * 不传（或返回空串）时各气泡回退 `locale.errorMessage`。
+   * 放在列表层而非气泡层，是因为只有这里持有完整 ChatMessage（`extra.error` 在其中）。
+   */
+  errorText?: (message: ChatMessage) => string;
 }
 export interface BubbleListEmits {
   /** 某条消息点击重试，携带消息 id */
@@ -160,7 +188,8 @@ const slots = useSlots();
 
 // BubbleList 自身显式转发 content/footer/header/avatar/error（前两个补 item，后三个见模板注释）；
 // 其余具名插槽原样透传给每个 Bubble（最终落到块渲染器内部 slot）。
-const OWN_SLOTS = ['content', 'footer', 'header', 'avatar', 'error'];
+// row-before 由本组件自绘在 Bubble 之外，同样不能进块插槽穿透
+const OWN_SLOTS = ['content', 'footer', 'header', 'avatar', 'error', 'row-before'];
 const passthroughSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !OWN_SLOTS.includes(n)),
 );
@@ -218,6 +247,12 @@ const resolveBubble = (item: ChatMessage): Partial<BubbleProps> => {
     blockRenderers: { ...props.blockRenderers, ...roleProps.blockRenderers },
   };
 };
+
+// 出错文案：仅对出错态消息调用业务解析器，其余传 undefined。
+// 不做这层短路的话，每条消息的每次重渲染（流式期间很密集）都会白跑一遍业务函数——
+// 而它通常要读 extra、判类型、拼兜底文案，纯属浪费。
+const resolveErrorText = (item: ChatMessage): string | undefined =>
+  item.status === 'error' ? props.errorText?.(item) : undefined;
 
 // 解析单条气泡的 typing：仅对「本会话流式过且未中止」的消息开启；
 // 列表级 typing 为配置对象时透传配置（细化节奏），为 true 时传 true。
@@ -393,6 +428,15 @@ defineExpose({
     // 出现一次瞬间 blur→重新 focus 的抖动（用户体感为"打字打着打着突然失焦"）。
     // 本容器自己的贴底/跟随已经由 useAutoScroll 全权接管，不需要浏览器再插手纠正。
     overflow-anchor: none;
+  }
+
+  /* 行级插槽容器：整行宽度、内容居中（时间戳 / 日期分隔线的常规排布）。
+     业务想左右对齐自行覆盖 justify-content 即可。margin-bottom 与气泡的间距节奏一致。 */
+  &__row-before {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--aix-marginXXS);
   }
 
   &__skeleton {

@@ -25,6 +25,15 @@ export interface ChatMessage {
   status?: MessageStatus;
   /** 有序内容块（由 string 切换而来） */
   content: ContentBlock[];
+  /**
+   * 消息创建时刻（epoch ms）。消息入树时自动补写，**已有值则保留**——
+   * 从后端恢复历史时把真实时间填进来即可（`createdAt: Date.parse(item.createDate)`），
+   * 不会被导入动作覆写成「现在」。随对话树一起持久化。
+   *
+   * 存在的意义是消息级时间戳（气泡上方的时间、日期分隔线）此前无处可取：业务只能自己
+   * `watch(messages)` 给每条补 `extra.timestamp`，还要小心别在终态回调里覆写成「回答结束时刻」。
+   */
+  createdAt?: number;
   /** 追问建议（parseChunk 流内下发落库，随消息树持久化）；展示规则见 AiChat */
   suggestions?: SuggestionItem[];
   /** 任意业务附加信息；约定 feedback?: MessageFeedback | null 存赞/踩态，error 存原始错误 */
@@ -168,6 +177,15 @@ export interface BubbleProps {
   editing?: boolean;
   /** 编辑态下是否禁止保存（如全局请求进行中），true 时点击保存无效果、保留草稿与编辑态 */
   saveDisabled?: boolean;
+  /**
+   * 出错态（status==='error'）内置错误条展示的文案；缺省回退 `locale.errorMessage`。
+   *
+   * 由上层（BubbleList 的 `errorText` 解析函数）按整条消息算好后传入——气泡本身只持有
+   * role/status/content，拿不到 `extra.error` 里的原始错误。**默认仍是 i18n 兜底文案**：
+   * `extra.error` 存的是原始 Error，直出会把 `Failed to fetch` 之类的内部信息暴露给终端用户，
+   * 要不要透出、透出到什么程度由业务显式决定（见 AiChatProps.errorText）。
+   */
+  errorText?: string;
 }
 
 /**

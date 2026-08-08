@@ -431,6 +431,30 @@ props.block.text; // ❌ 类型报错：text 不在 my-card 上
 需要额外 prop 时用交叉类型追加，如 `BlockRendererProps<'tool_use'> & { toolRenderers?: BlockRenderers }`；
 写通用渲染器（日志 / 调试）不关心具体类型时省略泛型即可，`block` 退化为全部块类型的联合。
 
+### 薄封装用 `defineBlockRenderer`
+
+最常见的场景是「把块数据转交给一个已有的业务组件」，不需要独立 SFC。手写函数式组件要**同时**
+记住两件事，漏任何一件都会静默出错：
+
+```ts
+const ResourceBlock = (props) => h(Resource, { data: props.block?.items ?? [] });
+ResourceBlock.props = ['block'];      // 漏了 → props.block 恒为 undefined
+ResourceBlock.inheritAttrs = false;   // 漏了 → info/typing 等变成根元素上的无效 DOM 属性
+```
+
+`defineBlockRenderer` 把这两行样板收进去，只留渲染本身：
+
+```ts
+import { defineBlockRenderer } from '@aix/ai-chat';
+
+const blockRenderers = {
+  resource: defineBlockRenderer((p) => h(Resource, { data: p.block.items ?? [] })),
+};
+```
+
+泛型参数同样可收窄 `block`：`defineBlockRenderer<'my-card'>((p) => ...)`。
+需要内部状态 / 生命周期 / 样式时仍写 `.vue` 组件直接注册，本函数只面向薄封装。
+
 > 注册表 `BlockRenderers` 的值类型仍是宽松的 `Component`，**不**按 key 收窄——Vue 的 `Component`
 > 在 `<component :is>` 分发场景下不承载可用的 props 泛型，收窄只会得到一个"看着严格、实际不校验"
 > 的类型。类型收益放在渲染器作者侧（即上面的 `defineProps`），那里才真正生效。
@@ -459,6 +483,66 @@ const onBlockIntent = async (payload: BlockIntentPayload) => {
 
 > `onBlockIntent` 是**可选** prop，现有自定义渲染器不受影响；不监听 `block-intent` 时意图静默丢弃（组件库本就不落地任何东西）。
 
+### 自绘消息操作条（`#footer`）
+
+内置操作条覆盖不到时（要在回答下方挂图表卡、参考资料、知识清单等），用 `#footer` 整块接管。
+作用域除 `item` 外还给出**分支元信息与一整套已接好线的动作句柄**，不必再从组件 ref 上反查：
+
+| 作用域字段 | 说明 |
+|-----------|------|
+| `item` | 整条 `ChatMessage` |
+| `branch` | `{ index, count }`，`count > 1` 时才需要渲染版本切换器 |
+| `branchDisabled` | 流式进行中，切换应禁用 |
+| `speaking` | 该条是否正在被内置 TTS 朗读 |
+| `actions` | `copy` / `copySource` / `regenerate` / `continue` / `switchBranch` / `setFeedback` / `startEdit` / `speak` |
+
+```vue
+<template #footer="{ item, branch, actions, speaking }">
+  <MyChart v-if="item.extra?.chartId" :id="item.extra.chartId" />
+  <div class="bar" data-aix-hover-reveal>
+    <button v-if="branch && branch.count > 1" @click="actions.switchBranch(item.id, -1)">‹</button>
+    <button @click="actions.copy(item)">复制</button>
+    <button @click="actions.regenerate(item.id)">重新生成</button>
+    <button :class="{ on: speaking }" @click="actions.speak(item)">朗读</button>
+    <button @click="actions.setFeedback(item.id, 'like')">赞</button>
+  </div>
+</template>
+```
+
+`actions.copy` 内含 Clipboard API + `execCommand` 兜底（HTTP 环境同样可用），`setFeedback`
+会写回 `extra.feedback` 并同步 `v-model:tree`——与内置操作条走的是同一条路径。
+单独取用剪贴板能力可 `import { copyText } from '@aix/ai-chat'`。
+
+> **`actionsTrigger="hover"` 对自绘操作条同样生效**：显隐锚定的是气泡内带
+> `data-aix-hover-reveal` 属性的元素（内置操作条自带）。给自己的操作条根节点加上该属性即可加入；
+> 同一 footer 里的常驻内容（图表卡、参考资料）不加属性就不参与淡出。
+
+### 输入框周边的区域插槽
+
+四个位置，区别只在**盒内还是盒外**——这决定了内容会不会把输入框顶下去：
+
+| 插槽 | 位置 | 典型用途 |
+|------|------|---------|
+| `sender-before` | 输入框**上方、盒外**（容器 `position: relative`） | 品牌形象图、活动横幅；需要溢出到输入框上方时在此绝对定位 |
+| `sender-header` | 输入框**盒内**、输入行之上 | 上下文 chip、知识库/模型标签（与内置引用 chips 追加共存） |
+| `sender-footer` | 输入框**盒内**、工具栏之下 | 字数统计、快捷键提示 |
+| `bottom` | 整个组件**最底部**（输入框之下） | 免责声明、法务文案 |
+
+```vue
+<AiChat :request="request" sender-variant="plain">
+  <template #sender-before>
+    <img class="mascot" src="/ip.png" alt="" />
+  </template>
+  <template #bottom>
+    <p class="disclaimer">内容由 AI 生成，请注意甄别</p>
+  </template>
+</AiChat>
+```
+
+> 免责声明这类内容以前只能写在 `</AiChat>` 之外，于是脱离了组件的 flex 布局，得自己补
+> `flex-shrink: 0` 之类；形象图则只能塞进 `#toolbar` 再反向 `position: absolute; bottom: 100%`，
+> 还要顺手把 `.aix-sender` 的 `overflow` 改成 `visible`。这两条路现在都不必走了。
+
 ### 消息级插槽（发送者名 / 时间戳 / 头像 / 出错态）
 
 除了内容区（`content`）与操作条（`footer`），气泡还开放三个消息级插槽，**作用域都带整条
@@ -466,12 +550,25 @@ const onBlockIntent = async (payload: BlockIntentPayload) => {
 
 | 插槽 | 位置 | 额外作用域 | 未提供时 |
 |------|------|-----------|---------|
-| `bubble-header` | 气泡上方 | — | 整块不渲染（不留空隙） |
+| `row-before` | 气泡**之外**，占满整行 | `index` / `prev`（上一条消息） | 整块不渲染 |
+| `bubble-header` | 气泡上方、气泡内 | — | 整块不渲染（不留空隙） |
 | `avatar` | 头像位 | — | 渲染 `roles[*].avatar` 指定的图片 |
-| `error` | 气泡内、内容之后 | `retry()` | 内置「出错了 + 重试」条 |
+| `error` | 气泡内、内容之后 | `error`（即 `item.extra.error`）/ `retry()` | 内置「出错了 + 重试」条 |
+
+> **`row-before` 与 `bubble-header` 的分工**：后者在气泡**内**（`__wrapper` 里），跟随气泡自身
+> 的左右对齐——用户消息侧会贴到气泡右上角；前者是独立的一整行，天然可以整行居中。
+> 「时间分隔」「日期分隔线」「未读分割线」这类内容属于后者，用 `prev` 就能算「距上一条超过
+> N 分钟才显示」，不必自己在外面维护一份全表派生。消息自带的 `createdAt` 可直接取用。
 
 ```vue
 <AiChat :request="request">
+  <!-- 整行居中的时间分隔：与上一条间隔超过 5 分钟才显示 -->
+  <template #row-before="{ item, prev }">
+    <time v-if="!prev || item.createdAt - prev.createdAt > 5 * 60 * 1000">
+      {{ formatTime(item.createdAt) }}
+    </time>
+  </template>
+
   <!-- 发送者名 + 时间戳 -->
   <template #bubble-header="{ item, info }">
     <span v-if="info.role === 'ai'">助手</span>
@@ -485,10 +582,25 @@ const onBlockIntent = async (payload: BlockIntentPayload) => {
   </template>
 
   <!-- 按错误码分支展示，而不是千篇一律的「出错了」 -->
-  <template #error="{ item, retry }">
-    <MyError :code="(item.extra?.error as ApiError)?.code" @retry="retry" />
+  <template #error="{ error, retry }">
+    <MyError :code="(error as ApiError)?.code" @retry="retry" />
   </template>
 </AiChat>
+```
+
+**只想换文案就别接管插槽。** 内置错误条默认显示 i18n 的 `errorMessage`（**不会**把
+`extra.error` 直出——那里可能是 `TypeError: Failed to fetch` 之类的内部信息）。
+想透出后端返回的具体原因（限流、鉴权、内容审核……），传一个 `errorText` 解析函数即可，
+重试按钮与样式全部保留：
+
+```vue
+<AiChat
+  :request="request"
+  :error-text="(m) => {
+    const e = m.extra?.error;
+    return (typeof e === 'string' ? e : (e as Error)?.message) || '服务开小差了，请重试';
+  }"
+/>
 ```
 
 > **为什么叫 `bubble-header` 而不是 `header`**：`AiChat` 的 `header` 已被顶部标题栏占用。
@@ -562,7 +674,7 @@ const onBlockIntent = async (payload: BlockIntentPayload) => {
 
 - **命名规则**：消费方插槽名 = `<块类型>-<块内部 slot 名>`，如 `thought-chain-item-content`。
   （`reasoning-body` 是唯一例外：它对应 `Thinking` 的**默认**插槽，默认插槽没有名字，按其区域 class `__body` 命名。）
-- **保留插槽不参与穿透**（各层自身消费）：`AiChat` 的 `header` / `header-icon` / `header-extra` / `welcome-icon` / `welcome-title` / `welcome-description` / `welcome-extra` / `content` / `footer`、`BubbleList` 的 `content` / `footer`、`Bubble` 的 `avatar` / `header` / `content` / `footer`。其余具名插槽一律向下透传——为自定义块起名时避免与上述保留名冲突。
+- **保留插槽不参与穿透**（各层自身消费）：`AiChat` 的 `header` / `header-icon` / `header-extra` / `welcome-icon` / `welcome-title` / `welcome-description` / `welcome-extra` / `content` / `footer` / `bubble-header` / `row-before` / `error` / `quote-menu` / `toolbar` / `prefix` / `attachments-panel` / `attachments-placeholder` / `sender-header` / `sender-footer` / `sender-before` / `bottom`、`BubbleList` 的 `content` / `footer` / `header` / `avatar` / `error` / `row-before`、`Bubble` 的 `avatar` / `header` / `content` / `footer` / `error`。其余具名插槽一律向下透传——为自定义块起名时避免与上述保留名冲突。
 - **不提供则无副作用**：未提供该插槽时不会向块内部注入空插槽（例如不会让 `ThoughtChain` 误判「有正文」而强制展开步骤、不会把思考标题渲染成空白）。
 - **覆盖内置 `text` / `reasoning` 渲染器时**（`blockRenderers`，即接管而非穿透）：内置渲染器与气泡之间靠 `typing-complete` 事件判断「整条消息是否播完」，这是内置实现的私有约定、不在 `BlockRendererProps` 契约里。**你的渲染器无需关心它**——气泡按渲染器归属聚合，被接管的块自动退出该判定，不会因为不上抛而让消息的打字机永不关闭。
 - **扩展自有块**：自定义块渲染器若想暴露内部插槽，只需在其模板中按同样约定接收并转发（`<template v-if="$slots['<块类型>-xxx']" #xxx="sp"><slot name="<块类型>-xxx" v-bind="sp" /></template>`）。
@@ -1179,6 +1291,13 @@ const markdownRenderers: MarkdownRenderers = {
 | `--aix-sender-min-height` | `0` | 输入框自适应高度下限，内容更少时仍撑住这个高度 |
 | `--aix-sender-send-width` | `--aix-controlHeight` | 发送按钮宽度，可与高度分别定制 |
 | `--aix-sender-send-height` | `--aix-controlHeight` | 发送按钮高度，可与宽度分别定制 |
+| `--aix-sender-send-icon` | 内置纸飞机 SVG | 发送按钮默认态的 mask 图源（`url(...)`），随 `currentColor` 着色 |
+| `--aix-sender-stop-icon` | 内置停止 SVG | 发送按钮流式态的 mask 图源，同上 |
+| `--aix-sender-padding` | `paddingXS … paddingSM` | 输入框容器内边距 |
+| `--aix-sender-gap` | `--aix-sizeXS` | 输入框容器各区域（header / 输入行 / 工具栏 / footer）间距 |
+| `--aix-sender-input-padding` | `--aix-paddingXS` | 文本域自身内边距（通栏形态常置 `0`，避免与容器内边距叠加） |
+| `--aix-sender-toolbar-padding` | `paddingXXS 0 0` | 底部工具栏行内边距 |
+| `--aix-ai-chat-sender-margin` | `paddingSM padding padding` | 输入框相对面板的外边距（通栏形态置 `0` 即左右贴边） |
 | `--aix-chart-block-height` | `300px` | 图表高度（结构化 `chart` 块与 ` ```chart ` 围栏共用） |
 | `--aix-attachment-card-width` | `248px` | 附件卡片宽度 |
 | `--aix-tool-use-max-height` | `320px` | 工具调用入参 / 结果区滚动上限 |
@@ -1208,6 +1327,39 @@ const markdownRenderers: MarkdownRenderers = {
 >
 > 命名上刻意用 kebab-case，与 camelCase 的主题 token（`--aix-colorPrimary`）区分开：
 > 前者是**组件旋钮**，后者是**设计系统 token**。
+
+### 外观形态（variant）
+
+尺寸旋钮解决「大小」，形态解决「长什么样」。把居中对话页的组件搬到侧栏 / 移动端 / 全屏页时，
+需要改的往往不是尺寸而是**容器视觉**——过去只能整段覆写 `.aix-sender` / `.aix-thinking`。
+
+| Prop | 取值 | 说明 |
+|------|------|------|
+| `senderVariant` | `'card'`（默认）/ `'plain'` | 输入框：卡片（圆角描边 + 阴影 + 悬停聚焦描边）/ 贴边通栏（无容器视觉） |
+| `reasoningVariant` | `'card'`（默认）/ `'capsule'` / `'plain'` | 深度思考折叠面板：整体卡片 / hug 宽度胶囊头 + 独立正文块 / 无容器视觉 |
+
+```vue
+<!-- 侧栏形态：通栏输入框 + 胶囊思考区，不需要写任何 :deep -->
+<AiChat
+  :request="request"
+  sender-variant="plain"
+  reasoning-variant="capsule"
+  class="sidebar-chat"
+/>
+```
+
+```css
+.sidebar-chat {
+  --aix-ai-chat-sender-margin: 0;
+  --aix-sender-input-padding: 0;
+  --aix-sender-toolbar-padding: 0;
+}
+/* plain 刻意不代画分隔线：位置与颜色各家不同，需要就自己加一条 */
+.sidebar-chat .aix-sender--plain { border-top: 1px solid var(--aix-colorBorderSecondary); }
+```
+
+> `reasoningVariant` 与 `markdownRenderers` 同属**挂载时快照**（经 `provideAiChatConfig` 注入），
+> 运行时改不生效；`senderVariant` 是普通 prop，可随时切换。
 >
 > 表内每个变量都是长期契约（加容易、删是破坏性变更），故按「确有定制需求」收敛，
 > 未穷举所有内部尺寸。缺你需要的请提 issue，不建议自行猜测未文档化的变量名。

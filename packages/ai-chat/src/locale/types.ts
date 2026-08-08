@@ -40,6 +40,12 @@ export interface AiChatLocale {
   backToBottom: string;
   /** 请求出错时气泡内展示的错误文案 */
   errorMessage: string;
+  /**
+   * 用户中断（status==='abort'）且该消息一个内容块都没收到时的占位文案。
+   * 不给占位的话气泡是一个纯空白框（既没有加载点也没有文字）。
+   * 置为空串即关闭该占位（业务想自己在 content 里塞兜底文案时用）。
+   */
+  abortedEmpty: string;
   /** markdown 内联图片加载失败时的占位文案（无 alt/src 时兜底） */
   imageLoadError: string;
   /** 引用来源块标题（sources 块） */

@@ -28,6 +28,30 @@ export interface UseChatRequestCtx {
   signal: AbortSignal;
   /** 续流负载（resume 调用时透传，fresh 请求恒为 undefined），业务自定义形状 */
   resume?: unknown;
+  /**
+   * 本轮 AI 回复消息的 id（占位消息已入树、状态为 loading，故请求期就能引用它）。
+   *
+   * 有了它，「本轮的业务元数据」终于有正规落点：此前业务只能在 request 里生成自己的
+   * 会话/轮次 id，塞进一个模块级的「当前值」ref，再靠 `@finish/@abort/@error` 回调回填到
+   * 消息上——快速连发、重新生成、并行副请求几种场景下那个 ref 会串轮次，且很难察觉。
+   */
+  messageId: string;
+  /**
+   * 就地合并本轮 AI 消息的 `extra`（浅合并，同名键覆盖）。
+   *
+   * 典型用法是在发请求那一刻把后端轮次 id / 埋点上下文写进去，后续渲染、赞踩上报、
+   * 副请求回填都从消息自身取：
+   * ```ts
+   * request: ({ messageId, setExtra, signal }) => {
+   *   const chatNid = genId();
+   *   setExtra({ chatNid });          // 与这条消息绑定，不经外部 ref 中转
+   *   return fetch(url, { signal, body: JSON.stringify({ chatNid }) });
+   * }
+   * ```
+   * 消息已不在树上（极端时序下被切会话/截断移除）时为安全空操作。
+   * 注意本次写入不会自动触发 `v-model:tree` 同步——请求落终态时的那次同步会带上它。
+   */
+  setExtra: (patch: Record<string, unknown>) => void;
 }
 
 export interface UseChatOptions {
@@ -282,7 +306,15 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             // 的字段仍能到达渲染层，避免点赞高亮 / 互斥取消静默失效。
             // 父 extra 为空时不做合并（不引入空对象），id 又一致则原样复用（零开销路径）。
             const extra = m.extra ? { ...m.extra, ...sub.extra } : sub.extra;
-            return [sub.id === m.id && extra === sub.extra ? sub : { ...sub, id: m.id, extra }];
+            // createdAt 与 id/extra 同理由父消息兜底：parser 通常只关心 content 的形状，
+            // 返回的新对象不会带上它，不继承则渲染层的消息时间戳「开了 parser 就消失」。
+            // parser 显式给了值则尊重（与 extra 同名键优先同口径）。
+            const createdAt = sub.createdAt ?? m.createdAt;
+            return [
+              sub.id === m.id && extra === sub.extra && createdAt === sub.createdAt
+                ? sub
+                : { ...sub, id: m.id, extra, createdAt },
+            ];
           }
           // 1→N：首个子气泡复用父 id（单→拆转换不 remount、不闪烁），其余派生稳定 id；
           // 子气泡继承父消息会话状态，并带 __sub 位置信息（供操作条按「仅末气泡」去重）。
@@ -294,6 +326,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               ...sub,
               id: bi === 0 ? m.id : `${m.id}__${bi}`,
               status: m.status,
+              // 同 1→1 分支：拆出来的每个气泡都属于父消息这一时刻
+              createdAt: sub.createdAt ?? m.createdAt,
               // 合并父消息 extra（parser 同名键优先，与 1→1 分支一致）；__sub 最后写入，
               // 保证位置元信息不被合并覆盖。
               extra: { ...m.extra, ...sub.extra, __sub: subMeta },
@@ -430,6 +464,17 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     msgOwners.set(aiMsgId, ctrl);
     // 终态写入守卫：仅当本请求仍是该消息的归属请求时才允许写状态/触发回调
     const ownsMsg = () => msgOwners.get(aiMsgId) === ctrl;
+    // 交给 request ctx 的 extra 写入口（见 UseChatRequestCtx.setExtra）。
+    // 每次调用现取消息而非闭包住对象：切会话 / 编辑截断会整体换掉树里的消息，
+    // 闭包住旧引用就会写到一个已脱离树的对象上，静默丢失。
+    // ownsMsg 守卫与下方终态写入同口径：业务若在 await 之后才调 setExtra，而这条消息期间已被
+    // 另一次请求接管（resume / continueGenerate 打在同一条消息上），此刻写入就是拿旧轮次的
+    // 元数据覆盖新轮次的——正是本 API 想根治的「串轮次」。内部重试不受影响：同一 ctrl 全程持有。
+    const setExtra = (patch: Record<string, unknown>) => {
+      if (!ownsMsg()) return;
+      const msg = tree.getMessage(aiMsgId);
+      if (msg) msg.extra = { ...msg.extra, ...patch };
+    };
     isLoading.value = true;
     // 开发期护栏：parseChunk 返回携带 delta 的非法 blockType 时增量会被丢弃，
     // 本次请求仅告警一次，避免逐 chunk 刷屏。
@@ -544,7 +589,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             aiMsg.suggestions = baseSuggestions ? [...baseSuggestions] : undefined;
             aiMsg.status = fresh ? 'loading' : 'updating';
           }
-          const res = await request({ messages: history, signal, resume: resumePayload });
+          const res = await request({
+            messages: history,
+            signal,
+            resume: resumePayload,
+            messageId: aiMsgId,
+            setExtra,
+          });
           const stream = res instanceof Response ? res.body : res;
           if (!stream) throw new Error('[ai-chat] request 未返回可读流');
           armWatchdog(); // 拿到流即起表，覆盖「连首个 chunk 都不来」的卡死

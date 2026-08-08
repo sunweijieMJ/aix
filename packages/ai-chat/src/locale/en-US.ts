@@ -21,6 +21,7 @@ export const enUS: AiChatLocale = {
   deleteButton: 'Delete',
   backToBottom: 'Back to bottom',
   errorMessage: 'Something went wrong, please retry',
+  abortedEmpty: 'Generation stopped',
   imageLoadError: 'Image failed to load',
   sourcesTitle: 'Sources',
   newConversation: 'New chat',

@@ -1,5 +1,7 @@
 <template>
-  <div :class="ns.b()">
+  <!-- data-aix-hover-reveal：参与 actionsTrigger='hover' 的显隐（选择器与语义见文末样式块注释）。
+       自绘操作条给根节点加同一属性即可获得同样的行为。 -->
+  <div :class="ns.b()" data-aix-hover-reveal>
     <div v-if="branch && branch.count > 1" :class="ns.e('branch')">
       <button
         type="button"
@@ -381,19 +383,27 @@ const onCustomClick = (item: ActionItem) => {
 
 // 默认：气泡内操作常驻显示（actionsTrigger='always'）。
 // 仅当外层 AiChat 配置 actionsTrigger='hover' 时，才在气泡内做 hover / 键盘聚焦显隐。
+// 选择器锚定 [data-aix-hover-reveal] 而非 .aix-bubble-actions：actionsTrigger 是**气泡级**语义，
+// 绑死在内置操作条的类名上，会让接管 #footer 自绘操作条的业务拿不到这个能力——传了
+// actionsTrigger="hover" 却毫无效果，且没有任何提示。内置操作条自带该标记（见模板根节点），
+// 自绘操作条给自己的根节点加上同一个属性即可加入。
+// 同理刻意**不**直接锚定 .aix-bubble__footer：业务的 footer 里常常还有图表卡、参考资料、
+// 展开面板等常驻内容（它们与「hover 才出现的按钮」是两码事），整块淡出并非本配置的本意。
+// 由业务自己标注哪一部分参与 hover 显隐，粒度才对。
 .aix-ai-chat.is-actions-hover {
-  .aix-bubble .aix-bubble-actions {
+  .aix-bubble [data-aix-hover-reveal] {
+    transition: opacity var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
     opacity: 0;
   }
 
-  .aix-bubble:hover .aix-bubble-actions,
-  .aix-bubble .aix-bubble-actions:focus-within {
+  .aix-bubble:hover [data-aix-hover-reveal],
+  .aix-bubble [data-aix-hover-reveal]:focus-within {
     opacity: 1;
   }
 
   // 触屏等无 hover 设备：即便配置 hover 也始终显示，避免操作无法触达
   @media (hover: none) {
-    .aix-bubble .aix-bubble-actions {
+    .aix-bubble [data-aix-hover-reveal] {
       opacity: 1;
     }
   }

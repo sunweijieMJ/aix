@@ -19,10 +19,15 @@
       </slot>
     </div>
     <div :class="ns.e('body')">
+      <!-- align / fillHeight 传 undefined 时由 Welcome 的 withDefaults 落回自身默认值，
+           故未配置 welcome 的既有接入方行为完全不变 -->
       <Welcome
         v-if="messages.length === 0 && !historyLoading"
-        :title="welcomeTitle"
-        :description="welcomeDescription"
+        :icon="welcome?.icon"
+        :title="welcome?.title ?? welcomeTitle"
+        :description="welcome?.description ?? welcomeDescription"
+        :align="welcome?.align"
+        :fill-height="welcome?.fillHeight"
       >
         <!-- 透传 Welcome 的图标/标题/描述具名插槽，供业务做品牌图标与富文本标题（如局部主色着色）。 -->
         <template v-if="$slots['welcome-icon']" #icon><slot name="welcome-icon" /></template>
@@ -47,6 +52,7 @@
         :tool-renderers="toolRenderers"
         :save-disabled="isLoading"
         :loading="historyLoading"
+        :error-text="errorText"
         @retry="onReload"
         @block-action="onBlockAction"
         @block-intent="emit('block-intent', $event)"
@@ -65,6 +71,11 @@
         <template v-if="$slots['bubble-header']" #header="sp">
           <slot name="bubble-header" v-bind="sp" />
         </template>
+        <!-- 行级插槽（气泡之外、占满整行）：整行居中的时间戳 / 日期分隔线等。
+             与 bubble-header 的分工：那个在气泡内、跟随气泡左右对齐；这个是独立的一行。 -->
+        <template v-if="$slots['row-before']" #row-before="sp">
+          <slot name="row-before" v-bind="sp" />
+        </template>
         <!-- 出错态自定义（错误码 / 限流与鉴权分支等）；未提供时回退内置的「出错了 + 重试」条 -->
         <template v-if="$slots.error" #error="sp">
           <slot name="error" v-bind="sp" />
@@ -80,7 +91,18 @@
              决定每条消息展示什么（包括显式不展示），未提供时才用内置默认。 -->
         <template v-if="actionsEnabled || branchAware || $slots.footer" #footer="{ item }">
           <template v-if="$slots.footer">
-            <slot name="footer" :item="item" />
+            <!-- 自绘操作条不该比内置 BubbleActions 拿到的信息少：分支元信息、朗读态、
+                 以及一整套「已经接好线」的动作句柄一并给出。此前只有 item，业务想做版本切换
+                 得回头从组件 ref 上调 getBranches / switchBranch（模板里反查自己的子组件），
+                 想做复制还得自己重写一遍剪贴板降级逻辑。 -->
+            <slot
+              name="footer"
+              :item="item"
+              :branch="branchMap.get(item.id)"
+              :branch-disabled="isLoading"
+              :speaking="speakingId === item.id"
+              :actions="footerActions"
+            />
           </template>
           <!-- 刻意不传 content / source-content：BubbleActions 在点到复制键的那一刻才按
                message 现算复制文本。此前在这里预先算好，会让流式期间每次重渲染都对全文重扫一遍
@@ -153,6 +175,15 @@
       :items="visibleSuggestions"
       @select="onSuggestionSelect"
     />
+    <!-- 输入框**上方、消息区之下**的自由区（AiChat 级，不在 Sender 盒内）：
+         品牌形象 / 活动横幅 / 免责提示等常需要挂在输入框外沿，甚至溢出到它上方。
+         Sender 自己的 #header 在其 border+padding 之内，放 100px 高的图会把输入框整体顶下去，
+         所以那条路走不通——此前业务只能把内容塞进 #toolbar 再 `position:absolute; bottom:100%`
+         反向挂出来，还得顺手把 .aix-sender 的 overflow 改成 visible。
+         本容器 position:relative，业务在其中做绝对定位即可，不必再借 Sender 的盒子。 -->
+    <div v-if="$slots['sender-before']" :class="ns.e('sender-before')">
+      <slot name="sender-before" />
+    </div>
     <Sender
       ref="senderRef"
       v-model="inputModel"
@@ -166,12 +197,16 @@
       :toolbar-items="toolbarItems"
       :auto-spacer="autoSpacer"
       :icons="senderIcons"
+      :variant="senderVariant"
       :allow-empty-submit="pendingQuotes.length > 0"
       @submit="onSend"
       @cancel="abort"
     >
-      <template v-if="pendingQuotes.length" #header>
-        <div :class="ns.e('quote-chips')">
+      <!-- Sender 顶部扩展区：内置引用 chips 与业务的 #sender-header **追加共存**。
+           此前这里是 `v-if="pendingQuotes.length"` 独占，业务想在输入框内加一行上下文
+           （模型标签、知识库选择等）根本没有入口——Sender 有 #header，但被这一层挡死了。 -->
+      <template v-if="pendingQuotes.length || $slots['sender-header']" #header="scope">
+        <div v-if="pendingQuotes.length" :class="ns.e('quote-chips')">
           <QuoteChip
             v-for="q in visibleQuotes"
             :key="q.id"
@@ -200,6 +235,7 @@
             {{ t.quoteChipsCollapse }}
           </button>
         </div>
+        <slot name="sender-header" v-bind="scope" />
       </template>
       <template v-if="$slots.toolbar" #toolbar="scope">
         <slot name="toolbar" v-bind="scope" />
@@ -207,11 +243,25 @@
       <template v-if="$slots.prefix" #prefix="scope">
         <slot name="prefix" v-bind="scope" />
       </template>
+      <!-- Sender 底部扩展区（工具栏之下、仍在输入框盒内）：字数统计、快捷键提示等 -->
+      <template v-if="$slots['sender-footer']" #footer="scope">
+        <slot name="sender-footer" v-bind="scope" />
+      </template>
       <!-- 自定义附件面板 UI：原样转发给 Sender（作用域见 SenderAttachmentsSlotScope） -->
       <template v-if="$slots['attachments-panel']" #attachments-panel="scope">
         <slot name="attachments-panel" v-bind="scope" />
       </template>
+      <!-- 只换内置面板里的上传占位区（比整块接管轻得多）；与上一个插槽互斥使用 -->
+      <template v-if="$slots['attachments-placeholder']" #attachments-placeholder="scope">
+        <slot name="attachments-placeholder" v-bind="scope" />
+      </template>
     </Sender>
+    <!-- 整个组件的最底部（Sender 之下）：免责声明 / 法务文案这类「不属于输入框」的常驻内容。
+         不叫 #footer——那个名字在本层已被气泡底部操作条占用。此前这类内容只能写在
+         </AiChat> 之外，于是脱离了组件的 flex 布局，得由业务自己补 flex-shrink 之类。 -->
+    <div v-if="$slots.bottom" :class="ns.e('bottom')">
+      <slot name="bottom" />
+    </div>
   </div>
 </template>
 
@@ -284,10 +334,28 @@ export interface AiChatProps {
   headerTitle?: string;
   /** 顶部标题栏图标图片地址（可用 header-icon 具名插槽覆盖） */
   headerIcon?: string;
-  /** 欢迎页标题（空消息态展示） */
+  /** 欢迎页标题（空消息态展示）。等价于 `welcome.title`，两者同时存在时以 `welcome` 为准 */
   welcomeTitle?: string;
-  /** 欢迎页描述文案（空消息态展示） */
+  /** 欢迎页描述文案（空消息态展示）。等价于 `welcome.description`，两者同时存在时以 `welcome` 为准 */
   welcomeDescription?: string;
+  /**
+   * 欢迎页配置。`title` / `description` 与扁平的 `welcomeTitle` / `welcomeDescription` 等价
+   * （本对象优先），另外开放此前**根本无法从 AiChat 触达**的三项：
+   *
+   * - `icon`：Welcome 的图标图片地址（此前只有 `#welcome-icon` 插槽一条路）；
+   * - `align`：`'center'`（默认）/ `'start'` 左对齐引导语；
+   * - `fillHeight`：是否用 `margin: auto 0` 在 body 内垂直居中，默认跟随 `align`。
+   *
+   * 后两项 Welcome 组件本就支持且互相正交，只是一直没接线到这一层，于是「左对齐欢迎语」
+   * 这种常见形态只能靠覆写 `.aix-welcome--center` / `.aix-welcome.is-fill-height` 反向实现。
+   */
+  welcome?: {
+    icon?: string;
+    title?: string;
+    description?: string;
+    align?: 'center' | 'start';
+    fillHeight?: boolean;
+  };
   /** 输入框占位提示，缺省取 locale.senderPlaceholder */
   placeholder?: string;
   /** 输入框提交方式：'enter' 回车发送（Shift+Enter 换行）/ 'shiftEnter' 反之，默认 'enter'；透传给 Sender */
@@ -300,8 +368,33 @@ export interface AiChatProps {
    * 函数形态应为纯函数（同输入同输出）；返回值随消息 status 响应式更新。
    */
   actions?: ActionsItems | ((message: ChatMessage) => ActionsItems | null);
-  /** 消息操作的显示时机：'always' 常驻显示（默认），'hover' 仅悬浮气泡或键盘聚焦内部按钮时显示（触屏设备始终显示） */
+  /**
+   * 消息操作的显示时机：'always' 常驻显示（默认），'hover' 仅悬浮气泡或键盘聚焦内部按钮时显示（触屏设备始终显示）。
+   *
+   * 'hover' 作用于气泡内带 `data-aix-hover-reveal` 标记的元素——内置操作条自带该标记；
+   * 用 `#footer` 自绘操作条时，给自己的根节点加上同一属性即可同样生效（此前该配置锚定内置
+   * 类名，接管 footer 的业务传了也没有任何效果）。footer 内的常驻内容（图表卡 / 参考资料等）
+   * 不加标记即不参与显隐。
+   */
   actionsTrigger?: 'always' | 'hover';
+  /**
+   * 出错态内置错误条的文案解析，默认回退 `locale.errorMessage`。
+   *
+   * `request` / `parseChunk` 抛出的原始错误存在 `message.extra.error` 里，但**默认不直出**：
+   * 那里可能是 `TypeError: Failed to fetch` 之类的内部信息，直接展示给终端用户是负收益。
+   * 想透出后端返回的具体原因（限流、鉴权、内容审核等业务错误）时显式声明本函数即可，
+   * 无需为此接管整个 `#error` 插槽：
+   *
+   * ```ts
+   * :error-text="(m) => {
+   *   const e = m.extra?.error;
+   *   return (typeof e === 'string' ? e : (e as Error)?.message) || '服务开小差了，请重试';
+   * }"
+   * ```
+   *
+   * 返回空串等同未提供（回退 i18n 文案）。仅对 `status === 'error'` 的消息调用。
+   */
+  errorText?: (message: ChatMessage) => string;
   /**
    * 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试。
    * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
@@ -404,11 +497,52 @@ export interface AiChatProps {
    */
   senderIcons?: SenderIcons;
   /**
+   * 输入框外观形态，直通 Sender 的 `variant`，默认 `'card'`。
+   * 侧边栏 / 移动端 / 全屏页这类贴边通栏形态传 `'plain'`，配合
+   * `--aix-ai-chat-sender-margin: 0` 与 `--aix-sender-*` 尺寸旋钮即可，无需覆写 `.aix-sender`。
+   * 命名前缀同 `senderIcons`（这一层还有别的 variant 概念，裸叫 variant 会读成组件整体形态）。
+   */
+  senderVariant?: SenderVariant;
+  /**
+   * 深度思考（reasoning 块）折叠面板的外观形态，默认 `'card'`；
+   * `'capsule'` 为 hug 宽度胶囊头 + 独立正文块（多数 AI 产品的当下形态），`'plain'` 无容器视觉。
+   *
+   * 注意：与 markdownRenderers 同属**挂载时快照**（经 provideAiChatConfig 注入，运行时改不生效），
+   * 详见下方静态配置护栏。
+   */
+  reasoningVariant?: ThinkingVariant;
+  /**
    * 追问建议（opt-in）：true 全默认；对象可配 fillOnly（点击仅回填不发送）/ max（上限，默认 5）。
    * 联合类型含 boolean：withDefaults 必须显式 default undefined（同 quote 的坑）
    */
   suggestions?: boolean | { fillOnly?: boolean; max?: number };
 }
+/**
+ * `#footer` 作用域插槽回传的动作句柄集合（稳定引用，不随消息重建）。
+ *
+ * 每一项都复用内置 `BubbleActions` 的同一条内部路径：复制自带 Clipboard API + execCommand
+ * 降级（HTTP 环境同样可用）、赞踩会写回 `extra.feedback` 并同步 `v-model:tree`、切分支会触发
+ * 树同步。自绘操作条据此可完整复刻内置能力，而不必"按钮自己画、逻辑自己接"。
+ */
+export interface BubbleFooterActions {
+  /** 复制消息正文（已剥离 markdown 语法）。返回是否已写入剪贴板；无可复制文本时不写入但仍算受理 */
+  copy: (message: ChatMessage) => Promise<boolean>;
+  /** 复制原始 markdown 源码（不剥离语法符号） */
+  copySource: (message: ChatMessage) => Promise<boolean>;
+  /** 重新生成：在对话树上新增兄弟节点，旧回答保留（可经 switchBranch 切回） */
+  regenerate: (id: string) => void;
+  /** 对被手动停止（status==='abort'）的消息续写 */
+  continue: (id: string) => void;
+  /** 切换分支版本：dir=-1 上一个 / 1 下一个 */
+  switchBranch: (id: string, dir: -1 | 1) => void;
+  /** 写入赞 / 踩（null 取消），同步持久化并对外 emit 'feedback' */
+  setFeedback: (id: string, value: MessageFeedback | null) => void;
+  /** 请求某条用户消息进入内联编辑态 */
+  startEdit: (id: string) => void;
+  /** 切换内置语音播报（再点同条停、点别条切）；未开启 speech 时为空操作 */
+  speak: (message: ChatMessage) => void;
+}
+
 export interface AiChatEmits {
   /** 用户发送消息（含点击快捷问题），携带文本与可选附件、可选扩展元信息（如 mention 实体） */
   (e: 'send', text: string, attachments?: AttachmentItem[], meta?: SubmitMeta): void;
@@ -448,7 +582,7 @@ export interface AiChatEmits {
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useControllable, useLocale } from '@aix/hooks';
+import { useNamespace, useControllable, useLocale, copyText } from '@aix/hooks';
 import { computed, ref, toRaw, watch, useSlots, getCurrentInstance } from 'vue';
 import { ROOT_ID } from '../composables/messageTree';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
@@ -492,6 +626,7 @@ import { devWarn } from '../utils/devWarn';
 import { messageText, attachmentBlock, textBlock, quoteBlock } from '../utils/helpers';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
 import { flattenQuoteBlocks } from '../utils/quotePrompt';
+import { stripMarkdownForCopy } from '../utils/stripMarkdownForCopy';
 import BubbleActions from './BubbleActions.vue';
 import BubbleList from './BubbleList.vue';
 import MessageOutline from './MessageOutline.vue';
@@ -499,8 +634,9 @@ import Prompts from './Prompts.vue';
 import QuoteChip from './QuoteChip.vue';
 import QuoteMenu from './QuoteMenu.vue';
 import Sender from './Sender.vue';
-import type { SenderIcons, SenderToolbarItems } from './Sender.vue';
+import type { SenderIcons, SenderToolbarItems, SenderVariant } from './Sender.vue';
 import Suggestions from './Suggestions.vue';
+import type { ThinkingVariant } from './Thinking.vue';
 import Welcome from './Welcome.vue';
 
 const props = withDefaults(defineProps<AiChatProps>(), {
@@ -561,11 +697,20 @@ const AICHAT_RESERVED_SLOTS = [
   'footer',
   // 气泡级插槽：由下方模板显式转发给 BubbleList，不能再进块插槽穿透（否则重复声明）
   'bubble-header',
+  'row-before',
   'error',
   'quote-menu',
   'toolbar',
   'prefix',
   'attachments-panel',
+  'attachments-placeholder',
+  // Sender 周边的四个区域插槽：两个转发给 Sender（盒内），两个由本组件自绘（盒外）。
+  // 漏登记会被下方 blockSlotNames 当成「块插槽」一路下传到块渲染器内部，
+  // 在每个块上重复渲染一遍（'error' 曾踩过同一个坑，见上方注释）。
+  'sender-header',
+  'sender-footer',
+  'sender-before',
+  'bottom',
 ];
 const blockSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !AICHAT_RESERVED_SLOTS.includes(n)),
@@ -648,18 +793,21 @@ provideAiChatConfig({
   markdownRenderers: { ...config.value.markdownRenderers, ...props.markdownRenderers },
   allowHtml: props.allowHtml ?? config.value.allowHtml ?? false,
   mdPlugins: props.mdPlugins ?? config.value.mdPlugins,
+  // reasoningVariant 走同一条注入通道（ReasoningBlock 由注册表实例化，接不到 prop），
+  // 因此同样是挂载时快照，一并纳入下方护栏的告警范围。
+  reasoningVariant: props.reasoningVariant ?? config.value.reasoningVariant,
 });
 
 // 开发期护栏：上面三项 markdown 级配置是 setup 时快照，运行时改 props 不会重新 provide，
 // 子树渲染静默维持旧配置、极难排查。检测到变更时告警一次（与未注册渲染器告警同风格）。
 let warnedStaticMdConfig = false;
 watch(
-  () => [props.markdownRenderers, props.allowHtml, props.mdPlugins],
+  () => [props.markdownRenderers, props.allowHtml, props.mdPlugins, props.reasoningVariant],
   () => {
     if (warnedStaticMdConfig) return;
     warnedStaticMdConfig = true;
     devWarn(
-      '[ai-chat] markdownRenderers / allowHtml / mdPlugins 为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
+      '[ai-chat] markdownRenderers / allowHtml / mdPlugins / reasoningVariant 为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
     );
   },
 );
@@ -709,7 +857,8 @@ const {
   continueGenerate,
 } = useChat({
   // 请求期把 quote 块拍平成 blockquote 文本给 business（纯函数，不 mutate SSOT，见设计 §2.1）；
-  // 无 quote 块时逐条直通，零开销
+  // 无 quote 块时逐条直通，零开销。`...ctx` 展开在前，故 messageId / setExtra 等
+  // 后续新增的上下文字段自动随之透传，这里只覆盖 messages 这一项。
   request: (ctx) =>
     props.request({
       ...ctx,
@@ -984,6 +1133,31 @@ const speechAutoPlay = computed(
   () => !!speech && (props.speech === true ? false : !!(props.speech as SpeechConfig).autoPlay),
 );
 
+// #footer 插槽的动作句柄（见 BubbleFooterActions）。声明为常量而非每次渲染现构造：
+// 插槽作用域里的对象若逐帧新建，消费方基于它做的 memo / watch 会全部失效。
+// copy / copySource 的语义与内置 BubbleActions.onCopy 逐字对齐——有文本但写入失败视为硬失败
+// （不 emit，业务不会误报「已复制」）；无文本时跳过写入但仍 emit，留作业务自定义复制的逃生口。
+const footerActions: BubbleFooterActions = {
+  copy: async (message) => {
+    const text = stripMarkdownForCopy(messageText(message));
+    if (text && !(await copyText(text))) return false;
+    emit('copy', message);
+    return true;
+  },
+  copySource: async (message) => {
+    const text = messageText(message);
+    if (text && !(await copyText(text))) return false;
+    emit('copy-source', message);
+    return true;
+  },
+  regenerate: (id) => void onReload(id),
+  continue: (id) => void continueGenerate(id),
+  switchBranch,
+  setFeedback: onFeedback,
+  startEdit: (id) => bubbleListRef.value?.startEdit(id),
+  speak: (message) => speech?.toggle(message),
+};
+
 // 消息操作条配置逻辑
 const DEFAULT_ACTIONS: ActionsItems = ['copy', 'regenerate'];
 
@@ -1218,6 +1392,18 @@ defineExpose({
     flex: 1;
     flex-direction: column;
     min-height: 0;
+
+    /* 欢迎页超高时内部滚动。刻意**不写 flex: 1**：Welcome 的垂直居中靠 is-fill-height 的
+       `margin: auto 0`，而 margin:auto 需要存在剩余空间才生效——一旦让它撑满，剩余空间为 0，
+       居中当场失效（align-items:center 只管水平方向，本容器是 column flex）。
+       改用 max-height 封顶：内容短时高度仍由内容决定、margin:auto 照常居中；
+       内容超高时被截住并内部滚动，margin:auto 自然塌成 0。两种形态都对，且对既有接入方零影响。
+       min-height:0 是 flex 子项滚动的常规解除项，不影响上面的居中（只去掉下限，不设上限）。 */
+    > .aix-welcome {
+      min-height: 0;
+      max-height: 100%;
+      overflow-y: auto;
+    }
   }
 
   /* 大纲绝对定位贴右侧，脱离流式布局故不挤压气泡宽度 */
@@ -1229,13 +1415,30 @@ defineExpose({
     transform: translateY(-50%);
   }
 
+  /* 旋钮：通栏形态（senderVariant='plain'）通常要 0，让输入框与面板左右贴边 */
   &__sender {
-    margin: var(--aix-paddingSM) var(--aix-padding) var(--aix-padding);
+    margin: var(
+      --aix-ai-chat-sender-margin,
+      var(--aix-paddingSM) var(--aix-padding) var(--aix-padding)
+    );
   }
 
   &__suggestions {
     flex: none;
     padding: var(--aix-paddingXS) var(--aix-paddingSM) 0;
+  }
+
+  /* 输入框上方的自由区：position:relative 供业务在其中做绝对定位（形象图溢出到输入框上方等）。
+     自身零内外边距 —— 这里放什么完全由业务决定，组件不预设视觉。 */
+  &__sender-before {
+    display: flex;
+    position: relative;
+    flex: none;
+  }
+
+  /* 组件最底部（Sender 之下）：免责声明等。同样零视觉，只负责占位与不被压缩。 */
+  &__bottom {
+    flex: none;
   }
 
   &__quote-chips {
