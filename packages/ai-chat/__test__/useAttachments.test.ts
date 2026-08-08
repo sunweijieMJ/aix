@@ -185,6 +185,64 @@ describe('useAttachments', () => {
     expect(api.items.value[0]!.name).toBe('pending.pdf');
   });
 
+  describe('onRemove（供业务回收服务端资源）', () => {
+    it('remove 单条：带 extra 的条目原样回调', async () => {
+      const { upload, resolvers } = deferredUpload();
+      const onRemove = vi.fn();
+      const api = useAttachments({ upload, onRemove });
+      api.add([file('a.pdf')]);
+      resolvers[0]!.resolve({ name: 'a.pdf', url: '/f/1', extra: { nid: 'n1' } } as never);
+      await flush();
+      api.remove(api.items.value[0]!.id);
+      expect(onRemove).toHaveBeenCalledTimes(1);
+      expect(onRemove.mock.calls[0]![0]).toMatchObject({
+        name: 'a.pdf',
+        status: 'done',
+        extra: { nid: 'n1' },
+      });
+    });
+
+    it('remove 上传中条目：同样回调，业务据 status 自行判断', () => {
+      const { upload } = deferredUpload();
+      const onRemove = vi.fn();
+      const api = useAttachments({ upload, onRemove });
+      api.add([file()]);
+      api.remove(api.items.value[0]!.id);
+      expect(onRemove.mock.calls[0]![0]).toMatchObject({ status: 'uploading' });
+    });
+
+    it('remove 不存在的 id：不回调', () => {
+      const { upload } = deferredUpload();
+      const onRemove = vi.fn();
+      const api = useAttachments({ upload, onRemove });
+      api.add([file()]);
+      api.remove('nope');
+      expect(onRemove).not.toHaveBeenCalled();
+      expect(api.items.value).toHaveLength(1);
+    });
+
+    it('clear：逐条回调', () => {
+      const { upload } = deferredUpload();
+      const onRemove = vi.fn();
+      const api = useAttachments({ upload, onRemove });
+      api.add([file('a.pdf'), file('b.pdf')]);
+      api.clear();
+      expect(onRemove).toHaveBeenCalledTimes(2);
+      expect(api.items.value).toEqual([]);
+    });
+
+    it('drain 不触发：那是发送路径，回收会把刚发出去的附件删掉', async () => {
+      const { upload, resolvers } = deferredUpload();
+      const onRemove = vi.fn();
+      const api = useAttachments({ upload, onRemove });
+      api.add([file('a.pdf')]);
+      resolvers[0]!.resolve({ name: 'a.pdf', url: '/f/1' });
+      await flush();
+      api.drain();
+      expect(onRemove).not.toHaveBeenCalled();
+    });
+  });
+
   it('作用域销毁：进行中上传全部 abort', () => {
     const { upload, resolvers } = deferredUpload();
     const scope = effectScope();

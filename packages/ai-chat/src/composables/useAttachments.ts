@@ -28,6 +28,17 @@ export interface UseAttachmentsOptions {
   maxSize?: number;
   /** 文件被拒（类型不符/超数量/超大小）或上传失败时通知；toast 等提示由业务做 */
   onReject?: (file: File, reason: 'accept' | 'count' | 'size' | 'upload', error?: unknown) => void;
+  /**
+   * 条目被丢弃时通知（`remove` 单条移除 / `clear` 整体清空），供业务回收
+   * upload 时在服务端产生的资源（典型是按 `extra` 里的文件 id 调删除接口）。
+   *
+   * **`drain` 不触发**：那是「发送」路径，条目虽然也离开了列表，但文件正要交给后端使用，
+   * 此时回收会把刚发出去的附件删掉。
+   *
+   * 回调拿到的是带过程态的条目：`status !== 'done'` 说明上传还没完成（此时通常没有服务端
+   * 资源可回收，`extra` 也可能是空的），业务需要自行判断。
+   */
+  onRemove?: (item: PendingAttachment) => void;
 }
 
 export interface UseAttachmentsReturn {
@@ -66,7 +77,7 @@ const matchesAccept = (file: File, accept?: string): boolean => {
 };
 
 export function useAttachments(options: UseAttachmentsOptions): UseAttachmentsReturn {
-  const { upload, accept, maxCount = 9, maxSize, onReject } = options;
+  const { upload, accept, maxCount = 9, maxSize, onReject, onRemove } = options;
   const items = ref<PendingAttachment[]>([]);
   // 条目 id → 该条上传的中断器（remove/clear/scope 销毁时 abort）
   const ctrls = new Map<string, AbortController>();
@@ -141,7 +152,10 @@ export function useAttachments(options: UseAttachmentsOptions): UseAttachmentsRe
     ctrls.get(id)?.abort();
     ctrls.delete(id);
     const idx = items.value.findIndex((it) => it.id === id);
-    if (idx !== -1) items.value.splice(idx, 1);
+    if (idx === -1) return;
+    // 先取出再摘除：splice 之后拿不到条目，业务就没法按 extra 回收服务端资源
+    const [removed] = items.value.splice(idx, 1);
+    if (removed) onRemove?.(removed);
   };
 
   const retry = (id: string) => {
@@ -153,7 +167,10 @@ export function useAttachments(options: UseAttachmentsOptions): UseAttachmentsRe
   const clear = () => {
     for (const c of ctrls.values()) c.abort();
     ctrls.clear();
+    const dropped = items.value;
     items.value = [];
+    // 与 remove 同样是「丢弃」语义，逐条通知业务回收
+    if (onRemove) for (const it of dropped) onRemove(it);
   };
 
   const isUploading = computed(() => items.value.some((it) => it.status === 'uploading'));
