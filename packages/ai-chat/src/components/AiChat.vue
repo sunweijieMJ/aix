@@ -677,7 +677,13 @@ const resolvedQuote = computed<
   };
 });
 
-// AiChat 自身消费的保留插槽（标题栏 + 欢迎/内容/底部）；其余具名插槽透传给 BubbleList（最终落到块渲染器内部 slot）。
+// AiChat 自身消费的保留插槽（标题栏 + 欢迎 / 内容 / Sender 周边 / 底部）；其余具名插槽透传给
+// BubbleList，最终落到块渲染器内部 slot。
+//
+// 本名单**不能**由 utils/reservedSlots 推导（本层另有一大批自有插槽，且把 Bubble 的 header
+// 重命名为 bubble-header 以避开自己的标题栏 header），故单独维护。新增任何由本组件消费或
+// 显式转发的具名插槽都必须登记到这里——漏登记不会报错，而是让它被当成「块插槽」一路下传，
+// 在每条消息的每个块里重复渲染一遍。该不变量由 __test__/slotPassthrough.test.ts 行为级兜底。
 const AICHAT_RESERVED_SLOTS = [
   'header',
   'header-icon',
@@ -698,8 +704,6 @@ const AICHAT_RESERVED_SLOTS = [
   'attachments-panel',
   'attachments-placeholder',
   // Sender 周边的四个区域插槽：两个转发给 Sender（盒内），两个由本组件自绘（盒外）。
-  // 漏登记会被下方 blockSlotNames 当成「块插槽」一路下传到块渲染器内部，
-  // 在每个块上重复渲染一遍（'error' 曾踩过同一个坑，见上方注释）。
   'sender-header',
   'sender-footer',
   'sender-before',

@@ -168,6 +168,7 @@ import type {
 } from '../types';
 import { contentFingerprint } from '../utils/contentFingerprint';
 import { ownProp } from '../utils/ownProp';
+import { BUBBLE_LIST_RESERVED_SLOTS } from '../utils/reservedSlots';
 import Bubble from './Bubble.vue';
 import Skeleton from './Skeleton.vue';
 
@@ -187,12 +188,11 @@ const ns = useNamespace('bubble-list');
 const { t } = useLocale(locale);
 const slots = useSlots();
 
-// BubbleList 自身显式转发 content/footer/header/avatar/error（前两个补 item，后三个见模板注释）；
-// 其余具名插槽原样透传给每个 Bubble（最终落到块渲染器内部 slot）。
-// row-before 由本组件自绘在 Bubble 之外，同样不能进块插槽穿透
-const OWN_SLOTS = ['content', 'footer', 'header', 'avatar', 'error', 'row-before'];
+// 本组件显式转发 content/footer/header/avatar/error（前两个补 item，后三个见模板注释）+
+// 自绘 row-before；其余具名插槽原样透传给每个 Bubble（最终落到块渲染器内部 slot）。
+// 名单集中在 utils/reservedSlots（含层间关系说明）。
 const passthroughSlotNames = computed(() =>
-  Object.keys(slots).filter((n) => !OWN_SLOTS.includes(n)),
+  Object.keys(slots).filter((n) => !(BUBBLE_LIST_RESERVED_SLOTS as readonly string[]).includes(n)),
 );
 const scrollRef = ref<HTMLElement | null>(null);
 const virtualizerRef = ref<VirtualizerHandle | null>(null);
