@@ -267,11 +267,8 @@ export interface SenderProps {
    * - `'plain'`：去掉边框 / 圆角 / 阴影 / 悬停与聚焦描边，只保留内边距与布局，
    *   适合侧边栏、移动端、全屏页这类**贴边通栏**形态（分隔线交由宿主自己画，位置与颜色各家不同）。
    *
-   * 此前只有 card 一种形态，非居中场景的接入方只能整段覆写
-   * `.aix-sender { border: none; border-radius: 0; box-shadow: none; ... }`，
-   * 且每加一个接入方就要重写一遍。配合 `--aix-sender-padding` / `--aix-sender-gap` /
-   * `--aix-sender-input-padding` / `--aix-sender-toolbar-padding` 四个尺寸旋钮，
-   * 通栏形态基本不必再写 `:deep`。
+   * 配合 `--aix-sender-padding` / `--aix-sender-gap` / `--aix-sender-input-padding` /
+   * `--aix-sender-toolbar-padding` 四个尺寸旋钮，通栏形态基本不必再写 `:deep`。
    */
   variant?: SenderVariant;
 }
@@ -279,8 +276,8 @@ export interface SenderProps {
 /**
  * 单个图标的取值：Vue 组件，或图片地址（URL / data-URI，按 `<img>` 渲染）。
  *
- * 放开字符串是为了与同组件的 `headerIcon`（AiChat 层）等既有取值口径一致——
- * 此前只收组件，业务哪怕只想换一张图，也得写 `() => h(MyIconWrapper, { name: 'x' })` 包一层。
+ * 放开字符串是为了与同组件的 `headerIcon`（AiChat 层）等既有取值口径一致，
+ * 只想换一张图时不必写 `() => h(MyIconWrapper, { name: 'x' })` 包一层。
  *
  * 注意两种形态的着色能力不同：组件形态（推荐 `fill="currentColor"`）会随按钮状态
  * （可发送 / 禁用 / 输出中）与主题一起变色；`<img>` 形态是位图/独立着色的矢量图，

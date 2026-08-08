@@ -76,13 +76,18 @@
               </template>
             </template>
           </slot>
-          <!-- 出错态：提示 + 重试入口（点击向上冒泡，由 AiChat 调 onReload）。
-               开放 error 插槽让业务换成自己的错误 UI（错误码、限流/鉴权分支等）——此前错误条是
-               content 插槽的**兄弟节点**，覆写 content 也盖不住它。
-               用 $slots.error 显式二选一而不是 <slot> 的 fallback 写法：Vue 的 renderSlot 会在
-               插槽产出「全是 Comment 节点」时（业务按错误类型 v-if 只在部分情况下渲染）判定为
-               「未提供插槽」而启用 fallback，于是业务明确表示「这种错误不显示提示」时反而被强行
-               套回内置错误条（与 AiChat footer 插槽踩过的是同一个坑）。 -->
+          <!-- 出错态：提示 + 重试入口（点击向上冒泡，由 AiChat 调 onReload）；
+               error 插槽让业务换成自己的错误 UI（错误码、限流/鉴权分支等）。
+
+               【renderSlot 全 Comment 陷阱 —— 包内该问题的说明出处，其余几处指向这里】
+               这里用 `$slots.error` 显式二选一，而**不能**写成 `<slot name="error">兜底</slot>`
+               的原生 fallback：Vue 的 renderSlot 在插槽产出「全是 Comment 节点」时（消费方按
+               条件 v-if，只在部分情况下渲染）会判定为「未提供插槽」而启用 fallback —— 于是消费方
+               明确表示「这种情况不显示」时，反而被强行套回内置 UI。
+               判据必须落在「消费方**是否声明**了插槽」（`$slots.x` 有无），而非「本次渲染产出了
+               什么」。凡存在「提供了插槽但期望渲染空」语义的地方都适用（本处、AiChat #footer、
+               Conversations #item、ReasoningBlock 正文）；不存在该语义的（如 Sender 附件面板）
+               照常用原生 fallback 即可。 -->
           <template v-if="status === 'error'">
             <slot v-if="$slots.error" name="error" :info="info" :retry="() => emit('retry')" />
             <span v-else :class="ns.e('error')">
@@ -148,6 +153,7 @@ import type {
 import { contentFingerprint } from '../utils/contentFingerprint';
 import { devWarn } from '../utils/devWarn';
 import { messageText } from '../utils/helpers';
+import { ownProp } from '../utils/ownProp';
 import AttachmentBlock from './blocks/AttachmentBlock.vue';
 import ChartBlock from './blocks/ChartBlock.vue';
 import ImageBlock from './blocks/ImageBlock.vue';
@@ -205,16 +211,9 @@ const renderers = computed<BlockRenderers>(() => ({
   ...props.blockRenderers,
 }));
 
-/**
- * 按块类型取渲染器。必须走 Object.hasOwn 而非直接下标（与 ToolUseBlock 按 toolName 路由
- * 同款加固）：注册表是对象字面量，继承 Object.prototype，直接下标会让 'constructor' /
- * 'toString' / 'valueOf' / '__proto__' 这些**原型链上的键取到真值**——block.type 来自流数据
- * 与持久化的对话树（localStorage 可被篡改/损坏），一旦撞上就同时踩两个坑：绕过下方
- * 「未注册渲染器」的开发期告警（静默），且把原型上的函数/对象当组件渲染，气泡里吐出
- * `[object Object]` 之类的垃圾内容，排查成本极高。
- */
+/** 按块类型取渲染器（block.type 来自不可信数据，故走 ownProp 的自有属性查找，见其说明） */
 const rendererOf = (type: string): BlockRenderers[string] | undefined =>
-  Object.hasOwn(renderers.value, type) ? renderers.value[type] : undefined;
+  ownProp(renderers.value, type);
 
 // —— 消息级 typing-complete 聚合 ——
 // 块渲染器在「追平当下源文本」时上抛块级 typing-complete，但追平可能早于消息终态

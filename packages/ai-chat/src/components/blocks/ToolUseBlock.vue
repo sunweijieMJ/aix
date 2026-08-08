@@ -76,6 +76,7 @@ import type {
   BlockIntentHandler,
   BlockRenderers,
 } from '../../types';
+import { ownProp } from '../../utils/ownProp';
 import LoadingDots from '../LoadingDots.vue';
 
 // 注册表统一向渲染器透传 block/info/typing；关闭属性继承避免多余 attr 落到根元素。
@@ -90,12 +91,9 @@ const slots = useSlots();
 // 链路（AiChat → BubbleList → Bubble → 块渲染器），原样转交委托目标。
 const slotNames = computed(() => Object.keys(slots));
 const expanded = ref(true);
-// toolName 来自不可信流数据，用 Object.hasOwn 做自有属性校验，避免 'constructor'/'toString'
-// 等原型链上的键命中被误当渲染器（__proto__ 本就不在自有属性中，hasOwn 一并挡住）
+// toolName 来自不可信流数据，走 ownProp 的自有属性查找（见其说明）
 const delegate = computed<Component | undefined>(() =>
-  props.toolRenderers && Object.hasOwn(props.toolRenderers, props.block.toolName)
-    ? props.toolRenderers[props.block.toolName]
-    : undefined,
+  ownProp(props.toolRenderers, props.block.toolName),
 );
 const pending = computed(
   () =>

@@ -24,12 +24,12 @@ export interface WelcomeProps {
   /** 对齐方式：center 居中空态（默认）/ start 左对齐（用于带在顶部的引导语） */
   align?: 'center' | 'start';
   /**
-   * 是否用 flex 上下 auto margin 在纵向撑满的容器（如 AiChat body）中垂直居中，默认跟随 `align`
-   * （`center` 时为 `true`、`start` 时为 `false`，与此前 `align` 单挑三个维度时的默认表现一致）。
+   * 是否用 flex 上下 auto margin 在纵向撑满的容器（如 AiChat body）中垂直居中，
+   * 默认跟随 `align`（`center` → `true`，`start` → `false`）。
    *
-   * 与 `align` 独立：此前 `align: 'start'` 恒不带 `margin: auto 0`，想要「左对齐 + 垂直居中」
-   * （如面板顶部左对齐但仍在空白区居中的引导语）做不到，只能整段覆盖 `.aix-welcome--start`。
-   * 显式传入本 prop 可覆盖跟随 `align` 的默认值，与对齐方式任意组合。
+   * 与 `align` **正交**：显式传入本 prop 即可覆盖上述默认，两个维度任意组合——
+   * 如「左对齐 + 垂直居中」（面板顶部左对齐、但仍在空白区居中的引导语）传
+   * `align="start"` + `:fill-height="true"`。
    */
   fillHeight?: boolean;
 }

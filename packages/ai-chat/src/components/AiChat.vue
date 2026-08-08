@@ -4,7 +4,7 @@
          默认布局为 [图标] 标题 …… [extra]；header slot 可完全覆盖。关闭等交互由业务填 header-extra。
          容器（__header）本身不带默认视觉（padding/border-bottom）——那些下沉到内置默认内容的
          包裹层（__header-default）上。这样业务提供 #header 完全接管内容时，容器天然零样式，
-         不必再 reset padding/border-bottom 才能让自己的布局生效（此前两者都长在容器上）。 -->
+         不必再 reset padding/border-bottom 才能让自己的布局生效。 -->
     <div v-if="hasHeader" :class="ns.e('header')">
       <slot name="header">
         <div :class="ns.e('header-default')">
@@ -65,8 +65,8 @@
         </template>
         <!-- 气泡上方的消息级头部（发送者名 / 时间戳 / 业务徽标）。
              名字带 bubble- 前缀而非直接叫 header：AiChat 的 header 已被顶部标题栏占用，
-             此前这导致 Bubble 的 header 插槽在 AiChat 下**完全不可达**（被 AICHAT_RESERVED_SLOTS
-             拦下、不进块插槽穿透），业务想显示发送者名或时间戳无路可走。
+             不加前缀会撞名，令 Bubble 的 header 插槽在 AiChat 下**完全不可达**
+             （被 AICHAT_RESERVED_SLOTS 拦下、不进块插槽穿透）。
              content / footer 之所以没有前缀，是它们在 AiChat 这层本就没有第二种含义。 -->
         <template v-if="$slots['bubble-header']" #header="sp">
           <slot name="bubble-header" v-bind="sp" />
@@ -83,18 +83,14 @@
         <!-- 消息操作：通过 actions prop 配置（默认 ['copy','regenerate']），
              数组形态仅对 ai+success 消息渲染，函数形态按消息细粒度控制；
              可用 #footer slot 覆盖，设为 [] 关闭。branchAware 确保分支切换器可按需出现。
-             注意：这里故意不用 <slot name="footer"><BubbleActions .../></slot> 原生 fallback 写法——
-             Vue 的 renderSlot 会在插槽渲染结果「全是 Comment 节点」时（如消费方按条件 v-if 为某些
-             消息不出操作条）自动判定为「插槽未提供」而启用 fallback，导致消费方明确要求「这条消息不
-             显示任何操作」时，反而被强行套上内置 BubbleActions。改为一次性判断「消费方是否提供了
-             footer 插槽」（$slots.footer，只看有没有声明，不逐条看渲染结果），提供了就完全交由消费方
-             决定每条消息展示什么（包括显式不展示），未提供时才用内置默认。 -->
+             这里按 $slots.footer「是否声明」显式二选一，不用 <slot> 原生 fallback——
+             撞 renderSlot 的全 Comment 陷阱，说明见 Bubble.vue 的 error 插槽处。 -->
         <template v-if="actionsEnabled || branchAware || $slots.footer" #footer="{ item }">
           <template v-if="$slots.footer">
             <!-- 自绘操作条不该比内置 BubbleActions 拿到的信息少：分支元信息、朗读态、
-                 以及一整套「已经接好线」的动作句柄一并给出。此前只有 item，业务想做版本切换
-                 得回头从组件 ref 上调 getBranches / switchBranch（模板里反查自己的子组件），
-                 想做复制还得自己重写一遍剪贴板降级逻辑。 -->
+                 以及一整套「已经接好线」的动作句柄（见 BubbleFooterActions）一并给出，
+                 免得业务为做版本切换去组件 ref 上反查 getBranches / switchBranch、
+                 为做复制再重写一遍剪贴板降级逻辑。 -->
             <slot
               name="footer"
               :item="item"
@@ -105,7 +101,7 @@
             />
           </template>
           <!-- 刻意不传 content / source-content：BubbleActions 在点到复制键的那一刻才按
-               message 现算复制文本。此前在这里预先算好，会让流式期间每次重渲染都对全文重扫一遍
+               message 现算复制文本。若在此预先算好，流式期间每次重渲染都要对全文重扫一遍
                markdown（有分支版本的消息在流式中也挂着操作条），详见其 resolveCopyText 注释。 -->
           <BubbleActions
             v-else-if="actionsMap.get(item.id) || branchMap.get(item.id)"
@@ -178,9 +174,8 @@
     <!-- 输入框**上方、消息区之下**的自由区（AiChat 级，不在 Sender 盒内）：
          品牌形象 / 活动横幅 / 免责提示等常需要挂在输入框外沿，甚至溢出到它上方。
          Sender 自己的 #header 在其 border+padding 之内，放 100px 高的图会把输入框整体顶下去，
-         所以那条路走不通——此前业务只能把内容塞进 #toolbar 再 `position:absolute; bottom:100%`
-         反向挂出来，还得顺手把 .aix-sender 的 overflow 改成 visible。
-         本容器 position:relative，业务在其中做绝对定位即可，不必再借 Sender 的盒子。 -->
+         所以那条路走不通。本容器 position:relative，业务在其中做绝对定位即可，
+         不必再借 Sender 的盒子（也就不用去改它的 overflow）。 -->
     <div v-if="$slots['sender-before']" :class="ns.e('sender-before')">
       <slot name="sender-before" />
     </div>
@@ -202,9 +197,8 @@
       @submit="onSend"
       @cancel="abort"
     >
-      <!-- Sender 顶部扩展区：内置引用 chips 与业务的 #sender-header **追加共存**。
-           此前这里是 `v-if="pendingQuotes.length"` 独占，业务想在输入框内加一行上下文
-           （模型标签、知识库选择等）根本没有入口——Sender 有 #header，但被这一层挡死了。 -->
+      <!-- Sender 顶部扩展区：内置引用 chips 与业务的 #sender-header **追加共存**（本层若
+           独占该插槽，业务就没有入口在输入框内加一行上下文，如模型标签 / 知识库选择）。 -->
       <template v-if="pendingQuotes.length || $slots['sender-header']" #header="scope">
         <div v-if="pendingQuotes.length" :class="ns.e('quote-chips')">
           <QuoteChip
@@ -257,8 +251,8 @@
       </template>
     </Sender>
     <!-- 整个组件的最底部（Sender 之下）：免责声明 / 法务文案这类「不属于输入框」的常驻内容。
-         不叫 #footer——那个名字在本层已被气泡底部操作条占用。此前这类内容只能写在
-         </AiChat> 之外，于是脱离了组件的 flex 布局，得由业务自己补 flex-shrink 之类。 -->
+         不叫 #footer——那个名字在本层已被气泡底部操作条占用。写在 </AiChat> 之外亦可，
+         但那样就脱离了组件的 flex 布局，得由业务自己补 flex-shrink 之类。 -->
     <div v-if="$slots.bottom" :class="ns.e('bottom')">
       <slot name="bottom" />
     </div>
@@ -340,9 +334,9 @@ export interface AiChatProps {
   welcomeDescription?: string;
   /**
    * 欢迎页配置。`title` / `description` 与扁平的 `welcomeTitle` / `welcomeDescription` 等价
-   * （本对象优先），另外开放此前**根本无法从 AiChat 触达**的三项：
+   * （本对象优先），另外开放三项只能从这里配置的能力：
    *
-   * - `icon`：Welcome 的图标图片地址（此前只有 `#welcome-icon` 插槽一条路）；
+   * - `icon`：Welcome 的图标图片地址（也可用 `#welcome-icon` 插槽）；
    * - `align`：`'center'`（默认）/ `'start'` 左对齐引导语；
    * - `fillHeight`：是否用 `margin: auto 0` 在 body 内垂直居中，默认跟随 `align`。
    *
@@ -372,9 +366,8 @@ export interface AiChatProps {
    * 消息操作的显示时机：'always' 常驻显示（默认），'hover' 仅悬浮气泡或键盘聚焦内部按钮时显示（触屏设备始终显示）。
    *
    * 'hover' 作用于气泡内带 `data-aix-hover-reveal` 标记的元素——内置操作条自带该标记；
-   * 用 `#footer` 自绘操作条时，给自己的根节点加上同一属性即可同样生效（此前该配置锚定内置
-   * 类名，接管 footer 的业务传了也没有任何效果）。footer 内的常驻内容（图表卡 / 参考资料等）
-   * 不加标记即不参与显隐。
+   * 用 `#footer` 自绘操作条时，给自己的根节点加上同一属性即可同样生效。
+   * footer 内的常驻内容（图表卡 / 参考资料等）不加标记即不参与显隐。
    */
   actionsTrigger?: 'always' | 'hover';
   /**
@@ -471,7 +464,7 @@ export interface AiChatProps {
    * 划词引用/追问（opt-in，默认关闭）。true 开启默认能力；false 关闭；对象按 QuoteConfig 细配并默认视为开启，
    * 与全局 provideAiChatConfig().quote 合并（props 优先）。
    *
-   * 响应式粒度是**混合**的（此前笼统标作「setup 快照」，与实现不符，故在此逐项写明）：
+   * 响应式粒度是**混合**的（不可一概按「setup 快照」理解，故逐项写明）：
    * - 运行时可变：`enable` / `roles` / `actions` / `pcQuoteAction` / `maxVisibleChips` /
    *   `toPrompt` / `toolbar` / `sheet` —— 均在使用那一刻经 getter 或 computed 读取；
    * - setup 快照：`longPressDelay` / `keyboard` / `excludeSelector` —— 在 useTextSelection
@@ -1047,8 +1040,8 @@ watch(messagesModel, (v) => {
 // 结构变化（增节点/切分支）时导出回父。同时绑 v-model:messages 与 v-model:tree 时，tree 优先。
 const treeModel = defineModel<ExportedTree | undefined>('tree');
 // 外部树数据的入口归一：nodes 非数组（持久化被截断 / 篡改 / 自定义 storage 只写了半截）
-// 按空树处理，与 messageTree.importTree、useConversations 的脏数据口径一致——
-// 这两处此前直接读 .nodes.length，损坏数据会在挂载或 watch 回调里抛穿整个渲染。
+// 按空树处理，与 messageTree.importTree、useConversations 的脏数据口径一致。
+// 不设防时损坏数据会在挂载或 watch 回调里直接读 .nodes.length 抛穿整个渲染。
 const safeTree = (v: ExportedTree | undefined): ExportedTree =>
   v && Array.isArray(v.nodes) ? v : { nodes: [], headId: ROOT_ID };
 // 受控：父提供初始 tree 时导入（优先于 messages）

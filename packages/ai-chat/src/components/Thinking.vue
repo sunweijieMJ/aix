@@ -38,9 +38,6 @@ export interface ThinkingProps {
    *   当下多数 AI 产品的思考区就长这样；
    * - `'plain'`：不带任何容器视觉，只保留折叠行为与间距，交给宿主完全自绘。
    *
-   * 此前只有 card 一种，胶囊形态的设计稿只能整段覆写 `.aix-thinking` /
-   * `.aix-thinking__header` / `.aix-thinking__body`（去边框、改 inline-flex、重画圆角），
-   * 每个接入方重复一遍。
    */
   variant?: ThinkingVariant;
 }

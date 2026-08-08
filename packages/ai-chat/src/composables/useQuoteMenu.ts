@@ -110,11 +110,9 @@ export function useQuoteMenu(options: UseQuoteMenuOptions): UseQuoteMenuReturn {
           });
           continue;
         }
-        // 必须走 Object.hasOwn 而非直接下标（与 Bubble.rendererOf / ToolUseBlock 同款加固）：
-        // BUILTIN 是对象字面量、继承 Object.prototype，而 actions 可能来自后端配置或 JS 消费方
-        // （TS 侧有 QuoteActionKey 约束，但类型挡不住运行时）。直接下标时未知 key 取到 undefined、
-        // 'toString'/'valueOf' 这类原型链键取到函数，两种都会在 .label(...) 上抛穿整个划词菜单。
-        // 跳过而非抛出，与 BubbleActions 对未知内置 key 的静默降级保持一致。
+        // 自有属性校验（同 utils/ownProp 的理由；此处是「守卫 + 告警」而非取值，故未复用它）：
+        // actions 可能来自后端配置或 JS 消费方，直接下标时未知 key 与原型链键都会在
+        // .label(...) 上抛穿整个划词菜单。跳过而非抛出，与 BubbleActions 的静默降级一致。
         if (!Object.hasOwn(BUILTIN, it)) {
           if (!warnedUnknown.has(it)) {
             warnedUnknown.add(it);
