@@ -1168,9 +1168,10 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
     return r && r.length > 0 ? r : null;
   }
   // 1→N 拆分：默认操作条仅末子气泡显示。必须在角色分支**之前**判定，对所有角色一致
-  // （与 branchMap 同规则）——此前只放在下方 AI 分支里，user 消息被 parser 拆分时每个子气泡
-  // 都会拿到 edit 按钮，而 useChat.onEdit 按 resolveParentId 解析回父消息后语义是「把父消息
-  // 的全部 text 块合并改写为单块」，于是用非首个子气泡进入编辑再保存会静默丢掉其余段落。
+  // （与 branchMap 同规则）：一旦挪进下方的 AI 分支，被 parser 拆分的 user 消息每个子气泡都会
+  // 拿到 edit 按钮，而 useChat.onEdit 按 resolveParentId 解析回父消息后语义是「把父消息的全部
+  // text 块合并改写为单块」——用非首个子气泡进入编辑再保存就会静默丢掉其余段落。
+  // 回归用例：__test__/AiChat.subBubbleActions.test.ts
   const sub = item.extra?.__sub as SubBubbleMeta | undefined;
   if (sub && sub.index < sub.count - 1) return null;
   if (item.role === 'user') {
@@ -1310,9 +1311,11 @@ defineExpose({
   resume,
   continueGenerate,
   setSuggestions,
-  // 分支导航：此前只有内置 BubbleActions 的切换器能走到，自定义 #footer / actions 拿不到入口。
-  // switchBranch 改的是树结构，contract ① 的 watch([messages, branches]) 会自动 syncTree，
-  // 故此处无需（也不该）再显式同步一次。
+  // 分支导航：内置 BubbleActions 的切换器之外，自绘 #footer / 自定义 actions 也需要这个入口。
+  // switchBranch 改的是树结构，契约① 的 watch([messages, branches]) 已会自动 syncTree，
+  // 故此处无需（也不该）再显式同步一次——多补一次不会报错，而是让宿主的 @update:tree 收到
+  // 重复 emit，在其中做序列化落库 / 埋点的会把同一次切换记两遍。
+  // 回归用例：__test__/AiChat.branch.test.ts（断言恰好同步一次）
   switchBranch,
   getBranches,
   // 赞踩写回：与上方 updateBlock 包装同一策略——补 syncTree（契约④，extra 写回不改变树结构），

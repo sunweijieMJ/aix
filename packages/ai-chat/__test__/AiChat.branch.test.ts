@@ -102,6 +102,36 @@ describe('AiChat — 分支切换器贯通', () => {
     expect(vm.switchBranch(vm.messages[vm.messages.length - 1]!.id, -1)).toBe(false);
   });
 
+  /**
+   * 命令式 switchBranch **不得**自己再调一次 syncTree：它改的是树结构，契约① 的
+   * watch([messages, branches]) 已经会导出一次。多补一次的后果不是报错而是重复 emit——
+   * 宿主若在 @update:tree 里做序列化落库 / 埋点，同一次切换会被记两遍。
+   * 与 setFeedback / updateBlock 恰好相反（那两个是就地 mutate、不改变树结构，必须显式补）。
+   */
+  it('命令式 switchBranch 只同步一次 v-model:tree（不与契约① 的结构 watch 重复导出）', async () => {
+    n = 0;
+    const w = mount(AiChat, {
+      props: { request, parseChunk, actions: ['regenerate'], 'onUpdate:tree': () => {} },
+    });
+    const vm = w.vm as unknown as {
+      onSend: (t: string) => Promise<void>;
+      messages: ChatMessage[];
+      switchBranch: (id: string, dir: -1 | 1) => boolean;
+    };
+    await vm.onSend('问题');
+    await flush();
+    await w.find('[aria-label="重新生成"]').trigger('click');
+    await flush();
+
+    const aiId = vm.messages[vm.messages.length - 1]!.id;
+    const before = w.emitted('update:tree')!.length;
+
+    expect(vm.switchBranch(aiId, -1)).toBe(true);
+    await flush();
+
+    expect(w.emitted('update:tree')!.length - before).toBe(1);
+  });
+
   it('命令式 setFeedback 写回并同步 v-model:tree，但不回抛 feedback 事件（防埋点重复计数）', async () => {
     n = 0;
     const w = mount(AiChat, {

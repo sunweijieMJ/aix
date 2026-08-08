@@ -158,9 +158,10 @@
       >
         <!-- 自定义图标存在时直出组件；否则走内置 CSS mask（形状来自本地 SVG，颜色随 currentColor
              主题着色）。mask 图源走 --aix-sender-send-icon / --aix-sender-stop-icon 两个变量，
-             默认值以 var() fallback 形式写在样式表里（见文末），**不再是内联 style**：
-             内联优先级压过一切外部样式表，此前想换图标只能带 !important，或者干脆盖不掉
-             （业务写 background-image 会被内置 mask 按纸飞机轮廓裁掉，看着像"换了但形状不对"）。 -->
+             默认值以 var() fallback 形式写在样式表里（见文末），**不得写成内联 style**：
+             内联优先级压过一切外部样式表，宿主想换图标就只能带 !important、甚至根本盖不掉
+             （改 background-image 还会被内置 mask 按纸飞机轮廓裁掉，看着像"换了但形状不对"）。
+             回归用例：__test__/Sender.customization.test.ts（断言图标节点无 style 属性） -->
         <component :is="sendIcon" v-if="sendIcon" aria-hidden="true" />
         <span v-else :class="ns.e('send-icon')" aria-hidden="true" />
       </button>
@@ -240,10 +241,10 @@ export interface SenderProps {
    * 未显式放置 'spacer' 时是否自动在发送键前补一个隐式 spacer，默认 true。
    *
    * 业务完全接管 `#toolbar`（`toolbarItems: []`，不使用任何内置 attach/voice 项）自绘全部
-   * 布局时，隐式 spacer 会插在 slot 内容与发送键之间，把业务自己的左右分组打乱；此前唯一的
-   * 关闭办法是显式声明 `toolbarItems: ['spacer']` 占位、再用 `:deep(.aix-sender__toolbar-spacer)
-   * { display: none }` 把它隐藏掉。设为 `false` 可一步到位不再补隐式 spacer，无需这道 hack。
-   * 不影响显式放置的 'spacer'（那始终按数组顺序渲染）。
+   * 布局时，隐式 spacer 会插在 slot 内容与发送键之间，把业务自己的左右分组打乱；设为 `false`
+   * 即不再补，无需 `toolbarItems: ['spacer']` 占位 + `:deep(.aix-sender__toolbar-spacer)
+   * { display: none }` 那道 hack。不影响显式放置的 'spacer'（那始终按数组顺序渲染）。
+   * 回归用例：__test__/Sender.test.ts
    */
   autoSpacer?: boolean;
   /**
@@ -1302,7 +1303,7 @@ $aix-send-icon-stop: url("data:image/svg+xml,%3Csvg width='16' height='16' viewB
   &__input {
     flex: 1;
 
-    /* 自适应高度的下限（内容更少时仍撑住这个高度）。默认 0 等价于此前"无强制最小高度"的行为 */
+    /* 自适应高度的下限（内容更少时仍撑住这个高度）。默认 0 = 不设下限，高度纯由内容决定 */
     min-height: var(--aix-sender-min-height, 0);
 
     /* 自适应高度的上限（超出后内部滚动）。autosize 用镜像 textarea 量高、再单向赋值给真实
@@ -1378,8 +1379,8 @@ $aix-send-icon-stop: url("data:image/svg+xml,%3Csvg width='16' height='16' viewB
      fallback 形式出现、**不单独声明**（与 --aix-bubble-avatar-size 等既有旋钮同约定，见 README
      「样式定制」）：一旦在本元素上声明默认值，宿主写在任意祖先上的同名变量都会被就近覆盖掉。
      -webkit- 前缀交由构建期 autoprefixer 补（本仓 postcss 已挂，且 stylelint 的
-     property-no-vendor-prefix 明令不手写前缀）——这与此前内联样式的做法不同：那时属性写在 JS 里，
-     根本过不了 postcss，只能自己带上 WebkitMask*。 */
+     property-no-vendor-prefix 明令不手写前缀）。这也是图源必须留在样式表里的原因之一：
+     写进 JS 内联样式的属性根本过不了 postcss，只能自己手写 WebkitMask*。 */
   &__send-icon {
     width: 16px;
     height: 16px;

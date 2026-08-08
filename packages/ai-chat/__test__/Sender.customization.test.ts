@@ -177,6 +177,27 @@ describe('Sender — icons 覆盖内置图标（B）', () => {
   });
 
   /**
+   * 内置 mask 图标的图源必须由样式表里的 `--aix-sender-send-icon` / `--aix-sender-stop-icon`
+   * 提供，**不得回退成内联 style**。内联样式的优先级压过一切外部样式表：一旦图源写进
+   * `style` 属性，宿主想换图标就只能带 `!important`，甚至根本盖不掉——业务改写
+   * `background-image` 还会被内置 mask 按纸飞机轮廓裁掉，看着像「换了但形状不对」。
+   *
+   * 断言「元素上没有任何内联样式」而不是断言样式表内容：jsdom 不解析组件样式，
+   * 但「有没有 style 属性」恰好是内联与外部样式表的分界，正好卡住会回归的那一步。
+   */
+  it('内置发送 / 停止图标不带任何内联样式（图源走 CSS 变量，保证宿主可覆盖）', async () => {
+    const w = mount(Sender);
+    const icon = w.find('.aix-sender__send-icon');
+    expect(icon.exists()).toBe(true);
+    expect(icon.attributes('style')).toBeUndefined();
+
+    await w.setProps({ loading: true });
+    const stopIcon = w.find('.aix-sender__send-icon');
+    expect(stopIcon.exists()).toBe(true);
+    expect(stopIcon.attributes('style')).toBeUndefined();
+  });
+
+  /**
    * send / stop 必须**各自独立回退**：只给 send 时，流式态不能拿发送图标冒充停止，
    * 否则「正在输出、点此停止」的语义整个反过来。
    */
