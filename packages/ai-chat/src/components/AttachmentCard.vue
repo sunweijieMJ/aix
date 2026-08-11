@@ -193,7 +193,6 @@ const errorTitle = computed(() => {
   // adx 268px → 面板场景收窄为 248px；开为变量供窄侧栏 / 宽面板等布局调整
   width: var(--aix-attachment-card-width, 248px);
   padding: var(--aix-paddingSM) var(--aix-padding, var(--aix-paddingSM));
-  overflow: hidden;
   border: 1px solid transparent; // adx 文件卡无边框，靠底色区分；error 时上色
   border-radius: var(--aix-borderRadius);
   background-color: var(--aix-colorFillTertiary);
