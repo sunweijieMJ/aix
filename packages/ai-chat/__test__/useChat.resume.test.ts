@@ -118,6 +118,51 @@ describe('useChat — resume 续流', () => {
     expect(chat.isLoading.value).toBe(false);
   });
 
+  // 回归：五条终态路径（success / abort×3 / error×2）此前各自手写 seal + 写状态 + 回调，
+  // 深拷贝失败那条漏了 sealToolArgs——于是这一轮坏掉后，argsText 已是完整 JSON 的工具卡
+  // 永远停在「参数流式中」，宿主取不到参数也无法执行。现统一走 settle()，五条路径同口径。
+  it('resume 快照深拷贝抛错：落 error 终态时同样封口 tool_use 参数', async () => {
+    const chat = useChat({
+      request: () => Promise.resolve(stream(['[DONE]'])),
+      parseChunk,
+    });
+    // 从持久化历史恢复的形态：消息级 status 已被 reconcileStuckMessages 复位，但块级
+    // state 仍停在流式中途（argsText 其实已经完整）
+    chat.setMessages([
+      { id: 'u1', role: 'user', content: [{ id: 'b0', type: 'text', text: 'q' }], status: 'local' },
+      {
+        id: 'a1',
+        role: 'ai',
+        status: 'error',
+        content: [
+          { id: 'b1', type: 'text', text: '部分回答' },
+          {
+            id: 'b2',
+            type: 'tool_use',
+            toolCallId: 'c1',
+            toolName: 'act',
+            state: 'input-streaming',
+            argsText: '{"x":1}',
+          },
+        ],
+      },
+    ]);
+    await nextTick();
+    const ai = chat.messages.value[1]!;
+    // 让快照深拷贝必抛（业务经 updateBlock 可写入任意值）
+    const blk = ai.content[0]! as unknown as { extra?: Record<string, unknown> };
+    blk.extra = {};
+    blk.extra.self = blk.extra;
+
+    await expect(chat.resume(ai.id)).resolves.toBe(true);
+    await flush();
+    expect(ai.status).toBe('error');
+    expect(ai.content.find((b) => b.type === 'tool_use')).toMatchObject({
+      state: 'input-available',
+      input: { x: 1 },
+    });
+  });
+
   it('isLoading 时 resume 被拒（并发守卫）', async () => {
     let release: () => void = () => {};
     const chat = useChat({

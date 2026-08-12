@@ -31,9 +31,9 @@ export interface UseChatRequestCtx {
   /**
    * 本轮 AI 回复消息的 id（占位消息已入树、状态为 loading，故请求期就能引用它）。
    *
-   * 有了它，「本轮的业务元数据」终于有正规落点：此前业务只能在 request 里生成自己的
-   * 会话/轮次 id，塞进一个模块级的「当前值」ref，再靠 `@finish/@abort/@error` 回调回填到
-   * 消息上——快速连发、重新生成、并行副请求几种场景下那个 ref 会串轮次，且很难察觉。
+   * 「本轮的业务元数据」应以它为落点（配合下方 setExtra），而不是在外部存一个「当前轮次」
+   * ref 再靠 `@finish/@abort/@error` 回填——那种写法在快速连发 / 重新生成 / 并行副请求下
+   * 会串轮次，且很难察觉。
    */
   messageId: string;
   /**
@@ -116,8 +116,8 @@ export interface UseChatReturn {
   messages: ComputedRef<ChatMessage[]>;
   /**
    * UI 渲染消息：未设置 parser 时与 messages 同引用；设置后为 parser 映射结果。
-   * 与 messages 同为**只读派生值**（两个分支都是 computed），故类型与 messages 对齐为
-   * ComputedRef——此前标成可写的 Ref 属类型失真：消费方赋值只会拿到 Vue 的只读告警后静默失败。
+   * 与 messages 同为**只读派生值**（两个分支都是 computed）：赋值只会拿到 Vue 的只读告警后
+   * 静默失败，改消息一律走 setMessages / importTree。
    */
   parsedMessages: ComputedRef<ChatMessage[]>;
   isLoading: Ref<boolean>;
@@ -134,7 +134,6 @@ export interface UseChatReturn {
    * 返回是否受理（与 updateBlock 返回命中与否同构）：true 表示已新建兄弟用户节点并重发；
    * false 表示被守卫拒绝（流式进行中 / id 未命中 / 非 user 消息），消息未做任何改动，
    * 上层（如 AiChat.onEditMessage）可据此跳过对外透出，避免业务误持久化。
-   * 注：由 void 改为 boolean 属兼容性增强，旧调用方忽略返回值不受影响。
    */
   onEdit: (id: string, text: string) => Promise<boolean>;
   abort: () => void;
@@ -267,9 +266,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     streamTimeout = 0,
     continuePrompt = '请从刚才中断的地方继续往下写，不要重复已经写过的内容。',
   } = options;
-  // 开发期护栏（与 updateBlock 未命中 / 非法 blockType 同风格）：line 模式漏配 parseChunk
-  // 是静默死流——默认 flatParseChunk 对行字符串取 .data 恒 undefined → 每行空增量 →
-  // 空内容 success，全程无报错，是最难排查的配置错误形态。
+  // 开发期护栏（与 updateBlock 未命中 / 非法 blockType 同风格）：这条配置错误的表现是
+  // 「空内容 success、全程无报错」，没有护栏几乎无从排查。
   if (streamMode === 'line' && !options.parseChunk) {
     devWarn(
       '[ai-chat] streamMode="line" 未提供 parseChunk：默认解析器只识别 SSE 事件，' +
@@ -472,6 +470,28 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     return false;
   };
 
+  /**
+   * 消息落终态的统一收尾：封口未结束的 reasoning 与 tool_use 参数 → 写状态 → 触发对应回调
+   * （error 另外把原始错误写进 extra 供渲染层取用）。
+   *
+   * 收敛为一处而非每条路径各写一遍：终态出口有五个（成功 / 中断 ×3 / 出错 ×2），
+   * 靠人工同步已经漏过一次——深拷贝失败那条只封了 reasoning、没封 tool_use 参数，
+   * 于是 resume 场景下坏掉的那一轮会留下一张永远停在「参数流式中」的工具卡。
+   */
+  const settle = (msg: ChatMessage, status: 'success' | 'abort' | 'error', error?: unknown) => {
+    sealReasoning(msg);
+    sealToolArgs(msg);
+    msg.status = status;
+    if (status === 'success') {
+      onFinish?.(msg);
+    } else if (status === 'abort') {
+      onAbort?.(msg);
+    } else {
+      msg.extra = { ...msg.extra, error };
+      onError?.(msg, error);
+    }
+  };
+
   const setFeedback = (id: string, value: MessageFeedback | null) => {
     const msg = tree.getMessage(resolveParentId(id));
     if (!msg) return;
@@ -527,12 +547,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         // 会抛错。外层 try 只有 finally：直接上抛会以 unhandled rejection 逃逸、onError
         // 不触发、消息永久卡在 updating 假加载态——此处显式落统一错误终态。
         console.error('[ai-chat] request failed:', err);
-        if (entryMsg && ownsMsg()) {
-          sealReasoning(entryMsg);
-          entryMsg.status = 'error';
-          entryMsg.extra = { ...entryMsg.extra, error: err };
-          onError?.(entryMsg, err);
-        }
+        if (entryMsg && ownsMsg()) settle(entryMsg, 'error', err);
         return;
       }
       // 重试回滚基线含 suggestions：失败尝试的半截流可能已写入陈旧追问建议，
@@ -680,29 +695,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 看门狗触发时 xStream 对 abort 是优雅收尾（reader.cancel → 循环正常退出），
           // 须先于 abort/success 判定抛出超时错误，交给 catch 走可重试路径。
           if (timedOut) throw streamTimeoutError();
-          if (ctrl.signal.aborted) {
-            if (ownsMsg()) {
-              sealReasoning(aiMsg);
-              sealToolArgs(aiMsg);
-              aiMsg.status = 'abort';
-              onAbort?.(aiMsg);
-            }
-          } else if (ownsMsg()) {
-            sealReasoning(aiMsg);
-            sealToolArgs(aiMsg);
-            aiMsg.status = 'success';
-            onFinish?.(aiMsg);
-          }
+          if (ownsMsg()) settle(aiMsg, ctrl.signal.aborted ? 'abort' : 'success');
           return; // 本次成功（或被中断）→ 结束重试循环
         } catch (err) {
           // 中断优先于重试：被 abort 直接判为 abort，不再重试。
           if (ctrl.signal.aborted) {
-            if (ownsMsg()) {
-              sealReasoning(aiMsg);
-              sealToolArgs(aiMsg);
-              aiMsg.status = 'abort';
-              onAbort?.(aiMsg);
-            }
+            if (ownsMsg()) settle(aiMsg, 'abort');
             return;
           }
           // 超时路径的原始错误可能是 reader 的 AbortError，统一包装为 StreamTimeoutError
@@ -725,12 +723,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               );
             });
             if (ctrl.signal.aborted) {
-              if (ownsMsg()) {
-                sealReasoning(aiMsg);
-                sealToolArgs(aiMsg);
-                aiMsg.status = 'abort';
-                onAbort?.(aiMsg);
-              }
+              if (ownsMsg()) settle(aiMsg, 'abort');
               return;
             }
             continue;
@@ -738,13 +731,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 重试耗尽：透出原始错误（写入 extra 供渲染层取用、回传 onError 供上层上报、
           // 并兜底打到控制台，避免错误被静默吞掉导致线上无法排障）。
           console.error('[ai-chat] request failed:', finalErr);
-          if (ownsMsg()) {
-            sealReasoning(aiMsg);
-            sealToolArgs(aiMsg);
-            aiMsg.status = 'error';
-            aiMsg.extra = { ...aiMsg.extra, error: finalErr };
-            onError?.(aiMsg, finalErr);
-          }
+          if (ownsMsg()) settle(aiMsg, 'error', finalErr);
           return;
         } finally {
           // 每次尝试的看门狗与联动监听清理（重试新尝试会重建）
@@ -799,9 +786,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     // 下方改写语义是「把父消息的全部 text 块合并为单个 text 块」，而派生气泡只持有父消息的
     // 一个切片；用它的草稿去改写父消息会静默丢掉其余段落（编辑第 2 段 → 第 1 段消失）。
     // 首个子气泡复用父 id（pid === id），照常放行；1→1 与无 parser 场景不受影响。
-    // AiChat 侧对被拆分的用户消息**根本不挂 edit 入口**（曾经只挂在末子气泡上——而末子气泡
-    // 恒为派生 id，等于把入口精确留在必被本守卫拒绝的那个气泡上，点开能写、保存静默丢草稿）。
-    // 本守卫仍是最终不变量：headless 直接用 useChat 的调用方绕得过任何 UI 层策略。
+    // AiChat 侧对被拆分的用户消息根本不挂 edit 入口（见其 actionsFor），本守卫是最终不变量：
+    // headless 直接用 useChat 的调用方绕得过任何 UI 层策略。
     if (pid !== id) {
       devWarn(
         `[ai-chat] onEdit 收到派生气泡 id "${id}"（parser 1→N 拆分产物），已拒绝：` +

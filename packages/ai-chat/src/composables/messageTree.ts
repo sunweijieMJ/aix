@@ -232,7 +232,26 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
           '通常意味着持久化的对话树数据不完整或已损坏。',
       );
     }
-    headId.value = nodes.has(data.headId) ? data.headId : ROOT_ID;
+    // headId 指向不存在的节点时**不能**回落 ROOT：那会得到一棵「节点全在、激活路径为空」的树，
+    // 表现为会话凭空清空（渲染层只读 activePath），且 exportTree 会把这个空 headId 原样写回
+    // 持久化层，宿主按导出树同步的 messages 镜像随之被覆写为空——损坏就此传染。
+    // 改为沿 activeChild 兜到一个真实叶子，与孤儿·自指改挂到根同一条思路：宁可激活路径选得
+    // 不完全符合用户上次所见，也不留一棵取不出内容的树。
+    if (nodes.has(data.headId)) {
+      headId.value = data.headId;
+    } else {
+      // 此刻 activeChild 仍是上方重建循环留下的「每层最后插入的子」（head 路径还原尚未跑），
+      // 故得到的是最近追加的那条分支；节点表为空时原样返回 ROOT_ID。
+      headId.value = findLeaf(ROOT_ID);
+      // 仅在确有节点时告警：空树 + 无效 headId 的结果（空路径）本就是正确的，没有内容被藏起来。
+      // 有节点却仍兜到 ROOT 的情形（如多节点成环，无法在导入期廉价识别）同样落在这条告警里。
+      if (incoming.length > 0) {
+        console.warn(
+          `[ai-chat] messageTree.importTree 的 headId（"${String(data.headId)}"）在节点表中不存在，` +
+            '已改用最近的一条分支作为激活路径。通常意味着持久化的对话树数据已损坏。',
+        );
+      }
+    }
     // 还原激活路径：从 head 向上把每层 activeChild 指向路径上的子
     const seen = new Set<string>();
     let cur = nodes.get(headId.value);

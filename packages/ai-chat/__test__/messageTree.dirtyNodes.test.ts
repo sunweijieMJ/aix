@@ -57,6 +57,59 @@ describe('messageTree — importTree 的 nodes 非数组归一', () => {
 });
 
 /**
+ * headId 指向不存在的节点（持久化被截断 / 篡改）此前回落 ROOT_ID —— 节点全在、激活路径为空，
+ * 渲染层只读 activePath，表现为「会话凭空清空」且零告警；更糟的是 exportTree 会把这个空 headId
+ * 原样写回持久化层，宿主按导出树同步的 messages 镜像随之被覆写为空，损坏就此传染。
+ * 现改为沿 activeChild 兜到一个真实叶子（与孤儿·自指改挂到根同一条修复思路）。
+ */
+describe('messageTree — importTree 的 headId 损坏兜底', () => {
+  let warn: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  const tree = (headId: string): ExportedTree => ({
+    nodes: [
+      { id: 'u1', parentId: ROOT_ID, message: { id: 'u1', role: 'user', content: [] } },
+      { id: 'a1', parentId: 'u1', message: { id: 'a1', role: 'ai', content: [] } },
+    ],
+    headId,
+  });
+
+  it('headId 不存在时仍能取出激活路径，而非空树', () => {
+    const t = createMessageTree();
+    t.importTree(tree('a-gone'));
+    expect(t.activePath.value.map((m) => m.id)).toEqual(['u1', 'a1']);
+    expect(t.headId.value).toBe('a1');
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('兜底后导出的 headId 是真实节点，不把损坏写回持久化层', () => {
+    const t = createMessageTree();
+    t.importTree(tree('a-gone'));
+    const exported = t.exportTree();
+    expect(exported.nodes).toHaveLength(2);
+    expect(exported.headId).toBe('a1');
+    // 二次导入自己的导出结果不再告警（数据已自洽）
+    warn.mockClear();
+    const t2 = createMessageTree();
+    t2.importTree(exported);
+    expect(t2.activePath.value.map((m) => m.id)).toEqual(['u1', 'a1']);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('空树 + 无效 headId 不告警（空路径本就是正确结果，没有内容被藏起来）', () => {
+    const t = createMessageTree();
+    t.importTree({ nodes: [], headId: 'nope' });
+    expect(t.activePath.value).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+/**
  * importFlat 吃的是与 importTree 同等不可信的来源（defaultMessages / v-model:messages），
  * 但此前没有任何脏数据防线。重复 id 会让后写的节点覆盖先写的（连带丢掉它的 childIds），
  * 回溯时又被 seen 防环截断——结果是**静默错乱**（顺序被打乱且丢消息），排查成本极高。
