@@ -28,30 +28,28 @@ let msgUid = 0;
 /** message 稳定唯一 id */
 export const genMsgId = (): string => `msg-${Date.now()}-${msgUid++}`;
 
+// ── 内容块工厂 ──
 // 各工厂返回精确的窄类型（Extract 到对应 type），便于直接喂给只接受特定块类型的组件 prop
-// （如 TextBlock 仅收 text/reasoning）。
-/** 创建文本块 */
+// （如 TextBlock 仅收 text/reasoning）。块语义见 types.ts 的 ContentBlockRegistry，
+// 故此处只对「参数不止一个、或有缺省行为」的工厂单独写文档。
 export const textBlock = (text: string): Extract<ContentBlock, { type: 'text' }> => ({
   id: genBlockId(),
   type: 'text',
   text,
 });
 
-/** 创建推理块（思考过程，通常折叠展示） */
 export const reasoningBlock = (text: string): Extract<ContentBlock, { type: 'reasoning' }> => ({
   id: genBlockId(),
   type: 'reasoning',
   text,
 });
 
-/** 创建引用来源块 */
 export const sourcesBlock = (items: SourceItem[]): Extract<ContentBlock, { type: 'sources' }> => ({
   id: genBlockId(),
   type: 'sources',
   items,
 });
 
-/** 创建思维链块（Agent 执行步骤时间线） */
 export const thoughtChainBlock = (
   items: ThoughtChainItem[],
 ): Extract<ContentBlock, { type: 'thought-chain' }> => ({
@@ -60,7 +58,6 @@ export const thoughtChainBlock = (
   items,
 });
 
-/** 创建附件块（用户消息携带的已上传附件） */
 export const attachmentBlock = (
   items: AttachmentItem[],
 ): Extract<ContentBlock, { type: 'attachment' }> => ({

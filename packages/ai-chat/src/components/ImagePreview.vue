@@ -112,8 +112,8 @@ const { state: currentIndex, setState: setIndex } = useControllable<number>({
 
 const active = computed(() => props.images[currentIndex.value]);
 /**
- * 协议白名单：images 来自模型 / 生图工具输出（不可信）。此前 `<a :href="active.url" download>`
- * 是全包唯一一处未过白名单的 href —— `javascript:` 会原样渲染成可点击链接，构成点击型 XSS
+ * 协议白名单：images 来自模型 / 生图工具输出（不可信）。下载入口是 href 而非 img src，
+ * 不过白名单则 `javascript:` 会原样渲染成可点击链接，构成点击型 XSS
  * （`<img src>` 不执行脚本，但同一份 url 走 href 就会）。
  * 用 safeImageSrc 而非 safeUrl：图片预览的下载入口必须放行 `data:image/*` 与 `blob:`
  * （生图工具与本地预览的常规形态），且这里恒带 `download` 属性、不是导航型链接。

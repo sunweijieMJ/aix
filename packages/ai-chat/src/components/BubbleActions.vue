@@ -252,10 +252,10 @@ const markCopied = (key: 'copy' | 'copySource') => {
     copiedKey.value = null;
   }, 1500);
 };
-// 复制文本在**点击那一刻**才求值，不由上层逐帧预先算好：AiChat 此前在模板里写
-// `:content="stripMarkdownForCopy(messageText(item))"`，于是每次父级重渲染都要对全文重扫一遍
-// markdown —— 流式期间只要该消息挂着操作条（如它有分支版本，切换器要求 footer 常挂），
-// 就退化成逐帧 O(全文)。显式传入的 content / sourceContent 始终优先，独立使用的既有行为不变。
+// 复制文本在**点击那一刻**才求值，不由上层逐帧预先算好（如在模板里写
+// `:content="stripMarkdownForCopy(messageText(item))"`）：那样每次父级重渲染都要对全文重扫
+// 一遍 markdown，而流式期间只要该消息挂着操作条（有分支版本时切换器要求 footer 常挂），
+// 就退化成逐帧 O(全文)。显式传入的 content / sourceContent 始终优先。
 const resolveCopyText = (): string =>
   props.content ?? (props.message ? stripMarkdownForCopy(messageText(props.message)) : '');
 // sourceContent 未传时依次退化：message 原始 markdown → content（后者保留给只传了 content

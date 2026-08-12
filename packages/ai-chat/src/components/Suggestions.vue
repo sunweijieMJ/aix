@@ -65,10 +65,9 @@ defineSlots<{ default?: (props: { item: SuggestionItem }) => unknown }>();
     align-items: center;
     max-width: 100%;
 
-    /* 定高改下限：原先写死 height 后，容器一窄（侧边栏 / 移动端）文案就换行，而 24px 的
+    /* 用 min-height 而非写死 height：容器一窄（侧边栏 / 移动端）文案就换行，而 24px 的
        内容盒装不下两行——配合 align-items:center 会上下双向溢出到圆角描边之外。
-       改成 min-height 后单行形态逐像素不变（行盒高度小于本下限，仍由它决定），
-       多行时按内容撑高。max-width 兜住「一条建议比容器还长」的情形。
+       min-height 下单行形态逐像素不变（行盒高度小于本下限，仍由它决定），多行时按内容撑高。max-width 兜住「一条建议比容器还长」的情形。
        纵向 padding 刻意保持 0：加上去会让既有单行胶囊从 24px 变高，属无谓的视觉回归；
        想要多行更舒展的宿主自行加 padding 即可。 */
     min-height: var(--aix-controlHeightSM);

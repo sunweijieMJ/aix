@@ -71,7 +71,7 @@ export async function ensureChartType(core: EChartsLike, kind: EChartsChartKind)
 /**
  * 从 option.series[0].type 推断图表类型（围栏路径无显式 kind 时用）。
  * 未给 type（dataset 驱动等）回退 'line'；**明确给了清单外类型**（如 candlestick）返回 null——
- * 此前回退 'line' 会加载错子模块，产出一块无任何反馈的空白容器，应交由调用方降级。
+ * 回退 'line' 会加载错子模块，产出一块无任何反馈的空白容器，故交由调用方降级。
  */
 export function inferKind(option: Record<string, unknown>): EChartsChartKind | null {
   const series = option.series;

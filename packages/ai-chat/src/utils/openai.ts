@@ -71,7 +71,7 @@ const ROLE_MAP: Record<string, OpenAIChatMessage['role']> = {
  * 并为每个已终态（`state` 为 `output-available` 或 `output-error`）的 tool_use 追加一条
  * `role:'tool'` 消息（`output-error` 时以 errorText 序列化为内容），
  * 顺序与协议一致：assistant(tool_calls) → tool → tool → ...。
- * 无 tool_use 的消息行为与此前完全一致（仅 `{ role, content }`）。
+ * 无 tool_use 的消息只产出 `{ role, content }`。
  * 注意：仅回传「已完成的 AI 回合」——若历史里含尚未产出结果的 tool_use（`state` 为
  * `input-streaming` / `input-available` 等非终态），会生成带 `tool_calls` 却无配对
  * `role:'tool'` 响应的 assistant 消息，OpenAI 会因 tool_call 无响应报错。

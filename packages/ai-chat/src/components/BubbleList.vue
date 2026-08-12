@@ -17,7 +17,7 @@
           <!-- 行级插槽：渲染在 .aix-bubble **之外**、占满整行宽度。
                消息时间戳、日期分隔线、未读分割线这类内容必须整行居中，而 Bubble 的 #header
                挂在 __wrapper 内、受气泡自身对齐（user 侧是 align-items:flex-end）约束，
-               只能贴在气泡角上——业务此前只能靠 align-self 折中，且注释里明说想要的整行做不到。
+               只能贴在气泡角上，做不到整行。
                prev 一并给出：算「距上一条超过 N 分钟才显示时间」不必再自己维护全表派生。
 
                包裹层由 RowBefore（见 script）按「这一条**产出了内容**」决定渲不渲染，
@@ -208,11 +208,11 @@ const passthroughSlotNames = computed(() =>
  * 做成函数式组件而不是「模板里 v-if 判空 + <slot> 再渲染一次」，是因为后者会让插槽函数
  * 每条每帧**被调用两次**。插槽由宿主提供，不能假定它是纯的——把它当纯函数反复调用，
  * 带副作用（埋点、计数、push 进外部数组）的实现就会莫名其妙地翻倍。这里调用一次、
- * 拿到 vnode 后自己决定包不包，调用次数与改动前完全一致。
+ * 拿到 vnode 后自己决定包不包。
  *
  * 另有一处顺带的好处：插槽内容读到的响应式依赖由本组件自己的 render effect 收集，
- * 变化时只重渲染这一行，也不存在 Bubble.hasFooterContent 那边「多层转发插槽追踪不到、
- * 要靠 void props.status 补一刀」的缺口。
+ * 变化时只重渲染这一行，不需要对整条转发链上的依赖做人工补读。
+ * Bubble 的 footer 包裹层（FooterWrap）同款。
  *
  * 必须显式声明 props：函数式组件不声明 props 时，传入的一切都会被当作 attrs 走
  * fallthrough，item / index / prev 会被原样写成根节点的 DOM 属性。
@@ -267,7 +267,7 @@ const keepMounted = computed<number[]>(() => {
   return idx;
 });
 
-// 单次解析角色级 props 并合入块渲染器（避免此前 resolveBubbleProps 被调两次 / 角色函数执行两次）。
+// 单次解析角色级 props 并合入块渲染器（一条消息只调一次，函数形态的角色配置不被重复执行）。
 // 块渲染器合并优先级：list 级 < role 级（role 更具体）；Bubble 内部再叠加内置默认。
 const resolveBubble = (item: ChatMessage): Partial<BubbleProps> => {
   // item.role 开放给任意字符串、来源同样是流数据与持久化的对话树，故走 ownProp 的自有属性
@@ -421,9 +421,8 @@ watch(
 );
 
 // 末条内容流式增长 → streaming 跟随。
-// content 切为 ContentBlock[] 后，流式是「就地 mutate（last.text += delta）+ push」，
-// 数组引用不变，故不能直接 watch content 引用；改为追踪内容增长指纹，
-// 任一增长都触发跟随，等价于此前 watch 字符串内容增长的行为。
+// 流式是「就地 mutate（last.text += delta）+ push」，content 数组引用不变，故不能直接
+// watch 引用；改为追踪内容增长指纹，任一维度增长都触发跟随。
 watch(
   () => contentFingerprint(props.items[props.items.length - 1]?.content),
   () => nextTick(() => follow('streaming')),

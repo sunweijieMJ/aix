@@ -46,10 +46,9 @@ const props = withDefaults(defineProps<ImageThumbProps>(), { alt: '' });
 const { t } = useLocale(locale);
 
 /**
- * 协议白名单收口点：markdown 图片路径（utils/imageRenderers.ts）此前已各自过滤，但结构化
- * `image` 块路径（blocks/ImageBlock.vue → 本组件）是裸传 `block.images[].url` 的——而这两条
- * 路径的数据同样来自模型 / 生图工具输出。放在本组件统一过滤，两条路径就都有了同一层防护，
- * 上游重复调用 safeImageSrc 也无副作用（幂等）。不安全 src 归一为空串 → 走上方失败占位分支。
+ * 协议白名单收口点：markdown 图片路径（utils/imageRenderers.ts）与结构化 `image` 块路径
+ * （blocks/ImageBlock.vue → 本组件）的数据都来自模型 / 生图工具输出。放在本组件统一过滤，
+ * 两条路径便共享同一层防护，上游重复调用 safeImageSrc 也无副作用（幂等）。不安全 src 归一为空串 → 走上方失败占位分支。
  */
 const safeSrc = computed(() => safeImageSrc(props.src) ?? '');
 

@@ -94,7 +94,7 @@ export function useAttachments(options: UseAttachmentsOptions): UseAttachmentsRe
     upload(f, {
       onProgress: (p) => {
         if (Number.isNaN(p)) return; // 防御 upload 实现除零等误传 NaN（避免 UI 显示 "NaN%"）
-        // 取回数组内响应式代理，确保 percent mutate 触发视图更新（响应式陷阱教训）
+        // 取回数组内响应式代理，确保 percent mutate 触发视图更新（entry 是入列前的裸对象）
         const cur = items.value.find((it) => it.id === entry.id);
         if (cur) cur.percent = Math.max(0, Math.min(100, p));
       },
@@ -188,11 +188,11 @@ export function useAttachments(options: UseAttachmentsOptions): UseAttachmentsRe
   // 组件外调用（无活跃 scope）时跳过，与包内其他 composable 行为一致
   if (getCurrentScope()) {
     onScopeDispose(() => {
-      // 走 clear() 而不是只 abort：销毁同样是「丢弃」语义，条目再也回不来了，
-      // 业务在 upload 里于服务端产生的资源必须有机会回收。此前只中断在途请求，
-      // 已经**传完**（status 'done'）的条目连同它们的 extra 一起被静默丢掉——
-      // onRemove 永不触发，服务端文件就成了没人认领的孤儿。典型触发场景是把 AiChat
-      // 挂在 v-if 侧边栏里：用户传完附件没发就关掉面板，每关一次漏一批。
+      // 走 clear() 而不是只 abort 在途请求：销毁同样是「丢弃」语义，条目再也回不来了，
+      // 业务在 upload 里于服务端产生的资源必须有机会回收。只 abort 的话，已经**传完**
+      // （status 'done'）的条目连同它们的 extra 一起被静默丢掉、onRemove 永不触发，
+      // 服务端文件就成了没人认领的孤儿。典型场景是把 AiChat 挂在 v-if 侧边栏里：
+      // 用户传完附件没发就关掉面板，每关一次漏一批。
       //
       // clear() 内部已含 abort 全部在途请求 + 清空 ctrls，故不必重复。
       // 宿主注入实例（UseAttachmentsReturn）时本钩子归属**宿主自己**的 scope

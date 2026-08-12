@@ -105,8 +105,8 @@ export { stripMarkdownForSpeech } from './utils/stripMarkdownForSpeech';
 export { stripMarkdownForCopy } from './utils/stripMarkdownForCopy';
 
 // 剪贴板写入（Clipboard API + execCommand 兜底，兼容 HTTP / 旧浏览器；返回是否成功）。
-// 内置 BubbleActions 的复制键与划词菜单的「复制」走的就是它——此前只在包内使用而未对外导出，
-// 于是自绘操作条（#footer 接管）的业务只能照着重写一遍同样的降级逻辑。
+// 内置 BubbleActions 的复制键与划词菜单的「复制」走的就是它，自绘操作条（#footer 接管）
+// 可直接复用，不必重写降级逻辑。
 export { copyText } from '@aix/hooks';
 
 // URL 安全工具（协议白名单，供数据驱动的 href / img src 场景复用）
@@ -169,8 +169,7 @@ export type {
   SenderIcons,
 } from './components/Sender.vue';
 export type { BubbleListProps, BubbleListEmits } from './components/BubbleList.vue';
-// BubbleFooterActions 是 #footer 作用域插槽回传的 `actions` 句柄集类型——自绘操作条的业务
-// 必然要给它标类型，此前声明在 AiChat.vue 内却未经此处导出，等于拿不到。
+// BubbleFooterActions 是 #footer 作用域插槽回传的 `actions` 句柄集类型（自绘操作条据此标注）
 export type { AiChatProps, AiChatEmits, BubbleFooterActions } from './components/AiChat.vue';
 export type { WelcomeProps } from './components/Welcome.vue';
 export type { ThinkingProps } from './components/Thinking.vue';

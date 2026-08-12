@@ -35,11 +35,11 @@ function reconcileStatus(m: ChatMessage): ChatMessage {
 function reconcileStuckMessages(list: Conversation[]): Conversation[] {
   return list.map((rawConv) => {
     // 树数据损坏（nodes 非数组）：丢弃整棵树、回退到扁平 messages 分支（activeTree 的 getter
-    // 会按 messages 重新迁移出线性树，消息内容不丢）。与下方 messages 非数组的归一同一口径——
-    // 此前这里直接 .map 会抛：同步 defaultConversations 路径炸在 setup 里，异步 storage.load
-    // 路径则被 .catch 吞成「加载失败」，用户看到空列表、之后的变更还会把空列表写回 storage
-    // 覆盖真实历史。属 messageTree.importTree 那条脏数据防线（根 id 冲突 / 孤儿改挂 / 防环）
-    // 在本文件的遗漏补齐。
+    // 会按 messages 重新迁移出线性树，消息内容不丢）。与下方 messages 非数组的归一同一口径，
+    // 也与 messageTree.importTree 那条脏数据防线（根 id 冲突 / 孤儿改挂 / 防环）同一思路。
+    // 不设防则直接 .map 抛错：同步 defaultConversations 路径炸在 setup 里，异步 storage.load
+    // 路径被 .catch 吞成「加载失败」，用户看到空列表、之后的变更还会把空列表写回 storage
+    // 覆盖真实历史。
     let conv = rawConv;
     if (rawConv.tree && !Array.isArray(rawConv.tree.nodes)) {
       console.warn(
@@ -59,9 +59,9 @@ function reconcileStuckMessages(list: Conversation[]): Conversation[] {
         changed = true;
         return { ...n, message: fixed };
       });
-      // messages 镜像是 activeTree.set 同步出的 active path，兼容仅读 messages 的旧消费方。
-      // 非数组（持久化脏数据）归一为空数组，与下方扁平分支同一口径——此前原样透传，
-      // 而 activeMessages 的 `?? []` 只挡得住 null/undefined：一个被损坏成字符串的 messages
+      // messages 镜像是 activeTree.set 同步出的 active path，兼容仅读 messages 的消费方。
+      // 非数组（持久化脏数据）归一为空数组，与下方扁平分支同一口径。必须在这里挡：
+      // activeMessages 的 `?? []` 只挡得住 null/undefined，而一个被损坏成字符串的 messages
       // 会让 AiChat 的 `messagesModel.value.length > 0` 成立并 setMessages(字符串)，
       // importFlat 逐字符迭代出一棵 id 全为 undefined 的垃圾树。
       let messages = conv.messages;

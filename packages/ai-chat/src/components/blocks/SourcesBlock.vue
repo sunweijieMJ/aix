@@ -60,7 +60,7 @@ const { t } = useLocale(locale);
 // ① isImageSource 先分流「这是不是一个图片地址」——emoji 与短文本走文本渲染（iconText）；
 // ② 判为图片地址的再过 safeImageSrc 白名单（放行 http(s)/data:image/blob:），与包内其余
 //    <img> 路径（ImageThumb / markdownWalker / imageRenderers / ImagePreview）同一层防护。
-// 两步都不能省：只做 ① 会让 icon 绕过白名单（此前如此，与紧邻的 href 口径不一致）；
+// 两步都不能省：只做 ① 会让 icon 绕过白名单，与紧邻的 href 口径不一致；
 // 只做 ② 则 emoji 会被 safeUrl 当作「无协议的相对路径」原样放行、渲染成必然失败的裂图。
 // 判为图片地址但未过白名单时 iconSrc/iconText 双空：既不出裂图，也不把 `data:text/html,…`
 // 这类原文当 emoji 显示出来。

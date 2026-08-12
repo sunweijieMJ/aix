@@ -354,9 +354,7 @@ export interface SenderSlotScope {
    * 清空全部待发附件（逐条走 `onRemove`，供业务回收服务端资源）；未启用附件时为空操作。
    *
    * 与 `clear`（只清输入框文本）分开：两者常常不该同时发生——发送后由内部 `drain()` 消耗
-   * 附件，而「放弃这一轮」才需要连附件一起丢。此前 slotScope 只给了 `attachmentCount`，
-   * 自绘工具栏能看见有几个附件却没有任何清空入口，想在关闭面板 / 切会话时把它们回收掉，
-   * 只能整份改用注入实例（`attachments` 传 `UseAttachmentsReturn`）。
+   * 附件，而「放弃这一轮」才需要连附件一起丢（如关闭面板 / 切会话时回收服务端资源）。
    */
   clearAttachments: () => void;
   /** 是否启用了附件能力（未传 attachments prop 时为 false，自定义按钮据此决定要不要渲染） */
@@ -763,13 +761,12 @@ const sendIcon = computed(() => resolveIcon(props.loading ? props.icons?.stop : 
 // 自适应高度：内容增减时按 scrollHeight 撑高，上限由 CSS max-height 接管（超出后内部滚动）。
 //
 // 用一个脱离文档流、不可见的镜像 textarea 承接"height:auto 塌陷→按 scrollHeight 重新撑高"这次
-// 测量，而不是直接在真实输入框（正在聚焦，且可能身处很长的会话/虚拟消息列表旁边）上做——
-// 之前的写法会让真实输入框经历一次真实的高度塌陷再撑高，这个两段式变化牵连整个 flex 布局
-// （包括旁边可能高达数千像素的虚拟列表），曾观测到在内容很重的长会话页面上，这次重排会导致
-// 刚聚焦的输入框出现一次瞬间 blur→重新 focus 的抖动——普通直接输入不易察觉，但中文拼音输入法
-// 组词过程中会因此被打断（表现为"打字打着打着突然失焦"）。
-// 镜像元素用 position:fixed 脱离文档流，自身尺寸变化不会牵连页面其余布局；测出目标高度后只
-// 对真实输入框做一次单向赋值（height 直接改成目标像素值），真实输入框自己不再经历塌陷态。
+// 测量，而**不**直接在真实输入框上做：真实输入框正在聚焦，且可能身处很长的会话 / 虚拟消息列表
+// 旁边，让它经历一次真实的高度塌陷再撑高会牵连整个 flex 布局（含旁边可能数千像素高的虚拟
+// 列表），这次重排在内容很重的长会话页面上会让刚聚焦的输入框瞬间 blur→重新 focus——普通输入
+// 不易察觉，但中文拼音组词会因此被打断（表现为"打字打着打着突然失焦"）。
+// 镜像元素用 position:fixed 脱离文档流，自身尺寸变化不牵连页面其余布局；测出目标高度后只
+// 对真实输入框做一次单向赋值（height 直接改成目标像素值），它自己不再经历塌陷态。
 let mirrorEl: HTMLTextAreaElement | null = null;
 const getMirror = (): HTMLTextAreaElement | null => {
   if (mirrorEl) return mirrorEl;
@@ -1221,8 +1218,8 @@ defineExpose({
 <style lang="scss">
 /* 发送 / 停止图标以 data URI 内联，而**不是** url('../assets/send-default.svg')：
    本仓构建链路里 rollup-plugin-postcss 没有挂 postcss-url，SCSS 中的相对 url() 既不会被重写
-   也不会发射资源文件——产物 es/index.css 会留下一条指向包外不存在路径的引用，图标直接空掉
-   （已实测）。内联同时保证「宿主只 import 一个 css 即可」这件事继续成立，不必额外拷贝资源目录。
+   也不会发射资源文件——产物 es/index.css 会留下一条指向包外不存在路径的引用，图标直接空掉。
+   内联同时保证「宿主只 import 一个 css 即可」这件事继续成立，不必额外拷贝资源目录。
    两张图都只作 mask 形状用，颜色由 &__send-icon 的 background-color: currentColor 提供，
    SVG 内的 fill 值不参与最终呈现（保留原值只为与源文件逐字一致，便于日后比对替换）。 */
 $aix-send-icon-default: url("data:image/svg+xml,%3Csvg width='16' height='16' viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M6.44986 10.3999C6.16986 10.6719 6.12186 11.12 6.36186 11.4401L8.53789 14.5127C9.30591 15.6009 10.9859 15.3528 11.4099 14.0806L15.114 2.94248C15.538 1.67824 14.322 0.46201 13.05 0.88609L1.92179 4.59879C0.641774 5.02287 0.40177 6.70319 1.48979 7.47133L4.56183 9.63974C4.88184 9.87179 5.32984 9.83178 5.60185 9.55973L10.0259 5.14289C10.2499 4.91085 10.6339 4.91085 10.8659 5.14289C11.0899 5.36694 11.0899 5.75101 10.8659 5.98305L6.44986 10.3999Z' fill='%2386909C'/%3E%3C/svg%3E");
