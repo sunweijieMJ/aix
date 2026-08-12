@@ -18,15 +18,19 @@
                消息时间戳、日期分隔线、未读分割线这类内容必须整行居中，而 Bubble 的 #header
                挂在 __wrapper 内、受气泡自身对齐（user 侧是 align-items:flex-end）约束，
                只能贴在气泡角上——业务此前只能靠 align-self 折中，且注释里明说想要的整行做不到。
-               prev 一并给出：算「距上一条超过 N 分钟才显示时间」不必再自己维护全表派生。 -->
-          <div v-if="$slots['row-before']" :class="ns.e('row-before')">
-            <slot
-              name="row-before"
-              :item="item as ChatMessage"
-              :index="index as number"
-              :prev="items[(index as number) - 1]"
-            />
-          </div>
+               prev 一并给出：算「距上一条超过 N 分钟才显示时间」不必再自己维护全表派生。
+
+               包裹层由 RowBefore（见 script）按「这一条**产出了内容**」决定渲不渲染，
+               而非「插槽是否声明」（与 Bubble 的 footer 同口径）：本插槽的典型用法就是
+               「只有部分消息显示时间戳」，
+               按声明与否判定会让其余每条消息都白套一个带 margin-bottom 的空壳，
+               表现为气泡间距忽大忽小，业务只能反过来写 `__row-before:empty{display:none}`。 -->
+          <RowBefore
+            v-if="$slots['row-before']"
+            :item="item as ChatMessage"
+            :index="index as number"
+            :prev="items[(index as number) - 1]"
+          />
           <Bubble
             :key="(item as ChatMessage).id"
             v-bind="resolveBubble(item as ChatMessage)"
@@ -153,7 +157,8 @@ export interface BubbleListEmits {
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { Virtualizer } from 'virtua/vue';
-import { ref, reactive, watch, nextTick, onMounted, computed, useSlots } from 'vue';
+import { ref, reactive, watch, nextTick, onMounted, computed, useSlots, h } from 'vue';
+import type { FunctionalComponent } from 'vue';
 import { useAutoScroll } from '../composables/useAutoScroll';
 import type { ShouldFollow } from '../composables/useAutoScroll';
 import { locale } from '../locale';
@@ -167,6 +172,7 @@ import type {
   BubbleTypingConfig,
 } from '../types';
 import { contentFingerprint } from '../utils/contentFingerprint';
+import { slotHasContent } from '../utils/hasVNodeContent';
 import { ownProp } from '../utils/ownProp';
 import { BUBBLE_LIST_RESERVED_SLOTS } from '../utils/reservedSlots';
 import Bubble from './Bubble.vue';
@@ -194,6 +200,37 @@ const slots = useSlots();
 const passthroughSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !(BUBBLE_LIST_RESERVED_SLOTS as readonly string[]).includes(n)),
 );
+
+/**
+ * 行级插槽的包裹层：插槽产出实际内容才套那层带 margin 的 div，否则整块不渲染。
+ * 判空实现与 Bubble 的 footer 共用（utils/hasVNodeContent）。
+ *
+ * 做成函数式组件而不是「模板里 v-if 判空 + <slot> 再渲染一次」，是因为后者会让插槽函数
+ * 每条每帧**被调用两次**。插槽由宿主提供，不能假定它是纯的——把它当纯函数反复调用，
+ * 带副作用（埋点、计数、push 进外部数组）的实现就会莫名其妙地翻倍。这里调用一次、
+ * 拿到 vnode 后自己决定包不包，调用次数与改动前完全一致。
+ *
+ * 另有一处顺带的好处：插槽内容读到的响应式依赖由本组件自己的 render effect 收集，
+ * 变化时只重渲染这一行，也不存在 Bubble.hasFooterContent 那边「多层转发插槽追踪不到、
+ * 要靠 void props.status 补一刀」的缺口。
+ *
+ * 必须显式声明 props：函数式组件不声明 props 时，传入的一切都会被当作 attrs 走
+ * fallthrough，item / index / prev 会被原样写成根节点的 DOM 属性。
+ */
+const RowBefore: FunctionalComponent<{
+  item: ChatMessage;
+  index: number;
+  prev?: ChatMessage;
+}> = (slotProps) => {
+  const nodes = slots['row-before']?.({
+    item: slotProps.item,
+    index: slotProps.index,
+    prev: slotProps.prev,
+  });
+  return slotHasContent(nodes) ? h('div', { class: ns.e('row-before') }, nodes) : null;
+};
+RowBefore.props = ['item', 'index', 'prev'];
+
 const scrollRef = ref<HTMLElement | null>(null);
 const virtualizerRef = ref<VirtualizerHandle | null>(null);
 const { scrollState, unreadCount, computeState, scrollToBottom, follow, observeContent } =

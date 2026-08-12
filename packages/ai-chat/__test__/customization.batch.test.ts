@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect, vi } from 'vitest';
-import { h, nextTick } from 'vue';
+import { h, nextTick, createCommentVNode } from 'vue';
 import AiChat from '../src/components/AiChat.vue';
 import AttachmentsPanel from '../src/components/AttachmentsPanel.vue';
 import Bubble from '../src/components/Bubble.vue';
@@ -211,6 +211,65 @@ describe('row-before 行级插槽（批次2）', () => {
     const messages: ChatMessage[] = [{ id: 'u1', role: 'user', status: 'success', content: [] }];
     const w = mount(AiChat, { props: { request: idleRequest, messages } });
     expect(w.find('.aix-bubble-list__row-before').exists()).toBe(false);
+  });
+
+  // 本插槽最典型的用法就是「只有部分消息显示时间戳」。按「插槽是否声明」判定会让其余每条
+  // 都白套一个带 margin-bottom 的空壳，气泡间距忽大忽小，业务只能反过来写
+  // `__row-before:empty { display: none }`。故按「这一条是否产出内容」逐条判定。
+  it('条目内容为空（v-if 为假）时不套包裹层，只为有内容的那条渲染', () => {
+    const messages: ChatMessage[] = [
+      { id: 'u1', role: 'user', status: 'success', content: [], createdAt: 1000 },
+      { id: 'a1', role: 'ai', status: 'success', content: [], createdAt: 2000 },
+      { id: 'u2', role: 'user', status: 'success', content: [], createdAt: 3000 },
+    ];
+    const w = mount(AiChat, {
+      props: { request: idleRequest, messages },
+      slots: {
+        // 只给 user 消息出时间戳，AI 消息返回注释节点（v-if 为假的编译产物）
+        'row-before': (sp: { item: ChatMessage }) =>
+          sp.item.role === 'user'
+            ? h('time', { class: 'ts' }, String(sp.item.createdAt))
+            : createCommentVNode(''),
+      },
+    });
+    expect(w.findAll('.aix-bubble-list__row-before')).toHaveLength(2);
+    expect(w.findAll('.aix-bubble-list__row-before .ts')).toHaveLength(2);
+  });
+
+  // 插槽由宿主提供，不能假定它是纯的：判空若靠「先调一次看产出、再调一次真渲染」，
+  // 带副作用（埋点 / 计数 / push 外部数组）的实现就会静默翻倍。
+  it('每条消息只调用一次插槽函数（判空不额外触发）', () => {
+    const messages: ChatMessage[] = [
+      { id: 'u1', role: 'user', status: 'success', content: [], createdAt: 1000 },
+      { id: 'a1', role: 'ai', status: 'success', content: [], createdAt: 2000 },
+    ];
+    const calls: string[] = [];
+    mount(AiChat, {
+      props: { request: idleRequest, messages },
+      slots: {
+        'row-before': (sp: { item: ChatMessage }) => {
+          calls.push(sp.item.id);
+          return h('time', { class: 'ts' });
+        },
+      },
+    });
+    expect(calls).toEqual(['u1', 'a1']);
+  });
+
+  // 函数式组件不声明 props 时，传入的一切都会当 attrs 走 fallthrough，
+  // item / index / prev 会被原样写成根节点的 DOM 属性（[object Object] 之类）。
+  it('作用域参数不泄漏成包裹层的 DOM 属性', () => {
+    const messages: ChatMessage[] = [
+      { id: 'u1', role: 'user', status: 'success', content: [], createdAt: 1000 },
+    ];
+    const w = mount(AiChat, {
+      props: { request: idleRequest, messages },
+      slots: { 'row-before': () => h('time', { class: 'ts' }) },
+    });
+    const el = w.find('.aix-bubble-list__row-before').element;
+    expect(el.getAttribute('item')).toBeNull();
+    expect(el.getAttribute('index')).toBeNull();
+    expect(el.getAttribute('prev')).toBeNull();
   });
 });
 
