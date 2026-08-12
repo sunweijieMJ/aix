@@ -350,6 +350,15 @@ export interface SenderSlotScope {
   attachmentsOpen: boolean;
   /** 待发附件数（内置按钮据此渲染角标） */
   attachmentCount: number;
+  /**
+   * 清空全部待发附件（逐条走 `onRemove`，供业务回收服务端资源）；未启用附件时为空操作。
+   *
+   * 与 `clear`（只清输入框文本）分开：两者常常不该同时发生——发送后由内部 `drain()` 消耗
+   * 附件，而「放弃这一轮」才需要连附件一起丢。此前 slotScope 只给了 `attachmentCount`，
+   * 自绘工具栏能看见有几个附件却没有任何清空入口，想在关闭面板 / 切会话时把它们回收掉，
+   * 只能整份改用注入实例（`attachments` 传 `UseAttachmentsReturn`）。
+   */
+  clearAttachments: () => void;
   /** 是否启用了附件能力（未传 attachments prop 时为 false，自定义按钮据此决定要不要渲染） */
   attachmentsEnabled: boolean;
   /** 切换语音聆听（起播 / 停止）；语音不可用或 disabled 时为空操作 */
@@ -904,6 +913,12 @@ const toggleAttachments = () => {
   if (!attach || props.disabled) return;
   panelOpen.value = !panelOpen.value;
 };
+// 清空待发附件（逐条走 onRemove 供业务回收服务端资源）。disabled 守卫与面板内
+// onPanelRemove 同口径：禁用态下附件列表整体不可变更，命令式入口也不该开后门。
+const clearAttachments = () => {
+  if (!attach || props.disabled) return;
+  attach.clear();
+};
 const toggleVoice = () => {
   if (props.disabled) return;
   onMicClick(); // 自身已含「未启用语音则空操作」守卫
@@ -1152,6 +1167,7 @@ const slotScope = reactive({
   value: inner,
   // 附件 / 语音的开关与状态：让自定义按钮能完整替代内置 attach / voice 项（见 SenderSlotScope）
   toggleAttachments,
+  clearAttachments,
   attachmentsOpen: panelOpen,
   attachmentCount: computed(() => attach?.items.value.length ?? 0),
   // attach 是 setup 快照（null 表示未启用附件），非响应式，故直接取布尔而非 computed
@@ -1191,8 +1207,10 @@ defineExpose({
   focus: () => textareaRef.value?.focus(),
   clear,
   setValue,
-  // 与 slotScope 同源：外部持 ref 时也能开关附件面板 / 语音（如把入口放在 Sender 之外的工具条）
+  // 与 slotScope 同源：外部持 ref 时也能开关附件面板 / 清空附件 / 语音
+  //（如把入口放在 Sender 之外的工具条，或在宿主面板关闭时回收未发送的附件）
   toggleAttachments,
+  clearAttachments,
   toggleVoice,
   // 仅供单测验证面板高度过渡的快速 toggle 竞态（VTU 取 Transition 内节点不便，直接单元级调用）
   __onPanelEnter: onPanelEnter,
@@ -1353,11 +1371,19 @@ $aix-send-icon-stop: url("data:image/svg+xml,%3Csvg width='16' height='16' viewB
        svg 与 img 并列——icons.* 现在也接受图片地址（见 SenderIconSource），两种形态都得被
        约束到同一尺寸，否则换成 <img> 后按钮会被原图尺寸撑变形。
        组件（svg）形态另继承 currentColor 主题着色；图片形态颜色固定。
-       内置图标是 <span> 不是 <svg>/<img>，不受本规则影响。 */
+       内置图标是 <span> 不是 <svg>/<img>，不受本规则影响。
+
+       尺寸走组件级旋钮（只写 var() fallback、不单独声明默认值，与 --aix-sender-send-width
+       /height 等既有旋钮同约定）：按钮盒子早就能分别定制宽高，盒里的图标却写死 16px，
+       换一张大图必须回头覆写 `.aix-sender__send img` 才不被压扁，形态不自洽。
+       宽高**可分别定制**而不是只给一个方形 size：设计稿里的发送图标常常不是正方形
+       （按钮盒子给两个旋钮正是同一个理由），只开 size 会让非方图被拉变形，等于没修。
+       想要方形只写 --aix-sender-send-icon-size 一条即可，宽高各自回落到它。
+       内置 mask 图标同步跟随，保证上面那句「与内置图标等大」在改了旋钮后仍成立。 */
     svg,
     img {
-      width: 16px;
-      height: 16px;
+      width: var(--aix-sender-send-icon-width, var(--aix-sender-send-icon-size, 16px));
+      height: var(--aix-sender-send-icon-height, var(--aix-sender-send-icon-size, 16px));
     }
 
     &:hover:not(:disabled) {
@@ -1382,8 +1408,8 @@ $aix-send-icon-stop: url("data:image/svg+xml,%3Csvg width='16' height='16' viewB
      property-no-vendor-prefix 明令不手写前缀）。这也是图源必须留在样式表里的原因之一：
      写进 JS 内联样式的属性根本过不了 postcss，只能自己手写 WebkitMask*。 */
   &__send-icon {
-    width: 16px;
-    height: 16px;
+    width: var(--aix-sender-send-icon-width, var(--aix-sender-send-icon-size, 16px));
+    height: var(--aix-sender-send-icon-height, var(--aix-sender-send-icon-size, 16px));
     background-color: currentColor;
     mask: var(--aix-sender-send-icon, #{$aix-send-icon-default}) no-repeat center / contain;
   }

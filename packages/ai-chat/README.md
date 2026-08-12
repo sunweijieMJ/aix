@@ -215,7 +215,7 @@ const roles = {
 
 ### Sender 工具栏作用域插槽（自定义动作按钮）
 
-`Sender` 的 `prefix` / `header` / `toolbar` / `footer` 插槽都是**作用域插槽**，回传动作句柄与受控状态 `SenderSlotScope`：`{ send, cancel, clear, loading, disabled, recording, value }`，外加用于替代内置附件 / 语音按钮的 `{ toggleAttachments, attachmentsOpen, attachmentCount, attachmentsEnabled, toggleVoice, voiceSupported }`（见下节）。业务可在官方发送/停止键旁加自定义按钮（模型选择、联网开关、深度思考开关等）并**复用发送/停止/清空逻辑与 loading 态**，无需自己实现：
+`Sender` 的 `prefix` / `header` / `toolbar` / `footer` 插槽都是**作用域插槽**，回传动作句柄与受控状态 `SenderSlotScope`：`{ send, cancel, clear, loading, disabled, recording, value }`，外加用于替代内置附件 / 语音按钮的 `{ toggleAttachments, clearAttachments, attachmentsOpen, attachmentCount, attachmentsEnabled, toggleVoice, voiceSupported }`（见下节）。业务可在官方发送/停止键旁加自定义按钮（模型选择、联网开关、深度思考开关等）并**复用发送/停止/清空逻辑与 loading 态**，无需自己实现：
 
 ```vue
 <Sender placeholder="输入消息…" @submit="onSend">
@@ -274,6 +274,7 @@ const icons = { attach: markRaw(Paperclip), send: markRaw(Send) };
 | `toggleAttachments()` | 开合附件面板；未启用附件或 `disabled` 时为空操作 |
 | `attachmentsOpen` | 面板是否展开（内置按钮据此上 `is-active`） |
 | `attachmentCount` | 待发附件数（内置按钮据此渲染角标） |
+| `clearAttachments()` | 清空待发附件，逐条触发 `attachments.onRemove` 供回收服务端资源；未启用附件或 `disabled` 时为空操作。与 `clear()`（只清输入框文本）分开 |
 | `attachmentsEnabled` | 是否传了 `attachments` prop（决定自定义按钮要不要渲染） |
 | `toggleVoice()` | 起停语音聆听；不可用或 `disabled` 时为空操作 |
 | `voiceSupported` | 语音是否可用（注入了识别器或浏览器支持） |
@@ -1291,6 +1292,9 @@ const markdownRenderers: MarkdownRenderers = {
 | `--aix-sender-min-height` | `0` | 输入框自适应高度下限，内容更少时仍撑住这个高度 |
 | `--aix-sender-send-width` | `--aix-controlHeight` | 发送按钮宽度，可与高度分别定制 |
 | `--aix-sender-send-height` | `--aix-controlHeight` | 发送按钮高度，可与宽度分别定制 |
+| `--aix-sender-send-icon-size` | `16px` | 发送 / 停止图标尺寸（方形速写，宽高各自回落到它）。内置 mask 图标与 `icons.send`/`icons.stop` 的自定义图标共用，保证两者等大 |
+| `--aix-sender-send-icon-width` | `--aix-sender-send-icon-size` | 图标宽度，非方形图标时与高度分别定制 |
+| `--aix-sender-send-icon-height` | `--aix-sender-send-icon-size` | 图标高度，同上 |
 | `--aix-sender-send-icon` | 内置纸飞机 SVG | 发送按钮默认态的 mask 图源（`url(...)`），随 `currentColor` 着色 |
 | `--aix-sender-stop-icon` | 内置停止 SVG | 发送按钮流式态的 mask 图源，同上 |
 | `--aix-sender-padding` | `paddingXS … paddingSM` | 输入框容器内边距 |

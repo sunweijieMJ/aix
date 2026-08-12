@@ -425,8 +425,19 @@ export interface AiChatProps {
    * 注意：视为静态配置，仅在组件初始化时取值（setup 快照），运行时修改不生效，需重建组件。
    */
   mdPlugins?: MarkdownItPlugin[];
-  /** 附件能力（opt-in），透传 Sender；不传则无任何附件 UI。视为静态配置（setup 快照） */
-  attachments?: UseAttachmentsOptions;
+  /**
+   * 附件能力（opt-in），原样透传 Sender；不传则无任何附件 UI。视为静态配置（setup 快照）。
+   *
+   * 两种传法与 `SenderProps.attachments` 完全一致（本层只是直通，不做任何加工）：
+   * - **配置对象**（`UseAttachmentsOptions`）：由 Sender 内部 `useAttachments`，最省事；
+   * - **已创建的实例**（`UseAttachmentsReturn`）：宿主自己持有 items / `clear()` 等状态与句柄。
+   *
+   * 之前这里只声明了前者，而模板是原样直通、运行时本就支持实例——于是「宿主持有附件状态」
+   * 这条 Sender 明确支持的用法，在 AiChat 这一层被类型挡住了（TS 宿主只能 as any 绕）。
+   * 典型需求：面板以 v-if 卸载时把已上传未发送的附件回收掉（`useAttachments` 的 scope 销毁
+   * 会逐条走 onRemove，但宿主也可能想更早地手动 `clear()`）。
+   */
+  attachments?: UseAttachmentsOptions | UseAttachmentsReturn;
   /** 语音输入（opt-in），透传 Sender；不传则无麦克风按钮。视为静态配置 */
   voice?: boolean | VoiceConfig;
   /**
@@ -579,7 +590,7 @@ import { useNamespace, useControllable, useLocale, copyText } from '@aix/hooks';
 import { computed, ref, toRaw, watch, useSlots, getCurrentInstance } from 'vue';
 import { ROOT_ID } from '../composables/messageTree';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
-import type { UseAttachmentsOptions } from '../composables/useAttachments';
+import type { UseAttachmentsOptions, UseAttachmentsReturn } from '../composables/useAttachments';
 import type { ShouldFollow } from '../composables/useAutoScroll';
 import { useChat } from '../composables/useChat';
 import type { UseChatOptions } from '../composables/useChat';
@@ -1325,10 +1336,15 @@ defineExpose({
     setFeedback(id, value);
     syncTree();
   },
-  // 透传 Sender 命令式能力，便于外部聚焦 / 清空输入框 / 开关附件面板
+  // 透传 Sender 命令式能力，便于外部聚焦 / 清空输入框 / 开关附件面板 / 回收待发附件
   focus: () => senderRef.value?.focus(),
   clear: () => senderRef.value?.clear(),
   toggleAttachments: () => senderRef.value?.toggleAttachments(),
+  // 与 clear 分开（那个只清输入框文本）：清空待发附件会逐条触发 attachments.onRemove，
+  // 供宿主回收 upload 阶段在服务端产生的文件。把 AiChat 挂在 v-if 面板里时，
+  // 组件卸载本身已会经 useAttachments 的 scope 销毁走同一条回收路径，
+  // 这个入口是给「不卸载、但要在切会话 / 主动放弃这一轮时就地清干净」的场景。
+  clearAttachments: () => senderRef.value?.clearAttachments(),
 });
 </script>
 

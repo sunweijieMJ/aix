@@ -135,6 +135,50 @@ describe('Sender — slotScope 的附件 / 语音出口（A）', () => {
     await nextTick();
     expect(w.find('.aix-attachments-panel').exists()).toBe(true);
   });
+
+  // 此前 slotScope 只给了 attachmentCount：自绘工具栏看得见有几个附件，却没有任何清空入口，
+  // 想在关闭面板 / 切会话时回收服务端资源只能整份改用注入实例。
+  it('clearAttachments 清空待发附件并逐条走 onRemove', async () => {
+    const onRemove = vi.fn();
+    const { w, getScope } = mountWithScope({
+      attachments: { upload: instantUpload, onRemove },
+    });
+    const input = w.find('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      value: [new File(['x'], 'a.txt'), new File(['y'], 'b.txt')],
+      configurable: true,
+    });
+    await input.trigger('change');
+    await nextTick();
+    expect(getScope().attachmentCount).toBe(2);
+
+    getScope().clearAttachments();
+    await nextTick();
+    expect(getScope().attachmentCount).toBe(0);
+    expect(onRemove).toHaveBeenCalledTimes(2);
+  });
+
+  it('clearAttachments 在未启用附件 / disabled 时为安全空操作', async () => {
+    // 未启用附件
+    expect(() => mountWithScope().getScope().clearAttachments()).not.toThrow();
+
+    // disabled：与面板内 onPanelRemove 同口径，禁用态下列表整体不可变更
+    const onRemove = vi.fn();
+    const { w, getScope } = mountWithScope({ attachments: { upload: instantUpload, onRemove } });
+    const input = w.find('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      value: [new File(['x'], 'a.txt')],
+      configurable: true,
+    });
+    await input.trigger('change');
+    await nextTick();
+    await w.setProps({ disabled: true });
+
+    getScope().clearAttachments();
+    await nextTick();
+    expect(getScope().attachmentCount).toBe(1);
+    expect(onRemove).not.toHaveBeenCalled();
+  });
 });
 
 // ============ B：icons 覆盖内置图标 ============
