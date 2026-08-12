@@ -437,6 +437,17 @@ const errorTitle = computed(() => {
     }
   }
 
+  // hover / 键盘聚焦时提层。__remove 靠 translate(50%, -50%) 故意探出卡片右上角一半，
+  // 其 ::before 触控热区再向外延伸 14px，合计超出卡片右缘约 22px——而附件面板列表的
+  // gap 只有 8px（--aix-paddingXS）。同级卡片按文档流平铺、z-index 相同时后一张绘制在
+  // 前一张之上，鼠标划进探出的那一截实际命中的是**邻卡**，本卡 :hover 随之跌落、
+  // 删除按钮 opacity 归 0，表现为「划过去就消失」。提一层让探出部分压在邻卡之上。
+  // 与上面去掉 overflow:hidden 是同一个问题的两半，缺任一半按钮都点不到。
+  &:hover,
+  &:focus-within {
+    z-index: 1;
+  }
+
   // 卡片 hover 或 focus-within 时显示删除按钮
   &:hover &__remove,
   &:focus-within &__remove {
