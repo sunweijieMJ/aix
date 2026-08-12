@@ -109,8 +109,10 @@
           </span>
         </template>
       </div>
-      <!-- 编辑态期间隐藏 footer（复制/编辑/删除等操作条）：避免草稿未保存时被同排的「删除」误删 -->
-      <div v-if="hasFooterContent && !editing" :class="ns.e('footer')"><slot name="footer" /></div>
+      <!-- 编辑态期间隐藏 footer（复制/编辑/删除等操作条）：避免草稿未保存时被同排的「删除」误删。
+           包裹层由 FooterWrap（见 script）按「这一条**产出了内容**」决定渲不渲染，同 BubbleList
+           的 row-before。 -->
+      <FooterWrap v-if="$slots.footer && !editing" :render="$slots.footer" :status="status" />
     </div>
   </div>
 </template>
@@ -139,7 +141,16 @@ export interface BubbleEmits {
 <script setup lang="ts">
 import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
-import { computed, watch, watchEffect, useSlots, ref } from 'vue';
+import {
+  computed,
+  watch,
+  watchEffect,
+  useSlots,
+  ref,
+  h,
+  type FunctionalComponent,
+  type VNode,
+} from 'vue';
 import { useIdleWhileStreaming } from '../composables/useIdleWhileStreaming';
 import { locale } from '../locale';
 import type {
@@ -181,11 +192,11 @@ const props = withDefaults(defineProps<BubbleProps>(), {
 
 const emit = defineEmits<BubbleEmits>();
 
-// 交互渲染器经统一回调上抛动作；补齐所属消息 key 后向上转发，由 AiChat 落到 useChat.updateBlock。
+// 块渲染器上抛的两条通道，都补齐所属消息 key 后原样向上转发：
+// action 由 AiChat 落到 useChat.updateBlock，intent 只转发不改数据（分工见 BlockIntent 注释）。
 const handleBlockAction = (action: BlockAction) =>
   emit('block-action', { messageKey: props.itemKey ?? '', action });
 
-// 意图通道：与 action 对称补齐消息 key 后转发；组件库不据此改任何数据（见 BlockIntent 注释的分工表）。
 const handleBlockIntent = (intent: BlockIntent) =>
   emit('block-intent', { messageKey: props.itemKey ?? '', intent });
 
@@ -300,20 +311,36 @@ const blockSlotNames = computed(() =>
   Object.keys(slots).filter((n) => !(BUBBLE_RESERVED_SLOTS as readonly string[]).includes(n)),
 );
 
-// footer 是否有实际内容：消费方（如按角色/状态条件显示操作条）常常「声明了 footer 插槽，
-// 但某些消息渲染为空」（如 v-if 为 user 消息不出操作条）。只判断插槽是否声明会让这些消息
-// 也套上 __footer 包裹 div，在 flex 布局的 &__wrapper 上多出一份 gap 间距。这里改为渲染一次
-// 插槽、检查是否产出有实际内容的节点，按「有没有实际内容」决定是否包裹。
-// 判空实现见 utils/hasVNodeContent（BubbleList 的 row-before 共用同一份）。
-const hasFooterContent = computed(() => {
-  // 显式读一次 status：footer 内容真正的条件判断（如按 status 决定是否显示操作条）
-  // 往往写在消费方经多层 <slot> 转发过来的插槽内容里（Bubble → BubbleList → AiChat → 业务）。
-  // 深层转发链路上对 status 的读取不会被 Vue 记为本 computed 的依赖，导致 status 变化后
-  // （如 loading → abort）本值仍停留在旧的缓存结果上、footer 不会随之出现。这里在自身
-  // 作用域内直接读一次 props.status，强制建立依赖，绕开嵌套转发插槽的响应式追踪缺口。
-  void props.status;
-  return slotHasContent(slots.footer?.());
-});
+/**
+ * 操作条包裹层：插槽产出实际内容才套那层 __footer div，否则整块不渲染。
+ * 消费方常「声明了 footer 插槽，但某些消息渲染为空」（如按角色/状态决定是否出操作条），
+ * 只按声明与否判定会让这些消息也套上包裹 div，在 flex 的 &__wrapper 上多出一份 gap。
+ * 判空实现见 utils/hasVNodeContent（BubbleList 的 row-before 共用同一份）。
+ *
+ * 做成函数式组件、而非「computed 里先渲一次判空 + 模板里再渲一次」，与 BubbleList.RowBefore
+ * 同款，两个理由：
+ * ① 插槽由宿主提供，不能假定它是纯的——渲两次会让带副作用的实现（埋点、计数）莫名翻倍，
+ *    且 AiChat 那条链路下每条消息每帧要多构造一整棵 BubbleActions vnode 树；
+ * ② 插槽内容读到的响应式依赖由本组件自己的 render effect 收集，无需再对整条转发链上的
+ *    依赖做人工补读。
+ *
+ * 两个 prop 都是**为了让本组件在该重渲染时重渲染**（无 prop 的子组件会被 Vue 判定为无变化
+ * 而整体跳过更新，插槽便只在挂载时调用一次、此后永远停在首帧结果）：
+ * - `render`：插槽函数本身。父级（AiChat / BubbleList / 业务模板）重渲染会产出新的插槽闭包，
+ *   据此重渲染，覆盖「footer 内容依赖父级作用域数据」这一主要情形；
+ * - `status`：覆盖「插槽内容按本气泡 status 分支」的情形（如仅 success/abort 才出操作条）。
+ *   转发链上层未重渲染、只有 status 变了时靠它触发——这条依赖必须显式落在 prop 上，
+ *   因为它是经多层 <slot> 转发进来的，Vue 追踪不到。
+ */
+const FooterWrap: FunctionalComponent<{ render: () => VNode[]; status?: BubbleProps['status'] }> = (
+  p,
+) => {
+  const nodes = p.render();
+  return slotHasContent(nodes) ? h('div', { class: ns.e('footer') }, nodes) : null;
+};
+// 必须显式声明 props（同 BubbleList.RowBefore）：函数式组件不声明时传入的一切都会走 attrs
+// fallthrough，render / status 会被原样写成根节点的 DOM 属性。
+FooterWrap.props = ['render', 'status'];
 
 // 开发期提示：内容块无对应渲染器时跳过渲染并告警（每种类型仅一次），
 // 避免如未注册的 sources 块被静默丢弃而难以排查。

@@ -319,7 +319,7 @@ describe('Bubble 内联编辑（editing 受控 prop）', () => {
   });
 });
 
-describe('Bubble footer 内容响应式（hasFooterContent 依赖多层转发 slot 时的 status 变化）', () => {
+describe('Bubble footer 内容响应式（多层转发 slot 时的 status 变化）', () => {
   // 复现真实场景（AiChat.vue / BubbleList.vue 的实际写法）：每层都按
   // `v-if="$slots.footer"` 判断是否转发，并用 `<slot name="footer" :item="item" />`
   // 把作用域插槽再转发一层——业务模板 → AiChat → BubbleList → Bubble，一路都是这个模式。
@@ -366,6 +366,57 @@ describe('Bubble footer 内容响应式（hasFooterContent 依赖多层转发 sl
     expect(w.find('.act').exists()).toBe(false);
     await w.setProps({ status: 'abort' });
     expect(w.find('.act').exists()).toBe(true);
+  });
+});
+
+describe('Bubble footer 插槽的调用次数与空内容判定', () => {
+  // footer 的包裹层要按「这一条**产出了内容**」渲染，此前实现是「computed 里先渲一次判空 +
+  // 模板里再渲一次」——每条每帧把宿主插槽调用两次。插槽由宿主提供、不能假定是纯的（带埋点
+  // 或计数的实现会莫名翻倍），且 AiChat 那条链路下每次多构造一整棵 BubbleActions vnode 树。
+  // 现由函数式组件 FooterWrap 调用一次后自行决定包不包，与 BubbleList.RowBefore 同款。
+  it('每次渲染只调用 footer 插槽一次', async () => {
+    const footer = vi.fn(() => h('span', { class: 'act' }, '操作'));
+    const w = mount(Bubble, {
+      props: { content: [textBlock('hi')], role: 'ai', status: 'success' },
+      slots: { footer },
+    });
+    await nextTick();
+    expect(w.find('.act').exists()).toBe(true);
+    expect(footer).toHaveBeenCalledTimes(1);
+
+    footer.mockClear();
+    await w.setProps({ status: 'abort' });
+    await nextTick();
+    expect(footer).toHaveBeenCalledTimes(1);
+  });
+
+  it('插槽声明了但这一条渲染为空时，不套 __footer 包裹层（避免多出一份 gap）', async () => {
+    const w = mount(
+      {
+        components: { Bubble },
+        props: ['role'],
+        // 复现真实写法：消费方按角色决定是否出操作条，user 消息渲染为空
+        template: `
+          <Bubble :role="role" :content="content" status="success">
+            <template #footer>
+              <button v-if="role === 'ai'" class="act">操作</button>
+            </template>
+          </Bubble>
+        `,
+        data() {
+          return { content: [textBlock('hi')] };
+        },
+      },
+      { props: { role: 'user' } },
+    );
+    await nextTick();
+    expect(w.find('.act').exists()).toBe(false);
+    expect(w.find('.aix-bubble__footer').exists()).toBe(false);
+
+    await w.setProps({ role: 'ai' });
+    await nextTick();
+    expect(w.find('.act').exists()).toBe(true);
+    expect(w.find('.aix-bubble__footer').exists()).toBe(true);
   });
 });
 
