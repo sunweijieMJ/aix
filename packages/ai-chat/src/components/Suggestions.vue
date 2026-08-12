@@ -63,7 +63,15 @@ defineSlots<{ default?: (props: { item: SuggestionItem }) => unknown }>();
   &__item {
     display: inline-flex;
     align-items: center;
-    height: var(--aix-controlHeightSM);
+    max-width: 100%;
+
+    /* 定高改下限：原先写死 height 后，容器一窄（侧边栏 / 移动端）文案就换行，而 24px 的
+       内容盒装不下两行——配合 align-items:center 会上下双向溢出到圆角描边之外。
+       改成 min-height 后单行形态逐像素不变（行盒高度小于本下限，仍由它决定），
+       多行时按内容撑高。max-width 兜住「一条建议比容器还长」的情形。
+       纵向 padding 刻意保持 0：加上去会让既有单行胶囊从 24px 变高，属无谓的视觉回归；
+       想要多行更舒展的宿主自行加 padding 即可。 */
+    min-height: var(--aix-controlHeightSM);
     padding: 0 var(--aix-paddingSM);
     transition: all var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
     border: 1px solid var(--aix-colorBorderSecondary);
@@ -71,6 +79,10 @@ defineSlots<{ default?: (props: { item: SuggestionItem }) => unknown }>();
     background-color: var(--aix-colorBgContainer);
     color: var(--aix-colorTextSecondary);
     font-size: var(--aix-fontSizeSM);
+
+    /* start 而非 left：换行后多行文本需要左对齐（否则会继承宿主可能设的居中），
+       用逻辑属性值以免在 RTL 语境下把文字顶到错误一侧 */
+    text-align: start;
     cursor: pointer;
     gap: var(--aix-sizeXXS);
 
