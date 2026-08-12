@@ -479,8 +479,7 @@ export interface AiChatProps {
    * - 运行时可变：`enable` / `roles` / `actions` / `pcQuoteAction` / `maxVisibleChips` /
    *   `toPrompt` / `toolbar` / `sheet` —— 均在使用那一刻经 getter 或 computed 读取；
    * - setup 快照：`longPressDelay` / `keyboard` / `excludeSelector` —— 在 useTextSelection
-   *   装配时一次性取值（见 useQuoteBinding 传参处），运行时改需重建组件；
-   * - 尚未接线：`mobileSelection` / `granularity`（P2 预留，传了也不生效）。
+   *   装配时一次性取值（见 useQuoteBinding 传参处），运行时改需重建组件。
    */
   quote?: QuoteConfig | boolean;
   /** 触发菜单配置（@提及/斜杠命令），直通 Sender；静态配置（setup 快照） */
@@ -645,20 +644,15 @@ import Welcome from './Welcome.vue';
 
 const props = withDefaults(defineProps<AiChatProps>(), {
   actionsTrigger: 'always',
-  // 显式给 undefined 默认值（而非不声明）：quote 联合类型含 boolean，Vue 对「类型含 Boolean
-  // 且无 default」的 prop 有隐式转换——未传时会被自动转成 false 而非 undefined（boolean casting），
-  // 导致 resolvedQuote 无法区分「未配置（应继承全局/内置默认）」与「显式 quote={false}（应关闭）」。
-  // 显式声明 default:undefined 可关闭该转换，让未传时 props.quote 保持真正的 undefined。
+  // 以下四项都必须显式声明 default:undefined（而非不声明）：Vue 对「类型含 Boolean 且无
+  // default」的 prop 做隐式转换，未传时得到 false 而非 undefined，于是「未配置」与「显式关闭」
+  // 无法区分。显式 default:undefined 关闭该转换。各自的后果：
+  //   quote / suggestions —— 丢掉「继承全局 provideAiChatConfig」这一档，未配置即被当作关闭；
+  //   treeMode —— 「未声明」被误读为「显式关闭 tree 模式」，v-model:tree 的自动推断整个短路；
+  //   autoSpacer —— 覆盖掉 Sender 自身的默认值 true，隐式 spacer 永久消失。
   quote: undefined,
-  // suggestions 同款联合类型含 boolean 的坑，同上显式声明 default:undefined。
   suggestions: undefined,
-  // treeMode 是纯 boolean prop，同款 boolean casting 坑更甚：未传时会被自动转成 false 而非
-  // undefined，导致「未显式声明」被误读为「显式关闭 tree 模式」，把 v-model:tree 的自动推断
-  // 整个短路掉（绑了 tree 也不生效）。显式 default:undefined 关闭该转换。
   treeMode: undefined,
-  // autoSpacer 同款纯 boolean prop 坑：不显式声明会被自动转成 false，覆盖掉 Sender 自身的
-  // 默认值 true，导致未传时隐式 spacer 永久消失（默认渲染行为被破坏）。显式 default:undefined
-  // 让未传时透传的是 undefined，由 Sender 的 withDefaults 落回其默认值 true。
   autoSpacer: undefined,
 });
 const emit = defineEmits<AiChatEmits>();
@@ -1022,7 +1016,7 @@ if (messagesModel.value.length > 0) {
 }
 // 是否绑定了 v-model:tree：以 tree 为权威持久化通道时，messages 仅作只读镜像输出，
 // 不再反向导入——否则两条桥接在同一 flush 同时回写父级两个 model，messages model 会被
-// prop 回灌成 []，触发 setMessages([]) 把内部树清空（亦是「同绑即崩」的根因）。
+// prop 回灌成 []，触发 setMessages([]) 把内部树清空（这也是两个 model 不能同时绑的原因）。
 // 用编译后的 vnode props 探测：v-model:tree 必带 onUpdate:tree 监听，初值为 undefined 也能识别。
 // props.treeMode 显式声明时优先于探测（见其 prop 注释）：探测依赖编译后的 vnode 形态，
 // h()/JSX 手写、经高阶组件 $attrs 中转等场景可能失准，留一个不依赖私有 API 的逃生口。
@@ -1187,11 +1181,9 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
   if (sub && sub.index < sub.count - 1) return null;
   if (item.role === 'user') {
     // 被 parser 拆过的用户消息不给 edit：上面的去重只放行**末**子气泡，而 1→N 时只有首个子
-    // 气泡复用父 id（其余为派生 id `${父id}__${序号}`），故走到这里的 sub 恒为派生 id ——
-    // useChat.onEdit 明确拒绝派生 id（见其守卫），于是这个按钮点得开、写得进、保存时被守卫
-    // 拒绝，编辑框照常收起而内容纹丝不动，草稿静默丢失（生产构建 devWarn 被 DCE，连控制台
-    // 线索都没有）。与其留一个「看得见点不动」的入口，不如不给——这与 onEdit 守卫「不允许用
-    // 切片改写父消息」的意图一致。
+    // 气泡复用父 id（其余为派生 id `${父id}__${序号}`），故走到这里的 sub 恒为派生 id，
+    // 必被 useChat.onEdit 的派生 id 守卫拒绝——留一个「点得开、写得进、保存时草稿静默丢失」
+    // 的入口不如不给（生产构建下 devWarn 被 DCE，连控制台线索都没有）。
     // 若将来要支持拆分消息的编辑，需让**草稿基线与回写目标都解析到父消息**（气泡只持有父消息
     // 的一个切片，直接拿它的草稿改写父消息就是 onEdit 守卫要防的那种静默丢段落）。
     if (sub) return ['copy'];

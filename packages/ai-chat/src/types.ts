@@ -30,8 +30,8 @@ export interface ChatMessage {
    * 从后端恢复历史时把真实时间填进来即可（`createdAt: Date.parse(item.createDate)`），
    * 不会被导入动作覆写成「现在」。随对话树一起持久化。
    *
-   * 存在的意义是消息级时间戳（气泡上方的时间、日期分隔线）此前无处可取：业务只能自己
-   * `watch(messages)` 给每条补 `extra.timestamp`，还要小心别在终态回调里覆写成「回答结束时刻」。
+   * 气泡上方的时间、日期分隔线（`#bubble-header` / `#row-before`）直接读它即可，
+   * 不必自行 `watch(messages)` 往 `extra` 里补一份。
    */
   createdAt?: number;
   /** 追问建议（parseChunk 流内下发落库，随消息树持久化）；展示规则见 AiChat */
@@ -288,8 +288,7 @@ export interface BlockIntentPayload {
 }
 
 /**
- * 块渲染器的 props 契约。Bubble 向**每一个**块渲染器（内置与自定义一视同仁）传入这五个 prop，
- * 此前只在 `BlockRenderers` 的注释里以散文描述、没有类型承载，各实现只能各写一遍。
+ * 块渲染器的 props 契约。Bubble 向**每一个**块渲染器（内置与自定义一视同仁）传入这五个 prop。
  *
  * 自定义块渲染器按块类型实例化即可拿到精确收窄的 `block`：
  * ```ts
@@ -467,15 +466,6 @@ export type ToolUseState =
   | 'executing'
   | 'output-available'
   | 'output-error';
-
-/**
- * @deprecated 请勿使用：本类型与实际的 `chart` 块字段**不兼容**。
- * `ContentBlockRegistry['chart'].engine` 已收窄为字面量 `'echarts'`，故把
- * `ChartEngine` 类型的值赋给 chart 块的 `engine` 会直接类型报错（`'function-plot'` 不可赋值）。
- * 需要标注该字段时请直接用 `'echarts'`，或 `Extract<ContentBlock, { type: 'chart' }>['engine']`。
- * 本别名仅为兼容早期导出保留，function-plot 引擎接入时会重新设计。
- */
-export type ChartEngine = 'echarts' | 'function-plot';
 
 /** ECharts 统计图种类（仅 echarts 引擎有此维度：决定骨架占位形态 + 二次动态 import 哪个图表子模块） */
 export type EChartsChartKind =
@@ -731,18 +721,8 @@ export interface QuoteConfig {
   actions?: QuoteActionsItems;
   /** 是否往 BubbleActions 自动注入内置 'quote'（PC 引整条），默认 true */
   pcQuoteAction?: boolean;
-  /**
-   * @deprecated 尚未实现：本字段未接入任何逻辑，传入不产生任何效果。保留仅为占位，
-   * 实际移动端选区行为由 `longPressDelay` 与浏览器原生选区决定。
-   */
-  mobileSelection?: 'custom' | 'native';
-  /** 长按出菜单延时 ms，默认 500 */
+  /** 长按出菜单延时 ms，默认 500（移动端选区行为其余部分由浏览器原生选区决定） */
   longPressDelay?: number;
-  /**
-   * @deprecated 尚未实现：本字段未接入任何逻辑，传入不产生任何效果。
-   * 选区粒度当前完全由浏览器原生行为决定。
-   */
-  granularity?: 'word' | 'sentence';
   /** 键盘选区唤出，默认 true */
   keyboard?: boolean;
   /** 启用角色，默认 ['ai'] */
