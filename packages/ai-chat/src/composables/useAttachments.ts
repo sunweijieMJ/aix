@@ -29,11 +29,14 @@ export interface UseAttachmentsOptions {
   /** 文件被拒（类型不符/超数量/超大小）或上传失败时通知；toast 等提示由业务做 */
   onReject?: (file: File, reason: 'accept' | 'count' | 'size' | 'upload', error?: unknown) => void;
   /**
-   * 条目被丢弃时通知（`remove` 单条移除 / `clear` 整体清空），供业务回收
-   * upload 时在服务端产生的资源（典型是按 `extra` 里的文件 id 调删除接口）。
+   * 条目被丢弃时通知（`remove` 单条移除 / `clear` 整体清空 / **所在 scope 销毁**），
+   * 供业务回收 upload 时在服务端产生的资源（典型是按 `extra` 里的文件 id 调删除接口）。
    *
    * **`drain` 不触发**：那是「发送」路径，条目虽然也离开了列表，但文件正要交给后端使用，
    * 此时回收会把刚发出去的附件删掉。
+   *
+   * 组件卸载（scope 销毁）走的是 `clear` 同一条路，故实现须**幂等且能容忍在卸载后调用**：
+   * 里面通常是一次 fire-and-forget 的删除请求，不要依赖组件自身的响应式状态。
    *
    * 回调拿到的是带过程态的条目：`status !== 'done'` 说明上传还没完成（此时通常没有服务端
    * 资源可回收，`extra` 也可能是空的），业务需要自行判断。
@@ -185,8 +188,16 @@ export function useAttachments(options: UseAttachmentsOptions): UseAttachmentsRe
   // 组件外调用（无活跃 scope）时跳过，与包内其他 composable 行为一致
   if (getCurrentScope()) {
     onScopeDispose(() => {
-      for (const c of ctrls.values()) c.abort();
-      ctrls.clear();
+      // 走 clear() 而不是只 abort：销毁同样是「丢弃」语义，条目再也回不来了，
+      // 业务在 upload 里于服务端产生的资源必须有机会回收。此前只中断在途请求，
+      // 已经**传完**（status 'done'）的条目连同它们的 extra 一起被静默丢掉——
+      // onRemove 永不触发，服务端文件就成了没人认领的孤儿。典型触发场景是把 AiChat
+      // 挂在 v-if 侧边栏里：用户传完附件没发就关掉面板，每关一次漏一批。
+      //
+      // clear() 内部已含 abort 全部在途请求 + 清空 ctrls，故不必重复。
+      // 宿主注入实例（UseAttachmentsReturn）时本钩子归属**宿主自己**的 scope
+      // （Sender 那条路不会再 useAttachments），不存在「Sender 卸载清空宿主状态」。
+      clear();
     });
   }
 

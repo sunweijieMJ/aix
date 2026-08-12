@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { effectScope } from 'vue';
 import { useAttachments } from '../src/composables/useAttachments';
+import type { AttachmentItem } from '../src/types';
+
+/** upload 的真实返回契约（与 UseAttachmentsOptions.upload 对齐，含 extra 等可选字段） */
+type UploadResult = Omit<AttachmentItem, 'id'>;
 
 const file = (name = 'a.pdf', size = 100) =>
   new File([new Uint8Array(size)], name, { type: 'application/pdf' });
@@ -8,7 +12,7 @@ const file = (name = 'a.pdf', size = 100) =>
 /** 可手动 resolve/reject 的 upload mock */
 const deferredUpload = () => {
   const resolvers: Array<{
-    resolve: (v: { name: string; url: string }) => void;
+    resolve: (v: UploadResult) => void;
     reject: (e: unknown) => void;
     signal: AbortSignal;
     onProgress: (p: number) => void;
@@ -16,7 +20,7 @@ const deferredUpload = () => {
   const upload = vi.fn(
     // 参数前缀下划线表明有意不使用，规避 noUnusedParameters 报错
     (_f: File, ctx: { onProgress: (p: number) => void; signal: AbortSignal }) =>
-      new Promise<{ name: string; url: string }>((resolve, reject) => {
+      new Promise<UploadResult>((resolve, reject) => {
         resolvers.push({ resolve, reject, signal: ctx.signal, onProgress: ctx.onProgress });
       }),
   );
@@ -252,5 +256,41 @@ describe('useAttachments', () => {
     });
     scope.stop();
     expect(resolvers[0]!.signal.aborted).toBe(true);
+  });
+
+  // 销毁同样是「丢弃」语义：已传完的条目在服务端有真实文件，不给 onRemove 就成了孤儿。
+  // 典型触发场景是把 AiChat 挂在 v-if 侧边栏里，用户传完附件没发就关掉面板。
+  it('作用域销毁：已传完的条目逐条走 onRemove，供业务回收服务端资源', async () => {
+    const { upload, resolvers } = deferredUpload();
+    const onRemove = vi.fn();
+    const scope = effectScope();
+    let api!: ReturnType<typeof useAttachments>;
+    scope.run(() => {
+      api = useAttachments({ upload, onRemove });
+      api.add([file('a.pdf'), file('b.pdf')]);
+    });
+    resolvers[0]!.resolve({ name: 'a.pdf', url: '/f/1', extra: { nid: 'n1' } });
+    resolvers[1]!.resolve({ name: 'b.pdf', url: '/f/2', extra: { nid: 'n2' } });
+    await flush();
+
+    scope.stop();
+    expect(onRemove).toHaveBeenCalledTimes(2);
+    expect(
+      onRemove.mock.calls.map((c) => (c[0] as { extra?: { nid?: string } }).extra?.nid),
+    ).toEqual(['n1', 'n2']);
+    expect(api.items.value).toEqual([]);
+  });
+
+  it('作用域销毁：未启用 onRemove 时不报错（仅 abort + 清空）', () => {
+    const { upload, resolvers } = deferredUpload();
+    const scope = effectScope();
+    let api!: ReturnType<typeof useAttachments>;
+    scope.run(() => {
+      api = useAttachments({ upload });
+      api.add([file()]);
+    });
+    expect(() => scope.stop()).not.toThrow();
+    expect(resolvers[0]!.signal.aborted).toBe(true);
+    expect(api.items.value).toEqual([]);
   });
 });
