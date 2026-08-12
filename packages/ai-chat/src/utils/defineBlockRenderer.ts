@@ -18,32 +18,12 @@ const BLOCK_RENDERER_PROPS = [
 ] as const;
 
 /**
- * 把一个渲染函数包装成合规的块渲染器组件（供 `blockRenderers` / `toolRenderers` 注册）。
+ * 把一个渲染函数包装成合规的块渲染器组件（供 `blockRenderers` / `toolRenderers` 注册），
+ * 收进手写函数式组件时必须记住的两行样板（`props` 与 `inheritAttrs`，漏任一件都静默出错，
+ * 见上方 BLOCK_RENDERER_PROPS）。泛型参数用于收窄 `props.block`。
  *
- * 直接写函数式组件是可以的，但要**同时**记住两件在文档里各自散落的事，漏掉任何一件都会静默出错：
- *
- * ```ts
- * // 手写版：三行样板，且两行都是「不写就出 bug」而非「不写就少个优化」
- * const ResourceBlock = (props) => h(Resource, { data: props.block?.items ?? [] });
- * ResourceBlock.props = ['block'];        // 漏了 → props.block 恒为 undefined
- * ResourceBlock.inheritAttrs = false;     // 漏了 → 内部 prop 变成根元素上的无效 DOM 属性
- * ```
- *
- * 用本函数则只需关心渲染本身：
- *
- * ```ts
- * import { defineBlockRenderer } from '@aix/ai-chat';
- *
- * const blockRenderers = {
- *   resource: defineBlockRenderer((props) => h(Resource, { data: props.block.items ?? [] })),
- * };
- * ```
- *
- * 泛型参数用于收窄 `props.block`（需先经 module augmentation 扩展 `ContentBlockRegistry`）：
- * `defineBlockRenderer<'resource'>((p) => ...)` 里的 `p.block` 即为 resource 块类型。
- *
- * 需要完整 SFC 能力（内部状态、生命周期、样式）时仍应写 `.vue` 组件并直接注册——
- * 本函数只面向「一层薄封装，把块数据转交给既有业务组件」这个最常见的场景。
+ * 只面向「一层薄封装，把块数据转交给既有业务组件」；需要内部状态 / 生命周期 / 样式时
+ * 仍应写 `.vue` 组件直接注册。用法示例见 README「薄封装用 defineBlockRenderer」。
  *
  * @param render 渲染函数，接收块渲染器契约 props，返回 VNode（返回 null 即不渲染该块）
  * @param name   可选组件名，仅影响 devtools / 警告信息中的显示

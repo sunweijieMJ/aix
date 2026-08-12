@@ -312,25 +312,17 @@ const blockSlotNames = computed(() =>
 );
 
 /**
- * 操作条包裹层：插槽产出实际内容才套那层 __footer div，否则整块不渲染。
- * 消费方常「声明了 footer 插槽，但某些消息渲染为空」（如按角色/状态决定是否出操作条），
- * 只按声明与否判定会让这些消息也套上包裹 div，在 flex 的 &__wrapper 上多出一份 gap。
- * 判空实现见 utils/hasVNodeContent（BubbleList 的 row-before 共用同一份）。
+ * 操作条包裹层：插槽产出实际内容才套那层 __footer div，否则整块不渲染——消费方常「声明了
+ * footer 插槽，但某些消息渲染为空」（按角色/状态决定是否出操作条），只按声明与否判定会让
+ * 这些消息也套上包裹 div，在 flex 的 &__wrapper 上多出一份 gap。
+ * 做成函数式组件（而非 computed 里判空、模板里再渲一次）的理由同 BubbleList.RowBefore，见那里。
  *
- * 做成函数式组件、而非「computed 里先渲一次判空 + 模板里再渲一次」，与 BubbleList.RowBefore
- * 同款，两个理由：
- * ① 插槽由宿主提供，不能假定它是纯的——渲两次会让带副作用的实现（埋点、计数）莫名翻倍，
- *    且 AiChat 那条链路下每条消息每帧要多构造一整棵 BubbleActions vnode 树；
- * ② 插槽内容读到的响应式依赖由本组件自己的 render effect 收集，无需再对整条转发链上的
- *    依赖做人工补读。
- *
- * 两个 prop 都是**为了让本组件在该重渲染时重渲染**（无 prop 的子组件会被 Vue 判定为无变化
- * 而整体跳过更新，插槽便只在挂载时调用一次、此后永远停在首帧结果）：
- * - `render`：插槽函数本身。父级（AiChat / BubbleList / 业务模板）重渲染会产出新的插槽闭包，
- *   据此重渲染，覆盖「footer 内容依赖父级作用域数据」这一主要情形；
- * - `status`：覆盖「插槽内容按本气泡 status 分支」的情形（如仅 success/abort 才出操作条）。
- *   转发链上层未重渲染、只有 status 变了时靠它触发——这条依赖必须显式落在 prop 上，
- *   因为它是经多层 <slot> 转发进来的，Vue 追踪不到。
+ * 两个 prop 都是**为了让本组件在该重渲染时重渲染**——无 prop 的子组件会被 Vue 判定为无变化
+ * 而整体跳过更新，插槽便只在挂载时调用一次、此后永远停在首帧：
+ * - `render`：插槽函数本身，父级重渲染产出新闭包时随之更新，覆盖「依赖父级作用域数据」；
+ * - `status`：覆盖「插槽内容按本气泡 status 分支」，该依赖经多层 <slot> 转发进来、Vue 追踪不到，
+ *   必须显式落在 prop 上。
+ * 两条各由 __test__/AiChat.footerSlot.test.ts 的一个用例锁定。
  */
 const FooterWrap: FunctionalComponent<{ render: () => VNode[]; status?: BubbleProps['status'] }> = (
   p,

@@ -289,16 +289,9 @@ export interface BlockIntentPayload {
 
 /**
  * 块渲染器的 props 契约。Bubble 向**每一个**块渲染器（内置与自定义一视同仁）传入这五个 prop。
- *
- * 自定义块渲染器按块类型实例化即可拿到精确收窄的 `block`：
- * ```ts
- * // 先经 module augmentation 扩展 ContentBlockRegistry，再：
- * const props = defineProps<BlockRendererProps<'my-block'>>();
- * props.block.customField; // 已收窄到该块类型，无需手写 Extract
- * ```
- * 需要额外 prop 时用交叉类型追加（`BlockRendererProps<'tool_use'> & { toolRenderers?: BlockRenderers }`）。
- *
- * 泛型缺省为全部块类型：不关心具体类型（如通用日志/调试渲染器）时可直接写 `BlockRendererProps`。
+ * 泛型参数把 `block` 收窄到对应块类型（需先经 module augmentation 扩展 `ContentBlockRegistry`），
+ * 缺省为全部块类型，供通用日志 / 调试渲染器直接使用。
+ * 完整用法见 README「渲染器的 props 契约：BlockRendererProps」。
  */
 export interface BlockRendererProps<
   K extends keyof ContentBlockRegistry = keyof ContentBlockRegistry,

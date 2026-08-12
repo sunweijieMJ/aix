@@ -122,15 +122,8 @@ const resolveUrl = (baseURL: string): string => {
 /**
  * 便利工厂：生成符合 `useChat` 的 `request` 签名的 OpenAI 兼容流式请求函数，
  * 消除「每次都要手写 fetch + Bearer + body」的接入成本。配合内置 `openaiParseChunk`
- * 与默认 `streamMode: 'sse'` 使用：
- *
- * ```ts
- * import { useChat, createOpenAIRequest, openaiParseChunk } from '@aix/ai-chat';
- * const chat = useChat({
- *   request: createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o', apiKey }),
- *   parseChunk: openaiParseChunk,
- * });
- * ```
+ * 与默认 `streamMode: 'sse'` 使用；用法与浏览器端直连暴露 apiKey 的注意事项见 README
+ * 「便利工厂：createOpenAIRequest」。
  *
  * 协议无关性不受影响：本工厂只是可选便利层，仍可不用它而自行实现 `request`。
  */
