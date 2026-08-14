@@ -103,6 +103,59 @@ describe('useSpeech', () => {
     expect(s.speakingId.value).toBe('m2');
   });
 
+  // 用户手动停止后，流仍在继续 → 后续 chunk 不得把会话复活并从头重读已朗读内容。
+  // 该守卫必须落在 useSpeech 自身（它是公开导出的 composable，headless 消费方会直接
+  // `watch(msg, () => speech.feed(msg))`），而非只由 AiChat 的 autoStartedId 兜住。
+  it('feed：手动 stop 后同一条消息不被后续增量复活', () => {
+    const { synthesizer, enqueue } = fakeSynth();
+    const s = useSpeech({
+      config: { synthesizer, getText: (m) => (m.content[0] as { text: string }).text },
+    });
+    const msg = aiMsg('m1', '第一句。', 'updating');
+    s.feed(msg);
+    expect(enqueue).toHaveBeenCalledWith('第一句。');
+
+    s.stop();
+    expect(s.speakingId.value).toBeNull();
+
+    // 流继续推进
+    (msg.content[0] as { text: string }).text = '第一句。第二句。';
+    s.feed(msg);
+    msg.status = 'success';
+    s.feed(msg);
+
+    expect(enqueue).toHaveBeenCalledTimes(1); // 未重读、未续读
+    expect(s.speakingId.value).toBeNull(); // 未复活
+  });
+
+  it('feed：手动 stop 后换一条新消息照常起播', () => {
+    const { synthesizer, enqueue } = fakeSynth();
+    const s = useSpeech({
+      config: { synthesizer, getText: (m) => (m.content[0] as { text: string }).text },
+    });
+    s.feed(aiMsg('m1', '甲。', 'updating'));
+    s.stop();
+    s.feed(aiMsg('m2', '乙。', 'updating'));
+    expect(enqueue).toHaveBeenLastCalledWith('乙。');
+    expect(s.speakingId.value).toBe('m2');
+  });
+
+  it('toggle 是显式意图：可解除手动停止标记，重新朗读同一条', () => {
+    const { synthesizer, enqueue } = fakeSynth();
+    const s = useSpeech({
+      config: { synthesizer, getText: (m) => (m.content[0] as { text: string }).text },
+    });
+    const msg = aiMsg('m1', '第一句。', 'updating');
+    s.feed(msg);
+    s.stop();
+    s.toggle(msg); // 用户重新点朗读
+    expect(s.speakingId.value).toBe('m1');
+    // 此后流式增量可继续喂入
+    (msg.content[0] as { text: string }).text = '第一句。第二句。';
+    s.feed(msg);
+    expect(enqueue).toHaveBeenLastCalledWith('第二句。');
+  });
+
   it('stop 后迟到的 onEnd（旧会话令牌失配）不复位新会话', () => {
     const { synthesizer, drive } = fakeSynth();
     const s = useSpeech({ config: { synthesizer } });

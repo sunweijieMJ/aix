@@ -20,9 +20,15 @@ export interface UseSpeechReturn {
   isSupported: ComputedRef<boolean>;
   /** 手动：点同一条→停；点另一条→停旧起新（整段一次性 enqueue + finish） */
   toggle: (message: ChatMessage) => void;
-  /** autoPlay：喂入流式增量，内部分句游标只 enqueue 完整句；status=success 时 flush + finish */
+  /**
+   * autoPlay：喂入流式增量，内部分句游标只 enqueue 完整句；status=success 时 flush + finish。
+   *
+   * **被 `stop()` 手动停止过的消息不会被再次唤起**：其后对同一条消息 feed 一律空操作，
+   * 直到换一条消息、或对它调 `toggle()` 显式重新起播。否则流式仍在继续时，用户点了停止，
+   * 下一个 chunk 就会把会话重启并从头重读已朗读过的内容。
+   */
   feed: (message: ChatMessage) => void;
-  /** 立即停止 */
+  /** 立即停止；同时把当前消息标记为「已手动停止」，见 feed 说明 */
   stop: () => void;
   /** 解析某消息要朗读的文本（含默认剥离 markdown），供可见性判断与朗读共用 */
   resolveText: (message: ChatMessage) => string;
@@ -133,6 +139,10 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
   let session: SpeechSession | null = null;
   let spokenLen = 0; // 当前朗读消息已 enqueue 的字符数（分句游标）
   let currentSession = 0; // 会话令牌
+  // 最近一次被 stop() 掐断的消息 id：feed 据此拒绝复活该条。
+  // 只记单个 id 而非 Set：feed 恒作用于「最后一条 AI 消息」，消息列表只增不回退，
+  // 换条即失效，无需随会话历史无界增长（与 AiChat 的 autoStartedId 同口径）。
+  let stoppedId: string | null = null;
 
   const isSupported = computed(() => !!config.synthesizer || defaultSynthesizer !== null);
 
@@ -140,6 +150,8 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
     config.getText ? config.getText(message) : stripMarkdownForSpeech(messageText(message));
 
   const stop = () => {
+    // 记下被掐断的是哪一条，供 feed 拒绝复活（见其守卫）。放在清空 speakingId 之前取值。
+    if (speakingId.value) stoppedId = speakingId.value;
     currentSession++; // 作废在途回调
     session?.stop();
     session = null;
@@ -152,6 +164,9 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
     const synthesizer = config.synthesizer ?? defaultSynthesizer;
     if (!synthesizer) return null;
     const token = ++currentSession;
+    // 起播即解除「手动停止」标记：能走到这里说明是显式起播意图（toggle 点击，或 feed 换了
+    // 一条新消息），此前对哪条消息按过停止都不再相关。
+    stoppedId = null;
     session = synthesizer({
       lang: config.lang ?? (typeof navigator !== 'undefined' ? navigator.language : undefined),
       rate: config.rate,
@@ -201,6 +216,11 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
 
   const feed = (message: ChatMessage) => {
     if (!isSupported.value) return;
+    // 用户已对这条消息按过停止 → 不得被后续 chunk 复活。缺了这道守卫，下方「speakingId
+    // 与本条不符就重启会话」的分支会在停止后的第一个 chunk 就重新起播，且因 spokenLen 已
+    // 复位为 0 而**从头重读**已朗读过的内容。
+    // 想重新朗读走 toggle（显式意图，经 startSession 解除本标记）。
+    if (speakingId.value !== message.id && stoppedId === message.id) return;
     let s = session;
     if (speakingId.value !== message.id) {
       stop(); // 停旧（若有）
