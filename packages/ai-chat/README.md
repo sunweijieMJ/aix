@@ -163,8 +163,30 @@ const request = ({ messages, signal }) =>
 ```
 
 > ⚠️ 不要用 `<AiChat :key="model" ... />` 强制重建来换模型 —— 重建会丢掉整棵对话树（连同全部分支版本）。
-> 只有当新旧后端的**流格式也不同**、需要连 `parseChunk` / `streamMode` 一起换时才必须重建实例，
-> 因为那两个确实是挂载时快照。
+> 新旧后端的**流格式也不同**时同理：`parseChunk` / `streamMode` 与 `request` 一样是「用到那一刻才读」，
+> 连着换即可，仍然不需要重建实例。
+
+### 哪些配置能运行时改，哪些必须重建实例
+
+绝大多数配置都是**用到那一刻才求值**，改了立刻对下一次请求 / 下一帧渲染生效：
+
+| 配置 | 求值时机 |
+| --- | --- |
+| `request` / `parseChunk` / `streamMode` | 每次请求（`parseChunk` 精确到每个流单元） |
+| `retryTimes` / `retryInterval` | 每次判定重试额度 |
+| `streamTimeout` | 每次 attempt 起表（同一 attempt 内不重读，避免阈值中途漂移） |
+| `continuePrompt` | 每次 `continueGenerate` 组装历史 |
+| `markdownRenderers` / `allowHtml` / `mdPlugins` / `reasoningVariant` | 每帧渲染（经 `provideAiChatConfig` 响应式下发） |
+| `roles` / `shouldFollow` / `tailBreathing` / `outline` / `blockRenderers` / `toolRenderers` / `quote` / `actions` | 每帧渲染 |
+
+**只有这五项是挂载时快照**，它们都在 setup 期建了状态机 / 记忆化装置，改配置等价于换实例：
+
+`parser`、`attachments`、`voice`、`speech`、`triggers`
+
+需要切换这五项时才用 `:key` 重建 —— 并且要自己先把对话树存下来（`v-model:tree`），重建后再灌回去。
+
+> `mdPlugins` 可运行时改，但**务必传稳定引用**：markdown 引擎按「插件数组引用 + `allowHtml`」缓存，
+> 每次渲染新建数组字面量会让每帧都装配一个新引擎。
 
 ### 便利工厂：`createOpenAIRequest`（可选）
 
@@ -1362,8 +1384,8 @@ const markdownRenderers: MarkdownRenderers = {
 .sidebar-chat .aix-sender--plain { border-top: 1px solid var(--aix-colorBorderSecondary); }
 ```
 
-> `reasoningVariant` 与 `markdownRenderers` 同属**挂载时快照**（经 `provideAiChatConfig` 注入），
-> 运行时改不生效；`senderVariant` 是普通 prop，可随时切换。
+> `reasoningVariant` 经 `provideAiChatConfig` 注入下发，`senderVariant` 是普通 prop，
+> 两者都可随时切换（见「哪些配置能运行时改」）。
 >
 > 表内每个变量都是长期契约（加容易、删是破坏性变更），故按「确有定制需求」收敛，
 > 未穷举所有内部尺寸。缺你需要的请提 issue，不建议自行猜测未文档化的变量名。

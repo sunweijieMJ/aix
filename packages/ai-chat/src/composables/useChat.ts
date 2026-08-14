@@ -3,9 +3,11 @@ import {
   computed,
   effectScope,
   onScopeDispose,
+  toValue,
   type Ref,
   type ComputedRef,
   type EffectScope,
+  type MaybeRefOrGetter,
 } from 'vue';
 import type {
   ChatMessage,
@@ -61,8 +63,10 @@ export interface UseChatOptions {
    * 流分帧模式，默认 `'sse'`：按 SSE 规范以空行（`\n\n`）切事件、解析 event/data/id，
    * parseChunk 收到结构化 `SSEChunk`（覆盖 OpenAI/DeepSeek/Anthropic 等主流 LLM）。
    * `'line'`：按 `\n` 切行、parseChunk 收到原始字符串（ndjson / 纯文本流）。
+   *
+   * 每次发请求那一刻求值（支持 ref / getter），运行时切换即刻对下一次请求生效。
    */
-  streamMode?: 'sse' | 'line';
+  streamMode?: MaybeRefOrGetter<'sse' | 'line' | undefined>;
   /**
    * 把单个流单元解析为增量。`sse` 模式收 `SSEChunk`（默认 `flatParseChunk` 读 `data` 顶层
    * `delta` / `content`，识别 `[DONE]`）；对接 OpenAI/Anthropic 用 `openaiParseChunk` /
@@ -92,23 +96,30 @@ export interface UseChatOptions {
   onError?: (message: ChatMessage, error?: unknown) => void;
   /** 被 abort 中断时触发（status 置为 abort） */
   onAbort?: (message: ChatMessage) => void;
-  /** 请求失败自动重试次数（不含首次），默认 0（不重试）。abort 不触发重试。 */
-  retryTimes?: number;
-  /** 两次重试之间的等待间隔（ms），默认 1000。 */
-  retryInterval?: number;
+  /**
+   * 请求失败自动重试次数（不含首次），默认 0（不重试）。abort 不触发重试。
+   * 每次判定重试额度时求值（支持 ref / getter），运行时调整即刻生效。
+   */
+  retryTimes?: MaybeRefOrGetter<number | undefined>;
+  /** 两次重试之间的等待间隔（ms），默认 1000。求值时机同 retryTimes。 */
+  retryInterval?: MaybeRefOrGetter<number | undefined>;
   /**
    * 流静默超时（ms），默认 0（关闭）：自上次收到流数据起超过该时长无新 chunk，
    * 判定流卡死，按可重试错误处理（err.name='StreamTimeoutError'，吃 retryTimes 额度）。
    * 与整体请求超时（x-fetch 的 timeout）互补：本选项只看「数据间隔」，不限制总时长，
    * 适合流式长回答；请求头阶段的超时仍由 request 实现方（如 createXFetch）负责。
+   *
+   * 每次 attempt 起表时求值（支持 ref / getter）；同一 attempt 内不重读，避免看门狗阈值中途漂移。
    */
-  streamTimeout?: number;
+  streamTimeout?: MaybeRefOrGetter<number | undefined>;
   /**
    * 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案。不写入消息树、不在 UI
    * 展示，仅作为 request() 的 history 最后一条 user 消息。
    * 默认："请从刚才中断的地方继续往下写，不要重复已经写过的内容。"
+   *
+   * 每次 continueGenerate 组装历史时求值（支持 ref / getter）。
    */
-  continuePrompt?: string;
+  continuePrompt?: MaybeRefOrGetter<string | undefined>;
 }
 
 export interface UseChatReturn {
@@ -256,21 +267,28 @@ function cloneBlock(block: ContentBlock): ContentBlock {
 export function useChat(options: UseChatOptions): UseChatReturn {
   const {
     request,
-    streamMode = 'sse',
     parseChunk = flatParseChunk,
     parser,
     defaultMessages = [],
     onFinish,
     onError,
     onAbort,
-    retryTimes = 0,
-    retryInterval = 1000,
-    streamTimeout = 0,
-    continuePrompt = '请从刚才中断的地方继续往下写，不要重复已经写过的内容。',
   } = options;
+  // 运行期配置：一律在**使用那一刻**求值，故 ref / getter 形态可在运行时切换（与 request 同口径）。
+  // 默认值放在此处而非解构，否则 getter 求得 undefined 时拿不到兜底。
+  // parser 不在此列——整套逐条记忆化装置在下方按有无 parser 条件构建，属结构性配置。
+  const streamModeOf = () => toValue(options.streamMode) ?? 'sse';
+  const retryTimesOf = () => toValue(options.retryTimes) ?? 0;
+  const retryIntervalOf = () => toValue(options.retryInterval) ?? 1000;
+  const streamTimeoutOf = () => toValue(options.streamTimeout) ?? 0;
+  const continuePromptOf = () =>
+    toValue(options.continuePrompt) ?? '请从刚才中断的地方继续往下写，不要重复已经写过的内容。';
   // 开发期护栏（与 updateBlock 未命中 / 非法 blockType 同风格）：这条配置错误的表现是
   // 「空内容 success、全程无报错」，没有护栏几乎无从排查。
-  if (streamMode === 'line' && !options.parseChunk) {
+  // 仅按装配时的取值判一次：streamMode 现可运行时切换，逐次请求复判会在长会话里重复刷屏，
+  // 而这条错误属于接线期配置失误，装配时判一次即可覆盖。经 AiChat 接入时由其自行给出同款告警
+  // （它恒会转发一层 parseChunk 闭包，本处的 options.parseChunk 恒为真）。
+  if (streamModeOf() === 'line' && !options.parseChunk) {
     devWarn(
       '[ai-chat] streamMode="line" 未提供 parseChunk：默认解析器只识别 SSE 事件，' +
         '行字符串将被全部丢弃（回复恒为空）。请传入 parseChunk，如 (line) => ({ delta: line })。',
@@ -477,8 +495,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
    * （error 另外把原始错误写进 extra 供渲染层取用）。
    *
    * 收敛为一处而非每条路径各写一遍：终态出口有五个（成功 / 中断 ×3 / 出错 ×2），
-   * 靠人工同步已经漏过一次——深拷贝失败那条只封了 reasoning、没封 tool_use 参数，
-   * 于是 resume 场景下坏掉的那一轮会留下一张永远停在「参数流式中」的工具卡。
+   * 少封一样就会留下半开状态（如漏封 tool_use 参数 → 工具卡永远停在「参数流式中」）。
    */
   const settle = (msg: ChatMessage, status: 'success' | 'abort' | 'error', error?: unknown) => {
     sealReasoning(msg);
@@ -576,7 +593,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               {
                 id: genMsgId(),
                 role: 'user',
-                content: [{ id: genBlockId(), type: 'text', text: continuePrompt }],
+                content: [{ id: genBlockId(), type: 'text', text: continuePromptOf() }],
                 status: 'success',
               },
             ]
@@ -600,7 +617,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         // 流静默看门狗：重试循环沿用同一个用户 ctrl（停止按钮语义），超时不能 abort ctrl，
         // 否则后续重试拿到的是已 aborted 的信号。启用 streamTimeout 时每次 attempt 建内层
         // attemptCtrl（用户 abort 经监听单向联动），超时只杀当前尝试、保持可重试。
-        const attemptCtrl = streamTimeout > 0 ? new AbortController() : null;
+        // 阈值按 attempt 取一次快照：同一尝试内 armWatchdog 会被每个 chunk 重复调用，
+        // 逐次重读会让阈值在一次尝试中途漂移（起表用旧值、续表用新值），超时判定不自洽。
+        const attemptTimeout = streamTimeoutOf();
+        const attemptCtrl = attemptTimeout > 0 ? new AbortController() : null;
         const onUserAbort = () => attemptCtrl?.abort();
         if (attemptCtrl) ctrl.signal.addEventListener('abort', onUserAbort, { once: true });
         const signal = attemptCtrl?.signal ?? ctrl.signal;
@@ -612,10 +632,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           watchdog = setTimeout(() => {
             timedOut = true;
             attemptCtrl.abort();
-          }, streamTimeout);
+          }, attemptTimeout);
         };
         const streamTimeoutError = () =>
-          Object.assign(new Error(`[ai-chat] 流静默超过 ${streamTimeout}ms，判定为卡死`), {
+          Object.assign(new Error(`[ai-chat] 流静默超过 ${attemptTimeout}ms，判定为卡死`), {
             name: 'StreamTimeoutError',
           });
         try {
@@ -644,7 +664,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           if (!stream) throw new Error('[ai-chat] request 未返回可读流');
           armWatchdog(); // 拿到流即起表，覆盖「连首个 chunk 都不来」的卡死
           const frames =
-            streamMode === 'line' ? xStream(stream, signal) : sseStream(stream, signal);
+            streamModeOf() === 'line' ? xStream(stream, signal) : sseStream(stream, signal);
           for await (const unit of frames) {
             armWatchdog(); // 每收到一个单元重置：只看数据间隔，不限制总时长
             // parseChunk 允许返回单个 ParsedChunk 或数组（1 个流单元翻译出多个增量事件），
@@ -708,11 +728,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 超时路径的原始错误可能是 reader 的 AbortError，统一包装为 StreamTimeoutError
           const finalErr = timedOut ? streamTimeoutError() : err;
           // 仍有重试额度：等待间隔后重试（其间被 abort 则放弃重试并判为 abort）。
-          if (attempt < retryTimes) {
+          if (attempt < retryTimesOf()) {
             // 可中断等待：retry 间隔期间被 abort 立即唤醒，消除「已停止但气泡仍转圈、
             // onAbort 延迟、isLoading=false 后可并发再发」的不一致窗口。
             await new Promise<void>((resolve) => {
-              const timer = setTimeout(resolve, retryInterval);
+              const timer = setTimeout(resolve, retryIntervalOf());
               // abort 时清掉定时器并立即唤醒；{ once: true } 触发后自动摘监听，
               // 未触发（正常到期）则随本次请求的 ctrl 一起 GC，无残留。
               ctrl.signal.addEventListener(

@@ -32,8 +32,10 @@ export interface MarkdownRendererProps {
   /** 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），默认 false */
   allowHtml?: boolean;
   /**
-   * 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）。视为静态配置：
-   * 同一数组引用跨气泡共享同一引擎，仅在 allowHtml 变化时随之重载。
+   * 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）。
+   *
+   * 引擎按「本数组引用 + allowHtml」缓存：同一引用跨气泡共享同一引擎，换引用即重载。
+   * 因此**务必传稳定引用**——每次渲染新建数组字面量会让每帧都装配一个新引擎。
    */
   mdPlugins?: MarkdownItPlugin[];
 }
@@ -81,17 +83,19 @@ const ns = useNamespace('markdown');
 
 const engine = shallowRef<MarkdownEngine | null>(null);
 const loaded = ref(false);
-// allowHtml 变化时重载引擎（按模式缓存，切换开销小）；mdPlugins 为静态配置，随重载一并应用。
+// allowHtml / mdPlugins 任一变化时重载引擎（按二者组合缓存，切换开销小）。
+// mdPlugins 必须一并进 watch 源：引擎缓存本就按「插件数组引用 + allowHtml」分桶，
+// 只 watch allowHtml 会让「换插件不换模式」静默沿用旧引擎，新语法永远不生效。
 // loaded 语义：**基础引擎**（markdown-it 等轻量项）就绪即为 true——富文本骨架立即可渲染，
 // 不等待 hljs/katex 等重量级增强（它们后台增量合入，见 useMarkdownRenderer 的渐进装配）。
-// 加载令牌：快速切换 allowHtml 时旧 promise 后解析凭令牌失配丢弃，避免引擎被覆盖为错误模式
+// 加载令牌：快速切换时旧 promise 后解析凭令牌失配丢弃，避免引擎被覆盖为错误模式
 let loadToken = 0;
 watch(
-  () => props.allowHtml,
-  async (allowHtml) => {
+  () => [props.allowHtml, props.mdPlugins] as const,
+  async ([allowHtml, mdPlugins]) => {
     const token = ++loadToken;
     loaded.value = false;
-    const eng = await loadMarkdownEngine(allowHtml, props.mdPlugins);
+    const eng = await loadMarkdownEngine(allowHtml, mdPlugins);
     if (token !== loadToken) return; // 期间已发起新一轮加载（或值已回切）：丢弃过期结果
     engine.value = eng;
     loaded.value = true;

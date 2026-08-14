@@ -53,14 +53,50 @@ describe('AiChat 贯通 allowHtml / markdownRenderers', () => {
     expect(w.text()).toContain('卡片内容');
   });
 
-  it('运行时变更 markdown 级配置：告警一次提示快照语义', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const w = mount(AiChat, { props: { request, defaultMessages: [aiMsg('hi')] } });
+  // markdown 级配置经 provideAiChatConfig 下发，AiChat 持有其 shallowReactive 引用并持续同步，
+  // 故运行时改 props 即刻生效——不再是挂载时快照，也不再需要 :key 重建实例（那会丢整棵对话树）。
+  it('运行时切换 allowHtml：双向都即刻生效，无需重建实例', async () => {
+    const w = mount(AiChat, {
+      props: { request, defaultMessages: [aiMsg('<div class="card">卡片内容</div>')] },
+    });
+    await vi.waitFor(() => expect(w.find('p').exists()).toBe(true));
+    expect(w.find('iframe').exists()).toBe(false);
+
     await w.setProps({ allowHtml: true });
+    await vi.waitFor(() => expect(w.find('iframe').exists()).toBe(true));
+
+    // 切回去同样生效（引擎按模式缓存，来回切不会卡在某一模式）
     await w.setProps({ allowHtml: false });
-    const calls = warnSpy.mock.calls.filter((c) => String(c[0]).includes('挂载时快照'));
-    expect(calls).toHaveLength(1); // 仅告警一次，不逐次刷屏
-    warnSpy.mockRestore();
+    await vi.waitFor(() => expect(w.find('iframe').exists()).toBe(false));
+    expect(w.text()).toContain('卡片内容');
+  });
+
+  it('运行时替换 markdownRenderers：新渲染器即刻接管', async () => {
+    const w = mount(AiChat, {
+      props: { request, defaultMessages: [aiMsg('```js\nconst a = 1\n```')] },
+    });
+    await vi.waitFor(() => expect(w.find('pre').exists()).toBe(true));
+    expect(w.find('div.my-code').exists()).toBe(false);
+
+    await w.setProps({
+      markdownRenderers: { fence: ({ token }) => h('div', { class: 'my-code' }, token.content) },
+    });
+    await vi.waitFor(() => expect(w.find('div.my-code').exists()).toBe(true));
+  });
+
+  it('运行时切换 reasoningVariant：经同一条注入通道下发到 ReasoningBlock', async () => {
+    const reasoning: ChatMessage = {
+      id: 'a2',
+      role: 'ai',
+      status: 'success',
+      content: [{ id: 'r1', type: 'reasoning', text: '想一想' }],
+    };
+    const w = mount(AiChat, { props: { request, defaultMessages: [reasoning] } });
+    await vi.waitFor(() => expect(w.find('.aix-thinking').exists()).toBe(true));
+    expect(w.find('.aix-thinking--capsule').exists()).toBe(false);
+
+    await w.setProps({ reasoningVariant: 'capsule' });
+    await vi.waitFor(() => expect(w.find('.aix-thinking--capsule').exists()).toBe(true));
   });
 
   it('markdownRenderers 透传 → 自定义渲染器生效', async () => {

@@ -208,7 +208,7 @@ export interface SenderProps {
   submitType?: 'enter' | 'shiftEnter';
   /**
    * 附件能力（opt-in）：不传则完全不渲染附件 UI。传入后启用回形针按钮 / 拖拽 / 粘贴上传。
-   * 视为静态配置（setup 快照建状态机），运行时切换不生效——与 markdownRenderers 约定一致。
+   * 视为静态配置（setup 快照建状态机），运行时切换不生效——与 voice / triggers 约定一致。
    *
    * 两种传法：
    * - **配置对象**（`UseAttachmentsOptions`）：Sender 内部自行 `useAttachments`，最省事。

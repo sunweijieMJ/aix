@@ -265,14 +265,16 @@
  *
  * **关于「静态配置」标记**：下面若干项标注了「静态配置」，指该值仅在组件初始化时取一次
  * （setup 快照），运行时修改静默不生效，需要通过 `:key` 强制重建 AiChat 实例才能切换。
- * 逐项不再重复这段说明，只标记「静态配置」四字。涉及：`streamMode` / `parseChunk` /
- * `parser` / `retryTimes` / `retryInterval` / `streamTimeout` / `continuePrompt` /
- * `markdownRenderers` / `allowHtml` / `mdPlugins` / `reasoningVariant` / `attachments` /
- * `voice` / `speech` / `triggers`。其中原始类型那批另有运行时护栏会在被改动时 devWarn
- * （见下方 warnedStaticChatConfig / warnedStaticMdConfig）。
+ * 逐项不再重复这段说明，只标记「静态配置」四字。
  *
- * **`request` 不在此列**：它每次发请求才读取，换模型 / 换后端直接改即可，切忌为此重建实例
- * （重建会丢掉整棵对话树）。`quote` 的响应式粒度是逐键混合的，见其自身注释。
+ * 仅剩这五项是真正静态的，它们都在 setup 期**建了状态机 / 记忆化装置**，改配置等于换实例：
+ * `parser`（逐条记忆化缓存按有无 parser 条件构建）/ `attachments` / `voice` / `speech` /
+ * `triggers`（各自 setup 期建状态机）。
+ *
+ * 其余配置（`request` / `streamMode` / `parseChunk` / `retryTimes` / `retryInterval` /
+ * `streamTimeout` / `continuePrompt` / `markdownRenderers` / `allowHtml` / `mdPlugins` /
+ * `reasoningVariant`）**均在使用那一刻求值，运行时改即刻生效**，不要为它们重建实例——
+ * 重建会丢掉整棵对话树。`quote` 的响应式粒度是逐键混合的，见其自身注释。
  */
 export interface AiChatProps {
   /**
@@ -286,11 +288,14 @@ export interface AiChatProps {
    * 仅当新旧后端的**流格式也不同**时才需要连同 parseChunk 一起换，那种场景才必须重建实例。
    */
   request: UseChatOptions['request'];
-  /** 流分帧模式（'sse' 默认 / 'line'）；透传给 useChat。静态配置 */
-  streamMode?: UseChatOptions['streamMode'];
+  /** 流分帧模式（'sse' 默认 / 'line'）；透传给 useChat。每次请求才读取，运行时可改 */
+  streamMode?: 'sse' | 'line';
   /**
    * 流单元 → 增量解析器，默认扁平 SSE；对接 OpenAI/Anthropic 传
-   * openaiParseChunk/anthropicParseChunk。透传给 useChat。静态配置
+   * openaiParseChunk/anthropicParseChunk。透传给 useChat。
+   *
+   * 与 `request` 同口径：内部转发一层闭包，**每个流单元才读取本 prop**，故「换后端顺带换流格式」
+   * 直接改这两个 prop 即可，无需 `:key` 重建实例。
    */
   parseChunk?: UseChatOptions['parseChunk'];
   /** 渲染消息转换器（解耦后端格式与展示形状，1→1，须保留消息 id）；透传给 useChat。静态配置 */
@@ -388,31 +393,36 @@ export interface AiChatProps {
    * 返回空串等同未提供（回退 i18n 文案）。仅对 `status === 'error'` 的消息调用。
    */
   errorText?: (message: ChatMessage) => string;
-  /** 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试。静态配置 */
-  retryTimes?: UseChatOptions['retryTimes'];
-  /** 两次重试间隔（ms），默认 1000；透传给 useChat。静态配置 */
-  retryInterval?: UseChatOptions['retryInterval'];
+  /** 请求失败自动重试次数（不含首次），默认 0；透传给 useChat。abort 不触发重试。运行时可改 */
+  retryTimes?: number;
+  /** 两次重试间隔（ms），默认 1000；透传给 useChat。运行时可改 */
+  retryInterval?: number;
   /**
    * 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案；透传给 useChat。
-   * 默认见 useChat 的 continuePrompt 说明。静态配置
+   * 默认见 useChat 的 continuePrompt 说明。运行时可改
    */
-  continuePrompt?: UseChatOptions['continuePrompt'];
+  continuePrompt?: string;
   /**
-   * 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。静态配置
+   * 流静默超时（ms），默认 0 关闭：超过该时长无新数据判为卡死（可重试错误）；透传给 useChat。
+   * 每次 attempt 起表时取值，运行时可改
    */
-  streamTimeout?: UseChatOptions['streamTimeout'];
+  streamTimeout?: number;
   /**
-   * markdown token 渲染器注册表（扩展/覆盖气泡内 markdown 块渲染），优先级高于全局同名配置。静态配置
+   * markdown token 渲染器注册表（扩展/覆盖气泡内 markdown 块渲染），优先级高于全局同名配置。
+   * 运行时可改（经下方 provide 的响应式配置对象下发）
    */
   markdownRenderers?: MarkdownRenderers;
   /**
    * 是否允许渲染原始 HTML（经 sandbox iframe 隔离渲染：allow-scripts，无 allow-same-origin），
-   * 默认 false；注入到气泡内 MarkdownRenderer。静态配置
+   * 默认 false；注入到气泡内 MarkdownRenderer。运行时可改（切换时引擎按新模式重载）
    */
   allowHtml?: boolean;
   /**
    * 注入的 markdown-it 插件（扩展新语法，如脚注 / 容器 / 任务列表）；注入到气泡内 MarkdownRenderer。
-   * 与 markdownRenderers 互补：插件加新 tokenization，markdownRenderers 改 token 渲染。静态配置
+   * 与 markdownRenderers 互补：插件加新 tokenization，markdownRenderers 改 token 渲染。
+   *
+   * 运行时可改，但**务必传稳定引用**：markdown 引擎按「插件数组引用 + allowHtml」缓存，
+   * 每次渲染新建数组字面量会让每帧都装配一个新引擎。
    */
   mdPlugins?: MarkdownItPlugin[];
   /**
@@ -439,13 +449,9 @@ export interface AiChatProps {
    * 不传则不参与树级持久化。同时绑 v-model:messages 与 v-model:tree 时以 tree 为准；
    * 推荐持久化场景用 tree，两者择一。
    *
-   * `update:tree` 的触发口径（对外契约，两种宿主用法都成立）：
-   * 结构变化（增节点/切分支）、每轮请求落终态（finish/error/abort）、交互块回写命中、
-   * 赞踩反馈写回 —— 各触发一次；**流式逐 chunk 不触发**（否则每个 token 一次全量快照）。
-   * emit 出去的 message 是活的响应式代理，故：
-   * - 持有引用 + 深度侦听（useConversations 即如此）→ 任意时刻都是最新内容；
-   * - 在回调里快照 / 序列化（`@update:tree="v => api.save(JSON.stringify(v))"`）→ 靠「落终态」
-   *   这一档拿到完整数据，落库的永远是已收尾的轮次。
+   * `update:tree` 只在四个离散时刻触发（结构变化 / 请求落终态 / 交互块回写 / 赞踩写回），
+   * **流式逐 chunk 不触发**。自定义持久化前请读 README「`update:tree` 的触发口径」——
+   * 只按「结构变化」落库会静默丢掉整轮回复内容。
    */
   tree?: ExportedTree;
   /**
@@ -497,7 +503,7 @@ export interface AiChatProps {
   /**
    * 深度思考（reasoning 块）折叠面板的外观形态，默认 `'card'`；
    * `'capsule'` 为 hug 宽度胶囊头 + 独立正文块（多数 AI 产品的当下形态），`'plain'` 无容器视觉。
-   * 静态配置（经 provideAiChatConfig 注入，ReasoningBlock 由注册表实例化、接不到 prop）
+   * 经 provideAiChatConfig 注入（ReasoningBlock 由注册表实例化、接不到 prop）；运行时可改
    */
   reasoningVariant?: ThinkingVariant;
   /**
@@ -572,7 +578,7 @@ export interface AiChatEmits {
 
 <script setup lang="ts">
 import { useNamespace, useControllable, useLocale, copyText } from '@aix/hooks';
-import { computed, ref, toRaw, watch, useSlots, getCurrentInstance } from 'vue';
+import { computed, ref, toRaw, watch, watchEffect, useSlots, getCurrentInstance } from 'vue';
 import { ROOT_ID } from '../composables/messageTree';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
 import type { UseAttachmentsOptions, UseAttachmentsReturn } from '../composables/useAttachments';
@@ -590,6 +596,7 @@ import { useQuoteBinding } from '../composables/useQuoteBinding';
 import { useSpeech } from '../composables/useSpeech';
 import { useSuggestions } from '../composables/useSuggestions';
 import { useVisibleMessage } from '../composables/useVisibleMessage';
+import type { SSEChunk } from '../composables/useXStream';
 import { locale } from '../locale';
 import type {
   ChatMessage,
@@ -610,10 +617,12 @@ import type {
   SubmitMeta,
   SuggestionItem,
   OutlineOptions,
+  ParsedChunk,
 } from '../types';
 import { devWarn } from '../utils/devWarn';
 import { messageText, attachmentBlock, textBlock, quoteBlock } from '../utils/helpers';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
+import { flatParseChunk } from '../utils/parsers';
 import { flattenQuoteBlocks } from '../utils/quotePrompt';
 import { stripMarkdownForCopy } from '../utils/stripMarkdownForCopy';
 import BubbleActions from './BubbleActions.vue';
@@ -736,94 +745,76 @@ const DEFAULT_ROLES: Record<string, RoleConfig> = {
   ai: { placement: 'start', variant: 'filled' },
 };
 
-// 合并优先级：内置默认 < 全局 provideAiChatConfig.roles < 组件 props.roles
+// ── 以下各项统一按「内置默认 < 全局 provideAiChatConfig < 组件 props」三级解析 ──
+// 注册表类（roles / blockRenderers / toolRenderers）逐键合并，标量与配置对象类整体覆盖。
+// 只标注各自的**未提供时行为**，优先级规则不再逐条重复。
+
 const roles = computed<Record<string, RoleConfig>>(() => ({
   ...DEFAULT_ROLES,
   ...config.value.roles,
   ...props.roles,
 }));
 
-// 滚动跟随策略覆盖优先级：组件 props.shouldFollow > 全局 provideAiChatConfig.shouldFollow
-// （均未提供时传 undefined，由 BubbleList/useAutoScroll 回退内置 defaultShouldFollow）
+// 均未提供时传 undefined，由 BubbleList/useAutoScroll 回退内置 defaultShouldFollow
 const shouldFollow = computed(() => props.shouldFollow ?? config.value.shouldFollow);
 
-// 末尾静默呼吸覆盖优先级：组件 props.tailBreathing > 全局 provideAiChatConfig.tailBreathing
-// （均未提供时为 undefined，Bubble 内按关闭处理）
+// 均未提供时为 undefined，Bubble 内按关闭处理
 const tailBreathing = computed(() => props.tailBreathing ?? config.value.tailBreathing);
 
-// 对话大纲：覆盖优先级同上；true 视为启用并取默认配置
+// true 视为启用并取默认配置
 const resolvedOutline = computed(() => props.outline ?? config.value.outline);
 const outlineEnabled = computed(() => !!resolvedOutline.value);
 const outlineOpts = computed<OutlineOptions>(() =>
   typeof resolvedOutline.value === 'object' ? resolvedOutline.value : {},
 );
 
-// 块渲染器合并优先级：组件 props.blockRenderers > 全局 provideAiChatConfig.blockRenderers
-// （Bubble 内部再叠加内置 text/reasoning 默认渲染器）
+// Bubble 内部再叠加内置 text/reasoning 等默认渲染器
 const blockRenderers = computed<BlockRenderers>(() => ({
   ...config.value.blockRenderers,
   ...props.blockRenderers,
 }));
 
-// 工具调用渲染器合并优先级：组件 props.toolRenderers > 全局 provideAiChatConfig.toolRenderers
-// （与 blockRenderers 并列的独立注册表，专供 tool_use 块按 toolName 路由）
+// 与 blockRenderers 并列的独立注册表，专供 tool_use 块按 toolName 路由
 const toolRenderers = computed<BlockRenderers>(() => ({
   ...config.value.toolRenderers,
   ...props.toolRenderers,
 }));
 
-// markdown 级配置（markdownRenderers / allowHtml）经"全局 + 组件 props"合并后重新 provide 给子树，
-// 供气泡内深层的 TextBlock / ReasoningBlock 的 MarkdownRenderer 注入消费。
+// markdown 级配置经「全局 + 组件 props」合并后重新 provide 给子树，供气泡内深层的
+// TextBlock / ReasoningBlock 的 MarkdownRenderer 消费。
 // 优先级：内置默认 < 全局 provideAiChatConfig < 组件 props（与 roles/blockRenderers 一致）。
-// 注：markdownRenderers / allowHtml 视为相对静态配置，此处取 setup 时快照。
-provideAiChatConfig({
+//
+// 接住 provideAiChatConfig 返回的 shallowReactive 引用并持续同步，而**不是**只在 setup 期灌一次
+// 快照：整条下游链路本就是响应式的（useAiChatConfig 返回 computed、TextBlock/ReasoningBlock
+// 以模板绑定逐项透传、MarkdownRenderer 自带按 allowHtml/mdPlugins 的引擎重载 watch），
+// 只灌快照会让这四项白白退化成「改了不生效、只能 :key 重建实例」——而重建会丢整棵对话树。
+//
+// config 取的是**父级**注入（inject 在本组件 provide 之前解析，指向上游而非自己），
+// 故下面的 watchEffect 读 config、写 providedConfig，不构成自激循环。
+const resolveProvidedConfig = () => ({
   ...config.value,
   markdownRenderers: { ...config.value.markdownRenderers, ...props.markdownRenderers },
   allowHtml: props.allowHtml ?? config.value.allowHtml ?? false,
   mdPlugins: props.mdPlugins ?? config.value.mdPlugins,
-  // reasoningVariant 走同一条注入通道（ReasoningBlock 由注册表实例化，接不到 prop），
-  // 因此同样是挂载时快照，一并纳入下方护栏的告警范围。
+  // reasoningVariant 走同一条注入通道（ReasoningBlock 由注册表实例化，接不到 prop）
   reasoningVariant: props.reasoningVariant ?? config.value.reasoningVariant,
 });
+const providedConfig = provideAiChatConfig(resolveProvidedConfig());
+watchEffect(() => Object.assign(providedConfig, resolveProvidedConfig()));
 
-// 开发期护栏：上面三项 markdown 级配置是 setup 时快照，运行时改 props 不会重新 provide，
-// 子树渲染静默维持旧配置、极难排查。检测到变更时告警一次（与未注册渲染器告警同风格）。
-let warnedStaticMdConfig = false;
-watch(
-  () => [props.markdownRenderers, props.allowHtml, props.mdPlugins, props.reasoningVariant],
-  () => {
-    if (warnedStaticMdConfig) return;
-    warnedStaticMdConfig = true;
-    devWarn(
-      '[ai-chat] markdownRenderers / allowHtml / mdPlugins / reasoningVariant 为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。',
-    );
-  },
-);
-
-// 开发期护栏（同上）：useChat 的配置项是 setup 时快照（useChat 内一次性解构），运行时改 props 静默不生效。
-// 仅原始类型 prop 进 watch；parseChunk / parser 为函数 prop，业务常以内联箭头函数传入
-// （父组件每次渲染产生新引用），进 watch 会持续误报，故只在 props 注释中声明静态语义，不做运行时检测。
-//
-// request **不在**本护栏覆盖范围内，因为它根本不是快照：上方接线处转发的是
-// `(ctx) => props.request(...)` 闭包，每次请求才读 prop。此处若把它算进告警文案，
-// 会把业务往「换模型要 :key 重建组件」这条错误路子上引——而重建会丢掉整棵对话树。
-let warnedStaticChatConfig = false;
-watch(
-  () => [
-    props.streamMode,
-    props.retryTimes,
-    props.retryInterval,
-    props.streamTimeout,
-    props.continuePrompt,
-  ],
-  () => {
-    if (warnedStaticChatConfig) return;
-    warnedStaticChatConfig = true;
-    devWarn(
-      '[ai-chat] streamMode / retryTimes / retryInterval / streamTimeout / continuePrompt（以及 parseChunk / parser）为挂载时快照，运行时变更不会生效；如需切换请通过 key 强制重建 AiChat 实例。注意 request 不在此列——它每次请求才读取，换模型 / 换后端直接改 request 即可，无需重建。',
-    );
-  },
-);
+// 开发期护栏：本组件恒会向 useChat 转发一层 parseChunk 闭包（见下方接线），useChat 内那条
+// 同款护栏因此对经 AiChat 接入的场景恒不触发，故在这里复判。这条配置错误的表现是
+// 「空内容 success、全程无报错」，没有护栏几乎无从排查。
+// streamMode / parseChunk 现均可运行时切换，故用 watchEffect 跟随；只告警一次避免刷屏。
+let warnedLineModeParse = false;
+watchEffect(() => {
+  if (warnedLineModeParse || props.streamMode !== 'line' || props.parseChunk) return;
+  warnedLineModeParse = true;
+  devWarn(
+    '[ai-chat] streamMode="line" 未提供 parseChunk：默认解析器只识别 SSE 事件，' +
+      '行字符串将被全部丢弃（回复恒为空）。请传入 parseChunk，如 (line) => ({ delta: line })。',
+  );
+});
 
 const {
   messages,
@@ -852,14 +843,23 @@ const {
       ...ctx,
       messages: flattenQuoteBlocks(ctx.messages, resolvedQuote.value.toPrompt),
     }),
-  streamMode: props.streamMode,
-  parseChunk: props.parseChunk,
+  // 运行期配置一律以 getter 形态转发，由 useChat 在使用那一刻求值（与 request 同口径），
+  // 故运行时改这些 prop 即刻对下一次请求生效，不必 :key 重建实例（重建会丢整棵对话树）。
+  streamMode: () => props.streamMode,
+  // 同 request：转发一层闭包，每个流单元才读 prop。两个重载形态（SSEChunk / string）在此
+  // 收敛为同一调用点，用断言消解联合签名的调用歧义——运行时按 streamMode 送进来的实参
+  // 与业务传入的解析器形态天然一致。
+  parseChunk: ((unit: SSEChunk) => {
+    const fn = props.parseChunk as ((u: SSEChunk) => ParsedChunk | ParsedChunk[]) | undefined;
+    return (fn ?? flatParseChunk)(unit);
+  }) as UseChatOptions['parseChunk'],
+  // parser 保持 setup 快照：useChat 的逐条记忆化缓存按有无 parser 条件构建，属结构性配置
   parser: props.parser,
   defaultMessages: props.defaultMessages,
-  retryTimes: props.retryTimes,
-  retryInterval: props.retryInterval,
-  streamTimeout: props.streamTimeout,
-  continuePrompt: props.continuePrompt,
+  retryTimes: () => props.retryTimes,
+  retryInterval: () => props.retryInterval,
+  streamTimeout: () => props.streamTimeout,
+  continuePrompt: () => props.continuePrompt,
   // 每轮请求落终态后先同步一次树（见 syncTree 契约②），再对外抛事件：宿主的 finish/error/
   // abort 处理器跑起来时 v-model:tree 已是定稿数据，两条通道不会各说各话。
   // syncTree 声明在下方（依赖同样声明在下方的 treeModel），此处经闭包在回调触发时才求值——
@@ -1045,19 +1045,12 @@ if (initialTree.nodes.length) {
   importTree(initialTree);
 }
 /**
- * 把当前树导出回父（v-model:tree）。未绑 v-model:tree 时整条通道空转：exportTree 是
- * O(节点数) 的全量快照，而写入的 model 既无人读也无监听可 emit，白跑一趟。
+ * 把当前树导出回父（v-model:tree）。未绑时整条通道空转：exportTree 是 O(节点数) 的全量快照，
+ * 而写入的 model 既无人读也无监听可 emit，白跑一趟。
  *
- * **触发口径即对外契约**。exportTree() 产出的 message 是活的响应式代理，而本函数刻意只在
- * 下列离散时刻触发，不随流式逐 chunk 触发（那会让每个 token 都跑一次全量快照）：
- *   ① 结构变化（增节点 / 切分支）——由下方 watch 驱动；
- *   ② 单轮请求落终态（finish / error / abort）——此刻状态与内容均已定稿；
- *   ③ 交互块回写命中（updateBlock，如确认卡作答）；
- *   ④ 赞踩反馈写回（setFeedback）。
- * 于是宿主的两种用法都成立：
- *   - 持有引用 + 深度侦听（useConversations 即如此）：任意时刻都是最新内容；
- *   - 在回调里快照 / 序列化（`@update:tree="v => api.save(JSON.stringify(v))"`）：靠 ②③④
- *     这几档拿到完整数据。
+ * **四个调用点即对外契约**，勿增删：① 结构变化（下方 watch）② 请求落终态（onFinish/onError/
+ * onAbort）③ 交互块回写命中（onBlockAction）④ 赞踩写回（onFeedback）。完整口径与宿主两种
+ * 用法见 README「`update:tree` 的触发口径」。
  *
  * ② 尤其不能省：AI 占位节点入树那一刻就是本轮最后一次结构变化，其后整段流式内容与
  * updating→success 都不改变树结构。缺了它，快照式宿主会持久化一条 `content: []` 且
