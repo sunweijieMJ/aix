@@ -232,18 +232,14 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
       if (c.tree) return c.tree;
       // 迁移：用 messageTree 把扁平 messages 转线性树导出。
       //
-      // **必须先浅拷贝每条消息**：messageTree.appendMessage 是全库唯一的入树口，会给缺失
-      // createdAt 的消息补写 `Date.now()`。直接把 c.messages 喂进去，这个 getter 就会改写
-      // 会话仓库里的消息对象——后果有三：
-      //   ① 「读一个 computed」变成「写用户数据」；
-      //   ② 写的是本 computed 刚读过的响应式依赖，它会当场自失效，第一次重读要整棵树重建一遍；
-      //   ③ 配了 storage 时，这次 mutation 被下方的 watch 捕获，调度一次用户从未触发的 save()。
-      // 浅拷贝只换消息外壳，content 数组仍是同一引用（块数据不复制）；补写的 createdAt 落在
-      // 副本上，随导出的树进入宿主的 SSOT，而源 messages 保持不变——迁移完成后宿主的
-      // syncTree 会经 set 分支把 c.tree / c.messages 一并写回，两边最终收敛。
-      const source = Array.isArray(c.messages) ? c.messages : [];
-      const t = createMessageTree(source.map((m) => ({ ...m })));
-      return t.exportTree();
+      // 本 getter 不复制入参，靠 importFlat 自己的浅拷贝（见其注释）保证不写穿 c.messages。
+      // 这条不变量对本处尤其要紧：appendMessage 会给缺失 createdAt 的消息补写 `Date.now()`，
+      // 一旦写到会话仓库的消息对象上，① 「读一个 computed」就变成了「写用户数据」；
+      // ② 写的是本 computed 刚读过的响应式依赖，它会当场自失效，第一次重读要整棵树重建一遍；
+      // ③ 配了 storage 时这次 mutation 被下方的 watch 捕获，调度一次用户从未触发的 save()。
+      // 补写的 createdAt 落在树内副本上，随导出的树进入宿主的 SSOT，源 messages 保持不变——
+      // 迁移完成后宿主的 syncTree 会经 set 分支把 c.tree / c.messages 一并写回，两边最终收敛。
+      return createMessageTree(Array.isArray(c.messages) ? c.messages : []).exportTree();
     },
     set: (data) => {
       const c = active.value;
