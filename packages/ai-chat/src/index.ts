@@ -25,7 +25,6 @@ import ThoughtChain from './components/ThoughtChain.vue';
 import TriggerMenu from './components/TriggerMenu.vue';
 import Welcome from './components/Welcome.vue';
 
-// 组件（不带 Aix 前缀）
 // 注意：内置内容块组件（TextBlock / ReasoningBlock / ThoughtChainBlock / SourcesBlock /
 // AttachmentBlock / UserConfirmBlock）是 Bubble 块注册表的实现细节，不对外导出——扩展请通过 blockRenderers 注册自定义渲染器。
 export {
@@ -58,7 +57,6 @@ export {
 // 与上面那批一样进下方 components 映射，全局注册时可用 <AixQuoteToolbar> / <AixQuoteSheet>。
 export { QuoteToolbar, QuoteSheet };
 
-// composables
 export * from './composables';
 
 // 触发菜单（@提及 / 斜杠命令）L1 检测状态托管：纯状态、无 DOM 副作用，供自定义触发 UI 复用同一检测逻辑
@@ -204,7 +202,6 @@ export type { SuggestionsProps, SuggestionsEmits } from './components/Suggestion
 export type { ContextWindowProps, ContextWindowEmits } from './components/ContextWindow.vue';
 export type { MessageOutlineProps, MessageOutlineEmits } from './components/MessageOutline.vue';
 
-// locale
 export { locale as aiChatLocale, zhCN, enUS } from './locale';
 export type { AiChatLocale } from './locale';
 

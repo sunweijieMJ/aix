@@ -47,8 +47,8 @@ export function createParseChunk(
         '');
     const blockType = pickBlockType?.(json);
     // 同帧正文不能因为"命中工具"就被丢掉：聚合网关合帧时正文与工具事件会落在同一个 chunk，
-    // 早退会静默吃掉这段正文（与 openaiParseChunk 的 content + tool_calls 同帧是同一类问题，
-    // 此处回填同款修复）。文本置于工具事件之前：模型先说话再发起调用，块顺序应与之一致。
+    // 早退会静默吃掉这段正文（openaiParseChunk 的 content + tool_calls 同帧同此口径）。
+    // 文本置于工具事件之前：模型先说话再发起调用，块顺序应与之一致。
     if (tool) {
       if (!delta) return { tool };
       return [blockType ? { delta, blockType } : { delta }, { tool }];
