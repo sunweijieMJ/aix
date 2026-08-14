@@ -422,10 +422,8 @@ export interface AiChatProps {
    * - **配置对象**（`UseAttachmentsOptions`）：由 Sender 内部 `useAttachments`，最省事；
    * - **已创建的实例**（`UseAttachmentsReturn`）：宿主自己持有 items / `clear()` 等状态与句柄。
    *
-   * 之前这里只声明了前者，而模板是原样直通、运行时本就支持实例——于是「宿主持有附件状态」
-   * 这条 Sender 明确支持的用法，在 AiChat 这一层被类型挡住了（TS 宿主只能 as any 绕）。
-   * 典型需求：面板以 v-if 卸载时把已上传未发送的附件回收掉（`useAttachments` 的 scope 销毁
-   * 会逐条走 onRemove，但宿主也可能想更早地手动 `clear()`）。
+   * 传实例的典型需求：面板以 v-if 卸载时把已上传未发送的附件回收掉（`useAttachments` 的
+   * scope 销毁会逐条走 onRemove，但宿主也可能想更早地手动 `clear()`）。
    */
   attachments?: UseAttachmentsOptions | UseAttachmentsReturn;
   /** 语音输入（opt-in），透传 Sender；不传则无麦克风按钮。静态配置 */
@@ -846,7 +844,7 @@ const {
   resume,
   continueGenerate,
 } = useChat({
-  // 请求期把 quote 块拍平成 blockquote 文本给 business（纯函数，不 mutate SSOT，见设计 §2.1）；
+  // 请求期把 quote 块拍平成 blockquote 文本给 business（纯函数，不 mutate SSOT）；
   // 无 quote 块时逐条直通，零开销。`...ctx` 展开在前，故 messageId / setExtra 等
   // 后续新增的上下文字段自动随之透传，这里只覆盖 messages 这一项。
   request: (ctx) =>
@@ -880,7 +878,7 @@ const {
   },
 });
 
-// ============ 追问建议（spec §5.2）============
+// ============ 追问建议 ============
 // 双通道状态机在 useSuggestions 内；此处只做接线（配置来源、消息来源、回填/发送出口）。
 // 通道②读 useChat 的原始 messages 而非 parsedMessages：1→N 拆分时末气泡未必带 suggestions。
 const {
@@ -967,7 +965,7 @@ const {
 });
 
 // 包一层：对外抛 send 事件后再委托 useChat；pendingQuotes 打包成一等 quote 块前置进 content
-// （单源真源，无 extra.quotes；见设计 §2.1），发送即清空
+// （单源真源，无 extra.quotes），发送即清空
 const onSend = (text: string, attachments?: AttachmentItem[], meta?: SubmitMeta) => {
   // 并发守卫与 useChat.onSend 的 isLoading 守卫对齐：本函数是命令式公开 API（defineExpose）
   // 的入口，流式期间被外部调用时下游会静默拒收，若仍往下走就会 ① 抛出一个消息根本没发出的

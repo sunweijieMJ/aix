@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <!-- mousedown.prevent：防按钮抢焦点清掉选区高亮（选区保全，见设计 §7） -->
+    <!-- mousedown.prevent：防按钮抢焦点清掉选区高亮（选区保全） -->
     <div
       ref="floatingElRef"
       :class="ns.b()"

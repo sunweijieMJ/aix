@@ -5,7 +5,7 @@
  *   清掉旧 overlay，避免重复点击时颜色叠加变深；
  * - highlightElement：整条引用降级，整气泡加 CSS 类；重复触发时通过 WeakMap 记录的定时器复位，
  *   让淡出动画重播而不是被旧定时器提前打断。
- * 样式类挂在 AiChat.vue 的全局样式里（.aix-quote-highlight*，见 Task 12）。
+ * 样式类挂在 AiChat.vue 的全局样式里（.aix-quote-highlight*）。
  */
 
 import { BUBBLE_CONTENT_SELECTOR } from './helpers';

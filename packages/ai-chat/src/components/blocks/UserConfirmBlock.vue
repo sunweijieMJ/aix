@@ -218,7 +218,7 @@ const cancelDeadline = () => {
   else cancelPending = true;
 };
 
-/** 任何手动交互都撤销整条超时时间线（与 V5 一致：用户已接管，不再自动代填/代交） */
+/** 任何手动交互都撤销整条超时时间线：用户已接管，不再自动代填 / 代交 */
 const onManualInput = () => {
   cancelDeadline();
   invalid.value = false;
@@ -309,7 +309,7 @@ watchEffect(() => {
   border-radius: var(--aix-borderRadius);
   background-color: var(--aix-colorFillQuaternary);
 
-  // 提交在途 / 已冻结：整卡不可点，避免请求回来前的重复交互（对应 V5 的 frozen）
+  // 提交在途 / 已冻结：整卡不可点，避免请求回来前的重复交互
   &.is-submitting,
   &.is-frozen {
     opacity: 0.7;

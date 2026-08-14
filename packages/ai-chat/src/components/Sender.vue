@@ -182,7 +182,7 @@
  */
 export type ToolbarBuiltinKey = 'attach' | 'voice' | 'spacer';
 
-/** 工具栏自定义项：任意 Vue 组件；受控状态经独立 `sender` prop 注入，不与 props 合并（见 Task 2） */
+/** 工具栏自定义项：任意 Vue 组件；受控状态经独立 `sender` prop 注入，不与 props 合并 */
 export interface ToolbarItem {
   key: string;
   component: Component;
@@ -530,7 +530,7 @@ if (trig) {
   });
 }
 
-// 触发检测统一入口：语音聆听中不进入触发态（双向互斥，spec §5.1-7）
+// 触发检测统一入口：语音聆听中不进入触发态（与语音双向互斥）
 const runDetect = () => {
   if (!trig) return;
   if (isListening.value) {
@@ -894,7 +894,7 @@ const onMicClick = () => {
   if (voice.status.value === 'listening') {
     voice.stop();
   } else {
-    trig?.clear(); // 菜单与语音互斥（spec §5.1-7）
+    trig?.clear(); // 菜单与语音互斥
     committedBase = inner.value; // 从当前输入内容续写
     voice.start();
   }
@@ -946,7 +946,7 @@ const onInput = (e: Event) => {
     restartVoiceFrom(inner.value);
   }
   autosize();
-  // 触发检测：组词中不检测（同语音重启守卫）；粘贴产生的 input 不进入触发态（spec §5.1-8）
+  // 触发检测：组词中不检测（同语音重启守卫）；粘贴产生的 input 不进入触发态
   if (!(e as InputEvent).isComposing) {
     if ((e as InputEvent).inputType === 'insertFromPaste') trig?.clear();
     else runDetect();
@@ -991,7 +991,7 @@ const doSubmit = () => {
   });
 };
 
-// 选中候选：replaceWithMeasure 式回填（spec §5.1-2）——
+// 选中候选：replaceWithMeasure 式回填——
 // 最终插入串 = (keepTrigger ? char : '') + insertText；纯 onSelect 项等价 insertText=''，
 // 已键入的触发段一并移除。走 setValue 同路径（autosize/v-model/语音基线）。
 const applyTriggerSelect = (item: TriggerItem) => {
@@ -1018,7 +1018,7 @@ const applyTriggerSelect = (item: TriggerItem) => {
     if (trig!.active.value) trig!.dismiss();
   });
   if (isAt) {
-    // 旁路数组记录（配额校验/整体删除见 Task 6）。自定义 insertText 与默认 token
+    // 旁路数组记录（配额校验 / 整体删除见下方 collectMentions / findMentionTokenEnd）。自定义 insertText 与默认 token
     // 文本（@label）不一致时，提交配额校验会自然将其丢弃——记录无副作用。
     selectedMentions.push({ value: item.value, label: item.label, trigger: det.char });
   }
@@ -1026,7 +1026,7 @@ const applyTriggerSelect = (item: TriggerItem) => {
   trig!.clear();
 };
 
-// ============ mention 旁路数组语义（spec §5.1-3/4）：不反解析文本 ============
+// ============ mention 旁路数组语义：不反解析文本 ============
 const mentionTokenText = (m: MentionEntity) => `${m.trigger}${m.label}`;
 
 // Backspace 整体删除的匹配：光标前文本以某完整 token（含/不含尾随空格）结尾，
@@ -1077,8 +1077,8 @@ const collectMentions = (text: string): SubmitMeta | undefined => {
 };
 
 const onKeydown = (e: KeyboardEvent) => {
-  // ① IME 守卫最先：组词中 Enter/↑↓/Esc 归输入法（keyCode 229 兼容部分浏览器）。
-  //    原「语音 Esc」从守卫前移到守卫后，属 spec 声明的行为修正：组词中 Esc 归输入法取消组词。
+  // ① IME 守卫最先：组词中 Enter/↑↓/Esc 一律归输入法（keyCode 229 兼容部分浏览器）。
+  //    必须先于下面的语音 Esc —— 组词中的 Esc 是「取消组词」，不该被解读为停止聆听。
   if (e.isComposing || e.keyCode === 229) return;
   // ② 菜单拦截段：菜单打开时接管导航/选中/关闭
   if (menuOpen.value) {
@@ -1123,12 +1123,12 @@ const onKeydown = (e: KeyboardEvent) => {
       }
     }
   }
-  // ③ 语音 Esc 停止聆听（原逻辑，位序后移见 ①）
+  // ③ 语音 Esc 停止聆听（位序约束见 ①）
   if (e.key === 'Escape' && voice?.status.value === 'listening') {
     voice.stop();
     return;
   }
-  // ④ Enter 提交判定（原逻辑不变）
+  // ④ Enter 提交判定
   if (e.key !== 'Enter') return;
   const wantShift = props.submitType === 'shiftEnter';
   const matched = wantShift ? e.shiftKey : !e.shiftKey;

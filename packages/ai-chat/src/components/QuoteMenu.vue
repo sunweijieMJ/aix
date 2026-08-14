@@ -12,7 +12,7 @@
 <script lang="ts">
 export interface QuoteMenuProps {
   items: ResolvedQuoteAction[];
-  /** 本次触发来源 = 唯一平台事实（设计 §1）：longpress → sheet，pointer/keyboard → toolbar */
+  /** 本次触发来源 = 唯一平台事实：longpress → sheet，pointer/keyboard → toolbar */
   source: 'pointer' | 'keyboard' | 'longpress';
   mode: 'menu' | 'selecting';
   /** 选区包围盒（toolbar 锚点，source=pointer/keyboard 时必传） */

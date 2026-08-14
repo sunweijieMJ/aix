@@ -112,7 +112,7 @@ export function useQuoteBinding(options: UseQuoteBindingOptions): UseQuoteBindin
   });
 
   // 回链：滚到消息 → 等挂载 → 块内文本搜索还原 Range 高亮（主路径），偏移快路径兜底，
-  // 整条引用/未命中 → 整气泡高亮降级（见设计 §6）
+  // 整条引用/未命中 → 整气泡高亮降级
   const locateAnchor = async (anchor: QuoteAnchor) => {
     const el = await options.scrollToBubble(anchor.source.messageId);
     if (!el) return; // 派生 id 不在当前分支等 → 优雅降级不高亮

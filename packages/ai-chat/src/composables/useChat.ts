@@ -155,14 +155,16 @@ export interface UseChatReturn {
   /**
    * 续流：向已存在的 AI 消息续写（不新建节点），用于工具调用 HITL 确认等场景。
    * id 接受派生气泡 id（内部解析回父消息）；payload 透传给 request 的 resume 字段。
-   * 返回是否受理：isLoading 时 / id 未命中 / 非 AI 消息 → false，未做任何改动。
+   * 与 onSend/onReload/onEdit 共用同一个 isLoading 并发守卫（单写者不变量）。
+   * 返回是否受理：isLoading 时 / id 未命中 / 非 AI 消息 / 不在激活路径 → false，未做任何改动。
    */
   resume: (id: string, payload?: unknown) => Promise<boolean>;
   /**
    * 继续生成：向被用户手动停止（status==='abort'）的 AI 消息续写，不新建节点，视觉上拼接到
    * 同一气泡。与 resume 的区别：会把该消息已生成的内容连同一条隐藏续写指令一并作为 history
-   * 发给 request()，不依赖后端会话状态记住前情。
-   * 返回是否受理：非 abort / 非 AI 消息 / isLoading 时 / 不在激活路径 → false，未做任何改动。
+   * 发给 request()，不依赖后端会话状态记住前情，适配无状态后端。
+   * 返回是否受理：非 abort / 非 AI 消息 / isLoading 时 / 不在激活路径 / 不是激活路径链尾
+   * → false，未做任何改动。
    */
   continueGenerate: (id: string) => Promise<boolean>;
 }
@@ -847,19 +849,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     parserMemoScope?.stop();
   });
 
-  /** 切换某消息所在层分支（流式中禁用） */
   const switchBranch = (id: string, dir: -1 | 1): boolean => {
     if (isLoading.value) return false;
     return tree.switchBranch(resolveParentId(id), dir);
   };
 
-  /** 取某消息分支元信息（接受派生气泡 id，内部解析回父消息） */
   const getBranches = (id: string) => tree.getBranches(resolveParentId(id));
 
-  /**
-   * 续流：向已存在的 AI 消息续写（如工具调用 HITL 确认后继续跑）。与 onSend/onReload/onEdit
-   * 共用同一个 isLoading 并发守卫（单写者不变量），不新建任何消息节点。
-   */
   const resume = async (id: string, payload?: unknown): Promise<boolean> => {
     if (isLoading.value) return false;
     const pid = resolveParentId(id);
@@ -872,11 +868,6 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     return true;
   };
 
-  /**
-   * 继续生成：向被手动停止（status==='abort'）的 AI 消息续写。与 resume 不同，
-   * 发给 request() 的 history 会带上这条消息自身已生成的内容（+ 隐藏续写指令），
-   * 不依赖后端会话状态记住前情，适配无状态后端。
-   */
   const continueGenerate = async (id: string): Promise<boolean> => {
     if (isLoading.value) return false;
     const pid = resolveParentId(id);
