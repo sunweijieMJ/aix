@@ -72,7 +72,11 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
     // 创建时刻：本函数是全库唯一的消息入树口（新发送 / 重生成 / 编辑重发 / importFlat 逐条重建
     // 都经此处），故补写只此一处即可。**仅在缺失时补**——importFlat / importTree 恢复的历史
     // 消息自带真实时间，覆写会把整段历史的时间戳压成「本次加载时刻」。
-    // 在 nodes.set 之前 mutate：此刻 message 还是普通对象，不触发任何响应式更新。
+    //
+    // 本行会就地改写传入的 message，**调用方须自己保证这个对象归树所有**：入参若是宿主
+    // store 里的响应式代理（v-model:messages 绑 useConversations 就是这种），这次写入会穿透
+    // 回宿主的数据并触发其侦听器。故 importFlat 传的是浅拷贝（见其内注释），importTree 用的
+    // 是持久化数据里的节点，两条路都不会写到宿主还在用的对象上。
     if (message.createdAt == null) message.createdAt = Date.now();
     nodes.set(id, { id, parentId, message, childIds: [] });
     parent.childIds.push(id);
@@ -147,7 +151,13 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
         continue;
       }
       seen.add(m.id);
-      appendMessage(parentId, m);
+      // 浅拷贝换壳后再入树：入参来自不可信且**仍被宿主持有**的来源（defaultMessages /
+      // v-model:messages / 持久化的 conversation.messages），直接入树会让 appendMessage 的
+      // createdAt 补写穿透回宿主对象（绑 useConversations 时那是响应式代理，还会连带触发
+      // 它的深度侦听）——"导入"不该反过来改调用方的数据。与 useConversations.activeTree
+      // getter 的浅拷贝同一口径：只换消息外壳，content 数组仍是同一引用（块数据不复制），
+      // 故流式 mutate 内容照常驱动 DOM。
+      appendMessage(parentId, { ...m });
       parentId = m.id;
     }
     if (duplicated > 0) {

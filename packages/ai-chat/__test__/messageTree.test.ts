@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { nextTick, reactive, watch } from 'vue';
 import { createMessageTree, ROOT_ID } from '../src/composables/messageTree';
 import type { ChatMessage } from '../src/types';
 
@@ -171,5 +172,41 @@ describe('messageTree — importTree 脏数据修复', () => {
       headId: 'a1',
     });
     expect(t.exportTree().nodes.map((n) => n.parentId)).toEqual([ROOT_ID, 'u1']);
+  });
+});
+
+describe('messageTree — importFlat 不写穿调用方的消息对象', () => {
+  it('createdAt 补写落在树内副本上，入参对象与宿主响应式 store 都不被改动', async () => {
+    // 入参来自宿主且仍被宿主持有（v-model:messages 绑 useConversations 就是这种形态）：
+    // 若直接入树，appendMessage 的 createdAt 补写会穿透回宿主对象并触发它的深度侦听。
+    const store = reactive({ messages: [msg('u1', 'user')] as ChatMessage[] });
+    let deepWatchFired = 0;
+    watch(
+      () => store,
+      () => {
+        deepWatchFired += 1;
+      },
+      { deep: true },
+    );
+
+    const t = createMessageTree();
+    t.importFlat(store.messages);
+    await nextTick();
+
+    // 宿主的消息对象原封不动，其深度侦听器不被这次导入惊动
+    expect(store.messages[0]!.createdAt).toBeUndefined();
+    expect(deepWatchFired).toBe(0);
+    // 树内副本照常补上 createdAt，且不是同一个对象
+    const inTree = t.getMessage('u1')!;
+    expect(inTree).not.toBe(store.messages[0]);
+    expect(typeof inTree.createdAt).toBe('number');
+    // 浅拷贝只换外壳：content 仍是同一引用，流式就地 mutate 内容照常驱动 DOM
+    expect(inTree.content).toBe(store.messages[0]!.content);
+  });
+
+  it('已有 createdAt 的历史消息不被覆写成「本次加载时刻」', () => {
+    const t = createMessageTree();
+    t.importFlat([{ ...msg('u1', 'user'), createdAt: 1700000000000 }]);
+    expect(t.getMessage('u1')!.createdAt).toBe(1700000000000);
   });
 });

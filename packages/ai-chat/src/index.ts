@@ -54,7 +54,8 @@ export {
   MessageOutline,
 };
 
-// 划词引用默认皮肤（toolbar/sheet 单端换肤时作为 fallback/对照参考，见 QuoteMenuProps.toolbar/sheet）
+// 划词引用默认皮肤（toolbar/sheet 单端换肤时作为 fallback/对照参考，见 QuoteMenuProps.toolbar/sheet）。
+// 与上面那批一样进下方 components 映射，全局注册时可用 <AixQuoteToolbar> / <AixQuoteSheet>。
 export { QuoteToolbar, QuoteSheet };
 
 // composables
@@ -227,6 +228,8 @@ const components = {
   LoadingDots,
   QuoteMenu,
   QuoteChip,
+  QuoteToolbar,
+  QuoteSheet,
   TriggerMenu,
   Suggestions,
   ContextWindow,

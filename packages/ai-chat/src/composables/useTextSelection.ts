@@ -291,8 +291,8 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
       if (!root || !isEnabled) return;
       bind(root, 'pointerup', onPointerUp as EventListener);
       bind(document, 'selectionchange', onSelectionChange as EventListener);
-      // 长按分支恒装配（触屏事件只在触屏设备产生，无需预判平台；
-      // usePlatform 供 AiChat 层做「是否启用移动路径」的逃生口）
+      // 长按分支恒装配：触屏事件只在触屏设备产生，无需预判平台。
+      // 菜单形态也不看平台，只看本次触发来源（见 QuoteMenu 的 source：longpress → sheet）。
       bind(root, 'touchstart', onTouchStart as EventListener, { passive: true });
       bind(root, 'touchmove', onTouchMove as EventListener, { passive: true });
       bind(root, 'touchend', cancelPress as EventListener);
@@ -308,10 +308,9 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
   });
 
   const clear = () => {
+    // resetInternal 里的 clearTimeout 不可省：clear() 之前若刚有 selectionchange 调度了
+    // readTimer（120ms 去抖），不取消的话定时器会照常触发 readSelection 把 active 重新置回非 null
     resetInternal();
-    // 防 clear 后 pending 读取复活选区（滚动关闭/动作关闭的闭环保障）：
-    // clear() 调用前若刚有 selectionchange 调度了 readTimer（120ms 去抖），
-    // 不取消的话定时器会照常触发 readSelection 把 active 重新置回非 null
     // 主动折叠 DOM 选区：菜单关闭后若残留选区，任何后续 selectionchange（如聚焦输入框）
     // 都会把它重新读回 active 导致菜单重开；折叠后 readSelection 走 collapsed 分支幂等收敛
     window.getSelection?.()?.removeAllRanges();

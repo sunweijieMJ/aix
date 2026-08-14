@@ -30,8 +30,7 @@ export const genMsgId = (): string => `msg-${Date.now()}-${msgUid++}`;
 
 // ── 内容块工厂 ──
 // 各工厂返回精确的窄类型（Extract 到对应 type），便于直接喂给只接受特定块类型的组件 prop
-// （如 TextBlock 仅收 text/reasoning）。块语义见 types.ts 的 ContentBlockRegistry，
-// 故此处只对「参数不止一个、或有缺省行为」的工厂单独写文档。
+// （如 TextBlock 仅收 text/reasoning）。块语义见 types.ts 的 ContentBlockRegistry。
 export const textBlock = (text: string): Extract<ContentBlock, { type: 'text' }> => ({
   id: genBlockId(),
   type: 'text',
@@ -128,7 +127,7 @@ export const userConfirmBlock = (
 });
 
 /** quote 块工厂：pendingQuotes → 一等 quote 块（发送时前置进 content） */
-export const quoteBlock = (quotes: Quote[]): ContentBlock => ({
+export const quoteBlock = (quotes: Quote[]): Extract<ContentBlock, { type: 'quote' }> => ({
   id: genBlockId(),
   type: 'quote',
   quotes,

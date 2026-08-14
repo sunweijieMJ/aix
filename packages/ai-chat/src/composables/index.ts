@@ -65,4 +65,3 @@ export type {
   UseSuggestionsOptions,
   UseSuggestionsReturn,
 } from './useSuggestions';
-export { usePlatform } from './usePlatform';

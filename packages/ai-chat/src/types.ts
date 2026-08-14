@@ -486,7 +486,7 @@ export type EChartsChartKind =
 export type UserConfirmState =
   /** 待填，可交互 */
   | 'awaiting'
-  /** 已提交、宿主请求在途：冻结不可交互（对应 V5 的 frozen） */
+  /** 已提交、宿主请求在途：冻结不可交互 */
   | 'submitting'
   /** 已提交，只读回显答案 */
   | 'submitted'
@@ -797,9 +797,7 @@ export interface SuggestionItem {
   icon?: Component;
 }
 
-// ──────────────────────────────────────────────
-// 语音识别类型（useVoiceInput 使用）
-// ──────────────────────────────────────────────
+// ==================== 语音识别（useVoiceInput 使用） ====================
 
 /** 自定义语音识别器收到的回调集 */
 export interface VoiceRecognizerCtx {
@@ -825,9 +823,7 @@ export interface VoiceConfig {
   onError?: (error: unknown) => void;
 }
 
-// ──────────────────────────────────────────────
-// 语音播报类型（useSpeech 使用）
-// ──────────────────────────────────────────────
+// ==================== 语音播报（useSpeech 使用） ====================
 
 /** 自定义合成器收到的上下文（参数 + 生命周期回调） */
 export interface SpeechSynthesizerCtx {
@@ -886,9 +882,7 @@ export interface SpeechConfig {
   onError?: (error: unknown) => void;
 }
 
-// ──────────────────────────────────────────────
-// 对话树 / 分支（messageTree 使用）
-// ──────────────────────────────────────────────
+// ==================== 对话树 / 分支（messageTree 使用） ====================
 
 /** 对话树节点：扁平存储，parentId 互链；node.id === message.id，ROOT 节点 message 为 null */
 export interface MessageNode {
