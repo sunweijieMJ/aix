@@ -200,6 +200,32 @@ describe('useChat', () => {
     expect(reloadedAi.status).toBe('success');
   });
 
+  // 开场白场景：defaultMessages 以一条 AI 消息开头，它直接挂在根下、没有据以重生成的提问。
+  // 此前 onReload 静默 return（void 返回值，调用方无从判断），UI 却照常渲染重新生成按钮。
+  it('canReload：无 user 父的开场白 AI 消息不可重新生成，onReload 不发请求', async () => {
+    const request = vi.fn(async () => sseStream(['x']));
+    const greeting = textMessage('ai', '你好，有什么可以帮你？');
+    const { canReload, onReload, messages } = useChat({
+      request,
+      defaultMessages: [greeting],
+    });
+    expect(canReload(greeting.id)).toBe(false);
+    await onReload(greeting.id);
+    expect(request).not.toHaveBeenCalled();
+    expect(messages.value).toHaveLength(1); // 未新增兄弟节点
+  });
+
+  it('canReload：正常问答产生的 AI 回复可重新生成；user 消息不可', async () => {
+    const request = vi.fn(async () => sseStream(['答']));
+    const { canReload, messages, onSend } = useChat({ request });
+    await onSend('问');
+    await nextTick();
+    const [user, ai] = [messages.value[0]!, messages.value[1]!];
+    expect(canReload(ai.id)).toBe(true);
+    expect(canReload(user.id)).toBe(false);
+    expect(canReload('不存在的 id')).toBe(false);
+  });
+
   it('onReload 对不存在的 id 不请求也不抛错', async () => {
     const request = vi.fn(async () => sseStream(['x']));
     const { onReload } = useChat({ request });

@@ -826,6 +826,7 @@ const {
   messages,
   parsedMessages,
   isLoading,
+  canReload,
   onSend: sendMessage,
   onReload,
   onEdit,
@@ -1180,7 +1181,15 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
   // abort（用户手动停止）与 success 复用同一套操作条：停止后仍可复制/重新生成/点赞点踩/朗读/引用，
   // 并按需追加 'continue'（见下）；error 态走 Bubble.vue 独立的内联重试条，不受本函数影响。
   if (item.role !== 'ai' || (item.status !== 'success' && item.status !== 'abort')) return null;
+  // 不可重新生成的 AI 消息（没有据以重生成的用户提问，典型是直接挂在根下的开场白）
+  // 去掉 regenerate：useChat.onReload 对它恒被守卫拒绝，留着就是个点了没反应的死按钮。
+  // 判定走 useChat.canReload，与那条守卫同源。函数形态的 actions 不过滤，与 quote/speak
+  // 不自动注入同一口径——业务显式返回了什么就渲染什么。
   const base: ActionsItems = a.length > 0 ? [...a] : [];
+  if (!canReload(item.id)) {
+    const i = base.indexOf('regenerate');
+    if (i !== -1) base.splice(i, 1);
+  }
   // quote 启用且未被业务显式声明时自动注入（策略 A）；函数形态不自动注入（与 speak 同规则）
   if (resolvedQuote.value.enable && resolvedQuote.value.pcQuoteAction && !base.includes('quote')) {
     base.push('quote');

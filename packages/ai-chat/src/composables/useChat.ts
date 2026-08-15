@@ -141,6 +141,16 @@ export interface UseChatReturn {
   onSend: (input: string | ContentBlock[]) => Promise<void>;
   onReload: (id: string) => Promise<void>;
   /**
+   * 该消息能否重新生成——即 `onReload` 会不会被守卫静默拒绝。UI 据此决定是否渲染
+   * 「重新生成」入口，与 onReload 的守卫**同源**（内部同一个解析函数），不必各写一份规则。
+   * 接受派生气泡 id（内部解析回父消息）。
+   *
+   * 为 false 的两种情形：非 AI 消息；AI 消息直接挂在根下（无 user 父）——后者常见于
+   * `defaultMessages` / 持久化树以一条开场白 AI 消息开头，它不是由某次提问生成的，
+   * 「重新生成」无从谈起（按激活路径截取的 history 会是空数组，发出去也只是无上下文请求）。
+   */
+  canReload: (id: string) => boolean;
+  /**
    * 编辑用户消息内容，产生兄弟分支并重新生成（不再截断旧分支）。
    * 返回是否受理（与 updateBlock 返回命中与否同构）：true 表示已新建兄弟用户节点并重发；
    * false 表示被守卫拒绝（流式进行中 / id 未命中 / 非 user 消息），消息未做任何改动，
@@ -785,15 +795,34 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     await runRequestInto(aiId, { fresh: true });
   };
 
-  const onReload = async (id: string) => {
-    if (isLoading.value) return;
+  /**
+   * 可重新生成时返回该消息的父节点 id，否则 null。onReload 的守卫与对外的 canReload
+   * 共用它，规则只此一份：分成两处写就是「按钮显示了但点了没反应」这类漂移的来源。
+   */
+  const reloadParentOf = (id: string): string | null => {
     const pid = resolveParentId(id);
     const node = tree.getMessage(pid);
-    if (!node) return;
-    // 守卫：onReload 仅用于重生成 AI 回复，避免误传 user 消息 id
-    if (node.role === 'user') return;
-    const parentId = tree.parentOf(pid);
-    if (parentId == null) return; // AI 消息必有 user 父，为 null 说明结构异常
+    if (!node) return null;
+    // onReload 仅用于重生成 AI 回复，避免误传 user 消息 id
+    if (node.role === 'user') return null;
+    // 无 user 父（直接挂在根下的开场白 AI 消息）：没有「据以重新生成」的提问
+    return tree.parentOf(pid);
+  };
+
+  const canReload = (id: string): boolean => reloadParentOf(id) !== null;
+
+  const onReload = async (id: string) => {
+    if (isLoading.value) return;
+    const parentId = reloadParentOf(id);
+    if (parentId == null) {
+      // 开发期提示：这条路径此前是静默 return，返回值又是 void，调用方完全无从判断
+      // 「为什么点了没反应」。UI 侧应先用 canReload 决定是否渲染入口。
+      devWarn(
+        `[ai-chat] onReload 拒绝了消息 "${id}"：它不是 AI 消息，或没有可据以重新生成的用户提问` +
+          '（直接挂在根下的开场白消息即属此类）。渲染「重新生成」入口前请先用 canReload 判断。',
+      );
+      return;
+    }
     // 新增兄弟 AI 节点（旧回复保留在树中，用户可切回）
     const aiId = genMsgId();
     tree.appendMessage(parentId, { id: aiId, role: 'ai', content: [], status: 'loading' });
@@ -910,6 +939,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     isLoading,
     onSend,
     onReload,
+    canReload,
     onEdit,
     abort,
     setMessages,

@@ -967,6 +967,30 @@ describe('AiChat', () => {
     ).toEqual(['复制', '编辑']); // 用户消息依旧是固定默认值，未被 ['copy'] 这个数组影响
   });
 
+  // 与 useChat.canReload 同源：开场白 AI 消息没有据以重生成的提问，onReload 恒被守卫拒绝，
+  // 渲染出来就是个点了没反应的死按钮
+  it('开场白 AI 消息（无 user 父）不渲染重新生成按钮，正常回复照常渲染', async () => {
+    const request = vi.fn(async () => once('答'));
+    const w = mount(AiChat, {
+      props: {
+        request,
+        defaultMessages: [{ ...textMessage('ai', '你好'), status: 'success' as const }],
+      },
+    });
+    await flushPromises();
+    const labels = (i: number) =>
+      w
+        .findAll('.aix-bubble--start')
+        [i]!.findAll('.aix-bubble-actions__btn')
+        .map((b) => b.attributes('aria-label'));
+    expect(labels(0)).toEqual(['复制']); // 默认 ['copy','regenerate'] 中 regenerate 被摘掉
+
+    await w.find('textarea').setValue('问题');
+    await w.find('textarea').trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+    expect(labels(1)).toEqual(['复制', '重新生成']); // 有 user 父的回复不受影响
+  });
+
   it('actions 含 feedback：点击赞写回 extra.feedback 并 emit feedback', async () => {
     const request = vi.fn(async () => once('答'));
     const w = mount(AiChat, {
