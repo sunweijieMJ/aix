@@ -140,21 +140,4 @@ describe('ImageBlock（结构化图片块）', () => {
     expect(document.activeElement).toBe(trigger);
     w.unmount();
   });
-
-  // 防回归：注册表统一透传 typing（boolean | BubbleTypingConfig），收窄为 boolean 会触发 dev 警告
-  it('typing 透传配置对象不触发 prop 类型校验警告', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      mount(ImageBlock, {
-        props: {
-          block: imageBlock([{ url: 'https://x.test/a.png' }]),
-          info,
-          typing: { step: 2, interval: 20 },
-        },
-      });
-      expect(warn.mock.calls.filter((c) => String(c[0]).includes('Invalid prop'))).toEqual([]);
-    } finally {
-      warn.mockRestore();
-    }
-  });
 });

@@ -169,16 +169,7 @@ import { slotHasContent } from '../utils/hasVNodeContent';
 import { messageText } from '../utils/helpers';
 import { ownProp } from '../utils/ownProp';
 import { BUBBLE_RESERVED_SLOTS } from '../utils/reservedSlots';
-import AttachmentBlock from './blocks/AttachmentBlock.vue';
-import ChartBlock from './blocks/ChartBlock.vue';
-import ImageBlock from './blocks/ImageBlock.vue';
-import QuoteBlock from './blocks/QuoteBlock.vue';
-import ReasoningBlock from './blocks/ReasoningBlock.vue';
-import SourcesBlock from './blocks/SourcesBlock.vue';
-import TextBlock from './blocks/TextBlock.vue';
-import ThoughtChainBlock from './blocks/ThoughtChainBlock.vue';
-import ToolUseBlock from './blocks/ToolUseBlock.vue';
-import UserConfirmBlock from './blocks/UserConfirmBlock.vue';
+import { BUILTIN_BLOCK_RENDERERS } from './blocks/builtinRenderers';
 import LoadingDots from './LoadingDots.vue';
 
 const props = withDefaults(defineProps<BubbleProps>(), {
@@ -202,27 +193,11 @@ const handleBlockAction = (action: BlockAction) =>
 const handleBlockIntent = (intent: BlockIntent) =>
   emit('block-intent', { messageKey: props.itemKey ?? '', intent });
 
-// 块渲染注册表：内置 text → TextBlock、reasoning → ReasoningBlock（折叠思考过程）、
-// thought-chain → ThoughtChainBlock（Agent 步骤时间线），与 props.blockRenderers 合并（用户优先，可覆盖内置）。
-// 收敛为单一注册表，避免内置类型硬编码先于注册表导致无法覆盖、内置与扩展走两套机制。
-//
-// 位置说明：本段刻意排在下方「typing-complete 聚合」之前——聚合的 typingBlockIds 需要判断
-// 某个 text/reasoning 块是否仍走内置渲染器。const 有 TDZ，虽然 computed 惰性求值下当前恰好
-// 不会在 setup 期读到，但那是「碰巧没炸」而非安全，故按依赖顺序排列。
-const builtinRenderers: BlockRenderers = {
-  text: TextBlock,
-  reasoning: ReasoningBlock,
-  'thought-chain': ThoughtChainBlock,
-  sources: SourcesBlock,
-  attachment: AttachmentBlock,
-  tool_use: ToolUseBlock,
-  chart: ChartBlock,
-  image: ImageBlock,
-  quote: QuoteBlock,
-  user_confirm: UserConfirmBlock,
-};
+// 块渲染注册表：内置表（见 blocks/builtinRenderers.ts）与 props.blockRenderers 合并，
+// 用户优先、可覆盖内置。收敛为单一注册表，避免内置类型硬编码先于注册表导致无法覆盖、
+// 内置与扩展走两套机制。
 const renderers = computed<BlockRenderers>(() => ({
-  ...builtinRenderers,
+  ...BUILTIN_BLOCK_RENDERERS,
   ...props.blockRenderers,
 }));
 
@@ -250,7 +225,7 @@ const typingBlockIds = computed(() =>
     .filter(
       (b) =>
         (b.type === 'text' || b.type === 'reasoning') &&
-        renderers.value[b.type] === builtinRenderers[b.type],
+        renderers.value[b.type] === BUILTIN_BLOCK_RENDERERS[b.type],
     )
     .map((b) => b.id),
 );

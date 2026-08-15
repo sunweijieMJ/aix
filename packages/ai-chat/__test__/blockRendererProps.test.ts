@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
+import { BUILTIN_BLOCK_RENDERERS } from '../src/components/blocks/builtinRenderers';
 import type { BlockRendererProps, ContentBlock } from '../src/types';
+
+/** 编译后 SFC 的运行时 props 声明（`defineProps<T>()` 的产物） */
+type RuntimeProps = Record<string, { type?: unknown } | undefined>;
+const runtimeProps = (comp: unknown): RuntimeProps =>
+  ((comp as { props?: RuntimeProps }).props ?? {}) as RuntimeProps;
 
 /**
  * `BlockRendererProps` 的契约锁。
@@ -68,5 +74,39 @@ describe('BlockRendererProps — 块渲染器 props 契约', () => {
 
     // @ts-expect-error 未收窄时不能直接访问某一分支的独有字段
     expect(generic.block.items).toBeDefined();
+  });
+});
+
+/**
+ * 内置渲染器对契约的**运行时**遵从（上面那批断言只锁类型层的 `BlockRendererProps` 本身）。
+ *
+ * 遍历注册表而非逐个块写单点用例：这批声明是各文件手抄的，抄漏 / 抄窄不会报错，
+ * 而单点用例同样要"记得补"——漏补时静默通过，与它要防的漂移是同一种失败。
+ * 遍历后新增块自动纳入覆盖。
+ */
+describe('内置块渲染器 — 契约遵从（遍历注册表，新增块自动覆盖）', () => {
+  const entries = Object.entries(BUILTIN_BLOCK_RENDERERS);
+
+  it('注册表非空（防止导入形态变化导致下面的遍历静默空转）', () => {
+    expect(entries.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it.each(entries)('%s：typing 接受 boolean 与节奏配置对象两种形态', (_type, Comp) => {
+    const decl = runtimeProps(Comp).typing;
+    // 不声明 typing 是允许的（注册表透传的多余 prop 会落进 attrs，各块已 inheritAttrs:false）；
+    // 一旦声明，就必须同时容纳 BubbleTypingConfig —— 收窄成 Boolean 时 Vue 会对
+    // `<BubbleList :typing="{ step, interval }">` 逐次渲染打 "Invalid prop" 告警。
+    if (!decl) return;
+    const t = decl.type;
+    const accepted = Array.isArray(t) ? t : [t];
+    expect(accepted).toContain(Object);
+    expect(accepted).toContain(Boolean);
+  });
+
+  it.each(entries)('%s：block 必填，info 可选（支持脱离 Bubble 单独挂载测试）', (_type, Comp) => {
+    const p = runtimeProps(Comp);
+    expect(p.block).toBeDefined();
+    expect((p.block as { required?: boolean }).required).toBe(true);
+    if (p.info) expect((p.info as { required?: boolean }).required).toBe(false);
   });
 });

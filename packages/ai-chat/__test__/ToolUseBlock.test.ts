@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { defineComponent, h, markRaw } from 'vue';
 import ToolUseBlock from '../src/components/blocks/ToolUseBlock.vue';
 import type { BlockAction, BlockIntent, ContentBlock } from '../src/types';
@@ -154,22 +154,5 @@ describe('ToolUseBlock', () => {
     });
     await w.find('.answer').trigger('click');
     expect(actions).toEqual([{ blockId: 'b1', type: 'answer', patch: { output: 'B' } }]);
-  });
-
-  // 防回归：注册表统一透传 typing（boolean | BubbleTypingConfig），收窄为 boolean 会触发 dev 警告
-  it('typing 透传配置对象不触发 prop 类型校验警告', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      mount(ToolUseBlock, {
-        props: {
-          block: block({ state: 'output-available', output: 'ok' }),
-          info: { role: 'ai', key: 'ai1' },
-          typing: { step: 2, interval: 20 },
-        },
-      });
-      expect(warn.mock.calls.filter((c) => String(c[0]).includes('Invalid prop'))).toEqual([]);
-    } finally {
-      warn.mockRestore();
-    }
   });
 });
