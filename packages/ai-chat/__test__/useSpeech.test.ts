@@ -128,6 +128,57 @@ describe('useSpeech', () => {
     expect(s.speakingId.value).toBeNull(); // 未复活
   });
 
+  it('feed：合成器报错后同一条消息不被后续增量复活重读', () => {
+    const onError = vi.fn();
+    const enqueue = vi.fn<(text: string) => void>();
+    let ctx: SpeechSynthesizerCtx | null = null;
+    const synthesizer: SpeechSynthesizer = (c): SpeechSession => {
+      ctx = c;
+      return { enqueue, finish: vi.fn(), stop: vi.fn() };
+    };
+    const s = useSpeech({
+      config: { synthesizer, onError, getText: (m) => (m.content[0] as { text: string }).text },
+    });
+    const msg = aiMsg('m1', '第一句。', 'updating');
+    s.feed(msg);
+    expect(enqueue).toHaveBeenCalledWith('第一句。');
+
+    // 合成/播放出错（synthesis-failed、audio-busy 等）：会话被判终止
+    const err = new Error('synthesis-failed');
+    ctx!.onError(err);
+    expect(onError).toHaveBeenCalledWith(err);
+    expect(s.speakingId.value).toBeNull();
+
+    // 流继续推进：不得重建会话，更不得从头重读已朗读内容
+    (msg.content[0] as { text: string }).text = '第一句。第二句。';
+    s.feed(msg);
+    msg.status = 'success';
+    s.feed(msg);
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledTimes(1); // 未逐 chunk 重建会话反复报错
+    expect(s.speakingId.value).toBeNull();
+  });
+
+  it('toggle 可在报错后重新朗读同一条（显式意图解除终止标记）', () => {
+    const enqueue = vi.fn<(text: string) => void>();
+    let ctx: SpeechSynthesizerCtx | null = null;
+    const synthesizer: SpeechSynthesizer = (c): SpeechSession => {
+      ctx = c;
+      return { enqueue, finish: vi.fn(), stop: vi.fn() };
+    };
+    const s = useSpeech({
+      config: { synthesizer, getText: (m) => (m.content[0] as { text: string }).text },
+    });
+    const msg = aiMsg('m1', '第一句。', 'updating');
+    s.feed(msg);
+    ctx!.onError(new Error('synthesis-failed'));
+
+    s.toggle(msg);
+    expect(enqueue).toHaveBeenCalledTimes(2);
+    expect(s.speakingId.value).toBe('m1');
+  });
+
   it('feed：手动 stop 后换一条新消息照常起播', () => {
     const { synthesizer, enqueue } = fakeSynth();
     const s = useSpeech({

@@ -27,6 +27,7 @@
         <LoadingDots v-if="loading" />
         <div v-else-if="editing" :class="ns.e('edit')">
           <textarea
+            ref="editInputRef"
             v-model="draft"
             :class="ns.e('edit-input')"
             rows="2"
@@ -146,6 +147,7 @@ import {
   watch,
   watchEffect,
   useSlots,
+  nextTick,
   ref,
   h,
   type FunctionalComponent,
@@ -381,12 +383,24 @@ const renderedNode = computed(() =>
 
 // 内联编辑：editing 是受控 prop（由 BubbleList.startEdit 驱动进入），Bubble 自身只管 draft 文本与保存/取消。
 const draft = ref('');
+const editInputRef = ref<HTMLTextAreaElement | null>(null);
 // editing 由 false→true 时（外部请求进入编辑态）重新取当前 content 的最新文本作为草稿基线
 watch(
   () => props.editing,
   (v) => {
-    if (v)
-      draft.value = messageText({ id: '', role: props.role ?? 'ai', content: props.content ?? [] });
+    if (!v) return;
+    draft.value = messageText({ id: '', role: props.role ?? 'ai', content: props.content ?? [] });
+    // 焦点交接：触发编辑的那个铅笔按钮与整条 footer 在同一帧被卸载（见模板
+    // `v-if="$slots.footer && !editing"`），不接管的话 activeElement 落回 <body>，
+    // 键盘 / 读屏用户点完编辑后要重新 Tab 一遍才能找到输入框。
+    // 光标置于末尾（而非全选）：编辑既有消息通常是接着补充，与包内 Conversations.startRename
+    // 的重命名输入框同一处理口径。
+    void nextTick(() => {
+      const el = editInputRef.value;
+      if (!el) return; // 同帧内又退出编辑态 / 组件已卸载
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
   },
   { immediate: true }, // 挂载时若 editing 已为 true（如 BubbleList 已在 editingIds 中）也需取到初值，而非等下一次翻转
 );

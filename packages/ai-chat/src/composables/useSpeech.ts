@@ -184,6 +184,12 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
       },
       onError: (error) => {
         if (token !== currentSession) return;
+        // 与 stop() 同口径记下这条 id：错误同样是「这条不再朗读」的终止态，缺了它 feed()
+        // 的复活守卫失效——下一个 chunk 会因 speakingId 已为 null 走进重启分支，而 spokenLen
+        // 也已复位为 0，于是**从头重读**整条已朗读内容；持续性错误（如 not-allowed）下
+        // 更会逐 chunk 重建会话并反复触发 config.onError。想重新朗读走 toggle（经
+        // startSession 解除本标记）。
+        stoppedId = id;
         speakingId.value = null;
         session = null;
         spokenLen = 0;

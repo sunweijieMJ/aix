@@ -85,8 +85,8 @@ export interface UserConfirmBlockProps {
   /** 气泡上下文（status/role/key）；**刻意不参与可交互性判定**，见下方 interactive 注释。
    *  可选性与 BlockRendererProps 契约对齐——本组件不读它，声明为必填只会让单独挂载测试多传一个无用 prop */
   info?: BubbleContentInfo;
-  /** 打字机态：确认卡不逐字，仅注册表统一透传，本组件不消费 */
-  typing?: boolean;
+  /** 打字机态（注册表统一透传 boolean | 节奏配置，确认卡不逐字，故不消费） */
+  typing?: boolean | BubbleTypingConfig;
   /** 改答案（数据补丁）：逐层转发到 useChat.updateBlock 落地 */
   onBlockAction?: BlockActionHandler;
   /** 点提交（需宿主处置的意图）：逐层转发到 AiChat 的 block-intent，组件库不自动落地 */
@@ -105,6 +105,7 @@ import { locale } from '../../locale';
 import type {
   ContentBlock,
   BubbleContentInfo,
+  BubbleTypingConfig,
   BlockActionHandler,
   BlockIntentHandler,
   ConfirmField,

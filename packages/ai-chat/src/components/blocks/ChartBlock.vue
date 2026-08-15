@@ -20,8 +20,8 @@ export interface ChartBlockProps {
   block: Extract<ContentBlock, { type: 'chart' }>;
   /** 气泡上下文（status/role/key）；本组件暂不消费，可选性与 BlockRendererProps 契约对齐 */
   info?: BubbleContentInfo;
-  /** 打字机态：图表不逐字，仅注册表统一透传，本组件不消费 */
-  typing?: boolean;
+  /** 打字机态（注册表统一透传 boolean | 节奏配置，图表不逐字，故不消费） */
+  typing?: boolean | BubbleTypingConfig;
   /** 交互动作回调（切换图型/取点等经此上抛，逐层到 useChat.updateBlock） */
   onBlockAction?: BlockActionHandler;
 }
@@ -35,6 +35,7 @@ import { locale } from '../../locale';
 import type {
   ContentBlock,
   BubbleContentInfo,
+  BubbleTypingConfig,
   BlockActionHandler,
   EChartsChartKind,
 } from '../../types';

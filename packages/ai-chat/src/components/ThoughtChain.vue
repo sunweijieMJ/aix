@@ -107,8 +107,10 @@ const props = withDefaults(defineProps<ThoughtChainProps>(), {
 const ns = useNamespace('thought-chain');
 const slots = useSlots();
 
-// 链级折叠：仅 collapsible+defaultCollapsed 时初始折叠；无 title 时恒展开（无折叠入口）
-const chainOpen = ref(!(props.collapsible && props.defaultCollapsed));
+// 链级折叠：仅 collapsible+defaultCollapsed 时初始折叠。
+// title 必须参与判定：折叠入口挂在头部（`v-if="title"`），无 title 时头部整个不渲染，
+// 初始折叠会得到一个既无列表也无展开入口的空壳 div，用户没有任何办法把它打开。
+const chainOpen = ref(!(props.title && props.collapsible && props.defaultCollapsed));
 const toggleChain = () => {
   if (props.collapsible) chainOpen.value = !chainOpen.value;
 };

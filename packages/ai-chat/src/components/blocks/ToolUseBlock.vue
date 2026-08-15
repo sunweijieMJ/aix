@@ -48,8 +48,8 @@ export interface ToolUseBlockProps {
   block: Extract<ContentBlock, { type: 'tool_use' }>;
   /** 气泡上下文（注册表统一透传给委托目标，本组件自身不消费）；可选性与 BlockRendererProps 契约对齐 */
   info?: BubbleContentInfo;
-  /** 打字机态（注册表统一透传，工具调用不逐字，故不消费） */
-  typing?: boolean;
+  /** 打字机态（注册表统一透传 boolean | 节奏配置，工具调用不逐字，本组件不消费、原样转发给委托目标） */
+  typing?: boolean | BubbleTypingConfig;
   /** 交互动作回调（注册表统一透传，转发给命中的自定义渲染器） */
   onBlockAction?: BlockActionHandler;
   /**
@@ -72,6 +72,7 @@ import { locale } from '../../locale';
 import type {
   ContentBlock,
   BubbleContentInfo,
+  BubbleTypingConfig,
   BlockActionHandler,
   BlockIntentHandler,
   BlockRenderers,

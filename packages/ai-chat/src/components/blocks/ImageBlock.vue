@@ -30,8 +30,8 @@ export interface ImageBlockProps {
   block: Extract<ContentBlock, { type: 'image' }>;
   /** 气泡上下文（注册表统一透传，本组件暂不消费）；可选性与 BlockRendererProps 契约对齐 */
   info?: BubbleContentInfo;
-  /** 打字机态（注册表统一透传，图片不逐字，故不消费） */
-  typing?: boolean;
+  /** 打字机态（注册表统一透传 boolean | 节奏配置，图片不逐字，故不消费） */
+  typing?: boolean | BubbleTypingConfig;
   /** 交互动作回调（注册表统一透传，本组件暂不消费——纯展示，无回写） */
   onBlockAction?: BlockActionHandler;
 }
@@ -48,7 +48,12 @@ export interface ImageBlockEmits {
 import { useLocale, useNamespace } from '@aix/hooks';
 import { computed, onScopeDispose, ref, watch } from 'vue';
 import { locale } from '../../locale';
-import type { BlockActionHandler, BubbleContentInfo, ContentBlock } from '../../types';
+import type {
+  BlockActionHandler,
+  BubbleContentInfo,
+  BubbleTypingConfig,
+  ContentBlock,
+} from '../../types';
 import ImagePreview from '../ImagePreview.vue';
 import ImageThumb from '../ImageThumb.vue';
 import Skeleton from '../Skeleton.vue';

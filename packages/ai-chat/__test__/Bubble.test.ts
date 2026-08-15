@@ -249,6 +249,20 @@ describe('Bubble 内联编辑（editing 受控 prop）', () => {
     expect((ta.element as HTMLTextAreaElement).value).toBe('原始内容');
   });
 
+  // 防回归：触发编辑的铅笔按钮与整条 footer 在同一帧被卸载，不接管焦点则落回 <body>
+  it('进入编辑态自动聚焦 textarea，光标置于末尾', async () => {
+    const w = mount(Bubble, {
+      props: { content: [textBlock('原始内容')], role: 'user', editing: false },
+      attachTo: document.body,
+    });
+    await w.setProps({ editing: true });
+    await nextTick();
+    const el = w.find('textarea').element;
+    expect(document.activeElement).toBe(el);
+    expect(el.selectionStart).toBe('原始内容'.length);
+    w.unmount();
+  });
+
   it('editing=false（默认）不显示内联编辑框', () => {
     const w = mount(Bubble, { props: { content: [textBlock('hi')], role: 'user' } });
     expect(w.find('textarea.aix-bubble__edit-input').exists()).toBe(false);
