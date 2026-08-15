@@ -203,9 +203,13 @@ export type BlockRenderers = Record<string, Component>;
 /**
  * 角色级可配的气泡字段（仅样式/渲染类：placement/variant/shape/avatar/contentRender/blockRenderers）。
  * 类型即文档地排除列表级收口的字段：content/role/status/loading/itemKey 由消息数据驱动，
- * typing/editing/saveDisabled/toolRenderers 由列表级策略收口（打字机只对本会话流式过的消息开启、
- * editing/saveDisabled 绑定编辑态与全局 loading 语义、toolRenderers 由列表级绑定）——
+ * typing/editing/saveDisabled/toolRenderers/tailBreathing/errorText 由列表级策略收口（打字机只对
+ * 本会话流式过的消息开启、editing/saveDisabled 绑定编辑态与全局 loading 语义、toolRenderers 与
+ * tailBreathing 由列表级绑定、errorText 由列表级的 errorText 解析函数按整条消息算出）——
  * 这些键在 BubbleList 模板中被显式绑定覆盖，role 级传入会静默无效，故从类型上禁止。
+ *
+ * 增删本名单时须与 BubbleList 模板中 `v-bind="resolveBubble(item)"` **之后**的显式绑定逐一对齐：
+ * 漏登记一个键的症状是「TS 通过、运行时静默失效」，无告警、无从排查。
  */
 export type RoleBubbleConfig = Partial<
   Omit<
@@ -219,6 +223,8 @@ export type RoleBubbleConfig = Partial<
     | 'editing'
     | 'saveDisabled'
     | 'toolRenderers'
+    | 'tailBreathing'
+    | 'errorText'
   >
 >;
 
@@ -307,6 +313,13 @@ export interface BlockRendererProps<
   /** 「我需要宿主做件事」：不动数据，逐层转发到 AiChat 的 block-intent（分工见 BlockIntent） */
   onBlockIntent?: BlockIntentHandler;
 }
+
+/**
+ * 深度思考折叠面板的外观形态（见 `ThinkingProps.variant`）。
+ * 同时是 `AiChatProps.reasoningVariant` 与 `AiChatConfig.reasoningVariant` 的类型，
+ * 故置于 types.ts 而非 Thinking.vue —— 配置层不应反向依赖组件文件。
+ */
+export type ThinkingVariant = 'card' | 'capsule' | 'plain';
 
 /** 模型选项（ModelSelector 用） */
 export interface ModelOption {

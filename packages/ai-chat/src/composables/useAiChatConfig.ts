@@ -6,8 +6,13 @@ import {
   type InjectionKey,
   type ComputedRef,
 } from 'vue';
-import type { ThinkingVariant } from '../components/Thinking.vue';
-import type { RoleConfig, BlockRenderers, QuoteConfig, OutlineOptions } from '../types';
+import type {
+  RoleConfig,
+  BlockRenderers,
+  QuoteConfig,
+  OutlineOptions,
+  ThinkingVariant,
+} from '../types';
 import type { MarkdownRenderers } from '../utils/markdownWalker';
 import type { ShouldFollow } from './useAutoScroll';
 import type { MarkdownItPlugin } from './useMarkdownRenderer';

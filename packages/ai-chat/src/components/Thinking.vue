@@ -20,8 +20,12 @@
 </template>
 
 <script lang="ts">
-/** 折叠面板外观形态，见 `ThinkingProps.variant` */
-export type ThinkingVariant = 'card' | 'capsule' | 'plain';
+// ThinkingVariant 定义在 types.ts（它同时是 AiChatProps.reasoningVariant 与
+// AiChatConfig.reasoningVariant 的类型，配置层不应为了一个字符串联合去 import 组件文件），
+// 由下方 script setup 块统一导入——SFC 两个 script 块共享模块作用域，且 import/order
+// 把它们视作同一份导入清单排序，分开写会破坏顺序。此处原样再导出，
+// 保持 `from '.../Thinking.vue'` 这一既有引用路径可用。
+export type { ThinkingVariant } from '../types';
 
 export interface ThinkingProps {
   /** 思维链内容（可用默认 slot 覆盖） */
@@ -48,6 +52,7 @@ import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { ref, watch } from 'vue';
 import { locale } from '../locale';
+import type { ThinkingVariant } from '../types';
 
 const props = withDefaults(defineProps<ThinkingProps>(), {
   content: '',

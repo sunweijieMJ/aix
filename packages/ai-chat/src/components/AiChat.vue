@@ -569,6 +569,12 @@ export interface AiChatEmits {
   (e: 'typing-complete', id: string): void;
   /** 输入框文本变化（v-model:input），由 useControllable 在受控/非受控两态下统一上抛 */
   (e: 'update:input', value: string): void;
+  /**
+   * 消息列表镜像变化（v-model:messages）。由 defineModel 声明，此处补记入本接口是因为
+   * AiChatEmits 是对外导出的公共类型：业务写高阶包装组件 `defineEmits<AiChatEmits>()`
+   * 做转发时，漏了它就转发不出去。
+   */
+  (e: 'update:messages', value: ChatMessage[]): void;
   /** 对话树结构变化（v-model:tree），用于持久化分支 */
   (e: 'update:tree', value: ExportedTree): void;
   /** 点击追问建议（发送/回填之前触发，供埋点） */
@@ -618,6 +624,7 @@ import type {
   SuggestionItem,
   OutlineOptions,
   ParsedChunk,
+  ThinkingVariant,
 } from '../types';
 import { devWarn } from '../utils/devWarn';
 import { messageText, attachmentBlock, textBlock, quoteBlock } from '../utils/helpers';
@@ -634,7 +641,6 @@ import QuoteMenu from './QuoteMenu.vue';
 import Sender from './Sender.vue';
 import type { SenderIcons, SenderToolbarItems, SenderVariant } from './Sender.vue';
 import Suggestions from './Suggestions.vue';
-import type { ThinkingVariant } from './Thinking.vue';
 import Welcome from './Welcome.vue';
 
 const props = withDefaults(defineProps<AiChatProps>(), {

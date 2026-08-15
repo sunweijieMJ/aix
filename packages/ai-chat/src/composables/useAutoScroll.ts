@@ -48,9 +48,9 @@ export function useAutoScroll(
   // 消息）刚挂载时只有估算高度，真实高度要等测量/布局后才更新到 scrollHeight，这个过程跨多帧
   // 且无固定时长上界。用一次性超时兜底的话，测量比超时慢就会提前清掉意图，之后 scrollHeight
   // 继续变化时状态被误判为 SCROLLED_UP，最终停在卡片中间。改为每帧比对 scrollHeight：发现变化
-  // 就瞬时 snap 到新底部并重置稳定帧计数，连续 STABLE_FRAMES 帧不变才收尾，不依赖对耗时的猜测。
+  // 就瞬时 snap 到新底部并重置稳定帧计数，连续 STABLE_FRAMES_TO_SETTLE 帧不变才收尾，不依赖对耗时的猜测。
   //
-  // 意图的三个清除时机：① 连续 STABLE_FRAMES 帧高度不变（内容已稳定）；② 用户 wheel/touchmove
+  // 意图的三个清除时机：① 连续 STABLE_FRAMES_TO_SETTLE 帧高度不变（内容已稳定）；② 用户 wheel/touchmove
   // 主动打断；③ MAX_SETTLE_FRAMES 保底上限（内容持续异常增长时不至永久轮询）。
   //
   // 轮询是否开启与这次滚动是不是 smooth 无关，只看"是否已有轮询在跑"（见 scrollToBottom）：
