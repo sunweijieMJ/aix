@@ -410,10 +410,13 @@ export interface ThoughtChainItem {
    */
   result?: ThoughtChainResult;
   /**
-   * 折叠正文（Markdown 渲染）。需要富内容（如检索卡片）时改用 `<ThoughtChain>` 的
-   * `item-content` 作用域 slot——注意该 slot 仅在**直接使用 `<ThoughtChain>`** 时可用；
-   * 走 Bubble 块渲染管线（thought-chain 块经 ThoughtChainBlock 包装）时注册表只透传 props
-   * 不透传 slot，富内容需通过自定义 blockRenderers 替换整个 thought-chain 渲染器实现。
+   * 折叠正文（Markdown 渲染）。需要富内容（如检索卡片）时改用作用域 slot，两条路径都支持：
+   * - 直接使用 `<ThoughtChain>`：用它的 `item-content` slot；
+   * - 走 Bubble 块渲染管线（thought-chain 块经 ThoughtChainBlock 包装）：在上层提供
+   *   `#thought-chain-item-content`，由 ThoughtChainBlock 按命名约定转发到内部的 `item-content`
+   *   （携带 item/index）。仅当确实提供时才转发，避免 ThoughtChain.hasBody 误判为真。
+   *
+   * 故富内容**不需要**自定义 blockRenderers 替换整个 thought-chain 渲染器。
    */
   content?: string;
   /** 初始是否展开，默认 true（执行过程默认展开内容） */

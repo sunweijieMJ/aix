@@ -3,8 +3,6 @@ import ImageThumb from '../components/ImageThumb.vue';
 import type { MarkdownRenderers, MdToken } from './markdownWalker';
 import { safeImageSrc } from './url';
 
-export { __resetImageCache } from './imageLoadedCache';
-
 const attr = (token: MdToken, name: string): string | undefined =>
   token.attrs?.find((a) => a[0] === name)?.[1];
 

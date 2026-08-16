@@ -85,8 +85,11 @@ export { applyToolEvent, type ToolReduceCtx } from './utils/toolBlocks';
 export { createXFetch } from './utils/x-fetch';
 export type { XFetch, OnRequest, OnResponse, OnError, CreateXFetchOptions } from './utils/x-fetch';
 
-// OpenAI 兼容流式请求便利工厂（配合 openaiParseChunk，降低接入门槛；仍保持协议无关性）
-export { createOpenAIRequest } from './utils/openai';
+// OpenAI 兼容流式请求便利工厂（配合 openaiParseChunk，降低接入门槛；仍保持协议无关性）。
+// defaultTransformMessages 是 CreateOpenAIRequestOptions.transformMessages 的默认实现：
+// 该选项是公开扩展点，只想在默认映射之外微调（加 system、改 role 名等）的用户若拿不到它，
+// 就只能把那段 tool_calls 还原逻辑整个重抄一遍。
+export { createOpenAIRequest, defaultTransformMessages } from './utils/openai';
 export type {
   CreateOpenAIRequestOptions,
   OpenAIChatParams,

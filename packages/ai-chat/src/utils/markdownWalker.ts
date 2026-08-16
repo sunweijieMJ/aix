@@ -43,8 +43,12 @@ function attr(token: MdToken, name: string): string | undefined {
   return token.attrs?.find((a) => a[0] === name)?.[1];
 }
 
-/** 内置渲染器：覆盖常见块级 / 行内 token。用户注册表优先级更高，可覆盖。 */
-export const builtinMarkdownRenderers: MarkdownRenderers = {
+/**
+ * 内置渲染器：覆盖常见块级 / 行内 token。用户注册表优先级更高，可覆盖。
+ * 仅本模块内部消费（见下方 walk 的 `renderers[key] ?? builtinMarkdownRenderers[key]`），
+ * 不导出——扩展走 `markdownRenderers` 注册表，无需也不应直接引用这份内置表。
+ */
+const builtinMarkdownRenderers: MarkdownRenderers = {
   text: ({ token }) => token.content,
   softbreak: () => h('br'),
   hardbreak: () => h('br'),
