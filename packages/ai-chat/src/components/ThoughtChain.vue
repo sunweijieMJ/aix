@@ -24,11 +24,16 @@
           <span :class="ns.e('icon')">{{ item.icon }}</span>
         </div>
         <div :class="ns.e('main')">
-          <button
-            type="button"
-            :class="ns.e('head')"
-            :aria-expanded="isOpen(item)"
-            @click="toggle(item.key)"
+          <!-- 与链级头部同一口径：仅在这一步确有可展开正文（hasBody）时才是可交互 button。
+               无正文的步骤（只有 title/status，content 与 result 都是可选的）若仍渲染成 button
+               并输出 aria-expanded，读屏会播报「按钮，已展开」，而箭头与正文都由 hasBody 守卫、
+               两种展开态都渲染不出任何东西——按下去零反馈。 -->
+          <component
+            :is="hasBody(item) ? 'button' : 'div'"
+            :type="hasBody(item) ? 'button' : undefined"
+            :class="[ns.e('head'), ns.is('collapsible', hasBody(item))]"
+            :aria-expanded="hasBody(item) ? isOpen(item) : undefined"
+            v-on="hasBody(item) ? { click: () => toggle(item.key) } : {}"
           >
             <span :class="[ns.e('title'), ns.is('active', item.status === 'active')]">
               {{ item.title }}
@@ -38,7 +43,7 @@
             <span v-if="hasBody(item)" :class="[ns.e('arrow'), ns.is('open', isOpen(item))]">
               ▾
             </span>
-          </button>
+          </component>
           <div v-if="hasBody(item) && isOpen(item)" :class="ns.e('body')">
             <!-- 检索结果卡（数据驱动）：标题 + chip 列表 -->
             <div v-if="item.result" :class="ns.e('result')">
@@ -260,8 +265,12 @@ const hasBody = (item: ThoughtChainItem): boolean =>
     padding: 0;
     border: none;
     background: transparent;
-    cursor: pointer;
     gap: var(--aix-sizeXS);
+
+    // 仅可展开的步骤给手型：无正文时它渲染为纯展示 div，光标不应暗示可点（同 __summary 口径）
+    &.is-collapsible {
+      cursor: pointer;
+    }
   }
 
   &__title {

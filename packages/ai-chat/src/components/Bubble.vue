@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rootRef"
     :class="[ns.b(), ns.m(placement)]"
     :data-aix-message-id="itemKey != null && itemKey !== '' ? String(itemKey) : undefined"
     :data-aix-role="role"
@@ -356,14 +357,63 @@ const renderedNode = computed(() =>
   props.contentRender ? props.contentRender(props.content, info.value) : null,
 );
 
+const rootRef = ref<HTMLElement | null>(null);
+
 // 内联编辑：editing 是受控 prop（由 BubbleList.startEdit 驱动进入），Bubble 自身只管 draft 文本与保存/取消。
 const draft = ref('');
 const editInputRef = ref<HTMLTextAreaElement | null>(null);
+/** 进入编辑前持有焦点的元素，退出时优先归还给它 */
+let returnFocusEl: HTMLElement | null = null;
+
+/**
+ * 退出编辑时归还焦点。与进入编辑的交接是同一个问题的两半：编辑框（连同取消/保存键）
+ * 随 `v-else-if="editing"` 被卸载，不接管的话 activeElement 落回 `<body>`，键盘 / 读屏
+ * 用户要从页面顶部重新 Tab 一遍才能回到这条消息。
+ *
+ * 两条守卫：
+ * - 触发编辑的铅笔键多半随 footer 一起被卸载过（`v-if="$slots.footer && !editing"`），
+ *   旧引用已脱离文档，focus() 对它无效 → 退回气泡根，让后续 Tab 从这条消息继续；
+ * - 焦点若已被别处接管（如同帧内另一条消息进入了编辑态），不抢回来。
+ *
+ * 气泡根的 tabindex 只在这一刻临时挂上、失焦即摘：常驻 tabindex="-1" 会让点击气泡也聚焦它，
+ * 平白改变每条消息的默认交互，而这里只需要一个程序化落点。
+ */
+const restoreFocusAfterEdit = () => {
+  // 同一 tick 内 true→false→true（外部快速改主意 / 重复触发编辑）时，本回调排在「聚焦
+  // textarea」之前执行：此时已重回编辑态，既不该抢焦点，更不该把刚存好的 returnFocusEl 清掉
+  // ——否则真正退出那次就没有归还目标了。
+  if (props.editing) return;
+  const prev = returnFocusEl;
+  returnFocusEl = null;
+  if (typeof document === 'undefined') return;
+  const active = document.activeElement;
+  const root = rootRef.value;
+  // 焦点仍在本气泡内（编辑框刚卸载前的残留）或已丢给 body，才由我们接管
+  const isLost = !active || active === document.body || !!root?.contains(active);
+  if (!isLost) return;
+  // 排除 body：进入编辑时若本就无人持有焦点，activeElement 即 body，而它 isConnected 恒真——
+  // 还给它等于没还（焦点仍在文档根，Tab 依旧从页面顶部重来）。
+  if (prev && prev !== document.body && prev.isConnected) {
+    prev.focus();
+    return;
+  }
+  if (!root) return;
+  root.setAttribute('tabindex', '-1');
+  root.focus();
+  root.addEventListener('blur', () => root.removeAttribute('tabindex'), { once: true });
+};
+
 // editing 由 false→true 时（外部请求进入编辑态）重新取当前 content 的最新文本作为草稿基线
 watch(
   () => props.editing,
-  (v) => {
-    if (!v) return;
+  (v, old) => {
+    if (!v) {
+      // immediate 首次触发时 old 为 undefined，不是「退出」——否则挂载即抢焦点
+      if (old === true) void nextTick(restoreFocusAfterEdit);
+      return;
+    }
+    returnFocusEl =
+      typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null);
     draft.value = messageText({ id: '', role: props.role ?? 'ai', content: props.content ?? [] });
     // 焦点交接：触发编辑的那个铅笔按钮与整条 footer 在同一帧被卸载（见模板
     // `v-if="$slots.footer && !editing"`），不接管的话 activeElement 落回 <body>，
