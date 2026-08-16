@@ -66,12 +66,17 @@ onBeforeUnmount(() => cancelFlip?.());
 const onLoad = () => {
   if (status.value !== 'loading') return;
   // 高度平滑过渡（共享 FLIP）：记录骨架高 → 切换重渲染后（rAF）测真实高做 transition。
-  const el = wrapper.value;
-  const prevHeight = el?.offsetHeight ?? 0;
+  const prevHeight = wrapper.value?.offsetHeight ?? 0;
   markLoaded(safeSrc.value);
   status.value = 'loaded';
-  if (!el || !prevHeight) return;
+  if (!prevHeight) return;
   requestAnimationFrame(() => {
+    // 必须在这里**重新读** wrapper：loading 与 loaded 是两个 v-if 分支，切换后挂载的是另一个
+    // 元素，沿用切换前捕获的引用拿到的是已脱离文档的骨架 span——它的 offsetHeight 恒为 0，
+    // transitionHeight 首行即 return null，承诺的过渡从不发生、高度硬跳。
+    // 同 MarkdownRenderer 在 onUpdated 里重新取 el 的处理。
+    const el = wrapper.value;
+    if (!el) return; // 同帧内又切走（如 src 变更回 loading / 组件已卸载）
     cancelFlip?.();
     cancelFlip = transitionHeight(el, prevHeight);
   });
