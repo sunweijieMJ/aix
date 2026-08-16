@@ -1,5 +1,6 @@
-import { ref, computed, onScopeDispose, getCurrentScope, type Ref, type ComputedRef } from 'vue';
+import { ref, computed, type Ref, type ComputedRef } from 'vue';
 import type { VoiceConfig, VoiceRecognizer, VoiceRecognizerCtx } from '../types';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 
 export interface UseVoiceInputOptions {
   config?: VoiceConfig;
@@ -139,7 +140,7 @@ export function useVoiceInput(options: UseVoiceInputOptions): UseVoiceInputRetur
 
   const toggle = () => (status.value === 'listening' ? stop() : start());
 
-  if (getCurrentScope()) onScopeDispose(stop);
+  onScopeDisposeSafe(stop);
 
   return { status, isSupported, start, stop, toggle };
 }

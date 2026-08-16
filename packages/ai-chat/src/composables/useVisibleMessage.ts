@@ -1,5 +1,6 @@
 import { useEventListener, useTimeout } from '@aix/hooks';
-import { ref, watch, toValue, onScopeDispose, type Ref, type MaybeRefOrGetter } from 'vue';
+import { ref, watch, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 
 /** 滚动静默多久算「定位结束」（ms）：平滑滚动的帧间隔远小于此值 */
 const SCROLL_QUIET_MS = 150;
@@ -202,7 +203,7 @@ export function useVisibleMessage(options: UseVisibleMessageOptions): UseVisible
     flush: 'post',
   });
 
-  onScopeDispose(teardown);
+  onScopeDisposeSafe(teardown);
 
   return { activeId, beginNavigate, endNavigate };
 }

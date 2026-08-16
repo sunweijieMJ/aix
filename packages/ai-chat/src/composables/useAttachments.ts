@@ -1,6 +1,7 @@
-import { ref, computed, onScopeDispose, getCurrentScope, type Ref, type ComputedRef } from 'vue';
+import { ref, computed, type Ref, type ComputedRef } from 'vue';
 import type { AttachmentItem } from '../types';
 import { genBlockId } from '../utils/helpers';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 
 /** 输入区待发附件（在 AttachmentItem 上叠加上传过程态） */
 export interface PendingAttachment extends AttachmentItem {
@@ -185,21 +186,18 @@ export function useAttachments(options: UseAttachmentsOptions): UseAttachmentsRe
     return done.map(({ status: _s, percent: _p, file: _f, error: _e, ...rest }) => rest);
   };
 
-  // 组件外调用（无活跃 scope）时跳过，与包内其他 composable 行为一致
-  if (getCurrentScope()) {
-    onScopeDispose(() => {
-      // 走 clear() 而不是只 abort 在途请求：销毁同样是「丢弃」语义，条目再也回不来了，
-      // 业务在 upload 里于服务端产生的资源必须有机会回收。只 abort 的话，已经**传完**
-      // （status 'done'）的条目连同它们的 extra 一起被静默丢掉、onRemove 永不触发，
-      // 服务端文件就成了没人认领的孤儿。典型场景是把 AiChat 挂在 v-if 侧边栏里：
-      // 用户传完附件没发就关掉面板，每关一次漏一批。
-      //
-      // clear() 内部已含 abort 全部在途请求 + 清空 ctrls，故不必重复。
-      // 宿主注入实例（UseAttachmentsReturn）时本钩子归属**宿主自己**的 scope
-      // （Sender 那条路不会再 useAttachments），不存在「Sender 卸载清空宿主状态」。
-      clear();
-    });
-  }
+  onScopeDisposeSafe(() => {
+    // 走 clear() 而不是只 abort 在途请求：销毁同样是「丢弃」语义，条目再也回不来了，
+    // 业务在 upload 里于服务端产生的资源必须有机会回收。只 abort 的话，已经**传完**
+    // （status 'done'）的条目连同它们的 extra 一起被静默丢掉、onRemove 永不触发，
+    // 服务端文件就成了没人认领的孤儿。典型场景是把 AiChat 挂在 v-if 侧边栏里：
+    // 用户传完附件没发就关掉面板，每关一次漏一批。
+    //
+    // clear() 内部已含 abort 全部在途请求 + 清空 ctrls，故不必重复。
+    // 宿主注入实例（UseAttachmentsReturn）时本钩子归属**宿主自己**的 scope
+    // （Sender 那条路不会再 useAttachments），不存在「Sender 卸载清空宿主状态」。
+    clear();
+  });
 
   return { items, add, remove, retry, clear, isUploading, drain, accept };
 }

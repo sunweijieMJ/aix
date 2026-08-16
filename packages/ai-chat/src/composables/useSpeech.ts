@@ -1,4 +1,4 @@
-import { ref, computed, onScopeDispose, getCurrentScope, type Ref, type ComputedRef } from 'vue';
+import { ref, computed, type Ref, type ComputedRef } from 'vue';
 import type {
   ChatMessage,
   SpeechConfig,
@@ -7,6 +7,7 @@ import type {
   SpeechSynthesizerCtx,
 } from '../types';
 import { messageText } from '../utils/helpers';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 
 export interface UseSpeechOptions {
@@ -257,7 +258,7 @@ export function useSpeech(options: UseSpeechOptions = {}): UseSpeechReturn {
     }
   };
 
-  if (getCurrentScope()) onScopeDispose(stop);
+  onScopeDisposeSafe(stop);
 
   return { speakingId, isSupported, toggle, feed, stop, resolveText };
 }

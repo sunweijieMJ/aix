@@ -1,4 +1,5 @@
-import { ref, watch, onScopeDispose, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
+import { ref, watch, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 
 export interface TypewriterOptions {
   /**
@@ -130,7 +131,7 @@ export function useTypewriter(source: Ref<string>, options: TypewriterOptions = 
     }
   });
 
-  onScopeDispose(stop);
+  onScopeDisposeSafe(stop);
 
   return { displayed, stop };
 }

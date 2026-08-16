@@ -2,7 +2,6 @@ import {
   ref,
   computed,
   effectScope,
-  onScopeDispose,
   toValue,
   type Ref,
   type ComputedRef,
@@ -20,6 +19,7 @@ import type {
 } from '../types';
 import { devWarn } from '../utils/devWarn';
 import { genMsgId, genBlockId, normalizeSuggestions } from '../utils/helpers';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 import { flatParseChunk } from '../utils/parsers';
 import { applyToolEvent, toArray, type ToolReduceCtx } from '../utils/toolBlocks';
 import { createMessageTree, ROOT_ID, type MessageTreeApi } from './messageTree';
@@ -890,10 +890,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     isLoading.value = false;
   };
 
-  // 组件卸载（scope 销毁）时中止进行中的流，避免 reader 持续读取、
-  // 向已脱离的响应式对象继续写入（与 useTypewriter 的 onScopeDispose 对齐）；
+  // 组件卸载（scope 销毁）时中止进行中的流，避免 reader 持续读取、向已脱离的响应式对象继续写入；
   // 顺带停掉逐条缓存所在的游离 scope（它不挂在任何父 scope 上，须显式回收）。
-  onScopeDispose(() => {
+  // 走 onScopeDisposeSafe：无活跃 scope（组件外调用）时跳过注册而非打告警，约定见该函数注释——
+  // 此时 parserMemoScope 无从回收，是「组件外调用」这一用法的固有限制。
+  onScopeDisposeSafe(() => {
     controller?.abort();
     parserMemoScope?.stop();
   });

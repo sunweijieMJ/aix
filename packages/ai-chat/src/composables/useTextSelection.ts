@@ -1,7 +1,8 @@
-import { ref, watch, toValue, onScopeDispose } from 'vue';
+import { ref, watch, toValue } from 'vue';
 import type { MaybeRefOrGetter, Ref } from 'vue';
 import type { MessageRole, QuoteAnchor } from '../types';
 import { BUBBLE_CONTENT_SELECTOR } from '../utils/helpers';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 import { normalizeText, rangeToOffsets, getContext } from '../utils/textRange';
 
 export interface UseTextSelectionOptions {
@@ -302,7 +303,7 @@ export function useTextSelection(options: UseTextSelectionOptions): UseTextSelec
     { immediate: true },
   );
 
-  onScopeDispose(() => {
+  onScopeDisposeSafe(() => {
     unbindAll();
     resetInternal();
   });

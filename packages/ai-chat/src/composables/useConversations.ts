@@ -1,12 +1,4 @@
-import {
-  ref,
-  computed,
-  watch,
-  onScopeDispose,
-  type Ref,
-  type ComputedRef,
-  type WritableComputedRef,
-} from 'vue';
+import { ref, computed, watch, type Ref, type ComputedRef, type WritableComputedRef } from 'vue';
 import type {
   ChatMessage,
   Conversation,
@@ -14,6 +6,7 @@ import type {
   MessageStatus,
   ExportedTree,
 } from '../types';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 import { createMessageTree } from './messageTree';
 
 // 流式中的非终态：恢复时无活跃流推进，须复位
@@ -365,7 +358,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     // dispose 时 flush 而非丢弃：防抖窗口内的最后一段变更（流式期间防抖被持续重置，
     // 卸载若发生在流结束后的窗口内，丢的可能是整条刚完成的回复）立即落盘，同样经串行队列，
     // 保证 flush 数据最终落地。浏览器强杀（刷新/关 tab）仍可能丢窗口内数据，由 load 时 reconcileStuckMessages 兜底。
-    onScopeDispose(() => {
+    onScopeDisposeSafe(() => {
       if (timer) {
         clearTimeout(timer);
         timer = null;

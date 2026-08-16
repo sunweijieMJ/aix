@@ -1,4 +1,5 @@
-import { ref, isRef, toValue, onScopeDispose, type Ref, type MaybeRefOrGetter } from 'vue';
+import { ref, isRef, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 
 export type ScrollState = 'AT_BOTTOM' | 'SCROLLED_UP' | 'HAS_NEW_MESSAGES';
 export type FollowReason = 'own-message' | 'new-message' | 'streaming';
@@ -201,7 +202,7 @@ export function useAutoScroll(
     ro = new ResizeObserver(() => follow('streaming'));
     ro.observe(contentEl);
   };
-  onScopeDispose(() => {
+  onScopeDisposeSafe(() => {
     ro?.disconnect();
     clearSmoothPending(); // 组件卸载时清理 rAF 轮询与 wheel/touchmove 监听
   });
