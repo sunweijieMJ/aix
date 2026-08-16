@@ -92,6 +92,9 @@ let engineCache = new Map<boolean, Promise<MarkdownEngine | null>>();
 // 注入插件时按「插件数组引用 + allowHtml」缓存：同一 config.mdPlugins（所有气泡共享同一引用）
 // 只装配一次、跨气泡共享；不同实例的插件集互不污染。WeakMap 随插件数组被 GC 自动回收。
 let pluginEngineCache = new WeakMap<object, Map<boolean, Promise<MarkdownEngine | null>>>();
+// 每个引擎的「增强项重试句柄」（katex / highlight.js）。挂在 WeakMap 而非 MarkdownEngine 字段上：
+// 这是缓存层的内部机制，不必进入引擎的公开形状；随引擎被 GC 自动回收。
+const enhancementRetries = new WeakMap<MarkdownEngine, () => Promise<void>>();
 
 /**
  * 动态装配 markdown 引擎；未安装 markdown-it 返回 null（调用方降级纯文本）。
@@ -113,6 +116,8 @@ export function loadMarkdownEngine(
       pending = assembleEngine(allowHtml, plugins);
       byHtml.set(allowHtml, pending);
       evictOnFailure(byHtml, allowHtml, pending);
+    } else {
+      retryEnhancements(pending);
     }
     return pending;
   }
@@ -121,8 +126,23 @@ export function loadMarkdownEngine(
     pending = assembleEngine(allowHtml);
     engineCache.set(allowHtml, pending);
     evictOnFailure(engineCache, allowHtml, pending);
+  } else {
+    retryEnhancements(pending);
   }
   return pending;
+}
+
+/**
+ * 命中缓存引擎时补跑此前失败的增强项（katex / highlight.js）。
+ * 与 evictOnFailure、getSharedECharts 的 started 复位同一思路：一次 stale chunk 404 或弱网抖动
+ * 不应让公式与代码高亮在整页生命周期内永久降级——引擎是模块级长寿对象，失败一旦固化进去就再无
+ * 翻身机会。成功合入会 bump renderersVersion，已渲染的块随之补上增强，调用方无需感知。
+ * 真正未安装的场景每次重试同样落空集合，行为不变，仅多一次 import 尝试成本（与 evictOnFailure 同）。
+ */
+function retryEnhancements(pending: Promise<MarkdownEngine | null>): void {
+  void pending.then((engine) => {
+    if (engine) void enhancementRetries.get(engine)?.();
+  });
 }
 
 /**
@@ -257,10 +277,49 @@ async function assembleEngine(
     // 增强项（katex / highlight.js 体积大）后台加载，不阻塞引擎返回——首帧富文本骨架立即可渲染。
     // 用 allSettled 而非 all：从结构上保证「互不连累」——即使某加载器意外 reject（如未来在其
     // 内部 try 之外引入抛错），也只让该项维持空集合，不影响其它项合入与 ready 兑现。
-    engine.ready = Promise.allSettled([
-      loadMathRenderers(katexEnabled).then(mergeInto(engine.mathRenderers)),
-      loadCodeRenderers().then(mergeInto(engine.codeRenderers)),
-    ]).then(() => undefined);
+    //
+    // settled 标记只在「确实拿到渲染器」时置位，失败保留重试资格（见 retryEnhancements）：
+    // markdown-it 走 evictOnFailure、mermaid 与 echarts 走 started 复位，各自都为「瞬时失败不应
+    // 永久降级」设了防，唯独这两项此前把失败固化进了长寿引擎。
+    let mathSettled = !katexEnabled; // 未启用 katex：本就不该加载，无重试可言
+    let codeSettled = false;
+    let inFlight: Promise<void> | null = null;
+    // 重试必须有上界。重试之所以可能成功，前提正是「失败的动态 import 不被模块系统缓存」，
+    // 也就意味着每次重试都是一次真实的解析/网络尝试。而 loadMarkdownEngine 由每个
+    // MarkdownRenderer 挂载时调用（每条消息至少一次），katex / highlight.js 又都是
+    // optionalDependency——「用户压根没装」是常态而非异常。不设上界的话，这一常态会从
+    // 「整页一次失败」退化成「每条消息各失败一次」，几十条消息就是几十次无谓请求。
+    // 3 次（首次 + 2 次重试）足以覆盖弱网抖动与发版瞬间的 stale chunk 404，也就到此为止。
+    let attemptsLeft = 3;
+    const loadEnhancements = (): Promise<void> => {
+      if (inFlight) return inFlight; // 并发触发合流，同一次抖动不重复 import
+      if (mathSettled && codeSettled) return Promise.resolve();
+      if (attemptsLeft <= 0) return Promise.resolve(); // 已尽力，维持降级（缺依赖时的稳态）
+      attemptsLeft -= 1;
+      const tasks: Promise<unknown>[] = [];
+      if (!mathSettled) {
+        tasks.push(
+          loadMathRenderers(katexEnabled).then((renderers) => {
+            if (Object.keys(renderers).length > 0) mathSettled = true;
+            mergeInto(engine.mathRenderers)(renderers);
+          }),
+        );
+      }
+      if (!codeSettled) {
+        tasks.push(
+          loadCodeRenderers().then((renderers) => {
+            if (Object.keys(renderers).length > 0) codeSettled = true;
+            mergeInto(engine.codeRenderers)(renderers);
+          }),
+        );
+      }
+      inFlight = Promise.allSettled(tasks).then(() => {
+        inFlight = null;
+      });
+      return inFlight;
+    };
+    enhancementRetries.set(engine, loadEnhancements);
+    engine.ready = loadEnhancements();
     return engine;
   } catch {
     console.warn(
