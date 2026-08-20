@@ -103,6 +103,25 @@ describe('ChartBlock（结构化图表块）', () => {
     expect(w.find('.aix-chart-block__title').text()).toBe('销售占比');
   });
 
+  // 回归：显式 kind 曾绕过 inferKind 的清单校验——kind 来自块数据（模型/工具输出），
+  // 清单外字符串若放行，ensureChartType 的解构 TypeError 被静默吞掉、setOption 对
+  // 未注册 series 只打 console error，最终产出无任何反馈的空白容器且 failed 恒 false
+  it('清单外的显式 kind（如 candlestick）：降级为 fallback，不产出空白容器', async () => {
+    const { core, instance } = makeECharts();
+    __setSharedEChartsForTest(core);
+    const w = mount(ChartBlock, {
+      props: {
+        block: chartBlock('candlestick' as never, { series: [{ type: 'candlestick', data: [] }] }),
+        info,
+      },
+    });
+    await flush();
+    expect(w.find('.aix-chart-block__fallback').exists()).toBe(true);
+    expect(w.find('.aix-skeleton').exists()).toBe(false);
+    expect(core.init).not.toHaveBeenCalled();
+    expect(instance.setOption).not.toHaveBeenCalled();
+  });
+
   // 回归：setOption 抛错时 rendered 永假 → Skeleton overlay 永驻假加载态
   it('setOption 抛错：降级为 fallback 文字，不留永驻骨架', async () => {
     const { core, instance } = makeECharts();

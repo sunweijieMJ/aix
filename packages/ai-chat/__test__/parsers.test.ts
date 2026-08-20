@@ -296,4 +296,41 @@ describe('openaiParseChunk — tool_calls 与文本同帧', () => {
     expect(Array.isArray(r)).toBe(false);
     expect(r).toMatchObject({ tool: { toolCallId: 'c1' } });
   });
+
+  // 回归：tool_calls 分支曾早退不看 finish_reason——网关把最后一段参数增量与
+  // finish_reason:'tool_calls' 合进同一帧时 argsDone 永不发出，工具块永久停在 input-streaming
+  it('同帧的 tool_calls 与 finish_reason=tool_calls：参数增量与 argsDone 都产出，argsDone 在后', () => {
+    const r = openaiParseChunk(
+      sse(
+        JSON.stringify({
+          choices: [
+            {
+              delta: { tool_calls: [{ index: 0, function: { arguments: '"上海"}' } }] },
+              finish_reason: 'tool_calls',
+            },
+          ],
+        }),
+      ),
+    );
+    expect(r).toMatchObject([
+      { tool: { index: 0, argsTextDelta: '"上海"}' } },
+      { tool: { index: 0, argsDone: true } },
+    ]);
+  });
+
+  // 回归：finish_reason 分支曾直接 return——同帧携带的 content 被静默丢弃，
+  // 与 tool_calls 分支"同帧正文不能丢"的口径矛盾
+  it('同帧的 content 与 finish_reason=tool_calls：正文不被丢弃，且在 argsDone 之前', () => {
+    const r = openaiParseChunk(
+      sse(
+        JSON.stringify({
+          choices: [{ delta: { content: '我来查一下' }, finish_reason: 'tool_calls' }],
+        }),
+      ),
+    );
+    expect(r).toEqual([
+      { delta: '我来查一下', blockType: 'text' },
+      { tool: { index: 0, argsDone: true } },
+    ]);
+  });
 });
