@@ -4,6 +4,29 @@
  * 提供组件库通用的 Composition API hooks
  */
 
+/**
+ * 可覆盖文案注册表（模块增强挂载点）
+ *
+ * 各子包在自己的 locale 模块里注册切片，业务侧 `createLocale(locale, { messages })`
+ * 即获得包名 + key 级的类型提示：
+ *
+ * ```ts
+ * // 子包（如 @aix/ai-chat 的 locale/index.ts）：
+ * declare module '@aix/hooks' {
+ *   interface AixLocaleMessagesMap { 'ai-chat': AiChatLocale }
+ * }
+ *
+ * // 业务 main.ts：
+ * createLocale('zh-CN', {
+ *   messages: { 'ai-chat': { 'zh-CN': { sendButton: '发问' } } },
+ * });
+ * ```
+ *
+ * 必须直接声明在包根入口：TS 模块增强只能合并目标模块中「直接声明」的接口，
+ * 若从 use-locale 子模块 re-export，业务侧 `declare module '@aix/hooks'` 将无法合并。
+ */
+export interface AixLocaleMessagesMap {}
+
 // 国际化相关
 export * from './use-locale';
 

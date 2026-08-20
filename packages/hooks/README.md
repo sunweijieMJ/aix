@@ -194,8 +194,8 @@ app.mount('#app');
 import { useLocale } from '@aix/hooks';
 import { buttonLocale } from './locale';
 
-// 使用组件语言包
-const { locale, t } = useLocale(buttonLocale);
+// 使用组件语言包（name 与该包在 AixLocaleMessagesMap 注册的 key 一致）
+const { locale, t } = useLocale({ name: 'button', messages: buttonLocale });
 </script>
 
 <template>
@@ -236,7 +236,38 @@ export const myComponentLocale: ComponentLocale<MyComponentLocale> = {
   'zh-CN': zhCN,
   'en-US': enUS,
 };
+
+// 注册应用级文案覆盖切片：业务侧 createLocale({ messages }) 由此获得
+// 包名 + key 级类型校验；key 必须与 useLocale 传的 name 一致
+declare module '@aix/hooks' {
+  interface AixLocaleMessagesMap {
+    'my-component': MyComponentLocale;
+  }
+}
 ```
+
+### 4. 业务侧覆盖内置文案
+
+文案按四层浅合并，优先级从低到高：**公共语言包 → 包内置语言包 → 应用级覆盖 → 实例级覆盖**。
+
+```typescript
+// 应用级：main.ts 一处统一定制，作用于所有实例（key 有完整类型提示）
+const locale = createLocale('zh-CN', {
+  messages: {
+    'ai-chat': { 'zh-CN': { sendButton: '发问' } },
+  },
+});
+app.use(locale);
+
+// 运行时增量合入（如异步从 CMS 拉取文案后）
+locale.localeContext.mergeMessages({
+  'ai-chat': { 'en-US': { sendButton: 'Ask' } },
+});
+```
+
+实例级覆盖由各组件包提供入口（如 ai-chat 的 `localeMessages` prop 与
+`provideAiChatLocaleMessages`），内部通过 `useLocale` 的 `overrideMessages` 接入。
+注意：模板类文案（如 `{s}`、`{total}` 占位符）覆盖时必须保留占位符。
 
 ## 国际化 API
 
@@ -248,12 +279,13 @@ export const myComponentLocale: ComponentLocale<MyComponentLocale> = {
 |------|------|--------|:----:|------|
 | defaultLocale | `'zh-CN'` \| `'en-US'` | `'zh-CN'` | ❌ | 默认语言 |
 | options.persist | `boolean` | `false` | ❌ | 是否持久化到 localStorage |
+| options.messages | `LocaleMessages` | `{}` | ❌ | 应用级文案覆盖（包名 → 语言 → 部分文案） |
 
 **返回值：**
 
 | 属性 | 类型 | 描述 |
 |------|------|------|
-| localeContext | `LocaleContext` | locale 上下文对象 |
+| localeContext | `LocaleContext` | locale 上下文对象（含 `setLocale` / `messages` / `mergeMessages`） |
 | install | `(app: App) => void` | Vue 插件安装函数 |
 
 **示例：**
@@ -268,23 +300,32 @@ app.use({ install });
 // 启用持久化
 const { install } = createLocale('zh-CN', { persist: true });
 app.use({ install });
+
+// 应用级文案覆盖 + 运行时增量合入
+const locale = createLocale('zh-CN', {
+  messages: { 'ai-chat': { 'zh-CN': { sendButton: '发问' } } },
+});
+app.use(locale);
+locale.localeContext.mergeMessages({ 'ai-chat': { 'en-US': { sendButton: 'Ask' } } });
 ```
 
 ### useLocale
 
-组件内使用的国际化 hook。
+组件内使用的国际化 hook，接收单个 options 对象。
 
 | 属性 | 类型 | 默认值 | 必填 | 描述 |
 |------|------|--------|:----:|------|
-| componentLocale | `ComponentLocale<T>` | - | ✅ | 组件的语言包 |
-| overrideLocale | `Locale \| Ref<Locale>` | - | ❌ | 覆盖语言（优先级高于全局设置） |
+| options.name | `keyof AixLocaleMessagesMap \| string` | - | ✅ | 包名，用于索引应用级 messages 覆盖切片 |
+| options.messages | `ComponentLocale<T>` | - | ✅ | 包内置语言包 |
+| options.overrideLocale | `MaybeRefOrGetter<Locale \| undefined>` | - | ❌ | 覆盖语言（优先级高于全局设置） |
+| options.overrideMessages | `MaybeRefOrGetter<Partial<T> \| null \| undefined>` | - | ❌ | 实例级文案覆盖（合并优先级最高） |
 
 **返回值：**
 
 | 属性 | 类型 | 描述 |
 |------|------|------|
 | locale | `ComputedRef<Locale>` | 当前语言 |
-| t | `ComputedRef<T & CommonLocale>` | 翻译文本对象（包含组件文案和公共文案） |
+| t | `ComputedRef<T & CommonLocale>` | 翻译文本对象（四层合并结果） |
 
 **示例：**
 
@@ -293,11 +334,10 @@ app.use({ install });
 import { useLocale } from '@aix/hooks';
 import { buttonLocale } from './locale';
 
-const { locale, t } = useLocale(buttonLocale);
+const { locale, t } = useLocale({ name: 'button', messages: buttonLocale });
 
-// t.value 包含组件文案和公共文案
-console.log(t.value.confirm); // 公共文案
-console.log(t.value.submit);  // 组件文案
+// t.value 为四层合并结果：公共 → 内置 → 应用级覆盖 → 实例级覆盖
+console.log(t.value.submit);
 </script>
 ```
 
@@ -307,7 +347,7 @@ console.log(t.value.submit);  // 组件文案
 
 | 属性 | 类型 | 默认值 | 必填 | 描述 |
 |------|------|--------|:----:|------|
-| overrideLocale | `Locale \| Ref<Locale>` | - | ❌ | 覆盖语言 |
+| overrideLocale | `MaybeRefOrGetter<Locale \| undefined>` | - | ❌ | 覆盖语言 |
 
 **返回值：**
 
@@ -357,10 +397,20 @@ interface LocaleReturn<T> {
   t: ComputedRef<T>;
 }
 
+// 可覆盖文案注册表（各子包通过模块增强注册切片）
+interface AixLocaleMessagesMap {}
+
+// 应用级文案覆盖：包名 → 语言 → 部分文案
+type LocaleMessages = {
+  [K in keyof AixLocaleMessagesMap]?: Partial<Record<Locale, Partial<AixLocaleMessagesMap[K]>>>;
+};
+
 // Locale 上下文
 interface LocaleContext {
   locale: Locale;
   setLocale: (locale: Locale) => void;
+  messages: LocaleMessages;
+  mergeMessages: (messages: LocaleMessages) => void;
 }
 ```
 
@@ -391,18 +441,31 @@ export interface SelectLocale {
 
 ### 2. 支持用户自定义文案
 
-```vue
-<script setup>
-const props = defineProps<{
-  placeholder?: string;  // 允许用户覆盖
-}>();
+不要再为每条文案单开 prop 让业务自己兜底——走统一的覆盖链：
 
-const { t } = useLocale(selectLocale);
-
-// 优先使用用户提供的文案
-const placeholderText = computed(() => props.placeholder ?? t.value.placeholder);
-</script>
+```typescript
+// 业务侧应用级覆盖（main.ts 一处，作用于所有实例，key 有类型校验）
+createLocale('zh-CN', {
+  messages: { 'my-component': { 'zh-CN': { placeholder: '请输入关键词' } } },
+});
 ```
+
+需要单实例覆盖时，组件包封装专属 composable 暴露 `overrideMessages` 入口：
+
+```typescript
+// packages/my-component/src/composables/useMyComponentLocale.ts
+export function useMyComponentLocale(options: { localeMessages?: MaybeRefOrGetter<Partial<MyComponentLocale> | undefined> } = {}) {
+  const injected = inject(MY_COMPONENT_LOCALE_MESSAGES_KEY, null);
+  return useLocale({
+    name: 'my-component',
+    messages: myComponentLocale,
+    overrideMessages: () =>
+      toValue(options.localeMessages) ?? (injected == null ? undefined : toValue(injected)),
+  });
+}
+```
+
+完整参考实现见 `@aix/ai-chat` 的 `useAiChatLocale` / `provideAiChatLocaleMessages` 与 `localeMessages` prop。
 
 ### 3. SSR 兼容
 
