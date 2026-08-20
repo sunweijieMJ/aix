@@ -63,4 +63,10 @@ describe('stripMarkdownForSpeech', () => {
       expect(stripMarkdownForSpeech('__粗体__ 与 _斜体_')).toBe('粗体 与 斜体');
     });
   });
+
+  // 回归：闭围栏正则曾允许任意尾随文本——围栏内容里的 "```python" 行被误当闭围栏，
+  // 其后代码泄入散文剥离流水线（与 stripMarkdownForCopy 同源修复）
+  it('围栏内容里的 "```python" 行不被误当闭围栏，整块代码完整移除', () => {
+    expect(stripMarkdownForSpeech('前言\n```\n```python\nprint(1)\n```\n之后')).toBe('前言\n之后');
+  });
 });

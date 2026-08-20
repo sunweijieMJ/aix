@@ -83,4 +83,17 @@ describe('stripMarkdownForCopy', () => {
       expect(stripMarkdownForCopy('foo*bar*baz')).toBe('foobarbaz');
     });
   });
+
+  // 回归：闭围栏正则曾允许任意尾随文本（[^\n]*）——围栏内容里出现的 "```python" 行
+  //（模型演示 markdown 语法时常见）被误当闭围栏提前切分，其后代码泄入 stripProse 被当散文剥离
+  describe('闭围栏不得带 info string（CommonMark 口径）', () => {
+    it('围栏内容里的 "```python" 行不被误当闭围栏，代码原样保留', () => {
+      expect(stripMarkdownForCopy('```\n```python\nprint(1)\n```\n后记')).toBe(
+        '```python\nprint(1)\n后记',
+      );
+    });
+    it('闭围栏可比开围栏长（CommonMark 允许），仍正常配对', () => {
+      expect(stripMarkdownForCopy('```js\nconst a = 1;\n`````\n后记')).toBe('const a = 1;\n后记');
+    });
+  });
 });

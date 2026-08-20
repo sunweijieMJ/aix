@@ -266,4 +266,18 @@ describe('protectStreamingMarkdown（流式防闪烁）', () => {
       );
     });
   });
+
+  // 回归：围栏扫描曾只认列 0 起始，而 CommonMark 允许围栏缩进至多 3 格（列表项内围栏
+  // 的常见形态）——缩进开围栏不被识别（半截代码裸奔），缩进闭围栏被误判未闭合（补幻影围栏）
+  describe('缩进围栏（CommonMark 允许 0-3 格）', () => {
+    it('列表项内缩进的未闭合围栏被识别并补收尾围栏', () => {
+      const src = '- 示例：\n  ```js\n  const a = 1';
+      expect(protectStreamingMarkdown(src)).toBe(`${src}\n\`\`\``);
+    });
+
+    it('缩进的闭围栏被识别为已闭合，不再补幻影围栏', () => {
+      const src = '```js\nconst a = 1\n  ```';
+      expect(protectStreamingMarkdown(src)).toBe(src);
+    });
+  });
 });
