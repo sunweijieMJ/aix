@@ -66,6 +66,22 @@ export class PruneProcessor extends BaseProcessor {
           `locale「${locale}」解析失败：${file}，已中止 prune 以防误判孤儿 / 误删 key。请先修复 JSON 格式。`,
       },
     );
+    // 迁移窗口守卫：桶式模式下若存在未迁移的遗留单文件，孤儿判定（readLocaleFile 含遗留
+    // 兜底）与删除路径（pruneLocale 只重写桶文件）视图分裂——legacy-only 孤儿报得出来
+    // 却删不掉，而下方字典文件清理会真删，落入半清理循环。宁可中止，提示先完成迁移。
+    const unmigratedLegacy = LanguageFileManager.findUnmigratedLegacyLocale(
+      this.config,
+      this.isCustom,
+      [sourceLocale, ...this.config.locales.targets],
+    );
+    if (unmigratedLegacy) {
+      throw new Error(
+        `检测到未迁移的遗留语言文件：${unmigratedLegacy}。` +
+          `桶式模式下 prune 只重写桶文件、无法清理遗留单文件中的 key；` +
+          `请先运行 pick / merge / export 任一命令完成分桶迁移后再执行 prune。`,
+      );
+    }
+
     // 守卫已确保 source 非损坏，readLocaleFile 不会返回 null（仅「不存在/空 → {}」或解析结果）。
     const sourceMap =
       LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) ?? {};

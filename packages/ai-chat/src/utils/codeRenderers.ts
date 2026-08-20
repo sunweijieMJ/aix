@@ -1,7 +1,7 @@
-import { useLocale, useClipboard } from '@aix/hooks';
+import { useClipboard } from '@aix/hooks';
 import { Copy, Check } from '@aix/icons';
 import { defineComponent, h, ref, watch } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import { createLruCache } from './lruCache';
 import type { MarkdownRenderers } from './markdownWalker';
 
@@ -46,7 +46,7 @@ export function createHighlightRenderers(hljs: HljsLike): MarkdownRenderers {
     },
     setup(props) {
       const html = ref<string | null>(null);
-      const { t } = useLocale(locale);
+      const { t } = useAiChatLocale();
 
       // 复制态：成功复制后短暂显示「已复制」，1.5s 后复位（useClipboard 内含兜底 + 自动重置）
       const { copied, copy } = useClipboard();

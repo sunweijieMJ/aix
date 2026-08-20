@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import MarkdownIt from 'markdown-it';
 import { describe, it, expect } from 'vitest';
-import { defineComponent, h } from 'vue';
+import { defineComponent, h, type VNode } from 'vue';
 import {
   renderMarkdownTokens,
   type MarkdownRenderers,
@@ -185,5 +185,41 @@ describe('renderMarkdownTokens（token→VNode walker）', () => {
       expect(seen).not.toBeNull();
       expect((seen as unknown as MdToken).content).toBe(tokens[0]!.content);
     });
+  });
+});
+
+describe('image token 的 src 白名单（与 link 的纵深防护对称）', () => {
+  const imgToken = (src: string, alt = 'ALT'): MdToken => ({
+    type: 'image',
+    tag: 'img',
+    nesting: 0,
+    level: 0,
+    content: alt,
+    info: '',
+    map: null,
+    children: null,
+    attrs: [['src', src]],
+  });
+  /** 直接走 walker 拿节点数组（不经上方按 markdown 源渲染的 render helper） */
+  const nodesOf = (t: MdToken) =>
+    renderMarkdownTokens([t], { renderers: {}, info: { streaming: false } });
+
+  it('安全 src 正常渲染 <img>', () => {
+    const [node] = nodesOf(imgToken('https://a.com/x.png'));
+    expect((node as VNode).type).toBe('img');
+    expect(((node as VNode).props as { src: string }).src).toBe('https://a.com/x.png');
+  });
+
+  it('data:image 放行（内联图片是 markdown 合法用法）', () => {
+    const [node] = nodesOf(imgToken('data:image/png;base64,AAA'));
+    expect((node as VNode).type).toBe('img');
+  });
+
+  it('javascript: 等不安全协议降级为纯 alt 文本，不渲染 img', () => {
+    expect(nodesOf(imgToken('javascript:alert(1)', '图片说明'))).toEqual(['图片说明']);
+  });
+
+  it('data:text/html 同样拦下（只放行 data:image/*）', () => {
+    expect(nodesOf(imgToken('data:text/html,<script>alert(1)</script>', 'x'))).toEqual(['x']);
   });
 });

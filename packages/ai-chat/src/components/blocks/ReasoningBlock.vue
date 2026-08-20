@@ -1,12 +1,40 @@
 <template>
-  <Thinking :title="title" :expanded="isStreamingStatus">
-    <MarkdownRenderer
-      :content="displayContent"
-      :streaming="streaming"
-      :markdown-renderers="config.markdownRenderers"
-      :allow-html="config.allowHtml ?? false"
-      :md-plugins="config.mdPlugins"
-    />
+  <Thinking :title="title" :expanded="isStreamingStatus" :variant="config.reasoningVariant">
+    <!-- 按 <块类型>-<内部slot> 约定把消费方插槽转发进 Thinking。四处都是 v-if 条件转发：
+         无条件转发会向 Thinking 注入空插槽，把图标/标题/箭头渲染成空白（README 承诺「不提供则无副作用」）。
+         与 ThoughtChainBlock 纯 v-bind="sp" 的差别：thought-chain 要透出的 item/index 就在内部组件
+         的作用域里，而思考耗时 elapsed 与「思考是否仍在进行」streaming 是本块从数据层
+         (block.startedAt/endedAt) + info.status 推导出来的，Thinking 无从得知，故此处**增补**作用域。
+         elapsed 尤其关键：不给的话「用时 N 秒」只能靠改 i18n 文案，做不成胶囊标签之类的自定义形态。 -->
+    <template v-if="$slots['reasoning-icon']" #icon="sp">
+      <slot name="reasoning-icon" v-bind="{ ...sp, ...extraScope }" />
+    </template>
+    <template v-if="$slots['reasoning-title']" #title="sp">
+      <slot name="reasoning-title" v-bind="{ ...sp, ...extraScope }" />
+    </template>
+    <template v-if="$slots['reasoning-arrow']" #arrow="sp">
+      <slot name="reasoning-arrow" v-bind="{ ...sp, ...extraScope }" />
+    </template>
+    <!-- 正文区：映射到 Thinking 的默认插槽（__body）。命名为 reasoning-body 而非
+         reasoning-default——默认插槽在约定里没有名字，body 与其区域 class 对齐更好读。
+         这里必须用 $slots 显式二选一而非 <slot> 的 fallback 写法：业务按条件只在部分情况下
+         渲染思考正文时，renderSlot 会因「产出全是 Comment」判定插槽未提供而强行套回内置
+         MarkdownRenderer（与 Bubble error / AiChat footer 踩过的是同一个坑）。 -->
+    <template #default="sp">
+      <slot
+        v-if="$slots['reasoning-body']"
+        name="reasoning-body"
+        v-bind="{ ...sp, ...extraScope, text: block.text, displayed: displayContent }"
+      />
+      <MarkdownRenderer
+        v-else
+        :content="displayContent"
+        :streaming="streaming"
+        :markdown-renderers="config.markdownRenderers"
+        :allow-html="config.allowHtml ?? false"
+        :md-plugins="config.mdPlugins"
+      />
+    </template>
   </Thinking>
 </template>
 
@@ -26,11 +54,11 @@ export interface ReasoningBlockEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useInterval } from '@aix/hooks';
+import { useInterval } from '@aix/hooks';
 import { computed, ref, watch } from 'vue';
 import { useAiChatConfig } from '../../composables/useAiChatConfig';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import { useTypewriter } from '../../composables/useTypewriter';
-import { locale } from '../../locale';
 import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
 import MarkdownRenderer from '../MarkdownRenderer.vue';
 import Thinking from '../Thinking.vue';
@@ -40,7 +68,7 @@ defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(defineProps<ReasoningBlockProps>(), { typing: false });
 const emit = defineEmits<ReasoningBlockEmits>();
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 // 注入 AiChat 注入的 markdown 级配置（markdownRenderers / allowHtml）透传给 MarkdownRenderer
 const config = useAiChatConfig();
 
@@ -72,28 +100,37 @@ const messageStreaming = computed(
 const isStreamingStatus = computed(() => messageStreaming.value && !props.block.endedAt);
 
 // 耗时展示：起止时间戳来自数据层（props.block.startedAt/endedAt，由 useChat 打点、随消息
-// 内容一起可持久化），本组件只负责思考进行中每秒刷新一次展示；历史消息 / 业务自建 block
+// 内容一起可持久化），本组件只负责思考进行中定时刷新展示；历史消息 / 业务自建 block
 // 没有 startedAt 时不展示耗时（title 回退为纯标题）。
+// 计时精度由 config.timePrecision 控制（默认 2），精度决定刷新间隔：
+//   0 位小数 → 每 1000ms 刷一次；1 位 → 100ms；2 位 → 10ms；以此类推。
+const precision = computed(() => Math.max(0, Math.round(config.value.timePrecision ?? 2)));
+const tickInterval = computed(() => Math.max(10, 1000 / Math.pow(10, precision.value)));
+
 const tickedAt = ref<number | null>(null);
 const { start: startTicking, stop: stopTicking } = useInterval(() => {
   tickedAt.value = Date.now();
-}, 1000);
+}, tickInterval);
 watch(isStreamingStatus, (active) => (active ? startTicking() : stopTicking()), {
   immediate: true,
 });
 
+// 根据精度格式化秒数：精度 0 → 整数，≥1 → 保留对应小数位
 const elapsedSeconds = computed(() => {
   const start = props.block.startedAt;
   if (start == null) return null;
   const end = props.block.endedAt ?? tickedAt.value ?? Date.now();
-  return Math.max(1, Math.round((end - start) / 1000));
+  const raw = Math.max(0, (end - start) / 1000);
+  return precision.value === 0
+    ? String(Math.max(1, Math.round(raw)))
+    : raw.toFixed(precision.value);
 });
 
 const title = computed(() => {
   const base = t.value.thoughtTitle;
   return elapsedSeconds.value === null
     ? base
-    : base + t.value.thoughtDurationSuffix.replace('{s}', String(elapsedSeconds.value));
+    : base + t.value.thoughtDurationSuffix.replace('{s}', elapsedSeconds.value);
 });
 
 // MarkdownRenderer 的 streaming 与 TextBlock 同款推导：消息仍在流式或打字机未追平，
@@ -101,4 +138,14 @@ const title = computed(() => {
 const streaming = computed(
   () => isStreamingStatus.value || (typingEnabled.value && displayed.value !== props.block.text),
 );
+
+// 转发给消费方插槽的**增补**作用域：Thinking 只持有 open，而这两项是本块从数据层
+// (block.startedAt/endedAt) 与 info.status 推导的，内部组件无从得知。
+// elapsed 为 null 表示无耗时数据（历史消息 / 业务自建 block 没打 startedAt），
+// 与 title 回退纯标题的口径一致，自定义标题据此决定要不要显示耗时。
+// 类型为 string | null（含小数时为格式化后字符串，便于直接显示）。
+const extraScope = computed(() => ({
+  elapsed: elapsedSeconds.value,
+  streaming: isStreamingStatus.value,
+}));
 </script>

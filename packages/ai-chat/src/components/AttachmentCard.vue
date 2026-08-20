@@ -8,7 +8,7 @@
       <img
         v-if="!thumbError"
         :class="ns.e('thumb')"
-        :src="item.url"
+        :src="thumbSrc"
         :alt="item.name"
         @error="thumbError = true"
       />
@@ -105,21 +105,27 @@ export interface AttachmentCardEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { Refresh, Close } from '@aix/icons';
 import { computed, ref, watch } from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { PendingAttachment } from '../composables/useAttachments';
-import { locale } from '../locale';
 import type { AttachmentItem } from '../types';
 import { getFileTypeMeta } from '../utils/fileTypes';
+import { safeImageSrc } from '../utils/url';
 
 const props = withDefaults(defineProps<AttachmentCardProps>(), { removable: false });
 const emit = defineEmits<AttachmentCardEmits>();
 const ns = useNamespace('attachment-card');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
-const isImage = computed(() => !!props.item.url && (props.item.mime ?? '').startsWith('image/'));
+// 缩略图 src 过协议白名单：item.url 来自宿主 upload() 的返回值**以及**持久化后恢复的
+// attachment 块（对话树可能来自 localStorage——包内其余各处都按不可信数据对待）。
+// 与 ImageThumb 为结构化 image 块所做的收口是同一件事，这里补齐附件路径。
+const thumbSrc = computed(() => safeImageSrc(props.item.url));
+// 图片卡的判定连带要求 src 过了白名单：未过则退回文件卡分支（类型图标 + 文件名），
+// 而不是渲染一个 src 为空的 <img> 裂图——降级形态与 thumbError 回退保持一致。
+const isImage = computed(() => !!thumbSrc.value && (props.item.mime ?? '').startsWith('image/'));
 
 // 缩略图加载失败标记；换源（如重试上传得到新 url）后重置，给新地址重新加载的机会
 const thumbError = ref(false);
@@ -182,9 +188,10 @@ const errorTitle = computed(() => {
   position: relative;
   box-sizing: border-box;
   align-items: center;
-  width: 248px; // adx 268px → 面板场景收窄为 248px
+
+  // adx 268px → 面板场景收窄为 248px；开为变量供窄侧栏 / 宽面板等布局调整
+  width: var(--aix-attachment-card-width, 248px);
   padding: var(--aix-paddingSM) var(--aix-padding, var(--aix-paddingSM));
-  overflow: hidden;
   border: 1px solid transparent; // adx 文件卡无边框，靠底色区分；error 时上色
   border-radius: var(--aix-borderRadius);
   background-color: var(--aix-colorFillTertiary);
@@ -427,6 +434,17 @@ const errorTitle = computed(() => {
       background-color: var(--aix-colorFillTertiary);
       color: var(--aix-colorText);
     }
+  }
+
+  // hover / 键盘聚焦时提层。__remove 靠 translate(50%, -50%) 故意探出卡片右上角一半，
+  // 其 ::before 触控热区再向外延伸 14px，合计超出卡片右缘约 22px——而附件面板列表的
+  // gap 只有 8px（--aix-paddingXS）。同级卡片按文档流平铺、z-index 相同时后一张绘制在
+  // 前一张之上，鼠标划进探出的那一截实际命中的是**邻卡**，本卡 :hover 随之跌落、
+  // 删除按钮 opacity 归 0，表现为「划过去就消失」。提一层让探出部分压在邻卡之上。
+  // 与上面去掉 overflow:hidden 是同一个问题的两半，缺任一半按钮都点不到。
+  &:hover,
+  &:focus-within {
+    z-index: 1;
   }
 
   // 卡片 hover 或 focus-within 时显示删除按钮

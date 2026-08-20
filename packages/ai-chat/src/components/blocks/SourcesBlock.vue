@@ -15,8 +15,8 @@
           :rel="item.href ? 'noopener noreferrer' : undefined"
         >
           <span :class="ns.e('index')">{{ i + 1 }}</span>
-          <img v-if="isImageIcon(item.icon)" :class="ns.e('favicon')" :src="item.icon" alt="" />
-          <span v-else-if="item.icon" :class="ns.e('emoji')">{{ item.icon }}</span>
+          <img v-if="item.iconSrc" :class="ns.e('favicon')" :src="item.iconSrc" alt="" />
+          <span v-else-if="item.iconText" :class="ns.e('emoji')">{{ item.iconText }}</span>
           <span :class="ns.e('content')">
             <span :class="ns.e('item-title')">{{ item.title }}</span>
             <span v-if="item.snippet" :class="ns.e('snippet')">{{ item.snippet }}</span>
@@ -39,29 +39,41 @@ export interface SourcesBlockProps {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
-import { locale } from '../../locale';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
-import { safeUrl, isImageSource } from '../../utils/url';
+import { safeUrl, safeImageSrc, isImageSource } from '../../utils/url';
 
 // 注册表统一向渲染器透传 block/info/typing；本组件只消费 block，关闭属性继承避免多余 attr 落到根元素。
 defineOptions({ inheritAttrs: false });
 
 const props = defineProps<SourcesBlockProps>();
 const ns = useNamespace('sources-block');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 来源链接可能来自模型/检索结果（不可信），渲染前经 safeUrl 协议白名单过滤：
 // 安全 url 渲染为可点击 <a>，不安全（如 javascript:）则 href 为 undefined → 降级为 <div> 纯展示。
+//
+// icon 同样不可信，且是 emoji / 图片地址二义，故分两步：
+// ① isImageSource 先分流「这是不是一个图片地址」——emoji 与短文本走文本渲染（iconText）；
+// ② 判为图片地址的再过 safeImageSrc 白名单（放行 http(s)/data:image/blob:），与包内其余
+//    <img> 路径（ImageThumb / markdownWalker / imageRenderers / ImagePreview）同一层防护。
+// 两步都不能省：只做 ① 会让 icon 绕过白名单，与紧邻的 href 口径不一致；
+// 只做 ② 则 emoji 会被 safeUrl 当作「无协议的相对路径」原样放行、渲染成必然失败的裂图。
+// 判为图片地址但未过白名单时 iconSrc/iconText 双空：既不出裂图，也不把 `data:text/html,…`
+// 这类原文当 emoji 显示出来。
 const links = computed(() =>
-  props.block.items.map((item) => ({ ...item, href: safeUrl(item.url) })),
+  props.block.items.map((item) => {
+    const isImageIcon = isImageSource(item.icon);
+    return {
+      ...item,
+      href: safeUrl(item.url),
+      iconSrc: isImageIcon ? safeImageSrc(item.icon) : undefined,
+      iconText: isImageIcon ? undefined : item.icon,
+    };
+  }),
 );
-
-// icon 既可能是 favicon 链接，也可能是 emoji/短文本：前者用 <img> 渲染，后者直接作为文本。
-// 走共享判定（与 Prompts 的 icon 同口径），同一字符串在两处渲染一致。
-const isImageIcon = isImageSource;
 </script>
 
 <style lang="scss">

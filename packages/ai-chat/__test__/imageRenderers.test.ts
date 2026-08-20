@@ -1,7 +1,8 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
-import { imageRenderers, __resetImageCache } from '../src/utils/imageRenderers';
+import { __resetImageCache } from '../src/utils/imageLoadedCache';
+import { imageRenderers } from '../src/utils/imageRenderers';
 import type { MdToken } from '../src/utils/markdownWalker';
 
 const imageToken = (src: string, alt = '示意图'): MdToken => ({

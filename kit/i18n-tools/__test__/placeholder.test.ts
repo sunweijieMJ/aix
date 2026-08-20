@@ -77,8 +77,12 @@ describe('extractPlaceholderNames — 顶层参数名（ICU 友好）', () => {
     expect(names(escaped)).toEqual(['count']);
   });
 
-  it('中文字面量花括号（非占位符）不进名集', () => {
-    expect(names('包含{大括号}的文本')).toEqual([]);
+  it('中文占位符名与英文同等采集（生成端保留中文标识符为占位符名）', () => {
+    // 生成端 getVariableNameFromExpression 会为中文变量名写出 `{数量}` 这类真占位符，
+    // 与英文 `{braces}` 语法上不可区分；且单花括号库的字面量花括号在写盘时已被
+    // finalizeLocaleMessage 转义为 `{'{'}...{'}'}`（见上一用例），工具产出的 locale 不存在
+    // 未转义的字面量花括号。故中文名统一按占位符采集，翻译校验才能保护 `{数量}` 不被译掉。
+    expect(names('包含{大括号}的文本')).toEqual(['大括号']);
   });
 });
 
@@ -230,5 +234,21 @@ describe('CommonASTUtils.createStringOrTemplateNode 重复占位符', () => {
     const node = CommonASTUtils.createStringOrTemplateNode(messageText, values);
     expect(ts.isStringLiteral(node)).toBe(true);
     expect((node as ts.StringLiteral).text).toBe(messageText);
+  });
+});
+
+/**
+ * Bug：占位符名字符集不对称——生成端 getVariableNameFromExpression 有意保留中文
+ * 标识符（一-鿿，中文变量名是合法 JS），locale 会写入 `共{{数量}}个`；但还原端
+ * PLACEHOLDER_NAME 与本文件 IDENT_RE 只认 ASCII，导致双花括号库往返丢变量、
+ * doctor/translate 对中文占位符失明。三处字符集必须对齐。
+ */
+describe('中文占位符名（字符集与生成端对齐）', () => {
+  it('extractPlaceholderNames：双花括号库采集中文占位符名', () => {
+    expect(extractPlaceholderNames('共{{数量}}个', true)).toEqual(new Set(['数量']));
+  });
+
+  it('extractPlaceholderNames：单花括号库采集中文占位符名', () => {
+    expect(extractPlaceholderNames('共{数量}个', false)).toEqual(new Set(['数量']));
   });
 });

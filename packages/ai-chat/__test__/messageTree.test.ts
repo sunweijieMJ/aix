@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { nextTick, reactive, watch } from 'vue';
 import { createMessageTree, ROOT_ID } from '../src/composables/messageTree';
 import type { ChatMessage } from '../src/types';
 
@@ -108,5 +109,104 @@ describe('messageTree — 分支', () => {
     expect(Array.isArray(t.activePath.value)).toBe(true);
     expect(t.branches.value).toBeInstanceOf(Map);
     expect(t.switchBranch('a', 1)).toBe(false); // findLeaf 向下走 activeChild 同样有环风险
+  });
+});
+
+// 回归：持久化数据可能被截断/篡改，出现 parentId 指向不存在节点（或自指）的孤儿。
+// 早期实现只是跳过不挂 childIds —— 节点连同子链从任何路径不可达，且 exportTree 把悬空
+// parentId 原样写回，损坏会一直传染下去。
+describe('messageTree — importTree 脏数据修复', () => {
+  it('父节点缺失的孤儿被改挂到根，内容不丢且导出数据自洽', () => {
+    const t = createMessageTree();
+    t.importTree({
+      nodes: [
+        { id: 'a', parentId: ROOT_ID, message: msg('a', 'user') },
+        { id: 'c', parentId: 'ghost', message: msg('c', 'ai') },
+      ],
+      headId: 'c',
+    });
+    // c 挂到根后自成一条路径；a 仍在树中、可经切分支到达
+    expect(t.activePath.value.map((m) => m.id)).toEqual(['c']);
+    expect(t.getMessage('a')).toBeTruthy();
+    expect(t.getBranches('c')).toEqual({ index: 1, count: 2 });
+    // 导出的数据里不再残留悬空 parentId
+    const dumped = t.exportTree();
+    const ids = new Set([ROOT_ID, ...dumped.nodes.map((n) => n.id)]);
+    expect(dumped.nodes.every((n) => ids.has(n.parentId))).toBe(true);
+  });
+
+  it('自指 parentId 同样归一到根，不产生自环 childIds', () => {
+    const t = createMessageTree();
+    t.importTree({
+      nodes: [{ id: 'a', parentId: 'a', message: msg('a', 'user') }],
+      headId: 'a',
+    });
+    expect(t.activePath.value.map((m) => m.id)).toEqual(['a']);
+    expect(t.parentOf('a')).toBeNull();
+    expect(t.exportTree().nodes[0]!.parentId).toBe(ROOT_ID);
+  });
+
+  it('与根哨兵同 id 的脏节点被丢弃，根不会成为自己的子节点', () => {
+    const t = createMessageTree();
+    t.importTree({
+      nodes: [
+        { id: 'a', parentId: ROOT_ID, message: msg('a', 'user') },
+        // 覆盖掉哨兵后再被「父节点缺失」分支挂到自己名下 → 根进了自己的 childIds，
+        // 于是 a 凭空多出一个兄弟版本，UI 上长出「1/2」分支切换器
+        { id: ROOT_ID, parentId: 'ghost', message: msg('r', 'ai') },
+      ],
+      headId: 'a',
+    });
+    expect(t.activePath.value.map((m) => m.id)).toEqual(['a']);
+    expect(t.getBranches('a')).toBeUndefined();
+    expect(t.exportTree().nodes.map((n) => n.id)).toEqual(['a']);
+  });
+
+  it('结构完好的数据不触发修复，往返后 parentId 原样保留', () => {
+    const t = createMessageTree();
+    t.importTree({
+      nodes: [
+        { id: 'u1', parentId: ROOT_ID, message: msg('u1', 'user') },
+        { id: 'a1', parentId: 'u1', message: msg('a1', 'ai') },
+      ],
+      headId: 'a1',
+    });
+    expect(t.exportTree().nodes.map((n) => n.parentId)).toEqual([ROOT_ID, 'u1']);
+  });
+});
+
+describe('messageTree — importFlat 不写穿调用方的消息对象', () => {
+  it('createdAt 补写落在树内副本上，入参对象与宿主响应式 store 都不被改动', async () => {
+    // 入参来自宿主且仍被宿主持有（v-model:messages 绑 useConversations 就是这种形态）：
+    // 若直接入树，appendMessage 的 createdAt 补写会穿透回宿主对象并触发它的深度侦听。
+    const store = reactive({ messages: [msg('u1', 'user')] as ChatMessage[] });
+    let deepWatchFired = 0;
+    watch(
+      () => store,
+      () => {
+        deepWatchFired += 1;
+      },
+      { deep: true },
+    );
+
+    const t = createMessageTree();
+    t.importFlat(store.messages);
+    await nextTick();
+
+    // 宿主的消息对象原封不动，其深度侦听器不被这次导入惊动
+    expect(store.messages[0]!.createdAt).toBeUndefined();
+    expect(deepWatchFired).toBe(0);
+    // 树内副本照常补上 createdAt，且不是同一个对象
+    const inTree = t.getMessage('u1')!;
+    expect(inTree).not.toBe(store.messages[0]);
+    expect(typeof inTree.createdAt).toBe('number');
+    // 浅拷贝只换外壳：content 仍是同一引用，流式就地 mutate 内容照常驱动 DOM
+    expect(inTree.content).toBe(store.messages[0]!.content);
+  });
+
+  it('已有 createdAt 的历史消息不被覆写成「本次加载时刻」', () => {
+    const t = createMessageTree();
+    t.importFlat([{ ...msg('u1', 'user'), createdAt: 1700000000000 }]);
+    expect(t.getMessage('u1')!.createdAt).toBe(1700000000000);
   });
 });

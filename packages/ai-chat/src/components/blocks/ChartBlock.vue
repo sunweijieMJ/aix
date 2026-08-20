@@ -18,23 +18,24 @@
 export interface ChartBlockProps {
   /** chart 类型的 block */
   block: Extract<ContentBlock, { type: 'chart' }>;
-  /** 气泡上下文（status/role/key）；交互回写按 info.key 定位消息 */
-  info: BubbleContentInfo;
-  /** 打字机态：图表不逐字，仅注册表统一透传，本组件不消费 */
-  typing?: boolean;
+  /** 气泡上下文（status/role/key）；本组件暂不消费，可选性与 BlockRendererProps 契约对齐 */
+  info?: BubbleContentInfo;
+  /** 打字机态（注册表统一透传 boolean | 节奏配置，图表不逐字，故不消费） */
+  typing?: boolean | BubbleTypingConfig;
   /** 交互动作回调（切换图型/取点等经此上抛，逐层到 useChat.updateBlock） */
   onBlockAction?: BlockActionHandler;
 }
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { computed, onMounted, ref } from 'vue';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import { useEChartsRender } from '../../composables/useEChartsRender';
-import { locale } from '../../locale';
 import type {
   ContentBlock,
   BubbleContentInfo,
+  BubbleTypingConfig,
   BlockActionHandler,
   EChartsChartKind,
 } from '../../types';
@@ -46,7 +47,7 @@ defineOptions({ inheritAttrs: false });
 
 const props = defineProps<ChartBlockProps>();
 const ns = useNamespace('chart-block');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -93,7 +94,10 @@ const ariaLabel = computed(() => props.block.alt || props.block.title || t.value
   &__canvas {
     position: relative;
     width: 100%;
-    height: 300px;
+
+    /* 与 ```chart 围栏路径（.aix-md-chart）共用同一变量：一次覆盖同时作用于结构化 chart 块
+       与 markdown 围栏图表，避免两条渲染路径高度不一致 */
+    height: var(--aix-chart-block-height, 300px);
 
     // canvas 内出图前的 Skeleton overlay：绝对定位盖满固定高度容器
     .aix-skeleton.is-overlay {

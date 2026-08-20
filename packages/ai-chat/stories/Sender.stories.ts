@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/vue3';
 import { fn, expect, userEvent, waitFor } from 'storybook/test';
-import { Sender } from '../src';
+import { Sender, useAttachments } from '../src';
 import { mockUpload, mockRecognizer } from './fixtures/senderMocks';
 
 const meta: Meta<typeof Sender> = {
@@ -270,4 +270,82 @@ export const WithHeaderFooter: Story = {
     await canvas.findByText(/设计稿\.pdf/);
     await canvas.findByText(/0\/2000/);
   },
+};
+
+/**
+ * CustomAttachmentsPanel：用 `#attachments-panel` 作用域插槽整块替换内置附件面板 UI。
+ *
+ * 关键点是**共用 Sender 内部的 useAttachments 实例**——自绘 UI 只管画界面，发送时的
+ * `drain()`、上传中禁发守卫、条目清空后自动收起、根级拖放 / 粘贴入列全部保留。
+ * 作用域里的动作句柄也已内建 disabled 守卫，不必自己重做。
+ *
+ * play 自动：点回形针展开面板 → 断言自定义面板取代了内置面板 → 点自定义按钮触发文件选择。
+ */
+export const CustomAttachmentsPanel: Story = {
+  args: {
+    attachments: { upload: mockUpload, accept: 'image/*,.pdf', maxCount: 5 },
+  },
+  render: (args) => ({
+    components: { Sender },
+    setup: () => ({ args }),
+    template: `
+      <Sender v-bind="args" @submit="args.onSubmit" @cancel="args.onCancel">
+        <template #attachments-panel="{ items, pick, remove, isUploading, close }">
+          <div class="demo-panel">
+            <div class="demo-panel__bar">
+              <strong>我的上传区</strong>
+              <span v-if="isUploading">上传中…</span>
+              <button type="button" @click="close()">收起</button>
+            </div>
+            <button type="button" class="demo-panel__pick" @click="pick()">
+              ＋ 选择文件（自定义 UI）
+            </button>
+            <ul class="demo-panel__list">
+              <li v-for="f in items" :key="f.id">
+                {{ f.name }} · {{ f.status }}
+                <button type="button" @click="remove(f.id)">×</button>
+              </li>
+            </ul>
+          </div>
+        </template>
+      </Sender>
+    `,
+  }),
+  play: async ({ canvas }) => {
+    const attachBtn = await canvas.findByRole('button', { name: '添加附件' });
+    await userEvent.click(attachBtn);
+    // 自定义面板出现，内置面板文案不再出现
+    await canvas.findByText('我的上传区');
+    await expect(canvas.queryByText('点击或拖拽文件到此区域上传')).not.toBeInTheDocument();
+    await expect(
+      await canvas.findByRole('button', { name: '＋ 选择文件（自定义 UI）' }),
+    ).toBeInTheDocument();
+  },
+};
+
+/**
+ * ExternalAttachmentsInstance：`attachments` 直接传**已创建的 useAttachments 实例**，
+ * 把附件 UI 放到 Sender 之外（这里是上方的独立工具条）。
+ *
+ * 宿主与 Sender 共用同一份 items，发送时 Sender 走这份实例 `drain()`，
+ * 不会各持一份而分叉；`accept` 亦经实例回显喂给原生文件选择器。
+ */
+export const ExternalAttachmentsInstance: Story = {
+  render: () => ({
+    components: { Sender },
+    setup: () => {
+      const attachments = useAttachments({ upload: mockUpload, accept: 'image/*,.pdf' });
+      return { attachments, onSubmit: fn() };
+    },
+    template: `
+      <div>
+        <div class="demo-outside">
+          <strong>Sender 之外的上传区</strong>
+          <span>待发 {{ attachments.items.value.length }} 个</span>
+          <button type="button" @click="attachments.clear()">清空</button>
+        </div>
+        <Sender :attachments="attachments" placeholder="附件面板在上方" @submit="onSubmit" />
+      </div>
+    `,
+  }),
 };

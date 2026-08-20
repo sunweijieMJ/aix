@@ -1,4 +1,5 @@
-import { ref, shallowRef, getCurrentScope, onScopeDispose } from 'vue';
+import { ref, shallowRef } from 'vue';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 
 /** 将字节流解码并按 \n 切分为行（剔除行尾 \r），支持中断 */
 export async function* xStream(
@@ -40,7 +41,9 @@ export async function* xStream(
     // flush 前再判一次，保持「中断后不向消费方追加残留半行」的一致语义。
     if (signal?.aborted) return;
     buffer += decoder.decode(); // flush 残留字节
-    const tail = buffer.trim();
+    // 与逐行处理循环（第 33 行）保持一致的空白语义：只剥可能残留的行尾 \r，
+    // 不整体 trim——否则残留内容首尾的语义空白（如末尾恰好是空格）会被静默吃掉。
+    const tail = buffer.replace(/\r$/, '');
     if (tail) yield tail;
   } finally {
     signal?.removeEventListener('abort', onAbort);
@@ -181,9 +184,7 @@ export function useXStream() {
   const cancel = () => controller?.abort();
 
   // 组件卸载（scope 销毁）时中止进行中的流，避免 reader 持续读取、向已脱离的响应式对象继续写入。
-  // 与 useChat / useTypewriter / useAttachments / useVoiceInput 的 onScopeDispose 约定对齐；
-  // 在 setup 外调用（无活动 scope）时跳过注册，避免 Vue 告警。
-  if (getCurrentScope()) onScopeDispose(cancel);
+  onScopeDisposeSafe(cancel);
 
   const start = async (
     readableStream: ReadableStream<Uint8Array>,

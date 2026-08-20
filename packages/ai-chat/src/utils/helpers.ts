@@ -1,6 +1,8 @@
 import type {
   AttachmentItem,
   ChatMessage,
+  ConfirmField,
+  ConfirmTimeoutConfig,
   ContentBlock,
   ImageItem,
   MessageRole,
@@ -9,6 +11,7 @@ import type {
   SourceItem,
   SuggestionItem,
   ThoughtChainItem,
+  UserConfirmState,
 } from '../types';
 
 /**
@@ -25,30 +28,27 @@ let msgUid = 0;
 /** message 稳定唯一 id */
 export const genMsgId = (): string => `msg-${Date.now()}-${msgUid++}`;
 
+// ── 内容块工厂 ──
 // 各工厂返回精确的窄类型（Extract 到对应 type），便于直接喂给只接受特定块类型的组件 prop
-// （如 TextBlock 仅收 text/reasoning）。
-/** 创建文本块 */
+// （如 TextBlock 仅收 text/reasoning）。块语义见 types.ts 的 ContentBlockRegistry。
 export const textBlock = (text: string): Extract<ContentBlock, { type: 'text' }> => ({
   id: genBlockId(),
   type: 'text',
   text,
 });
 
-/** 创建推理块（思考过程，通常折叠展示） */
 export const reasoningBlock = (text: string): Extract<ContentBlock, { type: 'reasoning' }> => ({
   id: genBlockId(),
   type: 'reasoning',
   text,
 });
 
-/** 创建引用来源块 */
 export const sourcesBlock = (items: SourceItem[]): Extract<ContentBlock, { type: 'sources' }> => ({
   id: genBlockId(),
   type: 'sources',
   items,
 });
 
-/** 创建思维链块（Agent 执行步骤时间线） */
 export const thoughtChainBlock = (
   items: ThoughtChainItem[],
 ): Extract<ContentBlock, { type: 'thought-chain' }> => ({
@@ -57,7 +57,6 @@ export const thoughtChainBlock = (
   items,
 });
 
-/** 创建附件块（用户消息携带的已上传附件） */
 export const attachmentBlock = (
   items: AttachmentItem[],
 ): Extract<ContentBlock, { type: 'attachment' }> => ({
@@ -103,8 +102,32 @@ export const imageBlock = (
   ...(opts?.errorText !== undefined ? { errorText: opts.errorText } : {}),
 });
 
+/**
+ * 创建用户确认卡块（待用户填写并提交的表单卡片）。
+ * state 缺省为 'awaiting'；配 createdAt + timeout 才启用超时时间线（提示/自动填充/自动提交）。
+ */
+export const userConfirmBlock = (
+  formId: string,
+  fields: ConfirmField[],
+  opts?: {
+    title?: string;
+    state?: UserConfirmState;
+    createdAt?: number;
+    timeout?: ConfirmTimeoutConfig;
+  },
+): Extract<ContentBlock, { type: 'user_confirm' }> => ({
+  id: genBlockId(),
+  type: 'user_confirm',
+  formId,
+  fields,
+  state: opts?.state ?? 'awaiting',
+  ...(opts?.title !== undefined ? { title: opts.title } : {}),
+  ...(opts?.createdAt !== undefined ? { createdAt: opts.createdAt } : {}),
+  ...(opts?.timeout !== undefined ? { timeout: opts.timeout } : {}),
+});
+
 /** quote 块工厂：pendingQuotes → 一等 quote 块（发送时前置进 content） */
-export const quoteBlock = (quotes: Quote[]): ContentBlock => ({
+export const quoteBlock = (quotes: Quote[]): Extract<ContentBlock, { type: 'quote' }> => ({
   id: genBlockId(),
   type: 'quote',
   quotes,
@@ -134,7 +157,12 @@ export const createMessage = (
   ...(opts?.extra !== undefined ? { extra: opts.extra } : {}),
 });
 
-/** 提取消息可复制纯文本：仅拼接 text block（不含 reasoning/sources） */
+/**
+ * 提取消息的 text block 原文（markdown 源码，未剥离语法符号），不含 reasoning/sources。
+ * 用途较广：API 导出（openai.ts）、编辑态回填草稿、划词锚点原文、消息操作条"复制源码"——
+ * 这些场景都需要原始 markdown。若要给用户展示/复制"看起来干净"的纯文本（去加粗/标题/引用等符号），
+ * 见 stripMarkdownForCopy（复制按钮用）/ stripMarkdownForSpeech（朗读用）。
+ */
 export const messageText = (m: ChatMessage): string =>
   m.content
     .filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text')

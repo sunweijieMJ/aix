@@ -1,19 +1,21 @@
 <template>
   <div :class="[ns.b(), ns.is('rich', rich)]">
     <button
-      v-for="item in items"
-      :key="item.key"
+      v-for="row in resolved"
+      :key="row.item.key"
       type="button"
       :class="ns.e('item')"
-      @click="$emit('select', item)"
+      @click="$emit('select', row.item)"
     >
-      <span v-if="item.icon" :class="ns.e('icon')">
-        <img v-if="isImg(item.icon)" :src="item.icon" alt="" />
-        <template v-else>{{ item.icon }}</template>
+      <!-- 图标与文本都解析不出（icon 判为图片地址却未过白名单）时整个图标位不渲染，
+           避免留一个空的图标格子把标题挤偏 -->
+      <span v-if="row.iconSrc || row.iconText" :class="ns.e('icon')">
+        <img v-if="row.iconSrc" :src="row.iconSrc" alt="" />
+        <template v-else>{{ row.iconText }}</template>
       </span>
       <span :class="ns.e('main')">
-        <span :class="ns.e('label')">{{ item.label }}</span>
-        <span v-if="item.description" :class="ns.e('desc')">{{ item.description }}</span>
+        <span :class="ns.e('label')">{{ row.item.label }}</span>
+        <span v-if="row.item.description" :class="ns.e('desc')">{{ row.item.description }}</span>
       </span>
     </button>
   </div>
@@ -23,7 +25,7 @@
 import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
 import type { PromptItem } from '../types';
-import { isImageSource } from '../utils/url';
+import { isImageSource, safeImageSrc } from '../utils/url';
 
 const props = defineProps<{ items: PromptItem[] }>();
 defineEmits<{ (e: 'select', item: PromptItem): void }>();
@@ -32,8 +34,22 @@ const ns = useNamespace('prompts');
 
 // 任一项含 icon/description 即为富卡片布局（纵向标题+描述），否则为紧凑标签流式布局
 const rich = computed(() => props.items.some((it) => it.icon || it.description));
-// icon 是图片地址还是 emoji/文本，走共享判定（与 SourcesBlock 的 favicon 同口径）
-const isImg = isImageSource;
+
+// icon 的 emoji / 图片地址二义分流 + 协议白名单，与 SourcesBlock 的 favicon 完全同口径
+// （两步各自的必要性见该文件注释）。prompts 通常由宿主自己配置、可信度高于模型输出，
+// 但同一份 icon 语义在两处必须渲染一致，且白名单是零成本的纵深防护，故一并收口。
+// 保留原始 item 对象透出给 select 事件：绝不能 emit 这里派生出的包装对象，
+// 那会让业务侧拿到多出 iconSrc/iconText 的陌生结构。
+const resolved = computed(() =>
+  props.items.map((item) => {
+    const isImageIcon = isImageSource(item.icon);
+    return {
+      item,
+      iconSrc: isImageIcon ? safeImageSrc(item.icon) : undefined,
+      iconText: isImageIcon ? undefined : item.icon,
+    };
+  }),
+);
 </script>
 
 <style lang="scss">

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { safeUrl, isImageSource } from '../src/utils/url';
+import { safeUrl, safeImageSrc, isImageSource } from '../src/utils/url';
 
 describe('safeUrl', () => {
   // --- 安全协议：原样放行 ---
@@ -71,5 +71,34 @@ describe('isImageSource', () => {
     expect(isImageSource('icon')).toBe(false);
     expect(isImageSource('')).toBe(false);
     expect(isImageSource(undefined)).toBe(false);
+  });
+});
+
+describe('safeImageSrc（图片 src 白名单：safeUrl + 放行 data:image/*）', () => {
+  it('放行 data:image/*（内联图片是 markdown 合法用法，safeUrl 会误杀）', () => {
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    expect(safeImageSrc(png)).toBe(png);
+    // svg 在 <img> 上下文中脚本不执行，一并放行
+    expect(safeImageSrc('data:image/svg+xml;utf8,<svg/>')).toBe('data:image/svg+xml;utf8,<svg/>');
+  });
+
+  it('拦下非图片的 data: 与脚本类协议', () => {
+    expect(safeImageSrc('data:text/html,<script>alert(1)</script>')).toBeUndefined();
+    expect(safeImageSrc('javascript:alert(1)')).toBeUndefined();
+    expect(safeImageSrc('vbscript:msgbox(1)')).toBeUndefined();
+  });
+
+  it('控制字符混淆同样拦得住（与 safeUrl 同款剥离后再判定）', () => {
+    expect(safeImageSrc('java\tscript:alert(1)')).toBeUndefined();
+    // 混淆 data:image 前缀也不因剥离而被绕过成放行——剥离后仍是 data:image，属合法
+    expect(safeImageSrc('data:image/png;base64,AAA')).toBe('data:image/png;base64,AAA');
+  });
+
+  it('http(s) / 相对路径 / 空值行为与 safeUrl 一致', () => {
+    expect(safeImageSrc('https://a.com/x.png')).toBe('https://a.com/x.png');
+    expect(safeImageSrc('/x.png')).toBe('/x.png');
+    expect(safeImageSrc('./x.png')).toBe('./x.png');
+    expect(safeImageSrc(undefined)).toBeUndefined();
+    expect(safeImageSrc('')).toBeUndefined();
   });
 });

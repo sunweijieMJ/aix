@@ -53,18 +53,21 @@ describe('Vue transform 输出', () => {
     expect(out).not.toContain('>提交<');
   });
 
-  // 回归（审计 medium）：replaceInTemplate 的 hasQuotes 分支只 indexOf(original, column)，
-  // 缺少 else 分支（405-408）那样的「从行首重试」。当带引号字面量确在本行、但 column 越过其
+  // 回归（审计 medium）：replaceInLines 的 hasQuotes 分支只 indexOf(original, column)，
+  // 缺少 else 分支那样的「从行首重试」。当带引号字面量确在本行、但 column 越过其
   // 起点时，旧实现会漏过本行、跌到邻行 fallback 致漏替换。直接测这条纯函数私有路径。
-  it('replaceInTemplate：带引号 original 在 column 之前 → 从行首重试命中并替换', () => {
+  it('replaceInLines：带引号 original 在 column 之前 → 从行首重试命中并替换', () => {
     const transformer = new VueTransformer(new VueI18nLibraryImpl(), null as never, null as never);
     const tc = '<div>{{ `你好` }} 一些较长的后续内容用于把 column 推到字面量之后</div>';
+    const lines = tc.split('\n');
     // column 取行尾，越过 `你好` 的实际起点；旧实现 indexOf(original, column) 必然 miss
-    const out = (
+    const ok = (
       transformer as unknown as {
-        replaceInTemplate: (c: string, o: string, r: string, line: number, col: number) => string;
+        replaceInLines: (l: string[], o: string, r: string, line: number, col: number) => boolean;
       }
-    ).replaceInTemplate(tc, '`你好`', "$t('k')", 0, tc.length);
+    ).replaceInLines(lines, '`你好`', "$t('k')", 0, tc.length);
+    expect(ok).toBe(true);
+    const out = lines.join('\n');
     expect(out).toContain("$t('k')");
     expect(out).not.toContain('`你好`');
   });
@@ -72,16 +75,18 @@ describe('Vue transform 输出', () => {
   // 回归护栏（针对 #4 改动的边界担忧）：同行有多个相同带引号字面量、且 column 精确指向
   // 目标那个时，indexOf(original, column) 直接命中目标，从行首重试分支不应触发——
   // 即只替换目标、不误伤同行的其它相同字面量。证明本次改动不破坏正常定位。
-  it('replaceInTemplate：同行多个相同带引号字面量，column 精确时只替换目标那个', () => {
+  it('replaceInLines：同行多个相同带引号字面量，column 精确时只替换目标那个', () => {
     const transformer = new VueTransformer(new VueI18nLibraryImpl(), null as never, null as never);
     const tc = '<span>`你好` 与 `你好`</span>';
+    const lines = tc.split('\n');
     const secondCol = tc.lastIndexOf('`你好`'); // 目标 = 第二个
-    const out = (
+    const ok = (
       transformer as unknown as {
-        replaceInTemplate: (c: string, o: string, r: string, line: number, col: number) => string;
+        replaceInLines: (l: string[], o: string, r: string, line: number, col: number) => boolean;
       }
-    ).replaceInTemplate(tc, '`你好`', "$t('k')", 0, secondCol);
-    expect(out).toBe("<span>`你好` 与 $t('k')</span>"); // 第一个原样保留，仅第二个被替换
+    ).replaceInLines(lines, '`你好`', "$t('k')", 0, secondCol);
+    expect(ok).toBe(true);
+    expect(lines.join('\n')).toBe("<span>`你好` 与 $t('k')</span>"); // 第一个原样保留，仅第二个被替换
   });
 
   // 回归（审计 HIGH，VueTransformer:385）：文本节点（无引号 original）此前会先查找带引号版本
@@ -567,7 +572,7 @@ describe('Vue 静态属性首尾空白 → transform 产出合法绑定', () => 
 /**
  * 回归 #2：@vue/compiler-dom 以 whitespace:'condense' 解析，跨行纯文本节点的 content
  * 被压成单空格，而 loc.source 保留换行缩进 → 提取存入的 original 含 `\n`。
- * VueTransformer.replaceInTemplate 是严格逐行 indexOf，含 `\n` 的 original 永远无法
+ * VueTransformer.replaceInLines 是严格逐行 indexOf，含 `\n` 的 original 永远无法
  * 命中任何单行（±5 行兜底亦逐行）→ locale 写了 key，但源码中文从未被替换：
  * 残留中文 + 孤儿 key，破坏 extract⇄transform 不变量。
  */

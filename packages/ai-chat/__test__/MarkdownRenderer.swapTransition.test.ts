@@ -39,6 +39,31 @@ describe('MarkdownRenderer 流式形态切换高度过渡', () => {
     expect(el.style.height).not.toBe('');
   });
 
+  it('FLIP 过渡进行中卸载组件时立即打断并清理（与 ImageThumb 的 cancelFlip 清理对齐）', async () => {
+    let height = 24;
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(() => (height += 8));
+
+    const w = mount(MarkdownRenderer, {
+      props: { content: '$$ \\frac{a}{b}', streaming: true },
+    });
+    const engine = await loadMarkdownEngine();
+    await engine!.ready;
+    await flushPromises();
+    await w.setProps({ content: '$$ \\frac{a}{b} $$' });
+    await flushPromises();
+
+    // FLIP 已启动：元素带高度过渡内联样式
+    const el = w.find('.aix-md-katex-block').element as HTMLElement;
+    expect(el.style.transition).toContain('height');
+
+    // 过渡进行中卸载：应立即 cancelFlip 清理内联样式与兜底定时器，
+    // 而非等 setTimeout 到期才释放对已脱离 DOM 元素的引用
+    w.unmount();
+    expect(el.style.transition).toBe('');
+    expect(el.style.height).toBe('');
+    expect(el.style.overflow).toBe('');
+  });
+
   it('同元素原地更新（普通逐字增长）不触发过渡', async () => {
     let height = 24;
     vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(() => (height += 8));

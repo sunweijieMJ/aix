@@ -109,6 +109,17 @@ describe('Sender', () => {
       expect(mirror.getAttribute('aria-hidden')).toBe('true');
       w.unmount();
     });
+
+    it('镜像 rows 与真实输入框（rows=1）同步，空/单行内容不会因浏览器默认 rows=2 被虚高测量', async () => {
+      // 回归动机：镜像用 document.createElement('textarea') 创建，未同步 rows 时浏览器默认值为 2
+      // （真实输入框模板声明的是 rows="1"），会导致 scrollHeight 在空/单行内容时比真实框应有高度虚高。
+      const w = mount(Sender, { attachTo: document.body });
+      const taEl = w.find('textarea').element as HTMLTextAreaElement;
+      await nextTick();
+      const mirror = w.element.querySelector('textarea[aria-hidden="true"]') as HTMLTextAreaElement;
+      expect(mirror.rows).toBe(taEl.rows);
+      w.unmount();
+    });
   });
 
   it('暴露的 focus() 使 textarea 获得焦点', () => {
@@ -813,6 +824,23 @@ describe('Sender', () => {
       mount(Sender, { props: { toolbarItems: ['spacer', 'attach'] } });
       expect(warn).not.toHaveBeenCalled();
       warn.mockRestore();
+    });
+
+    it('autoSpacer=false 且未显式放置 spacer 时，不补隐式 spacer（业务完全自绘布局场景）', () => {
+      const w = mount(Sender, { props: { toolbarItems: [], autoSpacer: false } });
+      expect(w.findAll('.aix-sender__toolbar-spacer').length).toBe(0);
+      // 发送键仍照常渲染，只是没有 spacer 把它推到最右
+      expect(w.find('.aix-sender__send').exists()).toBe(true);
+    });
+
+    it('autoSpacer 默认 true：未传时行为不变（回归）', () => {
+      const w = mount(Sender, { props: { toolbarItems: [] } });
+      expect(w.findAll('.aix-sender__toolbar-spacer').length).toBe(1);
+    });
+
+    it('autoSpacer=false 但显式放置了 spacer 时，显式 spacer 仍渲染', () => {
+      const w = mount(Sender, { props: { toolbarItems: ['spacer'], autoSpacer: false } });
+      expect(w.findAll('.aix-sender__toolbar-spacer').length).toBe(1);
     });
   });
 

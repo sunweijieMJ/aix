@@ -6,6 +6,22 @@ export { useTypewriter } from './useTypewriter';
 export type { TypewriterOptions } from './useTypewriter';
 export { useAutoScroll, defaultShouldFollow } from './useAutoScroll';
 export type { ScrollState, FollowReason, FollowContext, ShouldFollow } from './useAutoScroll';
+export {
+  useMessageOutline,
+  defaultOutlineFilter,
+  defaultOutlineToLabel,
+} from './useMessageOutline';
+export type {
+  OutlineEntry,
+  UseMessageOutlineOptions,
+  UseMessageOutlineReturn,
+} from './useMessageOutline';
+export { useVisibleMessage } from './useVisibleMessage';
+export type { UseVisibleMessageOptions, UseVisibleMessageReturn } from './useVisibleMessage';
+export { useIdleWhileStreaming } from './useIdleWhileStreaming';
+export type { UseIdleWhileStreamingOptions } from './useIdleWhileStreaming';
+export { useConfirmDeadline } from './useConfirmDeadline';
+export type { UseConfirmDeadlineOptions, UseConfirmDeadlineReturn } from './useConfirmDeadline';
 export { provideAiChatConfig, useAiChatConfig, AI_CHAT_CONFIG_KEY } from './useAiChatConfig';
 export type { AiChatConfig } from './useAiChatConfig';
 export { useConversations, localStorageConversationStorage } from './useConversations';
@@ -35,4 +51,23 @@ export type {
 } from './useTextSelection';
 export { useQuoteMenu, QUOTE_LOCATE_KEY } from './useQuoteMenu';
 export type { UseQuoteMenuOptions, UseQuoteMenuReturn } from './useQuoteMenu';
-export { usePlatform } from './usePlatform';
+// 划词三层的编排层（AiChat 用的就是它）：自建对话外壳时可直接复用整套接线，
+// 不必从 useTextSelection / useQuoteMenu 重新拼
+export { useQuoteBinding } from './useQuoteBinding';
+export type {
+  UseQuoteBindingOptions,
+  UseQuoteBindingReturn,
+  ResolvedQuoteConfig,
+} from './useQuoteBinding';
+export { useSuggestions } from './useSuggestions';
+export type {
+  SuggestionsConfig,
+  UseSuggestionsOptions,
+  UseSuggestionsReturn,
+} from './useSuggestions';
+export {
+  useAiChatLocale,
+  provideAiChatLocaleMessages,
+  AI_CHAT_LOCALE_MESSAGES_KEY,
+} from './useAiChatLocale';
+export type { UseAiChatLocaleOptions } from './useAiChatLocale';

@@ -47,4 +47,26 @@ describe('stripMarkdownForSpeech', () => {
   it('多段代码块各自独立配对剥离', () => {
     expect(stripMarkdownForSpeech('A\n```\nc1\n```\nB\n```\nc2\n```\nC')).toBe('A\nB\nC');
   });
+
+  // 回归：强调符正则曾无边界约束（/(\*|_)(.*?)\1/），把散文里成对出现的下划线与乘号
+  // 当作强调标记吃掉，朗读内容与原文不符。与 stripMarkdownForCopy 同口径，二者须同步。
+  describe('强调符边界（不吃标识符与乘号）', () => {
+    it('保留 snake_case 标识符中的下划线', () => {
+      expect(stripMarkdownForSpeech('user_id 和 order_id')).toBe('user_id 和 order_id');
+      expect(stripMarkdownForSpeech('my_var_name')).toBe('my_var_name');
+      expect(stripMarkdownForSpeech('foo_bar_baz.txt')).toBe('foo_bar_baz.txt');
+    });
+    it('保留两侧带空格的乘号', () => {
+      expect(stripMarkdownForSpeech('2 * 3 * 4')).toBe('2 * 3 * 4');
+    });
+    it('真正的强调标记仍被剥离', () => {
+      expect(stripMarkdownForSpeech('__粗体__ 与 _斜体_')).toBe('粗体 与 斜体');
+    });
+  });
+
+  // 回归：闭围栏正则曾允许任意尾随文本——围栏内容里的 "```python" 行被误当闭围栏，
+  // 其后代码泄入散文剥离流水线（与 stripMarkdownForCopy 同源修复）
+  it('围栏内容里的 "```python" 行不被误当闭围栏，整块代码完整移除', () => {
+    expect(stripMarkdownForSpeech('前言\n```\n```python\nprint(1)\n```\n之后')).toBe('前言\n之后');
+  });
 });

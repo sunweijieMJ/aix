@@ -382,7 +382,42 @@ export class LanguageFileManager {
     const workingDir = FileUtils.getDirectoryPath(config, isCustom);
 
     if (config.buckets) {
-      return this.readBucketedLocaleFlat(config, workingDir, locale, config.buckets.layout);
+      const bucketed = this.readBucketedLocaleFlat(
+        config,
+        workingDir,
+        locale,
+        config.buckets.layout,
+      );
+      // 迁移窗口兜底：存量项目刚开启 buckets 时，正式迁移只挂在 getMessages→migrateToBuckets
+      // 链上（pick/export 触发）。若首条命令是 doctor/restore/prune/generate（全走本方法），
+      // 只扫桶目录会把完好的遗留单文件读成 {} → doctor --ci 假失败、restore 空跑、
+      // generate 不复用历史 key 而造出双套 key。这里**只读**并入遗留内容，不做迁移
+      // （迁移含改名/写盘副作用，读路径不该有）；同 key 冲突时桶数据优先（当前权威格式）。
+      const legacyPath = path.join(workingDir, `${locale}.json`);
+      if (fs.existsSync(legacyPath) && !fs.existsSync(`${legacyPath}.bak`)) {
+        const cls = FileUtils.classifyJsonFile(legacyPath);
+        // 损坏的遗留文件与单文件模式同口径返回 null：静默当空会让 prune/merge 误判、丢数据
+        if (cls.status === 'corrupt') {
+          LoggerUtils.error(`❌ 检测到未迁移且解析失败的遗留语言文件: ${legacyPath}`);
+          LoggerUtils.error(
+            '👉 为防止数据丢失/误判，本次不会把它当作空文件处理。请检查 JSON 格式。',
+          );
+          return null;
+        }
+        if (cls.status === 'ok') {
+          LoggerUtils.warn(
+            `检测到未迁移的遗留单文件 ${legacyPath}，已只读并入本次结果；` +
+              `运行 pick/merge/export 任一命令可完成正式分桶迁移。`,
+          );
+          const legacyFlat = FileUtils.flattenObject(
+            cls.data,
+            '',
+            config.keys.separator,
+          ) as LocaleMap;
+          return { ...legacyFlat, ...bucketed };
+        }
+      }
+      return bucketed;
     }
 
     const localeFilePath = path.join(workingDir, `${locale}.json`);
@@ -409,6 +444,30 @@ export class LanguageFileManager {
       LoggerUtils.error('👉 为防止数据丢失，本次将不会更新语言文件。请检查JSON文件格式是否正确。');
       return null;
     }
+  }
+
+  /**
+   * 桶式模式下探测「未迁移的遗留单文件」（`<locale>.json` 存在且无 `.bak` 迁移标记）。
+   * 返回首个命中的文件路径；全部已迁移（或非桶式配置）返回 null。
+   *
+   * 供写路径命令（如 prune）做迁移窗口守卫：readLocaleFile 的只读兜底让读视图包含
+   * 遗留 key，但桶式写路径（readBucketedLocaleWithBucketMap → writeBucketedLocaleFile）
+   * 触不到遗留单文件——读写视图分裂时应中止操作而非静默产出半清理状态。
+   */
+  static findUnmigratedLegacyLocale(
+    config: ResolvedConfig,
+    isCustom: boolean,
+    locales: string[],
+  ): string | null {
+    if (!config.buckets) return null;
+    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
+    for (const locale of locales) {
+      const legacyPath = path.join(workingDir, `${locale}.json`);
+      if (fs.existsSync(legacyPath) && !fs.existsSync(`${legacyPath}.bak`)) {
+        return legacyPath;
+      }
+    }
+    return null;
   }
 
   /**

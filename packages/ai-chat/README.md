@@ -54,7 +54,26 @@ const request = ({ messages, signal }: { messages: ChatMessage[]; signal: AbortS
 </template>
 ```
 
-`AiChat` 默认按 **SSE 事件**解析流（`streamMode: 'sse'`，空行切事件 + 解析 `event`/`data`/`id`），并以**扁平结构**预设读取 `data` 顶层 `delta` / `content`。对接 OpenAI / Anthropic 等只需换内置预设 `openaiParseChunk` / `anthropicParseChunk`，或自定义 `parseChunk`（见下文）。`AiChat` 还支持 `v-model:messages` 受控消息列表，并通过 `defineExpose` 暴露 `messages` / `isLoading` / `onSend` / `onReload` / `abort` / `setMessages` / `updateBlock` / `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」），以及透传 Sender 的 `focus` / `clear`，可用模板 ref 获取。
+`AiChat` 默认按 **SSE 事件**解析流（`streamMode: 'sse'`，空行切事件 + 解析 `event`/`data`/`id`），并以**扁平结构**预设读取 `data` 顶层 `delta` / `content`。对接 OpenAI / Anthropic 等只需换内置预设 `openaiParseChunk` / `anthropicParseChunk`，或自定义 `parseChunk`（见下文）。`AiChat` 还支持 `v-model:messages` 受控消息列表。
+
+### 命令式 API（模板 ref）
+
+```ts
+const chatRef = ref<InstanceType<typeof AiChat>>();
+```
+
+| 分类 | API |
+|------|-----|
+| 状态读取 | `messages`（当前激活路径）/ `isLoading` |
+| 发送与流控 | `onSend(text, attachments?, meta?)` / `onReload(id)` 重新生成 / `abort()` / `resume(id, payload?)` 工具调用 HITL 续流（见「工具调用（tool_use）」）/ `continueGenerate(id)` 向被手动停止（`status==='abort'`）的回复续写 |
+| 消息与块写回 | `setMessages(messages)` / `updateBlock(messageId, blockId, patch)` 返回是否命中目标块 / `setFeedback(id, value)` 赞踩，`null` 取消 |
+| 分支导航 | `switchBranch(id, dir)`，`dir` 取 `-1`/`1`，越界或流式进行中返回 `false` / `getBranches(id)` 取 `{ index, count }`，无多版本时为 `undefined` |
+| 追问建议 | `setSuggestions(items)` 通道①临时建议（见「追问建议」） |
+| 输入框透传 | `focus()` / `clear()` |
+
+> `updateBlock` / `setFeedback` 命令式调用与走内置 UI **等价**（同样会同步 `v-model:tree`），但**不会**回抛对应的 `block-action` / `feedback` 事件——调用方即宿主，回抛只是回声，还会让同一次操作在业务的埋点 / 持久化里被记两遍。
+>
+> `switchBranch` 改的是树结构，由 `v-model:tree` 的结构变化通道自动同步，无需额外处理。
 
 ## 全局注册（插件）
 
@@ -78,19 +97,21 @@ import { Bubble, Sender, AiChat, useChat } from '@aix/ai-chat';
 
 | 组件 | 说明 | 关键 props |
 |------|------|-----------|
-| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer` + 块插槽穿透（见「块渲染与富内容插槽穿透」） |
-| `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `blockRenderers?` / `toolRenderers?`；slot `content` |
-| `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `contentRender` / `blockRenderers?` / `toolRenderers?`；slot `avatar`/`header`/`content`/`footer` |
-| `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）/ `triggers?`（@提及/斜杠命令触发菜单）；emit `submit`（第三参 `meta?: SubmitMeta` 携带 mention 实体，见「触发菜单」）/`cancel`/`update:modelValue`；expose `focus`/`clear`/`setValue`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」） |
-| `Welcome` | 欢迎/空态 | `icon?` / `title?` / `description?`；slot `icon`/`extra` |
+| `AiChat` | 组合预设，整套对话界面 | `request` / `parseChunk?` / `defaultMessages?` / `historyLoading?`（历史消息加载中，渲染骨架屏而非 Welcome/真实列表，透传 BubbleList 的 loading）/ `welcomeTitle?` / `welcomeDescription?` / `placeholder?` / `blockRenderers?` / `toolRenderers?`（工具调用按 toolName 路由）/ `voice?`（ASR 语音输入）/ `speech?`（TTS 语音播报）/ `triggers?`（@提及/斜杠命令触发菜单，见「触发菜单」）/ `toolbarItems?`（工具栏项与顺序，直通 Sender）/ `senderIcons?`（覆盖 Sender 内置按钮图标，见「自定义内置按钮」）/ `suggestions?`（追问建议，见「追问建议」）/ `quote?`（划词引用，默认关闭，见「划词引用」）/ `tailBreathing?`（末尾静默呼吸，默认关闭，见「末尾静默呼吸」）/ `outline?`（对话大纲导航，默认关闭，见「对话大纲导航」）；`v-model:messages` 受控；emit `send`/`finish`/`error`/`abort`/`copy`/`edit`/`feedback`/`block-action`/`block-intent`（块意图，见「块交互的两条通道」）/`typing-complete`/`suggestion-select`；slot `header`/`header-icon`/`header-extra`/`welcome-icon`/`welcome-title`/`welcome-description`/`welcome-extra`/`content`/`footer`/`bubble-header`/`avatar`/`error`（消息级，见「消息级插槽」）+ 块插槽穿透（见「块渲染与富内容插槽穿透」） |
+| `BubbleList` | 消息列表容器（virtua 虚拟滚动 + 跟随策略 + roles 映射） | `items` / `roles?` / `autoScroll?` / `shouldFollow?` / `maxHeight?` / `typing?` / `tailBreathing?` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；expose `scrollToBubble(messageId)`；slot `content` |
+| `Bubble` | 单条气泡 | `content` / `role` / `status` / `placement` / `variant` / `shape` / `avatar` / `loading` / `typing` / `tailBreathing?` / `contentRender` / `blockRenderers?` / `toolRenderers?`；emit `block-action`/`block-intent`；slot `avatar`/`header`/`content`/`footer` |
+| `Sender` | 输入框 | `modelValue?` / `placeholder?` / `loading?` / `disabled?` / `submitType?` / `attachments?` / `voice?`（ASR 语音输入）/ `triggers?`（@提及/斜杠命令触发菜单）；emit `submit`（第三参 `meta?: SubmitMeta` 携带 mention 实体，见「触发菜单」）/`cancel`/`update:modelValue`；expose `focus`/`clear`/`setValue`；作用域插槽 `prefix`/`header`/`toolbar`/`footer` 回传 `{ send, cancel, clear, loading, disabled, recording, value }`（见「Sender 工具栏作用域插槽」）、`attachments-panel` 换附件面板 UI（见「自定义附件面板 UI」） |
+| `Welcome` | 欢迎/空态 | `icon?` / `title?` / `description?` / `align?`（`center`\|`start`）/ `fillHeight?`（纵向撑满时垂直居中，默认跟随 `align`，与其独立正交）；slot `icon`/`title`/`description`/`extra` |
 | `Prompts` | 提示词列表 | `items`；emit `select` |
-| `Thinking` | 可折叠的思考过程 | `content?` / `title?` / `expanded?`；slot 默认 |
+| `Thinking` | 可折叠的思考过程 | `content?` / `title?` / `expanded?`；slot `title`/`arrow`/默认（见「自定义深度思考 UI」） |
 | `MarkdownRenderer` | Markdown 渲染（缺依赖降级纯文本） | `content` / `streaming?`（流式防闪烁整修）/ `markdownRenderers?` / `allowHtml?` / `mdPlugins?`（注入 markdown-it 插件） |
 | `Conversations` | 会话列表（可分组 + 行内重命名 + 删除） | `items` / `groupable?` / `newButtonText?`；`v-model:activeKey` 受控选中；emit `create`/`rename`/`delete` |
 | `ModelSelector` | 模型下拉选择器（roving tabindex 键盘导航） | `options` / `placeholder?` / `placement?`；`v-model` 绑定选中 value |
 | `AttachmentCard` | 单个附件卡（输入区预览 / 气泡回显共用） | `item` / `removable?`；emit `remove`/`retry` |
 | `Suggestions` | 追问建议 chips（可独立使用，也内置于 `AiChat`） | `items: SuggestionItem[]`；emit `select`；slot 默认（覆盖单项文案渲染） |
 | `TriggerMenu` | 触发菜单受控展示层（Sender 内置使用；导出供自定义触发 UI 复用） | `items` / `loading` / `activeIndex` / `menuId` / `getAnchorRect` |
+| `ContextWindow` | 上下文用量条（纯受控展示 + 可选「压缩会话」入口，作为 Sender 的 `toolbarItems` 注入） | `used` / `total` / `percent?` / `compressible?` / `compressing?` / `formatter?` / `warnRatio?`；emit `compress`（见「上下文用量条」） |
+| `MessageOutline` | 对话大纲刻度条（受控展示，不自己找滚动容器、不自己观测） | `entries` / `activeId?`；emit `select`（见「对话大纲导航」） |
 
 ## 自定义协议 / 换模型
 
@@ -116,6 +137,56 @@ const b = useChat({
   }),
 });
 ```
+
+### 对话中途换模型：改 `request` 即可，**不要** `:key` 重建
+
+`request` 是**每次发请求那一刻才读取**的（`AiChat` 内部转发的是 `(ctx) => props.request(...)` 闭包），
+所以在自己的实现里读一个响应式变量就能中途换模型 / 换后端：
+
+```vue
+<script setup lang="ts">
+const model = ref('gpt-4o');
+
+// 每次发送才求值，切 model 立即对下一轮生效
+const request = ({ messages, signal }) =>
+  fetch('/api/chat', {
+    method: 'POST',
+    signal,
+    body: JSON.stringify({ model: model.value, messages }),
+  });
+</script>
+
+<template>
+  <ModelSelector v-model="model" :options="models" />
+  <AiChat :request="request" />
+</template>
+```
+
+> ⚠️ 不要用 `<AiChat :key="model" ... />` 强制重建来换模型 —— 重建会丢掉整棵对话树（连同全部分支版本）。
+> 新旧后端的**流格式也不同**时同理：`parseChunk` / `streamMode` 与 `request` 一样是「用到那一刻才读」，
+> 连着换即可，仍然不需要重建实例。
+
+### 哪些配置能运行时改，哪些必须重建实例
+
+绝大多数配置都是**用到那一刻才求值**，改了立刻对下一次请求 / 下一帧渲染生效：
+
+| 配置 | 求值时机 |
+| --- | --- |
+| `request` / `parseChunk` / `streamMode` | 每次请求（`parseChunk` 精确到每个流单元） |
+| `retryTimes` / `retryInterval` | 每次判定重试额度 |
+| `streamTimeout` | 每次 attempt 起表（同一 attempt 内不重读，避免阈值中途漂移） |
+| `continuePrompt` | 每次 `continueGenerate` 组装历史 |
+| `markdownRenderers` / `allowHtml` / `mdPlugins` / `reasoningVariant` | 每帧渲染（经 `provideAiChatConfig` 响应式下发） |
+| `roles` / `shouldFollow` / `tailBreathing` / `outline` / `blockRenderers` / `toolRenderers` / `quote` / `actions` | 每帧渲染 |
+
+**只有这五项是挂载时快照**，它们都在 setup 期建了状态机 / 记忆化装置，改配置等价于换实例：
+
+`parser`、`attachments`、`voice`、`speech`、`triggers`
+
+需要切换这五项时才用 `:key` 重建 —— 并且要自己先把对话树存下来（`v-model:tree`），重建后再灌回去。
+
+> `mdPlugins` 可运行时改，但**务必传稳定引用**：markdown 引擎按「插件数组引用 + `allowHtml`」缓存，
+> 每次渲染新建数组字面量会让每帧都装配一个新引擎。
 
 ### 便利工厂：`createOpenAIRequest`（可选）
 
@@ -166,7 +237,7 @@ const roles = {
 
 ### Sender 工具栏作用域插槽（自定义动作按钮）
 
-`Sender` 的 `prefix` / `header` / `toolbar` / `footer` 插槽都是**作用域插槽**，回传动作句柄与受控状态 `SenderSlotScope`：`{ send, cancel, clear, loading, disabled, recording, value }`。业务可在官方发送/停止键旁加自定义按钮（模型选择、联网开关、深度思考开关等）并**复用发送/停止/清空逻辑与 loading 态**，无需自己实现：
+`Sender` 的 `prefix` / `header` / `toolbar` / `footer` 插槽都是**作用域插槽**，回传动作句柄与受控状态 `SenderSlotScope`：`{ send, cancel, clear, loading, disabled, recording, value }`，外加用于替代内置附件 / 语音按钮的 `{ toggleAttachments, clearAttachments, attachmentsOpen, attachmentCount, attachmentsEnabled, toggleVoice, voiceSupported }`（见下节）。业务可在官方发送/停止键旁加自定义按钮（模型选择、联网开关、深度思考开关等）并**复用发送/停止/清空逻辑与 loading 态**，无需自己实现：
 
 ```vue
 <Sender placeholder="输入消息…" @submit="onSend">
@@ -181,14 +252,390 @@ const roles = {
 
 > `send()` 复用了点击发送键的全部守卫（loading / disabled / 上传中 / 空内容时不发）；`cancel()` 等价 loading 态点停止键。
 
+### 自定义内置按钮：换图标 vs 换按钮
+
+按需求深浅分两档，**只想换图标不必自建按钮**：
+
+**① 只换图标 —— `icons` prop**（经 `AiChat` 用时是 `senderIcons`）
+
+按钮行为、禁用逻辑、`aria-label` 全部保持内置，只替换图形。未提供的键回退内置图标：
+
+```vue
+<script setup>
+import { markRaw } from 'vue';
+import { Paperclip, Send } from './my-icons';
+// 建议 markRaw：组件对象进响应式系统会触发 Vue 告警（同 ActionItem.icon 约定）
+const icons = { attach: markRaw(Paperclip), send: markRaw(Send) };
+</script>
+
+<template>
+  <Sender :icons="icons" />
+  <!-- 经 AiChat 时： <AiChat :sender-icons="icons" /> -->
+</template>
+```
+
+| 键 | 作用 |
+|----|------|
+| `attach` | 附件按钮（回形针） |
+| `voice` | 语音按钮（麦克风）；聆听态复用同一图标，由 `.is-listening` 着色区分 |
+| `send` | 发送按钮默认态 |
+| `stop` | 发送按钮在流式输出中的停止态 |
+| `attachmentUpload` | 内置附件面板的上传占位图标；仅在未提供 `#attachments-panel` 插槽（走内置面板）时生效 |
+| `attachmentClose` | 内置附件面板的收起按钮图标；仅在未提供 `#attachments-panel` 插槽（走内置面板）时生效 |
+
+> `send` / `stop` **各自独立回退**：只提供 `send` 时，流式态仍用内置停止图标——不会拿发送图标
+> 去冒充停止，否则「正在输出、点此停止」的语义会整个反过来。
+
+**② 连行为一起接管 —— 自建按钮**
+
+把 `'attach'` / `'voice'` 从 `toolbarItems` 里摘掉，改用自定义对象项或 `#toolbar` 插槽自绘。
+`SenderSlotScope` 为此提供了复刻内置按钮所需的**动作与状态**：
+
+| 字段 | 说明 |
+|------|------|
+| `toggleAttachments()` | 开合附件面板；未启用附件或 `disabled` 时为空操作 |
+| `attachmentsOpen` | 面板是否展开（内置按钮据此上 `is-active`） |
+| `attachmentCount` | 待发附件数（内置按钮据此渲染角标） |
+| `clearAttachments()` | 清空待发附件，逐条触发 `attachments.onRemove` 供回收服务端资源；未启用附件或 `disabled` 时为空操作。与 `clear()`（只清输入框文本）分开 |
+| `attachmentsEnabled` | 是否传了 `attachments` prop（决定自定义按钮要不要渲染） |
+| `toggleVoice()` | 起停语音聆听；不可用或 `disabled` 时为空操作 |
+| `voiceSupported` | 语音是否可用（注入了识别器或浏览器支持） |
+
+```vue
+<Sender :attachments="attachments" :toolbar-items="[]">
+  <template #toolbar="s">
+    <button v-if="s.attachmentsEnabled" :class="{ on: s.attachmentsOpen }" @click="s.toggleAttachments()">
+      <MyPaperclip />
+      <sup v-if="s.attachmentCount">{{ s.attachmentCount }}</sup>
+    </button>
+    <button v-if="s.voiceSupported" :class="{ rec: s.recording }" @click="s.toggleVoice()">
+      <MyMic />
+    </button>
+  </template>
+</Sender>
+```
+
+两个 `toggle*` 同时也在 `defineExpose` 上，便于把入口放到 `Sender` 之外的工具条里。
+
+### 自定义附件面板 UI
+
+上一节换的是附件**按钮**（开合面板的入口），这一节换的是附件**面板**（面板里长什么样）。
+两者互不依赖，可单用也可合用。按改动范围分三档：
+
+**① 只调尺寸/配色/图标** —— 覆盖 `.aix-attachments-panel` / `.aix-attachment-card` 类与
+`--aix-attachment-card-width`，改文案则覆盖 i18n 的 `attachmentsTitle` / `attachmentPlaceholder`
+/ `attachmentPlaceholderHint`；换上传占位 / 收起按钮的图标见上节 `icons.attachmentUpload` /
+`icons.attachmentClose`（经 `AiChat` 用时是 `senderIcons`），无需接管整个面板。
+
+**② 换整个面板 UI —— `#attachments-panel` 作用域插槽**
+
+**共用 Sender 内部的 `useAttachments` 实例**，所以发送时的 `drain()`、上传中禁发守卫、
+条目清空后自动收起面板、Sender 根级拖放 / 粘贴入列全部原样保留，你只需要画界面：
+
+```vue
+<Sender :attachments="{ upload }" @submit="onSend">
+  <template #attachments-panel="{ items, pick, add, remove, retry, close, isUploading, accept }">
+    <MyDropzone :accept="accept" @pick="pick" @drop="add">
+      <MyFileRow v-for="f in items" :key="f.id" :file="f" @remove="remove(f.id)" @retry="retry(f.id)" />
+    </MyDropzone>
+  </template>
+</Sender>
+<!-- 经 AiChat 时同名插槽原样贯通：<AiChat #attachments-panel="…"> -->
+```
+
+`SenderAttachmentsSlotScope` 字段：
+
+| 字段 | 说明 |
+|------|------|
+| `items` | 待发附件列表（含 `uploading`/`done`/`error` 过程态与 `percent`） |
+| `pick()` | 打开原生文件选择器 |
+| `add(files)` | 追加文件，走与内置面板同一条通道（含类型 / 数量 / 大小校验） |
+| `remove(id)` / `retry(id)` | 移除（并中断上传）/ 重试失败条目 |
+| `close()` | 收起面板 |
+| `isUploading` | 是否有条目上传中（发送键据此禁用） |
+| `accept` / `disabled` | 文件类型过滤 / Sender 是否禁用 |
+
+> 所有动作句柄**已内建 `disabled` 守卫**（面板可能在展开后才被禁用，如表单提交期间），自定义 UI 不必重做这层判断。
+>
+> 插槽内容**可以是多个根节点**——面板的展开/收起高度动画作用在 Sender 自持的外层容器上，不受插槽结构影响。
+>
+> 内置的 `AttachmentsPanel` / `AttachmentCard` 已导出，可直接复用做局部替换（如只换占位区、保留文件卡）。
+
+**③ 把面板放到 Sender 之外 —— `attachments` 传实例**
+
+`attachments` 除了配置对象，也接受**已创建的 `useAttachments` 实例**（靠 `'drain' in v` 判别）。
+宿主自己持有状态、把附件 UI 放页面任意位置，而发送时的 `drain()` 与上传中禁发守卫仍走同一份实例，
+不会各持一份而分叉：
+
+```vue
+<script setup>
+import { useAttachments } from '@aix/ai-chat';
+const attachments = useAttachments({ upload, accept: '.pdf,.png' });
+</script>
+
+<template>
+  <MyTopToolbarUploader :items="attachments.items.value" @add="attachments.add" />
+  <Sender :attachments="attachments" @submit="onSend" />
+</template>
+```
+
+> 传实例时 `accept` 经实例的同名回显字段喂给原生 `<input accept>`，与传配置对象行为一致。
+
+### 按钮位置
+
+`toolbarItems` 的**数组顺序即渲染顺序**，内置项与自定义组件项可混排；`'spacer'` 是纯布局占位符，
+用于切分左右分组（其后的内容含发送键被推到最右）。不放 `'spacer'` 时所有项靠左、发送键固定最右。
+
+```ts
+// 语音、模型选择器靠左；spacer 之后的附件按钮与发送键靠右
+['voice', { key: 'model', component: ModelSelector }, 'spacer', 'attach']
+```
+
+> 发送键在 API 上固定于最右。确需挪位时，工具栏是 flex 容器，用 CSS `order` 即可：
+> `.aix-sender__send { order: -1 }`。
+>
+> 未显式放置 `'spacer'` 时，默认会在发送键前自动补一个隐式 spacer（把发送键推到最右）。
+> 完全接管 `#toolbar`（`toolbarItems: []`）自绘全部布局时，这个隐式 spacer 会插在插槽内容与
+> 发送键之间打乱自定义分组，设 `:auto-spacer="false"` 可一步关闭，不必再显式放 `'spacer'`
+> 占位后又用 CSS 把它隐藏掉。不影响显式放置的 `'spacer'`。
+
 ## 块渲染与富内容插槽穿透
 
-一条消息的 `content` 是**有序内容块**（`ContentBlock[]`）。`Bubble` 内部用单一**块渲染器注册表**按 `block.type` 分发渲染，内置 `text` / `reasoning` / `sources` / `thought-chain` / `attachment` 五类，可通过 `blockRenderers` 扩展或覆盖（业务自定义块如选择题卡片即走此扩展点）：
+一条消息的 `content` 是**有序内容块**（`ContentBlock[]`）。`Bubble` 内部用单一**块渲染器注册表**按 `block.type` 分发渲染，内置十类：
+
+| 块类型 | 说明 |
+|--------|------|
+| `text` | 正文（Markdown 渲染，支持打字机逐字） |
+| `reasoning` | 思考过程（默认折叠，带思考耗时） |
+| `sources` | 引用来源列表 |
+| `thought-chain` | Agent 执行步骤时间线 |
+| `attachment` | 用户消息携带的已上传附件 |
+| `tool_use` | 工具调用（见「工具调用（tool_use）」） |
+| `chart` | 结构化图表（ECharts） |
+| `image` | 单图 / 多图 gallery |
+| `quote` | 划词引用（见「划词引用」） |
+| `user_confirm` | 用户确认卡（见「用户确认卡（user_confirm）」） |
+
+可通过 `blockRenderers` 扩展新类型或覆盖内置渲染（业务自定义块如选择题卡片即走此扩展点）：
 
 ```ts
 // 扩展新块类型 / 覆盖内置渲染器（组件级 props.blockRenderers，或全局 provideAiChatConfig.blockRenderers）
 <AiChat :request="request" :block-renderers="{ 'my-card': MyCardRenderer }" />
 ```
+
+### 渲染器的 props 契约：`BlockRendererProps`
+
+`Bubble` 向**每一个**块渲染器（内置与自定义一视同仁）传入同一组 props。直接用导出的
+`BlockRendererProps<K>` 声明即可，`block` 会按块类型精确收窄，不必手写 `Extract`：
+
+```ts
+// ① 先经 module augmentation 把新块类型登记进注册表，ContentBlock 联合会自动包含它
+declare module '@aix/ai-chat' {
+  interface ContentBlockRegistry {
+    'my-card': { question: string; options: string[]; answer?: string };
+  }
+}
+
+// ② MyCardRenderer.vue —— block 已收窄到 my-card，直接点出自定义字段
+import type { BlockRendererProps } from '@aix/ai-chat';
+
+const props = defineProps<BlockRendererProps<'my-card'>>();
+props.block.options; // ✅ string[]
+props.block.text; // ❌ 类型报错：text 不在 my-card 上
+```
+
+| prop | 说明 |
+|------|------|
+| `block` | 当前内容块，按泛型参数收窄；**必有** |
+| `info?` | 气泡上下文 `{ status, role, key }` |
+| `typing?` | 打字机态；非文本块通常不消费，但注册表统一透传 |
+| `onBlockAction?` / `onBlockIntent?` | 两条上抛通道，语义见下节 |
+
+需要额外 prop 时用交叉类型追加，如 `BlockRendererProps<'tool_use'> & { toolRenderers?: BlockRenderers }`；
+写通用渲染器（日志 / 调试）不关心具体类型时省略泛型即可，`block` 退化为全部块类型的联合。
+
+### 薄封装用 `defineBlockRenderer`
+
+最常见的场景是「把块数据转交给一个已有的业务组件」，不需要独立 SFC。手写函数式组件要**同时**
+记住两件事，漏任何一件都会静默出错：
+
+```ts
+const ResourceBlock = (props) => h(Resource, { data: props.block?.items ?? [] });
+ResourceBlock.props = ['block'];      // 漏了 → props.block 恒为 undefined
+ResourceBlock.inheritAttrs = false;   // 漏了 → info/typing 等变成根元素上的无效 DOM 属性
+```
+
+`defineBlockRenderer` 把这两行样板收进去，只留渲染本身：
+
+```ts
+import { defineBlockRenderer } from '@aix/ai-chat';
+
+const blockRenderers = {
+  resource: defineBlockRenderer((p) => h(Resource, { data: p.block.items ?? [] })),
+};
+```
+
+泛型参数同样可收窄 `block`：`defineBlockRenderer<'my-card'>((p) => ...)`。
+需要内部状态 / 生命周期 / 样式时仍写 `.vue` 组件直接注册，本函数只面向薄封装。
+
+> 注册表 `BlockRenderers` 的值类型仍是宽松的 `Component`，**不**按 key 收窄——Vue 的 `Component`
+> 在 `<component :is>` 分发场景下不承载可用的 props 泛型，收窄只会得到一个"看着严格、实际不校验"
+> 的类型。类型收益放在渲染器作者侧（即上面的 `defineProps`），那里才真正生效。
+
+### 块交互的两条通道
+
+交互型块有两种「向上说话」的方式，**语义与组件库行为完全不同，不要混用**：
+
+| 通道 | 渲染器 prop | 语义 | 组件库行为 |
+|------|------------|------|-----------|
+| `BlockAction` | `onBlockAction({ blockId, type, patch })` | 改我自己的数据 | 自动 `updateBlock` 就地合并 patch，**命中后**再 emit `block-action` 供业务持久化 |
+| `BlockIntent` | `onBlockIntent({ blockId, type, payload })` | 我需要你做件事 | **不动任何数据**，逐层转发为 `AiChat` 的 `block-intent` emit，落地与否完全由业务决定 |
+
+确认卡两条都用：改答案走 action（组件库落地），点提交走 intent（宿主自行发请求 / 带 `Last-Event-ID` 续流）。
+
+```ts
+// @block-action：已落地的数据补丁，业务只需同步后端
+// @block-intent：需要业务处置的意图，组件库什么都没改
+const onBlockIntent = async (payload: BlockIntentPayload) => {
+  if (payload.intent.type !== 'submit') return;
+  const id = String(payload.messageKey);
+  chatRef.value?.updateBlock(id, payload.intent.blockId, { state: 'submitting' });
+  await chatRef.value?.resume(id, payload.intent.payload); // 续流，不新建消息节点
+};
+```
+
+> `onBlockIntent` 是**可选** prop，现有自定义渲染器不受影响；不监听 `block-intent` 时意图静默丢弃（组件库本就不落地任何东西）。
+
+### 自绘消息操作条（`#footer`）
+
+内置操作条覆盖不到时（要在回答下方挂图表卡、参考资料、知识清单等），用 `#footer` 整块接管。
+作用域除 `item` 外还给出**分支元信息与一整套已接好线的动作句柄**，不必再从组件 ref 上反查：
+
+| 作用域字段 | 说明 |
+|-----------|------|
+| `item` | 整条 `ChatMessage` |
+| `branch` | `{ index, count }`，`count > 1` 时才需要渲染版本切换器 |
+| `branchDisabled` | 流式进行中，切换应禁用 |
+| `speaking` | 该条是否正在被内置 TTS 朗读 |
+| `actions` | `copy` / `copySource` / `regenerate` / `continue` / `switchBranch` / `setFeedback` / `startEdit` / `speak` |
+
+```vue
+<template #footer="{ item, branch, actions, speaking }">
+  <MyChart v-if="item.extra?.chartId" :id="item.extra.chartId" />
+  <div class="bar" data-aix-hover-reveal>
+    <button v-if="branch && branch.count > 1" @click="actions.switchBranch(item.id, -1)">‹</button>
+    <button @click="actions.copy(item)">复制</button>
+    <button @click="actions.regenerate(item.id)">重新生成</button>
+    <button :class="{ on: speaking }" @click="actions.speak(item)">朗读</button>
+    <button @click="actions.setFeedback(item.id, 'like')">赞</button>
+  </div>
+</template>
+```
+
+`actions.copy` 内含 Clipboard API + `execCommand` 兜底（HTTP 环境同样可用），`setFeedback`
+会写回 `extra.feedback` 并同步 `v-model:tree`——与内置操作条走的是同一条路径。
+单独取用剪贴板能力可 `import { copyText } from '@aix/ai-chat'`。
+
+> **`actionsTrigger="hover"` 对自绘操作条同样生效**：显隐锚定的是气泡内带
+> `data-aix-hover-reveal` 属性的元素（内置操作条自带）。给自己的操作条根节点加上该属性即可加入；
+> 同一 footer 里的常驻内容（图表卡、参考资料）不加属性就不参与淡出。
+
+### 输入框周边的区域插槽
+
+四个位置，区别只在**盒内还是盒外**——这决定了内容会不会把输入框顶下去：
+
+| 插槽 | 位置 | 典型用途 |
+|------|------|---------|
+| `sender-before` | 输入框**上方、盒外**（容器 `position: relative`） | 品牌形象图、活动横幅；需要溢出到输入框上方时在此绝对定位 |
+| `sender-header` | 输入框**盒内**、输入行之上 | 上下文 chip、知识库/模型标签（与内置引用 chips 追加共存） |
+| `sender-footer` | 输入框**盒内**、工具栏之下 | 字数统计、快捷键提示 |
+| `bottom` | 整个组件**最底部**（输入框之下） | 免责声明、法务文案 |
+
+```vue
+<AiChat :request="request" sender-variant="plain">
+  <template #sender-before>
+    <img class="mascot" src="/ip.png" alt="" />
+  </template>
+  <template #bottom>
+    <p class="disclaimer">内容由 AI 生成，请注意甄别</p>
+  </template>
+</AiChat>
+```
+
+> 免责声明这类内容以前只能写在 `</AiChat>` 之外，于是脱离了组件的 flex 布局，得自己补
+> `flex-shrink: 0` 之类；形象图则只能塞进 `#toolbar` 再反向 `position: absolute; bottom: 100%`，
+> 还要顺手把 `.aix-sender` 的 `overflow` 改成 `visible`。这两条路现在都不必走了。
+
+### 消息级插槽（发送者名 / 时间戳 / 头像 / 出错态）
+
+除了内容区（`content`）与操作条（`footer`），气泡还开放三个消息级插槽，**作用域都带整条
+`item: ChatMessage`**（时间戳、发送者等业务字段放 `extra` 即可读到）与 `info`（`role`/`status`/`key`）：
+
+| 插槽 | 位置 | 额外作用域 | 未提供时 |
+|------|------|-----------|---------|
+| `row-before` | 气泡**之外**，占满整行 | `index` / `prev`（上一条消息） | 整块不渲染 |
+| `bubble-header` | 气泡上方、气泡内 | — | 整块不渲染（不留空隙） |
+| `avatar` | 头像位 | — | 渲染 `roles[*].avatar` 指定的图片 |
+| `error` | 气泡内、内容之后 | `error`（即 `item.extra.error`）/ `retry()` | 内置「出错了 + 重试」条 |
+
+> **`row-before` 与 `bubble-header` 的分工**：后者在气泡**内**（`__wrapper` 里），跟随气泡自身
+> 的左右对齐——用户消息侧会贴到气泡右上角；前者是独立的一整行，天然可以整行居中。
+> 「时间分隔」「日期分隔线」「未读分割线」这类内容属于后者，用 `prev` 就能算「距上一条超过
+> N 分钟才显示」，不必自己在外面维护一份全表派生。消息自带的 `createdAt` 可直接取用。
+
+```vue
+<AiChat :request="request">
+  <!-- 整行居中的时间分隔：与上一条间隔超过 5 分钟才显示 -->
+  <template #row-before="{ item, prev }">
+    <time v-if="!prev || item.createdAt - prev.createdAt > 5 * 60 * 1000">
+      {{ formatTime(item.createdAt) }}
+    </time>
+  </template>
+
+  <!-- 发送者名 + 时间戳 -->
+  <template #bubble-header="{ item, info }">
+    <span v-if="info.role === 'ai'">助手</span>
+    <span v-else>{{ item.extra?.sender }}</span>
+    <time>{{ formatTime(item.extra?.ts) }}</time>
+  </template>
+
+  <!-- 按消息渲染不同头像（首字母圆形 / 在线徽标 / Agent 类型角标） -->
+  <template #avatar="{ item }">
+    <MyAvatar :user="item.extra?.sender" :online="item.extra?.online" />
+  </template>
+
+  <!-- 按错误码分支展示，而不是千篇一律的「出错了」 -->
+  <template #error="{ error, retry }">
+    <MyError :code="(error as ApiError)?.code" @retry="retry" />
+  </template>
+</AiChat>
+```
+
+**只想换文案就别接管插槽。** 内置错误条默认显示 i18n 的 `errorMessage`（**不会**把
+`extra.error` 直出——那里可能是 `TypeError: Failed to fetch` 之类的内部信息）。
+想透出后端返回的具体原因（限流、鉴权、内容审核……），传一个 `errorText` 解析函数即可，
+重试按钮与样式全部保留：
+
+```vue
+<AiChat
+  :request="request"
+  :error-text="(m) => {
+    const e = m.extra?.error;
+    return (typeof e === 'string' ? e : (e as Error)?.message) || '服务开小差了，请重试';
+  }"
+/>
+```
+
+> **为什么叫 `bubble-header` 而不是 `header`**：`AiChat` 的 `header` 已被顶部标题栏占用。
+> 此前这导致 `Bubble` 的 `header` 插槽在 `AiChat` 下完全不可达——想显示发送者名或时间戳无路可走。
+> `content` / `footer` 不带前缀，是因为它们在 `AiChat` 这层本就没有第二种含义。
+>
+> 三个插槽在 `<BubbleList>` / `<Bubble>` 上直接使用时分别叫 `header` / `avatar` / `error`
+> （`Bubble` 层拿不到完整 `ChatMessage`，故只有 `info`，`item` 由 `BubbleList` 转发时补上）。
+>
+> `error` 插槽提供后**完全接管**出错态展示：即便你的插槽在某些错误下渲染为空，也不会回落到
+> 内置错误条（内部用 `$slots.error` 显式判断，规避了 Vue `renderSlot` 把「产出全是注释节点」
+> 误判为「未提供插槽」的陷阱）。
 
 ### 命名插槽穿透块内部（`<块类型>-<内部slot名>`）
 
@@ -203,11 +650,56 @@ const roles = {
 </AiChat>
 ```
 
+当前开放的穿透插槽：
+
+| 插槽名 | 落点 | 作用域 |
+|--------|------|--------|
+| `thought-chain-item-content` | `ThoughtChain` 每个步骤的正文区 | `{ item, index }` |
+| `reasoning-icon` | 深度思考折叠面板标题前的**图标区**（无内置默认内容，不提供则不占位） | `{ open, elapsed, streaming }` |
+| `reasoning-title` | 深度思考折叠面板的**标题** | `{ open, elapsed, streaming }` |
+| `reasoning-arrow` | 深度思考折叠面板的**展开箭头** | `{ open, elapsed, streaming }` |
+| `reasoning-body` | 深度思考折叠面板的**正文**（替换内置 Markdown 渲染） | `{ open, elapsed, streaming, text, displayed }` |
+
+#### 自定义深度思考 UI（`reasoning-*`）
+
+改思考区外观**不需要**替换整个 `reasoning` 渲染器——打字机、思考计时、流式中自动展开、
+`typing-complete` 上抛这些都还是内置的，你只换要换的那一块：
+
+```vue
+<AiChat :request="request">
+  <!-- 把「思考过程（用时 5 秒）」换成带图标的胶囊标签 -->
+  <template #reasoning-icon="{ streaming }">
+    <MyCheckCircle v-if="!streaming" />
+  </template>
+  <template #reasoning-title="{ elapsed, streaming }">
+    <MyChip :loading="streaming">{{ streaming ? '深度思考中' : `已思考 ${elapsed}s` }}</MyChip>
+  </template>
+  <template #reasoning-arrow="{ open }">
+    <MyChevron :rotated="open" />
+  </template>
+</AiChat>
+```
+
+作用域说明：
+
+- `elapsed`：思考耗时（秒）。思考进行中每秒刷新，数据层打上 `endedAt` 后定格。
+  历史消息 / 业务自建 block 没有 `startedAt` 时为 `null`——自定义标题据此决定要不要显示耗时。
+- `streaming`：思考**本身**是否仍在进行（消息整体流式中 **且** 该块未 `endedAt`），
+  比消息级 `status` 更精确：思考早已结束但消息仍在输出正文时为 `false`。
+- `text` / `displayed`（仅 `reasoning-body`）：思考原文 / 打字机当前进度文本。
+
+> 这四个插槽的作用域**不是纯透传**：`open` 来自内部的 `Thinking`，而 `elapsed` / `streaming`
+> 由 `reasoning` 块从数据层（`block.startedAt` / `endedAt`）推导后**增补**进来，`Thinking` 自身无从得知。
+>
+> `Thinking` 作为独立组件导出时，其 `icon` / `title` / `arrow` / 默认插槽也已开放，可脱离 `reasoning` 块单独复用。
+
 约定与边界：
 
 - **命名规则**：消费方插槽名 = `<块类型>-<块内部 slot 名>`，如 `thought-chain-item-content`。
-- **保留插槽不参与穿透**（各层自身消费）：`AiChat` 的 `header` / `header-icon` / `header-extra` / `welcome-icon` / `welcome-title` / `welcome-description` / `welcome-extra` / `content` / `footer`、`BubbleList` 的 `content` / `footer`、`Bubble` 的 `avatar` / `header` / `content` / `footer`。其余具名插槽一律向下透传——为自定义块起名时避免与上述保留名冲突。
-- **不提供则无副作用**：未提供该插槽时不会向块内部注入空插槽（例如不会让 `ThoughtChain` 误判「有正文」而强制展开步骤）。
+  （`reasoning-body` 是唯一例外：它对应 `Thinking` 的**默认**插槽，默认插槽没有名字，按其区域 class `__body` 命名。）
+- **保留插槽不参与穿透**（各层自身消费）：`AiChat` 的 `header` / `header-icon` / `header-extra` / `welcome-icon` / `welcome-title` / `welcome-description` / `welcome-extra` / `content` / `footer` / `bubble-header` / `row-before` / `error` / `quote-menu` / `toolbar` / `prefix` / `attachments-panel` / `attachments-placeholder` / `sender-header` / `sender-footer` / `sender-before` / `bottom`、`BubbleList` 的 `content` / `footer` / `header` / `avatar` / `error` / `row-before`、`Bubble` 的 `avatar` / `header` / `content` / `footer` / `error`。其余具名插槽一律向下透传——为自定义块起名时避免与上述保留名冲突。
+- **不提供则无副作用**：未提供该插槽时不会向块内部注入空插槽（例如不会让 `ThoughtChain` 误判「有正文」而强制展开步骤、不会把思考标题渲染成空白）。
+- **覆盖内置 `text` / `reasoning` 渲染器时**（`blockRenderers`，即接管而非穿透）：内置渲染器与气泡之间靠 `typing-complete` 事件判断「整条消息是否播完」，这是内置实现的私有约定、不在 `BlockRendererProps` 契约里。**你的渲染器无需关心它**——气泡按渲染器归属聚合，被接管的块自动退出该判定，不会因为不上抛而让消息的打字机永不关闭。
 - **扩展自有块**：自定义块渲染器若想暴露内部插槽，只需在其模板中按同样约定接收并转发（`<template v-if="$slots['<块类型>-xxx']" #xxx="sp"><slot name="<块类型>-xxx" v-bind="sp" /></template>`）。
 
 ## 工具调用（tool_use）
@@ -238,6 +730,7 @@ const roles = {
 - `anthropicParseChunk`：`content_block_start`(tool_use) → 建块；`input_json_delta` → 拼参分片；`content_block_stop` → 参数结束。
 - `openaiParseChunk`：`delta.tool_calls[i]` → 拼参；`finish_reason:'tool_calls'` → 参数结束（多并行工具收尾建议由后端显式事件驱动，见下方限制）。
 - **自定义后端**：`createParseChunk({ pickTool })` 传一个 `(json) => ToolEventDelta | undefined`，或自行在 `parseChunk` 里返回 `{ tool }`。「请求含参先到、结果后到」的后端直接映射：工具请求 → `{ index, toolCallId, toolName, input }`、工具结果 → `{ index, toolCallId, output }`（结果事件**须带 `toolCallId`** 以支持跨请求/续流命中已建的块）。
+  同一帧里 `pickDelta` 与 `pickTool` 同时命中（聚合网关合帧）时两者都保留，返回 `[{ delta }, { tool }]`（正文在前，与 `openaiParseChunk` 同口径），由 `useChat` 侧 `toArray` 展开——正文不会因为命中工具而被丢弃。因此 `createParseChunk` / `flatParseChunk` 的返回类型是 `ParsedChunk | ParsedChunk[]`；直接调用它们（而非交给 `useChat`）的代码需用 `toArray` 归一。
 
 `parseChunk` 可返回**单个** `ParsedChunk` 或**数组**（一个流事件表达多件事，如 text + tool 同帧），内部统一归一，旧的单对象返回照常工作。装配纯函数 `applyToolEvent` / 类型 `ToolReduceCtx` 也对外导出，供完全自定义的流水线复用。
 
@@ -258,7 +751,10 @@ const toolRenderers = { generate_quiz: markRaw(QuizCard) };
 </template>
 ```
 
-自定义渲染器拿到完整 `tool_use` 块（`input`/`output`/`state`）+ `info` + `onBlockAction`，学生作答等交互经 `onBlockAction({ blockId, type, patch })` 回写——与既有交互块同一套管线（`AiChat` 内部先 `updateBlock` 命中才向上 emit `block-action`）。
+自定义渲染器拿到完整 `tool_use` 块（`input`/`output`/`state`）+ `info` + `onBlockAction` + `onBlockIntent`，与内置块渲染器的契约完全一致（见「块交互的两条通道」）——**事件与块插槽两条通道同样对等**：委托目标 emit 的 `keep-mounted-change`（浮层开合，让虚拟列表保持宿主行挂载）与 `typing-complete` 会逐层上抛，穿透下来的块插槽也原样转交。即同一个组件注册为 `toolRenderers` 还是 `blockRenderers`，拿到的能力完全一样。
+
+- 学生作答等**改自己数据**的交互经 `onBlockAction({ blockId, type, patch })` 回写——`AiChat` 内部先 `updateBlock` 命中才向上 emit `block-action`；
+- **需要宿主处置**的交互（工具审批放行、点提交后带 `Last-Event-ID` 续流等）经 `onBlockIntent({ blockId, type, payload })` 上抛到 `AiChat` 的 `block-intent`，组件库不据此改动任何数据。配合 `state: 'awaiting-approval'` 即可实现工具调用的人工审批卡。
 
 ### 人工确认（HITL）+ `resume` 续流
 
@@ -300,6 +796,77 @@ const onBlockAction = (p: BlockActionPayload) => {
 
 - **OpenAI 并行工具收尾**：`openaiParseChunk` 从 `finish_reason:'tool_calls'` 无法精确给出各 index，仅对 index 0 发参数结束信号；多并行工具请由后端显式事件驱动收尾，或改用带 `.done` 语义的 Responses API 事件自定义 `parseChunk`。
 - **超大 output 持久化**：默认全量随树持久化，超大结果需业务侧截断/omit，避免撑爆 localStorage。
+
+## 用户确认卡（user_confirm）
+
+AI 在继续之前需要用户拍板时（确认偏好、补充参数等）下发的表单卡片。组件库只负责**块类型 + 卡片 UI + 超时策略 + 答案回写**，**提交本身留在宿主**——提交往往意味着带 `Last-Event-ID` 的续流或业务侧状态机变更，组件库不做假设。
+
+### 数据模型
+
+```ts
+{ id, type: 'user_confirm';
+  formId: string;                    // 表单 id，宿主提交时回传后端
+  title?: string;
+  fields: ConfirmField[];            // { name, question, type: 'radio'|'checkbox'|'text', options?, defaultValue?, required?, answer? }
+  state: 'awaiting' | 'submitting' | 'submitted' | 'expired';
+  createdAt?: number;                // epoch ms；超时时间线的基准，缺省则不启用超时
+  timeout?: ConfirmTimeoutConfig;    // { hintAt?, autoFillAt?, autoSubmitAt? }，相对 createdAt 的 ms 偏移
+}
+```
+
+用 `userConfirmBlock(formId, fields, opts?)` 构造（`field.name` 需在同一张卡内唯一，重名会让选项分组与答案回写一起错乱，开发期有告警）：
+
+```ts
+import { userConfirmBlock } from '@aix/ai-chat';
+
+userConfirmBlock('trip-form', fields, {
+  title: '出行偏好确认',
+  createdAt: Date.now(),
+  timeout: { hintAt: 75_000, autoFillAt: 105_000, autoSubmitAt: 120_000 },
+});
+```
+
+### 可交互性只看 `state` + 超时，**不看消息 status**
+
+这是最容易写错的一处：确认卡的提交通常发生在**流已经收尾之后**（正因如此才需要 resume 续流），所以「消息 `success` + 卡片 `awaiting`」恰恰是用户**应该**填写的状态。若按 `info.status === 'success'` 禁用，卡片一出现就变只读，功能直接废掉。闸门只有两个：卡片自己的 `state`，以及 `createdAt` 的超时判定。
+
+历史消息不会误提交：已处理的卡片持久化时就是 `submitted` / `expired`（`state` 非 `awaiting` 即整条时间线不启用）。
+
+### 状态流转（宿主的责任）
+
+```text
+awaiting --用户点提交--> [block-intent] --宿主置--> submitting --请求返回--> submitted
+                                                       └--请求失败--> awaiting（卡片解冻，可重试）
+```
+
+组件在上抛 `submit` 意图后会**立即本地冻结**防连点；解冻信号是 `state` 由非 `awaiting` **回到** `awaiting`。因此宿主收到意图后**必须推进 `state`**，否则失败时卡片会一直停在「提交中」。
+
+### 顶替规则（内置，无需宿主处理）
+
+同一条消息内落地新的 `user_confirm` 块时，`useChat` 会自动把更早的 `awaiting` 卡置为 `expired`（幂等，照 `sealReasoning` 的形状）。避免多张卡同时可交互、都能提交。只管消息内，不做跨消息扫描——跨消息场景由下面的超时机制自然覆盖。
+
+### 超时时间线
+
+`timeout` 的三个节点都是**相对 `createdAt` 的 ms 偏移**，缺省即不启用该节点：
+
+- `hintAt`：展示「需要帮您选一个吗？」提示
+- `autoFillAt`：按 `defaultValue` 自动填充并标记（走 `BlockAction` 落地）
+- `autoSubmitAt`：自动提交，`payload.autoFill` 为 `true`，跳过必填校验（是否受理由宿主判断）
+
+**任何手动作答都会撤销整条时间线**。三重兜底（后台标签页的 `setTimeout` 会被节流甚至挂起，这是正确性问题）：全部按 `createdAt` 的绝对时刻计算、`visibilitychange` 回前台按已流逝时间重排、每次排程前把已过点未触发的节点按序补发。
+
+> ⚠️ 补发是无差别的：配了 `autoSubmitAt` 的 `awaiting` 卡在**重新挂载**时（如刷新页面加载历史），若 `createdAt` 早已超过节点就会当场走完时间线并上抛提交意图。不希望如此的话，持久化时就应把已废弃的卡落为 `expired`。
+
+**续期**：把块的 `createdAt` 改成新的时刻即视为「新一轮计时」，已触发标记与提示/已填充标记一并清空，时间线从头再走一遍。反之手动作答触发的撤销是不可逆的——用户已接管，续期也不会把自动代填/代交放回来。
+
+### 提交载荷
+
+```ts
+// intent.payload
+{ formId: string; fields: ConfirmField[]; autoFill?: true }
+```
+
+时间线逻辑封装在 `useConfirmDeadline`（**块类型无关**），后续 `tool_use` 的 `awaiting-approval` 可直接复用同一套 deadline，不必重复机制。
 
 ## 触发菜单（@提及 / 斜杠命令）
 
@@ -414,21 +981,160 @@ chatRef.value?.setSuggestions(['能再展开讲讲吗？', '有相关文档吗�
 - `max`（默认 `5`）：可见建议条数上限，超出部分仅在展示层截断（不影响已持久化的完整列表）。
 - 独立使用 `Suggestions` 组件（脱离 `AiChat`）时无 `fillOnly` / `max` 语义，纯受控展示：传 `items: SuggestionItem[]`，监听 `select` 自行处理点击（发送 / 回填 / 埋点等）。
 
+## 末尾静默呼吸（tailBreathing）
+
+流式输出中途停顿（模型在想、工具在跑）时，末块文字做明暗呼吸，和「已经说完」区分开。默认关闭：
+
+```vue
+<AiChat :request="request" tail-breathing />
+<!-- 默认静默阈值 3000ms -->
+<AiChat :request="request" :tail-breathing="{ idleMs: 2000 }" />
+```
+
+也可 `provideAiChatConfig({ tailBreathing: true })` 全局开启（组件 prop 优先）。
+
+判定放在**气泡层**而非块内：一条消息是 `ContentBlock[]`，形如 `[text, tool_use, text]` 时，首个 `text` 在工具开始流式后就不再增长——若各块自行判定，会出现「中间块呼吸、真正在输出的末块不呼吸」。气泡层持有完整 `content`，指纹（`contentFingerprint`，与自动滚动跟随同一口径）覆盖全部块，末块由 CSS 后代选择器命中。**自定义块渲染器无需改造即可获得该行为**。动画尊重 `prefers-reduced-motion`。
+
+## 上下文用量条（ContextWindow）
+
+展示「已用 / 上下文窗口总量」，可选提供「压缩会话」入口。**纯受控**：不发任何请求、不碰全局状态，`used` / `total` 由业务传入，点击压缩只 `emit('compress')`。
+
+无需改 `Sender`，作为 `toolbarItems` 的自定义项注入即可：
+
+```vue
+<script setup lang="ts">
+import { ContextWindow } from '@aix/ai-chat';
+import { markRaw, ref } from 'vue';
+
+const used = ref(12000);
+const toolbarItems = [
+  'attach',
+  'voice',
+  {
+    key: 'ctx',
+    component: markRaw(ContextWindow),
+    props: { used, total: 128000, compressible: true, onCompress: doCompress },
+  },
+];
+</script>
+
+<template><AiChat :request="request" :toolbar-items="toolbarItems" /></template>
+```
+
+超过 `warnRatio`（默认 0.8）进入告警配色；`total` 为 0（窗口未知）时占比按 0 处理，不产生 `NaN` / `Infinity`。
+
+后端只回百分比、不回 token 数时，只传 `percent` 即可——`total` 为 0 视为「窗口总量未知」，摘要与用量文案一并退化为纯百分比（`60%` / `已用 60%`），不会显示无意义的 `0/0`：
+
+```vue
+<ContextWindow :percent="0.6" />
+```
+
+面板定位走 `@aix/popper`（`fixed` 策略 + flip/shift）：不会被工具栏或对话容器的 `overflow` 裁掉，上方空间不足时自动翻到下方。键盘可达：Esc 关闭并把焦点还给触发器，点击组件外部同样关闭。面板是非模态 disclosure（打开时焦点刻意留在触发器上，用量是「瞥一眼」的信息），故语义用 `aria-expanded` + `role="group"`，不声明 `role="dialog"`。
+
+## 对话大纲导航（MessageOutline）
+
+长会话右侧的提问刻度条：悬浮看摘要、点击定位到该轮提问。默认关闭：
+
+```vue
+<AiChat :request="request" outline />
+<AiChat
+  :request="request"
+  :outline="{ window: 8, filter: (m) => m.role === 'user', toLabel: (m) => summarize(m) }"
+/>
+```
+
+同样支持 `provideAiChatConfig({ outline: true })` 全局开启（组件 prop 优先）。`window` 是滑动窗口半径（默认 8，传 `Infinity` 全量展示），长会话下刻度条不会撑爆。
+
+三层分离，可单独复用：
+
+- `useMessageOutline`：纯派生（`messages` → `entries` + 按 `activeId` 居中裁剪的 `windowed`），无 DOM
+- `useVisibleMessage`：`IntersectionObserver` 观测 `[data-aix-message-id]`，取「仍在视口内、消息顺序最靠后」的一条作为活跃项（`ids` 需与文档流顺序一致；刻意不按坐标比大小——IO 只在进出视口时投递记录，存下的坐标会立刻过期）。自带「点击定位期间屏蔽回写」的闸门，闸门在**滚动静默后自动解除**，并有最长持有时长兜底；无 `IntersectionObserver` 的环境（SSR / jsdom）安全空转
+- `MessageOutline`：受控展示，`emit('select')`，不自己找滚动容器、不自己滚动、不自己观测
+
+`AiChat` 只做接线（`select` → `BubbleList.scrollToBubble`）——注意 `scrollToBubble` 在**目标行挂载**时就 resolve，而平滑滚动的动画还要几百毫秒，所以解闸不能挂在它的 resolve 上（自定义大纲 UI 复用时同理）。切分支导致激活路径整体改变时，活跃项会重置而非悬空；纯图片 / 附件等无文字消息的摘要回退到 locale 文案而不是空串。
+
+## 会话持久化（`v-model:tree`）
+
+`AiChat` 有两条对外的持久化通道，**择一使用**：
+
+| 通道 | 语义 | 适用 |
+|------|------|------|
+| `v-model:tree` | 完整对话树（含所有分支版本），`ExportedTree` | 需要保留「重新生成 / 编辑重发」产生的兄弟版本 |
+| `v-model:messages` | 仅当前激活路径的扁平消息数组 | 不需要分支历史的简单场景 |
+
+同时绑定两者时以 `tree` 为准（`messages` 退化为只读镜像输出，不再反向导入）。走哪条通道由「是否绑定了 `tree`」自动推断（读编译后的 vnode props，`v-model:tree` 与单向 `:tree` 都能识别），常规模板写法无需干预。
+
+若推断失准（用 `h()` / JSX 手写 vnode、或经高阶组件 `v-bind="$attrs"` 中转），用 `treeMode` 显式声明：
+
+```vue
+<!-- 强制走 tree 通道；:tree-mode="false" 则强制走 messages 通道 -->
+<AiChat :tree="tree" :tree-mode="true" :request="request" @update:tree="save" />
+```
+
+最省事的接法是配 `useConversations`，它已经处理好下面全部细节：
+
+```vue
+<AiChat v-model:tree="conv.activeTree" :request="request" />
+```
+
+### `update:tree` 的触发口径（自定义持久化时必读）
+
+emit 出去的 `message` 是**活的响应式代理**，而 `update:tree` 只在下列离散时刻触发，**流式逐 chunk 不触发**（否则每个 token 都要跑一次 O(节点数) 的全量快照）：
+
+1. 结构变化（新增消息节点 / 切换分支）
+2. 每轮请求落终态（`finish` / `error` / `abort`）
+3. 交互块回写命中（`block-action`，或命令式 `updateBlock`）
+4. 赞踩反馈写回
+
+于是两种宿主写法都成立：
+
+```ts
+// ① 持有引用 + 深度侦听（useConversations 即如此）：任意时刻都是最新内容
+const tree = ref<ExportedTree>();
+watch(tree, () => save(tree.value), { deep: true });
+```
+
+```vue
+<!-- ② 在回调里快照 / 序列化：靠第 2~4 档拿到完整数据，落库的永远是已收尾的轮次 -->
+<AiChat :tree="tree" :request="request" @update:tree="(v) => api.save(JSON.stringify(v))" />
+```
+
+> ⚠️ 写法 ② 依赖「落终态」这一档。若你自行实现类似的导出通道（如 fork 本组件），只按「结构变化」导出会踩到一个静默的数据丢失：AI 占位节点入树那一刻就是最后一次结构变化，其后整段流式内容与 `updating → success` 都不改变树结构，落库的会是一条 `content: []` 且 `status: 'loading'` 的 AI 消息——下次加载还会被 `reconcileStuckMessages` 判为卡死改成 `error`，用户看到一条空的失败回复。
+
 ## 组合式 hooks
 
 | Hook | 说明 |
 |------|------|
-| `useChat(options)` | 消息流托管。返回 `messages` / `parsedMessages`（经 `parser` 映射的渲染消息）/ `isLoading` / `onSend` / `onReload` / `onEdit`（编辑并重新生成）/ `abort` / `setMessages` / `updateBlock`（按 id 回写块补丁）/ `setFeedback`（赞/踩）/ `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」）/ `exportTree` / `importTree` / `switchBranch` 等。`options`: `request` / `streamMode?`（`'sse'` 默认 / `'line'`）/ `parseChunk?` / `parser?` / `defaultMessages?` / `onFinish?` / `onError?` / `onAbort?` / `retryTimes?` / `retryInterval?` / `streamTimeout?`（流静默超时） |
+| `useChat(options)` | 消息流托管。返回 `messages` / `parsedMessages`（经 `parser` 映射的渲染消息）/ `isLoading` / `onSend` / `onReload` / `onEdit`（编辑并重新生成，**拒绝 `parser` 1→N 的派生气泡 id**——派生气泡只持有父消息的一个切片，用它改写会静默丢掉其余段落）/ `abort` / `setMessages` / `updateBlock`（按 id 回写块补丁）/ `setFeedback`（赞/踩）/ `resume`（工具调用 HITL 续流，见「工具调用（tool_use）」）/ `continueGenerate`（向被手动停止的回复续写，把已生成内容 + 隐藏续写指令一并作为 history 发出，不依赖后端记忆前情）/ `branches` / `getBranches` / `switchBranch` / `exportTree` / `importTree`。内置块级规则：`reasoning` 转场自动封口计时、同一条消息内新 `user_confirm` 落地时自动顶替更早的待填卡（见「用户确认卡」）。`options`: `request` / `streamMode?`（`'sse'` 默认 / `'line'`）/ `parseChunk?` / `parser?` / `defaultMessages?` / `onFinish?` / `onError?` / `onAbort?` / `retryTimes?` / `retryInterval?` / `streamTimeout?`（流静默超时） |
 | `sseStream(stream, signal?)` | 按 SSE 规范把字节流解析为结构化事件（空行切事件 + `event`/`data`/`id` 字段）的异步生成器，支持中断；`useChat` 的 `sse` 模式（默认）用它 |
 | `xStream(stream, signal?)` | 将 `ReadableStream<Uint8Array>` 解码并按行（`\n`）切分的异步生成器，支持中断；`useChat` 的 `line` 模式用它 |
 | `useXStream()` | `xStream` 的响应式封装：`lines` / `isStreaming` / `error` / `start` / `cancel` |
 | `useTypewriter(source, options?)` | 打字机逐字渲染（保留前缀），返回 `displayed` / `stop`。已内置到 `Bubble`（见 `typing` prop），`options.enabled` 支持响应式开关 |
 | `useAutoScroll(scrollEl, options?)` | 滚动状态机 + 跟随策略（own-message / new-message / streaming 三分流） |
-| `useAiChatConfig()` / `provideAiChatConfig(config)` | provide/inject 全局配置 |
-| `useConversations(options?)` | 多会话托管（SSOT + 可选持久化）。返回 `conversations` / `activeKey` / `active` / `activeMessages`（绑 `AiChat` 的 `v-model:messages`）/ `items`（绑 `Conversations`）/ `isLoading`（`storage.load()` 解析完成前为 `true`，未提供 `storage` 时恒为 `false`）/ `create` / `remove` / `rename`。`storage.load`/`save` 可返回同步值或 `Promise`（内部统一用 `Promise.resolve(...).then(...)` 处理），配合内置 `localStorageConversationStorage` 或自定义异步适配器（对接真实后端）持久化 |
-| `useAttachments(options)` | 附件上传托管。返回 `items` / `add` / `remove` / `retry` / `clear` / `isUploading` / `drain`（取出已完成项随消息发送）。`options`: `upload` / `accept?` / `maxCount?` / `maxSize?` |
+| `useMessageOutline(options)` | 对话大纲纯派生：`messages` → `entries`（全量）/ `windowed`（按 `activeId` 居中裁剪）。`options`: `messages` / `filter?` / `toLabel?` / `window?` / `activeId`（见「对话大纲导航」） |
+| `useVisibleMessage(options)` | 以 `IntersectionObserver` 观测 `[data-aix-message-id]` 取当前活跃消息，内置「点击定位期间屏蔽回写」闸门；无 IO 的环境安全空转 |
+| `useIdleWhileStreaming(options)` | 「流式中但内容已停止增长」检测（末尾静默呼吸的判定内核）。`options`: `streaming` / `fingerprint` / `idleMs?` |
+| `useConfirmDeadline(options)` | 确认卡超时时间线（提示 → 自动填充 → 自动提交），**块类型无关**，含绝对时刻 / `visibilitychange` 补偿 / 排程前补发三重兜底。返回 `hinted` / `autoFilled` / `cancel` |
+| `useAiChatConfig()` / `provideAiChatConfig(config)` | provide/inject 全局配置（含 `tailBreathing` / `outline` 等 opt-in 能力的全局通道，组件 props 优先）。返回值是 **`shallowReactive`**：只有顶层键的赋值是响应式的，见下方说明 |
+| `useConversations(options?)` | 多会话托管（SSOT + 可选持久化）。返回 `conversations` / `activeKey` / `active` / `activeMessages`（绑 `AiChat` 的 `v-model:messages`）/ `activeTree`（绑 `v-model:tree`，分支感知，见「会话持久化」；读时若会话仅有旧 `messages` 会自动迁移为线性树）/ `items`（绑 `Conversations`）/ `isLoading`（`storage.load()` 解析完成前为 `true`，未提供 `storage` 时恒为 `false`）/ `create` / `remove` / `rename` / `setActive`。`storage.load`/`save` 可返回同步值或 `Promise`（内部统一用 `Promise.resolve(...).then(...)` 处理），配合内置 `localStorageConversationStorage` 或自定义异步适配器（对接真实后端）持久化 |
+| `useAttachments(options)` | 附件上传托管。返回 `items` / `add` / `remove` / `retry` / `clear` / `isUploading` / `drain`（取出已完成项随消息发送）。`options`: `upload` / `accept?` / `maxCount?` / `maxSize?` / `onReject?` / `onRemove?`（条目被 `remove`/`clear` 丢弃时回调，供业务回收服务端资源；`drain` 是发送路径，不触发） |
 | `useVoiceInput(options)` | 语音识别输入（ASR）。返回 `status` / `isSupported` / `start` / `stop` / `toggle`。缺省用浏览器 Web Speech API，可注入自定义 `recognizer` 对接讯飞/阿里云等 ASR |
 | `useSpeech(options)` | 语音播报（TTS）。返回 `speakingId` / `isSupported` / `toggle`（手动点读：再点同条停、点别条切）/ `feed`（autoPlay 流式增量分句朗读）/ `stop` / `resolveText`。缺省用浏览器 `speechSynthesis`，可注入自定义 `synthesizer` 对接讯飞/阿里云等云端 TTS |
+
+### 全局配置的响应式粒度
+
+`provideAiChatConfig(config)` 返回的对象是 `shallowReactive` 的：**只有顶层键的整体赋值**会触发更新，就地深改嵌套字段不会。
+
+```ts
+const cfg = provideAiChatConfig({ quote: { enabled: true } });
+
+cfg.quote = { ...cfg.quote, enabled: false }; // ✅ 顶层整体替换，生效
+cfg.enableTyping = false; // ✅ 顶层标量，生效
+cfg.quote.enabled = false; // ❌ 就地深改，不会触发更新
+cfg.roles.ai.placement = 'end'; // ❌ 同上
+```
+
+配置里的 `blockRenderers` / `toolRenderers` / `roles[*].blockRenderers` / `quote.toolbar` / `quote.sheet` 的值都是**组件对象**，深层代理会把它们一并包成 reactive 代理，`<component :is>` 每次建 vnode 都要告警「Vue received a Component that was made a reactive object」并 `toRaw` 兜底。浅层代理从根上避免这一点，语义上也贴合「整袋替换的选项」。
 
 ### 打字机效果
 
@@ -509,7 +1215,7 @@ const speech: SpeechConfig = {
 
 ### ⚠️ 扩展点说明
 
-- **`Thinking`**：`reasoning` 块**已内置**经 `<Thinking>` 折叠渲染（流式中自动展开），无需额外接入；`Thinking` 同时作为独立工具组件导出，可在自定义块渲染器或 `Bubble` 的 content slot 中单独复用，数据来源由业务决定。
+- **`Thinking`**：`reasoning` 块**已内置**经 `<Thinking>` 折叠渲染（流式中自动展开），无需额外接入；想改思考区外观见「[自定义深度思考 UI](#自定义深度思考-uireasoning-)」，一般不必替换整个渲染器。`Thinking` 同时作为独立工具组件导出（`title` / `arrow` / 默认插槽均已开放），可在自定义块渲染器或 `Bubble` 的 content slot 中单独复用，数据来源由业务决定。
 - **`useXStream`（响应式封装版）**：`AiChat`/`useChat` 内部直接使用底层生成器 `xStream`，不使用这个组合式封装。它供你在自定义请求逻辑里单独使用。
 
 ## Markdown 渲染
@@ -578,12 +1284,146 @@ const markdownRenderers: MarkdownRenderers = {
 - 无需额外依赖（不再需要 `dompurify`）。也可经 `provideAiChatConfig({ allowHtml: true })` 全局开启（组件 `allow-html` prop 优先）。
 - **相邻块级 HTML 会合并进同一个沙箱**：源码中仅以空行分隔、未走 ` ```html ` 围栏的连续裸 HTML 片段（如一份完整 `<!DOCTYPE html>` 文档，或两段独立卡片）会被当作同一份文档，渲染进同一个 `<iframe>`——这是为了让 CommonMark 天然会按空行拆碎的完整 HTML 文档仍整体可读的必要取舍，副作用是这些片段之间共享同一 iframe 的 DOM / 脚本作用域（但仍与父页面隔离）。需要多段裸 HTML 各自独立沙箱时，用 ` ```html ` 围栏分别包裹或用其它 markdown 内容隔开。
 
+## 多语言与文案定制
+
+内置中英文语言包（约 90 条，见导出的 `zhCN` / `enUS` / `AiChatLocale` 类型），跟随
+`@aix/hooks` 的全局 locale（`createLocale`）切换。所有文案均可覆盖，三种方式按作用域选用：
+
+```typescript
+// ① 应用级：main.ts 一处统一定制，作用于所有实例（包名与 key 均有类型校验）
+import { createLocale } from '@aix/hooks';
+app.use(createLocale('zh-CN', {
+  messages: { 'ai-chat': { 'zh-CN': { senderPlaceholder: '问问小助手…', sendButton: '发问' } } },
+}));
+```
+
+```vue
+<!-- ② 实例级：只影响这一个 AiChat 及其内部子组件，优先级高于应用级 -->
+<AiChat :request="request" :locale-messages="{ senderPlaceholder: '请描述你的问题' }" />
+```
+
+```typescript
+// ③ 单独使用 Sender / Bubble 等导出子组件时（没有 AiChat 根），在上层注入
+import { provideAiChatLocaleMessages } from '@aix/ai-chat';
+provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
+```
+
+合并优先级（低 → 高）：内置语言包 → 应用级 `messages['ai-chat']` → 实例级
+（`locale-messages` prop / `provideAiChatLocaleMessages`，内层注入整体遮蔽外层）。
+覆盖是 **Partial 浅合并**，只写要改的 key；整包替换可基于导出的 `zhCN` / `enUS` 派生。
+运行时增量合入（如异步拉取文案）用 `localeContext.mergeMessages()`。
+
+> 注意：模板类 key（`thoughtDurationSuffix` 的 `{s}`、`contextWindowUsage` 的
+> `{used}/{total}/{percent}` 等）覆盖时必须保留占位符，否则运行时替换失效。
+
 ## 主题
 
 所有样式基于 `@aix/theme` 的语义 token CSS 变量（颜色 `--aix-color*`、间距 `--aix-padding*`/`--aix-size*`、圆角 `--aix-borderRadius*`、动效 `--aix-motionDuration*`）。切换 `@aix/theme` 的明暗主题即可联动，无需额外配置。
 
+> 已知限制：代码高亮（highlight.js）的主题样式是**应用启动时一次性探测明暗**注入的静态 CSS，
+> 运行时切换深浅色不会跟随，需刷新整页。ECharts 图表无此问题（每次 `setOption` 重读 CSS 变量）。
+
+## 样式定制
+
+三层能力，按「改动范围从大到小」选用：
+
+| 层 | 手段 | 适用 |
+|----|------|------|
+| ① 换肤 | 覆盖 `@aix/theme` 的语义 token | 颜色 / 间距 / 圆角 / 动效的整体风格 |
+| ② 尺寸旋钮 | 覆盖下表的组件级 CSS 变量 | 布局尺寸（气泡宽度、输入框高度等） |
+| ③ 类覆盖 | 直接写 `.aix-*` 选择器 | 前两层没覆盖到的任意样式 |
+
+第 ③ 层之所以好用，是因为本包**不使用 `scoped`、不使用 `!important`**，选择器绝大多数只有 1–2 层嵌套——直接写同名 class 即可覆盖，无需 `:deep()`、无需拼特异度。
+
+### 组件级尺寸变量
+
+| 变量 | 默认值 | 作用 |
+|------|--------|------|
+| `--aix-bubble-max-width` | `min(680px, 100%)` | 气泡内容区最大宽度 |
+| `--aix-bubble-avatar-size` | `36px` | 头像尺寸（骨架屏占位同步跟随） |
+| `--aix-bubble-content-radius` | `--aix-borderRadiusLG` | 气泡内容区圆角（filled/outlined/shadow/round/corner 变体共用） |
+| `--aix-sender-max-height` | `160px` | 输入框自适应高度上限，超出后内部滚动 |
+| `--aix-sender-min-height` | `0` | 输入框自适应高度下限，内容更少时仍撑住这个高度 |
+| `--aix-sender-send-width` | `--aix-controlHeight` | 发送按钮宽度，可与高度分别定制 |
+| `--aix-sender-send-height` | `--aix-controlHeight` | 发送按钮高度，可与宽度分别定制 |
+| `--aix-sender-send-icon-size` | `16px` | 发送 / 停止图标尺寸（方形速写，宽高各自回落到它）。内置 mask 图标与 `icons.send`/`icons.stop` 的自定义图标共用，保证两者等大 |
+| `--aix-sender-send-icon-width` | `--aix-sender-send-icon-size` | 图标宽度，非方形图标时与高度分别定制 |
+| `--aix-sender-send-icon-height` | `--aix-sender-send-icon-size` | 图标高度，同上 |
+| `--aix-sender-send-icon` | 内置纸飞机 SVG | 发送按钮默认态的 mask 图源（`url(...)`），随 `currentColor` 着色 |
+| `--aix-sender-stop-icon` | 内置停止 SVG | 发送按钮流式态的 mask 图源，同上 |
+| `--aix-sender-padding` | `paddingXS … paddingSM` | 输入框容器内边距 |
+| `--aix-sender-gap` | `--aix-sizeXS` | 输入框容器各区域（header / 输入行 / 工具栏 / footer）间距 |
+| `--aix-sender-input-padding` | `--aix-paddingXS` | 文本域自身内边距（通栏形态常置 `0`，避免与容器内边距叠加） |
+| `--aix-sender-toolbar-padding` | `paddingXXS 0 0` | 底部工具栏行内边距 |
+| `--aix-ai-chat-sender-margin` | `paddingSM padding padding` | 输入框相对面板的外边距（通栏形态置 `0` 即左右贴边） |
+| `--aix-chart-block-height` | `300px` | 图表高度（结构化 `chart` 块与 ` ```chart ` 围栏共用） |
+| `--aix-attachment-card-width` | `248px` | 附件卡片宽度 |
+| `--aix-tool-use-max-height` | `320px` | 工具调用入参 / 结果区滚动上限 |
+| `--aix-trigger-menu-max-height` | `240px` | 触发菜单候选列表滚动上限 |
+
+**在任意祖先元素上设值即可生效**，可全局也可局部：
+
+```css
+/* 全局：宽屏布局放宽气泡与输入框 */
+:root {
+  --aix-bubble-max-width: 900px;
+  --aix-sender-max-height: 320px;
+}
+
+/* 局部：只让侧栏里的这个会话用紧凑尺寸 */
+.sidebar-chat {
+  --aix-bubble-max-width: 100%;
+  --aix-bubble-avatar-size: 24px;
+  --aix-attachment-card-width: 200px;
+}
+```
+
+> **为什么能在任意祖先设值**：这些变量在组件内部只以 `var(--x, 默认值)` 的形式被读取，
+> **从未被声明**。CSS 自定义属性的层叠规则里，元素自身的声明会压过从祖先继承的值——
+> 若把默认值声明在 `.aix-bubble` 上，你写 `:root { --aix-bubble-max-width: 900px }` 反而会被
+> 静默忽略。纯 fallback 形态避开了这个陷阱，代价是变量在 devtools 里默认不可见（以本表为准）。
+>
+> 命名上刻意用 kebab-case，与 camelCase 的主题 token（`--aix-colorPrimary`）区分开：
+> 前者是**组件旋钮**，后者是**设计系统 token**。
+
+### 外观形态（variant）
+
+尺寸旋钮解决「大小」，形态解决「长什么样」。把居中对话页的组件搬到侧栏 / 移动端 / 全屏页时，
+需要改的往往不是尺寸而是**容器视觉**——过去只能整段覆写 `.aix-sender` / `.aix-thinking`。
+
+| Prop | 取值 | 说明 |
+|------|------|------|
+| `senderVariant` | `'card'`（默认）/ `'plain'` | 输入框：卡片（圆角描边 + 阴影 + 悬停聚焦描边）/ 贴边通栏（无容器视觉） |
+| `reasoningVariant` | `'card'`（默认）/ `'capsule'` / `'plain'` | 深度思考折叠面板：整体卡片 / hug 宽度胶囊头 + 独立正文块 / 无容器视觉 |
+
+```vue
+<!-- 侧栏形态：通栏输入框 + 胶囊思考区，不需要写任何 :deep -->
+<AiChat
+  :request="request"
+  sender-variant="plain"
+  reasoning-variant="capsule"
+  class="sidebar-chat"
+/>
+```
+
+```css
+.sidebar-chat {
+  --aix-ai-chat-sender-margin: 0;
+  --aix-sender-input-padding: 0;
+  --aix-sender-toolbar-padding: 0;
+}
+/* plain 刻意不代画分隔线：位置与颜色各家不同，需要就自己加一条 */
+.sidebar-chat .aix-sender--plain { border-top: 1px solid var(--aix-colorBorderSecondary); }
+```
+
+> `reasoningVariant` 经 `provideAiChatConfig` 注入下发，`senderVariant` 是普通 prop，
+> 两者都可随时切换（见「哪些配置能运行时改」）。
+>
+> 表内每个变量都是长期契约（加容易、删是破坏性变更），故按「确有定制需求」收敛，
+> 未穷举所有内部尺寸。缺你需要的请提 issue，不建议自行猜测未文档化的变量名。
+
 ## 能力范围
 
-已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**@ 提及/斜杠命令（textarea 触发菜单）**（`Sender`/`AiChat` 的 `triggers` prop：本地过滤或异步搜索候选、`insertText`/`onSelect` 双行为、`meta.mentions` 结构化回传，见「触发菜单」）、**追问建议**（`AiChat` 的 `suggestions` prop：`parseChunk` 下发 + `setSuggestions` 命令式注入双通道，chips 点击发送或回填，见「追问建议」）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）、**ECharts 图表**（`echarts` 随包自动安装；` ```chart ` 围栏承载 ECharts option JSON、或结构化 `chart` 块，按需加载并以 canvas 活实例渲染统计图（柱/折/饼/散点/雷达/漏斗/仪表盘/热力图/关系图/树图/矩形树图，`EChartsChartKind` 联合类型）；虚拟列表滚动按活实例 `dispose`/重建而非缓存静态图；缺失时围栏维持代码块、结构化块降级为 `alt` 文字。地图、K 线图等更多图表类型分期接入；数学函数图像 function-plot 分期接入）。
+已实现：上述原子组件、组合预设与逻辑 hooks，以及**会话列表**（`Conversations` + `useConversations`，含 localStorage 持久化）、**工具调用 tool_use**（内置 `ToolUseBlock` + `toolRenderers` 按 toolName 路由 + `useChat.resume` HITL 续流，面向「后端跑循环」形态）、**附件上传**（`useAttachments` + `AttachmentsPanel`/`AttachmentCard`，面板 UI 可经 `#attachments-panel` 插槽整块替换、`attachments` 亦可直接注入已创建实例，见「自定义附件面板 UI」）、**语音输入 ASR**（`useVoiceInput` + `AiChat`/`Sender` 的 `voice` prop，可对接自定义识别器）、**语音播报 TTS**（`useSpeech` + `AiChat` 的 `speech` prop，手动点读 + autoPlay 流式增量朗读，可对接自定义合成器）、**模型切换**（`ModelSelector`）、**@ 提及/斜杠命令（textarea 触发菜单）**（`Sender`/`AiChat` 的 `triggers` prop：本地过滤或异步搜索候选、`insertText`/`onSelect` 双行为、`meta.mentions` 结构化回传，见「触发菜单」）、**追问建议**（`AiChat` 的 `suggestions` prop：`parseChunk` 下发 + `setSuggestions` 命令式注入双通道，chips 点击发送或回填，见「追问建议」）、**Mermaid 流程图**（`mermaid` 随包自动安装，仅在内容出现 ` ```mermaid ` 围栏时才按需加载并渲染成图；个别环境安装失败时围栏维持代码块展示）、**ECharts 图表**（`echarts` 随包自动安装；` ```chart ` 围栏承载 ECharts option JSON、或结构化 `chart` 块，按需加载并以 canvas 活实例渲染统计图（柱/折/饼/散点/雷达/漏斗/仪表盘/热力图/关系图/树图/矩形树图，`EChartsChartKind` 联合类型）；虚拟列表滚动按活实例 `dispose`/重建而非缓存静态图；缺失时围栏维持代码块、结构化块降级为 `alt` 文字。地图、K 线图等更多图表类型分期接入；数学函数图像 function-plot 分期接入）、**用户确认卡 user_confirm**（内置卡片 UI + 四态生命周期 + 消息内顶替 + 可配超时时间线；提交经 `BlockIntent` 交宿主处置，见「用户确认卡（user_confirm）」）、**末尾静默呼吸**（`tailBreathing`，流式停顿时末块文字呼吸）、**上下文用量条**（`ContextWindow`，纯受控 + `compress` 事件，作为 `toolbarItems` 注入）、**对话大纲导航**（`outline` + `MessageOutline`，滑动窗口刻度条 + 点击定位）。
 
 **暂未包含**：结构化输入（SlotConfig）、多 Provider class 等，后续版本迭代。

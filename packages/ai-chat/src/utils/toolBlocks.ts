@@ -50,8 +50,11 @@ export function applyToolEvent(msg: ChatMessage, ev: ToolEventDelta, ctx: ToolRe
       type: 'tool_use',
       toolCallId: ev.toolCallId ?? '',
       toolName: ev.toolName ?? '',
-      state: ev.input != null ? 'input-available' : 'input-streaming',
-      ...(ev.input != null ? { input: ev.input } : { input: undefined, argsText: '' }),
+      // 恒定初始态：input/state 的落定统一交给下方步骤 4/5 单点处理
+      //（新建路径预判 ev.input 与步骤 4 完全重复，曾原样重做一遍）
+      state: 'input-streaming',
+      input: undefined,
+      argsText: '',
     };
     msg.content.push(blk);
   } else if (ev.toolCallId) {

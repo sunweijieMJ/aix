@@ -1,20 +1,26 @@
 <template>
   <div
+    ref="rootRef"
     :class="[ns.b(), ns.m(placement)]"
     :data-aix-message-id="itemKey != null && itemKey !== '' ? String(itemKey) : undefined"
     :data-aix-role="role"
   >
+    <!-- avatar / header 插槽带 info 作用域：Bubble 只持有 role/status/itemKey，完整消息由
+         BubbleList 在转发时补 item（气泡本身拿不到 ChatMessage，见其转发处注释）。 -->
     <div v-if="avatar || $slots.avatar" :class="ns.e('avatar')">
-      <slot name="avatar"><img :src="avatar" alt="" /></slot>
+      <slot name="avatar" :info="info"><img :src="avatar" alt="" /></slot>
     </div>
     <div :class="ns.e('wrapper')">
-      <div v-if="$slots.header" :class="ns.e('header')"><slot name="header" /></div>
+      <div v-if="$slots.header" :class="ns.e('header')">
+        <slot name="header" :info="info" />
+      </div>
       <div
         :class="[
           ns.e('content'),
           ns.em('content', variant),
           ns.em('content', shape),
           ns.is('editing', editing),
+          ns.is('tail-idle', tailIdle),
         ]"
         :aria-live="isUpdating ? 'polite' : undefined"
         :aria-atomic="isUpdating ? 'false' : undefined"
@@ -22,6 +28,7 @@
         <LoadingDots v-if="loading" />
         <div v-else-if="editing" :class="ns.e('edit')">
           <textarea
+            ref="editInputRef"
             v-model="draft"
             :class="ns.e('edit-input')"
             rows="2"
@@ -48,15 +55,16 @@
             <component :is="renderedNode" v-if="contentRender" />
             <template v-else>
               <!-- 单一注册表分发：内置 text/reasoning/sources/thought-chain/attachment 与用户 blockRenderers
-                   合并后统一查表，无对应渲染器的块（如业务自定义未注册类型）安全跳过（开发期 console.warn 提示）。 -->
+                   合并后统一查表，无对应渲染器的块（如业务自定义未注册类型）安全跳过（开发期 devWarn 提示）。 -->
               <template v-for="block in content" :key="block.id">
                 <component
-                  :is="renderers[block.type]"
-                  v-if="renderers[block.type]"
+                  :is="rendererOf(block.type)"
+                  v-if="rendererOf(block.type)"
                   :block="block"
                   :info="info"
                   :typing="typing"
                   :on-block-action="handleBlockAction"
+                  :on-block-intent="handleBlockIntent"
                   :tool-renderers="toolRenderers"
                   @typing-complete="onBlockTypingComplete(block)"
                   @keep-mounted-change="handleKeepMountedChange"
@@ -70,17 +78,43 @@
               </template>
             </template>
           </slot>
-          <!-- 出错态：提示 + 重试入口（点击向上冒泡，由 AiChat 调 onReload） -->
-          <span v-if="status === 'error'" :class="ns.e('error')">
-            <span :class="ns.e('error-text')">{{ t.errorMessage }}</span>
-            <button type="button" :class="ns.e('retry')" @click="emit('retry')">
-              {{ t.retryButton }}
-            </button>
+          <!-- 出错态：提示 + 重试入口（点击向上冒泡，由 AiChat 调 onReload）；
+               error 插槽让业务换成自己的错误 UI（错误码、限流/鉴权分支等）。
+
+               【renderSlot 全 Comment 陷阱 —— 包内该问题的说明出处，其余几处指向这里】
+               这里用 `$slots.error` 显式二选一，而**不能**写成 `<slot name="error">兜底</slot>`
+               的原生 fallback：Vue 的 renderSlot 在插槽产出「全是 Comment 节点」时（消费方按
+               条件 v-if，只在部分情况下渲染）会判定为「未提供插槽」而启用 fallback —— 于是消费方
+               明确表示「这种情况不显示」时，反而被强行套回内置 UI。
+               判据必须落在「消费方**是否声明**了插槽」（`$slots.x` 有无），而非「本次渲染产出了
+               什么」。凡存在「提供了插槽但期望渲染空」语义的地方都适用（本处、AiChat #footer、
+               Conversations #item、ReasoningBlock 正文）；不存在该语义的（如 Sender 附件面板）
+               照常用原生 fallback 即可。 -->
+          <template v-if="status === 'error'">
+            <slot v-if="$slots.error" name="error" :info="info" :retry="() => emit('retry')" />
+            <span v-else :class="ns.e('error')">
+              <span :class="ns.e('error-text')">{{ errorText || t.errorMessage }}</span>
+              <button type="button" :class="ns.e('retry')" @click="emit('retry')">
+                {{ t.retryButton }}
+              </button>
+            </span>
+          </template>
+          <!-- 中断且一个内容块都没收到：补一条占位，否则气泡是纯空白框（loading 已为 false，
+               不出加载点；content 为空，不出任何块）。判据刻意用「一个块都没有」而非「没有文本」——
+               停在思考阶段时 content 里有 reasoning 块，那不是空气泡，不该再叠一句「已停止生成」。
+               locale.abortedEmpty 置空串即关闭本占位（业务想自己往 content 里塞兜底文案时用）。 -->
+          <span
+            v-else-if="status === 'abort' && !content.length && t.abortedEmpty"
+            :class="ns.e('aborted')"
+          >
+            {{ t.abortedEmpty }}
           </span>
         </template>
       </div>
-      <!-- 编辑态期间隐藏 footer（复制/编辑/删除等操作条）：避免草稿未保存时被同排的「删除」误删 -->
-      <div v-if="hasFooterContent && !editing" :class="ns.e('footer')"><slot name="footer" /></div>
+      <!-- 编辑态期间隐藏 footer（复制/编辑/删除等操作条）：避免草稿未保存时被同排的「删除」误删。
+           包裹层由 FooterWrap（见 script）按「这一条**产出了内容**」决定渲不渲染，同 BubbleList
+           的 row-before。 -->
+      <FooterWrap v-if="$slots.footer && !editing" :render="$slots.footer" :status="status" />
     </div>
   </div>
 </template>
@@ -93,6 +127,8 @@ export interface BubbleEmits {
   (e: 'retry'): void;
   /** 交互块上抛的动作（携带所属消息 key），由 AiChat 调 updateBlock */
   (e: 'block-action', payload: { messageKey: string | number; action: BlockAction }): void;
+  /** 交互块上抛的意图（携带所属消息 key）：不改数据，逐层转发交宿主处置 */
+  (e: 'block-intent', payload: { messageKey: string | number; intent: BlockIntent }): void;
   /** 用户消息内联编辑保存，携带新文本（由 AiChat 调 onEdit） */
   (e: 'edit', text: string): void;
   /** 进入/退出内联编辑态：供列表层保持该行挂载（虚拟滚动回收该行会销毁行内草稿） */
@@ -105,27 +141,35 @@ export interface BubbleEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
-import { computed, watch, watchEffect, useSlots, ref, Comment, Fragment, isVNode } from 'vue';
-import { locale } from '../locale';
+import {
+  computed,
+  watch,
+  watchEffect,
+  useSlots,
+  nextTick,
+  ref,
+  h,
+  type FunctionalComponent,
+  type VNode,
+} from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
+import { useIdleWhileStreaming } from '../composables/useIdleWhileStreaming';
 import type {
   BlockAction,
+  BlockIntent,
   BubbleProps,
   BubbleContentInfo,
   BlockRenderers,
   ContentBlock,
 } from '../types';
+import { contentFingerprint } from '../utils/contentFingerprint';
+import { devWarn } from '../utils/devWarn';
+import { slotHasContent } from '../utils/hasVNodeContent';
 import { messageText } from '../utils/helpers';
-import AttachmentBlock from './blocks/AttachmentBlock.vue';
-import ChartBlock from './blocks/ChartBlock.vue';
-import ImageBlock from './blocks/ImageBlock.vue';
-import QuoteBlock from './blocks/QuoteBlock.vue';
-import ReasoningBlock from './blocks/ReasoningBlock.vue';
-import SourcesBlock from './blocks/SourcesBlock.vue';
-import TextBlock from './blocks/TextBlock.vue';
-import ThoughtChainBlock from './blocks/ThoughtChainBlock.vue';
-import ToolUseBlock from './blocks/ToolUseBlock.vue';
+import { ownProp } from '../utils/ownProp';
+import { BUBBLE_RESERVED_SLOTS } from '../utils/reservedSlots';
+import { BUILTIN_BLOCK_RENDERERS } from './blocks/builtinRenderers';
 import LoadingDots from './LoadingDots.vue';
 
 const props = withDefaults(defineProps<BubbleProps>(), {
@@ -141,9 +185,25 @@ const props = withDefaults(defineProps<BubbleProps>(), {
 
 const emit = defineEmits<BubbleEmits>();
 
-// 交互渲染器经统一回调上抛动作；补齐所属消息 key 后向上转发，由 AiChat 落到 useChat.updateBlock。
+// 块渲染器上抛的两条通道，都补齐所属消息 key 后原样向上转发：
+// action 由 AiChat 落到 useChat.updateBlock，intent 只转发不改数据（分工见 BlockIntent 注释）。
 const handleBlockAction = (action: BlockAction) =>
   emit('block-action', { messageKey: props.itemKey ?? '', action });
+
+const handleBlockIntent = (intent: BlockIntent) =>
+  emit('block-intent', { messageKey: props.itemKey ?? '', intent });
+
+// 块渲染注册表：内置表（见 blocks/builtinRenderers.ts）与 props.blockRenderers 合并，
+// 用户优先、可覆盖内置。收敛为单一注册表，避免内置类型硬编码先于注册表导致无法覆盖、
+// 内置与扩展走两套机制。
+const renderers = computed<BlockRenderers>(() => ({
+  ...BUILTIN_BLOCK_RENDERERS,
+  ...props.blockRenderers,
+}));
+
+/** 按块类型取渲染器（block.type 来自不可信数据，故走 ownProp 的自有属性查找，见其说明） */
+const rendererOf = (type: string): BlockRenderers[string] | undefined =>
+  ownProp(renderers.value, type);
 
 // —— 消息级 typing-complete 聚合 ——
 // 块渲染器在「追平当下源文本」时上抛块级 typing-complete，但追平可能早于消息终态
@@ -154,8 +214,20 @@ const handleBlockAction = (action: BlockAction) =>
 const completedLens = new Map<string, number>();
 const settledFired = ref(false);
 const isTerminal = computed(() => props.status !== 'loading' && props.status !== 'updating');
+// 只统计**仍走内置渲染器**的 text/reasoning 块。`typing-complete` 是内置 TextBlock /
+// ReasoningBlock 与本聚合之间的私有约定，从未写进对外的 BlockRendererProps 契约；若按块类型
+// 一刀切收集，业务经 blockRenderers 覆盖 text/reasoning 后，其自定义渲染器（不知道要上抛该
+// 事件）会让 completedLens 永远缺这一条 → 消息级 typing-complete 永不触发 → BubbleList 不登记
+// completedIds → typing 常开、虚拟列表回收重挂载时重播。覆盖内置渲染器是文档明示的扩展点，
+// 故这里按渲染器同一性排除：谁接管了渲染，谁自己决定何时算播完，不再阻塞整条消息的完成聚合。
 const typingBlockIds = computed(() =>
-  props.content.filter((b) => b.type === 'text' || b.type === 'reasoning').map((b) => b.id),
+  props.content
+    .filter(
+      (b) =>
+        (b.type === 'text' || b.type === 'reasoning') &&
+        renderers.value[b.type] === BUILTIN_BLOCK_RENDERERS[b.type],
+    )
+    .map((b) => b.id),
 );
 const blockTextLen = (id: string) => {
   const blk = props.content.find((b) => b.id === id);
@@ -164,7 +236,17 @@ const blockTextLen = (id: string) => {
 const fireIfSettled = () => {
   if (settledFired.value || !isTerminal.value) return;
   const ids = typingBlockIds.value;
-  if (!ids.length || !ids.every((id) => completedLens.get(id) === blockTextLen(id))) return;
+  // 空集合的 every() 恒为 true（vacuous truth）：内容全为非 text/reasoning 块
+  // （纯 tool_use/chart/image 等）时视为「没有需要追平的块」，终态到达即算播完，
+  // 不能因 ids 为空而提前 return，否则该消息永远等不到消息级 typing-complete。
+  //
+  // 未登记的块按追平长度 0 参与比较（`?? 0`）：useTypewriter.fireComplete 有 `len > 0`
+  // 守卫，**空文本块永不上抛块级完成事件**，completedLens 里没有它的记录。若按 undefined
+  // 直接比较，空块（blockTextLen 为 0）恒不满足，整条消息的完成聚合被永久阻塞——这是上面
+  // 「ids 为空即 vacuous truth」的对称情形（ids 非空但块长度为 0）。空块可由业务 parser 的
+  // 1→N 拆分、或自定义 parseChunk 经 block 字段下发产生。
+  // 非空块仍需真实追平才算数：其 blockTextLen > 0，`?? 0` 不会让它被误判为已完成。
+  if (!ids.every((id) => (completedLens.get(id) ?? 0) === blockTextLen(id))) return;
   settledFired.value = true;
   emit('typing-complete', { messageKey: props.itemKey ?? '' });
 };
@@ -173,12 +255,15 @@ const handleKeepMountedChange = (active: boolean) =>
   emit('keep-mounted-change', { messageKey: props.itemKey ?? '', active });
 
 const onBlockTypingComplete = (block: ContentBlock) => {
-  if (block.type === 'text' || block.type === 'reasoning') {
-    completedLens.set(block.id, block.text.length);
+  // 归属判定与 typingBlockIds 同源（而非再按 block.type 判一次）：只有**仍走内置渲染器**的
+  // text/reasoning 块参与长度聚合；被 blockRenderers 覆盖的同类块与自定义类型块一视同仁，
+  // 落到下方「直接转发」分支——两处口径必须一致，否则会把不在 ids 里的块记进 completedLens。
+  if (typingBlockIds.value.includes(block.id)) {
+    completedLens.set(block.id, blockTextLen(block.id));
     fireIfSettled();
     return;
   }
-  // 自定义类型块：完成集合无法预知，沿用旧语义直接转发（BubbleList 终态时登记）；
+  // 自定义类型块 / 被覆盖的内置块：完成集合无法预知，沿用旧语义直接转发（BubbleList 终态时登记）；
   // 消息含内置打字块时则不转发，避免自定义块先完成而内置块仍在逐字时提前关闭 typing
   if (!typingBlockIds.value.length) emit('typing-complete', { messageKey: props.itemKey ?? '' });
 };
@@ -194,70 +279,46 @@ watch(isTerminal, (terminal) => {
 });
 
 const ns = useNamespace('bubble');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 const slots = useSlots();
 
-// Bubble 自身消费的保留插槽；其余具名插槽视为「块插槽」透传给块渲染器。
-const RESERVED_SLOTS = ['avatar', 'header', 'content', 'footer'];
+// 本组件消费的插槽之外，其余具名插槽视为「块插槽」透传给块渲染器。
+// 名单集中在 utils/reservedSlots（漏登记会让该插槽在每个块里重复渲染，见其说明）。
 const blockSlotNames = computed(() =>
-  Object.keys(slots).filter((n) => !RESERVED_SLOTS.includes(n)),
+  Object.keys(slots).filter((n) => !(BUBBLE_RESERVED_SLOTS as readonly string[]).includes(n)),
 );
 
-// 判断单个 vnode 是否有实际内容：
-// - Comment（v-if 为 false）视为空；
-// - Fragment / 普通元素都递归看 children 是否全空——
-//  消费方为规避 Vue renderSlot 的「插槽产出全是 Comment 就判定插槽未提供」陷阱
-//  （见 AiChat.vue 的 <slot name="footer"><BubbleActions ... /></slot> 兜底机制），
-//  常会包一层恒定渲染的占位标签（如 <div style="display:contents">）再在内部 v-if；
-//  这种写法编译后占位标签的 children 是长度为 1 的数组（真实 vnode 或 Comment 占位），
-//  并非空数组，因此必须递归判断子节点而非只看数组是否为空。
-// - 无 children（如 <img/> 等自闭合真实内容标签）视为有内容。
-function hasVNodeContent(vnode: unknown): boolean {
-  if (!isVNode(vnode)) return true;
-  if (vnode.type === Comment) return false;
-  if (vnode.type === Fragment || typeof vnode.type === 'string') {
-    if (!Array.isArray(vnode.children)) return true;
-    return vnode.children.some(hasVNodeContent);
-  }
-  return true;
-}
-
-// footer 是否有实际内容：消费方（如按角色/状态条件显示操作条）常常「声明了 footer 插槽，
-// 但某些消息渲染为空」（如 v-if 为 user 消息不出操作条）。只判断插槽是否声明会让这些消息
-// 也套上 __footer 包裹 div，在 flex 布局的 &__wrapper 上多出一份 gap 间距。这里改为渲染一次
-// 插槽、检查是否产出有实际内容的节点，按「有没有实际内容」决定是否包裹。
-const hasFooterContent = computed(() => {
-  const nodes = slots.footer?.();
-  return !!nodes && nodes.some(hasVNodeContent);
-});
-
-// 块渲染注册表：内置 text → TextBlock、reasoning → ReasoningBlock（折叠思考过程）、
-// thought-chain → ThoughtChainBlock（Agent 步骤时间线），与 props.blockRenderers 合并（用户优先，可覆盖内置）。
-// 收敛为单一注册表，避免内置类型硬编码先于注册表导致无法覆盖、内置与扩展走两套机制。
-const builtinRenderers: BlockRenderers = {
-  text: TextBlock,
-  reasoning: ReasoningBlock,
-  'thought-chain': ThoughtChainBlock,
-  sources: SourcesBlock,
-  attachment: AttachmentBlock,
-  tool_use: ToolUseBlock,
-  chart: ChartBlock,
-  image: ImageBlock,
-  quote: QuoteBlock,
+/**
+ * 操作条包裹层：插槽产出实际内容才套那层 __footer div，否则整块不渲染——消费方常「声明了
+ * footer 插槽，但某些消息渲染为空」（按角色/状态决定是否出操作条），只按声明与否判定会让
+ * 这些消息也套上包裹 div，在 flex 的 &__wrapper 上多出一份 gap。
+ * 做成函数式组件（而非 computed 里判空、模板里再渲一次）的理由同 BubbleList.RowBefore，见那里。
+ *
+ * 两个 prop 都是**为了让本组件在该重渲染时重渲染**——无 prop 的子组件会被 Vue 判定为无变化
+ * 而整体跳过更新，插槽便只在挂载时调用一次、此后永远停在首帧：
+ * - `render`：插槽函数本身，父级重渲染产出新闭包时随之更新，覆盖「依赖父级作用域数据」；
+ * - `status`：覆盖「插槽内容按本气泡 status 分支」，该依赖经多层 <slot> 转发进来、Vue 追踪不到，
+ *   必须显式落在 prop 上。
+ * 两条各由 __test__/AiChat.footerSlot.test.ts 的一个用例锁定。
+ */
+const FooterWrap: FunctionalComponent<{ render: () => VNode[]; status?: BubbleProps['status'] }> = (
+  p,
+) => {
+  const nodes = p.render();
+  return slotHasContent(nodes) ? h('div', { class: ns.e('footer') }, nodes) : null;
 };
-const renderers = computed<BlockRenderers>(() => ({
-  ...builtinRenderers,
-  ...props.blockRenderers,
-}));
+// 必须显式声明 props（同 BubbleList.RowBefore）：函数式组件不声明时传入的一切都会走 attrs
+// fallthrough，render / status 会被原样写成根节点的 DOM 属性。
+FooterWrap.props = ['render', 'status'];
 
 // 开发期提示：内容块无对应渲染器时跳过渲染并告警（每种类型仅一次），
 // 避免如未注册的 sources 块被静默丢弃而难以排查。
 const warnedTypes = new Set<string>();
 watchEffect(() => {
   for (const block of props.content ?? []) {
-    if (!renderers.value[block.type] && !warnedTypes.has(block.type)) {
+    if (!rendererOf(block.type) && !warnedTypes.has(block.type)) {
       warnedTypes.add(block.type);
-      console.warn(
+      devWarn(
         `[AiChat] 内容块类型 "${block.type}" 没有注册渲染器，已跳过渲染。请通过 blockRenderers 注册对应组件。`,
       );
     }
@@ -273,18 +334,97 @@ const info = computed<BubbleContentInfo>(() => ({
 // 流式更新中：驱动内容区 aria-live 播报，仅此状态挂载（虚拟列表回收其它行不会误播报）
 const isUpdating = computed(() => props.status === 'updating');
 
+// 末尾静默呼吸：判定必须在气泡层而非块内——一条消息是 ContentBlock[]，
+// 形如 [text, tool_use, text] 时，首个 text 在工具开始流式后就不再增长，
+// 若各块自行判定，会出现「中间块呼吸、真正在输出的末块不呼吸」。
+// 气泡层持有完整 content，指纹覆盖全部块，末块由 CSS 后代选择器命中。
+const tailBreathingEnabled = computed(() => !!props.tailBreathing);
+const tailIdleMs = computed(() =>
+  typeof props.tailBreathing === 'object' ? (props.tailBreathing.idleMs ?? 3000) : 3000,
+);
+const isStreamingContent = computed(
+  () => props.status === 'loading' || props.status === 'updating',
+);
+const idle = useIdleWhileStreaming({
+  streaming: isStreamingContent,
+  fingerprint: () => contentFingerprint(props.content),
+  idleMs: tailIdleMs,
+});
+const tailIdle = computed(() => tailBreathingEnabled.value && idle.value);
+
 const renderedNode = computed(() =>
   props.contentRender ? props.contentRender(props.content, info.value) : null,
 );
 
+const rootRef = ref<HTMLElement | null>(null);
+
 // 内联编辑：editing 是受控 prop（由 BubbleList.startEdit 驱动进入），Bubble 自身只管 draft 文本与保存/取消。
 const draft = ref('');
+const editInputRef = ref<HTMLTextAreaElement | null>(null);
+/** 进入编辑前持有焦点的元素，退出时优先归还给它 */
+let returnFocusEl: HTMLElement | null = null;
+
+/**
+ * 退出编辑时归还焦点。与进入编辑的交接是同一个问题的两半：编辑框（连同取消/保存键）
+ * 随 `v-else-if="editing"` 被卸载，不接管的话 activeElement 落回 `<body>`，键盘 / 读屏
+ * 用户要从页面顶部重新 Tab 一遍才能回到这条消息。
+ *
+ * 两条守卫：
+ * - 触发编辑的铅笔键多半随 footer 一起被卸载过（`v-if="$slots.footer && !editing"`），
+ *   旧引用已脱离文档，focus() 对它无效 → 退回气泡根，让后续 Tab 从这条消息继续；
+ * - 焦点若已被别处接管（如同帧内另一条消息进入了编辑态），不抢回来。
+ *
+ * 气泡根的 tabindex 只在这一刻临时挂上、失焦即摘：常驻 tabindex="-1" 会让点击气泡也聚焦它，
+ * 平白改变每条消息的默认交互，而这里只需要一个程序化落点。
+ */
+const restoreFocusAfterEdit = () => {
+  // 同一 tick 内 true→false→true（外部快速改主意 / 重复触发编辑）时，本回调排在「聚焦
+  // textarea」之前执行：此时已重回编辑态，既不该抢焦点，更不该把刚存好的 returnFocusEl 清掉
+  // ——否则真正退出那次就没有归还目标了。
+  if (props.editing) return;
+  const prev = returnFocusEl;
+  returnFocusEl = null;
+  if (typeof document === 'undefined') return;
+  const active = document.activeElement;
+  const root = rootRef.value;
+  // 焦点仍在本气泡内（编辑框刚卸载前的残留）或已丢给 body，才由我们接管
+  const isLost = !active || active === document.body || !!root?.contains(active);
+  if (!isLost) return;
+  // 排除 body：进入编辑时若本就无人持有焦点，activeElement 即 body，而它 isConnected 恒真——
+  // 还给它等于没还（焦点仍在文档根，Tab 依旧从页面顶部重来）。
+  if (prev && prev !== document.body && prev.isConnected) {
+    prev.focus();
+    return;
+  }
+  if (!root) return;
+  root.setAttribute('tabindex', '-1');
+  root.focus();
+  root.addEventListener('blur', () => root.removeAttribute('tabindex'), { once: true });
+};
+
 // editing 由 false→true 时（外部请求进入编辑态）重新取当前 content 的最新文本作为草稿基线
 watch(
   () => props.editing,
-  (v) => {
-    if (v)
-      draft.value = messageText({ id: '', role: props.role ?? 'ai', content: props.content ?? [] });
+  (v, old) => {
+    if (!v) {
+      // immediate 首次触发时 old 为 undefined，不是「退出」——否则挂载即抢焦点
+      if (old === true) void nextTick(restoreFocusAfterEdit);
+      return;
+    }
+    returnFocusEl =
+      typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null);
+    draft.value = messageText({ id: '', role: props.role ?? 'ai', content: props.content ?? [] });
+    // 焦点交接：触发编辑的那个铅笔按钮与整条 footer 在同一帧被卸载（见模板
+    // `v-if="$slots.footer && !editing"`），不接管的话 activeElement 落回 <body>，
+    // 键盘 / 读屏用户点完编辑后要重新 Tab 一遍才能找到输入框。
+    // 光标置于末尾（而非全选）：编辑既有消息通常是接着补充，与包内 Conversations.startRename
+    // 的重命名输入框同一处理口径。
+    void nextTick(() => {
+      const el = editInputRef.value;
+      if (!el) return; // 同帧内又退出编辑态 / 组件已卸载
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
   },
   { immediate: true }, // 挂载时若 editing 已为 true（如 BubbleList 已在 editingIds 中）也需取到初值，而非等下一次翻转
 );
@@ -318,8 +458,14 @@ const cancelEdit = () => {
 
     img {
       display: block;
-      width: 36px;
-      height: 36px;
+
+      /* 组件级尺寸旋钮（见 README「样式定制」）：只写 var() fallback、**不声明默认值**——
+         默认值一旦声明在组件根上，元素自身的声明会压过从祖先继承的值，宿主写
+         `:root { --aix-bubble-avatar-size: 48px }` 就会被静默忽略。纯 fallback 形态下
+         该变量从未被声明，宿主在任意祖先设值都能继承生效，且无特异度冲突。
+         BubbleList 的骨架屏头像共用本变量，保证占位与真实头像同步。 */
+      width: var(--aix-bubble-avatar-size, 36px);
+      height: var(--aix-bubble-avatar-size, 36px);
       border: 1px solid var(--aix-colorBorderSecondary);
       border-radius: 50%;
       background-color: var(--aix-colorFillTertiary);
@@ -346,7 +492,9 @@ const cancelEdit = () => {
 
   &__content {
     position: relative;
-    max-width: min(680px, 100%);
+
+    /* 组件级尺寸旋钮（见 README「样式定制」与上方 __avatar 的说明） */
+    max-width: var(--aix-bubble-max-width, min(680px, 100%));
     padding: var(--aix-paddingSM) var(--aix-padding);
     transition:
       border-color var(--aix-motionDurationMid) var(--aix-motionEaseInOut),
@@ -356,21 +504,35 @@ const cancelEdit = () => {
     line-height: var(--aix-lineHeight);
     overflow-wrap: break-word;
 
-    /* AI 气泡：白底卡片，细边 + 极轻阴影，在浅灰背景上浮起 */
+    /* 末尾静默呼吸：输出停顿时末块文字做明暗呼吸，与「已说完」区分。
+       必须用「直接子元素 + :last-child」限定到最后一个块——各块渲染器的根元素都是
+       本容器的直接子元素，一条消息含多个文本块时（如 [text, tool_use, text]）会渲染
+       出多个 .aix-markdown，用后代选择器会让中间的文本块也一起呼吸。
+       末块非文本块（tool_use / chart / image）时不命中，由其自身的加载态表达进度。
+       markdown 引擎未就绪 / 未装 markdown-it 的降级分支里 .aix-markdown 只含文本节点、
+       没有元素子节点，末层 :last-child 匹配不到 → 降级期不呼吸，是已知且可接受的取舍。
+       :where() 只压低 .aix-markdown 这一位的优先级，业务可无痛覆盖。 */
+    &.is-tail-idle > :where(.aix-markdown):last-child > :last-child {
+      animation: aix-bubble-tail-breathe 2s var(--aix-motionEaseInOut) infinite;
+    }
+
+    /* AI 气泡：白底卡片，细边 + 极轻阴影，在浅灰背景上浮起。
+       圆角走组件级尺寸旋钮 --aix-bubble-content-radius（见 README「样式定制」），
+       fallback 到原有 --aix-borderRadiusLG，未设置时行为不变 */
     &--filled {
       border: 1px solid var(--aix-colorBorderSecondary);
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
       background-color: var(--aix-colorBgContainer);
       box-shadow: var(--aix-shadowXS);
     }
 
     &--outlined {
       border: 1px solid var(--aix-colorBorder);
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
     }
 
     &--shadow {
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
       background-color: var(--aix-colorBgContainer);
       box-shadow: var(--aix-shadowSM);
     }
@@ -381,11 +543,11 @@ const cancelEdit = () => {
     }
 
     &--round {
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
     }
 
     &--corner {
-      border-radius: var(--aix-borderRadiusLG);
+      border-radius: var(--aix-bubble-content-radius, var(--aix-borderRadiusLG));
     }
   }
 
@@ -495,6 +657,14 @@ const cancelEdit = () => {
     font-size: var(--aix-fontSizeSM);
   }
 
+  /* 中断空消息占位：次级文本色，与错误条区分（这不是错误，是用户自己停的） */
+  &__aborted {
+    display: inline-flex;
+    align-items: center;
+    color: var(--aix-colorTextTertiary);
+    font-size: var(--aix-fontSizeSM);
+  }
+
   &__retry {
     padding: 2px var(--aix-paddingXS);
     transition: all var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
@@ -509,6 +679,25 @@ const cancelEdit = () => {
       border-color: var(--aix-colorError);
       background-color: var(--aix-colorErrorBg);
     }
+  }
+}
+
+/* 末尾静默呼吸：正文色 ⇄ 次级色往复，暗示「仍在生成」 */
+@keyframes aix-bubble-tail-breathe {
+  0%,
+  100% {
+    color: var(--aix-colorText);
+  }
+
+  50% {
+    color: var(--aix-colorTextTertiary);
+  }
+}
+
+/* 尊重系统「减少动态效果」设置：关闭呼吸动画（选择器须与上方一致，否则降级不生效） */
+@media (prefers-reduced-motion: reduce) {
+  .aix-bubble__content.is-tail-idle > :where(.aix-markdown):last-child > :last-child {
+    animation: none;
   }
 }
 </style>

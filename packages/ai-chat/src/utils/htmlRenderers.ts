@@ -1,7 +1,6 @@
-import { useLocale } from '@aix/hooks';
 import { Launch } from '@aix/icons';
 import { defineComponent, h, ref, computed, onMounted, onUnmounted } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { MarkdownRenderers } from './markdownWalker';
 
 /** 单实例递增 id：区分同页面多个 HTML Sandbox 块的 postMessage 归属 */
@@ -58,7 +57,7 @@ const HtmlSandboxBlock = defineComponent({
     settled: { type: Boolean, required: true },
   },
   setup(props) {
-    const { t } = useLocale(locale);
+    const { t } = useAiChatLocale();
     const instanceId = `aix-html-sandbox-${sandboxIdCounter++}`;
     const mode = ref<'preview' | 'code'>('preview');
     const frameHeight = ref(MIN_FRAME_HEIGHT);
@@ -76,7 +75,10 @@ const HtmlSandboxBlock = defineComponent({
       if (!data || data.type !== RESIZE_MESSAGE_TYPE || data.id !== instanceId) return;
       const height = Number(data.height);
       if (Number.isFinite(height) && height > 0) {
-        frameHeight.value = Math.min(MAX_FRAME_HEIGHT, Math.max(MIN_FRAME_HEIGHT, Math.ceil(height)));
+        frameHeight.value = Math.min(
+          MAX_FRAME_HEIGHT,
+          Math.max(MIN_FRAME_HEIGHT, Math.ceil(height)),
+        );
       }
     };
     onMounted(() => window.addEventListener('message', onMessage));
@@ -170,7 +172,7 @@ const HtmlSandboxBlock = defineComponent({
 /**
  * HTML 渲染器：`allowHtml` 开启时启用。`html_block`（原始 HTML 段落）与 `fence:html`
  * （```html 围栏）共用 HtmlSandboxBlock，经 sandbox iframe 隔离渲染，不再依赖 DOMPurify。
- * `html_inline`（行内裸标签）P1 维持丢弃、保留周边文本，与此前行为一致。
+ * `html_inline`（行内裸标签）一律丢弃、保留周边文本。
  */
 export function createHtmlRenderers(): MarkdownRenderers {
   return {

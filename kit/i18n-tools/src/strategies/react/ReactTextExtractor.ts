@@ -71,9 +71,15 @@ export class ReactTextExtractor extends BaseTextExtractor {
             property.initializer,
             sourceFile,
           );
+          // 只接受字符串字面量：简写变量值经 shorthand 分支是 {node,text} 对象（动态
+          // 描述符），流入 restore 的 normalizeRestoreMessage 会对非字符串抛 TypeError，
+          // 与 extractFormatMessageInfo 同口径过滤。
           const messageInfo: MessageInfo = {
-            id: messageProps.id,
-            defaultMessage: messageProps.defaultMessage,
+            id: typeof messageProps.id === 'string' ? messageProps.id : undefined,
+            defaultMessage:
+              typeof messageProps.defaultMessage === 'string'
+                ? messageProps.defaultMessage
+                : undefined,
           };
 
           definedMessages.set(messageKey, messageInfo);

@@ -6,7 +6,7 @@ import {
   localStorageConversationStorage,
   type ConversationStorage,
 } from '../src/composables/useConversations';
-import type { Conversation, ChatMessage } from '../src/types';
+import type { Conversation, ChatMessage, ExportedTree } from '../src/types';
 import { textMessage, messageText } from '../src/utils/helpers';
 
 const conv = (id: string, label: string): Conversation => ({
@@ -122,9 +122,87 @@ describe('useConversations', () => {
     expect(c.activeKey.value).toBe('a'); // 无效 id 不切
   });
 
+  it('流式 mutate 当前会话内容时不深遍历非活跃会话（持久化 watch 不再随 chunk 全仓库 traverse）', async () => {
+    // 非活跃会话消息内容埋 getter 探针：deep watcher 的依赖收集遍历一旦触达就会读它
+    let inactiveReads = 0;
+    const spyBlock: Record<string, unknown> = { id: 'b-spy', type: 'text' };
+    Object.defineProperty(spyBlock, 'text', {
+      get() {
+        inactiveReads += 1;
+        return '非活跃内容';
+      },
+      enumerable: true,
+      configurable: true,
+    });
+    const inactiveMsg = {
+      id: 'mb',
+      role: 'ai',
+      status: 'success',
+      content: [spyBlock],
+    } as unknown as ChatMessage;
+    const storage: ConversationStorage = { load: () => null, save: () => {} };
+    const c = useConversations({
+      storage,
+      defaultConversations: [
+        { id: 'a', label: 'A', timestamp: 1, messages: [textMessage('ai', '正在流式')] },
+        { id: 'b', label: 'B', timestamp: 2, messages: [inactiveMsg] },
+      ],
+    });
+    await flushAsync();
+    await nextTick();
+    inactiveReads = 0; // 初始化期的依赖收集遍历不计，只看流式期
+    expect(c.activeKey.value).toBe('a');
+    // 模拟流式：逐 chunk 就地 mutate 活跃会话（a）的消息内容，每 chunk 独立 flush
+    const block = c.conversations.value[0]!.messages[0]!.content[0] as { text: string };
+    for (let i = 0; i < 5; i++) {
+      block.text += `chunk${i}`;
+      await nextTick();
+    }
+    expect(inactiveReads).toBe(0);
+  });
+
   describe('持久化 storage', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
+
+    it('流式就地 mutate 活跃会话消息内容仍触发防抖保存（deep 语义保留在活跃会话）', async () => {
+      const saved: Conversation[][] = [];
+      const storage: ConversationStorage = {
+        load: () => [conv('x', 'X')],
+        save: (list) => {
+          saved.push(JSON.parse(JSON.stringify(list)));
+        },
+      };
+      const c = useConversations({ storage, saveDebounce: 100 });
+      await vi.advanceTimersByTimeAsync(0);
+      // 模拟流式共享活引用：直接深改活跃会话的消息文本（不经 activeMessages setter）
+      const block = c.conversations.value[0]!.messages[0]!.content[0] as { text: string };
+      block.text = '流式追加后的完整回复';
+      await nextTick();
+      vi.advanceTimersByTime(100);
+      expect(saved).toHaveLength(1);
+      expect((saved[0]![0]!.messages[0]!.content[0] as { text: string }).text).toBe(
+        '流式追加后的完整回复',
+      );
+    });
+
+    it('重命名非活跃会话仍触发防抖保存（列表元数据变化被指纹覆盖）', async () => {
+      const saved: Conversation[][] = [];
+      const storage: ConversationStorage = {
+        load: () => [conv('a', 'A'), conv('b', 'B')],
+        save: (list) => {
+          saved.push(JSON.parse(JSON.stringify(list)));
+        },
+      };
+      const c = useConversations({ storage, saveDebounce: 100 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(c.activeKey.value).toBe('a');
+      c.rename('b', 'B2'); // 改的是非活跃会话
+      await nextTick();
+      vi.advanceTimersByTime(100);
+      expect(saved).toHaveLength(1);
+      expect(saved[0]![1]!.label).toBe('B2');
+    });
 
     it('初始化从 storage.load 读取，变更后防抖 save', async () => {
       const saved: Conversation[][] = [];
@@ -186,6 +264,10 @@ describe('useConversations', () => {
   });
 
   describe('异步 storage 支持', () => {
+    // 本组下面三条用例改用 fake timers（各自在用例内 useFakeTimers），此处统一复位。
+    // 未安装 fake timers 的用例调用 useRealTimers 是无害空操作。
+    afterEach(() => vi.useRealTimers());
+
     it('未提供 storage：isLoading 恒为 false，conversations 同步可用', () => {
       const c = useConversations({ defaultConversations: [conv('a', 'A')] });
       expect(c.isLoading.value).toBe(false);
@@ -231,11 +313,15 @@ describe('useConversations', () => {
         load: () => [conv('x', 'X')],
         save: () => Promise.reject(new Error('write failed')),
       };
+      // 冻结定时器：storage 的 load/save 都是同步的，防抖窗口是这里唯一的时间因素，
+      // 用真实定时器睡 30ms 去等 10ms 防抖只有 20ms 余量，满负载 CI 下迟到即挂（本条在
+      // pre-commit 钩子里间歇性失败过）。改为显式推进虚拟时钟，结果与机器快慢无关。
+      vi.useFakeTimers();
       const c = useConversations({ storage, saveDebounce: 10 });
-      await flushAsync(); // 等待初始化的异步 load 完成
+      await vi.advanceTimersByTimeAsync(0); // 等待初始化的异步 load 完成
       c.rename('x', 'X2');
-      await new Promise((resolve) => setTimeout(resolve, 30)); // 等过 10ms 防抖窗口
-      await flushAsync();
+      await vi.advanceTimersByTimeAsync(10); // 跨过 10ms 防抖窗口
+      await vi.advanceTimersByTimeAsync(0); // 排空 save 的 rejection 处理
       expect(warn).toHaveBeenCalledWith(
         '[ai-chat] 会话持久化失败，本次变更未保存:',
         expect.any(Error),
@@ -258,12 +344,81 @@ describe('useConversations', () => {
       expect(c.conversations.value.map((x) => x.id)).toEqual([newId]);
     });
 
+    // 回归：AiChat 挂载期会把内部空 active path 镜像回写给 v-model:messages（见 AiChat.vue
+    // 的 SSOT 桥接），这次「空 → 空」的无效写入落到 activeMessages setter 上，若被计为
+    // localDirty，异步 storage.load() 的结果会被 applyLoaded 整体丢弃，违反「load 有数据
+    // 时以 load 为准」的契约；更严重的是之后任意一次用户变更都会把空默认写回 storage，
+    // 覆盖已持久化的真实历史（数据丢失，而非仅不展示）。
+    it('空数组写入 activeMessages 不计为本地变更，不丢弃 load 结果', async () => {
+      let resolveLoad!: (v: Conversation[]) => void;
+      const storage: ConversationStorage = {
+        load: () =>
+          new Promise<Conversation[]>((resolve) => {
+            resolveLoad = resolve;
+          }),
+        save: () => {},
+      };
+      const c = useConversations({
+        // 与远端同 id 的空壳会话（常见接法：先渲染占位再异步补历史）
+        defaultConversations: [{ id: 'x', label: '新对话', messages: [] }],
+        storage,
+      });
+      // 模拟 AiChat 挂载期的镜像回写：内部消息为空 → 写回空数组
+      c.activeMessages.value = [];
+      resolveLoad([conv('x', 'X')]);
+      await flushAsync();
+      expect(c.activeMessages.value).toHaveLength(1);
+      expect(messageText(c.activeMessages.value[0]!)).toBe('X 的消息');
+    });
+
+    it('非空写入 activeMessages 仍计为本地变更（不得因上条修复而放宽）', async () => {
+      let resolveLoad!: (v: Conversation[]) => void;
+      const storage: ConversationStorage = {
+        load: () =>
+          new Promise<Conversation[]>((resolve) => {
+            resolveLoad = resolve;
+          }),
+        save: () => {},
+      };
+      const c = useConversations({
+        defaultConversations: [{ id: 'x', label: '新对话', messages: [] }],
+        storage,
+      });
+      c.activeMessages.value = [textMessage('user', '用户已经开始输入')];
+      resolveLoad([conv('x', 'X')]);
+      await flushAsync();
+      // 用户已有真实操作：load 的旧快照不得整体覆盖
+      expect(messageText(c.activeMessages.value[0]!)).toBe('用户已经开始输入');
+    });
+
+    it('空数组覆盖已有消息时仍计为本地变更（真实清空语义不被吞掉）', async () => {
+      let resolveLoad!: (v: Conversation[]) => void;
+      const storage: ConversationStorage = {
+        load: () =>
+          new Promise<Conversation[]>((resolve) => {
+            resolveLoad = resolve;
+          }),
+        save: () => {},
+      };
+      const c = useConversations({
+        // 初始已有消息，用户主动清空 → 空数组写入是有意义的变更
+        defaultConversations: [conv('x', 'X')],
+        storage,
+      });
+      expect(c.activeMessages.value).toHaveLength(1);
+      c.activeMessages.value = [];
+      resolveLoad([conv('x', 'X')]);
+      await flushAsync();
+      expect(c.activeMessages.value).toHaveLength(0);
+    });
+
     it('load 落地本身不触发防抖 save，仅用户后续变更才触发', async () => {
       const save = vi.fn();
       const storage: ConversationStorage = { load: () => [conv('x', 'X')], save };
+      vi.useFakeTimers();
       useConversations({ storage, saveDebounce: 10 });
-      await flushAsync();
-      await new Promise((resolve) => setTimeout(resolve, 30)); // 跨过防抖窗口
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(30); // 跨过防抖窗口
       expect(save).not.toHaveBeenCalled();
     });
 
@@ -280,29 +435,33 @@ describe('useConversations', () => {
           });
         },
       };
+      // 必须冻结定时器：B/C 两次变更后「防抖是否已触发」在外部完全不可观测（只是把 pending
+      // 换成了新快照），无法用轮询等条件，只能依赖时间——真实定时器下每个 20ms 睡眠都是一次
+      // 对 10ms 防抖的赌博，赌输就整条断言链崩。虚拟时钟把它变成确定性推进。
+      vi.useFakeTimers();
       const c = useConversations({ storage, saveDebounce: 10 });
-      await flushAsync(); // 等初始化 load 完成
+      await vi.advanceTimersByTimeAsync(0); // 等初始化 load 完成
 
       // 第一次变更 → save A 发起（慢，先不 resolve）
       c.rename('x', 'A');
-      await new Promise((r) => setTimeout(r, 20));
+      await vi.advanceTimersByTimeAsync(20);
       expect(savedOrder).toEqual(['A']);
 
       // save A 在飞期间连续两次变更：串行化下均不立即发起，仅折叠为一次 pending（最新数据）
       c.rename('x', 'B');
-      await new Promise((r) => setTimeout(r, 20));
+      await vi.advanceTimersByTimeAsync(20);
       c.rename('x', 'C');
-      await new Promise((r) => setTimeout(r, 20));
+      await vi.advanceTimersByTimeAsync(20);
       expect(savedOrder).toEqual(['A']); // B、C 都在等 A，未重叠发起
 
       // 完成 save A → 用最新快照续跑：折叠掉中间的 B，只落最新的 C
       resolvers[0]!();
-      await flushAsync();
+      await vi.advanceTimersByTimeAsync(0);
       expect(savedOrder).toEqual(['A', 'C']);
 
       // 完成 save C → 无更多 pending，不再续跑
       resolvers[1]!();
-      await flushAsync();
+      await vi.advanceTimersByTimeAsync(0);
       expect(savedOrder).toEqual(['A', 'C']);
       // 最终落地的是最后一次变更的数据
       expect(savedOrder[savedOrder.length - 1]).toBe('C');
@@ -420,6 +579,57 @@ describe('useConversations — 树持久化与迁移', () => {
     expect(tree.headId).toBe('m2');
   });
 
+  it('读 activeTree 不得改写源 messages（getter 必须无副作用）', () => {
+    // 迁移路径会经 messageTree.appendMessage 给缺 createdAt 的消息补写时间戳。
+    // 若直接把 c.messages 喂进去，"读一个 computed"就变成了"写用户数据"，且写的是本
+    // computed 刚读过的响应式依赖 → 当场自失效（首次重读要整棵树重建），配了 storage
+    // 时还会调度一次用户从未触发的 save。
+    const c = useConversations({
+      defaultConversations: [{ id: 'c1', label: 'x', messages: [msg('m1'), msg('m2')] }],
+    });
+    const source = c.conversations.value[0]!.messages;
+    expect(source.every((m) => m.createdAt == null)).toBe(true);
+
+    const tree = c.activeTree.value!;
+    // ① 源消息保持原样（时间戳只落在导出树的副本上）
+    expect(source.every((m) => m.createdAt == null)).toBe(true);
+    expect(tree.nodes.every((n) => typeof n.message.createdAt === 'number')).toBe(true);
+    // ② 无自失效：连续读取命中缓存、返回同一对象
+    expect(c.activeTree.value).toBe(tree);
+    // ③ 迁移结果本身仍然正确
+    expect(tree.nodes.map((n) => n.id)).toEqual(['m1', 'm2']);
+    expect(tree.headId).toBe('m2');
+    // ④ 浅拷贝只换消息外壳，content 数组仍共享引用（不复制块数据）
+    expect(tree.nodes[0]!.message.content).toBe(source[0]!.content);
+  });
+
+  it('读 activeTree 不触发持久化 save（副作用回归）', async () => {
+    const save = vi.fn();
+    const c = useConversations({
+      defaultConversations: [{ id: 'c1', label: 'x', messages: [msg('m1')] }],
+      storage: { load: () => null, save },
+      saveDebounce: 0,
+    });
+    await flushAsync();
+    save.mockClear();
+    void c.activeTree.value;
+    void c.activeTree.value;
+    await flushAsync();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('create 传入 tree 时透传保留（类型接受 tree，实现不得静默丢弃分支数据）', () => {
+    const t = createMessageTree([msg('m1'), msg('m2')]);
+    const exported = t.exportTree();
+    const c = useConversations();
+    const id = c.create({ messages: [msg('m1'), msg('m2')], tree: exported });
+    // conversations 是深响应式 ref，读回的是 proxy，按结构相等断言
+    const created = c.conversations.value.find((x) => x.id === id)!;
+    expect(created.tree).toStrictEqual(exported);
+    // activeTree 读取走已存 tree（含分支结构），而非从 messages 重新迁移线性树
+    expect(c.activeTree.value).toStrictEqual(exported);
+  });
+
   it('写入 activeTree 后存回 conversation.tree，下次 load 直接用 tree', () => {
     const t = createMessageTree([msg('m1')]);
     const c = useConversations({ defaultConversations: [{ id: 'c1', label: 'x', messages: [] }] });
@@ -454,4 +664,27 @@ describe('useConversations — 树持久化与迁移', () => {
     expect(restored.tree!.nodes[0]!.message.status).toBe('error'); // 树内节点复位
     expect(restored.messages[0]!.status).toBe('error'); // 镜像同样复位（回归护栏）
   });
+
+  // 防御回归：与 messageTree.ts 的 importTree/activePath/branches/findLeaf 同类，
+  // rebuildActivePath 沿 parentId 回溯也须防环——业务方经 v-model:tree 回写的脏数据
+  // （localStorage 损坏/自定义 storage 实现有 bug/多标签页写入竞态）可能使 parentId 成环，
+  // 无访问集保护会 while(cur) 同步死循环挂死主线程。设 2s 超时使其在未修复时可控失败而非真挂死。
+  it('activeTree 写入循环 parentId 的脏数据时 rebuildActivePath 不死循环', () => {
+    const cyclic: ExportedTree = {
+      nodes: [
+        { id: 'A', parentId: 'C', message: msg('A') },
+        { id: 'B', parentId: 'A', message: msg('B') },
+        { id: 'C', parentId: 'B', message: msg('C') },
+      ],
+      headId: 'C',
+    };
+    const c = useConversations({
+      defaultConversations: [{ id: 'c1', label: 'x', messages: [] }],
+    });
+    expect(() => {
+      c.activeTree.value = cyclic;
+    }).not.toThrow();
+    // 同步执行能走到这里即证明回溯未挂死；结果长度不应超过节点总数
+    expect(c.conversations.value[0]!.messages.length).toBeLessThanOrEqual(cyclic.nodes.length);
+  }, 2000);
 });

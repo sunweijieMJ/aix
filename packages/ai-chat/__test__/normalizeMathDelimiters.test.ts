@@ -70,4 +70,15 @@ describe('normalizeMathDelimiters（数学定界符归一化）', () => {
       '矩阵行 a \\\\(b+1) 之后 $z$',
     );
   });
+
+  // 回归：早先实现用私用区 U+E000 包裹序号做代码区占位——输入天然含 PUA 字符
+  //（图标字体文本、模型输出）且恰好拼出「U+E000 数字 U+E000」时，还原步会把它
+  // 错误替换为别处代码或空串。现改为按位置切分，不存在魔法字符碰撞面。
+  it('输入天然含私用区字符（U+E000 包裹数字）时原样保留，转换不受干扰', () => {
+    const pua = String.fromCodePoint(0xe000);
+    const src = `图标 ${pua}0${pua} 与公式 \\[x\\] 和 \`code \\[y\\]\``;
+    expect(normalizeMathDelimiters(src)).toBe(
+      `图标 ${pua}0${pua} 与公式 $$x$$ 和 \`code \\[y\\]\``,
+    );
+  });
 });

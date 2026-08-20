@@ -1,0 +1,73 @@
+{
+  "name": "@aix/audio",
+  "version": "0.0.2",
+  "description": "Vue 3 Speech SDK: ASR/TTS/录音/波形 组件库",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.cjs",
+  "module": "./es/index.js",
+  "types": "./es/index.d.ts",
+  "style": "./es/index.css",
+  "sideEffects": [
+    "*.css",
+    "*.scss",
+    "*.sass"
+  ],
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./es/index.d.ts",
+        "default": "./es/index.js"
+      },
+      "require": {
+        "types": "./lib/index.d.cts",
+        "default": "./lib/index.cjs"
+      }
+    },
+    "./es/*": "./es/*",
+    "./lib/*": "./lib/*",
+    "./style": {
+      "types": "./es/style.d.ts",
+      "default": "./es/index.css"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "es"
+  ],
+  "scripts": {
+    "dev": "rollup -c -w",
+    "lint:script": "eslint . --max-warnings 0",
+    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "lint": "pnpm run lint:script && pnpm run lint:style",
+    "type-check": "vue-tsc --noEmit -p tsconfig.json",
+    "test": "vitest --run",
+    "build": "pnpm run clean && pnpm run build:types && pnpm run build:js",
+    "build:js": "rollup -c",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es -p tsconfig.build.json",
+    "clean": "rimraf lib es tsconfig.tsbuildinfo"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "vue": "^3.5.31",
+    "@aix/theme": ">=0.0.1"
+  },
+  "peerDependenciesMeta": {
+    "@aix/theme": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@kit/eslint-config": "workspace:^",
+    "@kit/stylelint-config": "workspace:^",
+    "@kit/typescript-config": "workspace:^",
+    "@kit/vitest-config": "workspace:^",
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "stylelint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vue-tsc": "catalog:"
+  }
+}

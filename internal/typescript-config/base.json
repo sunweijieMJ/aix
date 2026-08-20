@@ -1,5 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
+  "files": ["./shims/style-imports.d.ts"],
   "compilerOptions": {
     "strict": true,
     "noUnusedLocals": true,

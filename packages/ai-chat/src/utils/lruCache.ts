@@ -30,8 +30,11 @@ export function createLruCache<K, V>(max: number): LruCache<K, V> {
   };
   return {
     get(key) {
-      const hit = store.get(key);
-      if (hit !== undefined) touch(key, hit);
+      // has 判存而非 value !== undefined：共享工厂的 V 可含 undefined，按值判存会让
+      // 这类命中既不刷热度、也与 miss 无法区分，违反接口「命中刷新热度」的承诺
+      if (!store.has(key)) return undefined;
+      const hit = store.get(key) as V;
+      touch(key, hit);
       return hit;
     },
     set(key, value) {

@@ -1,5 +1,5 @@
 import { mount, flushPromises } from '@vue/test-utils';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { defineComponent, nextTick } from 'vue';
 import { h } from 'vue';
 import Bubble from '../src/components/Bubble.vue';
@@ -186,6 +186,17 @@ describe('BubbleList', () => {
   // 仍应保持 typing=true，使 typewriter 把剩余字符播放完，避免结尾跳显；
   // 而纯历史消息（从未 updating，直接以 success 进入）始终 typing=false，不逐字重播。
   describe('流式消息 typing 持续到播放完整', () => {
+    // 必须冻结定时器：本组用例断言的是「打字机尚未追平时 typing 仍为 true」，而 TextBlock 里的
+    // useTypewriter 跑在真实 setInterval(tick, 30) 上，且挂载时 displayed 取的是源文本快照——
+    // 首个 tick 即追平并上抛 typing-complete，BubbleList 随之把该 id 记入 completedIds、
+    // 关掉 typing。flushPromises 只排空微任务队列，却会让真实时间流逝：机器一忙，setProps 与
+    // 断言之间超过 30ms，打字机就已经跑完了，断言拿到 false —— 这正是该组两条用例在满负载
+    // CI / pre-commit 钩子下间歇性挂掉的原因（本地单跑必绿，故长期被当成偶发）。
+    // 冻结后不主动 advance，打字机就不会推进，用例只验状态机本身，与机器快慢彻底解耦。
+    // 注：flushPromises 在模块加载时就绑定了真实 setImmediate，不受 fake timers 影响，照常可用。
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
     const findByKey = (w: ReturnType<typeof mount>, key: string) =>
       w.findAllComponents(Bubble).find((b) => b.props('itemKey') === key)!;
 

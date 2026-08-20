@@ -1299,3 +1299,124 @@ describe('React restore — renameComponent 受 keep 守卫门控（Bug 3）', (
     expect(out).not.toContain('injectIntl');
   });
 });
+
+/**
+ * Bug：手写 values 的对象简写 `{ count }` 与展开 `{ ...rest }` 在 restore 端被
+ * extractObjectLiteralProperties 静默丢弃 → values 为空 → 占位符整体字面化，
+ * 变量引用被删且无告警。Vue 端已处理（简写按同名映射、展开保留原调用），React 需对齐。
+ */
+describe('React restore — 手写 values 对象简写/展开（防静默丢变量）', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-shorthand-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const restore = (code: string, locale: Record<string, string>): string => {
+    const lib = createReactI18nLibrary('react-i18next');
+    const file = path.join(dir, 'S.tsx');
+    fs.writeFileSync(file, code);
+    return new ReactRestoreTransformer(lib, '@/plugins/locale').transform(file, locale);
+  };
+
+  it('对象简写 { count }：还原为模板字面量插值，不得把 {count} 字面化', () => {
+    const code =
+      `import { t } from '@/plugins/locale';\n` +
+      `export function Cart({ count }: { count: number }) {\n` +
+      `  return <div>{t('cart.count', { count })}</div>;\n` +
+      `}\n`;
+    // i18next 系 locale 写盘形态为双花括号
+    const out = restore(code, { 'cart.count': '共 {{count}} 项' });
+    // 变量以插值形式存活
+    expect(out, `还原输出：\n${out}`).toContain('${count}');
+    // 不得残留字面化的花括号占位符
+    expect(out).not.toContain('共 {count} 项');
+    expect(out).not.toContain('共 {{count}} 项');
+  });
+
+  it('展开 { ...rest }：无法静态解析，保留原 t() 调用不还原', () => {
+    const code =
+      `import { t } from '@/plugins/locale';\n` +
+      `export function Cart(rest: { count: number }) {\n` +
+      `  return <div>{t('cart.count', { ...rest })}</div>;\n` +
+      `}\n`;
+    const out = restore(code, { 'cart.count': '共 {{count}} 项' });
+    // 原调用保留，源码语义不被破坏
+    expect(out, `还原输出：\n${out}`).toContain(`t('cart.count'`);
+    expect(out).not.toContain('共 {{count}} 项');
+    // import 也必须保留（调用存活）
+    expect(out).toContain('@/plugins/locale');
+  });
+
+  it('<Trans> values 简写：同样以插值还原', () => {
+    const code =
+      `import { Trans } from 'react-i18next';\n` +
+      `export function Cart({ count }: { count: number }) {\n` +
+      `  return <div><Trans i18nKey="cart.count" values={{ count }} /></div>;\n` +
+      `}\n`;
+    const out = restore(code, { 'cart.count': '共 {{count}} 项' });
+    // 正确形态是 JSX 片段插值 `<>共 {count} 项</>`，而非整串字面化 `{"共 {count} 项"}`
+    expect(out, `还原输出：\n${out}`).toMatch(/共 \{count\} 项/);
+    expect(out).not.toContain('"共 {count} 项"');
+    expect(out).not.toContain('Trans');
+  });
+});
+
+/**
+ * 回归（本轮 shorthand 修复的连带影响）：extractObjectLiteralProperties 的简写分支对
+ * 所有调用点生效，react-intl 的消息描述符提取（extractFormatMessageInfo /
+ * extractDefineMessages）把 props.id / props.defaultMessage 直接赋给 MessageInfo——
+ * `formatMessage({ id, defaultMessage })`（简写变量）时它们变成 {node,text} 对象，
+ * 穿过 isValidMessage 后在 normalizeRestoreMessage 对非字符串调 .replace 抛 TypeError，
+ * 整文件 restore 中断。描述符字段必须只接受字符串。
+ */
+describe('React restore — 简写变量描述符不得中断还原', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-desc-shorthand-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const restore = (code: string, locale: Record<string, string>): string => {
+    const lib = createReactI18nLibrary('react-intl');
+    const file = path.join(dir, 'D.tsx');
+    fs.writeFileSync(file, code);
+    return new ReactRestoreTransformer(lib, '@/plugins/locale').transform(file, locale);
+  };
+
+  it('formatMessage({ id, defaultMessage }) 简写变量：不抛异常，保留原调用', () => {
+    const code =
+      `import { useIntl } from 'react-intl';\n` +
+      `export function C({ id, defaultMessage }: { id: string; defaultMessage: string }) {\n` +
+      `  const intl = useIntl();\n` +
+      `  return <div>{intl.formatMessage({ id, defaultMessage })}</div>;\n` +
+      `}\n`;
+    let out = '';
+    expect(() => {
+      out = restore(code, { other: '你好' });
+    }).not.toThrow();
+    // 动态描述符无法静态还原：原调用保留，不产出 [object Object]
+    expect(out, `还原输出：\n${out}`).toContain('intl.formatMessage({ id, defaultMessage })');
+    expect(out).not.toContain('[object Object]');
+  });
+
+  it('defineMessages 值含简写变量：不抛异常，引用处保留原调用', () => {
+    const code =
+      `import { defineMessages, useIntl } from 'react-intl';\n` +
+      `const defaultMessage = '动态';\n` +
+      `const messages = defineMessages({ greet: { id: 'g.k', defaultMessage } });\n` +
+      `export function C() {\n` +
+      `  const intl = useIntl();\n` +
+      `  return <div>{intl.formatMessage(messages.greet)}</div>;\n` +
+      `}\n`;
+    let out = '';
+    expect(() => {
+      out = restore(code, { other: '你好' });
+    }).not.toThrow();
+    expect(out).not.toContain('[object Object]');
+  });
+});

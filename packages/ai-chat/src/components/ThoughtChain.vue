@@ -24,11 +24,16 @@
           <span :class="ns.e('icon')">{{ item.icon }}</span>
         </div>
         <div :class="ns.e('main')">
-          <button
-            type="button"
-            :class="ns.e('head')"
-            :aria-expanded="isOpen(item)"
-            @click="toggle(item.key)"
+          <!-- 与链级头部同一口径：仅在这一步确有可展开正文（hasBody）时才是可交互 button。
+               无正文的步骤（只有 title/status，content 与 result 都是可选的）若仍渲染成 button
+               并输出 aria-expanded，读屏会播报「按钮，已展开」，而箭头与正文都由 hasBody 守卫、
+               两种展开态都渲染不出任何东西——按下去零反馈。 -->
+          <component
+            :is="hasBody(item) ? 'button' : 'div'"
+            :type="hasBody(item) ? 'button' : undefined"
+            :class="[ns.e('head'), ns.is('collapsible', hasBody(item))]"
+            :aria-expanded="hasBody(item) ? isOpen(item) : undefined"
+            v-on="hasBody(item) ? { click: () => toggle(item.key) } : {}"
           >
             <span :class="[ns.e('title'), ns.is('active', item.status === 'active')]">
               {{ item.title }}
@@ -38,7 +43,7 @@
             <span v-if="hasBody(item)" :class="[ns.e('arrow'), ns.is('open', isOpen(item))]">
               ▾
             </span>
-          </button>
+          </component>
           <div v-if="hasBody(item) && isOpen(item)" :class="ns.e('body')">
             <!-- 检索结果卡（数据驱动）：标题 + chip 列表 -->
             <div v-if="item.result" :class="ns.e('result')">
@@ -56,9 +61,9 @@
                   :rel="chipHref(chip) ? 'noopener noreferrer' : undefined"
                 >
                   <img
-                    v-if="chip.thumbnail"
+                    v-if="chipThumb(chip)"
                     :class="ns.e('chip-thumb')"
-                    :src="chip.thumbnail"
+                    :src="chipThumb(chip)"
                     alt=""
                   />
                   <span v-else-if="chip.icon" :class="ns.e('chip-icon')">{{ chip.icon }}</span>
@@ -95,7 +100,7 @@ export interface ThoughtChainProps {
 import { useNamespace } from '@aix/hooks';
 import { reactive, ref, useSlots, watch } from 'vue';
 import type { ThoughtChainItem, ThoughtChainResultChip } from '../types';
-import { safeUrl } from '../utils/url';
+import { safeImageSrc, safeUrl } from '../utils/url';
 import MarkdownRenderer from './MarkdownRenderer.vue';
 
 const props = withDefaults(defineProps<ThoughtChainProps>(), {
@@ -107,8 +112,10 @@ const props = withDefaults(defineProps<ThoughtChainProps>(), {
 const ns = useNamespace('thought-chain');
 const slots = useSlots();
 
-// 链级折叠：仅 collapsible+defaultCollapsed 时初始折叠；无 title 时恒展开（无折叠入口）
-const chainOpen = ref(!(props.collapsible && props.defaultCollapsed));
+// 链级折叠：仅 collapsible+defaultCollapsed 时初始折叠。
+// title 必须参与判定：折叠入口挂在头部（`v-if="title"`），无 title 时头部整个不渲染，
+// 初始折叠会得到一个既无列表也无展开入口的空壳 div，用户没有任何办法把它打开。
+const chainOpen = ref(!(props.title && props.collapsible && props.defaultCollapsed));
 const toggleChain = () => {
   if (props.collapsible) chainOpen.value = !chainOpen.value;
 };
@@ -140,6 +147,10 @@ watch(
 // chip 链接可能来自模型/检索结果（不可信），渲染前经 safeUrl 协议白名单过滤（与 SourcesBlock 同构）：
 // 安全 url 渲染为可点击 <a>，不安全（如 javascript:）则返回 undefined → 降级为 <div> 纯展示。
 const chipHref = (chip: ThoughtChainResultChip): string | undefined => safeUrl(chip.url);
+// 缩略图同样来自检索结果（不可信），走图片白名单（放行 data:image/* 与 blob:，拦 javascript: 等）；
+// 不安全则整个 <img> 不渲染，回落到下方 chip.icon / 纯文本分支
+const chipThumb = (chip: ThoughtChainResultChip): string | undefined =>
+  safeImageSrc(chip.thumbnail);
 
 // 有可折叠内容才显示箭头与正文区：item.content / item.result 或外部提供了 item-content slot
 const hasBody = (item: ThoughtChainItem): boolean =>
@@ -254,8 +265,12 @@ const hasBody = (item: ThoughtChainItem): boolean =>
     padding: 0;
     border: none;
     background: transparent;
-    cursor: pointer;
     gap: var(--aix-sizeXS);
+
+    // 仅可展开的步骤给手型：无正文时它渲染为纯展示 div，光标不应暗示可点（同 __summary 口径）
+    &.is-collapsible {
+      cursor: pointer;
+    }
   }
 
   &__title {

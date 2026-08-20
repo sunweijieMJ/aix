@@ -1,5 +1,53 @@
 # @aix/ai-chat
 
+## 0.0.25
+
+### Patch Changes
+
+- 增强定制化能力
+
+## 0.0.24
+
+### Patch Changes
+
+- 优化增强自定义能力
+
+## 0.0.23
+
+### Patch Changes
+
+- 优化边界问题
+
+## 0.0.22
+
+### Patch Changes
+
+- 内容块类型注册表
+
+## 0.0.21
+
+### Patch Changes
+
+- BubbleAction
+
+## 0.0.20
+
+### Patch Changes
+
+- 优化修复bug
+
+## 0.0.19
+
+### Patch Changes
+
+- 优化边界问题
+
+## 0.0.18
+
+### Patch Changes
+
+- 优化中断生成，复制
+
 ## 0.0.17
 
 ### Patch Changes

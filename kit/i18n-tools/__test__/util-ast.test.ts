@@ -995,3 +995,13 @@ describe('CommonASTUtils.findExactStringNode — 内容自带成对 ASCII 引号
     expect(ts.isStringLiteral(node!)).toBe(true);
   });
 });
+
+describe('toSingleBracePlaceholders — 中文占位符名', () => {
+  it('`共{{数量}}个` 归一为 `共{数量}个`（与生成端中文标识符支持对齐）', () => {
+    expect(CommonASTUtils.toSingleBracePlaceholders('共{{数量}}个')).toBe('共{数量}个');
+  });
+
+  it('ASCII 占位符行为不变', () => {
+    expect(CommonASTUtils.toSingleBracePlaceholders('共 {{count}} 项')).toBe('共 {count} 项');
+  });
+});

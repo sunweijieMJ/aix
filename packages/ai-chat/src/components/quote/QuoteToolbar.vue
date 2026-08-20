@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <!-- mousedown.prevent：防按钮抢焦点清掉选区高亮（选区保全，见设计 §7） -->
+    <!-- mousedown.prevent：防按钮抢焦点清掉选区高亮（选区保全） -->
     <div
       ref="floatingElRef"
       :class="ns.b()"
@@ -44,16 +44,16 @@ export interface QuoteToolbarEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import { ref, watch, watchEffect } from 'vue';
-import { locale } from '../../locale';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import type { ResolvedQuoteAction } from '../../types';
 
 const props = defineProps<QuoteToolbarProps>();
 const emit = defineEmits<QuoteToolbarEmits>();
 const ns = useNamespace('quote-toolbar');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 虚拟参考元素（同 @aix/popper createVirtualElement 的先例做法）：
 // 选区没有真实元素，用 getBoundingClientRect 闭包桥接

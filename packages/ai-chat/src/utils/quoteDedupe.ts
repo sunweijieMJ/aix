@@ -1,8 +1,12 @@
 import type { Quote, QuoteAnchor } from '../types';
 
-/** 锚点等价：同消息、同文本、同偏移视为同一段引用 */
+/** 锚点等价：同消息、同块、同文本、同偏移视为同一段引用（start/end 是块内相对偏移，必须连同 blockId 比较） */
 const sameAnchor = (a: QuoteAnchor, b: QuoteAnchor): boolean =>
-  a.source.messageId === b.source.messageId && a.exact === b.exact && a.start === b.start && a.end === b.end;
+  a.source.messageId === b.source.messageId &&
+  a.source.blockId === b.source.blockId &&
+  a.exact === b.exact &&
+  a.start === b.start &&
+  a.end === b.end;
 
 /**
  * 锚点去重 + 意图更新：同一段文字反复引用只保留一条 chip——

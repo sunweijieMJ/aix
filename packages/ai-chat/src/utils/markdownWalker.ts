@@ -1,5 +1,5 @@
 import { h, type VNode } from 'vue';
-import { safeUrl } from './url';
+import { safeImageSrc, safeUrl } from './url';
 
 /**
  * markdown-it token 的最小结构（walker 与块切分共用；真实 Token 结构兼容）。
@@ -38,13 +38,17 @@ export type MarkdownRenderer = (ctx: MarkdownRenderContext) => VNode | (VNode | 
 /** 注册表：归一化后的 token 名（去 `_open`）→ 渲染器 */
 export type MarkdownRenderers = Record<string, MarkdownRenderer>;
 
-/** 取 token 属性值 */
-function attr(token: MdToken, name: string): string | undefined {
+/** 取 token 属性值（imageRenderers 等 token 级渲染器复用，勿在各处手写副本） */
+export function attr(token: MdToken, name: string): string | undefined {
   return token.attrs?.find((a) => a[0] === name)?.[1];
 }
 
-/** 内置渲染器：覆盖常见块级 / 行内 token。用户注册表优先级更高，可覆盖。 */
-export const builtinMarkdownRenderers: MarkdownRenderers = {
+/**
+ * 内置渲染器：覆盖常见块级 / 行内 token。用户注册表优先级更高，可覆盖。
+ * 仅本模块内部消费（见下方 walk 的 `renderers[key] ?? builtinMarkdownRenderers[key]`），
+ * 不导出——扩展走 `markdownRenderers` 注册表，无需也不应直接引用这份内置表。
+ */
+const builtinMarkdownRenderers: MarkdownRenderers = {
   text: ({ token }) => token.content,
   softbreak: () => h('br'),
   hardbreak: () => h('br'),
@@ -56,7 +60,8 @@ export const builtinMarkdownRenderers: MarkdownRenderers = {
   link: ({ token, renderChildren }) => {
     // 协议白名单纵深防护：不再隐式依赖 markdown-it 默认 validateLink（mdPlugins 可能放宽它），
     // 由 walker 自有不变量兜底。不安全协议（javascript: 等）降级为纯文本，保留链接文案不渲染 href。
-    // 注：链接无 data: 合法场景，故对 href 套 safeUrl 无副作用；image 的 src 因需放行 data:image 不在此处理。
+    // 注：链接无 data: 合法场景，故对 href 直接套 safeUrl；image 的 src 需放行 data:image，
+    // 走 safeImageSrc 这个同源变体（见下方 image 渲染器），两处口径一致。
     const href = safeUrl(attr(token, 'href'));
     return href
       ? h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, renderChildren())
@@ -76,7 +81,13 @@ export const builtinMarkdownRenderers: MarkdownRenderers = {
   tr: ({ renderChildren }) => h('tr', renderChildren()),
   th: ({ renderChildren }) => h('th', renderChildren()),
   td: ({ renderChildren }) => h('td', renderChildren()),
-  image: ({ token }) => h('img', { src: attr(token, 'src'), alt: token.content }),
+  // src 过图片白名单（放行 data:image/*）：与上方 link 的理由相同——不再隐式依赖
+  // markdown-it 默认 validateLink（mdPlugins 可能放宽它），由 walker 自有不变量兜底。
+  // 不安全协议降级为纯 alt 文本，与 link 降级为 span 同构。
+  image: ({ token }) => {
+    const src = safeImageSrc(attr(token, 'src'));
+    return src ? h('img', { src, alt: token.content }) : token.content;
+  },
 };
 
 /**
@@ -100,11 +111,13 @@ function renderNode(
   info: MarkdownRenderInfo,
 ): (VNode | string)[] {
   let key = token.type.replace(/_open$/, '');
-  // fence 按围栏语言优先分发 fence:<lang>（如 fence:mermaid），未注册则回落通用 fence
+  // fence 按围栏语言优先分发 fence:<lang>（如 fence:mermaid），未注册则回落通用 fence。
+  // 只查用户注册表：fence:<lang> 键全部来自注册侧（mermaid/chart/html 等），内置表不含
+  // 也不预留这类键
   if (token.type === 'fence') {
     const lang = token.info.trim().split(/\s+/)[0];
     const langKey = lang ? `fence:${lang}` : '';
-    if (langKey && (renderers[langKey] ?? builtinMarkdownRenderers[langKey])) key = langKey;
+    if (langKey && renderers[langKey]) key = langKey;
   }
   const renderer = renderers[key] ?? builtinMarkdownRenderers[key];
   if (renderer) {

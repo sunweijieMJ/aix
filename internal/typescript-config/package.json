@@ -7,6 +7,7 @@
     "base.json",
     "base-app.json",
     "base-library.json",
+    "shims",
     "README.md"
   ]
 }

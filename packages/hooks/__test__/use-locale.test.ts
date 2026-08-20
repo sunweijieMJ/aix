@@ -6,10 +6,40 @@ import {
   useCommonLocale,
   formatMessage,
   type ComponentLocale,
-} from '../src/use-locale';
+} from '../src/index';
+
+// 通过模块增强注册测试切片：既让 createLocale({ messages }) 获得类型校验，
+// 也回归验证「接口直接声明在包根入口、增强可以合并」这一设计前提
+declare module '../src/index' {
+  interface AixLocaleMessagesMap {
+    'test-pkg': { greeting: string; farewell: string };
+  }
+}
 
 // 辅助类型：测试中 app.mount() 返回的 VM 实例类型
 type TestVM<T = Record<string, any>> = ComponentPublicInstance & T;
+
+const testLocale: ComponentLocale<{ greeting: string; farewell: string }> = {
+  'zh-CN': { greeting: '你好', farewell: '再见' },
+  'en-US': { greeting: 'Hello', farewell: 'Bye' },
+};
+
+/** 挂载一个消费 useLocale 的组件，返回 vm */
+function mountWithLocale(
+  install: (app: ReturnType<typeof createApp>) => void,
+  options: Parameters<typeof useLocale<{ greeting: string; farewell: string }>>[0],
+) {
+  const TestComponent = defineComponent({
+    setup() {
+      const { t, locale } = useLocale(options);
+      return { t, locale };
+    },
+    template: '<div></div>',
+  });
+  const app = createApp(TestComponent);
+  app.use({ install });
+  return app.mount(document.createElement('div')) as TestVM;
+}
 
 describe('useLocale', () => {
   // 在所有测试前清理 localStorage，避免测试之间相互影响
@@ -133,164 +163,8 @@ describe('useLocale', () => {
 
       expect(vm.locale).toBe('en-US');
     });
-  });
 
-  describe('useLocale with component locale', () => {
-    const testLocale: ComponentLocale<{ greeting: string }> = {
-      'zh-CN': { greeting: '你好' },
-      'en-US': { greeting: 'Hello' },
-    };
-
-    it('should return component locale texts', () => {
-      const { install } = createLocale('zh-CN');
-
-      const TestComponent = defineComponent({
-        setup() {
-          const { t } = useLocale(testLocale);
-          return { t };
-        },
-        template: '<div></div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      expect(vm.t.greeting).toBe('你好');
-    });
-
-    it('should switch component locale correctly', async () => {
-      const { localeContext, install } = createLocale('zh-CN');
-
-      const TestComponent = defineComponent({
-        setup() {
-          const { t } = useLocale(testLocale);
-          return { t };
-        },
-        template: '<div>{{ t.greeting }}</div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      expect(vm.t.greeting).toBe('你好');
-
-      localeContext.setLocale('en-US');
-      await nextTick();
-
-      expect(vm.t.greeting).toBe('Hello');
-    });
-  });
-
-  describe('locale fallback', () => {
-    it('should fallback to zh-CN when no provider', () => {
-      const partialLocale: ComponentLocale<{ test: string }> = {
-        'zh-CN': { test: '测试' },
-        'en-US': { test: 'Test' },
-      };
-
-      const { install } = createLocale('zh-CN');
-
-      const TestComponent = defineComponent({
-        setup() {
-          const { t } = useLocale(partialLocale);
-          return { t };
-        },
-        template: '<div></div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      expect(vm.t.test).toBe('测试');
-    });
-  });
-
-  describe('locale override', () => {
-    const testLocale: ComponentLocale<{ greeting: string }> = {
-      'zh-CN': { greeting: '你好' },
-      'en-US': { greeting: 'Hello' },
-    };
-
-    it('should use override locale instead of global locale', () => {
-      const { install } = createLocale('zh-CN');
-
-      const TestComponent = defineComponent({
-        setup() {
-          // 全局是中文，但组件覆盖为英文
-          const { t } = useLocale(testLocale, 'en-US');
-          return { t };
-        },
-        template: '<div></div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      expect(vm.t.greeting).toBe('Hello');
-    });
-
-    it('should prioritize override locale over global locale change', async () => {
-      const { localeContext, install } = createLocale('zh-CN');
-
-      const TestComponent = defineComponent({
-        setup() {
-          // 强制使用英文
-          const { t } = useLocale(testLocale, 'en-US');
-          return { t };
-        },
-        template: '<div>{{ t.greeting }}</div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      expect(vm.t.greeting).toBe('Hello');
-
-      // 切换全局语言到中文
-      localeContext.setLocale('zh-CN');
-      await nextTick();
-
-      // 组件应该仍然显示英文（因为有 override）
-      expect(vm.t.greeting).toBe('Hello');
-    });
-
-    it('should track override when passed as a reactive Ref', async () => {
-      const { install } = createLocale('zh-CN');
-
-      const overrideRef = ref<'zh-CN' | 'en-US'>('en-US');
-      const TestComponent = defineComponent({
-        setup() {
-          const { t } = useLocale(testLocale, overrideRef);
-          return { t };
-        },
-        template: '<div>{{ t.greeting }}</div>',
-      });
-
-      const app = createApp(TestComponent);
-      app.use({ install });
-
-      const vm = app.mount(document.createElement('div')) as TestVM;
-
-      expect(vm.t.greeting).toBe('Hello');
-
-      // 动态修改 override Ref，组件文案应跟随切换
-      overrideRef.value = 'zh-CN';
-      await nextTick();
-
-      expect(vm.t.greeting).toBe('你好');
-    });
-
-    it('should support override in useCommonLocale', () => {
+    it('should support override locale', () => {
       const { install } = createLocale('zh-CN');
 
       const TestComponent = defineComponent({
@@ -308,6 +182,186 @@ describe('useLocale', () => {
       const vm = app.mount(document.createElement('div')) as TestVM;
 
       expect(vm.locale).toBe('en-US');
+    });
+  });
+
+  describe('useLocale with component locale', () => {
+    it('should return component locale texts', () => {
+      const { install } = createLocale('zh-CN');
+      const vm = mountWithLocale(install, { name: 'test-pkg', messages: testLocale });
+      expect(vm.t.greeting).toBe('你好');
+    });
+
+    it('should switch component locale correctly', async () => {
+      const { localeContext, install } = createLocale('zh-CN');
+      const vm = mountWithLocale(install, { name: 'test-pkg', messages: testLocale });
+
+      expect(vm.t.greeting).toBe('你好');
+
+      localeContext.setLocale('en-US');
+      await nextTick();
+
+      expect(vm.t.greeting).toBe('Hello');
+    });
+
+    it('should fallback to zh-CN when no provider', () => {
+      const TestComponent = defineComponent({
+        setup() {
+          const { t, locale } = useLocale({ name: 'test-pkg', messages: testLocale });
+          return { t, locale };
+        },
+        template: '<div></div>',
+      });
+      const app = createApp(TestComponent);
+      const vm = app.mount(document.createElement('div')) as TestVM;
+
+      expect(vm.locale).toBe('zh-CN');
+      expect(vm.t.greeting).toBe('你好');
+    });
+  });
+
+  describe('locale override', () => {
+    it('should use override locale instead of global locale', () => {
+      const { install } = createLocale('zh-CN');
+      // 全局是中文，但组件覆盖为英文
+      const vm = mountWithLocale(install, {
+        name: 'test-pkg',
+        messages: testLocale,
+        overrideLocale: 'en-US',
+      });
+      expect(vm.t.greeting).toBe('Hello');
+    });
+
+    it('should prioritize override locale over global locale change', async () => {
+      const { localeContext, install } = createLocale('zh-CN');
+      const vm = mountWithLocale(install, {
+        name: 'test-pkg',
+        messages: testLocale,
+        overrideLocale: 'en-US',
+      });
+
+      expect(vm.t.greeting).toBe('Hello');
+
+      localeContext.setLocale('zh-CN');
+      await nextTick();
+
+      // 组件应该仍然显示英文（因为有 override）
+      expect(vm.t.greeting).toBe('Hello');
+    });
+
+    it('should track override when passed as a reactive Ref', async () => {
+      const { install } = createLocale('zh-CN');
+
+      const overrideRef = ref<'zh-CN' | 'en-US'>('en-US');
+      const vm = mountWithLocale(install, {
+        name: 'test-pkg',
+        messages: testLocale,
+        overrideLocale: overrideRef,
+      });
+
+      expect(vm.t.greeting).toBe('Hello');
+
+      // 动态修改 override Ref，组件文案应跟随切换
+      overrideRef.value = 'zh-CN';
+      await nextTick();
+
+      expect(vm.t.greeting).toBe('你好');
+    });
+  });
+
+  describe('messages override（应用级 + 实例级）', () => {
+    it('should apply app-level messages from createLocale', () => {
+      const { install } = createLocale('zh-CN', {
+        messages: { 'test-pkg': { 'zh-CN': { greeting: '您好' } } },
+      });
+      const vm = mountWithLocale(install, { name: 'test-pkg', messages: testLocale });
+
+      // 覆盖的 key 生效，未覆盖的 key 回退内置
+      expect(vm.t.greeting).toBe('您好');
+      expect(vm.t.farewell).toBe('再见');
+    });
+
+    it('should only apply app-level messages of matching locale', async () => {
+      const { localeContext, install } = createLocale('zh-CN', {
+        messages: { 'test-pkg': { 'zh-CN': { greeting: '您好' } } },
+      });
+      const vm = mountWithLocale(install, { name: 'test-pkg', messages: testLocale });
+
+      expect(vm.t.greeting).toBe('您好');
+
+      // 切到英文：zh-CN 的覆盖不应泄漏
+      localeContext.setLocale('en-US');
+      await nextTick();
+      expect(vm.t.greeting).toBe('Hello');
+    });
+
+    it('should not leak messages across package names', () => {
+      const { install } = createLocale('zh-CN', {
+        // 增强类型只注册了 test-pkg，这里模拟另一个包的切片（宽松断言绕过类型）
+        messages: { 'other-pkg': { 'zh-CN': { greeting: '别的包' } } } as never,
+      });
+      const vm = mountWithLocale(install, { name: 'test-pkg', messages: testLocale });
+      expect(vm.t.greeting).toBe('你好');
+    });
+
+    it('should apply instance-level overrideMessages with highest priority', () => {
+      const { install } = createLocale('zh-CN', {
+        messages: { 'test-pkg': { 'zh-CN': { greeting: '您好', farewell: '告辞' } } },
+      });
+      const vm = mountWithLocale(install, {
+        name: 'test-pkg',
+        messages: testLocale,
+        overrideMessages: { greeting: '嗨' },
+      });
+
+      // 实例级 > 应用级 > 内置
+      expect(vm.t.greeting).toBe('嗨');
+      expect(vm.t.farewell).toBe('告辞');
+    });
+
+    it('should track reactive overrideMessages', async () => {
+      const { install } = createLocale('zh-CN');
+      const override = ref<{ greeting?: string } | undefined>(undefined);
+      const vm = mountWithLocale(install, {
+        name: 'test-pkg',
+        messages: testLocale,
+        overrideMessages: override,
+      });
+
+      expect(vm.t.greeting).toBe('你好');
+
+      override.value = { greeting: '嗨' };
+      await nextTick();
+      expect(vm.t.greeting).toBe('嗨');
+    });
+
+    it('createLocale 不持有调用方 messages 对象引用：mergeMessages 不污染入参', () => {
+      const shared = { 'test-pkg': { 'zh-CN': { greeting: '您好' } } };
+      const { localeContext } = createLocale('zh-CN', { messages: shared });
+      localeContext.mergeMessages({ 'test-pkg': { 'en-US': { greeting: 'Hi' } } });
+      // 上下文里合并生效，但调用方的对象保持原样（可安全复用于第二个实例）
+      expect(localeContext.messages['test-pkg']?.['en-US']).toEqual({ greeting: 'Hi' });
+      expect(shared).toEqual({ 'test-pkg': { 'zh-CN': { greeting: '您好' } } });
+    });
+
+    it('should merge messages incrementally via mergeMessages', async () => {
+      const { localeContext, install } = createLocale('zh-CN', {
+        messages: { 'test-pkg': { 'zh-CN': { greeting: '您好' } } },
+      });
+      const vm = mountWithLocale(install, { name: 'test-pkg', messages: testLocale });
+
+      expect(vm.t.greeting).toBe('您好');
+
+      // 模拟异步拉取文案后合入：同包同语言按 key 浅合并，不整体替换
+      localeContext.mergeMessages({ 'test-pkg': { 'zh-CN': { farewell: '告辞' } } });
+      await nextTick();
+      expect(vm.t.greeting).toBe('您好');
+      expect(vm.t.farewell).toBe('告辞');
+
+      // 后写的同 key 覆盖先写的
+      localeContext.mergeMessages({ 'test-pkg': { 'zh-CN': { greeting: '幸会' } } });
+      await nextTick();
+      expect(vm.t.greeting).toBe('幸会');
     });
   });
 

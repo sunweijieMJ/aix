@@ -75,7 +75,12 @@ describe('QuoteMenu 按 source 选皮肤', () => {
   });
 
   it('longpress/sheet 皮肤：点击 sheet 外部 → emit close（无 PC 侧选区折叠即关的天然闭合路径）', () => {
-    const w = mountMenu({ source: 'longpress', mode: 'menu', point: { x: 5, y: 5 }, getRect: undefined });
+    const w = mountMenu({
+      source: 'longpress',
+      mode: 'menu',
+      point: { x: 5, y: 5 },
+      getRect: undefined,
+    });
     expect(document.body.querySelector('.aix-quote-sheet')).not.toBeNull();
     // useClickOutside 内部监听 document 的 capture 阶段 pointerdown
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
@@ -83,7 +88,12 @@ describe('QuoteMenu 按 source 选皮肤', () => {
   });
 
   it('longpress/sheet 皮肤：点击 sheet 内部按钮不应 emit close', () => {
-    const w = mountMenu({ source: 'longpress', mode: 'menu', point: { x: 5, y: 5 }, getRect: undefined });
+    const w = mountMenu({
+      source: 'longpress',
+      mode: 'menu',
+      point: { x: 5, y: 5 },
+      getRect: undefined,
+    });
     const sheet = document.body.querySelector('.aix-quote-sheet')!;
     sheet.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
     expect(w.emitted('close')).toBeUndefined();

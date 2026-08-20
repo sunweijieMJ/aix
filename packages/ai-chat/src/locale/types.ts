@@ -17,8 +17,12 @@ export interface AiChatLocale {
   copyButton: string;
   /** 复制成功反馈文案 */
   copiedButton: string;
+  /** 复制 markdown 源码按钮（opt-in，需消费方在 actions 中显式加入 'copySource' 才会渲染） */
+  copySourceButton: string;
   /** 重新生成回复按钮 */
   regenerateButton: string;
+  /** 继续生成按钮（停止后接着写，仅 status==='abort' 时出现） */
+  continueButton: string;
   /** 赞按钮（AI 回复反馈） */
   likeButton: string;
   /** 踩按钮（AI 回复反馈） */
@@ -36,6 +40,12 @@ export interface AiChatLocale {
   backToBottom: string;
   /** 请求出错时气泡内展示的错误文案 */
   errorMessage: string;
+  /**
+   * 用户中断（status==='abort'）且该消息一个内容块都没收到时的占位文案。
+   * 不给占位的话气泡是一个纯空白框（既没有加载点也没有文字）。
+   * 置为空串即关闭该占位（业务想自己在 content 里塞兜底文案时用）。
+   */
+  abortedEmpty: string;
   /** markdown 内联图片加载失败时的占位文案（无 alt/src 时兜底） */
   imageLoadError: string;
   /** 引用来源块标题（sources 块） */
@@ -134,4 +144,38 @@ export interface AiChatLocale {
   imagePreviewPrev: string;
   /** 图片预览 Modal：下一张按钮 */
   imagePreviewNext: string;
+  /** 上下文用量：触发器无障碍标签 */
+  contextWindowLabel: string;
+  /** 上下文用量：面板标题 */
+  contextWindowTitle: string;
+  /** 上下文用量：已用/总量描述，占位符 {used} / {total} / {percent} */
+  contextWindowUsage: string;
+  /** 上下文用量：窗口总量未知（total 为 0）时的占比描述，占位符 {percent} */
+  contextWindowUsagePercent: string;
+  /** 上下文用量：压缩会话按钮 */
+  contextCompress: string;
+  /** 上下文用量：压缩进行中 */
+  contextCompressing: string;
+  /** 对话大纲：导航区无障碍标签 */
+  outlineLabel: string;
+  /** 对话大纲：无文本消息（纯图片/附件）的兜底摘要 */
+  outlineUntitled: string;
+  /** 确认卡：无标题时的卡片无障碍标签 */
+  confirmTitle: string;
+  /** 确认卡：提交按钮 */
+  confirmSubmit: string;
+  /** 确认卡：提交进行中（宿主请求在途） */
+  confirmSubmitting: string;
+  /** 确认卡：已提交只读态说明 */
+  confirmSubmitted: string;
+  /** 确认卡：已失效（超时 / 被后续确认卡顶替）只读态说明 */
+  confirmExpired: string;
+  /** 确认卡：必填星号的无障碍名（短标签，与整句校验提示 confirmRequired 分开） */
+  confirmRequiredMark: string;
+  /** 确认卡：必填项未完成的校验提示 */
+  confirmRequired: string;
+  /** 确认卡：长时间未作答的提示文案（hintAt 到点） */
+  confirmHint: string;
+  /** 确认卡：已按默认值自动填充的标记（autoFillAt 到点） */
+  confirmAutoFilled: string;
 }

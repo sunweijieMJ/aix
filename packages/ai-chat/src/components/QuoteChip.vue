@@ -28,15 +28,15 @@ export interface QuoteChipEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { Quote } from '../types';
 
 const props = defineProps<QuoteChipProps>();
 const emit = defineEmits<QuoteChipEmits>();
 const ns = useNamespace('quote-chip');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 内置 intent 走 locale 文案；业务自定义 intent 原样展示
 const intentLabel = computed(() => {

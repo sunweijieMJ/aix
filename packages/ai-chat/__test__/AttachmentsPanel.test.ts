@@ -1,7 +1,11 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect } from 'vitest';
+import { h } from 'vue';
 import AttachmentsPanel from '../src/components/AttachmentsPanel.vue';
 import type { PendingAttachment } from '../src/composables/useAttachments';
+
+/** 用可识别 class 的桩组件区分「自定义图标」与内置图标（同 Sender.customization.test.ts 约定） */
+const StubIcon = (cls: string) => ({ render: () => h('svg', { class: cls }) });
 
 const items: PendingAttachment[] = [
   { id: 'a1', name: 'report.pdf', size: 1024, mime: 'application/pdf', status: 'done' },
@@ -13,9 +17,7 @@ describe('AttachmentsPanel', () => {
     const w = mount(AttachmentsPanel, { props: { items } });
     expect(w.find('.aix-attachments-panel__title').text()).toContain('附件');
     expect(w.find('.aix-attachments-panel__count').text()).toContain('2');
-    expect(w.find('.aix-attachments-panel__placeholder').text()).toContain(
-      '点击或拖拽文件到此区域上传',
-    );
+    expect(w.find('.aix-attachments-panel__placeholder').text()).toContain('上传文件');
     expect(w.find('.aix-attachments-panel__placeholder-hint').text()).toContain('支持图片');
     expect(w.findAll('.aix-attachment-card')).toHaveLength(2);
   });
@@ -65,5 +67,20 @@ describe('AttachmentsPanel', () => {
     expect(w.find('.aix-attachments-panel__placeholder').classes()).not.toContain('is-drag-in');
     const payload = w.emitted('drop')?.[0]?.[0] as FileList | File[];
     expect(Array.from(payload as ArrayLike<File>)[0]?.name).toBe('d.pdf');
+  });
+
+  it('icons.upload / icons.close 覆盖内置图标，按钮行为与 a11y 文案不变', () => {
+    const w = mount(AttachmentsPanel, {
+      props: { items: [], icons: { upload: StubIcon('my-upload'), close: StubIcon('my-close') } },
+    });
+    expect(w.find('svg.my-upload').exists()).toBe(true);
+    expect(w.find('svg.my-close').exists()).toBe(true);
+    expect(w.find('[aria-label="收起附件面板"]').exists()).toBe(true);
+  });
+
+  it('未提供 icons 时行为不变，回退内置图标（回归）', () => {
+    const w = mount(AttachmentsPanel, { props: { items: [] } });
+    expect(w.find('.aix-attachments-panel__placeholder-icon svg').exists()).toBe(true);
+    expect(w.find('.aix-attachments-panel__close svg').exists()).toBe(true);
   });
 });

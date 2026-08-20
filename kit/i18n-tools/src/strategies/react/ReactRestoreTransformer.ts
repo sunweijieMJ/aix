@@ -211,6 +211,11 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     if (!isValidMessage(messageInfo)) {
       return null;
     }
+    // values 含展开等无法静态解析的形态：保留原调用（返回 null 会触发 survivalScan 的
+    // keep* 守卫，声明与导入一并保留），避免残缺 values 导致占位符字面化、变量被删。
+    if (messageInfo.hasUnresolvableValues) {
+      return null;
+    }
 
     const messageTemplate = messageInfo.id ? localeMap[messageInfo.id] : undefined;
     const templateToUse =
@@ -260,6 +265,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
     const messageInfo = this.library.extractJSXInfo(openingElement, definedMessages, sourceFile);
     if (!isValidMessage(messageInfo)) {
+      return null;
+    }
+    // 与 transformTranslationCall 同款守卫：values 无法静态解析时保留原组件
+    if (messageInfo.hasUnresolvableValues) {
       return null;
     }
 

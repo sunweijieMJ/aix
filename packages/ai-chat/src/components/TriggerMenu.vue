@@ -5,22 +5,30 @@
        注意：主题变量从 :root/[data-theme] 继承不受影响，但局部 ThemeScope 场景的作用域
        token 不会跟随（与各组件库 teleport 弹层的通行权衡一致）。 -->
   <Teleport to="body">
+    <!-- role 随有无候选项切换：listbox 的子元素只应是 option/group，加载 / 空态时把状态文案
+         塞进 listbox 属结构违规。此时本就没有可选项，整块按状态区暴露更贴切——role="status"
+         自带 polite 活动区语义，「加载中 / 无匹配结果」还能被自动播报。 -->
     <div
       :id="menuId"
       ref="floatingElRef"
       :class="ns.b()"
       :style="floatingStyles"
-      role="listbox"
-      :aria-label="t.triggerMenuLabel"
+      :role="hasOptions ? 'listbox' : 'status'"
+      :aria-label="hasOptions ? t.triggerMenuLabel : undefined"
       @mousedown.prevent
     >
       <div v-if="loading" :class="ns.e('status')">{{ t.triggerMenuLoading }}</div>
       <div v-else-if="!items.length" :class="ns.e('status')">{{ t.triggerMenuEmpty }}</div>
       <template v-else>
+        <!-- key 用下标而非 item.value：TriggerItem.value 没有唯一性约束（类型上只是 string，
+             候选常来自后端搜索接口），重名 value 会让 v-for key 撞车 → Vue 告警 + 列表渲染错乱。
+             下标本就是本菜单的身份口径——option 的 id 与 aria-activedescendant 指向的都是
+             `${menuId}-option-${i}`，键盘导航的 activeIndex 也是下标；且候选在 query 变化时
+             是整体替换（非局部增删），选项本身无内部状态，用下标不会产生复用错位。 -->
         <div
           v-for="(item, i) in items"
           :id="`${menuId}-option-${i}`"
-          :key="item.value"
+          :key="i"
           :class="[ns.e('item'), ns.is('active', i === activeIndex)]"
           role="option"
           :aria-selected="i === activeIndex"
@@ -61,16 +69,19 @@ export interface TriggerMenuEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
-import { ref, watch, watchEffect } from 'vue';
-import { locale } from '../locale';
+import { computed, ref, watch, watchEffect } from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { TriggerItem } from '../types';
 
 const props = defineProps<TriggerMenuProps>();
 const emit = defineEmits<TriggerMenuEmits>();
 const ns = useNamespace('trigger-menu');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
+
+// 有可选项时才是 listbox；加载中 / 空结果时整块降级为状态区（见模板注释）
+const hasOptions = computed(() => !props.loading && props.items.length > 0);
 
 // 虚拟参考元素（同 QuoteToolbar 先例）：caret/整框没有稳定真实元素，用闭包桥接
 const { referenceRef, floatingRef, floatingStyles } = usePopper({
@@ -112,7 +123,9 @@ watch(
   flex-direction: column;
   min-width: 180px;
   max-width: 320px;
-  max-height: 240px;
+
+  /* 候选列表滚动上限：候选项较多（如全员 @ 提及）时可放宽 */
+  max-height: var(--aix-trigger-menu-max-height, 240px);
   padding: var(--aix-paddingXXS);
   overflow-y: auto;
   border: 1px solid var(--aix-colorBorderSecondary);

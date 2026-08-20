@@ -1,4 +1,6 @@
-const IDENT_RE = /^[A-Za-z0-9_.-]+/;
+// 含中文范围：生成端 getVariableNameFromExpression 保留中文标识符作占位符名
+// （`共{数量}个`），doctor/translate 的占位符采集必须同字符集，否则对中文占位符失明。
+const IDENT_RE = /^[A-Za-z0-9_.一-鿿-]+/;
 
 /**
  * 提取一段 i18n 文案里所有占位符的「参数名」集合（忽略出现次数与顺序）。

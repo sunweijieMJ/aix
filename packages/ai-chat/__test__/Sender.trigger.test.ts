@@ -108,9 +108,7 @@ describe('Sender 触发菜单', () => {
     await w.find('textarea').trigger('keydown', { key: 'Enter' });
     await nextTick();
     expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('');
-    expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ trigger: '/', query: '清' }),
-    );
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ trigger: '/', query: '清' }));
     w.unmount();
   });
 
@@ -138,7 +136,9 @@ describe('Sender 触发菜单', () => {
     const fn = vi
       .fn()
       .mockImplementationOnce(() => Promise.resolve([{ value: 'a', label: 'Alice' }]))
-      .mockImplementationOnce(() => new Promise<{ value: string; label: string }[]>((r) => (resolveB = r)));
+      .mockImplementationOnce(
+        () => new Promise<{ value: string; label: string }[]>((r) => (resolveB = r)),
+      );
     const w = mount(Sender, {
       props: { triggers: [{ char: '@', items: fn }] },
       attachTo: document.body,
@@ -269,6 +269,32 @@ describe('Sender 触发菜单', () => {
     await type(w, '#话题热');
     expect(document.querySelector('.aix-trigger-menu')).toBeTruthy();
     w.unmount();
+  });
+
+  // ── combobox 语义：aria-activedescendant / aria-controls 已挂，但缺 aria-expanded 时
+  //    屏幕阅读器完全感知不到菜单弹出；包内 ContextWindow / ModelSelector 都已挂 aria-expanded，
+  //    这里是同一约定的缺口 ──
+  describe('combobox 无障碍语义', () => {
+    it('配置 triggers 时 textarea 声明 aria-haspopup=listbox', () => {
+      const w = mount(Sender, { props: { triggers: [users] }, attachTo: document.body });
+      expect(w.find('textarea').attributes('aria-haspopup')).toBe('listbox');
+      w.unmount();
+    });
+
+    it('菜单关闭时 aria-expanded=false，打开后变 true', async () => {
+      const w = mount(Sender, { props: { triggers: [users] }, attachTo: document.body });
+      expect(w.find('textarea').attributes('aria-expanded')).toBe('false');
+      await type(w, '@张');
+      expect(w.find('textarea').attributes('aria-expanded')).toBe('true');
+      w.unmount();
+    });
+
+    it('未配置 triggers 时不声明 combobox 语义（不给普通输入框凭空加弹层语义）', () => {
+      const w = mount(Sender, { attachTo: document.body });
+      expect(w.find('textarea').attributes('aria-haspopup')).toBeUndefined();
+      expect(w.find('textarea').attributes('aria-expanded')).toBeUndefined();
+      w.unmount();
+    });
   });
 
   // ── 语音 × 触发菜单互斥（实现见 runDetect isListening 守卫 + onMicClick 先关菜单）──

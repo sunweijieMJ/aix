@@ -361,4 +361,23 @@ describe('ThoughtChain', () => {
     });
     expect(head().attributes('aria-expanded')).toBe('true');
   });
+
+  // 防回归：折叠入口挂在头部（v-if="title"），无 title 时初始折叠会得到一个既无列表
+  // 也无展开入口的空壳，用户无法打开
+  it('无 title + collapsible + defaultCollapsed：仍展开列表（否则无任何展开入口）', () => {
+    const w = mount(ThoughtChain, {
+      props: { items, collapsible: true, defaultCollapsed: true },
+    });
+    expect(w.find('.aix-thought-chain__summary').exists()).toBe(false);
+    expect(w.find('.aix-thought-chain__list').exists()).toBe(true);
+  });
+
+  it('有 title + collapsible + defaultCollapsed：初始折叠，头部可展开', async () => {
+    const w = mount(ThoughtChain, {
+      props: { items, title: '思考过程', collapsible: true, defaultCollapsed: true },
+    });
+    expect(w.find('.aix-thought-chain__list').exists()).toBe(false);
+    await w.find('.aix-thought-chain__summary').trigger('click');
+    expect(w.find('.aix-thought-chain__list').exists()).toBe(true);
+  });
 });

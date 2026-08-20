@@ -20,15 +20,12 @@
       <Skeleton v-if="loading" :rows="5" />
       <template v-for="grp in grouped" v-else :key="grp.key || '__default'">
         <div v-if="grp.key" :class="ns.e('group')">{{ grp.key }}</div>
+        <!-- 行是无语义容器：它内部有重命名 / 删除按钮与重命名输入框，而 ARIA 禁止 button
+             角色包含交互式后代。主操作（选中）交给下面的原生 <button>，键盘可达性由平台负责。 -->
         <div
           v-for="item in grp.items"
           :key="item.id"
           :class="[ns.e('item'), ns.is('active', item.id === activeKey)]"
-          role="button"
-          tabindex="0"
-          :aria-current="item.id === activeKey ? 'true' : undefined"
-          @click="select(item.id)"
-          @keydown="onItemKeydown($event, item.id)"
         >
           <input
             v-if="editingId === item.id"
@@ -42,33 +39,56 @@
             @blur="confirmRename"
             @input="editingLabel = ($event.target as HTMLInputElement).value"
           />
+          <!-- 整行内容自定义（置顶徽标 / 时间戳 / 更多菜单等）。行容器与 is-active 仍由本组件持有，
+               保证选中态与 hover 观感一致；重命名态优先于本插槽（内联输入框是组件的受控内部状态，
+               自定义 UI 经作用域里的 rename() 进入该态；不想用内置重命名的实现从不调用它即可）。
+               用 $slots.item 显式二选一而非 <slot> 的原生 fallback 写法：消费方按条件只为部分会话
+               渲染自定义行时，Vue 的 renderSlot 会因「产出全是 Comment」判定插槽未提供而强行套回
+               内置行（与 Bubble error / AiChat footer 踩过的是同一个坑）。 -->
+          <slot v-else-if="$slots.item" name="item" v-bind="itemScope(item)" />
           <template v-else>
-            <span :class="ns.e('label')">{{ item.label }}</span>
+            <button
+              type="button"
+              :class="ns.e('label')"
+              :aria-current="item.id === activeKey ? 'true' : undefined"
+              @click="select(item.id)"
+            >
+              {{ item.label }}
+            </button>
+            <!-- 操作区容器由本组件持有：自定义操作按钮据此继承「hover 行 / 键盘聚焦行才显现」
+                 的既有观感（见下方 &__actions 的 opacity 规则），无需消费方自行复刻 -->
             <span :class="ns.e('actions')">
-              <button
-                type="button"
-                :class="ns.e('action')"
-                :aria-label="t.renameConversation"
-                :title="t.renameConversation"
-                @click.stop="startRename(item)"
-              >
-                <Edit />
-              </button>
-              <button
-                type="button"
-                :class="ns.e('action')"
-                :aria-label="t.deleteConversation"
-                :title="t.deleteConversation"
-                @click.stop="emit('delete', item.id)"
-              >
-                <Delete />
-              </button>
+              <slot v-if="$slots['item-actions']" name="item-actions" v-bind="itemScope(item)" />
+              <template v-else>
+                <button
+                  type="button"
+                  :class="ns.e('action')"
+                  :aria-label="t.renameConversation"
+                  :title="t.renameConversation"
+                  @click.stop="startRename(item)"
+                >
+                  <Edit />
+                </button>
+                <button
+                  type="button"
+                  :class="ns.e('action')"
+                  :aria-label="t.deleteConversation"
+                  :title="t.deleteConversation"
+                  @click.stop="emit('delete', item.id)"
+                >
+                  <Delete />
+                </button>
+              </template>
             </span>
           </template>
         </div>
       </template>
       <div v-if="!loading && filteredItems.length === 0" :class="ns.e('empty')">
-        {{ items.length === 0 ? t.noConversations : t.conversationsSearchEmpty }}
+        <!-- 空态区分「一条会话都没有」与「搜索无结果」，交由 searching 标志让消费方分流文案 / 插画 -->
+        <slot v-if="$slots.empty" name="empty" :searching="items.length > 0" />
+        <template v-else>
+          {{ items.length === 0 ? t.noConversations : t.conversationsSearchEmpty }}
+        </template>
       </div>
     </div>
   </div>
@@ -95,6 +115,25 @@ export interface ConversationsProps {
    */
   activeKey?: string;
 }
+/**
+ * `#item` / `#item-actions` 作用域：会话元数据 + 三个已绑定到该条的动作句柄。
+ *
+ * 三个句柄与内置按钮走**同一条实现**（含「重命名期间不切换选中」这类守卫），
+ * 自定义 UI 不必自行复刻，也不会与内置行为分叉。
+ */
+export interface ConversationsItemSlotScope {
+  /** 该条会话元数据 */
+  item: ConversationItem;
+  /** 是否为当前激活会话（行容器的 is-active 由组件自己加，此处供自定义内容做次级样式） */
+  active: boolean;
+  /** 选中该会话（与点击内置标题按钮等价；重命名进行中时为空操作） */
+  select: () => void;
+  /** 进入内联重命名态（内置输入框接管该行，确认后 emit rename） */
+  rename: () => void;
+  /** 请求删除该会话（emit delete，只上抛不改数据，与内置删除按钮等价） */
+  remove: () => void;
+}
+
 export interface ConversationsEmits {
   /** 点击新建 */
   (e: 'create'): void;
@@ -108,11 +147,10 @@ export interface ConversationsEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace, useControllable } from '@aix/hooks';
 import { Add, Edit, Delete, IconSearch as Search } from '@aix/icons';
 import { ref, computed, nextTick, watch } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { ConversationItem } from '../types';
 import Skeleton from './Skeleton.vue';
 
@@ -130,7 +168,7 @@ const { state: activeKey } = useControllable<string>({
   onChange: (v) => emit('update:activeKey', v),
 });
 const ns = useNamespace('conversations');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 内置搜索（纯本地过滤）：按 label 大小写不敏感子串匹配。searchable=false 时 searchQuery
 // 恒为空串，filteredItems 退化为 props.items，与未开启搜索前行为完全一致（零破坏性）。
@@ -159,16 +197,9 @@ const select = (id: string) => {
   if (editingId.value == null) activeKey.value = id;
 };
 
-// 会话项键盘激活（Enter/Space）：仅处理落在项本体上的按键——
-// 编辑输入框/操作按钮等子元素的按键会冒泡到这里，不做 target 守卫的话，
-// 重命名 Enter 会误触选中切换、输入框打空格会被 preventDefault 吞掉。
-const onItemKeydown = (e: KeyboardEvent, id: string) => {
-  if (e.target !== e.currentTarget) return;
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    select(id);
-  }
-};
+// 注：选中项的键盘激活（Enter/Space）不再由本组件处理——主操作已是原生 <button>，
+// 由浏览器负责，连带消除了「子元素按键冒泡到行上误触选中 / 输入框空格被 preventDefault 吞掉」
+// 这一类需要 target 守卫才能绕开的问题。
 
 // ===== 行内重命名 =====
 const editingId = ref<string | null>(null);
@@ -214,6 +245,26 @@ const confirmRename = (e: Event) => {
 const cancelRename = () => {
   editingId.value = null;
 };
+
+// ===== 插槽作用域 =====
+// 每次渲染新建对象（列表规模小，开销可忽略），换来的是句柄天然绑定到当前条目、
+// 消费方不必回传 id，也不会拿到过期闭包。
+const itemScope = (item: ConversationItem): ConversationsItemSlotScope => ({
+  item,
+  active: item.id === activeKey.value,
+  select: () => select(item.id),
+  rename: () => startRename(item),
+  remove: () => emit('delete', item.id),
+});
+
+defineSlots<{
+  /** 替换整行内容（行容器与 is-active 仍由组件持有）；重命名态优先于本插槽 */
+  item?: (props: ConversationsItemSlotScope) => unknown;
+  /** 仅替换操作按钮区，保留内置标题按钮；`#item` 提供时本插槽不生效 */
+  'item-actions'?: (props: ConversationsItemSlotScope) => unknown;
+  /** 空态；searching 为 true 表示「有会话但搜索无结果」，false 表示「一条会话都没有」 */
+  empty?: (props: { searching: boolean }) => unknown;
+}>();
 </script>
 
 <style lang="scss">
@@ -306,7 +357,6 @@ const cancelRename = () => {
     transition: background-color var(--aix-motionDurationFast) var(--aix-motionEaseInOut);
     border-radius: var(--aix-borderRadius);
     color: var(--aix-colorText);
-    cursor: pointer;
     gap: var(--aix-marginXXS);
 
     &:hover {
@@ -317,20 +367,31 @@ const cancelRename = () => {
       background: var(--aix-colorFillSecondary);
       font-weight: var(--aix-fontWeightStrong);
     }
+  }
+
+  /* 主操作（选中）：原生 button 去掉浏览器默认外观，铺满行内剩余空间。
+     行本身不再可点，故 cursor / 聚焦环都落在这里。 */
+  &__label {
+    flex: 1;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+    border: none;
+    border-radius: var(--aix-borderRadius);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--aix-fontSize);
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
 
     /* 键盘聚焦环（与 AttachmentsPanel 占位区一致）；列表项相邻，offset 内收避免环重叠 */
     &:focus-visible {
       outline: 2px solid var(--aix-colorPrimary);
       outline-offset: -2px;
     }
-  }
-
-  &__label {
-    flex: 1;
-    overflow: hidden;
-    font-size: var(--aix-fontSize);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   &__edit-input {
@@ -355,8 +416,10 @@ const cancelRename = () => {
     gap: var(--aix-marginXXS);
   }
 
+  /* 焦点落在行内任意位置（含主操作 button）即显现操作按钮：
+     键盘用户 Tab 到会话行时就能看到重命名 / 删除，而不必先盲跳进去才显形。 */
   &__item:hover &__actions,
-  &__actions:focus-within {
+  &__item:focus-within &__actions {
     opacity: 1;
   }
 

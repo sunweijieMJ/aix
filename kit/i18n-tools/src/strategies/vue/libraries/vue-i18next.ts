@@ -28,10 +28,6 @@ export class VueI18nextLibrary implements VueI18nLibrary {
     return moduleName === 'vue-i18next' || moduleName === 'i18next-vue';
   }
 
-  generateHookDeclaration(): string {
-    return this.hookDeclaration;
-  }
-
   getHookDeclarationCheckRegex(): RegExp {
     return /const\s*\{\s*t\s*\}\s*=\s*useTranslation\(/;
   }

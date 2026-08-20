@@ -1,4 +1,13 @@
-import { ref, computed, onScopeDispose, type Ref, type ComputedRef } from 'vue';
+import {
+  ref,
+  computed,
+  effectScope,
+  toValue,
+  type Ref,
+  type ComputedRef,
+  type EffectScope,
+  type MaybeRefOrGetter,
+} from 'vue';
 import type {
   ChatMessage,
   ContentBlock,
@@ -8,7 +17,9 @@ import type {
   BranchMeta,
   ExportedTree,
 } from '../types';
+import { devWarn } from '../utils/devWarn';
 import { genMsgId, genBlockId, normalizeSuggestions } from '../utils/helpers';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 import { flatParseChunk } from '../utils/parsers';
 import { applyToolEvent, toArray, type ToolReduceCtx } from '../utils/toolBlocks';
 import { createMessageTree, ROOT_ID, type MessageTreeApi } from './messageTree';
@@ -19,6 +30,30 @@ export interface UseChatRequestCtx {
   signal: AbortSignal;
   /** 续流负载（resume 调用时透传，fresh 请求恒为 undefined），业务自定义形状 */
   resume?: unknown;
+  /**
+   * 本轮 AI 回复消息的 id（占位消息已入树、状态为 loading，故请求期就能引用它）。
+   *
+   * 「本轮的业务元数据」应以它为落点（配合下方 setExtra），而不是在外部存一个「当前轮次」
+   * ref 再靠 `@finish/@abort/@error` 回填——那种写法在快速连发 / 重新生成 / 并行副请求下
+   * 会串轮次，且很难察觉。
+   */
+  messageId: string;
+  /**
+   * 就地合并本轮 AI 消息的 `extra`（浅合并，同名键覆盖）。
+   *
+   * 典型用法是在发请求那一刻把后端轮次 id / 埋点上下文写进去，后续渲染、赞踩上报、
+   * 副请求回填都从消息自身取：
+   * ```ts
+   * request: ({ messageId, setExtra, signal }) => {
+   *   const chatNid = genId();
+   *   setExtra({ chatNid });          // 与这条消息绑定，不经外部 ref 中转
+   *   return fetch(url, { signal, body: JSON.stringify({ chatNid }) });
+   * }
+   * ```
+   * 消息已不在树上（极端时序下被切会话/截断移除）时为安全空操作。
+   * 注意本次写入不会自动触发 `v-model:tree` 同步——请求落终态时的那次同步会带上它。
+   */
+  setExtra: (patch: Record<string, unknown>) => void;
 }
 
 export interface UseChatOptions {
@@ -28,8 +63,10 @@ export interface UseChatOptions {
    * 流分帧模式，默认 `'sse'`：按 SSE 规范以空行（`\n\n`）切事件、解析 event/data/id，
    * parseChunk 收到结构化 `SSEChunk`（覆盖 OpenAI/DeepSeek/Anthropic 等主流 LLM）。
    * `'line'`：按 `\n` 切行、parseChunk 收到原始字符串（ndjson / 纯文本流）。
+   *
+   * 每次发请求那一刻求值（支持 ref / getter），运行时切换即刻对下一次请求生效。
    */
-  streamMode?: 'sse' | 'line';
+  streamMode?: MaybeRefOrGetter<'sse' | 'line' | undefined>;
   /**
    * 把单个流单元解析为增量。`sse` 模式收 `SSEChunk`（默认 `flatParseChunk` 读 `data` 顶层
    * `delta` / `content`，识别 `[DONE]`）；对接 OpenAI/Anthropic 用 `openaiParseChunk` /
@@ -48,6 +85,8 @@ export interface UseChatOptions {
    * 否则交互块回写无法命中 SSOT 父消息块。
    * 父消息的 extra 会自动合并到渲染消息（parser 输出的同名键优先），故 parser 无需手动
    * 透传 feedback 等由 useChat 写回 SSOT 的字段。
+   * 须为**纯函数**（同输入同输出）：结果按消息逐条缓存，仅在该消息对象 / 下标 / parser 读到的
+   * 响应式数据发生变化时才重算；读取 `Date.now()`、外部计数器等非响应式来源的实现会拿到旧结果。
    */
   parser?: (message: ChatMessage, index: number) => ChatMessage | ChatMessage[];
   defaultMessages?: ChatMessage[];
@@ -57,24 +96,41 @@ export interface UseChatOptions {
   onError?: (message: ChatMessage, error?: unknown) => void;
   /** 被 abort 中断时触发（status 置为 abort） */
   onAbort?: (message: ChatMessage) => void;
-  /** 请求失败自动重试次数（不含首次），默认 0（不重试）。abort 不触发重试。 */
-  retryTimes?: number;
-  /** 两次重试之间的等待间隔（ms），默认 1000。 */
-  retryInterval?: number;
+  /**
+   * 请求失败自动重试次数（不含首次），默认 0（不重试）。abort 不触发重试。
+   * 每次判定重试额度时求值（支持 ref / getter），运行时调整即刻生效。
+   */
+  retryTimes?: MaybeRefOrGetter<number | undefined>;
+  /** 两次重试之间的等待间隔（ms），默认 1000。求值时机同 retryTimes。 */
+  retryInterval?: MaybeRefOrGetter<number | undefined>;
   /**
    * 流静默超时（ms），默认 0（关闭）：自上次收到流数据起超过该时长无新 chunk，
    * 判定流卡死，按可重试错误处理（err.name='StreamTimeoutError'，吃 retryTimes 额度）。
    * 与整体请求超时（x-fetch 的 timeout）互补：本选项只看「数据间隔」，不限制总时长，
    * 适合流式长回答；请求头阶段的超时仍由 request 实现方（如 createXFetch）负责。
+   *
+   * 每次 attempt 起表时求值（支持 ref / getter）；同一 attempt 内不重读，避免看门狗阈值中途漂移。
    */
-  streamTimeout?: number;
+  streamTimeout?: MaybeRefOrGetter<number | undefined>;
+  /**
+   * 继续生成（continueGenerate）时，发给模型的隐藏续写指令文案。不写入消息树、不在 UI
+   * 展示，仅作为 request() 的 history 最后一条 user 消息。
+   * 默认："请从刚才中断的地方继续往下写，不要重复已经写过的内容。"
+   *
+   * 每次 continueGenerate 组装历史时求值（支持 ref / getter）。
+   */
+  continuePrompt?: MaybeRefOrGetter<string | undefined>;
 }
 
 export interface UseChatReturn {
   /** UI 渲染消息（active path），由对话树派生的只读 computed */
   messages: ComputedRef<ChatMessage[]>;
-  /** UI 渲染消息：未设置 parser 时与 messages 同引用；设置后为 parser 映射结果 */
-  parsedMessages: Ref<ChatMessage[]>;
+  /**
+   * UI 渲染消息：未设置 parser 时与 messages 同引用；设置后为 parser 映射结果。
+   * 与 messages 同为**只读派生值**（两个分支都是 computed）：赋值只会拿到 Vue 的只读告警后
+   * 静默失败，改消息一律走 setMessages / importTree。
+   */
+  parsedMessages: ComputedRef<ChatMessage[]>;
   isLoading: Ref<boolean>;
   /**
    * 发送消息：string 为便捷形态（内部包单 text 块）；ContentBlock[] 供附件/富输入。
@@ -85,11 +141,20 @@ export interface UseChatReturn {
   onSend: (input: string | ContentBlock[]) => Promise<void>;
   onReload: (id: string) => Promise<void>;
   /**
+   * 该消息能否重新生成——即 `onReload` 会不会被守卫静默拒绝。UI 据此决定是否渲染
+   * 「重新生成」入口，与 onReload 的守卫**同源**（内部同一个解析函数），不必各写一份规则。
+   * 接受派生气泡 id（内部解析回父消息）。
+   *
+   * 为 false 的两种情形：非 AI 消息；AI 消息直接挂在根下（无 user 父）——后者常见于
+   * `defaultMessages` / 持久化树以一条开场白 AI 消息开头，它不是由某次提问生成的，
+   * 「重新生成」无从谈起（按激活路径截取的 history 会是空数组，发出去也只是无上下文请求）。
+   */
+  canReload: (id: string) => boolean;
+  /**
    * 编辑用户消息内容，产生兄弟分支并重新生成（不再截断旧分支）。
    * 返回是否受理（与 updateBlock 返回命中与否同构）：true 表示已新建兄弟用户节点并重发；
    * false 表示被守卫拒绝（流式进行中 / id 未命中 / 非 user 消息），消息未做任何改动，
    * 上层（如 AiChat.onEditMessage）可据此跳过对外透出，避免业务误持久化。
-   * 注：由 void 改为 boolean 属兼容性增强，旧调用方忽略返回值不受影响。
    */
   onEdit: (id: string, text: string) => Promise<boolean>;
   abort: () => void;
@@ -111,9 +176,18 @@ export interface UseChatReturn {
   /**
    * 续流：向已存在的 AI 消息续写（不新建节点），用于工具调用 HITL 确认等场景。
    * id 接受派生气泡 id（内部解析回父消息）；payload 透传给 request 的 resume 字段。
-   * 返回是否受理：isLoading 时 / id 未命中 / 非 AI 消息 → false，未做任何改动。
+   * 与 onSend/onReload/onEdit 共用同一个 isLoading 并发守卫（单写者不变量）。
+   * 返回是否受理：isLoading 时 / id 未命中 / 非 AI 消息 / 不在激活路径 → false，未做任何改动。
    */
   resume: (id: string, payload?: unknown) => Promise<boolean>;
+  /**
+   * 继续生成：向被用户手动停止（status==='abort'）的 AI 消息续写，不新建节点，视觉上拼接到
+   * 同一气泡。与 resume 的区别：会把该消息已生成的内容连同一条隐藏续写指令一并作为 history
+   * 发给 request()，不依赖后端会话状态记住前情，适配无状态后端。
+   * 返回是否受理：非 abort / 非 AI 消息 / isLoading 时 / 不在激活路径 / 不是激活路径链尾
+   * → false，未做任何改动。
+   */
+  continueGenerate: (id: string) => Promise<boolean>;
 }
 
 /**
@@ -124,6 +198,56 @@ function sealReasoning(msg: ChatMessage) {
   const last = msg.content[msg.content.length - 1];
   if (last && last.type === 'reasoning' && last.endedAt == null) {
     last.endedAt = Date.now();
+  }
+}
+
+/**
+ * 消息落终态时，把仍停在 `input-streaming`、但 `argsText` 已是完整 JSON 的 tool_use 块
+ * 收尾为 `input-available`。幂等（无待收尾块时为空操作）。
+ *
+ * 存在的理由是**参数结束信号天然给不全**：`argsDone` 由 parseChunk 翻译，而 parseChunk 是
+ * 无跨事件状态的纯函数，拿不到"这一帧该给哪些 index 发结束"的全局信息。OpenAI 的
+ * `finish_reason:'tool_calls'` 是整条 choice 级的、不带 index，内置 `openaiParseChunk` 只能
+ * 固定发 `index:0`——于是并行工具调用时 index≥1 的块永远收不到 argsDone，`applyToolEvent`
+ * 也就永远不会把 argsText 解析成 input，工具卡卡在"参数流式中"、宿主拿不到参数无法执行。
+ *
+ * 收尾放在 useChat 而非解析层，正是因为只有这里知道"流已经结束了"。
+ * JSON 未闭合（坏流 / 真被截断）则原样保留 input-streaming，与 applyToolEvent 的 argsDone
+ * 分支同口径——不猜、不伪造 input，argsText 仍可展示。
+ */
+function sealToolArgs(msg: ChatMessage) {
+  for (const b of msg.content) {
+    if (b.type === 'tool_use' && b.state === 'input-streaming' && b.input == null && b.argsText) {
+      try {
+        b.input = JSON.parse(b.argsText);
+        b.state = 'input-available';
+      } catch {
+        /* 未闭合 JSON：保持 input-streaming，argsText 仍可展示 */
+      }
+    }
+  }
+}
+
+/**
+ * 同一条消息内新 user_confirm 落地时，把仍为 awaiting 的**早期**确认块置 expired。
+ * 幂等（重复调用是空操作），可在每次追加块后无条件调用。
+ *
+ * 内置而非交给宿主：漏做就会出现多张卡同时可交互、都能提交。
+ * 只管消息内、不做跨消息扫描——让 useChat 去改历史消息的块侵入性明显偏大；跨消息场景由
+ * 卡片自身的 createdAt 超时（挂载即补发时间线）自然覆盖。
+ */
+function supersedeConfirms(msg: ChatMessage) {
+  let lastIdx = -1;
+  for (let i = msg.content.length - 1; i >= 0; i--) {
+    if (msg.content[i]!.type === 'user_confirm') {
+      lastIdx = i;
+      break;
+    }
+  }
+  if (lastIdx < 0) return;
+  for (let i = 0; i < lastIdx; i++) {
+    const b = msg.content[i]!;
+    if (b.type === 'user_confirm' && b.state === 'awaiting') b.state = 'expired';
   }
 }
 
@@ -153,22 +277,29 @@ function cloneBlock(block: ContentBlock): ContentBlock {
 export function useChat(options: UseChatOptions): UseChatReturn {
   const {
     request,
-    streamMode = 'sse',
     parseChunk = flatParseChunk,
     parser,
     defaultMessages = [],
     onFinish,
     onError,
     onAbort,
-    retryTimes = 0,
-    retryInterval = 1000,
-    streamTimeout = 0,
   } = options;
-  // 开发期护栏（与 updateBlock 未命中 / 非法 blockType 同风格）：line 模式漏配 parseChunk
-  // 是静默死流——默认 flatParseChunk 对行字符串取 .data 恒 undefined → 每行空增量 →
-  // 空内容 success，全程无报错，是最难排查的配置错误形态。
-  if (streamMode === 'line' && !options.parseChunk) {
-    console.warn(
+  // 运行期配置：一律在**使用那一刻**求值，故 ref / getter 形态可在运行时切换（与 request 同口径）。
+  // 默认值放在此处而非解构，否则 getter 求得 undefined 时拿不到兜底。
+  // parser 不在此列——整套逐条记忆化装置在下方按有无 parser 条件构建，属结构性配置。
+  const streamModeOf = () => toValue(options.streamMode) ?? 'sse';
+  const retryTimesOf = () => toValue(options.retryTimes) ?? 0;
+  const retryIntervalOf = () => toValue(options.retryInterval) ?? 1000;
+  const streamTimeoutOf = () => toValue(options.streamTimeout) ?? 0;
+  const continuePromptOf = () =>
+    toValue(options.continuePrompt) ?? '请从刚才中断的地方继续往下写，不要重复已经写过的内容。';
+  // 开发期护栏（与 updateBlock 未命中 / 非法 blockType 同风格）：这条配置错误的表现是
+  // 「空内容 success、全程无报错」，没有护栏几乎无从排查。
+  // 仅按装配时的取值判一次：streamMode 现可运行时切换，逐次请求复判会在长会话里重复刷屏，
+  // 而这条错误属于接线期配置失误，装配时判一次即可覆盖。经 AiChat 接入时由其自行给出同款告警
+  // （它恒会转发一层 parseChunk 闭包，本处的 options.parseChunk 恒为真）。
+  if (streamModeOf() === 'line' && !options.parseChunk) {
+    devWarn(
       '[ai-chat] streamMode="line" 未提供 parseChunk：默认解析器只识别 SSE 事件，' +
         '行字符串将被全部丢弃（回复恒为空）。请传入 parseChunk，如 (line) => ({ delta: line })。',
     );
@@ -181,15 +312,48 @@ export function useChat(options: UseChatOptions): UseChatReturn {
   // 渲染消息：无 parser 时直接复用 messages 引用（零开销、完全等价）；有则按 parser 映射。
   // id 稳定性由 useChat 接管：1→1 时强制复用父 id（见下，sub.id 即便不同也覆盖为 m.id），
   // 故 parser 未保留原始消息 id 也不会破坏编辑/重生成/块动作的 id 定位，无需运行时告警。
-  // 渲染视图 + 派生气泡 id → 父消息 id 映射，单 computed 同时产出（纯函数；map 随视图一起失效）。
+  // 渲染视图 + 派生气泡 id → 父消息 id 映射一并产出（map 随视图一起失效）。
   // 1→1：复用父 id（回写直接命中 SSOT，map 不记录）；1→N：派生 `${父id}__${序号}` 并记录映射。
+  //
+  // 关键：**每条源消息各持一个 computed**，而不是把整份列表塞进单个 computed。
+  // 后者下，任一消息的内容被就地 mutate（流式每个 chunk 都会）就让整份视图失效，
+  // parser 要对全量历史重跑一遍 —— 实测 42 条消息的会话每个 chunk 就是 42 次 parser 调用
+  // 外加 42 个新消息对象，随历史长度线性劣化，正好砸在"长会话 + 1→N 拆分"这个重度场景上。
+  // 拆到每条之后 Vue 的依赖追踪精确到单条消息：流式期间只有正在增长的那条重算，其余直接
+  // 复用上一帧的对象（顺带让下游 Bubble 的 props 保持引用稳定，不再逐帧全量重渲染）。
+  //
+  // 逐条 computed 惰性创建，故必须显式挂在这个**游离 scope** 上，否则归属「碰巧第一个读到它
+  // 的那个组件」的 scope（组件 setup 内直接读、watch getter 首次收集、生命周期钩子里读都会
+  // 命中）。该组件卸载 → scope.stop()，而 vue < 3.5 的 computed 被 stop 后 dirty 标记不再
+  // 推进，.value 永久返回旧值；缓存却活到 useChat 结束，重新挂载后同 source/index 仍会命中
+  // 这条已冻结的缓存。peer 是 vue ^3.3（headless 用法下 useChat 常建在 store / app 级
+  // composable 里而由子组件读），所以这个区间在承诺范围内，不能只依赖 3.5 的新实现兜底。
+  //
+  // 每条再各自持有一个**子 scope**，而不是所有 computed 共用上面这一个：vue < 3.5 的
+  // computed 内建 ReactiveEffect，其构造函数无条件 recordEffectScope 进当前 scope.effects，
+  // 而剪枝只 delete 了 Map —— effect（连同闭包持有的整条 ChatMessage）会一直留在数组里，
+  // 随切分支 / 切会话 / 编辑重发单调增长。子 scope 让剪枝能连同 computed 一起回收：
+  // 非游离子 scope 的 stop() 会把自己从父 scope 的 scopes 数组里摘除（swap-with-last），
+  // 不留残骸；父 scope stop 时照常级联停子。vue 3.5 的 computed 不进 scope.effects，
+  // 这层对它是无副作用的空转。
+  const parserMemoScope = parser ? effectScope(true) : null;
   const parsedState = parser
-    ? computed(() => {
-        const list: ChatMessage[] = [];
-        const map = new Map<string, string>();
-        messages.value.forEach((m, i) => {
-          const r = parser(m, i);
-          const subs = Array.isArray(r) ? r : [r];
+    ? (() => {
+        interface ParsedEntry {
+          /** 源消息对象引用：被 setMessages / importTree 整体换掉时须重建，否则 computed 闭包住已脱离树的旧对象 */
+          source: ChatMessage;
+          /** 源消息在激活路径中的下标（parser 第二参） */
+          index: number;
+          /** 该条消息映射出的渲染气泡（已完成 id 归属、extra 合并、__sub 位置元信息） */
+          bubbles: ComputedRef<ChatMessage[]>;
+          /** 该条独占的子 scope：剪枝 / 重建时 stop()，连同其中的 computed 一并回收 */
+          scope: EffectScope;
+        }
+        const cache = new Map<string, ParsedEntry>();
+
+        /** 单条消息 → 渲染气泡的归一化（逐条逻辑，与拆分前完全一致） */
+        const toBubbles = (m: ChatMessage, i: number): ChatMessage[] => {
+          const subs = toArray(parser(m, i));
           if (subs.length <= 1) {
             const sub = subs[0] ?? m;
             // useChat 接管 message-level id（强制复用父 id，回写无需映射），并合并父消息
@@ -197,32 +361,112 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             // 的字段仍能到达渲染层，避免点赞高亮 / 互斥取消静默失效。
             // 父 extra 为空时不做合并（不引入空对象），id 又一致则原样复用（零开销路径）。
             const extra = m.extra ? { ...m.extra, ...sub.extra } : sub.extra;
-            list.push(sub.id === m.id && extra === sub.extra ? sub : { ...sub, id: m.id, extra });
-          } else {
-            // 1→N：首个子气泡复用父 id（单→拆转换不 remount、不闪烁），其余派生稳定 id；
-            // 子气泡继承父消息会话状态，并带 __sub 位置信息（供操作条按「仅末气泡」去重）。
-            const count = subs.length;
-            subs.forEach((sub, bi) => {
-              const derivedId = bi === 0 ? m.id : `${m.id}__${bi}`;
-              if (bi > 0) map.set(derivedId, m.id);
-              // __sub 元信息使用公共类型 SubBubbleMeta 显式标注，与消费侧（AiChat 操作条去重）对齐
-              const subMeta: SubBubbleMeta = { index: bi, count };
-              list.push({
-                ...sub,
-                id: derivedId,
-                status: m.status,
-                // 合并父消息 extra（parser 同名键优先，与 1→1 分支一致）；__sub 最后写入，
-                // 保证位置元信息不被合并覆盖。
-                extra: { ...m.extra, ...sub.extra, __sub: subMeta },
-              });
-            });
+            // createdAt / status 与 id/extra 同理由父消息兜底：parser 通常只关心 content 的
+            // 形状，返回的新对象不会带上它们，不继承则「开了 parser 就消失」——createdAt 丢时间戳，
+            // status 丢会话状态（loading 三点、打字机登记、流式末块整修、error 文案整链失效）。
+            // parser 显式给了值则尊重（与 extra 同名键优先同口径）。
+            const createdAt = sub.createdAt ?? m.createdAt;
+            const status = sub.status ?? m.status;
+            return [
+              sub.id === m.id &&
+              extra === sub.extra &&
+              createdAt === sub.createdAt &&
+              status === sub.status
+                ? sub
+                : { ...sub, id: m.id, extra, createdAt, status },
+            ];
           }
+          // 1→N：首个子气泡复用父 id（单→拆转换不 remount、不闪烁），其余派生稳定 id；
+          // 子气泡继承父消息会话状态，并带 __sub 位置信息（供操作条按「仅末气泡」去重）。
+          const count = subs.length;
+          return subs.map((sub, bi) => {
+            // __sub 元信息使用公共类型 SubBubbleMeta 显式标注，与消费侧（AiChat 操作条去重）对齐
+            const subMeta: SubBubbleMeta = { index: bi, count };
+            return {
+              ...sub,
+              id: bi === 0 ? m.id : `${m.id}__${bi}`,
+              // 同 1→1 分支：父消息兜底、parser 显式给值则尊重
+              status: sub.status ?? m.status,
+              // 同 1→1 分支：拆出来的每个气泡都属于父消息这一时刻
+              createdAt: sub.createdAt ?? m.createdAt,
+              // 合并父消息 extra（parser 同名键优先，与 1→1 分支一致）；__sub 最后写入，
+              // 保证位置元信息不被合并覆盖。
+              extra: { ...m.extra, ...sub.extra, __sub: subMeta },
+            };
+          });
+        };
+
+        const bubblesOf = (m: ChatMessage, i: number): ChatMessage[] => {
+          const hit = cache.get(m.id);
+          // 复用条件：同一消息对象 + 下标未变。下标只随结构变化（追加节点 / 切分支 / 换会话）
+          // 而变，流式逐 chunk 走不到重建分支，故重建成本可忽略。
+          // 刻意不把 index 做成 ref：在外层 computed 求值期写 ref 会反过来令它依赖的内层
+          // computed 失效，形成自激循环。
+          if (hit && hit.source === m && hit.index === i) return hit.bubbles.value;
+          // 同 id 但对象 / 下标已变（setMessages 换掉同 id 消息、切分支改下标）：旧条目就此作废，
+          // 先回收它的 scope 再重建，否则被顶替的 computed 同样无人回收。
+          hit?.scope.stop();
+          // 每条一个子 scope，挂在游离 scope 下（见上）：run 只切换 activeEffectScope，
+          // 不影响外层 computed 的依赖收集，故此处建的 computed 照常被外层追踪。
+          const scope = parserMemoScope!.run(() => effectScope())!;
+          const entry: ParsedEntry = {
+            source: m,
+            index: i,
+            scope,
+            bubbles: scope.run(() => computed(() => toBubbles(m, i)))!,
+          };
+          cache.set(m.id, entry);
+          return entry.bubbles.value;
+        };
+
+        // 已告警过的碰撞 id：本 computed 会随流式反复求值，逐次告警会刷屏
+        const warnedCollisions = new Set<string>();
+
+        return computed(() => {
+          const list: ChatMessage[] = [];
+          const map = new Map<string, string>();
+          // 先收齐全部真实消息 id 再遍历：碰撞检测要看的是「派生 id 是否撞上**任意**一条真实
+          // 消息」，边遍历边填的集合只覆盖到当前下标之前，漏判后半段。
+          const alive = new Set<string>();
+          for (const m of messages.value) alive.add(m.id);
+          messages.value.forEach((m, i) => {
+            for (const bubble of bubblesOf(m, i)) {
+              // 1→1 与 1→N 的首个子气泡都复用父 id（回写直接命中 SSOT，无需记映射）；
+              // 其余派生 id 记入映射，供 resolveParentId 解析回父消息。
+              if (bubble.id !== m.id) {
+                // 派生 id（`${父id}__${序号}`）撞上一条真实消息 id：内置 genMsgId 产出
+                // `msg-<ts>-<n>` 不可能撞，但 defaultMessages / importTree 吃的是外部数据，
+                // 其中完全可能存在名为 `u1__1` 的消息。撞上时 parsedMessages 会出现重复 id
+                // （v-for key 冲突），且 resolveParentId 会把那条真实消息的回写 / 重生成 /
+                // 分支切换全部错误地解析到 `u1` 上——全程无报错，极难排查，故显式告警。
+                if (alive.has(bubble.id) && !warnedCollisions.has(bubble.id)) {
+                  warnedCollisions.add(bubble.id);
+                  devWarn(
+                    `[ai-chat] parser 1→N 的派生气泡 id "${bubble.id}" 与一条真实消息 id 冲突，` +
+                      '该消息的块回写 / 重新生成 / 分支切换会被错误解析到父消息 ' +
+                      `"${m.id}" 上。请避免使用形如 \`<其它消息id>__<数字>\` 的消息 id。`,
+                  );
+                }
+                map.set(bubble.id, m.id);
+              }
+              list.push(bubble);
+            }
+          });
+          // 剪掉已离开激活路径的缓存（切分支 / 切会话 / 编辑重发），避免随会话历史无界增长。
+          // 必须连同该条的子 scope 一起 stop：只 delete Map 的话，vue < 3.5 下 computed 的
+          // effect 仍留在 scope 里，闭包持有的整条消息也跟着不被回收（见上方 scope 说明）。
+          for (const [id, entry] of cache) {
+            if (!alive.has(id)) {
+              entry.scope.stop();
+              cache.delete(id);
+            }
+          }
+          return { list, map };
         });
-        return { list, map };
-      })
+      })()
     : null;
 
-  const parsedMessages: Ref<ChatMessage[]> = parsedState
+  const parsedMessages: ComputedRef<ChatMessage[]> = parsedState
     ? computed(() => parsedState.value.list)
     : messages;
 
@@ -256,10 +500,31 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       return true;
     }
     // 开发期提示：messageId/blockId 未命中，便于业务方排查误传的 id（与未注册渲染器告警同风格）
-    console.warn(
+    devWarn(
       `[ai-chat] updateBlock 未找到目标块（messageId="${messageId}", blockId="${blockId}"），本次更新被忽略。`,
     );
     return false;
+  };
+
+  /**
+   * 消息落终态的统一收尾：封口未结束的 reasoning 与 tool_use 参数 → 写状态 → 触发对应回调
+   * （error 另外把原始错误写进 extra 供渲染层取用）。
+   *
+   * 收敛为一处而非每条路径各写一遍：终态出口有五个（成功 / 中断 ×3 / 出错 ×2），
+   * 少封一样就会留下半开状态（如漏封 tool_use 参数 → 工具卡永远停在「参数流式中」）。
+   */
+  const settle = (msg: ChatMessage, status: 'success' | 'abort' | 'error', error?: unknown) => {
+    sealReasoning(msg);
+    sealToolArgs(msg);
+    msg.status = status;
+    if (status === 'success') {
+      onFinish?.(msg);
+    } else if (status === 'abort') {
+      onAbort?.(msg);
+    } else {
+      msg.extra = { ...msg.extra, error };
+      onError?.(msg, error);
+    }
   };
 
   const setFeedback = (id: string, value: MessageFeedback | null) => {
@@ -271,9 +536,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
   const runRequestInto = async (
     aiMsgId: string,
-    opts: { fresh: boolean; resumePayload?: unknown },
+    opts: { fresh: boolean; resumePayload?: unknown; continuation?: boolean },
   ) => {
-    const { fresh, resumePayload } = opts;
+    const { fresh, resumePayload, continuation } = opts;
     // 每次请求持有自己的局部 controller（ctrl）：内部分支一律基于 ctrl，
     // 避免被「abort 后立即重发」的新请求改写全局 controller 后误判 abort 状态。
     const ctrl = new AbortController();
@@ -281,6 +546,17 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     msgOwners.set(aiMsgId, ctrl);
     // 终态写入守卫：仅当本请求仍是该消息的归属请求时才允许写状态/触发回调
     const ownsMsg = () => msgOwners.get(aiMsgId) === ctrl;
+    // 交给 request ctx 的 extra 写入口（见 UseChatRequestCtx.setExtra）。
+    // 每次调用现取消息而非闭包住对象：切会话 / 编辑截断会整体换掉树里的消息，
+    // 闭包住旧引用就会写到一个已脱离树的对象上，静默丢失。
+    // ownsMsg 守卫与下方终态写入同口径：业务若在 await 之后才调 setExtra，而这条消息期间已被
+    // 另一次请求接管（resume / continueGenerate 打在同一条消息上），此刻写入就是拿旧轮次的
+    // 元数据覆盖新轮次的——正是本 API 想根治的「串轮次」。内部重试不受影响：同一 ctrl 全程持有。
+    const setExtra = (patch: Record<string, unknown>) => {
+      if (!ownsMsg()) return;
+      const msg = tree.getMessage(aiMsgId);
+      if (msg) msg.extra = { ...msg.extra, ...patch };
+    };
     isLoading.value = true;
     // 开发期护栏：parseChunk 返回携带 delta 的非法 blockType 时增量会被丢弃，
     // 本次请求仅告警一次，避免逐 chunk 刷屏。
@@ -306,17 +582,38 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         // 会抛错。外层 try 只有 finally：直接上抛会以 unhandled rejection 逃逸、onError
         // 不触发、消息永久卡在 updating 假加载态——此处显式落统一错误终态。
         console.error('[ai-chat] request failed:', err);
-        if (entryMsg && ownsMsg()) {
-          sealReasoning(entryMsg);
-          entryMsg.status = 'error';
-          entryMsg.extra = { ...entryMsg.extra, error: err };
-          onError?.(entryMsg, err);
-        }
+        if (entryMsg && ownsMsg()) settle(entryMsg, 'error', err);
         return;
       }
       // 重试回滚基线含 suggestions：失败尝试的半截流可能已写入陈旧追问建议，
       // 只回滚 content 会让它在最终 success 后照常展示
       const baseSuggestions = entryMsg?.suggestions ? [...entryMsg.suggestions] : undefined;
+      // continuation 模式的历史：把这条消息自身「进入时的快照」（baseSnapshot，而非实时内容）
+      // + 一条隐藏的续写指令拼进去，只在循环外算一次、所有 attempt 共用。不能像 fresh/resume
+      // 那样放到循环内重新读 messages.value——那样重试时会把上一次失败尝试残留的半截内容
+      // （回滚 splice 发生在循环内、晚于历史读取）当成"已生成内容"发给模型。
+      // idx>=0 防御：与下方 fresh/resume 分支的写法保持一致（findIndex 未命中时不做
+      // slice(0, -1)，那会静默丢弃 active path 最后一条消息而非产出空历史）。当前唯一
+      // 调用方 continueGenerate 在同步代码段内已校验过该消息存在于激活路径，此处理论上
+      // 不会命中 -1，纯防御性对齐，避免未来重构在两次访问间插入 await 后变成真实 bug。
+      const continuationIdx = messages.value.findIndex((m) => m.id === aiMsgId);
+      const continuationHistory: ChatMessage[] | null =
+        continuation && entryMsg
+          ? [
+              ...(continuationIdx >= 0 ? messages.value.slice(0, continuationIdx) : []),
+              // status 显式收敛为终态 'success'：entryMsg 此刻已被置为 'updating'（见上方
+              // `entryMsg.status = 'updating'`），直接展开会让发给模型的历史里出现一条
+              // status 为 'updating' 的 assistant 轮次，语义不自洽（纯展示/序列化层面，
+              // request() 通常只读 role+content，但作为 history 对象应保持自身状态一致）。
+              { ...entryMsg, content: baseSnapshot, status: 'success' },
+              {
+                id: genMsgId(),
+                role: 'user',
+                content: [{ id: genBlockId(), type: 'text', text: continuePromptOf() }],
+                status: 'success',
+              },
+            ]
+          : null;
       // 重试循环：仅当「非 abort 的错误」且仍有重试额度时再次发起；abort 立即停止、不重试。
       // 沿用同一个 ctrl（停止按钮仍生效），并在每次重试前清空已累积内容，避免半截内容叠加。
       for (let attempt = 0; ; attempt += 1) {
@@ -324,13 +621,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         // 取不到说明消息已被移除（切会话等场景）→ 放弃本次（finally 复位 isLoading）。
         const aiMsg = tree.getMessage(aiMsgId);
         if (!aiMsg) return;
-        // 历史 = active path 中 aiMsg 之前的部分（active path 即当前分支）
-        const idx = messages.value.findIndex((m) => m.id === aiMsgId);
-        const history = idx >= 0 ? messages.value.slice(0, idx) : [];
+        // 历史 = active path 中 aiMsg 之前的部分（active path 即当前分支）；
+        // continuation 模式直接复用循环外算好的 continuationHistory，不重新计算
+        // （原因见上方注释：避免重试时带上未回滚的脏内容）。
+        const history = continuation
+          ? continuationHistory!
+          : (() => {
+              const idx = messages.value.findIndex((m) => m.id === aiMsgId);
+              return idx >= 0 ? messages.value.slice(0, idx) : [];
+            })();
         // 流静默看门狗：重试循环沿用同一个用户 ctrl（停止按钮语义），超时不能 abort ctrl，
         // 否则后续重试拿到的是已 aborted 的信号。启用 streamTimeout 时每次 attempt 建内层
         // attemptCtrl（用户 abort 经监听单向联动），超时只杀当前尝试、保持可重试。
-        const attemptCtrl = streamTimeout > 0 ? new AbortController() : null;
+        // 阈值按 attempt 取一次快照：同一尝试内 armWatchdog 会被每个 chunk 重复调用，
+        // 逐次重读会让阈值在一次尝试中途漂移（起表用旧值、续表用新值），超时判定不自洽。
+        const attemptTimeout = streamTimeoutOf();
+        const attemptCtrl = attemptTimeout > 0 ? new AbortController() : null;
         const onUserAbort = () => attemptCtrl?.abort();
         if (attemptCtrl) ctrl.signal.addEventListener('abort', onUserAbort, { once: true });
         const signal = attemptCtrl?.signal ?? ctrl.signal;
@@ -342,10 +648,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           watchdog = setTimeout(() => {
             timedOut = true;
             attemptCtrl.abort();
-          }, streamTimeout);
+          }, attemptTimeout);
         };
         const streamTimeoutError = () =>
-          Object.assign(new Error(`[ai-chat] 流静默超过 ${streamTimeout}ms，判定为卡死`), {
+          Object.assign(new Error(`[ai-chat] 流静默超过 ${attemptTimeout}ms，判定为卡死`), {
             name: 'StreamTimeoutError',
           });
         try {
@@ -363,12 +669,18 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             aiMsg.suggestions = baseSuggestions ? [...baseSuggestions] : undefined;
             aiMsg.status = fresh ? 'loading' : 'updating';
           }
-          const res = await request({ messages: history, signal, resume: resumePayload });
+          const res = await request({
+            messages: history,
+            signal,
+            resume: resumePayload,
+            messageId: aiMsgId,
+            setExtra,
+          });
           const stream = res instanceof Response ? res.body : res;
           if (!stream) throw new Error('[ai-chat] request 未返回可读流');
           armWatchdog(); // 拿到流即起表，覆盖「连首个 chunk 都不来」的卡死
           const frames =
-            streamMode === 'line' ? xStream(stream, signal) : sseStream(stream, signal);
+            streamModeOf() === 'line' ? xStream(stream, signal) : sseStream(stream, signal);
           for await (const unit of frames) {
             armWatchdog(); // 每收到一个单元重置：只看数据间隔，不限制总时长
             // parseChunk 允许返回单个 ParsedChunk 或数组（1 个流单元翻译出多个增量事件），
@@ -384,7 +696,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                   appendDelta(aiMsg, blockType, delta);
                 } else if (!warnedBadBlockType) {
                   warnedBadBlockType = true;
-                  console.warn(
+                  devWarn(
                     `[ai-chat] parseChunk 返回了携带 delta 的非法 blockType "${blockType}"（仅支持 'text' | 'reasoning'），该增量已被丢弃。如需流式非文本块请改用 block 字段。`,
                   );
                 }
@@ -400,6 +712,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 // 按创建时刻补写；已自带时间戳（业务自行计时）则不覆盖。
                 if (b.type === 'reasoning' && b.startedAt == null) b.startedAt = Date.now();
                 aiMsg.content.push(b);
+                // 新确认卡落地即顶替本条消息内更早的待填卡（幂等，非确认卡时为空操作）
+                if (b.type === 'user_confirm') supersedeConfirms(aiMsg);
                 if (aiMsg.status !== 'updating') aiMsg.status = 'updating';
               }
               if (tool) {
@@ -419,36 +733,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 看门狗触发时 xStream 对 abort 是优雅收尾（reader.cancel → 循环正常退出），
           // 须先于 abort/success 判定抛出超时错误，交给 catch 走可重试路径。
           if (timedOut) throw streamTimeoutError();
-          if (ctrl.signal.aborted) {
-            if (ownsMsg()) {
-              sealReasoning(aiMsg);
-              aiMsg.status = 'abort';
-              onAbort?.(aiMsg);
-            }
-          } else if (ownsMsg()) {
-            sealReasoning(aiMsg);
-            aiMsg.status = 'success';
-            onFinish?.(aiMsg);
-          }
+          if (ownsMsg()) settle(aiMsg, ctrl.signal.aborted ? 'abort' : 'success');
           return; // 本次成功（或被中断）→ 结束重试循环
         } catch (err) {
           // 中断优先于重试：被 abort 直接判为 abort，不再重试。
           if (ctrl.signal.aborted) {
-            if (ownsMsg()) {
-              sealReasoning(aiMsg);
-              aiMsg.status = 'abort';
-              onAbort?.(aiMsg);
-            }
+            if (ownsMsg()) settle(aiMsg, 'abort');
             return;
           }
           // 超时路径的原始错误可能是 reader 的 AbortError，统一包装为 StreamTimeoutError
           const finalErr = timedOut ? streamTimeoutError() : err;
           // 仍有重试额度：等待间隔后重试（其间被 abort 则放弃重试并判为 abort）。
-          if (attempt < retryTimes) {
+          if (attempt < retryTimesOf()) {
             // 可中断等待：retry 间隔期间被 abort 立即唤醒，消除「已停止但气泡仍转圈、
             // onAbort 延迟、isLoading=false 后可并发再发」的不一致窗口。
             await new Promise<void>((resolve) => {
-              const timer = setTimeout(resolve, retryInterval);
+              const timer = setTimeout(resolve, retryIntervalOf());
               // abort 时清掉定时器并立即唤醒；{ once: true } 触发后自动摘监听，
               // 未触发（正常到期）则随本次请求的 ctrl 一起 GC，无残留。
               ctrl.signal.addEventListener(
@@ -461,11 +761,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               );
             });
             if (ctrl.signal.aborted) {
-              if (ownsMsg()) {
-                sealReasoning(aiMsg);
-                aiMsg.status = 'abort';
-                onAbort?.(aiMsg);
-              }
+              if (ownsMsg()) settle(aiMsg, 'abort');
               return;
             }
             continue;
@@ -473,12 +769,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           // 重试耗尽：透出原始错误（写入 extra 供渲染层取用、回传 onError 供上层上报、
           // 并兜底打到控制台，避免错误被静默吞掉导致线上无法排障）。
           console.error('[ai-chat] request failed:', finalErr);
-          if (ownsMsg()) {
-            sealReasoning(aiMsg);
-            aiMsg.status = 'error';
-            aiMsg.extra = { ...aiMsg.extra, error: finalErr };
-            onError?.(aiMsg, finalErr);
-          }
+          if (ownsMsg()) settle(aiMsg, 'error', finalErr);
           return;
         } finally {
           // 每次尝试的看门狗与联动监听清理（重试新尝试会重建）
@@ -510,15 +801,34 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     await runRequestInto(aiId, { fresh: true });
   };
 
-  const onReload = async (id: string) => {
-    if (isLoading.value) return;
+  /**
+   * 可重新生成时返回该消息的父节点 id，否则 null。onReload 的守卫与对外的 canReload
+   * 共用它，规则只此一份：分成两处写就是「按钮显示了但点了没反应」这类漂移的来源。
+   */
+  const reloadParentOf = (id: string): string | null => {
     const pid = resolveParentId(id);
     const node = tree.getMessage(pid);
-    if (!node) return;
-    // 守卫：onReload 仅用于重生成 AI 回复，避免误传 user 消息 id
-    if (node.role === 'user') return;
-    const parentId = tree.parentOf(pid);
-    if (parentId == null) return; // AI 消息必有 user 父，为 null 说明结构异常
+    if (!node) return null;
+    // onReload 仅用于重生成 AI 回复，避免误传 user 消息 id
+    if (node.role === 'user') return null;
+    // 无 user 父（直接挂在根下的开场白 AI 消息）：没有「据以重新生成」的提问
+    return tree.parentOf(pid);
+  };
+
+  const canReload = (id: string): boolean => reloadParentOf(id) !== null;
+
+  const onReload = async (id: string) => {
+    if (isLoading.value) return;
+    const parentId = reloadParentOf(id);
+    if (parentId == null) {
+      // 开发期提示：这条路径此前是静默 return，返回值又是 void，调用方完全无从判断
+      // 「为什么点了没反应」。UI 侧应先用 canReload 决定是否渲染入口。
+      devWarn(
+        `[ai-chat] onReload 拒绝了消息 "${id}"：它不是 AI 消息，或没有可据以重新生成的用户提问` +
+          '（直接挂在根下的开场白消息即属此类）。渲染「重新生成」入口前请先用 canReload 判断。',
+      );
+      return;
+    }
     // 新增兄弟 AI 节点（旧回复保留在树中，用户可切回）
     const aiId = genMsgId();
     tree.appendMessage(parentId, { id: aiId, role: 'ai', content: [], status: 'loading' });
@@ -529,6 +839,19 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     // 各守卫拒绝路径返回 false（未受理、消息零改动），供上层跳过对外透出
     if (isLoading.value) return false;
     const pid = resolveParentId(id);
+    // 守卫：只接受 SSOT 消息 id，不接受 parser 1→N 的**非首个**派生气泡 id。
+    // 下方改写语义是「把父消息的全部 text 块合并为单个 text 块」，而派生气泡只持有父消息的
+    // 一个切片；用它的草稿去改写父消息会静默丢掉其余段落（编辑第 2 段 → 第 1 段消失）。
+    // 首个子气泡复用父 id（pid === id），照常放行；1→1 与无 parser 场景不受影响。
+    // AiChat 侧对被拆分的用户消息根本不挂 edit 入口（见其 actionsFor），本守卫是最终不变量：
+    // headless 直接用 useChat 的调用方绕得过任何 UI 层策略。
+    if (pid !== id) {
+      devWarn(
+        `[ai-chat] onEdit 收到派生气泡 id "${id}"（parser 1→N 拆分产物），已拒绝：` +
+          `编辑须以 SSOT 消息 id "${pid}" 发起，否则父消息的其余文本块会被静默丢弃。`,
+      );
+      return false;
+    }
     const node = tree.getMessage(pid);
     if (!node) return false;
     // 守卫：仅用户消息可编辑重发，避免误改 AI 回复内容
@@ -573,23 +896,22 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     isLoading.value = false;
   };
 
-  // 组件卸载（scope 销毁）时中止进行中的流，避免 reader 持续读取、
-  // 向已脱离的响应式对象继续写入（与 useTypewriter 的 onScopeDispose 对齐）。
-  onScopeDispose(() => controller?.abort());
+  // 组件卸载（scope 销毁）时中止进行中的流，避免 reader 持续读取、向已脱离的响应式对象继续写入；
+  // 顺带停掉逐条缓存所在的游离 scope（它不挂在任何父 scope 上，须显式回收）。
+  // 走 onScopeDisposeSafe：无活跃 scope（组件外调用）时跳过注册而非打告警，约定见该函数注释——
+  // 此时 parserMemoScope 无从回收，是「组件外调用」这一用法的固有限制。
+  onScopeDisposeSafe(() => {
+    controller?.abort();
+    parserMemoScope?.stop();
+  });
 
-  /** 切换某消息所在层分支（流式中禁用） */
   const switchBranch = (id: string, dir: -1 | 1): boolean => {
     if (isLoading.value) return false;
     return tree.switchBranch(resolveParentId(id), dir);
   };
 
-  /** 取某消息分支元信息（接受派生气泡 id，内部解析回父消息） */
   const getBranches = (id: string) => tree.getBranches(resolveParentId(id));
 
-  /**
-   * 续流：向已存在的 AI 消息续写（如工具调用 HITL 确认后继续跑）。与 onSend/onReload/onEdit
-   * 共用同一个 isLoading 并发守卫（单写者不变量），不新建任何消息节点。
-   */
   const resume = async (id: string, payload?: unknown): Promise<boolean> => {
     if (isLoading.value) return false;
     const pid = resolveParentId(id);
@@ -602,12 +924,29 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     return true;
   };
 
+  const continueGenerate = async (id: string): Promise<boolean> => {
+    if (isLoading.value) return false;
+    const pid = resolveParentId(id);
+    const node = tree.getMessage(pid);
+    if (!node || node.role !== 'ai' || node.status !== 'abort') return false;
+    // 目标须在激活路径上，理由同 resume：非激活路径续写用户不可见，且 history 会是空数组
+    if (!messages.value.some((m) => m.id === pid)) return false;
+    // 目标须是激活路径的最后一条（链尾）：若停止后未点"继续生成"而是直接发了新消息 / 编辑
+    // 重发，新一轮对话会挂在这条旧 abort 消息之下（onSend 恒在当前 head 下延展），旧消息
+    // 仍在新 head 的祖先链上、仍在 messages 里可见可点，但此时续写会以其位置**之前**的历史
+    // 发起请求（不含之后已发生的新对话轮次），且续写内容错误写回这条旧消息，导致新对话丢失/错乱。
+    if (messages.value[messages.value.length - 1]?.id !== pid) return false;
+    await runRequestInto(pid, { fresh: false, continuation: true });
+    return true;
+  };
+
   return {
     messages,
     parsedMessages,
     isLoading,
     onSend,
     onReload,
+    canReload,
     onEdit,
     abort,
     setMessages,
@@ -619,5 +958,6 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     exportTree: tree.exportTree,
     importTree: tree.importTree,
     resume,
+    continueGenerate,
   };
 }

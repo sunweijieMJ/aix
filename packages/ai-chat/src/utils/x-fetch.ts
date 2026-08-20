@@ -57,6 +57,11 @@ export function createXFetch(options: CreateXFetchOptions = {}): XFetch {
     let reqInit = init;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
+    // 已挂到「外部 / 中间件注入」signal 上的联动监听，finally 统一摘除。
+    // { once: true } 只保证触发后自摘，请求正常完成（未 abort）时监听会一直挂着——
+    // useChat 每请求新建 ctrl 故无实际泄漏，但本工具是公开导出的，宿主完全可能复用一个
+    // 长生命周期 signal（如整页级的取消令牌）反复调用，那样监听会随调用次数单调增长。
+    const linked: [AbortSignal, () => void][] = [];
 
     try {
       for (const mw of onRequest) [reqUrl, reqInit] = await mw(reqUrl, reqInit);
@@ -72,7 +77,9 @@ export function createXFetch(options: CreateXFetchOptions = {}): XFetch {
             timeoutCtrl.abort();
             break;
           }
-          s.addEventListener('abort', () => timeoutCtrl.abort(), { once: true });
+          const onSourceAbort = () => timeoutCtrl.abort();
+          s.addEventListener('abort', onSourceAbort, { once: true });
+          linked.push([s, onSourceAbort]);
         }
         timer = setTimeout(() => {
           timedOut = true;
@@ -95,6 +102,8 @@ export function createXFetch(options: CreateXFetchOptions = {}): XFetch {
       throw mapped ?? err;
     } finally {
       if (timer) clearTimeout(timer);
+      // 已触发的监听（{ once: true }）自身已摘，remove 对其是无害空操作
+      for (const [s, fn] of linked) s.removeEventListener('abort', fn);
     }
   };
 }

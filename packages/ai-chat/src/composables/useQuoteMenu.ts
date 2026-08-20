@@ -1,8 +1,6 @@
-import { useLocale } from '@aix/hooks';
 import { Copy, InfoOutline, Language, QuestionCircle } from '@aix/icons';
 import { computed, markRaw, ref, toValue, watch } from 'vue';
 import type { Component, InjectionKey, MaybeRefOrGetter, Ref } from 'vue';
-import { locale } from '../locale';
 import type { AiChatLocale } from '../locale';
 import type {
   ChatMessage,
@@ -14,7 +12,9 @@ import type {
   QuoteAnchor,
   ResolvedQuoteAction,
 } from '../types';
+import { devWarn } from '../utils/devWarn';
 import { genQuoteId } from '../utils/helpers';
+import { useAiChatLocale } from './useAiChatLocale';
 import type { ActiveSelection, LongPressTrigger } from './useTextSelection';
 
 /** AiChat 注入、QuoteBlock/QuoteChip 消费的回链函数（独立使用时 inject 为 null → 点击无操作） */
@@ -73,7 +73,7 @@ const BUILTIN: Record<
 };
 
 export function useQuoteMenu(options: UseQuoteMenuOptions): UseQuoteMenuReturn {
-  const { t } = useLocale(locale);
+  const { t } = useAiChatLocale();
   const visible = ref(false);
 
   // 当前作用对象：精选 active 优先，退回 trigger.defaultTarget（整条消息）
@@ -92,18 +92,40 @@ export function useQuoteMenu(options: UseQuoteMenuOptions): UseQuoteMenuReturn {
     visible.value = !!a;
   });
 
+  // 未知内置 key 只告警一次（本 computed 会随 locale / actions 变化反复求值，逐次告警会刷屏）
+  const warnedUnknown = new Set<string>();
+
   const resolved = computed<(ResolvedQuoteAction & { _item: QuoteActionKey | QuoteActionItem })[]>(
-    () =>
-      (toValue(options.actions) ?? DEFAULT_ACTIONS).map((it) =>
-        typeof it === 'string'
-          ? {
-              key: it,
-              label: BUILTIN[it].label(t.value),
-              icon: BUILTIN[it].icon,
-              _item: it,
-            }
-          : { key: it.key, label: it.label, icon: it.icon, disabled: it.disabled, _item: it },
-      ),
+    () => {
+      const out: (ResolvedQuoteAction & { _item: QuoteActionKey | QuoteActionItem })[] = [];
+      for (const it of toValue(options.actions) ?? DEFAULT_ACTIONS) {
+        if (typeof it !== 'string') {
+          out.push({
+            key: it.key,
+            label: it.label,
+            icon: it.icon,
+            disabled: it.disabled,
+            _item: it,
+          });
+          continue;
+        }
+        // 自有属性校验（同 utils/ownProp 的理由；此处是「守卫 + 告警」而非取值，故未复用它）：
+        // actions 可能来自后端配置或 JS 消费方，直接下标时未知 key 与原型链键都会在
+        // .label(...) 上抛穿整个划词菜单。跳过而非抛出，与 BubbleActions 的静默降级一致。
+        if (!Object.hasOwn(BUILTIN, it)) {
+          if (!warnedUnknown.has(it)) {
+            warnedUnknown.add(it);
+            devWarn(
+              `[ai-chat] quote actions 中的 "${it}" 不是内置动作（仅支持 explain/ask/translate/copy），` +
+                '也不是自定义对象项，已跳过渲染。',
+            );
+          }
+          continue;
+        }
+        out.push({ key: it, label: BUILTIN[it].label(t.value), icon: BUILTIN[it].icon, _item: it });
+      }
+      return out;
+    },
   );
   const items = computed<ResolvedQuoteAction[]>(() =>
     resolved.value.map(({ key, label, icon, disabled }) => ({ key, label, icon, disabled })),

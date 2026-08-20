@@ -25,13 +25,6 @@ export interface VueI18nLibrary extends BaseI18nLibrary {
   isLibraryImport(moduleName: string): boolean;
 
   /**
-   * 生成 Hook 声明语句
-   * vue-i18n:    const { t } = useI18n();
-   * vue-i18next: const { t } = useTranslation();  或  const { t } = useTranslation('namespace');
-   */
-  generateHookDeclaration(): string;
-
-  /**
    * 生成 Hook 声明检查正则（用于检测是否已声明）
    */
   getHookDeclarationCheckRegex(): RegExp;

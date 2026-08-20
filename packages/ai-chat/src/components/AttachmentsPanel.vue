@@ -17,26 +17,33 @@
         :title="t.attachmentsCollapse"
         @click="emit('close')"
       >
-        <Close />
+        <!-- icons.close 存在时换图；按钮行为/a11y 文案不变，图标本身纯装饰（同 Sender icons 约定） -->
+        <component :is="resolveIcon(icons?.close, Close)" aria-hidden="true" />
       </button>
     </div>
 
-    <!-- 拖放 / 点击上传区域 -->
-    <div
-      role="button"
-      tabindex="0"
-      :class="[ns.e('placeholder'), dragIn && 'is-drag-in']"
-      @click="emit('pick')"
-      @keydown.enter.prevent="emit('pick')"
-      @keydown.space.prevent="emit('pick')"
-    >
-      <!-- 三段式（对齐 adx PlaceholderUploader）：图标 / title / description 居中竖排 -->
-      <span :class="ns.e('placeholder-icon')" aria-hidden="true">
-        <AttachFile />
-      </span>
-      <span :class="ns.e('placeholder-title')">{{ t.attachmentPlaceholder }}</span>
-      <span :class="ns.e('placeholder-hint')">{{ t.attachmentPlaceholderHint }}</span>
-    </div>
+    <!-- 拖放 / 点击上传区域。
+         开放 placeholder 插槽，填补「想改占位区、但不想重写整个面板」这一档：
+         接管 Sender 的 #attachments-panel 要连 add / remove / retry / 进度 / 拖拽高亮整套重画，
+         而实际上绝大多数定制只想换这块的排版与文案（竖排虚线框 → 横排浅底之类）。
+         拖放高亮（dragIn）与键盘可达性仍由外层容器负责，自定义内容不必重做。 -->
+    <slot name="placeholder" :pick="() => emit('pick')" :drag-in="dragIn">
+      <div
+        role="button"
+        tabindex="0"
+        :class="[ns.e('placeholder'), dragIn && 'is-drag-in']"
+        @click="emit('pick')"
+        @keydown.enter.prevent="emit('pick')"
+        @keydown.space.prevent="emit('pick')"
+      >
+        <!-- 三段式（对齐 adx PlaceholderUploader）：图标 / title / description 居中竖排 -->
+        <span :class="ns.e('placeholder-icon')" aria-hidden="true">
+          <component :is="resolveIcon(icons?.upload, AttachFile)" />
+        </span>
+        <span :class="ns.e('placeholder-title')">{{ t.attachmentPlaceholder }}</span>
+        <span :class="ns.e('placeholder-hint')">{{ t.attachmentPlaceholderHint }}</span>
+      </div>
+    </slot>
 
     <!-- 文件卡片列表 -->
     <div v-if="items.length > 0" :class="ns.e('list')">
@@ -52,31 +59,55 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { useLocale } from '@aix/hooks';
-import { useNamespace } from '@aix/hooks';
-import { AttachFile, Close } from '@aix/icons';
-import { ref } from 'vue';
-import type { PendingAttachment } from '../composables/useAttachments';
-import { locale } from '../locale';
-import AttachmentCard from './AttachmentCard.vue';
+<script lang="ts">
+// 类型声明独立成块（与 Bubble / Sender / AttachmentCard 同约定）：本组件已对外导出，
+// 其 Props/Emits 需能被 index.ts 稳定 re-export。
+/**
+ * 内置附件面板的图标覆写表（与 `SenderIcons` 同约定：只换图形，按钮行为 / a11y 文案不变，
+ * 未提供的键回退内置图标）。
+ */
+export interface AttachmentsPanelIcons {
+  /** 上传占位区的图标（组件或图片地址，见 `IconSource`） */
+  upload?: IconSource;
+  /** 收起面板按钮的图标（组件或图片地址，见 `IconSource`） */
+  close?: IconSource;
+}
 
 export interface AttachmentsPanelProps {
+  /** 待发附件列表（含上传过程态） */
   items: PendingAttachment[];
+  /** 覆盖内置图标（上传占位 / 收起按钮），见 `AttachmentsPanelIcons` */
+  icons?: AttachmentsPanelIcons;
 }
 
 export interface AttachmentsPanelEmits {
+  /** 点击占位区：请求打开文件选择器 */
   (e: 'pick'): void;
+  /** 拖放落入面板的文件 */
   (e: 'drop', files: FileList | File[]): void;
+  /** 移除指定条目 */
   (e: 'remove', id: string): void;
+  /** 重试失败条目 */
   (e: 'retry', id: string): void;
+  /** 收起面板 */
   (e: 'close'): void;
 }
+</script>
+
+<script setup lang="ts">
+import { useNamespace } from '@aix/hooks';
+import { AttachFile, Close } from '@aix/icons';
+import { ref } from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
+import type { PendingAttachment } from '../composables/useAttachments';
+import { resolveIcon } from '../utils/resolveIcon';
+import type { IconSource } from '../utils/resolveIcon';
+import AttachmentCard from './AttachmentCard.vue';
 
 defineProps<AttachmentsPanelProps>();
 const emit = defineEmits<AttachmentsPanelEmits>();
 const ns = useNamespace('attachments-panel');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 拖拽状态
 const dragIn = ref(false);
@@ -148,7 +179,9 @@ const onDrop = (e: DragEvent) => {
     color: var(--aix-colorTextTertiary);
     cursor: pointer;
 
-    svg {
+    /* svg / img 并列：icons.* 也接受图片地址（见 IconSource），两种形态同尺寸 */
+    svg,
+    img {
       width: 14px;
       height: 14px;
     }
@@ -206,7 +239,9 @@ const onDrop = (e: DragEvent) => {
     color: var(--aix-colorTextTertiary);
     line-height: 1;
 
-    svg {
+    /* svg / img 并列，同上 */
+    svg,
+    img {
       width: 28px;
       height: 28px;
     }

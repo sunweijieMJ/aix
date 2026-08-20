@@ -608,3 +608,92 @@ describe('isModeExplicitlySet', () => {
     expect(isModeExplicitlySet(['--config', './i18n.config.ts'])).toBe(false);
   });
 });
+
+// =============================================================================
+// buckets 迁移窗口：readLocaleFile 兜底读遗留单文件
+// =============================================================================
+/**
+ * Bug：存量项目（单文件 zh-CN.json 有全量 key）开启 buckets 后，迁移只挂在
+ * getMessages→migrateToBuckets 链上；首条命令若是 doctor/restore/prune/generate
+ * （全部走 readLocaleFile），桶式分支只扫桶目录 → 读到 {} → doctor --ci 把全部
+ * key 判 missing 假失败、restore 空跑、generate 不复用历史 key 造出双套 key。
+ * 修复：桶式读取时若遗留单文件存在且未迁移（无 .bak），只读并入其内容（不迁移）。
+ */
+describe('buckets 迁移窗口：readLocaleFile 只读并入未迁移的遗留单文件', () => {
+  let root: string;
+  let localeDir: string;
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'bucket-window-'));
+    localeDir = path.join(root, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat', prettify: false },
+      keys: { separator: '.' },
+      buckets: {
+        rules: [{ name: 'order', matchKey: (k: string) => k.startsWith('order.') }],
+        defaultBucket: 'common',
+        emitManifest: false,
+        layout: 'by-locale',
+      },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  it('遗留单文件未迁移、桶目录为空：返回遗留内容而非 {}，且不触发迁移', () => {
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'order.list': '列表', 'user.name': '名称' }),
+    );
+
+    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    expect(map).toEqual({ 'order.list': '列表', 'user.name': '名称' });
+    // 只读兜底：不得产生迁移副作用
+    expect(fs.existsSync(path.join(localeDir, 'zh-CN.json.bak'))).toBe(false);
+    expect(fs.existsSync(path.join(localeDir, 'zh-CN.json'))).toBe(true);
+  });
+
+  it('同 key 冲突时桶数据优先（桶式是当前权威格式）', () => {
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify({ 'user.name': '旧值' }));
+    fs.mkdirSync(path.join(localeDir, 'zh-CN'), { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN', 'common.json'),
+      JSON.stringify({ 'user.name': '新值' }),
+    );
+
+    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    expect(map).toEqual({ 'user.name': '新值' });
+  });
+
+  it('遗留单文件损坏时返回 null（与单文件模式口径一致，不静默当空）', () => {
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), '{ 损坏的 json');
+
+    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    expect(map).toBeNull();
+  });
+
+  it('已迁移（.bak 存在）时不再读遗留文件', () => {
+    // 用户在迁移后又手动放回一份旧单文件的边界场景
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify({ stale: '过期' }));
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json.bak'), '{}');
+    fs.mkdirSync(path.join(localeDir, 'zh-CN'), { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN', 'common.json'),
+      JSON.stringify({ 'user.name': '值' }),
+    );
+
+    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    expect(map).toEqual({ 'user.name': '值' });
+  });
+});

@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { h, nextTick, createCommentVNode } from 'vue';
 import ReasoningBlock from '../src/components/blocks/ReasoningBlock.vue';
 import type { ContentBlock, BubbleContentInfo } from '../src/types';
 
@@ -86,17 +87,17 @@ describe('ReasoningBlock', () => {
           info: info('success'),
         },
       });
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时5秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时5.00秒）');
     });
 
-    it('未满 1 秒时向下取整展示为 1 秒（避免刚开始思考就显示"0秒"）', () => {
+    it('不满 1 秒时按实际精度展示（默认 2 位小数）', () => {
       const w = mount(ReasoningBlock, {
         props: {
           block: { ...block, startedAt: 1_700_000_000_000, endedAt: 1_700_000_000_400 },
           info: info('success'),
         },
       });
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时1秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时0.40秒）');
     });
 
     it('流式中（尚无 endedAt）标题随时间推移展示耗时；数据层打上 endedAt 后立即定格', async () => {
@@ -105,17 +106,134 @@ describe('ReasoningBlock', () => {
       const w = mount(ReasoningBlock, {
         props: { block: { ...block, startedAt: 1_700_000_000_000 }, info: info('updating') },
       });
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时1秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时0.00秒）');
 
       await vi.advanceTimersByTimeAsync(3000);
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时3秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时3.00秒）');
 
       // 数据层打上 endedAt：耗时立即定格为 endedAt - startedAt，不再跟随后续 tick 增长
       await w.setProps({
         block: { ...block, startedAt: 1_700_000_000_000, endedAt: 1_700_000_005_000 },
       });
       await vi.advanceTimersByTimeAsync(15_000);
-      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时5秒）');
+      expect(w.find('.aix-thinking__header').text()).toContain('思考过程（用时5.00秒）');
     });
+  });
+});
+
+// ============================================================================
+// 深度思考 UI 定制：Thinking 具名插槽 + ReasoningBlock 按 <块类型>-<内部slot> 约定转发。
+// 此前 ReasoningBlock 不向 Thinking 转发任何插槽、Thinking 的标题/箭头写死，导致
+// README 宣传的插槽穿透对 reasoning-* 完全无效，想改思考区外观只能整体替换渲染器
+// （代价是自己复刻打字机 / 计时 / 流式自动展开 / typing-complete 上抛）。
+// ============================================================================
+describe('ReasoningBlock — 思考 UI 插槽穿透', () => {
+  const reasoning = (over: Partial<{ text: string; startedAt: number; endedAt: number }> = {}) =>
+    ({ id: 'r-slot', type: 'reasoning', text: '思考文本', ...over }) as ContentBlock & {
+      type: 'reasoning';
+    };
+
+  it('reasoning-title 覆盖标题，且拿得到 elapsed / streaming / open', () => {
+    const scopes: Record<string, unknown>[] = [];
+    const w = mount(ReasoningBlock, {
+      props: {
+        block: reasoning({ startedAt: Date.now() - 5000, endedAt: Date.now() }),
+        info: { status: 'success', role: 'ai', key: 'm1' },
+      },
+      slots: {
+        'reasoning-title': (sp: Record<string, unknown>) => {
+          scopes.push(sp);
+          return h('span', { class: 'my-title' }, `思考 ${sp.elapsed}s`);
+        },
+      },
+    });
+    expect(w.find('.my-title').text()).toBe('思考 5.00s');
+    expect(scopes[0]).toMatchObject({ elapsed: '5.00', streaming: false, open: false });
+    // 内置标题（含 i18n 的「思考过程」）不再出现
+    expect(w.text()).not.toContain('思考过程');
+  });
+
+  it('reasoning-icon 渲染在标题前，且拿得到 elapsed / streaming / open', () => {
+    const scopes: Record<string, unknown>[] = [];
+    const w = mount(ReasoningBlock, {
+      props: {
+        block: reasoning({ startedAt: Date.now() - 5000, endedAt: Date.now() }),
+        info: { status: 'success', role: 'ai', key: 'm1' },
+      },
+      slots: {
+        'reasoning-icon': (sp: Record<string, unknown>) => {
+          scopes.push(sp);
+          return h('i', { class: 'my-icon' });
+        },
+      },
+    });
+    expect(w.find('.my-icon').exists()).toBe(true);
+    expect(scopes[0]).toMatchObject({ elapsed: '5.00', streaming: false, open: false });
+  });
+
+  it('不提供 reasoning-icon 时无副作用：标题前不出现空白图标区', () => {
+    const w = mount(ReasoningBlock, {
+      props: { block: reasoning(), info: { status: 'success', role: 'ai', key: 'm1' } },
+    });
+    expect(w.find('.my-icon').exists()).toBe(false);
+    expect(w.find('.aix-thinking__header').text()).toContain('思考过程');
+  });
+
+  it('reasoning-arrow 覆盖展开箭头（内置 ▾ 消失）', () => {
+    const w = mount(ReasoningBlock, {
+      props: { block: reasoning() },
+      slots: { 'reasoning-arrow': () => h('i', { class: 'my-arrow' }) },
+    });
+    expect(w.find('.my-arrow').exists()).toBe(true);
+    expect(w.find('.aix-thinking__arrow').exists()).toBe(false);
+  });
+
+  it('reasoning-body 覆盖正文，拿得到 text / displayed，且不再渲染内置 Markdown', async () => {
+    let scope!: Record<string, unknown>;
+    const w = mount(ReasoningBlock, {
+      props: {
+        block: reasoning({ text: '一段思考' }),
+        info: { status: 'updating', role: 'ai', key: 'm1' }, // 流式中自动展开，正文可见
+      },
+      slots: {
+        'reasoning-body': (sp: Record<string, unknown>) => {
+          scope = sp;
+          return h('pre', { class: 'my-body' }, sp.text as string);
+        },
+      },
+    });
+    await nextTick();
+    expect(w.find('.my-body').text()).toBe('一段思考');
+    expect(scope).toMatchObject({ text: '一段思考', displayed: '一段思考', streaming: true });
+    expect(w.find('.aix-markdown').exists()).toBe(false);
+  });
+
+  it('不提供插槽时零副作用：标题 / 箭头 / 内置 Markdown 正文全部保持内置形态', async () => {
+    const w = mount(ReasoningBlock, {
+      props: {
+        block: reasoning(),
+        info: { status: 'updating', role: 'ai', key: 'm1' },
+      },
+    });
+    await nextTick();
+    expect(w.find('.aix-thinking__arrow').exists()).toBe(true);
+    expect(w.find('.aix-thinking__header').text()).toContain('思考过程');
+    expect(w.find('.aix-thinking__body').exists()).toBe(true);
+  });
+
+  it('reasoning-body 条件渲染为空时不回退内置 Markdown（renderSlot 全 Comment 陷阱）', async () => {
+    // 模拟业务的 v-if：编译后条件为假会产出 Comment 占位节点，而非什么都不返回。
+    // 若 ReasoningBlock 用 <slot> 的 fallback 写法，Vue 会据此判定「插槽未提供」而强行
+    // 套回内置 MarkdownRenderer——业务明确表达的「这种情况不显示思考正文」被无视。
+    const showBody = false as boolean;
+    const w = mount(ReasoningBlock, {
+      props: {
+        block: reasoning(),
+        info: { status: 'updating', role: 'ai', key: 'm1' },
+      },
+      slots: { 'reasoning-body': () => (showBody ? h('div') : createCommentVNode('v-if')) },
+    });
+    await nextTick();
+    expect(w.find('.aix-markdown').exists()).toBe(false);
   });
 });

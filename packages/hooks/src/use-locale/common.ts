@@ -22,3 +22,6 @@ export const commonLocale = {
   'zh-CN': {},
   'en-US': {},
 } as const;
+
+/** 公共语言包单语言切片的类型（当前为空对象） */
+export type CommonLocale = (typeof commonLocale)['zh-CN'];

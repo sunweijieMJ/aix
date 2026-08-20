@@ -26,9 +26,9 @@ export interface CreateParseChunkOptions {
  */
 export function createParseChunk(
   options: CreateParseChunkOptions = {},
-): (chunk: SSEChunk) => ParsedChunk {
+): (chunk: SSEChunk) => ParsedChunk | ParsedChunk[] {
   const { doneSignal = '[DONE]', pickDelta, pickBlockType, pickTool } = options;
-  return (chunk: SSEChunk): ParsedChunk => {
+  return (chunk: SSEChunk): ParsedChunk | ParsedChunk[] => {
     const data = chunk.data;
     if (!data) return {};
     if (data === doneSignal) return { done: true };
@@ -40,13 +40,19 @@ export function createParseChunk(
       return { delta: data };
     }
     const tool = pickTool?.(json);
-    if (tool) return { tool };
     const delta = pickDelta
       ? pickDelta(json)
       : ((json as { delta?: string; content?: string })?.delta ??
         (json as { content?: string })?.content ??
         '');
     const blockType = pickBlockType?.(json);
+    // 同帧正文不能因为"命中工具"就被丢掉：聚合网关合帧时正文与工具事件会落在同一个 chunk，
+    // 早退会静默吃掉这段正文（openaiParseChunk 的 content + tool_calls 同帧同此口径）。
+    // 文本置于工具事件之前：模型先说话再发起调用，块顺序应与之一致。
+    if (tool) {
+      if (!delta) return { tool };
+      return [blockType ? { delta, blockType } : { delta }, { tool }];
+    }
     return blockType ? { delta: delta ?? '', blockType } : { delta: delta ?? '' };
   };
 }
@@ -55,7 +61,7 @@ export function createParseChunk(
  * 扁平结构预设（库默认）：读取 data 中顶层 `delta` / `content`，结束信号 `[DONE]`。
  * 形如 `data: {"delta":"..."}` 或 `data: {"content":"..."}`。
  */
-export const flatParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChunk();
+export const flatParseChunk: (chunk: SSEChunk) => ParsedChunk | ParsedChunk[] = createParseChunk();
 
 /**
  * OpenAI 兼容预设：读取 `choices[0].delta.content`；
@@ -63,8 +69,12 @@ export const flatParseChunk: (chunk: SSEChunk) => ParsedChunk = createParseChunk
  * `delta.tool_calls` 归入工具事件通道，`finish_reason:'tool_calls'` 视为参数结束信号。
  * 结束信号 `[DONE]`。
  *
- * 未走 createParseChunk 工厂：工具分支需要在读取文本增量之前短路返回，
- * 工厂的 pickDelta/pickBlockType 组合无法自然表达「命中工具则跳过文本」的优先级，故显式实现。
+ * 同一 chunk 同时携带 `content` / `reasoning_content` / `tool_calls` / `finish_reason`
+ * （聚合网关合帧）时全部保留，按 reasoning → text → tool 增量 → argsDone 的顺序返回数组，
+ * 由 useChat 侧 toArray 展开。
+ *
+ * 未走 createParseChunk 工厂：一帧可产出多个增量事件，
+ * 工厂的 pickDelta/pickBlockType/pickTool 组合只能表达「单帧单事件」，故显式实现。
  */
 export function openaiParseChunk(chunk: SSEChunk): ParsedChunk | ParsedChunk[] {
   const data = chunk.data;
@@ -91,10 +101,20 @@ export function openaiParseChunk(chunk: SSEChunk): ParsedChunk | ParsedChunk[] {
     return { delta: data };
   }
   const choice = json.choices?.[0];
-  const toolCalls = choice?.delta?.tool_calls;
+  const d = choice?.delta;
+  const toolCalls = d?.tool_calls;
+  // 四路信号（reasoning_content / content / tool_calls / finish_reason）各自独立判断、
+  // 统一收集后返回，任何一路不早退：聚合网关合帧时四者可任意组合出现在同一 chunk
+  // （如最后一段 tool_calls 增量与 finish_reason:'tool_calls' 同帧），早退会静默丢掉
+  // 后判的信号——argsDone 丢失则工具块永久停在 input-streaming。
+  // 顺序 reasoning → text → tool 增量 → argsDone：模型先想、再说话、后发起调用，
+  // 参数结束信号必须落在同帧的参数增量之后。
+  const events: ParsedChunk[] = [];
+  if (d?.reasoning_content) events.push({ delta: d.reasoning_content, blockType: 'reasoning' });
+  if (d?.content) events.push({ delta: d.content, blockType: 'text' });
   if (toolCalls && toolCalls.length > 0) {
     // 单条工具增量保持既有单对象返回形态；同一 chunk 携带多条并行工具增量
-    // （批量聚合网关会把多路 tool_calls 合进一帧）时逐条映射为独立工具事件返回数组，
+    // （批量聚合网关会把多路 tool_calls 合进一帧）时逐条映射为独立工具事件，
     // 由 useChat 侧 toArray 展开，避免 index 1+ 的 id/name 被丢弃。
     // index 缺省回退到数组下标，作为并行工具的关联键兜底。
     const toEvent = (tc: NonNullable<typeof toolCalls>[number], i: number): ParsedChunk => ({
@@ -105,23 +125,14 @@ export function openaiParseChunk(chunk: SSEChunk): ParsedChunk | ParsedChunk[] {
         argsTextDelta: tc.function?.arguments,
       },
     });
-    return toolCalls.length === 1 ? toEvent(toolCalls[0]!, 0) : toolCalls.map(toEvent);
+    events.push(...toolCalls.map(toEvent));
   }
   // finish_reason 无法精确给出具体 index（可能存在多个并行工具调用）；为保持 parseChunk 纯函数，
   // 简化为固定发 index 0 的 argsDone。多并行工具的收尾建议由后端显式事件驱动，
   // 或改用 Responses API 的 `.done` 语义事件替代本预设。
-  if (choice?.finish_reason === 'tool_calls') return { tool: { index: 0, argsDone: true } };
-  const d = choice?.delta;
-  // 同帧同时携带 reasoning_content 与 content（聚合网关合帧）时两者都保留：
-  // reasoning 在前（与 DeepSeek 分帧时序一致），返回数组由 useChat 侧 toArray 展开
-  if (d?.reasoning_content && d.content) {
-    return [
-      { delta: d.reasoning_content, blockType: 'reasoning' },
-      { delta: d.content, blockType: 'text' },
-    ];
-  }
-  if (d?.reasoning_content) return { delta: d.reasoning_content, blockType: 'reasoning' };
-  return { delta: d?.content ?? '', blockType: 'text' };
+  if (choice?.finish_reason === 'tool_calls') events.push({ tool: { index: 0, argsDone: true } });
+  if (events.length === 0) return { delta: d?.content ?? '', blockType: 'text' };
+  return events.length === 1 ? events[0]! : events;
 }
 
 /**

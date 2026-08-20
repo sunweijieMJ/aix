@@ -1,6 +1,8 @@
 import { mount } from '@vue/test-utils';
 import { describe, it, expect } from 'vitest';
+import { h } from 'vue';
 import Conversations from '../src/components/Conversations.vue';
+import type { ConversationsItemSlotScope } from '../src/components/Conversations.vue';
 import type { ConversationItem } from '../src/types';
 
 const items: ConversationItem[] = [
@@ -21,10 +23,10 @@ describe('Conversations', () => {
   it('点击会话项更新 activeKey（v-model），激活项加 is-active', async () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
     const itemEls = w.findAll('.aix-conversations__item');
-    // 初始 a 激活
+    // 初始 a 激活（is-active 仍标在行上，供样式钩子使用）
     expect(itemEls[0]!.classes()).toContain('is-active');
-    // 点击 b
-    await itemEls[1]!.trigger('click');
+    // 点击 b 的主操作
+    await itemEls[1]!.find('.aix-conversations__label').trigger('click');
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
   });
 
@@ -32,27 +34,39 @@ describe('Conversations', () => {
   it('非受控（不绑 v-model:activeKey）：点击切换选中由内部状态驱动', async () => {
     const w = mount(Conversations, { props: { items } }); // 不传 activeKey
     const itemEls = w.findAll('.aix-conversations__item');
-    await itemEls[1]!.trigger('click');
+    await itemEls[1]!.find('.aix-conversations__label').trigger('click');
     // 仍 emit
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
     // 关键：非受控下内部状态保留，is-active 落到被点击项（defineModel 在 Vue 3.3 非受控下会丢失）
     expect(w.findAll('.aix-conversations__item')[1]!.classes()).toContain('is-active');
   });
 
-  it('会话项键盘可达：role/tabindex、Enter/Space 选中、激活项标注 aria-current', async () => {
+  // 行为变更（2026-07）：会话行此前是 role="button" + tabindex="0"，内部却嵌着重命名 / 删除
+  // 两个 <button> 和重命名 <input>——ARIA 明确禁止 button 角色包含交互式后代，屏幕阅读器
+  // 对这种结构的呈现不可预期（子按钮可能读不到、或整行的可访问名被子元素文本污染）。
+  // 改为：行本身退回无语义容器，主操作（选中）由原生 <button> 承担——键盘可达性交还平台，
+  // 不再需要自己维护 tabindex 与 Enter/Space 处理。
+  it('会话项主操作是原生 button，行本身不再声明 button 角色（ARIA 禁止嵌套交互元素）', () => {
     const w = mount(Conversations, { props: { items, activeKey: 'a' } });
-    const itemEls = w.findAll('.aix-conversations__item');
-    const firstItem = itemEls[0]!;
-    const secondItem = itemEls[1]!;
-    // 主操作（选中切换）必须可聚焦、可被辅助技术识别为可交互元素
-    expect(firstItem.attributes('role')).toBe('button');
-    expect(firstItem.attributes('tabindex')).toBe('0');
-    expect(firstItem.attributes('aria-current')).toBe('true');
-    expect(secondItem.attributes('aria-current')).toBeUndefined();
-    // Enter / Space 激活
-    await secondItem.trigger('keydown', { key: 'Enter' });
+    const rows = w.findAll('.aix-conversations__item');
+    // 行是容器：不得再有 button 角色 / tabindex，否则它与内部的操作按钮构成非法嵌套
+    expect(rows[0]!.attributes('role')).toBeUndefined();
+    expect(rows[0]!.attributes('tabindex')).toBeUndefined();
+    // 主操作是真 button：天然可聚焦、Enter/Space 由浏览器处理
+    const label = rows[0]!.find('.aix-conversations__label');
+    expect(label.element.tagName).toBe('BUTTON');
+    expect(label.attributes('type')).toBe('button');
+    // 激活态标注在承担该操作的元素上
+    expect(label.attributes('aria-current')).toBe('true');
+    expect(rows[1]!.find('.aix-conversations__label').attributes('aria-current')).toBeUndefined();
+  });
+
+  it('点击会话项主操作切换选中', async () => {
+    const w = mount(Conversations, { props: { items, activeKey: 'a' } });
+    const rows = w.findAll('.aix-conversations__item');
+    await rows[1]!.find('.aix-conversations__label').trigger('click');
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
-    await itemEls[2]!.trigger('keydown', { key: ' ' });
+    await rows[2]!.find('.aix-conversations__label').trigger('click');
     expect(w.emitted('update:activeKey')?.[1]).toEqual(['c']);
   });
 
@@ -108,7 +122,10 @@ describe('Conversations', () => {
     // editingId 不得残留，否则 select 守卫会全局阻断会话切换
     await w.setProps({ items: items.filter((it) => it.id !== 'a') });
     // 点击剩余首项（b）应正常切换选中
-    await w.findAll('.aix-conversations__item')[0]!.trigger('click');
+    await w
+      .findAll('.aix-conversations__item')[0]!
+      .find('.aix-conversations__label')
+      .trigger('click');
     expect(w.emitted('update:activeKey')?.[0]).toEqual(['b']);
   });
 
@@ -121,8 +138,11 @@ describe('Conversations', () => {
     // items 更新但被编辑的 a 仍在：编辑态保持
     await w.setProps({ items: [...items, { id: 'd', label: '新会话', group: '今天' }] });
     expect(w.find('.aix-conversations__edit-input').exists()).toBe(true);
-    // 编辑期间点击其他项仍被守卫拦截（既有行为不回归）
-    await w.findAll('.aix-conversations__item')[1]!.trigger('click');
+    // 编辑期间点击其他项的主操作仍被守卫拦截（既有行为不回归）
+    await w
+      .findAll('.aix-conversations__item')[1]!
+      .find('.aix-conversations__label')
+      .trigger('click');
     expect(w.emitted('update:activeKey')).toBeUndefined();
   });
 
@@ -178,5 +198,98 @@ describe('Conversations', () => {
     expect(w.find('.aix-conversations__item').exists()).toBe(false);
     // 顶部新建按钮不受影响
     expect(w.find('.aix-conversations__new').exists()).toBe(true);
+  });
+});
+
+/**
+ * 会话列表项定制：此前本组件零插槽，业务想加「置顶徽标 / 时间戳 / 更多菜单」只能整个重写。
+ * 三个插槽都走 `$slots.x` 显式二选一（而非 <slot> 原生 fallback），避免消费方按条件
+ * 只为部分会话渲染自定义内容时被 renderSlot 的「全 Comment 即未提供」判定强行套回内置 UI。
+ */
+describe('Conversations — 列表项插槽', () => {
+  const slotItems: ConversationItem[] = [
+    { id: 'c1', label: '会话一' },
+    { id: 'c2', label: '会话二' },
+  ];
+
+  it('#item 替换整行内容，作用域含 item / active 与三个动作句柄', async () => {
+    const w = mount(Conversations, {
+      props: { items: slotItems, activeKey: 'c2' },
+      slots: {
+        item: (s: ConversationsItemSlotScope) =>
+          h(
+            'button',
+            { class: ['row', s.active && 'is-on'], onClick: s.select },
+            `${s.item.label}|${s.active}`,
+          ),
+      },
+    });
+    const rows = w.findAll('.row');
+    expect(rows.map((r) => r.text())).toEqual(['会话一|false', '会话二|true']);
+    // 内置标题按钮与操作区整体让位
+    expect(w.find('.aix-conversations__label').exists()).toBe(false);
+    // 行容器与 is-active 仍由组件持有
+    expect(w.findAll('.aix-conversations__item').length).toBe(2);
+    expect(w.findAll('.aix-conversations__item')[1]!.classes()).toContain('is-active');
+
+    await rows[0]!.trigger('click');
+    expect(w.emitted('update:activeKey')?.at(-1)).toEqual(['c1']);
+  });
+
+  it('#item 作用域的 rename() 进入内置内联重命名态，remove() 抛 delete', async () => {
+    const w = mount(Conversations, {
+      props: { items: slotItems },
+      slots: {
+        item: (s: ConversationsItemSlotScope) => [
+          h('button', { class: 'r', onClick: s.rename }),
+          h('button', { class: 'd', onClick: s.remove }),
+        ],
+      },
+    });
+    await w.findAll('.d')[1]!.trigger('click');
+    expect(w.emitted('delete')?.at(-1)).toEqual(['c2']);
+
+    await w.findAll('.r')[0]!.trigger('click');
+    const input = w.find('.aix-conversations__edit-input');
+    expect(input.exists()).toBe(true);
+    expect((input.element as HTMLInputElement).value).toBe('会话一');
+    // 重命名态优先于 #item：该行不再渲染自定义内容
+    expect(w.findAll('.r').length).toBe(1);
+  });
+
+  it('#item-actions 只替换操作区，内置标题按钮保留', async () => {
+    const w = mount(Conversations, {
+      props: { items: slotItems },
+      slots: {
+        'item-actions': (s: ConversationsItemSlotScope) =>
+          h('button', { class: 'pin' }, `pin-${s.item.id}`),
+      },
+    });
+    expect(w.findAll('.aix-conversations__label').length).toBe(2);
+    expect(w.findAll('.pin').map((b) => b.text())).toEqual(['pin-c1', 'pin-c2']);
+    // 内置重命名 / 删除按钮让位，但操作区容器（hover 显隐载体）保留
+    expect(w.find('.aix-conversations__action').exists()).toBe(false);
+    expect(w.findAll('.aix-conversations__actions').length).toBe(2);
+  });
+
+  it('#empty 用 searching 区分「无会话」与「搜索无结果」', async () => {
+    const w = mount(Conversations, {
+      props: { items: [], searchable: true },
+      slots: { empty: (s: { searching: boolean }) => h('i', { class: 'em' }, String(s.searching)) },
+    });
+    expect(w.find('.em').text()).toBe('false');
+
+    await w.setProps({ items: slotItems });
+    await w.find('.aix-conversations__search-input').setValue('不存在的会话');
+    expect(w.find('.em').text()).toBe('true');
+  });
+
+  it('不提供任何插槽时行为与此前完全一致（零破坏性）', () => {
+    const w = mount(Conversations, { props: { items: slotItems } });
+    expect(w.findAll('.aix-conversations__label').map((b) => b.text())).toEqual([
+      '会话一',
+      '会话二',
+    ]);
+    expect(w.findAll('.aix-conversations__action').length).toBe(4);
   });
 });

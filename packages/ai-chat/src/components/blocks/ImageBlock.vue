@@ -28,10 +28,10 @@
 export interface ImageBlockProps {
   /** image 类型的 block */
   block: Extract<ContentBlock, { type: 'image' }>;
-  /** 气泡上下文（注册表统一透传，本组件暂不消费） */
-  info: BubbleContentInfo;
-  /** 打字机态（注册表统一透传，图片不逐字，故不消费） */
-  typing?: boolean;
+  /** 气泡上下文（注册表统一透传，本组件暂不消费）；可选性与 BlockRendererProps 契约对齐 */
+  info?: BubbleContentInfo;
+  /** 打字机态（注册表统一透传 boolean | 节奏配置，图片不逐字，故不消费） */
+  typing?: boolean | BubbleTypingConfig;
   /** 交互动作回调（注册表统一透传，本组件暂不消费——纯展示，无回写） */
   onBlockAction?: BlockActionHandler;
 }
@@ -45,10 +45,15 @@ export interface ImageBlockEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace } from '@aix/hooks';
-import { computed, ref, watch } from 'vue';
-import { locale } from '../../locale';
-import type { BlockActionHandler, BubbleContentInfo, ContentBlock } from '../../types';
+import { useNamespace } from '@aix/hooks';
+import { computed, onScopeDispose, ref, watch } from 'vue';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
+import type {
+  BlockActionHandler,
+  BubbleContentInfo,
+  BubbleTypingConfig,
+  ContentBlock,
+} from '../../types';
 import ImagePreview from '../ImagePreview.vue';
 import ImageThumb from '../ImageThumb.vue';
 import Skeleton from '../Skeleton.vue';
@@ -59,7 +64,7 @@ defineOptions({ inheritAttrs: false });
 const props = defineProps<ImageBlockProps>();
 const emit = defineEmits<ImageBlockEmits>();
 const ns = useNamespace('image-block');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 const loading = computed(() => props.block.state === 'loading');
 // 除了显式 error，images 为空（如占位块尚未补图、或调用方忘记设 state）也按降级处理——
@@ -71,6 +76,13 @@ const previewOpen = ref(false);
 const previewIndex = ref(0);
 // 预览开合上抛：经 Bubble 转发到 BubbleList，预览期间宿主行进 keepMounted 免被虚拟列表回收
 watch(previewOpen, (open) => emit('keep-mounted-change', open));
+// 卸载兜底：BubbleList 的 keepMounted 计数只在收到 false 时回落，而它按**消息 id** 记账。
+// 若本块在预览打开期间被卸载（如 updateBlock 把该块换成别的类型）、宿主消息却仍在列表里，
+// 列表层的「消息已不在列表」剪枝也够不到它，那一行会永久保持强制挂载。此处补发一次 false。
+onScopeDispose(() => {
+  if (previewOpen.value) emit('keep-mounted-change', false);
+});
+
 // e 显式打到被点击的缩略图按钮上再打开预览：Safari 默认不给鼠标点击的 <button> 赋键盘焦点，
 // 若单纯依赖 document.activeElement，ImagePreview 关闭时的焦点归还会落到错误元素。
 const openAt = (i: number, e: MouseEvent) => {

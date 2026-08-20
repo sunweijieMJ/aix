@@ -69,6 +69,15 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
     const id = message.id;
     const parent = nodes.get(parentId);
     if (!parent) throw new Error(`[ai-chat] messageTree.appendMessage 未找到父节点 "${parentId}"`);
+    // 创建时刻：本函数是全库唯一的消息入树口（新发送 / 重生成 / 编辑重发 / importFlat 逐条重建
+    // 都经此处），故补写只此一处即可。**仅在缺失时补**——importFlat / importTree 恢复的历史
+    // 消息自带真实时间，覆写会把整段历史的时间戳压成「本次加载时刻」。
+    //
+    // 本行会就地改写传入的 message，**调用方须自己保证这个对象归树所有**：入参若是宿主
+    // store 里的响应式代理（v-model:messages 绑 useConversations 就是这种），这次写入会穿透
+    // 回宿主的数据并触发其侦听器。故 importFlat 传的是浅拷贝（见其内注释），importTree 用的
+    // 是持久化数据里的节点，两条路都不会写到宿主还在用的对象上。
+    if (message.createdAt == null) message.createdAt = Date.now();
     nodes.set(id, { id, parentId, message, childIds: [] });
     parent.childIds.push(id);
     activeChild.set(parentId, id);
@@ -130,9 +139,32 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
   const importFlat = (messages: ChatMessage[]): void => {
     reset();
     let parentId = ROOT_ID;
+    // 重复 id 归一（与 importTree 的脏数据防线同口径）：入参同样来自不可信来源
+    // （defaultMessages / v-model:messages / 持久化的 conversation.messages）。
+    // 不设防时后写节点会覆盖先写的、连带丢掉它的 childIds，回溯又被 seen 防环截断——
+    // 表现为激活路径顺序错乱且丢消息，且全程无报错。保留首次出现、丢弃其余。
+    const seen = new Set<string>();
+    let duplicated = 0;
     for (const m of messages) {
-      appendMessage(parentId, m);
+      if (seen.has(m.id)) {
+        duplicated += 1;
+        continue;
+      }
+      seen.add(m.id);
+      // 浅拷贝换壳后再入树：入参来自不可信且**仍被宿主持有**的来源（defaultMessages /
+      // v-model:messages / 持久化的 conversation.messages），直接入树会让 appendMessage 的
+      // createdAt 补写穿透回宿主对象（绑 useConversations 时那是响应式代理，还会连带触发
+      // 它的深度侦听）——"导入"不该反过来改调用方的数据。与 useConversations.activeTree
+      // getter 的浅拷贝同一口径：只换消息外壳，content 数组仍是同一引用（块数据不复制），
+      // 故流式 mutate 内容照常驱动 DOM。
+      appendMessage(parentId, { ...m });
       parentId = m.id;
+    }
+    if (duplicated > 0) {
+      console.warn(
+        `[ai-chat] messageTree.importFlat 丢弃了 ${duplicated} 条 id 重复的消息（保留首次出现）。` +
+          '消息 id 必须唯一，否则激活路径的顺序与完整性无法保证。',
+      );
     }
   };
 
@@ -147,18 +179,89 @@ export function createMessageTree(initial?: ChatMessage[]): MessageTreeApi {
 
   const importTree = (data: ExportedTree): void => {
     reset();
-    for (const n of data.nodes) {
+    // 入口归一：data 缺失 / nodes 非数组（持久化被截断、篡改，或自定义 storage 只写了半截）
+    // 按空树处理而非抛穿调用方——本函数下面整条脏数据防线（根 id 冲突丢弃、孤儿·自指改挂、
+    // 遍历防环）的前提就是「吃的是不可信数据」，入口这一步不能反倒是硬失败。
+    // 语义与导入空树一致：清空当前树，不残留上一个会话的内容。
+    if (!data || !Array.isArray(data.nodes)) {
+      console.warn(
+        '[ai-chat] messageTree.importTree 收到的树数据缺少 nodes 数组，已按空树处理。' +
+          '通常意味着持久化的对话树数据已损坏。',
+      );
+      return;
+    }
+    // 根哨兵由 reset() 建立，持久化数据里混入的同 id 节点必须丢弃（exportTree 不会产出，
+    // 只可能来自被篡改/损坏的数据）：否则它先覆盖掉哨兵，再在下面的修复分支里被挂到「自己」
+    // 名下，根成为自己的子节点 —— 一条本无兄弟版本的顶层消息会凭空长出「1/2」分支切换器。
+    // 它的子节点不受影响：parentId 指向 ROOT_ID 仍能命中哨兵，子树内容不丢。
+    const withoutRoot = data.nodes.filter((n) => n.id !== ROOT_ID);
+    if (withoutRoot.length !== data.nodes.length) {
+      console.warn(
+        `[ai-chat] messageTree.importTree 丢弃了 id 与根哨兵（"${ROOT_ID}"）冲突的节点。` +
+          '通常意味着持久化的对话树数据已损坏。',
+      );
+    }
+    // 重复 id 同样必须丢弃（保留首次出现）：后写的节点覆盖先写的，而下面重建 childIds 时
+    // 会按原数组逐条 push，同一 id 被塞进父节点两次 —— 一条本无兄弟版本的消息就凭空长出
+    // 「1/2」分支切换器，与上面根哨兵冲突是同一类症状。
+    const seenIds = new Set<string>();
+    const incoming: typeof withoutRoot = [];
+    for (const n of withoutRoot) {
+      if (seenIds.has(n.id)) continue;
+      seenIds.add(n.id);
+      incoming.push(n);
+    }
+    if (incoming.length !== withoutRoot.length) {
+      console.warn(
+        `[ai-chat] messageTree.importTree 丢弃了 ${withoutRoot.length - incoming.length} 个 id 重复的节点（保留首次出现）。` +
+          '通常意味着持久化的对话树数据已损坏。',
+      );
+    }
+    for (const n of incoming) {
       nodes.set(n.id, { id: n.id, parentId: n.parentId, message: n.message, childIds: [] });
     }
-    // 重建 childIds + 默认 activeChild（后者后续被激活路径覆盖）
-    for (const n of data.nodes) {
-      const parent = nodes.get(n.parentId);
-      if (parent) {
-        parent.childIds.push(n.id);
-        activeChild.set(n.parentId, n.id); // 默认走最后插入的子
+    // 重建 childIds + 默认 activeChild（后者后续被激活路径覆盖）。
+    // 父节点缺失（持久化数据被截断 / 篡改，或自定义 storage 只存了子树）与自指 parentId
+    // 都归一到 ROOT 而非跳过：跳过会让该节点连同整条子链从任何路径上不可达，且 exportTree
+    // 会把悬空的 parentId 原样写回持久化层，损坏一直传染下去。挂到 ROOT 后至少内容还在、
+    // 结构自洽，下次导出也是干净数据。
+    // （多节点成环 a→b→a 无法在这里廉价识别，交由各处遍历的 seen 防环兜底。）
+    let repaired = 0;
+    for (const n of incoming) {
+      const node = nodes.get(n.id)!;
+      if (node.parentId === node.id || !nodes.has(node.parentId)) {
+        node.parentId = ROOT_ID;
+        repaired += 1;
+      }
+      nodes.get(node.parentId)!.childIds.push(node.id);
+      activeChild.set(node.parentId, node.id); // 默认走最后插入的子
+    }
+    if (repaired > 0) {
+      console.warn(
+        `[ai-chat] messageTree.importTree 修复了 ${repaired} 个父节点缺失/自指的节点（已改挂到根）。` +
+          '通常意味着持久化的对话树数据不完整或已损坏。',
+      );
+    }
+    // headId 指向不存在的节点时**不能**回落 ROOT：那会得到一棵「节点全在、激活路径为空」的树，
+    // 表现为会话凭空清空（渲染层只读 activePath），且 exportTree 会把这个空 headId 原样写回
+    // 持久化层，宿主按导出树同步的 messages 镜像随之被覆写为空——损坏就此传染。
+    // 改为沿 activeChild 兜到一个真实叶子，与孤儿·自指改挂到根同一条思路：宁可激活路径选得
+    // 不完全符合用户上次所见，也不留一棵取不出内容的树。
+    if (nodes.has(data.headId)) {
+      headId.value = data.headId;
+    } else {
+      // 此刻 activeChild 仍是上方重建循环留下的「每层最后插入的子」（head 路径还原尚未跑），
+      // 故得到的是最近追加的那条分支；节点表为空时原样返回 ROOT_ID。
+      headId.value = findLeaf(ROOT_ID);
+      // 仅在确有节点时告警：空树 + 无效 headId 的结果（空路径）本就是正确的，没有内容被藏起来。
+      // 有节点却仍兜到 ROOT 的情形（如多节点成环，无法在导入期廉价识别）同样落在这条告警里。
+      if (incoming.length > 0) {
+        console.warn(
+          `[ai-chat] messageTree.importTree 的 headId（"${String(data.headId)}"）在节点表中不存在，` +
+            '已改用最近的一条分支作为激活路径。通常意味着持久化的对话树数据已损坏。',
+        );
       }
     }
-    headId.value = nodes.has(data.headId) ? data.headId : ROOT_ID;
     // 还原激活路径：从 head 向上把每层 activeChild 指向路径上的子
     const seen = new Set<string>();
     let cur = nodes.get(headId.value);

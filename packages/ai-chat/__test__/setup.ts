@@ -1,5 +1,21 @@
 import { vi } from 'vitest';
 
+// 抬高 vi.waitFor 的**默认**超时（显式传 options 的调用点不受影响）。
+//
+// vitest.config.ts 里的 testTimeout: 20_000 管不到这里 —— 那个只约束「整个用例」，而
+// vi.waitFor 有自己独立的 1000ms 默认超时。本包有大量用例在 waitFor 里等**真实的动态
+// import**（markdown-it / katex / highlight.js / echarts，走 loadMarkdownEngine 的渐进装配）；
+// 冷缓存或全量并发跑时 vite 的 transform 成本会把首次 resolve 推过 1s。
+// 症状很有迷惑性：报的不是超时，而是断言失败，且收到的 HTML 是「引擎未就绪」的纯文本降级
+// 分支（`<!-- 加载中 / 引擎不可用…-->` + 原始 markdown），看着像渲染逻辑坏了。
+// 单独跑该文件必绿、全量跑随机红，与 testTimeout 那条注释描述的是同一个根因。
+const rawWaitFor = vi.waitFor.bind(vi);
+vi.waitFor = ((callback: Parameters<typeof vi.waitFor>[0], options?: unknown) =>
+  rawWaitFor(
+    callback,
+    (options ?? { timeout: 10_000, interval: 20 }) as never,
+  )) as typeof vi.waitFor;
+
 // jsdom 不实现 scrollTo / scrollIntoView，在此 mock 以避免 Unhandled Rejection
 if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.scrollTo) {
   HTMLElement.prototype.scrollTo = () => {};

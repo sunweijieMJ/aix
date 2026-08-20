@@ -66,6 +66,27 @@ export function stripStyleImports() {
 }
 
 /**
+ * 输出插件：向 outDir 写入空模块声明 style.d.ts，供 exports["./style"].types 引用。
+ * 让开启 noUncheckedSideEffectImports（TS 5.6+）的消费方能解析
+ * `import '@aix/<pkg>/style'` 副作用导入；集中在构建期生成，各包无需手写。
+ * 用 writeBundle + fs 而非 emitFile：theme 等 output.file 单文件模式下 emitFile 会报错。
+ * @param {string} outDir - style.d.ts 的输出目录（相对包根）
+ * @returns {import('rollup').Plugin}
+ */
+export function emitStyleDts(outDir) {
+  return {
+    name: 'emit-style-dts',
+    writeBundle() {
+      fs.mkdirSync(outDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(outDir, 'style.d.ts'),
+        '/** `./style` 纯 CSS 副作用入口的空模块声明（构建生成，见根 rollup.config.js 的 emitStyleDts）。 */\nexport {};\n',
+      );
+    },
+  };
+}
+
+/**
  * 创建 Vue 3 组件库的 Rollup 配置
  * @param {string} dir - 组件包目录路径
  * @param {string} format - 输出格式 (esm/cjs/iife)
@@ -170,6 +191,8 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
         },
         plugins: [autoprefixer()],
       }),
+      // 声明了 ./style CSS 导出的包，构建 es/ 时自动生成 es/style.d.ts（types 条件指向它）
+      ...(format === 'esm' && pkg.exports?.['./style'] ? [emitStyleDts(outputDir)] : []),
     ],
     external: (id) => {
       if (outputFile) {

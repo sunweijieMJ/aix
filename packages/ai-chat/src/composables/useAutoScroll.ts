@@ -1,4 +1,5 @@
-import { ref, isRef, toValue, onScopeDispose, type Ref, type MaybeRefOrGetter } from 'vue';
+import { ref, isRef, toValue, type Ref, type MaybeRefOrGetter } from 'vue';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 
 export type ScrollState = 'AT_BOTTOM' | 'SCROLLED_UP' | 'HAS_NEW_MESSAGES';
 export type FollowReason = 'own-message' | 'new-message' | 'streaming';
@@ -37,30 +38,26 @@ export function useAutoScroll(
   const scrollState = ref<ScrollState>('AT_BOTTOM');
   const unreadCount = ref(0);
 
-  // ── smooth 贴底意图 ─────────────────────────────────────────────
-  // 修复①：scrollToBottom(true) 一次性取调用瞬间的 scrollHeight 为目标并乐观置 AT_BOTTOM，
-  // 但 smooth 动画途中的 scroll 事件经 computeState 按真实位置计算会把状态翻回 SCROLLED_UP，
+  // ── 贴底意图（smoothPending / beginSmoothPending 的语义是"贴底轮询"，不限于 smooth 动画期间）──
+  //
+  // 为什么需要"意图进行中"标记：scrollToBottom(true) 取调用瞬间的 scrollHeight 为目标并乐观置
+  // AT_BOTTOM，但动画途中的 scroll 事件经 computeState 按真实位置计算会把状态翻回 SCROLLED_UP，
   // 此后流式增高触发的 follow('streaming') 因 defaultShouldFollow 要求 AT_BOTTOM 全部不跟随，
-  // 动画期间内容增高 >threshold 时最终停在过期底部、贴底跟随被打断。
-  // 引入"贴底意图进行中"标记：存续期间 computeState 不把乐观 AT_BOTTOM 翻回 SCROLLED_UP。
+  // 于是停在过期底部。标记存续期间 computeState 不做这次翻转（见其内部判断）。
   //
-  // 修复②：虚拟列表（virtua）新插入、此前从未测量过的行（如自定义卡片消息）在刚挂载时
-  // 常常只有估算高度，真实高度要等它被测量/布局后才更新到 scrollHeight——这个过程可能跨多帧，
-  // 且不保证在固定时长内完成。原先用一次性 500ms setTimeout 兜底清除贴底意图：若测量耗时
-  // 超过 500ms，意图被提前清掉，之后 scrollHeight 继续变化时 computeState 会把状态误判为
-  // SCROLLED_UP，导致后续 follow('streaming') 不再跟随，最终停在卡片中间、没有真正贴底。
-  // 改为 rAF 轮询 scrollHeight：每帧发现变化就重新瞬时 snap 到新底部并刷新计时，直到连续
-  // STABLE_FRAMES 帧不再变化（内容已测量/布局稳定）才收尾，不依赖对测量耗时的猜测；
-  // 仍保留 MAX_FRAMES 保底上限，避免内容持续异常增长时无限轮询。
-  // 标记清除时机：①连续几帧 scrollHeight 不再变化（内容已稳定）②用户 wheel/touchmove
-  // 主动输入打断 ③MAX_FRAMES 保底上限（内容持续异常变化时也不至永久轮询）。
+  // 为什么用 rAF 轮询而非固定超时：虚拟列表（virtua）新插入、从未测量过的行（如自定义卡片
+  // 消息）刚挂载时只有估算高度，真实高度要等测量/布局后才更新到 scrollHeight，这个过程跨多帧
+  // 且无固定时长上界。用一次性超时兜底的话，测量比超时慢就会提前清掉意图，之后 scrollHeight
+  // 继续变化时状态被误判为 SCROLLED_UP，最终停在卡片中间。改为每帧比对 scrollHeight：发现变化
+  // 就瞬时 snap 到新底部并重置稳定帧计数，连续 STABLE_FRAMES_TO_SETTLE 帧不变才收尾，不依赖对耗时的猜测。
   //
-  // 修复③：本轮询是否开启，与 scrollToBottom 这次调用是不是 smooth CSS 动画无关（虽然变量/
-  // 函数名仍叫 smoothPending/beginSmoothPending，但语义已扩展为"贴底轮询"，不再局限于
-  // smooth 动画期间）。典型场景是刷新页面：BubbleList 挂载时的瞬时（非 smooth）
-  // scrollToBottom() 若命中最后一条是自定义卡片消息，同样需要这轮询去追后续几帧才测量
-  // 出来的真实高度，否则会停在卡片中间——只有"是否已有轮询在跑"才决定要不要开启，
-  // 与是否 smooth 动画无关（见 scrollToBottom 内的判断）。
+  // 意图的三个清除时机：① 连续 STABLE_FRAMES_TO_SETTLE 帧高度不变（内容已稳定）；② 用户滚动
+  // 输入（wheel/touchmove/mousedown/滚动键 keydown）主动打断；③ MAX_SETTLE_FRAMES 保底上限
+  //（内容持续异常增长时不至永久轮询）。
+  //
+  // 轮询是否开启与这次滚动是不是 smooth 无关，只看"是否已有轮询在跑"（见 scrollToBottom）：
+  // 刷新页面时 BubbleList 挂载的瞬时 scrollToBottom() 若命中最后一条是自定义卡片，同样要靠
+  // 轮询去追后续几帧才测出的真实高度。
   const STABLE_FRAMES_TO_SETTLE = 4; // 连续 4 帧（约 64ms@60fps）高度不变视为已稳定
   const MAX_SETTLE_FRAMES = 60; // 保底上限（约 1s@60fps）
   let smoothPending = false;
@@ -76,14 +73,26 @@ export function useAutoScroll(
     if (smoothTarget) {
       smoothTarget.removeEventListener('wheel', interruptSmooth);
       smoothTarget.removeEventListener('touchmove', interruptSmooth);
+      smoothTarget.removeEventListener('mousedown', interruptSmooth);
+      smoothTarget.removeEventListener('keydown', interruptOnScrollKey);
       smoothTarget = null;
     }
   };
 
-  // 用户主动滚动输入（wheel/touchmove）：打断贴底意图，并按真实位置立即重算状态
+  // 用户主动滚动输入：打断贴底意图，并按真实位置立即重算状态。
+  // 触发面必须覆盖全部滚动输入形态，否则快速流式（高度增长间隔 < 稳定帧窗口）期间
+  // 轮询每帧 snap 回底，未覆盖的输入会被反复「拽回底部」直到帧数上限才有逃逸窗口：
+  // wheel/touchmove 之外，拖动滚动条只产生 mousedown + scroll（scroll 经 computeState
+  // 被 smoothPending 短路），键盘翻页（PageUp/方向键，无障碍用户的主路径）只产生
+  // keydown + scroll。mousedown 无条件打断（点击消息等误打断无害：computeState 若仍
+  // 贴底，下次 follow 重启轮询）；keydown 仅认滚动键，避免容器内其他快捷键误打断。
   const interruptSmooth = () => {
     clearSmoothPending();
     computeState();
+  };
+  const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' ']);
+  const interruptOnScrollKey = (e: KeyboardEvent) => {
+    if (SCROLL_KEYS.has(e.key)) interruptSmooth();
   };
 
   const beginSmoothPending = (el: HTMLElement) => {
@@ -95,9 +104,11 @@ export function useAutoScroll(
     smoothPending = true;
     smoothTarget = el;
     // BubbleList 仅接线 @scroll → computeState，无用户输入事件入口；在此对滚动容器
-    // 直挂 wheel/touchmove（passive，不影响滚动性能），意图清除时同步解绑
+    // 直挂全部滚动输入事件（passive，不影响滚动性能），意图清除时同步解绑
     el.addEventListener('wheel', interruptSmooth, { passive: true });
     el.addEventListener('touchmove', interruptSmooth, { passive: true });
+    el.addEventListener('mousedown', interruptSmooth, { passive: true });
+    el.addEventListener('keydown', interruptOnScrollKey, { passive: true });
 
     let lastHeight = el.scrollHeight;
     let stableFrames = 0;
@@ -131,14 +142,14 @@ export function useAutoScroll(
     if (distance <= threshold) {
       scrollState.value = 'AT_BOTTOM';
       unreadCount.value = 0;
-      // 修复④：贴底轮询正在进行时，"此刻恰好到底"不等于"内容已经稳定"——批量插入多条
+      // 贴底轮询正在进行时，"此刻恰好到底"不等于"内容已经稳定"——批量插入多条
       // 消息（如刷新页面一次性加载几十条历史、含若干张卡片）过程中，我们自己每帧调用的
       // el.scrollTo() 几乎必然异步触发浏览器原生 scroll 事件，而这类事件很容易恰好命中
-      // "刚 snap 过去、暂时追平"的瞬间——若不加判断会在这里把轮询提前清掉，之后内容继续
-      // 变高（如下一张卡片渲染完成）时就没人再追，最终停在半途。轮询是否结束交给它自己
-      // 的连续稳定帧判定（或用户 wheel/touchmove 主动打断），这里只在没有轮询在跑时才
-      // 视为"意图达成"顺带清理。
-      if (!smoothPending) clearSmoothPending();
+      // "刚 snap 过去、暂时追平"的瞬间——若在这里把轮询清掉，之后内容继续变高（如下一张
+      // 卡片渲染完成）时就没人再追，最终停在半途。所以这里**不做任何清理**：轮询何时结束
+      // 完全交给它自己的连续稳定帧判定（或用户滚动输入主动打断）。
+      // 无轮询在跑时也无需清理——smoothPending 只在 clearSmoothPending() 内被置 false，
+      // 且它同时清掉 settleRaf 与 smoothTarget，三者恒同进同出。
       return;
     }
     // smooth 贴底动画/贴底轮询进行中：途中 scroll 事件不把乐观 AT_BOTTOM 翻回 SCROLLED_UP（见上）
@@ -206,7 +217,7 @@ export function useAutoScroll(
     ro = new ResizeObserver(() => follow('streaming'));
     ro.observe(contentEl);
   };
-  onScopeDispose(() => {
+  onScopeDisposeSafe(() => {
     ro?.disconnect();
     clearSmoothPending(); // 组件卸载时清理 rAF 轮询与 wheel/touchmove 监听
   });

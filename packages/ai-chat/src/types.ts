@@ -25,6 +25,15 @@ export interface ChatMessage {
   status?: MessageStatus;
   /** 有序内容块（由 string 切换而来） */
   content: ContentBlock[];
+  /**
+   * 消息创建时刻（epoch ms）。消息入树时自动补写，**已有值则保留**——
+   * 从后端恢复历史时把真实时间填进来即可（`createdAt: Date.parse(item.createDate)`），
+   * 不会被导入动作覆写成「现在」。随对话树一起持久化。
+   *
+   * 气泡上方的时间、日期分隔线（`#bubble-header` / `#row-before`）直接读它即可，
+   * 不必自行 `watch(messages)` 往 `extra` 里补一份。
+   */
+  createdAt?: number;
   /** 追问建议（parseChunk 流内下发落库，随消息树持久化）；展示规则见 AiChat */
   suggestions?: SuggestionItem[];
   /** 任意业务附加信息；约定 feedback?: MessageFeedback | null 存赞/踩态，error 存原始错误 */
@@ -159,25 +168,48 @@ export interface BubbleProps {
   blockRenderers?: BlockRenderers;
   /** 工具渲染器注册表：toolName → 组件，透传给内置 ToolUseBlock 做按名路由 */
   toolRenderers?: BlockRenderers;
+  /**
+   * 末尾静默呼吸：流式输出停顿时让末块文字做明暗呼吸，提示「仍在生成」而非已说完。
+   * `true` 用默认 3000ms 阈值；传 `{ idleMs }` 自定义。默认 `false`（不改变视觉）。
+   */
+  tailBreathing?: boolean | { idleMs?: number };
   /** 是否处于内联编辑态（受控，由外部驱动进入/退出——见 BubbleList.startEdit） */
   editing?: boolean;
   /** 编辑态下是否禁止保存（如全局请求进行中），true 时点击保存无效果、保留草稿与编辑态 */
   saveDisabled?: boolean;
+  /**
+   * 出错态（status==='error'）内置错误条展示的文案；缺省回退 `locale.errorMessage`。
+   *
+   * 由上层（BubbleList 的 `errorText` 解析函数）按整条消息算好后传入——气泡本身只持有
+   * role/status/content，拿不到 `extra.error` 里的原始错误。**默认仍是 i18n 兜底文案**：
+   * `extra.error` 存的是原始 Error，直出会把 `Failed to fetch` 之类的内部信息暴露给终端用户，
+   * 要不要透出、透出到什么程度由业务显式决定（见 AiChatProps.errorText）。
+   */
+  errorText?: string;
 }
 
 /**
  * 块渲染器注册表：块类型 → 渲染组件。
- * 渲染器统一接收 props：`block`（当前内容块，必有）、`info`（气泡上下文）、`typing`（是否打字机态）。
+ * 渲染器接收的 props 契约见 `BlockRendererProps`（自定义渲染器直接用它声明 props 即可）。
  * 与内置注册表（text/reasoning）合并时用户优先，故可覆盖内置渲染。
+ *
+ * 注：值类型刻意保持宽松的 `Component`，不按 key 收窄到 `BlockRendererProps<K>`——
+ * Vue 的 `Component` 在 `<component :is>` 分发场景下不承载可用的 props 泛型，收窄只会得到
+ * 一个"看着严格、实际不校验"的类型。类型收益放在**渲染器作者侧**（下方 BlockRendererProps），
+ * 那里 `defineProps` 能真正吃到精确的 block 类型。
  */
 export type BlockRenderers = Record<string, Component>;
 
 /**
  * 角色级可配的气泡字段（仅样式/渲染类：placement/variant/shape/avatar/contentRender/blockRenderers）。
  * 类型即文档地排除列表级收口的字段：content/role/status/loading/itemKey 由消息数据驱动，
- * typing/editing/saveDisabled/toolRenderers 由列表级策略收口（打字机只对本会话流式过的消息开启、
- * editing/saveDisabled 绑定编辑态与全局 loading 语义、toolRenderers 由列表级绑定）——
+ * typing/editing/saveDisabled/toolRenderers/tailBreathing/errorText 由列表级策略收口（打字机只对
+ * 本会话流式过的消息开启、editing/saveDisabled 绑定编辑态与全局 loading 语义、toolRenderers 与
+ * tailBreathing 由列表级绑定、errorText 由列表级的 errorText 解析函数按整条消息算出）——
  * 这些键在 BubbleList 模板中被显式绑定覆盖，role 级传入会静默无效，故从类型上禁止。
+ *
+ * 增删本名单时须与 BubbleList 模板中 `v-bind="resolveBubble(item)"` **之后**的显式绑定逐一对齐：
+ * 漏登记一个键的症状是「TS 通过、运行时静默失效」，无告警、无从排查。
  */
 export type RoleBubbleConfig = Partial<
   Omit<
@@ -191,11 +223,23 @@ export type RoleBubbleConfig = Partial<
     | 'editing'
     | 'saveDisabled'
     | 'toolRenderers'
+    | 'tailBreathing'
+    | 'errorText'
   >
 >;
 
 /** 角色 → 气泡样式映射，支持静态对象或按消息动态返回（BubbleList + AiChat 共享） */
 export type RoleConfig = RoleBubbleConfig | ((item: ChatMessage) => RoleBubbleConfig);
+
+/** 对话大纲导航配置（AiChat.outline / AiChatConfig.outline 共用） */
+export interface OutlineOptions {
+  /** 滑动窗口半径，默认 8；传 Infinity 全量展示 */
+  window?: number;
+  /** 哪些消息进大纲，默认 role === 'user' */
+  filter?: (m: ChatMessage) => boolean;
+  /** 摘要提取，默认取消息文本并截断 */
+  toLabel?: (m: ChatMessage) => string;
+}
 
 /** 块交互动作信封：交互型渲染器经 onBlockAction 上抛，逐层转发到 useChat.updateBlock */
 export interface BlockAction {
@@ -217,6 +261,65 @@ export interface BlockActionPayload {
   /** 块动作内容（目标块 id / 类型 / 补丁） */
   action: BlockAction;
 }
+
+/**
+ * 块意图信封：块上抛「需要宿主处置」的意图（非数据补丁），组件库不自动落地任何状态。
+ *
+ * 与 BlockAction 的分工必须分清，两者是并存的两条通道：
+ * | 通道 | 语义 | 组件库行为 |
+ * |---|---|---|
+ * | `BlockAction` | 改我自己的数据 | 自动 `updateBlock` 落地 patch |
+ * | `BlockIntent` | 我需要你做件事 | 不动数据，逐层转发到 AiChat 的 `block-intent` emit |
+ *
+ * 典型用例：确认卡「改答案」走 action（数据补丁），「点提交」走 intent（宿主自行续流）。
+ */
+export interface BlockIntent {
+  /** 发出意图的块 id */
+  blockId: string;
+  /** 意图类型，由块自定义（如 'submit' | 'drill-down' | 'retry'） */
+  type: string;
+  /** 意图载荷，由块自定义 */
+  payload?: unknown;
+}
+
+/** 块意图回调（渲染器统一可选 prop，与 onBlockAction 同形） */
+export type BlockIntentHandler = (intent: BlockIntent) => void;
+
+/** Bubble 向上转发的块意图载荷（携带所属消息 key） */
+export interface BlockIntentPayload {
+  /** 意图所属消息的 key（通常为消息 id） */
+  messageKey: string | number;
+  /** 块意图内容（来源块 id / 类型 / 载荷） */
+  intent: BlockIntent;
+}
+
+/**
+ * 块渲染器的 props 契约。Bubble 向**每一个**块渲染器（内置与自定义一视同仁）传入这五个 prop。
+ * 泛型参数把 `block` 收窄到对应块类型（需先经 module augmentation 扩展 `ContentBlockRegistry`），
+ * 缺省为全部块类型，供通用日志 / 调试渲染器直接使用。
+ * 完整用法见 README「渲染器的 props 契约：BlockRendererProps」。
+ */
+export interface BlockRendererProps<
+  K extends keyof ContentBlockRegistry = keyof ContentBlockRegistry,
+> {
+  /** 当前内容块，按块类型精确收窄；必有 */
+  block: Extract<ContentBlock, { type: K }>;
+  /** 气泡上下文（状态 / 角色 / 所属消息 key）。Bubble 恒会传，声明为可选是为了让渲染器可被单独挂载测试 */
+  info?: BubbleContentInfo;
+  /** 打字机态：非文本块通常不消费，但注册表统一透传，故契约里保留 */
+  typing?: boolean | BubbleTypingConfig;
+  /** 「改我自己的数据」：patch 经 useChat.updateBlock 自动落地 */
+  onBlockAction?: BlockActionHandler;
+  /** 「我需要宿主做件事」：不动数据，逐层转发到 AiChat 的 block-intent（分工见 BlockIntent） */
+  onBlockIntent?: BlockIntentHandler;
+}
+
+/**
+ * 深度思考折叠面板的外观形态（见 `ThinkingProps.variant`）。
+ * 同时是 `AiChatProps.reasoningVariant` 与 `AiChatConfig.reasoningVariant` 的类型，
+ * 故置于 types.ts 而非 Thinking.vue —— 配置层不应反向依赖组件文件。
+ */
+export type ThinkingVariant = 'card' | 'capsule' | 'plain';
 
 /** 模型选项（ModelSelector 用） */
 export interface ModelOption {
@@ -307,10 +410,13 @@ export interface ThoughtChainItem {
    */
   result?: ThoughtChainResult;
   /**
-   * 折叠正文（Markdown 渲染）。需要富内容（如检索卡片）时改用 `<ThoughtChain>` 的
-   * `item-content` 作用域 slot——注意该 slot 仅在**直接使用 `<ThoughtChain>`** 时可用；
-   * 走 Bubble 块渲染管线（thought-chain 块经 ThoughtChainBlock 包装）时注册表只透传 props
-   * 不透传 slot，富内容需通过自定义 blockRenderers 替换整个 thought-chain 渲染器实现。
+   * 折叠正文（Markdown 渲染）。需要富内容（如检索卡片）时改用作用域 slot，两条路径都支持：
+   * - 直接使用 `<ThoughtChain>`：用它的 `item-content` slot；
+   * - 走 Bubble 块渲染管线（thought-chain 块经 ThoughtChainBlock 包装）：在上层提供
+   *   `#thought-chain-item-content`，由 ThoughtChainBlock 按命名约定转发到内部的 `item-content`
+   *   （携带 item/index）。仅当确实提供时才转发，避免 ThoughtChain.hasBody 误判为真。
+   *
+   * 故富内容**不需要**自定义 blockRenderers 替换整个 thought-chain 渲染器。
    */
   content?: string;
   /** 初始是否展开，默认 true（执行过程默认展开内容） */
@@ -351,13 +457,17 @@ export interface Quote {
   intent?: string;
 }
 
-/** 一等内容块：引用的唯一真源（非 text，onEdit 原位保留；请求期经 toPrompt 拍平） */
-export interface QuoteBlock extends BlockBase {
-  type: 'quote';
-  quotes: Quote[];
-}
-
-/** 工具调用生命周期状态（awaiting-approval / executing 为 Layer 2 预留） */
+/**
+ * 工具调用生命周期状态。
+ *
+ * 内置 `ToolUseBlock` 的默认卡片对各状态的处理：
+ * - `input-streaming` / `input-available` / `executing`：显示加载点（"进行中"）；
+ * - `output-available` / `output-error`：分别渲染结果区 / 错误区；
+ * - `awaiting-approval`：**默认卡片不渲染任何审批 UI**（既无加载点也无同意/拒绝按钮）。
+ *   该状态是给自定义 `toolRenderers` 用的——审批交互的形态（按钮文案、二次确认、超时策略）
+ *   高度依赖业务，故不预设；实现时"改参数走 onBlockAction、点提交走 onBlockIntent"，
+ *   与内置 UserConfirmBlock 的双通道同构，超时可直接复用 useConfirmDeadline。
+ */
 export type ToolUseState =
   | 'input-streaming'
   | 'input-available'
@@ -365,9 +475,6 @@ export type ToolUseState =
   | 'executing'
   | 'output-available'
   | 'output-error';
-
-/** 图表渲染引擎（判别键）。MVP 仅 echarts；function-plot 为数学函数图像专用副库，分期接入 */
-export type ChartEngine = 'echarts' | 'function-plot';
 
 /** ECharts 统计图种类（仅 echarts 引擎有此维度：决定骨架占位形态 + 二次动态 import 哪个图表子模块） */
 export type EChartsChartKind =
@@ -383,6 +490,58 @@ export type EChartsChartKind =
   | 'tree'
   | 'treemap';
 
+// ==================== 用户确认卡（user_confirm） ====================
+
+/**
+ * 确认卡生命周期状态。
+ *
+ * **可交互性只看本状态 + createdAt 超时判定，不看消息 status**：确认卡的提交通常是
+ * 「流已收尾后再续流」（Last-Event-ID resume），「消息 success + 卡片 awaiting」恰恰是
+ * 用户应该填写的状态；若按 `info.status === 'success'` 禁用，卡片一出现就变只读，功能直接废掉。
+ */
+export type UserConfirmState =
+  /** 待填，可交互 */
+  | 'awaiting'
+  /** 已提交、宿主请求在途：冻结不可交互 */
+  | 'submitting'
+  /** 已提交，只读回显答案 */
+  | 'submitted'
+  /** 超时 / 被后续确认卡顶替，只读且不可提交 */
+  | 'expired';
+
+/** 确认卡的单个字段 */
+export interface ConfirmField {
+  /** 字段名（同一卡内唯一，提交时作为答案键） */
+  name: string;
+  /** 问题文案（渲染为 label / fieldset legend） */
+  question: string;
+  /** 控件类型：单选 / 多选 / 文本 */
+  type: 'radio' | 'checkbox' | 'text';
+  /** 候选项（radio / checkbox 用） */
+  options?: string[];
+  /** 默认值：超时自动填充（autoFillAt）时按此写入 answer */
+  defaultValue?: string | string[];
+  /** 是否必填：为空时阻止提交 */
+  required?: boolean;
+  /** 当前答案（改答案经 BlockAction 回写）；非 awaiting 态按此只读回显 */
+  answer?: string | string[];
+}
+
+/**
+ * 确认卡超时时间线（各节点为**相对 createdAt 的 ms 偏移**，缺省即不启用该节点）。
+ *
+ * 全部节点按 createdAt 的绝对时刻计算，配合 visibilitychange 补偿，
+ * 后台标签页 setTimeout 被节流 / 挂起后回前台仍会按已流逝时间补发。
+ */
+export interface ConfirmTimeoutConfig {
+  /** 提示「需要帮您选一个吗」的时刻，缺省不提示 */
+  hintAt?: number;
+  /** 按 defaultValue 自动填充并标记的时刻，缺省不自动填充 */
+  autoFillAt?: number;
+  /** 自动提交时刻；到点上抛 `submit` 意图并带 `autoFill: true`，缺省不自动提交 */
+  autoSubmitAt?: number;
+}
+
 /** 图片条目（image 块的单张图片） */
 export interface ImageItem {
   /** 图片地址 */
@@ -393,78 +552,128 @@ export interface ImageItem {
   thumbnail?: string;
 }
 
-/** 消息内容块（有序、可扩展）。预留扩展：业务自定义块只需新增联合成员 */
-export type ContentBlock =
-  | (BlockBase & { type: 'text'; text: string })
-  | (BlockBase & {
-      type: 'reasoning';
-      text: string;
-      /** 思考起点（epoch ms），由 useChat 在该 reasoning 块首次创建时打点 */
-      startedAt?: number;
-      /**
-       * 思考终点（epoch ms），由 useChat 在思考被顶替（转正文/工具/其它块）或消息终态
-       * 落定时打点；undefined 表示仍在思考，或该块并非由 useChat 计时产生（历史/业务自建数据）
-       */
-      endedAt?: number;
-    })
-  | (BlockBase & { type: 'sources'; items: SourceItem[] })
-  | (BlockBase & { type: 'thought-chain'; items: ThoughtChainItem[] })
-  | (BlockBase & { type: 'attachment'; items: AttachmentItem[] })
-  | (BlockBase & {
-      type: 'tool_use';
-      /** 协议侧调用 id（toolu_xxx / call_xxx）：配对结果、并行去重、resume 关联 */
-      toolCallId: string;
-      /** 工具名：toolRenderers 按它路由 */
-      toolName: string;
-      /** 生命周期状态 */
-      state: ToolUseState;
-      /** 原始未完成 JSON（流式拼参时展示用，不怕 parse 失败） */
-      argsText?: string;
-      /** 参数对象（整体给时直接落 / 流式拼参齐全后解析出） */
-      input?: unknown;
-      /** 工具结果 */
-      output?: unknown;
-      /** 出错文案 */
-      errorText?: string;
-    })
-  | (BlockBase & {
-      type: 'chart';
-      /** 渲染引擎（判别键）；MVP 仅 echarts，function-plot 分期扩展本联合 */
-      engine: 'echarts';
-      /** 统计图种类：决定骨架占位形态 + 二次动态 import 哪个图表子模块 */
-      kind: EChartsChartKind;
-      /**
-       * ECharts option 对象。刻意用 unknown 不静态耦合 EChartsOption 类型
-       * （echarts 是 optionalDependency，静态 import 其类型在未安装环境会 TS2307），
-       * 与 MermaidLike/KatexLike 同 DI 策略；运行时校验后 setOption。
-       */
-      spec: unknown;
-      /** 可选标题（无障碍标签 & 卡片头部展示） */
-      title?: string;
-      /** 无障碍文字替代：屏幕阅读器朗读的图表描述 / 数据摘要，作 role="img" 的 aria-label */
-      alt?: string;
-      /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式拼 spec 期间为 loading */
-      state?: 'loading' | 'ready' | 'error';
-      /** 交互回写用（切换图型/取点等经 BlockAction 上抛）；无交互需求可不填 */
-      interactive?: boolean;
-    })
-  | (BlockBase & {
-      type: 'image';
-      /** 图片列表，支持单图（长度 1）与多图 gallery（如生图工具一次产出多个变体） */
-      images: ImageItem[];
-      /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式生图期间为 loading。缺省按 ready 处理 */
-      state?: 'loading' | 'ready' | 'error';
-      /** 出错文案 */
-      errorText?: string;
-    })
-  | QuoteBlock;
+/**
+ * 内容块类型注册表：支持业务侧通过 module augmentation 扩展自定义块类型。
+ * 每个条目的值类型是该块类型的额外字段（不含 BlockBase 的 id 和 type）。
+ *
+ * 业务侧扩展示例：
+ * ```ts
+ * declare module '@aix/ai-chat' {
+ *   interface ContentBlockRegistry {
+ *     'my-custom-block': { customField: string };
+ *   }
+ * }
+ * ```
+ */
+export interface ContentBlockRegistry {
+  text: { text: string };
+  reasoning: {
+    text: string;
+    /** 思考起点（epoch ms），由 useChat 在该 reasoning 块首次创建时打点 */
+    startedAt?: number;
+    /**
+     * 思考终点（epoch ms），由 useChat 在思考被顶替（转正文/工具/其它块）或消息终态
+     * 落定时打点；undefined 表示仍在思考，或该块并非由 useChat 计时产生（历史/业务自建数据）
+     */
+    endedAt?: number;
+  };
+  sources: { items: SourceItem[] };
+  'thought-chain': { items: ThoughtChainItem[] };
+  attachment: { items: AttachmentItem[] };
+  tool_use: {
+    /** 协议侧调用 id（toolu_xxx / call_xxx）：配对结果、并行去重、resume 关联 */
+    toolCallId: string;
+    /** 工具名：toolRenderers 按它路由 */
+    toolName: string;
+    /** 生命周期状态 */
+    state: ToolUseState;
+    /** 原始未完成 JSON（流式拼参时展示用，不怕 parse 失败） */
+    argsText?: string;
+    /** 参数对象（整体给时直接落 / 流式拼参齐全后解析出） */
+    input?: unknown;
+    /** 工具结果 */
+    output?: unknown;
+    /** 出错文案 */
+    errorText?: string;
+  };
+  chart: {
+    /** 渲染引擎（判别键）；MVP 仅 echarts，function-plot 分期扩展本联合 */
+    engine: 'echarts';
+    /** 统计图种类：决定骨架占位形态 + 二次动态 import 哪个图表子模块 */
+    kind: EChartsChartKind;
+    /**
+     * ECharts option 对象。刻意用 unknown 不静态耦合 EChartsOption 类型
+     * （echarts 是 optionalDependency，静态 import 其类型在未安装环境会 TS2307），
+     * 与 MermaidLike/KatexLike 同 DI 策略；运行时校验后 setOption。
+     */
+    spec: unknown;
+    /** 可选标题（无障碍标签 & 卡片头部展示） */
+    title?: string;
+    /** 无障碍文字替代：屏幕阅读器朗读的图表描述 / 数据摘要，作 role="img" 的 aria-label */
+    alt?: string;
+    /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式拼 spec 期间为 loading */
+    state?: 'loading' | 'ready' | 'error';
+    /** 交互回写用（切换图型/取点等经 BlockAction 上抛）；无交互需求可不填 */
+    interactive?: boolean;
+  };
+  image: {
+    /** 图片列表，支持单图（长度 1）与多图 gallery（如生图工具一次产出多个变体） */
+    images: ImageItem[];
+    /** 渲染态：loading 骨架 / ready 出图 / error 降级；流式生图期间为 loading。缺省按 ready 处理 */
+    state?: 'loading' | 'ready' | 'error';
+    /** 出错文案 */
+    errorText?: string;
+  };
+  quote: { quotes: Quote[] };
+  user_confirm: {
+    /** 表单 id，宿主提交时回传后端 */
+    formId: string;
+    /** 卡片标题 */
+    title?: string;
+    /** 字段列表 */
+    fields: ConfirmField[];
+    /** 生命周期状态（唯一的可交互性闸门之一，另一个是 createdAt 超时） */
+    state: UserConfirmState;
+    /**
+     * 创建时刻（epoch ms）；超时策略以此为基准，缺省则不启用超时。
+     * 用 epoch ms 而非后端时间字符串：与 reasoning.startedAt/endedAt 同口径，无时区解析歧义。
+     */
+    createdAt?: number;
+    /**
+     * 该卡自己的超时时间线（数据驱动，随消息持久化）；缺省不启用超时。
+     * 放在块数据上而非组件 prop：渲染器契约只透传 block/info/typing/onBlockAction/onBlockIntent，
+     * 每张卡可有各自的节奏，且直接用 <Bubble> 时无需额外接线。
+     */
+    timeout?: ConfirmTimeoutConfig;
+  };
+}
+
+/**
+ * 消息内容块（有序、可扩展）。从 ContentBlockRegistry 派生，业务侧可通过
+ * module augmentation 扩展注册表来添加自定义块类型，扩展后 ContentBlock 自动包含新类型。
+ */
+export type ContentBlock = {
+  [K in keyof ContentBlockRegistry]: BlockBase & { type: K } & ContentBlockRegistry[K];
+}[keyof ContentBlockRegistry];
+
+/** 引用内容块类型（向后兼容的命名导出） */
+export type QuoteBlock = Extract<ContentBlock, { type: 'quote' }>;
 
 /** 内置消息操作预设 key */
-export type ActionKey = 'copy' | 'regenerate' | 'feedback' | 'speak' | 'quote' | 'edit' | 'delete';
+export type ActionKey =
+  | 'copy'
+  | 'copySource'
+  | 'regenerate'
+  | 'continue'
+  | 'feedback'
+  | 'speak'
+  | 'quote'
+  | 'edit'
+  | 'delete';
 
 /** 自定义消息操作项 */
 export interface ActionItem {
-  /** 唯一 key；不要与内置预设 key（copy/regenerate/feedback/speak/quote/edit/delete）同名，否则 v-for key 冲突 */
+  /** 唯一 key；不要与内置预设 key（copy/copySource/regenerate/continue/feedback/speak/quote/edit/delete）同名，否则 v-for key 冲突 */
   key: string;
   /** 按钮文案（tooltip + aria-label），a11y 必填 */
   label: string;
@@ -521,12 +730,8 @@ export interface QuoteConfig {
   actions?: QuoteActionsItems;
   /** 是否往 BubbleActions 自动注入内置 'quote'（PC 引整条），默认 true */
   pcQuoteAction?: boolean;
-  /** 移动精选实现（P2 预留，首版不接线） */
-  mobileSelection?: 'custom' | 'native';
-  /** 长按出菜单延时 ms，默认 500 */
+  /** 长按出菜单延时 ms，默认 500（移动端选区行为其余部分由浏览器原生选区决定） */
   longPressDelay?: number;
-  /** 精选初选粒度（P2 预留，首版不接线） */
-  granularity?: 'word' | 'sentence';
   /** 键盘选区唤出，默认 true */
   keyboard?: boolean;
   /** 启用角色，默认 ['ai'] */
@@ -608,9 +813,7 @@ export interface SuggestionItem {
   icon?: Component;
 }
 
-// ──────────────────────────────────────────────
-// 语音识别类型（useVoiceInput 使用）
-// ──────────────────────────────────────────────
+// ==================== 语音识别（useVoiceInput 使用） ====================
 
 /** 自定义语音识别器收到的回调集 */
 export interface VoiceRecognizerCtx {
@@ -636,9 +839,7 @@ export interface VoiceConfig {
   onError?: (error: unknown) => void;
 }
 
-// ──────────────────────────────────────────────
-// 语音播报类型（useSpeech 使用）
-// ──────────────────────────────────────────────
+// ==================== 语音播报（useSpeech 使用） ====================
 
 /** 自定义合成器收到的上下文（参数 + 生命周期回调） */
 export interface SpeechSynthesizerCtx {
@@ -697,9 +898,7 @@ export interface SpeechConfig {
   onError?: (error: unknown) => void;
 }
 
-// ──────────────────────────────────────────────
-// 对话树 / 分支（messageTree 使用）
-// ──────────────────────────────────────────────
+// ==================== 对话树 / 分支（messageTree 使用） ====================
 
 /** 对话树节点：扁平存储，parentId 互链；node.id === message.id，ROOT 节点 message 为 null */
 export interface MessageNode {

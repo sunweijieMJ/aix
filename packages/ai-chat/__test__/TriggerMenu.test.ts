@@ -55,12 +55,33 @@ describe('TriggerMenu', () => {
 
   it('loading 显示加载态；空 items 显示空态', () => {
     mountMenu({ ...base, loading: true });
-    expect(q('[role="listbox"]')?.textContent).toContain('加载中');
+    expect(q('.aix-trigger-menu')?.textContent).toContain('加载中');
     wrappers.forEach((w) => w.unmount());
     wrappers = [];
     mountMenu({ ...base, items: [] });
-    expect(q('[role="listbox"]')?.textContent).toContain('无匹配结果');
+    expect(q('.aix-trigger-menu')?.textContent).toContain('无匹配结果');
     expect(qa('[role="option"]')).toHaveLength(0);
+  });
+
+  // ARIA：listbox 的子元素只应是 option/group。加载 / 空态时把状态文案塞进 listbox 里
+  // 属于结构违规；此时本就没有可选项，整块按状态区（role=status）暴露更贴切。
+  it('加载态不暴露为 listbox，而是状态区', () => {
+    mountMenu({ ...base, loading: true });
+    expect(q('[role="listbox"]')).toBeNull();
+    expect(q('[role="status"]')?.textContent).toContain('加载中');
+  });
+
+  it('空结果态不暴露为 listbox，而是状态区', () => {
+    mountMenu({ ...base, items: [] });
+    expect(q('[role="listbox"]')).toBeNull();
+    expect(q('[role="status"]')?.textContent).toContain('无匹配结果');
+  });
+
+  it('有候选项时才暴露为 listbox，且其下只有 option 子元素', () => {
+    mountMenu(base);
+    const listbox = q('[role="listbox"]');
+    expect(listbox).toBeTruthy();
+    expect([...listbox!.children].every((c) => c.getAttribute('role') === 'option')).toBe(true);
   });
 
   it('高亮下标变化时把对应选项滚入可视区（scrollIntoView block:nearest）', async () => {

@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { GenerateProcessor } from '../src/core/GenerateProcessor';
+import { IdReuseResolver } from '../src/core/IdReuseResolver';
 import { LLMClient } from '../src/utils/llm-client';
 import { LoggerUtils } from '../src/utils/logger';
 import { CommonASTUtils } from '../src/utils/common-ast-utils';
@@ -737,5 +738,76 @@ describe('GenerateProcessor.cleanForLLM — 剥列表序号但不吞小数', () 
     expect(clean('3.14元')).toBe('3.14元');
     expect(clean('3.14 元')).toBe('3.14 元');
     expect(clean('1.5倍速')).toBe('1.5倍速');
+  });
+});
+
+/**
+ * Bug：resolveSemanticId 的 promoteToCommon 分支用 `llmId ?? cleanForLLM(...)`，而
+ * llm-client 对 LLM 漏答的条目显式置 ''（注释声明"缺失项置空让上层走兜底"）。空串非
+ * nullish，`??` 不兜底 → sanitizeSemanticForId('') 恒回退 t_<hash('')>，所有此类不同
+ * 原文共用同一基名，靠 _N 后缀区分（顺序相关、无语义）。同函数非提升分支用的是
+ * truthy 判断（`llmId ? A : B`），空串正确走本地兜底——两分支必须口径一致。
+ */
+describe('resolveSemanticId — promoteToCommon 分支空串 llmId 兜底', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promote-empty-llmid-'));
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('LLM 返回空串时走本地兜底：不同原文得到不同基名，而非共用 hash("") + _N', () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    // 两条原文各自已出现在 2 个模块前缀 → threshold=3 下新模块触发提升
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({
+        'pages.foo.a': '确认删除选中项',
+        'pages.bar.a': '确认删除选中项',
+        'pages.foo.b': '導出全部数据',
+        'pages.bar.b': '導出全部数据',
+      }),
+    );
+    const config = resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: localeDir, sourceDir: 'src', format: 'flat' },
+      keys: {
+        separator: '.',
+        prefix: { strategy: 'path', anchor: 'src' },
+        reuse: {
+          acrossDirectories: false,
+          promoteToCommon: { threshold: 3, namespace: 'common' },
+        },
+      },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+    const resolver = new IdReuseResolver(config, false);
+    const proc = new GenerateProcessor(config, false, false);
+    const filePath = path.join(tmpDir, 'src', 'pages', 'baz', 'f.vue');
+    const call = (text: string): string =>
+      (proc as any).resolveSemanticId(
+        { original: text, filePath, context: 'text', line: 1, column: 1 },
+        '', // LLM 漏答 → llm-client 显式置空串
+        new Map<string, string>(),
+        resolver,
+      );
+
+    const id1 = call('确认删除选中项');
+    const id2 = call('導出全部数据');
+
+    // 都应提升到 common namespace
+    expect(id1.startsWith('common.')).toBe(true);
+    expect(id2.startsWith('common.')).toBe(true);
+    // 修复前：两者共用 t_<hash('')> 基名，id2 恒为 `${id1}_1`（顺序相关）
+    expect(id2).not.toBe(`${id1}_1`);
+    expect(id1).not.toBe(id2);
   });
 });

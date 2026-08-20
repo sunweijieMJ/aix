@@ -262,31 +262,6 @@ export class VueTransformer implements ITransformer {
     return new RegExp(`([\\w-]+)=(?:(["'])\\s*${escaped}\\s*\\2|${escaped}(?=[\\s/>]))`, flags);
   }
 
-  /**
-   * 在 template 中替换字符串（string → string 的薄包装，供单条替换场景/既有测试使用；
-   * 批量替换请直接用 replaceInLines 摊销 split/join 成本）
-   * @param templateContent - template 内容
-   * @param original - 原始字符串
-   * @param replacement - 替换字符串
-   * @param line - 行号（template 内的相对行号）
-   * @param column - 列号
-   * @returns 替换后的 template 内容
-   */
-  private replaceInTemplate(
-    templateContent: string,
-    original: string,
-    replacement: string,
-    line: number,
-    column: number,
-    templateContext?: ExtractedString['templateContext'],
-  ): string {
-    const lines = templateContent.split('\n');
-    if (!this.replaceInLines(lines, original, replacement, line, column, templateContext)) {
-      throw new Error(`无法定位已提取文本的模板节点，已中止转换: 「${original}」`);
-    }
-    return lines.join('\n');
-  }
-
   /** 以 next 的内容整体覆写 lines（原地），供多行兜底分支在整段替换后回写行数组。 */
   private static overwriteLines(lines: string[], next: string): void {
     const nextLines = next.split('\n');
@@ -296,9 +271,9 @@ export class VueTransformer implements ITransformer {
 
   /**
    * 在 template 行数组中原地查找并替换单个字符串。
-   * 匹配逻辑与原 replaceInTemplate 完全一致，仅把「每次 split/join 整段模板」改为
-   * 调用方持有行数组、本方法原地修改；两个多行兜底分支（跨行静态属性 / 跨行文本节点）
-   * 需要整段内容做正则或偏移定位时，才临时 join 一次（罕见路径，成本可接受）。
+   * 调用方持有行数组、本方法原地修改，批量替换时摊销 split/join 成本；两个多行兜底分支
+   * （跨行静态属性 / 跨行文本节点）需要整段内容做正则或偏移定位时，才临时 join 一次
+   * （罕见路径，成本可接受）。
    */
   private replaceInLines(
     lines: string[],
@@ -577,7 +552,7 @@ export class VueTransformer implements ITransformer {
     }
 
     // 尝试各种引号包裹（仅 dynamic-attribute / interpolation：原文带引号的字符串字面量）。
-    // 与 replaceInTemplate 同因：text-node / mixed-content 套引号会误命中同行带引号属性值。
+    // text-node / mixed-content 不套引号：套引号会误命中同行带引号属性值。
     if (templateContext === 'dynamic-attribute' || templateContext === 'interpolation') {
       for (const quote of ["'", '"', '`']) {
         const quoted = `${quote}${original}${quote}`;

@@ -61,7 +61,7 @@ import { ArrowDropDown, ArrowDropUp, Close, IconSearch as Search } from '@aix/ic
 import { ref, watch, nextTick } from 'vue';
 import { locale } from '../locale';
 
-const { t } = useLocale(locale);
+const { t } = useLocale({ name: 'pdf-viewer', messages: locale });
 
 const props = defineProps<{
   visible: boolean;

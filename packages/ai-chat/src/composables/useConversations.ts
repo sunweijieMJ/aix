@@ -1,12 +1,4 @@
-import {
-  ref,
-  computed,
-  watch,
-  onScopeDispose,
-  type Ref,
-  type ComputedRef,
-  type WritableComputedRef,
-} from 'vue';
+import { ref, computed, watch, type Ref, type ComputedRef, type WritableComputedRef } from 'vue';
 import type {
   ChatMessage,
   Conversation,
@@ -14,6 +6,7 @@ import type {
   MessageStatus,
   ExportedTree,
 } from '../types';
+import { onScopeDisposeSafe } from '../utils/onScopeDisposeSafe';
 import { createMessageTree } from './messageTree';
 
 // 流式中的非终态：恢复时无活跃流推进，须复位
@@ -33,7 +26,21 @@ function reconcileStatus(m: ChatMessage): ChatMessage {
  * 仅克隆需改动的消息/会话，终态消息与会话保持原引用（最小变更）。
  */
 function reconcileStuckMessages(list: Conversation[]): Conversation[] {
-  return list.map((conv) => {
+  return list.map((rawConv) => {
+    // 树数据损坏（nodes 非数组）：丢弃整棵树、回退到扁平 messages 分支（activeTree 的 getter
+    // 会按 messages 重新迁移出线性树，消息内容不丢）。与下方 messages 非数组的归一同一口径，
+    // 也与 messageTree.importTree 那条脏数据防线（根 id 冲突 / 孤儿改挂 / 防环）同一思路。
+    // 不设防则直接 .map 抛错：同步 defaultConversations 路径炸在 setup 里，异步 storage.load
+    // 路径被 .catch 吞成「加载失败」，用户看到空列表、之后的变更还会把空列表写回 storage
+    // 覆盖真实历史。
+    let conv = rawConv;
+    if (rawConv.tree && !Array.isArray(rawConv.tree.nodes)) {
+      console.warn(
+        `[ai-chat] 会话 "${rawConv.id}" 的对话树数据损坏（nodes 非数组），已丢弃该树并回退到扁平 messages。` +
+          '通常意味着持久化数据不完整或已损坏。',
+      );
+      conv = { ...rawConv, tree: undefined };
+    }
     if (conv.tree) {
       // 树模式：树内节点与 messages 镜像反序列化后成两份独立对象，须一并复位卡死状态，
       // 否则仅读 messages 的旧消费方仍会读到停在 updating 的假加载态。
@@ -45,14 +52,22 @@ function reconcileStuckMessages(list: Conversation[]): Conversation[] {
         changed = true;
         return { ...n, message: fixed };
       });
-      // messages 镜像是 activeTree.set 同步出的 active path，兼容仅读 messages 的旧消费方
-      const messages = Array.isArray(conv.messages)
-        ? conv.messages.map((m) => {
-            const fixed = reconcileStatus(m);
-            if (fixed !== m) changed = true;
-            return fixed;
-          })
-        : conv.messages;
+      // messages 镜像是 activeTree.set 同步出的 active path，兼容仅读 messages 的消费方。
+      // 非数组（持久化脏数据）归一为空数组，与下方扁平分支同一口径。必须在这里挡：
+      // activeMessages 的 `?? []` 只挡得住 null/undefined，而一个被损坏成字符串的 messages
+      // 会让 AiChat 的 `messagesModel.value.length > 0` 成立并 setMessages(字符串)，
+      // importFlat 逐字符迭代出一棵 id 全为 undefined 的垃圾树。
+      let messages = conv.messages;
+      if (!Array.isArray(messages)) {
+        messages = [];
+        changed = true;
+      } else {
+        messages = messages.map((m) => {
+          const fixed = reconcileStatus(m);
+          if (fixed !== m) changed = true;
+          return fixed;
+        });
+      }
       return changed ? { ...conv, tree: { ...conv.tree, nodes }, messages } : conv;
     }
     // 扁平 messages 模式：防御持久化脏数据（缺失/非数组时归一为空数组），复位卡死状态
@@ -111,12 +126,18 @@ export interface UseConversationsReturn {
   setActive: (id: string) => void;
 }
 
-/** 从 ExportedTree 还原 active path（从 headId 沿 parentId 回溯，反转） */
+/** 从 ExportedTree 还原 active path（从 headId 沿 parentId 回溯，反转）。
+ * 与 messageTree.ts 同类回溯一致，带访问集防环：data 来自业务方回写（v-model:tree），
+ * 持久化脏数据/自定义 storage 实现 bug/多标签页写入竞态都可能使 parentId 成环，
+ * 无防护会 while(cur) 同步死循环挂死主线程。
+ */
 function rebuildActivePath(data: ExportedTree): ChatMessage[] {
   const byId = new Map(data.nodes.map((n) => [n.id, n]));
   const path: ChatMessage[] = [];
+  const seen = new Set<string>();
   let cur = byId.get(data.headId);
-  while (cur) {
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
     path.push(cur.message);
     cur = cur.parentId ? byId.get(cur.parentId) : undefined;
   }
@@ -150,8 +171,12 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
   const applyLoaded = (loaded: Conversation[] | null | undefined) => {
     if (localDirty) return;
     if (!Array.isArray(loaded) || !loaded.length) return; // 无有效数据：维持初始化时已用 defaultConversations 算好的状态
+    // 先归一化、成功后再置位 suppressNextSave：反过来写的话，归一化一旦抛错，标记会停在
+    // true 且列表纹丝不动——它随后会吃掉用户第一次真实变更的保存，直到第二次变更才落盘，
+    // 中间那次静默丢失。
+    const next = reconcileStuckMessages(loaded);
     suppressNextSave = true;
-    conversations.value = reconcileStuckMessages(loaded);
+    conversations.value = next;
     // resolve 后原 activeKey 可能已不在新列表里（或初始为空），回填为第一条
     if (!conversations.value.some((c) => c.id === activeKey.value)) {
       activeKey.value = conversations.value[0]?.id ?? '';
@@ -160,7 +185,10 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
 
   if (storage) {
     isLoading.value = true;
-    Promise.resolve(storage.load())
+    // load() 用 async IIFE 包起来而不是裸 Promise.resolve(storage.load())：契约允许 load 返回
+    // 同步值，同步实现抛错（自定义 storage 里 JSON.parse 损坏数据等）会在 Promise.resolve 之前
+    // 就抛出、绕过下方 .catch 直接炸穿宿主组件的 setup。包一层后同步/异步失败走同一条降级路径。
+    void (async () => storage.load())()
       .then(applyLoaded)
       .catch((err) => {
         console.warn('[ai-chat] 会话列表加载失败:', err);
@@ -176,10 +204,16 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     get: () => active.value?.messages ?? [],
     set: (msgs) => {
       const c = active.value;
-      if (c) {
-        localDirty = true;
-        c.messages = msgs;
-      }
+      if (!c) return;
+      // 「空 → 空」是无效写入，直接忽略（不置脏、不赋值）：AiChat 的 v-model:messages 桥接
+      // 在 setup 期会把内部尚且为空的 active path 镜像回写过来（见 AiChat.vue 的 SSOT 桥接），
+      // 若据此置 localDirty，异步 storage.load() 的结果会被 applyLoaded 整体丢弃（违反
+      // 「load 有数据时以 load 为准」），且之后任意一次用户变更都会把空的默认会话写回
+      // storage、覆盖已持久化的真实历史（数据丢失，而非仅不展示）。
+      // 用户主动清空（旧值非空 → 新值空）是有意义的变更，不在此列，照常置脏并赋值。
+      if (msgs.length === 0 && (c.messages?.length ?? 0) === 0) return;
+      localDirty = true;
+      c.messages = msgs;
     },
   });
 
@@ -189,9 +223,16 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
       const c = active.value;
       if (!c) return undefined;
       if (c.tree) return c.tree;
-      // 迁移：用 messageTree 把扁平 messages 转线性树导出
-      const t = createMessageTree(Array.isArray(c.messages) ? c.messages : []);
-      return t.exportTree();
+      // 迁移：用 messageTree 把扁平 messages 转线性树导出。
+      //
+      // 本 getter 不复制入参，靠 importFlat 自己的浅拷贝（见其注释）保证不写穿 c.messages。
+      // 这条不变量对本处尤其要紧：appendMessage 会给缺失 createdAt 的消息补写 `Date.now()`，
+      // 一旦写到会话仓库的消息对象上，① 「读一个 computed」就变成了「写用户数据」；
+      // ② 写的是本 computed 刚读过的响应式依赖，它会当场自失效，第一次重读要整棵树重建一遍；
+      // ③ 配了 storage 时这次 mutation 被下方的 watch 捕获，调度一次用户从未触发的 save()。
+      // 补写的 createdAt 落在树内副本上，随导出的树进入宿主的 SSOT，源 messages 保持不变——
+      // 迁移完成后宿主的 syncTree 会经 set 分支把 c.tree / c.messages 一并写回，两边最终收敛。
+      return createMessageTree(Array.isArray(c.messages) ? c.messages : []).exportTree();
     },
     set: (data) => {
       const c = active.value;
@@ -224,6 +265,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
       group: initConv.group,
       timestamp: initConv.timestamp ?? Date.now(),
       messages: initConv.messages ?? [],
+      tree: initConv.tree,
     });
     activeKey.value = id;
     return id;
@@ -279,8 +321,27 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
       runSave(list);
     };
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // 触发源收窄为「列表指纹 + 活跃会话 deep」而非对 conversations 整体 { deep: true }：
+    // 活跃会话经 v-model 桥接共享的活消息引用被流式逐 chunk mutate，整仓 deep watch 会在
+    // 每次 flush 全量深遍历所有会话（含全部非活跃会话）做依赖收集，会话仓库越大流式越卡——
+    // 防抖只挡住 save 的 I/O，挡不住遍历本身。收窄后逐 chunk 遍历成本 = O(活跃会话)。
+    // - 指纹（O(会话数) 字符串拼接）覆盖 create/remove/rename 及任意会话的结构性变化；
+    // - active 走 deep 覆盖流式内容 mutate 与 activeMessages/activeTree 回写。
+    // 语义收窄：绕过本 composable API 直接深改「非活跃」会话的消息内容不再自动触发保存
+    // （其结构性变化仍触发）；该用法不在公开 API 面内。
     watch(
-      conversations,
+      [
+        () =>
+          conversations.value
+            .map(
+              (c) =>
+                `${c.id}${c.label}${c.group ?? ''}${c.timestamp}${
+                  Array.isArray(c.messages) ? c.messages.length : 0
+                }${c.tree?.nodes.length ?? 0}`,
+            )
+            .join(''),
+        active,
+      ],
       () => {
         if (suppressNextSave) {
           suppressNextSave = false; // 这次触发是 load 落地，不是用户变更，跳过这次保存
@@ -297,7 +358,7 @@ export function useConversations(options: UseConversationsOptions = {}): UseConv
     // dispose 时 flush 而非丢弃：防抖窗口内的最后一段变更（流式期间防抖被持续重置，
     // 卸载若发生在流结束后的窗口内，丢的可能是整条刚完成的回复）立即落盘，同样经串行队列，
     // 保证 flush 数据最终落地。浏览器强杀（刷新/关 tab）仍可能丢窗口内数据，由 load 时 reconcileStuckMessages 兜底。
-    onScopeDispose(() => {
+    onScopeDisposeSafe(() => {
       if (timer) {
         clearTimeout(timer);
         timer = null;

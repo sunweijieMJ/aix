@@ -380,7 +380,10 @@ export class GenerateProcessor extends BaseProcessor {
     const finalId = promoteToCommon
       ? idGenerator.generateWithFixedPrefix(
           reuseResolver.getCommonNamespace(),
-          llmId ?? GenerateProcessor.cleanForLLM(messageForId),
+          // `||` 而非 `??`：llm-client 对 LLM 漏答的条目显式置 ''，空串必须与下方
+          // 非提升分支同口径走本地兜底，否则 sanitize('') 恒回退 t_<hash('')>，
+          // 所有漏答原文共用同一基名、只靠顺序相关的 _N 后缀区分。
+          llmId || GenerateProcessor.cleanForLLM(messageForId),
           existingIds,
         )
       : llmId

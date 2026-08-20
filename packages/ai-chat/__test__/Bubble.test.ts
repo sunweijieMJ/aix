@@ -249,6 +249,20 @@ describe('Bubble 内联编辑（editing 受控 prop）', () => {
     expect((ta.element as HTMLTextAreaElement).value).toBe('原始内容');
   });
 
+  // 防回归：触发编辑的铅笔按钮与整条 footer 在同一帧被卸载，不接管焦点则落回 <body>
+  it('进入编辑态自动聚焦 textarea，光标置于末尾', async () => {
+    const w = mount(Bubble, {
+      props: { content: [textBlock('原始内容')], role: 'user', editing: false },
+      attachTo: document.body,
+    });
+    await w.setProps({ editing: true });
+    await nextTick();
+    const el = w.find('textarea').element;
+    expect(document.activeElement).toBe(el);
+    expect(el.selectionStart).toBe('原始内容'.length);
+    w.unmount();
+  });
+
   it('editing=false（默认）不显示内联编辑框', () => {
     const w = mount(Bubble, { props: { content: [textBlock('hi')], role: 'user' } });
     expect(w.find('textarea.aix-bubble__edit-input').exists()).toBe(false);
@@ -319,6 +333,107 @@ describe('Bubble 内联编辑（editing 受控 prop）', () => {
   });
 });
 
+describe('Bubble footer 内容响应式（多层转发 slot 时的 status 变化）', () => {
+  // 复现真实场景（AiChat.vue / BubbleList.vue 的实际写法）：每层都按
+  // `v-if="$slots.footer"` 判断是否转发，并用 `<slot name="footer" :item="item" />`
+  // 把作用域插槽再转发一层——业务模板 → AiChat → BubbleList → Bubble，一路都是这个模式。
+  // 用同样写法的两层转发组件模拟这条链路，验证 status 变化后 footer 会正确出现/消失。
+  const Forwarder = defineComponent({
+    props: { item: { type: Object, required: true } },
+    template: `
+      <div>
+        <template v-if="$slots.footer">
+          <slot name="footer" :item="item" />
+        </template>
+      </div>
+    `,
+  });
+
+  it('status 从 loading 变为 abort 后，经多层转发的 footer 插槽应重新出现', async () => {
+    const w = mount(
+      {
+        components: { Forwarder, Bubble },
+        props: ['status'],
+        template: `
+          <Forwarder :item="{ status }">
+            <template #footer="{ item }">
+              <Forwarder :item="item">
+                <template #footer="{ item: it2 }">
+                  <Bubble role="ai" :status="it2.status" :content="content">
+                    <template #footer>
+                      <button v-if="it2.status === 'success' || it2.status === 'abort'" class="act">
+                        操作
+                      </button>
+                    </template>
+                  </Bubble>
+                </template>
+              </Forwarder>
+            </template>
+          </Forwarder>
+        `,
+        data() {
+          return { content: [textBlock('hi')] };
+        },
+      },
+      { props: { status: 'loading' } },
+    );
+    expect(w.find('.act').exists()).toBe(false);
+    await w.setProps({ status: 'abort' });
+    expect(w.find('.act').exists()).toBe(true);
+  });
+});
+
+describe('Bubble footer 插槽的调用次数与空内容判定', () => {
+  // footer 的包裹层要按「这一条**产出了内容**」渲染，此前实现是「computed 里先渲一次判空 +
+  // 模板里再渲一次」——每条每帧把宿主插槽调用两次。插槽由宿主提供、不能假定是纯的（带埋点
+  // 或计数的实现会莫名翻倍），且 AiChat 那条链路下每次多构造一整棵 BubbleActions vnode 树。
+  // 现由函数式组件 FooterWrap 调用一次后自行决定包不包，与 BubbleList.RowBefore 同款。
+  it('每次渲染只调用 footer 插槽一次', async () => {
+    const footer = vi.fn(() => h('span', { class: 'act' }, '操作'));
+    const w = mount(Bubble, {
+      props: { content: [textBlock('hi')], role: 'ai', status: 'success' },
+      slots: { footer },
+    });
+    await nextTick();
+    expect(w.find('.act').exists()).toBe(true);
+    expect(footer).toHaveBeenCalledTimes(1);
+
+    footer.mockClear();
+    await w.setProps({ status: 'abort' });
+    await nextTick();
+    expect(footer).toHaveBeenCalledTimes(1);
+  });
+
+  it('插槽声明了但这一条渲染为空时，不套 __footer 包裹层（避免多出一份 gap）', async () => {
+    const w = mount(
+      {
+        components: { Bubble },
+        props: ['role'],
+        // 复现真实写法：消费方按角色决定是否出操作条，user 消息渲染为空
+        template: `
+          <Bubble :role="role" :content="content" status="success">
+            <template #footer>
+              <button v-if="role === 'ai'" class="act">操作</button>
+            </template>
+          </Bubble>
+        `,
+        data() {
+          return { content: [textBlock('hi')] };
+        },
+      },
+      { props: { role: 'user' } },
+    );
+    await nextTick();
+    expect(w.find('.act').exists()).toBe(false);
+    expect(w.find('.aix-bubble__footer').exists()).toBe(false);
+
+    await w.setProps({ role: 'ai' });
+    await nextTick();
+    expect(w.find('.act').exists()).toBe(true);
+    expect(w.find('.aix-bubble__footer').exists()).toBe(true);
+  });
+});
+
 describe('Bubble tool_use 块渲染', () => {
   it('渲染 tool_use 块（内置 ToolUseBlock）', () => {
     const content: ContentBlock[] = [
@@ -335,5 +450,40 @@ describe('Bubble tool_use 块渲染', () => {
     const w = mount(Bubble, { props: { content, role: 'ai' } });
     expect(w.find('.aix-tool-use').exists()).toBe(true);
     expect(w.text()).toContain('search');
+  });
+});
+
+describe('Bubble 块渲染器查表的原型链加固', () => {
+  // 回归：注册表是对象字面量，继承 Object.prototype。此前用 `renderers[block.type]` 直接下标，
+  // 'constructor' / 'toString' / '__proto__' 这些原型链上的键会取到真值 —— 既绕过「未注册渲染器」
+  // 的开发期告警（静默），又把原型上的函数/对象当组件渲染，气泡里吐出 `[object Object]`。
+  // block.type 来自流数据与持久化对话树（localStorage 可被篡改/损坏），并非不可达路径。
+  // 与 ToolUseBlock 按 toolName 路由的 Object.hasOwn 加固保持一致。
+  it.each(['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__'])(
+    'type="%s" 不命中原型链上的键：跳过渲染并给出未注册告警',
+    async (protoKey) => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const w = mount(Bubble, {
+        props: { content: [{ id: 'b1', type: protoKey, text: 'x' } as unknown as ContentBlock] },
+      });
+      await nextTick();
+      // 不得渲染出原型对象/函数被当组件的产物
+      expect(w.text()).not.toContain('[object Object]');
+      expect(w.find('.aix-bubble__content').text()).toBe('');
+      // 开发期护栏必须照常触发（此前被真值查表结果吞掉）
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`"${protoKey}"`));
+      warn.mockRestore();
+    },
+  );
+
+  it('自定义 blockRenderers 注册的自有键仍正常命中', () => {
+    const Custom = defineComponent({ setup: () => () => h('div', { class: 'custom' }, 'ok') });
+    const w = mount(Bubble, {
+      props: {
+        content: [{ id: 'b1', type: 'my-block' } as unknown as ContentBlock],
+        blockRenderers: { 'my-block': Custom },
+      },
+    });
+    expect(w.find('.custom').exists()).toBe(true);
   });
 });

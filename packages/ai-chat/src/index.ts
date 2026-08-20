@@ -1,12 +1,15 @@
 import type { App } from 'vue';
 import AiChat from './components/AiChat.vue';
 import AttachmentCard from './components/AttachmentCard.vue';
+import AttachmentsPanel from './components/AttachmentsPanel.vue';
 import Bubble from './components/Bubble.vue';
 import BubbleActions from './components/BubbleActions.vue';
 import BubbleList from './components/BubbleList.vue';
+import ContextWindow from './components/ContextWindow.vue';
 import Conversations from './components/Conversations.vue';
 import LoadingDots from './components/LoadingDots.vue';
 import MarkdownRenderer from './components/MarkdownRenderer.vue';
+import MessageOutline from './components/MessageOutline.vue';
 import ModelSelector from './components/ModelSelector.vue';
 import Prompts from './components/Prompts.vue';
 import QuoteSheet from './components/quote/QuoteSheet.vue';
@@ -22,11 +25,11 @@ import ThoughtChain from './components/ThoughtChain.vue';
 import TriggerMenu from './components/TriggerMenu.vue';
 import Welcome from './components/Welcome.vue';
 
-// 组件（不带 Aix 前缀）
 // 注意：内置内容块组件（TextBlock / ReasoningBlock / ThoughtChainBlock / SourcesBlock /
-// AttachmentBlock）是 Bubble 块注册表的实现细节，不对外导出——扩展请通过 blockRenderers 注册自定义渲染器。
+// AttachmentBlock / UserConfirmBlock）是 Bubble 块注册表的实现细节，不对外导出——扩展请通过 blockRenderers 注册自定义渲染器。
 export {
   AttachmentCard,
+  AttachmentsPanel,
   Bubble,
   BubbleList,
   BubbleActions,
@@ -46,12 +49,14 @@ export {
   QuoteChip,
   TriggerMenu,
   Suggestions,
+  ContextWindow,
+  MessageOutline,
 };
 
-// 划词引用默认皮肤（toolbar/sheet 单端换肤时作为 fallback/对照参考，见 QuoteMenuProps.toolbar/sheet）
+// 划词引用默认皮肤（toolbar/sheet 单端换肤时作为 fallback/对照参考，见 QuoteMenuProps.toolbar/sheet）。
+// 与上面那批一样进下方 components 映射，全局注册时可用 <AixQuoteToolbar> / <AixQuoteSheet>。
 export { QuoteToolbar, QuoteSheet };
 
-// composables
 export * from './composables';
 
 // 触发菜单（@提及 / 斜杠命令）L1 检测状态托管：纯状态、无 DOM 副作用，供自定义触发 UI 复用同一检测逻辑
@@ -80,22 +85,37 @@ export { applyToolEvent, type ToolReduceCtx } from './utils/toolBlocks';
 export { createXFetch } from './utils/x-fetch';
 export type { XFetch, OnRequest, OnResponse, OnError, CreateXFetchOptions } from './utils/x-fetch';
 
-// OpenAI 兼容流式请求便利工厂（配合 openaiParseChunk，降低接入门槛；仍保持协议无关性）
-export { createOpenAIRequest } from './utils/openai';
+// OpenAI 兼容流式请求便利工厂（配合 openaiParseChunk，降低接入门槛；仍保持协议无关性）。
+// defaultTransformMessages 是 CreateOpenAIRequestOptions.transformMessages 的默认实现：
+// 该选项是公开扩展点，只想在默认映射之外微调（加 system、改 role 名等）的用户若拿不到它，
+// 就只能把那段 tool_calls 还原逻辑整个重抄一遍。
+export { createOpenAIRequest, defaultTransformMessages } from './utils/openai';
 export type {
   CreateOpenAIRequestOptions,
   OpenAIChatParams,
   OpenAIChatMessage,
+  // OpenAIChatMessage.tool_calls 的元素类型：随宿主类型一并导出，免去 index 访问迂回
+  OpenAIToolCall,
 } from './utils/openai';
 
 // 流式 Markdown 防闪烁 / 数学定界符归一化工具
 export { protectStreamingMarkdown, normalizeMathDelimiters } from './utils/markdown';
 
+// 内容块增长指纹（自动滚动跟随 / 末尾静默判定共用口径）
+export { contentFingerprint } from './utils/contentFingerprint';
+
 // 朗读文本提取（markdown→纯文本，供自定义 getText 复用）
 export { stripMarkdownForSpeech } from './utils/stripMarkdownForSpeech';
+export { stripMarkdownForCopy } from './utils/stripMarkdownForCopy';
 
-// URL 安全工具（协议白名单，供数据驱动的 href 场景复用）
-export { safeUrl } from './utils/url';
+// 剪贴板写入（Clipboard API + execCommand 兜底，兼容 HTTP / 旧浏览器；返回是否成功）。
+// 内置 BubbleActions 的复制键与划词菜单的「复制」走的就是它，自绘操作条（#footer 接管）
+// 可直接复用，不必重写降级逻辑。
+export { copyText } from '@aix/hooks';
+
+// URL 安全工具（协议白名单，供数据驱动的 href / img src 场景复用）
+// safeUrl 面向导航型 href；safeImageSrc 面向图片 src 与强制下载链接（额外放行 data:image/* 与 blob:）
+export { safeUrl, safeImageSrc } from './utils/url';
 
 // 自定义 markdown 渲染器（用于 AiChat / MarkdownRenderer 的 markdownRenderers 扩展点）
 export type {
@@ -109,6 +129,9 @@ export type {
 // markdown-it 插件注入类型（用于 AiChat / MarkdownRenderer 的 mdPlugins 扩展点，注入新语法）
 export type { MarkdownItPlugin } from './composables/useMarkdownRenderer';
 
+// 自定义块渲染器的样板收敛（自动声明契约 props + 关闭属性继承）
+export { defineBlockRenderer } from './utils/defineBlockRenderer';
+
 // content block 构造/提取 helpers
 export {
   genBlockId,
@@ -120,6 +143,7 @@ export {
   attachmentBlock,
   chartBlock,
   imageBlock,
+  userConfirmBlock,
   textMessage,
   createMessage,
   messageText,
@@ -142,37 +166,55 @@ export type {
   SenderProps,
   SenderEmits,
   SenderSlotScope,
+  SenderAttachmentsSlotScope,
+  SenderVariant,
   ToolbarBuiltinKey,
   ToolbarItem,
   SenderToolbarItems,
+  SenderIcons,
 } from './components/Sender.vue';
 export type { BubbleListProps, BubbleListEmits } from './components/BubbleList.vue';
-export type { AiChatProps, AiChatEmits } from './components/AiChat.vue';
+// BubbleFooterActions 是 #footer 作用域插槽回传的 `actions` 句柄集类型（自绘操作条据此标注）
+export type { AiChatProps, AiChatEmits, BubbleFooterActions } from './components/AiChat.vue';
 export type { WelcomeProps } from './components/Welcome.vue';
 export type { ThinkingProps } from './components/Thinking.vue';
 export type { ThoughtChainProps } from './components/ThoughtChain.vue';
 export type { ModelSelectorProps } from './components/ModelSelector.vue';
 export type { MarkdownRendererProps } from './components/MarkdownRenderer.vue';
 export type { SkeletonProps } from './components/Skeleton.vue';
-export type { ConversationsProps, ConversationsEmits } from './components/Conversations.vue';
+export type {
+  ConversationsProps,
+  ConversationsEmits,
+  ConversationsItemSlotScope,
+} from './components/Conversations.vue';
 export type {
   AttachmentCardProps,
   AttachmentCardEmits,
   AttachmentCardItem,
 } from './components/AttachmentCard.vue';
+// 内置附件面板：既是 Sender 的默认皮肤，也作为自绘 #attachments-panel 时的对照参考
+// （同 QuoteToolbar / QuoteSheet 的处理方式）
+export type {
+  AttachmentsPanelProps,
+  AttachmentsPanelEmits,
+  AttachmentsPanelIcons,
+} from './components/AttachmentsPanel.vue';
 export type { QuoteMenuProps, QuoteMenuEmits } from './components/QuoteMenu.vue';
 export type { QuoteChipProps, QuoteChipEmits } from './components/QuoteChip.vue';
 export type { QuoteToolbarProps, QuoteToolbarEmits } from './components/quote/QuoteToolbar.vue';
 export type { QuoteSheetProps, QuoteSheetEmits } from './components/quote/QuoteSheet.vue';
 export type { TriggerMenuProps, TriggerMenuEmits } from './components/TriggerMenu.vue';
 export type { SuggestionsProps, SuggestionsEmits } from './components/Suggestions.vue';
+export type { ContextWindowProps, ContextWindowEmits } from './components/ContextWindow.vue';
+export type { MessageOutlineProps, MessageOutlineEmits } from './components/MessageOutline.vue';
 
-// locale
+// useAiChatLocale / provideAiChatLocaleMessages 等运行时 API 经 './composables' 桶导出
 export { locale as aiChatLocale, zhCN, enUS } from './locale';
 export type { AiChatLocale } from './locale';
 
 const components = {
   AttachmentCard,
+  AttachmentsPanel,
   Bubble,
   BubbleList,
   BubbleActions,
@@ -190,8 +232,12 @@ const components = {
   LoadingDots,
   QuoteMenu,
   QuoteChip,
+  QuoteToolbar,
+  QuoteSheet,
   TriggerMenu,
   Suggestions,
+  ContextWindow,
+  MessageOutline,
 };
 
 // 插件：全局注册时加 Aix 前缀

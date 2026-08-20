@@ -1,12 +1,24 @@
 <template>
+  <!-- 委托自定义工具渲染器。除五个契约 prop 外还须透传 $attrs 与块插槽，否则 toolRenderers
+       比 blockRenderers 少两条通道（Bubble 是把 @typing-complete / @keep-mounted-change 与
+       块插槽直接挂在「块渲染器」上的，对 tool_use 而言那个组件是本组件而非委托目标）：
+       本组件 inheritAttrs:false，不显式 v-bind 就等于把这些监听器整个吃掉——自定义工具卡里
+       的 Teleport 浮层（同内置 ImageBlock 的图片预览）因此拿不到 keepMounted，虚拟列表回收
+       宿主行时会连同打开状态一起销毁。 -->
   <component
     :is="delegate"
     v-if="delegate"
+    v-bind="$attrs"
     :block="block"
     :info="info"
     :typing="typing"
     :on-block-action="onBlockAction"
-  />
+    :on-block-intent="onBlockIntent"
+  >
+    <template v-for="name in slotNames" :key="name" #[name]="sp">
+      <slot :name="name" v-bind="sp" />
+    </template>
+  </component>
   <div v-else :class="ns.b()">
     <button type="button" :class="ns.e('header')" @click="expanded = !expanded">
       <span :class="ns.e('name')">{{ block.toolName || 'Tool' }}</span>
@@ -34,27 +46,38 @@
 export interface ToolUseBlockProps {
   /** tool_use 类型的 block */
   block: Extract<ContentBlock, { type: 'tool_use' }>;
-  /** 气泡上下文（注册表统一透传，本组件暂不消费） */
-  info: BubbleContentInfo;
-  /** 打字机态（注册表统一透传，工具调用不逐字，故不消费） */
-  typing?: boolean;
+  /** 气泡上下文（注册表统一透传给委托目标，本组件自身不消费）；可选性与 BlockRendererProps 契约对齐 */
+  info?: BubbleContentInfo;
+  /** 打字机态（注册表统一透传 boolean | 节奏配置，工具调用不逐字，本组件不消费、原样转发给委托目标） */
+  typing?: boolean | BubbleTypingConfig;
   /** 交互动作回调（注册表统一透传，转发给命中的自定义渲染器） */
   onBlockAction?: BlockActionHandler;
+  /**
+   * 块意图回调（注册表统一透传，转发给命中的自定义渲染器）。
+   * 必须显式声明为 prop：本组件 inheritAttrs:false，未声明会让 Bubble 传下来的
+   * on-block-intent 落进 attrs 被丢弃，自定义工具渲染器便拿不到 intent 通道——
+   * 工具审批（state='awaiting-approval'）这类「改数据走 action、点提交走 intent」的场景
+   * 因此走不通（与 UserConfirmBlock 的双通道保持同构）。
+   */
+  onBlockIntent?: BlockIntentHandler;
   /** 按 toolName 路由到自定义渲染器；命中则整块委托，未命中落到默认可折叠卡片 */
   toolRenderers?: BlockRenderers;
 }
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useLocale } from '@aix/hooks';
-import { computed, ref, type Component } from 'vue';
-import { locale } from '../../locale';
+import { useNamespace } from '@aix/hooks';
+import { computed, ref, useSlots, type Component } from 'vue';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import type {
   ContentBlock,
   BubbleContentInfo,
+  BubbleTypingConfig,
   BlockActionHandler,
+  BlockIntentHandler,
   BlockRenderers,
 } from '../../types';
+import { ownProp } from '../../utils/ownProp';
 import LoadingDots from '../LoadingDots.vue';
 
 // 注册表统一向渲染器透传 block/info/typing；关闭属性继承避免多余 attr 落到根元素。
@@ -63,14 +86,15 @@ defineOptions({ inheritAttrs: false });
 const props = defineProps<ToolUseBlockProps>();
 
 const ns = useNamespace('tool-use');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
+const slots = useSlots();
+// 本组件自身不消费任何具名插槽（默认卡片是纯数据渲染），故收到的全部插槽都属于「块插槽穿透」
+// 链路（AiChat → BubbleList → Bubble → 块渲染器），原样转交委托目标。
+const slotNames = computed(() => Object.keys(slots));
 const expanded = ref(true);
-// toolName 来自不可信流数据，用 Object.hasOwn 做自有属性校验，避免 'constructor'/'toString'
-// 等原型链上的键命中被误当渲染器（__proto__ 本就不在自有属性中，hasOwn 一并挡住）
+// toolName 来自不可信流数据，走 ownProp 的自有属性查找（见其说明）
 const delegate = computed<Component | undefined>(() =>
-  props.toolRenderers && Object.hasOwn(props.toolRenderers, props.block.toolName)
-    ? props.toolRenderers[props.block.toolName]
-    : undefined,
+  ownProp(props.toolRenderers, props.block.toolName),
 );
 const pending = computed(
   () =>
@@ -142,7 +166,8 @@ const outputText = computed(() => fmt(props.block.output));
   }
 
   &__code {
-    max-height: 320px;
+    /* 工具入参 / 结果区的滚动上限：大 JSON 结果场景常需放宽 */
+    max-height: var(--aix-tool-use-max-height, 320px);
     margin: 0;
     padding: var(--aix-paddingSM);
     overflow: auto;

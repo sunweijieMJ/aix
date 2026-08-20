@@ -68,11 +68,13 @@ const ROLE_MAP: Record<string, OpenAIChatMessage['role']> = {
 /**
  * 默认消息映射：role 映射（ai→assistant，其余原样）+ `messageText`（仅拼接 text 块）。
  * 若消息含 `tool_use` 块，额外把它们还原为 OpenAI 的 `tool_calls`（挂在同一条消息上），
- * 并为每个已产出结果（`output != null`）的 tool_use 追加一条 `role:'tool'` 消息，
+ * 并为每个已终态（`state` 为 `output-available` 或 `output-error`）的 tool_use 追加一条
+ * `role:'tool'` 消息（`output-error` 时以 errorText 序列化为内容），
  * 顺序与协议一致：assistant(tool_calls) → tool → tool → ...。
- * 无 tool_use 的消息行为与此前完全一致（仅 `{ role, content }`）。
- * 注意：仅回传「已完成的 AI 回合」——若历史里含尚未产出结果（`output == null`）的 tool_use，
- * 会生成带 `tool_calls` 却无配对 `role:'tool'` 响应的 assistant 消息，OpenAI 会因 tool_call 无响应报错。
+ * 无 tool_use 的消息只产出 `{ role, content }`。
+ * 注意：仅回传「已完成的 AI 回合」——若历史里含尚未产出结果的 tool_use（`state` 为
+ * `input-streaming` / `input-available` 等非终态），会生成带 `tool_calls` 却无配对
+ * `role:'tool'` 响应的 assistant 消息，OpenAI 会因 tool_call 无响应报错。
  */
 export const defaultTransformMessages = (messages: ChatMessage[]): OpenAIChatMessage[] => {
   const out: OpenAIChatMessage[] = [];
@@ -92,11 +94,19 @@ export const defaultTransformMessages = (messages: ChatMessage[]): OpenAIChatMes
     }));
     out.push({ role, content: messageText(m), tool_calls });
     for (const b of toolBlocks) {
-      if (b.output == null) continue;
+      // 仅「尚未产出结果」的调用（还在等参数/结果）才跳过；output 合法为 null（如「查无结果」）
+      // 与 output-error（失败但已终态）都属于已完结调用，必须生成配对的 role:'tool' 消息，
+      // 否则 assistant.tool_calls 声明的 id 缺少响应，违反协议。
+      if (b.state !== 'output-available' && b.state !== 'output-error') continue;
       out.push({
         role: 'tool',
         tool_call_id: b.toolCallId,
-        content: typeof b.output === 'string' ? b.output : JSON.stringify(b.output),
+        content:
+          b.state === 'output-error'
+            ? JSON.stringify({ error: b.errorText })
+            : typeof b.output === 'string'
+              ? b.output
+              : JSON.stringify(b.output),
       });
     }
   }
@@ -112,15 +122,8 @@ const resolveUrl = (baseURL: string): string => {
 /**
  * 便利工厂：生成符合 `useChat` 的 `request` 签名的 OpenAI 兼容流式请求函数，
  * 消除「每次都要手写 fetch + Bearer + body」的接入成本。配合内置 `openaiParseChunk`
- * 与默认 `streamMode: 'sse'` 使用：
- *
- * ```ts
- * import { useChat, createOpenAIRequest, openaiParseChunk } from '@aix/ai-chat';
- * const chat = useChat({
- *   request: createOpenAIRequest({ baseURL: 'https://api.openai.com/v1', model: 'gpt-4o', apiKey }),
- *   parseChunk: openaiParseChunk,
- * });
- * ```
+ * 与默认 `streamMode: 'sse'` 使用；用法与浏览器端直连暴露 apiKey 的注意事项见 README
+ * 「便利工厂：createOpenAIRequest」。
  *
  * 协议无关性不受影响：本工厂只是可选便利层，仍可不用它而自行实现 `request`。
  */
