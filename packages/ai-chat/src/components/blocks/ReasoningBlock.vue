@@ -54,11 +54,11 @@ export interface ReasoningBlockEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useInterval } from '@aix/hooks';
+import { useInterval } from '@aix/hooks';
 import { computed, ref, watch } from 'vue';
 import { useAiChatConfig } from '../../composables/useAiChatConfig';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import { useTypewriter } from '../../composables/useTypewriter';
-import { locale } from '../../locale';
 import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
 import MarkdownRenderer from '../MarkdownRenderer.vue';
 import Thinking from '../Thinking.vue';
@@ -68,7 +68,7 @@ defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(defineProps<ReasoningBlockProps>(), { typing: false });
 const emit = defineEmits<ReasoningBlockEmits>();
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 // 注入 AiChat 注入的 markdown 级配置（markdownRenderers / allowHtml）透传给 MarkdownRenderer
 const config = useAiChatConfig();
 

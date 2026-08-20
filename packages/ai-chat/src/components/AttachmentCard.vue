@@ -105,12 +105,11 @@ export interface AttachmentCardEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { Refresh, Close } from '@aix/icons';
 import { computed, ref, watch } from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { PendingAttachment } from '../composables/useAttachments';
-import { locale } from '../locale';
 import type { AttachmentItem } from '../types';
 import { getFileTypeMeta } from '../utils/fileTypes';
 import { safeImageSrc } from '../utils/url';
@@ -118,7 +117,7 @@ import { safeImageSrc } from '../utils/url';
 const props = withDefaults(defineProps<AttachmentCardProps>(), { removable: false });
 const emit = defineEmits<AttachmentCardEmits>();
 const ns = useNamespace('attachment-card');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 缩略图 src 过协议白名单：item.url 来自宿主 upload() 的返回值**以及**持久化后恢复的
 // attachment 块（对话树可能来自 localStorage——包内其余各处都按不可信数据对待）。

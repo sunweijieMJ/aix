@@ -1,8 +1,6 @@
-import { useLocale } from '@aix/hooks';
 import { Copy, InfoOutline, Language, QuestionCircle } from '@aix/icons';
 import { computed, markRaw, ref, toValue, watch } from 'vue';
 import type { Component, InjectionKey, MaybeRefOrGetter, Ref } from 'vue';
-import { locale } from '../locale';
 import type { AiChatLocale } from '../locale';
 import type {
   ChatMessage,
@@ -16,6 +14,7 @@ import type {
 } from '../types';
 import { devWarn } from '../utils/devWarn';
 import { genQuoteId } from '../utils/helpers';
+import { useAiChatLocale } from './useAiChatLocale';
 import type { ActiveSelection, LongPressTrigger } from './useTextSelection';
 
 /** AiChat 注入、QuoteBlock/QuoteChip 消费的回链函数（独立使用时 inject 为 null → 点击无操作） */
@@ -74,7 +73,7 @@ const BUILTIN: Record<
 };
 
 export function useQuoteMenu(options: UseQuoteMenuOptions): UseQuoteMenuReturn {
-  const { t } = useLocale(locale);
+  const { t } = useAiChatLocale();
   const visible = ref(false);
 
   // 当前作用对象：精选 active 优先，退回 trigger.defaultTarget（整条消息）

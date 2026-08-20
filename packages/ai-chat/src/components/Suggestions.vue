@@ -38,15 +38,15 @@ export interface SuggestionsEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace } from '@aix/hooks';
-import { locale } from '../locale';
+import { useNamespace } from '@aix/hooks';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { SuggestionItem } from '../types';
 import Skeleton from './Skeleton.vue';
 
 defineProps<SuggestionsProps>();
 const emit = defineEmits<SuggestionsEmits>();
 const ns = useNamespace('suggestions');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 /** 占位胶囊宽度（模拟长短不一的建议文案），仅 loading 态使用 */
 const SKELETON_WIDTHS = ['60px', '90px', '75px'];

@@ -48,10 +48,9 @@ export interface ThinkingProps {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { ref, watch } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { ThinkingVariant } from '../types';
 
 const props = withDefaults(defineProps<ThinkingProps>(), {
@@ -72,7 +71,7 @@ defineSlots<{
 }>();
 
 const ns = useNamespace('thinking');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 const open = ref(props.expanded);
 
 // expanded 作为可响应的展开意图：父组件改变它（如 reasoning 流式中→完成）时同步面板状态。

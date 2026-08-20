@@ -201,7 +201,6 @@ export interface BubbleActionsEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace, copyText } from '@aix/hooks';
 import {
   Copy,
@@ -217,7 +216,7 @@ import {
   Delete,
 } from '@aix/icons';
 import { ref, computed, onScopeDispose } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type {
   ActionsItems,
   ActionItem,
@@ -235,7 +234,7 @@ const props = withDefaults(defineProps<BubbleActionsProps>(), {
 });
 const emit = defineEmits<BubbleActionsEmits>();
 const ns = useNamespace('bubble-actions');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 用具体 key（而非单一布尔）区分是哪个复制按钮触发了反馈：copy/copySource 各自独立高亮，
 // 避免共用一个 copied 布尔导致两个按钮同时显示「已复制」勾选态。

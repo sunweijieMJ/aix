@@ -28,10 +28,10 @@ export interface ChartBlockProps {
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { computed, onMounted, ref } from 'vue';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import { useEChartsRender } from '../../composables/useEChartsRender';
-import { locale } from '../../locale';
 import type {
   ContentBlock,
   BubbleContentInfo,
@@ -47,7 +47,7 @@ defineOptions({ inheritAttrs: false });
 
 const props = defineProps<ChartBlockProps>();
 const ns = useNamespace('chart-block');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);

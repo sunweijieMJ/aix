@@ -29,9 +29,8 @@ export interface ImageThumbProps {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import { transitionHeight } from '../utils/heightTransition';
 import { evictLoaded, isLoaded, markLoaded } from '../utils/imageLoadedCache';
 import { safeImageSrc } from '../utils/url';
@@ -43,7 +42,7 @@ import Skeleton from './Skeleton.vue';
  * 与结构化 `image` 块渲染器（components/blocks/ImageBlock.vue）共用，避免两处各自维护一份加载态逻辑。
  */
 const props = withDefaults(defineProps<ImageThumbProps>(), { alt: '' });
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 /**
  * 协议白名单收口点：markdown 图片路径（utils/imageRenderers.ts）与结构化 `image` 块路径

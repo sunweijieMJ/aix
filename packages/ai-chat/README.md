@@ -1284,6 +1284,38 @@ const markdownRenderers: MarkdownRenderers = {
 - 无需额外依赖（不再需要 `dompurify`）。也可经 `provideAiChatConfig({ allowHtml: true })` 全局开启（组件 `allow-html` prop 优先）。
 - **相邻块级 HTML 会合并进同一个沙箱**：源码中仅以空行分隔、未走 ` ```html ` 围栏的连续裸 HTML 片段（如一份完整 `<!DOCTYPE html>` 文档，或两段独立卡片）会被当作同一份文档，渲染进同一个 `<iframe>`——这是为了让 CommonMark 天然会按空行拆碎的完整 HTML 文档仍整体可读的必要取舍，副作用是这些片段之间共享同一 iframe 的 DOM / 脚本作用域（但仍与父页面隔离）。需要多段裸 HTML 各自独立沙箱时，用 ` ```html ` 围栏分别包裹或用其它 markdown 内容隔开。
 
+## 多语言与文案定制
+
+内置中英文语言包（约 90 条，见导出的 `zhCN` / `enUS` / `AiChatLocale` 类型），跟随
+`@aix/hooks` 的全局 locale（`createLocale`）切换。所有文案均可覆盖，三种方式按作用域选用：
+
+```typescript
+// ① 应用级：main.ts 一处统一定制，作用于所有实例（包名与 key 均有类型校验）
+import { createLocale } from '@aix/hooks';
+app.use(createLocale('zh-CN', {
+  messages: { 'ai-chat': { 'zh-CN': { senderPlaceholder: '问问小助手…', sendButton: '发问' } } },
+}));
+```
+
+```vue
+<!-- ② 实例级：只影响这一个 AiChat 及其内部子组件，优先级高于应用级 -->
+<AiChat :request="request" :locale-messages="{ senderPlaceholder: '请描述你的问题' }" />
+```
+
+```typescript
+// ③ 单独使用 Sender / Bubble 等导出子组件时（没有 AiChat 根），在上层注入
+import { provideAiChatLocaleMessages } from '@aix/ai-chat';
+provideAiChatLocaleMessages({ senderPlaceholder: '独立输入框占位' });
+```
+
+合并优先级（低 → 高）：内置语言包 → 应用级 `messages['ai-chat']` → 实例级
+（`locale-messages` prop / `provideAiChatLocaleMessages`，内层注入整体遮蔽外层）。
+覆盖是 **Partial 浅合并**，只写要改的 key；整包替换可基于导出的 `zhCN` / `enUS` 派生。
+运行时增量合入（如异步拉取文案）用 `localeContext.mergeMessages()`。
+
+> 注意：模板类 key（`thoughtDurationSuffix` 的 `{s}`、`contextWindowUsage` 的
+> `{used}/{total}/{percent}` 等）覆盖时必须保留占位符，否则运行时替换失效。
+
 ## 主题
 
 所有样式基于 `@aix/theme` 的语义 token CSS 变量（颜色 `--aix-color*`、间距 `--aix-padding*`/`--aix-size*`、圆角 `--aix-borderRadius*`、动效 `--aix-motionDuration*`）。切换 `@aix/theme` 的明暗主题即可联动，无需额外配置。

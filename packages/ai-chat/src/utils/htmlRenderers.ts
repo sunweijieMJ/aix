@@ -1,7 +1,6 @@
-import { useLocale } from '@aix/hooks';
 import { Launch } from '@aix/icons';
 import { defineComponent, h, ref, computed, onMounted, onUnmounted } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { MarkdownRenderers } from './markdownWalker';
 
 /** 单实例递增 id：区分同页面多个 HTML Sandbox 块的 postMessage 归属 */
@@ -58,7 +57,7 @@ const HtmlSandboxBlock = defineComponent({
     settled: { type: Boolean, required: true },
   },
   setup(props) {
-    const { t } = useLocale(locale);
+    const { t } = useAiChatLocale();
     const instanceId = `aix-html-sandbox-${sandboxIdCounter++}`;
     const mode = ref<'preview' | 'code'>('preview');
     const frameHeight = ref(MIN_FRAME_HEIGHT);

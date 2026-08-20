@@ -57,18 +57,18 @@ export interface MessageOutlineEmits {
 </script>
 
 <script setup lang="ts">
-import { useId, useLocale, useNamespace } from '@aix/hooks';
+import { useId, useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import { computed, ref, watch } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { OutlineEntry } from '../composables/useMessageOutline';
-import { locale } from '../locale';
 
 const props = withDefaults(defineProps<MessageOutlineProps>(), { entries: () => [] });
 const emit = defineEmits<MessageOutlineEmits>();
 
 const ns = useNamespace('message-outline');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 const tooltipId = `aix-outline-tip-${useId()}`;
 
 // 纯图片/附件消息派生不出摘要，回退到本地化文案而非留空（否则刻度只有一个光秃秃的点）

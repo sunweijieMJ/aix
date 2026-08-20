@@ -160,14 +160,13 @@ export interface BubbleListEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { Virtualizer } from 'virtua/vue';
 import { ref, reactive, watch, nextTick, onMounted, computed, useSlots, h } from 'vue';
 import type { FunctionalComponent } from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import { useAutoScroll } from '../composables/useAutoScroll';
 import type { ShouldFollow } from '../composables/useAutoScroll';
-import { locale } from '../locale';
 import type {
   ChatMessage,
   RoleConfig,
@@ -197,7 +196,7 @@ const emit = defineEmits<BubbleListEmits>();
 type VirtualizerHandle = InstanceType<typeof Virtualizer>;
 
 const ns = useNamespace('bubble-list');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 const slots = useSlots();
 
 // 本组件显式转发 content/footer/header/avatar/error（前两个补 item，后三个见模板注释）+

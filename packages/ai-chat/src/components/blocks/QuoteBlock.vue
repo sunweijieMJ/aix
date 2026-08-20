@@ -28,10 +28,10 @@ export interface QuoteBlockRendererProps {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { inject } from 'vue';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import { QUOTE_LOCATE_KEY } from '../../composables/useQuoteMenu';
-import { locale } from '../../locale';
 import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
 
 // 注册表统一透传 block/info/typing，本组件只消费 block（与 AttachmentBlock 同做法）
@@ -39,7 +39,7 @@ defineOptions({ inheritAttrs: false });
 defineProps<QuoteBlockRendererProps>();
 
 const ns = useNamespace('quote-block');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 // AiChat 提供回链；独立使用（纯 Bubble）时为 null，条目不可点
 const locate = inject(QUOTE_LOCATE_KEY, null);
 </script>

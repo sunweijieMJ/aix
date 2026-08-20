@@ -141,7 +141,6 @@ export interface BubbleEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import {
   computed,
@@ -154,8 +153,8 @@ import {
   type FunctionalComponent,
   type VNode,
 } from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import { useIdleWhileStreaming } from '../composables/useIdleWhileStreaming';
-import { locale } from '../locale';
 import type {
   BlockAction,
   BlockIntent,
@@ -280,7 +279,7 @@ watch(isTerminal, (terminal) => {
 });
 
 const ns = useNamespace('bubble');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 const slots = useSlots();
 
 // 本组件消费的插槽之外，其余具名插槽视为「块插槽」透传给块渲染器。

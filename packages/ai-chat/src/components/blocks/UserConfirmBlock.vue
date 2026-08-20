@@ -95,13 +95,13 @@ export interface UserConfirmBlockProps {
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useLocale, useId } from '@aix/hooks';
+import { useNamespace, useId } from '@aix/hooks';
 import { computed, onMounted, onUpdated, ref, watch, watchEffect } from 'vue';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import {
   useConfirmDeadline,
   type UseConfirmDeadlineReturn,
 } from '../../composables/useConfirmDeadline';
-import { locale } from '../../locale';
 import type {
   ContentBlock,
   BubbleContentInfo,
@@ -117,7 +117,7 @@ defineOptions({ inheritAttrs: false });
 
 const props = defineProps<UserConfirmBlockProps>();
 const ns = useNamespace('user-confirm');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 const uid = useId();
 
 const title = computed(() => props.block.title || t.value.confirmTitle);

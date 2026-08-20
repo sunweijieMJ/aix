@@ -409,11 +409,11 @@ let triggerMenuUid = 0;
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { Attachment, Mic } from '@aix/icons';
 import { ref, computed, watch, nextTick, reactive, onUnmounted } from 'vue';
 import type { Component } from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import { useAttachments } from '../composables/useAttachments';
 import type {
   UseAttachmentsOptions,
@@ -422,7 +422,6 @@ import type {
 } from '../composables/useAttachments';
 import { useTriggerDetect } from '../composables/useTriggerDetect';
 import { useVoiceInput } from '../composables/useVoiceInput';
-import { locale } from '../locale';
 import type {
   AttachmentItem,
   MentionEntity,
@@ -449,7 +448,7 @@ const props = withDefaults(defineProps<SenderProps>(), {
 });
 const emit = defineEmits<SenderEmits>();
 const ns = useNamespace('sender');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 附件状态机：未启用时为 null，模板/逻辑全部以 attach 为开关，零开销（静态配置，setup 快照）。
 // 传实例时直接复用宿主那份（不再 useAttachments），保证 drain / isUploading 与宿主 UI 同源。

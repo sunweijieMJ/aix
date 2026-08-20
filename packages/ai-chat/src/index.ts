@@ -208,6 +208,7 @@ export type { SuggestionsProps, SuggestionsEmits } from './components/Suggestion
 export type { ContextWindowProps, ContextWindowEmits } from './components/ContextWindow.vue';
 export type { MessageOutlineProps, MessageOutlineEmits } from './components/MessageOutline.vue';
 
+// useAiChatLocale / provideAiChatLocaleMessages 等运行时 API 经 './composables' 桶导出
 export { locale as aiChatLocale, zhCN, enUS } from './locale';
 export type { AiChatLocale } from './locale';
 

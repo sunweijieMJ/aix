@@ -39,10 +39,9 @@ export interface SourcesBlockProps {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { computed } from 'vue';
-import { locale } from '../../locale';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import type { ContentBlock, BubbleContentInfo, BubbleTypingConfig } from '../../types';
 import { safeUrl, safeImageSrc, isImageSource } from '../../utils/url';
 
@@ -51,7 +50,7 @@ defineOptions({ inheritAttrs: false });
 
 const props = defineProps<SourcesBlockProps>();
 const ns = useNamespace('sources-block');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 来源链接可能来自模型/检索结果（不可信），渲染前经 safeUrl 协议白名单过滤：
 // 安全 url 渲染为可点击 <a>，不安全（如 javascript:）则 href 为 undefined → 降级为 <div> 纯展示。

@@ -66,9 +66,9 @@ export interface ToolUseBlockProps {
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useLocale } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { computed, ref, useSlots, type Component } from 'vue';
-import { locale } from '../../locale';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import type {
   ContentBlock,
   BubbleContentInfo,
@@ -86,7 +86,7 @@ defineOptions({ inheritAttrs: false });
 const props = defineProps<ToolUseBlockProps>();
 
 const ns = useNamespace('tool-use');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 const slots = useSlots();
 // 本组件自身不消费任何具名插槽（默认卡片是纯数据渲染），故收到的全部插槽都属于「块插槽穿透」
 // 链路（AiChat → BubbleList → Bubble → 块渲染器），原样转交委托目标。

@@ -82,10 +82,10 @@ export interface ImagePreviewEmits {
 </script>
 
 <script setup lang="ts">
-import { useControllable, useLocale, useNamespace } from '@aix/hooks';
+import { useControllable, useNamespace } from '@aix/hooks';
 import { ArrowLeft, ArrowRight, Close, Download } from '@aix/icons';
 import { computed, nextTick, ref, watch } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { ImageItem } from '../types';
 import { safeImageSrc } from '../utils/url';
 
@@ -97,7 +97,7 @@ const props = withDefaults(defineProps<ImagePreviewProps>(), { open: undefined }
 const emit = defineEmits<ImagePreviewEmits>();
 
 const ns = useNamespace('image-preview');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 const { state: isOpen, setState: setOpen } = useControllable<boolean>({
   prop: () => props.open,

@@ -310,6 +310,13 @@ export interface AiChatProps {
    */
   historyLoading?: boolean;
   /**
+   * 实例级文案覆盖（Partial 浅合并，优先级最高，只影响本实例及其内部子组件）。
+   * 全应用统一定制请用 `createLocale(locale, { messages: { 'ai-chat': {...} } })`；
+   * 单独使用 Sender / Bubble 等导出子组件时可改用 provideAiChatLocaleMessages 注入。
+   * 注意模板类 key（如 thoughtDurationSuffix 的 {s}）覆盖时必须保留占位符。
+   */
+  localeMessages?: Partial<AiChatLocale>;
+  /**
    * 输入框文本（v-model:input）。可选；不传则走非受控，由组件内部维护草稿。
    * 注意：不要设默认值——为兼容 Vue 3.3（useModel emit-only 语义），受控/非受控的判定
    * 依赖此 prop 是否为 undefined，交由 useControllable 的 defaultValue 兜底。
@@ -583,10 +590,11 @@ export interface AiChatEmits {
 </script>
 
 <script setup lang="ts">
-import { useNamespace, useControllable, useLocale, copyText } from '@aix/hooks';
+import { useNamespace, useControllable, copyText } from '@aix/hooks';
 import { computed, ref, toRaw, watch, watchEffect, useSlots, getCurrentInstance } from 'vue';
 import { ROOT_ID } from '../composables/messageTree';
 import { useAiChatConfig, provideAiChatConfig } from '../composables/useAiChatConfig';
+import { useAiChatLocale, provideAiChatLocaleMessages } from '../composables/useAiChatLocale';
 import type { UseAttachmentsOptions, UseAttachmentsReturn } from '../composables/useAttachments';
 import type { ShouldFollow } from '../composables/useAutoScroll';
 import { useChat } from '../composables/useChat';
@@ -603,7 +611,7 @@ import { useSpeech } from '../composables/useSpeech';
 import { useSuggestions } from '../composables/useSuggestions';
 import { useVisibleMessage } from '../composables/useVisibleMessage';
 import type { SSEChunk } from '../composables/useXStream';
-import { locale } from '../locale';
+import type { AiChatLocale } from '../locale';
 import type {
   ChatMessage,
   RoleConfig,
@@ -660,7 +668,9 @@ const emit = defineEmits<AiChatEmits>();
 const ns = useNamespace('ai-chat');
 const config = useAiChatConfig();
 const slots = useSlots();
-const { t } = useLocale(locale);
+// 把 localeMessages prop 注入给内部子组件；自身 inject 不到自己的 provide，故显式传入消费
+provideAiChatLocaleMessages(() => props.localeMessages);
+const { t } = useAiChatLocale({ localeMessages: () => props.localeMessages });
 
 // 划词引用配置：内置默认关闭 < 全局 config.quote < 组件 props.quote；
 // true/false 分别显式开启/关闭，对象配置默认视为开启（除非 enable:false）。

@@ -147,11 +147,10 @@ export interface ConversationsEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace, useControllable } from '@aix/hooks';
 import { Add, Edit, Delete, IconSearch as Search } from '@aix/icons';
 import { ref, computed, nextTick, watch } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { ConversationItem } from '../types';
 import Skeleton from './Skeleton.vue';
 
@@ -169,7 +168,7 @@ const { state: activeKey } = useControllable<string>({
   onChange: (v) => emit('update:activeKey', v),
 });
 const ns = useNamespace('conversations');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 内置搜索（纯本地过滤）：按 label 大小写不敏感子串匹配。searchable=false 时 searchQuery
 // 恒为空串，filteredItems 退化为 props.items，与未开启搜索前行为完全一致（零破坏性）。

@@ -95,12 +95,11 @@ export interface AttachmentsPanelEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale } from '@aix/hooks';
 import { useNamespace } from '@aix/hooks';
 import { AttachFile, Close } from '@aix/icons';
 import { ref } from 'vue';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { PendingAttachment } from '../composables/useAttachments';
-import { locale } from '../locale';
 import { resolveIcon } from '../utils/resolveIcon';
 import type { IconSource } from '../utils/resolveIcon';
 import AttachmentCard from './AttachmentCard.vue';
@@ -108,7 +107,7 @@ import AttachmentCard from './AttachmentCard.vue';
 defineProps<AttachmentsPanelProps>();
 const emit = defineEmits<AttachmentsPanelEmits>();
 const ns = useNamespace('attachments-panel');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 拖拽状态
 const dragIn = ref(false);

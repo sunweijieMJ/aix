@@ -45,9 +45,9 @@ export interface ImageBlockEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { computed, onScopeDispose, ref, watch } from 'vue';
-import { locale } from '../../locale';
+import { useAiChatLocale } from '../../composables/useAiChatLocale';
 import type {
   BlockActionHandler,
   BubbleContentInfo,
@@ -64,7 +64,7 @@ defineOptions({ inheritAttrs: false });
 const props = defineProps<ImageBlockProps>();
 const emit = defineEmits<ImageBlockEmits>();
 const ns = useNamespace('image-block');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 const loading = computed(() => props.block.state === 'loading');
 // 除了显式 error，images 为空（如占位块尚未补图、或调用方忘记设 state）也按降级处理——

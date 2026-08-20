@@ -69,16 +69,16 @@ export interface TriggerMenuEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace } from '@aix/hooks';
+import { useNamespace } from '@aix/hooks';
 import { usePopper } from '@aix/popper';
 import { computed, ref, watch, watchEffect } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 import type { TriggerItem } from '../types';
 
 const props = defineProps<TriggerMenuProps>();
 const emit = defineEmits<TriggerMenuEmits>();
 const ns = useNamespace('trigger-menu');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 
 // 有可选项时才是 listbox；加载中 / 空结果时整块降级为状态区（见模板注释）
 const hasOptions = computed(() => !props.loading && props.items.length > 0);

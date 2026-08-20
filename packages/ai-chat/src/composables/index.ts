@@ -65,3 +65,9 @@ export type {
   UseSuggestionsOptions,
   UseSuggestionsReturn,
 } from './useSuggestions';
+export {
+  useAiChatLocale,
+  provideAiChatLocaleMessages,
+  AI_CHAT_LOCALE_MESSAGES_KEY,
+} from './useAiChatLocale';
+export type { UseAiChatLocaleOptions } from './useAiChatLocale';

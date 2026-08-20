@@ -78,11 +78,11 @@ export interface ContextWindowEmits {
 </script>
 
 <script setup lang="ts">
-import { useLocale, useNamespace, useClickOutside } from '@aix/hooks';
+import { useNamespace, useClickOutside } from '@aix/hooks';
 import { DataUsage } from '@aix/icons';
 import { usePopper } from '@aix/popper';
 import { ref, computed, watch } from 'vue';
-import { locale } from '../locale';
+import { useAiChatLocale } from '../composables/useAiChatLocale';
 
 const props = withDefaults(defineProps<ContextWindowProps>(), {
   used: 0,
@@ -94,7 +94,7 @@ const props = withDefaults(defineProps<ContextWindowProps>(), {
 const emit = defineEmits<ContextWindowEmits>();
 
 const ns = useNamespace('context-window');
-const { t } = useLocale(locale);
+const { t } = useAiChatLocale();
 const root = ref<HTMLElement | null>(null);
 const open = ref(false);
 
