@@ -120,10 +120,17 @@ const { referenceRef, floatingRef, floatingStyles } = usePopper({
   strategy: 'fixed',
   offset: 10,
 });
-// 波峰移动即换锚点元素，浮层随之重新定位
-watch(waveIndex, (i) => {
-  referenceRef.value = i == null ? null : (tickEls[i] ?? null);
-});
+// 波峰移动即换锚点元素，浮层随之重新定位。entries 也在依赖里：悬停期间 windowed 窗口
+// 因新消息滑动时，v-for 按 messageId 换元素，只看 waveIndex 会让锚点悬在已卸载的旧节点
+// 上（rect 全 0，浮层跳视口左上角），而 hoveredEntry 实时换成新条目——标签与位置错位。
+// flush post：等 :ref 回调把 tickEls 刷成新元素后再取锚点。
+watch(
+  [waveIndex, () => props.entries],
+  ([i]) => {
+    referenceRef.value = i == null ? null : (tickEls[i] ?? null);
+  },
+  { flush: 'post' },
+);
 // 本地模板 ref 桥接到 usePopper 的 floatingRef（同 QuoteToolbar / ContextWindow 先例）：
 // 双 <script> 块下直接绑 usePopper 解构出的 Ref 会触发 vue-tsc noUnusedLocals 误报
 const floatingElRef = ref<HTMLElement | null>(null);

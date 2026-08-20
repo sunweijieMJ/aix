@@ -118,7 +118,10 @@ export function protectStreamingMarkdown(src: string): string {
   //    开围栏而落入其内容形成残影，必须按开围栏原样补。
   let openFence = '';
   for (const line of out.split('\n')) {
-    const m = /^(`{3,}|~{3,})(.*)$/.exec(line);
+    // 行首允许 0-3 空白：CommonMark 围栏可缩进至多 3 格（列表项内围栏的常见形态），
+    // 与 stripMarkdownForCopy/Speech 的围栏口径一致；只认列 0 会漏识别缩进围栏
+    //（缩进开围栏不被保护、缩进闭围栏被误判未闭合而逐帧补幻影围栏）
+    const m = /^[ \t]{0,3}(`{3,}|~{3,})(.*)$/.exec(line);
     if (!m) continue;
     if (!openFence) openFence = m[1]!;
     else if (m[1]![0] === openFence[0] && m[1]!.length >= openFence.length && !m[2]!.trim())
@@ -194,27 +197,30 @@ export function protectStreamingMarkdown(src: string): string {
  */
 export function normalizeMathDelimiters(src: string): string {
   if (!src) return src;
-  // 私有区字符占位（非控制字符，规避 no-control-regex；用 fromCodePoint 避免源码内嵌不可见字符）
-  const PH = String.fromCodePoint(0xe000);
-  const stash: string[] = [];
-  // 先抽出代码块与行内代码，避免其中的 \[ \( 被误转。
+  // 代码区（围栏 / 行内代码）按位置切分、原样透传，只对代码区之外的文本段做转换。
+  // 不用「占位符替换—还原」：早先以私用区 U+E000 包裹序号做占位，但模型输出 / 用户粘贴
+  // 完全可能天然含 PUA 字符，恰好拼出「U+E000 数字 U+E000」形态时还原步会错误替换
+  //（把别处代码注入正文或吞掉文本）；位置切分没有任何魔法字符，不存在碰撞面。
   // 围栏正则与 protectStreamingMarkdown 的 maskCode 对齐：同时覆盖 ``` 与 ~~~ 围栏
   // （markdown-it 两者皆合法），以及流式期间未闭合到 EOF 的围栏（\1 反向引用要求
-  // 闭围栏与开围栏完全一致，或以 $ 兜底到文本末尾），避免这些代码区内的 \[ \] 被误转。
-  let out = src
-    .replace(/(`{3,}|~{3,})[\s\S]*?(?:\1|$)/g, (m) => `${PH}${stash.push(m) - 1}${PH}`)
-    .replace(/`[^`\n]*`/g, (m) => `${PH}${stash.push(m) - 1}${PH}`);
+  // 闭围栏与开围栏完全一致，或以 $ 兜底到文本末尾）；围栏分支在前，同起点时优先于行内代码。
+  const codeRe = /(`{3,}|~{3,})[\s\S]*?(?:\1|$)|`[^`\n]*`/g;
   // \[...\] → $$...$$；\(...\) → $...$（非贪婪仅成对转换；用函数返回值避免 $ 被当替换模式）。
   // 负向后行断言排除被反斜杠转义的场景：LaTeX 行间距 \\[2pt] / 换行 \\ 紧跟括号
   // 不是定界符，否则误配对会把已闭合公式永久损坏。
-  out = out
-    .replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (_m, body: string) => `$$${body}$$`)
-    .replace(/(?<!\\)\\\(([\s\S]+?)(?<!\\)\\\)/g, (_m, body: string) => `$${body}$`);
-  // KaTeX 不支持 align*，统一替换为 aligned（{align*} 仅出现在 LaTeX，代码区已被占位保护）
-  out = out.replace(/\{align\*\}/g, '{aligned}');
-  // 还原代码占位
-  return out.replace(
-    new RegExp(`${PH}(\\d+)${PH}`, 'g'),
-    (_m, i: string) => stash[Number(i)] ?? '',
-  );
+  // KaTeX 不支持 align*，统一替换为 aligned（{align*} 仅出现在 LaTeX，代码区不进本函数）。
+  const transform = (seg: string): string =>
+    seg
+      .replace(/(?<!\\)\\\[([\s\S]+?)(?<!\\)\\\]/g, (_m, body: string) => `$$${body}$$`)
+      .replace(/(?<!\\)\\\(([\s\S]+?)(?<!\\)\\\)/g, (_m, body: string) => `$${body}$`)
+      .replace(/\{align\*\}/g, '{aligned}');
+  let out = '';
+  let last = 0;
+  for (const m of src.matchAll(codeRe)) {
+    out += transform(src.slice(last, m.index));
+    out += m[0];
+    last = m.index + m[0].length;
+  }
+  out += transform(src.slice(last));
+  return out;
 }

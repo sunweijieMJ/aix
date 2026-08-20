@@ -51,8 +51,9 @@ export function useAutoScroll(
   // 继续变化时状态被误判为 SCROLLED_UP，最终停在卡片中间。改为每帧比对 scrollHeight：发现变化
   // 就瞬时 snap 到新底部并重置稳定帧计数，连续 STABLE_FRAMES_TO_SETTLE 帧不变才收尾，不依赖对耗时的猜测。
   //
-  // 意图的三个清除时机：① 连续 STABLE_FRAMES_TO_SETTLE 帧高度不变（内容已稳定）；② 用户 wheel/touchmove
-  // 主动打断；③ MAX_SETTLE_FRAMES 保底上限（内容持续异常增长时不至永久轮询）。
+  // 意图的三个清除时机：① 连续 STABLE_FRAMES_TO_SETTLE 帧高度不变（内容已稳定）；② 用户滚动
+  // 输入（wheel/touchmove/mousedown/滚动键 keydown）主动打断；③ MAX_SETTLE_FRAMES 保底上限
+  //（内容持续异常增长时不至永久轮询）。
   //
   // 轮询是否开启与这次滚动是不是 smooth 无关，只看"是否已有轮询在跑"（见 scrollToBottom）：
   // 刷新页面时 BubbleList 挂载的瞬时 scrollToBottom() 若命中最后一条是自定义卡片，同样要靠
@@ -72,14 +73,26 @@ export function useAutoScroll(
     if (smoothTarget) {
       smoothTarget.removeEventListener('wheel', interruptSmooth);
       smoothTarget.removeEventListener('touchmove', interruptSmooth);
+      smoothTarget.removeEventListener('mousedown', interruptSmooth);
+      smoothTarget.removeEventListener('keydown', interruptOnScrollKey);
       smoothTarget = null;
     }
   };
 
-  // 用户主动滚动输入（wheel/touchmove）：打断贴底意图，并按真实位置立即重算状态
+  // 用户主动滚动输入：打断贴底意图，并按真实位置立即重算状态。
+  // 触发面必须覆盖全部滚动输入形态，否则快速流式（高度增长间隔 < 稳定帧窗口）期间
+  // 轮询每帧 snap 回底，未覆盖的输入会被反复「拽回底部」直到帧数上限才有逃逸窗口：
+  // wheel/touchmove 之外，拖动滚动条只产生 mousedown + scroll（scroll 经 computeState
+  // 被 smoothPending 短路），键盘翻页（PageUp/方向键，无障碍用户的主路径）只产生
+  // keydown + scroll。mousedown 无条件打断（点击消息等误打断无害：computeState 若仍
+  // 贴底，下次 follow 重启轮询）；keydown 仅认滚动键，避免容器内其他快捷键误打断。
   const interruptSmooth = () => {
     clearSmoothPending();
     computeState();
+  };
+  const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' ']);
+  const interruptOnScrollKey = (e: KeyboardEvent) => {
+    if (SCROLL_KEYS.has(e.key)) interruptSmooth();
   };
 
   const beginSmoothPending = (el: HTMLElement) => {
@@ -91,9 +104,11 @@ export function useAutoScroll(
     smoothPending = true;
     smoothTarget = el;
     // BubbleList 仅接线 @scroll → computeState，无用户输入事件入口；在此对滚动容器
-    // 直挂 wheel/touchmove（passive，不影响滚动性能），意图清除时同步解绑
+    // 直挂全部滚动输入事件（passive，不影响滚动性能），意图清除时同步解绑
     el.addEventListener('wheel', interruptSmooth, { passive: true });
     el.addEventListener('touchmove', interruptSmooth, { passive: true });
+    el.addEventListener('mousedown', interruptSmooth, { passive: true });
+    el.addEventListener('keydown', interruptOnScrollKey, { passive: true });
 
     let lastHeight = el.scrollHeight;
     let stableFrames = 0;
@@ -132,7 +147,7 @@ export function useAutoScroll(
       // el.scrollTo() 几乎必然异步触发浏览器原生 scroll 事件，而这类事件很容易恰好命中
       // "刚 snap 过去、暂时追平"的瞬间——若在这里把轮询清掉，之后内容继续变高（如下一张
       // 卡片渲染完成）时就没人再追，最终停在半途。所以这里**不做任何清理**：轮询何时结束
-      // 完全交给它自己的连续稳定帧判定（或用户 wheel/touchmove 主动打断）。
+      // 完全交给它自己的连续稳定帧判定（或用户滚动输入主动打断）。
       // 无轮询在跑时也无需清理——smoothPending 只在 clearSmoothPending() 内被置 false，
       // 且它同时清掉 settleRaf 与 smoothTarget，三者恒同进同出。
       return;

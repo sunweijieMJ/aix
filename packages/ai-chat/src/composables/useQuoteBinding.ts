@@ -5,7 +5,7 @@ import type { ChatMessage, Quote, QuoteAnchor, QuoteConfig } from '../types';
 import { BUBBLE_CONTENT_SELECTOR, genQuoteId, messageText } from '../utils/helpers';
 import { upsertQuote } from '../utils/quoteDedupe';
 import { highlightElement, highlightRange } from '../utils/quoteHighlight';
-import { findTextRange, offsetsToRange } from '../utils/textRange';
+import { findTextRange, normalizeText, offsetsToRange } from '../utils/textRange';
 import { useQuoteMenu, QUOTE_LOCATE_KEY } from './useQuoteMenu';
 import { useTextSelection } from './useTextSelection';
 import type { ActiveSelection, LongPressTrigger } from './useTextSelection';
@@ -171,11 +171,24 @@ export function useQuoteBinding(options: UseQuoteBindingOptions): UseQuoteBindin
     { immediate: true },
   );
 
-  // PC 操作栏整条引用：与移动长按整条走完全同一条 L2 出口（insertQuote → chip → focus）
+  // PC 操作栏整条引用：与移动长按整条走完全同一条 L2 出口（insertQuote → chip → focus）。
+  // exact 口径也与长按对齐（渲染后 textContent 经 normalizeText 折叠，rawText 保留原文）：
+  // quoteDedupe.sameAnchor 按 exact 严格相等判重，此前 PC 路径用未归一化的 markdown 源码，
+  // 同一条消息经两路各引用一次会产出两枚语义相同的 chip，且 chip 上裸露 **、``` 等源码符号。
+  // 点击操作栏时气泡必然已挂载，DOM 查询失败仅是防御分支（回退 markdown 源文本）。
   const quoteMessage = (item: ChatMessage) => {
+    const bubble = options.root.value?.querySelector<HTMLElement>(
+      `[data-aix-message-id="${CSS.escape(item.id)}"]`,
+    );
+    const contentEl = bubble?.querySelector<HTMLElement>(BUBBLE_CONTENT_SELECTOR) ?? bubble;
+    const raw = contentEl?.textContent || messageText(item);
     insertQuote({
       id: genQuoteId(),
-      anchor: { source: { messageId: item.id, role: item.role }, exact: messageText(item) },
+      anchor: {
+        source: { messageId: item.id, role: item.role },
+        exact: normalizeText(raw),
+        rawText: raw,
+      },
     });
     options.focusSender();
   };

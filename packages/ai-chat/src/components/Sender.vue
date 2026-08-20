@@ -813,7 +813,32 @@ const autosize = () => {
   mirror.value = el.value;
   el.style.height = `${mirror.scrollHeight}px`;
 };
+// 宽度变化重量高：autosize 的其余触发点全在「内容变化」路径上，容器宽度变化（侧栏拖宽 /
+// 窗口 resize）改变换行数后高度会滞留旧值——变窄靠 max-height+内滚兜底不溢出，变宽则留
+// 一截空白，直到下次键入才纠正。autosize 自己写 height 也会触发本观察者，按宽度过滤掉
+// 这类自反馈；jsdom 等无 ResizeObserver 的环境安全空转（与 useAutoScroll.observeContent 同风格）。
+let widthRo: ResizeObserver | null = null;
+let lastWidth = 0;
+watch(
+  textareaRef,
+  (el) => {
+    widthRo?.disconnect();
+    widthRo = null;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    lastWidth = el.clientWidth;
+    widthRo = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      if (w === lastWidth) return;
+      lastWidth = w;
+      autosize();
+    });
+    widthRo.observe(el);
+  },
+  { immediate: true, flush: 'post' },
+);
 onUnmounted(() => {
+  widthRo?.disconnect();
+  widthRo = null;
   mirrorEl?.remove();
   mirrorEl = null;
 });
