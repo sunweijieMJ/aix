@@ -1,4 +1,5 @@
 import { defineComponent, h, ref, shallowRef, watch, type ShallowRef } from 'vue';
+import { createLazySource } from './lazySource';
 import { createLruCache } from './lruCache';
 import type { MarkdownRenderers } from './markdownWalker';
 
@@ -123,27 +124,6 @@ export function createDiagramRenderers(mermaid: MermaidLike): MarkdownRenderers 
 export function createLazyDiagramRenderers(
   load: () => Promise<MermaidLike | null>,
 ): MarkdownRenderers {
-  const instance = shallowRef<MermaidLike | null>(null);
-  let started = false;
-  const ensure = () => {
-    if (started) return;
-    started = true;
-    load()
-      .then((mermaid) => {
-        if (!mermaid) {
-          // 未安装 / 加载失败落 null：复位 started 允许下一个围栏挂载时重试——
-          // 发版 stale chunk 404 / 弱网抖动一次不应让后续所有围栏永久维持代码块。
-          // 真正未安装的场景重试同样落 null，行为不变仅多一次尝试成本
-          started = false;
-          return;
-        }
-        initMermaid(mermaid);
-        instance.value = mermaid; // 响应式落定：已固化的块经各自 watch 自动升级成图
-      })
-      .catch(() => {
-        // 加载意外失败：静默维持代码块（不产生未处理 rejection），同样允许重试
-        started = false;
-      });
-  };
-  return buildDiagramRenderers({ instance, ensure });
+  // 「started 标志 + 失败复位允许重试」收敛在 createLazySource（与 echarts 路径共用）
+  return buildDiagramRenderers(createLazySource(load, initMermaid));
 }

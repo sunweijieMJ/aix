@@ -38,8 +38,8 @@ export type MarkdownRenderer = (ctx: MarkdownRenderContext) => VNode | (VNode | 
 /** 注册表：归一化后的 token 名（去 `_open`）→ 渲染器 */
 export type MarkdownRenderers = Record<string, MarkdownRenderer>;
 
-/** 取 token 属性值 */
-function attr(token: MdToken, name: string): string | undefined {
+/** 取 token 属性值（imageRenderers 等 token 级渲染器复用，勿在各处手写副本） */
+export function attr(token: MdToken, name: string): string | undefined {
   return token.attrs?.find((a) => a[0] === name)?.[1];
 }
 
@@ -111,11 +111,13 @@ function renderNode(
   info: MarkdownRenderInfo,
 ): (VNode | string)[] {
   let key = token.type.replace(/_open$/, '');
-  // fence 按围栏语言优先分发 fence:<lang>（如 fence:mermaid），未注册则回落通用 fence
+  // fence 按围栏语言优先分发 fence:<lang>（如 fence:mermaid），未注册则回落通用 fence。
+  // 只查用户注册表：fence:<lang> 键全部来自注册侧（mermaid/chart/html 等），内置表不含
+  // 也不预留这类键
   if (token.type === 'fence') {
     const lang = token.info.trim().split(/\s+/)[0];
     const langKey = lang ? `fence:${lang}` : '';
-    if (langKey && (renderers[langKey] ?? builtinMarkdownRenderers[langKey])) key = langKey;
+    if (langKey && renderers[langKey]) key = langKey;
   }
   const renderer = renderers[key] ?? builtinMarkdownRenderers[key];
   if (renderer) {

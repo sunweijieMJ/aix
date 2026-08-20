@@ -1,10 +1,7 @@
 import { h } from 'vue';
 import ImageThumb from '../components/ImageThumb.vue';
-import type { MarkdownRenderers, MdToken } from './markdownWalker';
+import { attr, type MarkdownRenderers } from './markdownWalker';
 import { safeImageSrc } from './url';
-
-const attr = (token: MdToken, name: string): string | undefined =>
-  token.attrs?.find((a) => a[0] === name)?.[1];
 
 /**
  * 内置图片渲染器：`image` token → 骨架占位版缩略图（ImageThumb 组件）。

@@ -1,5 +1,6 @@
 import { defineComponent, h, ref, shallowRef, watch, type ShallowRef } from 'vue';
 import { useEChartsRender, type EChartsLike } from '../composables/useEChartsRender';
+import { createLazySource } from './lazySource';
 import type { MarkdownRenderers } from './markdownWalker';
 
 /** plain object 判定（拒绝数组 / null / 基本类型）：JSON.parse 出的 option 须是对象 */
@@ -23,33 +24,10 @@ interface ChartSource {
  */
 let shared: ChartSource | null = null;
 
-/** 获取共享 ECharts 源（首次创建懒加载器；load 只在首个图表挂载时执行一次） */
+/** 获取共享 ECharts 源（首次创建懒加载器；load 只在首个图表挂载时执行一次）。
+ * 「started 标志 + 失败复位允许重试」收敛在 createLazySource（与 mermaid 路径共用） */
 export function getSharedECharts(load: () => Promise<EChartsLike | null>): ChartSource {
-  if (!shared) {
-    const instance = shallowRef<EChartsLike | null>(null);
-    let started = false;
-    shared = {
-      instance,
-      ensure: () => {
-        if (started) return;
-        started = true;
-        load()
-          .then((echarts) => {
-            if (echarts) {
-              instance.value = echarts;
-            } else {
-              // 未装 / 加载失败落 null：复位 started 允许下一个图表挂载时重试——
-              // stale chunk 404 一次不应让后续所有图表永久降级（重试成本仅一次 import）
-              started = false;
-            }
-          })
-          .catch(() => {
-            // 加载意外失败：维持 null（围栏→代码块，结构化→降级），不产生未处理 rejection，允许重试
-            started = false;
-          });
-      },
-    };
-  }
+  if (!shared) shared = createLazySource(load);
   return shared;
 }
 
