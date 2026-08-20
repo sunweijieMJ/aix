@@ -68,6 +68,21 @@ export async function ensureChartType(core: EChartsLike, kind: EChartsChartKind)
   }
 }
 
+// 支持的图表类型清单：inferKind 的推断与渲染核对显式 kind 的运行时校验共用同一张表
+const KNOWN_KINDS: readonly EChartsChartKind[] = [
+  'bar',
+  'line',
+  'pie',
+  'scatter',
+  'radar',
+  'funnel',
+  'gauge',
+  'heatmap',
+  'graph',
+  'tree',
+  'treemap',
+];
+
 /**
  * 从 option.series[0].type 推断图表类型（围栏路径无显式 kind 时用）。
  * 未给 type（dataset 驱动等）回退 'line'；**明确给了清单外类型**（如 candlestick）返回 null——
@@ -78,20 +93,7 @@ export function inferKind(option: Record<string, unknown>): EChartsChartKind | n
   const first = Array.isArray(series) ? series[0] : series;
   const type = (first as { type?: string } | undefined)?.type;
   if (type === undefined) return 'line';
-  const known: EChartsChartKind[] = [
-    'bar',
-    'line',
-    'pie',
-    'scatter',
-    'radar',
-    'funnel',
-    'gauge',
-    'heatmap',
-    'graph',
-    'tree',
-    'treemap',
-  ];
-  return known.includes(type as EChartsChartKind) ? (type as EChartsChartKind) : null;
+  return KNOWN_KINDS.includes(type as EChartsChartKind) ? (type as EChartsChartKind) : null;
 }
 
 /**
@@ -199,9 +201,14 @@ export function useEChartsRender(params: UseEChartsRenderParams): {
       teardown();
       return;
     }
-    const resolvedKind = kind ?? inferKind(option);
+    // 显式 kind 与推断路径同一清单校验：kind 来自块数据（模型/工具输出的映射），TS 类型
+    // 挡不住运行时的清单外字符串。若放行，ensureChartType 内的解构 TypeError 会被其
+    // try/catch 静默吞掉、setOption 对未注册 series 只打 console error——最终产出一块
+    // 无任何反馈的空白容器且 failed 恒 false，正是 inferKind 的降级要避免的失败形态。
+    const resolvedKind =
+      kind != null ? (KNOWN_KINDS.includes(kind) ? kind : null) : inferKind(option);
     if (!resolvedKind) {
-      // series 类型明确不在支持清单：降级，避免加载错子模块后产出空白容器
+      // 图表类型明确不在支持清单：降级，避免加载错子模块后产出空白容器
       failedOption = option;
       failed.value = true;
       teardown();

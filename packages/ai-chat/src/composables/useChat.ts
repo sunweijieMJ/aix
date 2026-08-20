@@ -361,14 +361,19 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             // 的字段仍能到达渲染层，避免点赞高亮 / 互斥取消静默失效。
             // 父 extra 为空时不做合并（不引入空对象），id 又一致则原样复用（零开销路径）。
             const extra = m.extra ? { ...m.extra, ...sub.extra } : sub.extra;
-            // createdAt 与 id/extra 同理由父消息兜底：parser 通常只关心 content 的形状，
-            // 返回的新对象不会带上它，不继承则渲染层的消息时间戳「开了 parser 就消失」。
+            // createdAt / status 与 id/extra 同理由父消息兜底：parser 通常只关心 content 的
+            // 形状，返回的新对象不会带上它们，不继承则「开了 parser 就消失」——createdAt 丢时间戳，
+            // status 丢会话状态（loading 三点、打字机登记、流式末块整修、error 文案整链失效）。
             // parser 显式给了值则尊重（与 extra 同名键优先同口径）。
             const createdAt = sub.createdAt ?? m.createdAt;
+            const status = sub.status ?? m.status;
             return [
-              sub.id === m.id && extra === sub.extra && createdAt === sub.createdAt
+              sub.id === m.id &&
+              extra === sub.extra &&
+              createdAt === sub.createdAt &&
+              status === sub.status
                 ? sub
-                : { ...sub, id: m.id, extra, createdAt },
+                : { ...sub, id: m.id, extra, createdAt, status },
             ];
           }
           // 1→N：首个子气泡复用父 id（单→拆转换不 remount、不闪烁），其余派生稳定 id；
@@ -380,7 +385,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             return {
               ...sub,
               id: bi === 0 ? m.id : `${m.id}__${bi}`,
-              status: m.status,
+              // 同 1→1 分支：父消息兜底、parser 显式给值则尊重
+              status: sub.status ?? m.status,
               // 同 1→1 分支：拆出来的每个气泡都属于父消息这一时刻
               createdAt: sub.createdAt ?? m.createdAt,
               // 合并父消息 extra（parser 同名键优先，与 1→1 分支一致）；__sub 最后写入，

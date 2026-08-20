@@ -99,7 +99,13 @@
          发送键固定在最右——未显式插入 'spacer' 时，由下方补的隐式 spacer 元素把发送键推到最右；
          数组里显式放了 'spacer'，则改由该占位符切分左右分组（其后内容含发送键被推到右侧） -->
     <div :class="ns.e('toolbar')">
-      <template v-for="item in toolbarItems" :key="typeof item === 'string' ? item : item.key">
+      <!-- key：内置字符串项带下标（同名可重复，如左中右布局的两个 'spacer'；按钮无内部状态，
+           位置变化重挂无代价）；自定义项按声明 key 保持身份稳定（组件可能有内部状态）。
+           's:'/'c:' 前缀防自定义 key 与内置字符串同名相撞 -->
+      <template
+        v-for="(item, i) in toolbarItems"
+        :key="typeof item === 'string' ? `s:${item}:${i}` : `c:${item.key}`"
+      >
         <button
           v-if="item === 'attach' && attach"
           type="button"
@@ -585,10 +591,13 @@ const onFileChange = (e: Event) => {
 };
 const onDrop = (e: DragEvent) => {
   if (!attach) return;
+  // 无文件的拖放（选中文本 / 链接）不拦截：放行浏览器「拖文本进 textarea 即插入」的
+  // 原生行为——文本拖放没有导航风险，preventDefault 只需覆盖文件 drop
+  if (!e.dataTransfer?.files.length) return;
   // preventDefault 不受 disabled 约束：dragover 已宣告本区域为 drop target，
   // 此处若因 disabled 早退不阻止默认行为，浏览器会导航打开该文件、整页被替换
   e.preventDefault();
-  if (props.disabled || !e.dataTransfer?.files.length) return;
+  if (props.disabled) return;
   attach.add(e.dataTransfer.files);
 };
 // 面板内 pick/拖放/remove/重试事件被面板 stopPropagation、不经根级守卫，须单独受 disabled 约束——

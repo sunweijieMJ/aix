@@ -94,6 +94,8 @@ export type {
   CreateOpenAIRequestOptions,
   OpenAIChatParams,
   OpenAIChatMessage,
+  // OpenAIChatMessage.tool_calls 的元素类型：随宿主类型一并导出，免去 index 访问迂回
+  OpenAIToolCall,
 } from './utils/openai';
 
 // 流式 Markdown 防闪烁 / 数学定界符归一化工具
@@ -165,6 +167,7 @@ export type {
   SenderEmits,
   SenderSlotScope,
   SenderAttachmentsSlotScope,
+  SenderVariant,
   ToolbarBuiltinKey,
   ToolbarItem,
   SenderToolbarItems,

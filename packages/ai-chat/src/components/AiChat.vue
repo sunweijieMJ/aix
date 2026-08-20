@@ -1190,8 +1190,15 @@ const actionsFor = (item: ChatMessage): ActionsItems | null => {
     const i = base.indexOf('regenerate');
     if (i !== -1) base.splice(i, 1);
   }
-  // quote 启用且未被业务显式声明时自动注入（策略 A）；函数形态不自动注入（与 speak 同规则）
-  if (resolvedQuote.value.enable && resolvedQuote.value.pcQuoteAction && !base.includes('quote')) {
+  // quote 启用且未被业务显式声明时自动注入（策略 A）；函数形态不自动注入（与 speak 同规则）。
+  // messageText 守卫与 speak 的 resolveText 同口径：纯图/图表/工具消息无可引用文本，
+  // 注入后点击只会产出一枚 exact 为空的 chip（发送后渲染空 blockquote）
+  if (
+    resolvedQuote.value.enable &&
+    resolvedQuote.value.pcQuoteAction &&
+    !base.includes('quote') &&
+    messageText(item)
+  ) {
     base.push('quote');
   }
   // speech 启用且该消息有可朗读文本时追加内置 speak（即便 base 为空也显示，speech 是独立 opt-in）
