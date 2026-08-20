@@ -183,7 +183,7 @@ provide(FlowNodeDeleteBlockedKey, (nodeId: string) => emit('node-delete-blocked'
 // i18n：跟随 @aix/hooks 全局 locale（业务方通过 createLocale 注入）。
 // 在这里集中解析一次并 provide，子组件（含 vue-flow 内部渲染的 BaseNode / ColorEdge）直接 inject，
 // 避免每个子组件重复加载语言包。
-const { t } = useLocale(flowGraphLocale);
+const { t } = useLocale({ name: 'flow-graph', messages: flowGraphLocale });
 provide(FlowGraphLocaleKey, t);
 
 /**

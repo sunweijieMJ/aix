@@ -124,7 +124,7 @@ import { Button, buttonLocale } from '@aix/button';
 import { useLocale } from '@aix/hooks';
 
 // 获取多语言文案
-const { t } = useLocale(buttonLocale);
+const { t } = useLocale({ name: 'button', messages: buttonLocale });
 
 // t.value 包含：
 // - Button 特有文案：loadingText, clickMe, submitButton

@@ -71,7 +71,7 @@ import { useLocale } from '@aix/hooks';
 import { Add, ArrowLeft, ArrowRight, Fullscreen, Minus } from '@aix/icons';
 import { locale } from '../locale';
 
-const { t } = useLocale(locale);
+const { t } = useLocale({ name: 'pdf-viewer', messages: locale });
 
 const props = defineProps<{
   currentPage: number;

@@ -31,7 +31,7 @@
 import { useLocale } from '@aix/hooks';
 import { Editor, EditorContent } from '@tiptap/vue-3';
 import { computed, ref } from 'vue';
-import type { CSSProperties, Ref } from 'vue';
+import type { CSSProperties } from 'vue';
 import EditorToolbar from './components/EditorToolbar.vue';
 import LinkEditPopover from './components/LinkEditPopover.vue';
 import TableFloatingToolbar from './components/TableFloatingToolbar.vue';
@@ -60,8 +60,12 @@ const props = withDefaults(defineProps<RichTextEditorProps>(), {
 
 const emit = defineEmits<RichTextEditorEmits>();
 
-// useLocale 内部通过 isRef() + if(override) 安全处理 undefined
-const { t } = useLocale(richTextLocale, computed(() => props.locale) as Ref<'zh-CN' | 'en-US'>);
+// overrideLocale 传 getter，props.locale 未设置（undefined）时回落全局 locale
+const { t } = useLocale({
+  name: 'rich-text-editor',
+  messages: richTextLocale,
+  overrideLocale: () => props.locale,
+});
 
 const {
   editor,

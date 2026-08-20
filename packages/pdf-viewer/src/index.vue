@@ -182,7 +182,7 @@ const props = withDefaults(defineProps<PdfViewerProps>(), {
 const emit = defineEmits<PdfViewerEmits>();
 
 // 国际化
-const { t } = useLocale(locale);
+const { t } = useLocale({ name: 'pdf-viewer', messages: locale });
 
 // 合并配置
 const mergedConfig = computed<PdfViewerConfig>(() => ({

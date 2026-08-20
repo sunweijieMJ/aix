@@ -51,7 +51,7 @@ const props = withDefaults(defineProps<ContextMenuProps>(), {
 const emit = defineEmits<ContextMenuEmits>();
 
 // i18n：跟随 @aix/hooks 全局 locale（业务方通过 createLocale 注入），未设置时默认 zh-CN
-const { t } = useLocale(popperLocale);
+const { t } = useLocale({ name: 'popper', messages: popperLocale });
 
 // 模板 ref
 const floatingElRef = ref<HTMLElement | null>(null);
