@@ -4,7 +4,7 @@ import { defineConfig } from 'rollup';
 import { dts } from 'rollup-plugin-dts';
 import esbuild from 'rollup-plugin-esbuild';
 import postcss from 'rollup-plugin-postcss';
-import { isStyleId, stripStyleImports } from '../../rollup.config.js';
+import { emitStyleDts, isStyleId, stripStyleImports } from '../../rollup.config.js';
 
 // CSS 入口配置
 const cssEntries = [
@@ -39,6 +39,8 @@ const createCssConfig = ({ input, output, useImport }) => ({
       sourceMap: false,
       plugins: [...(useImport ? [postcssImport()] : []), autoprefixer()],
     }),
+    // ./style 导出（dist/vars/index.css）的类型声明随全量入口一起生成
+    ...(output === 'dist/vars/index.css' ? [emitStyleDts('dist/vars')] : []),
   ],
 });
 

@@ -23,7 +23,10 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./style": "./dist/vars/index.css",
+    "./style": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/index.css"
+    },
     "./vars": "./dist/vars/index.css",
     "./vars/base": "./dist/vars/base-tokens.css",
     "./vars/light": "./dist/vars/light.css",

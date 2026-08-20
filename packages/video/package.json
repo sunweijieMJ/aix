@@ -26,7 +26,10 @@
     },
     "./es/*": "./es/*",
     "./lib/*": "./lib/*",
-    "./style": "./es/index.css",
+    "./style": {
+      "types": "./es/style.d.ts",
+      "default": "./es/index.css"
+    },
     "./package.json": "./package.json"
   },
   "files": [
