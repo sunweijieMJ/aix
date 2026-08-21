@@ -226,9 +226,14 @@
     {
       "name": "import-path",
       "pattern": "/@\\/[a-zA-Z0-9/-]+/g"
+    },
+    {
+      "description": "URL 百分号转义（多见于内联 data URI，如 url(\"data:image/svg+xml,%3Csvg...\")）：%3C+标签名会被切成 Csvg / Cpath / Crect 这类伪单词。只吃掉转义序列本身及紧随的标识符，不影响同行其余文本的拼写检查",
+      "name": "percent-encoding",
+      "pattern": "/%[0-9A-Fa-f]{2}[\\w-]*/g"
     }
   ],
-  "ignoreRegExpList": ["jwt-token", "css-var", "import-path"],
+  "ignoreRegExpList": ["jwt-token", "css-var", "import-path", "percent-encoding"],
   "ignorePaths": [
     "**/*/dist",
     "**/*/build",
