@@ -27,11 +27,26 @@
       "types": "./dist/vars/style.d.ts",
       "default": "./dist/vars/index.css"
     },
-    "./vars": "./dist/vars/index.css",
-    "./vars/base": "./dist/vars/base-tokens.css",
-    "./vars/light": "./dist/vars/light.css",
-    "./vars/dark": "./dist/vars/dark.css",
-    "./vars/compat": "./dist/vars/index.compat.css",
+    "./vars": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/index.css"
+    },
+    "./vars/base": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/base-tokens.css"
+    },
+    "./vars/light": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/light.css"
+    },
+    "./vars/dark": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/dark.css"
+    },
+    "./vars/compat": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/index.compat.css"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
@@ -65,6 +80,7 @@
     "@kit/stylelint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
+    "@types/node": "catalog:",
     "autoprefixer": "catalog:",
     "eslint": "catalog:",
     "postcss": "catalog:",

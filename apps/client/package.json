@@ -32,6 +32,7 @@
     "@kit/stylelint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/visual-testing": "workspace:^",
+    "@types/node": "catalog:",
     "@vitejs/plugin-vue": "catalog:",
     "cross-env": "catalog:",
     "eslint": "catalog:",

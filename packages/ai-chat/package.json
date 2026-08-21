@@ -72,6 +72,7 @@
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
     "@types/markdown-it": "catalog:",
+    "@types/node": "catalog:",
     "@vue/test-utils": "catalog:",
     "eslint": "catalog:",
     "jsdom": "catalog:",

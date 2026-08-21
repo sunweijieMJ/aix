@@ -1,6 +1,7 @@
 {
   "extends": "@kit/typescript-config/base-library.json",
   "compilerOptions": {
+    "types": ["node"],
     "noEmit": true,
     "composite": false,
     "declaration": false,
