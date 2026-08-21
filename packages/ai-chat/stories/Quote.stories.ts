@@ -109,7 +109,12 @@ export const PCSelection: Story = {
 /** PC 操作栏整条引用 → chip → 发送 → user 消息内 QuoteBlock 展示 */
 export const WholeMessageQuote: Story = {
   play: async ({ canvas, canvasElement }) => {
-    await userEvent.click(await canvas.findByRole('button', { name: '引用' }));
+    const quoteBtn = await canvas.findByRole('button', { name: '引用' });
+    // virtua 滚动期间会给虚拟列表容器挂 pointer-events: none（防 hover 抖动），而 AiChat 挂载后
+    // 会自动滚到底——按钮此时虽已在 DOM 里却不可交互，userEvent 会直接抛
+    // 「element has pointer-events: none」。等滚动停歇（pointer-events 复位）再点。
+    await waitFor(() => expect(getComputedStyle(quoteBtn).pointerEvents).not.toBe('none'));
+    await userEvent.click(quoteBtn);
     await waitFor(() => expect(canvasElement.querySelector('.aix-quote-chip')).toBeInTheDocument());
     await userEvent.type(canvas.getByRole('textbox'), '请再展开讲讲{enter}');
     await waitFor(() =>
@@ -137,6 +142,14 @@ export const MobileLongPress: Story = {
       return el;
     });
 
+    // 与 PCSelection 同一条前置：必须先等 Markdown 引擎就绪（<strong> 出现）再长按。
+    // 引擎就绪那次重渲染才让 useTextSelection 的 root（BubbleList 滚动容器）落定并完成
+    // touchstart/touchmove/touchend 装配；在此之前派发 touchstart 无人接听，长按计时器
+    // 根本不会起，QuoteSheet 永远不出现。
+    await waitFor(() => expect(target.querySelector('strong')).toBeInTheDocument(), {
+      timeout: 5000,
+    });
+
     // 模拟单指长按：优先用真实 TouchEvent/Touch 构造（Chromium 内核浏览器支持），
     // 不支持时降级为普通 Event + 手动挂 touches 属性（与 useTextSelection 单测同法），
     // useTextSelection 只读取 e.touches[0].clientX/clientY，两条路径对其而言等价。
@@ -155,13 +168,21 @@ export const MobileLongPress: Story = {
       }
     };
 
-    // 单指按下，开始 300ms 长按计时（不移动、不提前松开）
-    dispatchTouch('touchstart');
-
-    // longPressDelay=300ms，留足余量等待 QuoteSheet 浮出（Teleport 到 body，不在 canvasElement 内）
-    await waitFor(() => expect(document.querySelector('.aix-quote-sheet')).toBeInTheDocument(), {
-      timeout: 1000,
-    });
+    // 单指按下 → 等 300ms 长按计时 → QuoteSheet 浮出（Teleport 到 body，不在 canvasElement 内）。
+    //
+    // 按下动作放进 waitFor 里重试，而不是「按一次 + 等结果」：useTextSelection 的触摸监听装在
+    // quoteRoot（= BubbleList 滚动容器）上，而 quoteRoot 是个读 `bubbleListRef.scrollElement()`
+    // 的 computed——气泡出现那一刻它可能还没落定，此时派发的 touchstart 无人接听，长按计时器
+    // 根本不会起。装配完成没有任何 DOM 可观测信号，且同一个页面连跑多个 story 时（本文件 4 个）
+    // 落定更慢，故改为「按不动就再按」——长按本身幂等，重复派发只是重置那 300ms 计时器。
+    // interval 必须大于 longPressDelay，否则每次轮询都把计时器重置掉、永远等不到 sheet。
+    await waitFor(
+      () => {
+        dispatchTouch('touchstart');
+        expect(document.querySelector('.aix-quote-sheet')).toBeInTheDocument();
+      },
+      { timeout: 8000, interval: 500 },
+    );
 
     // 点 sheet 里的「解释」→ chip 出现在 Sender header，菜单关闭
     await userEvent.click(screen.getByRole('menuitem', { name: '解释' }));
