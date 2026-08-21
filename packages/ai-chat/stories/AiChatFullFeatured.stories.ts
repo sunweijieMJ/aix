@@ -71,7 +71,7 @@ export const FullFeatured: Story = {
       // 点击前重查（虚拟列表 / teleport 教训：click 前重新 find）
       const attachBtn = await canvas.findByRole('button', { name: '添加附件' });
       await userEvent.click(attachBtn);
-      await canvas.findByText('点击或拖拽文件到此区域上传', undefined, { timeout: 5000 });
+      await canvas.findByText('上传文件', undefined, { timeout: 5000 });
       // 再次点击收起面板，避免遮挡后续交互
       const attachBtn2 = await canvas.findByRole('button', { name: '添加附件' });
       await userEvent.click(attachBtn2);

@@ -198,7 +198,7 @@ export const WithAttachments: Story = {
     await expect(attachBtn).toBeInTheDocument();
     // 点击回形针 → 面板展开，placeholder 文案可见
     await userEvent.click(attachBtn);
-    await canvas.findByText('点击或拖拽文件到此区域上传');
+    await canvas.findByText('上传文件');
   },
 };
 
@@ -316,7 +316,7 @@ export const CustomAttachmentsPanel: Story = {
     await userEvent.click(attachBtn);
     // 自定义面板出现，内置面板文案不再出现
     await canvas.findByText('我的上传区');
-    await expect(canvas.queryByText('点击或拖拽文件到此区域上传')).not.toBeInTheDocument();
+    await expect(canvas.queryByText('上传文件')).not.toBeInTheDocument();
     await expect(
       await canvas.findByRole('button', { name: '＋ 选择文件（自定义 UI）' }),
     ).toBeInTheDocument();
