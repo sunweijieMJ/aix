@@ -213,7 +213,7 @@ export const postPublishGitActions = async (
   }
 
   // 2. 是否推送 tags
-  if (await confirm('是否推送 Git Tags?', false, skipPrompts)) {
+  if (await confirm('是否推送 Git Tags?', true, skipPrompts)) {
     run('git push --tags', projectRoot);
     console.log(chalk.green('✅ Tags 已推送'));
   }
