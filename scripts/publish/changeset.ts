@@ -9,38 +9,54 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import {
   WORKSPACE_DIRS,
-  type PreJsonFile,
   type WorkspacePackage,
   exec,
   run,
   confirm,
   normalizePath,
+  normalizeTag,
+  getPreJsonPath,
+  parsePreJson,
 } from './shared.js';
 import { getPublishablePackages, clearWorkspaceCache } from './workspace.js';
 
-// 安全解析 pre.json 文件
-const parsePreJson = (filePath: string): PreJsonFile | null => {
-  try {
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    // 类型守卫：确保必要字段存在且类型正确
-    if (
-      typeof content === 'object' &&
-      content !== null &&
-      typeof content.mode === 'string' &&
-      typeof content.tag === 'string'
-    ) {
-      return content as PreJsonFile;
-    }
-    return null;
-  } catch {
-    return null;
+// npm dist-tag 校验：合法返回 null，非法返回错误原因
+// 字符集限定 [a-z0-9-]：changesets 会用 tag 拼 semver 预发布号 x.y.z-<tag>.<n>，
+// semver 预发布标识符不允许下划线（changeset version 会直接崩溃），
+// 带点的标签会破坏 changesets 的 pre 版本计数器（prerelease[1] 被当作数字序号解析）
+export const validateDistTag = (tag: string): string | null => {
+  if (tag === 'latest') {
+    return `"latest" 是 npm 保留的 dist-tag，不能用作预发布标签`;
+  }
+  if (!/^[a-z][a-z0-9-]*$/.test(tag)) {
+    return `标签 "${tag}" 格式无效：需以小写字母开头，只能包含小写字母、数字和连字符 -`;
+  }
+  if (/^v\d/.test(tag)) {
+    return `标签 "${tag}" 易与 semver 版本混淆（不能是 v+数字 开头）`;
+  }
+  return null;
+};
+
+// 校验发布模式并在非法时抛出完整报错（setupReleaseMode 与 publish 的 -m 校验共用，避免文案重复漂移）
+export const assertValidTagMode = (mode: string): void => {
+  const tagError = validateDistTag(mode);
+  if (tagError) {
+    throw new Error(
+      `无效的发布模式: ${tagError}\n可选值: release, beta, alpha, 或自定义 dist-tag (如 oem)`,
+    );
   }
 };
 
-// 处理发布模式
+// 标准预发布标签（无需自定义标签的回显确认与额外风险提示）
+const STANDARD_PRE_TAGS = new Set(['beta', 'alpha']);
+
+// 标准发布模式（无需回显确认），其余合法标签视为自定义 dist-tag
+const STANDARD_MODES = new Set(['release', ...STANDARD_PRE_TAGS]);
+
+// 处理发布模式：release 走正式发布，其余（beta/alpha/自定义标签如 oem）统一进入 changeset pre 模式
+// mode 已由 setupReleaseMode 规范化并通过 validateDistTag 校验
 const handlePreMode = async (projectRoot: string, mode: string) => {
-  const normalizedMode = mode.toLowerCase();
-  const preJsonPath = path.join(projectRoot, '.changeset', 'pre.json');
+  const preJsonPath = getPreJsonPath(projectRoot);
 
   if (fs.existsSync(preJsonPath)) {
     const preJson = parsePreJson(preJsonPath);
@@ -49,38 +65,70 @@ const handlePreMode = async (projectRoot: string, mode: string) => {
       // 文件损坏或格式无效
       console.warn(chalk.yellow('pre.json 文件已损坏，将重新初始化'));
       fs.unlinkSync(preJsonPath);
-    } else if (preJson.mode !== 'pre' || !preJson.tag) {
-      // changeset 的 pre.json 在预发布模式下 mode 为 "pre"
-      // 如果 mode 不是 "pre" 或者没有有效的 tag，说明文件状态异常
+    } else if (preJson.mode === 'pre' && !preJson.tag) {
+      // pre 模式却没有有效 tag，文件状态异常
       console.log(chalk.gray('清理无效的预发布状态文件...'));
       fs.unlinkSync(preJsonPath);
-    } else if (preJson.tag === normalizedMode) {
+    } else if (preJson.mode === 'pre' && preJson.tag === mode) {
       // 已处于目标预发布模式
-      console.log(chalk.cyan(`已处于 ${normalizedMode} 预发布模式，无需切换`));
+      console.log(chalk.cyan(`已处于 ${mode} 预发布模式，无需切换`));
       return;
-    } else {
+    } else if (preJson.mode === 'pre') {
       // 需要切换模式：从预发布退出（无论是切换到 release 还是其他预发布模式）
       console.log(chalk.yellow(`退出当前预发布模式 (${preJson.tag})...`));
       run('npx changeset pre exit', projectRoot);
+    } else if (mode === 'release') {
+      // exit 态（pre exit 后尚未 version）：不能删除该文件，它记录着本轮 pre 周期的已消费清单
+      // 与起始版本，changeset version 需要靠它生成完整 CHANGELOG 并收口
+      console.log(chalk.cyan(`检测到已退出的预发布状态 (tag: ${preJson.tag})`));
+      console.log(chalk.gray('changeset version 会自动完成收口并删除 pre.json'));
+    } else {
+      // exit 态重入预发布：changesets 允许从 mode "exit" 直接 pre enter（无需先 exit），
+      // 且会保留原 changesets 已消费清单，避免同一批 changeset 被重复消费
+      console.log(chalk.cyan(`将从已退出的预发布状态 (tag: ${preJson.tag}) 重新进入 pre 模式`));
+      console.log(chalk.gray('changesets 会保留已消费的 changeset 清单'));
     }
   }
 
-  switch (normalizedMode) {
-    case 'release':
-      console.log(chalk.cyan('正式发布模式'));
-      break;
-    case 'beta':
-      console.log(chalk.cyan('Beta 发布模式'));
-      run('npx changeset pre enter beta', projectRoot);
-      break;
-    case 'alpha':
-      console.log(chalk.cyan('Alpha 发布模式'));
-      run('npx changeset pre enter alpha', projectRoot);
-      break;
-    default:
-      console.log(chalk.yellow(`未知模式 "${mode}"，使用默认的正式发布模式`));
+  if (mode === 'release') {
+    console.log(chalk.cyan('正式发布模式'));
+    return;
   }
+
+  if (STANDARD_PRE_TAGS.has(mode)) {
+    console.log(chalk.cyan(`${mode === 'beta' ? 'Beta' : 'Alpha'} 发布模式`));
+  } else {
+    // 自定义标签（如 oem）通常是不会转正的平行发行版，
+    // 而 pre 模式下的 changeset 会在退出 pre 后流入下一个正式版的版本 bump 和 CHANGELOG
+    const branch = exec('git rev-parse --abbrev-ref HEAD', projectRoot).trim();
+    console.log(chalk.cyan(`自定义标签发布模式 (${mode})，版本形如 x.x.x-${mode}.0`));
+    console.log(
+      chalk.yellow(`⚠️  本次产生的 changeset 与 pre.json 退出 pre 模式后会流入下一个正式版`),
+    );
+    console.log(
+      chalk.yellow(
+        `建议在独立分支上发布定制版（当前分支: ${branch}），避免定制内容进入正式版 CHANGELOG`,
+      ),
+    );
+    console.log(
+      chalk.yellow(`下游安装请锁定版本号或使用 npm i <pkg>@${mode}（^ 范围会解析到后续正式版）`),
+    );
+    // changesets 的 getReleaseTag 对 publishedState 为 only-pre 的包（registry 上只有当前 pre tag
+    // 的预发布版、没有任何正式版）会返回 latest
+    console.log(
+      chalk.yellow(
+        `在本 pre 周期内首次发布的新包，自第二次发布起会被 changesets 发到 latest；` +
+          `此类包需先出一个正式版，之后才能稳定走 ${mode} 通道`,
+      ),
+    );
+  }
+
+  run(`npx changeset pre enter ${mode}`, projectRoot);
 };
+
+// 交互菜单"自定义标签"选项的哨兵值：双下划线包裹，不可能与合法 dist-tag（^[a-z][a-z0-9-]*$）冲突，
+// 万一泄漏到 handlePreMode 也会被 validateDistTag 的格式校验拦下，失败模式安全
+const CUSTOM_TAG_SENTINEL = '__custom__';
 
 // 设置发布模式
 export const setupReleaseMode = async (
@@ -88,30 +136,64 @@ export const setupReleaseMode = async (
   initialMode = '',
   skipPrompts = false,
 ) => {
-  if (initialMode) {
-    await handlePreMode(projectRoot, initialMode);
-    return;
+  let mode = normalizeTag(initialMode);
+
+  if (!mode) {
+    if (skipPrompts) {
+      console.log(chalk.dim('[自动选择: 正式版本]'));
+      mode = 'release';
+    } else {
+      const { selected } = await inquirer.prompt([
+        {
+          type: 'select',
+          name: 'selected',
+          message: '请选择发布模式:',
+          choices: [
+            { name: '正式版本', value: 'release' },
+            { name: 'Beta 版本', value: 'beta' },
+            { name: 'Alpha 版本', value: 'alpha' },
+            { name: '自定义标签 (如 oem)…', value: CUSTOM_TAG_SENTINEL },
+          ],
+          default: 'release',
+        },
+      ]);
+      mode = selected as string;
+
+      if (mode === CUSTOM_TAG_SENTINEL) {
+        const { customTag } = await inquirer.prompt<{ customTag: string }>([
+          {
+            type: 'input',
+            name: 'customTag',
+            message: '请输入自定义 dist-tag (如 oem):',
+            validate: (input: string) => {
+              const tag = normalizeTag(input);
+              if (!tag) return '标签不能为空';
+              if (tag === 'release') return '正式版本请直接选择"正式版本"选项';
+              return validateDistTag(tag) ?? true;
+            },
+          },
+        ]);
+        mode = normalizeTag(customTag);
+      }
+    }
   }
 
-  if (skipPrompts) {
-    console.log(chalk.dim('[自动选择: 正式版本]'));
-    await handlePreMode(projectRoot, 'release');
-    return;
-  }
+  // 无条件校验：validateDistTag('release') 本就返回 null，无需额外守卫
+  assertValidTagMode(mode);
 
-  const { mode } = await inquirer.prompt([
-    {
-      type: 'select',
-      name: 'mode',
-      message: '请选择发布模式:',
-      choices: [
-        { name: '正式版本', value: 'release' },
-        { name: 'Beta 版本', value: 'beta' },
-        { name: 'Alpha 版本', value: 'alpha' },
-      ],
-      default: 'release',
-    },
-  ]);
+  // 自定义标签回显确认：CLI 显式 -m 与交互手输共用此单点，防拼写手误进入意外的预发布通道
+  // skipPrompts (-y) 下自动通过——显式传参配合 -y 视为明确意图，保持 CI 可用
+  if (!STANDARD_MODES.has(mode)) {
+    if (
+      !(await confirm(
+        `确认使用自定义标签 "${mode}" 发布 (版本形如 x.x.x-${mode}.0, dist-tag: ${mode})?`,
+        true,
+        skipPrompts,
+      ))
+    ) {
+      throw new Error('用户取消发布流程');
+    }
+  }
 
   await handlePreMode(projectRoot, mode);
 };
@@ -390,9 +472,17 @@ export const getChangedPackages = async (projectRoot: string): Promise<Set<strin
   const files = await readdir(changesetDir);
   const mdFiles = files.filter((file) => file.endsWith('.md') && file !== 'README.md');
 
+  // 与 changesets assemble-release-plan 的过滤语义一致：pre 模式下 changeset version 不删除
+  // 已消费的 .md（保留到 exit 后生成完整 CHANGELOG），这些文件不代表待发布内容。
+  // 不排除的话，同一 pre 周期内重跑 full 会把它们当成新 changeset，绕过空发布防护并打印虚假成功汇总
+  const preJson = parsePreJson(getPreJsonPath(projectRoot));
+  const consumedIds = preJson?.mode === 'pre' ? new Set(preJson.changesets) : new Set<string>();
+
   const packages = new Set<string>();
 
   for (const file of mdFiles) {
+    if (consumedIds.has(file.slice(0, -'.md'.length))) continue;
+
     const content = await readFile(path.join(changesetDir, file), 'utf-8');
     // 精确匹配开头的 YAML frontmatter，避免 summary 中的 --- 干扰
     const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -439,43 +529,51 @@ export const getVersionBumpedPackages = (projectRoot: string): Set<string> => {
   return packages;
 };
 
-// 检测需要构建的包（多级 fallback）
+// 检测需要构建的包：changeset 文件与 git diff 两个来源取并集
+// 必须取并集而非短路 fallback：pre 模式下 changeset version 不删除已消费的 .md，
+// 若命中 changeset 分支就返回，则 changeset version 按 updateInternalDependencies 连带 bump 的
+// 依赖方包（不在任何 .md 的 frontmatter 里）不会进构建清单，却仍会被 changeset publish 发布，
+// 导致带陈旧产物上线
 // allowEmpty: 检测结果为空时返回空集合而不抛错
-// （publish 重跑场景：changeset 已被 version 消费、版本变更已提交，两级检测必为空，
+// （publish 重跑场景：changeset 已被 version 消费、版本变更已提交，两个来源必为空，
 //  需放行到 publishPackages 的防护分支由用户确认后继续）
 export const detectPackages = async (
   projectRoot: string,
   options: { allowEmpty?: boolean } = {},
 ): Promise<Set<string>> => {
-  // 1. 从 changeset md 文件解析（优先级最高，确保只构建用户明确指定的包）
+  // 1. 从 changeset md 文件解析（用户明确指定的包）
   const fromChangeset = await getChangedPackages(projectRoot);
-  if (fromChangeset.size) {
-    console.log(chalk.gray('(从 changeset 文件检测到变更的包)'));
-    return fromChangeset;
-  }
-
-  // 2. 从 git diff 检测（changeset version 后的 unstaged changes）
+  // 2. 从 git diff 检测版本变更（changeset version 后的 unstaged changes，含连带 bump 的包）
   const fromDiff = getVersionBumpedPackages(projectRoot);
-  if (fromDiff.size) {
-    console.log(chalk.gray('(从 git diff 检测到版本变更的包)'));
-    return fromDiff;
+
+  const packages = new Set([...fromChangeset, ...fromDiff]);
+
+  if (packages.size) {
+    if (!fromChangeset.size) {
+      // git diff 是唯一来源（changeset 已被 version 消费），无从"补充"可言
+      console.log(chalk.gray(`(从 git diff 检测到 ${fromDiff.size} 个版本变更的包)`));
+      return packages;
+    }
+    console.log(chalk.gray(`(从 changeset 文件检测到 ${fromChangeset.size} 个包)`));
+    const extraFromDiff = [...fromDiff].filter((name) => !fromChangeset.has(name));
+    if (extraFromDiff.length) {
+      console.log(chalk.gray(`(从 git diff 补充检测到 ${extraFromDiff.length} 个版本变更的包)`));
+    }
+    return packages;
   }
 
   // 正确的流程是：changeset -> changeset version -> changeset publish
-  // 只构建 changeset 中明确指定的包，确保发布的准确性
-
   if (options.allowEmpty) {
     return new Set();
   }
   throw new Error('未找到需要构建的包。请确认是否已创建 changeset 或更新版本号。');
 };
 
-// 获取当前预发布 tag（beta/alpha），正式发布返回 undefined
+// 获取当前预发布 tag（beta/alpha/自定义标签），无 pre.json 时返回 undefined
+// 有意不检查 mode，与 changeset publish 的实际行为保持一致：只要 pre.json 存在
+// （包括 pre exit 后 mode 为 "exit" 的残留状态），publish 就按其 tag 发布
+// （@changesets/cli 的 getReleaseTag 不检查 mode）；exit 残留由 publish action 入口拦截
 export const getPreReleaseTag = (projectRoot: string): string | undefined => {
-  const preJsonPath = path.join(projectRoot, '.changeset', 'pre.json');
-  if (!fs.existsSync(preJsonPath)) {
-    return undefined;
-  }
-  const preJson = parsePreJson(preJsonPath);
+  const preJson = parsePreJson(getPreJsonPath(projectRoot));
   return preJson?.tag;
 };

@@ -3,6 +3,8 @@
  */
 
 import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 
@@ -28,6 +30,63 @@ export interface PreJsonFile {
   initialVersions: Record<string, string>;
   changesets: string[];
 }
+
+// pre.json 的仓库相对路径（唯一定义处，git 命令等需要相对路径的场景直接使用）
+export const PRE_JSON_REL = '.changeset/pre.json';
+
+// pre.json 的绝对路径
+export const getPreJsonPath = (projectRoot: string): string => path.join(projectRoot, PRE_JSON_REL);
+
+// 安全解析 pre.json（文件缺失、JSON 损坏或 tag 类型不符时返回 null）
+// 守卫强度必须与 changesets 对齐：其 readPreState 是裸 JSON.parse，不校验任何字段，
+// 只要文件存在就按其 tag 发布（getReleaseTag 只读 tag，不看 mode），
+// 因此 tag 是唯一影响发布行为的必需字段。这里若要求得比它更严（如强制 mode/changesets 存在），
+// 残缺文件会让守卫静默失效（parsePreJson 返回 null，拦截逻辑放行），
+// 而 changeset publish 仍按该文件的 tag 发到错误的 dist-tag
+export const parsePreJson = (filePath: string): PreJsonFile | null => {
+  try {
+    const content = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    if (typeof content === 'object' && content !== null && typeof content.tag === 'string') {
+      return {
+        ...content,
+        // mode 缺失或类型不符时兜底空串：必然 !== 'pre'，会被 publish 的 exit 残留拦截捕获而非静默放行
+        mode: typeof content.mode === 'string' ? content.mode : '',
+        // 规范化 changesets：缺失或元素类型不符时兜底成 string[]，保证调用方可直接遍历
+        changesets: Array.isArray(content.changesets)
+          ? content.changesets.filter((item: unknown) => typeof item === 'string')
+          : [],
+      } as PreJsonFile;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// 快照 pre.json 原始内容（不存在返回 null），用于流程中断时精确还原
+export const snapshotPreJson = (projectRoot: string): string | null => {
+  const filePath = getPreJsonPath(projectRoot);
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    return null;
+  }
+};
+
+// 还原 pre.json 到快照状态（幂等）：snapshot 为 null 表示快照时文件不存在，需删除现存文件
+export const restorePreJson = (projectRoot: string, snapshot: string | null): void => {
+  const filePath = getPreJsonPath(projectRoot);
+  if (snapshot === null) {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    return;
+  }
+  fs.writeFileSync(filePath, snapshot, 'utf-8');
+};
+
+// 标签规范化：交互输入的 validate、CLI 显式 -m 与最终赋值共用同一逻辑，避免多处 drift
+export const normalizeTag = (input: string): string => input.trim().toLowerCase();
 
 // Workspace 包信息接口
 export interface WorkspacePackage {

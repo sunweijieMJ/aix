@@ -6,8 +6,40 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
-import { exec, run, confirm, normalizePath } from './shared.js';
+import {
+  PRE_JSON_REL,
+  exec,
+  run,
+  confirm,
+  normalizePath,
+  getPreJsonPath,
+  parsePreJson,
+} from './shared.js';
 import { getPublishablePackages } from './workspace.js';
+
+// 批量暂存指定路径：走 spawnSync 传参，避免路径经 shell 拼接产生转义/注入问题
+// 用 `--` 终止选项解析，防止以 - 开头的文件名被当作 git 选项
+const gitAdd = (projectRoot: string, paths: string[]) => {
+  if (paths.length === 0) return;
+
+  const result = spawnSync('git', ['add', '--', ...paths], {
+    cwd: projectRoot,
+    stdio: 'inherit',
+    encoding: 'utf-8',
+  });
+
+  // spawn 本身失败（git 不存在、cwd 无效等）时 status 为 null，需单独报错而非误报退出码
+  if (result.error) {
+    throw new Error(`命令执行失败: git add\n${result.error.message}`, { cause: result.error });
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      result.status === null
+        ? `命令执行失败: git add (被信号 ${result.signal ?? '未知'} 终止)`
+        : `命令执行失败: git add (exit code: ${result.status})`,
+    );
+  }
+};
 
 // 检查工作区状态
 export const checkWorkspace = (projectRoot: string) => {
@@ -15,9 +47,18 @@ export const checkWorkspace = (projectRoot: string) => {
   const status = exec('git status --porcelain', projectRoot);
 
   if (status.trim() !== '') {
-    throw new Error(
-      `发布失败：存在未提交的代码更改\n请先提交或存储您的更改，然后再尝试发布\n未提交的更改：\n${status}`,
-    );
+    let message = `发布失败：存在未提交的代码更改\n请先提交或存储您的更改，然后再尝试发布\n未提交的更改：\n${status}`;
+
+    // pre.json 是 changesets 的预发布状态文件，可能是上次流程在 version 之前中断遗留的，
+    // 普通"提交或 stash"的建议对它并不合适，需给出按意图区分的处置方式
+    if (status.includes(PRE_JSON_REL)) {
+      message +=
+        `\n注意：${PRE_JSON_REL} 是 changesets 的预发布状态文件\n` +
+        `  - 若为中断遗留且要放弃该 pre 周期：未跟踪时直接删除该文件；已跟踪被修改时执行 git checkout -- ${PRE_JSON_REL} 恢复\n` +
+        `  - 若要保留该 pre 周期：将该文件一并提交`;
+    }
+
+    throw new Error(message);
   }
 
   console.log(chalk.green('✅ 工作区干净'));
@@ -88,10 +129,28 @@ export const commitVersionChanges = async (
     return false;
   }
 
-  run(`git add ${releasePaths.map((p) => `"${p}"`).join(' ')}`, projectRoot);
-  // changeset version 会消费（删除）.changeset/*.md，pre 模式下还会修改 pre.json
+  gitAdd(projectRoot, releasePaths);
+  // changeset version 会消费（删除）.changeset/*.md
   // 使用 -u 只暂存已跟踪文件的变更，避免把尚未消费的新 changeset（未跟踪文件）卷进 release commit
+  // （-u 是全目录语义而非路径列表，不能并入 gitAdd）
   run('git add -u -- .changeset/', projectRoot);
+  // pre 模式下 changeset version 不删除已消费的 .md（保留到 exit 后生成完整 CHANGELOG），
+  // 本流程新建的 .md 是未跟踪文件，add -u 不会包含，需按 pre.json 记录的已消费清单显式暂存，
+  // 否则遗留在工作区导致下次发布卡在 checkWorkspace；未消费的新 changeset 不在清单中，不会误卷入
+  const preJson = parsePreJson(getPreJsonPath(projectRoot));
+  if (preJson?.mode === 'pre') {
+    const preStatePaths = preJson.changesets
+      .map((changesetId) => `.changeset/${changesetId}.md`)
+      .filter((mdRelPath) => fs.existsSync(path.join(projectRoot, mdRelPath)));
+
+    // pre.json 是整个 pre 周期的共享状态（记录已消费清单与起始版本），必须与已消费的 .md
+    // 一起提交：否则其他 clone 拿到 .md 却没有消费记录，下次 version 会重复消费同一批 changeset；
+    // 首次 pre enter 创建的 pre.json 是未跟踪文件，不显式暂存还会遗留脏工作区
+    // （能进入本分支说明 parsePreJson 已成功读到该文件，无需再判存在）
+    preStatePaths.push(PRE_JSON_REL);
+
+    gitAdd(projectRoot, preStatePaths);
+  }
 
   // 确认有实际暂存内容再提交
   const staged = exec('git diff --cached --name-only', projectRoot);
