@@ -1,5 +1,13 @@
 # @aix/ai-chat
 
+## 0.0.26
+
+### Patch Changes
+
+- Updated dependencies
+  - @aix/hooks@0.0.4
+  - @aix/popper@0.0.8
+
 ## 0.0.25
 
 ### Patch Changes

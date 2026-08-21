@@ -1,5 +1,11 @@
 # @aix/hooks
 
+## 0.0.4
+
+### Patch Changes
+
+- 优化tsconfig及国际化配置
+
 ## 0.0.3
 
 ### Patch Changes
