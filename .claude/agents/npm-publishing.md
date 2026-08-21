@@ -302,9 +302,6 @@ npm config get registry
 
 # 设置为 npm 官方 registry
 npm config set registry https://registry.npmjs.org/
-
-# 设置为淘宝镜像（不用于发布）
-npm config set registry https://registry.npmmirror.com/
 ```
 
 ### 2. Scoped Packages

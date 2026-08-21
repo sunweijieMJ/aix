@@ -106,7 +106,6 @@
     "autoprefixer": "catalog:",
     "chalk": "^6.0.0",
     "commitizen": "^4.3.2",
-    "conventional-changelog-atom": "^5.1.0",
     "cross-env": "catalog:",
     "cspell": "^10.0.1",
     "cz-git": "^1.13.2",
