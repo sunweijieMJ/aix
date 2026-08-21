@@ -84,7 +84,7 @@ Canvas 波形可视化组件，接收归一化数据点（0-1）绘制条形波�
   },
 };
 
-export { waveformMeta as default };
+export default waveformMeta;
 
 type WaveformStory = StoryObj<typeof waveformMeta>;
 
