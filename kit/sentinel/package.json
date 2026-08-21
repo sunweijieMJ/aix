@@ -34,11 +34,11 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "chalk": "^5.6.2",
+    "chalk": "^6.0.0",
     "commander": "^15.0.0",
-    "fs-extra": "^11.3.5",
-    "inquirer": "^14.0.2",
-    "ora": "^9.4.0"
+    "fs-extra": "^11.4.0",
+    "inquirer": "^14.1.0",
+    "ora": "^9.4.1"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",

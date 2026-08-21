@@ -17,6 +17,6 @@
     "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
-    "prettier": "^3.8.4"
+    "prettier": "^3.9.6"
   }
 }

@@ -51,7 +51,7 @@
   "dependencies": {
     "@aix/hooks": "workspace:^",
     "@aix/theme": "workspace:^",
-    "@floating-ui/vue": "^2.0.0"
+    "@floating-ui/vue": "^2.0.1"
   },
   "peerDependencies": {
     "vue": "^3.3.0"

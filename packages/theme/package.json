@@ -68,7 +68,7 @@
     "autoprefixer": "catalog:",
     "eslint": "catalog:",
     "postcss": "catalog:",
-    "postcss-import": "^16.1.1",
+    "postcss-import": "^17.0.0",
     "prettier": "catalog:",
     "rimraf": "catalog:",
     "rollup": "catalog:",

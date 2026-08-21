@@ -53,7 +53,7 @@
     "@aix/icons": "workspace:^",
     "@aix/popper": "workspace:^",
     "@aix/theme": "workspace:^",
-    "pdfjs-dist": "^6.0.227"
+    "pdfjs-dist": "^6.2.108"
   },
   "peerDependencies": {
     "vue": "^3.3.0"

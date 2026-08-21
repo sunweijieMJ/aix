@@ -52,10 +52,10 @@
     "@aix/hooks": "workspace:^",
     "@aix/icons": "workspace:^",
     "@aix/theme": "workspace:^",
-    "dashjs": "^5.2.0",
+    "dashjs": "^5.2.1",
     "flv.js": "^1.6.2",
-    "hls.js": "^1.6.16",
-    "video.js": "^8.23.7"
+    "hls.js": "^1.7.1",
+    "video.js": "^8.24.0"
   },
   "peerDependencies": {
     "vue": "^3.3.0"
