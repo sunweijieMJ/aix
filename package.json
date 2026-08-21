@@ -93,7 +93,7 @@
     "@storybook/addon-vitest": "^10.5.10",
     "@storybook/vue3": "^10.5.10",
     "@storybook/vue3-vite": "^10.5.10",
-    "@testing-library/jest-dom": "^6.10.0",
+    "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/user-event": "^14.6.5",
     "@testing-library/vue": "^8.1.0",
     "@types/node": "catalog:",

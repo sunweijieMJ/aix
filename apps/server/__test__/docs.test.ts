@@ -19,7 +19,11 @@ function createZipFormData(name: string, files: Record<string, string>): FormDat
   }
   const formData = new FormData();
   formData.append('name', name);
-  formData.append('file', new Blob([zip.toBuffer()], { type: 'application/zip' }), 'docs.zip');
+  formData.append(
+    'file',
+    new Blob([new Uint8Array(zip.toBuffer())], { type: 'application/zip' }),
+    'docs.zip',
+  );
   return formData;
 }
 
@@ -65,7 +69,11 @@ describe('POST /categories', () => {
     const zip = new AdmZip();
     zip.addFile('README.md', Buffer.from('# Hello'));
     const formData = new FormData();
-    formData.append('file', new Blob([zip.toBuffer()], { type: 'application/zip' }), 'docs.zip');
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(zip.toBuffer())], { type: 'application/zip' }),
+      'docs.zip',
+    );
 
     const res = await docs.request('/categories', { method: 'POST', body: formData });
     expect(res.status).toBe(400);
@@ -173,7 +181,11 @@ describe('PUT /categories/:id/upload', () => {
     zip.addFile('extra.md', Buffer.from('## Extra'));
     zip.addFile('third.md', Buffer.from('## Third'));
     const newFormData = new FormData();
-    newFormData.append('file', new Blob([zip.toBuffer()], { type: 'application/zip' }), 'new.zip');
+    newFormData.append(
+      'file',
+      new Blob([new Uint8Array(zip.toBuffer())], { type: 'application/zip' }),
+      'new.zip',
+    );
 
     const res = await docs.request(`/categories/${data.id}/upload`, {
       method: 'PUT',
@@ -189,7 +201,11 @@ describe('PUT /categories/:id/upload', () => {
     const zip = new AdmZip();
     zip.addFile('new.md', Buffer.from('# New'));
     const formData = new FormData();
-    formData.append('file', new Blob([zip.toBuffer()], { type: 'application/zip' }), 'new.zip');
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(zip.toBuffer())], { type: 'application/zip' }),
+      'new.zip',
+    );
 
     const res = await docs.request('/categories/nonexistent/upload', {
       method: 'PUT',
