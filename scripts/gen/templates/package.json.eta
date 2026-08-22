@@ -24,8 +24,7 @@
         "default": "./lib/index.cjs"
       }
     },
-    "./es/*": "./es/*",
-    "./lib/*": "./lib/*",<% if (it.features.scss) { %>
+    "./es/*": "./es/*",<% if (it.features.scss) { %>
     "./style": {
       "types": "./es/style.d.ts",
       "default": "./es/index.css"

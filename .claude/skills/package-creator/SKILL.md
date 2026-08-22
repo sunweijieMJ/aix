@@ -122,7 +122,6 @@ packages/
       }
     },
     "./es/*": "./es/*",
-    "./lib/*": "./lib/*",
     "./style": {
       "types": "./es/style.d.ts",
       "default": "./es/index.css"
