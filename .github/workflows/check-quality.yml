@@ -141,6 +141,64 @@ jobs:
         run: pnpm test
 
   # ============================
+  # Coverage - 覆盖率防退化门禁
+  #
+  # 与 test job 分开：test 跑 turbo 的包级口径（无阈值、可缓存），
+  # 本 job 跑根口径 vitest 汇总覆盖率并校验 vitest.config.ts 里的 thresholds。
+  # 阈值为"当前水位 - 1 个点"，作用是不许再掉；补完测试请同步上调。
+  # ============================
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Restore build cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/*/es
+            packages/*/lib
+            packages/*/dist
+            internal/*/dist
+            kit/*/dist
+          key: build-${{ github.sha }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages (fallback)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: pnpm build
+
+      - name: Run coverage (thresholds enforced)
+        run: pnpm test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+          # 前置步骤失败时 coverage/ 可能不存在，此处不应再叠加一个失败
+          if-no-files-found: ignore
+
+  # ============================
   # Type Check - TypeScript 类型检查
   # ============================
   type-check:
