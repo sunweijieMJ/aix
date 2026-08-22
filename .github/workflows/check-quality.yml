@@ -297,8 +297,9 @@ jobs:
   # （.d.cts 派生、stripStyleImports、emitStyleDts）提供回归防护——那部分逻辑
   # 微妙且无单测覆盖，改坏了只会在用户侧暴露。
   #
-  # 当前门禁：publint error + attw problems 阻断；warning 只报告。
-  # 待 ./lib/* 通配导出与 engines.node 清理完毕后，改用 --strict 收紧。
+  # 门禁：--strict 下 publint 的 error + warning 与 attw 的 problems 均阻断。
+  # suggestion（目前只剩 engines.node）不阻断——组件库是浏览器产物，声明 Node
+  # 版本对消费方近乎无收益，写错反而会让低版本 Node 的项目直接装不上。
   # ============================
   publish-lint:
     name: Publish Lint
@@ -339,4 +340,4 @@ jobs:
         run: pnpm build
 
       - name: Publish lint (publint + attw)
-        run: pnpm lint:publish
+        run: pnpm lint:publish --strict
