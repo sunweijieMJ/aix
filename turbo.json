@@ -14,9 +14,7 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": [
-        "src/**/*.{ts,tsx,js,jsx,vue}",
-        "src/**/*.{css,scss,sass,less}",
-        "src/**/*.{json,md}",
+        "src/**",
         "typings/**/*.d.ts",
         "assets/**",
         "scripts/**",
