@@ -42,12 +42,21 @@ Aix 采用 Monorepo 架构，每个组件都是独立的 npm 包：
 
 使用组件前，需要引入样式文件：
 
-```typescript
-// 引入主题样式
-import '@aix/theme/dist/index.css';
+`@aix/theme` 提供的是 CSS 变量（设计 Token），组件自身的样式由各组件包的 `./style` 导出提供。
 
-// 或者按需引入
-import '@aix/theme/dist/vars/index.css'; // CSS 变量
+```typescript
+// 主题 CSS 变量（全量：基础 Token + 亮色 + 暗色）
+import '@aix/theme/style';
+
+// 组件样式（每个用到的组件包各引一次）
+import '@aix/button/style';
+```
+
+若只需要单一模式，可按需引入以减小体积：
+
+```typescript
+import '@aix/theme/vars/base'; // 基础 Token（色阶、间距、字号）
+import '@aix/theme/vars/light'; // 仅亮色语义变量
 ```
 
 ## 版本管理

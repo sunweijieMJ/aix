@@ -24,20 +24,21 @@ const { Button, Input } = Aix;
 
 ```typescript
 // main.ts
-import '@aix/theme/dist/index.css';  // ✅ 在这里引入
+import '@aix/theme/style';  // ✅ 在这里引入
 
 // ❌ 不要在每个组件中重复引入
 ```
 
-**按需引入样式**（高级用法）：
+**按需引入**（高级用法）：`@aix/theme/style` 是全量 CSS 变量（基础 Token + 亮色 + 暗色）。
+若应用只用单一模式，可以拆开引入，省掉另一套语义变量：
 
 ```typescript
-// 只引入 CSS 变量，不引入具体样式
-import '@aix/theme/dist/vars/index.css';
+// 基础 Token：色阶、间距、字号
+import '@aix/theme/vars/base';
 
-// 按需引入亮色或暗色主题
-import '@aix/theme/dist/vars/light.css';
-// import '@aix/theme/dist/vars/dark.css';
+// 只引入实际用到的模式
+import '@aix/theme/vars/light';
+// import '@aix/theme/vars/dark';
 ```
 
 ### 组件注册

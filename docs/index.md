@@ -58,7 +58,7 @@ yarn add @aix/button @aix/theme
 ```vue
 <script setup lang="ts">
 import { Button } from '@aix/button';
-import '@aix/theme/dist/index.css';
+import '@aix/theme/style';
 </script>
 
 <template>
