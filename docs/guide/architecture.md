@@ -75,8 +75,8 @@ mindmap
 
 | 约束 | 原因 |
 |------|------|
-| Node >= 22 | 使用最新 ESM 特性，享受性能提升 |
-| Vue >= 3.5 | 依赖 `defineModel`、泛型组件等新特性 |
+| Node >= 22 | 使用最新 ESM 特性，享受性能提升（仅开发期要求，不写入各包 `engines`） |
+| Vue >= 3.3 | 组件使用 `defineOptions` 等 3.3 特性；`@aix/hooks` 的 `useId` 对 Vue 3.5 的原生实现做了运行时探测与回退，故下限可保持在 3.3 |
 | 不使用 scoped 样式 | 保证样式可被外部覆盖，支持深度定制 |
 | 禁止硬编码颜色值 | 确保主题系统生效，支持暗色模式 |
 
@@ -217,7 +217,7 @@ graph LR
 
 #### 外部依赖
 
-所有组件的 peerDependency 为 `vue ^3.5`。部分组件有额外的运行时依赖，如 `@aix/pdf-viewer` 依赖 `pdfjs-dist`，`@aix/video` 依赖 `video.js`、`hls.js`、`flv.js`、`dashjs` 等流媒体库。具体版本见各包 `package.json`。
+组件的 peerDependency 为 `vue ^3.3.0`，唯一例外是 `@aix/ai-chat`（使用了 `defineModel`，该宏在 Vue 3.4 转正，故下限为 `^3.4.0`）。部分组件有额外的运行时依赖，如 `@aix/pdf-viewer` 依赖 `pdfjs-dist`，`@aix/video` 依赖 `video.js`、`hls.js`、`flv.js`、`dashjs` 等流媒体库。具体版本见各包 `package.json`。
 
 ### 3.4 包职责划分
 

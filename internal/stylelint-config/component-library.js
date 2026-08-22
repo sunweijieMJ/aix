@@ -41,9 +41,13 @@ const SELECTOR_CLASS_PATTERN = new RegExp(
 /**
  * 需要禁止硬编码颜色的属性。
  * 用正则匹配属性名，覆盖 color / *-color / background* / border* / shadow / filter 等。
+ *
+ * 注意 `.*-color` 只能覆盖以 `-color` 结尾的长写属性，**承载颜色的简写属性必须逐个列出**，
+ * 否则会出现「长写拦、简写漏」的缺口，例如 `text-decoration-color: #f00` 被拦下，
+ * 而等价的 `text-decoration: underline 2px #f00` 直接放行。
  */
 const COLOR_PROPERTIES =
-  '/^(color|fill|stroke|.*-color|background|background-.*|border|border-.*|outline|outline-.*|box-shadow|text-shadow|filter|backdrop-filter|scrollbar-color)$/';
+  '/^(color|fill|stroke|.*-color|background|background-.*|border|border-.*|outline|outline-.*|box-shadow|text-shadow|filter|backdrop-filter|scrollbar-color|text-decoration|column-rule|text-emphasis)$/';
 
 /**
  * 匹配「裸写」的十六进制颜色，但放过 `var(--token, #fallback)` 里的兜底值。
