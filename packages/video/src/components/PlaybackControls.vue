@@ -352,7 +352,7 @@ defineExpose({
   flex-direction: column;
   padding: 0;
   transition: opacity 0.3s ease;
-  color: #fff;
+  color: var(--aix-colorWhite, #fff);
   gap: 0;
 
   .aix-video-controls__left,
@@ -375,7 +375,7 @@ defineExpose({
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: #fff;
+    color: var(--aix-colorWhite, #fff);
     cursor: pointer;
 
     &:hover {
@@ -442,7 +442,7 @@ defineExpose({
       transform 0.2s;
     border-radius: 50%;
     opacity: 0;
-    background: #fff;
+    background: var(--aix-colorWhite, #fff);
     box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
     pointer-events: none;
   }
@@ -454,7 +454,7 @@ defineExpose({
     transform: translateX(-50%);
     border-radius: 3px;
     background: rgb(0 0 0 / 0.75);
-    color: #fff;
+    color: var(--aix-colorWhite, #fff);
     font-size: 12px;
     white-space: nowrap;
     pointer-events: none;
@@ -517,7 +517,7 @@ defineExpose({
 
     &:hover {
       background: rgb(255 255 255 / 0.1);
-      color: #fff;
+      color: var(--aix-colorWhite, #fff);
     }
 
     &--active {

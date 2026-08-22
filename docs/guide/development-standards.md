@@ -371,7 +371,9 @@ const handleClick = (event: MouseEvent) => {
 
 ## 4. 样式与 CSS
 
-> 配置源文件：[`vue-app.js`](../../internal/stylelint-config/vue-app.js)，继承 [`base.js`](../../internal/stylelint-config/base.js)
+> 配置源文件：组件包用 [`component-library.js`](../../internal/stylelint-config/component-library.js)
+> （在 [`vue-app.js`](../../internal/stylelint-config/vue-app.js) 基础上强制 `aix-` 命名空间、禁止裸写 hex 颜色），
+> 业务应用用 `vue-app.js`；两者共享 [`common-rules.js`](../../internal/stylelint-config/common-rules.js)
 
 ### 4.1 命名空间与 BEM
 

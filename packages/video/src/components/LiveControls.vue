@@ -143,7 +143,7 @@ defineExpose({
   padding: 32px 12px 12px;
   transition: opacity 0.3s ease;
   background: linear-gradient(transparent, rgb(0 0 0 / 0.6));
-  color: #fff;
+  color: var(--aix-colorWhite, #fff);
   gap: 8px;
 
   &--hidden {
@@ -178,7 +178,7 @@ defineExpose({
     border: none;
     border-radius: 4px;
     background: transparent;
-    color: #fff;
+    color: var(--aix-colorWhite, #fff);
     cursor: pointer;
 
     &:hover {

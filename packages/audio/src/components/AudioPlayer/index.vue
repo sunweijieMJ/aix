@@ -349,14 +349,20 @@ onUnmounted(() => {
     margin-left: 2px;
     border-width: 5px 0 5px 9px;
     border-style: solid;
-    border-color: transparent transparent transparent #fff;
+    border-color: transparent transparent transparent var(--aix-colorWhite, #fff);
 
     &--pause {
       width: 8px;
       height: 10px;
       margin-left: 0;
       border: none;
-      background: linear-gradient(to right, #fff 35%, transparent 35%, transparent 65%, #fff 65%);
+      background: linear-gradient(
+        to right,
+        var(--aix-colorWhite, #fff) 35%,
+        transparent 35%,
+        transparent 65%,
+        var(--aix-colorWhite, #fff) 65%
+      );
     }
   }
 

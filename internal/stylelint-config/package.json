@@ -5,6 +5,7 @@
   "files": [
     "base.js",
     "common-rules.js",
+    "component-library.js",
     "vue-app.js",
     "index.d.ts",
     "README.md"
@@ -13,6 +14,10 @@
     "./base": {
       "types": "./index.d.ts",
       "default": "./base.js"
+    },
+    "./component-library": {
+      "types": "./index.d.ts",
+      "default": "./component-library.js"
     },
     "./vue-app": {
       "types": "./index.d.ts",
