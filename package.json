@@ -63,8 +63,7 @@
       "prettier --write"
     ],
     "*.md": [
-      "markdownlint-cli2 --no-globs",
-      "prettier --write"
+      "markdownlint-cli2 --no-globs"
     ],
     "*.{json,jsonc,yaml,yml,html}": [
       "prettier --write --ignore-unknown"
