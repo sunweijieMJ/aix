@@ -29,7 +29,6 @@
   },
   "dependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.8.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-alias": "^1.1.2",
     "eslint-import-resolver-typescript": "^4.4.5",
@@ -42,5 +41,11 @@
     "globals": "^17.11.0",
     "typescript": "catalog:",
     "typescript-eslint": "^8.67.0"
+  },
+  "peerDependencies": {
+    "eslint": "^10.0.0"
+  },
+  "devDependencies": {
+    "eslint": "catalog:"
   }
 }
