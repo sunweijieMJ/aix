@@ -75,16 +75,22 @@ export default defineConfig([
   // dist/index.d.ts（内联无扩展名相对引用，修 node16 internal resolution）+ 派生
   // dist/index.d.cts 给 CJS 入口（修 masquerading）。须在 build:types 之后运行，
   // 故 build 顺序为 gen:css → build:types → rollup -c（本段）。
-  {
-    input: 'dist/index.d.ts',
-    output: [
-      { file: 'dist/index.d.ts', format: 'es' },
-      { file: 'dist/index.d.cts', format: 'es' },
-    ],
-    external: (id) => /^vue($|\/)/.test(id) || isStyleId(id),
-    plugins: [dts({ respectExternal: true }), stripStyleImports()],
-    onwarn(warning, warn) {
-      if (warning.code !== 'CIRCULAR_DEPENDENCY') warn(warning);
-    },
-  },
+  //
+  // dts bundle 只是发布产物，dev 期间类型提示来自 IDE 语言服务（直读 src/），无需生成。
+  ...(process.env.ROLLUP_WATCH
+    ? []
+    : [
+        {
+          input: 'dist/index.d.ts',
+          output: [
+            { file: 'dist/index.d.ts', format: 'es' },
+            { file: 'dist/index.d.cts', format: 'es' },
+          ],
+          external: (id) => /^vue($|\/)/.test(id) || isStyleId(id),
+          plugins: [dts({ respectExternal: true }), stripStyleImports()],
+          onwarn(warning, warn) {
+            if (warning.code !== 'CIRCULAR_DEPENDENCY') warn(warning);
+          },
+        },
+      ]),
 ]);

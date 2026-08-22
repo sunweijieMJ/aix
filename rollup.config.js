@@ -240,7 +240,8 @@ export function createRollupConfig(dir, formats = ['esm', 'cjs', 'umd']) {
   const configs = formats.map((format) => configMap[format]).filter(Boolean);
 
   // 输出 CJS 时自动生成类型声明：es/*.d.ts 单文件化 + 派生 lib/*.d.cts（dual-package 修复）
-  if (formats.includes('cjs')) {
+  // dts bundle 只是发布产物，dev 期间类型提示来自 IDE 语言服务（直读 src/），无需生成。
+  if (formats.includes('cjs') && !process.env.ROLLUP_WATCH) {
     // dts external 与 JS 一致地从 package.json 依赖推导：自身包名不在 deps 中，故不会被误当外部，
     // 避免 .d.cts 出现 `from '@aix/自己'` 的自引用；同时正确外部化 virtua / katex 等第三方类型。
     const dtsPkg = JSON.parse(fs.readFileSync(path.resolve(dir, 'package.json'), 'utf8'));
