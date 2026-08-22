@@ -27,6 +27,8 @@
 ```
 aix/
 ├── packages/                 # 组件包 (发布到 npm @aix/*)
+│   ├── ai-chat/              # AI 对话组件
+│   ├── audio/                # 语音 SDK (ASR/TTS/录音/波形)
 │   ├── button/               # 按钮组件
 │   ├── code-editor/          # 代码编辑器
 │   ├── flow-graph/           # 流程图
@@ -123,7 +125,7 @@ packages/<name>/
 ```bash
 pnpm dev                  # 启动所有包的 dev 模式
 pnpm build                # 全量构建
-pnpm build:filter -- --filter=@aix/<name>  # 单包构建
+pnpm build:filter @aix/<name>  # 单包构建
 pnpm lint                 # ESLint 检查
 pnpm type-check           # TypeScript 类型检查
 pnpm cspell               # 拼写检查
