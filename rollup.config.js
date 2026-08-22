@@ -87,6 +87,27 @@ export function emitStyleDts(outDir) {
 }
 
 /**
+ * 删除 CJS 产出的 CSS：与 es/ 那份逐字节相同，且样式统一经 `./style` 提供。
+ * 之所以是「产出后删除」而非跳过 postcss——不跑 postcss 则 rollup 无法解析样式模块。
+ *
+ * @param {string} outDir - 待清理的输出目录
+ * @returns {import('rollup').Plugin}
+ */
+function dropDuplicateCss(outDir) {
+  return {
+    name: 'drop-duplicate-css',
+    writeBundle() {
+      if (!fs.existsSync(outDir)) return;
+      for (const file of fs.readdirSync(outDir)) {
+        if (file.endsWith('.css') || file.endsWith('.css.map')) {
+          fs.rmSync(path.join(outDir, file), { force: true });
+        }
+      }
+    },
+  };
+}
+
+/**
  * 创建 Vue 3 组件库的 Rollup 配置
  * @param {string} dir - 组件包目录路径
  * @param {string} format - 输出格式 (esm/cjs/iife)
@@ -95,7 +116,8 @@ export function emitStyleDts(outDir) {
  * @returns {object} Rollup 配置对象
  */
 const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
-  const sourceMapEnabled = true;
+  // CJS 的 sourcemap 与 ESM 那份重复，占发布体积三分之一，且浏览器调试只走 es/
+  const sourceMapEnabled = format !== 'cjs';
   const minifyEnabled = format === 'umd';
   const styleExtensions = ['.css', '.scss', '.sass'];
   const extensions = ['.js', '.ts', '.vue'];
@@ -167,7 +189,8 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       }),
       esbuild({
         sourceMap: sourceMapEnabled,
-        target: 'es2018',
+        // esbuild 不读 browserslist，需与根目录 .browserslistrc 手工保持一致
+        target: ['chrome99', 'edge99', 'firefox97', 'safari15.4'],
         minify: minifyEnabled,
         minifyIdentifiers: minifyEnabled,
         minifySyntax: minifyEnabled,
@@ -193,6 +216,7 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       }),
       // 声明了 ./style CSS 导出的包，构建 es/ 时自动生成 es/style.d.ts（types 条件指向它）
       ...(format === 'esm' && pkg.exports?.['./style'] ? [emitStyleDts(outputDir)] : []),
+      ...(format === 'cjs' ? [dropDuplicateCss(outputDir)] : []),
     ],
     external: (id) => {
       if (outputFile) {
@@ -201,13 +225,6 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       }
       // ESM 和 CJS 格式外部化所有依赖
       return matchesDep(id, collectExternalDeps(pkg));
-    },
-    onwarn(warning, warn) {
-      if (warning.code === 'CIRCULAR_DEPENDENCY') {
-        console.warn(`Circular dependency: ${warning.importer}`);
-      } else {
-        warn(warning);
-      }
     },
   };
 };

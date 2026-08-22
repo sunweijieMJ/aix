@@ -1,0 +1,8 @@
+# 下限取自 CSS Cascade Layers（@layer）的支持范围，更低的浏览器用 @aix/theme/vars/compat。
+# esbuild 不读本文件，rollup.config.js 里的 target 需手工同步。
+chrome >= 99
+edge >= 99
+firefox >= 97
+safari >= 15.4
+ios_saf >= 15.4
+not dead
