@@ -9,17 +9,17 @@
 # 5. publish-lint: 发布前体检 publint + attw（并行执行）
 #
 # 触发条件：
-# - PR 提交到 master / release/** 分支
-# - 直接 push 到 master / release/** / sentinel/** 分支
+# - PR 提交到 master / pre-master / release/** 分支
+# - 直接 push 到 master / pre-master / release/** / sentinel/** 分支
 # ------------------------------------------------------------
 
 name: Check Quality
 
 on:
   pull_request:
-    branches: [master, 'release/**']
+    branches: [master, pre-master, 'release/**']
   push:
-    branches: [master, 'release/**', 'sentinel/**']
+    branches: [master, pre-master, 'release/**', 'sentinel/**']
 
 concurrency:
   group: ci-${{ github.ref }}

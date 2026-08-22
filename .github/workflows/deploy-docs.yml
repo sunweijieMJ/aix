@@ -16,7 +16,7 @@ name: Deploy Docs
 on:
   workflow_run:
     workflows: [Check Quality]
-    branches: [master, 'release/**']
+    branches: [master]
     types: [completed]
 
 # 同一分支只保留最新的部署，取消进行中的旧运行
@@ -35,8 +35,8 @@ jobs:
   # 构建文档
   # ============================
   build:
-    # 仅在 master 的 Check Quality 全部成功后执行
-    # （release/** 分支的构建产物不会被部署，提前跳过避免无效构建）
+    # 仅在 Check Quality 全部成功后执行。head_branch 判断与 on.branches 重复，
+    # 保留作兜底：将来若往 on.branches 加分支，不会意外部署非 master 的产物。
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'master'
