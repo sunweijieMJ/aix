@@ -15,6 +15,7 @@
     "clean": "turbo clean",
     "lint": "turbo lint && pnpm lint:root",
     "lint:root": "eslint . --ignore-pattern 'packages/**' --ignore-pattern 'apps/**' --ignore-pattern 'kit/**' --ignore-pattern 'internal/**' --max-warnings 0",
+    "lint:publish": "tsx scripts/publish-lint/index.ts",
     "test": "turbo test",
     "test:unit": "vitest run --project '!storybook'",
     "test:stories": "vitest run --project storybook",
@@ -73,6 +74,7 @@
     "vue": "^3.5.31"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@changesets/cli": "^3.0.1",
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.2",
@@ -120,6 +122,7 @@
     "mermaid": "^11.17.0",
     "postcss": "catalog:",
     "prettier": "catalog:",
+    "publint": "^0.3.24",
     "rimraf": "catalog:",
     "rollup": "catalog:",
     "rollup-plugin-dts": "^6.5.1",
