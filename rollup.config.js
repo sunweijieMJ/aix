@@ -86,6 +86,59 @@ export function emitStyleDts(outDir) {
   };
 }
 
+/** JS 中 import 的资源一律内联为 data URI，超过此上限即构建失败。 */
+const ASSET_INLINE_LIMIT = 8 * 1024;
+
+const ASSET_GLOBS = [
+  '**/*.png',
+  '**/*.jpg',
+  '**/*.jpeg',
+  '**/*.svg',
+  '**/*.gif',
+  '**/*.webp',
+  '**/*.ttf',
+  '**/*.woff',
+  '**/*.woff2',
+  '**/*.eot',
+  '**/*.otf',
+];
+
+const ASSET_EXTENSION_RE = /\.(png|jpe?g|svg|gif|webp|ttf|woff2?|eot|otf)$/i;
+
+/**
+ * 拦下超过内联上限的资源导入。
+ *
+ * 放任不管的话 @rollup/plugin-url 会 emit 文件并产出 `"./assets/x.svg"` 这样的
+ * 字符串——它是文档相对 URL，对从 node_modules 消费的库必然 404：下游打包器把它
+ * 当普通字符串，不会搬运资源；浏览器又按页面地址而非包位置去解析。
+ *
+ * 必须排在 url() 之前，否则 load 钩子抢不到。
+ *
+ * @returns {import('rollup').Plugin}
+ */
+function assertAssetsInlinable() {
+  return {
+    name: 'assert-assets-inlinable',
+    load(id) {
+      const file = id.split('?')[0];
+      if (!ASSET_EXTENSION_RE.test(file) || !fs.existsSync(file)) return null;
+
+      const size = fs.statSync(file).size;
+      if (size > ASSET_INLINE_LIMIT) {
+        this.error(
+          `资源 ${path.relative(process.cwd(), file)} 为 ${(size / 1024).toFixed(1)}KB，` +
+            `超过 ${ASSET_INLINE_LIMIT / 1024}KB 内联上限。\n` +
+            `组件库不能从 JS 产出资源 URL。请改用：\n` +
+            `  1. 转成 Vue 组件（见 @aix/icons 的构建期生成）；\n` +
+            `  2. 在 SCSS 中以 data URI 内联（见 ai-chat 的 Sender.vue）；\n` +
+            `  3. 确需独立资源文件时，为该包挂 postcss-url 并改走 CSS url()。`,
+        );
+      }
+      return null;
+    },
+  };
+}
+
 /**
  * 删除 CJS 产出的 CSS：与 es/ 那份逐字节相同，且样式统一经 `./style` 提供。
  * 之所以是「产出后删除」而非跳过 postcss——不跑 postcss 则 rollup 无法解析样式模块。
@@ -168,24 +221,11 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
         transformMixedEsModules: true,
       }),
       json(),
+      assertAssetsInlinable(),
       url({
-        limit: 8 * 1024,
-        include: [
-          '**/*.png',
-          '**/*.jpg',
-          '**/*.jpeg',
-          '**/*.svg',
-          '**/*.gif',
-          '**/*.webp',
-          '**/*.ttf',
-          '**/*.woff',
-          '**/*.woff2',
-          '**/*.eot',
-          '**/*.otf',
-        ],
-        emitFiles: true,
-        fileName: '[dirname][name][extname]',
-        publicPath: './',
+        limit: ASSET_INLINE_LIMIT,
+        include: ASSET_GLOBS,
+        emitFiles: false,
       }),
       esbuild({
         sourceMap: sourceMapEnabled,
