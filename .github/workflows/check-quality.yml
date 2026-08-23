@@ -85,6 +85,8 @@ jobs:
           echo "All packages built successfully"
 
       # 缓存构建产物供后续 jobs 使用（node_modules 由各 job 通过 pnpm store 缓存自行恢复）
+      # packages/icons/src 同样是构建产物：由 scripts/generate.ts 生成且被 .gitignore 忽略。
+      # 不缓存它的话，缓存命中时 fallback 构建被跳过，icons 的测试会因 src/ 缺失而无法解析。
       - name: Cache build outputs
         uses: actions/cache/save@v4
         with:
@@ -92,6 +94,7 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
             kit/*/dist
           key: build-${{ github.sha }}
@@ -127,6 +130,7 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
             kit/*/dist
           key: build-${{ github.sha }}
@@ -175,6 +179,7 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
             kit/*/dist
           key: build-${{ github.sha }}
@@ -230,6 +235,7 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
             kit/*/dist
           key: build-${{ github.sha }}
@@ -275,6 +281,7 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
             kit/*/dist
           key: build-${{ github.sha }}
@@ -328,6 +335,7 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
             kit/*/dist
           key: build-${{ github.sha }}
