@@ -788,14 +788,6 @@ git commit → 获取暂存文件 → lint-staged → ESLint → TypeScript 类�
 | `*.md` | `markdownlint-cli2 --no-globs` → `prettier --write` |
 | `*.{json,jsonc,yaml,yml,html}` | `prettier --write` |
 
-#### pre-push：推送前检查
-
-```
-git push → 构建检查 → 通过/拒绝
-```
-
-在代码推送到远程仓库前执行构建验证（[`scripts/husky/pre-push.ts`](../../scripts/husky/pre-push.ts)）。
-
 ### 8.4 版本管理与发布
 
 项目使用 [Changesets](https://github.com/changesets/changesets) 管理版本号和 CHANGELOG。

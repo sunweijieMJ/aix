@@ -71,6 +71,9 @@ jobs:
           pnpm test
           pnpm type-check
           pnpm lint
+          # 本 workflow 带 workflow_dispatch，可绕过 PR 门禁直接发布，
+          # 故发布前体检必须在这里也跑一遍，而不能只依赖 check-quality.yml
+          pnpm lint:publish --strict
           echo "✅ All quality checks passed"
 
       - name: Configure npm auth for private registry
