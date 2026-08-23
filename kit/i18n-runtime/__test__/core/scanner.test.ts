@@ -314,7 +314,21 @@ describe('Scanner.observe', () => {
     // MutationObserver 回调（微任务）内部才被调度进宏任务队列的，时间上晚于这里
     // 如果同样用 0ms 定时器等待会先于它 resolve（先注册的 0ms 定时器先触发）。
     // 用 10ms 保证一定排在 Scanner 内部的 0ms flush 定时器之后触发。
+    //
+    // 仅用于断言「不应发生」的用例：那里必须等固定时长，轮询对空结果没有意义。
+    // 断言「应该发生」的用例改用 waitForBatch，否则 CI 负载下 10ms 窗口不够。
     return new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  /**
+   * 等到 onBatch 首次被调用，再补一次固定等待。
+   *
+   * 补这一次是为了让「同一 mutation 被重复回调」有机会暴露——否则 vi.waitFor 可能
+   * 在第一批到达时就通过，令 toEqual([...]) 这类校验重复注册的断言失去意义。
+   */
+  async function waitForBatch(onBatch: ReturnType<typeof vi.fn>): Promise<void> {
+    await vi.waitFor(() => expect(onBatch).toHaveBeenCalled());
+    await flushMicrotasks();
   }
 
   it('新增子树应触发增量扫描', async () => {
@@ -327,7 +341,7 @@ describe('Scanner.observe', () => {
     p.textContent = '新增内容';
     document.body.appendChild(p);
 
-    await flushMicrotasks();
+    await waitForBatch(onBatch);
     scanner.disconnect();
 
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
@@ -378,7 +392,7 @@ describe('Scanner.observe', () => {
 
     textNode.textContent = '业务渲染了新原文'; // 与 registry 记录的 translatedText 不同
 
-    await flushMicrotasks();
+    await waitForBatch(onBatch);
     scanner.disconnect();
 
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
@@ -464,7 +478,7 @@ describe('Scanner.observe', () => {
     const p = document.createElement('p');
     p.textContent = '影子里新增的文本';
     shadow.appendChild(p);
-    await flushMicrotasks();
+    await waitForBatch(onBatch);
     scanner.disconnect();
 
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
@@ -496,7 +510,7 @@ describe('Scanner.observe', () => {
     const p = document.createElement('p');
     p.textContent = '嵌套影子里新增的文本';
     sr2.appendChild(p);
-    await flushMicrotasks();
+    await waitForBatch(onBatch);
     scanner.disconnect();
 
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
@@ -657,8 +671,9 @@ describe('Scanner.addRoot', () => {
     vi.useRealTimers();
   });
 
-  function flushMicrotasks(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 10));
+  async function waitForBatch(onBatch: ReturnType<typeof vi.fn>): Promise<void> {
+    await vi.waitFor(() => expect(onBatch).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
 
   it('addRoot 传入元素时应采集该元素自身的属性（TreeWalker 不会 yield root 自身）', async () => {
@@ -668,7 +683,7 @@ describe('Scanner.addRoot', () => {
     const scanner = createScanner(onBatch, { debounceMs: 0 });
 
     scanner.addRoot(input);
-    await flushMicrotasks();
+    await waitForBatch(onBatch);
     scanner.disconnect();
 
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
@@ -683,7 +698,7 @@ describe('Scanner.addRoot', () => {
     const scanner = createScanner(onBatch, { debounceMs: 0 });
 
     scanner.addRoot(host);
-    await flushMicrotasks();
+    await waitForBatch(onBatch);
     scanner.disconnect();
 
     const texts = onBatch.mock.calls.flatMap(([batch]) => batch.map((c: any) => c.normalizedText));
