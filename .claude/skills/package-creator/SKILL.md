@@ -121,7 +121,6 @@ packages/
         "default": "./lib/index.cjs"
       }
     },
-    "./es/*": "./es/*",
     "./style": {
       "types": "./es/style.d.ts",
       "default": "./es/index.css"
@@ -167,7 +166,9 @@ packages/
 > - **双格式输出**：`main` → `lib/`（CJS），`module` → `es/`（ESM），与 `rollup.config.js` 输出一致
 > - **types** 指向 `es/` 下由 `vue-tsc` 生成的 `.d.ts`
 > - **sideEffects** 必须列出样式文件，避免 Tree-shaking 时被错误移除
-> - **exports** 暴露 `./es/*`、`./lib/*`、`./style` 子路径，方便按需引用
+> - **exports 只暴露主入口与 `./style`**：不要加 `./es/*` / `./lib/*` 通配。通配会把 `vue-tsc`
+>   逐模块产出的 `.d.ts` 一并暴露，而它们带无扩展名相对引用，在 `moduleResolution: node16`
+>   下报 TS2834；且 attw 对通配 entrypoint 整段跳过，发布门禁看不见这类破损
 > - **exports 必须用嵌套双包形式**：`import.types` 指向 `es/index.d.ts`、`require.types` 指向
 >   `lib/index.d.cts`。写成扁平的 `{types, import, require}` 会让 CJS 消费方拿到 ESM 的 `.d.ts`
 >   （masquerading），而 `lib/*.d.cts` 正是根 `rollup.config.js` 的 dts 段专门为此生成的

@@ -23,8 +23,7 @@
         "types": "./lib/index.d.cts",
         "default": "./lib/index.cjs"
       }
-    },
-    "./es/*": "./es/*",<% if (it.features.scss) { %>
+    },<% if (it.features.scss) { %>
     "./style": {
       "types": "./es/style.d.ts",
       "default": "./es/index.css"
