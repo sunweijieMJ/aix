@@ -56,9 +56,18 @@
  * AudioPlayer - 轻量音频播放器组件
  * 支持波形可视化和进度控制，样式通过 CSS Variables 完全暴露
  */
+import { formatDuration } from '@aix/hooks';
 import { ref, computed, watch, onUnmounted } from 'vue';
 import type { AudioPlayerProps, AudioPlayerEmits } from '../../types';
 import WaveformCanvas from '../WaveformCanvas/index.vue';
+
+/**
+ * 时长未知时的占位。
+ *
+ * duration 在元数据加载完成前是 NaN，流式音频则可能一直是 Infinity；
+ * 显示 `--:--` 而非 `00:00`，避免让用户误以为音频长度真的为零。
+ */
+const UNKNOWN_DURATION = '--:--';
 
 defineOptions({ name: 'AixAudioPlayer' });
 
@@ -89,8 +98,12 @@ const SEEK_TO_END_TIME = 1e101;
 
 // ── 计算属性 ─────────────────────────────────────────────────────────────────
 const waveformData = computed(() => props.waveform ?? []);
-const formattedCurrentTime = computed(() => formatTime(currentTime.value));
-const formattedDuration = computed(() => formatTime(totalDuration.value));
+const formattedCurrentTime = computed(() =>
+  formatDuration(currentTime.value, { fallback: UNKNOWN_DURATION }),
+);
+const formattedDuration = computed(() =>
+  formatDuration(totalDuration.value, { fallback: UNKNOWN_DURATION }),
+);
 const canSeek = computed(() => Number.isFinite(totalDuration.value) && totalDuration.value > 0);
 
 // ── 监听 src 变化 ─────────────────────────────────────────────────────────────
@@ -286,14 +299,6 @@ function resolveDuration(el: HTMLAudioElement) {
     // 部分浏览器/来源不允许 seek，保持时长为 0 并显示占位符
     el.ontimeupdate = null;
   }
-}
-
-function formatTime(seconds: number): string {
-  // duration 可能是 Infinity（元数据缺失）或 NaN（尚未加载），不能直接参与格式化
-  if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 onUnmounted(() => {

@@ -33,7 +33,7 @@
         class="aix-video-controls__progress-tooltip"
         :style="{ left: `${dragPercent}%` }"
       >
-        {{ formatTime(dragTime) }}
+        {{ formatDuration(dragTime) }}
       </div>
     </div>
 
@@ -52,8 +52,8 @@
 
         <!-- 时间显示 -->
         <span v-if="showTime" class="aix-video-controls__time">
-          {{ formatTime(playerState.currentTime) }} /
-          {{ formatTime(playerState.duration) }}
+          {{ formatDuration(playerState.currentTime) }} /
+          {{ formatDuration(playerState.duration) }}
         </span>
       </div>
 
@@ -113,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { useClickOutside } from '@aix/hooks';
+import { formatDuration, useClickOutside } from '@aix/hooks';
 import { Play, Pause, VolumeUp, VolumeMute, Fullscreen, FullscreenExit } from '@aix/icons';
 import { ref, computed, onBeforeUnmount } from 'vue';
 import { useControlsAutoHide } from '../composables/useControlsAutoHide';
@@ -306,17 +306,6 @@ function handleToggleFullscreen(): void {
 // ========================
 // 时间格式化
 // ========================
-
-function formatTime(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return '00:00';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) {
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  }
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
 
 // ========================
 // 清理
