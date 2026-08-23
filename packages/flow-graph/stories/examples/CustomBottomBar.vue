@@ -77,7 +77,7 @@ function exportJson() {
 .custom-bar__btn--primary {
   border-color: var(--aix-flowGraphBrand, #1546f2);
   background: var(--aix-flowGraphBrand, #1546f2);
-  color: #fff;
+  color: var(--aix-colorWhite, #fff);
 }
 
 .custom-bar__btn--primary:hover {

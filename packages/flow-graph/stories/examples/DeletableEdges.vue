@@ -66,7 +66,7 @@ const edges = ref<FlowEdge[]>([
   gap: 18px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--aix-colorBorder, #e5e6eb);
-  background: #f7f8fa;
+  background: var(--aix-colorBgLayout, #f7f8fa);
   font-size: 13px;
 }
 
@@ -91,12 +91,13 @@ const edges = ref<FlowEdge[]>([
   height: 2px;
 }
 
+/* 两个色块是图例，必须与画布上的边同色，故复用边自己的取色表达式而非另挑语义 Token */
 .deletable-demo__sample--ok {
-  background: #86909c;
+  background: var(--aix-flowGraphEdgeColor, #86909c);
 }
 
 .deletable-demo__sample--lock {
-  background: #d4380d;
+  background: var(--aix-colorError, #d4380d);
 }
 
 .deletable-demo__hint {

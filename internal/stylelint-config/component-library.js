@@ -82,6 +82,20 @@ const config = {
   // 从 vue-app 派生而非复制其 extends/overrides：保证「component-library = vue-app + 2 条规则」
   // 这个关系不会随 vue-app 演进而悄悄失效
   ...vueApp,
+  overrides: [
+    ...(vueApp.overrides ?? []),
+    {
+      // Storybook 演示不是发布产物，其 class 不会进 npm 包，也就没有命名空间冲突的风险，
+      // 强套 `aix-` 前缀只会逼出一堆 `aix-demo-xxx` 这种没有意义的名字。
+      //
+      // 但「禁止硬编码颜色」在 stories 里照样生效——demo 恰恰应该示范正确的取色方式，
+      // 被业务方照抄的概率比组件源码还高。
+      files: ['**/stories/**/*.{css,scss,vue}'],
+      rules: {
+        'selector-class-pattern': null,
+      },
+    },
+  ],
   rules: {
     ...vueApp.rules,
     'selector-class-pattern': SELECTOR_CLASS_PATTERN,

@@ -34,9 +34,9 @@ const bottomBarPosition = computed(() =>
   justify-content: center;
   width: 600px;
   height: 100%;
-  border-left: 1px solid #e4e7ed;
-  background: #f5f7fa;
-  color: #86909c;
+  border-left: 1px solid var(--aix-colorBorder, #e4e7ed);
+  background: var(--aix-colorBgLayout, #f5f7fa);
+  color: var(--aix-colorTextSecondary, #86909c);
   font-size: 14px;
 }
 
@@ -47,8 +47,8 @@ const bottomBarPosition = computed(() =>
   padding: 6px 16px;
   border: none;
   border-radius: 8px;
-  background: #1546f2;
-  color: #fff;
+  background: var(--aix-colorPrimary, #1546f2);
+  color: var(--aix-colorWhite, #fff);
   font-size: 14px;
   cursor: pointer;
 }

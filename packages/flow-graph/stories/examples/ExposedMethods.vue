@@ -62,7 +62,7 @@ const edges = ref<FlowEdge[]>([
   padding: 6px 14px;
   border: 1px solid var(--aix-colorBorder, #e5e6eb);
   border-radius: 6px;
-  background: #fff;
+  background: var(--aix-colorWhite, #fff);
   color: var(--aix-colorText, #1d2129);
   font-family: monospace;
   font-size: 12px;

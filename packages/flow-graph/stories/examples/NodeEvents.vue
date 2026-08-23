@@ -51,19 +51,19 @@ function onNodeRightClick({ node }: { node: FlowNode; event: MouseTouchEvent }) 
   height: 140px;
   padding: 8px 12px;
   overflow-y: auto;
-  border-top: 1px solid #e5e6eb;
-  background: #f7f8fa;
+  border-top: 1px solid var(--aix-colorBorder, #e5e6eb);
+  background: var(--aix-colorBgLayout, #f7f8fa);
   font-family: monospace;
   font-size: 12px;
 }
 
 .event-log__item {
   padding: 2px 0;
-  border-bottom: 1px solid #e5e6eb;
-  color: #1d2129;
+  border-bottom: 1px solid var(--aix-colorBorder, #e5e6eb);
+  color: var(--aix-colorText, #1d2129);
 }
 
 .event-log__empty {
-  color: #86909c;
+  color: var(--aix-colorTextSecondary, #86909c);
 }
 </style>
