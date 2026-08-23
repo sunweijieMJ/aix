@@ -161,6 +161,51 @@ function dropDuplicateCss(outDir) {
 }
 
 /**
+ * 删除 `es/` 里 vue-tsc 逐模块产出的 `.d.ts` 孤儿。
+ *
+ * 类型入口在 dts 段被 bundle 成自包含的 `es/index.d.ts`，vue-tsc 原先铺开的那批
+ * 逐模块声明便无人引用；它们又带无扩展名的相对引用（`from './types'`），在
+ * `moduleResolution: node16` 下本身是坏的。移除 `./es/*` 通配导出后它们已不可达，
+ * 但仍占着 tarball，故在此清掉。
+ *
+ * 声明了通配导出的包（如 @aix/icons 的 `"./*"`）把逐模块 `.d.ts` 当作公开 API，
+ * 必须整体跳过——删掉会让 `@aix/icons/General/Add` 失去类型。
+ *
+ * @param {string} outDir - 待清理的输出目录（仅 `es/`）
+ * @param {object} pkg - 解析后的 package.json
+ * @returns {import('rollup').Plugin}
+ */
+function dropOrphanDts(outDir, pkg) {
+  return {
+    name: 'drop-orphan-dts',
+    writeBundle(options, bundle) {
+      if (options.dir !== outDir) return;
+      if (Object.keys(pkg.exports || {}).some((key) => key.includes('*'))) return;
+      if (!fs.existsSync(outDir)) return;
+
+      // 本次 dts bundle 实际产出的文件 + emitStyleDts 的空模块声明，都要留下
+      const keep = new Set(
+        [...Object.keys(bundle), 'style.d.ts'].map((f) => path.resolve(outDir, f)),
+      );
+
+      const walk = (currentDir) => {
+        for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+          const full = path.join(currentDir, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+            // 该目录若只装着孤儿声明，删完就空了，一并收走
+            if (fs.readdirSync(full).length === 0) fs.rmdirSync(full);
+          } else if (entry.name.endsWith('.d.ts') && !keep.has(path.resolve(full))) {
+            fs.rmSync(full, { force: true });
+          }
+        }
+      };
+      walk(outDir);
+    },
+  };
+}
+
+/**
  * 创建 Vue 3 组件库的 Rollup 配置
  * @param {string} dir - 组件包目录路径
  * @param {string} format - 输出格式 (esm/cjs/iife)
@@ -249,7 +294,7 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       postcss({
         modules: false,
         minimize: true,
-        sourceMap: sourceMapEnabled,
+        sourceMap: false,
         extract: true,
         extensions: styleExtensions,
         use: {
@@ -319,7 +364,7 @@ export function createRollupConfig(dir, formats = ['esm', 'cjs', 'umd']) {
         ],
         external: (id) =>
           id === 'vue' || id.startsWith('vue/') || isStyleId(id) || matchesDep(id, dtsDeps),
-        plugins: [dts({ respectExternal: true }), stripStyleImports()],
+        plugins: [dts({ respectExternal: true }), stripStyleImports(), dropOrphanDts('es', dtsPkg)],
         // 类型 bundle 的循环引用是常态，与 JS 段保持一致地静默
         onwarn(warning, warn) {
           if (warning.code !== 'CIRCULAR_DEPENDENCY') warn(warning);
