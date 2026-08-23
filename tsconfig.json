@@ -3,7 +3,14 @@
   "compilerOptions": {
     "types": ["node"],
     "noUncheckedSideEffectImports": false,
-    "target": "ES2018"
+    "target": "ES2018",
+    // 根项目只做类型检查、从不产出。写进配置而非只依赖脚本里的 `tsc --noEmit`：
+    // allowImportingTsExtensions 要求 noEmit 同时成立，而 IDE 语言服务只读本文件、
+    // 看不到命令行参数，缺了它会在编辑器里报 TS5096。
+    "noEmit": true,
+    // Storybook 要求 .storybook/main.ts 里的相对导入带 .ts 扩展名，不带会在每次
+    // build 时告警，而 TS 默认不允许。各工作区包不继承本文件，不受影响。
+    "allowImportingTsExtensions": true
   },
   // 根 tsc 只检查根层文件（scripts/.storybook/docs 等），
   // 各工作区包由各自 tsconfig + turbo type-check 任务负责。

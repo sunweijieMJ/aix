@@ -4,6 +4,7 @@ import { join, dirname } from 'path';
 import type { StorybookConfig } from '@storybook/vue3-vite';
 import vue from '@vitejs/plugin-vue';
 import { loadEnv } from 'vite';
+import { createWorkspaceAlias } from '../scripts/shared/workspace-alias.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -86,15 +87,8 @@ const config: StorybookConfig = {
         alias: {
           ...config.resolve?.alias,
           '@': join(__dirname, '../packages'),
-          // 使用源代码而不是构建后的代码，确保热更新和日志能正常工作
-          '@aix/hooks': join(__dirname, '../packages/hooks/src'),
-          '@aix/theme': join(__dirname, '../packages/theme/src'),
-          '@aix/button': join(__dirname, '../packages/button/src'),
-          '@aix/icons': join(__dirname, '../packages/icons/src/index.ts'),
-          '@aix/video': join(__dirname, '../packages/video/src'),
-          '@aix/pdf-viewer': join(__dirname, '../packages/pdf-viewer/src'),
-          '@aix/popper/style': join(__dirname, '../packages/popper/src/styles/index.scss'),
-          '@aix/popper': join(__dirname, '../packages/popper/src'),
+          // 使用源代码而不是构建后的代码，确保热更新和日志能正常工作。
+          ...createWorkspaceAlias(join(__dirname, '..')),
         },
       },
     };
