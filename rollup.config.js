@@ -187,6 +187,9 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
     output: {
       format,
       sourcemap: sourceMapEnabled,
+      // 只发布映射、不发布源码：sourcesContent 会把整份 src 内联进 .map，
+      // 占 es/ 体积的三到四成。调试者手上就有源码（或能从仓库取），无需随包分发。
+      sourcemapExcludeSources: true,
       ...(outputFile ? { file: outputFile } : { dir: outputDir }),
       name: outputFile ? pkgName : undefined, // 适用于 UMD/IIFE 格式
       exports: format === 'esm' ? undefined : 'named',
@@ -201,6 +204,10 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
     },
     plugins: [
       Vue({
+        // unplugin-vue 默认取 process.env.NODE_ENV === 'production'，而构建链上无人设它，
+        // 于是发布产物一直是 development 编译：__file 内联构建机绝对路径、devtools 元数据
+        // 残留、inline template 被关闭导致每个 SFC 拆成两个模块。dev（watch）仍需保留这些。
+        isProduction: !process.env.ROLLUP_WATCH,
         style: {
           preprocessLang: 'scss',
           preprocessOptions: {
