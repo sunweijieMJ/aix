@@ -324,24 +324,80 @@ import {
 
 ## API
 
-### Props
+::: warning 自动生成的 API 文档
+以下 API 文档由 `pnpm docs:gen` 从组件源码自动生成。请勿手动编辑此部分。
 
-所有图标组件支持以下属性：
+如需更新 API 文档，请：
+1. 修改组件源码中的 JSDoc 注释
+2. 运行 `pnpm docs:gen` 生成到 README.md
+3. 运行 `pnpm docs:sync` 同步到此文档
+:::
 
-| 属性名 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `class` | `string` | - | CSS 类名 |
-| `style` | `CSSProperties` | - | 内联样式 |
+### 图标组件属性
 
-### CSS 属性
+所有图标组件都支持以下属性，并通过 `v-bind="$attrs"` 透传所有其他 HTML/SVG 属性：
 
-图标大小和颜色通过 CSS 控制：
+| 属性 | 类型 | 默认值 | 必填 | 描述 |
+| --- | --- | --- | --- | --- |
+| width | string \| number | '1em' | ❌ | 图标宽度 |
+| height | string \| number | '1em' | ❌ | 图标高度 |
+| color | string | 'currentColor' | ❌ | 图标颜色 |
+| style | CSSProperties | - | ❌ | 自定义样式对象（支持所有 CSS 属性） |
+| class | string | - | ❌ | CSS 类名 |
 
-| CSS 属性 | 说明 | 示例 |
-|----------|------|------|
-| `font-size` | 图标大小 | `font-size: 24px` |
-| `width` / `height` | 图标尺寸 | `width: 24px; height: 24px` |
-| `color` | 图标颜色 | `color: #1890ff` |
+**事件支持**：通过 `v-bind="$attrs"` 支持所有原生 DOM 事件，包括：
+- `@click` - 点击事件
+- `@mouseenter` - 鼠标进入事件
+- `@mouseleave` - 鼠标离开事件
+- 以及其他所有标准 SVG/DOM 事件
+
+**style 属性说明**：
+- 支持传入 Vue 的 style 对象或字符串形式
+- 可以控制颜色、大小、动画、变换等所有 CSS 属性
+- style 中的样式会与组件内部样式合并
+- 示例：
+  ```vue
+  <!-- 对象形式 (推荐) -->
+  <Camera :style="{ fontSize: '24px', color: 'red', transform: 'rotate(45deg)' }" />
+
+  <!-- 字符串形式 -->
+  <Camera style="font-size: 24px; color: red; transform: rotate(45deg);" />
+  ```
+
+### 在第三方组件中使用
+
+图标组件可以很方便地集成到各种 UI 框架中：
+
+```vue
+<template>
+  <!-- 在 Element Plus 中使用 -->
+  <el-button>
+    <template #icon>
+      <Camera :style="{ fontSize: '18px' }" />
+    </template>
+    拍照
+  </el-button>
+
+  <!-- 在 Ant Design Vue 中使用 -->
+  <a-button>
+    <template #icon>
+      <Search :style="{ fontSize: '16px' }" />
+    </template>
+    搜索
+  </a-button>
+
+  <!-- 在自定义组件中使用 -->
+  <CustomCard>
+    <template #icon>
+      <Setting :style="{ fontSize: '20px', color: '#1890ff' }" />
+    </template>
+  </CustomCard>
+</template>
+
+<script setup lang="ts">
+import { Camera, Search, Setting } from '@aix/icons';
+</script>
+```
 
 ## 按需导入
 
