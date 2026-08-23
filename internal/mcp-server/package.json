@@ -23,7 +23,7 @@
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsdown --config-loader tsx",
+    "build": "pnpm run clean && tsdown",
     "clean": "rimraf dist",
     "extract": "rimraf data && tsx src/cli.ts extract --packages=../../packages",
     "postinstall": "echo '📦 AIX Components MCP Server installed successfully! Use: npx @aix/mcp-server --help'"

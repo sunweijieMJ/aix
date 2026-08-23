@@ -26,11 +26,11 @@
     "dist"
   ],
   "scripts": {
-    "dev": "tsdown --watch --config-loader tsx",
+    "dev": "tsdown --watch",
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsdown --config-loader tsx && tsdown --config-loader tsx --config tsdown.config.cdn.ts",
+    "build": "pnpm run clean && tsdown && tsdown --config tsdown.config.cdn.ts",
     "clean": "rimraf dist"
   },
   "peerDependencies": {

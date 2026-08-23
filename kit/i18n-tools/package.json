@@ -28,7 +28,7 @@
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsdown --config-loader tsx",
+    "build": "pnpm run clean && tsdown",
     "clean": "rimraf dist"
   },
   "dependencies": {
