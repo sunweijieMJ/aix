@@ -3,7 +3,14 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "inputs": ["$TURBO_DEFAULT$", "../../rollup.config.js"]
+      "inputs": ["$TURBO_DEFAULT$", "../../rollup.config.js"],
+      // src/ 由 build:generate 从 assets/ 生成且被 gitignore，因而不在 $TURBO_DEFAULT$ 里。
+      // 不声明为 output 的话，clean 掉 src 后任务哈希不变 → cache hit → 跳过执行 →
+      // src 永不重建，随后的 test/lint/type-check 全部解析失败。
+      //
+      // 三个产物目录必须重复列出：包级 outputs 会整体覆盖根级（与 inputs 同样是按字段覆盖，
+      // 而非合并），且 $TURBO_DEFAULT$ 在 outputs 位置不会展开成根配置的产物目录。
+      "outputs": ["dist/**", "es/**", "lib/**", "src/**"]
     },
     "test": {
       "dependsOn": ["build"]

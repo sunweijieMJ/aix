@@ -5,7 +5,9 @@
     "internal/typescript-config/*.json",
     "tsconfig.json",
     "typings/**/*.d.ts",
-    "pnpm-workspace.yaml"
+    "pnpm-workspace.yaml",
+    ".browserslistrc",
+    "pnpm-lock.yaml"
   ],
   "remoteCache": {
     "signature": true
@@ -44,22 +46,6 @@
       "outputs": [],
       "cache": true
     },
-    "@aix/icons#type-check": {
-      "dependsOn": ["^build", "build"],
-      "inputs": [
-        "src/**/*.{ts,tsx,vue}",
-        "typings/**/*.d.ts",
-        "stories/**/*.{ts,tsx,vue}",
-        "__test__/**/*.{ts,tsx,vue}",
-        "*.config.ts",
-        "tsconfig*.json",
-        "package.json",
-        "scripts/**",
-        "assets/**"
-      ],
-      "outputs": [],
-      "cache": true
-    },
     "lint": {
       "inputs": [
         "$TURBO_DEFAULT$",
@@ -81,8 +67,8 @@
     "test": {
       "dependsOn": ["^build"],
       "inputs": [
-        "src/**/*.{ts,tsx,js,jsx,vue}",
-        "__test__/**/*.{ts,tsx,js,jsx,vue}",
+        "src/**",
+        "__test__/**",
         "vitest.config.ts",
         "../../internal/vitest-config/*.{js,ts}",
         "package.json"
