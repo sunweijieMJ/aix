@@ -30,8 +30,10 @@ const mockAdapter = {
   stop: vi.fn(() => emitState('stopped')),
   destroy: vi.fn(),
   clearCallbacks: vi.fn(),
-  onResult: vi.fn(() => () => {}),
-  onError: vi.fn(() => () => {}),
+  // 形参需显式标注：省略会让 vi.fn 把调用参数推断成空元组，
+  // 测试里取 `mock.calls[0][0]` 拿回调时就没有类型可用
+  onResult: vi.fn((_cb: (r: ASRResult) => void) => () => {}),
+  onError: vi.fn((_cb: (e: Error) => void) => () => {}),
   onStateChange: vi.fn((cb: (s: ASRState) => void) => {
     stateListeners.push(cb);
     return () => {
@@ -165,7 +167,7 @@ describe('useASR', () => {
       await asr.connect();
 
       // 获取注册的 onResult 回调
-      const onResultCallback = mockAdapter.onResult.mock.calls[0][0] as (r: ASRResult) => void;
+      const onResultCallback = mockAdapter.onResult.mock.calls[0]![0];
 
       // 模拟中间结果
       onResultCallback({ text: '你好', isFinal: false });
@@ -182,7 +184,7 @@ describe('useASR', () => {
       const asr = mountASR();
       await asr.connect();
 
-      const onResultCallback = mockAdapter.onResult.mock.calls[0][0] as (r: ASRResult) => void;
+      const onResultCallback = mockAdapter.onResult.mock.calls[0]![0];
 
       onResultCallback({ text: '第一句。', isFinal: true });
       onResultCallback({ text: '第二句。', isFinal: true });
@@ -196,7 +198,7 @@ describe('useASR', () => {
       const asr = mountASR();
       await asr.connect();
 
-      const onErrorCallback = mockAdapter.onError.mock.calls[0][0] as (e: Error) => void;
+      const onErrorCallback = mockAdapter.onError.mock.calls[0]![0];
       const err = new Error('识别服务异常');
       onErrorCallback(err);
 

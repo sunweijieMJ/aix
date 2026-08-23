@@ -271,7 +271,6 @@ export const AudioPlayerWithWaveform: AudioPlayerStory = {
     src: TEST_AUDIO,
     showWaveform: true,
     waveform: generateWaveform(80, 'speech'),
-    activeColor: '#d72525',
   },
   render: (args) => ({
     components: { AudioPlayer },
