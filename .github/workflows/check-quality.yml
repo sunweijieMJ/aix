@@ -85,8 +85,12 @@ jobs:
           echo "All packages built successfully"
 
       # 缓存构建产物供后续 jobs 使用（node_modules 由各 job 通过 pnpm store 缓存自行恢复）
-      # packages/icons/src 同样是构建产物：由 scripts/generate.ts 生成且被 .gitignore 忽略。
-      # 不缓存它的话，缓存命中时 fallback 构建被跳过，icons 的测试会因 src/ 缺失而无法解析。
+      #
+      # 注意：这里必须列全**所有**被 gitignore 的构建产物，不能只列 dist/es/lib。缓存命中时
+      # 后续 job 的 fallback 构建会被跳过，漏掉的目录在那些 job 里就永远不存在。已踩过两次：
+      # - packages/icons/src：由 scripts/generate.ts 生成，漏掉会让 icons 的测试解析不到源码；
+      # - internal/*/data：由 mcp-server 的 build → extract 生成，漏掉会让 Publish Lint 打出
+      #   缺 data/ 的包（files 声明了它），发布后服务器启动即崩。
       - name: Cache build outputs
         uses: actions/cache/save@v4
         with:
@@ -96,6 +100,7 @@ jobs:
             packages/*/dist
             packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
@@ -132,6 +137,7 @@ jobs:
             packages/*/dist
             packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
@@ -181,6 +187,7 @@ jobs:
             packages/*/dist
             packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
@@ -237,6 +244,7 @@ jobs:
             packages/*/dist
             packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
@@ -283,6 +291,7 @@ jobs:
             packages/*/dist
             packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
@@ -337,6 +346,7 @@ jobs:
             packages/*/dist
             packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
