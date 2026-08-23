@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { createRequire } from 'module';
 import path from 'path';
 import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
@@ -61,6 +62,133 @@ export function stripStyleImports() {
         ),
         map: null,
       };
+    },
+  };
+}
+
+/**
+ * 判断 import/require 的说明符是否指向样式模块。
+ *
+ * 两种形态都要认：
+ * - 带扩展名，如 `video.js/dist/video-js.css`、`@vue-flow/core/dist/style.css`；
+ * - 无扩展名的子路径导出，如 `@aix/popper/style`、`@aix/theme/vars`——它们经 exports
+ *   解析到 .css，说明符本身没有任何扩展名线索。
+ *
+ * 第二种形态**按真实解析结果判定，而不是按包名/子路径约定猜**。曾经的写法是匹配
+ * `^@(aix|kit)/<pkg>/style$`，它漏掉了 `@aix/theme` 的 `./vars`、`./vars/dark` 等
+ * 另外五个纯 CSS 导出；同时又无法覆盖三方包，因为「任意包名 + /style」不能一概当成 CSS
+ * （三方包在 `/style` 下放 JS 模块是合法的，误删会静默改变运行时行为）。
+ * 直接问一次 Node 解析器则两头都对：解析到 .css 才删，解析到 .cjs/.mjs 一律保留。
+ *
+ * 解析失败时返回 false（保留该 require）——不理解的东西不动，真出问题由 publish-lint
+ * 的 CJS 冒烟自检兜底。相对路径不走解析：它们指向包内产物，带扩展名的已被上一条命中。
+ *
+ * @param {string} specifier - import/require 的说明符
+ * @param {NodeRequire} requireFromPkg - 以包根为基准的 require，用于实解析裸说明符
+ * @returns {boolean}
+ */
+function isStyleSpecifier(specifier, requireFromPkg) {
+  if (/\.(?:css|scss|sass|less)$/.test(specifier)) return true;
+  if (specifier.startsWith('.') || specifier.startsWith('/')) return false;
+
+  try {
+    return /\.(?:css|scss|sass|less)$/.test(requireFromPkg.resolve(specifier));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rollup 输出插件：剔除 CJS 产物里的样式副作用 `require()`。
+ *
+ * Node 无法 require 一个 .css 文件——它会当 JS 解析并抛 `SyntaxError: Unexpected token '.'`，
+ * 导致 `lib/` 入口在 Node 里根本 require 不动（video / flow-graph / rich-text-editor /
+ * pdf-viewer 四个包实测如此）。而 `lib/` 存在的唯一理由就是 CJS/SSR 消费，等于开箱即坏。
+ *
+ * 只处理 CJS：`es/` 的消费方是打包器，样式导入必须保留才能让下游收集到 CSS。
+ * CJS 消费方改由 `@aix/<pkg>/style` 显式引入样式，与本仓库既有的「样式与 JS 解耦」一致
+ * （参见 dropDuplicateCss 的注释）。
+ *
+ * 注意由此产生的 ESM/CJS 行为差异：`es/` 会自动带上依赖的样式（如 pdf-viewer 的
+ * `@aix/popper/style`），`lib/` 不会。这是可接受的——lib/ 的消费场景是 Node/SSR/Jest，
+ * 那里本就不加载 CSS；浏览器侧走的是 es/。
+ *
+ * `map: null` 成立的前提是 CJS 关闭了 sourcemap（见 createBaseConfig 的 sourceMapEnabled）。
+ * 若将来给 CJS 打开 sourcemap，这里必须改成返回 magic-string 生成的 map，否则映射会断。
+ *
+ * @param {string} dir - 组件包目录，作为裸说明符实解析的基准（见 isStyleSpecifier）
+ * @returns {import('rollup').Plugin}
+ */
+export function stripStyleRequires(dir) {
+  const requireFromPkg = createRequire(path.join(dir, 'package.json'));
+
+  return {
+    name: 'strip-style-requires',
+    renderChunk(code) {
+      return {
+        code: code.replace(
+          /^[ \t]*require\((['"])([^'"]+)\1\);?[ \t]*\r?\n?/gm,
+          (match, _quote, specifier) => (isStyleSpecifier(specifier, requireFromPkg) ? '' : match),
+        ),
+        map: null,
+      };
+    },
+  };
+}
+
+/**
+ * 输出插件：删掉 preserveModules 下没有任何人引用的孤儿 chunk。
+ *
+ * unplugin-vue 把每个 SFC 拆成「主模块 + script 子模块」两个 id，二者又都想占用同一个
+ * 输出名，rollup 便给后者补上计数后缀（`Button.vue.js` / `Button2.vue.js`）。最终主模块
+ * 内联了全部内容，那个带后缀的只剩一行 re-export，且**全图无人 import**。全仓共 653 个
+ * （icons 580、ai-chat 37、rich-text-editor 9…），纯占 tarball，还会经通配导出意外变成
+ * 公开子路径（`@aix/icons/General/Add2`）。
+ *
+ * **必须按引用图判定，不能按文件名**：`Foo2.vue.js` 这种命名同时也是合法图标名——
+ * icons 里就有 `today48`、`Camera-1`、`RuShiDaoQieBiaoQianRenYuanYuJingMoXing2`，
+ * 按后缀猜会直接删掉真模块。
+ *
+ * 只在 preserveModules 模式下挂载：单文件输出没有多 chunk 之说。
+ *
+ * @returns {import('rollup').Plugin}
+ */
+function dropOrphanChunks() {
+  /** 本轮在 generateBundle 里删掉的 chunk 名，供 writeBundle 清理对应 .map */
+  let dropped = [];
+
+  return {
+    name: 'drop-orphan-chunks',
+    generateBundle(options, bundle) {
+      dropped = [];
+
+      const referenced = new Set();
+      for (const item of Object.values(bundle)) {
+        if (item.type !== 'chunk') continue;
+        // dynamicImports 必须一并计入：rich-text-editor 的 extensions/video 等
+        // 只经 `await import('./extensions/video.js')` 引用，漏掉会被误删
+        for (const file of item.imports) referenced.add(file);
+        for (const file of item.dynamicImports) referenced.add(file);
+      }
+
+      for (const [fileName, item] of Object.entries(bundle)) {
+        if (item.type !== 'chunk') continue;
+        if (item.isEntry || item.isDynamicEntry) continue;
+        if (referenced.has(fileName)) continue;
+        delete bundle[fileName];
+        dropped.push(fileName);
+      }
+    },
+
+    // 从 bundle 里删掉 chunk 只拦住了 .js 本身，rollup 仍会把它的 sourcemap 落盘
+    // （实测：Add2.vue.js 不存在，Add2.vue.js.map 却和本次构建同一时间戳）。
+    // 故这里按盘上路径补一刀，与 dropDuplicateCss / dropOrphanDts 的做法一致。
+    writeBundle(options) {
+      const outDir = options.dir;
+      if (!outDir) return;
+      for (const fileName of dropped) {
+        fs.rmSync(path.join(outDir, `${fileName}.map`), { force: true });
+      }
     },
   };
 }
@@ -308,7 +436,10 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       }),
       // 声明了 ./style CSS 导出的包，构建 es/ 时自动生成 es/style.d.ts（types 条件指向它）
       ...(format === 'esm' && pkg.exports?.['./style'] ? [emitStyleDts(outputDir)] : []),
-      ...(format === 'cjs' ? [dropDuplicateCss(outputDir)] : []),
+      // CJS 产物剔除样式副作用导入：Node require 不动 .css，留着会让 lib/ 入口直接抛错
+      ...(format === 'cjs' ? [stripStyleRequires(dir), dropDuplicateCss(outputDir)] : []),
+      // preserveModules 下清掉 unplugin-vue 留下的无人引用 re-export 壳
+      ...(outputFile ? [] : [dropOrphanChunks()]),
     ],
     external: (id) => {
       if (outputFile) {
