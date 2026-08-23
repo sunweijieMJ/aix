@@ -19,8 +19,8 @@
       }
     },
     "./*": {
-      "types": "./es/*.d.ts",
-      "import": "./es/*.js"
+      "types": "./es/*.vue.d.ts",
+      "import": "./es/*.vue.js"
     },
     "./package.json": "./package.json"
   },
