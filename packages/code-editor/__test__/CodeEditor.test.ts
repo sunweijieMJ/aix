@@ -23,6 +23,20 @@ describe('CodeEditor 组件', () => {
       expect(wrapper.classes()).toContain('aix-code-editor--disabled');
     });
 
+    it('theme="dark" 应挂上 dark class 以触发主题 Token 重解析', () => {
+      // 回归：此前 theme 只作用于 CodeMirror 的语法高亮（裸 hex），
+      // 编辑器底色仍跟随全局主题，全局浅色时会得到「深色语法色配浅色底」。
+      // `dark` 是 @aix/theme 暗色 Token 的挂载选择器之一，且不带 :root 前缀，
+      // 挂在组件根节点上即可让子树内的 --aix-* 解析为暗色值。
+      const wrapper = mount(CodeEditor, { props: { theme: 'dark' } });
+      expect(wrapper.classes()).toContain('dark');
+    });
+
+    it('theme 默认（light）不应挂 dark class', () => {
+      expect(mount(CodeEditor).classes()).not.toContain('dark');
+      expect(mount(CodeEditor, { props: { theme: 'light' } }).classes()).not.toContain('dark');
+    });
+
     it('readonly 时应添加只读 class', () => {
       const wrapper = mount(CodeEditor, {
         props: { readonly: true },
