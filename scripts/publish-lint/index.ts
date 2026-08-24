@@ -423,10 +423,13 @@ function checkEsmEntryLoads(dir: string, pkgJson: Record<string, unknown>): Self
 
   const exportsField = pkgJson.exports as Record<string, unknown> | undefined;
   const root = exportsField?.['.'] as Record<string, unknown> | string | undefined;
+  // import 条件之外还要认 default：`{ types, default }` 形态的包（如 @kit/vitest-config、
+  // @kit/prettier-config）没有 import 条件，漏掉 default 会让它们静默逃过本条冒烟。
+  // default 指向 CJS 也没关系——Node 的 import() 对 .cjs 有完整互操作，不会误报。
   const importBranch =
     typeof root === 'string'
       ? root
-      : (root?.import as Record<string, unknown> | string | undefined);
+      : ((root?.import ?? root?.default) as Record<string, unknown> | string | undefined);
   const entry =
     typeof importBranch === 'string'
       ? importBranch
@@ -708,17 +711,33 @@ function runAttw(tarball: string | null, pkgJson: Record<string, unknown>): stri
   const args = [quoteArg(tarball), '--format', 'json'];
   if (excluded.length > 0) args.push('--exclude-entrypoints', ...excluded);
 
-  // attw 发现问题时以非 0 退出，故失败不代表执行异常，需读取 stdout
-  let stdout: string;
+  // stdout 必须经 shell 重定向落到文件，不能走管道捕获（error.stdout）：attw 的 JSON
+  // 内嵌大量含绝对路径的 trace 字符串，动辄超过 64KB，而 attw 发现问题时以非零 exit
+  // 退出，超出管道缓冲（64KB）、尚在用户态排队的部分在 exit 时被直接丢弃——error.stdout
+  // 恰好截断在 65536 字节，JSON.parse 失败，报出「输出无法解析」而掩盖真实结果。
+  // 更阴险的是 JSON 大小随机器路径长度浮动：本机翻车时 CI（路径更短）可能仍是绿的。
+  // 重定向到文件后子进程对 stdout 的写是同步的，不存在丢尾。
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aix-attw-'));
+  const outFile = path.join(tmpDir, 'attw.json');
+
+  // attw 发现问题时以非 0 退出，故失败不代表执行异常，一律以产出文件为准
+  let execError: Error | null = null;
+  let stdout = '';
   try {
-    stdout = execFileSync('pnpm', ['exec', 'attw', ...args], {
-      encoding: 'utf8',
-      shell: true,
-    });
-  } catch (error) {
-    stdout = (error as { stdout?: string }).stdout ?? '';
-    if (!stdout) return [`attw 执行失败：${(error as Error).message}`];
+    try {
+      execFileSync('pnpm', ['exec', 'attw', ...args, '>', quoteArg(outFile)], {
+        stdio: 'pipe',
+        shell: true,
+      });
+    } catch (error) {
+      execError = error as Error;
+    }
+    if (fs.existsSync(outFile)) stdout = fs.readFileSync(outFile, 'utf8');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+
+  if (!stdout) return [`attw 执行失败：${execError?.message ?? '未产出任何输出'}`];
 
   // attw 崩溃或改了输出格式时 stdout 不是 JSON。同 withPackedTarball 的理由：
   // 必须降级成该包的一条 problem，不能让 JSON.parse 的异常中断整轮体检。
