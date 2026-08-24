@@ -1,6 +1,6 @@
 {
   "name": "@kit/ai-preset",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Cross-platform AI coding preset manager CLI",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
@@ -30,17 +30,17 @@
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsdown --config-loader tsx",
+    "build": "pnpm run clean && tsdown",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "chalk": "^5.6.2",
+    "chalk": "^6.0.0",
     "commander": "^15.0.0",
     "diff": "^9.0.0",
     "glob": "^13.0.6",
     "gray-matter": "^4.0.3",
     "handlebars": "^4.7.9",
-    "inquirer": "^14.0.2"
+    "inquirer": "^14.1.0"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",

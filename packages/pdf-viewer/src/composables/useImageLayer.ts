@@ -7,7 +7,6 @@
  * 2. 解析 transform 和 paintImageXObject 操作获取图片位置
  * 3. 创建 DOM 覆盖层实现 hover/click 交互
  */
-import { OPS } from 'pdfjs-dist';
 import type { PDFPageProxy } from 'pdfjs-dist';
 import { ref, shallowRef, type Ref, type ShallowRef } from 'vue';
 import { DEFAULT_IMAGE_LAYER_CONFIG } from '../constants';
@@ -81,6 +80,16 @@ export function useImageLayer(
     viewport: { width: number; height: number; transform: number[] },
     pageNumber: number,
   ): Promise<PdfImageInfo[]> {
+    // OPS 必须在函数内动态取，不能在模块顶层 `import { OPS } from 'pdfjs-dist'`。
+    // 那是全包唯一一处 pdfjs 的**值**导入（其余全是 `import type`，编译期即擦除），
+    // 它会让整个 pdfjs 在模块求值期被拉起，而 pdf.mjs 顶层就有 `new DOMMatrix()`——
+    // Node 里没有这个宿主 API，于是 `require('@aix/pdf-viewer')` 直接抛 ReferenceError，
+    // SSR/Nuxt 连服务端渲染都进不去。
+    //
+    // 这里不产生额外开销：能走到本函数说明调用方已经拿到了 PDFPageProxy，
+    // pdfjs 早已加载完毕，`await import` 命中的是模块缓存。
+    const { OPS } = await import('pdfjs-dist');
+
     const operatorList = await page.getOperatorList();
     const { fnArray, argsArray } = operatorList;
 

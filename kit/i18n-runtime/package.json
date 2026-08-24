@@ -1,6 +1,6 @@
 {
   "name": "@kit/i18n-runtime",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "运行时 DOM 扫描机翻引擎，零业务代码侵入的网站国际化方案",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
@@ -26,11 +26,11 @@
     "dist"
   ],
   "scripts": {
-    "dev": "tsdown --watch --config-loader tsx",
+    "dev": "tsdown --watch",
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsdown --config-loader tsx && tsdown --config-loader tsx --config tsdown.config.cdn.ts",
+    "build": "pnpm run clean && tsdown && tsdown --config tsdown.config.cdn.ts",
     "clean": "rimraf dist"
   },
   "peerDependencies": {
@@ -55,12 +55,12 @@
     "@kit/vitest-config": "workspace:^",
     "@testing-library/react": "^16.3.2",
     "@types/node": "catalog:",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "eslint": "catalog:",
-    "fake-indexeddb": "^6.2.2",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "fake-indexeddb": "^6.2.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "rimraf": "catalog:",
     "tsdown": "catalog:",
     "vitest": "catalog:",

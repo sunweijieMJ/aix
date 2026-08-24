@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { createRequire } from 'module';
 import path from 'path';
 import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
@@ -66,6 +67,133 @@ export function stripStyleImports() {
 }
 
 /**
+ * 判断 import/require 的说明符是否指向样式模块。
+ *
+ * 两种形态都要认：
+ * - 带扩展名，如 `video.js/dist/video-js.css`、`@vue-flow/core/dist/style.css`；
+ * - 无扩展名的子路径导出，如 `@aix/popper/style`、`@aix/theme/vars`——它们经 exports
+ *   解析到 .css，说明符本身没有任何扩展名线索。
+ *
+ * 第二种形态**按真实解析结果判定，而不是按包名/子路径约定猜**。曾经的写法是匹配
+ * `^@(aix|kit)/<pkg>/style$`，它漏掉了 `@aix/theme` 的 `./vars`、`./vars/dark` 等
+ * 另外五个纯 CSS 导出；同时又无法覆盖三方包，因为「任意包名 + /style」不能一概当成 CSS
+ * （三方包在 `/style` 下放 JS 模块是合法的，误删会静默改变运行时行为）。
+ * 直接问一次 Node 解析器则两头都对：解析到 .css 才删，解析到 .cjs/.mjs 一律保留。
+ *
+ * 解析失败时返回 false（保留该 require）——不理解的东西不动，真出问题由 publish-lint
+ * 的 CJS 冒烟自检兜底。相对路径不走解析：它们指向包内产物，带扩展名的已被上一条命中。
+ *
+ * @param {string} specifier - import/require 的说明符
+ * @param {NodeRequire} requireFromPkg - 以包根为基准的 require，用于实解析裸说明符
+ * @returns {boolean}
+ */
+function isStyleSpecifier(specifier, requireFromPkg) {
+  if (/\.(?:css|scss|sass|less)$/.test(specifier)) return true;
+  if (specifier.startsWith('.') || specifier.startsWith('/')) return false;
+
+  try {
+    return /\.(?:css|scss|sass|less)$/.test(requireFromPkg.resolve(specifier));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rollup 输出插件：剔除 CJS 产物里的样式副作用 `require()`。
+ *
+ * Node 无法 require 一个 .css 文件——它会当 JS 解析并抛 `SyntaxError: Unexpected token '.'`，
+ * 导致 `lib/` 入口在 Node 里根本 require 不动（video / flow-graph / rich-text-editor /
+ * pdf-viewer 四个包实测如此）。而 `lib/` 存在的唯一理由就是 CJS/SSR 消费，等于开箱即坏。
+ *
+ * 只处理 CJS：`es/` 的消费方是打包器，样式导入必须保留才能让下游收集到 CSS。
+ * CJS 消费方改由 `@aix/<pkg>/style` 显式引入样式，与本仓库既有的「样式与 JS 解耦」一致
+ * （参见 dropDuplicateCss 的注释）。
+ *
+ * 注意由此产生的 ESM/CJS 行为差异：`es/` 会自动带上依赖的样式（如 pdf-viewer 的
+ * `@aix/popper/style`），`lib/` 不会。这是可接受的——lib/ 的消费场景是 Node/SSR/Jest，
+ * 那里本就不加载 CSS；浏览器侧走的是 es/。
+ *
+ * `map: null` 成立的前提是 CJS 关闭了 sourcemap（见 createBaseConfig 的 sourceMapEnabled）。
+ * 若将来给 CJS 打开 sourcemap，这里必须改成返回 magic-string 生成的 map，否则映射会断。
+ *
+ * @param {string} dir - 组件包目录，作为裸说明符实解析的基准（见 isStyleSpecifier）
+ * @returns {import('rollup').Plugin}
+ */
+export function stripStyleRequires(dir) {
+  const requireFromPkg = createRequire(path.join(dir, 'package.json'));
+
+  return {
+    name: 'strip-style-requires',
+    renderChunk(code) {
+      return {
+        code: code.replace(
+          /^[ \t]*require\((['"])([^'"]+)\1\);?[ \t]*\r?\n?/gm,
+          (match, _quote, specifier) => (isStyleSpecifier(specifier, requireFromPkg) ? '' : match),
+        ),
+        map: null,
+      };
+    },
+  };
+}
+
+/**
+ * 输出插件：删掉 preserveModules 下没有任何人引用的孤儿 chunk。
+ *
+ * unplugin-vue 把每个 SFC 拆成「主模块 + script 子模块」两个 id，二者又都想占用同一个
+ * 输出名，rollup 便给后者补上计数后缀（`Button.vue.js` / `Button2.vue.js`）。最终主模块
+ * 内联了全部内容，那个带后缀的只剩一行 re-export，且**全图无人 import**。全仓共 653 个
+ * （icons 580、ai-chat 37、rich-text-editor 9…），纯占 tarball，还会经通配导出意外变成
+ * 公开子路径（`@aix/icons/General/Add2`）。
+ *
+ * **必须按引用图判定，不能按文件名**：`Foo2.vue.js` 这种命名同时也是合法图标名——
+ * icons 里就有 `today48`、`Camera-1`、`RuShiDaoQieBiaoQianRenYuanYuJingMoXing2`，
+ * 按后缀猜会直接删掉真模块。
+ *
+ * 只在 preserveModules 模式下挂载：单文件输出没有多 chunk 之说。
+ *
+ * @returns {import('rollup').Plugin}
+ */
+function dropOrphanChunks() {
+  /** 本轮在 generateBundle 里删掉的 chunk 名，供 writeBundle 清理对应 .map */
+  let dropped = [];
+
+  return {
+    name: 'drop-orphan-chunks',
+    generateBundle(options, bundle) {
+      dropped = [];
+
+      const referenced = new Set();
+      for (const item of Object.values(bundle)) {
+        if (item.type !== 'chunk') continue;
+        // dynamicImports 必须一并计入：rich-text-editor 的 extensions/video 等
+        // 只经 `await import('./extensions/video.js')` 引用，漏掉会被误删
+        for (const file of item.imports) referenced.add(file);
+        for (const file of item.dynamicImports) referenced.add(file);
+      }
+
+      for (const [fileName, item] of Object.entries(bundle)) {
+        if (item.type !== 'chunk') continue;
+        if (item.isEntry || item.isDynamicEntry) continue;
+        if (referenced.has(fileName)) continue;
+        delete bundle[fileName];
+        dropped.push(fileName);
+      }
+    },
+
+    // 从 bundle 里删掉 chunk 只拦住了 .js 本身，rollup 仍会把它的 sourcemap 落盘
+    // （实测：Add2.vue.js 不存在，Add2.vue.js.map 却和本次构建同一时间戳）。
+    // 故这里按盘上路径补一刀，与 dropDuplicateCss / dropOrphanDts 的做法一致。
+    writeBundle(options) {
+      const outDir = options.dir;
+      if (!outDir) return;
+      for (const fileName of dropped) {
+        fs.rmSync(path.join(outDir, `${fileName}.map`), { force: true });
+      }
+    },
+  };
+}
+
+/**
  * 输出插件：向 outDir 写入空模块声明 style.d.ts，供 exports["./style"].types 引用。
  * 让开启 noUncheckedSideEffectImports（TS 5.6+）的消费方能解析
  * `import '@aix/<pkg>/style'` 副作用导入；集中在构建期生成，各包无需手写。
@@ -86,6 +214,138 @@ export function emitStyleDts(outDir) {
   };
 }
 
+/** JS 中 import 的资源一律内联为 data URI，超过此上限即构建失败。 */
+const ASSET_INLINE_LIMIT = 8 * 1024;
+
+const ASSET_GLOBS = [
+  '**/*.png',
+  '**/*.jpg',
+  '**/*.jpeg',
+  '**/*.svg',
+  '**/*.gif',
+  '**/*.webp',
+  '**/*.ttf',
+  '**/*.woff',
+  '**/*.woff2',
+  '**/*.eot',
+  '**/*.otf',
+];
+
+const ASSET_EXTENSION_RE = /\.(png|jpe?g|svg|gif|webp|ttf|woff2?|eot|otf)$/i;
+
+/**
+ * 拦下超过内联上限的资源导入。
+ *
+ * 放任不管的话 @rollup/plugin-url 会 emit 文件并产出 `"./assets/x.svg"` 这样的
+ * 字符串——它是文档相对 URL，对从 node_modules 消费的库必然 404：下游打包器把它
+ * 当普通字符串，不会搬运资源；浏览器又按页面地址而非包位置去解析。
+ *
+ * 必须排在 url() 之前，否则 load 钩子抢不到。
+ *
+ * @returns {import('rollup').Plugin}
+ */
+function assertAssetsInlinable() {
+  return {
+    name: 'assert-assets-inlinable',
+    load(id) {
+      const file = id.split('?')[0];
+      if (!ASSET_EXTENSION_RE.test(file) || !fs.existsSync(file)) return null;
+
+      const size = fs.statSync(file).size;
+      if (size > ASSET_INLINE_LIMIT) {
+        this.error(
+          `资源 ${path.relative(process.cwd(), file)} 为 ${(size / 1024).toFixed(1)}KB，` +
+            `超过 ${ASSET_INLINE_LIMIT / 1024}KB 内联上限。\n` +
+            `组件库不能从 JS 产出资源 URL。请改用：\n` +
+            `  1. 转成 Vue 组件（见 @aix/icons 的构建期生成）；\n` +
+            `  2. 在 SCSS 中以 data URI 内联（见 ai-chat 的 Sender.vue）；\n` +
+            `  3. 确需独立资源文件时，为该包挂 postcss-url 并改走 CSS url()。`,
+        );
+      }
+      return null;
+    },
+  };
+}
+
+/**
+ * 删除 CJS 产出的 CSS：与 es/ 那份逐字节相同，且样式统一经 `./style` 提供。
+ * 之所以是「产出后删除」而非跳过 postcss——不跑 postcss 则 rollup 无法解析样式模块。
+ *
+ * @param {string} outDir - 待清理的输出目录
+ * @returns {import('rollup').Plugin}
+ */
+function dropDuplicateCss(outDir) {
+  return {
+    name: 'drop-duplicate-css',
+    writeBundle() {
+      if (!fs.existsSync(outDir)) return;
+      for (const file of fs.readdirSync(outDir)) {
+        if (file.endsWith('.css') || file.endsWith('.css.map')) {
+          fs.rmSync(path.join(outDir, file), { force: true });
+        }
+      }
+    },
+  };
+}
+
+/**
+ * 删除输出目录里 vue-tsc/tsc 逐模块产出的 `.d.ts` 孤儿。
+ *
+ * 类型入口在 dts 段被 bundle 成自包含的单文件（`es/index.d.ts`、theme 的
+ * `dist/index.d.ts`），tsc 原先铺开的那批逐模块声明便无人引用；它们又带无扩展名的
+ * 相对引用（`from './types'`），在 `moduleResolution: node16` 下本身是坏的。
+ * exports 不暴露它们，但仍占着 tarball，故在此清掉。
+ *
+ * 两种输出形态都支持：组件包的 dir 模式（`output.dir: 'es'`）与 theme 的 file 模式
+ * （`output.file: 'dist/index.d.ts'`）。**只在 `.d.ts` 那份输出上清理**——theme 的
+ * d.ts / d.cts 两份输出共用同一个 dist 目录（组件包则天然分居 es/ 与 lib/），
+ * 若在 d.cts 输出上跑，keep 集合里只有 index.d.cts，会把刚产出的 index.d.ts 误删。
+ *
+ * 名为 style.d.ts 的文件一律保留：它们是 emitStyleDts 的产物，可能在子目录里
+ * （theme 的 dist/vars/style.d.ts），按 bundle 键拼 keep 集合护不住。
+ *
+ * 声明了通配导出的包（如 @aix/icons 的 `"./*"`）把逐模块 `.d.ts` 当作公开 API，
+ * 必须整体跳过——删掉会让 `@aix/icons/General/Add` 失去类型。
+ *
+ * @param {string} outDir - 待清理的输出目录（`es/` 或 theme 的 `dist/`）
+ * @param {object} pkg - 解析后的 package.json
+ * @returns {import('rollup').Plugin}
+ */
+export function dropOrphanDts(outDir, pkg) {
+  return {
+    name: 'drop-orphan-dts',
+    writeBundle(options, bundle) {
+      const dir = options.dir ?? (options.file ? path.dirname(options.file) : null);
+      if (dir !== outDir) return;
+      // 只认 .d.ts 输出（.d.cts 不以 .d.ts 结尾，天然不命中），理由见函数注释
+      if (!Object.keys(bundle).some((f) => f.endsWith('.d.ts'))) return;
+      if (Object.keys(pkg.exports || {}).some((key) => key.includes('*'))) return;
+      if (!fs.existsSync(outDir)) return;
+
+      // 本次 dts bundle 实际产出的文件要留下
+      const keep = new Set(Object.keys(bundle).map((f) => path.resolve(outDir, f)));
+
+      const walk = (currentDir) => {
+        for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+          const full = path.join(currentDir, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+            // 该目录若只装着孤儿声明，删完就空了，一并收走
+            if (fs.readdirSync(full).length === 0) fs.rmdirSync(full);
+          } else if (
+            entry.name.endsWith('.d.ts') &&
+            entry.name !== 'style.d.ts' &&
+            !keep.has(path.resolve(full))
+          ) {
+            fs.rmSync(full, { force: true });
+          }
+        }
+      };
+      walk(outDir);
+    },
+  };
+}
+
 /**
  * 创建 Vue 3 组件库的 Rollup 配置
  * @param {string} dir - 组件包目录路径
@@ -95,7 +355,8 @@ export function emitStyleDts(outDir) {
  * @returns {object} Rollup 配置对象
  */
 const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
-  const sourceMapEnabled = true;
+  // CJS 的 sourcemap 与 ESM 那份重复，占发布体积三分之一，且浏览器调试只走 es/
+  const sourceMapEnabled = format !== 'cjs';
   const minifyEnabled = format === 'umd';
   const styleExtensions = ['.css', '.scss', '.sass'];
   const extensions = ['.js', '.ts', '.vue'];
@@ -112,6 +373,9 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
     output: {
       format,
       sourcemap: sourceMapEnabled,
+      // 只发布映射、不发布源码：sourcesContent 会把整份 src 内联进 .map，
+      // 占 es/ 体积的三到四成。调试者手上就有源码（或能从仓库取），无需随包分发。
+      sourcemapExcludeSources: true,
       ...(outputFile ? { file: outputFile } : { dir: outputDir }),
       name: outputFile ? pkgName : undefined, // 适用于 UMD/IIFE 格式
       exports: format === 'esm' ? undefined : 'named',
@@ -126,6 +390,10 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
     },
     plugins: [
       Vue({
+        // unplugin-vue 默认取 process.env.NODE_ENV === 'production'，而构建链上无人设它，
+        // 于是发布产物一直是 development 编译：__file 内联构建机绝对路径、devtools 元数据
+        // 残留、inline template 被关闭导致每个 SFC 拆成两个模块。dev（watch）仍需保留这些。
+        isProduction: !process.env.ROLLUP_WATCH,
         style: {
           preprocessLang: 'scss',
           preprocessOptions: {
@@ -146,28 +414,16 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
         transformMixedEsModules: true,
       }),
       json(),
+      assertAssetsInlinable(),
       url({
-        limit: 8 * 1024,
-        include: [
-          '**/*.png',
-          '**/*.jpg',
-          '**/*.jpeg',
-          '**/*.svg',
-          '**/*.gif',
-          '**/*.webp',
-          '**/*.ttf',
-          '**/*.woff',
-          '**/*.woff2',
-          '**/*.eot',
-          '**/*.otf',
-        ],
-        emitFiles: true,
-        fileName: '[dirname][name][extname]',
-        publicPath: './',
+        limit: ASSET_INLINE_LIMIT,
+        include: ASSET_GLOBS,
+        emitFiles: false,
       }),
       esbuild({
         sourceMap: sourceMapEnabled,
-        target: 'es2018',
+        // esbuild 不读 browserslist，需与根目录 .browserslistrc 手工保持一致
+        target: ['chrome99', 'edge99', 'firefox97', 'safari15.4'],
         minify: minifyEnabled,
         minifyIdentifiers: minifyEnabled,
         minifySyntax: minifyEnabled,
@@ -179,7 +435,7 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       postcss({
         modules: false,
         minimize: true,
-        sourceMap: sourceMapEnabled,
+        sourceMap: false,
         extract: true,
         extensions: styleExtensions,
         use: {
@@ -193,6 +449,10 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       }),
       // 声明了 ./style CSS 导出的包，构建 es/ 时自动生成 es/style.d.ts（types 条件指向它）
       ...(format === 'esm' && pkg.exports?.['./style'] ? [emitStyleDts(outputDir)] : []),
+      // CJS 产物剔除样式副作用导入：Node require 不动 .css，留着会让 lib/ 入口直接抛错
+      ...(format === 'cjs' ? [stripStyleRequires(dir), dropDuplicateCss(outputDir)] : []),
+      // preserveModules 下清掉 unplugin-vue 留下的无人引用 re-export 壳
+      ...(outputFile ? [] : [dropOrphanChunks()]),
     ],
     external: (id) => {
       if (outputFile) {
@@ -201,13 +461,6 @@ const createBaseConfig = (dir, format, outputDir, outputFile = null) => {
       }
       // ESM 和 CJS 格式外部化所有依赖
       return matchesDep(id, collectExternalDeps(pkg));
-    },
-    onwarn(warning, warn) {
-      if (warning.code === 'CIRCULAR_DEPENDENCY') {
-        console.warn(`Circular dependency: ${warning.importer}`);
-      } else {
-        warn(warning);
-      }
     },
   };
 };
@@ -240,7 +493,8 @@ export function createRollupConfig(dir, formats = ['esm', 'cjs', 'umd']) {
   const configs = formats.map((format) => configMap[format]).filter(Boolean);
 
   // 输出 CJS 时自动生成类型声明：es/*.d.ts 单文件化 + 派生 lib/*.d.cts（dual-package 修复）
-  if (formats.includes('cjs')) {
+  // dts bundle 只是发布产物，dev 期间类型提示来自 IDE 语言服务（直读 src/），无需生成。
+  if (formats.includes('cjs') && !process.env.ROLLUP_WATCH) {
     // dts external 与 JS 一致地从 package.json 依赖推导：自身包名不在 deps 中，故不会被误当外部，
     // 避免 .d.cts 出现 `from '@aix/自己'` 的自引用；同时正确外部化 virtua / katex 等第三方类型。
     const dtsPkg = JSON.parse(fs.readFileSync(path.resolve(dir, 'package.json'), 'utf8'));
@@ -254,7 +508,7 @@ export function createRollupConfig(dir, formats = ['esm', 'cjs', 'umd']) {
         ],
         external: (id) =>
           id === 'vue' || id.startsWith('vue/') || isStyleId(id) || matchesDep(id, dtsDeps),
-        plugins: [dts({ respectExternal: true }), stripStyleImports()],
+        plugins: [dts({ respectExternal: true }), stripStyleImports(), dropOrphanDts('es', dtsPkg)],
         // 类型 bundle 的循环引用是常态，与 JS 段保持一致地静默
         onwarn(warning, warn) {
           if (warning.code !== 'CIRCULAR_DEPENDENCY') warn(warning);

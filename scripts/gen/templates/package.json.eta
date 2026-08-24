@@ -6,8 +6,8 @@
   "type": "module",
   "main": "./lib/index.cjs",
   "module": "./es/index.js",
-  "types": "./es/index.d.ts",
-  "style": "./es/index.css",
+  "types": "./es/index.d.ts",<% if (it.features.scss) { %>
+  "style": "./es/index.css",<% } %>
   "sideEffects": [
     "*.css",
     "*.scss",
@@ -23,10 +23,11 @@
         "types": "./lib/index.d.cts",
         "default": "./lib/index.cjs"
       }
-    },
-    "./es/*": "./es/*",
-    "./lib/*": "./lib/*",
-    "./style": "./es/index.css",
+    },<% if (it.features.scss) { %>
+    "./style": {
+      "types": "./es/style.d.ts",
+      "default": "./es/index.css"
+    },<% } %>
     "./package.json": "./package.json"
   },
   "files": [
@@ -42,14 +43,14 @@
     "test": "vitest --run",
     "build": "pnpm run clean && pnpm run build:types && pnpm run build:js",
     "build:js": "rollup -c",
-    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
-    "clean": "rimraf lib es tsconfig.tsbuildinfo"
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es -p tsconfig.build.json",
+    "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "dependencies": {<% if (it.dependencies.length > 0) { %><% it.dependencies.forEach((dep, index) => { %>
     "<%= dep %>": "workspace:^"<%= index < it.dependencies.length - 1 ? ',' : '' %><% }) %>
   <% } %>},
   "peerDependencies": {
-    "vue": "^3.5.31"
+    "vue": "^3.3.0"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",<% if (it.tools.stylelint) { %>
@@ -61,6 +62,7 @@
     "stylelint": "catalog:",<% } %>
     "tsx": "catalog:",
     "typescript": "catalog:",
+    "vitest": "catalog:",
     "vue-tsc": "catalog:"
   }
 }

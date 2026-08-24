@@ -1,5 +1,13 @@
 # @aix/code-editor
 
+## 0.0.6
+
+### Patch Changes
+
+- 统一升级，优化打包产物
+- Updated dependencies
+  - @aix/theme@0.0.4
+
 ## 0.0.5
 
 ### Patch Changes

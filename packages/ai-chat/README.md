@@ -20,7 +20,7 @@ Markdown 渲染的六个增强依赖（`markdown-it` / `highlight.js` / `katex` 
 组件样式依赖 `@aix/theme` 的 CSS 变量，使用前需引入主题样式：
 
 ```ts
-import '@aix/theme/es/index.css';
+import '@aix/theme/style';
 ```
 
 ## 快速开始
@@ -30,7 +30,7 @@ import '@aix/theme/es/index.css';
 ```vue
 <script setup lang="ts">
 import { AiChat } from '@aix/ai-chat';
-import '@aix/theme/es/index.css';
+import '@aix/theme/style';
 import type { ChatMessage } from '@aix/ai-chat';
 
 // request 返回字节流（ReadableStream）或 Response；signal 用于中断
@@ -82,7 +82,7 @@ const chatRef = ref<InstanceType<typeof AiChat>>();
 ```ts
 import { createApp } from 'vue';
 import AiChat from '@aix/ai-chat';
-import '@aix/theme/es/index.css';
+import '@aix/theme/style';
 
 const app = createApp(App);
 app.use(AiChat); // 注册 <AixBubble> <AixSender> <AixAiChat> …

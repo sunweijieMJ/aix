@@ -1,6 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vitepress';
 import { withMermaid } from 'vitepress-plugin-mermaid';
+import { createWorkspaceAlias } from '../../scripts/shared/workspace-alias.ts';
 
 // GitHub Pages 需要 /aix 前缀，其他环境不需要
 const basePrefix = process.env.DEPLOY_TARGET === 'github' ? '/aix' : '';
@@ -227,17 +228,8 @@ export default withMermaid(
       resolve: {
         alias: {
           '@': fileURLToPath(new URL('../', import.meta.url)),
-          // 组件包别名
-          '@aix/button': fileURLToPath(new URL('../../packages/button/src', import.meta.url)),
-          '@aix/icons': fileURLToPath(new URL('../../packages/icons/src', import.meta.url)),
-          '@aix/video': fileURLToPath(new URL('../../packages/video/src', import.meta.url)),
-          '@aix/pdf-viewer': fileURLToPath(
-            new URL('../../packages/pdf-viewer/src', import.meta.url),
-          ),
-          '@aix/subtitle': fileURLToPath(new URL('../../packages/subtitle/src', import.meta.url)),
-          // 工具包别名
-          '@aix/theme': fileURLToPath(new URL('../../packages/theme/src', import.meta.url)),
-          '@aix/hooks': fileURLToPath(new URL('../../packages/hooks/src', import.meta.url)),
+          // 组件包一律解析到源码
+          ...createWorkspaceAlias(fileURLToPath(new URL('../../', import.meta.url))),
         },
       },
       optimizeDeps: {

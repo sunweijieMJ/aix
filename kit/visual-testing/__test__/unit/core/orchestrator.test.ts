@@ -9,6 +9,7 @@
  * - LLM stats API
  */
 
+import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { VisualTestOrchestrator } from '../../../src/core/orchestrator';
 import type { VisualTestConfig } from '../../../src/core/config/schema';
@@ -450,9 +451,10 @@ describe('VisualTestOrchestrator', () => {
       const fetchSources = mockBaselineProvider.fetch.mock.calls.map((c) => c[0].source).sort();
       expect(fetchSources).toEqual(['default@dark.png', 'default@light.png']);
       const fetchOutputs = mockBaselineProvider.fetch.mock.calls.map((c) => c[0].outputPath).sort();
+      // 用 join 构造期望值：被测代码走 path.join，分隔符随平台而异（Windows 为 \）
       expect(fetchOutputs).toEqual([
-        '/tmp/baselines/button/default@dark.png',
-        '/tmp/baselines/button/default@light.png',
+        join('/tmp/baselines', 'button', 'default@dark.png'),
+        join('/tmp/baselines', 'button', 'default@light.png'),
       ]);
     });
   });

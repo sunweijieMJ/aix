@@ -84,7 +84,7 @@ Canvas 波形可视化组件，接收归一化数据点（0-1）绘制条形波�
   },
 };
 
-export { waveformMeta as default };
+export default waveformMeta;
 
 type WaveformStory = StoryObj<typeof waveformMeta>;
 
@@ -271,7 +271,6 @@ export const AudioPlayerWithWaveform: AudioPlayerStory = {
     src: TEST_AUDIO,
     showWaveform: true,
     waveform: generateWaveform(80, 'speech'),
-    activeColor: '#d72525',
   },
   render: (args) => ({
     components: { AudioPlayer },

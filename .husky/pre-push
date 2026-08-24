@@ -1,3 +1,0 @@
-#!/bin/sh
-
-tsx scripts/husky/pre-push.ts

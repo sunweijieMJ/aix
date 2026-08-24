@@ -1,6 +1,7 @@
 {
   "extends": "@kit/typescript-config/base-library.json",
   "compilerOptions": {
+    "types": ["node"],
     "declarationDir": "es",
     "rootDir": "src",
     "outDir": "es",

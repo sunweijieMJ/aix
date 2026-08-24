@@ -5,7 +5,7 @@ import { useSubtitle } from '../src/useSubtitle';
 
 // Mock fetch for URL loading tests
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+globalThis.fetch = mockFetch;
 
 describe('useSubtitle', () => {
   beforeEach(() => {

@@ -155,7 +155,13 @@ const nodeSize = computed(() => props.defaultNodeSize ?? DEFAULT_CIRCLE_SIZE);
 const hexagonSize = computed(() => props.defaultHexagonSize ?? DEFAULT_HEXAGON_SIZE);
 /** 是否开启栅格吸附（默认 true，由 withDefaults 兜底） */
 const snapEnabled = computed(() => props.snapGrid);
-/** 背景网格线颜色，使用主题边框色 */
+/**
+ * 背景网格线颜色。
+ *
+ * 有意写成固定值而非主题 Token：经 SVG 的 `stroke` presentation attribute 下发，
+ * 而 presentation attribute 不解析 `var()`，改 Token 需一并改走 `:style`。
+ * 若日后要让网格跟随主题，两处必须同时改。
+ */
 const gridColor = '#e5e6eb';
 
 // 通过 InjectionKey 暴露上下文，给内部 composable / 子组件类型安全地消费

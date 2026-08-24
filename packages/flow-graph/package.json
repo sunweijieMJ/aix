@@ -1,6 +1,6 @@
 {
   "name": "@aix/flow-graph",
-  "version": "0.0.42",
+  "version": "0.0.44",
   "description": "A Vue 3 FlowGraph component for AIX component library",
   "license": "MIT",
   "type": "module",
@@ -24,8 +24,6 @@
         "default": "./lib/index.cjs"
       }
     },
-    "./es/*": "./es/*",
-    "./lib/*": "./lib/*",
     "./style": {
       "types": "./es/style.d.ts",
       "default": "./es/index.css"
@@ -38,8 +36,8 @@
   ],
   "scripts": {
     "dev": "rollup -c -w",
-    "lint:script": "eslint src __test__ *.ts --max-warnings 0",
-    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "lint:script": "eslint . --max-warnings 0",
+    "lint:style": "stylelint '{src,stories}/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
     "lint": "pnpm run lint:script && pnpm run lint:style",
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
@@ -70,6 +68,7 @@
     "stylelint": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
+    "vitest": "catalog:",
     "vue-tsc": "catalog:"
   }
 }

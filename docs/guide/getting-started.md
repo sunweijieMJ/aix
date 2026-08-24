@@ -34,7 +34,7 @@ import App from './App.vue';
 // 引入组件
 import Button from '@aix/button';
 // 引入样式
-import '@aix/theme/dist/index.css';
+import '@aix/theme/style';
 
 const app = createApp(App);
 
@@ -51,7 +51,7 @@ Aix 支持基于 ES modules 的 tree shaking，可以实现按需引入。
 ```vue
 <script setup lang="ts">
 import { Button } from '@aix/button';
-import '@aix/theme/dist/index.css';
+import '@aix/theme/style';
 </script>
 
 <template>

@@ -1,6 +1,6 @@
 {
   "name": "@aix/theme",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "AIX Design System - Theme System with CSS Variables & TypeScript API",
   "license": "MIT",
   "type": "module",
@@ -27,11 +27,26 @@
       "types": "./dist/vars/style.d.ts",
       "default": "./dist/vars/index.css"
     },
-    "./vars": "./dist/vars/index.css",
-    "./vars/base": "./dist/vars/base-tokens.css",
-    "./vars/light": "./dist/vars/light.css",
-    "./vars/dark": "./dist/vars/dark.css",
-    "./vars/compat": "./dist/vars/index.compat.css",
+    "./vars": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/index.css"
+    },
+    "./vars/base": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/base-tokens.css"
+    },
+    "./vars/light": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/light.css"
+    },
+    "./vars/dark": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/dark.css"
+    },
+    "./vars/compat": {
+      "types": "./dist/vars/style.d.ts",
+      "default": "./dist/vars/index.compat.css"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
@@ -44,7 +59,7 @@
     "gen:css": "tsx scripts/gen-css.ts",
     "dev": "pnpm run gen:css && rollup -c -w",
     "lint:script": "eslint . --max-warnings 0",
-    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "lint:style": "stylelint '{src,stories}/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
     "lint": "pnpm run lint:script && pnpm run lint:style",
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
@@ -65,10 +80,11 @@
     "@kit/stylelint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
+    "@types/node": "catalog:",
     "autoprefixer": "catalog:",
     "eslint": "catalog:",
     "postcss": "catalog:",
-    "postcss-import": "^16.1.1",
+    "postcss-import": "^17.0.0",
     "prettier": "catalog:",
     "rimraf": "catalog:",
     "rollup": "catalog:",
@@ -77,6 +93,7 @@
     "stylelint": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
+    "vitest": "catalog:",
     "vue": "catalog:",
     "vue-tsc": "catalog:"
   }

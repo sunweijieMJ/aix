@@ -90,15 +90,21 @@ describe('AiChat + useConversations 异步 storage 接线（回归：load 结果
   };
 
   /**
-   * 轮询等到条件成立（上限 2s），取代「睡固定毫秒赌余量」。
+   * 轮询等到条件成立，取代「睡固定毫秒赌余量」。
    *
    * 原先统一用 settle(40)：要在 40ms 里跨过 storage 的 10ms load 延迟 + 5ms 保存防抖，
    * 余量只有几十毫秒。本地单跑必绿，但 pre-commit 钩子 / CI 上 turbo 还在并发构建、
    * 118 个测试文件同时在跑，真实定时器迟到几十毫秒是常态，断言就会在数据尚未落地时执行——
    * 该文件在钩子里间歇性挂掉的正是这一条（「load 生效后的用户变更不会用空默认覆盖」）。
    * 改成等条件而非等时间后，用例与机器快慢彻底解耦，且快机器上反而更快返回。
+   *
+   * 上限从 2s 提到 15s：这个数字是「卡死了」的判据，不是「应该多快」的预算，
+   * 条件一成立就立刻返回，调大它在正常路径上零成本。2s 仍然把两者混在一起——
+   * `pnpm test` 并发 31 个任务时事件循环被抢占，墙钟照走而轮询跑不了几轮，
+   * 实测就在这里抛过「waitFor 超时：条件始终未成立」。
+   * 15s 留在本包 testTimeout（20s）之下，保证超时时报的是这条更具体的信息。
    */
-  const waitFor = async (cond: () => boolean, timeout = 2000) => {
+  const waitFor = async (cond: () => boolean, timeout = 15_000) => {
     const deadline = Date.now() + timeout;
     for (;;) {
       await flushPromises();

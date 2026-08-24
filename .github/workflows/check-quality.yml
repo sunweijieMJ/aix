@@ -6,19 +6,20 @@
 # 2. test: 单元测试（并行执行）
 # 3. type-check: TypeScript 类型检查（并行执行）
 # 4. lint: 代码规范检查（并行执行）
+# 5. publish-lint: 发布前体检 publint + attw（并行执行）
 #
 # 触发条件：
-# - PR 提交到 master / release/** 分支
-# - 直接 push 到 master / release/** / sentinel/** 分支
+# - PR 提交到 master / pre-master / release/** 分支
+# - 直接 push 到 master / pre-master / release/** / sentinel/** 分支
 # ------------------------------------------------------------
 
 name: Check Quality
 
 on:
   pull_request:
-    branches: [master, 'release/**']
+    branches: [master, pre-master, 'release/**']
   push:
-    branches: [master, 'release/**', 'sentinel/**']
+    branches: [master, pre-master, 'release/**', 'sentinel/**']
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -84,6 +85,12 @@ jobs:
           echo "All packages built successfully"
 
       # 缓存构建产物供后续 jobs 使用（node_modules 由各 job 通过 pnpm store 缓存自行恢复）
+      #
+      # 注意：这里必须列全**所有**被 gitignore 的构建产物，不能只列 dist/es/lib。缓存命中时
+      # 后续 job 的 fallback 构建会被跳过，漏掉的目录在那些 job 里就永远不存在。已踩过两次：
+      # - packages/icons/src：由 scripts/generate.ts 生成，漏掉会让 icons 的测试解析不到源码；
+      # - internal/*/data：由 mcp-server 的 build → extract 生成，漏掉会让 Publish Lint 打出
+      #   缺 data/ 的包（files 声明了它），发布后服务器启动即崩。
       - name: Cache build outputs
         uses: actions/cache/save@v4
         with:
@@ -91,7 +98,9 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
@@ -126,7 +135,9 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
@@ -139,6 +150,66 @@ jobs:
 
       - name: Run tests
         run: pnpm test
+
+  # ============================
+  # Coverage - 覆盖率防退化门禁
+  #
+  # 与 test job 分开：test 跑 turbo 的包级口径（无阈值、可缓存），
+  # 本 job 跑根口径 vitest 汇总覆盖率并校验 vitest.config.ts 里的 thresholds。
+  # 阈值为"当前水位 - 1 个点"，作用是不许再掉；补完测试请同步上调。
+  # ============================
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Restore build cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/*/es
+            packages/*/lib
+            packages/*/dist
+            packages/icons/src
+            internal/*/dist
+            internal/*/data
+            kit/*/dist
+          key: build-${{ github.sha }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages (fallback)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: pnpm build
+
+      - name: Run coverage (thresholds enforced)
+        run: pnpm test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+          # 前置步骤失败时 coverage/ 可能不存在，此处不应再叠加一个失败
+          if-no-files-found: ignore
 
   # ============================
   # Type Check - TypeScript 类型检查
@@ -171,7 +242,9 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
@@ -216,7 +289,9 @@ jobs:
             packages/*/es
             packages/*/lib
             packages/*/dist
+            packages/icons/src
             internal/*/dist
+            internal/*/data
             kit/*/dist
           key: build-${{ github.sha }}
 
@@ -229,3 +304,58 @@ jobs:
 
       - name: Lint (ESLint + Stylelint)
         run: pnpm lint
+
+  # ============================
+  # Publish Lint - 发布前体检（publint + attw）
+  #
+  # 校验 package.json 字段自洽性，以及类型在 node10 / node16-cjs / node16-esm /
+  # bundler 四种解析模式下能否被正确解析。主要用途是为手写的 dual-package 处理
+  # （.d.cts 派生、stripStyleImports、emitStyleDts）提供回归防护——那部分逻辑
+  # 微妙且无单测覆盖，改坏了只会在用户侧暴露。
+  #
+  # 门禁：--strict 下 publint 的 error + warning 与 attw 的 problems 均阻断。
+  # suggestion（目前只剩 engines.node）不阻断——组件库是浏览器产物，声明 Node
+  # 版本对消费方近乎无收益，写错反而会让低版本 Node 的项目直接装不上。
+  # ============================
+  publish-lint:
+    name: Publish Lint
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Restore build cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/*/es
+            packages/*/lib
+            packages/*/dist
+            packages/icons/src
+            internal/*/dist
+            internal/*/data
+            kit/*/dist
+          key: build-${{ github.sha }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages (fallback)
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: pnpm build
+
+      - name: Publish lint (publint + attw)
+        run: pnpm lint:publish --strict

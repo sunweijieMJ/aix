@@ -1,6 +1,6 @@
 {
   "name": "@aix/icons",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.cjs",
@@ -19,8 +19,8 @@
       }
     },
     "./*": {
-      "types": "./es/*.d.ts",
-      "import": "./es/*.js"
+      "types": "./es/*.vue.d.ts",
+      "import": "./es/*.vue.js"
     },
     "./package.json": "./package.json"
   },
@@ -31,7 +31,7 @@
   "scripts": {
     "dev": "rollup -c -w",
     "lint": "eslint . --max-warnings 0",
-    "type-check": "vue-tsc --noEmit -p tsconfig.json",
+    "type-check": "pnpm run build:generate && vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
     "build:generate": "tsx scripts/generate.ts",
     "build:js": "rollup -c",
@@ -51,6 +51,7 @@
     "rimraf": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
+    "vitest": "catalog:",
     "vue": "catalog:",
     "vue-tsc": "catalog:"
   }

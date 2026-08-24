@@ -1,6 +1,6 @@
 {
   "name": "@aix/button",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "description": "A Vue 3 Button component",
   "license": "MIT",
   "type": "module",
@@ -24,8 +24,6 @@
         "default": "./lib/index.cjs"
       }
     },
-    "./es/*": "./es/*",
-    "./lib/*": "./lib/*",
     "./style": {
       "types": "./es/style.d.ts",
       "default": "./es/index.css"
@@ -39,7 +37,7 @@
   "scripts": {
     "dev": "rollup -c -w",
     "lint:script": "eslint . --max-warnings 0",
-    "lint:style": "stylelint 'src/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
+    "lint:style": "stylelint '{src,stories}/**/*.{css,scss,vue}' --max-warnings 0 --allow-empty-input",
     "lint": "pnpm run lint:script && pnpm run lint:style",
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
@@ -65,6 +63,7 @@
     "stylelint": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
+    "vitest": "catalog:",
     "vue-tsc": "catalog:"
   }
 }

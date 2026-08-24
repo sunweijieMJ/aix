@@ -54,6 +54,13 @@ const {
 const rootClass = computed(() => [
   'aix-code-editor',
   {
+    // `dark` 是 @aix/theme 暗色 Token 的挂载选择器之一（`.dark, :root[data-theme=dark]`，
+    // 见 docs/guide/architecture.md 的「双选择器兼容」）。它不带 `:root` 前缀，因此挂在
+    // 本组件根节点上即可让子树内的 `--aix-*` 重解析为暗色值。
+    //
+    // 少了这一句，theme="dark" 就只有语法高亮生效（那部分是裸 hex），
+    // 编辑器底色仍跟随全局主题——全局浅色时会得到「深色语法色配浅色底」。
+    dark: props.theme === 'dark',
     'aix-code-editor--focused': isFocused.value,
     'aix-code-editor--disabled': props.disabled,
     'aix-code-editor--readonly': props.readonly,

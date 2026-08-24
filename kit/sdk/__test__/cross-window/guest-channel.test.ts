@@ -694,9 +694,12 @@ describe('GuestChannel — 心跳 / onDisconnect', () => {
   it('心跳启用时按 interval 周期向对端发 ping', async () => {
     const { channel, received } = setupWithHeartbeat(30, 500);
 
-    await wait(100); // 足够收到至少 2 次 ping
-
-    expect(countPings(received)).toBeGreaterThanOrEqual(2);
+    // 轮询而非固定 sleep：真实定时器在高负载（如 monorepo 并行跑测试）下会晚触发，
+    // 固定窗口会把「慢」误判成「没发」
+    await vi.waitFor(() => expect(countPings(received)).toBeGreaterThanOrEqual(2), {
+      timeout: 2000,
+      interval: 10,
+    });
 
     channel.dispose();
   });
@@ -727,10 +730,12 @@ describe('GuestChannel — 心跳 / onDisconnect', () => {
     channel.onDisconnect(onDisconnect);
     expect(channel.connected).toBe(true);
 
-    // 等待足够时间跨过 timeout 阈值，并触发至少一次 _tickHeartbeat
-    await wait(150);
+    // 轮询等待跨过 timeout 阈值并触发至少一次 _tickHeartbeat（同上：不用固定窗口）
+    await vi.waitFor(() => expect(onDisconnect).toHaveBeenCalledWith('heartbeat-timeout'), {
+      timeout: 2000,
+      interval: 10,
+    });
 
-    expect(onDisconnect).toHaveBeenCalledWith('heartbeat-timeout');
     expect(channel.connected).toBe(false);
 
     channel.dispose();

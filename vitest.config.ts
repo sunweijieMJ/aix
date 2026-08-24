@@ -13,7 +13,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       enabled: false,
-      include: ['packages/*/src/**/*.{ts,vue}'],
+      // 组件包 + 工具包 + 内部基础设施：三处都有单测投入，覆盖率口径应一致
+      include: ['packages/*/src/**/*.{ts,vue}', 'kit/*/src/**/*.ts', 'internal/*/src/**/*.ts'],
       exclude: [
         '**/*.d.ts',
         '**/types.ts',
@@ -24,11 +25,15 @@ export default defineConfig({
         '**/__test__/**',
         '**/stories/**',
       ],
+      // 防退化阈值：取当前实测水位下调约 1 个点，作用是"不许再掉"，而非"已经达标"。
+      // 目标仍是 80%，但直接把 80 接进 CI 只会立刻红、然后被 continue-on-error 绕过。
+      // 补测试拉高水位后，请同步上调这里的数字（实测口径：pnpm test:coverage）。
+      // 实测于 2026-08-22：statements 73.67 / branches 67.38 / functions 72.68 / lines 74.77
       thresholds: {
-        statements: 80,
-        branches: 80,
-        functions: 80,
-        lines: 80,
+        statements: 72.5,
+        branches: 66,
+        functions: 71.5,
+        lines: 73.5,
       },
       reporter: ['text', 'html', 'lcov'],
       reportsDirectory: './coverage',

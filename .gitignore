@@ -21,19 +21,21 @@ coverage
 # claude
 settings.local.json
 
-# Changeset
-.changeset/pre.json
-
 # Vercel
 .vercel
 
 # Build Outputs
+# 注意：这些模式必须锚定到具体位置。裸写 `es` / `lib` / `dist` 会在任意深度匹配，
+# 导致日后新建的 `src/lib/`、`src/locale/es/`（西语）等源码目录被静默忽略。
 .next/
 out/
-build
-dist
-es
-lib
+/dist
+packages/*/es
+packages/*/lib
+packages/*/dist
+kit/*/dist
+internal/*/dist
+apps/*/dist
 packages/icons/src
 internal/mcp-server/data
 

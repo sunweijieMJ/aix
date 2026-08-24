@@ -59,3 +59,6 @@ export * from './use-clipboard';
 
 // 兼容 Vue 3.3+ 的唯一 id 生成(3.5+ 透传原生 useId,低版本回退计数器)
 export * from './use-id';
+
+// 时长格式化（mm:ss / hh:mm:ss），供 audio / video 等播放类组件共用
+export * from './format-duration';

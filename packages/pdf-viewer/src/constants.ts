@@ -9,20 +9,26 @@ import type {
   ContextMenuItem,
 } from './types';
 
-/** 默认图片高亮样式 */
+/**
+ * 默认图片高亮样式。
+ *
+ * 值最终经 `element.style.borderColor = ...` 写进内联样式，内联样式会解析 `var()`，
+ * 故此处直接写主题 Token 即可跟随明暗切换。兜底值保留原先的字面量，
+ * 供未引入 `@aix/theme/style` 的消费方使用。
+ */
 export const DEFAULT_IMAGE_HIGHLIGHT_STYLES: {
   hover: ImageHighlightStyle;
   selected: ImageHighlightStyle;
 } = {
   hover: {
-    borderColor: '#409eff',
+    borderColor: 'var(--aix-colorPrimary, #409eff)',
     borderWidth: 2,
-    backgroundColor: 'rgba(64, 158, 255, 0.1)',
+    backgroundColor: 'var(--aix-colorPrimaryBg, rgb(64 158 255 / 0.1))',
   },
   selected: {
-    borderColor: '#67c23a',
+    borderColor: 'var(--aix-colorSuccess, #67c23a)',
     borderWidth: 2,
-    backgroundColor: 'rgba(103, 194, 58, 0.15)',
+    backgroundColor: 'var(--aix-colorSuccessBg, rgb(103 194 58 / 0.15))',
   },
 };
 

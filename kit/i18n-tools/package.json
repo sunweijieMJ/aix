@@ -1,6 +1,6 @@
 {
   "name": "@kit/i18n-tools",
-  "version": "0.0.27",
+  "version": "0.0.28",
   "description": "I18n automation tools for Vue/React projects",
   "type": "module",
   "license": "MIT",
@@ -28,20 +28,20 @@
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsdown --config-loader tsx",
+    "build": "pnpm run clean && tsdown",
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@vue/compiler-dom": "^3.5.38",
-    "@vue/compiler-sfc": "^3.5.38",
-    "chalk": "^5.6.2",
+    "@vue/compiler-dom": "^3.5.41",
+    "@vue/compiler-sfc": "^3.5.41",
+    "chalk": "^6.0.0",
     "dotenv": "^17.4.2",
-    "inquirer": "^14.0.2",
+    "inquirer": "^14.1.0",
     "jiti": "^2.7.0",
-    "openai": "^6.42.0",
-    "picomatch": "^4.0.4",
+    "openai": "^7.5.0",
+    "picomatch": "^4.0.5",
     "typescript": "catalog:",
-    "yargs": "^18.0.0"
+    "yargs": "^18.1.0"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
@@ -51,8 +51,10 @@
     "@types/node": "catalog:",
     "@types/picomatch": "^4.0.3",
     "@types/yargs": "^17.0.35",
+    "eslint": "catalog:",
     "rimraf": "catalog:",
     "tsdown": "catalog:",
-    "tsx": "catalog:"
+    "tsx": "catalog:",
+    "vitest": "catalog:"
   }
 }

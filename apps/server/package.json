@@ -20,21 +20,20 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.13",
+    "@hono/node-server": "^2.1.1",
     "@hono/swagger-ui": "^0.6.1",
-    "@hono/zod-openapi": "^1.2.4",
-    "adm-zip": "^0.5.17",
-    "@libsql/client": "^0.17.2",
-    "dotenv": "^17.4.1",
+    "@hono/zod-openapi": "^1.6.1",
+    "@libsql/client": "^0.17.4",
+    "adm-zip": "^0.6.0",
+    "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.12",
-    "zod": "^4.3.6"
+    "hono": "^4.13.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "@types/adm-zip": "^0.5.8",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "drizzle-kit": "^0.31.10",

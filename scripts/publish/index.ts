@@ -13,8 +13,14 @@ import {
   NPM_UNPUBLISH_TIME_LIMIT_HOURS,
   DEFAULT_MAX_RETRIES,
   DEFAULT_RETRY_DELAY_MS,
+  PRE_JSON_REL,
   runWithRetry,
   confirm,
+  normalizeTag,
+  getPreJsonPath,
+  parsePreJson,
+  snapshotPreJson,
+  restorePreJson,
 } from './shared.js';
 
 // 导入功能模块
@@ -27,6 +33,7 @@ import {
 import { checkWorkspace, commitVersionChanges, postPublishGitActions } from './git.js';
 import { getWorkspacePackages } from './workspace.js';
 import {
+  assertValidTagMode,
   setupReleaseMode,
   createChangeset,
   createChangesetNonInteractive,
@@ -71,7 +78,7 @@ const NPM_REGISTRY = getNpmRegistry(projectRoot);
 const parseArgs = () => {
   const args = process.argv.slice(2);
   const result = {
-    mode: '', // 发布模式: release, beta, alpha
+    mode: '', // 发布模式: release, beta, alpha, 或自定义 dist-tag (如 oem)
     action: '', // 操作类型: full, create, version, publish
     skipPrompts: false, // 是否跳过所有确认提示
     dryRun: false, // 干运行模式，只显示将要发布的包，不实际发布
@@ -123,7 +130,7 @@ ${chalk.yellow('用法:')}
 
 ${chalk.yellow('选项:')}
   -h, --help           显示帮助信息
-  -m, --mode <mode>    指定发布模式 (release, beta, alpha)
+  -m, --mode <mode>    指定发布模式 (release, beta, alpha, 或自定义 dist-tag 如 oem)
   -a, --action <action> 指定操作类型
   -y, --yes            跳过所有确认提示，自动选择默认选项
   -d, --dry-run        干运行模式，只显示将要发布的包，不实际发布
@@ -143,6 +150,7 @@ ${chalk.yellow('操作类型:')}
 ${chalk.yellow('示例:')}
   pnpm pre                   # 启动交互式菜单
   pnpm pre -a full -m beta   # 执行完整的 beta 发布流程
+  pnpm pre -a full -m oem    # 以自定义标签 oem 发布 (版本形如 x.x.x-oem.0, dist-tag: oem)
   pnpm pre -a create         # 只创建 changeset（交互式）
   pnpm pre -a create -p "@aix/button,@aix/hooks" -b patch -s "修复 xxx 问题"  # 非交互创建 changeset
   pnpm pre -a full -y -p "@aix/button" -b patch -s "修复 xxx 问题"           # 全流程非交互执行
@@ -163,19 +171,26 @@ const publishPackages = async (
   const preTag = getPreReleaseTag(projectRoot);
   const tagInfo = preTag ? ` (dist-tag: ${preTag})` : ' (dist-tag: latest)';
 
-  // 解析待发布的包：优先使用调用方传入的列表，否则按 changeset → git diff fallback 检测
+  // 解析待发布的包：优先使用调用方传入的列表，否则取 changeset 文件与 git diff 的并集
+  // （与 detectPackages 同理：短路 fallback 会漏掉 changeset version 连带 bump 的依赖方包，
+  //   使 dry-run / 发布汇总展示的包列表与 changeset publish 的实际行为不一致）
   const resolvePackages = async (): Promise<Set<string>> => {
     if (knownPackages && knownPackages.size > 0) return knownPackages;
     const fromChangeset = await getChangedPackages(projectRoot);
-    if (fromChangeset.size > 0) return fromChangeset;
-    return getVersionBumpedPackages(projectRoot);
+    const fromDiff = getVersionBumpedPackages(projectRoot);
+    return new Set([...fromChangeset, ...fromDiff]);
   };
 
   // Dry-run 模式：只显示待发布的包
   if (dryRun) {
     console.log(chalk.cyan('\n🔍 Dry-run 模式 - Changeset 将发布以下包:'));
     console.log(chalk.gray(`目标 Registry: ${NPM_REGISTRY}`));
-    console.log(chalk.gray(`Dist Tag: ${preTag || 'latest'}\n`));
+    // dry-run 不执行 setupReleaseMode，-m 参数不会生效，这里只能反映 pre.json 的当前状态
+    console.log(
+      chalk.gray(
+        `Dist Tag: ${preTag || 'latest'} (以当前 pre 模式状态为准，-m 在 dry-run 下不生效)\n`,
+      ),
+    );
 
     const targetPackages = await resolvePackages();
 
@@ -291,16 +306,62 @@ const executeAction = async (action: string, mode: string, options: ExecuteOptio
         await createChangeset(projectRoot, skipPrompts);
       }
       break;
-    case 'version':
+    case 'version': {
       checkWorkspace(projectRoot);
-      await setupReleaseMode(projectRoot, mode, skipPrompts);
+      // pre enter 会写 pre.json，若 setupReleaseMode 中途失败（如用户取消自定义标签确认），
+      // 遗留的未跟踪 pre.json 会让下次 checkWorkspace 直接卡死，必须回滚到进入前的状态
+      const preJsonSnapshot = snapshotPreJson(projectRoot);
+      try {
+        await setupReleaseMode(projectRoot, mode, skipPrompts);
+      } catch (error) {
+        restorePreJson(projectRoot, preJsonSnapshot);
+        throw error;
+      }
       await updateVersion(projectRoot, skipPrompts);
       break;
+    }
     case 'publish': {
       // 不调用 checkWorkspace：publish 通常在 changeset version 之后执行，
       // 此时 package.json / CHANGELOG.md / pnpm-lock.yaml 必然处于未提交状态
       let packages: Set<string> | undefined;
       if (!dryRun) {
+        // 拦截 pre exit 后未 version 的残留状态：changeset publish 只要 pre.json 存在就按其 tag 发布
+        // （不检查 mode），此状态下确认提示与实际发布行为必然不一致，先让用户把状态修完
+        const preJson = parsePreJson(getPreJsonPath(projectRoot));
+        if (preJson && preJson.mode !== 'pre') {
+          throw new Error(
+            `检测到已退出但未完成 version 的 pre 状态 (tag: ${preJson.tag})\n` +
+              `此状态下 changeset publish 仍会按 "${preJson.tag}" 标签发布\n` +
+              `请择一处理：\n` +
+              `  git checkout -- ${PRE_JSON_REL}  # 恢复到 pre 模式（该文件未提交过时直接删除即可）\n` +
+              `  npx changeset version                # 完成退出收口（消费 changeset 并删除 pre.json）`,
+          );
+        }
+        // 预发布状态下非交互发布必须显式确认通道：-y 会让"确认发布?"自动通过，
+        // 不传 -m 就无从校验用户是否知道自己发的是预发布通道而非正式版
+        if (preJson && !mode && skipPrompts) {
+          throw new Error(
+            `当前处于 "${preJson.tag}" 预发布状态，非交互 (-y) 发布必须显式传 -m ${preJson.tag} 确认发布通道\n` +
+              `（防止把预发布通道误当正式发布）`,
+          );
+        }
+        // publish 不切换发布模式（模式由 version/full 阶段的 setupReleaseMode 设置），
+        // 显式传入的 -m 与当前状态不一致时报错，而不是静默忽略后发到错误的 dist-tag
+        if (mode) {
+          // 先按 setupReleaseMode 的同一套规则规范化并校验：非法标签直接报格式/保留字原因，
+          // 否则会被引导去执行 pnpm pre -a version -m <非法标签> 这个必然失败的命令
+          const requested = normalizeTag(mode);
+          assertValidTagMode(requested);
+          const currentMode = preJson?.tag ?? 'release';
+          if (requested !== currentMode) {
+            throw new Error(
+              `publish 操作不切换发布模式：当前为 ${
+                currentMode === 'release' ? '正式发布' : `"${currentMode}" 预发布`
+              } 状态，与 -m ${mode} 不一致\n` +
+                `请先执行 pnpm pre -a full -m ${requested}（已有 changeset 时可用 pnpm pre -a version -m ${requested}）`,
+            );
+          }
+        }
         checkNpmLogin(NPM_REGISTRY);
         // allowEmpty：上次发布失败后重跑时 changeset 已消费、版本变更已提交，
         // 检测结果为空属预期，跳过构建并交由 publishPackages 的防护分支确认后继续
@@ -407,31 +468,41 @@ const runFullProcess = async (
   checkWorkspace(projectRoot);
   runQualityGates(projectRoot, withGates);
 
-  // 模式设置必须在 checkWorkspace 之后，因为 changeset pre enter 会修改 pre.json
-  await setupReleaseMode(projectRoot, mode, skipPrompts);
+  // pre enter 已写 pre.json 而流程在 version 之前失败时必须回滚：
+  // 否则遗留的未跟踪 pre.json 会让下次 checkWorkspace 直接卡死
+  // （updateVersion 及之后不在保护范围内：其内部取消分支走 git stash push -u，
+  //   会连带 pre.json 一起保存，语义正确）
+  const preJsonSnapshot = snapshotPreJson(projectRoot);
+  try {
+    // 模式设置必须在 checkWorkspace 之后，因为 changeset pre enter 会修改 pre.json
+    await setupReleaseMode(projectRoot, mode, skipPrompts);
 
-  // 检查是否已有 changeset 文件，没有则引导创建
-  const initialChangedPackages = await getChangedPackages(projectRoot);
-  if (!initialChangedPackages.size) {
-    console.log(chalk.yellow('未检测到现有的 changeset 文件，需要先创建'));
-    const created = changesetInput
-      ? createChangesetNonInteractive(projectRoot, changesetInput)
-      : await createChangeset(projectRoot, skipPrompts);
-    if (!created) {
-      throw new Error('未创建任何 changeset，发布流程终止');
+    // 检查是否已有 changeset 文件，没有则引导创建
+    const initialChangedPackages = await getChangedPackages(projectRoot);
+    if (!initialChangedPackages.size) {
+      console.log(chalk.yellow('未检测到现有的 changeset 文件，需要先创建'));
+      const created = changesetInput
+        ? createChangesetNonInteractive(projectRoot, changesetInput)
+        : await createChangeset(projectRoot, skipPrompts);
+      if (!created) {
+        throw new Error('未创建任何 changeset，发布流程终止');
+      }
+      const afterCreate = await getChangedPackages(projectRoot);
+      if (!afterCreate.size) {
+        throw new Error('未创建任何 changeset，发布流程终止');
+      }
+    } else if (changesetInput) {
+      // 已有 changeset，但调用方显式传入了 --packages/--bump/--summary：
+      // 视为明确意图，仍按指定内容追加一个 changeset，避免误用遗留的旧 changeset 文件
+      createChangesetNonInteractive(projectRoot, changesetInput);
+    } else if (!skipPrompts) {
+      // 已有 changeset 且未显式指定：仅在交互模式下询问是否追加新的 changeset
+      // skipPrompts 下直接复用已有 changeset，避免卡在 inquirer 的必填输入
+      await createChangeset(projectRoot, skipPrompts);
     }
-    const afterCreate = await getChangedPackages(projectRoot);
-    if (!afterCreate.size) {
-      throw new Error('未创建任何 changeset，发布流程终止');
-    }
-  } else if (changesetInput) {
-    // 已有 changeset，但调用方显式传入了 --packages/--bump/--summary：
-    // 视为明确意图，仍按指定内容追加一个 changeset，避免误用遗留的旧 changeset 文件
-    createChangesetNonInteractive(projectRoot, changesetInput);
-  } else if (!skipPrompts) {
-    // 已有 changeset 且未显式指定：仅在交互模式下询问是否追加新的 changeset
-    // skipPrompts 下直接复用已有 changeset，避免卡在 inquirer 的必填输入
-    await createChangeset(projectRoot, skipPrompts);
+  } catch (error) {
+    restorePreJson(projectRoot, preJsonSnapshot);
+    throw error;
   }
 
   await updateVersion(projectRoot, skipPrompts);

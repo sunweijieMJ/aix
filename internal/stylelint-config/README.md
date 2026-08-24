@@ -40,13 +40,35 @@ module.exports = require('@kit/stylelint-config/base.js');
 
 ### Vue 应用配置 (vue-app)
 
-适用于 Vue 3 组件库和应用开发，包含 Vue SFC 支持。
+适用于 Vue 3 业务应用开发，包含 Vue SFC 支持。
 
 ```javascript
 import vueAppConfig from '@kit/stylelint-config/vue-app.js';
 
 export default vueAppConfig;
 ```
+
+### 组件库配置 (component-library)
+
+适用于 `@aix/*` 组件包。在 vue-app 基础上追加两条组件库特有约束：
+
+| 规则 | 约束 |
+| --- | --- |
+| `selector-class-pattern` | class 必须使用 `aix-` 命名空间；放行 `is-` 状态前缀（`ns.is()` 生成）与登记过的第三方前缀 |
+| `declaration-property-value-disallowed-list` | 禁止裸写 hex 颜色，须用 `var(--aix-*)`；`var(--aix-x, #fallback)` 的兜底写法放行 |
+
+这两条**不放进 vue-app**：vue-app 同时服务业务应用（如 `apps/client`），
+业务应用既不使用 `aix-` 命名空间，也允许自由写颜色。
+
+```javascript
+// packages/<name>/stylelint.config.ts
+export default {
+  extends: ['@kit/stylelint-config/component-library'],
+};
+```
+
+> 需要覆盖新引入的第三方组件样式时，把它的 class 前缀登记到
+> `component-library.js` 的 `THIRD_PARTY_CLASS_PREFIXES`，而不是放宽整条规则。
 
 ## 配置说明
 
@@ -133,13 +155,13 @@ overrides: [
 
 ## 使用场景
 
-### 1. Vue 组件库（推荐使用 vue-app）
+### 1. Vue 组件库（推荐使用 component-library）
 
 ```javascript
 // stylelint.config.js
-import vueAppConfig from '@kit/stylelint-config/vue-app.js';
-
-export default vueAppConfig;
+export default {
+  extends: ['@kit/stylelint-config/component-library'],
+};
 ```
 
 **支持的样式**

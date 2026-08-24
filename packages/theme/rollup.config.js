@@ -1,10 +1,14 @@
+import fs from 'fs';
 import autoprefixer from 'autoprefixer';
 import postcssImport from 'postcss-import';
 import { defineConfig } from 'rollup';
 import { dts } from 'rollup-plugin-dts';
 import esbuild from 'rollup-plugin-esbuild';
 import postcss from 'rollup-plugin-postcss';
-import { emitStyleDts, isStyleId, stripStyleImports } from '../../rollup.config.js';
+import { dropOrphanDts, emitStyleDts, isStyleId, stripStyleImports } from '../../rollup.config.js';
+
+// dropOrphanDts 需要 exports 判断通配导出（本包没有，但保持接口一致）
+const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 // CSS 入口配置
 const cssEntries = [
@@ -75,16 +79,28 @@ export default defineConfig([
   // dist/index.d.ts（内联无扩展名相对引用，修 node16 internal resolution）+ 派生
   // dist/index.d.cts 给 CJS 入口（修 masquerading）。须在 build:types 之后运行，
   // 故 build 顺序为 gen:css → build:types → rollup -c（本段）。
-  {
-    input: 'dist/index.d.ts',
-    output: [
-      { file: 'dist/index.d.ts', format: 'es' },
-      { file: 'dist/index.d.cts', format: 'es' },
-    ],
-    external: (id) => /^vue($|\/)/.test(id) || isStyleId(id),
-    plugins: [dts({ respectExternal: true }), stripStyleImports()],
-    onwarn(warning, warn) {
-      if (warning.code !== 'CIRCULAR_DEPENDENCY') warn(warning);
-    },
-  },
+  //
+  // dts bundle 只是发布产物，dev 期间类型提示来自 IDE 语言服务（直读 src/），无需生成。
+  ...(process.env.ROLLUP_WATCH
+    ? []
+    : [
+        {
+          input: 'dist/index.d.ts',
+          output: [
+            { file: 'dist/index.d.ts', format: 'es' },
+            { file: 'dist/index.d.cts', format: 'es' },
+          ],
+          external: (id) => /^vue($|\/)/.test(id) || isStyleId(id),
+          // dropOrphanDts：index.d.ts 自包含后，tsc 铺开的逐模块声明（core/ utils/ vue/ 等
+          // 共约 76KB）已不可达，但 files:["dist"] 会把它们整体发进 tarball，故清掉
+          plugins: [
+            dts({ respectExternal: true }),
+            stripStyleImports(),
+            dropOrphanDts('dist', pkg),
+          ],
+          onwarn(warning, warn) {
+            if (warning.code !== 'CIRCULAR_DEPENDENCY') warn(warning);
+          },
+        },
+      ]),
 ]);

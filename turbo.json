@@ -5,7 +5,9 @@
     "internal/typescript-config/*.json",
     "tsconfig.json",
     "typings/**/*.d.ts",
-    "pnpm-workspace.yaml"
+    "pnpm-workspace.yaml",
+    ".browserslistrc",
+    "pnpm-lock.yaml"
   ],
   "remoteCache": {
     "signature": true
@@ -14,9 +16,7 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": [
-        "src/**/*.{ts,tsx,js,jsx,vue}",
-        "src/**/*.{css,scss,sass,less}",
-        "src/**/*.{json,md}",
+        "src/**",
         "typings/**/*.d.ts",
         "assets/**",
         "scripts/**",
@@ -39,7 +39,9 @@
         "__test__/**/*.{ts,tsx,vue}",
         "*.config.ts",
         "tsconfig*.json",
-        "package.json"
+        "package.json",
+        "scripts/**",
+        "assets/**"
       ],
       "outputs": [],
       "cache": true
@@ -65,8 +67,8 @@
     "test": {
       "dependsOn": ["^build"],
       "inputs": [
-        "src/**/*.{ts,tsx,js,jsx,vue}",
-        "__test__/**/*.{ts,tsx,js,jsx,vue}",
+        "src/**",
+        "__test__/**",
         "vitest.config.ts",
         "../../internal/vitest-config/*.{js,ts}",
         "package.json"

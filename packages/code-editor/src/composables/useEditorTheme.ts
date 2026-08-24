@@ -4,6 +4,14 @@ import { EditorView } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import type { CodeEditorTheme } from '../types';
 
+/**
+ * 明暗两套 EditorView.theme 引用的是同一批 `--aix-*` Token，只有兜底值不同——
+ * 这是有意的：引入了 `@aix/theme/style` 时，暗色由组件根节点上的 `dark` class
+ * 触发 Token 重解析（见 index.vue 的 rootClass）；未引入时才落到各自的兜底字面量。
+ *
+ * 因此这两份定义不能合并：合并会让「未引入主题样式」的消费方在 dark 下拿到浅色兜底。
+ */
+
 /** 浅色主题 */
 const lightEditorTheme = EditorView.theme(
   {

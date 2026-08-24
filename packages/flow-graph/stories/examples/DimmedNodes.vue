@@ -110,14 +110,14 @@ const computedEdges = computed(() =>
 
 .controls button {
   padding: 4px 14px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--aix-colorBorder, #ccc);
   border-radius: 4px;
-  background: #fff;
+  background: var(--aix-colorWhite, #fff);
   font-size: 13px;
   cursor: pointer;
 }
 
 .controls button:hover {
-  background: #f0f0f0;
+  background: var(--aix-colorFillSecondary, #f0f0f0);
 }
 </style>

@@ -164,7 +164,7 @@ describe('Recorder', () => {
       mockMediaRecorder.onstop?.();
 
       expect(onStop).toHaveBeenCalledOnce();
-      const result = onStop.mock.calls[0][0];
+      const result = onStop.mock.calls[0]![0];
       expect(result).toHaveProperty('blob');
       expect(result).toHaveProperty('url');
       expect(result).toHaveProperty('duration');

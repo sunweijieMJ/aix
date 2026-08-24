@@ -1,6 +1,6 @@
 {
   "name": "@kit/override-cli",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "CLI 工具：一键生成定制化覆盖层目录结构和模板文件",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
@@ -30,13 +30,13 @@
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsdown --config-loader tsx",
+    "build": "pnpm run clean && tsdown",
     "clean": "rimraf dist"
   },
   "dependencies": {
     "commander": "^15.0.0",
     "eta": "^4.6.0",
-    "fs-extra": "^11.3.5",
+    "fs-extra": "^11.4.0",
     "picocolors": "^1.1.1",
     "prompts": "^2.4.2"
   },

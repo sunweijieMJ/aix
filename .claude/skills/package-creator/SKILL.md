@@ -17,6 +17,7 @@ metadata:
 - 标准目录结构
 - package.json 配置
 - tsconfig.json 配置
+- tsconfig.build.json 配置
 - rollup.config.js 配置
 - 基础组件文件
 - Storybook story 文件（可选）
@@ -82,6 +83,7 @@ packages/
       │   └── {ComponentName}.stories.ts  # Story 文件
       ├── package.json
       ├── tsconfig.json
+      ├── tsconfig.build.json
       ├── rollup.config.js
       ├── vitest.config.ts              # 必需！根 vitest projects 按此文件发现包，缺失则测试被静默跳过
       ├── eslint.config.ts
@@ -110,13 +112,19 @@ packages/
   ],
   "exports": {
     ".": {
-      "types": "./es/index.d.ts",
-      "import": "./es/index.js",
-      "require": "./lib/index.cjs"
+      "import": {
+        "types": "./es/index.d.ts",
+        "default": "./es/index.js"
+      },
+      "require": {
+        "types": "./lib/index.d.cts",
+        "default": "./lib/index.cjs"
+      }
     },
-    "./es/*": "./es/*",
-    "./lib/*": "./lib/*",
-    "./style": "./es/index.css",
+    "./style": {
+      "types": "./es/style.d.ts",
+      "default": "./es/index.css"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -130,24 +138,26 @@ packages/
     "lint": "pnpm run lint:script && pnpm run lint:style",
     "type-check": "vue-tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && pnpm run build:js && pnpm run build:types",
+    "build": "pnpm run clean && pnpm run build:types && pnpm run build:js",
     "build:js": "rollup -c",
-    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es",
+    "build:types": "vue-tsc --declaration --emitDeclarationOnly --outDir es -p tsconfig.build.json",
     "clean": "rimraf dist lib es tsconfig.tsbuildinfo"
   },
   "peerDependencies": {
-    "vue": "^3.5.31"
+    "vue": "^3.3.0"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/stylelint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "eslint": "*",
-    "rimraf": "*",
-    "stylelint": "*",
-    "tsx": "*",
-    "typescript": "*"
+    "eslint": "catalog:",
+    "rimraf": "catalog:",
+    "stylelint": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "vue-tsc": "catalog:"
   }
 }
 ```
@@ -156,11 +166,41 @@ packages/
 > - **双格式输出**：`main` → `lib/`（CJS），`module` → `es/`（ESM），与 `rollup.config.js` 输出一致
 > - **types** 指向 `es/` 下由 `vue-tsc` 生成的 `.d.ts`
 > - **sideEffects** 必须列出样式文件，避免 Tree-shaking 时被错误移除
-> - **exports** 暴露 `./es/*`、`./lib/*`、`./style` 子路径，方便按需引用
+> - **exports 只暴露主入口与 `./style`**：不要加 `./es/*` / `./lib/*` 通配。通配会把 `vue-tsc`
+>   逐模块产出的 `.d.ts` 一并暴露，而它们带无扩展名相对引用，在 `moduleResolution: node16`
+>   下报 TS2834；且 attw 对通配 entrypoint 整段跳过，发布门禁看不见这类破损
+> - **exports 必须用嵌套双包形式**：`import.types` 指向 `es/index.d.ts`、`require.types` 指向
+>   `lib/index.d.cts`。写成扁平的 `{types, import, require}` 会让 CJS 消费方拿到 ESM 的 `.d.ts`
+>   （masquerading），而 `lib/*.d.cts` 正是根 `rollup.config.js` 的 dts 段专门为此生成的
+> - **`./style` 必须带 `types` 条件**指向 `es/style.d.ts`（构建期由 `emitStyleDts` 生成），
+>   否则消费方开启 `noUncheckedSideEffectImports` 时 `import '@aix/<name>/style'` 无法解析
+> - **build 顺序必须是 `build:types` → `build:js`**：`build:js` 里的 dts bundle 段依赖
+>   `es/*.d.ts` 已存在，顺序颠倒会导致类型产物缺失
 
-#### tsconfig.json
+#### tsconfig.json（类型检查用）
 
-与现存组件包一致（如 `packages/button/tsconfig.json`），继承 `base-library.json`（注意：`vue.json` 预设不存在）：
+与现存组件包一致（如 `packages/button/tsconfig.json`），继承 `base-library.json`（注意：`vue.json` 预设不存在）。
+注意它是 **noEmit** 的检查配置，且必须 include `stories/` 与 `__test__/`，否则这两处代码不会被 `type-check` 覆盖：
+
+```json
+{
+  "extends": "@kit/typescript-config/base-library.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false
+  },
+  "include": ["src/**/*", "stories/**/*", "__test__/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist", "es", "lib"]
+}
+```
+
+#### tsconfig.build.json（声明产出用，必需）
+
+`build:types` 通过 `-p tsconfig.build.json` 使用它。与 `tsconfig.json` 分开，是为了让类型检查能覆盖
+测试与 story，而产物只包含 `src/`：
 
 ```json
 {
@@ -168,7 +208,8 @@ packages/
   "compilerOptions": {
     "declarationDir": "es",
     "rootDir": "src",
-    "outDir": "es"
+    "outDir": "es",
+    "tsBuildInfoFile": "tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "es", "lib", "__test__", "stories"]
@@ -209,7 +250,7 @@ export default config as Linter.Config[];
 
 ```typescript
 export default {
-  extends: ['@kit/stylelint-config/vue-app'],
+  extends: ['@kit/stylelint-config/component-library'],
 };
 ```
 
@@ -247,6 +288,7 @@ pnpm build
 📁 生成的文件:
    ✓ package.json
    ✓ tsconfig.json
+   ✓ tsconfig.build.json
    ✓ rollup.config.js
    ✓ vitest.config.ts
    ✓ eslint.config.ts
@@ -288,6 +330,7 @@ packages/{package-name}/
 ├── dist/                # 构建输出（gitignore）
 ├── package.json
 ├── tsconfig.json
+├── tsconfig.build.json
 └── rollup.config.js
 ```
 

@@ -78,7 +78,7 @@ function onEdgeRemove(ids: string[]) {
   padding: 10px 14px;
   overflow-y: auto;
   border-top: 1px solid var(--aix-colorBorder, #e5e6eb);
-  background: #f7f8fa;
+  background: var(--aix-colorBgLayout, #f7f8fa);
   font-family: monospace;
   font-size: 12px;
 }
@@ -105,17 +105,17 @@ function onEdgeRemove(ids: string[]) {
 }
 
 .change-demo__tag--add {
-  background: #e6f7e6;
-  color: #00b42a;
+  background: var(--aix-colorSuccessBg, #e6f7e6);
+  color: var(--aix-colorSuccessText, #00b42a);
 }
 
 .change-demo__tag--remove-node {
-  background: #fff1e8;
-  color: #d4380d;
+  background: var(--aix-colorErrorBg, #fff1e8);
+  color: var(--aix-colorErrorText, #d4380d);
 }
 
 .change-demo__tag--remove-edge {
-  background: #fff7e6;
-  color: #d48806;
+  background: var(--aix-colorWarningBg, #fff7e6);
+  color: var(--aix-colorWarningText, #d48806);
 }
 </style>

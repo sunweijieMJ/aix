@@ -1,5 +1,24 @@
 # @aix/pdf-viewer
 
+## 0.0.10
+
+### Patch Changes
+
+- 统一升级，优化打包产物
+- Updated dependencies
+  - @aix/hooks@0.0.5
+  - @aix/icons@0.0.3
+  - @aix/popper@0.0.9
+  - @aix/theme@0.0.4
+
+## 0.0.9
+
+### Patch Changes
+
+- Updated dependencies
+  - @aix/hooks@0.0.4
+  - @aix/popper@0.0.8
+
 ## 0.0.8
 
 ### Patch Changes

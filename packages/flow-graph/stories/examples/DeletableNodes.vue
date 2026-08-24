@@ -61,7 +61,7 @@ function onBlocked(ids: string[]) {
   gap: 18px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--aix-colorBorder, #e5e6eb);
-  background: #f7f8fa;
+  background: var(--aix-colorBgLayout, #f7f8fa);
   font-size: 13px;
 }
 

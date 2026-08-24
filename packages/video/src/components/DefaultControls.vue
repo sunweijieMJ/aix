@@ -22,8 +22,8 @@
 
     <!-- 时间显示 -->
     <div class="aix-video-default-controls__time">
-      {{ formatTime(playerState.currentTime) }} /
-      {{ formatTime(playerState.duration) }}
+      {{ formatDuration(playerState.currentTime) }} /
+      {{ formatDuration(playerState.duration) }}
     </div>
 
     <!-- 音量控制 -->
@@ -49,6 +49,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDuration } from '@aix/hooks';
 import { computed } from 'vue';
 import type { PlayerState, ControlMethods } from '../types';
 
@@ -98,12 +99,6 @@ function handleProgressClick(event: MouseEvent): void {
 /**
  * 格式化时间
  */
-function formatTime(seconds: number): string {
-  if (!isFinite(seconds)) return '00:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-}
 </script>
 
 <style lang="scss">

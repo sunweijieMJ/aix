@@ -302,9 +302,6 @@ npm config get registry
 
 # 设置为 npm 官方 registry
 npm config set registry https://registry.npmjs.org/
-
-# 设置为淘宝镜像（不用于发布）
-npm config set registry https://registry.npmmirror.com/
 ```
 
 ### 2. Scoped Packages
@@ -525,8 +522,8 @@ npm install @aix/button
 # 验证包内容
 ls node_modules/@aix/button/
 
-# 验证类型定义
-cat node_modules/@aix/button/dist/index.d.ts
+# 验证类型定义（ESM 入口在 es/，CJS 入口的类型是 lib/index.d.cts）
+cat node_modules/@aix/button/es/index.d.ts
 ```
 
 ### 3. 功能验证

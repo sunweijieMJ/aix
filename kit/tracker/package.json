@@ -1,6 +1,6 @@
 {
   "name": "@kit/tracker",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "基于适配器模式的前端埋点数据采集组件包",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
@@ -18,16 +18,16 @@
     "dist"
   ],
   "scripts": {
-    "dev": "tsdown --watch --config-loader tsx",
+    "dev": "tsdown --watch",
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",
-    "build": "pnpm run clean && tsdown --config-loader tsx",
+    "build": "pnpm run clean && tsdown",
     "clean": "rimraf dist"
   },
   "peerDependencies": {
     "vue": "^3.5.31",
-    "vue-router": "^4.0.0"
+    "vue-router": "^4.0.0 || ^5.0.0"
   },
   "peerDependenciesMeta": {
     "vue-router": {
