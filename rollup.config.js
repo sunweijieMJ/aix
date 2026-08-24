@@ -289,32 +289,41 @@ function dropDuplicateCss(outDir) {
 }
 
 /**
- * 删除 `es/` 里 vue-tsc 逐模块产出的 `.d.ts` 孤儿。
+ * 删除输出目录里 vue-tsc/tsc 逐模块产出的 `.d.ts` 孤儿。
  *
- * 类型入口在 dts 段被 bundle 成自包含的 `es/index.d.ts`，vue-tsc 原先铺开的那批
- * 逐模块声明便无人引用；它们又带无扩展名的相对引用（`from './types'`），在
- * `moduleResolution: node16` 下本身是坏的。移除 `./es/*` 通配导出后它们已不可达，
- * 但仍占着 tarball，故在此清掉。
+ * 类型入口在 dts 段被 bundle 成自包含的单文件（`es/index.d.ts`、theme 的
+ * `dist/index.d.ts`），tsc 原先铺开的那批逐模块声明便无人引用；它们又带无扩展名的
+ * 相对引用（`from './types'`），在 `moduleResolution: node16` 下本身是坏的。
+ * exports 不暴露它们，但仍占着 tarball，故在此清掉。
+ *
+ * 两种输出形态都支持：组件包的 dir 模式（`output.dir: 'es'`）与 theme 的 file 模式
+ * （`output.file: 'dist/index.d.ts'`）。**只在 `.d.ts` 那份输出上清理**——theme 的
+ * d.ts / d.cts 两份输出共用同一个 dist 目录（组件包则天然分居 es/ 与 lib/），
+ * 若在 d.cts 输出上跑，keep 集合里只有 index.d.cts，会把刚产出的 index.d.ts 误删。
+ *
+ * 名为 style.d.ts 的文件一律保留：它们是 emitStyleDts 的产物，可能在子目录里
+ * （theme 的 dist/vars/style.d.ts），按 bundle 键拼 keep 集合护不住。
  *
  * 声明了通配导出的包（如 @aix/icons 的 `"./*"`）把逐模块 `.d.ts` 当作公开 API，
  * 必须整体跳过——删掉会让 `@aix/icons/General/Add` 失去类型。
  *
- * @param {string} outDir - 待清理的输出目录（仅 `es/`）
+ * @param {string} outDir - 待清理的输出目录（`es/` 或 theme 的 `dist/`）
  * @param {object} pkg - 解析后的 package.json
  * @returns {import('rollup').Plugin}
  */
-function dropOrphanDts(outDir, pkg) {
+export function dropOrphanDts(outDir, pkg) {
   return {
     name: 'drop-orphan-dts',
     writeBundle(options, bundle) {
-      if (options.dir !== outDir) return;
+      const dir = options.dir ?? (options.file ? path.dirname(options.file) : null);
+      if (dir !== outDir) return;
+      // 只认 .d.ts 输出（.d.cts 不以 .d.ts 结尾，天然不命中），理由见函数注释
+      if (!Object.keys(bundle).some((f) => f.endsWith('.d.ts'))) return;
       if (Object.keys(pkg.exports || {}).some((key) => key.includes('*'))) return;
       if (!fs.existsSync(outDir)) return;
 
-      // 本次 dts bundle 实际产出的文件 + emitStyleDts 的空模块声明，都要留下
-      const keep = new Set(
-        [...Object.keys(bundle), 'style.d.ts'].map((f) => path.resolve(outDir, f)),
-      );
+      // 本次 dts bundle 实际产出的文件要留下
+      const keep = new Set(Object.keys(bundle).map((f) => path.resolve(outDir, f)));
 
       const walk = (currentDir) => {
         for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
@@ -323,7 +332,11 @@ function dropOrphanDts(outDir, pkg) {
             walk(full);
             // 该目录若只装着孤儿声明，删完就空了，一并收走
             if (fs.readdirSync(full).length === 0) fs.rmdirSync(full);
-          } else if (entry.name.endsWith('.d.ts') && !keep.has(path.resolve(full))) {
+          } else if (
+            entry.name.endsWith('.d.ts') &&
+            entry.name !== 'style.d.ts' &&
+            !keep.has(path.resolve(full))
+          ) {
             fs.rmSync(full, { force: true });
           }
         }
