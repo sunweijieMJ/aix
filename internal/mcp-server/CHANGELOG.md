@@ -1,5 +1,11 @@
 # @aix/mcp-server
 
+## 0.0.5
+
+### Patch Changes
+
+- 统一升级，优化打包产物
+
 ## 0.0.4
 
 ### Patch Changes

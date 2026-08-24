@@ -1,5 +1,14 @@
 # @aix/audio
 
+## 0.0.3
+
+### Patch Changes
+
+- 统一升级，优化打包产物
+- Updated dependencies
+  - @aix/hooks@0.0.5
+  - @aix/theme@0.0.4
+
 ## 0.0.2
 
 ### Patch Changes

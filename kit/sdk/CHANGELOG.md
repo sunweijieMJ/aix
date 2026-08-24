@@ -1,5 +1,11 @@
 # @kit/sdk
 
+## 0.0.7
+
+### Patch Changes
+
+- 统一升级，优化打包产物
+
 ## 0.0.6
 
 ### Patch Changes
