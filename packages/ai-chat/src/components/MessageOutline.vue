@@ -141,6 +141,11 @@ watch(floatingElRef, (el) => {
 
 <style lang="scss">
 .aix-message-outline {
+  /* 刻度的静止宽度与最大扩张量：轨道命中区按「静止 + 扩张」预留恒定宽度，波纹只在其内部伸缩。
+     写成变量是为了让 __tick（预留宽度）与 __tick-mark（实际宽度）两处口径永远同步。 */
+  --aix-outline-tick-base: 14px;
+  --aix-outline-tick-grow: 15px;
+
   display: flex;
   align-items: center;
   pointer-events: none;
@@ -166,6 +171,16 @@ watch(floatingElRef, (el) => {
     display: flex;
     align-items: center;
 
+    /* 命中区宽度恒定（= 波纹的最大宽度），波纹在其内部向左伸缩、右缘钉死。
+       让 button 跟着波纹变宽会同时坏两件事：一是 nav 宽度随之呼吸，流式布局里会把右侧兄弟
+       节点推来推去；二是浮层锚的就是这枚 button，锚点每帧变宽会让 floating-ui 的
+       ResizeObserver 反复重算坐标，浮层跟着左右抖。宽度恒定后两者都静止，只剩波纹在动。
+       主题 reset 是 border-box，故横向 padding 要显式加进来，否则满振幅的波纹会溢出命中区。 */
+    justify-content: flex-end;
+    width: calc(
+      var(--aix-outline-tick-base) + var(--aix-outline-tick-grow) + var(--aix-paddingXXS) * 2
+    );
+
     /* 纵向 padding 代替 list 的 gap（见上），横向保持原值 */
     padding: 4px var(--aix-paddingXXS);
     border: none;
@@ -173,18 +188,27 @@ watch(floatingElRef, (el) => {
     cursor: pointer;
     pointer-events: auto;
 
-    /* 波峰与当前活跃项：主色 + 满不透明度。opacity 必须显式拉满——它平时由振幅系数插值
-       （0.45～1），活跃项在指针停在别处时振幅为 0，不覆盖就会是一枚"淡掉的主色刻度"。 */
+    /* 波峰 / 焦点项 / 当前活跃项：主色 + 满不透明度。opacity 必须显式拉满——它平时由振幅系数
+       插值（0.45～1），活跃项在指针停在别处时振幅为 0，不覆盖就会是一枚"淡掉的主色刻度"。 */
     &:hover .aix-message-outline__tick-mark,
+    &:focus-visible .aix-message-outline__tick-mark,
     &.is-active .aix-message-outline__tick-mark {
       opacity: 1;
       background-color: var(--aix-colorPrimary);
     }
 
+    /* 焦点环套在波纹上，而不是 button 上。button 的盒子被纵向 padding 撑到 11px 高（命中区
+       首尾相接所需），环再往外偏 2px 就是个 45×19 的方框罩着一根 3px 的线，比例失衡。
+       改套波纹自身后，环的圆角由波纹的 border-radius 推导（2px + 2px 偏移 = 4px），
+       在 7px 高的盒子上自动收成胶囊，读起来像刻度镀了一圈光边而非凭空多出个边框。
+       仍用 outline 而非 box-shadow：forced-colors 模式下只有 outline 会被系统高对比色接管。 */
     &:focus-visible {
-      border-radius: var(--aix-borderRadiusSM);
-      outline: 2px solid var(--aix-colorPrimaryBorder);
-      outline-offset: 2px;
+      outline: none;
+
+      .aix-message-outline__tick-mark {
+        outline: 2px solid var(--aix-colorPrimary);
+        outline-offset: 2px;
+      }
     }
   }
 
@@ -196,7 +220,9 @@ watch(floatingElRef, (el) => {
      上靠继承下来，若这里再写一遍 `--aix-outline-wave: 0`，自身声明会盖掉继承值，波形恒为 0。 */
   &__tick-mark {
     flex: none;
-    width: calc(14px + var(--aix-outline-wave, 0) * 15px);
+    width: calc(
+      var(--aix-outline-tick-base) + var(--aix-outline-wave, 0) * var(--aix-outline-tick-grow)
+    );
     height: 3px;
     transition:
       width 340ms cubic-bezier(0.34, 1.4, 0.5, 1),
@@ -239,7 +265,7 @@ watch(floatingElRef, (el) => {
    只是从平滑扩张变成瞬间跳变，对该设置的用户反而更刺激。 */
 @media (prefers-reduced-motion: reduce) {
   .aix-message-outline__tick-mark {
-    width: 14px;
+    width: var(--aix-outline-tick-base);
     transition: none;
     transition-delay: 0s;
     opacity: 1;
