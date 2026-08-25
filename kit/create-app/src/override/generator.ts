@@ -1,10 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Eta } from 'eta';
+import { findPackageRoot } from '../utils/pkg-root';
 import type { GeneratedFile, GenerateOptions, ModuleId, TemplateContext } from './types';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+/**
+ * templates-override/ 的父目录 = 本包根目录
+ *
+ * 不能按 `__dirname` 上跳固定层级：源码运行（tsx）时本模块在 `src/override/`，
+ * 打包后被压到 `dist/`，两者层级差一级——写死 `'..'` 在源码布局下会指到 `src/`，
+ * Eta 找不到模板目录，`override add` 必崩。
+ */
+const PKG_ROOT = findPackageRoot(import.meta.url);
 
 /** 需要独立模板目录的模块 */
 const MODULE_WITH_DIR: ModuleId[] = [
@@ -27,9 +34,8 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
   const { project, lang, modules, output: _output } = options;
   const ext = lang;
 
-  // 模板目录：templates-override/{lang}/overrides/
-  // tsdown 打包后 __dirname = dist/，向上一级即包根目录
-  const templatesDir = path.resolve(__dirname, '..', 'templates-override', lang, 'overrides');
+  // 模板目录：<包根>/templates-override/{lang}/overrides/
+  const templatesDir = path.resolve(PKG_ROOT, 'templates-override', lang, 'overrides');
 
   const eta = new Eta({
     views: templatesDir,
@@ -118,8 +124,7 @@ const OVERRIDE_UTIL_BASES = [
  */
 export function generateOverrideUtils(lang: 'ts' | 'js' = 'ts'): GeneratedFile[] {
   const utilsTemplatesDir = path.resolve(
-    __dirname,
-    '..',
+    PKG_ROOT,
     'templates-override',
     lang,
     'plugins',

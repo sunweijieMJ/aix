@@ -10,24 +10,32 @@ const baseManifest: TemplateConfig = {
   features: {
     i18n: {
       label: '国际化',
+      default: true,
       deps: ['vue-i18n'],
+      devDeps: ['@kit/i18n-tools'],
+      scripts: ['i18n', 'i18n:dry'],
     },
     override: {
       label: 'Override',
     },
   },
-  entryFiles: {},
 };
 
 const basePkg = {
   name: '{{project-name}}',
   version: '0.0.0',
+  scripts: {
+    dev: 'vite',
+    i18n: 'i18n-tools scan',
+    'i18n:dry': 'i18n-tools scan --dry',
+  },
   dependencies: {
     vue: '^3.5.0',
     'vue-i18n': '^9.0.0',
   },
   devDependencies: {
     vite: '^5.0.0',
+    '@kit/i18n-tools': '^1.0.0',
   },
 };
 
@@ -36,9 +44,7 @@ function makeConfig(features: string[] = []): ProjectConfig {
     name: 'my-app',
     description: 'test',
     platform: 'web',
-    qiankunMode: 'none',
-    features: features as ProjectConfig['features'],
-    deps: { ui: 'none', css: 'scss', http: 'axios', icons: 'none' },
+    features,
     outputDir: './my-app',
     packageManager: 'pnpm',
     initGit: false,
@@ -98,10 +104,41 @@ describe('patchPackageJson', () => {
     expect(result.name).toBe('my-app');
   });
 
+  it('未选 i18n 时删除 devDeps', () => {
+    const result = patchPackageJson(basePkg, baseManifest, makeConfig([]));
+    expect(result.devDependencies['@kit/i18n-tools']).toBeUndefined();
+    expect(result.devDependencies['vite']).toBe('^5.0.0');
+  });
+
+  it('未选 i18n 时删除对应 scripts', () => {
+    const result = patchPackageJson(basePkg, baseManifest, makeConfig([]));
+    expect(result.scripts['i18n']).toBeUndefined();
+    expect(result.scripts['i18n:dry']).toBeUndefined();
+    expect(result.scripts['dev']).toBe('vite');
+  });
+
+  it('选了 i18n 时保留对应 scripts', () => {
+    const result = patchPackageJson(basePkg, baseManifest, makeConfig(['i18n']));
+    expect(result.scripts['i18n']).toBe('i18n-tools scan');
+    expect(result.scripts['i18n:dry']).toBe('i18n-tools scan --dry');
+  });
+
+  it('scripts 字段缺失时裁剪不报错', () => {
+    const pkgWithoutScripts = { name: 'x', dependencies: {} };
+    expect(() => patchPackageJson(pkgWithoutScripts, baseManifest, makeConfig([]))).not.toThrow();
+  });
+
+  it('特性未声明 scripts 时不误删', () => {
+    const result = patchPackageJson(basePkg, baseManifest, makeConfig(['i18n']));
+    // override 特性未选中且未声明 scripts，不应影响任何脚本
+    expect(Object.keys(result.scripts)).toEqual(['dev', 'i18n', 'i18n:dry']);
+  });
+
   it('不修改原始 package.json', () => {
     const config = makeConfig([]);
     patchPackageJson(basePkg, baseManifest, config);
     expect(basePkg.name).toBe('{{project-name}}');
     expect(basePkg.dependencies['vue-i18n']).toBe('^9.0.0');
+    expect(basePkg.scripts['i18n']).toBe('i18n-tools scan');
   });
 });

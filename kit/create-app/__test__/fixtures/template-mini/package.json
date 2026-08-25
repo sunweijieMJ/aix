@@ -1,0 +1,22 @@
+{
+  "name": "mini-real-name",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:micro": "vite build --mode micro",
+    "i18n": "i18n-tools scan",
+    "i18n:dry": "i18n-tools scan --dry"
+  },
+  "dependencies": {
+    "vue": "^3.5.0",
+    "vue-i18n": "^11.0.0",
+    "qiankun": "^2.10.0"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0",
+    "@kit/i18n-tools": "^1.0.0",
+    "vite-plugin-qiankun": "^1.0.0"
+  }
+}

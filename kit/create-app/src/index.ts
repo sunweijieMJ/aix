@@ -19,9 +19,6 @@ export {
 // 全局类型（P0-2+）
 export type {
   Platform,
-  WebScenario,
-  QiankunMode,
-  FeatureId,
   ProjectConfig,
   FileEntry,
   FileList,
@@ -29,18 +26,39 @@ export type {
   TemplateConfig,
 } from './types';
 
+// 模板注册表（P0-5）
+export { TEMPLATE_REGISTRY, findTemplateById } from './config/defaults';
+export type { TemplateRegistryEntry } from './config/defaults';
+
 // 错误处理（P0-2）
 export { CreateAppError, wrapError } from './utils/errors';
 export type { ErrorCode } from './utils/errors';
 export { handleError } from './utils/logger';
 
 // 核心模块（P0-2, P0-3）
-export { TemplateResolver } from './core/resolver';
+export { TemplateResolver, isLocalSource, resolveLocalSource } from './core/resolver';
+export {
+  isGitSource,
+  parseGitSource,
+  toCloneUrl,
+  gitCacheRoot,
+  gitCacheDir,
+  buildCloneArgs,
+} from './core/git-source';
+export type { GitSource } from './core/git-source';
 export { Composer } from './core/composer';
-export { runEntryBuilder } from './core/entry-builders';
-export type { EntryBuilder } from './core/entry-builders';
+export { applyConditionalBlocks } from './core/conditional';
 export { deepMerge, sortDependencies, patchPackageJson } from './core/pkg-patcher';
 export { writeFiles as writeFileList, printFileTree as printFileList } from './utils/fs';
 
 // 问答编排器（P0-4）
-export { collectProjectConfig } from './prompts/index';
+export {
+  collectBasicInfo,
+  collectFeatureSelection,
+  collectPostOptions,
+  confirmSummary,
+  buildSummary,
+  resolveTemplateArg,
+  validateFeatureIds,
+} from './prompts/index';
+export type { BasicInfo, PostOptions, SummaryInput } from './prompts/index';

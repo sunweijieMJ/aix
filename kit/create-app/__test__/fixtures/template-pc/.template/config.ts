@@ -20,9 +20,6 @@ const config: TemplateConfig = {
       dirs: ['src/plugins/override', 'src/overrides'],
     },
   },
-  entryFiles: {
-    'src/main.ts': 'buildMainTs',
-  },
 };
 
 export default config;

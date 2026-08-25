@@ -1,6 +1,7 @@
 import * as p from '@clack/prompts';
 import { TemplateResolver } from '../core/resolver';
-import { DEFAULT_TEMPLATES } from '../config/defaults';
+import { TEMPLATE_REGISTRY } from '../config/defaults';
+import { isLocalSource } from '../core/resolver';
 import { handleError } from '../utils/logger';
 
 export async function updateTemplates(): Promise<void> {
@@ -8,14 +9,18 @@ export async function updateTemplates(): Promise<void> {
     p.intro('刷新模板缓存');
     const resolver = new TemplateResolver();
 
-    for (const [platform, info] of Object.entries(DEFAULT_TEMPLATES)) {
+    for (const entry of TEMPLATE_REGISTRY) {
+      // 本地路径模板不走缓存，无需刷新
+      if (isLocalSource(entry.source)) continue;
+
+      // force: true 对 git 源 = 删掉缓存目录重新 clone，对 giget 源 = 重新下载
       const spinner = p.spinner();
-      spinner.start(`拉取 ${platform} 模板...`);
+      spinner.start(`拉取 ${entry.label} 模板...`);
       try {
-        await resolver.fetch(info.source, { force: true });
-        spinner.stop(`${platform} 模板已更新`);
+        await resolver.fetch(entry.source, { force: true });
+        spinner.stop(`${entry.label} 模板已更新`);
       } catch (err) {
-        spinner.stop(`${platform} 模板更新失败`);
+        spinner.stop(`${entry.label} 模板更新失败`);
         p.log.warn(err instanceof Error ? err.message : String(err));
       }
     }

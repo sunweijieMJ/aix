@@ -1,4 +1,4 @@
-import type { FeatureId, ProjectConfig, TemplateConfig } from '../types';
+import type { ProjectConfig, TemplateConfig } from '../types';
 
 type PkgJson = Record<string, any>;
 
@@ -51,7 +51,7 @@ export function sortDependencies(pkg: PkgJson): PkgJson {
 }
 
 /**
- * 根据用户选择的特性，裁剪 package.json 中未选特性的依赖，
+ * 根据用户选择的特性，裁剪 package.json 中未选特性的依赖与 scripts，
  * 并替换 {{project-name}} 占位符
  */
 export function patchPackageJson(
@@ -66,14 +66,17 @@ export function patchPackageJson(
     pkg['name'] = (pkg['name'] as string).replace(/\{\{project-name\}\}/g, config.name);
   }
 
-  // 裁剪未选特性的依赖
+  // 裁剪未选特性的依赖与 scripts
   for (const [featureId, def] of Object.entries(manifest.features)) {
-    if (!config.features.includes(featureId as FeatureId)) {
+    if (!config.features.includes(featureId)) {
       for (const dep of def.deps ?? []) {
         delete (pkg['dependencies'] as Record<string, string> | undefined)?.[dep];
       }
       for (const dep of def.devDeps ?? []) {
         delete (pkg['devDependencies'] as Record<string, string> | undefined)?.[dep];
+      }
+      for (const script of def.scripts ?? []) {
+        delete (pkg['scripts'] as Record<string, string> | undefined)?.[script];
       }
     }
   }

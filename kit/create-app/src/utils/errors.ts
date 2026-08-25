@@ -5,12 +5,18 @@ export type ErrorCode =
   | 'E_NO_TEMPLATE_CONFIG'
   | 'E_INVALID_TEMPLATE_CONFIG'
   | 'E_VERSION_INCOMPATIBLE'
+  | 'E_TEMPLATE_SYNTAX'
+  | 'E_UNKNOWN_FEATURE'
+  /** config.ts 声明的 substitution 在模板中零命中（真源改名后未同步） */
+  | 'E_SUBSTITUTION_MISS'
   // 项目相关
   | 'E_INVALID_PROJECT_NAME'
   | 'E_DIR_NOT_EMPTY'
   | 'E_DIR_WRITE_FAILED'
   // 用户操作
   | 'E_USER_CANCEL'
+  /** stdin 非 TTY（CI / 管道 / `< /dev/null`）但仍有必填项要靠问答补齐 */
+  | 'E_NON_INTERACTIVE'
   // 环境
   | 'E_NODE_VERSION'
   | 'E_UNKNOWN';

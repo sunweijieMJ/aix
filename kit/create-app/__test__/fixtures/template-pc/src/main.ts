@@ -1,4 +1,4 @@
-// 全量版（会被 Eta 模板替换）
+// 普通模板文件：协议里入口不再被程序化生成，原样进产物
 import { createApp } from 'vue';
 import App from './App.vue';
 import { setupLocale } from './plugins/locale';
