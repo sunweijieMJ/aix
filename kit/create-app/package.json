@@ -27,6 +27,7 @@
   ],
   "scripts": {
     "dev": "tsx src/cli.ts",
+    "verify-combos": "tsx scripts/verify-combos.ts",
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",

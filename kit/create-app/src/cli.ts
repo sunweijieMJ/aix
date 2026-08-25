@@ -10,23 +10,42 @@ const { version } = require('../package.json') as { version: string };
 
 // 关键原则：根命令 program 不定义任何与子命令同名的选项
 // （已验证：同名选项会导致 Commander 子命令拿到根命令的默认值）
+//
+// 但默认命令（create）与 `override add` 天然共用 -y / --force / --dry-run 三个名字，
+// 没法靠改名回避。enablePositionalOptions() 让「子命令名之后的选项一律由子命令解析」，
+// 否则 `create-app override add x -y` 里的 -y 会被根命令吃掉，
+// 子命令只拿到根命令的默认值 false（表现为 -y 静默失效，仍然弹交互提示）。
 const program = new Command()
   .name('create-app')
   .description('前端项目脚手架工具（含 Override 定制化管理）')
   .version(version)
-  .option('--debug', '开启调试输出', false);
+  .option('--debug', '开启调试输出', false)
+  .enablePositionalOptions();
+
+// `--debug` 是根命令选项，但真正读它的是 utils/logger 的 handleError（读 process.env.DEBUG）。
+// 用 preAction 钩子接线：钩子对默认命令与所有子命令都会触发，且早于 action。
+// 注意 enablePositionalOptions() 下 `--debug` 必须写在子命令名之前。
+program.hook('preAction', () => {
+  if (program.opts()['debug']) process.env['DEBUG'] = '1';
+});
 
 // ── 默认命令：创建新项目 ──
 program
   .argument('[project-name]', '项目名称（省略则交互输入）')
-  .option('--platform <web|mobile>', '目标平台')
-  .option('--scenario <standard|admin>', '应用场景（web only）')
-  .option('--qiankun <none|main|sub>', '微前端模式（web only）')
-  .option('-f, --features <list>', '特性列表（逗号分隔，如 i18n,override）')
-  .option('--template <source>', '自定义模板源（giget 格式，如 github:org/repo/subdir）')
+  .option('-d, --description <text>', '项目描述（省略则交互输入）')
+  .option('-f, --features <list>', '特性列表（逗号分隔，取值由模板 config.ts 声明）')
+  .option(
+    '--template <id|source>',
+    '模板注册表 id（如 admin），或直接的模板源（本地路径 / giget 格式）',
+  )
   .option('--no-git', '跳过 git init')
   .option('--no-install', '跳过依赖安装')
-  .option('--force', '强制覆盖已有目录', false)
+  // --offline / --force 不给默认值：resolver 要区分「没传」与「传了 false」——
+  // 三态（都没传 = 复用缓存 / --force = 删缓存重取 / --offline = 只用缓存）靠 undefined 判定，
+  // 给了默认 false 后 `options?.offline ?? !options?.force` 这类写法会永远走 false 分支
+  .option('--offline', '仅使用本地模板缓存，不联网（缓存缺失直接失败）')
+  .option('-y, --yes', '跳过最终确认提示', false)
+  .option('--force', '强制覆盖已有目录，并重新拉取模板缓存')
   .option('--dry-run', '仅预览生成文件，不写入', false)
   .action(create);
 
