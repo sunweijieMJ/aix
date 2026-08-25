@@ -1,6 +1,7 @@
-import type { App, Component, Directive } from 'vue';
+import type { App, Component, Directive, Plugin } from 'vue';
 import type { Pinia } from 'pinia';
 import type { Composer } from 'vue-i18n';
+import type { Router } from 'vue-router';
 import type { StoreModuleConfig } from './override-store';
 import type { CustomApiConfig } from './override-api';
 import type { CustomLayoutConfig } from './override-layout';
@@ -13,10 +14,16 @@ import { applyDirectiveOverrides } from './override-directives';
 /** 语言包类型：locale → messages */
 export type LocaleMessages = Record<string, Record<string, unknown>>;
 
-/** 常量覆盖配置（静态合并，不经过 initOverrides，模块加载时生效） */
+/**
+ * 常量覆盖配置（静态合并，不经过 initOverrides，模块加载时生效）
+ *
+ * 与模版真源 vue-admin-template 的 src/plugins/override 协议一致，仅两处刻意保留脱耦：
+ * - menuList 用 unknown[] 而非 MenuItem[]：本模板要能装进任意项目，不假设 @/constants/menu 存在
+ * - API 实例走 initOverrides 的 apiInstances 参数注入，而非硬 import @/api/core/request
+ */
 export interface ConstantsOverride {
   roles?: Record<string, string>;
-  roleDescriptions?: Record<string, string>;
+  /** 菜单列表（整体替换）；项目里可收紧为自己的 MenuItem[] */
   menuList?: unknown[];
   apiCode?: Record<string, number>;
   proxyUri?: Record<string, string>;
@@ -33,6 +40,8 @@ export interface RuntimeOverrideConfig {
   api?: CustomApiConfig;
   layout?: CustomLayoutConfig;
   directives?: Record<string, Directive>;
+  /** 注册额外的 Vue 插件，接收运行时上下文并返回插件列表，按顺序调用 app.use() */
+  plugins?: (context: { router: Router; pinia: Pinia; i18n: I18nLike }) => Plugin[];
 }
 
 interface I18nLike {
@@ -45,6 +54,8 @@ export interface InitOverridesOptions {
   i18n: I18nLike;
   config: RuntimeOverrideConfig;
   app: App;
+  /** 路由实例，传给 plugins 工厂函数 */
+  router: Router;
   /**
    * API 实例对象，来自 api/core/request 的 instances
    * 如项目有 API 覆盖需求，在 main.ts 中传入
@@ -61,12 +72,12 @@ export interface InitOverridesOptions {
  * import overrideConfig from '@/overrides';
  * import { instances } from '@/api/core/request'; // 如有 API 覆盖
  *
- * initOverrides({ pinia, i18n, config: overrideConfig, app, apiInstances: instances });
+ * initOverrides({ pinia, i18n, config: overrideConfig, app, router, apiInstances: instances });
  * ```
  *
  * 注意：路由覆盖需在 router/index.ts 中同步注册，不经过此函数
  */
-export function initOverrides({ pinia, i18n, config, app, apiInstances }: InitOverridesOptions): void {
+export function initOverrides({ pinia, i18n, config, app, router, apiInstances }: InitOverridesOptions): void {
   if (config.components) {
     componentManager.register(config.components);
   }
@@ -87,6 +98,11 @@ export function initOverrides({ pinia, i18n, config, app, apiInstances }: InitOv
   }
   if (config.directives) {
     applyDirectiveOverrides(app, config.directives);
+  }
+  if (config.plugins) {
+    for (const plugin of config.plugins({ router, pinia, i18n })) {
+      app.use(plugin);
+    }
   }
 }
 

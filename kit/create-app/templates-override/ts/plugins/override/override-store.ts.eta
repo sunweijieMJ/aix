@@ -31,7 +31,11 @@ class StoreManager {
       const overrideFn = overrides.get(store.$id);
       if (!overrideFn) return;
 
-      const result = overrideFn(store);
+      // 传给覆盖函数的是当前 store 的一份浅拷贝快照，而非 store 本身的引用。
+      // 覆盖结果最终会通过 Object.assign 合并回 store 本身，若直接把 store 传入，
+      // 覆盖函数体内调用 store.xxx() 在合并后会解析到覆盖后的新实现，导致递归调用自身直至栈溢出。
+      const storeSnapshot = { ...store } as typeof store;
+      const result = overrideFn(storeSnapshot);
 
       const safeResult: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(result)) {

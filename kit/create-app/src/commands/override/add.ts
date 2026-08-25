@@ -11,6 +11,7 @@ import {
 } from '../../utils/conflict';
 import { runPrompts } from '../../override/prompts';
 import { REQUIRED_MODULES, ALL_MODULES, type ModuleId } from '../../override/types';
+import { handleError } from '../../utils/logger';
 
 export interface OverrideAddOptions {
   project?: string;
@@ -23,6 +24,16 @@ export interface OverrideAddOptions {
 }
 
 export async function overrideAdd(project: string | undefined, opts: OverrideAddOptions) {
+  // 与 create 命令对齐：未捕获异常一律走 handleError，打印 [错误码] + 建议后非零退出，
+  // 否则 Node 直接吐一整段栈，且 CreateAppError 的 suggestion 完全看不到
+  try {
+    await runOverrideAdd(project, opts);
+  } catch (err) {
+    handleError(err);
+  }
+}
+
+async function runOverrideAdd(project: string | undefined, opts: OverrideAddOptions) {
   const cwd = process.cwd();
 
   // 检查是否在项目根目录
@@ -124,7 +135,8 @@ export async function overrideAdd(project: string | undefined, opts: OverrideAdd
 
   // ── 检测并生成 plugins/override（首次运行时） ──
   const utilsDir = path.resolve(cwd, 'src/plugins/override');
-  const utilsIndexFile = path.join(utilsDir, 'index.ts');
+  // 扩展名必须跟随 options.lang：写死 index.ts 会让 js 项目的存在性判断恒为 false
+  const utilsIndexFile = path.join(utilsDir, `index.${options.lang}`);
   let utilsGenerated = false;
 
   if (!options.dryRun) {
@@ -159,9 +171,11 @@ export async function overrideAdd(project: string | undefined, opts: OverrideAdd
   console.log(`  import { initOverrides } from ${pc.cyan("'@/plugins/override'")};`);
   console.log(`  import overrideConfig from ${pc.cyan(`'${overridesAlias}'`)};`);
   console.log(`  ${pc.dim("// import { instances } from '@/api/core/request'; // 如有 API 覆盖")}`);
-  console.log(`  ${pc.cyan('initOverrides')}({ pinia, i18n, config: overrideConfig, app });`);
   console.log(
-    `  ${pc.dim('// initOverrides({ pinia, i18n, config: overrideConfig, app, apiInstances: instances }); // 如有 API 覆盖')}`,
+    `  ${pc.cyan('initOverrides')}({ pinia, i18n, config: overrideConfig, app, router });`,
+  );
+  console.log(
+    `  ${pc.dim('// initOverrides({ pinia, i18n, config: overrideConfig, app, router, apiInstances: instances }); // 如有 API 覆盖')}`,
   );
 
   console.log('');

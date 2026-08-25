@@ -19,6 +19,7 @@ const overrideConfig: RuntimeOverrideConfig = {
   api: school?.api,
   layout: school?.layout,
   directives: school?.directives,
+  plugins: school?.plugins,
 };
 
 export default overrideConfig;

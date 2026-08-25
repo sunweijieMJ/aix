@@ -104,6 +104,13 @@ class RouterManager {
 
   addCustomRoutes(router: Router): void {
     this.customRoutes.forEach(route => {
+      // customRoutes 通过 addRoute 直接注册，不经过权限过滤。
+      // 开发环境提醒：未配置 meta.roles 的自定义路由对任何已登录用户开放。
+      if (import.meta.env.DEV && !route.meta?.roles) {
+        console.warn(
+          `[Override] 自定义路由 "${String(route.path)}" 未配置 meta.roles，不受权限过滤，任何已登录用户均可访问。`,
+        );
+      }
       router.addRoute(route);
     });
   }

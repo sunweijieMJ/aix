@@ -13,14 +13,14 @@ import { applyDirectiveOverrides } from './override-directives';
  * import overrideConfig from '@/overrides';
  * import { instances } from '@/api/core/request'; // 如有 API 覆盖
  *
- * initOverrides({ pinia, i18n, config: overrideConfig, app, apiInstances: instances });
+ * initOverrides({ pinia, i18n, config: overrideConfig, app, router, apiInstances: instances });
  * ```
  *
  * 注意：路由覆盖需在 router/index.js 中同步注册，不经过此函数
  *
  * @param {object} options
  */
-export function initOverrides({ pinia, i18n, config, app, apiInstances }) {
+export function initOverrides({ pinia, i18n, config, app, router, apiInstances }) {
   if (config.components) {
     componentManager.register(config.components);
   }
@@ -41,6 +41,11 @@ export function initOverrides({ pinia, i18n, config, app, apiInstances }) {
   }
   if (config.directives) {
     applyDirectiveOverrides(app, config.directives);
+  }
+  if (config.plugins) {
+    for (const plugin of config.plugins({ router, pinia, i18n })) {
+      app.use(plugin);
+    }
   }
 }
 

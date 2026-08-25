@@ -25,10 +25,17 @@ export function applyApiOverrides(config: CustomApiConfig, instances: Record<str
         continue;
       }
 
-      modules.forEach(mod => {
-        if (typeof instance.use === 'function') {
-          instance.use(mod);
+      if (typeof instance.use !== 'function') {
+        if (import.meta.env.DEV) {
+          console.warn(
+            `[Override] API instance "${name}" does not have a .use() method, ${modules.length} module(s) skipped.`,
+          );
         }
+        continue;
+      }
+
+      modules.forEach(mod => {
+        instance.use(mod);
       });
     }
   }
