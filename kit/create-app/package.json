@@ -45,7 +45,6 @@
     "jiti": "^2.7.0",
     "picocolors": "^1.1.1",
     "semver": "^7.8.5",
-    "validate-npm-package-name": "^8.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -54,7 +53,6 @@
     "@kit/vitest-config": "workspace:^",
     "@types/node": "catalog:",
     "@types/semver": "^7.8.0",
-    "@types/validate-npm-package-name": "^4.0.2",
     "eslint": "catalog:",
     "rimraf": "catalog:",
     "tsdown": "catalog:",
