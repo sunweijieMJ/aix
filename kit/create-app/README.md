@@ -36,27 +36,33 @@ pnpm dlx @kit/create-app my-app   # 项目名走参数，其余交互
 
 ### `create-app [project-name]`（默认命令）
 
-| 选项 | 说明 |
-|---|---|
-| `-d, --description <text>` | 项目描述，写入产物 `package.json` 的 `description`（留空则保留模板原值） |
-| `--template <id\|source>` | 注册表 id（如 `admin`），或直接给模板源（见下） |
-| `-f, --features <list>` | 特性列表，逗号分隔；取值域由模板 `config.ts` 的 `features` 声明。`-f ''` 表示一个都不选 |
-| `-p, --param <key=value>` | 模板参数，可重复；取值域由模板的 `params` 声明 |
-| `--no-git` / `--no-install` | 跳过 `git init` / 依赖安装 |
-| `-y, --yes` | 跳过最终确认 |
-| `--force` | 目标目录已存在时强制覆盖（**写入前清空，保留 `.git`**），同时刷新模板缓存 |
-| `--offline` | 只用本地模板缓存，不联网；缓存缺失直接失败 |
-| `--dry-run` | 只打印将生成的文件清单，不写盘、不问后处理 |
-| `--debug` | 打印错误栈（根命令选项，必须写在子命令名**之前**） |
+| 选项                         | 说明                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------- |
+| `-d, --description <text>`   | 项目描述，写入产物 `package.json` 的 `description`（留空则保留模板原值）                |
+| `--template <id\|source>`    | 注册表 id（如 `admin`），或直接给模板源（见下）                                         |
+| `-f, --features <list>`      | 特性列表，逗号分隔；取值域由模板 `config.ts` 的 `features` 声明。`-f ''` 表示一个都不选 |
+| `-p, --param <key=value>`    | 模板参数，可重复；取值域由模板的 `params` 声明                                          |
+| `--git` / `--no-git`         | 初始化 / 跳过 `git init`；都不传则交互询问（非交互场景必须表态）                        |
+| `--install` / `--no-install` | 安装 / 跳过依赖安装；都不传则交互询问                                                   |
+| `--pm <manager>`             | 包管理器（pnpm / npm / yarn）；装依赖且未指定时交互选择                                 |
+| `-y, --yes`                  | 跳过最终确认                                                                            |
+| `--force`                    | 目标目录已存在时强制覆盖（**写入前清空，保留 `.git`**），同时刷新模板缓存               |
+| `--offline`                  | 只用本地模板缓存，不联网；缓存缺失直接失败                                              |
+| `--dry-run`                  | 只打印将生成的文件清单，不写盘、不问后处理                                              |
+| `--debug`                    | 打印错误栈（根命令选项，必须写在子命令名**之前**）                                      |
+
+项目名即生成目录名，按**目录名**规则校验（允许大写与点号，如 `MyApp`、`my.app`；挡掉
+`.` / `..` 路径段、路径分隔符与控制字符）。产物 `package.json` 的 `name` 由它派生成合法包名
+（`MyApp` → `myapp`），其余文件里的 `{{project-name}}` 仍是你输入的原样。
 
 `--template` 接受四种形态：
 
-| 形态 | 例子 | 是否走缓存 |
-|---|---|---|
-| 注册表 id | `admin` | 按其 source 决定 |
-| git 源 | `git+ssh://git@host/owner/repo.git#master`、`git@host:owner/repo.git#master` | ✅ `~/.cache/create-app/` |
-| giget 源 | `github:org/repo/path` | ✅ `~/.cache/giget/` |
-| 本地路径 | `~/workspace/mine/vue-admin-template`、`./tpl`、`file:./tpl` | ❌ 每次直读（模板开发用） |
+| 形态      | 例子                                                                         | 是否走缓存                |
+| --------- | ---------------------------------------------------------------------------- | ------------------------- |
+| 注册表 id | `admin`                                                                      | 按其 source 决定          |
+| git 源    | `git+ssh://git@host/owner/repo.git#master`、`git@host:owner/repo.git#master` | ✅ `~/.cache/create-app/` |
+| giget 源  | `github:org/repo/path`                                                       | ✅ `~/.cache/giget/`      |
+| 本地路径  | `~/workspace/mine/vue-admin-template`、`./tpl`、`file:./tpl`                 | ❌ 每次直读（模板开发用） |
 
 缓存三态：默认复用 → `--force` 删缓存重取 → `--offline` 只读缓存。两个都传时以 `--force` 为准。
 `create-app update-templates` 会把注册表里所有非本地源强制重新拉一遍。
@@ -68,10 +74,21 @@ stdin 非 TTY 时，CLI 会在任何问答之前做一次体检，缺哪个 flag
 非交互命令长这样：
 
 ```bash
+# 只要产物、不装依赖
 create-app my-app --template admin -d "我的项目" \
   -f i18n -p project-title="我的后台" \
   -y --no-git --no-install
+
+# 连 git 初始化和依赖安装一起做完
+create-app my-app --template admin -d "我的项目" \
+  -f i18n -p project-title="我的后台" \
+  -y --git --install --pm pnpm
 ```
+
+`git` / `install` 是**三态**：`--git` / `--no-git` 都算表态，两个都不传才走问答——所以非交互下
+必须显式选一个（只给 `--no-*` 的旧版本在 CI 里根本没法初始化仓库或装依赖）。`--install` 还要配
+`--pm`，否则会落进「包管理器」那一问。`--dry-run` 只读预览，既不受「目标目录已存在」的覆盖
+确认约束，也不要求 git / install 表态。
 
 注意空串按缺失算（`--template ''`、`-f` 之外的空值多半来自未赋值的 shell 变量）；模板参数里
 凡是没有 `default` 的，非交互下必须显式 `--param`。
@@ -80,25 +97,25 @@ create-app my-app --template admin -d "我的项目" \
 
 为已有项目生成 / 列出多租户定制层（需在项目根目录执行，只生成 TypeScript）。
 
-| 选项 | 说明 |
-|---|---|
-| `-m, --modules <list>` | 定制模块，逗号分隔 |
-| `-o, --output <dir>` | 输出目录，默认 `src/overrides` |
+| 选项                                  | 说明                             |
+| ------------------------------------- | -------------------------------- |
+| `-m, --modules <list>`                | 定制模块，逗号分隔               |
+| `-o, --output <dir>`                  | 输出目录，默认 `src/overrides`   |
 | `-y, --yes` / `--dry-run` / `--force` | 跳过确认 / 只预览 / 覆盖已有文件 |
 
 模块（`constants` `router` `views` 为必选，始终生成）：
 
-| 模块 | 维度 | 说明 |
-|---|---|---|
-| `constants` | 静态 | 常量覆盖（角色、菜单、API 码等） |
-| `router` | 静态 | 路由覆盖（替换、新增、禁用） |
-| `views` | — | 自定义页面组件目录 |
-| `api` | 运行时 | API 配置覆盖（实例注册/替换） |
-| `components` | 运行时 | 组件覆盖（预埋组件替换） |
-| `directives` | 运行时 | 指令覆盖（新增/替换全局指令） |
-| `layout` | 运行时 | 布局覆盖（整体/区域替换） |
-| `locale` | 运行时 | 国际化覆盖（文案覆盖/新增） |
-| `store` | 运行时 | 状态覆盖（Pinia action 包装） |
+| 模块         | 维度   | 说明                             |
+| ------------ | ------ | -------------------------------- |
+| `constants`  | 静态   | 常量覆盖（角色、菜单、API 码等） |
+| `router`     | 静态   | 路由覆盖（替换、新增、禁用）     |
+| `views`      | —      | 自定义页面组件目录               |
+| `api`        | 运行时 | API 配置覆盖（实例注册/替换）    |
+| `components` | 运行时 | 组件覆盖（预埋组件替换）         |
+| `directives` | 运行时 | 指令覆盖（新增/替换全局指令）    |
+| `layout`     | 运行时 | 布局覆盖（整体/区域替换）        |
+| `locale`     | 运行时 | 国际化覆盖（文案覆盖/新增）      |
+| `store`      | 运行时 | 状态覆盖（Pinia action 包装）    |
 
 配套的内核（`src/plugins/override/`）由 admin 模板的 `overrides` 特性提供，生成项目时勾上它才有意义。
 
@@ -110,22 +127,29 @@ Zod（strict）校验结构，字段拼错会直接报错而不是静默忽略�
 ```ts
 export default {
   id: 'template-admin',
-  platform: 'web',                       // 'web' | 'mobile'，仅用于展示
+  platform: 'web', // 'web' | 'mobile'，仅用于展示
   compatibleCliVersions: '>=0.2.0 <0.3.0', // semver range，不满足报 E_VERSION_INCOMPATIBLE
-  variables: {},                          // 固定值占位符表：{{key}} → 值
-  params: {                               // 按项目定值的占位符；key 即占位符名（小写 kebab）
+  variables: {}, // 固定值占位符表：{{key}} → 值
+  params: {
+    // 按项目定值的占位符；key 即占位符名（小写 kebab）
     'project-title': { label: '项目标题', default: 'Vue Admin' },
   },
-  exclude: ['dist', 'coverage', 'pnpm-lock.yaml', '.env'],  // 不进产物的路径（前缀匹配）
-  removeScripts: ['check:template'],      // 无条件从产物 package.json 移除的脚本（只服务真源自身的）
-  substitutions: [                        // 真名 → 占位符，只在 files 白名单内生效
+  exclude: ['dist', 'coverage', 'pnpm-lock.yaml', '.env'], // 不进产物的路径（前缀匹配）
+  removeScripts: ['check:template'], // 无条件从产物 package.json 移除的脚本（只服务真源自身的）
+  substitutions: [
+    // 真名 → 占位符，只在 files 白名单内生效
     { from: 'vite-vue3-temp', to: '{{project-name}}', files: ['package.json'] },
   ],
   features: {
     i18n: {
-      label: '国际化', hint: 'recommended', default: true,
-      dirs: ['src/locale'], files: ['i18n.config.ts'],   // 未选中时整体排除
-      deps: [], devDeps: ['@kit/i18n-tools'], scripts: ['i18n'], // 未选中时从 package.json 移除
+      label: '国际化',
+      hint: 'recommended',
+      default: true,
+      dirs: ['src/locale'],
+      files: ['i18n.config.ts'], // 未选中时整体排除
+      deps: [],
+      devDeps: ['@kit/i18n-tools'],
+      scripts: ['i18n'], // 未选中时从 package.json 移除
     },
   },
 };
@@ -161,17 +185,17 @@ description，变量替换**在序列化之前作用于对象**（`--param` 是�
 
 ### 校验与硬失败
 
-| 情况 | 错误码 |
-|---|---|
-| 模板没有 `.template/config.ts` | `E_NO_TEMPLATE_CONFIG` |
-| config 结构不合法 / 有未知字段 | `E_INVALID_TEMPLATE_CONFIG` |
-| CLI 版本不在 `compatibleCliVersions` 内 | `E_VERSION_INCOMPATIBLE` |
-| substitution 在白名单文件里零命中，或白名单文件不存在 | `E_SUBSTITUTION_MISS` |
-| `features.dirs / files` 指向模板中不存在的路径 | `E_STALE_MANIFEST_PATH` |
-| `--features` 里有模板未声明的 id | `E_UNKNOWN_FEATURE` |
-| `--param` 格式错 / 值为空 / 参数未声明 | `E_INVALID_PARAM` |
-| 条件块语法错（嵌套、未闭合、非法表达式） | `E_TEMPLATE_SYNTAX` |
-| 非 TTY 但仍需问答 | `E_NON_INTERACTIVE` |
+| 情况                                                  | 错误码                      |
+| ----------------------------------------------------- | --------------------------- |
+| 模板没有 `.template/config.ts`                        | `E_NO_TEMPLATE_CONFIG`      |
+| config 结构不合法 / 有未知字段                        | `E_INVALID_TEMPLATE_CONFIG` |
+| CLI 版本不在 `compatibleCliVersions` 内               | `E_VERSION_INCOMPATIBLE`    |
+| substitution 在白名单文件里零命中，或白名单文件不存在 | `E_SUBSTITUTION_MISS`       |
+| `features.dirs / files` 指向模板中不存在的路径        | `E_STALE_MANIFEST_PATH`     |
+| `--features` 里有模板未声明的 id                      | `E_UNKNOWN_FEATURE`         |
+| `--param` 格式错 / 值为空 / 参数未声明                | `E_INVALID_PARAM`           |
+| 条件块语法错（嵌套、未闭合、非法表达式）              | `E_TEMPLATE_SYNTAX`         |
+| 非 TTY 但仍需问答                                     | `E_NON_INTERACTIVE`         |
 
 `E_SUBSTITUTION_MISS` 是逐（substitution, 文件）判定的：白名单里任一文件失配都会报，
 不会被别的文件的命中数掩盖 —— 真源改名后忘了同步 config，会在这里硬失败而不是把真名发出去。
@@ -187,8 +211,8 @@ description，变量替换**在序列化之前作用于对象**（`--param` 是�
 
 ## 内置模板
 
-| id | 说明 | 源 |
-|---|---|---|
+| id      | 说明                                       | 源                                                                     |
+| ------- | ------------------------------------------ | ---------------------------------------------------------------------- |
 | `admin` | 后台管理系统（Element Plus，qiankun 可选） | `git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master` |
 
 移动端 H5 模板尚未接入，见 [docs/h5-template.md](./docs/h5-template.md)。
@@ -210,7 +234,8 @@ pnpm verify-combos --install   # 追加 install → type-check → build
 
 几个容易踩的点：
 
-- `override add` 的 eta 模板路径按 `dist/` 布局写死，验证这条链路要用 `pnpm build` 后的产物跑，不能用 `pnpm dev`。
+- `override add` 的 eta 模板目录由 `utils/pkg-root.ts` 运行时向上找包根定位，源码运行（`pnpm dev` / `tsx`）
+  与 `dist/` 产物两种布局都能跑通，不必先 build。
 - 根命令与子命令共用 `-y` / `--force` / `--dry-run`，靠 `enablePositionalOptions()` 区分；
   因此 `--debug` 必须写在子命令名之前。
 - 模板真源仓库改了 `.template/config.ts` 之后，用 git 源生成记得带 `--force` 刷缓存，否则读的还是旧克隆。

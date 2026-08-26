@@ -3,6 +3,9 @@ import { z } from 'zod';
 // 三个 schema 一律用 strictObject：模板清单里多出来的键必须报错。
 // 未知键静默丢弃的代价是「拼错的字段无声失效」——例如把 `exclude` 写成 `excludes`，
 // 校验照样通过，但 .env / dist 会被原样打进产物，而且要到用户拿到项目才发现。
+// 注：不设 `incompatibleWith`（特性互斥）。它曾作为「保留字段」放行但运行时完全不生效——
+// 模板作者写了会以为有互斥约束，实际零效果，正是本文件开头要防的那类静默失效。
+// strictObject 下它现在会直接报错，真要做互斥时连实现一起加回来。
 const TemplateFeatureDefSchema = z.strictObject({
   label: z.string(),
   hint: z.string().optional(),
@@ -12,7 +15,6 @@ const TemplateFeatureDefSchema = z.strictObject({
   deps: z.array(z.string()).optional(),
   devDeps: z.array(z.string()).optional(),
   scripts: z.array(z.string()).optional(),
-  incompatibleWith: z.array(z.string()).optional(),
 });
 
 const SubstitutionSchema = z.strictObject({

@@ -48,8 +48,6 @@ export interface TemplateFeatureDef {
   devDeps?: string[];
   /** 未选此特性时从 package.json scripts 移除的脚本名 */
   scripts?: string[];
-  /** 保留字段，P0 不实现互斥逻辑 */
-  incompatibleWith?: string[];
 }
 
 /** 模板参数定义（来自 .template/config.ts 的 params，key 即占位符名） */

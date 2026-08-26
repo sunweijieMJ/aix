@@ -30,7 +30,13 @@ export const TEMPLATE_REGISTRY: TemplateRegistryEntry[] = [
     platform: 'web',
     source: 'git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master',
   },
-  // TODO(R2): 移动端 H5 以 admin 之上的 overlay 差异层实现，overlay 机制落地后恢复本条目
+  // 移动端 H5：等 vue-h5-template 仓库补上 `.template/config.ts` 后，在此加一条
+  // `{ id: 'h5', label: '移动端 H5', platform: 'mobile', source: 'git+ssh://…/vue-h5-template.git#master' }`
+  // 即可，CLI 无需改动。
+  //
+  // 原先这里写的是「H5 以 admin 之上的 overlay 差异层实现」——该方案已作废：
+  // 两个仓库逐字节相同的文件只有 45/220，且技术栈本身分叉，overlay 的前提不成立。
+  // 详见 docs/h5-template.md。
 ];
 
 /** 按注册表 id 查找条目，未命中返回 undefined（此时 `--template` 的值按模板源处理） */
