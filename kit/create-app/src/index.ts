@@ -48,6 +48,7 @@ export {
 } from './core/git-source';
 export type { GitSource } from './core/git-source';
 export { Composer } from './core/composer';
+export { lintManifest } from './core/manifest-lint';
 export { applyConditionalBlocks } from './core/conditional';
 export { deepMerge, sortDependencies, patchPackageJson } from './core/pkg-patcher';
 export { writeFiles as writeFileList, printFileTree as printFileList, emptyDir } from './utils/fs';

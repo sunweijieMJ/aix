@@ -254,3 +254,30 @@ describe('applyConditionalBlocks - 边界', () => {
     expect(apply(src, ['i18n'])).toBe(['keep\r', 'tail'].join('\n'));
   });
 });
+
+describe('applyConditionalBlocks - 裁剪后的空行折叠', () => {
+  it('块被裁掉后两侧空行贴在一起时折叠成一个空行', () => {
+    // 渗透点的惯用写法：空行 + #if 块 + 空行
+    const src = ['before', '', '// #if i18n', 'setupLocale();', '// #endif', '', 'after'].join(
+      '\n',
+    );
+    expect(apply(src, [])).toBe(['before', '', 'after'].join('\n'));
+  });
+
+  it('保留的块不受影响', () => {
+    const src = ['before', '', '// #if i18n', 'setupLocale();', '// #endif', '', 'after'].join(
+      '\n',
+    );
+    expect(apply(src, ['i18n'])).toBe(['before', '', 'setupLocale();', '', 'after'].join('\n'));
+  });
+
+  it('单个空行不被吞掉', () => {
+    const src = ['a', '', 'b', '// #if x', 'c', '// #endif'].join('\n');
+    expect(apply(src, [])).toBe(['a', '', 'b'].join('\n'));
+  });
+
+  it('无标记的文件即便有连续空行也原样返回（走快路径）', () => {
+    const src = 'a\n\n\n\nb\n';
+    expect(apply(src, ['i18n'])).toBe(src);
+  });
+});

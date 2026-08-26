@@ -11,6 +11,8 @@ export type ErrorCode =
   | 'E_INVALID_PARAM'
   /** config.ts 声明的 substitution 在模板中零命中（真源改名后未同步） */
   | 'E_SUBSTITUTION_MISS'
+  /** config.ts 的 features.dirs / files 指向模板中不存在的路径（清单腐化） */
+  | 'E_STALE_MANIFEST_PATH'
   // 项目相关
   | 'E_INVALID_PROJECT_NAME'
   | 'E_DIR_NOT_EMPTY'

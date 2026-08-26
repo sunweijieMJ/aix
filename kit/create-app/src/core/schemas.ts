@@ -49,6 +49,8 @@ export const TemplateConfigSchema = z
     substitutions: z.array(SubstitutionSchema).optional(),
     /** 可选：不进入产物的路径（构建产物 / 生成文件 / 锁文件等） */
     exclude: z.array(z.string()).optional(),
+    /** 可选：无条件从产物 package.json 移除的 scripts（只服务真源自身的脚本） */
+    removeScripts: z.array(z.string().min(1)).optional(),
     features: z.record(z.string(), TemplateFeatureDefSchema),
   })
   .superRefine((cfg, ctx) => {

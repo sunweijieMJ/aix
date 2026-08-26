@@ -147,6 +147,20 @@ describe('patchPackageJson', () => {
     expect(result.description).toBe('模板自带描述');
   });
 
+  it('removeScripts 无条件移除脚本（与选中特性无关）', () => {
+    const pkg = { ...basePkg, scripts: { ...basePkg.scripts, 'check:template': 'tsx x.ts' } };
+    const withRemove: TemplateConfig = { ...baseManifest, removeScripts: ['check:template'] };
+    // 全选特性也照样移除
+    const result = patchPackageJson(pkg, withRemove, makeConfig(['i18n', 'override']));
+    expect(result.scripts['check:template']).toBeUndefined();
+    expect(result.scripts['i18n']).toBe('i18n-tools scan');
+  });
+
+  it('removeScripts 指向不存在的脚本时不报错', () => {
+    const withRemove: TemplateConfig = { ...baseManifest, removeScripts: ['nope'] };
+    expect(() => patchPackageJson(basePkg, withRemove, makeConfig([]))).not.toThrow();
+  });
+
   it('不修改原始 package.json', () => {
     const config = makeConfig([]);
     patchPackageJson(basePkg, baseManifest, config);

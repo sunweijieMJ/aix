@@ -34,12 +34,12 @@ const TEMPLATE_REAL_NAME = 'vite-vue3-temp';
 
 /** 预设组合：名称 → 选中的特性集合 */
 const COMBOS: Record<string, string[]> = {
-  full: ['i18n', 'qiankun', 'demoPages', 'overrides'],
+  full: ['i18n', 'qiankun', 'demoPages', 'overrides', 'aiDocs'],
   none: [],
-  i18n: ['i18n'],
+  i18n: ['i18n', 'aiDocs'],
   // overrides 单独成组：它的渗透点（main.ts / router / constants / vite.config）与 i18n 交叉，
   // 只靠 full 覆盖的话，一旦 full 挂了就分不清是哪个特性的问题
-  overrides: ['i18n', 'overrides'],
+  overrides: ['i18n', 'overrides', 'aiDocs'],
 };
 
 // ---------------------------------------------------------------- 工具

@@ -134,5 +134,14 @@ export function applyConditionalBlocks(
 
   if (block) throw syntaxError(filePath, block.startLine, '#if 未闭合（缺少 #endif）');
 
-  return output.join('\n');
+  return collapseBlankRuns(output.join('\n'));
+}
+
+/**
+ * 折叠裁剪留下的连续空行（块被删掉后，其两侧的空行会贴在一起）
+ *
+ * 规则与 prettier 一致，且只作用于确实含标记的文件——无标记的文件在上游已原样返回。
+ */
+function collapseBlankRuns(text: string): string {
+  return text.replace(/\n{3,}/g, '\n\n');
 }

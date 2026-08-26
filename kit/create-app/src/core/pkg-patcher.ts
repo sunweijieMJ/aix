@@ -72,6 +72,11 @@ export function patchPackageJson(
     pkg['description'] = config.description;
   }
 
+  // 无条件移除只服务模板真源自身的脚本（它们依赖的文件已被 exclude 挡在产物外）
+  for (const script of manifest.removeScripts ?? []) {
+    delete (pkg['scripts'] as Record<string, string> | undefined)?.[script];
+  }
+
   // 裁剪未选特性的依赖与 scripts
   for (const [featureId, def] of Object.entries(manifest.features)) {
     if (!config.features.includes(featureId)) {

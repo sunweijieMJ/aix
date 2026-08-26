@@ -101,6 +101,13 @@ export interface TemplateConfig {
    */
   exclude?: string[];
   /**
+   * 无条件从产物 package.json 移除的 scripts（features 的 `scripts` 是按特性裁剪，这个与特性无关）
+   *
+   * 用于只服务模板真源自身的脚本（如 `check:template`）——它依赖的文件已被 exclude 挡掉，
+   * 脚本项留着就是一条必定失败的命令。
+   */
+  removeScripts?: string[];
+  /**
    * 特性定义表，key 即特性 id
    *
    * 特性有两种裁剪手段：整目录/整文件级的 dirs/files/deps/devDeps/scripts（本表声明），

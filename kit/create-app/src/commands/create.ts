@@ -3,6 +3,7 @@ import path from 'node:path';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { Composer } from '../core/composer';
+import { lintManifest } from '../core/manifest-lint';
 import { runPostProcess } from '../core/post-processor';
 import { TemplateResolver } from '../core/resolver';
 import {
@@ -142,6 +143,11 @@ export async function create(projectName: string | undefined, opts: CreateOption
 
     const manifest = await resolver.readConfig(templateDir);
     resolver.checkCompat(manifest, version);
+
+    // 清单体检：路径腐化直接抛错，其余以警告呈现（不阻断生成）
+    for (const warning of lintManifest(templateDir, manifest)) {
+      p.log.warn(warning);
+    }
 
     // ── 步骤 4：模板元数据驱动的特性选择 ──
     const features = await collectFeatureSelection(manifest, parseFeatures(opts.features));
