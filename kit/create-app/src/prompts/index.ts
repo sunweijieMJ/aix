@@ -41,13 +41,17 @@ export interface CollectBasicOptions {
   /** 注册表 id 或直接的模板源（本地路径 / giget 格式） */
   template?: string;
   force?: boolean;
+  /** dry-run 不写盘，跳过「目录已存在是否覆盖」这一问 */
+  dryRun?: boolean;
 }
 
 export interface CollectPostOptions {
-  /** `--no-git` 已指定时跳过提问 */
+  /** `--git` / `--no-git` 已指定时跳过提问（undefined = 用户没表态，走问答） */
   initGit?: boolean;
-  /** `--no-install` 已指定时跳过提问 */
+  /** `--install` / `--no-install` 已指定时跳过提问 */
   installDeps?: boolean;
+  /** `--pm` 已指定时跳过包管理器选择 */
+  packageManager?: PostOptions['packageManager'];
 }
 
 /** 把 `--template` 的取值解释为注册表条目或裸模板源 */
@@ -93,7 +97,19 @@ export async function collectBasicInfo(options: CollectBasicOptions = {}): Promi
 
   // 提前检查目标目录，避免走完所有问答才报冲突
   const targetDir = path.resolve(process.cwd(), name);
-  if (fs.existsSync(targetDir) && !options.force) {
+
+  // 同名的普通文件（或非目录节点）是硬冲突，不是「清空后覆盖」能解决的：
+  // 不拦的话会一路走到 emptyDir 的 readdirSync，吐一句没有错误码的裸 ENOTDIR
+  if (fs.existsSync(targetDir) && !fs.statSync(targetDir).isDirectory()) {
+    throw new CreateAppError(
+      'E_DIR_WRITE_FAILED',
+      `目标路径已存在且不是目录: ${targetDir}`,
+      '请更换项目名，或先删除这个同名文件',
+    );
+  }
+
+  // dry-run 不写盘，问「是否覆盖」纯属虚惊（还会在非交互下逼用户传 --force）
+  if (fs.existsSync(targetDir) && !options.force && !options.dryRun) {
     const overwrite = await p.confirm({
       // 「覆盖」的真实语义是先清空再生成（保留 .git），措辞必须说破——
       // 只写“是否覆盖”会被理解成同名文件覆写，用户不知道无关文件也会被删
@@ -272,9 +288,10 @@ export async function collectPostOptions(options: CollectPostOptions = {}): Prom
       return result;
     })());
 
-  // 不安装依赖时包管理器只影响提示文案，用默认值即可，少问一题
-  let packageManager: PostOptions['packageManager'] = 'pnpm';
-  if (installDeps) {
+  // 不安装依赖时包管理器只影响提示文案，用默认值即可，少问一题；
+  // `--pm` 显式给了就不再问（否则非交互下 `--install` 会卡在这一问上）
+  let packageManager: PostOptions['packageManager'] = options.packageManager ?? 'pnpm';
+  if (installDeps && options.packageManager === undefined) {
     const result = await p.select({
       message: '包管理器',
       options: [

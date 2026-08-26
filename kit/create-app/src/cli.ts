@@ -44,8 +44,16 @@ program
     (val: string, acc: string[]) => [...acc, val],
     [] as string[],
   )
+  // git / install 都声明成「肯定式在前 + 否定式在后」的一对：
+  // commander 只声明 `--no-git` 时默认值是 true，拿不到「用户没表态」这一态，
+  // 于是非交互场景永远只能跳过 git / 安装（想装依赖也没有开关可传）。
+  // 先声明 `--git` 后默认值变成 undefined，三态齐了：undefined 问答 / true 执行 / false 跳过。
+  // （已验证 commander 15 的这一行为，顺序不能反）
+  .option('--git', '初始化 Git 仓库（非交互场景用，等价于问答里选「是」）')
   .option('--no-git', '跳过 git init')
+  .option('--install', '安装依赖（非交互场景需配合 --pm 指定包管理器）')
   .option('--no-install', '跳过依赖安装')
+  .option('--pm <manager>', '包管理器（pnpm | npm | yarn），装依赖时省略则交互选择')
   // --offline / --force 不给默认值：resolver 要区分「没传」与「传了 false」——
   // 三态（都没传 = 复用缓存 / --force = 删缓存重取 / --offline = 只用缓存）靠 undefined 判定，
   // 给了默认 false 后 `options?.offline ?? !options?.force` 这类写法会永远走 false 分支

@@ -9,6 +9,8 @@ export type ErrorCode =
   | 'E_UNKNOWN_FEATURE'
   /** --param 的 key 不在模板 params 声明中、格式不是 key=value、或值为空 */
   | 'E_INVALID_PARAM'
+  /** CLI 选项取值不合法（如 `--pm bun`），区别于 `--param` 的 E_INVALID_PARAM */
+  | 'E_INVALID_OPTION'
   /** config.ts 声明的 substitution 在模板中零命中（真源改名后未同步） */
   | 'E_SUBSTITUTION_MISS'
   /** config.ts 的 features.dirs / files 指向模板中不存在的路径（清单腐化） */

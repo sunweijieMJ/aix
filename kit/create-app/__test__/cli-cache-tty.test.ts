@@ -233,6 +233,24 @@ describe('非 TTY 快速失败', () => {
   );
 
   it(
+    '`.` 前缀的项目名被拒（`.git` 会命中「清空后写入」，把当前仓库的 .git 清掉）',
+    () => {
+      // 把 workDir 做成一个真仓库，确保这条断言覆盖的是真实后果
+      execFileSync('git', ['init', '-q'], { cwd: workDir });
+      const head = path.join(workDir, '.git/HEAD');
+      expect(fs.existsSync(head)).toBe(true);
+
+      const r = runCreate('.git', source, workDir, ['--force']);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_INVALID_PROJECT_NAME');
+      // .git 仍然完好
+      expect(fs.existsSync(head)).toBe(true);
+      fs.rmSync(path.join(workDir, '.git'), { recursive: true, force: true });
+    },
+    TIMEOUT,
+  );
+
+  it(
     "`--template ''`（未赋值 shell 变量插值的典型形态）按缺失处理，不落进模板选择问答",
     () => {
       const r = runCreate('empty-tpl', '', workDir);
@@ -240,6 +258,115 @@ describe('非 TTY 快速失败', () => {
       expect(r.output).toContain('E_NON_INTERACTIVE');
       expect(r.output).toContain('--template');
       expect(fs.existsSync(path.join(workDir, 'empty-tpl'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('非 TTY 的 git / install / dry-run 语义', () => {
+  let repo: string;
+  let source: string;
+  let workDir: string;
+
+  beforeAll(() => {
+    repo = makeTemplateRepo();
+    source = `git+file://${repo}#master`;
+    tempDirs.push(gitCacheDir({ url: `git+file://${repo}`, ref: 'master' }));
+    workDir = tempDir('create-app-post-');
+  });
+
+  /** 除 git/install 之外参数齐全（这两项交由用例自己表态） */
+  const runBare = (name: string, extra: string[]): CliResult =>
+    runCli(
+      [name, '--template', source, '--features=i18n', '-d', 'post options', '-y', ...extra],
+      workDir,
+    );
+
+  it(
+    'git / install 没表态时非零退出，且提示两种表态方式',
+    () => {
+      const r = runBare('post-none', []);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_NON_INTERACTIVE');
+      expect(r.output).toContain('--git 或 --no-git');
+      expect(r.output).toContain('--install 或 --no-install');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '`--git` 在非 TTY 下真的会 git init（旧实现只有 --no-git，CI 里没法初始化仓库）',
+    () => {
+      const r = runBare('post-git', ['--git', '--no-install']);
+      expect(r.status, r.output).toBe(0);
+      expect(fs.existsSync(path.join(workDir, 'post-git/.git'))).toBe(true);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '`--install` 缺 `--pm` 时非零退出（否则会卡在「包管理器」那一问）',
+    () => {
+      const r = runBare('post-install', ['--no-git', '--install']);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('--pm');
+      expect(fs.existsSync(path.join(workDir, 'post-install'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '`--pm` 取值不合法时早失败（在问答与 clone 之前）',
+    () => {
+      const r = runBare('post-badpm', ['--no-git', '--install', '--pm', 'bun']);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('--pm 取值不合法');
+      expect(r.output).toContain('pnpm | npm | yarn');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '`--dry-run` 不因目标目录已存在而要求 --force（只读预览不该被逼传危险 flag）',
+    () => {
+      fs.mkdirSync(path.join(workDir, 'dry-occupied'), { recursive: true });
+      fs.writeFileSync(path.join(workDir, 'dry-occupied/keep.txt'), 'keep');
+
+      const r = runCli(
+        ['dry-occupied', '--template', source, '--features=i18n', '-d', 'dry', '--dry-run'],
+        workDir,
+      );
+      expect(r.status, r.output).toBe(0);
+      expect(r.output).toContain('Dry-run');
+      // 既不写盘也不清空已有内容
+      expect(fs.readFileSync(path.join(workDir, 'dry-occupied/keep.txt'), 'utf-8')).toBe('keep');
+      expect(fs.existsSync(path.join(workDir, 'dry-occupied/package.json'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '`--dry-run` 也不要求 git / install 表态',
+    () => {
+      const r = runCli(
+        ['dry-fresh', '--template', source, '--features=i18n', '-d', 'dry', '--dry-run'],
+        workDir,
+      );
+      expect(r.status, r.output).toBe(0);
+      expect(fs.existsSync(path.join(workDir, 'dry-fresh'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '同名的普通文件（非目录）直接报 E_DIR_WRITE_FAILED，而不是裸 ENOTDIR',
+    () => {
+      fs.writeFileSync(path.join(workDir, 'filey'), 'x');
+      const r = runCreate('filey', source, workDir, ['--force']);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_DIR_WRITE_FAILED');
+      expect(r.output).not.toContain('ENOTDIR');
+      expect(fs.readFileSync(path.join(workDir, 'filey'), 'utf-8')).toBe('x');
     },
     TIMEOUT,
   );

@@ -25,14 +25,36 @@ export interface CreateOptions {
   features?: string;
   /** `--param key=value` 可重复，commander 累积为数组 */
   param?: string[];
-  /** commander 对 `--no-git` 生成的是 git=false，而非 noGit */
+  /**
+   * git / install 是三态：undefined = 用户没表态（走问答）、true = `--git` / `--install`、
+   * false = `--no-git` / `--no-install`。commander 对 `--no-git` 生成的是 git=false，而非 noGit
+   */
   git?: boolean;
   install?: boolean;
+  /** `--pm`：装依赖时的包管理器，省略则交互选择（非交互 + 装依赖时必填） */
+  pm?: string;
   force?: boolean;
   offline?: boolean;
   yes?: boolean;
   dryRun?: boolean;
   template?: string;
+}
+
+const PACKAGE_MANAGERS = ['pnpm', 'npm', 'yarn'] as const;
+type PackageManager = (typeof PACKAGE_MANAGERS)[number];
+
+/** 校验 `--pm` 取值；未传返回 undefined（表示仍需问答） */
+function parsePackageManager(raw: string | undefined): PackageManager | undefined {
+  if (raw === undefined) return undefined;
+  const pm = raw.trim();
+  if (!(PACKAGE_MANAGERS as readonly string[]).includes(pm)) {
+    throw new CreateAppError(
+      'E_INVALID_OPTION',
+      `--pm 取值不合法: "${raw}"`,
+      `可选值：${PACKAGE_MANAGERS.join(' | ')}`,
+    );
+  }
+  return pm as PackageManager;
 }
 
 /** `--features a,b` → ['a','b']；`--features ''` → []；未传 → undefined */
@@ -65,8 +87,14 @@ export function missingNonInteractiveFlags(
   // 空串也算缺失：collectBasicInfo 对 template 走 truthy 判断，`--template ''`
   // （典型来源是未赋值的 shell 变量插值）会落进模板选择问答
   if (!opts.template) missing.push('--template <id|source>');
-  // 目标目录已存在时会弹「是否覆盖」确认，只有 --force 能跳过
-  if (projectName && !opts.force && fs.existsSync(path.resolve(process.cwd(), projectName))) {
+  // 目标目录已存在时会弹「是否覆盖」确认，只有 --force 能跳过。
+  // dry-run 不写盘、压根不会问这一句，别让一个只读预览被迫去传最危险的那个 flag
+  if (
+    projectName &&
+    !opts.force &&
+    !opts.dryRun &&
+    fs.existsSync(path.resolve(process.cwd(), projectName))
+  ) {
     missing.push(`--force（目录 ${projectName} 已存在，否则会弹覆盖确认）`);
   }
 
@@ -78,9 +106,13 @@ export function missingNonInteractiveFlags(
 
   // collectPostOptions + confirmSummary：dry-run 会整段跳过
   if (!opts.dryRun) {
-    if (opts.git !== false) missing.push('--no-git');
-    // --install（默认值 true）仍会问「自动安装依赖？」，问 yes 还会追问包管理器
-    if (opts.install !== false) missing.push('--no-install');
+    // 三态：没表态才需要补 flag（`--git` / `--install` 也算表态，不再强制只能跳过）
+    if (opts.git === undefined) missing.push('--git 或 --no-git');
+    if (opts.install === undefined) missing.push('--install 或 --no-install');
+    // 装依赖时还要选包管理器：只传 `--install` 仍会落进「包管理器」那一问
+    if (opts.install === true && opts.pm === undefined) {
+      missing.push('--pm <pnpm|npm|yarn>（--install 时必填）');
+    }
     if (!opts.yes) missing.push('-y, --yes');
   }
 
@@ -100,7 +132,8 @@ function assertNonInteractiveReady(projectName: string | undefined, opts: Create
       .map((m) => `  - ${m}`)
       .join('\n')}`,
     '非交互场景请补齐全部参数，例如：\n' +
-      '  create-app <name> --template admin -d "<描述>" -f i18n -y --no-git --no-install',
+      '  create-app <name> --template admin -d "<描述>" -f i18n -y --no-git --no-install\n' +
+      '  create-app <name> --template admin -d "<描述>" -f i18n -y --git --install --pm pnpm',
   );
 }
 
@@ -112,6 +145,8 @@ export async function create(projectName: string | undefined, opts: CreateOption
     // --param 的语法校验不依赖模板，提前到问答与 clone 之前：
     // 放在步骤 4.5 的话，一个漏写的 `=` 要等用户答完问答、克隆完仓库才报出来
     const argvParams = parseParamArgs(opts.param);
+    // --pm 同理：取值错了不该等到问答与克隆之后才报
+    const argvPm = parsePackageManager(opts.pm);
 
     // 获取 CLI 版本号（运行时向上找包根，兼容 tsx 源码运行与 tsdown 打包后的 dist/）
     const version = readCliVersion(import.meta.url);
@@ -122,6 +157,7 @@ export async function create(projectName: string | undefined, opts: CreateOption
       description: opts.description,
       template: opts.template,
       force: opts.force,
+      dryRun: opts.dryRun,
     });
 
     // ── 步骤 3：拉取/定位模板并校验兼容性 ──
@@ -159,8 +195,10 @@ export async function create(projectName: string | undefined, opts: CreateOption
     const post = opts.dryRun
       ? { packageManager: 'pnpm' as const, initGit: false, installDeps: false }
       : await collectPostOptions({
-          initGit: opts.git === false ? false : undefined,
-          installDeps: opts.install === false ? false : undefined,
+          // 三态直传：undefined 才问，true / false 都是用户已表态
+          initGit: opts.git,
+          installDeps: opts.install,
+          packageManager: argvPm,
         });
 
     const config: ProjectConfig = {
