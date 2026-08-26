@@ -123,7 +123,14 @@ create-app my-app --template admin -d "我的项目" \
 | `locale`     | 运行时 | 国际化覆盖（文案覆盖/新增）      |
 | `store`      | 运行时 | 状态覆盖（Pinia action 包装）    |
 
-配套的内核（`src/plugins/override/`）由 admin 模板的 `overrides` 特性提供，生成项目时勾上它才有意义。
+**前置条件**：覆盖层内核（`src/plugins/override/`）与基础设施（`<output>/types.ts`、`index.ts`、
+`registry.ts`）由 admin 模板的 `overrides` 特性提供 —— 生成项目时勾上「多租户定制体系」。
+`override add` 只生成「按租户」的那部分（聚合入口 + 各模块骨架），前置文件缺失会直接报
+`E_MISSING_OVERRIDE_KERNEL` 并说明去哪儿拿，不会写出一堆 import 不到内核的死文件。
+
+> 本包曾自带一份内核拷贝给「还没有内核的项目」兜底，已移除：那份拷贝必须自包含，
+> 而模板真源为紧耦合优化（直接 import `@/api/core/request` 等），两个目标互斥导致必然漂移
+> （`initOverrides` 的签名都曾不一样）。现在内核只有模板真源一处。
 
 ## 模板协议 v0.2
 

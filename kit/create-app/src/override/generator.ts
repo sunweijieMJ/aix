@@ -26,14 +26,47 @@ const MODULE_WITH_DIR: ModuleId[] = [
 ];
 
 /**
- * 生成覆盖层文件列表
+ * 覆盖层内核：必须由**模板真源**提供（admin 模板的 `overrides` 特性），本包不再自带拷贝
+ *
+ * 曾经这里有一份内核与基础设施的 eta 拷贝，用于给「还没有内核的项目」兜底。它带来的是
+ * 一份必然漂移的第二真源：真源为紧耦合优化（直接 import `@/api/core/request`、
+ * `@/constants/menu`、`@/layout/useLayoutContext`、`@/utils/auth`），而兜底拷贝必须自包含，
+ * 于是两边逻辑越走越远（`override-store` 曾差 33 行、`initOverrides` 的签名都不一样）。
+ *
+ * 现在收口成单一真源：内核与基础设施一律来自模板，本包只生成「按租户的那部分骨架」。
+ */
+const REQUIRED_KERNEL_FILE = 'src/plugins/override/index.ts';
+
+/** 覆盖层基础设施：与内核同理，由模板的 `overrides` 特性提供（位于 output 目录下） */
+const REQUIRED_INFRA_FILES = ['types.ts', 'index.ts', 'registry.ts'];
+
+/**
+ * 检查生成骨架所需的前置文件，返回缺失的相对路径（相对 cwd）
+ *
+ * 骨架会 `import type { OverrideConfig } from '../types'` 和 `from '@/plugins/override'`——
+ * 前置条件不满足就生成，等于产出一堆编译不过的死 import。
+ */
+export function findMissingPrerequisites(cwd: string, outputDir: string): string[] {
+  const missing: string[] = [];
+  if (!fs.existsSync(path.join(cwd, REQUIRED_KERNEL_FILE))) missing.push(REQUIRED_KERNEL_FILE);
+  for (const rel of REQUIRED_INFRA_FILES) {
+    const full = path.join(outputDir, rel);
+    if (!fs.existsSync(full)) missing.push(path.relative(cwd, full));
+  }
+  return missing;
+}
+
+/**
+ * 生成覆盖层文件列表（只含「按租户」的那部分：聚合入口 + 各模块骨架）
  *
  * 不写入磁盘，仅返回 { path, content } 数组，由调用方决定是否写入。
+ * 内核（`src/plugins/override/`）与基础设施（`<output>/types.ts` 等）不在此生成，
+ * 由模板的 `overrides` 特性提供 —— 见 REQUIRED_KERNEL_FILE 的注释。
  */
 export function generateFiles(options: GenerateOptions): GeneratedFile[] {
   const { project, modules } = options;
 
-  // 模板目录：<包根>/templates-override/overrides/（只发 TypeScript，js 变体与 {lang} 目录层已移除）
+  // 模板目录：<包根>/templates-override/overrides/（只发 TypeScript）
   const templatesDir = path.resolve(PKG_ROOT, 'templates-override', 'overrides');
 
   const eta = new Eta({
@@ -44,24 +77,6 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
 
   const context: TemplateContext = { project, modules };
   const files: GeneratedFile[] = [];
-
-  // ── 基础设施文件（始终生成） ──
-  files.push({
-    path: 'types.ts',
-    content: eta.render('./types.ts.eta', context),
-  });
-  files.push({
-    path: 'deployment.ts',
-    content: eta.render('./deployment.ts.eta', context),
-  });
-  files.push({
-    path: 'index.ts',
-    content: eta.render('./index.ts.eta', context),
-  });
-  files.push({
-    path: 'registry.ts',
-    content: eta.render('./registry.ts.eta', context),
-  });
 
   // ── 项目聚合入口（根据选中模块动态 import） ──
   files.push({
@@ -94,52 +109,6 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
     if (file.content !== null) {
       file.content = cleanContent(file.content);
     }
-  }
-
-  return files;
-}
-
-/** plugins/override 目录下需要生成的文件基础名（不含扩展名） */
-const OVERRIDE_UTIL_BASES = [
-  'index',
-  'override-router',
-  'override-component',
-  'override-constants',
-  'override-store',
-  'override-api',
-  'override-directives',
-  'override-layout',
-];
-
-/**
- * 生成 src/plugins/override/ 下的核心工具文件
- *
- * 调用方负责过滤已存在的文件。
- *
- * @returns 文件列表，path 相对于 src/plugins/override/
- */
-export function generateOverrideUtils(): GeneratedFile[] {
-  const utilsTemplatesDir = path.resolve(PKG_ROOT, 'templates-override', 'plugins', 'override');
-
-  if (!fs.existsSync(utilsTemplatesDir)) return [];
-
-  const eta = new Eta({
-    views: utilsTemplatesDir,
-    autoEscape: false,
-    autoTrim: false,
-  });
-
-  const files: GeneratedFile[] = [];
-
-  for (const base of OVERRIDE_UTIL_BASES) {
-    const fileName = `${base}.ts`;
-    const templateFile = `${fileName}.eta`;
-    if (!fs.existsSync(path.join(utilsTemplatesDir, templateFile))) continue;
-
-    files.push({
-      path: fileName,
-      content: cleanContent(eta.render(`./${templateFile}`, {})),
-    });
   }
 
   return files;

@@ -1,5 +1,5 @@
 // Override 命令相关（P0-1）
-export { generateFiles, generateOverrideUtils } from './override/generator';
+export { generateFiles, findMissingPrerequisites } from './override/generator';
 export {
   checkProjectConflict,
   resolveConflicts,

@@ -24,12 +24,32 @@ const TIMEOUT = 60_000;
 
 const tempDirs: string[] = [];
 
-/** 造一个「最小项目根」：只需要有 package.json（isProjectRoot 的判据） */
-function makeProject(): string {
+/**
+ * 造一个「带 Override 内核的项目根」
+ *
+ * 内核（`src/plugins/override/`）与基础设施（`<output>/types.ts` 等）由模板的 overrides
+ * 特性提供，本包只生成按租户的骨架 —— 所以这些前置文件必须先摆上，否则 add 会直接报
+ * E_MISSING_OVERRIDE_KERNEL（缺失路径本身另有用例覆盖）。
+ *
+ * @param withKernel 传 false 得到一个「只有 package.json」的裸项目
+ */
+function makeProject(withKernel = true): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-ovr-'));
   tempDirs.push(dir);
   fs.mkdirSync(path.join(dir, 'nested'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'host' }));
+
+  if (withKernel) {
+    fs.mkdirSync(path.join(dir, 'src/plugins/override'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'src/plugins/override/index.ts'),
+      '// 模板 overrides 特性提供的内核（测试替身）\nexport {};\n',
+    );
+    fs.mkdirSync(path.join(dir, 'src/overrides'), { recursive: true });
+    for (const rel of ['types.ts', 'index.ts', 'registry.ts', 'deployment.ts']) {
+      fs.writeFileSync(path.join(dir, 'src/overrides', rel), `// 模板提供：${rel}\nexport {};\n`);
+    }
+  }
   return dir;
 }
 
@@ -72,6 +92,50 @@ describe('override add - 定制目录名校验', () => {
         expect(r.status, code).not.toBe(0);
         expect(r.output, code).toContain('E_INVALID_PROJECT_NAME');
       }
+    },
+    TIMEOUT,
+  );
+});
+
+describe('override add - 内核 / 基础设施前置检查', () => {
+  it(
+    '裸项目（无内核）直接报 E_MISSING_OVERRIDE_KERNEL，并点名缺哪些文件',
+    () => {
+      const cwd = makeProject(false);
+      const r = runAdd(['sysu', '-m', 'router', '-y'], cwd);
+
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_MISSING_OVERRIDE_KERNEL');
+      expect(r.output).toContain('src/plugins/override/index.ts');
+      expect(r.output).toContain('src/overrides/types.ts');
+      // 一个文件都不该落盘：骨架 import 不到内核，生成出来只是死 import
+      expect(fs.existsSync(path.join(cwd, 'src/overrides/sysu'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '--dry-run 也拦（预览一个注定装不上的产物只会误导）',
+    () => {
+      const cwd = makeProject(false);
+      const r = runAdd(['sysu', '-m', 'router', '--dry-run'], cwd);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_MISSING_OVERRIDE_KERNEL');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '只缺基础设施（有内核、output 目录是空的）同样报错并只点名缺的那几个',
+    () => {
+      const cwd = makeProject(false);
+      fs.mkdirSync(path.join(cwd, 'src/plugins/override'), { recursive: true });
+      fs.writeFileSync(path.join(cwd, 'src/plugins/override/index.ts'), 'export {};\n');
+
+      const r = runAdd(['sysu', '-m', 'router', '-y'], cwd);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('src/overrides/types.ts');
+      expect(r.output).not.toContain('src/plugins/override/index.ts');
     },
     TIMEOUT,
   );
@@ -133,10 +197,9 @@ describe('override add - 生成物必须自包含', () => {
   it(
     '除 @/plugins/override（同批生成）外，不得出现任何 @/ 语句级 import',
     () => {
-      // 这份内核拷贝的唯一消费者是「尚未拥有内核的项目」——真源那份为紧耦合优化，
-      // 直接 import 了 @/api/core/request、@/constants/menu、@/layout/useLayoutContext、
-      // @/utils/auth，照抄过来就是一堆悬空 import。本用例守住这条边界，
-      // 防止后来者「同步最新版」时把分叉抹平。详见 templates-override/README.md
+      // 骨架里的 @/ import 只允许 @/plugins/override（内核，由模板的 overrides 特性提供）。
+      // 出现别的 @/xxx 就会在用户项目里变成死 import——内核本身已收口到模板真源，
+      // 本包只生成按租户的骨架。详见 templates-override/README.md
       const cwd = makeProject();
       expect(
         runAdd(['sysu', '-m', 'api,components,directives,layout,locale,store', '-y'], cwd).status,
@@ -169,22 +232,6 @@ describe('override add - 生成物必须自包含', () => {
     },
     TIMEOUT,
   );
-
-  it(
-    '维护者说明不得渲染进用户项目（.eta 里的 JS 注释会原样输出）',
-    () => {
-      const cwd = makeProject();
-      expect(runAdd(['sysu', '-m', 'layout', '-y'], cwd).status).toBe(0);
-      for (const rel of [
-        'src/plugins/override/index.ts',
-        'src/plugins/override/override-layout.ts',
-        'src/overrides/registry.ts',
-      ]) {
-        expect(fs.readFileSync(path.join(cwd, rel), 'utf-8'), rel).not.toContain('有意分叉');
-      }
-    },
-    TIMEOUT,
-  );
 });
 
 describe('override add - 生成结果', () => {
@@ -196,9 +243,11 @@ describe('override add - 生成结果', () => {
       expect(r.status).toBe(0);
 
       const base = path.join(cwd, 'src/overrides');
-      // 基础设施 + 项目聚合入口
-      for (const rel of ['types.ts', 'index.ts', 'registry.ts', 'deployment.ts', 'sysu/index.ts']) {
-        expect(fs.existsSync(path.join(base, rel)), rel).toBe(true);
+      // 项目聚合入口
+      expect(fs.existsSync(path.join(base, 'sysu/index.ts'))).toBe(true);
+      // 基础设施是前置文件，本包不生成也不改写它们
+      for (const rel of ['types.ts', 'index.ts', 'registry.ts', 'deployment.ts']) {
+        expect(fs.readFileSync(path.join(base, rel), 'utf-8'), rel).toContain('模板提供');
       }
       // 必选模块（constants / router / views）始终生成，即便 -m 里没写
       expect(fs.existsSync(path.join(base, 'sysu/constants/index.ts'))).toBe(true);
@@ -212,8 +261,10 @@ describe('override add - 生成结果', () => {
       const entry = fs.readFileSync(path.join(base, 'sysu/index.ts'), 'utf-8');
       expect(entry).toContain("from './locale'");
       expect(entry).not.toContain("from './store'");
-      // 内核工具首次运行时补齐
-      expect(fs.existsSync(path.join(cwd, 'src/plugins/override/index.ts'))).toBe(true);
+      // 内核不再由本包生成，原样保持模板提供的那份
+      expect(fs.readFileSync(path.join(cwd, 'src/plugins/override/index.ts'), 'utf-8')).toContain(
+        '测试替身',
+      );
     },
     TIMEOUT,
   );
@@ -244,8 +295,9 @@ describe('override add - 生成结果', () => {
       const r = runAdd(['sysu', '-m', 'router', '--dry-run'], cwd);
       expect(r.status).toBe(0);
       expect(r.output).toContain('预览模式');
-      expect(fs.existsSync(path.join(cwd, 'src/overrides'))).toBe(false);
-      expect(fs.existsSync(path.join(cwd, 'src/plugins/override'))).toBe(false);
+      // src/overrides 与 src/plugins/override 是前置文件（模板提供），本来就存在；
+      // 该断的是「按租户的那部分一个都没落盘」
+      expect(fs.existsSync(path.join(cwd, 'src/overrides/sysu'))).toBe(false);
     },
     TIMEOUT,
   );

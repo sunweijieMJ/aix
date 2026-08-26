@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import pc from 'picocolors';
 import { isProjectRoot } from '../../utils/detector';
-import { generateFiles, generateOverrideUtils } from '../../override/generator';
+import { findMissingPrerequisites, generateFiles } from '../../override/generator';
 import {
   checkProjectConflict,
   resolveConflicts,
@@ -150,6 +150,23 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
 
   const outputDir = path.resolve(cwd, options.output);
 
+  // 前置条件：内核与基础设施由模板的 `overrides` 特性提供，本包只生成按租户的骨架。
+  // 缺了就生成，等于产出一堆 import 不到 `@/plugins/override` / `../types` 的死文件；
+  // dry-run 也一并拦——预览一个注定装不上的产物只会误导
+  const missingPrereq = findMissingPrerequisites(cwd, outputDir);
+  if (missingPrereq.length > 0) {
+    throw new CreateAppError(
+      'E_MISSING_OVERRIDE_KERNEL',
+      `缺少 Override 内核 / 基础设施，无法生成覆盖层骨架：\n${missingPrereq
+        .map((f) => `  - ${f}`)
+        .join('\n')}`,
+      '这些文件由模板的 `overrides` 特性提供：\n' +
+        '  · 新项目：生成时勾上「多租户定制体系」特性\n' +
+        '  · 已有项目：从模板真源同步 src/plugins/override/ 与 src/overrides/*.ts\n' +
+        '  · 用了 -o 指向非默认目录：基础设施需要先放到该目录下',
+    );
+  }
+
   // 项目代码重名检测
   if (!options.dryRun) {
     const canContinue = await checkProjectConflict(options.project, outputDir, {
@@ -196,22 +213,6 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   writeFiles(resolvedFiles, outputDir);
   printFileTree(resolvedFiles, options.output);
 
-  // ── 检测并生成 plugins/override（首次运行时） ──
-  const utilsDir = path.resolve(cwd, 'src/plugins/override');
-  const utilsIndexFile = path.join(utilsDir, 'index.ts');
-  let utilsGenerated = false;
-
-  // 走到这里 dry-run 已在上面 return，无需再判
-  const utilFiles = generateOverrideUtils();
-  const missingUtils = utilFiles.filter((f) => !fs.existsSync(path.join(utilsDir, f.path)));
-
-  if (missingUtils.length > 0) {
-    console.log(pc.cyan('\n🔧 检测到 src/plugins/override/ 缺少以下文件，自动生成：\n'));
-    writeFiles(missingUtils, utilsDir);
-    printFileTree(missingUtils, 'src/plugins/override');
-    utilsGenerated = true;
-  }
-
   // ── 下一步提示 ──
   // `@` 别名指向 src/，所以只有 output 在 src/ 下才拼得出别名；
   // 指到 src/ 外时打印原始路径，别给出一个解析不了的 import
@@ -222,12 +223,6 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   console.log(pc.bold('\n📝 下一步：'));
   console.log(`  1. 在 ${pc.cyan(`${options.output}/registry.ts`)} 中添加学校 NID 映射`);
   console.log(`  2. 在各模块的 ${pc.cyan('index.ts')} 中实现定制逻辑\n`);
-
-  if (!fs.existsSync(utilsIndexFile) && !utilsGenerated) {
-    console.log(
-      pc.yellow('  ⚠️  未检测到 src/plugins/override/，请手动创建或重新运行（会自动生成）\n'),
-    );
-  }
 
   // 模板的 overrides 特性自带 setup.ts，接线已经做完了。此时再打印一遍手动接入步骤，
   // 用户照着做就是重复接入

@@ -13,6 +13,8 @@ export type ErrorCode =
   | 'E_INVALID_OPTION'
   /** 用户级配置（`~/.config/create-app/templates.json`）存在但内容不合法 */
   | 'E_INVALID_USER_CONFIG'
+  /** `override add` 所需的内核 / 基础设施缺失（应由模板的 overrides 特性提供） */
+  | 'E_MISSING_OVERRIDE_KERNEL'
   /** config.ts 声明的 substitution 在模板中零命中（真源改名后未同步） */
   | 'E_SUBSTITUTION_MISS'
   /** config.ts 的 features.dirs / files 指向模板中不存在的路径（清单腐化） */

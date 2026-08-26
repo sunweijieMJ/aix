@@ -480,9 +480,20 @@ describe('覆盖已有目录：写入前清空，不做合并写入', () => {
 describe('override add 非 TTY 快速失败', () => {
   let projDir: string;
 
+  /** 摆上 override 内核与基础设施：它们由模板的 overrides 特性提供，本包只生成按租户的骨架 */
+  const seedKernel = (root: string, output: string): void => {
+    fs.mkdirSync(path.join(root, 'src/plugins/override'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'src/plugins/override/index.ts'), 'export {};\n');
+    fs.mkdirSync(path.join(root, output), { recursive: true });
+    for (const rel of ['types.ts', 'index.ts', 'registry.ts', 'deployment.ts']) {
+      fs.writeFileSync(path.join(root, output, rel), `// 模板提供：${rel}\nexport {};\n`);
+    }
+  };
+
   beforeAll(() => {
     projDir = tempDir('create-app-ov-tty-');
     fs.writeFileSync(path.join(projDir, 'package.json'), '{"name":"host-app"}\n');
+    seedKernel(projDir, 'src/overrides');
   });
 
   it(
@@ -513,7 +524,10 @@ describe('override add 非 TTY 快速失败', () => {
       const r = runCli(['override', 'add', 'sysu', '-m', 'router', '-y'], projDir);
       expect(r.status, r.output).toBe(0);
       expect(fs.existsSync(path.join(projDir, 'src/overrides/sysu/router/index.ts'))).toBe(true);
-      expect(fs.existsSync(path.join(projDir, 'src/overrides/registry.ts'))).toBe(true);
+      // 基础设施是前置文件，本包不生成也不改写
+      expect(fs.readFileSync(path.join(projDir, 'src/overrides/registry.ts'), 'utf-8')).toContain(
+        '模板提供',
+      );
     },
     TIMEOUT,
   );
@@ -521,7 +535,11 @@ describe('override add 非 TTY 快速失败', () => {
   it(
     '实际撞到冲突且没给 -y / --force 时，在问答现场非零退出',
     () => {
-      // 上一个用例已生成 src/overrides，gzdx 会与其中的 registry.ts 等基础设施文件冲突
+      // 预先占住 gzdx 骨架里的一个文件，制造真冲突
+      //（基础设施不再由本包生成，第二个租户本身不会撞到任何已有文件）
+      fs.mkdirSync(path.join(projDir, 'src/overrides/gzdx/router'), { recursive: true });
+      fs.writeFileSync(path.join(projDir, 'src/overrides/gzdx/router/index.ts'), '// 手写内容\n');
+
       const r = runCli(['override', 'add', 'gzdx', '-m', 'router'], projDir);
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('E_NON_INTERACTIVE');
@@ -533,7 +551,7 @@ describe('override add 非 TTY 快速失败', () => {
   it(
     '输出目录存在但无冲突时，全参数运行不被误拦（目录存在 ≠ 会弹问答）',
     () => {
-      fs.mkdirSync(path.join(projDir, 'src/overrides-b'), { recursive: true });
+      seedKernel(projDir, 'src/overrides-b');
       const r = runCli(['override', 'add', 'nk', '-m', 'router', '-o', 'src/overrides-b'], projDir);
       expect(r.status, r.output).toBe(0);
       expect(fs.existsSync(path.join(projDir, 'src/overrides-b/nk/router/index.ts'))).toBe(true);
