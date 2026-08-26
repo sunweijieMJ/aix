@@ -7,14 +7,14 @@
 
 模版化已合入 `vue-h5-template` 的 `master` 并推送，`create-app --template h5` 可直接使用：
 
-| 接入清单                 | 状态                                                                                                                                                          |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. `.template/config.ts` | ✅ 已写（params / exclude / substitutions 齐备）                                                                                                              |
-| 1-⚠️ 存储隔离            | ✅ 已做，但**做法与本文原方案不同**（见下）                                                                                                                   |
-| 2. 特性划分 + 条件块     | ✅ 6 个已落地（i18n / debugTools / webVitals / nativeBridge / aiDocs / demoPages）                                                                            |
-| 3. 组合矩阵              | ✅ L1–L5 全绿。文件级 4 组合（217 / 213 / 204 / 143 文件）；全链路 `--install` 跑了三个代表组合（全开 / 关 i18n / 全关），install → type-check → build 全通过 |
-| 4. 真源专属文档与自检    | ✅ `docs/template-authoring.md` + `scripts/template/checkTemplate.ts`（9 个带标记文件 / 2 条替换 / 64 种组合），已接进 husky pre-commit                       |
-| 5. CLI 注册表            | ✅ 已登记 `h5`（master 已推送，`create-app --template h5` 实跑通过）                                                                                          |
+| 接入清单                 | 状态                                                                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. `.template/config.ts` | ✅ 已写（params / exclude / substitutions 齐备）                                                                                        |
+| 1-⚠️ 存储隔离            | ✅ 已做，但**做法与本文原方案不同**（见下）                                                                                             |
+| 2. 特性划分 + 条件块     | ✅ 6 个已落地（i18n / debugTools / webVitals / nativeBridge / aiDocs / demoPages）                                                      |
+| 3. 组合矩阵              | ✅ L1–L5 全绿。`--smart-combos` 枚举 8 个组合（full / none / 每个特性单独关一次），文件级全绿；全链路 `--install` 同样跑这 8 个         |
+| 4. 真源专属文档与自检    | ✅ `docs/template-authoring.md` + `scripts/template/checkTemplate.ts`（9 个带标记文件 / 2 条替换 / 64 种组合），已接进 husky pre-commit |
+| 5. CLI 注册表            | ✅ 已登记 `h5`（master 已推送，`create-app --template h5` 实跑通过）                                                                    |
 
 ### 与本文原方案的差异（以实现为准）
 

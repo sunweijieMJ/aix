@@ -16,10 +16,15 @@
  *   pnpm verify-combos --out-root /tmp/x     # 指定产物根目录（默认临时目录）
  *   pnpm verify-combos --registry <url>      # install 时覆盖 registry（默认走模板自带 .npmrc）
  *   pnpm verify-combos --param k=v [--param …] # 透传模板参数（无 default 的参数必须给）
- *   pnpm verify-combos --features a,b [--features ''] # 现给组合（验非 admin 模板用，可重复）
+ *   pnpm verify-combos --features a,b [--features ''] # 现给组合（可重复）
+ *   pnpm verify-combos --smart-combos        # 从模板清单枚举 N+2 个组合（推荐）
+ *   pnpm verify-combos --all-combos          # 全枚举 2^N（配 --install 会很慢）
  *   pnpm verify-combos --real-name <pkg>     # 模板真名（默认读模板 package.json 的 name）
  *
- * 首个组合会带 `--refresh`（git 源默认复用本地克隆，否则可能对着旧克隆验出假绿灯）。
+ * 组合来源优先级：`--features` > `--combo` > `--all-combos` / `--smart-combos` > 内置预设。
+ *
+ * 非本地路径源在开跑前会先强制刷一次缓存：git 源默认复用本地克隆，
+ * 否则可能对着旧克隆验出假绿灯（已实测踩到）。
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -27,6 +32,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pc from 'picocolors';
+import { isLocalSource, TemplateResolver } from '../src/core/resolver';
+import type { TemplateConfig } from '../src/types';
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = path.join(PKG_ROOT, 'src/cli.ts');
@@ -76,6 +83,52 @@ const COMBOS: Record<string, string[]> = {
   // 只靠 full 覆盖的话，一旦 full 挂了就分不清是哪个特性的问题
   overrides: ['i18n', 'overrides', 'aiDocs'],
 };
+
+// ---------------------------------------------------------------- 组合枚举
+
+/**
+ * 读模板清单，拿到特性 id 列表
+ *
+ * 直接复用 TemplateResolver 而不是自己 jiti + 解析：走的是 CLI 生成时的同一条通路
+ * （含 Zod strict 校验），清单写错会在这里就以同样的错误报出来，不会「枚举出一堆
+ * 特性、生成时才发现清单不合法」。非本地源顺便强制刷缓存，避免对着旧克隆枚举。
+ */
+async function readTemplateFeatures(source: string): Promise<string[]> {
+  const resolver = new TemplateResolver();
+  const dir = await resolver.fetch(source, isLocalSource(source) ? undefined : { refresh: true });
+  const manifest: TemplateConfig = await resolver.readConfig(dir);
+  return Object.keys(manifest.features);
+}
+
+/**
+ * 「聪明」组合：全开 + 全关 + 每个特性单独关一次（N + 2 个）
+ *
+ * 为什么是「单独关」而不是「单独开」：条件块的错误几乎都在特性**关闭**时才显形
+ * （残留标记、悬空 import、被裁的依赖仍被引用）。全开那一份由 `full` 覆盖，
+ * 全关那一份把「所有裁剪同时发生」的交叉情况兜住。
+ *
+ * 6 个特性 → 8 个组合，配 `--install` 约几分钟；要穷尽 2^N 用 `--all-combos`。
+ */
+function smartCombos(features: string[]): (readonly [string, string[]])[] {
+  const combos: (readonly [string, string[]])[] = [
+    ['full', features] as const,
+    ['none', []] as const,
+  ];
+  for (const off of features) {
+    combos.push([`no-${off}`, features.filter((f) => f !== off)] as const);
+  }
+  return combos;
+}
+
+/** 全枚举 2^N：位掩码逐位映射到特性开关 */
+function allCombos(features: string[]): (readonly [string, string[]])[] {
+  const combos: (readonly [string, string[]])[] = [];
+  for (let mask = 0; mask < 2 ** features.length; mask++) {
+    const selected = features.filter((_, i) => Boolean(mask & (1 << i)));
+    combos.push([selected.length > 0 ? selected.join('+') : 'none', selected] as const);
+  }
+  return combos;
+}
 
 // ---------------------------------------------------------------- 工具
 
@@ -242,7 +295,7 @@ const LEVELS: Record<string, string> = {
   L5: 'build 通过（全链路）',
 };
 
-function verify(name: string, selected: string[], opts: Options, refresh: boolean): ComboResult {
+function verify(name: string, selected: string[], opts: Options): ComboResult {
   const projectName = `verify-${name}`;
   const outDir = path.join(opts.outRoot, projectName);
   console.log(
@@ -263,10 +316,8 @@ function verify(name: string, selected: string[], opts: Options, refresh: boolea
       '-d',
       `verify-combos ${name}`,
       ...opts.params.flatMap((p) => ['--param', p]),
-      // 首个组合强制刷缓存：git 源默认复用本地克隆，模板刚推的改动验不到，
-      // 绿灯会是「对着旧克隆验的」这种 false green（已实测踩到）。
-      // 后续组合复用这份刚拉的缓存，不必每次重克隆
-      ...(refresh ? ['--refresh'] : []),
+      // 不带 --refresh：缓存已在 main() 里统一刷过一次，
+      // 每个组合都重克隆纯属浪费（模板动辄几百个文件）
       '-y',
       '--no-git',
       '--no-install',
@@ -324,7 +375,7 @@ function verify(name: string, selected: string[], opts: Options, refresh: boolea
   return { name, level: 'L5', ok: true, fileCount };
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const arg = (flag: string): string | undefined => {
     const i = argv.indexOf(flag);
@@ -366,18 +417,50 @@ function main(): void {
     `模板源：${opts.template}\n模板真名：${opts.realName ?? '（推导不出，跳过真名残留检测——可用 --real-name 指定）'}`,
   );
 
-  const entries: (readonly [string, string[]])[] =
-    adhoc.length > 0
-      ? adhoc.map((list, i) => [`custom${i + 1}`, list.split(',').filter(Boolean)] as const)
-      : only
-        ? [[only, COMBOS[only]!] as const]
-        : Object.entries(COMBOS);
-  const results = entries.map(([name, selected], i) => verify(name, selected, opts, i === 0));
+  const wantAll = argv.includes('--all-combos');
+  const wantSmart = argv.includes('--smart-combos');
+
+  let entries: (readonly [string, string[]])[];
+  if (adhoc.length > 0) {
+    entries = adhoc.map((list, i) => [`custom${i + 1}`, list.split(',').filter(Boolean)] as const);
+  } else if (only) {
+    entries = [[only, COMBOS[only]!] as const];
+  } else if (wantAll || wantSmart) {
+    // 从模板清单枚举：特性 id 的取值域由各模板自己定，写死在本脚本里等于「换个模板就失效」
+    const features = await readTemplateFeatures(opts.template);
+    if (features.length === 0) throw new Error(`模板未声明任何特性：${opts.template}`);
+    entries = wantAll ? allCombos(features) : smartCombos(features);
+    console.log(
+      `模板特性（${features.length}）：${features.join(', ')}\n` +
+        `组合数：${entries.length}（${wantAll ? '全枚举 2^N' : 'full + none + 每个特性单独关一次'}）`,
+    );
+    if (wantAll && opts.install) {
+      console.log(
+        pc.yellow(
+          `⚠️  --all-combos 配 --install：${entries.length} 个组合各要跑 install → type-check → build，` +
+            '按单个约 40s 估算需要 ' +
+            `${Math.ceil((entries.length * 40) / 60)} 分钟以上`,
+        ),
+      );
+    }
+  } else {
+    // 兜底仍是内置预设（admin 的特性 id），保持既有调用方式不变
+    entries = Object.entries(COMBOS);
+  }
+
+  // 非本地源统一在开跑前刷一次缓存，之后所有组合复用（详见文件头注释）。
+  // 上面走枚举分支时 readTemplateFeatures 已经刷过，这里不重复
+  if (!isLocalSource(opts.template) && !wantAll && !wantSmart) {
+    console.log('刷新模板缓存…');
+    await new TemplateResolver().fetch(opts.template, { refresh: true });
+  }
+
+  const results = entries.map(([name, selected]) => verify(name, selected, opts));
 
   console.log(`\n${'='.repeat(70)}\n汇总（产物根目录 ${outRoot}）`);
   for (const r of results) {
     console.log(
-      `  ${r.name.padEnd(6)} ${r.level.padEnd(8)} ${String(r.fileCount ?? '-').padStart(4)} 文件  ${LEVELS[r.level]}${r.note ? ` — ${r.note}` : ''}`,
+      `  ${r.name.padEnd(18)} ${r.level.padEnd(8)} ${String(r.fileCount ?? '-').padStart(4)} 文件  ${LEVELS[r.level]}${r.note ? ` — ${r.note}` : ''}`,
     );
   }
   // 任何一个组合没跑到预期层级都必须非零退出——包括 --install 模式下的 L3/L4/L5 失败，
@@ -393,4 +476,7 @@ function main(): void {
   process.exit(failed.length > 0 ? 1 : 0);
 }
 
-main();
+main().catch((err: unknown) => {
+  console.error(pc.red(err instanceof Error ? err.message : String(err)));
+  process.exit(1);
+});
