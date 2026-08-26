@@ -31,6 +31,7 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "verify-combos": "tsx scripts/verify-combos.ts",
+    "check-template-sync": "tsx scripts/check-template-sync.ts",
     "lint": "eslint . --max-warnings 0",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest --run",

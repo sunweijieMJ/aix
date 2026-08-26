@@ -263,6 +263,7 @@ pnpm dev -- my-app --template ~/workspace/mine/vue-admin-template   # 跑源码
 pnpm test                # vitest
 pnpm type-check
 pnpm build               # tsdown → dist/
+pnpm check-template-sync # 多个模版真源之间的漂移检查
 pnpm verify-combos       # 特性组合矩阵：用真实 CLI 生成 + 静态体检
 pnpm verify-combos --install   # 追加 install → type-check → build
 ```
@@ -288,6 +289,22 @@ pnpm verify-combos --install   # 追加 install → type-check → build
 `verify-combos` 是模板改动的主要护栏：它以子进程调用真实 CLI，绿灯等价于用户实际跑出来的结果。
 默认模板源是本地路径 `~/workspace/mine/vue-admin-template`（改即验，不必先 push），
 可用 `--template` 换源、`--param k=v` 透传参数。
+
+### `check-template-sync` 检查什么
+
+两个真源（`vue-admin-template` / `vue-h5-template`）长期并存，而协议是本包定的。
+已经真实漂移过两次：h5 的 `.claude/agents/project-structure.md` 写着 admin 的包名、
+h5 整个缺了自检脚本与维护指南。所以只盯两件要紧的：
+
+1. **协议必备**：每个真源都要有 `.template/config.ts`、`scripts/template/checkTemplate.ts`、
+   `docs/template-authoring.md`，`package.json` 有 `check:template`，且**接进了 husky**
+   （不接等于没有护栏）。
+2. **协议共享文件逐字节一致**：`checkTemplate.ts` 是协议实现，不该按仓库分叉 ——
+   模板专属差异一律写进 `.template/config.ts`。
+
+刻意**不做**「所有同名文件都要一致」：162 个同名文件里只有 64 个逐字节相同，其余多是
+`.claude` 文档 / `src` / 配置，两个模板技术栈本身分叉、本该不同。那种检查只会产出近百行
+噪音然后被忽略，所以重叠面只作为信息打印，不作为失败依据。
 
 几个容易踩的点：
 
