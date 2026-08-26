@@ -16,6 +16,8 @@
  *   pnpm verify-combos --out-root /tmp/x     # 指定产物根目录（默认临时目录）
  *   pnpm verify-combos --registry <url>      # install 时覆盖 registry（默认走模板自带 .npmrc）
  *   pnpm verify-combos --param k=v [--param …] # 透传模板参数（无 default 的参数必须给）
+ *   pnpm verify-combos --features a,b [--features ''] # 现给组合（验非 admin 模板用，可重复）
+ *   pnpm verify-combos --real-name <pkg>     # 模板真名（默认读模板 package.json 的 name）
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -29,10 +31,34 @@ const CLI = path.join(PKG_ROOT, 'src/cli.ts');
 // 直接用本包的 tsx bin：子进程 cwd 在临时目录（workspace 之外），`pnpm exec` 会找不到包
 const TSX = path.join(PKG_ROOT, 'node_modules/.bin/tsx');
 const DEFAULT_TEMPLATE = path.join(os.homedir(), 'workspace/mine/vue-admin-template');
-/** 模板真源的包名，产物里出现即说明 substitutions 漏配 */
-const TEMPLATE_REAL_NAME = 'vite-vue3-temp';
+/** 兜底的模板真源包名（模板源不是本地目录、又没传 --real-name 时用） */
+const FALLBACK_REAL_NAME = 'vite-vue3-temp';
 
-/** 预设组合：名称 → 选中的特性集合 */
+/**
+ * 模板真源的包名：产物里出现它即说明 substitutions 漏配
+ *
+ * 不写死：本脚本要能验任意模板（admin 叫 vite-vue3-temp，h5 叫 vue-h5-template）。
+ * 本地目录源直接读它的 package.json，其余形态用 --real-name 显式给。
+ */
+function detectRealName(template: string, override?: string): string {
+  if (override) return override;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(template, 'package.json'), 'utf-8')) as {
+      name?: string;
+    };
+    if (pkg.name) return pkg.name;
+  } catch {
+    // 非本地目录源（git / giget），读不到就退回兜底值
+  }
+  return FALLBACK_REAL_NAME;
+}
+
+/**
+ * 预设组合：名称 → 选中的特性集合
+ *
+ * 这些名字是 **admin 模板**的特性 id。验其他模板时用 `--features a,b`（可重复）
+ * 现给组合，不要指望预设能通用——特性 id 的取值域由各模板的 config.ts 决定。
+ */
 const COMBOS: Record<string, string[]> = {
   full: ['i18n', 'qiankun', 'demoPages', 'overrides', 'aiDocs'],
   none: [],
@@ -92,7 +118,7 @@ function resolveSpecifier(spec: string, fromFile: string, root: string): boolean
   return ['/index.ts', '/index.vue', '/index.js'].some((idx) => fs.existsSync(base + idx));
 }
 
-function staticCheck(outDir: string): string[] {
+function staticCheck(outDir: string, realName: string): string[] {
   const problems: string[] = [];
 
   for (const rel of walk(outDir)) {
@@ -104,7 +130,7 @@ function staticCheck(outDir: string): string[] {
     content.split('\n').forEach((line, i) => {
       if (MARKER_LINE.test(line.trim())) problems.push(`标记残留 ${rel}:${i + 1} → ${line.trim()}`);
       if (VAR_LEFTOVER.test(line)) problems.push(`变量残留 ${rel}:${i + 1} → ${line.trim()}`);
-      if (line.includes(TEMPLATE_REAL_NAME)) {
+      if (line.includes(realName)) {
         problems.push(`真名残留 ${rel}:${i + 1} → ${line.trim()}`);
       }
     });
@@ -185,6 +211,8 @@ interface Options {
   template: string;
   /** 透传给 CLI 的 `--param k=v`：模板一旦声明无 default 的参数，不给就会 E_NON_INTERACTIVE */
   params: string[];
+  /** 模板真源包名（产物里出现即 substitutions 漏配） */
+  realName: string;
 }
 
 interface ComboResult {
@@ -240,7 +268,7 @@ function verify(name: string, selected: string[], opts: Options): ComboResult {
   const fileCount = walk(outDir).length;
   console.log(`  L1 CLI 生成：${pc.green('✓')} ${fileCount} 个文件 (${gen.secs}s) → ${outDir}`);
 
-  const problems = staticCheck(outDir);
+  const problems = staticCheck(outDir, opts.realName);
   if (problems.length > 0) {
     console.log(`  L2 静态体检：${pc.red('✗')} ${problems.length} 处问题`);
     problems.slice(0, 40).forEach((p) => console.log(`     - ${p}`));
@@ -289,27 +317,46 @@ function main(): void {
     const i = argv.indexOf(flag);
     return i >= 0 ? argv[i + 1] : undefined;
   };
-  /** 可重复的 flag：收集全部出现处的值 */
-  const argAll = (flag: string): string[] =>
-    argv.flatMap((a, i) => (a === flag && argv[i + 1] ? [argv[i + 1]!] : []));
+  /**
+   * 可重复的 flag：收集全部出现处的值
+   *
+   * allowEmpty 供 `--features ''`（一个特性都不选）使用——那是个合法组合，
+   * 默认的 truthy 过滤会把它连同缺值的 flag 一起丢掉
+   */
+  const argAll = (flag: string, opts: { allowEmpty?: boolean } = {}): string[] =>
+    argv.flatMap((a, i) => {
+      if (a !== flag) return [];
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith('--')) return [];
+      return opts.allowEmpty || next.length > 0 ? [next] : [];
+    });
 
   const only = arg('--combo');
   if (only && !(only in COMBOS)) {
     throw new Error(`未知组合：${only}（可选 ${Object.keys(COMBOS).join(' / ')}）`);
   }
+  // `--features a,b`（可重复）：为非 admin 模板现给组合。空串 = 一个都不选，也是合法组合
+  const adhoc = argAll('--features', { allowEmpty: true });
   const outRoot = arg('--out-root') ?? fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-verify-'));
   fs.mkdirSync(outRoot, { recursive: true });
 
+  const template = arg('--template') ?? DEFAULT_TEMPLATE;
   const opts: Options = {
     install: argv.includes('--install'),
     registry: arg('--registry'),
     outRoot,
-    template: arg('--template') ?? DEFAULT_TEMPLATE,
+    template,
     params: argAll('--param'),
+    realName: detectRealName(template, arg('--real-name')),
   };
-  console.log(`模板源：${opts.template}`);
+  console.log(`模板源：${opts.template}\n模板真名：${opts.realName}`);
 
-  const entries = only ? [[only, COMBOS[only]!] as const] : Object.entries(COMBOS);
+  const entries: (readonly [string, string[]])[] =
+    adhoc.length > 0
+      ? adhoc.map((list, i) => [`custom${i + 1}`, list.split(',').filter(Boolean)] as const)
+      : only
+        ? [[only, COMBOS[only]!] as const]
+        : Object.entries(COMBOS);
   const results = entries.map(([name, selected]) => verify(name, selected, opts));
 
   console.log(`\n${'='.repeat(70)}\n汇总（产物根目录 ${outRoot}）`);

@@ -3,6 +3,43 @@
 > 基线：`~/workspace/mine/vue-admin-template@50ca55e`（已是模板真源）与
 > `~/workspace/mine/vue-h5-template@37f57d4`（尚未模板化）。日期 2026-08-25。
 
+## 〇、进度（2026-08-26 更新）
+
+模版化已在 `vue-h5-template` 的 `feat/template-onboarding` 分支落地：
+
+| 接入清单                              | 状态                                                                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1. `.template/config.ts`              | ✅ 已写（params / exclude / substitutions 齐备）                                                                          |
+| 1-⚠️ 存储隔离                         | ✅ 已做，但**做法与本文原方案不同**（见下）                                                                               |
+| 2. 特性划分 + 条件块                  | ⚠️ 5 个已落地（debugTools / webVitals / nativeBridge / aiDocs / demoPages）；**i18n 未切**，单独一轮                      |
+| 3. 组合矩阵                           | ⚠️ L1 生成 + L2 静态体检全绿（3 个组合：216 / 212 / 151 文件）；**L3–L5（`--install` → type-check → build）未跑**，需私服 |
+| 4. h5 版 `docs/template-authoring.md` | ❌ 未做                                                                                                                   |
+| 5. CLI 注册表                         | ⏸ 待分支合入 master（现在登记 `#master` 会让用户拿到 E_NO_TEMPLATE_CONFIG）。合并前可用用户级注册表指向该分支             |
+
+### 与本文原方案的差异（以实现为准）
+
+- **存储隔离不改 key，改在存储边界拼前缀**。原方案说把 `db_name` / 裸 `token` 改成带前缀的形态，
+  但这些 key 是 `as const` 字面量联合类型，改名会波及所有调用点。实现改为新增 `STORAGE_PREFIX`
+  （值为仓库名，供 substitutions 替换），由 `local-storage` / `session-storage` 内部把逻辑 key
+  映射成 `<prefix>:<key>`，pinia 持久化 key 同理——调用点一行未动。cookie 不加前缀：
+  `session_id` 这类多由后端下发，前端改名会直接读不到。
+- **i18n 的渗透面是 7 个文件而不是「8 处」**：`main.ts`、`app/App.vue`、`layout/index.vue`、
+  `layout/LayoutNavbar`、`plugins/dayjs.ts`、`store/modules/global.ts`、`interface/system.ts`。
+  其中 `layout/index.vue` 用 `t()` 出模板文案，切掉 i18n 需要 `#else` 兜底成字面量——这是它没能
+  和另外 5 个特性一起落地的原因。
+- **`index.html` 的标题是 `H5 App`**，不是本文写的 `Vite Vue3 App`。
+- **`nativeBridge` 零渗透点**：`utils/bridge.ts` 当前没有任何调用方，纯文件级裁剪，
+  不需要「确认 api/modules/auth.ts 取 token 处」。
+
+### 本文「四、遗留风险」的复核结果
+
+| 原风险                         | 复核（2026-08-26）                                                        |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `.env.production` 默认开 eruda | ❌ 已不成立：`VITE_DEBUG_TOOLS = ''` 早已留空，还附了「必须留空」的注释   |
+| h5 缺 `@kit/i18n-tools`        | ❌ 已不成立：devDep `^0.0.28` + 4 个 i18n script + `.i18n-tools` 都已就位 |
+| 历史提交里的 Applitools key    | ⚠️ **仍然有效**，需去平台作废；模版化后仓库会被更多人 clone，泄露面扩大   |
+| 两个真源的同步成本             | ⚠️ 仍然有效（45 个相同文件靠人工同步）                                    |
+
 ## 一、结论
 
 **H5 应作为第二个独立的模板真源接入，而不是 admin 之上的 overlay 差异层。**
@@ -13,13 +50,13 @@
 
 overlay 方案已经不成立，数据如下：
 
-| 指标 | 数值 |
-|---|---|
-| admin 版本库文件 | 220 |
-| h5 版本库文件 | 214 |
+| 指标                     | 数值             |
+| ------------------------ | ---------------- |
+| admin 版本库文件         | 220              |
+| h5 版本库文件            | 214              |
 | 两边**逐字节相同**的文件 | **45**（约 20%） |
-| 同名但内容不同 | 109 |
-| 只存在于一侧 | 99 |
+| 同名但内容不同           | 109              |
+| 只存在于一侧             | 99               |
 
 也就是说 overlay 需要声明约 200 条 remove/覆盖规则才能从 admin 走到 h5，还要为此新写一套
 overlay 合成器；而两个仓库的**技术栈本身就分叉了**（下表），overlay 的前提「共享同一底座」不成立。
@@ -28,36 +65,36 @@ overlay 合成器；而两个仓库的**技术栈本身就分叉了**（下表�
 
 ### 1. 技术栈级分叉（不可 overlay 的根本原因）
 
-| 维度 | admin | h5 |
-|---|---|---|
-| UI 组件库 | Element Plus + `@element-plus/icons-vue` | **Vant** + `@vant/use` + `@vant/auto-import-resolver` + `unplugin-icons` |
-| 适配方案 | 无（`postcss-px-to-viewport-8-plugin` 装了但整段注释掉） | `postcss-pxtorem`（rootValue 37.5，`van-` 前缀黑名单） |
+| 维度          | admin                                                       | h5                                                                                            |
+| ------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| UI 组件库     | Element Plus + `@element-plus/icons-vue`                    | **Vant** + `@vant/use` + `@vant/auto-import-resolver` + `unplugin-icons`                      |
+| 适配方案      | 无（`postcss-px-to-viewport-8-plugin` 装了但整段注释掉）    | `postcss-pxtorem`（rootValue 37.5，`van-` 前缀黑名单）                                        |
 | HTTP / API 层 | `@zhs/agent-course-kit`（PolymasApi + SSO）+ Orval 代码生成 | 自研 axios 分层：`api/core/{http,instances,interceptors,utils}`，手写 `api/modules`，无 Orval |
-| 鉴权 | `utils/auth.ts` 读 Cookie，SSO 跳转 | `api/modules/auth.ts` + `utils/bridge.ts`（JSBridge 向原生要 token） |
-| 存储 | `localforage` + `pinia-plugin-persistedstate` | 自研 `plugins/storage/{cookie,local-storage,session-storage,indexed-db}` |
-| 校验 | Element Plus 表单规则 | `valibot` + `constants/validation.ts` |
-| 工具库 | `lodash-es` + `dayjs` | `@vueuse/core` + `dayjs` |
-| 构建压缩 | `vite-plugin-compression@0.5.1` | `vite-plugin-compression2` |
-| i18n 工具链 | `@kit/i18n-tools`（`i18n` / `i18n:doctor` 等 4 个脚本） | 无（只有 vue-i18n 运行时） |
+| 鉴权          | `utils/auth.ts` 读 Cookie，SSO 跳转                         | `api/modules/auth.ts` + `utils/bridge.ts`（JSBridge 向原生要 token）                          |
+| 存储          | `localforage` + `pinia-plugin-persistedstate`               | 自研 `plugins/storage/{cookie,local-storage,session-storage,indexed-db}`                      |
+| 校验          | Element Plus 表单规则                                       | `valibot` + `constants/validation.ts`                                                         |
+| 工具库        | `lodash-es` + `dayjs`                                       | `@vueuse/core` + `dayjs`                                                                      |
+| 构建压缩      | `vite-plugin-compression@0.5.1`                             | `vite-plugin-compression2`                                                                    |
+| i18n 工具链   | `@kit/i18n-tools`（`i18n` / `i18n:doctor` 等 4 个脚本）     | 无（只有 vue-i18n 运行时）                                                                    |
 
 > `vite-plugin-compression@0.5.1` 双实例会因模块级 mtimeCache 共享导致**第二个算法静默不产出**
 > （admin 的 `.br` 其实从未生成过）。h5 已换 `vite-plugin-compression2`，admin 侧待反向同步。
 
 ### 2. H5 独有能力（admin 没有，是「移动端模板」的价值所在）
 
-| 分类 | 文件 | 说明 |
-|---|---|---|
-| 布局 | `layout/LayoutNavbar/`、`layout/LayoutTabbar/` | 顶部导航栏 + 底部 Tabbar（对应 admin 的 `LayoutMenu` 侧边栏） |
-| 原生交互 | `utils/bridge.ts` | JSBridge：Android `addJavascriptInterface` / iOS WebViewJavascriptBridge 双通道 |
-| 调试面板 | `plugins/vconsole.ts`、`plugins/eruda.ts` | 由 `VITE_DEBUG_TOOLS` 逗号分隔按需动态 import |
-| 性能监控 | `plugins/web-vitals.ts` | 由 `VITE_ENABLE_WEB_VITALS` 开关 |
-| 移动端 composables | `useKeyboardVisible`、`useScroll`、`useRouteTransition`、`useCssVariable` | 软键盘挤压视口、滚动方向、前进/后退转场动画 |
-| 移动端指令 | `directives/long-press.ts`、`directives/click-throttle.ts` | 长按、点击节流 |
-| 组件 | `BaseEmpty`、`BaseImage`、Skeleton 的 `List/Grid/Form/Detail` 四种变体 | admin 只有 `Card/Table` 两种骨架 |
-| 存储 | `plugins/storage/*` | 四种存储介质统一封装 + `key-map.ts` |
-| 其它 | `utils/logger.ts`、`utils/validation.ts`、`constants/validation.ts` | 统一日志（admin 待反向同步）、校验规则 |
-| 示例页 | `views/list-demo/`、`views/form-demo/` | 对应 admin 的 `learning-analytics` / `setting` |
-| 工程 | `.husky/pre-push` + `scripts/husky/pre-push.ts` | admin 没有 pre-push |
+| 分类               | 文件                                                                      | 说明                                                                            |
+| ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 布局               | `layout/LayoutNavbar/`、`layout/LayoutTabbar/`                            | 顶部导航栏 + 底部 Tabbar（对应 admin 的 `LayoutMenu` 侧边栏）                   |
+| 原生交互           | `utils/bridge.ts`                                                         | JSBridge：Android `addJavascriptInterface` / iOS WebViewJavascriptBridge 双通道 |
+| 调试面板           | `plugins/vconsole.ts`、`plugins/eruda.ts`                                 | 由 `VITE_DEBUG_TOOLS` 逗号分隔按需动态 import                                   |
+| 性能监控           | `plugins/web-vitals.ts`                                                   | 由 `VITE_ENABLE_WEB_VITALS` 开关                                                |
+| 移动端 composables | `useKeyboardVisible`、`useScroll`、`useRouteTransition`、`useCssVariable` | 软键盘挤压视口、滚动方向、前进/后退转场动画                                     |
+| 移动端指令         | `directives/long-press.ts`、`directives/click-throttle.ts`                | 长按、点击节流                                                                  |
+| 组件               | `BaseEmpty`、`BaseImage`、Skeleton 的 `List/Grid/Form/Detail` 四种变体    | admin 只有 `Card/Table` 两种骨架                                                |
+| 存储               | `plugins/storage/*`                                                       | 四种存储介质统一封装 + `key-map.ts`                                             |
+| 其它               | `utils/logger.ts`、`utils/validation.ts`、`constants/validation.ts`       | 统一日志（admin 待反向同步）、校验规则                                          |
+| 示例页             | `views/list-demo/`、`views/form-demo/`                                    | 对应 admin 的 `learning-analytics` / `setting`                                  |
+| 工程               | `.husky/pre-push` + `scripts/husky/pre-push.ts`                           | admin 没有 pre-push                                                             |
 
 ### 3. admin 独有（H5 不需要，也不该带过去）
 
@@ -94,18 +131,18 @@ CLI 侧只有第 5 步，其余都在 `vue-h5-template` 仓库里。
 4. **补 h5 版 `docs/template-authoring.md`** 并加进 `exclude`（真源专属文档不进产物）；
    `README.md` / `CLAUDE.md` 里模板身份的表述按 admin 的做法模板化。
 5. **CLI 注册表**：`src/config/defaults.ts` 增一条 `{ id: 'h5', label: '移动端 H5', platform: 'mobile',
-   source: 'git+ssh://…/vue-h5-template.git#master' }`，删掉那条 overlay TODO；
+source: 'git+ssh://…/vue-h5-template.git#master' }`，删掉那条 overlay TODO；
    `__test__/registry.test.ts` 与 README 的内置模板表同步。
 
 ### 建议的 h5 特性划分
 
-| 特性 id | 默认 | dirs / files | deps / devDeps / scripts | 渗透点 |
-|---|---|---|---|---|
-| `i18n` | ✅ | `src/locale`、`public/locale`、`layout/components/LanguagePicker`、`plugins/locale.ts` | `vue-i18n`（h5 **可以**真删——它没有 `@zhs/agent-course-kit` 那个硬 import 幽灵依赖） | `main.ts`、`app/App.vue`、`layout/index.vue`、`plugins/dayjs.ts`、`plugins/storage/key-map.ts`、`store/modules/global.ts`（共 8 处） |
-| `debugTools` | ✅ | `plugins/vconsole.ts`、`plugins/eruda.ts` | `vconsole`、`eruda` | `main.ts` 的 `setupDebugTools()`、`.env.*` 的 `VITE_DEBUG_TOOLS`（`# #if` 风格） |
-| `webVitals` | ❌ | `plugins/web-vitals.ts` | `web-vitals` | `main.ts` 的 `setupWebVitals()`、`.env.production` |
-| `nativeBridge` | ❌ | `utils/bridge.ts` | — | 调用方（`api/modules/auth.ts` 取 token 处需确认） |
-| `demoPages` | ❌ | `views/list-demo`、`views/form-demo` | — | `router/routes/*`、`LayoutTabbar` 的 items |
+| 特性 id        | 默认 | dirs / files                                                                           | deps / devDeps / scripts                                                             | 渗透点                                                                                                                               |
+| -------------- | ---- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `i18n`         | ✅   | `src/locale`、`public/locale`、`layout/components/LanguagePicker`、`plugins/locale.ts` | `vue-i18n`（h5 **可以**真删——它没有 `@zhs/agent-course-kit` 那个硬 import 幽灵依赖） | `main.ts`、`app/App.vue`、`layout/index.vue`、`plugins/dayjs.ts`、`plugins/storage/key-map.ts`、`store/modules/global.ts`（共 8 处） |
+| `debugTools`   | ✅   | `plugins/vconsole.ts`、`plugins/eruda.ts`                                              | `vconsole`、`eruda`                                                                  | `main.ts` 的 `setupDebugTools()`、`.env.*` 的 `VITE_DEBUG_TOOLS`（`# #if` 风格）                                                     |
+| `webVitals`    | ❌   | `plugins/web-vitals.ts`                                                                | `web-vitals`                                                                         | `main.ts` 的 `setupWebVitals()`、`.env.production`                                                                                   |
+| `nativeBridge` | ❌   | `utils/bridge.ts`                                                                      | —                                                                                    | 调用方（`api/modules/auth.ts` 取 token 处需确认）                                                                                    |
+| `demoPages`    | ❌   | `views/list-demo`、`views/form-demo`                                                   | —                                                                                    | `router/routes/*`、`LayoutTabbar` 的 items                                                                                           |
 
 `i18n` 的 8 个渗透点是最大的一块工作量；`vue-i18n` 能不能真删要以 `--install` 跑到 build 为准。
 
