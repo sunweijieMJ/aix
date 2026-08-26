@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
-import { TEMPLATE_REGISTRY, findTemplateById } from '../config/defaults';
+import { findTemplateById, loadTemplateRegistry } from '../config/defaults';
 import type { TemplateConfig } from '../types';
 import { CreateAppError } from '../utils/errors';
 import { validateProjectName } from '../utils/validate';
@@ -123,9 +123,19 @@ export async function collectBasicInfo(options: CollectBasicOptions = {}): Promi
     return { name, description, ...resolveTemplateArg(options.template) };
   }
 
+  const registry = loadTemplateRegistry();
+  if (registry.length === 0) {
+    throw new CreateAppError(
+      'E_INVALID_USER_CONFIG',
+      '没有可选的项目模版（内置注册表为空，且未登记用户级模板）',
+      '用 --template <本地路径 | git 源> 直接指定模板，' +
+        '或在 ~/.config/create-app/templates.json 里登记模板',
+    );
+  }
+
   const picked = await p.select({
     message: '项目模版',
-    options: TEMPLATE_REGISTRY.map((entry) => ({
+    options: registry.map((entry) => ({
       value: entry.id,
       label: entry.label,
       hint: entry.hint,

@@ -46,7 +46,8 @@ pnpm dlx @kit/create-app my-app   # 项目名走参数，其余交互
 | `--install` / `--no-install` | 安装 / 跳过依赖安装；都不传则交互询问                                                   |
 | `--pm <manager>`             | 包管理器（pnpm / npm / yarn）；装依赖且未指定时交互选择                                 |
 | `-y, --yes`                  | 跳过最终确认                                                                            |
-| `--force`                    | 目标目录已存在时强制覆盖（**写入前清空，保留 `.git`**），同时刷新模板缓存               |
+| `--force`                    | 目标目录已存在时强制覆盖（**写入前清空，保留 `.git`**）；不再隐含刷新模板缓存           |
+| `--refresh`                  | 重新拉取模板缓存（远端分支前进后用它取最新）                                            |
 | `--offline`                  | 只用本地模板缓存，不联网；缓存缺失直接失败                                              |
 | `--dry-run`                  | 只打印将生成的文件清单，不写盘、不问后处理                                              |
 | `--debug`                    | 打印错误栈（根命令选项，必须写在子命令名**之前**）                                      |
@@ -64,8 +65,13 @@ pnpm dlx @kit/create-app my-app   # 项目名走参数，其余交互
 | giget 源  | `github:org/repo/path`                                                       | ✅ `~/.cache/giget/`      |
 | 本地路径  | `~/workspace/mine/vue-admin-template`、`./tpl`、`file:./tpl`                 | ❌ 每次直读（模板开发用） |
 
-缓存三态：默认复用 → `--force` 删缓存重取 → `--offline` 只读缓存。两个都传时以 `--force` 为准。
+缓存三态：默认复用 → `--refresh` 删缓存重取 → `--offline` 只读缓存。`--refresh` 与 `--offline`
+同时传会直接报错（一个要求联网、一个禁止联网，择一必然违背另一半意图）。
 `create-app update-templates` 会把注册表里所有非本地源强制重新拉一遍。
+
+`--force` 只管目标目录，与缓存无关 —— 所以 `--force --offline`（清空目录 + 只用本地缓存）
+是合法组合。默认复用缓存时 CLI 会打印缓存年龄（`复用模板缓存（3 天前拉取）…`），
+「模板改了怎么没生效」多半就是这里。
 
 ### 非交互 / CI
 
@@ -209,13 +215,37 @@ description，变量替换**在序列化之前作用于对象**（`--param` 是�
 - `deps / devDeps / scripts / removeScripts` 在 `package.json` 里不存在 → 警告（多写一条只是无操作）。
 - `exclude` 路径不存在 → 不报。`.env` / `.env.local` 这类是有意的防御性声明。
 
-## 内置模板
+## 模板注册表
 
 | id      | 说明                                       | 源                                                                     |
 | ------- | ------------------------------------------ | ---------------------------------------------------------------------- |
 | `admin` | 后台管理系统（Element Plus，qiankun 可选） | `git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master` |
 
 移动端 H5 模板尚未接入，见 [docs/h5-template.md](./docs/h5-template.md)。
+
+### 用户级注册表
+
+内置表编译进发布产物，改它要发 CLI 版本。所以还有一层用户级注册表，放在
+`$XDG_CONFIG_HOME/create-app/templates.json`（缺省 `~/.config/create-app/templates.json`）：
+
+```json
+[
+  {
+    "id": "h5",
+    "label": "移动端 H5",
+    "hint": "内测",
+    "platform": "mobile",
+    "source": "git+ssh://git@git.zhihuishu.com/weijie/vue-h5-template.git#master"
+  }
+]
+```
+
+顶层也可以写成 `{ "templates": [...] }`。合并规则：同 `id` 以用户为准（就地替换，展示顺序不变），
+新 `id` 追加在内置之后 —— 内网模板仓库迁地址时不必等 CLI 发版。
+
+文件不存在是常态，不报错；但**存在却写错**会直接报 `E_INVALID_USER_CONFIG`（键名拼错、
+`platform` 取值不对、`id` 重复都算），不静默忽略：否则用户会对着一个「明明登记了却选不到」
+的注册表白排查。
 
 ## 开发
 
@@ -238,4 +268,5 @@ pnpm verify-combos --install   # 追加 install → type-check → build
   与 `dist/` 产物两种布局都能跑通，不必先 build。
 - 根命令与子命令共用 `-y` / `--force` / `--dry-run`，靠 `enablePositionalOptions()` 区分；
   因此 `--debug` 必须写在子命令名之前。
-- 模板真源仓库改了 `.template/config.ts` 之后，用 git 源生成记得带 `--force` 刷缓存，否则读的还是旧克隆。
+- 模板真源仓库改了 `.template/config.ts` 之后，用 git 源生成记得带 `--refresh` 刷缓存，否则读的还是旧克隆
+  （CLI 会打印缓存年龄提醒你）。

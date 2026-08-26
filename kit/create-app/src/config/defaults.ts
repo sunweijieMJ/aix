@@ -1,4 +1,5 @@
 import type { Platform } from '../types';
+import { loadUserRegistry, mergeRegistries } from './user-registry';
 
 /** 模板注册表条目：一个模板 = 一次「项目模版」选择 */
 export interface TemplateRegistryEntry {
@@ -21,6 +22,10 @@ export interface TemplateRegistryEntry {
  *
  * source 直接指向模板真源仓库：CLI 不保存任何模板拷贝，生成时现拉现加工，
  * 模板更新无需重新发布 CLI。
+ *
+ * 只有「新增/改地址」才需要动本表——而这需要发 CLI 版本，所以另有一层用户级注册表
+ * （见 user-registry.ts）：`loadTemplateRegistry()` 返回的是两者合并的结果，
+ * 消费方一律用它，不要直接用本常量。
  */
 export const TEMPLATE_REGISTRY: TemplateRegistryEntry[] = [
   {
@@ -39,7 +44,17 @@ export const TEMPLATE_REGISTRY: TemplateRegistryEntry[] = [
   // 详见 docs/h5-template.md。
 ];
 
+/**
+ * 生效的模板注册表 = 内置 + 用户级（`~/.config/create-app/templates.json`）
+ *
+ * 每次调用都重读用户文件：CLI 是短命进程，省下的那点 IO 换不来任何东西，
+ * 而缓存会让单测之间互相污染（它们靠切换 XDG_CONFIG_HOME 注入不同注册表）。
+ */
+export function loadTemplateRegistry(): TemplateRegistryEntry[] {
+  return mergeRegistries(TEMPLATE_REGISTRY, loadUserRegistry());
+}
+
 /** 按注册表 id 查找条目，未命中返回 undefined（此时 `--template` 的值按模板源处理） */
 export function findTemplateById(id: string): TemplateRegistryEntry | undefined {
-  return TEMPLATE_REGISTRY.find((entry) => entry.id === id);
+  return loadTemplateRegistry().find((entry) => entry.id === id);
 }

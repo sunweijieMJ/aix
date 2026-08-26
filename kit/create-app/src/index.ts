@@ -28,8 +28,14 @@ export type {
 } from './types';
 
 // 模板注册表（P0-5）
-export { TEMPLATE_REGISTRY, findTemplateById } from './config/defaults';
+export { TEMPLATE_REGISTRY, findTemplateById, loadTemplateRegistry } from './config/defaults';
 export type { TemplateRegistryEntry } from './config/defaults';
+export {
+  loadUserRegistry,
+  mergeRegistries,
+  userConfigDir,
+  userRegistryPath,
+} from './config/user-registry';
 
 // 错误处理（P0-2）
 export { CreateAppError, wrapError } from './utils/errors';
