@@ -18,6 +18,8 @@
  *   pnpm verify-combos --param k=v [--param …] # 透传模板参数（无 default 的参数必须给）
  *   pnpm verify-combos --features a,b [--features ''] # 现给组合（验非 admin 模板用，可重复）
  *   pnpm verify-combos --real-name <pkg>     # 模板真名（默认读模板 package.json 的 name）
+ *
+ * 首个组合会带 `--refresh`（git 源默认复用本地克隆，否则可能对着旧克隆验出假绿灯）。
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -31,16 +33,17 @@ const CLI = path.join(PKG_ROOT, 'src/cli.ts');
 // 直接用本包的 tsx bin：子进程 cwd 在临时目录（workspace 之外），`pnpm exec` 会找不到包
 const TSX = path.join(PKG_ROOT, 'node_modules/.bin/tsx');
 const DEFAULT_TEMPLATE = path.join(os.homedir(), 'workspace/mine/vue-admin-template');
-/** 兜底的模板真源包名（模板源不是本地目录、又没传 --real-name 时用） */
-const FALLBACK_REAL_NAME = 'vite-vue3-temp';
-
 /**
  * 模板真源的包名：产物里出现它即说明 substitutions 漏配
  *
- * 不写死：本脚本要能验任意模板（admin 叫 vite-vue3-temp，h5 叫 vue-h5-template）。
- * 本地目录源直接读它的 package.json，其余形态用 --real-name 显式给。
+ * 一律推导，不写死任何模板的名字（写死等于「验别的模板时这项检测静默失效」）：
+ * 1. `--real-name` 显式指定
+ * 2. 本地目录源：读它的 package.json
+ * 3. 其余形态（git / giget）：取源地址最后一段并剥掉 `.git`——两个模板的包名都等于仓库名，
+ *    这条推导对它们成立；不成立时会退化成「检测不到残留」，所以第 4 步要说破
+ * 4. 都拿不到：返回 undefined，调用方跳过该项检测并打印提醒
  */
-function detectRealName(template: string, override?: string): string {
+function detectRealName(template: string, override?: string): string | undefined {
   if (override) return override;
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(template, 'package.json'), 'utf-8')) as {
@@ -48,9 +51,15 @@ function detectRealName(template: string, override?: string): string {
     };
     if (pkg.name) return pkg.name;
   } catch {
-    // 非本地目录源（git / giget），读不到就退回兜底值
+    // 非本地目录源，往下走地址推导
   }
-  return FALLBACK_REAL_NAME;
+  const repo = template
+    .replace(/#.*$/, '')
+    .replace(/\/+$/, '')
+    .split(/[/:]/)
+    .pop()
+    ?.replace(/\.git$/, '');
+  return repo && repo.length > 0 ? repo : undefined;
 }
 
 /**
@@ -118,7 +127,7 @@ function resolveSpecifier(spec: string, fromFile: string, root: string): boolean
   return ['/index.ts', '/index.vue', '/index.js'].some((idx) => fs.existsSync(base + idx));
 }
 
-function staticCheck(outDir: string, realName: string): string[] {
+function staticCheck(outDir: string, realName?: string): string[] {
   const problems: string[] = [];
 
   for (const rel of walk(outDir)) {
@@ -130,7 +139,7 @@ function staticCheck(outDir: string, realName: string): string[] {
     content.split('\n').forEach((line, i) => {
       if (MARKER_LINE.test(line.trim())) problems.push(`标记残留 ${rel}:${i + 1} → ${line.trim()}`);
       if (VAR_LEFTOVER.test(line)) problems.push(`变量残留 ${rel}:${i + 1} → ${line.trim()}`);
-      if (line.includes(realName)) {
+      if (realName && line.includes(realName)) {
         problems.push(`真名残留 ${rel}:${i + 1} → ${line.trim()}`);
       }
     });
@@ -211,8 +220,8 @@ interface Options {
   template: string;
   /** 透传给 CLI 的 `--param k=v`：模板一旦声明无 default 的参数，不给就会 E_NON_INTERACTIVE */
   params: string[];
-  /** 模板真源包名（产物里出现即 substitutions 漏配） */
-  realName: string;
+  /** 模板真源包名（产物里出现即 substitutions 漏配）；推导不出时跳过该项检测 */
+  realName?: string;
 }
 
 interface ComboResult {
@@ -233,7 +242,7 @@ const LEVELS: Record<string, string> = {
   L5: 'build 通过（全链路）',
 };
 
-function verify(name: string, selected: string[], opts: Options): ComboResult {
+function verify(name: string, selected: string[], opts: Options, refresh: boolean): ComboResult {
   const projectName = `verify-${name}`;
   const outDir = path.join(opts.outRoot, projectName);
   console.log(
@@ -254,6 +263,10 @@ function verify(name: string, selected: string[], opts: Options): ComboResult {
       '-d',
       `verify-combos ${name}`,
       ...opts.params.flatMap((p) => ['--param', p]),
+      // 首个组合强制刷缓存：git 源默认复用本地克隆，模板刚推的改动验不到，
+      // 绿灯会是「对着旧克隆验的」这种 false green（已实测踩到）。
+      // 后续组合复用这份刚拉的缓存，不必每次重克隆
+      ...(refresh ? ['--refresh'] : []),
       '-y',
       '--no-git',
       '--no-install',
@@ -349,7 +362,9 @@ function main(): void {
     params: argAll('--param'),
     realName: detectRealName(template, arg('--real-name')),
   };
-  console.log(`模板源：${opts.template}\n模板真名：${opts.realName}`);
+  console.log(
+    `模板源：${opts.template}\n模板真名：${opts.realName ?? '（推导不出，跳过真名残留检测——可用 --real-name 指定）'}`,
+  );
 
   const entries: (readonly [string, string[]])[] =
     adhoc.length > 0
@@ -357,7 +372,7 @@ function main(): void {
       : only
         ? [[only, COMBOS[only]!] as const]
         : Object.entries(COMBOS);
-  const results = entries.map(([name, selected]) => verify(name, selected, opts));
+  const results = entries.map(([name, selected], i) => verify(name, selected, opts, i === 0));
 
   console.log(`\n${'='.repeat(70)}\n汇总（产物根目录 ${outRoot}）`);
   for (const r of results) {

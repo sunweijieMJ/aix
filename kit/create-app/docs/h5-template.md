@@ -5,16 +5,16 @@
 
 ## 〇、进度（2026-08-26 更新）
 
-模版化已在 `vue-h5-template` 的 `feat/template-onboarding` 分支落地：
+模版化已合入 `vue-h5-template` 的 `master` 并推送，`create-app --template h5` 可直接使用：
 
-| 接入清单                              | 状态                                                                                                                            |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| 1. `.template/config.ts`              | ✅ 已写（params / exclude / substitutions 齐备）                                                                                |
-| 1-⚠️ 存储隔离                         | ✅ 已做，但**做法与本文原方案不同**（见下）                                                                                     |
-| 2. 特性划分 + 条件块                  | ✅ 6 个已落地（i18n / debugTools / webVitals / nativeBridge / aiDocs / demoPages）                                              |
-| 3. 组合矩阵                           | ⚠️ L1 生成 + L2 静态体检全绿（4 个组合：217 / 213 / 204 / 143 文件）；**L3–L5（`--install` → type-check → build）未跑**，需私服 |
-| 4. h5 版 `docs/template-authoring.md` | ❌ 未做                                                                                                                         |
-| 5. CLI 注册表                         | ✅ 已登记 `h5`（master 已推送，`create-app --template h5` 实跑通过）                                                            |
+| 接入清单                 | 状态                                                                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. `.template/config.ts` | ✅ 已写（params / exclude / substitutions 齐备）                                                                                                              |
+| 1-⚠️ 存储隔离            | ✅ 已做，但**做法与本文原方案不同**（见下）                                                                                                                   |
+| 2. 特性划分 + 条件块     | ✅ 6 个已落地（i18n / debugTools / webVitals / nativeBridge / aiDocs / demoPages）                                                                            |
+| 3. 组合矩阵              | ✅ L1–L5 全绿。文件级 4 组合（217 / 213 / 204 / 143 文件）；全链路 `--install` 跑了三个代表组合（全开 / 关 i18n / 全关），install → type-check → build 全通过 |
+| 4. 真源专属文档与自检    | ✅ `docs/template-authoring.md` + `scripts/template/checkTemplate.ts`（9 个带标记文件 / 2 条替换 / 64 种组合），已接进 husky pre-commit                       |
+| 5. CLI 注册表            | ✅ 已登记 `h5`（master 已推送，`create-app --template h5` 实跑通过）                                                                                          |
 
 ### 与本文原方案的差异（以实现为准）
 
@@ -42,7 +42,7 @@
 | ------------------------------ | ------------------------------------------------------------------------- |
 | `.env.production` 默认开 eruda | ❌ 已不成立：`VITE_DEBUG_TOOLS = ''` 早已留空，还附了「必须留空」的注释   |
 | h5 缺 `@kit/i18n-tools`        | ❌ 已不成立：devDep `^0.0.28` + 4 个 i18n script + `.i18n-tools` 都已就位 |
-| 历史提交里的 Applitools key    | ⚠️ **仍然有效**，需去平台作废；模版化后仓库会被更多人 clone，泄露面扩大   |
+| 历史提交里的 Applitools key    | ⚠️ **仍然有效**，需去平台作废；h5 已进内置注册表，clone 面进一步扩大      |
 | 两个真源的同步成本             | ⚠️ 仍然有效（45 个相同文件靠人工同步）                                    |
 
 ## 一、结论
