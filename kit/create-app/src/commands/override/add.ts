@@ -203,6 +203,17 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
     );
   }
 
+  // 模板的 overrides 特性自带 setup.ts，接线已经做完了。此时再打印一遍手动接入步骤，
+  // 用户照着做就是重复接入
+  if (fs.existsSync(path.join(cwd, options.output, 'setup.ts'))) {
+    console.log(
+      pc.dim(
+        `  接线已由 ${options.output}/setup.ts 完成，无需手动改 main.ts / router / constants\n`,
+      ),
+    );
+    return;
+  }
+
   console.log(pc.bold('  手动接入定制系统：\n'));
 
   console.log(`  ${pc.dim('// main.ts — 初始化运行时覆盖')}`);

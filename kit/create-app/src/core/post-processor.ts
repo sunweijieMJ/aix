@@ -1,4 +1,6 @@
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import type { ProjectConfig } from '../types';
@@ -59,6 +61,23 @@ export async function runPostProcess(config: ProjectConfig, destDir: string): Pr
   printNextSteps(config, destDir);
 }
 
+/**
+ * 从产物 package.json 里挑启动脚本
+ *
+ * 不能写死 `dev`：admin 模板的启动脚本叫 `start`，照着提示敲会得到
+ * 「Missing script: dev」。按常见命名依次找，都没有就退回 `dev`。
+ */
+function resolveDevScript(destDir: string): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(destDir, 'package.json'), 'utf-8')) as {
+      scripts?: Record<string, string>;
+    };
+    return ['dev', 'start', 'serve'].find((name) => pkg.scripts?.[name]) ?? 'dev';
+  } catch {
+    return 'dev';
+  }
+}
+
 function printNextSteps(config: ProjectConfig, destDir: string): void {
   const rel = destDir.replace(process.cwd() + '/', '');
   const pm = config.packageManager;
@@ -66,7 +85,7 @@ function printNextSteps(config: ProjectConfig, destDir: string): void {
   const steps = [
     `  ${pc.cyan('cd')} ${rel}`,
     ...(!config.installDeps ? [`  ${pc.cyan(pm)} install`] : []),
-    `  ${pc.cyan(pm)} run dev`,
+    `  ${pc.cyan(pm)} run ${resolveDevScript(destDir)}`,
   ];
 
   p.outro(`${pc.green('项目创建成功！')} 接下来：\n\n${steps.join('\n')}\n`);

@@ -1,27 +1,27 @@
 import type { OverrideConfig } from '../types';
+<% if (it.modules.includes('api')) { -%>
+import { getCustomApiConfig } from './api';
+<% } -%>
 <% if (it.modules.includes('components')) { -%>
 import { getCustomComponents } from './components';
-<% } -%>
-<% if (it.modules.includes('router')) { -%>
-import { getCustomRoutes } from './router';
 <% } -%>
 <% if (it.modules.includes('constants')) { -%>
 import { getCustomConstants } from './constants';
 <% } -%>
-<% if (it.modules.includes('locale')) { -%>
-import { getCustomLocales } from './locale';
-<% } -%>
-<% if (it.modules.includes('store')) { -%>
-import { getCustomStoreModules } from './store';
-<% } -%>
-<% if (it.modules.includes('api')) { -%>
-import { getCustomApiConfig } from './api';
+<% if (it.modules.includes('directives')) { -%>
+import { getCustomDirectives } from './directives';
 <% } -%>
 <% if (it.modules.includes('layout')) { -%>
 import { getCustomLayout } from './layout';
 <% } -%>
-<% if (it.modules.includes('directives')) { -%>
-import { getCustomDirectives } from './directives';
+<% if (it.modules.includes('locale')) { -%>
+import { getCustomLocales } from './locale';
+<% } -%>
+<% if (it.modules.includes('router')) { -%>
+import { getCustomRoutes } from './router';
+<% } -%>
+<% if (it.modules.includes('store')) { -%>
+import { getCustomStoreModules } from './store';
 <% } %>
 
 /**
