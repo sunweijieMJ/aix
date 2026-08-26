@@ -129,6 +129,64 @@ describe('override add - 模块参数解析', () => {
   );
 });
 
+describe('override add - 生成物必须自包含', () => {
+  it(
+    '除 @/plugins/override（同批生成）外，不得出现任何 @/ 语句级 import',
+    () => {
+      // 这份内核拷贝的唯一消费者是「尚未拥有内核的项目」——真源那份为紧耦合优化，
+      // 直接 import 了 @/api/core/request、@/constants/menu、@/layout/useLayoutContext、
+      // @/utils/auth，照抄过来就是一堆悬空 import。本用例守住这条边界，
+      // 防止后来者「同步最新版」时把分叉抹平。详见 templates-override/README.md
+      const cwd = makeProject();
+      expect(
+        runAdd(['sysu', '-m', 'api,components,directives,layout,locale,store', '-y'], cwd).status,
+      ).toBe(0);
+
+      const roots = [path.join(cwd, 'src/overrides'), path.join(cwd, 'src/plugins/override')];
+      const files: string[] = [];
+      const walk = (dir: string): void => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, e.name);
+          if (e.isDirectory()) walk(full);
+          else if (e.name.endsWith('.ts')) files.push(full);
+        }
+      };
+      roots.forEach(walk);
+      expect(files.length).toBeGreaterThan(10);
+
+      const offenders: string[] = [];
+      for (const file of files) {
+        fs.readFileSync(file, 'utf-8')
+          .split('\n')
+          .forEach((line, i) => {
+            const m = /^\s*import\s[^;]*?from\s*'(@\/[^']+)'/.exec(line);
+            if (m && m[1] !== '@/plugins/override') {
+              offenders.push(`${path.relative(cwd, file)}:${i + 1} → ${m[1]}`);
+            }
+          });
+      }
+      expect(offenders, offenders.join('\n')).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '维护者说明不得渲染进用户项目（.eta 里的 JS 注释会原样输出）',
+    () => {
+      const cwd = makeProject();
+      expect(runAdd(['sysu', '-m', 'layout', '-y'], cwd).status).toBe(0);
+      for (const rel of [
+        'src/plugins/override/index.ts',
+        'src/plugins/override/override-layout.ts',
+        'src/overrides/registry.ts',
+      ]) {
+        expect(fs.readFileSync(path.join(cwd, rel), 'utf-8'), rel).not.toContain('有意分叉');
+      }
+    },
+    TIMEOUT,
+  );
+});
+
 describe('override add - 生成结果', () => {
   it(
     '生成必选模块 + 指定模块，并落在 output 目录内',

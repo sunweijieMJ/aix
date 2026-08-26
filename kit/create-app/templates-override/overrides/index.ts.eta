@@ -1,6 +1,6 @@
-import type { RuntimeOverrideConfig, CustomRouteConfig, ConstantsOverride } from '@/plugins/override';
-import { loadSchoolConfig } from './registry';
 import deploymentConstants from './deployment';
+import { loadSchoolConfig } from './registry';
+import type { RuntimeOverrideConfig, CustomRouteConfig, ConstantsOverride } from '@/plugins/override';
 
 /**
  * Override 系统 - 统一配置入口

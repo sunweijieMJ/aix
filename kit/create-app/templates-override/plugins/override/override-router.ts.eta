@@ -10,26 +10,46 @@ export interface CustomRouteConfig {
   customRoutes?: RouteRecordRaw[];
   /**
    * 追加到路由白名单的路径（无需登录即可访问）
+   * 适用于定制项目新增的免登录页面
    */
   whiteList?: string[];
   /**
    * 路径 → 组件或部分路由配置，替换/合并已有路由
    *
    * **必须使用全路径**（如 `/home`、`/setting/account`）
+   *
+   * 值类型：
+   * - 组件：仅替换该路由的 component（如 `() => import('./MyPage.vue')`）
+   * - 部分路由配置：浅合并到原路由（如 `{ component, meta: { title: '新标题' } }`）
+   *   其中 children 为追加模式，不会覆盖原有子路由
    */
   overrideRoutes?: Record<string, RouteOverride>;
   /**
    * 按路径禁用路由（匹配的路由将被过滤）
+   *
+   * 必须使用全路径（如 `/setting/theme`）
+   * 禁用父路由会同时移除其所有子路由
    */
   disabledRoutes?: string[];
 }
 
+/**
+ * 拼接父路径和子路径，生成完整路径
+ */
 function resolveFullPath(parentPath: string, childPath: string): string {
   if (childPath.startsWith('/')) return childPath;
   if (!parentPath || parentPath === '/') return `/${childPath}`;
   return childPath ? `${parentPath}/${childPath}` : parentPath;
 }
 
+/**
+ * 判断值是否为路由配置对象（Partial<RouteRecordRaw>）
+ *
+ * 区分逻辑：
+ * - 函数 → 懒加载组件（() => import(...)）
+ * - 对象且含路由特有字段（path/component/redirect/children/meta/name） → 路由配置
+ * - 其他对象（如直接导入的 SFC 组件对象，含 setup/render/__name） → 组件
+ */
 function isRouteConfig(value: RouteOverride): value is Partial<RouteRecordRaw> {
   if (typeof value !== 'object' || value === null) return false;
   const routeKeys = ['path', 'component', 'redirect', 'children', 'meta', 'name'];
@@ -45,8 +65,10 @@ class RouterManager {
   private overrideRoutes = new Map<string, RouteOverride>();
   private disabledRoutes = new Set<string>();
   private extraWhiteList: string[] = [];
+  /** DEV: 记录已匹配的覆盖路径，用于 warnUnmatched 检测 */
   private consumedPaths = import.meta.env.DEV ? new Set<string>() : null;
 
+  /** 注册路由配置 */
   register(config: CustomRouteConfig): void {
     if (config.customRoutes) {
       this.customRoutes.push(...config.customRoutes);
@@ -64,10 +86,12 @@ class RouterManager {
     }
   }
 
+  /** 获取定制项目追加的白名单路径 */
   getWhiteList(): string[] {
     return this.extraWhiteList;
   }
 
+  /** 递归替换路由组件/属性，使用全路径匹配（不修改原始路由对象） */
   applyOverrides(routes: RouteRecordRaw[], parentPath = ''): RouteRecordRaw[] {
     return routes
       .filter(route => {
@@ -78,18 +102,22 @@ class RouterManager {
         const fullPath = resolveFullPath(parentPath, route.path);
         const override = this.overrideRoutes.get(fullPath);
 
+        // 始终浅拷贝，避免修改原始路由对象（HMR / 多次调用安全）
         const newRoute: RouteRecordRaw = { ...route };
 
         if (override) {
           this.consumedPaths?.add(fullPath);
 
           if (isRouteConfig(override)) {
+            // 值为部分路由配置时，浅合并
             const { children: overrideChildren, ...rest } = override;
             Object.assign(newRoute, rest);
+            // 追加 override 的 children 到已有 children
             if (overrideChildren?.length) {
               newRoute.children = [...(route.children || []), ...overrideChildren] as RouteRecordRaw[];
             }
           } else {
+            // 值为组件时，仅替换 component
             (newRoute as RouteRecordRaw & { component: RouteComponent }).component = override;
           }
         }
@@ -102,10 +130,12 @@ class RouterManager {
       });
   }
 
+  /** 将自定义路由添加到 router */
   addCustomRoutes(router: Router): void {
     this.customRoutes.forEach(route => {
-      // customRoutes 通过 addRoute 直接注册，不经过权限过滤。
-      // 开发环境提醒：未配置 meta.roles 的自定义路由对任何已登录用户开放。
+      // customRoutes 通过 addRoute 直接注册，不经过 filterRoutesByRoles 权限过滤。
+      // 开发环境提醒：未配置 meta.roles 的自定义路由对任何已登录用户开放，
+      // 定制项目如需限制访问，必须在 customRoutes 中显式配置 meta.roles。
       if (import.meta.env.DEV && !route.meta?.roles) {
         console.warn(
           `[Override] 自定义路由 "${String(route.path)}" 未配置 meta.roles，不受权限过滤，任何已登录用户均可访问。`,
@@ -115,6 +145,7 @@ class RouterManager {
     });
   }
 
+  /** 开发环境：警告未匹配的路由覆盖 */
   warnUnmatched(): void {
     if (!this.consumedPaths) return;
     for (const path of this.overrideRoutes.keys()) {

@@ -11,8 +11,8 @@ function isPlainObject(val: unknown): val is Record<string, unknown> {
  * 合并常量覆盖配置到默认值
  *
  * 合并策略：
- * - 纯对象 → 浅合并（如 roles: { ADMIN: '1' }）
- * - 原始值 / 数组 → 整体替换（如 menuList: [...]）
+ * - 纯对象 → 浅合并（如 roles: { ADMIN: '1', ASSISTANT: '5' }）
+ * - 原始值 / 数组 → 整体替换（如 menuList: [...]、defaultLocale: 'en-US'）
  */
 export function mergeConstants<T extends Record<string, unknown>>(
   defaults: T,
