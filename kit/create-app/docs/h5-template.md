@@ -7,14 +7,14 @@
 
 模版化已在 `vue-h5-template` 的 `feat/template-onboarding` 分支落地：
 
-| 接入清单                              | 状态                                                                                                                      |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 1. `.template/config.ts`              | ✅ 已写（params / exclude / substitutions 齐备）                                                                          |
-| 1-⚠️ 存储隔离                         | ✅ 已做，但**做法与本文原方案不同**（见下）                                                                               |
-| 2. 特性划分 + 条件块                  | ⚠️ 5 个已落地（debugTools / webVitals / nativeBridge / aiDocs / demoPages）；**i18n 未切**，单独一轮                      |
-| 3. 组合矩阵                           | ⚠️ L1 生成 + L2 静态体检全绿（3 个组合：216 / 212 / 151 文件）；**L3–L5（`--install` → type-check → build）未跑**，需私服 |
-| 4. h5 版 `docs/template-authoring.md` | ❌ 未做                                                                                                                   |
-| 5. CLI 注册表                         | ⏸ 待分支合入 master（现在登记 `#master` 会让用户拿到 E_NO_TEMPLATE_CONFIG）。合并前可用用户级注册表指向该分支             |
+| 接入清单                              | 状态                                                                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1. `.template/config.ts`              | ✅ 已写（params / exclude / substitutions 齐备）                                                                                |
+| 1-⚠️ 存储隔离                         | ✅ 已做，但**做法与本文原方案不同**（见下）                                                                                     |
+| 2. 特性划分 + 条件块                  | ✅ 6 个已落地（i18n / debugTools / webVitals / nativeBridge / aiDocs / demoPages）                                              |
+| 3. 组合矩阵                           | ⚠️ L1 生成 + L2 静态体检全绿（4 个组合：217 / 213 / 204 / 143 文件）；**L3–L5（`--install` → type-check → build）未跑**，需私服 |
+| 4. h5 版 `docs/template-authoring.md` | ❌ 未做                                                                                                                         |
+| 5. CLI 注册表                         | ✅ 已登记 `h5`（master 已推送，`create-app --template h5` 实跑通过）                                                            |
 
 ### 与本文原方案的差异（以实现为准）
 
@@ -23,10 +23,15 @@
   （值为仓库名，供 substitutions 替换），由 `local-storage` / `session-storage` 内部把逻辑 key
   映射成 `<prefix>:<key>`，pinia 持久化 key 同理——调用点一行未动。cookie 不加前缀：
   `session_id` 这类多由后端下发，前端改名会直接读不到。
-- **i18n 的渗透面是 7 个文件而不是「8 处」**：`main.ts`、`app/App.vue`、`layout/index.vue`、
-  `layout/LayoutNavbar`、`plugins/dayjs.ts`、`store/modules/global.ts`、`interface/system.ts`。
-  其中 `layout/index.vue` 用 `t()` 出模板文案，切掉 i18n 需要 `#else` 兜底成字面量——这是它没能
-  和另外 5 个特性一起落地的原因。
+- **i18n 的实际渗透点是 4 个文件**（不是原文的「8 处」）：`main.ts`、`app/App.vue`、
+  `layout/index.vue`、`layout/LayoutNavbar`。原文担心的「`t()` 模板文案需要 `#else` 兜底」
+  已通过**把模板自带的固定文案改成中文字面量**解决——特性边界是「多语言能力」而不是「所有文案」。
+  另外拆出 `plugins/vant-locale.ts`（Vant 组件库自带文案）让 `App.vue` 能无条件 import，
+  否则 `:locale` 绑定要靠 `#if/#else` 分两份 `const` 声明，而条件块两个分支在真源里都是活代码，
+  重复声明直接编译不过（TS2451，已实测）。
+- **`store/modules/global.ts` / `plugins/dayjs.ts` / `interface/system.ts` 有意不裁**：
+  `currentLocale` 是 20 行纯状态，留着还能驱动 `html[lang]` 与 `dayjs.locale`；
+  裁掉反而要在 `App.vue` 里补一堆 `#if`。
 - **`index.html` 的标题是 `H5 App`**，不是本文写的 `Vite Vue3 App`。
 - **`nativeBridge` 零渗透点**：`utils/bridge.ts` 当前没有任何调用方，纯文件级裁剪，
   不需要「确认 api/modules/auth.ts 取 token 处」。

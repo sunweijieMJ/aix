@@ -232,12 +232,22 @@ describe('--force 与 --refresh 拆分后的语义', () => {
   );
 
   it(
-    '默认复用缓存时提示缓存年龄（「模板改了怎么没生效」的最常见来源）',
+    '缓存有年龄时提示，刚克隆出来的不提示（否则首次生成会看到「复用缓存（刚刚拉取）」）',
     () => {
-      const r = runCreate('split-4', source, workDir);
-      expect(r.status, r.output).toBe(0);
-      expect(r.output).toContain('复用模板缓存');
-      expect(r.output).toContain('--refresh');
+      // 首次克隆：缓存目录 mtime 就是刚刚，不该冒出「复用缓存」
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+      const fresh = runCreate('split-4', source, workDir);
+      expect(fresh.status, fresh.output).toBe(0);
+      expect(fresh.output).not.toContain('复用模板缓存');
+
+      // 把缓存目录 mtime 往前拨 3 天，再生成一次就该提示了
+      const past = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      fs.utimesSync(cacheDir, past, past);
+      const stale = runCreate('split-5', source, workDir);
+      expect(stale.status, stale.output).toBe(0);
+      expect(stale.output).toContain('复用模板缓存');
+      expect(stale.output).toContain('3 天前拉取');
+      expect(stale.output).toContain('--refresh');
     },
     TIMEOUT,
   );

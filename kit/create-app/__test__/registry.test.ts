@@ -3,14 +3,17 @@ import { TEMPLATE_REGISTRY, findTemplateById } from '../src/config/defaults';
 import { resolveTemplateArg } from '../src/prompts/index';
 
 describe('TEMPLATE_REGISTRY', () => {
-  it('注册 admin 模板（h5 随 R2 的 overlay 机制恢复）', () => {
+  it('注册 admin 与 h5 两个模板', () => {
     const ids = TEMPLATE_REGISTRY.map((entry) => entry.id);
-    expect(ids).toContain('admin');
+    expect(ids).toEqual(['admin', 'h5']);
   });
 
-  it('admin 直接指向模板真源仓库（CLI 不保存模板拷贝）', () => {
+  it('两个条目都直接指向模板真源仓库（CLI 不保存模板拷贝）', () => {
     expect(findTemplateById('admin')?.source).toBe(
       'git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master',
+    );
+    expect(findTemplateById('h5')?.source).toBe(
+      'git+ssh://git@git.zhihuishu.com/weijie/vue-h5-template.git#master',
     );
   });
 
@@ -33,8 +36,8 @@ describe('findTemplateById', () => {
     expect(findTemplateById('admin')?.platform).toBe('web');
   });
 
-  it('h5 本轮不在注册表内，按裸模板源处理', () => {
-    expect(findTemplateById('h5')).toBeUndefined();
+  it('h5 是 mobile 平台（platform 仅用于展示，真实取值以模板 config.ts 为准）', () => {
+    expect(findTemplateById('h5')?.platform).toBe('mobile');
   });
 
   it('未命中返回 undefined', () => {

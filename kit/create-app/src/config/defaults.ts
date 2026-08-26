@@ -35,18 +35,16 @@ export const TEMPLATE_REGISTRY: TemplateRegistryEntry[] = [
     platform: 'web',
     source: 'git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master',
   },
-  // 移动端 H5：仓库已模版化（`.template/config.ts` + 5 个特性，组合矩阵 L2 全绿），
-  // 但目前只在 `feat/template-onboarding` 分支上——合入 master 后在此加一条即可，CLI 无需改动：
-  // { id: 'h5', label: '移动端 H5', platform: 'mobile',
-  //   source: 'git+ssh://git@git.zhihuishu.com/weijie/vue-h5-template.git#master' }
-  //
-  // 合并前想用它：走用户级注册表（见 user-registry.ts）指向那个分支，或直接
-  // `--template git+ssh://…/vue-h5-template.git#feat/template-onboarding`。
-  // 现在就登记 `#master` 的话，用户拿到的是 E_NO_TEMPLATE_CONFIG。
-  //
-  // 原先这里写的是「H5 以 admin 之上的 overlay 差异层实现」——该方案已作废：
-  // 两个仓库逐字节相同的文件只有 45/220，且技术栈本身分叉，overlay 的前提不成立。
-  // 详见 docs/h5-template.md。
+  {
+    id: 'h5',
+    label: '移动端 H5',
+    hint: 'Vant + UnoCSS，vConsole / Eruda 可选',
+    platform: 'mobile',
+    source: 'git+ssh://git@git.zhihuishu.com/weijie/vue-h5-template.git#master',
+  },
+  // h5 是**独立的模版真源**，不是 admin 之上的 overlay 差异层——该方案已作废：
+  // 两个仓库逐字节相同的文件只有 45/220，且技术栈本身分叉（Vant / UnoCSS / valibot vs
+  // Element Plus / SCSS），overlay 的前提不成立。详见 docs/h5-template.md。
 ];
 
 /**

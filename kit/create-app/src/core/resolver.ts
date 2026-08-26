@@ -94,12 +94,19 @@ export function resolveLocalSource(source: string): string {
   return path.resolve(process.cwd(), source);
 }
 
+/** 低于这个年龄不提示：几分钟内的缓存多半就是本次运行刚克隆出来的 */
+const CACHE_HINT_MIN_MINUTES = 5;
+
 /**
- * 若 dir 落在已知缓存根下，返回「上次拉取距今多久」的人话描述，否则 undefined
+ * 若 dir 落在已知缓存根下**且缓存已有年龄**，返回「上次拉取距今多久」的人话描述，否则 undefined
  *
  * 「模板改了怎么没生效」是这套缓存最常见的困惑：默认策略是复用缓存，git 源在缓存命中时
  * 压根不会 fetch，远端分支前进后本地会一直读旧克隆。把缓存年龄摆到台面上，
  * 比让用户自己想起来要 --refresh 便宜得多。
+ *
+ * 但首次克隆同样落在缓存目录里、mtime 就是刚刚——调用方只知道「策略是复用」，
+ * 分不出「真命中了缓存」还是「刚建的缓存」。用年龄下限过滤掉后者：
+ * 提示的价值只在缓存**旧**的时候，说「复用缓存（刚刚拉取）」纯属误导。
  */
 export function describeCacheAge(dir: string): string | undefined {
   const roots = [gitCacheRoot(), path.join(os.homedir(), '.cache', 'giget')];
@@ -113,7 +120,7 @@ export function describeCacheAge(dir: string): string | undefined {
   }
 
   const minutes = Math.floor((Date.now() - mtimeMs) / 60_000);
-  if (minutes < 1) return '刚刚拉取';
+  if (minutes < CACHE_HINT_MIN_MINUTES) return undefined;
   if (minutes < 60) return `${minutes} 分钟前拉取`;
   if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} 小时前拉取`;
   return `${Math.floor(minutes / (60 * 24))} 天前拉取`;

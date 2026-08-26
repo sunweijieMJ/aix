@@ -217,13 +217,13 @@ description，变量替换**在序列化之前作用于对象**（`--param` 是�
 
 ## 模板注册表
 
-| id      | 说明                                       | 源                                                                     |
-| ------- | ------------------------------------------ | ---------------------------------------------------------------------- |
-| `admin` | 后台管理系统（Element Plus，qiankun 可选） | `git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master` |
+| id      | 说明                                              | 源                                                                     |
+| ------- | ------------------------------------------------- | ---------------------------------------------------------------------- |
+| `admin` | 后台管理系统（Element Plus，qiankun 可选）        | `git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master` |
+| `h5`    | 移动端 H5（Vant + UnoCSS，vConsole / Eruda 可选） | `git+ssh://git@git.zhihuishu.com/weijie/vue-h5-template.git#master`    |
 
-移动端 H5 模板已在 `vue-h5-template` 的 `feat/template-onboarding` 分支完成模版化
-（5 个特性，组合矩阵 L2 全绿），合入 master 后会加进上表；在那之前可用下面的用户级注册表
-指向该分支。进度与遗留项见 [docs/h5-template.md](./docs/h5-template.md)。
+h5 有 6 个可裁剪特性（i18n / debugTools / webVitals / nativeBridge / aiDocs / demoPages）。
+进度与遗留项见 [docs/h5-template.md](./docs/h5-template.md)。
 
 ### 用户级注册表
 

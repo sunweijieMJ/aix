@@ -134,27 +134,45 @@ describe('loadTemplateRegistry / findTemplateById', () => {
     expect(loadTemplateRegistry()).toEqual(TEMPLATE_REGISTRY);
   });
 
+  // 用一个确定不在内置表里的 id：内置表里现在有 admin 与 h5
+  const OWN_ID = 'weapp';
+
   it('用户登记的模板可以直接被 --template <id> 命中', () => {
-    // h5 尚未进内置注册表；用户级登记是它落地前的过渡手段
-    expect(findTemplateById('h5')).toBeUndefined();
+    expect(findTemplateById(OWN_ID)).toBeUndefined();
+    writeRegistry(
+      JSON.stringify([
+        {
+          id: OWN_ID,
+          label: '小程序容器',
+          platform: 'mobile',
+          source: 'git+ssh://host/weapp.git#master',
+        },
+      ]),
+    );
+    expect(findTemplateById(OWN_ID)?.source).toBe('git+ssh://host/weapp.git#master');
+  });
+
+  it('用户条目可以覆盖内置条目（内网仓库迁地址时不必等 CLI 发版）', () => {
     writeRegistry(
       JSON.stringify([
         {
           id: 'h5',
-          label: '移动端 H5',
+          label: '移动端 H5（自建镜像）',
           platform: 'mobile',
-          source: 'git+ssh://host/h5.git#master',
+          source: 'git+ssh://mirror/h5.git',
         },
       ]),
     );
-    expect(findTemplateById('h5')?.source).toBe('git+ssh://host/h5.git#master');
+    expect(findTemplateById('h5')?.source).toBe('git+ssh://mirror/h5.git');
+    // 覆盖不改变条目数量与顺序
+    expect(loadTemplateRegistry().map((e) => e.id)).toEqual(['admin', 'h5']);
   });
 
   it('每次调用都重读文件（CLI 是短命进程，缓存只会让状态发霉）', () => {
-    expect(findTemplateById('h5')).toBeUndefined();
-    writeRegistry(JSON.stringify([{ id: 'h5', label: 'H5', platform: 'mobile', source: 'a' }]));
-    expect(findTemplateById('h5')?.source).toBe('a');
-    writeRegistry(JSON.stringify([{ id: 'h5', label: 'H5', platform: 'mobile', source: 'b' }]));
-    expect(findTemplateById('h5')?.source).toBe('b');
+    expect(findTemplateById(OWN_ID)).toBeUndefined();
+    writeRegistry(JSON.stringify([{ id: OWN_ID, label: 'W', platform: 'mobile', source: 'a' }]));
+    expect(findTemplateById(OWN_ID)?.source).toBe('a');
+    writeRegistry(JSON.stringify([{ id: OWN_ID, label: 'W', platform: 'mobile', source: 'b' }]));
+    expect(findTemplateById(OWN_ID)?.source).toBe('b');
   });
 });
