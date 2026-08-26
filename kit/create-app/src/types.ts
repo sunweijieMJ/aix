@@ -10,6 +10,8 @@ export interface ProjectConfig {
   templateId?: string;
   /** 选中的特性 id 列表，取值域由模板 config.ts 的 features 决定 */
   features: string[];
+  /** 模板参数的最终取值（key 即占位符名），由 --param / 问答 / 声明的 default 解出 */
+  params: Record<string, string>;
   outputDir: string;
   packageManager: 'pnpm' | 'npm' | 'yarn';
   initGit: boolean;
@@ -50,6 +52,14 @@ export interface TemplateFeatureDef {
   incompatibleWith?: string[];
 }
 
+/** 模板参数定义（来自 .template/config.ts 的 params，key 即占位符名） */
+export interface TemplateParamDef {
+  /** 问答显示文案 */
+  label: string;
+  /** 默认值：TTY 下作为问答初始值；非 TTY 且未传 --param 时直接采用（缺省则必须传 --param） */
+  default?: string;
+}
+
 /** 模板配置（.template/config.ts 的 export default，经 Zod 验证后的结构） */
 export interface TemplateConfig {
   id: string;
@@ -58,6 +68,14 @@ export interface TemplateConfig {
   compatibleCliVersions: string;
   /** 简单字符串替换，应用于所有文本文件（`{{project-name}}` 由 CLI 自动注入） */
   variables: Record<string, string>;
+  /**
+   * 参数声明区：需要「按项目定值」的占位符（区别于 variables 的固定值）
+   *
+   * key 即占位符名（`project-title` → `{{project-title}}`），小写 kebab；
+   * `project-name` 保留给 CLI 注入，且不得与 variables 里的同名占位符冲突。
+   * 取值来源优先级：`--param key=value` > TTY 问答（default 为初始值）> default。
+   */
+  params?: Record<string, TemplateParamDef>;
   /**
    * 真名 → 占位符替换，用于把模板真源里的硬编码标识（包名、标题等）换成占位符
    *

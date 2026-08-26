@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildSummary, collectFeatureSelection, validateFeatureIds } from '../src/prompts/index';
+import {
+  buildSummary,
+  collectFeatureSelection,
+  collectTemplateParams,
+  parseParamArgs,
+  validateFeatureIds,
+} from '../src/prompts/index';
 import type { TemplateConfig } from '../src/types';
 
 const manifest: TemplateConfig = {
@@ -89,5 +95,65 @@ describe('buildSummary', () => {
     });
     expect(summary).toContain('（未选择）');
     expect(summary).toContain('移动端 H5');
+  });
+});
+
+describe('parseParamArgs', () => {
+  it('解析可重复的 key=value，同 key 后者覆盖前者', () => {
+    expect(parseParamArgs(['a=1', 'b=x=y', 'a=2'])).toEqual({ a: '2', b: 'x=y' });
+  });
+
+  it('未传返回空对象', () => {
+    expect(parseParamArgs(undefined)).toEqual({});
+    expect(parseParamArgs([])).toEqual({});
+  });
+
+  it('值两端空白被 trim', () => {
+    expect(parseParamArgs(['title=  Vue Admin  '])).toEqual({ title: 'Vue Admin' });
+  });
+
+  it('缺 = 或空 key / 空白 value 抛 E_INVALID_PARAM', () => {
+    for (const bad of ['novalue', '=x', 'key=', 'key=   ']) {
+      expect(() => parseParamArgs([bad])).toThrowError(
+        expect.objectContaining({ code: 'E_INVALID_PARAM' }) as unknown as Error,
+      );
+    }
+  });
+});
+
+// 测试进程 stdin 非 TTY，collectTemplateParams 恰好走的就是要重点回归的非交互分支
+describe('collectTemplateParams（非 TTY 分支）', () => {
+  const withParams: TemplateConfig = {
+    ...manifest,
+    params: {
+      'project-title': { label: '项目标题', default: 'Vue Admin' },
+      'api-prefix': { label: 'API 前缀' },
+    },
+  };
+
+  it('--param 优先，未传的有默认值参数用 default 兜底', async () => {
+    const result = await collectTemplateParams(withParams, { 'api-prefix': '/api' });
+    expect(result).toEqual({ 'project-title': 'Vue Admin', 'api-prefix': '/api' });
+  });
+
+  it('无 default 且未传 --param 时抛 E_NON_INTERACTIVE 并点名参数', async () => {
+    await expect(collectTemplateParams(withParams, {})).rejects.toMatchObject({
+      code: 'E_NON_INTERACTIVE',
+      message: expect.stringContaining('--param api-prefix=') as unknown as string,
+    });
+  });
+
+  it('未知参数名抛 E_INVALID_PARAM 并列出可用参数', async () => {
+    await expect(collectTemplateParams(withParams, { nope: '1' })).rejects.toMatchObject({
+      code: 'E_INVALID_PARAM',
+      suggestion: expect.stringContaining('project-title') as unknown as string,
+    });
+  });
+
+  it('模板未声明 params 时返回空对象；此时传 --param 报错', async () => {
+    await expect(collectTemplateParams(manifest, {})).resolves.toEqual({});
+    await expect(collectTemplateParams(manifest, { a: '1' })).rejects.toMatchObject({
+      code: 'E_INVALID_PARAM',
+    });
   });
 });

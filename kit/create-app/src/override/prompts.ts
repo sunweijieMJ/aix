@@ -1,6 +1,5 @@
-import { text, select, multiselect, isCancel } from '@clack/prompts';
+import { text, multiselect, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
-import { detectLanguage } from '../utils/detector';
 import {
   ALL_MODULES,
   MODULE_DESCRIPTIONS,
@@ -17,11 +16,9 @@ const PROJECT_CODE_REGEX = /^[a-z][a-z0-9-]*$/;
  * 运行交互式问答，收集生成选项
  */
 export async function runPrompts(
-  cwd: string,
   partial: Partial<GenerateOptions>,
 ): Promise<GenerateOptions | null> {
   let project = partial.project;
-  let lang = partial.lang;
   let modules = partial.modules;
 
   // 1. 项目代码
@@ -40,25 +37,7 @@ export async function runPrompts(
     project = result;
   }
 
-  // 2. 语言选择
-  if (!lang) {
-    const detected = detectLanguage(cwd);
-    const result = await select({
-      message: `项目语言 ${pc.dim(`(自动检测: ${detected === 'ts' ? 'TypeScript' : 'JavaScript'})`)}`,
-      options: [
-        { label: 'TypeScript', value: 'ts' },
-        { label: 'JavaScript', value: 'js' },
-      ],
-      initialValue: detected,
-    });
-    if (isCancel(result)) {
-      console.log(pc.yellow('\n已取消'));
-      return null;
-    }
-    lang = result as 'ts' | 'js';
-  }
-
-  // 3. 模块选择
+  // 2. 模块选择
   if (!modules) {
     const result = await multiselect({
       message: '选择需要定制的模块 (空格选择，回车确认)',
@@ -92,7 +71,7 @@ export async function runPrompts(
     modules = selected;
   }
 
-  return buildOptions({ ...partial, project, lang, modules });
+  return buildOptions({ ...partial, project, modules });
 }
 
 function buildOptions(raw: Partial<GenerateOptions>): GenerateOptions {
@@ -106,7 +85,6 @@ function buildOptions(raw: Partial<GenerateOptions>): GenerateOptions {
 
   return {
     project: raw.project!,
-    lang: raw.lang ?? 'ts',
     modules: modules as ModuleId[],
     output: raw.output ?? 'src/overrides',
     yes: raw.yes ?? false,

@@ -39,13 +39,14 @@ function tempDir(prefix: string): string {
  * `.template/config.ts` 用相对路径 import 了源码里的 types，克隆到缓存目录后那条
  * 相对路径就断了，所以这里改写成不依赖外部类型的自包含版本。
  */
-function makeTemplateRepo(): string {
+function makeTemplateRepo(mutateConfig?: (text: string) => string): string {
   const dir = tempDir('create-app-tplrepo-');
   fs.cpSync(MINI_DIR, dir, { recursive: true });
-  const configText = fs
+  let configText = fs
     .readFileSync(path.join(MINI_DIR, '.template/config.ts'), 'utf-8')
     .replace("import type { TemplateConfig } from '../../../../src/types';\n", '')
     .replace('const config: TemplateConfig = {', 'const config = {');
+  if (mutateConfig) configText = mutateConfig(configText);
   fs.writeFileSync(path.join(dir, '.template/config.ts'), configText);
 
   const git = (...args: string[]): void => {
@@ -284,19 +285,17 @@ describe('override add 非 TTY 快速失败', () => {
       const r = runCli(['override', 'add'], projDir);
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('E_NON_INTERACTIVE');
-      expect(r.output).toContain('-l, --lang');
       expect(r.output).toContain('-m, --modules');
     },
     TIMEOUT,
   );
 
   it(
-    "空串参数（`-l '' -m ''`，未赋值 shell 变量插值的典型形态）同样按缺失处理",
+    "空串参数（`-m ''`，未赋值 shell 变量插值的典型形态）同样按缺失处理",
     () => {
-      const r = runCli(['override', 'add', 'sysu', '-l', '', '-m', '', '-y'], projDir);
+      const r = runCli(['override', 'add', 'sysu', '-m', '', '-y'], projDir);
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('E_NON_INTERACTIVE');
-      expect(r.output).toContain('-l, --lang');
       expect(r.output).toContain('-m, --modules');
     },
     TIMEOUT,
@@ -305,7 +304,7 @@ describe('override add 非 TTY 快速失败', () => {
   it(
     '参数齐全时非 TTY 照常生成',
     () => {
-      const r = runCli(['override', 'add', 'sysu', '-l', 'ts', '-m', 'router', '-y'], projDir);
+      const r = runCli(['override', 'add', 'sysu', '-m', 'router', '-y'], projDir);
       expect(r.status, r.output).toBe(0);
       expect(fs.existsSync(path.join(projDir, 'src/overrides/sysu/router/index.ts'))).toBe(true);
       expect(fs.existsSync(path.join(projDir, 'src/overrides/registry.ts'))).toBe(true);
@@ -317,7 +316,7 @@ describe('override add 非 TTY 快速失败', () => {
     '实际撞到冲突且没给 -y / --force 时，在问答现场非零退出',
     () => {
       // 上一个用例已生成 src/overrides，gzdx 会与其中的 registry.ts 等基础设施文件冲突
-      const r = runCli(['override', 'add', 'gzdx', '-l', 'ts', '-m', 'router'], projDir);
+      const r = runCli(['override', 'add', 'gzdx', '-m', 'router'], projDir);
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('E_NON_INTERACTIVE');
       expect(r.output).toContain('-y');
@@ -329,12 +328,82 @@ describe('override add 非 TTY 快速失败', () => {
     '输出目录存在但无冲突时，全参数运行不被误拦（目录存在 ≠ 会弹问答）',
     () => {
       fs.mkdirSync(path.join(projDir, 'src/overrides-b'), { recursive: true });
-      const r = runCli(
-        ['override', 'add', 'nk', '-l', 'ts', '-m', 'router', '-o', 'src/overrides-b'],
-        projDir,
-      );
+      const r = runCli(['override', 'add', 'nk', '-m', 'router', '-o', 'src/overrides-b'], projDir);
       expect(r.status, r.output).toBe(0);
       expect(fs.existsSync(path.join(projDir, 'src/overrides-b/nk/router/index.ts'))).toBe(true);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('模板参数（params 声明区）', () => {
+  /** 把 mini 的固定 variables 改写为 params 声明 */
+  const withParams = (defaultValue?: string) => (text: string) =>
+    text.replace(
+      "variables: { '{{project-title}}': 'Mini App' },",
+      defaultValue === undefined
+        ? "variables: {},\n  params: { 'project-title': { label: '项目标题' } },"
+        : `variables: {},\n  params: { 'project-title': { label: '项目标题', default: '${defaultValue}' } },`,
+    );
+
+  let workDir: string;
+  let source: string;
+
+  beforeAll(() => {
+    workDir = tempDir('create-app-params-');
+    const repo = makeTemplateRepo(withParams('Mini App'));
+    source = `git+file://${repo}#master`;
+    tempDirs.push(gitCacheDir({ url: `git+file://${repo}`, ref: 'master' }));
+  });
+
+  it(
+    '非 TTY 未传 --param 时采用声明的 default',
+    () => {
+      const r = runCreate('p-default', source, workDir);
+      expect(r.status, r.output).toBe(0);
+      const readme = fs.readFileSync(path.join(workDir, 'p-default/README.md'), 'utf-8');
+      expect(readme).toContain('Mini App');
+      expect(readme).not.toContain('{{project-title}}');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '--param 的取值优先于 default',
+    () => {
+      const r = runCreate('p-custom', source, workDir, ['--param', 'project-title=定制标题']);
+      expect(r.status, r.output).toBe(0);
+      const readme = fs.readFileSync(path.join(workDir, 'p-custom/README.md'), 'utf-8');
+      expect(readme).toContain('定制标题');
+      expect(readme).not.toContain('Mini App');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '未知参数名报 E_INVALID_PARAM 并列出可用参数',
+    () => {
+      const r = runCreate('p-unknown', source, workDir, ['--param', 'nope=1']);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_INVALID_PARAM');
+      expect(r.output).toContain('project-title');
+      expect(fs.existsSync(path.join(workDir, 'p-unknown'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '无 default 的参数在非 TTY 下未传 --param 时快速失败',
+    () => {
+      const repo = makeTemplateRepo(withParams(undefined));
+      const noDefaultSource = `git+file://${repo}#master`;
+      tempDirs.push(gitCacheDir({ url: `git+file://${repo}`, ref: 'master' }));
+
+      const r = runCreate('p-missing', noDefaultSource, workDir);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_NON_INTERACTIVE');
+      expect(r.output).toContain('--param project-title=');
+      expect(fs.existsSync(path.join(workDir, 'p-missing'))).toBe(false);
     },
     TIMEOUT,
   );

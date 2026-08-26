@@ -21,17 +21,55 @@ const SubstitutionSchema = z.strictObject({
   files: z.array(z.string()).min(1),
 });
 
-export const TemplateConfigSchema = z.strictObject({
-  id: z.string(),
-  platform: z.enum(['web', 'mobile']),
-  compatibleCliVersions: z.string(),
-  // 键 min(1)：空串占位符会让 composer 的 split('') 把值插进每个字符之间
-  variables: z.record(z.string().min(1), z.string()),
-  /** 可选：老模板没有这个字段，缺省即不做真名替换 */
-  substitutions: z.array(SubstitutionSchema).optional(),
-  /** 可选：不进入产物的路径（构建产物 / 生成文件 / 锁文件等） */
-  exclude: z.array(z.string()).optional(),
-  features: z.record(z.string(), TemplateFeatureDefSchema),
+/**
+ * 参数 key 即占位符名：`project-title` → `{{project-title}}`
+ *
+ * 命名收紧为小写 kebab，与 verify-combos 的变量残留检测（`{{[a-z][a-z0-9-]*}}`）
+ * 保持同一取值域——放宽这里会让残留检测漏报
+ */
+const PARAM_KEY_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+const TemplateParamSchema = z.strictObject({
+  label: z.string().min(1),
+  // trim + min(1)：`default: ''` / `'  '` 会在非 TTY 下被当成有效默认值静默注入空串，
+  // 而 params 的语义就是「这个占位符必须有值」，空默认值没有意义
+  default: z.string().trim().min(1).optional(),
 });
+
+export const TemplateConfigSchema = z
+  .strictObject({
+    id: z.string(),
+    platform: z.enum(['web', 'mobile']),
+    compatibleCliVersions: z.string(),
+    // 键 min(1)：空串占位符会让 composer 的 split('') 把值插进每个字符之间
+    variables: z.record(z.string().min(1), z.string()),
+    /** 可选：需要按项目定值的参数（问答 / --param），key 即占位符名 */
+    params: z.record(z.string().regex(PARAM_KEY_PATTERN), TemplateParamSchema).optional(),
+    /** 可选：老模板没有这个字段，缺省即不做真名替换 */
+    substitutions: z.array(SubstitutionSchema).optional(),
+    /** 可选：不进入产物的路径（构建产物 / 生成文件 / 锁文件等） */
+    exclude: z.array(z.string()).optional(),
+    features: z.record(z.string(), TemplateFeatureDefSchema),
+  })
+  .superRefine((cfg, ctx) => {
+    // params 与 variables / CLI 注入项是同一张占位符表的三种来源，key 冲突必须硬报——
+    // 静默按优先级覆盖会把「模板作者写错了」藏到产物里
+    for (const key of Object.keys(cfg.params ?? {})) {
+      if (key === 'project-name') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['params', key],
+          message: 'project-name 是 CLI 注入的保留参数名，params 不得声明',
+        });
+      }
+      if (`{{${key}}}` in cfg.variables) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['params', key],
+          message: `params "${key}" 与 variables 的 {{${key}}} 冲突：按项目定值请只留 params 声明`,
+        });
+      }
+    }
+  });
 
 export type TemplateConfigInput = z.input<typeof TemplateConfigSchema>;

@@ -15,6 +15,7 @@
  *   pnpm verify-combos --template <path|src> # 换模板源（本地路径或 git 源）
  *   pnpm verify-combos --out-root /tmp/x     # 指定产物根目录（默认临时目录）
  *   pnpm verify-combos --registry <url>      # install 时覆盖 registry（默认走模板自带 .npmrc）
+ *   pnpm verify-combos --param k=v [--param …] # 透传模板参数（无 default 的参数必须给）
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -182,6 +183,8 @@ interface Options {
   registry?: string;
   outRoot: string;
   template: string;
+  /** 透传给 CLI 的 `--param k=v`：模板一旦声明无 default 的参数，不给就会 E_NON_INTERACTIVE */
+  params: string[];
 }
 
 interface ComboResult {
@@ -222,6 +225,7 @@ function verify(name: string, selected: string[], opts: Options): ComboResult {
       `--features=${selected.join(',')}`,
       '-d',
       `verify-combos ${name}`,
+      ...opts.params.flatMap((p) => ['--param', p]),
       '-y',
       '--no-git',
       '--no-install',
@@ -285,6 +289,9 @@ function main(): void {
     const i = argv.indexOf(flag);
     return i >= 0 ? argv[i + 1] : undefined;
   };
+  /** 可重复的 flag：收集全部出现处的值 */
+  const argAll = (flag: string): string[] =>
+    argv.flatMap((a, i) => (a === flag && argv[i + 1] ? [argv[i + 1]!] : []));
 
   const only = arg('--combo');
   if (only && !(only in COMBOS)) {
@@ -298,6 +305,7 @@ function main(): void {
     registry: arg('--registry'),
     outRoot,
     template: arg('--template') ?? DEFAULT_TEMPLATE,
+    params: argAll('--param'),
   };
   console.log(`模板源：${opts.template}`);
 

@@ -31,11 +31,10 @@ const MODULE_WITH_DIR: ModuleId[] = [
  * 不写入磁盘，仅返回 { path, content } 数组，由调用方决定是否写入。
  */
 export function generateFiles(options: GenerateOptions): GeneratedFile[] {
-  const { project, lang, modules, output: _output } = options;
-  const ext = lang;
+  const { project, modules } = options;
 
-  // 模板目录：<包根>/templates-override/{lang}/overrides/
-  const templatesDir = path.resolve(PKG_ROOT, 'templates-override', lang, 'overrides');
+  // 模板目录：<包根>/templates-override/overrides/（只发 TypeScript，js 变体与 {lang} 目录层已移除）
+  const templatesDir = path.resolve(PKG_ROOT, 'templates-override', 'overrides');
 
   const eta = new Eta({
     views: templatesDir,
@@ -43,44 +42,41 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
     autoTrim: false,
   });
 
-  const context: TemplateContext = { project, modules, lang, ext };
+  const context: TemplateContext = { project, modules };
   const files: GeneratedFile[] = [];
 
   // ── 基础设施文件（始终生成） ──
-  if (lang === 'ts') {
-    files.push({
-      path: `types.${ext}`,
-      content: eta.render(`./types.${ext}.eta`, context),
-    });
-  }
   files.push({
-    path: `deployment.${ext}`,
-    content: eta.render(`./deployment.${ext}.eta`, context),
+    path: 'types.ts',
+    content: eta.render('./types.ts.eta', context),
   });
   files.push({
-    path: `index.${ext}`,
-    content: eta.render(`./index.${ext}.eta`, context),
+    path: 'deployment.ts',
+    content: eta.render('./deployment.ts.eta', context),
   });
   files.push({
-    path: `registry.${ext}`,
-    content: eta.render(`./registry.${ext}.eta`, context),
+    path: 'index.ts',
+    content: eta.render('./index.ts.eta', context),
+  });
+  files.push({
+    path: 'registry.ts',
+    content: eta.render('./registry.ts.eta', context),
   });
 
   // ── 项目聚合入口（根据选中模块动态 import） ──
   files.push({
-    path: `${project}/index.${ext}`,
-    content: eta.render(`./project-index.${ext}.eta`, context),
+    path: `${project}/index.ts`,
+    content: eta.render('./project-index.ts.eta', context),
   });
 
   // ── 各模块模板（按选择生成） ──
   for (const mod of modules) {
     if (!MODULE_WITH_DIR.includes(mod)) continue;
 
-    const templatePath = `./${mod}/index.${ext}.eta`;
-    if (fs.existsSync(path.join(templatesDir, mod, `index.${ext}.eta`))) {
+    if (fs.existsSync(path.join(templatesDir, mod, 'index.ts.eta'))) {
       files.push({
-        path: `${project}/${mod}/index.${ext}`,
-        content: eta.render(templatePath, context),
+        path: `${project}/${mod}/index.ts`,
+        content: eta.render(`./${mod}/index.ts.eta`, context),
       });
     }
   }
@@ -122,14 +118,8 @@ const OVERRIDE_UTIL_BASES = [
  *
  * @returns 文件列表，path 相对于 src/plugins/override/
  */
-export function generateOverrideUtils(lang: 'ts' | 'js' = 'ts'): GeneratedFile[] {
-  const utilsTemplatesDir = path.resolve(
-    PKG_ROOT,
-    'templates-override',
-    lang,
-    'plugins',
-    'override',
-  );
+export function generateOverrideUtils(): GeneratedFile[] {
+  const utilsTemplatesDir = path.resolve(PKG_ROOT, 'templates-override', 'plugins', 'override');
 
   if (!fs.existsSync(utilsTemplatesDir)) return [];
 
@@ -142,7 +132,7 @@ export function generateOverrideUtils(lang: 'ts' | 'js' = 'ts'): GeneratedFile[]
   const files: GeneratedFile[] = [];
 
   for (const base of OVERRIDE_UTIL_BASES) {
-    const fileName = `${base}.${lang}`;
+    const fileName = `${base}.ts`;
     const templateFile = `${fileName}.eta`;
     if (!fs.existsSync(path.join(utilsTemplatesDir, templateFile))) continue;
 

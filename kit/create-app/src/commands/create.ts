@@ -9,7 +9,9 @@ import {
   collectBasicInfo,
   collectFeatureSelection,
   collectPostOptions,
+  collectTemplateParams,
   confirmSummary,
+  parseParamArgs,
 } from '../prompts/index';
 import type { ProjectConfig } from '../types';
 import { CreateAppError } from '../utils/errors';
@@ -20,6 +22,8 @@ import { readCliVersion } from '../utils/pkg-root';
 export interface CreateOptions {
   description?: string;
   features?: string;
+  /** `--param key=value` 可重复，commander 累积为数组 */
+  param?: string[];
   /** commander 对 `--no-git` 生成的是 git=false，而非 noGit */
   git?: boolean;
   install?: boolean;
@@ -68,6 +72,9 @@ export function missingNonInteractiveFlags(
   // collectFeatureSelection
   if (opts.features === undefined) missing.push('-f, --features <list>');
 
+  // collectTemplateParams 不在此预判：params 声明在模板 config.ts 里，此时模板还没拉取。
+  // 无默认值且没传 --param 的参数由 collectTemplateParams 在问答前补一道非 TTY 快速失败
+
   // collectPostOptions + confirmSummary：dry-run 会整段跳过
   if (!opts.dryRun) {
     if (opts.git !== false) missing.push('--no-git');
@@ -100,6 +107,10 @@ export async function create(projectName: string | undefined, opts: CreateOption
   try {
     // 任何问答之前先做非 TTY 体检，避免 onCancel() 的 exit 0 把 CI 里的失败伪装成成功
     assertNonInteractiveReady(projectName, opts);
+
+    // --param 的语法校验不依赖模板，提前到问答与 clone 之前：
+    // 放在步骤 4.5 的话，一个漏写的 `=` 要等用户答完问答、克隆完仓库才报出来
+    const argvParams = parseParamArgs(opts.param);
 
     // 获取 CLI 版本号（运行时向上找包根，兼容 tsx 源码运行与 tsdown 打包后的 dist/）
     const version = readCliVersion(import.meta.url);
@@ -135,6 +146,9 @@ export async function create(projectName: string | undefined, opts: CreateOption
     // ── 步骤 4：模板元数据驱动的特性选择 ──
     const features = await collectFeatureSelection(manifest, parseFeatures(opts.features));
 
+    // ── 步骤 4.5：模板参数（--param / 问答 / default）──
+    const params = await collectTemplateParams(manifest, argvParams);
+
     // ── 步骤 5：后处理问答 + summary 确认（dry-run 无副作用，直接跳过）──
     const post = opts.dryRun
       ? { packageManager: 'pnpm' as const, initGit: false, installDeps: false }
@@ -150,6 +164,7 @@ export async function create(projectName: string | undefined, opts: CreateOption
       platform: manifest.platform,
       templateId: basic.templateId,
       features,
+      params,
       outputDir: path.resolve(process.cwd(), basic.name),
       ...post,
     };
@@ -161,6 +176,7 @@ export async function create(projectName: string | undefined, opts: CreateOption
           templateLabel: basic.templateLabel,
           platform: config.platform,
           features,
+          params,
           manifest,
         },
         opts.yes,

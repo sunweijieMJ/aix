@@ -53,6 +53,28 @@ function applyVariables(content: string, vars: Record<string, string>): string {
 }
 
 /**
+ * 在 **解析后的对象** 上做变量替换（键与字符串值都替换），供 package.json 专用
+ *
+ * 必须走对象而不是序列化后的文本：变量值有一路来自 `--param`（调用方输入），
+ * 拼进 JSON 文本里的 `"` 能闭合字符串再开新键——实测可注入 `scripts.postinstall`，
+ * 而 CLI 紧接着就会执行 `pnpm install`。在对象上替换后由 JSON.stringify 负责转义，
+ * 值里的引号只会变成字面量。
+ */
+function applyVariablesDeep<T>(node: T, vars: Record<string, string>): T {
+  if (typeof node === 'string') return applyVariables(node, vars) as T;
+  if (Array.isArray(node)) return node.map((item) => applyVariablesDeep(item, vars)) as T;
+  if (node !== null && typeof node === 'object') {
+    return Object.fromEntries(
+      Object.entries(node).map(([key, value]) => [
+        applyVariables(key, vars),
+        applyVariablesDeep(value, vars),
+      ]),
+    ) as T;
+  }
+  return node;
+}
+
+/**
  * 命中账本：外层下标与 subs 对齐，内层按白名单文件逐个记数
  *
  * 必须逐文件记，不能只记一个总数：白名单里任一文件失配（真源改写了那一处），
@@ -129,11 +151,15 @@ export class Composer {
       return false;
     }
 
-    // 合并变量（config.ts 声明的变量 + 项目名）。
-    // CLI 注入项必须放在展开之后：模板若声明了同名 {{project-name}}，
-    // 不能让它压掉用户输入的项目名
+    // 合并变量：模板固定值（variables）→ 参数取值（params，问答/--param/default 解出）
+    // → CLI 注入的项目名。用户输入必须放在展开之后，模板同名声明不得压掉它
+    // （params 与 variables 的 key 冲突已被 schema 拒绝，这里的顺序只是防御）
     const variables: Record<string, string> = {
       ...manifest.variables,
+      // `?? {}`：ProjectConfig 是公共导出，未走类型检查的外部调用方可能不带 params
+      ...Object.fromEntries(
+        Object.entries(config.params ?? {}).map(([key, value]) => [`{{${key}}}`, value]),
+      ),
       '{{project-name}}': config.name,
     };
 
@@ -157,18 +183,9 @@ export class Composer {
         const raw = applySubstitutions(buf.toString('utf-8'), outputPath, subs, hits);
         const pkgJson = JSON.parse(raw);
         const patched = patchPackageJson(pkgJson, manifest, config);
-        const text = applyVariables(JSON.stringify(patched, null, 2) + '\n', variables);
-        // 变量是在序列化之后注入的，值里带 `"` / `\` 会把 JSON 弄坏且无人报错——
-        // 用户要到 pnpm install 才发现产物损坏，必须在写盘前回验
-        try {
-          JSON.parse(text);
-        } catch {
-          throw new CreateAppError(
-            'E_INVALID_TEMPLATE_CONFIG',
-            'variables 注入后 package.json 不再是合法 JSON（变量值含 " 或 \\ 等 JSON 特殊字符？）',
-            '请检查 .template/config.ts 的 variables 值，避免 JSON 特殊字符',
-          );
-        }
+        // 变量替换在序列化之前、作用于对象：值里的引号交给 JSON.stringify 转义，
+        // 杜绝 `--param` 输入闭合字符串注入新键（见 applyVariablesDeep）
+        const text = JSON.stringify(applyVariablesDeep(patched, variables), null, 2) + '\n';
         fileList.push({ path: outputPath, content: text });
         continue;
       }

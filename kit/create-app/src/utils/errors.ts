@@ -7,6 +7,8 @@ export type ErrorCode =
   | 'E_VERSION_INCOMPATIBLE'
   | 'E_TEMPLATE_SYNTAX'
   | 'E_UNKNOWN_FEATURE'
+  /** --param 的 key 不在模板 params 声明中、格式不是 key=value、或值为空 */
+  | 'E_INVALID_PARAM'
   /** config.ts 声明的 substitution 在模板中零命中（真源改名后未同步） */
   | 'E_SUBSTITUTION_MISS'
   // 项目相关

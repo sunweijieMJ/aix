@@ -45,6 +45,7 @@ function makeConfig(features: string[] = []): ProjectConfig {
     description: 'test',
     platform: 'web',
     features,
+    params: {},
     outputDir: './my-app',
     packageManager: 'pnpm',
     initGit: false,

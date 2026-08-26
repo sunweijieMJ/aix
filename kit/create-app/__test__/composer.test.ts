@@ -40,6 +40,7 @@ function makeConfig(features: string[] = [], templateId?: string): ProjectConfig
     platform: 'web',
     templateId,
     features,
+    params: {},
     outputDir: './my-app',
     packageManager: 'pnpm',
     initGit: false,
@@ -205,6 +206,43 @@ describe('Composer 集成 - 协议 v0.2 最小模板（template-mini）', () => 
     const readme = text(await composer.compose(dir, patched, makeConfig([])), 'README.md');
     expect(readme).toContain('my-app');
     expect(readme).not.toContain('evil-name');
+  });
+
+  it('params 取值（问答/--param 解出）注入为同名占位符，替代 variables 的固定值', async () => {
+    const dir = await resolver.fetch(MINI_DIR);
+    const mini = await resolver.readConfig(dir);
+    // 模拟「{{project-title}} 从 variables 迁到 params」后的形态
+    const patched: TemplateConfig = {
+      ...mini,
+      variables: {},
+      params: { 'project-title': { label: '项目标题', default: 'Mini App' } },
+    };
+    const config = { ...makeConfig([]), params: { 'project-title': 'Param Title' } };
+    const readme = text(await composer.compose(dir, patched, config), 'README.md');
+    expect(readme).toContain('Param Title');
+    expect(readme).not.toContain('{{project-title}}');
+  });
+
+  it('参数值里的引号不能注入 package.json 结构（--param 是调用方输入）', async () => {
+    const dir = await resolver.fetch(MINI_DIR);
+    const mini = await resolver.readConfig(dir);
+    const patched: TemplateConfig = {
+      ...mini,
+      variables: {},
+      params: { 'project-title': { label: '项目标题', default: 'Mini App' } },
+    };
+    // 实测过的注入载荷：拼进序列化后的 JSON 文本能闭合字符串并新开 scripts 键，
+    // 而 CLI 紧接着就会执行 pnpm install
+    const evil = 'x", "scripts": {"postinstall": "echo PWNED"}, "zzz": "';
+    const files = await composer.compose(dir, patched, {
+      ...makeConfig([]),
+      params: { 'project-title': evil },
+    });
+    const pkg = JSON.parse(text(files, 'package.json')) as Record<string, unknown>;
+    expect(pkg['zzz']).toBeUndefined();
+    expect((pkg['scripts'] as Record<string, string>)?.['postinstall']).toBeUndefined();
+    // 值本身仍按字面量保留（README 里的占位符照常替换）
+    expect(text(files, 'README.md')).toContain(evil);
   });
 
   it("变量值里的 $& / $' 等替换模式字符按字面量落盘（不走 String.replace 的模式解释）", async () => {

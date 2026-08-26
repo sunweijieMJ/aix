@@ -16,7 +16,6 @@ import { handleError } from '../../utils/logger';
 
 export interface OverrideAddOptions {
   project?: string;
-  lang?: string;
   modules?: string;
   output: string;
   yes: boolean;
@@ -38,11 +37,10 @@ export function missingOverrideNonInteractiveFlags(
 ): string[] {
   const missing: string[] = [];
 
-  // runPrompts：三问逐条对应。空串一律按缺失算——下游全是 truthy 判断
-  // （add.ts 的 `if (opts.modules)`、prompts.ts 的 `if (!lang)`），
-  // `-l '' -m ''`（典型来源是未赋值的 shell 变量插值）会绕过体检落进问答
+  // runPrompts：问答逐条对应。空串一律按缺失算——下游全是 truthy 判断
+  // （add.ts 的 `if (opts.modules)`），`-m ''`（典型来源是未赋值的 shell 变量插值）
+  // 会绕过体检落进问答
   if (!(project ?? opts.project)) missing.push('[code]（定制目录名）');
-  if (!opts.lang) missing.push('-l, --lang <ts|js>');
   if (!opts.modules) missing.push('-m, --modules <list>');
 
   // 冲突问答（checkProjectConflict / resolveConflicts）不在此预判：
@@ -63,7 +61,7 @@ function assertNonInteractiveReady(project: string | undefined, opts: OverrideAd
     `当前不是交互式终端（stdin 非 TTY），但以下选项缺失、无法通过问答补齐：\n${missing
       .map((m) => `  - ${m}`)
       .join('\n')}`,
-    '非交互场景请补齐全部参数，例如：\n  create-app override add sysu -l ts -m router,store -y',
+    '非交互场景请补齐全部参数，例如：\n  create-app override add sysu -m router,store -y',
   );
 }
 
@@ -112,16 +110,9 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
     }
   }
 
-  // 校验 lang 参数
-  if (opts.lang && opts.lang !== 'ts' && opts.lang !== 'js') {
-    console.error(pc.red(`❌ 无效语言: ${opts.lang}，只支持 ts 或 js`));
-    process.exit(1);
-  }
-
   // 交互式收集缺失参数
-  const options = await runPrompts(cwd, {
+  const options = await runPrompts({
     project: project ?? opts.project,
-    lang: opts.lang as 'ts' | 'js' | undefined,
     modules,
     output: opts.output,
     yes: opts.yes,
@@ -184,12 +175,11 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
 
   // ── 检测并生成 plugins/override（首次运行时） ──
   const utilsDir = path.resolve(cwd, 'src/plugins/override');
-  // 扩展名必须跟随 options.lang：写死 index.ts 会让 js 项目的存在性判断恒为 false
-  const utilsIndexFile = path.join(utilsDir, `index.${options.lang}`);
+  const utilsIndexFile = path.join(utilsDir, 'index.ts');
   let utilsGenerated = false;
 
   if (!options.dryRun) {
-    const utilFiles = generateOverrideUtils(options.lang);
+    const utilFiles = generateOverrideUtils();
     const missingUtils = utilFiles.filter((f) => !fs.existsSync(path.join(utilsDir, f.path)));
 
     if (missingUtils.length > 0) {
@@ -201,12 +191,11 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   }
 
   // ── 下一步提示 ──
-  const ext = options.lang;
   const overridesAlias = `@/${options.output.replace(/^src\//, '')}`;
 
   console.log(pc.bold('\n📝 下一步：'));
-  console.log(`  1. 在 ${pc.cyan(`${options.output}/registry.${ext}`)} 中添加学校 NID 映射`);
-  console.log(`  2. 在各模块的 ${pc.cyan('index.' + ext)} 中实现定制逻辑\n`);
+  console.log(`  1. 在 ${pc.cyan(`${options.output}/registry.ts`)} 中添加学校 NID 映射`);
+  console.log(`  2. 在各模块的 ${pc.cyan('index.ts')} 中实现定制逻辑\n`);
 
   if (!fs.existsSync(utilsIndexFile) && !utilsGenerated) {
     console.log(

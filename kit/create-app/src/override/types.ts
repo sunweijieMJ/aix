@@ -56,8 +56,6 @@ export const MODULE_DIMENSION: Record<ModuleId, '静态' | '运行时' | '—'> 
 export interface GenerateOptions {
   /** 项目代码（目录名，如 sysu） */
   project: string;
-  /** 语言 */
-  lang: 'ts' | 'js';
   /** 选中的模块列表 */
   modules: ModuleId[];
   /** 输出根目录（默认 src/overrides） */
@@ -78,14 +76,10 @@ export interface GeneratedFile {
   content: string;
 }
 
-/** Eta 模板上下文 */
+/** Eta 模板上下文（js 模板变体已移除，只发 TypeScript） */
 export interface TemplateContext {
   /** 项目代码 (如 'sysu') */
   project: string;
   /** 选中的模块列表 */
   modules: ModuleId[];
-  /** 语言 */
-  lang: 'ts' | 'js';
-  /** 文件扩展名 ('ts' 或 'js') */
-  ext: string;
 }

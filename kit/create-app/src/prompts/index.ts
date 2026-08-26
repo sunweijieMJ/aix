@@ -165,6 +165,95 @@ export async function collectFeatureSelection(
   return result;
 }
 
+/**
+ * 解析 `--param key=value`（可重复）为 Record；同 key 重复时后者覆盖前者
+ *
+ * @throws CreateAppError E_INVALID_PARAM 缺 `=` 或值为空
+ */
+export function parseParamArgs(raw: string[] | undefined): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const item of raw ?? []) {
+    const i = item.indexOf('=');
+    // key 或 value 空白都拒绝：`--param =x` / `--param key=` / `--param 'key=   '`
+    // 多半是 shell 变量没赋值，放行只会把空串静默注进产物
+    const value = i < 0 ? '' : item.slice(i + 1).trim();
+    if (i <= 0 || value.length === 0) {
+      throw new CreateAppError(
+        'E_INVALID_PARAM',
+        `--param 格式不合法: "${item}"`,
+        '正确格式：--param key=value（可重复传多个），值不能为空',
+      );
+    }
+    result[item.slice(0, i)] = value;
+  }
+  return result;
+}
+
+/**
+ * 步骤 4.5：模板参数收集（声明来自 manifest.params）
+ *
+ * 取值优先级：`--param` > TTY 问答（default 为初始值）> default。
+ * 非 TTY 下存在「没传 --param 且无 default」的参数时快速失败——此检查只能放在
+ * 模板拉取之后（params 声明在模板里），但仍先于任何问答。
+ */
+export async function collectTemplateParams(
+  manifest: TemplateConfig,
+  argvParams: Record<string, string> = {},
+): Promise<Record<string, string>> {
+  const decls = Object.entries(manifest.params ?? {});
+  const available = decls.map(([key]) => key);
+
+  const unknown = Object.keys(argvParams).filter((key) => !available.includes(key));
+  if (unknown.length > 0) {
+    throw new CreateAppError(
+      'E_INVALID_PARAM',
+      `模板 ${manifest.id} 不存在参数: ${unknown.join(', ')}`,
+      available.length > 0
+        ? `可用参数: ${available.join(', ')}`
+        : '该模板未声明任何参数，请去掉 --param',
+    );
+  }
+  if (decls.length === 0) return {};
+
+  if (!process.stdin.isTTY) {
+    // 空白 default 等同于没有默认值：非 TTY 下直接采用会把空串注进产物
+    const missing = decls.filter(
+      ([key, def]) => argvParams[key] === undefined && !def.default?.trim(),
+    );
+    if (missing.length > 0) {
+      throw new CreateAppError(
+        'E_NON_INTERACTIVE',
+        `当前不是交互式终端（stdin 非 TTY），以下模板参数无默认值、无法通过问答补齐：\n${missing
+          .map(([key, def]) => `  - --param ${key}=<值>（${def.label}）`)
+          .join('\n')}`,
+        '非交互场景请为每个无默认值的参数显式传 --param key=value',
+      );
+    }
+  }
+
+  const resolved: Record<string, string> = {};
+  for (const [key, def] of decls) {
+    const fromArgv = argvParams[key];
+    if (fromArgv !== undefined) {
+      resolved[key] = fromArgv;
+      continue;
+    }
+    if (!process.stdin.isTTY) {
+      // 上方已保证此分支必有非空 default
+      resolved[key] = def.default!.trim();
+      continue;
+    }
+    const answer = await p.text({
+      message: def.label,
+      initialValue: def.default,
+      validate: (value) => (value && value.trim().length > 0 ? undefined : '不能为空'),
+    });
+    if (p.isCancel(answer)) onCancel();
+    resolved[key] = answer.trim();
+  }
+  return resolved;
+}
+
 /** 步骤 5：后处理问答（git / install / packageManager） */
 export async function collectPostOptions(options: CollectPostOptions = {}): Promise<PostOptions> {
   const initGit =
@@ -206,18 +295,25 @@ export interface SummaryInput {
   templateLabel: string;
   platform: TemplateConfig['platform'];
   features: string[];
+  /** 模板参数的最终取值（可选：老调用方 / 无参数模板不传） */
+  params?: Record<string, string>;
   manifest: TemplateConfig;
 }
 
-/** 渲染 summary 文本（特性显示为模板声明的 label） */
+/** 渲染 summary 文本（特性显示为模板声明的 label，参数显示为「label: 值」） */
 export function buildSummary(input: SummaryInput): string {
   const featureLabels = input.features.map((id) => input.manifest.features[id]?.label ?? id);
+  const paramLines = Object.entries(input.params ?? {}).map(
+    ([key, value]) =>
+      `${pc.dim('参数')}      ${input.manifest.params?.[key]?.label ?? key}: ${pc.cyan(value)}`,
+  );
 
   return [
     `${pc.dim('项目名称')}  ${pc.cyan(input.name)}`,
     `${pc.dim('项目模版')}  ${input.templateLabel}`,
     `${pc.dim('平台')}      ${input.platform === 'web' ? 'Web 应用' : '移动端 H5'}`,
     `${pc.dim('特性')}      ${featureLabels.length > 0 ? featureLabels.join(', ') : '（未选择）'}`,
+    ...paramLines,
   ].join('\n');
 }
 

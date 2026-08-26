@@ -38,6 +38,12 @@ program
     '--template <id|source>',
     '模板注册表 id（如 admin），或直接的模板源（本地路径 / giget 格式）',
   )
+  .option(
+    '-p, --param <key=value>',
+    '模板参数（可重复，取值域由模板 config.ts 的 params 声明）',
+    (val: string, acc: string[]) => [...acc, val],
+    [] as string[],
+  )
   .option('--no-git', '跳过 git init')
   .option('--no-install', '跳过依赖安装')
   // --offline / --force 不给默认值：resolver 要区分「没传」与「传了 false」——
@@ -54,8 +60,7 @@ const overrideCmd = program.command('override').description('管理项目的 Ove
 
 overrideCmd
   .command('add [code]')
-  .description('为新客户生成 Override 覆盖层目录和模板文件')
-  .option('-l, --lang <ts|js>', '语言（ts/js）')
+  .description('为新客户生成 Override 覆盖层目录和模板文件（TypeScript）')
   .option('-m, --modules <list>', '定制模块（逗号分隔，如 router,store）')
   .option('-o, --output <dir>', '输出目录', 'src/overrides')
   .option('-y, --yes', '跳过确认提示', false)

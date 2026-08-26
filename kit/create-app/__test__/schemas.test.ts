@@ -52,6 +52,58 @@ describe('TemplateConfigSchema strict', () => {
     expect(r.success).toBe(false);
   });
 
+  it('params：合法声明通过，key 即占位符名', () => {
+    const r = TemplateConfigSchema.safeParse({
+      ...base,
+      params: { 'project-title': { label: '项目标题', default: 'Vue Admin' } },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('params：key 必须是小写 kebab（与残留检测的取值域一致）', () => {
+    for (const bad of ['Project_Title', '1abc', 'A']) {
+      const r = TemplateConfigSchema.safeParse({ ...base, params: { [bad]: { label: 'x' } } });
+      expect(r.success, `应拒绝 key "${bad}"`).toBe(false);
+    }
+  });
+
+  it('params：保留名 project-name 被拒绝（CLI 注入项）', () => {
+    const r = TemplateConfigSchema.safeParse({
+      ...base,
+      params: { 'project-name': { label: 'x' } },
+    });
+    expect(r.success).toBe(false);
+    expect(r.error!.message).toContain('project-name');
+  });
+
+  it('params：与 variables 声明同名占位符时硬报冲突', () => {
+    const r = TemplateConfigSchema.safeParse({
+      ...base,
+      variables: { '{{project-title}}': 'Vue Admin' },
+      params: { 'project-title': { label: 'x' } },
+    });
+    expect(r.success).toBe(false);
+    expect(r.error!.message).toContain('冲突');
+  });
+
+  it('params：空白 default 被拒绝（非 TTY 下会被当成有效值注入空串）', () => {
+    for (const bad of ['', '   ']) {
+      const r = TemplateConfigSchema.safeParse({
+        ...base,
+        params: { 'project-title': { label: 'x', default: bad } },
+      });
+      expect(r.success, `应拒绝 default "${bad}"`).toBe(false);
+    }
+  });
+
+  it('params：声明里的未知键报错（strictObject）', () => {
+    const r = TemplateConfigSchema.safeParse({
+      ...base,
+      params: { 'project-title': { label: 'x', defualt: 'typo' } },
+    });
+    expect(r.success).toBe(false);
+  });
+
   it('特性定义里的未知键同样报错', () => {
     const r = TemplateConfigSchema.safeParse({
       ...base,

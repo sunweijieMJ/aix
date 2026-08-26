@@ -6,7 +6,7 @@ export {
   writeFiles,
   printFileTree,
 } from './utils/conflict';
-export { detectLanguage, isProjectRoot } from './utils/detector';
+export { isProjectRoot } from './utils/detector';
 export { runPrompts } from './override/prompts';
 export type { ModuleId, GenerateOptions, GeneratedFile, TemplateContext } from './override/types';
 export {
@@ -23,6 +23,7 @@ export type {
   FileEntry,
   FileList,
   TemplateFeatureDef,
+  TemplateParamDef,
   TemplateConfig,
 } from './types';
 
@@ -56,8 +57,10 @@ export {
   collectBasicInfo,
   collectFeatureSelection,
   collectPostOptions,
+  collectTemplateParams,
   confirmSummary,
   buildSummary,
+  parseParamArgs,
   resolveTemplateArg,
   validateFeatureIds,
 } from './prompts/index';
