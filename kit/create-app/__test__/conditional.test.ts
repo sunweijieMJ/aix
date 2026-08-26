@@ -239,7 +239,7 @@ describe('applyConditionalBlocks - 语法错误', () => {
 });
 
 describe('applyConditionalBlocks - 边界', () => {
-  it('未知特性 id 视为未选中', () => {
+  it('未传 declared 时，未知特性 id 视为未选中（兼容不持有 manifest 的外部直调）', () => {
     const src = ['// #if unknownFeature', 'x', '// #endif', 'y'].join('\n');
     expect(apply(src, ['i18n'])).toBe('y');
   });
@@ -279,5 +279,77 @@ describe('applyConditionalBlocks - 裁剪后的空行折叠', () => {
   it('无标记的文件即便有连续空行也原样返回（走快路径）', () => {
     const src = 'a\n\n\n\nb\n';
     expect(apply(src, ['i18n'])).toBe(src);
+  });
+});
+
+describe('applyConditionalBlocks - 特性 id 取值域校验（declared）', () => {
+  /** 带 declared 的包装：模拟 composer 的真实调用 */
+  const applyWithDeclared = (content: string, selected: string[], declared: string[]): string =>
+    applyConditionalBlocks(content, 'src/main.ts', new Set(selected), new Set(declared));
+
+  it('id 在 declared 中时正常求值', () => {
+    const src = ['// #if i18n', 'keep', '// #endif'].join('\n');
+    expect(applyWithDeclared(src, ['i18n'], ['i18n', 'qiankun'])).toBe('keep');
+    expect(applyWithDeclared(src, [], ['i18n', 'qiankun'])).toBe('');
+  });
+
+  it('id 未声明（拼错）时抛 E_TEMPLATE_SYNTAX，而不是静默把整块删掉', () => {
+    const src = ['// #if i18nn', 'x', '// #endif'].join('\n');
+    try {
+      applyWithDeclared(src, ['i18n'], ['i18n', 'qiankun']);
+      expect.unreachable('应当抛出未声明特性错误');
+    } catch (err) {
+      expect((err as { code: string }).code).toBe('E_TEMPLATE_SYNTAX');
+      expect((err as Error).message).toContain('src/main.ts:1');
+      expect((err as Error).message).toContain('i18nn');
+      // 报错要点名可用特性，否则用户不知道该往哪改
+      expect((err as { suggestion?: string }).suggestion).toContain('i18n / qiankun');
+    }
+  });
+
+  it('取反表达式里的未声明 id 同样报错', () => {
+    const src = ['// #if !qiankunn', 'x', '// #endif'].join('\n');
+    expect(() => applyWithDeclared(src, [], ['i18n', 'qiankun'])).toThrowError(
+      expect.objectContaining({ code: 'E_TEMPLATE_SYNTAX' }) as unknown as Error,
+    );
+  });
+
+  it('# 与 HTML 风格同样参与取值域校验', () => {
+    expect(() => applyWithDeclared('# #if typo\nX=1\n# #endif', [], ['i18n'])).toThrowError(
+      expect.objectContaining({ code: 'E_TEMPLATE_SYNTAX' }) as unknown as Error,
+    );
+    expect(() =>
+      applyWithDeclared('<!-- #if typo -->\nx\n<!-- #endif -->', [], ['i18n']),
+    ).toThrowError(expect.objectContaining({ code: 'E_TEMPLATE_SYNTAX' }) as unknown as Error);
+  });
+});
+
+describe('applyConditionalBlocks - 注释符与 #if 之间的空白不限个数', () => {
+  // 与模板真源自检（checkTemplate.ts）和 verify-combos 的残留检测同源：
+  // 少写/多写空格曾让标记在自检侧被裁掉、在 CLI 侧原样保留
+  it('`//#if`（无空格）与 `//  #if`（多空格）都是标记', () => {
+    expect(apply(['//#if i18n', 'a', '//#endif'].join('\n'), ['i18n'])).toBe('a');
+    expect(apply(['//#if i18n', 'a', '//#endif'].join('\n'), [])).toBe('');
+    expect(apply(['//  #if i18n', 'a', '//   #endif'].join('\n'), [])).toBe('');
+  });
+
+  it('`#\t#if`（制表符）同样识别，但 `##`/`#comment` 仍不构成标记', () => {
+    expect(apply(['#\t#if i18n', 'X=1', '#\t#endif'].join('\n'), [])).toBe('');
+    const notMarkers = ['## #if i18n', '#comment #endif', '#!/usr/bin/env sh'].join('\n');
+    expect(apply(notMarkers, [])).toBe(notMarkers);
+  });
+
+  it('`#else` / `#endif` 后的尾随说明文字不影响判定', () => {
+    const src = ['// #if i18n', 'a', '// #else 非 i18n 分支', 'b', '// #endif i18n 结束'].join(
+      '\n',
+    );
+    expect(apply(src, ['i18n'])).toBe('a');
+    expect(apply(src, [])).toBe('b');
+  });
+
+  it('表达式里带 `>` 时仍按坏表达式报错（不退化成普通注释）', () => {
+    expect(() => apply(['// #if a > b', 'x', '// #endif'].join('\n'), [])).toThrowError(
+      expect.objectContaining({ code: 'E_TEMPLATE_SYNTAX' }) as unknown as Error,
+    );
   });
 });

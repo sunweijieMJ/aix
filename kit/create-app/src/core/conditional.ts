@@ -28,32 +28,43 @@ const HAS_MARKER_PATTERN = /#(if|else|endif)\b/;
  * - `<!-- #if x -->` / `<!-- #else -->` / `<!-- #endif -->`（html/vue template/markdown）
  * - `# #if x` / `# #else` / `# #endif`（dotenv/shell/yaml 等 `#` 注释系文件）
  *
- * 第三种风格的前缀必须是**精确的 `# #`**（一个 `#`、一个空格、再一个 `#`），
- * 以此与 markdown 的一级标题（`# 标题`、`## …`）和普通 `#` 注释区分开：
- * `## #if x`、`#comment #if x` 都不构成标记。
+ * 注释符与 `#if` 之间的空白**不限个数**（`//#if x`、`//  #if x` 都认）：这一条必须与
+ * 模板真源自检（`scripts/template/checkTemplate.ts`）和 `verify-combos` 的残留检测同源。
+ * 历史上这里只认「精确一个空格」，导致 `//#if x` 在自检侧被当标记裁掉、在 CLI 侧却
+ * 原样保留——真源绿灯，产物里既留着标记又无条件带上被守卫的代码。
+ *
+ * `#` 注释系的前缀必须是「`#` + 空白 + `#`」，以此与 markdown 标题（`# 标题`、`## …`）、
+ * shebang（`#!/…`）和普通 `#` 注释区分开：`## #if x`、`#comment #if x`、`#if x` 都不构成标记。
+ * `#else` / `#endif` 之后的尾随文字（`// #endif 备注`）忽略，不影响判定。
  */
+const MARKER_PATTERN = /^(?:\/\/|<!--|#(?=\s))\s*#(if|else|endif)\b(.*)$/;
+
 function parseMarker(line: string): Marker | null {
-  const trimmed = line.trim();
+  const m = MARKER_PATTERN.exec(line.trim());
+  if (!m) return null;
+  const kind = m[1] as MarkerKind;
+  if (kind !== 'if') return { kind };
+  // 表达式部分整行捕获后再剥 HTML 注释尾（不能用 `[^>]*` 收窄捕获组：那样
+  // `// #if a > b` 会整行不匹配、退化成普通注释，反而把一个写坏的标记藏起来）
+  const expr = m[2]!.replace(/-->\s*$/, '').trim();
+  return { kind, expr };
+}
 
-  if (trimmed === '// #else' || trimmed === '<!-- #else -->' || trimmed === '# #else') {
-    return { kind: 'else' };
-  }
-  if (trimmed === '// #endif' || trimmed === '<!-- #endif -->' || trimmed === '# #endif') {
-    return { kind: 'endif' };
-  }
-
-  if (trimmed.startsWith('// #if ')) {
-    return { kind: 'if', expr: trimmed.slice('// #if '.length).trim() };
-  }
-  if (trimmed.startsWith('# #if ')) {
-    return { kind: 'if', expr: trimmed.slice('# #if '.length).trim() };
-  }
-  if (trimmed.startsWith('<!-- #if ') && trimmed.endsWith('-->')) {
-    const body = trimmed.slice('<!-- #if '.length, -'-->'.length);
-    return { kind: 'if', expr: body.trim() };
-  }
-
-  return null;
+/** `#if` 引用了模板未声明的特性 id（多半是拼错），单独给报错以免与语法错误混淆 */
+function unknownFeatureError(
+  filePath: string,
+  lineNo: number,
+  featureId: string,
+  declared: Set<string>,
+): CreateAppError {
+  const available = [...declared].join(' / ');
+  return new CreateAppError(
+    'E_TEMPLATE_SYNTAX',
+    `条件注释块引用了未声明的特性: ${filePath}:${lineNo} "${featureId}"`,
+    available.length > 0
+      ? `请检查拼写，或在 .template/config.ts 的 features 中补上该特性（当前可用: ${available}）`
+      : '该模板的 .template/config.ts 未声明任何特性，条件块无从求值',
+  );
 }
 
 function syntaxError(filePath: string, lineNo: number, reason: string): CreateAppError {
@@ -90,6 +101,15 @@ export function applyConditionalBlocks(
   content: string,
   filePath: string,
   selected: Set<string>,
+  /**
+   * 模板声明的全部特性 id（即 `manifest.features` 的 key）
+   *
+   * 传入时对 `#if` 的 id 做**取值域**校验：未声明的 id 直接抛 E_TEMPLATE_SYNTAX。
+   * 不校验的话，一个拼错的 id（`#if i18nn`）会被当成「未选中」把整块静默删掉，
+   * 产物少一段代码而 CLI 全程零输出——这是本协议里唯一「拼错不报错」的口子。
+   * composer 一律传；缺省仅为兼容不持有 manifest 的外部直调（本包对外导出该函数）。
+   */
+  declared?: Set<string>,
 ): string {
   // 无标记的文件走快路径，原样返回（含行尾风格）
   if (!HAS_MARKER_PATTERN.test(content)) return content;
@@ -108,6 +128,10 @@ export function applyConditionalBlocks(
       const expr = marker.expr ?? '';
       if (!EXPR_PATTERN.test(expr)) {
         throw syntaxError(filePath, lineNo, `不支持的条件表达式 "${expr}"`);
+      }
+      const featureId = expr.startsWith('!') ? expr.slice(1) : expr;
+      if (declared && !declared.has(featureId)) {
+        throw unknownFeatureError(filePath, lineNo, featureId, declared);
       }
       block = { keepIf: evaluate(expr, selected), inElse: false, startLine: lineNo };
       continue;

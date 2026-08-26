@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -272,6 +273,29 @@ describe('Composer 集成 - 协议 v0.2 最小模板（template-mini）', () => 
     expect(pkg.devDependencies['vite-plugin-qiankun']).toBeUndefined();
     expect(pkg.scripts['build:micro']).toBeUndefined();
     expect(pkg.scripts['dev']).toBe('vite');
+  });
+
+  it('条件块引用未声明的特性时抛 E_TEMPLATE_SYNTAX（拼错不再静默丢块）', async () => {
+    // 用临时目录复制 mini 模板后注入一个拼错的特性 id：
+    // 旧行为是「未声明 = 未选中」→ 整块被静默删掉，产物少一段代码而 CLI 零输出
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'composer-typo-'));
+    fs.cpSync(MINI_DIR, dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'src/typo.ts'),
+      ['// #if i18nn', 'export const x = 1;', '// #endif'].join('\n'),
+    );
+
+    const miniManifest = await resolver.readConfig(dir);
+    try {
+      await composer.compose(dir, miniManifest, makeConfig(['i18n']));
+      expect.unreachable('应当抛出 E_TEMPLATE_SYNTAX');
+    } catch (err) {
+      expect((err as { code: string }).code).toBe('E_TEMPLATE_SYNTAX');
+      expect((err as Error).message).toContain('src/typo.ts:1');
+      expect((err as Error).message).toContain('i18nn');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('模板条件块语法错误时抛 E_TEMPLATE_SYNTAX，且带模板内相对路径与行号', async () => {

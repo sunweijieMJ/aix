@@ -5,21 +5,40 @@ import { CreateAppError } from '../utils/errors';
 import { applyConditionalBlocks } from './conditional';
 import { patchPackageJson } from './pkg-patcher';
 
-/** 递归读取目录下所有文件，跳过指定目录 */
-function walkDir(dir: string, skip: string[] = []): string[] {
+/**
+ * 递归读取目录下所有文件
+ *
+ * skipNames 按 **basename** 匹配而非根相对路径：`node_modules` / `.git` 这类目录在
+ * 任意层级都不该进产物。按根相对路径比对的话，模板一旦是 monorepo，
+ * 子包下的 node_modules 与子模块的 `.git` 就会被整个打进新项目。
+ *
+ * 符号链接按解引用后的类型处理：指向文件的链接照旧当普通文件收进来（历史行为，
+ * readFileSync 本就会跟随链接）；指向目录或悬空的链接跳过——前者会让 readFileSync
+ * 直接 EISDIR 崩掉，后者读不到内容。不一律跳过，是为了不把原本可用的形态变成静默丢文件。
+ */
+function walkDir(dir: string, skipNames: string[] = []): string[] {
   const results: string[] = [];
 
   function walk(current: string): void {
     const entries = fs.readdirSync(current, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = path.join(current, entry.name);
-      const relFromDir = path.relative(dir, fullPath);
+      if (skipNames.includes(entry.name)) continue;
 
-      if (skip.some((s) => relFromDir === s || relFromDir.startsWith(s + path.sep))) continue;
+      const fullPath = path.join(current, entry.name);
+      if (entry.isSymbolicLink()) {
+        let target: fs.Stats;
+        try {
+          target = fs.statSync(fullPath);
+        } catch {
+          continue; // 悬空链接
+        }
+        if (target.isFile()) results.push(fullPath);
+        continue;
+      }
 
       if (entry.isDirectory()) {
         walk(fullPath);
-      } else {
+      } else if (entry.isFile()) {
         results.push(fullPath);
       }
     }
@@ -124,6 +143,9 @@ export class Composer {
   ): Promise<FileList> {
     // 选中特性集合，供条件注释块求值
     const selected = new Set(config.features);
+    // 模板声明的全部特性 id：条件块里出现未声明的 id 一律硬报，
+    // 不能按「未选中」静默把整块删掉（拼错一个字母就少一段代码，且 CLI 零输出）
+    const declared = new Set(Object.keys(manifest.features));
 
     // 确定要排除的路径集合（相对于 templateDir）。
     // 统一剥尾部 `/`：作者把目录写成 `src/locale/` 时，前缀比对会拼出 `//` 而静默失效——
@@ -193,7 +215,7 @@ export class Composer {
       if (isTextFile(buf)) {
         // 顺序固定：substitutions → 条件注释块 → 变量替换（协议 1.2.4 / 1.3）
         const substituted = applySubstitutions(buf.toString('utf-8'), outputPath, subs, hits);
-        const trimmed = applyConditionalBlocks(substituted, outputPath, selected);
+        const trimmed = applyConditionalBlocks(substituted, outputPath, selected, declared);
         const text = applyVariables(trimmed, variables);
         fileList.push({ path: outputPath, content: text, mode: stat.mode });
       } else {
