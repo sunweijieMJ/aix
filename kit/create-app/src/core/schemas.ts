@@ -25,7 +25,8 @@ export const TemplateConfigSchema = z.strictObject({
   id: z.string(),
   platform: z.enum(['web', 'mobile']),
   compatibleCliVersions: z.string(),
-  variables: z.record(z.string(), z.string()),
+  // 键 min(1)：空串占位符会让 composer 的 split('') 把值插进每个字符之间
+  variables: z.record(z.string().min(1), z.string()),
   /** 可选：老模板没有这个字段，缺省即不做真名替换 */
   substitutions: z.array(SubstitutionSchema).optional(),
   /** 可选：不进入产物的路径（构建产物 / 生成文件 / 锁文件等） */

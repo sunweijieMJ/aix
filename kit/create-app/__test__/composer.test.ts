@@ -195,6 +195,29 @@ describe('Composer 集成 - 协议 v0.2 最小模板（template-mini）', () => 
     expect(readme).not.toContain('{{project-');
   });
 
+  it('模板声明同名 {{project-name}} 时，CLI 注入的项目名优先（用户输入不被压掉）', async () => {
+    const dir = await resolver.fetch(MINI_DIR);
+    const mini = await resolver.readConfig(dir);
+    const patched: TemplateConfig = {
+      ...mini,
+      variables: { ...mini.variables, '{{project-name}}': 'evil-name' },
+    };
+    const readme = text(await composer.compose(dir, patched, makeConfig([])), 'README.md');
+    expect(readme).toContain('my-app');
+    expect(readme).not.toContain('evil-name');
+  });
+
+  it("变量值里的 $& / $' 等替换模式字符按字面量落盘（不走 String.replace 的模式解释）", async () => {
+    const dir = await resolver.fetch(MINI_DIR);
+    const mini = await resolver.readConfig(dir);
+    const patched: TemplateConfig = {
+      ...mini,
+      variables: { ...mini.variables, '{{project-title}}': "a$&b$'c" },
+    };
+    const readme = text(await composer.compose(dir, patched, makeConfig([])), 'README.md');
+    expect(readme).toContain("a$&b$'c");
+  });
+
   it('package.json：未选特性的 deps / devDeps / scripts 均被裁剪', async () => {
     const files = await composeMini(['i18n']);
     const pkg = JSON.parse(text(files, 'package.json')) as {
@@ -247,6 +270,22 @@ describe('Composer 集成 - 协议 v0.2 最小模板（template-mini）', () => 
         expect(paths).not.toContain('README.md');
         expect(paths.some((p) => p.startsWith('docs/'))).toBe(false);
       }
+    });
+
+    it('exclude 与特性 dirs 写成带尾斜杠（docs/、src/locale/）也能命中排除', async () => {
+      const dir = await resolver.fetch(MINI_DIR);
+      const mini = await resolver.readConfig(dir);
+      const patched: TemplateConfig = {
+        ...mini,
+        exclude: ['docs/'],
+        features: {
+          ...mini.features,
+          i18n: { ...mini.features['i18n']!, dirs: ['src/locale/'] },
+        },
+      };
+      const paths = (await composer.compose(dir, patched, makeConfig([]))).map((f) => f.path);
+      expect(paths.some((p) => p.startsWith('docs/'))).toBe(false);
+      expect(paths.some((p) => p.startsWith('src/locale/'))).toBe(false);
     });
 
     it('前缀匹配按路径边界，不会误伤同名前缀', async () => {

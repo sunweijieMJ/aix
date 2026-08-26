@@ -49,7 +49,7 @@ export type { GitSource } from './core/git-source';
 export { Composer } from './core/composer';
 export { applyConditionalBlocks } from './core/conditional';
 export { deepMerge, sortDependencies, patchPackageJson } from './core/pkg-patcher';
-export { writeFiles as writeFileList, printFileTree as printFileList } from './utils/fs';
+export { writeFiles as writeFileList, printFileTree as printFileList, emptyDir } from './utils/fs';
 
 // 问答编排器（P0-4）
 export {

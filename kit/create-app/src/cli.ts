@@ -45,7 +45,7 @@ program
   // 给了默认 false 后 `options?.offline ?? !options?.force` 这类写法会永远走 false 分支
   .option('--offline', '仅使用本地模板缓存，不联网（缓存缺失直接失败）')
   .option('-y, --yes', '跳过最终确认提示', false)
-  .option('--force', '强制覆盖已有目录，并重新拉取模板缓存')
+  .option('--force', '强制覆盖已有目录（写入前清空，保留 .git），并重新拉取模板缓存')
   .option('--dry-run', '仅预览生成文件，不写入', false)
   .action(create);
 

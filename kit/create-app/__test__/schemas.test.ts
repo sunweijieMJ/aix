@@ -47,6 +47,11 @@ describe('TemplateConfigSchema strict', () => {
     expect(r.error!.message).toContain('excludes');
   });
 
+  it('variables 的空串键被拒绝（composer 的 split 空串会逐字符损坏产物）', () => {
+    const r = TemplateConfigSchema.safeParse({ ...base, variables: { '': 'x' } });
+    expect(r.success).toBe(false);
+  });
+
   it('特性定义里的未知键同样报错', () => {
     const r = TemplateConfigSchema.safeParse({
       ...base,

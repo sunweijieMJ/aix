@@ -134,6 +134,18 @@ describe('patchPackageJson', () => {
     expect(Object.keys(result.scripts)).toEqual(['dev', 'i18n', 'i18n:dry']);
   });
 
+  it('项目描述写进产物 description 字段', () => {
+    const result = patchPackageJson(basePkg, baseManifest, makeConfig([]));
+    expect(result.description).toBe('test');
+  });
+
+  it('描述为空时保留模板原值（模板可能有意自带一份）', () => {
+    const pkgWithDesc = { ...basePkg, description: '模板自带描述' };
+    const config = { ...makeConfig([]), description: '  ' };
+    const result = patchPackageJson(pkgWithDesc, baseManifest, config);
+    expect(result.description).toBe('模板自带描述');
+  });
+
   it('不修改原始 package.json', () => {
     const config = makeConfig([]);
     patchPackageJson(basePkg, baseManifest, config);

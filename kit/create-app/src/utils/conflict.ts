@@ -3,8 +3,24 @@ import path from 'node:path';
 import { select, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
 import type { GeneratedFile } from '../override/types';
+import { CreateAppError } from './errors';
 
 export type ConflictStrategy = 'skip' | 'overwrite' | 'cancel';
+
+/**
+ * 非 TTY 下即将弹冲突问答时直接失败（问答读不到输入，取消分支会被当成用户取消）
+ *
+ * 拦截点必须在问答现场而不是命令入口的预判：「输出目录存在」不等于「会撞冲突」，
+ * 入口预判会误杀全参数、无冲突的 CI 运行。
+ */
+function assertPromptable(what: string): void {
+  if (process.stdin.isTTY) return;
+  throw new CreateAppError(
+    'E_NON_INTERACTIVE',
+    `当前不是交互式终端（stdin 非 TTY），但${what}需要交互确认`,
+    '请加 -y（跳过已有文件）或 --force（覆盖已有文件）后重试',
+  );
+}
 
 /**
  * 检测项目代码重名
@@ -36,6 +52,7 @@ export async function checkProjectConflict(
     return true;
   }
 
+  assertPromptable(`项目 "${project}" 的定制目录已存在，`);
   const result = await select({
     message: `项目 "${project}" 的定制目录已存在，如何处理？`,
     options: [
@@ -89,6 +106,7 @@ export async function resolveConflicts(
     return safe;
   }
 
+  assertPromptable(`处理 ${conflicts.length} 个已有文件`);
   const strategy = await select({
     message: '如何处理已有文件？',
     options: [

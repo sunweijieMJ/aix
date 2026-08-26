@@ -34,12 +34,20 @@ function isTextFile(buf: Buffer): boolean {
   return !buf.includes(0);
 }
 
-/** 对文本内容执行变量字符串替换 */
+/**
+ * 对文本内容执行变量字符串替换
+ *
+ * 用 split/join 而非 RegExp：占位符与值都是字面量。正则通路需要转义占位符，
+ * 且替换串里的 `$&` / `$'` 会被 String.replace 解释成特殊模式——模板作者在
+ * variables 值里写个 `$&` 产物就悄悄坏掉。
+ */
 function applyVariables(content: string, vars: Record<string, string>): string {
   let result = content;
   for (const [placeholder, value] of Object.entries(vars)) {
-    const escaped = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    result = result.replace(new RegExp(escaped, 'g'), value);
+    // 空键会让 split('') 把值插进每个字符之间，整个产物逐字符损坏。
+    // schema 已拦（variables 键 min(1)），这里是绕过 schema 直调 API 时的兜底
+    if (placeholder === '') continue;
+    result = result.split(placeholder).join(value);
   }
   return result;
 }
@@ -95,15 +103,20 @@ export class Composer {
     // 选中特性集合，供条件注释块求值
     const selected = new Set(config.features);
 
-    // 确定要排除的路径集合（相对于 templateDir）
+    // 确定要排除的路径集合（相对于 templateDir）。
+    // 统一剥尾部 `/`：作者把目录写成 `src/locale/` 时，前缀比对会拼出 `//` 而静默失效——
+    // exclude 与特性 dirs/files 必须同一套归一化，不能只归一其中一处
     const excludedPaths = new Set<string>();
+    const addExcluded = (p: string): void => {
+      excludedPaths.add(p.replace(/\/+$/, ''));
+    };
     // 模板级排除：真源仓库工作区里的构建产物 / 生成文件 / 锁文件，与特性无关
-    manifest.exclude?.forEach((e) => excludedPaths.add(e.replace(/\/+$/, '')));
+    manifest.exclude?.forEach(addExcluded);
     // 特性级排除：未选中特性的 dirs/files
     for (const [featureId, def] of Object.entries(manifest.features)) {
       if (!selected.has(featureId)) {
-        def.dirs?.forEach((d) => excludedPaths.add(d));
-        def.files?.forEach((f) => excludedPaths.add(f));
+        def.dirs?.forEach(addExcluded);
+        def.files?.forEach(addExcluded);
       }
     }
 
@@ -116,10 +129,12 @@ export class Composer {
       return false;
     }
 
-    // 合并变量（config.ts 声明的变量 + 项目名）
+    // 合并变量（config.ts 声明的变量 + 项目名）。
+    // CLI 注入项必须放在展开之后：模板若声明了同名 {{project-name}}，
+    // 不能让它压掉用户输入的项目名
     const variables: Record<string, string> = {
-      '{{project-name}}': config.name,
       ...manifest.variables,
+      '{{project-name}}': config.name,
     };
 
     // 遍历所有文件
@@ -143,6 +158,17 @@ export class Composer {
         const pkgJson = JSON.parse(raw);
         const patched = patchPackageJson(pkgJson, manifest, config);
         const text = applyVariables(JSON.stringify(patched, null, 2) + '\n', variables);
+        // 变量是在序列化之后注入的，值里带 `"` / `\` 会把 JSON 弄坏且无人报错——
+        // 用户要到 pnpm install 才发现产物损坏，必须在写盘前回验
+        try {
+          JSON.parse(text);
+        } catch {
+          throw new CreateAppError(
+            'E_INVALID_TEMPLATE_CONFIG',
+            'variables 注入后 package.json 不再是合法 JSON（变量值含 " 或 \\ 等 JSON 特殊字符？）',
+            '请检查 .template/config.ts 的 variables 值，避免 JSON 特殊字符',
+          );
+        }
         fileList.push({ path: outputPath, content: text });
         continue;
       }

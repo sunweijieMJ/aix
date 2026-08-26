@@ -9,7 +9,10 @@ import { validateProjectName } from '../utils/validate';
 
 function onCancel(): never {
   p.cancel('已取消，未做任何修改。');
-  process.exit(0);
+  // 非 TTY 下走到这里意味着「问答读不到输入」而非用户主动取消——exit 0 会把 CI 里的
+  // 失败伪装成成功。命令层的非 TTY 体检是第一道防线（能列出缺失 flag），这里是兜底：
+  // 体检清单与问答条件一旦漂移，至少还能非零退出
+  process.exit(process.stdin.isTTY ? 0 : 1);
 }
 
 /** 步骤 1-2 的产物：项目基本信息 + 已确定的模板源 */
@@ -92,7 +95,9 @@ export async function collectBasicInfo(options: CollectBasicOptions = {}): Promi
   const targetDir = path.resolve(process.cwd(), name);
   if (fs.existsSync(targetDir) && !options.force) {
     const overwrite = await p.confirm({
-      message: `目录 ${pc.yellow(name)} 已存在，是否覆盖？`,
+      // 「覆盖」的真实语义是先清空再生成（保留 .git），措辞必须说破——
+      // 只写“是否覆盖”会被理解成同名文件覆写，用户不知道无关文件也会被删
+      message: `目录 ${pc.yellow(name)} 已存在，覆盖会先清空该目录（保留 .git），是否继续？`,
       initialValue: false,
     });
     if (p.isCancel(overwrite) || !overwrite) onCancel();

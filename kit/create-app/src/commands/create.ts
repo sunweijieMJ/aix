@@ -13,7 +13,7 @@ import {
 } from '../prompts/index';
 import type { ProjectConfig } from '../types';
 import { CreateAppError } from '../utils/errors';
-import { writeFiles } from '../utils/fs';
+import { emptyDir, writeFiles } from '../utils/fs';
 import { handleError } from '../utils/logger';
 import { readCliVersion } from '../utils/pkg-root';
 
@@ -57,7 +57,9 @@ export function missingNonInteractiveFlags(
   // collectBasicInfo
   if (!projectName) missing.push('<project-name>（项目名称）');
   if (opts.description === undefined) missing.push('-d, --description <text>');
-  if (opts.template === undefined) missing.push('--template <id|source>');
+  // 空串也算缺失：collectBasicInfo 对 template 走 truthy 判断，`--template ''`
+  // （典型来源是未赋值的 shell 变量插值）会落进模板选择问答
+  if (!opts.template) missing.push('--template <id|source>');
   // 目标目录已存在时会弹「是否覆盖」确认，只有 --force 能跳过
   if (projectName && !opts.force && fs.existsSync(path.resolve(process.cwd(), projectName))) {
     missing.push(`--force（目录 ${projectName} 已存在，否则会弹覆盖确认）`);
@@ -178,10 +180,12 @@ export async function create(projectName: string | undefined, opts: CreateOption
       return;
     }
 
-    // 目录冲突已在 collectBasicInfo 里确认过，这里直接写入
+    // 目录冲突已在 collectBasicInfo 里确认过（用户点了覆盖，或 --force）。
+    // 写入前先清空目标目录：不清空的话是「合并写入」，旧文件残留成混合态产物
     const destDir = config.outputDir;
     const writeSpinner = p.spinner();
     writeSpinner.start('写入项目文件...');
+    emptyDir(destDir);
     writeFiles(fileList, destDir);
     writeSpinner.stop(`已写入 ${fileList.length} 个文件`);
 

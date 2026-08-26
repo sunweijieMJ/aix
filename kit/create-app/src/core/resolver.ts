@@ -232,7 +232,13 @@ export class TemplateResolver {
 
   /** 校验 CLI 版本与模板的兼容性 */
   checkCompat(config: TemplateConfig, cliVersion: string): void {
-    if (!semver.satisfies(cliVersion, config.compatibleCliVersions)) {
+    // 预发布版本按其对应正式版参与判定（0.2.0-alpha.x 视同 0.2.0）：
+    // - 不处理的话 semver 默认把预发布整体排除在 range 外，changesets pre 模式
+    //   发出的 CLI 会被所有模板误拦，且报错提示（“请更新到最新版本”）完全误导
+    // - 也不能只开 includePrerelease：0.3.0-alpha.x < 0.3.0 会钻过 '<0.3.0' 上界，
+    //   而模板钉上界正是为了挡住下一代协议
+    const effective = semver.coerce(cliVersion)?.version ?? cliVersion;
+    if (!semver.satisfies(effective, config.compatibleCliVersions)) {
       throw new CreateAppError(
         'E_VERSION_INCOMPATIBLE',
         `模板要求 CLI 版本 ${config.compatibleCliVersions}，当前版本 ${cliVersion}`,

@@ -139,4 +139,17 @@ describe('TemplateResolver.checkCompat', () => {
       expect.objectContaining({ code: 'E_VERSION_INCOMPATIBLE' }) as unknown as CreateAppError,
     );
   });
+
+  it('预发布 CLI 版本按对应正式版判定（changesets pre 模式发的是 0.2.0-alpha.x）', () => {
+    const v02 = { ...mockConfig, compatibleCliVersions: '>=0.1.1 <0.3.0' };
+    expect(() => resolver.checkCompat(v02, '0.2.0-alpha.1')).not.toThrow();
+    // 上界同样生效：0.3.0 的预发布已带下一代协议，必须被 '<0.3.0' 挡住
+    // （semver 原生 includePrerelease 会因 0.3.0-alpha.0 < 0.3.0 放行，故用 coerce）
+    expect(() => resolver.checkCompat(v02, '0.3.0-alpha.0')).toThrowError(
+      expect.objectContaining({ code: 'E_VERSION_INCOMPATIBLE' }) as unknown as CreateAppError,
+    );
+    expect(() => resolver.checkCompat(v02, '0.3.1-alpha.0')).toThrowError(
+      expect.objectContaining({ code: 'E_VERSION_INCOMPATIBLE' }) as unknown as CreateAppError,
+    );
+  });
 });

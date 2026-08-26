@@ -230,6 +230,114 @@ describe('非 TTY 快速失败', () => {
     },
     TIMEOUT,
   );
+
+  it(
+    "`--template ''`（未赋值 shell 变量插值的典型形态）按缺失处理，不落进模板选择问答",
+    () => {
+      const r = runCreate('empty-tpl', '', workDir);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_NON_INTERACTIVE');
+      expect(r.output).toContain('--template');
+      expect(fs.existsSync(path.join(workDir, 'empty-tpl'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('覆盖已有目录：写入前清空，不做合并写入', () => {
+  it(
+    '--force 覆盖后旧文件不残留，但 .git/ 保留',
+    () => {
+      const repo = makeTemplateRepo();
+      const source = `git+file://${repo}#master`;
+      tempDirs.push(gitCacheDir({ url: `git+file://${repo}`, ref: 'master' }));
+      const workDir = tempDir('create-app-overwrite-');
+
+      // 预置一个「上次生成」的目录：残留文件 + 已有 git 仓库
+      const target = path.join(workDir, 'reborn');
+      fs.mkdirSync(path.join(target, '.git'), { recursive: true });
+      fs.writeFileSync(path.join(target, '.git/KEEP'), 'x');
+      fs.writeFileSync(path.join(target, 'STALE.txt'), '上次生成的残留');
+
+      const r = runCreate('reborn', source, workDir, ['--force']);
+      expect(r.status, r.output).toBe(0);
+      expect(fs.existsSync(path.join(target, 'package.json'))).toBe(true);
+      // 不清空的话这两条会失败：产物成两次生成的混合态
+      expect(fs.existsSync(path.join(target, 'STALE.txt'))).toBe(false);
+      expect(fs.existsSync(path.join(target, '.git/KEEP'))).toBe(true);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('override add 非 TTY 快速失败', () => {
+  let projDir: string;
+
+  beforeAll(() => {
+    projDir = tempDir('create-app-ov-tty-');
+    fs.writeFileSync(path.join(projDir, 'package.json'), '{"name":"host-app"}\n');
+  });
+
+  it(
+    '缺参数时非零退出并列出缺失 flag（历史行为是 runPrompts 取消分支的 exit 0）',
+    () => {
+      const r = runCli(['override', 'add'], projDir);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_NON_INTERACTIVE');
+      expect(r.output).toContain('-l, --lang');
+      expect(r.output).toContain('-m, --modules');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "空串参数（`-l '' -m ''`，未赋值 shell 变量插值的典型形态）同样按缺失处理",
+    () => {
+      const r = runCli(['override', 'add', 'sysu', '-l', '', '-m', '', '-y'], projDir);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_NON_INTERACTIVE');
+      expect(r.output).toContain('-l, --lang');
+      expect(r.output).toContain('-m, --modules');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '参数齐全时非 TTY 照常生成',
+    () => {
+      const r = runCli(['override', 'add', 'sysu', '-l', 'ts', '-m', 'router', '-y'], projDir);
+      expect(r.status, r.output).toBe(0);
+      expect(fs.existsSync(path.join(projDir, 'src/overrides/sysu/router/index.ts'))).toBe(true);
+      expect(fs.existsSync(path.join(projDir, 'src/overrides/registry.ts'))).toBe(true);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '实际撞到冲突且没给 -y / --force 时，在问答现场非零退出',
+    () => {
+      // 上一个用例已生成 src/overrides，gzdx 会与其中的 registry.ts 等基础设施文件冲突
+      const r = runCli(['override', 'add', 'gzdx', '-l', 'ts', '-m', 'router'], projDir);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_NON_INTERACTIVE');
+      expect(r.output).toContain('-y');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '输出目录存在但无冲突时，全参数运行不被误拦（目录存在 ≠ 会弹问答）',
+    () => {
+      fs.mkdirSync(path.join(projDir, 'src/overrides-b'), { recursive: true });
+      const r = runCli(
+        ['override', 'add', 'nk', '-l', 'ts', '-m', 'router', '-o', 'src/overrides-b'],
+        projDir,
+      );
+      expect(r.status, r.output).toBe(0);
+      expect(fs.existsSync(path.join(projDir, 'src/overrides-b/nk/router/index.ts'))).toBe(true);
+    },
+    TIMEOUT,
+  );
 });
 
 afterAll(() => {

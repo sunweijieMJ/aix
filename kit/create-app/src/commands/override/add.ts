@@ -11,6 +11,7 @@ import {
 } from '../../utils/conflict';
 import { runPrompts } from '../../override/prompts';
 import { REQUIRED_MODULES, ALL_MODULES, type ModuleId } from '../../override/types';
+import { CreateAppError } from '../../utils/errors';
 import { handleError } from '../../utils/logger';
 
 export interface OverrideAddOptions {
@@ -21,6 +22,49 @@ export interface OverrideAddOptions {
   yes: boolean;
   dryRun: boolean;
   force: boolean;
+}
+
+/**
+ * 列出「本次运行还要靠问答补齐」的选项（与 create 的 missingNonInteractiveFlags 同思路）
+ *
+ * 历史缺陷：非 TTY 下 runPrompts 的取消分支曾以 exit 0 收场，CI 里表现为
+ * 「命令成功但没有产物」。现在取消分支非 TTY 已改非零退出兜底，但在问答前
+ * 快速失败仍是第一道防线——能一次列全缺失 flag。导出仅为便于测试；
+ * 判定与 runPrompts 的问答条件逐条对应（冲突问答的兜底在 conflict.ts 现场）。
+ */
+export function missingOverrideNonInteractiveFlags(
+  project: string | undefined,
+  opts: OverrideAddOptions,
+): string[] {
+  const missing: string[] = [];
+
+  // runPrompts：三问逐条对应。空串一律按缺失算——下游全是 truthy 判断
+  // （add.ts 的 `if (opts.modules)`、prompts.ts 的 `if (!lang)`），
+  // `-l '' -m ''`（典型来源是未赋值的 shell 变量插值）会绕过体检落进问答
+  if (!(project ?? opts.project)) missing.push('[code]（定制目录名）');
+  if (!opts.lang) missing.push('-l, --lang <ts|js>');
+  if (!opts.modules) missing.push('-m, --modules <list>');
+
+  // 冲突问答（checkProjectConflict / resolveConflicts）不在此预判：
+  // 「输出目录存在」不等于「会撞冲突」，在这里拦会误杀全参数的无冲突运行。
+  // 兜底在 conflict.ts 的问答现场——非 TTY 下真要弹问答时直接抛 E_NON_INTERACTIVE
+  return missing;
+}
+
+/** 非 TTY 且仍需交互时快速失败（TTY 下不做任何限制） */
+function assertNonInteractiveReady(project: string | undefined, opts: OverrideAddOptions): void {
+  if (process.stdin.isTTY) return;
+
+  const missing = missingOverrideNonInteractiveFlags(project, opts);
+  if (missing.length === 0) return;
+
+  throw new CreateAppError(
+    'E_NON_INTERACTIVE',
+    `当前不是交互式终端（stdin 非 TTY），但以下选项缺失、无法通过问答补齐：\n${missing
+      .map((m) => `  - ${m}`)
+      .join('\n')}`,
+    '非交互场景请补齐全部参数，例如：\n  create-app override add sysu -l ts -m router,store -y',
+  );
 }
 
 export async function overrideAdd(project: string | undefined, opts: OverrideAddOptions) {
@@ -41,6 +85,10 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
     console.error(pc.red('❌ 未检测到 package.json，请在项目根目录执行'));
     process.exit(1);
   }
+
+  // 任何问答之前先做非 TTY 体检：这里能列出缺失 flag 清单，比落进问答再由
+  // 取消分支兜底退出的报错可读得多
+  assertNonInteractiveReady(project, opts);
 
   console.log(pc.bold('\n🚀 Override 初始化工具\n'));
 
@@ -82,7 +130,8 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   });
 
   if (!options) {
-    process.exit(0);
+    // 非 TTY 下 runPrompts 返回 null 是「读不到输入」而非用户主动取消，必须非零退出
+    process.exit(process.stdin.isTTY ? 0 : 1);
   }
 
   const outputDir = path.resolve(cwd, options.output);

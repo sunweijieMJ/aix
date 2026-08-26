@@ -66,6 +66,12 @@ export function patchPackageJson(
     pkg['name'] = (pkg['name'] as string).replace(/\{\{project-name\}\}/g, config.name);
   }
 
+  // 项目描述写进产物：`-d` / 问答收集的值是产物 package.json 的 description，
+  // 这也是它唯一的消费点。留空时不动模板原值（模板可能有意自带一份）
+  if (config.description.trim().length > 0) {
+    pkg['description'] = config.description;
+  }
+
   // 裁剪未选特性的依赖与 scripts
   for (const [featureId, def] of Object.entries(manifest.features)) {
     if (!config.features.includes(featureId)) {
