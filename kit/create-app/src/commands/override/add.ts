@@ -13,6 +13,7 @@ import { runPrompts } from '../../override/prompts';
 import { REQUIRED_MODULES, ALL_MODULES, type ModuleId } from '../../override/types';
 import { CreateAppError } from '../../utils/errors';
 import { handleError } from '../../utils/logger';
+import { validateOverrideCode } from '../../utils/validate';
 
 export interface OverrideAddOptions {
   project?: string;
@@ -88,12 +89,34 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   // 取消分支兜底退出的报错可读得多
   assertNonInteractiveReady(project, opts);
 
+  // 命令行传入的定制目录名先校验再往下走（问答分支的校验在 runPrompts 里）：
+  // 不校验的话 `../../x` 会把覆盖层写到 options.output 之外
+  // 用 truthy 判断而不是 `!== undefined`：空串按「缺失」处理（与 `--template ''`、
+  // `-m ''` 同一套约定，典型来源是未赋值的 shell 变量插值）——TTY 下落进问答，
+  // 非 TTY 下由上面的 assertNonInteractiveReady 报 E_NON_INTERACTIVE
+  const code = project ?? opts.project;
+  if (code) {
+    const codeError = validateOverrideCode(code);
+    if (codeError) {
+      throw new CreateAppError('E_INVALID_PROJECT_NAME', codeError, '请更换定制目录名后重试');
+    }
+  }
+
   console.log(pc.bold('\n🚀 Override 初始化工具\n'));
 
   // 解析命令行参数中的 modules
   let modules: ModuleId[] | undefined;
   if (opts.modules) {
-    modules = opts.modules.split(',').map((m: string) => m.trim()) as ModuleId[];
+    // 空片段一律剔除（`-m 'router,'`）：不过滤的话空串会被当成模块名，报出「未知模块: 」
+    modules = opts.modules
+      .split(',')
+      .map((m: string) => m.trim())
+      .filter((m: string) => m.length > 0) as ModuleId[];
+    if (modules.length === 0) {
+      console.error(pc.red(`❌ -m 没有解析出任何模块: "${opts.modules}"`));
+      console.error(pc.dim(`   可用模块: ${ALL_MODULES.join(', ')}`));
+      process.exit(1);
+    }
     // 校验模块名
     for (const m of modules) {
       if (!ALL_MODULES.includes(m)) {
@@ -178,20 +201,23 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   const utilsIndexFile = path.join(utilsDir, 'index.ts');
   let utilsGenerated = false;
 
-  if (!options.dryRun) {
-    const utilFiles = generateOverrideUtils();
-    const missingUtils = utilFiles.filter((f) => !fs.existsSync(path.join(utilsDir, f.path)));
+  // 走到这里 dry-run 已在上面 return，无需再判
+  const utilFiles = generateOverrideUtils();
+  const missingUtils = utilFiles.filter((f) => !fs.existsSync(path.join(utilsDir, f.path)));
 
-    if (missingUtils.length > 0) {
-      console.log(pc.cyan('\n🔧 检测到 src/plugins/override/ 缺少以下文件，自动生成：\n'));
-      writeFiles(missingUtils, utilsDir);
-      printFileTree(missingUtils, 'src/plugins/override');
-      utilsGenerated = true;
-    }
+  if (missingUtils.length > 0) {
+    console.log(pc.cyan('\n🔧 检测到 src/plugins/override/ 缺少以下文件，自动生成：\n'));
+    writeFiles(missingUtils, utilsDir);
+    printFileTree(missingUtils, 'src/plugins/override');
+    utilsGenerated = true;
   }
 
   // ── 下一步提示 ──
-  const overridesAlias = `@/${options.output.replace(/^src\//, '')}`;
+  // `@` 别名指向 src/，所以只有 output 在 src/ 下才拼得出别名；
+  // 指到 src/ 外时打印原始路径，别给出一个解析不了的 import
+  const overridesAlias = options.output.startsWith('src/')
+    ? `@/${options.output.slice('src/'.length)}`
+    : options.output;
 
   console.log(pc.bold('\n📝 下一步：'));
   console.log(`  1. 在 ${pc.cyan(`${options.output}/registry.ts`)} 中添加学校 NID 映射`);

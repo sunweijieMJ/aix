@@ -78,12 +78,22 @@ function resolveDevScript(destDir: string): string {
   }
 }
 
+/**
+ * 需要引号才能直接 `cd` 的路径加单引号
+ *
+ * 项目名按目录名规则校验（见 utils/validate），空格等 shell 元字符是合法的目录名，
+ * 但照原样打印出来的 `cd my app` 是一条跑不通的命令。
+ */
+function shellQuote(value: string): string {
+  return /^[\w@./-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function printNextSteps(config: ProjectConfig, destDir: string): void {
   const rel = destDir.replace(process.cwd() + '/', '');
   const pm = config.packageManager;
 
   const steps = [
-    `  ${pc.cyan('cd')} ${rel}`,
+    `  ${pc.cyan('cd')} ${shellQuote(rel)}`,
     ...(!config.installDeps ? [`  ${pc.cyan(pm)} install`] : []),
     `  ${pc.cyan(pm)} run ${resolveDevScript(destDir)}`,
   ];
