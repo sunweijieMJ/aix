@@ -7,12 +7,18 @@ import { createJiti } from 'jiti';
 import semver from 'semver';
 import type { TemplateConfig } from '../types';
 import { CreateAppError } from '../utils/errors';
-import { buildCloneArgs, gitCacheDir, isGitSource, parseGitSource } from './git-source';
+import {
+  buildCloneArgs,
+  gitCacheDir,
+  gitCacheRoot,
+  isGitSource,
+  parseGitSource,
+} from './git-source';
 import { TemplateConfigSchema } from './schemas';
 
 export interface FetchOptions {
-  /** 强制重新下载，忽略缓存（`--force`，未传即 undefined） */
-  force?: boolean;
+  /** 重新拉取模板，忽略缓存（`--refresh`，未传即 undefined） */
+  refresh?: boolean;
   /** 仅使用本地缓存，不联网（`--offline`，未传即 undefined） */
   offline?: boolean;
 }
@@ -29,11 +35,22 @@ export type CachePolicy = 'reuse' | 'refresh' | 'offline';
 /**
  * 把 CLI 的两个布尔 flag 归约为缓存策略
  *
- * 两者同时传是自相矛盾的（一个要求重新联网、一个禁止联网），以 `--force` 为准：
- * 显式要求刷新的意图更强，且失败时的报错比「静默用了旧缓存」更容易排查。
+ * `--refresh` 与 `--offline` 同时传是自相矛盾的（一个要求联网重取、一个禁止联网），
+ * 直接报错而不是择一：静默按其中一个执行，必然违背另一半意图，而且事后完全看不出来。
+ *
+ * 注意这里**不再涉及 `--force`**。`--force` 曾同时表示「清空目标目录」和「刷新模板缓存」，
+ * 于是 `--force --offline` 只能择一；拆成 `--force`（只管目录）+ `--refresh`（只管缓存）之后，
+ * 「清空目录 + 只用缓存」变成一个完全合法的组合，矛盾自然消失。
  */
 export function resolveCachePolicy(options?: FetchOptions): CachePolicy {
-  if (options?.force) return 'refresh';
+  if (options?.refresh && options?.offline) {
+    throw new CreateAppError(
+      'E_INVALID_OPTION',
+      '--refresh 与 --offline 不能同时使用（一个要求联网重取，一个禁止联网）',
+      '要拉取远端最新模板用 --refresh；要在无网环境下用本地缓存用 --offline',
+    );
+  }
+  if (options?.refresh) return 'refresh';
   if (options?.offline) return 'offline';
   return 'reuse';
 }
@@ -77,6 +94,31 @@ export function resolveLocalSource(source: string): string {
   return path.resolve(process.cwd(), source);
 }
 
+/**
+ * 若 dir 落在已知缓存根下，返回「上次拉取距今多久」的人话描述，否则 undefined
+ *
+ * 「模板改了怎么没生效」是这套缓存最常见的困惑：默认策略是复用缓存，git 源在缓存命中时
+ * 压根不会 fetch，远端分支前进后本地会一直读旧克隆。把缓存年龄摆到台面上，
+ * 比让用户自己想起来要 --refresh 便宜得多。
+ */
+export function describeCacheAge(dir: string): string | undefined {
+  const roots = [gitCacheRoot(), path.join(os.homedir(), '.cache', 'giget')];
+  if (!roots.some((root) => dir === root || dir.startsWith(root + path.sep))) return undefined;
+
+  let mtimeMs: number;
+  try {
+    mtimeMs = fs.statSync(dir).mtimeMs;
+  } catch {
+    return undefined;
+  }
+
+  const minutes = Math.floor((Date.now() - mtimeMs) / 60_000);
+  if (minutes < 1) return '刚刚拉取';
+  if (minutes < 60) return `${minutes} 分钟前拉取`;
+  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} 小时前拉取`;
+  return `${Math.floor(minutes / (60 * 24))} 天前拉取`;
+}
+
 export class TemplateResolver {
   /**
    * 拉取模板到本地缓存目录（~/.cache/giget/），本地路径源则直接定位
@@ -93,6 +135,8 @@ export class TemplateResolver {
 
     // git 源自己 clone：内网 GitLab 多数只开 ssh，giget 的 tarball 通路拿不到
     if (isGitSource(source)) return this.cloneGit(source, options);
+
+    // 本地路径分支在上面已 return，此处起才需要策略判定（含 refresh/offline 互斥校验）
 
     const policy = resolveCachePolicy(options);
     try {
@@ -119,7 +163,7 @@ export class TemplateResolver {
    * 浅克隆 git 源到缓存目录并返回该目录
    *
    * 缓存策略与 giget 分支保持一致（resolveCachePolicy 三态）：
-   * 默认复用缓存，`--force` 删缓存重克隆，`--offline` 只用缓存、缺失即报错。
+   * 默认复用缓存，`--refresh` 删缓存重克隆，`--offline` 只用缓存、缺失即报错。
    * 克隆后删掉 `.git/`——模板只要工作区内容，留着会被 composer 当普通文件拷进新项目。
    */
   private cloneGit(source: string, options?: FetchOptions): string {
@@ -159,7 +203,7 @@ export class TemplateResolver {
       throw new CreateAppError(
         'E_NO_TEMPLATE_CONFIG',
         `模板缺少 .template/config.ts: ${source}\n（克隆到 ${dir}）`,
-        '请确认该仓库/分支已包含 .template/config.ts，或用 --force 刷新缓存',
+        '请确认该仓库/分支已包含 .template/config.ts，或用 --refresh 重新拉取',
       );
     }
     return dir;

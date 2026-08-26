@@ -149,7 +149,7 @@ describe('TemplateResolver.fetch - git 源 clone 通路', () => {
     cleanup.push(dir);
     fs.rmSync(dir, { recursive: true, force: true });
 
-    const got = await resolver.fetch(`git+file://${repo}#master`, { force: true });
+    const got = await resolver.fetch(`git+file://${repo}#master`, { refresh: true });
     expect(got).toBe(dir);
     expect(fs.existsSync(path.join(dir, 'package.json'))).toBe(true);
     // .git 必须删掉，否则会被 composer 当普通文件拷进新项目
@@ -162,21 +162,21 @@ describe('TemplateResolver.fetch - git 源 clone 通路', () => {
     const dir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
     cleanup.push(dir);
 
-    await resolver.fetch(`git+file://${repo}#master`, { force: true });
+    await resolver.fetch(`git+file://${repo}#master`, { refresh: true });
     fs.writeFileSync(path.join(dir, 'CACHE_MARKER'), 'x');
     await resolver.fetch(`git+file://${repo}#master`);
     expect(fs.existsSync(path.join(dir, 'CACHE_MARKER'))).toBe(true);
   });
 
-  it('force 时删缓存重新 clone', async () => {
+  it('refresh 时删缓存重新 clone', async () => {
     const repo = makeLocalRepo(true);
     cleanup.push(repo);
     const dir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
     cleanup.push(dir);
 
-    await resolver.fetch(`git+file://${repo}#master`, { force: true });
+    await resolver.fetch(`git+file://${repo}#master`, { refresh: true });
     fs.writeFileSync(path.join(dir, 'CACHE_MARKER'), 'x');
-    await resolver.fetch(`git+file://${repo}#master`, { force: true });
+    await resolver.fetch(`git+file://${repo}#master`, { refresh: true });
     expect(fs.existsSync(path.join(dir, 'CACHE_MARKER'))).toBe(false);
   });
 
@@ -185,7 +185,7 @@ describe('TemplateResolver.fetch - git 源 clone 通路', () => {
     cleanup.push(repo);
     cleanup.push(gitCacheDir({ url: `git+file://${repo}`, ref: 'master' }));
     await expect(
-      resolver.fetch(`git+file://${repo}#master`, { force: true }),
+      resolver.fetch(`git+file://${repo}#master`, { refresh: true }),
     ).rejects.toMatchObject({ code: 'E_NO_TEMPLATE_CONFIG' });
   });
 
@@ -193,7 +193,7 @@ describe('TemplateResolver.fetch - git 源 clone 通路', () => {
     const missing = path.join(os.tmpdir(), 'create-app-no-such-repo-xyz');
     const dir = gitCacheDir({ url: `git+file://${missing}`, ref: 'master' });
     await expect(
-      resolver.fetch(`git+file://${missing}#master`, { force: true }),
+      resolver.fetch(`git+file://${missing}#master`, { refresh: true }),
     ).rejects.toMatchObject({ code: 'E_TEMPLATE_FETCH_FAILED' });
     expect(fs.existsSync(dir)).toBe(false);
   });

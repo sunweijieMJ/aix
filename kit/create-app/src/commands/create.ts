@@ -5,7 +5,7 @@ import pc from 'picocolors';
 import { Composer } from '../core/composer';
 import { lintManifest } from '../core/manifest-lint';
 import { runPostProcess } from '../core/post-processor';
-import { TemplateResolver } from '../core/resolver';
+import { describeCacheAge, resolveCachePolicy, TemplateResolver } from '../core/resolver';
 import {
   collectBasicInfo,
   collectFeatureSelection,
@@ -33,7 +33,10 @@ export interface CreateOptions {
   install?: boolean;
   /** `--pm`：装依赖时的包管理器，省略则交互选择（非交互 + 装依赖时必填） */
   pm?: string;
+  /** `--force`：目标目录已存在时清空后写入（不再隐含刷新模板缓存） */
   force?: boolean;
+  /** `--refresh`：重新拉取模板缓存 */
+  refresh?: boolean;
   offline?: boolean;
   yes?: boolean;
   dryRun?: boolean;
@@ -168,13 +171,21 @@ export async function create(projectName: string | undefined, opts: CreateOption
     let templateDir: string;
     try {
       templateDir = await resolver.fetch(basic.templateSource, {
-        force: opts.force,
+        refresh: opts.refresh,
         offline: opts.offline,
       });
       spinner.stop('模板准备就绪');
     } catch (err) {
       spinner.stop('模板拉取失败');
       throw err;
+    }
+
+    // 复用缓存时把缓存年龄说出来：默认策略不会联网 fetch，远端前进后会一直读旧克隆
+    if (resolveCachePolicy({ refresh: opts.refresh, offline: opts.offline }) === 'reuse') {
+      const age = describeCacheAge(templateDir);
+      if (age) {
+        p.log.info(`复用模板缓存（${age}）：${templateDir}\n如需拉取远端最新改动，加 --refresh`);
+      }
     }
 
     const manifest = await resolver.readConfig(templateDir);

@@ -54,12 +54,15 @@ program
   .option('--install', '安装依赖（非交互场景需配合 --pm 指定包管理器）')
   .option('--no-install', '跳过依赖安装')
   .option('--pm <manager>', '包管理器（pnpm | npm | yarn），装依赖时省略则交互选择')
-  // --offline / --force 不给默认值：resolver 要区分「没传」与「传了 false」——
-  // 三态（都没传 = 复用缓存 / --force = 删缓存重取 / --offline = 只用缓存）靠 undefined 判定，
-  // 给了默认 false 后 `options?.offline ?? !options?.force` 这类写法会永远走 false 分支
+  // --offline / --refresh 不给默认值：resolver 要区分「没传」与「传了 false」——
+  // 三态（都没传 = 复用缓存 / --refresh = 删缓存重取 / --offline = 只用缓存）靠 undefined 判定，
+  // 给了默认 false 后 `options?.offline ?? !options?.refresh` 这类写法会永远走 false 分支
   .option('--offline', '仅使用本地模板缓存，不联网（缓存缺失直接失败）')
+  .option('--refresh', '重新拉取模板缓存（远端分支前进后用它取最新）')
   .option('-y, --yes', '跳过最终确认提示', false)
-  .option('--force', '强制覆盖已有目录（写入前清空，保留 .git），并重新拉取模板缓存')
+  // --force 只管目标目录，不再隐含刷缓存：两件事耦在一个 flag 上时，
+  // 「覆盖目录 + 只用本地缓存」这种正当组合表达不出来（--force --offline 只能择一）
+  .option('--force', '强制覆盖已有目录（写入前清空，保留 .git）')
   .option('--dry-run', '仅预览生成文件，不写入', false)
   .action(create);
 

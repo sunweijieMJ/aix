@@ -2,7 +2,7 @@
  * 以「真实 CLI 调用」为入口的回归：缓存/--offline 三态 + 非 TTY 快速失败
  *
  * 为什么不直接调 API：审查发现的系统性盲区就是「测试只走 API 直调」——直调时
- * options 是手写的（`{ force: true }`），而 CLI 真正传下去的是 commander 的产物
+ * options 是手写的（`{ refresh: true }`），而 CLI 真正传下去的是 commander 的产物
  * （没传 = undefined，历史上是默认 false）。默认值的 bug 在直调测试里天然看不见。
  * 所以这里一律 spawn `tsx src/cli.ts`，断言用户真正会遇到的行为。
  *
@@ -95,7 +95,7 @@ function runCreate(name: string, source: string, cwd: string, extra: string[] = 
   );
 }
 
-describe('CLI 缓存语义（--offline / --force 三态）', () => {
+describe('CLI 缓存语义（--offline / --refresh 三态）', () => {
   let repo: string;
   let source: string;
   let cacheDir: string;
@@ -131,10 +131,10 @@ describe('CLI 缓存语义（--offline / --force 三态）', () => {
   );
 
   it(
-    '--force：删缓存重新 clone',
+    '--refresh：删缓存重新 clone',
     () => {
       fs.writeFileSync(marker(), 'x');
-      const r = runCreate('app-3', source, workDir, ['--force']);
+      const r = runCreate('app-3', source, workDir, ['--refresh']);
       expect(r.status, r.output).toBe(0);
       expect(fs.existsSync(marker())).toBe(false);
       expect(fs.existsSync(cacheDir)).toBe(true);
@@ -169,6 +169,75 @@ describe('CLI 缓存语义（--offline / --force 三态）', () => {
       expect(r.output).toContain('--offline');
       // 失败即失败，不许留下半个产物目录
       expect(fs.existsSync(path.join(workDir, 'app-5/package.json'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+});
+
+describe('--force 与 --refresh 拆分后的语义', () => {
+  let repo: string;
+  let source: string;
+  let cacheDir: string;
+  let workDir: string;
+
+  beforeAll(() => {
+    repo = makeTemplateRepo();
+    source = `git+file://${repo}#master`;
+    cacheDir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
+    tempDirs.push(cacheDir);
+    workDir = tempDir('create-app-split-');
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  it(
+    '--force 只清空目标目录，不再刷缓存（拆分前它同时干这两件事）',
+    () => {
+      // 先填充缓存并打标记
+      expect(runCreate('split-1', source, workDir).status).toBe(0);
+      const marker = path.join(cacheDir, 'CACHE_MARKER');
+      fs.writeFileSync(marker, 'x');
+
+      // 目标目录已存在 → 需要 --force；标记应当还在（说明没重新 clone）
+      const r = runCreate('split-1', source, workDir, ['--force']);
+      expect(r.status, r.output).toBe(0);
+      expect(fs.existsSync(marker)).toBe(true);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '--force --offline 现在是合法组合（拆分前 --force 会压掉 --offline 去联网）',
+    () => {
+      fs.mkdirSync(path.join(workDir, 'split-2'), { recursive: true });
+      fs.writeFileSync(path.join(workDir, 'split-2/stale.txt'), 'old');
+
+      const r = runCreate('split-2', source, workDir, ['--force', '--offline']);
+      expect(r.status, r.output).toBe(0);
+      // 目录被清空后重新写入，且全程只用缓存
+      expect(fs.existsSync(path.join(workDir, 'split-2/stale.txt'))).toBe(false);
+      expect(fs.existsSync(path.join(workDir, 'split-2/package.json'))).toBe(true);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '--refresh --offline 自相矛盾，直接报 E_INVALID_OPTION',
+    () => {
+      const r = runCreate('split-3', source, workDir, ['--refresh', '--offline']);
+      expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_INVALID_OPTION');
+      expect(fs.existsSync(path.join(workDir, 'split-3'))).toBe(false);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '默认复用缓存时提示缓存年龄（「模板改了怎么没生效」的最常见来源）',
+    () => {
+      const r = runCreate('split-4', source, workDir);
+      expect(r.status, r.output).toBe(0);
+      expect(r.output).toContain('复用模板缓存');
+      expect(r.output).toContain('--refresh');
     },
     TIMEOUT,
   );
