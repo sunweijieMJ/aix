@@ -38,7 +38,7 @@ export const TEMPLATE_REGISTRY: TemplateRegistryEntry[] = [
   {
     id: 'h5',
     label: '移动端 H5',
-    hint: 'Vant + UnoCSS，vConsole / Eruda 可选',
+    hint: 'Vant + UnoCSS，vConsole / Eruda 内置（环境变量开关）',
     platform: 'mobile',
     source: 'git+ssh://git@git.zhihuishu.com/weijie/vue-h5-template.git#master',
   },

@@ -76,7 +76,7 @@ function detectRealName(template: string, override?: string): string | undefined
  * 现给组合，不要指望预设能通用——特性 id 的取值域由各模板的 config.ts 决定。
  */
 const COMBOS: Record<string, string[]> = {
-  full: ['i18n', 'qiankun', 'demoPages', 'overrides', 'aiDocs'],
+  full: ['i18n', 'qiankun', 'overrides', 'aiDocs'],
   none: [],
   i18n: ['i18n', 'aiDocs'],
   // overrides 单独成组：它的渗透点（main.ts / router / constants / vite.config）与 i18n 交叉，

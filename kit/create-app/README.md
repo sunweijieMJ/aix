@@ -232,11 +232,12 @@ description，变量替换**在序列化之前作用于对象**（`--param` 是�
 | id      | 说明                                              | 源                                                                     |
 | ------- | ------------------------------------------------- | ---------------------------------------------------------------------- |
 | `admin` | 后台管理系统（Element Plus，qiankun 可选）        | `git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master` |
-| `h5`    | 移动端 H5（Vant + UnoCSS，vConsole / Eruda 可选） | `git+ssh://git@git.zhihuishu.com/weijie/vue-h5-template.git#master`    |
+| `h5`    | 移动端 H5（Vant + UnoCSS，vConsole / Eruda 内置） | `git+ssh://git@git.zhihuishu.com/weijie/vue-h5-template.git#master`    |
 
 h5 与 admin 一样是**独立的模板真源**，不是 admin 之上的 overlay 差异层（两仓逐字节相同的
 文件仅 45/220，技术栈本身分叉：Vant / UnoCSS / valibot vs Element Plus / SCSS）。
-h5 有 6 个可裁剪特性（i18n / debugTools / webVitals / nativeBridge / aiDocs / demoPages）。
+h5 有 3 个可裁剪特性（i18n / nativeBridge / aiDocs）；调试工具（vConsole / Eruda）与
+示例页面为常驻内容——前者由 `VITE_DEBUG_TOOLS` 环境变量按需开启，后者不需要时自行删除。
 
 ### 用户级注册表
 
