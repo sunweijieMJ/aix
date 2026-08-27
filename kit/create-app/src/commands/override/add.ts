@@ -101,11 +101,17 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   // 解析命令行参数中的 modules
   let modules: ModuleId[] | undefined;
   if (opts.modules) {
-    // 空片段一律剔除（`-m 'router,'`）：不过滤的话空串会被当成模块名，报出「未知模块: 」
-    modules = opts.modules
-      .split(',')
-      .map((m: string) => m.trim())
-      .filter((m: string) => m.length > 0) as ModuleId[];
+    // 空片段一律剔除（`-m 'router,'`）：不过滤的话空串会被当成模块名，报出「未知模块: 」。
+    // 去重（`-m router,router`）：重复项会让 generateFiles 产出重复的文件条目，
+    // 预览列表与「共 N 个文件」计数跟着失真
+    modules = [
+      ...new Set(
+        opts.modules
+          .split(',')
+          .map((m: string) => m.trim())
+          .filter((m: string) => m.length > 0),
+      ),
+    ] as ModuleId[];
     if (modules.length === 0) {
       console.error(pc.red(`❌ -m 没有解析出任何模块: "${opts.modules}"`));
       console.error(pc.dim(`   可用模块: ${ALL_MODULES.join(', ')}`));
