@@ -1,6 +1,7 @@
 # 定制化项目代码合并方案 (@kit/override-cli)
 
-> **状态**: 已完成
+> **状态**: 已完成；CLI 实现已并入 `@kit/create-app`（`create-app override add`），
+> 独立包 `@kit/override-cli` 已于 2026-08 从 monorepo 移除并在私服标记弃用
 > **作者**: AIX Team
 > **适用场景**: 基础产品 + 多个定制项目（独立仓库模式）
 
