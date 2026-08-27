@@ -65,6 +65,9 @@ pnpm dlx @kit/create-app my-app   # 项目名走参数，其余交互
 | giget 源  | `github:org/repo/path`                                                       | ✅ `~/.cache/giget/`      |
 | 本地路径  | `~/workspace/mine/vue-admin-template`、`./tpl`、`file:./tpl`                 | ❌ 每次直读（模板开发用） |
 
+拼错的注册表 id（纯 kebab 短词，如 `amin`）会直接报 `E_INVALID_OPTION` 并列出可用 id，
+不会被误当成模板源拿去联网、报出误导的网络错误。
+
 缓存三态：默认复用 → `--refresh` 删缓存重取 → `--offline` 只读缓存。`--refresh` 与 `--offline`
 同时传会直接报错（一个要求联网、一个禁止联网，择一必然违背另一半意图）。
 `create-app update-templates` 会把注册表里所有非本地源强制重新拉一遍。
@@ -208,6 +211,8 @@ description，变量替换**在序列化之前作用于对象**（`--param` 是�
 | `--features` 里有模板未声明的 id                      | `E_UNKNOWN_FEATURE`         |
 | `--param` 格式错 / 值为空 / 参数未声明                | `E_INVALID_PARAM`           |
 | 条件块语法错（嵌套、未闭合、非法表达式）              | `E_TEMPLATE_SYNTAX`         |
+| CLI 选项取值不合法（`--pm bun`、`--refresh --offline` 同传、疑似拼错的注册表 id） | `E_INVALID_OPTION` |
+| 生成后的依赖安装失败（私服不可达、engines 不符）      | `E_INSTALL_FAILED`          |
 | 非 TTY 但仍需问答                                     | `E_NON_INTERACTIVE`         |
 
 `E_SUBSTITUTION_MISS` 是逐（substitution, 文件）判定的：白名单里任一文件失配都会报，
@@ -229,8 +234,9 @@ description，变量替换**在序列化之前作用于对象**（`--param` 是�
 | `admin` | 后台管理系统（Element Plus，qiankun 可选）        | `git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master` |
 | `h5`    | 移动端 H5（Vant + UnoCSS，vConsole / Eruda 可选） | `git+ssh://git@git.zhihuishu.com/weijie/vue-h5-template.git#master`    |
 
+h5 与 admin 一样是**独立的模板真源**，不是 admin 之上的 overlay 差异层（两仓逐字节相同的
+文件仅 45/220，技术栈本身分叉：Vant / UnoCSS / valibot vs Element Plus / SCSS）。
 h5 有 6 个可裁剪特性（i18n / debugTools / webVitals / nativeBridge / aiDocs / demoPages）。
-进度与遗留项见 [docs/h5-template.md](./docs/h5-template.md)。
 
 ### 用户级注册表
 

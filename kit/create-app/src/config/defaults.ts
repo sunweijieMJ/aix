@@ -44,7 +44,7 @@ export const TEMPLATE_REGISTRY: TemplateRegistryEntry[] = [
   },
   // h5 是**独立的模版真源**，不是 admin 之上的 overlay 差异层——该方案已作废：
   // 两个仓库逐字节相同的文件只有 45/220，且技术栈本身分叉（Vant / UnoCSS / valibot vs
-  // Element Plus / SCSS），overlay 的前提不成立。详见 docs/h5-template.md。
+  // Element Plus / SCSS），overlay 的前提不成立。
 ];
 
 /**
