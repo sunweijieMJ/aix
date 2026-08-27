@@ -39,6 +39,15 @@ const PARAM_KEY_PATTERN = /^[a-z][a-z0-9-]*$/;
  */
 const FEATURE_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 
+/**
+ * variables 键必须是**完整占位符**形态（`{{kebab}}`），取值域与 params key 同源
+ *
+ * 不校验的话，作者漏写大括号（`'app-name': 'foo'`）照样通过——composer 会拿这个键
+ * 对**全部文本文件**做字面子串替换，所有含 `app-name` 子串的代码/文档被静默改写，
+ * 生成还报成功。这是 params/substitutions 都有校验、唯独 variables 缺的那道闸。
+ */
+const VARIABLE_KEY_PATTERN = /^\{\{[a-z][a-z0-9-]*\}\}$/;
+
 const TemplateParamSchema = z.strictObject({
   label: z.string().min(1),
   // trim + min(1)：`default: ''` / `'  '` 会在非 TTY 下被当成有效默认值静默注入空串，
@@ -51,8 +60,18 @@ export const TemplateConfigSchema = z
     id: z.string(),
     platform: z.enum(['web', 'mobile']),
     compatibleCliVersions: z.string(),
-    // 键 min(1)：空串占位符会让 composer 的 split('') 把值插进每个字符之间
-    variables: z.record(z.string().min(1), z.string()),
+    // 键必须是 {{kebab}} 完整占位符（顺带挡掉空串——空串键会让 composer 的
+    // split('') 把值插进每个字符之间）
+    variables: z.record(
+      z
+        .string()
+        .regex(
+          VARIABLE_KEY_PATTERN,
+          'variables 的键必须是 {{kebab}} 形态的完整占位符（如 {{app-name}}）——' +
+            '漏写大括号会变成全文件字面子串替换',
+        ),
+      z.string(),
+    ),
     /** 可选：需要按项目定值的参数（问答 / --param），key 即占位符名 */
     params: z.record(z.string().regex(PARAM_KEY_PATTERN), TemplateParamSchema).optional(),
     /** 可选：老模板没有这个字段，缺省即不做真名替换 */

@@ -119,6 +119,22 @@ describe('parseParamArgs', () => {
       );
     }
   });
+
+  it('值含引号/尖括号/反斜杠抛 E_INVALID_PARAM（会原文注入 TS/HTML，静默产出语法错误）', () => {
+    for (const bad of [
+      "title=Tom's Admin",
+      'title=say "hi"',
+      'title=`tpl`',
+      'title=a\\b',
+      'title=<script>',
+    ]) {
+      expect(() => parseParamArgs([bad]), `应拒绝 "${bad}"`).toThrowError(
+        expect.objectContaining({ code: 'E_INVALID_PARAM' }) as unknown as Error,
+      );
+    }
+    // 正常文案不受限：中文、空格、& 都放行
+    expect(parseParamArgs(['title=运营 & 管理平台'])).toEqual({ title: '运营 & 管理平台' });
+  });
 });
 
 // 测试进程 stdin 非 TTY，collectTemplateParams 恰好走的就是要重点回归的非交互分支

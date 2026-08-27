@@ -64,7 +64,7 @@ function applyVariables(content: string, vars: Record<string, string>): string {
   let result = content;
   for (const [placeholder, value] of Object.entries(vars)) {
     // 空键会让 split('') 把值插进每个字符之间，整个产物逐字符损坏。
-    // schema 已拦（variables 键 min(1)），这里是绕过 schema 直调 API 时的兜底
+    // schema 已拦（variables 键须为 {{kebab}} 完整占位符），这里是绕过 schema 直调 API 时的兜底
     if (placeholder === '') continue;
     result = result.split(placeholder).join(value);
   }

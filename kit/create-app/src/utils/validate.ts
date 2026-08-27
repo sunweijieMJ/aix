@@ -73,6 +73,30 @@ export function toValidPackageName(name: string): string {
 }
 
 /**
+ * 模板参数值里会静默产出坏产物的字符
+ *
+ * 参数值经 applyVariables 原文注入 TS 字符串字面量（site-config.ts 的
+ * `defaultValue: '{{project-title}}'`）与 HTML（index.html 的 `<title>`）等文本上下文，
+ * 通用文本替换无法按目标语法逐处转义——值里带 `'` 会把产物 TS 改成语法错误，
+ * 而生成照样报成功（已实测）。在入口把静默炸变成响亮报错。
+ */
+const ILLEGAL_PARAM_VALUE_CHARS = /['"`\\<>]/;
+
+/**
+ * 校验模板参数（--param / 问答）的取值，合法返回 undefined，否则返回错误文案
+ *
+ * 只挡会破坏注入上下文语法的字符，不限制正常文案（中文 / 空格 / `&` 都放行）。
+ * `--param` 与 TTY 问答两条入口共用这一份；manifest 里的 default 由模板作者自控，不在此校验。
+ */
+export function validateParamValue(value: string): string | undefined {
+  if (hasControlChar(value)) return '参数值不能包含控制字符（含换行）';
+  if (ILLEGAL_PARAM_VALUE_CHARS.test(value)) {
+    return '参数值不能包含 \' " ` \\ < > 这些字符（会被原文注入 TS / HTML，产物会带语法错误）';
+  }
+  return undefined;
+}
+
+/**
  * 校验 Override 定制目录名（`override add <code>`），合法返回 undefined
  *
  * 命令行位置参数与问答两条入口共用这一份：历史上只有问答分支校验，

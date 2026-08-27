@@ -7,7 +7,7 @@ import { isGitSource } from '../core/git-source';
 import { isLocalSource } from '../core/resolver';
 import type { TemplateConfig } from '../types';
 import { CreateAppError } from '../utils/errors';
-import { validateProjectName } from '../utils/validate';
+import { validateParamValue, validateProjectName } from '../utils/validate';
 
 function onCancel(): never {
   p.cancel('已取消，未做任何修改。');
@@ -225,6 +225,12 @@ export function parseParamArgs(raw: string[] | undefined): Record<string, string
         '正确格式：--param key=value（可重复传多个），值不能为空',
       );
     }
+    // 值的字符校验与 TTY 问答同一份（validateParamValue）：带引号的值会被原文注入
+    // TS 字符串 / HTML，产物语法错误而生成照样报成功
+    const valueError = validateParamValue(value);
+    if (valueError) {
+      throw new CreateAppError('E_INVALID_PARAM', `--param 取值不合法: "${item}"`, valueError);
+    }
     result[item.slice(0, i)] = value;
   }
   return result;
@@ -287,7 +293,9 @@ export async function collectTemplateParams(
     const answer = await p.text({
       message: def.label,
       initialValue: def.default,
-      validate: (value) => (value && value.trim().length > 0 ? undefined : '不能为空'),
+      // 非空 + 字符校验：与 --param 入口同一份 validateParamValue，两条入口不得漂移
+      validate: (value) =>
+        value && value.trim().length > 0 ? validateParamValue(value.trim()) : '不能为空',
     });
     if (p.isCancel(answer)) onCancel();
     resolved[key] = answer.trim();

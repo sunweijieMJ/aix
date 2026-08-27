@@ -52,6 +52,15 @@ describe('TemplateConfigSchema strict', () => {
     expect(r.success).toBe(false);
   });
 
+  it('variables 键必须是 {{kebab}} 完整占位符（漏写大括号 = 全文件字面子串替换）', () => {
+    for (const bad of ['app-name', '{{App-Name}}', '{{app-name}', 'x{{app-name}}']) {
+      const r = TemplateConfigSchema.safeParse({ ...base, variables: { [bad]: 'foo' } });
+      expect(r.success, `应拒绝键 "${bad}"`).toBe(false);
+    }
+    const ok = TemplateConfigSchema.safeParse({ ...base, variables: { '{{app-name}}': 'foo' } });
+    expect(ok.success).toBe(true);
+  });
+
   it('params：合法声明通过，key 即占位符名', () => {
     const r = TemplateConfigSchema.safeParse({
       ...base,

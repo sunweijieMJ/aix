@@ -5,7 +5,7 @@ import type { CustomLayoutConfig } from '@/plugins/override';
  *
  * 支持能力：
  * - layout: 替换整个 Layout 组件
- * - components: 替换 Layout 内部区域（header / menu / main）
+ * - components: 替换 Layout 内部区域（menu / main；header 类型里预留但暂无消费点，配了不生效）
  * - defaultConfig: 覆盖默认配置值
  *
  * 注意：layout 与 components 二选一，设置 layout 后 components 无效
@@ -13,7 +13,7 @@ import type { CustomLayoutConfig } from '@/plugins/override';
  * @example
  * ```ts
  * return {
- *   components: { header: () => import('../views/CustomHeader.vue') },
+ *   components: { menu: () => import('../views/CustomMenu.vue') },
  *   defaultConfig: { headerVisible: { themeSwitch: false } },
  * };
  * ```

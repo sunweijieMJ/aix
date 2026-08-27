@@ -227,7 +227,9 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
 
   // 模板的 overrides 特性自带 setup.ts，接线已经做完了。此时再打印一遍手动接入步骤，
   // 用户照着做就是重复接入
-  if (fs.existsSync(path.join(cwd, options.output, 'setup.ts'))) {
+  // 必须复用上面 resolve 出的 outputDir：`-o` 传绝对路径时 join(cwd, 绝对路径) 会拼出
+  // <cwd>/abs/... 这条不存在的路径，setup.ts 明明在也判为不在，整段手动接入被误打出来
+  if (fs.existsSync(path.join(outputDir, 'setup.ts'))) {
     console.log(
       pc.dim(
         `  接线已由 ${options.output}/setup.ts 完成，无需手动改 main.ts / router / constants\n`,
@@ -238,15 +240,13 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
 
   console.log(pc.bold('  手动接入定制系统：\n'));
 
+  // API 覆盖不需要额外传参：内核自行 import `@/api/core/request` 的 instances 消费
+  // config.api（initOverrides 已不收 apiInstances，见 templates-override/README）
   console.log(`  ${pc.dim('// main.ts — 初始化运行时覆盖')}`);
   console.log(`  import { initOverrides } from ${pc.cyan("'@/plugins/override'")};`);
   console.log(`  import overrideConfig from ${pc.cyan(`'${overridesAlias}'`)};`);
-  console.log(`  ${pc.dim("// import { instances } from '@/api/core/request'; // 如有 API 覆盖")}`);
   console.log(
     `  ${pc.cyan('initOverrides')}({ pinia, i18n, config: overrideConfig, app, router });`,
-  );
-  console.log(
-    `  ${pc.dim('// initOverrides({ pinia, i18n, config: overrideConfig, app, router, apiInstances: instances }); // 如有 API 覆盖')}`,
   );
 
   console.log('');
