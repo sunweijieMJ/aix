@@ -50,9 +50,9 @@ export async function runPostProcess(config: ProjectConfig, destDir: string): Pr
     } catch (err) {
       spinner.stop('依赖安装失败');
       throw new CreateAppError(
-        'E_UNKNOWN',
+        'E_INSTALL_FAILED',
         `${pm} install 执行失败`,
-        '请手动进入项目目录后执行安装命令',
+        '请手动进入项目目录后执行安装命令（常见原因：私服不可达、Node/pnpm 版本不满足 engines）',
         err,
       );
     }

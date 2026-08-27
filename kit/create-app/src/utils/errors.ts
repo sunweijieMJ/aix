@@ -23,6 +23,8 @@ export type ErrorCode =
   | 'E_INVALID_PROJECT_NAME'
   | 'E_DIR_NOT_EMPTY'
   | 'E_DIR_WRITE_FAILED'
+  /** 生成后的依赖安装（pnpm/npm/yarn install）失败——可预期的常见失败，区别于 E_UNKNOWN */
+  | 'E_INSTALL_FAILED'
   // 用户操作
   | 'E_USER_CANCEL'
   /** stdin 非 TTY（CI / 管道 / `< /dev/null`）但仍有必填项要靠问答补齐 */

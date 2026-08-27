@@ -16,7 +16,6 @@ import { handleError } from '../../utils/logger';
 import { validateOverrideCode } from '../../utils/validate';
 
 export interface OverrideAddOptions {
-  project?: string;
   modules?: string;
   output: string;
   yes: boolean;
@@ -41,7 +40,7 @@ export function missingOverrideNonInteractiveFlags(
   // runPrompts：问答逐条对应。空串一律按缺失算——下游全是 truthy 判断
   // （add.ts 的 `if (opts.modules)`），`-m ''`（典型来源是未赋值的 shell 变量插值）
   // 会绕过体检落进问答
-  if (!(project ?? opts.project)) missing.push('[code]（定制目录名）');
+  if (!project) missing.push('[code]（定制目录名）');
   if (!opts.modules) missing.push('-m, --modules <list>');
 
   // 冲突问答（checkProjectConflict / resolveConflicts）不在此预判：
@@ -94,9 +93,8 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   // 用 truthy 判断而不是 `!== undefined`：空串按「缺失」处理（与 `--template ''`、
   // `-m ''` 同一套约定，典型来源是未赋值的 shell 变量插值）——TTY 下落进问答，
   // 非 TTY 下由上面的 assertNonInteractiveReady 报 E_NON_INTERACTIVE
-  const code = project ?? opts.project;
-  if (code) {
-    const codeError = validateOverrideCode(code);
+  if (project) {
+    const codeError = validateOverrideCode(project);
     if (codeError) {
       throw new CreateAppError('E_INVALID_PROJECT_NAME', codeError, '请更换定制目录名后重试');
     }
@@ -135,7 +133,7 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
 
   // 交互式收集缺失参数
   const options = await runPrompts({
-    project: project ?? opts.project,
+    project,
     modules,
     output: opts.output,
     yes: opts.yes,

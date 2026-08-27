@@ -212,14 +212,18 @@ export class Composer {
         continue;
       }
 
+      // 只保留权限位：stat.mode 还带着文件类型位（普通文件 0o100000），
+      // 原样传给 writeFileSync 依赖的是 open(2) 对多余位的静默忽略，属未定义行为
+      const mode = stat.mode & 0o777;
+
       if (isTextFile(buf)) {
         // 顺序固定：substitutions → 条件注释块 → 变量替换（协议 1.2.4 / 1.3）
         const substituted = applySubstitutions(buf.toString('utf-8'), outputPath, subs, hits);
         const trimmed = applyConditionalBlocks(substituted, outputPath, selected, declared);
         const text = applyVariables(trimmed, variables);
-        fileList.push({ path: outputPath, content: text, mode: stat.mode });
+        fileList.push({ path: outputPath, content: text, mode });
       } else {
-        fileList.push({ path: outputPath, content: buf, mode: stat.mode });
+        fileList.push({ path: outputPath, content: buf, mode });
       }
     }
 

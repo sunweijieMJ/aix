@@ -3,6 +3,8 @@ import path from 'node:path';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { findTemplateById, loadTemplateRegistry } from '../config/defaults';
+import { isGitSource } from '../core/git-source';
+import { isLocalSource } from '../core/resolver';
 import type { TemplateConfig } from '../types';
 import { CreateAppError } from '../utils/errors';
 import { validateProjectName } from '../utils/validate';
@@ -61,6 +63,19 @@ export function resolveTemplateArg(
   const entry = findTemplateById(template);
   if (entry) {
     return { templateId: entry.id, templateLabel: entry.label, templateSource: entry.source };
+  }
+  // 长得像注册表 id（纯 kebab 短词，不含 / : 等源地址特征）却没命中，几乎必是拼错。
+  // 不拦的话会一路落到 giget 分支，报出「拉取模板失败……请检查网络连接」——
+  // 用户被支去查网络，而真正的问题是拼写
+  if (!isLocalSource(template) && !isGitSource(template) && /^[a-z][a-z0-9-]*$/.test(template)) {
+    const ids = loadTemplateRegistry().map((e) => e.id);
+    throw new CreateAppError(
+      'E_INVALID_OPTION',
+      `未找到注册表 id "${template}"`,
+      ids.length > 0
+        ? `可用 id: ${ids.join(', ')}；如果传的是模板源，请用本地路径（./x、/abs/x）或 git 地址`
+        : '注册表为空；如果传的是模板源，请用本地路径（./x、/abs/x）或 git 地址',
+    );
   }
   return { templateLabel: template, templateSource: template };
 }

@@ -65,4 +65,22 @@ describe('resolveTemplateArg', () => {
     expect(resolved.templateId).toBeUndefined();
     expect(resolved.templateSource).toBe('github:org/repo/packages/tpl');
   });
+
+  it('长得像注册表 id 却未命中（拼错）→ E_INVALID_OPTION 并列出可用 id', () => {
+    // 不拦的话会落进 giget 分支报「拉取模板失败……请检查网络连接」，把用户支去查网络
+    try {
+      resolveTemplateArg('amin');
+      expect.unreachable('应当抛出 E_INVALID_OPTION');
+    } catch (err) {
+      expect((err as { code: string }).code).toBe('E_INVALID_OPTION');
+      expect((err as Error).message).toContain('amin');
+      expect((err as { suggestion: string }).suggestion).toContain('admin');
+    }
+  });
+
+  it('org/repo 形态（含 /）不受拼错拦截影响，仍按裸源处理', () => {
+    const resolved = resolveTemplateArg('org/repo');
+    expect(resolved.templateId).toBeUndefined();
+    expect(resolved.templateSource).toBe('org/repo');
+  });
 });

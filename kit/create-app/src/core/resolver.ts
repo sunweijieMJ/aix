@@ -109,7 +109,11 @@ const CACHE_HINT_MIN_MINUTES = 5;
  * 提示的价值只在缓存**旧**的时候，说「复用缓存（刚刚拉取）」纯属误导。
  */
 export function describeCacheAge(dir: string): string | undefined {
-  const roots = [gitCacheRoot(), path.join(os.homedir(), '.cache', 'giget')];
+  // giget 的缓存根遵循 XDG_CACHE_HOME（缺省 ~/.cache），这里必须同一套推导：
+  // 写死 ~/.cache 会让设了该变量的用户永远看不到「复用缓存」提示
+  const xdg = process.env['XDG_CACHE_HOME'];
+  const cacheBase = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), '.cache');
+  const roots = [gitCacheRoot(), path.join(cacheBase, 'giget')];
   if (!roots.some((root) => dir === root || dir.startsWith(root + path.sep))) return undefined;
 
   let mtimeMs: number;
