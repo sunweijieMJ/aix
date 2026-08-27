@@ -1,5 +1,11 @@
 # @kit/create-app
 
+## 0.2.1
+
+### Patch Changes
+
+- 完善pc和h5模版
+
 ## 0.2.0
 
 ### Minor Changes
