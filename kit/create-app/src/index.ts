@@ -1,11 +1,8 @@
 // Override 命令相关（P0-1）
 export { generateFiles, findMissingPrerequisites } from './override/generator';
-export {
-  checkProjectConflict,
-  resolveConflicts,
-  writeFiles,
-  printFileTree,
-} from './utils/conflict';
+export { checkProjectConflict, resolveConflicts } from './utils/conflict';
+// writeFiles / printFileTree 收敛到 utils/fs 的单一实现（见文末统一导出），
+// GeneratedFile 是 FileEntry 的结构子集，老调用方的入参类型不受影响
 export { isProjectRoot } from './utils/detector';
 export { runPrompts } from './override/prompts';
 export type { ModuleId, GenerateOptions, GeneratedFile, TemplateContext } from './override/types';
@@ -57,7 +54,14 @@ export { Composer } from './core/composer';
 export { lintManifest } from './core/manifest-lint';
 export { applyConditionalBlocks } from './core/conditional';
 export { deepMerge, sortDependencies, patchPackageJson } from './core/pkg-patcher';
-export { writeFiles as writeFileList, printFileTree as printFileList, emptyDir } from './utils/fs';
+// writeFileList / printFileList 是收敛前的旧别名，保留以兼容既有调用方
+export {
+  writeFiles,
+  writeFiles as writeFileList,
+  printFileTree,
+  printFileTree as printFileList,
+  emptyDir,
+} from './utils/fs';
 
 // 问答编排器（P0-4）
 export {

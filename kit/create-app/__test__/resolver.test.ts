@@ -74,6 +74,13 @@ describe('TemplateResolver.fetch - 本地路径', () => {
       code: 'E_NO_TEMPLATE_CONFIG',
     });
   });
+
+  it('--refresh 与 --offline 的互斥校验对本地路径源同样生效', async () => {
+    // 本地源虽不涉及缓存，但同一对自相矛盾的 flag 不能换个源类型就从硬报变静默忽略
+    await expect(resolver.fetch(MINI_DIR, { refresh: true, offline: true })).rejects.toMatchObject({
+      code: 'E_INVALID_OPTION',
+    });
+  });
 });
 
 describe('TemplateResolver.readConfig', () => {

@@ -141,15 +141,15 @@ export class TemplateResolver {
    *   '/abs/path/to/template'、'./local-template'、'~/tpl'、'file:./local-template'
    */
   async fetch(source: string, options?: FetchOptions): Promise<string> {
+    // 策略判定（含 --refresh/--offline 互斥校验）对所有源统一生效：本地路径源虽然
+    // 不涉及缓存，但同一对自相矛盾的 flag 不能换个源类型就从「硬报」变「静默忽略」
+    const policy = resolveCachePolicy(options);
+
     // 本地路径不走缓存，每次直读，便于模板开发时即改即用
     if (isLocalSource(source)) return this.locate(source);
 
     // git 源自己 clone：内网 GitLab 多数只开 ssh，giget 的 tarball 通路拿不到
-    if (isGitSource(source)) return this.cloneGit(source, options);
-
-    // 本地路径分支在上面已 return，此处起才需要策略判定（含 refresh/offline 互斥校验）
-
-    const policy = resolveCachePolicy(options);
+    if (isGitSource(source)) return this.cloneGit(source, policy);
     try {
       const { dir } = await downloadTemplate(source, {
         // refresh 才删缓存重取；其余两态都优先吃缓存，offline 再额外禁掉联网回退
@@ -173,14 +173,13 @@ export class TemplateResolver {
   /**
    * 浅克隆 git 源到缓存目录并返回该目录
    *
-   * 缓存策略与 giget 分支保持一致（resolveCachePolicy 三态）：
+   * 缓存策略与 giget 分支保持一致（三态由 fetch 入口统一判定后传入）：
    * 默认复用缓存，`--refresh` 删缓存重克隆，`--offline` 只用缓存、缺失即报错。
    * 克隆后删掉 `.git/`——模板只要工作区内容，留着会被 composer 当普通文件拷进新项目。
    */
-  private cloneGit(source: string, options?: FetchOptions): string {
+  private cloneGit(source: string, policy: CachePolicy): string {
     const src = parseGitSource(source);
     const dir = gitCacheDir(src);
-    const policy = resolveCachePolicy(options);
 
     if (fs.existsSync(dir)) {
       if (policy !== 'refresh') return this.assertTemplateDir(dir, source);

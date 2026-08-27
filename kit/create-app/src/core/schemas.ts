@@ -31,6 +31,14 @@ const SubstitutionSchema = z.strictObject({
  */
 const PARAM_KEY_PATTERN = /^[a-z][a-z0-9-]*$/;
 
+/**
+ * 特性 id 的取值域：必须与条件块表达式（core/conditional.ts 的 EXPR_PATTERN）一致
+ *
+ * 不收紧的话，`demo.pages` 这类 id 能通过 schema 校验，却永远无法写进 `#if`——
+ * 一写就在模板文件里报 E_TEMPLATE_SYNTAX，报错位置（模板行号）离病因（config.ts）很远
+ */
+const FEATURE_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
 const TemplateParamSchema = z.strictObject({
   label: z.string().min(1),
   // trim + min(1)：`default: ''` / `'  '` 会在非 TTY 下被当成有效默认值静默注入空串，
@@ -53,7 +61,15 @@ export const TemplateConfigSchema = z
     exclude: z.array(z.string()).optional(),
     /** 可选：无条件从产物 package.json 移除的 scripts（只服务真源自身的脚本） */
     removeScripts: z.array(z.string().min(1)).optional(),
-    features: z.record(z.string(), TemplateFeatureDefSchema),
+    features: z.record(
+      z
+        .string()
+        .regex(
+          FEATURE_ID_PATTERN,
+          '特性 id 只能由字母/数字/下划线/连字符组成，且以字母或下划线开头（与 #if 的取值域一致）',
+        ),
+      TemplateFeatureDefSchema,
+    ),
   })
   .superRefine((cfg, ctx) => {
     // params 与 variables / CLI 注入项是同一张占位符表的三种来源，key 冲突必须硬报——

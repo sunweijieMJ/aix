@@ -113,6 +113,29 @@ describe('TemplateConfigSchema strict', () => {
     expect(r.error!.message).toContain('dir');
   });
 
+  it('特性 id 超出 #if 取值域（如含点号）被拒绝', () => {
+    // 不拦的话 `demo.pages` 能过校验，却永远无法写进条件块——一写就在模板文件里
+    // 报 E_TEMPLATE_SYNTAX，报错位置（模板行号）离病因（config.ts）很远
+    const r = TemplateConfigSchema.safeParse({
+      ...base,
+      features: { 'demo.pages': { label: '示例页面' } },
+    });
+    expect(r.success).toBe(false);
+    expect(r.error!.message).toContain('特性 id');
+  });
+
+  it('合法特性 id（camelCase / 连字符 / 下划线开头）通过', () => {
+    const r = TemplateConfigSchema.safeParse({
+      ...base,
+      features: {
+        demoPages: { label: 'a' },
+        'debug-tools': { label: 'b' },
+        _internal: { label: 'c' },
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
   it('substitution 里的未知键同样报错', () => {
     const r = TemplateConfigSchema.safeParse({
       ...base,

@@ -48,10 +48,47 @@ export function emptyDir(dir: string): void {
   }
 }
 
-/** 打印简单的文件树（仅显示路径列表） */
+/**
+ * 打印文件树（带目录层级缩进和 tree 符号）
+ *
+ * create 与 override add 共用一份：历史上 conflict.ts 里还有一份按 GeneratedFile
+ * 的实现，而 GeneratedFile 是 FileEntry 的结构子集，两份树渲染没有理由分叉。
+ */
 export function printFileTree(files: FileList, rootLabel: string): void {
-  console.log(rootLabel);
-  for (const file of files) {
-    console.log(`  ${file.path}`);
+  const tree = buildTree(files.map((f) => f.path));
+  console.log(`  ${rootLabel}/`);
+  printNode(tree, '');
+}
+
+interface TreeNode {
+  [key: string]: TreeNode;
+}
+
+function buildTree(paths: string[]): TreeNode {
+  const root: TreeNode = {};
+  for (const p of paths) {
+    const parts = p.split('/');
+    let node = root;
+    for (const part of parts) {
+      node[part] ??= {};
+      node = node[part];
+    }
+  }
+  return root;
+}
+
+function printNode(node: TreeNode, prefix: string): void {
+  const entries = Object.entries(node).sort(([a], [b]) => a.localeCompare(b));
+  for (let i = 0; i < entries.length; i++) {
+    const [key, children] = entries[i]!;
+    const isLast = i === entries.length - 1;
+    const connector = isLast ? '└── ' : '├── ';
+    const childPrefix = isLast ? '    ' : '│   ';
+    const hasChildren = Object.keys(children).length > 0;
+
+    console.log(`  ${prefix}${connector}${key}${hasChildren ? '/' : ''}`);
+    if (hasChildren) {
+      printNode(children, prefix + childPrefix);
+    }
   }
 }

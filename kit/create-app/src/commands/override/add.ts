@@ -3,12 +3,8 @@ import path from 'node:path';
 import pc from 'picocolors';
 import { isProjectRoot } from '../../utils/detector';
 import { findMissingPrerequisites, generateFiles } from '../../override/generator';
-import {
-  checkProjectConflict,
-  resolveConflicts,
-  writeFiles,
-  printFileTree,
-} from '../../utils/conflict';
+import { checkProjectConflict, resolveConflicts } from '../../utils/conflict';
+import { printFileTree, writeFiles } from '../../utils/fs';
 import { runPrompts } from '../../override/prompts';
 import { REQUIRED_MODULES, ALL_MODULES, type ModuleId } from '../../override/types';
 import { CreateAppError } from '../../utils/errors';
@@ -209,6 +205,7 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
 
   // 写入文件
   writeFiles(resolvedFiles, outputDir);
+  console.log(pc.green('\n✅ 已生成以下文件：\n'));
   printFileTree(resolvedFiles, options.output);
 
   // ── 下一步提示 ──
