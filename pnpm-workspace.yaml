@@ -6,16 +6,30 @@ packages:
 
 # 依赖目录（单一版本真相来源）：子包与根用 `catalog:` 引用，版本只在此处维护。
 catalog:
+  '@types/fs-extra': ^11.0.4
   '@types/markdown-it': ^14.2.0
   '@types/node': ^26.2.0
+  '@types/picomatch': ^4.0.3
   '@vitejs/plugin-vue': ^6.0.8
   '@vitest/coverage-v8': ^4.1.11
   '@vue/test-utils': ^2.4.11
   autoprefixer: ^10.5.4
+  chalk: ^6.0.0
+  commander: ^15.0.0
   cross-env: ^10.1.0
+  dotenv: ^17.4.2
   eslint: ^10.9.0
+  eta: ^4.6.0
+  fs-extra: ^11.4.0
   glob: ^13.0.6
+  gray-matter: ^4.0.3
+  inquirer: ^14.1.0
+  jiti: ^2.7.0
   jsdom: ^29.1.1
+  openai: ^7.5.0
+  ora: ^9.4.1
+  picomatch: ^4.0.5
+  playwright: ^1.62.1
   postcss: ^8.5.26
   prettier: ^3.9.6
   rimraf: ^6.1.3
@@ -31,6 +45,7 @@ catalog:
   vue: ^3.5.41
   vue-router: ^5.2.0
   vue-tsc: ^3.3.11
+  zod: ^4.4.3
 
 overrides:
   # vitest 把 jsdom 声明为可选 peer（jsdom: '*'）；仅根与 ai-chat 显式依赖 jsdom，

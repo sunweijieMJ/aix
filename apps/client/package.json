@@ -36,7 +36,7 @@
     "@vitejs/plugin-vue": "catalog:",
     "cross-env": "catalog:",
     "eslint": "catalog:",
-    "playwright": "^1.62.1",
+    "playwright": "catalog:",
     "stylelint": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",

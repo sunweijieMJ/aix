@@ -34,13 +34,13 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "chalk": "^6.0.0",
-    "commander": "^15.0.0",
+    "chalk": "catalog:",
+    "commander": "catalog:",
     "diff": "^9.0.0",
-    "glob": "^13.0.6",
-    "gray-matter": "^4.0.3",
+    "glob": "catalog:",
+    "gray-matter": "catalog:",
     "handlebars": "^4.7.9",
-    "inquirer": "^14.1.0"
+    "inquirer": "catalog:"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",

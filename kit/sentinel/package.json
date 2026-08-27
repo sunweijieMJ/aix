@@ -34,17 +34,17 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "chalk": "^6.0.0",
-    "commander": "^15.0.0",
-    "fs-extra": "^11.4.0",
-    "inquirer": "^14.1.0",
-    "ora": "^9.4.1"
+    "chalk": "catalog:",
+    "commander": "catalog:",
+    "fs-extra": "catalog:",
+    "inquirer": "catalog:",
+    "ora": "catalog:"
   },
   "devDependencies": {
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "@types/fs-extra": "^11.0.4",
+    "@types/fs-extra": "catalog:",
     "@types/node": "catalog:",
     "eslint": "catalog:",
     "rimraf": "catalog:",

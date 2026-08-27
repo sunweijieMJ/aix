@@ -6,12 +6,18 @@ settings:
 
 catalogs:
   default:
+    '@types/fs-extra':
+      specifier: ^11.0.4
+      version: 11.0.4
     '@types/markdown-it':
       specifier: ^14.2.0
       version: 14.2.0
     '@types/node':
       specifier: ^26.2.0
       version: 26.2.0
+    '@types/picomatch':
+      specifier: ^4.0.3
+      version: 4.0.3
     '@vitejs/plugin-vue':
       specifier: ^6.0.8
       version: 6.0.8
@@ -24,15 +30,51 @@ catalogs:
     autoprefixer:
       specifier: ^10.5.4
       version: 10.5.4
+    chalk:
+      specifier: ^6.0.0
+      version: 6.0.0
+    commander:
+      specifier: ^15.0.0
+      version: 15.0.0
     cross-env:
       specifier: ^10.1.0
       version: 10.1.0
+    dotenv:
+      specifier: ^17.4.2
+      version: 17.4.2
     eslint:
       specifier: ^10.9.0
       version: 10.9.0
+    eta:
+      specifier: ^4.6.0
+      version: 4.6.0
+    fs-extra:
+      specifier: ^11.4.0
+      version: 11.4.0
     glob:
       specifier: ^13.0.6
       version: 13.0.6
+    gray-matter:
+      specifier: ^4.0.3
+      version: 4.0.3
+    inquirer:
+      specifier: ^14.1.0
+      version: 14.1.0
+    jiti:
+      specifier: ^2.7.0
+      version: 2.7.0
+    openai:
+      specifier: ^7.5.0
+      version: 7.5.0
+    ora:
+      specifier: ^9.4.1
+      version: 9.4.1
+    picomatch:
+      specifier: ^4.0.5
+      version: 4.0.5
+    playwright:
+      specifier: ^1.62.1
+      version: 1.62.1
     postcss:
       specifier: ^8.5.26
       version: 8.5.26
@@ -78,6 +120,9 @@ catalogs:
     vue-tsc:
       specifier: ^3.3.11
       version: 3.3.11
+    zod:
+      specifier: ^4.4.3
+      version: 4.4.3
 
 overrides:
   jsdom: ^29.1.1
@@ -181,7 +226,7 @@ importers:
         specifier: 'catalog:'
         version: 10.5.4(postcss@8.5.26)
       chalk:
-        specifier: ^6.0.0
+        specifier: 'catalog:'
         version: 6.0.0
       commitizen:
         specifier: ^4.3.2
@@ -202,7 +247,7 @@ importers:
         specifier: 'catalog:'
         version: 10.9.0(jiti@2.7.0)
       eta:
-        specifier: ^4.6.0
+        specifier: 'catalog:'
         version: 4.6.0
       glob:
         specifier: 'catalog:'
@@ -211,7 +256,7 @@ importers:
         specifier: ^9.1.7
         version: 9.1.7
       inquirer:
-        specifier: ^14.1.0
+        specifier: 'catalog:'
         version: 14.1.0(@types/node@26.2.0)
       jsdom:
         specifier: ^29.1.1
@@ -341,7 +386,7 @@ importers:
         specifier: 'catalog:'
         version: 10.9.0(jiti@2.7.0)
       playwright:
-        specifier: ^1.62.1
+        specifier: 'catalog:'
         version: 1.62.1
       stylelint:
         specifier: 'catalog:'
@@ -377,7 +422,7 @@ importers:
         specifier: ^0.6.0
         version: 0.6.0
       dotenv:
-        specifier: ^17.4.2
+        specifier: 'catalog:'
         version: 17.4.2
       drizzle-orm:
         specifier: ^0.45.2
@@ -386,7 +431,7 @@ importers:
         specifier: ^4.13.3
         version: 4.13.3
       zod:
-        specifier: ^4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
       '@kit/eslint-config':
@@ -481,16 +526,16 @@ importers:
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
       chalk:
-        specifier: ^6.0.0
+        specifier: 'catalog:'
         version: 6.0.0
       commander:
-        specifier: ^15.0.0
+        specifier: 'catalog:'
         version: 15.0.0
       glob:
-        specifier: ^13.0.6
+        specifier: 'catalog:'
         version: 13.0.6
       gray-matter:
-        specifier: ^4.0.3
+        specifier: 'catalog:'
         version: 4.0.3
       typescript:
         specifier: 'catalog:'
@@ -578,7 +623,7 @@ importers:
   internal/vitest-config:
     dependencies:
       '@vitejs/plugin-vue':
-        specifier: ^6.0.8
+        specifier: 'catalog:'
         version: 6.0.8(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(less@4.6.6)(sass-embedded@1.100.0)(sass@1.103.1)(tsx@4.23.12)(yaml@2.9.0))(vue@3.5.41(typescript@6.0.3))
       vitest:
         specifier: '>=4.0.0'
@@ -600,25 +645,25 @@ importers:
   kit/ai-preset:
     dependencies:
       chalk:
-        specifier: ^6.0.0
+        specifier: 'catalog:'
         version: 6.0.0
       commander:
-        specifier: ^15.0.0
+        specifier: 'catalog:'
         version: 15.0.0
       diff:
         specifier: ^9.0.0
         version: 9.0.0
       glob:
-        specifier: ^13.0.6
+        specifier: 'catalog:'
         version: 13.0.6
       gray-matter:
-        specifier: ^4.0.3
+        specifier: 'catalog:'
         version: 4.0.3
       handlebars:
         specifier: ^4.7.9
         version: 4.7.9
       inquirer:
-        specifier: ^14.1.0
+        specifier: 'catalog:'
         version: 14.1.0(@types/node@26.2.0)
     devDependencies:
       '@kit/eslint-config':
@@ -661,16 +706,16 @@ importers:
         specifier: ^1.7.0
         version: 1.7.0
       commander:
-        specifier: ^15.0.0
+        specifier: 'catalog:'
         version: 15.0.0
       eta:
-        specifier: ^4.6.0
+        specifier: 'catalog:'
         version: 4.6.0
       giget:
         specifier: ^3.3.1
         version: 3.3.1
       jiti:
-        specifier: ^2.7.0
+        specifier: 'catalog:'
         version: 2.7.0
       picocolors:
         specifier: ^1.1.1
@@ -679,7 +724,7 @@ importers:
         specifier: ^7.8.5
         version: 7.8.5
       zod:
-        specifier: ^4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
       '@kit/eslint-config':
@@ -776,22 +821,22 @@ importers:
         specifier: ^3.5.41
         version: 3.5.41
       chalk:
-        specifier: ^6.0.0
+        specifier: 'catalog:'
         version: 6.0.0
       dotenv:
-        specifier: ^17.4.2
+        specifier: 'catalog:'
         version: 17.4.2
       inquirer:
-        specifier: ^14.1.0
+        specifier: 'catalog:'
         version: 14.1.0(@types/node@26.2.0)
       jiti:
-        specifier: ^2.7.0
+        specifier: 'catalog:'
         version: 2.7.0
       openai:
-        specifier: ^7.5.0
+        specifier: 'catalog:'
         version: 7.5.0(ws@8.21.3)(zod@4.4.3)
       picomatch:
-        specifier: ^4.0.5
+        specifier: 'catalog:'
         version: 4.0.5
       typescript:
         specifier: 'catalog:'
@@ -816,7 +861,7 @@ importers:
         specifier: 'catalog:'
         version: 26.2.0
       '@types/picomatch':
-        specifier: ^4.0.3
+        specifier: 'catalog:'
         version: 4.0.3
       '@types/yargs':
         specifier: ^17.0.35
@@ -867,19 +912,19 @@ importers:
   kit/sentinel:
     dependencies:
       chalk:
-        specifier: ^6.0.0
+        specifier: 'catalog:'
         version: 6.0.0
       commander:
-        specifier: ^15.0.0
+        specifier: 'catalog:'
         version: 15.0.0
       fs-extra:
-        specifier: ^11.4.0
+        specifier: 'catalog:'
         version: 11.4.0
       inquirer:
-        specifier: ^14.1.0
+        specifier: 'catalog:'
         version: 14.1.0(@types/node@26.2.0)
       ora:
-        specifier: ^9.4.1
+        specifier: 'catalog:'
         version: 9.4.1
     devDependencies:
       '@kit/eslint-config':
@@ -892,7 +937,7 @@ importers:
         specifier: workspace:^
         version: link:../../internal/vitest-config
       '@types/fs-extra':
-        specifier: ^11.0.4
+        specifier: 'catalog:'
         version: 11.0.4
       '@types/node':
         specifier: 'catalog:'
@@ -952,31 +997,31 @@ importers:
         specifier: ^1.0.0
         version: 1.30.0(zod@4.4.3)
       chalk:
-        specifier: ^6.0.0
+        specifier: 'catalog:'
         version: 6.0.0
       commander:
-        specifier: ^15.0.0
+        specifier: 'catalog:'
         version: 15.0.0
       cosmiconfig:
         specifier: ^10.0.0
         version: 10.0.0
       eta:
-        specifier: ^4.6.0
+        specifier: 'catalog:'
         version: 4.6.0
       fs-extra:
-        specifier: ^11.4.0
+        specifier: 'catalog:'
         version: 11.4.0
       inquirer:
-        specifier: ^14.1.0
+        specifier: 'catalog:'
         version: 14.1.0(@types/node@26.2.0)
       ora:
-        specifier: ^9.4.1
+        specifier: 'catalog:'
         version: 9.4.1
       p-limit:
         specifier: ^7.3.1
         version: 7.3.1
       picomatch:
-        specifier: ^4.0.5
+        specifier: 'catalog:'
         version: 4.0.5
       pixelmatch:
         specifier: ^7.2.0
@@ -985,7 +1030,7 @@ importers:
         specifier: ^7.0.0
         version: 7.0.0
       zod:
-        specifier: ^4.4.3
+        specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
       '@anthropic-ai/sdk':
@@ -1007,7 +1052,7 @@ importers:
         specifier: 'catalog:'
         version: 26.2.0
       '@types/picomatch':
-        specifier: ^4.0.3
+        specifier: 'catalog:'
         version: 4.0.3
       '@types/pixelmatch':
         specifier: ^5.2.6
@@ -1019,10 +1064,10 @@ importers:
         specifier: 'catalog:'
         version: 10.9.0(jiti@2.7.0)
       openai:
-        specifier: ^7.5.0
+        specifier: 'catalog:'
         version: 7.5.0(ws@8.21.3)(zod@4.4.3)
       playwright:
-        specifier: ^1.62.1
+        specifier: 'catalog:'
         version: 1.62.1
       rimraf:
         specifier: 'catalog:'

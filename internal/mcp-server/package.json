@@ -30,10 +30,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "chalk": "^6.0.0",
-    "commander": "^15.0.0",
-    "glob": "^13.0.6",
-    "gray-matter": "^4.0.3",
+    "chalk": "catalog:",
+    "commander": "catalog:",
+    "glob": "catalog:",
+    "gray-matter": "catalog:",
     "typescript": "catalog:",
     "ws": "^8.21.3"
   },
