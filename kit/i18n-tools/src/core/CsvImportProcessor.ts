@@ -17,6 +17,11 @@ export interface CsvImportOptions {
   dryRun: boolean;
   /** 跳过 y/N 确认 */
   ci: boolean;
+  /**
+   * 是否处于交互会话（语义同 PruneOptions.interactive）。非交互且未 --ci 时写回前
+   * 直接报错退出而非弹确认——stdin 为常开管道时 inquirer 会无限挂起。默认 true。
+   */
+  interactive?: boolean;
 }
 
 /**
@@ -181,10 +186,18 @@ export class CsvImportProcessor extends FileProcessor {
       return;
     }
     if (!this.options.ci) {
+      // 非交互会话不弹确认：与 PruneProcessor 同口径 fail-fast，防 stdin 常开管道下无限挂起。
+      if (this.options.interactive === false) {
+        throw new Error(
+          '非交互模式下 csv-import 需显式传 --ci 确认写回；' +
+            '或用 --dry-run 预览改动，或加 -i 进入交互确认。',
+        );
+      }
       const ok = await InteractiveUtils.promptForGenericConfirmation(
         `确认写回 ${writeTargets.map((p) => FileUtils.getRelativePath(p)).join(' / ')}？`,
       );
       if (!ok) {
+        this.cancelled = true;
         LoggerUtils.warn('操作已取消');
         return;
       }

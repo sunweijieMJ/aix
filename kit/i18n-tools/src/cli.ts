@@ -262,7 +262,7 @@ const executePrune = async (
   config: ResolvedConfig,
   adapter: FrameworkAdapter,
   isCustom: boolean,
-  opts: { dryRun: boolean; ci: boolean },
+  opts: { dryRun: boolean; ci: boolean; interactive: boolean },
 ): Promise<void> => {
   const processor = new PruneProcessor(config, isCustom, adapter, opts);
   await processor.execute();
@@ -291,7 +291,7 @@ const executeCsvExport = async (
 const executeCsvImport = async (
   config: ResolvedConfig,
   isCustom: boolean,
-  opts: { input: string; langs?: string[]; dryRun: boolean; ci: boolean },
+  opts: { input: string; langs?: string[]; dryRun: boolean; ci: boolean; interactive: boolean },
 ): Promise<void> => {
   const processor = new CsvImportProcessor(config, isCustom, opts);
   await processor.execute();
@@ -395,7 +395,8 @@ const main = async (): Promise<void> => {
     .option('ci', {
       describe:
         'CI 模式（非交互）：doctor 发现 error 级问题时以非零状态码退出；' +
-        'prune / csv-import 跳过破坏性写入前的二次确认，直接执行',
+        'prune / csv-import 跳过破坏性写入前的二次确认，直接执行' +
+        '（非交互模式下这两个命令必须显式传 --ci 才会执行破坏性写入，否则报错退出）',
       type: 'boolean',
       default: false,
     })
@@ -685,7 +686,9 @@ export default defineConfig({
         await executeDoctor(config, adapter, custom, Boolean(argv.ci));
         break;
       case ModeName.PRUNE:
-        await executePrune(config, adapter, custom, { dryRun, ci: Boolean(argv.ci) });
+        // interactive 透传：非交互（--mode/--ci 推导）且未 --ci 时 prune 直接报错，
+        // 绝不弹 inquirer 确认——stdin 常开管道下会无限挂起（「非交互 ⇒ 绝不碰 inquirer」）。
+        await executePrune(config, adapter, custom, { dryRun, ci: Boolean(argv.ci), interactive });
         break;
       case ModeName.CSV_EXPORT:
         await executeCsvExport(config, custom, {
@@ -710,6 +713,8 @@ export default defineConfig({
           langs: csvLangs,
           dryRun,
           ci: Boolean(argv.ci),
+          // 同 PRUNE：非交互且未 --ci 时写回前报错退出，防 inquirer 挂起
+          interactive,
         });
         break;
       }

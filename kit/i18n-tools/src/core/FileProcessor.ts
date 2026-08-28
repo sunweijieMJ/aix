@@ -111,6 +111,13 @@ export abstract class FileProcessor {
   }
 
   /**
+   * 用户在交互确认中选择了取消。子类在取消分支置位后 return，收尾改打「已取消」——
+   * 否则 executeWithLifecycle 照常打「✅ …完成」，取消的破坏性操作被 SUCCESS 收尾
+   * 会误导人与 CI 判读（看日志以为删除已执行）。退出码保持 0：取消是用户选择，不是失败。
+   */
+  protected cancelled = false;
+
+  /**
    * 模板方法：包装子类逻辑，提供日志和错误处理
    */
   protected async executeWithLifecycle(fn: () => Promise<void> | void): Promise<void> {
@@ -118,7 +125,11 @@ export abstract class FileProcessor {
     this.logOperationStart(operationName);
     try {
       await fn();
-      this.logOperationComplete(operationName);
+      if (this.cancelled) {
+        LoggerUtils.warn(`⚠️ ${operationName}已取消，未做任何修改`);
+      } else {
+        this.logOperationComplete(operationName);
+      }
     } catch (error) {
       this.logError(operationName, error);
       throw error;
