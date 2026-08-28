@@ -3,13 +3,14 @@ import type { ResolvedConfig } from '../config';
 import { IdGenerator } from '../utils/id-generator';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { scanKeyReferencesInContent, stripCommentsForScan } from '../utils/source-key-scanner';
+import { collapseWhitespace } from '../utils/text-normalize';
 
 /**
- * 把原文规范化为查表键：去首尾空白、压缩空白序列。
+ * 把原文规范化为查表键，防止「电话号码」与「电话号码 」（多了空格）被识别成两条不同条目。
  *
- * 防止「电话号码」与「电话号码 」（多了空格）被识别成两条不同条目。
+ * 口径必须与 Glossary / LocaleValueLinter 的查表键一致，故收口在 collapseWhitespace。
  */
-const normalizeKey = (text: string): string => text.trim().replace(/\s+/g, ' ');
+const normalizeKey = collapseWhitespace;
 
 /**
  * 语义 ID 复用决策器

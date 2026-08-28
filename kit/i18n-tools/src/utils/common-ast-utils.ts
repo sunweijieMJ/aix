@@ -1,20 +1,10 @@
 import ts from 'typescript';
-import { CONFIG, PLACEHOLDER_NAME_CHARS } from './constants';
+import { CHINESE_CHAR_RANGE, CONFIG, PLACEHOLDER_NAME_CHARS } from './constants';
 import { LoggerUtils } from './logger';
 import type { LocaleMap, ExtractedString } from './types';
 
-/**
- * 提取阶段记录的「被跳过的中文字面量」位置（比较运算操作数 / 嵌套插值中文）。
- * 供 linter / coverage 跨阶段消费时共享同一份快照，避免依赖 drain 的消费顺序。
- */
-export interface SkippedTextLocation {
-  text: string;
-  filePath: string;
-  line: number;
-  column: number;
-  /** 同一外层表达式中位置和文本相同时的稳定分支标识，仅用于去重。 */
-  occurrence?: number;
-}
+/** 非「标识符字符或中文」的字符，用于把表达式片段清洗成合法占位符名。 */
+const NON_IDENT_OR_CHINESE_RE = new RegExp(`[^\\w${CHINESE_CHAR_RANGE}]`, 'g');
 
 /**
  * 通用 AST 工具类
@@ -245,85 +235,6 @@ export class CommonASTUtils {
       (ts.isPropertyAccessExpression(expression) &&
         (expression.name.text === 't' || expression.name.text === '$t'))
     );
-  }
-
-  /**
-   * 被「比较运算符跳过」记录到的中文字面量位置。
-   *
-   * Why: isComparisonOperand 跳过 `status === '进行中'` 这类位置是为了避免
-   *      翻译后分支失效；但同一句中文若在别处（如 tabs 数组初值）被提取，
-   *      就会出现「script 端值已 i18n 化，template 端仍硬编码中文比较」的
-   *      非对称——切语言后分支永远不命中。lint 阶段把本集合与 source locale
-   *      map values 交叉，命中即告警，让用户改用 key 比较或索引比较。
-   *
-   * 用 Map 去重（同一位置多次访问 AST 时只记录一次）。
-   */
-  private static skippedComparisonOperands: Map<
-    string,
-    { text: string; filePath: string; line: number; column: number }
-  > = new Map();
-
-  /**
-   * 记录一处「因比较运算符被跳过」的中文字面量位置。供 extractor 调用。
-   * 仅当 text 含中文时建议记录（调用方自行判定，避免把英文枚举值记进来产生噪音）。
-   */
-  static recordSkippedComparisonOperand(
-    text: string,
-    filePath: string,
-    line: number,
-    column: number,
-  ): void {
-    const key = `${filePath}:${line}:${column}:${text}`;
-    if (!CommonASTUtils.skippedComparisonOperands.has(key)) {
-      CommonASTUtils.skippedComparisonOperands.set(key, { text, filePath, line, column });
-    }
-  }
-
-  /** 取出当前累积的跳过记录并清空（供 lint 阶段一次性消费）。 */
-  static drainSkippedComparisonOperands(): Array<{
-    text: string;
-    filePath: string;
-    line: number;
-    column: number;
-  }> {
-    const items = Array.from(CommonASTUtils.skippedComparisonOperands.values());
-    CommonASTUtils.skippedComparisonOperands.clear();
-    return items;
-  }
-
-  /**
-   * 被「插值表达式整体占位符化」吞掉的嵌套中文字面量位置。
-   *
-   * Why: `操作失败：${cond ? '内部错误' : '网络异常'}` 这类模板字符串，整段会被
-   *      processTemplateExpression 转成 `操作失败：{value}`，三元里的中文分支既不
-   *      提取、也不内联，而是作为运行时参数原样塞进 {value}——切到非源语种后渲染出
-   *      未翻译的中文，且没有任何告警（静默泄漏）。这里记录位置，lint / doctor 阶段
-   *      显式暴露，提示用户手动把分支拆成 t(...)。
-   *
-   * 与 skippedComparisonOperands 不同：本集合无需与 locale map 交叉——嵌套中文
-   * 必然是展示文案，泄漏即问题，全部上报。用 Map 去重。
-   */
-  private static skippedNestedChinese: Map<string, SkippedTextLocation> = new Map();
-
-  /** 记录一处「被插值占位符吞掉的嵌套中文字面量」位置。供 extractor 调用。 */
-  static recordSkippedNestedChinese(
-    text: string,
-    filePath: string,
-    line: number,
-    column: number,
-    occurrence?: number,
-  ): void {
-    const key = `${filePath}:${line}:${column}:${occurrence ?? ''}:${text}`;
-    if (!CommonASTUtils.skippedNestedChinese.has(key)) {
-      CommonASTUtils.skippedNestedChinese.set(key, { text, filePath, line, column, occurrence });
-    }
-  }
-
-  /** 取出当前累积的嵌套中文记录并清空（供 lint 阶段一次性消费）。 */
-  static drainSkippedNestedChinese(): SkippedTextLocation[] {
-    const items = Array.from(CommonASTUtils.skippedNestedChinese.values());
-    CommonASTUtils.skippedNestedChinese.clear();
-    return items;
   }
 
   /**
@@ -700,7 +611,7 @@ export class CommonASTUtils {
       return 'value';
     }
 
-    // 使用非贪婪匹配移除函数调用参数，避免 (a * b).toFixed(2) 整体被吃掉
+    // 用否定字符类 `[^)]*` 移除函数调用参数，避免 `.*` 贪婪地把 (a * b).toFixed(2) 整体吃掉
     // 剥掉 `[...]` 让 `progressMap[item.pathId]` 退回 `progressMap` —— 下标里的
     // key 名描述的是字典 key，与字典值语义无关，作为占位符名会误导译者。
     let baseName = expressionText.replace(/\([^)]*\)/g, '').replace(/\[[^\]]*\]/g, '');
@@ -711,9 +622,9 @@ export class CommonASTUtils {
     for (let i = parts.length - 1; i >= 0; i--) {
       let part = parts[i] ?? '';
       part = part.replace(/^['"`]|['"`]$/g, '');
-      // 上界用 \u4e00-\u9fff，与 CONFIG.CHINESE_REGEX 对齐：旧上界 U+9FA5 会把
-      // U+9FA6-U+9FFF 扩充汉字当非中文剔除，与 containsChinese 判定口径不一致。
-      part = part.replace(/[^\w\u4e00-\u9fff]/g, '');
+      // 中文区间拼 CHINESE_CHAR_RANGE，与 CONFIG.CHINESE_REGEX / containsChinese 同源：
+      // 曾在此写死上界 U+9FA5，把 U+9FA6-U+9FFF 扩充汉字当非中文剔除，判定口径与提取端不一致。
+      part = part.replace(NON_IDENT_OR_CHINESE_RE, '');
 
       if (part && !this.NON_SEMANTIC_SUFFIXES.has(part)) {
         if (this.isLowSignalIdentifier(part)) return 'value';
@@ -1000,9 +911,13 @@ export class CommonASTUtils {
   }
 
   /**
-   * 替换代码中的字符串
+   * 按绝对偏移替换代码中的字符串。
+   *
+   * 重叠即抛错、不做任何取舍：能构造出重叠区间说明上游定位逻辑已经出错，
+   * 静默丢弃其中一个会让某个调用点保留中文原文却不再有对应 key（假绿）。
+   *
    * @param sourceText - 源代码文本
-   * @param replacements - 替换项列表
+   * @param replacements - 替换项列表（顺序无关）
    * @returns 替换后的代码
    */
   static applyReplacements(
@@ -1013,13 +928,8 @@ export class CommonASTUtils {
       return sourceText;
     }
 
-    let result = sourceText;
-
-    // 按范围大小降序排序，优先保留覆盖范围更大的替换
-    const sortedBySize = [...replacements].sort((a, b) => b.end - b.start - (a.end - a.start));
-    // 贪心选择：依次选入不与已选替换重叠的项
     const validReplacements: typeof replacements = [];
-    for (const replacement of sortedBySize) {
+    for (const replacement of replacements) {
       const overlapping = validReplacements.find(
         (selected) => replacement.start < selected.end && replacement.end > selected.start,
       );
@@ -1031,8 +941,10 @@ export class CommonASTUtils {
       validReplacements.push(replacement);
     }
 
+    // 倒序写入：先改后面的区间，前面区间的偏移才不会因长度变化而失效。
     validReplacements.sort((a, b) => b.start - a.start);
 
+    let result = sourceText;
     for (const { start, end, replacement } of validReplacements) {
       result = result.substring(0, start) + replacement + result.substring(end);
     }
@@ -1375,7 +1287,7 @@ export class CommonASTUtils {
   /**
    * 占位符名匹配：标识符 / 含点的路径（如 `count`、`user.name`）。
    * 与 createMessageWithOptions 写入的占位符名（来自 getVariableNameFromExpression）保持一致——
-   * 后者有意保留中文标识符（`一-鿿`，中文变量名是合法 JS），故这里必须同字符集，
+   * 后者有意保留中文标识符（CHINESE_CHAR_RANGE，中文变量名是合法 JS），故这里必须同字符集，
    * 否则 `共{{数量}}个` 在 restore 归一时不被识别，双花括号库往返丢变量。
    * 字符集与 placeholder-utils 的 IDENT_RE 同源，见 PLACEHOLDER_NAME_CHARS 注释。
    */
@@ -2117,22 +2029,42 @@ export class CommonASTUtils {
     return !used;
   }
 
-  /** 标识符是否处于「值引用」位置（排除声明名 / 绑定名 / 属性名 / 对象 key / import 说明符）。 */
+  /**
+   * 标识符是否处于「值读取位置」（真正引用了同名变量），用于区分裸值引用与声明名 /
+   * 绑定名 / 对象键 / 成员名 / import-export 具名 / JSX 属性名等非引用位置。
+   *
+   * 全库唯一实现：ReactRestoreTransformer 曾另有一份本地副本，两版各覆盖几种 case
+   * （一版少 export/JSX 属性名，一版少 PropertySignature/MethodDeclaration），
+   * 任一路径漏一种 case 都会把非引用位置当成使用、阻止 import/声明被清理。
+   *
+   * 依赖 parent 指针——调用方必须传入 CommonASTUtils.parseSourceFile
+   * （createSourceFile 的 setParentNodes=true）解析出的节点。
+   *
+   * 注：对象字面量简写 `{ t }`（ShorthandPropertyAssignment.name）是对 t 的真实值引用，
+   * 不排除。
+   */
   static isIdentifierValueReference(id: ts.Identifier): boolean {
     const p = id.parent;
-    if (!p) return false;
-    if (ts.isImportSpecifier(p) || ts.isImportClause(p)) return false;
+    // Identifier 在 setParentNodes 解析结果里必有 parent，此分支实际不可达；
+    // 取 true（"当作真实引用"）是保守方向——所有调用方都用本判定决定「能否删除某个
+    // 声明/import」，误判为未使用会产出 undefined 引用（TS2304）。
+    if (!p) return true;
+    // 声明 / 绑定名位置
     if (ts.isBindingElement(p) && (p.name === id || p.propertyName === id)) return false;
     if (ts.isVariableDeclaration(p) && p.name === id) return false;
     if (ts.isParameter(p) && p.name === id) return false;
-    // 属性访问名（x.t）/ 限定名右侧 / 对象字面量 key / 各类成员名：非对该绑定的引用
+    if (ts.isFunctionDeclaration(p) && p.name === id) return false;
+    if (ts.isClassDeclaration(p) && p.name === id) return false;
+    // import / export 具名（含别名两侧）
+    if (ts.isImportSpecifier(p) || ts.isImportClause(p) || ts.isExportSpecifier(p)) return false;
+    // 属性访问名（x.t）/ 限定名右侧 / 对象字面量 key / JSX 属性名 / 各类成员名
     if (ts.isPropertyAccessExpression(p) && p.name === id) return false;
     if (ts.isQualifiedName(p) && p.right === id) return false;
     if (ts.isPropertyAssignment(p) && p.name === id) return false;
+    if (ts.isJsxAttribute(p) && p.name === id) return false;
     if (ts.isPropertySignature(p) && p.name === id) return false;
     if (ts.isPropertyDeclaration(p) && p.name === id) return false;
     if (ts.isMethodDeclaration(p) && p.name === id) return false;
-    // 注：对象字面量简写 `{ t }`（ShorthandPropertyAssignment）是对 t 的真实值引用，保留为引用
     return true;
   }
 

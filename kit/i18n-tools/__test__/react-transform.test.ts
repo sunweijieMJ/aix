@@ -11,6 +11,7 @@ import { createReactI18nLibrary } from '../src/strategies/react/libraries';
 import type { ReactI18nLibraryType } from '../src/strategies/react/libraries';
 import { HooksUtils } from '../src/strategies/react/hooks-utils';
 import { ReactAdapter } from '../src/adapters/ReactAdapter';
+import type { ITextExtractor } from '../src/adapters/FrameworkAdapter';
 import { GenerateProcessor } from '../src/core/GenerateProcessor';
 import { LoggerUtils } from '../src/utils/logger';
 import { CommonASTUtils } from '../src/utils/common-ast-utils';
@@ -853,7 +854,6 @@ describe('GenerateProcessor 覆盖率 — react-intl 调用点计入分子（审
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -904,7 +904,7 @@ export function Done() {
 /**
  * 回归（三轮审计 #3）：JSX 混合内容（中文文本 + 插值表达式）路径
  * extractJsxMixedContent 对每个 `{expr}` 子节点只发 `${expr}` 占位，**不**做嵌套中文
- * 检测——而模板字面量路径会把三元/逻辑分支里的中文记入 skippedNestedChinese 供
+ * 检测——而模板字面量路径会把三元/逻辑分支里的中文记入 ExtractionDiagnostics 供
  * lint/doctor 告警。于是 `<div>状态：{ok ? '成功' : '失败'}</div>` 里的「成功/失败」
  * 既不翻译也无任何诊断，运行时静默泄漏未翻译中文。
  *
@@ -913,8 +913,9 @@ export function Done() {
  */
 describe('React JSX 混合内容插值中嵌套中文记入诊断（审计三轮 #3）', () => {
   let dir: string;
+  // 每次 extract 都新建 adapter/extractor，诊断收集器随之新建，用例之间天然隔离。
+  let lastExtractor: ITextExtractor;
   beforeEach(() => {
-    CommonASTUtils.drainSkippedNestedChinese();
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-jsx-nested-cn-'));
   });
   afterEach(() => {
@@ -925,7 +926,8 @@ describe('React JSX 混合内容插值中嵌套中文记入诊断（审计三轮
     const file = path.join(dir, 'C.tsx');
     fs.writeFileSync(file, code);
     const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next');
-    return adapter.getTextExtractor().extractFromFile(file);
+    lastExtractor = adapter.getTextExtractor();
+    return lastExtractor.extractFromFile(file);
   };
 
   it('三元分支中文被记录，且未各自生成独立 key', async () => {
@@ -941,7 +943,7 @@ export function C({ ok }: { ok: boolean }) {
     expect(strings.some((s) => s.original === '失败')).toBe(false);
 
     // 关键：两个中文分支被记入诊断集合（不再静默泄漏）
-    const drained = CommonASTUtils.drainSkippedNestedChinese();
+    const drained = lastExtractor.getDiagnostics().drainSkippedNestedChinese();
     const texts = drained.map((d) => d.text).sort();
     expect(texts).toEqual(['失败', '成功']);
     expect(drained[0]!.filePath).toBe(path.join(dir, 'C.tsx'));
@@ -955,7 +957,7 @@ export function C({ name }: { name: string }) {
 }
 `;
     await extract(code);
-    expect(CommonASTUtils.drainSkippedNestedChinese()).toEqual([]);
+    expect(lastExtractor.getDiagnostics().drainSkippedNestedChinese()).toEqual([]);
   });
 });
 

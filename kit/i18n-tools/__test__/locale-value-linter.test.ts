@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import { ExtractionDiagnostics } from '../src/utils/extraction-diagnostics';
 import { LocaleValueLinter } from '../src/utils/locale-value-linter';
 import { LoggerUtils } from '../src/utils/logger';
 import { RunReport } from '../src/utils/run-report';
 
 /**
- * 测试内联组合 analyze + emit：analyze 拿结构化 findings（内部 drain 全局 collector），
- * emit 默认输出到 console + 可选 RunReport。24 处用例共用，避免重复展开两层调用。
+ * 测试内联组合 analyze + emit：analyze 拿结构化 findings（提取阶段的跳过项快照由
+ * options 显式传入），emit 默认输出到 console + 可选 RunReport。
+ * 多处用例共用，避免重复展开两层调用。
  */
 const analyzeAndEmit = (
   localeMap: Parameters<typeof LocaleValueLinter.analyze>[0],
@@ -209,23 +210,29 @@ describe('LocaleValueLinter', () => {
   });
 
   describe('硬编码中文 vs i18n 比较风险检测', () => {
+    let diagnostics: ExtractionDiagnostics;
     beforeEach(() => {
-      // 清空收集器，避免上一个测试遗留污染。
-      CommonASTUtils.drainSkippedComparisonOperands();
+      // 每个用例一份独立收集器：收集器现挂在 extractor 实例上，不再是进程级全局，
+      // 因此无需「先 drain 清场」的仪式。
+      diagnostics = new ExtractionDiagnostics();
     });
 
     it('跳过的中文字面量若同时是 locale value，告警命中并列出对应 key', () => {
-      CommonASTUtils.recordSkippedComparisonOperand(
+      diagnostics.recordSkippedComparisonOperand(
         '教学路径',
         '/proj/src/components/PathPopup.vue',
         17,
         24,
       );
 
-      analyzeAndEmit({
-        'pages.flippedcourse.components.teachingpath': '教学路径',
-        'pages.flippedcourse.components.teachingscope': '教学范围',
-      });
+      analyzeAndEmit(
+        {
+          'pages.flippedcourse.components.teachingpath': '教学路径',
+          'pages.flippedcourse.components.teachingscope': '教学范围',
+        },
+        undefined,
+        { skippedComparisons: diagnostics.drainSkippedComparisonOperands() },
+      );
 
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       expect(lines).toContain('硬编码中文 ↔ i18n 文案');
@@ -235,33 +242,46 @@ describe('LocaleValueLinter', () => {
     });
 
     it('跳过的中文未出现在 locale map 中则不告警（避免对纯枚举常量的误报）', () => {
-      CommonASTUtils.recordSkippedComparisonOperand('某种内部状态', '/proj/src/foo.vue', 10, 5);
+      diagnostics.recordSkippedComparisonOperand('某种内部状态', '/proj/src/foo.vue', 10, 5);
 
-      analyzeAndEmit({
-        'pages.foo.title': '标题',
+      analyzeAndEmit({ 'pages.foo.title': '标题' }, undefined, {
+        skippedComparisons: diagnostics.drainSkippedComparisonOperands(),
       });
 
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       expect(lines).not.toContain('硬编码中文');
     });
 
-    it('drain 是消耗性操作：lint 后 collector 应被清空，避免下次重复告警', () => {
-      CommonASTUtils.recordSkippedComparisonOperand('完成', '/proj/a.vue', 1, 1);
-      analyzeAndEmit({ 'a.done': '完成' });
+    it('drain 是消耗性操作：取过一次后收集器清空，第二轮 lint 不重复告警', () => {
+      diagnostics.recordSkippedComparisonOperand('完成', '/proj/a.vue', 1, 1);
+      analyzeAndEmit({ 'a.done': '完成' }, undefined, {
+        skippedComparisons: diagnostics.drainSkippedComparisonOperands(),
+      });
       warnSpy.mockClear();
 
-      // 第二次 lint：collector 已空，不应再次告警
+      // 第二次 drain 已空 → 不应再次告警
+      const second = diagnostics.drainSkippedComparisonOperands();
+      expect(second).toEqual([]);
+      analyzeAndEmit({ 'a.done': '完成' }, undefined, { skippedComparisons: second });
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).not.toContain('硬编码中文');
+    });
+
+    it('未传快照时该检测整体跳过（不去任何全局状态取数）', () => {
+      diagnostics.recordSkippedComparisonOperand('完成', '/proj/a.vue', 1, 1);
       analyzeAndEmit({ 'a.done': '完成' });
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       expect(lines).not.toContain('硬编码中文');
     });
 
     it('同一位置重复记录会去重（一次告警）', () => {
-      CommonASTUtils.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
-      CommonASTUtils.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
-      CommonASTUtils.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
+      diagnostics.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
+      diagnostics.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
+      diagnostics.recordSkippedComparisonOperand('取消', '/proj/x.vue', 5, 3);
 
-      analyzeAndEmit({ 'common.cancel': '取消' });
+      analyzeAndEmit({ 'common.cancel': '取消' }, undefined, {
+        skippedComparisons: diagnostics.drainSkippedComparisonOperands(),
+      });
 
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       const hits = (lines.match(/\/proj\/x\.vue:5:3/g) || []).length;
@@ -273,16 +293,18 @@ describe('LocaleValueLinter', () => {
   });
 
   describe('插值表达式内嵌套中文检测（nested-interpolation-chinese）', () => {
+    let diagnostics: ExtractionDiagnostics;
     beforeEach(() => {
-      // 清空收集器，避免上一个测试遗留污染。
-      CommonASTUtils.drainSkippedNestedChinese();
+      diagnostics = new ExtractionDiagnostics();
     });
 
     it('记录到的嵌套中文无条件告警（无需与 locale map 交叉）', () => {
-      CommonASTUtils.recordSkippedNestedChinese('内部错误', '/proj/src/foo.vue', 42, 8);
+      diagnostics.recordSkippedNestedChinese('内部错误', '/proj/src/foo.vue', 42, 8);
 
       // 故意给一个完全不相关的 locale map：嵌套中文仍应告警（与 hardcoded-comparison 不同）
-      analyzeAndEmit({ 'a.b': '无关文案' });
+      analyzeAndEmit({ 'a.b': '无关文案' }, undefined, {
+        skippedNestedChinese: diagnostics.drainSkippedNestedChinese(),
+      });
 
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       expect(lines).toContain('[nested-interpolation-chinese]');
@@ -290,25 +312,48 @@ describe('LocaleValueLinter', () => {
       expect(lines).toContain('"内部错误"');
     });
 
-    it('drain 是消耗性操作：lint 后 collector 清空，不重复告警', () => {
-      CommonASTUtils.recordSkippedNestedChinese('网络异常', '/proj/a.vue', 1, 1);
-      analyzeAndEmit({});
+    it('drain 是消耗性操作：取过一次后收集器清空，第二轮不重复告警', () => {
+      diagnostics.recordSkippedNestedChinese('网络异常', '/proj/a.vue', 1, 1);
+      analyzeAndEmit({}, undefined, {
+        skippedNestedChinese: diagnostics.drainSkippedNestedChinese(),
+      });
       warnSpy.mockClear();
 
+      const second = diagnostics.drainSkippedNestedChinese();
+      expect(second).toEqual([]);
+      analyzeAndEmit({}, undefined, { skippedNestedChinese: second });
+      const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+      expect(lines).not.toContain('nested-interpolation-chinese');
+    });
+
+    it('未传快照时该检测整体跳过（不去任何全局状态取数）', () => {
+      diagnostics.recordSkippedNestedChinese('网络异常', '/proj/a.vue', 1, 1);
       analyzeAndEmit({});
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       expect(lines).not.toContain('nested-interpolation-chinese');
     });
 
     it('同一位置重复记录会去重（一次告警）', () => {
-      CommonASTUtils.recordSkippedNestedChinese('网络异常', '/proj/x.vue', 5, 3);
-      CommonASTUtils.recordSkippedNestedChinese('网络异常', '/proj/x.vue', 5, 3);
+      diagnostics.recordSkippedNestedChinese('网络异常', '/proj/x.vue', 5, 3);
+      diagnostics.recordSkippedNestedChinese('网络异常', '/proj/x.vue', 5, 3);
 
-      analyzeAndEmit({});
+      analyzeAndEmit({}, undefined, {
+        skippedNestedChinese: diagnostics.drainSkippedNestedChinese(),
+      });
 
       const lines = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
       const hits = (lines.match(/\/proj\/x\.vue:5:3/g) || []).length;
       expect(hits).toBe(1);
     });
+  });
+
+  // 两个收集器互不串味：此前是 CommonASTUtils 上的两张 static Map，任何一处忘记清场都会
+  // 让上一个 processor / 上一个用例的残留计入本轮。
+  it('不同 ExtractionDiagnostics 实例之间互相隔离', () => {
+    const a = new ExtractionDiagnostics();
+    const b = new ExtractionDiagnostics();
+    a.recordSkippedComparisonOperand('完成', '/proj/a.vue', 1, 1);
+    expect(b.drainSkippedComparisonOperands()).toEqual([]);
+    expect(a.drainSkippedComparisonOperands()).toHaveLength(1);
   });
 });

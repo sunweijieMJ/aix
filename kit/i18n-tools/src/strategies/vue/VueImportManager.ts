@@ -47,9 +47,7 @@ export class VueImportManager implements IImportManager {
       updatedCode = this.stripPlaceholderTDeclares(updatedCode);
       updatedCode = this.addPluginLocaleImport(updatedCode);
     } else {
-      const hasScriptStrings = fileStrings.some(
-        (s) => s.context === 'script' || s.context === 'js-code',
-      );
+      const hasScriptStrings = fileStrings.some((s) => s.context === 'script');
       if (!hasScriptStrings) return updatedCode;
 
       let descriptor;
@@ -320,47 +318,14 @@ export class VueImportManager implements IImportManager {
   /**
    * 添加 i18n 库导入 (实现接口方法)
    *
-   * 仅在 SFC 的 <script> 块内合并/追加。VueComponentInjector 只对 SFC 调用本方法，
-   * 非 SFC 输入按 HEAD 行为原样返回。
+   * 仅在 SFC 的 <script> 块内合并/追加。非 SFC 输入按 HEAD 行为原样返回。
+   *
+   * Why 保留：Vue 侧无内部调用方（vue-i18n 的 t 来源统一走 handleGlobalImports 的
+   * 模块顶层 `import { t } from tImport`，不注入 hook），但 IImportManager 要求
+   * 该方法存在，删掉会让 VueImportManager 不再满足接口。
    */
   addI18nImports(code: string, imports: string[]): string {
     return this.mergeNamedImportInScript(code, this.library.packageName, imports);
-  }
-
-  /**
-   * 添加 Hook 声明（如 const { t } = useI18n() 或 const { t } = useTranslation()）
-   *
-   * 仅注入到 <script setup>。普通 <script>（Options API）走 this.$t，无需 hook 声明。
-   */
-  addHookDeclaration(code: string): string {
-    if (this.library.getHookDeclarationCheckRegex().test(code)) {
-      return code;
-    }
-
-    const block = VueImportManager.findScriptBlock(code, { setupOnly: true });
-    if (!block) return code;
-
-    const declaration = this.library.hookDeclaration + '\n';
-    const lines = block.content.split('\n');
-
-    // 优先以"最后一条 import 之后"作为锚点；只有完全没有 import 时才寻找首个非空非注释行。
-    const lastImportIndex = CommonASTUtils.findLastImportLineIndex(lines);
-    let insertIndex: number;
-    if (lastImportIndex >= 0) {
-      insertIndex = lastImportIndex + 1;
-    } else {
-      insertIndex = lines.length;
-      for (let i = 0; i < lines.length; i++) {
-        const trimmed = lines[i]!.trim();
-        if (trimmed && !trimmed.startsWith('//')) {
-          insertIndex = i;
-          break;
-        }
-      }
-    }
-
-    lines.splice(insertIndex, 0, declaration);
-    return code.slice(0, block.start) + lines.join('\n') + code.slice(block.end);
   }
 
   /**

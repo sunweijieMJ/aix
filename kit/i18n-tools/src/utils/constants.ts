@@ -11,11 +11,21 @@ export const FILES = {
 } as const;
 
 /**
+ * CJK 统一汉字基本区（U+4E00–U+9FFF）的正则字符类内容（不含方括号）。
+ *
+ * 全库唯一来源：凡是「判定 / 保留中文字符」的正则都必须用模板拼接本常量，不要另写
+ * 字面量区间。此前 5 处各写一遍，其中还混用过 U+9FA5 与 U+9FFF 两种上界——上界不一致时
+ * U+9FA6–U+9FFF 的扩充汉字在一处算中文、在另一处不算，表现为个别文案能提取却生不出
+ * 语义 ID（或反之），且不报任何错。
+ */
+export const CHINESE_CHAR_RANGE = '\\u4e00-\\u9fff';
+
+/**
  * 配置常量
  */
 export const CONFIG = {
   /** 中文字符正则表达式 */
-  CHINESE_REGEX: /[\u4e00-\u9fff]/,
+  CHINESE_REGEX: new RegExp(`[${CHINESE_CHAR_RANGE}]`),
 } as const;
 
 /**
@@ -30,7 +40,7 @@ export const CONFIG = {
  * 本工具生成的形态。生成端（getVariableNameFromExpression）有意只输出更严格的子集
  * （合法 JS 标识符字符），因为该名会作为 values 对象的裸键写进源码，含 `-` 会产出语法错误。
  */
-export const PLACEHOLDER_NAME_CHARS = 'A-Za-z0-9_$.一-鿿-';
+export const PLACEHOLDER_NAME_CHARS = `A-Za-z0-9_$.${CHINESE_CHAR_RANGE}-`;
 
 /**
  * 这些元素的内容是逐字代码 / 预格式文本，不参与 i18n 提取（含其所有后代节点）。

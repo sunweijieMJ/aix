@@ -3,10 +3,19 @@ import path from 'path';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
-import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
+import { CHINESE_CHAR_RANGE, NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import type { LocaleMap } from '../../utils/types';
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
 import type { VueI18nLibrary } from './libraries';
+
+/**
+ * 合法 JS 标识符（含中文变量名）。中文区间拼 CHINESE_CHAR_RANGE，与
+ * PLACEHOLDER_NAME / getVariableNameFromExpression 同源——生成端有意把中文变量名
+ * 保留为占位符名，此处判定范围不一致就会漏还原。
+ */
+const JS_IDENTIFIER_RE = new RegExp(
+  `^[A-Za-z_$${CHINESE_CHAR_RANGE}][\\w$${CHINESE_CHAR_RANGE}]*$`,
+);
 
 /**
  * Vue 还原代码转换器
@@ -568,9 +577,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
         // 占位符名与变量名同名。此前直接 continue 丢弃 → varMap 缺项 → 占位符被字面化。
         // 但 `...rest` 展开、方法简写 `foo() {}` 等无法安全还原成具体占位符映射，
         // 返回 null 让上游保守保留原 $t 调用（宁可漏还原也不破坏源码）。
-        // 字符集含中文（一-鿿）：中文变量名是合法 JS 且生成端保留其为占位符名，
-        // 与 PLACEHOLDER_NAME / getVariableNameFromExpression 同口径。
-        if (/^[A-Za-z_$一-鿿][\w$一-鿿]*$/.test(trimmed)) {
+        if (JS_IDENTIFIER_RE.test(trimmed)) {
           varMap.set(trimmed, trimmed);
           continue;
         }

@@ -1,5 +1,7 @@
+import type ts from 'typescript';
 import type { ExtractedString } from '../../utils/types';
 import type { ITextExtractor, ManualSkipDiagnostic } from '../../adapters/FrameworkAdapter';
+import { ExtractionDiagnostics } from '../../utils/extraction-diagnostics';
 import { stripStatefulFlags } from '../../utils/path-matcher';
 
 /**
@@ -22,10 +24,21 @@ import { stripStatefulFlags } from '../../utils/path-matcher';
  *  - drain 是显式动作，调用方明确控制收割时机，更易测试；
  *  - 子类不需要持有 RunReport 引用，依赖反转更干净。
  */
-export abstract class BaseTextExtractor implements ITextExtractor {
+export abstract class BaseTextExtractor<
+  TContext extends string = string,
+> implements ITextExtractor {
   private pendingWarnings: string[] = [];
   private pendingManualSkips = new Map<string, ManualSkipDiagnostic>();
   private readonly rejectPatterns: readonly RegExp[];
+
+  /**
+   * 「有意跳过但需暴露给用户」的中文字面量收集器（比较运算操作数 / 嵌套插值中文）。
+   *
+   * 子类在提取过程中 record，消费方通过 getDiagnostics() 拿到同一实例 drain。
+   * 生命周期绑在 extractor 实例上，故与本类的 warning / manualSkip 缓冲区一样，
+   * 不存在跨 processor 串味或「谁先 drain 谁拿到」的竞争（详见 ExtractionDiagnostics）。
+   */
+  protected readonly diagnostics = new ExtractionDiagnostics();
 
   constructor(rejectPatterns: readonly RegExp[] = []) {
     this.rejectPatterns = rejectPatterns;
@@ -33,12 +46,44 @@ export abstract class BaseTextExtractor implements ITextExtractor {
 
   abstract extractFromFile(filePath: string): Promise<ExtractedString[]>;
 
+  getDiagnostics(): ExtractionDiagnostics {
+    return this.diagnostics;
+  }
+
+  /**
+   * 提取判定的唯一入口，次序固定（模板方法，子类不要重写）：
+   *   空串 → 子类 shouldExtractInternal（工具内置规则）→ 业务侧 rejectPatterns。
+   *
+   * Why 把次序固化在基类：rejectPatterns 必须**最后**生效——工具内部的安全规则
+   * （isComparisonOperand / isInConsoleCall / 已 i18n 守卫）若被用户黑名单抢先放行，
+   * 会提取出破坏运行时逻辑的字面量。此前 Vue / React 两端各写一份逐字相同的外壳，
+   * 任一端改错次序都不会有测试拦住。
+   */
+  protected shouldExtract(
+    str: string,
+    context?: TContext,
+    node?: ts.Node,
+    templateContext?: string,
+  ): boolean {
+    if (!str.trim()) return false;
+    if (!this.shouldExtractInternal(str, context, node, templateContext)) return false;
+    return !this.isRejectedByConfig(str);
+  }
+
+  /**
+   * 框架特有的内置判定规则。只回答「工具认为该不该提取」，不要在这里考虑
+   * 业务侧 rejectPatterns——那由 shouldExtract 统一兜底。
+   */
+  protected abstract shouldExtractInternal(
+    str: string,
+    context?: TContext,
+    node?: ts.Node,
+    templateContext?: string,
+  ): boolean;
+
   /**
    * 业务侧通过 config.extract.filterPatterns 声明的过滤模式命中检测。
-   *
-   * 子类的 shouldExtract 在自身规则判定"可提取"后，必须调用本方法做最后一道拒收检查；
-   * 不在 shouldExtract 内嵌做的原因是：工具内部的安全规则（如 isComparisonOperand）
-   * 必须先于用户黑名单生效，避免黑名单意外放过会破坏运行时逻辑的字面量。
+   * 由 shouldExtract 在内置规则放行后调用（见其 Why）。
    */
   protected isRejectedByConfig(text: string): boolean {
     if (this.rejectPatterns.length === 0) return false;

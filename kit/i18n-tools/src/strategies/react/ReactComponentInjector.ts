@@ -15,8 +15,6 @@ interface ComponentInfo {
   name: string;
   type: 'class' | 'function';
   node: ts.ClassDeclaration | ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
-  needsIntl: boolean;
-  hasIntl: boolean;
   injectionType: 'hook' | 'hoc' | 'class-destructure' | 'none';
 }
 
@@ -66,8 +64,6 @@ export class ReactComponentInjector implements IComponentInjector {
               } else {
                 componentsToModify.push({
                   ...componentInfo,
-                  needsIntl: true,
-                  hasIntl: false,
                   injectionType: 'hook',
                 });
               }
@@ -82,8 +78,6 @@ export class ReactComponentInjector implements IComponentInjector {
             const wrapped = this.classAlreadyWrappedByHOC(componentInfo.node, initialSourceFile);
             componentsToModify.push({
               ...componentInfo,
-              needsIntl: true,
-              hasIntl: wrapped,
               injectionType: wrapped ? 'class-destructure' : 'hoc',
             });
           }

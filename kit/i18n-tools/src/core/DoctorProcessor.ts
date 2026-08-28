@@ -4,8 +4,10 @@ import { collectUsedKeys, matchesDynamicAllowlist } from '../utils/source-key-sc
 import type { FrameworkAdapter } from '../adapters';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { FileUtils } from '../utils/file-utils';
+import type { SkippedTextLocation } from '../utils/extraction-diagnostics';
 import { type LinterFinding, LocaleValueLinter } from '../utils/locale-value-linter';
 import { LoggerUtils } from '../utils/logger';
+import { collapseWhitespace } from '../utils/text-normalize';
 import type { LocaleMap } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
 
@@ -68,12 +70,19 @@ export class DoctorProcessor extends BaseProcessor {
   /**
    * 暂存 runLinter 一次性产出的原始 LinterFinding[]，供 recordToReport 写入 report。
    *
-   * Why: LocaleValueLinter.analyze 内部会消费 CommonASTUtils.drainSkippedComparisonOperands，
-   * 是「一次性」操作（见 locale-value-linter.ts 同名注释）。如果 recordToReport 再次调用
-   * analyze 重建 findings，hardcoded-comparison（doctor 唯一的 error-tier lint 类别）会
-   * 因为 drain 已空而漏入 report，CI 门禁失效。
+   * Why: 提取阶段的跳过项快照由 populateSkippedDiagnostics 一次性 drain 出来（drain 是
+   * 消耗性的），runLinter 消费完就没了。如果 recordToReport 再次调用 analyze 重建 findings，
+   * hardcoded-comparison（doctor 唯一的 error-tier lint 类别）会因快照已空而漏入 report，
+   * CI 门禁失效。
    */
   private linterFindings: LinterFinding[] = [];
+
+  /**
+   * populateSkippedDiagnostics 从 extractor 的 ExtractionDiagnostics drain 出的快照，
+   * 供 runLinter 的 hardcoded-comparison / nested-interpolation-chinese 检测消费。
+   */
+  private skippedComparisons: SkippedTextLocation[] = [];
+  private skippedNestedChinese: SkippedTextLocation[] = [];
 
   constructor(
     config: ResolvedConfig,
@@ -96,14 +105,11 @@ export class DoctorProcessor extends BaseProcessor {
   private async _execute(): Promise<void> {
     const findings: DoctorFinding[] = [];
 
-    // 0. 填充 hardcoded-comparison 检测所需的比较操作数。
-    //    Why：findHardcodedComparisons 消费的是「提取阶段」记录的
-    //    drainSkippedComparisonOperands。独立 doctor 不经 generate，drain 恒空；
-    //    且 generate 自身会在写 report 时把 drain 消费掉（见 GenerateProcessor），
-    //    因此无论独立运行还是 generate 之后运行，doctor 的 lint 都拿不到比较操作数。
-    //    这里主动跑一次只读的提取扫描（不落盘、不调用 LLM）填充新鲜的 drain，
-    //    使 doctor 自给自足。
-    await this.populateComparisonOperands();
+    // 0. 填充 hardcoded-comparison / nested-interpolation-chinese 检测所需的跳过项快照。
+    //    Why：这两项检测消费的是「提取阶段」记录的数据，而 doctor 是只读体检、不经
+    //    generate 流程，自己不跑提取就永远拿不到。这里主动跑一次只读的提取扫描
+    //    （不落盘、不调用 LLM），从该 extractor 实例上 drain 出新鲜快照，使 doctor 自给自足。
+    await this.populateSkippedDiagnostics();
 
     // 0.5 损坏 locale 守卫（与 Pick/Merge/Prune/Restore/Export 对齐）。
     //    Why：readLocaleFile 对损坏文件单文件返回 null、桶式静默降级为 {}（永不 null）。
@@ -156,13 +162,12 @@ export class DoctorProcessor extends BaseProcessor {
   }
 
   /**
-   * 跑一次只读的提取扫描，填充 CommonASTUtils.drainSkippedComparisonOperands，
-   * 供 runLinter 的 hardcoded-comparison 检测消费。
+   * 跑一次只读的提取扫描，drain 出 extractor 记录的跳过项快照，供 runLinter 消费。
    *
    * 复用提取器（含 Vue SFC / TS / JSX 的 AST 遍历与比较操作数识别），零重复实现；
-   * 提取本身不写文件、不调 LLM，仅在内存中产出结果（此处丢弃，只取其填充 drain 的副作用）。
+   * 提取本身不写文件、不调 LLM，仅在内存中产出结果（此处丢弃，只取其诊断副产物）。
    */
-  private async populateComparisonOperands(): Promise<void> {
+  private async populateSkippedDiagnostics(): Promise<void> {
     const files = FileUtils.getFrameworkFiles(
       this.config.io.sourceDir,
       this.adapter.getSupportedExtensions(),
@@ -174,6 +179,9 @@ export class DoctorProcessor extends BaseProcessor {
     await extractor.extractFromFiles(files);
     // 提取期 warning（如跳过含 HTML 的模板字符串）对 doctor 无意义，排空丢弃。
     extractor.drainWarnings();
+    const diagnostics = extractor.getDiagnostics();
+    this.skippedComparisons = diagnostics.drainSkippedComparisonOperands();
+    this.skippedNestedChinese = diagnostics.drainSkippedNestedChinese();
   }
 
   /**
@@ -209,8 +217,10 @@ export class DoctorProcessor extends BaseProcessor {
   private runLinter(sourceMap: LocaleMap): DoctorFinding[] {
     const lintFindings = LocaleValueLinter.analyze(sourceMap, {
       separator: this.config.keys.separator,
+      skippedComparisons: this.skippedComparisons,
+      skippedNestedChinese: this.skippedNestedChinese,
     });
-    // 暂存供 recordToReport 使用，避免再次调用 analyze 触发 drain 后丢失
+    // 暂存供 recordToReport 使用，避免再次调用 analyze 时快照已被消费而丢失
     // hardcoded-comparison findings（见字段注释）
     this.linterFindings = lintFindings;
     return lintFindings.map((f: LinterFinding) => ({
@@ -475,7 +485,8 @@ export class DoctorProcessor extends BaseProcessor {
    * generate 流程产生的 ManualEntry（generate 的更具体）。
    *
    * 注意：locale-lint 类发现已经由 LocaleValueLinter.emit 接管时统一调用
-   * report.addManualEntry，这里只处理 doctor 自己产生的三类对账，避免重复。
+   * report.addManualEntry，这里只处理 doctor 自己产生的对账类发现（accountingMap
+   * 覆盖 DoctorCategory 除 locale-lint 外的全部分类），避免重复。
    */
   private recordToReport(findings: DoctorFinding[]): void {
     // 直接复用 runLinter 暂存的原始 LinterFinding[]，不要二次 analyze ——
@@ -485,7 +496,9 @@ export class DoctorProcessor extends BaseProcessor {
       LocaleValueLinter.emit(this.linterFindings, { console: false, report: this.report });
     }
 
-    // 对账类发现：直接写为 warnings（不是 ManualCategory，避免污染）
+    // 对账类发现：直接写为 warnings（不是 ManualCategory，避免污染）。
+    // Record<Exclude<...>> 而非 Partial：新增 DoctorCategory 时漏配会在此处编译失败，
+    // 否则 reason 为 undefined 会静默写出 `[category] key: undefined`。
     const accountingMap: Record<Exclude<DoctorCategory, 'locale-lint'>, string> = {
       'corrupt-locale': 'locale 文件 JSON 解析失败（损坏）',
       'missing-key': '源码引用的 key 在 locale 中缺失',
@@ -521,7 +534,7 @@ export class DoctorProcessor extends BaseProcessor {
     // checkOrphanKeys 不像其余 check 有 typeof 前置过滤（孤儿判定不依赖 value 类型，
     // 非字符串孤儿同样应报告），这里必须兜住，否则单个脏值让整个 doctor 崩溃。
     const text = typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value));
-    const single = text.replace(/\s+/g, ' ').trim();
+    const single = collapseWhitespace(text);
     return single.length > 80 ? `${single.slice(0, 80)}…` : single;
   }
 }

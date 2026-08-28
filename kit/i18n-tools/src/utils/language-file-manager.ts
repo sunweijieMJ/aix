@@ -7,7 +7,8 @@ import { LoggerUtils } from './logger';
 import { LocaleValueLinter } from './locale-value-linter';
 import type { RunReport } from './run-report';
 import type { ExtractedString, ILangMap, LocaleMap } from './types';
-import { CommonASTUtils, type SkippedTextLocation } from './common-ast-utils';
+import { CommonASTUtils } from './common-ast-utils';
+import type { SkippedTextLocation } from './extraction-diagnostics';
 
 type KeyBucketMap = Record<string, string>;
 
@@ -55,6 +56,10 @@ export class LanguageFileManager {
 
     for (const locale of allLocales) {
       const filePath = path.join(workingDir, `${locale}.json`);
+      // 隐式契约：silent 降级（损坏 JSON → {}）是有意保留的，本方法不做损坏判别。
+      // 调用方必须先跑 assertLocalesNotCorrupt / findCorruptLocale——Pick 与 Export
+      // 两个生产调用方都已在调用前守卫。若新增调用方跳过守卫，损坏 locale 会被当成
+      // 空字典，导致「导出空包覆盖已发布产物」「pick 清空在途译文」且全程无报错。
       const data = FileUtils.safeLoadJsonFile<Record<string, any>>(filePath, {
         silent: true,
       });
@@ -82,6 +87,12 @@ export class LanguageFileManager {
 
     if (!fs.existsSync(singleFilePath) || fs.existsSync(bakPath)) return undefined;
 
+    // 隐式契约：silent 降级在这里是**破坏性**的——损坏文件读成 {} 后，下方走「空文件」
+    // 分支只建目录、不写任何 bucket，随后 rename 成 .bak，存量数据从活跃集消失。
+    // 故凡会触发本路径的 processor 都必须先跑 findCorruptLocale({ checkLegacy: true })
+    // （见 findCorruptLegacySingleFile 注释），Pick 与 Export 均已守卫。
+    // 这里刻意不自行判别：迁移是幂等一次性动作，在此抛错会让「先探测再决定如何提示」的
+    // 上游守卫失去对错误文案的控制权。
     const existingData = FileUtils.safeLoadJsonFile<Record<string, any>>(singleFilePath, {
       silent: true,
     });
@@ -133,8 +144,8 @@ export class LanguageFileManager {
   /**
    * 同 buildKeyBucketMap，但额外返回 BucketResolver 的命中统计。
    *
-   * caller（GenerateProcessor / MergeProcessor 等）拿到 zeroHitRules 后
-   * 应当作为 warning 输出，提示用户规则配错（最常见：matchKey 前缀拼写错误）。
+   * 唯一 caller 是本文件的 updateLanguageFiles（反推存量 key 的落桶），它拿到
+   * zeroHitRules 后写成 warning，提示用户规则配错（最常见：matchKey 前缀拼写错误）。
    */
   static buildKeyBucketMapWithStats(
     config: ResolvedConfig,
@@ -193,7 +204,10 @@ export class LanguageFileManager {
     onCorrupt?: (filePath: string) => void,
   ): void {
     // 读取单个 bucket 文件。返回 undefined 表示「损坏且已交给 onCorrupt 处理，应跳过」。
-    // 未传 onCorrupt 时维持历史行为：损坏文件经 safeLoadJsonFile 静默退化为 {}。
+    //
+    // 隐式契约：未传 onCorrupt 时维持历史行为——损坏文件经 safeLoadJsonFile 静默退化为 {}，
+    // 本函数不做判别。要判别的调用方（findCorruptBucketFile）必须传 onCorrupt；
+    // 只读取的调用方（readBucketedLocaleFlat）依赖上游先跑 findCorruptLocale。
     const loadOne = (filePath: string): Record<string, any> | undefined => {
       if (!onCorrupt) {
         return FileUtils.safeLoadJsonFile<Record<string, any>>(filePath, { silent: true });

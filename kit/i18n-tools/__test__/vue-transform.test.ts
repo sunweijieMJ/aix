@@ -53,47 +53,57 @@ describe('Vue transform 输出', () => {
     expect(out).not.toContain('>提交<');
   });
 
-  // 回归（审计 medium）：replaceInLines 的 hasQuotes 分支只 indexOf(original, column)，
-  // 缺少 else 分支那样的「从行首重试」。当带引号字面量确在本行、但 column 越过其
-  // 起点时，旧实现会漏过本行、跌到邻行 fallback 致漏替换。直接测这条纯函数私有路径。
-  it('replaceInLines：带引号 original 在 column 之前 → 从行首重试命中并替换', () => {
-    const transformer = new VueTransformer(new VueI18nLibraryImpl(), null as never, null as never);
-    const tc = '<div>{{ `你好` }} 一些较长的后续内容用于把 column 推到字面量之后</div>';
-    const lines = tc.split('\n');
-    // column 取行尾，越过 `你好` 的实际起点；旧实现 indexOf(original, column) 必然 miss
-    const ok = (
-      transformer as unknown as {
-        replaceInLines: (l: string[], o: string, r: string, line: number, col: number) => boolean;
-      }
-    ).replaceInLines(lines, '`你好`', "$t('k')", 0, tc.length);
-    expect(ok).toBe(true);
-    const out = lines.join('\n');
-    expect(out).toContain("$t('k')");
+  // 回归（旧 replaceInLines 白盒用例的行为级等价）：带引号字面量位于长行中间、其后还有
+  // 大量内容时照常替换。旧实现按 (line, column) 定位后 indexOf(original, column)，
+  // column 越过字面量起点就会漏过本行、跌到邻行 fallback；绝对偏移下不存在该问题。
+  it('长行中间的模板字面量照常替换', async () => {
+    const out = await transformVue(
+      '<template>\n' +
+        '  <div>{{ `你好` }} 一些较长的后续内容用于把列号推到字面量之后，再补一段填充文本</div>\n' +
+        '</template>\n',
+    );
+    expect(out).toContain("$t('k0')");
     expect(out).not.toContain('`你好`');
   });
 
-  // 回归护栏（针对 #4 改动的边界担忧）：同行有多个相同带引号字面量、且 column 精确指向
-  // 目标那个时，indexOf(original, column) 直接命中目标，从行首重试分支不应触发——
-  // 即只替换目标、不误伤同行的其它相同字面量。证明本次改动不破坏正常定位。
-  it('replaceInLines：同行多个相同带引号字面量，column 精确时只替换目标那个', () => {
-    const transformer = new VueTransformer(new VueI18nLibraryImpl(), null as never, null as never);
-    const tc = '<span>`你好` 与 `你好`</span>';
-    const lines = tc.split('\n');
-    const secondCol = tc.lastIndexOf('`你好`'); // 目标 = 第二个
-    const ok = (
-      transformer as unknown as {
-        replaceInLines: (l: string[], o: string, r: string, line: number, col: number) => boolean;
-      }
-    ).replaceInLines(lines, '`你好`', "$t('k')", 0, secondCol);
-    expect(ok).toBe(true);
-    expect(lines.join('\n')).toBe("<span>`你好` 与 $t('k')</span>"); // 第一个原样保留，仅第二个被替换
+  // 同行多个相同字面量：每条提取项各自带精确偏移，各替各的，不会都命中第一处。
+  // 旧实现靠 indexOf(original, column) 逼近，column 稍有偏差就替换到同行另一处。
+  it('同行多个相同字面量按各自偏移精确替换', async () => {
+    const out = await transformVue(
+      `<template>\n  <span :title="a ? '你好' : '你好'"></span>\n</template>\n`,
+    );
+    // 两处各自被替换成自己的 key，不残留硬编码、也不会都命中第一处
+    expect(out).toContain(`:title="a ? $t('k0') : $t('k1')"`);
+    expect(out).not.toContain(`'你好'`);
   });
 
-  // 回归（审计 HIGH，VueTransformer:385）：文本节点（无引号 original）此前会先查找带引号版本
-  // `"全部"`，indexOf 从文本节点 column 向后误命中【同行后方未被提取的带引号技术属性值】
+  // 旧实现的致命限制：指令内的字面量若距指令起始行超过 5 行，逐行搜索 + ±5 行兜底
+  // 全部落空 → 抛「无法定位」中止**整个文件**的转换（一个换行排版就能让整文件失败）。
+  it('指令内字面量距起始行超过 5 行时仍能替换（旧实现会中止整文件）', async () => {
+    const out = await transformVue(
+      `<template>\n` +
+        `  <el-tag\n` +
+        `    :type="\n` +
+        `      a\n` +
+        `        ? b\n` +
+        `        : c\n` +
+        `          ? d\n` +
+        `          : e\n` +
+        `            ? f\n` +
+        `            : '已完成'\n` +
+        `    "\n` +
+        `  >x</el-tag>\n` +
+        `</template>\n`,
+    );
+    expect(out).toContain("$t('k0')");
+    expect(out).not.toContain(`'已完成'`);
+  });
+
+  // 回归（审计 HIGH）：文本节点（无引号 original）此前会先查找带引号版本 `"全部"`，
+  // indexOf 从文本节点 column 向后误命中【同行后方未被提取的带引号技术属性值】
   // （value 是技术属性被跳过提取，源码保留 `value="全部"`），把属性毁成非法 `value={{ $t() }}`，
   // 而真正的文本节点'全部'未被替换 → 源码残留中文 + locale 孤儿 key。
-  // 修复：按 templateContext 收窄引号搜索（仅 dynamic-attribute / interpolation）。
+  // 现由精确偏移根治：文本节点区间只覆盖文本本身，不可能越到属性值上。
   it('文本节点替换不得误命中同行带引号技术属性值（HIGH 回归）', async () => {
     const out = await transformVue(
       `<template>\n  <label>全部<input value="全部" /></label>\n</template>\n`,
@@ -236,7 +246,8 @@ describe('VueTransformer 替换完整性', () => {
     }
   });
 
-  it('template 已提取条目的原文失效时抛错，不静默生成孤儿 locale key', async () => {
+  // 偏移校验是新机制唯一的防误替换手段：区间对不上就中止，绝不"尽力而为"地改一半。
+  it('template 已提取条目的源码区间与原文不符时抛错，不静默生成孤儿 locale key', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vue-stale-template-hit-'));
     try {
       const file = path.join(dir, 'Stale.vue');
@@ -246,9 +257,50 @@ describe('VueTransformer 替换完整性', () => {
       const strings = await adapter.getTextExtractor().extractFromFile(file);
       expect(strings).toHaveLength(1);
       strings[0]!.semanticId = 'demo.label';
-      strings[0]!.original = '已经消失的中文';
+      // 模拟「提取与转换看到的不是同一份 template」：偏移仍在，但指向的原文已不同
+      strings[0]!.sourceSlice = '已经消失的中文';
 
-      expect(() => adapter.getTransformer().transform(file, strings, source)).toThrow(/无法定位/);
+      expect(() => adapter.getTransformer().transform(file, strings, source)).toThrow(
+        /源码区间与原文不符/,
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('偏移被挪动到错误位置时抛错，不产出被砍在半截语法上的坏代码', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vue-bad-offset-'));
+    try {
+      const file = path.join(dir, 'Bad.vue');
+      const source = `<template>\n  <div>你好</div>\n</template>\n`;
+      fs.writeFileSync(file, source, 'utf-8');
+      const adapter = new VueAdapter('@/plugins/locale', 'vue-i18n');
+      const strings = await adapter.getTextExtractor().extractFromFile(file);
+      strings[0]!.semanticId = 'demo.label';
+      strings[0]!.startOffset = strings[0]!.startOffset! - 2;
+
+      expect(() => adapter.getTransformer().transform(file, strings, source)).toThrow(
+        /源码区间与原文不符/,
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('提取项缺少精确区间时抛错（而非退化为文本搜索或静默跳过）', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vue-missing-offset-'));
+    try {
+      const file = path.join(dir, 'NoOffset.vue');
+      const source = `<template>\n  <div>你好</div>\n</template>\n`;
+      fs.writeFileSync(file, source, 'utf-8');
+      const adapter = new VueAdapter('@/plugins/locale', 'vue-i18n');
+      const strings = await adapter.getTextExtractor().extractFromFile(file);
+      strings[0]!.semanticId = 'demo.label';
+      delete strings[0]!.startOffset;
+
+      expect(() => adapter.getTransformer().transform(file, strings, source)).toThrow(
+        /缺少精确源码区间/,
+      );
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -553,9 +605,9 @@ describe('Vue 静态属性首尾空白 → transform 产出合法绑定', () => 
   });
 
   // 回归（vue #2）：属性值跨行时（attr.loc.start.line 指向 `title=` 行、值在下一行），
-  // 逐行匹配与 ±5 行 fallback（均按单行）全部落空，旧实现原样返回 → locale 已写 key 但
-  // 源码静态属性未改写（孤儿 key + 中文残留，静默泄漏）。修复：多行属性走 (line,column)
-  // 绝对偏移 + 属性感知正则全局匹配整体替换。
+  // 旧实现的逐行匹配与 ±5 行 fallback（均按单行）全部落空 → 原样返回 → locale 已写 key 但
+  // 源码静态属性未改写（孤儿 key + 中文残留，静默泄漏）。现由 attr.loc 的精确区间根治：
+  // 静态属性区间本就覆盖整个 `name="value"`，跨行与否没有区别。
   it('多行静态属性 title="\\n  确认\\n"：跨行也能转成合法 :title 且无中文残留', async () => {
     const out = await run(
       `<template>\n  <el-button\n    title="\n      确认\n    "\n  >x</el-button>\n</template>\n`,
@@ -572,9 +624,10 @@ describe('Vue 静态属性首尾空白 → transform 产出合法绑定', () => 
 /**
  * 回归 #2：@vue/compiler-dom 以 whitespace:'condense' 解析，跨行纯文本节点的 content
  * 被压成单空格，而 loc.source 保留换行缩进 → 提取存入的 original 含 `\n`。
- * VueTransformer.replaceInLines 是严格逐行 indexOf，含 `\n` 的 original 永远无法
- * 命中任何单行（±5 行兜底亦逐行）→ locale 写了 key，但源码中文从未被替换：
- * 残留中文 + 孤儿 key，破坏 extract⇄transform 不变量。
+ * 当时的转换端是严格逐行 indexOf，含 `\n` 的 original 永远无法命中任何单行
+ * （±5 行兜底亦逐行）→ locale 写了 key，但源码中文从未被替换：残留中文 + 孤儿 key，
+ * 破坏 extract⇄transform 不变量。现已改为绝对偏移替换，跨行不再是特殊情况，
+ * 但本组用例作为该不变量的护栏保留。
  */
 describe('Vue 多行纯文本节点替换（回归 #2）', () => {
   let dir: string;
@@ -812,7 +865,7 @@ describe('VueTextExtractor 动态属性/插值：中文对象 key 不被误提�
   const extract = async (content: string) => {
     const file = path.join(tmpDir, 'A.vue');
     fs.writeFileSync(file, content);
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     return extractor.extractFromFile(file);
   };
 

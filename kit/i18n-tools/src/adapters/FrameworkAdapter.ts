@@ -1,4 +1,5 @@
 import type { ExtractedString, LocaleMap } from '../utils/types';
+import type { ExtractionDiagnostics } from '../utils/extraction-diagnostics';
 import type { BaseI18nLibrary } from '../strategies/base/i18n-library';
 
 /**
@@ -48,6 +49,11 @@ export interface ITextExtractor {
   drainWarnings(): string[];
   /** 取出并清空本轮需要人工处理的结构化跳过项，供覆盖率统计。 */
   drainManualSkips(): ManualSkipDiagnostic[];
+  /**
+   * 本轮提取累积的「跳过但需暴露」诊断收集器（比较运算操作数 / 嵌套插值中文）。
+   * 返回实例本身（非快照）：coverage 与 linter 必须消费同一份，由调用方决定 drain 时机。
+   */
+  getDiagnostics(): ExtractionDiagnostics;
 }
 
 // BaseTextExtractor 的实现已下沉至 strategies/base/text-extractor.ts，

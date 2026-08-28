@@ -57,9 +57,9 @@ export type FrameworkConfig = VueFrameworkOptions | ReactFrameworkOptions;
  * targets 是数组以支持多目标语种。所有翻译/词表/落盘逻辑会对每个 target 单独处理。
  */
 export interface LocalesConfig {
-  /** 源语言代码，默认 'zh' */
+  /** 源语言代码，默认 'zh-CN'（见 config/defaults.ts） */
   source?: string;
-  /** 目标语言代码列表，默认 ['en']。数组化以支持多目标。 */
+  /** 目标语言代码列表，默认 ['en-US']（见 config/defaults.ts）。数组化以支持多目标。 */
   targets?: string[];
   /**
    * 语言代码 → 展示名映射，会与内置 LOCALE_NAMES 合并后注入 LLM prompt。
@@ -219,10 +219,7 @@ export interface RulesPrefixStrategy {
 }
 
 export type PrefixStrategyConfig =
-  | PathPrefixStrategy
-  | FixedPrefixStrategy
-  | CustomPrefixStrategy
-  | RulesPrefixStrategy;
+  PathPrefixStrategy | FixedPrefixStrategy | CustomPrefixStrategy | RulesPrefixStrategy;
 
 /**
  * 语义部分兜底（LLM 失败 / skip-llm 时使用）。
@@ -399,10 +396,7 @@ export interface BucketRule {
    * - 函数: (filePath, key, message) => boolean
    */
   match?:
-    | string
-    | string[]
-    | RegExp
-    | ((filePath: string, key: string, message: string) => boolean);
+    string | string[] | RegExp | ((filePath: string, key: string, message: string) => boolean);
   /**
    * 按 key 内容匹配。命中时不再看 match。
    * 用于源码路径无关的逻辑分组。
@@ -526,9 +520,7 @@ export type ResolvedPathPrefixStrategy = Required<Omit<PathPrefixStrategy, 'tran
  * 已解析的非嵌套子策略：rules.use / rules.fallback 的解析结果（不含 rules 自身）。
  */
 export type ResolvedNestedPrefixStrategy =
-  | ResolvedPathPrefixStrategy
-  | FixedPrefixStrategy
-  | CustomPrefixStrategy;
+  ResolvedPathPrefixStrategy | FixedPrefixStrategy | CustomPrefixStrategy;
 
 /**
  * 已解析的 rules 策略：rules.use / fallback 均已展开默认值。

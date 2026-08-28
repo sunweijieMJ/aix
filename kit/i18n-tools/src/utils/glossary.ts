@@ -2,6 +2,7 @@ import fs from 'fs';
 import type { ResolvedConfig } from '../config';
 import { FileUtils } from './file-utils';
 import { LoggerUtils } from './logger';
+import { collapseWhitespace } from './text-normalize';
 
 /**
  * 内部归一化后的词表结构：
@@ -31,7 +32,7 @@ export class Glossary {
    * 避免「按钮」与「按钮 」（多个空格）被识别成两条不同条目。
    */
   static normalizeKey(text: string, normalize: boolean): string {
-    return normalize ? text.trim().replace(/\s+/g, ' ') : text;
+    return normalize ? collapseWhitespace(text) : text;
   }
 
   /**

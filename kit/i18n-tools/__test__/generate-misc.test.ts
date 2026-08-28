@@ -6,7 +6,6 @@ import { GenerateProcessor } from '../src/core/GenerateProcessor';
 import { IdReuseResolver } from '../src/core/IdReuseResolver';
 import { LLMClient } from '../src/utils/llm-client';
 import { LoggerUtils } from '../src/utils/logger';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
 import { RunReport, type ManualCategory } from '../src/utils/run-report';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
@@ -172,7 +171,6 @@ describe('GenerateProcessor 覆盖率 — 空提取分支仍计入已国际化�
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -238,7 +236,6 @@ describe('GenerateProcessor 覆盖率 — 已国际化文件的调用点计入�
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -275,9 +272,8 @@ describe('GenerateProcessor 覆盖率 — 已国际化文件的调用点计入�
 
 /**
  * 回归：apply（落盘）路径下，applyTransformations 先于 recordAndRenderCoverage 执行，
- * 而前者链路里健康度 lint（LocaleValueLinter.analyze）已把
- * CommonASTUtils.drainSkippedComparisonOperands() 这个进程级 collector drain 空。
- * 于是 recordAndRenderCoverage 拿到空数组：
+ * 而前者链路里健康度 lint（LocaleValueLinter.analyze）会消费提取阶段记录的跳过项。
+ * 若不共享同一份快照，recordAndRenderCoverage 就会拿到空数组：
  *   - coverage.skipped 恒为 0；
  *   - total 分母缺 skipped → coverageRate 被系统性高估（CI --coverage-threshold 被架空）；
  *   - comparison-operand 待人工条目全部丢失。
@@ -312,7 +308,6 @@ describe('GenerateProcessor 覆盖率 — 比较运算符跳过项不被 linter 
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands(); // 清掉跨测试可能的残留
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -443,9 +438,6 @@ describe('GenerateProcessor dry-run — 评审阶段就跑 lint（nested-interpo
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    // 清掉跨测试可能残留的进程级 collector（drain 是消耗性操作）
-    CommonASTUtils.drainSkippedNestedChinese();
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
@@ -492,8 +484,6 @@ describe('GenerateProcessor dry-run — 评审阶段就跑 lint（nested-interpo
 
     // commit（重置源文件，避免被 dry-run？dry-run 不改源码，但稳妥起见重写）
     fs.writeFileSync(file, VUE_FILE, 'utf-8');
-    CommonASTUtils.drainSkippedNestedChinese();
-    CommonASTUtils.drainSkippedComparisonOperands();
     const commitSpy = vi.spyOn(RunReport.prototype, 'addManualEntry');
     await new GenerateProcessor(buildConfig(), false, false).execute(file, true);
     const commitCount = countNested(commitSpy);
@@ -694,7 +684,6 @@ describe('GenerateProcessor 单文件 — 规范化路径不一致不致源码�
     localeDir = path.join(rootDir, 'locale');
     fs.mkdirSync(srcDir, { recursive: true });
     fs.mkdirSync(localeDir, { recursive: true });
-    CommonASTUtils.drainSkippedComparisonOperands();
     vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});

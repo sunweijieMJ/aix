@@ -18,31 +18,16 @@ export function extractSafeError(error: unknown): { name: string; message: strin
 }
 
 /**
- * 日志级别（数值越小越详细）
- */
-export enum LogLevel {
-  DEBUG,
-  INFO,
-  SUCCESS,
-  WARN,
-  ERROR,
-}
-
-/**
  * 日志记录器
- * 提供统一的日志输出格式和级别
+ * 提供统一的日志输出格式
  */
 export class LoggerUtils {
-  private static logLevel: LogLevel = LogLevel.INFO;
-
   /**
    * 记录信息日志
    * @param message - 日志消息
    */
   static info(message: string): void {
-    if (LoggerUtils.logLevel <= LogLevel.INFO) {
-      console.log(chalk.blue(`[INFO] ${message}`));
-    }
+    console.log(chalk.blue(`[INFO] ${message}`));
   }
 
   /**
@@ -50,9 +35,7 @@ export class LoggerUtils {
    * @param message - 日志消息
    */
   static warn(message: string): void {
-    if (LoggerUtils.logLevel <= LogLevel.WARN) {
-      console.warn(chalk.yellow(`[WARN] ${message}`));
-    }
+    console.warn(chalk.yellow(`[WARN] ${message}`));
   }
 
   /**
@@ -66,7 +49,6 @@ export class LoggerUtils {
    * 这里强制只取安全字段，不输出 stack。
    */
   static error(message: string, error?: unknown): void {
-    if (LoggerUtils.logLevel > LogLevel.ERROR) return;
     if (error === undefined || error === null) {
       console.error(chalk.red(`[ERROR] ${message}`));
       return;
@@ -80,8 +62,6 @@ export class LoggerUtils {
    * @param message - 日志消息
    */
   static success(message: string): void {
-    if (LoggerUtils.logLevel <= LogLevel.SUCCESS) {
-      console.log(chalk.green(`[SUCCESS] ${message}`));
-    }
+    console.log(chalk.green(`[SUCCESS] ${message}`));
   }
 }

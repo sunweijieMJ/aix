@@ -5,7 +5,8 @@ import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
 import type { ManualSkipDiagnostic } from '../adapters/FrameworkAdapter';
 import { formatWithPrettier } from '../utils/command-utils';
-import { CommonASTUtils, type SkippedTextLocation } from '../utils/common-ast-utils';
+import { CommonASTUtils } from '../utils/common-ast-utils';
+import type { SkippedTextLocation } from '../utils/extraction-diagnostics';
 import { FileUtils } from '../utils/file-utils';
 import { LLMClient } from '../utils/llm-client';
 import { normalizePosix } from '../utils/path-matcher';
@@ -35,9 +36,10 @@ export class GenerateProcessor extends BaseProcessor {
   /** 是否为交互模式（自动模式下为 false，跳过确认提示） */
   private interactive: boolean;
   /**
-   * 本轮提取出的「比较运算符跳过的中文」快照。提取后立即从 CommonASTUtils 全局 collector
-   * drain 到此处，供 commitToDisk（linter 交叉）与 recordAndRenderCoverage（覆盖率统计）
-   * 共享同一份——避免二者争抢「消费即清空」的全局状态导致后读者恒拿空数组。
+   * 本轮提取出的「比较运算符跳过的中文」快照。提取后立即从 extractor 的
+   * ExtractionDiagnostics drain 到此处，供 commitToDisk（linter 交叉）与
+   * recordAndRenderCoverage（覆盖率统计）共享同一份——drain 是消耗性的，
+   * 若让二者各自去 drain，后读者恒拿空数组。
    */
   private skippedComparisons: SkippedTextLocation[] = [];
   /** 本轮插值表达式中无法安全自动改写的嵌套中文。 */
@@ -127,10 +129,12 @@ export class GenerateProcessor extends BaseProcessor {
       // 终端已经实时打印过；这里只为落盘留痕到 `.i18n-tools/logs/`。
       for (const w of extractor.drainWarnings()) this.report.addWarning(w);
       this.manualSkips = extractor.drainManualSkips();
-      // 提取后立即 drain 比较运算符跳过项快照（在 apply/lint 之前），供 commitToDisk 与
-      // recordAndRenderCoverage 共享，避免 linter 抢先 drain 致覆盖率 skipped 恒为 0。
-      this.skippedComparisons = CommonASTUtils.drainSkippedComparisonOperands();
-      this.skippedNestedChinese = CommonASTUtils.drainSkippedNestedChinese();
+      // 提取后立即 drain 出快照，供 commitToDisk / lint / recordAndRenderCoverage 共享。
+      // 收集器挂在 extractor 实例上（ExtractionDiagnostics），drain 一次分发给多个消费者，
+      // 而不是让各消费者各自去取——drain 是消耗性的，谁先取谁独吞。
+      const diagnostics = extractor.getDiagnostics();
+      this.skippedComparisons = diagnostics.drainSkippedComparisonOperands();
+      this.skippedNestedChinese = diagnostics.drainSkippedNestedChinese();
 
       if (extractedStrings.length === 0) {
         // 仍要汇报覆盖率：空提取也意味着「文件无中文 / 已全部国际化」，是一种有效结果。
@@ -198,10 +202,10 @@ export class GenerateProcessor extends BaseProcessor {
     // 落盘到 `<rootDir>/.i18n-tools/logs/` 便于事后回查。
     for (const w of extractor.drainWarnings()) this.report.addWarning(w);
     this.manualSkips = extractor.drainManualSkips();
-    // 提取后立即 drain 比较运算符跳过项快照（在 apply/lint 之前），供 commitToDisk 与
-    // recordAndRenderCoverage 共享，避免 linter 抢先 drain 致覆盖率 skipped 恒为 0。
-    this.skippedComparisons = CommonASTUtils.drainSkippedComparisonOperands();
-    this.skippedNestedChinese = CommonASTUtils.drainSkippedNestedChinese();
+    // 同 runSingleFile：drain 一次快照，分发给 commitToDisk / lint / coverage 三个消费者。
+    const diagnostics = extractor.getDiagnostics();
+    this.skippedComparisons = diagnostics.drainSkippedComparisonOperands();
+    this.skippedNestedChinese = diagnostics.drainSkippedNestedChinese();
 
     if (extractedStrings.length === 0) {
       // 同 runSingleFile：空提取分支也要扫描已有调用点，避免已国际化目录被比较运算符
@@ -882,8 +886,9 @@ export class GenerateProcessor extends BaseProcessor {
     //     在 dry-run 看不到「新 key 与既有 key 冲突」这类发现——它们会在 apply/commit 阶段
     //     如实补报（apply 经 commitToDisk → updateLanguageFiles 会对全量 map 再跑一次 lint），
     //     不会被静默吞掉，只是 dry-run 预览不完整。
-    //   - skippedComparisons 传入提取阶段已 drain 的快照，避免与 coverage 争抢全局 collector；
-    //     nested 收集器此刻仍满（dry-run 未经其它消费者），由 analyze 内部 drain。
+    //   - skippedComparisons 传入提取阶段已 drain 的快照（供 coverage 复用同一份）；
+    //     嵌套中文不传给 linter：本 processor 在 renderManualSummary 里自行渲染
+    //     this.skippedNestedChinese，传进来会同一条产出两份 finding。
     const lintFindings = LocaleValueLinter.analyze(localeDelta, {
       separator: this.config.keys.separator,
       skippedComparisons: this.skippedComparisons,

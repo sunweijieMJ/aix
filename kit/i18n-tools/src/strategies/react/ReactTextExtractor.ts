@@ -5,6 +5,7 @@ import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import { ReactASTUtils } from './react-ast-utils';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
+import { isNonTranslatableText } from '../../utils/text-classify';
 import type { ExtractedString, MessageInfo } from '../../utils/types';
 import { BaseTextExtractor } from '../base';
 import type { ReactI18nLibrary } from './libraries';
@@ -89,31 +90,18 @@ export class ReactTextExtractor extends BaseTextExtractor {
   }
 
   /**
-   * 判断字符串是否应该被提取进行国际化
+   * React 侧的内置提取规则。外壳（空串 → 本方法 → 业务侧 rejectPatterns）已在
+   * BaseTextExtractor.shouldExtract 里固化，此处只负责框架特有部分。
+   *
    * @param str - 待检查的字符串
-   * @param context - 上下文信息
-   * @param node - AST节点，用于检查上下文环境
-   * @returns 是否应该提取
+   * @param context - jsx-text / jsx-attribute / js-code
+   * @param node - AST 节点，用于检查上下文环境
    */
-  private shouldExtract(
+  protected shouldExtractInternal(
     str: string,
     context?: 'jsx-text' | 'jsx-attribute' | 'js-code',
     node?: ts.Node,
   ): boolean {
-    // 工具内置规则先判定。规则放行后才让业务侧 rejectPatterns 兜底拒收——
-    // 反之会让用户黑名单越过 isComparisonOperand / isInConsoleCall 等安全规则。
-    if (!this.shouldExtractInternal(str, context, node)) return false;
-    return !this.isRejectedByConfig(str);
-  }
-
-  private shouldExtractInternal(
-    str: string,
-    context?: 'jsx-text' | 'jsx-attribute' | 'js-code',
-    node?: ts.Node,
-  ): boolean {
-    // 基本过滤条件
-    if (!str.trim()) return false;
-
     if (node) {
       // 如果节点已经被国际化结构包裹，则不提取
       const alreadyI18n = this.library
@@ -133,6 +121,14 @@ export class ReactTextExtractor extends BaseTextExtractor {
       return true;
     }
 
+    // 过滤不可翻译的技术文本（URL、版本号、CSS 值、邮箱、纯符号等）。
+    // 必须放在下面 jsx-text 短路之前，否则 <p>18px</p> / <p>https://a.com</p>
+    // 这类纯技术值会被当作"用户可见文本"提取出来送去翻译。判据与 Vue 端同源
+    // （text-classify），此前只有 Vue 有这道闸，React 端整体缺失。
+    if (isNonTranslatableText(str)) {
+      return false;
+    }
+
     // 英文字符串的判断逻辑
     if (/[a-zA-Z]/.test(str)) {
       // 如果是JSX文本，直接提取
@@ -142,6 +138,8 @@ export class ReactTextExtractor extends BaseTextExtractor {
       return false;
     }
 
+    // 不接 isTechnicalConfigValue（Vue 端有）：那道闸只对属性值生效，而 React 端
+    // 非 jsx-text 的含字母字符串在上一步已一律返回 false，接上去恒不可达。
     return false;
   }
 
@@ -164,7 +162,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     ) {
       for (const item of CommonASTUtils.collectRuntimeChineseLiteralsFromI18nCall(node)) {
         const pos = ts.getLineAndCharacterOfPosition(sourceFile, item.node.getStart(sourceFile));
-        CommonASTUtils.recordSkippedNestedChinese(
+        this.diagnostics.recordSkippedNestedChinese(
           item.text,
           filePath,
           pos.line + 1,
@@ -221,7 +219,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         });
         // 插值分支里的嵌套中文记入诊断（与模板字面量路径一致），供 lint/doctor 告警。
         for (const [nestedIndex, nested] of mixedContent.nestedChineseTexts.entries()) {
-          CommonASTUtils.recordSkippedNestedChinese(
+          this.diagnostics.recordSkippedNestedChinese(
             nested,
             filePath,
             position.line + 1,
@@ -253,7 +251,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         // 比较运算符两侧的中文字面量被跳过 —— 记录到诊断集合，lint 阶段与 locale map
         // 交叉告警，识别「同句中文在他处被 i18n 化导致 === 比较失效」的风险。
         const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
-        CommonASTUtils.recordSkippedComparisonOperand(
+        this.diagnostics.recordSkippedComparisonOperand(
           node.text,
           filePath,
           pos.line + 1,
@@ -299,7 +297,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         if (result.nestedChineseTexts.length > 0) {
           const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
           for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
-            CommonASTUtils.recordSkippedNestedChinese(
+            this.diagnostics.recordSkippedNestedChinese(
               nested,
               filePath,
               pos.line + 1,
@@ -412,7 +410,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
 
     for (const literal of CommonASTUtils.collectNestedChineseLiteralNodes(initializer.expression)) {
       const pos = ts.getLineAndCharacterOfPosition(sourceFile, literal.getStart(sourceFile));
-      CommonASTUtils.recordSkippedNestedChinese(
+      this.diagnostics.recordSkippedNestedChinese(
         literal.text,
         filePath,
         pos.line + 1,

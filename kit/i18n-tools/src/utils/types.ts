@@ -48,13 +48,33 @@ export interface ExtractedString {
    *   字符串形式（用于 locale 文件与 ID 生成）。
    */
   templateContext?:
-    | 'text-node'
-    | 'static-attribute'
-    | 'dynamic-attribute'
-    | 'interpolation'
-    | 'mixed-content';
+    'text-node' | 'static-attribute' | 'dynamic-attribute' | 'interpolation' | 'mixed-content';
   /** 属性名称（用于静态属性转动态绑定） */
   attributeName?: string;
+  /**
+   * 待替换源码区间的起点，**相对 template content**（即 `descriptor.template.content`）
+   * 的字符偏移。仅 Vue template 提取路径填充；script 侧走 AST 定位、React 侧不用，均为空。
+   *
+   * 区间语义（各提取路径必须一致，否则转换端替换出半截代码）：
+   *  - text-node / mixed-content：trim 后的文本片段本身；
+   *  - static-attribute：整个 `name="value"`（替换体是 `:name="$t(...)"`，故连属性名一起换）；
+   *  - dynamic-attribute / interpolation：表达式内那个字面量的**完整**源码，**含**引号
+   *    或反引号（替换体 `$t(...)` 不带引号，漏掉定界符会留下孤引号）。
+   *
+   * Why 用绝对偏移而不是 line/column + indexOf：后者在同行有多个相同字面量、字面量
+   * 距节点起始行超过 5 行、或属性值跨行时都会定位错或定位不到——前者静默替换到别处，
+   * 后者直接中止整个文件的转换。
+   */
+  startOffset?: number;
+  /**
+   * 提取时该区间的源码原文。转换端在替换前用它核对
+   * `templateContent.slice(startOffset, startOffset + sourceSlice.length) === sourceSlice`，
+   * 对不上即中止（宁可不改，也不产出坏代码）。
+   *
+   * 同时它的长度即区间终点——与 startOffset 一起表达区间，不另存 endOffset，
+   * 避免"偏移与原文各存一份、改一处忘另一处"的不一致。
+   */
+  sourceSlice?: string;
 }
 
 /**

@@ -9,6 +9,10 @@ import type {
 } from '../config/types';
 import { FileUtils } from './file-utils';
 import { compileMatcher, normalizePosix } from './path-matcher';
+import { CHINESE_CHAR_RANGE } from './constants';
+
+/** 语义 ID 取词前的清洗：只保留中文、标识符字符与空白。 */
+const NON_SEMANTIC_CHAR_RE = new RegExp(`[^${CHINESE_CHAR_RANGE}\\w\\s]`, 'g');
 
 // =============================================================================
 // ID 生成
@@ -297,7 +301,8 @@ function sanitizeSemanticForId(semanticPart: string): string {
  *  4. 中文长串 → `t_<hash>`
  */
 function extractSemanticPart(text: string, mappings: Record<string, string>): string {
-  const cleanText = text.replace(/[^一-鿿\w\s]/g, '').trim();
+  // 中文区间拼 CHINESE_CHAR_RANGE，与提取端 containsChinese 同源（见该常量注释）。
+  const cleanText = text.replace(NON_SEMANTIC_CHAR_RE, '').trim();
 
   // 单次遍历：完全匹配立即返回（优先级最高，可短路）；同时记录首个部分匹配，
   // 遍历结束仍无完全匹配时再用它。语义与原「先全量找完全、再全量找部分」一致。

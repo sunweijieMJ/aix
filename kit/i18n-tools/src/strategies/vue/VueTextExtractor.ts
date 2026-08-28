@@ -11,20 +11,17 @@ import {
 } from '@vue/compiler-dom';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
 import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
+import { isNonTranslatableText, isTechnicalConfigValue } from '../../utils/text-classify';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
 import type { ExtractedString } from '../../utils/types';
 import { BaseTextExtractor } from '../base';
-import type { VueI18nLibrary } from './libraries';
 
 /**
  * Vue 文本提取器
  * 负责从 Vue 文件中提取需要国际化的文本
  */
 export class VueTextExtractor extends BaseTextExtractor {
-  constructor(_library: VueI18nLibrary, rejectPatterns: readonly RegExp[] = []) {
-    super(rejectPatterns);
-  }
   /**
    * 从单个文件中提取字符串
    * @param filePath - 文件路径
@@ -240,6 +237,10 @@ export class VueTextExtractor extends BaseTextExtractor {
             componentType: 'setup', // Vue 默认使用 setup
             isTemplateString: false,
             templateContext: 'text-node',
+            // 与上面 line/column 的前导空白校正同源，只是换算到偏移：节点起点 + 前导空白
+            // 长度 = trim 后文本的真实起点。rawSource 是未解码的源码原文，正是该区间内容。
+            startOffset: textNode.loc.start.offset + leadingWs.length,
+            sourceSlice: rawSource,
           });
         }
       } else if (node.type === 5) {
@@ -348,8 +349,35 @@ export class VueTextExtractor extends BaseTextExtractor {
       isTemplateString: true,
       templateVariables,
       templateContext: 'mixed-content',
+      // originalSrc 是组内各节点 loc.source 的顺序拼接再 trim——组内节点在源码中连续，
+      // 故它就是 [first 起点 + 前导空白, +长度) 这一段的原文。
+      startOffset: first.loc.start.offset + leadingWhitespace,
+      sourceSlice: originalSrc,
     });
     return true;
+  }
+
+  /**
+   * 把「表达式内的 TS 节点」换算成相对 template content 的绝对偏移。
+   *
+   * 三段偏移都必须补上，少一项就整体错位、替换到相邻字符上：
+   *  1. exprLoc.start.offset —— 表达式在 template 中的起点；
+   *  2. 被 trim 掉的前导空白 —— 提取端把 `exp.content` trim 后才送去解析
+   *     （`:title="  'x'  "` 的 exp.loc.source 含那两个空格）；
+   *  3. `- 1` —— parseExpressionSource 把表达式外包了一层括号 `(expr)`，
+   *     解析结果里所有位置都比 trim 后的表达式多 1。
+   *
+   * 返回值只是「据此推算」的偏移；真正的正确性由转换端对 sourceSlice 的核对兜住
+   * （compiler-dom 若对某个属性值做了实体解码，content 与 loc.source 长度不等、
+   * 本换算就会偏，那里会 throw 而不是写出坏代码）。
+   */
+  private static templateOffsetOfExprNode(
+    exprLoc: { start: { offset: number }; source: string },
+    node: ts.Node,
+    sourceFile: ts.SourceFile,
+  ): number {
+    const leadingTrimmed = exprLoc.source.length - exprLoc.source.trimStart().length;
+    return exprLoc.start.offset + leadingTrimmed + (node.getStart(sourceFile) - 1);
   }
 
   /**
@@ -407,17 +435,15 @@ export class VueTextExtractor extends BaseTextExtractor {
       'header-align',
       'fixed', // Element Plus 表格相关
       'data-',
-      'v-',
-      ':',
-      '@',
-      '#', // Vue 指令前缀
     ];
 
-    // 检查是否匹配技术属性
-    // 仅对真正的「前缀模式」（以 - 结尾的 data-/v-，或指令符号 :/@/#）做前缀匹配；
-    // 其余是完整属性名，必须精确相等——否则 forecast 会被 'for' 误杀、namespace 被 'name' 误杀。
-    const isPrefixPattern = (tech: string): boolean =>
-      tech.endsWith('-') || tech === ':' || tech === '@' || tech === '#';
+    // 名单里不含 v- / : / @ / # 等指令形态：本方法的入参只会是 compiler-dom 解析后的
+    // ATTRIBUTE 名或 DIRECTIVE 的 arg.content（`:title` 传进来已是 `title`），
+    // 指令前缀永远匹配不到，写进名单只会误导后续维护者。
+    //
+    // 仅对真正的「前缀模式」（以 - 结尾，如 data-）做前缀匹配；其余是完整属性名，
+    // 必须精确相等——否则 forecast 会被 'for' 误杀、namespace 被 'name' 误杀。
+    const isPrefixPattern = (tech: string): boolean => tech.endsWith('-');
     if (
       technicalAttrs.some((tech) =>
         isPrefixPattern(tech) ? attrName.startsWith(tech) : attrName === tech,
@@ -507,6 +533,11 @@ export class VueTextExtractor extends BaseTextExtractor {
               isTemplateString: false,
               templateContext: 'static-attribute',
               attributeName: attr.name,
+              // 整个 `name="value"` 区间：替换体是 `:name="$t(...)"`，属性名也要换掉。
+              // attr.loc 天然覆盖属性名到闭合引号（无引号属性值同样准确），省掉旧实现里
+              // 那条要同时容忍单/双/无引号与引号内 padding 的正则。
+              startOffset: attr.loc.start.offset,
+              sourceSlice: attr.loc.source,
             });
           }
         }
@@ -608,7 +639,7 @@ export class VueTextExtractor extends BaseTextExtractor {
           // 若同一句中文已在别处（如 script 数组初值）被提取为 i18n key，运行时
           // 切语言后该比较永远不命中 —— 详见 LocaleValueLinter.findHardcodedComparisons。
           if (FileUtils.containsChinese(text)) {
-            CommonASTUtils.recordSkippedComparisonOperand(
+            this.diagnostics.recordSkippedComparisonOperand(
               text,
               filePath,
               directive.loc.start.line + lineOffset,
@@ -638,6 +669,14 @@ export class VueTextExtractor extends BaseTextExtractor {
             isTemplateString: false,
             templateContext: 'dynamic-attribute',
             attributeName: argName,
+            // 区间取字面量的完整源码（含引号）：替换体 `$t('k')` 自带引号，
+            // 只换引号内的内容会留下 `'$t('k')'` 这种嵌套引号。
+            startOffset: VueTextExtractor.templateOffsetOfExprNode(
+              directive.exp!.loc,
+              node,
+              sourceFile,
+            ),
+            sourceSlice: node.getText(sourceFile),
           });
         }
       }
@@ -735,7 +774,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         const nestedNodes = CommonASTUtils.collectNestedChineseLiteralNodes(node);
         for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
           const occurrence = nestedNodes[nestedIndex]?.getStart(sourceFile) ?? nestedIndex;
-          CommonASTUtils.recordSkippedNestedChinese(
+          this.diagnostics.recordSkippedNestedChinese(
             nested,
             filePath,
             directive.loc.start.line + lineOffset,
@@ -767,6 +806,11 @@ export class VueTextExtractor extends BaseTextExtractor {
         templateVariables: templateVariables.length > 0 ? templateVariables : undefined,
         templateContext: 'dynamic-attribute',
         attributeName: argName,
+        // 区间是整个模板字面量（含反引号）。注意不能用 originalText 当 sourceSlice：
+        // processTemplateExpression 重建 originalText 时把 `${ n }` 归一成 `${n}`，
+        // 与源码逐字不等；node.getText 才是逐字原文。
+        startOffset: VueTextExtractor.templateOffsetOfExprNode(directive.exp.loc, node, sourceFile),
+        sourceSlice: node.getText(sourceFile),
       });
     }
   }
@@ -831,7 +875,7 @@ export class VueTextExtractor extends BaseTextExtractor {
             // 与 extractFromDynamicAttribute / script 段 / React 端口径一致，避免插值里
             // 这种最常见的 `{{ x === '中文' ? ... }}` 写法静默漏报「比较失效」风险。
             if (FileUtils.containsChinese(text)) {
-              CommonASTUtils.recordSkippedComparisonOperand(
+              this.diagnostics.recordSkippedComparisonOperand(
                 text,
                 filePath,
                 interpolationNode.loc.start.line + lineOffset,
@@ -858,6 +902,13 @@ export class VueTextExtractor extends BaseTextExtractor {
               componentType: 'setup',
               isTemplateString: false,
               templateContext: 'interpolation',
+              // 同 dynamic-attribute：区间含引号，整个字面量换成 $t(...)。
+              startOffset: VueTextExtractor.templateOffsetOfExprNode(
+                interpolationNode.content.loc,
+                node,
+                sourceFile,
+              ),
+              sourceSlice: node.getText(sourceFile),
             });
           }
         }
@@ -950,7 +1001,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         const nestedNodes = CommonASTUtils.collectNestedChineseLiteralNodes(node);
         for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
           const occurrence = nestedNodes[nestedIndex]?.getStart(sourceFile) ?? nestedIndex;
-          CommonASTUtils.recordSkippedNestedChinese(
+          this.diagnostics.recordSkippedNestedChinese(
             nested,
             filePath,
             interpolationNode.loc.start.line + lineOffset,
@@ -980,6 +1031,13 @@ export class VueTextExtractor extends BaseTextExtractor {
         isTemplateString,
         templateVariables: templateVariables.length > 0 ? templateVariables : undefined,
         templateContext: 'interpolation',
+        // 同 dynamic-attribute 的模板字面量分支：区间含反引号，sourceSlice 用逐字原文。
+        startOffset: VueTextExtractor.templateOffsetOfExprNode(
+          interpolationNode.content.loc,
+          node,
+          sourceFile,
+        ),
+        sourceSlice: node.getText(sourceFile),
       });
     }
   }
@@ -1046,7 +1104,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         // script 端比较运算符两侧的中文字面量被跳过 —— 与 template 端记录对称，
         // 用于事后与 locale map 交叉，识别「同句中文在他处被 i18n 化导致比较失效」的风险。
         const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
-        CommonASTUtils.recordSkippedComparisonOperand(
+        this.diagnostics.recordSkippedComparisonOperand(
           node.text,
           filePath,
           pos.line + 1 + lineOffset,
@@ -1074,7 +1132,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         if (result.nestedChineseTexts.length > 0) {
           const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
           for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
-            CommonASTUtils.recordSkippedNestedChinese(
+            this.diagnostics.recordSkippedNestedChinese(
               nested,
               filePath,
               pos.line + 1 + lineOffset,
@@ -1136,34 +1194,20 @@ export class VueTextExtractor extends BaseTextExtractor {
   }
 
   /**
-   * 判断字符串是否应该被提取进行国际化
+   * Vue 侧的内置提取规则。外壳（空串 → 本方法 → 业务侧 rejectPatterns）已在
+   * BaseTextExtractor.shouldExtract 里固化，此处只负责框架特有部分。
+   *
    * @param str - 待检查的字符串
-   * @param context - 上下文信息
-   * @param node - AST节点，用于检查上下文环境
-   * @returns 是否应该提取
+   * @param context - template / script 上下文
+   * @param node - AST 节点，用于检查上下文环境
+   * @param templateContext - template 内的细分位置（text-node / 属性值等）
    */
-  private shouldExtract(
+  protected shouldExtractInternal(
     str: string,
-    context: 'template' | 'script',
+    context?: 'template' | 'script',
     node?: ts.Node,
     templateContext?: string,
   ): boolean {
-    // 工具内置规则先判定。规则放行后才让业务侧 rejectPatterns 兜底拒收——
-    // 反之会让用户黑名单越过 isComparisonOperand / isInConsoleCall 等安全规则。
-    const passInternal = this.shouldExtractInternal(str, context, node, templateContext);
-    if (!passInternal) return false;
-    return !this.isRejectedByConfig(str);
-  }
-
-  private shouldExtractInternal(
-    str: string,
-    context: 'template' | 'script',
-    node?: ts.Node,
-    templateContext?: string,
-  ): boolean {
-    // 基本过滤条件
-    if (!str.trim()) return false;
-
     if (node) {
       // 如果节点已经被国际化结构包裹，则不提取
       if (CommonASTUtils.isAlreadyInternationalized(node)) {
@@ -1188,7 +1232,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     // 过滤不可翻译的技术文本（URL、版本号、CSS 值、邮箱、纯符号等）
     // 注意：必须放在 text-node 短路之前，否则 <p>18px</p> / <p>foo@bar.com</p>
     // 这类纯技术值会被当作"用户可见文本"提取出来。
-    if (this.isNonTranslatableText(str)) {
+    if (isNonTranslatableText(str)) {
       return false;
     }
 
@@ -1198,7 +1242,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     }
 
     // 过滤技术值（Element Plus 等组件库的配置值）
-    if (this.isTechnicalValue(str)) {
+    if (isTechnicalConfigValue(str)) {
       return false;
     }
 
@@ -1212,99 +1256,6 @@ export class VueTextExtractor extends BaseTextExtractor {
       }
       return false;
     }
-
-    return false;
-  }
-
-  /**
-   * 判断字符串是否是技术值（组件库的配置值，不需要国际化）
-   * @param str - 待检查的字符串
-   * @returns 是否是技术值
-   */
-  private isTechnicalValue(str: string): boolean {
-    const technicalValues = [
-      // Element Plus type 属性值
-      'primary',
-      'success',
-      'warning',
-      'danger',
-      'info',
-      'text',
-      'error',
-      // Element Plus size 属性值
-      'large',
-      'default',
-      'small',
-      'mini',
-      // 位置相关
-      'top',
-      'bottom',
-      'left',
-      'right',
-      'center',
-      'top-start',
-      'top-end',
-      'bottom-start',
-      'bottom-end',
-      'left-start',
-      'left-end',
-      'right-start',
-      'right-end',
-      // 主题和效果
-      'dark',
-      'light',
-      'plain',
-      // 其他常见配置值
-      'always',
-      'hover',
-      'never',
-      'click',
-      'focus',
-      'manual',
-      'horizontal',
-      'vertical',
-      'card',
-      'border-card',
-      // 布尔值字符串形式（虽然通常用 boolean，但有时会用字符串）
-      'true',
-      'false',
-    ];
-
-    return technicalValues.includes(str.toLowerCase());
-  }
-
-  /**
-   * 判断字符串是否是不需要翻译的技术文本
-   * 例如 URL、版本号、CSS 值等
-   */
-  private isNonTranslatableText(str: string): boolean {
-    const trimmed = str.trim();
-
-    // URL
-    if (/^https?:\/\//i.test(trimmed) || /^www\./i.test(trimmed)) return true;
-
-    // Email
-    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return true;
-
-    // 版本号: v1.2.3, 1.0.0, 1.0.0-beta.1
-    if (/^v?\d+(\.\d+)+(-[\w.]+)?$/.test(trimmed)) return true;
-
-    // CSS 数值: 10px, 1.5rem, 100%, 0.5em
-    if (/^\d+(\.\d+)?(px|em|rem|vh|vw|vmin|vmax|%|pt|cm|mm|in|ch|ex)$/i.test(trimmed)) return true;
-
-    // CSS 颜色: #fff, #ffffff, #ffffffaa
-    if (/^#[0-9a-fA-F]{3,8}$/.test(trimmed)) return true;
-
-    // CSS 函数: rgb(), rgba(), hsl(), var()
-    if (/^(rgb|rgba|hsl|hsla|var)\s*\(/.test(trimmed)) return true;
-
-    // 文件路径: ./foo, ../bar, /path
-    if (/^\.{0,2}\/\S+$/.test(trimmed)) return true;
-
-    // 纯符号 / 标点：不含任何字母或数字（兜底）。
-    // 例如 → ← × ✓ ··· 这类字符没有翻译意义，但它们既不是 URL 也不是 CSS。
-    // 必须放在最后做兜底，确保前面已识别的特定模式不会被这条规则覆盖。
-    if (!/[\p{L}\p{N}]/u.test(trimmed)) return true;
 
     return false;
   }
@@ -1344,7 +1295,7 @@ export class VueTextExtractor extends BaseTextExtractor {
   ): void {
     for (const item of CommonASTUtils.collectRuntimeChineseLiteralsFromI18nCall(call)) {
       const pos = ts.getLineAndCharacterOfPosition(sourceFile, item.node.getStart(sourceFile));
-      CommonASTUtils.recordSkippedNestedChinese(
+      this.diagnostics.recordSkippedNestedChinese(
         item.text,
         filePath,
         baseLine + pos.line + lineOffset,

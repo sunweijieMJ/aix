@@ -300,8 +300,7 @@ export class LLMClient {
    * 请求翻译并解析一次：返回 cleaned 文本与解析后的对象。
    *
    * 收口「chatCompletion → cleanJsonResponse → JSON.parse + 错误包装」唯一一处，
-   * 让 translateJson（保留 string 返回契约）与 batchTranslate（直接消费对象）复用同一次
-   * 解析结果——避免 batchTranslate 对 translateJson 返回串再次 JSON.parse 的重复解析。
+   * 避免调用方各自对返回串再解析一遍。
    */
   private async requestTranslation(
     jsonText: string,
@@ -329,13 +328,6 @@ export class LLMClient {
       }
       throw error;
     }
-  }
-
-  /**
-   * 翻译 JSON 文本（单目标）。返回 cleaned JSON 字符串（公共 API，契约不变）。
-   */
-  async translateJson(jsonText: string, targetLocale: string): Promise<string> {
-    return (await this.requestTranslation(jsonText, targetLocale)).cleaned;
   }
 
   /**

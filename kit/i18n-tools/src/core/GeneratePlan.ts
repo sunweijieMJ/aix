@@ -327,7 +327,7 @@ export class GeneratePlanWriter {
    * 解析 `latest` 关键字到具体 plan.json 路径。
    *
    * 优先读 `<plansRoot>/.last.json`；若文件缺失（如指针写失败 / 用户手动删过），
-   * 退回到按目录名时间戳排序找最新，保证 latest 关键字在合理状况下都能命中。
+   * 退回到按目录 mtime 倒序找最新，保证 latest 关键字在合理状况下都能命中。
    *
    * 返回 null 表示完全没有可 apply 的 plan，由 caller 决定如何提示用户。
    */

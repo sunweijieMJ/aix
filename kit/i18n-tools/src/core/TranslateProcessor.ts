@@ -19,7 +19,7 @@ import { resolveUsesDoubleBracePlaceholders } from '../adapters';
  */
 export class TranslateProcessor extends FileProcessor {
   private llmClient: LLMClient;
-  private batchConfig: { size: number; delay: number };
+  private batchConfig: { size: number };
   /** 当前 i18n 库插值语法是否为双花括号，占位符校验与 LLM prompt 共用同一份判定 */
   private usesDoubleBracePlaceholders: boolean;
 
@@ -34,7 +34,6 @@ export class TranslateProcessor extends FileProcessor {
     );
     this.batchConfig = {
       size: config.llm.translation.batchSize,
-      delay: config.llm.translation.throttleMs,
     };
   }
 
@@ -101,7 +100,7 @@ export class TranslateProcessor extends FileProcessor {
 
       LoggerUtils.info(`📋 [${target}] 需翻译: ${needsTranslation}`);
       LoggerUtils.info(
-        `⚙️  批次设置: ${this.batchConfig.size} 条目/批次, ${this.batchConfig.delay}ms 延时`,
+        `⚙️  批次设置: ${this.batchConfig.size} 条目/批次, ${this.config.llm.translation.throttleMs}ms 延时`,
       );
 
       const result = await this.performBatchTranslation(toTranslate, data, targetPath, target);

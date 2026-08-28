@@ -4,7 +4,6 @@ import os from 'os';
 import path from 'path';
 import { VueTextExtractor } from '../src/strategies/vue/VueTextExtractor';
 import { ReactTextExtractor } from '../src/strategies/react/ReactTextExtractor';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
 import { LoggerUtils } from '../src/utils/logger';
 import { ReactAdapter } from '../src/adapters/ReactAdapter';
 import { VueAdapter } from '../src/adapters/VueAdapter';
@@ -46,7 +45,7 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
       `<template><div>全部({{ totalCount }})</div></template><script setup></script>`,
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     expect(result).toHaveLength(1);
@@ -64,7 +63,7 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
       `<template><div>  全部({{ totalCount }})  </div></template><script setup></script>`,
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     expect(result).toHaveLength(1);
@@ -82,7 +81,7 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
       `<template><span>第{{ numberToChinese(sort) }}讲：</span></template><script setup></script>`,
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     expect(result).toHaveLength(1);
@@ -97,7 +96,7 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
       `<template><span>{{ progress }}%已学</span></template><script setup></script>`,
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     expect(result).toHaveLength(1);
@@ -111,7 +110,7 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
       `<template><div>结果：{{ ok ? '通过' : '未通过' }} ←</div></template><script setup></script>`,
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     // 至少应该提取出 '通过' 和 '未通过' 两个中文字面量（来自三元）
@@ -132,7 +131,7 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
 </div></template><script setup></script>`,
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     // 跨行场景下，至少 '全部(' 这一段会被按 text-node 单独提取
@@ -149,7 +148,7 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
       `<template><div>{{ a }} / {{ b }}</div></template><script setup></script>`,
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     expect(result.every((r) => r.templateContext !== 'mixed-content')).toBe(true);
@@ -162,7 +161,7 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
     );
 
     // 命中合成 message `\`构建版本 ${version} 已就绪\`` 中的"构建版本"
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never, [/构建版本/]);
+    const extractor = new VueTextExtractor([/构建版本/]);
     const result = await extractor.extractFromFile(file);
 
     // 整组（含"构建版本"）被拒收后，剩余 INTERPOLATION + TEXT('已就绪') 可重新构成
@@ -182,15 +181,14 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
  * 占位符化为 `操作失败：{value}`，三元里的中文分支既不提取、也不内联，而是作为运行时
  * 参数原样塞进 {value}——切到非源语种后渲染未翻译中文（静默泄漏）。
  *
- * 修复后：提取阶段把这些嵌套中文记入 CommonASTUtils.skippedNestedChinese，
+ * 修复后：提取阶段把这些嵌套中文记入 extractor 的 ExtractionDiagnostics，
  * 供 lint / doctor 显式告警（nested-interpolation-chinese）。
  */
 describe('提取：插值表达式内嵌套中文记入诊断（nested-interpolation-chinese）', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    // 清空收集器，避免跨用例污染（drain 是消耗性操作）。
-    CommonASTUtils.drainSkippedNestedChinese();
+    // 无需清场：诊断收集器挂在每次新建的 extractor 实例上，用例之间天然隔离。
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-nested-cn-'));
   });
 
@@ -215,7 +213,7 @@ const handle = () => {
 </script>`,
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     // 模板字符串被提取为占位符形态：中文分支只保留在 original（源码匹配用），
@@ -227,7 +225,7 @@ const handle = () => {
     expect(result.some((r) => !r.isTemplateString && r.original === '网络异常')).toBe(false);
 
     // 关键：两个中文分支被记入诊断集合（不再静默）
-    const drained = CommonASTUtils.drainSkippedNestedChinese();
+    const drained = extractor.getDiagnostics().drainSkippedNestedChinese();
     const texts = drained.map((d) => d.text).sort();
     expect(texts).toEqual(['内部错误', '网络异常']);
     // 位置信息可用于 IDE 跳转
@@ -246,10 +244,10 @@ const handle = () => {
 </script>`,
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     await extractor.extractFromFile(file);
 
-    expect(CommonASTUtils.drainSkippedNestedChinese()).toEqual([]);
+    expect(extractor.getDiagnostics().drainSkippedNestedChinese()).toEqual([]);
   });
 
   it('Vue 模板中的既有 $t values 参数仍记录嵌套中文', async () => {
@@ -258,10 +256,13 @@ const handle = () => {
       `<template><div>{{ $t('error.message', { value: ok ? '内部错误' : '网络异常' }) }}</div></template>`,
     );
 
-    await new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+    const extractor = new VueTextExtractor();
+    await extractor.extractFromFile(file);
 
     expect(
-      CommonASTUtils.drainSkippedNestedChinese()
+      extractor
+        .getDiagnostics()
+        .drainSkippedNestedChinese()
         .map((item) => item.text)
         .sort(),
     ).toEqual(['内部错误', '网络异常']);
@@ -273,10 +274,13 @@ const handle = () => {
       `<template><div>{{ $t('error.message', { value: ok ? '内部错误' : '网络异常' }) + suffix }}</div></template>`,
     );
 
-    await new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+    const extractor = new VueTextExtractor();
+    await extractor.extractFromFile(file);
 
     expect(
-      CommonASTUtils.drainSkippedNestedChinese()
+      extractor
+        .getDiagnostics()
+        .drainSkippedNestedChinese()
         .map((item) => item.text)
         .sort(),
     ).toEqual(['内部错误', '网络异常']);
@@ -287,12 +291,14 @@ const handle = () => {
       'DuplicateNestedTemplates.vue',
       `<template><div>{{ ok ? \`前\${cond ? '错误' : '失败'}\` : \`后\${other ? '错误' : '失败'}\` }}</div></template>`,
     );
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
 
     await extractor.extractFromFile(file);
 
     expect(
-      CommonASTUtils.drainSkippedNestedChinese()
+      extractor
+        .getDiagnostics()
+        .drainSkippedNestedChinese()
         .map((item) => item.text)
         .sort(),
     ).toEqual(['失败', '失败', '错误', '错误']);
@@ -308,10 +314,13 @@ const handle = () => {
       `export const text = t('error.message', { value: ok ? '内部错误' : '网络异常' });`,
     );
 
-    await new ReactTextExtractor().extractFromFile(file);
+    const extractor = new ReactTextExtractor();
+    await extractor.extractFromFile(file);
 
     expect(
-      CommonASTUtils.drainSkippedNestedChinese()
+      extractor
+        .getDiagnostics()
+        .drainSkippedNestedChinese()
         .map((item) => item.text)
         .sort(),
     ).toEqual(['内部错误', '网络异常']);
@@ -325,10 +334,13 @@ const handle = () => {
     );
 
     const library = createReactI18nLibrary('react-i18next', { namespace: 'app' });
-    await new ReactTextExtractor(library).extractFromFile(file);
+    const extractor = new ReactTextExtractor(library);
+    await extractor.extractFromFile(file);
 
     expect(
-      CommonASTUtils.drainSkippedNestedChinese()
+      extractor
+        .getDiagnostics()
+        .drainSkippedNestedChinese()
         .map((item) => item.text)
         .sort(),
     ).toEqual(['内部错误', '网络异常']);
@@ -343,7 +355,7 @@ const handle = () => {
       "<template><div :title=\"`状态：${ok ? '在线' : '离线'}`\" /></template><script setup></script>",
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     // 整段模板被提取为单条 isTemplateString 项
@@ -354,7 +366,9 @@ const handle = () => {
     expect(result.some((r) => !r.isTemplateString && r.original === '在线')).toBe(false);
     expect(result.some((r) => !r.isTemplateString && r.original === '离线')).toBe(false);
     // 两个中文分支记入诊断（与脚本路径一致）
-    const texts = CommonASTUtils.drainSkippedNestedChinese()
+    const texts = extractor
+      .getDiagnostics()
+      .drainSkippedNestedChinese()
       .map((d) => d.text)
       .sort();
     expect(texts).toEqual(['在线', '离线']);
@@ -366,7 +380,7 @@ const handle = () => {
       "<template><div>{{ `状态：${ok ? '在线' : '离线'}` }}</div></template><script setup></script>",
     );
 
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
     const tmpl = result.filter((r) => r.isTemplateString);
@@ -374,7 +388,9 @@ const handle = () => {
     expect(tmpl[0]!.original).toContain('状态：');
     expect(result.some((r) => !r.isTemplateString && r.original === '在线')).toBe(false);
     expect(result.some((r) => !r.isTemplateString && r.original === '离线')).toBe(false);
-    const texts = CommonASTUtils.drainSkippedNestedChinese()
+    const texts = extractor
+      .getDiagnostics()
+      .drainSkippedNestedChinese()
       .map((d) => d.text)
       .sort();
     expect(texts).toEqual(['在线', '离线']);
@@ -412,7 +428,7 @@ const html = \`
 </script>`,
       );
 
-      const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+      const extractor = new VueTextExtractor();
       const result = await extractor.extractFromFile(file);
 
       expect(result).toHaveLength(0);
@@ -431,7 +447,7 @@ const html = \`<div class="hello">你好 \${userName}<span>欢迎</span></div>\`
 </script>`,
       );
 
-      const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+      const extractor = new VueTextExtractor();
       const result = await extractor.extractFromFile(file);
 
       expect(result).toHaveLength(0);
@@ -450,7 +466,7 @@ const msg = \`你有 \${count} 条新消息\`;
 </script>`,
       );
 
-      const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+      const extractor = new VueTextExtractor();
       const result = await extractor.extractFromFile(file);
 
       expect(result).toHaveLength(1);
@@ -468,7 +484,7 @@ const html = \`<div><span>hello world</span></div>\`;
 </script>`,
       );
 
-      const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+      const extractor = new VueTextExtractor();
       const result = await extractor.extractFromFile(file);
 
       expect(result).toHaveLength(0);
@@ -486,7 +502,7 @@ const msg = \`当 x < 10 时显示\${x}\`;
 </script>`,
       );
 
-      const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+      const extractor = new VueTextExtractor();
       const result = await extractor.extractFromFile(file);
 
       // 不等式 `<` 后面是空格不是字母，不命中 HTML pattern，应正常提取
@@ -504,7 +520,7 @@ const html = \`<div><span>提示</span></div>\`;
 </script>`,
       );
 
-      const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+      const extractor = new VueTextExtractor();
       await extractor.extractFromFile(file);
 
       const warnings = extractor.drainWarnings();
@@ -642,7 +658,7 @@ const statusMap = { '进行中': 'green' };
 const color = statusMap['进行中'];
 </script>`,
     );
-    const result = await new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+    const result = await new VueTextExtractor().extractFromFile(file);
     expect(result.map((r) => r.original)).not.toContain('进行中');
   });
 
@@ -667,7 +683,7 @@ const color = statusMap['进行中'];
 const statusMap = { ['进行中']: 'green' };
 </script>`,
     );
-    const result = await new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+    const result = await new VueTextExtractor().extractFromFile(file);
     expect(result.map((r) => r.original)).not.toContain('进行中');
   });
 
@@ -714,7 +730,7 @@ describe('VueTextExtractor — 混合表达式中的中文提取（i18n 粗筛�
   const extract = async (content: string) => {
     const file = path.join(tmpDir, 'M.vue');
     fs.writeFileSync(file, content);
-    return new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+    return new VueTextExtractor().extractFromFile(file);
   };
 
   it('插值：`$t(a) + 中文后缀` 中的中文被提取（$t 调用参数不被提取）', async () => {
@@ -766,7 +782,7 @@ describe('VueTextExtractor — v-pre 子树跳过', () => {
   const extract = async (content: string) => {
     const file = path.join(tmpDir, 'P.vue');
     fs.writeFileSync(file, content);
-    return new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+    return new VueTextExtractor().extractFromFile(file);
   };
 
   it('v-pre 元素文本（含 mustache）不被提取', async () => {
@@ -816,7 +832,7 @@ describe('VueTextExtractor — template 模板字符串含 HTML 跳过（与 scr
   const extract = async (content: string) => {
     const file = path.join(tmpDir, 'H.vue');
     fs.writeFileSync(file, content);
-    return new VueTextExtractor({ name: 'vue-i18n' } as never).extractFromFile(file);
+    return new VueTextExtractor().extractFromFile(file);
   };
   const hasHtmlWarn = () =>
     warnSpy.mock.calls
@@ -843,7 +859,7 @@ describe('VueTextExtractor — template 模板字符串含 HTML 跳过（与 scr
       file,
       '<template><el-x :content="ok ? `<b>甲</b>` : `<i>乙</i>`"></el-x></template>',
     );
-    const extractor = new VueTextExtractor({ name: 'vue-i18n' } as never);
+    const extractor = new VueTextExtractor();
 
     const result = await extractor.extractFromFile(file);
 
@@ -857,5 +873,69 @@ describe('VueTextExtractor — template 模板字符串含 HTML 跳过（与 scr
     const result = await extract('<template><el-x :content="`总计${n}项`"></el-x></template>');
     expect(result.map((r) => r.original)).toContain('`总计${n}项`');
     expect(warnSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 回归：不可翻译技术文本（URL / 版本号 / CSS 值 / 纯符号）的判定此前只长在
+ * VueTextExtractor 上，React 端整体缺失——`<p>18px</p>`、`<p>https://a.com</p>`
+ * 会被当成用户可见文案提取成 key 送去 LLM 翻译，译文回写后页面渲染出被"翻译过"的
+ * 尺寸值 / 网址。判定下沉到 utils/text-classify 后两端共用。
+ */
+describe('提取：不可翻译技术文本在 Vue / React 两端口径一致', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-nontranslatable-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const extractReact = async (code: string): Promise<string[]> => {
+    const file = path.join(tmpDir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const result = await new ReactTextExtractor().extractFromFile(file);
+    return result.map((r) => r.original);
+  };
+
+  const extractVue = async (template: string): Promise<string[]> => {
+    const file = path.join(tmpDir, 'C.vue');
+    fs.writeFileSync(file, `<template>${template}</template>`);
+    const result = await new VueTextExtractor().extractFromFile(file);
+    return result.map((r) => r.original);
+  };
+
+  it.each([
+    ['CSS 数值', '18px'],
+    ['URL', 'https://example.com/docs'],
+    ['版本号', 'v1.2.3'],
+    ['邮箱', 'support@example.com'],
+    ['CSS 颜色', '#ff8800'],
+    ['纯符号', '→'],
+  ])('React JSX 文本 %s 不再被提取', async (_label, text) => {
+    expect(await extractReact(`export const C = () => <p>${text}</p>;`)).toEqual([]);
+  });
+
+  it.each([
+    ['CSS 数值', '18px'],
+    ['URL', 'https://example.com/docs'],
+    ['版本号', 'v1.2.3'],
+  ])('Vue 文本节点 %s 同样不被提取（既有行为，作对照）', async (_label, text) => {
+    expect(await extractVue(`<p>${text}</p>`)).toEqual([]);
+  });
+
+  it('对照：React 正常中文 / 英文可见文案照常提取（不误伤）', async () => {
+    expect(await extractReact('export const C = () => <p>提交订单</p>;')).toEqual(['提交订单']);
+    expect(await extractReact('export const C = () => <p>Submit order</p>;')).toEqual([
+      'Submit order',
+    ]);
+  });
+
+  it('对照：含中文的混合串即使带 URL 也照常提取（中文优先短路）', async () => {
+    expect(await extractReact('export const C = () => <p>访问 https://a.com 查看</p>;')).toEqual([
+      '访问 https://a.com 查看',
+    ]);
   });
 });

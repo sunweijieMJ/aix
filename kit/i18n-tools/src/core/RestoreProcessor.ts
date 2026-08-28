@@ -166,9 +166,9 @@ export class RestoreProcessor extends BaseProcessor {
             LoggerUtils.info(`📈 进度: ${processedCount}/${filesToProcess.length} 文件已处理`);
           }
         } catch (error) {
-          // processFile 内部会捕获异常并返回 false；外层 catch 仅兜底"AST/IO 异常逃逸"
-          // 等罕见情况。两路径都纳入 failedFiles，最终统一以非零退出码上抛，避免 CI
-          // 因 silent skip 把"几乎全部失败"误判为成功。
+          // processFile 刻意不吞错（见其内部注释），AST / IO 异常一律逃逸到这里，
+          // 逐个计入 failedFiles，最终统一以非零退出码上抛。绝不 silent skip——
+          // 否则 CI 会把"几乎全部失败"误判为成功。
           failedFiles.push(filePath);
           LoggerUtils.error(`处理文件失败: ${FileUtils.getRelativePath(filePath)}`, error);
           this.report.addFailure({

@@ -81,7 +81,7 @@ export class MergeProcessor extends FileProcessor {
     // 返回默认值 {}（而非抛错），会让本文件被当成空文件继续——下游
     // updateUntranslatedFile 随即用 '{}' 覆写、销毁在途译文（含已填/已翻译的
     // target 值，pick 无法重生成）。loadJsonDictOrThrow 对「有内容却解析失败」抛错中止。
-    // （文件存在性已由 run() 在调用前校验，缺失视为 {} 不影响。）
+    // （文件存在性已由 mergeTranslationData 在调用前校验，缺失视为 {} 不影响。）
     return FileUtils.loadJsonDictOrThrow<Translations>(
       filePath,
       (p) =>

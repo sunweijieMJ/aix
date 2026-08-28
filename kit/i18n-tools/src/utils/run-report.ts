@@ -165,11 +165,6 @@ export class RunReport {
     }
   }
 
-  /** 批量追加，便于 extractor / linter 一次性 drain。 */
-  addManualEntries(entries: ManualEntry[]): void {
-    for (const entry of entries) this.addManualEntry(entry);
-  }
-
   /** 设置覆盖率指标。重复调用以最后一次为准（generate 末尾一次性写入）。 */
   setCoverage(metric: CoverageMetric): void {
     this.coverage = metric;

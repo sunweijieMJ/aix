@@ -36,11 +36,18 @@ export abstract class FileProcessor {
   }
 
   /**
-   * 从类名推导出 kebab-case 命令名（如 GenerateProcessor → "generate"），
-   * 用于失败报告文件名。子类无需关心；如有特殊命名可重写。
+   * 从类名推导出 kebab-case 命令名（GenerateProcessor → "generate"，
+   * CsvExportProcessor → "csv-export"），用于运行报告文件名。
+   * 子类无需关心；如有特殊命名可重写。
+   *
+   * 断驼峰是为了与用户看到的 CLI mode 名（`--mode csv-export`）一致：报告文件名是
+   * 用户排障时唯一的定位线索，此前只 toLowerCase() 产出的连写形态与任何 mode 名都对不上。
    */
   protected getCommandName(): string {
-    return this.constructor.name.replace(/Processor$/, '').toLowerCase();
+    return this.constructor.name
+      .replace(/Processor$/, '')
+      .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+      .toLowerCase();
   }
 
   /**

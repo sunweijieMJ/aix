@@ -27,37 +27,6 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     this.tImport = tImport;
   }
 
-  /**
-   * 判断一个 Identifier 是否处于「值读取位置」（真正引用了同名变量），用于区分裸值引用与
-   * 声明 / 绑定名 / 对象键 / 成员名 / import-export 具名 / JSX 属性名等非引用位置。
-   *
-   * 依赖 parent 指针——本守卫作用于 CommonASTUtils.parseSourceFile（createSourceFile 的
-   * setParentNodes=true）解析出的原始 sourceFile，parent 完整可用。
-   * 注意：对象简写 `{ t }`（ShorthandPropertyAssignment.name）属值引用，不排除。
-   */
-  private isIdentifierValueReference(id: ts.Identifier): boolean {
-    const parent = id.parent;
-    if (!parent) return true;
-    // 声明 / 绑定名位置
-    if (
-      (ts.isBindingElement(parent) && (parent.name === id || parent.propertyName === id)) ||
-      (ts.isVariableDeclaration(parent) && parent.name === id) ||
-      (ts.isParameter(parent) && parent.name === id) ||
-      (ts.isFunctionDeclaration(parent) && parent.name === id) ||
-      (ts.isClassDeclaration(parent) && parent.name === id)
-    ) {
-      return false;
-    }
-    // 成员名 obj.t（接收者非 t）/ 对象键 { t: x } / JSX 属性名 t={...} / 限定名
-    if (ts.isPropertyAccessExpression(parent) && parent.name === id) return false;
-    if (ts.isPropertyAssignment(parent) && parent.name === id) return false;
-    if (ts.isJsxAttribute(parent) && parent.name === id) return false;
-    if (ts.isQualifiedName(parent) && parent.right === id) return false;
-    // import / export 具名（含别名两侧）
-    if (ts.isImportSpecifier(parent) || ts.isExportSpecifier(parent)) return false;
-    return true;
-  }
-
   /** 变量声明（`const t = ...` 或 `const { t, ... } = ...`）是否绑定了名为 varName 的标识符。 */
   private declarationBindsVar(decl: ts.VariableDeclaration, varName: string): boolean {
     if (ts.isIdentifier(decl.name)) return decl.name.text === varName;
@@ -508,7 +477,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
         if (
           ts.isIdentifier(node) &&
           node.text === varName &&
-          this.isIdentifierValueReference(node)
+          CommonASTUtils.isIdentifierValueReference(node)
         ) {
           found = true;
           return;

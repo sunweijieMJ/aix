@@ -51,7 +51,7 @@ export class VueAdapter extends FrameworkAdapter {
     });
 
     this.library = library;
-    this.textExtractor = new VueTextExtractor(library, options.filterPatterns ?? []);
+    this.textExtractor = new VueTextExtractor(options.filterPatterns ?? []);
     this.importManager = new VueImportManager(tImport, library);
     this.componentInjector = new VueComponentInjector(library, this.importManager);
     this.transformer = new VueTransformer(library, this.importManager, this.componentInjector);

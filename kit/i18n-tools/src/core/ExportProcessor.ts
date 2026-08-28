@@ -168,23 +168,34 @@ export class ExportProcessor extends FileProcessor {
     LoggerUtils.success('\n✅ 语言包导出成功!');
     LoggerUtils.info(`📄 输出文件:\n   ${outputPaths.join('\n   ')}`);
 
-    // 嵌套模式下顶层 key 数量少于 flat key 数量，flatten 后再比较
+    // 嵌套模式下顶层 key 数量少于 flat key 数量，flatten 后再比较。
+    // 这里是「写完再读回来核对」的自检，故用判别式而非 silent 降级：silent 会把
+    // 读不回来的文件当成 {}，只报出「条目数量不匹配」——用户照着这条去数条目，
+    // 而真正的原因是刚写出的文件不是合法 JSON。两种故障必须分别报。
     const separator = this.config.keys.separator;
-    let allOk = true;
+    const mismatched: string[] = [];
+    const unreadable: string[] = [];
     for (const locale of allLocales) {
-      const exported = FileUtils.safeLoadJsonFile<Record<string, any>>(
-        path.join(outputDir, `${locale}.json`),
-        { silent: true },
-      );
-      const flat = FileUtils.flattenObject(exported, '', separator);
+      const filePath = path.join(outputDir, `${locale}.json`);
+      const cls = FileUtils.classifyJsonFile<Record<string, any>>(filePath);
+      if (cls.status !== 'ok') {
+        unreadable.push(`${locale}(${cls.status})`);
+        continue;
+      }
+      const flat = FileUtils.flattenObject(cls.data, '', separator);
       if (Object.keys(flat).length !== Object.keys(mergedByLocale.get(locale)!).length) {
-        allOk = false;
+        mismatched.push(locale);
       }
     }
-    if (allOk) {
+    if (unreadable.length === 0 && mismatched.length === 0) {
       LoggerUtils.success('✅ 导出文件验证通过');
     } else {
-      LoggerUtils.warn('导出文件条目数量不匹配');
+      if (unreadable.length > 0) {
+        LoggerUtils.warn(`导出文件回读失败（写出的内容不是合法 JSON）: ${unreadable.join(', ')}`);
+      }
+      if (mismatched.length > 0) {
+        LoggerUtils.warn(`导出文件条目数量不匹配: ${mismatched.join(', ')}`);
+      }
     }
   }
 

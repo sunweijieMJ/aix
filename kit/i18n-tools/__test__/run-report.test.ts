@@ -3,6 +3,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { RunReport } from '../src/utils/run-report';
+import { FileProcessor } from '../src/core/FileProcessor';
+import { resolveConfig, type ResolvedConfig } from '../src/config';
 
 // 旧路径 node_modules/.cache/i18n-tools 已弃用——诊断报告语义不属 cache，
 // 现走 .i18n-tools/logs/，与 .next / .turbo / .vite 等工具的根目录命名空间一致。
@@ -296,5 +298,46 @@ describe('RunReport', () => {
     report.flush();
 
     expect(fs.readFileSync(giPath, 'utf-8')).toBe(customContent);
+  });
+});
+
+// 报告文件名是用户排障时唯一的定位线索，必须与他实际敲的 `--mode csv-export` 对得上；
+// 旧实现只 toLowerCase()，多词类名产出 `csvexport`，与任何 CLI mode 名都不匹配。
+describe('FileProcessor.getCommandName — 类名转真正的 kebab-case', () => {
+  class ProbeProcessor extends FileProcessor {
+    protected getOperationName(): string {
+      return '探针';
+    }
+    exposeCommandName(): string {
+      return this.getCommandName();
+    }
+  }
+  class CsvExportProbeProcessor extends ProbeProcessor {}
+
+  const buildConfig = (root: string): ResolvedConfig =>
+    resolveConfig({
+      root,
+      framework: { type: 'vue', tImport: '@/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+
+  let rootDir: string;
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-cmdname-'));
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  });
+
+  it('单词类名保持不变', () => {
+    expect(new ProbeProcessor(buildConfig(rootDir)).exposeCommandName()).toBe('probe');
+  });
+
+  it('多词类名断驼峰为 csv-export-probe，而非 csvexportprobe', () => {
+    expect(new CsvExportProbeProcessor(buildConfig(rootDir)).exposeCommandName()).toBe(
+      'csv-export-probe',
+    );
   });
 });

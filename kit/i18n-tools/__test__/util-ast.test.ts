@@ -588,9 +588,17 @@ describe('text-extractor-sticky-regex', () => {
     async extractFromFile(): Promise<ExtractedString[]> {
       return [];
     }
+    // 内置规则一律放行，让 shouldExtract 的结果只取决于 rejectPatterns
+    protected shouldExtractInternal(): boolean {
+      return true;
+    }
     // 暴露 protected 方法供断言
     public probe(text: string): boolean {
       return this.isRejectedByConfig(text);
+    }
+    // 模板方法整链：内置规则 → rejectPatterns
+    public probeShouldExtract(text: string): boolean {
+      return this.shouldExtract(text);
     }
   }
 
@@ -613,6 +621,21 @@ describe('text-extractor-sticky-regex', () => {
       const ex = new ProbeExtractor([/foo/y]);
       expect(ex.probe('xyz')).toBe(false);
       expect(ex.probe('xyz')).toBe(false);
+    });
+  });
+
+  // shouldExtract 的外壳此前在 Vue / React 两端各写一份逐字相同的代码；上提到基类后
+  // 由这里守住「空串 → 内置规则 → rejectPatterns」的固定次序。
+  describe('BaseTextExtractor.shouldExtract — 模板方法次序', () => {
+    it('空串直接拒收，不进入内置规则', () => {
+      const ex = new ProbeExtractor([]);
+      expect(ex.probeShouldExtract('   ')).toBe(false);
+    });
+
+    it('内置规则放行后仍受业务侧 rejectPatterns 拒收', () => {
+      const ex = new ProbeExtractor([/^内部标记/]);
+      expect(ex.probeShouldExtract('内部标记：不要翻译')).toBe(false);
+      expect(ex.probeShouldExtract('提交')).toBe(true);
     });
   });
 });
