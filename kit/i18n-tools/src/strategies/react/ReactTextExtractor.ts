@@ -265,7 +265,18 @@ export class ReactTextExtractor extends BaseTextExtractor {
     // 通过 extracted.original 在源代码中匹配并替换；processedMessage 走 ID
     // 生成与 locale 写入路径，承载字面量内联后的真实文案。
     else if (ts.isTemplateExpression(node)) {
-      if (CommonASTUtils.templateLiteralsContainChinese(node)) {
+      // cspell:ignore gql divt —— 注释中的标签模板示例（graphql-tag 的 gql、拼接产物 divt）
+      // 标签模板（styled.div`…`、gql`…`、String.raw`…`）的 template 整体不可提取：
+      // ReactTransformer 按模板节点区间整体替换，替换体会与前面的 tag 无缝拼接成
+      // `styled.divt('key')` 这类未定义调用 → 运行时 ReferenceError。
+      // 字面段含中文时告警留痕；不 return——${} 插值里的字符串字面量仍可由子节点
+      // 遍历安全提取（替换单个字面量不会破坏 tag 调用）。
+      if (ts.isTaggedTemplateExpression(node.parent)) {
+        const quasiTexts = [node.head.text, ...node.templateSpans.map((s) => s.literal.text)];
+        if (quasiTexts.some((t) => FileUtils.containsChinese(t))) {
+          this.warnTaggedTemplateSkipped(node, sourceFile);
+        }
+      } else if (CommonASTUtils.templateLiteralsContainChinese(node)) {
         // 含 HTML 标签的整段模板（如 dangerouslySetInnerHTML 拼装）拒绝提取，
         // 避免 HTML / CSS / SVG 灌进 locale value。详见 Vue 端同名逻辑。
         if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
@@ -301,6 +312,13 @@ export class ReactTextExtractor extends BaseTextExtractor {
     }
     // 处理无替换模板字符串
     else if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      // 同上：标签模板的 template 不可提取（见 TemplateExpression 分支注释）。
+      if (ts.isTaggedTemplateExpression(node.parent)) {
+        if (FileUtils.containsChinese(node.text)) {
+          this.warnTaggedTemplateSkipped(node, sourceFile);
+        }
+        return;
+      }
       if (
         FileUtils.containsChinese(node.text) &&
         CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
@@ -492,6 +510,28 @@ export class ReactTextExtractor extends BaseTextExtractor {
       templateVariables,
       nestedChineseTexts,
     };
+  }
+
+  /** 同一轮提取内已告警过的标签模板位置（CSS-in-JS 项目单文件可能几十处，防连刷）。 */
+  private warnedTaggedTemplates = new Set<string>();
+
+  /**
+   * 输出「标签模板含中文但跳过提取」的 warning。只走 warning 通道（不进 manualSkip）：
+   * ManualSkipDiagnostic.category 是封闭联合，扩枚举需同步 GenerateProcessor 的映射，
+   * 而这类命中（CSS-in-JS/gql 里的中文）绝大多数本就不该翻译，warning 留痕足够。
+   * 按 文件:位置 去重，与 warnHtmlInTemplateLiteral 的 dedupeKey 同口径。
+   */
+  private warnTaggedTemplateSkipped(node: ts.Node, sourceFile: ts.SourceFile): void {
+    const dedupeKey = `${sourceFile.fileName}:${node.getStart(sourceFile)}`;
+    if (this.warnedTaggedTemplates.has(dedupeKey)) return;
+    this.warnedTaggedTemplates.add(dedupeKey);
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const msg =
+      `⚠️ 跳过标签模板中的中文提取：${FileUtils.getRelativePath(sourceFile.fileName)}:${pos.line + 1}\n` +
+      `   原因：替换标签模板会破坏 styled/gql 等标签调用（拼成未定义函数）。\n` +
+      `   建议：如需国际化，请把中文移出标签模板、经变量插值传入。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
   }
 
   /**

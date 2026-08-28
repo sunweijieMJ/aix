@@ -214,13 +214,25 @@ export class VueTextExtractor extends BaseTextExtractor {
         const hasEntity = rawSource !== text;
 
         if (text && this.shouldExtract(text, 'template', undefined, 'text-node')) {
+          // loc.start 指向文本节点原始起点（紧跟开标签 `>`），而 original 是 trim 后的
+          // 文本。元素子内容以换行开头时，节点起点在开标签行、真实文本在下一行——若原样
+          // 记 loc.start，Transformer 在开标签行找不到文本、从行首重试时会误命中同行
+          // 未被提取的属性值（如 value="全部"），产出非法模板。这里把 line/column 校正到
+          // trim 后文本的实际位置（前导空白可能跨行）。
+          const source = textNode.loc.source;
+          const leadingWs = source.slice(0, source.length - source.trimStart().length);
+          const wsNewlines = leadingWs.split('\n').length - 1;
+          const column =
+            wsNewlines === 0
+              ? textNode.loc.start.column + leadingWs.length
+              : leadingWs.length - leadingWs.lastIndexOf('\n'); // 1-based：新行内偏移 + 1
           extractedStrings.push({
             original: hasEntity ? rawSource : text,
             processedMessage: hasEntity ? text : undefined,
             semanticId: '',
             filePath,
-            line: textNode.loc.start.line + lineOffset,
-            column: textNode.loc.start.column,
+            line: textNode.loc.start.line + wsNewlines + lineOffset,
+            column,
             context: 'template',
             componentType: 'setup', // Vue 默认使用 setup
             isTemplateString: false,

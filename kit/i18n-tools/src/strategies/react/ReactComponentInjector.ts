@@ -1,6 +1,7 @@
 import type { IComponentInjector } from '../../adapters/FrameworkAdapter';
 import ts from 'typescript';
 import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { LoggerUtils } from '../../utils/logger';
 import { ReactASTUtils } from './react-ast-utils';
 import { type ReactImportManager, HOC_CLASS_SUFFIX } from './ReactImportManager';
 import type { ReactI18nLibrary } from './libraries';
@@ -52,12 +53,24 @@ export class ReactComponentInjector implements IComponentInjector {
               initialSourceFile,
             );
             if (!hasBinding) {
-              componentsToModify.push({
-                ...componentInfo,
-                needsIntl: true,
-                hasIntl: false,
-                injectionType: 'hook',
-              });
+              // 同名冲突守卫：componentUsesTranslation 宽匹配任意裸 `t(`/`*.formatMessage`
+              // 调用，组件里可能已有**非 i18n 的同名本地绑定**（`const { t } = useTemperature()`、
+              // `const intl = createIntl(...)`）。此时再注入 hook 声明会与之同块双声明
+              // （TS2451，整文件不可编译）。按「宁可漏注入，绝不产出坏代码」跳过并告警。
+              if (this.hasConflictingLocalBinding(componentInfo.node)) {
+                LoggerUtils.warn(
+                  `⚠️ 跳过注入：组件 ${componentInfo.name} 内已存在与 ` +
+                    `'${this.library.translationVarName}' 同名的非 i18n 本地绑定，` +
+                    `注入 ${this.library.hookName}() 会造成重复声明。请人工确认该组件的 i18n 接入方式。`,
+                );
+              } else {
+                componentsToModify.push({
+                  ...componentInfo,
+                  needsIntl: true,
+                  hasIntl: false,
+                  injectionType: 'hook',
+                });
+              }
             }
           } else {
             // 类组件：以「本作用域内是否已存在 this.props.<var> 访问」判定是否已被 HOC
@@ -328,6 +341,47 @@ export class ReactComponentInjector implements IComponentInjector {
         text: `\n\nexport default ${hocWrapper};`,
       });
     }
+  }
+
+  /**
+   * 组件函数体**顶层块**内是否存在与 translationVarName 同名、但初始化器**不是** i18n hook
+   * 的本地变量声明（`const { t } = useTemperature()` / `const t = fmt` / `const intl =
+   * createIntl(...)`）。这类绑定说明裸 `t(...)`/`intl.formatMessage(...)` 调用另有出处，
+   * 注入 hook 声明会与之同块双声明（TS2451）。
+   *
+   * 只查顶层块、不用 someWithinComponentScope 下钻：TS2451 仅发生在同一个块内——
+   * 嵌套回调里的同名声明（`useEffect(() => { const t = setTimeout(...) })` 极常见）
+   * 只是无害的内层遮蔽，若也算冲突会误跳注入，组件级 t() 反而变成未定义（TS2304），
+   * 触发面比要防的双声明大得多。形参绑定不在此判（componentParamBindsVar 已把它算作
+   * 「已有绑定」，不会走到注入分支）；表达式体箭头函数无块，不可能同块冲突。
+   */
+  private hasConflictingLocalBinding(node: ts.Node): boolean {
+    const varName = this.library.translationVarName;
+    const hookName = this.library.hookName;
+    const body = (node as ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration).body;
+    if (!body || !ts.isBlock(body)) return false;
+    for (const stmt of body.statements) {
+      if (!ts.isVariableStatement(stmt)) continue;
+      for (const decl of stmt.declarationList.declarations) {
+        let bindsVar = false;
+        if (ts.isIdentifier(decl.name)) {
+          bindsVar = decl.name.text === varName;
+        } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+          bindsVar = decl.name.elements.some(
+            (el) => ts.isBindingElement(el) && ts.isIdentifier(el.name) && el.name.text === varName,
+          );
+        }
+        if (!bindsVar) continue;
+        const init = decl.initializer;
+        const isHookInit =
+          !!init &&
+          ts.isCallExpression(init) &&
+          ts.isIdentifier(init.expression) &&
+          init.expression.text === hookName;
+        if (!isHookInit) return true;
+      }
+    }
+    return false;
   }
 
   /**

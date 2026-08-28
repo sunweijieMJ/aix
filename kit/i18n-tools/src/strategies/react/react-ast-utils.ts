@@ -386,10 +386,7 @@ export class ReactASTUtils {
         name: string;
         type: 'class' | 'function';
         node:
-          | ts.ClassDeclaration
-          | ts.FunctionDeclaration
-          | ts.ArrowFunction
-          | ts.FunctionExpression;
+          ts.ClassDeclaration | ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
       }
     | undefined {
     if (ts.isClassDeclaration(node) && node.name && ReactASTUtils.isClassComponent(node)) {
@@ -489,6 +486,10 @@ export class ReactASTUtils {
           messageInfo.hasUnresolvableValues = true;
         }
         messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
+      } else if (valuesArg) {
+        // 标识符 / 调用等非对象字面量 values（`formatMessage({id}, values)`）：无法静态
+        // 解析，置位保留原调用，避免占位符字面化、运行时变量静默丢失。
+        messageInfo.hasUnresolvableValues = true;
       }
     } else if (ReactASTUtils.isMessageReference(arg)) {
       messageInfo = ReactASTUtils.resolveMessageReference(
@@ -502,6 +503,9 @@ export class ReactASTUtils {
           messageInfo.hasUnresolvableValues = true;
         }
         messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
+      } else if (valuesArg) {
+        // 同上：非对象字面量 values 无法静态解析，置位保留原调用。
+        messageInfo.hasUnresolvableValues = true;
       }
     }
 
@@ -577,6 +581,9 @@ export class ReactASTUtils {
             attribute.initializer.expression,
             sourceFile,
           );
+        } else {
+          // values={sharedValues} 等非对象字面量形态：无法静态解析，置位保留原组件。
+          messageInfo.hasUnresolvableValues = true;
         }
         break;
     }

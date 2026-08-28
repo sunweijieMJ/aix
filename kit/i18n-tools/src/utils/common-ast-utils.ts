@@ -415,7 +415,9 @@ export class CommonASTUtils {
    * 与 LocaleValueLinter 同 family，规则一致，便于双端校验。
    */
   static templateLiteralContainsHtmlTags(text: string): boolean {
-    return /<\s*\/?\s*[a-zA-Z][\w-]*(\s|>|\/)/.test(text);
+    // `<` 与标签名之间不允许空白（HTML 规范如此）：写成 `<\s*` 会把 `当前值 < min 时`
+    // 这类不等式误判为 HTML，导致含中文模板被跳过提取 / linter 误报 html-tag-in-value。
+    return /<\/?[a-zA-Z][\w-]*(\s|>|\/)/.test(text);
   }
 
   /**
@@ -768,9 +770,14 @@ export class CommonASTUtils {
    * 根据消息文本和变量值，创建一个字符串字面量或模板表达式节点
    * @param messageText - 从语言文件中获取的、包含占位符的消息文本
    * @param values - 包含变量名到其原始AST节点映射的对象
-   * @returns 创建的字符串字面量或模板表达式节点
+   * @returns 创建的节点；占位符与 values 无法对齐（数量失配 / 找不到表达式）时返回 null，
+   *          调用方应保留原调用/组件——此前这两条路径退化为字面串，会把占位符字面化写进
+   *          源码、静默删除运行时变量。
    */
-  static createStringOrTemplateNode(messageText: string, values?: Record<string, any>): ts.Node {
+  static createStringOrTemplateNode(
+    messageText: string,
+    values?: Record<string, any>,
+  ): ts.Node | null {
     if (!values || Object.keys(values).length === 0) {
       return ts.factory.createStringLiteral(messageText);
     }
@@ -792,9 +799,9 @@ export class CommonASTUtils {
           new Set(placeholderNames).size
         }) and variables (${
           Object.keys(values).length
-        }). Returning raw string. Template: "${messageText}"`,
+        }). Keeping original call. Template: "${messageText}"`,
       );
-      return ts.factory.createStringLiteral(messageText);
+      return null;
     }
 
     const templateSpans: ts.TemplateSpan[] = [];
@@ -807,9 +814,9 @@ export class CommonASTUtils {
 
       if (!expressionNode) {
         LoggerUtils.warn(
-          `[Restore Warning] Could not find expression for placeholder "{${placeholderName}}". Returning raw string.`,
+          `[Restore Warning] Could not find expression for placeholder "{${placeholderName}}". Keeping original call.`,
         );
-        return ts.factory.createStringLiteral(messageText);
+        return null;
       }
 
       if (i === placeholderNames.length - 1) {
@@ -1188,7 +1195,16 @@ export class CommonASTUtils {
         ts.isNoSubstitutionTemplateLiteral(node)
       ) {
         const nodeText = CommonASTUtils.nodeToText(node, sourceFile);
-        if (CommonASTUtils.shouldReplaceNode(nodeText, originalText, false)) {
+        // 与精确路径同口径传形态旗标：originalText 仅反引号包裹时是源码形式，其余为裸内容；
+        // JsxText 源码侧本身无定界符。漏传会让「值本身被同种引号包裹」的字面量在本回退
+        // 路径被再剥一层 → 两侧不相等 → 漏替换（精确路径已修过的同型 bug）。
+        const originalIsSourceForm = originalText.startsWith('`') && originalText.endsWith('`');
+        if (
+          CommonASTUtils.shouldReplaceNode(nodeText, originalText, false, {
+            nodeDelimited: !ts.isJsxText(node),
+            originalDelimited: originalIsSourceForm,
+          })
+        ) {
           return node;
         }
       }
@@ -1219,6 +1235,42 @@ export class CommonASTUtils {
   }
 
   /**
+   * 把字符串字面量内部文本按 JavaScript 常用转义语义还原为运行时值。
+   * 覆盖 unicode（\uXXXX / \u{...}）、hex（\xNN）、换行续接和常见单字符转义；
+   * 未知转义按 JavaScript 非严格字符串的行为保留被转义字符（含 `\\` → `\`、`` \` `` → `` ` ``）。
+   * 单遍扫描（非逐条 replace 串行），天然区分 `\\n`（字面反斜杠+n）与 `\n`（换行）。
+   * shouldReplaceNode 的源码侧归一与 source-key-scanner 的 key 解码共用本实现，避免两套
+   * 解码器覆盖面漂移（旧的逐条 replace 版缺 `\\` 规则，含转义反斜杠的字符串会静默漏替换）。
+   */
+  static decodeJsStringEscapes(content: string): string {
+    return content.replace(
+      /\\(?:\r\n|[\n\r\u2028\u2029]|u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([\s\S]))/g,
+      (
+        _match,
+        codePoint: string | undefined,
+        unicode: string | undefined,
+        hex: string | undefined,
+        escaped: string | undefined,
+      ) => {
+        if (codePoint !== undefined) return String.fromCodePoint(Number.parseInt(codePoint, 16));
+        if (unicode !== undefined) return String.fromCharCode(Number.parseInt(unicode, 16));
+        if (hex !== undefined) return String.fromCharCode(Number.parseInt(hex, 16));
+        if (escaped === undefined) return ''; // 反斜杠 + 换行：字符串续行
+        const simpleEscapes: Record<string, string> = {
+          b: '\b',
+          f: '\f',
+          n: '\n',
+          r: '\r',
+          t: '\t',
+          v: '\v',
+          '0': '\0',
+        };
+        return simpleEscapes[escaped] ?? escaped;
+      },
+    );
+  }
+
+  /**
    * 决定是否应该替换一个给定的AST节点
    */
   static shouldReplaceNode(
@@ -1227,18 +1279,6 @@ export class CommonASTUtils {
     _isTemplateString: boolean,
     opts?: { nodeDelimited?: boolean; originalDelimited?: boolean },
   ): boolean {
-    // 逐条解码常见 JSON 风格转义。不用 `JSON.parse(\`"${str}"\`)`：原文含 `"` 或孤立
-    // `\` 时会构造出非法 JSON 串，解析抛错被吞 → 中英混合引号（如 `他说："你好"`）匹配失败。
-    const decodeEscapes = (text: string) =>
-      text
-        // 先处理 \uXXXX，避免被后面的反斜杠规则吃掉
-        .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\r')
-        .replace(/\\t/g, '\t')
-        .replace(/\\"/g, '"')
-        .replace(/\\'/g, "'");
-
     // nodeDelimited / originalDelimited 默认 true：保持历史「两侧都剥一层成对定界符」的行为，
     // 未显式标注的调用点完全不受影响。仅当调用方明确知道「该侧是不含源码定界符的裸内容」
     // （如提取阶段存的 StringLiteral node.text）时传 false。
@@ -1250,11 +1290,15 @@ export class CommonASTUtils {
     const nodeDelimited = opts?.nodeDelimited ?? true;
     const originalDelimited = opts?.originalDelimited ?? true;
 
+    // 转义解码只作用于「带定界符的源码侧」：裸内容侧（StringLiteral 的 node.text / JsxText）
+    // 已是解码后的运行时形态，再解码一次会把内容里的字面 `\n`（如 `目录：C:\news` 的
+    // 反斜杠+n 两个字符）误转成换行 → 两侧不相等 → 静默漏替换（locale 已写 key、源码残留中文）。
     const normalizeText = (text: string, delimited: boolean) => {
-      if (delimited) text = CommonASTUtils.stripMatchedDelimiters(text);
-      text = text.replace(/\r?\n/g, '\n');
-      text = decodeEscapes(text);
-      return text;
+      if (delimited) {
+        text = CommonASTUtils.stripMatchedDelimiters(text);
+        text = CommonASTUtils.decodeJsStringEscapes(text);
+      }
+      return text.replace(/\r?\n/g, '\n');
     };
 
     return (
@@ -1557,15 +1601,7 @@ export class CommonASTUtils {
     // - tpl_expr  : 模板字符串内 ${...} 表达式区（属于代码上下文，需追踪 { 嵌套深度）
     // - line/block/html : 三类注释
     type FrameKind =
-      | 'none'
-      | 'dq'
-      | 'sq'
-      | 'tpl'
-      | 'tpl_expr'
-      | 'line'
-      | 'block'
-      | 'html'
-      | 'regex';
+      'none' | 'dq' | 'sq' | 'tpl' | 'tpl_expr' | 'line' | 'block' | 'html' | 'regex';
     interface Frame {
       kind: FrameKind;
       braceDepth?: number;

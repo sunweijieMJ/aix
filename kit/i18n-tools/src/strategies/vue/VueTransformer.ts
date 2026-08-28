@@ -553,10 +553,13 @@ export class VueTransformer implements ITransformer {
 
     // 尝试各种引号包裹（仅 dynamic-attribute / interpolation：原文带引号的字符串字面量）。
     // text-node / mixed-content 不套引号：套引号会误命中同行带引号属性值。
+    // 必须与主路径（replaceInLines 的 searchQuoted 分支）同用 indexOfSkippingComparison：
+    // 跨行插值 `{{\n status === '进行中' ? '进行中' : … }}` 走到本 fallback 时，裸 indexOf
+    // 会命中第一处 = 比较操作数，把 `===` 的右操作数替换成 $t()，运行时分支永不命中。
     if (templateContext === 'dynamic-attribute' || templateContext === 'interpolation') {
       for (const quote of ["'", '"', '`']) {
         const quoted = `${quote}${original}${quote}`;
-        const index = lineContent.indexOf(quoted);
+        const index = indexOfSkippingComparison(lineContent, quoted, 0);
         if (index !== -1) {
           return (
             lineContent.substring(0, index) +

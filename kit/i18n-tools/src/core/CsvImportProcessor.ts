@@ -101,10 +101,22 @@ export class CsvImportProcessor extends FileProcessor {
     let unchanged = 0;
     let skippedEmpty = 0;
     const missingKeys: string[] = [];
+    const malformedRows: number[] = [];
     let untranslatedDirty = false;
     let translatedDirty = false;
 
-    for (const row of rows.slice(1)) {
+    for (const [rowIdx, row] of rows.slice(1).entries()) {
+      // 空记录（文件中间的空行 / 结尾多余换行经 parseCsv 产出的 ['']）静默跳过，
+      // 不计入 malformedRows——它不构成错位风险，告警只会制造噪音。
+      if (row.length === 1 && (row[0] ?? '').trim() === '') continue;
+      // 行宽守卫：列绑定完全依赖表头索引，parseCsv 不保证各行字段数一致。手工编辑时
+      // 误删/多打一个逗号会让后续字段整体错位——值仍非空、isValidTranslation 分不出语言，
+      // 错语言译文会被静默写进字典并随 merge 进入 locale。字段数不符的行必须整行跳过并告警。
+      if (row.length !== header.length) {
+        // 记录序号按数据记录计（不含表头，从 1 起）。不用物理行号：引号内换行会让两者漂移。
+        malformedRows.push(rowIdx + 1);
+        continue;
+      }
       const key = (row[keyIdx] ?? '').trim();
       if (key === '') continue;
       // 路由：优先 untranslated（待翻流程主路径），否则落到 translations（审核流程）。
@@ -152,6 +164,7 @@ export class CsvImportProcessor extends FileProcessor {
       unchanged,
       skippedEmpty,
       missingKeys,
+      malformedRows,
     );
 
     if (this.options.dryRun) {
@@ -198,6 +211,7 @@ export class CsvImportProcessor extends FileProcessor {
     unchanged: number,
     skippedEmpty: number,
     missingKeys: string[],
+    malformedRows: number[] = [],
   ): void {
     LoggerUtils.info('csv-import 预览：');
     LoggerUtils.info(`  ✏️  将更新   ${updated} 处译文 (${langs.join(', ')})`);
@@ -212,6 +226,15 @@ export class CsvImportProcessor extends FileProcessor {
         `  ⚠️  CSV 中存在但 untranslated.json / translations.json 均无此 key  ${missingKeys.length} 条：${sample}` +
           (missingKeys.length > 5 ? ' …' : ''),
       );
+    }
+    if (malformedRows.length > 0) {
+      const sample = malformedRows.slice(0, 5).join(', ');
+      const msg =
+        `  ⚠️  已跳过字段数与表头不符的记录 ${malformedRows.length} 条（数据记录序号，不含表头：${sample}` +
+        (malformedRows.length > 5 ? ' …' : '') +
+        '）。可能原因：多/少逗号导致列整体错位，或编辑工具裁掉了行尾空列——请修正 CSV 后重新导入。';
+      LoggerUtils.warn(msg);
+      this.report.addWarning(msg.trim());
     }
     LoggerUtils.info(`  📄 目标文件: ${targetPaths.join(' / ')}`);
   }

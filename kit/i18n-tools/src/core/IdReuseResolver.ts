@@ -1,9 +1,8 @@
 import fs from 'fs';
 import type { ResolvedConfig } from '../config';
-import { CommonASTUtils } from '../utils/common-ast-utils';
 import { IdGenerator } from '../utils/id-generator';
 import { LanguageFileManager } from '../utils/language-file-manager';
-import { scanKeyReferencesInContent } from '../utils/source-key-scanner';
+import { scanKeyReferencesInContent, stripCommentsForScan } from '../utils/source-key-scanner';
 
 /**
  * 把原文规范化为查表键：去首尾空白、压缩空白序列。
@@ -70,8 +69,10 @@ export class IdReuseResolver {
     for (const filePath of filePaths) {
       try {
         const raw = fs.readFileSync(filePath, 'utf-8');
-        // 剥除注释，避免被注释掉的引用污染 existingIds 与覆盖率统计
-        const content = CommonASTUtils.stripComments(raw);
+        // 剥除注释，避免被注释掉的引用污染 existingIds 与覆盖率统计。
+        // 走按文件类型分流的入口：.vue 模板段不能进 JS 词法状态机（裸 URL 的 //
+        // 会被误当行注释吞掉行尾 t() 引用），详见 stripCommentsForScan。
+        const content = stripCommentsForScan(filePath, raw);
         for (const ref of scanKeyReferencesInContent(content)) {
           this.existingIds.add(ref);
           this.existingCallSites++;

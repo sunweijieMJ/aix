@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'module';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
 import type { ManualSkipDiagnostic } from '../adapters/FrameworkAdapter';
@@ -112,8 +113,10 @@ export class GenerateProcessor extends BaseProcessor {
     LoggerUtils.info(`🚀 开始分析文件: ${FileUtils.getRelativePath(filePath)}`);
 
     if (!fs.existsSync(filePath)) {
-      LoggerUtils.error(`文件不存在: ${filePath}`);
-      return;
+      // 抛错而非 log+return：_execute 已校验过存在性，走到这里说明校验窗口后文件被并发
+      // 删除。静默 return 会让 executeWithLifecycle 照常打印「✅ 代码生成完成」并以 0 退出
+      // （CI 假绿）。与 _execute 的 invalid 分支同口径 fail-fast。
+      throw new Error(`文件不存在: ${filePath}`);
     }
 
     try {
@@ -898,13 +901,22 @@ export class GenerateProcessor extends BaseProcessor {
    * 读失败时返回 undefined（而非抛错）：toolVersion 是辅助字段，不应阻断主流程。
    */
   private static getToolVersion(): string | undefined {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pkg = require('../../package.json') as { version?: string };
-      return pkg.version;
-    } catch {
-      return undefined;
+    // 必须真用 createRequire：本包 "type":"module"，裸 require 在源码直跑（tsx / vitest）
+    // 下是 ReferenceError（此前只在 dist 里靠打包器把 package.json 内联才碰巧工作，
+    // toolVersion 在源码运行时恒为 undefined）。
+    // 多候选相对路径：源码运行时本文件在 src/core/（../../ 到包根），构建产物在 dist/
+    // （../ 到包根）。按包名校验命中，避免误读消费项目的 package.json。
+    // 注意：包若改名需同步下方字面量，否则本方法静默退化为恒 undefined（有回归测试钉住）。
+    const requireFromHere = createRequire(import.meta.url);
+    for (const rel of ['../../package.json', '../package.json']) {
+      try {
+        const pkg = requireFromHere(rel) as { name?: string; version?: string };
+        if (pkg.name === '@kit/i18n-tools' && pkg.version) return pkg.version;
+      } catch {
+        // 尝试下一个候选路径
+      }
     }
+    return undefined;
   }
 
   /**

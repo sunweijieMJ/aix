@@ -263,6 +263,19 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return null;
     }
 
+    // 带非空 children 的翻译组件是用户手写形态（富文本 <Trans>你好 <b>{name}</b></Trans>、
+    // <FormattedMessage>{txt => …}</FormattedMessage> render-prop）：extractJSXInfo 只读
+    // 属性、完全不解析 children，整节点替换会把 <b>/<Link> 子树、render-prop 不可恢复地
+    // 删除。工具自产的组件恒为自闭合无 children，此守卫不影响还原自产代码。
+    if (ts.isJsxElement(node)) {
+      const hasMeaningfulChild = node.children.some(
+        (child) => !(ts.isJsxText(child) && child.text.trim() === ''),
+      );
+      if (hasMeaningfulChild) {
+        return null;
+      }
+    }
+
     const messageInfo = this.library.extractJSXInfo(openingElement, definedMessages, sourceFile);
     if (!isValidMessage(messageInfo)) {
       return null;

@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
 import { CommonASTUtils } from './common-ast-utils';
@@ -39,35 +40,49 @@ const STRING_LITERAL = /(?:'((?:\\[\s\S]|[^'\\])*)'|"((?:\\[\s\S]|[^"\\])*)")/g;
 
 /**
  * 把字符串字面量内部文本按 JavaScript 常用转义语义还原为运行时 key。
- * scanner 只接收已经去掉外层引号的内容，因此不使用 eval；同时覆盖 unicode/hex、
- * 换行续接和常见单字符转义。未知转义按 JavaScript 非严格字符串的行为保留被转义字符。
+ * scanner 只接收已经去掉外层引号的内容，因此不使用 eval。
+ * 实现收口在 CommonASTUtils.decodeJsStringEscapes（shouldReplaceNode 的源码侧归一同用），
+ * 避免两套解码器覆盖面漂移。
  */
-function decodeStringLiteralContent(content: string): string {
-  return content.replace(
-    /\\(?:\r\n|[\n\r\u2028\u2029]|u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([\s\S]))/g,
-    (
-      _match,
-      codePoint: string | undefined,
-      unicode: string | undefined,
-      hex: string | undefined,
-      escaped: string | undefined,
-    ) => {
-      if (codePoint !== undefined) return String.fromCodePoint(Number.parseInt(codePoint, 16));
-      if (unicode !== undefined) return String.fromCharCode(Number.parseInt(unicode, 16));
-      if (hex !== undefined) return String.fromCharCode(Number.parseInt(hex, 16));
-      if (escaped === undefined) return ''; // 反斜杠 + 换行：字符串续行
-      const simpleEscapes: Record<string, string> = {
-        b: '\b',
-        f: '\f',
-        n: '\n',
-        r: '\r',
-        t: '\t',
-        v: '\v',
-        '0': '\0',
-      };
-      return simpleEscapes[escaped] ?? escaped;
-    },
-  );
+const decodeStringLiteralContent = (content: string): string =>
+  CommonASTUtils.decodeJsStringEscapes(content);
+
+/**
+ * 按文件类型剥离注释，产出可供 scanKeyReferencesInContent 扫描的文本。
+ *
+ * Why 必须分流：stripComments 是 JS 词法状态机，只保护「引号内」的 `//`、`/*`。
+ * .vue 的 template 段是 HTML——文本节点里的裸 URL（`详情见 https://a.com {{ t('k') }}`）
+ * 不在引号内，`//` 会被误当行注释把行尾 t() 一并剥掉；不配对的 `/*`（如展示 `src/*` 写法）
+ * 更会吞掉文件剩余全部内容 → key 漏采 → prune 把在用 key 当孤儿从所有 locale 永久删除。
+ * 因此 .vue 先经 SFC 拆段：template 只剥 HTML 注释，script/scriptSetup 才走 stripComments。
+ *
+ * SFC 解析失败时回退为「整文件只剥 HTML 注释」：宁可让注释里的引用混入 used（多算 =
+ * 不删），也不能走 JS 状态机误吞模板（少算 = 误删）。
+ */
+export function stripCommentsForScan(filePath: string, raw: string): string {
+  if (!filePath.endsWith('.vue')) return CommonASTUtils.stripComments(raw);
+
+  const stripHtmlComments = (text: string): string => text.replace(/<!--[\s\S]*?-->/g, ' ');
+  try {
+    const { descriptor, errors } = parseSFC(raw, { filename: filePath });
+    // parse 对语法错误**不抛异常**、只收集进 errors，且此时 descriptor 可能缺段
+    // （如未闭合的 </template 会让 script 块整个丢失）。缺段拼接 = key 漏采 = prune
+    // 误删，必须在此显式回退整文件扫描，不能只依赖 catch（那条路径实际到不了）。
+    if (errors.length > 0) {
+      return stripHtmlComments(raw);
+    }
+    const parts: string[] = [];
+    if (descriptor.template) {
+      parts.push(stripHtmlComments(descriptor.template.content));
+    }
+    for (const script of [descriptor.script, descriptor.scriptSetup]) {
+      if (script) parts.push(CommonASTUtils.stripComments(script.content));
+    }
+    return parts.join('\n');
+  } catch {
+    // 兜底：万一未来版本的 parse 在极端输入下抛异常，仍走安全方向
+    return stripHtmlComments(raw);
+  }
 }
 
 /** 组件 / 属性形式（库无关，跨库同跑互不干扰；id 两条限定上下文避免误吃普通 id）。 */
@@ -144,7 +159,7 @@ export function collectUsedKeys(config: ResolvedConfig, adapter: FrameworkAdapte
   for (const filePath of files) {
     try {
       const raw = fs.readFileSync(filePath, 'utf-8');
-      const content = CommonASTUtils.stripComments(raw);
+      const content = stripCommentsForScan(filePath, raw);
       for (const ref of scanKeyReferencesInContent(content)) {
         addKey(ref);
       }

@@ -389,6 +389,8 @@ function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
  *  - rule.name 必须存在且全局唯一
  *  - rule.match 与 rule.matchKey 互斥
  *  - defaultBucket 不能与任一 rule.name 重名
+ *  - by-locale 布局下 rule.name / defaultBucket 不得为保留名 'index'
+ *    （导出器在 <locale>/ 目录生成 index.json 桶清单，同名桶译文会被覆盖）
  */
 export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConfig['buckets'] {
   if (!buckets) return undefined;
@@ -398,10 +400,23 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
     throw new Error(`buckets.rules 必须是非空数组，实际收到: ${received}`);
   }
 
+  const layout = buckets.layout ?? DEFAULT_BUCKETS.layout;
+  validateEnum(layout, ['by-locale', 'by-bucket'], 'buckets.layout');
+  // 仅 by-locale 需要保留 'index'：导出器只在该布局下生成 <locale>/index.json 桶清单
+  // （writeLocaleIndexFiles 对 by-bucket 直接 return），by-bucket 用 'index' 无冲突。
+  const isIndexReserved = layout === 'by-locale';
+
   const names = new Set<string>();
   for (const [i, rule] of buckets.rules.entries()) {
     if (!rule.name || typeof rule.name !== 'string') {
       throw new Error(`buckets.rules[${i}] 的 name 字段缺失或非字符串`);
+    }
+    // 'index' 是保留名：by-locale 布局下导出器会在 <locale>/ 目录写 index.json 桶清单，
+    // 同名桶的译文文件会被清单原地覆盖（导出成功但该桶文案运行时全部缺失，且零告警）。
+    if (isIndexReserved && rule.name === 'index') {
+      throw new Error(
+        `buckets.rules[${i}] 的 name 不能为保留名 "index"（by-locale 布局下与导出器生成的 <locale>/index.json 桶清单冲突），请改用其他桶名。`,
+      );
     }
     if (names.has(rule.name)) {
       throw new Error(`buckets.rules 中存在重复的 name: "${rule.name}"`);
@@ -432,15 +447,19 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
 
   const defaultBucket = buckets.defaultBucket ?? DEFAULT_BUCKETS.defaultBucket;
 
+  // 与 rule.name 同理：defaultBucket 也不能占用导出器的 index.json 保留名。
+  if (isIndexReserved && defaultBucket === 'index') {
+    throw new Error(
+      `buckets.defaultBucket 不能为保留名 "index"（by-locale 布局下与导出器生成的 <locale>/index.json 桶清单冲突），请改用其他名称（如 "common"）。`,
+    );
+  }
+
   if (names.has(defaultBucket)) {
     throw new Error(
       `buckets.defaultBucket "${defaultBucket}" 与同名 rule 冲突。` +
         `请把 defaultBucket 改为另一个不在 rules 中的名称（如 "common"）。`,
     );
   }
-
-  const layout = buckets.layout ?? DEFAULT_BUCKETS.layout;
-  validateEnum(layout, ['by-locale', 'by-bucket'], 'buckets.layout');
 
   return {
     rules: buckets.rules,

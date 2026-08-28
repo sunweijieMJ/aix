@@ -204,9 +204,10 @@ describe('CommonASTUtils.createStringOrTemplateNode 重复占位符', () => {
 
     const node = CommonASTUtils.createStringOrTemplateNode(messageText, values);
 
-    // 不应退化为纯字符串字面量
-    expect(ts.isStringLiteral(node)).toBe(false);
-    expect(ts.isTemplateExpression(node)).toBe(true);
+    // 不应退化为纯字符串字面量 / 判失配
+    expect(node).not.toBeNull();
+    expect(ts.isStringLiteral(node!)).toBe(false);
+    expect(ts.isTemplateExpression(node!)).toBe(true);
 
     // 直接核对 AST：head + 两个 span（同名变量各插值一次），字面段保留原中文
     const tpl = node as ts.TemplateExpression;
@@ -220,20 +221,21 @@ describe('CommonASTUtils.createStringOrTemplateNode 重复占位符', () => {
     expect(tpl.templateSpans[1]!.literal.text).toBe('');
 
     // 打印产物含两处 ${name} 插值（非字面 {name1}）
-    const printed = printNode(node);
+    const printed = printNode(node!);
     expect(printed.match(/\$\{name\}/g)?.length).toBe(2);
     expect(printed).not.toContain('{name1}');
   });
 
-  it('占位符与 values 真不匹配时仍按唯一名判失配 → 返回字面串', () => {
+  it('占位符与 values 真不匹配时仍按唯一名判失配 → 返回 null 保留原调用', () => {
     const messageText = 'a {x} b {y}';
     const values = {
       x: { node: ts.factory.createIdentifier('x'), text: 'x' },
       // 缺 y
     };
+    // 失配时不得再退化为字面串（会把占位符字面化写进源码、静默删除运行时变量），
+    // 而是返回 null 让调用方保留原调用/组件。
     const node = CommonASTUtils.createStringOrTemplateNode(messageText, values);
-    expect(ts.isStringLiteral(node)).toBe(true);
-    expect((node as ts.StringLiteral).text).toBe(messageText);
+    expect(node).toBeNull();
   });
 });
 

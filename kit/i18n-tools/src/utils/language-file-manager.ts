@@ -233,6 +233,10 @@ export class LanguageFileManager {
       if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return result;
       for (const file of fs.readdirSync(dirPath)) {
         if (!file.endsWith('.json')) continue;
+        // index.json 是导出器在每个语言目录生成的桶清单（loader 已禁止同名桶），不是桶文件：
+        // 不排除的话，重复导出时它会被 pruneOrphanBucketFiles 当孤儿桶改名 .bak，
+        // 发布目录永久残留垃圾文件并每次导出刷误导日志。
+        if (file === 'index.json') continue;
         result.push({
           bucketName: path.basename(file, '.json'),
           filePath: path.join(dirPath, file),

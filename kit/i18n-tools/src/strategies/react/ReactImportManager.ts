@@ -127,18 +127,47 @@ export class ReactImportManager implements IImportManager {
 
     // case 2: const Injected = HOC(Component)
     if (ts.isVariableStatement(node)) {
-      const remainingDeclarations = node.declarationList.declarations.filter((decl) => {
-        if (ts.isIdentifier(decl.name)) {
-          return !context.componentNameMap.has(decl.name.text);
-        }
-        return true;
-      });
+      // 工具自产的 HOC 声明（内部名 = 原名 + WithOutIntl / 旧约定 `_原名`）是注入产物，
+      // 整条删除、由 case 3 把 export 还给改回原名的类。
+      // 用户手写的 HOC 声明（`export const InjectedFoo = injectIntl(Foo)`，内部名无约定
+      // 后缀）不能删语句：删除会让模块公共 API（export）与非 JSX 引用（如路由表里的
+      // `component: InjectedFoo`）一并消失，且本文件自身编译通过、错误只在跨文件消费方
+      // 暴露。改为把初始化器解包成内部组件标识符（`export const InjectedFoo = Foo`）——
+      // formatMessage 已全部还原时二者语义等价，export 与引用完整保留。
+      // 代价：非导出且仅被 JSX 引用的局部 HOC（renameComponent 已把 JSX 改成内部名）会
+      // 留下一条无人引用的 `const Injected = Foo`（no-unused-vars lint 噪音）。有意取舍：
+      // 静态区分「仅 JSX 引用」需要完整引用分析，而删错声明是编译错误、多留是 lint 警告，
+      // 按「宁可多留，绝不产坏代码」保留。
+      const isToolConvention = (inner: string): boolean =>
+        inner.endsWith(HOC_CLASS_SUFFIX) || inner.startsWith('_');
 
-      if (remainingDeclarations.length === 0) {
-        return ts.factory.createNotEmittedStatement(node);
+      let changed = false;
+      const remainingDeclarations: ts.VariableDeclaration[] = [];
+      for (const decl of node.declarationList.declarations) {
+        const inner = ts.isIdentifier(decl.name)
+          ? context.componentNameMap.get(decl.name.text)
+          : undefined;
+        if (inner === undefined) {
+          remainingDeclarations.push(decl);
+          continue;
+        }
+        changed = true;
+        if (isToolConvention(inner)) continue; // 自产声明：删除
+        remainingDeclarations.push(
+          ts.factory.updateVariableDeclaration(
+            decl,
+            decl.name,
+            decl.exclamationToken,
+            decl.type,
+            ts.factory.createIdentifier(inner),
+          ),
+        );
       }
 
-      if (remainingDeclarations.length < node.declarationList.declarations.length) {
+      if (changed) {
+        if (remainingDeclarations.length === 0) {
+          return ts.factory.createNotEmittedStatement(node);
+        }
         const newDeclList = ts.factory.updateVariableDeclarationList(
           node.declarationList,
           remainingDeclarations,

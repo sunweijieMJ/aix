@@ -291,6 +291,13 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       if (Object.keys(props).length > 0) {
         messageInfo.values = props;
       }
+    } else if (valuesArg) {
+      // 第二参数是标识符 / 函数调用等非对象字面量形态（`t('k', opts)`）：无法静态解析
+      // values。不置位会让 createStringOrTemplateNode 在 values 为空时把占位符字面化写进
+      // 源码，运行时变量被静默删除。置位 → RestoreTransformer 保留原调用。
+      // 注意 i18next 的 `t('k', 'default text')`（字符串 defaultValue 签名）也走到这里被
+      // 保守保留——这是有意的：工具自产代码不用该形态，手写形态宁可不还原也不猜语义。
+      messageInfo.hasUnresolvableValues = true;
     }
 
     return messageInfo;
@@ -325,19 +332,24 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
         ) {
           messageInfo.defaultMessage = initializer.expression.text;
         }
-      } else if (
-        attrName === 'values' &&
-        ts.isJsxExpression(initializer) &&
-        initializer.expression &&
-        ts.isObjectLiteralExpression(initializer.expression)
-      ) {
-        if (CommonASTUtils.objectLiteralHasSpread(initializer.expression)) {
+      } else if (attrName === 'values') {
+        if (
+          ts.isJsxExpression(initializer) &&
+          initializer.expression &&
+          ts.isObjectLiteralExpression(initializer.expression)
+        ) {
+          if (CommonASTUtils.objectLiteralHasSpread(initializer.expression)) {
+            messageInfo.hasUnresolvableValues = true;
+          }
+          messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
+            initializer.expression,
+            sourceFile,
+          );
+        } else {
+          // values={sharedValues} 等非对象字面量形态：无法静态解析，置位保留原组件，
+          // 避免占位符字面化、运行时变量静默丢失（与 extractCallInfo 同口径）。
           messageInfo.hasUnresolvableValues = true;
         }
-        messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
-          initializer.expression,
-          sourceFile,
-        );
       }
     }
     return messageInfo;

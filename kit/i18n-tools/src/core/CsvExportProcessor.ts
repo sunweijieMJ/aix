@@ -107,7 +107,13 @@ export class CsvExportProcessor extends FileProcessor {
   ): void {
     const rows: string[][] = [['key', sourceLocale, lang, 'reason']];
     for (const key of keys) {
-      const entry = data[key]!;
+      const entry = data[key];
+      // 非对象守卫：loadJsonDictOrThrow 只校验整体 JSON 合法、不校验条目形态。手工把某 key
+      // 改成 null/字符串时裸读 entry[lang] 会抛无上下文的 TypeError。与 CsvImport 同口径跳过。
+      if (!entry || typeof entry !== 'object') {
+        LoggerUtils.warn(`⚠️  跳过形态非法的条目（值不是对象）: ${key}`);
+        continue;
+      }
       const value = entry[lang] ?? '';
       const translated = FileUtils.isValidTranslation(value);
       if (!this.keep(translated)) continue;
@@ -124,7 +130,12 @@ export class CsvExportProcessor extends FileProcessor {
   ): void {
     const rows: string[][] = [['key', sourceLocale, ...langs]];
     for (const key of keys) {
-      const entry = data[key]!;
+      const entry = data[key];
+      // 同 writeSingleLang：条目形态非法（null/基本类型）时跳过并告警，避免裸读 TypeError。
+      if (!entry || typeof entry !== 'object') {
+        LoggerUtils.warn(`⚠️  跳过形态非法的条目（值不是对象）: ${key}`);
+        continue;
+      }
       // 多语言：任一所选 lang 满足 filter 即保留该行
       const anyKeep = langs.some((l) => this.keep(FileUtils.isValidTranslation(entry[l] ?? '')));
       if (!anyKeep) continue;
