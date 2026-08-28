@@ -273,7 +273,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     const messageInfo: MessageInfo = {};
 
     if (ts.isStringLiteral(arg)) {
-      messageInfo.id = ReactI18nextLibrary.stripNamespacePrefix(arg.text);
+      messageInfo.id = this.stripNamespacePrefix(arg.text);
     }
 
     const valuesArg = node.arguments[1];
@@ -317,7 +317,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       if (!initializer) continue;
 
       if (attrName === 'i18nKey' && ts.isStringLiteral(initializer)) {
-        messageInfo.id = ReactI18nextLibrary.stripNamespacePrefix(initializer.text);
+        messageInfo.id = this.stripNamespacePrefix(initializer.text);
       } else if (attrName === 'defaults') {
         // 生成端经 JSX 表达式容器注入 `defaults={"你好"}`（见本类 generateComponent 的
         // `defaults={${JSON.stringify(...)}}`），initializer 是 JsxExpression 而非裸 StringLiteral。
@@ -355,10 +355,18 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     return messageInfo;
   }
 
-  /** 剥离 namespace 前缀：`common:button.submit` → `button.submit` */
-  private static stripNamespacePrefix(id: string): string {
-    const colonIndex = id.indexOf(':');
-    return colonIndex === -1 ? id : id.substring(colonIndex + 1);
+  /**
+   * 剥离本实例配置的 namespace 前缀：namespace='common' 时 `common:button.submit` → `button.submit`。
+   *
+   * 只剥恰为 `${this.namespace}:` 的前缀，而非无条件砍掉第一个冒号之前的内容：未配置
+   * namespace 时 key 里的冒号是 key 自身的一部分（`a:b`），砍掉会让 restore 拿 `b` 去查
+   * locale —— 查不到就漏还原，撞上同名 key 则还原成别的文案。其它 namespace 的 key
+   * （`other:x`）同样保留原样：本实例的 locale 表里本就没有它，剥了只会造成假命中。
+   */
+  private stripNamespacePrefix(id: string): string {
+    if (!this.namespace) return id;
+    const prefix = `${this.namespace}:`;
+    return id.startsWith(prefix) ? id.substring(prefix.length) : id;
   }
 
   // i18next 单 `{` 本就是字面量（插值是双花括号 `{{name}}`），无需转义。

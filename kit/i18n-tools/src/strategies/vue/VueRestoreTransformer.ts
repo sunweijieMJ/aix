@@ -293,7 +293,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
           lookupKey = lookupKey.substring(colonIndex + 1);
         }
       }
-      return localeMap[lookupKey] || localeMap[rawKey];
+      // `??` 而非 `||`：locale 值合法地可以是空串（占位条目 / 有意留白的文案），
+      // `||` 会把它当「没找到」再去查 rawKey，查不到就整段不还原、源码里永远卡着 $t 调用。
+      return localeMap[lookupKey] ?? localeMap[rawKey];
     };
 
     // pass 1/2 占位机制：用 PUA 字符（U+E000）作为不可见边界包裹 `I18N_R_<idx>`，
@@ -324,7 +326,8 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     restored = restored.replace(i18nCallRegex, (match, key, vars) => {
       const text = lookupText(key as string);
-      if (!text) {
+      // 显式判 undefined：空串是合法译值，`!text` 会把它当缺 key 而保留 $t 调用不还原。
+      if (text === undefined) {
         return match;
       }
 
@@ -356,7 +359,8 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     restored = restored.replace(attrBindingRegex, (match, attrName, _outer, key, vars) => {
       const text = lookupText(key as string);
-      if (!text) {
+      // 显式判 undefined：空串是合法译值，`!text` 会把它当缺 key 而保留 $t 调用不还原。
+      if (text === undefined) {
         return match;
       }
 
@@ -388,7 +392,8 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     restored = restored.replace(innerI18nCallRegex, (match, key, vars) => {
       const text = lookupText(key as string);
-      if (!text) {
+      // 显式判 undefined：空串是合法译值，`!text` 会把它当缺 key 而保留 $t 调用不还原。
+      if (text === undefined) {
         return match;
       }
 
@@ -695,8 +700,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       }
     }
 
-    const text = localeMap[key] || localeMap[keyArg.text];
-    if (!text) {
+    // `??` / 显式判 undefined：空串是合法译值，用 `||` / `!text` 会把它当缺 key 放弃还原。
+    const text = localeMap[key] ?? localeMap[keyArg.text];
+    if (text === undefined) {
       return null;
     }
 

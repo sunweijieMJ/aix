@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { CONFIG } from './constants';
+import { CONFIG, PLACEHOLDER_NAME_CHARS } from './constants';
 import { LoggerUtils } from './logger';
 import type { LocaleMap, ExtractedString } from './types';
 
@@ -368,7 +368,7 @@ export class CommonASTUtils {
    * - 计算属性 KEY（如 `{ ['进行中']: v }`，字面量直接父节点是 ComputedPropertyName，
    *   翻译后 key 变译文同样破坏数据结构——与非计算 key 对称）
    * - 计算属性访问的 key（如 `map['进行中']`，翻译后 `map[t(...)]` 返回译文，查找落空）
-   * - 模块导入路径（import / require / external module reference）
+   * - 模块路径（静态 import / export-from / require() / 动态 import() / external module reference）
    * - 比较运算符 / case 子句的操作数（翻译状态值会破坏分支判断）
    *
    * Why: React/Vue 两端 TextExtractor 共用本方法，避免各写一遍相同的排除条件而维护漂移。
@@ -387,6 +387,18 @@ export class CommonASTUtils {
     if (ts.isComputedPropertyName(parent) && parent.expression === node) return false;
     if (ts.isElementAccessExpression(parent) && parent.argumentExpression === node) return false;
     if (ts.isImportDeclaration(parent) || ts.isExternalModuleReference(parent)) return false;
+    // `export … from './中文目录'`：ExportDeclaration 的 moduleSpecifier 与 import 同为模块路径。
+    if (ts.isExportDeclaration(parent) && parent.moduleSpecifier === node) return false;
+    // `require('./中文目录/工具')` / `await import('./帮助文档')`：路径是运行时解析的模块标识符，
+    // 替换成 t() 后按译文去 resolve，直接 MODULE_NOT_FOUND。上面的静态 import 分支覆盖不到调用形式。
+    if (
+      ts.isCallExpression(parent) &&
+      parent.arguments[0] === node &&
+      ((ts.isIdentifier(parent.expression) && parent.expression.text === 'require') ||
+        parent.expression.kind === ts.SyntaxKind.ImportKeyword)
+    ) {
+      return false;
+    }
     if (CommonASTUtils.isComparisonOperand(node)) return false;
     return true;
   }
@@ -1042,7 +1054,9 @@ export class CommonASTUtils {
     if (originalText.startsWith('`') && originalText.endsWith('`')) {
       let parent = node;
       while (parent) {
-        if (ts.isJsxElement(parent)) {
+        // Fragment 与元素同为混合内容宿主（提取端两者都会合成 `…${expr}…`），
+        // 这里漏判 Fragment 会让 Fragment 的合成 original 定位不到节点 → 转换整文件中止。
+        if (ts.isJsxElement(parent) || ts.isJsxFragment(parent)) {
           const mixedContent = CommonASTUtils.reconstructJsxMixedContent(parent, sourceFile);
           if (mixedContent === originalText) {
             return parent;
@@ -1136,7 +1150,7 @@ export class CommonASTUtils {
    * 重构JSX元素的混合内容
    */
   private static reconstructJsxMixedContent(
-    jsxElement: ts.JsxElement,
+    jsxElement: ts.JsxElement | ts.JsxFragment,
     sourceFile: ts.SourceFile,
   ): string {
     const children = jsxElement.children;
@@ -1363,8 +1377,9 @@ export class CommonASTUtils {
    * 与 createMessageWithOptions 写入的占位符名（来自 getVariableNameFromExpression）保持一致——
    * 后者有意保留中文标识符（`一-鿿`，中文变量名是合法 JS），故这里必须同字符集，
    * 否则 `共{{数量}}个` 在 restore 归一时不被识别，双花括号库往返丢变量。
+   * 字符集与 placeholder-utils 的 IDENT_RE 同源，见 PLACEHOLDER_NAME_CHARS 注释。
    */
-  private static readonly PLACEHOLDER_NAME = '[A-Za-z0-9_$.一-鿿]+';
+  private static readonly PLACEHOLDER_NAME = `[${PLACEHOLDER_NAME_CHARS}]+`;
 
   /**
    * 双花括号 `{{name}}` → 单花括号 `{name}`。

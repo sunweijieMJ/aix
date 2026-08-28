@@ -80,11 +80,13 @@ export class PickProcessor extends FileProcessor {
     // 上面的损坏守卫只拦 JSON 解析失败，挡不住「合法空」这一入口；此处与 PruneProcessor 的
     // usedKeys===0 安全闸对齐：源为空且已存在非空在途文件时中止，宁可报错不静默破坏。
     if (Object.keys(sourceMessages).length === 0) {
-      const existingTranslated = FileUtils.safeLoadJsonFile<Record<string, unknown>>(
+      // 与上方 untranslated 同为严格读取：silent 降级会把损坏的 translations.json 当 {}，
+      // 安全闸随之判「无在途译文」放行，下方无条件覆写把损坏文件里的译文一并抹掉。
+      const existingTranslated = FileUtils.loadJsonDictOrThrow<Record<string, unknown>>(
         translatedPath,
-        {
-          silent: true,
-        },
+        (p) =>
+          `已翻译文件解析失败（JSON 格式错误）: ${p}\n` +
+          '👉 该文件可能含尚未合入 locale 的译文；已中止 pick 以防覆写销毁。请修复 JSON 格式后重试。',
       );
       if (
         Object.keys(existingUntranslated).length > 0 ||

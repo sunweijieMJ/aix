@@ -1,4 +1,5 @@
 import { parse as parseSFC } from '@vue/compiler-sfc';
+import { stripCommentsForScan } from '../../utils/source-key-scanner';
 import type { IComponentInjector } from '../../adapters/FrameworkAdapter';
 import type { VueImportManager } from './VueImportManager';
 import type { VueI18nLibrary } from './libraries';
@@ -102,12 +103,18 @@ export class VueComponentInjector implements IComponentInjector {
    *
    * 不处理模板字面量内嵌套表达式中的字符串（成本过高且检测目标无关），
    * 一律将整个 `\`...\`` 当作字符串吞掉；正则字面量、JSX 等同理。
+   *
+   * 剥注释走 stripCommentsForScan（SFC 分段 + JS 词法状态机）而非「匹配 `//` 至行尾」的正则：
+   * 后者会被字符串里的 URL 骗到，`const url = 'https://a.com'; report(t('k'))` 这类同行写法
+   * 里 `//a.com'; report(t('k'))` 被整段当行注释抹掉 → needsHook 判 false → 不注入 hook，
+   * 而 transform 已产出 t() 调用 → 运行时引用未定义标识符。
+   *
+   * 入参恒为 .vue SFC（调用方 inject 已判定 `<script setup>`），故固定按 .vue 分流：
+   * 对整文件直接跑 JS 状态机会被 template 文本里的裸 URL / 不配对 `/*` 吞掉后续内容，
+   * 同样把 t() 调用检测掉（见 stripCommentsForScan 注释）。
    */
   private static stripCommentsAndStrings(code: string): string {
-    return code
-      .replace(/\/\*[\s\S]*?\*\//g, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/\/\/[^\n]*/g, ' ')
+    return stripCommentsForScan('component.vue', code)
       .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
       .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
       .replace(/`(?:[^`\\]|\\.)*`/g, '``');

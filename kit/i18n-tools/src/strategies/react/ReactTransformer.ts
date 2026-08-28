@@ -124,10 +124,14 @@ export class ReactTransformer implements ITransformer {
       if (node) {
         const replacement = this.generateReplacement(extracted, node);
 
-        // 对于JSX元素，我们需要替换其children部分
+        // 对于 JSX 元素 / Fragment，我们需要替换其 children 部分
         if (ts.isJsxElement(node)) {
           const start = node.openingElement.getEnd();
           const end = node.closingElement.getStart();
+          replacements.push({ start, end, replacement });
+        } else if (ts.isJsxFragment(node)) {
+          const start = node.openingFragment.getEnd();
+          const end = node.closingFragment.getStart();
           replacements.push({ start, end, replacement });
         } else {
           let start = node.getStart(sourceFile);

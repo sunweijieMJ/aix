@@ -163,8 +163,10 @@ export class ReactASTUtils {
     }
 
     let host: ts.Node | undefined = func.parent;
-    // forwardRef/memo(() => …) → 取调用表达式的父级作为绑定宿主
-    if (
+    // forwardRef/memo(() => …) → 取调用表达式的父级作为绑定宿主。
+    // 循环而非只跳一层：memo(forwardRef(…)) 双包裹很常见，只解一层会停在外层 CallExpression 上，
+    // 宿主变量名拿不到 → 组件不被识别为可注入 → 内层组件的 t() 无 hook 注入（未定义标识符）。
+    while (
       host &&
       ts.isCallExpression(host) &&
       ReactASTUtils.isForwardRefOrMemoCallee(host.expression)
@@ -447,16 +449,34 @@ export class ReactASTUtils {
     if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) {
       return initializer;
     }
-    if (
-      ts.isCallExpression(initializer) &&
-      ReactASTUtils.isForwardRefOrMemoCallee(initializer.expression)
+    // 循环解包：memo(forwardRef(…)) 双包裹只解一层会返回 undefined，组件识别失败
+    // → getComponentInfo 拿不到组件、注入器不注入 hook，而提取端仍会替换出裸 t()。
+    let current: ts.Expression = initializer;
+    while (
+      ts.isCallExpression(current) &&
+      ReactASTUtils.isForwardRefOrMemoCallee(current.expression)
     ) {
-      const arg = initializer.arguments[0];
-      if (arg && (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg))) {
+      const arg = current.arguments[0];
+      if (!arg) return undefined;
+      if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
         return arg;
       }
+      current = arg;
     }
     return undefined;
+  }
+
+  /** 表达式内部（含任意深度）是否出现 JSX 元素 / 自闭合元素 / Fragment。 */
+  static containsJsxNode(node: ts.Node): boolean {
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) {
+      return true;
+    }
+    let found = false;
+    node.forEachChild((child) => {
+      if (found) return;
+      if (ReactASTUtils.containsJsxNode(child)) found = true;
+    });
+    return found;
   }
 
   static extractFormatMessageInfo(

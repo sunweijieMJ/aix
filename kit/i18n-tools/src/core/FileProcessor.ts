@@ -23,8 +23,8 @@ export abstract class FileProcessor {
    * 运行期失败收集器。
    *
    * 各 Processor 在失败分支调 `this.report.addFailure(...)` 即可；
-   * executeWithLifecycle 收尾会自动在出现失败时落盘到
-   * `<rootDir>/node_modules/.cache/i18n-tools/`，并把绝对路径打到 stderr。
+   * executeWithLifecycle 收尾会自动在出现失败 / 告警 / 人工待办时落盘到
+   * `<rootDir>/.i18n-tools/logs/`，并把绝对路径打到控制台。
    */
   protected report: RunReport;
 
@@ -104,11 +104,17 @@ export abstract class FileProcessor {
       this.logError(operationName, error);
       throw error;
     } finally {
-      // 不论成功或失败都尝试 flush：RunReport.flush 内部判断 hasFailures，
-      // 没有失败时不写盘，所以成功路径零产物。
+      // 不论成功或失败都尝试 flush：RunReport.flush 内部判断有无 failure/warning/人工待办，
+      // 三者皆无时不写盘，所以真正干净的成功路径零产物。
       const reportPath = this.report.flush();
       if (reportPath) {
-        LoggerUtils.warn(`📝 失败报告已写入: ${reportPath}`);
+        // flush 的落盘条件比「有失败」宽（warning / 人工待办也写），文案必须跟着分档：
+        // 一次只有告警的成功运行打「失败报告已写入」会让人误判本次跑挂了。
+        if (this.report.hasFailures()) {
+          LoggerUtils.warn(`📝 失败报告已写入: ${reportPath}`);
+        } else {
+          LoggerUtils.info(`📝 运行报告已写入: ${reportPath}`);
+        }
       }
     }
   }

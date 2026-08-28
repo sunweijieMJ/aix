@@ -10,10 +10,7 @@ import type { ResolvedConfig } from '../config';
  * classifyJsonFile 的判别式结果：四态明确区分，调用方据 status 分流。
  */
 export type JsonFileClassification<T = any> =
-  | { status: 'missing' }
-  | { status: 'empty' }
-  | { status: 'corrupt' }
-  | { status: 'ok'; data: T };
+  { status: 'missing' } | { status: 'empty' } | { status: 'corrupt' } | { status: 'ok'; data: T };
 
 /**
  * 文件和文本操作工具类
@@ -26,17 +23,28 @@ export class FileUtils {
   // JSON Processing Methods
   // =================================================================
 
-  static safeParseJson(content: string): any {
+  /**
+   * 解析 JSON，用 `{ ok }` 判别式区分「解析失败」与「解析出 null」。
+   *
+   * safeParseJson 用 null 双关这两种情况：内容为合法 `null` 的文件会被判成损坏。
+   * 需要精确分类的调用方（classifyJsonFile）走这里，不要用返回值判空。
+   */
+  private static tryParseJson(content: string): { ok: true; value: any } | { ok: false } {
     try {
       // 剥离 UTF-8 BOM（U+FEFF）：Windows 外部编辑器（PowerShell 5.1、VS、记事本）写出的
       // locale/glossary/translations 文件常带 BOM，带 BOM 的内容直接 JSON.parse 会抛错，
       // 导致整条读链路误判文件损坏。此处单点收口，覆盖经 safeParseJson 的全部读路径。
       const normalized = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
-      return JSON.parse(normalized);
+      return { ok: true, value: JSON.parse(normalized) };
     } catch (error) {
       LoggerUtils.error('JSON解析失败:', error);
-      return null;
+      return { ok: false };
     }
+  }
+
+  static safeParseJson(content: string): any {
+    const result = FileUtils.tryParseJson(content);
+    return result.ok ? result.value : null;
   }
 
   /**
@@ -51,9 +59,12 @@ export class FileUtils {
     if (!fs.existsSync(filePath)) return { status: 'missing' };
     const content = fs.readFileSync(filePath, 'utf-8');
     if (content.trim() === '') return { status: 'empty' };
-    const parsed = FileUtils.safeParseJson(content);
-    if (parsed === null) return { status: 'corrupt' };
-    return { status: 'ok', data: parsed as T };
+    const parsed = FileUtils.tryParseJson(content);
+    if (!parsed.ok) return { status: 'corrupt' };
+    // 内容为合法 `null` 的文件不是损坏：判 corrupt 会让 loadJsonDictOrThrow 抛错中止整条命令。
+    // 它同样不是可用字典，归入 empty（与「空文件」同档，调用方一律降级为 {}）。
+    if (parsed.value === null) return { status: 'empty' };
+    return { status: 'ok', data: parsed.value as T };
   }
 
   /**
@@ -422,7 +433,27 @@ export class FileUtils {
     const absoluteDirPath = path.resolve(dirPath);
     const includeBase = path.resolve(rootDir ?? dirPath);
 
+    const collectFile = (fullPath: string): void => {
+      const includedByGlob = !includeMatcher || includeMatcher(fullPath, includeBase);
+      const excludedByPath = excludePathMatcher ? excludePathMatcher(fullPath, includeBase) : false;
+      if (includedByGlob && !excludedByPath) {
+        files.push(fullPath);
+      }
+    };
+
+    // 已访问目录的 realpath 集合：软链可以指回祖先目录，跟随时不去重会无限递归。
+    const visitedRealDirs = new Set<string>();
+
     const walkDir = (currentPath: string): void => {
+      let realDir: string;
+      try {
+        realDir = fs.realpathSync(currentPath);
+      } catch {
+        return;
+      }
+      if (visitedRealDirs.has(realDir)) return;
+      visitedRealDirs.add(realDir);
+
       const entries = fs.readdirSync(currentPath, { withFileTypes: true });
 
       for (const entry of entries) {
@@ -434,14 +465,24 @@ export class FileUtils {
 
         if (entry.isDirectory()) {
           walkDir(fullPath);
-        } else if (entry.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
-          const includedByGlob = !includeMatcher || includeMatcher(fullPath, includeBase);
-          const excludedByPath = excludePathMatcher
-            ? excludePathMatcher(fullPath, includeBase)
-            : false;
-          if (includedByGlob && !excludedByPath) {
-            files.push(fullPath);
+        } else if (entry.isSymbolicLink()) {
+          // Dirent 的 isDirectory/isFile 描述的是软链本身（两者都为 false），不跟随会让
+          // 软链进来的源码目录 / 文件整片扫不到 —— 提取端看不到，中文静默留在源码里。
+          // monorepo 用软链把共享目录挂进包内是常见布局，故必须 stat 跟随后再分流。
+          let target: fs.Stats;
+          try {
+            target = fs.statSync(fullPath);
+          } catch {
+            // 断链（指向已删除路径）：跳过，不因扫描阶段的失效链接中断整条命令。
+            continue;
           }
+          if (target.isDirectory()) {
+            walkDir(fullPath);
+          } else if (target.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
+            collectFile(fullPath);
+          }
+        } else if (entry.isFile() && FileUtils.matchesExtensions(entry.name, extensions)) {
+          collectFile(fullPath);
         }
       }
     };

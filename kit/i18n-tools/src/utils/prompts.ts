@@ -1,4 +1,5 @@
 import type { ResolvedConfig, ResolvedLLMTaskConfig } from '../config';
+import { LoggerUtils } from './logger';
 
 /**
  * 用字面量填充自定义 prompt 模板中的 `{token}` 占位符。
@@ -59,6 +60,26 @@ const BUILTIN_LOCALE_NAMES: Record<string, string> = {
   'th-TH': 'Thai',
   'vi-VN': 'Vietnamese',
 };
+
+/** 已就「缺 {jsonText}」告警过的模板；翻译按 batch × target 循环调用，不去重会刷屏。 */
+const warnedUserTemplates = new Set<string>();
+
+/**
+ * 自定义翻译 user prompt 缺 `{jsonText}` 占位符时告警。
+ *
+ * 不抛错也不回退内置模板（用户可能有意只在 system 里给数据），但必须提示：
+ * 待翻译 JSON 无处可插 → 模型收到一段没有数据的指令，整批译文静默为空。
+ */
+function warnIfMissingJsonTextToken(template: string): void {
+  if (template.includes('{jsonText}')) return;
+  if (warnedUserTemplates.has(template)) return;
+  warnedUserTemplates.add(template);
+  LoggerUtils.warn(
+    '⚠️ 自定义翻译 user prompt 未包含 {jsonText} 占位符，待翻译数据不会被注入 prompt。\n' +
+      '   影响：模型收不到任何待翻译条目，本轮译文可能整批为空。\n' +
+      '   建议：在 llm.translate.prompt.user 模板中加入 {jsonText}。',
+  );
+}
 
 /**
  * 解析语言代码到展示名。优先 locales.names，回退内置表，再回退 code 本身。
@@ -132,13 +153,20 @@ export function getTranslationSystemPrompt(
   targetLocale: string,
   usesDoubleBracePlaceholders: boolean = false,
 ): string {
-  if (task.prompt.system) {
-    return task.prompt.system;
-  }
-
   const sourceCode = locales.source;
   const sourceName = getLocaleName(sourceCode, locales);
   const targetName = getLocaleName(targetLocale, locales);
+
+  // 自定义 system prompt 同样做模板填充：翻译是 per-target 循环调用的，原样返回意味着
+  // 所有语种收到字面完全相同的 system prompt，用户无法在自定义模板里指明目标语种。
+  if (task.prompt.system) {
+    return fillTemplate(task.prompt.system, {
+      sourceLocale: sourceCode,
+      sourceName,
+      targetLocale,
+      targetName,
+    });
+  }
 
   const placeholderRules = usesDoubleBracePlaceholders
     ? `5. CRITICAL — interpolation placeholders use DOUBLE curly braces \`{{name}}\`. The text inside \`{{...}}\` is a variable identifier that must be preserved EXACTLY:
@@ -200,11 +228,19 @@ export function getTranslationUserPrompt(
   task: ResolvedLLMTaskConfig,
   targetLocale: string,
 ): string {
-  if (task.prompt.user) {
-    return fillTemplate(task.prompt.user, { jsonText });
-  }
-
   const sourceName = getLocaleName(locales.source, locales);
   const targetName = getLocaleName(targetLocale, locales);
+
+  if (task.prompt.user) {
+    warnIfMissingJsonTextToken(task.prompt.user);
+    return fillTemplate(task.prompt.user, {
+      jsonText,
+      sourceLocale: locales.source,
+      sourceName,
+      targetLocale,
+      targetName,
+    });
+  }
+
   return `Translate the following i18n entries from ${sourceName} to ${targetName}:\n${jsonText}`;
 }

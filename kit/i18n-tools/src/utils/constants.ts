@@ -19,6 +19,20 @@ export const CONFIG = {
 } as const;
 
 /**
+ * 占位符「参数名」允许出现的字符集（正则字符类内容，不含方括号）。
+ *
+ * 全库唯一来源：doctor/translate 的名集采集（placeholder-utils）与 restore 的双花括号归一
+ * （CommonASTUtils.PLACEHOLDER_NAME）必须同集合——两处不一致时，一侧识别得出的占位符在
+ * 另一侧「不是占位符」：restore 归一漏掉 `{{a-b}}` 会让双花括号库往返丢变量，doctor 漏掉
+ * `{$route}` 会对该占位符失明、放行不匹配的译文。
+ *
+ * 取「两侧并集」而非交集：匹配端宁可宽松——locale 文件可以是人工编写的，占位符名不限于
+ * 本工具生成的形态。生成端（getVariableNameFromExpression）有意只输出更严格的子集
+ * （合法 JS 标识符字符），因为该名会作为 values 对象的裸键写进源码，含 `-` 会产出语法错误。
+ */
+export const PLACEHOLDER_NAME_CHARS = 'A-Za-z0-9_$.一-鿿-';
+
+/**
  * 这些元素的内容是逐字代码 / 预格式文本，不参与 i18n 提取（含其所有后代节点）。
  * Vue 模板与 React JSX 共用：遇到这些标签直接跳过整棵子树，避免把示例代码
  * （如文档里的 `<code>&lt;script setup&gt;</code>`）灌进 locale。

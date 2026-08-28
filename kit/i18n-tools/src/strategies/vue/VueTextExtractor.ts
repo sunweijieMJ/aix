@@ -113,9 +113,12 @@ export class VueTextExtractor extends BaseTextExtractor {
    * 元素是否带 v-pre 指令。
    *
    * @vue/compiler-dom 在 parse 阶段消费 v-pre 并从 props 移除（不保留 DIRECTIVE 节点），
-   * 无法从 props 检测；改为扫描元素「开标签」源码。用属性名锚定的正则匹配 v-pre，避免把
-   * 属性值里的 `v-pre`（如 `:title="v-pre-x"`）误判。开标签边界取「元素起点 → 第一个子节点
+   * 无法从 props 检测；改为扫描元素「开标签」源码。开标签边界取「元素起点 → 第一个子节点
    * 起点」，而非按第一个 `>` 截断——后者会被属性值里的 `>`（如 `:x="a>b"`）骗到。
+   *
+   * 匹配前先把引号包裹的属性值整体抹平：仅靠属性名锚定的正则不够，值里空白分隔的
+   * `v-pre`（如 `:data-tip="'enable v-pre mode'"`）会让整棵子树被误判为 v-pre 而漏提取。
+   * 与 VueRestoreTransformer.stashVerbatimRegions 的同款判定保持一致。
    */
   private static hasVPreDirective(node: ElementNode): boolean {
     const src = node.loc.source;
@@ -127,7 +130,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         openTag = src.slice(0, len);
       }
     }
-    return /(?:^|\s)v-pre(?=[\s/>=]|$)/.test(openTag);
+    return /(?:^|\s)v-pre(?=[\s/>=]|$)/.test(openTag.replace(/"[^"]*"|'[^']*'/g, '""'));
   }
 
   private async traverseTemplateNode(
@@ -462,6 +465,17 @@ export class VueTextExtractor extends BaseTextExtractor {
 
         // 跳过技术属性
         if (this.isTechnicalAttribute(attr.name)) {
+          // 技术属性名单是按属性名粗粒度匹配的，value="提交" 这类「名字在名单里、值却是可见
+          // 文案」会被一并跳过。行为保持跳过（翻译 value/name 可能破坏运行时逻辑），但含中文时
+          // 必须留痕——否则用户既看不到提取结果也看不到任何提示，中文静默留在源码里。
+          if (attr.value?.content && FileUtils.containsChinese(attr.value.content)) {
+            this.warnChineseInTechnicalAttribute(
+              attr.name,
+              attr.value.content.trim(),
+              filePath,
+              attr.loc.start.line + lineOffset,
+            );
+          }
           continue;
         }
 
@@ -1403,5 +1417,27 @@ export class VueTextExtractor extends BaseTextExtractor {
       count: 1,
       dedupeKey: `${filePath}:${sourceOffset ?? line}`,
     });
+  }
+
+  /**
+   * 输出「技术属性里的中文被跳过」warning。
+   *
+   * 只走 recordWarning 不走 recordManualSkip：ManualSkipDiagnostic.category 是封闭联合，
+   * 现有三档（html-template / class-property / nested-interpolation）语义都不覆盖本场景，
+   * 扩枚举需同步改 GenerateProcessor 的映射，收益不足以扩面。
+   */
+  private warnChineseInTechnicalAttribute(
+    attrName: string,
+    value: string,
+    filePath: string,
+    line: number,
+  ): void {
+    const msg =
+      `⚠️ 跳过技术属性中的中文：${FileUtils.getRelativePath(filePath)}:${line} ` +
+      `${attrName}="${value}"\n` +
+      `   原因：该属性名在技术属性名单内，翻译其值可能破坏运行时逻辑（枚举值 / 表单字段名 / 引用 ID）。\n` +
+      `   建议：确认该值确实是面向用户的文案时，手动改用绑定形式（如 :${attrName}="$t('key')"）。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
   }
 }

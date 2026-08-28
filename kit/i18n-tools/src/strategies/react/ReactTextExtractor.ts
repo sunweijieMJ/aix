@@ -195,10 +195,15 @@ export class ReactTextExtractor extends BaseTextExtractor {
       }
     }
 
-    // 优先处理JSX元素的混合内容
-    if (ts.isJsxElement(node)) {
-      const mixedContent = this.extractJsxMixedContent(node, sourceFile);
-      if (mixedContent) {
+    // 优先处理 JSX 元素 / Fragment 的混合内容。Fragment（`<>共 {count} 项</>`）同样是
+    // 「文本 + 插值」的宿主，只判 JsxElement 会让它退回子节点递归、拆成「共」「项」两个碎 key。
+    // 上方 <code>/<pre> 与翻译组件两道守卫依赖 openingElement.tagName，Fragment 无标签名、
+    // 不可能命中，故直接进混合内容判定。
+    if (ts.isJsxElement(node) || ts.isJsxFragment(node)) {
+      const mixedContent = this.extractJsxMixedContent(node, sourceFile, filePath);
+      // 与其余提取点同口径过一遍 shouldExtract：合成串直接 push 会绕过业务侧
+      // config.extract.filterPatterns，用户黑名单对混合内容形同虚设（Vue 端同款合成串已过闸）。
+      if (mixedContent && this.shouldExtract(mixedContent.text, 'jsx-text')) {
         const componentType = ReactASTUtils.getComponentType(node);
         const position = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
 
@@ -418,13 +423,15 @@ export class ReactTextExtractor extends BaseTextExtractor {
 
   /**
    * 提取JSX元素的混合内容（文本+表达式）
-   * @param node - JSX元素节点
+   * @param node - JSX 元素或 Fragment 节点
    * @param sourceFile - 源文件
+   * @param filePath - 原始入参路径（告警定位用）
    * @returns 混合内容信息，如果不包含中文则返回null
    */
   private extractJsxMixedContent(
-    node: ts.JsxElement,
+    node: ts.JsxElement | ts.JsxFragment,
     sourceFile: ts.SourceFile,
+    filePath: string,
   ): {
     text: string;
     isTemplateString: boolean;
@@ -440,6 +447,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     let hasChineseText = false;
     let hasExpression = false;
     let hasElementChild = false;
+    let jsxInExpression: ts.JsxExpression | undefined;
 
     for (const child of children) {
       if (ts.isJsxText(child)) {
@@ -449,6 +457,9 @@ export class ReactTextExtractor extends BaseTextExtractor {
         }
       } else if (ts.isJsxExpression(child) && child.expression) {
         hasExpression = true;
+        if (!jsxInExpression && ReactASTUtils.containsJsxNode(child.expression)) {
+          jsxInExpression = child;
+        }
       } else if (
         ts.isJsxElement(child) ||
         ts.isJsxSelfClosingElement(child) ||
@@ -471,6 +482,15 @@ export class ReactTextExtractor extends BaseTextExtractor {
     // 让 JsxText / 嵌套元素各自独立提取与转换。宁可生成多个碎片 key，也不破坏
     // 源码结构 / 丢失嵌套中文。真正的 <Trans> 富文本映射作为后续增强另行实现。
     if (hasElementChild) {
+      return null;
+    }
+
+    // 插值表达式内部嵌了 JSX（如 `状态 {ok && <b>正常</b>}`）时同样放弃合并：该表达式会被整段
+    // 塞进占位符，产出 `values={{ ok: ok && <b>正常</b> }}` —— react-i18next 把 values 当纯值
+    // 插值，渲染出 `[object Object]`，且嵌套元素里的中文既不提取也不告警。退回子节点递归让
+    // 文本与嵌套元素各自独立提取（碎片 key 可接受，坏渲染不可接受）。
+    if (jsxInExpression) {
+      this.warnJsxInsideInterpolation(jsxInExpression, sourceFile, filePath);
       return null;
     }
 
@@ -510,6 +530,33 @@ export class ReactTextExtractor extends BaseTextExtractor {
       templateVariables,
       nestedChineseTexts,
     };
+  }
+
+  /** 同一轮提取内已告警过的「插值内嵌 JSX」位置，按 文件:偏移 去重。 */
+  private warnedJsxInterpolations = new Set<string>();
+
+  /**
+   * 输出「插值内嵌 JSX 导致放弃混合内容合并」的 warning。
+   *
+   * 只走 warning 通道（不进 manualSkip）：文案并未被跳过——退回子节点递归后文本与嵌套元素
+   * 都会各自提取，只是拆成了多个 key，计入 manualSkip 会虚报「需人工处理」的覆盖率缺口。
+   */
+  private warnJsxInsideInterpolation(
+    node: ts.JsxExpression,
+    sourceFile: ts.SourceFile,
+    filePath: string,
+  ): void {
+    const dedupeKey = `${filePath}:${node.getStart(sourceFile)}`;
+    if (this.warnedJsxInterpolations.has(dedupeKey)) return;
+    this.warnedJsxInterpolations.add(dedupeKey);
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const msg =
+      `⚠️ 插值内嵌 JSX，放弃整段合并提取：${FileUtils.getRelativePath(filePath)}:${pos.line + 1}\n` +
+      `   原因：把 JSX 元素当插值变量传入 values 会渲染成 [object Object]。\n` +
+      `   影响：该段文本改为按文本节点 / 嵌套元素分别提取，会拆成多个 key。\n` +
+      `   建议：如需保持整句，请手写 <Trans> 富文本映射。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
   }
 
   /** 同一轮提取内已告警过的标签模板位置（CSS-in-JS 项目单文件可能几十处，防连刷）。 */

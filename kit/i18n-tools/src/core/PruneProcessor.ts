@@ -165,7 +165,14 @@ export class PruneProcessor extends BaseProcessor {
   /** 从 translations.json / untranslated.json（{key: {locale: value}} 字典）删除孤儿 key。 */
   private pruneDictionaryFile(filePath: string, orphanSet: Set<string>): void {
     if (!fs.existsSync(filePath)) return;
-    const data = FileUtils.safeLoadJsonFile<Translations>(filePath, { silent: true });
+    // 严格读取：silent 降级会把损坏字典当 {}，此后 removed===0 直接 return，prune 报「无需清理」
+    // 以 exit 0 收尾——损坏的在途译文文件被无声放过，与 csv-import / pick 的 strict 口径不一致。
+    const data = FileUtils.loadJsonDictOrThrow<Translations>(
+      filePath,
+      (p) =>
+        `字典文件解析失败（JSON 格式损坏）: ${p}\n` +
+        '👉 为防止把损坏字典误判为「无孤儿可清理」而伪报成功，已中止 prune。请先修复该文件的 JSON 格式后重试。',
+    );
     const removed = PruneProcessor.deleteOwnKeys(data, orphanSet);
     if (removed === 0) return;
     FileUtils.writeTranslationsFile(filePath, data);

@@ -315,15 +315,17 @@ export class MergeProcessor extends FileProcessor {
     // 冗余防御（normally unreachable）：顶层 assertLocalesNotCorrupt 已覆盖 source。语义上若
     // source 桶损坏被 silent 降级当 {}，下方用 source 文本驱动 keyBucketMap 分桶会得到空表，
     // 导致所有 key 塌缩进 defaultBucket、其余桶被 prune 成 .bak（伪报成功）——保留作 safety net。
+    // 抛错而非 return：仅 log 后返回会让 merge 以 exit 0 收尾，CI 判绿而语言包实际一条未写。
     const corruptSourceFile = LanguageFileManager.findCorruptBucketFile(
       this.config,
       this.isCustom,
       sourceLocale,
     );
     if (corruptSourceFile) {
-      LoggerUtils.error(`❌ 源语言桶文件解析失败（JSON 格式错误）: ${corruptSourceFile}`);
-      LoggerUtils.error('👉 为防止桶分布塌缩，本次不会更新桶式语言包。请检查 JSON 格式。');
-      return;
+      throw new Error(
+        `源语言桶文件解析失败（JSON 格式错误）: ${corruptSourceFile}` +
+          '\n👉 为防止桶分布塌缩，已中止 merge，未更新任何桶式语言包。请先修复该文件的 JSON 格式。',
+      );
     }
 
     // source 文本驱动分桶（与 generate/export 一致）。source 非空时分桶表对所有 target 相同，
@@ -358,12 +360,12 @@ export class MergeProcessor extends FileProcessor {
       this.isCustom,
       target,
     );
+    // 同上：抛错而非 return，避免「该 target 一条没写」被 exit 0 掩盖成成功。
     if (corruptFile) {
-      LoggerUtils.error(`❌ 目标语言桶文件解析失败（JSON 格式错误）: ${corruptFile}`);
-      LoggerUtils.error(
-        '👉 为防止数据丢失，本次不会更新该 target 的桶式语言包。请检查 JSON 格式。',
+      throw new Error(
+        `目标语言桶文件解析失败（JSON 格式错误）: ${corruptFile}` +
+          `\n👉 为防止数据丢失，已中止 merge，未更新 [${target}] 的桶式语言包。请先修复该文件的 JSON 格式。`,
       );
-      return;
     }
 
     const { flat: targetMessages } = LanguageFileManager.readBucketedLocaleWithBucketMap(
@@ -415,8 +417,12 @@ export class MergeProcessor extends FileProcessor {
   private updateFlatLanguagePackage(newlyTranslated: Translations, target: string): void {
     const targetMessages = LanguageFileManager.readLocaleFile(this.config, this.isCustom, target);
     if (targetMessages === null) {
-      // 文件存在但解析失败：readLocaleFile 已打印错误
-      return;
+      // 文件存在但解析失败。与桶式路径同口径抛错：静默 return 会让本轮译文全部丢失、
+      // 而 merge 仍以 exit 0 收尾，CI 与人都看不出语言包没被更新。
+      throw new Error(
+        `目标语言文件解析失败（JSON 格式错误）: locale「${target}」` +
+          '\n👉 为防止译文丢失，已中止 merge。请先修复该文件的 JSON 格式后重试。',
+      );
     }
 
     const updatedCount = MergeProcessor.applyTranslations(targetMessages, newlyTranslated, target);
