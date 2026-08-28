@@ -2,7 +2,16 @@ import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import {
+  applyReplacements,
+  findExactStringNode,
+  nodeToText,
+  parseSourceFile,
+  shouldReplaceNode,
+} from '../../utils/ast-core';
+import { isInThisBindableScope } from '../../utils/ast-guards';
+import { createMessageWithOptions, filterLiterals } from '../../utils/message-shape';
+import { formatValuesMapping } from '../../utils/string-escape';
 import type { ExtractedString } from '../../utils/types';
 import type {
   IComponentInjector,
@@ -211,7 +220,7 @@ export class VueTransformer implements ITransformer {
     }
 
     // applyReplacements 负责倒序写入与重叠检测（重叠即抛错，不静默取舍）。
-    return CommonASTUtils.applyReplacements(templateContent, replacements);
+    return applyReplacements(templateContent, replacements);
   }
 
   /**
@@ -227,9 +236,7 @@ export class VueTransformer implements ITransformer {
     const semanticId = ns ? `${ns}:${extracted.semanticId}` : extracted.semanticId;
 
     // 过滤掉字面量，只保留真正的变量表达式
-    const actualVariables = templateVariables
-      ? CommonASTUtils.filterLiterals(templateVariables)
-      : undefined;
+    const actualVariables = templateVariables ? filterLiterals(templateVariables) : undefined;
 
     // 处理模板字符串（带变量插值）
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
@@ -239,11 +246,8 @@ export class VueTransformer implements ITransformer {
       //    `${'X'}`，供源码文本匹配），其内联后的 processedMessage 才是正确的消息输入。
       // 统一优先取 processedMessage，无（纯变量插值、内联前后相同）时回落 original。
       const messageInput = extracted.processedMessage ?? extracted.original;
-      const { placeholderMap } = CommonASTUtils.createMessageWithOptions(
-        messageInput,
-        actualVariables,
-      );
-      const variablesMapping = CommonASTUtils.formatValuesMapping(placeholderMap);
+      const { placeholderMap } = createMessageWithOptions(messageInput, actualVariables);
+      const variablesMapping = formatValuesMapping(placeholderMap);
 
       // 根据上下文生成不同格式
       switch (templateContext) {
@@ -292,7 +296,7 @@ export class VueTransformer implements ITransformer {
     strings: ExtractedString[],
     allowThisQualifier: boolean,
   ): string {
-    const sourceFile = CommonASTUtils.parseSourceFile(scriptContent, 'temp.ts');
+    const sourceFile = parseSourceFile(scriptContent, 'temp.ts');
 
     // 按位置倒序排列，从后往前替换
     const sortedStrings = strings.sort((a, b) => {
@@ -313,26 +317,26 @@ export class VueTransformer implements ITransformer {
       const localLine = extracted.line - lineOffset - 1;
       const localColumn = extracted.column - 1;
       const position = ts.getPositionOfLineAndCharacter(sourceFile, localLine, localColumn);
-      const node = CommonASTUtils.findExactStringNode(sourceFile, position, extracted.original);
+      const node = findExactStringNode(sourceFile, position, extracted.original);
 
       if (node) {
         // 仅当所在块允许 this.$t（普通 <script> 块），且当前节点位于可绑定 this
         // 的词法作用域（method / lifecycle / 普通函数体内部，箭头函数透明）时，
         // 才使用 this.$t；模块顶层 / 选项对象的属性初始化器外层 → 裸 t()。
-        const useThis = allowThisQualifier && CommonASTUtils.isInThisBindableScope(node);
+        const useThis = allowThisQualifier && isInThisBindableScope(node);
         const replacement = this.generateScriptReplacement(extracted, useThis);
         const start = node.getStart(sourceFile);
         const end = node.getEnd();
 
         // 验证节点文本
-        const originalNodeText = CommonASTUtils.nodeToText(node, sourceFile);
+        const originalNodeText = nodeToText(node, sourceFile);
         const isTemplateString =
           extracted.original.startsWith('`') && extracted.original.endsWith('`');
 
         // script 侧节点为 StringLiteral / 模板串，源码侧均含定界符；extracted.original 仅模板串
         // 是源码形式、其余为裸内容 → 据此控制裸内容侧不剥定界符，避免内容自带成对引号被误剥。
         if (
-          CommonASTUtils.shouldReplaceNode(originalNodeText, extracted.original, isTemplateString, {
+          shouldReplaceNode(originalNodeText, extracted.original, isTemplateString, {
             nodeDelimited: !ts.isJsxText(node),
             originalDelimited: isTemplateString,
           })
@@ -351,7 +355,7 @@ export class VueTransformer implements ITransformer {
     }
 
     // 返回转换后的 script 内容
-    return CommonASTUtils.applyReplacements(scriptContent, replacements);
+    return applyReplacements(scriptContent, replacements);
   }
 
   /**
@@ -377,17 +381,12 @@ export class VueTransformer implements ITransformer {
     const tFunc = useThisQualifier ? 'this.$t' : 't';
 
     // 过滤掉字面量，只保留真正的变量表达式
-    const actualVariables = templateVariables
-      ? CommonASTUtils.filterLiterals(templateVariables)
-      : undefined;
+    const actualVariables = templateVariables ? filterLiterals(templateVariables) : undefined;
 
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
       // 对于模板字符串，使用变量插值
-      const { placeholderMap } = CommonASTUtils.createMessageWithOptions(
-        extracted.original,
-        actualVariables,
-      );
-      const variablesMapping = CommonASTUtils.formatValuesMapping(placeholderMap);
+      const { placeholderMap } = createMessageWithOptions(extracted.original, actualVariables);
+      const variablesMapping = formatValuesMapping(placeholderMap);
       return `${tFunc}('${semanticId}', ${variablesMapping})`;
     } else {
       // 对于普通字符串（或所有变量都是字面量）

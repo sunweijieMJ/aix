@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import { stripComments } from '../src/utils/import-surgery';
 import { scanKeyReferencesInContent } from '../src/utils/source-key-scanner';
 
 /**
@@ -11,8 +11,7 @@ import { scanKeyReferencesInContent } from '../src/utils/source-key-scanner';
  * 修复：状态机增加正则字面量 frame（按前一有效 token 区分除号 / 正则起始，处理字符类 [...] 与转义）。
  */
 describe('stripComments — 正则字面量盲区（Bug7）', () => {
-  const usedKeys = (code: string): string[] =>
-    scanKeyReferencesInContent(CommonASTUtils.stripComments(code));
+  const usedKeys = (code: string): string[] => scanKeyReferencesInContent(stripComments(code));
 
   it('含引号的正则字面量后的行注释被正确剥离', () => {
     const code = `const re = /'/;\n// t('fakeKeyInComment')\nt('realKey');`;
@@ -46,8 +45,7 @@ describe('stripComments — 正则字面量盲区（Bug7）', () => {
  * 等「后接表达式」的关键字，则判为正则起点而非除号。
  */
 describe('stripComments — 关键字后的正则字面量（Bug1）', () => {
-  const usedKeys = (code: string): string[] =>
-    scanKeyReferencesInContent(CommonASTUtils.stripComments(code));
+  const usedKeys = (code: string): string[] => scanKeyReferencesInContent(stripComments(code));
 
   it('return 后含引号的正则不吞掉同行 t()（实证复现用例）', () => {
     const code = `function f(url) {\n  return /"/.test(url) ? "https://a.com" : t('key1');\n}`;

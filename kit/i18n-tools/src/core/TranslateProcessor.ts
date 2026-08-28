@@ -8,6 +8,7 @@ import { extractPlaceholderNames } from '../utils/placeholder-utils';
 import type { Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
 import { resolveUsesDoubleBracePlaceholders } from '../adapters';
+import { loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
 
 /**
  * 翻译处理器
@@ -55,7 +56,7 @@ export class TranslateProcessor extends FileProcessor {
     // 必须区分「损坏」与「空」：损坏时若降级为 {}，会让损坏的 untranslated.json 被当成空文件
     // → 打印「文件为空」→ exit 0 伪报成功（CI 误判已全部翻译）。loadJsonDictOrThrow 对「有内容
     // 却解析失败」抛错中止。
-    const data = FileUtils.loadJsonDictOrThrow<Translations>(
+    const data = loadJsonDictOrThrow<Translations>(
       targetPath,
       (p) =>
         `待翻译文件解析失败（JSON 格式错误）: ${p}\n` +
@@ -87,7 +88,7 @@ export class TranslateProcessor extends FileProcessor {
       const glossaryFilled = this.applyGlossary(data, target, glossary);
       if (glossaryFilled > 0) {
         LoggerUtils.info(`📚 [${target}] 词表预填 ${glossaryFilled} 条，剩余条目走 LLM`);
-        FileUtils.writeTranslationsFile(targetPath, data);
+        writeTranslationsFile(targetPath, data);
       }
 
       const toTranslate = this.filterUntranslatedItems(data, target);
@@ -260,7 +261,7 @@ export class TranslateProcessor extends FileProcessor {
     }
 
     // 写入文件（每个 target 完成后落盘一次，便于断点续翻）
-    FileUtils.writeTranslationsFile(filePath, currentData);
+    writeTranslationsFile(filePath, currentData);
 
     return { totalTranslated, successBatches, totalBatches: batches.length, failedBatches };
   }

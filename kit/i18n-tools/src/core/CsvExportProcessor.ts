@@ -6,6 +6,7 @@ import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
 import { assertLangsAreTargets, serializeCsv } from '../utils/csv-utils';
 import { FileProcessor } from './FileProcessor';
+import { atomicWriteText, ensureDirectoryExists, loadJsonDictOrThrow } from '../utils/json-io';
 
 export interface CsvExportOptions {
   /** 数据源文件 */
@@ -59,7 +60,7 @@ export class CsvExportProcessor extends FileProcessor {
     }
     // 必须区分「损坏」与「空」：损坏时若降级为 {}，数据源会被当成 0 条目导出仅含表头的空 CSV
     // 并伪报成功。loadJsonDictOrThrow 对「有内容却解析失败」抛错中止。
-    const data = FileUtils.loadJsonDictOrThrow<Translations>(
+    const data = loadJsonDictOrThrow<Translations>(
       sourcePath,
       (p) =>
         `CSV 数据源解析失败（JSON 格式错误）: ${p}\n` +
@@ -156,8 +157,8 @@ export class CsvExportProcessor extends FileProcessor {
   }
 
   private writeCsv(filePath: string, rows: string[][]): void {
-    FileUtils.ensureDirectoryExists(path.dirname(filePath));
-    FileUtils.atomicWriteText(filePath, serializeCsv(rows));
+    ensureDirectoryExists(path.dirname(filePath));
+    atomicWriteText(filePath, serializeCsv(rows));
     LoggerUtils.success(`📄 已导出 ${rows.length - 1} 行 → ${filePath}`);
   }
 }

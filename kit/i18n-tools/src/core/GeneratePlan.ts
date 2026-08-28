@@ -1,9 +1,9 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
 import type { ExtractedString } from '../utils/types';
+import { ensureDirectoryExists, writeJsonFile } from '../utils/json-io';
 
 /**
  * 单条「拟替换记录」。一条 Hit 对应 ExtractedString 一一映射，只是把对外
@@ -147,13 +147,13 @@ export class GeneratePlanWriter {
    * @param transformedSources file 相对路径 → transform 后代码内容
    */
   static write(baseDir: string, plan: GeneratePlan, transformedSources: Map<string, string>): void {
-    FileUtils.ensureDirectoryExists(baseDir);
-    FileUtils.writeJsonFile(path.join(baseDir, this.OWNERSHIP_FILENAME), {
+    ensureDirectoryExists(baseDir);
+    writeJsonFile(path.join(baseDir, this.OWNERSHIP_FILENAME), {
       schemaVersion: 1,
       planDir: path.resolve(baseDir),
     });
     const sourcesDir = path.join(baseDir, this.SOURCES_DIRNAME);
-    FileUtils.ensureDirectoryExists(sourcesDir);
+    ensureDirectoryExists(sourcesDir);
 
     const sourcesRoot = path.resolve(sourcesDir);
     for (const [relPath, code] of transformedSources) {
@@ -164,16 +164,16 @@ export class GeneratePlanWriter {
       if (resolved !== sourcesRoot && !resolved.startsWith(sourcesRoot + path.sep)) {
         throw new Error(`Plan 源码相对路径越界，拒绝写出：${relPath}`);
       }
-      FileUtils.ensureDirectoryExists(path.dirname(target));
+      ensureDirectoryExists(path.dirname(target));
       fs.writeFileSync(target, code, 'utf-8');
     }
 
-    FileUtils.writeJsonFile(path.join(baseDir, this.PLAN_FILENAME), plan);
+    writeJsonFile(path.join(baseDir, this.PLAN_FILENAME), plan);
 
     // 更新 latest 指针。失败不向上抛错——指针只是便捷功能，主流程不依赖它。
     try {
       const plansRoot = path.dirname(baseDir);
-      FileUtils.writeJsonFile(path.join(plansRoot, this.LAST_POINTER_FILENAME), {
+      writeJsonFile(path.join(plansRoot, this.LAST_POINTER_FILENAME), {
         path: baseDir,
         writtenAt: new Date().toISOString(),
       });

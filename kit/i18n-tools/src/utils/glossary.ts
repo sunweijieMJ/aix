@@ -3,6 +3,7 @@ import type { ResolvedConfig } from '../config';
 import { FileUtils } from './file-utils';
 import { LoggerUtils } from './logger';
 import { collapseWhitespace } from './text-normalize';
+import { classifyJsonFile } from './json-io';
 
 /**
  * 内部归一化后的词表结构：
@@ -49,7 +50,7 @@ export class Glossary {
     // 文件已确认存在（上方 existsSync 守卫）。损坏 JSON 必须抛错而非静默吞成空词表——
     // 否则用户配了词表却因文件存坏导致所有 lookup 静默 miss、术语全部回退 LLM 而无从察觉，
     // 违反本方法文档承诺的 fail-fast 语义（safeLoadJsonFile 会把损坏静默降级为 {}，不可用）。
-    const cls = FileUtils.classifyJsonFile<RawGlossaryFile>(filePath);
+    const cls = classifyJsonFile<RawGlossaryFile>(filePath);
     if (cls.status === 'corrupt') {
       throw new Error(
         `词表文件解析失败（JSON 格式损坏，请修复后重试）: ${FileUtils.getRelativePath(filePath)}`,

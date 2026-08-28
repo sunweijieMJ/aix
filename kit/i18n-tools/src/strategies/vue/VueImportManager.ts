@@ -1,6 +1,7 @@
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { IImportManager } from '../../adapters/FrameworkAdapter';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { mergeNamedImport, removeNamedImports } from '../../utils/import-surgery';
+import { escapeRegExp } from '../../utils/string-escape';
 import type { ExtractedString } from '../../utils/types';
 import type { VueI18nLibrary } from './libraries';
 
@@ -154,7 +155,7 @@ export class VueImportManager implements IImportManager {
       return code;
     }
 
-    const updatedScript = CommonASTUtils.mergeNamedImport(block.content, this.tImport, ['t']);
+    const updatedScript = mergeNamedImport(block.content, this.tImport, ['t']);
     return code.slice(0, block.start) + updatedScript + code.slice(block.end);
   }
 
@@ -180,10 +181,10 @@ export class VueImportManager implements IImportManager {
     // 仍有用户手写的 useI18n()/useTranslation() 调用时，保守保留 import；
     // 否则用 removeNamedImports 精准摘除 hookName，保留同包其他命名导入
     // （如 createI18n）。hookName 来自 library，避免硬编码 useI18n 误判 vue-i18next。
-    const escapedHook = CommonASTUtils.escapeRegExp(this.library.hookName);
+    const escapedHook = escapeRegExp(this.library.hookName);
     const hookCallStillUsed = new RegExp(`\\b${escapedHook}\\s*\\(`).test(updated);
     if (!hookCallStillUsed) {
-      updated = CommonASTUtils.removeNamedImports(
+      updated = removeNamedImports(
         updated,
         (moduleName) => this.library.isLibraryImport(moduleName),
         [this.library.hookName],
@@ -232,10 +233,10 @@ export class VueImportManager implements IImportManager {
    * 用户已手写的多键解构（如 `{ t, locale }`），否则会与之形成双 t 声明（SFC 编译失败）。
    */
   hasLocalHookTBinding(scriptContent: string): boolean {
-    const escapedHook = CommonASTUtils.escapeRegExp(this.library.hookName);
+    const escapedHook = escapeRegExp(this.library.hookName);
     // 行首锚定（^[ \t]* + gm）：只匹配作为语句出现在行首（允许缩进）的真实 hook 解构，排除
     // 注释里的 `// const { t } = useI18n()`。否则误判「已有 hook 绑定」而漏注入 → 裸 t() 未声明。
-    // 与姊妹方法 CommonASTUtils.mergeNamedImport 的锚定口径一致。
+    // 与姊妹方法 mergeNamedImport 的锚定口径一致。
     const destructureRe = new RegExp(
       `^[ \\t]*const\\s*\\{([^}]*)\\}\\s*=\\s*${escapedHook}\\s*\\(`,
       'gm',
@@ -312,7 +313,7 @@ export class VueImportManager implements IImportManager {
     if (this.hasNamedImportLocalT(code)) {
       return code;
     }
-    return CommonASTUtils.mergeNamedImport(code, this.tImport, ['t']);
+    return mergeNamedImport(code, this.tImport, ['t']);
   }
 
   /**
@@ -334,7 +335,7 @@ export class VueImportManager implements IImportManager {
   private mergeNamedImportInScript(code: string, packageName: string, names: string[]): string {
     const block = VueImportManager.findScriptBlock(code);
     if (!block) return code;
-    const updatedScript = CommonASTUtils.mergeNamedImport(block.content, packageName, names);
+    const updatedScript = mergeNamedImport(block.content, packageName, names);
     return code.slice(0, block.start) + updatedScript + code.slice(block.end);
   }
 

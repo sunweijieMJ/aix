@@ -2,7 +2,9 @@ import ts from 'typescript';
 import type { ReactI18nLibrary } from './types';
 import type { MessageInfo } from '../../../utils/types';
 import { ReactASTUtils } from '../react-ast-utils';
-import { CommonASTUtils } from '../../../utils/common-ast-utils';
+import { isAlreadyInternationalizedByScaffold } from '../../../utils/ast-guards';
+import { finalizeLocaleMessage } from '../../../utils/message-shape';
+import { formatValuesMapping } from '../../../utils/string-escape';
 
 /**
  * react-intl 库适配器实现
@@ -40,7 +42,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     descriptor += ' }';
 
     if (values && values.size > 0) {
-      const mapping = CommonASTUtils.formatValuesMapping(values);
+      const mapping = formatValuesMapping(values);
       return `${call}(${descriptor}, ${mapping})`;
     }
     return `${call}(${descriptor})`;
@@ -60,7 +62,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
       props += ` defaultMessage={${escaped}}`;
     }
     if (values && values.size > 0) {
-      const mapping = CommonASTUtils.formatValuesMapping(values);
+      const mapping = formatValuesMapping(values);
       props += ` values={${mapping}}`;
     }
     return `<FormattedMessage ${props} />`;
@@ -258,7 +260,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {
-    return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
+    return isAlreadyInternationalizedByScaffold(node, {
       isI18nCall: (expression) =>
         this.isTranslationExpression(expression) ||
         // defineMessages(...)
@@ -293,11 +295,7 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
    * ICU 转义成 '{'count'}'，defaultMessage 不再插值。
    */
   private finalizeDefaultMessage(defaultMessage: string, values?: Map<string, string>): string {
-    return CommonASTUtils.finalizeLocaleMessage(
-      defaultMessage,
-      values ? values.values() : [],
-      this,
-    );
+    return finalizeLocaleMessage(defaultMessage, values ? values.values() : [], this);
   }
 
   // react-intl 用 ICU，单 `{` 是插值/语法字符。ICU 以单引号转义：`'{'` / `'}'`，

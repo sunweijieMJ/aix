@@ -1,7 +1,23 @@
 import fs from 'fs';
 import ts from 'typescript';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
-import { ReactImportManager, HOC_CLASS_SUFFIX } from './ReactImportManager';
+import { parseSourceFile } from '../../utils/ast-core';
+import { removeNamedImports } from '../../utils/import-surgery';
+import { normalizeRestoreLocaleMap, normalizeRestoreMessage } from '../../utils/message-shape';
+import {
+  createJsxFragmentFromTemplate,
+  createStringOrTemplateNode,
+} from '../../utils/restore-node-factory';
+import { isIdentifierValueReference, isImportedNameUnused } from '../../utils/scope-analysis';
+import { convertUnicodeToChineseInCode } from '../../utils/string-escape';
+import { ReactImportManager } from './ReactImportManager';
+import {
+  HOC_CLASS_SUFFIX,
+  cleanupHOCPropsType,
+  cleanupHookDependencies,
+  cleanupVariableStatements,
+  renameComponent,
+  unwrapHOC,
+} from './react-restore-cleanup';
 import { TRANSLATION_DEPENDENCY_HOOKS, resolveHookName } from './hooks-utils';
 import { ReactTextExtractor } from './ReactTextExtractor';
 import type { MessageInfo, TransformContext, LocaleMap } from '../../utils/types';
@@ -63,7 +79,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
    *  2. 全局函数声明：`const intl = getIntl()`（react-intl 模块级 'other' 作用域的标准注入形态）；
    *  3. HOC 注入的 props 解构：`const { t/intl } = this.props`。
    *
-   * 不变量：本方法必须覆盖 ReactImportManager.cleanupVariableStatements 会删除的每一种声明
+   * 不变量：本方法必须覆盖 cleanupVariableStatements 会删除的每一种声明
    * 形态——任何可能被删除的绑定，其作用域都必须先经「翻译调用之外是否仍被引用」扫描，否则
    * 删声明后残留引用未定义标识符（TS2304）。历史上 hook / this.props / getIntl 三处曾分散在
    * 各调用点枚举，先后漏掉 this.props 与 getIntl 各出过一次同型 Bug，故收口于此。
@@ -100,11 +116,11 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   transform(filePath: string, localeMap: LocaleMap, sourceText?: string): string {
     // 优先用调用方已读取的内容，缺省才回退读盘（消除 RestoreProcessor 的二次读盘）。
     const source = sourceText ?? fs.readFileSync(filePath, 'utf-8');
-    const sourceFile = CommonASTUtils.parseSourceFile(source, filePath);
+    const sourceFile = parseSourceFile(source, filePath);
 
     // locale 值归一：i18next 系库双花括号 → 单花括号；并 unescape 写盘时转义的字面量花括号。
-    // 与 Vue restore 共用 CommonASTUtils.normalizeRestoreLocaleMap（消除两端重复实现）。
-    const normalizedLocaleMap = CommonASTUtils.normalizeRestoreLocaleMap(localeMap, this.library);
+    // 与 Vue restore 共用 normalizeRestoreLocaleMap（消除两端重复实现）。
+    const normalizedLocaleMap = normalizeRestoreLocaleMap(localeMap, this.library);
 
     const context: TransformContext = {
       localeMap: normalizedLocaleMap,
@@ -135,7 +151,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
     let transformedCode = printer.printFile(result.transformed[0]!);
     // React 端 includeJsx=true：处理 `{'...'}` 形式的 JSX 表达式包裹
-    transformedCode = CommonASTUtils.convertUnicodeToChineseInCode(transformedCode, true);
+    transformedCode = convertUnicodeToChineseInCode(transformedCode, true);
 
     result.dispose();
 
@@ -157,10 +173,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
    */
   private finalizeTImport(code: string, filePath: string): string {
     const funcName = this.library.globalFunctionName.split('.')[0]!;
-    if (!CommonASTUtils.isImportedNameUnused(code, filePath, this.tImport, funcName)) {
+    if (!isImportedNameUnused(code, filePath, this.tImport, funcName)) {
       return code;
     }
-    return CommonASTUtils.removeNamedImports(code, (m) => m === this.tImport, [funcName]);
+    return removeNamedImports(code, (m) => m === this.tImport, [funcName]);
   }
 
   /**
@@ -193,7 +209,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return null;
     }
 
-    return CommonASTUtils.createStringOrTemplateNode(templateToUse, messageInfo.values);
+    return createStringOrTemplateNode(templateToUse, messageInfo.values);
   }
 
   /**
@@ -205,7 +221,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   private normalizeDefaultMessage(defaultMessage: string | undefined): string | undefined {
     return defaultMessage === undefined
       ? undefined
-      : CommonASTUtils.normalizeRestoreMessage(defaultMessage, this.library);
+      : normalizeRestoreMessage(defaultMessage, this.library);
   }
 
   /**
@@ -268,13 +284,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       // (`` `文本 ${expr}` ``)当作字面文本渲染。非 JSX 位置(如 attr={<Trans/>})
       // 仍用模板字面量。
       if (inJsxChildContext) {
-        const fragment = CommonASTUtils.createJsxFragmentFromTemplate(
-          finalText,
-          messageInfo.values,
-        );
+        const fragment = createJsxFragmentFromTemplate(finalText, messageInfo.values);
         if (fragment) return fragment;
       }
-      return CommonASTUtils.createStringOrTemplateNode(finalText, messageInfo.values);
+      return createStringOrTemplateNode(finalText, messageInfo.values);
     }
 
     if (inJsxChildContext) {
@@ -474,11 +487,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           return;
         }
         // 裸标识符值引用（排除声明/键/成员名/import 等非引用位置）
-        if (
-          ts.isIdentifier(node) &&
-          node.text === varName &&
-          CommonASTUtils.isIdentifierValueReference(node)
-        ) {
+        if (ts.isIdentifier(node) && node.text === varName && isIdentifierValueReference(node)) {
           found = true;
           return;
         }
@@ -529,15 +538,15 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
         // 常规往返（守卫为 false）行为不变。
         if (!keepTranslationVar && !keepLibraryImport) {
           // 1. 重命名组件引用
-          currentNode = ReactImportManager.renameComponent(currentNode, context);
+          currentNode = renameComponent(currentNode, context);
           if (currentNode !== node) context.hasChanges = true;
 
           // 2. 解除 HOC
-          currentNode = ReactImportManager.unwrapHOC(currentNode, context, library);
+          currentNode = unwrapHOC(currentNode, context, library);
           if (currentNode !== node) context.hasChanges = true;
 
           // 3. 清理 HOC Props 类型引用
-          currentNode = ReactImportManager.cleanupHOCPropsType(currentNode, library);
+          currentNode = cleanupHOCPropsType(currentNode, library);
           if (currentNode !== node) context.hasChanges = true;
         }
 
@@ -594,11 +603,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
           // 清理变量声明
           if (ts.isVariableStatement(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupVariableStatements(
-              currentNode,
-              library,
-              keepTranslationVar,
-            );
+            const cleanedNode = cleanupVariableStatements(currentNode, library, keepTranslationVar);
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;
@@ -608,11 +613,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
           // 清理Hook依赖数组（与上面的导入/变量清理共用 keepTranslationVar 守卫：
           // 翻译变量被保留时不得从 deps 数组剥离 t，避免悬空 deps + 陈旧闭包）
           if (ts.isCallExpression(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupHookDependencies(
-              currentNode,
-              library,
-              keepTranslationVar,
-            );
+            const cleanedNode = cleanupHookDependencies(currentNode, library, keepTranslationVar);
             if (cleanedNode !== currentNode) {
               context.hasChanges = true;
               currentNode = cleanedNode;

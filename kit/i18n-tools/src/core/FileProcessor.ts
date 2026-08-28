@@ -1,7 +1,9 @@
 import type { ResolvedConfig } from '../config';
 import { FileUtils } from '../utils/file-utils';
+import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import { RunReport, type CoverageMetric } from '../utils/run-report';
+import { ensureDirectoryExists } from '../utils/json-io';
 
 /**
  * 不依赖框架适配器的处理器基类
@@ -27,12 +29,22 @@ export abstract class FileProcessor {
    * `<rootDir>/.i18n-tools/logs/`，并把绝对路径打到控制台。
    */
   protected report: RunReport;
+  /**
+   * 绑定到本 processor 的 (config, isCustom) 的语言文件读写入口。
+   *
+   * 与 workingDir 同源：`(config, isCustom)` 唯一决定读写哪个目录，这里一次绑定，
+   * 各 processor 不再逐调用透传 isCustom（传错会静默读写到另一个目录）。
+   * 需要同时操作基础目录与定制目录的场景（ExportProcessor 的 base/custom 合并）
+   * 应显式 `new LanguageFileManager(config, true/false)`，不要复用本字段。
+   */
+  protected langFiles: LanguageFileManager;
 
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     this.config = config;
     this.isCustom = isCustom;
     this.workingDir = FileUtils.getDirectoryPath(config, isCustom);
     this.report = new RunReport(this.getCommandName(), config.root);
+    this.langFiles = new LanguageFileManager(config, isCustom);
   }
 
   /**
@@ -95,7 +107,7 @@ export abstract class FileProcessor {
    * 确保工作目录存在
    */
   protected ensureWorkingDirectory(): void {
-    FileUtils.ensureDirectoryExists(this.workingDir);
+    ensureDirectoryExists(this.workingDir);
   }
 
   /**

@@ -186,7 +186,7 @@ export class IdReuseResolver {
   }
 
   private loadFromLocaleFile(): void {
-    const localeMap = LanguageFileManager.readLocaleFile(this.config, this.isCustom);
+    const localeMap = new LanguageFileManager(this.config, this.isCustom).readLocaleFile();
     if (!localeMap) return;
 
     for (const [key, value] of Object.entries(localeMap)) {

@@ -3,7 +3,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { collectUsedKeys, stripCommentsForScan } from '../src/utils/source-key-scanner';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import { shouldReplaceNode } from '../src/utils/ast-core';
+import { templateLiteralContainsHtmlTags } from '../src/utils/ast-guards';
+import { decodeJsStringEscapes } from '../src/utils/string-escape';
 import { FileUtils } from '../src/utils/file-utils';
 import { LanguageFileManager } from '../src/utils/language-file-manager';
 import { LoggerUtils } from '../src/utils/logger';
@@ -14,6 +16,7 @@ import { resolveConfig, resolveBuckets } from '../src/config/loader';
 import { createReactI18nLibrary } from '../src/strategies/react/libraries';
 import { ReactRestoreTransformer } from '../src/strategies/react/ReactRestoreTransformer';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
+import { writeTranslationsFile } from '../src/utils/json-io';
 
 /**
  * 2026-08 全库审计确认的 P0 修复回归集。每个 describe 固定一个「会产出损坏代码 /
@@ -275,9 +278,7 @@ describe('shouldReplaceNode — 转义反斜杠归一', () => {
   it("源码 '目录：C:\\\\news' vs 提取的裸内容（单反斜杠+n）判相等", () => {
     const nodeText = "'目录：C:\\\\news'"; // 源码原样（含定界符与转义）
     const original = '目录：C:\\news'; // StringLiteral.text（已解码）
-    expect(
-      CommonASTUtils.shouldReplaceNode(nodeText, original, false, { originalDelimited: false }),
-    ).toBe(true);
+    expect(shouldReplaceNode(nodeText, original, false, { originalDelimited: false })).toBe(true);
   });
 
   it('裸内容侧不再被二次解码（字面 \\n 与真实换行不得误判相等）', () => {
@@ -285,7 +286,7 @@ describe('shouldReplaceNode — 转义反斜杠归一', () => {
     // 与「真实换行」误判相等（错误命中 → 替换到错误节点）。新契约下裸内容侧不解码，
     // 两者必须不相等。
     expect(
-      CommonASTUtils.shouldReplaceNode('路径 C:\\new', '路径 C:\new', false, {
+      shouldReplaceNode('路径 C:\\new', '路径 C:\new', false, {
         nodeDelimited: false,
         originalDelimited: false,
       }),
@@ -293,8 +294,8 @@ describe('shouldReplaceNode — 转义反斜杠归一', () => {
   });
 
   it('decodeJsStringEscapes 覆盖 \\\\ 与 \\`', () => {
-    expect(CommonASTUtils.decodeJsStringEscapes('C:\\\\news')).toBe('C:\\news');
-    expect(CommonASTUtils.decodeJsStringEscapes('a\\`b\\`c')).toBe('a`b`c');
+    expect(decodeJsStringEscapes('C:\\\\news')).toBe('C:\\news');
+    expect(decodeJsStringEscapes('a\\`b\\`c')).toBe('a`b`c');
   });
 });
 
@@ -326,12 +327,12 @@ describe('buckets — index.json 命名空间隔离', () => {
     const config: ResolvedConfig = resolveConfig(user);
     const messages = { 'views.a': '甲' };
     const keyBucketMap = { 'views.a': 'views' };
-    LanguageFileManager.writeLocaleFile(config, false, messages, 'zh-CN', keyBucketMap);
+    new LanguageFileManager(config, false).writeLocaleFile(messages, 'zh-CN', keyBucketMap);
     // 模拟导出器随后生成的桶清单
     const indexPath = path.join(tmpDir, 'locale', 'zh-CN', 'index.json');
     fs.writeFileSync(indexPath, JSON.stringify({ buckets: ['views'] }));
     // 第二次写入：index.json 不得被当孤儿桶备份
-    LanguageFileManager.writeLocaleFile(config, false, messages, 'zh-CN', keyBucketMap);
+    new LanguageFileManager(config, false).writeLocaleFile(messages, 'zh-CN', keyBucketMap);
     expect(fs.existsSync(indexPath)).toBe(true);
     expect(fs.existsSync(`${indexPath}.bak`)).toBe(false);
   });
@@ -342,13 +343,11 @@ describe('buckets — index.json 命名空间隔离', () => {
 // ---------------------------------------------------------------------------
 describe('templateLiteralContainsHtmlTags — 不等式不误判', () => {
   it('`当前值 < min 时` 不算 HTML', () => {
-    expect(CommonASTUtils.templateLiteralContainsHtmlTags('当前值 ${a} < min 时请调整')).toBe(
-      false,
-    );
+    expect(templateLiteralContainsHtmlTags('当前值 ${a} < min 时请调整')).toBe(false);
   });
   it('真实标签仍命中', () => {
-    expect(CommonASTUtils.templateLiteralContainsHtmlTags('<div>中文</div>')).toBe(true);
-    expect(CommonASTUtils.templateLiteralContainsHtmlTags('文本 <br/> 换行')).toBe(true);
+    expect(templateLiteralContainsHtmlTags('<div>中文</div>')).toBe(true);
+    expect(templateLiteralContainsHtmlTags('文本 <br/> 换行')).toBe(true);
   });
 });
 
@@ -387,7 +386,7 @@ describe('CsvImport/CsvExport — 行宽与条目形态守卫', () => {
     const config = makeConfig();
     const untranslatedPath = FileUtils.getUntranslatedPath(config, false);
     fs.mkdirSync(path.dirname(untranslatedPath), { recursive: true });
-    FileUtils.writeTranslationsFile(untranslatedPath, {
+    writeTranslationsFile(untranslatedPath, {
       'k.good': { 'zh-CN': '好', 'en-US': '', 'ja-JP': '' },
       'k.bad': { 'zh-CN': '坏', 'en-US': '', 'ja-JP': '' },
     });

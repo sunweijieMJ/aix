@@ -2,7 +2,7 @@ import { PLACEHOLDER_NAME_CHARS } from './constants';
 
 // 含中文范围：生成端 getVariableNameFromExpression 保留中文标识符作占位符名
 // （`共{数量}个`），doctor/translate 的占位符采集必须同字符集，否则对中文占位符失明。
-// 字符集与 CommonASTUtils.PLACEHOLDER_NAME 同源，见 PLACEHOLDER_NAME_CHARS 注释。
+// 字符集与 message-shape 的 PLACEHOLDER_NAME 同源，见 PLACEHOLDER_NAME_CHARS 注释。
 const IDENT_RE = new RegExp(`^[${PLACEHOLDER_NAME_CHARS}]+`);
 
 /**

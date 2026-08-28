@@ -14,7 +14,7 @@ import { ReactAdapter } from '../src/adapters/ReactAdapter';
 import type { ITextExtractor } from '../src/adapters/FrameworkAdapter';
 import { GenerateProcessor } from '../src/core/GenerateProcessor';
 import { LoggerUtils } from '../src/utils/logger';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import { parseSourceFile } from '../src/utils/ast-core';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 import type { ExtractedString } from '../src/utils/types';
@@ -347,7 +347,7 @@ describe('ReactComponentInjector：t 非解构首位时不重复注入 hook（�
  * 确保抽取到 CommonASTUtils 后行为完全不变。
  */
 const findNode = (code: string, text: string): ts.Node => {
-  const sf = CommonASTUtils.parseSourceFile(code, 'probe.tsx');
+  const sf = parseSourceFile(code, 'probe.tsx');
   let found: ts.Node | undefined;
   const visit = (n: ts.Node): void => {
     if (

@@ -76,7 +76,7 @@ describe('GenerateProcessor 事务加固（#8）', () => {
       });
       // 现有 flat key: user.name.first；新增 user.name → user.name 同时是叶子与祖先
       expect(() =>
-        LanguageFileManager.assertSerializableUpdate(config, false, [ext('user.name')]),
+        new LanguageFileManager(config, false).assertSerializableUpdate([ext('user.name')]),
       ).toThrow(/前缀冲突/);
     });
 
@@ -84,7 +84,7 @@ describe('GenerateProcessor 事务加固（#8）', () => {
       fs.writeFileSync(zhPath(), JSON.stringify({ 'user.name.first': 'x' }), 'utf-8');
       const config = buildConfig(rootDir); // format flat
       expect(() =>
-        LanguageFileManager.assertSerializableUpdate(config, false, [ext('user.name')]),
+        new LanguageFileManager(config, false).assertSerializableUpdate([ext('user.name')]),
       ).not.toThrow();
     });
 
@@ -94,7 +94,7 @@ describe('GenerateProcessor 事务加固（#8）', () => {
         io: { sourceDir: srcDir, localesDir: localeDir, format: 'nested', prettify: false },
       });
       expect(() =>
-        LanguageFileManager.assertSerializableUpdate(config, false, [ext('a.c')]),
+        new LanguageFileManager(config, false).assertSerializableUpdate([ext('a.c')]),
       ).not.toThrow();
     });
 
@@ -110,9 +110,7 @@ describe('GenerateProcessor 事务加固（#8）', () => {
       // user.name 与 user.name.first 会冲突，但 caller 把它们分到不同桶
       const keyBucketMap = { 'user.name': 'one', 'user.name.first': 'common' };
       expect(() =>
-        LanguageFileManager.assertSerializableUpdate(
-          config,
-          false,
+        new LanguageFileManager(config, false).assertSerializableUpdate(
           [ext('user.name'), ext('user.name.first')],
           keyBucketMap,
         ),
@@ -150,7 +148,7 @@ describe('GenerateProcessor 事务加固（#8）', () => {
       });
       // callerMap 缺省 → 全部走虚拟反推；带一个 benign 新 key 触发非空早退
       expect(() =>
-        LanguageFileManager.assertSerializableUpdate(config, false, [ext('zzz.k')]),
+        new LanguageFileManager(config, false).assertSerializableUpdate([ext('zzz.k')]),
       ).not.toThrow();
     });
 
@@ -165,9 +163,7 @@ describe('GenerateProcessor 事务加固（#8）', () => {
       });
       const keyBucketMap = { 'user.name': 'common', 'user.name.first': 'common' };
       expect(() =>
-        LanguageFileManager.assertSerializableUpdate(
-          config,
-          false,
+        new LanguageFileManager(config, false).assertSerializableUpdate(
           [ext('user.name'), ext('user.name.first')],
           keyBucketMap,
         ),
@@ -178,7 +174,7 @@ describe('GenerateProcessor 事务加固（#8）', () => {
   // ---------- (a) 相位前移：预检失败 → 源码未改写 ----------
   it('预检失败 → 源码未被改写、语言文件未生成（错误前移到写源码前）', async () => {
     const file = writeSource('A.vue', VUE_FILE);
-    vi.spyOn(LanguageFileManager, 'assertSerializableUpdate').mockImplementation(() => {
+    vi.spyOn(LanguageFileManager.prototype, 'assertSerializableUpdate').mockImplementation(() => {
       throw new Error('嵌套输出存在前缀冲突');
     });
 
@@ -215,7 +211,7 @@ describe('GenerateProcessor 事务加固（#8）', () => {
   it('转换完成后、提交前源码被外部修改 → 中止且保留外部修改', async () => {
     const file = writeSource('LateDrift.vue', VUE_FILE);
     const externalEdit = `<!-- late editor edit -->\n${VUE_FILE}`;
-    vi.spyOn(LanguageFileManager, 'assertSerializableUpdate').mockImplementation(() => {
+    vi.spyOn(LanguageFileManager.prototype, 'assertSerializableUpdate').mockImplementation(() => {
       fs.writeFileSync(file, externalEdit, 'utf-8');
     });
 

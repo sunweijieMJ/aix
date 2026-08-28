@@ -32,7 +32,7 @@ export const CONFIG = {
  * 占位符「参数名」允许出现的字符集（正则字符类内容，不含方括号）。
  *
  * 全库唯一来源：doctor/translate 的名集采集（placeholder-utils）与 restore 的双花括号归一
- * （CommonASTUtils.PLACEHOLDER_NAME）必须同集合——两处不一致时，一侧识别得出的占位符在
+ * （message-shape 的 PLACEHOLDER_NAME）必须同集合——两处不一致时，一侧识别得出的占位符在
  * 另一侧「不是占位符」：restore 归一漏掉 `{{a-b}}` 会让双花括号库往返丢变量，doctor 漏掉
  * `{$route}` 会对该占位符失明、放行不匹配的译文。
  *

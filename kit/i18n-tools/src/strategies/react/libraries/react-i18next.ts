@@ -2,7 +2,10 @@ import ts from 'typescript';
 import type { ReactI18nLibrary } from './types';
 import type { MessageInfo } from '../../../utils/types';
 import { ReactASTUtils } from '../react-ast-utils';
-import { CommonASTUtils } from '../../../utils/common-ast-utils';
+import { extractObjectLiteralProperties, objectLiteralHasSpread } from '../../../utils/ast-core';
+import { isAlreadyInternationalizedByScaffold } from '../../../utils/ast-guards';
+import { finalizeLocaleMessage } from '../../../utils/message-shape';
+import { formatValuesMapping } from '../../../utils/string-escape';
 
 /**
  * react-i18next 库适配器实现
@@ -45,10 +48,10 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     const fn = isGlobalScope ? this.globalFunctionName : this.translationVarName;
 
     if (values && values.size > 0) {
-      const mapping = CommonASTUtils.formatValuesMapping(values);
+      const mapping = formatValuesMapping(values);
       if (includeDefaultMessage && defaultMessage) {
         const escaped = JSON.stringify(this.localizeDefaultMessage(defaultMessage, values));
-        return `${fn}('${key}', { defaultValue: ${escaped}, ${CommonASTUtils.formatValuesMapping(values, { wrap: false })} })`;
+        return `${fn}('${key}', { defaultValue: ${escaped}, ${formatValuesMapping(values, { wrap: false })} })`;
       }
       return `${fn}('${key}', ${mapping})`;
     }
@@ -75,7 +78,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
    * 占位符被当字面花括号，缺 key 时不插值。
    */
   private localizeDefaultMessage(defaultMessage: string, values?: Map<string, string>): string {
-    return CommonASTUtils.finalizeLocaleMessage(defaultMessage, values?.values() ?? [], this);
+    return finalizeLocaleMessage(defaultMessage, values?.values() ?? [], this);
   }
 
   generateJSXComponent(
@@ -95,7 +98,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
       props += ` defaults={${escaped}}`;
     }
     if (values && values.size > 0) {
-      const mapping = CommonASTUtils.formatValuesMapping(values);
+      const mapping = formatValuesMapping(values);
       props += ` values={${mapping}}`;
     }
     return `<Trans ${props} />`;
@@ -256,7 +259,7 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   }
 
   isAlreadyInternationalized(node: ts.Node): boolean {
-    return CommonASTUtils.isAlreadyInternationalizedByScaffold(node, {
+    return isAlreadyInternationalizedByScaffold(node, {
       isI18nCall: (expression) => this.isTranslationExpression(expression),
       componentTags: ['Trans'],
     });
@@ -278,10 +281,10 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
 
     const valuesArg = node.arguments[1];
     if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
-      if (CommonASTUtils.objectLiteralHasSpread(valuesArg)) {
+      if (objectLiteralHasSpread(valuesArg)) {
         messageInfo.hasUnresolvableValues = true;
       }
-      const props = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
+      const props = extractObjectLiteralProperties(valuesArg, sourceFile);
       // react-i18next 约定：values.defaultValue 实为默认翻译文本，上提到 defaultMessage，
       // 不参与占位符替换。仅在为字符串时上提，其他形态保持 undefined。
       if (typeof props.defaultValue === 'string') {
@@ -338,13 +341,10 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
           initializer.expression &&
           ts.isObjectLiteralExpression(initializer.expression)
         ) {
-          if (CommonASTUtils.objectLiteralHasSpread(initializer.expression)) {
+          if (objectLiteralHasSpread(initializer.expression)) {
             messageInfo.hasUnresolvableValues = true;
           }
-          messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
-            initializer.expression,
-            sourceFile,
-          );
+          messageInfo.values = extractObjectLiteralProperties(initializer.expression, sourceFile);
         } else {
           // values={sharedValues} 等非对象字面量形态：无法静态解析，置位保留原组件，
           // 避免占位符字面化、运行时变量静默丢失（与 extractCallInfo 同口径）。

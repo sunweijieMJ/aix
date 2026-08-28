@@ -7,8 +7,9 @@ import { LoggerUtils } from './logger';
 import { LocaleValueLinter } from './locale-value-linter';
 import type { RunReport } from './run-report';
 import type { ExtractedString, ILangMap, LocaleMap } from './types';
-import { CommonASTUtils } from './common-ast-utils';
+import { buildLocaleMessage } from './message-shape';
 import type { SkippedTextLocation } from './extraction-diagnostics';
+import { classifyJsonFile, safeLoadJsonFile, writeJsonFile } from './json-io';
 
 type KeyBucketMap = Record<string, string>;
 
@@ -23,8 +24,21 @@ type KeyBucketMap = Record<string, string>;
  *  - 段分隔符：config.keys.separator
  *  - 分桶：config.buckets
  *  - 多目标语种：config.locales.targets[]，getMessages 返回所有 locale 字典
+ *
+ * `(config, isCustom)` 由构造函数一次收下：这一对参数唯一决定「往哪个目录读写」
+ * （FileUtils.getDirectoryPath 的入参），此前逐方法穿透时任何一处传错 isCustom
+ * 都会静默读写到另一个目录。同一 processor 若需要同时操作基础目录与定制目录
+ * （ExportProcessor 的 base/custom 合并），显式构造两个实例，读写目标一目了然。
+ *
+ * 少数与目录无关的纯计算（buildKeyBucketMap / buildKeyBucketMapWithStats，只依赖
+ * config.buckets 与 key 文本）仍保留为静态方法，不强行挂到实例上。
  */
 export class LanguageFileManager {
+  constructor(
+    private readonly config: ResolvedConfig,
+    private readonly isCustom: boolean,
+  ) {}
+
   /**
    * 获取所有语言（source + targets）的扁平 map。
    *
@@ -33,23 +47,23 @@ export class LanguageFileManager {
    *
    * 返回结构：`{ [locale]: ILangMap }`，包含 source 与每个 target。
    */
-  static getMessages(config: ResolvedConfig, isCustom: boolean): ILangMap {
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
-    const sourceLocale = config.locales.source;
-    const targets = config.locales.targets;
+  getMessages(): ILangMap {
+    const workingDir = FileUtils.getDirectoryPath(this.config, this.isCustom);
+    const sourceLocale = this.config.locales.source;
+    const targets = this.config.locales.targets;
     const allLocales = [sourceLocale, ...targets];
     const result: ILangMap = {};
 
-    if (config.buckets) {
+    if (this.config.buckets) {
       // source 先迁，保留其扁平 map 以驱动 targets 的分桶——若 matchKey/match 规则
       // 依赖 message 文本内容，targets 用自己的译文反推会出现 source/target 分桶不一致。
-      const sourceFlat = this.migrateToBuckets(config, workingDir, sourceLocale);
+      const sourceFlat = this.migrateToBuckets(workingDir, sourceLocale);
       for (const target of targets) {
-        this.migrateToBuckets(config, workingDir, target, sourceFlat);
+        this.migrateToBuckets(workingDir, target, sourceFlat);
       }
-      const layout = config.buckets.layout;
+      const layout = this.config.buckets.layout;
       for (const locale of allLocales) {
-        result[locale] = this.readBucketedLocaleFlat(config, workingDir, locale, layout);
+        result[locale] = this.readBucketedLocaleFlat(workingDir, locale, layout);
       }
       return result;
     }
@@ -60,10 +74,10 @@ export class LanguageFileManager {
       // 调用方必须先跑 assertLocalesNotCorrupt / findCorruptLocale——Pick 与 Export
       // 两个生产调用方都已在调用前守卫。若新增调用方跳过守卫，损坏 locale 会被当成
       // 空字典，导致「导出空包覆盖已发布产物」「pick 清空在途译文」且全程无报错。
-      const data = FileUtils.safeLoadJsonFile<Record<string, any>>(filePath, {
+      const data = safeLoadJsonFile<Record<string, any>>(filePath, {
         silent: true,
       });
-      result[locale] = FileUtils.flattenObject(data, '', config.keys.separator);
+      result[locale] = FileUtils.flattenObject(data, '', this.config.keys.separator);
     }
     return result;
   }
@@ -76,8 +90,7 @@ export class LanguageFileManager {
    *   传入 source locale 数据可保证 target locale 分桶与 source 完全一致。
    * @returns 当前 locale 迁移后的扁平 map（供 caller 复用，避免重新读取 .bak）。
    */
-  private static migrateToBuckets(
-    config: ResolvedConfig,
+  private migrateToBuckets(
     baseDir: string,
     locale: string,
     bucketingMessages?: LocaleMap,
@@ -93,13 +106,17 @@ export class LanguageFileManager {
     // （见 findCorruptLegacySingleFile 注释），Pick 与 Export 均已守卫。
     // 这里刻意不自行判别：迁移是幂等一次性动作，在此抛错会让「先探测再决定如何提示」的
     // 上游守卫失去对错误文案的控制权。
-    const existingData = FileUtils.safeLoadJsonFile<Record<string, any>>(singleFilePath, {
+    const existingData = safeLoadJsonFile<Record<string, any>>(singleFilePath, {
       silent: true,
     });
     // 用 keys.separator 展平，与 readBucketedLocaleFlat / unflattenObject 回写保持一致，
     // 否则 flat 格式 + 非 '.' 分隔符 + 手写嵌套 JSON 时，本路径与往返安全路径会得到
     // 不同的 flat key 集（a.b vs a/b），令 prune/merge 误判孤儿。
-    const flatData = FileUtils.flattenObject(existingData, '', config.keys.separator) as LocaleMap;
+    const flatData = FileUtils.flattenObject(
+      existingData,
+      '',
+      this.config.keys.separator,
+    ) as LocaleMap;
 
     if (Object.keys(flatData).length > 0) {
       // bucketingMessages 为空对象 {} 时（source 文件存在但内容为 {}）也要回退到 locale
@@ -108,10 +125,10 @@ export class LanguageFileManager {
       // → 同样回退 flatData）保持对称。`??` 只挡 null/undefined，挡不住空对象。
       const hasBucketingSource = bucketingMessages && Object.keys(bucketingMessages).length > 0;
       const keyBucketMap = LanguageFileManager.buildKeyBucketMap(
-        config,
+        this.config,
         hasBucketingSource ? bucketingMessages : flatData,
       );
-      LanguageFileManager.writeBucketedLocaleFile(config, baseDir, flatData, locale, keyBucketMap);
+      this.writeBucketedLocaleFile(baseDir, flatData, locale, keyBucketMap);
     } else {
       // 空文件：只需创建目录占位，不写入任何 bucket 文件
       fs.mkdirSync(path.join(baseDir, locale), { recursive: true });
@@ -136,6 +153,8 @@ export class LanguageFileManager {
    *
    * 仍然存在的限制：若用户用 `keys.prefix.strategy='fixed'` 覆盖了目录前缀（key 不再保留目录结构），
    * 反推无法工作；loader 已在该场景输出警告，建议改用 matchKey。
+   *
+   * 保持静态：只依赖 config.buckets 与 key 文本，与「读写哪个目录」（isCustom）无关。
    */
   static buildKeyBucketMap(config: ResolvedConfig, localeMap: LocaleMap): KeyBucketMap {
     return this.buildKeyBucketMapWithStats(config, localeMap).keyBucketMap;
@@ -210,9 +229,9 @@ export class LanguageFileManager {
     // 只读取的调用方（readBucketedLocaleFlat）依赖上游先跑 findCorruptLocale。
     const loadOne = (filePath: string): Record<string, any> | undefined => {
       if (!onCorrupt) {
-        return FileUtils.safeLoadJsonFile<Record<string, any>>(filePath, { silent: true });
+        return safeLoadJsonFile<Record<string, any>>(filePath, { silent: true });
       }
-      const cls = FileUtils.classifyJsonFile<Record<string, any>>(filePath);
+      const cls = classifyJsonFile<Record<string, any>>(filePath);
       if (cls.status === 'corrupt') {
         onCorrupt(filePath);
         return undefined;
@@ -276,16 +295,12 @@ export class LanguageFileManager {
    * `readLocaleFile` 返回 null 的语义对齐。桶式读取默认走 silent 降级（损坏当 {}），
    * 缺这层保护会导致损坏 bucket 在重写时被静默丢弃。
    */
-  static findCorruptBucketFile(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    locale?: string,
-  ): string | null {
-    locale = locale || config.locales.source;
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
-    const layout = config.buckets?.layout ?? 'by-locale';
+  findCorruptBucketFile(locale?: string): string | null {
+    locale = locale || this.config.locales.source;
+    const workingDir = FileUtils.getDirectoryPath(this.config, this.isCustom);
+    const layout = this.config.buckets?.layout ?? 'by-locale';
     let corrupt: string | null = null;
-    this.iterateBucketedFiles(
+    LanguageFileManager.iterateBucketedFiles(
       workingDir,
       locale,
       layout,
@@ -307,15 +322,14 @@ export class LanguageFileManager {
    *
    * @returns 损坏文件的绝对路径；不存在 / 空 / 可正常解析时返回 null。
    */
-  static findCorruptLegacySingleFile(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    locale?: string,
-  ): string | null {
-    locale = locale || config.locales.source;
-    const filePath = path.join(FileUtils.getDirectoryPath(config, isCustom), `${locale}.json`);
+  findCorruptLegacySingleFile(locale?: string): string | null {
+    locale = locale || this.config.locales.source;
+    const filePath = path.join(
+      FileUtils.getDirectoryPath(this.config, this.isCustom),
+      `${locale}.json`,
+    );
     // 仅「存在且非空却解析失败」算损坏；不存在 / 空 / 正常都返回 null。
-    return FileUtils.classifyJsonFile(filePath).status === 'corrupt' ? filePath : null;
+    return classifyJsonFile(filePath).status === 'corrupt' ? filePath : null;
   }
 
   /**
@@ -329,23 +343,21 @@ export class LanguageFileManager {
    *  - 单文件：readLocaleFile===null（区分「存在但解析失败」与「不存在 → {}」）。返回
    *    真实文件路径，便于调用方在报错信息里直接展示。
    */
-  static findCorruptLocale(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    locale: string,
-    opts: { checkLegacy?: boolean } = {},
-  ): string | null {
-    if (config.buckets) {
-      const corruptBucket = this.findCorruptBucketFile(config, isCustom, locale);
+  findCorruptLocale(locale: string, opts: { checkLegacy?: boolean } = {}): string | null {
+    if (this.config.buckets) {
+      const corruptBucket = this.findCorruptBucketFile(locale);
       if (corruptBucket) return corruptBucket;
       if (opts.checkLegacy) {
-        const corruptLegacy = this.findCorruptLegacySingleFile(config, isCustom, locale);
+        const corruptLegacy = this.findCorruptLegacySingleFile(locale);
         if (corruptLegacy) return corruptLegacy;
       }
       return null;
     }
-    const filePath = path.join(FileUtils.getDirectoryPath(config, isCustom), `${locale}.json`);
-    return this.readLocaleFile(config, isCustom, locale) === null ? filePath : null;
+    const filePath = path.join(
+      FileUtils.getDirectoryPath(this.config, this.isCustom),
+      `${locale}.json`,
+    );
+    return this.readLocaleFile(locale) === null ? filePath : null;
   }
 
   /**
@@ -353,14 +365,12 @@ export class LanguageFileManager {
    * 语义构造（Pick/Merge/Prune/Restore 对损坏的后果描述不同），探测口径则统一收口于
    * findCorruptLocale。
    */
-  static assertLocalesNotCorrupt(
-    config: ResolvedConfig,
-    isCustom: boolean,
+  assertLocalesNotCorrupt(
     locales: string[],
     opts: { checkLegacy?: boolean; buildMessage: (locale: string, file: string) => string },
   ): void {
     for (const locale of locales) {
-      const corrupt = this.findCorruptLocale(config, isCustom, locale, opts);
+      const corrupt = this.findCorruptLocale(locale, opts);
       if (corrupt !== null) {
         throw new Error(opts.buildMessage(locale, corrupt));
       }
@@ -370,15 +380,14 @@ export class LanguageFileManager {
   /**
    * 读取桶式目录下所有 JSON 文件并合并为扁平 map。
    */
-  private static readBucketedLocaleFlat(
-    config: ResolvedConfig,
+  private readBucketedLocaleFlat(
     baseDir: string,
     locale: string,
     layout: 'by-locale' | 'by-bucket',
   ): Record<string, string> {
     const merged: Record<string, string> = {};
-    const separator = config.keys.separator;
-    this.iterateBucketedFiles(baseDir, locale, layout, (_bucketName, data) => {
+    const separator = this.config.keys.separator;
+    LanguageFileManager.iterateBucketedFiles(baseDir, locale, layout, (_bucketName, data) => {
       Object.assign(merged, FileUtils.flattenObject(data, '', separator));
     });
     return merged;
@@ -391,21 +400,12 @@ export class LanguageFileManager {
    * IdReuseResolver / RestoreProcessor / MergeProcessor）一律按 flatKey 做查找与合并；
    * 落盘时再由 serialize 按 io.format 决定 flat / nested。
    */
-  static readLocaleFile(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    locale?: string,
-  ): LocaleMap | null {
-    locale = locale || config.locales.source;
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
+  readLocaleFile(locale?: string): LocaleMap | null {
+    locale = locale || this.config.locales.source;
+    const workingDir = FileUtils.getDirectoryPath(this.config, this.isCustom);
 
-    if (config.buckets) {
-      const bucketed = this.readBucketedLocaleFlat(
-        config,
-        workingDir,
-        locale,
-        config.buckets.layout,
-      );
+    if (this.config.buckets) {
+      const bucketed = this.readBucketedLocaleFlat(workingDir, locale, this.config.buckets.layout);
       // 迁移窗口兜底：存量项目刚开启 buckets 时，正式迁移只挂在 getMessages→migrateToBuckets
       // 链上（pick/export 触发）。若首条命令是 doctor/restore/prune/generate（全走本方法），
       // 只扫桶目录会把完好的遗留单文件读成 {} → doctor --ci 假失败、restore 空跑、
@@ -413,7 +413,7 @@ export class LanguageFileManager {
       // （迁移含改名/写盘副作用，读路径不该有）；同 key 冲突时桶数据优先（当前权威格式）。
       const legacyPath = path.join(workingDir, `${locale}.json`);
       if (fs.existsSync(legacyPath) && !fs.existsSync(`${legacyPath}.bak`)) {
-        const cls = FileUtils.classifyJsonFile(legacyPath);
+        const cls = classifyJsonFile(legacyPath);
         // 损坏的遗留文件与单文件模式同口径返回 null：静默当空会让 prune/merge 误判、丢数据
         if (cls.status === 'corrupt') {
           LoggerUtils.error(`❌ 检测到未迁移且解析失败的遗留语言文件: ${legacyPath}`);
@@ -430,7 +430,7 @@ export class LanguageFileManager {
           const legacyFlat = FileUtils.flattenObject(
             cls.data,
             '',
-            config.keys.separator,
+            this.config.keys.separator,
           ) as LocaleMap;
           return { ...legacyFlat, ...bucketed };
         }
@@ -440,7 +440,7 @@ export class LanguageFileManager {
 
     const localeFilePath = path.join(workingDir, `${locale}.json`);
     try {
-      const cls = FileUtils.classifyJsonFile(localeFilePath);
+      const cls = classifyJsonFile(localeFilePath);
       if (cls.status === 'missing') {
         LoggerUtils.warn(`语言文件不存在，将创建新文件: ${localeFilePath}`);
         return {};
@@ -456,7 +456,7 @@ export class LanguageFileManager {
       // 空文件 → {}。用 keys.separator 展平，与 serialize 写回时 unflattenObject 的
       // 分隔符保持一致——保证 nested 与 flat 之间往返无损。
       const parsed = cls.status === 'ok' ? cls.data : {};
-      return FileUtils.flattenObject(parsed, '', config.keys.separator) as LocaleMap;
+      return FileUtils.flattenObject(parsed, '', this.config.keys.separator) as LocaleMap;
     } catch (error) {
       LoggerUtils.error(`❌ 读取语言文件失败: ${localeFilePath}`, error);
       LoggerUtils.error('👉 为防止数据丢失，本次将不会更新语言文件。请检查JSON文件格式是否正确。');
@@ -472,13 +472,9 @@ export class LanguageFileManager {
    * 遗留 key，但桶式写路径（readBucketedLocaleWithBucketMap → writeBucketedLocaleFile）
    * 触不到遗留单文件——读写视图分裂时应中止操作而非静默产出半清理状态。
    */
-  static findUnmigratedLegacyLocale(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    locales: string[],
-  ): string | null {
-    if (!config.buckets) return null;
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
+  findUnmigratedLegacyLocale(locales: string[]): string | null {
+    if (!this.config.buckets) return null;
+    const workingDir = FileUtils.getDirectoryPath(this.config, this.isCustom);
     for (const locale of locales) {
       const legacyPath = path.join(workingDir, `${locale}.json`);
       if (fs.existsSync(legacyPath) && !fs.existsSync(`${legacyPath}.bak`)) {
@@ -491,19 +487,18 @@ export class LanguageFileManager {
   /**
    * 读取桶式目录，同时返回 key → bucket 的归属关系（供 writeLocaleFile 回写时复用）。
    */
-  static readBucketedLocaleWithBucketMap(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    locale?: string,
-  ): { flat: LocaleMap; keyBucketMap: KeyBucketMap } {
-    locale = locale || config.locales.source;
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
+  readBucketedLocaleWithBucketMap(locale?: string): {
+    flat: LocaleMap;
+    keyBucketMap: KeyBucketMap;
+  } {
+    locale = locale || this.config.locales.source;
+    const workingDir = FileUtils.getDirectoryPath(this.config, this.isCustom);
     const flat: LocaleMap = {};
     const keyBucketMap: KeyBucketMap = {};
-    const layout = config.buckets?.layout ?? 'by-locale';
+    const layout = this.config.buckets?.layout ?? 'by-locale';
 
-    this.iterateBucketedFiles(workingDir, locale, layout, (bucketName, data) => {
-      const flatData = FileUtils.flattenObject(data, '', config.keys.separator);
+    LanguageFileManager.iterateBucketedFiles(workingDir, locale, layout, (bucketName, data) => {
+      const flatData = FileUtils.flattenObject(data, '', this.config.keys.separator);
       for (const key of Object.keys(flatData)) {
         flat[key] = flatData[key];
         keyBucketMap[key] = bucketName;
@@ -518,25 +513,19 @@ export class LanguageFileManager {
    * @param keyBucketMap - 可选：key → bucket 名，启用后按桶分组写入；
    *   未提供时写入单文件。
    */
-  static writeLocaleFile(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    localeMap: LocaleMap,
-    locale?: string,
-    keyBucketMap?: KeyBucketMap,
-  ): void {
-    locale = locale || config.locales.source;
-    const workingDir = FileUtils.getDirectoryPath(config, isCustom);
+  writeLocaleFile(localeMap: LocaleMap, locale?: string, keyBucketMap?: KeyBucketMap): void {
+    locale = locale || this.config.locales.source;
+    const workingDir = FileUtils.getDirectoryPath(this.config, this.isCustom);
 
-    if (config.buckets && keyBucketMap) {
-      this.writeBucketedLocaleFile(config, workingDir, localeMap, locale, keyBucketMap);
+    if (this.config.buckets && keyBucketMap) {
+      this.writeBucketedLocaleFile(workingDir, localeMap, locale, keyBucketMap);
       return;
     }
 
     const localeFilePath = path.join(workingDir, `${locale}.json`);
     try {
-      FileUtils.writeJsonFile(localeFilePath, this.serialize(config, localeMap), {
-        indent: config.io.indent,
+      writeJsonFile(localeFilePath, this.serialize(localeMap), {
+        indent: this.config.io.indent,
       });
     } catch (error) {
       LoggerUtils.error(`❌ 写入语言文件失败: ${localeFilePath}`, error);
@@ -553,14 +542,13 @@ export class LanguageFileManager {
    * 有 key 时，旧文件会被重命名为 `.json.bak`（与单文件→桶式迁移的备份策略一致）。
    * 已存在的 `.bak` 不会被覆盖——使清理幂等且不丢历史备份。
    */
-  private static writeBucketedLocaleFile(
-    config: ResolvedConfig,
+  private writeBucketedLocaleFile(
     baseDir: string,
     localeMap: LocaleMap,
     locale: string,
     keyBucketMap: KeyBucketMap,
   ): void {
-    const { layout, defaultBucket } = config.buckets!;
+    const { layout, defaultBucket } = this.config.buckets!;
     const groups = new Map<string, LocaleMap>();
 
     for (const [key, value] of Object.entries(localeMap)) {
@@ -575,13 +563,13 @@ export class LanguageFileManager {
         layout === 'by-bucket'
           ? path.join(baseDir, bucketName, `${locale}.json`)
           : path.join(baseDir, locale, `${bucketName}.json`);
-      FileUtils.writeJsonFile(filePath, this.serialize(config, bucketMap), {
-        indent: config.io.indent,
+      writeJsonFile(filePath, this.serialize(bucketMap), {
+        indent: this.config.io.indent,
       });
       writtenPaths.add(path.resolve(filePath));
     }
 
-    this.pruneOrphanBucketFiles(baseDir, locale, layout, writtenPaths);
+    LanguageFileManager.pruneOrphanBucketFiles(baseDir, locale, layout, writtenPaths);
   }
 
   /**
@@ -626,10 +614,10 @@ export class LanguageFileManager {
    * 'nested' 模式下额外做前缀冲突校验——unflattenObject 对 `a.b` 与 `a.b.c`
    * 同时存在的扁平 map 会静默覆盖（叶子 vs 子树）导致数据丢失，必须前置拦截。
    */
-  private static serialize(config: ResolvedConfig, flat: LocaleMap): Record<string, any> {
-    if (config.io.format === 'flat') return flat;
-    this.assertNoPrefixConflict(flat, config.keys.separator);
-    return FileUtils.unflattenObject(flat, config.keys.separator);
+  private serialize(flat: LocaleMap): Record<string, any> {
+    if (this.config.io.format === 'flat') return flat;
+    LanguageFileManager.assertNoPrefixConflict(flat, this.config.keys.separator);
+    return FileUtils.unflattenObject(flat, this.config.keys.separator);
   }
 
   /**
@@ -699,26 +687,21 @@ export class LanguageFileManager {
    * 分桶与 writeBucketedLocaleFile 同口径：逐桶序列化、逐桶校验——不同桶之间不构成冲突，
    * 整张 key 集一起校验会过严误报。
    */
-  static assertSerializableUpdate(
-    config: ResolvedConfig,
-    isCustom: boolean,
-    extractedStrings: ExtractedString[],
-    keyBucketMap?: KeyBucketMap,
-  ): void {
-    if (config.io.format === 'flat' || extractedStrings.length === 0) return;
+  assertSerializableUpdate(extractedStrings: ExtractedString[], keyBucketMap?: KeyBucketMap): void {
+    if (this.config.io.format === 'flat' || extractedStrings.length === 0) return;
 
     // nested 落盘时 unflattenObject 会静默丢弃段名为 __proto__/constructor/prototype 的 key
     // （原型污染防护，见 FileUtils.unflattenObject）。generate 先写源码后写 locale，这类 key
     // 会导致「源码已改成 t('...constructor')、locale 却无此 key」的永久 missing-key 不一致态。
     // 与 assertNoPrefixConflict 同口径前移到写源码前 fail-fast。只校验本轮新增 semanticId，
     // 故无需依赖现有 locale（新建项目 locale 不存在时同样能拦截）。
-    this.assertNoReservedSegment(extractedStrings, config.keys.separator);
+    LanguageFileManager.assertNoReservedSegment(extractedStrings, this.config.keys.separator);
 
     let existing: LocaleMap;
-    if (config.buckets) {
-      existing = this.readBucketedLocaleWithBucketMap(config, isCustom).flat;
+    if (this.config.buckets) {
+      existing = this.readBucketedLocaleWithBucketMap().flat;
     } else {
-      const read = this.readLocaleFile(config, isCustom);
+      const read = this.readLocaleFile();
       if (read === null) return;
       existing = read;
     }
@@ -728,15 +711,15 @@ export class LanguageFileManager {
       if (e.semanticId) finalKeys.add(e.semanticId);
     }
 
-    const separator = config.keys.separator;
+    const separator = this.config.keys.separator;
     const toMap = (keys: Iterable<string>): LocaleMap => {
       const m: LocaleMap = {};
       for (const k of keys) m[k] = '';
       return m;
     };
 
-    if (!config.buckets) {
-      this.assertNoPrefixConflict(toMap(finalKeys), separator);
+    if (!this.config.buckets) {
+      LanguageFileManager.assertNoPrefixConflict(toMap(finalKeys), separator);
       return;
     }
 
@@ -750,9 +733,11 @@ export class LanguageFileManager {
     // 正常都已落在 callerMap（caller 用真实 filePath 算），不会走到虚拟反推这一支。
     for (const k of finalKeys) if (!(k in callerMap)) virtualSource[k] = existing[k] ?? '';
     const virtualMap =
-      Object.keys(virtualSource).length > 0 ? this.buildKeyBucketMap(config, virtualSource) : {};
+      Object.keys(virtualSource).length > 0
+        ? LanguageFileManager.buildKeyBucketMap(this.config, virtualSource)
+        : {};
     const effective: KeyBucketMap = { ...virtualMap, ...callerMap };
-    const defaultBucket = config.buckets.defaultBucket;
+    const defaultBucket = this.config.buckets.defaultBucket;
 
     const groups = new Map<string, Set<string>>();
     for (const k of finalKeys) {
@@ -761,7 +746,7 @@ export class LanguageFileManager {
       groups.get(bucket)!.add(k);
     }
     for (const keys of groups.values()) {
-      this.assertNoPrefixConflict(toMap(keys), separator);
+      LanguageFileManager.assertNoPrefixConflict(toMap(keys), separator);
     }
   }
 
@@ -775,9 +760,7 @@ export class LanguageFileManager {
    *                       （createMessageWithOptions + finalizeLocaleMessage 已跑完），
    *                       原样写入、跳过二次定稿。用于 apply-plan：plan.localeDelta 即最终值。
    */
-  static updateLanguageFiles(
-    config: ResolvedConfig,
-    isCustom: boolean,
+  updateLanguageFiles(
     extractedStrings: ExtractedString[],
     keyBucketMap?: KeyBucketMap,
     report?: RunReport,
@@ -788,14 +771,14 @@ export class LanguageFileManager {
 
     let localeMap: LocaleMap;
 
-    if (config.buckets) {
+    if (this.config.buckets) {
       // 读 flat 数据即可——磁盘当前布局**不再**作为 keyBucketMap 的兜底来源。
       // 历史问题：旧逻辑用 existingKeyBucketMap 兜底导致 matchKey/match 规则
       // 对存量 key 永远失效（旧规则下落到 A 桶的 key，即使新规则该去 B 桶，
       // 也会因 existing 占位而留在 A）。
-      localeMap = this.readBucketedLocaleWithBucketMap(config, isCustom).flat;
+      localeMap = this.readBucketedLocaleWithBucketMap().flat;
     } else {
-      const read = this.readLocaleFile(config, isCustom);
+      const read = this.readLocaleFile();
       if (read === null) return;
       localeMap = read;
     }
@@ -818,7 +801,7 @@ export class LanguageFileManager {
       if (options?.preFinalized) {
         message = rawMessage;
       } else {
-        message = CommonASTUtils.buildLocaleMessage(extracted, library ?? undefined);
+        message = buildLocaleMessage(extracted, library ?? undefined);
       }
 
       if (!Object.prototype.hasOwnProperty.call(localeMap, extracted.semanticId)) {
@@ -841,7 +824,7 @@ export class LanguageFileManager {
     // caller 没覆盖的 key（来自存量 localeMap 中未被本轮触达的文件）走
     // buildKeyBucketMap 用虚拟路径反推。这样规则一变，所有 key 都会按新规则落桶。
     let effectiveKeyBucketMap: KeyBucketMap | undefined;
-    if (config.buckets) {
+    if (this.config.buckets) {
       const callerMap = keyBucketMap ?? {};
       const rebucketSource: LocaleMap = {};
       for (const key of Object.keys(finalMap)) {
@@ -851,7 +834,7 @@ export class LanguageFileManager {
       }
       const rebucket =
         Object.keys(rebucketSource).length > 0
-          ? this.buildKeyBucketMapWithStats(config, rebucketSource)
+          ? LanguageFileManager.buildKeyBucketMapWithStats(this.config, rebucketSource)
           : { keyBucketMap: {}, zeroHitRules: [], ruleHits: {} };
       effectiveKeyBucketMap = { ...rebucket.keyBucketMap, ...callerMap };
 
@@ -869,7 +852,7 @@ export class LanguageFileManager {
       }
     }
 
-    this.writeLocaleFile(config, isCustom, finalMap, undefined, effectiveKeyBucketMap);
+    this.writeLocaleFile(finalMap, undefined, effectiveKeyBucketMap);
 
     LoggerUtils.success(`✅ 语言文件更新成功！`);
     if (addedCount > 0) LoggerUtils.info(`   - 新增条目: ${addedCount}`);
@@ -878,7 +861,7 @@ export class LanguageFileManager {
     // 落盘后做一次健康度 lint。skippedComparisons：generate 已提前 drain 的快照，避免与
     // coverage 争抢全局 collector；未传时 analyze 回退到自行 drain（doctor 独立路径）。
     const findings = LocaleValueLinter.analyze(finalMap, {
-      separator: config.keys.separator,
+      separator: this.config.keys.separator,
       skippedComparisons: options?.skippedComparisons,
     });
     LocaleValueLinter.emit(findings, { console: true, report });

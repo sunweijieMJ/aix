@@ -1,12 +1,12 @@
 import ts from 'typescript';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { hasLocalDeclarationWithin, isIdentifierValueReference } from '../../utils/scope-analysis';
 import type { ReactI18nLibrary } from './libraries';
 
 /**
  * 需要把翻译变量纳入依赖数组的 hooks 列表。
  *
  * Why 抽成共享常量：generate 阶段 addTranslationVarToHooksDependencies（add）与
- * restore 阶段 ReactImportManager.cleanupHookDependencies（remove）必须使用同一份
+ * restore 阶段 react-restore-cleanup 的 cleanupHookDependencies（remove）必须使用同一份
  * 列表，否则 round-trip 非对称——例如 add 端含 useLayoutEffect 而 remove 端漏掉，
  * 会在 restore 后留下指向已删除变量的悬空依赖（TS2304 / ReferenceError）。
  */
@@ -139,7 +139,7 @@ export class HooksUtils {
         if (
           ts.isIdentifier(node.expression) &&
           node.expression.text === varName &&
-          !CommonASTUtils.hasLocalDeclarationWithin(node.expression, varName, firstArg)
+          !hasLocalDeclarationWithin(node.expression, varName, firstArg)
         ) {
           usesVar = true;
           return;
@@ -156,8 +156,8 @@ export class HooksUtils {
       if (
         ts.isIdentifier(node) &&
         node.text === varName &&
-        CommonASTUtils.isIdentifierValueReference(node) &&
-        !CommonASTUtils.hasLocalDeclarationWithin(node, varName, firstArg)
+        isIdentifierValueReference(node) &&
+        !hasLocalDeclarationWithin(node, varName, firstArg)
       ) {
         usesVar = true;
         return;

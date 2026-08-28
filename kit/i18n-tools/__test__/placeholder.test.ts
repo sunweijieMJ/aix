@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import { finalizeLocaleMessage, toSingleBracePlaceholders } from '../src/utils/message-shape';
+import { createStringOrTemplateNode } from '../src/utils/restore-node-factory';
 import { extractPlaceholderNames } from '../src/utils/placeholder-utils';
 import { VueI18nLibraryImpl } from '../src/strategies/vue/libraries/vue-i18n';
 import { VueI18nextLibrary } from '../src/strategies/vue/libraries/vue-i18next';
@@ -143,9 +144,9 @@ describe('字面量花括号处理（finalizeLocaleMessage / escape-unescape）'
     describe(libName, () => {
       for (const { msg, names } of cases) {
         it(`往返无损: ${msg}`, () => {
-          const finalized = CommonASTUtils.finalizeLocaleMessage(msg, names, lib);
+          const finalized = finalizeLocaleMessage(msg, names, lib);
           const single = lib.usesDoubleBracePlaceholders
-            ? CommonASTUtils.toSingleBracePlaceholders(finalized)
+            ? toSingleBracePlaceholders(finalized)
             : finalized;
           expect(lib.unescapeLiteralText(single)).toBe(msg);
         });
@@ -155,26 +156,26 @@ describe('字面量花括号处理（finalizeLocaleMessage / escape-unescape）'
 
   it('双花括号库：只转真占位符，不误转文本里的 {config}', () => {
     const lib = new ReactI18nextLibrary();
-    const out = CommonASTUtils.finalizeLocaleMessage('共 {count} 个{config}项', ['count'], lib);
+    const out = finalizeLocaleMessage('共 {count} 个{config}项', ['count'], lib);
     expect(out).toBe('共 {{count}} 个{config}项'); // count→双；config 保持单（i18next 字面量）
   });
 
   it("vue-i18n：纯文本字面量花括号转义为 {'{'} / {'}' }", () => {
     const lib = new VueI18nLibraryImpl();
-    const out = CommonASTUtils.finalizeLocaleMessage('包含{大括号}的文本', [], lib);
+    const out = finalizeLocaleMessage('包含{大括号}的文本', [], lib);
     expect(out).toBe("包含{'{'}大括号{'}'}的文本");
   });
 
   it("react-intl：纯文本字面量花括号转义为 ICU '{' / '}'", () => {
     const lib = new ReactIntlLibrary();
-    const out = CommonASTUtils.finalizeLocaleMessage('包含{大括号}的文本', [], lib);
+    const out = finalizeLocaleMessage('包含{大括号}的文本', [], lib);
     expect(out).toBe("包含'{'大括号'}'的文本");
   });
 
   it('doctor 占位符提取不把转义后的字面量误判为占位符', () => {
     // vue-i18n 转义后的值里只应识别出真占位符 count，不应出现 大括号 / config
     const lib = new VueI18nLibraryImpl();
-    const value = CommonASTUtils.finalizeLocaleMessage('共 {count} 个{config}项', ['count'], lib);
+    const value = finalizeLocaleMessage('共 {count} 个{config}项', ['count'], lib);
     const names = extractPlaceholderNames(value);
     expect(names.has('count')).toBe(true);
     expect(names.has('config')).toBe(false);
@@ -195,14 +196,14 @@ const printNode = (node: ts.Node): string => {
   return printer.printNode(ts.EmitHint.Unspecified, node, sf);
 };
 
-describe('CommonASTUtils.createStringOrTemplateNode 重复占位符', () => {
+describe('createStringOrTemplateNode 重复占位符', () => {
   it('同名占位符重复出现 → 重建为模板字面量，保留变量插值', () => {
     const messageText = '欢迎 {name1}，再次问候 {name1}';
     const values = {
       name1: { node: ts.factory.createIdentifier('name'), text: 'name' },
     };
 
-    const node = CommonASTUtils.createStringOrTemplateNode(messageText, values);
+    const node = createStringOrTemplateNode(messageText, values);
 
     // 不应退化为纯字符串字面量 / 判失配
     expect(node).not.toBeNull();
@@ -234,7 +235,7 @@ describe('CommonASTUtils.createStringOrTemplateNode 重复占位符', () => {
     };
     // 失配时不得再退化为字面串（会把占位符字面化写进源码、静默删除运行时变量），
     // 而是返回 null 让调用方保留原调用/组件。
-    const node = CommonASTUtils.createStringOrTemplateNode(messageText, values);
+    const node = createStringOrTemplateNode(messageText, values);
     expect(node).toBeNull();
   });
 });

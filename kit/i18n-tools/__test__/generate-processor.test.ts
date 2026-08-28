@@ -242,7 +242,7 @@ describe('GenerateProcessor 编排层', () => {
     // 真正驱动 written[] 的逐文件回滚——作为 rollbackWritten 抽取重构的特征护栏。
     writeSource('A.vue', `<template><div>提交</div></template>\n`);
     writeSource('B.vue', `<template><div>取消</div></template>\n`);
-    vi.spyOn(LanguageFileManager, 'updateLanguageFiles').mockImplementation(() => {
+    vi.spyOn(LanguageFileManager.prototype, 'updateLanguageFiles').mockImplementation(() => {
       throw new Error('disk boom');
     });
 

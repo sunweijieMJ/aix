@@ -6,6 +6,7 @@ import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import type { LocaleMap, Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
+import { createOrEmptyFile, loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
 
 /**
  * 合并处理器
@@ -82,7 +83,7 @@ export class MergeProcessor extends FileProcessor {
     // updateUntranslatedFile 随即用 '{}' 覆写、销毁在途译文（含已填/已翻译的
     // target 值，pick 无法重生成）。loadJsonDictOrThrow 对「有内容却解析失败」抛错中止。
     // （文件存在性已由 mergeTranslationData 在调用前校验，缺失视为 {} 不影响。）
-    return FileUtils.loadJsonDictOrThrow<Translations>(
+    return loadJsonDictOrThrow<Translations>(
       filePath,
       (p) =>
         `待翻译文件解析失败（JSON 格式错误）: ${p}\n` +
@@ -97,7 +98,7 @@ export class MergeProcessor extends FileProcessor {
     }
     // 必须区分「损坏」与「空」：损坏时若降级为 {}，performMerge 的 {...existing, ...newly}
     // 会用空对象覆写、销毁此前所有已合并条目。与姊妹方法一致：有内容却解析失败即中止。
-    return FileUtils.loadJsonDictOrThrow<Translations>(
+    return loadJsonDictOrThrow<Translations>(
       filePath,
       (p) =>
         `${FILES.TRANSLATIONS_JSON} 解析失败（JSON 格式错误）: ${p}\n` +
@@ -254,7 +255,7 @@ export class MergeProcessor extends FileProcessor {
       ...existingTranslations,
       ...analysisResult.newlyTranslated,
     };
-    FileUtils.writeTranslationsFile(translatedPath, finalTranslations);
+    writeTranslationsFile(translatedPath, finalTranslations);
     LoggerUtils.info(
       `📄 已更新 ${FILES.TRANSLATIONS_JSON}，现有 ${Object.keys(finalTranslations).length} 个翻译条目`,
     );
@@ -268,12 +269,12 @@ export class MergeProcessor extends FileProcessor {
     analysisResult: ReturnType<typeof MergeProcessor.prototype.analyzeTranslationStatus>,
   ): void {
     if (analysisResult.stillUntranslatedCount > 0) {
-      FileUtils.writeTranslationsFile(filePath, analysisResult.stillUntranslated);
+      writeTranslationsFile(filePath, analysisResult.stillUntranslated);
       LoggerUtils.info(
         `📝 已更新 ${FILES.UNTRANSLATED_JSON}，剩余 ${analysisResult.stillUntranslatedCount} 个待翻译条目`,
       );
     } else {
-      FileUtils.createOrEmptyFile(filePath, '{}');
+      createOrEmptyFile(filePath, '{}');
       LoggerUtils.success(`🎉 所有条目已翻译完成，已清空 ${FILES.UNTRANSLATED_JSON}`);
     }
   }
@@ -286,7 +287,7 @@ export class MergeProcessor extends FileProcessor {
     const locales = [this.config.locales.source, ...this.config.locales.targets];
     const suffix =
       '\n👉 为避免 CI 伪成功与运行时漏译，已在写回前中止 merge。请先修复该文件的 JSON 格式后重试。';
-    LanguageFileManager.assertLocalesNotCorrupt(this.config, this.isCustom, locales, {
+    this.langFiles.assertLocalesNotCorrupt(locales, {
       checkLegacy: true,
       buildMessage: (locale, file) =>
         this.config.buckets
@@ -316,11 +317,7 @@ export class MergeProcessor extends FileProcessor {
     // source 桶损坏被 silent 降级当 {}，下方用 source 文本驱动 keyBucketMap 分桶会得到空表，
     // 导致所有 key 塌缩进 defaultBucket、其余桶被 prune 成 .bak（伪报成功）——保留作 safety net。
     // 抛错而非 return：仅 log 后返回会让 merge 以 exit 0 收尾，CI 判绿而语言包实际一条未写。
-    const corruptSourceFile = LanguageFileManager.findCorruptBucketFile(
-      this.config,
-      this.isCustom,
-      sourceLocale,
-    );
+    const corruptSourceFile = this.langFiles.findCorruptBucketFile(sourceLocale);
     if (corruptSourceFile) {
       throw new Error(
         `源语言桶文件解析失败（JSON 格式错误）: ${corruptSourceFile}` +
@@ -330,11 +327,7 @@ export class MergeProcessor extends FileProcessor {
 
     // source 文本驱动分桶（与 generate/export 一致）。source 非空时分桶表对所有 target 相同，
     // 预算一次；为空时回退到各 target 的 targetMessages，留到 per-target 内部计算。
-    const sourceMessages = LanguageFileManager.readLocaleFile(
-      this.config,
-      this.isCustom,
-      sourceLocale,
-    );
+    const sourceMessages = this.langFiles.readLocaleFile(sourceLocale);
     const sharedKeyBucketMap =
       sourceMessages && Object.keys(sourceMessages).length > 0
         ? LanguageFileManager.buildKeyBucketMap(this.config, sourceMessages)
@@ -355,11 +348,7 @@ export class MergeProcessor extends FileProcessor {
     // 而 performMerge 只写 translations.json/untranslated.json、不触碰 locale 桶，故执行到这里时
     // 桶文件必未损坏、下面的 if 分支正常不会命中。保留此处 per-target 探测仅作 belt-and-suspenders：
     // 万一顶层集中守卫被重构移除/绕过，这里仍能拦住「损坏 bucket 被 silent 降级当 {} 后静默丢弃」。
-    const corruptFile = LanguageFileManager.findCorruptBucketFile(
-      this.config,
-      this.isCustom,
-      target,
-    );
+    const corruptFile = this.langFiles.findCorruptBucketFile(target);
     // 同上：抛错而非 return，避免「该 target 一条没写」被 exit 0 掩盖成成功。
     if (corruptFile) {
       throw new Error(
@@ -368,11 +357,7 @@ export class MergeProcessor extends FileProcessor {
       );
     }
 
-    const { flat: targetMessages } = LanguageFileManager.readBucketedLocaleWithBucketMap(
-      this.config,
-      this.isCustom,
-      target,
-    );
+    const { flat: targetMessages } = this.langFiles.readBucketedLocaleWithBucketMap(target);
 
     const updatedCount = MergeProcessor.applyTranslations(targetMessages, newlyTranslated, target);
 
@@ -380,13 +365,7 @@ export class MergeProcessor extends FileProcessor {
     const keyBucketMap =
       sharedKeyBucketMap ?? LanguageFileManager.buildKeyBucketMap(this.config, targetMessages);
 
-    LanguageFileManager.writeLocaleFile(
-      this.config,
-      this.isCustom,
-      targetMessages,
-      target,
-      keyBucketMap,
-    );
+    this.langFiles.writeLocaleFile(targetMessages, target, keyBucketMap);
     LoggerUtils.info(`📄 已更新 [${target}] 桶式语言包，更新 ${updatedCount} 个条目`);
   }
 
@@ -415,7 +394,7 @@ export class MergeProcessor extends FileProcessor {
   }
 
   private updateFlatLanguagePackage(newlyTranslated: Translations, target: string): void {
-    const targetMessages = LanguageFileManager.readLocaleFile(this.config, this.isCustom, target);
+    const targetMessages = this.langFiles.readLocaleFile(target);
     if (targetMessages === null) {
       // 文件存在但解析失败。与桶式路径同口径抛错：静默 return 会让本轮译文全部丢失、
       // 而 merge 仍以 exit 0 收尾，CI 与人都看不出语言包没被更新。
@@ -427,7 +406,7 @@ export class MergeProcessor extends FileProcessor {
 
     const updatedCount = MergeProcessor.applyTranslations(targetMessages, newlyTranslated, target);
 
-    LanguageFileManager.writeLocaleFile(this.config, this.isCustom, targetMessages, target);
+    this.langFiles.writeLocaleFile(targetMessages, target);
     LoggerUtils.info(
       `📄 已更新 [${target}].json（${this.config.io.format}），更新 ${updatedCount} 个条目`,
     );

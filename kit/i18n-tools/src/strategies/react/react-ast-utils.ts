@@ -1,6 +1,6 @@
 import ts from 'typescript';
 import { MessageInfo } from '../../utils/types';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { extractObjectLiteralProperties, objectLiteralHasSpread } from '../../utils/ast-core';
 
 /**
  * React 特定的 AST 工具类
@@ -490,7 +490,7 @@ export class ReactASTUtils {
     let messageInfo: MessageInfo = {};
 
     if (ts.isObjectLiteralExpression(arg)) {
-      const props = CommonASTUtils.extractObjectLiteralProperties(arg, sourceFile);
+      const props = extractObjectLiteralProperties(arg, sourceFile);
       // 只接受字符串字面量：简写变量（`{ id, defaultMessage }`）经 shorthand 分支会变成
       // {node,text} 对象，属动态描述符、无法静态还原——置 undefined 让 isValidMessage
       // 拦下保留原调用，否则对象流入 normalizeRestoreMessage 对非字符串调 .replace 抛
@@ -502,10 +502,10 @@ export class ReactASTUtils {
 
       const valuesArg = node.arguments[1];
       if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
-        if (CommonASTUtils.objectLiteralHasSpread(valuesArg)) {
+        if (objectLiteralHasSpread(valuesArg)) {
           messageInfo.hasUnresolvableValues = true;
         }
-        messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
+        messageInfo.values = extractObjectLiteralProperties(valuesArg, sourceFile);
       } else if (valuesArg) {
         // 标识符 / 调用等非对象字面量 values（`formatMessage({id}, values)`）：无法静态
         // 解析，置位保留原调用，避免占位符字面化、运行时变量静默丢失。
@@ -519,10 +519,10 @@ export class ReactASTUtils {
 
       const valuesArg = node.arguments[1];
       if (valuesArg && ts.isObjectLiteralExpression(valuesArg)) {
-        if (CommonASTUtils.objectLiteralHasSpread(valuesArg)) {
+        if (objectLiteralHasSpread(valuesArg)) {
           messageInfo.hasUnresolvableValues = true;
         }
-        messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(valuesArg, sourceFile);
+        messageInfo.values = extractObjectLiteralProperties(valuesArg, sourceFile);
       } else if (valuesArg) {
         // 同上：非对象字面量 values 无法静态解析，置位保留原调用。
         messageInfo.hasUnresolvableValues = true;
@@ -594,10 +594,10 @@ export class ReactASTUtils {
           attribute.initializer.expression &&
           ts.isObjectLiteralExpression(attribute.initializer.expression)
         ) {
-          if (CommonASTUtils.objectLiteralHasSpread(attribute.initializer.expression)) {
+          if (objectLiteralHasSpread(attribute.initializer.expression)) {
             messageInfo.hasUnresolvableValues = true;
           }
-          messageInfo.values = CommonASTUtils.extractObjectLiteralProperties(
+          messageInfo.values = extractObjectLiteralProperties(
             attribute.initializer.expression,
             sourceFile,
           );

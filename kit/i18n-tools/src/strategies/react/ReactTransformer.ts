@@ -1,7 +1,14 @@
 import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import {
+  applyReplacements,
+  findExactStringNode,
+  nodeToText,
+  parseSourceFile,
+  shouldReplaceNode,
+} from '../../utils/ast-core';
+import { createMessageWithOptions } from '../../utils/message-shape';
 import { ReactASTUtils } from './react-ast-utils';
 import { HooksUtils } from './hooks-utils';
 import type { ExtractedString } from '../../utils/types';
@@ -101,10 +108,10 @@ export class ReactTransformer implements ITransformer {
    */
   private replaceStrings(sourceText: string, fileStrings: ExtractedString[]): string {
     const filePath = fileStrings[0]!.filePath;
-    const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
+    const sourceFile = parseSourceFile(sourceText, filePath);
 
     // 收集所有有效的替换操作。
-    // 无需在此按位置排序：从后往前替换避免位置偏移由 CommonASTUtils.applyReplacements
+    // 无需在此按位置排序：从后往前替换避免位置偏移由 applyReplacements
     // 内部统一完成（它会先按区间大小贪心去重、再按 start 倒序后应用），此处预排序对
     // 最终产物无影响，且会原地 mutate 入参 fileStrings——故省去。
     const replacements: Array<{
@@ -119,7 +126,7 @@ export class ReactTransformer implements ITransformer {
         extracted.line - 1,
         extracted.column - 1,
       );
-      const node = CommonASTUtils.findExactStringNode(sourceFile, position, extracted.original);
+      const node = findExactStringNode(sourceFile, position, extracted.original);
 
       if (node) {
         const replacement = this.generateReplacement(extracted, node);
@@ -146,21 +153,16 @@ export class ReactTransformer implements ITransformer {
             end -= raw.length - raw.trimEnd().length;
           }
 
-          const originalNodeText = CommonASTUtils.nodeToText(node, sourceFile);
+          const originalNodeText = nodeToText(node, sourceFile);
           const isTemplateString =
             extracted.original.startsWith('`') && extracted.original.endsWith('`');
           // JsxText 源码侧无定界符；extracted.original 仅模板串（反引号包裹）是源码形式、其余为裸内容。
           // 据此精确控制两侧是否剥定界符，避免内容自带成对引号时被误剥导致漏替换。
           if (
-            CommonASTUtils.shouldReplaceNode(
-              originalNodeText,
-              extracted.original,
-              isTemplateString,
-              {
-                nodeDelimited: !ts.isJsxText(node),
-                originalDelimited: isTemplateString,
-              },
-            )
+            shouldReplaceNode(originalNodeText, extracted.original, isTemplateString, {
+              nodeDelimited: !ts.isJsxText(node),
+              originalDelimited: isTemplateString,
+            })
           ) {
             replacements.push({ start, end, replacement });
           } else {
@@ -175,7 +177,7 @@ export class ReactTransformer implements ITransformer {
         );
       }
     }
-    return CommonASTUtils.applyReplacements(sourceText, replacements);
+    return applyReplacements(sourceText, replacements);
   }
 
   /**
@@ -189,7 +191,7 @@ export class ReactTransformer implements ITransformer {
     // 内联，且不在 templateVariables 里，传 original 时 createMessageWithOptions 无从展开、
     // 会残留在 defaultMessage 中）；`||` 与 locale 落盘路径 buildLocaleMessage 同口径，
     // 保证 defaultMessage 恒等于 locale 值。Vue 端 VueTransformer 已是同款取法。
-    const { message, placeholderMap } = CommonASTUtils.createMessageWithOptions(
+    const { message, placeholderMap } = createMessageWithOptions(
       extracted.processedMessage || extracted.original,
       templateVariables,
     );

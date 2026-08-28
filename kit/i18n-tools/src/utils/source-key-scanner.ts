@@ -2,7 +2,8 @@ import fs from 'fs';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
-import { CommonASTUtils } from './common-ast-utils';
+import { stripComments } from './import-surgery';
+import { decodeJsStringEscapes } from './string-escape';
 import { FileUtils } from './file-utils';
 
 /**
@@ -41,11 +42,10 @@ const STRING_LITERAL = /(?:'((?:\\[\s\S]|[^'\\])*)'|"((?:\\[\s\S]|[^"\\])*)")/g;
 /**
  * 把字符串字面量内部文本按 JavaScript 常用转义语义还原为运行时 key。
  * scanner 只接收已经去掉外层引号的内容，因此不使用 eval。
- * 实现收口在 CommonASTUtils.decodeJsStringEscapes（shouldReplaceNode 的源码侧归一同用），
+ * 实现收口在 decodeJsStringEscapes（shouldReplaceNode 的源码侧归一同用），
  * 避免两套解码器覆盖面漂移。
  */
-const decodeStringLiteralContent = (content: string): string =>
-  CommonASTUtils.decodeJsStringEscapes(content);
+const decodeStringLiteralContent = (content: string): string => decodeJsStringEscapes(content);
 
 /**
  * 按文件类型剥离注释，产出可供 scanKeyReferencesInContent 扫描的文本。
@@ -60,7 +60,7 @@ const decodeStringLiteralContent = (content: string): string =>
  * 不删），也不能走 JS 状态机误吞模板（少算 = 误删）。
  */
 export function stripCommentsForScan(filePath: string, raw: string): string {
-  if (!filePath.endsWith('.vue')) return CommonASTUtils.stripComments(raw);
+  if (!filePath.endsWith('.vue')) return stripComments(raw);
 
   const stripHtmlComments = (text: string): string => text.replace(/<!--[\s\S]*?-->/g, ' ');
   try {
@@ -76,7 +76,7 @@ export function stripCommentsForScan(filePath: string, raw: string): string {
       parts.push(stripHtmlComments(descriptor.template.content));
     }
     for (const script of [descriptor.script, descriptor.scriptSetup]) {
-      if (script) parts.push(CommonASTUtils.stripComments(script.content));
+      if (script) parts.push(stripComments(script.content));
     }
     return parts.join('\n');
   } catch {

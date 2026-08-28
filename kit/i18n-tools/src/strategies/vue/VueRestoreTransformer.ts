@@ -2,7 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { nodeToText, parseSourceFile } from '../../utils/ast-core';
+import { removeNamedImports } from '../../utils/import-surgery';
+import { normalizeRestoreLocaleMap } from '../../utils/message-shape';
+import { isImportedNameUnused, isLocalNameUnused } from '../../utils/scope-analysis';
+import { escapeRegExp } from '../../utils/string-escape';
 import { CHINESE_CHAR_RANGE, NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import type { LocaleMap } from '../../utils/types';
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
@@ -40,8 +44,8 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     // locale 值归一：i18next 系库双花括号占位符 → 单花括号；并把写盘时转义的
     // 字面量花括号（vue-i18n 的 `{'{'}` 等）还原回普通 `{` `}`。
-    // 与 React restore 共用 CommonASTUtils.normalizeRestoreLocaleMap（消除两端重复实现）。
-    const map = CommonASTUtils.normalizeRestoreLocaleMap(localeMap, this.library);
+    // 与 React restore 共用 normalizeRestoreLocaleMap（消除两端重复实现）。
+    const map = normalizeRestoreLocaleMap(localeMap, this.library);
 
     // .ts/.js 文件不是 Vue SFC，直接用 script 还原逻辑
     if (ext === '.ts' || ext === '.js') {
@@ -149,7 +153,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
    * 判断还原后的 SFC 中，tImport 的 `t` 是否在 script 块里已无引用。
    *
    * .vue 整体不是合法 TS，无法直接解析；取 script/scriptSetup 块内容合并后（Vue3 SFC 多
-   * script 共享模块作用域）交给 CommonASTUtils.isImportedNameUnused 判定。无 script 块或无
+   * script 共享模块作用域）交给 isImportedNameUnused 判定。无 script 块或无
    * 该 import 时返回 false（无可清理）。
    */
   private static isTImportUnusedInScript(restoredCode: string, tImport: string): boolean {
@@ -159,7 +163,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       .map((b) => b.content)
       .join('\n');
     if (!scriptContent.trim()) return false;
-    return CommonASTUtils.isImportedNameUnused(scriptContent, 'sfc.ts', tImport, 't');
+    return isImportedNameUnused(scriptContent, 'sfc.ts', tImport, 't');
   }
 
   /**
@@ -177,7 +181,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       .map((b) => b.content)
       .join('\n');
     if (!scriptContent.trim()) return true;
-    return CommonASTUtils.isLocalNameUnused(scriptContent, 'sfc.ts', 't');
+    return isLocalNameUnused(scriptContent, 'sfc.ts', 't');
   }
 
   /**
@@ -194,7 +198,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       .map((b) => b.content)
       .join('\n');
     if (!scriptContent.trim()) return false;
-    const escapedHook = CommonASTUtils.escapeRegExp(library.hookName);
+    const escapedHook = escapeRegExp(library.hookName);
     return new RegExp(`\\b${escapedHook}\\s*\\(`).test(scriptContent);
   }
 
@@ -209,7 +213,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
    * 应在 restoreScript 阶段就保留（restoreScript 命中翻译才会做替换）。
    */
   private static cleanupPluginLocaleImport(code: string, tImport: string): string {
-    const escapedPath = CommonASTUtils.escapeRegExp(tImport);
+    const escapedPath = escapeRegExp(tImport);
     // 形式 1：仅 t 一个命名 → 整条 import 删除
     const onlyT = new RegExp(
       `import\\s*\\{\\s*t\\s*\\}\\s*from\\s*['"]${escapedPath}['"];?\\n?`,
@@ -252,12 +256,12 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 清理 hook 来源：`useI18n` 库导入 + `const { t } = useI18n()` 声明必须同进退。
     // 守卫：仅当 t 已无值引用时才删除（与 SFC 路径对称；locale 缺 key / 动态 key 时残留 t()
     // 仍引用 t，删任一半都会产出未定义标识符）。
-    if (CommonASTUtils.isLocalNameUnused(restoredCode, 'standalone.ts', 't')) {
+    if (isLocalNameUnused(restoredCode, 'standalone.ts', 't')) {
       // 先删 hook 声明，再守卫删 import：多键解构 `const { t, locale } = useI18n()` 因声明
       // 清理正则只匹配单键 `{ t }` 而保留，其 useI18n() 调用仍在时不得删 import（否则未定义
       // useI18n）。与 SFC 路径 / generate 侧 hookCallStillUsed 守卫对称。
       restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
-      const escapedHook = CommonASTUtils.escapeRegExp(lib.hookName);
+      const escapedHook = escapeRegExp(lib.hookName);
       if (!new RegExp(`\\b${escapedHook}\\s*\\(`).test(restoredCode)) {
         restoredCode = this.cleanupImports(restoredCode, lib);
       }
@@ -267,10 +271,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 复用 SFC 路径的 helper：可处理 `import { t }` 与 `import { t, i18n }` 混合形式。
     // 守卫：仅当 t 在还原后已无引用时才删除——存活的 t() 调用（locale 缺 key / 动态 key）
     // 仍引用 t，删 import 会产出未定义 t（TS2304）。与 SFC 路径 / React 端对称。
-    if (
-      tImport &&
-      CommonASTUtils.isImportedNameUnused(restoredCode, 'standalone.ts', tImport, 't')
-    ) {
+    if (tImport && isImportedNameUnused(restoredCode, 'standalone.ts', tImport, 't')) {
       restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport);
     }
 
@@ -631,7 +632,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     localeMap: Record<string, string>,
     library: VueI18nLibrary,
   ): string {
-    const sourceFile = CommonASTUtils.parseSourceFile(scriptContent, 'temp.ts');
+    const sourceFile = parseSourceFile(scriptContent, 'temp.ts');
 
     // 遍历 AST 收集 t() 调用的替换位置
     const replacements: Array<{ start: number; end: number; text: string }> = [];
@@ -720,7 +721,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
         const varMap = new Map<string, string>();
         for (const prop of varsArg.properties) {
           if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-            const exprText = CommonASTUtils.nodeToText(prop.initializer, sourceFile);
+            const exprText = nodeToText(prop.initializer, sourceFile);
             varMap.set(prop.name.text, exprText);
           } else if (ts.isShorthandPropertyAssignment(prop)) {
             // 对象简写 `{ count }` 等价于 `{ count: count }`：占位符名与变量名同名。
@@ -771,11 +772,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
    * 下游编译报错。
    */
   private static cleanupImports(code: string, library: VueI18nLibrary): string {
-    return CommonASTUtils.removeNamedImports(
-      code,
-      (moduleName) => library.isLibraryImport(moduleName),
-      [library.hookName],
-    );
+    return removeNamedImports(code, (moduleName) => library.isLibraryImport(moduleName), [
+      library.hookName,
+    ]);
   }
 
   /**

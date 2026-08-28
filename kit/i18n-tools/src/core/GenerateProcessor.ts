@@ -3,27 +3,19 @@ import path from 'path';
 import { createRequire } from 'module';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
-import type { ManualSkipDiagnostic } from '../adapters/FrameworkAdapter';
 import { formatWithPrettier } from '../utils/command-utils';
-import { CommonASTUtils } from '../utils/common-ast-utils';
-import type { SkippedTextLocation } from '../utils/extraction-diagnostics';
+import { buildLocaleMessage } from '../utils/message-shape';
 import { FileUtils } from '../utils/file-utils';
+import { groupBy } from '../utils/collections';
 import { LLMClient } from '../utils/llm-client';
 import { normalizePosix } from '../utils/path-matcher';
 import { InteractiveUtils } from '../utils/interactive-utils';
-import { LanguageFileManager } from '../utils/language-file-manager';
-import { LocaleValueLinter } from '../utils/locale-value-linter';
 import { LoggerUtils } from '../utils/logger';
 import { BucketResolver } from '../utils/bucket-resolver';
-import { RunReport, type CoverageMetric } from '../utils/run-report';
 import type { ExtractedString } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
-import {
-  GeneratePlanWriter,
-  type GeneratePlan,
-  type GeneratePlanFileEntry,
-  type GeneratePlanHit,
-} from './GeneratePlan';
+import { CoverageReporter } from './CoverageReporter';
+import { PlanApplier } from './PlanApplier';
 import { IdReuseResolver } from './IdReuseResolver';
 
 /**
@@ -35,17 +27,10 @@ export class GenerateProcessor extends BaseProcessor {
   private llmClient: LLMClient;
   /** 是否为交互模式（自动模式下为 false，跳过确认提示） */
   private interactive: boolean;
-  /**
-   * 本轮提取出的「比较运算符跳过的中文」快照。提取后立即从 extractor 的
-   * ExtractionDiagnostics drain 到此处，供 commitToDisk（linter 交叉）与
-   * recordAndRenderCoverage（覆盖率统计）共享同一份——drain 是消耗性的，
-   * 若让二者各自去 drain，后读者恒拿空数组。
-   */
-  private skippedComparisons: SkippedTextLocation[] = [];
-  /** 本轮插值表达式中无法安全自动改写的嵌套中文。 */
-  private skippedNestedChinese: SkippedTextLocation[] = [];
-  /** 本轮由 extractor 结构化上报、需要人工处理的跳过项。 */
-  private manualSkips: ManualSkipDiagnostic[] = [];
+  /** 覆盖率账本：持有本轮跳过项快照，负责统计与总览渲染。 */
+  private coverage: CoverageReporter;
+  /** plan 侧：dry-run 写 plan 与 apply-plan 回放。 */
+  private planApplier: PlanApplier;
 
   /**
    * 构造函数
@@ -64,6 +49,16 @@ export class GenerateProcessor extends BaseProcessor {
     this.interactive = interactive;
     // LLM 任务级配置（concurrency/batchSize/throttleMs/prompt）已内化在 task
     this.llmClient = new LLMClient(config.llm.idGeneration, config.locales);
+    this.coverage = new CoverageReporter(config, isCustom, this.report);
+    // PlanApplier 不直接持有 processor：落盘与文案定稿以 hooks 注入，保证 plan 回放
+    // 与普通 commit 走同一条 commitToDisk 路径（事务语义只有一份实现）。
+    this.planApplier = new PlanApplier(config, isCustom, this.report, {
+      toLocaleMessage: (item) => this.toLocaleMessage(item),
+      commitToDisk: (results, extractedStrings, keyBucketMap, options) =>
+        this.commitToDisk(results, extractedStrings, keyBucketMap, options),
+      // getToolVersion 依赖本文件的 import.meta.url 相对位置，故留在本类、以 hook 提供。
+      getToolVersion: () => GenerateProcessor.getToolVersion(),
+    });
   }
 
   protected getOperationName(): string {
@@ -122,42 +117,7 @@ export class GenerateProcessor extends BaseProcessor {
     }
 
     try {
-      const extractor = this.adapter.getTextExtractor();
-      const sourceSnapshots = this.captureSourceSnapshots([filePath]);
-      const extractedStrings = await extractor.extractFromFile(filePath);
-      // 把 extractor 累积的结构性 warning（如跳过含 HTML 的模板字符串）排空进 RunReport。
-      // 终端已经实时打印过；这里只为落盘留痕到 `.i18n-tools/logs/`。
-      for (const w of extractor.drainWarnings()) this.report.addWarning(w);
-      this.manualSkips = extractor.drainManualSkips();
-      // 提取后立即 drain 出快照，供 commitToDisk / lint / recordAndRenderCoverage 共享。
-      // 收集器挂在 extractor 实例上（ExtractionDiagnostics），drain 一次分发给多个消费者，
-      // 而不是让各消费者各自去取——drain 是消耗性的，谁先取谁独吞。
-      const diagnostics = extractor.getDiagnostics();
-      this.skippedComparisons = diagnostics.drainSkippedComparisonOperands();
-      this.skippedNestedChinese = diagnostics.drainSkippedNestedChinese();
-
-      if (extractedStrings.length === 0) {
-        // 仍要汇报覆盖率：空提取也意味着「文件无中文 / 已全部国际化」，是一种有效结果。
-        // 必须扫描已有 t()/$t() 调用点填充 alreadyI18n，否则「已全量国际化 + 仅剩比较运算符
-        // 跳过项」的文件会因 skipped>0、alreadyI18n=0 被算成 0% 覆盖率，误触 --coverage-threshold。
-        this.recordAndRenderCoverage([filePath], [], this.buildCoverageScanResolver([filePath]));
-        LoggerUtils.info('✅ 未发现需要提取的文本');
-        return;
-      }
-
-      const reuseResolver = await this.generateIdsForStrings(extractedStrings, skipLLM, [filePath]);
-      this.displayResults(extractedStrings);
-
-      const shouldApply = this.interactive
-        ? await InteractiveUtils.promptForGenericConfirmation('是否应用这些转换？')
-        : true;
-
-      if (shouldApply) {
-        await this.applyTransformations([filePath], extractedStrings, sourceSnapshots);
-        LoggerUtils.success(`✅ 转换完成！`);
-      }
-
-      this.recordAndRenderCoverage([filePath], extractedStrings, reuseResolver);
+      await this.runPipeline([filePath], skipLLM, 'file');
     } catch (error) {
       LoggerUtils.error(`处理文件时发生错误: ${error}`);
       throw error;
@@ -195,54 +155,80 @@ export class GenerateProcessor extends BaseProcessor {
       }
     }
 
+    await this.runPipeline(frameworkFiles, skipLLM, 'directory');
+  }
+
+  /**
+   * generate 的公共流水线：drain 诊断 → 空提取分支 → 生成 ID → 展示 → 确认 → 应用 → 覆盖率。
+   *
+   * 单文件与目录两条入口的差异只剩「入口前置」（单文件的存在性检查与错误包裹 / 目录的
+   * 文件扫描与继续确认）和本方法内按 mode 分叉的四处，其余逐字共用：
+   *  - 提取调用：单文件 extractFromFile，目录 extractFromFiles。不强行统一成后者——
+   *    adapter 可自定义 extractFromFiles 实现，统一会让单文件路径行为随之漂移。
+   *  - 空提取日志：'✅ 未发现需要提取的文本' vs '✅ 所有文件均未发现需要提取的文本'。
+   *  - 结果展示：单文件平铺，目录按文件分组。
+   *  - 应用目标与完成日志：单文件就处理入参那一个文件、日志不带数量；目录以
+   *    extractedStrings 的 filePath 去重（见下方 path.normalize 注释）、日志带文件数。
+   */
+  private async runPipeline(
+    files: string[],
+    skipLLM: boolean,
+    mode: 'file' | 'directory',
+  ): Promise<void> {
     const extractor = this.adapter.getTextExtractor();
-    const sourceSnapshots = this.captureSourceSnapshots(frameworkFiles);
-    const extractedStrings = await extractor.extractFromFiles(frameworkFiles);
-    // 同 runSingleFile：把 extractor 累积的结构性 warning 排空进 RunReport，
-    // 落盘到 `<rootDir>/.i18n-tools/logs/` 便于事后回查。
+    const sourceSnapshots = this.captureSourceSnapshots(files);
+    const extractedStrings =
+      mode === 'file'
+        ? await extractor.extractFromFile(files[0]!)
+        : await extractor.extractFromFiles(files);
+    // 把 extractor 累积的结构性 warning（如跳过含 HTML 的模板字符串）排空进 RunReport。
+    // 终端已经实时打印过；这里只为落盘留痕到 `<rootDir>/.i18n-tools/logs/`，便于事后回查。
     for (const w of extractor.drainWarnings()) this.report.addWarning(w);
-    this.manualSkips = extractor.drainManualSkips();
-    // 同 runSingleFile：drain 一次快照，分发给 commitToDisk / lint / coverage 三个消费者。
+    // 提取后立即 drain 出快照交给 CoverageReporter 持有，供 commitToDisk / lint / 覆盖率共享。
+    // 收集器挂在 extractor 实例上（ExtractionDiagnostics），drain 一次分发给多个消费者，
+    // 而不是让各消费者各自去取——drain 是消耗性的，谁先取谁独吞。
+    const manualSkips = extractor.drainManualSkips();
     const diagnostics = extractor.getDiagnostics();
-    this.skippedComparisons = diagnostics.drainSkippedComparisonOperands();
-    this.skippedNestedChinese = diagnostics.drainSkippedNestedChinese();
+    this.coverage.setExtractionSnapshots({
+      manualSkips,
+      skippedComparisons: diagnostics.drainSkippedComparisonOperands(),
+      skippedNestedChinese: diagnostics.drainSkippedNestedChinese(),
+    });
 
     if (extractedStrings.length === 0) {
-      // 同 runSingleFile：空提取分支也要扫描已有调用点，避免已国际化目录被比较运算符
-      // 跳过项把覆盖率拉到 0%（详见 buildCoverageScanResolver / recordAndRenderCoverage）。
-      this.recordAndRenderCoverage(
-        frameworkFiles,
-        [],
-        this.buildCoverageScanResolver(frameworkFiles),
+      // 仍要汇报覆盖率：空提取也意味着「文件无中文 / 已全部国际化」，是一种有效结果。
+      // 必须扫描已有 t()/$t() 调用点填充 alreadyI18n，否则「已全量国际化 + 仅剩比较运算符
+      // 跳过项」的文件会因 skipped>0、alreadyI18n=0 被算成 0% 覆盖率，误触 --coverage-threshold。
+      this.coverage.recordAndRender(files, [], this.coverage.buildScanResolver(files));
+      LoggerUtils.info(
+        mode === 'file' ? '✅ 未发现需要提取的文本' : '✅ 所有文件均未发现需要提取的文本',
       );
-      LoggerUtils.info('✅ 所有文件均未发现需要提取的文本');
       return;
     }
 
-    const reuseResolver = await this.generateIdsForStrings(
-      extractedStrings,
-      skipLLM,
-      frameworkFiles,
-    );
-    this.displayResults(extractedStrings, true);
+    const reuseResolver = await this.generateIdsForStrings(extractedStrings, skipLLM, files);
+    this.displayResults(extractedStrings, mode === 'directory');
 
     const shouldApply = this.interactive
       ? await InteractiveUtils.promptForGenericConfirmation('是否应用这些转换？')
       : true;
 
     if (shouldApply) {
-      // path.normalize 兜底：上游 ExtractedString.filePath 可能因为来源路径不同
+      // 目录路径的 path.normalize 兜底：上游 ExtractedString.filePath 可能因为来源路径不同
       // （例如 ts.createSourceFile 内部 normalizePath 把 \ 替换成 /）出现同一文
       // 件被记成两条不同字符串。Set 直接用 === 去重会漏掉，导致同一文件被
       // transform 多次、第二次在已被改写的源码上越界。
-      const processedFiles = Array.from(
-        new Set(extractedStrings.map((s) => path.normalize(s.filePath))),
-      );
+      const processedFiles =
+        mode === 'file'
+          ? files
+          : Array.from(new Set(extractedStrings.map((s) => path.normalize(s.filePath))));
       await this.applyTransformations(processedFiles, extractedStrings, sourceSnapshots);
-      LoggerUtils.success(`✅ 转换完成！处理了 ${processedFiles.length} 个文件`);
+      LoggerUtils.success(
+        mode === 'file' ? `✅ 转换完成！` : `✅ 转换完成！处理了 ${processedFiles.length} 个文件`,
+      );
     }
 
-    this.recordAndRenderCoverage(frameworkFiles, extractedStrings, reuseResolver);
+    this.coverage.recordAndRender(files, extractedStrings, reuseResolver);
   }
 
   /**
@@ -272,7 +258,7 @@ export class GenerateProcessor extends BaseProcessor {
    * 无译文的新 key。两处统一走本方法，杜绝形态漂移。
    */
   private toLocaleMessage(item: ExtractedString): string {
-    return CommonASTUtils.buildLocaleMessage(item, this.adapter.getLibrary());
+    return buildLocaleMessage(item, this.adapter.getLibrary());
   }
 
   /**
@@ -291,7 +277,7 @@ export class GenerateProcessor extends BaseProcessor {
     skipLLM: boolean = false,
     scannedFilePaths?: string[],
   ): Promise<IdReuseResolver> {
-    const fileGroups = FileUtils.groupBy(extractedStrings, (str) => str.filePath);
+    const fileGroups = groupBy(extractedStrings, (str) => str.filePath);
     const textToIdMap = new Map<string, string>();
 
     const reuseResolver = new IdReuseResolver(this.config, this.isCustom);
@@ -415,7 +401,7 @@ export class GenerateProcessor extends BaseProcessor {
     LoggerUtils.info(`\n📋 共提取 ${extractedStrings.length} 个字符串:`);
 
     if (groupByFile) {
-      const fileGroups = FileUtils.groupBy(extractedStrings, (str) => str.filePath);
+      const fileGroups = groupBy(extractedStrings, (str) => str.filePath);
 
       for (const [filePath, strings] of Object.entries(fileGroups)) {
         LoggerUtils.info(`\n📄 ${FileUtils.getRelativePath(filePath)} (${strings.length} 个):`);
@@ -569,12 +555,9 @@ export class GenerateProcessor extends BaseProcessor {
     // 且无异常触发回滚、命令仍报成功——留下「源码已改、locale 未写」的不一致态。
     // 探测口径（桶式 / 遗留单文件 / 单文件）统一收口于 findCorruptLocale；generate 仅更新
     // source locale，故只校验 source。
-    const corruptSource = LanguageFileManager.findCorruptLocale(
-      this.config,
-      this.isCustom,
-      this.config.locales.source,
-      { checkLegacy: true },
-    );
+    const corruptSource = this.langFiles.findCorruptLocale(this.config.locales.source, {
+      checkLegacy: true,
+    });
     if (corruptSource) {
       throw new Error(
         this.config.buckets
@@ -586,12 +569,7 @@ export class GenerateProcessor extends BaseProcessor {
     // 阶段 1.5（写源码前预检）：把 nested 前缀冲突这类确定性、可预判的 locale 序列化错误
     // 前移到源码尚未改写时暴露。否则先写源码、阶段 3 才在 updateLanguageFiles 内做前缀冲突
     // 校验，一旦抛错会留下「源码已改、locale 未写」的不一致态（重跑找不到中文、需 git 回滚）。
-    LanguageFileManager.assertSerializableUpdate(
-      this.config,
-      this.isCustom,
-      extractedStrings,
-      keyBucketMap,
-    );
+    this.langFiles.assertSerializableUpdate(extractedStrings, keyBucketMap);
 
     // 阶段 2：原子地写所有源码——单文件写失败立即停止并回滚已写文件，确保「要么全改、
     // 要么全不改」；此时语言文件尚未更新，不会留下源码-语言文件不一致的污染态。
@@ -657,9 +635,7 @@ export class GenerateProcessor extends BaseProcessor {
     // 源码已落盘但 locale 未写，会留下「源码已变 t()、locale 缺失」的污染态，破坏阶段 2
     // 宣称的「要么全改、要么全不改」。故与阶段 2 对称：捕获失败并按 written[] 回滚源码。
     try {
-      LanguageFileManager.updateLanguageFiles(
-        this.config,
-        this.isCustom,
+      this.langFiles.updateLanguageFiles(
         extractedStrings,
         keyBucketMap,
         this.report,
@@ -667,7 +643,7 @@ export class GenerateProcessor extends BaseProcessor {
         {
           preFinalized: Boolean(options?.preFinalizedLocale),
           // 把提取阶段 drain 的快照交给 linter，让它与 coverage 看到同一份比较运算符跳过项。
-          skippedComparisons: this.skippedComparisons,
+          skippedComparisons: this.coverage.getSkippedComparisons(),
         },
       );
     } catch (error) {
@@ -747,153 +723,17 @@ export class GenerateProcessor extends BaseProcessor {
     );
 
     if (this.runMode === 'dry-run') {
-      this.writePlan(uniqueFilePaths, results, extractedStrings, keyBucketMap);
+      this.planApplier.writePlan(uniqueFilePaths, results, extractedStrings, keyBucketMap, {
+        planOutputDir: this.planOutputDir,
+        skipLLM: this.lastSkipLLM,
+        // 与 commitToDisk 同源：linter 与 coverage 共享同一份比较运算符跳过项快照。
+        skippedComparisons: this.coverage.getSkippedComparisons(),
+      });
       return;
     }
 
     // 传入 originalContent 作为写失败时的回滚基线（commitToDisk 据此保证源码原子写）
     await this.commitToDisk(results, extractedStrings, keyBucketMap);
-  }
-
-  /**
-   * dry-run 输出：把内存中的 transform 结果序列化为 plan + sources/。
-   *
-   * 设计要点：
-   * - plan.json 完整保留 hits，每条 hit 都能反查到原文件的具体替换点
-   * - sources/<relPath> 保留 transform 后完整文件内容，apply 时直接落盘
-   * - sourceHash 用 transform 前的原始内容（apply 时校验源码未被外部改动）
-   */
-  private writePlan(
-    uniqueFilePaths: string[],
-    results: Array<{ file: string; code: string; originalContent: string }>,
-    extractedStrings: ExtractedString[],
-    keyBucketMap: Record<string, string> | undefined,
-  ): void {
-    const planRoot = this.planOutputDir ?? GeneratePlanWriter.getDefaultPlansRoot(this.config.root);
-    const planDir = path.join(planRoot, GeneratePlanWriter.generateDirName());
-
-    // 按文件归组 ExtractedString，便于在 entries 内挂载 hits
-    const byFile = new Map<string, ExtractedString[]>();
-    for (const s of extractedStrings) {
-      const normalized = path.normalize(s.filePath);
-      if (!byFile.has(normalized)) byFile.set(normalized, []);
-      byFile.get(normalized)!.push(s);
-    }
-
-    const localeDelta: Record<string, string> = {};
-    for (const item of extractedStrings) {
-      if (!item.semanticId) continue;
-      // 与 resolveSemanticId 的复用查找键共用同一 canonical 形态（见 toLocaleMessage）
-      const message = this.toLocaleMessage(item);
-      // 重复 semanticId 取首次（generateIdsForStrings 已经保证同原文 → 同 key，
-      // 不同原文 → 不同 key；这里的 first-wins 是冗余防御）
-      // 用 hasOwnProperty 而非 `in`：`in` 走原型链，semanticId 为 'constructor' /
-      // 'toString' 等原型成员名时会假命中，导致该 key 被静默丢弃，apply 阶段把源码改成
-      // t('constructor') 却没有对应 locale 值（与 doctor checkMissingTargetKeys 同类修复）。
-      if (!Object.prototype.hasOwnProperty.call(localeDelta, item.semanticId)) {
-        localeDelta[item.semanticId] = message;
-      }
-    }
-
-    const transformedSources = new Map<string, string>();
-    const entries: GeneratePlanFileEntry[] = [];
-
-    // uniqueFilePaths 与 results 同源等长，循环内逐个 results.find 是 O(n²)；预建索引后
-    // 取用 O(1)，大目录 dry-run（成百上千文件）时收益明显。
-    const resultByFile = new Map(results.map((r) => [r.file, r]));
-    for (const filePath of uniqueFilePaths) {
-      const result = resultByFile.get(filePath);
-      // 不变量：uniqueFilePaths 与 results 同源于 transformToMemory，任一文件 transform
-      // 失败已在该阶段抛错，故每个 filePath 必有对应 result。此处 fail-loud 而非静默
-      // skip——静默会写出缺转换源码的指纹条目，损坏 plan。
-      if (!result) {
-        throw new Error(`内部错误：plan 写入时缺少文件「${filePath}」的 transform 结果`);
-      }
-
-      const relPosix = GeneratePlanWriter.toRelPosix(this.config.root, filePath);
-      const transformedRef = `${GeneratePlanWriter.SOURCES_DIRNAME}/${relPosix}`;
-      transformedSources.set(relPosix, result.code);
-
-      // 复用 transformToMemory 阶段已读取的原文，与 sourceHash 共用同一份快照
-      const sourceHash = GeneratePlanWriter.sha256(result.originalContent);
-
-      const fileStrings = byFile.get(filePath) ?? [];
-      const hits: GeneratePlanHit[] = fileStrings
-        .filter((s) => Boolean(s.semanticId))
-        .map((s) => ({
-          semanticId: s.semanticId,
-          original: s.original,
-          processedMessage: s.processedMessage,
-          context: s.context,
-          templateContext: s.templateContext,
-          componentType: s.componentType,
-          line: s.line,
-          column: s.column,
-          isTemplateString: s.isTemplateString,
-          templateVariables: s.templateVariables,
-          attributeName: s.attributeName,
-          module: keyBucketMap?.[s.semanticId],
-        }));
-
-      entries.push({
-        file: relPosix,
-        hits,
-        transformedCodeRef: transformedRef,
-        sourceHash,
-      });
-    }
-
-    const existingLocaleKeys = this.readCurrentSourceLocaleKeys();
-    const newKeyCount = Object.keys(localeDelta).filter(
-      (key) => !existingLocaleKeys.has(key),
-    ).length;
-    const plan: GeneratePlan = {
-      schemaVersion: 2,
-      command: 'generate',
-      finishedAt: new Date().toISOString(),
-      root: this.config.root,
-      isCustom: this.isCustom,
-      framework: this.config.framework.type,
-      toolVersion: GenerateProcessor.getToolVersion(),
-      // skipLLM 模式下记 'local'：与 LLMClient.generateSemanticIdsForFiles 的本地
-      // 兜底路径对应，让 reviewer 知道本批 ID 没经过 LLM。
-      llmModel: this.lastSkipLLM ? 'local' : this.config.llm.idGeneration.model,
-      summary: {
-        files: entries.length,
-        hits: entries.reduce((sum, e) => sum + e.hits.length, 0),
-        newKeys: newKeyCount,
-      },
-      entries,
-      localeDelta,
-      keyBucketMap,
-      outputShape: {
-        bucketsEnabled: Boolean(this.config.buckets),
-        separator: this.config.keys.separator,
-        source: this.config.locales.source,
-      },
-    };
-
-    GeneratePlanWriter.write(planDir, plan, transformedSources);
-    GeneratePlanWriter.logPlanReadyMessage(planDir);
-
-    // dry-run 评审阶段先跑一遍健康度 lint，让 reviewer 在 plan/RunReport 里就能看到 lint 告警，
-    // 而非等真正落盘后才暴露。
-    // Why: dry-run 不进 commitToDisk → 原本永远不会触达 LocaleValueLinter。
-    // 注意口径差异（非完全等价于 commit 路径）：
-    //   - 此处只 lint localeDelta（本轮新增 key→value）；commit 路径 lint 的是
-    //     finalMap = {...已有 localeMap, ...新增}（全量合并 map）。因此跨 key 类检查
-    //     （findSemanticDuplicates / findHardcodedComparisons / findCrossModuleReuseCandidates）
-    //     在 dry-run 看不到「新 key 与既有 key 冲突」这类发现——它们会在 apply/commit 阶段
-    //     如实补报（apply 经 commitToDisk → updateLanguageFiles 会对全量 map 再跑一次 lint），
-    //     不会被静默吞掉，只是 dry-run 预览不完整。
-    //   - skippedComparisons 传入提取阶段已 drain 的快照（供 coverage 复用同一份）；
-    //     嵌套中文不传给 linter：本 processor 在 renderManualSummary 里自行渲染
-    //     this.skippedNestedChinese，传进来会同一条产出两份 finding。
-    const lintFindings = LocaleValueLinter.analyze(localeDelta, {
-      separator: this.config.keys.separator,
-      skippedComparisons: this.skippedComparisons,
-    });
-    LocaleValueLinter.emit(lintFindings, { console: true, report: this.report });
   }
 
   /**
@@ -925,299 +765,14 @@ export class GenerateProcessor extends BaseProcessor {
   }
 
   /**
-   * apply 完成后是否保留 plan 目录。
-   *
-   * 默认 false（清理）：plan 的生命周期是「生成 → review → apply」，apply 完
-   * 即终结；保留只在事后追溯有少量价值，但单 plan 体积大（含 sources/）容易
-   * 累积。CLI 通过 `--keep-plan` 让用户显式保留。
-   */
-  private keepPlanAfterApply: boolean = false;
-
-  /**
    * apply-plan 入口：从已有 plan.json 直接回放，跳过 AST 解析与 LLM 调用。
    *
-   * 流程：
-   *   1. 读取 plan.json + sources/
-   *   2. 校验源文件 sha256 与 plan.entries[].sourceHash 一致
-   *   3. 调用 commitToDisk 落盘
-   *
-   * 关于 lint：apply 不重复解析 AST、不重跑 LLM，但确实会再跑一次 LocaleValueLinter——
-   * 它经 commitToDisk → updateLanguageFiles 对全量合并 map 做 lint（与普通 commit 同路径）。
-   * 这正好补齐 dry-run 阶段只 lint 增量 delta 看不到的跨 key 发现（见 writePlan 注释）。
+   * 本方法只负责套上 Processor 的生命周期外壳（RunReport 落盘、成功/失败收尾），
+   * 回放流程与其取舍详见 PlanApplier.apply。
    */
   async applyFromPlan(planPath: string, options: { keepPlan?: boolean } = {}): Promise<void> {
-    this.keepPlanAfterApply = Boolean(options.keepPlan);
-    return this.executeWithLifecycle(() => this._applyFromPlan(planPath));
-  }
-
-  private async _applyFromPlan(planPath: string): Promise<void> {
-    LoggerUtils.info(`📂 加载 Plan: ${planPath}`);
-    const { plan, transformedSources } = GeneratePlanWriter.read(planPath, {
-      expectedRoot: this.config.root,
-    });
-
-    if (plan.framework !== this.config.framework.type) {
-      throw new Error(
-        `Plan 框架 (${plan.framework}) 与当前配置 (${this.config.framework.type}) 不一致，拒绝 apply。`,
-      );
-    }
-    if (plan.isCustom !== this.isCustom) {
-      throw new Error(
-        `Plan 目标目录 (${plan.isCustom ? 'custom' : 'main'}) 与当前 --custom 配置不一致，拒绝 apply。`,
-      );
-    }
-
-    // 落盘形态配置漂移告警：指纹只覆盖源文件、不覆盖 buckets/separator/source。这些在
-    // dry-run 与 apply 之间被改过时，apply 会用 plan 旧 keyBucketMap 配新配置写出与预览
-    // 不一致的 locale 形态。低风险（源码仍逐字回放、指纹保护），故告警而非拒绝。
-    if (plan.outputShape) {
-      const current = {
-        bucketsEnabled: Boolean(this.config.buckets),
-        separator: this.config.keys.separator,
-        source: this.config.locales.source,
-      };
-      const diffs: string[] = [];
-      if (plan.outputShape.bucketsEnabled !== current.bucketsEnabled) {
-        diffs.push(
-          `buckets ${plan.outputShape.bucketsEnabled ? '开启' : '关闭'} → ${current.bucketsEnabled ? '开启' : '关闭'}`,
-        );
-      }
-      if (plan.outputShape.separator !== current.separator) {
-        diffs.push(`keys.separator '${plan.outputShape.separator}' → '${current.separator}'`);
-      }
-      if (plan.outputShape.source !== current.source) {
-        diffs.push(`locales.source '${plan.outputShape.source}' → '${current.source}'`);
-      }
-      if (diffs.length > 0) {
-        LoggerUtils.warn(
-          '⚠️  Plan 生成后影响 locale 落盘形态的配置已变化，apply 产出可能与 dry-run 预览不一致：',
-        );
-        for (const d of diffs) LoggerUtils.warn(`   - ${d}`);
-        LoggerUtils.warn('💡 如需与预览严格一致，请重新运行 `generate --dry-run` 后再 apply。');
-      }
-    }
-
-    const { mismatched, contents } = GeneratePlanWriter.verifyFingerprint(plan);
-    if (mismatched.length > 0) {
-      LoggerUtils.error('❌ Plan 生成后以下源文件已被外部修改，拒绝 apply：');
-      for (const f of mismatched) LoggerUtils.error(`   - ${f}`);
-      LoggerUtils.warn('💡 请重新运行 `generate --dry-run` 生成新 plan，确认无误后再 apply');
-      throw new Error('Plan 指纹校验失败');
-    }
-
-    // 把 plan 还原成 commitToDisk 期望的入参：
-    //   - results: 文件绝对路径 + transform 后代码
-    //   - extractedStrings: 仅需 semanticId + 用于 message 还原的字段
-    const results: Array<{ file: string; code: string; originalContent?: string }> = [];
-    for (const entry of plan.entries) {
-      const abs = GeneratePlanWriter.fromRelPosix(plan.root, entry.file);
-      // originalContent 取自 verifyFingerprint 已读取的同一份快照，作为 commitToDisk 的回滚
-      // 基线，避免写盘前再次 readFileSync 引入「校验→读取」窗口（详见 verifyFingerprint 注释）。
-      results.push({
-        file: abs,
-        code: transformedSources.get(entry.file)!,
-        originalContent: contents.get(entry.file),
-      });
-    }
-
-    // 把 localeDelta 直接展开成 ExtractedString 列表（仅保留下游需要的字段）。
-    // plan.localeDelta 已是 writePlan 阶段 createMessageWithOptions + finalizeLocaleMessage
-    // 跑完的最终 locale 值，因此这里把 message 原样放进 original/processedMessage，
-    // 并通过 commitToDisk 的 preFinalizedLocale 标记让 updateLanguageFiles 跳过二次定稿。
-    // Why（关键）：syntheticStrings 不带 isTemplateString/templateVariables，若不打这个标记，
-    // updateLanguageFiles 会用空 placeholderMap 重新 finalize，把真实占位符 {x} 当字面量
-    // 二次转义（单花括号库写成 {'{'}x{'}'}），使 apply 结果偏离 dry-run 预览且运行时插值失效。
-    const syntheticStrings: ExtractedString[] = Object.entries(plan.localeDelta).map(
-      ([semanticId, message]) => ({
-        original: message,
-        processedMessage: message,
-        semanticId,
-        filePath: '<plan>',
-        line: 0,
-        column: 0,
-        context: 'js-code',
-        componentType: 'other',
-      }),
+    return this.executeWithLifecycle(() =>
+      this.planApplier.apply(planPath, { keepPlan: Boolean(options.keepPlan) }),
     );
-
-    const localeKeysBeforeApply = this.readCurrentSourceLocaleKeys();
-    await this.commitToDisk(results, syntheticStrings, plan.keyBucketMap, {
-      preFinalizedLocale: true,
-    });
-    const localeKeysAfterApply = this.readCurrentSourceLocaleKeys();
-    const appliedNewKeys = Object.keys(plan.localeDelta).filter(
-      (key) => !localeKeysBeforeApply.has(key) && localeKeysAfterApply.has(key),
-    ).length;
-    LoggerUtils.success(
-      `✅ Plan 回放完成：${plan.summary.files} 个文件、${appliedNewKeys} 个新 key`,
-    );
-
-    // 默认清理 plan 目录：commitToDisk 成功后 plan 已无价值，保留只会累积。
-    // 用户通过 --keep-plan 显式保留（如希望事后审计 / 在 PR 中附带）。
-    if (this.keepPlanAfterApply) {
-      LoggerUtils.info(`📁 已保留 Plan 目录（--keep-plan）：${path.dirname(planPath)}`);
-    } else {
-      const planDir = path.dirname(planPath);
-      if (GeneratePlanWriter.cleanup(planDir)) {
-        LoggerUtils.info(`🗑️  Plan 目录已清理：${planDir}（如需保留请使用 --keep-plan）`);
-      }
-    }
-  }
-
-  /** 读取 apply 前后的 source locale key，用真实磁盘差集生成回放统计。 */
-  private readCurrentSourceLocaleKeys(): Set<string> {
-    const corruptSource = LanguageFileManager.findCorruptLocale(
-      this.config,
-      this.isCustom,
-      this.config.locales.source,
-      { checkLegacy: true },
-    );
-    if (corruptSource) {
-      throw new Error(
-        `语言文件损坏，已中止 generate（无法可靠计算或回放 locale 差集）: ${FileUtils.getRelativePath(corruptSource)}`,
-      );
-    }
-    const localeMap = this.config.buckets
-      ? LanguageFileManager.readBucketedLocaleWithBucketMap(this.config, this.isCustom).flat
-      : LanguageFileManager.readLocaleFile(this.config, this.isCustom);
-    if (localeMap === null) {
-      throw new Error('语言文件读取失败，已中止 generate（无法可靠计算或回放 locale 差集）');
-    }
-    return new Set(Object.keys(localeMap));
-  }
-
-  /**
-   * 仅用于覆盖率统计的轻量 resolver：构造 IdReuseResolver 并扫描已有 t()/$t() 调用点，
-   * 不参与 ID 生成 / 落盘。供空提取分支（无 ExtractedString，故不会走 generateIdsForStrings）
-   * 复用——让 alreadyI18n 反映真实已国际化量，避免 skipped 把覆盖率误算成 0。
-   */
-  private buildCoverageScanResolver(filePaths: string[]): IdReuseResolver {
-    const resolver = new IdReuseResolver(this.config, this.isCustom);
-    resolver.scanExistingCallsInSources(filePaths);
-    return resolver;
-  }
-
-  /**
-   * 汇总本轮 generate 的覆盖率指标并打印总览 summary。
-   *
-   * 计算口径（以「中文片段调用点」为单位）：
-   *   alreadyI18n      = 源码中已存在的 t()/$t() 调用点数（IdReuseResolver 扫到）
-   *   newlyGenerated   = 本轮 extractor 提取出的 ExtractedString 条目数
-   *   skipped          = 工具确认属于文案、但无法安全自动改写的中文片段
-   *
-   * skipped 当前纳入比较运算符、嵌套插值中文、HTML 模板和类属性初始化器；注释、
-   * console、import、类型字面量和用户 filterPatterns 等明确排除项不进入覆盖率分母。
-   *
-   * 同步把上述源码级跳过项作为 ManualEntry 写入 report，让最终落盘日志里能看到
-   * 与 coverage.skipped 同口径的完整待人工清单。
-   */
-  private recordAndRenderCoverage(
-    scannedFilePaths: string[],
-    extractedStrings: ExtractedString[],
-    reuseResolver: IdReuseResolver | null,
-  ): void {
-    // 1. 用提取阶段已 drain 的快照（this.skippedComparisons）填充比较运算符跳过项的
-    //    结构化 ManualEntry 与覆盖率 skipped 计数。该快照在 extract 之后、apply/lint 之前
-    //    就已从全局 collector drain 出来，故不会被 commitToDisk 里的 LocaleValueLinter
-    //    抢先清空（两者共享同一份；linter 通过 options.skippedComparisons 拿到相同数据）。
-    const skippedComparisons = this.skippedComparisons;
-    for (const item of skippedComparisons) {
-      this.report.addManualEntry({
-        category: 'comparison-operand',
-        file: FileUtils.getRelativePath(item.filePath),
-        line: item.line,
-        column: item.column,
-        text: item.text,
-        reason: '比较运算符两侧的中文翻译后会与状态值脱钩，工具主动跳过',
-        suggestion: RunReport.MANUAL_DEFAULT_SUGGESTIONS['comparison-operand'],
-      });
-    }
-
-    for (const item of this.skippedNestedChinese) {
-      this.report.addManualEntry({
-        category: 'nested-interpolation-chinese',
-        file: FileUtils.getRelativePath(item.filePath),
-        line: item.line,
-        column: item.column,
-        text: item.text,
-        dedupeKey: item.occurrence === undefined ? undefined : String(item.occurrence),
-        reason: '插值表达式内的中文会作为运行时参数原样渲染，工具无法安全递归改写',
-        suggestion: RunReport.MANUAL_DEFAULT_SUGGESTIONS['nested-interpolation-chinese'],
-      });
-    }
-
-    const extractorManualSkips = this.manualSkips.filter(
-      (item) => item.category !== 'nested-interpolation',
-    );
-    for (const item of extractorManualSkips) {
-      const category = item.category === 'html-template' ? 'html-in-template' : 'class-property';
-      for (let index = 0; index < item.count; index++) {
-        this.report.addManualEntry({
-          category,
-          file: '<source>',
-          text: item.count === 1 ? item.message : `${item.message} #${index + 1}`,
-          reason: item.message,
-          suggestion: RunReport.MANUAL_DEFAULT_SUGGESTIONS[category],
-        });
-      }
-    }
-
-    const alreadyI18n = reuseResolver?.getExistingCallSiteCount() ?? 0;
-    const newlyGenerated = extractedStrings.length;
-    const skipped =
-      skippedComparisons.length +
-      this.skippedNestedChinese.length +
-      extractorManualSkips.reduce((sum, item) => sum + item.count, 0);
-    const total = alreadyI18n + newlyGenerated + skipped;
-    const coverageRate = total === 0 ? 1 : (alreadyI18n + newlyGenerated) / total;
-
-    const metric: CoverageMetric = {
-      scannedFiles: scannedFilePaths.length,
-      totalChineseSegments: total,
-      alreadyI18n,
-      newlyGenerated,
-      skipped,
-      coverageRate,
-    };
-    this.report.setCoverage(metric);
-    this.renderCoverageSummary(metric);
-  }
-
-  private renderCoverageSummary(m: CoverageMetric): void {
-    const pct = (n: number, base: number): string =>
-      base === 0 ? '0.0%' : `${((n / base) * 100).toFixed(1)}%`;
-    const ratePct = `${(m.coverageRate * 100).toFixed(1)}%`;
-
-    LoggerUtils.info('');
-    LoggerUtils.info('📊 本次国际化覆盖率');
-    LoggerUtils.info('────────────────────────────────────');
-    LoggerUtils.info(`扫描文件          ${m.scannedFiles}`);
-    LoggerUtils.info(`中文片段总数      ${m.totalChineseSegments}`);
-    LoggerUtils.info(
-      `  已国际化         ${m.alreadyI18n}  (${pct(m.alreadyI18n, m.totalChineseSegments)})`,
-    );
-    LoggerUtils.info(
-      `  本轮新生成       ${m.newlyGenerated}  (${pct(m.newlyGenerated, m.totalChineseSegments)})`,
-    );
-    LoggerUtils.info(
-      `  跳过/待人工      ${m.skipped}  (${pct(m.skipped, m.totalChineseSegments)})`,
-    );
-    LoggerUtils.info('────────────────────────────────────');
-    LoggerUtils.info(`🎯 当前覆盖率   ${ratePct}`);
-
-    // 按 category 聚合「待人工处理」清单
-    const groups = this.report.groupCoverageManualByCategory();
-    const entryCount = Object.values(groups).reduce((s, arr) => s + arr.length, 0);
-    if (entryCount > 0) {
-      LoggerUtils.info('');
-      LoggerUtils.warn(`⚠️  覆盖率待人工 ${entryCount} 条（详见 .i18n-tools/logs/）`);
-      for (const [category, list] of Object.entries(groups)) {
-        const label = RunReport.MANUAL_LABELS[category as keyof typeof RunReport.MANUAL_LABELS];
-        LoggerUtils.warn(
-          `   • ${category.padEnd(20)} ${String(list.length).padStart(4)}  — ${label}`,
-        );
-      }
-    }
-    LoggerUtils.info('');
   }
 }

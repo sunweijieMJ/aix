@@ -1,9 +1,10 @@
 import type { IComponentInjector } from '../../adapters/FrameworkAdapter';
 import ts from 'typescript';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { parseSourceFile } from '../../utils/ast-core';
 import { LoggerUtils } from '../../utils/logger';
 import { ReactASTUtils } from './react-ast-utils';
-import { type ReactImportManager, HOC_CLASS_SUFFIX } from './ReactImportManager';
+import type { ReactImportManager } from './ReactImportManager';
+import { HOC_CLASS_SUFFIX } from './react-restore-cleanup';
 import type { ReactI18nLibrary } from './libraries';
 
 interface Transformation {
@@ -32,7 +33,7 @@ export class ReactComponentInjector implements IComponentInjector {
 
   inject(code: string): string {
     // Phase 1: 分析原始代码，找出需要注入的组件
-    const initialSourceFile = CommonASTUtils.parseSourceFile(code, 'temp.tsx');
+    const initialSourceFile = parseSourceFile(code, 'temp.tsx');
     const componentsToModify: ComponentInfo[] = [];
 
     const initialVisitor = (node: ts.Node) => {
@@ -106,7 +107,7 @@ export class ReactComponentInjector implements IComponentInjector {
     }
 
     // Phase 3: 重新解析带有新导入的代码并应用转换
-    const sourceFileWithImports = CommonASTUtils.parseSourceFile(codeWithImports, 'temp.tsx');
+    const sourceFileWithImports = parseSourceFile(codeWithImports, 'temp.tsx');
     const transformations: Transformation[] = [];
 
     const finalVisitor = (node: ts.Node) => {

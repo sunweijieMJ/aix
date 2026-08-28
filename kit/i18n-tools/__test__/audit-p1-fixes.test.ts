@@ -18,9 +18,10 @@ import { LoggerUtils } from '../src/utils/logger';
 import { loadEnv } from '../src/utils/env';
 import { RunReport } from '../src/utils/run-report';
 import { extractPlaceholderNames } from '../src/utils/placeholder-utils';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import { toSingleBracePlaceholders } from '../src/utils/message-shape';
 import { getTranslationSystemPrompt, getTranslationUserPrompt } from '../src/utils/prompts';
 import type { I18nToolsConfig, ResolvedConfig, ResolvedLLMTaskConfig } from '../src/config';
+import { classifyJsonFile, loadJsonDictOrThrow } from '../src/utils/json-io';
 
 /**
  * 2026-08 全库审计确认的 P1 修复回归集。每个 describe 固定一个「漏提取 / 漏还原 /
@@ -407,15 +408,15 @@ describe('classifyJsonFile — 合法 null 不算损坏', () => {
   it('内容为 null 的文件归类为 empty，loadJsonDictOrThrow 不抛错', () => {
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
     const file = write('null.json', 'null');
-    expect(FileUtils.classifyJsonFile(file).status).toBe('empty');
-    expect(FileUtils.loadJsonDictOrThrow(file, () => 'should not throw')).toEqual({});
+    expect(classifyJsonFile(file).status).toBe('empty');
+    expect(loadJsonDictOrThrow(file, () => 'should not throw')).toEqual({});
   });
 
   it('对照：真正损坏的 JSON 仍判 corrupt 并抛错（不回归）', () => {
     vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
     const file = write('bad.json', '{ 坏的');
-    expect(FileUtils.classifyJsonFile(file).status).toBe('corrupt');
-    expect(() => FileUtils.loadJsonDictOrThrow(file, () => 'corrupt!')).toThrow('corrupt!');
+    expect(classifyJsonFile(file).status).toBe('corrupt');
+    expect(() => loadJsonDictOrThrow(file, () => 'corrupt!')).toThrow('corrupt!');
   });
 });
 
@@ -479,9 +480,7 @@ describe('占位符名字符集 — 采集端与 restore 归一端同源', () =>
       new Set(['$route', 'my-var']),
     );
     // restore 归一端（双花括号 → 单花括号）
-    expect(CommonASTUtils.toSingleBracePlaceholders('a {{$route}} b {{my-var}}')).toBe(
-      'a {$route} b {my-var}',
-    );
+    expect(toSingleBracePlaceholders('a {{$route}} b {{my-var}}')).toBe('a {$route} b {my-var}');
   });
 });
 

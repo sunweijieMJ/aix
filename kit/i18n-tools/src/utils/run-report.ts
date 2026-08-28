@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { FileUtils } from './file-utils';
 import { extractSafeError } from './logger';
+import { writeJsonFile } from './json-io';
 
 /**
  * 失败发生的阶段（与三个 Processor 内已有的失败分支一一对应）：
@@ -264,7 +264,7 @@ export class RunReport {
         warnings: this.warnings,
         needsManual: this.needsManual,
       };
-      FileUtils.writeJsonFile(filePath, payload);
+      writeJsonFile(filePath, payload);
       RunReport.pruneOldLogs(logsDir);
       return filePath;
     } catch {

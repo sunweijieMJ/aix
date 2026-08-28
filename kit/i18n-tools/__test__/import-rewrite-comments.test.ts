@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import { mergeNamedImport, removeNamedImports } from '../src/utils/import-surgery';
 
 /**
  * 回归（Bug2）：多行 import 内带行注释（`useI18n, // 组合式 API`）时，
@@ -28,7 +28,7 @@ describe('命名导入改写：花括号内注释不破坏语法（Bug2）', () 
 `;
 
   it('mergeNamedImport：多行 import 含行注释时输出为合法语法且导入名正确', () => {
-    const out = CommonASTUtils.mergeNamedImport(multiLineWithComment, 'vue-i18n', ['t']);
+    const out = mergeNamedImport(multiLineWithComment, 'vue-i18n', ['t']);
     expect(parseDiagnostics(out)).toHaveLength(0);
     // 注释被丢弃，三个导入名齐全
     expect(out).toContain('useI18n');
@@ -40,14 +40,14 @@ describe('命名导入改写：花括号内注释不破坏语法（Bug2）', () 
 
   it('mergeNamedImport：块注释同样被剥离且语法合法', () => {
     const code = `import { useI18n /* 组合式 */, createI18n } from 'vue-i18n';\n`;
-    const out = CommonASTUtils.mergeNamedImport(code, 'vue-i18n', ['t']);
+    const out = mergeNamedImport(code, 'vue-i18n', ['t']);
     expect(parseDiagnostics(out)).toHaveLength(0);
     expect(out).not.toContain('组合式');
     expect(out).toContain('t');
   });
 
   it('removeNamedImports：多行 import 含行注释时摘除后输出为合法语法', () => {
-    const out = CommonASTUtils.removeNamedImports(multiLineWithComment, isVueI18n, ['useI18n']);
+    const out = removeNamedImports(multiLineWithComment, isVueI18n, ['useI18n']);
     expect(parseDiagnostics(out)).toHaveLength(0);
     // useI18n 被摘除，createI18n 保留
     expect(out).not.toContain('useI18n');
@@ -57,13 +57,13 @@ describe('命名导入改写：花括号内注释不破坏语法（Bug2）', () 
 
   it('无注释场景 mergeNamedImport 行为与现状一致（回归）', () => {
     const code = `import { useI18n } from 'vue-i18n';\n`;
-    const out = CommonASTUtils.mergeNamedImport(code, 'vue-i18n', ['t']);
+    const out = mergeNamedImport(code, 'vue-i18n', ['t']);
     expect(out).toContain(`import { useI18n, t } from 'vue-i18n';`);
   });
 
   it('无注释场景 removeNamedImports 行为与现状一致（回归）', () => {
     const code = `import { useI18n, createI18n } from 'vue-i18n';\n`;
-    const out = CommonASTUtils.removeNamedImports(code, isVueI18n, ['useI18n']);
+    const out = removeNamedImports(code, isVueI18n, ['useI18n']);
     expect(out).toContain(`import { createI18n } from 'vue-i18n';`);
   });
 });

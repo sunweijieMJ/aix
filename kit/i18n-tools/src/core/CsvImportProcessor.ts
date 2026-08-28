@@ -6,6 +6,7 @@ import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
 import { assertLangsAreTargets, decodeUtf8Strict, parseCsv } from '../utils/csv-utils';
 import { FileProcessor } from './FileProcessor';
+import { loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
 
 export interface CsvImportOptions {
   /** CSV 文件路径（必填） */
@@ -40,12 +41,12 @@ export class CsvImportProcessor extends FileProcessor {
   /**
    * 严格加载字典文件：缺失/空 → {}；有内容但 JSON 损坏 → 抛错中止。
    *
-   * Why 不用 FileUtils.safeLoadJsonFile（损坏回退 {}）：损坏的 untranslated.json 会被
+   * Why 不用 safeLoadJsonFile（损坏回退 {}）：损坏的 untranslated.json 会被
    * 当成 0 条目，CSV 里本应命中的 key 全部落入 missingKeys，审核员翻好的译文被静默
    * 丢弃却退出成功。与 CsvExportProcessor 的「损坏即中止」守卫对齐。
    */
   private loadDictStrict(filePath: string, label: string): Translations {
-    return FileUtils.loadJsonDictOrThrow<Translations>(
+    return loadJsonDictOrThrow<Translations>(
       filePath,
       (p) =>
         `${label}解析失败（JSON 格式损坏）: ${p}\n` +
@@ -189,8 +190,8 @@ export class CsvImportProcessor extends FileProcessor {
       }
     }
 
-    if (untranslatedDirty) FileUtils.writeTranslationsFile(untranslatedPath, untranslated);
-    if (translatedDirty) FileUtils.writeTranslationsFile(translatedPath, translated);
+    if (untranslatedDirty) writeTranslationsFile(untranslatedPath, untranslated);
+    if (translatedDirty) writeTranslationsFile(translatedPath, translated);
     LoggerUtils.success(
       `✅ 已写回 ${updated} 处译文到 ${writeTargets.map((p) => FileUtils.getRelativePath(p)).join(' / ')}`,
     );

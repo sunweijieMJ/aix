@@ -2,10 +2,10 @@ import type { ResolvedConfig } from '../config';
 import { FILES } from '../utils/constants';
 import { FileUtils } from '../utils/file-utils';
 import { Glossary, type GlossaryMap } from '../utils/glossary';
-import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
+import { loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
 
 /**
  * Pick 处理器
@@ -49,25 +49,20 @@ export class PickProcessor extends FileProcessor {
     // key 在 analyzeTranslationStatus 里读成 undefined、判为未翻译 → 同样无条件覆写
     // untranslated.json，销毁尚未 merge 的在途译文并伪报成功。故 source 与所有 target 一并
     // 校验（探测口径统一收口于 LanguageFileManager.findCorruptLocale）。
-    LanguageFileManager.assertLocalesNotCorrupt(
-      this.config,
-      this.isCustom,
-      [sourceLocale, ...targets],
-      {
-        checkLegacy: true,
-        buildMessage: (locale, file) =>
-          `locale「${locale}」解析失败：${file}，已中止 pick 以防销毁 untranslated.json 在途译文 / 伪报成功。请先修复 JSON 格式。`,
-      },
-    );
+    this.langFiles.assertLocalesNotCorrupt([sourceLocale, ...targets], {
+      checkLegacy: true,
+      buildMessage: (locale, file) =>
+        `locale「${locale}」解析失败：${file}，已中止 pick 以防销毁 untranslated.json 在途译文 / 伪报成功。请先修复 JSON 格式。`,
+    });
 
-    const messages = LanguageFileManager.getMessages(this.config, this.isCustom);
+    const messages = this.langFiles.getMessages();
     const sourceMessages = (messages[sourceLocale] || {}) as Record<string, string>;
 
     // 在途译文保护（读入口）：translate 会把 LLM 译文写回 untranslated.json、由 merge 才合入
     // locale。这里必须严格读取——损坏时中止（与 merge/translate 的 loadJsonDictOrThrow 口径
     // 一致）：损坏文件里同样可能藏着在途译文，降级为 {} 再覆写等于销毁且无提示。
     // 读取结果同时供下方「合法空源」安全闸与 analyzeTranslationStatus 的保留逻辑复用。
-    const existingUntranslated = FileUtils.loadJsonDictOrThrow<Translations>(
+    const existingUntranslated = loadJsonDictOrThrow<Translations>(
       untranslatedPath,
       (p) =>
         `待翻译文件解析失败（JSON 格式错误）: ${p}\n` +
@@ -82,7 +77,7 @@ export class PickProcessor extends FileProcessor {
     if (Object.keys(sourceMessages).length === 0) {
       // 与上方 untranslated 同为严格读取：silent 降级会把损坏的 translations.json 当 {}，
       // 安全闸随之判「无在途译文」放行，下方无条件覆写把损坏文件里的译文一并抹掉。
-      const existingTranslated = FileUtils.loadJsonDictOrThrow<Record<string, unknown>>(
+      const existingTranslated = loadJsonDictOrThrow<Record<string, unknown>>(
         translatedPath,
         (p) =>
           `已翻译文件解析失败（JSON 格式错误）: ${p}\n` +
@@ -244,13 +239,13 @@ export class PickProcessor extends FileProcessor {
     translatedPath: string,
     analysisResult: ReturnType<typeof PickProcessor.prototype.analyzeTranslationStatus>,
   ): void {
-    FileUtils.writeTranslationsFile(untranslatedPath, analysisResult.untranslatedEntries);
+    writeTranslationsFile(untranslatedPath, analysisResult.untranslatedEntries);
     LoggerUtils.info(
       `📄 生成 ${FILES.UNTRANSLATED_JSON} 文件成功 (${this.getDirectoryDescription()})`,
     );
     LoggerUtils.info(`📝 待翻译条目: ${analysisResult.untranslatedCount} 个`);
 
-    FileUtils.writeTranslationsFile(translatedPath, analysisResult.translatedEntries);
+    writeTranslationsFile(translatedPath, analysisResult.translatedEntries);
     LoggerUtils.info(
       `📄 生成 ${FILES.TRANSLATIONS_JSON} 文件成功 (${this.getDirectoryDescription()})`,
     );

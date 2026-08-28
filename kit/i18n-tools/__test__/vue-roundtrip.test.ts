@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { VueAdapter } from '../src/adapters/VueAdapter';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import { createMessageWithOptions, finalizeLocaleMessage } from '../src/utils/message-shape';
 import type { VueI18nLibraryType } from '../src/strategies/vue/libraries';
 
 /**
@@ -39,12 +39,12 @@ describe('Vue extract→transform→restore 回环', () => {
       const raw = (e as { processedMessage?: string }).processedMessage || e.original;
       const built =
         e.isTemplateString && e.templateVariables
-          ? CommonASTUtils.createMessageWithOptions(raw, e.templateVariables)
+          ? createMessageWithOptions(raw, e.templateVariables)
           : {
               message: raw.replace(/^['"`]|['"`]$/g, ''),
               placeholderMap: new Map<string, string>(),
             };
-      localeMap[e.semanticId!] = CommonASTUtils.finalizeLocaleMessage(
+      localeMap[e.semanticId!] = finalizeLocaleMessage(
         built.message,
         built.placeholderMap.values(),
         library,

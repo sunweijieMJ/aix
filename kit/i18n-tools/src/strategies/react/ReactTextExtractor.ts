@@ -1,6 +1,19 @@
 import fs from 'fs';
 import ts from 'typescript';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { extractObjectLiteralProperties, nodeToText, parseSourceFile } from '../../utils/ast-core';
+import {
+  collectNestedChineseLiteralNodes,
+  collectNestedChineseLiterals,
+  collectRuntimeChineseLiteralsFromI18nCall,
+  isAlreadyInternationalized,
+  isCommonI18nCall,
+  isComparisonOperand,
+  isExtractableStringLiteral,
+  isInConsoleCall,
+  templateLiteralContainsHtmlTags,
+  templateLiteralsContainChinese,
+} from '../../utils/ast-guards';
+import { processTemplateExpression } from '../../utils/message-shape';
 import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import { ReactASTUtils } from './react-ast-utils';
 import { FileUtils } from '../../utils/file-utils';
@@ -28,7 +41,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
    */
   async extractFromFile(filePath: string): Promise<ExtractedString[]> {
     const sourceText = fs.readFileSync(filePath, 'utf-8');
-    const sourceFile = CommonASTUtils.parseSourceFile(sourceText, filePath);
+    const sourceFile = parseSourceFile(sourceText, filePath);
 
     const extractedStrings: ExtractedString[] = [];
     // filePath 必须从入参透传到 push 处，不能用 sourceFile.fileName：
@@ -68,10 +81,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         const messageKey = property.name.text;
 
         if (ts.isObjectLiteralExpression(property.initializer)) {
-          const messageProps = CommonASTUtils.extractObjectLiteralProperties(
-            property.initializer,
-            sourceFile,
-          );
+          const messageProps = extractObjectLiteralProperties(property.initializer, sourceFile);
           // 只接受字符串字面量：简写变量值经 shorthand 分支是 {node,text} 对象（动态
           // 描述符），流入 restore 的 normalizeRestoreMessage 会对非字符串抛 TypeError，
           // 与 extractFormatMessageInfo 同口径过滤。
@@ -106,12 +116,12 @@ export class ReactTextExtractor extends BaseTextExtractor {
       // 如果节点已经被国际化结构包裹，则不提取
       const alreadyI18n = this.library
         ? this.library.isAlreadyInternationalized(node)
-        : CommonASTUtils.isAlreadyInternationalized(node);
+        : isAlreadyInternationalized(node);
       if (alreadyI18n) {
         return false;
       }
       // 如果字符串在console调用中，不提取
-      if (CommonASTUtils.isInConsoleCall(node)) {
+      if (isInConsoleCall(node)) {
         return false;
       }
     }
@@ -158,9 +168,9 @@ export class ReactTextExtractor extends BaseTextExtractor {
   ): Promise<void> {
     if (
       ts.isCallExpression(node) &&
-      (this.library?.isTranslationCall(node) ?? CommonASTUtils.isCommonI18nCall(node))
+      (this.library?.isTranslationCall(node) ?? isCommonI18nCall(node))
     ) {
-      for (const item of CommonASTUtils.collectRuntimeChineseLiteralsFromI18nCall(node)) {
+      for (const item of collectRuntimeChineseLiteralsFromI18nCall(node)) {
         const pos = ts.getLineAndCharacterOfPosition(sourceFile, item.node.getStart(sourceFile));
         this.diagnostics.recordSkippedNestedChinese(
           item.text,
@@ -245,9 +255,9 @@ export class ReactTextExtractor extends BaseTextExtractor {
     // 处理字符串字面量
     if (ts.isStringLiteral(node)) {
       // 跳过对象属性 key、模块导入路径、比较运算符/case 操作数
-      if (CommonASTUtils.isExtractableStringLiteral(node)) {
+      if (isExtractableStringLiteral(node)) {
         text = node.text;
-      } else if (CommonASTUtils.isComparisonOperand(node) && FileUtils.containsChinese(node.text)) {
+      } else if (isComparisonOperand(node) && FileUtils.containsChinese(node.text)) {
         // 比较运算符两侧的中文字面量被跳过 —— 记录到诊断集合，lint 阶段与 locale map
         // 交叉告警，识别「同句中文在他处被 i18n 化导致 === 比较失效」的风险。
         const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
@@ -259,7 +269,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         );
       }
     }
-    // 处理模板字符串：复用 CommonASTUtils.processTemplateExpression，
+    // 处理模板字符串：复用 processTemplateExpression，
     // 该方法会把字面量插值（'literal'/123/true 等）内联进文本，
     // 仅保留真正的变量表达式作为占位符——与 Vue 端对齐，避免
     // `${'literal'}` 被误当作占位符变量。
@@ -279,14 +289,14 @@ export class ReactTextExtractor extends BaseTextExtractor {
         if (quasiTexts.some((t) => FileUtils.containsChinese(t))) {
           this.warnTaggedTemplateSkipped(node, sourceFile);
         }
-      } else if (CommonASTUtils.templateLiteralsContainChinese(node)) {
+      } else if (templateLiteralsContainChinese(node)) {
         // 含 HTML 标签的整段模板（如 dangerouslySetInnerHTML 拼装）拒绝提取，
         // 避免 HTML / CSS / SVG 灌进 locale value。详见 Vue 端同名逻辑。
-        if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
+        if (templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
           this.warnHtmlInTemplateLiteral(node, sourceFile);
           return;
         }
-        const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+        const result = processTemplateExpression(node, sourceFile);
         text = result.originalText;
         if (result.processedText !== result.originalText) {
           processedMessage = result.processedText;
@@ -322,10 +332,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         }
         return;
       }
-      if (
-        FileUtils.containsChinese(node.text) &&
-        CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
-      ) {
+      if (FileUtils.containsChinese(node.text) && templateLiteralContainsHtmlTags(node.text)) {
         this.warnHtmlInTemplateLiteral(node, sourceFile);
         return;
       }
@@ -408,7 +415,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     const initializer = valuesAttribute?.initializer;
     if (!initializer || !ts.isJsxExpression(initializer) || !initializer.expression) return;
 
-    for (const literal of CommonASTUtils.collectNestedChineseLiteralNodes(initializer.expression)) {
+    for (const literal of collectNestedChineseLiteralNodes(initializer.expression)) {
       const pos = ts.getLineAndCharacterOfPosition(sourceFile, literal.getStart(sourceFile));
       this.diagnostics.recordSkippedNestedChinese(
         literal.text,
@@ -504,21 +511,21 @@ export class ReactTextExtractor extends BaseTextExtractor {
         // 词间空格 → 与转换端重建结果不一致导致漏替换。含内容的把换行+缩进压成单空格，
         // 保留文本与表达式之间的语义空格（如「共 {count} 项」的相邻空格是词间距，
         // trim 掉会让 locale 文案变成「共${count}项」，中英混排丢词间距）。
-        // ⚠️ 此空白处理必须与 CommonASTUtils.reconstructJsxMixedContent 逐字一致。
+        // ⚠️ 此空白处理必须与 ast-core 的 reconstructJsxMixedContent 逐字一致。
         if (!child.text.trim() && /\n/.test(child.text)) continue;
         inner += child.text.replace(/\s*\n\s*/g, ' ');
       } else if (ts.isJsxExpression(child) && child.expression) {
-        const expressionText = CommonASTUtils.nodeToText(child.expression!, sourceFile);
+        const expressionText = nodeToText(child.expression!, sourceFile);
         templateVariables.push(expressionText);
         inner += `\${${expressionText}}`;
         // 插值表达式里的中文分支（如 `{ok ? '成功' : '失败'}`）被整段当运行时变量塞进
         // 占位符，既不提取也不内联 —— 与模板字面量路径对齐，记录到诊断集合避免静默泄漏。
-        nestedChineseTexts.push(...CommonASTUtils.collectNestedChineseLiterals(child.expression));
+        nestedChineseTexts.push(...collectNestedChineseLiterals(child.expression));
       }
     }
 
     // 整体首尾去空白（内部词间距保留）：边界换行/缩进会被压成首尾空格，不应进 locale。
-    // 必须与 CommonASTUtils.reconstructJsxMixedContent 的 trim 一致，否则
+    // 必须与 ast-core 的 reconstructJsxMixedContent 的 trim 一致，否则
     // findExactStringNode 的 `=== originalText` 失配 → 漏替换。
     const templateText = '`' + inner.trim() + '`';
 

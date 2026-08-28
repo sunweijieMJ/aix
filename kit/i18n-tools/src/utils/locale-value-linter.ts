@@ -1,4 +1,4 @@
-import { CommonASTUtils } from './common-ast-utils';
+import { templateLiteralContainsHtmlTags } from './ast-guards';
 import type { SkippedTextLocation } from './extraction-diagnostics';
 import { LoggerUtils } from './logger';
 import { RunReport, type ManualCategory } from './run-report';
@@ -327,9 +327,9 @@ export class LocaleValueLinter {
     for (const [key, value] of Object.entries(localeMap)) {
       if (typeof value !== 'string') continue;
       const reasons: string[] = [];
-      // 与提取期同源的 HTML 标签判据（CommonASTUtils），避免两份正则手工同步漂移：
+      // 与提取期同源的 HTML 标签判据（ast-guards），避免两份正则手工同步漂移：
       // 提取放过 / lint 报警两端口径必须一致。
-      if (CommonASTUtils.templateLiteralContainsHtmlTags(value)) reasons.push('含 HTML 标签');
+      if (templateLiteralContainsHtmlTags(value)) reasons.push('含 HTML 标签');
       if (value.length > this.LONG_VALUE_THRESHOLD) {
         reasons.push(`长度 ${value.length} > ${this.LONG_VALUE_THRESHOLD}`);
       }

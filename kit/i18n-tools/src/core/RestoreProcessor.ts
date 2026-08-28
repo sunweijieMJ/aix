@@ -4,10 +4,10 @@ import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
 import { formatWithPrettier } from '../utils/command-utils';
 import { FileUtils } from '../utils/file-utils';
-import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import type { LocaleMap } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
+import { ensureDirectoryExists } from '../utils/json-io';
 
 interface RestoreOptions {
   sourceDir: string;
@@ -134,7 +134,7 @@ export class RestoreProcessor extends BaseProcessor {
         return;
       }
 
-      FileUtils.ensureDirectoryExists(options.outputDir);
+      ensureDirectoryExists(options.outputDir);
 
       let processedCount = 0;
       let modifiedCount = 0;
@@ -205,13 +205,13 @@ export class RestoreProcessor extends BaseProcessor {
     // 否则损坏的 source locale 会被下游 `length === 0` 误判为「空」→ restore 静默 no-op
     // 且打印成功（exit 0），用户以为已还原、实则源码原封未动。
     // 探测口径（桶式 / 遗留单文件 / 单文件）统一收口于 findCorruptLocale。
-    LanguageFileManager.assertLocalesNotCorrupt(this.config, this.isCustom, [sourceLocale], {
+    this.langFiles.assertLocalesNotCorrupt([sourceLocale], {
       checkLegacy: true,
       buildMessage: (locale, file) =>
         `源 locale「${locale}」解析失败：${file}，已中止还原以防误判为空而跳过。请先修复 JSON 格式。`,
     });
     // 守卫已确保非损坏，readLocaleFile 不会返回 null（仅「不存在/空 → {}」或解析结果）。
-    return LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) ?? {};
+    return this.langFiles.readLocaleFile(sourceLocale) ?? {};
   }
 
   private async processFile(
@@ -234,7 +234,7 @@ export class RestoreProcessor extends BaseProcessor {
       return false;
     }
 
-    FileUtils.ensureDirectoryExists(path.dirname(actualOutputPath));
+    ensureDirectoryExists(path.dirname(actualOutputPath));
     fs.writeFileSync(actualOutputPath, transformedCode, 'utf-8');
 
     if (this.config.io.prettify) {

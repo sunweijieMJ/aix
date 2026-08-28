@@ -9,7 +9,19 @@ import {
   type AttributeNode,
   type DirectiveNode,
 } from '@vue/compiler-dom';
-import { CommonASTUtils } from '../../utils/common-ast-utils';
+import { parseExpressionSource, parseSourceFile } from '../../utils/ast-core';
+import {
+  collectNestedChineseLiteralNodes,
+  collectRuntimeChineseLiteralsFromI18nCall,
+  isAlreadyInternationalized,
+  isCommonI18nCall,
+  isComparisonOperand,
+  isExtractableStringLiteral,
+  isInConsoleCall,
+  templateLiteralContainsHtmlTags,
+  templateLiteralsContainChinese,
+} from '../../utils/ast-guards';
+import { processTemplateExpression } from '../../utils/message-shape';
 import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import { isNonTranslatableText, isTechnicalConfigValue } from '../../utils/text-classify';
 import { FileUtils } from '../../utils/file-utils';
@@ -597,7 +609,7 @@ export class VueTextExtractor extends BaseTextExtractor {
 
     // 以表达式上下文解析动态属性表达式（绑定表达式本质是表达式）：避免内联对象字面量
     // `{ '中文key': v }` 被当 Block 解析、其中文 KEY 被误提取。
-    const sourceFile = CommonASTUtils.parseExpressionSource(trimmed, 'temp.ts');
+    const sourceFile = parseExpressionSource(trimmed, 'temp.ts');
 
     // 仅当整个表达式「就是单个 i18n 调用」时才整体跳过。旧粗筛（以 $t( 开头或含 .t(
     // 即整体 return）会把混合表达式（如 `$t('a') + '：中文后缀'`）连同中文一起漏掉。
@@ -617,7 +629,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     }
 
     const visit = async (node: ts.Node): Promise<void> => {
-      if (ts.isCallExpression(node) && CommonASTUtils.isCommonI18nCall(node)) {
+      if (ts.isCallExpression(node) && isCommonI18nCall(node)) {
         this.recordRuntimeChineseInI18nCall(
           node,
           sourceFile,
@@ -634,7 +646,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         // 跳过比较运算符 (===, !==, ==, !=) 中的字符串操作数
         // 比较值应使用与 locale 无关的常量，提取后会导致数据与比较不同步
         // 例如 v-if="userType === 'admin'" 或 :type="status === '进行中' ? ..."
-        if (CommonASTUtils.isComparisonOperand(node)) {
+        if (isComparisonOperand(node)) {
           // 中文字面量被跳过：记录到诊断集合，lint 阶段与 locale map 交叉告警。
           // 若同一句中文已在别处（如 script 数组初值）被提取为 i18n key，运行时
           // 切语言后该比较永远不命中 —— 详见 LocaleValueLinter.findHardcodedComparisons。
@@ -652,8 +664,8 @@ export class VueTextExtractor extends BaseTextExtractor {
         // 经 isExtractableStringLiteral 排除对象字面量 KEY / 模块导入路径（翻译会破坏
         // 数据结构 / 导入），与 script 段、React 端口径一致；再检查是否已在 i18n 调用中。
         if (
-          CommonASTUtils.isExtractableStringLiteral(node) &&
-          !CommonASTUtils.isAlreadyInternationalized(node) &&
+          isExtractableStringLiteral(node) &&
+          !isAlreadyInternationalized(node) &&
           this.shouldExtract(text, 'template')
         ) {
           const argName =
@@ -735,10 +747,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
       // 与 script 侧对称：含 HTML 标签的整段模板拒绝提取并告警，避免 HTML/CSS/SVG 灌进 locale value。
       // template 侧此前缺这道守卫，`:content="`<b>加粗</b>提示`"` 会把整段 HTML 提进 locale 且无告警。
-      if (
-        FileUtils.containsChinese(node.text) &&
-        CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
-      ) {
+      if (FileUtils.containsChinese(node.text) && templateLiteralContainsHtmlTags(node.text)) {
         this.warnHtmlInTemplateLiteralAtLine(
           directive.loc.start.line + lineOffset,
           filePath,
@@ -749,15 +758,15 @@ export class VueTextExtractor extends BaseTextExtractor {
       originalText = node.text;
       processedText = node.text;
     } else if (ts.isTemplateExpression(node)) {
-      // 复用 CommonASTUtils.processTemplateExpression：与脚本段、React 端走同一份
+      // 复用 processTemplateExpression：与脚本段、React 端走同一份
       // 字面量内联与占位符生成逻辑，避免双端漂移。
       // original 必须存源码层形式（result.originalText，保留 `${expr}` 含字面量插值如 `${'X'}`），
       // 因为 VueTransformer 按 original 在源码做文本匹配替换；processedMessage 存内联后的
       // processedText（供 locale 值 / ID 生成）。两字段约定与脚本路径一致——否则含字面量插值时
       // original=已内联文本与源码失配 → 整段绑定不被替换、源码残留中文（静默泄漏）。
-      if (CommonASTUtils.templateLiteralsContainChinese(node)) {
+      if (templateLiteralsContainChinese(node)) {
         // 与 script 侧对称的 HTML 守卫：含 HTML 标签整段拒绝提取并告警。
-        if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
+        if (templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
           this.warnHtmlInTemplateLiteralAtLine(
             directive.loc.start.line + lineOffset,
             filePath,
@@ -765,13 +774,13 @@ export class VueTextExtractor extends BaseTextExtractor {
           );
           return;
         }
-        const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+        const result = processTemplateExpression(node, sourceFile);
         originalText = result.originalText;
         processedText = result.processedText;
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
         // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
-        const nestedNodes = CommonASTUtils.collectNestedChineseLiteralNodes(node);
+        const nestedNodes = collectNestedChineseLiteralNodes(node);
         for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
           const occurrence = nestedNodes[nestedIndex]?.getStart(sourceFile) ?? nestedIndex;
           this.diagnostics.recordSkippedNestedChinese(
@@ -834,7 +843,7 @@ export class VueTextExtractor extends BaseTextExtractor {
 
       // 以表达式上下文解析插值内容：准确提取三元表达式中的字符串（含模板字符串），
       // 并让内联对象字面量 `{ '中文key': v }` 正确成形（避免中文 KEY 被误提取）。
-      const sourceFile = CommonASTUtils.parseExpressionSource(content, 'temp.ts');
+      const sourceFile = parseExpressionSource(content, 'temp.ts');
 
       // 仅当整个插值「就是单个 i18n 调用」时才整体跳过。旧粗筛（以 $t( 开头或含 .t(
       // 即整体 return）会把 `$t('a') + '：中文后缀'`、`obj.t(x) ? '进行中' : '已结束'`
@@ -853,7 +862,7 @@ export class VueTextExtractor extends BaseTextExtractor {
       }
 
       const visit = async (node: ts.Node): Promise<void> => {
-        if (ts.isCallExpression(node) && CommonASTUtils.isCommonI18nCall(node)) {
+        if (ts.isCallExpression(node) && isCommonI18nCall(node)) {
           this.recordRuntimeChineseInI18nCall(
             node,
             sourceFile,
@@ -870,7 +879,7 @@ export class VueTextExtractor extends BaseTextExtractor {
           // 跳过比较运算符 (===, !==, ==, !=) 中的字符串操作数
           // 比较值应使用与 locale 无关的常量，提取后会导致数据与比较不同步
           // 例如 {{ status === '进行中' ? '已完成' : '未完成' }}
-          if (CommonASTUtils.isComparisonOperand(node)) {
+          if (isComparisonOperand(node)) {
             // 中文字面量被跳过：记录到诊断集合，lint 阶段与 locale map 交叉告警。
             // 与 extractFromDynamicAttribute / script 段 / React 端口径一致，避免插值里
             // 这种最常见的 `{{ x === '中文' ? ... }}` 写法静默漏报「比较失效」风险。
@@ -888,8 +897,8 @@ export class VueTextExtractor extends BaseTextExtractor {
           // 经 isExtractableStringLiteral 排除对象 KEY / 导入路径，与其他提取路径口径一致；
           // 再检查是否已在 i18n 调用中。
           if (
-            CommonASTUtils.isExtractableStringLiteral(node) &&
-            !CommonASTUtils.isAlreadyInternationalized(node) &&
+            isExtractableStringLiteral(node) &&
+            !isAlreadyInternationalized(node) &&
             this.shouldExtract(text, 'template')
           ) {
             extractedStrings.push({
@@ -966,10 +975,7 @@ export class VueTextExtractor extends BaseTextExtractor {
 
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
       // 与 script / 动态属性侧对称：含 HTML 标签的整段模板拒绝提取并告警。
-      if (
-        FileUtils.containsChinese(node.text) &&
-        CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
-      ) {
+      if (FileUtils.containsChinese(node.text) && templateLiteralContainsHtmlTags(node.text)) {
         this.warnHtmlInTemplateLiteralAtLine(
           interpolationNode.loc.start.line + lineOffset,
           filePath,
@@ -980,11 +986,11 @@ export class VueTextExtractor extends BaseTextExtractor {
       originalText = node.text;
       processedText = node.text;
     } else if (ts.isTemplateExpression(node)) {
-      // 复用 CommonASTUtils.processTemplateExpression（同动态属性段说明）：original 存源码形式
+      // 复用 processTemplateExpression（同动态属性段说明）：original 存源码形式
       // （含 `${expr}`）供 VueTransformer 文本匹配，processedMessage 存内联后文本供 locale/ID。
-      if (CommonASTUtils.templateLiteralsContainChinese(node)) {
+      if (templateLiteralsContainChinese(node)) {
         // 与 script 侧对称的 HTML 守卫：含 HTML 标签整段拒绝提取并告警。
-        if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
+        if (templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
           this.warnHtmlInTemplateLiteralAtLine(
             interpolationNode.loc.start.line + lineOffset,
             filePath,
@@ -992,13 +998,13 @@ export class VueTextExtractor extends BaseTextExtractor {
           );
           return;
         }
-        const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+        const result = processTemplateExpression(node, sourceFile);
         originalText = result.originalText;
         processedText = result.processedText;
         templateVariables.push(...result.templateVariables);
         isTemplateString = true;
         // 插值表达式里的中文分支被占位符吞掉（不提取/不内联）—— 记录诊断，避免静默泄漏。
-        const nestedNodes = CommonASTUtils.collectNestedChineseLiteralNodes(node);
+        const nestedNodes = collectNestedChineseLiteralNodes(node);
         for (const [nestedIndex, nested] of result.nestedChineseTexts.entries()) {
           const occurrence = nestedNodes[nestedIndex]?.getStart(sourceFile) ?? nestedIndex;
           this.diagnostics.recordSkippedNestedChinese(
@@ -1057,7 +1063,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     const extractedStrings: ExtractedString[] = [];
 
     try {
-      const sourceFile = CommonASTUtils.parseSourceFile(scriptContent, filePath);
+      const sourceFile = parseSourceFile(scriptContent, filePath);
 
       // filePath 必须从入参透传到 push 处，不能用 sourceFile.fileName。
       // ts.createSourceFile 内部会对 fileName 调用 normalizePath，将 Windows 反
@@ -1087,7 +1093,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     lineOffset: number,
     filePath: string,
   ): Promise<void> {
-    if (ts.isCallExpression(node) && CommonASTUtils.isCommonI18nCall(node)) {
+    if (ts.isCallExpression(node) && isCommonI18nCall(node)) {
       this.recordRuntimeChineseInI18nCall(node, sourceFile, filePath, lineOffset);
     }
     let originalText = ''; // 保持源代码原样（用于转换时匹配）
@@ -1097,10 +1103,10 @@ export class VueTextExtractor extends BaseTextExtractor {
 
     // 处理字符串字面量：跳过对象 key、import 路径、比较运算符 / case 操作数
     if (ts.isStringLiteral(node)) {
-      if (CommonASTUtils.isExtractableStringLiteral(node)) {
+      if (isExtractableStringLiteral(node)) {
         originalText = node.text;
         processedText = node.text;
-      } else if (CommonASTUtils.isComparisonOperand(node) && FileUtils.containsChinese(node.text)) {
+      } else if (isComparisonOperand(node) && FileUtils.containsChinese(node.text)) {
         // script 端比较运算符两侧的中文字面量被跳过 —— 与 template 端记录对称，
         // 用于事后与 locale map 交叉，识别「同句中文在他处被 i18n 化导致比较失效」的风险。
         const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
@@ -1112,18 +1118,18 @@ export class VueTextExtractor extends BaseTextExtractor {
         );
       }
     }
-    // 处理模板字符串：复用 CommonASTUtils.processTemplateExpression，
+    // 处理模板字符串：复用 processTemplateExpression，
     // 与 React 端走同一份字面量过滤 / 占位符生成逻辑，避免双端漂移。
     else if (ts.isTemplateExpression(node)) {
-      if (CommonASTUtils.templateLiteralsContainChinese(node)) {
+      if (templateLiteralsContainChinese(node)) {
         // 模板字符串里含 HTML 标签（典型场景：innerHTML = `<div>...<span>中文</span></div>`），
         // 整段提取会把 SVG / CSS / 样式属性一起灌进 i18n value，翻译质量差且多语言下结构不可控。
         // 跳过提取并 warning，由开发者把 t() 缩到具体文案片段上。
-        if (CommonASTUtils.templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
+        if (templateLiteralContainsHtmlTags(node.getText(sourceFile))) {
           this.warnHtmlInTemplateLiteral(node, sourceFile, lineOffset, filePath);
           return;
         }
-        const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+        const result = processTemplateExpression(node, sourceFile);
         originalText = result.originalText;
         processedText = result.processedText;
         templateVariables.push(...result.templateVariables);
@@ -1151,10 +1157,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     // 处理无替换模板字符串
     else if (ts.isNoSubstitutionTemplateLiteral(node)) {
       // 同 TemplateExpression：含 HTML 的整段模板拒绝提取，避免 HTML 入 locale value。
-      if (
-        FileUtils.containsChinese(node.text) &&
-        CommonASTUtils.templateLiteralContainsHtmlTags(node.text)
-      ) {
+      if (FileUtils.containsChinese(node.text) && templateLiteralContainsHtmlTags(node.text)) {
         this.warnHtmlInTemplateLiteral(node, sourceFile, lineOffset, filePath);
         return;
       }
@@ -1210,11 +1213,11 @@ export class VueTextExtractor extends BaseTextExtractor {
   ): boolean {
     if (node) {
       // 如果节点已经被国际化结构包裹，则不提取
-      if (CommonASTUtils.isAlreadyInternationalized(node)) {
+      if (isAlreadyInternationalized(node)) {
         return false;
       }
       // 如果字符串在console调用中，不提取
-      if (CommonASTUtils.isInConsoleCall(node)) {
+      if (isInConsoleCall(node)) {
         return false;
       }
     }
@@ -1281,7 +1284,7 @@ export class VueTextExtractor extends BaseTextExtractor {
       expr = expr.expression;
     }
     if (!ts.isCallExpression(expr)) return undefined;
-    return CommonASTUtils.isCommonI18nCall(expr) ? expr : undefined;
+    return isCommonI18nCall(expr) ? expr : undefined;
   }
 
   /** 增量重跑时记录 t/$t 的 values/options 参数中仍残留的中文。 */
@@ -1293,7 +1296,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     baseLine = 1,
     baseColumn = 0,
   ): void {
-    for (const item of CommonASTUtils.collectRuntimeChineseLiteralsFromI18nCall(call)) {
+    for (const item of collectRuntimeChineseLiteralsFromI18nCall(call)) {
       const pos = ts.getLineAndCharacterOfPosition(sourceFile, item.node.getStart(sourceFile));
       this.diagnostics.recordSkippedNestedChinese(
         item.text,

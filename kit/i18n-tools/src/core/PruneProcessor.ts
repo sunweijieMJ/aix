@@ -4,11 +4,11 @@ import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
 import { FileUtils } from '../utils/file-utils';
 import { InteractiveUtils } from '../utils/interactive-utils';
-import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import { collectUsedKeys, matchesDynamicAllowlist } from '../utils/source-key-scanner';
 import type { LocaleMap, Translations } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
+import { loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
 
 export interface PruneOptions {
   /** 只预览不删 */
@@ -56,24 +56,18 @@ export class PruneProcessor extends BaseProcessor {
     //   target 桶损坏同样会被静默降级为 {}、命中孤儿后触发重写、损坏桶被改名 .bak 致 key 丢失。
     //   只守 source 会在 target 桶损坏时重蹈上述「静默改名 .bak、key 丢失」的问题。
     // 探测口径（桶式 / 遗留单文件 / 单文件）统一收口于 findCorruptLocale。
-    LanguageFileManager.assertLocalesNotCorrupt(
-      this.config,
-      this.isCustom,
-      [sourceLocale, ...this.config.locales.targets],
-      {
-        checkLegacy: true,
-        buildMessage: (locale, file) =>
-          `locale「${locale}」解析失败：${file}，已中止 prune 以防误判孤儿 / 误删 key。请先修复 JSON 格式。`,
-      },
-    );
+    this.langFiles.assertLocalesNotCorrupt([sourceLocale, ...this.config.locales.targets], {
+      checkLegacy: true,
+      buildMessage: (locale, file) =>
+        `locale「${locale}」解析失败：${file}，已中止 prune 以防误判孤儿 / 误删 key。请先修复 JSON 格式。`,
+    });
     // 迁移窗口守卫：桶式模式下若存在未迁移的遗留单文件，孤儿判定（readLocaleFile 含遗留
     // 兜底）与删除路径（pruneLocale 只重写桶文件）视图分裂——legacy-only 孤儿报得出来
     // 却删不掉，而下方字典文件清理会真删，落入半清理循环。宁可中止，提示先完成迁移。
-    const unmigratedLegacy = LanguageFileManager.findUnmigratedLegacyLocale(
-      this.config,
-      this.isCustom,
-      [sourceLocale, ...this.config.locales.targets],
-    );
+    const unmigratedLegacy = this.langFiles.findUnmigratedLegacyLocale([
+      sourceLocale,
+      ...this.config.locales.targets,
+    ]);
     if (unmigratedLegacy) {
       throw new Error(
         `检测到未迁移的遗留语言文件：${unmigratedLegacy}。` +
@@ -83,8 +77,7 @@ export class PruneProcessor extends BaseProcessor {
     }
 
     // 守卫已确保 source 非损坏，readLocaleFile 不会返回 null（仅「不存在/空 → {}」或解析结果）。
-    const sourceMap =
-      LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) ?? {};
+    const sourceMap = this.langFiles.readLocaleFile(sourceLocale) ?? {};
 
     // 安全闸：源码扫描到 0 个 key 引用，几乎必然是误配（sourceDir 路径写错 / include 过严 /
     // 目录存在但不含框架文件）。此时所有 locale key 都会被判为孤儿，--ci 下更会跳过确认、
@@ -167,7 +160,7 @@ export class PruneProcessor extends BaseProcessor {
     if (!fs.existsSync(filePath)) return;
     // 严格读取：silent 降级会把损坏字典当 {}，此后 removed===0 直接 return，prune 报「无需清理」
     // 以 exit 0 收尾——损坏的在途译文文件被无声放过，与 csv-import / pick 的 strict 口径不一致。
-    const data = FileUtils.loadJsonDictOrThrow<Translations>(
+    const data = loadJsonDictOrThrow<Translations>(
       filePath,
       (p) =>
         `字典文件解析失败（JSON 格式损坏）: ${p}\n` +
@@ -175,30 +168,25 @@ export class PruneProcessor extends BaseProcessor {
     );
     const removed = PruneProcessor.deleteOwnKeys(data, orphanSet);
     if (removed === 0) return;
-    FileUtils.writeTranslationsFile(filePath, data);
+    writeTranslationsFile(filePath, data);
     LoggerUtils.success(`✅ ${path.basename(filePath)}: 删除 ${removed} 个 key`);
   }
 
   /** 从单个 locale 删除孤儿 key 并写回（桶式复用既有桶写 + 孤儿桶清理）。 */
   private pruneLocale(locale: string, orphanSet: Set<string>): void {
     if (this.config.buckets) {
-      const { flat, keyBucketMap } = LanguageFileManager.readBucketedLocaleWithBucketMap(
-        this.config,
-        this.isCustom,
-        locale,
-      );
+      const { flat, keyBucketMap } = this.langFiles.readBucketedLocaleWithBucketMap(locale);
       const removed = PruneProcessor.deleteOwnKeys(flat, orphanSet, keyBucketMap);
       if (removed === 0) return;
-      LanguageFileManager.writeLocaleFile(this.config, this.isCustom, flat, locale, keyBucketMap);
+      this.langFiles.writeLocaleFile(flat, locale, keyBucketMap);
       LoggerUtils.success(`✅ ${locale}: 删除 ${removed} 个 key`);
       return;
     }
 
-    const map: LocaleMap =
-      LanguageFileManager.readLocaleFile(this.config, this.isCustom, locale) ?? {};
+    const map: LocaleMap = this.langFiles.readLocaleFile(locale) ?? {};
     const removed = PruneProcessor.deleteOwnKeys(map, orphanSet);
     if (removed === 0) return;
-    LanguageFileManager.writeLocaleFile(this.config, this.isCustom, map, locale);
+    this.langFiles.writeLocaleFile(map, locale);
     LoggerUtils.success(`✅ ${locale}: 删除 ${removed} 个 key`);
   }
 }

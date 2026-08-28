@@ -3,7 +3,30 @@ import ts from 'typescript';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { CommonASTUtils } from '../src/utils/common-ast-utils';
+import {
+  applyReplacements,
+  findExactStringNode,
+  nodeToText,
+  parseSourceFile,
+  shouldReplaceNode,
+} from '../src/utils/ast-core';
+import { isExtractableStringLiteral } from '../src/utils/ast-guards';
+import {
+  appendImportLine,
+  findLastImportLineIndex,
+  mergeNamedImport,
+  removeNamedImports,
+  stripComments,
+} from '../src/utils/import-surgery';
+import {
+  createMessageWithOptions,
+  evalLiteralExpression,
+  isLiteralExpression,
+  processTemplateExpression,
+  toSingleBracePlaceholders,
+} from '../src/utils/message-shape';
+import { isImportedNameUnused } from '../src/utils/scope-analysis';
+import { stripMatchedDelimiters } from '../src/utils/string-escape';
 import { BaseTextExtractor } from '../src/strategies/base/text-extractor';
 import type { ExtractedString } from '../src/utils/types';
 import { compileMatcher } from '../src/utils/path-matcher';
@@ -17,13 +40,14 @@ import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 import type { ITextExtractor } from '../src/adapters/FrameworkAdapter';
 
 // =============================================================================
-// common-ast-utils
+// ast-core / ast-guards / import-surgery / message-shape / scope-analysis
+// （原 common-ast-utils 拆分后的各平面模块）
 // =============================================================================
-describe('common-ast-utils', () => {
-  describe('CommonASTUtils.applyReplacements', () => {
+describe('ast-utils', () => {
+  describe('applyReplacements', () => {
     it('替换区间重叠时抛错，避免静默丢弃已生成语言 key 对应的调用点', () => {
       expect(() =>
-        CommonASTUtils.applyReplacements('abcdef', [
+        applyReplacements('abcdef', [
           { start: 1, end: 5, replacement: 'X' },
           { start: 2, end: 4, replacement: 'Y' },
         ]),
@@ -31,12 +55,12 @@ describe('common-ast-utils', () => {
     });
   });
 
-  describe('CommonASTUtils.nodeToText', () => {
+  describe('nodeToText', () => {
     function findFirstStringLiteral(code: string): {
       node: ts.StringLiteral;
       sourceFile: ts.SourceFile;
     } {
-      const sourceFile = CommonASTUtils.parseSourceFile(code, 'temp.ts');
+      const sourceFile = parseSourceFile(code, 'temp.ts');
       let found: ts.StringLiteral | undefined;
       const visit = (n: ts.Node) => {
         if (!found && ts.isStringLiteral(n)) found = n;
@@ -51,19 +75,19 @@ describe('common-ast-utils', () => {
       // getFullStart 会把前导注释一并纳入，导致 shouldReplaceNode 比较失败、
       // 提取出 key 却跳过源码替换。nodeToText 必须用 getStart 跳过 trivia。
       const { node, sourceFile } = findFirstStringLiteral(`const msg = /* greeting */ '你好';`);
-      expect(CommonASTUtils.nodeToText(node, sourceFile)).toBe(`'你好'`);
+      expect(nodeToText(node, sourceFile)).toBe(`'你好'`);
     });
 
     it('带前导行注释的字面量：同样不含注释', () => {
       const { node, sourceFile } = findFirstStringLiteral(`const msg =\n  // greeting\n  '你好';`);
-      expect(CommonASTUtils.nodeToText(node, sourceFile)).toBe(`'你好'`);
+      expect(nodeToText(node, sourceFile)).toBe(`'你好'`);
     });
   });
 
-  describe('CommonASTUtils.findLastImportLineIndex', () => {
+  describe('findLastImportLineIndex', () => {
     it('单行 import：返回该 import 行号', () => {
       const lines = [`import { t } from '@/i18n';`, `const x = 1;`];
-      expect(CommonASTUtils.findLastImportLineIndex(lines)).toBe(0);
+      expect(findLastImportLineIndex(lines)).toBe(0);
     });
 
     it('多个连续 import：返回最后一行', () => {
@@ -73,34 +97,34 @@ describe('common-ast-utils', () => {
         `import c from 'c';`,
         `const x = 1;`,
       ];
-      expect(CommonASTUtils.findLastImportLineIndex(lines)).toBe(2);
+      expect(findLastImportLineIndex(lines)).toBe(2);
     });
 
     it('跨行 import（多行命名导入）：返回 brace 闭合行', () => {
       const lines = [`import {`, `  A,`, `  B,`, `} from 'x';`, `const x = 1;`];
-      expect(CommonASTUtils.findLastImportLineIndex(lines)).toBe(3);
+      expect(findLastImportLineIndex(lines)).toBe(3);
     });
 
     it('import 路径含 { } 字符（字符串内括号）：不应破坏深度追踪', () => {
       // 字符串内的 { } 必须被跳过，否则 import 边界追踪错位
       const lines = [`import { t } from '@/i18n{mock}';`, `const x = 1;`];
-      expect(CommonASTUtils.findLastImportLineIndex(lines)).toBe(0);
+      expect(findLastImportLineIndex(lines)).toBe(0);
     });
 
     it('跨行 import 收尾行字符串内含 } ：仍能正确闭合', () => {
       // 字符串 'x/}weird' 内的 } 不能被计入大括号深度，否则会让深度变成 -1，
       // pendingDepth === 0 的判定提前/错位失败。
       const lines = [`import {`, `  A,`, `} from 'x/}weird';`, `const x = 1;`];
-      expect(CommonASTUtils.findLastImportLineIndex(lines)).toBe(2);
+      expect(findLastImportLineIndex(lines)).toBe(2);
     });
 
     it('无 import：返回 -1', () => {
-      expect(CommonASTUtils.findLastImportLineIndex([`const x = 1;`])).toBe(-1);
+      expect(findLastImportLineIndex([`const x = 1;`])).toBe(-1);
     });
 
     it('appendImportLine 在含特殊路径 import 之后插入正确位置', () => {
       const code = `import { t } from '@/i18n{mock}';\nconst x = 1;`;
-      const result = CommonASTUtils.appendImportLine(code, `import foo from 'foo';`);
+      const result = appendImportLine(code, `import foo from 'foo';`);
       const expected = [
         `import { t } from '@/i18n{mock}';`,
         `import foo from 'foo';`,
@@ -113,19 +137,19 @@ describe('common-ast-utils', () => {
       // countBraceDelta 若不跳过注释，行注释里的 } 会让 pendingDepth 提前归零，
       // 边界锚定到注释行，注入的新 import 落入原 import 花括号内部 → 语法错误。
       const lines = [`import {`, `  Foo, // a } comment`, `  Bar,`, `} from 'x';`, `const x = 1;`];
-      expect(CommonASTUtils.findLastImportLineIndex(lines)).toBe(3);
+      expect(findLastImportLineIndex(lines)).toBe(3);
     });
 
     it('多行 import 续行块注释含 } ：注释内的 } 不计入深度', () => {
       const lines = [`import {`, `  Foo, /* } */`, `} from 'x';`, `const x = 1;`];
-      expect(CommonASTUtils.findLastImportLineIndex(lines)).toBe(2);
+      expect(findLastImportLineIndex(lines)).toBe(2);
     });
 
     it('appendImportLine：多行 import 续行注释含 } 时新 import 插到整条 import 之后', () => {
       const code = [`import {`, `  Foo, // } here`, `  Bar,`, `} from 'x';`, `const x = 1;`].join(
         '\n',
       );
-      const result = CommonASTUtils.appendImportLine(code, `import { t } from '@/i18n';`);
+      const result = appendImportLine(code, `import { t } from '@/i18n';`);
       const expected = [
         `import {`,
         `  Foo, // } here`,
@@ -138,40 +162,40 @@ describe('common-ast-utils', () => {
     });
   });
 
-  describe('CommonASTUtils 占位符花括号归一（toSingleBracePlaceholders）', () => {
+  describe('message-shape 占位符花括号归一（toSingleBracePlaceholders）', () => {
     it('双花括号 → 单花括号（i18next 系 restore 归一）', () => {
-      expect(CommonASTUtils.toSingleBracePlaceholders('共 {{count}} 项')).toBe('共 {count} 项');
+      expect(toSingleBracePlaceholders('共 {{count}} 项')).toBe('共 {count} 项');
       // 容忍内部空格
-      expect(CommonASTUtils.toSingleBracePlaceholders('共 {{ count }} 项')).toBe('共 {count} 项');
+      expect(toSingleBracePlaceholders('共 {{ count }} 项')).toBe('共 {count} 项');
     });
 
     it('多占位符 / 相邻占位符全部归一', () => {
-      expect(CommonASTUtils.toSingleBracePlaceholders('你有 {{n}} 条来自 {{user}} 的消息')).toBe(
+      expect(toSingleBracePlaceholders('你有 {{n}} 条来自 {{user}} 的消息')).toBe(
         '你有 {n} 条来自 {user} 的消息',
       );
-      expect(CommonASTUtils.toSingleBracePlaceholders('{{a}}{{b}}')).toBe('{a}{b}');
+      expect(toSingleBracePlaceholders('{{a}}{{b}}')).toBe('{a}{b}');
     });
 
     it('无占位符文本不受影响', () => {
-      expect(CommonASTUtils.toSingleBracePlaceholders('纯文本')).toBe('纯文本');
+      expect(toSingleBracePlaceholders('纯文本')).toBe('纯文本');
     });
   });
 
-  describe('CommonASTUtils.stripComments', () => {
+  describe('stripComments', () => {
     it('剥除行注释保留字符串字面量', () => {
-      const out = CommonASTUtils.stripComments(`const a = t('foo'); // t('comment')`);
+      const out = stripComments(`const a = t('foo'); // t('comment')`);
       expect(out).toContain(`t('foo')`);
       expect(out).not.toContain(`t('comment')`);
     });
 
     it('剥除块注释', () => {
-      const out = CommonASTUtils.stripComments(`/* t('skip') */ const a = t('keep');`);
+      const out = stripComments(`/* t('skip') */ const a = t('keep');`);
       expect(out).not.toContain(`t('skip')`);
       expect(out).toContain(`t('keep')`);
     });
 
     it('剥除 HTML 注释', () => {
-      const out = CommonASTUtils.stripComments(
+      const out = stripComments(
         `<template><!-- {{ t('skip') }} --><div>{{ t('keep') }}</div></template>`,
       );
       expect(out).not.toContain(`t('skip')`);
@@ -179,12 +203,12 @@ describe('common-ast-utils', () => {
     });
   });
 
-  describe('CommonASTUtils.processTemplateExpression - 嵌套中文检测', () => {
+  describe('processTemplateExpression - 嵌套中文检测', () => {
     function findTemplateExpression(code: string): {
       node: ts.TemplateExpression;
       sourceFile: ts.SourceFile;
     } {
-      const sourceFile = CommonASTUtils.parseSourceFile(code, 'temp.ts');
+      const sourceFile = parseSourceFile(code, 'temp.ts');
       let found: ts.TemplateExpression | undefined;
       const visit = (n: ts.Node) => {
         if (!found && ts.isTemplateExpression(n)) found = n;
@@ -199,7 +223,7 @@ describe('common-ast-utils', () => {
       const { node, sourceFile } = findTemplateExpression(
         "const x = `操作失败：${cond ? '内部错误' : '网络异常'}`;",
       );
-      const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+      const result = processTemplateExpression(node, sourceFile);
       // 占位符化：处理后文案为 `操作失败：${...}`（变量整体占位）
       expect(result.templateVariables.length).toBe(1);
       // 关键：两个中文分支被收集供诊断，而非静默丢失
@@ -210,20 +234,20 @@ describe('common-ast-utils', () => {
       const { node, sourceFile } = findTemplateExpression(
         "const x = `状态：${status === '已完成' ? a : b}`;",
       );
-      const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+      const result = processTemplateExpression(node, sourceFile);
       // '已完成' 是 === 操作数，不算泄漏的展示文案
       expect(result.nestedChineseTexts).toEqual([]);
     });
 
     it('纯变量插值（无嵌套中文）：nestedChineseTexts 为空', () => {
       const { node, sourceFile } = findTemplateExpression('const x = `欢迎 ${userName} 回来`;');
-      const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+      const result = processTemplateExpression(node, sourceFile);
       expect(result.nestedChineseTexts).toEqual([]);
     });
 
     it('字面量插值被内联进文案，不算嵌套泄漏', () => {
       const { node, sourceFile } = findTemplateExpression("const x = `从 ${'开始'} 到 ${'结束'}`;");
-      const result = CommonASTUtils.processTemplateExpression(node, sourceFile);
+      const result = processTemplateExpression(node, sourceFile);
       // 字面量被内联进 processedText（会进 locale 并被翻译），不属于泄漏
       expect(result.processedText).toContain('开始');
       expect(result.processedText).toContain('结束');
@@ -231,10 +255,10 @@ describe('common-ast-utils', () => {
     });
   });
 
-  describe('CommonASTUtils.isExtractableStringLiteral — 计算属性 KEY 排除', () => {
+  describe('isExtractableStringLiteral — 计算属性 KEY 排除', () => {
     // 取代码中「指定文本」的字符串字面量节点（按 node.text 精确定位，避免误取同名片段）
     function findStringLiteral(code: string, text: string): ts.StringLiteral {
-      const sourceFile = CommonASTUtils.parseSourceFile(code, 'temp.ts');
+      const sourceFile = parseSourceFile(code, 'temp.ts');
       let found: ts.StringLiteral | undefined;
       const visit = (n: ts.Node) => {
         if (!found && ts.isStringLiteral(n) && n.text === text) found = n;
@@ -247,33 +271,33 @@ describe('common-ast-utils', () => {
 
     it('计算属性 KEY `{ [‘进行中’]: v }` 不可提取（与非计算 key 对称）', () => {
       const node = findStringLiteral(`const m = { ['进行中']: 1 };`, '进行中');
-      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(false);
+      expect(isExtractableStringLiteral(node)).toBe(false);
     });
 
     it('类成员的计算属性名 `class { [‘进行中’]() {} }` 同样不可提取', () => {
       const node = findStringLiteral(`class C { ['进行中']() {} }`, '进行中');
-      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(false);
+      expect(isExtractableStringLiteral(node)).toBe(false);
     });
 
     it('非计算对象 key 仍不可提取（既有行为保护）', () => {
       const node = findStringLiteral(`const m = { '进行中': 1 };`, '进行中');
-      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(false);
+      expect(isExtractableStringLiteral(node)).toBe(false);
     });
 
     it('计算成员访问 `map[‘进行中’]` 不可提取（既有行为保护）', () => {
       const node = findStringLiteral(`const c = map['进行中'];`, '进行中');
-      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(false);
+      expect(isExtractableStringLiteral(node)).toBe(false);
     });
 
     it('普通展示文案仍可提取（不被新规则误伤）', () => {
       const node = findStringLiteral(`const title = '请输入姓名';`, '请输入姓名');
-      expect(CommonASTUtils.isExtractableStringLiteral(node)).toBe(true);
+      expect(isExtractableStringLiteral(node)).toBe(true);
     });
   });
 
-  describe('CommonASTUtils.isImportedNameUnused（作用域遮蔽判定）', () => {
+  describe('isImportedNameUnused（作用域遮蔽判定）', () => {
     const M = '@/plugins/locale';
-    const check = (code: string) => CommonASTUtils.isImportedNameUnused(code, 'f.tsx', M, 't');
+    const check = (code: string) => isImportedNameUnused(code, 'f.tsx', M, 't');
 
     it('组件内声明同名局部 t 遮蔽了导入 t → 未使用=true', () => {
       const code = `import { t } from '${M}';
@@ -351,13 +375,10 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
     });
   });
 
-  describe('CommonASTUtils.mergeNamedImport', () => {
+  describe('mergeNamedImport', () => {
     it('已存在同包 import：幂等去重，不重复注入', () => {
       const code = `import React from 'react';\nimport { Trans } from 'react-i18next';\n\nconst X = 1;`;
-      const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', [
-        'Trans',
-        'useTranslation',
-      ]);
+      const out = mergeNamedImport(code, 'react-i18next', ['Trans', 'useTranslation']);
       expect(out).toMatch(/import \{ Trans, useTranslation \} from 'react-i18next';/);
       // 只有一条 react-i18next import
       expect((out.match(/from 'react-i18next'/g) || []).length).toBe(1);
@@ -365,7 +386,7 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
 
     it('无同包 import：新增一行', () => {
       const code = `import React from 'react';\n\nconst X = 1;`;
-      const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['Trans']);
+      const out = mergeNamedImport(code, 'react-i18next', ['Trans']);
       expect(out).toMatch(/import \{ Trans \} from 'react-i18next';/);
     });
 
@@ -378,7 +399,7 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
         ``,
         `const X = 1;`,
       ].join('\n');
-      const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['Trans']);
+      const out = mergeNamedImport(code, 'react-i18next', ['Trans']);
       // 真实 import 完好（不被损坏成裸 `;`），且仍是一条
       expect(out).toMatch(/^import \{ Trans, useTranslation \} from 'react-i18next';$/m);
       expect(out).not.toMatch(/^;$/m);
@@ -389,7 +410,7 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
         `import { Trans } from 'react-i18next';`,
         `const tip = "import { Trans } from 'react-i18next'";`,
       ].join('\n');
-      const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['Trans']);
+      const out = mergeNamedImport(code, 'react-i18next', ['Trans']);
       expect(out).toMatch(/^import \{ Trans \} from 'react-i18next';$/m);
       // 字符串字面量原样保留
       expect(out).toContain(`const tip = "import { Trans } from 'react-i18next'";`);
@@ -397,7 +418,7 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
 
     it('默认+具名混合 import：并入现有花括号且保留默认导入，不追加重复行（#7）', () => {
       const code = `import locale, { t } from '@/plugins/locale';\n\nconst X = 1;`;
-      const out = CommonASTUtils.mergeNamedImport(code, '@/plugins/locale', ['t']);
+      const out = mergeNamedImport(code, '@/plugins/locale', ['t']);
       // 仍是一条 import（旧实现因 regex 不匹配 default+named 会再追加一行 → 两条）
       expect((out.match(/from '@\/plugins\/locale'/g) || []).length).toBe(1);
       // 默认导入 locale 必须保留
@@ -406,7 +427,7 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
 
     it('默认+具名混合 import：并入新具名项时保留默认导入与既有具名（#7）', () => {
       const code = `import i18n, { useTranslation } from 'react-i18next';\n`;
-      const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['Trans']);
+      const out = mergeNamedImport(code, 'react-i18next', ['Trans']);
       expect((out.match(/from 'react-i18next'/g) || []).length).toBe(1);
       expect(out).toMatch(/import i18n, \{ useTranslation, Trans \} from 'react-i18next';/);
     });
@@ -416,10 +437,7 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
     // 把 WithTranslation 当「不存在」再追加为值导入 → 重复标识符整文件无法编译。
     it('已有 import type { X }：注入 HOC 命名导入不产生重复标识符（TS2300）', () => {
       const code = `import type { WithTranslation } from 'react-i18next';\ninterface Props extends WithTranslation {}\n`;
-      const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', [
-        'withTranslation',
-        'WithTranslation',
-      ]);
+      const out = mergeNamedImport(code, 'react-i18next', ['withTranslation', 'WithTranslation']);
       // type-only 导入原样保留
       expect(out).toContain(`import type { WithTranslation } from 'react-i18next';`);
       // 只新增值 withTranslation；WithTranslation 不被作为值导入重复引入
@@ -430,32 +448,32 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
 
     it('内联 { type X } 已存在：同名不重复注入', () => {
       const code = `import { type WithTranslation, Foo } from 'react-i18next';\n`;
-      const out = CommonASTUtils.mergeNamedImport(code, 'react-i18next', ['WithTranslation']);
+      const out = mergeNamedImport(code, 'react-i18next', ['WithTranslation']);
       // WithTranslation 已以内联 type 形态存在 → 不再追加
       expect((out.match(/WithTranslation/g) || []).length).toBe(1);
       expect((out.match(/from 'react-i18next'/g) || []).length).toBe(1);
     });
   });
 
-  describe('CommonASTUtils.removeNamedImports', () => {
+  describe('removeNamedImports', () => {
     const isPkg = (mod: string) => mod === '@/plugins/locale';
 
     it('独占具名项：整条删除', () => {
       const code = `import { t } from '@/plugins/locale';\nconst x = 1;\n`;
-      const out = CommonASTUtils.removeNamedImports(code, isPkg, ['t']);
+      const out = removeNamedImports(code, isPkg, ['t']);
       expect(out).not.toMatch(/@\/plugins\/locale/);
       expect(out).toContain('const x = 1;');
     });
 
     it('同行其他具名项：只摘 t，保留其余', () => {
       const code = `import { t, other } from '@/plugins/locale';\n`;
-      const out = CommonASTUtils.removeNamedImports(code, isPkg, ['t']);
+      const out = removeNamedImports(code, isPkg, ['t']);
       expect(out).toMatch(/import \{ other \} from '@\/plugins\/locale';/);
     });
 
     it('默认+具名混合：摘掉死 t 后保留默认导入 `import locale from pkg`（#7）', () => {
       const code = `import locale, { t } from '@/plugins/locale';\n`;
-      const out = CommonASTUtils.removeNamedImports(code, isPkg, ['t']);
+      const out = removeNamedImports(code, isPkg, ['t']);
       // 旧实现 regex 不匹配 default+named → 死 t 摘不掉、整行残留
       expect(out).toMatch(/import locale from '@\/plugins\/locale';/);
       expect(out).not.toMatch(/\{\s*t\s*\}/);
@@ -463,41 +481,41 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
 
     it('默认+具名混合且还有其他具名项：保留默认导入与其余具名', () => {
       const code = `import locale, { t, fmt } from '@/plugins/locale';\n`;
-      const out = CommonASTUtils.removeNamedImports(code, isPkg, ['t']);
+      const out = removeNamedImports(code, isPkg, ['t']);
       expect(out).toMatch(/import locale, \{ fmt \} from '@\/plugins\/locale';/);
     });
   });
 
-  describe('CommonASTUtils.isLiteralExpression / evalLiteralExpression（#6）', () => {
+  describe('isLiteralExpression / evalLiteralExpression（#6）', () => {
     it('单个完整字符串字面量 → 字面量，求值去引号', () => {
-      expect(CommonASTUtils.isLiteralExpression(`'保存'`)).toBe(true);
-      expect(CommonASTUtils.isLiteralExpression(`"取消"`)).toBe(true);
-      expect(CommonASTUtils.evalLiteralExpression(`'保存'`)).toBe('保存');
+      expect(isLiteralExpression(`'保存'`)).toBe(true);
+      expect(isLiteralExpression(`"取消"`)).toBe(true);
+      expect(evalLiteralExpression(`'保存'`)).toBe('保存');
     });
 
     it('无插值模板字面量 → 字面量；含插值的模板 → 非字面量', () => {
-      expect(CommonASTUtils.isLiteralExpression('`hello`')).toBe(true);
-      expect(CommonASTUtils.isLiteralExpression('`${a}-${b}`')).toBe(false);
+      expect(isLiteralExpression('`hello`')).toBe(true);
+      expect(isLiteralExpression('`${a}-${b}`')).toBe(false);
     });
 
     it('首尾恰为引号的拼接表达式 → 非字面量（修复点：不再误判）', () => {
       // 旧实现 /^['"`].*['"`]$/ 会误判为字面量，evalLiteralExpression 只切首尾字符
       // → 产出坏文本 `(' + count + '`、真变量 count 丢失。
-      expect(CommonASTUtils.isLiteralExpression(`'(' + count + ')'`)).toBe(false);
-      expect(CommonASTUtils.isLiteralExpression(`'前缀' + name + '后缀'`)).toBe(false);
+      expect(isLiteralExpression(`'(' + count + ')'`)).toBe(false);
+      expect(isLiteralExpression(`'前缀' + name + '后缀'`)).toBe(false);
     });
 
     it('常见非字面量形式仍判为变量', () => {
-      expect(CommonASTUtils.isLiteralExpression(`count + '%'`)).toBe(false);
-      expect(CommonASTUtils.isLiteralExpression(`fn('x')`)).toBe(false);
-      expect(CommonASTUtils.isLiteralExpression('count')).toBe(false);
+      expect(isLiteralExpression(`count + '%'`)).toBe(false);
+      expect(isLiteralExpression(`fn('x')`)).toBe(false);
+      expect(isLiteralExpression('count')).toBe(false);
     });
 
     it('数字/布尔/null/undefined 仍判为字面量', () => {
-      expect(CommonASTUtils.isLiteralExpression('42')).toBe(true);
-      expect(CommonASTUtils.isLiteralExpression('3.14')).toBe(true);
-      expect(CommonASTUtils.isLiteralExpression('true')).toBe(true);
-      expect(CommonASTUtils.isLiteralExpression('null')).toBe(true);
+      expect(isLiteralExpression('42')).toBe(true);
+      expect(isLiteralExpression('3.14')).toBe(true);
+      expect(isLiteralExpression('true')).toBe(true);
+      expect(isLiteralExpression('null')).toBe(true);
     });
   });
 });
@@ -514,53 +532,53 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
  * 修复：stripMatchedDelimiters 仅在首尾为「同一个定界符」时才剥一层。
  */
 describe('strip-matched-delimiters', () => {
-  describe('CommonASTUtils.stripMatchedDelimiters', () => {
+  describe('stripMatchedDelimiters', () => {
     it('剥成对的同种定界符', () => {
-      expect(CommonASTUtils.stripMatchedDelimiters(`'你好'`)).toBe('你好');
-      expect(CommonASTUtils.stripMatchedDelimiters(`"你好"`)).toBe('你好');
-      expect(CommonASTUtils.stripMatchedDelimiters('`你好`')).toBe('你好');
+      expect(stripMatchedDelimiters(`'你好'`)).toBe('你好');
+      expect(stripMatchedDelimiters(`"你好"`)).toBe('你好');
+      expect(stripMatchedDelimiters('`你好`')).toBe('你好');
     });
 
     it('内容值以 ASCII 引号收尾时不误删（核心修复）', () => {
-      expect(CommonASTUtils.stripMatchedDelimiters('点击"提交"')).toBe('点击"提交"');
-      expect(CommonASTUtils.stripMatchedDelimiters('"提示"内容')).toBe('"提示"内容');
+      expect(stripMatchedDelimiters('点击"提交"')).toBe('点击"提交"');
+      expect(stripMatchedDelimiters('"提示"内容')).toBe('"提示"内容');
     });
 
     it('首尾非同一定界符不剥', () => {
-      expect(CommonASTUtils.stripMatchedDelimiters(`'你好"`)).toBe(`'你好"`);
+      expect(stripMatchedDelimiters(`'你好"`)).toBe(`'你好"`);
     });
 
     it('allow 限定只剥反引号：locale 文案路径保留内容里的引号', () => {
-      expect(CommonASTUtils.stripMatchedDelimiters('`欢迎${x}`', ['`'])).toBe('欢迎${x}');
-      expect(CommonASTUtils.stripMatchedDelimiters('点击"提交"', ['`'])).toBe('点击"提交"');
-      expect(CommonASTUtils.stripMatchedDelimiters('"你好"', ['`'])).toBe('"你好"');
+      expect(stripMatchedDelimiters('`欢迎${x}`', ['`'])).toBe('欢迎${x}');
+      expect(stripMatchedDelimiters('点击"提交"', ['`'])).toBe('点击"提交"');
+      expect(stripMatchedDelimiters('"你好"', ['`'])).toBe('"你好"');
     });
 
     it('长度不足 2 原样返回', () => {
-      expect(CommonASTUtils.stripMatchedDelimiters('')).toBe('');
-      expect(CommonASTUtils.stripMatchedDelimiters('"')).toBe('"');
+      expect(stripMatchedDelimiters('')).toBe('');
+      expect(stripMatchedDelimiters('"')).toBe('"');
     });
   });
 
-  describe('CommonASTUtils.shouldReplaceNode — 内容含 ASCII 引号', () => {
+  describe('shouldReplaceNode — 内容含 ASCII 引号', () => {
     it('节点源码带定界引号、original 为去定界内容时仍能匹配（修复前返回 false）', () => {
-      expect(CommonASTUtils.shouldReplaceNode(`'点击"提交"'`, '点击"提交"', false)).toBe(true);
-      expect(CommonASTUtils.shouldReplaceNode(`'"提示"内容'`, '"提示"内容', false)).toBe(true);
+      expect(shouldReplaceNode(`'点击"提交"'`, '点击"提交"', false)).toBe(true);
+      expect(shouldReplaceNode(`'"提示"内容'`, '"提示"内容', false)).toBe(true);
     });
 
     it('普通中文仍正常匹配', () => {
-      expect(CommonASTUtils.shouldReplaceNode(`'点击提交'`, '点击提交', false)).toBe(true);
+      expect(shouldReplaceNode(`'点击提交'`, '点击提交', false)).toBe(true);
     });
   });
 
-  describe('CommonASTUtils.createMessageWithOptions — locale 值不丢内容引号', () => {
+  describe('createMessageWithOptions — locale 值不丢内容引号', () => {
     it('内容边界含 ASCII 引号时原样保留（修复前丢字符）', () => {
-      expect(CommonASTUtils.createMessageWithOptions('点击"提交"').message).toBe('点击"提交"');
-      expect(CommonASTUtils.createMessageWithOptions('"你好"').message).toBe('"你好"');
+      expect(createMessageWithOptions('点击"提交"').message).toBe('点击"提交"');
+      expect(createMessageWithOptions('"你好"').message).toBe('"你好"');
     });
 
     it('反引号模板仍剥定界反引号', () => {
-      expect(CommonASTUtils.createMessageWithOptions('`你好`').message).toBe('你好');
+      expect(createMessageWithOptions('`你好`').message).toBe('你好');
     });
   });
 });
@@ -769,10 +787,9 @@ describe('module-resolver', () => {
  * 修复：遮蔽判定区分块级作用域——块内 const/let 只遮蔽该块内的引用。
  */
 describe('import-unused-block-scope', () => {
-  describe('CommonASTUtils.isImportedNameUnused — 块级作用域遮蔽', () => {
+  describe('isImportedNameUnused — 块级作用域遮蔽', () => {
     const M = '@/plugins/locale';
-    const check = (code: string): boolean =>
-      CommonASTUtils.isImportedNameUnused(code, 'f.tsx', M, 't');
+    const check = (code: string): boolean => isImportedNameUnused(code, 'f.tsx', M, 't');
 
     it('块内 const {t} 不遮蔽块外引用 → 导入仍在用（保留）', () => {
       const code = `import { t } from '${M}';
@@ -996,7 +1013,7 @@ describe('RestoreProcessor — 显式 target 解析为空不回退全量扫描',
   });
 });
 
-describe('CommonASTUtils.findExactStringNode — 内容自带成对 ASCII 引号（回归 Bug-1）', () => {
+describe('findExactStringNode — 内容自带成对 ASCII 引号（回归 Bug-1）', () => {
   it('字符串值本身被同种 ASCII 双引号包裹（"提示"）仍能精确命中 StringLiteral 节点', () => {
     // 源码：单引号字符串，其值（node.text）恰为 `"提示"`，首尾是 ASCII 双引号。
     // 旧实现对裸内容 originalText 也剥成对定界符 → "提示" 被误剥成 提示 →
@@ -1004,7 +1021,7 @@ describe('CommonASTUtils.findExactStringNode — 内容自带成对 ASCII 引号
     const source = `const x = '"提示"';`;
     const sf = ts.createSourceFile('t.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const pos = source.indexOf('提示');
-    const node = CommonASTUtils.findExactStringNode(sf, pos, '"提示"');
+    const node = findExactStringNode(sf, pos, '"提示"');
     expect(node).toBeDefined();
     expect(ts.isStringLiteral(node!)).toBe(true);
   });
@@ -1013,7 +1030,7 @@ describe('CommonASTUtils.findExactStringNode — 内容自带成对 ASCII 引号
     const source = `const x = '你好';`;
     const sf = ts.createSourceFile('t.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const pos = source.indexOf('你好');
-    const node = CommonASTUtils.findExactStringNode(sf, pos, '你好');
+    const node = findExactStringNode(sf, pos, '你好');
     expect(node).toBeDefined();
     expect(ts.isStringLiteral(node!)).toBe(true);
   });
@@ -1021,10 +1038,10 @@ describe('CommonASTUtils.findExactStringNode — 内容自带成对 ASCII 引号
 
 describe('toSingleBracePlaceholders — 中文占位符名', () => {
   it('`共{{数量}}个` 归一为 `共{数量}个`（与生成端中文标识符支持对齐）', () => {
-    expect(CommonASTUtils.toSingleBracePlaceholders('共{{数量}}个')).toBe('共{数量}个');
+    expect(toSingleBracePlaceholders('共{{数量}}个')).toBe('共{数量}个');
   });
 
   it('ASCII 占位符行为不变', () => {
-    expect(CommonASTUtils.toSingleBracePlaceholders('共 {{count}} 项')).toBe('共 {count} 项');
+    expect(toSingleBracePlaceholders('共 {{count}} 项')).toBe('共 {count} 项');
   });
 });

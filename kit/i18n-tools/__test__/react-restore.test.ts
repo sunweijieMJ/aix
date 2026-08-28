@@ -1112,7 +1112,7 @@ describe('React restore — 不误删来源无关的同名 t/intl', () => {
  * cleanupVariableStatements 删 `const { t } = useTranslation()`、cleanupImports 删 import，
  * 却把裸 t 引用留下 → `t is not defined`（ReferenceError / TS2304）。
  *
- * 对比：同库 ReactImportManager.callbackUsesVarOutsideTranslationCalls 对裸 Identifier 判定正确
+ * 对比：同库 react-restore-cleanup 的 callbackUsesVarOutsideTranslationCalls 对裸 Identifier 判定正确
  * （依赖数组 [t] 会被保留），两处口径相反正是缺陷特征。
  * 修复时须排除解构绑定名 t 自身（const { t } 的 BindingElement.name 也是 Identifier t），
  * 否则 keepTranslationVar 恒 true、常规往返删不掉声明（由本文件既有「全部可还原→删声明」用例守护）。

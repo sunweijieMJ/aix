@@ -5,6 +5,7 @@ import { LanguageFileManager } from '../utils/language-file-manager';
 import { LoggerUtils } from '../utils/logger';
 import type { LocaleMap } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
+import { classifyJsonFile, ensureDirectoryExists, writeJsonFile } from '../utils/json-io';
 
 /**
  * 导出处理器
@@ -67,19 +68,18 @@ export class ExportProcessor extends FileProcessor {
       );
     };
 
-    // 基础目录（isCustom=false）+ 定制目录（isCustom=true，若配置）逐 locale 探测；
+    // 基础目录（isCustom=false）+ 定制目录（isCustom=true，若配置）逐 locale 探测；export 必须
+    // 同时看这两个目录，故显式构造两个 LanguageFileManager，而非复用绑定 this.isCustom 的 langFiles。
     // 探测口径（桶式 / 遗留单文件 / 单文件）统一收口于 findCorruptLocale。桶式必须带
     // checkLegacy：migrateToBuckets 会 silent 读遗留单文件、损坏则清空并 rename .bak →
     // 导出空包覆盖已发布产物。
+    const baseFiles = new LanguageFileManager(this.config, false);
+    const customFiles = new LanguageFileManager(this.config, true);
     for (const locale of allLocales) {
-      const corruptBase = LanguageFileManager.findCorruptLocale(this.config, false, locale, {
-        checkLegacy: true,
-      });
+      const corruptBase = baseFiles.findCorruptLocale(locale, { checkLegacy: true });
       if (corruptBase) throwCorrupt(corruptBase);
       if (customDir) {
-        const corruptCustom = LanguageFileManager.findCorruptLocale(this.config, true, locale, {
-          checkLegacy: true,
-        });
+        const corruptCustom = customFiles.findCorruptLocale(locale, { checkLegacy: true });
         if (corruptCustom) throwCorrupt(corruptCustom);
       }
     }
@@ -136,7 +136,7 @@ export class ExportProcessor extends FileProcessor {
     const customOf = (locale: string): LocaleMap => customByLocale.get(locale)!;
     if (customLocaleDir) ExportProcessor.checkLocaleConflicts(allLocales, baseOf, customOf);
 
-    FileUtils.ensureDirectoryExists(outputDir);
+    ensureDirectoryExists(outputDir);
     const mergedByLocale = ExportProcessor.mergeByLocale(allLocales, baseOf, customOf);
 
     LoggerUtils.info('\n📊 语言包统计信息:');
@@ -160,8 +160,10 @@ export class ExportProcessor extends FileProcessor {
       ...this.config,
       io: { ...this.config.io, localesDir: outputDir },
     };
+    // 导出目标是 outputDir（非 locales 目录），故用变造后的 exportConfig + isCustom=false 单独绑定。
+    const exportFiles = new LanguageFileManager(exportConfig, false);
     for (const locale of allLocales) {
-      LanguageFileManager.writeLocaleFile(exportConfig, false, mergedByLocale.get(locale)!, locale);
+      exportFiles.writeLocaleFile(mergedByLocale.get(locale)!, locale);
     }
 
     const outputPaths = allLocales.map((l) => path.join(outputDir, `${l}.json`));
@@ -177,7 +179,7 @@ export class ExportProcessor extends FileProcessor {
     const unreadable: string[] = [];
     for (const locale of allLocales) {
       const filePath = path.join(outputDir, `${locale}.json`);
-      const cls = FileUtils.classifyJsonFile<Record<string, any>>(filePath);
+      const cls = classifyJsonFile<Record<string, any>>(filePath);
       if (cls.status !== 'ok') {
         unreadable.push(`${locale}(${cls.status})`);
         continue;
@@ -255,11 +257,11 @@ export class ExportProcessor extends FileProcessor {
     const customLocaleDir = this.config.io.customDir;
 
     // getMessages 兼容单文件/桶式两种源格式（buckets 配置下首次会触发迁移）
-    const baseMessages = LanguageFileManager.getMessages(this.config, false);
+    const baseMessages = new LanguageFileManager(this.config, false).getMessages();
     // 定制目录：桶式同样需合并 customDir，否则定制覆盖会被静默丢弃（与 performFlatExport 对称）。
     const customMessages = customLocaleDir
-      ? LanguageFileManager.getMessages(this.config, true)
-      : ({} as ReturnType<typeof LanguageFileManager.getMessages>);
+      ? new LanguageFileManager(this.config, true).getMessages()
+      : ({} as ReturnType<LanguageFileManager['getMessages']>);
 
     // 冲突检测 + 合并：与 performFlatExport 同口径，仅 base/custom 来源不同
     const baseOf = (locale: string): LocaleMap => (baseMessages[locale] ?? {}) as LocaleMap;
@@ -298,14 +300,10 @@ export class ExportProcessor extends FileProcessor {
       ...this.config,
       io: { ...this.config.io, localesDir: outputDir },
     };
+    // 导出目标是 outputDir（非 locales 目录），故用变造后的 exportConfig + isCustom=false 单独绑定。
+    const exportFiles = new LanguageFileManager(exportConfig, false);
     for (const locale of allLocales) {
-      LanguageFileManager.writeLocaleFile(
-        exportConfig,
-        false,
-        mergedByLocale.get(locale)!,
-        locale,
-        keyBucketMap,
-      );
+      exportFiles.writeLocaleFile(mergedByLocale.get(locale)!, locale, keyBucketMap);
     }
 
     // 每个语言目录生成 index.json，便于消费方按需懒加载
@@ -335,7 +333,7 @@ export class ExportProcessor extends FileProcessor {
   ): void {
     if (layout !== 'by-locale') return;
     for (const locale of locales) {
-      FileUtils.writeJsonFile(path.join(outputDir, locale, 'index.json'), {
+      writeJsonFile(path.join(outputDir, locale, 'index.json'), {
         buckets: localeBuckets.get(locale) ?? [],
       });
     }
@@ -377,7 +375,7 @@ export class ExportProcessor extends FileProcessor {
       generatedAt: new Date().toISOString(),
       files,
     };
-    FileUtils.writeJsonFile(path.join(outputDir, 'manifest.json'), manifest);
+    writeJsonFile(path.join(outputDir, 'manifest.json'), manifest);
     LoggerUtils.info(`📄 已生成 manifest.json，包含 ${bucketNames.length} 个桶`);
   }
 }

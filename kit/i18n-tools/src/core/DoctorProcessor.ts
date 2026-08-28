@@ -2,7 +2,6 @@ import type { ResolvedConfig } from '../config';
 import { extractPlaceholderNames } from '../utils/placeholder-utils';
 import { collectUsedKeys, matchesDynamicAllowlist } from '../utils/source-key-scanner';
 import type { FrameworkAdapter } from '../adapters';
-import { LanguageFileManager } from '../utils/language-file-manager';
 import { FileUtils } from '../utils/file-utils';
 import type { SkippedTextLocation } from '../utils/extraction-diagnostics';
 import { type LinterFinding, LocaleValueLinter } from '../utils/locale-value-linter';
@@ -122,8 +121,7 @@ export class DoctorProcessor extends BaseProcessor {
       findings.push(this.buildCorruptFinding(sourceLocale, corruptSource, true));
     } else {
       // 1. locale value 结构性检查（复用 linter）
-      const sourceMap =
-        LanguageFileManager.readLocaleFile(this.config, this.isCustom, sourceLocale) ?? {};
+      const sourceMap = this.langFiles.readLocaleFile(sourceLocale) ?? {};
 
       findings.push(...this.runLinter(sourceMap));
 
@@ -139,8 +137,7 @@ export class DoctorProcessor extends BaseProcessor {
           findings.push(this.buildCorruptFinding(target, corruptTarget, false));
           continue;
         }
-        const targetMap =
-          LanguageFileManager.readLocaleFile(this.config, this.isCustom, target) ?? {};
+        const targetMap = this.langFiles.readLocaleFile(target) ?? {};
         findings.push(...this.checkMissingTargetKeys(sourceMap, targetMap, target));
         findings.push(...this.checkUntranslated(sourceMap, targetMap, target));
         findings.push(...this.checkPlaceholders(sourceMap, targetMap, target));
@@ -191,7 +188,7 @@ export class DoctorProcessor extends BaseProcessor {
    *  - 单文件：readLocaleFile === null（区分「不存在 → {}」与「存在但解析失败 → null」）
    */
   private detectCorruptLocale(locale: string): string | null {
-    return LanguageFileManager.findCorruptLocale(this.config, this.isCustom, locale, {
+    return this.langFiles.findCorruptLocale(locale, {
       checkLegacy: true,
     });
   }

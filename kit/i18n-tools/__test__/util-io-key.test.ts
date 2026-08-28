@@ -13,6 +13,7 @@ import { IdGenerator } from '../src/utils/id-generator';
 import { IdReuseResolver } from '../src/core/IdReuseResolver';
 import { isModeExplicitlySet } from '../src/utils/command-utils';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
+import { writeTranslationsFile } from '../src/utils/json-io';
 
 // =============================================================================
 // file-utils
@@ -122,7 +123,7 @@ describe('flattenObject 读路径使用 keys.separator', () => {
       llm: { shared: { apiKey: 'x', model: 'm' } },
     } as I18nToolsConfig);
 
-    const msgs = LanguageFileManager.getMessages(config, false);
+    const msgs = new LanguageFileManager(config, false).getMessages();
     // 修复前会得到 'a.b'（默认分隔符），与 readLocaleFile('/') 的 key 集不一致
     expect(Object.keys(msgs['zh-CN']!)).toEqual(['a/b']);
     expect(msgs['zh-CN']!['a/b']).toBe('你好');
@@ -144,8 +145,12 @@ describe('flattenObject 读路径使用 keys.separator', () => {
       llm: { shared: { apiKey: 'x', model: 'm' } },
     } as I18nToolsConfig);
 
-    const viaGetMessages = Object.keys(LanguageFileManager.getMessages(config, false)['zh-CN']!);
-    const viaReadLocale = Object.keys(LanguageFileManager.readLocaleFile(config, false) ?? {});
+    const viaGetMessages = Object.keys(
+      new LanguageFileManager(config, false).getMessages()['zh-CN']!,
+    );
+    const viaReadLocale = Object.keys(
+      new LanguageFileManager(config, false).readLocaleFile() ?? {},
+    );
     expect(viaGetMessages).toEqual(viaReadLocale);
     expect(viaReadLocale).toEqual(['views/order/title']);
   });
@@ -201,7 +206,7 @@ describe('桶式迁移：空 source {} 时 target 仍按规则分桶', () => {
       JSON.stringify({ 'order.list': 'List', 'user.name': 'Name' }),
     );
 
-    LanguageFileManager.getMessages(makeConfig(), false);
+    new LanguageFileManager(makeConfig(), false).getMessages();
 
     // 修复后：en-US/order.json 存在且含 order.list（修复前该 key 被错落进 common）
     const orderBucket = path.join(localeDir, 'en-US', 'order.json');
@@ -251,9 +256,9 @@ describe('translations/untranslated 落盘按 key 排序', () => {
     return resolveConfig(user);
   }
 
-  it('FileUtils.writeTranslationsFile：顶层 key 字母序，内层值对象顺序不变', () => {
+  it('writeTranslationsFile：顶层 key 字母序，内层值对象顺序不变', () => {
     const p = path.join(tmpDir, 't.json');
-    FileUtils.writeTranslationsFile(p, {
+    writeTranslationsFile(p, {
       'm.x': { zh: '乙', en: 'B' },
       'a.x': { zh: '甲', en: 'A' },
     });
@@ -657,7 +662,7 @@ describe('buckets 迁移窗口：readLocaleFile 只读并入未迁移的遗留�
       JSON.stringify({ 'order.list': '列表', 'user.name': '名称' }),
     );
 
-    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    const map = new LanguageFileManager(makeConfig(), false).readLocaleFile();
     expect(map).toEqual({ 'order.list': '列表', 'user.name': '名称' });
     // 只读兜底：不得产生迁移副作用
     expect(fs.existsSync(path.join(localeDir, 'zh-CN.json.bak'))).toBe(false);
@@ -672,14 +677,14 @@ describe('buckets 迁移窗口：readLocaleFile 只读并入未迁移的遗留�
       JSON.stringify({ 'user.name': '新值' }),
     );
 
-    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    const map = new LanguageFileManager(makeConfig(), false).readLocaleFile();
     expect(map).toEqual({ 'user.name': '新值' });
   });
 
   it('遗留单文件损坏时返回 null（与单文件模式口径一致，不静默当空）', () => {
     fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), '{ 损坏的 json');
 
-    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    const map = new LanguageFileManager(makeConfig(), false).readLocaleFile();
     expect(map).toBeNull();
   });
 
@@ -693,7 +698,7 @@ describe('buckets 迁移窗口：readLocaleFile 只读并入未迁移的遗留�
       JSON.stringify({ 'user.name': '值' }),
     );
 
-    const map = LanguageFileManager.readLocaleFile(makeConfig(), false);
+    const map = new LanguageFileManager(makeConfig(), false).readLocaleFile();
     expect(map).toEqual({ 'user.name': '值' });
   });
 });
