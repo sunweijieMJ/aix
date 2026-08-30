@@ -4,9 +4,8 @@ import ts from 'typescript';
 import {
   applyReplacements,
   findExactStringNode,
-  nodeToText,
+  nodeMatchesExtractedOriginal,
   parseSourceFile,
-  shouldReplaceNode,
 } from '../../utils/ast-core';
 import { createMessageWithOptions } from '../../utils/message-shape';
 import { ReactASTUtils } from './react-ast-utils';
@@ -153,13 +152,15 @@ export class ReactTransformer implements ITransformer {
             end -= raw.length - raw.trimEnd().length;
           }
 
-          const originalNodeText = nodeToText(node, sourceFile);
-          const isTemplateString =
-            extracted.original.startsWith('`') && extracted.original.endsWith('`');
-          // JsxText 源码侧无定界符；extracted.original 仅模板串（反引号包裹）是源码形式、其余为裸内容。
-          // 据此精确控制两侧是否剥定界符，避免内容自带成对引号时被误剥导致漏替换。
+          // 「original 是否为带定界符的源码形式」以提取端旗标为准，不看首尾字符：
+          // 用首尾字符猜会把「内容本身首尾是反引号」的普通字符串误判成模板源码形式
+          // → 裸内容侧被多剥一层 → 复核不通过 → 整文件中止（与 Vue 端同款缺陷）。
+          const isTemplateString = extracted.isTemplateString === true;
+          // JsxText 源码侧无定界符；extracted.original 仅模板串是源码形式、其余为裸内容。
+          // 模板串走结构化比对（见 nodeMatchesExtractedOriginal），与提取端重建口径同源，
+          // `${ expr }` 的插值空白差异 / 字面段 `\\` 转义不再导致比对失败。
           if (
-            shouldReplaceNode(originalNodeText, extracted.original, isTemplateString, {
+            nodeMatchesExtractedOriginal(node, sourceFile, extracted.original, {
               nodeDelimited: !ts.isJsxText(node),
               originalDelimited: isTemplateString,
             })

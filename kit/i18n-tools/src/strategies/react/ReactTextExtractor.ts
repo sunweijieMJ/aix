@@ -242,7 +242,14 @@ export class ReactTextExtractor extends BaseTextExtractor {
             count: 1,
           });
         }
-        // 处理了混合内容后，跳过子节点的单独处理
+        // 处理了混合内容后，跳过 children 的单独处理——但开标签必须单独再走一遍：
+        // 混合内容只吃掉 children 区间（ReactTransformer 也只替换 children），
+        // openingElement 上的属性文案（`<div title="标题">共 {n} 项</div>` 的 title）
+        // 与它无关。此前在这里无差别 return，属性中文既不提取也不进诊断，静默丢失。
+        // JsxFragment 无开标签属性，不需要这一步。
+        if (ts.isJsxElement(node)) {
+          await this.visitNode(node.openingElement, sourceFile, extractedStrings, filePath);
+        }
         return;
       }
     }
@@ -361,6 +368,28 @@ export class ReactTextExtractor extends BaseTextExtractor {
         ReactASTUtils.isInClassNonArrowPropertyInitializer(node)
       ) {
         this.warnClassPropertyInitializer(node, sourceFile);
+        return;
+      }
+
+      // static 成员（static 箭头属性 / static 方法 / static 访问器 / static 块）：`this` 是
+      // 类构造函数、没有 props，注入器那句 `const { t } = this.props` 解构会运行时抛
+      // TypeError；不注入则裸 t() 未定义。与上面的属性初始化器同口径跳过并留痕。
+      if (
+        componentType === 'class' &&
+        context !== 'jsx-text' &&
+        ReactASTUtils.isInClassStaticMember(node)
+      ) {
+        this.warnClassStaticMember(node, sourceFile);
+        return;
+      }
+
+      // 组件内已有与注入变量同名的非 i18n 绑定（`const { t } = useTemperature()`）：注入器
+      // 会跳过注入（否则同块双声明 TS2451），但替换已经发生 —— 裸 t('key') 于是解析到那个
+      // 同名函数上，产出「能编译、行为错」的代码。把判定前移到提取端，让该组件的候选整体
+      // 不进 extractedStrings，替换也就不会发生。jsx-text 走 <Trans>/<FormattedMessage>
+      // 组件形态、不引用 t 绑定，与上面两道守卫同样不在此跳过。
+      if (context !== 'jsx-text' && this.hasConflictingTranslationBinding(node)) {
+        this.warnConflictingTranslationBinding(node, sourceFile);
         return;
       }
 
@@ -605,6 +634,70 @@ export class ReactTextExtractor extends BaseTextExtractor {
       count: 1,
       dedupeKey: `${sourceFile.fileName}:${node.getStart(sourceFile)}`,
     });
+  }
+
+  /**
+   * 节点所在的可注入函数组件内，是否已有与注入变量同名的非 i18n 本地绑定。
+   * 判定复用 ReactASTUtils.hasConflictingTranslationBinding —— 与
+   * ReactComponentInjector.hasConflictingLocalBinding 是同一份实现，两端不可分叉。
+   */
+  private hasConflictingTranslationBinding(node: ts.Node): boolean {
+    if (!this.library) return false;
+    const host = ReactASTUtils.findEnclosingInjectableFunctionComponent(node);
+    if (!host) return false;
+    return ReactASTUtils.hasConflictingTranslationBinding(
+      host,
+      this.library.translationVarName,
+      this.library.hookName,
+    );
+  }
+
+  /**
+   * 输出「static 类成员跳过提取」的 warning，附文件路径与行号。
+   * 归入 manualSkip 的 class-property 类目：成因与属性初始化器同族（该位置没有可用的
+   * t/intl 绑定），复用同一条人工处理建议，不为此扩 ManualSkipDiagnostic 的封闭联合。
+   */
+  private warnClassStaticMember(node: ts.Node, sourceFile: ts.SourceFile): void {
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const line = pos.line + 1;
+    const msg =
+      `⚠️ 跳过类组件 static 成员中的文案提取：${FileUtils.getRelativePath(sourceFile.fileName)}:${line}\n` +
+      `   原因：static 成员里的 this 是类本身、没有 props，注入 const { t } = this.props 会运行时报错。\n` +
+      `   建议：把文案挪进实例方法 / render()，或改用模块级 t() 导入。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
+    this.recordManualSkip({
+      category: 'class-property',
+      message: msg,
+      count: 1,
+      dedupeKey: `${sourceFile.fileName}:${node.getStart(sourceFile)}`,
+    });
+  }
+
+  /** 同一轮提取内已告警过的「同名非 i18n 绑定」组件位置，按 文件:偏移 去重。 */
+  private warnedConflictingBindings = new Set<string>();
+
+  /**
+   * 输出「组件内存在同名非 i18n 绑定、整体跳过提取」的 warning。
+   *
+   * 只走 warning 通道：ManualSkipDiagnostic.category 是封闭联合（html-template /
+   * class-property / nested-interpolation），本情形不属于任何一类，扩枚举要同步改
+   * CoverageReporter 与 RunReport 的映射，超出本次改动范围；warning 已随 RunReport 落盘留痕。
+   */
+  private warnConflictingTranslationBinding(node: ts.Node, sourceFile: ts.SourceFile): void {
+    const dedupeKey = `${sourceFile.fileName}:${node.getStart(sourceFile)}`;
+    if (this.warnedConflictingBindings.has(dedupeKey)) return;
+    this.warnedConflictingBindings.add(dedupeKey);
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const varName = this.library?.translationVarName ?? 't';
+    const msg =
+      `⚠️ 跳过提取：组件内已存在与 '${varName}' 同名的非 i18n 本地绑定：` +
+      `${FileUtils.getRelativePath(sourceFile.fileName)}:${pos.line + 1}\n` +
+      `   原因：注入器不能在同块再声明一个 ${varName}（TS2451），若仍替换文案，` +
+      `新的 ${varName}(...) 会解析到那个同名函数上。\n` +
+      `   建议：把该本地绑定改名，或人工为该组件接入 i18n 后重跑。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
   }
 
   /**

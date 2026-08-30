@@ -193,8 +193,9 @@ export const DEFAULT_GLOSSARY: Required<Omit<GlossaryConfig, 'file'>> = {
 /**
  * 默认 LLM 任务配置。
  *
- * idGeneration / translation 各自独立维护一份默认，避免一处改动影响另一处。
- * 当前两者默认值相同；保留两个常量是为了将来差异化（如翻译用更大并发）。
+ * idGeneration 与 translation 共用这一份默认：loader 的 resolveTask 对两个任务分别做
+ * 「用户任务配置 ?? llm.shared ?? 本常量」的逐字段兜底，故改这里会同时影响两个任务。
+ * 将来若要差异化（如翻译用更大并发），需另立常量并在 resolveTask 里按 context 分派。
  */
 export const DEFAULT_LLM_TASK: Required<
   Omit<LLMTaskConfig, 'apiKey' | 'baseURL' | 'model' | 'headers' | 'prompt'>

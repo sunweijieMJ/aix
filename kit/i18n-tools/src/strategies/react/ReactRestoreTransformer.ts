@@ -307,12 +307,19 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   private createTransformer(context: TransformContext): ts.TransformerFactory<ts.SourceFile> {
     const library = this.library;
 
+    // unwrapHOC 真正能解包 / 删除的那些 HOC 调用节点。survivalScan 用它反查「命中 isHOCCall
+    // 但不在此集合」的调用——那些 HOC 会原样保留在产物里（见 keepLibraryImport 处注释）。
+    // 由 prepass 填充，口径必须与 unwrapHOC 的 case 1（export default HOC(x)）/ case 2
+    // （声明名进 componentNameMap）严格一致，否则会漏保留 import 或过度保留。
+    const unwrappableHocCalls = new Set<ts.Node>();
+
     // 预备遍历，收集 HOC 组件的名称映射
     function prepass(node: ts.Node) {
       if (ts.isVariableDeclaration(node)) {
         if (ts.isIdentifier(node.name) && node.initializer) {
           const wrappedComponent = library.getHOCWrappedComponent(node.initializer);
           if (wrappedComponent) {
+            unwrappableHocCalls.add(node.initializer);
             context.componentNameMap.set(node.name.text, wrappedComponent);
             // 类组件 HOC 约定：内部类名 = 原名 + 'WithOutIntl'。若该 HOC 导出语句带 export，
             // 记录内部类名，供 unwrapHOC 把类改回原名时恢复 export。
@@ -335,8 +342,11 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
         ts.isCallExpression(node.expression)
       ) {
         const wrappedComponent = library.getHOCWrappedComponent(node.expression);
-        if (wrappedComponent && wrappedComponent.endsWith(HOC_CLASS_SUFFIX)) {
-          context.defaultExportedHocInnerNames!.add(wrappedComponent);
+        if (wrappedComponent) {
+          unwrappableHocCalls.add(node.expression);
+          if (wrappedComponent.endsWith(HOC_CLASS_SUFFIX)) {
+            context.defaultExportedHocInnerNames!.add(wrappedComponent);
+          }
         }
       }
       ts.forEachChild(node, prepass);
@@ -384,6 +394,15 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             keepLibraryImportForBinding = true;
           }
         }
+      }
+      // 解不掉的 HOC 调用（`withTranslation()(connect()(X))`、路由表对象里的
+      // `{ component: injectIntl(Foo) }` 等 unwrapHOC 不覆盖的位置）会原样留在产物里，
+      // 仍引用库的具名导入（withTranslation / injectIntl）。它们既不是翻译调用也不是翻译
+      // 组件，survivalScan 原本一条都不统计 → keepLibraryImport 保持 false → import 被摘除，
+      // 调用却还在，运行时 ReferenceError。凡命中 isHOCCall 却不在 unwrappableHocCalls 里的
+      // 调用一律保留导入（走 library 抽象，两个库同型）。
+      if (ts.isCallExpression(node) && library.isHOCCall(node) && !unwrappableHocCalls.has(node)) {
+        keepLibraryImport = true;
       }
       if (ts.isCallExpression(node) && library.isTranslationCall(node)) {
         const restored = this.transformTranslationCall(

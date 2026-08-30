@@ -2,6 +2,7 @@ import path from 'path';
 import type { ResolvedConfig } from '../config';
 import type { SkippedTextLocation } from '../utils/extraction-diagnostics';
 import { FileUtils } from '../utils/file-utils';
+import { InteractiveUtils } from '../utils/interactive-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
 import { LocaleValueLinter } from '../utils/locale-value-linter';
 import { LoggerUtils } from '../utils/logger';
@@ -156,10 +157,17 @@ export class PlanApplier {
       });
     }
 
-    const existingLocaleKeys = this.readCurrentSourceLocaleKeys();
-    const newKeyCount = Object.keys(localeDelta).filter(
-      (key) => !existingLocaleKeys.has(key),
-    ).length;
+    const existingLocale = this.readCurrentSourceLocaleMap();
+    // 只快照「delta 将覆盖的既有 key」的当前值，供 apply 侧做漂移比对（见 GeneratePlan.localeBaseline）。
+    const localeBaseline: Record<string, string> = {};
+    let newKeyCount = 0;
+    for (const key of Object.keys(localeDelta)) {
+      if (Object.prototype.hasOwnProperty.call(existingLocale, key)) {
+        localeBaseline[key] = existingLocale[key]!;
+      } else {
+        newKeyCount++;
+      }
+    }
     const plan: GeneratePlan = {
       schemaVersion: 2,
       command: 'generate',
@@ -178,6 +186,7 @@ export class PlanApplier {
       },
       entries,
       localeDelta,
+      localeBaseline,
       keyBucketMap,
       outputShape: {
         bucketsEnabled: Boolean(this.config.buckets),
@@ -224,8 +233,14 @@ export class PlanApplier {
    * @param options.keepPlan apply 完成后是否保留 plan 目录。默认 false（清理）：plan 的
    *        生命周期是「生成 → review → apply」，apply 完即终结；保留只在事后追溯有少量
    *        价值，但单 plan 体积大（含 sources/）容易累积。CLI 通过 `--keep-plan` 显式保留。
+   * @param options.interactive 是否允许在 locale 漂移时弹确认。非交互（CLI 的 apply-plan、
+   *        CI）一律拒绝 apply，让用户重跑 dry-run 而不是靠一个看不见的提示决定要不要覆盖。
+   * @returns 'applied' 已落盘；'cancelled' 用户在漂移确认里选了否（未做任何修改，plan 保留）
    */
-  async apply(planPath: string, options: { keepPlan: boolean }): Promise<void> {
+  async apply(
+    planPath: string,
+    options: { keepPlan: boolean; interactive?: boolean },
+  ): Promise<'applied' | 'cancelled'> {
     LoggerUtils.info(`📂 加载 Plan: ${planPath}`);
     const { plan, transformedSources } = GeneratePlanWriter.read(planPath, {
       expectedRoot: this.config.root,
@@ -315,7 +330,14 @@ export class PlanApplier {
       }),
     );
 
-    const localeKeysBeforeApply = this.readCurrentSourceLocaleKeys();
+    const localeBeforeApply = this.readCurrentSourceLocaleMap();
+    if (!(await this.confirmNoLocaleDrift(plan, localeBeforeApply, options.interactive === true))) {
+      LoggerUtils.warn('操作已取消');
+      LoggerUtils.info(`📁 Plan 目录已保留：${path.dirname(planPath)}`);
+      return 'cancelled';
+    }
+
+    const localeKeysBeforeApply = new Set(Object.keys(localeBeforeApply));
     await this.hooks.commitToDisk(results, syntheticStrings, plan.keyBucketMap, {
       preFinalizedLocale: true,
     });
@@ -337,10 +359,60 @@ export class PlanApplier {
         LoggerUtils.info(`🗑️  Plan 目录已清理：${planDir}（如需保留请使用 --keep-plan）`);
       }
     }
+
+    return 'applied';
   }
 
-  /** 读取 apply 前后的 source locale key，用真实磁盘差集生成回放统计。 */
-  private readCurrentSourceLocaleKeys(): Set<string> {
+  /**
+   * locale 漂移守卫：plan 记录的「将被覆盖的既有 key 当时的值」与当前磁盘值逐条比对。
+   *
+   * Why：指纹只盖源码文件。dry-run 之后有人改了这些 key 的文案（或 merge 了别人的分支），
+   * apply 会把 plan 里的旧值静默写回去——一次看不见的回退。
+   *
+   * @returns true 可继续 apply；false 用户取消
+   */
+  private async confirmNoLocaleDrift(
+    plan: GeneratePlan,
+    current: Record<string, string>,
+    interactive: boolean,
+  ): Promise<boolean> {
+    if (!plan.localeBaseline) {
+      // 旧 plan 无该字段：跳过检查而非拒绝——否则升级工具后所有存量 plan 都作废。
+      LoggerUtils.info(
+        'ℹ️  Plan 未记录 locale 基线（由旧版本生成），跳过 locale 漂移检查；' +
+          '如需该保护请重跑 `generate --dry-run`。',
+      );
+      return true;
+    }
+
+    const drifted = Object.entries(plan.localeBaseline).filter(
+      ([key, baseline]) => current[key] !== baseline,
+    );
+    if (drifted.length === 0) return true;
+
+    LoggerUtils.warn(
+      `⚠️  Plan 生成后以下 ${drifted.length} 个 key 的 ${this.config.locales.source} 值已被改动，apply 会用 plan 的值覆盖：`,
+    );
+    for (const [key, baseline] of drifted) {
+      const now = Object.prototype.hasOwnProperty.call(current, key)
+        ? `「${current[key]}」`
+        : '(已删除)';
+      LoggerUtils.warn(
+        `   - ${key}: plan 生成时「${baseline}」→ plan 将写入「${plan.localeDelta[key] ?? ''}」→ 当前 ${now}`,
+      );
+    }
+
+    if (!interactive) {
+      throw new Error(
+        `Plan 生成后 ${drifted.length} 个 locale key 的值已被改动，非交互模式下拒绝 apply（避免静默覆盖）。\n` +
+          '👉 请重新运行 `generate --dry-run` 生成新 plan 后再 apply。',
+      );
+    }
+    return InteractiveUtils.promptForGenericConfirmation('仍要用 plan 的值覆盖这些改动吗？');
+  }
+
+  /** 读取当前 source locale 全量 key→value（漂移比对与 key 差集统计共用同一份读取）。 */
+  private readCurrentSourceLocaleMap(): Record<string, string> {
     const corruptSource = this.langFiles.findCorruptLocale(this.config.locales.source, {
       checkLegacy: true,
     });
@@ -355,6 +427,11 @@ export class PlanApplier {
     if (localeMap === null) {
       throw new Error('语言文件读取失败，已中止 generate（无法可靠计算或回放 locale 差集）');
     }
-    return new Set(Object.keys(localeMap));
+    return localeMap;
+  }
+
+  /** 读取 apply 后的 source locale key，用真实磁盘差集生成回放统计。 */
+  private readCurrentSourceLocaleKeys(): Set<string> {
+    return new Set(Object.keys(this.readCurrentSourceLocaleMap()));
   }
 }

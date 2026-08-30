@@ -203,7 +203,11 @@ export class PickProcessor extends FileProcessor {
             hasUntranslated = true;
             preservedInFlight++;
           } else {
-            perTargetValue[target] = typeof existing === 'string' ? existing : '';
+            // 一律置空，不回写 existing：走到这里说明 existing 未过 isValidTranslation（纯标点 /
+            // 空白等垃圾值）。原样带进 untranslated.json 会与翻译 prompt 规则 3「目标已有值则
+            // 原样保留」合谋——LLM 把垃圾值当既有译文返回，merge 侧的 isValidTranslation 再拒收，
+            // 该 key 在 warn-only 策略下永远翻不出来而统计全绿。置空后 LLM 才会真正翻译它。
+            perTargetValue[target] = '';
             hasUntranslated = true;
             perTargetUntranslated[target] = (perTargetUntranslated[target] ?? 0) + 1;
           }

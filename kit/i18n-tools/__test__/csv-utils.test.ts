@@ -88,3 +88,36 @@ describe('decodeUtf8Strict', () => {
     expect(() => decodeUtf8Strict(buf, 'bad.csv')).toThrow(/UTF-8/);
   });
 });
+
+/**
+ * 人工用 Excel/文本编辑器改 CSV 时的三类引号手误。共同后果是「静默吞字符」——
+ * 回流后 translations.json 里多出或少掉内容，import 仍报成功，故一律 fail-fast。
+ */
+describe('parseCsv — 非法引号一律报错而非静默吞字符', () => {
+  it('闭合引号后出现多余字符（`"a"b`）→ 抛错，不把 b 并进字段', () => {
+    expect(() => parseCsv('"a"b,c\r\n')).toThrow(/闭合引号/);
+  });
+
+  it('闭合引号后紧跟另一个引号（`"a""`，跨字段）→ 同样抛错', () => {
+    expect(() => parseCsv('k,"a" "b"\r\n')).toThrow(/闭合引号/);
+  });
+
+  it('报错行号指向出问题的那一行', () => {
+    expect(() => parseCsv('k,v\r\n"a"x,y\r\n')).toThrow(/第 2 行/);
+  });
+
+  it('字段中部出现裸引号（`5" 屏幕`）→ 抛错', () => {
+    expect(() => parseCsv('k,5" 屏幕\r\n')).toThrow(/字段中部/);
+  });
+
+  it('引号在文件结束仍未闭合 → 抛错', () => {
+    expect(() => parseCsv('k,"未闭合\r\n')).toThrow(/未闭合/);
+  });
+
+  it('合法的引号包裹字段不受影响（闭合后紧跟逗号/换行/EOF）', () => {
+    expect(parseCsv('"a","b"\r\n"c","d"')).toEqual([
+      ['a', 'b'],
+      ['c', 'd'],
+    ]);
+  });
+});

@@ -147,6 +147,21 @@ describe('PickProcessor — 在途译文保护（translate 已翻、未 merge �
     expect(LoggerUtils.success).not.toHaveBeenCalled();
   });
 
+  // 回归（审计 P1）：locale 里「非空但无效」的旧译文（纯标点等）此前被原样带进 untranslated.json，
+  // 与翻译 prompt 规则 3「目标已有值则原样保留」合谋 → LLM 原样退回垃圾值 → merge 侧
+  // isValidTranslation 又拒收，该 key 在 warn-only 策略下永远翻不出来且统计全绿。
+  it('locale 旧值非空但无效（纯标点）→ 送翻数据中置空，不把垃圾值交给 LLM', async () => {
+    writeLocale('zh-CN', { 'a.b': '你好', 'c.d': '再见' });
+    writeLocale('en-US', { 'a.b': '...', 'c.d': '  ' });
+    const untPath = writeUntranslated({});
+
+    await new PickProcessor(makeConfig(), false).execute();
+
+    const result = readJson(untPath);
+    expect(result['a.b']).toEqual({ 'zh-CN': '你好', 'en-US': '' });
+    expect(result['c.d']).toEqual({ 'zh-CN': '再见', 'en-US': '' });
+  });
+
   it('回归：locale 已有有效译文的条目照常进 translations.json，不受保护逻辑影响', async () => {
     writeLocale('zh-CN', { 'a.b': '你好' });
     writeLocale('en-US', { 'a.b': 'Hello' });

@@ -468,3 +468,114 @@ describe('DoctorProcessor missing-target-key', () => {
     expect(all()).not.toContain('[missing-target-key]');
   });
 });
+
+/**
+ * 回归：配置了 io.customDir 的双目录项目，missing-key 对账系统性假阳。
+ *
+ * langFiles 由 (config, isCustom) 一次绑定、只读单侧目录，而 collectUsedKeys 扫的是
+ * 全部源码的 t() 引用——天然横跨两个目录。于是「只落在另一侧目录」的 key 全部被报成
+ * missing-key（error 级 → doctor --ci 必红）。修复：missing-key 改用 base + custom 并集对账。
+ */
+describe('DoctorProcessor 双目录（customDir）对账', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let baseDir: string;
+  let customDir: string;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+  let successSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-dual-'));
+    sourceDir = path.join(rootDir, 'src');
+    baseDir = path.join(rootDir, 'locale');
+    customDir = path.join(rootDir, 'locale-custom');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(baseDir, { recursive: true });
+    fs.mkdirSync(customDir, { recursive: true });
+    infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    successSpy = vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const dualConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', tImport: '@/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: baseDir, customDir, sourceDir, format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+  const writeJson = (dir: string, locale: string, data: Record<string, unknown>): void =>
+    fs.writeFileSync(path.join(dir, `${locale}.json`), JSON.stringify(data));
+  const all = (): string => infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+
+  const writeMixedProject = (): void => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Mixed.vue'),
+      `<template><div>{{ t('base.key') }}{{ t('custom.key') }}</div></template>`,
+    );
+    writeJson(baseDir, 'zh-CN', { 'base.key': '基础' });
+    writeJson(baseDir, 'en-US', { 'base.key': 'Base' });
+    writeJson(customDir, 'zh-CN', { 'custom.key': '定制' });
+    writeJson(customDir, 'en-US', { 'custom.key': 'Custom' });
+  };
+
+  it('主目录体检：仅存在于定制目录的 key 不报 missing-key', async () => {
+    writeMixedProject();
+    await new DoctorProcessor(dualConfig(), false, undefined, { ci: true }).execute();
+    expect(all()).not.toContain('[missing-key]');
+  });
+
+  it('定制目录体检（--custom）：仅存在于主目录的 key 不报 missing-key', async () => {
+    writeMixedProject();
+    await new DoctorProcessor(dualConfig(), true, undefined, { ci: true }).execute();
+    expect(all()).not.toContain('[missing-key]');
+  });
+
+  it('两侧都没有的 key 仍报 missing-key（不因合并而漏报）', async () => {
+    writeMixedProject();
+    fs.writeFileSync(
+      path.join(sourceDir, 'Missing.vue'),
+      `<template>{{ t('nowhere.key') }}</template>`,
+    );
+    const proc = new DoctorProcessor(dualConfig(), false, undefined, { ci: true });
+    await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
+    expect(all()).toContain('[missing-key]');
+    expect(all()).toContain('nowhere.key');
+  });
+
+  it('orphan 按当前侧迭代：本侧真孤儿照报，另一侧的 key 不被误判为本侧孤儿', async () => {
+    writeMixedProject();
+    writeJson(baseDir, 'zh-CN', { 'base.key': '基础', 'base.orphan': '没人用' });
+    await new DoctorProcessor(dualConfig(), false, undefined, {}).execute();
+    expect(all()).toContain('[orphan-key]');
+    expect(all()).toContain('base.orphan');
+    // custom.key 只存在于定制目录，主目录体检无从清理，不应出现在孤儿清单里
+    expect(all()).not.toContain('custom.key (源码无 t()/$t() 引用)');
+  });
+
+  it('另一侧目录 JSON 损坏 → 报 corrupt-locale 并跳过对账（不刷假 missing-key）', async () => {
+    writeMixedProject();
+    fs.writeFileSync(path.join(customDir, 'zh-CN.json'), '{ 坏掉的 JSON');
+    const proc = new DoctorProcessor(dualConfig(), false, undefined, { ci: true });
+    await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
+    expect(all()).toContain('[corrupt-locale]');
+    expect(all()).not.toContain('[missing-key]');
+  });
+
+  it('未配置 customDir 时行为不变（单目录项目不受影响）', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'Solo.vue'), `<template>{{ t('base.key') }}</template>`);
+    writeJson(baseDir, 'zh-CN', { 'base.key': '基础' });
+    writeJson(baseDir, 'en-US', { 'base.key': 'Base' });
+    await new DoctorProcessor(buildConfig(rootDir, sourceDir, baseDir)).execute();
+    expect(successSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n')).toContain(
+      'Doctor 检查通过',
+    );
+  });
+});

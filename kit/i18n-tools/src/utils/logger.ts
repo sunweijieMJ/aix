@@ -22,27 +22,15 @@ export function extractSafeError(error: unknown): { name: string; message: strin
  * 提供统一的日志输出格式
  */
 export class LoggerUtils {
-  /**
-   * 记录信息日志
-   * @param message - 日志消息
-   */
   static info(message: string): void {
     console.log(chalk.blue(`[INFO] ${message}`));
   }
 
-  /**
-   * 记录警告日志
-   * @param message - 日志消息
-   */
   static warn(message: string): void {
     console.warn(chalk.yellow(`[WARN] ${message}`));
   }
 
   /**
-   * 记录错误日志
-   * @param message - 日志消息
-   * @param error - 错误对象（仅取 name + message）
-   *
    * Why 不直接透传整对象：OpenAI / Axios 等 SDK 抛出的 error 对象的 toString /
    * 序列化结果里可能含完整 URL（带 query token）、请求 headers（含 Authorization），
    * 调用方频繁写 `LoggerUtils.error('xxx 失败:', error)` 会扩散凭据泄露风险。
@@ -57,10 +45,6 @@ export class LoggerUtils {
     console.error(chalk.red(`[ERROR] ${message} ${name}: ${detail}`));
   }
 
-  /**
-   * 记录成功日志
-   * @param message - 日志消息
-   */
   static success(message: string): void {
     console.log(chalk.green(`[SUCCESS] ${message}`));
   }

@@ -5,13 +5,13 @@ import { parse as parseSFC } from '@vue/compiler-sfc';
 import {
   applyReplacements,
   findExactStringNode,
-  nodeToText,
+  nodeMatchesExtractedOriginal,
   parseSourceFile,
-  shouldReplaceNode,
 } from '../../utils/ast-core';
 import { isInThisBindableScope } from '../../utils/ast-guards';
 import { createMessageWithOptions, filterLiterals } from '../../utils/message-shape';
 import { formatValuesMapping } from '../../utils/string-escape';
+import { vueExtras } from './extracted-extras';
 import type { ExtractedString } from '../../utils/types';
 import type {
   IComponentInjector,
@@ -98,12 +98,28 @@ export class VueTransformer implements ITransformer {
         { block: descriptor.scriptSetup, allowThisQualifier: false },
       ];
 
+      // 一条 script 字符串只能归属一个块。优先用提取端记下的块起点（绝对偏移）判定：
+      // `</script><script setup>` 写在同一行时，按行号区间判定会让边界行上的字符串同时
+      // 落进两个块 —— 同一区间被替换两次，第二次在已改写的内容上按旧行列换算位置，
+      // 抛出无线索的 ts Debug Failure。旧数据（无该字段）回落行号区间，且按顺序只认第一个
+      // 命中的块，保证「至多归属一个块」这一不变式与新路径一致。
+      const claimed = new Set<ExtractedString>();
+      const belongsTo = (
+        s: ExtractedString,
+        block: NonNullable<(typeof scriptBlocks)[number]['block']>,
+      ): boolean => {
+        const blockStart = vueExtras(s).scriptBlockStart;
+        if (blockStart !== undefined) return blockStart === block.loc.start.offset;
+        if (claimed.has(s)) return false;
+        const hit = s.line >= block.loc.start.line && s.line <= block.loc.end.line;
+        if (hit) claimed.add(s);
+        return hit;
+      };
+
       for (const { block, allowThisQualifier } of scriptBlocks) {
         if (!block) continue;
-        const blockStartLine = block.loc.start.line;
-        const blockEndLine = block.loc.end.line;
         const scriptStrings = fileStrings.filter(
-          (s) => s.context === 'script' && s.line >= blockStartLine && s.line <= blockEndLine,
+          (s) => s.context === 'script' && belongsTo(s, block),
         );
         if (scriptStrings.length === 0) continue;
 
@@ -234,6 +250,10 @@ export class VueTransformer implements ITransformer {
     // template 中 $t() 是全局函数，vue-i18next 需要 namespace:key 前缀
     const ns = this.library?.namespace;
     const semanticId = ns ? `${ns}:${extracted.semanticId}` : extracted.semanticId;
+    // key 的引号必须与所在属性的外层引号不同，否则 `:title='a ? $t('k') : b'` 在外层单引号
+    // 处提前闭合，产出坏模板。key 由工具生成，不含引号，选另一种即可，无需转义。
+    const q = vueExtras(extracted).attributeQuote === "'" ? '"' : "'";
+    const key = `${q}${semanticId}${q}`;
 
     // 过滤掉字面量，只保留真正的变量表达式
     const actualVariables = templateVariables ? filterLiterals(templateVariables) : undefined;
@@ -253,11 +273,12 @@ export class VueTransformer implements ITransformer {
       switch (templateContext) {
         case 'static-attribute':
           // 静态属性转动态绑定：title="文本" -> :title="$t('...')"
+          // 整个 `name="value"` 被替换，外层引号由本替换体自己给出，故 key 恒用单引号。
           return `:${attributeName}="$t('${semanticId}', ${variablesMapping})"`;
         case 'interpolation':
         case 'dynamic-attribute':
           // 插值表达式和动态属性中：不需要额外的 {{ }}（已在表达式上下文中）
-          return `$t('${semanticId}', ${variablesMapping})`;
+          return `$t(${key}, ${variablesMapping})`;
         case 'mixed-content':
         case 'text-node':
         default:
@@ -274,7 +295,7 @@ export class VueTransformer implements ITransformer {
         case 'interpolation':
         case 'dynamic-attribute':
           // 插值表达式和动态属性中：不需要额外的 {{ }}（已在表达式上下文中）
-          return `$t('${semanticId}')`;
+          return `$t(${key})`;
         case 'text-node':
         default:
           // 文本节点：使用 {{ }} 包裹
@@ -328,15 +349,19 @@ export class VueTransformer implements ITransformer {
         const start = node.getStart(sourceFile);
         const end = node.getEnd();
 
-        // 验证节点文本
-        const originalNodeText = nodeToText(node, sourceFile);
-        const isTemplateString =
-          extracted.original.startsWith('`') && extracted.original.endsWith('`');
+        // 「original 是否为带定界符的源码形式」以提取端的旗标为准，不看首尾字符：
+        // script 侧只有 TemplateExpression 存源码形式（isTemplateString=true），
+        // StringLiteral / 无插值模板存的是裸内容。用首尾字符猜会把 `'\`代码\`'` 这类
+        // 「内容本身首尾是反引号」的普通字符串误判成模板源码形式 → 裸内容侧被多剥一层
+        // → 复核不通过 → 整文件中止转换。
+        const isTemplateString = extracted.isTemplateString === true;
 
-        // script 侧节点为 StringLiteral / 模板串，源码侧均含定界符；extracted.original 仅模板串
-        // 是源码形式、其余为裸内容 → 据此控制裸内容侧不剥定界符，避免内容自带成对引号被误剥。
+        // 验证节点文本。script 侧节点为 StringLiteral / 模板串，源码侧均含定界符；
+        // extracted.original 仅模板串是源码形式、其余为裸内容 → 据此控制裸内容侧不剥定界符，
+        // 避免内容自带成对引号被误剥。模板串走结构化比对（见 nodeMatchesExtractedOriginal），
+        // 与 findExactStringNode 的定位口径同源，不会出现「定位得到、复核不过」。
         if (
-          shouldReplaceNode(originalNodeText, extracted.original, isTemplateString, {
+          nodeMatchesExtractedOriginal(node, sourceFile, extracted.original, {
             nodeDelimited: !ts.isJsxText(node),
             originalDelimited: isTemplateString,
           })

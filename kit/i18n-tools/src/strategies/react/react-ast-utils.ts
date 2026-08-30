@@ -149,6 +149,116 @@ export class ReactASTUtils {
     return false;
   }
 
+  /** 类成员（含 static 块）是否带 static 修饰符。 */
+  static hasStaticModifier(member: ts.Node): boolean {
+    return (
+      ts.canHaveModifiers(member) &&
+      (ts.getModifiers(member)?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ?? false)
+    );
+  }
+
+  /**
+   * 字符串是否位于类的 **static 成员**内（static 属性 / static 箭头属性 / static 方法 /
+   * static 访问器 / static 初始化块）。
+   *
+   * 与 isInClassNonArrowPropertyInitializer 同一类问题、同一处置：注入器只会注入
+   * `const { t } = this.props`，而 static 成员求值时 `this` 是**类构造函数本身**、没有
+   * props —— 注入进去是运行时 `Cannot read properties of undefined`，不注入则裸 t() 未定义。
+   * 两条路都产坏代码，故按全库「宁可漏提取，绝不产出坏代码」原则在提取端就跳过并留痕。
+   *
+   * 判定沿父链找最近的类成员：命中即返回其 static 性；先遇到类体 / 源文件说明不在类成员内。
+   * 嵌套类的成员会先命中内层成员，与就近词法作用域语义一致。
+   */
+  static isInClassStaticMember(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isClassStaticBlockDeclaration(current)) return true;
+      if (
+        ts.isPropertyDeclaration(current) ||
+        ts.isMethodDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        return ReactASTUtils.hasStaticModifier(current);
+      }
+      if (ts.isConstructorDeclaration(current)) return false;
+      if (ts.isClassLike(current) || ts.isSourceFile(current)) return false;
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /**
+   * 从 node 向上找最近的「会被注入器注入 hook 的函数组件」节点；先遇到类组件则返回
+   * undefined（该位置由类组件的 this.props 路径负责，与 getComponentType 的判定顺序一致）。
+   */
+  static findEnclosingInjectableFunctionComponent(
+    node: ts.Node,
+  ): ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression | undefined {
+    let current: ts.Node | undefined = node;
+    while (current) {
+      if (ts.isClassDeclaration(current) && ReactASTUtils.isClassComponent(current)) {
+        return undefined;
+      }
+      if (
+        (ts.isFunctionDeclaration(current) ||
+          ts.isArrowFunction(current) ||
+          ts.isFunctionExpression(current)) &&
+        ReactASTUtils.isFunctionComponent(current) &&
+        ReactASTUtils.isInjectableComponentFunction(current)
+      ) {
+        return current;
+      }
+      current = current.parent;
+    }
+    return undefined;
+  }
+
+  /**
+   * 组件函数体**顶层块**内是否存在与 varName 同名、但初始化器**不是** i18n hook 的本地
+   * 变量声明（`const { t } = useTemperature()` / `const t = fmt` / `const intl =
+   * createIntl(...)`）。这类绑定说明裸 `t(...)`/`intl.formatMessage(...)` 另有出处。
+   *
+   * 提取端（跳过该组件的候选）与注入端（跳过 hook 注入）必须共用这一份判定：两端口径一旦
+   * 分叉，就会出现「文案已被替换成裸 t()、注入却被跳过」的静默错误产物——新 t() 解析到那个
+   * 同名的非 i18n 函数上。
+   *
+   * 只查顶层块、不下钻：TS2451 只发生在同一个块内——嵌套回调里的同名声明
+   * （`useEffect(() => { const t = setTimeout(...) })` 极常见）只是无害的内层遮蔽，
+   * 若也算冲突会误跳，触发面比要防的双声明大得多。形参绑定不在此判（componentParamBindsVar
+   * 已把它算作「已有绑定」）；表达式体箭头函数无块，不可能同块冲突。
+   */
+  static hasConflictingTranslationBinding(
+    node: ts.Node,
+    varName: string,
+    hookName: string,
+  ): boolean {
+    const body = (node as ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration).body;
+    if (!body || !ts.isBlock(body)) return false;
+    for (const stmt of body.statements) {
+      if (!ts.isVariableStatement(stmt)) continue;
+      for (const decl of stmt.declarationList.declarations) {
+        let bindsVar = false;
+        if (ts.isIdentifier(decl.name)) {
+          bindsVar = decl.name.text === varName;
+        } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+          bindsVar = decl.name.elements.some(
+            (el) => ts.isBindingElement(el) && ts.isIdentifier(el.name) && el.name.text === varName,
+          );
+        }
+        if (!bindsVar) continue;
+        const init = decl.initializer;
+        const isHookInit =
+          !!init &&
+          ts.isCallExpression(init) &&
+          ts.isIdentifier(init.expression) &&
+          init.expression.text === hookName;
+        if (!isHookInit) return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * 判断一个函数是否会被 ReactComponentInjector 当作组件注入 hook。
    * 必须与 getComponentInfo 的接受条件保持一致：

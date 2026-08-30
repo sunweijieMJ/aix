@@ -69,14 +69,14 @@ function applyCase(
  * derive 输入：文件路径、上下文。
  * 输出：前缀段数组（如 `['pages', 'flippedCourse']`）；空数组表示无前缀。
  */
-export interface PrefixStrategy {
+interface PrefixStrategy {
   derive(filePath: string, ctx: PrefixContext): string[];
 }
 
 /**
  * 路径派生策略。从 anchor 之后的目录段构造前缀，支持 skip/take/includeFile/transform。
  */
-export class PathPrefixStrategyImpl implements PrefixStrategy {
+class PathPrefixStrategyImpl implements PrefixStrategy {
   constructor(private readonly options: Extract<ResolvedPrefixStrategy, { strategy: 'path' }>) {}
 
   derive(filePath: string, ctx: PrefixContext): string[] {
@@ -162,7 +162,7 @@ export class PathPrefixStrategyImpl implements PrefixStrategy {
 /**
  * 固定前缀策略。所有 key 共享同一前缀。
  */
-export class FixedPrefixStrategyImpl implements PrefixStrategy {
+class FixedPrefixStrategyImpl implements PrefixStrategy {
   private readonly segments: string[];
 
   constructor(options: Extract<ResolvedPrefixStrategy, { strategy: 'fixed' }>, separator: string) {
@@ -180,7 +180,7 @@ export class FixedPrefixStrategyImpl implements PrefixStrategy {
 /**
  * 完全自定义策略。
  */
-export class CustomPrefixStrategyImpl implements PrefixStrategy {
+class CustomPrefixStrategyImpl implements PrefixStrategy {
   constructor(private readonly options: Extract<ResolvedPrefixStrategy, { strategy: 'custom' }>) {}
 
   derive(filePath: string, ctx: PrefixContext): string[] {
@@ -199,7 +199,7 @@ export class CustomPrefixStrategyImpl implements PrefixStrategy {
  * 子策略各自维护参数（anchor / take / includeFile / indexFile / preserveHyphens 等），
  * 互不影响——这是 rules 策略相对全局参数的核心价值。
  */
-export class RulesPrefixStrategyImpl implements PrefixStrategy {
+class RulesPrefixStrategyImpl implements PrefixStrategy {
   private readonly compiled: Array<{
     matcher: (filePath: string) => boolean;
     strat: PrefixStrategy;
@@ -241,10 +241,7 @@ function createNestedPrefixStrategy(
 /**
  * 工厂：按 strategy 字段分派到对应实现。
  */
-export function createPrefixStrategy(
-  prefix: ResolvedPrefixStrategy,
-  separator: string,
-): PrefixStrategy {
+function createPrefixStrategy(prefix: ResolvedPrefixStrategy, separator: string): PrefixStrategy {
   if (prefix.strategy === 'rules') return new RulesPrefixStrategyImpl(prefix, separator);
   return createNestedPrefixStrategy(prefix, separator);
 }

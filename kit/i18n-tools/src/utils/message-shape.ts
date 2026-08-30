@@ -2,7 +2,7 @@ import ts from 'typescript';
 import { CHINESE_CHAR_RANGE, PLACEHOLDER_NAME_CHARS } from './constants';
 import { LoggerUtils } from './logger';
 import { collectNestedChineseLiterals } from './ast-guards';
-import { nodeToText } from './ast-core';
+import { buildTemplateExpressionOriginal, nodeToText } from './ast-core';
 import { stripMatchedDelimiters } from './string-escape';
 import type { LocaleMap, ExtractedString } from './types';
 
@@ -41,7 +41,9 @@ export function processTemplateExpression(
   templateVariables: string[];
   nestedChineseTexts: string[];
 } {
-  let originalText = '`' + node.head.text;
+  // originalText 由 ast-core 的重建函数产出：转换端定位/复核节点时用同一函数再算一遍，
+  // 两边同源才不会因「表达式内空格」「cooked 段被二次解转义」等差异比不相等而中止转换。
+  const originalText = buildTemplateExpressionOriginal(node, sourceFile);
   let processedText = '`' + node.head.text;
   const templateVariables: string[] = [];
   const nestedChineseTexts: string[] = [];
@@ -59,10 +61,7 @@ export function processTemplateExpression(
       expression.kind === ts.SyntaxKind.NullKeyword;
 
     if (isLiteral) {
-      // 原始文本保持 ${...}，方便回到源码位置精确替换
-      originalText += '${' + expressionText + '}' + span.literal.text;
-
-      // 处理后的文本内联字面量值
+      // 处理后的文本内联字面量值（原始文本保持 ${...}，见上方 buildTemplateExpressionOriginal）
       let literalValue = expressionText;
       if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
         literalValue = expression.text;
@@ -76,13 +75,12 @@ export function processTemplateExpression(
       // 让 lint / doctor 显式暴露，而非自动改写（递归改三元风险高，交人工决策）。
       nestedChineseTexts.push(...collectNestedChineseLiterals(expression));
       templateVariables.push(expressionText);
-      originalText += '${' + expressionText + '}' + span.literal.text;
       processedText += '${' + expressionText + '}' + span.literal.text;
     }
   }
 
   return {
-    originalText: originalText + '`',
+    originalText,
     processedText: processedText + '`',
     templateVariables,
     nestedChineseTexts,
@@ -445,7 +443,11 @@ export function buildLocaleMessage(
     extracted.isTemplateString && extracted.templateVariables
       ? createMessageWithOptions(raw, extracted.templateVariables)
       : {
-          message: stripMatchedDelimiters(raw, ['`']),
+          // 仅「模板形态」的 raw 才剥反引号定界符：无变量 / 变量全是字面量的模板串（如
+          // JSX 混合内容合成的 `` `共3项` ``）走到本分支时 raw 仍带反引号。普通字符串的 raw
+          // 是裸内容，其内容本身可以合法地以反引号开头结尾（源码 `'\`代码\`'`），无条件剥会
+          // 让 locale 值永久少两个反引号、且 restore 回不去原文。isTemplateString 即该旗标。
+          message: extracted.isTemplateString ? stripMatchedDelimiters(raw, ['`']) : raw,
           placeholderMap: new Map<string, string>(),
         };
   return library

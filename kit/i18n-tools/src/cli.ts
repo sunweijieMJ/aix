@@ -164,9 +164,12 @@ const executeApplyPlan = async (
   isCustom: boolean,
   rawPlanPath: string,
   keepPlan: boolean,
+  interactive: boolean,
 ): Promise<void> => {
   const planPath = resolveApplyPlanPath(config, rawPlanPath);
-  const processor = new GenerateProcessor(config, isCustom, false, adapter);
+  // interactive 透传给 locale 漂移守卫：交互下漂移可逐条确认后继续，
+  // 非交互（--mode/--ci 默认）下漂移一律拒绝并提示重跑 dry-run。
+  const processor = new GenerateProcessor(config, isCustom, interactive, adapter);
   await processor.applyFromPlan(planPath, { keepPlan });
 };
 
@@ -636,7 +639,7 @@ export default defineConfig({
                 `   apply 只回放已审核的 plan、不重新计算覆盖率。如需覆盖率卡点，请在直跑 generate 时设置阈值。`,
             );
           }
-          await executeApplyPlan(config, adapter, custom, applyPlanPath, keepPlan);
+          await executeApplyPlan(config, adapter, custom, applyPlanPath, keepPlan, interactive);
           break;
         }
         const targetPath = await resolveTargetPath(

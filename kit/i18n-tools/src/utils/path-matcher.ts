@@ -16,7 +16,7 @@ import picomatch from 'picomatch';
  * - RegExp：直接 test
  * - 函数：完全自定义，参数即调用方传入的 filePath
  */
-export type PathMatchInput = string | string[] | RegExp | ((filePath: string) => boolean);
+type PathMatchInput = string | string[] | RegExp | ((filePath: string) => boolean);
 
 /**
  * 拷贝一份剥除有状态标志（g / sticky）的 RegExp。

@@ -226,3 +226,101 @@ const label = t('existing.key');
     expect(out).not.toContain('useI18n');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Bug 5：文件内同名组件按 name+type 查表 → 已有 hook 的那个也被再注入（TS2451）
+// ---------------------------------------------------------------------------
+/**
+ * Phase 1 收集组件、Phase 3 按 `name + type` 去表里找条目：文件内两个同名组件
+ * （不同作用域的 `function Panel()`）会全部命中同一条目，已有 `const { t } = useTranslation()`
+ * 的那个也被再注入一次 → 同块双声明。改为 Phase 3 就地重算注入判定：Phase 2 只在文件顶部
+ * 增删 import、不改变任何组件内部绑定，重算与 Phase 1 逐个组件一一对应，且免疫偏移平移。
+ */
+describe('同名组件不串号注入（审计 Bug5）', () => {
+  it('两个同名 Panel：只给缺绑定的那个注入 hook', () => {
+    const code = `import React from 'react';
+export function Outer() {
+  function Panel() {
+    const { t } = useTranslation();
+    return <div>{t('a')}</div>;
+  }
+  return <Panel />;
+}
+export function Other() {
+  function Panel() {
+    return <div>{t('b')}</div>;
+  }
+  return <Panel />;
+}
+`;
+    const out = buildReactInjector().inject(code);
+    // 全文件恰好两处 `const { t } = useTranslation()`：原有的一处 + 新注入的一处
+    expect(
+      (out.match(/const \{ t \} = useTranslation\(\)/g) ?? []).length,
+      `注入输出：\n${out}`,
+    ).toBe(2);
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('两个同名类组件：已被 HOC 包裹的只补解构，未包裹的才加 wrapper', () => {
+    const code = `import React from 'react';
+export function A() {
+  class Card extends React.Component<WithTranslation> {
+    render() { const { t } = this.props; return <div>{t('a')}</div>; }
+  }
+  return <Card />;
+}
+export class Card extends React.Component {
+  render() { return <div>{t('b')}</div>; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    // 未包裹的那个才生成 HOC wrapper，且只生成一次
+    expect((out.match(/withTranslation\(\)\(/g) ?? []).length, `注入输出：\n${out}`).toBe(1);
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('回归：单个组件的常规注入不受影响', () => {
+    const code = `import React from 'react';
+export function Panel() {
+  return <div>{t('a')}</div>;
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect((out.match(/const \{ t \} = useTranslation\(\)/g) ?? []).length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug 6：static 成员被注入 const { t } = this.props → 运行时 TypeError
+// ---------------------------------------------------------------------------
+/**
+ * static 成员的 this 是类构造函数本身、没有 props。注入端遍历成员时不看 static 修饰符，
+ * 会把 `const { t } = this.props` 塞进 static 方法/箭头属性体。提取端已整体跳过 static
+ * 成员，这里是防御纵深：兜住用户手写、非本工具产出的 static 里的 t()。
+ */
+describe('static 类成员不注入 this.props 解构（审计 Bug6）', () => {
+  it('static 方法内的 t()：不注入解构，实例方法照常注入', () => {
+    const code = `class Foo extends React.Component {
+  static build() { return t('x'); }
+  render() { return <div>{t('y')}</div>; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect((out.match(/const \{ t \} = this\.props;/g) ?? []).length, `注入输出：\n${out}`).toBe(1);
+    // 落点必须在 render 而非 static build
+    expect(out.indexOf('const { t } = this.props;')).toBeGreaterThan(out.indexOf('static build'));
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('static 箭头属性内的 t()：不被包成块体注入解构', () => {
+    const code = `class Foo extends React.Component {
+  static build = () => t('x');
+  render() { return <div />; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect(out, `注入输出：\n${out}`).not.toContain('const { t } = this.props;');
+    expect(out).toContain('static build = () => t(');
+  });
+});

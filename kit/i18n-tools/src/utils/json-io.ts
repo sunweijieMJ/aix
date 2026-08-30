@@ -6,8 +6,10 @@ import { LoggerUtils } from './logger';
  * JSON / 文本文件的读写栈：解析、四态判别、降级读取、原子写入。
  *
  * 职责边界：只认「路径 → 内容」，不认 locale、bucket、glob 或任何业务语义
- * （那些归 file-utils / language-file-manager）。这里同时是全库**唯一**的写盘出口——
- * 所有落盘都经 atomicWriteText，避免有的路径直接 writeFileSync 而失去原子性。
+ * （那些归 file-utils / language-file-manager）。**locale / 中间产物 JSON 的写盘**都应经此
+ * 模块的 atomicWriteText，避免有的路径直接 writeFileSync 而失去原子性。（源码文本与
+ * .gitignore 这类非 JSON 产物仍走各自的 fs.writeFileSync：GeneratePlan / GenerateProcessor /
+ * RestoreProcessor 写回改写后的源码，run-report 写快照目录的 .gitignore。）
  *
  * 依赖方向单向：file-utils 引用本模块，本模块不反向引用 file-utils。
  */
@@ -16,7 +18,11 @@ import { LoggerUtils } from './logger';
  * classifyJsonFile 的判别式结果：四态明确区分，调用方据 status 分流。
  */
 export type JsonFileClassification<T = any> =
-  { status: 'missing' } | { status: 'empty' } | { status: 'corrupt' } | { status: 'ok'; data: T };
+  | { status: 'missing' }
+  | { status: 'empty' }
+  /** reason：corrupt 的细分原因（目前只有「顶层不是对象」）；缺省表示 JSON 本身语法错误。 */
+  | { status: 'corrupt'; reason?: string }
+  | { status: 'ok'; data: T };
 
 /**
  * 解析 JSON，用 `{ ok }` 判别式区分「解析失败」与「解析出 null」。
@@ -59,6 +65,19 @@ export function classifyJsonFile<T = any>(filePath: string): JsonFileClassificat
   // 内容为合法 `null` 的文件不是损坏：判 corrupt 会让 loadJsonDictOrThrow 抛错中止整条命令。
   // 它同样不是可用字典，归入 empty（与「空文件」同档，调用方一律降级为 {}）。
   if (parsed.value === null) return { status: 'empty' };
+  // 顶层必须是对象。全部调用方（locale 文件、bucket 文件、glossary、translations/untranslated）
+  // 消费的都是「key → value」字典，语法合法但顶层是数组/字符串/数字时若判 ok 放行：
+  // Object.entries("hello") 会把字符串按字符拆成条目、数组会被当成下标字典，一路加工到落盘
+  // 都不报错。归入 corrupt（而非新增一档）是为了让既有 `status === 'corrupt'` 的守卫
+  // （glossary.load / ExportProcessor 回读校验 / findCorrupt*）不改一行就照旧 fail-fast，
+  // 只是错误原因由 reason 补充说明。
+  if (typeof parsed.value !== 'object' || Array.isArray(parsed.value)) {
+    const typeName = Array.isArray(parsed.value) ? '数组' : typeof parsed.value;
+    return {
+      status: 'corrupt',
+      reason: `JSON 顶层必须是对象（{ "key": "value" }），实际是 ${typeName}。`,
+    };
+  }
   return { status: 'ok', data: parsed.value as T };
 }
 
@@ -79,7 +98,10 @@ export function loadJsonDictOrThrow<T = Record<string, unknown>>(
 ): T {
   const cls = classifyJsonFile<T>(filePath);
   if (cls.status === 'corrupt') {
-    throw new Error(buildCorruptMessage(filePath));
+    // reason 只在「语法合法但顶层不是对象」时存在：调用方的 buildCorruptMessage 一律按
+    // 「JSON 格式错误」措辞，单独看会让用户去找不存在的语法错。附上具体原因才可定位。
+    const base = buildCorruptMessage(filePath);
+    throw new Error(cls.reason ? `${base}\n👉 ${cls.reason}` : base);
   }
   if (cls.status === 'ok') {
     return cls.data;
@@ -212,7 +234,11 @@ export function writeJsonFile(
  * 内层值对象（{ zh, en, ... }）顺序保持不变。
  */
 export function writeTranslationsFile(filePath: string, data: Record<string, unknown>): void {
-  const sorted: Record<string, unknown> = {};
+  // 必须是无原型对象：普通 `{}` 上 `sorted['__proto__'] = v` 走的是 Object.prototype 的
+  // __proto__ setter，值不会成为自有属性 —— 名为 `__proto__` 的 key（合法的 semanticId 末段）
+  // 在排序重建时被静默吞掉，落盘的 translations.json 比入参少一条且无任何报错。
+  // JSON.stringify 只枚举自有可枚举属性，null 原型不影响序列化结果。
+  const sorted: Record<string, unknown> = Object.create(null);
   for (const key of Object.keys(data).sort()) {
     sorted[key] = data[key];
   }

@@ -1,7 +1,9 @@
 import fs from 'fs';
+import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
+import { parseSourceFile } from './ast-core';
 import { stripComments } from './import-surgery';
 import { decodeJsStringEscapes } from './string-escape';
 import { FileUtils } from './file-utils';
@@ -47,21 +49,121 @@ const STRING_LITERAL = /(?:'((?:\\[\s\S]|[^'\\])*)'|"((?:\\[\s\S]|[^"\\])*)")/g;
  */
 const decodeStringLiteralContent = (content: string): string => decodeJsStringEscapes(content);
 
+/** TypeScript 解析器能吃下的扩展名（其余扩展名保持词法状态机口径，不做臆测解析）。 */
+const TS_PARSEABLE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
+/**
+ * 源码里可能出现 JSX 文本的扩展名（与 ast-core.getScriptKind 走 TSX/JSX 的集合一致）。
+ * 这些文件的正文不在引号内，词法状态机不可用；解析失败时也不能退回词法状态机。
+ */
+const JSX_CAPABLE_EXTENSIONS = ['.tsx', '.jsx', '.js', '.mjs', '.cjs'];
+
+const hasExtension = (filePath: string, extensions: string[]): boolean => {
+  const lower = filePath.toLowerCase();
+  return extensions.some((ext) => lower.endsWith(ext));
+};
+
+/**
+ * 收集整份源码里的注释区间：遍历到叶子 token，取其前导 trivia 中的注释。
+ *
+ * 只在叶子上取、且跳过 JsxText，是因为 JSX 文本节点内的 `//`、`/*` 只是正文字符
+ * （TypeScript 自身也在 getTokenPosOfNode 里对 JsxText 特判「不可能含注释」）。若在
+ * 非叶子节点上取前导 trivia，`<p>\n  // 这是正文\n  {t('k')}</p>` 的 SyntaxList 会从
+ * JsxText 起点开始扫 trivia，把正文当行注释吞掉——正是本函数要避免的那类漏采。
+ */
+function collectCommentRanges(sourceFile: ts.SourceFile, text: string): ts.CommentRange[] {
+  const ranges: ts.CommentRange[] = [];
+  const seen = new Set<number>();
+  const visit = (node: ts.Node): void => {
+    if (node.kind === ts.SyntaxKind.JsxText) return;
+    // JSDoc 子树的 token 位置落在注释内部，其 trivia 计算无意义；JSDoc 本体会作为
+    // 后继 token 的前导注释被正常收走。
+    if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) {
+      return;
+    }
+    const children = node.getChildren(sourceFile);
+    if (children.length > 0) {
+      for (const child of children) visit(child);
+      return;
+    }
+    const start = node.getStart(sourceFile);
+    // leading 与 trailing 两路都要取：getLeadingCommentRanges 只从换行之后开始收集，
+    // 与前一个 token 同行的注释（`t('k'); // 注释`、JSX 里的 `{/* 注释 */}`）只出现在
+    // getTrailingCommentRanges 里，漏掉就等于没剥。
+    for (const group of [
+      ts.getLeadingCommentRanges(text, node.pos),
+      ts.getTrailingCommentRanges(text, node.pos),
+    ]) {
+      for (const range of group ?? []) {
+        if (range.end > start || seen.has(range.pos)) continue;
+        seen.add(range.pos);
+        ranges.push(range);
+      }
+    }
+  };
+  visit(sourceFile);
+  return ranges.sort((a, b) => a.pos - b.pos);
+}
+
+/**
+ * 把注释区间替换为等长空格（换行原样保留）。
+ * 长度必须与原文逐字符对齐：调用方（VueComponentInjector、后续的偏移计算）依赖
+ * 剥离前后偏移不漂移。
+ */
+function blankOutRanges(text: string, ranges: readonly ts.CommentRange[]): string {
+  if (ranges.length === 0) return text;
+  let out = '';
+  let cursor = 0;
+  for (const range of ranges) {
+    if (range.pos < cursor) continue; // 理论上不重叠，越界时保守跳过而非错位拼接
+    out += text.slice(cursor, range.pos);
+    out += text.slice(range.pos, range.end).replace(/[^\r\n]/g, ' ');
+    cursor = range.end;
+  }
+  return out + text.slice(cursor);
+}
+
+/** AST 精确剥注释；解析器判定源码有语法错误（或拿不到诊断）时返回 null 交由调用方兜底。 */
+function stripCommentsByAst(filePath: string, raw: string): string | null {
+  let sourceFile: ts.SourceFile;
+  try {
+    sourceFile = parseSourceFile(raw, filePath);
+  } catch {
+    return null;
+  }
+  // parseDiagnostics 是解析器内部字段：语法错误时 TS 不抛异常而是就地"恢复"继续建树，
+  // 恢复出的树可能把 JSX 正文错当代码。拿不到该字段（未来版本改名）时同样按失败处理，
+  // 宁可退回兜底也不基于可能错误的树剥离。
+  const diagnostics = (sourceFile as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics;
+  if (!Array.isArray(diagnostics) || diagnostics.length > 0) return null;
+  return blankOutRanges(raw, collectCommentRanges(sourceFile, raw));
+}
+
 /**
  * 按文件类型剥离注释，产出可供 scanKeyReferencesInContent 扫描的文本。
  *
  * Why 必须分流：stripComments 是 JS 词法状态机，只保护「引号内」的 `//`、`/*`。
- * .vue 的 template 段是 HTML——文本节点里的裸 URL（`详情见 https://a.com {{ t('k') }}`）
- * 不在引号内，`//` 会被误当行注释把行尾 t() 一并剥掉；不配对的 `/*`（如展示 `src/*` 写法）
- * 更会吞掉文件剩余全部内容 → key 漏采 → prune 把在用 key 当孤儿从所有 locale 永久删除。
- * 因此 .vue 先经 SFC 拆段：template 只剥 HTML 注释，script/scriptSetup 才走 stripComments。
+ * 而 .vue 的 template 段是 HTML、.tsx/.jsx/.js 的 JSX 文本节点是正文——裸 URL
+ * （`详情见 https://a.com {{ t('k') }}`）不在引号内，`//` 会被误当行注释把行尾 t()
+ * 一并剥掉；不配对的 `/*`（如展示 `src/*` 写法）更会吞掉文件剩余全部内容 → key 漏采
+ * → prune 把在用 key 当孤儿从所有 locale 永久删除。故两类都不能整文件交给词法状态机：
+ *  - .vue：先经 SFC 拆段，template 只剥 HTML 注释，script/scriptSetup 才走 stripComments
+ *  - JS/TS 系（含 JSX）：交 TypeScript 解析器，按 AST 的 token 前导 trivia 精确定位注释
  *
- * SFC 解析失败时回退为「整文件只剥 HTML 注释」：宁可让注释里的引用混入 used（多算 =
- * 不删），也不能走 JS 状态机误吞模板（少算 = 误删）。
+ * 解析失败的兜底方向统一是「多算不误删」：宁可让注释里的引用混入 used（多算 = 不删），
+ * 也不能吞掉正文（少算 = 误删）。故 .vue 回退为「整文件只剥 HTML 注释」、JSX 系回退为
+ * 「整文原样返回」；.ts/.mts/.cts 不含 JSX 正文，词法状态机对它仍然安全，回退到
+ * stripComments 与既有行为一致。
  */
 export function stripCommentsForScan(filePath: string, raw: string): string {
-  if (!filePath.endsWith('.vue')) return stripComments(raw);
+  if (filePath.endsWith('.vue')) return stripVueCommentsForScan(filePath, raw);
+  if (!hasExtension(filePath, TS_PARSEABLE_EXTENSIONS)) return stripComments(raw);
 
+  const stripped = stripCommentsByAst(filePath, raw);
+  if (stripped !== null) return stripped;
+  return hasExtension(filePath, JSX_CAPABLE_EXTENSIONS) ? raw : stripComments(raw);
+}
+
+function stripVueCommentsForScan(filePath: string, raw: string): string {
   const stripHtmlComments = (text: string): string => text.replace(/<!--[\s\S]*?-->/g, ' ');
   try {
     const { descriptor, errors } = parseSFC(raw, { filename: filePath });

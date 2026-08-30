@@ -4,7 +4,7 @@ import ts from 'typescript';
  * 语言消息内容接口
  * 可以是字符串或嵌套的消息对象
  */
-export interface ILangMsg {
+interface ILangMsg {
   [key: string]: string | ILangMsg;
 }
 
@@ -90,7 +90,7 @@ export enum ModeName {
   GENERATE = 'generate',
   /** 提取模式 - 从现有国际化文件中提取未翻译的条目，生成待翻译文件 */
   PICK = 'pick',
-  /** 翻译模式 - 调用AI翻译服务，将待翻译文件中的中文翻译为英文 */
+  /** 翻译模式 - 调用AI翻译服务，把待翻译文件中的源语言文案翻成 locales.targets 里的每个目标语种 */
   TRANSLATE = 'translate',
   /** 合并模式 - 将翻译完成的文件合并回主国际化文件 */
   MERGE = 'merge',
@@ -104,7 +104,11 @@ export enum ModeName {
   DOCTOR = 'doctor',
   /** CSV 导出模式 - 把待翻译/已翻译条目导出为 CSV 发人翻译或审核 */
   CSV_EXPORT = 'csv-export',
-  /** CSV 回流模式 - 把翻译/审核好的 CSV 写回 untranslated.json */
+  /**
+   * CSV 回流模式 - 把翻译/审核好的 CSV 写回中间文件。按 key 实际归属双路由：
+   * 命中 untranslated.json 的写回 untranslated.json（待翻流程），否则落到
+   * translations.json（审核已翻流程），两者都不命中才报未知 key。
+   */
   CSV_IMPORT = 'csv-import',
   /** 清理模式 - 删除源码已不再引用的孤儿 key */
   PRUNE = 'prune',

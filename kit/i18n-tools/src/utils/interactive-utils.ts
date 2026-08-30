@@ -81,35 +81,31 @@ export class InteractiveUtils {
 ================================================
 确定要执行此操作吗?
 `;
-    try {
-      const { confirmed } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'confirmed',
-          message,
-          default: true,
-        },
-      ]);
-      return confirmed;
-    } catch (error) {
-      LoggerUtils.error('交互式确认失败', error);
-      return false;
-    }
+    // 这一步只是「确认刚刚在菜单里选的模式」，用户已显式选过一次，默认 Yes 不额外制造风险；
+    // 真正的破坏性动作（prune 删除 / csv-import 写回）各自还有一道 promptForGenericConfirmation。
+    return this.promptForGenericConfirmation(message, { default: true });
   }
 
   /**
    * 提示用户进行通用确认
    * @param message - 提示信息
+   * @param options.default - 回车时的取值，默认 false
    * @returns 用户是否确认
    */
-  static async promptForGenericConfirmation(message: string): Promise<boolean> {
+  static async promptForGenericConfirmation(
+    message: string,
+    options: { default?: boolean } = {},
+  ): Promise<boolean> {
     try {
       const { confirmed } = await inquirer.prompt([
         {
           type: 'confirm',
           name: 'confirmed',
           message,
-          default: true,
+          // 默认 No：本方法承接 prune 删除孤儿 key、csv-import 覆写 translations 这类
+          // 不可撤销动作，inquirer 会把默认值渲染成 (Y/n)/(y/N)。默认 Yes 时手滑回车即执行，
+          // 且与用户从提示里读到的 "y/N" 直觉相反。要默认 Yes 的调用方须显式声明。
+          default: options.default ?? false,
         },
       ]);
       return confirmed;

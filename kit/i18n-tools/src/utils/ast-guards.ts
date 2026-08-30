@@ -115,17 +115,30 @@ export function templateLiteralContainsHtmlTags(text: string): boolean {
   return /<\/?[a-zA-Z][\w-]*(\s|>|\/)/.test(text);
 }
 
+/**
+ * 「该节点是会作为运行时值泄漏的中文字面量吗」的唯一判定。
+ *
+ * 排除比较操作数（`x === '已完成'`）：那是逻辑值、不参与展示，由 isComparisonOperand
+ * 路径单独诊断。下面两个收集器共用本谓词——两处曾各写一遍逐字相同的条件，任一处漏改
+ * （如只在一边补新的排除条件）都会让同一段代码在不同诊断路径下给出互相矛盾的结论。
+ */
+function isRuntimeLeakingChineseLiteral(
+  node: ts.Node,
+): node is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
+  return (
+    (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
+    CONFIG.CHINESE_REGEX.test(node.text) &&
+    !isComparisonOperand(node)
+  );
+}
+
 /** collectNestedChineseLiterals 的带节点版本，供需要精确行列的诊断路径使用。 */
 export function collectNestedChineseLiteralNodes(
   expression: ts.Node,
 ): Array<ts.StringLiteral | ts.NoSubstitutionTemplateLiteral> {
   const out: Array<ts.StringLiteral | ts.NoSubstitutionTemplateLiteral> = [];
   const walk = (n: ts.Node): void => {
-    if (
-      (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) &&
-      CONFIG.CHINESE_REGEX.test(n.text) &&
-      !isComparisonOperand(n)
-    ) {
+    if (isRuntimeLeakingChineseLiteral(n)) {
       out.push(n);
     }
     ts.forEachChild(n, walk);
@@ -168,11 +181,7 @@ export function collectRuntimeChineseLiteralsFromI18nCall(
         ts.isIdentifier(node.name) || ts.isStringLiteral(node.name) ? node.name.text : '';
       if (defaultFields.has(name)) return;
     }
-    if (
-      (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
-      CONFIG.CHINESE_REGEX.test(node.text) &&
-      !isComparisonOperand(node)
-    ) {
+    if (isRuntimeLeakingChineseLiteral(node)) {
       out.push({ text: node.text, node });
       return;
     }
@@ -268,6 +277,55 @@ export function isAlreadyInternationalized(node: ts.Node): boolean {
 }
 
 /**
+ * 对象字面量是否是「组件选项对象」：`export default { ... }` 或
+ * `defineComponent({ ... })` / `Vue.extend({ ... })` 的参数（后者可再套一层 export default）。
+ *
+ * 用于把组件选项里的 setup 与「用户自己类 / 普通对象里恰好叫 setup 的方法」区分开——
+ * 后者的 this 语义正常，不能一刀切当作不可绑定。
+ */
+const COMPONENT_FACTORY_NAMES = new Set(['defineComponent', 'extend', 'defineAsyncComponent']);
+
+function isComponentOptionsObject(node: ts.ObjectLiteralExpression): boolean {
+  const parent = node.parent;
+  if (!parent) return false;
+  if (ts.isExportAssignment(parent)) return true;
+  if (ts.isCallExpression(parent) && parent.arguments[0] === node) {
+    const callee = parent.expression;
+    const name = ts.isIdentifier(callee)
+      ? callee.text
+      : ts.isPropertyAccessExpression(callee)
+        ? callee.name.text
+        : undefined;
+    return !!name && COMPONENT_FACTORY_NAMES.has(name);
+  }
+  return false;
+}
+
+/** 该函数是否是组件选项对象的 `setup`（方法简写 `setup() {}` 或 `setup: function () {}`）。 */
+function isComponentSetupFunction(fn: ts.Node): boolean {
+  if (ts.isMethodDeclaration(fn)) {
+    return (
+      ts.isIdentifier(fn.name) &&
+      fn.name.text === 'setup' &&
+      ts.isObjectLiteralExpression(fn.parent) &&
+      isComponentOptionsObject(fn.parent)
+    );
+  }
+  if (ts.isFunctionExpression(fn)) {
+    const prop = fn.parent;
+    return (
+      !!prop &&
+      ts.isPropertyAssignment(prop) &&
+      ts.isIdentifier(prop.name) &&
+      prop.name.text === 'setup' &&
+      ts.isObjectLiteralExpression(prop.parent) &&
+      isComponentOptionsObject(prop.parent)
+    );
+  }
+  return false;
+}
+
+/**
  * 判断节点是否处于"可绑定 this"的词法作用域。
  *
  * 用于 Vue SFC 普通 <script> 块的转换：data() / methods / computed / watch /
@@ -284,6 +342,10 @@ export function isAlreadyInternationalized(node: ts.Node): boolean {
  *
  * 注意：类字段初始化器（class field initializer）严格说有 this（指向实例），
  * 但实际场景里 SFC 不写 class，故不特别处理。
+ *
+ * 例外：组件选项对象里的 `setup()`。Vue 3 调用 setup 时不绑定组件实例（严格模式下
+ * this 为 undefined），写 `this.$t(...)` 会在运行时抛 TypeError —— 它必须和模块顶层
+ * 一样走裸 t() + import 路径。
  */
 export function isInThisBindableScope(node: ts.Node): boolean {
   let current: ts.Node | undefined = node.parent;
@@ -300,6 +362,7 @@ export function isInThisBindableScope(node: ts.Node): boolean {
       ts.isSetAccessor(current) ||
       ts.isConstructorDeclaration(current)
     ) {
+      if (isComponentSetupFunction(current)) return false;
       return true;
     }
     if (ts.isSourceFile(current)) {

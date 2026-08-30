@@ -296,12 +296,6 @@ export class FileUtils {
   // Path-related Methods (config-driven)
   // =================================================================
 
-  /**
-   * 获取工作目录路径
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   * @returns 目录路径
-   */
   static getDirectoryPath(config: ResolvedConfig, isCustom: boolean): string {
     if (isCustom) {
       if (!config.io.customDir) {
@@ -312,22 +306,10 @@ export class FileUtils {
     return config.io.localesDir;
   }
 
-  /**
-   * 获取待翻译文件路径
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   * @returns 待翻译文件路径
-   */
   static getUntranslatedPath(config: ResolvedConfig, isCustom: boolean): string {
     return path.join(this.getDirectoryPath(config, isCustom), FILES.UNTRANSLATED_JSON);
   }
 
-  /**
-   * 获取翻译文件路径
-   * @param config - 已解析的配置
-   * @param isCustom - 是否为定制目录
-   * @returns 翻译文件路径
-   */
   static getTranslatedPath(config: ResolvedConfig, isCustom: boolean): string {
     return path.join(this.getDirectoryPath(config, isCustom), FILES.TRANSLATIONS_JSON);
   }
@@ -375,11 +357,6 @@ export class FileUtils {
     return { isValid: false, type: 'invalid', error: '不支持的路径类型' };
   }
 
-  /**
-   * 获取相对路径
-   * @param filePath - 文件路径
-   * @returns 相对于工作目录的路径
-   */
   static getRelativePath(filePath: string): string {
     return path.relative(process.cwd(), filePath);
   }

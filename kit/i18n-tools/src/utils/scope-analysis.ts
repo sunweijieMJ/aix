@@ -130,18 +130,20 @@ function blockDirectlyDeclares(block: ts.Node, name: string): boolean {
 }
 
 /**
- * 引用 ref 是否被某个「祖先作用域」的局部声明遮蔽了名为 name 的绑定。
+ * 遮蔽判定的共享内核：沿 ref 的祖先链逐层向上，看有没有哪一层作用域声明了名为 name
+ * 的绑定。boundary 非空时，检查完 boundary 自身那一层即停止（只覆盖 ref 到 boundary
+ * 之间的作用域链）；为空则一路走到 SourceFile。
  *
  * 关键：必须区分函数作用域与块级作用域——`const/let` 是块级，写在某个 if/块内的
  * `const { t } = ...` 只遮蔽该块内的引用；同函数内、该块之外的引用仍解析到 module import。
  * 旧实现把函数体内任意嵌套块的 const/let 都当成整个函数的声明，会误判块外引用被遮蔽，
- * 进而把仍在使用的 import 删掉（TS2304）。
- *
- * 因此沿 ref 的祖先链逐层向上：
+ * 进而把仍在使用的 import 删掉（TS2304）。故逐层分两类处理：
  *  - 函数作用域：参数 + 函数体内 `var`（提升到整个函数，不含嵌套函数）遮蔽；
  *  - 块作用域（Block / SourceFile / ModuleBlock）：仅该块「直属」语句里的 `let/const` 遮蔽。
+ *
+ * 两个公开变体共用本内核，避免这套口径在两处各自演化后走样。
  */
-function hasEnclosingLocalDeclaration(ref: ts.Node, name: string): boolean {
+function hasShadowingDeclaration(ref: ts.Node, name: string, boundary?: ts.Node): boolean {
   let cur: ts.Node | undefined = ref.parent;
   while (cur) {
     if (isFunctionLikeScope(cur)) {
@@ -149,9 +151,15 @@ function hasEnclosingLocalDeclaration(ref: ts.Node, name: string): boolean {
     } else if (ts.isBlock(cur) || ts.isSourceFile(cur) || ts.isModuleBlock(cur)) {
       if (blockDirectlyDeclares(cur, name)) return true;
     }
+    if (boundary && cur === boundary) return false;
     cur = cur.parent;
   }
   return false;
+}
+
+/** 引用 ref 是否被某个「祖先作用域」的局部声明遮蔽了名为 name 的绑定（无边界，查到顶）。 */
+function hasEnclosingLocalDeclaration(ref: ts.Node, name: string): boolean {
+  return hasShadowingDeclaration(ref, name);
 }
 
 /**
@@ -164,20 +172,10 @@ function hasEnclosingLocalDeclaration(ref: ts.Node, name: string): boolean {
  */
 export function hasLocalDeclarationWithin(ref: ts.Node, name: string, boundary: ts.Node): boolean {
   // ref 就是 boundary 自身（如 useCallback(t, deps) 直传标识符）：不存在"回调内部"，
-  // 遮蔽不可能成立。不提前返回的话下方循环从 parent 起步永远遇不到 boundary，
+  // 遮蔽不可能成立。不提前返回的话内核从 parent 起步永远遇不到 boundary，
   // 会把 boundary 之外（组件层）的翻译绑定误判为遮蔽。
   if (ref === boundary) return false;
-  let cur: ts.Node | undefined = ref.parent;
-  while (cur) {
-    if (isFunctionLikeScope(cur)) {
-      if (functionScopeDeclares(cur, name)) return true;
-    } else if (ts.isBlock(cur) || ts.isSourceFile(cur) || ts.isModuleBlock(cur)) {
-      if (blockDirectlyDeclares(cur, name)) return true;
-    }
-    if (cur === boundary) return false;
-    cur = cur.parent;
-  }
-  return false;
+  return hasShadowingDeclaration(ref, name, boundary);
 }
 
 /**

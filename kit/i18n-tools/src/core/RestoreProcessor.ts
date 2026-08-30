@@ -126,6 +126,25 @@ export class RestoreProcessor extends BaseProcessor {
         );
       }
 
+      // 默认 outputDir（`<root>/restored/`）就落在扫描根内：二次全量 restore 会把上一次的
+      // 还原副本当成源文件再处理一遍，产出 restored/restored/… 套娃。故非 overwrite 模式下
+      // 按 resolved 前缀剔除输出目录内的文件（overwrite 模式不使用 outputDir，无此风险）。
+      if (!options.overwrite) {
+        const outputRoot = path.resolve(options.outputDir);
+        const kept = filesToProcess.filter((file) => {
+          const resolved = path.resolve(file);
+          return resolved !== outputRoot && !resolved.startsWith(outputRoot + path.sep);
+        });
+        const excluded = filesToProcess.length - kept.length;
+        if (excluded > 0) {
+          // 不静默：排除数为全部时下方会走「没有找到需要处理的文件」早退，用户需要知道原因。
+          LoggerUtils.warn(
+            `⚠️  已排除 ${excluded} 个位于输出目录内的文件（${FileUtils.getRelativePath(options.outputDir)}），避免把上次还原产物再还原一遍`,
+          );
+        }
+        filesToProcess = kept;
+      }
+
       const frameworkName = this.adapter.getDisplayName();
       LoggerUtils.info(`📁 找到 ${filesToProcess.length} 个${frameworkName}文件待处理`);
 
@@ -134,7 +153,11 @@ export class RestoreProcessor extends BaseProcessor {
         return;
       }
 
-      ensureDirectoryExists(options.outputDir);
+      // 仅非 overwrite 模式才需要输出目录：overwrite 就地改写原文件、根本不读 options.outputDir，
+      // 无条件创建会在每次 `--overwrite` 后凭空留下一个空 `restored/`。
+      if (!options.overwrite) {
+        ensureDirectoryExists(options.outputDir);
+      }
 
       let processedCount = 0;
       let modifiedCount = 0;

@@ -10,7 +10,7 @@ import { writeJsonFile } from './json-io';
  * - translate：Translate 的批次翻译失败
  * - restore：  Restore 的单文件还原失败
  */
-export type FailureStage = 'transform' | 'write' | 'translate' | 'restore';
+type FailureStage = 'transform' | 'write' | 'translate' | 'restore';
 
 /**
  * 落盘的失败记录条目。
@@ -118,7 +118,7 @@ export interface CoverageMetric {
  * 4. 文件名带时间戳 + command + pid，避免并发运行互相覆盖。
  */
 /** 警告的严重级别（doctor 的 missing-key=error / orphan=warning / lint=info 等）。 */
-export type ReportSeverity = 'error' | 'warning' | 'info';
+type ReportSeverity = 'error' | 'warning' | 'info';
 
 export class RunReport {
   private failures: FailureRecord[] = [];

@@ -188,6 +188,50 @@ describe('GenerateProcessor 事务加固（#8）', () => {
     expect(fs.existsSync(zhPath())).toBe(false); // 语言文件未生成
   });
 
+  // 回归（审计 P2）：dry-run 此前直接 writePlan、跳过写盘前预检，产出一份必然 apply 失败的
+  // plan——用户 review 完才在 apply 时踩到前缀冲突。修复后 dry-run 当场暴露且不落 plan。
+  it('dry-run 同样跑写盘前预检：nested 前缀冲突 → 报错且不产出 plan', async () => {
+    const file = writeSource('DryRunConflict.vue', VUE_FILE);
+    const nestedConfig = buildConfig(rootDir, {
+      io: { sourceDir: srcDir, localesDir: localeDir, format: 'nested', prettify: false },
+    });
+    const planRoot = path.join(rootDir, 'plans');
+    const hasPlan = (): boolean =>
+      fs.existsSync(planRoot) && fs.readdirSync(planRoot).some((n) => n.startsWith('generate-'));
+
+    // 先跑一次干净的 dry-run，拿到本轮会生成的 key（本地 ID 生成是确定性的）
+    await new GenerateProcessor(nestedConfig, false, false).execute(file, true, {
+      dryRun: true,
+      planOutputDir: planRoot,
+    });
+    const planDir = fs.readdirSync(planRoot).find((n) => n.startsWith('generate-'))!;
+    const plan = JSON.parse(fs.readFileSync(path.join(planRoot, planDir, 'plan.json'), 'utf-8'));
+    const key = Object.keys(plan.localeDelta)[0]!;
+    fs.rmSync(planRoot, { recursive: true, force: true });
+
+    // 构造冲突：既有 locale 里该 key 已是一个有子节点的对象（nested 下 key 无法同时是叶子与祖先）
+    const segments = `${key}.child`.split('.');
+    const root: Record<string, unknown> = {};
+    let cursor = root;
+    segments.forEach((seg, i) => {
+      if (i === segments.length - 1) cursor[seg] = '既有值';
+      else cursor = (cursor[seg] = {}) as Record<string, unknown>;
+    });
+    fs.writeFileSync(zhPath(), JSON.stringify(root), 'utf-8');
+
+    await expect(
+      new GenerateProcessor(nestedConfig, false, false).execute(file, true, {
+        dryRun: true,
+        planOutputDir: planRoot,
+      }),
+    ).rejects.toThrow(/前缀冲突/);
+
+    expect(hasPlan()).toBe(false);
+    // dry-run 语义不变：源码与语言文件均未被改写
+    expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+    expect(JSON.parse(fs.readFileSync(zhPath(), 'utf-8'))).toEqual(root);
+  });
+
   it('提取后源码被外部修改 → 中止且不覆盖外部修改、不写语言文件', async () => {
     const file = writeSource('Drift.vue', VUE_FILE);
     const externalEdit = `<!-- editor edit -->\n${VUE_FILE}`;

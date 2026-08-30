@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { GenerateProcessor } from '../src/core/GenerateProcessor';
 import { VueAdapter } from '../src/adapters/VueAdapter';
+import { InteractiveUtils } from '../src/utils/interactive-utils';
 import { LanguageFileManager } from '../src/utils/language-file-manager';
 import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
@@ -411,6 +412,160 @@ describe('GenerateProcessor 编排层', () => {
     ).rejects.toThrow(/根目录/);
 
     expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+  });
+
+  /**
+   * localeDelta 漂移守卫（审计 P2）：指纹只盖源码文件，dry-run 与 apply 之间若有人改了
+   * 将被 delta 覆盖的 key 值，apply 会静默把旧值写回去。plan 新增 localeBaseline 快照
+   * （只记「将被覆盖的既有 key」），apply 时比对当前 locale。
+   */
+  describe('apply-plan locale 漂移守卫', () => {
+    /** 产一份「localeDelta 会覆盖既有 key」的 plan，返回 plan.json 路径与该 key */
+    const makePlanOverExistingKey = async (
+      file: string,
+    ): Promise<{ planJson: string; key: string }> => {
+      // 首轮 dry-run 只为拿到本轮生成的 key（本地 ID 生成确定性）
+      const first = await makePlan(buildConfig(rootDir), file);
+      const key = Object.keys(JSON.parse(fs.readFileSync(first, 'utf-8')).localeDelta)[0]!;
+      fs.rmSync(planRoot, { recursive: true, force: true });
+      fs.mkdirSync(planRoot, { recursive: true });
+      // 模拟「该 key 已由别的分支写进 locale」——第二轮 plan 的 localeBaseline 会记下它
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交' }), 'utf-8');
+      return { planJson: await makePlan(buildConfig(rootDir), file), key };
+    };
+
+    it('plan 记录 localeBaseline：只含将被覆盖的既有 key，新 key 不记', async () => {
+      const file = writeSource('Baseline.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      expect(plan.localeBaseline).toEqual({ [key]: '提交' });
+      expect(plan.summary.newKeys).toBe(0);
+    });
+
+    it('新 key 不进 localeBaseline（控制体积）', async () => {
+      const file = writeSource('NewKeyOnly.vue', VUE_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+
+      expect(JSON.parse(fs.readFileSync(planJson, 'utf-8')).localeBaseline).toEqual({});
+    });
+
+    it('值漂移 + 非交互 → 拒绝 apply，源码与 locale 均不变', async () => {
+      const file = writeSource('Drift.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+      // dry-run 之后有人改了该 key 的文案
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单' }), 'utf-8');
+
+      await expect(
+        new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson, {
+          keepPlan: true,
+        }),
+      ).rejects.toThrow(/拒绝 apply/);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(readZh()).toEqual({ [key]: '提交订单' });
+    });
+
+    it('key 被删除同样算漂移 → 拒绝 apply', async () => {
+      const file = writeSource('DriftDeleted.vue', VUE_FILE);
+      const { planJson } = await makePlanOverExistingKey(file);
+      fs.writeFileSync(zhPath(), JSON.stringify({}), 'utf-8');
+
+      await expect(
+        new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson, {
+          keepPlan: true,
+        }),
+      ).rejects.toThrow(/拒绝 apply/);
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+    });
+
+    it('无漂移 → 正常 apply', async () => {
+      const file = writeSource('NoDrift.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+
+      await new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
+      expect(readZh()[key]).toBe('提交');
+    });
+
+    it('旧 plan 无 localeBaseline → 跳过检查照常 apply（向后兼容）', async () => {
+      const file = writeSource('LegacyPlan.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      delete plan.localeBaseline;
+      fs.writeFileSync(planJson, JSON.stringify(plan), 'utf-8');
+      // 即便此时 locale 已漂移，旧 plan 也只提示、不拦
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单' }), 'utf-8');
+
+      await new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
+      expect(readZh()[key]).toBe('提交');
+      expect(LoggerUtils.info).toHaveBeenCalledWith(
+        expect.stringContaining('跳过 locale 漂移检查'),
+      );
+    });
+
+    it('交互模式：确认后继续覆盖', async () => {
+      const file = writeSource('DriftConfirm.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单' }), 'utf-8');
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(true);
+
+      await new GenerateProcessor(buildConfig(rootDir), false, true).applyFromPlan(planJson);
+
+      expect(readZh()[key]).toBe('提交');
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
+    });
+
+    it('交互模式：选否 → 取消，零改动且收尾不打成功', async () => {
+      const file = writeSource('DriftCancel.vue', VUE_FILE);
+      const { planJson, key } = await makePlanOverExistingKey(file);
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单' }), 'utf-8');
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(false);
+      // 只看本次 apply 的收尾日志：上面两轮 dry-run 也会打「代码生成完成」
+      vi.clearAllMocks();
+
+      await new GenerateProcessor(buildConfig(rootDir), false, true).applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(readZh()).toEqual({ [key]: '提交订单' });
+      // plan 目录保留，供用户重新决策
+      expect(fs.existsSync(planJson)).toBe(true);
+      expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('代码生成完成'));
+      expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('已取消'));
+    });
+  });
+
+  /**
+   * 取消分支必须置 cancelled 位（FileProcessor 契约）：否则 executeWithLifecycle
+   * 收尾照打「✅ 代码生成完成」，取消的运行被人与 CI 误判为已改写源码。
+   */
+  describe('交互取消收尾', () => {
+    it('目录模式「是否继续分析这些文件？」选否 → 打已取消、零改动', async () => {
+      const file = writeSource('CancelDir.vue', VUE_FILE);
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(false);
+
+      await new GenerateProcessor(buildConfig(rootDir), false, true).execute(srcDir, true);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(fs.existsSync(zhPath())).toBe(false);
+      expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('代码生成完成'));
+      expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('代码生成已取消'));
+    });
+
+    it('「是否应用这些转换？」选否 → 打已取消、零改动', async () => {
+      const file = writeSource('CancelApply.vue', VUE_FILE);
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(false);
+
+      await new GenerateProcessor(buildConfig(rootDir), false, true).execute(file, true);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(fs.existsSync(zhPath())).toBe(false);
+      expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('代码生成完成'));
+      expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('代码生成已取消'));
+    });
   });
 
   it('覆盖率：源码已存在 $t() 调用点计入 alreadyI18n', async () => {

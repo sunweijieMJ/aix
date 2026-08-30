@@ -16,6 +16,7 @@ interface ComponentInfo {
   name: string;
   type: 'class' | 'function';
   node: ts.ClassDeclaration | ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+  // 'none' = 无需注入（已有绑定 / 同名冲突跳过）；此类条目不会进 componentsToModify。
   injectionType: 'hook' | 'hoc' | 'class-destructure' | 'none';
 }
 
@@ -39,49 +40,15 @@ export class ReactComponentInjector implements IComponentInjector {
     const initialVisitor = (node: ts.Node) => {
       const componentInfo = ReactASTUtils.getComponentInfo(node);
       if (componentInfo) {
-        const usesTranslation = this.library.componentUsesTranslation(
-          componentInfo.node,
-          initialSourceFile,
+        const injectionType = this.decideInjection(componentInfo, initialSourceFile, (name) =>
+          LoggerUtils.warn(
+            `⚠️ 跳过注入：组件 ${name} 内已存在与 ` +
+              `'${this.library.translationVarName}' 同名的非 i18n 本地绑定，` +
+              `注入 ${this.library.hookName}() 会造成重复声明。请人工确认该组件的 i18n 接入方式。`,
+          ),
         );
-        if (usesTranslation) {
-          if (componentInfo.type === 'function') {
-            // 函数组件：仅有 props.intl（react-intl）不算本地绑定，需注入 useIntl 让裸 intl
-            // 有定义（注入 useIntl 在 IntlProvider 下始终安全，不涉及类组件 HOC 二次包裹）。
-            const hasBinding = this.library.hasLocalTranslationBinding(
-              componentInfo.node,
-              initialSourceFile,
-            );
-            if (!hasBinding) {
-              // 同名冲突守卫：componentUsesTranslation 宽匹配任意裸 `t(`/`*.formatMessage`
-              // 调用，组件里可能已有**非 i18n 的同名本地绑定**（`const { t } = useTemperature()`、
-              // `const intl = createIntl(...)`）。此时再注入 hook 声明会与之同块双声明
-              // （TS2451，整文件不可编译）。按「宁可漏注入，绝不产出坏代码」跳过并告警。
-              if (this.hasConflictingLocalBinding(componentInfo.node)) {
-                LoggerUtils.warn(
-                  `⚠️ 跳过注入：组件 ${componentInfo.name} 内已存在与 ` +
-                    `'${this.library.translationVarName}' 同名的非 i18n 本地绑定，` +
-                    `注入 ${this.library.hookName}() 会造成重复声明。请人工确认该组件的 i18n 接入方式。`,
-                );
-              } else {
-                componentsToModify.push({
-                  ...componentInfo,
-                  injectionType: 'hook',
-                });
-              }
-            }
-          } else {
-            // 类组件：以「本作用域内是否已存在 this.props.<var> 访问」判定是否已被 HOC
-            // （injectIntl / withTranslation）包裹。
-            //   - 已包裹：generator 产出的裸 t()/intl 需本地解构 `const { t } = this.props`
-            //     才有定义；但绝不能二次注入 HOC（否则 withTranslation()(withTranslation()(…))
-            //     或重复 injectIntl）。故只补方法体解构。
-            //   - 未包裹：注入完整 HOC（Props 类型 + 方法体解构 + wrapper）。
-            const wrapped = this.classAlreadyWrappedByHOC(componentInfo.node, initialSourceFile);
-            componentsToModify.push({
-              ...componentInfo,
-              injectionType: wrapped ? 'class-destructure' : 'hoc',
-            });
-          }
+        if (injectionType !== 'none') {
+          componentsToModify.push({ ...componentInfo, injectionType });
         }
       }
       ts.forEachChild(node, initialVisitor);
@@ -113,35 +80,34 @@ export class ReactComponentInjector implements IComponentInjector {
     const finalVisitor = (node: ts.Node) => {
       const componentInfo = ReactASTUtils.getComponentInfo(node);
       if (componentInfo) {
-        const componentToModify = componentsToModify.find(
-          (c) => c.name === componentInfo.name && c.type === componentInfo.type,
-        );
+        // 就地重算注入判定，**不**按 name+type 去 componentsToModify 里查表：文件内同名
+        // 组件（不同作用域的两个 `function Panel()`）会全部命中同一条目，已有 hook 的那个
+        // 也被再注入一次 → 同块双 const { t }（TS2451）。Phase 2 只在文件顶部增删 import，
+        // 不改变任何组件内部的绑定情况，故重算结果与 Phase 1 逐个组件一一对应，
+        // 且天然免疫 import 注入带来的偏移平移（无需记录/修正位置）。
+        // Phase 1 的收集结果只用于决定「这一轮要补哪些 import」。
+        const injectionType = this.decideInjection(componentInfo, sourceFileWithImports);
 
-        if (componentToModify) {
-          if (componentToModify.injectionType === 'hook' && componentInfo.type === 'function') {
-            this.injectHook(
-              componentInfo.node as ts.ArrowFunction | ts.FunctionExpression,
-              sourceFileWithImports,
-              transformations,
-            );
-          } else if (componentToModify.injectionType === 'hoc' && componentInfo.type === 'class') {
-            this.injectHOC(
-              componentInfo.node as ts.ClassDeclaration,
-              componentInfo.name,
-              sourceFileWithImports,
-              transformations,
-            );
-          } else if (
-            componentToModify.injectionType === 'class-destructure' &&
-            componentInfo.type === 'class'
-          ) {
-            // 已被 HOC 包裹的类组件：只补方法体 this.props 解构，不二次包裹。
-            this.injectClassMethodDestructure(
-              componentInfo.node as ts.ClassDeclaration,
-              sourceFileWithImports,
-              transformations,
-            );
-          }
+        if (injectionType === 'hook' && componentInfo.type === 'function') {
+          this.injectHook(
+            componentInfo.node as ts.ArrowFunction | ts.FunctionExpression,
+            sourceFileWithImports,
+            transformations,
+          );
+        } else if (injectionType === 'hoc' && componentInfo.type === 'class') {
+          this.injectHOC(
+            componentInfo.node as ts.ClassDeclaration,
+            componentInfo.name,
+            sourceFileWithImports,
+            transformations,
+          );
+        } else if (injectionType === 'class-destructure' && componentInfo.type === 'class') {
+          // 已被 HOC 包裹的类组件：只补方法体 this.props 解构，不二次包裹。
+          this.injectClassMethodDestructure(
+            componentInfo.node as ts.ClassDeclaration,
+            sourceFileWithImports,
+            transformations,
+          );
         }
       }
       ts.forEachChild(node, finalVisitor);
@@ -149,6 +115,50 @@ export class ReactComponentInjector implements IComponentInjector {
     ts.forEachChild(sourceFileWithImports, finalVisitor);
 
     return this.applyTransformations(codeWithImports, transformations);
+  }
+
+  /**
+   * 单个组件需要哪种注入 —— Phase 1（决定补哪些 import）与 Phase 3（真正落注入）共用的
+   * 唯一判定点。两处曾各写一半（Phase 3 只按 name+type 查表），同名组件因此互相串号。
+   *
+   * @param onConflict 命中「同名非 i18n 绑定」时的回调，仅 Phase 1 传入，避免同一冲突告警两遍。
+   */
+  private decideInjection(
+    componentInfo: { name: string; type: 'class' | 'function'; node: ts.Node },
+    sourceFile: ts.SourceFile,
+    onConflict?: (name: string) => void,
+  ): ComponentInfo['injectionType'] {
+    if (!this.library.componentUsesTranslation(componentInfo.node, sourceFile)) {
+      return 'none';
+    }
+
+    if (componentInfo.type === 'function') {
+      // 函数组件：仅有 props.intl（react-intl）不算本地绑定，需注入 useIntl 让裸 intl
+      // 有定义（注入 useIntl 在 IntlProvider 下始终安全，不涉及类组件 HOC 二次包裹）。
+      if (this.library.hasLocalTranslationBinding(componentInfo.node, sourceFile)) {
+        return 'none';
+      }
+      // 同名冲突守卫：componentUsesTranslation 宽匹配任意裸 `t(`/`*.formatMessage` 调用，
+      // 组件里可能已有**非 i18n 的同名本地绑定**（`const { t } = useTemperature()`、
+      // `const intl = createIntl(...)`）。此时再注入 hook 声明会与之同块双声明（TS2451，
+      // 整文件不可编译）。按「宁可漏注入，绝不产出坏代码」跳过并告警。提取端已用同一份判定
+      // 把该组件的候选整体挡在 extractedStrings 之外，故这里不会留下已替换却无绑定的裸 t()。
+      if (this.hasConflictingLocalBinding(componentInfo.node)) {
+        onConflict?.(componentInfo.name);
+        return 'none';
+      }
+      return 'hook';
+    }
+
+    // 类组件：以「本作用域内是否已存在 this.props.<var> 访问」判定是否已被 HOC
+    // （injectIntl / withTranslation）包裹。
+    //   - 已包裹：generator 产出的裸 t()/intl 需本地解构 `const { t } = this.props`
+    //     才有定义；但绝不能二次注入 HOC（否则 withTranslation()(withTranslation()(…))
+    //     或重复 injectIntl）。故只补方法体解构。
+    //   - 未包裹：注入完整 HOC（Props 类型 + 方法体解构 + wrapper）。
+    return this.classAlreadyWrappedByHOC(componentInfo.node, sourceFile)
+      ? 'class-destructure'
+      : 'hoc';
   }
 
   /**
@@ -339,44 +349,16 @@ export class ReactComponentInjector implements IComponentInjector {
   }
 
   /**
-   * 组件函数体**顶层块**内是否存在与 translationVarName 同名、但初始化器**不是** i18n hook
-   * 的本地变量声明（`const { t } = useTemperature()` / `const t = fmt` / `const intl =
-   * createIntl(...)`）。这类绑定说明裸 `t(...)`/`intl.formatMessage(...)` 调用另有出处，
-   * 注入 hook 声明会与之同块双声明（TS2451）。
-   *
-   * 只查顶层块、不用 someWithinComponentScope 下钻：TS2451 仅发生在同一个块内——
-   * 嵌套回调里的同名声明（`useEffect(() => { const t = setTimeout(...) })` 极常见）
-   * 只是无害的内层遮蔽，若也算冲突会误跳注入，组件级 t() 反而变成未定义（TS2304），
-   * 触发面比要防的双声明大得多。形参绑定不在此判（componentParamBindsVar 已把它算作
-   * 「已有绑定」，不会走到注入分支）；表达式体箭头函数无块，不可能同块冲突。
+   * 组件内是否存在与 translationVarName 同名的非 i18n 本地绑定 —— 判定收口在
+   * ReactASTUtils.hasConflictingTranslationBinding，与提取端（ReactTextExtractor 对该组件
+   * 整体跳过提取）共用同一份口径。两端分叉会产出「已替换成裸 t() 却没注入」的错误代码。
    */
   private hasConflictingLocalBinding(node: ts.Node): boolean {
-    const varName = this.library.translationVarName;
-    const hookName = this.library.hookName;
-    const body = (node as ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration).body;
-    if (!body || !ts.isBlock(body)) return false;
-    for (const stmt of body.statements) {
-      if (!ts.isVariableStatement(stmt)) continue;
-      for (const decl of stmt.declarationList.declarations) {
-        let bindsVar = false;
-        if (ts.isIdentifier(decl.name)) {
-          bindsVar = decl.name.text === varName;
-        } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
-          bindsVar = decl.name.elements.some(
-            (el) => ts.isBindingElement(el) && ts.isIdentifier(el.name) && el.name.text === varName,
-          );
-        }
-        if (!bindsVar) continue;
-        const init = decl.initializer;
-        const isHookInit =
-          !!init &&
-          ts.isCallExpression(init) &&
-          ts.isIdentifier(init.expression) &&
-          init.expression.text === hookName;
-        if (!isHookInit) return true;
-      }
-    }
-    return false;
+    return ReactASTUtils.hasConflictingTranslationBinding(
+      node,
+      this.library.translationVarName,
+      this.library.hookName,
+    );
   }
 
   /**
@@ -448,6 +430,11 @@ export class ReactComponentInjector implements IComponentInjector {
   ): void {
     const varName = this.library.translationVarName;
     for (const member of classNode.members) {
+      // static 成员的 this 是类构造函数、没有 props：注入 `const { t } = this.props` 会在
+      // 求值时抛 TypeError。提取端已对 static 成员整体跳过提取（ReactASTUtils
+      // .isInClassStaticMember），这里是防御纵深，兜住用户手写的 static 里的 t()。
+      if (ReactASTUtils.hasStaticModifier(member)) continue;
+
       let body: ts.Block | ts.ConciseBody | undefined;
       let isConstructor = false;
       // 方法 / 访问器（getter/setter）成员体内的裸 t()/intl 同样需要 this.props 解构，

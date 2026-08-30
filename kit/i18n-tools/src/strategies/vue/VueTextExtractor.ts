@@ -22,6 +22,8 @@ import {
   templateLiteralsContainChinese,
 } from '../../utils/ast-guards';
 import { processTemplateExpression } from '../../utils/message-shape';
+import { trimAsciiWhitespace, trimStartAsciiWhitespace } from '../../utils/string-escape';
+import type { VueExtractedString } from './extracted-extras';
 import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import { isNonTranslatableText, isTechnicalConfigValue } from '../../utils/text-classify';
 import { FileUtils } from '../../utils/file-utils';
@@ -68,6 +70,7 @@ export class VueTextExtractor extends BaseTextExtractor {
           script.content,
           filePath,
           script.loc.start.line - 1,
+          script.loc.start.offset,
         );
         extractedStrings.push(...scriptStrings);
       }
@@ -78,6 +81,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         sourceText,
         filePath,
         0, // 没有 template，从第 0 行开始
+        0, // 整个文件即 script，块起点为 0
       );
       extractedStrings.push(...scriptStrings);
     }
@@ -216,13 +220,15 @@ export class VueTextExtractor extends BaseTextExtractor {
       if (node.type === 2) {
         // TEXT
         const textNode = node as TextNode;
-        const text = textNode.content.trim();
+        // trim 只去 ASCII 空白：`&nbsp;`(U+00A0) 等排版空白是文案的一部分，且它在源码里
+        // 落在替换区间内 —— 被 String.trim 剃掉会让 locale 值与替换区间不对应，往返丢字符。
+        const text = trimAsciiWhitespace(textNode.content);
         // loc.source 是未解码的原始源码；@vue/compiler-dom 会把 HTML 实体（&copy; 等）
         // 解码进 content。两者不一致时（即文本含实体）必须分别使用：
         // - original 用原始源码 → Transformer 的 indexOf 才能在含 &copy; 的模板里匹配到，
         //   否则替换失败、源码残留中文 + locale 多出孤儿 key。
         // - processedMessage 用解码后文本 → 作为 locale 值与 ID 源，$t 渲染时正确输出 ©。
-        const rawSource = textNode.loc.source.trim();
+        const rawSource = trimAsciiWhitespace(textNode.loc.source);
         const hasEntity = rawSource !== text;
 
         if (text && this.shouldExtract(text, 'template', undefined, 'text-node')) {
@@ -232,7 +238,10 @@ export class VueTextExtractor extends BaseTextExtractor {
           // 未被提取的属性值（如 value="全部"），产出非法模板。这里把 line/column 校正到
           // trim 后文本的实际位置（前导空白可能跨行）。
           const source = textNode.loc.source;
-          const leadingWs = source.slice(0, source.length - source.trimStart().length);
+          const leadingWs = source.slice(
+            0,
+            source.length - trimStartAsciiWhitespace(source).length,
+          );
           const wsNewlines = leadingWs.split('\n').length - 1;
           const column =
             wsNewlines === 0
@@ -340,9 +349,11 @@ export class VueTextExtractor extends BaseTextExtractor {
     // 源语言 locale 写入带首尾空格的脏值。originalSrc 同步 trim，使 Transformer 按 original
     // 子串匹配替换时只命中中文片段、保留模板里的空白；column 相应跳过被去掉的前导空白
     // （mixed-content 受单行约束，前导空白不含换行，故只调列不调行）。
-    const leadingWhitespace = originalSrc.length - originalSrc.trimStart().length;
-    const synthetic = '`' + body.trim() + '`';
-    originalSrc = originalSrc.trim();
+    // trim 口径同单 TEXT 节点路径：只去 ASCII 空白，`&nbsp;` 等排版空白留在文案里
+    // （它落在替换区间内，剃掉会让 locale 值与区间不对应）。
+    const leadingWhitespace = originalSrc.length - trimStartAsciiWhitespace(originalSrc).length;
+    const synthetic = '`' + trimAsciiWhitespace(body) + '`';
+    originalSrc = trimAsciiWhitespace(originalSrc);
 
     // 走 shouldExtract（含业务侧 rejectPatterns 兜底），把合成 message 作为 text-node 看待
     if (!this.shouldExtract(synthetic, 'template', undefined, 'text-node')) {
@@ -390,6 +401,21 @@ export class VueTextExtractor extends BaseTextExtractor {
   ): number {
     const leadingTrimmed = exprLoc.source.length - exprLoc.source.trimStart().length;
     return exprLoc.start.offset + leadingTrimmed + (node.getStart(sourceFile) - 1);
+  }
+
+  /**
+   * 取动态属性值的外层引号（`:title='…'` → `'`，`:title="…"` → `"`）。
+   *
+   * 表达式起点的前一个字符即开引号：两个 loc 都相对 template content，可直接在指令源码里
+   * 按相对位置取。无引号属性值（`:x=expr`）取不到引号，回落 `"` —— 该形态里表达式不含空白，
+   * 用单引号 key 一样安全。转换端据此为 `$t(...)` 选不冲突的引号。
+   */
+  private static attributeQuoteOf(directive: DirectiveNode): '"' | "'" {
+    const exp = directive.exp;
+    if (!exp) return '"';
+    const index = exp.loc.start.offset - directive.loc.start.offset - 1;
+    const ch = directive.loc.source[index];
+    return ch === "'" ? "'" : '"';
   }
 
   /**
@@ -518,7 +544,8 @@ export class VueTextExtractor extends BaseTextExtractor {
         }
 
         if (attr.value && attr.value.content) {
-          const text = attr.value.content.trim();
+          // trim 口径同文本节点：只去 ASCII 空白，`&nbsp;` 等排版空白属于文案。
+          const text = trimAsciiWhitespace(attr.value.content);
           // 与文本节点 B1 对称：attr.value.content 已被 @vue/compiler-dom 解码（&amp; → &）。
           // 若原始源码含实体，Transformer 用解码后的 original 拼正则去匹配仍含 &amp; 的源码会
           // 失配 → 属性不被替换 + locale 多出孤儿 key。故 original 用「去引号的原始源码」让正则
@@ -530,7 +557,7 @@ export class VueTextExtractor extends BaseTextExtractor {
             rawSrc[rawSrc.length - 1] === rawSrc[0]
               ? rawSrc.slice(1, -1)
               : rawSrc;
-          const rawText = rawInner.trim();
+          const rawText = trimAsciiWhitespace(rawInner);
           const hasEntity = rawText !== text;
           if (text && this.shouldExtract(text, 'template')) {
             extractedStrings.push({
@@ -670,7 +697,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         ) {
           const argName =
             directive.arg && directive.arg.type === 4 ? (directive.arg as any).content : '';
-          extractedStrings.push({
+          const extracted: VueExtractedString = {
             original: text,
             semanticId: '',
             filePath,
@@ -689,7 +716,9 @@ export class VueTextExtractor extends BaseTextExtractor {
               sourceFile,
             ),
             sourceSlice: node.getText(sourceFile),
-          });
+            attributeQuote: VueTextExtractor.attributeQuoteOf(directive as DirectiveNode),
+          };
+          extractedStrings.push(extracted);
         }
       }
       // 提取模板字符串
@@ -802,7 +831,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     if (originalText && this.shouldExtract(processedText || originalText, 'template')) {
       const argName =
         directive.arg && directive.arg.type === 4 ? (directive.arg as any).content : '';
-      extractedStrings.push({
+      const extracted: VueExtractedString = {
         original: originalText,
         processedMessage: processedText !== originalText ? processedText : undefined,
         semanticId: '',
@@ -815,12 +844,14 @@ export class VueTextExtractor extends BaseTextExtractor {
         templateVariables: templateVariables.length > 0 ? templateVariables : undefined,
         templateContext: 'dynamic-attribute',
         attributeName: argName,
+        attributeQuote: VueTextExtractor.attributeQuoteOf(directive as DirectiveNode),
         // 区间是整个模板字面量（含反引号）。注意不能用 originalText 当 sourceSlice：
         // processTemplateExpression 重建 originalText 时把 `${ n }` 归一成 `${n}`，
         // 与源码逐字不等；node.getText 才是逐字原文。
         startOffset: VueTextExtractor.templateOffsetOfExprNode(directive.exp.loc, node, sourceFile),
         sourceSlice: node.getText(sourceFile),
-      });
+      };
+      extractedStrings.push(extracted);
     }
   }
 
@@ -1059,6 +1090,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     scriptContent: string,
     filePath: string,
     lineOffset: number,
+    blockStart: number,
   ): Promise<ExtractedString[]> {
     const extractedStrings: ExtractedString[] = [];
 
@@ -1071,7 +1103,14 @@ export class VueTextExtractor extends BaseTextExtractor {
       // 游的 `new Set(extractedStrings.map(s => s.filePath))` 去重失败，导致同一
       // .vue 文件被 transform 两次（第二次在已被改写的源码上越界，触发 ts
       // Debug Failure）。
-      await this.visitScriptNode(sourceFile, sourceFile, extractedStrings, lineOffset, filePath);
+      await this.visitScriptNode(
+        sourceFile,
+        sourceFile,
+        extractedStrings,
+        lineOffset,
+        filePath,
+        blockStart,
+      );
     } catch (error) {
       LoggerUtils.error(`解析 script 失败: ${filePath}`, error);
     }
@@ -1092,6 +1131,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     extractedStrings: ExtractedString[],
     lineOffset: number,
     filePath: string,
+    blockStart: number,
   ): Promise<void> {
     if (ts.isCallExpression(node) && isCommonI18nCall(node)) {
       this.recordRuntimeChineseInI18nCall(node, sourceFile, filePath, lineOffset);
@@ -1169,7 +1209,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     if (originalText && this.shouldExtract(processedText || originalText, 'script', node)) {
       const position = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
 
-      extractedStrings.push({
+      const extracted: VueExtractedString = {
         original: originalText,
         processedMessage: processedText !== originalText ? processedText : undefined,
         semanticId: '',
@@ -1180,7 +1220,11 @@ export class VueTextExtractor extends BaseTextExtractor {
         componentType: 'setup',
         isTemplateString,
         templateVariables: templateVariables.length > 0 ? templateVariables : undefined,
-      });
+        // 记块起点而非行号区间：`</script><script setup>` 同行时按行分派会让边界行上的
+        // 字符串同时落进两个块，被替换两次并在第二次越界。
+        scriptBlockStart: blockStart,
+      };
+      extractedStrings.push(extracted);
       return;
     }
 
@@ -1192,7 +1236,14 @@ export class VueTextExtractor extends BaseTextExtractor {
       children.push(c);
     });
     for (const child of children) {
-      await this.visitScriptNode(child, sourceFile, extractedStrings, lineOffset, filePath);
+      await this.visitScriptNode(
+        child,
+        sourceFile,
+        extractedStrings,
+        lineOffset,
+        filePath,
+        blockStart,
+      );
     }
   }
 

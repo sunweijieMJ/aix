@@ -13,7 +13,7 @@ import { IdGenerator } from '../src/utils/id-generator';
 import { IdReuseResolver } from '../src/core/IdReuseResolver';
 import { isModeExplicitlySet } from '../src/utils/command-utils';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
-import { writeTranslationsFile } from '../src/utils/json-io';
+import { classifyJsonFile, loadJsonDictOrThrow, writeTranslationsFile } from '../src/utils/json-io';
 
 // =============================================================================
 // file-utils
@@ -700,5 +700,56 @@ describe('buckets 迁移窗口：readLocaleFile 只读并入未迁移的遗留�
 
     const map = new LanguageFileManager(makeConfig(), false).readLocaleFile();
     expect(map).toEqual({ 'user.name': '值' });
+  });
+});
+
+// =============================================================================
+// json-io — 顶层非字典守卫
+// =============================================================================
+/**
+ * 回归：全部调用方（locale/bucket 文件、glossary、translations/untranslated）消费的都是
+ * 「key → value」字典。语法合法但顶层是数组/字符串/数字时若判 ok 放行，
+ * `Object.entries("hello")` 会把字符串按字符拆成条目一路加工到落盘，全程不报错。
+ * 归入 corrupt（而非新增一档 status）是为了让既有 `status === 'corrupt'` 守卫照旧 fail-fast。
+ */
+describe('classifyJsonFile / loadJsonDictOrThrow — 顶层必须是对象', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-json-toplevel-'));
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const write = (content: string): string => {
+    const p = path.join(tmpDir, 'x.json');
+    fs.writeFileSync(p, content, 'utf8');
+    return p;
+  };
+
+  it.each([
+    ['数组', '["a","b"]'],
+    ['字符串', '"hello"'],
+    ['数字', '42'],
+    ['布尔', 'true'],
+  ])('顶层是%s → corrupt，且 reason 说明顶层必须是对象', (_label, content) => {
+    const cls = classifyJsonFile(write(content));
+    expect(cls.status).toBe('corrupt');
+    expect(cls.status === 'corrupt' && cls.reason).toMatch(/顶层必须是对象/);
+  });
+
+  it('loadJsonDictOrThrow 抛错时带上调用方文案 + 具体原因', () => {
+    expect(() => loadJsonDictOrThrow(write('"hello"'), (p) => `坏了: ${p}`)).toThrow(
+      /坏了: .*[\s\S]*顶层必须是对象/,
+    );
+  });
+
+  it('对照：顶层是对象照常 ok；null / 空文件仍归 empty（不回归）', () => {
+    expect(classifyJsonFile(write('{"a":"1"}'))).toEqual({ status: 'ok', data: { a: '1' } });
+    expect(classifyJsonFile(write('null')).status).toBe('empty');
+    expect(classifyJsonFile(write('   ')).status).toBe('empty');
   });
 });

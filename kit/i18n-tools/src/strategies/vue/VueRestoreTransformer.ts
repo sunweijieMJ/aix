@@ -8,6 +8,7 @@ import { normalizeRestoreLocaleMap } from '../../utils/message-shape';
 import { isImportedNameUnused, isLocalNameUnused } from '../../utils/scope-analysis';
 import { escapeRegExp } from '../../utils/string-escape';
 import { CHINESE_CHAR_RANGE, NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
+import { mapScriptBlocks } from './sfc-blocks';
 import type { LocaleMap } from '../../utils/types';
 import type { IRestoreTransformer } from '../../adapters/FrameworkAdapter';
 import type { VueI18nLibrary } from './libraries';
@@ -121,15 +122,21 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // （删声明 → 未定义 t；删 import → 未定义 useI18n）。下方模块 import 清理只守卫 import
     // 绑定、保护不到 hook 绑定，故此处独立守卫。正常 restore（全部 key 命中、t() 清空）下
     // t 已无引用，照常清理。
+    // 下方三处清理（hook 声明 / hook import / t import）都必须经 mapScriptBlocks 切到
+    // script 块内做：它们是正则或整文替换，作用于整份 .vue 会把 `<pre>`/`<code>` 里用户
+    // 逐字展示的同形文本（示例代码中的 `const { t } = useI18n()` / `import { t } from …`）
+    // 一并删掉——那是不可恢复的内容丢失。restoreScript 早已是这个模式，此处补齐。
     if (this.isTNameUnusedInScript(restoredCode)) {
       // 先清理 hook 声明（单键 `const { t } = useI18n()` 会被整条删除），再守卫删 import：
       // 仅当清理后 script 里已无 hookName( 调用时才删导入。否则多键解构
       // `const { t, locale } = useI18n()` 因声明清理正则只匹配单键 `{ t }` 而保留，其
       // useI18n() 调用仍在，无条件删 import 会产出未定义 useI18n（ReferenceError / TS2304）。
       // 与 generate 侧 VueImportManager.removeHookImportAndDeclaration 的 hookCallStillUsed 守卫对称。
-      restoredCode = this.cleanupHookDeclarations(restoredCode, lib);
+      restoredCode = mapScriptBlocks(restoredCode, (script) =>
+        this.cleanupHookDeclarations(script, lib),
+      );
       if (!this.hookCallStillUsed(restoredCode, lib)) {
-        restoredCode = this.cleanupImports(restoredCode, lib);
+        restoredCode = mapScriptBlocks(restoredCode, (script) => this.cleanupImports(script, lib));
       }
     }
 
@@ -143,7 +150,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 还原」的存活 t() 调用，t 仍被使用，删 import 会产出未定义 t（TS2304）。与 React 端
     // ReactRestoreTransformer.finalizeTImport 对称。
     if (tImport && this.isTImportUnusedInScript(restoredCode, tImport)) {
-      restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport);
+      restoredCode = mapScriptBlocks(restoredCode, (script) =>
+        this.cleanupPluginLocaleImport(script, tImport),
+      );
     }
 
     return restoredCode;
@@ -214,14 +223,19 @@ export class VueRestoreTransformer implements IRestoreTransformer {
    */
   private static cleanupPluginLocaleImport(code: string, tImport: string): string {
     const escapedPath = escapeRegExp(tImport);
+    // 行首锚定（^[ \t]* + m）：与 import-surgery / VueImportManager 的判定口径一致，
+    // 只认作为语句出现在行首（允许缩进）的 import，不吃注释或字符串里的同形文本。
     // 形式 1：仅 t 一个命名 → 整条 import 删除
     const onlyT = new RegExp(
-      `import\\s*\\{\\s*t\\s*\\}\\s*from\\s*['"]${escapedPath}['"];?\\n?`,
-      'g',
+      `^[ \\t]*import\\s*\\{\\s*t\\s*\\}\\s*from\\s*['"]${escapedPath}['"];?[ \\t]*\\r?\\n?`,
+      'gm',
     );
     let updated = code.replace(onlyT, '');
-    // 形式 2：t 与其它命名混合 → 仅摘掉 t，保留其它命名
-    const mixed = new RegExp(`(import\\s*\\{)([^}]*)(\\}\\s*from\\s*['"]${escapedPath}['"])`, 'g');
+    // 形式 2：t 与其它命名混合 → 仅摘掉 t，保留其它命名（head 含行首缩进，原样回写）
+    const mixed = new RegExp(
+      `(^[ \\t]*import\\s*\\{)([^}]*)(\\}\\s*from\\s*['"]${escapedPath}['"])`,
+      'gm',
+    );
     updated = updated.replace(mixed, (_match, head: string, body: string, tail: string) => {
       const names = body
         .split(',')
@@ -400,28 +414,49 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     const innerI18nCallRegex =
       /(?<![\w$])\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)/g;
 
-    restored = restored.replace(innerI18nCallRegex, (match, key, vars) => {
-      const text = lookupText(key as string);
-      // 显式判 undefined：空串是合法译值，`!text` 会把它当缺 key 而保留 $t 调用不还原。
-      if (text === undefined) {
-        return match;
-      }
-
-      if (vars) {
-        try {
-          const restoredText = this.restoreTemplateWithVariables(text, vars as string, 'template');
-          // null = vars 段含无法安全还原的形态（如 `...rest`）→ 保留原 $t 调用不还原
-          if (restoredText === null) return match;
-          return `\`${restoredText}\``;
-        } catch {
-          return `'${VueRestoreTransformer.escapeForSingleQuoted(text)}'`;
+    // quote：还原出的 JS 字符串字面量用哪种引号。默认单引号；位于单引号包裹的属性值内时
+    // 必须换成双引号，否则 `:title='cond ? '文本' : "x"'` 在外层单引号处提前闭合。
+    const replaceInnerCalls = (input: string, quote: '"' | "'"): string =>
+      input.replace(innerI18nCallRegex, (match, key, vars) => {
+        const text = lookupText(key as string);
+        // 显式判 undefined：空串是合法译值，`!text` 会把它当缺 key 而保留 $t 调用不还原。
+        if (text === undefined) {
+          return match;
         }
-      }
 
-      // 与脚本侧 getI18nCallReplacementText、pass 1/2 同口径转义：text 是 locale 原值，
-      // 含 `'` 或 `\`（如英文 don't、含反斜杠路径）时未转义会生成语法错误表达式。
-      return `'${VueRestoreTransformer.escapeForSingleQuoted(text)}'`;
+        if (vars) {
+          try {
+            const restoredText = this.restoreTemplateWithVariables(
+              text,
+              vars as string,
+              'template',
+            );
+            // null = vars 段含无法安全还原的形态（如 `...rest`）→ 保留原 $t 调用不还原
+            if (restoredText === null) return match;
+            // 模板字面量用反引号定界，与两种属性引号都不冲突，无需按 quote 切换。
+            return `\`${restoredText}\``;
+          } catch {
+            return `${quote}${VueRestoreTransformer.escapeForQuoted(text, quote)}${quote}`;
+          }
+        }
+
+        // 与脚本侧 getI18nCallReplacementText、pass 1/2 同口径转义：text 是 locale 原值，
+        // 含定界引号或 `\`（如英文 don't、含反斜杠路径）时未转义会生成语法错误表达式。
+        return `${quote}${VueRestoreTransformer.escapeForQuoted(text, quote)}${quote}`;
+      });
+
+    // 3a. 先按「动态绑定属性值」为单位处理：此时外层引号已知，内部还原出的字符串可以选用
+    //     不冲突的那种引号。生成端同理（VueTransformer.generateTemplateReplacement 按提取
+    //     时记下的 attributeQuote 选引号），两端对称。处理完整段 stash，3b 不再触碰。
+    const directiveValueRegex = /((?:v-[\w-]+|[:@#])[\w:.\-[\]$]*)=(["'])((?:(?!\2)[\s\S])*)\2/g;
+    restored = restored.replace(directiveValueRegex, (match, name, outerQuote, value) => {
+      const inner = replaceInnerCalls(value as string, outerQuote === "'" ? '"' : "'");
+      if (inner === value) return match;
+      return stash(`${name}=${outerQuote}${inner}${outerQuote}`);
     });
+
+    // 3b. 其余上下文（插值 `{{ }}` 内、无引号属性值等）：不受属性引号约束，用单引号。
+    restored = replaceInnerCalls(restored, "'");
 
     // 回填占位符
     restored = restored.replace(
@@ -751,13 +786,17 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 简单替换: t('key') → '文本'
     // 单引号字符串不能跨行，且 \u2028 / \u2029 即便在 ES2019+ 字符串里合法
     // 也会被许多老版本 JS 解析器视为非法。一并转义，确保生成代码恒合法。
-    return `'${VueRestoreTransformer.escapeForSingleQuoted(text)}'`;
+    return `'${VueRestoreTransformer.escapeForQuoted(text)}'`;
   }
 
-  private static escapeForSingleQuoted(text: string): string {
+  /**
+   * 把 locale 原值转义成可放进指定引号的 JS 字符串字面量内容。
+   * quote 之外的另一种引号无需转义（在字面量内是普通字符），保持输出可读。
+   */
+  private static escapeForQuoted(text: string, quote: '"' | "'" = "'"): string {
     return text
       .replace(/\\/g, '\\\\')
-      .replace(/'/g, "\\'")
+      .replace(new RegExp(quote, 'g'), `\\${quote}`)
       .replace(/\n/g, '\\n')
       .replace(/\r/g, '\\r')
       .replace(/\u2028/g, '\\u2028')

@@ -8,12 +8,7 @@ import { decodeJsStringEscapes, stripMatchedDelimiters } from './string-escape';
  * （提取该不该做归 ast-guards，文案形态归 message-shape，节点重建归 restore-node-factory）。
  */
 
-/**
- * 获取文件类型
- * @param filePath - 文件路径
- * @returns 脚本类型
- */
-export function getScriptKind(filePath: string): ts.ScriptKind {
+function getScriptKind(filePath: string): ts.ScriptKind {
   if (filePath.endsWith('.tsx') || filePath.endsWith('.jsx')) {
     return ts.ScriptKind.TSX;
   }
@@ -24,12 +19,6 @@ export function getScriptKind(filePath: string): ts.ScriptKind {
   return ts.ScriptKind.TS;
 }
 
-/**
- * 解析源代码为AST
- * @param sourceText - 源代码文本
- * @param filePath - 文件路径
- * @returns TypeScript源文件对象
- */
 export function parseSourceFile(sourceText: string, filePath: string): ts.SourceFile {
   return ts.createSourceFile(
     filePath,
@@ -52,24 +41,13 @@ export function parseExpressionSource(sourceText: string, filePath: string): ts.
   return parseSourceFile(`(${sourceText})`, filePath);
 }
 
-/**
- * 获取字符串字面量的值
- * @param node - TypeScript AST节点
- * @returns 字符串值，如果不是字符串字面量则返回undefined
- */
-export function getStringLiteralValue(node: ts.Node): string | undefined {
+function getStringLiteralValue(node: ts.Node): string | undefined {
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     return node.text;
   }
   return undefined;
 }
 
-/**
- * 将AST节点转换为源代码文本
- * @param node - TypeScript AST节点
- * @param sourceFile - 源文件
- * @returns 源代码文本
- */
 export function nodeToText(node: ts.Node, sourceFile: ts.SourceFile): string {
   // 用 getStart（跳过前导 trivia：空白与注释）而非 getFullStart。
   // getFullStart 会把节点前的注释一并纳入，导致 `const msg = /* x */ '你好'`
@@ -78,16 +56,7 @@ export function nodeToText(node: ts.Node, sourceFile: ts.SourceFile): string {
   return sourceFile.text.substring(node.getStart(sourceFile), node.getEnd()).trim();
 }
 
-/**
- * 查找指定位置的节点
- * @param sourceFile - 源文件
- * @param position - 位置
- * @returns 找到的节点，如果没找到则返回undefined
- */
-export function findNodeAtPosition(
-  sourceFile: ts.SourceFile,
-  position: number,
-): ts.Node | undefined {
+function findNodeAtPosition(sourceFile: ts.SourceFile, position: number): ts.Node | undefined {
   function find(node: ts.Node): ts.Node | undefined {
     if (position >= node.getFullStart() && position < node.getEnd()) {
       return ts.forEachChild(node, find) || node;
@@ -97,11 +66,6 @@ export function findNodeAtPosition(
   return find(sourceFile);
 }
 
-/**
- * 获取属性键名
- * @param name - 属性名节点
- * @returns 属性键名
- */
 function getPropertyKey(name: ts.PropertyName): string | undefined {
   if (ts.isIdentifier(name)) {
     return name.text;
@@ -111,12 +75,6 @@ function getPropertyKey(name: ts.PropertyName): string | undefined {
   return undefined;
 }
 
-/**
- * 获取属性值
- * @param initializer - 初始化表达式
- * @param sourceFile - 源文件（可选）
- * @returns 属性值
- */
 function getPropertyValue(initializer: ts.Expression, sourceFile?: ts.SourceFile): any {
   const stringValue = getStringLiteralValue(initializer);
 
@@ -135,12 +93,6 @@ function getPropertyValue(initializer: ts.Expression, sourceFile?: ts.SourceFile
   return initializer;
 }
 
-/**
- * 提取对象字面量中的属性值
- * @param node - 对象字面量表达式节点
- * @param sourceFile - 源文件（可选）
- * @returns 属性键值对
- */
 export function extractObjectLiteralProperties(
   node: ts.ObjectLiteralExpression,
   sourceFile?: ts.SourceFile,
@@ -182,9 +134,7 @@ export function objectLiteralHasSpread(node: ts.ObjectLiteralExpression): boolea
  * 重叠即抛错、不做任何取舍：能构造出重叠区间说明上游定位逻辑已经出错，
  * 静默丢弃其中一个会让某个调用点保留中文原文却不再有对应 key（假绿）。
  *
- * @param sourceText - 源代码文本
- * @param replacements - 替换项列表（顺序无关）
- * @returns 替换后的代码
+ * replacements 的顺序无关：内部会倒序写入。
  */
 export function applyReplacements(
   sourceText: string,
@@ -250,6 +200,51 @@ export function shouldReplaceNode(
   };
 
   return normalizeText(nodeText, nodeDelimited) === normalizeText(originalText, originalDelimited);
+}
+
+/**
+ * 按提取端口径重建 TemplateExpression 的「original 形态」：
+ * cooked 字面段（`\n` 已是换行、`\\` 已是单反斜杠）+ 源码形式的 `${expr}`（表达式文本取
+ * nodeToText，已 trim）。processTemplateExpression 与转换端的定位/校验共用本函数，
+ * 保证「提取时写下的 original」与「转换时看到的节点」用同一把尺子量。
+ *
+ * Why 不能用 `节点源码文本 === original` 或「两侧都解转义」来比：
+ *  - 源码 `${ count }` 的表达式文本被 trim 成 `${count}`，与逐字源码不等 —— 用户多打一个
+ *    空格就定位不到节点，整文件转换中止；
+ *  - original 的字面段已是 cooked，再过一次 decodeJsStringEscapes 会把内容里的 `\t`
+ *    （源码 `\\t` 解出的「反斜杠 + t」）二次解成制表符，同样比不相等。
+ */
+export function buildTemplateExpressionOriginal(
+  node: ts.TemplateExpression,
+  sourceFile: ts.SourceFile,
+): string {
+  let text = '`' + node.head.text;
+  for (const span of node.templateSpans) {
+    text += '${' + nodeToText(span.expression, sourceFile) + '}' + span.literal.text;
+  }
+  return text + '`';
+}
+
+/**
+ * 「该节点就是提取时记下的那段文本吗」的统一判定。
+ *
+ * 模板字面量走 buildTemplateExpressionOriginal 的结构化重建（不依赖逐字源码相等），
+ * 其余形态退回 shouldReplaceNode 的文本归一比较。定位（findExactStringNode）与替换前的
+ * 复核必须共用本函数，否则会出现「定位得到、复核不过」的假失败。
+ */
+export function nodeMatchesExtractedOriginal(
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+  originalText: string,
+  opts?: { nodeDelimited?: boolean; originalDelimited?: boolean },
+): boolean {
+  if (
+    ts.isTemplateExpression(node) &&
+    buildTemplateExpressionOriginal(node, sourceFile) === originalText
+  ) {
+    return true;
+  }
+  return shouldReplaceNode(nodeToText(node, sourceFile), originalText, false, opts);
 }
 
 /**
@@ -359,8 +354,7 @@ export function findExactStringNode(
     }
 
     if (ts.isTemplateExpression(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-      const nodeText = nodeToText(node, sourceFile);
-      if (shouldReplaceNode(nodeText, originalText, true)) {
+      if (nodeMatchesExtractedOriginal(node, sourceFile, originalText)) {
         return node;
       }
     }
@@ -368,8 +362,7 @@ export function findExactStringNode(
     let parent2 = node.parent;
     while (parent2) {
       if (ts.isTemplateExpression(parent2) || ts.isNoSubstitutionTemplateLiteral(parent2)) {
-        const nodeText = nodeToText(parent2, sourceFile);
-        if (shouldReplaceNode(nodeText, originalText, true)) {
+        if (nodeMatchesExtractedOriginal(parent2, sourceFile, originalText)) {
           return parent2;
         }
       }

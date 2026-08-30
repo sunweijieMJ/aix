@@ -147,10 +147,17 @@ export class GenerateProcessor extends BaseProcessor {
     });
 
     if (this.interactive) {
-      const shouldProceed =
-        await InteractiveUtils.promptForGenericConfirmation('是否继续分析这些文件？');
+      // default: true —— generate 的确认是推进型（且事务化可回滚），沿用回车即继续的
+      // 历史 UX；通用确认的缺省 No 只面向 prune/csv-import 这类不可撤销操作。
+      const shouldProceed = await InteractiveUtils.promptForGenericConfirmation(
+        '是否继续分析这些文件？',
+        { default: true },
+      );
       if (!shouldProceed) {
-        LoggerUtils.warn('❌ 已取消操作');
+        // 置位后 return：executeWithLifecycle 收尾改打「已取消」，否则取消的运行被打成
+        // 「✅ 代码生成完成」，人与 CI 都会误判源码已被改写（与 prune/csv-import 同口径）。
+        this.cancelled = true;
+        LoggerUtils.warn('操作已取消');
         return;
       }
     }
@@ -210,7 +217,9 @@ export class GenerateProcessor extends BaseProcessor {
     this.displayResults(extractedStrings, mode === 'directory');
 
     const shouldApply = this.interactive
-      ? await InteractiveUtils.promptForGenericConfirmation('是否应用这些转换？')
+      ? await InteractiveUtils.promptForGenericConfirmation('是否应用这些转换？', {
+          default: true,
+        })
       : true;
 
     if (shouldApply) {
@@ -226,6 +235,11 @@ export class GenerateProcessor extends BaseProcessor {
       LoggerUtils.success(
         mode === 'file' ? `✅ 转换完成！` : `✅ 转换完成！处理了 ${processedFiles.length} 个文件`,
       );
+    } else {
+      // 用户选择不应用：同上置位，避免收尾打「✅ 完成」让人以为转换已落盘。
+      // 覆盖率仍照常统计渲染——它反映的是本次扫描结果，与是否落盘无关。
+      this.cancelled = true;
+      LoggerUtils.warn('操作已取消');
     }
 
     this.coverage.recordAndRender(files, extractedStrings, reuseResolver);
@@ -723,6 +737,10 @@ export class GenerateProcessor extends BaseProcessor {
     );
 
     if (this.runMode === 'dry-run') {
+      // 与 commitToDisk 阶段 1.5 同一道预检：nested 前缀冲突 / 保留段是确定性错误，
+      // dry-run 跳过它只会产出一份注定 apply 失败的 plan（用户 review 完才在 apply 时踩雷）。
+      // 提前到 writePlan 前跑，让错误在 dry-run 当场暴露。
+      this.langFiles.assertSerializableUpdate(extractedStrings, keyBucketMap);
       this.planApplier.writePlan(uniqueFilePaths, results, extractedStrings, keyBucketMap, {
         planOutputDir: this.planOutputDir,
         skipLLM: this.lastSkipLLM,
@@ -771,8 +789,13 @@ export class GenerateProcessor extends BaseProcessor {
    * 回放流程与其取舍详见 PlanApplier.apply。
    */
   async applyFromPlan(planPath: string, options: { keepPlan?: boolean } = {}): Promise<void> {
-    return this.executeWithLifecycle(() =>
-      this.planApplier.apply(planPath, { keepPlan: Boolean(options.keepPlan) }),
-    );
+    return this.executeWithLifecycle(async () => {
+      const outcome = await this.planApplier.apply(planPath, {
+        keepPlan: Boolean(options.keepPlan),
+        interactive: this.interactive,
+      });
+      // locale 漂移确认里选了否：置位让收尾打「已取消」而非「✅ 完成」。
+      if (outcome === 'cancelled') this.cancelled = true;
+    });
   }
 }

@@ -4,10 +4,12 @@ import os from 'os';
 import path from 'path';
 import { PruneProcessor } from '../src/core/PruneProcessor';
 import { CsvImportProcessor } from '../src/core/CsvImportProcessor';
+import inquirer from 'inquirer';
 import { InteractiveUtils } from '../src/utils/interactive-utils';
 import { LoggerUtils } from '../src/utils/logger';
 import { createFrameworkAdapter } from '../src/adapters';
 import { resolveConfig } from '../src/config/loader';
+import { ModeName } from '../src/utils/types';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 
 /**
@@ -192,5 +194,33 @@ describe('CsvImportProcessor — 非交互破坏性守卫', () => {
       fs.readFileSync(path.join(config.io.localesDir, 'untranslated.json'), 'utf-8'),
     );
     expect(after.k1['en-US']).toBe('hello');
+  });
+});
+
+/**
+ * 破坏性确认的默认值：inquirer 的 confirm 会把 default 渲染成 (Y/n) / (y/N)。
+ * 此前 promptForGenericConfirmation 恒为 `default: true`，prune 删孤儿 key、
+ * csv-import 覆写 translations 都是回车即执行，且与用户读到的 "y/N" 直觉相反。
+ */
+describe('InteractiveUtils — 确认提示的默认值', () => {
+  it('promptForGenericConfirmation 默认 No（破坏性动作回车不执行）', async () => {
+    const promptSpy = vi.spyOn(inquirer, 'prompt').mockResolvedValue({ confirmed: false } as never);
+
+    await InteractiveUtils.promptForGenericConfirmation('确认从所有 locale 删除孤儿 key？');
+
+    expect(promptSpy).toHaveBeenCalledWith([
+      expect.objectContaining({ type: 'confirm', default: false }),
+    ]);
+  });
+
+  it('显式声明时才默认 Yes：promptForConfirmation 委托后仍保持原有 default:true', async () => {
+    const promptSpy = vi.spyOn(inquirer, 'prompt').mockResolvedValue({ confirmed: true } as never);
+
+    const ok = await InteractiveUtils.promptForConfirmation(ModeName.PRUNE, false, false);
+
+    expect(ok).toBe(true);
+    expect(promptSpy).toHaveBeenCalledWith([
+      expect.objectContaining({ type: 'confirm', default: true }),
+    ]);
   });
 });

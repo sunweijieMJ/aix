@@ -1420,3 +1420,195 @@ describe('React restore — 简写变量描述符不得中断还原', () => {
     expect(out).not.toContain('[object Object]');
   });
 });
+
+/**
+ * 审计确认的三处 restore 半还原产物。共用一个临时目录与 restore 辅助。
+ */
+describe('React restore — 审计修复合集', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-restore-audit-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const restore = (
+    code: string,
+    locale: Record<string, string>,
+    libType: ReactI18nLibraryType = 'react-i18next',
+  ): string => {
+    const file = path.join(dir, 'A.tsx');
+    fs.writeFileSync(file, code);
+    return new ReactRestoreTransformer(
+      createReactI18nLibrary(libType),
+      '@/plugins/locale',
+    ).transform(file, locale, code);
+  };
+
+  /** 语法（非语义）错误数：足以捕获重复声明、孤立关键字等结构性错误。 */
+  const syntaxErrorCount = (code: string): number => {
+    const result = ts.transpileModule(code, {
+      reportDiagnostics: true,
+      compilerOptions: { jsx: ts.JsxEmit.Preserve, target: ts.ScriptTarget.Latest },
+      fileName: 'a.tsx',
+    });
+    return (result.diagnostics ?? []).filter((d) => d.category === ts.DiagnosticCategory.Error)
+      .length;
+  };
+
+  /**
+   * P1：cleanupHookDependencies 的「回调是否还用 t」按名硬匹配任意 Identifier，
+   * 对象键 `{ t: ... }`、成员名 `styles.t` 都算使用 → deps 保留 `[t]`；而删声明那侧
+   * （ReactRestoreTransformer）走 isIdentifierValueReference 只认值引用 → 声明与 import 被删。
+   * 口径不对称的产物是 `useMemo(..., [t])` 引用已删除的 t（TS2304）。
+   */
+  describe('hook 依赖数组与声明删除口径对称', () => {
+    it('对象键 { t: Date.now() } 不算使用：声明与 deps 里的 t 一并清理', () => {
+      const code =
+        `import { useTranslation } from 'react-i18next';\n` +
+        `export function C() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  const m = useMemo(() => ({ t: Date.now(), label: t('k') }), [t]);\n` +
+        `  return <div>{m.label}</div>;\n` +
+        `}\n`;
+      const out = restore(code, { k: '标签' });
+
+      expect(out, `还原输出：\n${out}`).toContain('"标签"');
+      // 声明被删 → deps 必须同步清空，否则引用未定义的 t
+      expect(out).not.toContain('useTranslation');
+      expect(out).not.toMatch(/\[\s*t\s*\]/);
+      expect(syntaxErrorCount(out)).toBe(0);
+    });
+
+    it('成员名 styles.t 不算使用：同样一并清理', () => {
+      const code =
+        `import { useTranslation } from 'react-i18next';\n` +
+        `export function C() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  const m = useMemo(() => styles.t + t('k'), [t]);\n` +
+        `  return <div>{m}</div>;\n` +
+        `}\n`;
+      const out = restore(code, { k: '标签' });
+      expect(out).not.toContain('useTranslation');
+      expect(out).not.toMatch(/\[\s*t\s*\]/);
+    });
+
+    it('回归：t 被当普通值真使用（compute(t)）时，声明与 deps 都保留', () => {
+      const code =
+        `import { useTranslation } from 'react-i18next';\n` +
+        `export function C() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  const m = useMemo(() => compute(t) + t('k'), [t]);\n` +
+        `  return <div>{m}</div>;\n` +
+        `}\n`;
+      const out = restore(code, { k: '标签' });
+      expect(out, `还原输出：\n${out}`).toContain('useTranslation');
+      expect(out).toMatch(/\[\s*t\s*\]/);
+    });
+  });
+
+  /**
+   * P1：unwrapHOC 只解 `HOC(裸标识符)`；`withTranslation()(connect()(X))`、路由表对象里的
+   * HOC 解不掉、原样保留，而 survivalScan 不统计 HOC 调用 → import 照删 → ReferenceError。
+   */
+  describe('解不掉的 HOC 调用必须保留库导入', () => {
+    it('withTranslation()(connect()(X))：HOC 原样保留时 import 也保留', () => {
+      const code =
+        `import { withTranslation } from 'react-i18next';\n` +
+        `import { connect } from 'react-redux';\n` +
+        `class Panel extends React.Component {\n` +
+        `  render() { const { t } = this.props; return <div>{t('k')}</div>; }\n` +
+        `}\n` +
+        `export default withTranslation()(connect()(Panel));\n`;
+      const out = restore(code, { k: '标签' });
+
+      expect(out, `还原输出：\n${out}`).toContain('withTranslation()(connect()(Panel))');
+      expect(out).toContain(`from 'react-i18next'`);
+      expect(out).toContain('withTranslation');
+    });
+
+    it('路由表对象里的 HOC：同样保留 import', () => {
+      const code =
+        `import { withTranslation } from 'react-i18next';\n` +
+        `class Panel extends React.Component {\n` +
+        `  render() { const { t } = this.props; return <div>{t('k')}</div>; }\n` +
+        `}\n` +
+        `export const routes = [{ path: '/p', component: withTranslation()(Panel) }];\n`;
+      const out = restore(code, { k: '标签' });
+      expect(out, `还原输出：\n${out}`).toContain('withTranslation()(Panel)');
+      // 断言必须落在 import 行上：HOC 调用文本本身也含 'withTranslation'，泛匹配无法证伪
+      expect(out).toMatch(/import\s*\{[^}]*withTranslation[^}]*\}\s*from\s*['"]react-i18next['"]/);
+    });
+
+    it('react-intl 同型：injectIntl(connect()(X)) 保留 import（走 library 抽象，非硬编码库名）', () => {
+      const code =
+        `import { injectIntl } from 'react-intl';\n` +
+        `import { connect } from 'react-redux';\n` +
+        `class Panel extends React.Component {\n` +
+        `  render() { const { intl } = this.props; return <div>{intl.formatMessage({ id: 'k' })}</div>; }\n` +
+        `}\n` +
+        `export default injectIntl(connect()(Panel));\n`;
+      const out = restore(code, { k: '标签' }, 'react-intl');
+      expect(out, `还原输出：\n${out}`).toContain('injectIntl(connect()(Panel))');
+      expect(out).toMatch(/import\s*\{[^}]*injectIntl[^}]*\}\s*from\s*['"]react-intl['"]/);
+    });
+
+    it('回归：可解包的 HOC（工具自产形态）照常解除、import 照常摘除', () => {
+      const code =
+        `import { withTranslation, WithTranslation } from 'react-i18next';\n` +
+        `class PanelWithOutIntl extends React.Component<WithTranslation> {\n` +
+        `  render() { const { t } = this.props; return <div>{t('k')}</div>; }\n` +
+        `}\n` +
+        `export default withTranslation()(PanelWithOutIntl);\n`;
+      const out = restore(code, { k: '标签' });
+      expect(out, `还原输出：\n${out}`).not.toContain('withTranslation');
+      expect(out).toContain('class Panel');
+    });
+  });
+
+  /**
+   * P2：带 values 的 <Trans> 还原到「无占位符」文案时，工厂在数量比对之前就返回
+   * StringLiteral，绕过失配守卫；JSX 子节点位置直接落进 children 位 → 引号被当渲染文本，
+   * values 静默丢弃。正确行为是判失配、返回 null 保留原组件。
+   */
+  describe('values 非空但文案无占位符 → 保留原组件', () => {
+    it('<Trans i18nKey values={{count}} /> + 无占位符 locale 值 → 原组件保留', () => {
+      const code =
+        `import { Trans } from 'react-i18next';\n` +
+        `export function C({ count }: { count: number }) {\n` +
+        `  return <div><Trans i18nKey="k" values={{ count }} /></div>;\n` +
+        `}\n`;
+      const out = restore(code, { k: '没有占位符的文案' });
+
+      expect(out, `还原输出：\n${out}`).toContain('<Trans');
+      expect(out).toContain('values={{ count }}');
+      // 关键反例：不得把文案带引号落进 JSX children，也不得丢掉 values
+      expect(out).not.toContain('"没有占位符的文案"');
+      expect(out).toContain(`from 'react-i18next'`);
+    });
+
+    it('t() 调用形态同样保留原调用，不静默丢弃 values', () => {
+      const code =
+        `import { useTranslation } from 'react-i18next';\n` +
+        `export function C({ count }: { count: number }) {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  return <div>{t('k', { count })}</div>;\n` +
+        `}\n`;
+      const out = restore(code, { k: '没有占位符的文案' });
+      expect(out, `还原输出：\n${out}`).toContain(`t('k', { count })`);
+      expect(out).toContain('useTranslation');
+    });
+
+    it('回归：无 values 时 0 占位符文案仍正常还原为字符串', () => {
+      const code =
+        `import { useTranslation } from 'react-i18next';\n` +
+        `export function C() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  return <div title={t('k')} />;\n` +
+        `}\n`;
+      const out = restore(code, { k: '普通文案' });
+      expect(out, `还原输出：\n${out}`).toContain('"普通文案"');
+    });
+  });
+});

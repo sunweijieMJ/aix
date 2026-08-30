@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { collectUsedKeys, scanKeyReferencesInContent } from '../src/utils/source-key-scanner';
+import {
+  collectUsedKeys,
+  scanKeyReferencesInContent,
+  stripCommentsForScan,
+} from '../src/utils/source-key-scanner';
 import { createFrameworkAdapter } from '../src/adapters';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig } from '../src/config';
@@ -171,5 +175,121 @@ describe('collectUsedKeys — 全形式识别', () => {
     expect(used.has('r.fmt')).toBe(true);
     expect(used.has('plain-id')).toBe(false); // 普通 JSX id 不误吃
     expect(used.has('not-i18n')).toBe(false); // 普通对象 id 不误吃
+  });
+});
+
+/**
+ * 回归：.tsx/.jsx/.js 的 JSX 文本节点是正文、不在引号内，整文件交给 JS 词法状态机
+ * （stripComments）会把文本里的 `//`（典型：裸 URL）当行注释，吞掉同行的 t() 调用 →
+ * key 漏采 → prune/doctor 把在用 key 当孤儿从所有 locale 永久删除。
+ * 与 .vue 模板段是同构问题，故 JS/TS 系改由 TypeScript 解析器按 AST token 前导 trivia 精确剥离。
+ */
+describe('stripCommentsForScan — JSX 正文不得被当注释吞掉', () => {
+  const keysOf = (file: string, code: string): string[] =>
+    scanKeyReferencesInContent(stripCommentsForScan(file, code));
+
+  it('JSX 文本里的裸 URL 不吞掉同行 t()', () => {
+    const code = `export const P = () => <p>详情见 https://example.com 查看 {t('page.detail.link')}</p>;`;
+    expect(keysOf('P.tsx', code)).toContain('page.detail.link');
+  });
+
+  it('JSX 文本以 // 开头（非注释）时同行 t() 仍被采到', () => {
+    const code = [
+      'export const C = () => (',
+      '  <p>',
+      '    // 这是正文不是注释',
+      "    {t('jsx.text.key')}",
+      '  </p>',
+      ');',
+    ].join('\n');
+    expect(keysOf('C.tsx', code)).toContain('jsx.text.key');
+  });
+
+  it('.jsx / .js 同样走 AST 剥离（React 项目常见扩展名）', () => {
+    const jsx = `export const A = () => <p>见 https://a.com {t('a.key')}</p>;`;
+    expect(keysOf('A.jsx', jsx)).toContain('a.key');
+    expect(keysOf('A.js', jsx)).toContain('a.key');
+  });
+
+  it('行注释 / 块注释 / 行尾注释里的 t() 仍被剥掉', () => {
+    const code = [
+      "// const a = t('comment.line');",
+      "/* const b = t('comment.block'); */",
+      "export const c = t('real.key'); // t('comment.trailing')",
+    ].join('\n');
+    const keys = keysOf('C.tsx', code);
+    expect(keys).toEqual(['real.key']);
+  });
+
+  it('JSX 表达式容器内的注释 {/* t() */} 被剥掉', () => {
+    const code = `export const H = () => <p>{/* t('jsx.comment') */}{t('h.key')}</p>;`;
+    const keys = keysOf('H.tsx', code);
+    expect(keys).toContain('h.key');
+    expect(keys).not.toContain('jsx.comment');
+  });
+
+  it('字符串字面量 / JSX 属性里的 // 不误伤同行 t()', () => {
+    const code = [
+      `const url = 'https://example.com';`,
+      `export const D = () => <a href="http://x">{t('d.key')}</a>;`,
+    ].join('\n');
+    expect(keysOf('D.tsx', code)).toContain('d.key');
+  });
+
+  it('剥离后长度与原文逐字符对齐（偏移不漂移）', () => {
+    const code = [
+      "// t('x')",
+      "export const E = () => <p>a // b {t('e.key')}</p>; /* t('y') */",
+    ].join('\n');
+    expect(stripCommentsForScan('E.tsx', code)).toHaveLength(code.length);
+  });
+
+  it('语法错误无法解析时兜底走「多算不误删」：正文 t() 仍被采到', () => {
+    // TS 解析器对语法错误不抛异常而是就地恢复，恢复出的树可能把 JSX 正文错当代码。
+    // 此时宁可整文不剥注释（注释里的引用多算 = 不删），也不能吞正文（少算 = 误删）。
+    const code = `export const E = () => <p>{t('broken.key')}</p>;\nconst x = ;`;
+    expect(keysOf('E.tsx', code)).toContain('broken.key');
+  });
+
+  it('.ts 无 JSX 正文，注释照常剥离', () => {
+    const code = ["// t('ts.comment')", "export const f = () => t('ts.key');"].join('\n');
+    expect(keysOf('F.ts', code)).toEqual(['ts.key']);
+  });
+});
+
+/** 端到端：裸 URL 的 .tsx 文件不得让 collectUsedKeys 漏采（prune 据此判孤儿）。 */
+describe('collectUsedKeys — JSX 裸 URL 文件', () => {
+  let root: string;
+  let srcDir: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'scanner-jsx-'));
+    srcDir = path.join(root, 'src');
+    fs.mkdirSync(srcDir, { recursive: true });
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it('裸 URL 同行的 t() 进入 used 集合，注释中的 t() 不进', () => {
+    fs.writeFileSync(
+      path.join(srcDir, 'Detail.tsx'),
+      [
+        "// const dead = t('dead.key');",
+        'export const Detail = () => (',
+        "  <p>详情见 https://example.com 查看 {t('page.detail.link')}</p>",
+        ');',
+      ].join('\n'),
+    );
+    const user: I18nToolsConfig = {
+      root,
+      framework: { type: 'react', library: 'react-i18next', tImport: '@/i18n' },
+      locales: { source: 'zh', targets: ['en'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    };
+    const config = resolveConfig(user);
+    const used = collectUsedKeys(config, createFrameworkAdapter(config));
+    expect(used.has('page.detail.link')).toBe(true);
+    expect(used.has('dead.key')).toBe(false);
   });
 });

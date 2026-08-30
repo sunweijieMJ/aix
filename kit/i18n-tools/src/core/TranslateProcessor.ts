@@ -317,11 +317,26 @@ export class TranslateProcessor extends FileProcessor {
   ): number {
     let translatedCount = 0;
     let placeholderMismatches = 0;
+    let invalidValues = 0;
     const sourceLocale = this.config.locales.source;
 
     for (const [key, originalItem] of Object.entries(originalBatch)) {
       const newValue = translatedBatch[key]?.[targetLocale];
       if (!newValue?.trim()) continue;
+
+      // 与 pick/merge 统一用 isValidTranslation 把关：`trim()` 真值判定会放行纯标点/符号
+      // （如 "..."、"--"）这类「非空但无效」的返回值，写回后 MergeProcessor 又会拒收，
+      // warn-only 策略下该 key 永远合不进 locale，translate 却已计成功——统计全绿、译文永缺。
+      // 拒收后条目仍留在 untranslated.json，重跑 translate 可断点续翻。
+      if (!FileUtils.isValidTranslation(newValue)) {
+        invalidValues++;
+        LoggerUtils.warn(
+          `⚠️ [${targetLocale}] 译文无效（非空但无文字/数字），丢弃 [${key}]:\n` +
+            `   源文: ${originalItem[sourceLocale] ?? ''}\n` +
+            `   译文: ${newValue}`,
+        );
+        continue;
+      }
 
       const sourceText = originalItem[sourceLocale];
       if (typeof sourceText === 'string' && sourceText) {
@@ -355,6 +370,16 @@ export class TranslateProcessor extends FileProcessor {
       LoggerUtils.warn(
         `   [${targetLocale}] 共丢弃 ${placeholderMismatches} 条因占位符被翻译而失效的结果，可重新运行 translate 续翻。`,
       );
+    }
+
+    if (invalidValues > 0) {
+      const msg =
+        `[${targetLocale}] 共丢弃 ${invalidValues} 条无效译文（非空但不含任何文字/数字，` +
+        `merge 侧同样会拒收），可重新运行 translate 续翻。`;
+      LoggerUtils.warn(`   ${msg}`);
+      // 落 RunReport：批次整体仍可能有成功条目、不进失败明细，但这类静默丢弃必须留痕，
+      // 否则用户只能从终端滚屏里发现「翻了却没落」。
+      this.report.addWarning(msg);
     }
 
     return translatedCount;

@@ -10,6 +10,7 @@ import { FileUtils } from '../src/utils/file-utils';
 import { serializeCsv } from '../src/utils/csv-utils';
 import { LLMClient } from '../src/utils/llm-client';
 import { LoggerUtils } from '../src/utils/logger';
+import { writeTranslationsFile } from '../src/utils/json-io';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 
@@ -19,6 +20,7 @@ import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
  *   2. FileUtils.unflattenObject —— 含原型名中间段的扁平 key 不污染 Object.prototype
  *   3. DoctorProcessor missing-target-key —— 原型名 key 的缺失判定用 own-property 而非 `in`
  *   4. GenerateProcessor dry-run —— 原型名 semanticId 不被 `in` 去重丢弃
+ *   5. writeTranslationsFile —— 排序重建时顶层 `__proto__` key 不被 setter 静默吞掉
  */
 
 describe('CsvImportProcessor — __proto__ 原型污染防护', () => {
@@ -326,5 +328,42 @@ describe('GenerateProcessor nested — 原型名 key 段在写源码前 fail-fas
 
     // 关键 2：不变量——源码未被改写（仍是原中文，而非 t('constructor')）
     expect(fs.readFileSync(file, 'utf-8')).toBe(ORIGINAL);
+  });
+});
+
+// #5 writeTranslationsFile —— 排序重建对象时顶层 `__proto__` key 被 setter 静默吞掉
+describe('writeTranslationsFile — 顶层 __proto__ key 保真', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-write-proto-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    delete (Object.prototype as Record<string, unknown>).zh;
+  });
+
+  /**
+   * 回归：排序重建用的是普通 `{}`，`sorted['__proto__'] = v` 走 Object.prototype 的
+   * __proto__ setter —— 值既不成为自有属性也不报错，落盘的 translations.json 比入参
+   * 少一条（`__proto__` 是合法 semanticId 末段，pick/merge 都会原样透传到这里）。
+   */
+  it('key 为 __proto__ 的条目不被吞掉，且不污染 Object.prototype', () => {
+    const p = path.join(tmpDir, 't.json');
+    // 计算属性名：字面量里直接写 `__proto__:` 会被当成原型设置语法而非自有属性
+    const data: Record<string, unknown> = {
+      'b.x': { zh: '乙', en: 'B' },
+      ['__proto__']: { zh: '原型', en: 'proto' },
+      'a.x': { zh: '甲', en: 'A' },
+    };
+    writeTranslationsFile(p, data);
+
+    const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+    expect(Object.keys(raw).sort()).toEqual(['__proto__', 'a.x', 'b.x']);
+    expect(Object.getOwnPropertyDescriptor(raw, '__proto__')?.value).toEqual({
+      zh: '原型',
+      en: 'proto',
+    });
+    expect(({} as Record<string, unknown>).zh).toBeUndefined();
   });
 });

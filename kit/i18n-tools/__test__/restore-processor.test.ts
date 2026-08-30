@@ -113,6 +113,32 @@ describe('RestoreProcessor 编排层', () => {
     expect(fs.existsSync(path.join(rootDir, 'restored', 'src', 'A.vue'))).toBe(false);
   });
 
+  // 回归（审计 P2）：overwrite 模式完全不用 outputDir，却无条件 ensureDirectoryExists，
+  // 每次 `--overwrite` 都在项目根凭空留下一个空 restored/。
+  it('overwrite=true：不创建输出目录（无副作用空目录）', async () => {
+    const file = writeSource('A.vue', SRC);
+    await new RestoreProcessor(buildConfig(rootDir), false).execute([file], undefined, true);
+
+    expect(fs.readFileSync(file, 'utf-8')).toContain('你好');
+    expect(fs.existsSync(path.join(rootDir, 'restored'))).toBe(false);
+  });
+
+  // 回归（审计 P2）：默认 outputDir 落在扫描根内，二次全量 restore 会把上次的 restored/
+  // 副本当作源文件再处理，产出 restored/restored/ 套娃。
+  it('二次全量 restore 不把上次的输出目录纳入处理集（无 restored/restored 套娃）', async () => {
+    writeSource('A.vue', SRC);
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute();
+    expect(fs.existsSync(path.join(rootDir, 'restored', 'src', 'A.vue'))).toBe(true);
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute();
+    // 上次产出的 restored/src/A.vue 被排除在处理集之外（不再作为源文件二次还原）
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(
+      expect.stringContaining('已排除 1 个位于输出目录内的文件'),
+    );
+    expect(fs.existsSync(path.join(rootDir, 'restored', 'restored'))).toBe(false);
+  });
+
   it('空 localeMap → 早退，不抛错也不产出', async () => {
     const file = writeSource('A.vue', SRC);
     // 语言文件为空对象

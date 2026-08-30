@@ -1,8 +1,10 @@
+import fs from 'fs';
 import type { ResolvedConfig } from '../config';
 import { extractPlaceholderNames } from '../utils/placeholder-utils';
 import { collectUsedKeys, matchesDynamicAllowlist } from '../utils/source-key-scanner';
 import type { FrameworkAdapter } from '../adapters';
 import { FileUtils } from '../utils/file-utils';
+import { LanguageFileManager } from '../utils/language-file-manager';
 import type { SkippedTextLocation } from '../utils/extraction-diagnostics';
 import { type LinterFinding, LocaleValueLinter } from '../utils/locale-value-linter';
 import { LoggerUtils } from '../utils/logger';
@@ -116,7 +118,13 @@ export class DoctorProcessor extends BaseProcessor {
     //    目标损坏会刷一堆假 missing-target-key（warning，不阻断 CI）并把真损坏掩盖成 exit 0——
     //    体检工具出现假阴性。这里探测到损坏即报 error 级 finding 并跳过依赖该 locale 的对账。
     const sourceLocale = this.config.locales.source;
-    const corruptSource = this.detectCorruptLocale(sourceLocale);
+    const counterpartFiles = this.resolveCounterpartFiles();
+    // 双目录项目：另一侧目录同样参与 missing-key 对账，故它损坏时也必须先报出来并跳过对账
+    // ——否则「另一侧读成空」会把只存在于另一侧的 key 全部刷成 missing-key（error）。
+    const corruptSource =
+      this.detectCorruptLocale(sourceLocale) ??
+      counterpartFiles?.findCorruptLocale(sourceLocale, { checkLegacy: true }) ??
+      null;
     if (corruptSource) {
       findings.push(this.buildCorruptFinding(sourceLocale, corruptSource, true));
     } else {
@@ -127,7 +135,9 @@ export class DoctorProcessor extends BaseProcessor {
 
       // 2. 三类对账：依赖源码扫描得到的 key 引用集合
       const sourceKeys = collectUsedKeys(this.config, this.adapter);
-      findings.push(...this.checkMissingKeys(sourceKeys, sourceMap));
+      findings.push(
+        ...this.checkMissingKeys(sourceKeys, this.collectDefinedKeys(sourceMap, counterpartFiles)),
+      );
       findings.push(...this.checkOrphanKeys(sourceKeys, sourceMap));
 
       // 多 target untranslated 对账：每个 target 独立检查
@@ -179,6 +189,54 @@ export class DoctorProcessor extends BaseProcessor {
     const diagnostics = extractor.getDiagnostics();
     this.skippedComparisons = diagnostics.drainSkippedComparisonOperands();
     this.skippedNestedChinese = diagnostics.drainSkippedNestedChinese();
+  }
+
+  /**
+   * 另一侧语言目录的读入口：本 processor 绑定 base 时给出 custom，绑定 custom 时给出 base；
+   * 未配置 io.customDir（或该目录尚未创建）时返回 null。
+   *
+   * Why 需要另一侧：langFiles 由 (config, isCustom) 一次绑定，只看一个目录；而 t() 引用是
+   * 全量扫源码得来的，天然横跨两个目录。只对单侧目录做 missing-key 对账，会把「只落在另一侧
+   * 目录」的 key 系统性误报成 missing-key（error 级 → doctor --ci 必红）。
+   *
+   * 目录不存在时不构造：readLocaleFile 对缺失文件会打「将创建新文件」的 warn，
+   * 只读体检命令刷这句会误导人。
+   */
+  private resolveCounterpartFiles(): LanguageFileManager | null {
+    if (!this.config.io.customDir) return null;
+    const counterpartDir = FileUtils.getDirectoryPath(this.config, !this.isCustom);
+    if (!fs.existsSync(counterpartDir)) return null;
+    return new LanguageFileManager(this.config, !this.isCustom);
+  }
+
+  /**
+   * missing-key 的对账基准：源 locale 在 base + custom 两侧目录里已定义的 key 并集。
+   *
+   * 口径选择（为什么只有 missing-key 走并集）：
+   *  - missing-key 回答「源码引用的 key 运行时有没有」。运行时装配的是合并后的语言包
+   *    （见 ExportProcessor 的 base+custom 合并），所以只要任一侧有定义就不算缺失。
+   *  - orphan-key 回答「本次体检的这个目录里，哪些 key 该清理」，必须按当前侧 sourceMap
+   *    迭代：换成并集会把另一侧的 key 拉进本侧的清理候选（本侧根本没有，无从删起）；
+   *    而本侧真孤儿仍在 sourceMap 里，一个都不会漏。
+   *  - untranslated / missing-target-key / placeholder 都是「同一目录内 source 与 target
+   *    的逐 key 比对」，混入另一侧的 source key 只会造出该目录并不存在的假缺译，故维持现状。
+   */
+  private collectDefinedKeys(
+    sourceMap: LocaleMap,
+    counterpartFiles: LanguageFileManager | null,
+  ): Set<string> {
+    // Object.keys 而非 `in`：sourceMap 是 flattenObject 产出的普通对象，`in` 走原型链会把
+    // toString/constructor/valueOf 等与 Object.prototype 同名的 key 误判为存在 → 漏报
+    // missing-key（与 checkOrphanKeys 的 Object.keys 口径一致）。
+    const defined = new Set(Object.keys(sourceMap));
+    if (counterpartFiles) {
+      for (const key of Object.keys(
+        counterpartFiles.readLocaleFile(this.config.locales.source) ?? {},
+      )) {
+        defined.add(key);
+      }
+    }
+    return defined;
   }
 
   /**
@@ -247,23 +305,24 @@ export class DoctorProcessor extends BaseProcessor {
    * 这是最严重的问题（运行时会显示 'xxx' 字符串而非翻译），归 error 级。
    * 业务上等价于"代码已经发布、但翻译还没准备好"——CI 应该卡住直到补全。
    */
-  private checkMissingKeys(sourceKeys: Set<string>, sourceMap: LocaleMap): DoctorFinding[] {
+  private checkMissingKeys(
+    sourceKeys: Set<string>,
+    definedKeys: ReadonlySet<string>,
+  ): DoctorFinding[] {
     const findings: DoctorFinding[] = [];
+    const scope = this.config.io.customDir ? '（已合并主目录 + 定制目录）' : '';
     for (const key of sourceKeys) {
       if (matchesDynamicAllowlist(this.config, key)) continue;
       // 动态 key 场景：源码可能是 t(prefix + variable)，工具看到的字面量是 prefix
       // 之类的不完整 key。这里只对"完全等于 locale key"的字面量做严格匹配，
       // 否则会对所有动态 t() 调用噪声报警。
-      // 用 hasOwnProperty 而非 `key in sourceMap`：sourceMap 是 flattenObject 产出的普通
-      // 对象，`in` 走原型链，会把 toString/constructor/valueOf 等与 Object.prototype 同名的
-      // key 误判为存在 → 漏报 missing-key（与下方 checkOrphanKeys 的 Object.keys 口径一致）。
-      if (!Object.prototype.hasOwnProperty.call(sourceMap, key)) {
+      if (!definedKeys.has(key)) {
         findings.push({
           category: 'missing-key',
           severity: 'error',
           title: `源码调用 t('${key}') 但 locale 不存在该 key`,
           details: [
-            `语言: ${this.config.locales.source}`,
+            `语言: ${this.config.locales.source}${scope}`,
             '运行时会显示 key 字符串而非翻译，建议补全或修正 key 名',
           ],
           key,
@@ -278,6 +337,8 @@ export class DoctorProcessor extends BaseProcessor {
    *
    * 同样受动态 key 限制：源码用 t(prefix + variable) 时静态扫描看不到对应
    * 字面量，可能误报。所以默认只列出来不自动删，--fix 流程在后续版本提供。
+   *
+   * 双目录项目下**刻意**按当前侧 sourceMap 迭代、不并入另一侧（理由见 collectDefinedKeys）。
    */
   private checkOrphanKeys(sourceKeys: Set<string>, sourceMap: LocaleMap): DoctorFinding[] {
     const findings: DoctorFinding[] = [];

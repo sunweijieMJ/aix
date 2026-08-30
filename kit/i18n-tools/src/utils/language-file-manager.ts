@@ -86,6 +86,15 @@ export class LanguageFileManager {
    * 把遗留单文件（`<lang>.json`）迁移到桶式格式。
    * 迁移幂等：只要 `.bak` 文件已存在就跳过。
    *
+   * 迁移写的是「legacy ∪ 现有桶」的并集，而非 legacy 单文件的整覆盖。
+   * 事故推演（整覆盖时）：存量项目刚开启 buckets（legacy 在、无 .bak），先跑 generate/merge
+   * ——它们只读写桶目录、不触碰 legacy，新 key 与新译文全部落进桶；之后首次跑 pick/export
+   * 触发本方法，若用 legacy 内容整写各桶，新写的桶被旧内容覆盖，legacy 里没有的桶还会被
+   * pruneOrphanBucketFiles 改名 .bak，随后 legacy 也改名 .bak —— 这批数据从活跃集整体消失，
+   * 全程 exit 0 无报错。
+   * 同 key 冲突时**桶数据优先**：桶是当前权威格式（generate/merge 只往桶里写），与
+   * readLocaleFile 的只读并入口径（`{ ...legacyFlat, ...bucketed }`）保持一致。
+   *
    * @param bucketingMessages - 用于驱动分桶的扁平 map。未传时用当前 locale 自身内容。
    *   传入 source locale 数据可保证 target locale 分桶与 source 完全一致。
    * @returns 当前 locale 迁移后的扁平 map（供 caller 复用，避免重新读取 .bak）。
@@ -112,11 +121,16 @@ export class LanguageFileManager {
     // 用 keys.separator 展平，与 readBucketedLocaleFlat / unflattenObject 回写保持一致，
     // 否则 flat 格式 + 非 '.' 分隔符 + 手写嵌套 JSON 时，本路径与往返安全路径会得到
     // 不同的 flat key 集（a.b vs a/b），令 prune/merge 误判孤儿。
-    const flatData = FileUtils.flattenObject(
+    const legacyFlat = FileUtils.flattenObject(
       existingData,
       '',
       this.config.keys.separator,
     ) as LocaleMap;
+
+    // 桶优先的并集：桶里已有的 key 保留桶值（generate/merge 在迁移窗口内写进去的新内容），
+    // legacy 只补桶里没有的 key。孤儿桶判定也基于这份并集，避免把新桶当孤儿改名 .bak。
+    const bucketed = this.readBucketedLocaleFlat(baseDir, locale, this.config.buckets!.layout);
+    const flatData: LocaleMap = { ...legacyFlat, ...bucketed };
 
     if (Object.keys(flatData).length > 0) {
       // bucketingMessages 为空对象 {} 时（source 文件存在但内容为 {}）也要回退到 locale
@@ -130,7 +144,7 @@ export class LanguageFileManager {
       );
       this.writeBucketedLocaleFile(baseDir, flatData, locale, keyBucketMap);
     } else {
-      // 空文件：只需创建目录占位，不写入任何 bucket 文件
+      // legacy 与桶都为空：只需创建目录占位，不写入任何 bucket 文件
       fs.mkdirSync(path.join(baseDir, locale), { recursive: true });
     }
 
@@ -424,8 +438,11 @@ export class LanguageFileManager {
         }
         if (cls.status === 'ok') {
           LoggerUtils.warn(
+            // 只列 pick/export：正式迁移唯一挂在 getMessages→migrateToBuckets 链上，而 merge
+            // 走的是 readLocaleFile / 桶读写，不触发迁移——写 merge 会让用户跑完发现 legacy
+            // 仍在、警告仍在，转而怀疑工具坏了。
             `检测到未迁移的遗留单文件 ${legacyPath}，已只读并入本次结果；` +
-              `运行 pick/merge/export 任一命令可完成正式分桶迁移。`,
+              `运行 pick/export 任一命令可完成正式分桶迁移。`,
           );
           const legacyFlat = FileUtils.flattenObject(
             cls.data,
@@ -697,14 +714,11 @@ export class LanguageFileManager {
     // 故无需依赖现有 locale（新建项目 locale 不存在时同样能拦截）。
     LanguageFileManager.assertNoReservedSegment(extractedStrings, this.config.keys.separator);
 
-    let existing: LocaleMap;
-    if (this.config.buckets) {
-      existing = this.readBucketedLocaleWithBucketMap().flat;
-    } else {
-      const read = this.readLocaleFile();
-      if (read === null) return;
-      existing = read;
-    }
+    // 与 updateLanguageFiles 的读侧同口径（桶 ∪ 未迁移 legacy）：预检视图若比真实写盘视图少
+    // 一批 legacy key，前缀冲突会漏报到落盘时才抛——而那时源码已被 generate 改写。
+    const read = this.readLocaleFile();
+    if (read === null) return;
+    const existing: LocaleMap = read;
 
     const finalKeys = new Set<string>(Object.keys(existing));
     for (const e of extractedStrings) {
@@ -769,19 +783,15 @@ export class LanguageFileManager {
   ): void {
     if (extractedStrings.length === 0) return;
 
-    let localeMap: LocaleMap;
-
-    if (this.config.buckets) {
-      // 读 flat 数据即可——磁盘当前布局**不再**作为 keyBucketMap 的兜底来源。
-      // 历史问题：旧逻辑用 existingKeyBucketMap 兜底导致 matchKey/match 规则
-      // 对存量 key 永远失效（旧规则下落到 A 桶的 key，即使新规则该去 B 桶，
-      // 也会因 existing 占位而留在 A）。
-      localeMap = this.readBucketedLocaleWithBucketMap().flat;
-    } else {
-      const read = this.readLocaleFile();
-      if (read === null) return;
-      localeMap = read;
-    }
+    // 桶式也走 readLocaleFile：它的桶式分支 = 桶 ∪「未迁移 legacy 只读并入」。
+    // 只读桶目录的话，迁移窗口内（legacy 在、无 .bak）存量 key 对本方法不可见，会被当成
+    // 「新增」重新生成一遍 —— 同一文案在 legacy 与桶里各一份 key，迁移时并集写回双份。
+    // 只取 flat：磁盘当前布局**不再**作为 keyBucketMap 的兜底来源。历史问题：旧逻辑用
+    // existingKeyBucketMap 兜底导致 matchKey/match 规则对存量 key 永远失效（旧规则下落到
+    // A 桶的 key，即使新规则该去 B 桶，也会因 existing 占位而留在 A）。
+    const read = this.readLocaleFile();
+    if (read === null) return;
+    const localeMap: LocaleMap = read;
 
     const newEntries: LocaleMap = {};
     let updatedCount = 0;

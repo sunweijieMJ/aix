@@ -2,6 +2,7 @@ import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { IImportManager } from '../../adapters/FrameworkAdapter';
 import { mergeNamedImport, removeNamedImports } from '../../utils/import-surgery';
 import { escapeRegExp } from '../../utils/string-escape';
+import { mapScriptBlocks } from './sfc-blocks';
 import type { ExtractedString } from '../../utils/types';
 import type { VueI18nLibrary } from './libraries';
 
@@ -60,7 +61,11 @@ export class VueImportManager implements IImportManager {
       const hasNonSetup = !!descriptor.script;
       const hasSetup = !!descriptor.scriptSetup;
 
-      updatedCode = this.stripPlaceholderTDeclares(updatedCode);
+      // 切到 script 块内 strip：正则作用于整份 .vue 会删掉 `<pre>`/`<code>` 里逐字展示的
+      // 同形示例代码（`declare const t: …` / `void t;`），那是不可恢复的内容丢失。
+      updatedCode = mapScriptBlocks(updatedCode, (script) =>
+        this.stripPlaceholderTDeclares(script),
+      );
 
       if (hasNonSetup && hasSetup) {
         // 双块共存：t 来自非-setup 块顶层 import { t } from tImport；setup 块

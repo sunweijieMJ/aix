@@ -357,7 +357,19 @@ export class MergeProcessor extends FileProcessor {
       );
     }
 
-    const { flat: targetMessages } = this.langFiles.readBucketedLocaleWithBucketMap(target);
+    // 走 readLocaleFile 而非只读桶目录：桶式分支 = 桶 ∪「未迁移 legacy 只读并入」。
+    // 迁移窗口内（legacy 单文件还在、无 .bak）只读桶会看不到存量 key，写回时
+    // writeBucketedLocaleFile 用这份残缺 map 整写各桶，legacy 里的历史译文永远进不了桶；
+    // 等 pick/export 触发迁移后又只剩「桶优先」的并集，读写视图分裂的窗口越长越难查。
+    const targetMessages = this.langFiles.readLocaleFile(target);
+    if (targetMessages === null) {
+      // 未迁移 legacy 单文件损坏（桶损坏已被上方 findCorruptBucketFile 拦下）。与扁平路径
+      // 同口径抛错：静默 return 会让本轮译文全部丢失而 merge 仍 exit 0。
+      throw new Error(
+        `目标语言文件解析失败（JSON 格式错误）: locale「${target}」` +
+          `\n👉 为防止译文丢失，已中止 merge，未更新 [${target}] 的桶式语言包。请先修复该文件的 JSON 格式。`,
+      );
+    }
 
     const updatedCount = MergeProcessor.applyTranslations(targetMessages, newlyTranslated, target);
 

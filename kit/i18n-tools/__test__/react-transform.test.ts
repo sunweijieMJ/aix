@@ -1270,3 +1270,258 @@ describe('hookUsesTranslationVar — 直传 t 形态', () => {
     expect(out).toContain('[deps, t]');
   });
 });
+
+// ---------------------------------------------------------------------------
+// 场景：提取端三处「静默丢文案 / 静默产坏代码」的审计修复
+// ---------------------------------------------------------------------------
+describe('React 提取端审计修复合集', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-extract-audit-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function run(code: string, libType: ReactI18nLibraryType = 'react-i18next') {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const extractor = new ReactTextExtractor(createReactI18nLibrary(libType), []);
+    const strings = await extractor.extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const adapter = new ReactAdapter('@/plugins/locale', libType);
+    const out = adapter.getTransformer().transform(file, strings, code);
+    return {
+      strings,
+      out,
+      warnings: extractor.drainWarnings(),
+      manualSkips: extractor.drainManualSkips(),
+    };
+  }
+
+  /**
+   * P1：命中混合内容后 visitNode 直接 return，把整棵子树（含 openingElement 的属性）
+   * 一起跳过 —— `<div title="标题文案">共 {count} 项</div>` 只提取到文本，title 既不提取
+   * 也不进诊断，静默丢失。混合内容只吃 children 区间，开标签必须单独再走一遍。
+   */
+  describe('混合内容元素的属性文案不被吞掉', () => {
+    it('文本 + 属性各提取一条', async () => {
+      const code = `import React from 'react';
+export function C({ count }: { count: number }) {
+  return <div title="标题文案">共 {count} 项</div>;
+}
+`;
+      const { strings, out } = await run(code);
+      const originals = strings.map((s) => s.original);
+      expect(originals, `提取结果：${JSON.stringify(originals)}`).toHaveLength(2);
+      expect(originals.some((o) => o.includes('共 ${count} 项'))).toBe(true);
+      expect(strings.some((s) => s.original === '标题文案' && s.context === 'jsx-attribute')).toBe(
+        true,
+      );
+      // 两处都被国际化，源码里不再残留中文
+      expect(out, `转换输出：\n${out}`).not.toContain('标题文案');
+      expect(out).toContain('<Trans');
+    });
+
+    it('嵌套变体：外层与内层元素的属性都不漏', async () => {
+      const code = `import React from 'react';
+export function C({ count }: { count: number }) {
+  return <div title="外层标题"><span title="内层标题">共 {count} 项</span></div>;
+}
+`;
+      const { strings, out } = await run(code);
+      const originals = strings.map((s) => s.original);
+      expect(originals, `提取结果：${JSON.stringify(originals)}`).toContain('外层标题');
+      expect(originals).toContain('内层标题');
+      expect(out).not.toContain('外层标题');
+      expect(out).not.toContain('内层标题');
+    });
+
+    it('回归：Fragment 混合内容无开标签属性，行为不变', async () => {
+      const code = `import React from 'react';
+export function C({ count }: { count: number }) {
+  return <>共 {count} 项</>;
+}
+`;
+      const { strings } = await run(code);
+      expect(strings).toHaveLength(1);
+      expect(strings[0]!.original).toContain('共 ${count} 项');
+    });
+  });
+
+  /**
+   * P2：static 成员求值时 this 是类构造函数、没有 props。注入端不检查 static 修饰符会注入
+   * `const { t } = this.props`（运行时 TypeError）；提取端对 static 箭头初始化器一律放行，
+   * 把中文替换成裸 t()。两端都要按「宁可漏提取」跳过。
+   */
+  describe('类组件 static 成员跳过提取', () => {
+    it('static 箭头属性 + static getter：不提取、不注入、有诊断留痕', async () => {
+      const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  static build = () => '静态箭头';
+  static get label() { return '静态取值'; }
+  render() { return <div>{Foo.label}</div>; }
+}
+`;
+      const { strings, out, manualSkips } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual([]);
+      // 原文保留，且不产出无绑定的裸 t()
+      expect(out, `转换输出：\n${out}`).toContain("'静态箭头'");
+      expect(out).toContain("'静态取值'");
+      expect(out).not.toMatch(/t\(/);
+      // 不得给 static 成员注入 this.props 解构
+      expect(out).not.toContain('const { t } = this.props;');
+      expect(manualSkips.filter((m) => m.category === 'class-property')).toHaveLength(2);
+    });
+
+    it('static 方法内的文案同样跳过', async () => {
+      const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  static describe() { return '静态方法'; }
+  render() { return <div /> ; }
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual([]);
+      expect(out).toContain("'静态方法'");
+    });
+
+    it('回归：同名的实例箭头属性 / 实例 getter 照常提取并注入绑定', async () => {
+      const code = `import React, { Component } from 'react';
+export class Foo extends Component {
+  build = () => '实例箭头';
+  get label() { return '实例取值'; }
+  render() { return <div>{this.label}</div>; }
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings.map((s) => s.original).sort()).toEqual(['实例取值', '实例箭头']);
+      expect(out).toContain('const { t } = this.props;');
+    });
+  });
+
+  /**
+   * P2：组件内已有 `const { t } = useTemperature()` 这类同名非 i18n 绑定时，注入器只告警
+   * 跳过注入，但 replaceStrings 已把中文换成裸 t('key') —— 新 t() 解析到温度函数，产出
+   * 「能编译、行为错」的代码。判定前移到提取端，该组件的候选整体不进 extractedStrings。
+   */
+  describe('同名非 i18n 绑定的组件整体跳过提取', () => {
+    it('const { t } = useTemperature()：中文不被替换，有 warning 留痕', async () => {
+      const code = `import React from 'react';
+import { useTemperature } from './temp';
+export function Panel() {
+  const { t } = useTemperature();
+  return <div title="温度面板">{t(20)}</div>;
+}
+`;
+      const { strings, out, warnings } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual([]);
+      expect(out, `转换输出：\n${out}`).toContain('title="温度面板"');
+      // 绝不能出现指向温度函数的伪 i18n 调用
+      expect(out).not.toMatch(/t\(['"]k\d/);
+      expect(out).not.toContain('useTranslation');
+      expect(warnings.some((w) => w.includes('同名的非 i18n 本地绑定'))).toBe(true);
+    });
+
+    it('react-intl 同型：const intl = createIntl(...) 亦跳过', async () => {
+      const code = `import React from 'react';
+import { createIntl } from './myIntl';
+export function Panel() {
+  const intl = createIntl({ locale: 'zh' });
+  return <div title="配置面板">{intl.formatMessage({ id: 'x' })}</div>;
+}
+`;
+      const { strings, out } = await run(code, 'react-intl');
+      expect(strings.map((s) => s.original)).toEqual([]);
+      expect(out).toContain('title="配置面板"');
+      expect(out).not.toContain('useIntl');
+    });
+
+    it('回归：已有正规 const { t } = useTranslation() 的组件照常提取替换', async () => {
+      const code = `import React from 'react';
+import { useTranslation } from 'react-i18next';
+export function Panel() {
+  const { t } = useTranslation();
+  return <div title="正常面板" />;
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual(['正常面板']);
+      expect(out).toContain("t('k0')");
+    });
+
+    it('回归：同名绑定只在嵌套回调里（内层遮蔽）→ 不算冲突，照常提取', async () => {
+      const code = `import React from 'react';
+export function Panel() {
+  React.useEffect(() => {
+    const t = setTimeout(() => {}, 0);
+    return () => clearTimeout(t);
+  }, []);
+  return <div title="定时面板" />;
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual(['定时面板']);
+      expect(out).toContain('useTranslation');
+    });
+  });
+});
+
+/**
+ * script 模板串的定位/复核不再依赖「重建文本逐字等于源码」：
+ * 结构化比对（nodeMatchesExtractedOriginal）对插值空白差异与 cooked 字面段免疫，
+ * 且「original 是否源码形式」以提取端 isTemplateString 旗标为准、不再看首尾字符。
+ * 修复前：三种输入均导致整文件转换中止（无法定位/无法验证）。
+ */
+describe('React script 模板串结构化比对', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-template-match-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const run = async (code: string): Promise<{ strings: ExtractedString[]; injected: string }> => {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const injected = adapter.getTransformer().transform(file, strings, code);
+    return { strings, injected };
+  };
+
+  it('插值带空格 `${ count }` 不再整文件中止', async () => {
+    const code = `export function C({ count }: { count: number }) {
+  const msg = \`共 \${ count } 项\`;
+  return <div>{msg}</div>;
+}
+`;
+    const { injected } = await run(code);
+    expect(injected).toContain("t('k0'");
+    expect(injected).not.toContain('共 ${');
+  });
+
+  it('字面段含 `\\\\` 转义的模板串正常替换', async () => {
+    const code = `export function C({ dir }: { dir: string }) {
+  const p = \`路径C:\\\\to\\\\\${dir}中文\`;
+  return <div>{p}</div>;
+}
+`;
+    const { injected } = await run(code);
+    expect(injected).toContain("t('k0'");
+    expect(injected).not.toContain('中文');
+  });
+
+  it('内容整体被反引号包裹的普通字符串不被误判为模板源码形式', async () => {
+    const code = `export function C() {
+  const s = '\`提交\`';
+  return <div>{s}</div>;
+}
+`;
+    const { injected } = await run(code);
+    expect(injected).toContain("t('k0')");
+    expect(injected).not.toContain('提交');
+  });
+});

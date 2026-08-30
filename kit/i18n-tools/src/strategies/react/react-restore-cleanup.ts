@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import type { TransformContext } from '../../utils/types';
+import { isIdentifierValueReference } from '../../utils/scope-analysis';
 import type { ReactI18nLibrary } from './libraries';
 import { TRANSLATION_DEPENDENCY_HOOKS, resolveHookName } from './hooks-utils';
 
@@ -259,8 +260,13 @@ function isThisPropsInitializer(init: ts.Expression | undefined): boolean {
 /**
  * 回调体内是否存在「翻译调用之外」对 varName 的引用。
  * 翻译调用（t('key') / intl.formatMessage('key')）还原后整体替换为字符串，其被调表达式里的
- * varName 引用会消失，不计为残留使用；其余任何对 varName 的引用（实参、成员访问等）都视为
- * 残留使用，需保留依赖项。自顶向下遍历，不依赖 parent 指针（转换中新建子树可能未设 parent）。
+ * varName 引用会消失，不计为残留使用；其余任何对 varName 的**值引用**（实参、成员访问的接收者等）
+ * 都视为残留使用，需保留依赖项。自顶向下遍历，不依赖 parent 指针做遍历。
+ *
+ * 必须与 ReactRestoreTransformer 删声明的守卫同口径过 isIdentifierValueReference：
+ * 那一侧只认值引用，本侧若按名硬匹配任意 Identifier，`{ t: Date.now() }` 的对象键、
+ * `styles.t` 的成员名都会被当成使用 —— 于是声明被删、deps 里的 `[t]` 却留着，产出
+ * `Cannot find name 't'`（TS2304）。两侧口径不对称就必然漏出这种半还原产物。
  */
 function callbackUsesVarOutsideTranslationCalls(
   callback: ts.Expression | undefined,
@@ -276,7 +282,7 @@ function callbackUsesVarOutsideTranslationCalls(
       node.arguments.forEach(visit);
       return;
     }
-    if (ts.isIdentifier(node) && node.text === varName) {
+    if (ts.isIdentifier(node) && node.text === varName && isIdentifierValueReference(node)) {
       found = true;
       return;
     }

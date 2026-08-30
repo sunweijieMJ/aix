@@ -14,7 +14,7 @@ import { parseTemplatePlaceholders } from './message-shape';
 /**
  * 从values映射中查找变量名对应的AST表达式节点
  */
-export function findExpressionForVariable(
+function findExpressionForVariable(
   varName: string,
   values: Record<string, any>,
 ): ts.Expression | undefined {
@@ -35,7 +35,7 @@ export function findExpressionForVariable(
  * 根据消息文本和变量值，创建一个字符串字面量或模板表达式节点
  * @param messageText - 从语言文件中获取的、包含占位符的消息文本
  * @param values - 包含变量名到其原始AST节点映射的对象
- * @returns 创建的节点；占位符与 values 无法对齐（数量失配 / 找不到表达式）时返回 null，
+ * @returns 创建的节点；占位符与 values 无法对齐（无占位符 / 数量失配 / 找不到表达式）时返回 null，
  *          调用方应保留原调用/组件——此前这两条路径退化为字面串，会把占位符字面化写进
  *          源码、静默删除运行时变量。
  */
@@ -49,8 +49,16 @@ export function createStringOrTemplateNode(
 
   const { literalParts, placeholderNames } = parseTemplatePlaceholders(messageText);
 
+  // values 非空却一个占位符都没有 → 与下方「数量比对」同属失配，必须返回 null 保留原调用。
+  // 此前在比对之前提前返回字符串字面量，绕开了整道失配守卫：values 里的运行时变量被静默
+  // 丢弃，且在 JSX 子节点位置这个 StringLiteral 会连引号一起渲染成可见文本。
   if (placeholderNames.length === 0) {
-    return ts.factory.createStringLiteral(messageText);
+    LoggerUtils.warn(
+      `[Restore Warning] Message has no placeholder but ${
+        Object.keys(values).length
+      } value(s) were provided. Keeping original call. Template: "${messageText}"`,
+    );
+    return null;
   }
 
   // 按「唯一占位符名」而非「出现次数」与 values 比对：同一变量在文案中重复出现
