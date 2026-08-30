@@ -390,8 +390,13 @@ export class PlanApplier {
     );
     if (drifted.length === 0) return true;
 
+    // 措辞按两个分支分开：非交互下这就是「已拒绝」的清单（下方直接抛错），
+    // 交互下才是「将覆盖」的清单（用户确认后确实会覆盖）。合用一句「会用 plan 的值覆盖」
+    // 会让非交互用户以为覆盖已经发生。
     LoggerUtils.warn(
-      `⚠️  Plan 生成后以下 ${drifted.length} 个 key 的 ${this.config.locales.source} 值已被改动，apply 会用 plan 的值覆盖：`,
+      interactive
+        ? `⚠️  以下 ${drifted.length} 个 key 的 ${this.config.locales.source} 值在 plan 生成后被改动，继续 apply 将用 plan 的值覆盖：`
+        : `⚠️  已拒绝 apply：以下 ${drifted.length} 个 key 的 ${this.config.locales.source} 值在 plan 生成后被改动：`,
     );
     for (const [key, baseline] of drifted) {
       const now = Object.prototype.hasOwnProperty.call(current, key)

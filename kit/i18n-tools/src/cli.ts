@@ -198,16 +198,23 @@ const enforceCoverageThreshold = (
 };
 
 /**
- * 执行restore操作（还原多语言组件）
+ * 执行restore操作（还原多语言组件）。
+ *
+ * 默认写副本到 `<rootDir>/restored/`：还原是逐字面量的文本回填，无法区分「本工具生成的
+ * t() 」与「用户自己手写的 t()」，就地改写会连同用户原有的国际化调用与 import 一起抹掉。
+ * 因此就地改写必须由 `--overwrite` 显式 opt-in；`--dry-run` 则只在内存里跑一遍给出预览。
  */
 const executeRestore = async (
   config: ResolvedConfig,
   adapter: FrameworkAdapter,
   isCustom: boolean,
   targetPath: string,
+  opts: { overwrite: boolean; dryRun: boolean },
 ): Promise<void> => {
   const processor = new RestoreProcessor(config, isCustom, adapter);
-  await processor.execute([targetPath], path.dirname(targetPath), true);
+  // outputDir 传 undefined：由 RestoreProcessor 回退到 `<rootDir>/restored/`，
+  // 与它的「输出目录内文件自动排除」防套娃逻辑同源。
+  await processor.execute([targetPath], undefined, opts.overwrite, { dryRun: opts.dryRun });
 };
 
 /**
@@ -364,7 +371,9 @@ const main = async (): Promise<void> => {
       type: 'boolean',
     })
     .option('skip-llm', {
-      describe: '跳过LLM API调用，使用本地ID生成策略',
+      describe:
+        '不调用 LLM：generate 改用本地 ID 生成策略，automatic 一并跳过 translate 步骤' +
+        '（translate 模式为显式要求翻译，不受此选项影响）',
       type: 'boolean',
       default: false,
     })
@@ -374,7 +383,15 @@ const main = async (): Promise<void> => {
     })
     .option('dry-run', {
       describe:
-        '只生成 plan 文件到 .i18n-tools/plans/，不修改源码与语言文件（仅 generate 模式生效）',
+        '预览模式，不落盘：generate 只生成 plan 文件到 .i18n-tools/plans/；' +
+        'restore / csv-import / prune 只报告将发生的改动',
+      type: 'boolean',
+      default: false,
+    })
+    .option('overwrite', {
+      describe:
+        'restore：就地改写源文件（默认写副本到 <rootDir>/restored/）。' +
+        '还原无法区分工具生成与用户手写的 t()，就地改写需显式 opt-in',
       type: 'boolean',
       default: false,
     })
@@ -425,7 +442,7 @@ const main = async (): Promise<void> => {
     .help()
     .alias('help', 'h')
     .group(['config', 'mode', 'custom', 'path'], '📋 基本选项:')
-    .group(['interactive', 'skip-llm'], '⚙️  高级选项:')
+    .group(['interactive', 'skip-llm', 'overwrite'], '⚙️  高级选项:')
     .group(['langs', 'filter', 'source', 'output'], '📊 CSV 选项:')
     .group(
       ['dry-run', 'apply-plan', 'keep-plan', 'plan-output-dir', 'coverage-threshold', 'ci'],
@@ -456,7 +473,12 @@ const main = async (): Promise<void> => {
     )
     .example('$0 --mode csv-import --output ./i18n-en-US.csv', '把审核好的 CSV 回流写回')
     .example('$0 --mode csv-import --output ./x.csv --dry-run', '回流前仅预览改动')
-    .example('$0 --mode restore', '将国际化调用还原为中文（调试用）')
+    .example('$0 --mode restore --path src/views/demo', '还原为中文，副本写到 <rootDir>/restored/')
+    .example('$0 --mode restore --path src/views/demo --dry-run', '预览将还原的调用与将清理的导入')
+    .example(
+      '$0 --mode restore --path src/views/demo --overwrite',
+      '就地改写源文件（会一并还原用户手写的 t()，谨慎使用）',
+    )
     .example('$0 -i', '启动交互式模式，逐步选择操作')
     .example('$0 --mode automatic', '启动全自动处理流程')
     .epilog(
@@ -465,7 +487,11 @@ const main = async (): Promise<void> => {
 • 完整工作流程: generate → pick → translate → merge → export
 • 定制目录用于项目特定的国际化内容，与主目录分开管理
 • 需要在项目根目录创建 i18n.config.ts 配置文件`,
-    );
+    )
+    // 未知 flag 必须硬失败：yargs 默认把 `--dry-runn` / `--overwite` 这类拼错当自由参数收下，
+    // 命令照常执行、退出码 0——用户以为"预览"了，实际是一次真跑。strict 之后拼错即报错退出，
+    // 前提是所有被 argv 读取的键都在上面 .option 声明过（否则合法用法会被误杀）。
+    .strict();
 
   const argv = await yargsObj.parse();
 
@@ -574,6 +600,7 @@ export default defineConfig({
   }
   const coverageThreshold = cliCoverageThreshold ?? config.ci.coverageThreshold;
   const dryRun = Boolean(argv['dry-run']);
+  const overwrite = Boolean(argv['overwrite']);
   const langsArg = argv['langs'] as string | undefined;
   const csvLangs = langsArg
     ? langsArg
@@ -590,8 +617,8 @@ export default defineConfig({
   const pathArg = (argv['path'] as string | undefined)?.trim() || undefined;
 
   // dry-run 与 apply-plan 的「生效模式集合」不同，必须分开提示：
-  //  - --dry-run 在 generate / csv-import / prune 三种模式都被真正消费（各自有预览语义），
-  //    仅在其余模式无意义；
+  //  - --dry-run 在 generate / restore / csv-import / prune 四种模式都被真正消费（各自有
+  //    预览语义），仅在其余模式无意义；
   //  - --apply-plan 只有 generate 分支消费，其它模式（含 csv-import / prune）一律忽略。
   // 旧实现把二者并入同一条件并整体排除 csv-import/prune，导致 `--apply-plan --mode prune`
   // 这类误用被静默丢弃、连警告都没有，违背该守卫「写错命令即提示」的初衷。
@@ -599,12 +626,21 @@ export default defineConfig({
   if (
     dryRun &&
     mode !== ModeName.GENERATE &&
+    mode !== ModeName.RESTORE &&
     mode !== ModeName.CSV_IMPORT &&
     mode !== ModeName.PRUNE
   ) {
     LoggerUtils.warn(
-      `⚠️  --dry-run 仅在 --mode generate / csv-import / prune 下生效，当前模式 ${mode}，将被忽略`,
+      `⚠️  --dry-run 仅在 --mode generate / restore / csv-import / prune 下生效，当前模式 ${mode}，将被忽略`,
     );
+  }
+  // `--mode translate` 是「就是要翻译」的显式请求，跳过它等于什么都不做；
+  // 与其静默按 skipLLM 空转，不如照「仅 xx 模式生效」口径提示后照常翻译。
+  if (skipLLM && mode === ModeName.TRANSLATE) {
+    LoggerUtils.warn('⚠️  translate 模式忽略 --skip-llm：该模式本身就是显式要求调用 AI 翻译');
+  }
+  if (overwrite && mode !== ModeName.RESTORE) {
+    LoggerUtils.warn(`⚠️  --overwrite 仅在 --mode restore 下生效，当前模式 ${mode}，将被忽略`);
   }
   if (applyPlanPath && mode !== ModeName.GENERATE) {
     LoggerUtils.warn(`⚠️  --apply-plan 仅在 --mode generate 下生效，当前模式 ${mode}，将被忽略`);
@@ -682,7 +718,7 @@ export default defineConfig({
           pathArg,
           interactive,
         );
-        await executeRestore(config, adapter, custom, targetPath);
+        await executeRestore(config, adapter, custom, targetPath, { overwrite, dryRun });
         break;
       }
       case ModeName.DOCTOR:

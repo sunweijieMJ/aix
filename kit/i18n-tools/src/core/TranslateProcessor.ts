@@ -46,6 +46,36 @@ export class TranslateProcessor extends FileProcessor {
     return this.executeWithLifecycle(() => this._execute(filePath));
   }
 
+  /**
+   * 批次循环启动前对本次要用的 llm.translation 配置做 pre-flight。
+   *
+   * 只校验「静态配置缺失」这类重试也不会变好的错误：apiKey 为空时每个批次都会在
+   * chatCompletion 入口抛同一个错，N 个批次就刷 N 条一模一样的失败（还各自带 maxRetries
+   * 次退避），用户要从满屏噪声里翻出根因。网络/超时/限流仍留给批次级容错与断点续翻。
+   */
+  private assertLLMConfigReady(): void {
+    const task = this.config.llm.translation;
+    const missing: string[] = [];
+    if (!task.apiKey.trim()) {
+      missing.push(
+        'llm.translation.apiKey（或 llm.shared.apiKey；配置示例里取自环境变量 LLM_API_KEY）',
+      );
+    }
+    if (!task.model.trim()) {
+      missing.push('llm.translation.model（或 llm.shared.model）');
+    }
+    // baseURL 允许不配（走 OpenAI 官方地址），但配成空串/非法 URL 属于写错，同样不可重试
+    if (task.baseURL !== undefined && !URL.canParse(task.baseURL)) {
+      missing.push(`llm.translation.baseURL（或 llm.shared.baseURL）不是合法 URL: ${task.baseURL}`);
+    }
+    if (missing.length > 0) {
+      throw new Error(
+        `翻译所需的 LLM 配置不完整，已在发起请求前中止（避免逐批重复失败）：\n` +
+          missing.map((item) => `   - ${item}`).join('\n'),
+      );
+    }
+  }
+
   private async _execute(filePath?: string): Promise<void> {
     const targetPath = filePath || FileUtils.getUntranslatedPath(this.config, this.isCustom);
 
@@ -99,6 +129,10 @@ export class TranslateProcessor extends FileProcessor {
         continue;
       }
 
+      // 确认本轮真有条目要送 LLM 之后再做 pre-flight：全部被词表覆盖 / 已翻完的运行
+      // 压根不碰 LLM，不该因为没配 apiKey 就失败。
+      this.assertLLMConfigReady();
+
       LoggerUtils.info(`📋 [${target}] 需翻译: ${needsTranslation}`);
       LoggerUtils.info(
         `⚙️  批次设置: ${this.batchConfig.size} 条目/批次, ${this.config.llm.translation.throttleMs}ms 延时`,
@@ -114,6 +148,9 @@ export class TranslateProcessor extends FileProcessor {
 
       this.logTargetResult(target, result);
     }
+
+    // 有失败批次即置位：即便仍有成功（断点续翻不抛错），收尾也不能打 SUCCESS。
+    if (allFailedBatches.length > 0) this.partiallyFailed = true;
 
     this.logTranslationSummary({
       totalTranslated: totalNewlyTranslated,
@@ -425,6 +462,8 @@ export class TranslateProcessor extends FileProcessor {
     LoggerUtils.info(`   - 总批次数: ${result.totalBatches}`);
     LoggerUtils.info(`   - 成功批次数: ${result.successBatches}`);
     LoggerUtils.info(`   - 新翻译条目（跨 target 总和）: ${result.totalTranslated}`);
+    // SUCCESS 只在零失败批次时打：部分失败仍会正常返回（断点续翻设计），若这里无条件
+    // 打「✅ 翻译操作完成」，grep SUCCESS 的 CI 会把「翻了一半、剩下全挂」判成绿。
     if (result.failedBatches.length > 0) {
       LoggerUtils.warn(
         `   - ⚠️ 失败批次（${result.failedBatches.length} 个，含 target 标识）: [${result.failedBatches.join(', ')}]`,
@@ -432,6 +471,10 @@ export class TranslateProcessor extends FileProcessor {
       LoggerUtils.warn(
         `   提示: 已成功的翻译已写入文件；重新运行 translate 可对剩余条目断点续翻。`,
       );
+      LoggerUtils.warn(
+        `\n⚠️ 翻译未全部完成：${result.failedBatches.length}/${result.totalBatches} 个批次失败`,
+      );
+      return;
     }
     LoggerUtils.success(`\n✅ 翻译操作完成`);
   }

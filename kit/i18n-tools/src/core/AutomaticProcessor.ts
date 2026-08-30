@@ -57,7 +57,13 @@ export class AutomaticProcessor extends FileProcessor {
         run: () => new PickProcessor(this.config, this.isCustom).execute(),
       },
       {
+        // --skip-llm 自述「不调 LLM API」，却只作用于 ID 生成：translate 照跑、没有 apiKey
+        // 时整条流程硬失败在这一步。既然本次运行明确不许调 LLM，就把 translate 一并跳过；
+        // 词表（glossary）命中仍在 pick/merge 生效，产出的 untranslated.json 留待后续单独
+        // 跑 `--mode translate` 或人工/CSV 回流补齐。
         name: 'translate',
+        skip: skipLLM,
+        skipReason: '--skip-llm：跳过 AI 翻译步骤，词表命中仍在 pick/merge 生效',
         run: () => new TranslateProcessor(this.config, this.isCustom).execute(),
       },
       {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
@@ -156,6 +156,33 @@ describe('CLI 入口守卫（cli.ts main）', () => {
     T,
   );
 
+  // 回归（yargs 缺 .strict()）：未知 flag 此前被当自由参数静默收下，命令照常执行且退出码 0
+  // ——`--dry-runn` 拼错就变成一次真跑。strict 之后拼错即报错退出并点名该 flag。
+  it(
+    '未知 flag（拼错）→ 非零退出并点名该 flag',
+    () => {
+      const { code, out } = runCli(['--mode', 'generate', '--dry-runn'], cfgDir);
+      expect(code).not.toBe(0);
+      expect(out).toMatch(/dry-runn/);
+    },
+    T,
+  );
+
+  it(
+    '合法组合不受 .strict() 影响（--config + --mode + --path 仍走到路径校验）',
+    () => {
+      const { code, out } = runCli(
+        ['--config', './i18n.config.mjs', '--mode', 'generate', '--path', 'no/such.vue'],
+        cfgDir,
+      );
+      // 被路径守卫拦下（而非「未知参数」），说明 strict 没误杀合法 flag
+      expect(out).toMatch(/--path 无效/);
+      expect(out).not.toMatch(/未知的参数|Unknown argument/);
+      expect(code).toBe(1);
+    },
+    T,
+  );
+
   it(
     '--help → 成功退出（确认守卫不是恒返回非零）',
     () => {
@@ -216,6 +243,86 @@ describe('export --output 接线（e2e）', () => {
       expect(JSON.parse(fs.readFileSync(path.join(outDir, 'zh.json'), 'utf-8'))).toEqual({
         a: '你好',
       });
+    },
+    T,
+  );
+});
+
+/**
+ * restore 安全网（e2e）：CLI 此前硬编码 overwrite=true，restore 是唯一没有 dry-run 的
+ * 破坏性模式，且会把用户自己手写的 t() 与 import 一并还原掉。
+ * 现在默认写副本到 restored/，就地改写需 --overwrite，--dry-run 只预览。
+ */
+describe('restore 默认不就地改写（e2e）', () => {
+  let proj: string;
+  let srcFile: string;
+
+  const RESTORE_CONFIG = `export default {
+  root: process.cwd(),
+  framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+  locales: { source: 'zh', targets: ['en'] },
+  io: { localesDir: 'i18n', sourceDir: 'src', prettify: false },
+  llm: { shared: { apiKey: 'test-key', model: 'gpt-4o' } },
+};
+`;
+  const SRC = `<script setup lang="ts">\nimport { t } from '@/i18n';\nconst m = t('a');\n</script>\n`;
+
+  beforeEach(() => {
+    proj = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-cli-restore-'));
+    fs.writeFileSync(path.join(proj, 'i18n.config.mjs'), RESTORE_CONFIG, 'utf-8');
+    fs.mkdirSync(path.join(proj, 'i18n'), { recursive: true });
+    fs.writeFileSync(path.join(proj, 'i18n', 'zh.json'), JSON.stringify({ a: '你好' }));
+    fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
+    srcFile = path.join(proj, 'src', 'A.vue');
+    fs.writeFileSync(srcFile, SRC, 'utf-8');
+  });
+
+  afterEach(() => {
+    fs.rmSync(proj, { recursive: true, force: true });
+  });
+
+  it(
+    '默认（不传 --overwrite）：源文件不动，产物落 restored/',
+    () => {
+      const { code, out } = runCli(['--mode', 'restore', '--path', 'src'], proj);
+      expect(code, `CLI 输出：\n${out}`).toBe(0);
+      expect(fs.readFileSync(srcFile, 'utf-8')).toBe(SRC);
+      const copy = path.join(proj, 'restored', 'src', 'A.vue');
+      expect(fs.existsSync(copy)).toBe(true);
+      expect(fs.readFileSync(copy, 'utf-8')).toContain('你好');
+    },
+    T,
+  );
+
+  it(
+    '--overwrite：就地改写源文件，不产出 restored/',
+    () => {
+      const { code, out } = runCli(['--mode', 'restore', '--path', 'src', '--overwrite'], proj);
+      expect(code, `CLI 输出：\n${out}`).toBe(0);
+      expect(fs.readFileSync(srcFile, 'utf-8')).toContain('你好');
+      expect(fs.existsSync(path.join(proj, 'restored'))).toBe(false);
+    },
+    T,
+  );
+
+  it(
+    '--dry-run：零写盘（无 restored/、源文件不动），输出含还原计数',
+    () => {
+      const before = fs.readdirSync(proj).sort();
+      const { code, out } = runCli(['--mode', 'restore', '--path', 'src', '--dry-run'], proj);
+
+      expect(code, `CLI 输出：\n${out}`).toBe(0);
+      expect(fs.readFileSync(srcFile, 'utf-8')).toBe(SRC);
+      expect(fs.existsSync(path.join(proj, 'restored'))).toBe(false);
+      // 除 .i18n-tools（运行报告）外不新增任何顶层产物
+      expect(
+        fs
+          .readdirSync(proj)
+          .filter((n) => n !== '.i18n-tools')
+          .sort(),
+      ).toEqual(before);
+      expect(out).toMatch(/将还原调用点: 1 处/);
+      expect(out).toMatch(/未写入任何文件/);
     },
     T,
   );

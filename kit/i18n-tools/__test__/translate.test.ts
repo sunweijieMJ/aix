@@ -549,3 +549,122 @@ describe('TranslateProcessor — 拒收 LLM 返回的无效译文', () => {
     expect(readUntranslated()['a.b']!['en-US']).toBe('');
   });
 });
+
+/**
+ * 回归（apiKey 缺失体验）：静态配置缺失是「重试也不会变好」的错误，必须在进入批次循环
+ * 之前一次性抛出并点名字段，而不是让每个批次各自撞进 chatCompletion 的 lazy 校验、
+ * 刷出 N 条一模一样的失败。
+ */
+describe('TranslateProcessor — LLM 配置 pre-flight', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-preflight-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (llm: I18nToolsConfig['llm'], batchSize = 1): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { ...llm, translation: { batchSize } },
+    } satisfies I18nToolsConfig);
+
+  /** 写出多条待翻条目：足够切成多个批次，用来验证「一条错误而非 N 条」。 */
+  const writeUntranslated = (): string => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    const p = path.join(localeDir, 'untranslated.json');
+    const entries: Translations = {};
+    for (let i = 0; i < 7; i++) entries[`k.${i}`] = { 'zh-CN': `文案${i}`, 'en-US': '' };
+    fs.writeFileSync(p, JSON.stringify(entries, null, 2));
+    return p;
+  };
+
+  it('缺 apiKey → 批次循环未启动，一次性抛错并点名配置字段与环境变量', async () => {
+    const file = writeUntranslated();
+    const before = fs.readFileSync(file, 'utf-8');
+    const batchSpy = vi
+      .spyOn(LLMClient.prototype, 'batchTranslate')
+      .mockResolvedValue([] as Translations[]);
+
+    const run = new TranslateProcessor(makeConfig({ shared: { apiKey: '', model: 'm' } }), false);
+    await expect(run.execute()).rejects.toThrow(/llm\.translation\.apiKey/);
+    await expect(
+      new TranslateProcessor(makeConfig({ shared: { apiKey: '', model: 'm' } }), false).execute(),
+    ).rejects.toThrow(/LLM_API_KEY/);
+
+    // 批次循环压根没启动（7 个条目 × batchSize 1 本会切成 7 批）
+    expect(batchSpy).not.toHaveBeenCalled();
+    // 无半写：待翻文件原样未动
+    expect(fs.readFileSync(file, 'utf-8')).toBe(before);
+  });
+
+  it('baseURL 写成非法值 → 同样在 pre-flight 拦下并点名字段', async () => {
+    writeUntranslated();
+    const batchSpy = vi
+      .spyOn(LLMClient.prototype, 'batchTranslate')
+      .mockResolvedValue([] as Translations[]);
+
+    await expect(
+      new TranslateProcessor(
+        makeConfig({ shared: { apiKey: 'x', model: 'm', baseURL: 'not-a-url' } }),
+        false,
+      ).execute(),
+    ).rejects.toThrow(/llm\.translation\.baseURL/);
+    expect(batchSpy).not.toHaveBeenCalled();
+  });
+
+  it('配置齐备且全部成功 → SUCCESS 收尾正常', async () => {
+    writeUntranslated();
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b) => {
+          const out: Translations = {};
+          for (const key of Object.keys(b)) out[key] = { 'en-US': 'Hello' };
+          return out;
+        }),
+    );
+
+    await expect(
+      new TranslateProcessor(makeConfig({ shared: { apiKey: 'x', model: 'm' } }), false).execute(),
+    ).resolves.toBeUndefined();
+    expect(LoggerUtils.success).toHaveBeenCalledWith(expect.stringContaining('翻译操作完成'));
+  });
+
+  // 回归：部分批次失败仍会正常返回（断点续翻），但收尾不能打 SUCCESS——
+  // 否则 grep SUCCESS 的 CI 把「翻了一半、剩下全挂」判成绿。
+  it('部分批次失败 → 不打 SUCCESS，只打失败汇总', async () => {
+    writeUntranslated();
+    let n = 0;
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b): Translations | undefined => {
+          if (n++ > 0) return undefined;
+          const out: Translations = {};
+          for (const key of Object.keys(b)) out[key] = { 'en-US': 'Hello' };
+          return out;
+        }),
+    );
+
+    await expect(
+      new TranslateProcessor(makeConfig({ shared: { apiKey: 'x', model: 'm' } }), false).execute(),
+    ).resolves.toBeUndefined();
+
+    expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('翻译操作完成'));
+    expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('翻译完成'));
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('翻译未全部完成'));
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('部分失败'));
+  });
+});

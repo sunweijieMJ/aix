@@ -117,14 +117,15 @@ i18n-tools [选项]
 | `--path` | `-p` | 要处理的文件或目录路径（generate / restore / automatic）；非交互模式下必填 | - |
 | `--custom` | `-c` | 操作定制目录 | `false` |
 | `--interactive` | `-i` | 交互模式 | 未指定 mode 且未传 `--ci` 时开启 |
-| `--skip-llm` | - | 跳过 LLM，使用本地 ID 生成 | `false` |
+| `--skip-llm` | - | 不调用 LLM：generate 改用本地 ID 生成；automatic 一并跳过 translate 步骤（translate 模式不受影响） | `false` |
+| `--overwrite` | - | restore：就地改写源文件（默认写副本到 `<root>/restored/`） | `false` |
 | `--help` | `-h` | 显示帮助 | - |
 
 #### CI / Review 选项
 
 | 选项 | 说明 | 适用模式 |
 |------|------|---------|
-| `--dry-run` | 生成 plan 但不修改源码与语言文件（用于 review）；csv-import / prune 下表示仅预览不写回 | `generate` / `csv-import` / `prune` |
+| `--dry-run` | 生成 plan 但不修改源码与语言文件（用于 review）；restore / csv-import / prune 下表示仅预览不写盘 | `generate` / `restore` / `csv-import` / `prune` |
 | `--apply-plan <path \| latest>` | 从指定 plan 回放，跳过 LLM 与 AST 解析；传 `latest` 自动找最近一次 | `generate` |
 | `--keep-plan` | apply 成功后保留 plan 目录（默认会自动清理） | `generate` |
 | `--plan-output-dir <dir>` | 自定义 dry-run 输出根目录（绕开 Windows 长路径等问题） | `generate` |
@@ -253,8 +254,9 @@ npx i18n-tools -m doctor --ci
 
 6. **restore** - 将国际化调用还原为中文
    - 输入：已国际化的源文件 + `zh-CN.json`
-   - 输出：CLI 模式**就地覆盖**原文件（调试用，建议配合 git 使用）；
-     程序化调用默认输出到 `<root>/restored/`（`overwrite: false`）
+   - 输出：默认写副本到 `<root>/restored/`，不动原文件；
+     传 `--overwrite` 才就地覆盖（调试用，建议配合 git 使用），
+     传 `--dry-run` 只预览将还原的调用与将清理的导入
 
 > 💡 中间的 **translate（AI 翻译）可换成人工翻译**：`pick` 后用 `csv-export` 导出 → 人工翻译/审核 → `csv-import` 回流写回 `untranslated.json` → 照常 `merge`。详见下节。
 
@@ -959,9 +961,12 @@ export default defineConfig({
 
 ### Q: restore 模式会覆盖原文件吗？
 
-**CLI 的 `--mode restore` 会就地覆盖原文件**（还原是调试用途，配合 git 可随时找回）。
-程序化调用 `RestoreProcessor.execute(targets, outputDir, overwrite)` 的默认行为相反：
-`overwrite` 默认 `false`，还原结果输出到 `<root>/restored/`，不动原文件。
+**默认不会。** `--mode restore` 把还原结果写到 `<root>/restored/`，原文件保持不动；
+显式传 `--overwrite` 才就地覆盖（还原是调试用途，配合 git 可随时找回）。
+落盘前想先看一眼就用 `--dry-run`：内存里跑完还原，逐文件报告「将还原 N 处调用 /
+将清理哪些 import 与 hook 声明」，零写盘。
+程序化调用 `RestoreProcessor.execute(targets, outputDir, overwrite, { dryRun })`
+的默认值与 CLI 一致（`overwrite: false`、`dryRun: false`）。
 
 另注意：restore 还原的是**全部** `t()`/`$t()` 调用，不区分"本轮 generate 生成"还是
 历史存量——对含存量国际化调用的目录执行 restore，存量调用也会一并还原为中文

@@ -151,6 +151,42 @@ describe('RestoreProcessor 编排层', () => {
     expect(fs.existsSync(path.join(rootDir, 'restored'))).toBe(false);
   });
 
+  // 回归（restore 安全网）：restore 此前是唯一没有 dry-run 的破坏性模式。
+  // dry-run 必须在内存里跑完转换、逐文件报告，且零写盘（连输出目录都不建）。
+  it('dryRun：零写盘（不建 restored/、不动源文件），但报告还原计数', async () => {
+    const file = writeSource('A.vue', SRC);
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute([file], undefined, false, {
+      dryRun: true,
+    });
+
+    // 源文件与输出目录都没被碰过
+    expect(fs.readFileSync(file, 'utf-8')).toBe(SRC);
+    expect(fs.existsSync(path.join(rootDir, 'restored'))).toBe(false);
+
+    // 逐文件预览点名了「将还原几处」与「将清理的声明行」
+    expect(LoggerUtils.info).toHaveBeenCalledWith(
+      expect.stringMatching(/将还原: .*A\.vue（1 处调用，清理 1 行 import\/hook 声明）/),
+    );
+    expect(LoggerUtils.info).toHaveBeenCalledWith(
+      expect.stringContaining("import { t } from '@/locale'"),
+    );
+    // 汇总同样是「将」的口径
+    expect(LoggerUtils.info).toHaveBeenCalledWith(expect.stringContaining('将还原调用点: 1 处'));
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('未写入任何文件'));
+  });
+
+  it('dryRun：无需修改的文件不计入预览计数', async () => {
+    const file = writeSource('Plain.vue', `<template>\n  <div>hello</div>\n</template>\n`);
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute([file], undefined, false, {
+      dryRun: true,
+    });
+
+    expect(LoggerUtils.info).toHaveBeenCalledWith(expect.stringContaining('将还原调用点: 0 处'));
+    expect(fs.existsSync(path.join(rootDir, 'restored'))).toBe(false);
+  });
+
   it('目标传目录 → 扫描目录下的框架文件并还原', async () => {
     writeSource('A.vue', SRC);
     await new RestoreProcessor(buildConfig(rootDir), false).execute([srcDir]);

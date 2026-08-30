@@ -33,6 +33,8 @@ export class IdReuseResolver {
   private readonly idGenerator: IdGenerator;
   /** 已扫描的 t()/$t() 调用次数（不去重，用于覆盖率分子） */
   private existingCallSites: number = 0;
+  /** 本轮新分配的 key 数（registerNewId 次数）：与「本轮转换的调用点数」是两个口径 */
+  private newlyRegisteredIds: number = 0;
 
   constructor(config: ResolvedConfig, isCustom: boolean) {
     this.config = config;
@@ -89,6 +91,11 @@ export class IdReuseResolver {
     return this.existingCallSites;
   }
 
+  /** 本轮新分配（未复用历史 key）的 key 数，供覆盖率总览与「转换处数」并列展示 */
+  getNewlyRegisteredIdCount(): number {
+    return this.newlyRegisteredIds;
+  }
+
   /**
    * 在历史 key 集合中挑选与当前文件目录前缀匹配的那个。
    *
@@ -136,6 +143,7 @@ export class IdReuseResolver {
    * 把本次新生成的 finalId 注册到索引中，使后续相同原文（同批或跨批）能复用。
    */
   registerNewId(message: string, finalId: string): void {
+    this.newlyRegisteredIds++;
     this.existingIds.add(finalId);
     const lookupKey = normalizeKey(message);
     const arr = this.messageToKeysMap.get(lookupKey);

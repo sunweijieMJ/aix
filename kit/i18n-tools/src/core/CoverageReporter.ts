@@ -146,10 +146,10 @@ export class CoverageReporter {
       coverageRate,
     };
     this.report.setCoverage(metric);
-    this.renderCoverageSummary(metric);
+    this.renderCoverageSummary(metric, reuseResolver?.getNewlyRegisteredIdCount());
   }
 
-  private renderCoverageSummary(m: CoverageMetric): void {
+  private renderCoverageSummary(m: CoverageMetric, newKeys?: number): void {
     const pct = (n: number, base: number): string =>
       base === 0 ? '0.0%' : `${((n / base) * 100).toFixed(1)}%`;
     const ratePct = `${(m.coverageRate * 100).toFixed(1)}%`;
@@ -162,9 +162,15 @@ export class CoverageReporter {
     LoggerUtils.info(
       `  已国际化         ${m.alreadyI18n}  (${pct(m.alreadyI18n, m.totalChineseSegments)})`,
     );
+    // 「新生成」曾让人误读为「新增了 N 个 key」：newlyGenerated 是本轮提取并改写的中文片段数，
+    // 重跑同一批文件（key 全部复用、locale 零新增）时它照样是 423。改为按口径直述「命中/转换」。
     LoggerUtils.info(
-      `  本轮新生成       ${m.newlyGenerated}  (${pct(m.newlyGenerated, m.totalChineseSegments)})`,
+      `  本轮命中/转换    ${m.newlyGenerated}  (${pct(m.newlyGenerated, m.totalChineseSegments)})`,
     );
+    if (newKeys !== undefined) {
+      // 两个数并列才看得出「重跑同一批文件」的形态：转换处数不变，新增 key 为 0。
+      LoggerUtils.info(`    └ 其中新增 key ${newKeys}（其余复用已有 key）`);
+    }
     LoggerUtils.info(
       `  跳过/待人工      ${m.skipped}  (${pct(m.skipped, m.totalChineseSegments)})`,
     );

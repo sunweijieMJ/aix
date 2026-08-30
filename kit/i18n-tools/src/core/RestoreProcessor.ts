@@ -13,7 +13,30 @@ interface RestoreOptions {
   sourceDir: string;
   outputDir: string;
   overwrite: boolean;
+  dryRun: boolean;
 }
+
+/** 单文件还原结果；dry-run 用它把「将还原多少」汇总出来，落盘路径只关心 modified。 */
+interface FileRestoreResult {
+  modified: boolean;
+  /** 本文件将被还原的 i18n 调用点数（源码与还原结果的调用点数之差） */
+  restoredCalls: number;
+  /** 本文件将被清理掉的 import / i18n hook 声明行（原样文本，供预览点名） */
+  removedDeclarations: string[];
+}
+
+/**
+ * dry-run 预览里要点名的「工具注入声明」：import 语句，以及从 i18n hook 解构出 t 的声明。
+ * 只用于**预览文案**，不参与还原本身的判定——还原结果始终以 transformer 输出为准。
+ */
+const DECLARATION_LINE_PATTERN =
+  /^\s*(?:import\b|(?:const|let|var)\b[^;]*\buse[A-Za-z]*(?:I18n|Intl|Translation)\s*\()/;
+
+/**
+ * i18n 调用点的粗粒度形态：`t(` / `$t(`（排除 `xxx.t(` 这类成员访问误命中）与
+ * `.formatMessage(`。仅用于 dry-run 计数，宁可粗略也不引入第二套 AST 解析。
+ */
+const I18N_CALL_PATTERN = /(?<![\w$.])\$?t\s*\(|\.formatMessage\s*\(/g;
 
 /**
  * 还原处理器
@@ -33,23 +56,32 @@ export class RestoreProcessor extends BaseProcessor {
     return '还原';
   }
 
+  /**
+   * @param overwrite - true 就地改写源文件；false（默认）写到 outputDir 副本
+   * @param opts.dryRun - 只在内存中完成还原并逐文件报告，不写任何文件（含不建输出目录）
+   */
   async execute(
     targets: string[] = [],
     outputDir?: string,
     overwrite: boolean = false,
+    opts: { dryRun?: boolean } = {},
   ): Promise<void> {
-    return this.executeWithLifecycle(() => this._execute(targets, outputDir, overwrite));
+    return this.executeWithLifecycle(() =>
+      this._execute(targets, outputDir, overwrite, Boolean(opts.dryRun)),
+    );
   }
 
   private async _execute(
     targets: string[] = [],
     outputDir?: string,
     overwrite: boolean = false,
+    dryRun: boolean = false,
   ): Promise<void> {
     const options: RestoreOptions = {
       sourceDir: this.config.root,
       outputDir: outputDir || path.join(this.config.root, 'restored'),
       overwrite,
+      dryRun,
     };
 
     const targetFiles = targets.length > 0 ? await this.resolveTargetFiles(targets) : undefined;
@@ -155,12 +187,15 @@ export class RestoreProcessor extends BaseProcessor {
 
       // 仅非 overwrite 模式才需要输出目录：overwrite 就地改写原文件、根本不读 options.outputDir，
       // 无条件创建会在每次 `--overwrite` 后凭空留下一个空 `restored/`。
-      if (!options.overwrite) {
+      // dry-run 承诺「零写盘」，连输出目录都不能建。
+      if (!options.overwrite && !options.dryRun) {
         ensureDirectoryExists(options.outputDir);
       }
 
       let processedCount = 0;
       let modifiedCount = 0;
+      let restoredCallCount = 0;
+      let removedDeclarationCount = 0;
       const failedFiles: string[] = [];
 
       for (const filePath of filesToProcess) {
@@ -181,9 +216,13 @@ export class RestoreProcessor extends BaseProcessor {
             outputPath = path.join(options.outputDir, relative);
           }
 
-          const wasModified = await this.processFile(filePath, localeMap, options, outputPath);
+          const result = await this.processFile(filePath, localeMap, options, outputPath);
           processedCount++;
-          if (wasModified) modifiedCount++;
+          if (result.modified) {
+            modifiedCount++;
+            restoredCallCount += result.restoredCalls;
+            removedDeclarationCount += result.removedDeclarations.length;
+          }
 
           if (processedCount % 10 === 0) {
             LoggerUtils.info(`📈 进度: ${processedCount}/${filesToProcess.length} 文件已处理`);
@@ -204,12 +243,17 @@ export class RestoreProcessor extends BaseProcessor {
 
       LoggerUtils.success(`\n✅ 处理完成！`);
       LoggerUtils.info(`📊 总计处理: ${processedCount} 个文件`);
-      LoggerUtils.info(`📊 已修改: ${modifiedCount} 个文件`);
+      LoggerUtils.info(`📊 ${options.dryRun ? '将修改' : '已修改'}: ${modifiedCount} 个文件`);
+      if (options.dryRun) {
+        LoggerUtils.info(`📊 将还原调用点: ${restoredCallCount} 处`);
+        LoggerUtils.info(`📊 将清理声明: ${removedDeclarationCount} 行`);
+        LoggerUtils.warn('🔍 dry-run：以上仅为预览，未写入任何文件（也未创建输出目录）');
+      }
       if (failedFiles.length > 0) {
         LoggerUtils.error(`📊 处理失败: ${failedFiles.length} 个文件`);
       }
 
-      if (!options.overwrite && modifiedCount > 0) {
+      if (!options.overwrite && !options.dryRun && modifiedCount > 0) {
         LoggerUtils.info(`📂 输出目录: ${options.outputDir}`);
       }
 
@@ -237,12 +281,45 @@ export class RestoreProcessor extends BaseProcessor {
     return this.langFiles.readLocaleFile(sourceLocale) ?? {};
   }
 
+  /**
+   * 对比源码与还原结果，给出 dry-run 预览用的粗粒度摘要。
+   *
+   * 只做文本层面的对账（调用点计数 + 消失的声明行），不复用 AST：还原本身已由
+   * transformer 完成，这里的数字仅服务于"用户在落盘前想知道会发生什么"。
+   */
+  private static summarizeRestore(
+    source: string,
+    transformed: string,
+  ): Pick<FileRestoreResult, 'restoredCalls' | 'removedDeclarations'> {
+    const countCalls = (text: string): number => (text.match(I18N_CALL_PATTERN) ?? []).length;
+    const restoredCalls = Math.max(0, countCalls(source) - countCalls(transformed));
+
+    // 用多重集合抵消：同一行文本出现多次时，只把「净减少」的那几行算作被清理。
+    const remaining = new Map<string, number>();
+    for (const line of transformed.split('\n')) {
+      const key = line.trim();
+      remaining.set(key, (remaining.get(key) ?? 0) + 1);
+    }
+    const removedDeclarations: string[] = [];
+    for (const line of source.split('\n')) {
+      const key = line.trim();
+      const left = remaining.get(key) ?? 0;
+      if (left > 0) {
+        remaining.set(key, left - 1);
+        continue;
+      }
+      if (DECLARATION_LINE_PATTERN.test(line)) removedDeclarations.push(key);
+    }
+
+    return { restoredCalls, removedDeclarations };
+  }
+
   private async processFile(
     filePath: string,
     localeMap: LocaleMap,
-    _options: RestoreOptions,
+    options: RestoreOptions,
     outputPath?: string,
-  ): Promise<boolean> {
+  ): Promise<FileRestoreResult> {
     const actualOutputPath = outputPath || filePath;
 
     // 不吞错：让异常向上传播到 restoreFiles 的循环处理器，由其计入 failedFiles 并最终
@@ -254,7 +331,24 @@ export class RestoreProcessor extends BaseProcessor {
 
     if (transformedCode === sourceText) {
       LoggerUtils.info(`⚪ 跳过: ${FileUtils.getRelativePath(filePath)} (无需修改)`);
-      return false;
+      return { modified: false, restoredCalls: 0, removedDeclarations: [] };
+    }
+
+    const summary = RestoreProcessor.summarizeRestore(sourceText, transformedCode);
+
+    // dry-run 在落盘前短路：转换已在内存完成，只报告不写盘。
+    if (options.dryRun) {
+      const declSuffix =
+        summary.removedDeclarations.length > 0
+          ? `，清理 ${summary.removedDeclarations.length} 行 import/hook 声明`
+          : '';
+      LoggerUtils.info(
+        `🔍 将还原: ${FileUtils.getRelativePath(filePath)}（${summary.restoredCalls} 处调用${declSuffix}）`,
+      );
+      for (const decl of summary.removedDeclarations) {
+        LoggerUtils.info(`     - ${decl}`);
+      }
+      return { modified: true, ...summary };
     }
 
     ensureDirectoryExists(path.dirname(actualOutputPath));
@@ -273,6 +367,6 @@ export class RestoreProcessor extends BaseProcessor {
     }
 
     LoggerUtils.success(`✅ 还原: ${FileUtils.getRelativePath(filePath)}`);
-    return true;
+    return { modified: true, ...summary };
   }
 }

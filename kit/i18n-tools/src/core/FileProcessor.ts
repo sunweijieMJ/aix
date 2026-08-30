@@ -118,6 +118,13 @@ export abstract class FileProcessor {
   protected cancelled = false;
 
   /**
+   * 本次运行有失败、但不足以中止（如 translate 部分批次失败，其余已落盘、可重跑续做）。
+   * 与 cancelled 同款契约：置位后收尾改打告警而非「✅ …完成」，退出码仍为 0——
+   * 否则 grep SUCCESS 的 CI 会把「翻了一半、剩下全挂」判成绿。
+   */
+  protected partiallyFailed = false;
+
+  /**
    * 模板方法：包装子类逻辑，提供日志和错误处理
    */
   protected async executeWithLifecycle(fn: () => Promise<void> | void): Promise<void> {
@@ -127,6 +134,8 @@ export abstract class FileProcessor {
       await fn();
       if (this.cancelled) {
         LoggerUtils.warn(`⚠️ ${operationName}已取消，未做任何修改`);
+      } else if (this.partiallyFailed) {
+        LoggerUtils.warn(`⚠️ ${operationName}部分失败（详见上方汇总），可重新运行续做`);
       } else {
         this.logOperationComplete(operationName);
       }
