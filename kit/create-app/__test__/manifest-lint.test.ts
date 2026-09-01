@@ -63,6 +63,31 @@ describe('lintManifest - 路径腐化硬失败', () => {
     ).not.toThrow();
   });
 
+  it('声明写了 ./ 前缀也按模板根相对判定（与 composer 的裁剪同一套归一化）', () => {
+    // schema 已经拒了这种写法，这里验的是绕过 schema 直调时两侧口径不劈叉：
+    // 体检说存在、裁剪也确实命中，而不是「体检放行 + 裁剪静默失效」
+    const dir = makeTemplate({ 'src/locale/zh-CN.json': '{}' });
+    expect(() =>
+      lintManifest(dir, manifest({ i18n: { label: 'i18n', dirs: ['./src/locale'] } })),
+    ).not.toThrow();
+  });
+
+  it('大小写与真源不一致时硬失败（大小写不敏感文件系统上 existsSync 会误放行）', () => {
+    // macOS/Windows 上 existsSync('src/Locale') 对 src/locale 返回 true，体检绿灯；
+    // 而 composer 的前缀比对是精确串比对，`src/Locale` 永不命中 —— 裁剪静默失效
+    const dir = makeTemplate({ 'src/locale/zh-CN.json': '{}' });
+    expect(() =>
+      lintManifest(dir, manifest({ i18n: { label: 'i18n', dirs: ['src/Locale'] } })),
+    ).toThrow(/src\/Locale/);
+  });
+
+  it('中间段的大小写失配同样拦住', () => {
+    const dir = makeTemplate({ 'src/locale/zh-CN.json': '{}' });
+    expect(() =>
+      lintManifest(dir, manifest({ i18n: { label: 'i18n', files: ['SRC/locale/zh-CN.json'] } })),
+    ).toThrow(/SRC\/locale/);
+  });
+
   it('exclude 指向不存在的路径不报错（防御性声明是合法用法）', () => {
     const dir = makeTemplate({ 'src/main.ts': '' });
     const warnings = lintManifest(dir, manifest({}, { exclude: ['.env', '.env.local', 'dist'] }));
@@ -149,6 +174,13 @@ describe('lintManifest - git 跟踪警告', () => {
     expect(lintManifest(dir, manifest({ i18n: { label: 'i18n', dirs: ['src/locale'] } }))).toEqual(
       [],
     );
+  });
+
+  it('git 仓库里大小写失配同样是硬失败（ls-files 精确比对不中，再退到逐段精确匹配）', () => {
+    const dir = makeGitTemplate(['src/locale/zh-CN.json'], []);
+    expect(() =>
+      lintManifest(dir, manifest({ i18n: { label: 'i18n', dirs: ['src/Locale'] } })),
+    ).toThrow(/src\/Locale/);
   });
 
   it('模板目录不是 git 仓库（git 源克隆后已删 .git）时跳过检查', () => {

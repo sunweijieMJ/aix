@@ -36,7 +36,7 @@ program
   .option('-f, --features <list>', '特性列表（逗号分隔，取值由模板 config.ts 声明）')
   .option(
     '--template <id|source>',
-    '模板注册表 id（如 admin），或直接的模板源（本地路径 / giget 格式）',
+    '模板注册表 id（如 admin），或直接的模板源（本地路径 / git 地址）',
   )
   .option(
     '-p, --param <key=value>',

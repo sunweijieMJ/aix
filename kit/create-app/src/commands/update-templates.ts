@@ -13,7 +13,7 @@ export async function updateTemplates(): Promise<void> {
       // 本地路径模板不走缓存，无需刷新
       if (isLocalSource(entry.source)) continue;
 
-      // refresh: true 对 git 源 = 删掉缓存目录重新 clone，对 giget 源 = 重新下载
+      // refresh: true 对 git 源 = 删掉缓存目录重新 clone
       const spinner = p.spinner();
       spinner.start(`拉取 ${entry.label} 模板...`);
       try {

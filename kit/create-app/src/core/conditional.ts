@@ -9,7 +9,13 @@ interface Marker {
   expr?: string;
 }
 
-/** 特性 id 的合法形态：单个 id 或其取反，不支持 `&&` / `||` */
+/**
+ * 特性 id 的合法形态：单个 id 或其取反，不支持 `&&` / `||`
+ *
+ * 与 MARKER_PATTERN 一样必须与模板真源自检（`scripts/template/checkTemplate.ts`）同源：
+ * 自检那侧一度只取首 token 校验，`// #if i18n 多余文字` 被截成 `i18n` 放行，
+ * 真源绿灯而 CLI 在这里硬报 E_TEMPLATE_SYNTAX——所有组合都生成不出来。
+ */
 const EXPR_PATTERN = /^!?[A-Za-z_][A-Za-z0-9_-]*$/;
 
 /**
@@ -104,12 +110,12 @@ export function applyConditionalBlocks(
   /**
    * 模板声明的全部特性 id（即 `manifest.features` 的 key）
    *
-   * 传入时对 `#if` 的 id 做**取值域**校验：未声明的 id 直接抛 E_TEMPLATE_SYNTAX。
+   * 对 `#if` 的 id 做**取值域**校验：未声明的 id 直接抛 E_TEMPLATE_SYNTAX。
    * 不校验的话，一个拼错的 id（`#if i18nn`）会被当成「未选中」把整块静默删掉，
    * 产物少一段代码而 CLI 全程零输出——这是本协议里唯一「拼错不报错」的口子。
-   * composer 一律传；缺省仅为兼容不持有 manifest 的外部直调（本包对外导出该函数）。
+   * 所以是必选参数：留个缺省口子等于把这道校验做成可绕过的。
    */
-  declared?: Set<string>,
+  declared: Set<string>,
 ): string {
   // 无标记的文件走快路径，原样返回（含行尾风格）
   if (!HAS_MARKER_PATTERN.test(content)) return content;
@@ -130,7 +136,7 @@ export function applyConditionalBlocks(
         throw syntaxError(filePath, lineNo, `不支持的条件表达式 "${expr}"`);
       }
       const featureId = expr.startsWith('!') ? expr.slice(1) : expr;
-      if (declared && !declared.has(featureId)) {
+      if (!declared.has(featureId)) {
         throw unknownFeatureError(filePath, lineNo, featureId, declared);
       }
       block = { keepIf: evaluate(expr, selected), inElse: false, startLine: lineNo };
@@ -165,7 +171,11 @@ export function applyConditionalBlocks(
  * 折叠裁剪留下的连续空行（块被删掉后，其两侧的空行会贴在一起）
  *
  * 规则与 prettier 一致，且只作用于确实含标记的文件——无标记的文件在上游已原样返回。
+ *
+ * 匹配 `\r?\n` 而非裸 `\n`：CRLF 文件里每行尾都带 `\r`，连续空行的实际形态是
+ * `\r\n\r\n\r\n`，只认 `\n{3,}` 的写法一次也匹配不到，折叠对 CRLF 文件整个失效。
+ * 回填用块首那一段换行序列复制两份（而不是写死 `\n\n`），以保住原文件的行尾风格。
  */
 function collapseBlankRuns(text: string): string {
-  return text.replace(/\n{3,}/g, '\n\n');
+  return text.replace(/(\r?\n)(?:\r?\n){2,}/g, '$1$1');
 }

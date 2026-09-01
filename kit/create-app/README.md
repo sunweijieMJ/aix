@@ -56,17 +56,21 @@ pnpm dlx @kit/create-app my-app   # 项目名走参数，其余交互
 `.` / `..` 路径段、路径分隔符与控制字符）。产物 `package.json` 的 `name` 由它派生成合法包名
 （`MyApp` → `myapp`），其余文件里的 `{{project-name}}` 仍是你输入的原样。
 
-`--template` 接受四种形态：
+`--template` 接受三种形态（注册表 id 最终也解析成后两种之一）：
 
 | 形态      | 例子                                                                         | 是否走缓存                |
 | --------- | ---------------------------------------------------------------------------- | ------------------------- |
 | 注册表 id | `admin`                                                                      | 按其 source 决定          |
 | git 源    | `git+ssh://git@host/owner/repo.git#master`、`git@host:owner/repo.git#master` | ✅ `~/.cache/create-app/` |
-| giget 源  | `github:org/repo/path`                                                       | ✅ `~/.cache/giget/`      |
 | 本地路径  | `./tpl`、`../tpl`、`~/path/to/tpl`、`file:./tpl`                            | ❌ 每次直读（模板开发用） |
 
-拼错的注册表 id（纯 kebab 短词，如 `amin`）会直接报 `E_INVALID_OPTION` 并列出可用 id，
-不会被误当成模板源拿去联网、报出误导的网络错误。
+git 源用 `#ref` 指定分支或 tag，省略则用远端默认分支；`git+ssh` 之外，`git+file://`
+与 `git+http(s)://` 也认（前者主要给单测用）。**没有别的形态**：`github:org/repo` 这类
+托管平台简写不在协议内（模板真源在内网 GitLab，只开 ssh，tarball API 拿不到），
+传了会直接报 `E_INVALID_OPTION`「不支持的模板源格式」并列出上面这几种写法。
+
+拼错的注册表 id（纯 kebab 短词，如 `amin`）报的是另一句 `E_INVALID_OPTION`：
+它会列出可用 id，而不是让你去纠结源地址的写法。
 
 缓存三态：默认复用 → `--refresh` 删缓存重取 → `--offline` 只读缓存。`--refresh` 与 `--offline`
 同时传会直接报错（一个要求联网、一个禁止联网，择一必然违背另一半意图）。
@@ -291,7 +295,7 @@ pnpm verify-combos --install   # 追加 install → type-check → build
 为什么「单独关」而不是「单独开」：条件块的错误几乎都在特性**关闭**时才显形——残留标记、
 悬空 import、被裁的依赖仍被引用。全开那份由 `full` 覆盖，全关那份兜住「所有裁剪同时发生」。
 
-非本地路径源（git / giget）会在开跑前**统一强制刷一次缓存**：默认策略是复用本地克隆，
+非本地路径源（git 源）会在开跑前**统一强制刷一次缓存**：默认策略是复用本地克隆，
 不刷就可能对着旧克隆验出假绿灯（实测踩到过——模板刚加的特性验不到，报 `E_UNKNOWN_FEATURE`）。
 
 `verify-combos` 是模板改动的主要护栏：它以子进程调用真实 CLI，绿灯等价于用户实际跑出来的结果。

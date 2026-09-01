@@ -177,6 +177,9 @@ describe('override add - 模块参数解析', () => {
       const r = runAdd(['sysu', '-m', ',,', '-y'], cwd);
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('没有解析出任何模块');
+      // 走统一错误出口：带错误码，且可用模块清单落在 suggestion 里
+      expect(r.output).toContain('E_INVALID_OPTION');
+      expect(r.output).toContain('可用模块:');
     },
     TIMEOUT,
   );
@@ -188,6 +191,10 @@ describe('override add - 模块参数解析', () => {
       const r = runAdd(['sysu', '-m', 'router,nope', '-y'], cwd);
       expect(r.status).not.toBe(0);
       expect(r.output).toContain('未知模块: nope');
+      expect(r.output).toContain('E_INVALID_OPTION');
+      // 清单不能因为改走 suggestion 就丢信息量
+      expect(r.output).toContain('可用模块:');
+      expect(r.output).toContain('locale');
     },
     TIMEOUT,
   );
@@ -308,6 +315,7 @@ describe('override add - 生成结果', () => {
       const cwd = makeProject();
       const r = runAdd(['sysu', '-m', 'router', '-y'], path.join(cwd, 'nested'));
       expect(r.status).not.toBe(0);
+      expect(r.output).toContain('E_NOT_PROJECT_ROOT');
       expect(r.output).toContain('未检测到 package.json');
     },
     TIMEOUT,

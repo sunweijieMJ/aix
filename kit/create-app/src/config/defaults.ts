@@ -11,7 +11,7 @@ export interface TemplateRegistryEntry {
   hint?: string;
   /** 仅用于展示与分组，真实 platform 以模板 config.ts 为准 */
   platform: Platform;
-  /** git 源、giget 源或本地路径 */
+  /** git 源（`git+ssh://…` / scp 简写）或本地路径 */
   source: string;
 }
 

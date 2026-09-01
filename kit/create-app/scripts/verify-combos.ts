@@ -53,7 +53,7 @@ const DEFAULT_TEMPLATE_ID = 'admin';
  * 一律推导，不写死任何模板的名字（写死等于「验别的模板时这项检测静默失效」）：
  * 1. `--real-name` 显式指定
  * 2. 本地目录源：读它的 package.json
- * 3. 其余形态（git / giget）：取源地址最后一段并剥掉 `.git`——两个模板的包名都等于仓库名，
+ * 3. git 源：取源地址最后一段并剥掉 `.git`——两个模板的包名都等于仓库名，
  *    这条推导对它们成立；不成立时会退化成「检测不到残留」，所以第 4 步要说破
  * 4. 都拿不到：返回 undefined，调用方跳过该项检测并打印提醒
  */
@@ -182,10 +182,10 @@ const isText = (buf: Buffer): boolean => !buf.includes(0);
 /**
  * 条件标记的残留检测
  *
- * 比 conditional.ts 的 parseMarker 更宽：parseMarker 只认 `// #if `（严格一个空格），
- * 而 `//#if x`、`//  #endif` 这类形似标记它不认 → 原样留在产物里。检测侧必须覆盖
- * conditional.ts 的快路径判定 HAS_MARKER_PATTERN（`/#(if|else|endif)\b/`）能触发、
- * parseMarker 又认不出的整个区间，否则少一个空格就静默漏检。
+ * 比 conditional.ts 的 parseMarker 更宽：`##if x` 这类缺了分隔空白的形似标记
+ * （parseMarker 的井号风格要求 `#` 后必须跟空白）它不认 → 原样留在产物里。检测侧必须
+ * 覆盖 conditional.ts 的快路径判定 HAS_MARKER_PATTERN（`/#(if|else|endif)\b/`）能触发、
+ * parseMarker 又认不出的整个区间，否则前缀写歪一点就静默漏检。
  *
  * 三种前缀风格都要覆盖：`//`、`<!--`、以及 `#` 注释系的 `# #if`。注意第三种写成 `#\s*#`
  * 而不是 `#+`，markdown 的 `## #if …` 这类标题才不会被误判成残留。

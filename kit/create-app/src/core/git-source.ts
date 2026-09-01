@@ -5,9 +5,8 @@ import path from 'node:path';
 /**
  * git 模板源的识别、归一化与缓存路径推导
  *
- * create-app 直连模板真源仓库（不再维护任何包内快照），因此需要一条自己的
- * git clone 通路：giget 的 `github:` / `gitlab:` 走的是 tarball API，
- * 内网 GitLab 常常只开放 ssh，拿不到 tarball。
+ * create-app 直连模板真源仓库（不再维护任何包内快照），而模板真源都在内网 GitLab、
+ * 常常只开放 ssh，托管平台那套 tarball 下载 API 根本拿不到——所以这里自己 clone。
  */
 
 /** 解析后的 git 源 */
@@ -29,10 +28,10 @@ const GIT_SSH_URL = /^git\+(ssh|file|https?|git):\/\/[^\s#]+$/;
 const GIT_SCP = /^([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+):(.+)$/;
 
 /**
- * 判断是否为本模块处理的 git 源
+ * 判断是否为 git 源
  *
- * 只认 `git+ssh://` 与 scp 简写两种；`github:` / `gitlab:` / `git:` 仍归 giget，
- * 避免抢走既有行为。
+ * 只认 `git+<scheme>://` 与 scp 简写两种写法；`github:org/repo` 这类托管平台简写
+ * 不在协议内（拿不到内网仓库），会在 resolver.fetch 里报「不支持的模板源格式」。
  */
 export function isGitSource(source: string): boolean {
   const [body] = splitRef(source);

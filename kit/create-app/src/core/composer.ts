@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { FileList, ProjectConfig, TemplateConfig } from '../types';
 import { CreateAppError } from '../utils/errors';
 import { applyConditionalBlocks } from './conditional';
+import { normalizeManifestPath } from './manifest-path';
 import { patchPackageJson } from './pkg-patcher';
 
 /**
@@ -148,11 +149,12 @@ export class Composer {
     const declared = new Set(Object.keys(manifest.features));
 
     // 确定要排除的路径集合（相对于 templateDir）。
-    // 统一剥尾部 `/`：作者把目录写成 `src/locale/` 时，前缀比对会拼出 `//` 而静默失效——
-    // exclude 与特性 dirs/files 必须同一套归一化，不能只归一其中一处
+    // 归一到与产物 relPath 同形态（见 normalizeManifestPath）：作者把目录写成 `src/locale/`
+    // 或 `./src/locale` 时，纯前缀比对都会静默失效——exclude 与特性 dirs/files 必须
+    // 同一套归一化，且要与 manifest-lint 的存在性判定用同一份，两边口径不能劈叉
     const excludedPaths = new Set<string>();
     const addExcluded = (p: string): void => {
-      excludedPaths.add(p.replace(/\/+$/, ''));
+      excludedPaths.add(normalizeManifestPath(p));
     };
     // 模板级排除：真源仓库工作区里的构建产物 / 生成文件 / 锁文件，与特性无关
     manifest.exclude?.forEach(addExcluded);
@@ -178,9 +180,8 @@ export class Composer {
     // （params 与 variables 的 key 冲突已被 schema 拒绝，这里的顺序只是防御）
     const variables: Record<string, string> = {
       ...manifest.variables,
-      // `?? {}`：ProjectConfig 是公共导出，未走类型检查的外部调用方可能不带 params
       ...Object.fromEntries(
-        Object.entries(config.params ?? {}).map(([key, value]) => [`{{${key}}}`, value]),
+        Object.entries(config.params).map(([key, value]) => [`{{${key}}}`, value]),
       ),
       '{{project-name}}': config.name,
     };

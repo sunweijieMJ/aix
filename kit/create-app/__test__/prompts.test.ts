@@ -112,8 +112,13 @@ describe('parseParamArgs', () => {
     expect(parseParamArgs(['title=  Vue Admin  '])).toEqual({ title: 'Vue Admin' });
   });
 
+  it('key 两端空白同样被 trim（尾随空格在终端里肉眼看不出来）', () => {
+    expect(parseParamArgs(['title =x'])).toEqual({ title: 'x' });
+    expect(parseParamArgs([' title=x'])).toEqual({ title: 'x' });
+  });
+
   it('缺 = 或空 key / 空白 value 抛 E_INVALID_PARAM', () => {
-    for (const bad of ['novalue', '=x', 'key=', 'key=   ']) {
+    for (const bad of ['novalue', '=x', '  =x', 'key=', 'key=   ']) {
       expect(() => parseParamArgs([bad])).toThrowError(
         expect.objectContaining({ code: 'E_INVALID_PARAM' }) as unknown as Error,
       );

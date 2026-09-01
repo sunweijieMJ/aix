@@ -492,3 +492,38 @@ describe('Composer 集成 - 协议 v0.2 最小模板（template-mini）', () => 
     });
   });
 });
+
+/**
+ * 归一化是绕过 schema 直调 compose 时的纵深防御
+ *
+ * schema 已经拒了 `./` / `../` / `\` / 绝对路径（见 schemas.test.ts），但 Composer 是本包的
+ * 公共导出，外部调用方可以自己拼 manifest。历史上 addExcluded 只剥尾斜杠、isExcluded 是纯
+ * 字符串前缀比对，`./src/locale` 对 relPath `src/locale/...` 恒不命中 —— 裁剪静默失效、
+ * CLI 全程零输出，而 manifest-lint 走 path.join 判存在（会把 `./` 归一掉）还会放行。
+ */
+describe('Composer - 排除路径的形态归一', () => {
+  const composer = new Composer();
+
+  /** 用给定的 dirs 写法裁剪 src/locale，返回产物里是否还有 locale 文件 */
+  async function localeKept(dirs: string[]): Promise<boolean> {
+    const patched: TemplateConfig = {
+      ...manifest,
+      features: { ...manifest.features, i18n: { label: '国际化', dirs } },
+    };
+    const files = await composer.compose(FIXTURE_DIR, patched, makeConfig([]));
+    return files.some((f) => f.path.startsWith('src/locale/'));
+  }
+
+  it.each([['src/locale'], ['src/locale/'], ['./src/locale'], ['src/./locale'], ['src\\locale']])(
+    'dirs 写成 %j 时同样裁掉 src/locale',
+    async (dir) => {
+      expect(await localeKept([dir])).toBe(false);
+    },
+  );
+
+  it('exclude 的写法同样归一（与 features.dirs 必须同一套）', async () => {
+    const patched: TemplateConfig = { ...manifest, exclude: ['./src/plugins/'] };
+    const files = await composer.compose(FIXTURE_DIR, patched, makeConfig(['i18n', 'override']));
+    expect(files.some((f) => f.path.startsWith('src/plugins/'))).toBe(false);
+  });
+});

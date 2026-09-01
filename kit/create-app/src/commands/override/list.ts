@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import pc from 'picocolors';
-import { isProjectRoot } from '../../utils/detector';
+import { assertProjectRoot } from '../../utils/detector';
 import { handleError } from '../../utils/logger';
 
 export interface OverrideListOptions {
@@ -20,10 +20,7 @@ export async function overrideList(opts: OverrideListOptions) {
 async function runOverrideList(opts: OverrideListOptions) {
   const cwd = process.cwd();
 
-  if (!isProjectRoot(cwd)) {
-    console.error(pc.red('❌ 未检测到 package.json，请在项目根目录执行'));
-    process.exit(1);
-  }
+  assertProjectRoot(cwd);
 
   const outputDir = path.resolve(cwd, opts.output);
 

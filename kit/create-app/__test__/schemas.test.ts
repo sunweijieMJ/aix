@@ -154,6 +154,66 @@ describe('TemplateConfigSchema strict', () => {
     expect(r.error!.message).toContain('file');
   });
 
+  /**
+   * 路径形态是「写了等于没写」的重灾区：composer 的裁剪是纯字符串前缀比对，
+   * `./src/locale` 对 relPath `src/locale/...` 恒不命中，而体检那侧历史上走 path.join
+   * （会把 `./` 归一掉）判存在，于是放行 —— 作者拿不到任何信号，产物却少了裁剪
+   */
+  describe('清单路径形态', () => {
+    const bad = [
+      './src/locale', // 前缀 ./
+      '../outside', // 逃出模板根
+      'src/./locale', // 中段 .
+      'src/../etc', // 中段 ..
+      'src/locale/..', // 尾段 ..
+      '/etc/passwd', // 绝对路径
+      'src\\locale', // 反斜杠分隔
+      '.', // 模板根自身
+      '', // 空串
+    ];
+
+    it.each(bad)('features.dirs 拒绝 %j', (p) => {
+      const r = TemplateConfigSchema.safeParse({
+        ...base,
+        features: { i18n: { label: '国际化', dirs: [p] } },
+      });
+      expect(r.success).toBe(false);
+      expect(r.error!.message).toContain('src/locale');
+    });
+
+    it.each(bad)('features.files 拒绝 %j', (p) => {
+      const r = TemplateConfigSchema.safeParse({
+        ...base,
+        features: { i18n: { label: '国际化', files: [p] } },
+      });
+      expect(r.success).toBe(false);
+    });
+
+    it.each(bad)('exclude 拒绝 %j', (p) => {
+      expect(TemplateConfigSchema.safeParse({ ...base, exclude: [p] }).success).toBe(false);
+    });
+
+    it.each(bad)('substitutions[].files 拒绝 %j（口径与 dirs/files 统一）', (p) => {
+      const r = TemplateConfigSchema.safeParse({
+        ...base,
+        substitutions: [{ from: 'a', to: 'b', files: [p] }],
+      });
+      expect(r.success).toBe(false);
+    });
+
+    it('合法形态照旧通过（含点文件、尾斜杠、点号扩展名）', () => {
+      const r = TemplateConfigSchema.safeParse({
+        ...base,
+        exclude: ['.env', '.husky/_', 'dist', 'src/assets/iconfont/demo.css'],
+        substitutions: [{ from: 'a', to: 'b', files: ['package.json'] }],
+        features: {
+          i18n: { label: '国际化', dirs: ['src/locale', 'public/locale/'], files: ['.mcp.json'] },
+        },
+      });
+      expect(r.success, r.error?.message).toBe(true);
+    });
+  });
+
   it('合法清单不受影响', () => {
     expect(
       TemplateConfigSchema.safeParse({
@@ -184,6 +244,25 @@ describe('readConfig 对未知键的报错', () => {
     expect(err).not.toBeNull();
     expect(err!.code).toBe('E_INVALID_TEMPLATE_CONFIG');
     expect(err!.message).toContain('excludes');
+  });
+
+  it('只有具名导出（没写 export default）时抛 E_INVALID_TEMPLATE_CONFIG 并点名 default', async () => {
+    // 协议规定清单只能 export default。这里不回退到裸模块对象：那样整个模块命名空间
+    // 会进 Zod，报一串结构错，而真正的病因（少写 default）一个字都不会出现
+    const dir = makeTemplateDir(
+      `export const config = {
+         id: 'no-default', platform: 'web', compatibleCliVersions: '*',
+         variables: {}, features: {},
+       };\n`,
+    );
+    const err = await resolver
+      .readConfig(dir)
+      .then(() => null)
+      .catch((e: unknown) => e as Error & { code?: string; suggestion?: string });
+    expect(err).not.toBeNull();
+    expect(err!.code).toBe('E_INVALID_TEMPLATE_CONFIG');
+    expect(err!.message).toContain('default');
+    expect(err!.suggestion).toContain('export default');
   });
 
   it('仓库自带的真实模板清单（fixtures）在 strict 下仍然通过', async () => {

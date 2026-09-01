@@ -40,7 +40,7 @@ export interface CollectBasicOptions {
   /** 命令行预置值（跳过对应问答） */
   name?: string;
   description?: string;
-  /** 注册表 id 或直接的模板源（本地路径 / giget 格式） */
+  /** 注册表 id 或直接的模板源（本地路径 / git 地址） */
   template?: string;
   force?: boolean;
   /** dry-run 不写盘，跳过「目录已存在是否覆盖」这一问 */
@@ -65,16 +65,22 @@ export function resolveTemplateArg(
     return { templateId: entry.id, templateLabel: entry.label, templateSource: entry.source };
   }
   // 长得像注册表 id（纯 kebab 短词，不含 / : 等源地址特征）却没命中，几乎必是拼错。
-  // 不拦的话会一路落到 giget 分支，报出「拉取模板失败……请检查网络连接」——
-  // 用户被支去查网络，而真正的问题是拼写
-  if (!isLocalSource(template) && !isGitSource(template) && /^[a-z][a-z0-9-]*$/.test(template)) {
+  // 不拦的话会当成裸模板源透传给 resolver，报出「不支持的模板源格式」——
+  // 用户会以为该换种源写法，而真正的问题是 id 拼错了，正确的那个就在注册表里摆着。
+  // 「像 id」的判定大小写不敏感：`--template Admin` 同样是写错了 id 而不是某个模板源，
+  // 只认小写会让它漏过这道拦截、去报一个彻底误导的网络错误。注意放宽的只有**提示层**，
+  // findTemplateById 仍是严格匹配——注册表 id 本就全小写，解析语义不能因此变松
+  if (!isLocalSource(template) && !isGitSource(template) && /^[a-z][a-z0-9-]*$/i.test(template)) {
     const ids = loadTemplateRegistry().map((e) => e.id);
+    const lowered = template.toLowerCase();
     throw new CreateAppError(
       'E_INVALID_OPTION',
       `未找到注册表 id "${template}"`,
-      ids.length > 0
-        ? `可用 id: ${ids.join(', ')}；如果传的是模板源，请用本地路径（./x、/abs/x）或 git 地址`
-        : '注册表为空；如果传的是模板源，请用本地路径（./x、/abs/x）或 git 地址',
+      ids.includes(lowered)
+        ? `注册表 id 区分大小写且一律小写，请改用 "${lowered}"`
+        : ids.length > 0
+          ? `可用 id: ${ids.join(', ')}；如果传的是模板源，请用本地路径（./x、/abs/x）或 git 地址`
+          : '注册表为空；如果传的是模板源，请用本地路径（./x、/abs/x）或 git 地址',
     );
   }
   return { templateLabel: template, templateSource: template };
@@ -217,8 +223,11 @@ export function parseParamArgs(raw: string[] | undefined): Record<string, string
     const i = item.indexOf('=');
     // key 或 value 空白都拒绝：`--param =x` / `--param key=` / `--param 'key=   '`
     // 多半是 shell 变量没赋值，放行只会把空串静默注进产物
+    // key 与 value 同样要 trim：`--param 'title =x'` 不 trim 会报「不存在参数: title 」，
+    // 那个尾随空格在终端里肉眼根本看不出来，用户只会觉得 CLI 在说胡话
+    const key = i < 0 ? '' : item.slice(0, i).trim();
     const value = i < 0 ? '' : item.slice(i + 1).trim();
-    if (i <= 0 || value.length === 0) {
+    if (key.length === 0 || value.length === 0) {
       throw new CreateAppError(
         'E_INVALID_PARAM',
         `--param 格式不合法: "${item}"`,
@@ -231,7 +240,7 @@ export function parseParamArgs(raw: string[] | undefined): Record<string, string
     if (valueError) {
       throw new CreateAppError('E_INVALID_PARAM', `--param 取值不合法: "${item}"`, valueError);
     }
-    result[item.slice(0, i)] = value;
+    result[key] = value;
   }
   return result;
 }
@@ -345,7 +354,7 @@ export interface SummaryInput {
   templateLabel: string;
   platform: TemplateConfig['platform'];
   features: string[];
-  /** 模板参数的最终取值（可选：老调用方 / 无参数模板不传） */
+  /** 模板参数的最终取值；无参数的模板不传（summary 里就不出现「参数」行） */
   params?: Record<string, string>;
   manifest: TemplateConfig;
 }

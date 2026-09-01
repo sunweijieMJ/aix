@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import pc from 'picocolors';
-import { isProjectRoot } from '../../utils/detector';
+import { assertProjectRoot } from '../../utils/detector';
 import { findMissingPrerequisites, generateFiles } from '../../override/generator';
 import { checkProjectConflict, resolveConflicts } from '../../utils/conflict';
 import { printFileTree, writeFiles } from '../../utils/fs';
@@ -75,10 +75,7 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
   const cwd = process.cwd();
 
   // 检查是否在项目根目录
-  if (!isProjectRoot(cwd)) {
-    console.error(pc.red('❌ 未检测到 package.json，请在项目根目录执行'));
-    process.exit(1);
-  }
+  assertProjectRoot(cwd);
 
   // 任何问答之前先做非 TTY 体检：这里能列出缺失 flag 清单，比落进问答再由
   // 取消分支兜底退出的报错可读得多
@@ -112,17 +109,20 @@ async function runOverrideAdd(project: string | undefined, opts: OverrideAddOpti
           .filter((m: string) => m.length > 0),
       ),
     ] as ModuleId[];
+    // `-m` 的取值不合法一律走 E_INVALID_OPTION（与 `--pm` / `--template` 拼错同码），
+    // 由 handleError 统一打 [错误码] + suggestion，可用模块清单放 suggestion 里
+    const availableHint = `可用模块: ${ALL_MODULES.join(', ')}`;
     if (modules.length === 0) {
-      console.error(pc.red(`❌ -m 没有解析出任何模块: "${opts.modules}"`));
-      console.error(pc.dim(`   可用模块: ${ALL_MODULES.join(', ')}`));
-      process.exit(1);
+      throw new CreateAppError(
+        'E_INVALID_OPTION',
+        `-m 没有解析出任何模块: "${opts.modules}"`,
+        availableHint,
+      );
     }
     // 校验模块名
     for (const m of modules) {
       if (!ALL_MODULES.includes(m)) {
-        console.error(pc.red(`❌ 未知模块: ${m}`));
-        console.error(pc.dim(`   可用模块: ${ALL_MODULES.join(', ')}`));
-        process.exit(1);
+        throw new CreateAppError('E_INVALID_OPTION', `未知模块: ${m}`, availableHint);
       }
     }
     // 确保必选模块

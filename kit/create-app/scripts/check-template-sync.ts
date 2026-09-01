@@ -59,7 +59,7 @@ function read(file: string): string | null {
   }
 }
 
-/** 从模板源推导人类可读名：git / giget 源取仓库段并剥 `.git`，本地路径取目录名 */
+/** 从模板源推导人类可读名：git 源取仓库段并剥 `.git`，本地路径取目录名 */
 function templateName(source: string): string {
   const tail = source.replace(/#.*$/, '').replace(/\/+$/, '').split(/[/:]/).pop();
   return tail?.replace(/\.git$/, '') ?? source;

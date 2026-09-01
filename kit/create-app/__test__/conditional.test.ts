@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { applyConditionalBlocks } from '../src/core/conditional';
 
+/**
+ * 本文件通用的「模板已声明特性」集合
+ *
+ * declared 是必选参数（取值域校验不允许被绕过），但多数用例关心的是裁剪本身，
+ * 不该每条都重复声明一遍——除取值域专项外，一律用这个全集。
+ */
+const DECLARED = new Set(['i18n', 'qiankun', 'x']);
+
 /** 便捷包装：默认文件名，特性数组转 Set */
 function apply(content: string, features: string[] = []): string {
-  return applyConditionalBlocks(content, 'src/main.ts', new Set(features));
+  return applyConditionalBlocks(content, 'src/main.ts', new Set(features), DECLARED);
 }
 
 describe('applyConditionalBlocks - 保留与删除', () => {
@@ -195,7 +203,7 @@ describe('applyConditionalBlocks - 语法错误', () => {
   it('# 风格未闭合 #if 抛 E_TEMPLATE_SYNTAX 且带文件与行号', () => {
     const src = ['VITE_A=1', '# #if qiankun', 'VITE_B=2'].join('\n');
     try {
-      applyConditionalBlocks(src, '.env.development', new Set(['qiankun']));
+      applyConditionalBlocks(src, '.env.development', new Set(['qiankun']), DECLARED);
       expect.unreachable('应当抛出未闭合错误');
     } catch (err) {
       expect((err as { code: string }).code).toBe('E_TEMPLATE_SYNTAX');
@@ -239,11 +247,6 @@ describe('applyConditionalBlocks - 语法错误', () => {
 });
 
 describe('applyConditionalBlocks - 边界', () => {
-  it('未传 declared 时，未知特性 id 视为未选中（兼容不持有 manifest 的外部直调）', () => {
-    const src = ['// #if unknownFeature', 'x', '// #endif', 'y'].join('\n');
-    expect(apply(src, ['i18n'])).toBe('y');
-  });
-
   it('形似标记的普通代码不被误判', () => {
     const src = ['const s = "// #if i18n";', 'run(); // #if 注释后缀不算标记'].join('\n');
     expect(apply(src, [])).toBe(src);
@@ -274,6 +277,14 @@ describe('applyConditionalBlocks - 裁剪后的空行折叠', () => {
   it('单个空行不被吞掉', () => {
     const src = ['a', '', 'b', '// #if x', 'c', '// #endif'].join('\n');
     expect(apply(src, [])).toBe(['a', '', 'b'].join('\n'));
+  });
+
+  it('CRLF 文件裁剪后同样折叠，且行尾风格保持 \\r\\n', () => {
+    // 只匹配 \n{3,} 的写法在 \r\n\r\n\r\n 上一次也匹配不到，CRLF 文件的折叠会整个失效
+    const src = ['before', '', '// #if i18n', 'setupLocale();', '// #endif', '', 'after'].join(
+      '\r\n',
+    );
+    expect(apply(src, [])).toBe(['before', '', 'after'].join('\r\n'));
   });
 
   it('无标记的文件即便有连续空行也原样返回（走快路径）', () => {

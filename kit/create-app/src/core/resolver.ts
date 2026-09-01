@@ -2,7 +2,6 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { downloadTemplate } from 'giget';
 import { createJiti } from 'jiti';
 import semver from 'semver';
 import type { TemplateConfig } from '../types';
@@ -55,6 +54,22 @@ export function resolveCachePolicy(options?: FetchOptions): CachePolicy {
   return 'reuse';
 }
 
+/**
+ * 既不是本地路径、也不是 git 源时的统一报错
+ *
+ * 模板源只有这两类通路（注册表条目最终也解析成其中之一）。写错的源必须当场说清
+ * 支持哪几种形态：静默按某个通路去试，只会换来一句与真实病因无关的网络/路径错误。
+ */
+function unsupportedSourceError(source: string): CreateAppError {
+  return new CreateAppError(
+    'E_INVALID_OPTION',
+    `不支持的模板源格式: ${source}`,
+    '支持的形态有四种：注册表 id（如 admin）；本地路径（/abs/tpl、./tpl、~/tpl、file:./tpl）；' +
+      'git+ssh://git@host/owner/repo.git；git@host:owner/repo.git（scp 简写）。' +
+      '后两种可用 `#ref` 指定分支或 tag（如 …repo.git#master）',
+  );
+}
+
 /** `--offline` 且缓存缺失时的统一报错 */
 function offlineMissError(source: string, where: string, cause?: unknown): CreateAppError {
   return new CreateAppError(
@@ -69,7 +84,7 @@ function offlineMissError(source: string, where: string, cause?: unknown): Creat
  * 判断模板源是否为本地路径
  *
  * 命中条件：绝对路径 `/`、相对路径 `./` `../`、home 展开 `~/`、`file:` 前缀。
- * 其余（`github:` `git:` `gitlab:` 等）一律交给 giget。
+ * 其余形态交给 isGitSource 判定，两边都不认的一律报错（见 fetch）。
  */
 export function isLocalSource(source: string): boolean {
   return (
@@ -109,12 +124,8 @@ const CACHE_HINT_MIN_MINUTES = 5;
  * 提示的价值只在缓存**旧**的时候，说「复用缓存（刚刚拉取）」纯属误导。
  */
 export function describeCacheAge(dir: string): string | undefined {
-  // giget 的缓存根遵循 XDG_CACHE_HOME（缺省 ~/.cache），这里必须同一套推导：
-  // 写死 ~/.cache 会让设了该变量的用户永远看不到「复用缓存」提示
-  const xdg = process.env['XDG_CACHE_HOME'];
-  const cacheBase = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), '.cache');
-  const roots = [gitCacheRoot(), path.join(cacheBase, 'giget')];
-  if (!roots.some((root) => dir === root || dir.startsWith(root + path.sep))) return undefined;
+  const root = gitCacheRoot();
+  if (dir !== root && !dir.startsWith(root + path.sep)) return undefined;
 
   let mtimeMs: number;
   try {
@@ -130,16 +141,55 @@ export function describeCacheAge(dir: string): string | undefined {
   return `${Math.floor(minutes / (60 * 24))} 天前拉取`;
 }
 
+/**
+ * 认定 `.tmp-*` 已成孤儿的年龄：比这更新的一律不碰
+ *
+ * 同一模板可能正被另一个进程克隆，它的 tmp 就在旁边长着——按名字前缀无脑删会把人家
+ * 删到一半。真正的孤儿只可能来自已经死掉的进程，等一小时再收拾没有任何代价。
+ */
+const TMP_ORPHAN_MIN_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * 清理本仓库上次被中断留下的 `.tmp-*` 孤儿目录
+ *
+ * 只扫 `dir` 自身的前缀，不遍历整个缓存根：缓存根下还躺着别的模板，
+ * 顺手「打扫全屋」既慢又容易误伤。清理失败一律吞掉——这只是省磁盘，不该挡住生成。
+ */
+function pruneStaleTmpDirs(dir: string): void {
+  const parent = path.dirname(dir);
+  const prefix = `${path.basename(dir)}.tmp-`;
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(parent);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (!name.startsWith(prefix)) continue;
+    const full = path.join(parent, name);
+    try {
+      if (Date.now() - fs.statSync(full).mtimeMs < TMP_ORPHAN_MIN_AGE_MS) continue;
+      fs.rmSync(full, { recursive: true, force: true });
+    } catch {
+      // 并发删除 / 权限问题都无所谓，下次再清
+    }
+  }
+}
+
 export class TemplateResolver {
   /**
-   * 拉取模板到本地缓存目录（~/.cache/giget/），本地路径源则直接定位
+   * 克隆 git 源到本地缓存目录（~/.cache/create-app/），本地路径源则直接定位
+   *
+   * 只有这两条通路：模板真源都是内网 GitLab 的 git+ssh 仓库，本地开发用本地路径。
+   * 其余形态一律报错（见 unsupportedSourceError），不做任何猜测性回退。
    *
    * source 格式示例：
    *   'git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git#master'
    *   'git@git.zhihuishu.com:weijie/vue-admin-template.git#master'（scp 简写）
-   *   'github:org/app-templates/packages/template-pc'
    *   '/abs/path/to/template'、'./local-template'、'~/tpl'、'file:./local-template'
    */
+  // 两条通路本身都是同步的，但签名保持 async：调用方一律 await，且所有报错
+  // （含 resolveCachePolicy 的互斥校验）都要以 reject 形态出现，不能同步抛
   async fetch(source: string, options?: FetchOptions): Promise<string> {
     // 策略判定（含 --refresh/--offline 互斥校验）对所有源统一生效：本地路径源虽然
     // 不涉及缓存，但同一对自相矛盾的 flag 不能换个源类型就从「硬报」变「静默忽略」
@@ -148,34 +198,19 @@ export class TemplateResolver {
     // 本地路径不走缓存，每次直读，便于模板开发时即改即用
     if (isLocalSource(source)) return this.locate(source);
 
-    // git 源自己 clone：内网 GitLab 多数只开 ssh，giget 的 tarball 通路拿不到
     if (isGitSource(source)) return this.cloneGit(source, policy);
-    try {
-      const { dir } = await downloadTemplate(source, {
-        // refresh 才删缓存重取；其余两态都优先吃缓存，offline 再额外禁掉联网回退
-        force: policy === 'refresh',
-        preferOffline: policy !== 'refresh',
-        offline: policy === 'offline',
-      });
-      return dir;
-    } catch (err) {
-      // offline 下 giget 的失败只可能是「缓存里没有」——它压根不会去联网
-      if (policy === 'offline') throw offlineMissError(source, 'giget 缓存（~/.cache/giget）', err);
-      throw new CreateAppError(
-        'E_TEMPLATE_FETCH_FAILED',
-        `拉取模板失败: ${source}\n${err instanceof Error ? err.message : String(err)}`,
-        '请检查网络连接，或使用 --offline 参数使用本地缓存',
-        err,
-      );
-    }
+
+    throw unsupportedSourceError(source);
   }
 
   /**
    * 浅克隆 git 源到缓存目录并返回该目录
    *
-   * 缓存策略与 giget 分支保持一致（三态由 fetch 入口统一判定后传入）：
+   * 缓存三态由 fetch 入口统一判定后传入：
    * 默认复用缓存，`--refresh` 删缓存重克隆，`--offline` 只用缓存、缺失即报错。
    * 克隆后删掉 `.git/`——模板只要工作区内容，留着会被 composer 当普通文件拷进新项目。
+   *
+   * 全程「克隆到临时目录，完整了再 rename 到 dir」，理由见函数内注释。
    */
   private cloneGit(source: string, policy: CachePolicy): string {
     const src = parseGitSource(source);
@@ -189,21 +224,40 @@ export class TemplateResolver {
     }
 
     fs.mkdirSync(path.dirname(dir), { recursive: true });
-    const args = buildCloneArgs(src, dir);
-    const r = spawnSync('git', args, { encoding: 'utf-8' });
+    pruneStaleTmpDirs(dir);
 
-    if (r.status !== 0) {
-      // 克隆失败会留下半个目录，不清掉会被下次的「缓存命中」当成有效模板
-      fs.rmSync(dir, { recursive: true, force: true });
-      const detail = `${r.stderr ?? ''}${r.error ? String(r.error.message) : ''}`.trim();
-      throw new CreateAppError(
-        'E_TEMPLATE_FETCH_FAILED',
-        `克隆模板仓库失败: ${source}\n${detail}`,
-        '请检查 ssh 权限与网络（git clone 能否手动成功），或改用 --template <本地路径>',
-      );
+    // 克隆到同父目录下的临时目录，完整了再 rename 到 dir——同一文件系统内 rename 是原子的，
+    // 于是 dir 位置要么不存在、要么就是一份完整模板。
+    // 直接克隆到 dir 的话，只有「git 返回非零」这一条路径会清理，Ctrl-C / 断电 / OOM
+    // 杀在克隆中途都会留下半成品；而下次的缓存命中只校验 `.template/config.ts` 存在
+    // （assertTemplateDir），半成品照样放行，产出一个内容残缺却一路报成功的项目
+    const tmp = `${dir}.tmp-${process.pid}`;
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      const r = spawnSync('git', buildCloneArgs(src, tmp), { encoding: 'utf-8' });
+
+      if (r.status !== 0) {
+        const detail = `${r.stderr ?? ''}${r.error ? String(r.error.message) : ''}`.trim();
+        throw new CreateAppError(
+          'E_TEMPLATE_FETCH_FAILED',
+          `克隆模板仓库失败: ${source}\n${detail}`,
+          '请检查 ssh 权限与网络（git clone 能否手动成功），或改用 --template <本地路径>',
+        );
+      }
+
+      fs.rmSync(path.join(tmp, '.git'), { recursive: true, force: true });
+      try {
+        fs.renameSync(tmp, dir);
+      } catch (err) {
+        // 并发生成同一模板时，另一个进程可能已经先完成并占住了 dir（非空目录上 rename 会失败）。
+        // 目标已存在即视为可用缓存（同一 url+ref，内容同源），丢掉自己这份 tmp 即可
+        if (!fs.existsSync(dir)) throw err;
+      }
+    } finally {
+      // 成功路径上 tmp 已被 rename 走，这里兜的是失败与并发路径：任何出口都不留孤儿
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
 
-    fs.rmSync(path.join(dir, '.git'), { recursive: true, force: true });
     return this.assertTemplateDir(dir, source);
   }
 
@@ -269,10 +323,23 @@ export class TemplateResolver {
       );
     }
 
-    // 兼容 export default 和 module.exports
-    const configData = (raw as any)?.default ?? raw;
+    // 协议规定清单只能 `export default`：jiti 执行 TS 的 default 导出后一律裹在 `default` 里。
+    // 此处不回退到裸模块对象——那样一个只有具名导出的 config.ts 会带着整个模块命名空间进 Zod，
+    // 报一串结构错（"Unrecognized key: config"），而真正的病因（少写 default）一个字都不会出现。
+    //
+    // 判定必须用 `'default' in raw` 而不是 `raw.default !== undefined`：jiti 返回的是带
+    // interop 回退的 Proxy，模块没有 default 导出时读 `.default` 会拿到整个命名空间对象，
+    // 于是「取值判空」永远为真，这道校验等于不存在。`in` 走的是真实的 ownKeys
+    const hasDefault = typeof raw === 'object' && raw !== null && 'default' in raw;
+    if (!hasDefault) {
+      throw new CreateAppError(
+        'E_INVALID_TEMPLATE_CONFIG',
+        `.template/config.ts 没有 default 导出: ${configPath}`,
+        '模板清单必须写成 `export default config`（协议 v0.2）',
+      );
+    }
 
-    const result = TemplateConfigSchema.safeParse(configData);
+    const result = TemplateConfigSchema.safeParse((raw as { default: unknown }).default);
     if (!result.success) {
       throw new CreateAppError(
         'E_INVALID_TEMPLATE_CONFIG',

@@ -21,6 +21,8 @@ export type ErrorCode =
   | 'E_STALE_MANIFEST_PATH'
   // 项目相关
   | 'E_INVALID_PROJECT_NAME'
+  /** 当前目录不是项目根（没有 package.json），`override` 子命令必须在根目录跑 */
+  | 'E_NOT_PROJECT_ROOT'
   | 'E_DIR_NOT_EMPTY'
   | 'E_DIR_WRITE_FAILED'
   /** 生成后的依赖安装（pnpm/npm/yarn install）失败——可预期的常见失败，区别于 E_UNKNOWN */

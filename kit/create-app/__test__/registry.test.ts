@@ -60,20 +60,35 @@ describe('resolveTemplateArg', () => {
     expect(resolved.templateLabel).toBe('/Users/me/app-templates/packages/template-admin');
   });
 
-  it('giget 源同样按裸模板源处理', () => {
+  // 托管平台简写不在协议内，但拦截点不在这儿：它含 `:`，不会被「像注册表 id」的拼错
+  // 拦截命中，于是原样透传，由 resolver.fetch 报「不支持的模板源格式」——那句报错
+  // 已经列全了支持的形态，在这里再拦一道只是把同一件事说两遍
+  it('托管平台简写（github:）原样透传，留给 resolver 报不支持的源格式', () => {
     const resolved = resolveTemplateArg('github:org/repo/packages/tpl');
     expect(resolved.templateId).toBeUndefined();
     expect(resolved.templateSource).toBe('github:org/repo/packages/tpl');
   });
 
   it('长得像注册表 id 却未命中（拼错）→ E_INVALID_OPTION 并列出可用 id', () => {
-    // 不拦的话会落进 giget 分支报「拉取模板失败……请检查网络连接」，把用户支去查网络
+    // 不拦的话会当裸源透传，报一句「不支持的模板源格式」——让人去纠结源写法，
+    // 而真正的问题是 id 拼错了，正确的那个就在注册表里
     try {
       resolveTemplateArg('amin');
       expect.unreachable('应当抛出 E_INVALID_OPTION');
     } catch (err) {
       expect((err as { code: string }).code).toBe('E_INVALID_OPTION');
       expect((err as Error).message).toContain('amin');
+      expect((err as { suggestion: string }).suggestion).toContain('admin');
+    }
+  });
+
+  it('大小写写错的注册表 id 同样报 E_INVALID_OPTION，而不是被支去查网络', () => {
+    // `--template Admin` 若不拦，会当裸源透传去报「不支持的模板源格式」，同样答非所问
+    try {
+      resolveTemplateArg('Admin');
+      expect.unreachable('应当抛出 E_INVALID_OPTION');
+    } catch (err) {
+      expect((err as { code: string }).code).toBe('E_INVALID_OPTION');
       expect((err as { suggestion: string }).suggestion).toContain('admin');
     }
   });

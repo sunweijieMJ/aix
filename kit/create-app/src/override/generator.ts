@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Eta } from 'eta';
 import { findPackageRoot } from '../utils/pkg-root';
-import type { GeneratedFile, GenerateOptions, ModuleId, TemplateContext } from './types';
+import { MODULE_REGISTRY } from './types';
+import type { GeneratedFile, GenerateOptions, TemplateContext } from './types';
 
 /**
  * templates-override/ 的父目录 = 本包根目录
@@ -12,18 +13,6 @@ import type { GeneratedFile, GenerateOptions, ModuleId, TemplateContext } from '
  * Eta 找不到模板目录，`override add` 必崩。
  */
 const PKG_ROOT = findPackageRoot(import.meta.url);
-
-/** 需要独立模板目录的模块 */
-const MODULE_WITH_DIR: ModuleId[] = [
-  'api',
-  'components',
-  'constants',
-  'directives',
-  'layout',
-  'locale',
-  'router',
-  'store',
-];
 
 /**
  * 覆盖层内核：必须由**模板真源**提供（admin 模板的 `overrides` 特性），本包不再自带拷贝
@@ -86,7 +75,9 @@ export function generateFiles(options: GenerateOptions): GeneratedFile[] {
 
   // ── 各模块模板（按选择生成） ──
   for (const mod of modules) {
-    if (!MODULE_WITH_DIR.includes(mod)) continue;
+    // 没有独立 eta 目录的模块（views）不在这里出文件；用 `?.` 兜住外部直接调用
+    // generateFiles 传进来的未知模块名（CLI 侧已校验过，这里只防公共 API 的误用）
+    if (!MODULE_REGISTRY[mod]?.hasDir) continue;
 
     if (fs.existsSync(path.join(templatesDir, mod, 'index.ts.eta'))) {
       files.push({

@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
   buildCloneArgs,
   gitCacheDir,
@@ -24,7 +24,7 @@ describe('isGitSource', () => {
     expect(isGitSource(`${SCP}#v1.2.0`)).toBe(true);
   });
 
-  it('本地路径与 giget 源不归本模块处理', () => {
+  it('本地路径与托管平台简写都不是 git 源（后者在 fetch 里报不支持的源格式）', () => {
     expect(isGitSource('/abs/tpl')).toBe(false);
     expect(isGitSource('./tpl')).toBe(false);
     expect(isGitSource('~/tpl')).toBe(false);
@@ -133,6 +133,13 @@ function makeLocalRepo(withConfig: boolean): string {
   return dir;
 }
 
+/** 缓存根下属于 dir 的 `.tmp-*` 残留（只看本模板的前缀，别的模板不关本用例的事） */
+function tmpSiblings(dir: string): string[] {
+  const parent = path.dirname(dir);
+  if (!fs.existsSync(parent)) return [];
+  return fs.readdirSync(parent).filter((name) => name.startsWith(`${path.basename(dir)}.tmp-`));
+}
+
 describe('TemplateResolver.fetch - git 源 clone 通路', () => {
   const resolver = new TemplateResolver();
   const cleanup: string[] = [];
@@ -189,12 +196,70 @@ describe('TemplateResolver.fetch - git 源 clone 通路', () => {
     ).rejects.toMatchObject({ code: 'E_NO_TEMPLATE_CONFIG' });
   });
 
-  it('clone 失败抛 E_TEMPLATE_FETCH_FAILED，且不留下半成品缓存', async () => {
+  it('clone 失败抛 E_TEMPLATE_FETCH_FAILED，且不留下半成品缓存与 .tmp-* 残留', async () => {
     const missing = path.join(os.tmpdir(), 'create-app-no-such-repo-xyz');
     const dir = gitCacheDir({ url: `git+file://${missing}`, ref: 'master' });
     await expect(
       resolver.fetch(`git+file://${missing}#master`, { refresh: true }),
     ).rejects.toMatchObject({ code: 'E_TEMPLATE_FETCH_FAILED' });
     expect(fs.existsSync(dir)).toBe(false);
+    expect(tmpSiblings(dir)).toEqual([]);
+  });
+
+  it('中断留下的 .tmp-* 孤儿不会被当成缓存，且会被下次克隆清掉', async () => {
+    // 现实场景：Ctrl-C / 断电杀在 clone 中途。原子化之后半成品只可能落在 .tmp-* 上，
+    // dir 位置要么不存在、要么是完整模板——缓存命中只看 .template/config.ts 存在，
+    // 半成品一旦占住 dir 就会被当有效缓存，产出内容残缺的项目
+    const repo = makeLocalRepo(true);
+    cleanup.push(repo);
+    const dir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
+    cleanup.push(dir);
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    // 半成品：只有 .template/config.ts（足以骗过 assertTemplateDir），没有仓库其余内容
+    const orphan = `${dir}.tmp-999999`;
+    cleanup.push(orphan);
+    fs.mkdirSync(path.join(orphan, '.template'), { recursive: true });
+    fs.writeFileSync(path.join(orphan, '.template/config.ts'), 'export default {};\n');
+    // 打成陈旧的：清理只收拾「不可能属于在跑的并发进程」的孤儿
+    const stale = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    fs.utimesSync(orphan, stale, stale);
+
+    const got = await resolver.fetch(`git+file://${repo}#master`);
+    expect(got).toBe(dir);
+    // dir 的内容来自真仓库，而不是那份残留
+    expect(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8')).toContain('"name":"x"');
+    expect(fs.existsSync(orphan)).toBe(false);
+  });
+
+  it('克隆成功后不残留 .tmp-*（rename 走掉，孤儿目录不进缓存根）', async () => {
+    const repo = makeLocalRepo(true);
+    cleanup.push(repo);
+    const dir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
+    cleanup.push(dir);
+
+    await resolver.fetch(`git+file://${repo}#master`, { refresh: true });
+    expect(tmpSiblings(dir)).toEqual([]);
+  });
+
+  it('rename 撞上被并发进程占住的 dir：视为可用缓存，不报错也不留 tmp', async () => {
+    const repo = makeLocalRepo(true);
+    cleanup.push(repo);
+    const dir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
+    cleanup.push(dir);
+    fs.rmSync(dir, { recursive: true, force: true });
+
+    // 起不了两个真进程，就在 rename 的那一瞬间模拟「另一个进程刚好先完成」：
+    // 目标被别人先占住（内容完整），本次 rename 因目标非空失败
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce((from, to) => {
+      fs.cpSync(from as string, to as string, { recursive: true });
+      throw Object.assign(new Error('EEXIST: directory not empty'), { code: 'EEXIST' });
+    });
+
+    const got = await resolver.fetch(`git+file://${repo}#master`);
+    expect(got).toBe(dir);
+    expect(fs.existsSync(path.join(dir, 'package.json'))).toBe(true);
+    expect(tmpSiblings(dir)).toEqual([]);
+    vi.restoreAllMocks();
   });
 });

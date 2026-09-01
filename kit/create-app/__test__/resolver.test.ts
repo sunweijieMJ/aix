@@ -19,9 +19,9 @@ describe('isLocalSource', () => {
     expect(isLocalSource('file:./tpl')).toBe(true);
   });
 
-  it('giget 源不算本地路径', () => {
+  it('远端源与托管平台简写都不算本地路径', () => {
+    expect(isLocalSource('git+ssh://git@host/org/repo.git')).toBe(false);
     expect(isLocalSource('github:org/repo/sub')).toBe(false);
-    expect(isLocalSource('git:ssh://git@host/org/repo#main:packages/tpl')).toBe(false);
     expect(isLocalSource('gh:org/repo')).toBe(false);
   });
 });
@@ -55,7 +55,7 @@ describe('TemplateResolver.fetch - 本地路径', () => {
     fs.rmSync(emptyDir, { recursive: true, force: true });
   });
 
-  it('绝对路径直接返回模板目录，不走 giget', async () => {
+  it('绝对路径直接返回模板目录，不经过缓存', async () => {
     await expect(resolver.fetch(MINI_DIR)).resolves.toBe(MINI_DIR);
   });
 
@@ -79,6 +79,35 @@ describe('TemplateResolver.fetch - 本地路径', () => {
     // 本地源虽不涉及缓存，但同一对自相矛盾的 flag 不能换个源类型就从硬报变静默忽略
     await expect(resolver.fetch(MINI_DIR, { refresh: true, offline: true })).rejects.toMatchObject({
       code: 'E_INVALID_OPTION',
+    });
+  });
+});
+
+describe('TemplateResolver.fetch - 不支持的源格式', () => {
+  const resolver = new TemplateResolver();
+
+  // 模板源只有「本地路径」和「git 源」两条通路：托管平台简写（github:/gitlab:/gh:）
+  // 走的是 tarball API，对只开 ssh 的内网 GitLab 根本不成立，协议内不承认这种写法。
+  // 关键是报错要说破形态问题，而不是退化成一句网络错误把人支去查网
+  it.each(['github:org/repo/packages/tpl', 'gitlab:org/repo', 'gh:org/repo', 'https://x/y.git'])(
+    '%s 报 E_INVALID_OPTION 并列出支持的形态',
+    async (source) => {
+      await expect(resolver.fetch(source)).rejects.toMatchObject({
+        code: 'E_INVALID_OPTION',
+        message: expect.stringContaining('不支持的模板源格式') as unknown as string,
+      });
+      const err = await resolver.fetch(source).catch((e: CreateAppError) => e);
+      expect((err as CreateAppError).suggestion).toContain('git+ssh://');
+      expect((err as CreateAppError).suggestion).toContain('本地路径');
+    },
+  );
+
+  it('--refresh / --offline 的互斥校验先于源格式判定', async () => {
+    await expect(
+      resolver.fetch('github:org/repo', { refresh: true, offline: true }),
+    ).rejects.toMatchObject({
+      code: 'E_INVALID_OPTION',
+      message: expect.stringContaining('--refresh') as unknown as string,
     });
   });
 });

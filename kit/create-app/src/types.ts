@@ -6,7 +6,7 @@ export interface ProjectConfig {
   description: string;
   /** 从模板 config.ts 读取，不再由问答产生 */
   platform: Platform;
-  /** 选中的注册表条目 id；`--template` 直传源（本地路径 / giget 格式）时为 undefined */
+  /** 选中的注册表条目 id；`--template` 直传源（本地路径 / git 地址）时为 undefined */
   templateId?: string;
   /** 选中的特性 id 列表，取值域由模板 config.ts 的 features 决定 */
   features: string[];
