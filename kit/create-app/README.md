@@ -63,7 +63,7 @@ pnpm dlx @kit/create-app my-app   # 项目名走参数，其余交互
 | 注册表 id | `admin`                                                                      | 按其 source 决定          |
 | git 源    | `git+ssh://git@host/owner/repo.git#master`、`git@host:owner/repo.git#master` | ✅ `~/.cache/create-app/` |
 | giget 源  | `github:org/repo/path`                                                       | ✅ `~/.cache/giget/`      |
-| 本地路径  | `~/workspace/mine/vue-admin-template`、`./tpl`、`file:./tpl`                 | ❌ 每次直读（模板开发用） |
+| 本地路径  | `./tpl`、`../tpl`、`~/path/to/tpl`、`file:./tpl`                            | ❌ 每次直读（模板开发用） |
 
 拼错的注册表 id（纯 kebab 短词，如 `amin`）会直接报 `E_INVALID_OPTION` 并列出可用 id，
 不会被误当成模板源拿去联网、报出误导的网络错误。
@@ -266,7 +266,8 @@ h5 有 3 个可裁剪特性（i18n / nativeBridge / aiDocs）；调试工具（v
 ## 开发
 
 ```bash
-pnpm dev -- my-app --template ~/workspace/mine/vue-admin-template   # 跑源码
+pnpm dev -- my-app --template admin                # 跑源码（注册表 id，克隆远端）
+pnpm dev -- my-app --template <本地模板 clone 路径>  # 模板开发：改即验，不必先 push
 pnpm test                # vitest
 pnpm type-check
 pnpm build               # tsdown → dist/
@@ -294,8 +295,9 @@ pnpm verify-combos --install   # 追加 install → type-check → build
 不刷就可能对着旧克隆验出假绿灯（实测踩到过——模板刚加的特性验不到，报 `E_UNKNOWN_FEATURE`）。
 
 `verify-combos` 是模板改动的主要护栏：它以子进程调用真实 CLI，绿灯等价于用户实际跑出来的结果。
-默认模板源是本地路径 `~/workspace/mine/vue-admin-template`（改即验，不必先 push），
-可用 `--template` 换源、`--param k=v` 透传参数。
+`--template` 与 CLI 同语义（注册表 id / 本地路径 / git 源），默认验注册表 `admin` 的
+git 源（远端 master，即用户实际拿到的东西）；模板本地开发时传本地 clone 路径（改即验，
+不必先 push）。`--param k=v` 透传模板参数。
 
 ### `check-template-sync` 检查什么
 

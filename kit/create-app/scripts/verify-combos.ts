@@ -5,14 +5,14 @@
  * 关键点：**不重实现协议**。每个组合都以子进程调用真实 CLI 生成项目，
  * 因此这里的绿灯等价于「用户实际跑 create-app 会得到的结果」。
  *
- * 默认用本地路径源（`~/workspace/mine/vue-admin-template`）而非 git 源：
- * 模板改动即改即验，不必先 push；git 源的连通性由单独的 smoke 验证。
+ * 默认模板源是注册表 `admin` 条目的 git 源（远端 master）——不写死任何人的本机路径，
+ * 验的正是用户实际拿到的东西。模板本地开发时传 `--template <本地路径>`（改即验，不必先 push）。
  *
  * 用法：
  *   pnpm verify-combos                       # 三组合，L1 生成 + L2 静态体检
  *   pnpm verify-combos --combo i18n          # 只跑一种组合
  *   pnpm verify-combos --install             # 追加 L3 install → L4 type-check → L5 build
- *   pnpm verify-combos --template <path|src> # 换模板源（本地路径或 git 源）
+ *   pnpm verify-combos --template <id|path|src> # 换模板（注册表 id / 本地路径 / git 源，与 CLI 同语义）
  *   pnpm verify-combos --out-root /tmp/x     # 指定产物根目录（默认临时目录）
  *   pnpm verify-combos --registry <url>      # install 时覆盖 registry（默认走模板自带 .npmrc）
  *   pnpm verify-combos --param k=v [--param …] # 透传模板参数（无 default 的参数必须给）
@@ -32,6 +32,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pc from 'picocolors';
+import { findTemplateById } from '../src/config/defaults';
 import { isLocalSource, TemplateResolver } from '../src/core/resolver';
 import type { TemplateConfig } from '../src/types';
 
@@ -39,7 +40,13 @@ const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const CLI = path.join(PKG_ROOT, 'src/cli.ts');
 // 直接用本包的 tsx bin：子进程 cwd 在临时目录（workspace 之外），`pnpm exec` 会找不到包
 const TSX = path.join(PKG_ROOT, 'node_modules/.bin/tsx');
-const DEFAULT_TEMPLATE = path.join(os.homedir(), 'workspace/mine/vue-admin-template');
+/**
+ * 默认验注册表的 admin 模板（git 源，远端 master）
+ *
+ * 不写死本地路径：模板真源仓库在云端，每个人的本地 clone 位置都不同，
+ * 写死等于「换台机器脚本就失效」。本地开发用 `--template <本地路径>` 显式指定。
+ */
+const DEFAULT_TEMPLATE_ID = 'admin';
 /**
  * 模板真源的包名：产物里出现它即说明 substitutions 漏配
  *
@@ -404,7 +411,10 @@ async function main(): Promise<void> {
   const outRoot = arg('--out-root') ?? fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-verify-'));
   fs.mkdirSync(outRoot, { recursive: true });
 
-  const template = arg('--template') ?? DEFAULT_TEMPLATE;
+  // 与 CLI 的 --template 同语义：先按注册表 id 解析（含用户级注册表），
+  // 未命中再当本地路径 / git 源用。默认 admin（注册表 git 源，远端 master）
+  const templateArg = arg('--template') ?? DEFAULT_TEMPLATE_ID;
+  const template = findTemplateById(templateArg)?.source ?? templateArg;
   const opts: Options = {
     install: argv.includes('--install'),
     registry: arg('--registry'),

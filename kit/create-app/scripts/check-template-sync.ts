@@ -16,19 +16,19 @@
  * 那种检查只会产出 97 行噪音，然后被人忽略。
  *
  * 用法：
- *   pnpm check-template-sync                          # 检查内置的两个真源
- *   pnpm check-template-sync --template <路径> ...     # 显式指定（可重复，至少一个）
+ *   pnpm check-template-sync                              # 检查注册表登记的全部真源（克隆远端）
+ *   pnpm check-template-sync --template <id|路径|git源> ... # 显式指定（可重复，与 CLI 同语义）
+ *
+ * 默认从模板注册表（config/defaults.ts + 用户级 templates.json）取全部真源的 git 源、
+ * 现场克隆远端 master——不写死任何人的本机路径（真源仓库在云端，各机器的 clone 位置不同），
+ * 且验的是**已 push 的状态**（漂移最终伤害的就是远端消费方）。
+ * 本地未 push 的改动要检查时，用 `--template <本地路径>` 显式指定。
  */
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import pc from 'picocolors';
-
-/** 默认检查的真源（本地路径；不存在的会被跳过并提示） */
-const DEFAULT_TEMPLATES = [
-  path.join(os.homedir(), 'workspace/mine/vue-admin-template'),
-  path.join(os.homedir(), 'workspace/mine/vue-h5-template'),
-];
+import { findTemplateById, loadTemplateRegistry } from '../src/config/defaults';
+import { isLocalSource, resolveLocalSource, TemplateResolver } from '../src/core/resolver';
 
 /** 每个模版真源都必须有的文件（协议要求，缺了就没有本地护栏） */
 const REQUIRED_FILES = [
@@ -59,27 +59,59 @@ function read(file: string): string | null {
   }
 }
 
-/** 收集要检查的真源；路径不存在只提示不报错（不是每台机器都 clone 了全部模板） */
-function collectTemplates(argv: string[]): Template[] {
+/** 从模板源推导人类可读名：git / giget 源取仓库段并剥 `.git`，本地路径取目录名 */
+function templateName(source: string): string {
+  const tail = source.replace(/#.*$/, '').replace(/\/+$/, '').split(/[/:]/).pop();
+  return tail?.replace(/\.git$/, '') ?? source;
+}
+
+/** 收集要检查的真源：显式传参（注册表 id / 本地路径 / git 源）或注册表全量 */
+async function collectTemplates(argv: string[]): Promise<Template[]> {
   const explicit = argv.flatMap((a, i) =>
     a === '--template' && argv[i + 1] ? [argv[i + 1]!] : [],
   );
-  const candidates = explicit.length > 0 ? explicit : DEFAULT_TEMPLATES;
+  // 与 CLI 的 --template 同语义：先按注册表 id 解析（含用户级注册表），未命中再当路径 / git 源用
+  const candidates =
+    explicit.length > 0
+      ? explicit.map((s) => findTemplateById(s)?.source ?? s)
+      : loadTemplateRegistry().map((e) => e.source);
 
+  const resolver = new TemplateResolver();
   const found: Template[] = [];
-  for (const dir of candidates) {
-    const abs = path.resolve(dir.replace(/^~(?=\/)/, os.homedir()));
-    if (!fs.existsSync(abs)) {
-      notes.push(`跳过（路径不存在）：${abs}`);
+  for (const source of candidates) {
+    if (isLocalSource(source)) {
+      const abs = resolveLocalSource(source);
+      if (!fs.existsSync(abs)) {
+        // 显式传的路径不存在是用户搞错了要报；注册表登记的本地源缺失只提示（不是每台机器都有）
+        if (explicit.length > 0) problems.push(`本地路径不存在：${abs}`);
+        else notes.push(`跳过（路径不存在）：${abs}`);
+        continue;
+      }
+      if (!fs.existsSync(path.join(abs, '.template/config.ts'))) {
+        // 没有清单就不是模版真源——显式传入的话是用户搞错了，要报
+        if (explicit.length > 0) problems.push(`${abs} 不是模版真源（缺 .template/config.ts）`);
+        else notes.push(`跳过（不是模版真源）：${abs}`);
+        continue;
+      }
+      found.push({ dir: abs, name: path.basename(abs) });
       continue;
     }
-    if (!fs.existsSync(path.join(abs, '.template/config.ts'))) {
-      // 没有清单就不是模版真源——显式传入的话是用户搞错了，要报
-      if (explicit.length > 0) problems.push(`${abs} 不是模版真源（缺 .template/config.ts）`);
-      else notes.push(`跳过（不是模版真源）：${abs}`);
-      continue;
+
+    // 远端源：强制刷新克隆——默认策略复用缓存，会对着旧克隆验出假绿灯。
+    // resolver 已顺带校验 .template/config.ts。克隆失败必须红：
+    // 本脚本的职责就是盯真源漂移，「连不上所以跳过」等于没检查
+    try {
+      found.push({
+        dir: await resolver.fetch(source, { refresh: true }),
+        name: templateName(source),
+      });
+    } catch (err) {
+      problems.push(
+        `拉取真源失败：${source}\n` +
+          `    ${err instanceof Error ? err.message.split('\n')[0] : String(err)}\n` +
+          `    请检查网络 / ssh 权限，或用 --template <本地路径> 改验本地 clone`,
+      );
     }
-    found.push({ dir: abs, name: path.basename(abs) });
   }
   return found;
 }
@@ -191,8 +223,8 @@ function reportOverlap(templates: Template[]): void {
   );
 }
 
-function main(): void {
-  const templates = collectTemplates(process.argv.slice(2));
+async function main(): Promise<void> {
+  const templates = await collectTemplates(process.argv.slice(2));
   for (const n of notes) console.log(pc.dim(`  ${n}`));
 
   if (templates.length === 0) {
@@ -218,4 +250,7 @@ function main(): void {
   console.log(pc.green(`\n✓ 漂移检查通过：${templates.length} 个真源，协议必备文件与共享实现一致`));
 }
 
-main();
+main().catch((err: unknown) => {
+  console.error(pc.red(err instanceof Error ? err.message : String(err)));
+  process.exit(1);
+});
