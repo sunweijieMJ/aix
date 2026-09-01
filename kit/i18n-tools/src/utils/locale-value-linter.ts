@@ -315,9 +315,13 @@ export class LocaleValueLinter {
     for (const [key, value] of Object.entries(localeMap)) {
       if (typeof value !== 'string') continue;
       const reasons: string[] = [];
-      // 与提取期同源的 HTML 标签判据（ast-guards），避免两份正则手工同步漂移：
-      // 提取放过 / lint 报警两端口径必须一致。
-      if (templateLiteralContainsHtmlTags(value)) reasons.push('含 HTML 标签');
+      // 判据基于提取期同源的 templateLiteralContainsHtmlTags（ast-guards），再额外要求
+      // 存在闭合/自闭合标签才报：提取端宁可保守（提到 `<code>` 字样也跳过），lint 端若同样
+      // 宽松，会把实体解码产物「18. <code> / <pre> 内的中文」这类仅提及标签名的正文误报成
+      // HTML——{{ }} 渲染会转义，只有成对/自闭合的真实标记（多来自 v-html）才值得报。
+      if (templateLiteralContainsHtmlTags(value) && /<\/[a-zA-Z]|\/>/.test(value)) {
+        reasons.push('含 HTML 标签');
+      }
       if (value.length > this.LONG_VALUE_THRESHOLD) {
         reasons.push(`长度 ${value.length} > ${this.LONG_VALUE_THRESHOLD}`);
       }

@@ -603,7 +603,7 @@ describe('TranslateProcessor — LLM 配置 pre-flight', () => {
     await expect(run.execute()).rejects.toThrow(/llm\.translation\.apiKey/);
     await expect(
       new TranslateProcessor(makeConfig({ shared: { apiKey: '', model: 'm' } }), false).execute(),
-    ).rejects.toThrow(/LLM_API_KEY/);
+    ).rejects.toThrow(/环境变量/);
 
     // 批次循环压根没启动（7 个条目 × batchSize 1 本会切成 7 批）
     expect(batchSpy).not.toHaveBeenCalled();

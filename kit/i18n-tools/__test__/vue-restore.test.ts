@@ -599,6 +599,24 @@ describe('VueRestoreTransformer — template 里存活的裸 t() 保住 t 的来
     expect(out).toContain("const msg = '你好'");
   });
 
+  it('注释里的 t() 字样不算引用：真实调用全部还原后 import 照删', () => {
+    const src =
+      `<template>\n  <!-- 也可以用 t('key') 写法 -->\n  <div>{{ msg }}</div>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t } from '${T_IMPORT}';\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+    expect(out).toContain("<!-- 也可以用 t('key') 写法 -->");
+  });
+
+  it('注释含 t() 且另有存活的真实 t() 时仍保留 import', () => {
+    const src =
+      `<template>\n  <!-- t('demo') -->\n  <div>{{ t('own.key') }}</div>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t } from '${T_IMPORT}';\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+    expect(out).toContain("{{ t('own.key') }}");
+  });
+
   it('hook 声明：template 仍有 t(自管 key) 时不得删 const { t } = useI18n()', () => {
     const src =
       `<template>\n  <div>{{ t('own.key') }}</div>\n</template>\n\n` +
@@ -641,5 +659,25 @@ describe('VueRestoreTransformer — template 里存活的裸 t() 保住 t 的来
       `<script setup>\nimport { useI18n } from 'vue-i18n';\nconst { t } = useI18n();\nconst msg = t('k');\n</script>\n`;
     const out = restore(src, { k: '你好' });
     expect(out).not.toContain('useI18n');
+  });
+});
+
+describe('VueRestoreTransformer — U+00A0 重编码为 &nbsp;', () => {
+  const lib = new VueI18nLibraryImpl();
+
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, '@/plugins/locale');
+
+  it('文本节点：locale 值含 U+00A0 → 写回 &nbsp;，不留下字面 NBSP', () => {
+    const src = `<template>\n  <div>{{ $t('k') }}</div>\n</template>\n`;
+    const out = restore(src, { k: '提示\u00A0：请先阅读' });
+    expect(out).toContain('提示&nbsp;：请先阅读');
+    expect(out).not.toContain('\u00A0');
+  });
+
+  it('静态属性值：同样重编码且 & 不被二次转义', () => {
+    const src = `<template>\n  <div :title="$t('k')"></div>\n</template>\n`;
+    const out = restore(src, { k: 'A\u00A0&\u00A0B' });
+    expect(out).toContain('title="A&nbsp;&amp;&nbsp;B"');
   });
 });

@@ -29,6 +29,15 @@ const JS_IDENTIFIER_RE = new RegExp(
 const TEMPLATE_BARE_T_CALL_RE = /(?:^|[^\w.$])t\s*\(/;
 
 /**
+ * template 原文先剥 HTML 注释再探测裸 t(：注释里的 `t()` 字样不是运行时引用，
+ * 算进去会让 t 的来源（import / hook 声明）被无谓保留，在开 noUnusedLocals 的项目里
+ * 直接变成编译错误（TS6133）。
+ */
+function templateReferencesBareT(templateContent: string): boolean {
+  return TEMPLATE_BARE_T_CALL_RE.test(templateContent.replace(/<!--[\s\S]*?-->/g, ''));
+}
+
+/**
  * Vue 还原代码转换器
  * 负责将 i18n 调用还原为原始文本
  */
@@ -175,7 +184,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     const { descriptor } = parseSFC(restoredCode);
     // t 同时是 template 绑定：模板里存活的裸 t()（key 不在 localeMap 而未被还原）仍需要
     // 这条 import，只看 script 会删出运行时 "t is not defined"。
-    if (descriptor.template && TEMPLATE_BARE_T_CALL_RE.test(descriptor.template.content)) {
+    if (descriptor.template && templateReferencesBareT(descriptor.template.content)) {
       return false;
     }
     const scriptContent = [descriptor.script, descriptor.scriptSetup]
@@ -198,7 +207,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     const { descriptor } = parseSFC(restoredCode);
     // 同 isTImportUnusedInScript：hook 解构出的 t 也是 template 绑定，模板里存活的裸 t()
     // 会用到它，删声明同样产出未定义 t。
-    if (descriptor.template && TEMPLATE_BARE_T_CALL_RE.test(descriptor.template.content)) {
+    if (descriptor.template && templateReferencesBareT(descriptor.template.content)) {
       return false;
     }
     const scriptContent = [descriptor.script, descriptor.scriptSetup]
@@ -563,11 +572,17 @@ export class VueRestoreTransformer implements IRestoreTransformer {
    * 属性值转义规则、后者是 JS 字符串字面量，套 HTML 转义会污染数据。
    * `&` 必须最先替换，否则会把后续生成的 `&lt;`/`&gt;` 里的 `&` 二次转义。
    *
-   * 注：`©`/`&nbsp;`(U+00A0) 等不在 `<>&` 集合里 → 原样保留、渲染一致；真把 `©`
-   * 还原成 `&copy;` 不可能（解码有损，无从得知原实体），也无必要。
+   * U+00A0 重编码为 `&nbsp;`：字面 NBSP 渲染无差，但会触发 eslint no-irregular-whitespace
+   * （error 级）挂掉项目 lint；必须放在 `&` 转义之后，`&nbsp;` 自身才不被二次转义。
+   * 注：`©` 等其它解码产物原样保留、渲染一致；还原成 `&copy;` 不可能（解码有损，
+   * 无从得知原实体），也无必要。
    */
   private static escapeTemplateText(text: string): string {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\u00A0/g, '&nbsp;');
   }
 
   /**
@@ -582,7 +597,8 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       .replace(/&/g, '&amp;')
       .replace(/"/g, '&quot;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+      .replace(/>/g, '&gt;')
+      .replace(/\u00A0/g, '&nbsp;');
   }
 
   /**

@@ -7,6 +7,8 @@ import { LoggerUtils } from '../utils/logger';
 import type { LocaleMap, Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
 import { createOrEmptyFile, loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
+import { extractPlaceholderNames, placeholderNamesEqual } from '../utils/placeholder-utils';
+import { resolveUsesDoubleBracePlaceholders } from '../adapters';
 
 /**
  * 合并处理器
@@ -19,8 +21,11 @@ import { createOrEmptyFile, loadJsonDictOrThrow, writeTranslationsFile } from '.
  *  - updateLanguagePackage 对每个 target 单独写目标语言文件
  */
 export class MergeProcessor extends FileProcessor {
+  private usesDoubleBracePlaceholders: boolean;
+
   constructor(config: ResolvedConfig, isCustom: boolean = false) {
     super(config, isCustom);
+    this.usesDoubleBracePlaceholders = resolveUsesDoubleBracePlaceholders(config.framework);
   }
 
   protected getOperationName(): string {
@@ -153,6 +158,9 @@ export class MergeProcessor extends FileProcessor {
         const value = data[target];
 
         if (value && FileUtils.isValidTranslation(value)) {
+          // 占位符失配只告警不拦截：merge 的契约是合入人工确认过的译文，硬拦会卡住
+          // 人为改写占位符的合法场景；doctor 的 placeholder-mismatch 仍会持续跟踪。
+          this.warnPlaceholderMismatch(key, target, sourceValue, value);
           finalEntry[target] = value;
           continue;
         }
@@ -436,6 +444,25 @@ export class MergeProcessor extends FileProcessor {
    * 把 newlyTranslated 里某 target 语言的非空字符串译文写入 targetMessages，返回更新条目数。
    * 桶式 / 扁平两条写回路径共用，仅 targetMessages 来源不同。
    */
+  private warnPlaceholderMismatch(
+    key: string,
+    target: string,
+    sourceValue: unknown,
+    value: string,
+  ): void {
+    if (typeof sourceValue !== 'string' || !sourceValue) return;
+    const expected = extractPlaceholderNames(sourceValue, this.usesDoubleBracePlaceholders);
+    const actual = extractPlaceholderNames(value, this.usesDoubleBracePlaceholders);
+    if (placeholderNamesEqual(expected, actual)) return;
+    LoggerUtils.warn(
+      `⚠️ [${target}] 占位符不匹配，仍已合入 [${key}]（请核对译文）:\n` +
+        `   源文: ${sourceValue}\n` +
+        `   译文: ${value}\n` +
+        `   期望占位符: {${[...expected].join('}, {')}}\n` +
+        `   实际占位符: {${[...actual].join('}, {')}}`,
+    );
+  }
+
   private static applyTranslations(
     targetMessages: LocaleMap,
     newlyTranslated: Translations,

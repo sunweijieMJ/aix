@@ -437,3 +437,74 @@ describe('MergeProcessor — 写盘前预检与形态非法条目', () => {
     });
   });
 });
+
+describe('MergeProcessor — 合入时占位符失配告警', () => {
+  let tmpDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'merge-ph-warn-'));
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function writeJson(relPath: string, data: unknown): void {
+    const full = path.join(tmpDir, 'locale', relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, JSON.stringify(data, null, 2));
+  }
+
+  function readJson(relPath: string): Record<string, unknown> {
+    return JSON.parse(fs.readFileSync(path.join(tmpDir, 'locale', relPath), 'utf-8'));
+  }
+
+  function makeConfig(): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    };
+    return resolveConfig(user);
+  }
+
+  it('译文缺占位符 → 仍合入但输出告警（含两侧占位符集）', async () => {
+    writeJson('zh-CN.json', { k1: '共{value}件商品' });
+    writeJson('en-US.json', {});
+    writeJson('translations.json', {});
+    writeJson('untranslated.json', {
+      k1: { 'zh-CN': '共{value}件商品', 'en-US': 'Items pending' },
+    });
+
+    await new MergeProcessor(makeConfig(), false).execute();
+
+    expect(readJson('en-US.json')).toEqual({ k1: 'Items pending' });
+    const warns = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(warns).toContain('占位符不匹配');
+    expect(warns).toContain('k1');
+    expect(warns).toContain('{value}');
+  });
+
+  it('占位符一致时不告警', async () => {
+    writeJson('zh-CN.json', { k1: '共{value}件商品' });
+    writeJson('en-US.json', {});
+    writeJson('translations.json', {});
+    writeJson('untranslated.json', {
+      k1: { 'zh-CN': '共{value}件商品', 'en-US': '{value} items pending' },
+    });
+
+    await new MergeProcessor(makeConfig(), false).execute();
+
+    expect(readJson('en-US.json')).toEqual({ k1: '{value} items pending' });
+    const warns = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(warns).not.toContain('占位符不匹配');
+  });
+});

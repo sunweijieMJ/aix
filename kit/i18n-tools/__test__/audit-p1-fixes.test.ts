@@ -468,6 +468,45 @@ describe('loadEnv — 爬升止于项目边界', () => {
     expect(process.env[varName]).toBe('ok');
     delete process.env[varName];
   });
+
+  it('monorepo：链上有 .git 时以仓库根为界，子包 package.json 不截断（根 .env 可读）', () => {
+    const varName = `AUDIT_P1_GITROOT_${Date.now()}`;
+    const repo = path.join(tmpDir, 'repo');
+    const pkgDir = path.join(repo, 'apps', 'client');
+    fs.mkdirSync(path.join(pkgDir, 'sub'), { recursive: true });
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.env'), `${varName}=root\n`);
+    fs.writeFileSync(path.join(pkgDir, 'package.json'), '{}');
+
+    loadEnv(path.join(pkgDir, 'sub'));
+    expect(process.env[varName]).toBe('root');
+    delete process.env[varName];
+  });
+
+  it('monorepo：就近优先，子包自己的 .env 覆盖仓库根', () => {
+    const varName = `AUDIT_P1_NEAR_${Date.now()}`;
+    const repo = path.join(tmpDir, 'repo2');
+    const pkgDir = path.join(repo, 'apps', 'client');
+    fs.mkdirSync(pkgDir, { recursive: true });
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.env'), `${varName}=root\n`);
+    fs.writeFileSync(path.join(pkgDir, '.env'), `${varName}=near\n`);
+    fs.writeFileSync(path.join(pkgDir, 'package.json'), '{}');
+
+    loadEnv(pkgDir);
+    expect(process.env[varName]).toBe('near');
+    delete process.env[varName];
+  });
+
+  it('仓库根之上的 .env 仍不加载（.git 为硬上界）', () => {
+    const varName = `AUDIT_P1_ABOVEGIT_${Date.now()}`;
+    const repo = path.join(tmpDir, 'repo3');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.env'), `${varName}=leaked\n`);
+
+    loadEnv(repo);
+    expect(process.env[varName]).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

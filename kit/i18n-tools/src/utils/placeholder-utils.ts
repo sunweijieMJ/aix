@@ -87,3 +87,12 @@ export function extractPlaceholderNames(
 
   return names;
 }
+
+/** 两个占位符名集是否完全一致（translate 丢弃失配译文、merge 告警共用同一判定）。 */
+export function placeholderNamesEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const k of a) {
+    if (!b.has(k)) return false;
+  }
+  return true;
+}

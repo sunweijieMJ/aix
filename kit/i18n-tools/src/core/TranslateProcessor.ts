@@ -4,7 +4,7 @@ import { LLMClient } from '../utils/llm-client';
 import { FileUtils } from '../utils/file-utils';
 import { Glossary, type GlossaryMap } from '../utils/glossary';
 import { LoggerUtils } from '../utils/logger';
-import { extractPlaceholderNames } from '../utils/placeholder-utils';
+import { extractPlaceholderNames, placeholderNamesEqual } from '../utils/placeholder-utils';
 import type { Translations } from '../utils/types';
 import { FileProcessor } from './FileProcessor';
 import { resolveUsesDoubleBracePlaceholders } from '../adapters';
@@ -58,7 +58,7 @@ export class TranslateProcessor extends FileProcessor {
     const missing: string[] = [];
     if (!task.apiKey.trim()) {
       missing.push(
-        'llm.translation.apiKey（或 llm.shared.apiKey；配置示例里取自环境变量 LLM_API_KEY）',
+        'llm.translation.apiKey（或 llm.shared.apiKey；通常在 i18n.config 里取自环境变量，请确认该变量已定义且 .env 已被加载）',
       );
     }
     if (!task.model.trim()) {
@@ -385,7 +385,7 @@ export class TranslateProcessor extends FileProcessor {
         // 导致所有 plural/select 文案被永久丢弃、无法翻译。
         const expected = extractPlaceholderNames(sourceText, this.usesDoubleBracePlaceholders);
         const actual = extractPlaceholderNames(newValue, this.usesDoubleBracePlaceholders);
-        if (!TranslateProcessor.placeholdersMatch(expected, actual)) {
+        if (!placeholderNamesEqual(expected, actual)) {
           placeholderMismatches++;
           LoggerUtils.warn(
             `⚠️ [${targetLocale}] 占位符不匹配，丢弃翻译 [${key}]:\n` +
@@ -422,14 +422,6 @@ export class TranslateProcessor extends FileProcessor {
     }
 
     return translatedCount;
-  }
-
-  private static placeholdersMatch(a: Set<string>, b: Set<string>): boolean {
-    if (a.size !== b.size) return false;
-    for (const k of a) {
-      if (!b.has(k)) return false;
-    }
-    return true;
   }
 
   private logTargetResult(

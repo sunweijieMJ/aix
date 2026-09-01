@@ -221,8 +221,8 @@ describe('审计修复回归（Vue / 共享 AST 层）', () => {
       const { out, localeMap } = await generate(src);
       expect(localeMap.k0).toBe('\u00A0你好\u00A0');
       expect(out).toContain("<span>{{ $t('k0') }}</span>");
-      // 还原后 nbsp 仍在（实体解码后的等价形式）
-      expect(restore(out, localeMap)).toContain('<span>\u00A0你好\u00A0</span>');
+      // 还原时 U+00A0 重编码回 &nbsp;（字面 NBSP 会触发 no-irregular-whitespace），与原文逐字一致
+      expect(restore(out, localeMap)).toContain('<span>&nbsp;你好&nbsp;</span>');
     });
 
     it('静态属性值首尾 &nbsp; 同样保留', async () => {

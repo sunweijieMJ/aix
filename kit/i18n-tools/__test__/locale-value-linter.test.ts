@@ -110,6 +110,18 @@ describe('LocaleValueLinter', () => {
       const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
       expect(messages.every((m: string) => !m.includes('含 HTML 标签'))).toBe(true);
     });
+
+    it('误伤排除：仅提及标签名（无闭合/自闭合标记）的正文不算 HTML', () => {
+      analyzeAndEmit({ 'a.x': '18. <code> / <pre> 内的中文（不应被提取）' });
+      const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(messages.every((m: string) => !m.includes('含 HTML 标签'))).toBe(true);
+    });
+
+    it('真实成对标记仍报含 HTML 标签', () => {
+      analyzeAndEmit({ 'a.x': '<div>加粗提示</div>' });
+      const messages = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(messages.some((m: string) => m.includes('含 HTML 标签'))).toBe(true);
+    });
   });
 
   it('非 string value 被跳过（防御性）', () => {
