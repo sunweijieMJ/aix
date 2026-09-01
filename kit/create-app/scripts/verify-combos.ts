@@ -32,7 +32,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pc from 'picocolors';
-import { findTemplateById } from '../src/config/defaults';
+import { findTemplateById, loadTemplateRegistry } from '../src/config/defaults';
 import { isLocalSource, TemplateResolver } from '../src/core/resolver';
 import type { TemplateConfig } from '../src/types';
 
@@ -67,13 +67,33 @@ function detectRealName(template: string, override?: string): string | undefined
   } catch {
     // 非本地目录源，往下走地址推导
   }
-  const repo = template
+  return repoNameFromSource(template);
+}
+
+/** 从源地址推导仓库名：取最后一段并剥 `.git`（两个模板的包名都等于仓库名） */
+function repoNameFromSource(source: string): string | undefined {
+  const repo = source
     .replace(/#.*$/, '')
     .replace(/\/+$/, '')
     .split(/[/:]/)
     .pop()
     ?.replace(/\.git$/, '');
   return repo && repo.length > 0 ? repo : undefined;
+}
+
+/**
+ * 残留检测的真名全集：本模板自己的名字 + 注册表登记的**全部**模板仓库名
+ *
+ * 只扫本模板名有一个已实际漏过的盲区：模板之间会互相拷贝内容（`.claude` 的 skills /
+ * agents 文档），把**别家**的真名带进来——admin 的 9 个 SKILL.md 曾带着
+ * `author: vue-h5-template` 发进产物、h5 的部署文档带着 admin 名，两边的
+ * substitutions 漏配检查与本模板名扫描全都看不见它们。
+ */
+function knownRealNames(template: string, override?: string): string[] {
+  const registry = loadTemplateRegistry().map((e) => repoNameFromSource(e.source));
+  return [...new Set([detectRealName(template, override), ...registry])].filter(
+    (n): n is string => !!n,
+  );
 }
 
 /**
@@ -187,7 +207,7 @@ function resolveSpecifier(spec: string, fromFile: string, root: string): boolean
   return ['/index.ts', '/index.vue', '/index.js'].some((idx) => fs.existsSync(base + idx));
 }
 
-function staticCheck(outDir: string, realName?: string): string[] {
+function staticCheck(outDir: string, realNames: string[]): string[] {
   const problems: string[] = [];
 
   for (const rel of walk(outDir)) {
@@ -199,8 +219,10 @@ function staticCheck(outDir: string, realName?: string): string[] {
     content.split('\n').forEach((line, i) => {
       if (MARKER_LINE.test(line.trim())) problems.push(`标记残留 ${rel}:${i + 1} → ${line.trim()}`);
       if (VAR_LEFTOVER.test(line)) problems.push(`变量残留 ${rel}:${i + 1} → ${line.trim()}`);
-      if (realName && line.includes(realName)) {
-        problems.push(`真名残留 ${rel}:${i + 1} → ${line.trim()}`);
+      for (const name of realNames) {
+        if (line.includes(name)) {
+          problems.push(`真名残留（${name}）${rel}:${i + 1} → ${line.trim()}`);
+        }
       }
     });
 
@@ -280,8 +302,8 @@ interface Options {
   template: string;
   /** 透传给 CLI 的 `--param k=v`：模板一旦声明无 default 的参数，不给就会 E_NON_INTERACTIVE */
   params: string[];
-  /** 模板真源包名（产物里出现即 substitutions 漏配）；推导不出时跳过该项检测 */
-  realName?: string;
+  /** 残留检测的真名全集（本模板 + 注册表全量）；空数组时跳过该项检测 */
+  realNames: string[];
 }
 
 interface ComboResult {
@@ -339,7 +361,7 @@ function verify(name: string, selected: string[], opts: Options): ComboResult {
   const fileCount = walk(outDir).length;
   console.log(`  L1 CLI 生成：${pc.green('✓')} ${fileCount} 个文件 (${gen.secs}s) → ${outDir}`);
 
-  const problems = staticCheck(outDir, opts.realName);
+  const problems = staticCheck(outDir, opts.realNames);
   if (problems.length > 0) {
     console.log(`  L2 静态体检：${pc.red('✗')} ${problems.length} 处问题`);
     problems.slice(0, 40).forEach((p) => console.log(`     - ${p}`));
@@ -421,10 +443,10 @@ async function main(): Promise<void> {
     outRoot,
     template,
     params: argAll('--param'),
-    realName: detectRealName(template, arg('--real-name')),
+    realNames: knownRealNames(template, arg('--real-name')),
   };
   console.log(
-    `模板源：${opts.template}\n模板真名：${opts.realName ?? '（推导不出，跳过真名残留检测——可用 --real-name 指定）'}`,
+    `模板源：${opts.template}\n真名残留检测：${opts.realNames.length > 0 ? opts.realNames.join(' / ') : '（推导不出，跳过——可用 --real-name 指定）'}`,
   );
 
   const wantAll = argv.includes('--all-combos');
