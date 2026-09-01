@@ -248,3 +248,192 @@ describe('MergeProcessor — 拒收翻译的处理策略', () => {
     expect(remaining['pages.foo.hello']).toBeUndefined();
   });
 });
+
+/**
+ * merge 写盘前的两道预检：nested 序列化的前缀冲突必须在任何写盘动作之前拦截；
+ * 中间产物里形态非法（非对象）的条目告警跳过而非裸 TypeError。
+ */
+describe('MergeProcessor — 写盘前预检与形态非法条目', () => {
+  let tmpDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-merge-precheck-'));
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const localeDir = (): string => path.join(tmpDir, 'locale');
+
+  function writeJson(relPath: string, data: unknown): void {
+    const full = path.join(localeDir(), relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, JSON.stringify(data, null, 2));
+  }
+
+  function readJson(relPath: string): Record<string, unknown> {
+    return JSON.parse(fs.readFileSync(path.join(localeDir(), relPath), 'utf-8'));
+  }
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  describe('nested 前缀冲突在写盘前拦截', () => {
+    it('target 已有叶子 key a、本轮要合入 a.b → 抛错且中间产物未被改写', async () => {
+      // a 只存在于 target 侧，generate 的写源码前预检看不到，冲突只能在 merge 拦
+      writeJson('en-US.json', { a: '已有叶子' });
+      const untranslated = { 'a.b': { 'zh-CN': '文案', 'en-US': 'text' } };
+      writeJson('untranslated.json', untranslated);
+      writeJson('translations.json', {});
+
+      await expect(new MergeProcessor(makeConfig(), false).execute()).rejects.toThrow(/前缀冲突/);
+
+      // 「变更前中止」：中间产物与语言包都保持原样
+      expect(readJson('untranslated.json')).toEqual(untranslated);
+      expect(readJson('translations.json')).toEqual({});
+      expect(readJson('en-US.json')).toEqual({ a: '已有叶子' });
+    });
+
+    it('错误信息指明是哪个 target、哪对 key', async () => {
+      writeJson('en-US.json', { a: '已有叶子' });
+      writeJson('untranslated.json', { 'a.b': { 'zh-CN': '文案', 'en-US': 'text' } });
+      writeJson('translations.json', {});
+
+      await expect(new MergeProcessor(makeConfig(), false).execute()).rejects.toThrow(
+        /en-US[\s\S]*'a'[\s\S]*'a\.b'/,
+      );
+    });
+
+    it('多 target 时第二个 target 冲突 → 第一个 target 的语言包也不会被先写', async () => {
+      writeJson('en-US.json', { x: 'v' });
+      writeJson('ja-JP.json', { a: '既存の葉' });
+      writeJson('untranslated.json', {
+        'a.b': { 'zh-CN': '文案', 'en-US': 'text', 'ja-JP': 'テキスト' },
+      });
+      writeJson('translations.json', {});
+
+      const config = makeConfig({ locales: { source: 'zh-CN', targets: ['en-US', 'ja-JP'] } });
+      await expect(new MergeProcessor(config, false).execute()).rejects.toThrow(/前缀冲突/);
+
+      expect(readJson('en-US.json')).toEqual({ x: 'v' });
+    });
+
+    it('[反向] 无冲突时 merge 行为不变：语言包 / translations / untranslated 三者照常更新', async () => {
+      writeJson('en-US.json', { x: 'v' });
+      writeJson('untranslated.json', { 'a.b': { 'zh-CN': '文案', 'en-US': 'text' } });
+      writeJson('translations.json', {});
+
+      await new MergeProcessor(makeConfig(), false).execute();
+
+      expect(readJson('en-US.json')).toEqual({ x: 'v', a: { b: 'text' } });
+      expect(readJson('translations.json')).toEqual({
+        'a.b': { 'zh-CN': '文案', 'en-US': 'text' },
+      });
+      expect(readJson('untranslated.json')).toEqual({});
+    });
+
+    it('[反向] format=flat 不做 unflatten，a 与 a.b 共存照常合并', async () => {
+      writeJson('en-US.json', { a: '已有叶子' });
+      writeJson('untranslated.json', { 'a.b': { 'zh-CN': '文案', 'en-US': 'text' } });
+      writeJson('translations.json', {});
+
+      await new MergeProcessor(
+        makeConfig({ io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' } }),
+        false,
+      ).execute();
+
+      expect(readJson('en-US.json')).toEqual({ a: '已有叶子', 'a.b': 'text' });
+    });
+
+    it('[反向] 桶式：a 与 a.b 分属不同桶时不误报（各桶独立序列化）', async () => {
+      const config = makeConfig({
+        buckets: {
+          rules: [
+            { name: 'alpha', matchKey: (k: string) => k === 'a' },
+            { name: 'beta', matchKey: (k: string) => k.startsWith('a.') },
+          ],
+          defaultBucket: 'common',
+          emitManifest: false,
+          layout: 'by-locale',
+        },
+      });
+      // source 驱动分桶：两个 key 都要在 source 里，才能让共享分桶表覆盖它们
+      writeJson(path.join('zh-CN', 'alpha.json'), { a: '叶子' });
+      writeJson(path.join('zh-CN', 'beta.json'), { a: { b: '子树' } });
+      writeJson(path.join('en-US', 'alpha.json'), { a: 'leaf' });
+      writeJson('untranslated.json', { 'a.b': { 'zh-CN': '子树', 'en-US': 'sub' } });
+      writeJson('translations.json', {});
+
+      await new MergeProcessor(config, false).execute();
+
+      expect(readJson(path.join('en-US', 'alpha.json'))).toEqual({ a: 'leaf' });
+      expect(readJson(path.join('en-US', 'beta.json'))).toEqual({ a: { b: 'sub' } });
+    });
+  });
+
+  describe('untranslated.json 形态非法条目告警跳过', () => {
+    it('值为 null 的条目 → warn 带 key 名并原样保留', async () => {
+      writeJson('untranslated.json', {
+        bad: null,
+        good: { 'zh-CN': '文案', 'en-US': 'text' },
+      });
+      writeJson('translations.json', {});
+      writeJson('en-US.json', {});
+
+      await new MergeProcessor(makeConfig(), false).execute();
+
+      expect(warnSpy.mock.calls.flat().join('\n')).toMatch(/值不是对象[^\n]*bad/);
+      // 正常条目照常合并，非法条目原样留在 untranslated.json（不因跳过而丢用户数据）
+      expect(readJson('translations.json')).toEqual({ good: { 'zh-CN': '文案', 'en-US': 'text' } });
+      expect(readJson('untranslated.json')).toEqual({ bad: null });
+      expect(readJson('en-US.json')).toEqual({ good: 'text' });
+    });
+
+    it('[反向] 全部条目形态合法时无告警，合并结果不变', async () => {
+      writeJson('untranslated.json', { good: { 'zh-CN': '文案', 'en-US': 'text' } });
+      writeJson('translations.json', {});
+      writeJson('en-US.json', {});
+
+      await new MergeProcessor(makeConfig(), false).execute();
+
+      expect(warnSpy.mock.calls.flat().join('\n')).not.toMatch(/值不是对象/);
+      expect(readJson('translations.json')).toEqual({ good: { 'zh-CN': '文案', 'en-US': 'text' } });
+      expect(readJson('untranslated.json')).toEqual({});
+    });
+  });
+
+  describe('translations.json 形态非法条目告警跳过', () => {
+    it('null 条目不抛 TypeError，合法条目照常同步', async () => {
+      writeJson('zh-CN.json', { good: '你好' });
+      writeJson('untranslated.json', {});
+      writeJson('en-US.json', {});
+      writeJson('translations.json', {
+        bad: null,
+        good: { 'zh-CN': '你好', 'en-US': 'Hello' },
+      });
+
+      await new MergeProcessor(makeConfig(), false).execute();
+
+      expect(readJson('en-US.json')).toEqual({ good: 'Hello' });
+      const warns = warnSpy.mock.calls.map((c: unknown[]) => String(c[0]));
+      expect(warns.some((w: string) => w.includes('形态非法') && w.includes('bad'))).toBe(true);
+    });
+  });
+});

@@ -2,7 +2,7 @@ import { templateLiteralContainsHtmlTags } from './ast-guards';
 import type { SkippedTextLocation } from './extraction-diagnostics';
 import { LoggerUtils } from './logger';
 import { RunReport, type ManualCategory } from './run-report';
-import { collapseWhitespace } from './text-normalize';
+import { collapseWhitespace, previewText } from './text-normalize';
 import type { LocaleMap } from './types';
 
 /**
@@ -58,7 +58,7 @@ export class LocaleValueLinter {
    */
   private static readonly SUSPICIOUS_FRAGMENT_MAX_LEN = 3;
   /** 中英文常见标点；命中作为"短碎片"判定附加条件。 */
-  private static readonly PUNCT_PATTERN = /[（）()，,。.！!？?：:；;、,“”"'‘’`[\]【】《》<>%·…—]/;
+  private static readonly PUNCT_PATTERN = /[（）()，,。.！!？?：:；;、“”"'‘’`[\]【】《》<>%·…—]/;
 
   /** 跨模块复用候选的默认阈值（≥ N 个不同前缀使用同一 value）。 */
   private static readonly CROSS_MODULE_REUSE_THRESHOLD = 3;
@@ -103,7 +103,7 @@ export class LocaleValueLinter {
       findings.push({
         category: isHtml ? 'html-tag-in-value' : 'long-value',
         title: `${key}  [${reasons.join(', ')}]`,
-        details: [`value 预览: ${this.preview(value)}`],
+        details: [`value 预览: ${previewText(value)}`],
         key,
         value,
       });
@@ -148,7 +148,9 @@ export class LocaleValueLinter {
       });
     }
 
-    for (const c of this.findNestedInterpolationChinese(options?.skippedNestedChinese)) {
+    // 直接消费调用方传入的快照：嵌套中文无需与 locale map 交叉（必然是展示文案，
+    // 泄漏即问题），故不像 findHardcodedComparisons 那样需要一个筛选步骤。
+    for (const c of options?.skippedNestedChinese ?? []) {
       findings.push({
         category: 'nested-interpolation-chinese',
         title: `${c.filePath}:${c.line}:${c.column}`,
@@ -268,20 +270,6 @@ export class LocaleValueLinter {
   }
 
   /**
-   * 取出提取阶段记录的「被插值占位符吞掉的嵌套中文字面量」。
-   *
-   * 与 findHardcodedComparisons 不同，这里无需与 locale map 交叉：嵌套中文必然是
-   * 展示文案，作为运行时参数渲染出未翻译原文即问题，全部上报。
-   *
-   * 同样只吃调用方传入的快照，不去全局取数（见 analyze 的 Why）。
-   */
-  private static findNestedInterpolationChinese(
-    skippedSnapshot?: SkippedTextLocation[],
-  ): SkippedTextLocation[] {
-    return skippedSnapshot ?? [];
-  }
-
-  /**
    * 把 value 规范化为「占位符位置 + 邻接空白无关」的语义形态：
    *   "节点{ni1}"        → "节点{0}"
    *   "节点 {_ni1}"      → "节点{0}"
@@ -382,10 +370,5 @@ export class LocaleValueLinter {
     return Array.from(valueToPrefixes.entries())
       .filter(([, prefixes]) => prefixes.size >= this.CROSS_MODULE_REUSE_THRESHOLD)
       .map(([value, prefixes]) => ({ value, prefixes: Array.from(prefixes).sort() }));
-  }
-
-  private static preview(value: string): string {
-    const single = collapseWhitespace(value);
-    return single.length > 80 ? `${single.slice(0, 80)}…` : single;
   }
 }

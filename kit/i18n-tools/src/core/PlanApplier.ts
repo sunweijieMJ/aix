@@ -15,19 +15,6 @@ import {
   type GeneratePlanHit,
 } from './GeneratePlan';
 
-/**
- * generate 的 plan 侧：dry-run 写 plan、apply-plan 回放 plan，以及两者共用的
- * 「读当前 source locale key 集合」。
- *
- * 职责边界：只负责 plan 的序列化 / 反序列化与校验。真正的落盘（写源码 + 更新语言文件 +
- * 格式化）仍在 GenerateProcessor.commitToDisk，通过 hooks 注入——plan 回放与普通 commit
- * 必须走同一条落盘路径，否则两者的事务语义（原子写、回滚、损坏守卫）会各自漂移。
- *
- * 状态取舍：runMode / planOutputDir / skipLLM / keepPlan 都是**单次运行**的参数而非对象
- * 属性，故一律走方法入参传入，本类自身只持有 config / isCustom / report / hooks 这些
- * 整个 processor 生命周期不变的依赖。
- */
-
 /** GenerateProcessor 注入的落盘与文案定稿能力（避免 PlanApplier 反向依赖 processor 全量状态）。 */
 export interface PlanApplierHooks {
   /** 把一条提取结果规整为「最终 locale 形态」的文案（GenerateProcessor.toLocaleMessage）。 */
@@ -46,6 +33,18 @@ export interface PlanApplierHooks {
   getToolVersion(): string | undefined;
 }
 
+/**
+ * generate 的 plan 侧：dry-run 写 plan、apply-plan 回放 plan，以及两者共用的
+ * 「读当前 source locale key 集合」。
+ *
+ * 职责边界：只负责 plan 的序列化 / 反序列化与校验。真正的落盘（写源码 + 更新语言文件 +
+ * 格式化）仍在 GenerateProcessor.commitToDisk，通过 hooks 注入——plan 回放与普通 commit
+ * 必须走同一条落盘路径，否则两者的事务语义（原子写、回滚、损坏守卫）会各自漂移。
+ *
+ * 状态取舍：runMode / planOutputDir / skipLLM / keepPlan 都是**单次运行**的参数而非对象
+ * 属性，故一律走方法入参传入，本类自身只持有 config / isCustom / report / hooks 这些
+ * 整个 processor 生命周期不变的依赖。
+ */
 export class PlanApplier {
   constructor(
     private readonly config: ResolvedConfig,

@@ -433,3 +433,213 @@ describe('parseVarMap — 中文简写变量', () => {
     expect(out).not.toContain('$t');
   });
 });
+
+/**
+ * script 侧 restore 的第二参形态判定：只有对象字面量才能推出确定的变量映射，
+ * 数组 / 标识符 / 数字等形态必须保留原调用（否则占位符被字面化、运行时变量丢失）。
+ */
+describe('VueRestoreTransformer script restore — 第二参非对象字面量时保留原调用', () => {
+  const lib = new VueI18nLibraryImpl();
+  const T_IMPORT = '@/plugins/locale';
+
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, T_IMPORT);
+
+  /** 包一层 <script setup>，并带上 generate 阶段会注入的模块 import。 */
+  const sfc = (body: string): string =>
+    `<script setup lang="ts">\nimport { t } from '${T_IMPORT}';\n${body}\n</script>\n`;
+
+  it('数组列表插值 t(k, [name]) 不被还原', () => {
+    const out = restore(sfc(`const msg = t('greet', [name]);`), { greet: '你好 {0}' });
+    expect(out).toContain("t('greet', [name])");
+    expect(out).not.toContain("'你好 {0}'");
+    // 调用还在 → t 仍被引用 → 模块 import 不得被清理（否则 TS2304）
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+  });
+
+  it('标识符透传 t(k, params) 不被还原', () => {
+    const out = restore(sfc(`const msg = t('tip', params);`), { tip: '共 {count} 条' });
+    expect(out).toContain("t('tip', params)");
+    expect(out).not.toContain("'共 {count} 条'");
+  });
+
+  it('复数计数 t(k, 5) 不被还原', () => {
+    const out = restore(sfc(`const msg = t('apple', 5);`), { apple: '{count} 个苹果' });
+    expect(out).toContain("t('apple', 5)");
+    expect(out).not.toContain("'{count} 个苹果'");
+  });
+
+  it('$t 成员调用形态同样保留', () => {
+    const src = `<script lang="ts">\nexport default {\n  computed: {\n    msg() {\n      return this.$t('greet', [this.name]);\n    },\n  },\n};\n</script>\n`;
+    const out = restore(src, { greet: '你好 {0}' });
+    expect(out).toContain("this.$t('greet', [this.name])");
+    expect(out).not.toContain("'你好 {0}'");
+  });
+
+  // ---------- 反向：对象字面量与无参路径必须照旧还原 ----------
+
+  it('反向：对象字面量 t(k, { name: expr }) 仍还原为模板串', () => {
+    const out = restore(sfc(`const msg = t('greet', { name: user.name });`), {
+      greet: '你好 {name}',
+    });
+    expect(out).toContain('`你好 ${user.name}`');
+    expect(out).not.toContain("t('greet'");
+  });
+
+  it('反向：对象简写 t(k, { count }) 仍还原为模板串', () => {
+    const out = restore(sfc(`const msg = t('n', { count });`), { n: '共 {count} 条' });
+    expect(out).toContain('`共 ${count} 条`');
+  });
+
+  it('反向：无第二参的简单替换仍工作，并清理不再使用的 import', () => {
+    const out = restore(sfc(`const msg = t('plain');`), { plain: '纯文本' });
+    expect(out).toContain("const msg = '纯文本'");
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+  });
+
+  it('反向：spread t(k, { ...rest }) 仍保留原调用（既有行为不变）', () => {
+    const out = restore(sfc(`const msg = t('greet', { ...rest });`), { greet: '你好 {name}' });
+    expect(out).toContain("t('greet', { ...rest })");
+  });
+
+  // ---------- template 侧：三个 pass 对这些形态本就原样保留 ----------
+
+  it('template 侧：{{ $t(k, [name]) }} / :attr 绑定 / 三元 都原样保留', () => {
+    const src =
+      `<template>\n` +
+      `  <p>{{ $t('greet', [name]) }}</p>\n` +
+      `  <el-input :placeholder="$t('tip', params)" />\n` +
+      `  <span>{{ ok ? $t('apple', 5) : '' }}</span>\n` +
+      `</template>\n`;
+    const out = restore(src, {
+      greet: '你好 {0}',
+      tip: '共 {count} 条',
+      apple: '{count} 个苹果',
+    });
+    expect(out).toContain("$t('greet', [name])");
+    expect(out).toContain("$t('tip', params)");
+    expect(out).toContain("$t('apple', 5)");
+    expect(out).not.toContain('你好 {0}');
+    expect(out).not.toContain('共 {count} 条');
+  });
+});
+
+/**
+ * pass 3（表达式内 $t 片段还原）写回的文本若含与属性外层同种的引号，
+ * 必须转成 HTML 实体，否则提前终结属性值、产出结构损坏的模板。
+ */
+describe('VueRestoreTransformer pass 3 — 还原文本里的引号不终结属性外层引号', () => {
+  const lib = new VueI18nLibraryImpl();
+  const T_IMPORT = '@/plugins/locale';
+
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, T_IMPORT);
+
+  it('双引号属性 + 文本含 "：转成 &quot; 而非提前闭合属性', () => {
+    const src = `<template>\n  <div :title="cond ? $t('k1') : other">x</div>\n</template>\n`;
+    const out = restore(src, { k1: '他说"你好"' });
+    expect(out).toContain(`:title="cond ? '他说&quot;你好&quot;' : other"`);
+    expect(out).not.toContain('他说"你好"');
+  });
+
+  it('双引号属性 + 带变量还原（模板串路径）同样转义', () => {
+    const src = `<template>\n  <div :title="cond ? $t('k2', { n: name }) : other">x</div>\n</template>\n`;
+    const out = restore(src, { k2: '他说"{n}"' });
+    expect(out).toContain(':title="cond ? `他说&quot;${name}&quot;` : other"');
+  });
+
+  it("单引号属性 + 文本含 '：转成 &#39;", () => {
+    const src = `<template>\n  <div :title='cond ? $t("k3") : other'>x</div>\n</template>\n`;
+    const out = restore(src, { k3: "它说'嗨'" });
+    expect(out).toContain(`:title='cond ? "它说&#39;嗨&#39;" : other'`);
+  });
+
+  // ---------- 反向：文本不含外层引号字符时输出逐字节不变 ----------
+
+  it('反向：文本不含引号时输出与转义前逐字节一致', () => {
+    const src = `<template>\n  <div :title="cond ? $t('k4') : other">x</div>\n</template>\n`;
+    const out = restore(src, { k4: '普通文案' });
+    expect(out).toBe(
+      `<template>\n  <div :title="cond ? '普通文案' : other">x</div>\n</template>\n`,
+    );
+  });
+
+  it('反向：文本只含与外层不同种的引号时不做实体替换', () => {
+    const src = `<template>\n  <div :title="cond ? $t('k5') : other">x</div>\n</template>\n`;
+    const out = restore(src, { k5: "别名 don't" });
+    expect(out).toBe(
+      `<template>\n  <div :title="cond ? '别名 don\\'t' : other">x</div>\n</template>\n`,
+    );
+  });
+
+  it('反向：pass 2 的整值路径行为不变', () => {
+    const src = `<template>\n  <div :title="$t('k6')">x</div>\n</template>\n`;
+    expect(restore(src, { k6: '标题' })).toContain('title="标题"');
+  });
+});
+
+/**
+ * t 来源（模块 import / useI18n 解构）的清理守卫要把 template 里存活的裸 t() 一并计入，
+ * 否则部分还原后 template 引用的 t 失去来源。
+ */
+describe('VueRestoreTransformer — template 里存活的裸 t() 保住 t 的来源', () => {
+  const lib = new VueI18nLibraryImpl();
+  const T_IMPORT = '@/plugins/locale';
+
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, T_IMPORT);
+
+  it('模块 import：template 仍有 t(自管 key) 时不得删 import', () => {
+    const src =
+      `<template>\n  <div>{{ t('own.key') }}</div>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t } from '${T_IMPORT}';\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+    expect(out).toContain("{{ t('own.key') }}");
+    expect(out).toContain("const msg = '你好'");
+  });
+
+  it('hook 声明：template 仍有 t(自管 key) 时不得删 const { t } = useI18n()', () => {
+    const src =
+      `<template>\n  <div>{{ t('own.key') }}</div>\n</template>\n\n` +
+      `<script setup>\nimport { useI18n } from 'vue-i18n';\nconst { t } = useI18n();\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).toContain('const { t } = useI18n()');
+    expect(out).toContain("import { useI18n } from 'vue-i18n'");
+  });
+
+  // ---------- 反向：template 无裸 t 引用时照删 ----------
+
+  it('反向：template 无 t 引用时模块 import 照删', () => {
+    const src =
+      `<template>\n  <div>{{ msg }}</div>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t } from '${T_IMPORT}';\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+  });
+
+  it('反向：template 只有 $t()（全局注入）时模块 import 照删', () => {
+    const src =
+      `<template>\n  <div>{{ $t('own.key') }}</div>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t } from '${T_IMPORT}';\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+    expect(out).toContain("{{ $t('own.key') }}");
+  });
+
+  it('反向：template 只有形近的 `.t(` / `xt(` 时照删', () => {
+    const src =
+      `<template>\n  <div>{{ i18n.t('own.key') }}{{ fmt(cnt) }}</div>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t } from '${T_IMPORT}';\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+  });
+
+  it('反向：template 无 t 引用时 hook 声明与 import 照删', () => {
+    const src =
+      `<template>\n  <div>{{ msg }}</div>\n</template>\n\n` +
+      `<script setup>\nimport { useI18n } from 'vue-i18n';\nconst { t } = useI18n();\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).not.toContain('useI18n');
+  });
+});

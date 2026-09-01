@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { parseSourceFile } from '../../utils/ast-core';
 import { hasLocalDeclarationWithin, isIdentifierValueReference } from '../../utils/scope-analysis';
 import type { ReactI18nLibrary } from './libraries';
 
@@ -43,10 +44,17 @@ export function resolveHookName(node: ts.CallExpression): string | undefined {
 export class HooksUtils {
   /**
    * 为使用翻译变量的hooks添加到依赖项数组（由 library 适配器驱动）
+   *
+   * filePath 决定解析用的 ScriptKind（与 ReactComponentInjector.inject 同义）：纯 .ts 若按
+   * TSX 解析，`<T>expr` 类型断言会被当成 JSX，hook 与依赖数组定位随之失准。缺省回退 temp.tsx。
    */
-  static addTranslationVarToHooksDependencies(code: string, library: ReactI18nLibrary): string {
+  static addTranslationVarToHooksDependencies(
+    code: string,
+    library: ReactI18nLibrary,
+    filePath?: string,
+  ): string {
     const varName = library.translationVarName;
-    const sourceFile = ts.createSourceFile('temp.tsx', code, ts.ScriptTarget.Latest, true);
+    const sourceFile = parseSourceFile(code, filePath ?? 'temp.tsx');
     const hooksToFix: {
       node: ts.CallExpression;
       needsVar: boolean;
@@ -88,20 +96,15 @@ export class HooksUtils {
           );
 
           if (!hasVar) {
-            const depsStart = depsArg.getStart(sourceFile) + 1;
-            const depsEnd = depsArg.getEnd() - 1;
-            const existingDeps = code.slice(depsStart, depsEnd).trim();
+            // 插入点必须取「最后一个依赖项节点的结束位置」：末元素后可能跟行注释
+            // （`[dep // 说明\n]`），插到注释之后会让 `, t]);` 整段落进注释、文件语法错误。
+            // 末元素已有尾随逗号（`[dep, ]`）无需特判：插入结果 `[dep, t, ]` 合法。
+            const elements = depsArg.elements;
+            const lastElement = elements[elements.length - 1];
+            const insertPos = lastElement ? lastElement.getEnd() : depsArg.getStart(sourceFile) + 1;
+            const insertText = lastElement ? `, ${varName}` : varName;
 
-            let newDeps: string;
-            if (!existingDeps) {
-              newDeps = varName;
-            } else if (existingDeps.endsWith(',')) {
-              newDeps = `${existingDeps} ${varName}`;
-            } else {
-              newDeps = `${existingDeps}, ${varName}`;
-            }
-
-            code = code.slice(0, depsStart) + newDeps + code.slice(depsEnd);
+            code = code.slice(0, insertPos) + insertText + code.slice(insertPos);
           }
         }
       }

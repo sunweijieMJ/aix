@@ -174,7 +174,6 @@ export function applyReplacements(
 export function shouldReplaceNode(
   nodeText: string,
   originalText: string,
-  _isTemplateString: boolean,
   opts?: { nodeDelimited?: boolean; originalDelimited?: boolean },
 ): boolean {
   // nodeDelimited / originalDelimited 默认 true：保持历史「两侧都剥一层成对定界符」的行为，
@@ -244,7 +243,7 @@ export function nodeMatchesExtractedOriginal(
   ) {
     return true;
   }
-  return shouldReplaceNode(nodeToText(node, sourceFile), originalText, false, opts);
+  return shouldReplaceNode(nodeToText(node, sourceFile), originalText, opts);
 }
 
 /**
@@ -315,7 +314,7 @@ function findNearbyStringNode(
       // 路径被再剥一层 → 两侧不相等 → 漏替换（精确路径已修过的同型 bug）。
       const originalIsSourceForm = originalText.startsWith('`') && originalText.endsWith('`');
       if (
-        shouldReplaceNode(nodeText, originalText, false, {
+        shouldReplaceNode(nodeText, originalText, {
           nodeDelimited: !ts.isJsxText(node),
           originalDelimited: originalIsSourceForm,
         })
@@ -375,7 +374,7 @@ export function findExactStringNode(
   if (ts.isStringLiteral(node)) {
     const nodeText = nodeToText(node, sourceFile);
     if (
-      shouldReplaceNode(nodeText, originalText, false, {
+      shouldReplaceNode(nodeText, originalText, {
         originalDelimited: false,
       })
     ) {
@@ -387,7 +386,7 @@ export function findExactStringNode(
       if (ts.isStringLiteral(parent)) {
         const parentText = nodeToText(parent, sourceFile);
         if (
-          shouldReplaceNode(parentText, originalText, false, {
+          shouldReplaceNode(parentText, originalText, {
             originalDelimited: false,
           })
         ) {
@@ -402,7 +401,7 @@ export function findExactStringNode(
   if (ts.isJsxText(node)) {
     const nodeText = nodeToText(node, sourceFile);
     if (
-      shouldReplaceNode(nodeText, originalText, false, {
+      shouldReplaceNode(nodeText, originalText, {
         nodeDelimited: false,
         originalDelimited: false,
       })
@@ -416,7 +415,7 @@ export function findExactStringNode(
   if (ts.isNoSubstitutionTemplateLiteral(node)) {
     const nodeText = nodeToText(node, sourceFile);
     if (
-      shouldReplaceNode(nodeText, originalText, false, {
+      shouldReplaceNode(nodeText, originalText, {
         originalDelimited: false,
       })
     ) {

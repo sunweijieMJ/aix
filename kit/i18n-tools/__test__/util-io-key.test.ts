@@ -13,7 +13,13 @@ import { IdGenerator } from '../src/utils/id-generator';
 import { IdReuseResolver } from '../src/core/IdReuseResolver';
 import { isModeExplicitlySet } from '../src/utils/command-utils';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
-import { classifyJsonFile, loadJsonDictOrThrow, writeTranslationsFile } from '../src/utils/json-io';
+import {
+  classifyJsonFile,
+  loadJsonDictOrThrow,
+  safeLoadJsonFile,
+  writeTranslationsFile,
+} from '../src/utils/json-io';
+import { previewText } from '../src/utils/text-normalize';
 
 // =============================================================================
 // file-utils
@@ -751,5 +757,144 @@ describe('classifyJsonFile / loadJsonDictOrThrow — 顶层必须是对象', () 
     expect(classifyJsonFile(write('{"a":"1"}'))).toEqual({ status: 'ok', data: { a: '1' } });
     expect(classifyJsonFile(write('null')).status).toBe('empty');
     expect(classifyJsonFile(write('   ')).status).toBe('empty');
+  });
+});
+
+// =============================================================================
+// json-io — silent 读取契约与解析错因
+// =============================================================================
+// silent 传到 tryParseJson，探测型读取（getMessages / migrateToBuckets / findCorrupt*）
+// 不再每探测一次刷一条裸报错；解析错因随 classifyJsonFile 的返回值带出。
+describe('json-io — silent 读取契约与解析错因', () => {
+  const withCorruptFile = <T>(fn: (file: string) => T): T => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-json-io-'));
+    const file = path.join(dir, 'broken.json');
+    fs.writeFileSync(file, '{ "a": 1,, }', 'utf-8');
+    try {
+      return fn(file);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('safeLoadJsonFile({ silent: true }) 对损坏文件零输出', () => {
+    const errorSpy = vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const result = withCorruptFile((file) => safeLoadJsonFile(file, { silent: true }));
+    expect(result).toEqual({});
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('不传 silent 时仍照旧打印（既有行为不回退）', () => {
+    const errorSpy = vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    withCorruptFile((file) => safeLoadJsonFile(file));
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('classifyJsonFile({ silent: true }) 不打印但把错因随返回值带出', () => {
+    const errorSpy = vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    const cls = withCorruptFile((file) => classifyJsonFile(file, { silent: true }));
+    expect(cls.status).toBe('corrupt');
+    expect(cls.status === 'corrupt' && cls.reason).toBeTruthy();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('loadJsonDictOrThrow 的报错信息包含解析器给出的错因', () => {
+    const errorSpy = vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    const message = withCorruptFile((file) => {
+      try {
+        loadJsonDictOrThrow(file, (p) => `坏了: ${p}`);
+        return '';
+      } catch (e) {
+        return (e as Error).message;
+      }
+    });
+    expect(message).toContain('坏了:');
+    // 语法错因（解析器 message）经 reason 透出，用户能定位「坏在哪」
+    expect(message).toContain('👉');
+    expect(errorSpy).toHaveBeenCalled(); // 该路径未 silent，控制台仍有原始错误
+  });
+});
+
+// =============================================================================
+// IdReuseResolver — 无前缀域的 key 复用
+// =============================================================================
+// 前缀派生结果为空串（文件不在 anchor 下 / take·transform 过滤掉全部段 / custom 返回 []）
+// 时，同一原文也要能复用「同样无前缀」的历史 key，否则每轮 generate 都重新分配。
+describe('IdReuseResolver — 无前缀域的 key 复用', () => {
+  const withProject = <T>(locale: Record<string, string>, fn: (root: string) => T): T => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-reuse-'));
+    fs.mkdirSync(path.join(root, 'src', 'i18n'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'src', 'i18n', 'zh-CN.json'), JSON.stringify(locale), 'utf-8');
+    try {
+      return fn(root);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  const resolverFor = (root: string): IdReuseResolver =>
+    new IdReuseResolver(
+      resolveConfig({ root, framework: { type: 'vue' }, io: { format: 'flat' } }),
+      false,
+    );
+
+  it('复用无前缀历史 key（anchor 之外的文件）', () => {
+    withProject({ submitBtn: '提交' }, (root) => {
+      const resolver = resolverFor(root);
+      const outside = path.join(root, 'lib', 'foo.vue');
+      // 前置事实：该文件派生不出前缀
+      expect(resolver.getIdGenerator().getDirectoryPrefix(outside)).toBe('');
+      expect(resolver.pickReusableKey('提交', outside)).toBe('submitBtn');
+    });
+  });
+
+  it('不跨域复用带前缀的历史 key（acrossDirectories=false 时仍隔离）', () => {
+    withProject({ 'pages.order.submitBtn': '提交' }, (root) => {
+      const resolver = resolverFor(root);
+      const outside = path.join(root, 'lib', 'foo.vue');
+      expect(resolver.pickReusableKey('提交', outside)).toBeUndefined();
+    });
+  });
+
+  it('同前缀域内的既有行为不变', () => {
+    withProject({ 'pages.submitBtn': '提交' }, (root) => {
+      const resolver = resolverFor(root);
+      const inside = path.join(root, 'src', 'pages', 'foo.vue');
+      expect(resolver.pickReusableKey('提交', inside)).toBe('pages.submitBtn');
+    });
+  });
+});
+
+// =============================================================================
+// 文本工具 — containsChinese / isValidTranslation / previewText
+// =============================================================================
+describe('文本工具 — containsChinese / isValidTranslation / previewText', () => {
+  it('containsChinese 单参签名', () => {
+    expect(FileUtils.containsChinese('你好 world')).toBe(true);
+    expect(FileUtils.containsChinese('hello')).toBe(false);
+    expect(FileUtils.containsChinese('')).toBe(false);
+  });
+
+  it('isValidTranslation 纯标点仍无效、正常译文仍有效', () => {
+    expect(FileUtils.isValidTranslation('...')).toBe(false);
+    expect(FileUtils.isValidTranslation('{}')).toBe(false);
+    expect(FileUtils.isValidTranslation('  ')).toBe(false);
+    expect(FileUtils.isValidTranslation('Hello')).toBe(true);
+    expect(FileUtils.isValidTranslation('第1项')).toBe(true);
+    expect(FileUtils.isValidTranslation(null)).toBe(false);
+  });
+
+  it('previewText：单行化 + 80 截断', () => {
+    expect(previewText('a\n  b\tc')).toBe('a b c');
+    const long = '汉'.repeat(81);
+    expect(previewText(long)).toBe(`${'汉'.repeat(80)}…`);
+    expect(previewText('汉'.repeat(80))).toBe('汉'.repeat(80));
   });
 });

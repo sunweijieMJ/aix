@@ -134,7 +134,7 @@ class PathPrefixStrategyImpl implements PrefixStrategy {
   /**
    * 段级清理 + transform。
    *
-   * 清理：preserveHyphens=false 时把每段中非 alnum 字符抹除（与旧 cleanDirectoryPrefix 行为一致）；
+   * 清理：preserveHyphens=false 时把每段中非 alnum 字符抹除；
    * =true 时保留连字符（仅抹掉其它非 alnum 字符），让 matchKey 与目录名直接对齐。
    *
    * transform：null 返回值会删除该段；undefined 表示未配置时跳过。
@@ -302,7 +302,7 @@ function extractSemanticPart(text: string, mappings: Record<string, string>): st
   const cleanText = text.replace(NON_SEMANTIC_CHAR_RE, '').trim();
 
   // 单次遍历：完全匹配立即返回（优先级最高，可短路）；同时记录首个部分匹配，
-  // 遍历结束仍无完全匹配时再用它。语义与原「先全量找完全、再全量找部分」一致。
+  // 遍历结束仍无完全匹配时再用它。
   let partialMatch: string | undefined;
   for (const [zh, en] of Object.entries(mappings)) {
     if (cleanText === zh) return en;
@@ -372,11 +372,18 @@ export class IdGenerator {
   }
 
   /**
+   * 无 LLM 语义 ID 时的本地兜底语义段：先查 keys.fallback.mappings（完全匹配 > 部分匹配），
+   * 未命中再按文本派生。所有兜底路径（含 promoteToCommon 的固定前缀路径）共用这一份匹配语义。
+   */
+  deriveSemanticPart(text: string): string {
+    return extractSemanticPart(text, this.mappings);
+  }
+
+  /**
    * 用文件路径派生完整 ID（无 LLM 输入）：前缀 + 语义兜底 + 唯一化。
    */
   generateWithFilePath(filePath: string, text: string, existingIds: Set<string>): string {
-    const semanticPart = extractSemanticPart(text, this.mappings);
-    return this.createFullId(filePath, semanticPart, existingIds);
+    return this.createFullId(filePath, this.deriveSemanticPart(text), existingIds);
   }
 
   /**

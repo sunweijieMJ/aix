@@ -23,6 +23,12 @@ const JS_IDENTIFIER_RE = new RegExp(
 );
 
 /**
+ * template 中的裸 `t(` 调用。负向前缀排除 `$t(`（Vue 全局注入，不依赖任何 script 绑定）、
+ * `.t(`、`xt(`。与 VueImportManager 注入侧的探测口径一致。
+ */
+const TEMPLATE_BARE_T_CALL_RE = /(?:^|[^\w.$])t\s*\(/;
+
+/**
  * Vue 还原代码转换器
  * 负责将 i18n 调用还原为原始文本
  */
@@ -167,6 +173,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
    */
   private static isTImportUnusedInScript(restoredCode: string, tImport: string): boolean {
     const { descriptor } = parseSFC(restoredCode);
+    // t 同时是 template 绑定：模板里存活的裸 t()（key 不在 localeMap 而未被还原）仍需要
+    // 这条 import，只看 script 会删出运行时 "t is not defined"。
+    if (descriptor.template && TEMPLATE_BARE_T_CALL_RE.test(descriptor.template.content)) {
+      return false;
+    }
     const scriptContent = [descriptor.script, descriptor.scriptSetup]
       .filter((b): b is NonNullable<typeof b> => Boolean(b))
       .map((b) => b.content)
@@ -185,6 +196,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
    */
   private static isTNameUnusedInScript(restoredCode: string): boolean {
     const { descriptor } = parseSFC(restoredCode);
+    // 同 isTImportUnusedInScript：hook 解构出的 t 也是 template 绑定，模板里存活的裸 t()
+    // 会用到它，删声明同样产出未定义 t。
+    if (descriptor.template && TEMPLATE_BARE_T_CALL_RE.test(descriptor.template.content)) {
+      return false;
+    }
     const scriptContent = [descriptor.script, descriptor.scriptSetup]
       .filter((b): b is NonNullable<typeof b> => Boolean(b))
       .map((b) => b.content)
@@ -311,6 +327,9 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 辅助函数：去掉命名空间前缀并查找 locale 文本
     const lookupText = (rawKey: string): string | undefined => {
       let lookupKey = rawKey;
+      // i18next 系（supportsNamespace）里 `ns:key` 是运行时约定：locale 按 namespace 分文件、
+      // 存的是裸 key，故与工具自身是否配了 framework.namespace 无关，一律剥掉首个冒号之前的
+      // 部分。剥不中时下面还有 `?? localeMap[rawKey]` 兜底原样查一次。
       if (library.supportsNamespace) {
         const colonIndex = lookupKey.indexOf(':');
         if (colonIndex !== -1) {
@@ -321,6 +340,10 @@ export class VueRestoreTransformer implements IRestoreTransformer {
       // `||` 会把它当「没找到」再去查 rawKey，查不到就整段不还原、源码里永远卡着 $t 调用。
       return localeMap[lookupKey] ?? localeMap[rawKey];
     };
+
+    // 「空串是合法译值」这条口径的唯一说明（下面三个 pass 共用）：命中与否一律用
+    // `text === undefined` 判，不能写 `!text` / `||` —— 空串会被当成缺 key，导致有意留白的
+    // 文案永远还原不回来、源码里卡着 $t 调用。各 pass 内只标注「见 lookupText」不再复述。
 
     // pass 1/2 占位机制：用 PUA 字符（U+E000）作为不可见边界包裹 `I18N_R_<idx>`，
     // 隔离已还原片段，防止 pass 3 的 innerI18nCallRegex 把 locale 文本里碰巧出现的
@@ -350,7 +373,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     restored = restored.replace(i18nCallRegex, (match, key, vars) => {
       const text = lookupText(key as string);
-      // 显式判 undefined：空串是合法译值，`!text` 会把它当缺 key 而保留 $t 调用不还原。
+      // 判 undefined 而非 `!text`：见 lookupText 上方说明。
       if (text === undefined) {
         return match;
       }
@@ -383,7 +406,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
 
     restored = restored.replace(attrBindingRegex, (match, attrName, _outer, key, vars) => {
       const text = lookupText(key as string);
-      // 显式判 undefined：空串是合法译值，`!text` 会把它当缺 key 而保留 $t 调用不还原。
+      // 判 undefined 而非 `!text`：见 lookupText 上方说明。
       if (text === undefined) {
         return match;
       }
@@ -419,7 +442,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     const replaceInnerCalls = (input: string, quote: '"' | "'"): string =>
       input.replace(innerI18nCallRegex, (match, key, vars) => {
         const text = lookupText(key as string);
-        // 显式判 undefined：空串是合法译值，`!text` 会把它当缺 key 而保留 $t 调用不还原。
+        // 判 undefined 而非 `!text`：见 lookupText 上方说明。
         if (text === undefined) {
           return match;
         }
@@ -450,9 +473,14 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     //     时记下的 attributeQuote 选引号），两端对称。处理完整段 stash，3b 不再触碰。
     const directiveValueRegex = /((?:v-[\w-]+|[:@#])[\w:.\-[\]$]*)=(["'])((?:(?!\2)[\s\S])*)\2/g;
     restored = restored.replace(directiveValueRegex, (match, name, outerQuote, value) => {
-      const inner = replaceInnerCalls(value as string, outerQuote === "'" ? '"' : "'");
+      const quote = outerQuote === "'" ? "'" : '"';
+      const inner = replaceInnerCalls(value as string, quote === "'" ? '"' : "'");
       if (inner === value) return match;
-      return stash(`${name}=${outerQuote}${inner}${outerQuote}`);
+      // locale 原文可能含与外层同种的引号（`他说"你好"`），原样写出会让属性提前闭合。
+      // 属性值本身不含外层引号（上面的正则以 (?!\2) 排除），故整段替换只会命中还原出的
+      // 字符。Vue 解析绑定属性前先解 HTML 实体，表达式语义不变。与 pass 2 同法。
+      const safeInner = inner.split(quote).join(quote === '"' ? '&quot;' : '&#39;');
+      return stash(`${name}=${quote}${safeInner}${quote}`);
     });
 
     // 3b. 其余上下文（插值 `{{ }}` 内、无引号属性值等）：不受属性引号约束，用单引号。
@@ -736,6 +764,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     }
 
     let key = keyArg.text;
+    // 同 restoreTemplate.lookupText：i18next 的 `ns:key` 是运行时约定，剥首个冒号前缀。
     if (library.supportsNamespace) {
       const colonIndex = key.indexOf(':');
       if (colonIndex !== -1) {
@@ -752,34 +781,38 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 带变量: t('key', { name: expr }) → `text ${expr}`
     if (node.arguments.length > 1) {
       const varsArg = node.arguments[1]!;
-      if (ts.isObjectLiteralExpression(varsArg)) {
-        const varMap = new Map<string, string>();
-        for (const prop of varsArg.properties) {
-          if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-            const exprText = nodeToText(prop.initializer, sourceFile);
-            varMap.set(prop.name.text, exprText);
-          } else if (ts.isShorthandPropertyAssignment(prop)) {
-            // 对象简写 `{ count }` 等价于 `{ count: count }`：占位符名与变量名同名。
-            // 不补这一分支，简写会被整体忽略 → varMap 为空 → 落到下方「简单替换」把
-            // 占位符 `{count}` 当普通字面量塞进单引号串，变量丢失、译文里残留花括号。
-            varMap.set(prop.name.text, prop.name.text);
-          } else if (ts.isSpreadAssignment(prop)) {
-            // 展开 `{ ...rest }` 无法静态解析成具体占位符映射，强行还原会丢变量或把
-            // 占位符字面化。宁可保留原 $t 调用不还原（返回 null），也不破坏源码语义。
-            return null;
-          }
+      // 数组 `t('k', [name])`、标识符 `t('k', params)`、数字 `t('k', 5)` 等非对象字面量
+      // 第二参无法静态解析成「占位符 → 表达式」映射，返回 null 保留原调用不还原，
+      // 避免把含占位符的 locale 值字面化、丢掉运行时变量（与 SpreadAssignment 分支同口径）。
+      if (!ts.isObjectLiteralExpression(varsArg)) {
+        return null;
+      }
+      const varMap = new Map<string, string>();
+      for (const prop of varsArg.properties) {
+        if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+          const exprText = nodeToText(prop.initializer, sourceFile);
+          varMap.set(prop.name.text, exprText);
+        } else if (ts.isShorthandPropertyAssignment(prop)) {
+          // 对象简写 `{ count }` 等价于 `{ count: count }`：占位符名与变量名同名。
+          // 不补这一分支，简写会被整体忽略 → varMap 为空 → 落到下方「简单替换」把
+          // 占位符 `{count}` 当普通字面量塞进单引号串，变量丢失、译文里残留花括号。
+          varMap.set(prop.name.text, prop.name.text);
+        } else if (ts.isSpreadAssignment(prop)) {
+          // 展开 `{ ...rest }` 无法静态解析成具体占位符映射，强行还原会丢变量或把
+          // 占位符字面化。宁可保留原 $t 调用不还原（返回 null），也不破坏源码语义。
+          return null;
         }
+      }
 
-        if (varMap.size > 0) {
-          // 模板字面量需先转义 `\\`（必须最先），再转义反引号与 `${`。
-          // 真实换行允许出现在模板字面量内，无需转换。
-          let result = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
-          // 替换占位符为变量表达式
-          varMap.forEach((exprText, placeholder) => {
-            result = result.replace(new RegExp(`\\{${placeholder}\\}`, 'g'), `\${${exprText}}`);
-          });
-          return `\`${result}\``;
-        }
+      if (varMap.size > 0) {
+        // 模板字面量需先转义 `\\`（必须最先），再转义反引号与 `${`。
+        // 真实换行允许出现在模板字面量内，无需转换。
+        let result = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+        // 替换占位符为变量表达式
+        varMap.forEach((exprText, placeholder) => {
+          result = result.replace(new RegExp(`\\{${placeholder}\\}`, 'g'), `\${${exprText}}`);
+        });
+        return `\`${result}\``;
       }
     }
 

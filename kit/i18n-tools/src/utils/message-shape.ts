@@ -219,7 +219,7 @@ export function getVariableNameFromExpression(expressionText: string): string {
   for (let i = parts.length - 1; i >= 0; i--) {
     let part = parts[i] ?? '';
     part = part.replace(/^['"`]|['"`]$/g, '');
-    // 中文区间拼 CHINESE_CHAR_RANGE，与 CONFIG.CHINESE_REGEX / containsChinese 同源：
+    // 中文区间拼 CHINESE_CHAR_RANGE，与 CHINESE_CHAR_RE / containsChinese 同源：
     // 曾在此写死上界 U+9FA5，把 U+9FA6-U+9FFF 扩充汉字当非中文剔除，判定口径与提取端不一致。
     part = part.replace(NON_IDENT_OR_CHINESE_RE, '');
 

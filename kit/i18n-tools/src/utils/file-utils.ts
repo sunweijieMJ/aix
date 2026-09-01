@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import picomatch from 'picomatch';
-import { CONFIG, FILES } from './constants';
+import { CHINESE_CHAR_RE, FILES } from './constants';
 import { LoggerUtils } from './logger';
 import { normalizePosix } from './path-matcher';
 import { safeLoadJsonFile } from './json-io';
@@ -14,35 +14,22 @@ import type { ResolvedConfig } from '../config';
  * 路径相关方法已参数化，接收 ResolvedConfig 而非硬编码路径
  */
 export class FileUtils {
+  /**
+   * 找出两个**扁平** locale map 中「同 key、不同值」的条目（基础包 vs 定制包冲突检测）。
+   *
+   * 入参契约：必须是已 flatten 的 `key → 标量值` 字典（两个生产调用点——ExportProcessor
+   * 的 flat / bucketed 导出——都在 flatten 之后进来）。不递归下钻嵌套值，也因此无需
+   * 感知 keys.separator。
+   */
   static findConflictingKeys(
-    obj1: Record<string, any>,
-    obj2: Record<string, any>,
-    prefix = '',
+    obj1: Record<string, unknown>,
+    obj2: Record<string, unknown>,
   ): string[] {
     const conflicts: string[] = [];
-
-    for (const key in obj1) {
-      if (Object.prototype.hasOwnProperty.call(obj1, key)) {
-        const currentPath = prefix ? `${prefix}.${key}` : key;
-
-        if (Object.prototype.hasOwnProperty.call(obj2, key)) {
-          const val1 = obj1[key];
-          const val2 = obj2[key];
-
-          if (
-            typeof val1 === 'object' &&
-            typeof val2 === 'object' &&
-            val1 !== null &&
-            val2 !== null
-          ) {
-            conflicts.push(...this.findConflictingKeys(val1, val2, currentPath));
-          } else if (val1 !== val2) {
-            conflicts.push(currentPath);
-          }
-        }
-      }
+    for (const key of Object.keys(obj1)) {
+      if (!Object.prototype.hasOwnProperty.call(obj2, key)) continue;
+      if (obj1[key] !== obj2[key]) conflicts.push(key);
     }
-
     return conflicts;
   }
 
@@ -50,12 +37,9 @@ export class FileUtils {
   // Text Processing Methods
   // =================================================================
 
-  static containsChinese(text: string, options: { ignoreSpaces?: boolean } = {}): boolean {
+  static containsChinese(text: string): boolean {
     if (!text) return false;
-
-    const processedText = options.ignoreSpaces ? text.replace(/\s/g, '') : text;
-
-    return CONFIG.CHINESE_REGEX.test(processedText);
+    return CHINESE_CHAR_RE.test(text);
   }
 
   /**
@@ -67,9 +51,6 @@ export class FileUtils {
 
     if (!enValue?.trim()) return false;
 
-    const cleanValue = enValue.replace(/[{}[\]().,;:!?'""`~@#$%^&*+=<>|\\/-]/g, '').trim();
-    if (cleanValue.length === 0) return false;
-
     // 包含任何文字或数字字符即视为有效翻译
     // \p{L} 匹配任意语言的字母，\p{N} 匹配任意数字
     return /[\p{L}\p{N}]/u.test(enValue);
@@ -80,7 +61,10 @@ export class FileUtils {
     prefix: string = '',
     separator: string = '.',
   ): Record<string, any> {
-    const result: Record<string, any> = {};
+    // null 原型：普通 `{}` 上 `result['__proto__'] = '文案'` 走 Object.prototype 的 __proto__
+    // setter，字符串值不会成为自有属性（叶子 key 静默消失），对象值还会换掉 result 的原型。
+    // `__proto__` 是合法的 locale 末段 key，写侧 writeTranslationsFile 已同样处理。
+    const result: Record<string, any> = Object.create(null);
 
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -176,7 +160,7 @@ export class FileUtils {
       if (e.includes('/')) {
         pathExcludes.push(e);
       } else if (e.includes('*') || e.includes('?')) {
-        // 仅匹配单段文件名（不跨越 / 分隔符），保持与原 simpleGlobToRegex 行为一致
+        // 仅匹配单段文件名（不跨越 / 分隔符）
         globExcludes.push(picomatch(e, { dot: true }));
       } else {
         literalExcludes.add(e);

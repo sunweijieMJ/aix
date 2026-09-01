@@ -20,7 +20,14 @@ import { LoggerUtils } from './logger';
 export type JsonFileClassification<T = any> =
   | { status: 'missing' }
   | { status: 'empty' }
-  /** reason：corrupt 的细分原因（目前只有「顶层不是对象」）；缺省表示 JSON 本身语法错误。 */
+  /**
+   * reason：corrupt 的细分原因——要么是「顶层不是对象」的结构性说明，要么是 JSON 解析器
+   * 抛出的原始 message（含出错位置）。
+   *
+   * Why 带在返回值里而不是只打日志：探测型调用方（findCorruptLocale / findCorruptBucketFile /
+   * plan read）会用 silent 抑制解析期日志，再由上层配合文件路径给出可操作的错误文案；
+   * 错因若只存在于被抑制的那行日志里就彻底丢了，用户拿不到「第几行坏了」。
+   */
   | { status: 'corrupt'; reason?: string }
   | { status: 'ok'; data: T };
 
@@ -30,7 +37,10 @@ export type JsonFileClassification<T = any> =
  * safeParseJson 用 null 双关这两种情况：内容为合法 `null` 的文件会被判成损坏。
  * 需要精确分类的调用方（classifyJsonFile）走这里，不要用返回值判空。
  */
-function tryParseJson(content: string): { ok: true; value: any } | { ok: false } {
+function tryParseJson(
+  content: string,
+  opts: { silent?: boolean } = {},
+): { ok: true; value: any } | { ok: false; reason: string } {
   try {
     // 剥离 UTF-8 BOM（U+FEFF）：Windows 外部编辑器（PowerShell 5.1、VS、记事本）写出的
     // locale/glossary/translations 文件常带 BOM，带 BOM 的内容直接 JSON.parse 会抛错，
@@ -38,13 +48,18 @@ function tryParseJson(content: string): { ok: true; value: any } | { ok: false }
     const normalized = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
     return { ok: true, value: JSON.parse(normalized) };
   } catch (error) {
-    LoggerUtils.error('JSON解析失败:', error);
-    return { ok: false };
+    // silent：调用方明确承诺「本次读取不产生输出」（safeLoadJsonFile 的 silent 选项）或
+    // 属于纯探测路径（findCorrupt* / plan read，错因由上层带文件路径统一报），
+    // 此时不得在这里打印无上下文的裸报错。
+    if (!opts.silent) {
+      LoggerUtils.error('JSON解析失败:', error);
+    }
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
-export function safeParseJson(content: string): any {
-  const result = tryParseJson(content);
+export function safeParseJson(content: string, opts: { silent?: boolean } = {}): any {
+  const result = tryParseJson(content, opts);
   return result.ok ? result.value : null;
 }
 
@@ -56,12 +71,17 @@ export function safeParseJson(content: string): any {
  * 无法区分——凡需对损坏 fail-fast（抛错/中止/回调）的调用方都只能绕过它自己手写。
  * 本方法把分类逻辑收一处，各调用方仅 switch on status、保留各自的后续动作。
  */
-export function classifyJsonFile<T = any>(filePath: string): JsonFileClassification<T> {
+export function classifyJsonFile<T = any>(
+  filePath: string,
+  opts: { silent?: boolean } = {},
+): JsonFileClassification<T> {
   if (!fs.existsSync(filePath)) return { status: 'missing' };
   const content = fs.readFileSync(filePath, 'utf-8');
   if (content.trim() === '') return { status: 'empty' };
-  const parsed = tryParseJson(content);
-  if (!parsed.ok) return { status: 'corrupt' };
+  const parsed = tryParseJson(content, opts);
+  // 语法错误的错因随返回值带出（见 JsonFileClassification.corrupt 的 reason 注释），
+  // 使 silent 探测路径也能把「坏在哪」透出给最终错误文案。
+  if (!parsed.ok) return { status: 'corrupt', reason: parsed.reason };
   // 内容为合法 `null` 的文件不是损坏：判 corrupt 会让 loadJsonDictOrThrow 抛错中止整条命令。
   // 它同样不是可用字典，归入 empty（与「空文件」同档，调用方一律降级为 {}）。
   if (parsed.value === null) return { status: 'empty' };
@@ -98,8 +118,8 @@ export function loadJsonDictOrThrow<T = Record<string, unknown>>(
 ): T {
   const cls = classifyJsonFile<T>(filePath);
   if (cls.status === 'corrupt') {
-    // reason 只在「语法合法但顶层不是对象」时存在：调用方的 buildCorruptMessage 一律按
-    // 「JSON 格式错误」措辞，单独看会让用户去找不存在的语法错。附上具体原因才可定位。
+    // 附上 reason：可能是「顶层不是对象」的结构性说明（调用方一律按「JSON 格式错误」措辞，
+    // 单独看会让用户去找不存在的语法错），也可能是解析器给出的出错位置。两者都需要透出。
     const base = buildCorruptMessage(filePath);
     throw new Error(cls.reason ? `${base}\n👉 ${cls.reason}` : base);
   }
@@ -129,7 +149,10 @@ export function safeLoadJsonFile<T extends object>(
     }
 
     const fileContent = fs.readFileSync(filePath, 'utf8');
-    const parsed = safeParseJson(fileContent);
+    // 把 silent 透传下去：本方法的 silent 契约是「整条读取路径不产生输出」，
+    // 而解析失败的日志发生在 tryParseJson 内部，不传就漏出（getMessages /
+    // migrateToBuckets 等注释里写明「silent 降级」的路径全都受此影响）。
+    const parsed = safeParseJson(fileContent, { silent });
 
     if (parsed === null) {
       if (!silent) {

@@ -7,7 +7,13 @@ import { ReactTextExtractor } from '../src/strategies/react/ReactTextExtractor';
 import { LoggerUtils } from '../src/utils/logger';
 import { ReactAdapter } from '../src/adapters/ReactAdapter';
 import { VueAdapter } from '../src/adapters/VueAdapter';
+import ts from 'typescript';
+import { ReactRestoreTransformer } from '../src/strategies/react/ReactRestoreTransformer';
 import { createReactI18nLibrary } from '../src/strategies/react/libraries';
+import type { ReactI18nLibraryType } from '../src/strategies/react/libraries';
+import { decodeJsxEntities } from '../src/strategies/react/jsx-entities';
+import { buildLocaleMessage } from '../src/utils/message-shape';
+import type { ExtractedString } from '../src/utils/types';
 
 /**
  * 提取阶段的边界回归集合，覆盖：
@@ -302,9 +308,10 @@ const handle = () => {
         .map((item) => item.text)
         .sort(),
     ).toEqual(['失败', '失败', '错误', '错误']);
-    expect(
-      extractor.drainManualSkips().filter((item) => item.category === 'nested-interpolation'),
-    ).toHaveLength(4);
+    // 「4 个调用点没被折叠成 1 个」这一属性由上面的 diagnostics 断言直接覆盖。
+    // 嵌套中文只走 ExtractionDiagnostics 这一条通道；manualSkips 不再重复登记同一批数据
+    // （原先登记了但唯一消费方 CoverageReporter 恒过滤掉以避免双计，见 ManualSkipDiagnostic）。
+    expect(extractor.drainManualSkips()).toHaveLength(0);
   });
 
   it('React 中的既有 t values 参数仍记录嵌套中文', async () => {
@@ -530,9 +537,9 @@ const html = \`<div><span>提示</span></div>\`;
       expect(extractor.drainWarnings()).toHaveLength(0);
 
       const manualSkips = extractor.drainManualSkips();
-      expect(manualSkips).toEqual([
-        expect.objectContaining({ category: 'html-template', count: 1 }),
-      ]);
+      // 「只记 1 处」由数组长度本身断言（ManualSkipDiagnostic 已无 count 字段：
+      // 每条记录恒等于一个调用点，由 category + dedupeKey 去重）。
+      expect(manualSkips).toEqual([expect.objectContaining({ category: 'html-template' })]);
       expect(extractor.drainManualSkips()).toHaveLength(0);
     });
   });
@@ -937,5 +944,271 @@ describe('提取：不可翻译技术文本在 Vue / React 两端口径一致', 
     expect(await extractReact('export const C = () => <p>访问 https://a.com 查看</p>;')).toEqual([
       '访问 https://a.com 查看',
     ]);
+  });
+});
+
+/** 用 transpileModule 的语法诊断判定产物是否仍可解析。 */
+function syntaxDiagnostics(code: string, fileName: string): readonly ts.Diagnostic[] {
+  return (
+    ts.transpileModule(code, {
+      fileName,
+      reportDiagnostics: true,
+      compilerOptions: { target: ts.ScriptTarget.Latest, jsx: ts.JsxEmit.Preserve },
+    }).diagnostics ?? []
+  );
+}
+
+/**
+ * 形参默认值里的文案若被提取替换，t 声明注入在函数体内、参数作用域看不到 → TS2304。
+ * 故整类形参默认值跳过提取，并记 param-default 人工项。
+ */
+describe('React 提取 — 形参默认值不参与提取', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r3-param-default-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** 提取 + 转换的最小端到端：返回提取结果、人工跳过项与转换产物。 */
+  async function run(source: string, libraryType: ReactI18nLibraryType = 'react-i18next') {
+    const file = path.join(dir, 'App.tsx');
+    fs.writeFileSync(file, source);
+    const adapter = new ReactAdapter('@/plugins/locale', libraryType);
+    const extractor = adapter.getTextExtractor();
+    const strings = await extractor.extractFromFile(file);
+    strings.forEach((s: ExtractedString, i) => (s.semanticId = `k${i}`));
+    const manualSkips = extractor.drainManualSkips();
+    const transformed = adapter.getTransformer().transform(file, strings, source);
+    return { strings, manualSkips, transformed };
+  }
+
+  it('函数组件的形参解构默认值：不提取、不替换，并记 param-default 人工项', async () => {
+    const source = `import React from 'react';
+interface Props { label?: string }
+export function App({ label = '默认标签' }: Props) {
+  return <div>{label}</div>;
+}
+`;
+    const { strings, manualSkips, transformed } = await run(source);
+
+    expect(strings.map((s) => s.original)).not.toContain('默认标签');
+    // 一旦替换成 label = t('k0')：t 声明注入在函数体内，参数作用域看不到 → TS2304
+    expect(transformed).toContain(`label = '默认标签'`);
+    expect(transformed).not.toMatch(/label\s*=\s*t\(/);
+    expect(manualSkips.map((m) => m.category)).toContain('param-default');
+  });
+
+  it('箭头组件 / 类方法 / 构造器的形参默认值同样跳过', async () => {
+    const source = `import React from 'react';
+export const Badge = ({ tip = '提示文案' }: { tip?: string }) => <span title={tip} />;
+
+export class Panel extends React.Component {
+  constructor(props: object, hint = '构造提示') {
+    super(props);
+  }
+  greet(msg = '方法提示') {
+    return msg;
+  }
+  render() {
+    return <div>{this.greet()}</div>;
+  }
+}
+`;
+    const { strings, transformed } = await run(source);
+    const originals = strings.map((s) => s.original);
+
+    expect(originals).not.toContain('提示文案');
+    expect(originals).not.toContain('构造提示');
+    expect(originals).not.toContain('方法提示');
+    expect(transformed).toContain(`tip = '提示文案'`);
+    expect(transformed).toContain(`hint = '构造提示'`);
+    expect(transformed).toContain(`msg = '方法提示'`);
+  });
+
+  it('形参默认值里的 JSX 子树同样跳过（作用域问题相同）', async () => {
+    const source = `import React from 'react';
+export const Card = ({ icon = <span>图标文案</span> }: { icon?: React.ReactNode }) => (
+  <div>{icon}</div>
+);
+`;
+    const { strings, transformed } = await run(source);
+    expect(strings.map((s) => s.original)).not.toContain('图标文案');
+    expect(transformed).toContain('<span>图标文案</span>');
+  });
+
+  it('反向：函数体内的正常文案照常提取替换（守卫不误伤）', async () => {
+    const source = `import React from 'react';
+export function App() {
+  const label = '默认标签';
+  return <div title="标题文案">{label}</div>;
+}
+`;
+    const { strings, transformed } = await run(source);
+    const originals = strings.map((s) => s.original);
+
+    expect(originals).toContain('默认标签');
+    expect(originals).toContain('标题文案');
+    expect(transformed).toContain('useTranslation()');
+    expect(transformed).toMatch(/const label = t\(/);
+  });
+});
+
+/**
+ * JSX 文本节点的两条语义规则：逐字区只认内建小写标签；文本里的 HTML 实体按 JSX
+ * 语义解码后再入 locale，而 original 保留源码形式以定位替换。
+ */
+describe('React JSX 文本语义', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r3-p2-react-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  /** 提取 + 转换的最小端到端。 */
+  async function run(
+    source: string,
+    libraryType: ReactI18nLibraryType = 'react-i18next',
+    fileName = 'App.tsx',
+  ) {
+    const file = path.join(dir, fileName);
+    fs.writeFileSync(file, source);
+    const adapter = new ReactAdapter('@/plugins/locale', libraryType);
+    const extractor = adapter.getTextExtractor();
+    const strings = await extractor.extractFromFile(file);
+    strings.forEach((s: ExtractedString, i) => (s.semanticId = `k${i}`));
+    const warnings = extractor.drainWarnings();
+    const library = createReactI18nLibrary(libraryType);
+    const locale: Record<string, string> = {};
+    strings.forEach((s) => (locale[s.semanticId] = buildLocaleMessage(s, library)));
+    const transformed = adapter.getTransformer().transform(file, strings, source);
+    return { file, strings, warnings, locale, transformed };
+  }
+
+  describe('逐字区跳过只认内建小写标签', () => {
+    it('<Code> / <Pre> 自定义组件的 children 与属性文案照常提取', async () => {
+      const source = `import React from 'react';
+import { Code, Pre } from '@design/system';
+export const App = () => (
+  <div>
+    <Code title="代码标题">示例文案</Code>
+    <Pre>预格式文案</Pre>
+  </div>
+);
+`;
+      const { strings } = await run(source);
+      const originals = strings.map((s) => s.original);
+      expect(originals).toContain('代码标题');
+      expect(originals).toContain('示例文案');
+      expect(originals).toContain('预格式文案');
+    });
+
+    it('反向：内建 <code>/<pre>（含 <cOde> 变体）仍整树跳过', async () => {
+      const source = `import React from 'react';
+export const App = () => (
+  <div>
+    <code title="代码标题">示例文案</code>
+    <pre>预格式文案</pre>
+    <cOde>大小写变体</cOde>
+  </div>
+);
+`;
+      const { strings } = await run(source);
+      expect(strings).toHaveLength(0);
+    });
+  });
+
+  describe('JSX 文本实体解码', () => {
+    it('命名实体：locale 值是真实字符，original 保持原文以定位替换', async () => {
+      const source = `import React from 'react';
+export const App = () => <div>版权所有&copy;示例</div>;
+`;
+      const { strings, locale, transformed } = await run(source);
+      const hit = strings.find((s) => s.original.includes('版权所有'))!;
+      expect(hit.original).toBe('版权所有&copy;示例');
+      expect(hit.processedMessage).toBe('版权所有©示例');
+      expect(locale[hit.semanticId]).toBe('版权所有©示例');
+      expect(transformed).not.toContain('版权所有');
+    });
+
+    it('数字实体（十进制 / 十六进制）同样解码', async () => {
+      const source = `import React from 'react';
+export const App = () => (
+  <div>
+    <p>十进制&#169;文案</p>
+    <p>十六进制&#x00A9;文案</p>
+  </div>
+);
+`;
+      const { strings } = await run(source);
+      expect(strings.map((s) => s.processedMessage)).toEqual(
+        expect.arrayContaining(['十进制©文案', '十六进制©文案']),
+      );
+    });
+
+    it('混合内容：占位符结构不变，仅文本段解码', async () => {
+      const source = `import React from 'react';
+export const App = ({ count }: { count: number }) => <div>共 {count} 项&hellip;</div>;
+`;
+      const { strings, locale, transformed } = await run(source);
+      const hit = strings.find((s) => s.isTemplateString)!;
+      expect(hit.original).toBe('`共 ${count} 项&hellip;`');
+      expect(hit.processedMessage).toBe('`共 ${count} 项…`');
+      expect(locale[hit.semanticId]).toBe('共 {{count}} 项…');
+      // original 仍是源码形式 → 定位与替换不受解码影响
+      expect(transformed).not.toContain('&hellip;');
+      expect(transformed).toContain('count');
+    });
+
+    it('未识别的命名实体：整段跳过提取并告警', async () => {
+      const source = `import React from 'react';
+export const App = () => <div>提示&ensp;文案</div>;
+`;
+      const { strings, warnings } = await run(source);
+      expect(strings.map((s) => s.original)).not.toContain('提示&ensp;文案');
+      expect(warnings.join('\n')).toContain('&ensp;');
+    });
+
+    it('反向：属性字符串与表达式容器里的字符串是 JS 语义，不解码', async () => {
+      const source = `import React from 'react';
+export const App = () => (
+  <div title="版权&copy;甲">{'版权&copy;乙'}</div>
+);
+`;
+      const { strings } = await run(source);
+      const attr = strings.find((s) => s.original.includes('甲'))!;
+      const expr = strings.find((s) => s.original.includes('乙'))!;
+      expect(attr.original).toBe('版权&copy;甲');
+      expect(attr.processedMessage).toBeUndefined();
+      expect(expr.original).toBe('版权&copy;乙');
+      expect(expr.processedMessage).toBeUndefined();
+    });
+
+    it('roundtrip：restore 把解码后的真实字符写回 JSX 文本（语义等价且可编译）', async () => {
+      const source = `import React from 'react';
+export const App = () => <div>版权所有&copy;示例</div>;
+`;
+      const { file, locale, transformed } = await run(source);
+      const restored = new ReactRestoreTransformer(
+        createReactI18nLibrary('react-i18next'),
+        '@/plugins/locale',
+      ).transform(file, locale, transformed);
+
+      expect(restored).toContain('版权所有©示例');
+      expect(syntaxDiagnostics(restored, file)).toHaveLength(0);
+    });
+
+    it('解码器：白名单外不猜、代理区码点按未知处理', () => {
+      expect(decodeJsxEntities('a&amp;b').text).toBe('a&b');
+      expect(decodeJsxEntities('&constructor;').unknownEntities).toEqual(['&constructor;']);
+      expect(decodeJsxEntities('&#xD800;').unknownEntities).toEqual(['&#xD800;']);
+      // 无分号形态不是实体引用，原样保留
+      expect(decodeJsxEntities('A&copy B').unknownEntities).toHaveLength(0);
+      expect(decodeJsxEntities('A&copy B').text).toBe('A&copy B');
+    });
   });
 });

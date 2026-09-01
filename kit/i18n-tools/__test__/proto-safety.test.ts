@@ -9,6 +9,7 @@ import { GeneratePlanWriter, type GeneratePlan } from '../src/core/GeneratePlan'
 import { FileUtils } from '../src/utils/file-utils';
 import { serializeCsv } from '../src/utils/csv-utils';
 import { LLMClient } from '../src/utils/llm-client';
+import { LanguageFileManager } from '../src/utils/language-file-manager';
 import { LoggerUtils } from '../src/utils/logger';
 import { writeTranslationsFile } from '../src/utils/json-io';
 import { resolveConfig } from '../src/config/loader';
@@ -365,5 +366,93 @@ describe('writeTranslationsFile — 顶层 __proto__ key 保真', () => {
       en: 'proto',
     });
     expect(({} as Record<string, unknown>).zh).toBeUndefined();
+  });
+});
+
+/**
+ * flattenObject 用普通对象累加时，`__proto__` 叶子会被原型 setter 静默吞掉
+ * （值是对象则换掉整张 map 的原型）。累加器需用 null 原型对象 + 自有属性定义。
+ */
+describe('FileUtils.flattenObject — 保住 __proto__ 叶子 key', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-flatten-proto-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function writeJson(relPath: string, data: unknown): void {
+    const full = path.join(tmpDir, 'locale', relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, JSON.stringify(data, null, 2));
+  }
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  it('顶层 "__proto__" 字符串叶子被保留', () => {
+    const raw = JSON.parse('{"__proto__":"文案","normal":"值"}');
+    const flat = FileUtils.flattenObject(raw, '', '.');
+
+    expect(Object.keys(flat).sort()).toEqual(['__proto__', 'normal']);
+    expect(flat['__proto__']).toBe('文案');
+  });
+
+  it('"__proto__" 的值是数组时不会被当成原型换掉整张 map', () => {
+    const raw = JSON.parse('{"__proto__":["a","b"]}');
+    const flat = FileUtils.flattenObject(raw, '', '.');
+
+    expect(Object.getPrototypeOf(flat)).toBeNull();
+    expect(flat['__proto__']).toEqual(['a', 'b']);
+  });
+
+  it('[反向] "__proto__" 的值是对象时照常递归展平，且不污染 Object.prototype', () => {
+    const raw = JSON.parse('{"__proto__":{"b":"x"}}');
+    const flat = FileUtils.flattenObject(raw, '', '.');
+
+    expect(Object.keys(flat)).toEqual(['__proto__.b']);
+    expect(flat['__proto__.b']).toBe('x');
+    expect(Object.getPrototypeOf(flat)).toBeNull();
+    expect(({} as Record<string, unknown>)['b']).toBeUndefined();
+  });
+
+  it('[反向] 普通 key 的展平结果与嵌套/分隔符行为完全不变', () => {
+    const flat = FileUtils.flattenObject({ a: { b: 'x', c: { d: 'y' } }, e: 'z' }, '', '.');
+    expect(flat).toEqual({ 'a.b': 'x', 'a.c.d': 'y', e: 'z' });
+
+    const custom = FileUtils.flattenObject({ a: { b: 'x' } }, '', '/');
+    expect(custom).toEqual({ 'a/b': 'x' });
+
+    const prefixed = FileUtils.flattenObject({ b: 'x' }, 'a', '.');
+    expect(prefixed).toEqual({ 'a.b': 'x' });
+  });
+
+  it('[反向] readLocaleFile 读到的 __proto__ 叶子可被后续 Object.keys/entries 正常消费', () => {
+    writeJson('zh-CN.json', JSON.parse('{"__proto__":"文案","normal":"值"}'));
+    const config = makeConfig({
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+    });
+    const messages = new LanguageFileManager(config, false).readLocaleFile('zh-CN');
+
+    expect(messages).not.toBeNull();
+    expect(Object.keys(messages!).sort()).toEqual(['__proto__', 'normal']);
   });
 });

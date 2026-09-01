@@ -562,12 +562,12 @@ describe('strip-matched-delimiters', () => {
 
   describe('shouldReplaceNode — 内容含 ASCII 引号', () => {
     it('节点源码带定界引号、original 为去定界内容时仍能匹配（修复前返回 false）', () => {
-      expect(shouldReplaceNode(`'点击"提交"'`, '点击"提交"', false)).toBe(true);
-      expect(shouldReplaceNode(`'"提示"内容'`, '"提示"内容', false)).toBe(true);
+      expect(shouldReplaceNode(`'点击"提交"'`, '点击"提交"')).toBe(true);
+      expect(shouldReplaceNode(`'"提示"内容'`, '"提示"内容')).toBe(true);
     });
 
     it('普通中文仍正常匹配', () => {
-      expect(shouldReplaceNode(`'点击提交'`, '点击提交', false)).toBe(true);
+      expect(shouldReplaceNode(`'点击提交'`, '点击提交')).toBe(true);
     });
   });
 

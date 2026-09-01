@@ -189,6 +189,46 @@ export class ReactASTUtils {
   }
 
   /**
+   * JSX 标签名是否指向内建元素（HTML 原生标签）而非组件引用。
+   * JSX 规范以首字母大小写区分：小写开头编译成字符串标签名，大写开头编译成标识符引用。
+   * `<cOde>` 仍是内建元素（DOM 标签名大小写不敏感），故判定只看首字母、不看整体。
+   */
+  static isIntrinsicJsxTag(tagName: string): boolean {
+    return /^[a-z]/.test(tagName);
+  }
+
+  /**
+   * 字符串是否位于「函数 / 方法 / 构造器的形参默认值」中
+   * （`function App({ label = '默认标签' })`、`m(msg = '提示')`）。
+   *
+   * 形参默认值在参数作用域求值，而注入器把 `const { t } = useTranslation()` /
+   * `const { t } = this.props` 放在函数体内，参数作用域看不见它 —— 替换成裸 t() 即未定义
+   * 标识符（TS2304 / 省略实参时 ReferenceError）。与 isInClassNonArrowPropertyInitializer、
+   * isInClassStaticMember 同族，供提取端跳过。
+   *
+   * 判定不在函数边界处停：默认值里嵌套的函数（`({ render = () => '中文' })`）闭包的仍是
+   * 参数作用域；默认值里的 JSX 子树（`({ icon = <span>中文</span> })`）同理。
+   */
+  static isInFunctionParameterDefault(node: ts.Node): boolean {
+    let current: ts.Node = node;
+    // 解构默认值（`{ label = '默认标签' }`）挂在 BindingElement 而非 Parameter 上，故先记标记、
+    // 再沿绑定模式上溯确认归属：落在 VariableDeclaration 上的同形态（函数体内的
+    // `const { label = '默认标签' } = props`）在函数体作用域求值，必须照常提取。
+    let inBindingDefault = false;
+    while (current.parent) {
+      const parent: ts.Node = current.parent;
+      if (ts.isParameter(parent)) {
+        if (parent.initializer === current) return true;
+        return inBindingDefault && parent.name === current;
+      }
+      if (ts.isVariableDeclaration(parent) && parent.name === current) return false;
+      if (ts.isBindingElement(parent) && parent.initializer === current) inBindingDefault = true;
+      current = parent;
+    }
+    return false;
+  }
+
+  /**
    * 从 node 向上找最近的「会被注入器注入 hook 的函数组件」节点；先遇到类组件则返回
    * undefined（该位置由类组件的 this.props 路径负责，与 getComponentType 的判定顺序一致）。
    */

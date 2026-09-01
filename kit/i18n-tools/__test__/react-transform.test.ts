@@ -1525,3 +1525,179 @@ describe('React script 模板串结构化比对', () => {
     expect(injected).not.toContain('提交');
   });
 });
+
+/** 用 transpileModule 的语法诊断判定产物是否仍可解析（比字符串断言更接近真实编译器）。 */
+function syntaxDiagnostics(code: string, fileName: string): readonly ts.Diagnostic[] {
+  return (
+    ts.transpileModule(code, {
+      fileName,
+      reportDiagnostics: true,
+      compilerOptions: {
+        target: ts.ScriptTarget.Latest,
+        jsx: ts.JsxEmit.Preserve,
+      },
+    }).diagnostics ?? []
+  );
+}
+
+// ---------------------------------------------------------------------------
+// IComponentInjector.inject 的 filePath 决定 ScriptKind：纯 .ts 不按 TSX 解析
+// ---------------------------------------------------------------------------
+describe('ReactComponentInjector.inject — filePath 决定 ScriptKind', () => {
+  const injector = new ReactAdapter('@/i18n', 'react-i18next', {}).getComponentInjector();
+  // 纯 .ts 里的老式类型断言 + 一个 PascalCase 的 hook 组件。按 TSX 解析时 `<string>` 会被
+  // 当成 JSX 元素开标签、吞掉其后的代码，Panel 根本不会被识别为组件。
+  const code = [
+    'const cast = <string>value;',
+    'export function Panel() {',
+    '  const [n] = useState(0);',
+    "  return t('a.b') + n;",
+    '}',
+  ].join('\n');
+
+  it('.ts 按 TS 解析：<T>expr 是断言，组件被正常注入 hook', () => {
+    expect(injector.inject(code, '/proj/src/util.ts')).toContain('useTranslation()');
+  });
+
+  it('同一份代码按 .tsx 解析则识别不出组件', () => {
+    expect(injector.inject(code, '/proj/src/util.tsx')).not.toContain('useTranslation()');
+  });
+
+  it('缺省 filePath 退回 TSX，历史行为不变', () => {
+    const jsx = ['export function Panel() {', "  return <div>{t('a.b')}</div>;", '}'].join('\n');
+    expect(injector.inject(jsx)).toContain('useTranslation()');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hooks 依赖数组补 t：插入点落在末元素末尾，注释 / 尾随逗号都不破坏语法
+// ---------------------------------------------------------------------------
+describe('hooks 依赖数组注入不破坏语法', () => {
+  const library = createReactI18nLibrary('react-i18next');
+
+  it('末元素带行注释：插入点落在元素末尾，产物仍可解析', () => {
+    const code = `const C = () => {
+  const { t } = useTranslation();
+  const cb = useCallback(() => t('k0'), [dep // 依赖说明
+  ]);
+  return cb;
+};
+`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, library, 'C.tsx');
+
+    expect(out).toContain('[dep, t');
+    expect(out).toContain('// 依赖说明');
+    expect(syntaxDiagnostics(out, 'C.tsx')).toHaveLength(0);
+  });
+
+  it('末元素带块注释 / 已有尾随逗号：均不产生非法产物', () => {
+    const withBlockComment = `const C = () => {
+  const { t } = useTranslation();
+  useEffect(() => { t('k0'); }, [dep /* 说明 */]);
+};
+`;
+    const withTrailingComma = `const C = () => {
+  const { t } = useTranslation();
+  useMemo(() => t('k0'), [dep, ]);
+};
+`;
+    const a = HooksUtils.addTranslationVarToHooksDependencies(withBlockComment, library, 'C.tsx');
+    const b = HooksUtils.addTranslationVarToHooksDependencies(withTrailingComma, library, 'C.tsx');
+
+    expect(syntaxDiagnostics(a, 'C.tsx')).toHaveLength(0);
+    expect(syntaxDiagnostics(b, 'C.tsx')).toHaveLength(0);
+    expect(a).toContain('[dep, t /* 说明 */]');
+    expect(b).toContain('[dep, t, ]');
+  });
+
+  it('反向：空数组 / 普通数组 / 单参 hook 的既有语义不变', () => {
+    const code = `const C = () => {
+  const { t } = useTranslation();
+  const a = useCallback(() => t('k0'), []);
+  const b = useMemo(() => t('k1'), [dep]);
+  useEffect(() => { t('k2'); });
+  return [a, b];
+};
+`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, library, 'C.tsx');
+
+    expect(out).toContain(`useCallback(() => t('k0'), [t])`);
+    expect(out).toContain(`useMemo(() => t('k1'), [dep, t])`);
+    // 单参 hook 不得凭空补依赖数组（补了会把「每次渲染」改成「仅 t 变化时」）
+    expect(out).toContain(`useEffect(() => { t('k2'); });`);
+    expect(syntaxDiagnostics(out, 'C.tsx')).toHaveLength(0);
+  });
+
+  it('filePath 透传：.ts 文件按 TS 解析，<T>expr 断言不被当成 JSX', () => {
+    const code = `const C = () => {
+  const { t } = useTranslation();
+  const v = <string>raw;
+  const cb = useCallback(() => t('k0') + v, [v]);
+  return cb;
+};
+`;
+    const out = HooksUtils.addTranslationVarToHooksDependencies(code, library, 'C.ts');
+
+    expect(out).toContain('<string>raw');
+    expect(out).toContain('[v, t]');
+    expect(syntaxDiagnostics(out, 'C.ts')).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 类组件注入 HOC 时，构造器首个形参不叫 props 也要与类泛型同步加宽
+// ---------------------------------------------------------------------------
+describe('构造器 props 形参类型加宽', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r3-p2-react-ctor-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** 提取 + 转换的最小端到端。 */
+  async function run(
+    source: string,
+    libraryType: ReactI18nLibraryType = 'react-i18next',
+    fileName = 'App.tsx',
+  ) {
+    const file = path.join(dir, fileName);
+    fs.writeFileSync(file, source);
+    const adapter = new ReactAdapter('@/plugins/locale', libraryType);
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s: ExtractedString, i) => (s.semanticId = `k${i}`));
+    const transformed = adapter.getTransformer().transform(file, strings, source);
+    return { file, strings, transformed };
+  }
+
+  const classSource = (param: string) => `import React from 'react';
+interface Props { x: number }
+export class Panel extends React.Component<Props> {
+  constructor(${param}) {
+    super(${param.startsWith('{') ? '{} as Props' : param.split(':')[0]!.trim()});
+  }
+  render() {
+    return <div title="面板标题">x</div>;
+  }
+}
+`;
+
+  it('形参名非 props：类型与类泛型同步加宽，super 实参类型不失配', async () => {
+    const { transformed } = await run(classSource('myProps: Props'), 'react-i18next', 'P.tsx');
+    expect(transformed).toContain('React.Component<Props & WithTranslation>');
+    expect(transformed).toContain('myProps: Props & WithTranslation');
+  });
+
+  it('反向：形参名恰为 props 的既有行为不变', async () => {
+    const { transformed } = await run(classSource('props: Props'), 'react-i18next', 'P.tsx');
+    expect(transformed).toContain('props: Props & WithTranslation');
+  });
+
+  it('反向：解构形参不加宽（无标识符可传给 super，维持原样）', async () => {
+    const { transformed } = await run(classSource('{ x }: Props'), 'react-i18next', 'P.tsx');
+    expect(transformed).toContain('React.Component<Props & WithTranslation>');
+    expect(transformed).toContain('{ x }: Props)');
+    expect(transformed).not.toContain('{ x }: Props & WithTranslation');
+  });
+});

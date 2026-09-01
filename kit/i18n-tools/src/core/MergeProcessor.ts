@@ -70,9 +70,15 @@ export class MergeProcessor extends FileProcessor {
       );
     }
 
-    this.performMerge(analysisResult, existingTranslations, translatedPath);
     // existingTranslations 包含 pick 阶段通过 glossary 预填的条目；合并后一并同步
     const allTranslations = { ...existingTranslations, ...analysisResult.newlyTranslated };
+
+    // 与损坏守卫同样属于「变更前中止」：nested 前缀冲突要到 updateLanguagePackage 的
+    // serialize 才抛，那时 untranslated.json / translations.json 已被 performMerge 改写，
+    // 多 target 还会前几个已写、后几个没写，且重跑恒在同一处失败。
+    this.assertTargetsSerializable(allTranslations);
+
+    this.performMerge(analysisResult, existingTranslations, translatedPath);
     this.updateLanguagePackage(allTranslations);
     this.displayMergeResult(analysisResult);
   }
@@ -133,6 +139,12 @@ export class MergeProcessor extends FileProcessor {
     LoggerUtils.info('🔍 正在分析翻译状态...');
 
     for (const [key, data] of Object.entries(untranslatedData)) {
+      if (!MergeProcessor.isEntryObject(key, data)) {
+        // 原样留在 untranslated.json：本轮不合并它，也不因跳过而把用户手写的内容写没。
+        stillUntranslated[key] = data;
+        stillUntranslatedCount++;
+        continue;
+      }
       const sourceValue = data[sourceLocale];
       const finalEntry: Translations[string] = { [sourceLocale]: sourceValue ?? '' };
       let allTranslated = true;
@@ -297,6 +309,45 @@ export class MergeProcessor extends FileProcessor {
   }
 
   /**
+   * 写盘前预检：按 updateLanguagePackage 的实际写入口径算出每个 target 的最终 key 集合，
+   * 校验 nested 落盘无前缀冲突。只在 nested 下有意义（flat 不做 unflatten）。
+   */
+  private assertTargetsSerializable(allTranslations: Translations): void {
+    if (this.config.io.format === 'flat') return;
+
+    // 与 updateLanguagePackage 的桶式分支同口径：source 非空时分桶表对所有 target 相同，
+    // 为空则回退到各 target 自身内容计算。
+    const sourceMessages = this.config.buckets
+      ? this.langFiles.readLocaleFile(this.config.locales.source)
+      : null;
+    const sharedKeyBucketMap =
+      sourceMessages && Object.keys(sourceMessages).length > 0
+        ? LanguageFileManager.buildKeyBucketMap(this.config, sourceMessages)
+        : null;
+
+    for (const target of this.config.locales.targets) {
+      const targetMessages = this.langFiles.readLocaleFile(target);
+      // null = 该 locale 解析失败，由顶层 assertLocalesNotCorrupt 负责中止，此处不重复报错。
+      if (targetMessages === null) continue;
+
+      // 最终 key 集 = 现有 key ∪ 本轮真正写入该 target 的 key（applyTranslations 的口径：
+      // 只写非空字符串译文）。
+      const finalKeys = new Set(Object.keys(targetMessages));
+      for (const [key, data] of Object.entries(allTranslations)) {
+        // 形态非法的条目不贡献 key，此处也不重复告警
+        if (!data || typeof data !== 'object') continue;
+        const value = data[target];
+        if (typeof value === 'string' && value) finalKeys.add(key);
+      }
+
+      const keyBucketMap = this.config.buckets
+        ? (sharedKeyBucketMap ?? LanguageFileManager.buildKeyBucketMap(this.config, targetMessages))
+        : undefined;
+      this.langFiles.assertKeysSerializable(finalKeys, keyBucketMap, `目标语言 [${target}]`);
+    }
+  }
+
+  /**
    * 同步翻译到目标语言文件：对每个 target 独立写入。
    */
   private updateLanguagePackage(newlyTranslated: Translations): void {
@@ -392,6 +443,8 @@ export class MergeProcessor extends FileProcessor {
   ): number {
     let updatedCount = 0;
     for (const [key, data] of Object.entries(newlyTranslated)) {
+      // translations.json 可被人工编辑，条目值可能不是对象（如 null），读属性前须挡住。
+      if (!MergeProcessor.isEntryObject(key, data)) continue;
       const translatedValue = data[target];
       if (
         translatedValue &&

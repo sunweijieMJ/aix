@@ -245,7 +245,9 @@ export class LanguageFileManager {
       if (!onCorrupt) {
         return safeLoadJsonFile<Record<string, any>>(filePath, { silent: true });
       }
-      const cls = classifyJsonFile<Record<string, any>>(filePath);
+      // silent：本分支是纯探测（findCorruptBucketFile），错因由上层 assertLocalesNotCorrupt
+      // 配合文件路径统一报；不抑制会多刷一条无上下文的裸解析错误。
+      const cls = classifyJsonFile<Record<string, any>>(filePath, { silent: true });
       if (cls.status === 'corrupt') {
         onCorrupt(filePath);
         return undefined;
@@ -343,7 +345,8 @@ export class LanguageFileManager {
       `${locale}.json`,
     );
     // 仅「存在且非空却解析失败」算损坏；不存在 / 空 / 正常都返回 null。
-    return classifyJsonFile(filePath).status === 'corrupt' ? filePath : null;
+    // silent 同 findCorruptBucketFile：探测不出声，由上层带路径统一报错。
+    return classifyJsonFile(filePath, { silent: true }).status === 'corrupt' ? filePath : null;
   }
 
   /**
@@ -399,7 +402,9 @@ export class LanguageFileManager {
     locale: string,
     layout: 'by-locale' | 'by-bucket',
   ): Record<string, string> {
-    const merged: Record<string, string> = {};
+    // null 原型：Object.assign 对普通 `{}` 的 `__proto__` key 走 setter 而丢值，
+    // 与 FileUtils.flattenObject 的累加器同口径保住这个合法末段 key。
+    const merged: Record<string, string> = Object.create(null);
     const separator = this.config.keys.separator;
     LanguageFileManager.iterateBucketedFiles(baseDir, locale, layout, (_bucketName, data) => {
       Object.assign(merged, FileUtils.flattenObject(data, '', separator));
@@ -427,10 +432,13 @@ export class LanguageFileManager {
       // （迁移含改名/写盘副作用，读路径不该有）；同 key 冲突时桶数据优先（当前权威格式）。
       const legacyPath = path.join(workingDir, `${locale}.json`);
       if (fs.existsSync(legacyPath) && !fs.existsSync(`${legacyPath}.bak`)) {
-        const cls = classifyJsonFile(legacyPath);
+        // silent + 自报：本方法紧接着就打出带路径的错误，解析错因经 cls.reason 并入同一条
+        // 输出，避免「裸 JSON解析失败 + 带路径错误」两行分裂（旧行为）。
+        const cls = classifyJsonFile(legacyPath, { silent: true });
         // 损坏的遗留文件与单文件模式同口径返回 null：静默当空会让 prune/merge 误判、丢数据
         if (cls.status === 'corrupt') {
           LoggerUtils.error(`❌ 检测到未迁移且解析失败的遗留语言文件: ${legacyPath}`);
+          if (cls.reason) LoggerUtils.error(`   原因: ${cls.reason}`);
           LoggerUtils.error(
             '👉 为防止数据丢失/误判，本次不会把它当作空文件处理。请检查 JSON 格式。',
           );
@@ -457,7 +465,8 @@ export class LanguageFileManager {
 
     const localeFilePath = path.join(workingDir, `${locale}.json`);
     try {
-      const cls = classifyJsonFile(localeFilePath);
+      // silent + 自报：同上，corrupt 分支会打带路径的错误并附 cls.reason。
+      const cls = classifyJsonFile(localeFilePath, { silent: true });
       if (cls.status === 'missing') {
         LoggerUtils.warn(`语言文件不存在，将创建新文件: ${localeFilePath}`);
         return {};
@@ -467,6 +476,7 @@ export class LanguageFileManager {
       // 调用方需对 null 显式处理（中止/不写回），不得直接 `?? {}` 吞掉。
       if (cls.status === 'corrupt') {
         LoggerUtils.error(`❌ 语言文件解析失败（JSON 格式错误）: ${localeFilePath}`);
+        if (cls.reason) LoggerUtils.error(`   原因: ${cls.reason}`);
         LoggerUtils.error('👉 为防止数据丢失/误判，本次不会把它当作空文件处理。请检查 JSON 格式。');
         return null;
       }
@@ -633,30 +643,72 @@ export class LanguageFileManager {
    */
   private serialize(flat: LocaleMap): Record<string, any> {
     if (this.config.io.format === 'flat') return flat;
-    LanguageFileManager.assertNoPrefixConflict(flat, this.config.keys.separator);
+    LanguageFileManager.assertNoPrefixConflict(Object.keys(flat), this.config.keys.separator);
     return FileUtils.unflattenObject(flat, this.config.keys.separator);
   }
 
   /**
-   * 校验扁平 key 集合是否存在前缀冲突。
+   * 校验一组扁平 key 是否存在前缀冲突。
+   * @param context 有值时写进错误信息，指明是哪个 locale / bucket 触发（多 target 定位用）。
    */
-  private static assertNoPrefixConflict(flat: LocaleMap, separator: string): void {
+  private static assertNoPrefixConflict(
+    keys: Iterable<string>,
+    separator: string,
+    context?: string,
+  ): void {
     // 对每个 key 检查其所有真祖先路径是否也是叶子 key。
     // 不能只比「排序相邻对」：若存在含 < 分隔符字符的 key（如分隔符为 '.' 时的
     // 'a.b-c'）夹在 'a.b' 与 'a.b.c' 之间，相邻比较会漏掉这对祖先/子树冲突。
-    const keySet = new Set(Object.keys(flat));
+    const keySet = new Set(keys);
+    const where = context ? `（${context}）` : '';
     for (const key of keySet) {
       const parts = key.split(separator);
       for (let i = 1; i < parts.length; i++) {
         const ancestor = parts.slice(0, i).join(separator);
         if (keySet.has(ancestor)) {
           throw new Error(
-            `[i18n-tools] 嵌套输出存在前缀冲突：'${ancestor}' 同时作为叶子和 '${key}' 的祖先。\n` +
+            `[i18n-tools] 嵌套输出存在前缀冲突${where}：'${ancestor}' 同时作为叶子和 '${key}' 的祖先。\n` +
               `  unflatten 时叶子值会被子树覆盖，必然丢数据。\n` +
               `  解决方案：重命名其中一个 key，或将 io.format 切换为 'flat'。`,
           );
         }
       }
+    }
+  }
+
+  /**
+   * 写盘前预检（不读不写磁盘）：校验「本次将写入某个 locale 的最终 key 集合」在 nested
+   * 落盘下是否存在前缀冲突。flat 格式不经 unflatten，无冲突可言，直接放行。
+   *
+   * 桶式按 keyBucketMap 分组逐桶校验：writeBucketedLocaleFile 逐桶序列化，跨桶 key 各自成
+   * 文件、不构成冲突，整张 key 集一起校验会过严误报。调用方须传入与写盘同一份分桶表。
+   *
+   * @param context 写进错误信息，用于在多 locale 场景指明是哪个 locale 触发。
+   */
+  assertKeysSerializable(
+    keys: Iterable<string>,
+    keyBucketMap?: KeyBucketMap,
+    context?: string,
+  ): void {
+    if (this.config.io.format === 'flat') return;
+    const separator = this.config.keys.separator;
+
+    if (!this.config.buckets) {
+      LanguageFileManager.assertNoPrefixConflict(keys, separator, context);
+      return;
+    }
+
+    const defaultBucket = this.config.buckets.defaultBucket;
+    const groups = new Map<string, string[]>();
+    for (const key of keys) {
+      const bucket = keyBucketMap?.[key] ?? defaultBucket;
+      const group = groups.get(bucket);
+      if (group) group.push(key);
+      else groups.set(bucket, [key]);
+    }
+    for (const [bucket, bucketKeys] of groups) {
+      const scoped = context ? `${context} / bucket ${bucket}` : `bucket ${bucket}`;
+      LanguageFileManager.assertNoPrefixConflict(bucketKeys, separator, scoped);
     }
   }
 
@@ -725,15 +777,8 @@ export class LanguageFileManager {
       if (e.semanticId) finalKeys.add(e.semanticId);
     }
 
-    const separator = this.config.keys.separator;
-    const toMap = (keys: Iterable<string>): LocaleMap => {
-      const m: LocaleMap = {};
-      for (const k of keys) m[k] = '';
-      return m;
-    };
-
     if (!this.config.buckets) {
-      LanguageFileManager.assertNoPrefixConflict(toMap(finalKeys), separator);
+      this.assertKeysSerializable(finalKeys);
       return;
     }
 
@@ -751,17 +796,8 @@ export class LanguageFileManager {
         ? LanguageFileManager.buildKeyBucketMap(this.config, virtualSource)
         : {};
     const effective: KeyBucketMap = { ...virtualMap, ...callerMap };
-    const defaultBucket = this.config.buckets.defaultBucket;
 
-    const groups = new Map<string, Set<string>>();
-    for (const k of finalKeys) {
-      const bucket = effective[k] ?? defaultBucket;
-      if (!groups.has(bucket)) groups.set(bucket, new Set());
-      groups.get(bucket)!.add(k);
-    }
-    for (const keys of groups.values()) {
-      LanguageFileManager.assertNoPrefixConflict(toMap(keys), separator);
-    }
+    this.assertKeysSerializable(finalKeys, effective);
   }
 
   /**
@@ -868,8 +904,8 @@ export class LanguageFileManager {
     if (addedCount > 0) LoggerUtils.info(`   - 新增条目: ${addedCount}`);
     if (updatedCount > 0) LoggerUtils.info(`   - 更新条目: ${updatedCount}`);
 
-    // 落盘后做一次健康度 lint。skippedComparisons：generate 已提前 drain 的快照，避免与
-    // coverage 争抢全局 collector；未传时 analyze 回退到自行 drain（doctor 独立路径）。
+    // 落盘后做一次健康度 lint。skippedComparisons 由调用方 drain 后透传快照；
+    // 未传即视为本次没有提取阶段数据（见 LocaleValueLinter.analyze 的契约说明）。
     const findings = LocaleValueLinter.analyze(finalMap, {
       separator: this.config.keys.separator,
       skippedComparisons: options?.skippedComparisons,

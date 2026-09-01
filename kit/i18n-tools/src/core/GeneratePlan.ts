@@ -212,7 +212,9 @@ export class GeneratePlanWriter {
     // 走 classifyJsonFile 而非裸 JSON.parse：后者对空文件 / 语法错 / 顶层是数组三种情况
     // 抛的都是不带文件路径的 SyntaxError（或压根不抛，留到 plan.entries 处才崩），
     // 用户拿到的报错定位不到是哪份 plan 坏了。
-    const classified = classifyJsonFile<GeneratePlan>(planPath);
+    // silent：下方 throw 的信息已带 planPath + classified.reason（含解析器给出的出错位置），
+    // 解析期再打一条无上下文的裸错误只是重复。
+    const classified = classifyJsonFile<GeneratePlan>(planPath, { silent: true });
     if (classified.status !== 'ok') {
       const detail =
         classified.status === 'empty'
@@ -350,7 +352,7 @@ export class GeneratePlanWriter {
   }
 
   /**
-   * 容错读取 plan 的**簿记**小文件（`.last.json` 指针、`.owned-by-i18n-tools.json` 所有权标记）：
+   * 容错读取 plan 的**簿记**小文件（`.last.json` 指针、`.i18n-tools-plan.json` 所有权标记）：
    * 读不到 / 解析不了一律返回 null，由调用方走各自的回退（指针损坏 → 扫目录、标记无效 → 拒绝清理）。
    *
    * 刻意不走 json-io 的 classifyJsonFile / safeLoadJsonFile：那两条路径在解析失败时会打

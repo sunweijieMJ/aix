@@ -2,13 +2,19 @@ import fs from 'fs';
 import ts from 'typescript';
 import { parseSourceFile } from '../../utils/ast-core';
 import { removeNamedImports } from '../../utils/import-surgery';
-import { normalizeRestoreLocaleMap, normalizeRestoreMessage } from '../../utils/message-shape';
+import {
+  normalizeRestoreLocaleMap,
+  normalizeRestoreMessage,
+  parseTemplatePlaceholders,
+} from '../../utils/message-shape';
 import {
   createJsxFragmentFromTemplate,
   createStringOrTemplateNode,
 } from '../../utils/restore-node-factory';
 import { isIdentifierValueReference, isImportedNameUnused } from '../../utils/scope-analysis';
 import { convertUnicodeToChineseInCode } from '../../utils/string-escape';
+import { LoggerUtils } from '../../utils/logger';
+import { ReactASTUtils } from './react-ast-utils';
 import { ReactImportManager } from './ReactImportManager';
 import {
   HOC_CLASS_SUFFIX,
@@ -41,6 +47,59 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   constructor(library: ReactI18nLibrary, tImport: string) {
     this.library = library;
     this.tImport = tImport;
+  }
+
+  /** 已告警过的占位符失配位置，按 文件:偏移:key 去重（见 canRestorePlaceholders）。 */
+  private readonly warnedPlaceholderMismatches = new Set<string>();
+
+  /**
+   * 还原前自检：locale 值里的占位符能否与调用/组件的 values 一一重建。
+   *
+   * 判据与 restore-node-factory 的守卫同源（每个占位符名都要在 values 里取到可重建的表达式、
+   * values 不得多出占位符里没有的名），提前到调用侧做有两个原因：
+   *  - 工厂只知道两侧数量，告警给不出「哪个 key、哪些名」，用户无从下手；
+   *  - survivalScan 与正式 transform 对同一节点各调一次本方法，工厂告警会连打两遍。
+   * 返回 false 时调用方保留原节点，与工厂返回 null 的处置完全一致。
+   */
+  private canRestorePlaceholders(
+    messageText: string,
+    values: Record<string, unknown>,
+    id: string | undefined,
+    node: ts.Node,
+    sourceFile: ts.SourceFile,
+  ): boolean {
+    const { placeholderNames } = parseTemplatePlaceholders(messageText);
+    const localeNames = [...new Set(placeholderNames)];
+    const valueNames = Object.keys(values);
+    // 与 findExpressionForVariable 同口径：只有携带 AST 节点的值能重建成表达式。
+    const isExpression = (value: unknown): boolean =>
+      typeof value === 'object' &&
+      value !== null &&
+      (('node' in value && 'text' in value) || 'kind' in value);
+
+    const unresolved = localeNames.filter((name) => !isExpression(values[name]));
+    const extraValues = valueNames.filter((name) => !localeNames.includes(name));
+    if (unresolved.length === 0 && extraValues.length === 0) {
+      return true;
+    }
+
+    const start = node.pos >= 0 ? node.getStart(sourceFile) : -1;
+    const line = start >= 0 ? ts.getLineAndCharacterOfPosition(sourceFile, start).line + 1 : 0;
+    const dedupeKey = `${sourceFile.fileName}:${start}:${id ?? ''}`;
+    if (this.warnedPlaceholderMismatches.has(dedupeKey)) {
+      return false;
+    }
+    this.warnedPlaceholderMismatches.add(dedupeKey);
+    LoggerUtils.warn(
+      `⚠️ [Restore Warning] 占位符与运行时 values 不匹配，保留原调用：${sourceFile.fileName}:${line}\n` +
+        `   key：${id ?? '(无 id，用 defaultMessage 兜底)'}\n` +
+        `   locale 值：「${messageText}」\n` +
+        `   locale 值解析出的占位符：${localeNames.length ? localeNames.join('、') : '(无)'}\n` +
+        `   调用 values 提供：${valueNames.length ? valueNames.join('、') : '(无)'}\n` +
+        `   若文案含字面花括号（i18next 下「{说明}」与占位符「{{说明}}」归一后同形，无法自动区分），` +
+        `需人工还原该处。`,
+    );
+    return false;
   }
 
   /** 变量声明（`const t = ...` 或 `const { t, ... } = ...`）是否绑定了名为 varName 的标识符。 */
@@ -111,6 +170,56 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       cur = cur.parent;
     }
     return node;
+  }
+
+  /**
+   * 文件里是否存在「手写 HOC 注入 + 形参解构接 t/intl」的组件
+   * （`interface Props extends WithTranslation` + `function Inner({ t, x }: Props)` +
+   * `withTranslation()(Inner)`）。
+   *
+   * 这类组件的 t/intl 由 HOC 以 prop 形式传入。还原时若照常剥掉 heritage 里的
+   * WithTranslation / WrappedComponentProps、解开 HOC 包裹，形参 `{ t, x }` 仍在，t 立刻变成
+   * Props 上不存在的属性（TS2339）且运行时恒为 undefined。工具自产形态从不把绑定放在形参上
+   * （函数组件注入到体内、类组件走 this.props），故本判定只会命中手写代码。
+   *
+   * 两个条件必须同时成立，缺一都会误伤：
+   *  1. 存在渲染 JSX 且形参解构绑定 translationVarName 的函数（componentParamBindsVar 与注入端
+   *     「见到该形态就跳过注入」同一判定）。附加 containsJsxNode 是为了排除
+   *     `list.map(({ t }) => t.label)` 这类同名字段解构的普通回调；
+   *  2. 文件里确实有 HOC 脚手架——HOC 调用或对 hocPropsType 的类型引用。否则没有可剥的
+   *     heritage / 可解的包裹，保守保留只会白白留下本该摘除的 import。
+   */
+  private hasHandwrittenHocParamInjection(root: ts.Node, library: ReactI18nLibrary): boolean {
+    const varName = library.translationVarName;
+    let paramBound = false;
+    let hocScaffolding = false;
+    const visit = (node: ts.Node): void => {
+      if (paramBound && hocScaffolding) return;
+      if (
+        !paramBound &&
+        (ts.isFunctionDeclaration(node) ||
+          ts.isFunctionExpression(node) ||
+          ts.isArrowFunction(node)) &&
+        ReactASTUtils.componentParamBindsVar(node, varName) &&
+        ReactASTUtils.containsJsxNode(node)
+      ) {
+        paramBound = true;
+      }
+      if (!hocScaffolding) {
+        if (ts.isCallExpression(node) && library.isHOCCall(node)) {
+          hocScaffolding = true;
+        } else if (
+          ts.isIdentifier(node) &&
+          node.text === library.hocPropsType &&
+          !ts.isPropertyAccessExpression(node.parent)
+        ) {
+          hocScaffolding = true;
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(root);
+    return paramBound && hocScaffolding;
   }
 
   transform(filePath: string, localeMap: LocaleMap, sourceText?: string): string {
@@ -209,7 +318,16 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return null;
     }
 
-    return createStringOrTemplateNode(templateToUse, messageInfo.values);
+    const values = messageInfo.values;
+    if (
+      values &&
+      Object.keys(values).length > 0 &&
+      !this.canRestorePlaceholders(templateToUse, values, messageInfo.id, node, sourceFile)
+    ) {
+      return null;
+    }
+
+    return createStringOrTemplateNode(templateToUse, values);
   }
 
   /**
@@ -280,6 +398,18 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     }
 
     if (messageInfo.values && Object.keys(messageInfo.values).length > 0) {
+      // 与 transformTranslationCall 同款自检：失配时保留原组件，并只产出一条可操作告警。
+      if (
+        !this.canRestorePlaceholders(
+          finalText,
+          messageInfo.values,
+          messageInfo.id,
+          node,
+          sourceFile,
+        )
+      ) {
+        return null;
+      }
       // JSX 子节点位置：重建为 JSX 片段 `<>文本 {expr} 文本</>`，避免把模板字面量
       // (`` `文本 ${expr}` ``)当作字面文本渲染。非 JSX 位置(如 attr={<Trans/>})
       // 仍用模板字面量。
@@ -529,6 +659,24 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     if (!keepTranslationVar && translationVarUsedOutsideTranslationCalls(context.sourceFile)) {
       keepTranslationVar = true;
       keepLibraryImport = true;
+    }
+
+    // 手写「HOC 注入 + 形参解构」组件的守卫（见 hasHandwrittenHocParamInjection）：形参 `{ t, x }`
+    // 不是本转换器能安全改写的东西（删 t 会改函数签名、留 t 又要求类型里有 t），所以整组
+    // 保守保留——不剥 hocPropsType heritage、不解包 HOC、不删库导入与翻译变量声明。文案本身
+    // 照常还原，只是 HOC 脚手架留在原地交人工摘除。与上面的 keep* 一致：宁可多留、不产坏代码。
+    if (
+      !(keepTranslationVar && keepLibraryImport) &&
+      this.hasHandwrittenHocParamInjection(context.sourceFile, library)
+    ) {
+      keepTranslationVar = true;
+      keepLibraryImport = true;
+      LoggerUtils.warn(
+        `⚠️ 跳过 HOC 解包与 ${library.hocPropsType} 类型清理：${context.sourceFile.fileName}\n` +
+          `   原因：组件把 '${library.translationVarName}' 绑定在形参解构上（由 HOC 以 prop 传入），` +
+          `自动剥离会留下类型上不存在的属性（TS2339）。\n` +
+          `   建议：人工移除形参中的 '${library.translationVarName}'、Props 的 ${library.hocPropsType} 继承与 HOC 包裹。`,
+      );
     }
 
     return (transformationContext: ts.TransformationContext) => {

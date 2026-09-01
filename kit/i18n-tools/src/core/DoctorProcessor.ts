@@ -8,7 +8,7 @@ import { LanguageFileManager } from '../utils/language-file-manager';
 import type { SkippedTextLocation } from '../utils/extraction-diagnostics';
 import { type LinterFinding, LocaleValueLinter } from '../utils/locale-value-linter';
 import { LoggerUtils } from '../utils/logger';
-import { collapseWhitespace } from '../utils/text-normalize';
+import { previewText } from '../utils/text-normalize';
 import type { LocaleMap } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
 
@@ -592,7 +592,6 @@ export class DoctorProcessor extends BaseProcessor {
     // checkOrphanKeys 不像其余 check 有 typeof 前置过滤（孤儿判定不依赖 value 类型，
     // 非字符串孤儿同样应报告），这里必须兜住，否则单个脏值让整个 doctor 崩溃。
     const text = typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value));
-    const single = collapseWhitespace(text);
-    return single.length > 80 ? `${single.slice(0, 80)}…` : single;
+    return previewText(text);
   }
 }

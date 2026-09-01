@@ -27,11 +27,19 @@ export interface FrameworkConfig {
   usesDoubleBracePlaceholders: boolean;
 }
 
-/** 提取器明确判定需要人工处理、因而未生成翻译调用的文本统计。 */
+/**
+ * 提取器明确判定需要人工处理、因而未生成翻译调用的一处文本。
+ *
+ * 一条记录 = 一个调用点（由 category + dedupeKey/message 唯一确定，见 recordManualSkip 的
+ * 去重）。曾有一个 count 字段，但所有记录点都恒传 1、recordManualSkip 也不做累加，
+ * 消费端的展开循环永远只转一圈——是「看起来支持聚合、实际不支持」的假灵活，已移除。
+ *
+ * 不含 nested-interpolation：插值内中文走 ExtractionDiagnostics.recordSkippedNestedChinese
+ * 一条通道（linter / coverage 都从那里取），此处再记一份必然被消费端过滤掉以避免双计。
+ */
 export interface ManualSkipDiagnostic {
-  category: 'html-template' | 'class-property' | 'nested-interpolation';
+  category: 'html-template' | 'class-property' | 'param-default';
   message: string;
-  count: number;
   /** 同类展示文案不足以区分调用点时使用的稳定去重键。 */
   dedupeKey?: string;
 }
@@ -100,7 +108,10 @@ export interface IRestoreTransformer {
 export interface IComponentInjector {
   /**
    * @param code - 待注入的源代码
-   * @param filePath - 原始文件路径（用于决定 ScriptKind，避免纯 .ts 文件被按 TSX 解析）
+   * @param filePath - 原始文件路径（用于决定 ScriptKind，避免纯 .ts 文件被按 TSX 解析）。
+   *   React 侧据此解析（`.ts` 走 TS、`.tsx/.jsx/.js` 走 TSX/JSX）；Vue 侧刻意忽略——
+   *   本方法只在 `.vue` 上被调用，其内部一律按 SFC 分段处理（见 VueComponentInjector）。
+   *   缺省时 React 侧退回 TSX，与历史行为一致。
    */
   inject(code: string, filePath?: string): string;
 }

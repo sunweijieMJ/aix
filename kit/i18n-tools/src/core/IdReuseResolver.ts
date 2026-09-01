@@ -100,10 +100,11 @@ export class IdReuseResolver {
    * 在历史 key 集合中挑选与当前文件目录前缀匹配的那个。
    *
    * 优先级：
-   *  1. 同目录前缀的历史 key（startsWith 比较）
-   *  2. 启用 promoteToCommon 且历史已有 common-namespace key → 任意目录可复用
-   *  3. acrossDirectories=true → 第一个历史 key
-   *  4. 否则 undefined（视为未命中，触发新生成）
+   *  1. 当前文件无前缀（派生结果为空串）→ 同样无前缀的历史 key（「无前缀」是一个合法域）
+   *  2. 同目录前缀的历史 key（startsWith 比较）
+   *  3. 启用 promoteToCommon 且历史已有 common-namespace key → 任意目录可复用
+   *  4. acrossDirectories=true → 第一个历史 key
+   *  5. 否则 undefined（视为未命中，触发新生成）
    */
   pickReusableKey(message: string, filePath: string): string | undefined {
     const candidates = this.messageToKeysMap.get(normalizeKey(message));
@@ -111,6 +112,13 @@ export class IdReuseResolver {
 
     const currentPrefix = this.idGenerator.getDirectoryPrefix(filePath);
     if (!currentPrefix) {
+      // 前缀派生结果为空串：文件不在 anchor 之下、take/transform 把所有段过滤掉、或
+      // custom 策略返回 []。「无前缀」本身是一个合法的同前缀域，在候选里挑同样无前缀的
+      // 既有 key；否则同一原文每轮都会新分配 key、靠 ensureUniqueId 累积 _1/_2 后缀。
+      // 只认「同样无前缀」的候选：带前缀的候选属于别的目录域，跨域复用仍须由
+      // acrossDirectories 显式授权（下方 fallback 不变）。
+      const prefixlessHit = candidates.find((k) => this.derivePrefixFromKey(k) === '');
+      if (prefixlessHit) return prefixlessHit;
       return this.allowGlobalReuse ? candidates[0] : undefined;
     }
 

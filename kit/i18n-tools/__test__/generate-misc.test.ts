@@ -9,6 +9,7 @@ import { LoggerUtils } from '../src/utils/logger';
 import { RunReport, type ManualCategory } from '../src/utils/run-report';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
+import type { ExtractedString } from '../src/utils/types';
 
 /**
  * generate 杂项单点回归合集（场景以 describe 分组）。
@@ -798,5 +799,129 @@ describe('resolveSemanticId — promoteToCommon 分支空串 llmId 兜底', () =
     // 修复前：两者共用 t_<hash('')> 基名，id2 恒为 `${id1}_1`（顺序相关）
     expect(id2).not.toBe(`${id1}_1`);
     expect(id1).not.toBe(id2);
+  });
+});
+
+/**
+ * 提升到 common namespace 的分支与非提升分支必须口径一致：LLM 未给出 id 时，
+ * 本地兜底同样要先查 keys.fallback.mappings，命中才退 t_<hash>。
+ */
+describe('resolveSemanticId — promoteToCommon 分支的本地兜底查 keys.fallback.mappings', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promote-fallback-mappings-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function writeJson(relPath: string, data: unknown): void {
+    const full = path.join(tmpDir, 'locale', relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, JSON.stringify(data, null, 2));
+  }
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  function setupPromoteConfig(mappings: Record<string, string>): ResolvedConfig {
+    // 两个模块前缀已用过同一原文 → threshold=3 时新模块触发提升
+    writeJson('zh-CN.json', {
+      'pages.foo.a': '確定',
+      'pages.bar.a': '確定',
+      'pages.foo.b': '未收录的长文案内容',
+      'pages.bar.b': '未收录的长文案内容',
+    });
+    return makeConfig({
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: {
+        separator: '.',
+        prefix: { strategy: 'path', anchor: 'src' },
+        fallback: { mappings },
+        reuse: {
+          acrossDirectories: false,
+          promoteToCommon: { threshold: 3, namespace: 'common' },
+        },
+      },
+    });
+  }
+
+  function resolveId(config: ResolvedConfig, text: string, filePath: string): string {
+    const proc = new GenerateProcessor(config, false, false);
+    const internals = proc as unknown as {
+      resolveSemanticId: (
+        item: ExtractedString,
+        llmId: string | undefined,
+        textToIdMap: Map<string, string>,
+        reuseResolver: IdReuseResolver,
+      ) => string;
+    };
+    const item = {
+      original: text,
+      semanticId: '',
+      filePath,
+      line: 1,
+      column: 1,
+      context: 'template',
+    } as ExtractedString;
+    return internals.resolveSemanticId.call(
+      proc,
+      item,
+      '', // --skip-llm / LLM 漏答：llm-client 显式置空串
+      new Map<string, string>(),
+      new IdReuseResolver(config, false),
+    );
+  }
+
+  it('提升到 common 的新 key 命中词表 → common.confirm 而非 common.t_<hash>', () => {
+    const config = setupPromoteConfig({ 確定: 'confirm' });
+    const id = resolveId(config, '確定', path.join(tmpDir, 'src', 'pages', 'baz', 'f.vue'));
+    expect(id).toBe('common.confirm');
+  });
+
+  it('[反向] 词表未命中时仍走 t_<hash> 兜底，不误伤', () => {
+    const config = setupPromoteConfig({ 確定: 'confirm' });
+    const id = resolveId(
+      config,
+      '未收录的长文案内容',
+      path.join(tmpDir, 'src', 'pages', 'baz', 'f.vue'),
+    );
+    expect(id).toMatch(/^common\.t_/);
+  });
+
+  it('[反向] 未触发提升的分支行为不变：词表命中带目录前缀', () => {
+    // 只在一个模块出现过 → 不满足 threshold=3
+    writeJson('zh-CN.json', { 'pages.foo.a': '確定' });
+    const config = makeConfig({
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: {
+        separator: '.',
+        prefix: { strategy: 'path', anchor: 'src' },
+        fallback: { mappings: { 確定: 'confirm' } },
+        reuse: {
+          acrossDirectories: false,
+          promoteToCommon: { threshold: 3, namespace: 'common' },
+        },
+      },
+    });
+    const id = resolveId(config, '確定', path.join(tmpDir, 'src', 'pages', 'baz', 'f.vue'));
+    expect(id).toBe('pages.baz.confirm');
   });
 });

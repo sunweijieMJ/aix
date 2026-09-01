@@ -278,7 +278,7 @@ describe('shouldReplaceNode — 转义反斜杠归一', () => {
   it("源码 '目录：C:\\\\news' vs 提取的裸内容（单反斜杠+n）判相等", () => {
     const nodeText = "'目录：C:\\\\news'"; // 源码原样（含定界符与转义）
     const original = '目录：C:\\news'; // StringLiteral.text（已解码）
-    expect(shouldReplaceNode(nodeText, original, false, { originalDelimited: false })).toBe(true);
+    expect(shouldReplaceNode(nodeText, original, { originalDelimited: false })).toBe(true);
   });
 
   it('裸内容侧不再被二次解码（字面 \\n 与真实换行不得误判相等）', () => {
@@ -286,7 +286,7 @@ describe('shouldReplaceNode — 转义反斜杠归一', () => {
     // 与「真实换行」误判相等（错误命中 → 替换到错误节点）。新契约下裸内容侧不解码，
     // 两者必须不相等。
     expect(
-      shouldReplaceNode('路径 C:\\new', '路径 C:\new', false, {
+      shouldReplaceNode('路径 C:\\new', '路径 C:\new', {
         nodeDelimited: false,
         originalDelimited: false,
       }),

@@ -182,9 +182,10 @@ export class VueTransformer implements ITransformer {
       filePath,
     );
 
-    // 只对 .vue 文件注入 Hook
+    // 只对 .vue 文件注入 Hook（filePath 按接口约定透传；Vue 侧内部一律按 SFC 分段，
+    // 不依赖它决定 ScriptKind）
     if (ext === 'vue') {
-      transformedCode = this.componentInjector.inject(transformedCode);
+      transformedCode = this.componentInjector.inject(transformedCode, filePath);
     }
 
     return transformedCode;
@@ -319,14 +320,9 @@ export class VueTransformer implements ITransformer {
   ): string {
     const sourceFile = parseSourceFile(scriptContent, 'temp.ts');
 
-    // 按位置倒序排列，从后往前替换
-    const sortedStrings = strings.sort((a, b) => {
-      const aLine = a.line - lineOffset - 1;
-      const bLine = b.line - lineOffset - 1;
-      const aPos = ts.getPositionOfLineAndCharacter(sourceFile, aLine, a.column - 1);
-      const bPos = ts.getPositionOfLineAndCharacter(sourceFile, bLine, b.column - 1);
-      return bPos - aPos;
-    });
+    // 无需在此按位置预排序：倒序写入与重叠检测都由 applyReplacements 内部统一完成，
+    // 预排序对最终产物无影响，且会原地 mutate 入参数组。与 ReactTransformer.replaceStrings
+    // 的同款说明保持一致（那边已删掉这段排序）。
 
     const replacements: Array<{
       start: number;
@@ -334,7 +330,7 @@ export class VueTransformer implements ITransformer {
       replacement: string;
     }> = [];
 
-    for (const extracted of sortedStrings) {
+    for (const extracted of strings) {
       const localLine = extracted.line - lineOffset - 1;
       const localColumn = extracted.column - 1;
       const position = ts.getPositionOfLineAndCharacter(sourceFile, localLine, localColumn);

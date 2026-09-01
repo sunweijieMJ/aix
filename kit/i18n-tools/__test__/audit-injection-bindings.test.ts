@@ -6,6 +6,7 @@ import {
   createReactI18nLibrary,
   type ReactI18nLibraryType,
 } from '../src/strategies/react/libraries';
+import { VueAdapter } from '../src/adapters/VueAdapter';
 import { VueImportManager } from '../src/strategies/vue/VueImportManager';
 import { VueComponentInjector } from '../src/strategies/vue/VueComponentInjector';
 import { VueI18nLibraryImpl } from '../src/strategies/vue/libraries/vue-i18n';
@@ -322,5 +323,226 @@ describe('static 类成员不注入 this.props 解构（审计 Bug6）', () => {
     const out = buildReactInjector().inject(code);
     expect(out, `注入输出：\n${out}`).not.toContain('const { t } = this.props;');
     expect(out).toContain('static build = () => t(');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `<script setup>` 判定走 @vue/compiler-sfc 的 descriptor，与属性书写顺序无关
+// ---------------------------------------------------------------------------
+describe('Vue script setup 判定与属性顺序无关', () => {
+  const injector = new VueAdapter('@/i18n', 'vue-i18n', {}).getComponentInjector();
+  const sfc = (openTag: string): string =>
+    `<template>\n  <div>{{ msg }}</div>\n</template>\n\n${openTag}\nconst msg = t('a.b');\n</script>\n`;
+
+  it('lang 在 setup 之前时同样注入 import { t }', () => {
+    expect(injector.inject(sfc('<script lang="ts" setup>'))).toContain('import { t }');
+  });
+
+  it('标准顺序（setup 在前）行为不变', () => {
+    expect(injector.inject(sfc('<script setup lang="ts">'))).toContain('import { t }');
+  });
+
+  it('非 setup 的普通 <script> 不被本路径改写', () => {
+    const code = sfc('<script lang="ts">');
+    expect(injector.inject(code)).toBe(code);
+  });
+
+  it('setup 属性出现在属性值里（src="setup.js"）不误判为 script setup', () => {
+    // 该 SFC 无 scriptSetup 块，descriptor 判定为 false；正则兜底也要求 setup 前有空白
+    const code =
+      '<template>\n  <div>{{ msg }}</div>\n</template>\n\n<script src="setup.js"></script>\n';
+    expect(injector.inject(code)).toBe(code);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 注入模块 import 前先清理占位 `declare const t` / `void t;`，避免与 import 重名
+// ---------------------------------------------------------------------------
+describe('Vue 注入：applySetupModuleImport 先清理占位 declare const t', () => {
+  const T_IMPORT = '@/plugins/locale';
+  const lib = new VueI18nLibraryImpl();
+
+  const inject = (src: string): string => {
+    const importManager = new VueImportManager(T_IMPORT, lib);
+    return new VueComponentInjector(lib, importManager).inject(src, 'C.vue');
+  };
+
+  it('中文仅在 template + 占位 declare const t：产物不同时含 import 与 declare', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const t: (k: string) => string;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+    expect(out).not.toMatch(/declare\s+const\s+t\s*:/);
+    // 业务代码本身不受影响
+    expect(out).toContain("const label = t('existing.key')");
+  });
+
+  it('占位 `void t;` 同样被清理', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const t: (k: string) => string;\n` +
+      `void t;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    expect(out).not.toMatch(/^\s*void\s+t\s*;/m);
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+  });
+
+  it('反向：无占位 declare 的正常注入路径产物不变（只多一行 import）', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+    expect(out).toContain("const label = t('existing.key')");
+    expect(out.replace(`import { t } from '${T_IMPORT}';\n`, '')).toBe(src);
+  });
+
+  it('反向：<pre> 里逐字展示的同形示例代码不被误删（strip 只作用于 script 块）', () => {
+    const src =
+      `<template>\n` +
+      `  <pre>\n` +
+      `declare const t: (k: string) => string;\n` +
+      `void t;\n` +
+      `  </pre>\n` +
+      `</template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const t: (k: string) => string;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    // template 里的示例文本必须原样保留
+    const templatePart = out.slice(0, out.indexOf('<script'));
+    expect(templatePart).toContain('declare const t: (k: string) => string;');
+    expect(templatePart).toContain('void t;');
+    // script 块内的占位声明被清掉，import 注入成功
+    const scriptPart = out.slice(out.indexOf('<script'));
+    expect(scriptPart).not.toMatch(/declare\s+const\s+t\s*:/);
+    expect(scriptPart).toContain(`import { t } from '${T_IMPORT}'`);
+  });
+
+  it('反向：重复注入幂等（第二次调用产物与第一次完全一致）', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const t: (k: string) => string;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const once = inject(src);
+    expect(inject(once)).toBe(once);
+  });
+
+  it('反向：`declare const $t` 不被误删（工具不注入 $t，无冲突）', () => {
+    const src =
+      `<template><div>中文文案</div></template>\n` +
+      `<script setup lang="ts">\n` +
+      `declare const $t: (k: string) => string;\n` +
+      `const label = t('existing.key');\n` +
+      `</script>\n`;
+    const out = inject(src);
+    expect(out).toContain('declare const $t:');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 本地已有任意形态的 t 绑定（普通赋值 / 解构别名）时不再注入模块 import { t }
+// ---------------------------------------------------------------------------
+describe('Vue 注入：本地 t 声明存在时不重复注入 import { t }', () => {
+  const T_IMPORT = '@/plugins/locale';
+  const lib = new VueI18nLibraryImpl();
+  const manager = new VueImportManager(T_IMPORT, lib);
+  const injector = new VueComponentInjector(lib, manager);
+
+  /** handleGlobalImports 只看 context，其余字段取最小合法值。 */
+  const scriptStrings = (): ExtractedString[] => [
+    {
+      original: '你好',
+      semanticId: 'k0',
+      filePath: '/proj/C.vue',
+      line: 1,
+      column: 1,
+      context: 'script',
+      componentType: 'setup',
+    },
+  ];
+
+  const setupSfc = (body: string): string =>
+    `<template>\n  <div>{{ msg }}</div>\n</template>\n\n<script setup lang="ts">\n${body}\n</script>\n`;
+
+  it('handleGlobalImports：`const t = useI18n().t` 已提供本地 t，不注入 import', () => {
+    const code = setupSfc(
+      `import { useI18n } from 'vue-i18n';\nconst t = useI18n().t;\nconst msg = t('k0');`,
+    );
+    const out = manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue');
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+    expect(out).toContain('const t = useI18n().t;');
+  });
+
+  it('VueComponentInjector.inject：同形态下同样不注入（两条注入路径共用同一汇点）', () => {
+    const code = setupSfc(
+      `import { useI18n } from 'vue-i18n';\nconst t = useI18n().t;\nconst msg = t('k0');`,
+    );
+    expect(injector.inject(code, '/proj/C.vue')).not.toContain(`from '${T_IMPORT}'`);
+  });
+
+  it('解构别名 `const { total: t } = stats` 也是本地 t 绑定，同样跳过注入', () => {
+    const code = setupSfc(`const { total: t } = stats;\nconst msg = t('k0');`);
+    const out = manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue');
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+  });
+
+  it('非 setup 单 script 块的 `let t;` 同样拦住注入', () => {
+    const code = `<script lang="ts">\nlet t;\nexport default { created() { t('k0'); } };\n</script>\n`;
+    const out = manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue');
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+  });
+
+  // ---------- 反向：不得误伤名字相近的声明与真正需要注入的场景 ----------
+
+  it('反向：`const tt = …` 不是本地 t，仍照常注入', () => {
+    const code = setupSfc(`const tt = other();\nconst msg = t('k0');`);
+    expect(manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue')).toContain(
+      `import { t } from '${T_IMPORT}'`,
+    );
+  });
+
+  it('反向：`const t2 = …` 不是本地 t，仍照常注入', () => {
+    const code = setupSfc(`const t2 = other();\nconst msg = t('k0');`);
+    expect(manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue')).toContain(
+      `import { t } from '${T_IMPORT}'`,
+    );
+  });
+
+  it('反向：`const { t: localT } = useI18n()` 本地无 t，仍照常注入', () => {
+    const code = setupSfc(
+      `import { useI18n } from 'vue-i18n';\nconst { t: localT } = useI18n();\nconst msg = t('k0');`,
+    );
+    expect(manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue')).toContain(
+      `import { t } from '${T_IMPORT}'`,
+    );
+  });
+
+  it('反向：无任何本地 t 声明时照常注入', () => {
+    const code = setupSfc(`const msg = t('k0');`);
+    expect(manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue')).toContain(
+      `import { t } from '${T_IMPORT}'`,
+    );
+  });
+
+  it('反向：工具自注入的 `const { t } = useI18n()` 仍被清理并迁移到模块 import', () => {
+    const code = setupSfc(
+      `import { useI18n } from 'vue-i18n';\nconst { t } = useI18n();\nconst msg = t('k0');`,
+    );
+    const out = manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue');
+    expect(out).toContain(`import { t } from '${T_IMPORT}'`);
+    expect(out).not.toContain('const { t } = useI18n()');
   });
 });

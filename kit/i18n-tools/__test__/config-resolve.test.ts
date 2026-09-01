@@ -998,3 +998,48 @@ describe('config — keys.separator 空串校验', () => {
     expect(() => resolveConfig(separatorBase('__'))).not.toThrow();
   });
 });
+
+/**
+ * 枚举取值校验统一走 validateEnum：非法取值 fail-fast，报错信息带上配置路径。
+ */
+describe('resolveConfig — merge.onLlmRejected / glossary.override 枚举 fail-fast', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-enum-guard-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ReturnType<typeof resolveConfig> {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  it('merge.onLlmRejected typo 报错且带配置路径', () => {
+    expect(() => makeConfig({ merge: { onLlmRejected: 'whatever' as never } })).toThrow(
+      /merge\.onLlmRejected/,
+    );
+  });
+
+  it('glossary.override typo 报错且带配置路径', () => {
+    expect(() => makeConfig({ glossary: { override: 'allway' as never } })).toThrow(
+      /glossary\.override/,
+    );
+  });
+
+  it('合法取值不受影响', () => {
+    expect(() => makeConfig({ merge: { onLlmRejected: 'warn-only' } })).not.toThrow();
+    expect(() => makeConfig({ glossary: { override: 'always' } })).not.toThrow();
+  });
+});

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as ts from 'typescript';
 import fs from 'fs';
 import os from 'os';
@@ -8,6 +8,7 @@ import { ReactRestoreTransformer } from '../src/strategies/react/ReactRestoreTra
 import { HooksUtils } from '../src/strategies/react/hooks-utils';
 import { createReactI18nLibrary } from '../src/strategies/react/libraries';
 import type { ReactI18nLibraryType } from '../src/strategies/react/libraries';
+import { LoggerUtils } from '../src/utils/logger';
 import type { ExtractedString } from '../src/utils/types';
 
 /**
@@ -1610,5 +1611,179 @@ describe('React restore — 审计修复合集', () => {
       const out = restore(code, { k: '普通文案' });
       expect(out, `还原输出：\n${out}`).toContain('"普通文案"');
     });
+  });
+});
+
+/**
+ * 组件把 t 绑在形参解构上（手写 HOC 的常见形态）时，restore 若剥 heritage / 解包 HOC
+ * 而形参 { t } 仍在，t 就成了 Props 上不存在的属性（TS2339）。此类组件整组保守保留。
+ */
+describe('React restore — 形参解构绑定 t 的组件整组保守保留', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r3-param-hoc-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('手写 HOC + 形参解构：不剥 heritage、不解包 HOC、不删导入，文案照常还原', () => {
+    const source = `import React from 'react';
+import { withTranslation, WithTranslation } from 'react-i18next';
+
+interface Props extends WithTranslation {
+  x: number;
+}
+
+function Inner({ t, x }: Props) {
+  return <div>{t('k0')}{x}</div>;
+}
+
+export default withTranslation()(Inner);
+`;
+    const file = path.join(dir, 'Inner.tsx');
+    fs.writeFileSync(file, source);
+    const library = createReactI18nLibrary('react-i18next');
+    const restored = new ReactRestoreTransformer(library, '@/plugins/locale').transform(
+      file,
+      { k0: '你好' },
+      source,
+    );
+
+    // 文案本身照常还原
+    expect(restored).toContain('你好');
+    // 剥 heritage + 解包 HOC 而形参 { t, x } 仍在 → t 是 Props 上不存在的属性（TS2339）
+    expect(restored).toMatch(/interface\s+Props\s+extends\s+WithTranslation/);
+    expect(restored).toContain('withTranslation()(Inner)');
+    expect(restored).toContain("from 'react-i18next'");
+    expect(restored).toMatch(/function\s+Inner\(\{\s*t,\s*x\s*\}/);
+  });
+
+  it('反向：工具自产 HOC 注入的 roundtrip 仍完整还原（守卫不误伤）', async () => {
+    const original = `import React from 'react';
+export class Greeting extends React.Component {
+  render() {
+    return <div title="你好">x</div>;
+  }
+}
+`;
+    const file = path.join(dir, 'G.tsx');
+    fs.writeFileSync(file, original);
+    const adapter = new ReactAdapter('@/plugins/locale', 'react-intl');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s: ExtractedString, i) => (s.semanticId = `k${i}`));
+    const injected = adapter.getTransformer().transform(file, strings, original);
+    const locale: Record<string, string> = {};
+    strings.forEach((s) => (locale[s.semanticId] = s.processedMessage || s.original));
+
+    // 前置确认：确实走了 HOC 注入路径
+    expect(injected).toContain('injectIntl(GreetingWithOutIntl)');
+
+    const library = createReactI18nLibrary('react-intl');
+    const restored = new ReactRestoreTransformer(library, '@/plugins/locale').transform(
+      file,
+      locale,
+      injected,
+    );
+
+    expect(restored).not.toContain('injectIntl');
+    expect(restored).not.toContain('WithOutIntl');
+    expect(restored).not.toContain('WrappedComponentProps');
+    expect(restored).toContain('你好');
+    expect(restored).toMatch(/export\s+class\s+Greeting\b/);
+  });
+
+  it('反向：普通 hook 注入的函数组件 roundtrip 仍完整清理（守卫不误伤）', async () => {
+    const original = `import React from 'react';
+export function Hello() {
+  return <div title="欢迎">x</div>;
+}
+`;
+    const file = path.join(dir, 'H.tsx');
+    fs.writeFileSync(file, original);
+    const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s: ExtractedString, i) => (s.semanticId = `k${i}`));
+    const injected = adapter.getTransformer().transform(file, strings, original);
+    const locale: Record<string, string> = {};
+    strings.forEach((s) => (locale[s.semanticId] = s.processedMessage || s.original));
+
+    const library = createReactI18nLibrary('react-i18next');
+    const restored = new ReactRestoreTransformer(library, '@/plugins/locale').transform(
+      file,
+      locale,
+      injected,
+    );
+
+    expect(restored).not.toContain('useTranslation');
+    expect(restored).toContain('欢迎');
+  });
+});
+
+/**
+ * locale 值里的字面花括号无法与占位符区分时，restore 保守保留原调用，
+ * 并打一条含两侧占位符集合的可操作告警（每个 key 只打一遍）。
+ */
+describe('React restore — 占位符失配告警', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'r3-p2-react-warn-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('字面花括号导致失配：保留原调用，告警恰好一次且含两侧占位符集合', () => {
+    const source = `import React from 'react';
+import { useTranslation } from 'react-i18next';
+export const App = ({ n }: { n: number }) => {
+  const { t } = useTranslation();
+  return <div>{t('k0', { n })}</div>;
+};
+`;
+    const file = path.join(dir, 'Warn.tsx');
+    fs.writeFileSync(file, source);
+    const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+
+    const restored = new ReactRestoreTransformer(
+      createReactI18nLibrary('react-i18next'),
+      '@/plugins/locale',
+    ).transform(file, { k0: '共{{n}}项，速查表见{说明}' }, source);
+
+    // 无法区分字面花括号与占位符 → 保守保留原调用与其声明 / 导入
+    expect(restored).toContain("t('k0', { n })");
+    expect(restored).toContain('useTranslation');
+
+    const messages = warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((m) => m.includes('[Restore Warning]'));
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('k0');
+    expect(messages[0]).toContain('共{n}项，速查表见{说明}');
+    expect(messages[0]).toContain('n、说明');
+    expect(messages[0]).toContain('字面花括号');
+  });
+
+  it('反向：占位符与 values 对齐时照常还原且零告警', () => {
+    const source = `import React from 'react';
+import { useTranslation } from 'react-i18next';
+export const App = ({ n }: { n: number }) => {
+  const { t } = useTranslation();
+  return <div>{t('k0', { n })}</div>;
+};
+`;
+    const file = path.join(dir, 'Ok.tsx');
+    fs.writeFileSync(file, source);
+    const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+
+    const restored = new ReactRestoreTransformer(
+      createReactI18nLibrary('react-i18next'),
+      '@/plugins/locale',
+    ).transform(file, { k0: '共{{n}}项' }, source);
+
+    expect(restored).toContain('共${n}项');
+    expect(restored).not.toContain('useTranslation');
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('[Restore Warning]'))).toEqual([]);
   });
 });

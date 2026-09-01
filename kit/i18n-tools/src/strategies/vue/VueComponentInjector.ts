@@ -30,21 +30,29 @@ export class VueComponentInjector implements IComponentInjector {
    * 直接从 tImport 路径注入 { t }，不走此处。
    */
   inject(code: string, _filePath?: string): string {
-    const isScriptSetup = /<script\s+setup/.test(code);
+    let descriptor;
+    try {
+      descriptor = parseSFC(code).descriptor;
+    } catch {
+      // 解析失败（非 SFC / 语法坏掉）→ 下面回退到正则粗判，保持对损坏输入的历史行为。
+      descriptor = undefined;
+    }
 
-    if (!isScriptSetup) {
+    // <script setup> 判定以已解析的 descriptor 为准，不用 `/<script\s+setup/` 正则：
+    // 后者要求 setup 紧跟在 `<script` 之后，对合法的属性顺序颠倒（`<script lang="ts" setup>`）
+    // 判定为 false → 整个注入被静默跳过。触发面是「中文只在 template（handleGlobalImports 因无
+    // script 字符串早退）+ setup 内已有裸 t()」，产物引用未声明的 t。
+    // 解析失败时的兜底正则同样放宽到「<script 开标签内任意位置的 setup 属性」：要求 setup 前有
+    // 空白、后接空白/`/`/`>`，从而不被 `src="setup.js"` 这类属性值骗到。
+    const hasSetupBlock = descriptor
+      ? Boolean(descriptor.scriptSetup)
+      : /<script[^>]*\ssetup(?=[\s/>])/.test(code);
+    if (!hasSetupBlock) {
       return code;
     }
 
     // 双块共存场景：t 由 VueImportManager 在非-setup 块顶层 import 注入；
     // setup 块共享模块作用域直接复用，**不**再注入 useI18n hook。
-    let descriptor;
-    try {
-      descriptor = parseSFC(code).descriptor;
-    } catch {
-      // 解析失败 → 退回到旧行为
-      descriptor = undefined;
-    }
     if (descriptor?.script && descriptor.scriptSetup) {
       return code;
     }

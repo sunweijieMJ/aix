@@ -4,7 +4,7 @@ import path from 'path';
 import os from 'os';
 import { TranslateProcessor } from '../src/core/TranslateProcessor';
 import { LLMClient } from '../src/utils/llm-client';
-import { Glossary } from '../src/utils/glossary';
+import { Glossary, type GlossaryMap } from '../src/utils/glossary';
 import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config/types';
@@ -666,5 +666,65 @@ describe('TranslateProcessor — LLM 配置 pre-flight', () => {
     expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('翻译完成'));
     expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('翻译未全部完成'));
     expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('部分失败'));
+  });
+});
+
+/**
+ * 中间产物里形态非法（非对象）的条目在 applyGlossary / filterUntranslatedItems 里
+ * 告警跳过而非裸 TypeError，合法条目照常处理。
+ */
+describe('TranslateProcessor — 形态非法条目告警跳过', () => {
+  let tmpDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-translate-shape-'));
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  function makeConfig(overrides: Partial<I18nToolsConfig> = {}): ResolvedConfig {
+    const user: I18nToolsConfig = {
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'nested' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+      ...overrides,
+    };
+    return resolveConfig(user);
+  }
+
+  it('applyGlossary / filterUntranslatedItems 对非对象条目不抛错', () => {
+    const config = makeConfig();
+    const proc = new TranslateProcessor(config, false);
+    const internals = proc as unknown as {
+      applyGlossary: (
+        data: Translations,
+        targetLocale: string,
+        glossary: GlossaryMap | null,
+      ) => number;
+      filterUntranslatedItems: (data: Translations, targetLocale: string) => Translations;
+    };
+    const data = JSON.parse(
+      JSON.stringify({ bad: null, good: { 'zh-CN': '确认', 'en-US': '' } }),
+    ) as Translations;
+
+    const glossary: GlossaryMap = new Map([['确认', { 'en-US': 'OK' }]]);
+    const filled = internals.applyGlossary.call(proc, data, 'en-US', glossary);
+    expect(filled).toBe(1);
+    expect(data['good']!['en-US']).toBe('OK');
+
+    const remaining = internals.filterUntranslatedItems.call(proc, data, 'ja-JP');
+    expect(Object.keys(remaining)).toEqual(['good']);
+    expect(warnSpy.mock.calls.flat().join('\n')).toMatch(/值不是对象[^\n]*bad/);
   });
 });

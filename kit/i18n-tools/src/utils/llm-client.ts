@@ -266,8 +266,7 @@ export class LLMClient {
 
         try {
           // 复用 requestTranslation 的单次解析结果，避免对译文 JSON 二次 JSON.parse
-          const { parsed } = await this.requestTranslation(jsonText, targetLocale);
-          results[index] = parsed;
+          results[index] = await this.requestTranslation(jsonText, targetLocale);
           successCount++;
 
           if (onProgress) {
@@ -297,15 +296,12 @@ export class LLMClient {
   }
 
   /**
-   * 请求翻译并解析一次：返回 cleaned 文本与解析后的对象。
+   * 请求翻译并解析一次，返回解析后的对象。
    *
    * 收口「chatCompletion → cleanJsonResponse → JSON.parse + 错误包装」唯一一处，
    * 避免调用方各自对返回串再解析一遍。
    */
-  private async requestTranslation(
-    jsonText: string,
-    targetLocale: string,
-  ): Promise<{ cleaned: string; parsed: Translations }> {
+  private async requestTranslation(jsonText: string, targetLocale: string): Promise<Translations> {
     const rawContent = await this.chatCompletion(
       getTranslationSystemPrompt(
         this.locales,
@@ -317,9 +313,7 @@ export class LLMClient {
     );
 
     try {
-      const cleaned = this.cleanJsonResponse(rawContent);
-      const parsed = JSON.parse(cleaned) as Translations;
-      return { cleaned, parsed };
+      return JSON.parse(this.cleanJsonResponse(rawContent)) as Translations;
     } catch (error) {
       if (error instanceof SyntaxError) {
         throw new Error(`LLM 翻译返回的 JSON 解析失败: ${rawContent.slice(0, 200)}`, {

@@ -7,15 +7,18 @@ import { parseSourceFile } from './ast-core';
 import { stripComments } from './import-surgery';
 import { decodeJsStringEscapes } from './string-escape';
 import { FileUtils } from './file-utils';
+import { stripStatefulFlags } from './path-matcher';
 
-/**
- * 各 i18n 库引用 key 的全部静态形式（捕获组 1 = key）。库无关：vue 项目不会有
- * FormattedMessage、react 项目不会有 keypath，跨库同跑互不干扰。`id` 两条限定在
- * FormattedMessage 标签 / formatMessage 调用上下文内，避免误吃普通 HTML/对象 id。
- *
- * 仍按「尽力而为」不覆盖动态形式（t(prefix+x) / :keypath="expr" / v-t="{path:x}"），
- * 这些由 keys.dynamicKeyAllowlist 兜底——静态扫描本就无法解析。
- */
+// =============================================================================
+// 下面 CALL_FIRST_ARG / STRING_LITERAL / ATTR_PATTERNS 合起来覆盖各 i18n 库引用 key 的
+// 全部静态形式（捕获组 1 = key）。库无关：vue 项目不会有 FormattedMessage、react 项目
+// 不会有 keypath，跨库同跑互不干扰；`id` 两条限定在 FormattedMessage 标签 / formatMessage
+// 调用上下文内，避免误吃普通 HTML/对象 id。
+//
+// 仍按「尽力而为」不覆盖动态形式（t(prefix+x) / :keypath="expr" / v-t="{path:x}"），
+// 这些由 keys.dynamicKeyAllowlist 兜底——静态扫描本就无法解析。
+// =============================================================================
+
 /**
  * 函数调用 `t(...)` / `$t(...)`：捕获第一个实参表达式（到顶层第一个 `,` 或 `)` 止）。
  * 随后从中提取所有字符串字面量，因此能覆盖：
@@ -283,9 +286,10 @@ export function matchesDynamicAllowlist(config: ResolvedConfig, key: string): bo
       // 用户可能传入带 /g 或 /y 的 RegExp。这些正则的 test() 有状态（lastIndex 在调用间
       // 推进），而本函数会对成百上千个 key 复用同一正则对象，偏移非零时会对本应命中的
       // key 误判 false → 受保护键被当孤儿，从所有 locale 与字典中永久删除（破坏性路径）。
-      // 每次匹配前归零，与本文件 ATTR_PATTERNS 的 lastIndex=0 写法一致。
-      pattern.lastIndex = 0;
-      if (pattern.test(key)) return true;
+      // 用剥除 g/y 的副本而非把用户对象的 lastIndex 归零：后者是对入参的可观察写操作
+      // （同一 RegExp 若还被业务侧自己 exec 复用，状态就被我们改了）。与
+      // BaseTextExtractor.isRejectedByConfig / compileMatcher 共用 stripStatefulFlags 这一解法。
+      if (stripStatefulFlags(pattern).test(key)) return true;
     }
   }
   return false;

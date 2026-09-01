@@ -32,9 +32,13 @@ export class ReactComponentInjector implements IComponentInjector {
     this.importManager = importManager;
   }
 
-  inject(code: string): string {
+  inject(code: string, filePath?: string): string {
+    // 解析用真实文件名（缺省退回 temp.tsx，与历史行为一致）：ScriptKind 由扩展名决定，
+    // 把纯 `.ts` 按 TSX 解析会让 `<T>expr` 类型断言被当成 JSX 元素——TS 不抛错、就地
+    // 恢复出错误的树，注入判定随之走偏（多注/漏注 hook）。
+    const parseName = filePath ?? 'temp.tsx';
     // Phase 1: 分析原始代码，找出需要注入的组件
-    const initialSourceFile = parseSourceFile(code, 'temp.tsx');
+    const initialSourceFile = parseSourceFile(code, parseName);
     const componentsToModify: ComponentInfo[] = [];
 
     const initialVisitor = (node: ts.Node) => {
@@ -74,7 +78,7 @@ export class ReactComponentInjector implements IComponentInjector {
     }
 
     // Phase 3: 重新解析带有新导入的代码并应用转换
-    const sourceFileWithImports = parseSourceFile(codeWithImports, 'temp.tsx');
+    const sourceFileWithImports = parseSourceFile(codeWithImports, parseName);
     const transformations: Transformation[] = [];
 
     const finalVisitor = (node: ts.Node) => {
@@ -258,8 +262,12 @@ export class ReactComponentInjector implements IComponentInjector {
     );
     if (constructor && constructor.parameters.length > 0) {
       const propsParam = constructor.parameters[0]!;
+      // 认「首个具名形参」而非形参名恰为 props：类的 Props 泛型已被上面加宽成
+      // `P & 本类型`，构造器形参类型不同步加宽时 `super(myProps)` 实参与基类签名不兼容（TS2345）。
+      // 解构形参（`constructor({ x }: P)`）不在此列：其类型加宽会改变解构目标的可见成员，
+      // 且无标识符可传给 super，维持原样交由人工处理。
       if (
-        propsParam.name.getText(sourceFile) === 'props' &&
+        ts.isIdentifier(propsParam.name) &&
         propsParam.type &&
         !propsParam.type.getText(sourceFile).includes(propsType)
       ) {

@@ -20,9 +20,13 @@ export const FILES = {
  */
 export const CHINESE_CHAR_RANGE = '\\u4e00-\\u9fff';
 
-export const CONFIG = {
-  CHINESE_REGEX: new RegExp(`[${CHINESE_CHAR_RANGE}]`),
-} as const;
+/**
+ * 「含中文字符」判定正则（无 g 标志，可安全跨调用复用）。
+ *
+ * ast-guards 直接用本常量（它刻意保持零依赖，不能反向 import file-utils）；
+ * 对外门面是 FileUtils.containsChinese，两者共用这一个正则，避免第二种中文判定口径。
+ */
+export const CHINESE_CHAR_RE = new RegExp(`[${CHINESE_CHAR_RANGE}]`);
 
 /**
  * 占位符「参数名」允许出现的字符集（正则字符类内容，不含方括号）。

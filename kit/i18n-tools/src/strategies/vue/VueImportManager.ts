@@ -114,10 +114,16 @@ export class VueImportManager implements IImportManager {
    *
    * 供 VueComponentInjector.inject 在「中文仅在 template、但 setup 内有裸 t() 需绑定」——即
    * handleGlobalImports 因无 script 字符串早退——的场景复用，避免回落到 useI18n hook 注入
-   * （与统一策略不一致）。幂等：内部 addPluginLocaleImportToScript 已对「已有本地 t 绑定」早退。
+   * （与统一策略不一致）。幂等：内部 addPluginLocaleImportToScript 已对「已有本地 t 绑定」早退，
+   * stripPlaceholderTDeclares 是删除操作，重复执行结果不变。
    */
   applySetupModuleImport(code: string): string {
-    const cleaned = this.removeHookImportAndDeclaration(code);
+    // 与 handleGlobalImports 同序：先清占位 declare（否则 `declare const t` 与注入的
+    // import 在同一模块作用域重复声明，TS2440），再注入 import { t }。
+    // 必须经 mapScriptBlocks 只在 script 块内 strip，避免删掉 `<pre>`/`<code>` 里
+    // 逐字展示的同形示例代码。
+    const stripped = mapScriptBlocks(code, (script) => this.stripPlaceholderTDeclares(script));
+    const cleaned = this.removeHookImportAndDeclaration(stripped);
     return this.addPluginLocaleImportToScript(cleaned, 'setupOnly');
   }
 
@@ -151,12 +157,13 @@ export class VueImportManager implements IImportManager {
       return code;
     }
 
-    // 目标块已有从 hook 解构出的本地 t（如用户手写 `const { t, locale } = useI18n()`），
-    // 再注入模块级 `import { t }` 会在同一模块作用域产生重复 t 声明（SyntaxError）。
-    // 此时 t 已可用（template/setup 调用都能命中），直接跳过注入。
-    // removeHookImportAndDeclaration 已先清掉工具自注入的「恰好 { t }」形态，故此处只会
-    // 命中含额外键的用户手写解构 —— 既修复双声明，又不影响工具自身的 hook→import 迁移。
-    if (this.hasLocalHookTBinding(block.content)) {
+    // 已有本地 t 声明（解构 `const { t, locale } = useI18n()` / `const { total: t } = obj`，
+    // 或普通赋值 `const t = useI18n().t`）时，再注入模块级 `import { t }` 会在同一模块作用域
+    // 重复声明 t（TS2440 / SyntaxError）。此时 t 已可用，跳过注入即可。
+    // 检测面取全部 script 块：多 script 块共享模块作用域，只看目标块会漏判。
+    // removeHookImportAndDeclaration 已先清掉工具自注入的「恰好 { t } = hook()」形态，
+    // 故此处只会命中用户手写声明——既修复双声明，又不影响工具自身的 hook→import 迁移。
+    if (this.hasLocalTDeclaration(allScriptContent)) {
       return code;
     }
 
@@ -248,19 +255,45 @@ export class VueImportManager implements IImportManager {
     );
     let match: RegExpExecArray | null;
     while ((match = destructureRe.exec(scriptContent)) !== null) {
-      const inner = match[1] ?? '';
-      for (const rawPart of inner.split(',')) {
-        const part = rawPart.trim();
-        if (!part) continue;
-        // 取本地绑定名：`key: local`（重命名）→ local；`name`（含默认值 `name = x`）→ name。
-        const localName = part.includes(':')
-          ? part
-              .slice(part.indexOf(':') + 1)
-              .split('=')[0]!
-              .trim()
-          : part.split('=')[0]!.trim();
-        if (localName === 't') return true;
-      }
+      if (VueImportManager.destructureBindsLocalT(match[1] ?? '')) return true;
+    }
+    return false;
+  }
+
+  /**
+   * 脚本内是否存在「本地绑定名为 t」的变量声明：任意来源的解构 `const { t } = x()` /
+   * `const { total: t } = obj`，或普通赋值声明 `const t = useI18n().t` / `let t;`。
+   *
+   * 判定的是本地绑定名 —— `const tt` / `const t2` / `const { t: localT } = x` 本地都没有 t，
+   * 必须照常注入，否则裸 t() 无声明。宽松方向：任意位置（含函数体内）的 t 声明都算命中，
+   * 漏判会产出重复声明的坏产物，多判只是少注一条 import 而 t 本就可用。
+   */
+  hasLocalTDeclaration(scriptContent: string): boolean {
+    // 行首锚定（^[ \t]* + gm）：排除注释里的同形文本，与本类其它判定同口径。
+    const destructureRe = /^[ \t]*(?:const|let|var)\s*\{([^}]*)\}\s*=/gm;
+    let match: RegExpExecArray | null;
+    while ((match = destructureRe.exec(scriptContent)) !== null) {
+      if (VueImportManager.destructureBindsLocalT(match[1] ?? '')) return true;
+    }
+    // 普通声明：t 后必须是非标识符字符，`const tt` / `const t2` / `const t$` 不命中。
+    return /^[ \t]*(?:const|let|var)\s+t(?![\w$])/m.test(scriptContent);
+  }
+
+  /**
+   * 解构花括号内容里是否存在本地绑定名为 t 的项。
+   * 本地绑定名：`key: local`（重命名）→ local；`name`（含默认值 `name = x`）→ name。
+   */
+  private static destructureBindsLocalT(inner: string): boolean {
+    for (const rawPart of inner.split(',')) {
+      const part = rawPart.trim();
+      if (!part) continue;
+      const localName = part.includes(':')
+        ? part
+            .slice(part.indexOf(':') + 1)
+            .split('=')[0]!
+            .trim()
+        : part.split('=')[0]!.trim();
+      if (localName === 't') return true;
     }
     return false;
   }

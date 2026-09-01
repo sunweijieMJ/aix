@@ -3,7 +3,7 @@ import type { ManualSkipDiagnostic } from '../adapters/FrameworkAdapter';
 import type { SkippedTextLocation } from '../utils/extraction-diagnostics';
 import { FileUtils } from '../utils/file-utils';
 import { LoggerUtils } from '../utils/logger';
-import { RunReport, type CoverageMetric } from '../utils/run-report';
+import { RunReport, type CoverageMetric, type ManualCategory } from '../utils/run-report';
 import type { ExtractedString } from '../utils/types';
 import { IdReuseResolver } from './IdReuseResolver';
 
@@ -112,28 +112,32 @@ export class CoverageReporter {
       });
     }
 
-    const extractorManualSkips = this.manualSkips.filter(
-      (item) => item.category !== 'nested-interpolation',
-    );
-    for (const item of extractorManualSkips) {
-      const category = item.category === 'html-template' ? 'html-in-template' : 'class-property';
-      for (let index = 0; index < item.count; index++) {
-        this.report.addManualEntry({
-          category,
-          file: '<source>',
-          text: item.count === 1 ? item.message : `${item.message} #${index + 1}`,
-          reason: item.message,
-          suggestion: RunReport.MANUAL_DEFAULT_SUGGESTIONS[category],
-        });
-      }
+    // manualSkips 只含 html-template / class-property / param-default 三类（插值内中文走
+    // diagnostics 那条通道，不在此重复计数，见 ManualSkipDiagnostic 的注释）。
+    // 用 Record 查表：新增 category 时漏改是编译错（缺键）而非静默归错档。
+    const manualSkipCategoryMap: Record<ManualSkipDiagnostic['category'], ManualCategory> = {
+      'html-template': 'html-in-template',
+      'class-property': 'class-property',
+      'param-default': 'param-default',
+    };
+    for (const item of this.manualSkips) {
+      const category = manualSkipCategoryMap[item.category];
+      this.report.addManualEntry({
+        category,
+        file: '<source>',
+        text: item.message,
+        // message 已含 file:line，但同一行多处跳过的 message 相同；不带 dedupeKey 会被
+        // RunReport.manualKey（file+text+dedupeKey）去重成一条，与 coverage.skipped 对不上账。
+        dedupeKey: item.dedupeKey,
+        reason: item.message,
+        suggestion: RunReport.MANUAL_DEFAULT_SUGGESTIONS[category],
+      });
     }
 
     const alreadyI18n = reuseResolver?.getExistingCallSiteCount() ?? 0;
     const newlyGenerated = extractedStrings.length;
     const skipped =
-      skippedComparisons.length +
-      this.skippedNestedChinese.length +
-      extractorManualSkips.reduce((sum, item) => sum + item.count, 0);
+      skippedComparisons.length + this.skippedNestedChinese.length + this.manualSkips.length;
     const total = alreadyI18n + newlyGenerated + skipped;
     const coverageRate = total === 0 ? 1 : (alreadyI18n + newlyGenerated) / total;
 

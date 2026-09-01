@@ -77,7 +77,7 @@ function warnIfMissingJsonTextToken(template: string): void {
   LoggerUtils.warn(
     '⚠️ 自定义翻译 user prompt 未包含 {jsonText} 占位符，待翻译数据不会被注入 prompt。\n' +
       '   影响：模型收不到任何待翻译条目，本轮译文可能整批为空。\n' +
-      '   建议：在 llm.translate.prompt.user 模板中加入 {jsonText}。',
+      '   建议：在 llm.translation.prompt.user 模板中加入 {jsonText}。',
   );
 }
 

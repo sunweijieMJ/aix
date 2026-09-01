@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import ts from 'typescript';
 import { finalizeLocaleMessage, toSingleBracePlaceholders } from '../src/utils/message-shape';
-import { createStringOrTemplateNode } from '../src/utils/restore-node-factory';
+import {
+  createJsxFragmentFromTemplate,
+  createStringOrTemplateNode,
+} from '../src/utils/restore-node-factory';
+import { LoggerUtils } from '../src/utils/logger';
 import { extractPlaceholderNames } from '../src/utils/placeholder-utils';
 import { VueI18nLibraryImpl } from '../src/strategies/vue/libraries/vue-i18n';
 import { VueI18nextLibrary } from '../src/strategies/vue/libraries/vue-i18next';
@@ -253,5 +257,46 @@ describe('中文占位符名（字符集与生成端对齐）', () => {
 
   it('extractPlaceholderNames：单花括号库采集中文占位符名', () => {
     expect(extractPlaceholderNames('共{数量}个', false)).toEqual(new Set(['数量']));
+  });
+});
+
+/**
+ * JSX 片段工厂与模板字面量工厂同口径：占位符唯一名数与 values 项数不一致时返回 null，
+ * 由调用方保留原调用，避免多出的变量被静默丢弃。
+ */
+describe('createJsxFragmentFromTemplate 占位符/values 数量守卫', () => {
+  const ident = (name: string): { node: ts.Expression; text: string } => ({
+    node: ts.factory.createIdentifier(name),
+    text: name,
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('values 多于占位符 → 返回 null（与模板字面量工厂同口径保留原调用）', () => {
+    const values = { count: ident('count'), name: ident('name') };
+    expect(createJsxFragmentFromTemplate('共 {count} 项', values)).toBeNull();
+    // 姊妹工厂的既有行为作为对照锚点
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    expect(createStringOrTemplateNode('共 {count} 项', values)).toBeNull();
+  });
+
+  it('数量匹配时照常重建片段', () => {
+    const fragment = createJsxFragmentFromTemplate('共 {count} 项', { count: ident('count') });
+    expect(fragment).not.toBeNull();
+    const printed = ts
+      .createPrinter()
+      .printNode(
+        ts.EmitHint.Unspecified,
+        fragment!,
+        ts.createSourceFile('a.tsx', '', ts.ScriptTarget.Latest, false, ts.ScriptKind.TSX),
+      );
+    expect(printed).toContain('{count}');
+  });
+
+  it('同名占位符重复出现时按唯一名比对，不误判失配', () => {
+    const fragment = createJsxFragmentFromTemplate('{name} 你好，{name}', { name: ident('name') });
+    expect(fragment).not.toBeNull();
   });
 });

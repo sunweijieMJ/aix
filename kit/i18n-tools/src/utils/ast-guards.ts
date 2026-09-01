@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { CONFIG } from './constants';
+import { CHINESE_CHAR_RE } from './constants';
 
 /**
  * 提取守卫与「中文泄漏」收集器：回答「这个节点该不该被提取 / 这里有没有会漏到运行时的中文」。
@@ -94,7 +94,7 @@ export function isExtractableStringLiteral(node: ts.StringLiteral): boolean {
  * processTemplateExpression 内部的内联逻辑兜底。
  */
 export function templateLiteralsContainChinese(node: ts.TemplateExpression): boolean {
-  const test = (s: string): boolean => CONFIG.CHINESE_REGEX.test(s);
+  const test = (s: string): boolean => CHINESE_CHAR_RE.test(s);
   if (test(node.head.text)) return true;
   return node.templateSpans.some((span) => test(span.literal.text));
 }
@@ -127,7 +127,7 @@ function isRuntimeLeakingChineseLiteral(
 ): node is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral {
   return (
     (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
-    CONFIG.CHINESE_REGEX.test(node.text) &&
+    CHINESE_CHAR_RE.test(node.text) &&
     !isComparisonOperand(node)
   );
 }

@@ -5,7 +5,6 @@ import { createJiti } from 'jiti';
 import {
   BUILTIN_CN_MAPPINGS,
   DEFAULT_BUCKETS,
-  DEFAULT_CI,
   DEFAULT_EXTRACT,
   DEFAULT_GLOSSARY,
   DEFAULT_IO,
@@ -655,30 +654,20 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
       onLlmRejected: userConfig.merge?.onLlmRejected ?? DEFAULT_MERGE.onLlmRejected,
     },
     ci: {
-      coverageThreshold: coverageThreshold ?? DEFAULT_CI.coverageThreshold,
+      coverageThreshold,
     },
   };
 
   // ---- 显式校验 ----
-  const validRejected = ['fallback-to-source', 'warn-only'];
-  if (!validRejected.includes(resolved.merge.onLlmRejected)) {
-    throw new Error(
-      `merge.onLlmRejected 必须是 ${validRejected.map((s) => `'${s}'`).join(' | ')} 之一，` +
-        `当前收到 '${resolved.merge.onLlmRejected}'。`,
-    );
-  }
+  validateEnum(
+    resolved.merge.onLlmRejected,
+    ['fallback-to-source', 'warn-only'],
+    'merge.onLlmRejected',
+  );
 
-  // glossary.override：loader 支持 JS 配置（.js/.cjs/.mjs），TS 字面量类型在运行时不设防。
-  // 不校验时 typo（如 'allways'）会静默绕过 PickProcessor 的 `=== 'always'` 分支，回退到比默认
-  // 更弱的 when-empty 行为且零诊断。与 io.format / merge.onLlmRejected 等同级枚举对齐做白名单校验。
-  // cspell:ignore allways —— 上方注释里的 typo 示例，不入全局词典以免掩盖真实拼写错误
-  const validOverride = ['always', 'when-empty'];
-  if (!validOverride.includes(resolved.glossary.override)) {
-    throw new Error(
-      `glossary.override 必须是 ${validOverride.map((s) => `'${s}'`).join(' | ')} 之一，` +
-        `当前收到 '${String(resolved.glossary.override)}'。`,
-    );
-  }
+  // glossary.override 的 typo 会静默绕过 PickProcessor 的 `=== 'always'` 分支、退回更弱的
+  // when-empty 行为且零诊断，必须 fail-fast。
+  validateEnum(String(resolved.glossary.override), ['always', 'when-empty'], 'glossary.override');
 
   // keys.separator 不得为空串：id-generator 用它 join/split key 段，空串会让 split('') 把
   // 固定前缀炸成逐字符，并令 ['a','bc'] 与 ['ab','c'] 这类不同段序列拼成同一 key（碰撞）。

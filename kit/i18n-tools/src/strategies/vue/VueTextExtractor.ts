@@ -116,13 +116,6 @@ export class VueTextExtractor extends BaseTextExtractor {
   }
 
   /**
-   * 遍历 template AST 节点
-   * @param nodes - AST 节点数组
-   * @param extractedStrings - 提取的字符串数组
-   * @param filePath - 文件路径
-   * @param lineOffset - 行偏移量
-   */
-  /**
    * 元素是否带 v-pre 指令。
    *
    * @vue/compiler-dom 在 parse 阶段消费 v-pre 并从 props 移除（不保留 DIRECTIVE 节点），
@@ -146,6 +139,13 @@ export class VueTextExtractor extends BaseTextExtractor {
     return /(?:^|\s)v-pre(?=[\s/>=]|$)/.test(openTag.replace(/"[^"]*"|'[^']*'/g, '""'));
   }
 
+  /**
+   * 遍历 template AST 节点
+   * @param nodes - AST 节点数组
+   * @param extractedStrings - 提取的字符串数组
+   * @param filePath - 文件路径
+   * @param lineOffset - 行偏移量
+   */
   private async traverseTemplateNode(
     nodes: any[],
     extractedStrings: ExtractedString[],
@@ -404,6 +404,19 @@ export class VueTextExtractor extends BaseTextExtractor {
   }
 
   /**
+   * 表达式的 `content`（compiler-dom 解码后）与 `loc.source`（原文）是否已不等。
+   *
+   * compiler-dom 会解码指令表达式 / 插值里的 HTML 实体（`&amp;` → `&`），而字面量偏移由
+   * templateOffsetOfExprNode 按解码后文本换算，实体之后的位置全部失配；转换端的 sourceSlice
+   * 核对随即中止**整个文件**的转换。故提取端提前识别、跳过该表达式，同文件其它文案不受牵连。
+   *
+   * 只比较 trim 后的两端：偏移换算已按 `loc.source` 的前导空白补偿，首尾空白差异不影响定位。
+   */
+  private static hasDecodedEntities(content: string, source: string): boolean {
+    return content.trim() !== source.trim();
+  }
+
+  /**
    * 取动态属性值的外层引号（`:title='…'` → `'`，`:title="…"` → `"`）。
    *
    * 表达式起点的前一个字符即开引号：两个 loc 都相对 template content，可直接在指令源码里
@@ -590,6 +603,16 @@ export class VueTextExtractor extends BaseTextExtractor {
         if (directive.exp && directive.exp.type === 4) {
           // SIMPLE_EXPRESSION
           const content = directive.exp.content;
+
+          // 表达式含 HTML 实体时整条跳过，见 hasDecodedEntities。
+          if (VueTextExtractor.hasDecodedEntities(content, directive.exp.loc.source)) {
+            this.warnHtmlEntityInExpression(
+              directive.exp.loc.source,
+              filePath,
+              directive.loc.start.line + lineOffset,
+            );
+            continue;
+          }
 
           // 检查属性名是否是技术属性
           let isTechnical = false;
@@ -819,11 +842,6 @@ export class VueTextExtractor extends BaseTextExtractor {
             directive.loc.start.column,
             occurrence,
           );
-          this.recordManualSkip({
-            category: 'nested-interpolation',
-            message: `${filePath}:${directive.loc.start.line + lineOffset}:${directive.loc.start.column}:${occurrence}:${nested}`,
-            count: 1,
-          });
         }
       }
     }
@@ -871,6 +889,16 @@ export class VueTextExtractor extends BaseTextExtractor {
     if (interpolationNode.content.type === 4) {
       // SIMPLE_EXPRESSION
       const content = interpolationNode.content.content.trim();
+
+      // 表达式含 HTML 实体时整条跳过，见 hasDecodedEntities。
+      if (VueTextExtractor.hasDecodedEntities(content, interpolationNode.content.loc.source)) {
+        this.warnHtmlEntityInExpression(
+          interpolationNode.content.loc.source,
+          filePath,
+          interpolationNode.loc.start.line + lineOffset,
+        );
+        return;
+      }
 
       // 以表达式上下文解析插值内容：准确提取三元表达式中的字符串（含模板字符串），
       // 并让内联对象字面量 `{ '中文key': v }` 正确成形（避免中文 KEY 被误提取）。
@@ -1045,11 +1073,6 @@ export class VueTextExtractor extends BaseTextExtractor {
             interpolationNode.loc.start.column,
             occurrence,
           );
-          this.recordManualSkip({
-            category: 'nested-interpolation',
-            message: `${filePath}:${interpolationNode.loc.start.line + lineOffset}:${interpolationNode.loc.start.column}:${occurrence}:${nested}`,
-            count: 1,
-          });
         }
       }
     }
@@ -1185,11 +1208,6 @@ export class VueTextExtractor extends BaseTextExtractor {
               pos.character + 1,
               nestedIndex,
             );
-            this.recordManualSkip({
-              category: 'nested-interpolation',
-              message: `${filePath}:${pos.line + 1 + lineOffset}:${pos.character + 1}:${nestedIndex}:${nested}`,
-              count: 1,
-            });
           }
         }
       }
@@ -1315,11 +1333,6 @@ export class VueTextExtractor extends BaseTextExtractor {
   }
 
   /**
-   * 判断表达式是否是 Vue i18n 的调用
-   * @param expression - 表达式字符串
-   * @returns 是否是 i18n 调用
-   */
-  /**
    * 精确判定：解析后的表达式「整体就是单个 i18n 调用」（$t('k') / t('k') / this.$t('k') / obj.t('k')）。
    *
    * 用于替代 isVueI18nCall 字符串粗筛在提取入口处的整体跳过判定：粗筛只要以 $t( 开头或含 .t(
@@ -1358,6 +1371,11 @@ export class VueTextExtractor extends BaseTextExtractor {
     }
   }
 
+  /**
+   * 判断表达式是否是 Vue i18n 的调用
+   * @param expression - 表达式字符串
+   * @returns 是否是 i18n 调用
+   */
   private isVueI18nCall(expression: string): boolean {
     const trimmed = expression.trim();
 
@@ -1419,17 +1437,32 @@ export class VueTextExtractor extends BaseTextExtractor {
     this.recordManualSkip({
       category: 'html-template',
       message: msg,
-      count: 1,
       dedupeKey: `${filePath}:${sourceOffset ?? line}`,
     });
+  }
+
+  /**
+   * 输出「表达式含 HTML 实体、整条跳过提取」warning。
+   *
+   * 只走 recordWarning 不走 recordManualSkip：与 warnChineseInTechnicalAttribute 同理，
+   * ManualSkipDiagnostic.category 是封闭联合，扩枚举需同步 CoverageReporter 映射。
+   */
+  private warnHtmlEntityInExpression(source: string, filePath: string, line: number): void {
+    const msg =
+      `⚠️ 跳过含 HTML 实体的模板表达式：${FileUtils.getRelativePath(filePath)}:${line} ` +
+      `「${source}」\n` +
+      `   原因：Vue 编译器先解码实体（如 &amp; 解成 &），表达式内字面量的源码位置无法精确定位，` +
+      `强行替换会砍在半截语法上。\n` +
+      `   建议：把表达式里的实体改成等价的普通字符后重新提取，或手工为其中的文案加 t() 调用。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
   }
 
   /**
    * 输出「技术属性里的中文被跳过」warning。
    *
    * 只走 recordWarning 不走 recordManualSkip：ManualSkipDiagnostic.category 是封闭联合，
-   * 现有三档（html-template / class-property / nested-interpolation）语义都不覆盖本场景，
-   * 扩枚举需同步改 GenerateProcessor 的映射，收益不足以扩面。
+   * 现有各档语义都不覆盖本场景，扩枚举需同步 CoverageReporter 的映射，收益不足以扩面。
    */
   private warnChineseInTechnicalAttribute(
     attrName: string,

@@ -129,6 +129,14 @@ export function createJsxFragmentFromTemplate(
 
   if (placeholderNames.length === 0) return null;
 
+  // 与姊妹工厂 createStringOrTemplateNode 同一道守卫：占位符「唯一名数」必须与 values 项数
+  // 相等，否则本函数会照常拼出 fragment，而 values 里多出的那一项（如文案被人工改短后删掉的
+  // 占位符）被静默丢弃——运行时变量凭空消失且零告警。
+  // Why 不在此处告警：调用方（ReactRestoreTransformer）在本函数返回 null 后会紧接着调用
+  // createStringOrTemplateNode，由它对同一份入参输出唯一一条 Restore Warning 并同样返回 null，
+  // 最终保留原 <Trans>/<FormattedMessage> 不还原。此处再打一遍只会重复刷屏。
+  if (new Set(placeholderNames).size !== Object.keys(values).length) return null;
+
   const children: ts.JsxChild[] = [];
   // 含 JSX 元字符（`<` `>` `{` `}`）的字面段不能直接当 JsxText（`<` 非法、`{}` 会被当
   // 表达式容器），改用字符串表达式容器 `{'...'}` 原样承载。正常占位符文案（中文 + 已被

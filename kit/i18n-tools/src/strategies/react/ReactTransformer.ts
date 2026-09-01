@@ -83,13 +83,15 @@ export class ReactTransformer implements ITransformer {
     // 添加全局函数导入和声明 (如果需要)
     transformedCode = this.importManager.handleGlobalImports(transformedCode, fileStrings);
 
-    // 注入 Hook / HOC (如果需要)
-    transformedCode = this.componentInjector.inject(transformedCode);
+    // 注入 Hook / HOC (如果需要)。透传 filePath：注入器据扩展名决定 ScriptKind，
+    // 纯 .ts 若被按 TSX 解析，`<T>expr` 断言会被当 JSX、注入判定走偏。
+    transformedCode = this.componentInjector.inject(transformedCode, filePath);
 
     // 为使用翻译变量的hooks添加到依赖项
     transformedCode = HooksUtils.addTranslationVarToHooksDependencies(
       transformedCode,
       this.library,
+      filePath,
     );
 
     // 注入收尾：清理被注入的 useTranslation t 遮蔽后变成未使用的 tImport `t` 死导入

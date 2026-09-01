@@ -47,12 +47,14 @@ export interface FailureRecord {
  * - cross-module-reuse   跨模块复用候选（同一 value 多前缀使用）
  * - hardcoded-comparison 硬编码中文与已 i18n 文案比较（脱钩风险）
  * - nested-interpolation-chinese 插值表达式内中文分支被占位符吞掉（运行时渲染未翻译中文）
+ * - param-default        形参默认值中的中文（参数作用域看不到函数体内注入的 t 绑定）
  */
 export type ManualCategory =
   | 'comparison-operand'
   | 'mixed-content'
   | 'html-in-template'
   | 'class-property'
+  | 'param-default'
   | 'html-tag-in-value'
   | 'long-value'
   | 'semantic-duplicate'
@@ -102,6 +104,9 @@ export interface CoverageMetric {
   coverageRate: number;
 }
 
+/** 警告的严重级别（doctor 的 missing-key=error / orphan=warning / lint=info 等）。 */
+type ReportSeverity = 'error' | 'warning' | 'info';
+
 /**
  * 单次运行的失败 / 警告收集器。
  *
@@ -117,9 +122,6 @@ export interface CoverageMetric {
  * 3. 错误字段统一走 safe-extract，避免泄露凭据。
  * 4. 文件名带时间戳 + command + pid，避免并发运行互相覆盖。
  */
-/** 警告的严重级别（doctor 的 missing-key=error / orphan=warning / lint=info 等）。 */
-type ReportSeverity = 'error' | 'warning' | 'info';
-
 export class RunReport {
   private failures: FailureRecord[] = [];
   private warnings: string[] = [];
@@ -138,7 +140,7 @@ export class RunReport {
   addFailure(record: Omit<FailureRecord, 'error'> & { error: unknown }): void {
     this.failures.push({
       ...record,
-      error: RunReport.safeExtractError(record.error),
+      error: extractSafeError(record.error),
     });
   }
 
@@ -174,7 +176,13 @@ export class RunReport {
     return this.coverage;
   }
 
-  /** 按 category 分组聚合，供 summary 渲染。 */
+  /**
+   * 按 category 分组聚合**全部** needsManual，供报告渲染与测试观察。
+   *
+   * 与下方 groupCoverageManualByCategory 的关系：后者是「只要进 coverage.skipped 的那 4 类」
+   * 的特化版（covergae 总览用），本方法才是全量入口——lint 类发现（semantic-duplicate /
+   * html-tag-in-value 等）只能从这里看到。
+   */
   groupManualByCategory(): Record<string, ManualEntry[]> {
     const groups: Record<string, ManualEntry[]> = {};
     for (const e of this.needsManual) {
@@ -190,6 +198,7 @@ export class RunReport {
       'nested-interpolation-chinese',
       'html-in-template',
       'class-property',
+      'param-default',
     ]);
     const groups: Record<string, ManualEntry[]> = {};
     for (const entry of this.needsManual) {
@@ -337,6 +346,7 @@ export class RunReport {
     'mixed-content': '混合内容字符串（无法机械拆分）',
     'html-in-template': '模板字符串含 HTML 标签',
     'class-property': '类组件属性初始化器缺少翻译绑定',
+    'param-default': '形参默认值缺少翻译绑定',
     'html-tag-in-value': 'locale value 含 HTML 标签',
     'long-value': 'locale value 过长',
     'semantic-duplicate': '语义重复 key（占位符/空白差异）',
@@ -362,6 +372,13 @@ export class RunReport {
     ✅  innerHTML = \`<span class="x">\${t('xxx')}</span>\``,
     'class-property': `类组件属性初始化时没有可用的 t/intl 绑定，直接替换会生成未定义标识符。
 建议把文案移入 render()/方法/getter，或使用已注入的 this.props.t / this.props.intl。`,
+    'param-default': `形参默认值在参数作用域求值，而 t/intl 绑定注入在函数体内，参数看不见它。
+建议默认值留哨兵、函数体内兜底：
+    ❌  function App({ label = '默认标签' }) { ... }
+    ✅  function App({ label }) {
+          const { t } = useTranslation();
+          const text = label ?? t('app__defaultLabel');
+        }`,
     'html-tag-in-value': `locale value 已经混入了 HTML 标签，翻译质量难保证。
 处理方式同 html-in-template：把样式结构留在源码模板，t() 只包文案。`,
     'long-value': `locale value 超过 200 字符。长文本翻译质量差且不便维护。
@@ -372,7 +389,7 @@ export class RunReport {
 建议在源码中统一变量名 / 空白，重跑 generate 即可自动复用同一 key。`,
     'cross-module-reuse': `同一 value 在 ≥ 3 个不同目录前缀下都被使用，可以提升到 common。
 在 i18n.config 启用：
-    idPrefix: { promoteToCommon: { threshold: 3, namespace: 'common' } }
+    keys: { reuse: { promoteToCommon: { threshold: 3, namespace: 'common' } } }
 让新增使用点自动归入 common namespace。`,
     'hardcoded-comparison': `比较运算符两侧字面量不会被提取（避免破坏分支判断），
 但同句中文若在别处（如数组初值 / ref 默认值）被提取为 t(...)，
@@ -385,8 +402,4 @@ export class RunReport {
     ❌  \`操作失败：\${cond ? '内部错误' : '网络异常'}\`
     ✅  \`操作失败：\${cond ? t('xxx__internalError') : t('xxx__networkError')}\``,
   };
-
-  private static safeExtractError(error: unknown): FailureRecord['error'] {
-    return extractSafeError(error);
-  }
 }

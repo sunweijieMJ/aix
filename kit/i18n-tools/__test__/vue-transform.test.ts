@@ -949,3 +949,74 @@ describe('Vue 无引号静态属性值的提取/替换对称（审计 Vue）', (
     expect(localeRaw).toContain('确认');
   });
 });
+
+/**
+ * 模板表达式里出现 HTML 实体时只跳过该表达式并告警，同文件其它文案照常转换；
+ * 文本节点 / 静态属性的实体仍走 original/processedMessage 双轨。
+ */
+describe('Vue 提取 — 含 HTML 实体的模板表达式只跳过该表达式', () => {
+  const T_IMPORT = '@/plugins/locale';
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vue-p2-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function transformVue(src: string): Promise<{ out: string; warnings: string[] }> {
+    const adapter = new VueAdapter(T_IMPORT, 'vue-i18n', {});
+    const fp = path.join(dir, 'C.vue');
+    fs.writeFileSync(fp, src, 'utf8');
+    const extractor = adapter.getTextExtractor();
+    const strings = await extractor.extractFromFile(fp);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    return {
+      out: adapter.getTransformer().transform(fp, strings, src),
+      warnings: extractor.drainWarnings(),
+    };
+  }
+
+  it('指令表达式含 &amp;：该表达式原样保留，同文件其它文案照常转换并告警', async () => {
+    const { out, warnings } = await transformVue(
+      `<template>\n  <div :title="cond ? '确&amp;定' : x">提交</div>\n</template>\n`,
+    );
+    expect(out).toContain(`:title="cond ? '确&amp;定' : x"`);
+    expect(out).toContain("{{ $t('k0') }}");
+    expect(out).not.toContain('>提交<');
+    expect(warnings.some((w) => w.includes('含 HTML 实体的模板表达式'))).toBe(true);
+  });
+
+  it('插值表达式含 &amp;：同样只跳过该插值', async () => {
+    const { out } = await transformVue(
+      `<template>\n  <p>{{ flag ? '是&amp;否' : y }}</p>\n  <p>取消</p>\n</template>\n`,
+    );
+    expect(out).toContain(`{{ flag ? '是&amp;否' : y }}`);
+    expect(out).toContain("{{ $t('k0') }}");
+  });
+
+  // ---------- 反向：不含实体的表达式与文本节点实体双轨不受影响 ----------
+
+  it('反向：不含实体的同形表达式照常提取转换', async () => {
+    const { out, warnings } = await transformVue(
+      `<template>\n  <div :title="cond ? '确定' : x">提交</div>\n</template>\n`,
+    );
+    expect(out).toContain(`:title="cond ? $t(`);
+    expect(out).not.toContain(`'确定'`);
+    expect(warnings.some((w) => w.includes('含 HTML 实体的模板表达式'))).toBe(false);
+  });
+
+  it('反向：文本节点里的实体仍走 original/processedMessage 双轨，照常替换', async () => {
+    const { out } = await transformVue(`<template>\n  <div>确&amp;定</div>\n</template>\n`);
+    expect(out).toContain("{{ $t('k0') }}");
+    expect(out).not.toContain('确&amp;定');
+  });
+
+  it('反向：静态属性里的实体同样不受影响', async () => {
+    const { out } = await transformVue(
+      `<template>\n  <div title="确&amp;定">x</div>\n</template>\n`,
+    );
+    expect(out).toContain(`:title="$t('k0')"`);
+  });
+});

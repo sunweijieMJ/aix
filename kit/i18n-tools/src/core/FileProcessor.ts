@@ -74,6 +74,18 @@ export abstract class FileProcessor {
   }
 
   /**
+   * 翻译字典条目的形态守卫：loadJsonDictOrThrow 只保证整体 JSON 合法，不保证每条 entry
+   * 是对象。手工把某条改成 null / 字符串后，`entry[locale]` 会抛不带文件与 key 上下文的
+   * TypeError。非对象即带 key 名告警并返回 false（调用方跳过），与 csv-export / csv-import
+   * 的「非对象条目告警跳过」同口径。
+   */
+  protected static isEntryObject(key: string, entry: unknown): boolean {
+    if (entry !== null && typeof entry === 'object') return true;
+    LoggerUtils.warn(`⚠️  跳过形态非法的条目（值不是对象）: ${key}`);
+    return false;
+  }
+
+  /**
    * 获取目录类型描述
    */
   protected getDirectoryDescription(): string {
