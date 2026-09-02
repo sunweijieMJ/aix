@@ -808,10 +808,11 @@ export class ReactTextExtractor extends BaseTextExtractor {
   private warnedConflictingBindings = new Set<string>();
 
   /**
-   * 输出「组件内存在同名非 i18n 绑定、整体跳过提取」的 warning。
+   * 输出「组件内存在同名非 i18n 绑定、整体跳过提取」的 warning，并计入 manualSkip。
    *
-   * 只走 warning 通道：ManualSkipDiagnostic.category 的现有档位都描述「位置本身没法放
-   * t()」，本情形是「局部绑定撞名」，不属于任何一类；warning 已随 RunReport 落盘留痕。
+   * 必须走 manualSkip 通道：这些中文片段是工具确认属于文案、却没能自动改写的，
+   * 不进 needsManual 与覆盖率分母的话，面板会把「跳过 / 待人工 0、覆盖率 100%」
+   * 报给一个实际存在未改写文案的目录（CI 假绿）。
    */
   private warnConflictingTranslationBinding(
     node: ts.Node,
@@ -831,6 +832,11 @@ export class ReactTextExtractor extends BaseTextExtractor {
       `   建议：把该绑定改名，或人工为该组件接入 i18n 后重跑。`;
     LoggerUtils.warn(msg);
     this.recordWarning(msg);
+    this.recordManualSkip({
+      category: 'conflicting-t-binding',
+      message: msg,
+      dedupeKey,
+    });
   }
 
   /**

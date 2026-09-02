@@ -168,14 +168,27 @@ function forStatementDeclares(node: ts.Node, name: string): boolean {
  * 后两类的声明不落在任何 Block 的 statements 里，漏掉会把「循环变量 / catch 参数」
  * 当成外层同名绑定的引用。
  *
- * 判定必须**贴合语言的作用域规则**、不能往任一侧放宽：两个公开变体的安全方向相反——
+ * 判定必须**贴合语言的作用域规则**、不能往任一侧放宽：公开变体的安全方向相反——
  * hasLocalDeclarationWithin 漏判遮蔽会把循环变量当成翻译变量、给 hook deps 注入不存在的
  * 标识符（TS2304）；isImportedNameUnused 多判遮蔽则会把仍在使用的 import 判成死导入删掉
  * （同样 TS2304）。任何一侧的偏移都会在另一侧变成 bug。
+ *
+ * boundaryMode 决定 boundary 那一层自身算不算遮蔽源：
+ *  - 'inclusive'：检查完 boundary 再停。boundary 是「引用不该越过的外沿」（hook 回调），
+ *    回调参数 `t => …` 同样遮蔽；
+ *  - 'exclusive'：到 boundary 即停、不检查它。boundary 是**目标绑定自身所在的作用域**
+ *    （`const { t } = useTranslation()` 所在的块），该层的同名声明就是目标绑定本身，
+ *    按遮蔽处理会让作用域内每个引用都被判成"不是它"。
  */
-function hasShadowingDeclaration(ref: ts.Node, name: string, boundary?: ts.Node): boolean {
+function hasShadowingDeclaration(
+  ref: ts.Node,
+  name: string,
+  boundary?: ts.Node,
+  boundaryMode: 'inclusive' | 'exclusive' = 'inclusive',
+): boolean {
   let cur: ts.Node | undefined = ref.parent;
   while (cur) {
+    if (boundary && boundaryMode === 'exclusive' && cur === boundary) return false;
     if (isFunctionLikeScope(cur)) {
       if (functionScopeDeclares(cur, name)) return true;
     } else if (ts.isBlock(cur) || ts.isSourceFile(cur) || ts.isModuleBlock(cur)) {
@@ -214,6 +227,25 @@ export function hasLocalDeclarationWithin(ref: ts.Node, name: string, boundary: 
   // 会把 boundary 之外（组件层）的翻译绑定误判为遮蔽。
   if (ref === boundary) return false;
   return hasShadowingDeclaration(ref, name, boundary);
+}
+
+/**
+ * 引用 ref 是否被「declarationScope 内层」的同名局部声明遮蔽。
+ *
+ * declarationScope 传目标绑定所在的直接作用域节点（其 VariableStatement 的父块 /
+ * SourceFile）：只检查 ref 到该层**之间**的作用域链，该层自身的同名声明即目标绑定本身。
+ *
+ * 用于 restore 判「标识符是否真的引用翻译变量」：`for (const t of tabs)` 的循环变量、
+ * catch 参数、内层块的 `const t` 等虽然同名，但解析到别的绑定，不能算翻译变量还活着——
+ * 否则 hook 声明与库导入被无谓保留，产出两条 no-unused-vars。
+ */
+export function isShadowedInsideScope(
+  ref: ts.Node,
+  name: string,
+  declarationScope: ts.Node,
+): boolean {
+  if (ref === declarationScope) return false;
+  return hasShadowingDeclaration(ref, name, declarationScope, 'exclusive');
 }
 
 /**

@@ -699,3 +699,93 @@ describe('DoctorProcessor — namespace 归一（四轮审计 A1）', () => {
     expect(output).not.toMatch(/orphan-key/);
   });
 });
+
+/**
+ * 回归：missing-key 是 error 级、直接决定 --ci 的红绿，故不能把「根本不是 i18n key」的
+ * 首参也算进去。两道过滤：
+ *  1. 文件顶层把 `t` 绑定到非 i18n 来源（本地模板函数）→ 该文件的裸 t() 引用不参与对账；
+ *  2. 首参形态不像 key（含空格 / 中文 / 花括号）→ 降为 info，仍列出但不卡 CI。
+ * 真 key 形态的缺失照旧 error，不得被这两道过滤放宽。
+ */
+describe('DoctorProcessor missing-key — 非 i18n 同名 t() 不误报', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
+  const buildReactConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'react', library: 'react-i18next', tImport: '@/plugins/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: localeDir, sourceDir, format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-conflict-t-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const writeLocales = (data: Record<string, string>): void => {
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify(data));
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify(data));
+  };
+
+  it('本地模板函数 t() 不报 missing-key，--ci 不卡', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Local.tsx'),
+      `import { t } from './tiny-template';
+export function Local({ name }: { name: string }) {
+  return <div>{t('你好 {name}', { name })}</div>;
+}
+`,
+    );
+    writeLocales({});
+    await new DoctorProcessor(buildReactConfig(), false, undefined, { ci: true }).execute();
+    const all = infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(all).not.toContain('你好 {name}');
+  });
+
+  it('tImport 的 t() 但首参不像 key（含中文）→ 降为 info，--ci 不卡', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Natural.tsx'),
+      `import { t } from '@/plugins/locale';
+export function Natural() {
+  return <div>{t('自然语言 文案')}</div>;
+}
+`,
+    );
+    writeLocales({});
+    await new DoctorProcessor(buildReactConfig(), false, undefined, { ci: true }).execute();
+    const all = infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    // 仍然列出来供人核对，只是不再是 error
+    expect(all).toContain('自然语言 文案');
+  });
+
+  it('真 key 形态缺失仍是 error，--ci 卡住', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Real.tsx'),
+      `import { t } from '@/plugins/locale';
+export function Real() {
+  return <div>{t('views.real.title')}</div>;
+}
+`,
+    );
+    writeLocales({});
+    const proc = new DoctorProcessor(buildReactConfig(), false, undefined, { ci: true });
+    await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
+  });
+});

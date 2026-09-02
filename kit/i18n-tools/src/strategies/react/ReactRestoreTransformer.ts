@@ -11,7 +11,11 @@ import {
   createJsxFragmentFromTemplate,
   createStringOrTemplateNode,
 } from '../../utils/restore-node-factory';
-import { isIdentifierValueReference, isImportedNameUnused } from '../../utils/scope-analysis';
+import {
+  isIdentifierValueReference,
+  isImportedNameUnused,
+  isShadowedInsideScope,
+} from '../../utils/scope-analysis';
 import { convertUnicodeToChineseInCode } from '../../utils/string-escape';
 import { LoggerUtils } from '../../utils/logger';
 import { ReactASTUtils } from './react-ast-utils';
@@ -269,8 +273,56 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     // 保守守卫：仅当 t 在还原后的整文件中已无任何引用时删除——若存在「locale 查不到、未被还原」
     // 的存活 t() 调用，t 仍被使用，必须保留 import，否则产出 `Cannot find name 't'`（TS2304）。
     transformedCode = this.finalizeTImport(transformedCode, filePath);
+    transformedCode = this.finalizeLibraryImports(transformedCode, filePath);
 
     return transformedCode;
+  }
+
+  /**
+   * restore 收尾：逐个具名导入复核存活性，摘除还原后已无引用的工具注入名。
+   *
+   * ReactImportManager.cleanupImports 的 keepLibraryImport 是**整条 import 粒度**的守卫：
+   * 文件里只要有一处还原不掉的翻译调用/组件，`import { Trans, useTranslation }` 整行都被保留，
+   * 其中已无 `<Trans>` 用法的 Trans 就成了死导入（no-unused-vars，且 prettify 步骤的 ESLint 会红）。
+   * 这里在最终代码上按名逐个判：JSX 标签、hook 调用、HOC 调用与类型引用都算引用（都是标识符的
+   * 值/类型位置读取，isImportedNameUnused 一并覆盖），零引用才摘。守卫保守——任一未遮蔽引用即保留。
+   *
+   * 只处理未改名的注入名：改名导入（`Trans as T`）一定是用户代码，与 cleanupImports 同口径跳过。
+   * `import type { … }` 行不在 removeNamedImports 的匹配形态内，其类型名由 cleanupImports 在
+   * 常规路径摘除。
+   */
+  private finalizeLibraryImports(code: string, filePath: string): string {
+    const specifiers = this.library.getImportSpecifiers({
+      hasJsxComponent: true,
+      hasHook: true,
+      hasHOC: true,
+    });
+    const injectable = new Set([...specifiers.values, ...specifiers.types]);
+    const packageName = this.library.packageName;
+
+    const sourceFile = parseSourceFile(code, filePath);
+    const candidates: string[] = [];
+    for (const statement of sourceFile.statements) {
+      if (!ts.isImportDeclaration(statement)) continue;
+      if (
+        !ts.isStringLiteral(statement.moduleSpecifier) ||
+        statement.moduleSpecifier.text !== packageName
+      ) {
+        continue;
+      }
+      const named = statement.importClause?.namedBindings;
+      if (!named || !ts.isNamedImports(named)) continue;
+      for (const element of named.elements) {
+        if (element.propertyName !== undefined) continue;
+        if (injectable.has(element.name.text)) candidates.push(element.name.text);
+      }
+    }
+
+    const dead = candidates.filter((name) =>
+      isImportedNameUnused(code, filePath, packageName, name),
+    );
+    if (dead.length === 0) return code;
+    return removeNamedImports(code, (m) => m === packageName, dead);
   }
 
   /**
@@ -287,6 +339,81 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       return code;
     }
     return removeNamedImports(code, (m) => m === this.tImport, [funcName]);
+  }
+
+  /**
+   * 需要补行内前导注释的槽位：printer 对这些位置只走列表 / 标点输出，不会从源文本取回
+   * 「前一个 token 与本节点之间」的注释，替换成合成节点后该注释整条消失。
+   *
+   * 反过来，`=` / `=>` / `?` / `:` 这类槽位的注释由 printer 随 token 一起输出（
+   * `const u = /* c *\/ t('k')`、三元两分支、箭头表达式体），这里再补一份就会打印两遍，
+   * 故白名单只收「已实测会丢」的三种：对象属性值、数组元素、调用实参。
+   */
+  private static needsLeadingCommentTransplant(node: ts.Node): boolean {
+    const parent = node.parent;
+    if (!parent) return false;
+    if (ts.isPropertyAssignment(parent)) return parent.initializer === node;
+    if (ts.isArrayLiteralExpression(parent)) return true;
+    if (ts.isCallExpression(parent) || ts.isNewExpression(parent)) {
+      return parent.expression !== node;
+    }
+    return false;
+  }
+
+  /**
+   * 把「夹在父节点起点与原节点之间」的行内注释搬到替换节点上。
+   *
+   * printer 只对带原始位置的节点从源文本取 trivia，而还原产出的是 ts.factory 新节点
+   * （pos = -1）：`title: /* 配置标题 *\/ t('k')` 里那条注释于是随调用节点一起消失。
+   *
+   * 只取父节点起点之后的注释：父节点保留原范围，它自己的前导注释仍由 printer 按源文本
+   * 输出；若把这些也复制一份，`// 说明\nt('k');` 这类「注释在语句上方」的形态会被打印两遍。
+   */
+  private static withLeadingComments<T extends ts.Node>(
+    replacement: T,
+    original: ts.Node,
+    sourceFile: ts.SourceFile,
+  ): T {
+    const parent = original.parent;
+    if (
+      original.pos < 0 ||
+      !parent ||
+      !ReactRestoreTransformer.needsLeadingCommentTransplant(original)
+    ) {
+      return replacement;
+    }
+    const fullStart = original.getFullStart();
+    // 两路都要取：getLeadingCommentRanges 只从换行之后开始收集，与前一个 token 同行的
+    // `title: /* 配置标题 *\/ t(...)` 只出现在 getTrailingCommentRanges 里。
+    const ranges = [
+      ...(ts.getTrailingCommentRanges(sourceFile.text, fullStart) ?? []),
+      ...(ts.getLeadingCommentRanges(sourceFile.text, fullStart) ?? []),
+    ];
+    if (ranges.length === 0) return replacement;
+    const parentStart = parent.getStart(sourceFile);
+    const seen = new Set<number>();
+    const inline: ts.CommentRange[] = [];
+    for (const range of ranges) {
+      if (range.pos < parentStart || seen.has(range.pos)) continue;
+      seen.add(range.pos);
+      inline.push(range);
+    }
+    inline.sort((a, b) => a.pos - b.pos);
+    if (inline.length === 0) return replacement;
+    return ts.setSyntheticLeadingComments(
+      replacement,
+      inline.map((range) => ({
+        kind: range.kind,
+        // SynthesizedComment.text 不含定界符：块注释去掉首尾各 2 字符，行注释只去掉 `//`
+        text: sourceFile.text.slice(
+          range.pos + 2,
+          range.kind === ts.SyntaxKind.MultiLineCommentTrivia ? range.end - 2 : range.end,
+        ),
+        hasTrailingNewLine: range.hasTrailingNewLine,
+        pos: -1,
+        end: -1,
+      })),
+    );
   }
 
   /**
@@ -611,13 +738,16 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     const translationVarUsedOutsideTranslationCalls = (root: ts.Node): boolean => {
       const varName = library.translationVarName;
 
-      // 收集所有「绑定了 varName 的合法声明（hook / getIntl / this.props）」所属的函数作用域（去重）
-      const hookScopes = new Set<ts.Node>();
+      // 收集所有「绑定了 varName 的合法声明（hook / getIntl / this.props）」的扫描区间：
+      // scope 是要遍历的函数作用域，declarationScope 是该声明所在的直接块——后者作为遮蔽
+      // 判定的下界，使块内同名的循环变量 / catch 参数 / 内层 const 不被当成翻译变量引用。
+      const hookScopes = new Map<ts.Node, ts.Node>();
       const collect = (node: ts.Node): void => {
         if (ts.isVariableStatement(node)) {
           for (const decl of node.declarationList.declarations) {
             if (this.declarationBindsTranslationVar(decl, varName)) {
-              hookScopes.add(this.enclosingScope(node));
+              const scope = this.enclosingScope(node);
+              if (!hookScopes.has(scope)) hookScopes.set(scope, node.parent);
             }
           }
         }
@@ -626,6 +756,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       collect(root);
       if (hookScopes.size === 0) return false;
 
+      let declarationScope: ts.Node = root;
       let found = false;
       const visit = (node: ts.Node): void => {
         if (found) return;
@@ -650,20 +781,27 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
         if (
           ts.isPropertyAccessExpression(node) &&
           ts.isIdentifier(node.expression) &&
-          node.expression.text === varName
+          node.expression.text === varName &&
+          !isShadowedInsideScope(node.expression, varName, declarationScope)
         ) {
           found = true;
           return;
         }
-        // 裸标识符值引用（排除声明/键/成员名/import 等非引用位置）
-        if (ts.isIdentifier(node) && node.text === varName && isIdentifierValueReference(node)) {
+        // 裸标识符值引用（排除声明/键/成员名/import 等非引用位置，以及解析到别的同名绑定的引用）
+        if (
+          ts.isIdentifier(node) &&
+          node.text === varName &&
+          isIdentifierValueReference(node) &&
+          !isShadowedInsideScope(node, varName, declarationScope)
+        ) {
           found = true;
           return;
         }
         ts.forEachChild(node, visit);
       };
-      for (const scope of hookScopes) {
+      for (const [scope, declScope] of hookScopes) {
         if (found) break;
+        declarationScope = declScope;
         visit(scope);
       }
       return found;
@@ -764,15 +902,20 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
         // 转换翻译函数调用
         if (ts.isCallExpression(currentNode)) {
+          const original = currentNode;
           const transformedNode = this.transformTranslationCall(
-            currentNode,
+            original,
             context.localeMap,
             context.definedMessages,
             context.sourceFile,
           );
           if (transformedNode) {
             context.hasChanges = true;
-            currentNode = transformedNode;
+            currentNode = ReactRestoreTransformer.withLeadingComments(
+              transformedNode,
+              original,
+              context.sourceFile,
+            );
             nodeChanged = true;
           }
         }

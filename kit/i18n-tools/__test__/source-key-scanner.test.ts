@@ -361,3 +361,89 @@ describe('createKeyNormalizer — namespace 归一口径', () => {
     expect(used.has('app:greeting')).toBe(false);
   });
 });
+
+/**
+ * 顶层把 `t` 绑定到非 i18n 来源（本地模板函数）时，该文件的裸 `t(...)` 首参不是 i18n key。
+ *
+ * 两个方向都必须守住：
+ *  - missing-key 检查（skipNonI18nTranslationCalls: true）跳过这些引用，否则 doctor 误红；
+ *  - prune / orphan-key 用的默认口径**不得**因此缩小 —— usedKeys 少算一个在用 key，
+ *    就等于把它从所有 locale 永久删除。
+ */
+describe('collectUsedKeys — 顶层非 i18n t 绑定', () => {
+  let root: string;
+  let srcDir: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'scanner-conflict-t-'));
+    srcDir = path.join(root, 'src');
+    fs.mkdirSync(srcDir, { recursive: true });
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const buildConfig = () =>
+    resolveConfig({
+      root,
+      framework: { type: 'react', library: 'react-i18next', tImport: '@/plugins/locale' },
+      locales: { source: 'zh', targets: ['en'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  const writeFixture = (): void => {
+    fs.writeFileSync(
+      path.join(srcDir, 'Local.tsx'),
+      `import { t } from './tiny-template';
+export function Local({ name }: { name: string }) {
+  return <div>{t('你好 {name}', { name })}</div>;
+}
+`,
+    );
+    // 同目录另一个文件走工具注入的 tImport，其 t() 引用属于真 key，两侧口径都要采到
+    fs.writeFileSync(
+      path.join(srcDir, 'Real.tsx'),
+      `import { t } from '@/plugins/locale';
+export function Real() {
+  return <div>{t('views.real.title')}</div>;
+}
+`,
+    );
+  };
+
+  it('默认口径（prune / orphan-key）不缩小：本地 t() 的首参照旧计入 usedKeys', () => {
+    writeFixture();
+    const config = buildConfig();
+    const used = collectUsedKeys(config, createFrameworkAdapter(config));
+    expect(used.has('你好 {name}')).toBe(true);
+    expect(used.has('views.real.title')).toBe(true);
+  });
+
+  it('missing-key 口径：跳过该文件的裸 t()，tImport 文件的引用照常保留', () => {
+    writeFixture();
+    const config = buildConfig();
+    const used = collectUsedKeys(config, createFrameworkAdapter(config), {
+      skipNonI18nTranslationCalls: true,
+    });
+    expect(used.has('你好 {name}')).toBe(false);
+    expect(used.has('views.real.title')).toBe(true);
+  });
+
+  it('missing-key 口径：同文件的 <Trans i18nKey> 不受影响（名字与 t 无关）', () => {
+    fs.writeFileSync(
+      path.join(srcDir, 'Mixed.tsx'),
+      `import { t } from './tiny-template';
+import { Trans } from 'react-i18next';
+export function Mixed() {
+  return <p title={t('模板 {x}', { x: '1' })}><Trans i18nKey="views.mixed.body" /></p>;
+}
+`,
+    );
+    const config = buildConfig();
+    const used = collectUsedKeys(config, createFrameworkAdapter(config), {
+      skipNonI18nTranslationCalls: true,
+    });
+    expect(used.has('views.mixed.body')).toBe(true);
+    expect(used.has('模板 {x}')).toBe(false);
+  });
+});

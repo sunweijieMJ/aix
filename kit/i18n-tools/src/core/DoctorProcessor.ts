@@ -140,10 +140,18 @@ export class DoctorProcessor extends BaseProcessor {
 
       findings.push(...this.runLinter(sourceMap));
 
-      // 2. 三类对账：依赖源码扫描得到的 key 引用集合
+      // 2. 三类对账：依赖源码扫描得到的 key 引用集合。
+      // missing-key 单独用一份过滤过的引用集（跳过顶层绑定了非 i18n `t` 的文件的裸 t()），
+      // orphan-key 必须用全量集：少算一个在用 key 就会被列成清理候选、被 prune 永久删除。
       const sourceKeys = collectUsedKeys(this.config, this.adapter);
+      const missingKeyCandidates = collectUsedKeys(this.config, this.adapter, {
+        skipNonI18nTranslationCalls: true,
+      });
       findings.push(
-        ...this.checkMissingKeys(sourceKeys, this.collectDefinedKeys(sourceMap, counterpartFiles)),
+        ...this.checkMissingKeys(
+          missingKeyCandidates,
+          this.collectDefinedKeys(sourceMap, counterpartFiles),
+        ),
       );
       findings.push(...this.checkOrphanKeys(sourceKeys, sourceMap));
 
@@ -327,19 +335,37 @@ export class DoctorProcessor extends BaseProcessor {
       // 之类的不完整 key。这里只对"完全等于 locale key"的字面量做严格匹配，
       // 否则会对所有动态 t() 调用噪声报警。
       if (!definedKeys.has(key)) {
+        const keyLike = DoctorProcessor.looksLikeI18nKey(key);
         findings.push({
           category: 'missing-key',
-          severity: 'error',
+          // 形态不像 key 的首参（含空格 / 中文 / 花括号）多半来自同名的非 i18n `t`
+          // （本地模板函数等），扫描器无从区分。降到 info 而非 error：仍然列出来供人核对，
+          // 但不把 CI 卡红。真正的 key 形态照旧 error。
+          severity: keyLike ? 'error' : 'info',
           title: `源码调用 t('${key}') 但 locale 不存在该 key`,
-          details: [
-            `语言: ${this.config.locales.source}${scope}`,
-            '运行时会显示 key 字符串而非翻译，建议补全或修正 key 名',
-          ],
+          details: keyLike
+            ? [
+                `语言: ${this.config.locales.source}${scope}`,
+                '运行时会显示 key 字符串而非翻译，建议补全或修正 key 名',
+              ]
+            : [
+                `语言: ${this.config.locales.source}${scope}`,
+                '首参含空格 / 中文 / 花括号，不像 i18n key；若它其实是同名的非 i18n t() 调用，可忽略本条',
+              ],
           key,
         });
       }
     }
     return findings;
+  }
+
+  /**
+   * 首参字面量是否具备 i18n key 的形态。工具生成的 key 是点分标识符，用户手写的
+   * 也不会带空格 / 中文 / 插值花括号——带这些的更可能是同名非 i18n `t()` 的实参
+   * （本地模板函数 `t('你好 {name}', vars)`）或 i18next 的自然语言 key。
+   */
+  private static looksLikeI18nKey(key: string): boolean {
+    return !/[\s{}\u4e00-\u9fff]/.test(key);
   }
 
   /**

@@ -743,6 +743,41 @@ describe('React restore — 库 import 精确摘除（保留同行非 i18n 导�
     expect(out).toContain('I18nextProvider');
     noParseErrors(out);
   });
+
+  // 库 import 的存活性必须**逐个具名判**，而非整条 import 一刀切：文件里有一处还原不掉的
+  // t() 时，useTranslation 确实要留，但同一行里已无 <Trans> 用法的 Trans 必须摘掉，
+  // 否则 ESLint no-unused-vars 直接红（prettify 步骤会失败）。
+  it('t() 存活但 Trans 全还原 → 摘 Trans、保留 useTranslation', () => {
+    const out = restore(
+      `import { Trans, useTranslation } from 'react-i18next';\n` +
+        `export default function P() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  return <div><p>{t('missing.key')}</p><Trans i18nKey="k" /></div>;\n` +
+        `}`,
+      { k: '你好世界' },
+    );
+    expect(out).toContain('你好世界');
+    expect(out).toMatch(/import\s*\{\s*useTranslation\s*\}\s*from\s*['"]react-i18next['"]/);
+    expect(out).not.toContain('<Trans');
+    expect(out).toContain("t('missing.key')");
+    noParseErrors(out);
+  });
+
+  it('Trans 仍有存活用法 → 整行注入名全部保留', () => {
+    const out = restore(
+      `import { Trans, useTranslation } from 'react-i18next';\n` +
+        `export default function P() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  return <div><p>{t('missing.key')}</p><Trans i18nKey="alsoMissing" /></div>;\n` +
+        `}`,
+      {},
+    );
+    expect(out).toMatch(
+      /import\s*\{\s*Trans,\s*useTranslation\s*\}\s*from\s*['"]react-i18next['"]/,
+    );
+    expect(out).toContain('<Trans');
+    noParseErrors(out);
+  });
 });
 
 /**
@@ -1105,6 +1140,55 @@ describe('React restore — 不误删来源无关的同名 t/intl', () => {
     // 关键：不相关 hook 的依赖项 [t] 必须保留（否则 stale closure / exhaustive-deps 违规）
     expect(out).toMatch(/useMemo\([^,]+,\s*\[\s*t\s*\]\)/);
     expect(out).toMatch(/const\s+t\s*=\s*useTemp\(\)/);
+  });
+
+  // 反方向：被块级绑定遮蔽的同名标识符解析到的是别的变量，不算翻译变量还活着。
+  // 漏判遮蔽会保留 `const { t } = useTranslation()` 与库 import，两条 no-unused-vars。
+  it('for-of 头部遮蔽的 t：不阻止声明与 import 的清理', () => {
+    const code =
+      `import { useEffect } from 'react';\n` +
+      `import { useTranslation } from 'react-i18next';\n` +
+      `export default function P({ tabs }: { tabs: string[] }) {\n` +
+      `  const { t } = useTranslation();\n` +
+      `  useEffect(() => {\n` +
+      `    for (const t of tabs) {\n` +
+      `      console.log(t);\n` +
+      `    }\n` +
+      `  }, [t]);\n` +
+      `  return <p>{t('a')}</p>;\n` +
+      `}\n`;
+
+    const out = restoreI18next(code, { a: '你好' });
+
+    expect(out).toContain('你好');
+    expect(out).not.toContain('useTranslation');
+    expect(out).not.toMatch(/const\s*\{\s*t\s*\}/);
+    // 依赖数组里的机器注入项同样要摘掉（回调体内的 t 是循环变量，不是翻译变量）
+    expect(out).toMatch(/\}\s*,\s*\[\s*\]\s*\)/);
+    // 循环变量自身原样保留
+    expect(out).toMatch(/for\s*\(const t of tabs\)/);
+  });
+
+  it('catch 参数遮蔽的 t：不阻止声明与 import 的清理', () => {
+    const code =
+      `import { useTranslation } from 'react-i18next';\n` +
+      `export default function P() {\n` +
+      `  const { t } = useTranslation();\n` +
+      `  const run = () => {\n` +
+      `    try {\n` +
+      `      JSON.parse('{}');\n` +
+      `    } catch (t) {\n` +
+      `      console.error(t);\n` +
+      `    }\n` +
+      `  };\n` +
+      `  return <p onClick={run}>{t('a')}</p>;\n` +
+      `}\n`;
+
+    const out = restoreI18next(code, { a: '你好' });
+
+    expect(out).toContain('你好');
+    expect(out).not.toContain('useTranslation');
+    expect(out).toMatch(/catch\s*\(t\)/);
   });
 });
 
@@ -1892,5 +1976,69 @@ export const Panel = () => <p>你好世界</p>;
     });
     expect(restored, `还原输出：\n${restored}`).toContain('你好&nbsp;世界');
     expect(restored).not.toContain('你好\u00A0世界');
+  });
+});
+
+/**
+ * 还原把 t() 调用替换成 ts.factory 合成节点（pos = -1），printer 便不再从源文本取回
+ * 「前一个 token 与该节点之间」的行内注释。对象属性值 / 数组元素 / 调用实参三个槽位
+ * printer 自身也不输出该位置的注释，注释于是整条消失。
+ *
+ * 反向同样要守：`=` / `=>` / `?:` 槽位的注释由 printer 随 token 输出，补一份就会打印两遍。
+ */
+describe('React restore — 保留调用前的行内注释', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-restore-comment-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const restore = (code: string, locale: Record<string, string>): string => {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    return new ReactRestoreTransformer(
+      createReactI18nLibrary('react-i18next'),
+      '@/plugins/locale',
+    ).transform(file, locale);
+  };
+
+  it('对象属性值 / 数组元素 / 调用实参前的块注释被保留', () => {
+    const out = restore(
+      `import { useTranslation } from 'react-i18next';\n` +
+        `export default function P() {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  const cfg = { title: /* 配置标题 */ t('k1') };\n` +
+        `  const arr = [/* 数组元素前 */ t('k2')];\n` +
+        `  const msg = notify(/* 实参前 */ t('k3'));\n` +
+        `  return <div>{cfg.title}{arr}{msg}</div>;\n` +
+        `}\n`,
+      { k1: '标题', k2: '元素', k3: '提示' },
+    );
+    expect(out).toContain('/* 配置标题 */');
+    expect(out).toContain('/* 数组元素前 */');
+    expect(out).toContain('/* 实参前 */');
+    expect(out).toContain('标题');
+  });
+
+  it('属性值后的尾随注释被保留，且注释不重复输出', () => {
+    const out = restore(
+      `import { useTranslation } from 'react-i18next';\n` +
+        `export default function P(flag: boolean) {\n` +
+        `  const { t } = useTranslation();\n` +
+        `  const cfg = { desc: t('k1') /* 尾注 */ };\n` +
+        `  const v = /* 赋值前 */ t('k2');\n` +
+        `  const w = flag ? /* 三元真 */ t('k3') : t('k4');\n` +
+        `  // 语句上方注释\n` +
+        `  log(t('k5'));\n` +
+        `  return <div>{cfg.desc}{v}{w}</div>;\n` +
+        `}\n`,
+      { k1: '描述', k2: '赋值', k3: '真', k4: '假', k5: '日志' },
+    );
+    expect(out.match(/尾注/g)).toHaveLength(1);
+    expect(out.match(/赋值前/g)).toHaveLength(1);
+    expect(out.match(/三元真/g)).toHaveLength(1);
+    expect(out.match(/语句上方注释/g)).toHaveLength(1);
   });
 });

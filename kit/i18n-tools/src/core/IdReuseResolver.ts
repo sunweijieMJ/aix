@@ -2,7 +2,11 @@ import fs from 'fs';
 import type { ResolvedConfig } from '../config';
 import { IdGenerator } from '../utils/id-generator';
 import { LanguageFileManager } from '../utils/language-file-manager';
-import { scanKeyReferencesInContent, stripCommentsForScan } from '../utils/source-key-scanner';
+import {
+  hasNonI18nTranslationBinding,
+  scanKeyReferencesInContent,
+  stripCommentsForScan,
+} from '../utils/source-key-scanner';
 import { collapseWhitespace } from '../utils/text-normalize';
 
 /**
@@ -65,8 +69,12 @@ export class IdReuseResolver {
    * react-intl 的 `intl.formatMessage({ id })` / `<FormattedMessage id>`、react-i18next
    * 的 `<Trans i18nKey>`、vue 的 `<i18n-t keypath>` / `v-t`。若只认 `t()/$t()`，
    * react-intl 项目 alreadyI18n 会恒为 0、覆盖率被系统性低估而误触 CI 卡点。
+   *
+   * i18nModules（工具注入的全局 t 路径 + i18n 库包名）用于识别「顶层把 t 绑定到非 i18n
+   * 来源」的文件：那种文件里的裸 `t('你好 {name}')` 是本地模板函数调用，计进 alreadyI18n
+   * 会把未国际化的文件报成已国际化（覆盖率虚高 → CI 假绿）。不传则不做该识别。
    */
-  scanExistingCallsInSources(filePaths: Iterable<string>): void {
+  scanExistingCallsInSources(filePaths: Iterable<string>, i18nModules?: readonly string[]): void {
     for (const filePath of filePaths) {
       try {
         const raw = fs.readFileSync(filePath, 'utf-8');
@@ -74,7 +82,9 @@ export class IdReuseResolver {
         // 走按文件类型分流的入口：.vue 模板段不能进 JS 词法状态机（裸 URL 的 //
         // 会被误当行注释吞掉行尾 t() 引用），详见 stripCommentsForScan。
         const content = stripCommentsForScan(filePath, raw);
-        for (const ref of scanKeyReferencesInContent(content)) {
+        const skipBareTranslationCalls =
+          i18nModules !== undefined && hasNonI18nTranslationBinding(filePath, raw, i18nModules);
+        for (const ref of scanKeyReferencesInContent(content, { skipBareTranslationCalls })) {
           this.existingIds.add(ref);
           this.existingCallSites++;
         }

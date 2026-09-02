@@ -60,6 +60,7 @@ export type ManualCategory =
   | 'jsx-text-in-vue'
   | 'class-property'
   | 'param-default'
+  | 'conflicting-t-binding'
   | 'html-tag-in-value'
   | 'long-value'
   | 'semantic-duplicate'
@@ -206,6 +207,7 @@ export class RunReport {
       'jsx-text-in-vue',
       'class-property',
       'param-default',
+      'conflicting-t-binding',
     ]);
     const groups: Record<string, ManualEntry[]> = {};
     for (const entry of this.needsManual) {
@@ -356,6 +358,7 @@ export class RunReport {
     'jsx-text-in-vue': 'Vue tsx/jsx 的 JSX 子节点文本未提取',
     'class-property': '类组件属性初始化器缺少翻译绑定',
     'param-default': '形参默认值缺少翻译绑定',
+    'conflicting-t-binding': '作用域已有同名非 i18n 绑定，整处跳过提取',
     'html-tag-in-value': 'locale value 含 HTML 标签',
     'long-value': 'locale value 过长',
     'semantic-duplicate': '语义重复 key（占位符/空白差异）',
@@ -399,6 +402,12 @@ export class RunReport {
           const { t } = useTranslation();
           const text = label ?? t('app__defaultLabel');
         }`,
+    'conflicting-t-binding': `组件自身或其外层作用域（含模块顶层）已有与 t/intl 同名的非 i18n 绑定。
+注入器不能在同块再声明一个同名变量，也不能遮蔽外层绑定；若仍替换文案，
+新写入的 t(...) 会解析到那个同名函数上，产出「能编译、行为错」的代码。
+建议把该同名绑定改名，或人工为该组件接入 i18n 后重跑：
+    ❌  import { t } from './tiny-template';   // 与 i18n 的 t 撞名
+    ✅  import { t as tpl } from './tiny-template';`,
     'html-tag-in-value': `locale value 已经混入了 HTML 标签，翻译质量难保证。
 处理方式同 html-in-template：把样式结构留在源码模板，t() 只包文案。`,
     'long-value': `locale value 超过 200 字符。长文本翻译质量差且不便维护。

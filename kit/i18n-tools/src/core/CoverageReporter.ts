@@ -57,9 +57,9 @@ export class CoverageReporter {
    * 不参与 ID 生成 / 落盘。供空提取分支（无 ExtractedString，故不会走 generateIdsForStrings）
    * 复用——让 alreadyI18n 反映真实已国际化量，避免 skipped 把覆盖率误算成 0。
    */
-  buildScanResolver(filePaths: string[]): IdReuseResolver {
+  buildScanResolver(filePaths: string[], i18nModules?: readonly string[]): IdReuseResolver {
     const resolver = new IdReuseResolver(this.config, this.isCustom);
-    resolver.scanExistingCallsInSources(filePaths);
+    resolver.scanExistingCallsInSources(filePaths, i18nModules);
     return resolver;
   }
 
@@ -121,6 +121,7 @@ export class CoverageReporter {
       'jsx-text-in-vue': 'jsx-text-in-vue',
       'class-property': 'class-property',
       'param-default': 'param-default',
+      'conflicting-t-binding': 'conflicting-t-binding',
     };
     for (const item of this.manualSkips) {
       const category = manualSkipCategoryMap[item.category];

@@ -32,8 +32,13 @@ import { stripStatefulFlags } from './path-matcher';
  * `t('点击(此处)')`）不会被误当作首参边界提前截断——否则首参被截成残缺片段、引号不闭合，
  * STRING_LITERAL 匹配失败，该 key 漏采 → 被 prune/doctor 当孤儿从所有 locale 永久删除。
  */
-const CALL_FIRST_ARG =
-  /(?:\$t|(?<!\w)t)\s*\(\s*((?:'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|[^,)])*)/g;
+const CALL_FIRST_ARG_TAIL = String.raw`\s*\(\s*((?:'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|[^,)])*)`;
+const CALL_FIRST_ARG = new RegExp(String.raw`(?:\$t|(?<!\w)t)` + CALL_FIRST_ARG_TAIL, 'g');
+/**
+ * 只认 `$t(...)` 的窄口径：文件顶层把 `t` 绑定到非 i18n 来源时，裸 `t()` 的首参不是 key，
+ * 但同文件里的 `$t()` 仍是 i18n 调用（`$t` 与 `t` 是两个名字，不受该绑定影响）。
+ */
+const DOLLAR_CALL_FIRST_ARG = new RegExp(String.raw`\$t` + CALL_FIRST_ARG_TAIL, 'g');
 /**
  * 从一段表达式文本里提取所有 'xxx' / "xxx" 字面量。
  *
@@ -213,13 +218,17 @@ const ATTR_PATTERNS: RegExp[] = [
  * collectUsedKeys（doctor/prune 对账）与 IdReuseResolver（覆盖率分子 + ID 复用）共用，
  * 避免「t()/$t() only」窄正则与本全量口径漂移。传入文本应已剥离注释。
  */
-export function scanKeyReferencesInContent(content: string): string[] {
+export function scanKeyReferencesInContent(
+  content: string,
+  options?: { skipBareTranslationCalls?: boolean },
+): string[] {
   const refs: string[] = [];
 
   // 1. 函数调用：取首参表达式里的全部字符串字面量
-  CALL_FIRST_ARG.lastIndex = 0;
+  const callPattern = options?.skipBareTranslationCalls ? DOLLAR_CALL_FIRST_ARG : CALL_FIRST_ARG;
+  callPattern.lastIndex = 0;
   let call: RegExpExecArray | null;
-  while ((call = CALL_FIRST_ARG.exec(content)) !== null) {
+  while ((call = callPattern.exec(content)) !== null) {
     const firstArg = call[1] ?? '';
     STRING_LITERAL.lastIndex = 0;
     let lit: RegExpExecArray | null;
@@ -240,6 +249,80 @@ export function scanKeyReferencesInContent(content: string): string[] {
   }
 
   return refs;
+}
+
+/**
+ * 「哪些模块的具名 `t` 导入属于 i18n 来源」的口径：工具注入的全局 t 路径 + i18n 库包名。
+ * 与 ReactTextExtractor.hasConflictingTranslationBinding 传给 ReactASTUtils 的同一份口径。
+ */
+export function resolveI18nModules(config: ResolvedConfig, adapter: FrameworkAdapter): string[] {
+  return [config.framework.tImport, adapter.getLibrary().packageName];
+}
+
+/**
+ * 文件**模块顶层**是否把 `t` 绑定到了非 i18n 来源（`import { t } from './tiny-template'`、
+ * `const t = fmt`、`function t() {}`）。命中时该文件里的裸 `t(...)` 首参不是 i18n key。
+ *
+ * 只看模块顶层：函数内的局部同名绑定只遮蔽自身作用域，整文件停掉裸 t() 的采集面太大。
+ * 名字硬编码为 `t`：本模块的调用形态扫描只认 `t(` / `$t(`，react-intl 的 intl.formatMessage
+ * 走 ATTR_PATTERNS，与本判定无关。
+ *
+ * 解析不了（非 TS/JS 扩展名、语法错误）一律返回 false —— 保守方向是「当作 i18n 引用」，
+ * 少算 usedKeys 会让 prune 误删在用 key。
+ */
+export function hasNonI18nTranslationBinding(
+  filePath: string,
+  raw: string,
+  i18nModules: readonly string[],
+): boolean {
+  if (!hasExtension(filePath, TS_PARSEABLE_EXTENSIONS)) return false;
+  let sourceFile: ts.SourceFile;
+  try {
+    sourceFile = parseSourceFile(raw, filePath);
+  } catch {
+    return false;
+  }
+  const diagnostics = (sourceFile as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics;
+  if (!Array.isArray(diagnostics) || diagnostics.length > 0) return false;
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement)) {
+      if (statement.name?.text === 't') return true;
+      continue;
+    }
+    if (ts.isImportDeclaration(statement)) {
+      if (
+        ts.isStringLiteral(statement.moduleSpecifier) &&
+        i18nModules.includes(statement.moduleSpecifier.text)
+      ) {
+        continue;
+      }
+      const clause = statement.importClause;
+      if (!clause) continue;
+      if (clause.name?.text === 't') return true;
+      const named = clause.namedBindings;
+      if (!named) continue;
+      if (ts.isNamespaceImport(named)) {
+        if (named.name.text === 't') return true;
+      } else if (named.elements.some((el) => el.name.text === 't')) {
+        return true;
+      }
+      continue;
+    }
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const decl of statement.declarationList.declarations) {
+      if (ts.isIdentifier(decl.name)) {
+        if (decl.name.text === 't') return true;
+      } else if (
+        decl.name.elements.some(
+          (el) => ts.isBindingElement(el) && ts.isIdentifier(el.name) && el.name.text === 't',
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**
@@ -275,10 +358,28 @@ export function createKeyNormalizer(
  * vue 组件/指令 `<i18n-t keypath>`/`v-t`、react 组件/调用 `<Trans i18nKey>`/
  * `<FormattedMessage id>`/`formatMessage({id})`。已按 createKeyNormalizer 归一 namespace、
  * 剔除注释中的引用。doctor 对账与 prune 孤儿清理共用此口径，locale 侧比较前需过同一归一。
+ *
+ * options.skipNonI18nTranslationCalls 只允许 missing-key 检查开启，见其字段说明。
  */
-export function collectUsedKeys(config: ResolvedConfig, adapter: FrameworkAdapter): Set<string> {
+export function collectUsedKeys(
+  config: ResolvedConfig,
+  adapter: FrameworkAdapter,
+  options?: {
+    /**
+     * 顶层绑定了非 i18n `t` 的文件，其裸 `t(...)` 引用不计入结果。
+     *
+     * **只有 missing-key 检查可以开**：那些调用的首参根本不是 key，报「locale 不存在该 key」
+     * 是误报（error 级，CI 误红）。prune 的孤儿清理与 doctor 的 orphan-key 一律不得开——
+     * usedKeys 少算一个在用 key，就等于把它从所有 locale 永久删除。
+     */
+    skipNonI18nTranslationCalls?: boolean;
+  },
+): Set<string> {
   const used = new Set<string>();
   const normalize = createKeyNormalizer(config, adapter);
+  const i18nModules = options?.skipNonI18nTranslationCalls
+    ? resolveI18nModules(config, adapter)
+    : [];
   const files = FileUtils.getFrameworkFiles(
     config.io.sourceDir,
     adapter.getSupportedExtensions(),
@@ -293,7 +394,10 @@ export function collectUsedKeys(config: ResolvedConfig, adapter: FrameworkAdapte
     try {
       const raw = fs.readFileSync(filePath, 'utf-8');
       const content = stripCommentsForScan(filePath, raw);
-      for (const ref of scanKeyReferencesInContent(content)) {
+      const skipBareTranslationCalls =
+        options?.skipNonI18nTranslationCalls === true &&
+        hasNonI18nTranslationBinding(filePath, raw, i18nModules);
+      for (const ref of scanKeyReferencesInContent(content, { skipBareTranslationCalls })) {
         addKey(ref);
       }
     } catch (error) {

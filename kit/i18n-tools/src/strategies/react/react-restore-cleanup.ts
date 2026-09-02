@@ -1,6 +1,6 @@
 import ts from 'typescript';
 import type { TransformContext } from '../../utils/types';
-import { isIdentifierValueReference } from '../../utils/scope-analysis';
+import { hasLocalDeclarationWithin, isIdentifierValueReference } from '../../utils/scope-analysis';
 import type { ReactI18nLibrary } from './libraries';
 import { TRANSLATION_DEPENDENCY_HOOKS, resolveHookName } from './hooks-utils';
 
@@ -290,10 +290,11 @@ function isThisPropsInitializer(init: ts.Expression | undefined): boolean {
  * varName 引用会消失，不计为残留使用；其余任何对 varName 的**值引用**（实参、成员访问的接收者等）
  * 都视为残留使用，需保留依赖项。自顶向下遍历，不依赖 parent 指针做遍历。
  *
- * 必须与 ReactRestoreTransformer 删声明的守卫同口径过 isIdentifierValueReference：
- * 那一侧只认值引用，本侧若按名硬匹配任意 Identifier，`{ t: Date.now() }` 的对象键、
- * `styles.t` 的成员名都会被当成使用 —— 于是声明被删、deps 里的 `[t]` 却留着，产出
- * `Cannot find name 't'`（TS2304）。两侧口径不对称就必然漏出这种半还原产物。
+ * 必须与 ReactRestoreTransformer 删声明的守卫同口径过 isIdentifierValueReference +
+ * 遮蔽判定：那一侧只认「解析到翻译变量的值引用」，本侧若按名硬匹配任意 Identifier，
+ * `{ t: Date.now() }` 的对象键、`styles.t` 的成员名、`for (const t of tabs)` 的循环变量
+ * 都会被当成使用 —— 于是声明被删、deps 里的 `[t]` 却留着，产出 `Cannot find name 't'`
+ * （TS2304）。两侧口径不对称就必然漏出这种半还原产物。
  */
 function callbackUsesVarOutsideTranslationCalls(
   callback: ts.Expression | undefined,
@@ -309,7 +310,12 @@ function callbackUsesVarOutsideTranslationCalls(
       node.arguments.forEach(visit);
       return;
     }
-    if (ts.isIdentifier(node) && node.text === varName && isIdentifierValueReference(node)) {
+    if (
+      ts.isIdentifier(node) &&
+      node.text === varName &&
+      isIdentifierValueReference(node) &&
+      !hasLocalDeclarationWithin(node, varName, callback)
+    ) {
       found = true;
       return;
     }

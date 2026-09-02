@@ -12,6 +12,7 @@ import { InteractiveUtils } from '../utils/interactive-utils';
 import { LoggerUtils } from '../utils/logger';
 import { BucketResolver } from '../utils/bucket-resolver';
 import { getToolVersion as readToolVersion } from '../utils/tool-version';
+import { resolveI18nModules } from '../utils/source-key-scanner';
 import type { ExtractedString } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
 import { CoverageReporter } from './CoverageReporter';
@@ -212,7 +213,11 @@ export class GenerateProcessor extends BaseProcessor {
       // 仍要汇报覆盖率：空提取也意味着「文件无中文 / 已全部国际化」，是一种有效结果。
       // 必须扫描已有 t()/$t() 调用点填充 alreadyI18n，否则「已全量国际化 + 仅剩比较运算符
       // 跳过项」的文件会因 skipped>0、alreadyI18n=0 被算成 0% 覆盖率，误触 --coverage-threshold。
-      this.coverage.recordAndRender(files, [], this.coverage.buildScanResolver(files));
+      this.coverage.recordAndRender(
+        files,
+        [],
+        this.coverage.buildScanResolver(files, resolveI18nModules(this.config, this.adapter)),
+      );
       LoggerUtils.info(
         mode === 'file' ? '✅ 未发现需要提取的文本' : '✅ 所有文件均未发现需要提取的文本',
       );
@@ -328,7 +333,10 @@ export class GenerateProcessor extends BaseProcessor {
     // 覆盖率分子（已国际化调用点）应覆盖全部被扫描文件，而非仅「还含新中文」的文件。
     // 否则已 100% 国际化的文件被算进扫描分母却不计其 t() 调用点 → 覆盖率被系统性低估，
     // 会误触 --coverage-threshold 的 CI 卡点。无显式入参时回退到有提取的文件（兼容旧调用）。
-    reuseResolver.scanExistingCallsInSources(scannedFilePaths ?? Object.keys(fileGroups));
+    reuseResolver.scanExistingCallsInSources(
+      scannedFilePaths ?? Object.keys(fileGroups),
+      resolveI18nModules(this.config, this.adapter),
+    );
 
     const textGroups: Record<string, string[]> = {};
     Object.entries(fileGroups).forEach(([filePath, strings]) => {

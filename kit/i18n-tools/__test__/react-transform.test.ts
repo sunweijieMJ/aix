@@ -899,6 +899,82 @@ export function Done() {
 });
 
 // ---------------------------------------------------------------------------
+// 场景 11：同名非 i18n `t` 绑定下的覆盖率账目
+// ---------------------------------------------------------------------------
+/**
+ * 组件外层有 `import { t } from './tiny-template'` 时，提取端会整处跳过（否则替换出的
+ * 裸 t() 会解析到那个本地函数上）。两条账必须同时对：
+ *  1. 跳过的片段要进 needsManual 与覆盖率分母（否则该目录报「待人工 0 / 100%」= CI 假绿）；
+ *  2. 那个本地 `t('你好 {name}')` 不是 i18n 调用点，不能计进 alreadyI18n（覆盖率虚高）。
+ */
+describe('GenerateProcessor 覆盖率 — 同名非 i18n t 绑定', () => {
+  let rootDir: string;
+  let srcDir: string;
+  let localeDir: string;
+
+  const buildConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'react', library: 'react-i18next', tImport: '@/plugins/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { sourceDir: srcDir, localesDir: localeDir, format: 'flat', prettify: false },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gen-cov-conflict-t-'));
+    srcDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const writeFixture = (): void => {
+    fs.writeFileSync(
+      path.join(srcDir, 'tiny-template.ts'),
+      `export function t(tpl: string, vars: Record<string, string>) {
+  return Object.keys(vars).reduce((acc, k) => acc.split('{' + k + '}').join(vars[k]!), tpl);
+}
+`,
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(srcDir, 'Conflict.tsx'),
+      `import { t } from './tiny-template';
+export function Conflict({ name }: { name: string }) {
+  const hint = t('你好 {name}', { name });
+  return <div title="外部提示">{hint}</div>;
+}
+`,
+      'utf-8',
+    );
+  };
+
+  it('跳过的片段进分母、本地 t() 不计入 alreadyI18n', async () => {
+    writeFixture();
+
+    const proc = new GenerateProcessor(buildConfig(), false, false);
+    await proc.execute(srcDir, true);
+
+    const cov = proc.getCoverage();
+    // 「外部提示」未被改写，必须计入 skipped（修复前为 0 → 待人工 0）
+    expect(cov?.skipped).toBe(1);
+    // 本地模板函数的 t('你好 {name}') 不是 i18n 调用点（修复前被计成 1）
+    expect(cov?.alreadyI18n).toBe(0);
+    expect(cov?.coverageRate).toBeLessThan(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 场景 11：JSX 混合内容插值中嵌套中文记入诊断（审计三轮 #3）
 // ---------------------------------------------------------------------------
 /**

@@ -39,7 +39,12 @@ export interface FrameworkConfig {
  */
 export interface ManualSkipDiagnostic {
   category:
-    'html-template' | 'non-html-template' | 'jsx-text-in-vue' | 'class-property' | 'param-default';
+    | 'html-template'
+    | 'non-html-template'
+    | 'jsx-text-in-vue'
+    | 'class-property'
+    | 'param-default'
+    | 'conflicting-t-binding';
   message: string;
   /** 同类展示文案不足以区分调用点时使用的稳定去重键。 */
   dedupeKey?: string;
