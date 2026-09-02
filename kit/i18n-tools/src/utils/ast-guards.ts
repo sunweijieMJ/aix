@@ -47,11 +47,47 @@ export function isComparisonOperand(node: ts.Node): boolean {
   return false;
 }
 
-/** 类型注解是否把值锁成字面量：字面量类型本身，或全部成员都是字面量的联合。 */
-function isLiteralTypeAnnotation(type: ts.TypeNode): boolean {
+/**
+ * 同文件内按名字找 type alias 的定义体。
+ *
+ * 只扫 sourceFile.statements（含 `export type`）：本模块零依赖、不建 Program 也不用
+ * TypeChecker，故只认「与用法同处一份源码」的别名。带类型参数的别名（`type Maybe<T> = …`）
+ * 与带类型实参的引用一律不认——实例化需要类型系统，猜不得。
+ */
+function findLocalTypeAlias(type: ts.TypeReferenceNode): ts.TypeAliasDeclaration | undefined {
+  if (type.typeArguments && type.typeArguments.length > 0) return undefined;
+  if (!ts.isIdentifier(type.typeName)) return undefined;
+  const name = type.typeName.text;
+  let sourceFile: ts.Node = type;
+  while (sourceFile.parent) sourceFile = sourceFile.parent;
+  if (!ts.isSourceFile(sourceFile)) return undefined;
+  return sourceFile.statements.find(
+    (st): st is ts.TypeAliasDeclaration =>
+      ts.isTypeAliasDeclaration(st) &&
+      st.name.text === name &&
+      (st.typeParameters === undefined || st.typeParameters.length === 0),
+  );
+}
+
+/**
+ * 类型注解是否把值锁成字面量：字面量类型本身，或全部成员都是字面量的联合。
+ *
+ * TypeReference（`const cur: Status = '待办'`）沿同文件的 type alias 展开一层再判：
+ * 别名后面若是全字面量联合，赋值位置同样只接受字面量，替换成 t() 直接 TS2322。
+ * `seen` 防住 `type A = A` / `type A = B; type B = A` 这类自指链把递归吃满栈。
+ * 跨文件引入的别名（`import type { Status }`）无从解析，这类漏网**有意**接受。
+ */
+function isLiteralTypeAnnotation(type: ts.TypeNode, seen: Set<string> = new Set()): boolean {
   if (ts.isLiteralTypeNode(type)) return true;
-  if (ts.isParenthesizedTypeNode(type)) return isLiteralTypeAnnotation(type.type);
-  if (ts.isUnionTypeNode(type)) return type.types.every((t) => isLiteralTypeAnnotation(t));
+  if (ts.isParenthesizedTypeNode(type)) return isLiteralTypeAnnotation(type.type, seen);
+  if (ts.isUnionTypeNode(type)) return type.types.every((t) => isLiteralTypeAnnotation(t, seen));
+  if (ts.isTypeReferenceNode(type)) {
+    const alias = findLocalTypeAlias(type);
+    if (!alias) return false;
+    if (seen.has(alias.name.text)) return false;
+    seen.add(alias.name.text);
+    return isLiteralTypeAnnotation(alias.type, seen);
+  }
   return false;
 }
 
@@ -73,8 +109,9 @@ function isConstAssertionType(type: ts.TypeNode): boolean {
  *  - `const cur: '待办' | '完成' = '待办'`：声明的类型注解是字面量（联合），TS2322。
  *
  * 数组 / 对象字面量与括号会向上透传（`as const` 挂在最外层，字面量在里面）。
- * 类型注解写成指向别处定义的 TypeReference（`const cur: Status = '待办'`）时，不解析
- * 类型即无从判定，这类漏网**有意**接受——本模块刻意零依赖、不做类型检查器的活。
+ * 类型注解写成 TypeReference（`const cur: Status = '待办'`）时，只沿**同文件**的 type alias
+ * 展开判定；跨文件引入的别名与 interface 成员位置无从解析，这类漏网**有意**接受——本模块
+ * 刻意零依赖、不做类型检查器的活。
  */
 function isInLiteralTypeContext(node: ts.StringLiteral): boolean {
   let current: ts.Node = node;

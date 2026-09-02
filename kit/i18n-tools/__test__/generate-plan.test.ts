@@ -111,6 +111,36 @@ describe('GeneratePlanWriter', () => {
     expect(() => GeneratePlanWriter.read(planPath)).toThrow(/schemaVersion=99/);
   });
 
+  /**
+   * 覆盖率快照（P1）：CI 卡点跑在 apply 这一步，而 apply 不重跑提取。dry-run 把账本
+   * 写进 plan，apply 才能回放面板并判定阈值；旧版 plan 缺该字段必须仍可读。
+   */
+  it('coverage 快照随 plan 往返无损，缺该字段的旧 plan 仍可读', () => {
+    const { plan, transformed } = makePlan({ 'src/Cov.vue': 'x' });
+    plan.coverage = {
+      metric: {
+        scannedFiles: 2,
+        totalChineseSegments: 4,
+        alreadyI18n: 1,
+        newlyGenerated: 2,
+        skipped: 1,
+        coverageRate: 0.75,
+      },
+      newKeys: 2,
+      manualByCategory: { 'html-in-template': 1 },
+    };
+    GeneratePlanWriter.write(planBaseDir, plan, transformed);
+
+    const planPath = path.join(planBaseDir, GeneratePlanWriter.PLAN_FILENAME);
+    expect(GeneratePlanWriter.read(planPath).plan.coverage).toEqual(plan.coverage);
+
+    // 旧版 plan（无 coverage）：schemaVersion 不变，读取照常成功
+    const raw = JSON.parse(fs.readFileSync(planPath, 'utf-8'));
+    delete raw.coverage;
+    fs.writeFileSync(planPath, JSON.stringify(raw));
+    expect(GeneratePlanWriter.read(planPath).plan.coverage).toBeUndefined();
+  });
+
   it('verifyFingerprint 源文件未变 → mismatched 为空', () => {
     const { plan, transformed } = makePlan({
       'src/A.vue': 'original content',

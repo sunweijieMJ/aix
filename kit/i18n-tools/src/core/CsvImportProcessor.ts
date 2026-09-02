@@ -103,7 +103,19 @@ export class CsvImportProcessor extends FileProcessor {
     const translated = this.loadDictStrict(translatedPath, '读取 translations.json');
 
     // 应用保守合并，收集统计
-    let updated = 0;
+    //
+    // 「将更新」按 (key, lang) 去重：同一 key 在 CSV 里出现多行时，逐行覆盖的是同一格，
+    // 按行累加会把一处改动报成多处（重复 key 另有告警，不受影响）。这里记下每格首次被
+    // 触碰前的原值，循环结束后与最终值比对——同 key 后一行又把值改回去时同样不计。
+    const touchedCells = new Map<
+      string,
+      {
+        entry: Record<string, string>;
+        lang: string;
+        before: string | undefined;
+        dict: 'untranslated' | 'translated';
+      }
+    >();
     let unchanged = 0;
     let skippedEmpty = 0;
     const missingKeys: string[] = [];
@@ -113,8 +125,6 @@ export class CsvImportProcessor extends FileProcessor {
     let dataRows = 0;
     const seenKeys = new Set<string>();
     const duplicateKeys: string[] = [];
-    let untranslatedDirty = false;
-    let translatedDirty = false;
 
     for (const [rowIdx, row] of rows.slice(1).entries()) {
       // 空记录（文件中间的空行 / 结尾多余换行经 parseCsv 产出的 ['']）静默跳过，
@@ -163,12 +173,27 @@ export class CsvImportProcessor extends FileProcessor {
           unchanged++;
           continue;
         }
+        // 用 \u0000 拼接：CSV 的 key / 语言列名都来自外部，普通可见字符都可能出现在
+        // key 里，NUL 是唯一不会与之碰撞的分隔符。
+        const cellId = `${key}\u0000${col.name}`;
+        if (!touchedCells.has(cellId)) {
+          touchedCells.set(cellId, {
+            entry,
+            lang: col.name,
+            before: entry[col.name],
+            dict: inUntranslated ? 'untranslated' : 'translated',
+          });
+        }
         entry[col.name] = value;
-        updated++;
-        if (inUntranslated) untranslatedDirty = true;
-        else translatedDirty = true;
       }
     }
+
+    const changedCells = [...touchedCells.values()].filter(
+      (cell) => cell.entry[cell.lang] !== cell.before,
+    );
+    const updated = changedCells.length;
+    const untranslatedDirty = changedCells.some((cell) => cell.dict === 'untranslated');
+    const translatedDirty = changedCells.some((cell) => cell.dict === 'translated');
 
     // 全部数据记录都字段数不符 = 整份 CSV 无一行可用（最常见成因：分隔符不是逗号、
     // 或用 Excel 另存时改了方言）。此时既没有 updated 也没有 missingKeys，后续流程会

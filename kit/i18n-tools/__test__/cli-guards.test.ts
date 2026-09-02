@@ -183,6 +183,28 @@ describe('CLI 入口守卫（cli.ts main）', () => {
     T,
   );
 
+  /**
+   * 守卫退出走 CliExit 信号 + process.exitCode（P3）：直接 process.exit 会在 stdout 是
+   * 管道时截断尚未 flush 的输出，用户看不到刚打印的那条错误。改造后守卫文案与退出码
+   * 不变，且不得被 main 的兜底 catch 误套成「执行 xx 操作时发生错误」。
+   */
+  it(
+    '守卫退出只打自身文案，不套「执行 xx 操作时发生错误」',
+    () => {
+      const invalidPath = runCli(['--mode', 'generate', '--path', 'no/such.vue'], cfgDir);
+      expect(invalidPath.code).toBe(1);
+      expect(invalidPath.out).toMatch(/--path 无效/);
+      expect(invalidPath.out).not.toMatch(/操作时发生错误/);
+
+      // resolveApplyPlanPath：latest 找不到任何 plan
+      const noPlan = runCli(['--mode', 'generate', '--apply-plan', 'latest'], cfgDir);
+      expect(noPlan.code).toBe(1);
+      expect(noPlan.out).toMatch(/找不到任何 plan/);
+      expect(noPlan.out).not.toMatch(/操作时发生错误/);
+    },
+    T,
+  );
+
   it(
     '--help → 成功退出（确认守卫不是恒返回非零）',
     () => {
@@ -241,6 +263,7 @@ describe('CLI 入口守卫（cli.ts main）', () => {
       ['--mode', 'csv-import', '--skip-llm'],
       /--skip-llm 仅在 --mode generate \/ automatic \/ translate/,
     ],
+    [['--mode', 'generate', '--include-stale-target'], /--include-stale-target 仅在 --mode prune/],
   ])(
     '%s → 提示该选项在当前模式下被忽略',
     (args, pattern) => {
@@ -263,6 +286,73 @@ describe('CLI 入口守卫（cli.ts main）', () => {
 
       expect(code).toBe(0);
       expect(out.trim()).toBe(toolPackage.version);
+    },
+    T,
+  );
+});
+
+/**
+ * 覆盖率 CI 卡点必须覆盖 apply-plan 路径（P1）：dry-run + apply 两段式工作流下，
+ * 真正落盘的是 apply，若阈值只在直跑 generate 时判定，配了 --coverage-threshold 的
+ * 流水线会一路绿灯。plan 携带 dry-run 结算的覆盖率快照，apply 据此判定并以 exit 2 退出。
+ */
+describe('apply-plan 覆盖率阈值卡点（e2e）', () => {
+  let proj: string;
+
+  // 一处可自动转换 + 一处需人工的 HTML 模板 → 覆盖率 50%
+  const MIXED = `<script setup>\nconst label = '提交';\nconst html = \`<div>提示</div>\`;\n</script>\n`;
+  const PLAN_CONFIG = `export default {
+  root: process.cwd(),
+  framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+  locales: { source: 'zh', targets: ['en'] },
+  io: { localesDir: 'i18n', sourceDir: 'src', prettify: false },
+  llm: { shared: { apiKey: 'test-key', model: 'gpt-4o' } },
+};
+`;
+
+  beforeEach(() => {
+    proj = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-cli-plan-cov-'));
+    fs.writeFileSync(path.join(proj, 'i18n.config.mjs'), PLAN_CONFIG, 'utf-8');
+    fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(proj, 'src', 'A.vue'), MIXED, 'utf-8');
+  });
+
+  afterEach(() => {
+    fs.rmSync(proj, { recursive: true, force: true });
+  });
+
+  it(
+    'apply 打印覆盖率面板；低于阈值 → 退出码 2（源码仍已落盘）',
+    () => {
+      const dry = runCli(['--mode', 'generate', '--path', 'src', '--dry-run', '--skip-llm'], proj);
+      expect(dry.code, `dry-run 输出：\n${dry.out}`).toBe(0);
+
+      const apply = runCli(
+        ['--mode', 'generate', '--apply-plan', 'latest', '--coverage-threshold', '90'],
+        proj,
+      );
+
+      expect(apply.out).toMatch(/本次国际化覆盖率/);
+      expect(apply.out).toMatch(/国际化覆盖率 50\.0% 低于阈值 90%/);
+      expect(apply.code).toBe(2);
+      // 阈值卡点发生在回放之后：源码已按 plan 落盘，退出码只用于 CI 判读
+      expect(fs.readFileSync(path.join(proj, 'src', 'A.vue'), 'utf-8')).toMatch(/\bt\('/);
+    },
+    T,
+  );
+
+  it(
+    '达标阈值 → 正常退出 0',
+    () => {
+      const dry = runCli(['--mode', 'generate', '--path', 'src', '--dry-run', '--skip-llm'], proj);
+      expect(dry.code, `dry-run 输出：\n${dry.out}`).toBe(0);
+
+      const apply = runCli(
+        ['--mode', 'generate', '--apply-plan', 'latest', '--coverage-threshold', '50'],
+        proj,
+      );
+
+      expect(apply.code, `apply 输出：\n${apply.out}`).toBe(0);
     },
     T,
   );

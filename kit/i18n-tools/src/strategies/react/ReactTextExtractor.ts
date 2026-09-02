@@ -810,9 +810,8 @@ export class ReactTextExtractor extends BaseTextExtractor {
   /**
    * 输出「组件内存在同名非 i18n 绑定、整体跳过提取」的 warning。
    *
-   * 只走 warning 通道：ManualSkipDiagnostic.category 是封闭联合（html-template /
-   * class-property / param-default），本情形不属于任何一类，扩枚举要同步改
-   * CoverageReporter 与 RunReport 的映射，超出本次改动范围；warning 已随 RunReport 落盘留痕。
+   * 只走 warning 通道：ManualSkipDiagnostic.category 的现有档位都描述「位置本身没法放
+   * t()」，本情形是「局部绑定撞名」，不属于任何一类；warning 已随 RunReport 落盘留痕。
    */
   private warnConflictingTranslationBinding(
     node: ts.Node,

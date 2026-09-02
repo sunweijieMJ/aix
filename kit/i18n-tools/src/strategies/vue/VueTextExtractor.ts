@@ -23,10 +23,16 @@ import {
 } from '../../utils/ast-guards';
 import { processTemplateExpression } from '../../utils/message-shape';
 import { trimAsciiWhitespace, trimStartAsciiWhitespace } from '../../utils/string-escape';
-import { isHtmlTemplateLang, scriptFileNameOfLang, sourceDeclaresVPre } from './sfc-blocks';
+import {
+  isHtmlTemplateLang,
+  isStandaloneScriptPath,
+  scriptFileNameOfLang,
+  sourceDeclaresVPre,
+} from './sfc-blocks';
 import type { VueExtractedString } from './extracted-extras';
 import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import { isNonTranslatableText, isTechnicalConfigValue } from '../../utils/text-classify';
+import { previewText } from '../../utils/text-normalize';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
 import type { ExtractedString } from '../../utils/types';
@@ -85,8 +91,8 @@ export class VueTextExtractor extends BaseTextExtractor {
         extractedStrings.push(...scriptStrings);
       }
     }
-    // 处理纯 .ts 或 .js 文件
-    else if (ext === 'ts' || ext === 'js') {
+    // 处理独立脚本（.ts / .js / .tsx / .jsx）
+    else if (isStandaloneScriptPath(filePath)) {
       const scriptStrings = await this.extractFromScript(
         sourceText,
         filePath,
@@ -1182,6 +1188,14 @@ export class VueTextExtractor extends BaseTextExtractor {
     if (ts.isCallExpression(node) && isCommonI18nCall(node)) {
       this.recordRuntimeChineseInI18nCall(node, sourceFile, filePath, lineOffset);
     }
+    // JSX 子节点文本（tsx/jsx 文件与 <script lang="tsx"> 块）：不提取，只记人工项。
+    // JsxText 无子节点，直接返回。
+    if (ts.isJsxText(node)) {
+      if (FileUtils.containsChinese(node.text)) {
+        this.warnJsxTextInVue(node, sourceFile, lineOffset, filePath);
+      }
+      return;
+    }
     let originalText = ''; // 保持源代码原样（用于转换时匹配）
     let processedText = ''; // 内联字面量后的文本（用于locale和ID）
     let isTemplateString = false;
@@ -1465,11 +1479,42 @@ export class VueTextExtractor extends BaseTextExtractor {
   }
 
   /**
+   * 输出「JSX 子节点文本、跳过提取」warning 并记人工项。
+   *
+   * Vue 侧只改写字符串字面量与模板串：JSX 文本要替换成 `{t('key')}` 表达式容器，而还原端
+   * 按 CallExpression 定位、把调用换回裸文本，容器只剩 `{中文}`（标识符）——往返即产出坏代码。
+   * 故整类交人工，但必须记进 manualSkips：不记则这些中文既不出现在 locale 也不进覆盖率分母，
+   * 覆盖率虚高且用户看不到漏网清单。
+   */
+  private warnJsxTextInVue(
+    node: ts.JsxText,
+    sourceFile: ts.SourceFile,
+    lineOffset: number,
+    filePath: string,
+  ): void {
+    const start = node.getStart(sourceFile);
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, start);
+    const line = pos.line + 1 + lineOffset;
+    const msg =
+      `⚠️ 跳过 JSX 子节点文本：${FileUtils.getRelativePath(filePath)}:${line} ` +
+      `「${previewText(node.text)}」\n` +
+      `   原因：Vue 侧不改写 JSX 文本节点——替换成 {t('key')} 后还原端只能得到 {中文}，往返不可逆。\n` +
+      `   建议：把文案挪到变量初值或 JSX 属性上（两者都会被自动提取），或手工加 t() 调用。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
+    this.recordManualSkip({
+      category: 'jsx-text-in-vue',
+      message: msg,
+      dedupeKey: `${filePath}:${start}`,
+    });
+  }
+
+  /**
    * 输出「非 HTML 模板语言、整块跳过」warning。
    *
-   * 走 recordManualSkip('html-template')：该档在 CoverageReporter 映射为
-   * `html-in-template`，语义同为「模板层结构工具不敢碰、须人工处理」，复用它可避免
-   * 为一档扩 ManualSkipDiagnostic 封闭联合并连带改 Reporter 映射。
+   * 独立成 non-html-template 类目而非并入 html-template：后者的成因是「value 里混进 HTML」、
+   * 建议是「把 t() 缩到文案上」，对 pug 模板文不对题——这里要的是「先编译成 HTML 或手工加
+   * $t()」。分档后报告里的 suggestion 才可照搬。
    */
   private warnNonHtmlTemplateLang(lang: string, filePath: string, line: number): void {
     const msg =
@@ -1480,7 +1525,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     LoggerUtils.warn(msg);
     this.recordWarning(msg);
     this.recordManualSkip({
-      category: 'html-template',
+      category: 'non-html-template',
       message: msg,
       dedupeKey: `${filePath}:template-lang`,
     });

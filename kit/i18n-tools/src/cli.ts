@@ -36,6 +36,25 @@ import {
 type FrameworkInfo = { extensions: string[]; displayName: string; libraryName: string };
 
 /**
+ * 「以指定退出码结束本次运行」的控制信号。
+ *
+ * 校验类辅助函数不直接 process.exit：stdout 是管道时 exit 会截断尚未 flush 的输出，
+ * 用户拿不到刚打印的那条错误。它们抛出本类，由 main 顶层统一打印 message 并置
+ * process.exitCode，让 node 正常收尾（与 loadConfig 失败分支同款处理）。
+ *
+ * code 是语义化的：1 = 一般失败，2 = 覆盖率阈值不达标（CI 可单独识别这一档）。
+ */
+class CliExit extends Error {
+  constructor(
+    readonly code: number,
+    message = '',
+  ) {
+    super(message);
+    this.name = 'CliExit';
+  }
+}
+
+/**
  * CLI 版本必须绑定工具包自身，不能让 yargs 从消费项目的 package.json 猜测。
  * 读不到时退化为 'unknown'：--version 显示不出来不该让整个 CLI 起不来。
  */
@@ -76,8 +95,7 @@ const resolveTargetPath = async (
       frameworkInfo.displayName,
     );
     if (!validation.isValid) {
-      LoggerUtils.error(`❌ --path 无效：${validation.error || '无效路径'}（${pathArg}）`);
-      process.exit(1);
+      throw new CliExit(1, `❌ --path 无效：${validation.error || '无效路径'}（${pathArg}）`);
     }
     return pathArg;
   }
@@ -89,11 +107,11 @@ const resolveTargetPath = async (
     );
   }
   const action = mode === ModeName.RESTORE ? '还原' : '提取国际化文本';
-  LoggerUtils.error(
+  throw new CliExit(
+    1,
     `❌ 非交互模式下（--mode / --ci）需用 --path 指定要${action}的文件或目录路径，` +
       `例如：--path src/views/demo`,
   );
-  process.exit(1);
 };
 
 /**
@@ -138,10 +156,10 @@ const resolveApplyPlanPath = (config: ResolvedConfig, raw: string): string => {
     const plansRoot = GeneratePlanWriter.getDefaultPlansRoot(config.root);
     const found = GeneratePlanWriter.resolveLatest(plansRoot);
     if (!found) {
-      LoggerUtils.error(
+      throw new CliExit(
+        1,
         `❌ 在 ${plansRoot} 下找不到任何 plan。请先运行 \`generate --dry-run\` 生成。`,
       );
-      process.exit(1);
     }
     LoggerUtils.info(`📂 latest 解析为：${found}`);
     return found;
@@ -158,6 +176,9 @@ const resolveApplyPlanPath = (config: ResolvedConfig, raw: string): string => {
 /**
  * 从 plan 文件回放（apply-plan）。绕过 LLM 与 AST，直接按 plan 落盘。
  * 适用于"先 dry-run 看一眼、确认 OK 再正式提交"工作流。
+ *
+ * 返回 processor：回放会把 plan 里的覆盖率快照写回 report，main 据此做阈值卡点
+ * （dry-run + apply 两段式工作流下，CI 门禁只有在 apply 这一步才有落盘可卡）。
  */
 const executeApplyPlan = async (
   config: ResolvedConfig,
@@ -166,12 +187,13 @@ const executeApplyPlan = async (
   rawPlanPath: string,
   keepPlan: boolean,
   interactive: boolean,
-): Promise<void> => {
+): Promise<GenerateProcessor> => {
   const planPath = resolveApplyPlanPath(config, rawPlanPath);
   // interactive 透传给 locale 漂移守卫：交互下漂移可逐条确认后继续，
   // 非交互（--mode/--ci 默认）下漂移一律拒绝并提示重跑 dry-run。
   const processor = new GenerateProcessor(config, isCustom, interactive, adapter);
   await processor.applyFromPlan(planPath, { keepPlan });
+  return processor;
 };
 
 /**
@@ -191,10 +213,10 @@ const enforceCoverageThreshold = (
   if (!coverage) return;
   const actualPct = coverage.coverageRate * 100;
   if (actualPct < threshold) {
-    LoggerUtils.error(
+    throw new CliExit(
+      2,
       `❌ 国际化覆盖率 ${actualPct.toFixed(1)}% 低于阈值 ${threshold}%（--coverage-threshold）`,
     );
-    process.exit(2);
   }
 };
 
@@ -273,7 +295,7 @@ const executePrune = async (
   config: ResolvedConfig,
   adapter: FrameworkAdapter,
   isCustom: boolean,
-  opts: { dryRun: boolean; ci: boolean; interactive: boolean },
+  opts: { dryRun: boolean; ci: boolean; interactive: boolean; includeStaleTarget: boolean },
 ): Promise<void> => {
   const processor = new PruneProcessor(config, isCustom, adapter, opts);
   await processor.execute();
@@ -394,6 +416,13 @@ ${MODE_LIST.map((mode) => `${MODE_ICONS[mode]} ${mode} - ${MODE_DESCRIPTIONS[mod
         '用于规避 Windows MAX_PATH 等深路径风险，传入后会在该目录下创建 generate-<ts>-<pid>/',
       type: 'string',
     })
+    .option('include-stale-target', {
+      describe:
+        'prune：一并删除「target 有、source 无」的残留 key（判据同 doctor 的 stale-target-key）。' +
+        '只删对应 target 文件，默认关闭',
+      type: 'boolean',
+      default: false,
+    })
     .option('ci', {
       describe:
         'CI 模式（非交互）：doctor 发现 error 级问题时以非零状态码退出；' +
@@ -430,7 +459,15 @@ ${MODE_LIST.map((mode) => `${MODE_ICONS[mode]} ${mode} - ${MODE_DESCRIPTIONS[mod
     .group(['interactive', 'skip-llm', 'overwrite'], '⚙️  高级选项:')
     .group(['langs', 'filter', 'source'], '📊 CSV 选项:')
     .group(
-      ['dry-run', 'apply-plan', 'keep-plan', 'plan-output-dir', 'coverage-threshold', 'ci'],
+      [
+        'dry-run',
+        'apply-plan',
+        'keep-plan',
+        'plan-output-dir',
+        'coverage-threshold',
+        'include-stale-target',
+        'ci',
+      ],
       '🩺 CI / Review 选项:',
     )
     .example('$0 --config ./i18n.config.ts', '指定配置文件')
@@ -447,6 +484,7 @@ ${MODE_LIST.map((mode) => `${MODE_ICONS[mode]} ${mode} - ${MODE_DESCRIPTIONS[mod
     .example('$0 --mode doctor --ci', 'CI 模式：发现 error 即非零退出')
     .example('$0 --mode prune --dry-run', '预览将删除的孤儿 key，不改文件')
     .example('$0 --mode prune', '确认后从所有 locale 删除孤儿 key')
+    .example('$0 --mode prune --include-stale-target --dry-run', '连 target-only 残留译文一起预览')
     .example('$0 --mode pick', '从国际化文件中提取未翻译的条目')
     .example('$0 --mode translate', '使用AI翻译服务翻译中文为英文')
     .example('$0 --mode merge --custom', '将定制目录的翻译结果合并回主文件')
@@ -604,6 +642,7 @@ export default defineConfig({
   const applyPlanPath = argv['apply-plan'] as string | undefined;
   const keepPlan = Boolean(argv['keep-plan']);
   const planOutputDir = argv['plan-output-dir'] as string | undefined;
+  const includeStaleTarget = Boolean(argv['include-stale-target']);
   const pathArg = (argv['path'] as string | undefined)?.trim() || undefined;
 
   // dry-run 与 apply-plan 的「生效模式集合」不同，必须分开提示：
@@ -644,6 +683,11 @@ export default defineConfig({
   }
   if (planOutputDir && !dryRun) {
     LoggerUtils.warn('⚠️  --plan-output-dir 仅在 --dry-run 下生效，本次未传 --dry-run，将被忽略');
+  }
+  if (includeStaleTarget && mode !== ModeName.PRUNE) {
+    LoggerUtils.warn(
+      `⚠️  --include-stale-target 仅在 --mode prune 下生效，当前模式 ${mode}，将被忽略`,
+    );
   }
   if (langsArg && mode !== ModeName.CSV_EXPORT && mode !== ModeName.CSV_IMPORT) {
     LoggerUtils.warn(
@@ -701,15 +745,17 @@ export default defineConfig({
         break;
       case ModeName.GENERATE: {
         if (applyPlanPath) {
-          // apply-plan 仅回放 plan、不重算覆盖率，coverage 阈值在此路径恒不生效。
-          // 显式告警，避免「配了 --coverage-threshold 却以为已卡点」的假绿。
-          if (coverageThreshold !== undefined) {
-            LoggerUtils.warn(
-              `⚠️  --coverage-threshold（或 ci.coverageThreshold）在 --apply-plan 回放路径下不生效：\n` +
-                `   apply 只回放已审核的 plan、不重新计算覆盖率。如需覆盖率卡点，请在直跑 generate 时设置阈值。`,
-            );
-          }
-          await executeApplyPlan(config, adapter, custom, applyPlanPath, keepPlan, interactive);
+          // 阈值判定的数据来自 plan 里 dry-run 结算的覆盖率快照（apply 不重跑提取）。
+          // 旧版 plan 无该快照时 getCoverage() 为空，enforce 静默跳过，回放侧已打过 info。
+          const applier = await executeApplyPlan(
+            config,
+            adapter,
+            custom,
+            applyPlanPath,
+            keepPlan,
+            interactive,
+          );
+          enforceCoverageThreshold(applier, coverageThreshold);
           break;
         }
         const targetPath = await resolveTargetPath(
@@ -761,7 +807,12 @@ export default defineConfig({
       case ModeName.PRUNE:
         // interactive 透传：非交互（--mode/--ci 推导）且未 --ci 时 prune 直接报错，
         // 绝不弹 inquirer 确认——stdin 常开管道下会无限挂起（「非交互 ⇒ 绝不碰 inquirer」）。
-        await executePrune(config, adapter, custom, { dryRun, ci: Boolean(argv.ci), interactive });
+        await executePrune(config, adapter, custom, {
+          dryRun,
+          ci: Boolean(argv.ci),
+          interactive,
+          includeStaleTarget,
+        });
         break;
       case ModeName.CSV_EXPORT:
         await executeCsvExport(config, custom, {
@@ -802,8 +853,15 @@ export default defineConfig({
       }
     }
   } catch (error) {
+    // CliExit 是守卫的正常出口（文案已随信号带上），不是异常，故不套「执行 X 操作时发生错误」。
+    if (error instanceof CliExit) {
+      if (error.message) LoggerUtils.error(error.message);
+      process.exitCode = error.code;
+      return;
+    }
     LoggerUtils.error(`执行 ${mode} 操作时发生错误:`, error);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 };
 

@@ -2,10 +2,10 @@ import type { ResolvedConfig } from '../config';
 import type { ManualSkipDiagnostic } from '../adapters/FrameworkAdapter';
 import type { SkippedTextLocation } from '../utils/extraction-diagnostics';
 import { FileUtils } from '../utils/file-utils';
-import { LoggerUtils } from '../utils/logger';
 import { RunReport, type CoverageMetric, type ManualCategory } from '../utils/run-report';
 import type { ExtractedString } from '../utils/types';
 import { IdReuseResolver } from './IdReuseResolver';
+import { renderCoveragePanel } from './coverage-panel';
 
 /**
  * generate 的覆盖率账本：持有本轮「跳过项」快照，汇总覆盖率指标写入 RunReport 并渲染总览。
@@ -112,11 +112,13 @@ export class CoverageReporter {
       });
     }
 
-    // manualSkips 只含 html-template / class-property / param-default 三类（插值内中文走
-    // diagnostics 那条通道，不在此重复计数，见 ManualSkipDiagnostic 的注释）。
+    // manualSkips 不含插值内中文（那条走 diagnostics 通道，不在此重复计数，见
+    // ManualSkipDiagnostic 的注释）。
     // 用 Record 查表：新增 category 时漏改是编译错（缺键）而非静默归错档。
     const manualSkipCategoryMap: Record<ManualSkipDiagnostic['category'], ManualCategory> = {
       'html-template': 'html-in-template',
+      'non-html-template': 'non-html-template',
+      'jsx-text-in-vue': 'jsx-text-in-vue',
       'class-property': 'class-property',
       'param-default': 'param-default',
     };
@@ -154,47 +156,14 @@ export class CoverageReporter {
   }
 
   private renderCoverageSummary(m: CoverageMetric, newKeys?: number): void {
-    const pct = (n: number, base: number): string =>
-      base === 0 ? '0.0%' : `${((n / base) * 100).toFixed(1)}%`;
-    const ratePct = `${(m.coverageRate * 100).toFixed(1)}%`;
-
-    LoggerUtils.info('');
-    LoggerUtils.info('📊 本次国际化覆盖率');
-    LoggerUtils.info('────────────────────────────────────');
-    LoggerUtils.info(`扫描文件          ${m.scannedFiles}`);
-    LoggerUtils.info(`中文片段总数      ${m.totalChineseSegments}`);
-    LoggerUtils.info(
-      `  已国际化         ${m.alreadyI18n}  (${pct(m.alreadyI18n, m.totalChineseSegments)})`,
+    // 面板渲染只有 coverage-panel 一份实现，与 apply-plan 回放共用；这里只负责把
+    // 本轮的 ManualEntry 明细折算成分类条数。
+    const manualByCategory = Object.fromEntries(
+      Object.entries(this.report.groupCoverageManualByCategory()).map(([category, list]) => [
+        category,
+        list.length,
+      ]),
     );
-    // 文案按口径直述「命中/转换」，不要写成「新生成」：newlyGenerated 是本轮提取并改写的
-    // 中文片段数，重跑同一批文件（key 全部复用、locale 零新增）时它照样是 423，
-    // 「新生成」会被读成「新增了 N 个 key」。
-    LoggerUtils.info(
-      `  本轮命中/转换    ${m.newlyGenerated}  (${pct(m.newlyGenerated, m.totalChineseSegments)})`,
-    );
-    if (newKeys !== undefined) {
-      // 两个数并列才看得出「重跑同一批文件」的形态：转换处数不变，新增 key 为 0。
-      LoggerUtils.info(`    └ 其中新增 key ${newKeys}（其余复用已有 key）`);
-    }
-    LoggerUtils.info(
-      `  跳过/待人工      ${m.skipped}  (${pct(m.skipped, m.totalChineseSegments)})`,
-    );
-    LoggerUtils.info('────────────────────────────────────');
-    LoggerUtils.info(`🎯 当前覆盖率   ${ratePct}`);
-
-    // 按 category 聚合「待人工处理」清单
-    const groups = this.report.groupCoverageManualByCategory();
-    const entryCount = Object.values(groups).reduce((s, arr) => s + arr.length, 0);
-    if (entryCount > 0) {
-      LoggerUtils.info('');
-      LoggerUtils.warn(`⚠️  覆盖率待人工 ${entryCount} 条（详见 .i18n-tools/logs/）`);
-      for (const [category, list] of Object.entries(groups)) {
-        const label = RunReport.MANUAL_LABELS[category as keyof typeof RunReport.MANUAL_LABELS];
-        LoggerUtils.warn(
-          `   • ${category.padEnd(20)} ${String(list.length).padStart(4)}  — ${label}`,
-        );
-      }
-    }
-    LoggerUtils.info('');
+    renderCoveragePanel(m, { newKeys, manualByCategory });
   }
 }

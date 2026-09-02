@@ -8,7 +8,7 @@ import {
 import { escapeRegExp } from '../../utils/string-escape';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
-import { mapScriptBlocks } from './sfc-blocks';
+import { isStandaloneScriptPath, mapScriptBlocks } from './sfc-blocks';
 import type { ExtractedString } from '../../utils/types';
 import type { VueI18nLibrary } from './libraries';
 
@@ -50,9 +50,9 @@ export class VueImportManager implements IImportManager {
     }
 
     let updatedCode = code;
-    const ext = filePath?.split('.').pop()?.toLowerCase();
 
-    if (ext === 'ts' || ext === 'js') {
+    // 独立脚本（.ts/.js/.tsx/.jsx）没有 SFC 块，直接在模块顶层注入 import { t }。
+    if (filePath !== undefined && isStandaloneScriptPath(filePath)) {
       // 先清理占位声明，再注入真正的 import { t }，否则会和原 declare 冲突。
       updatedCode = this.stripPlaceholderTDeclares(updatedCode);
       updatedCode = this.addPluginLocaleImport(updatedCode, filePath);

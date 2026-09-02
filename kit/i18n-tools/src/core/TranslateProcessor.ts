@@ -1,6 +1,6 @@
 import fs from 'fs';
 import type { ResolvedConfig } from '../config';
-import { LLMClient } from '../utils/llm-client';
+import { LLMClient, LLMConnectionAbortError } from '../utils/llm-client';
 import { FileUtils } from '../utils/file-utils';
 import { Glossary, type GlossaryMap } from '../utils/glossary';
 import { LoggerUtils } from '../utils/logger';
@@ -234,15 +234,26 @@ export class TranslateProcessor extends FileProcessor {
     LoggerUtils.info(`📦 [${targetLocale}] 共 ${batches.length} 个批次，使用并发处理`);
     LoggerUtils.info(`🔄 最大并发数: ${this.llmClient.getConcurrencyStatus().maxConcurrency}`);
 
-    const translatedBatches = await this.llmClient.batchTranslate(
-      batches,
-      targetLocale,
-      (current, total) => {
-        LoggerUtils.info(
-          `📈 [${targetLocale}] 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
-        );
-      },
-    );
+    // 连接类故障不逐批重试：batchTranslate 首批命中即中止剩余批次并把已完成结果带出来。
+    // 这里照常处理这批结果并落盘（断点续翻语义不变），处理完再把中止错误抛出去——
+    // 让整次运行以非零退出，而不是继续对下一个 target 空转。
+    let connectionAbort: LLMConnectionAbortError | undefined;
+    let translatedBatches: Array<Translations | undefined>;
+    try {
+      translatedBatches = await this.llmClient.batchTranslate(
+        batches,
+        targetLocale,
+        (current, total) => {
+          LoggerUtils.info(
+            `📈 [${targetLocale}] 翻译进度: ${current}/${total} (${Math.round((current / total) * 100)}%)`,
+          );
+        },
+      );
+    } catch (error) {
+      if (!(error instanceof LLMConnectionAbortError)) throw error;
+      connectionAbort = error;
+      translatedBatches = error.partialResults;
+    }
 
     for (let i = 0; i < translatedBatches.length; i++) {
       const translatedBatch = translatedBatches[i];
@@ -252,7 +263,11 @@ export class TranslateProcessor extends FileProcessor {
           stage: 'translate',
           batchIndex: i + 1,
           keys: Object.keys(batches[i] ?? {}),
-          error: new Error(`LLM 返回空批次（null/undefined）[${targetLocale}]`),
+          error: new Error(
+            connectionAbort
+              ? `批次 ${i + 1} 因 LLM 连接中止未完成 [${targetLocale}]`
+              : `LLM 返回空批次（null/undefined）[${targetLocale}]`,
+          ),
         });
         continue;
       }
@@ -301,6 +316,13 @@ export class TranslateProcessor extends FileProcessor {
 
     // 写入文件（每个 target 完成后落盘一次，便于断点续翻）
     writeTranslationsFile(filePath, currentData, this.config.io.indent);
+
+    if (connectionAbort) {
+      // 只入 report、不在此打日志：抛出后 executeWithLifecycle 与 CLI 各会打一次，
+      // 这里再打就是同一条文案刷三遍。
+      this.report.addFailure({ stage: 'translate', error: connectionAbort });
+      throw connectionAbort;
+    }
 
     return { totalTranslated, successBatches, totalBatches: batches.length, failedBatches };
   }

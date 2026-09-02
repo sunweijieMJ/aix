@@ -322,3 +322,21 @@ export function matchesDynamicAllowlist(config: ResolvedConfig, key: string): bo
   }
   return false;
 }
+
+/**
+ * 「target 有、source 无」的残留 key（doctor 的 stale-target-key 判据）。
+ *
+ * 成因是源侧 key 被删除或改名而译文没跟着清理。doctor 只报不删，prune 的
+ * `--include-stale-target` 才删——两处必须同一判据，否则体检报得出来的条目清理时对不上。
+ *
+ * 用 hasOwnProperty 而非 `in`：locale map 是 flattenObject 出来的普通对象，`in` 走原型链，
+ * 名为 'toString' / 'constructor' 的 key 会被误判为源侧存在而漏掉。
+ */
+export function findStaleTargetKeys(
+  sourceMap: Record<string, unknown>,
+  targetMap: Record<string, unknown>,
+): string[] {
+  return Object.keys(targetMap).filter(
+    (key) => !Object.prototype.hasOwnProperty.call(sourceMap, key),
+  );
+}

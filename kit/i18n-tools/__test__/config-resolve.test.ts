@@ -10,6 +10,8 @@ import {
   DEFAULT_EXTRACT,
 } from '../src/config/defaults';
 import type { I18nToolsConfig } from '../src/config/types';
+import { VueAdapter } from '../src/adapters/VueAdapter';
+import { FileUtils } from '../src/utils/file-utils';
 
 // 最小可用 LLM 配置（多数测试不关心 LLM）
 const llm = {
@@ -1135,5 +1137,37 @@ describe('resolveConfig — 类型与合并守卫（四轮审计 A5/A9）', () =
       keys: { prefix: { strategy: 'path', skip: -1, take: 2 } },
     });
     expect(r.keys.prefix).toMatchObject({ skip: 0, take: 2 });
+  });
+});
+
+/**
+ * DEFAULT_IO.include 与各框架适配器的 extensions 是同一件事的两处声明：
+ * include 决定扫哪些文件，extensions 决定「扫到了要不要交给适配器」与 `--path` 单文件校验。
+ * 两者不一致时目录扫描会静默漏文件、单文件模式会报「不支持的文件类型」。
+ */
+describe('DEFAULT_IO.include 与框架 extensions 同口径', () => {
+  const extOf = (glob: string): string => path.extname(glob);
+
+  it('Vue 适配器覆盖默认 include 的全部扩展名（含 .tsx/.jsx）', () => {
+    const supported = new VueAdapter().getSupportedExtensions();
+    for (const glob of DEFAULT_IO.include) {
+      expect(supported).toContain(extOf(glob));
+    }
+    expect(supported).toContain('.tsx');
+    expect(supported).toContain('.jsx');
+  });
+
+  it('Vue 工程的 --path xxx.tsx 通过单文件校验', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-vue-tsx-path-'));
+    const file = path.join(dir, 'Comp.tsx');
+    fs.writeFileSync(file, 'export const a = 1;\n');
+    const adapter = new VueAdapter();
+    const result = FileUtils.validateTargetPath(
+      file,
+      adapter.getSupportedExtensions(),
+      adapter.getDisplayName(),
+    );
+    fs.rmSync(dir, { recursive: true, force: true });
+    expect(result).toEqual({ isValid: true, type: 'file' });
   });
 });

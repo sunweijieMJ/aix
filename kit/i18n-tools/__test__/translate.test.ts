@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { TranslateProcessor } from '../src/core/TranslateProcessor';
-import { LLMClient } from '../src/utils/llm-client';
+import { LLMClient, LLMConnectionAbortError } from '../src/utils/llm-client';
 import { Glossary, type GlossaryMap } from '../src/utils/glossary';
 import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
@@ -66,6 +66,30 @@ describe('TranslateProcessor — 全失败应非零退出（Bug B6）', () => {
 
     const processor = new TranslateProcessor(makeConfig(), false);
     await expect(processor.execute()).rejects.toThrow(/全部|失败/);
+  });
+
+  /**
+   * 连接类故障（P3）：无外网时 batchTranslate 首批即熄火并抛 LLMConnectionAbortError，
+   * processor 必须把已完成批次落盘后再抛出——中止的是"继续发请求"，不是已翻好的内容。
+   */
+  it('LLM 连接中止 → 抛错非零退出，已完成批次仍落盘', async () => {
+    const file = writeUntranslated({
+      'a.b': { 'zh-CN': '你好', 'en-US': '' },
+      'a.c': { 'zh-CN': '世界', 'en-US': '' },
+    });
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(async () => {
+      throw new LLMConnectionAbortError('无法连接 LLM 服务（baseURL=https://llm.invalid/v1）', [
+        { 'a.b': { 'en-US': 'Hello' } },
+        undefined,
+      ]);
+    });
+
+    const processor = new TranslateProcessor(makeConfig(1), false);
+    await expect(processor.execute()).rejects.toThrow(/无法连接 LLM 服务/);
+
+    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    expect(data['a.b']['en-US']).toBe('Hello');
+    expect(data['a.c']['en-US']).toBe('');
   });
 
   it('全部批次成功 → 正常完成不抛错', async () => {

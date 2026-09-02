@@ -219,7 +219,8 @@
     "DCE",
     "haml",
     "Insertable",
-    "prefixless"
+    "prefixless",
+    "EAI"
   ],
   "patterns": [
     {

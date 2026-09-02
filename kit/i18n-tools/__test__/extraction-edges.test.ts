@@ -1236,3 +1236,89 @@ export const App = () => <div>版权所有&copy;示例</div>;
     });
   });
 });
+
+/**
+ * Vue 工程的 .tsx / .jsx：DEFAULT_IO.include 默认就扫这两类，适配器必须按独立脚本处理
+ * （提取 / 转换 / 还原三端同用真实扩展名推 ScriptKind），否则整类文件静默不列、不告警。
+ */
+describe('VueAdapter — .tsx / .jsx 独立脚本', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'i18n-tools-vue-tsx-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const write = (name: string, content: string): string => {
+    const file = path.join(tmpDir, name);
+    fs.writeFileSync(file, content);
+    return file;
+  };
+
+  it('.tsx 的字面量与 JSX 属性被提取，替换成 t() / {t()}', async () => {
+    const src =
+      `export const Comp = () => {\n` +
+      `  const msg = '保存成功';\n` +
+      `  return <div title="鼠标提示">{msg}</div>;\n` +
+      `};\n`;
+    const file = write('Comp.tsx', src);
+    const adapter = new VueAdapter();
+    const extracted = await adapter.getTextExtractor().extractFromFile(file);
+
+    expect(extracted.map((s) => s.original)).toEqual(['保存成功', '鼠标提示']);
+
+    extracted.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, extracted, src);
+    expect(out).toContain("const msg = t('k0')");
+    expect(out).toContain("title={t('k1')}");
+    expect(out).toContain("import { t } from '@/plugins/locale'");
+
+    // 往返：restore 能把 t() 调用换回原文
+    const restored = adapter
+      .getRestoreTransformer()
+      .transform(file, { k0: '保存成功', k1: '鼠标提示' }, out);
+    expect(restored).toContain("const msg = '保存成功'");
+    expect(restored).toContain('鼠标提示');
+    expect(restored).not.toContain("import { t } from '@/plugins/locale'");
+  });
+
+  it('.jsx 同样按 JSX 解析（不被当成类型断言）', async () => {
+    const src = `export const C = () => <div title="鼠标提示" />;\n`;
+    const file = write('C.jsx', src);
+    const adapter = new VueAdapter();
+    const extracted = await adapter.getTextExtractor().extractFromFile(file);
+    expect(extracted.map((s) => s.original)).toEqual(['鼠标提示']);
+
+    extracted[0]!.semanticId = 'k0';
+    expect(adapter.getTransformer().transform(file, extracted, src)).toContain("title={t('k0')}");
+  });
+
+  it('JSX 子节点文本不提取，但记 jsx-text-in-vue 人工项（不虚高覆盖率）', async () => {
+    const file = write('Text.tsx', `export const C = () => <div>提交订单</div>;\n`);
+    const extractor = new VueAdapter().getTextExtractor();
+    const extracted = await extractor.extractFromFile(file);
+
+    expect(extracted).toHaveLength(0);
+    const skips = extractor.drainManualSkips();
+    expect(skips).toHaveLength(1);
+    expect(skips[0]!.category).toBe('jsx-text-in-vue');
+    expect(skips[0]!.message).toContain('提交订单');
+  });
+
+  it('SFC <script setup lang="tsx"> 里的 JSX 文本走同一档人工项', async () => {
+    const file = write(
+      'Sfc.vue',
+      `<script setup lang="tsx">\nconst r = () => <div>提交订单</div>;\n</script>\n`,
+    );
+    const extractor = new VueAdapter().getTextExtractor();
+    await extractor.extractFromFile(file);
+    const skips = extractor.drainManualSkips();
+    expect(skips).toHaveLength(1);
+    expect(skips[0]!.category).toBe('jsx-text-in-vue');
+  });
+});

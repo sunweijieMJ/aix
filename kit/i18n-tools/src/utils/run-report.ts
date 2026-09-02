@@ -41,6 +41,8 @@ export interface FailureRecord {
  * - comparison-operand   `xxx === '中文'` 比较操作数（运行时切语言后分支永远不命中）
  * - mixed-content        混合内容字符串（中英符号交错，无法机械拆分）
  * - html-in-template     源码模板字符串含 HTML 标签（含拼装结构）
+ * - non-html-template    `<template lang="pug">` 等非 HTML 模板语言，整块无法解析
+ * - jsx-text-in-vue      Vue tsx/jsx 的 JSX 子节点文本（Vue 侧不做 JSX 文本改写）
  * - class-property       类组件属性初始化器中的中文（该位置没有可用的 t 绑定）
  * - html-tag-in-value    locale value 已含 HTML 标签（运行时 innerHTML = t()）
  * - long-value           locale value 超长（建议拆分）
@@ -54,6 +56,8 @@ export type ManualCategory =
   | 'comparison-operand'
   | 'mixed-content'
   | 'html-in-template'
+  | 'non-html-template'
+  | 'jsx-text-in-vue'
   | 'class-property'
   | 'param-default'
   | 'html-tag-in-value'
@@ -198,6 +202,8 @@ export class RunReport {
       'comparison-operand',
       'nested-interpolation-chinese',
       'html-in-template',
+      'non-html-template',
+      'jsx-text-in-vue',
       'class-property',
       'param-default',
     ]);
@@ -346,6 +352,8 @@ export class RunReport {
     'comparison-operand': '比较运算符跳过的中文字面量',
     'mixed-content': '混合内容字符串（无法机械拆分）',
     'html-in-template': '模板字符串含 HTML 标签',
+    'non-html-template': '非 HTML 模板语言（pug 等）整块跳过',
+    'jsx-text-in-vue': 'Vue tsx/jsx 的 JSX 子节点文本未提取',
     'class-property': '类组件属性初始化器缺少翻译绑定',
     'param-default': '形参默认值缺少翻译绑定',
     'html-tag-in-value': 'locale value 含 HTML 标签',
@@ -371,6 +379,17 @@ export class RunReport {
 建议改造源码：模板字符串包裹结构，只把文案放入 t() 调用：
     ❌  innerHTML = \`<span class="x">\${title}</span>\`
     ✅  innerHTML = \`<span class="x">\${t('xxx')}</span>\``,
+    'non-html-template': `@vue/compiler-dom 只解析 HTML 模板，pug / jade 等预处理语法会被当成
+单个文本节点，整块模板会被替换成一句 $t() 且不可还原，故整块跳过。
+建议把该组件的模板编译 / 改写为 HTML，或手工为其中的文案加 $t() 调用：
+    ❌  <template lang="pug">
+    ✅  <template>  <!-- 普通 HTML 模板 -->`,
+    'jsx-text-in-vue': `Vue 项目的 tsx / jsx 里，JSX 子节点文本不做自动改写：
+替换成 {t('key')} 后 restore 无法从表达式容器还原回裸文本，往返会丢结构。
+建议把文案挪进属性或变量，由工具接管：
+    ❌  <div>提交</div>
+    ✅  const label = '提交';  <div>{label}</div>   // 变量初值可被提取
+    ✅  <div title="提交" />                        // JSX 属性可被提取`,
     'class-property': `类组件属性初始化时没有可用的 t/intl 绑定，直接替换会生成未定义标识符。
 建议把文案移入 render()/方法/getter，或使用已注入的 this.props.t / this.props.intl。`,
     'param-default': `形参默认值在参数作用域求值，而 t/intl 绑定注入在函数体内，参数看不见它。

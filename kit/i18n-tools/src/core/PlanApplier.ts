@@ -8,9 +8,11 @@ import { LocaleValueLinter } from '../utils/locale-value-linter';
 import { LoggerUtils } from '../utils/logger';
 import { RunReport } from '../utils/run-report';
 import type { ExtractedString } from '../utils/types';
+import { renderCoveragePanel } from './coverage-panel';
 import {
   GeneratePlanWriter,
   type GeneratePlan,
+  type GeneratePlanCoverage,
   type GeneratePlanFileEntry,
   type GeneratePlanHit,
 } from './GeneratePlan';
@@ -69,6 +71,7 @@ export class PlanApplier {
    * @param options.planOutputDir  plan 输出根目录（未指定则用默认 `.i18n-tools/plans/` 下时间戳目录）
    * @param options.skipLLM        本次 generate 是否启用了 --skip-llm（写入 plan.llmModel）
    * @param options.skippedComparisons 提取阶段已 drain 的比较运算符跳过项快照（供 lint 复用同一份）
+   * @param options.coverage 本轮覆盖率账本，随 plan 落盘供 apply 回放面板与阈值卡点
    */
   writePlan(
     uniqueFilePaths: string[],
@@ -79,6 +82,7 @@ export class PlanApplier {
       planOutputDir?: string;
       skipLLM: boolean;
       skippedComparisons: SkippedTextLocation[];
+      coverage?: GeneratePlanCoverage;
     },
   ): void {
     const planRoot =
@@ -183,6 +187,7 @@ export class PlanApplier {
         hits: entries.reduce((sum, e) => sum + e.hits.length, 0),
         newKeys: newKeyCount,
       },
+      coverage: options.coverage,
       entries,
       localeDelta,
       localeBaseline,
@@ -347,6 +352,7 @@ export class PlanApplier {
     LoggerUtils.success(
       `✅ Plan 回放完成：${plan.summary.files} 个文件、${appliedNewKeys} 个新 key`,
     );
+    this.replayCoverage(plan);
 
     // 默认清理 plan 目录：commitToDisk 成功后 plan 已无价值，保留只会累积。
     // 用户通过 --keep-plan 显式保留（如希望事后审计 / 在 PR 中附带）。
@@ -360,6 +366,28 @@ export class PlanApplier {
     }
 
     return 'applied';
+  }
+
+  /**
+   * 回放 plan 里的覆盖率账本：打同款面板，并把 metric 写回 report，使 CLI 的
+   * `--coverage-threshold` / ci.coverageThreshold 在 apply 路径上同样生效
+   * （apply 不重跑提取，覆盖率只能来自 dry-run 的快照）。
+   *
+   * 旧 plan 缺该字段时只打一条 info：升级工具后存量 plan 仍能 apply，代价是这一次没有门禁。
+   */
+  private replayCoverage(plan: GeneratePlan): void {
+    if (!plan.coverage) {
+      LoggerUtils.info(
+        'ℹ️  旧版 plan 未记录覆盖率信息，本次跳过覆盖率面板与阈值判定；' +
+          '如需在 apply 阶段卡覆盖率请重跑 `generate --dry-run`。',
+      );
+      return;
+    }
+    this.report.setCoverage(plan.coverage.metric);
+    renderCoveragePanel(plan.coverage.metric, {
+      newKeys: plan.coverage.newKeys,
+      manualByCategory: plan.coverage.manualByCategory,
+    });
   }
 
   /**

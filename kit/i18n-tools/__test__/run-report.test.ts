@@ -410,4 +410,44 @@ describe('CoverageReporter — manualSkips 透传 dedupeKey', () => {
 
     expect(report.groupManualByCategory()['html-in-template']).toHaveLength(1);
   });
+
+  it('非 HTML 模板 / Vue JSX 文本各自成档，不并入 html-in-template', () => {
+    const config = makeConfig();
+    const report = new RunReport('generate', tmpDir);
+    const reporter = new CoverageReporter(config, false, report);
+    reporter.setExtractionSnapshots({
+      skippedComparisons: [],
+      skippedNestedChinese: [],
+      manualSkips: [
+        { category: 'non-html-template', message: 'src/Pug.vue:1 <template lang="pug">' },
+        { category: 'jsx-text-in-vue', message: 'src/Tsx.vue:2 JSX 子节点文本' },
+      ],
+    });
+    reporter.recordAndRender([], [], null);
+
+    const groups = report.groupManualByCategory();
+    expect(groups['non-html-template']).toHaveLength(1);
+    expect(groups['jsx-text-in-vue']).toHaveLength(1);
+    expect(groups['html-in-template']).toBeUndefined();
+    // 两条都进覆盖率分母，覆盖率不会因跳过而虚高
+    expect(report.getCoverage()?.skipped).toBe(2);
+    expect(report.getCoverage()?.totalChineseSegments).toBe(2);
+    expect(Object.keys(report.groupCoverageManualByCategory()).sort()).toEqual([
+      'jsx-text-in-vue',
+      'non-html-template',
+    ]);
+  });
+});
+
+describe('ManualCategory 文案表', () => {
+  it('新增分类有独立的 label 与 suggestion（不复用 html-in-template 文案）', () => {
+    for (const c of ['non-html-template', 'jsx-text-in-vue'] as const) {
+      expect(RunReport.MANUAL_LABELS[c]).toBeTruthy();
+      expect(RunReport.MANUAL_DEFAULT_SUGGESTIONS[c]).toBeTruthy();
+      expect(RunReport.MANUAL_DEFAULT_SUGGESTIONS[c]).not.toBe(
+        RunReport.MANUAL_DEFAULT_SUGGESTIONS['html-in-template'],
+      );
+    }
+    expect(RunReport.MANUAL_DEFAULT_SUGGESTIONS['non-html-template']).toContain('pug');
+  });
 });

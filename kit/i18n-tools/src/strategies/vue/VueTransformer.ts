@@ -12,7 +12,7 @@ import { isInThisBindableScope } from '../../utils/ast-guards';
 import { createMessageWithOptions, filterLiterals } from '../../utils/message-shape';
 import { formatValuesMapping } from '../../utils/string-escape';
 import { vueExtras } from './extracted-extras';
-import { isHtmlTemplateLang, scriptFileNameOfLang } from './sfc-blocks';
+import { isHtmlTemplateLang, isStandaloneScriptPath, scriptFileNameOfLang } from './sfc-blocks';
 import type { ExtractedString } from '../../utils/types';
 import type {
   IComponentInjector,
@@ -166,15 +166,18 @@ export class VueTransformer implements ITransformer {
           transformedCode.substring(replacement.end);
       }
     }
-    // 处理纯 .ts 或 .js 文件
-    else if (ext === 'ts' || ext === 'js') {
+    // 处理独立脚本（.ts / .js / .tsx / .jsx）
+    else if (isStandaloneScriptPath(filePath)) {
       const scriptStrings = fileStrings.filter((s) => s.context === 'script');
       if (scriptStrings.length > 0) {
         transformedCode = this.processScript(
           sourceText,
           0, // 没有 template，从第 0 行开始
           scriptStrings,
-          false, // 纯 .ts/.js 走 import { t } from '@/plugins/locale' 路径，不用 this.$t
+          false, // 独立脚本走 import { t } from '@/plugins/locale' 路径，不用 this.$t
+          // 解析文件名用真实路径：tsx/jsx 必须按 JSX 解析，否则 `<div a="x">` 被当成类型断言，
+          // 与提取端（同样用真实路径）的 AST 对不上，定位必然失败。
+          filePath,
         );
       }
     }

@@ -324,6 +324,63 @@ describe('GenerateProcessor 编排层', () => {
     expect(fs.readdirSync(planRoot).some((name) => name.startsWith('generate-'))).toBe(false);
   });
 
+  /**
+   * 覆盖率快照进 plan（P1）：`--dry-run` 打完整覆盖率面板，但 apply 回放此前只打
+   * 「N 文件、M 新 key」，`--coverage-threshold` / ci.coverageThreshold 在两段式
+   * 工作流里恒不生效（CI 卡点被架空）。dry-run 把账本写进 plan，apply 回放同款面板
+   * 并把 metric 写回 report 供 CLI 判定阈值。
+   */
+  describe('plan 覆盖率快照与 apply 回放', () => {
+    /** 一处可自动转换 + 一处需人工的 HTML 模板 → 覆盖率 50%，且 plan 非空 */
+    const MIXED_FILE =
+      "<script setup>\nconst label = '提交';\nconst html = `<div>提示</div>`;\n</script>\n";
+
+    it('dry-run plan 携带覆盖率账本（metric + 新增 key + 待人工分类计数）', async () => {
+      const file = writeSource('PlanCoverage.vue', MIXED_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      expect(plan.coverage.metric).toMatchObject({
+        totalChineseSegments: 2,
+        newlyGenerated: 1,
+        skipped: 1,
+        coverageRate: 0.5,
+      });
+      expect(plan.coverage.newKeys).toBe(1);
+      expect(plan.coverage.manualByCategory).toEqual({ 'html-in-template': 1 });
+    });
+
+    it('apply-plan 回放覆盖率面板并透出 getCoverage（CI 阈值卡点据此判定）', async () => {
+      const file = writeSource('ApplyCoverage.vue', MIXED_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+      vi.clearAllMocks();
+
+      const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+      await proc.applyFromPlan(planJson);
+
+      expect(proc.getCoverage()).toMatchObject({ coverageRate: 0.5, skipped: 1 });
+      expect(LoggerUtils.info).toHaveBeenCalledWith(expect.stringContaining('本次国际化覆盖率'));
+      expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('覆盖率待人工 1 条'));
+    });
+
+    it('旧版 plan 无 coverage → 照常回放，只提示跳过阈值判定', async () => {
+      const file = writeSource('LegacyCoverage.vue', MIXED_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      delete plan.coverage;
+      fs.writeFileSync(planJson, JSON.stringify(plan), 'utf-8');
+
+      const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+      await proc.applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\bt\('/);
+      expect(proc.getCoverage()).toBeUndefined();
+      expect(LoggerUtils.info).toHaveBeenCalledWith(
+        expect.stringContaining('旧版 plan 未记录覆盖率信息'),
+      );
+    });
+  });
+
   it('apply-plan happy path：回放 plan → 源码替换 + 语言文件写入（不触 LLM/AST）', async () => {
     const file = writeSource('A.vue', VUE_FILE);
     const planJson = await makePlan(buildConfig(rootDir), file);

@@ -4,6 +4,7 @@ import { extractPlaceholderNames } from '../utils/placeholder-utils';
 import {
   collectUsedKeys,
   createKeyNormalizer,
+  findStaleTargetKeys,
   matchesDynamicAllowlist,
 } from '../utils/source-key-scanner';
 import type { FrameworkAdapter } from '../adapters';
@@ -419,7 +420,8 @@ export class DoctorProcessor extends BaseProcessor {
    * 的英文就以为齐了）。
    *
    * 只报不删：删除是产品决策——key 可能由 doctor 看不到的动态拼接使用（keys
-   * .dynamicKeyAllowlist 一路），也可能是有意保留的历史兼容项。prune 才是删除入口。
+   * .dynamicKeyAllowlist 一路），也可能是有意保留的历史兼容项。prune
+   * `--include-stale-target` 才是删除入口，两者共用 findStaleTargetKeys 这一判据。
    * 归 warning 级（不阻断 CI，与 missing-target-key / untranslated 同档）。
    */
   private checkStaleTargetKeys(
@@ -428,10 +430,8 @@ export class DoctorProcessor extends BaseProcessor {
     target: string,
   ): DoctorFinding[] {
     const findings: DoctorFinding[] = [];
-    for (const [key, targetValue] of Object.entries(targetMap)) {
-      // hasOwnProperty 而非 `in`：与本文件其它对账保持同一判定纪律（'toString' 这类
-      // key 走原型链会被误判为源侧存在）。
-      if (Object.prototype.hasOwnProperty.call(sourceMap, key)) continue;
+    for (const key of findStaleTargetKeys(sourceMap, targetMap)) {
+      const targetValue = targetMap[key] ?? '';
       findings.push({
         category: 'stale-target-key',
         severity: 'warning',
@@ -439,7 +439,8 @@ export class DoctorProcessor extends BaseProcessor {
         details: [
           `target [${target}]: ${this.preview(targetValue)}`,
           `source [${this.config.locales.source}]: <缺失>`,
-          '源侧 key 已删除或改名，译文成了残留；确认无用后手动清理（doctor 只报不删）',
+          '源侧 key 已删除或改名，译文成了残留；doctor 只报不删，' +
+            '确认无用后用 `--mode prune --include-stale-target` 清理',
         ],
         key,
       });

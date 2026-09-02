@@ -325,7 +325,7 @@ describe('审计修复回归（Vue / 共享 AST 层）', () => {
       await extractor.extractFromFile(fp);
       const skips = extractor.drainManualSkips();
       expect(skips).toHaveLength(1);
-      expect(skips[0]!.category).toBe('html-template');
+      expect(skips[0]!.category).toBe('non-html-template');
     });
 
     it('restore 不动 pug 模板里形似 $t 调用的文本', () => {

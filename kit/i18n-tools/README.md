@@ -131,7 +131,8 @@ i18n-tools [选项]
 | `--apply-plan <path \| latest>` | 从指定 plan 回放，跳过 LLM 与 AST 解析；传 `latest` 自动找最近一次 | `generate` |
 | `--keep-plan` | apply 成功后保留 plan 目录（默认会自动清理） | `generate` |
 | `--plan-output-dir <dir>` | 自定义 dry-run 输出根目录（绕开 Windows 长路径等问题） | `generate` |
-| `--coverage-threshold <num>` | 覆盖率低于该百分比（0-100）则以退出码 2 退出 | `generate` / `automatic` |
+| `--coverage-threshold <num>` | 覆盖率低于该百分比（0-100）则以退出码 2 退出；`--apply-plan` 回放时判定 plan 内 dry-run 结算的覆盖率 | `generate`（含 `--apply-plan`）/ `automatic` |
+| `--include-stale-target` | prune：一并删除「target 有、source 无」的残留 key（判据同 doctor 的 `stale-target-key`），只删对应 target 文件 | `prune` |
 | `--ci` | doctor：发现 error 级问题时非零退出；csv-import / prune：跳过 y/N 确认直接执行 | `doctor` / `csv-import` / `prune` |
 
 #### CSV 选项
@@ -639,6 +640,10 @@ npx i18n-tools -m generate --apply-plan latest
 - **元数据完整**：plan 包含 `toolVersion`（生成时的 @kit/i18n-tools 版本）和
   `llmModel`（本次使用的模型名，或 `local` 表示跳过 LLM），给 reviewer 提供
   判断"是否需要用新版本重跑"的依据
+- **覆盖率随行**：plan 的 `coverage` 字段记录 dry-run 结算的覆盖率账本，apply 回放时
+  打印同款覆盖率面板，并据此执行 `--coverage-threshold` / `ci.coverageThreshold` 卡点
+  ——两段式工作流下真正落盘的是 apply，门禁必须跟到这一步。由旧版本生成、无该字段的
+  plan 仍可回放，只打一条提示并跳过阈值判定
 - **latest 简写 + 自动清理**：
   - dry-run 写盘时同时落 `.i18n-tools/plans/.last.json` 指向最新目录，
     `--apply-plan latest` 一行命令直达；指针损坏时回退到目录扫描（按 mtime 倒序）
@@ -671,6 +676,9 @@ CI 卡点：
 ```bash
 # 覆盖率低于 95% 则以退出码 2 退出
 npx i18n-tools -m generate --coverage-threshold 95
+
+# dry-run + apply 两段式：阈值在 apply 回放时按 plan 里的覆盖率快照判定
+npx i18n-tools -m generate --apply-plan latest --coverage-threshold 95
 ```
 
 退出码语义：
@@ -698,6 +706,7 @@ npx i18n-tools -m doctor --ci     # CI 模式（有 error 即非零退出）
 | `missing-key` | **error** | 源码 `t('xxx')` 引用了 locale 不存在的 key（运行时显示 key 字符串） |
 | `missing-target-key` | warning | source 有、target locale 完全缺失的 key（切语言时回退源文/显示 key；跑 `translate` 或人工补译） |
 | `orphan-key` | warning | locale 中的 key 源码无引用（清理候选；动态 key 可能误报，不自动删） |
+| `stale-target-key` | warning | target locale 有该 key 但 source 已无（译文残留；`prune --include-stale-target` 可清理） |
 | `untranslated` | warning | target locale 的 value 与 source 完全相同且含中文（疑似漏译） |
 | `placeholder-mismatch` | error / warning | 译文与源占位符名集不一致：漏占位符（如译文丢了 `{count}`）= error；多出 = warning |
 | `locale-lint` | info / warning | 复用 `LocaleValueLinter.analyze`：语义重复 key、含 HTML、超长 value、跨模块复用候选、硬编码比较等 |
@@ -713,9 +722,19 @@ npx i18n-tools -m doctor --ci     # CI 模式（有 error 即非零退出）
 i18n-tools --mode prune --dry-run   # 预览将删哪些孤儿 key，不改文件
 i18n-tools --mode prune             # 确认(y/N)后从所有 locale 删除
 i18n-tools --mode prune --ci        # 非交互直接删（CI/脚本）
+
+# 连 target-only 残留译文一起清（先 --dry-run 看清单）
+i18n-tools --mode prune --include-stale-target --dry-run
+i18n-tools --mode prune --include-stale-target --ci
 ```
 
 - 删除范围：源语言 + 所有目标语言的 locale 文件（含分桶布局），以及中间文件 `translations.json` / `untranslated.json`，一并清掉孤儿 key，保持状态一致。命中 `keys.dynamicKeyAllowlist` 的 key 跳过不删。
+- `--include-stale-target`（默认关）：额外清理「target 有、source 无」的残留 key
+  （源侧 key 被删/改名而译文没跟着清理，doctor 报 `stale-target-key`）。这类 key 不在
+  source locale 里，永远进不了孤儿名单，是唯一清得掉它们的入口。只删对应 target 文件，
+  不碰 source 与中间字典；两道保守过滤：源码仍在引用的 key（属 doctor 的 `missing-key`，
+  删译文只会让运行时更糟）与命中 `keys.dynamicKeyAllowlist` 的 key 一律保留。
+  与孤儿删除共用同一套 `--dry-run` 预览 / 确认 / `--ci` 流程。
 - 无 `.bak`：写回为原子写，恢复请用 git。
 
 ### 落盘日志（.i18n-tools/）
@@ -762,7 +781,7 @@ i18n-tools --mode prune --ci        # 非交互直接删（CI/脚本）
 
 ### Vue
 
-**支持的文件类型**：`.vue`、`.ts`、`.js`
+**支持的文件类型**：`.vue`、`.tsx`、`.jsx`、`.ts`、`.js`
 
 **支持的 i18n 库：**
 
@@ -788,6 +807,11 @@ i18n-tools --mode prune --ci        # 非交互直接删（CI/脚本）
   把整段模板换成一句 `$t()` 且不可还原。
 - `<script>` 支持 `lang="ts"`（默认）与 `lang="tsx"` / `lang="jsx"`：后者按 JSX 语法解析，
   提取 / 转换 / 还原三端同源，不会把 `<div a="x">` 误当成类型断言。
+- 独立的 `.tsx` / `.jsx` 文件（渲染函数组件）与 `.ts` / `.js` 同样按整文件脚本处理：
+  模块顶层注入 `import { t } from <tImport>`，JSX 属性替换成 `title={t('key')}`。
+- **JSX 子节点文本不提取**（`<div>提交</div>`），整类记入「待人工处理」的
+  `jsx-text-in-vue` 并计入覆盖率分母：替换成 `{t('key')}` 后还原端只能得到 `{中文}`，
+  往返不可逆。把文案挪到变量初值或 JSX 属性上即可被自动接管。
 
 ### React
 

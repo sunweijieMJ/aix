@@ -8,6 +8,7 @@ import { LoggerUtils } from '../utils/logger';
 import {
   collectUsedKeys,
   createKeyNormalizer,
+  findStaleTargetKeys,
   matchesDynamicAllowlist,
 } from '../utils/source-key-scanner';
 import type { LocaleMap, Translations } from '../utils/types';
@@ -27,12 +28,22 @@ export interface PruneOptions {
    * 程序化调用的既有语义（弹确认）。
    */
   interactive?: boolean;
+  /**
+   * 一并清理「target 有、source 无」的残留 key（doctor 的 stale-target-key）。
+   *
+   * 默认关：孤儿清理由源码引用判定，证据充分；target-only 残留只说明源侧没有这条 key，
+   * 可能是分支间的中间态（源 locale 还没 merge 过来），删掉就是丢译文。要显式 opt-in。
+   */
+  includeStaleTarget?: boolean;
 }
 
 /**
  * 清理孤儿 key：源码已不再引用的 locale key，从所有 locale 文件删除。
  * 与 doctor 的 orphan 判据同一口径（共享 source-key-scanner）。删 source 中文一起删，
  * 恢复靠 git。不动 translations.json/untranslated.json（下次 pick 自动重生）。
+ *
+ * `--include-stale-target` 额外清理 target-only 残留（判据同 doctor 的 stale-target-key），
+ * 只删对应 target 文件、不碰 source 与中间字典。
  */
 export class PruneProcessor extends BaseProcessor {
   private readonly options: PruneOptions;
@@ -128,16 +139,36 @@ export class PruneProcessor extends BaseProcessor {
     const shieldedSet = new Set(shielded);
     const prunable = orphans.filter((key) => !shieldedSet.has(key));
 
+    // target-only 残留（--include-stale-target），判据与 doctor 的 stale-target-key 同源。
+    // 两道保守过滤：源码仍在引用的 key（source locale 缺该 key 属于 doctor 的 missing-key，
+    // 删掉译文只会让运行时更糟）、以及动态白名单命中的 key，一律保留。
+    const staleByTarget = new Map<string, string[]>();
+    if (this.options.includeStaleTarget) {
+      for (const target of this.config.locales.targets) {
+        const targetMap = this.langFiles.readLocaleFile(target) ?? {};
+        const stale = findStaleTargetKeys(sourceMap, targetMap).filter(
+          (key) => !usedKeys.has(normalizeKey(key)) && !matchesDynamicAllowlist(this.config, key),
+        );
+        if (stale.length > 0) staleByTarget.set(target, stale);
+      }
+    }
+    const staleTotal = [...staleByTarget.values()].reduce((sum, list) => sum + list.length, 0);
+
     LoggerUtils.info(
       `🔍 源码引用 ${usedKeys.size} 个 key，source locale 共 ${Object.keys(sourceMap).length} 个`,
     );
-    if (prunable.length === 0) {
+    if (prunable.length === 0 && staleTotal === 0) {
       LoggerUtils.success('✅ 没有孤儿 key，无需清理');
       return;
     }
-    LoggerUtils.info(`🗑️  将删除 ${prunable.length} 个孤儿 key：`);
-    prunable.slice(0, 20).forEach((k) => LoggerUtils.info(`   - ${k}`));
-    if (prunable.length > 20) LoggerUtils.info(`   … 其余 ${prunable.length - 20} 个`);
+    if (prunable.length > 0) {
+      LoggerUtils.info(`🗑️  将删除 ${prunable.length} 个孤儿 key：`);
+      PruneProcessor.logKeySample(prunable);
+    }
+    for (const [target, stale] of staleByTarget) {
+      LoggerUtils.info(`🗑️  ${target}: 将删除 ${stale.length} 个 target-only 残留 key：`);
+      PruneProcessor.logKeySample(stale);
+    }
 
     if (this.options.dryRun) {
       LoggerUtils.info('🧪 --dry-run：仅预览，未删除');
@@ -153,7 +184,9 @@ export class PruneProcessor extends BaseProcessor {
         );
       }
       const ok = await InteractiveUtils.promptForGenericConfirmation(
-        `确认从所有 locale 删除这 ${prunable.length} 个孤儿 key？`,
+        staleTotal > 0
+          ? `确认删除这 ${prunable.length} 个孤儿 key（所有 locale）与 ${staleTotal} 个 target-only 残留 key？`
+          : `确认从所有 locale 删除这 ${prunable.length} 个孤儿 key？`,
       );
       if (!ok) {
         this.cancelled = true;
@@ -165,13 +198,22 @@ export class PruneProcessor extends BaseProcessor {
     const orphanSet = new Set(prunable);
     const locales = [sourceLocale, ...this.config.locales.targets];
     for (const locale of locales) {
-      this.pruneLocale(locale, orphanSet);
+      // 残留 key 只在其所属 target 文件里删：它们按定义不存在于 source，
+      // 也不进中间字典的清理集合。
+      const stale = staleByTarget.get(locale);
+      this.pruneLocale(locale, stale ? new Set([...orphanSet, ...stale]) : orphanSet);
     }
 
     // 中间字典文件（translations.json / untranslated.json）里的孤儿也一并删除，
     // 与 locale 保持一致，避免遗留半清理状态（不依赖事后再跑 pick 自愈）。
     this.pruneDictionaryFile(FileUtils.getTranslatedPath(this.config, this.isCustom), orphanSet);
     this.pruneDictionaryFile(FileUtils.getUntranslatedPath(this.config, this.isCustom), orphanSet);
+  }
+
+  /** 清单打印：最多列前 20 条，其余折叠成一行计数（孤儿与 target-only 残留同款）。 */
+  private static logKeySample(keys: string[]): void {
+    keys.slice(0, 20).forEach((k) => LoggerUtils.info(`   - ${k}`));
+    if (keys.length > 20) LoggerUtils.info(`   … 其余 ${keys.length - 20} 个`);
   }
 
   /**

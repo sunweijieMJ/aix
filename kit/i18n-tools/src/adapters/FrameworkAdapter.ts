@@ -38,7 +38,8 @@ export interface FrameworkConfig {
  * 一条通道（linter / coverage 都从那里取），此处再记一份必然被消费端过滤掉以避免双计。
  */
 export interface ManualSkipDiagnostic {
-  category: 'html-template' | 'class-property' | 'param-default';
+  category:
+    'html-template' | 'non-html-template' | 'jsx-text-in-vue' | 'class-property' | 'param-default';
   message: string;
   /** 同类展示文案不足以区分调用点时使用的稳定去重键。 */
   dedupeKey?: string;

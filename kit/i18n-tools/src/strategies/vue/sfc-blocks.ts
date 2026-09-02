@@ -1,4 +1,17 @@
+import path from 'path';
 import { parse as parseSFC } from '@vue/compiler-sfc';
+
+/**
+ * 该路径是否按「独立脚本」（非 SFC）处理。
+ *
+ * Vue 工程里 tsx/jsx 是渲染函数组件的常规写法，且 DEFAULT_IO.include 默认就扫这两类；
+ * 它们与 .ts/.js 一样没有 template/style 块，提取 / 转换 / 还原三端都走整文件脚本路径。
+ * 解析文件名直接用真实路径即可：ScriptKind 由扩展名推出，tsx/jsx 自动按 JSX 解析。
+ */
+export function isStandaloneScriptPath(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return ext === '.ts' || ext === '.js' || ext === '.tsx' || ext === '.jsx';
+}
 
 /**
  * `<template lang="...">` 是否是本工具能处理的 HTML 模板。

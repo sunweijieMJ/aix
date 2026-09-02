@@ -1,5 +1,4 @@
 import fs from 'fs';
-import path from 'path';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import { nodeToText, parseSourceFile } from '../../utils/ast-core';
@@ -10,6 +9,7 @@ import { escapeRegExp } from '../../utils/string-escape';
 import { CHINESE_CHAR_RANGE, NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import {
   isHtmlTemplateLang,
+  isStandaloneScriptPath,
   mapScriptBlocks,
   scriptFileNameOfLang,
   sourceDeclaresVPre,
@@ -52,20 +52,20 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   transform(filePath: string, localeMap: LocaleMap, providedSource?: string): string {
     // 优先用调用方已读取的内容，缺省才回退读盘（消除 RestoreProcessor 的二次读盘）。
     const sourceText = providedSource ?? fs.readFileSync(filePath, 'utf-8');
-    const ext = path.extname(filePath);
 
     // locale 值归一：i18next 系库双花括号占位符 → 单花括号；并把写盘时转义的
     // 字面量花括号（vue-i18n 的 `{'{'}` 等）还原回普通 `{` `}`。
     // 与 React restore 共用 normalizeRestoreLocaleMap（消除两端重复实现）。
     const map = normalizeRestoreLocaleMap(localeMap, this.library);
 
-    // .ts/.js 文件不是 Vue SFC，直接用 script 还原逻辑
-    if (ext === '.ts' || ext === '.js') {
+    // 独立脚本（.ts/.js/.tsx/.jsx）不是 Vue SFC，直接用 script 还原逻辑
+    if (isStandaloneScriptPath(filePath)) {
       return VueRestoreTransformer.restoreStandaloneScript(
         sourceText,
         map,
         this.library,
         this.tImport,
+        filePath,
       );
     }
 
@@ -290,10 +290,15 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     localeMap: Record<string, string>,
     library: VueI18nLibrary,
     tImport?: string,
+    filePath?: string,
   ): string {
     const lib = library;
 
-    let restoredCode = this.restoreScript(sourceText, localeMap, lib);
+    // 解析文件名带真实扩展名：tsx/jsx 必须按 JSX 解析（与提取 / 转换端同口径），
+    // 否则 `<div a="x">` 被当成类型断言，t() 调用定位不到、整文件还原不动。
+    const parseFileName = filePath ?? 'standalone.ts';
+
+    let restoredCode = this.restoreScript(sourceText, localeMap, lib, parseFileName);
 
     if (restoredCode === sourceText) {
       return sourceText;
@@ -302,7 +307,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 清理 hook 来源：`useI18n` 库导入 + `const { t } = useI18n()` 声明必须同进退。
     // 守卫：仅当 t 已无值引用时才删除（与 SFC 路径对称；locale 缺 key / 动态 key 时残留 t()
     // 仍引用 t，删任一半都会产出未定义标识符）。
-    if (isLocalNameUnused(restoredCode, 'standalone.ts', 't')) {
+    if (isLocalNameUnused(restoredCode, parseFileName, 't')) {
       // 先删 hook 声明，再守卫删 import：多键解构 `const { t, locale } = useI18n()` 因声明
       // 清理正则只匹配单键 `{ t }` 而保留，其 useI18n() 调用仍在时不得删 import（否则未定义
       // useI18n）。与 SFC 路径 / generate 侧 hookCallStillUsed 守卫对称。
@@ -317,7 +322,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 复用 SFC 路径的 helper：可处理 `import { t }` 与 `import { t, i18n }` 混合形式。
     // 守卫：仅当 t 在还原后已无引用时才删除——存活的 t() 调用（locale 缺 key / 动态 key）
     // 仍引用 t，删 import 会产出未定义 t（TS2304）。与 SFC 路径 / React 端对称。
-    if (tImport && isImportedNameUnused(restoredCode, 'standalone.ts', tImport, 't')) {
+    if (tImport && isImportedNameUnused(restoredCode, parseFileName, tImport, 't')) {
       restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport);
     }
 

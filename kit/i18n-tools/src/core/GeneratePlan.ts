@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { LoggerUtils } from '../utils/logger';
+import type { CoverageMetric } from '../utils/run-report';
 import type { ExtractedString } from '../utils/types';
 import { classifyJsonFile, ensureDirectoryExists, writeJsonFile } from '../utils/json-io';
 
@@ -51,6 +52,23 @@ export interface GeneratePlanFileEntry {
 }
 
 /**
+ * dry-run 结算出的覆盖率快照。
+ *
+ * Why 要进 plan：CI 卡点（`--coverage-threshold` / ci.coverageThreshold）跑在 apply 这一步，
+ * 而 apply 不重跑提取、算不出覆盖率。dry-run 把账本随 plan 带过去，apply 回放同款面板并
+ * 据此判定阈值，"dry-run 审、apply 落"的两段式工作流才不会把门禁漏掉。
+ *
+ * 字段可选：缺该字段的旧版 plan 仍可正常 apply，只是跳过面板与阈值判定。
+ */
+export interface GeneratePlanCoverage {
+  metric: CoverageMetric;
+  /** 本轮新分配（未复用历史）的 key 数，对应面板「其中新增 key」一行 */
+  newKeys?: number;
+  /** 进入 coverage.skipped 口径的待人工项，按 category 计数 */
+  manualByCategory: Record<string, number>;
+}
+
+/**
  * generate dry-run 落盘的完整 plan 结构。
  *
  * schemaVersion：未来字段语义变更需要升级；apply 路径在读取时按 schemaVersion
@@ -90,6 +108,11 @@ export interface GeneratePlan {
     /** 本轮 plan 中拟新增到 locale 的 key 数（去重后） */
     newKeys: number;
   };
+  /**
+   * dry-run 当时的覆盖率账本，apply 回放面板与 CI 阈值卡点共用（见 GeneratePlanCoverage）。
+   * 可选：兼容缺该字段的旧 plan（缺失即跳过面板与阈值判定，不拒绝 apply）。
+   */
+  coverage?: GeneratePlanCoverage;
   entries: GeneratePlanFileEntry[];
   /** key → source message，apply 阶段直接合并到 source locale 文件 */
   localeDelta: Record<string, string>;

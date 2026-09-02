@@ -44,7 +44,9 @@ export class VueAdapter extends FrameworkAdapter {
 
     super({
       type: 'vue',
-      extensions: ['.vue', '.ts', '.js'],
+      // 含 .tsx/.jsx：Vue 3 支持 tsx 渲染函数组件，且 DEFAULT_IO.include 默认就扫这两类。
+      // 扩展名列表同时决定目录扫描范围与 `--path` 单文件校验，两处口径必须一致。
+      extensions: ['.vue', '.tsx', '.jsx', '.ts', '.js'],
       i18nLibrary: library.packageName,
       usesDoubleBracePlaceholders: library.usesDoubleBracePlaceholders,
     });

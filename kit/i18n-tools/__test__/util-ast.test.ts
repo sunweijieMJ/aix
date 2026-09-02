@@ -1188,6 +1188,28 @@ describe('isExtractableStringLiteral — 字面量类型上下文与 in 运算',
     expect(extractable(`const list = ['待办', '完成'];`)).toBe(true);
     expect(extractable(`const s: string = '标题';`)).toBe(true);
   });
+
+  it('同文件 type alias 指向字面量联合时不提取（提取后 TS2322）', () => {
+    expect(extractable(`type S = '待办' | '完成';\nconst cur: S = '待办';`)).toBe(false);
+    expect(extractable(`export type S = '待办' | '完成';\nlet cur: S;\ncur = '待办';`)).toBe(true);
+  });
+
+  it('别名链与断言目标同样沿同文件展开', () => {
+    expect(
+      extractable(`type S = '待办' | '完成';\ntype Alias = S;\nconst v: Alias = '待办';`),
+    ).toBe(false);
+    expect(extractable(`type S = '待办' | '完成';\nconst v = '待办' as S;`)).toBe(false);
+    expect(extractable(`type S = '待办' | '完成';\nclass C { s: S = '待办'; }`)).toBe(false);
+  });
+
+  it('[反向] 非字面量别名 / 泛型别名 / 自指别名不误伤', () => {
+    expect(extractable(`type Loose = string;\nconst v: Loose = '标题';`)).toBe(true);
+    expect(extractable(`type Box<T> = T;\nconst v: Box<string> = '标题';`)).toBe(true);
+    // 自指别名本身不是合法 TS，守卫只需保证不无限递归
+    expect(extractable(`type A = B;\ntype B = A;\nconst v: A = '标题';`)).toBe(true);
+    // 别名定义在别的文件时无从解析，按原口径照常提取
+    expect(extractable(`import type { S } from './types';\nconst v: S = '待办';`)).toBe(true);
+  });
 });
 
 describe('createJsxFragmentFromTemplate — JsxText 里的 NBSP', () => {

@@ -15,6 +15,7 @@ import { getToolVersion as readToolVersion } from '../utils/tool-version';
 import type { ExtractedString } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
 import { CoverageReporter } from './CoverageReporter';
+import type { GeneratePlanCoverage } from './GeneratePlan';
 import { PlanApplier } from './PlanApplier';
 import { IdReuseResolver } from './IdReuseResolver';
 
@@ -77,6 +78,11 @@ export class GenerateProcessor extends BaseProcessor {
    * execute 的运行参数（不在 config 中），故 instance field 是恰当的取舍。
    */
   private lastSkipLLM: boolean = false;
+  /**
+   * dry-run 路径下本轮结算好的覆盖率快照，随 plan 一起落盘。
+   * 与 lastSkipLLM 同款取舍：writePlan 调用栈深，逐层透传只会污染中间方法签名。
+   */
+  private planCoverage?: GeneratePlanCoverage;
 
   async execute(
     targetPath: string,
@@ -222,6 +228,16 @@ export class GenerateProcessor extends BaseProcessor {
         })
       : true;
 
+    // dry-run 的 plan 要携带覆盖率账本（apply 回放面板 + CI 阈值卡点），故必须在写 plan
+    // 之前结算；commit 路径保持「转换落盘后再汇报」的既有顺序。
+    const recordCoverage = (): void =>
+      this.coverage.recordAndRender(files, extractedStrings, reuseResolver);
+    const isDryRun = this.runMode === 'dry-run';
+    if (isDryRun) {
+      recordCoverage();
+      this.planCoverage = this.buildPlanCoverage(reuseResolver.getNewlyRegisteredIdCount());
+    }
+
     if (shouldApply) {
       // 目录路径的 path.normalize 兜底：上游 ExtractedString.filePath 可能因为来源路径不同
       // （例如 ts.createSourceFile 内部 normalizePath 把 \ 替换成 /）出现同一文
@@ -242,7 +258,21 @@ export class GenerateProcessor extends BaseProcessor {
       LoggerUtils.warn('操作已取消');
     }
 
-    this.coverage.recordAndRender(files, extractedStrings, reuseResolver);
+    if (!isDryRun) recordCoverage();
+  }
+
+  /**
+   * 把已结算的覆盖率账本整理成 plan 快照（apply 侧据此回放面板并判定阈值）。
+   * 只在 dry-run 路径调用，且必须在 recordAndRender 之后——之前 report 里还没有 metric。
+   */
+  private buildPlanCoverage(newKeys: number): GeneratePlanCoverage | undefined {
+    const metric = this.getCoverage();
+    if (!metric) return undefined;
+    const manualByCategory: Record<string, number> = {};
+    for (const [category, list] of Object.entries(this.report.groupCoverageManualByCategory())) {
+      manualByCategory[category] = list.length;
+    }
+    return { metric, newKeys, manualByCategory };
   }
 
   /**
@@ -748,6 +778,7 @@ export class GenerateProcessor extends BaseProcessor {
         skipLLM: this.lastSkipLLM,
         // 与 commitToDisk 同源：linter 与 coverage 共享同一份比较运算符跳过项快照。
         skippedComparisons: this.coverage.getSkippedComparisons(),
+        coverage: this.planCoverage,
       });
       return;
     }
