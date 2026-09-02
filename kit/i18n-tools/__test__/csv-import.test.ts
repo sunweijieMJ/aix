@@ -390,6 +390,7 @@ describe('CsvImportProcessor 变更计数', () => {
     const target = path.join(localeDir, 'untranslated.json');
     const before = fs.statSync(target).mtimeMs;
     const warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
 
     await new CsvImportProcessor(makeConfig(), false, {
       input,
@@ -400,6 +401,8 @@ describe('CsvImportProcessor 变更计数', () => {
     expect(fs.statSync(target).mtimeMs).toBe(before);
     expect(JSON.parse(fs.readFileSync(target, 'utf8')).a['en-US']).toBe('Jia');
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('跳过写盘'));
+    // 不写盘就不该打印「目标文件」，否则会被读成两个文件都被改了
+    expect(infoSpy.mock.calls.flat().join('\n')).not.toMatch(/目标文件/);
   });
 
   it('整表原样回流：updated=0 → 不重写文件', async () => {

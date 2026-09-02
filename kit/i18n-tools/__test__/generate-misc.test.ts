@@ -568,6 +568,32 @@ describe('GenerateProcessor：LLM id 数量不匹配时整文件本地回退（�
     // 关键：LLM 返回的错位 id 不得污染任何 key（长度不匹配 → 整文件本地回退）
     expect(Object.keys(zh).some((k) => k.includes('wrongllmid'))).toBe(false);
   });
+
+  it('LLM 未返回任何 id（调用失败 / 连接熄火）→ 不报「数量不匹配」，只提示走本地生成', async () => {
+    const file = path.join(srcDir, 'B.vue');
+    fs.writeFileSync(file, `<template>\n  <div>提交</div>\n</template>\n`, 'utf-8');
+
+    vi.spyOn(LLMClient.prototype, 'generateSemanticIdsForFiles').mockImplementation(
+      async (groups: Record<string, string[]>) => {
+        const out: Record<string, string[]> = {};
+        for (const fp of Object.keys(groups)) out[fp] = []; // 熄火 / 失败：空结果
+        return out;
+      },
+    );
+    const warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+
+    const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+    await proc.execute(file, false);
+
+    const zh = JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf-8')) as Record<
+      string,
+      string
+    >;
+    expect(Object.values(zh)).toContain('提交');
+    expect(warnSpy.mock.calls.flat().join('\n')).not.toMatch(/数量与文本数量不匹配/);
+    expect(infoSpy.mock.calls.flat().join('\n')).toMatch(/未获得 LLM 语义 ID，使用本地ID生成/);
+  });
 });
 
 /**

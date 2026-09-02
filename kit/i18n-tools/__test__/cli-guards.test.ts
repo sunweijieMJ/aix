@@ -183,6 +183,31 @@ describe('CLI 入口守卫（cli.ts main）', () => {
     T,
   );
 
+  it(
+    '--config 传两次 → 采用最后一个并告警，不抛 TypeError',
+    () => {
+      const { code, out } = runCli(
+        [
+          '--config',
+          './no-such.config.mjs',
+          '--config',
+          './i18n.config.mjs',
+          '--mode',
+          'generate',
+          '--path',
+          'no/such.vue',
+        ],
+        cfgDir,
+      );
+      expect(out).toMatch(/--config 传入了 2 次，采用最后一个/);
+      expect(out).not.toMatch(/paths\[1\]|TypeError/);
+      // 采用了存在的那份配置 → 走到路径守卫，而非「无法加载配置文件」
+      expect(out).toMatch(/--path 无效/);
+      expect(code).toBe(1);
+    },
+    T,
+  );
+
   /**
    * 守卫退出走 CliExit 信号 + process.exitCode（P3）：直接 process.exit 会在 stdout 是
    * 管道时截断尚未 flush 的输出，用户看不到刚打印的那条错误。改造后守卫文案与退出码
@@ -334,6 +359,8 @@ describe('apply-plan 覆盖率阈值卡点（e2e）', () => {
 
       expect(apply.out).toMatch(/本次国际化覆盖率/);
       expect(apply.out).toMatch(/国际化覆盖率 50\.0% 低于阈值 90%/);
+      // 文案必须点明改动已落盘，否则 CI 里「失败」会被读成「没改」
+      expect(apply.out).toMatch(/改动已写入/);
       expect(apply.code).toBe(2);
       // 阈值卡点发生在回放之后：源码已按 plan 落盘，退出码只用于 CI 判读
       expect(fs.readFileSync(path.join(proj, 'src', 'A.vue'), 'utf-8')).toMatch(/\bt\('/);

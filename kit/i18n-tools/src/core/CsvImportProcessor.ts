@@ -305,6 +305,9 @@ export class CsvImportProcessor extends FileProcessor {
       LoggerUtils.warn(msg);
       this.report.addWarning(msg.trim());
     }
-    LoggerUtils.info(`  📄 目标文件: ${targetPaths.join(' / ')}`);
+    // 净变更为 0 时不会写盘，打印目标文件只会被读成「这两个文件被改了」。
+    if (updated > 0) {
+      LoggerUtils.info(`  📄 目标文件: ${targetPaths.join(' / ')}`);
+    }
   }
 }

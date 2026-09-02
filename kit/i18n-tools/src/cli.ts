@@ -215,7 +215,8 @@ const enforceCoverageThreshold = (
   if (actualPct < threshold) {
     throw new CliExit(
       2,
-      `❌ 国际化覆盖率 ${actualPct.toFixed(1)}% 低于阈值 ${threshold}%（--coverage-threshold）`,
+      `❌ 国际化覆盖率 ${actualPct.toFixed(1)}% 低于阈值 ${threshold}%（--coverage-threshold）。` +
+        `本轮改动已写入源码与语言文件（阈值判定在落盘之后，便于 review diff）；不接受请用 git 回滚。`,
     );
   }
 };
@@ -518,8 +519,14 @@ ${MODE_LIST.map((mode) => `${MODE_ICONS[mode]} ${mode} - ${MODE_DESCRIPTIONS[mod
 
   const argv = await yargsObj.parse();
 
-  // 加载配置（将相对路径转为绝对路径）
-  const configPath = argv.config ? path.resolve(process.cwd(), argv.config as string) : undefined;
+  // 加载配置（将相对路径转为绝对路径）。yargs 对重复出现的 --config 收成数组（package.json
+  // 里 `i18n` 脚本常已固定一次 --config，用户临时换配置再传一次即触发），按 yargs 惯例取最后一个。
+  const rawConfig = argv.config as string | string[] | undefined;
+  const configArg = Array.isArray(rawConfig) ? rawConfig[rawConfig.length - 1] : rawConfig;
+  if (Array.isArray(rawConfig) && rawConfig.length > 1) {
+    LoggerUtils.warn(`⚠️  --config 传入了 ${rawConfig.length} 次，采用最后一个：${configArg}`);
+  }
+  const configPath = configArg ? path.resolve(process.cwd(), configArg) : undefined;
   const config = await loadConfig(configPath);
   if (!config) {
     LoggerUtils.error(

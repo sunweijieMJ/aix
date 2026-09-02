@@ -350,7 +350,13 @@ export class GenerateProcessor extends BaseProcessor {
         // 错位的有效 id 当语义 ID 写成 key。此处整文件丢弃 LLM 结果、强制本地回退，
         // 兑现下方警告承诺（而非只警告却仍按位错配）。
         const mismatched = !skipLLM && rawIds.length !== strings.length;
-        if (mismatched) {
+        if (mismatched && rawIds.length === 0) {
+          // 空结果表示该文件根本没拿到 LLM 响应（调用失败或连接熄火，原因已由 llm-client
+          // 打过），不是「返回了 0 条」的数量错配，只提示走本地生成。
+          LoggerUtils.info(
+            `[${FileUtils.getRelativePath(filePath)}] 未获得 LLM 语义 ID，使用本地ID生成。`,
+          );
+        } else if (mismatched) {
           LoggerUtils.warn(
             `[${FileUtils.getRelativePath(filePath)}] LLM返回的ID数量与文本数量不匹配 (期望 ${strings.length}, 收到 ${rawIds.length})，将使用本地ID生成进行回退。`,
           );
