@@ -127,7 +127,7 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
     expect(result.some((r) => r.templateContext === 'mixed-content')).toBe(false);
   });
 
-  it('跨行：不合并（多行替换边界复杂，保留为后续工作）', async () => {
+  it('跨行：整组合并为一条 mixed-content，缩进按 condense 压成单空格', async () => {
     const file = writeVue(
       'E.vue',
       `<template><div>
@@ -140,12 +140,34 @@ describe('VueTextExtractor — mixed-content（TEXT + INTERPOLATION 复合句）
     const extractor = new VueTextExtractor();
     const result = await extractor.extractFromFile(file);
 
-    // 跨行场景下，至少 '全部(' 这一段会被按 text-node 单独提取
-    expect(result.some((r) => r.original === '全部(' && r.templateContext === 'text-node')).toBe(
-      true,
+    expect(result).toHaveLength(1);
+    expect(result[0]!.templateContext).toBe('mixed-content');
+    expect(result[0]!.processedMessage).toBe('`全部( ${totalCount} )`');
+    // 不再退回逐节点：'全部(' 单独成 key 会让 ')' 变成硬编码残留
+    expect(result.some((r) => r.original === '全部(')).toBe(false);
+  });
+
+  it('跨行：sourceSlice 覆盖整组原文，line/column 指向 trim 后文本的真实位置', async () => {
+    const file = writeVue(
+      'E2.vue',
+      `<template>
+  <div>
+    全部({{ totalCount }})
+  </div>
+</template>
+<script setup></script>
+`,
     );
-    // 不会出现 mixed-content
-    expect(result.some((r) => r.templateContext === 'mixed-content')).toBe(false);
+
+    const extractor = new VueTextExtractor();
+    const result = await extractor.extractFromFile(file);
+    const mixed = result.find((r) => r.templateContext === 'mixed-content')!;
+
+    expect(mixed.sourceSlice).toBe('全部({{ totalCount }})');
+    expect(mixed.processedMessage).toBe('`全部(${totalCount})`');
+    // 前导空白含换行 → 行号跟到文本所在行（第 3 行），列指到 `全` 而非开标签
+    expect(mixed.line).toBe(3);
+    expect(mixed.column).toBe(5);
   });
 
   it('组中无中文 → 不走 mixed-content（保留原插值路径行为）', async () => {
@@ -1173,7 +1195,7 @@ export const App = () => <div>提示&ensp;文案</div>;
       expect(warnings.join('\n')).toContain('&ensp;');
     });
 
-    it('反向：属性字符串与表达式容器里的字符串是 JS 语义，不解码', async () => {
+    it('属性字符串按 JSX 语义解码，表达式容器里的字符串是 JS 语义、不解码', async () => {
       const source = `import React from 'react';
 export const App = () => (
   <div title="版权&copy;甲">{'版权&copy;乙'}</div>
@@ -1182,8 +1204,10 @@ export const App = () => (
       const { strings } = await run(source);
       const attr = strings.find((s) => s.original.includes('甲'))!;
       const expr = strings.find((s) => s.original.includes('乙'))!;
+      // 直接作为属性值的字符串：JSX 渲染前会解码实体，locale 值取解码后的文本
       expect(attr.original).toBe('版权&copy;甲');
-      expect(attr.processedMessage).toBeUndefined();
+      expect(attr.processedMessage).toBe('版权©甲');
+      // `{'…'}` 里的是 JS 字符串字面量，实体不被解析，原样入 locale
       expect(expr.original).toBe('版权&copy;乙');
       expect(expr.processedMessage).toBeUndefined();
     });

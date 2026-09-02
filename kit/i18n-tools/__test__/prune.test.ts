@@ -307,3 +307,113 @@ describe('PruneProcessor — buckets 迁移窗口守卫', () => {
     ).toEqual({ used: '用' });
   });
 });
+
+/**
+ * 回归（四轮审计 A1）：namespace 归一口径必须与 restore 一致，否则在用 key 被当孤儿删除。
+ *  - i18next 系（library.supportsNamespace）：`ns:key` 是运行时约定，locale 存裸 key，
+ *    与工具是否配 framework.namespace 无关，两侧一律剥首个冒号前缀。
+ *  - 其余库：冒号属于 key 自身，不剥；但源码若写成 `ns:key` 而 locale 存裸 key，
+ *    剥离后能对上的 key 一律保留不删（宁可留噪声，不做不可逆删除）。
+ */
+describe('PruneProcessor — namespace 归一（四轮审计 A1）', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prune-ns-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const run = async (extra: Partial<I18nToolsConfig>): Promise<void> => {
+    await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir, extra), false, undefined, {
+      dryRun: false,
+      ci: true,
+    }).execute();
+  };
+
+  it('vue-i18next：源码 ns:key、locale 存裸 key 且未配 namespace → 不判孤儿', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('app:greeting') }}</div></template>`,
+    );
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify({ greeting: '你好' }));
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ greeting: 'Hi' }));
+
+    await run({ framework: { type: 'vue', library: 'vue-i18next', tImport: '@/locale' } });
+
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf8'))).toEqual({
+      greeting: '你好',
+    });
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'en-US.json'), 'utf8'))).toEqual({
+      greeting: 'Hi',
+    });
+  });
+
+  it('vue-i18next：locale 存 ns:key、源码写裸 key → 同样不判孤儿', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('greeting') }}</div></template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'app:greeting': '你好' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ 'app:greeting': 'Hi' }));
+
+    await run({ framework: { type: 'vue', library: 'vue-i18next', tImport: '@/locale' } });
+
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf8'))).toEqual({
+      'app:greeting': '你好',
+    });
+  });
+
+  it('vue-i18n（不支持 namespace）：源码 ns:key、locale 裸 key → 保留并告警，不删', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('app:greeting') }}{{ $t('kept') }}</div></template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ greeting: '你好', kept: '保留', orphan: '没人用' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ greeting: 'Hi' }));
+
+    await run({});
+
+    // greeting 被 ns 闸保护；真正无人引用的 orphan 仍被删除
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf8'))).toEqual({
+      greeting: '你好',
+      kept: '保留',
+    });
+  });
+
+  it('vue-i18n：冒号是 key 自身一部分时照常按字面对账（无引用即孤儿）', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('a:b') }}</div></template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'a:b': '冒号 key', 'x:y': '没人用' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ 'a:b': 'colon key' }));
+
+    await run({});
+
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'zh-CN.json'), 'utf8'))).toEqual({
+      'a:b': '冒号 key',
+    });
+  });
+});

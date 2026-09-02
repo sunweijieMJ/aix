@@ -219,8 +219,8 @@ export function getVariableNameFromExpression(expressionText: string): string {
   for (let i = parts.length - 1; i >= 0; i--) {
     let part = parts[i] ?? '';
     part = part.replace(/^['"`]|['"`]$/g, '');
-    // 中文区间拼 CHINESE_CHAR_RANGE，与 CHINESE_CHAR_RE / containsChinese 同源：
-    // 曾在此写死上界 U+9FA5，把 U+9FA6-U+9FFF 扩充汉字当非中文剔除，判定口径与提取端不一致。
+    // 中文区间必须拼 CHINESE_CHAR_RANGE，与 CHINESE_CHAR_RE / containsChinese 同源：
+    // 就地写死上界（如 U+9FA5）会把 U+9FA6-U+9FFF 扩充汉字当非中文剔除，与提取端口径不一致。
     part = part.replace(NON_IDENT_OR_CHINESE_RE, '');
 
     if (part && !NON_SEMANTIC_SUFFIXES.has(part)) {
@@ -301,9 +301,26 @@ export function createMessageWithOptions(
 }
 
 /**
- * 把含单花括号占位符的文案切分为字面段与占位符名两个列表。
+ * 占位符 token 的共享形态：`{name}` / `{ name }` / `{{name}}` / `{{- name}}`，
+ * 名字取组 1（双花括号）或组 2（单花括号），两侧空白与 i18next 非转义前缀 `-` 都归一掉。
+ *
+ * parseTemplatePlaceholders（restore 切分）与 finalizeLocaleMessage（写盘定稿）共用同一
+ * 形态，避免同一条文案在两端得出不同的占位符结论（restore 认得的名字写盘时被当字面量转义、
+ * 或反过来）。
+ *
+ * ⚠️ 全库仍有第三份口径：placeholder-utils.extractPlaceholderNames 用「花括号深度」扫描，
+ * 额外支持 ICU select/plural 的嵌套子消息，本正则不支持（`[^{}]` 遇嵌套即失配）。
+ * 三者应收口成单一 tokenizer；在此之前，改动任一处都要同步核对另两处的结论。
+ */
+const PLACEHOLDER_TOKEN_SOURCE = '\\{\\{\\s*-?\\s*([^{}]+?)\\s*\\}\\}|\\{\\s*([^{}]+?)\\s*\\}';
+
+/**
+ * 把含占位符的文案切分为字面段与占位符名两个列表。
  * `共 {a} 项 {b}` → `{ literalParts: ['共 ', ' 项 ', ''], placeholderNames: ['a', 'b'] }`。
  * 不变式：`literalParts.length === placeholderNames.length + 1`（首尾必有字面段，可为空串）。
+ *
+ * 占位符名按 PLACEHOLDER_TOKEN_SOURCE 归一：`{ name }` 与 `{{- name}}` 都取到 `name`，
+ * 否则名字带着空白/前缀去 values 里查表必然落空，restore 退化为「保留原调用」。
  *
  * createStringOrTemplateNode（模板字面量）与 createJsxFragmentFromTemplate（JSX 片段）
  * 共用此切分，确保两条 restore 路径占位符解析口径一致。
@@ -314,12 +331,12 @@ export function parseTemplatePlaceholders(messageText: string): {
 } {
   const literalParts: string[] = [];
   const placeholderNames: string[] = [];
-  const regex = /\{([^}]+)\}/g;
+  const regex = new RegExp(PLACEHOLDER_TOKEN_SOURCE, 'g');
   let lastIndex = 0;
   let match;
   while ((match = regex.exec(messageText)) !== null) {
     literalParts.push(messageText.substring(lastIndex, match.index));
-    placeholderNames.push(match[1]!);
+    placeholderNames.push((match[1] ?? match[2])!);
     lastIndex = match.index + match[0].length;
   }
   literalParts.push(messageText.substring(lastIndex));
@@ -339,6 +356,10 @@ const PLACEHOLDER_NAME = `[${PLACEHOLDER_NAME_CHARS}]+`;
  * 双花括号 `{{name}}` → 单花括号 `{name}`。
  * 用于 i18next 系库 restore 时把 locale 文本归一回内部规范形式，
  * 复用既有的单花括号还原逻辑（React createStringOrTemplateNode / Vue 占位符正则）。
+ *
+ * 口径比 PLACEHOLDER_TOKEN_SOURCE 窄：只认「名字紧贴花括号、无 `-` 前缀」的形态，
+ * `{{ name }}` / `{{- name}}` 不在此转换，由下游 parseTemplatePlaceholders 自行归一。
+ * 三套占位符口径的收口计划见 PLACEHOLDER_TOKEN_SOURCE 注释。
  */
 export function toSingleBracePlaceholders(message: string): string {
   return message.replace(new RegExp(`\\{\\{\\s*(${PLACEHOLDER_NAME})\\s*\\}\\}`, 'g'), '{$1}');
@@ -364,7 +385,7 @@ export function normalizeRestoreMessage(
  * restore 读回 locale 时的值归一：i18next 系（双花括号）库先把占位符转单花括号，
  * 再 unescape 写盘时转义的字面量花括号。与写盘的 finalizeLocaleMessage 对称。
  *
- * React/Vue 的 RestoreTransformer 共用，消除两端逐字节重复的私有 normalizeLocaleMap。
+ * React/Vue 的 RestoreTransformer 必须共用本实现，两端各写一份归一必然漂移。
  * library 仅需暴露 usesDoubleBracePlaceholders / unescapeLiteralText（BaseI18nLibrary 子集），
  * 用结构化入参解耦，避免 utils 反向依赖 strategies 层。
  */
@@ -407,13 +428,16 @@ export function finalizeLocaleMessage(
   const names = new Set<string>(placeholderNames);
   let out = '';
   let cursor = 0;
-  const tokenRe = /\{([^{}]*)\}/g;
+  // token 形态与 parseTemplatePlaceholders 共用：`{ name }` / `{{- name}}` 归一到 name 后
+  // 再比对 names，否则同一条文案 restore 认得、写盘时却被当字面量花括号转义（往返丢占位符）。
+  const tokenRe = new RegExp(PLACEHOLDER_TOKEN_SOURCE, 'g');
   let m: RegExpExecArray | null;
   while ((m = tokenRe.exec(message)) !== null) {
+    const name = (m[1] ?? m[2])!;
     // 非真占位符：留在字面量段里，后续随该段一并转义
-    if (!names.has(m[1]!)) continue;
+    if (!names.has(name)) continue;
     out += library.escapeLiteralText(message.slice(cursor, m.index));
-    out += library.usesDoubleBracePlaceholders ? `{{${m[1]}}}` : `{${m[1]}}`;
+    out += library.usesDoubleBracePlaceholders ? `{{${name}}}` : `{${name}}`;
     cursor = m.index + m[0]!.length;
   }
   out += library.escapeLiteralText(message.slice(cursor));

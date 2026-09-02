@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { createRequire } from 'module';
 import type { ResolvedConfig } from '../config';
 import type { FrameworkAdapter } from '../adapters';
 import { formatWithPrettier } from '../utils/command-utils';
@@ -12,6 +11,7 @@ import { normalizePosix } from '../utils/path-matcher';
 import { InteractiveUtils } from '../utils/interactive-utils';
 import { LoggerUtils } from '../utils/logger';
 import { BucketResolver } from '../utils/bucket-resolver';
+import { getToolVersion as readToolVersion } from '../utils/tool-version';
 import type { ExtractedString } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
 import { CoverageReporter } from './CoverageReporter';
@@ -266,7 +266,7 @@ export class GenerateProcessor extends BaseProcessor {
    *  - 模板串的 ${var} 占位符 → {var}（按 i18n 库做方言适配）、字面量插值内联；
    *  - 普通字符串去除两端引号。
    *
-   * Why（关键）：复用查找（resolveSemanticId）与 locale 落盘（buildLocaleDelta）必须用同一
+   * Why（关键）：复用查找（resolveSemanticId）与 locale 落盘（PlanApplier 的 localeDelta）必须用同一
    * canonical 形态。否则模板/占位符串两边形态不一致——反查表（IdReuseResolver.loadFromLocaleFile
    * 用 {var} 形态建表）永远 miss，跨运行重复生成 _N 后缀 key：旧 key（带译文）成孤儿、源码改指向
    * 无译文的新 key。两处统一走本方法，杜绝形态漂移。
@@ -351,7 +351,7 @@ export class GenerateProcessor extends BaseProcessor {
     textToIdMap: Map<string, string>,
     reuseResolver: IdReuseResolver,
   ): string {
-    // 复用查找键须用「最终 locale 形态」（{var} 占位符），与 buildLocaleDelta 落盘值及
+    // 复用查找键须用「最终 locale 形态」（{var} 占位符），与 PlanApplier 落盘的 localeDelta 值及
     // IdReuseResolver 反查表保持一致；否则占位符串跨运行重复生成 _N 后缀 key。
     const messageForId = this.toLocaleMessage(item);
     const normalized = IdReuseResolver.normalizeKey(messageForId);
@@ -363,7 +363,7 @@ export class GenerateProcessor extends BaseProcessor {
     // 原文里的空格混淆造成碰撞。
     const lookupKey = this.config.keys.reuse.acrossDirectories
       ? normalized
-      : `${normalized} ${reuseResolver.getIdGenerator().getDirectoryPrefix(item.filePath) ?? ''}`;
+      : `${normalized} ${reuseResolver.getIdGenerator().getDirectoryPrefix(item.filePath)}`;
 
     // 优先级 1：本批次内同原文 + 同目录前缀已生成 → 直接复用
     const cached = textToIdMap.get(lookupKey);
@@ -757,31 +757,11 @@ export class GenerateProcessor extends BaseProcessor {
   }
 
   /**
-   * 读取 @kit/i18n-tools 包的 version 字段，写入 plan 元数据。
-   *
-   * 用 createRequire(import.meta.url) 是因为本包打包为 ESM（tsdown 生成 dist/index.js），
-   * 直接 import package.json 在 strict ESM 下需要 import assertion，跨 node 版本
-   * 支持参差；createRequire 是更稳的 ESM 兼容写法。
-   *
-   * 读失败时返回 undefined（而非抛错）：toolVersion 是辅助字段，不应阻断主流程。
+   * 写入 plan 元数据的工具版本。实现收口在 utils/tool-version，本静态方法只是 plan
+   * 写入侧的入口（同时是回归测试钉住「源码直跑也能读到版本」的调用点）。
    */
   private static getToolVersion(): string | undefined {
-    // 必须真用 createRequire：本包 "type":"module"，裸 require 在源码直跑（tsx / vitest）
-    // 下是 ReferenceError（此前只在 dist 里靠打包器把 package.json 内联才碰巧工作，
-    // toolVersion 在源码运行时恒为 undefined）。
-    // 多候选相对路径：源码运行时本文件在 src/core/（../../ 到包根），构建产物在 dist/
-    // （../ 到包根）。按包名校验命中，避免误读消费项目的 package.json。
-    // 注意：包若改名需同步下方字面量，否则本方法静默退化为恒 undefined（有回归测试钉住）。
-    const requireFromHere = createRequire(import.meta.url);
-    for (const rel of ['../../package.json', '../package.json']) {
-      try {
-        const pkg = requireFromHere(rel) as { name?: string; version?: string };
-        if (pkg.name === '@kit/i18n-tools' && pkg.version) return pkg.version;
-      } catch {
-        // 尝试下一个候选路径
-      }
-    }
-    return undefined;
+    return readToolVersion();
   }
 
   /**

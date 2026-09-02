@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import {
   collectUsedKeys,
+  createKeyNormalizer,
   scanKeyReferencesInContent,
   stripCommentsForScan,
 } from '../src/utils/source-key-scanner';
@@ -291,5 +292,72 @@ describe('collectUsedKeys — JSX 裸 URL 文件', () => {
     const used = collectUsedKeys(config, createFrameworkAdapter(config));
     expect(used.has('page.detail.link')).toBe(true);
     expect(used.has('dead.key')).toBe(false);
+  });
+});
+
+/**
+ * 回归（四轮审计 A1）：createKeyNormalizer 是 doctor/prune 与 restore 的同一套 namespace
+ * 口径。i18next 系（library.supportsNamespace）一律剥首个冒号前缀（与
+ * VueRestoreTransformer.lookupText 一致）；其余库只剥恰为 framework.namespace 的前缀。
+ */
+describe('createKeyNormalizer — namespace 归一口径', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'scanner-ns-'));
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const normalizerFor = (framework: I18nToolsConfig['framework']): ((key: string) => string) => {
+    const config = resolveConfig({
+      root,
+      framework,
+      locales: { source: 'zh', targets: ['en'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+    return createKeyNormalizer(config, createFrameworkAdapter(config));
+  };
+
+  it('vue-i18next：未配 namespace 也剥首个冒号前缀', () => {
+    const normalize = normalizerFor({ type: 'vue', library: 'vue-i18next', tImport: '@/i18n' });
+    expect(normalize('app:greeting')).toBe('greeting');
+    expect(normalize('greeting')).toBe('greeting');
+    // 只剥首个冒号，其余原样保留
+    expect(normalize('app:a:b')).toBe('a:b');
+  });
+
+  it('vue-i18n：不剥冒号；配了 namespace 时只剥恰为该前缀的部分', () => {
+    const plain = normalizerFor({ type: 'vue', library: 'vue-i18n', tImport: '@/i18n' });
+    expect(plain('app:greeting')).toBe('app:greeting');
+
+    const withNs = normalizerFor({
+      type: 'vue',
+      library: 'vue-i18n',
+      tImport: '@/i18n',
+      namespace: 'app',
+    });
+    expect(withNs('app:greeting')).toBe('greeting');
+    expect(withNs('other:greeting')).toBe('other:greeting');
+  });
+
+  it('collectUsedKeys 按同一口径归一（vue-i18next 下源码 ns:key → 裸 key）', () => {
+    fs.writeFileSync(
+      path.join(root, 'src', 'A.vue'),
+      `<template><div>{{ $t('app:greeting') }}</div></template>`,
+    );
+    const config = resolveConfig({
+      root,
+      framework: { type: 'vue', library: 'vue-i18next', tImport: '@/i18n' },
+      locales: { source: 'zh', targets: ['en'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+    const used = collectUsedKeys(config, createFrameworkAdapter(config));
+    expect(used.has('greeting')).toBe(true);
+    expect(used.has('app:greeting')).toBe(false);
   });
 });

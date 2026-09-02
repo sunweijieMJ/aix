@@ -4,7 +4,6 @@ import type {
   ITransformer,
   IRestoreTransformer,
   IComponentInjector,
-  IImportManager,
 } from './FrameworkAdapter';
 import {
   VueTextExtractor,
@@ -72,10 +71,6 @@ export class VueAdapter extends FrameworkAdapter {
 
   getComponentInjector(): IComponentInjector {
     return this.componentInjector;
-  }
-
-  getImportManager(): IImportManager {
-    return this.importManager;
   }
 
   getLibrary() {

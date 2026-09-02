@@ -1,6 +1,8 @@
 import type { IImportManager } from '../../adapters/FrameworkAdapter';
 import ts from 'typescript';
+import { parseSourceFile } from '../../utils/ast-core';
 import {
+  appendImportLine,
   findLastImportLineIndex,
   mergeNamedImport,
   removeNamedImports,
@@ -13,7 +15,8 @@ import type { ReactI18nLibrary } from './libraries';
  * 管理i18n转换中所需的import语句和相关代码
  */
 export class ReactImportManager implements IImportManager {
-  private tImport: string;
+  /** 全局函数 `t` 的导入路径。注入端据此把该路径的 t 视为 i18n 来源而非冲突绑定。 */
+  readonly tImport: string;
   private library: ReactI18nLibrary;
 
   constructor(tImport: string = '@/plugins/locale', library: ReactI18nLibrary) {
@@ -78,6 +81,51 @@ export class ReactImportManager implements IImportManager {
   }
 
   /**
+   * 以 `import type { … } from '<packageName>'` 单独一行注入类型导入。
+   *
+   * 不并进 mergeNamedImport 的值导入：类型名作为值导入在 verbatimModuleSyntax 下报 TS1484。
+   * 已从该包以任意形态（值 / type / 内联 type）导入过的名字不再追加，避免 TS2300 重复标识符，
+   * 也让重复注入幂等。
+   */
+  addI18nTypeImports(code: string, imports: string[]): string {
+    if (imports.length === 0) return code;
+    const imported = this.importedNamesFrom(code, this.library.packageName);
+    const missing = imports.filter((name) => !imported.has(name));
+    if (missing.length === 0) return code;
+    return appendImportLine(
+      code,
+      `import type { ${missing.join(', ')} } from '${this.library.packageName}';`,
+    );
+  }
+
+  /** 代码里从 moduleName 导入的全部本地名（默认 / 命名空间 / 具名，含 type 形态）。 */
+  private importedNamesFrom(code: string, moduleName: string): Set<string> {
+    const names = new Set<string>();
+    // 文件名只影响 ScriptKind，import 声明的解析与之无关；用 .tsx 覆盖 JSX 源码。
+    const sourceFile = parseSourceFile(code, 'import-scan.tsx');
+    for (const statement of sourceFile.statements) {
+      if (!ts.isImportDeclaration(statement)) continue;
+      if (
+        !ts.isStringLiteral(statement.moduleSpecifier) ||
+        statement.moduleSpecifier.text !== moduleName
+      ) {
+        continue;
+      }
+      const clause = statement.importClause;
+      if (!clause) continue;
+      if (clause.name) names.add(clause.name.text);
+      const named = clause.namedBindings;
+      if (!named) continue;
+      if (ts.isNamespaceImport(named)) {
+        names.add(named.name.text);
+      } else {
+        for (const element of named.elements) names.add(element.name.text);
+      }
+    }
+    return names;
+  }
+
+  /**
    * 注入收尾：删除被 useTranslation 注入遮蔽后变成未使用的 tImport `t` 导入。
    *
    * 场景：组件原本 `import { t } from '@/plugins/locale'` 并在组件内用 t(...)；本工具
@@ -136,9 +184,14 @@ export class ReactImportManager implements IImportManager {
     // 命名空间导入（import * as X）不含工具注入的具名项，整体保留
     if (!named || !ts.isNamedImports(named)) return node;
 
-    const injectable = new Set(
-      library.getImportSpecifiers({ hasJsxComponent: true, hasHook: true, hasHOC: true }),
-    );
+    const specifiers = library.getImportSpecifiers({
+      hasJsxComponent: true,
+      hasHook: true,
+      hasHOC: true,
+    });
+    // 值与类型两组都要摘：类型名以 `import type` 单独一行注入（见 addI18nTypeImports），
+    // 整条只剩工具注入的类型名时下方 remaining.length === 0 分支会把该行整体移除。
+    const injectable = new Set([...specifiers.values, ...specifiers.types]);
     // 仅删除「未改名且命中注入集」的 specifier：改名导入（`import { Trans as T }`）一定是
     // 用户代码（工具只注入裸名），故 propertyName 存在时一律保留。
     const remaining = named.elements.filter(

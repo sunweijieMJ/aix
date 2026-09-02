@@ -2,7 +2,7 @@ import fs from 'fs';
 import ts from 'typescript';
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { ResolvedConfig } from '../config';
-import type { FrameworkAdapter } from '../adapters';
+import type { FrameworkAdapter } from '../adapters/FrameworkAdapter';
 import { parseSourceFile } from './ast-core';
 import { stripComments } from './import-surgery';
 import { decodeJsStringEscapes } from './string-escape';
@@ -243,14 +243,42 @@ export function scanKeyReferencesInContent(content: string): string[] {
 }
 
 /**
+ * 构造 key 归一函数：把源码里的引用与 locale 里的键名折算到同一比较口径。
+ *
+ * 两条剥离规则，按 i18n 库对 `ns:key` 的运行时语义分：
+ *  - 库把 `ns:key` 当运行时约定（i18next 系，library.supportsNamespace）：locale 按
+ *    namespace 分文件、存裸 key，故与工具是否配了 framework.namespace 无关，一律剥掉首个
+ *    冒号之前的部分——与 restore 的查表口径（VueRestoreTransformer.lookupText）同源。
+ *  - 其余库：冒号是 key 自身的一部分，只剥恰为已配 `framework.namespace` 的前缀。
+ *
+ * 对账双方都过一遍本函数：源码写 `app:greeting`、locale 存 `greeting`（或反过来）时
+ * 两侧都折算成 `greeting`，不会互判为 missing-key / 孤儿——后者会把在用 key 从所有
+ * locale 永久删除。
+ */
+export function createKeyNormalizer(
+  config: ResolvedConfig,
+  adapter: FrameworkAdapter,
+): (key: string) => string {
+  if (adapter.getLibrary().supportsNamespace) {
+    return (key) => {
+      const colonIndex = key.indexOf(':');
+      return colonIndex === -1 ? key : key.slice(colonIndex + 1);
+    };
+  }
+  const nsPrefix = config.framework.namespace ? `${config.framework.namespace}:` : '';
+  if (!nsPrefix) return (key) => key;
+  return (key) => (key.startsWith(nsPrefix) ? key.slice(nsPrefix.length) : key);
+}
+
+/**
  * 扫描源码目录，抽出所有 i18n key 引用：函数调用 `t()/$t()`（含三元等首参表达式）、
  * vue 组件/指令 `<i18n-t keypath>`/`v-t`、react 组件/调用 `<Trans i18nKey>`/
- * `<FormattedMessage id>`/`formatMessage({id})`。已剥离 namespace 前缀（'ns:key' →
- * 'key'）、剔除注释中的引用。doctor 对账与 prune 孤儿清理共用此口径。
+ * `<FormattedMessage id>`/`formatMessage({id})`。已按 createKeyNormalizer 归一 namespace、
+ * 剔除注释中的引用。doctor 对账与 prune 孤儿清理共用此口径，locale 侧比较前需过同一归一。
  */
 export function collectUsedKeys(config: ResolvedConfig, adapter: FrameworkAdapter): Set<string> {
   const used = new Set<string>();
-  const nsPrefix = config.framework.namespace ? `${config.framework.namespace}:` : '';
+  const normalize = createKeyNormalizer(config, adapter);
   const files = FileUtils.getFrameworkFiles(
     config.io.sourceDir,
     adapter.getSupportedExtensions(),
@@ -259,7 +287,7 @@ export function collectUsedKeys(config: ResolvedConfig, adapter: FrameworkAdapte
     config.root,
   );
   const addKey = (raw: string): void => {
-    used.add(nsPrefix && raw.startsWith(nsPrefix) ? raw.slice(nsPrefix.length) : raw);
+    used.add(normalize(raw));
   };
   for (const filePath of files) {
     try {

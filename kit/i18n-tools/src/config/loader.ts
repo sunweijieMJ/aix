@@ -30,6 +30,9 @@ import type {
 } from './types';
 import { VUE_I18N_LIBRARIES } from '../strategies/vue/libraries/types';
 import { REACT_I18N_LIBRARIES } from '../strategies/react/libraries/types';
+// 直接 import 具体文件而非 utils barrel：barrel 会把 CLI 才需要的模块拖进配置加载期。
+// utils/logger 只依赖 chalk，不会与 config 形成回环。
+import { LoggerUtils } from '../utils/logger';
 
 // =============================================================================
 // 配置文件加载与解析
@@ -207,11 +210,21 @@ function resolveNestedPrefixStrategy(
     }
     const indexFile = p.indexFile ?? DEFAULT_KEYS.prefix.indexFile;
     validateEnum(indexFile, ['as-is', 'collapse-to-parent'], 'indexFile', { context });
+    // 数值校验先于 Math.max：非数值（如 '2'）经 Math.max 得 NaN，slice(NaN) 静默按 0 处理，
+    // 前缀段数与配置意图不符且无任何报错。
+    const skip = p.skip ?? DEFAULT_KEYS.prefix.skip;
+    const take = p.take ?? DEFAULT_KEYS.prefix.take;
+    assertValidNumericConfig(skip, `${context}.skip`, '整数（负值按 0 处理）', (value) =>
+      Number.isInteger(value),
+    );
+    assertValidNumericConfig(take, `${context}.take`, '整数（负值按 0 处理）', (value) =>
+      Number.isInteger(value),
+    );
     return {
       strategy: 'path',
       anchor: p.anchor ?? DEFAULT_KEYS.prefix.anchor,
-      skip: Math.max(0, p.skip ?? DEFAULT_KEYS.prefix.skip),
-      take: Math.max(0, p.take ?? DEFAULT_KEYS.prefix.take),
+      skip: Math.max(0, skip),
+      take: Math.max(0, take),
       includeFile: p.includeFile ?? DEFAULT_KEYS.prefix.includeFile,
       fileNameCase,
       preserveHyphens: p.preserveHyphens ?? DEFAULT_KEYS.prefix.preserveHyphens,
@@ -262,6 +275,11 @@ function resolvePrefixStrategy(prefix: PrefixStrategyConfig | undefined): Resolv
           `keys.prefix.rules[${i}].match 必须是 string | string[] | RegExp | function，实际 ${typeof rule.match}`,
         );
       }
+      // use 缺失即报错（与 match 缺失同款）：静默补 path 默认策略会让命中该规则的文件
+      // 拿到与预期完全不同的 key 前缀，且全程无诊断。
+      if (rule.use === undefined || rule.use === null) {
+        throw new Error(`keys.prefix.rules[${i}].use 缺失`);
+      }
       return {
         match: rule.match,
         use: resolveNestedPrefixStrategy(rule.use, `keys.prefix.rules[${i}].use`),
@@ -280,14 +298,7 @@ function resolvePrefixStrategy(prefix: PrefixStrategyConfig | undefined): Resolv
 }
 
 /**
- * 解析 LLM 配置：把 shared 与 task 合并、补默认值。
- *
- * 合并优先级：任务级字段 > shared > 全局默认值。
- *
- * apiKey 缺失时不再在此抛错，而是返回一个 `apiKey: ''` 的占位 task：
- *   - 不调 LLM 的命令（restore / pick / merge / export / doctor 等）可以正常运行；
- *   - 真正调 LLM 的命令在 `LLMClient.chatCompletion` 入口做 lazy 校验，给出精确错误。
- * 这样避免「用户只想跑 doctor 也被强制配置 apiKey」的体验问题。
+ * 数值型配置项的统一校验：非数值 / NaN / Infinity / 不满足 predicate 时抛出带字段路径的错误。
  */
 function assertValidNumericConfig(
   value: unknown,
@@ -300,6 +311,16 @@ function assertValidNumericConfig(
   }
 }
 
+/**
+ * 解析 LLM 配置：把 shared 与 task 合并、补默认值。
+ *
+ * 合并优先级：任务级字段 > shared > 全局默认值。
+ *
+ * apiKey 缺失时不再在此抛错，而是返回一个 `apiKey: ''` 的占位 task：
+ *   - 不调 LLM 的命令（restore / pick / merge / export / doctor 等）可以正常运行；
+ *   - 真正调 LLM 的命令在 `LLMClient.chatCompletion` 入口做 lazy 校验，给出精确错误。
+ * 这样避免「用户只想跑 doctor 也被强制配置 apiKey」的体验问题。
+ */
 function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
   const shared = llm?.shared ?? {};
 
@@ -307,7 +328,13 @@ function resolveLLM(llm: LLMConfig | undefined): ResolvedConfig['llm'] {
     task: LLMTaskConfig | undefined,
     context: 'llm.idGeneration' | 'llm.translation',
   ): ResolvedLLMTaskConfig => {
-    const merged: LLMTaskConfig = { ...shared, ...task };
+    // 过滤 task 里值为 undefined 的字段再展开：对象字面量里显式写出的 `model: undefined`
+    // （常见于 `model: process.env.X`）会盖掉 shared 的同名值，让任务静默回落到内置默认，
+    // 与「任务级字段 > shared」的合并语义相反。
+    const taskOverrides = Object.fromEntries(
+      Object.entries(task ?? {}).filter(([, value]) => value !== undefined),
+    ) as LLMTaskConfig;
+    const merged: LLMTaskConfig = { ...shared, ...taskOverrides };
     if (!merged.model) {
       merged.model = DEFAULT_LLM_MODEL;
     }
@@ -461,7 +488,9 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
   }
 
   return {
-    rules: buckets.rules,
+    // 防御性拷贝：resolved.buckets.rules 是长生命周期快照，直接持有用户数组会让
+    // 配置对象后续被改动时悄悄改变归桶行为（与本文件其它 4 处拷贝同款）。
+    rules: [...buckets.rules],
     defaultBucket,
     emitManifest: buckets.emitManifest ?? DEFAULT_BUCKETS.emitManifest,
     layout,
@@ -483,18 +512,21 @@ const FORCED_SAFE_EXCLUDES = ['node_modules', '.git'];
  * 解析 io.exclude：
  *  - 未配置 → 默认排除集（含测试/故事/构建产物）；
  *  - 已配置 → 用户值整体替换默认，但强制并入 FORCED_SAFE_EXCLUDES；
- *  - 对含 '/' 的 literal（非 glob）项给出告警：FileUtils.getFrameworkFiles 的 isExcluded
- *    仅按 basename 单段匹配，`src/legacy` 这类路径式 literal 永远命中不了、会被静默忽略。
+ *  - 对「目录形态的路径式 literal」给出告警：含 '/' 的项在 FileUtils.getFrameworkFiles 里
+ *    按相对路径整体匹配，`src/legacy/old.vue` 这类具体文件能命中，但 `src/legacy` 只等于
+ *    「有个文件正好叫这个名字」，目录下的内容一个都排不掉。
  */
 function resolveExclude(userExclude: string[] | undefined): string[] {
   if (!userExclude) return [...DEFAULT_IO.exclude];
   for (const e of userExclude) {
-    if (typeof e === 'string' && !e.includes('*') && !e.includes('?') && e.includes('/')) {
-      console.warn(
-        `⚠️  配置警告：io.exclude 项 '${e}' 含 '/' 但不是 glob，排除按文件名单段匹配，永远命中不了、已被忽略。\n` +
-          `   如需排除目录请改用 glob（如 '**/${path.basename(e)}/**'）或仅写目录名（'${path.basename(e)}'）。`,
-      );
-    }
+    if (typeof e !== 'string' || e.includes('*') || e.includes('?') || !e.includes('/')) continue;
+    // 无扩展名即按目录形态处理（带扩展名的路径式 literal 作为具体文件路径正常生效）。
+    if (path.extname(e) !== '') continue;
+    const dir = e.replace(/\/+$/, '');
+    LoggerUtils.warn(
+      `配置警告：io.exclude 项 '${e}' 是目录路径但不是 glob，只会匹配同名文件本身，目录下的文件不会被排除。\n` +
+        `   如需排除整个目录请改用 glob（如 '${dir}/**'）或仅写目录名（'${path.basename(dir)}'）。`,
+    );
   }
   return [...new Set([...FORCED_SAFE_EXCLUDES, ...userExclude])];
 }
@@ -592,6 +624,14 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   const userMappings = userFallback?.mappings ?? {};
   const mappings = extend ? { ...BUILTIN_CN_MAPPINGS, ...userMappings } : { ...userMappings };
 
+  // 数组类型守卫（同 locales.targets / io.include）：字符串误写会被 [...str] 逐字符展开成
+  // 单字符前缀列表，把几乎所有 key 都当成「可能被动态引用」而跳过 prune/doctor 的孤儿判定。
+  if (
+    userConfig.keys?.dynamicKeyAllowlist !== undefined &&
+    !Array.isArray(userConfig.keys.dynamicKeyAllowlist)
+  ) {
+    throw new Error('keys.dynamicKeyAllowlist 必须是数组（字符串前缀或正则，如 ["dynamic."]）。');
+  }
   const keys: ResolvedConfig['keys'] = {
     separator: userConfig.keys?.separator ?? DEFAULT_KEYS.separator,
     prefix: resolvePrefixStrategy(userConfig.keys?.prefix),
@@ -603,9 +643,11 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
         ? {
             // 阈值 < 2 等同禁用：单点使用本身不构成"跨模块复用"
             threshold: Math.max(0, userConfig.keys.reuse.promoteToCommon.threshold ?? 0),
-            namespace: userConfig.keys.reuse.promoteToCommon.namespace ?? 'common',
+            namespace:
+              userConfig.keys.reuse.promoteToCommon.namespace ??
+              DEFAULT_KEYS.reuse.promoteToCommon.namespace,
           }
-        : { threshold: 0, namespace: 'common' },
+        : { ...DEFAULT_KEYS.reuse.promoteToCommon },
     },
     // 防御性拷贝：同 io.include/exclude，避免与 DEFAULT_KEYS 共享数组引用。
     dynamicKeyAllowlist: [
@@ -613,6 +655,16 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     ],
     skip: userConfig.keys?.skip,
   };
+
+  // ---- extract ----
+  // 数组类型守卫（同 keys.dynamicKeyAllowlist）：单个正则误写成裸值时 [...value] 会抛
+  // 「不可迭代」的无字段名错误，字符串误写则被逐字符展开成一串无意义的过滤项。
+  if (
+    userConfig.extract?.filterPatterns !== undefined &&
+    !Array.isArray(userConfig.extract.filterPatterns)
+  ) {
+    throw new Error('extract.filterPatterns 必须是正则数组（如 [/^\\d+$/]）。');
+  }
 
   // ---- ci ----
   const coverageThreshold = userConfig.ci?.coverageThreshold;
@@ -635,7 +687,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     locales: {
       source: localesSource,
       targets: localesTargets,
-      names: userConfig.locales?.names ?? {},
+      names: userConfig.locales?.names ?? { ...DEFAULT_LOCALES.names },
     },
     io,
     keys,
@@ -700,8 +752,8 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
         resolved.keys.prefix.strategy === 'fixed'
           ? `'fixed'（value='${resolved.keys.prefix.value}'）`
           : `'${resolved.keys.prefix.strategy}'`;
-      console.warn(
-        `⚠️  配置警告：keys.prefix.strategy=${desc} 与 buckets.rules 的 glob match 规则同用时，\n` +
+      LoggerUtils.warn(
+        `配置警告：keys.prefix.strategy=${desc} 与 buckets.rules 的 glob match 规则同用时，\n` +
           `   桶归属反推依赖单一 anchor 的目录式 key 结构，非 path 策略会导致路径不匹配。\n` +
           `   建议把 buckets 规则改用 matchKey（基于 key 字面匹配）或 match 传函数形式精确归类。`,
       );

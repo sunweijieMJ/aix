@@ -56,7 +56,8 @@ export default defineConfig({
   io: {
     sourceDir: 'src',
     localesDir: 'src/i18n',
-    exportDir: 'public/locale',  // 可选，未配置即禁用 export
+    exportDir: 'public/locale',  // 可选；未配置时 automatic 跳过 export 步骤，
+                                 // 单独跑 export 需配置它或传 --output
     customDir: undefined,        // 可选定制目录
     format: 'nested',            // JSON 落盘格式
     prettify: true,              // 是否过 Prettier
@@ -119,6 +120,7 @@ i18n-tools [选项]
 | `--interactive` | `-i` | 交互模式 | 未指定 mode 且未传 `--ci` 时开启 |
 | `--skip-llm` | - | 不调用 LLM：generate 改用本地 ID 生成；automatic 一并跳过 translate 步骤（translate 模式不受影响） | `false` |
 | `--overwrite` | - | restore：就地改写源文件（默认写副本到 `<root>/restored/`） | `false` |
+| `--output` | - | 输出位置，按模式有两种用途：`export` 覆盖 `io.exportDir`；`csv-export` 指定 CSV 输出路径/目录、`csv-import` 指定输入 CSV 文件 | export：`io.exportDir`；csv：`<localesDir>/i18n.csv` |
 | `--help` | `-h` | 显示帮助 | - |
 
 #### CI / Review 选项
@@ -139,7 +141,8 @@ i18n-tools [选项]
 | `--source <untranslated\|translations>` | 导出数据源：`untranslated`（待翻，默认）/ `translations`（审核已翻） | `csv-export` |
 | `--filter <all\|untranslated\|translated>` | 按所选语言列过滤行（判据 `isValidTranslation`），默认 `all` | `csv-export` |
 | `--langs <a,b>` | 限定目标语言（逗号分隔）；不传 = 全部 `targets` | `csv-export` / `csv-import` |
-| `--output <path>` | export：输出路径/目录（默认 `<localesDir>/i18n.csv`）；import：输入 CSV 文件 | `csv-export` / `csv-import` |
+
+> `--output` 不只服务 CSV，见[基本选项](#基本选项)。
 
 ### 操作模式
 
@@ -247,10 +250,15 @@ npx i18n-tools -m doctor --ci
 4. **merge** - 将翻译结果合并回主文件
    - 输入：`untranslated.json`
    - 输出：`en-US.json`（目标语言文件）
+   - 条目里既非 `source` 也不在当前 `targets` 的语种（如同事分支上多配的语言）原样透传回
+     字典文件并提示一次，但不会为它写出语言文件——避免覆盖写回时静默抹掉别人的译文
 
 5. **export** - 导出最终语言包
    - 输入：主目录 + 定制目录的语言文件
-   - 输出：`public/locale/` 下的最终语言包
+   - 输出：`io.exportDir` 下的最终语言包（如 `public/locale/`）
+   - 输出目录来源：`--output <dir>` > `io.exportDir`。两者都没有时，`automatic`
+     流程跳过 export 步骤；单独跑 `--mode export` 则报错，需配置 `io.exportDir`
+     或传 `--output`
 
 6. **restore** - 将国际化调用还原为中文
    - 输入：已国际化的源文件 + `zh-CN.json`
@@ -312,10 +320,12 @@ interface I18nToolsConfig {
   io?: {
     sourceDir?: string;         // 源码扫描根，默认 'src'
     localesDir?: string;        // 主语言文件目录，默认 'src/i18n'
-    exportDir?: string;         // 发布目录（可选）
+    exportDir?: string;         // 发布目录（可选）；未配置时 automatic 跳过 export，
+                                //   单独跑 export 需传 --output
     customDir?: string;         // 定制 override 目录（可选）
     include?: string[];         // 文件 glob（默认含 vue/tsx/jsx/ts/js）
-    exclude?: string[];         // 默认含 node_modules + test/spec/stories
+    exclude?: string[];         // 默认含 node_modules + test/spec/stories；
+                                //   ⚠️ 一旦配置即整体替换默认值（见下方说明）
     format?: 'flat' | 'nested'; // JSON 落盘格式，默认 'nested'
     indent?: number;            // JSON 缩进字符数，默认 2
     prettify?: boolean;         // 是否过 Prettier，默认 true
@@ -405,6 +415,10 @@ interface I18nToolsConfig {
   };
 }
 ```
+
+> ⚠️ **`io.exclude` 是替换而非合并**：一旦显式配置，默认排除项（测试 / 故事 / 构建产物等）
+> 全部失效，只有 `node_modules` 与 `.git` 会被强制并入。想在默认基础上追加，请把默认项
+> 一并写进你的数组。
 
 ### LLM 任务配置
 
@@ -527,6 +541,10 @@ export default defineConfig({
 ```
 
 **匹配优先级**：rules 数组顺序优先（先匹配先归属），同一 key 最多归属一个桶。`match` 与 `matchKey` 互斥，loader 会校验。
+
+**存量桶告警**：读取时若在 `localesDir` 下发现桶名既不在 `rules[].name` 也不是 `defaultBucket`
+的文件，会告警一次并按存量桶处理——其内容仍并入语言包，且重写时被备份为 `.bak`。若那是你
+自建的备份 / 存档目录，请移出 `localesDir`。
 
 ### 翻译词表（glossary）
 
@@ -763,6 +781,14 @@ i18n-tools --mode prune --ci        # 非交互直接删（CI/脚本）
 | 动态属性 | `:placeholder="'中文'"` | `:placeholder="$t('key')"` |
 | script 代码 | `const msg = '中文'` | `const msg = t('key')` |
 
+**模板与脚本语言：**
+
+- `<template>` 仅支持 HTML（无 `lang` 或 `lang="html"`）。`lang="pug"` 等预处理语法整块跳过
+  不提取，并计入「待人工处理」——编译器会把整块 pug 当成一个文本节点，按 HTML 规则改写会
+  把整段模板换成一句 `$t()` 且不可还原。
+- `<script>` 支持 `lang="ts"`（默认）与 `lang="tsx"` / `lang="jsx"`：后者按 JSX 语法解析，
+  提取 / 转换 / 还原三端同源，不会把 `<div a="x">` 误当成类型断言。
+
 ### React
 
 **支持的文件类型**：`.tsx`、`.jsx`、`.ts`、`.js`
@@ -795,8 +821,11 @@ import {
   AutomaticProcessor,
 } from '@kit/i18n-tools';
 
-// 加载配置
+// 加载配置：找不到配置文件时返回 null（不抛错），调用方必须判空
 const config = await loadConfig('./i18n.config.ts');
+if (!config) {
+  throw new Error('未找到 i18n 配置文件');
+}
 
 // 使用处理器
 const processor = new GenerateProcessor(config, false);

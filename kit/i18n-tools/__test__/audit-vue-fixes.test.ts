@@ -295,4 +295,125 @@ describe('审计修复回归（Vue / 共享 AST 层）', () => {
       expect(convertUnicodeToChineseInCode("const a = '\\\\\\u4e2d';")).toBe("const a = '\\\\中';");
     });
   });
+
+  // ── 9. SFC 块 lang 属性 ─────────────────────────────────────────────────
+  describe('P1 SFC 块 lang 决定解析方式', () => {
+    /** 任意文件名的 extract → 编号 → transform，供非 .vue 与多文件用例复用。 */
+    async function generateAs(name: string, src: string): Promise<string> {
+      const adapter = adapterOf();
+      const fp = path.join(dir, name);
+      fs.writeFileSync(fp, src, 'utf8');
+      const extracted = await adapter.getTextExtractor().extractFromFile(fp);
+      extracted.forEach((s, i) => (s.semanticId = `k${i}`));
+      return adapter.getTransformer().transform(fp, extracted, src);
+    }
+
+    it('<template lang="pug"> 整块不提取、不改写', async () => {
+      const src =
+        `<template lang="pug">\ndiv.wrap\n  span 你好世界\n</template>\n\n` +
+        `<script setup>\nconst a = 1;\n</script>\n`;
+      const { out, extracted } = await generate(src);
+      expect(extracted).toHaveLength(0);
+      expect(out).toBe(src);
+    });
+
+    it('<template lang="pug"> 记一条人工处理项', async () => {
+      const adapter = adapterOf();
+      const fp = path.join(dir, 'Pug.vue');
+      fs.writeFileSync(fp, `<template lang="pug">\ndiv 你好\n</template>\n`, 'utf8');
+      const extractor = adapter.getTextExtractor();
+      await extractor.extractFromFile(fp);
+      const skips = extractor.drainManualSkips();
+      expect(skips).toHaveLength(1);
+      expect(skips[0]!.category).toBe('html-template');
+    });
+
+    it('restore 不动 pug 模板里形似 $t 调用的文本', () => {
+      const src = `<template lang="pug">\ndiv {{ $t('k') }}\n</template>\n`;
+      expect(restore(src, { k: '你好' })).toBe(src);
+    });
+
+    it('<script setup lang="tsx"> 的 JSX 属性替换成 {t(...)} 而非裸 t(...)', async () => {
+      const out = await generateAs(
+        'Tsx.vue',
+        `<script setup lang="tsx">\nconst r = () => <el-button title="你好">x</el-button>;\n</script>\n`,
+      );
+      expect(out).toContain("title={t('k0')}");
+      expect(out).not.toContain("title=t('k0')");
+    });
+
+    it('<script setup lang="tsx"> 里的普通字符串仍走裸 t()', async () => {
+      const out = await generateAs(
+        'Tsx2.vue',
+        `<script setup lang="tsx">\nconst label = '标签';\nconst r = () => <div />;\n</script>\n`,
+      );
+      expect(out).toContain("const label = t('k0');");
+    });
+  });
+
+  // ── 10. t 来源注入的双声明守卫与落点 ────────────────────────────────────
+  describe('P1/P2 注入 t 来源前的本地声明守卫', () => {
+    async function generateTs(name: string, src: string): Promise<string> {
+      const adapter = adapterOf();
+      const fp = path.join(dir, name);
+      fs.writeFileSync(fp, src, 'utf8');
+      const extracted = await adapter.getTextExtractor().extractFromFile(fp);
+      extracted.forEach((s, i) => (s.semanticId = `k${i}`));
+      return adapter.getTransformer().transform(fp, extracted, src);
+    }
+
+    it('.ts 已有 const t 声明时不注入 import（否则同作用域双声明）', async () => {
+      const out = await generateTs(
+        'local-t.ts',
+        `const t = (k: string) => k;\nexport const msg = '你好';\n`,
+      );
+      expect(out).not.toContain("import { t } from '@/plugins/locale'");
+      expect(out).toContain("t('k0')");
+    });
+
+    it('.ts 无本地 t 时照常注入（无回归）', async () => {
+      const out = await generateTs('plain.ts', `export const msg = '你好';\n`);
+      expect(out).toContain("import { t } from '@/plugins/locale';");
+    });
+
+    it('export const t 前缀同样算本地声明，不再注入', async () => {
+      const { out } = await generate(
+        `<script setup>\nexport const t = (k) => k;\nconst a = '你好';\n</script>\n`,
+      );
+      expect(out).not.toContain("import { t } from '@/plugins/locale'");
+    });
+
+    it('嵌套解构 const { data: { t } } 同样算本地声明，不再注入', async () => {
+      const { out } = await generate(
+        `<script setup>\nconst props = {};\nconst { data: { t } } = props;\nconst a = '你好';\n</script>\n`,
+      );
+      expect(out).not.toContain("import { t } from '@/plugins/locale'");
+    });
+
+    it('反向：解构里只有 t 的重命名目标（{ t: localT }）时照常注入', async () => {
+      const { out } = await generate(
+        `<script setup>\nconst o = {};\nconst { t: localT } = o;\nconst a = '你好';\n</script>\n`,
+      );
+      expect(out).toContain("import { t } from '@/plugins/locale';");
+    });
+
+    it('import type { t } 同样占用标识符，不再注入值导入', async () => {
+      const { out } = await generate(
+        `<script setup lang="ts">\nimport type { t } from './types';\nconst a = '你好';\n</script>\n`,
+      );
+      expect(out.split("import { t } from '@/plugins/locale'").length - 1).toBe(0);
+    });
+
+    it('命名列表里的行注释不吞掉后面的 t', async () => {
+      const { out } = await generate(
+        `<script setup lang="ts">\nimport {\n  foo, // 备注\n  t,\n} from './helpers';\nconst a = '你好';\n</script>\n`,
+      );
+      expect(out).not.toContain("import { t } from '@/plugins/locale'");
+    });
+
+    it('注入的 import 自成一行，不与 <script setup> 开标签同行', async () => {
+      const { out } = await generate(`<script setup>\nconst a = '你好';\n</script>\n`);
+      expect(out).toContain("<script setup>\nimport { t } from '@/plugins/locale';");
+    });
+  });
 });

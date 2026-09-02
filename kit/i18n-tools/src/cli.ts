@@ -22,31 +22,32 @@ import {
 } from './core';
 import {
   FileUtils,
+  getToolVersion,
   InteractiveUtils,
   isModeExplicitlySet,
   loadEnv,
   LoggerUtils,
   MODE_DESCRIPTIONS,
+  MODE_ICONS,
+  MODE_LIST,
   ModeName,
 } from './utils';
 
 type FrameworkInfo = { extensions: string[]; displayName: string; libraryName: string };
 
-/** CLI 版本必须绑定工具包自身，不能让 yargs 从消费项目的 package.json 猜测。 */
-const TOOL_VERSION = (() => {
-  const packagePath = new URL('../package.json', import.meta.url);
-  const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf-8')) as { version: string };
-  return pkg.version;
-})();
+/**
+ * CLI 版本必须绑定工具包自身，不能让 yargs 从消费项目的 package.json 猜测。
+ * 读不到时退化为 'unknown'：--version 显示不出来不该让整个 CLI 起不来。
+ */
+const TOOL_VERSION = getToolVersion() ?? 'unknown';
 
 /**
  * 提取框架展示信息，避免 CLI 层直接耦合具体扩展名/展示名。
  *
- * Why: 此函数原本每次调用都 `createFrameworkAdapter(config)`，在 GENERATE/RESTORE/AUTOMATIC
- *      及顶部状态打印间被反复构造（含全部策略链 importManager/transformer 等）。
- *      改为接受外部预构造的 adapter，由 main 顶部统一构造一次。
+ * adapter 必须由调用方传入（main 顶部统一构造一次）：在此就地 createFrameworkAdapter
+ * 会在 GENERATE/RESTORE/AUTOMATIC 及顶部状态打印间反复构造整条策略链。
  */
-const getFrameworkInfo = (adapter: ReturnType<typeof createFrameworkAdapter>): FrameworkInfo => ({
+const getFrameworkInfo = (adapter: FrameworkAdapter): FrameworkInfo => ({
   extensions: adapter.getSupportedExtensions(),
   displayName: adapter.getDisplayName(),
   libraryName: adapter.getLibraryName(),
@@ -175,7 +176,7 @@ const executeApplyPlan = async (
 
 /**
  * 检查覆盖率阈值。覆盖率以「中文片段调用点」为单位计算，规则见
- * GenerateProcessor.recordAndRenderCoverage。阈值未设置或本次未跑 generate
+ * CoverageReporter.recordAndRender。阈值未设置或本次未跑 generate
  * （coverage 未填充）时直接返回。
  *
  * 命中阈值时仅打错并 exit(2)——区别于一般失败的 exit(1)：CI pipeline 可以
@@ -319,14 +320,7 @@ const main = async (): Promise<void> => {
     .usage(
       `🌐 国际化工具集 - 自动化多语言处理
 
-🚀 ${ModeName.AUTOMATIC} - ${MODE_DESCRIPTIONS[ModeName.AUTOMATIC]}
-📝 ${ModeName.GENERATE} - ${MODE_DESCRIPTIONS[ModeName.GENERATE]}
-📤 ${ModeName.PICK} - ${MODE_DESCRIPTIONS[ModeName.PICK]}
-🤖 ${ModeName.TRANSLATE} - ${MODE_DESCRIPTIONS[ModeName.TRANSLATE]}
-📥 ${ModeName.MERGE} - ${MODE_DESCRIPTIONS[ModeName.MERGE]}
-🔄 ${ModeName.RESTORE} - ${MODE_DESCRIPTIONS[ModeName.RESTORE]}
-📦 ${ModeName.EXPORT} - ${MODE_DESCRIPTIONS[ModeName.EXPORT]}
-🩺 ${ModeName.DOCTOR} - ${MODE_DESCRIPTIONS[ModeName.DOCTOR]}
+${MODE_LIST.map((mode) => `${MODE_ICONS[mode]} ${mode} - ${MODE_DESCRIPTIONS[mode]}`).join('\n')}
 
 使用方式: $0 [选项]`,
     )
@@ -337,19 +331,7 @@ const main = async (): Promise<void> => {
     .option('mode', {
       alias: 'm',
       describe: '操作模式',
-      choices: [
-        ModeName.AUTOMATIC,
-        ModeName.GENERATE,
-        ModeName.PICK,
-        ModeName.TRANSLATE,
-        ModeName.MERGE,
-        ModeName.EXPORT,
-        ModeName.RESTORE,
-        ModeName.DOCTOR,
-        ModeName.CSV_EXPORT,
-        ModeName.CSV_IMPORT,
-        ModeName.PRUNE,
-      ] as const,
+      choices: MODE_LIST,
       default: ModeName.GENERATE,
     })
     .option('custom', {
@@ -435,15 +417,18 @@ const main = async (): Promise<void> => {
       default: 'untranslated',
     })
     .option('output', {
+      // 不放进「CSV 选项」组：export 模式同样消费它（覆盖 io.exportDir），归到 CSV 组会让
+      // 只跑 export 的用户翻遍帮助也找不到怎么改输出目录。
       describe:
-        'export/csv-export 输出目录（export 模式覆盖 io.exportDir），csv-import 输入文件路径',
+        '输出位置。export：语言包输出目录（覆盖 io.exportDir）；' +
+        'csv-export：CSV 输出路径或目录；csv-import：输入的 CSV 文件路径',
       type: 'string',
     })
     .help()
     .alias('help', 'h')
-    .group(['config', 'mode', 'custom', 'path'], '📋 基本选项:')
+    .group(['config', 'mode', 'custom', 'path', 'output'], '📋 基本选项:')
     .group(['interactive', 'skip-llm', 'overwrite'], '⚙️  高级选项:')
-    .group(['langs', 'filter', 'source', 'output'], '📊 CSV 选项:')
+    .group(['langs', 'filter', 'source'], '📊 CSV 选项:')
     .group(
       ['dry-run', 'apply-plan', 'keep-plan', 'plan-output-dir', 'coverage-threshold', 'ci'],
       '🩺 CI / Review 选项:',
@@ -514,7 +499,10 @@ export default defineConfig({
     shared: { apiKey: process.env.LLM_API_KEY, model: 'gpt-4o' },
   },
 });`);
-    process.exit(1);
+    // exitCode + return（而非 process.exit）：exit 会在 stdout 是管道时截断尚未 flush 的
+    // 输出，用户拿不到刚打印的错误与示例配置。main 返回后进程自然带非零码退出。
+    process.exitCode = 1;
+    return;
   }
 
   // 初始化参数
@@ -535,7 +523,8 @@ export default defineConfig({
     LoggerUtils.error(
       '❌ 未配置 io.customDir，无法使用 --custom。请在 i18n.config 中显式配置定制目录后再启用此选项。',
     );
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const custom = hasCustomLocale && Boolean(argv.custom);
 
@@ -596,7 +585,8 @@ export default defineConfig({
         Number.isNaN(cliCoverageThreshold) ? '非数字（无法解析）' : cliCoverageThreshold
       }`,
     );
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const coverageThreshold = cliCoverageThreshold ?? config.ci.coverageThreshold;
   const dryRun = Boolean(argv['dry-run']);
@@ -620,8 +610,8 @@ export default defineConfig({
   //  - --dry-run 在 generate / restore / csv-import / prune 四种模式都被真正消费（各自有
   //    预览语义），仅在其余模式无意义；
   //  - --apply-plan 只有 generate 分支消费，其它模式（含 csv-import / prune）一律忽略。
-  // 旧实现把二者并入同一条件并整体排除 csv-import/prune，导致 `--apply-plan --mode prune`
-  // 这类误用被静默丢弃、连警告都没有，违背该守卫「写错命令即提示」的初衷。
+  // 二者不得并入同一条件：合并后必然多算或少算一个模式，误用（如 `--apply-plan --mode
+  // prune`）会被静默丢弃、连警告都没有，违背该守卫「写错命令即提示」的初衷。
   // 静默忽略本身比抛错更友好（兼容 automatic 串调 generate 的复杂场景），但要显式提示。
   if (
     dryRun &&
@@ -645,9 +635,53 @@ export default defineConfig({
   if (applyPlanPath && mode !== ModeName.GENERATE) {
     LoggerUtils.warn(`⚠️  --apply-plan 仅在 --mode generate 下生效，当前模式 ${mode}，将被忽略`);
   }
+  // 其余「只在特定模式/组合下被消费」的选项同样必须提示后再丢弃：静默忽略会让用户以为
+  // 参数生效了（如 `--mode merge --path src/x` 看似限定了范围，实际全量跑）。
+  if (keepPlan && !applyPlanPath) {
+    LoggerUtils.warn(
+      '⚠️  --keep-plan 仅在 --apply-plan 回放时生效，本次未传 --apply-plan，将被忽略',
+    );
+  }
+  if (planOutputDir && !dryRun) {
+    LoggerUtils.warn('⚠️  --plan-output-dir 仅在 --dry-run 下生效，本次未传 --dry-run，将被忽略');
+  }
+  if (langsArg && mode !== ModeName.CSV_EXPORT && mode !== ModeName.CSV_IMPORT) {
+    LoggerUtils.warn(
+      `⚠️  --langs 仅在 --mode csv-export / csv-import 下生效，当前模式 ${mode}，将被忽略`,
+    );
+  }
+  // filter / source 有 yargs 默认值，只有偏离默认才说明用户显式传了。
+  if (csvFilter !== 'all' && mode !== ModeName.CSV_EXPORT) {
+    LoggerUtils.warn(`⚠️  --filter 仅在 --mode csv-export 下生效，当前模式 ${mode}，将被忽略`);
+  }
+  if (csvSource !== 'untranslated' && mode !== ModeName.CSV_EXPORT) {
+    LoggerUtils.warn(`⚠️  --source 仅在 --mode csv-export 下生效，当前模式 ${mode}，将被忽略`);
+  }
+  if (
+    pathArg &&
+    mode !== ModeName.GENERATE &&
+    mode !== ModeName.RESTORE &&
+    mode !== ModeName.AUTOMATIC
+  ) {
+    LoggerUtils.warn(
+      `⚠️  --path 仅在 --mode generate / restore / automatic 下生效，当前模式 ${mode}，将被忽略`,
+    );
+  }
+  // translate 有单独的提示（上方）：它会照常翻译，语义与「被忽略」不同，故排除在外。
+  if (
+    skipLLM &&
+    mode !== ModeName.GENERATE &&
+    mode !== ModeName.AUTOMATIC &&
+    mode !== ModeName.TRANSLATE
+  ) {
+    LoggerUtils.warn(
+      `⚠️  --skip-llm 仅在 --mode generate / automatic / translate 下生效，当前模式 ${mode}，将被忽略`,
+    );
+  }
   if (dryRun && applyPlanPath) {
     LoggerUtils.error('❌ --dry-run 与 --apply-plan 互斥，请只指定其一');
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   try {
@@ -744,7 +778,8 @@ export default defineConfig({
             importInput = await InteractiveUtils.promptForCsvPath();
           } else {
             LoggerUtils.error('❌ csv-import 需要 --output 指定 CSV 文件路径');
-            process.exit(1);
+            process.exitCode = 1;
+            return;
           }
         }
         await executeCsvImport(config, custom, {
@@ -757,8 +792,14 @@ export default defineConfig({
         });
         break;
       }
-      default:
-        LoggerUtils.error(`没有匹配的模式: ${mode}`);
+      default: {
+        // yargs 的 choices 已挡住未知值，走到这里只可能是新增模式漏了 case：
+        // never 断言让编译期先报出来，运行期则以非零码退出而非「打条 error 后返回 0」。
+        const unhandled: never = mode;
+        LoggerUtils.error(`没有匹配的模式: ${String(unhandled)}`);
+        process.exitCode = 1;
+        return;
+      }
     }
   } catch (error) {
     LoggerUtils.error(`执行 ${mode} 操作时发生错误:`, error);

@@ -14,9 +14,9 @@ import { parseSourceFile } from './ast-core';
  * 标识符是否处于「值读取位置」（真正引用了同名变量），用于区分裸值引用与声明名 /
  * 绑定名 / 对象键 / 成员名 / import-export 具名 / JSX 属性名等非引用位置。
  *
- * 全库唯一实现：ReactRestoreTransformer 曾另有一份本地副本，两版各覆盖几种 case
- * （一版少 export/JSX 属性名，一版少 PropertySignature/MethodDeclaration），
- * 任一路径漏一种 case 都会把非引用位置当成使用、阻止 import/声明被清理。
+ * 全库唯一实现，不得在调用方另开副本：漏掉任一种非引用位置（export 具名、JSX 属性名、
+ * PropertySignature、MethodDeclaration…）都会把该位置当成真实使用，
+ * 阻止本已可清理的 import / 声明被删除。
  *
  * 依赖 parent 指针——调用方必须传入 parseSourceFile
  * （createSourceFile 的 setParentNodes=true）解析出的节点。
@@ -111,13 +111,20 @@ function functionScopeDeclares(fn: ts.Node, name: string): boolean {
 }
 
 /**
- * 块作用域是否「直属」声明了名为 name 的 `let/const` 绑定（不下钻嵌套块/函数）。
+ * 块作用域是否「直属」声明了名为 name 的块级绑定（不下钻嵌套块/函数）。
  * 入参可为 Block / SourceFile / ModuleBlock（均有 statements）。
+ *
+ * 覆盖三种块级声明形态：`let/const` 变量语句、`function name()`、`class Name`。
+ * 后两者在 ES 模块（恒严格模式）下同样是块级绑定，只在本块内遮蔽外层同名。
  */
 function blockDirectlyDeclares(block: ts.Node, name: string): boolean {
   const statements = (block as ts.BlockLike).statements;
   if (!statements) return false;
   for (const stmt of statements) {
+    if (ts.isFunctionDeclaration(stmt) || ts.isClassDeclaration(stmt)) {
+      if (stmt.name && stmt.name.text === name) return true;
+      continue;
+    }
     if (!ts.isVariableStatement(stmt)) continue;
     const list = stmt.declarationList;
     // 只认块级（let/const）；var 由 functionScopeDeclares 处理（提升语义）
@@ -130,18 +137,41 @@ function blockDirectlyDeclares(block: ts.Node, name: string): boolean {
 }
 
 /**
+ * for / for-of / for-in 头部声明是否绑定 name。
+ * 头部的 `let/const` 作用域覆盖整条循环语句（含循环体），但它不在任何 Block 的
+ * statements 里，blockDirectlyDeclares 看不到，必须在祖先链上单独识别。
+ * 头部的 `var` 提升到函数作用域，由 functionScopeDeclares 覆盖。
+ */
+function forStatementDeclares(node: ts.Node, name: string): boolean {
+  if (!ts.isForStatement(node) && !ts.isForOfStatement(node) && !ts.isForInStatement(node)) {
+    return false;
+  }
+  const initializer = node.initializer;
+  if (!initializer || !ts.isVariableDeclarationList(initializer)) return false;
+  return initializer.declarations.some((d) => bindingDeclaresName(d.name, name));
+}
+
+/**
  * 遮蔽判定的共享内核：沿 ref 的祖先链逐层向上，看有没有哪一层作用域声明了名为 name
  * 的绑定。boundary 非空时，检查完 boundary 自身那一层即停止（只覆盖 ref 到 boundary
  * 之间的作用域链）；为空则一路走到 SourceFile。
  *
  * 关键：必须区分函数作用域与块级作用域——`const/let` 是块级，写在某个 if/块内的
  * `const { t } = ...` 只遮蔽该块内的引用；同函数内、该块之外的引用仍解析到 module import。
- * 旧实现把函数体内任意嵌套块的 const/let 都当成整个函数的声明，会误判块外引用被遮蔽，
- * 进而把仍在使用的 import 删掉（TS2304）。故逐层分两类处理：
+ * 把函数体内任意嵌套块的 const/let 都当成整个函数的声明，会误判块外引用被遮蔽，
+ * 进而把仍在使用的 import 删掉（TS2304）。故逐层分四类处理：
  *  - 函数作用域：参数 + 函数体内 `var`（提升到整个函数，不含嵌套函数）遮蔽；
- *  - 块作用域（Block / SourceFile / ModuleBlock）：仅该块「直属」语句里的 `let/const` 遮蔽。
+ *  - 块作用域（Block / SourceFile / ModuleBlock）：仅该块「直属」语句里的
+ *    `let/const` / `function` / `class` 遮蔽；
+ *  - for / for-of / for-in 语句：头部 `let/const` 声明遮蔽整条循环语句；
+ *  - catch 子句：`catch (e)` 的参数遮蔽 catch 块。
+ * 后两类的声明不落在任何 Block 的 statements 里，漏掉会把「循环变量 / catch 参数」
+ * 当成外层同名绑定的引用。
  *
- * 两个公开变体共用本内核，避免这套口径在两处各自演化后走样。
+ * 判定必须**贴合语言的作用域规则**、不能往任一侧放宽：两个公开变体的安全方向相反——
+ * hasLocalDeclarationWithin 漏判遮蔽会把循环变量当成翻译变量、给 hook deps 注入不存在的
+ * 标识符（TS2304）；isImportedNameUnused 多判遮蔽则会把仍在使用的 import 判成死导入删掉
+ * （同样 TS2304）。任何一侧的偏移都会在另一侧变成 bug。
  */
 function hasShadowingDeclaration(ref: ts.Node, name: string, boundary?: ts.Node): boolean {
   let cur: ts.Node | undefined = ref.parent;
@@ -150,6 +180,14 @@ function hasShadowingDeclaration(ref: ts.Node, name: string, boundary?: ts.Node)
       if (functionScopeDeclares(cur, name)) return true;
     } else if (ts.isBlock(cur) || ts.isSourceFile(cur) || ts.isModuleBlock(cur)) {
       if (blockDirectlyDeclares(cur, name)) return true;
+    } else if (forStatementDeclares(cur, name)) {
+      return true;
+    } else if (
+      ts.isCatchClause(cur) &&
+      cur.variableDeclaration &&
+      bindingDeclaresName(cur.variableDeclaration.name, name)
+    ) {
+      return true;
     }
     if (boundary && cur === boundary) return false;
     cur = cur.parent;

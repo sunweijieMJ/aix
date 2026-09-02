@@ -259,8 +259,9 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
 
     const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
     let transformedCode = printer.printFile(result.transformed[0]!);
-    // React 端 includeJsx=true：处理 `{'...'}` 形式的 JSX 表达式包裹
-    transformedCode = convertUnicodeToChineseInCode(transformedCode, true);
+    // printer 会把中文打成 \uXXXX 转义，还原回字面字符（JSX 表达式容器 `{'…'}` 的内层
+    // 就是普通引号字符串，同样被覆盖）。
+    transformedCode = convertUnicodeToChineseInCode(transformedCode);
 
     result.dispose();
 
@@ -424,9 +425,11 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       // JsxText 不能含 JSX 元字符（`<` 非法、`{}` 会被当表达式容器）。含元字符时改用字符串
       // 表达式容器 `{'...'}` 原样承载，与 createJsxFragmentFromTemplate.pushText 同款守卫；
       // 否则产出不可编译的 TSX（如文案 "1 < 2" / "点击 {这里}"）。
+      // U+00A0 重编码为 `&nbsp;`：字面 NBSP 渲染无差，但会触发 eslint no-irregular-whitespace
+      // （error 级）挂掉项目 lint。与 restore-node-factory 的 JsxText 分支、Vue 端同口径。
       return /[<>{}]/.test(finalText)
         ? ts.factory.createJsxExpression(undefined, ts.factory.createStringLiteral(finalText))
-        : ts.factory.createJsxText(finalText, false);
+        : ts.factory.createJsxText(finalText.replace(/\u00A0/g, '&nbsp;'), false);
     }
     return ts.factory.createStringLiteral(finalText);
   }
@@ -443,6 +446,20 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     // （声明名进 componentNameMap）严格一致，否则会漏保留 import 或过度保留。
     const unwrappableHocCalls = new Set<ts.Node>();
 
+    // `export default <Identifier>` 导出的标识符名：类组件默认导出的 HOC 注入形态是
+    // 「const 原名 = HOC(内部名) + export default 原名」，据此把该内部名记入
+    // defaultExportedHocInnerNames，让 unwrapHOC 把 `export default` 还给改回原名的类。
+    const defaultExportedIdentifiers = new Set<string>();
+    for (const statement of context.sourceFile.statements) {
+      if (
+        ts.isExportAssignment(statement) &&
+        !statement.isExportEquals &&
+        ts.isIdentifier(statement.expression)
+      ) {
+        defaultExportedIdentifiers.add(statement.expression.text);
+      }
+    }
+
     // 预备遍历，收集 HOC 组件的名称映射
     function prepass(node: ts.Node) {
       if (ts.isVariableDeclaration(node)) {
@@ -453,13 +470,16 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             context.componentNameMap.set(node.name.text, wrappedComponent);
             // 类组件 HOC 约定：内部类名 = 原名 + 'WithOutIntl'。若该 HOC 导出语句带 export，
             // 记录内部类名，供 unwrapHOC 把类改回原名时恢复 export。
-            if (
-              wrappedComponent === node.name.text + HOC_CLASS_SUFFIX &&
-              ts.isVariableDeclarationList(node.parent) &&
-              ts.isVariableStatement(node.parent.parent) &&
-              node.parent.parent.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
-            ) {
-              context.exportedHocInnerNames!.add(wrappedComponent);
+            if (wrappedComponent === node.name.text + HOC_CLASS_SUFFIX) {
+              if (
+                ts.isVariableDeclarationList(node.parent) &&
+                ts.isVariableStatement(node.parent.parent) &&
+                node.parent.parent.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
+              ) {
+                context.exportedHocInnerNames!.add(wrappedComponent);
+              } else if (defaultExportedIdentifiers.has(node.name.text)) {
+                context.defaultExportedHocInnerNames!.add(wrappedComponent);
+              }
             }
           }
         }
@@ -528,9 +548,9 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       // 解不掉的 HOC 调用（`withTranslation()(connect()(X))`、路由表对象里的
       // `{ component: injectIntl(Foo) }` 等 unwrapHOC 不覆盖的位置）会原样留在产物里，
       // 仍引用库的具名导入（withTranslation / injectIntl）。它们既不是翻译调用也不是翻译
-      // 组件，survivalScan 原本一条都不统计 → keepLibraryImport 保持 false → import 被摘除，
-      // 调用却还在，运行时 ReferenceError。凡命中 isHOCCall 却不在 unwrappableHocCalls 里的
-      // 调用一律保留导入（走 library 抽象，两个库同型）。
+      // 组件，只统计翻译调用/组件的话 survivalScan 一条都不会计 → keepLibraryImport 保持
+      // false → import 被摘除而调用还在，运行时 ReferenceError。故凡命中 isHOCCall 却不在
+      // unwrappableHocCalls 里的调用一律保留导入（走 library 抽象，两个库同型）。
       if (ts.isCallExpression(node) && library.isHOCCall(node) && !unwrappableHocCalls.has(node)) {
         keepLibraryImport = true;
       }
@@ -718,6 +738,29 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
         }
 
         let nodeChanged = false;
+
+        // JSX 静态属性：`title={t('key')}` 的调用还原成纯字符串字面量时，连表达式容器一并
+        // 去掉，还原回源码里的 `title="标题"`。只替换容器内的调用会留下源码中不存在的
+        // `title={"标题"}`。含 `"` / 换行的文案保留容器：JSX 属性值不解析反斜杠转义，
+        // 直接落成属性会提前闭合引号。
+        if (
+          ts.isJsxExpression(currentNode) &&
+          parent !== undefined &&
+          ts.isJsxAttribute(parent) &&
+          currentNode.expression &&
+          ts.isCallExpression(currentNode.expression)
+        ) {
+          const restored = this.transformTranslationCall(
+            currentNode.expression,
+            context.localeMap,
+            context.definedMessages,
+            context.sourceFile,
+          );
+          if (restored && ts.isStringLiteral(restored) && !/["\r\n]/.test(restored.text)) {
+            context.hasChanges = true;
+            return restored;
+          }
+        }
 
         // 转换翻译函数调用
         if (ts.isCallExpression(currentNode)) {

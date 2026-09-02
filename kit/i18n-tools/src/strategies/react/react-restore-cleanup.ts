@@ -48,6 +48,18 @@ export function unwrapHOC(
     }
   }
 
+  // case 1b: export default Foo（Foo 由 `const Foo = HOC(FooWithOutIntl)` 绑定）
+  // 类组件默认导出的注入形态是「const 原名 = HOC(内部名) + export default 原名」，两条语句
+  // 都要删除，再由 case 3 把 `export default` 还给改回原名的类。只认工具约定的内部名
+  // （原名 + WithOutIntl），用户手写的 `const Injected = injectIntl(Foo); export default Injected;`
+  // 内部名不符约定，不受影响。
+  if (ts.isExportAssignment(node) && !node.isExportEquals && ts.isIdentifier(node.expression)) {
+    const publicName = node.expression.text;
+    if (context.componentNameMap.get(publicName) === publicName + HOC_CLASS_SUFFIX) {
+      return ts.factory.createNotEmittedStatement(node);
+    }
+  }
+
   // case 2: const Injected = HOC(Component)
   if (ts.isVariableStatement(node)) {
     // 工具自产的 HOC 声明（内部名 = 原名 + WithOutIntl / 旧约定 `_原名`）是注入产物，
@@ -55,7 +67,7 @@ export function unwrapHOC(
     // 用户手写的 HOC 声明（`export const InjectedFoo = injectIntl(Foo)`，内部名无约定
     // 后缀）不能删语句：删除会让模块公共 API（export）与非 JSX 引用（如路由表里的
     // `component: InjectedFoo`）一并消失，且本文件自身编译通过、错误只在跨文件消费方
-    // 暴露。改为把初始化器解包成内部组件标识符（`export const InjectedFoo = Foo`）——
+    // 暴露。故只把初始化器解包成内部组件标识符（`export const InjectedFoo = Foo`）——
     // formatMessage 已全部还原时二者语义等价，export 与引用完整保留。
     // 代价：非导出且仅被 JSX 引用的局部 HOC（renameComponent 已把 JSX 改成内部名）会
     // 留下一条无人引用的 `const Injected = Foo`（no-unused-vars lint 噪音）。有意取舍：
@@ -195,6 +207,21 @@ export function renameComponent(node: ts.Node, context: TransformContext): ts.No
  */
 export function cleanupHOCPropsType(node: ts.Node, library: ReactI18nLibrary): ts.Node {
   const propsType = library.hocPropsType;
+
+  // case 0: `extends React.Component<HOCPropsType>` —— propsType 是唯一类型参数时整条摘除。
+  // 注入端对「原本无类型参数」的基类补的正是 `<HOCPropsType>`（见 injectHOC 步骤 1），
+  // 这里必须还原成无类型参数；退化到 case 2 会留下 `React.Component<{}>` 这种源码里没有的形态。
+  // 必须先于 case 2：visitor 自上而下，父节点先过本函数。
+  if (ts.isExpressionWithTypeArguments(node) && node.typeArguments?.length === 1) {
+    const soleTypeArg = node.typeArguments[0]!;
+    if (
+      ts.isTypeReferenceNode(soleTypeArg) &&
+      ts.isIdentifier(soleTypeArg.typeName) &&
+      soleTypeArg.typeName.text === propsType
+    ) {
+      return ts.factory.updateExpressionWithTypeArguments(node, node.expression, undefined);
+    }
+  }
 
   // case 1: `extends HOCPropsType`
   if (ts.isHeritageClause(node)) {

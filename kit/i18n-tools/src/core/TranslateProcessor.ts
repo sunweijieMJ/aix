@@ -107,8 +107,8 @@ export class TranslateProcessor extends FileProcessor {
     let allTotalBatches = 0;
     const allFailedBatches: string[] = [];
 
-    // 词表语言无关，循环外加载一次即可（per-target lookup 仍按 target 取译文）。
-    // 旧实现在每个 target 迭代内 Glossary.load()，对 N 个目标重复读盘+解析同一词表。
+    // 词表语言无关，必须在循环外加载一次（per-target lookup 仍按 target 取译文）：
+    // 放进 target 迭代内等于对 N 个目标重复读盘 + 解析同一份词表。
     const glossary = Glossary.load(this.config);
 
     for (const target of targets) {
@@ -118,7 +118,7 @@ export class TranslateProcessor extends FileProcessor {
       const glossaryFilled = this.applyGlossary(data, target, glossary);
       if (glossaryFilled > 0) {
         LoggerUtils.info(`📚 [${target}] 词表预填 ${glossaryFilled} 条，剩余条目走 LLM`);
-        writeTranslationsFile(targetPath, data);
+        writeTranslationsFile(targetPath, data, this.config.io.indent);
       }
 
       const toTranslate = this.filterUntranslatedItems(data, target);
@@ -300,7 +300,7 @@ export class TranslateProcessor extends FileProcessor {
     }
 
     // 写入文件（每个 target 完成后落盘一次，便于断点续翻）
-    writeTranslationsFile(filePath, currentData);
+    writeTranslationsFile(filePath, currentData, this.config.io.indent);
 
     return { totalTranslated, successBatches, totalBatches: batches.length, failedBatches };
   }

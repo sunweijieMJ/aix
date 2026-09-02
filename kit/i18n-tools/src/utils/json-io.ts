@@ -44,7 +44,8 @@ function tryParseJson(
   try {
     // 剥离 UTF-8 BOM（U+FEFF）：Windows 外部编辑器（PowerShell 5.1、VS、记事本）写出的
     // locale/glossary/translations 文件常带 BOM，带 BOM 的内容直接 JSON.parse 会抛错，
-    // 导致整条读链路误判文件损坏。此处单点收口，覆盖经 safeParseJson 的全部读路径。
+    // 导致整条读链路误判文件损坏。此处单点收口，safeParseJson 与 classifyJsonFile 两条
+    // 读链路都经过这里，不要在各调用点重复剥离。
     const normalized = content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
     return { ok: true, value: JSON.parse(normalized) };
   } catch (error) {
@@ -255,8 +256,15 @@ export function writeJsonFile(
  * 不一致——merge 之后再跑 pick 会把追加的 key 重排回中部，产生大 no-op diff。
  * 统一排序后，pick / merge / translate / csv-import 写出的顺序恒定一致。
  * 内层值对象（{ zh, en, ... }）顺序保持不变。
+ *
+ * @param indent 缩进空格数，缺省 2。调用方传 `config.io.indent`，使中间字典文件与语言文件
+ *   同一套缩进——否则项目把 indent 配成 4 后，这两类文件每次落盘都互相打架出全量 diff。
  */
-export function writeTranslationsFile(filePath: string, data: Record<string, unknown>): void {
+export function writeTranslationsFile(
+  filePath: string,
+  data: Record<string, unknown>,
+  indent?: number,
+): void {
   // 必须是无原型对象：普通 `{}` 上 `sorted['__proto__'] = v` 走的是 Object.prototype 的
   // __proto__ setter，值不会成为自有属性 —— 名为 `__proto__` 的 key（合法的 semanticId 末段）
   // 在排序重建时被静默吞掉，落盘的 translations.json 比入参少一条且无任何报错。
@@ -265,5 +273,5 @@ export function writeTranslationsFile(filePath: string, data: Record<string, unk
   for (const key of Object.keys(data).sort()) {
     sorted[key] = data[key];
   }
-  writeJsonFile(filePath, sorted);
+  writeJsonFile(filePath, sorted, { indent });
 }

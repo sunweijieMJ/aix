@@ -56,8 +56,8 @@ export abstract class BaseTextExtractor<
    *
    * Why 把次序固化在基类：rejectPatterns 必须**最后**生效——工具内部的安全规则
    * （isComparisonOperand / isInConsoleCall / 已 i18n 守卫）若被用户黑名单抢先放行，
-   * 会提取出破坏运行时逻辑的字面量。此前 Vue / React 两端各写一份逐字相同的外壳，
-   * 任一端改错次序都不会有测试拦住。
+   * 会提取出破坏运行时逻辑的字面量。次序固化在基类，各框架端不再各写一份外壳——
+   * 分散实现时任一端改错次序都不会有测试拦住。
    */
   protected shouldExtract(
     str: string,

@@ -22,6 +22,8 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   readonly hookDeclaration = 'const intl = useIntl();';
   // react-intl 用 ICU 单花括号 `{name}`
   readonly usesDoubleBracePlaceholders = false;
+  // ICU 消息 id 里的冒号是 id 自身的一部分。
+  readonly supportsNamespace = false;
   readonly translationVarName = 'intl';
   readonly jsxComponentName = 'FormattedMessage';
   readonly hocPropsType = 'WrappedComponentProps';
@@ -72,18 +74,19 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
     return `injectIntl(${componentName})`;
   }
 
-  getImportSpecifiers(usage: {
-    hasJsxComponent: boolean;
-    hasHook: boolean;
-    hasHOC: boolean;
-  }): string[] {
-    const specifiers: string[] = [];
-    if (usage.hasJsxComponent) specifiers.push('FormattedMessage');
-    if (usage.hasHook) specifiers.push('useIntl');
+  getImportSpecifiers(usage: { hasJsxComponent: boolean; hasHook: boolean; hasHOC: boolean }): {
+    values: string[];
+    types: string[];
+  } {
+    const values: string[] = [];
+    const types: string[] = [];
+    if (usage.hasJsxComponent) values.push('FormattedMessage');
+    if (usage.hasHook) values.push('useIntl');
     if (usage.hasHOC) {
-      specifiers.push('injectIntl', 'WrappedComponentProps');
+      values.push('injectIntl');
+      types.push('WrappedComponentProps');
     }
-    return specifiers;
+    return { values, types };
   }
 
   generateGlobalDeclaration(): string {

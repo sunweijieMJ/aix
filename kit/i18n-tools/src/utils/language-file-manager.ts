@@ -25,8 +25,8 @@ type KeyBucketMap = Record<string, string>;
  *  - 分桶：config.buckets
  *  - 多目标语种：config.locales.targets[]，getMessages 返回所有 locale 字典
  *
- * `(config, isCustom)` 由构造函数一次收下：这一对参数唯一决定「往哪个目录读写」
- * （FileUtils.getDirectoryPath 的入参），此前逐方法穿透时任何一处传错 isCustom
+ * `(config, isCustom)` 由构造函数一次收下、不逐方法穿透：这一对参数唯一决定「往哪个
+ * 目录读写」（FileUtils.getDirectoryPath 的入参），穿透形态下任何一处传错 isCustom
  * 都会静默读写到另一个目录。同一 processor 若需要同时操作基础目录与定制目录
  * （ExportProcessor 的 base/custom 合并），显式构造两个实例，读写目标一目了然。
  *
@@ -183,7 +183,7 @@ export class LanguageFileManager {
   static buildKeyBucketMapWithStats(
     config: ResolvedConfig,
     localeMap: LocaleMap,
-  ): { keyBucketMap: KeyBucketMap; ruleHits: Record<string, number>; zeroHitRules: string[] } {
+  ): { keyBucketMap: KeyBucketMap; zeroHitRules: string[] } {
     const buckets = config.buckets!;
     const resolver = new BucketResolver(buckets);
     const sep = config.keys.separator;
@@ -218,9 +218,24 @@ export class LanguageFileManager {
     }
     return {
       keyBucketMap,
-      ruleHits: resolver.getHitStats(),
       zeroHitRules: resolver.getZeroHitRules(),
     };
+  }
+
+  /**
+   * 已告警过的「桶名不在当前规则内」的文件绝对路径。同一进程内多次读写同一 locale 时
+   * 只提示一次，避免每条命令刷屏；集合按路径去重，不同文件仍各自提示。
+   */
+  private static readonly warnedForeignBucketFiles = new Set<string>();
+
+  /**
+   * 权威桶名集合：`buckets.rules[].name ∪ defaultBucket`。未启用分桶时返回 undefined
+   * （调用方据此走「不过滤」的历史口径）。
+   */
+  private knownBucketNames(): ReadonlySet<string> | undefined {
+    const buckets = this.config.buckets;
+    if (!buckets) return undefined;
+    return new Set([...buckets.rules.map((r) => r.name), buckets.defaultBucket]);
   }
 
   /**
@@ -235,11 +250,12 @@ export class LanguageFileManager {
     layout: 'by-locale' | 'by-bucket',
     onFile: (bucketName: string, data: Record<string, any>) => void,
     onCorrupt?: (filePath: string) => void,
+    knownBuckets?: ReadonlySet<string>,
   ): void {
     // 读取单个 bucket 文件。返回 undefined 表示「损坏且已交给 onCorrupt 处理，应跳过」。
     //
-    // 隐式契约：未传 onCorrupt 时维持历史行为——损坏文件经 safeLoadJsonFile 静默退化为 {}，
-    // 本函数不做判别。要判别的调用方（findCorruptBucketFile）必须传 onCorrupt；
+    // 隐式契约：未传 onCorrupt 即表示调用方不需要判别——损坏文件经 safeLoadJsonFile 静默
+    // 退化为 {}。要判别的调用方（findCorruptBucketFile）必须传 onCorrupt；
     // 只读取的调用方（readBucketedLocaleFlat）依赖上游先跑 findCorruptLocale。
     const loadOne = (filePath: string): Record<string, any> | undefined => {
       if (!onCorrupt) {
@@ -256,7 +272,12 @@ export class LanguageFileManager {
       return cls.status === 'ok' ? cls.data : {};
     };
 
-    for (const { bucketName, filePath } of this.listBucketFilePaths(baseDir, locale, layout)) {
+    for (const { bucketName, filePath } of this.listBucketFilePaths(
+      baseDir,
+      locale,
+      layout,
+      knownBuckets,
+    )) {
       const data = loadOne(filePath);
       if (data !== undefined) onFile(bucketName, data);
     }
@@ -270,13 +291,31 @@ export class LanguageFileManager {
    *
    * iterateBucketedFiles（读内容回调）与 pruneOrphanBucketFiles（只需路径）共用，
    * 避免两处各写一遍同样的目录遍历导致漂移。
+   *
+   * knownBuckets 是权威桶名集合（buckets.rules[].name ∪ defaultBucket），只用于告警不用于
+   * 过滤：桶名不在集合内既可能是用户自己放进 localesDir 的备份/存档目录（内容会被并入活跃
+   * 语言包、重写时被改名 .bak），也可能是上一版 bucket 规则留下的存量桶——后者必须照读照清
+   * 才能完成重分桶（见 writeBucketedLocaleFile 的孤儿清理）。两者在磁盘上无从分辨，故按存量
+   * 桶处理并提示一次，由使用者判断是否把非桶目录移出 localesDir。
    */
   private static listBucketFilePaths(
     baseDir: string,
     locale: string,
     layout: 'by-locale' | 'by-bucket',
+    knownBuckets?: ReadonlySet<string>,
   ): Array<{ bucketName: string; filePath: string }> {
     const result: Array<{ bucketName: string; filePath: string }> = [];
+    const noteForeignBucket = (bucketName: string, filePath: string): void => {
+      if (!knownBuckets || knownBuckets.has(bucketName)) return;
+      const resolved = path.resolve(filePath);
+      if (this.warnedForeignBucketFiles.has(resolved)) return;
+      this.warnedForeignBucketFiles.add(resolved);
+      LoggerUtils.warn(
+        `⚠️  桶名 '${bucketName}' 不在 buckets.rules / defaultBucket 中，按存量桶处理：` +
+          `${filePath} 的内容会并入语言包，且在重写时被备份为 .bak。` +
+          `若这是自建的备份 / 存档目录，请移出 localesDir。`,
+      );
+    };
     if (layout === 'by-locale') {
       const dirPath = path.join(baseDir, locale);
       if (!fs.existsSync(dirPath) || !fs.statSync(dirPath).isDirectory()) return result;
@@ -286,10 +325,10 @@ export class LanguageFileManager {
         // 不排除的话，重复导出时它会被 pruneOrphanBucketFiles 当孤儿桶改名 .bak，
         // 发布目录永久残留垃圾文件并每次导出刷误导日志。
         if (file === 'index.json') continue;
-        result.push({
-          bucketName: path.basename(file, '.json'),
-          filePath: path.join(dirPath, file),
-        });
+        const bucketName = path.basename(file, '.json');
+        const filePath = path.join(dirPath, file);
+        noteForeignBucket(bucketName, filePath);
+        result.push({ bucketName, filePath });
       }
       return result;
     }
@@ -299,6 +338,7 @@ export class LanguageFileManager {
       if (!entry.isDirectory()) continue;
       const langFile = path.join(baseDir, entry.name, `${locale}.json`);
       if (!fs.existsSync(langFile)) continue;
+      noteForeignBucket(entry.name, langFile);
       result.push({ bucketName: entry.name, filePath: langFile });
     }
     return result;
@@ -324,6 +364,7 @@ export class LanguageFileManager {
       (filePath) => {
         if (!corrupt) corrupt = filePath;
       },
+      this.knownBucketNames(),
     );
     return corrupt;
   }
@@ -406,9 +447,16 @@ export class LanguageFileManager {
     // 与 FileUtils.flattenObject 的累加器同口径保住这个合法末段 key。
     const merged: Record<string, string> = Object.create(null);
     const separator = this.config.keys.separator;
-    LanguageFileManager.iterateBucketedFiles(baseDir, locale, layout, (_bucketName, data) => {
-      Object.assign(merged, FileUtils.flattenObject(data, '', separator));
-    });
+    LanguageFileManager.iterateBucketedFiles(
+      baseDir,
+      locale,
+      layout,
+      (_bucketName, data) => {
+        Object.assign(merged, FileUtils.flattenObject(data, '', separator));
+      },
+      undefined,
+      this.knownBucketNames(),
+    );
     return merged;
   }
 
@@ -433,7 +481,7 @@ export class LanguageFileManager {
       const legacyPath = path.join(workingDir, `${locale}.json`);
       if (fs.existsSync(legacyPath) && !fs.existsSync(`${legacyPath}.bak`)) {
         // silent + 自报：本方法紧接着就打出带路径的错误，解析错因经 cls.reason 并入同一条
-        // 输出，避免「裸 JSON解析失败 + 带路径错误」两行分裂（旧行为）。
+        // 输出；不 silent 会把「裸 JSON 解析失败 + 带路径错误」拆成两行。
         const cls = classifyJsonFile(legacyPath, { silent: true });
         // 损坏的遗留文件与单文件模式同口径返回 null：静默当空会让 prune/merge 误判、丢数据
         if (cls.status === 'corrupt') {
@@ -520,17 +568,26 @@ export class LanguageFileManager {
   } {
     locale = locale || this.config.locales.source;
     const workingDir = FileUtils.getDirectoryPath(this.config, this.isCustom);
-    const flat: LocaleMap = {};
-    const keyBucketMap: KeyBucketMap = {};
+    // null 原型（与 readBucketedLocaleFlat 同口径）：普通 `{}` 上写 `__proto__` 走的是
+    // Object.prototype 的 setter，这个合法末段 key 会被静默吞掉，读回的 map 比磁盘少一条。
+    const flat: LocaleMap = Object.create(null);
+    const keyBucketMap: KeyBucketMap = Object.create(null);
     const layout = this.config.buckets?.layout ?? 'by-locale';
 
-    LanguageFileManager.iterateBucketedFiles(workingDir, locale, layout, (bucketName, data) => {
-      const flatData = FileUtils.flattenObject(data, '', this.config.keys.separator);
-      for (const key of Object.keys(flatData)) {
-        flat[key] = flatData[key];
-        keyBucketMap[key] = bucketName;
-      }
-    });
+    LanguageFileManager.iterateBucketedFiles(
+      workingDir,
+      locale,
+      layout,
+      (bucketName, data) => {
+        const flatData = FileUtils.flattenObject(data, '', this.config.keys.separator);
+        for (const key of Object.keys(flatData)) {
+          flat[key] = flatData[key];
+          keyBucketMap[key] = bucketName;
+        }
+      },
+      undefined,
+      this.knownBucketNames(),
+    );
 
     return { flat, keyBucketMap };
   }
@@ -596,7 +653,13 @@ export class LanguageFileManager {
       writtenPaths.add(path.resolve(filePath));
     }
 
-    LanguageFileManager.pruneOrphanBucketFiles(baseDir, locale, layout, writtenPaths);
+    LanguageFileManager.pruneOrphanBucketFiles(
+      baseDir,
+      locale,
+      layout,
+      writtenPaths,
+      this.knownBucketNames(),
+    );
   }
 
   /**
@@ -611,8 +674,11 @@ export class LanguageFileManager {
     locale: string,
     layout: 'by-locale' | 'by-bucket',
     writtenPaths: Set<string>,
+    knownBuckets?: ReadonlySet<string>,
   ): void {
-    const candidates = this.listBucketFilePaths(baseDir, locale, layout).map((c) => c.filePath);
+    const candidates = this.listBucketFilePaths(baseDir, locale, layout, knownBuckets).map(
+      (c) => c.filePath,
+    );
 
     for (const candidate of candidates) {
       if (writtenPaths.has(path.resolve(candidate))) continue;
@@ -638,12 +704,17 @@ export class LanguageFileManager {
   /**
    * 落盘前统一序列化：按 config.io.format 决定扁平 / 嵌套。
    *
-   * 'nested' 模式下额外做前缀冲突校验——unflattenObject 对 `a.b` 与 `a.b.c`
-   * 同时存在的扁平 map 会静默覆盖（叶子 vs 子树）导致数据丢失，必须前置拦截。
+   * 'nested' 模式下额外做两道校验，两者都是「unflatten 会静默丢数据」的前置拦截：
+   *  - 前缀冲突：`a.b` 与 `a.b.c` 并存时叶子值被子树覆盖；
+   *  - 原型保留段：含 `__proto__`/`constructor`/`prototype` 段的 key 被整条丢弃。
+   * 存量 key（手写 locale / flat 时期写入 / CSV 回流）同样会走到这里，故校验放在
+   * 序列化本体而非仅在 generate 的预检里。
    */
   private serialize(flat: LocaleMap): Record<string, any> {
     if (this.config.io.format === 'flat') return flat;
-    LanguageFileManager.assertNoPrefixConflict(Object.keys(flat), this.config.keys.separator);
+    const keys = Object.keys(flat);
+    LanguageFileManager.assertNoPrefixConflict(keys, this.config.keys.separator);
+    LanguageFileManager.assertNoReservedSegment(keys, this.config.keys.separator);
     return FileUtils.unflattenObject(flat, this.config.keys.separator);
   }
 
@@ -692,6 +763,8 @@ export class LanguageFileManager {
   ): void {
     if (this.config.io.format === 'flat') return;
     const separator = this.config.keys.separator;
+    // 原型保留段与分桶无关（逐 key 判定），故不进下面的分组循环。
+    LanguageFileManager.assertNoReservedSegment(keys, separator, context);
 
     if (!this.config.buckets) {
       LanguageFileManager.assertNoPrefixConflict(keys, separator, context);
@@ -720,24 +793,28 @@ export class LanguageFileManager {
   ]);
 
   /**
-   * 校验本轮新增 semanticId 的每个分隔段不含原型保留名（__proto__/constructor/prototype）。
+   * 校验一组扁平 key 的每个分隔段不含原型保留名（__proto__/constructor/prototype）。
    *
-   * Why：nested 落盘 unflattenObject 会静默丢弃含这些段的 key（原型污染防护）。generate 先写
-   * 源码后写 locale，这类 key 会留下「源码改成 t('...constructor')、locale 却无此 key」的永久
-   * missing-key 不一致态，且 exit 0 无警告。与 assertNoPrefixConflict 同口径前移、写源码前抛错。
+   * Why：nested 落盘 unflattenObject 会静默丢弃含这些段的 key（原型污染防护）。落盘路径
+   * （serialize）与写盘前预检（assertKeysSerializable / assertSerializableUpdate）都要过这一道：
+   * 前者拦住存量 key 被静默抹掉，后者让 generate 在改写源码前就抛错，不留下
+   * 「源码已改成 t('...constructor')、locale 却无此 key」的永久 missing-key 不一致态。
+   *
+   * @param context 有值时写进错误信息，指明是哪个 locale / bucket 触发。
    */
   private static assertNoReservedSegment(
-    extractedStrings: ExtractedString[],
+    keys: Iterable<string>,
     separator: string,
+    context?: string,
   ): void {
-    for (const e of extractedStrings) {
-      if (!e.semanticId) continue;
-      const bad = e.semanticId.split(separator).find((s) => this.RESERVED_KEY_SEGMENTS.has(s));
+    const where = context ? `（${context}）` : '';
+    for (const key of keys) {
+      const bad = key.split(separator).find((s) => this.RESERVED_KEY_SEGMENTS.has(s));
       if (bad) {
         throw new Error(
-          `[i18n-tools] 嵌套输出的 key '${e.semanticId}' 含原型保留段名 '${bad}'。\n` +
-            `  nested 落盘时该 key 会被 unflatten 静默丢弃（原型污染防护），导致源码已改写而 locale 缺失。\n` +
-            `  解决方案：调整该文案的 semanticId（避免 __proto__/constructor/prototype 段），或将 io.format 切换为 'flat'。`,
+          `[i18n-tools] 嵌套输出的 key '${key}' 含原型保留段名 '${bad}'${where}。\n` +
+            `  nested 落盘时该 key 会被 unflatten 静默丢弃（原型污染防护），写出的文件将缺失该 key。\n` +
+            `  解决方案：重命名该 key（避免 __proto__/constructor/prototype 段），或将 io.format 切换为 'flat'。`,
         );
       }
     }
@@ -764,7 +841,10 @@ export class LanguageFileManager {
     // 会导致「源码已改成 t('...constructor')、locale 却无此 key」的永久 missing-key 不一致态。
     // 与 assertNoPrefixConflict 同口径前移到写源码前 fail-fast。只校验本轮新增 semanticId，
     // 故无需依赖现有 locale（新建项目 locale 不存在时同样能拦截）。
-    LanguageFileManager.assertNoReservedSegment(extractedStrings, this.config.keys.separator);
+    LanguageFileManager.assertNoReservedSegment(
+      extractedStrings.flatMap((e) => (e.semanticId ? [e.semanticId] : [])),
+      this.config.keys.separator,
+    );
 
     // 与 updateLanguageFiles 的读侧同口径（桶 ∪ 未迁移 legacy）：预检视图若比真实写盘视图少
     // 一批 legacy key，前缀冲突会漏报到落盘时才抛——而那时源码已被 generate 改写。
@@ -822,9 +902,9 @@ export class LanguageFileManager {
     // 桶式也走 readLocaleFile：它的桶式分支 = 桶 ∪「未迁移 legacy 只读并入」。
     // 只读桶目录的话，迁移窗口内（legacy 在、无 .bak）存量 key 对本方法不可见，会被当成
     // 「新增」重新生成一遍 —— 同一文案在 legacy 与桶里各一份 key，迁移时并集写回双份。
-    // 只取 flat：磁盘当前布局**不再**作为 keyBucketMap 的兜底来源。历史问题：旧逻辑用
-    // existingKeyBucketMap 兜底导致 matchKey/match 规则对存量 key 永远失效（旧规则下落到
-    // A 桶的 key，即使新规则该去 B 桶，也会因 existing 占位而留在 A）。
+    // 只取 flat：磁盘当前布局不得作为 keyBucketMap 的兜底来源。一旦用磁盘上 key 的现有
+    // 桶位兜底，matchKey/match 规则对存量 key 就永远失效——规则改判该去 B 桶的 key，会因
+    // 磁盘上已在 A 桶而被钉死在 A。桶位只由规则决定。
     const read = this.readLocaleFile();
     if (read === null) return;
     const localeMap: LocaleMap = read;
@@ -881,7 +961,7 @@ export class LanguageFileManager {
       const rebucket =
         Object.keys(rebucketSource).length > 0
           ? LanguageFileManager.buildKeyBucketMapWithStats(this.config, rebucketSource)
-          : { keyBucketMap: {}, zeroHitRules: [], ruleHits: {} };
+          : { keyBucketMap: {}, zeroHitRules: [] };
       effectiveKeyBucketMap = { ...rebucket.keyBucketMap, ...callerMap };
 
       // caller 已自己上报真实路径下的命中情况，这里只关心"反推存量 key"也 0

@@ -33,7 +33,7 @@ export class ReactComponentInjector implements IComponentInjector {
   }
 
   inject(code: string, filePath?: string): string {
-    // 解析用真实文件名（缺省退回 temp.tsx，与历史行为一致）：ScriptKind 由扩展名决定，
+    // 解析用真实文件名（缺省退回 temp.tsx）：ScriptKind 由扩展名决定，
     // 把纯 `.ts` 按 TSX 解析会让 `<T>expr` 类型断言被当成 JSX 元素——TS 不抛错、就地
     // 恢复出错误的树，注入判定随之走偏（多注/漏注 hook）。
     const parseName = filePath ?? 'temp.tsx';
@@ -41,12 +41,27 @@ export class ReactComponentInjector implements IComponentInjector {
     const initialSourceFile = parseSourceFile(code, parseName);
     const componentsToModify: ComponentInfo[] = [];
 
+    const warnedPlainlyCalled = new Set<string>();
     const initialVisitor = (node: ts.Node) => {
+      // 渲染助手被当普通函数调用（`Tip()` / `dense ? Cell(r) : <Cell/>`）：注入 hook 会让
+      // hook 在调用方组件里被条件执行，违反 Hooks 规则。判定收口在 getComponentInfo
+      // （不认作可注入组件，文案改走模块级全局 t/getIntl），这里只补一条告警。
+      const plainlyCalled = ReactASTUtils.getPlainlyCalledComponentName(node);
+      if (plainlyCalled && !warnedPlainlyCalled.has(plainlyCalled)) {
+        warnedPlainlyCalled.add(plainlyCalled);
+        LoggerUtils.warn(
+          `⚠️ 跳过注入：${plainlyCalled} 在文件内被当作普通函数调用（${plainlyCalled}(...)），` +
+            `注入 ${this.library.hookName}() 会违反 Hooks 规则。` +
+            `该处文案改用模块级 '${this.library.globalFunctionName}'；如需组件级 i18n，` +
+            `请把调用点改成 JSX 用法（<${plainlyCalled} />）后重跑。`,
+        );
+      }
+
       const componentInfo = ReactASTUtils.getComponentInfo(node);
       if (componentInfo) {
         const injectionType = this.decideInjection(componentInfo, initialSourceFile, (name) =>
           LoggerUtils.warn(
-            `⚠️ 跳过注入：组件 ${name} 内已存在与 ` +
+            `⚠️ 跳过注入：组件 ${name} 自身或其外层作用域（含模块顶层）已存在与 ` +
               `'${this.library.translationVarName}' 同名的非 i18n 本地绑定，` +
               `注入 ${this.library.hookName}() 会造成重复声明。请人工确认该组件的 i18n 接入方式。`,
           ),
@@ -74,7 +89,10 @@ export class ReactComponentInjector implements IComponentInjector {
         hasHook: false,
         hasHOC: true,
       });
-      codeWithImports = this.importManager.addI18nImports(codeWithImports, hocImports);
+      codeWithImports = this.importManager.addI18nImports(codeWithImports, hocImports.values);
+      // Props 类型（WithTranslation / WrappedComponentProps）走 `import type` 单独一行：
+      // 并进值导入在 verbatimModuleSyntax 下是 TS1484。
+      codeWithImports = this.importManager.addI18nTypeImports(codeWithImports, hocImports.types);
     }
 
     // Phase 3: 重新解析带有新导入的代码并应用转换
@@ -143,10 +161,11 @@ export class ReactComponentInjector implements IComponentInjector {
         return 'none';
       }
       // 同名冲突守卫：componentUsesTranslation 宽匹配任意裸 `t(`/`*.formatMessage` 调用，
-      // 组件里可能已有**非 i18n 的同名本地绑定**（`const { t } = useTemperature()`、
-      // `const intl = createIntl(...)`）。此时再注入 hook 声明会与之同块双声明（TS2451，
-      // 整文件不可编译）。按「宁可漏注入，绝不产出坏代码」跳过并告警。提取端已用同一份判定
-      // 把该组件的候选整体挡在 extractedStrings 之外，故这里不会留下已替换却无绑定的裸 t()。
+      // 组件自身或其外层作用域可能已有**非 i18n 的同名绑定**（`const { t } = useTemperature()`、
+      // 模块级 `import { t } from '@/utils/tiny-template'`）。再注入 hook 声明轻则同块双声明
+      // （TS2451），重则遮蔽外层同名绑定产出「能编译、行为错」的代码。按「宁可漏注入，绝不产出
+      // 坏代码」跳过并告警。提取端已用同一份判定把该组件的候选整体挡在 extractedStrings 之外，
+      // 故这里不会留下已替换却无绑定的裸 t()。
       if (this.hasConflictingLocalBinding(componentInfo.node)) {
         onConflict?.(componentInfo.name);
         return 'none';
@@ -314,8 +333,10 @@ export class ReactComponentInjector implements IComponentInjector {
       const hocWrapper = this.library.generateHOCWrapper(tempClassName);
       let hocStatement: string;
       if (defaultModifier) {
-        // 默认导出：还原为 `export default HOC(Inner)`，保持模块默认导出契约不变
-        hocStatement = `\n\nexport default ${hocWrapper};`;
+        // 默认导出：先用原类名绑定包裹结果、再默认导出该绑定。直接 `export default HOC(Inner)`
+        // 会让原类名在模块内消失——同文件的 `<Foo />` 自递归到内部未包裹类、`Foo.displayName`
+        // 引用未定义标识符（TS2304）。与具名导出路径（`export const Foo = HOC(Inner)`）同形。
+        hocStatement = `\n\nconst ${className} = ${hocWrapper};\nexport default ${className};`;
       } else if (exportModifier) {
         hocStatement = `\n\nexport const ${className} = ${hocWrapper};`;
       } else {
@@ -366,6 +387,10 @@ export class ReactComponentInjector implements IComponentInjector {
       node,
       this.library.translationVarName,
       this.library.hookName,
+      {
+        i18nModules: [this.importManager.tImport, this.library.packageName],
+        isI18nDeclaration: (declaration) => this.library.isGlobalFunctionDeclaration(declaration),
+      },
     );
   }
 

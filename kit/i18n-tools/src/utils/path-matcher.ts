@@ -42,8 +42,7 @@ export function compileMatcher(match: PathMatchInput): (filePath: string) => boo
     return match;
   }
   if (match instanceof RegExp) {
-    // 去掉有状态标志（g/y）：matcher 会被缓存后对多个路径反复调用，带 g/y 的 RegExp.test()
-    // 会推进 lastIndex，导致对同一路径交替返回 true/false（分桶/前缀派生非确定性错配）。
+    // matcher 会被缓存后对多个路径反复调用，必须剥除 g/y（见 stripStatefulFlags）。
     const stateless = stripStatefulFlags(match);
     return (fp) => stateless.test(fp);
   }

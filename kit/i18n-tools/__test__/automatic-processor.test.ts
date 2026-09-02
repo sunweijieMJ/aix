@@ -110,6 +110,39 @@ describe('AutomaticProcessor 编排', () => {
     });
   });
 
+  /**
+   * 回归（四轮审计 A7）：子步骤各自持有独立实例与 report，automatic 不读回它们的
+   * partiallyFailed，整条工作流就会以「✅ 完成」收尾，掩盖「翻了一半、剩下全挂」。
+   */
+  it('子步骤 partiallyFailed → automatic 聚合置位，收尾打「部分失败」而非成功', async () => {
+    vi.spyOn(TranslateProcessor.prototype, 'execute').mockImplementation(async function (this: {
+      partiallyFailed: boolean;
+    }) {
+      calls.push('translate');
+      this.partiallyFailed = true;
+    });
+
+    const auto = new AutomaticProcessor(buildConfig(rootDir), false);
+    await auto.execute('src');
+
+    expect(calls).toEqual(['generate', 'pick', 'translate', 'merge']);
+    expect(auto.isPartiallyFailed()).toBe(true);
+    expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('部分失败'));
+    expect(LoggerUtils.success).not.toHaveBeenCalledWith(
+      expect.stringContaining('自动化i18n工作流完成'),
+    );
+  });
+
+  it('全部子步骤正常 → 不置位，收尾照常打成功', async () => {
+    const auto = new AutomaticProcessor(buildConfig(rootDir), false);
+    await auto.execute('src');
+
+    expect(auto.isPartiallyFailed()).toBe(false);
+    expect(LoggerUtils.success).toHaveBeenCalledWith(
+      expect.stringContaining('自动化i18n工作流完成'),
+    );
+  });
+
   it('generate 覆盖率透传到 automatic 自身 getCoverage()', async () => {
     const metric: CoverageMetric = {
       scannedFiles: 3,

@@ -6,13 +6,6 @@ import { scanKeyReferencesInContent, stripCommentsForScan } from '../utils/sourc
 import { collapseWhitespace } from '../utils/text-normalize';
 
 /**
- * 把原文规范化为查表键，防止「电话号码」与「电话号码 」（多了空格）被识别成两条不同条目。
- *
- * 口径必须与 Glossary / LocaleValueLinter 的查表键一致，故收口在 collapseWhitespace。
- */
-const normalizeKey = collapseWhitespace;
-
-/**
  * 语义 ID 复用决策器
  *
  * 负责：对一段已提取的中文文案，决定是复用历史 key 还是分配新 key。
@@ -55,9 +48,14 @@ export class IdReuseResolver {
     return this.existingIds;
   }
 
-  /** 把规范化键暴露给上层，确保跨模块归一化逻辑一致 */
+  /**
+   * 把原文规范化为查表键，防止「电话号码」与「电话号码 」（多了空格）被识别成两条不同条目。
+   *
+   * 口径必须与 Glossary / LocaleValueLinter 的查表键一致，故一律收口在 collapseWhitespace；
+   * 上层（GenerateProcessor 的复用查找）走本方法，不要另起归一化。
+   */
   static normalizeKey(text: string): string {
-    return normalizeKey(text);
+    return collapseWhitespace(text);
   }
 
   /**
@@ -107,7 +105,7 @@ export class IdReuseResolver {
    *  5. 否则 undefined（视为未命中，触发新生成）
    */
   pickReusableKey(message: string, filePath: string): string | undefined {
-    const candidates = this.messageToKeysMap.get(normalizeKey(message));
+    const candidates = this.messageToKeysMap.get(collapseWhitespace(message));
     if (!candidates || candidates.length === 0) return undefined;
 
     const currentPrefix = this.idGenerator.getDirectoryPrefix(filePath);
@@ -134,10 +132,10 @@ export class IdReuseResolver {
     // 已被提升到 common 的 key：跨目录可见，避免新分配产生 _N 后缀
     const promote = this.config.keys.reuse.promoteToCommon;
     if (promote && promote.threshold >= 2) {
-      // 复用 getCommonNamespace()（?? 'common'）与「生成端」保持同一解析口径：
-      // 此前这里用 `promote.namespace || 'common'`，当 namespace 被显式配成空串 ''
-      // 时会被退回 'common'，而生成端用 ?? 保留 ''、产出无前缀提升键，导致 commonHit
-      // 永远命中不到、提升键跨运行累积 _N 后缀、去重收益失效。
+      // 必须复用 getCommonNamespace()（`?? 'common'`），与「生成端」同一解析口径。
+      // 若这里改用 `||`，显式配成空串的 namespace 会被退回 'common'，而生成端用 `??`
+      // 保留 ''、产出无前缀提升键 —— commonHit 永远命中不到，提升键跨运行累积 _N 后缀，
+      // 去重收益归零。
       const ns = this.getCommonNamespace();
       const sep = this.config.keys.separator;
       const commonHit = candidates.find((k) => k === ns || k.startsWith(`${ns}${sep}`));
@@ -153,7 +151,7 @@ export class IdReuseResolver {
   registerNewId(message: string, finalId: string): void {
     this.newlyRegisteredIds++;
     this.existingIds.add(finalId);
-    const lookupKey = normalizeKey(message);
+    const lookupKey = collapseWhitespace(message);
     const arr = this.messageToKeysMap.get(lookupKey);
     if (arr) arr.push(finalId);
     else this.messageToKeysMap.set(lookupKey, [finalId]);
@@ -172,8 +170,8 @@ export class IdReuseResolver {
     const promote = this.config.keys.reuse.promoteToCommon;
     if (!promote || promote.threshold < 2) return false;
 
-    const currentPrefix = this.idGenerator.getDirectoryPrefix(filePath) ?? '';
-    const known = this.messageToPrefixes.get(normalizeKey(message)) ?? new Set<string>();
+    const currentPrefix = this.idGenerator.getDirectoryPrefix(filePath);
+    const known = this.messageToPrefixes.get(collapseWhitespace(message)) ?? new Set<string>();
     if (known.has(currentPrefix)) return false;
     return known.size + 1 >= promote.threshold;
   }
@@ -208,7 +206,7 @@ export class IdReuseResolver {
     for (const [key, value] of Object.entries(localeMap)) {
       this.existingIds.add(key);
       if (typeof value === 'string') {
-        const normalized = normalizeKey(value);
+        const normalized = collapseWhitespace(value);
         const arr = this.messageToKeysMap.get(normalized);
         if (arr) arr.push(key);
         else this.messageToKeysMap.set(normalized, [key]);

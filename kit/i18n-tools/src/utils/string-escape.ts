@@ -42,19 +42,44 @@ export function formatValuesMapping(
 }
 
 /**
- * 把代码字符串中包裹在引号/反引号/JSX 表达式中的 `\uXXXX` Unicode 转义序列还原回字符。
+ * 该码位的 `\uXXXX` 转义可否安全地还原成字面字符（写回源码文本）。
  *
- * @param code      源代码文本
- * @param includeJsx 是否包含 JSX 表达式 `{'...'}` 这种括号包裹形式（仅 React 使用）
+ * 只放行「排版上可见、且在字符串字面量里原样出现不会改变语义」的非 ASCII 字符：
+ *  - `< 0x80`：ASCII 区。单双引号、反斜杠、换行的转义一旦还原成字面字符，
+ *    会直接把所在字符串字面量截断 —— 整个文件语法错。
+ *  - U+00A0（NBSP）/ U+200B–U+200F（零宽）/ U+FEFF：还原成不可见字符后，源码里看不出
+ *    与普通空格的区别，diff / review / 后续提取都会把它当空格处理。
+ *  - U+2028 / U+2029：行/段分隔符，在字符串字面量中是合法换行符，还原即断行。
  */
-export function convertUnicodeToChineseInCode(code: string, includeJsx: boolean = false): string {
+function isRestorableUnicodeEscape(codeUnit: number): boolean {
+  if (codeUnit < 0x80) return false;
+  if (codeUnit === 0x00a0 || codeUnit === 0x2028 || codeUnit === 0x2029) return false;
+  if (codeUnit >= 0x200b && codeUnit <= 0x200f) return false;
+  if (codeUnit === 0xfeff) return false;
+  return true;
+}
+
+/**
+ * 把源码文本中引号/反引号字符串字面量里的 `\uXXXX` 转义还原回字面字符。
+ *
+ * 语义限定为「撤销 printer 对非 ASCII 字符的转义」：ts.createPrinter 打印字符串时会把
+ * 中文等非 ASCII 字符输出成 `\uXXXX`，restore 产出的文件因此满屏转义、不可读。本函数只
+ * 还原这一类，不可安全还原的码位（见 isRestorableUnicodeEscape）保持转义形态。
+ *
+ * JSX 表达式容器 `{'…'}` 的内层就是普通引号字符串，由引号分支覆盖，无需单独处理。
+ *
+ * @param code 源代码文本
+ */
+export function convertUnicodeToChineseInCode(code: string): string {
   // 先吃掉 `\\`（转义的反斜杠）再匹配 `\uXXXX`，与 decodeJsStringEscapes 同款单遍扫描口径：
   // 源码里的 `'\\u4e2d'` 表示「反斜杠 + u4e2d」六个字符，不是 Unicode 转义；逐条 replace 版本
   // 会把它解码成「反斜杠 + 中」，静默改变字符串语义。`\\` 原样回写（本函数改写的是源码文本）。
   const decode = (str: string): string =>
-    str.replace(/\\\\|\\u([0-9a-fA-F]{4})/g, (match, hex: string | undefined) =>
-      hex === undefined ? match : String.fromCharCode(parseInt(hex, 16)),
-    );
+    str.replace(/\\\\|\\u([0-9a-fA-F]{4})/g, (match, hex: string | undefined) => {
+      if (hex === undefined) return match;
+      const codeUnit = parseInt(hex, 16);
+      return isRestorableUnicodeEscape(codeUnit) ? String.fromCharCode(codeUnit) : match;
+    });
 
   const replaceQuoted = (input: string, quote: string): string => {
     // 匹配同种引号内含 \uXXXX 的字符串字面量（引号三种字符都不是正则元字符，无需转义）
@@ -72,17 +97,6 @@ export function convertUnicodeToChineseInCode(code: string, includeJsx: boolean 
   out = replaceQuoted(out, "'");
   out = replaceQuoted(out, '"');
   out = replaceQuoted(out, '`');
-
-  if (includeJsx) {
-    out = out.replace(/\{'([^']*\\u[0-9a-fA-F]{4}[^']*)'\}/g, (match) => {
-      try {
-        return `{'${decode(match.slice(2, -2))}'}`;
-      } catch {
-        return match;
-      }
-    });
-  }
-
   return out;
 }
 
@@ -109,9 +123,9 @@ export function trimStartAsciiWhitespace(text: string): string {
 /**
  * 剥除「成对」的首尾定界符：仅当首尾是同一个定界符时才剥一层。
  *
- * Why 不用旧的 `replace(/^['"`]|['"`]$/g, '')`（首尾各无条件删一个字符）：
+ * Why 成对判定而非 `replace(/^['"`]|['"`]$/g, '')`（首尾各无条件删一个字符）：
  * 提取出的 original / JSX 文本本身不带定界引号，其内容若以 ASCII 引号收尾
- * （如 `点击"提交"`）旧写法会把内容里的引号误删 —— 导致替换阶段两侧归一化
+ * （如 `点击"提交"`），无条件删首尾会把内容里的引号误删 —— 导致替换阶段两侧归一化
  * 后不相等而静默跳过（locale 写了源码没改），或 locale 值永久丢字符。
  * 成对判定（首尾必须同字符）对无定界符的内容值是 no-op。
  *
@@ -135,8 +149,8 @@ export function stripMatchedDelimiters(
  * 覆盖 unicode（\uXXXX / \u{...}）、hex（\xNN）、换行续接和常见单字符转义；
  * 未知转义按 JavaScript 非严格字符串的行为保留被转义字符（含 `\\` → `\`、`` \` `` → `` ` ``）。
  * 单遍扫描（非逐条 replace 串行），天然区分 `\\n`（字面反斜杠+n）与 `\n`（换行）。
- * shouldReplaceNode 的源码侧归一与 source-key-scanner 的 key 解码共用本实现，避免两套
- * 解码器覆盖面漂移（旧的逐条 replace 版缺 `\\` 规则，含转义反斜杠的字符串会静默漏替换）。
+ * shouldReplaceNode 的源码侧归一与 source-key-scanner 的 key 解码必须共用本实现：
+ * 两套解码器一旦覆盖面漂移（比如某一侧缺 `\\` 规则），含转义反斜杠的字符串会静默漏替换。
  */
 export function decodeJsStringEscapes(content: string): string {
   return content.replace(

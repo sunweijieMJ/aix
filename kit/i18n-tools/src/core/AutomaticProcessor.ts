@@ -37,24 +37,31 @@ export class AutomaticProcessor extends FileProcessor {
     // 内部 step 的 processor 拓扑。
     const generator = new GenerateProcessor(this.config, this.isCustom, false, this.adapter);
 
+    // run 回传本步骤的 processor 实例（可选）：结束后聚合它的 partiallyFailed，
+    // 让整条工作流的收尾如实反映「某一步只做了一半」。
     const steps: Array<{
       name: string;
       skip?: boolean;
       skipReason?: string;
-      run: () => Promise<void>;
+      run: () => Promise<FileProcessor | void>;
     }> = [
       {
         name: 'generate',
-        run: async (): Promise<void> => {
+        run: async (): Promise<FileProcessor> => {
           await generator.execute(targetPath, skipLLM);
           // 透传 coverage：generator.report 不与本实例共享，必须显式拷贝
           const coverage = generator.getCoverage();
           if (coverage) this.report.setCoverage(coverage);
+          return generator;
         },
       },
       {
         name: 'pick',
-        run: () => new PickProcessor(this.config, this.isCustom).execute(),
+        run: async (): Promise<FileProcessor> => {
+          const processor = new PickProcessor(this.config, this.isCustom);
+          await processor.execute();
+          return processor;
+        },
       },
       {
         // --skip-llm 自述「不调 LLM API」，却只作用于 ID 生成：translate 照跑、没有 apiKey
@@ -64,11 +71,19 @@ export class AutomaticProcessor extends FileProcessor {
         name: 'translate',
         skip: skipLLM,
         skipReason: '--skip-llm：跳过 AI 翻译步骤，词表命中仍在 pick/merge 生效',
-        run: () => new TranslateProcessor(this.config, this.isCustom).execute(),
+        run: async (): Promise<FileProcessor> => {
+          const processor = new TranslateProcessor(this.config, this.isCustom);
+          await processor.execute();
+          return processor;
+        },
       },
       {
         name: 'merge',
-        run: () => new MergeProcessor(this.config, this.isCustom).execute(),
+        run: async (): Promise<FileProcessor> => {
+          const processor = new MergeProcessor(this.config, this.isCustom);
+          await processor.execute();
+          return processor;
+        },
       },
       {
         // export 是可选步骤：只有显式配置了 io.exportDir 才执行。
@@ -77,7 +92,11 @@ export class AutomaticProcessor extends FileProcessor {
         name: 'export',
         skip: !this.config.io.exportDir,
         skipReason: '未配置 io.exportDir',
-        run: () => new ExportProcessor(this.config).execute(),
+        run: async (): Promise<FileProcessor> => {
+          const processor = new ExportProcessor(this.config);
+          await processor.execute();
+          return processor;
+        },
       },
     ];
 
@@ -88,7 +107,8 @@ export class AutomaticProcessor extends FileProcessor {
         continue;
       }
       try {
-        await step.run();
+        const processor = await step.run();
+        if (processor?.isPartiallyFailed()) this.partiallyFailed = true;
       } catch (error) {
         LoggerUtils.error(`❌ 自动化工作流在 [${step.name}] 步骤失败:`, error);
         LoggerUtils.warn(

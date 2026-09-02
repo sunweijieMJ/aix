@@ -898,3 +898,96 @@ describe('文本工具 — containsChinese / isValidTranslation / previewText', 
     expect(previewText('汉'.repeat(80))).toBe('汉'.repeat(80));
   });
 });
+
+// =============================================================================
+// 四轮审计 P3：IO 侧一致性（A10 / A11 / A14）
+// =============================================================================
+/**
+ * A10：translations.json / untranslated.json 与语言文件必须同一套缩进，否则项目把
+ * io.indent 配成 4 之后，这两类文件每次落盘都互相打架出全量 diff。
+ * A11：扩展名匹配不区分大小写（source-key-scanner 的 hasExtension 已 toLowerCase，
+ * 两侧口径分裂会让 `Foo.VUE` 一边被扫、一边扫不到）。
+ * A14：readBucketedLocaleWithBucketMap 与 readBucketedLocaleFlat 同为 null 原型累加器，
+ * 否则 `__proto__` 这个合法末段 key 在前者里被 setter 静默吞掉。
+ */
+describe('IO 一致性（四轮审计 P3）', () => {
+  let tmpDir: string;
+  let localeDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'io-consistency-'));
+    localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('A10：pick 写出的字典文件跟随 config.io.indent', async () => {
+    fs.writeFileSync(path.join(localeDir, 'zh.json'), JSON.stringify({ 'a.x': '甲' }));
+    fs.writeFileSync(path.join(localeDir, 'en.json'), JSON.stringify({}));
+    const config = resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh', targets: ['en'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat', indent: 4 },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+    await new PickProcessor(config, false).execute();
+
+    const raw = fs.readFileSync(path.join(localeDir, 'untranslated.json'), 'utf8');
+    expect(raw).toMatch(/\n {4}"a\.x"/);
+  });
+
+  it('A10：writeTranslationsFile 未传 indent 时保持 2 空格默认', () => {
+    const p = path.join(tmpDir, 't.json');
+    writeTranslationsFile(p, { 'a.x': { zh: '甲' } });
+    expect(fs.readFileSync(p, 'utf8')).toMatch(/\n {2}"a\.x"/);
+  });
+
+  it('A11：matchesExtensions 不区分大小写（.VUE 与 .vue 同一个文件）', () => {
+    expect(FileUtils.matchesExtensions('Foo.VUE', ['.vue'])).toBe(true);
+    expect(FileUtils.matchesExtensions('Foo.vue', ['.VUE'])).toBe(true);
+    expect(FileUtils.matchesExtensions('Foo.ts', ['.vue'])).toBe(false);
+    // 类型声明文件仍被排除
+    expect(FileUtils.matchesExtensions('types.d.ts', ['.ts'])).toBe(false);
+  });
+
+  it('A14：readBucketedLocaleWithBucketMap 保住 __proto__ 末段 key', () => {
+    const config = resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh', targets: ['en'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      buckets: {
+        rules: [{ name: 'pages', matchKey: (k: string) => k.startsWith('pages.') }],
+        defaultBucket: 'common',
+        emitManifest: false,
+        layout: 'by-locale',
+      },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+    fs.mkdirSync(path.join(localeDir, 'zh'), { recursive: true });
+    // 手写 JSON 文本：对象字面量里的 `__proto__:` 是原型设值语法，写不出这个自有属性
+    fs.writeFileSync(
+      path.join(localeDir, 'zh', 'common.json'),
+      '{"__proto__":"原型名 key","normal":"普通"}',
+    );
+
+    const { flat, keyBucketMap } = new LanguageFileManager(
+      config,
+      false,
+    ).readBucketedLocaleWithBucketMap('zh');
+
+    expect(Object.keys(flat).sort()).toEqual(['__proto__', 'normal']);
+    expect(flat['__proto__']).toBe('原型名 key');
+    expect(keyBucketMap['__proto__']).toBe('common');
+  });
+});

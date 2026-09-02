@@ -52,8 +52,8 @@ export abstract class FileProcessor {
    * CsvExportProcessor → "csv-export"），用于运行报告文件名。
    * 子类无需关心；如有特殊命名可重写。
    *
-   * 断驼峰是为了与用户看到的 CLI mode 名（`--mode csv-export`）一致：报告文件名是
-   * 用户排障时唯一的定位线索，此前只 toLowerCase() 产出的连写形态与任何 mode 名都对不上。
+   * 必须断驼峰（而非只 toLowerCase）：报告文件名是用户排障时唯一的定位线索，须与他
+   * 看到的 CLI mode 名（`--mode csv-export`）逐字一致；连写形态与任何 mode 名都对不上。
    */
   protected getCommandName(): string {
     return this.constructor.name
@@ -135,6 +135,15 @@ export abstract class FileProcessor {
    * 否则 grep SUCCESS 的 CI 会把「翻了一半、剩下全挂」判成绿。
    */
   protected partiallyFailed = false;
+
+  /**
+   * 本次运行是否「部分失败」。供编排型 processor（AutomaticProcessor）在子步骤跑完后
+   * 聚合置位：子步骤各自持有独立实例与 report，不读回这个状态，整条工作流会以
+   * 「✅ 完成」收尾，掩盖掉某一步只做了一半的事实。
+   */
+  isPartiallyFailed(): boolean {
+    return this.partiallyFailed;
+  }
 
   /**
    * 模板方法：包装子类逻辑，提供日志和错误处理

@@ -71,3 +71,33 @@ describe('formatWithPrettier — 平台差异化的 spawn 方式', () => {
     }
   });
 });
+
+/**
+ * 回归（四轮审计 A13）：formatWithPrettier 曾就地吞掉异常并记 error，使
+ * GenerateProcessor / RestoreProcessor 两处 catch 成为永不执行的死代码，
+ * 日志级别也与调用方「格式化失败可忽略」的意图相反。改为向上抛，由调用方定级别。
+ */
+describe('formatWithPrettier — 失败向上抛', () => {
+  beforeEach(() => {
+    execFileMock.mockClear();
+    setPlatform(realPlatform);
+  });
+  afterEach(() => setPlatform(realPlatform));
+
+  it('子进程失败 → 抛错并带上文件路径与原始 cause', async () => {
+    const boom = new Error('prettier not found');
+    execFileMock.mockImplementationOnce((...args: unknown[]) => {
+      const cb = args[args.length - 1];
+      if (typeof cb === 'function') (cb as (e: unknown, r: unknown) => void)(boom, '');
+    });
+
+    await expect(formatWithPrettier('/proj/A.vue')).rejects.toThrow(/格式化失败.*A\.vue/);
+    // eslint 不再被调用（prettier 已失败）
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('全部成功 → 正常 resolve', async () => {
+    await expect(formatWithPrettier('/proj/A.vue')).resolves.toBeUndefined();
+    expect(execFileMock).toHaveBeenCalledTimes(2);
+  });
+});

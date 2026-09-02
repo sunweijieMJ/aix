@@ -10,11 +10,14 @@ import { CHINESE_CHAR_RE } from './constants';
  */
 
 /**
- * 判断字符串字面量是否是比较运算符（=== / !== / == / !=）的操作数
+ * 判断字符串字面量是否是比较运算符（=== / !== / == / !=）的操作数，
+ * 或 `'中文' in obj` 的左操作数（键位置）。
  *
  * 比较的右值通常是 locale 无关的状态常量（如 status === 'pending'）。
  * 一旦被提取并替换为 t(...)，运行时返回的是当前语言的翻译文本，与原始
  * 状态值脱钩，分支永远不命中，破坏业务逻辑。
+ * `in` 的左操作数是对象键，与 PropertyAssignment 的 key、ElementAccess 的下标同一性质：
+ * 换成译文即查不到该键。
  *
  * @param node 字符串字面量节点（也支持其他可能作为操作数的节点）
  */
@@ -29,6 +32,7 @@ export function isComparisonOperand(node: ts.Node): boolean {
   const parent = current.parent;
   if (parent && ts.isBinaryExpression(parent)) {
     const op = parent.operatorToken.kind;
+    if (op === ts.SyntaxKind.InKeyword) return parent.left === current;
     return (
       op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
       op === ts.SyntaxKind.ExclamationEqualsEqualsToken ||
@@ -43,6 +47,66 @@ export function isComparisonOperand(node: ts.Node): boolean {
   return false;
 }
 
+/** 类型注解是否把值锁成字面量：字面量类型本身，或全部成员都是字面量的联合。 */
+function isLiteralTypeAnnotation(type: ts.TypeNode): boolean {
+  if (ts.isLiteralTypeNode(type)) return true;
+  if (ts.isParenthesizedTypeNode(type)) return isLiteralTypeAnnotation(type.type);
+  if (ts.isUnionTypeNode(type)) return type.types.every((t) => isLiteralTypeAnnotation(t));
+  return false;
+}
+
+/** `as const` 断言：TS 把它表示为「类型是名为 const 的 TypeReference」。 */
+function isConstAssertionType(type: ts.TypeNode): boolean {
+  return (
+    ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName) && type.typeName.text === 'const'
+  );
+}
+
+/**
+ * 字面量被「字面量类型上下文」锁死：换成 `t(...)` 调用即类型不合法。
+ *
+ * 三类：
+ *  - `'标题' as const` / `['待办', '完成'] as const`：as const 要求操作数是字面量表达式，
+ *    换成调用直接 TS1355（const 断言的操作数必须是字面量）。
+ *  - `x as '待办'` / `x satisfies '待办' | '完成'`：断言目标是字面量类型，t() 返回 string
+ *    不可赋值。
+ *  - `const cur: '待办' | '完成' = '待办'`：声明的类型注解是字面量（联合），TS2322。
+ *
+ * 数组 / 对象字面量与括号会向上透传（`as const` 挂在最外层，字面量在里面）。
+ * 类型注解写成指向别处定义的 TypeReference（`const cur: Status = '待办'`）时，不解析
+ * 类型即无从判定，这类漏网**有意**接受——本模块刻意零依赖、不做类型检查器的活。
+ */
+function isInLiteralTypeContext(node: ts.StringLiteral): boolean {
+  let current: ts.Node = node;
+  let parent: ts.Node | undefined = current.parent;
+  while (parent) {
+    if (
+      ts.isParenthesizedExpression(parent) ||
+      ts.isArrayLiteralExpression(parent) ||
+      ts.isObjectLiteralExpression(parent) ||
+      (ts.isPropertyAssignment(parent) && parent.initializer === current)
+    ) {
+      current = parent;
+      parent = parent.parent;
+      continue;
+    }
+    break;
+  }
+  if (!parent) return false;
+  if (ts.isAsExpression(parent) || ts.isSatisfiesExpression(parent)) {
+    return isConstAssertionType(parent.type) || isLiteralTypeAnnotation(parent.type);
+  }
+  if (
+    (ts.isVariableDeclaration(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isParameter(parent)) &&
+    parent.initializer === current
+  ) {
+    return !!parent.type && isLiteralTypeAnnotation(parent.type);
+  }
+  return false;
+}
+
 /**
  * 判断 ts.StringLiteral 是否属于"应被国际化提取"的语义位置。
  *
@@ -52,7 +116,8 @@ export function isComparisonOperand(node: ts.Node): boolean {
  *   翻译后 key 变译文同样破坏数据结构——与非计算 key 对称）
  * - 计算属性访问的 key（如 `map['进行中']`，翻译后 `map[t(...)]` 返回译文，查找落空）
  * - 模块路径（静态 import / export-from / require() / 动态 import() / external module reference）
- * - 比较运算符 / case 子句的操作数（翻译状态值会破坏分支判断）
+ * - 比较运算符 / case 子句 / `in` 左侧的操作数（翻译状态值会破坏分支判断与键查找）
+ * - 字面量类型上下文（`as const`、字面量类型注解），替换成 t() 会直接编译不过
  *
  * Why: React/Vue 两端 TextExtractor 共用本方法，避免各写一遍相同的排除条件而维护漂移。
  *
@@ -83,6 +148,7 @@ export function isExtractableStringLiteral(node: ts.StringLiteral): boolean {
     return false;
   }
   if (isComparisonOperand(node)) return false;
+  if (isInLiteralTypeContext(node)) return false;
   return true;
 }
 

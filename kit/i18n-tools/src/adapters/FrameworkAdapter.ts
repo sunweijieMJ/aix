@@ -31,8 +31,8 @@ export interface FrameworkConfig {
  * 提取器明确判定需要人工处理、因而未生成翻译调用的一处文本。
  *
  * 一条记录 = 一个调用点（由 category + dedupeKey/message 唯一确定，见 recordManualSkip 的
- * 去重）。曾有一个 count 字段，但所有记录点都恒传 1、recordManualSkip 也不做累加，
- * 消费端的展开循环永远只转一圈——是「看起来支持聚合、实际不支持」的假灵活，已移除。
+ * 去重）。刻意不带 count 之类的聚合字段：记录点恒为单点、recordManualSkip 也不累加，
+ * 加上只会是「看起来支持聚合、实际不支持」的假灵活。
  *
  * 不含 nested-interpolation：插值内中文走 ExtractionDiagnostics.recordSkippedNestedChinese
  * 一条通道（linter / coverage 都从那里取），此处再记一份必然被消费端过滤掉以避免双计。
@@ -64,8 +64,8 @@ export interface ITextExtractor {
   getDiagnostics(): ExtractionDiagnostics;
 }
 
-// BaseTextExtractor 的实现已下沉至 strategies/base/text-extractor.ts，
-// 维持"策略层提供具体实现、适配器层定义抽象接口"的分层语义。
+// BaseTextExtractor 的实现在 strategies/base/text-extractor.ts：
+// 本层只定义抽象接口，具体实现一律留在策略层。
 
 /**
  * 代码转换器接口
@@ -111,7 +111,7 @@ export interface IComponentInjector {
    * @param filePath - 原始文件路径（用于决定 ScriptKind，避免纯 .ts 文件被按 TSX 解析）。
    *   React 侧据此解析（`.ts` 走 TS、`.tsx/.jsx/.js` 走 TSX/JSX）；Vue 侧刻意忽略——
    *   本方法只在 `.vue` 上被调用，其内部一律按 SFC 分段处理（见 VueComponentInjector）。
-   *   缺省时 React 侧退回 TSX，与历史行为一致。
+   *   缺省时 React 侧退回 TSX。
    */
   inject(code: string, filePath?: string): string;
 }
@@ -121,7 +121,6 @@ export interface IComponentInjector {
  */
 export interface IImportManager {
   handleGlobalImports(code: string, fileStrings: ExtractedString[], filePath?: string): string;
-  addI18nImports(code: string, imports: string[]): string;
   /**
    * 全部注入完成后的收尾清理（可选）。React 端用于删除「被注入的 useTranslation t 遮蔽后
    * 变成未使用」的 tImport `import { t }`，避免产出 ESLint no-unused-vars 的死导入。
@@ -199,11 +198,6 @@ export abstract class FrameworkAdapter {
    * 获取组件注入器
    */
   abstract getComponentInjector(): IComponentInjector;
-
-  /**
-   * 获取导入管理器
-   */
-  abstract getImportManager(): IImportManager;
 
   /**
    * 获取底层 i18n 库适配器（用于 locale 值定稿 / 还原：花括号策略、字面量转义）。

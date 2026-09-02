@@ -193,6 +193,63 @@ describe('CLI 入口守卫（cli.ts main）', () => {
     T,
   );
 
+  /**
+   * 回归（四轮审计 A15）：--help 顶部的模式清单曾是手写列表，与 --mode choices 分头维护，
+   * csv-export / csv-import / prune 三个模式漏登记。现由 MODE_LIST + MODE_DESCRIPTIONS 生成。
+   */
+  it(
+    '--help 顶部模式清单覆盖全部 --mode choices',
+    () => {
+      const { code, out } = runCli(['--help'], cfgDir);
+      expect(code).toBe(0);
+      const header = out.split('使用方式')[0]!;
+      for (const mode of [
+        'automatic',
+        'generate',
+        'pick',
+        'translate',
+        'merge',
+        'restore',
+        'export',
+        'doctor',
+        'csv-export',
+        'csv-import',
+        'prune',
+      ]) {
+        expect(header).toContain(mode);
+      }
+    },
+    T,
+  );
+
+  /**
+   * 「仅在 xx 模式生效」的选项被静默丢弃时必须提示：用户看不到警告就会以为参数生效
+   * （`--mode merge --path src/x` 看似限定了范围，实际是全量跑）。
+   * 每个用例都挑一个「警告之后还会被既有守卫拦下」的组合，断言不依赖后续真跑。
+   */
+  it.each([
+    [['--mode', 'generate', '--keep-plan'], /--keep-plan 仅在 --apply-plan/],
+    [['--mode', 'generate', '--plan-output-dir', 'plans'], /--plan-output-dir 仅在 --dry-run/],
+    [['--mode', 'generate', '--langs', 'en-US'], /--langs 仅在 --mode csv-export \/ csv-import/],
+    [['--mode', 'generate', '--filter', 'translated'], /--filter 仅在 --mode csv-export/],
+    [['--mode', 'generate', '--source', 'translations'], /--source 仅在 --mode csv-export/],
+    [
+      ['--mode', 'csv-import', '--path', 'src'],
+      /--path 仅在 --mode generate \/ restore \/ automatic/,
+    ],
+    [
+      ['--mode', 'csv-import', '--skip-llm'],
+      /--skip-llm 仅在 --mode generate \/ automatic \/ translate/,
+    ],
+  ])(
+    '%s → 提示该选项在当前模式下被忽略',
+    (args, pattern) => {
+      const { out } = runCli(args as string[], cfgDir);
+      expect(out).toMatch(pattern as RegExp);
+    },
+    T,
+  );
+
   it(
     '--version → 输出 i18n-tools 自身版本，不受消费项目 package.json 影响',
     () => {

@@ -1,6 +1,10 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import ts from 'typescript';
-import { finalizeLocaleMessage, toSingleBracePlaceholders } from '../src/utils/message-shape';
+import {
+  finalizeLocaleMessage,
+  parseTemplatePlaceholders,
+  toSingleBracePlaceholders,
+} from '../src/utils/message-shape';
 import {
   createJsxFragmentFromTemplate,
   createStringOrTemplateNode,
@@ -298,5 +302,47 @@ describe('createJsxFragmentFromTemplate 占位符/values 数量守卫', () => {
   it('同名占位符重复出现时按唯一名比对，不误判失配', () => {
     const fragment = createJsxFragmentFromTemplate('{name} 你好，{name}', { name: ident('name') });
     expect(fragment).not.toBeNull();
+  });
+});
+
+/**
+ * 占位符 token 形态：restore 侧切分（parseTemplatePlaceholders）与写盘定稿
+ * （finalizeLocaleMessage）共用同一形态，名两侧空白与 i18next 的 `-` 前缀都归一掉。
+ * 两侧结论一旦不一致，同一条文案会在一端被当占位符、另一端被当字面量花括号转义。
+ */
+describe('占位符 token 归一（parse / finalize 同口径）', () => {
+  it('parseTemplatePlaceholders：名两侧空白被 trim', () => {
+    const { literalParts, placeholderNames } = parseTemplatePlaceholders('共 { count } 项');
+    expect(placeholderNames).toEqual(['count']);
+    expect(literalParts).toEqual(['共 ', ' 项']);
+  });
+
+  it('parseTemplatePlaceholders：`{{- name}}` 归一为 name，且不残留花括号', () => {
+    const { literalParts, placeholderNames } = parseTemplatePlaceholders('你好 {{- name}}！');
+    expect(placeholderNames).toEqual(['name']);
+    expect(literalParts).toEqual(['你好 ', '！']);
+  });
+
+  it('parseTemplatePlaceholders：`{{name}}` 与 `{name}` 结论一致', () => {
+    expect(parseTemplatePlaceholders('共 {{count}} 项').placeholderNames).toEqual(['count']);
+    expect(parseTemplatePlaceholders('共 {count} 项').placeholderNames).toEqual(['count']);
+  });
+
+  it('finalizeLocaleMessage：`{ count }` 与 `{count}` 定稿结果相同', () => {
+    const lib = new VueI18nLibraryImpl();
+    expect(finalizeLocaleMessage('共 { count } 项', ['count'], lib)).toBe('共 {count} 项');
+    expect(finalizeLocaleMessage('共 {count} 项', ['count'], lib)).toBe('共 {count} 项');
+  });
+
+  it('finalizeLocaleMessage：双花括号库下带空白的占位符同样识别为真占位符', () => {
+    const lib = new ReactI18nextLibrary();
+    expect(finalizeLocaleMessage('共 { count } 项', ['count'], lib)).toBe('共 {{count}} 项');
+  });
+
+  it('非占位符名的花括号仍按字面量转义（守卫不扩大化）', () => {
+    const lib = new VueI18nLibraryImpl();
+    expect(finalizeLocaleMessage('包含{ 大括号 }的文本', [], lib)).toBe(
+      "包含{'{'} 大括号 {'}'}的文本",
+    );
   });
 });

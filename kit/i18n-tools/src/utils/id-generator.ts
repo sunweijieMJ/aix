@@ -99,11 +99,18 @@ class PathPrefixStrategyImpl implements PrefixStrategy {
     const fileIndex = parts.length - 1;
     let dirParts = parts.slice(anchorIndex + 1, fileIndex);
 
-    // 文件直接在 anchor 下：用文件名（去扩展名）作为单段前缀。
-    // 与 includeFile 分支一致地应用 fileNameCase——否则顶层文件（src/MyView.vue）
-    // 与子目录文件的前缀大小写规则不一致（前者 'MyView'、后者 'my-view'）。
+    // 文件直接在 anchor 下（anchor 与文件之间没有目录段）：退化为「用文件名作单段前缀」。
+    // 这条退化路径**有意**不看 includeFile——不用文件名就只剩空前缀，src 下所有顶层文件
+    // 的 key 会挤在同一命名空间里撞车。
+    // 与 includeFile 分支一致地应用 fileNameCase 与 indexFile：
+    //  - fileNameCase：否则顶层文件（src/MyView.vue）与子目录文件的大小写规则不一致；
+    //  - indexFile='collapse-to-parent'：`src/index.vue` 的父目录就是 anchor 本身、不入前缀，
+    //    折叠后只剩空前缀，与 `components/TagInput/index.vue` 折叠掉 index 段同一口径。
     if (dirParts.length === 0) {
       const baseName = path.parse(parts[fileIndex]!).name;
+      if (baseName === 'index' && this.options.indexFile === 'collapse-to-parent') {
+        return [];
+      }
       return this.finalize([applyCase(baseName, this.options.fileNameCase)], ctx);
     }
 
@@ -166,9 +173,12 @@ class FixedPrefixStrategyImpl implements PrefixStrategy {
   private readonly segments: string[];
 
   constructor(options: Extract<ResolvedPrefixStrategy, { strategy: 'fixed' }>, separator: string) {
+    // 段清理与 path / LLM 路径共用 cleanSegment：固定前缀同样会进 key，含空格 / 中文 /
+    // 分隔符以外的符号时会产出无法在 locale 文件里安全寻址的 key。
+    // fixed 策略没有 preserveHyphens 选项，按最宽口径保留连字符（`my-app` 是合法前缀）。
     this.segments = options.value
       .split(separator)
-      .map((s) => s.trim())
+      .map((s) => cleanSegment(s.trim(), true))
       .filter(Boolean);
   }
 

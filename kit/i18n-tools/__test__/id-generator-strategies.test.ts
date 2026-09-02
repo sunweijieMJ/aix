@@ -214,6 +214,20 @@ describe('IdGenerator - PathStrategy', () => {
     );
   });
 
+  it('文件直属 anchor 且为 index：collapse-to-parent 折叠后无前缀', () => {
+    const gen = new IdGenerator(buildConfig());
+    // src/index.vue 的父目录就是 anchor 本身、不入前缀，折叠掉 index 段后前缀为空
+    expect(gen.getDirectoryPrefix('/tmp/proj/src/index.vue')).toBe('');
+    expect(gen.generateWithFilePath('/tmp/proj/src/index.vue', '提交', new Set())).toBe('submit');
+  });
+
+  it('文件直属 anchor 且为 index：indexFile=as-is 时保留 index 段', () => {
+    const gen = new IdGenerator(
+      buildConfig({ keys: { prefix: { strategy: 'path', indexFile: 'as-is' } } }),
+    );
+    expect(gen.getDirectoryPrefix('/tmp/proj/src/index.vue')).toBe('index');
+  });
+
   it('indexFile=as-is 保留 index 作为末段', () => {
     const gen = new IdGenerator(
       buildConfig({
@@ -238,6 +252,16 @@ describe('IdGenerator - FixedStrategy', () => {
     );
     expect(gen.getDirectoryPrefix('/tmp/proj/src/pages/home/index.vue')).toBe('common');
     expect(gen.getDirectoryPrefix('/tmp/other/anywhere.vue')).toBe('common');
+  });
+
+  it('value 段过 cleanSegment：非法字符被抹除、连字符保留', () => {
+    const gen = new IdGenerator(
+      buildConfig({
+        io: { format: 'flat' },
+        keys: { prefix: { strategy: 'fixed', value: 'my-app 模块!' } },
+      }),
+    );
+    expect(gen.getDirectoryPrefix('/tmp/proj/src/anywhere.vue')).toBe('my-app');
   });
 
   it('value 含 separator 时拆分为多段', () => {

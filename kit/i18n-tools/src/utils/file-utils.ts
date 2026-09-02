@@ -126,10 +126,15 @@ export class FileUtils {
   /**
    * 文件名是否匹配给定扩展名集合（同时排除类型声明文件）。
    * 框架细节由调用方通过 Adapter.getSupportedExtensions() 提供，本工具不再硬编码。
+   *
+   * 扩展名比较不区分大小写：macOS / Windows 上 `Foo.VUE` 与 `Foo.vue` 是同一个文件，
+   * 大小写敏感会让这类文件被本方法漏掉、却仍被 source-key-scanner 的 hasExtension
+   * （已 toLowerCase）当框架文件扫描，两侧口径分裂。
    */
   static matchesExtensions(fileName: string, extensions: string[]): boolean {
     if (FileUtils.isDeclarationFile(fileName)) return false;
-    return extensions.includes(path.extname(fileName));
+    const ext = path.extname(fileName).toLowerCase();
+    return extensions.some((e) => e.toLowerCase() === ext);
   }
 
   /**

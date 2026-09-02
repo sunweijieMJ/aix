@@ -25,7 +25,7 @@ export class LLMClient {
    * 当前 i18n 库的插值占位符语法是否为双花括号 `{{name}}`（react-i18next /
    * vue-i18next）。用于翻译 prompt 精确描述占位符规则，避免把源文里恰好出现
    * 的单花括号字面量文本误当占位符保护，导致其内容（可能是中文）漏翻译。
-   * 仅翻译任务需要（ID 生成 prompt 不涉及占位符规则），默认 false 保持旧行为。
+   * 仅翻译任务需要（ID 生成 prompt 不涉及占位符规则），故默认 false。
    */
   private usesDoubleBracePlaceholders: boolean;
 

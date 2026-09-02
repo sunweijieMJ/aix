@@ -102,6 +102,30 @@ describe('CsvExportProcessor', () => {
     expect(rows[1]).toEqual(['a', '甲', '', 'A']);
   });
 
+  it('某列值不是字符串 → 整条按非法条目跳过并告警，不裸调 .trim() 崩溃', async () => {
+    const warnSpy = vi.spyOn(LoggerUtils, 'warn');
+    // 手工把 en-US 改成数字：reasonFor 的 value.trim() 会抛 TypeError
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({
+        bad: { 'zh-CN': '坏', 'en-US': 123 },
+        good: { 'zh-CN': '好', 'en-US': '' },
+      }),
+    );
+
+    await expect(
+      new CsvExportProcessor(makeConfig(), false, {
+        source: 'untranslated',
+        filter: 'all',
+        langs: ['en-US'],
+      }).execute(),
+    ).resolves.toBeUndefined();
+
+    // 非法条目被跳过，合法条目照常导出
+    expect(readCsv().slice(1)).toEqual([['good', '好', '', '']]);
+    expect(warnSpy.mock.calls.some((c) => /不是字符串.*bad/.test(String(c[0])))).toBe(true);
+  });
+
   it('--source translations 读 translations.json', async () => {
     fs.writeFileSync(
       path.join(localeDir, 'translations.json'),

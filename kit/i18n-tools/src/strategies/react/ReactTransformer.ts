@@ -11,11 +11,8 @@ import { createMessageWithOptions } from '../../utils/message-shape';
 import { ReactASTUtils } from './react-ast-utils';
 import { HooksUtils } from './hooks-utils';
 import type { ExtractedString } from '../../utils/types';
-import type {
-  IComponentInjector,
-  IImportManager,
-  ITransformer,
-} from '../../adapters/FrameworkAdapter';
+import type { IComponentInjector, ITransformer } from '../../adapters/FrameworkAdapter';
+import type { ReactImportManager } from './ReactImportManager';
 import type { ReactI18nLibrary } from './libraries';
 
 /**
@@ -27,13 +24,15 @@ import type { ReactI18nLibrary } from './libraries';
  */
 export class ReactTransformer implements ITransformer {
   private library: ReactI18nLibrary;
-  private importManager: IImportManager;
+  // 具体类型而非 IImportManager：addI18nImports 是 React 专属（Vue 的 t 来源走模块顶层
+  // import，不注入 hook），不进框架无关的 IImportManager 契约。
+  private importManager: ReactImportManager;
   private componentInjector: IComponentInjector;
   private includeDefaultMessage: boolean;
 
   constructor(
     library: ReactI18nLibrary,
-    importManager: IImportManager,
+    importManager: ReactImportManager,
     componentInjector: IComponentInjector,
     options: { includeDefaultMessage?: boolean } = {},
   ) {
@@ -112,9 +111,9 @@ export class ReactTransformer implements ITransformer {
     const sourceFile = parseSourceFile(sourceText, filePath);
 
     // 收集所有有效的替换操作。
-    // 无需在此按位置排序：从后往前替换避免位置偏移由 applyReplacements
-    // 内部统一完成（它会先按区间大小贪心去重、再按 start 倒序后应用），此处预排序对
-    // 最终产物无影响，且会原地 mutate 入参 fileStrings——故省去。
+    // 无需在此按位置排序：applyReplacements 内部先检测区间重叠（重叠即抛错中止，绝不静默
+    // 丢替换点）、再按 start 倒序应用，位置偏移由它统一处理。此处预排序对最终产物无影响，
+    // 且会原地 mutate 入参 fileStrings——故省去。
     const replacements: Array<{
       start: number;
       end: number;
@@ -186,7 +185,7 @@ export class ReactTransformer implements ITransformer {
   /**
    * 根据提取的字符串信息，生成用于替换的i18n代码
    */
-  private generateReplacement(extracted: ExtractedString, node?: ts.Node): string {
+  private generateReplacement(extracted: ExtractedString, node: ts.Node): string {
     const { semanticId, context, isTemplateString, templateVariables } = extracted;
     const includeDefaultMessage = this.includeDefaultMessage;
 
@@ -216,9 +215,7 @@ export class ReactTransformer implements ITransformer {
 
     // 对于jsx-attribute和js-code使用函数调用
     const reactContext = context as 'jsx-text' | 'jsx-attribute' | 'js-code';
-    const needsWrapper = node
-      ? ReactASTUtils.needsJsxWrapper(node, reactContext)
-      : context === 'jsx-attribute';
+    const needsWrapper = ReactASTUtils.needsJsxWrapper(node, reactContext);
 
     // 非组件（模块顶层）作用域用各库的 globalFunctionName（react-i18next: 注入的裸 t；
     // react-intl: getIntl）；与 ReactImportManager.needsGlobalFunction 同样依据

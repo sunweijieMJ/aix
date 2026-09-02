@@ -27,7 +27,7 @@ export interface GeneratePlanHit {
   isTemplateString?: boolean;
   templateVariables?: string[];
   attributeName?: string;
-  /** 命中的 modules.rules 名（未启用 modules 时为空） */
+  /** 命中的 buckets.rules 桶名（未启用 buckets 时为空） */
   module?: string;
 }
 

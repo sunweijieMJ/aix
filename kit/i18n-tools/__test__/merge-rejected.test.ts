@@ -508,3 +508,78 @@ describe('MergeProcessor — 合入时占位符失配告警', () => {
     expect(warns).not.toContain('占位符不匹配');
   });
 });
+
+/**
+ * 回归（四轮审计 A6）：finalEntry 曾只装 source + 当前 targets 的字段，且整体覆盖写回
+ * translations/untranslated.json——字典文件是团队共享产物，别的分支 / 别人机器上的 targets
+ * 可能更全，用窄 targets 跑一次 merge 就会把那些语种的译文静默抹掉（只能靠 git 找回）。
+ */
+describe('MergeProcessor — 非当前 targets 的语种字段透传', () => {
+  let tmpDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'merge-carry-locale-'));
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const writeJson = (relPath: string, data: unknown): void => {
+    const full = path.join(tmpDir, 'locale', relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, JSON.stringify(data, null, 2));
+  };
+  const readJson = (relPath: string): Record<string, Record<string, string>> =>
+    JSON.parse(fs.readFileSync(path.join(tmpDir, 'locale', relPath), 'utf-8'));
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  it('条目里 ja-JP 的译文被原样保留到 translations.json，并告警说明未写入语言文件', async () => {
+    writeJson('zh-CN.json', { 'a.submit': '提交' });
+    writeJson('en-US.json', {});
+    writeJson('translations.json', {});
+    writeJson('untranslated.json', {
+      'a.submit': { 'zh-CN': '提交', 'en-US': 'Submit', 'ja-JP': '送信' },
+    });
+
+    await new MergeProcessor(makeConfig(), false).execute();
+
+    expect(readJson('translations.json')['a.submit']).toEqual({
+      'zh-CN': '提交',
+      'en-US': 'Submit',
+      'ja-JP': '送信',
+    });
+    const warns = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(warns).toContain('ja-JP');
+  });
+
+  it('仍未翻译完的条目回写 untranslated.json 时同样保留其它语种', async () => {
+    writeJson('zh-CN.json', { 'a.submit': '提交' });
+    writeJson('en-US.json', {});
+    writeJson('translations.json', {});
+    writeJson('untranslated.json', {
+      'a.submit': { 'zh-CN': '提交', 'en-US': '', 'ja-JP': '送信' },
+    });
+
+    await new MergeProcessor(makeConfig(), false).execute();
+
+    expect(readJson('untranslated.json')['a.submit']).toEqual({
+      'zh-CN': '提交',
+      'en-US': '',
+      'ja-JP': '送信',
+    });
+  });
+});

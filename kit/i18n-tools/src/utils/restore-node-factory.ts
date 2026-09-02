@@ -36,8 +36,8 @@ function findExpressionForVariable(
  * @param messageText - 从语言文件中获取的、包含占位符的消息文本
  * @param values - 包含变量名到其原始AST节点映射的对象
  * @returns 创建的节点；占位符与 values 无法对齐（无占位符 / 数量失配 / 找不到表达式）时返回 null，
- *          调用方应保留原调用/组件——此前这两条路径退化为字面串，会把占位符字面化写进
- *          源码、静默删除运行时变量。
+ *          调用方必须据此保留原调用 / 组件。这些路径**不得**退化为字面串：那会把占位符
+ *          写死进源码、静默删掉运行时变量。
  */
 export function createStringOrTemplateNode(
   messageText: string,
@@ -50,8 +50,8 @@ export function createStringOrTemplateNode(
   const { literalParts, placeholderNames } = parseTemplatePlaceholders(messageText);
 
   // values 非空却一个占位符都没有 → 与下方「数量比对」同属失配，必须返回 null 保留原调用。
-  // 此前在比对之前提前返回字符串字面量，绕开了整道失配守卫：values 里的运行时变量被静默
-  // 丢弃，且在 JSX 子节点位置这个 StringLiteral 会连引号一起渲染成可见文本。
+  // 这道守卫不能被提前返回字符串字面量绕开：那样 values 里的运行时变量会被静默丢弃，
+  // 且在 JSX 子节点位置该 StringLiteral 会连引号一起渲染成可见文本。
   if (placeholderNames.length === 0) {
     LoggerUtils.warn(
       `[Restore Warning] Message has no placeholder but ${
@@ -144,9 +144,13 @@ export function createJsxFragmentFromTemplate(
   const pushText = (t: string): void => {
     if (t.length === 0) return;
     if (/[<>{}]/.test(t)) {
+      // JS 字符串字面量：NBSP 原样写入即可（eslint no-irregular-whitespace 默认跳过字符串）
       children.push(ts.factory.createJsxExpression(undefined, ts.factory.createStringLiteral(t)));
     } else {
-      children.push(ts.factory.createJsxText(t, false));
+      // JsxText 里的 U+00A0 重编码为 `&nbsp;`：字面 NBSP 渲染无差，但会触发
+      // eslint no-irregular-whitespace（error 级）挂掉项目 lint。JSX 会把实体解码回 NBSP，
+      // 渲染结果不变。与 VueRestoreTransformer.escapeTemplateText 同一口径。
+      children.push(ts.factory.createJsxText(t.replace(/\u00A0/g, '&nbsp;'), false));
     }
   };
 

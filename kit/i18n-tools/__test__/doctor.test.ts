@@ -467,6 +467,54 @@ describe('DoctorProcessor missing-target-key', () => {
 
     expect(all()).not.toContain('[missing-target-key]');
   });
+
+  it('target 有该 key、源 locale 已无 → 报 stale-target-key（warning，只报不删）', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'P.vue'), `<template>{{ t('order.submit') }}</template>`);
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'order.submit': '提交订单' }),
+    );
+    // legacy.removed 只在 target 里：源侧已删/改名，译文成了残留
+    fs.writeFileSync(
+      path.join(localeDir, 'en-US.json'),
+      JSON.stringify({ 'order.submit': 'Submit', 'legacy.removed': 'Gone' }),
+    );
+
+    await new DoctorProcessor(
+      buildConfig(rootDir, sourceDir, localeDir),
+      false,
+      undefined,
+      {},
+    ).execute();
+
+    expect(all()).toContain('[stale-target-key]');
+    expect(all()).toContain('legacy.removed');
+    // 只报不删：target 文件保持原样
+    expect(JSON.parse(fs.readFileSync(path.join(localeDir, 'en-US.json'), 'utf-8'))).toHaveProperty(
+      'legacy.removed',
+    );
+  });
+
+  it('target 的 key 源侧都有 → 不报 stale-target-key', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'P.vue'), `<template>{{ t('order.submit') }}</template>`);
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'order.submit': '提交订单' }),
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'en-US.json'),
+      JSON.stringify({ 'order.submit': 'Submit' }),
+    );
+
+    await new DoctorProcessor(
+      buildConfig(rootDir, sourceDir, localeDir),
+      false,
+      undefined,
+      {},
+    ).execute();
+
+    expect(all()).not.toContain('[stale-target-key]');
+  });
 });
 
 /**
@@ -577,5 +625,77 @@ describe('DoctorProcessor 双目录（customDir）对账', () => {
     expect(successSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n')).toContain(
       'Doctor 检查通过',
     );
+  });
+});
+
+/**
+ * 回归（四轮审计 A1）：doctor 的 missing-key / orphan-key 对账要与 restore 同一 namespace
+ * 口径——i18next 系（supportsNamespace）里 `ns:key` 是运行时约定、locale 存裸 key，
+ * 源码侧与 locale 侧都过同一归一，否则同一条文案会被同时报成 missing-key 与 orphan-key。
+ */
+describe('DoctorProcessor — namespace 归一（四轮审计 A1）', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-ns-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const runDoctor = async (library: 'vue-i18n' | 'vue-i18next'): Promise<string> => {
+    const config = resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', library, tImport: '@/locale' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: localeDir, sourceDir, format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+    await new DoctorProcessor(config, false, undefined, { ci: false }).execute();
+    return infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+  };
+
+  it('vue-i18next：源码 ns:key、locale 裸 key → 既不报 missing-key 也不报 orphan-key', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('app:greeting') }}</div></template>`,
+    );
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify({ greeting: '你好' }));
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ greeting: 'Hi' }));
+
+    const output = await runDoctor('vue-i18next');
+
+    expect(output).not.toMatch(/missing-key/);
+    expect(output).not.toMatch(/orphan-key/);
+  });
+
+  it('vue-i18n：冒号属于 key 自身，仍按字面对账（未定义即 missing-key）', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'A.vue'),
+      `<template><div>{{ $t('app:greeting') }}</div></template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'zh-CN.json'),
+      JSON.stringify({ 'app:greeting': '你好' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'en-US.json'), JSON.stringify({ 'app:greeting': 'Hi' }));
+
+    const output = await runDoctor('vue-i18n');
+
+    expect(output).not.toMatch(/missing-key/);
+    expect(output).not.toMatch(/orphan-key/);
   });
 });

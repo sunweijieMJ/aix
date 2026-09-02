@@ -5,7 +5,11 @@ import type { FrameworkAdapter } from '../adapters';
 import { FileUtils } from '../utils/file-utils';
 import { InteractiveUtils } from '../utils/interactive-utils';
 import { LoggerUtils } from '../utils/logger';
-import { collectUsedKeys, matchesDynamicAllowlist } from '../utils/source-key-scanner';
+import {
+  collectUsedKeys,
+  createKeyNormalizer,
+  matchesDynamicAllowlist,
+} from '../utils/source-key-scanner';
 import type { LocaleMap, Translations } from '../utils/types';
 import { BaseProcessor } from './BaseProcessor';
 import { loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
@@ -99,20 +103,41 @@ export class PruneProcessor extends BaseProcessor {
       );
     }
 
+    // locale 侧过同一归一（createKeyNormalizer）：i18next 系里源码写 `ns:key`、locale 存
+    // 裸 key 是运行时约定，两侧不折算到同一口径会把在用 key 判成孤儿并从所有 locale 删除。
+    const normalizeKey = createKeyNormalizer(this.config, this.adapter);
     const orphans = Object.keys(sourceMap).filter(
-      (key) => !usedKeys.has(key) && !matchesDynamicAllowlist(this.config, key),
+      (key) => !usedKeys.has(normalizeKey(key)) && !matchesDynamicAllowlist(this.config, key),
     );
+
+    // namespace 闸：不按 namespace 归一的库上（冒号属于 key 自身），源码若写成 `ns:key`
+    // 而 locale 存裸 key，两侧对不上 → 在用 key 落进孤儿名单。凡「剥掉引用里首个冒号前缀后
+    // 恰好等于该 locale key」的一律保留：多留一个待清理 key 只是噪声，删错则不可逆。
+    const nsStrippedRefs = new Set<string>();
+    for (const used of usedKeys) {
+      const colonIndex = used.indexOf(':');
+      if (colonIndex !== -1) nsStrippedRefs.add(used.slice(colonIndex + 1));
+    }
+    const shielded = orphans.filter((key) => nsStrippedRefs.has(key));
+    if (shielded.length > 0) {
+      LoggerUtils.warn(
+        `⚠️  ${shielded.length} 个 key 未被直接引用，但源码里存在 'ns:${shielded[0]}' 形式的引用，` +
+          `已跳过删除；若确为命名空间用法，请在 framework.namespace 中声明后重跑。`,
+      );
+    }
+    const shieldedSet = new Set(shielded);
+    const prunable = orphans.filter((key) => !shieldedSet.has(key));
 
     LoggerUtils.info(
       `🔍 源码引用 ${usedKeys.size} 个 key，source locale 共 ${Object.keys(sourceMap).length} 个`,
     );
-    if (orphans.length === 0) {
+    if (prunable.length === 0) {
       LoggerUtils.success('✅ 没有孤儿 key，无需清理');
       return;
     }
-    LoggerUtils.info(`🗑️  将删除 ${orphans.length} 个孤儿 key：`);
-    orphans.slice(0, 20).forEach((k) => LoggerUtils.info(`   - ${k}`));
-    if (orphans.length > 20) LoggerUtils.info(`   … 其余 ${orphans.length - 20} 个`);
+    LoggerUtils.info(`🗑️  将删除 ${prunable.length} 个孤儿 key：`);
+    prunable.slice(0, 20).forEach((k) => LoggerUtils.info(`   - ${k}`));
+    if (prunable.length > 20) LoggerUtils.info(`   … 其余 ${prunable.length - 20} 个`);
 
     if (this.options.dryRun) {
       LoggerUtils.info('🧪 --dry-run：仅预览，未删除');
@@ -128,7 +153,7 @@ export class PruneProcessor extends BaseProcessor {
         );
       }
       const ok = await InteractiveUtils.promptForGenericConfirmation(
-        `确认从所有 locale 删除这 ${orphans.length} 个孤儿 key？`,
+        `确认从所有 locale 删除这 ${prunable.length} 个孤儿 key？`,
       );
       if (!ok) {
         this.cancelled = true;
@@ -137,7 +162,7 @@ export class PruneProcessor extends BaseProcessor {
       }
     }
 
-    const orphanSet = new Set(orphans);
+    const orphanSet = new Set(prunable);
     const locales = [sourceLocale, ...this.config.locales.targets];
     for (const locale of locales) {
       this.pruneLocale(locale, orphanSet);
@@ -185,7 +210,7 @@ export class PruneProcessor extends BaseProcessor {
     );
     const removed = PruneProcessor.deleteOwnKeys(data, orphanSet);
     if (removed === 0) return;
-    writeTranslationsFile(filePath, data);
+    writeTranslationsFile(filePath, data, this.config.io.indent);
     LoggerUtils.success(`✅ ${path.basename(filePath)}: 删除 ${removed} 个 key`);
   }
 

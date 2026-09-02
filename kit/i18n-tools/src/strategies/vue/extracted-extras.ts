@@ -3,9 +3,10 @@ import type { ExtractedString } from '../../utils/types';
 /**
  * Vue 提取器附加在 ExtractedString 上的**框架私有**字段。
  *
- * Why 不进 utils/types.ts：ExtractedString 是框架无关契约，这两项只有 Vue 的
- * 提取器写、Vue 的转换器读（同一进程内对象直传，不经序列化裁剪），放进公共契约
- * 会让 React 侧多背两个永远为空的字段。
+ * Why 不进 utils/types.ts：新增的 Vue 专属字段一律落在这里，止住公共契约继续膨胀
+ * ——utils/types.ts 的 ExtractedString 已背了 templateContext / attributeName /
+ * startOffset / sourceSlice 四个 Vue 专属字段，React 侧永远为空。这两项只有 Vue 的
+ * 提取器写、Vue 的转换器读（同一进程内对象直传，不经序列化裁剪），无须进公共契约。
  */
 export interface VueExtractedExtras {
   /**

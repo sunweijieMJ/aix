@@ -41,6 +41,7 @@ export interface FailureRecord {
  * - comparison-operand   `xxx === '中文'` 比较操作数（运行时切语言后分支永远不命中）
  * - mixed-content        混合内容字符串（中英符号交错，无法机械拆分）
  * - html-in-template     源码模板字符串含 HTML 标签（含拼装结构）
+ * - class-property       类组件属性初始化器中的中文（该位置没有可用的 t 绑定）
  * - html-tag-in-value    locale value 已含 HTML 标签（运行时 innerHTML = t()）
  * - long-value           locale value 超长（建议拆分）
  * - semantic-duplicate   语义重复 key（占位符变量名/空白差异）
@@ -180,7 +181,7 @@ export class RunReport {
    * 按 category 分组聚合**全部** needsManual，供报告渲染与测试观察。
    *
    * 与下方 groupCoverageManualByCategory 的关系：后者是「只要进 coverage.skipped 的那 4 类」
-   * 的特化版（covergae 总览用），本方法才是全量入口——lint 类发现（semantic-duplicate /
+   * 的特化版（coverage 总览用），本方法才是全量入口——lint 类发现（semantic-duplicate /
    * html-tag-in-value 等）只能从这里看到。
    */
   groupManualByCategory(): Record<string, ManualEntry[]> {

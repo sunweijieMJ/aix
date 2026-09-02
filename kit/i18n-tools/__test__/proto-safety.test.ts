@@ -456,3 +456,68 @@ describe('FileUtils.flattenObject — 保住 __proto__ 叶子 key', () => {
     expect(Object.keys(messages!).sort()).toEqual(['__proto__', 'normal']);
   });
 });
+
+/**
+ * 回归（四轮审计 A3）：nested 落盘的保留段名校验必须覆盖**所有**写路径，不能只在
+ * generate 的写源码前预检里做。存量 key（手写 locale / flat 时期写入 / CSV 回流）经
+ * merge / prune / export 的写回同样会过 serialize → unflattenObject，含
+ * `__proto__`/`constructor`/`prototype` 段的 key 会被整条静默丢弃、文件比读入时少一条。
+ */
+describe('LanguageFileManager nested — 存量保留段名 key 写盘时 fail-fast', () => {
+  let rootDir: string;
+  let localeDir: string;
+
+  const buildConfig = (format: 'flat' | 'nested'): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { sourceDir: rootDir, localesDir: localeDir, format, prettify: false },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lfm-reserved-'));
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('writeLocaleFile 遇到含 prototype 段的存量 key → 抛错并指出 key 名，文件不被改写', () => {
+    const zhPath = path.join(localeDir, 'zh-CN.json');
+    const existing = { 'views.prototype.title': '原型页标题', 'views.home.title': '首页' };
+    fs.writeFileSync(zhPath, JSON.stringify(existing), 'utf-8');
+
+    const manager = new LanguageFileManager(buildConfig('nested'), false);
+    const flat = manager.readLocaleFile('zh-CN')!;
+
+    expect(() => manager.writeLocaleFile(flat, 'zh-CN')).toThrow(/views\.prototype\.title/);
+    // 原文件未被半写入 / 丢 key
+    expect(JSON.parse(fs.readFileSync(zhPath, 'utf-8'))).toEqual(existing);
+  });
+
+  it('assertKeysSerializable（merge 写盘前预检）同样拦截保留段名 key', () => {
+    const manager = new LanguageFileManager(buildConfig('nested'), false);
+    expect(() => manager.assertKeysSerializable(['a.constructor.b'])).toThrow(/constructor/);
+    expect(() => manager.assertKeysSerializable(['a.b.c'])).not.toThrow();
+  });
+
+  it('flat 格式不经 unflatten，保留段名 key 照常写入', () => {
+    const zhPath = path.join(localeDir, 'zh-CN.json');
+    const manager = new LanguageFileManager(buildConfig('flat'), false);
+
+    manager.writeLocaleFile({ 'views.prototype.title': '原型页标题' }, 'zh-CN');
+
+    expect(JSON.parse(fs.readFileSync(zhPath, 'utf-8'))).toEqual({
+      'views.prototype.title': '原型页标题',
+    });
+  });
+});

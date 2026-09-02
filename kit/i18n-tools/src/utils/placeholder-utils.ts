@@ -16,6 +16,10 @@ const IDENT_RE = new RegExp(`^[${PLACEHOLDER_NAME_CHARS}]+`);
  * 用于 doctor 的 placeholder-mismatch 校验、translate 的译文占位符一致性校验：
  * 对比 source 与 target 的名集是否一致。
  *
+ * ⚠️ 与 message-shape 的 PLACEHOLDER_TOKEN_SOURCE 是同一问题的第二套口径：本实现按花括号
+ * 深度扫描，多支持 ICU select/plural 嵌套子消息，但只取名字、不产出切分位置。两者应收口成
+ * 单一 tokenizer；在此之前，任一处补规则都要同步核对另一处的结论是否仍一致。
+ *
  * @param usesDoubleBrace - 当前 i18n 库的插值语法是否为双花括号（对应各
  *   `strategies/*\/libraries/*.ts` 的 `usesDoubleBracePlaceholders`）。
  *   双花括号库下，孤立的单花括号 `{...}` 不是插值占位符、只是字面量文本
@@ -25,8 +29,8 @@ const IDENT_RE = new RegExp(`^[${PLACEHOLDER_NAME_CHARS}]+`);
  *
  * 只采集**顶层参数名**：按花括号深度遍历，仅在「进入一个顶层花括号」时取紧随的标识符。
  * Why：ICU 的 select/plural 子消息文本本身用花括号包裹（如 `male {He} female {She}`），
- * 旧的全局正则会把子消息字面量 `He`/`She`/`They` 误当占位符名。由于子消息文本天然随
- * 语言不同，doctor 的 source/target 名集对比会对每条 select/plural 误报 mismatch。
+ * 不按深度、直接全局正则取名，会把子消息字面量 `He`/`She`/`They` 误当占位符名。由于子消息
+ * 文本天然随语言不同，doctor 的 source/target 名集对比会对每条 select/plural 误报 mismatch。
  * 深度法跳过所有嵌套子消息，只保留 `gender`/`count` 这类真正的参数名。
  * 代价：嵌套在子消息内的真实参数（如 plural other 分支里的二级占位符）不被采集，
  * 但 source/target 两侧对称漏采，不产生误报，可接受。

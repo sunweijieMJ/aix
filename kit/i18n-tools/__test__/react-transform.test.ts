@@ -1701,3 +1701,213 @@ export class Panel extends React.Component<Props> {
     expect(transformed).not.toContain('{ x }: Props & WithTranslation');
   });
 });
+
+// ---------------------------------------------------------------------------
+// 场景：提取 / 注入两端的作用域与形态守卫（第四轮审计）
+// ---------------------------------------------------------------------------
+describe('React 提取与注入的作用域 / 形态守卫', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-scope-guard-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function run(code: string, libType: ReactI18nLibraryType = 'react-i18next') {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/plugins/locale', libType);
+    const extractor = adapter.getTextExtractor() as ReactTextExtractor;
+    const strings = await extractor.extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+    return { strings, out, warnings: extractor.drainWarnings() };
+  }
+
+  describe('默认导出类组件：HOC 包裹后原类名仍在模块内', () => {
+    it('产出 const 原名 = HOC(内部名) + export default 原名', async () => {
+      const code = `import React from 'react';
+export default class Panel extends React.Component {
+  render() { return <div title="标题">{Panel.displayName}</div>; }
+}
+`;
+      const { out } = await run(code);
+      expect(out).toContain('const Panel = withTranslation()(PanelWithOutIntl);');
+      expect(out).toContain('export default Panel;');
+      // 默认导出唯一，且不遗留孤立 default 关键字
+      expect(count(out, /export\s+default/g)).toBe(1);
+      expect(out).not.toMatch(/default\s+class/);
+    });
+  });
+
+  describe('JSX 属性字符串的 HTML 实体解码', () => {
+    it('属性值解码进 processedMessage，original 保留源码原文', async () => {
+      const code = `import React from 'react';
+export const Panel = () => <div title="点击&amp;确认" />;
+`;
+      const { strings, out } = await run(code);
+      expect(strings[0]!.original).toBe('点击&amp;确认');
+      expect(strings[0]!.processedMessage).toBe('点击&确认');
+      // original 仍是源码形式，替换照常命中
+      expect(out).toContain(`title={t('k0')}`);
+    });
+
+    it('未识别实体：整段跳过提取并告警', async () => {
+      const code = `import React from 'react';
+export const Panel = () => <div title="提示&ensp;文案" />;
+`;
+      const { strings, warnings } = await run(code);
+      expect(strings).toHaveLength(0);
+      expect(warnings.join('\n')).toContain('&ensp;');
+    });
+  });
+
+  describe('非 PascalCase 类组件不判 class', () => {
+    it('小写类名 → componentType=other，走模块级 import { t }', async () => {
+      const code = `import React from 'react';
+export class panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings[0]!.componentType).toBe('other');
+      expect(out).toContain(`import { t } from '@/plugins/locale'`);
+      expect(out).not.toContain('withTranslation');
+    });
+
+    it('反向：PascalCase 类组件仍走 HOC 注入', async () => {
+      const code = `import React from 'react';
+export class Panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { strings, out } = await run(code);
+      expect(strings[0]!.componentType).toBe('class');
+      expect(out).toContain('withTranslation()(PanelWithOutIntl)');
+    });
+  });
+
+  describe('混合内容含 JSX 注释时不整段合并', () => {
+    it('注释保留、文本退回逐段提取并告警', async () => {
+      const code = `import React from 'react';
+export const Panel = ({ n }: { n: number }) => (
+  <p>
+    共 {n} 项
+    {/* 这里以后要加单位 */}
+  </p>
+);
+`;
+      const { strings, out, warnings } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual(['共', '项']);
+      expect(out).toContain('{/* 这里以后要加单位 */}');
+      expect(warnings.join('\n')).toContain('混合内容含 JSX 注释');
+    });
+
+    it('反向：空表达式容器 {} 不阻断合并', async () => {
+      const code = `import React from 'react';
+export const Panel = ({ n }: { n: number }) => (
+  <p>共 {n} 项{}</p>
+);
+`;
+      const { strings } = await run(code);
+      expect(strings.map((s) => s.original)).toEqual(['`共 ${n} 项`']);
+    });
+  });
+
+  describe('被当普通函数调用的渲染助手不注入 hook', () => {
+    it('Tip() 形态：不注入 useTranslation，文案改走模块级 t 并告警', async () => {
+      const code = `import React from 'react';
+const Tip = () => <span title="提示" />;
+export const Panel = () => <div>{Tip()}</div>;
+`;
+      const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+      const { strings, out } = await run(code);
+      expect(strings[0]!.componentType).toBe('other');
+      expect(out).not.toContain('useTranslation');
+      expect(out).toContain(`import { t } from '@/plugins/locale'`);
+      expect(warn.mock.calls.some((c) => String(c[0]).includes('违反 Hooks 规则'))).toBe(true);
+      warn.mockRestore();
+    });
+
+    it('JSX 与普通调用混用（dense ? Cell(r) : <Cell/>）同样跳过注入', async () => {
+      const code = `import React from 'react';
+const Cell = (r: number) => <td title="单元格">{r}</td>;
+export const Table = ({ dense, rows }: { dense: boolean; rows: number[] }) => (
+  <tbody>{rows.map((r) => (dense ? Cell(r) : <Cell />))}</tbody>
+);
+`;
+      const { out } = await run(code);
+      expect(out).not.toContain('useTranslation');
+      expect(out).toContain(`import { t } from '@/plugins/locale'`);
+    });
+
+    it('反向：只作 JSX 使用的渲染助手照常注入 hook', async () => {
+      const code = `import React from 'react';
+const Tip = () => <span title="提示" />;
+export const Panel = () => <div><Tip /></div>;
+`;
+      const { out } = await run(code);
+      expect(out).toContain('const { t } = useTranslation();');
+    });
+  });
+
+  describe('HOC Props 类型以 import type 单独注入', () => {
+    it('react-i18next：WithTranslation 不进值导入', async () => {
+      const code = `import React from 'react';
+export class Panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { out } = await run(code);
+      expect(out).toContain(`import type { WithTranslation } from 'react-i18next';`);
+      expect(out).not.toMatch(/import \{[^}]*WithTranslation[^}]*\} from 'react-i18next'/);
+    });
+
+    it('react-intl：WrappedComponentProps 不进值导入', async () => {
+      const code = `import React from 'react';
+export class Panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { out } = await run(code, 'react-intl');
+      expect(out).toContain(`import type { WrappedComponentProps } from 'react-intl';`);
+      expect(out).not.toMatch(/import \{[^}]*WrappedComponentProps[^}]*\} from 'react-intl'/);
+    });
+
+    it('已有同名 type 导入时不重复注入', async () => {
+      const code = `import React from 'react';
+import type { WithTranslation } from 'react-i18next';
+export class Panel extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+      const { out } = await run(code);
+      expect(count(out, /import type \{ WithTranslation \}/g)).toBe(1);
+    });
+  });
+
+  describe('多行纯 JsxText 的 locale 值不含源码换行缩进', () => {
+    it('换行 + 缩进压成单空格进 processedMessage，original 保留原文', async () => {
+      const code = `import React from 'react';
+export const Panel = () => (
+  <p>
+    多行文本
+    第二行
+  </p>
+);
+`;
+      const { strings } = await run(code);
+      expect(strings[0]!.original).toContain('\n');
+      expect(strings[0]!.processedMessage).toBe('多行文本 第二行');
+    });
+
+    it('反向：单行文本不产生多余的 processedMessage', async () => {
+      const code = `import React from 'react';
+export const Panel = () => <p>单行文本</p>;
+`;
+      const { strings } = await run(code);
+      expect(strings[0]!.processedMessage).toBeUndefined();
+    });
+  });
+});

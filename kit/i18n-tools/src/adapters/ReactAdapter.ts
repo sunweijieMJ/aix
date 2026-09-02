@@ -4,7 +4,6 @@ import type {
   ITransformer,
   IRestoreTransformer,
   IComponentInjector,
-  IImportManager,
 } from './FrameworkAdapter';
 import {
   ReactTextExtractor,
@@ -55,7 +54,7 @@ export class ReactAdapter extends FrameworkAdapter {
     super(config);
 
     this.library = library;
-    this.textExtractor = new ReactTextExtractor(library, options.filterPatterns ?? []);
+    this.textExtractor = new ReactTextExtractor(library, options.filterPatterns ?? [], tImport);
     this.importManager = new ReactImportManager(tImport, library);
     this.componentInjector = new ReactComponentInjector(library, this.importManager);
     this.transformer = new ReactTransformer(library, this.importManager, this.componentInjector, {
@@ -78,10 +77,6 @@ export class ReactAdapter extends FrameworkAdapter {
 
   getComponentInjector(): IComponentInjector {
     return this.componentInjector;
-  }
-
-  getImportManager(): IImportManager {
-    return this.importManager;
   }
 
   getLibrary() {

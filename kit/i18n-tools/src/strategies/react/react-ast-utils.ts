@@ -2,6 +2,17 @@ import ts from 'typescript';
 import { MessageInfo } from '../../utils/types';
 import { extractObjectLiteralProperties, objectLiteralHasSpread } from '../../utils/ast-core';
 
+/** hasConflictingTranslationBinding 的「哪些同名绑定属于 i18n 来源」豁免口径。 */
+export interface ConflictingBindingOptions {
+  /** 具名导入来自这些模块时不算冲突（工具注入的全局 t 导入路径、i18n 库包名）。 */
+  i18nModules?: readonly string[];
+  /** 变量声明是 i18n 来源（如 react-intl 的 `const intl = getIntl()`）时不算冲突。 */
+  isI18nDeclaration?: (declaration: ts.VariableDeclaration) => boolean;
+}
+
+/** plainlyCalledNames 的按文件缓存（见其注释：逐节点重扫是 O(n²)）。 */
+const PLAINLY_CALLED_NAMES = new WeakMap<ts.SourceFile, Set<string>>();
+
 /**
  * React 特定的 AST 工具类
  * 提供 React/JSX 相关的 AST 操作功能
@@ -58,26 +69,8 @@ export class ReactASTUtils {
       return true;
     }
 
-    let parent = node.parent;
-    while (parent) {
-      if (ts.isJsxExpression(parent)) {
-        return false;
-      }
-      if (ts.isPropertyAssignment(parent) && parent.initializer === node) {
-        return false;
-      }
-      if (ts.isCallExpression(parent) && parent.arguments.includes(node as ts.Expression)) {
-        return false;
-      }
-      if (ts.isArrayLiteralExpression(parent) && parent.elements.includes(node as ts.Expression)) {
-        return false;
-      }
-      if (ts.isVariableDeclaration(parent) && parent.initializer === node) {
-        return false;
-      }
-      parent = parent.parent;
-    }
-
+    // js-code：替换体是纯表达式，任何宿主位置（对象属性值 / 实参 / 数组元素 / 变量初始化器
+    // 以及已有的 JSX 表达式容器）都直接接受表达式，无需再包一层 `{}`。
     return false;
   }
 
@@ -85,7 +78,14 @@ export class ReactASTUtils {
     let current: ts.Node | undefined = node;
     while (current) {
       if (ts.isClassDeclaration(current)) {
-        if (ReactASTUtils.isClassComponent(current)) {
+        // 与函数组件侧同理：只有注入器（getComponentInfo）真正会注入 HOC 的类组件才判
+        // 'class'。小写名的类组件（`class panel extends React.Component`）注入器不认，
+        // 判 'class' 会产出无 this.props 解构、无导入的裸 t()（TS2304）；继续上溯落
+        // 'other' 则由 import 管理器注入模块级 t/getIntl。
+        if (
+          ReactASTUtils.isClassComponent(current) &&
+          ReactASTUtils.isInjectableClassName(current)
+        ) {
           return 'class';
         }
       }
@@ -255,27 +255,74 @@ export class ReactASTUtils {
   }
 
   /**
-   * 组件函数体**顶层块**内是否存在与 varName 同名、但初始化器**不是** i18n hook 的本地
-   * 变量声明（`const { t } = useTemperature()` / `const t = fmt` / `const intl =
-   * createIntl(...)`）。这类绑定说明裸 `t(...)`/`intl.formatMessage(...)` 另有出处。
+   * 组件函数体顶层块、以及**其外层各级词法作用域直至源文件**内，是否存在与 varName 同名、
+   * 但来源**不是** i18n hook 的绑定（`const { t } = useTemperature()` / `const t = fmt` /
+   * 模块级 `import { t } from '@/utils/tiny-template'` / `function t() {}`）。这类绑定说明裸
+   * `t(...)`/`intl.formatMessage(...)` 另有出处。
    *
    * 提取端（跳过该组件的候选）与注入端（跳过 hook 注入）必须共用这一份判定：两端口径一旦
    * 分叉，就会出现「文案已被替换成裸 t()、注入却被跳过」的静默错误产物——新 t() 解析到那个
    * 同名的非 i18n 函数上。
    *
-   * 只查顶层块、不下钻：TS2451 只发生在同一个块内——嵌套回调里的同名声明
+   * 上溯外层作用域是因为注入的 `const { t } = useTranslation()` 会**遮蔽**外层同名绑定：
+   * 同块双声明（TS2451）只是其中一种表现，模块级同名绑定被遮蔽则是「能编译、行为错」。
+   *
+   * 每一级只看该作用域的直接语句、不下钻：嵌套回调里的同名声明
    * （`useEffect(() => { const t = setTimeout(...) })` 极常见）只是无害的内层遮蔽，
-   * 若也算冲突会误跳，触发面比要防的双声明大得多。形参绑定不在此判（componentParamBindsVar
-   * 已把它算作「已有绑定」）；表达式体箭头函数无块，不可能同块冲突。
+   * 若也算冲突会误跳，触发面比要防的问题大得多。形参绑定不在此判（componentParamBindsVar
+   * 已把它算作「已有绑定」）。
+   *
+   * @param options.i18nModules 视为 i18n 来源、其具名导入不算冲突的模块（工具自身注入的
+   *        全局 t 导入路径与 i18n 库包名）。缺省则任意同名具名导入都算冲突。
+   * @param options.isI18nDeclaration 额外判定「该变量声明是 i18n 来源」的谓词（如 react-intl
+   *        模块级注入的 `const intl = getIntl()`），命中同样不算冲突。
    */
   static hasConflictingTranslationBinding(
     node: ts.Node,
     varName: string,
     hookName: string,
+    options?: ConflictingBindingOptions,
   ): boolean {
+    const opts = options ?? {};
     const body = (node as ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration).body;
-    if (!body || !ts.isBlock(body)) return false;
-    for (const stmt of body.statements) {
+    if (
+      body &&
+      ts.isBlock(body) &&
+      ReactASTUtils.statementsBindConflictingVar(body.statements, varName, hookName, opts)
+    ) {
+      return true;
+    }
+
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isBlock(current) || ts.isSourceFile(current) || ts.isModuleBlock(current)) {
+        if (
+          ReactASTUtils.statementsBindConflictingVar(current.statements, varName, hookName, opts)
+        ) {
+          return true;
+        }
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
+  /** 单个作用域的直接语句里是否有与 varName 同名的非 i18n 绑定（见 hasConflictingTranslationBinding）。 */
+  private static statementsBindConflictingVar(
+    statements: readonly ts.Statement[],
+    varName: string,
+    hookName: string,
+    options: ConflictingBindingOptions,
+  ): boolean {
+    for (const stmt of statements) {
+      if (ts.isFunctionDeclaration(stmt)) {
+        if (stmt.name?.text === varName) return true;
+        continue;
+      }
+      if (ts.isImportDeclaration(stmt)) {
+        if (ReactASTUtils.importBindsName(stmt, varName, options.i18nModules ?? [])) return true;
+        continue;
+      }
       if (!ts.isVariableStatement(stmt)) continue;
       for (const decl of stmt.declarationList.declarations) {
         let bindsVar = false;
@@ -293,10 +340,37 @@ export class ReactASTUtils {
           ts.isCallExpression(init) &&
           ts.isIdentifier(init.expression) &&
           init.expression.text === hookName;
-        if (!isHookInit) return true;
+        if (isHookInit) continue;
+        if (options.isI18nDeclaration?.(decl)) continue;
+        return true;
       }
     }
     return false;
+  }
+
+  /**
+   * import 语句是否把 varName 引入本作用域（默认导入 / 命名空间导入 / 具名导入的本地名）。
+   * i18nModules 内的模块除外：工具自身注入的全局 t 导入与 i18n 库导出的同名成员本就是 i18n
+   * 来源，被 hook 遮蔽语义不变，算作冲突会让增量重跑对整文件停摆。
+   */
+  private static importBindsName(
+    node: ts.ImportDeclaration,
+    varName: string,
+    i18nModules: readonly string[],
+  ): boolean {
+    if (
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      i18nModules.includes(node.moduleSpecifier.text)
+    ) {
+      return false;
+    }
+    const clause = node.importClause;
+    if (!clause) return false;
+    if (clause.name?.text === varName) return true;
+    const named = clause.namedBindings;
+    if (!named) return false;
+    if (ts.isNamespaceImport(named)) return named.name.text === varName;
+    return named.elements.some((el) => el.name.text === varName);
   }
 
   /**
@@ -304,12 +378,14 @@ export class ReactASTUtils {
    * 必须与 getComponentInfo 的接受条件保持一致：
    * - 命名函数声明：PascalCase 名
    * - 箭头/函数表达式：绑定到 PascalCase 变量（含 forwardRef/memo 包裹），或匿名默认导出
+   * - 名字在文件内被当普通函数调用（`Tip()`）的一律排除，见 plainlyCalledNames
    */
   static isInjectableComponentFunction(
     func: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
   ): boolean {
     if (ts.isFunctionDeclaration(func)) {
-      return !!func.name && ReactASTUtils.isComponentName(func.name.text);
+      if (!func.name || !ReactASTUtils.isComponentName(func.name.text)) return false;
+      return !ReactASTUtils.isPlainlyCalled(func, func.name.text);
     }
 
     let host: ts.Node | undefined = func.parent;
@@ -325,7 +401,8 @@ export class ReactASTUtils {
     }
     if (host) {
       if (ts.isVariableDeclaration(host) && ts.isIdentifier(host.name)) {
-        return ReactASTUtils.isComponentName(host.name.text);
+        if (!ReactASTUtils.isComponentName(host.name.text)) return false;
+        return !ReactASTUtils.isPlainlyCalled(host, host.name.text);
       }
       // export default (() => …)：injector 作为 DefaultExportedComponent 注入
       if (ts.isExportAssignment(host)) {
@@ -352,8 +429,8 @@ export class ReactASTUtils {
       return true;
     }
     if (ts.isClassDeclaration(n) && ReactASTUtils.isClassComponent(n)) {
-      // 具名类组件，或匿名默认导出类组件（getComponentInfo 同样会为其注入 HOC）均算边界。
-      if (n.name || n.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword)) {
+      // PascalCase 具名类组件，或匿名默认导出类组件（getComponentInfo 同样会为其注入 HOC）均算边界。
+      if (ReactASTUtils.isInjectableClassName(n)) {
         return true;
       }
     }
@@ -533,6 +610,88 @@ export class ReactASTUtils {
     return /^[A-Z]/.test(name);
   }
 
+  /**
+   * 类组件的名字形态是否落在注入器的受理范围内（与 getComponentInfo 的两条类分支一致）：
+   * PascalCase 具名类，或匿名默认导出类（由 injectHOC 命名后包裹）。
+   */
+  static isInjectableClassName(node: ts.ClassDeclaration): boolean {
+    if (node.name) {
+      return ReactASTUtils.isComponentName(node.name.text);
+    }
+    return node.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
+  }
+
+  /**
+   * 文件内被当作**普通函数**调用（`Foo(...)`）的标识符名集合。
+   *
+   * PascalCase 的渲染助手常见两种用法：`<Tip />`（渲染成组件，有自己的 Hooks 上下文）与
+   * `Tip()`（在调用方的渲染过程中就地展开）。后者若被注入 `useTranslation()`，hook 便在
+   * 调用方的组件里被条件/循环地执行（`dense ? Cell(r) : <Cell/>`），违反 Hooks 规则。
+   * 故这类标识符整体不视为可注入组件：文案改由模块级全局 t/getIntl 承载，两种用法都安全。
+   *
+   * 按 SourceFile 缓存：getComponentInfo 会对每个节点调用，逐次全文件扫描是 O(n²)。
+   */
+  static plainlyCalledNames(sourceFile: ts.SourceFile): ReadonlySet<string> {
+    const cached = PLAINLY_CALLED_NAMES.get(sourceFile);
+    if (cached) return cached;
+    const names = new Set<string>();
+    const visit = (n: ts.Node): void => {
+      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
+        names.add(n.expression.text);
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sourceFile);
+    PLAINLY_CALLED_NAMES.set(sourceFile, names);
+    return names;
+  }
+
+  /** 取 node 所属的源文件；合成节点（无 parent 链）返回 undefined。 */
+  private static sourceFileOf(node: ts.Node): ts.SourceFile | undefined {
+    let current: ts.Node | undefined = node;
+    while (current) {
+      if (ts.isSourceFile(current)) return current;
+      current = current.parent;
+    }
+    return undefined;
+  }
+
+  /** name 在 node 所属文件里是否存在 `name(...)` 普通调用（见 plainlyCalledNames）。 */
+  static isPlainlyCalled(node: ts.Node, name: string): boolean {
+    const sourceFile = ReactASTUtils.sourceFileOf(node);
+    if (!sourceFile) return false;
+    return ReactASTUtils.plainlyCalledNames(sourceFile).has(name);
+  }
+
+  /**
+   * node 若是「形态上够格当组件、但因被普通调用而不注入」的声明，返回其名字，否则 undefined。
+   * 供注入器就这一类跳过打一条告警（判定本身收口在 getComponentInfo / isInjectableComponentFunction）。
+   */
+  static getPlainlyCalledComponentName(node: ts.Node): string | undefined {
+    let name: string | undefined;
+    let func: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression | undefined;
+
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      ReactASTUtils.isComponentName(node.name.text) &&
+      node.initializer
+    ) {
+      name = node.name.text;
+      func = ReactASTUtils.getFunctionNodeFromInitializer(node.initializer);
+    } else if (
+      ts.isFunctionDeclaration(node) &&
+      node.name &&
+      ReactASTUtils.isComponentName(node.name.text)
+    ) {
+      name = node.name.text;
+      func = node;
+    }
+
+    if (!name || !func || !ReactASTUtils.isFunctionComponent(func)) return undefined;
+    return ReactASTUtils.isPlainlyCalled(node, name) ? name : undefined;
+  }
+
   static getComponentInfo(node: ts.Node):
     | {
         name: string;
@@ -559,10 +718,13 @@ export class ReactASTUtils {
       return { name: 'DefaultExportedComponent', type: 'class', node };
     }
 
+    // 名字被当普通函数调用（`Tip()`）的渲染助手不注入 hook（违反 Hooks 规则），
+    // 其文案改由模块级全局 t/getIntl 承载 —— 见 plainlyCalledNames。
     if (
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
-      ReactASTUtils.isComponentName(node.name.text)
+      ReactASTUtils.isComponentName(node.name.text) &&
+      !ReactASTUtils.isPlainlyCalled(node, node.name.text)
     ) {
       if (node.initializer) {
         const funcNode = ReactASTUtils.getFunctionNodeFromInitializer(node.initializer);
@@ -575,7 +737,8 @@ export class ReactASTUtils {
     if (
       ts.isFunctionDeclaration(node) &&
       node.name &&
-      ReactASTUtils.isComponentName(node.name.text)
+      ReactASTUtils.isComponentName(node.name.text) &&
+      !ReactASTUtils.isPlainlyCalled(node, node.name.text)
     ) {
       if (ReactASTUtils.isFunctionComponent(node)) {
         return { name: node.name.text, type: 'function', node };

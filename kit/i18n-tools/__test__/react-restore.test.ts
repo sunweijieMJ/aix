@@ -117,9 +117,11 @@ export default class Foo extends React.Component {
 `;
     const { injected, restored } = await roundTrip(original);
 
-    // inject 端：走 HOC 路径，且不得遗留孤立的 `default class`（语法错误）
+    // inject 端：走 HOC 路径，且不得遗留孤立的 `default class`（语法错误）。
+    // 包裹结果先绑定回原类名再默认导出，原名在模块内不能消失（同文件 <Foo /> / Foo.displayName）。
     expect(injected).toContain('FooWithOutIntl');
-    expect(injected).toMatch(/export default injectIntl\(FooWithOutIntl\)/);
+    expect(injected).toMatch(/const Foo = injectIntl\(FooWithOutIntl\);/);
+    expect(injected).toMatch(/export default Foo;/);
     expect(injected, `inject 输出：\n${injected}`).not.toMatch(/default\s+class/);
 
     // restore 端：恢复 `export default class Foo`，不残留内部名 / HOC / 旧引用
@@ -1785,5 +1787,110 @@ export const App = ({ n }: { n: number }) => {
     expect(restored).toContain('共${n}项');
     expect(restored).not.toContain('useTranslation');
     expect(warn.mock.calls.filter((c) => String(c[0]).includes('[Restore Warning]'))).toEqual([]);
+  });
+});
+
+/**
+ * restore 产物的形态保真：还原后不应留下源码里从未出现过的形态
+ * （`React.Component<{}>`、`title={"标题"}`、裸 U+00A0），默认导出类组件的
+ * 「const 原名 = HOC(内部名) + export default 原名」注入形态必须可逆。
+ */
+describe('React restore — 产物形态保真', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-restore-shape-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function roundTrip(
+    original: string,
+    overrideLocale?: (locale: Record<string, string>) => void,
+  ): Promise<{ injected: string; restored: string }> {
+    const file = path.join(dir, 'S.tsx');
+    fs.writeFileSync(file, original);
+    const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s: ExtractedString, i) => (s.semanticId = `k${i}`));
+    const injected = adapter.getTransformer().transform(file, strings, original);
+    const locale: Record<string, string> = {};
+    strings.forEach((s) => {
+      locale[s.semanticId] = s.processedMessage || s.original;
+    });
+    overrideLocale?.(locale);
+    fs.writeFileSync(file, injected);
+    const restored = new ReactRestoreTransformer(
+      createReactI18nLibrary('react-i18next'),
+      '@/plugins/locale',
+    ).transform(file, locale);
+    return { injected, restored };
+  }
+
+  it('默认导出类组件：注入的 const 绑定 + export default 可逆回 export default class', async () => {
+    const original = `import React from 'react';
+export default class Foo extends React.Component {
+  render() { return <div title="确定">x</div>; }
+}
+`;
+    const { injected, restored } = await roundTrip(original);
+    expect(injected).toContain('const Foo = withTranslation()(FooWithOutIntl);');
+    expect(restored, `还原输出：\n${restored}`).toMatch(/export\s+default\s+class\s+Foo\b/);
+    expect(restored).not.toContain('WithOutIntl');
+    expect(restored).not.toContain('withTranslation');
+    expect((restored.match(/export\s+default/g) || []).length).toBe(1);
+    expect(restored).toContain('确定');
+  });
+
+  it('基类原本无类型参数：还原后不残留 React.Component<{}>', async () => {
+    const original = `import React from 'react';
+export class Panel extends React.Component {
+  render() { return <div title="标题">x</div>; }
+}
+`;
+    const { restored } = await roundTrip(original);
+    expect(restored, `还原输出：\n${restored}`).toMatch(/extends React\.Component\s*\{/);
+    expect(restored).not.toContain('React.Component<{}>');
+  });
+
+  it('反向：基类原有 Props 泛型的类组件还原回原泛型', async () => {
+    const original = `import React from 'react';
+interface Props { id: number }
+export class Panel extends React.Component<Props> {
+  render() { return <div title="标题">{this.props.id}</div>; }
+}
+`;
+    const { restored } = await roundTrip(original);
+    expect(restored).toContain('React.Component<Props>');
+    expect(restored).not.toContain('WithTranslation');
+  });
+
+  it('静态 JSX 属性：还原回 title="标题"，不留表达式容器', async () => {
+    const original = `import React from 'react';
+export const Panel = () => <div title="标题" />;
+`;
+    const { injected, restored } = await roundTrip(original);
+    expect(injected).toContain(`title={t('k0')}`);
+    expect(restored, `还原输出：\n${restored}`).toContain('title="标题"');
+    expect(restored).not.toContain('title={"标题"}');
+  });
+
+  it('含双引号的属性文案：保留表达式容器（属性值不解析反斜杠转义）', async () => {
+    const original = `import React from 'react';
+export const Panel = () => <div title={'点击"确定"按钮'} />;
+`;
+    const { restored } = await roundTrip(original);
+    expect(restored).toContain('title={');
+  });
+
+  it('JsxText 里的 U+00A0 重编码为 &nbsp;（避免 no-irregular-whitespace）', async () => {
+    const original = `import React from 'react';
+export const Panel = () => <p>你好世界</p>;
+`;
+    const { restored } = await roundTrip(original, (locale) => {
+      locale.k0 = '你好\u00A0世界';
+    });
+    expect(restored, `还原输出：\n${restored}`).toContain('你好&nbsp;世界');
+    expect(restored).not.toContain('你好\u00A0世界');
   });
 });

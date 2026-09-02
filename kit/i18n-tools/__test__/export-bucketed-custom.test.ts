@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { ExportProcessor } from '../src/core/ExportProcessor';
+import { LanguageFileManager } from '../src/utils/language-file-manager';
 import { LoggerUtils } from '../src/utils/logger';
 import { resolveConfig } from '../src/config/loader';
 import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
@@ -148,5 +149,80 @@ describe('ExportProcessor 桶式导出合并 customDir', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'manifest.json'), 'utf-8'));
     expect(manifest.buckets).toEqual(['common']);
     expect(manifest.files.common).toEqual({ 'en-US': 'common/en-US.json' });
+  });
+});
+
+/**
+ * 回归（四轮审计 A4）：桶式布局把 localesDir 下任意「含 <locale>.json 的子目录」都当桶——
+ * 用户自建的备份 / 存档目录会被并入语言包、并在重写时被改名 .bak。桶名不在
+ * `buckets.rules[].name ∪ defaultBucket` 内时至少要提示一次（存量桶规则变更后的重分桶
+ * 依赖同一条读取路径，故只告警不过滤，见 listBucketFilePaths 的说明）。
+ */
+describe('LanguageFileManager — 非当前规则内的桶名提示', () => {
+  let rootDir: string;
+  let localeDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  const buildConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: {
+        sourceDir: path.join(rootDir, 'src'),
+        localesDir: localeDir,
+        format: 'flat',
+        prettify: false,
+      },
+      keys: { separator: '.' },
+      buckets: {
+        rules: [{ name: 'pages', matchKey: (k: string) => k.startsWith('pages.') }],
+        defaultBucket: 'common',
+        emitManifest: false,
+        layout: 'by-bucket',
+      },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bucket-foreign-'));
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('读取时对不在 rules/defaultBucket 内的目录给出告警（含桶名与路径）', () => {
+    fs.mkdirSync(path.join(localeDir, 'backup'), { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'backup', 'zh-CN.json'),
+      JSON.stringify({ 'old.key': '历史备份' }),
+    );
+
+    new LanguageFileManager(buildConfig(), false).readLocaleFile('zh-CN');
+
+    const warned = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(warned).toMatch(/backup/);
+    expect(warned).toMatch(/buckets\.rules/);
+  });
+
+  it('规则内的桶名不产生该告警', () => {
+    fs.mkdirSync(path.join(localeDir, 'pages'), { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'pages', 'zh-CN.json'),
+      JSON.stringify({ 'pages.a': '标题' }),
+    );
+
+    const flat = new LanguageFileManager(buildConfig(), false).readLocaleFile('zh-CN');
+
+    expect(flat).toEqual({ 'pages.a': '标题' });
+    const warned = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(warned).not.toMatch(/buckets\.rules/);
   });
 });

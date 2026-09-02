@@ -29,12 +29,12 @@ export class VueComponentInjector implements IComponentInjector {
    * 仅对 .vue 的 <script setup> 块注入 Hook；纯 .ts/.js 文件由 VueImportManager
    * 直接从 tImport 路径注入 { t }，不走此处。
    */
-  inject(code: string, _filePath?: string): string {
+  inject(code: string, filePath?: string): string {
     let descriptor;
     try {
       descriptor = parseSFC(code).descriptor;
     } catch {
-      // 解析失败（非 SFC / 语法坏掉）→ 下面回退到正则粗判，保持对损坏输入的历史行为。
+      // 解析失败（非 SFC / 语法坏掉）→ 下面回退到正则粗判，不因解析失败就整体放弃注入。
       descriptor = undefined;
     }
 
@@ -81,21 +81,21 @@ export class VueComponentInjector implements IComponentInjector {
     }
 
     // 与 VueImportManager「仅 <script setup> 统一走模块 import、不注入 useI18n hook」策略对齐
-    // （见 handleGlobalImports 的 hasSetup 分支）。此前这里注入 useI18n hook —— 但该路径仅在
-    // 「中文只在 template、handleGlobalImports 因无 script 字符串早退」时才会触发（有 script 字符串
-    // 时 handleGlobalImports 已注入 import { t }，下方守卫提前 return）。结果是产物形态取决于中文
-    // 在 template 还是 script，自相矛盾，且对手写的 plain `const t` 易双声明。改为统一补模块 import，
-    // 复用同一套「清 hook 残留 + 注入 import { t }」逻辑。
-    return this.importManager.applySetupModuleImport(code);
+    // （见 handleGlobalImports 的 hasSetup 分支）。这里绝不能改注入 useI18n hook：本路径只在
+    // 「中文只在 template、handleGlobalImports 因无 script 字符串早退」时触发（有 script 字符串
+    // 时 handleGlobalImports 已注入 import { t }，下方守卫提前 return），一旦注入 hook，产物形态
+    // 就取决于中文落在 template 还是 script，两种形态自相矛盾，且对用户手写的 plain `const t`
+    // 容易双声明。统一补模块 import，复用同一套「清 hook 残留 + 注入 import { t }」逻辑。
+    return this.importManager.applySetupModuleImport(code, filePath);
   }
 
   /**
    * 检查代码是否需要 Hook
    *
-   * Why: 此处的目标是判断"transform 阶段是否插入了 t()/$t() 调用"。
-   *      原实现 /[^\w.$]t\(/ 会把出现在注释、字符串字面量与 HTML 注释里的
-   *      `t(` 字面量误判为真实调用，进而注入冗余 hook，并掩盖真正的"未转换"场景。
-   *      故先剥除注释与字符串字面量后再做边界匹配；用 lookbehind 兼容行首调用。
+   * Why: 此处的目标是判断"transform 阶段是否插入了 t()/$t() 调用"，必须先剥除注释与
+   *      字符串字面量再做边界匹配（用 lookbehind 兼容行首调用）。直接对原文跑
+   *      /[^\w.$]t\(/ 会把注释、字符串字面量与 HTML 注释里的 `t(` 误判为真实调用，
+   *      注入冗余 hook，并掩盖真正的"未转换"场景。
    */
   private needsHook(code: string): boolean {
     if (this.library.getHookDeclarationCheckRegex().test(code)) {

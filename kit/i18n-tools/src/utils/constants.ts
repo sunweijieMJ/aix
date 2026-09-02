@@ -14,7 +14,7 @@ export const FILES = {
  * CJK 统一汉字基本区（U+4E00–U+9FFF）的正则字符类内容（不含方括号）。
  *
  * 全库唯一来源：凡是「判定 / 保留中文字符」的正则都必须用模板拼接本常量，不要另写
- * 字面量区间。此前 5 处各写一遍，其中还混用过 U+9FA5 与 U+9FFF 两种上界——上界不一致时
+ * 字面量区间。多处各写一遍就会混入 U+9FA5 / U+9FFF 这类不同上界——上界不一致时
  * U+9FA6–U+9FFF 的扩充汉字在一处算中文、在另一处不算，表现为个别文案能提取却生不出
  * 语义 ID（或反之），且不报任何错。
  */
@@ -50,9 +50,12 @@ export const PLACEHOLDER_NAME_CHARS = `A-Za-z0-9_$.${CHINESE_CHAR_RANGE}-`;
 export const NON_EXTRACTABLE_ELEMENT_TAGS = new Set(['code', 'pre']);
 
 /**
- * 操作模式说明映射
+ * 操作模式说明映射。
+ *
+ * 键类型收紧为 ModeName：CLI 的 --help 模式清单由本表遍历生成，用宽松的 `Record<string, string>`
+ * 时新增模式漏登记不报错，帮助里就会少一行。
  */
-export const MODE_DESCRIPTIONS: Record<string, string> = {
+export const MODE_DESCRIPTIONS: Record<ModeName, string> = {
   [ModeName.AUTOMATIC]: '自动化流程 - 一键完成从提取到导出的所有步骤',
   [ModeName.GENERATE]: '代码生成 - 扫描源码提取中文并生成国际化调用',
   [ModeName.PICK]: '提取待翻译 - 从国际化文件中提取未翻译条目',
@@ -65,4 +68,25 @@ export const MODE_DESCRIPTIONS: Record<string, string> = {
   [ModeName.CSV_IMPORT]:
     'CSV 回流 - 把翻译/审核好的 CSV 写回 untranslated/translations（按 key 归属自动路由）',
   [ModeName.PRUNE]: '清理孤儿 key - 删除源码已不再引用的 locale 条目',
+};
+
+/**
+ * CLI 可用模式清单（--help 展示顺序 + --mode choices 的单一来源）。
+ * 由 MODE_DESCRIPTIONS 派生，新增模式只需在上表登记一次，两处自动同步。
+ */
+export const MODE_LIST = Object.keys(MODE_DESCRIPTIONS) as ModeName[];
+
+/** --help 里每个模式前的图标（纯展示）。 */
+export const MODE_ICONS: Record<ModeName, string> = {
+  [ModeName.AUTOMATIC]: '🚀',
+  [ModeName.GENERATE]: '📝',
+  [ModeName.PICK]: '📤',
+  [ModeName.TRANSLATE]: '🤖',
+  [ModeName.MERGE]: '📥',
+  [ModeName.RESTORE]: '🔄',
+  [ModeName.EXPORT]: '📦',
+  [ModeName.DOCTOR]: '🩺',
+  [ModeName.CSV_EXPORT]: '🧾',
+  [ModeName.CSV_IMPORT]: '📩',
+  [ModeName.PRUNE]: '🧹',
 };

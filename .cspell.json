@@ -216,7 +216,10 @@
     "zrender",
     "TDZ",
     "Rspack",
-    "DCE"
+    "DCE",
+    "haml",
+    "Insertable",
+    "prefixless"
   ],
   "patterns": [
     {

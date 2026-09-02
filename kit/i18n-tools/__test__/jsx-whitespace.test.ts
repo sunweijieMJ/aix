@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { ReactAdapter } from '../src/adapters/ReactAdapter';
+import { normalizeJsxTextSegment } from '../src/utils/ast-core';
 
 /**
  * 回归（Bug3）：JSX 相邻插值之间的单个空格被丢弃。
@@ -82,5 +83,31 @@ export function C({ a, b }: { a: number; b: number }) {
     expect(out).toContain('i18nKey');
     expect(out).not.toContain('共');
     expect(out).not.toContain('项');
+  });
+});
+
+/**
+ * 提取端与重建端共用 normalizeJsxTextSegment：两端只要差一个空格，
+ * `=== originalText` 比对就失配 → JSX 混合内容被静默漏替换。
+ */
+describe('normalizeJsxTextSegment — JSX 文本段空白归一', () => {
+  it('纯空白且含换行 → null（JSX 折叠删除）', () => {
+    expect(normalizeJsxTextSegment('\n      ')).toBeNull();
+    expect(normalizeJsxTextSegment('\n')).toBeNull();
+  });
+
+  it('纯空白不含换行 → 原样保留（相邻插值间的词间空格）', () => {
+    expect(normalizeJsxTextSegment(' ')).toBe(' ');
+    expect(normalizeJsxTextSegment('  ')).toBe('  ');
+  });
+
+  it('含内容：换行 + 缩进压成单空格，词间空格保留', () => {
+    expect(normalizeJsxTextSegment('\n      共 ')).toBe(' 共 ');
+    expect(normalizeJsxTextSegment(' 项\n    ')).toBe(' 项 ');
+    expect(normalizeJsxTextSegment('共 ')).toBe('共 ');
+  });
+
+  it('空串原样返回', () => {
+    expect(normalizeJsxTextSegment('')).toBe('');
   });
 });

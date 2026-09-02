@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import ts from 'typescript';
 import { ReactComponentInjector } from '../src/strategies/react/ReactComponentInjector';
 import { ReactImportManager } from '../src/strategies/react/ReactImportManager';
@@ -11,6 +11,7 @@ import { VueImportManager } from '../src/strategies/vue/VueImportManager';
 import { VueComponentInjector } from '../src/strategies/vue/VueComponentInjector';
 import { VueI18nLibraryImpl } from '../src/strategies/vue/libraries/vue-i18n';
 import { VueI18nextLibrary } from '../src/strategies/vue/libraries/vue-i18next';
+import { LoggerUtils } from '../src/utils/logger';
 import type { ExtractedString } from '../src/utils/types';
 
 /**
@@ -544,5 +545,64 @@ describe('Vue 注入：本地 t 声明存在时不重复注入 import { t }', ()
     const out = manager.handleGlobalImports(code, scriptStrings(), '/proj/C.vue');
     expect(out).toContain(`import { t } from '${T_IMPORT}'`);
     expect(out).not.toContain('const { t } = useI18n()');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 外层作用域（含模块顶层）的同名 t 绑定同样是冲突：注入的 hook 会遮蔽它
+// ---------------------------------------------------------------------------
+describe('React 注入：模块级同名 t 绑定不得被 hook 遮蔽', () => {
+  const cases: Array<{ name: string; prelude: string }> = [
+    { name: '模块级具名导入', prelude: `import { t } from '@/utils/tiny-template';` },
+    { name: '模块级变量声明', prelude: `const t = (s: string) => s.trim();` },
+    { name: '模块级函数声明', prelude: `function t(s: string) { return s.trim(); }` },
+    { name: '模块级默认导入', prelude: `import t from '@/utils/tiny-template';` },
+  ];
+
+  for (const c of cases) {
+    it(`${c.name}：跳过注入并告警，不产出遮蔽用户 t 的 useTranslation`, () => {
+      const code = `${c.prelude}
+export const Panel = ({ raw }: { raw: string }) => {
+  return <div title={t('k0')}>{t(raw)}</div>;
+};`;
+      const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+      const out = buildReactInjector().inject(code);
+      expect(out).not.toContain('useTranslation');
+      expect(
+        warn.mock.calls.some((call) => String(call[0]).includes('同名的非 i18n 本地绑定')),
+      ).toBe(true);
+      warn.mockRestore();
+    });
+  }
+
+  it('反向：工具自身的 tImport 全局 t 导入不算冲突（增量重跑仍照常注入 hook）', () => {
+    const code = `import { t } from '@/i18n';
+export const Panel = () => {
+  return <div title={t('k0')} />;
+};`;
+    const out = buildReactInjector().inject(code);
+    expect(out).toContain('const { t } = useTranslation();');
+  });
+
+  it('反向：react-intl 模块级 `const intl = getIntl()` 是 i18n 来源，不算冲突', () => {
+    const code = `import { getIntl } from '@/i18n';
+const intl = getIntl();
+export const Panel = () => {
+  return <div title={intl.formatMessage({ id: 'k0' })} />;
+};`;
+    const out = buildReactInjector('react-intl').inject(code);
+    expect(out).toContain('const intl = useIntl();');
+  });
+
+  it('反向：嵌套块内的同名 t 只是无害内层遮蔽，照常注入', () => {
+    const code = `export const Panel = ({ raw }: { raw: string }) => {
+  if (raw) {
+    const t = raw.length;
+    console.log(t);
+  }
+  return <div title={t('k0')} />;
+};`;
+    const out = buildReactInjector().inject(code);
+    expect(out).toContain('const { t } = useTranslation();');
   });
 });

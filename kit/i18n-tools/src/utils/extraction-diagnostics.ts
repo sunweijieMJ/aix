@@ -17,13 +17,10 @@ export interface SkippedTextLocation {
  * 每个 extractor 实例持有一份（见 BaseTextExtractor.diagnostics），消费方通过
  * `adapter.getTextExtractor().getDiagnostics()` 拿到同一实例后 drain。
  *
- * Why 是实例而非模块级单例：这两个集合此前是 CommonASTUtils 上的 private static
- * Map，即进程级可变全局状态。后果是
- *  - 「谁先 drain 谁拿到」——linter 抢在 coverage 之前 drain，覆盖率的 skipped 恒为 0；
- *    generate 路径不得不提前 drain 出快照再层层透传，才躲开这个竞争；
- *  - doctor 与 generate 在同进程内先后运行时互相污染（前者的残留计入后者）；
- *  - 单测必须在每个用例前手动 drain 清场，漏一处就串味。
- * 收敛到 extractor 实例上后，生命周期与「一轮提取」严格对齐，消费顺序不再有隐含约束。
+ * Why 是实例而非模块级单例：生命周期必须与「一轮提取」严格对齐。若挂在进程级全局上，
+ * drain 的消耗性会带来三类故障：多个消费者「谁先 drain 谁拿到」（linter 抢在 coverage
+ * 之前 drain 会让覆盖率的 skipped 恒为 0）、同进程内 doctor 与 generate 互相污染、
+ * 单测需逐用例手动清场。挂在 extractor 实例上后，消费顺序不再有隐含约束。
  */
 export class ExtractionDiagnostics {
   /**

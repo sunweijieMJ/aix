@@ -26,7 +26,8 @@ import {
   toSingleBracePlaceholders,
 } from '../src/utils/message-shape';
 import { isImportedNameUnused } from '../src/utils/scope-analysis';
-import { stripMatchedDelimiters } from '../src/utils/string-escape';
+import { convertUnicodeToChineseInCode, stripMatchedDelimiters } from '../src/utils/string-escape';
+import { createJsxFragmentFromTemplate } from '../src/utils/restore-node-factory';
 import { BaseTextExtractor } from '../src/strategies/base/text-extractor';
 import type { ExtractedString } from '../src/utils/types';
 import { compileMatcher } from '../src/utils/path-matcher';
@@ -1043,5 +1044,160 @@ describe('toSingleBracePlaceholders — 中文占位符名', () => {
 
   it('ASCII 占位符行为不变', () => {
     expect(toSingleBracePlaceholders('共 {{count}} 项')).toBe('共 {count} 项');
+  });
+});
+
+describe('convertUnicodeToChineseInCode — 只还原可安全落回源码的非 ASCII 转义', () => {
+  /** 语法合法性断言：parseDiagnostics 为空即语法正确。 */
+  const parseOk = (code: string): boolean => {
+    const sf = ts.createSourceFile('t.ts', code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    return (
+      (sf as unknown as { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics.length ===
+      0
+    );
+  };
+
+  it('中文等普通非 ASCII 字符照常还原', () => {
+    expect(convertUnicodeToChineseInCode(`const e = '\\u4e2d';`)).toBe(`const e = '中';`);
+  });
+
+  it('ASCII 区转义保持原样：还原会截断字符串字面量', () => {
+    for (const src of [
+      `const a = '\\u0027';`,
+      `const b = "\\u0022";`,
+      `const c = '\\u005c';`,
+      `const g = '\\u000a';`,
+      'const f = `a\\u0060b`;',
+    ]) {
+      const out = convertUnicodeToChineseInCode(src);
+      expect(out).toBe(src);
+      expect(parseOk(out)).toBe(true);
+    }
+  });
+
+  it('中文与 ASCII 转义混排：只还原中文，整体仍是合法语法', () => {
+    const out = convertUnicodeToChineseInCode(`const d = '\\u4e2d\\u0027\\u6587';`);
+    expect(out).toBe(`const d = '中\\u0027文';`);
+    expect(parseOk(out)).toBe(true);
+  });
+
+  it('NBSP / 零宽 / 行分隔符保持转义形态（不还原成不可见字符）', () => {
+    for (const hex of ['00a0', '200b', '200f', 'feff', '2028', '2029']) {
+      const src = `const x = 'a\\u${hex}b';`;
+      expect(convertUnicodeToChineseInCode(src)).toBe(src);
+    }
+  });
+});
+
+describe('作用域遮蔽 — 非 VariableStatement 形态的声明', () => {
+  const M = '@/plugins/locale';
+  const check = (body: string): boolean =>
+    isImportedNameUnused(`import { t } from '${M}';\n${body}`, 'f.tsx', M, 't');
+
+  it('for-of 头部 const t 遮蔽循环体内引用', () => {
+    expect(
+      check(`function C(list: string[]) {\n  for (const t of list) { console.log(t); }\n}`),
+    ).toBe(true);
+  });
+
+  it('for 头部 let t 遮蔽循环体内引用', () => {
+    expect(check(`function C() {\n  for (let t = 0; t < 3; t++) { console.log(t); }\n}`)).toBe(
+      true,
+    );
+  });
+
+  it('for-in 头部 const t 遮蔽循环体内引用', () => {
+    expect(check(`function C(o: object) {\n  for (const t in o) { console.log(t); }\n}`)).toBe(
+      true,
+    );
+  });
+
+  it('catch 参数 t 遮蔽 catch 块内引用', () => {
+    expect(check(`function C() {\n  try { risky(); } catch (t) { console.log(t); }\n}`)).toBe(true);
+  });
+
+  it('块内 function t() 遮蔽同块引用', () => {
+    expect(check(`function C() {\n  function t() { return 1; }\n  return t();\n}`)).toBe(true);
+  });
+
+  it('块内 class t 遮蔽同块引用', () => {
+    expect(check(`function C() {\n  class t {}\n  return new t();\n}`)).toBe(true);
+  });
+
+  it('循环体外的引用不被循环头声明遮蔽（不得误删仍在用的导入）', () => {
+    expect(
+      check(
+        `function C(list: string[]) {\n  for (const t of list) { console.log(t); }\n  return t('a');\n}`,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('isExtractableStringLiteral — 字面量类型上下文与 in 运算', () => {
+  /**
+   * 取源码中第一个含中文的**值位置**字符串字面量。
+   * 跳过类型位置（LiteralTypeNode 的子节点）：那由 isAlreadyInternationalized 单独负责。
+   */
+  const firstChineseLiteral = (code: string): ts.StringLiteral => {
+    const sf = parseSourceFile(code, 'a.tsx');
+    let found: ts.StringLiteral | undefined;
+    const walk = (n: ts.Node): void => {
+      if (
+        !found &&
+        ts.isStringLiteral(n) &&
+        /[一-鿿]/.test(n.text) &&
+        !ts.isLiteralTypeNode(n.parent)
+      ) {
+        found = n;
+      }
+      ts.forEachChild(n, walk);
+    };
+    walk(sf);
+    return found!;
+  };
+  const extractable = (code: string): boolean =>
+    isExtractableStringLiteral(firstChineseLiteral(code));
+
+  it('`as const` 数组元素不提取（提取后 TS1355）', () => {
+    expect(extractable(`export const TABS = ['待办', '完成'] as const;`)).toBe(false);
+  });
+
+  it("`'标题' as const` 不提取", () => {
+    expect(extractable(`export const LABEL = '标题' as const;`)).toBe(false);
+  });
+
+  it('`as const` 对象属性值不提取', () => {
+    expect(extractable(`const M = { label: '标题' } as const;`)).toBe(false);
+  });
+
+  it('字面量联合类型注解的初始值不提取（提取后 TS2322）', () => {
+    expect(extractable(`const cur: '待办' | '完成' = '待办';`)).toBe(false);
+  });
+
+  it('断言目标是字面量类型时不提取', () => {
+    expect(extractable(`const x = '待办' as '待办' | '完成';`)).toBe(false);
+  });
+
+  it("`'中文' in obj` 左操作数不提取（键位置）", () => {
+    expect(extractable(`if ('中文' in obj) {}`)).toBe(false);
+  });
+
+  it('普通运行时字符串照常提取（守卫不扩大化）', () => {
+    expect(extractable(`const label = '标题';`)).toBe(true);
+    expect(extractable(`const props = { label: '标题' } satisfies Props;`)).toBe(true);
+    expect(extractable(`const list = ['待办', '完成'];`)).toBe(true);
+    expect(extractable(`const s: string = '标题';`)).toBe(true);
+  });
+});
+
+describe('createJsxFragmentFromTemplate — JsxText 里的 NBSP', () => {
+  it('U+00A0 重编码为 &nbsp;（避免 eslint no-irregular-whitespace）', () => {
+    const values = { count: { node: ts.factory.createIdentifier('count'), text: 'count' } };
+    const node = createJsxFragmentFromTemplate('\u00A0共 {count} 项\u00A0', values);
+    const printer = ts.createPrinter();
+    const dummy = ts.createSourceFile('x.tsx', '', ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const out = printer.printNode(ts.EmitHint.Unspecified, node!, dummy);
+    expect(out).toContain('&nbsp;');
+    expect(out).not.toContain('\u00A0');
   });
 });

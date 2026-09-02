@@ -10,9 +10,10 @@
 // =============================================================================
 
 export { isModeExplicitlySet } from './command-utils';
-export { MODE_DESCRIPTIONS } from './constants';
+export { MODE_DESCRIPTIONS, MODE_ICONS, MODE_LIST } from './constants';
 export { loadEnv } from './env';
 export { FileUtils } from './file-utils';
 export { InteractiveUtils } from './interactive-utils';
 export { LoggerUtils } from './logger';
+export { getToolVersion } from './tool-version';
 export { ModeName } from './types';

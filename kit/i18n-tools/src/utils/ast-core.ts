@@ -86,7 +86,7 @@ function getPropertyValue(initializer: ts.Expression, sourceFile?: ts.SourceFile
   }
   // 其余任意表达式（标识符 / 属性访问 / 调用，以及 ?? / 三元 / 二元等复杂表达式）：
   // 一律保留 AST 节点 + 源文本，供 restore 的 findExpressionForVariable 重建。
-  // 早先对复杂表达式返回 `{{text}}` 字符串会丢失节点，导致这类占位符 restore 失败。
+  // 退化成 `{{text}}` 之类的字符串会丢掉节点，这类占位符在 restore 时无从重建。
   if (sourceFile) {
     return { node: initializer, text: nodeToText(initializer, sourceFile) };
   }
@@ -247,6 +247,24 @@ export function nodeMatchesExtractedOriginal(
 }
 
 /**
+ * JSX 文本子节点的空白归一：返回归一后的文本段，返回 null 表示该节点整体不参与拼接。
+ *
+ * 规则（JSX 渲染语义）：
+ *  - 纯空白且【含换行】→ null：JSX 折叠时整段删除；
+ *  - 纯空白但不含换行（相邻插值间的单个空格 `{a} {b}`）→ 保留，否则丢词间空格；
+ *  - 含内容 → 把「换行 + 缩进」压成单空格，保留词间空格（`共 {count} 项` 的空格是词间距，
+ *    压掉会让文案变成 `共${count}项`，中英混排丢词间距）。
+ *
+ * 提取端（ReactTextExtractor 的混合内容拼接）与重建端（reconstructJsxMixedContent）
+ * 必须用同一实现：两端结论只要差一个空格，findExactStringNode 的 `=== originalText`
+ * 比对就失败 → 该 JSX 混合内容被静默漏替换（locale 写了 key 但源码残留中文）。
+ */
+export function normalizeJsxTextSegment(text: string): string | null {
+  if (!text.trim() && /\n/.test(text)) return null;
+  return text.replace(/\s*\n\s*/g, ' ');
+}
+
+/**
  * 重构JSX元素的混合内容
  */
 function reconstructJsxMixedContent(
@@ -261,14 +279,9 @@ function reconstructJsxMixedContent(
   let inner = '';
   for (const child of children) {
     if (ts.isJsxText(child)) {
-      // 必须与 ReactTextExtractor.extractJsxMixedContent 的空白处理逐字一致：
-      // 仅跳过【含换行】的纯空白节点（JSX 折叠删除），不含换行的纯空白（相邻插值间的
-      // 单个空格）保留，含内容的把换行+缩进压缩为单空格、但保留词间空格。
-      // 若此处两端逻辑不一致（如漏掉相邻插值间的空格「共 ${a} ${b} 项」→「共 ${a}${b} 项」），
-      // 与提取端产出的 original 不相等，findExactStringNode 的 `=== originalText`
-      // 比对失败 → 该 JSX 混合内容被静默漏替换（locale 写了 key 但源码残留中文）。
-      if (!child.text.trim() && /\n/.test(child.text)) continue;
-      inner += child.text.replace(/\s*\n\s*/g, ' ');
+      const segment = normalizeJsxTextSegment(child.text);
+      if (segment === null) continue;
+      inner += segment;
     } else if (ts.isJsxExpression(child) && child.expression) {
       const expressionText = nodeToText(child.expression, sourceFile);
       inner += `\${${expressionText}}`;
@@ -281,7 +294,7 @@ function reconstructJsxMixedContent(
 /**
  * 在指定位置附近模糊查找匹配的字符串节点。
  *
- * Why ±NEARBY_OFFSET：上游传入的 position 由不同 AST 工具计算，可能因引号、
+ * Why ±NEARBY_SEARCH_OFFSET：上游传入的 position 由不同 AST 工具计算，可能因引号、
  * leading whitespace、JSX `{ ' ' }` 等场景偏移 1~3 字符；±5 是经验值，覆盖常见
  * 偏移又不会越界跳到相邻 token。改大无明显收益（命中率边际为 0），改小则有
  * 漏命中风险。如未来发现 ±5 不够，调整这一处常量即可。

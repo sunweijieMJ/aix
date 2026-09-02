@@ -12,6 +12,7 @@ import { isInThisBindableScope } from '../../utils/ast-guards';
 import { createMessageWithOptions, filterLiterals } from '../../utils/message-shape';
 import { formatValuesMapping } from '../../utils/string-escape';
 import { vueExtras } from './extracted-extras';
+import { isHtmlTemplateLang, scriptFileNameOfLang } from './sfc-blocks';
 import type { ExtractedString } from '../../utils/types';
 import type {
   IComponentInjector,
@@ -128,6 +129,7 @@ export class VueTransformer implements ITransformer {
           block.loc.start.line - 1,
           scriptStrings,
           allowThisQualifier,
+          scriptFileNameOfLang(block.lang),
         );
         replacements.push({
           start: block.loc.start.offset,
@@ -136,8 +138,10 @@ export class VueTransformer implements ITransformer {
         });
       }
 
-      // 处理 template 部分（后处理，但先替换）
-      if (descriptor.template) {
+      // 处理 template 部分（后处理，但先替换）。非 HTML 模板（pug 等）提取端整块跳过，
+      // 正常不会有 template 字符串落到这里；显式守卫是为了挡住陈旧提取数据——按 HTML
+      // 偏移改写 pug 源码会把整块模板替换成一句 $t()，且不可还原。
+      if (descriptor.template && isHtmlTemplateLang(descriptor.template.lang)) {
         const templateStrings = fileStrings.filter((s) => s.context === 'template');
         if (templateStrings.length > 0) {
           const transformedTemplate = this.processTemplate(
@@ -194,12 +198,11 @@ export class VueTransformer implements ITransformer {
   /**
    * 处理 template 内容：按提取端给出的绝对偏移做精确区间替换。
    *
-   * Why 绝对偏移而非「行列 + indexOf」：旧实现按 (line, column) 定位到行、再在行内
-   * indexOf 原文，配套了一整套启发式来打补丁——引号感知搜索、比较操作数跳过、
-   * 属性正则、±5 行邻行兜底、跨行整段兜底。这些补丁互相之间还有优先级，实际出过两类
-   * 严重问题：同行出现第二个相同字面量时替换到错误的那一处（产出坏代码），以及指令内
-   * 的字面量距节点起始行超过 5 行时直接抛错、整个文件不再转换。改成 compiler-dom
-   * 的精确 loc 后这些补丁全部不需要了。
+   * Why 绝对偏移而非「行列 + indexOf」：按 (line, column) 定位到行再在行内 indexOf 原文，
+   * 必然要配一整套启发式补丁（引号感知搜索、比较操作数跳过、属性正则、邻行与跨行兜底），
+   * 且补丁之间还要排优先级；同行出现第二个相同字面量就会替换到错误的那一处（产出坏代码），
+   * 字面量距节点起始行较远时又会直接抛错、整个文件不再转换。compiler-dom 的 loc 是精确
+   * 区间，这些启发式一条都不需要。
    *
    * @param templateContent - template 内容（偏移的基准，必须与提取时同一份）
    * @param strings - template 中的字符串数组
@@ -221,9 +224,9 @@ export class VueTransformer implements ITransformer {
       const end = start + extracted.sourceSlice.length;
       // 核对偏移仍指向提取时看到的原文。对不上意味着「提取与转换看到的不是同一份
       // template」（源码被并发改动、或某条提取路径的偏移换算有 bug），此时任何替换
-      // 都会砍在半截语法上，故中止而不是退化搜索。这一道校验取代了旧实现里全部
-      // 防误替换机制（比较操作数守卫、引号感知搜索、±5 行兜底）：区间精确到字符，
-      // 不可能命中"同行另一处相同字面量"或"比较运算符的操作数"。
+      // 都会砍在半截语法上，故中止而不是退化搜索。这一道校验就是全部的防误替换机制：
+      // 区间精确到字符，不可能命中"同行另一处相同字面量"或"比较运算符的操作数"，
+      // 无需再叠加引号感知搜索、邻行兜底之类的启发式。
       const actual = templateContent.slice(start, end);
       if (actual !== extracted.sourceSlice) {
         throw new Error(
@@ -261,21 +264,16 @@ export class VueTransformer implements ITransformer {
 
     // 处理模板字符串（带变量插值）
     if (isTemplateString && actualVariables && actualVariables.length > 0) {
-      // createMessageWithOptions 需要「内联字面量后、仅含真正变量 `${expr}`」的形式：
-      //  - mixed-content：`original` 是源码层形式（含 `{{ }}`），用合成的 processedMessage；
-      //  - dynamic-attribute / interpolation：`original` 现存源码层模板串（含字面量插值如
-      //    `${'X'}`，供源码文本匹配），其内联后的 processedMessage 才是正确的消息输入。
-      // 统一优先取 processedMessage，无（纯变量插值、内联前后相同）时回落 original。
+      // 这里只取 placeholderMap（`表达式 → 占位符名`），它仅由 actualVariables 推导，
+      // 与传入文本无关；locale 值由 buildLocaleMessage 另行生成。入参仍与消息生成端同源
+      // （优先 processedMessage、回落 original），避免两端各喂一份文本而口径分叉。
       const messageInput = extracted.processedMessage ?? extracted.original;
       const { placeholderMap } = createMessageWithOptions(messageInput, actualVariables);
       const variablesMapping = formatValuesMapping(placeholderMap);
 
-      // 根据上下文生成不同格式
+      // 根据上下文生成不同格式。static-attribute 不在此分支：提取端该路径恒
+      // isTemplateString:false（静态属性值是纯字面量），带变量形态只出现在下面三种上下文。
       switch (templateContext) {
-        case 'static-attribute':
-          // 静态属性转动态绑定：title="文本" -> :title="$t('...')"
-          // 整个 `name="value"` 被替换，外层引号由本替换体自己给出，故 key 恒用单引号。
-          return `:${attributeName}="$t('${semanticId}', ${variablesMapping})"`;
         case 'interpolation':
         case 'dynamic-attribute':
           // 插值表达式和动态属性中：不需要额外的 {{ }}（已在表达式上下文中）
@@ -283,8 +281,8 @@ export class VueTransformer implements ITransformer {
         case 'mixed-content':
         case 'text-node':
         default:
-          // 文本节点 / 复合句：使用 {{ }} 包裹。mixed-content 的 original 已涵盖
-          // 多个源码节点（如 `全部({{ totalCount }})`），整体被一次 indexOf 替换。
+          // 文本节点 / 复合句：使用 {{ }} 包裹。mixed-content 的区间已涵盖多个源码节点
+          // （如 `全部({{ totalCount }})`，可跨行），整体被一次精确区间替换。
           return `{{ $t('${semanticId}', ${variablesMapping}) }}`;
       }
     } else {
@@ -317,8 +315,9 @@ export class VueTransformer implements ITransformer {
     lineOffset: number,
     strings: ExtractedString[],
     allowThisQualifier: boolean,
+    parseFileName: string = 'temp.ts',
   ): string {
-    const sourceFile = parseSourceFile(scriptContent, 'temp.ts');
+    const sourceFile = parseSourceFile(scriptContent, parseFileName);
 
     // 无需在此按位置预排序：倒序写入与重叠检测都由 applyReplacements 内部统一完成，
     // 预排序对最终产物无影响，且会原地 mutate 入参数组。与 ReactTransformer.replaceStrings
@@ -341,7 +340,14 @@ export class VueTransformer implements ITransformer {
         // 的词法作用域（method / lifecycle / 普通函数体内部，箭头函数透明）时，
         // 才使用 this.$t；模块顶层 / 选项对象的属性初始化器外层 → 裸 t()。
         const useThis = allowThisQualifier && isInThisBindableScope(node);
-        const replacement = this.generateScriptReplacement(extracted, useThis);
+        // JSX 属性值只接受字符串字面量或 `{表达式}`（`lang="tsx"` 的 script 块才可能出现）：
+        // 裸 `title=t('k')` 是语法错误，必须补花括号。
+        const inJsxAttribute =
+          node.parent !== undefined &&
+          ts.isJsxAttribute(node.parent) &&
+          node.parent.initializer === node;
+        const call = this.generateScriptReplacement(extracted, useThis);
+        const replacement = inJsxAttribute ? `{${call}}` : call;
         const start = node.getStart(sourceFile);
         const end = node.getEnd();
 
@@ -356,6 +362,8 @@ export class VueTransformer implements ITransformer {
         // extracted.original 仅模板串是源码形式、其余为裸内容 → 据此控制裸内容侧不剥定界符，
         // 避免内容自带成对引号被误剥。模板串走结构化比对（见 nodeMatchesExtractedOriginal），
         // 与 findExactStringNode 的定位口径同源，不会出现「定位得到、复核不过」。
+        // nodeDelimited 排除 JsxText：`lang="tsx"` 的块按 TSX 解析，定位回退路径可能返回
+        // JsxText 节点，它源码侧本就无定界符，剥一层会剪掉首尾真实字符。
         if (
           nodeMatchesExtractedOriginal(node, sourceFile, extracted.original, {
             nodeDelimited: !ts.isJsxText(node),

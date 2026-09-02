@@ -108,6 +108,11 @@ export class CsvImportProcessor extends FileProcessor {
     let skippedEmpty = 0;
     const missingKeys: string[] = [];
     const malformedRows: number[] = [];
+    // 参与对账的数据记录数（不含表头与空行）：全部记录都 malformed 时用于判定「整份 CSV
+    // 都读不了」，此时静默 exit 0 会让 CI 误以为回流成功。
+    let dataRows = 0;
+    const seenKeys = new Set<string>();
+    const duplicateKeys: string[] = [];
     let untranslatedDirty = false;
     let translatedDirty = false;
 
@@ -115,6 +120,7 @@ export class CsvImportProcessor extends FileProcessor {
       // 空记录（文件中间的空行 / 结尾多余换行经 parseCsv 产出的 ['']）静默跳过，
       // 不计入 malformedRows——它不构成错位风险，告警只会制造噪音。
       if (row.length === 1 && (row[0] ?? '').trim() === '') continue;
+      dataRows++;
       // 行宽守卫：列绑定完全依赖表头索引，parseCsv 不保证各行字段数一致。手工编辑时
       // 误删/多打一个逗号会让后续字段整体错位——值仍非空、isValidTranslation 分不出语言，
       // 错语言译文会被静默写进字典并随 merge 进入 locale。字段数不符的行必须整行跳过并告警。
@@ -125,6 +131,11 @@ export class CsvImportProcessor extends FileProcessor {
       }
       const key = (row[keyIdx] ?? '').trim();
       if (key === '') continue;
+      // 同一 key 在 CSV 里出现多次：后者覆盖前者（逐行顺序应用，不改这一行为——合并策略
+      // 由翻译人员的编辑意图决定）。但必须告警一次：多半是拼接多份导出时漏了去重，
+      // 静默取最后一行会让先前那份的译文无声消失。
+      if (seenKeys.has(key)) duplicateKeys.push(key);
+      else seenKeys.add(key);
       // 路由：优先 untranslated（待翻流程主路径），否则落到 translations（审核流程）。
       // 二者 key 互斥（pick 按 hasUntranslated 二选一），不会双写。
       // 两个分支都必须走 hasOwnProperty 守卫：CSV 的 key 来自外部（翻译人员回传），若直接
@@ -157,6 +168,24 @@ export class CsvImportProcessor extends FileProcessor {
         if (inUntranslated) untranslatedDirty = true;
         else translatedDirty = true;
       }
+    }
+
+    // 全部数据记录都字段数不符 = 整份 CSV 无一行可用（最常见成因：分隔符不是逗号、
+    // 或用 Excel 另存时改了方言）。此时既没有 updated 也没有 missingKeys，后续流程会
+    // 打一条「没有可写回的非空译文」后以 0 退出，CI 误判为回流成功，故必须硬失败。
+    if (dataRows > 0 && malformedRows.length === dataRows) {
+      throw new Error(
+        `[i18n-tools] CSV 全部 ${dataRows} 条数据记录的字段数都与表头（${header.length} 列）不符，` +
+          '无一行可用。请确认文件分隔符为逗号、且未被二次编辑破坏列结构。',
+      );
+    }
+
+    if (duplicateKeys.length > 0) {
+      const sample = [...new Set(duplicateKeys)].slice(0, 5).join(', ');
+      LoggerUtils.warn(
+        `CSV 中有 ${duplicateKeys.length} 条重复 key（同 key 多行，后者覆盖前者）：${sample}` +
+          (new Set(duplicateKeys).size > 5 ? ' …' : ''),
+      );
     }
 
     const writeTargets: string[] = [];
@@ -203,8 +232,9 @@ export class CsvImportProcessor extends FileProcessor {
       }
     }
 
-    if (untranslatedDirty) writeTranslationsFile(untranslatedPath, untranslated);
-    if (translatedDirty) writeTranslationsFile(translatedPath, translated);
+    if (untranslatedDirty)
+      writeTranslationsFile(untranslatedPath, untranslated, this.config.io.indent);
+    if (translatedDirty) writeTranslationsFile(translatedPath, translated, this.config.io.indent);
     LoggerUtils.success(
       `✅ 已写回 ${updated} 处译文到 ${writeTargets.map((p) => FileUtils.getRelativePath(p)).join(' / ')}`,
     );

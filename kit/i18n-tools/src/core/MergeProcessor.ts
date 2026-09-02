@@ -140,6 +140,8 @@ export class MergeProcessor extends FileProcessor {
     let stillUntranslatedCount = 0;
     let rejectedFallbackCount = 0;
     const rejected: Array<{ key: string; target: string; source: string; value: string }> = [];
+    /** 条目里既非 source 也不在当前 targets 的语种（原样透传，仅提示一次）。 */
+    const carriedLocales = new Set<string>();
 
     LoggerUtils.info('🔍 正在分析翻译状态...');
 
@@ -152,6 +154,15 @@ export class MergeProcessor extends FileProcessor {
       }
       const sourceValue = data[sourceLocale];
       const finalEntry: Translations[string] = { [sourceLocale]: sourceValue ?? '' };
+      // 透传条目里其它语种的字段：字典文件是团队共享产物，别的分支 / 别人机器上的
+      // targets 可能更全。finalEntry 会整体覆盖写回 translations/untranslated.json，
+      // 只装 source+当前 targets 等于把那些语种的译文抹掉（无告警、只能靠 git 找回）。
+      for (const [locale, value] of Object.entries(data)) {
+        if (locale === sourceLocale || targets.includes(locale)) continue;
+        if (typeof value !== 'string') continue;
+        finalEntry[locale] = value;
+        carriedLocales.add(locale);
+      }
       let allTranslated = true;
 
       for (const target of targets) {
@@ -198,6 +209,15 @@ export class MergeProcessor extends FileProcessor {
         stillUntranslated[key] = finalEntry;
         stillUntranslatedCount++;
       }
+    }
+
+    if (carriedLocales.size > 0) {
+      const line =
+        `⚠️  字典文件中存在不在 locales.targets 内的语种 [${[...carriedLocales].join(', ')}]：` +
+        `已原样保留在 ${FILES.TRANSLATIONS_JSON} / ${FILES.UNTRANSLATED_JSON} 中，` +
+        `但不会写入语言文件——如需落盘请把它们加进 locales.targets 后重跑 merge。`;
+      LoggerUtils.warn(line);
+      this.report.addWarning(line);
     }
 
     LoggerUtils.success(`✅ 全部 target 已完成的 key: ${newTranslatedCount} 个`);
@@ -275,7 +295,7 @@ export class MergeProcessor extends FileProcessor {
       ...existingTranslations,
       ...analysisResult.newlyTranslated,
     };
-    writeTranslationsFile(translatedPath, finalTranslations);
+    writeTranslationsFile(translatedPath, finalTranslations, this.config.io.indent);
     LoggerUtils.info(
       `📄 已更新 ${FILES.TRANSLATIONS_JSON}，现有 ${Object.keys(finalTranslations).length} 个翻译条目`,
     );
@@ -289,7 +309,7 @@ export class MergeProcessor extends FileProcessor {
     analysisResult: ReturnType<typeof MergeProcessor.prototype.analyzeTranslationStatus>,
   ): void {
     if (analysisResult.stillUntranslatedCount > 0) {
-      writeTranslationsFile(filePath, analysisResult.stillUntranslated);
+      writeTranslationsFile(filePath, analysisResult.stillUntranslated, this.config.io.indent);
       LoggerUtils.info(
         `📝 已更新 ${FILES.UNTRANSLATED_JSON}，剩余 ${analysisResult.stillUntranslatedCount} 个待翻译条目`,
       );
@@ -441,8 +461,7 @@ export class MergeProcessor extends FileProcessor {
   }
 
   /**
-   * 把 newlyTranslated 里某 target 语言的非空字符串译文写入 targetMessages，返回更新条目数。
-   * 桶式 / 扁平两条写回路径共用，仅 targetMessages 来源不同。
+   * 译文与源文案的占位符名集不一致时告警（不拦截）：merge 的契约是合入人工确认过的译文。
    */
   private warnPlaceholderMismatch(
     key: string,
@@ -463,6 +482,10 @@ export class MergeProcessor extends FileProcessor {
     );
   }
 
+  /**
+   * 把 newlyTranslated 里某 target 语言的非空字符串译文写入 targetMessages，返回更新条目数。
+   * 桶式 / 扁平两条写回路径共用，仅 targetMessages 来源不同。
+   */
   private static applyTranslations(
     targetMessages: LocaleMap,
     newlyTranslated: Translations,

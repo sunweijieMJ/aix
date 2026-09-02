@@ -100,6 +100,31 @@ export class CsvExportProcessor extends FileProcessor {
     return value.trim() !== '' ? 'invalid' : '';
   }
 
+  /**
+   * 条目形态校验：值必须是对象，且要导出的每一列（源语言 + 目标语言）要么缺失、要么是
+   * 字符串。手工把某列改成数字/对象/null 时，reasonFor 的 `value.trim()` 与
+   * isValidTranslation 会抛无上下文的 TypeError，整条 csv-export 崩在半路。
+   * 非法条目一律整条跳过并告警——导出半行错位的数据比少一行更难排查。
+   */
+  private isExportableEntry(
+    entry: Translations[string] | undefined,
+    key: string,
+    columns: string[],
+  ): entry is Translations[string] {
+    if (!entry || typeof entry !== 'object') {
+      LoggerUtils.warn(`⚠️  跳过形态非法的条目（值不是对象）: ${key}`);
+      return false;
+    }
+    for (const col of columns) {
+      const cell: unknown = entry[col];
+      if (cell !== undefined && typeof cell !== 'string') {
+        LoggerUtils.warn(`⚠️  跳过形态非法的条目（${col} 列的值不是字符串）: ${key}`);
+        return false;
+      }
+    }
+    return true;
+  }
+
   private writeSingleLang(
     data: Translations,
     keys: string[],
@@ -109,12 +134,7 @@ export class CsvExportProcessor extends FileProcessor {
     const rows: string[][] = [['key', sourceLocale, lang, 'reason']];
     for (const key of keys) {
       const entry = data[key];
-      // 非对象守卫：loadJsonDictOrThrow 只校验整体 JSON 合法、不校验条目形态。手工把某 key
-      // 改成 null/字符串时裸读 entry[lang] 会抛无上下文的 TypeError。与 CsvImport 同口径跳过。
-      if (!entry || typeof entry !== 'object') {
-        LoggerUtils.warn(`⚠️  跳过形态非法的条目（值不是对象）: ${key}`);
-        continue;
-      }
+      if (!this.isExportableEntry(entry, key, [sourceLocale, lang])) continue;
       const value = entry[lang] ?? '';
       const translated = FileUtils.isValidTranslation(value);
       if (!this.keep(translated)) continue;
@@ -132,11 +152,7 @@ export class CsvExportProcessor extends FileProcessor {
     const rows: string[][] = [['key', sourceLocale, ...langs]];
     for (const key of keys) {
       const entry = data[key];
-      // 同 writeSingleLang：条目形态非法（null/基本类型）时跳过并告警，避免裸读 TypeError。
-      if (!entry || typeof entry !== 'object') {
-        LoggerUtils.warn(`⚠️  跳过形态非法的条目（值不是对象）: ${key}`);
-        continue;
-      }
+      if (!this.isExportableEntry(entry, key, [sourceLocale, ...langs])) continue;
       // 多语言：任一所选 lang 满足 filter 即保留该行
       const anyKeep = langs.some((l) => this.keep(FileUtils.isValidTranslation(entry[l] ?? '')));
       if (!anyKeep) continue;

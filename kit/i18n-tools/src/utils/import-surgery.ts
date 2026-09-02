@@ -27,6 +27,36 @@ import { escapeRegExp } from './string-escape';
  * 导致 doctor 漏报 used-key（误报 orphan / missing）。
  */
 export function stripComments(code: string): string {
+  return scanSource(code, 'strip');
+}
+
+/**
+ * 生成与源码**等长**的掩码文本：注释（含 `//` `/*` `<!--` 定界符自身）与模板字符串
+ * 内容整体替换为等量空格，换行原样保留；其余字符（含普通引号字符串的内容）原样保留。
+ *
+ * 用途：import 手术的全部定位（findLastImportLineIndex / mergeNamedImport /
+ * removeNamedImports）都在掩码上匹配、按 index 落回原文改写。由此
+ *  - 注释与模板串里的示例 `import …` 不再被当成真实语句（否则真 import 被删、
+ *    合并结果被写进注释，整包导入消失）；
+ *  - 命名列表行注释里的 `}`（`useI18n, // 返回 { t }`）不再让 `[^}]` 提前收口，
+ *    避免误判「该包尚无 import」而追加重复导入（TS2300）。
+ *
+ * 普通引号字符串的内容有意**不**掩掉：模块名 `from 'pkg'` 需要直接从掩码上读回；
+ * 而单/双引号字符串不能跨行，`^[ \t]*import` 的行首锚定到不了其内部。
+ */
+function maskNonCodeRegions(code: string): string {
+  return scanSource(code, 'mask');
+}
+
+/**
+ * stripComments / maskNonCodeRegions 共用的单遍词法扫描。
+ * - `strip`：注释替空格（定界符压成 1 个空格，长度不保证），字符串与模板原样保留；
+ * - `mask` ：注释与模板内容替等量空格，输出与入参**等长**（下标可直接映射回原文）。
+ */
+type ScanMode = 'strip' | 'mask';
+
+function scanSource(code: string, mode: ScanMode): string {
+  const masking = mode === 'mask';
   const out: string[] = [];
   const len = code.length;
   let i = 0;
@@ -98,13 +128,13 @@ export function stripComments(code: string): string {
       if (ch === '/' && next === '*') {
         // 记录内容起点（跳过 `/*` 后的下标），闭合判定据此排除开头的 `*`。
         stack.push({ kind: 'block', blockContentStart: i + 2 });
-        out.push(' ');
+        out.push(masking ? '  ' : ' ');
         i += 2;
         continue;
       }
       if (ch === '/' && next === '/') {
         stack.push({ kind: 'line' });
-        out.push(' ');
+        out.push(masking ? '  ' : ' ');
         i += 2;
         continue;
       }
@@ -146,7 +176,7 @@ export function stripComments(code: string): string {
       }
       if (ch === '<' && code.startsWith('!--', i + 1)) {
         stack.push({ kind: 'html' });
-        out.push(' ');
+        out.push(masking ? '    ' : ' ');
         i += 4;
         continue;
       }
@@ -193,11 +223,13 @@ export function stripComments(code: string): string {
       continue;
     }
 
-    // 模板字符串：识别 ${ 嵌入表达式与反引号闭合
+    // 模板字符串：识别 ${ 嵌入表达式与反引号闭合。
+    // mask 模式下内容整体替空格（模板可跨行，是唯一能让「行首 import」落进非代码区的
+    // 字符串形态），但反引号与 `${` `}` 定界符保留，以便 tpl_expr 内的真实代码照常可见。
     if (frame.kind === 'tpl') {
       if (ch === '\\') {
-        out.push(ch);
-        if (i + 1 < len) out.push(code[i + 1]!);
+        out.push(masking ? ' ' : ch);
+        if (i + 1 < len) out.push(masking ? ' ' : code[i + 1]!);
         i += 2;
         continue;
       }
@@ -210,8 +242,11 @@ export function stripComments(code: string): string {
       }
       if (ch === '`') {
         stack.pop();
+        out.push(ch);
+        i++;
+        continue;
       }
-      out.push(ch);
+      out.push(masking && ch !== '\n' ? ' ' : ch);
       i++;
       continue;
     }
@@ -351,12 +386,21 @@ function countBraceDelta(line: string): number {
  *
  * Why: React 与 Vue 的 ImportManager 都需要这个能力来确定"插入新 import 的锚点"，共用本方法
  * 避免两端各自实现而维护漂移。
+ *
+ * 入参是**原始**行数组；定位在掩码文本上做，注释与模板串里的 `import …` 不算语句，
+ * 否则锚点落进注释/模板内部，注入的 import 被一起吞进非代码区。
  */
 export function findLastImportLineIndex(lines: string[]): number {
+  return findLastImportLineIndexMasked(maskNonCodeRegions(lines.join('\n')).split('\n'));
+}
+
+/** findLastImportLineIndex 的内核：入参必须已是 maskNonCodeRegions 的输出按行切分。 */
+function findLastImportLineIndexMasked(maskedLines: string[]): number {
   // 多行 import（如 `import {\n  A,\n  B,\n} from 'x'`）只用 startsWith('import ')
   // 检测会让 lastImportIndex 停在第一行（`import {`），随后 `appendImportLine` 把
   // 新 import 插到第二行，落入花括号内部，产生语法错误。
   // 这里通过 brace 平衡跨行追踪 import 语句的真实结束行。
+  const lines = maskedLines;
   let lastImportEndLine = -1;
   let pendingDepth = 0; // 当前 import 内尚未闭合的 { 深度
 
@@ -386,14 +430,52 @@ export function findLastImportLineIndex(lines: string[]): number {
   return lastImportEndLine;
 }
 
+/** 文件头指令序言：`'use client'` / `"use strict"` / `'use server'` 等整行指令。 */
+const DIRECTIVE_LINE_RE = /^(['"])use [\w-]+\1;?$/;
+
 /**
- * 把 importStatement 插入到代码字符串中"最后一条 import 之后"。
+ * 无既有 import 时的插入行号：跳过 shebang、文件头注释组与指令序言。
+ *
+ * 约束：`'use client'` / `'use strict'` 必须留在模块最前（只允许注释在其之上），
+ * 被 import 顶下去即失效（Next.js 客户端组件会退化为服务端组件）。文件头的许可证 /
+ * 说明注释同理不能被 import 劈开。掩码行为空白即"该行只有注释或空白"。
+ *
+ * @param lines       原始行（判定 shebang 与「本行是否为空」用）
+ * @param maskedLines 与 lines 等长的掩码行
+ */
+function firstInsertableLineIndex(lines: string[], maskedLines: string[]): number {
+  let anchor = 0;
+  let i = 0;
+  if (lines[0]?.startsWith('#!')) {
+    i = 1;
+    anchor = 1;
+  }
+  for (; i < lines.length; i++) {
+    const original = (lines[i] ?? '').trim();
+    const masked = (maskedLines[i] ?? '').trim();
+    if (original === '') continue; // 空行：跳过，但不把锚点推到空行之后
+    // 原文非空而掩码为空 = 整行都是注释
+    if (masked === '' || DIRECTIVE_LINE_RE.test(masked)) {
+      anchor = i + 1;
+      continue;
+    }
+    break; // 首行真实代码
+  }
+  return anchor;
+}
+
+/**
+ * 把 importStatement 插入到代码字符串中"最后一条 import 之后"；
+ * 无 import 时插到文件头（shebang / 注释组 / 指令序言之后）。
  * 已 trim，调用方不需要再处理换行。
  */
 export function appendImportLine(code: string, importStatement: string): string {
   const lines = code.split('\n');
-  const lastImportIndex = findLastImportLineIndex(lines);
-  lines.splice(lastImportIndex + 1, 0, importStatement.trim());
+  const maskedLines = maskNonCodeRegions(code).split('\n');
+  const lastImportIndex = findLastImportLineIndexMasked(maskedLines);
+  const at =
+    lastImportIndex >= 0 ? lastImportIndex + 1 : firstInsertableLineIndex(lines, maskedLines);
+  lines.splice(at, 0, importStatement.trim());
   return lines.join('\n');
 }
 
@@ -403,7 +485,7 @@ export function appendImportLine(code: string, importStatement: string): string 
  * + trim 会把注释文本并进导入名；重写为单行时首个 `//` 会吞掉后续导入名与 from →
  * 产出语法损坏、无法编译的代码。取舍：重写为单行时注释自然丢弃——保语法正确优先于保注释。
  */
-function stripImportListComments(namedList: string): string {
+export function stripImportListComments(namedList: string): string {
   return namedList
     .replace(/\/\*[\s\S]*?\*\//g, '') // 块注释
     .replace(/\/\/[^\n]*/g, ''); // 行注释：吃到行尾
@@ -414,10 +496,9 @@ function stripImportListComments(namedList: string): string {
  * 不破坏同一条 import 内的其他名字。若摘除后命名列表为空，整条 import 行
  * 一并删除。
  *
- * Why 精准摘除：早先各 i18n library 暴露 getImportCleanupRegex 直接匹配整条
- * `import { … } from 'pkg'` 后 replace 成空串——用户若在同一行手写其他导出
- * （如 `import { useI18n, createI18n } from 'vue-i18n'`），restore 会把
- * createI18n 也删掉，下游编译报错。
+ * Why 精准摘除：整条 `import { … } from 'pkg'` 直接 replace 成空串的做法，遇到用户
+ * 在同一条 import 里手写其他导出（如 `import { useI18n, createI18n } from 'vue-i18n'`）
+ * 会把 createI18n 一并删掉，下游编译报错。
  *
  * @param code            源代码
  * @param isTargetModule  判断某个 `from 'X'` 是否属于目标库（支持包名别名）
@@ -429,67 +510,74 @@ export function removeNamedImports(
   namesToRemove: string[],
 ): string {
   if (namesToRemove.length === 0) return code;
-  // 行首锚定（gm + `^[ \t]*import`）：只匹配作为「语句」出现在行首（允许缩进）的真实
-  // import，排除注释（`// import { t } from 'x'`）或字符串里的 import 字样——不锚定会
-  // 把注释里的 import 当作匹配项删除，`\n?` 还会吞掉换行把下一行真实代码并入注释。
-  // 与姊妹方法 mergeNamedImport 的锚定口径保持一致。尾部 `;?` `\n?` 避免删除后留空行。
+  // 匹配在掩码文本上做：行首锚定（gm + `^[ \t]*import`）保证只命中「语句」位置，掩码
+  // 再保证注释/模板串里的示例 import 不参与匹配——否则会把注释里的 import 文本删掉，
+  // `\n?` 还会吞掉换行把下一行真实代码并入注释。尾部 `;?` `\n?` 避免删除后留空行。
   // 可选默认说明符 `import D, { … }`：捕获默认名 D 并在重写时保留，否则 default+named 形式
   // 的死 t 摘不掉（regex 不匹配 → 残留 no-unused-vars）。
   const importRegex =
     /^([ \t]*)import\s*(?:([A-Za-z0-9_$]+)\s*,\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"];?\n?/gm;
-  return code.replace(
-    importRegex,
-    (
-      match,
-      indent: string,
-      defaultName: string | undefined,
-      namedList: string,
-      moduleName: string,
-    ) => {
-      if (!isTargetModule(moduleName)) return match;
-      const remaining = stripImportListComments(namedList)
-        .split(',')
-        .map((n) => n.trim())
-        .filter(Boolean)
-        // `useI18n as foo` 这类重命名导入：取 ` as ` 之前的原始名作为比对锚点
-        .filter((entry) => {
-          const original = entry.split(/\s+as\s+/)[0]!.trim();
-          return !namesToRemove.includes(original);
-        });
-      // 复用原始行尾分号/换行，保留风格一致
-      const hasSemi = match.trimEnd().endsWith(';');
-      const hasNewline = match.endsWith('\n');
-      const tail = `${hasSemi ? ';' : ''}${hasNewline ? '\n' : ''}`;
-      if (remaining.length === 0) {
-        // 无剩余具名项：存在默认导入则保留 `import D from 'pkg'`，否则整条删除
-        return defaultName ? `${indent}import ${defaultName} from '${moduleName}'${tail}` : '';
-      }
+  const matches = [...maskNonCodeRegions(code).matchAll(importRegex)];
+
+  // 从后往前按 index 切片改写原文：掩码与原文等长，下标可直接复用；倒序保证
+  // 前面匹配的 index 不被已完成的改写位移。
+  let result = code;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const match = matches[i]!;
+    const indent = match[1]!;
+    const defaultName = match[2];
+    const namedList = match[3]!;
+    const moduleName = match[4]!;
+    if (!isTargetModule(moduleName)) continue;
+    const remaining = stripImportListComments(namedList)
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean)
+      // `useI18n as foo` 这类重命名导入：取 ` as ` 之前的原始名作为比对锚点
+      .filter((entry) => {
+        const original = entry.split(/\s+as\s+/)[0]!.trim();
+        return !namesToRemove.includes(original);
+      });
+    // 复用原始行尾分号/换行，保留风格一致
+    const hasSemi = match[0].trimEnd().endsWith(';');
+    const hasNewline = match[0].endsWith('\n');
+    const tail = `${hasSemi ? ';' : ''}${hasNewline ? '\n' : ''}`;
+    let replacement: string;
+    if (remaining.length === 0) {
+      // 无剩余具名项：存在默认导入则保留 `import D from 'pkg'`，否则整条删除
+      replacement = defaultName ? `${indent}import ${defaultName} from '${moduleName}'${tail}` : '';
+    } else {
       const prefix = defaultName ? `${defaultName}, ` : '';
-      return `${indent}import ${prefix}{ ${remaining.join(', ')} } from '${moduleName}'${tail}`;
-    },
-  );
+      replacement = `${indent}import ${prefix}{ ${remaining.join(', ')} } from '${moduleName}'${tail}`;
+    }
+    const start = match.index!;
+    result = result.slice(0, start) + replacement + result.slice(start + match[0].length);
+  }
+  return result;
 }
 
 /**
  * 合并/插入命名导入：若代码中已存在 `import { ... } from packageName`，把新 names
  * 并入现有花括号；否则在最后一条 import 之后追加新 import 行。
  *
- * 返回更新后的代码；语义上等价于 React/Vue 端原本各自实现的 addLibraryImports。
+ * 返回更新后的代码；React/Vue 两端注入 i18n 库导入共用此实现。
  */
 export function mergeNamedImport(code: string, packageName: string, names: string[]): string {
   if (names.length === 0) return code;
   const escapedPkg = escapeRegExp(packageName);
-  // 行首锚定（gm + `^[ \t]*import`）：只匹配作为「语句」出现在行首（允许缩进）的真实
-  // import，从而排除出现在注释（如 `// import { t } from 'x'`、块注释中的示例代码）
-  // 或字符串字面量里的 import 字样——它们都是行内文本，不会顶到行首。
-  // 不锚定会误把注释里的 import 当作重复项，再被下方删除逻辑误伤真实 import。
+  const masked = maskNonCodeRegions(code);
+  // 行首锚定（gm + `^[ \t]*import`）限定「语句」位置，掩码再排除注释 / 模板串里的示例
+  // import：两者缺一都会让下方的位置切片改写落到非代码区——注释里的 import 被当成重复项、
+  // 合并结果写进注释、真实 import 被删光。
+  // 命名列表用 `[^}]`：掩码已把注释内容抹平，注释里的 `}`（`useI18n, // 返回 { t }`）
+  // 不会再提前收口而导致漏匹配 → 误判「该包无 import」→ 追加重复导入（TS2300）。
   // 可选默认说明符 `import D, { … }`：捕获默认名 D（组1），命名列表为组2。不识别会导致
   // 已有 `import D, { t } from pkg` 匹配失败 → 误判为「不存在」而追加重复 import（TS2300）。
   const importRegex = new RegExp(
     `^[ \\t]*import\\s*(?:([A-Za-z0-9_$]+)\\s*,\\s*)?\\{([^}]+)\\}\\s*from\\s*['"]${escapedPkg}['"][ \\t]*;?`,
     'gm',
   );
-  const matches = [...code.matchAll(importRegex)];
+  const matches = [...masked.matchAll(importRegex)];
 
   // 额外收集该包【所有】已存在的本地导入名，含 `import type { … }` 与内联 `{ type X }`
   // ——上面的 importRegex 只认值导入（有意，避免把值并进 type import 触发 TS1361）。
@@ -501,7 +589,7 @@ export function mergeNamedImport(code: string, packageName: string, names: strin
     'gm',
   );
   const existingNames = new Set<string>();
-  for (const m of code.matchAll(anyImportRegex)) {
+  for (const m of masked.matchAll(anyImportRegex)) {
     for (const raw of stripImportListComments(m[1]!).split(',')) {
       const part = raw.trim().replace(/^type\s+/, ''); // 去掉内联 type 修饰
       if (!part) continue;

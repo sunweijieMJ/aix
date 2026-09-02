@@ -62,7 +62,7 @@ export interface LocalesConfig {
   /** 目标语言代码列表，默认 ['en-US']（见 config/defaults.ts）。数组化以支持多目标。 */
   targets?: string[];
   /**
-   * 语言代码 → 展示名映射，会与内置 LOCALE_NAMES 合并后注入 LLM prompt。
+   * 语言代码 → 展示名映射，会与 utils/prompts.ts 的 BUILTIN_LOCALE_NAMES 合并后注入 LLM prompt。
    * 用户配置优先级高于内置表。
    */
   names?: Record<string, string>;

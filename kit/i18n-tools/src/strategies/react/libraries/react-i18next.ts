@@ -23,6 +23,8 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   readonly hookDeclaration = 'const { t } = useTranslation();';
   // react-i18next 默认插值语法是双花括号 `{{name}}`
   readonly usesDoubleBracePlaceholders = true;
+  // `ns:key` 的 namespace 只剥恰为已配前缀的部分（stripNamespacePrefix），冒号可为 key 自身字符。
+  readonly supportsNamespace = false;
   readonly translationVarName = 't';
   readonly jsxComponentName = 'Trans';
   readonly hocPropsType = 'WithTranslation';
@@ -111,18 +113,19 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
     return `withTranslation()(${componentName})`;
   }
 
-  getImportSpecifiers(usage: {
-    hasJsxComponent: boolean;
-    hasHook: boolean;
-    hasHOC: boolean;
-  }): string[] {
-    const specifiers: string[] = [];
-    if (usage.hasJsxComponent) specifiers.push('Trans');
-    if (usage.hasHook) specifiers.push('useTranslation');
+  getImportSpecifiers(usage: { hasJsxComponent: boolean; hasHook: boolean; hasHOC: boolean }): {
+    values: string[];
+    types: string[];
+  } {
+    const values: string[] = [];
+    const types: string[] = [];
+    if (usage.hasJsxComponent) values.push('Trans');
+    if (usage.hasHook) values.push('useTranslation');
     if (usage.hasHOC) {
-      specifiers.push('withTranslation', 'WithTranslation');
+      values.push('withTranslation');
+      types.push('WithTranslation');
     }
-    return specifiers;
+    return { values, types };
   }
 
   generateGlobalDeclaration(): string {

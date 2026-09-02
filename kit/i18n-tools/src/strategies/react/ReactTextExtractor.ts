@@ -1,6 +1,11 @@
 import fs from 'fs';
 import ts from 'typescript';
-import { extractObjectLiteralProperties, nodeToText, parseSourceFile } from '../../utils/ast-core';
+import {
+  extractObjectLiteralProperties,
+  nodeToText,
+  normalizeJsxTextSegment,
+  parseSourceFile,
+} from '../../utils/ast-core';
 import {
   collectNestedChineseLiteralNodes,
   collectNestedChineseLiterals,
@@ -30,10 +35,17 @@ import type { ReactI18nLibrary } from './libraries';
  */
 export class ReactTextExtractor extends BaseTextExtractor {
   private library?: ReactI18nLibrary;
+  /** 工具注入全局 `t` 的模块路径；该路径下的同名导入是 i18n 来源，不算冲突绑定。 */
+  private tImport?: string;
 
-  constructor(library?: ReactI18nLibrary, rejectPatterns: readonly RegExp[] = []) {
+  constructor(
+    library?: ReactI18nLibrary,
+    rejectPatterns: readonly RegExp[] = [],
+    tImport?: string,
+  ) {
     super(rejectPatterns);
     this.library = library;
+    this.tImport = tImport;
   }
   /**
    * 从单个文件中提取字符串
@@ -134,8 +146,8 @@ export class ReactTextExtractor extends BaseTextExtractor {
 
     // 过滤不可翻译的技术文本（URL、版本号、CSS 值、邮箱、纯符号等）。
     // 必须放在下面 jsx-text 短路之前，否则 <p>18px</p> / <p>https://a.com</p>
-    // 这类纯技术值会被当作"用户可见文本"提取出来送去翻译。判据与 Vue 端同源
-    // （text-classify），此前只有 Vue 有这道闸，React 端整体缺失。
+    // 这类纯技术值会被当作"用户可见文本"提取出来送去翻译。判据必须与 Vue 端同源
+    // （text-classify），两端各写一套会让同一个字符串在不同框架下判定相反。
     if (isNonTranslatableText(str)) {
       return false;
     }
@@ -245,7 +257,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
         // 处理了混合内容后，跳过 children 的单独处理——但开标签必须单独再走一遍：
         // 混合内容只吃掉 children 区间（ReactTransformer 也只替换 children），
         // openingElement 上的属性文案（`<div title="标题">共 {n} 项</div>` 的 title）
-        // 与它无关。此前在这里无差别 return，属性中文既不提取也不进诊断，静默丢失。
+        // 与它无关。此处若无差别 return，属性中文既不提取也不进诊断，会静默丢失。
         // JsxFragment 无开标签属性，不需要这一步。
         if (ts.isJsxElement(node)) {
           await this.visitNode(node.openingElement, sourceFile, extractedStrings, filePath);
@@ -264,6 +276,22 @@ export class ReactTextExtractor extends BaseTextExtractor {
       // 跳过对象属性 key、模块导入路径、比较运算符/case 操作数
       if (isExtractableStringLiteral(node)) {
         text = node.text;
+        // 直接作为 JSX 属性值的字符串（`title="点击&amp;确认"`）按 JSX 语义解码实体，与
+        // JsxText 分支同一套白名单：original 留源码原文供替换定位，locale 值与 ID 走
+        // processedMessage。表达式容器里的字符串（`title={"a&amp;b"}`）是 JS 字面量、
+        // 实体不被解析，故只认「恰为 JsxAttribute 初始化器」这一形态。
+        if (ts.isJsxAttribute(node.parent) && node.parent.initializer === node) {
+          const decoded = decodeJsxEntities(text);
+          if (decoded.unknownEntities.length > 0) {
+            if (this.shouldExtract(text, 'jsx-attribute', node)) {
+              this.warnUnknownJsxEntities(node, sourceFile, decoded.unknownEntities);
+            }
+            return;
+          }
+          if (decoded.text !== text) {
+            processedMessage = decoded.text;
+          }
+        }
       } else if (isComparisonOperand(node) && FileUtils.containsChinese(node.text)) {
         // 比较运算符两侧的中文字面量被跳过 —— 记录到诊断集合，lint 阶段与 locale map
         // 交叉告警，识别「同句中文在他处被 i18n 化导致 === 比较失效」的风险。
@@ -294,7 +322,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
       if (ts.isTaggedTemplateExpression(node.parent)) {
         const quasiTexts = [node.head.text, ...node.templateSpans.map((s) => s.literal.text)];
         if (quasiTexts.some((t) => FileUtils.containsChinese(t))) {
-          this.warnTaggedTemplateSkipped(node, sourceFile);
+          this.warnTaggedTemplateSkipped(node, sourceFile, filePath);
         }
       } else if (templateLiteralsContainChinese(node)) {
         // 含 HTML 标签的整段模板（如 dangerouslySetInnerHTML 拼装）拒绝提取，
@@ -330,7 +358,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
       // 同上：标签模板的 template 不可提取（见 TemplateExpression 分支注释）。
       if (ts.isTaggedTemplateExpression(node.parent)) {
         if (FileUtils.containsChinese(node.text)) {
-          this.warnTaggedTemplateSkipped(node, sourceFile);
+          this.warnTaggedTemplateSkipped(node, sourceFile, filePath);
         }
         return;
       }
@@ -355,8 +383,11 @@ export class ReactTextExtractor extends BaseTextExtractor {
         return;
       }
       text = raw;
-      if (decoded.text !== raw) {
-        processedMessage = decoded.text;
+      // 源码换行 + 缩进不是文案的一部分：与混合内容分支及重建端共用 normalizeJsxTextSegment
+      // 压成单空格后作为 locale 值 / ID 源。original 仍是源码原文，替换定位不受影响。
+      const normalized = normalizeJsxTextSegment(decoded.text) ?? decoded.text;
+      if (normalized !== raw) {
+        processedMessage = normalized;
       }
     }
 
@@ -408,7 +439,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
       // 不进 extractedStrings，替换也就不会发生。jsx-text 走 <Trans>/<FormattedMessage>
       // 组件形态、不引用 t 绑定，与上面两道守卫同样不在此跳过。
       if (context !== 'jsx-text' && this.hasConflictingTranslationBinding(node)) {
-        this.warnConflictingTranslationBinding(node, sourceFile);
+        this.warnConflictingTranslationBinding(node, sourceFile, filePath);
         return;
       }
 
@@ -502,6 +533,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     let hasExpression = false;
     let hasElementChild = false;
     let jsxInExpression: ts.JsxExpression | undefined;
+    let commentChild: ts.JsxExpression | undefined;
 
     for (const child of children) {
       if (ts.isJsxText(child)) {
@@ -514,6 +546,10 @@ export class ReactTextExtractor extends BaseTextExtractor {
         if (!jsxInExpression && ReactASTUtils.containsJsxNode(child.expression)) {
           jsxInExpression = child;
         }
+      } else if (ts.isJsxExpression(child) && /\/\*|\/\//.test(child.getText(sourceFile))) {
+        // 注释容器 `{/* … */}`：下方合并循环只收 JsxText 与有表达式的 JsxExpression，
+        // 而转换端按整个 children 区间替换 —— 合并即等于把注释删掉。
+        commentChild = child;
       } else if (
         ts.isJsxElement(child) ||
         ts.isJsxSelfClosingElement(child) ||
@@ -539,6 +575,13 @@ export class ReactTextExtractor extends BaseTextExtractor {
       return null;
     }
 
+    // 含 JSX 注释容器时放弃合并：转换端整段替换会静默删掉注释。退回子节点递归让文本自行
+    // 提取（碎片 key 可接受，删注释不可接受）。
+    if (commentChild) {
+      this.warnJsxCommentInMixedContent(commentChild, sourceFile, filePath);
+      return null;
+    }
+
     // 插值表达式内部嵌了 JSX（如 `状态 {ok && <b>正常</b>}`）时同样放弃合并：该表达式会被整段
     // 塞进占位符，产出 `values={{ ok: ok && <b>正常</b> }}` —— react-i18next 把 values 当纯值
     // 插值，渲染出 `[object Object]`，且嵌套元素里的中文既不提取也不告警。退回子节点递归让
@@ -559,14 +602,10 @@ export class ReactTextExtractor extends BaseTextExtractor {
 
     for (const child of children) {
       if (ts.isJsxText(child)) {
-        // 纯空白 JsxText：仅当【含换行】时跳过——JSX 语义下含换行的纯空白会被折叠删除；
-        // 不含换行的纯空白（相邻插值间的单个空格，如「{a} {b}」）会保留渲染，跳过会丢失
-        // 词间空格 → 与转换端重建结果不一致导致漏替换。含内容的把换行+缩进压成单空格，
-        // 保留文本与表达式之间的语义空格（如「共 {count} 项」的相邻空格是词间距，
-        // trim 掉会让 locale 文案变成「共${count}项」，中英混排丢词间距）。
-        // ⚠️ 此空白处理必须与 ast-core 的 reconstructJsxMixedContent 逐字一致。
-        if (!child.text.trim() && /\n/.test(child.text)) continue;
-        const segment = child.text.replace(/\s*\n\s*/g, ' ');
+        // 空白归一与重建端（reconstructJsxMixedContent）共用同一实现，两端结论差一个空格
+        // 就会让 findExactStringNode 比对失败、混合内容被静默漏替换。null 表示整段不参与拼接。
+        const segment = normalizeJsxTextSegment(child.text);
+        if (segment === null) continue;
         const decoded = decodeJsxEntities(segment);
         // 未知实体：放弃整段合并，退回子节点递归，由 JsxText 分支逐段告警并跳过该段。
         if (decoded.unknownEntities.length > 0) return null;
@@ -647,6 +686,33 @@ export class ReactTextExtractor extends BaseTextExtractor {
     this.recordWarning(msg);
   }
 
+  /** 同一轮提取内已告警过的「混合内容含 JSX 注释」位置，按 文件:偏移 去重。 */
+  private warnedJsxComments = new Set<string>();
+
+  /**
+   * 输出「混合内容含 JSX 注释、放弃整段合并」的 warning。
+   *
+   * 只走 warning 通道（不进 manualSkip）：文案并未被跳过——退回子节点递归后文本照常提取，
+   * 只是拆成多个 key，计入 manualSkip 会虚报「需人工处理」的覆盖率缺口。
+   */
+  private warnJsxCommentInMixedContent(
+    node: ts.JsxExpression,
+    sourceFile: ts.SourceFile,
+    filePath: string,
+  ): void {
+    const dedupeKey = `${filePath}:${node.getStart(sourceFile)}`;
+    if (this.warnedJsxComments.has(dedupeKey)) return;
+    this.warnedJsxComments.add(dedupeKey);
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const msg =
+      `⚠️ 混合内容含 JSX 注释，放弃整段合并提取：${FileUtils.getRelativePath(filePath)}:${pos.line + 1}\n` +
+      `   原因：整段替换会连同 {/* … */} 一起删除。\n` +
+      `   影响：该段文本改为按文本节点分别提取，会拆成多个 key。\n` +
+      `   建议：如需保持整句，请把注释移到该元素之外。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
+  }
+
   /** 同一轮提取内已告警过的标签模板位置（CSS-in-JS 项目单文件可能几十处，防连刷）。 */
   private warnedTaggedTemplates = new Set<string>();
 
@@ -654,15 +720,19 @@ export class ReactTextExtractor extends BaseTextExtractor {
    * 输出「标签模板含中文但跳过提取」的 warning。只走 warning 通道（不进 manualSkip）：
    * ManualSkipDiagnostic.category 是封闭联合，扩枚举需同步 CoverageReporter 的映射，
    * 而这类命中（CSS-in-JS/gql 里的中文）绝大多数本就不该翻译，warning 留痕足够。
-   * 按 文件:位置 去重，与 warnHtmlInTemplateLiteral 的 dedupeKey 同口径。
+   * 按 文件:偏移 去重，去重前缀统一用入参 filePath（不用被规范化过的 sourceFile.fileName）。
    */
-  private warnTaggedTemplateSkipped(node: ts.Node, sourceFile: ts.SourceFile): void {
-    const dedupeKey = `${sourceFile.fileName}:${node.getStart(sourceFile)}`;
+  private warnTaggedTemplateSkipped(
+    node: ts.Node,
+    sourceFile: ts.SourceFile,
+    filePath: string,
+  ): void {
+    const dedupeKey = `${filePath}:${node.getStart(sourceFile)}`;
     if (this.warnedTaggedTemplates.has(dedupeKey)) return;
     this.warnedTaggedTemplates.add(dedupeKey);
     const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
     const msg =
-      `⚠️ 跳过标签模板中的中文提取：${FileUtils.getRelativePath(sourceFile.fileName)}:${pos.line + 1}\n` +
+      `⚠️ 跳过标签模板中的中文提取：${FileUtils.getRelativePath(filePath)}:${pos.line + 1}\n` +
       `   原因：替换标签模板会破坏 styled/gql 等标签调用（拼成未定义函数）。\n` +
       `   建议：如需国际化，请把中文移出标签模板、经变量插值传入。`;
     LoggerUtils.warn(msg);
@@ -679,7 +749,8 @@ export class ReactTextExtractor extends BaseTextExtractor {
     const msg =
       `⚠️ 跳过含 HTML 标签的模板字符串提取：${FileUtils.getRelativePath(sourceFile.fileName)}:${line}\n` +
       `   原因：整段提取会把 HTML / CSS / SVG 灌进 i18n value，多语言下样式结构不可控。\n` +
-      `   建议：把 t() 调用缩到具体中文文案上。`;
+      `   建议：把 t() 调用缩到具体中文文案上，例如\n` +
+      `     \`<span>\${t('key')}</span>\` 替代 \`t('key')\` 包整个 \`<div>...</div>\``;
     LoggerUtils.warn(msg);
     this.recordWarning(msg);
     this.recordManualSkip({
@@ -698,10 +769,17 @@ export class ReactTextExtractor extends BaseTextExtractor {
     if (!this.library) return false;
     const host = ReactASTUtils.findEnclosingInjectableFunctionComponent(node);
     if (!host) return false;
+    const i18nModules = [this.library.packageName];
+    if (this.tImport) i18nModules.push(this.tImport);
+    const library = this.library;
     return ReactASTUtils.hasConflictingTranslationBinding(
       host,
-      this.library.translationVarName,
-      this.library.hookName,
+      library.translationVarName,
+      library.hookName,
+      {
+        i18nModules,
+        isI18nDeclaration: (declaration) => library.isGlobalFunctionDeclaration(declaration),
+      },
     );
   }
 
@@ -736,18 +814,22 @@ export class ReactTextExtractor extends BaseTextExtractor {
    * class-property / param-default），本情形不属于任何一类，扩枚举要同步改
    * CoverageReporter 与 RunReport 的映射，超出本次改动范围；warning 已随 RunReport 落盘留痕。
    */
-  private warnConflictingTranslationBinding(node: ts.Node, sourceFile: ts.SourceFile): void {
-    const dedupeKey = `${sourceFile.fileName}:${node.getStart(sourceFile)}`;
+  private warnConflictingTranslationBinding(
+    node: ts.Node,
+    sourceFile: ts.SourceFile,
+    filePath: string,
+  ): void {
+    const dedupeKey = `${filePath}:${node.getStart(sourceFile)}`;
     if (this.warnedConflictingBindings.has(dedupeKey)) return;
     this.warnedConflictingBindings.add(dedupeKey);
     const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
     const varName = this.library?.translationVarName ?? 't';
     const msg =
-      `⚠️ 跳过提取：组件内已存在与 '${varName}' 同名的非 i18n 本地绑定：` +
-      `${FileUtils.getRelativePath(sourceFile.fileName)}:${pos.line + 1}\n` +
-      `   原因：注入器不能在同块再声明一个 ${varName}（TS2451），若仍替换文案，` +
-      `新的 ${varName}(...) 会解析到那个同名函数上。\n` +
-      `   建议：把该本地绑定改名，或人工为该组件接入 i18n 后重跑。`;
+      `⚠️ 跳过提取：组件自身或其外层作用域（含模块顶层）已存在与 '${varName}' 同名的非 i18n 本地绑定：` +
+      `${FileUtils.getRelativePath(filePath)}:${pos.line + 1}\n` +
+      `   原因：注入器不能在同块再声明一个 ${varName}（TS2451）、也不能遮蔽外层同名绑定，` +
+      `若仍替换文案，新的 ${varName}(...) 会解析到那个同名函数上。\n` +
+      `   建议：把该绑定改名，或人工为该组件接入 i18n 后重跑。`;
     LoggerUtils.warn(msg);
     this.recordWarning(msg);
   }

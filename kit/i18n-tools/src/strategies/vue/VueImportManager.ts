@@ -1,7 +1,13 @@
 import { parse as parseSFC } from '@vue/compiler-sfc';
 import type { IImportManager } from '../../adapters/FrameworkAdapter';
-import { mergeNamedImport, removeNamedImports } from '../../utils/import-surgery';
+import {
+  mergeNamedImport,
+  removeNamedImports,
+  stripImportListComments,
+} from '../../utils/import-surgery';
 import { escapeRegExp } from '../../utils/string-escape';
+import { FileUtils } from '../../utils/file-utils';
+import { LoggerUtils } from '../../utils/logger';
 import { mapScriptBlocks } from './sfc-blocks';
 import type { ExtractedString } from '../../utils/types';
 import type { VueI18nLibrary } from './libraries';
@@ -25,6 +31,8 @@ interface ScriptBlockLocation {
 export class VueImportManager implements IImportManager {
   private tImport: string;
   private library: VueI18nLibrary;
+  /** 已就「本地 t 遮蔽注入」提示过的文件，避免同一文件在 import 注入与 hook 注入两条路径上重复刷屏。 */
+  private readonly localTShadowWarned = new Set<string>();
 
   constructor(tImport: string, library: VueI18nLibrary) {
     this.tImport = tImport;
@@ -47,7 +55,7 @@ export class VueImportManager implements IImportManager {
     if (ext === 'ts' || ext === 'js') {
       // 先清理占位声明，再注入真正的 import { t }，否则会和原 declare 冲突。
       updatedCode = this.stripPlaceholderTDeclares(updatedCode);
-      updatedCode = this.addPluginLocaleImport(updatedCode);
+      updatedCode = this.addPluginLocaleImport(updatedCode, filePath);
     } else {
       const hasScriptStrings = fileStrings.some((s) => s.context === 'script');
       if (!hasScriptStrings) return updatedCode;
@@ -76,7 +84,7 @@ export class VueImportManager implements IImportManager {
         // 同步清理 setup 块内可能残留的 hook 注入（旧代码或上一轮工具产物），
         // 否则会与 nonSetup 顶层 import 形成双 t 声明。
         updatedCode = this.removeHookImportAndDeclaration(updatedCode);
-        updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'nonSetupOnly');
+        updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'nonSetupOnly', filePath);
       } else if (hasSetup) {
         // 仅 <script setup>：统一走「模块顶层 import { t } from tImport」路径，
         // 不再走 useI18n hook 注入。
@@ -98,10 +106,10 @@ export class VueImportManager implements IImportManager {
         // 无参形态（`useI18n()` / `const { t } = useI18n()`），不会误伤手写的
         // `useI18n({ useScope:'local', messages })` 等高级用法。
         updatedCode = this.removeHookImportAndDeclaration(updatedCode);
-        updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'setupOnly');
+        updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'setupOnly', filePath);
       } else {
         // 仅普通 <script>：按需为模块顶层裸 t() 注入 import
-        updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'nonSetupOnly');
+        updatedCode = this.addPluginLocaleImportToScript(updatedCode, 'nonSetupOnly', filePath);
       }
     }
 
@@ -117,14 +125,14 @@ export class VueImportManager implements IImportManager {
    * （与统一策略不一致）。幂等：内部 addPluginLocaleImportToScript 已对「已有本地 t 绑定」早退，
    * stripPlaceholderTDeclares 是删除操作，重复执行结果不变。
    */
-  applySetupModuleImport(code: string): string {
+  applySetupModuleImport(code: string, filePath?: string): string {
     // 与 handleGlobalImports 同序：先清占位 declare（否则 `declare const t` 与注入的
     // import 在同一模块作用域重复声明，TS2440），再注入 import { t }。
     // 必须经 mapScriptBlocks 只在 script 块内 strip，避免删掉 `<pre>`/`<code>` 里
     // 逐字展示的同形示例代码。
     const stripped = mapScriptBlocks(code, (script) => this.stripPlaceholderTDeclares(script));
     const cleaned = this.removeHookImportAndDeclaration(stripped);
-    return this.addPluginLocaleImportToScript(cleaned, 'setupOnly');
+    return this.addPluginLocaleImportToScript(cleaned, 'setupOnly', filePath);
   }
 
   /**
@@ -137,7 +145,11 @@ export class VueImportManager implements IImportManager {
    *   - 仅 <script setup> 且存在编译宏引用 t —— scope='setupOnly'
    *     （setup 顶层 import 编译后仍属模块作用域，可被编译宏自由引用）
    */
-  private addPluginLocaleImportToScript(code: string, scope: 'setupOnly' | 'nonSetupOnly'): string {
+  private addPluginLocaleImportToScript(
+    code: string,
+    scope: 'setupOnly' | 'nonSetupOnly',
+    filePath?: string,
+  ): string {
     const block = VueImportManager.findScriptBlock(code, { [scope]: true });
     if (!block) return code;
 
@@ -150,9 +162,9 @@ export class VueImportManager implements IImportManager {
     if (!/(?:^|[^\w.$])t\s*\(/.test(allScriptContent)) return code;
 
     // 已存在从「任意模块」导入的具名本地 t（本工具 tImport 或用户手写的其它路径），再注入模块级
-    // import { t } 会在同一模块作用域产生重复 t 声明（SyntaxError）。旧实现只匹配 tImport 这一个
-    // 路径，对 `import { t } from '@/other'` 视而不见。改用任意路径 + allScriptContent 检测
-    // （双块共享模块作用域，仅看目标 block 会漏判），与 VueComponentInjector hook 路径同口径。
+    // import { t } 会在同一模块作用域产生重复 t 声明（SyntaxError）。故检测必须覆盖任意导入路径
+    // （只认 tImport 会对 `import { t } from '@/other'` 视而不见），且必须基于 allScriptContent
+    // （双块共享模块作用域，仅看目标 block 会漏判）——与 VueComponentInjector hook 路径同口径。
     if (this.hasNamedImportLocalT(allScriptContent)) {
       return code;
     }
@@ -164,11 +176,26 @@ export class VueImportManager implements IImportManager {
     // removeHookImportAndDeclaration 已先清掉工具自注入的「恰好 { t } = hook()」形态，
     // 故此处只会命中用户手写声明——既修复双声明，又不影响工具自身的 hook→import 迁移。
     if (this.hasLocalTDeclaration(allScriptContent)) {
+      this.warnLocalTShadowsInjection(filePath);
       return code;
     }
 
-    const updatedScript = mergeNamedImport(block.content, this.tImport, ['t']);
+    const updatedScript = VueImportManager.mapScriptBody(block.content, (body) =>
+      mergeNamedImport(body, this.tImport, ['t']),
+    );
     return code.slice(0, block.start) + updatedScript + code.slice(block.end);
+  }
+
+  /**
+   * 把改写只施加到「开标签换行之后」的块正文上，前导换行原样保留。
+   *
+   * SFC 块 content 以换行开头（`<script setup>` 之后换行才是代码），而 import 追加按行数组
+   * 定位插入点、首行是空串时会插到它前面 —— 拼回 SFC 就成了 `<script setup>import { t } …`，
+   * 与开标签挤在同一行。剥掉前导换行再改写即可让 import 自成一行。
+   */
+  private static mapScriptBody(content: string, transform: (body: string) => string): string {
+    const lead = /^[\r\n]*/.exec(content)?.[0] ?? '';
+    return lead + transform(content.slice(lead.length));
   }
 
   /**
@@ -250,7 +277,7 @@ export class VueImportManager implements IImportManager {
     // 注释里的 `// const { t } = useI18n()`。否则误判「已有 hook 绑定」而漏注入 → 裸 t() 未声明。
     // 与姊妹方法 mergeNamedImport 的锚定口径一致。
     const destructureRe = new RegExp(
-      `^[ \\t]*const\\s*\\{([^}]*)\\}\\s*=\\s*${escapedHook}\\s*\\(`,
+      `^[ \\t]*(?:export\\s+)?const\\s*\\{([^}]*)\\}\\s*=\\s*${escapedHook}\\s*\\(`,
       'gm',
     );
     let match: RegExpExecArray | null;
@@ -262,40 +289,105 @@ export class VueImportManager implements IImportManager {
 
   /**
    * 脚本内是否存在「本地绑定名为 t」的变量声明：任意来源的解构 `const { t } = x()` /
-   * `const { total: t } = obj`，或普通赋值声明 `const t = useI18n().t` / `let t;`。
+   * `const { total: t } = obj` / 嵌套解构 `const { data: { t } } = props`，或普通赋值声明
+   * `const t = useI18n().t` / `let t;`。`export` 前缀（`export const t = …`）同样是模块
+   * 作用域声明，一并识别。
    *
    * 判定的是本地绑定名 —— `const tt` / `const t2` / `const { t: localT } = x` 本地都没有 t，
    * 必须照常注入，否则裸 t() 无声明。宽松方向：任意位置（含函数体内）的 t 声明都算命中，
    * 漏判会产出重复声明的坏产物，多判只是少注一条 import 而 t 本就可用。
    */
   hasLocalTDeclaration(scriptContent: string): boolean {
-    // 行首锚定（^[ \t]* + gm）：排除注释里的同形文本，与本类其它判定同口径。
-    const destructureRe = /^[ \t]*(?:const|let|var)\s*\{([^}]*)\}\s*=/gm;
-    let match: RegExpExecArray | null;
-    while ((match = destructureRe.exec(scriptContent)) !== null) {
-      if (VueImportManager.destructureBindsLocalT(match[1] ?? '')) return true;
+    for (const inner of VueImportManager.destructurePatterns(scriptContent)) {
+      if (VueImportManager.destructureBindsLocalT(inner)) return true;
     }
     // 普通声明：t 后必须是非标识符字符，`const tt` / `const t2` / `const t$` 不命中。
-    return /^[ \t]*(?:const|let|var)\s+t(?![\w$])/m.test(scriptContent);
+    return /^[ \t]*(?:export\s+)?(?:const|let|var)\s+t(?![\w$])/m.test(scriptContent);
   }
 
   /**
-   * 解构花括号内容里是否存在本地绑定名为 t 的项。
-   * 本地绑定名：`key: local`（重命名）→ local；`name`（含默认值 `name = x`）→ name。
+   * 逐条取出「行首解构声明」花括号内的模式文本（不含最外层大括号）。
+   *
+   * 用括号配平扫描而非 `\{([^}]*)\}`：后者在 `const { data: { t } } = props` 上停在第一个
+   * `}`，拿到的片段解析不出内层的本地 t 绑定 → 漏判 → 与注入的 `import { t }` 双声明。
+   * 行首锚定（^[ \t]* + gm）：排除注释里的同形文本，与本类其它判定同口径。
+   */
+  private static *destructurePatterns(scriptContent: string): Generator<string> {
+    const headRe = /^[ \t]*(?:export\s+)?(?:const|let|var)\s*\{/gm;
+    while (headRe.exec(scriptContent) !== null) {
+      const start = headRe.lastIndex; // 紧跟最外层 `{`
+      const end = VueImportManager.matchingCloseIndex(scriptContent, start);
+      if (end === -1) continue; // 括号不配平（截断片段 / 非代码文本）→ 放弃该起点
+      yield scriptContent.slice(start, end);
+      headRe.lastIndex = end + 1;
+    }
+  }
+
+  /** 从 `start`（最外层左括号之后）向后找配平的右括号下标，找不到返回 -1。 */
+  private static matchingCloseIndex(text: string, start: number): number {
+    let depth = 1;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '{' || ch === '[' || ch === '(') depth++;
+      else if (ch === '}' || ch === ']' || ch === ')') {
+        depth--;
+        if (depth === 0) return i;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * 解构模式里是否存在本地绑定名为 t 的项。
+   * 本地绑定名：`key: local`（重命名）→ local；`name`（含默认值 `name = x`）→ name；
+   * `key: { … }` / `key: [ … ]` → 递归进嵌套模式。
    */
   private static destructureBindsLocalT(inner: string): boolean {
-    for (const rawPart of inner.split(',')) {
-      const part = rawPart.trim();
-      if (!part) continue;
-      const localName = part.includes(':')
-        ? part
-            .slice(part.indexOf(':') + 1)
-            .split('=')[0]!
-            .trim()
-        : part.split('=')[0]!.trim();
-      if (localName === 't') return true;
+    for (const part of VueImportManager.splitTopLevel(inner, ',')) {
+      const colon = VueImportManager.indexOfTopLevel(part, ':');
+      let target = colon === -1 ? part : part.slice(colon + 1);
+      // 去掉默认值：`t = fallback` 的本地名是 t
+      const eq = VueImportManager.indexOfTopLevel(target, '=');
+      if (eq !== -1) target = target.slice(0, eq);
+      target = target.trim();
+      if (!target) continue;
+      if (target.startsWith('{') || target.startsWith('[')) {
+        if (VueImportManager.destructureBindsLocalT(target.slice(1, -1))) return true;
+        continue;
+      }
+      if (target === 't') return true;
     }
     return false;
+  }
+
+  /** 按顶层（括号深度 0）的分隔符切分，嵌套模式内的同名字符不当分隔符。 */
+  private static splitTopLevel(text: string, separator: string): string[] {
+    const parts: string[] = [];
+    let depth = 0;
+    let last = 0;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i]!;
+      if (ch === '{' || ch === '[' || ch === '(') depth++;
+      else if (ch === '}' || ch === ']' || ch === ')') depth--;
+      else if (ch === separator && depth === 0) {
+        parts.push(text.slice(last, i));
+        last = i + 1;
+      }
+    }
+    parts.push(text.slice(last));
+    return parts;
+  }
+
+  /** 顶层（括号深度 0）首个 `ch` 的下标，没有则 -1。 */
+  private static indexOfTopLevel(text: string, ch: string): number {
+    let depth = 0;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i]!;
+      if (c === '{' || c === '[' || c === '(') depth++;
+      else if (c === '}' || c === ']' || c === ')') depth--;
+      else if (c === ch && depth === 0) return i;
+    }
+    return -1;
   }
 
   /**
@@ -304,15 +396,19 @@ export class VueImportManager implements IImportManager {
    *
    * 关键：判定的是「本地绑定名」而非源名。`import { t as translate }` 的本地名是 translate，
    * 本地并无 t，应返回 false —— 否则会误判「已有 t」而跳过注入，使裸 t() 未声明；
-   * `import { foo as t }` 本地名是 t，返回 true。取代旧的 `\bt\b` 正则（会命中 `t as X` 的源名）。
+   * `import { foo as t }` 本地名是 t，返回 true。
+   *
+   * `import type { t }` 同样在模块作用域占用标识符 t（与注入的值导入 t 冲突，TS2300），
+   * 故 type-only 形式一并识别；命名列表先剥注释，`{ foo, // 备注\n t }` 里的 t 不被注释吞掉。
    */
   hasNamedImportLocalT(scriptContent: string): boolean {
     // 行首锚定（^[ \t]* + gm）：排除注释里的 `// import { t } from './old'`，否则误判「已有本地 t
     // 导入」而跳过注入真正的 import { t } → 裸 t() 未声明。与 mergeNamedImport 同口径。
-    const importRe = /^[ \t]*import\s+(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*['"][^'"]+['"]/gm;
+    const importRe =
+      /^[ \t]*import\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*['"][^'"]+['"]/gm;
     let match: RegExpExecArray | null;
     while ((match = importRe.exec(scriptContent)) !== null) {
-      const inner = match[1] ?? '';
+      const inner = stripImportListComments(match[1] ?? '');
       for (const rawPart of inner.split(',')) {
         const part = rawPart.trim();
         if (!part) continue;
@@ -325,8 +421,8 @@ export class VueImportManager implements IImportManager {
     }
 
     // 默认导入 `import t from 'x'` / `import t, { x } from 'x'` 与命名空间导入
-    // `import * as t from 'x'` 同样在模块作用域绑定本地名 t。旧实现只认花括号命名列表，
-    // 对这两种形态视而不见 → 仍注入 `import { t }` → 同作用域重复声明 t → SFC 编译失败。
+    // `import * as t from 'x'` 同样在模块作用域绑定本地名 t，必须一并识别：只认花括号命名
+    // 列表会漏掉这两种形态 → 仍注入 `import { t }` → 同作用域重复声明 t → SFC 编译失败。
     // 默认导入：`import` 后第一个标识符即默认本地名（`{`/`*` 不属 [\w$]，不会误匹配纯命名/纯命名空间）。
     const defaultImportRe =
       /^[ \t]*import\s+([\w$]+)\s*(?:,\s*(?:\{[^}]*\}|\*\s+as\s+[\w$]+))?\s*from\s*['"][^'"]+['"]/gm;
@@ -343,38 +439,40 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
-   * 从 tImport 配置路径导入 t 函数（用于纯 .ts/.js 文件）
+   * 提示「本地已有名为 t 的声明，故不注入 t 来源」。
+   *
+   * 跳过注入是保产物可编译的必要取舍（否则同作用域重复声明 t），但转换写出的 t() 此刻
+   * 调用的是用户自己的那个 t —— 不是 i18n 运行时，页面上拿不到译文且不报错，必须让用户看见。
    */
-  private addPluginLocaleImport(code: string): string {
-    // 同 addPluginLocaleImportToScript：已有任意路径的具名本地 t 导入即跳过，避免重复 t 声明。
-    // 纯 .ts/.js 整个文件即模块作用域，直接检测 code。
+  private warnLocalTShadowsInjection(filePath?: string): void {
+    const key = filePath ?? '';
+    if (this.localTShadowWarned.has(key)) return;
+    this.localTShadowWarned.add(key);
+    const where = filePath ? `：${FileUtils.getRelativePath(filePath)}` : '';
+    LoggerUtils.warn(
+      `⚠️ 跳过注入 t 来源${where}\n` +
+        `   原因：文件里已有名为 t 的本地声明，再注入 import { t } 会重复声明同一标识符。\n` +
+        `   影响：本次替换出的 t() 调用绑定到该本地 t，不会走 i18n 运行时。\n` +
+        `   建议：把本地那个 t 改名，或手工确认它就是期望的翻译函数。`,
+    );
+  }
+
+  /**
+   * 从 tImport 配置路径导入 t 函数（用于纯 .ts/.js 文件）
+   *
+   * 两道跳过守卫与 SFC 路径 addPluginLocaleImportToScript 完全对齐：具名本地 t 导入、
+   * 本地 t 声明（`const t = …` / 解构）任一存在都不注入，否则同一模块作用域重复声明 t
+   * （TS2440 / SyntaxError）。纯 .ts/.js 整个文件即模块作用域，直接检测 code。
+   */
+  private addPluginLocaleImport(code: string, filePath?: string): string {
     if (this.hasNamedImportLocalT(code)) {
       return code;
     }
+    if (this.hasLocalTDeclaration(code)) {
+      this.warnLocalTShadowsInjection(filePath);
+      return code;
+    }
     return mergeNamedImport(code, this.tImport, ['t']);
-  }
-
-  /**
-   * 添加 i18n 库导入 (实现接口方法)
-   *
-   * 仅在 SFC 的 <script> 块内合并/追加。非 SFC 输入按 HEAD 行为原样返回。
-   *
-   * Why 保留：Vue 侧无内部调用方（vue-i18n 的 t 来源统一走 handleGlobalImports 的
-   * 模块顶层 `import { t } from tImport`，不注入 hook），但 IImportManager 要求
-   * 该方法存在，删掉会让 VueImportManager 不再满足接口。
-   */
-  addI18nImports(code: string, imports: string[]): string {
-    return this.mergeNamedImportInScript(code, this.library.packageName, imports);
-  }
-
-  /**
-   * 在 <script> 块内合并/追加命名导入（对 SFC 文件，避免误匹配 template/style 中的相似字符串）
-   */
-  private mergeNamedImportInScript(code: string, packageName: string, names: string[]): string {
-    const block = VueImportManager.findScriptBlock(code);
-    if (!block) return code;
-    const updatedScript = mergeNamedImport(block.content, packageName, names);
-    return code.slice(0, block.start) + updatedScript + code.slice(block.end);
   }
 
   /**

@@ -1,7 +1,11 @@
 import fs from 'fs';
 import type { ResolvedConfig } from '../config';
 import { extractPlaceholderNames } from '../utils/placeholder-utils';
-import { collectUsedKeys, matchesDynamicAllowlist } from '../utils/source-key-scanner';
+import {
+  collectUsedKeys,
+  createKeyNormalizer,
+  matchesDynamicAllowlist,
+} from '../utils/source-key-scanner';
 import type { FrameworkAdapter } from '../adapters';
 import { FileUtils } from '../utils/file-utils';
 import { LanguageFileManager } from '../utils/language-file-manager';
@@ -36,6 +40,8 @@ export type DoctorCategory =
   | 'untranslated'
   /** 源 locale 有该 key（含中文）但某 target locale 完全缺失（代码已发布、翻译没准备好） */
   | 'missing-target-key'
+  /** target locale 有该 key 但源 locale 没有（源侧已删/改名，译文成了残留） */
+  | 'stale-target-key'
   /** 译文与源文案的占位符名集不一致（漏=运行时插值失效） */
   | 'placeholder-mismatch';
 
@@ -71,10 +77,10 @@ export class DoctorProcessor extends BaseProcessor {
   /**
    * 暂存 runLinter 一次性产出的原始 LinterFinding[]，供 recordToReport 写入 report。
    *
-   * Why: 提取阶段的跳过项快照由 populateSkippedDiagnostics 一次性 drain 出来（drain 是
-   * 消耗性的），runLinter 消费完就没了。如果 recordToReport 再次调用 analyze 重建 findings，
-   * hardcoded-comparison（doctor 唯一的 error-tier lint 类别）会因快照已空而漏入 report，
-   * CI 门禁失效。
+   * Why: 落 report 的 findings 必须与打印给用户的**同一份**。若 recordToReport 另行调用
+   * analyze 重建，两次入参（sourceMap、跳过项快照）一旦有任何偏差，report 与终端输出就会
+   * 对不上——尤其 hardcoded-comparison 是 doctor 唯一的 error-tier lint 类别，它在 report
+   * 里缺失会直接让 CI 门禁读到 bySeverity.error=0。
    */
   private linterFindings: LinterFinding[] = [];
 
@@ -149,6 +155,7 @@ export class DoctorProcessor extends BaseProcessor {
         }
         const targetMap = this.langFiles.readLocaleFile(target) ?? {};
         findings.push(...this.checkMissingTargetKeys(sourceMap, targetMap, target));
+        findings.push(...this.checkStaleTargetKeys(sourceMap, targetMap, target));
         findings.push(...this.checkUntranslated(sourceMap, targetMap, target));
         findings.push(...this.checkPlaceholders(sourceMap, targetMap, target));
       }
@@ -228,12 +235,15 @@ export class DoctorProcessor extends BaseProcessor {
     // Object.keys 而非 `in`：sourceMap 是 flattenObject 产出的普通对象，`in` 走原型链会把
     // toString/constructor/valueOf 等与 Object.prototype 同名的 key 误判为存在 → 漏报
     // missing-key（与 checkOrphanKeys 的 Object.keys 口径一致）。
-    const defined = new Set(Object.keys(sourceMap));
+    // locale 侧同样过 createKeyNormalizer：源码写 `ns:key`、locale 存裸 key（i18next 系的
+    // 运行时约定）时两侧折算到同一口径，否则会互判为 missing-key / orphan-key。
+    const normalize = createKeyNormalizer(this.config, this.adapter);
+    const defined = new Set(Object.keys(sourceMap).map(normalize));
     if (counterpartFiles) {
       for (const key of Object.keys(
         counterpartFiles.readLocaleFile(this.config.locales.source) ?? {},
       )) {
-        defined.add(key);
+        defined.add(normalize(key));
       }
     }
     return defined;
@@ -275,8 +285,7 @@ export class DoctorProcessor extends BaseProcessor {
       skippedComparisons: this.skippedComparisons,
       skippedNestedChinese: this.skippedNestedChinese,
     });
-    // 暂存供 recordToReport 使用，避免再次调用 analyze 时快照已被消费而丢失
-    // hardcoded-comparison findings（见字段注释）
+    // 暂存供 recordToReport 复用同一份结果，不得二次 analyze（见字段注释）
     this.linterFindings = lintFindings;
     return lintFindings.map((f: LinterFinding) => ({
       category: 'locale-lint',
@@ -342,9 +351,10 @@ export class DoctorProcessor extends BaseProcessor {
    */
   private checkOrphanKeys(sourceKeys: Set<string>, sourceMap: LocaleMap): DoctorFinding[] {
     const findings: DoctorFinding[] = [];
+    const normalize = createKeyNormalizer(this.config, this.adapter);
     for (const key of Object.keys(sourceMap)) {
       if (matchesDynamicAllowlist(this.config, key)) continue;
-      if (!sourceKeys.has(key)) {
+      if (!sourceKeys.has(normalize(key))) {
         findings.push({
           category: 'orphan-key',
           severity: 'warning',
@@ -394,6 +404,42 @@ export class DoctorProcessor extends BaseProcessor {
           `source [${this.config.locales.source}]: ${this.preview(sourceValue)}`,
           `target [${target}]: <缺失>`,
           '该 key 在目标语言完全缺失，运行时切到该语言会回退源文/显示 key；运行 `--mode translate` 或人工补译',
+        ],
+        key,
+      });
+    }
+    return findings;
+  }
+
+  /**
+   * stale-target-key：target locale 有该 key，但源 locale 没有。
+   *
+   * 成因是源侧 key 被删除或改名而译文没跟着清理；这类残留会让 target 文件持续膨胀，
+   * 且改名场景下旧译文还会掩盖「新 key 没译」的事实（人工核对时看到文件里有中文对应
+   * 的英文就以为齐了）。
+   *
+   * 只报不删：删除是产品决策——key 可能由 doctor 看不到的动态拼接使用（keys
+   * .dynamicKeyAllowlist 一路），也可能是有意保留的历史兼容项。prune 才是删除入口。
+   * 归 warning 级（不阻断 CI，与 missing-target-key / untranslated 同档）。
+   */
+  private checkStaleTargetKeys(
+    sourceMap: LocaleMap,
+    targetMap: LocaleMap,
+    target: string,
+  ): DoctorFinding[] {
+    const findings: DoctorFinding[] = [];
+    for (const [key, targetValue] of Object.entries(targetMap)) {
+      // hasOwnProperty 而非 `in`：与本文件其它对账保持同一判定纪律（'toString' 这类
+      // key 走原型链会被误判为源侧存在）。
+      if (Object.prototype.hasOwnProperty.call(sourceMap, key)) continue;
+      findings.push({
+        category: 'stale-target-key',
+        severity: 'warning',
+        title: `${key} (${target} 有该 key，源 ${this.config.locales.source} 没有)`,
+        details: [
+          `target [${target}]: ${this.preview(targetValue)}`,
+          `source [${this.config.locales.source}]: <缺失>`,
+          '源侧 key 已删除或改名，译文成了残留；确认无用后手动清理（doctor 只报不删）',
         ],
         key,
       });
@@ -548,8 +594,7 @@ export class DoctorProcessor extends BaseProcessor {
    */
   private recordToReport(findings: DoctorFinding[]): void {
     // 直接复用 runLinter 暂存的原始 LinterFinding[]，不要二次 analyze ——
-    // analyze 内部 drain 的 skippedComparisonOperands 已被首次调用清空，
-    // 重跑会丢失 hardcoded-comparison（doctor 唯一 error-tier lint 类别）。
+    // report 与终端输出必须是同一份 findings（见 linterFindings 字段注释）。
     if (this.linterFindings.length > 0) {
       LocaleValueLinter.emit(this.linterFindings, { console: false, report: this.report });
     }
@@ -563,6 +608,7 @@ export class DoctorProcessor extends BaseProcessor {
       'orphan-key': 'locale 中的 key 源码未引用',
       untranslated: '疑似未翻译（target = source）',
       'missing-target-key': '源 locale 有该 key 但目标语言完全缺失',
+      'stale-target-key': '目标语言有该 key 但源 locale 已无（译文残留）',
       'placeholder-mismatch': '译文与源文案的占位符名集不一致',
     };
     for (const f of findings) {

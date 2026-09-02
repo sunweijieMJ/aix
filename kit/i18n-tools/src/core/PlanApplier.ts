@@ -199,7 +199,7 @@ export class PlanApplier {
 
     // dry-run 评审阶段先跑一遍健康度 lint，让 reviewer 在 plan/RunReport 里就能看到 lint 告警，
     // 而非等真正落盘后才暴露。
-    // Why: dry-run 不进 commitToDisk → 原本永远不会触达 LocaleValueLinter。
+    // Why 必须在这里显式跑：dry-run 不进 commitToDisk，而 lint 挂在 commit 路径上。
     // 注意口径差异（非完全等价于 commit 路径）：
     //   - 此处只 lint localeDelta（本轮新增 key→value）；commit 路径 lint 的是
     //     finalMap = {...已有 localeMap, ...新增}（全量合并 map）。因此跨 key 类检查
@@ -208,8 +208,8 @@ export class PlanApplier {
     //     如实补报（apply 经 commitToDisk → updateLanguageFiles 会对全量 map 再跑一次 lint），
     //     不会被静默吞掉，只是 dry-run 预览不完整。
     //   - skippedComparisons 传入提取阶段已 drain 的快照（供 coverage 复用同一份）；
-    //     嵌套中文不传给 linter：GenerateProcessor 在 renderManualSummary 里自行渲染
-    //     skippedNestedChinese，传进来会同一条产出两份 finding。
+    //     嵌套中文不传给 linter：CoverageReporter.recordAndRender 已逐条渲染
+    //     skippedNestedChinese，再传进来会让同一条产出两份 finding。
     const lintFindings = LocaleValueLinter.analyze(localeDelta, {
       separator: this.config.keys.separator,
       skippedComparisons: options.skippedComparisons,
@@ -384,9 +384,19 @@ export class PlanApplier {
       return true;
     }
 
-    const drifted = Object.entries(plan.localeBaseline).filter(
-      ([key, baseline]) => current[key] !== baseline,
-    );
+    const baseline = plan.localeBaseline;
+    const drifted: Array<{ key: string; before: string | undefined }> = Object.entries(baseline)
+      .filter(([key, before]) => current[key] !== before)
+      .map(([key, before]) => ({ key, before }));
+    // 基线只记「dry-run 当时已存在的 key」。dry-run 之后才被别人新建的同名 key 不在基线里，
+    // 只比对基线会让 apply 把它静默覆盖成 plan 的值——与「覆盖既有文案」是同一类回退，
+    // 故一并计入：当前 locale 已有该 key 且值与 plan 将写入的值不同即算漂移。
+    for (const [key, planned] of Object.entries(plan.localeDelta)) {
+      if (Object.prototype.hasOwnProperty.call(baseline, key)) continue;
+      if (!Object.prototype.hasOwnProperty.call(current, key)) continue;
+      if (current[key] === planned) continue;
+      drifted.push({ key, before: undefined });
+    }
     if (drifted.length === 0) return true;
 
     // 措辞按两个分支分开：非交互下这就是「已拒绝」的清单（下方直接抛错），
@@ -397,12 +407,13 @@ export class PlanApplier {
         ? `⚠️  以下 ${drifted.length} 个 key 的 ${this.config.locales.source} 值在 plan 生成后被改动，继续 apply 将用 plan 的值覆盖：`
         : `⚠️  已拒绝 apply：以下 ${drifted.length} 个 key 的 ${this.config.locales.source} 值在 plan 生成后被改动：`,
     );
-    for (const [key, baseline] of drifted) {
+    for (const { key, before } of drifted) {
       const now = Object.prototype.hasOwnProperty.call(current, key)
         ? `「${current[key]}」`
         : '(已删除)';
+      const then = before === undefined ? '(尚不存在)' : `「${before}」`;
       LoggerUtils.warn(
-        `   - ${key}: plan 生成时「${baseline}」→ plan 将写入「${plan.localeDelta[key] ?? ''}」→ 当前 ${now}`,
+        `   - ${key}: plan 生成时${then}→ plan 将写入「${plan.localeDelta[key] ?? ''}」→ 当前 ${now}`,
       );
     }
 

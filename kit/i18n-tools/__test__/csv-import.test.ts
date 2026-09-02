@@ -142,6 +142,42 @@ describe('CsvImportProcessor', () => {
     expect(readUntranslated().a['en-US']).toBe(''); // 未变
   });
 
+  it('同一 key 在 CSV 中出现多次 → 后者覆盖前者（行为不变）且告警一次', async () => {
+    const warnSpy = vi.spyOn(LoggerUtils, 'warn');
+    writeUntranslated({ a: { 'zh-CN': '甲', 'en-US': '' } });
+    const input = writeCsv('dup.csv', [
+      ['key', 'zh-CN', 'en-US', 'reason', 'note'],
+      ['a', '甲', 'First', '', ''],
+      ['a', '甲', 'Second', '', ''],
+    ]);
+
+    await new CsvImportProcessor(makeConfig(), false, {
+      input,
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    expect(readUntranslated().a['en-US']).toBe('Second');
+    const dupWarns = warnSpy.mock.calls.filter((c) => /重复 key/.test(String(c[0])));
+    expect(dupWarns).toHaveLength(1);
+    expect(String(dupWarns[0]![0])).toContain('a');
+  });
+
+  it('全部数据行字段数都与表头不符 → 抛错，而非静默 exit 0', async () => {
+    writeUntranslated({ a: { 'zh-CN': '甲', 'en-US': '' } });
+    // 表头合法（有 key 列），但每条数据记录都多一个字段——手工编辑多打逗号的典型形态
+    const input = path.join(tmpDir, 'broken.csv');
+    fs.writeFileSync(input, 'key,zh-CN,en-US\na,甲,Jia,oops\nb,乙,Yi,oops\n');
+
+    await expect(
+      new CsvImportProcessor(makeConfig(), false, {
+        input,
+        dryRun: false,
+        ci: true,
+      }).execute(),
+    ).rejects.toThrow(/无一行可用|字段数/);
+  });
+
   it('缺少 key 列时抛错', async () => {
     writeUntranslated({ a: { 'zh-CN': '甲', 'en-US': '' } });
     const input = writeCsv('bad.csv', [

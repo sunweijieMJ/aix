@@ -660,6 +660,57 @@ describe('VueRestoreTransformer — template 里存活的裸 t() 保住 t 的来
     const out = restore(src, { k: '你好' });
     expect(out).not.toContain('useI18n');
   });
+
+  it("反向：<pre> 里逐字展示的 t('key') 不算引用，import 照删且 <pre> 内容保留", () => {
+    const src =
+      `<template>\n  <div>{{ msg }}</div>\n  <pre>const s = t('demo.key')</pre>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t } from '${T_IMPORT}';\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).not.toContain(`from '${T_IMPORT}'`);
+    expect(out).toContain("<pre>const s = t('demo.key')</pre>");
+  });
+
+  it('混合 import 摘净全部命名时不残留裸分号', () => {
+    const src =
+      `<template>\n  <div>{{ msg }}</div>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t, } from '${T_IMPORT}';\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).not.toContain(T_IMPORT);
+    expect(out).not.toMatch(/^[ \t]*;[ \t]*$/m);
+  });
+
+  it('反向：混合 import 保留其它命名时分号原样回写', () => {
+    const src =
+      `<template>\n  <div>{{ msg }}</div>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t, i18n } from '${T_IMPORT}';\nconst msg = t('k');\nvoid i18n;\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).toContain(`import { i18n } from '${T_IMPORT}';`);
+  });
+});
+
+describe('VueRestoreTransformer pass 3 — 成员调用位的 t 不当作 i18n 调用', () => {
+  const lib = new VueI18nLibraryImpl();
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, '@/locale');
+
+  it("$i18n.t('key') 原样保留，不被截成 $i18n.'文本'", () => {
+    const src = `<template>\n  <div :title="cond ? $i18n.t('greeting') : x"></div>\n</template>\n`;
+    const out = restore(src, { greeting: '你好' });
+    expect(out).toContain("$i18n.t('greeting')");
+    expect(out).not.toContain("$i18n.'你好'");
+  });
+
+  it("ctx.t('key') 同样原样保留", () => {
+    const src = `<template>\n  <div>{{ ctx.t('greeting') }}</div>\n</template>\n`;
+    const out = restore(src, { greeting: '你好' });
+    expect(out).toContain("ctx.t('greeting')");
+  });
+
+  it('反向：三元里的裸 $t/t 调用仍正常还原', () => {
+    const src = `<template>\n  <div :title="cond ? $t('greeting') : t('greeting')"></div>\n</template>\n`;
+    const out = restore(src, { greeting: '你好' });
+    expect(out).toContain(`:title="cond ? '你好' : '你好'"`);
+  });
 });
 
 describe('VueRestoreTransformer — U+00A0 重编码为 &nbsp;', () => {

@@ -1043,3 +1043,97 @@ describe('resolveConfig — merge.onLlmRejected / glossary.override 枚举 fail-
     expect(() => makeConfig({ glossary: { override: 'always' } })).not.toThrow();
   });
 });
+
+/**
+ * 回归（四轮审计 A5/A9）：loader 的类型与合并守卫。
+ *  - keys.dynamicKeyAllowlist / extract.filterPatterns 误写非数组会被 [...value] 逐字符展开
+ *    （前者展开成单字符前缀，几乎所有 key 都被当「可能动态引用」而免于 prune/doctor 判定）。
+ *  - llm.<task> 里显式写出的 undefined 字段不得盖掉 shared 的同名值。
+ *  - keys.prefix.rules[i].use 缺失必须报错（与 match 缺失同款），不静默补默认 path 策略。
+ *  - keys.prefix.skip/take 非数值经 Math.max 变 NaN，slice(NaN) 静默按 0 处理。
+ */
+describe('resolveConfig — 类型与合并守卫（四轮审计 A5/A9）', () => {
+  const base: I18nToolsConfig = {
+    root: TEST_ROOT,
+    framework: { type: 'vue' },
+    llm: { shared: { apiKey: 'K', model: 'shared-model', baseURL: 'https://example.com' } },
+  };
+
+  it('keys.dynamicKeyAllowlist 误写字符串 → 抛错并带字段路径', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: { dynamicKeyAllowlist: 'menu.' as unknown as string[] },
+      }),
+    ).toThrow(/keys\.dynamicKeyAllowlist/);
+  });
+
+  it('extract.filterPatterns 误写单个正则 → 抛错并带字段路径', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        extract: { filterPatterns: /^\d+$/ as unknown as RegExp[] },
+      }),
+    ).toThrow(/extract\.filterPatterns/);
+  });
+
+  it('合法数组不受影响', () => {
+    const r = resolveConfig({
+      ...base,
+      keys: { dynamicKeyAllowlist: ['menu.', /^dyn\./] },
+      extract: { filterPatterns: [/^\d+$/] },
+    });
+    expect(r.keys.dynamicKeyAllowlist).toHaveLength(2);
+    expect(r.extract.filterPatterns).toHaveLength(1);
+  });
+
+  it('llm.<task> 显式 undefined 字段不顶掉 shared 值', () => {
+    const r = resolveConfig({
+      ...base,
+      llm: { ...base.llm, translation: { model: undefined, apiKey: undefined } },
+    });
+    expect(r.llm.translation.model).toBe('shared-model');
+    expect(r.llm.translation.apiKey).toBe('K');
+    // 任务级显式赋值仍然覆盖 shared
+    const overridden = resolveConfig({
+      ...base,
+      llm: { ...base.llm, translation: { model: 'task-model' } },
+    });
+    expect(overridden.llm.translation.model).toBe('task-model');
+  });
+
+  it('keys.prefix.rules[i].use 缺失 → 抛错，不静默补默认策略', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: {
+          prefix: {
+            strategy: 'rules',
+            rules: [{ match: 'src/**' } as unknown as { match: string; use: never }],
+          },
+        },
+      }),
+    ).toThrow(/keys\.prefix\.rules\[0\]\.use/);
+  });
+
+  it('keys.prefix.skip / take 非数值 → 抛错，不静默变 NaN', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: { prefix: { strategy: 'path', take: '2' as unknown as number } },
+      }),
+    ).toThrow(/keys\.prefix\.take/);
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: { prefix: { strategy: 'path', skip: NaN } },
+      }),
+    ).toThrow(/keys\.prefix\.skip/);
+    // 合法数值照常（负值仍按 0 处理）
+    const r = resolveConfig({
+      ...base,
+      keys: { prefix: { strategy: 'path', skip: -1, take: 2 } },
+    });
+    expect(r.keys.prefix).toMatchObject({ skip: 0, take: 2 });
+  });
+});

@@ -23,6 +23,7 @@ import {
 } from '../../utils/ast-guards';
 import { processTemplateExpression } from '../../utils/message-shape';
 import { trimAsciiWhitespace, trimStartAsciiWhitespace } from '../../utils/string-escape';
+import { isHtmlTemplateLang, scriptFileNameOfLang, sourceDeclaresVPre } from './sfc-blocks';
 import type { VueExtractedString } from './extracted-extras';
 import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import { isNonTranslatableText, isTechnicalConfigValue } from '../../utils/text-classify';
@@ -52,12 +53,20 @@ export class VueTextExtractor extends BaseTextExtractor {
 
       // 提取 template 部分
       if (descriptor.template) {
-        const templateStrings = await this.extractFromTemplate(
-          descriptor.template.content,
-          filePath,
-          descriptor.template.loc.start.line - 1,
-        );
-        extractedStrings.push(...templateStrings);
+        if (isHtmlTemplateLang(descriptor.template.lang)) {
+          const templateStrings = await this.extractFromTemplate(
+            descriptor.template.content,
+            filePath,
+            descriptor.template.loc.start.line - 1,
+          );
+          extractedStrings.push(...templateStrings);
+        } else {
+          this.warnNonHtmlTemplateLang(
+            descriptor.template.lang!,
+            filePath,
+            descriptor.template.loc.start.line,
+          );
+        }
       }
 
       // 提取 script 部分
@@ -71,6 +80,7 @@ export class VueTextExtractor extends BaseTextExtractor {
           filePath,
           script.loc.start.line - 1,
           script.loc.start.offset,
+          scriptFileNameOfLang(script.lang),
         );
         extractedStrings.push(...scriptStrings);
       }
@@ -118,13 +128,9 @@ export class VueTextExtractor extends BaseTextExtractor {
   /**
    * 元素是否带 v-pre 指令。
    *
-   * @vue/compiler-dom 在 parse 阶段消费 v-pre 并从 props 移除（不保留 DIRECTIVE 节点），
-   * 无法从 props 检测；改为扫描元素「开标签」源码。开标签边界取「元素起点 → 第一个子节点
-   * 起点」，而非按第一个 `>` 截断——后者会被属性值里的 `>`（如 `:x="a>b"`）骗到。
-   *
-   * 匹配前先把引号包裹的属性值整体抹平：仅靠属性名锚定的正则不够，值里空白分隔的
-   * `v-pre`（如 `:data-tip="'enable v-pre mode'"`）会让整棵子树被误判为 v-pre 而漏提取。
-   * 与 VueRestoreTransformer.stashVerbatimRegions 的同款判定保持一致。
+   * 判定本体（引号抹平 + 属性名锚定）在 sfc-blocks.sourceDeclaresVPre，与还原端共用。
+   * 这里只负责界定「开标签」范围：取「元素起点 → 第一个子节点起点」，而非按第一个 `>`
+   * 截断——后者会被属性值里的 `>`（如 `:x="a>b"`）骗到。
    */
   private static hasVPreDirective(node: ElementNode): boolean {
     const src = node.loc.source;
@@ -136,7 +142,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         openTag = src.slice(0, len);
       }
     }
-    return /(?:^|\s)v-pre(?=[\s/>=]|$)/.test(openTag.replace(/"[^"]*"|'[^']*'/g, '""'));
+    return sourceDeclaresVPre(openTag);
   }
 
   /**
@@ -223,11 +229,13 @@ export class VueTextExtractor extends BaseTextExtractor {
         // trim 只去 ASCII 空白：`&nbsp;`(U+00A0) 等排版空白是文案的一部分，且它在源码里
         // 落在替换区间内 —— 被 String.trim 剃掉会让 locale 值与替换区间不对应，往返丢字符。
         const text = trimAsciiWhitespace(textNode.content);
-        // loc.source 是未解码的原始源码；@vue/compiler-dom 会把 HTML 实体（&copy; 等）
-        // 解码进 content。两者不一致时（即文本含实体）必须分别使用：
-        // - original 用原始源码 → Transformer 的 indexOf 才能在含 &copy; 的模板里匹配到，
-        //   否则替换失败、源码残留中文 + locale 多出孤儿 key。
-        // - processedMessage 用解码后文本 → 作为 locale 值与 ID 源，$t 渲染时正确输出 ©。
+        // loc.source 是未解码的原始源码；content 是 @vue/compiler-dom 加工过的文本——它
+        // 既解码 HTML 实体（&copy; → ©），也按 whitespace: condense 把跨行缩进压成单空格
+        // （多行文案的主触发面）。两者不一致时必须分别使用：
+        // - original / sourceSlice 用原始源码 → 转换端的区间核对才能对上仍含 &copy; 与
+        //   原始缩进的模板，否则替换中止、源码残留中文 + locale 多出孤儿 key。
+        // - processedMessage 用加工后文本 → 作为 locale 值与 ID 源，$t 渲染时正确输出 ©，
+        //   且换行缩进不进 locale 值。
         const rawSource = trimAsciiWhitespace(textNode.loc.source);
         const hasEntity = rawSource !== text;
 
@@ -286,9 +294,13 @@ export class VueTextExtractor extends BaseTextExtractor {
    * - `<div>第{{ x }}讲：</div>` → 一个 key `第{x}讲：`
    * - `<div>{{ p }}%已学</div>` → 一个 key `{p}%已学`
    *
+   * 组内节点可以跨行：prettier 会把 `<div>全部({{ n }})</div>` 拆成三行，卡死在单行上
+   * 等于对格式化过的代码整体失效（退回逐节点后 key 变成 `全部(`、`)` 硬编码残留）。
+   * 替换按精确偏移进行（startOffset + sourceSlice），组内节点在源码中连续，跨行不影响边界；
+   * 换行带来的缩进由 compiler-dom 的 whitespace: condense 压成单空格后再整体 trim。
+   *
    * 命中条件（任一不满足均放弃，回退原逐节点处理路径）：
    * - 组内至少有一段 TEXT 含中文（否则 Locale 价值不大，由原插值路径处理）
-   * - 组全部位于同一行（多行复合句替换边界复杂，保留为后续工作）
    * - 所有 INTERPOLATION 的表达式必须为 SIMPLE_EXPRESSION（type === 4），
    *   且表达式文本不含引号——避免吞掉嵌套的中文字符串字面量
    *   （如 `{{ x ? '中文1' : '中文2' }}`），否则 LLM 翻译时占位符失踪。
@@ -308,8 +320,6 @@ export class VueTextExtractor extends BaseTextExtractor {
     if (group.length < 2) return false;
 
     const first = group[0]!;
-    const last = group[group.length - 1]!;
-    if (first.loc.start.line !== last.loc.end.line) return false;
 
     // 必须存在含中文的 TEXT，否则没有提取价值（纯插值由原路径处理）
     const hasChineseText = group.some(
@@ -347,11 +357,21 @@ export class VueTextExtractor extends BaseTextExtractor {
 
     // 与单 TEXT 节点路径（textNode.content.trim()）口径一致：去掉复合句首尾空白，避免
     // 源语言 locale 写入带首尾空格的脏值。originalSrc 同步 trim，使 Transformer 按 original
-    // 子串匹配替换时只命中中文片段、保留模板里的空白；column 相应跳过被去掉的前导空白
-    // （mixed-content 受单行约束，前导空白不含换行，故只调列不调行）。
+    // 子串匹配替换时只命中中文片段、保留模板里的空白。
     // trim 口径同单 TEXT 节点路径：只去 ASCII 空白，`&nbsp;` 等排版空白留在文案里
     // （它落在替换区间内，剃掉会让 locale 值与区间不对应）。
-    const leadingWhitespace = originalSrc.length - trimStartAsciiWhitespace(originalSrc).length;
+    const leadingWs = originalSrc.slice(
+      0,
+      originalSrc.length - trimStartAsciiWhitespace(originalSrc).length,
+    );
+    const leadingWhitespace = leadingWs.length;
+    // 前导空白可能跨行（元素子内容以换行开头），line/column 必须校正到 trim 后文本的真实
+    // 位置，与单 TEXT 节点路径同源：报错信息与诊断按此定位，指到开标签行会误导。
+    const wsNewlines = leadingWs.split('\n').length - 1;
+    const column =
+      wsNewlines === 0
+        ? first.loc.start.column + leadingWhitespace
+        : leadingWhitespace - leadingWs.lastIndexOf('\n'); // 1-based：新行内偏移 + 1
     const synthetic = '`' + trimAsciiWhitespace(body) + '`';
     originalSrc = trimAsciiWhitespace(originalSrc);
 
@@ -365,8 +385,8 @@ export class VueTextExtractor extends BaseTextExtractor {
       processedMessage: synthetic,
       semanticId: '',
       filePath,
-      line: first.loc.start.line + lineOffset,
-      column: first.loc.start.column + leadingWhitespace,
+      line: first.loc.start.line + wsNewlines + lineOffset,
+      column,
       context: 'template',
       componentType: 'setup',
       isTemplateString: true,
@@ -586,8 +606,8 @@ export class VueTextExtractor extends BaseTextExtractor {
               templateContext: 'static-attribute',
               attributeName: attr.name,
               // 整个 `name="value"` 区间：替换体是 `:name="$t(...)"`，属性名也要换掉。
-              // attr.loc 天然覆盖属性名到闭合引号（无引号属性值同样准确），省掉旧实现里
-              // 那条要同时容忍单/双/无引号与引号内 padding 的正则。
+              // attr.loc 天然覆盖属性名到闭合引号（无引号属性值同样准确），据此取区间即可，
+              // 不必自己写「同时容忍单/双/无引号与引号内 padding」的正则。
               startOffset: attr.loc.start.offset,
               sourceSlice: attr.loc.source,
             });
@@ -798,7 +818,7 @@ export class VueTextExtractor extends BaseTextExtractor {
 
     if (ts.isNoSubstitutionTemplateLiteral(node)) {
       // 与 script 侧对称：含 HTML 标签的整段模板拒绝提取并告警，避免 HTML/CSS/SVG 灌进 locale value。
-      // template 侧此前缺这道守卫，`:content="`<b>加粗</b>提示`"` 会把整段 HTML 提进 locale 且无告警。
+      // 缺这道守卫时，`:content="`<b>加粗</b>提示`"` 会把整段 HTML 提进 locale 且无告警。
       if (FileUtils.containsChinese(node.text) && templateLiteralContainsHtmlTags(node.text)) {
         this.warnHtmlInTemplateLiteralAtLine(
           directive.loc.start.line + lineOffset,
@@ -1107,6 +1127,8 @@ export class VueTextExtractor extends BaseTextExtractor {
    * @param scriptContent - script 内容
    * @param filePath - 文件路径
    * @param lineOffset - 行偏移量
+   * @param parseFileName - 送进 TS 解析器的文件名（决定 ScriptKind）；SFC 块按 lang 给虚拟名，
+   *                        纯 .ts/.js 直接用真实路径
    * @returns 提取的字符串数组
    */
   private async extractFromScript(
@@ -1114,11 +1136,12 @@ export class VueTextExtractor extends BaseTextExtractor {
     filePath: string,
     lineOffset: number,
     blockStart: number,
+    parseFileName: string = filePath,
   ): Promise<ExtractedString[]> {
     const extractedStrings: ExtractedString[] = [];
 
     try {
-      const sourceFile = parseSourceFile(scriptContent, filePath);
+      const sourceFile = parseSourceFile(scriptContent, parseFileName);
 
       // filePath 必须从入参透传到 push 处，不能用 sourceFile.fileName。
       // ts.createSourceFile 内部会对 fileName 调用 normalizePath，将 Windows 反
@@ -1438,6 +1461,28 @@ export class VueTextExtractor extends BaseTextExtractor {
       category: 'html-template',
       message: msg,
       dedupeKey: `${filePath}:${sourceOffset ?? line}`,
+    });
+  }
+
+  /**
+   * 输出「非 HTML 模板语言、整块跳过」warning。
+   *
+   * 走 recordManualSkip('html-template')：该档在 CoverageReporter 映射为
+   * `html-in-template`，语义同为「模板层结构工具不敢碰、须人工处理」，复用它可避免
+   * 为一档扩 ManualSkipDiagnostic 封闭联合并连带改 Reporter 映射。
+   */
+  private warnNonHtmlTemplateLang(lang: string, filePath: string, line: number): void {
+    const msg =
+      `⚠️ 跳过非 HTML 模板：${FileUtils.getRelativePath(filePath)}:${line} <template lang="${lang}">\n` +
+      `   原因：@vue/compiler-dom 只解析 HTML 模板，pug 等预处理语法会被当成单个文本节点，` +
+      `整块模板会被替换成一句 $t() 且不可还原。\n` +
+      `   建议：把该组件的模板改写为 HTML，或手工为其中的文案加 $t() 调用。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
+    this.recordManualSkip({
+      category: 'html-template',
+      message: msg,
+      dedupeKey: `${filePath}:template-lang`,
     });
   }
 

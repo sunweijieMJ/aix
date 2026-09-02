@@ -72,11 +72,10 @@ export class LocaleValueLinter {
    * 提取阶段的两类跳过项（skippedComparisons / skippedNestedChinese）一律由调用方
    * 显式传入快照，本方法不去任何全局状态取数。
    *
-   * Why: 这两份数据曾是 CommonASTUtils 上的进程级 static Map，analyze 未收到快照时
-   * 就地 drain。于是「谁先调 analyze 谁拿到」——generate 路径必须抢在 lint 之前 drain
-   * 出快照再透传，否则覆盖率统计的 skipped 恒为 0。现在数据源是 extractor 实例上的
-   * ExtractionDiagnostics，由调用方 drain 一次、按需分发给多个消费者，仲裁顺序不再隐含。
-   * 未传即视为「本次没有提取阶段数据」（如只 lint 一份现成 locale 文件），返回空。
+   * Why: analyze 绝不能自己去 ExtractionDiagnostics 取数——drain 是消耗性的，就地 drain
+   * 会变成「谁先调 analyze 谁拿到」，覆盖率统计的 skipped 会被 lint 抢空而恒为 0。数据须由
+   * 调用方 drain 一次、按需分发给多个消费者。未传即视为「本次没有提取阶段数据」
+   * （如只 lint 一份现成 locale 文件），这两类检查返回空。
    */
   static analyze(
     localeMap: LocaleMap,

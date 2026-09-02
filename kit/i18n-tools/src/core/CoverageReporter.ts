@@ -166,8 +166,9 @@ export class CoverageReporter {
     LoggerUtils.info(
       `  已国际化         ${m.alreadyI18n}  (${pct(m.alreadyI18n, m.totalChineseSegments)})`,
     );
-    // 「新生成」曾让人误读为「新增了 N 个 key」：newlyGenerated 是本轮提取并改写的中文片段数，
-    // 重跑同一批文件（key 全部复用、locale 零新增）时它照样是 423。改为按口径直述「命中/转换」。
+    // 文案按口径直述「命中/转换」，不要写成「新生成」：newlyGenerated 是本轮提取并改写的
+    // 中文片段数，重跑同一批文件（key 全部复用、locale 零新增）时它照样是 423，
+    // 「新生成」会被读成「新增了 N 个 key」。
     LoggerUtils.info(
       `  本轮命中/转换    ${m.newlyGenerated}  (${pct(m.newlyGenerated, m.totalChineseSegments)})`,
     );

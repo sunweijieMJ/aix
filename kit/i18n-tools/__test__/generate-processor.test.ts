@@ -519,6 +519,41 @@ describe('GenerateProcessor 编排层', () => {
       expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
     });
 
+    /**
+     * 回归（四轮审计 A2）：baseline 只快照「dry-run 当时已存在的 key」，dry-run 之后才被
+     * 别人新建的同名 key 不在 baseline 里，只比对 baseline 会让 apply 静默覆盖它。
+     */
+    it('dry-run 后才出现的同名 key（不在 baseline）值不同 → 同样算漂移并拒绝 apply', async () => {
+      const file = writeSource('DriftNewKey.vue', VUE_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      const key = Object.keys(plan.localeDelta)[0]!;
+      expect(plan.localeBaseline).toEqual({}); // 生成 plan 时该 key 尚不存在
+      // dry-run 之后别的分支用不同文案建了同一个 key
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: '提交订单（已改文案）' }), 'utf-8');
+
+      await expect(
+        new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson, {
+          keepPlan: true,
+        }),
+      ).rejects.toThrow(/拒绝 apply/);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+      expect(readZh()).toEqual({ [key]: '提交订单（已改文案）' });
+    });
+
+    it('dry-run 后出现的同名 key 值与 plan 一致 → 不算漂移，正常 apply', async () => {
+      const file = writeSource('SameValueNewKey.vue', VUE_FILE);
+      const planJson = await makePlan(buildConfig(rootDir), file);
+      const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+      const key = Object.keys(plan.localeDelta)[0]!;
+      fs.writeFileSync(zhPath(), JSON.stringify({ [key]: plan.localeDelta[key] }), 'utf-8');
+
+      await new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson);
+
+      expect(fs.readFileSync(file, 'utf-8')).toMatch(/\$t\(/);
+    });
+
     it('交互模式：选否 → 取消，零改动且收尾不打成功', async () => {
       const file = writeSource('DriftCancel.vue', VUE_FILE);
       const { planJson, key } = await makePlanOverExistingKey(file);
