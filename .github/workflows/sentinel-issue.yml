@@ -73,7 +73,7 @@ jobs:
 
       - name: 评论 - 开始修复
         if: steps.pr_limit.outputs.limit_reached != 'true'
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@v5
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
@@ -87,7 +87,7 @@ jobs:
 
       - name: 评论 - 已达每日上限
         if: steps.pr_limit.outputs.limit_reached == 'true'
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@v5
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
@@ -258,7 +258,7 @@ jobs:
 
       - name: 评论 - PR 已创建
         if: steps.create_pr.outputs.pr_url
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@v5
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
@@ -270,7 +270,7 @@ jobs:
 
       - name: 评论 - 无修改
         if: steps.commit.outputs.has_changes == 'false'
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@v5
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
@@ -280,7 +280,7 @@ jobs:
 
       - name: 评论 - 执行失败
         if: failure() && steps.commit.outputs.has_changes == 'true'
-        uses: peter-evans/create-or-update-comment@v4
+        uses: peter-evans/create-or-update-comment@v5
         with:
           issue-number: ${{ github.event.issue.number }}
           body: |
