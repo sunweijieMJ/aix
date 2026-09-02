@@ -92,7 +92,7 @@ jobs:
       # - internal/*/data：由 mcp-server 的 build → extract 生成，漏掉会让 Publish Lint 打出
       #   缺 data/ 的包（files 声明了它），发布后服务器启动即崩。
       - name: Cache build outputs
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             packages/*/es
@@ -129,7 +129,7 @@ jobs:
       # 恢复构建产物（node_modules 由 setup-node 的 pnpm store 缓存 + install 处理）
       - name: Restore build cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             packages/*/es
@@ -236,7 +236,7 @@ jobs:
       # 恢复构建产物（node_modules 由 setup-node 的 pnpm store 缓存 + install 处理）
       - name: Restore build cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             packages/*/es
@@ -283,7 +283,7 @@ jobs:
       # 恢复构建产物（node_modules 由 setup-node 的 pnpm store 缓存 + install 处理）
       - name: Restore build cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             packages/*/es
