@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # workflow_run 事件下默认 checkout 的是触发时刻 master 最新提交，
           # 显式锁定为通过 Check Quality 的那个 commit，避免部署未经本轮 CI 的代码
