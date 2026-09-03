@@ -504,9 +504,12 @@ export function resolveBuckets(buckets: BucketsConfig | undefined): ResolvedConf
 /**
  * 强制安全排除集：用户提供 io.exclude 时会整体替换默认值（而非合并），易静默丢失对
  * node_modules/.git 的排除——而 generate 会提取其中中文并改写源码，破坏依赖/git 内部文件。
- * 这两项无论如何都并入，作为「绝不扫描/改写」的最小安全网。
+ * `.i18n-tools` 是工具自身的 plan 目录，`plans/<ts>/sources/` 下是转换后的源码副本：
+ * 被当源码扫到会让 restore 把副本还原成未国际化代码（apply 随后按副本写回源文件），
+ * generate 也会把副本里的 t() 计进 alreadyI18n 抬高覆盖率。
+ * 这三项无论如何都并入，作为「绝不扫描/改写」的最小安全网。
  */
-const FORCED_SAFE_EXCLUDES = ['node_modules', '.git'];
+const FORCED_SAFE_EXCLUDES = ['node_modules', '.git', '.i18n-tools'];
 
 /**
  * 解析 io.exclude：
@@ -604,6 +607,15 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   }
   const ioFormat = userConfig.io?.format ?? DEFAULT_IO.format;
   validateEnum(ioFormat, ['flat', 'nested'], 'io.format');
+  // 上限取 JSON.stringify 自身的 10 空格上限：更大的值会被静默截断，
+  // 非数值则会经 Math.max 变成 NaN 并把所有 JSON 压成单行。
+  const ioIndent = userConfig.io?.indent ?? DEFAULT_IO.indent;
+  assertValidNumericConfig(
+    ioIndent,
+    'io.indent',
+    '0-10 的整数',
+    (value) => Number.isInteger(value) && value >= 0 && value <= 10,
+  );
   const io = {
     sourceDir: path.resolve(root, userConfig.io?.sourceDir ?? DEFAULT_IO.sourceDir),
     localesDir: path.resolve(root, userConfig.io?.localesDir ?? DEFAULT_IO.localesDir),
@@ -614,7 +626,7 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
     include: [...(userConfig.io?.include ?? DEFAULT_IO.include)],
     exclude: resolveExclude(userConfig.io?.exclude),
     format: ioFormat,
-    indent: Math.max(0, userConfig.io?.indent ?? DEFAULT_IO.indent),
+    indent: ioIndent,
     prettify: userConfig.io?.prettify ?? DEFAULT_IO.prettify,
   };
 
@@ -632,6 +644,15 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   ) {
     throw new Error('keys.dynamicKeyAllowlist 必须是数组（字符串前缀或正则，如 ["dynamic."]）。');
   }
+  // 元素类型守卫：消费端 matchesDynamicAllowlist 直接 startsWith / RegExp.test，
+  // 混入其它类型会在 doctor/prune 运行期抛无字段名的 TypeError。
+  (userConfig.keys?.dynamicKeyAllowlist ?? []).forEach((item, index) => {
+    if (typeof item !== 'string' && !(item instanceof RegExp)) {
+      throw new Error(
+        `keys.dynamicKeyAllowlist[${index}] 必须是字符串前缀或正则，实际收到: ${String(item)}`,
+      );
+    }
+  });
   const keys: ResolvedConfig['keys'] = {
     separator: userConfig.keys?.separator ?? DEFAULT_KEYS.separator,
     prefix: resolvePrefixStrategy(userConfig.keys?.prefix),
@@ -665,6 +686,15 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   ) {
     throw new Error('extract.filterPatterns 必须是正则数组（如 [/^\\d+$/]）。');
   }
+  // 元素类型守卫：提取器直接对元素调 .test，字符串形态的「正则」会让每个文件的
+  // template/script 解析各抛一次 TypeError 并被就地吞成空提取，最终覆盖率虚报 100%。
+  (userConfig.extract?.filterPatterns ?? []).forEach((item, index) => {
+    if (!(item instanceof RegExp)) {
+      throw new Error(
+        `extract.filterPatterns[${index}] 必须是正则（如 /^\\d+$/），实际收到: ${String(item)}`,
+      );
+    }
+  });
 
   // ---- ci ----
   const coverageThreshold = userConfig.ci?.coverageThreshold;

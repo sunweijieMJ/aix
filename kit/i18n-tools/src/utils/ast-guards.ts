@@ -70,25 +70,94 @@ function findLocalTypeAlias(type: ts.TypeReferenceNode): ts.TypeAliasDeclaration
 }
 
 /**
- * 类型注解是否把值锁成字面量：字面量类型本身，或全部成员都是字面量的联合。
+ * 值在类型注解里的位置：从注解根部走到该字面量所经过的容器。
+ * `['待办'] as S[]` 的路径是 [index]，`{ s: '待办' } satisfies { s: S }` 是 [prop 's']。
+ */
+type TypeValuePath = ReadonlyArray<{ kind: 'index' } | { kind: 'prop'; name: string }>;
+
+/** 泛型容器：按值路径的一步取出对应的类型实参（数组取元素、Record 取值类型）。 */
+function stepIntoTypeReference(
+  type: ts.TypeReferenceNode,
+  step: TypeValuePath[number],
+): ts.TypeNode | undefined {
+  if (!ts.isIdentifier(type.typeName)) return undefined;
+  const name = type.typeName.text;
+  const args = type.typeArguments;
+  if (!args) return undefined;
+  if (step.kind === 'index' && (name === 'Array' || name === 'ReadonlyArray')) return args[0];
+  if (step.kind === 'prop' && (name === 'Record' || name === 'Partial')) {
+    return name === 'Record' ? args[1] : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * 类型注解是否把该位置的值锁成字面量：字面量类型本身、`undefined`，或全部成员都满足的联合。
+ *
+ * path 非空时先按值在注解里的位置下钻（数组元素 / 对象成员 / `Array<T>` / `Record<K,V>`），
+ * 再对下钻到的类型判定：`const tabs: Status[] = ['待办']`、`{ s: '待办' } as { s: S }`
+ * 与直接标注字面量类型一样，换成 t() 返回的 string 即 TS2322。
  *
  * TypeReference（`const cur: Status = '待办'`）沿同文件的 type alias 展开一层再判：
- * 别名后面若是全字面量联合，赋值位置同样只接受字面量，替换成 t() 直接 TS2322。
+ * 别名后面若是全字面量联合，赋值位置同样只接受字面量。
  * `seen` 防住 `type A = A` / `type A = B; type B = A` 这类自指链把递归吃满栈。
  * 跨文件引入的别名（`import type { Status }`）无从解析，这类漏网**有意**接受。
+ * `undefined` 与 `null` 对称处理：二者都不接受 string，`'待办' | undefined` 同样锁死。
  */
-function isLiteralTypeAnnotation(type: ts.TypeNode, seen: Set<string> = new Set()): boolean {
+function isLiteralTypeAnnotation(
+  type: ts.TypeNode,
+  path: TypeValuePath = [],
+  seen: Set<string> = new Set(),
+): boolean {
+  if (ts.isParenthesizedTypeNode(type)) return isLiteralTypeAnnotation(type.type, path, seen);
+  if (ts.isUnionTypeNode(type)) {
+    return type.types.every((t) => isLiteralTypeAnnotation(t, path, seen));
+  }
+  if (path.length > 0) {
+    const [step, ...rest] = path as Array<TypeValuePath[number]>;
+    if (ts.isArrayTypeNode(type) && step!.kind === 'index') {
+      return isLiteralTypeAnnotation(type.elementType, rest, seen);
+    }
+    if (ts.isTypeLiteralNode(type) && step!.kind === 'prop') {
+      const member = type.members.find(
+        (m): m is ts.PropertySignature =>
+          ts.isPropertySignature(m) &&
+          !!m.type &&
+          (ts.isIdentifier(m.name) || ts.isStringLiteral(m.name)) &&
+          m.name.text === step!.name,
+      );
+      return !!member?.type && isLiteralTypeAnnotation(member.type, rest, seen);
+    }
+    if (ts.isTypeReferenceNode(type)) {
+      const inner = stepIntoTypeReference(type, step!);
+      if (inner) return isLiteralTypeAnnotation(inner, rest, seen);
+      const alias = findLocalTypeAlias(type);
+      if (!alias || seen.has(alias.name.text)) return false;
+      seen.add(alias.name.text);
+      return isLiteralTypeAnnotation(alias.type, path, seen);
+    }
+    return false;
+  }
   if (ts.isLiteralTypeNode(type)) return true;
-  if (ts.isParenthesizedTypeNode(type)) return isLiteralTypeAnnotation(type.type, seen);
-  if (ts.isUnionTypeNode(type)) return type.types.every((t) => isLiteralTypeAnnotation(t, seen));
+  if (type.kind === ts.SyntaxKind.UndefinedKeyword) return true;
   if (ts.isTypeReferenceNode(type)) {
     const alias = findLocalTypeAlias(type);
     if (!alias) return false;
     if (seen.has(alias.name.text)) return false;
     seen.add(alias.name.text);
-    return isLiteralTypeAnnotation(alias.type, seen);
+    return isLiteralTypeAnnotation(alias.type, path, seen);
   }
   return false;
+}
+
+/** 沿父链找到包裹 node 的函数声明（不跨函数边界），用于取其返回类型注解。 */
+function findEnclosingFunctionType(node: ts.Node): ts.TypeNode | undefined {
+  let cur: ts.Node | undefined = node.parent;
+  while (cur) {
+    if (ts.isFunctionLike(cur)) return (cur as ts.SignatureDeclaration).type;
+    cur = cur.parent;
+  }
+  return undefined;
 }
 
 /** `as const` 断言：TS 把它表示为「类型是名为 const 的 TypeReference」。 */
@@ -107,22 +176,35 @@ function isConstAssertionType(type: ts.TypeNode): boolean {
  *  - `x as '待办'` / `x satisfies '待办' | '完成'`：断言目标是字面量类型，t() 返回 string
  *    不可赋值。
  *  - `const cur: '待办' | '完成' = '待办'`：声明的类型注解是字面量（联合），TS2322。
+ *  - `function f(): Status { return '待办' }`：返回类型注解同样锁死返回值。
  *
- * 数组 / 对象字面量与括号会向上透传（`as const` 挂在最外层，字面量在里面）。
+ * 数组 / 对象字面量与括号会向上透传（`as const` 挂在最外层，字面量在里面），透传时记录
+ * 值路径，注解按同一路径下钻（`Status[]` 的元素位、`{ s: Status }` 的成员位）。
  * 类型注解写成 TypeReference（`const cur: Status = '待办'`）时，只沿**同文件**的 type alias
  * 展开判定；跨文件引入的别名与 interface 成员位置无从解析，这类漏网**有意**接受——本模块
  * 刻意零依赖、不做类型检查器的活。
  */
 function isInLiteralTypeContext(node: ts.StringLiteral): boolean {
+  // 向上透传数组 / 对象字面量与括号的同时记录值路径，供类型注解按同一条路径下钻。
+  const path: Array<{ kind: 'index' } | { kind: 'prop'; name: string }> = [];
   let current: ts.Node = node;
   let parent: ts.Node | undefined = current.parent;
   while (parent) {
-    if (
-      ts.isParenthesizedExpression(parent) ||
-      ts.isArrayLiteralExpression(parent) ||
-      ts.isObjectLiteralExpression(parent) ||
-      (ts.isPropertyAssignment(parent) && parent.initializer === current)
-    ) {
+    if (ts.isParenthesizedExpression(parent) || ts.isObjectLiteralExpression(parent)) {
+      current = parent;
+      parent = parent.parent;
+      continue;
+    }
+    if (ts.isArrayLiteralExpression(parent)) {
+      path.unshift({ kind: 'index' });
+      current = parent;
+      parent = parent.parent;
+      continue;
+    }
+    if (ts.isPropertyAssignment(parent) && parent.initializer === current) {
+      // 计算属性名对不上类型成员，路径不可解析：保持原有「不判定为字面量上下文」
+      if (!ts.isIdentifier(parent.name) && !ts.isStringLiteral(parent.name)) return false;
+      path.unshift({ kind: 'prop', name: parent.name.text });
       current = parent;
       parent = parent.parent;
       continue;
@@ -131,7 +213,7 @@ function isInLiteralTypeContext(node: ts.StringLiteral): boolean {
   }
   if (!parent) return false;
   if (ts.isAsExpression(parent) || ts.isSatisfiesExpression(parent)) {
-    return isConstAssertionType(parent.type) || isLiteralTypeAnnotation(parent.type);
+    return isConstAssertionType(parent.type) || isLiteralTypeAnnotation(parent.type, path);
   }
   if (
     (ts.isVariableDeclaration(parent) ||
@@ -139,7 +221,16 @@ function isInLiteralTypeContext(node: ts.StringLiteral): boolean {
       ts.isParameter(parent)) &&
     parent.initializer === current
   ) {
-    return !!parent.type && isLiteralTypeAnnotation(parent.type);
+    return !!parent.type && isLiteralTypeAnnotation(parent.type, path);
+  }
+  // `function f(): Status { return '待办' }` / `(): Status => '待办'`：返回值同样被
+  // 函数的返回类型注解锁死，替换成 t() 即 TS2322。
+  if (ts.isReturnStatement(parent) && parent.expression === current) {
+    const returnType = findEnclosingFunctionType(parent);
+    return !!returnType && isLiteralTypeAnnotation(returnType, path);
+  }
+  if (ts.isArrowFunction(parent) && parent.body === current) {
+    return !!parent.type && isLiteralTypeAnnotation(parent.type, path);
   }
   return false;
 }
@@ -165,7 +256,12 @@ function isInLiteralTypeContext(node: ts.StringLiteral): boolean {
 export function isExtractableStringLiteral(node: ts.StringLiteral): boolean {
   const parent = node.parent;
   if (!parent) return true;
-  if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+  // 任何「带名字的声明 / 签名 / 说明符」的名字位置：对象属性 key、方法名、class 属性名、
+  // interface 成员名、枚举成员名、import/export 具名、`declare module '…'`。
+  // 名字槽位换成 `t('k')` 调用后源码不再可解析（printer 产出的文件整体报语法错误），
+  // 故按节点身份统一排除，而不是逐个 SyntaxKind 追加。
+  const named = parent as ts.Node & { name?: ts.Node; propertyName?: ts.Node };
+  if (named.name === node || named.propertyName === node) return false;
   // 计算属性 KEY `{ ['进行中']: v }` / `class { ['进行中']() {} }`：字面量的直接父节点
   // 是 ComputedPropertyName，PropertyAssignment 分支无法命中（其父才是）。提取后 key 变译文，
   // 与非计算 key 同样破坏数据结构，需对称排除。
@@ -387,19 +483,23 @@ export function isAlreadyInternationalized(node: ts.Node): boolean {
  * 后者的 this 语义正常，不能一刀切当作不可绑定。
  */
 const COMPONENT_FACTORY_NAMES = new Set(['defineComponent', 'extend', 'defineAsyncComponent']);
+/** 全局/应用注册：选项对象是**第二个**实参（`Vue.component('x', { … })`、`app.component(…)`）。 */
+const COMPONENT_REGISTER_NAMES = new Set(['component']);
 
 function isComponentOptionsObject(node: ts.ObjectLiteralExpression): boolean {
   const parent = node.parent;
   if (!parent) return false;
   if (ts.isExportAssignment(parent)) return true;
-  if (ts.isCallExpression(parent) && parent.arguments[0] === node) {
+  if (ts.isCallExpression(parent)) {
     const callee = parent.expression;
     const name = ts.isIdentifier(callee)
       ? callee.text
       : ts.isPropertyAccessExpression(callee)
         ? callee.name.text
         : undefined;
-    return !!name && COMPONENT_FACTORY_NAMES.has(name);
+    if (!name) return false;
+    if (parent.arguments[0] === node) return COMPONENT_FACTORY_NAMES.has(name);
+    if (parent.arguments[1] === node) return COMPONENT_REGISTER_NAMES.has(name);
   }
   return false;
 }
@@ -429,6 +529,19 @@ function isComponentSetupFunction(fn: ts.Node): boolean {
 }
 
 /**
+ * 匿名 `function` 表达式且直接作为调用实参（`list.forEach(function (x) { … })`）。
+ *
+ * 这类回调的 this 由调用方决定，绝大多数库不传 thisArg（严格模式下为 undefined），
+ * Vue 2 遗留代码里的 `var self = this` 模式正是为此存在。产出 `this.$t(...)` 会在运行时
+ * 抛 TypeError——静默到执行才暴露，故保守判为不可绑定，走裸 t() + import 路径。
+ */
+function isAnonymousCallbackFunction(fn: ts.Node): boolean {
+  if (!ts.isFunctionExpression(fn) || fn.name) return false;
+  const parent = fn.parent;
+  return !!parent && ts.isCallExpression(parent) && parent.arguments.includes(fn);
+}
+
+/**
  * 判断节点是否处于"可绑定 this"的词法作用域。
  *
  * 用于 Vue SFC 普通 <script> 块的转换：data() / methods / computed / watch /
@@ -446,9 +559,9 @@ function isComponentSetupFunction(fn: ts.Node): boolean {
  * 注意：类字段初始化器（class field initializer）严格说有 this（指向实例），
  * 但实际场景里 SFC 不写 class，故不特别处理。
  *
- * 例外：组件选项对象里的 `setup()`。Vue 3 调用 setup 时不绑定组件实例（严格模式下
- * this 为 undefined），写 `this.$t(...)` 会在运行时抛 TypeError —— 它必须和模块顶层
- * 一样走裸 t() + import 路径。
+ * 两类例外同样走裸 t() + import 路径（写 `this.$t(...)` 会在运行时抛 TypeError）：
+ *  - 组件选项对象里的 `setup()`：Vue 3 调用 setup 时不绑定组件实例（严格模式下 this 为 undefined）；
+ *  - 作为调用实参的匿名 `function` 回调：this 由调用方决定，通常不是组件实例。
  */
 export function isInThisBindableScope(node: ts.Node): boolean {
   let current: ts.Node | undefined = node.parent;
@@ -466,6 +579,7 @@ export function isInThisBindableScope(node: ts.Node): boolean {
       ts.isConstructorDeclaration(current)
     ) {
       if (isComponentSetupFunction(current)) return false;
+      if (isAnonymousCallbackFunction(current)) return false;
       return true;
     }
     if (ts.isSourceFile(current)) {

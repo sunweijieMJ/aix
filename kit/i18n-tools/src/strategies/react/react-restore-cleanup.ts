@@ -1,6 +1,11 @@
 import ts from 'typescript';
 import type { TransformContext } from '../../utils/types';
-import { hasLocalDeclarationWithin, isIdentifierValueReference } from '../../utils/scope-analysis';
+import {
+  findInnermostBindingDeclaration,
+  hasLocalDeclarationWithin,
+  isIdentifierValueReference,
+} from '../../utils/scope-analysis';
+import { ReactASTUtils } from './react-ast-utils';
 import type { ReactI18nLibrary } from './libraries';
 import { TRANSLATION_DEPENDENCY_HOOKS, resolveHookName } from './hooks-utils';
 
@@ -53,17 +58,26 @@ export function unwrapHOC(
   // 都要删除，再由 case 3 把 `export default` 还给改回原名的类。只认工具约定的内部名
   // （原名 + WithOutIntl），用户手写的 `const Injected = injectIntl(Foo); export default Injected;`
   // 内部名不符约定，不受影响。
+  //
+  // 但源文件原本就同时具名导出与默认导出（`export class Foo` + `export default Foo`）时，
+  // 注入产物里的 `export default Foo` 是**用户原有语句**：case 3 会把 `export` 还给类，
+  // 该语句随即指向复原后的类，必须保留。故仅当内部名只登记为「默认导出来源」时才删除。
   if (ts.isExportAssignment(node) && !node.isExportEquals && ts.isIdentifier(node.expression)) {
     const publicName = node.expression.text;
-    if (context.componentNameMap.get(publicName) === publicName + HOC_CLASS_SUFFIX) {
+    const innerName = publicName + HOC_CLASS_SUFFIX;
+    if (
+      context.componentNameMap.get(publicName) === innerName &&
+      context.defaultExportedHocInnerNames?.has(innerName) &&
+      !context.exportedHocInnerNames?.has(innerName)
+    ) {
       return ts.factory.createNotEmittedStatement(node);
     }
   }
 
   // case 2: const Injected = HOC(Component)
   if (ts.isVariableStatement(node)) {
-    // 工具自产的 HOC 声明（内部名 = 原名 + WithOutIntl / 旧约定 `_原名`）是注入产物，
-    // 整条删除、由 case 3 把 export 还给改回原名的类。
+    // 工具自产的 HOC 声明（内部名 = 原名 + WithOutIntl）是注入产物，整条删除、
+    // 由 case 3 把 export 还给改回原名的类。
     // 用户手写的 HOC 声明（`export const InjectedFoo = injectIntl(Foo)`，内部名无约定
     // 后缀）不能删语句：删除会让模块公共 API（export）与非 JSX 引用（如路由表里的
     // `component: InjectedFoo`）一并消失，且本文件自身编译通过、错误只在跨文件消费方
@@ -73,8 +87,9 @@ export function unwrapHOC(
     // 留下一条无人引用的 `const Injected = Foo`（no-unused-vars lint 噪音）。有意取舍：
     // 静态区分「仅 JSX 引用」需要完整引用分析，而删错声明是编译错误、多留是 lint 警告，
     // 按「宁可多留，绝不产坏代码」保留。
-    const isToolConvention = (inner: string): boolean =>
-      inner.endsWith(HOC_CLASS_SUFFIX) || inner.startsWith('_');
+    // 只认唯一的自产约定后缀。`_原名` 这类前缀命名一律按用户手写处理：注入器不产出该形态，
+    // 而按自产处理会删掉用户的导出语句、并留下引用已改名标识符的悬空引用。
+    const isToolConvention = (inner: string): boolean => inner.endsWith(HOC_CLASS_SUFFIX);
 
     let changed = false;
     const remainingDeclarations: ts.VariableDeclaration[] = [];
@@ -111,15 +126,13 @@ export function unwrapHOC(
     }
   }
 
-  // case 3: 类组件 HOC 把原类改名为 `原名 + WithOutIntl`（或旧约定 `_原名`），还原回原名。
+  // case 3: 类组件 HOC 把原类改名为 `原名 + WithOutIntl`，还原回原名。
   if (ts.isClassDeclaration(node) && node.name) {
     const innerName = node.name.text;
-    let originalName: string | undefined;
-    if (innerName.endsWith(HOC_CLASS_SUFFIX) && innerName.length > HOC_CLASS_SUFFIX.length) {
-      originalName = innerName.slice(0, -HOC_CLASS_SUFFIX.length);
-    } else if (innerName.startsWith('_')) {
-      originalName = innerName.substring(1);
-    }
+    const originalName =
+      innerName.endsWith(HOC_CLASS_SUFFIX) && innerName.length > HOC_CLASS_SUFFIX.length
+        ? innerName.slice(0, -HOC_CLASS_SUFFIX.length)
+        : undefined;
 
     if (originalName) {
       // inject 时把 export 从类移到了 HOC 导出语句（export const X = HOC(XWithOutIntl) 或
@@ -130,16 +143,19 @@ export function unwrapHOC(
       const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
       let modifiers: readonly ts.ModifierLike[] | undefined = node.modifiers;
       if (!hasExport) {
-        if (reExportDefault) {
+        // 具名导出优先：两者同时登记时源文件原本是「export class Foo + export default Foo」，
+        // 那条 `export default Foo` 由 case 1b 保留下来、指向此处复原的类，
+        // 类上只需补回 `export`；补成 `export default class` 会与它重复默认导出（TS2528）。
+        if (reExportNamed) {
+          modifiers = [
+            ts.factory.createModifier(ts.SyntaxKind.ExportKeyword),
+            ...(node.modifiers ?? []),
+          ];
+        } else if (reExportDefault) {
           // 默认导出：还回 `export default`
           modifiers = [
             ts.factory.createModifier(ts.SyntaxKind.ExportKeyword),
             ts.factory.createModifier(ts.SyntaxKind.DefaultKeyword),
-            ...(node.modifiers ?? []),
-          ];
-        } else if (reExportNamed) {
-          modifiers = [
-            ts.factory.createModifier(ts.SyntaxKind.ExportKeyword),
             ...(node.modifiers ?? []),
           ];
         }
@@ -480,7 +496,20 @@ export function cleanupHookDependencies(
 
   const filteredElements = depsArg.elements.filter((element) => {
     if (ts.isIdentifier(element) && element.text === varName) {
-      return false;
+      // 依赖项解析到的绑定必须确实是 i18n 来源。同名的业务绑定（`const { t } = useTemperature()`）
+      // 其调用不会被还原，剥掉它的依赖项就留下悬空依赖 + 陈旧闭包（exhaustive-deps 违规）。
+      // 查不到局部绑定（模块级注入的 t）时按 i18n 来源处理，与还原侧口径一致。
+      const declaration = findInnermostBindingDeclaration(element, varName);
+      return (
+        declaration !== undefined &&
+        !ReactASTUtils.isI18nSourceDeclaration(declaration, {
+          hookName: library.hookName,
+          hocPropsType: library.hocPropsType,
+          isHOCCall: (expression) => library.isHOCCall(expression),
+          isI18nDeclaration: (decl) =>
+            library.isHookDeclaration(decl) || library.isGlobalFunctionDeclaration(decl),
+        })
+      );
     }
     return true;
   });

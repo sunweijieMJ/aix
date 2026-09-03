@@ -311,6 +311,23 @@ describe('PruneProcessor', () => {
     expect(readLocale('zh-CN')).toEqual({ used: '使用中', mustKeep: '必须保留' });
     expect(readLocale('en-US')).toEqual({ used: 'Used', mustKeep: 'Must keep' });
   });
+
+  it('B1: 反引号静态 key（无插值）不被当孤儿删除', async () => {
+    writeSource(
+      'A.vue',
+      `<script setup>\nconst a = $t('views.a.title');\nconst b = t(\`views.a.sub\`);\n</script>`,
+    );
+    writeLocale('zh-CN', { 'views.a.title': '标题', 'views.a.sub': '副标题', orphan: '没人用' });
+    writeLocale('en-US', { 'views.a.title': 'Title', 'views.a.sub': 'Sub', orphan: 'unused' });
+
+    await new PruneProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    expect(readLocale('zh-CN')).toEqual({ 'views.a.title': '标题', 'views.a.sub': '副标题' });
+    expect(readLocale('en-US')).toEqual({ 'views.a.title': 'Title', 'views.a.sub': 'Sub' });
+  });
 });
 
 /**

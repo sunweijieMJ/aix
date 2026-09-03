@@ -752,3 +752,79 @@ describe('TranslateProcessor — 形态非法条目告警跳过', () => {
     expect(warnSpy.mock.calls.flat().join('\n')).toMatch(/值不是对象[^\n]*bad/);
   });
 });
+
+/**
+ * B2：无效目标值（csv-import 回流的 `---`、手工编辑、merge warn-only 保留的拒收值）
+ * 被原样送进 LLM 载荷时，prompt 规则「目标已有值则原样保留」会让模型把垃圾值原样返回，
+ * mergeTranslations 再拒收 —— 该 key 每轮都失败、永不收敛。送 LLM 前必须置空。
+ */
+describe('TranslateProcessor — 送 LLM 前置空无效目标值（B2）', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'translate-blank-invalid-'));
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  it('B2: LLM 载荷里的目标字段被置空，严格遵守「已有值保留」的模型也能翻出译文', async () => {
+    const localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ 'a.b': { 'zh-CN': '确认', 'en-US': '---' } }),
+    );
+
+    const payloads: Translations[] = [];
+    vi.spyOn(LLMClient.prototype, 'batchTranslate').mockImplementation(
+      async (batches: Translations[]) =>
+        batches.map((b) => {
+          payloads.push(JSON.parse(JSON.stringify(b)) as Translations);
+          const out: Translations = {};
+          // 模拟严格遵守 prompt 规则 3 的模型：目标已有值就原样返回，为空才翻译
+          for (const [k, item] of Object.entries(b)) {
+            out[k] = { 'en-US': item['en-US'] ? item['en-US'] : 'Confirm' };
+          }
+          return out;
+        }),
+    );
+
+    await expect(new TranslateProcessor(makeConfig(), false).execute()).resolves.toBeUndefined();
+
+    expect(payloads[0]!['a.b']!['en-US']).toBe('');
+    const written = JSON.parse(
+      fs.readFileSync(path.join(localeDir, 'untranslated.json'), 'utf-8'),
+    ) as Translations;
+    expect(written['a.b']!['en-US']).toBe('Confirm');
+  });
+
+  it('B2: 置空只作用于 LLM 载荷副本，源文案原样带过去', async () => {
+    const config = makeConfig();
+    const proc = new TranslateProcessor(config, false);
+    const internals = proc as unknown as {
+      filterUntranslatedItems: (data: Translations, targetLocale: string) => Translations;
+    };
+    const data: Translations = { 'a.b': { 'zh-CN': '确认', 'en-US': '---' } };
+    const filtered = internals.filterUntranslatedItems.call(proc, data, 'en-US');
+
+    expect(filtered['a.b']!['zh-CN']).toBe('确认');
+    expect(filtered['a.b']!['en-US']).toBe('');
+    // 原 data 不被改写（落盘走 data 本体）
+    expect(data['a.b']!['en-US']).toBe('---');
+  });
+});

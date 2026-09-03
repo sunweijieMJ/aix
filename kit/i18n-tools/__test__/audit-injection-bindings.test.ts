@@ -606,3 +606,128 @@ export const Panel = () => {
     expect(out).toContain('const { t } = useTranslation();');
   });
 });
+
+// ---------------------------------------------------------------------------
+// react-gen 审计 R3/R4/R5/R7/R8：注入前的作用域 / 扩展名 / 同名注入名守卫
+// ---------------------------------------------------------------------------
+describe('React 注入端作用域与形态守卫（审计 R3/R4/R5/R7/R8）', () => {
+  it('R3: 方法自身已把 t 绑到别处 → 不再注入 this.props 解构（否则块级重复声明）', () => {
+    const code = `class Foo extends React.Component {
+  componentDidMount() {
+    const t = setTimeout(() => {}, 1);
+    this.log(t('k.saved'));
+  }
+  render() { return <div>{t('k.title')}</div>; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    // 只有 render 拿到解构；componentDidMount 已有自己的 t
+    expect((out.match(/const \{ t \} = this\.props;/g) ?? []).length, `注入输出：\n${out}`).toBe(1);
+    expect(out.indexOf('const { t } = this.props;')).toBeGreaterThan(out.indexOf('render()'));
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('R3: 箭头类成员形参名恰为 t → 不注入解构', () => {
+    const code = `class Foo extends React.Component {
+  onPick = (t: Tab) => { this.log(t('k.picked')); };
+  render() { return <div />; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect(out, `注入输出：\n${out}`).not.toContain('const { t } = this.props;');
+  });
+
+  it('R4: .jsx 文件不注入类型实参与 import type，HOC 包裹照常', () => {
+    const code = `import React from 'react';
+export default class Foo extends React.Component {
+  render() { return <div title={t('k0')} />; }
+}
+`;
+    const out = buildReactInjector().inject(code, 'C.jsx');
+    expect(out).not.toContain('import type');
+    expect(out).not.toContain('React.Component<');
+    expect(out).toContain('withTranslation()(FooWithOutIntl)');
+  });
+
+  it('R4 反向：.tsx 仍加宽类型并以 import type 注入 props 类型', () => {
+    const code = `import React from 'react';
+export default class Foo extends React.Component {
+  render() { return <div title={t('k0')} />; }
+}
+`;
+    const out = buildReactInjector().inject(code, 'C.tsx');
+    expect(out).toContain('React.Component<WithTranslation>');
+    expect(out).toContain(`import type { WithTranslation } from 'react-i18next';`);
+  });
+
+  it('R5: 模块顶层已有非 i18n 来源的 useTranslation → 跳过注入并告警', () => {
+    const code = `import { useTranslation } from '@/hooks/useTranslation';
+export function Panel() {
+  return <div title={t('k0')} />;
+}
+`;
+    const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const out = buildReactInjector().inject(code);
+    expect((out.match(/import \{ useTranslation \}/g) ?? []).length).toBe(1);
+    expect(out).not.toContain(`from 'react-i18next'`);
+    expect(warn.mock.calls.some((c) => String(c[0]).includes('待注入名同名'))).toBe(true);
+    warn.mockRestore();
+  });
+
+  it('R5: 类组件的 HOC 名被占用 → 跳过注入', () => {
+    const code = `import { withTranslation } from '@/hoc/withTranslation';
+class Foo extends React.Component {
+  render() { return <div>{t('k0')}</div>; }
+}
+`;
+    const warn = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    const out = buildReactInjector().inject(code);
+    expect(out).not.toContain('FooWithOutIntl');
+    expect(out).not.toContain(`from 'react-i18next'`);
+    warn.mockRestore();
+  });
+
+  it('R7: props 类型名含 WithTranslation 子串 → 仍视为未包裹，照常注入 HOC 与类型加宽', () => {
+    const code = `class Panel extends React.Component<PanelWithTranslationToggleProps> {
+  render() { return <div title={t('k0')} />; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect(out).toContain('PanelWithTranslationToggleProps & WithTranslation');
+    expect(out).toContain('withTranslation()(PanelWithOutIntl)');
+    expect(syntaxErrorCount(out)).toBe(0);
+  });
+
+  it('R7 反向：交叉类型成员里的 WithTranslation 判为已包裹，不二次加宽', () => {
+    const code = `class Panel extends React.Component<Props & WithTranslation> {
+  render() { return <div title={t('k0')} />; }
+}
+`;
+    const out = buildReactInjector().inject(code);
+    expect(out).not.toContain('WithTranslation & WithTranslation');
+    expect(out).not.toContain('withTranslation()(');
+    expect(out).toContain('const { t } = this.props;');
+  });
+
+  it('R8: 函数体与类方法体的字符串指令仍是首个语句', () => {
+    const fnCode = `export function App() {
+  'use no memo';
+  return <div title={t('k0')} />;
+}
+`;
+    const fnOut = buildReactInjector().inject(fnCode);
+    expect(fnOut.indexOf(`'use no memo'`)).toBeLessThan(fnOut.indexOf('useTranslation()'));
+
+    const classCode = `class Foo extends React.Component {
+  render() {
+    'use no memo';
+    return <div title={t('k0')} />;
+  }
+}
+`;
+    const classOut = buildReactInjector().inject(classCode);
+    expect(classOut.indexOf(`'use no memo'`)).toBeLessThan(
+      classOut.indexOf('const { t } = this.props;'),
+    );
+  });
+});

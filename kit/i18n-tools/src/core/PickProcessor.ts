@@ -70,19 +70,21 @@ export class PickProcessor extends FileProcessor {
         '请修复 JSON 格式后重试。',
     );
 
+    // 与上方 untranslated 同为严格读取：silent 降级会把损坏的 translations.json 当 {}，
+    // 下方安全闸随之判「无在途译文」放行、无条件覆写把损坏文件里的译文一并抹掉。
+    // 读取结果同时供安全闸与「非 targets 语种字段透传」复用。
+    const existingTranslated = loadJsonDictOrThrow<Translations>(
+      translatedPath,
+      (p) =>
+        `已翻译文件解析失败（JSON 格式错误）: ${p}\n` +
+        '👉 该文件可能含尚未合入 locale 的译文；已中止 pick 以防覆写销毁。请修复 JSON 格式后重试。',
+    );
+
     // 安全闸：源 locale 合法但为空（如被误清空 / 重置为 {}）时，下方分析会产出两个空字典并
     // 无条件覆写 untranslated.json / translations.json，销毁尚未 merge 的在途译文且伪报成功。
     // 上面的损坏守卫只拦 JSON 解析失败，挡不住「合法空」这一入口；此处与 PruneProcessor 的
     // usedKeys===0 安全闸对齐：源为空且已存在非空在途文件时中止，宁可报错不静默破坏。
     if (Object.keys(sourceMessages).length === 0) {
-      // 与上方 untranslated 同为严格读取：silent 降级会把损坏的 translations.json 当 {}，
-      // 安全闸随之判「无在途译文」放行，下方无条件覆写把损坏文件里的译文一并抹掉。
-      const existingTranslated = loadJsonDictOrThrow<Record<string, unknown>>(
-        translatedPath,
-        (p) =>
-          `已翻译文件解析失败（JSON 格式错误）: ${p}\n` +
-          '👉 该文件可能含尚未合入 locale 的译文；已中止 pick 以防覆写销毁。请修复 JSON 格式后重试。',
-      );
       if (
         Object.keys(existingUntranslated).length > 0 ||
         Object.keys(existingTranslated).length > 0
@@ -107,6 +109,7 @@ export class PickProcessor extends FileProcessor {
       messages as unknown as Record<string, Record<string, string>>,
       glossary,
       existingUntranslated,
+      existingTranslated,
     );
     this.saveFiles(untranslatedPath, translatedPath, analysisResult);
     this.displayResults(analysisResult);
@@ -127,6 +130,7 @@ export class PickProcessor extends FileProcessor {
     allMessages: Record<string, Record<string, string>>,
     glossary: GlossaryMap | null,
     inFlight: Translations = {},
+    existingTranslated: Translations = {},
   ): {
     untranslatedEntries: Translations;
     translatedEntries: Translations;
@@ -148,6 +152,8 @@ export class PickProcessor extends FileProcessor {
     const perTargetUntranslated: Record<string, number> = Object.fromEntries(
       targets.map((t) => [t, 0]),
     );
+    /** 条目里既非 source 也不在当前 targets 的语种（原样透传，仅提示一次）。 */
+    const carriedLocales = new Set<string>();
 
     for (const key in sourceMessages) {
       if (!Object.prototype.hasOwnProperty.call(sourceMessages, key)) continue;
@@ -218,12 +224,33 @@ export class PickProcessor extends FileProcessor {
         [sourceLocale]: sourceValue,
         ...perTargetValue,
       };
+      // 透传旧字典条目里既非 source 也不在 targets 的语种字段：与 merge 的同名逻辑同口径。
+      // pick 每轮都整体重写两个字典，只装 source+targets 等于把 merge 承诺「原样保留」的
+      // 那些译文无声抹掉（它们从未落进 locale，git 之外找不回）。
+      const carriedFrom = inFlight[key] ?? existingTranslated[key];
+      if (carriedFrom && typeof carriedFrom === 'object') {
+        for (const [locale, value] of Object.entries(carriedFrom)) {
+          if (locale === sourceLocale || targets.includes(locale)) continue;
+          if (typeof value !== 'string') continue;
+          entry[locale] = value;
+          carriedLocales.add(locale);
+        }
+      }
 
       if (hasUntranslated) {
         untranslatedEntries[key] = entry;
       } else {
         translatedEntries[key] = entry;
       }
+    }
+
+    if (carriedLocales.size > 0) {
+      const line =
+        `⚠️  字典文件中存在不在 locales.targets 内的语种 [${[...carriedLocales].join(', ')}]：` +
+        `已原样保留在 ${FILES.TRANSLATIONS_JSON} / ${FILES.UNTRANSLATED_JSON} 中，` +
+        `但不会写入语言文件——如需落盘请把它们加进 locales.targets 后重跑。`;
+      LoggerUtils.warn(line);
+      this.report.addWarning(line);
     }
 
     return {

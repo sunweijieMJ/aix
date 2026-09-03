@@ -416,4 +416,153 @@ describe('审计修复回归（Vue / 共享 AST 层）', () => {
       expect(out).toContain("<script setup>\nimport { t } from '@/plugins/locale';");
     });
   });
+
+  // ── 11. 标签模板 / 解析失败 / 本地 t 声明的其余形态 ──────────────────────
+  describe('V-02 标签模板的 template 不提取', () => {
+    it('V-02: css`…` / gql`…` 的字面段中文不提取，避免拼出 csst(...)', async () => {
+      const { out, extracted } = await generate(
+        "<script setup>\nconst s = css`content: '请稍候';`;\nconst g = gql`query { 中文字段 }`;\n</script>\n",
+      );
+      expect(extracted).toHaveLength(0);
+      expect(out).not.toContain('csst(');
+      expect(out).not.toContain('gqlt(');
+    });
+
+    it('V-02: 跳过时留 warning（对齐 React 端 warnTaggedTemplateSkipped）', async () => {
+      const adapter = adapterOf();
+      const fp = path.join(dir, 'Tagged.vue');
+      fs.writeFileSync(fp, "<script setup>\nconst s = css`color: '红色';`;\n</script>\n", 'utf8');
+      const extractor = adapter.getTextExtractor();
+      await extractor.extractFromFile(fp);
+      expect(extractor.drainWarnings().some((w) => w.includes('跳过标签模板中的中文提取'))).toBe(
+        true,
+      );
+    });
+
+    it('V-02 反向：标签模板 ${} 插值里的字符串字面量照常提取', async () => {
+      const { out } = await generate(
+        "<script setup>\nconst label = '标签';\nconst s = css`content: ${fn('提示')};`;\n</script>\n",
+      );
+      expect(out).toContain("t('k0')");
+      expect(out).toContain("t('k1')");
+      expect(out).not.toContain('csst(');
+    });
+
+    it('V-02 反向：非标签的普通模板串仍照常提取', async () => {
+      const { out } = await generate(
+        '<script setup>\nconst n = 1;\nconst s = `共 ${n} 项`;\n</script>\n',
+      );
+      expect(out).toContain("t('k0', { value: n })");
+    });
+  });
+
+  describe('V-04 模块顶层的函数 / 类 / 数组解构 t 同样拦住注入', () => {
+    it('V-04: `function t()` 拦住注入（此前产出重复声明的 SFC）', async () => {
+      const { out } = await generate(
+        `<script setup>\nfunction t(k) { return k; }\nconst label = '标签';\n</script>\n`,
+      );
+      expect(out).not.toContain("import { t } from '@/plugins/locale'");
+      expect(out).toContain('function t(k) { return k; }');
+    });
+
+    it('V-04: `export default function t()` 同样拦住注入', async () => {
+      const { out } = await generate(
+        `<script setup>\nexport default function t(k) { return k; }\nconst label = '标签';\n</script>\n`,
+      );
+      expect(out).not.toContain("import { t } from '@/plugins/locale'");
+    });
+
+    it('V-04: `class t {}` 同样占用标识符', async () => {
+      const { out } = await generate(
+        `<script setup>\nclass t {}\nconst label = '标签';\nvoid t;\n</script>\n`,
+      );
+      expect(out).not.toContain("import { t } from '@/plugins/locale'");
+    });
+
+    it('V-04: 数组解构 `const [t] = useX()` 同样是本地 t 绑定', async () => {
+      const { out } = await generate(
+        `<script setup>\nconst [t] = useX();\nconst label = '标签';\n</script>\n`,
+      );
+      expect(out).not.toContain("import { t } from '@/plugins/locale'");
+    });
+
+    it('V-04 反向：`function tt()` / `class T {}` 不是本地 t，仍照常注入', async () => {
+      const { out } = await generate(
+        `<script setup>\nfunction tt(k) { return k; }\nclass T {}\nconst label = '标签';\nvoid T;\n</script>\n`,
+      );
+      expect(out).toContain("import { t } from '@/plugins/locale';");
+    });
+
+    it('V-04 反向：函数体内的 t 声明是合法遮蔽，不拦模块级注入', async () => {
+      const { out } = await generate(
+        `<script setup>\nfunction useX() {\n  const t = 1;\n  return t;\n}\nconst label = '标签';\nvoid useX;\n</script>\n`,
+      );
+      expect(out).toContain("import { t } from '@/plugins/locale';");
+    });
+  });
+
+  describe('V-05 解析失败不静默', () => {
+    it('V-05: SFC 解析出错（未闭合 </template）时记 warning 与 parse-error 人工项', async () => {
+      const adapter = adapterOf();
+      const fp = path.join(dir, 'Broken.vue');
+      fs.writeFileSync(
+        fp,
+        `<template>\n  <div>模板中文</div>\n</template\n<script setup>\nconst a = '脚本中文';\n</script>\n`,
+        'utf8',
+      );
+      const extractor = adapter.getTextExtractor();
+      await extractor.extractFromFile(fp);
+      expect(extractor.drainWarnings().some((w) => w.includes('跳过解析失败的内容'))).toBe(true);
+      const skips = extractor.drainManualSkips();
+      expect(skips.filter((s) => s.category === 'parse-error')).toHaveLength(1);
+    });
+
+    it('V-05: template 解析抛错（重复属性）时同样留痕', async () => {
+      const adapter = adapterOf();
+      const fp = path.join(dir, 'Dup.vue');
+      fs.writeFileSync(
+        fp,
+        `<template>\n  <div class="a" class="b">重复属性</div>\n</template>\n<script setup>\nconst m = '脚本';\n</script>\n`,
+        'utf8',
+      );
+      const extractor = adapter.getTextExtractor();
+      await extractor.extractFromFile(fp);
+      const skips = extractor.drainManualSkips();
+      expect(skips.some((s) => s.category === 'parse-error')).toBe(true);
+    });
+
+    it('V-05 反向：正常 SFC 不记 parse-error', async () => {
+      const adapter = adapterOf();
+      const fp = path.join(dir, 'Ok.vue');
+      fs.writeFileSync(fp, `<template>\n  <div>文案</div>\n</template>\n`, 'utf8');
+      const extractor = adapter.getTextExtractor();
+      await extractor.extractFromFile(fp);
+      expect(extractor.drainManualSkips().filter((s) => s.category === 'parse-error')).toHaveLength(
+        0,
+      );
+    });
+  });
+
+  describe('V-06 generate 侧只清模块顶层的 hook 声明', () => {
+    it('V-06: 函数体内的用户 hook 保留，模块 import 照常注入（往返无损）', async () => {
+      const src =
+        `<template>\n  <div>{{ msg }}</div>\n</template>\n<script setup>\n` +
+        `import { useI18n } from 'vue-i18n';\nfunction useX() {\n  const { t } = useI18n();\n  return t('own');\n}\n` +
+        `const msg = '脚本文案';\nvoid useX;\n</script>\n`;
+      const { out, localeMap } = await generate(src);
+      expect(out).toContain('  const { t } = useI18n();');
+      expect(out).toContain(`import { useI18n } from 'vue-i18n';`);
+      expect(out).toContain("import { t } from '@/plugins/locale';");
+      expect(restore(out, localeMap)).toBe(src);
+    });
+
+    it('V-06 反向：模块顶层的 hook 声明仍迁移为模块 import', async () => {
+      const { out } = await generate(
+        `<template>\n  <div>{{ msg }}</div>\n</template>\n<script setup>\n` +
+          `import { useI18n } from 'vue-i18n';\nconst { t } = useI18n();\nconst msg = '脚本文案';\n</script>\n`,
+      );
+      expect(out).toContain("import { t } from '@/plugins/locale';");
+      expect(out).not.toContain('const { t } = useI18n()');
+    });
+  });
 });

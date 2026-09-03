@@ -206,3 +206,113 @@ describe('MergeProcessor 桶式路径 — 读侧并入未迁移 legacy', () => {
     });
   });
 });
+
+/** 探测临时目录所在文件系统是否大小写不敏感（APFS / NTFS 是，ext4 不是）。 */
+const isCaseInsensitiveFs = (): boolean => {
+  const probe = path.join(tmpDir, 'CaseProbe.tmp');
+  fs.writeFileSync(probe, '');
+  const insensitive = fs.existsSync(path.join(tmpDir, 'caseprobe.tmp'));
+  fs.rmSync(probe, { force: true });
+  return insensitive;
+};
+
+/**
+ * 大小写不敏感文件系统（macOS APFS / Windows NTFS）上，桶名只改大小写时 writeJsonFile
+ * 覆盖的是磁盘上的同一个 inode、目录项仍是旧名：孤儿清理按字符串比对认不出它，
+ * 刚写好的桶会被改名 .bak，该 locale 的活跃集清空、导出发布空包。
+ */
+describe('writeBucketedLocaleFile — 桶名仅大小写变化', () => {
+  it('U-03: 刚写入的桶不被当孤儿备份，内容可完整读回', () => {
+    const config = makeConfig();
+    const mgr = new LanguageFileManager(config, false);
+
+    // 磁盘上先有大写桶名的存量文件（上一版规则叫 Common）
+    fs.mkdirSync(path.join(localeDir(), 'zh-CN'), { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir(), 'zh-CN', 'Common.json'),
+      JSON.stringify({ a: { x: '旧' } }),
+    );
+
+    mgr.writeLocaleFile({ 'a.x': '旧', 'a.y': '新' }, 'zh-CN', {
+      'a.x': 'common',
+      'a.y': 'common',
+    });
+
+    expect(mgr.readLocaleFile('zh-CN')).toEqual({ 'a.x': '旧', 'a.y': '新' });
+    // 大小写敏感的文件系统上二者本就是两个独立文件，旧文件按孤儿备份是正确行为；
+    // 事故只发生在大小写不敏感的文件系统（写入与孤儿判定指向同一个 inode）。
+    if (!isCaseInsensitiveFs()) return;
+    const entries = fs.readdirSync(path.join(localeDir(), 'zh-CN'));
+    expect(entries.some((e) => e.endsWith('.bak'))).toBe(false);
+    expect(entries).toContain('common.json');
+  });
+
+  it('U-03: 真正的孤儿桶照常备份为 .bak', () => {
+    const config = makeConfig();
+    const mgr = new LanguageFileManager(config, false);
+    fs.mkdirSync(path.join(localeDir(), 'zh-CN'), { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir(), 'zh-CN', 'extra.json'),
+      JSON.stringify({ extra: { z: '存量' } }),
+    );
+
+    mgr.writeLocaleFile({ 'a.x': '值' }, 'zh-CN', { 'a.x': 'common' });
+
+    const entries = fs.readdirSync(path.join(localeDir(), 'zh-CN'));
+    expect(entries).toContain('extra.json.bak');
+    expect(entries).toContain('common.json');
+  });
+});
+
+/**
+ * 同 key 落在多个桶时，合并按目录枚举顺序后者胜出；任何写路径随后按 keyBucketMap 重写，
+ * 另一份永久消失。读取顺序必须确定，且必须告警到能定位两侧。
+ */
+describe('桶式读取 — 跨桶重复 key', () => {
+  it('B9: 同 key 跨桶时告警含两个桶名与两个值', () => {
+    const config = makeConfig();
+    fs.mkdirSync(path.join(localeDir(), 'zh-CN'), { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir(), 'zh-CN', 'common.json'),
+      JSON.stringify({ order: { title: '来自 common 桶' } }),
+    );
+    fs.writeFileSync(
+      path.join(localeDir(), 'zh-CN', 'order.json'),
+      JSON.stringify({ order: { title: '来自 order 桶' } }),
+    );
+
+    const warn = vi.mocked(LoggerUtils.warn);
+    warn.mockClear();
+    const flat = new LanguageFileManager(config, false).readLocaleFile('zh-CN');
+
+    // 排序后 common 先于 order 被读入，后者胜出（确定性，不随文件系统枚举顺序变化）
+    expect(flat).toEqual({ 'order.title': '来自 order 桶' });
+    const messages = warn.mock.calls.map((c) => String(c[0]));
+    const duplicate = messages.find((m) => m.includes('order.title'));
+    expect(duplicate).toBeDefined();
+    expect(duplicate).toContain('common');
+    expect(duplicate).toContain('order');
+    expect(duplicate).toContain('来自 common 桶');
+    expect(duplicate).toContain('来自 order 桶');
+  });
+
+  it('B9: 无重复 key 时不告警', () => {
+    const config = makeConfig();
+    fs.mkdirSync(path.join(localeDir(), 'zh-CN'), { recursive: true });
+    fs.writeFileSync(
+      path.join(localeDir(), 'zh-CN', 'common.json'),
+      JSON.stringify({ a: { x: '1' } }),
+    );
+    fs.writeFileSync(
+      path.join(localeDir(), 'zh-CN', 'order.json'),
+      JSON.stringify({ order: { title: '2' } }),
+    );
+
+    const warn = vi.mocked(LoggerUtils.warn);
+    warn.mockClear();
+    new LanguageFileManager(config, false).readLocaleFile('zh-CN');
+    expect(
+      warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('同时存在于桶')),
+    ).toEqual([]);
+  });
+});

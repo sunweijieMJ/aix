@@ -21,7 +21,7 @@ import {
 import { processTemplateExpression } from '../../utils/message-shape';
 import { NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import { decodeJsxEntities } from './jsx-entities';
-import { ReactASTUtils } from './react-ast-utils';
+import { ReactASTUtils, type ConflictingBindingOptions } from './react-ast-utils';
 import { FileUtils } from '../../utils/file-utils';
 import { LoggerUtils } from '../../utils/logger';
 import { isNonTranslatableText } from '../../utils/text-classify';
@@ -435,11 +435,20 @@ export class ReactTextExtractor extends BaseTextExtractor {
 
       // 组件内已有与注入变量同名的非 i18n 绑定（`const { t } = useTemperature()`）：注入器
       // 会跳过注入（否则同块双声明 TS2451），但替换已经发生 —— 裸 t('key') 于是解析到那个
-      // 同名函数上，产出「能编译、行为错」的代码。把判定前移到提取端，让该组件的候选整体
+      // 同名函数上，产出「能编译、行为错」的代码。把判定前移到提取端，让该候选
       // 不进 extractedStrings，替换也就不会发生。jsx-text 走 <Trans>/<FormattedMessage>
       // 组件形态、不引用 t 绑定，与上面两道守卫同样不在此跳过。
-      if (context !== 'jsx-text' && this.hasConflictingTranslationBinding(node)) {
+      if (context !== 'jsx-text' && this.hasConflictingTranslationBinding(node, componentType)) {
         this.warnConflictingTranslationBinding(node, sourceFile, filePath);
+        return;
+      }
+
+      // 除翻译变量外，本候选还会让工具向模块顶层注入 hook / JSX 组件 / HOC 及其 props 类型名。
+      // 这些名字若已被非 i18n 来源占用（自封装的 useTranslation wrapper、自有 Trans 组件），
+      // 注入即产出重复标识符（TS2300）。同样在提取端跳过，避免替换先于注入落地。
+      const conflictingName = this.conflictingInjectedName(node, context, componentType);
+      if (conflictingName) {
+        this.warnConflictingInjectedName(node, sourceFile, filePath, conflictingName);
         return;
       }
 
@@ -534,6 +543,7 @@ export class ReactTextExtractor extends BaseTextExtractor {
     let hasElementChild = false;
     let jsxInExpression: ts.JsxExpression | undefined;
     let commentChild: ts.JsxExpression | undefined;
+    let spreadChild: ts.JsxExpression | undefined;
 
     for (const child of children) {
       if (ts.isJsxText(child)) {
@@ -541,6 +551,10 @@ export class ReactTextExtractor extends BaseTextExtractor {
         if (text && FileUtils.containsChinese(text)) {
           hasChineseText = true;
         }
+      } else if (ts.isJsxExpression(child) && child.dotDotDotToken) {
+        // 展开子节点 `{...items}`：展开的是一组子元素，不是可插值的单个值。
+        hasExpression = true;
+        spreadChild ??= child;
       } else if (ts.isJsxExpression(child) && child.expression) {
         hasExpression = true;
         if (!jsxInExpression && ReactASTUtils.containsJsxNode(child.expression)) {
@@ -588,6 +602,13 @@ export class ReactTextExtractor extends BaseTextExtractor {
     // 文本与嵌套元素各自独立提取（碎片 key 可接受，坏渲染不可接受）。
     if (jsxInExpression) {
       this.warnJsxInsideInterpolation(jsxInExpression, sourceFile, filePath);
+      return null;
+    }
+
+    // 含展开子节点 `{...items}` 时放弃合并：合并会把它当普通插值写成 `${items}` 并塞进
+    // values，原本展开渲染的一组子节点被插值成字符串，`...` 语义静默丢失。
+    if (spreadChild) {
+      this.warnJsxSpreadChild(spreadChild, sourceFile, filePath);
       return null;
     }
 
@@ -713,6 +734,33 @@ export class ReactTextExtractor extends BaseTextExtractor {
     this.recordWarning(msg);
   }
 
+  /** 同一轮提取内已告警过的「混合内容含展开子节点」位置，按 文件:偏移 去重。 */
+  private warnedJsxSpreadChildren = new Set<string>();
+
+  /**
+   * 输出「混合内容含展开子节点、放弃整段合并」的 warning。
+   *
+   * 只走 warning 通道（不进 manualSkip）：文案并未被跳过——退回子节点递归后文本照常提取，
+   * 只是拆成多个 key，计入 manualSkip 会虚报「需人工处理」的覆盖率缺口。
+   */
+  private warnJsxSpreadChild(
+    node: ts.JsxExpression,
+    sourceFile: ts.SourceFile,
+    filePath: string,
+  ): void {
+    const dedupeKey = `${filePath}:${node.getStart(sourceFile)}`;
+    if (this.warnedJsxSpreadChildren.has(dedupeKey)) return;
+    this.warnedJsxSpreadChildren.add(dedupeKey);
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const msg =
+      `⚠️ 混合内容含展开子节点，放弃整段合并提取：${FileUtils.getRelativePath(filePath)}:${pos.line + 1}\n` +
+      `   原因：{...children} 展开的是一组子节点，当插值变量合并会丢掉展开语义。\n` +
+      `   影响：该段文本改为按文本节点分别提取，会拆成多个 key。\n` +
+      `   建议：如需保持整句，请把展开子节点移到该元素之外。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
+  }
+
   /** 同一轮提取内已告警过的标签模板位置（CSS-in-JS 项目单文件可能几十处，防连刷）。 */
   private warnedTaggedTemplates = new Set<string>();
 
@@ -761,26 +809,102 @@ export class ReactTextExtractor extends BaseTextExtractor {
   }
 
   /**
-   * 节点所在的可注入函数组件内，是否已有与注入变量同名的非 i18n 本地绑定。
-   * 判定复用 ReactASTUtils.hasConflictingTranslationBinding —— 与
-   * ReactComponentInjector.hasConflictingLocalBinding 是同一份实现，两端不可分叉。
+   * 「哪些同名绑定属于 i18n 来源」的豁免口径，提取端与注入端
+   * （ReactComponentInjector.hasConflictingLocalBinding）必须同源，两端分叉会产出
+   * 「已替换成裸 t() 却没注入绑定」的错误代码。
    */
-  private hasConflictingTranslationBinding(node: ts.Node): boolean {
-    if (!this.library) return false;
-    const host = ReactASTUtils.findEnclosingInjectableFunctionComponent(node);
-    if (!host) return false;
-    const i18nModules = [this.library.packageName];
+  private bindingOptions(library: ReactI18nLibrary): ConflictingBindingOptions {
+    const i18nModules = [library.packageName];
     if (this.tImport) i18nModules.push(this.tImport);
+    return {
+      i18nModules,
+      isI18nDeclaration: (declaration) => library.isGlobalFunctionDeclaration(declaration),
+      hookName: library.hookName,
+      hocPropsType: library.hocPropsType,
+      isHOCCall: (expression) => library.isHOCCall(expression),
+    };
+  }
+
+  /**
+   * 本替换点替换成裸 `t(...)` / `intl.formatMessage(...)` 后是否会解析错人。
+   *
+   * 两问都要过（判定收口在 ReactASTUtils，与注入端共用）：
+   *  1. **引用级**：从本节点上溯到注入宿主，任一层块 / 函数形参 / 回调形参 / 解构形参
+   *     绑定了同名变量且不是 i18n 来源 —— 裸 t() 会调到那个业务变量上（TS2349）；
+   *  2. **注入级**：宿主作用域自身与其外层（含模块顶层）已有同名非 i18n 绑定 —— 注入的
+   *     hook 声明轻则同块双声明（TS2451），重则遮蔽外层同名绑定。
+   *
+   * 宿主按 componentType 分三类：函数组件（hook 注入在组件体顶部）、类组件（this.props
+   * 解构注入在该成员体内，故只判该成员）、模块级（裸 t 来自模块顶层 import / 声明）。
+   */
+  private hasConflictingTranslationBinding(
+    node: ts.Node,
+    componentType: 'function' | 'class' | 'other',
+  ): boolean {
     const library = this.library;
-    return ReactASTUtils.hasConflictingTranslationBinding(
-      host,
-      library.translationVarName,
-      library.hookName,
-      {
-        i18nModules,
-        isI18nDeclaration: (declaration) => library.isGlobalFunctionDeclaration(declaration),
-      },
-    );
+    if (!library) return false;
+    const options = this.bindingOptions(library);
+    const varName = library.translationVarName;
+
+    if (componentType === 'function') {
+      const host = ReactASTUtils.findEnclosingInjectableFunctionComponent(node);
+      if (host) {
+        return (
+          ReactASTUtils.referenceBindsConflictingVar(node, varName, host, options) ||
+          ReactASTUtils.hasConflictingTranslationBinding(host, varName, library.hookName, options)
+        );
+      }
+    }
+
+    if (componentType === 'class') {
+      const member = ReactASTUtils.findEnclosingClassMemberFunction(node);
+      return ReactASTUtils.referenceBindsConflictingVar(node, varName, member, options);
+    }
+
+    const sourceFile = node.getSourceFile();
+    if (ReactASTUtils.referenceBindsConflictingVar(node, varName, undefined, options)) return true;
+    if (!ReactASTUtils.canBindName(sourceFile, varName, options)) return true;
+    // react-intl 模块级还要注入 `import { getIntl }`：该名字被占用同样是重复标识符。
+    const globalName = library.globalFunctionName.split('.')[0]!;
+    return globalName !== varName && !ReactASTUtils.canBindName(sourceFile, globalName, options);
+  }
+
+  /**
+   * 本候选会让工具向模块顶层注入的名字里，第一个已被非 i18n 来源占用的名字（无则 undefined）。
+   *
+   * jsx-text 走 JSX 组件（Trans / FormattedMessage）；函数组件走 hook；类组件走 HOC 及其
+   * props 类型。这些名字来自 i18n 库包名或 tImport 时不算冲突（工具自身上一轮的产物），
+   * 保证增量重跑幂等。
+   */
+  private conflictingInjectedName(
+    node: ts.Node,
+    context: 'jsx-text' | 'jsx-attribute' | 'js-code',
+    componentType: 'function' | 'class' | 'other',
+  ): string | undefined {
+    const library = this.library;
+    if (!library) return undefined;
+    const options = this.bindingOptions(library);
+    const names: Array<{ name: string; kind: 'value' | 'type' }> = [];
+
+    if (context === 'jsx-text') {
+      names.push({ name: library.jsxComponentName, kind: 'value' });
+    } else if (componentType === 'function') {
+      names.push({ name: library.hookName, kind: 'value' });
+    } else if (componentType === 'class') {
+      const specifiers = library.getImportSpecifiers({
+        hasJsxComponent: false,
+        hasHook: false,
+        hasHOC: true,
+      });
+      for (const name of specifiers.values) names.push({ name, kind: 'value' });
+      for (const name of specifiers.types) names.push({ name, kind: 'type' });
+    }
+
+    const sourceFile = node.getSourceFile();
+    for (const { name, kind } of names) {
+      if (!ReactASTUtils.canBindName(sourceFile, name, { ...options, kind })) return name;
+    }
+    return undefined;
   }
 
   /**
@@ -830,6 +954,40 @@ export class ReactTextExtractor extends BaseTextExtractor {
       `   原因：注入器不能在同块再声明一个 ${varName}（TS2451）、也不能遮蔽外层同名绑定，` +
       `若仍替换文案，新的 ${varName}(...) 会解析到那个同名函数上。\n` +
       `   建议：把该绑定改名，或人工为该组件接入 i18n 后重跑。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
+    this.recordManualSkip({
+      category: 'conflicting-t-binding',
+      message: msg,
+      dedupeKey,
+    });
+  }
+
+  /** 同一轮提取内已告警过的「注入名被占用」位置，按 文件:偏移 去重。 */
+  private warnedConflictingInjectedNames = new Set<string>();
+
+  /**
+   * 输出「工具要注入的名字已被非 i18n 来源占用、跳过提取」的 warning，并计入 manualSkip。
+   *
+   * 与 warnConflictingTranslationBinding 同走 conflicting-t-binding 类目：成因同族
+   * （模块内同名标识符冲突）、人工处理手法一致（改名或人工接入），不为此扩
+   * ManualSkipDiagnostic 的封闭联合。
+   */
+  private warnConflictingInjectedName(
+    node: ts.Node,
+    sourceFile: ts.SourceFile,
+    filePath: string,
+    name: string,
+  ): void {
+    const dedupeKey = `${filePath}:${node.getStart(sourceFile)}`;
+    if (this.warnedConflictingInjectedNames.has(dedupeKey)) return;
+    this.warnedConflictingInjectedNames.add(dedupeKey);
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const msg =
+      `⚠️ 跳过提取：模块顶层已存在与待注入的 '${name}' 同名、且非 i18n 来源的绑定：` +
+      `${FileUtils.getRelativePath(filePath)}:${pos.line + 1}\n` +
+      `   原因：改写需要从 '${this.library?.packageName}' 导入 ${name}，与既有同名绑定构成重复标识符（TS2300）。\n` +
+      `   建议：把该绑定改名（如自封装的 ${name} 换个导出名），或人工为该文件接入 i18n 后重跑。`;
     LoggerUtils.warn(msg);
     this.recordWarning(msg);
     this.recordManualSkip({

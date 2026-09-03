@@ -490,3 +490,94 @@ describe('CsvImportProcessor — 非对象字典条目守卫（审计 ⑦）', (
     expect(JSON.parse(fs.readFileSync(untPath, 'utf-8'))).toEqual({ a: 'oops-a-string' });
   });
 });
+
+/**
+ * B3：人工回流路径此前完全绕过 isValidTranslation 与占位符校验 —— `---`、被翻译掉的
+ * 占位符名原样进字典并随 merge 写进 locale，translate/merge 两条自动路径的三道闸
+ * 在人工路径一道也没有。csv-import 侧至少告警（写回仍按人的编辑意图执行），
+ * 无效值最终由 merge 写 locale 前拒收。
+ */
+describe('CsvImportProcessor — 无效译文 / 占位符失配告警（B3）', () => {
+  let tmpDir: string;
+  let localeDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'csv-import-invalid-'));
+    localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  const warnings = (): string => warnSpy.mock.calls.flat().map(String).join('\n');
+
+  it('B3: 无效值与占位符失配各告警一次，值仍按编辑意图写回', async () => {
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({
+        'a.b': { 'zh-CN': '共{count}条', 'en-US': '' },
+        'a.c': { 'zh-CN': '确认', 'en-US': '' },
+      }),
+    );
+    const input = path.join(tmpDir, 'in.csv');
+    fs.writeFileSync(
+      input,
+      serializeCsv([
+        ['key', 'zh-CN', 'en-US'],
+        ['a.b', '共{count}条', '{数量} items'],
+        ['a.c', '确认', '---'],
+      ]),
+    );
+
+    await new CsvImportProcessor(makeConfig(), false, {
+      input,
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    expect(warnings()).toMatch(/译文无效[\s\S]*a\.c/);
+    expect(warnings()).toMatch(/占位符与源文案不一致[\s\S]*a\.b/);
+    const written = JSON.parse(fs.readFileSync(path.join(localeDir, 'untranslated.json'), 'utf-8'));
+    expect(written['a.b']['en-US']).toBe('{数量} items');
+    expect(written['a.c']['en-US']).toBe('---');
+  });
+
+  it('B3: 译文合法且占位符一致 → 不产生这两条告警（无回归）', async () => {
+    fs.writeFileSync(
+      path.join(localeDir, 'untranslated.json'),
+      JSON.stringify({ 'a.b': { 'zh-CN': '共{count}条', 'en-US': '' } }),
+    );
+    const input = path.join(tmpDir, 'in.csv');
+    fs.writeFileSync(
+      input,
+      serializeCsv([
+        ['key', 'zh-CN', 'en-US'],
+        ['a.b', '共{count}条', '{count} items'],
+      ]),
+    );
+
+    await new CsvImportProcessor(makeConfig(), false, {
+      input,
+      dryRun: false,
+      ci: true,
+    }).execute();
+
+    expect(warnings()).not.toMatch(/译文无效|占位符与源文案不一致/);
+  });
+});

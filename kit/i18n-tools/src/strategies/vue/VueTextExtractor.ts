@@ -55,7 +55,13 @@ export class VueTextExtractor extends BaseTextExtractor {
 
     // 处理 .vue 文件
     if (ext === 'vue') {
-      const { descriptor } = parseSFC(sourceText, { filename: filePath });
+      const { descriptor, errors } = parseSFC(sourceText, { filename: filePath });
+      // parseSFC 不抛错，只把语法问题填进 errors，descriptor 里对应的块会缺失（如 `</template`
+      // 未闭合会吞掉其后的 <script setup>）。不检查就等于整块内容静默消失：既不进 locale，也不
+      // 进任何跳过清单，覆盖率照 100% 报。source-key-scanner 对同一情况已有显式回退，此处补齐。
+      if (errors.length > 0) {
+        this.warnParseFailure('SFC', filePath, errors.map((e) => e.message).join('; '));
+      }
 
       // 提取 template 部分
       if (descriptor.template) {
@@ -126,6 +132,8 @@ export class VueTextExtractor extends BaseTextExtractor {
       await this.traverseTemplateNode(ast.children, extractedStrings, filePath, lineOffset);
     } catch (error) {
       LoggerUtils.error(`解析 template 失败: ${filePath}`, error);
+      // 只打 console 不进 RunReport / 覆盖率的话，整块 template 的中文会静默消失且覆盖率虚高。
+      this.warnParseFailure('template', filePath, error instanceof Error ? error.message : '');
     }
 
     return extractedStrings;
@@ -1165,6 +1173,8 @@ export class VueTextExtractor extends BaseTextExtractor {
       );
     } catch (error) {
       LoggerUtils.error(`解析 script 失败: ${filePath}`, error);
+      // 同 template：不留痕会让整块 script 的中文静默消失、覆盖率虚高。
+      this.warnParseFailure('script', filePath, error instanceof Error ? error.message : '');
     }
 
     return extractedStrings;
@@ -1221,7 +1231,17 @@ export class VueTextExtractor extends BaseTextExtractor {
     // 处理模板字符串：复用 processTemplateExpression，
     // 与 React 端走同一份字面量过滤 / 占位符生成逻辑，避免双端漂移。
     else if (ts.isTemplateExpression(node)) {
-      if (templateLiteralsContainChinese(node)) {
+      // cspell:ignore gql csst —— 注释中的标签模板示例（graphql-tag 的 gql）与拼接产物，非词汇
+      // 标签模板（css`…` / gql`…` / String.raw`…`）的 template 整体不可提取：VueTransformer
+      // 按模板节点区间整体替换，替换体与前面的 tag 无缝拼接成 `csst('key')` 这类未定义调用，
+      // 且 restore 无从回退。字面段含中文时告警留痕；不 return —— ${} 插值里的字符串字面量
+      // 仍可由子节点遍历安全提取（替换单个字面量不会破坏 tag 调用）。与 React 端同口径。
+      if (ts.isTaggedTemplateExpression(node.parent)) {
+        const quasiTexts = [node.head.text, ...node.templateSpans.map((s) => s.literal.text)];
+        if (quasiTexts.some((quasi) => FileUtils.containsChinese(quasi))) {
+          this.warnTaggedTemplateSkipped(node, sourceFile, lineOffset, filePath);
+        }
+      } else if (templateLiteralsContainChinese(node)) {
         // 模板字符串里含 HTML 标签（典型场景：innerHTML = `<div>...<span>中文</span></div>`），
         // 整段提取会把 SVG / CSS / 样式属性一起灌进 i18n value，翻译质量差且多语言下结构不可控。
         // 跳过提取并 warning，由开发者把 t() 缩到具体文案片段上。
@@ -1251,6 +1271,13 @@ export class VueTextExtractor extends BaseTextExtractor {
     }
     // 处理无替换模板字符串
     else if (ts.isNoSubstitutionTemplateLiteral(node)) {
+      // 同 TemplateExpression：标签模板的 template 不可提取（替换会拼坏 tag 调用）。
+      if (ts.isTaggedTemplateExpression(node.parent)) {
+        if (FileUtils.containsChinese(node.text)) {
+          this.warnTaggedTemplateSkipped(node, sourceFile, lineOffset, filePath);
+        }
+        return;
+      }
       // 同 TemplateExpression：含 HTML 的整段模板拒绝提取，避免 HTML 入 locale value。
       if (FileUtils.containsChinese(node.text) && templateLiteralContainsHtmlTags(node.text)) {
         this.warnHtmlInTemplateLiteral(node, sourceFile, lineOffset, filePath);
@@ -1476,6 +1503,56 @@ export class VueTextExtractor extends BaseTextExtractor {
       message: msg,
       dedupeKey: `${filePath}:${sourceOffset ?? line}`,
     });
+  }
+
+  /**
+   * 输出「解析失败、相应内容整块未提取」warning 并记人工项。
+   *
+   * 必须记 manualSkip 而不只是 warning：解析失败的块里的中文既不进 locale、也不进任何其它
+   * 跳过清单，不计入覆盖率分母时整份报告会按 100% 覆盖呈现，用户看不到漏网的一整块内容。
+   * 一次解析失败记一条（dedupeKey 用 文件:scope）—— 失败面是整块，无法拆到具体片段。
+   */
+  private warnParseFailure(scope: string, filePath: string, detail: string): void {
+    const msg =
+      `⚠️ 跳过解析失败的内容：${FileUtils.getRelativePath(filePath)} <${scope}>` +
+      `${detail ? `\n   解析器报错：${detail}` : ''}\n` +
+      `   原因：语法有误时拿不到 AST，该块整体不提取，其中的中文不会出现在 locale 里。\n` +
+      `   建议：先修好该块的语法（未闭合标签 / 重复属性等）再重跑 generate。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
+    this.recordManualSkip({
+      category: 'parse-error',
+      message: msg,
+      dedupeKey: `${filePath}:${scope}`,
+    });
+  }
+
+  /** 同一轮提取内已告警过的标签模板位置（CSS-in-JS 项目单文件可能几十处，防连刷）。 */
+  private warnedTaggedTemplates = new Set<string>();
+
+  /**
+   * 输出「标签模板含中文但跳过提取」warning。只走 recordWarning 不走 recordManualSkip：
+   * 与 React 端 warnTaggedTemplateSkipped 同口径 —— ManualSkipDiagnostic.category 是封闭
+   * 联合，而这类命中（CSS-in-JS / gql 里的中文）绝大多数本就不该翻译，warning 留痕足够。
+   * 按 文件:偏移 去重，去重前缀统一用入参 filePath（不用被规范化过的 sourceFile.fileName）。
+   */
+  private warnTaggedTemplateSkipped(
+    node: ts.Node,
+    sourceFile: ts.SourceFile,
+    lineOffset: number,
+    filePath: string,
+  ): void {
+    const start = node.getStart(sourceFile);
+    const dedupeKey = `${filePath}:${start}`;
+    if (this.warnedTaggedTemplates.has(dedupeKey)) return;
+    this.warnedTaggedTemplates.add(dedupeKey);
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, start);
+    const msg =
+      `⚠️ 跳过标签模板中的中文提取：${FileUtils.getRelativePath(filePath)}:${pos.line + 1 + lineOffset}\n` +
+      `   原因：替换标签模板会破坏 css/gql 等标签调用（与标签名拼成未定义函数）。\n` +
+      `   建议：如需国际化，请把中文移出标签模板、经变量插值传入。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
   }
 
   /**

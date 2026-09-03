@@ -17,7 +17,8 @@ import { collapseWhitespace } from '../utils/text-normalize';
  * 状态：内部维护两份累积索引，单次 Generate 流程内复用：
  *  - existingIds：已占用的 ID 集合（防新生成 ID 与之冲突）
  *  - messageToKeysMap：原文 → 历史 key[] 的反向映射
- *  - messageToPrefixes：原文 → 已分配过 key 的目录前缀集合（用于 promoteToCommon 决策）
+ *  - messageToPrefixes：原文 → 本轮新分配 key 的真实目录前缀集合（用于 promoteToCommon 决策）
+ *  - messageToLocaleKeys：原文 → 语言文件里的历史 key（前缀在决策时按 knownPrefixes 归属）
  */
 export class IdReuseResolver {
   private readonly config: ResolvedConfig;
@@ -32,12 +33,23 @@ export class IdReuseResolver {
   private existingCallSites: number = 0;
   /** 本轮新分配的 key 数（registerNewId 次数）：与「本轮转换的调用点数」是两个口径 */
   private newlyRegisteredIds: number = 0;
+  /** 本轮由真实文件路径派生出的目录前缀集合，供历史 key 的前缀归属做最长匹配 */
+  private readonly knownPrefixes: Set<string> = new Set();
+  /** 原文 → 语言文件里的历史 key（前缀需按 knownPrefixes 延迟归属，故不在构造期定型） */
+  private readonly messageToLocaleKeys: Map<string, string[]> = new Map();
+  /**
+   * separator 是否可能出现在语义段内部。
+   * sanitizeSemanticId 只产出 [A-Za-z0-9_]，故 `_` 与字母数字型 separator 无法靠
+   * 「最后一个 separator」反推目录前缀（`pages_a_confirm_order` 会被切成 `pages_a_confirm`）。
+   */
+  private readonly separatorAmbiguous: boolean;
 
   constructor(config: ResolvedConfig, isCustom: boolean) {
     this.config = config;
     this.isCustom = isCustom;
     this.allowGlobalReuse = config.keys.reuse.acrossDirectories;
     this.idGenerator = new IdGenerator(config);
+    this.separatorAmbiguous = /[A-Za-z0-9_]/.test(config.keys.separator);
 
     this.loadFromLocaleFile();
   }
@@ -76,6 +88,9 @@ export class IdReuseResolver {
    */
   scanExistingCallsInSources(filePaths: Iterable<string>, i18nModules?: readonly string[]): void {
     for (const filePath of filePaths) {
+      // 顺带登记本轮涉及的真实目录前缀：历史 key 的前缀归属靠这份集合做最长匹配，
+      // 集合越全，反推越准（见 prefixOfKey）。
+      this.prefixForFile(filePath);
       try {
         const raw = fs.readFileSync(filePath, 'utf-8');
         // 剥除注释，避免被注释掉的引用污染 existingIds 与覆盖率统计。
@@ -118,14 +133,14 @@ export class IdReuseResolver {
     const candidates = this.messageToKeysMap.get(collapseWhitespace(message));
     if (!candidates || candidates.length === 0) return undefined;
 
-    const currentPrefix = this.idGenerator.getDirectoryPrefix(filePath);
+    const currentPrefix = this.prefixForFile(filePath);
     if (!currentPrefix) {
       // 前缀派生结果为空串：文件不在 anchor 之下、take/transform 把所有段过滤掉、或
       // custom 策略返回 []。「无前缀」本身是一个合法的同前缀域，在候选里挑同样无前缀的
       // 既有 key；否则同一原文每轮都会新分配 key、靠 ensureUniqueId 累积 _1/_2 后缀。
       // 只认「同样无前缀」的候选：带前缀的候选属于别的目录域，跨域复用仍须由
       // acrossDirectories 显式授权（下方 fallback 不变）。
-      const prefixlessHit = candidates.find((k) => this.derivePrefixFromKey(k) === '');
+      const prefixlessHit = candidates.find((k) => this.isPrefixlessKey(k));
       if (prefixlessHit) return prefixlessHit;
       return this.allowGlobalReuse ? candidates[0] : undefined;
     }
@@ -157,15 +172,18 @@ export class IdReuseResolver {
 
   /**
    * 把本次新生成的 finalId 注册到索引中，使后续相同原文（同批或跨批）能复用。
+   *
+   * 前缀记的是 filePath 派生的**真实目录前缀**，不从 finalId 反推：提升到 common 的 key
+   * 反推只会得到 namespace，丢掉「这条原文出现在哪个模块」这一 promoteToCommon 的唯一判据。
    */
-  registerNewId(message: string, finalId: string): void {
+  registerNewId(message: string, finalId: string, filePath: string): void {
     this.newlyRegisteredIds++;
     this.existingIds.add(finalId);
     const lookupKey = collapseWhitespace(message);
     const arr = this.messageToKeysMap.get(lookupKey);
     if (arr) arr.push(finalId);
     else this.messageToKeysMap.set(lookupKey, [finalId]);
-    this.recordPrefix(lookupKey, this.derivePrefixFromKey(finalId));
+    this.recordPrefix(lookupKey, this.prefixForFile(filePath));
   }
 
   /**
@@ -180,8 +198,13 @@ export class IdReuseResolver {
     const promote = this.config.keys.reuse.promoteToCommon;
     if (!promote || promote.threshold < 2) return false;
 
-    const currentPrefix = this.idGenerator.getDirectoryPrefix(filePath);
-    const known = this.messageToPrefixes.get(collapseWhitespace(message)) ?? new Set<string>();
+    const currentPrefix = this.prefixForFile(filePath);
+    const lookupKey = collapseWhitespace(message);
+    // 历史 key 的前缀在此刻才归属：knownPrefixes 随本轮扫描增长，构造期定型会用不上它。
+    const known = new Set(this.messageToPrefixes.get(lookupKey) ?? []);
+    for (const key of this.messageToLocaleKeys.get(lookupKey) ?? []) {
+      known.add(this.prefixOfKey(key));
+    }
     if (known.has(currentPrefix)) return false;
     return known.size + 1 >= promote.threshold;
   }
@@ -197,16 +220,46 @@ export class IdReuseResolver {
     else this.messageToPrefixes.set(lookupKey, new Set([prefix]));
   }
 
+  /** 派生并登记某文件的真实目录前缀（登记后即成为历史 key 的归属判据）。 */
+  private prefixForFile(filePath: string): string {
+    const prefix = this.idGenerator.getDirectoryPrefix(filePath);
+    if (prefix) this.knownPrefixes.add(prefix);
+    return prefix;
+  }
+
   /**
-   * 把完整 key（如 `pages.foo.bar.submit`）拆出目录前缀部分（`pages.foo.bar`）。
+   * 反推语言文件里历史 key 的目录前缀（`pages.foo.bar.submit` → `pages.foo.bar`）。
    *
-   * 用 keys.separator 切分；最后一段视为 semanticId，其余拼回作为前缀。
-   * 空字符串表示该 key 无目录前缀。
+   * 判定顺序：
+   *  1. knownPrefixes 中带 separator 边界的**最长**匹配——本轮真实见过的目录，可靠；
+   *  2. 未命中且 separator 不可能出现在语义段里时，按最后一个 separator 反推；
+   *  3. 否则归入「未知域」（空串）：`_` 这类 separator 下 `pages_a_confirm_order` 反推会
+   *     切出 `pages_a_confirm`，把同一目录的两个 key 数成两个模块而误触发 promoteToCommon。
+   *     无法判定时宁可少提升。
    */
-  private derivePrefixFromKey(key: string): string {
+  private prefixOfKey(key: string): string {
     const sep = this.config.keys.separator;
+    let best = '';
+    for (const prefix of this.knownPrefixes) {
+      if (prefix.length <= best.length) continue;
+      if (key === prefix || key.startsWith(`${prefix}${sep}`)) best = prefix;
+    }
+    if (best) return best;
+    if (this.separatorAmbiguous) return '';
     const idx = key.lastIndexOf(sep);
     return idx <= 0 ? '' : key.substring(0, idx);
+  }
+
+  /**
+   * key 是否确定不带目录前缀（「无前缀」是一个独立的复用域）。
+   *
+   * separator 可能出现在语义段里时无从反推，改用「整段不含 separator」的保守判据：
+   * 判不准就当作带前缀，宁可新生成 key 也不跨域错误复用。
+   */
+  private isPrefixlessKey(key: string): boolean {
+    const sep = this.config.keys.separator;
+    if (this.prefixOfKey(key)) return false;
+    return this.separatorAmbiguous ? !key.includes(sep) : key.lastIndexOf(sep) <= 0;
   }
 
   private loadFromLocaleFile(): void {
@@ -220,7 +273,9 @@ export class IdReuseResolver {
         const arr = this.messageToKeysMap.get(normalized);
         if (arr) arr.push(key);
         else this.messageToKeysMap.set(normalized, [key]);
-        this.recordPrefix(normalized, this.derivePrefixFromKey(key));
+        const localeKeys = this.messageToLocaleKeys.get(normalized);
+        if (localeKeys) localeKeys.push(key);
+        else this.messageToLocaleKeys.set(normalized, [key]);
       }
     }
   }

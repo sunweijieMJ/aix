@@ -5,6 +5,8 @@ import { InteractiveUtils } from '../utils/interactive-utils';
 import { LoggerUtils } from '../utils/logger';
 import type { Translations } from '../utils/types';
 import { assertLangsAreTargets, decodeUtf8Strict, parseCsv } from '../utils/csv-utils';
+import { extractPlaceholderNames, placeholderNamesEqual } from '../utils/placeholder-utils';
+import { resolveUsesDoubleBracePlaceholders } from '../adapters';
 import { FileProcessor } from './FileProcessor';
 import { loadJsonDictOrThrow, writeTranslationsFile } from '../utils/json-io';
 
@@ -125,6 +127,10 @@ export class CsvImportProcessor extends FileProcessor {
     let dataRows = 0;
     const seenKeys = new Set<string>();
     const duplicateKeys: string[] = [];
+    /** 无效译文（非空但无文字/数字）与占位符失配的单元格明细，仅告警不拦截。 */
+    const invalidCells: string[] = [];
+    const placeholderMismatchCells: string[] = [];
+    const usesDoubleBrace = resolveUsesDoubleBracePlaceholders(this.config.framework);
 
     for (const [rowIdx, row] of rows.slice(1).entries()) {
       // 空记录（文件中间的空行 / 结尾多余换行经 parseCsv 产出的 ['']）静默跳过，
@@ -172,6 +178,23 @@ export class CsvImportProcessor extends FileProcessor {
         if (entry[col.name] === value) {
           unchanged++;
           continue;
+        }
+        // 与 translate/merge 同一套把关：人工路径同样会把 `---` 这类无效值、或被误译的
+        // 占位符写进字典并随 merge 流向 locale。这里只告警不拦截（回流的编辑意图由人负责），
+        // 无效值最终由 merge 写 locale 前拒收。
+        if (!FileUtils.isValidTranslation(value)) {
+          invalidCells.push(`${key} [${col.name}]: ${value}`);
+        } else {
+          const sourceValue = entry[sourceLocale];
+          if (typeof sourceValue === 'string' && sourceValue) {
+            const expected = extractPlaceholderNames(sourceValue, usesDoubleBrace);
+            const actual = extractPlaceholderNames(value, usesDoubleBrace);
+            if (!placeholderNamesEqual(expected, actual)) {
+              placeholderMismatchCells.push(
+                `${key} [${col.name}]: 期望 {${[...expected].join('}, {')}}，实际 {${[...actual].join('}, {')}}`,
+              );
+            }
+          }
         }
         // 用 \u0000 拼接：CSV 的 key / 语言列名都来自外部，普通可见字符都可能出现在
         // key 里，NUL 是唯一不会与之碰撞的分隔符。
@@ -225,6 +248,8 @@ export class CsvImportProcessor extends FileProcessor {
       skippedEmpty,
       missingKeys,
       malformedRows,
+      invalidCells,
+      placeholderMismatchCells,
     );
 
     if (this.options.dryRun) {
@@ -281,6 +306,8 @@ export class CsvImportProcessor extends FileProcessor {
     skippedEmpty: number,
     missingKeys: string[],
     malformedRows: number[] = [],
+    invalidCells: string[] = [],
+    placeholderMismatchCells: string[] = [],
   ): void {
     LoggerUtils.info('csv-import 预览：');
     LoggerUtils.info(`  ✏️  将更新   ${updated} 处译文 (${langs.join(', ')})`);
@@ -302,6 +329,22 @@ export class CsvImportProcessor extends FileProcessor {
         `  ⚠️  已跳过字段数与表头不符的记录 ${malformedRows.length} 条（数据记录序号，不含表头：${sample}` +
         (malformedRows.length > 5 ? ' …' : '') +
         '）。可能原因：多/少逗号导致列整体错位，或编辑工具裁掉了行尾空列——请修正 CSV 后重新导入。';
+      LoggerUtils.warn(msg);
+      this.report.addWarning(msg.trim());
+    }
+    if (invalidCells.length > 0) {
+      const msg =
+        `  ⚠️  译文无效（非空但无文字/数字）${invalidCells.length} 处，已回流但 merge 写入语言文件时会被拒收：` +
+        invalidCells.slice(0, 5).join(' / ') +
+        (invalidCells.length > 5 ? ' …' : '');
+      LoggerUtils.warn(msg);
+      this.report.addWarning(msg.trim());
+    }
+    if (placeholderMismatchCells.length > 0) {
+      const msg =
+        `  ⚠️  占位符与源文案不一致 ${placeholderMismatchCells.length} 处（已回流，请核对）：` +
+        placeholderMismatchCells.slice(0, 5).join(' / ') +
+        (placeholderMismatchCells.length > 5 ? ' …' : '');
       LoggerUtils.warn(msg);
       this.report.addWarning(msg.trim());
     }

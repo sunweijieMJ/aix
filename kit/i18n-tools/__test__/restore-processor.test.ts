@@ -139,6 +139,28 @@ describe('RestoreProcessor 编排层', () => {
     expect(fs.existsSync(path.join(rootDir, 'restored', 'restored'))).toBe(false);
   });
 
+  /**
+   * A-1：`.i18n-tools/plans/<ts>/sources/` 下是 dry-run 写出的转换后源码副本。
+   * 全量 restore 若把它当源码处理：不带 --overwrite 时产出 restored/.i18n-tools/… 垃圾副本，
+   * 带 --overwrite 时把副本就地还原成未国际化代码——随后 apply-plan 会把这份被还原的内容
+   * 当「已审过的代码」写回源文件、同时照常写 localeDelta，落成源码无 t()/locale 有 key 的
+   * 不一致态并报成功。plan 目录必须始终在扫描集之外。
+   */
+  it('A-1: 全量 restore 不扫描 .i18n-tools 下的 plan 源码副本', async () => {
+    writeSource('A.vue', SRC);
+    const planSources = path.join(rootDir, '.i18n-tools', 'plans', 'generate-x', 'sources', 'src');
+    fs.mkdirSync(planSources, { recursive: true });
+    const copy = path.join(planSources, 'A.vue');
+    fs.writeFileSync(copy, SRC, 'utf-8');
+
+    await new RestoreProcessor(buildConfig(rootDir), false).execute(undefined, undefined, true);
+
+    // 源文件照常还原，plan 副本原样不动
+    expect(fs.readFileSync(path.join(srcDir, 'A.vue'), 'utf-8')).toContain('你好');
+    expect(fs.readFileSync(copy, 'utf-8')).toBe(SRC);
+    expect(fs.existsSync(path.join(rootDir, 'restored', '.i18n-tools'))).toBe(false);
+  });
+
   it('空 localeMap → 早退，不抛错也不产出', async () => {
     const file = writeSource('A.vue', SRC);
     // 语言文件为空对象

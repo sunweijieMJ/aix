@@ -162,6 +162,15 @@ export class ExportProcessor extends FileProcessor {
     };
     // 导出目标是 outputDir（非 locales 目录），故用变造后的 exportConfig + isCustom=false 单独绑定。
     const exportFiles = new LanguageFileManager(exportConfig, false);
+    // 写前预检（与 merge 的 assertTargetsSerializable 同口径）：nested 前缀冲突要到
+    // serialize 才抛，逐 locale 写盘时前几个已覆盖、后几个还是上次的旧包，发布目录半新半旧。
+    for (const locale of allLocales) {
+      exportFiles.assertKeysSerializable(
+        Object.keys(mergedByLocale.get(locale)!),
+        undefined,
+        `导出语言 [${locale}]`,
+      );
+    }
     for (const locale of allLocales) {
       exportFiles.writeLocaleFile(mergedByLocale.get(locale)!, locale);
     }
@@ -302,6 +311,14 @@ export class ExportProcessor extends FileProcessor {
     };
     // 导出目标是 outputDir（非 locales 目录），故用变造后的 exportConfig + isCustom=false 单独绑定。
     const exportFiles = new LanguageFileManager(exportConfig, false);
+    // 写前预检（同扁平路径）：桶式下前缀冲突按桶分组判定，避免半新半旧的发布目录。
+    for (const locale of allLocales) {
+      exportFiles.assertKeysSerializable(
+        Object.keys(mergedByLocale.get(locale)!),
+        keyBucketMap,
+        `导出语言 [${locale}]`,
+      );
+    }
     for (const locale of allLocales) {
       exportFiles.writeLocaleFile(mergedByLocale.get(locale)!, locale, keyBucketMap);
     }

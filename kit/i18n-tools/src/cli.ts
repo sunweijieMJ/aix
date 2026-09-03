@@ -109,7 +109,7 @@ const resolveTargetPath = async (
   const action = mode === ModeName.RESTORE ? '还原' : '提取国际化文本';
   throw new CliExit(
     1,
-    `❌ 非交互模式下（--mode / --ci）需用 --path 指定要${action}的文件或目录路径，` +
+    `❌ 非交互模式下（--mode / --ci / 无 TTY）需用 --path 指定要${action}的文件或目录路径，` +
       `例如：--path src/views/demo`,
   );
 };
@@ -205,10 +205,18 @@ const executeApplyPlan = async (
  * 据此专门挂"i18n 覆盖率不足"这一档警示，而不是把所有错误都归到一类。
  */
 const enforceCoverageThreshold = (
-  processor: { getCoverage(): { coverageRate: number } | undefined },
+  processor: {
+    getCoverage(): { coverageRate: number } | undefined;
+    isCancelled(): boolean;
+  },
   threshold: number | undefined,
 ): void => {
   if (threshold === undefined) return;
+  // 取消的运行未落盘：判失败会把用户主动放弃误报成 CI 失败，且失败文案（改动已写入）与事实相反。
+  if (processor.isCancelled()) {
+    LoggerUtils.info('ℹ️  本次运行已取消、未落盘，跳过 --coverage-threshold 判定');
+    return;
+  }
   const coverage = processor.getCoverage();
   if (!coverage) return;
   const actualPct = coverage.coverageRate * 100;
@@ -372,7 +380,7 @@ ${MODE_LIST.map((mode) => `${MODE_ICONS[mode]} ${mode} - ${MODE_DESCRIPTIONS[mod
     })
     .option('interactive', {
       alias: 'i',
-      describe: '交互式选择操作选项（未指定 --mode 时默认开启）',
+      describe: '交互式选择操作选项（未指定 --mode / --ci 且 stdin 为 TTY 时默认开启）',
       type: 'boolean',
     })
     .option('skip-llm', {
@@ -575,9 +583,13 @@ export default defineConfig({
 
   // 当显式指定了 --mode/-m 时，默认关闭交互模式；否则默认开启。
   // --ci 自述「非交互」，必须真正隐含非交互：否则 `i18n-tools --ci`（漏带 --mode）会在
-  // 无 TTY 的 CI 里进入 promptForTopLevelMode 卡死/报错。-i 显式开启仍优先（用户主动要交互）。
+  // 无 TTY 的 CI 里进入 promptForTopLevelMode 卡死/报错。
+  // stdin 非 TTY 同样默认关闭：管道里裸跑（漏带 --mode/--ci）时 inquirer 会把管道内容
+  // 当成按键，空行即选中默认项「自动模式」并真跑。-i 显式开启仍优先（用户主动要交互，
+  // 例如在 TTY 外自行喂输入）。
   const modeExplicitlySet = isModeExplicitlySet(process.argv.slice(2));
-  const interactive = argv.interactive ?? (!modeExplicitlySet && !argv.ci);
+  const interactive =
+    argv.interactive ?? (!modeExplicitlySet && !argv.ci && process.stdin.isTTY === true);
 
   // 交互模式处理
   if (interactive) {

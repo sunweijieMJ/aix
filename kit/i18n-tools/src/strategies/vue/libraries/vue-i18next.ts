@@ -38,7 +38,10 @@ export class VueI18nextLibrary implements VueI18nLibrary {
     // 不得放宽成 `[^)]*` 这类非括号平衡的写法：对用户手写的含选项 hook（如
     // `useTranslation('ns', { fallback: fn() })`）只会删到第一个 `)`，残留 ` });` 产出语法
     // 错误；也会误吞 `useTranslation({ keyPrefix })` 等高级用法。这类一律不匹配、原样保留。
-    return /const\s*\{\s*t\s*\}\s*=\s*useTranslation\(\s*(?:'[^']*'|"[^"]*")?\s*\)\s*;?\n?/g;
+    // 行首零缩进锚定（^ + m）：清理面只能是模块作用域（script 块顶层）的声明——只有它会与
+    // 注入的模块级 `import { t }` 撞名。带缩进的同形文本是用户手写的函数内 hook（局部
+    // scope 语义必须保住）或字符串/注释内容，删掉即不可恢复的内容丢失。
+    return /^const\s*\{\s*t\s*\}\s*=\s*useTranslation\(\s*(?:'[^']*'|"[^"]*")?\s*\)\s*;?\n?/gm;
   }
 
   // 基于 i18next，单 `{` 本就是字面量（插值是双花括号 `{{name}}`），无需转义。

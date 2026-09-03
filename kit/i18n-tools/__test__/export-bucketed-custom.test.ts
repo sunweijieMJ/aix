@@ -226,3 +226,91 @@ describe('LanguageFileManager — 非当前规则内的桶名提示', () => {
     expect(warned).not.toMatch(/buckets\.rules/);
   });
 });
+
+/**
+ * B8：nested 前缀冲突此前要到 serialize 才抛，逐 locale 写盘中途失败会让发布目录
+ * 半新半旧（zh 是新包、en 还是上次的旧包），且重跑恒在同一处失败。merge 早有同类
+ * 写前预检（assertTargetsSerializable），export 补齐。
+ */
+describe('ExportProcessor — nested 前缀冲突的写前预检（B8）', () => {
+  let rootDir: string;
+  let baseDir: string;
+  let outDir: string;
+
+  const buildConfig = (buckets?: I18nToolsConfig['buckets']): ResolvedConfig =>
+    resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', library: 'vue-i18n', tImport: '@/i18n' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: {
+        sourceDir: path.join(rootDir, 'src'),
+        localesDir: baseDir,
+        exportDir: outDir,
+        format: 'nested',
+        prettify: false,
+      },
+      keys: { separator: '.' },
+      ...(buckets ? { buckets } : {}),
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-prefix-guard-'));
+    baseDir = path.join(rootDir, 'locale');
+    outDir = path.join(rootDir, 'out');
+    fs.mkdirSync(baseDir, { recursive: true });
+    fs.mkdirSync(outDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('B8: 冲突时一个 locale 都不写，旧发布产物保持完整', async () => {
+    // 'a.b' 是叶子、'a.b.c' 又要求 a.b 是对象 → nested 序列化必然冲突
+    fs.writeFileSync(
+      path.join(baseDir, 'zh-CN.json'),
+      JSON.stringify({ 'a.b': '叶子', 'a.b.c': '子节点' }),
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(baseDir, 'en-US.json'),
+      JSON.stringify({ 'a.b': 'leaf', 'a.b.c': 'child' }),
+      'utf-8',
+    );
+    // 上次导出的旧包
+    fs.writeFileSync(
+      path.join(outDir, 'zh-CN.json'),
+      JSON.stringify({ old: { published: '旧包' } }),
+      'utf-8',
+    );
+    fs.writeFileSync(
+      path.join(outDir, 'en-US.json'),
+      JSON.stringify({ old: { published: 'oldbundle' } }),
+      'utf-8',
+    );
+
+    await expect(new ExportProcessor(buildConfig()).execute()).rejects.toThrow(/前缀冲突/);
+
+    expect(JSON.parse(fs.readFileSync(path.join(outDir, 'zh-CN.json'), 'utf-8'))).toEqual({
+      old: { published: '旧包' },
+    });
+    expect(JSON.parse(fs.readFileSync(path.join(outDir, 'en-US.json'), 'utf-8'))).toEqual({
+      old: { published: 'oldbundle' },
+    });
+  });
+
+  it('B8: 无冲突时导出照常（无回归）', async () => {
+    fs.writeFileSync(path.join(baseDir, 'zh-CN.json'), JSON.stringify({ 'a.b': '叶子' }), 'utf-8');
+    fs.writeFileSync(path.join(baseDir, 'en-US.json'), JSON.stringify({ 'a.b': 'leaf' }), 'utf-8');
+
+    await expect(new ExportProcessor(buildConfig()).execute()).resolves.toBeUndefined();
+    expect(JSON.parse(fs.readFileSync(path.join(outDir, 'zh-CN.json'), 'utf-8'))).toEqual({
+      a: { b: '叶子' },
+    });
+  });
+});

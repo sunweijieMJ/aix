@@ -447,3 +447,165 @@ export function Mixed() {
     expect(used.has('模板 {x}')).toBe(false);
   });
 });
+
+/**
+ * 静态 key 的引用形态覆盖面：任一形态漏采都会让该 key 被 doctor 报孤儿、
+ * 被 prune 从所有 locale 永久删除（破坏性）。
+ */
+describe('scanKeyReferencesInContent — 静态引用形态补全', () => {
+  const keys = (code: string): string[] => scanKeyReferencesInContent(code);
+
+  it('B1: 无插值的反引号 key 被采集', () => {
+    expect(keys('t(`views.a.sub`)')).toEqual(['views.a.sub']);
+    expect(keys('$t(`views.a.title`)')).toEqual(['views.a.title']);
+  });
+
+  it('B1: 含插值的反引号仍按动态处理（交给 dynamicKeyAllowlist）', () => {
+    expect(keys('t(`views.${name}.title`)')).toEqual([]);
+    expect(keys("t(cond ? `a.${x}` : 'b')")).toEqual(['b']);
+  });
+
+  it('U-05: v-t 的对象形态与内外引号互换都识别', () => {
+    expect(keys(`<p v-t="{ path: 'home.title' }"></p>`)).toEqual(['home.title']);
+    expect(keys(`<p v-t='"home.title"'></p>`)).toEqual(['home.title']);
+    expect(keys(`<p v-t="'home.title'"></p>`)).toEqual(['home.title']);
+  });
+
+  it('U-05: v-t 的动态 path 不产出假 key', () => {
+    expect(keys(`<p v-t="{ path: dynamicKey }"></p>`)).toEqual([]);
+  });
+
+  it('U-05: 绑定字面量 :keypath 与 JSX 表达式容器形态都识别', () => {
+    expect(keys(`<i18n-t :keypath="'home.title'" />`)).toEqual(['home.title']);
+    expect(keys(`<Trans i18nKey={'home.title'} />`)).toEqual(['home.title']);
+    expect(keys('<Trans i18nKey={`home.title`} />')).toEqual(['home.title']);
+  });
+
+  it('U-05: id 定位允许属性 / 选项对象里出现成对花括号', () => {
+    expect(keys(`<FormattedMessage values={{ n: a > 1 }} id="app.hello" />`)).toEqual([
+      'app.hello',
+    ]);
+    expect(keys(`<FormattedMessage id={'app.hello'} />`)).toEqual(['app.hello']);
+    expect(keys(`intl.formatMessage({ values: { n: 1 }, id: 'app.hello' })`)).toEqual([
+      'app.hello',
+    ]);
+  });
+
+  it('U-06: defineMessages 定义块里的所有 id 都被采集', () => {
+    const code = `const messages = defineMessages({
+  hello: { id: 'app.hello', defaultMessage: '你好' },
+  bye: { id: 'app.bye', defaultMessage: '再见' },
+});
+const s = intl.formatMessage(messages.hello);`;
+    expect(keys(code).sort()).toEqual(['app.bye', 'app.hello']);
+  });
+
+  it('U-06: defineMessages 之外的普通对象 id 不被误采', () => {
+    expect(keys(`const el = { id: 'dom-node-id', label: '标签' };`)).toEqual([]);
+  });
+});
+
+/**
+ * .vue 的 tsx/jsx script 块正文含 JSX 文本节点，词法状态机会把裸 URL 的 `//`、
+ * 不配对的 `/*` 当注释吞掉后续 t() 调用 → key 漏采 → prune 误删。
+ */
+describe('stripCommentsForScan — .vue 的 tsx/jsx 块按 AST 剥注释', () => {
+  const scan = (code: string): string[] =>
+    scanKeyReferencesInContent(stripCommentsForScan('Comp.vue', code));
+
+  it('U-02: lang="tsx" 块里裸 URL 同行的 t() 不被吞掉', () => {
+    const code = `<script lang="tsx">
+export default () => <p>详情见 https://a.com {t('k.in.tsx')}</p>;
+</script>`;
+    expect(scan(code)).toEqual(['k.in.tsx']);
+  });
+
+  it('U-02: lang="jsx" 块里正文的 /* 字样不吞掉后续 key', () => {
+    const code = `<script lang="jsx">
+export default () => <p>忽略 src/* 目录 {t('k1')} 与 {t('k2')}</p>;
+</script>`;
+    expect(scan(code)).toEqual(['k1', 'k2']);
+  });
+
+  it('U-02: lang="tsx" 块里的真注释仍被剥掉', () => {
+    const code = `<script lang="tsx">
+// t('dead.key')
+export default () => <p>{t('live.key')}</p>;
+</script>`;
+    expect(scan(code)).toEqual(['live.key']);
+  });
+
+  it('U-02: 普通 lang="ts" 块口径不变', () => {
+    const code = `<script lang="ts">
+// t('dead.key')
+export default { created() { t('live.key'); } };
+</script>`;
+    expect(scan(code)).toEqual(['live.key']);
+  });
+});
+
+/**
+ * hasNonI18nTranslationBinding 判「非 i18n 绑定」会让整个文件的裸 t() 退出 missing-key
+ * 对账；vue-i18n 组件外用法与 hook 解构是 i18n 来源，不能算本地模板函数。
+ */
+describe('collectUsedKeys — i18n 来源的顶层 t 绑定仍参与 missing-key', () => {
+  let root: string;
+  let srcDir: string;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'scanner-i18n-binding-'));
+    srcDir = path.join(root, 'src');
+    fs.mkdirSync(srcDir, { recursive: true });
+  });
+  afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const buildConfig = () =>
+    resolveConfig({
+      root,
+      framework: { type: 'vue', library: 'vue-i18n', tImport: '@/plugins/locale' },
+      locales: { source: 'zh', targets: ['en'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } satisfies I18nToolsConfig);
+
+  const usedWithSkip = (fileName: string, content: string): Set<string> => {
+    fs.writeFileSync(path.join(srcDir, fileName), content);
+    const config = buildConfig();
+    return collectUsedKeys(config, createFrameworkAdapter(config), {
+      skipNonI18nTranslationCalls: true,
+    });
+  };
+
+  it('B7: const { t } = i18n.global 的裸 t() 仍计入', () => {
+    const used = usedWithSkip(
+      'store.ts',
+      `import i18n from '@/i18n';\nconst { t } = i18n.global;\nexport const title = t('store.title');\n`,
+    );
+    expect(used.has('store.title')).toBe(true);
+  });
+
+  it('B7: const t = i18n.global.t 的裸 t() 仍计入', () => {
+    const used = usedWithSkip(
+      'util.ts',
+      `import i18n from '@/i18n';\nconst t = i18n.global.t;\nexport const title = t('util.title');\n`,
+    );
+    expect(used.has('util.title')).toBe(true);
+  });
+
+  it('B7: 顶层 const { t } = useI18n() 的裸 t() 仍计入', () => {
+    const used = usedWithSkip(
+      'composable.ts',
+      `import { useI18n } from 'vue-i18n';\nconst { t } = useI18n();\nexport const title = t('composable.title');\n`,
+    );
+    expect(used.has('composable.title')).toBe(true);
+  });
+
+  it('B7: 真正的本地模板函数 t 仍被跳过', () => {
+    const used = usedWithSkip(
+      'local.ts',
+      `import { format } from './tiny-template';\nconst t = format;\nexport const s = t('你好 {name}', { name: 'x' });\n`,
+    );
+    expect(used.has('你好 {name}')).toBe(false);
+  });
+});

@@ -203,9 +203,10 @@ export class VueImportManager implements IImportManager {
    *   import { useI18n } from 'vue-i18n';
    *   const { t } = useI18n();
    *
-   * 仅作用于 <script setup> 块。useI18n({ useScope: 'local', messages: ... })
-   * 等含参高级用法是用户手写代码，不在清理正则范围内（regex 仅匹配 useI18n()
-   * 无参形式），不会被误伤。
+   * 仅作用于 <script setup> 块，且只清模块作用域（块顶层、零缩进）的声明：函数体内的
+   * `const { t } = useI18n()` 是用户手写的局部绑定，与注入的模块级 import 不撞名，删掉
+   * 会丢掉局部 scope 语义。useI18n({ useScope: 'local', messages: ... }) 等含参高级用法
+   * 同样不在清理正则范围内（regex 仅匹配 useI18n() 无参形式）。
    *
    * 使用场景：原本走 hook 注入的文件后续出现了编译宏引用 t，需迁移到模块
    * import 路径 —— 此时残留的 hook 声明会让 setup 局部 t 遮蔽模块顶层 t，
@@ -288,32 +289,43 @@ export class VueImportManager implements IImportManager {
   }
 
   /**
-   * 脚本内是否存在「本地绑定名为 t」的变量声明：任意来源的解构 `const { t } = x()` /
-   * `const { total: t } = obj` / 嵌套解构 `const { data: { t } } = props`，或普通赋值声明
-   * `const t = useI18n().t` / `let t;`。`export` 前缀（`export const t = …`）同样是模块
-   * 作用域声明，一并识别。
+   * 脚本内是否存在「本地绑定名为 t」的模块作用域声明：任意来源的解构 `const { t } = x()` /
+   * `const { total: t } = obj` / 嵌套解构 `const { data: { t } } = props` / 数组解构
+   * `const [t] = x()`，普通赋值声明 `const t = useI18n().t` / `let t;`，以及函数与类声明
+   * `function t() {}` / `class t {}`。`export` 前缀（`export const t = …`）同样是模块作用域
+   * 声明，一并识别。
    *
    * 判定的是本地绑定名 —— `const tt` / `const t2` / `const { t: localT } = x` 本地都没有 t，
-   * 必须照常注入，否则裸 t() 无声明。宽松方向：任意位置（含函数体内）的 t 声明都算命中，
-   * 漏判会产出重复声明的坏产物，多判只是少注一条 import 而 t 本就可用。
+   * 必须照常注入，否则裸 t() 无声明。
+   *
+   * 判定面限定在零缩进的行首声明（= 模块作用域）：注入的是模块级 `import { t }`，只有同在
+   * 模块作用域的 t 才与它撞名；函数体内的 t 是合法遮蔽，把它算作命中反而会漏注入，让模块
+   * 顶层被改写出的 t() 找不到绑定。
    */
   hasLocalTDeclaration(scriptContent: string): boolean {
     for (const inner of VueImportManager.destructurePatterns(scriptContent)) {
       if (VueImportManager.destructureBindsLocalT(inner)) return true;
     }
     // 普通声明：t 后必须是非标识符字符，`const tt` / `const t2` / `const t$` 不命中。
-    return /^[ \t]*(?:export\s+)?(?:const|let|var)\s+t(?![\w$])/m.test(scriptContent);
+    if (/^(?:export\s+)?(?:const|let|var)\s+t(?![\w$])/m.test(scriptContent)) return true;
+    // 函数 / 类声明同样在模块作用域占用标识符 t，与注入的 import 重名直接编译失败
+    // （Identifier 't' has already been declared）。覆盖 async / generator / export default。
+    return /^(?:export\s+(?:default\s+)?)?(?:(?:async\s+)?function\s*\*?\s*t(?![\w$])|(?:abstract\s+)?class\s+t(?![\w$]))/m.test(
+      scriptContent,
+    );
   }
 
   /**
-   * 逐条取出「行首解构声明」花括号内的模式文本（不含最外层大括号）。
+   * 逐条取出「行首解构声明」定界符内的模式文本（不含最外层大括号 / 方括号）。
    *
    * 用括号配平扫描而非 `\{([^}]*)\}`：后者在 `const { data: { t } } = props` 上停在第一个
    * `}`，拿到的片段解析不出内层的本地 t 绑定 → 漏判 → 与注入的 `import { t }` 双声明。
-   * 行首锚定（^[ \t]* + gm）：排除注释里的同形文本，与本类其它判定同口径。
+   * 数组解构 `const [t] = useX()` 与对象解构同为模块作用域绑定，两种定界符都要收。
+   * 行首零缩进锚定（^ + gm）：只认模块作用域声明，同时排除注释里的同形文本，与
+   * hasLocalTDeclaration 同口径。
    */
   private static *destructurePatterns(scriptContent: string): Generator<string> {
-    const headRe = /^[ \t]*(?:export\s+)?(?:const|let|var)\s*\{/gm;
+    const headRe = /^(?:export\s+)?(?:const|let|var)\s*[{[]/gm;
     while (headRe.exec(scriptContent) !== null) {
       const start = headRe.lastIndex; // 紧跟最外层 `{`
       const end = VueImportManager.matchingCloseIndex(scriptContent, start);

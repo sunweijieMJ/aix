@@ -658,6 +658,53 @@ describe('GenerateProcessor 编排层', () => {
       expect(LoggerUtils.success).not.toHaveBeenCalledWith(expect.stringContaining('代码生成完成'));
       expect(LoggerUtils.warn).toHaveBeenCalledWith(expect.stringContaining('代码生成已取消'));
     });
+
+    /**
+     * A-3：取消的运行仍照常结算覆盖率（反映本次扫描结果，与是否落盘无关），但 CLI 的
+     * --coverage-threshold 卡点必须据 isCancelled() 跳过——否则用户主动放弃会被判成
+     * CI 失败，且失败文案（「改动已写入源码与语言文件…请用 git 回滚」）与事实相反。
+     */
+    it('A-3: 取消后 isCancelled() 为真，覆盖率仍结算（CLI 据此跳过阈值卡点）', async () => {
+      const file = writeSource('CancelCoverage.vue', VUE_FILE);
+      vi.spyOn(InteractiveUtils, 'promptForGenericConfirmation').mockResolvedValue(false);
+
+      const proc = new GenerateProcessor(buildConfig(rootDir), false, true);
+      await proc.execute(file, true);
+
+      expect(proc.isCancelled()).toBe(true);
+      expect(proc.getCoverage()).toBeTruthy();
+      expect(fs.existsSync(zhPath())).toBe(false);
+    });
+
+    it('A-3: 正常落盘的运行 isCancelled() 为假（无回归）', async () => {
+      const file = writeSource('NoCancel.vue', VUE_FILE);
+      const proc = new GenerateProcessor(buildConfig(rootDir), false, false);
+      await proc.execute(file, true);
+
+      expect(proc.isCancelled()).toBe(false);
+      expect(proc.getCoverage()).toBeTruthy();
+    });
+  });
+
+  /**
+   * A-1：dry-run 写出的 plan 必须带 transformedHash，且 apply 前会校验 `sources/` 副本
+   * 未被外部改过——否则被改坏的副本会被当「已审过的代码」写回源文件，locale 却照常更新。
+   */
+  it('A-1: dry-run 产出的 plan 带 transformedHash；sources/ 被改 → apply 拒绝且零改动', async () => {
+    const file = writeSource('PlanHash.vue', VUE_FILE);
+    const planJson = await makePlan(buildConfig(rootDir), file);
+    const plan = JSON.parse(fs.readFileSync(planJson, 'utf-8'));
+    expect(plan.entries[0].transformedHash).toMatch(/^[0-9a-f]{64}$/);
+
+    const copy = path.join(path.dirname(planJson), plan.entries[0].transformedCodeRef);
+    fs.writeFileSync(copy, '<template><div>被改坏了</div></template>\n', 'utf-8');
+
+    await expect(
+      new GenerateProcessor(buildConfig(rootDir), false, false).applyFromPlan(planJson),
+    ).rejects.toThrow(/转换后源码与写 plan 时不一致/);
+
+    expect(fs.readFileSync(file, 'utf-8')).toBe(VUE_FILE);
+    expect(fs.existsSync(zhPath())).toBe(false);
   });
 
   it('覆盖率：源码已存在 $t() 调用点计入 alreadyI18n', async () => {

@@ -242,7 +242,13 @@ export class ReactIntlLibrary implements ReactI18nLibrary {
   hasLocalTranslationBinding(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
     // 函数组件经 injectIntl 把 intl 作为 prop 解构传入（`({ intl }: WrappedComponentProps) => …`）
     // 时，intl 已是本地形参绑定；若漏判会再注入 `const intl = useIntl()` 与形参同作用域双声明。
-    if (ReactASTUtils.componentParamBindsVar(node, this.translationVarName)) {
+    // 带上 HOC 口径：业务自己的同名解构形参不提供 formatMessage，当成已有绑定会产出坏代码。
+    if (
+      ReactASTUtils.componentParamBindsVar(node, this.translationVarName, {
+        hocPropsType: this.hocPropsType,
+        isHOCCall: (expression) => this.isHOCCall(expression),
+      })
+    ) {
       return true;
     }
     // 仅认本地 `const intl = useIntl()` 绑定（不含 props.intl/this.props.intl 成员访问）。

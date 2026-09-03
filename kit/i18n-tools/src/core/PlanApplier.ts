@@ -67,6 +67,7 @@ export class PlanApplier {
    * - plan.json 完整保留 hits，每条 hit 都能反查到原文件的具体替换点
    * - sources/<relPath> 保留 transform 后完整文件内容，apply 时直接落盘
    * - sourceHash 用 transform 前的原始内容（apply 时校验源码未被外部改动）
+   * - transformedHash 用 transform 后的内容（read 时校验 sources/ 副本未被外部改动）
    *
    * @param options.planOutputDir  plan 输出根目录（未指定则用默认 `.i18n-tools/plans/` 下时间戳目录）
    * @param options.skipLLM        本次 generate 是否启用了 --skip-llm（写入 plan.llmModel）
@@ -157,6 +158,8 @@ export class PlanApplier {
         hits,
         transformedCodeRef: transformedRef,
         sourceHash,
+        // 与 transformedSources 同一份内容算指纹：read() 据此校验 sources/ 未被外部改过。
+        transformedHash: GeneratePlanWriter.sha256(result.code),
       });
     }
 

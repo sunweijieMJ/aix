@@ -732,3 +732,175 @@ describe('VueRestoreTransformer — U+00A0 重编码为 &nbsp;', () => {
     expect(out).toContain('title="A&nbsp;&amp;&nbsp;B"');
   });
 });
+
+/**
+ * pass 2 的属性锚点必须落在「空白之后紧跟的 `:attr=`」上。冒号从任意位置起匹配时，
+ * 带指令参数（`v-tooltip:bottom`）或带命名空间（`xlink:href`）的形态会被吃掉冒号、
+ * 拼出非法属性名，而这两类正是工具自己 generate 的产物。
+ */
+describe('VueRestoreTransformer — V-01 指令参数 / 命名空间属性不被 pass 2 吞掉冒号', () => {
+  const lib = new VueI18nLibraryImpl();
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, '@/plugins/locale');
+
+  it('V-01: 带指令参数 v-tooltip:bottom 保持动态绑定，不拼成 v-tooltipbottom', () => {
+    const src = `<template>\n  <button v-tooltip:bottom="$t('k')">x</button>\n</template>\n`;
+    const out = restore(src, { k: '提示文字' });
+    expect(out).toContain(`v-tooltip:bottom="'提示文字'"`);
+    expect(out).not.toContain('v-tooltipbottom');
+  });
+
+  it('V-01: v-model:title 同理保留冒号', () => {
+    const src = `<template>\n  <el-dialog v-model:title="$t('k')" />\n</template>\n`;
+    const out = restore(src, { k: '标题' });
+    expect(out).toContain(`v-model:title="'标题'"`);
+    expect(out).not.toContain('v-modeltitle');
+  });
+
+  it('V-01: 命名空间属性 :xlink:href 不被截成 :xlinkhref', () => {
+    const src = `<template>\n  <use :xlink:href="$t('k')" />\n</template>\n`;
+    const out = restore(src, { k: '图标' });
+    expect(out).toContain(`:xlink:href="'图标'"`);
+    expect(out).not.toContain('xlinkhref');
+  });
+
+  it('V-01: v-on:click / v-slot:title 同样保留冒号', () => {
+    const src = `<template>\n  <a v-on:click="$t('k')" v-slot:title="$t('k')" />\n</template>\n`;
+    const out = restore(src, { k: '文案' });
+    expect(out).toContain(`v-on:click="'文案'"`);
+    expect(out).toContain(`v-slot:title="'文案'"`);
+  });
+
+  it('V-01 反向：普通 :attr / v-bind:attr 仍降级为静态属性', () => {
+    const src = `<template>\n  <div :title="$t('k')" v-bind:label="$t('k')" />\n</template>\n`;
+    const out = restore(src, { k: '文案' });
+    expect(out).toContain('title="文案"');
+    expect(out).toContain('label="文案"');
+    expect(out).not.toContain('v-bind');
+  });
+
+  it('V-01 反向：带修饰符的指令 v-loading.fullscreen 仍走 pass 3a', () => {
+    const src = `<template>\n  <div v-loading.fullscreen="$t('k')" />\n</template>\n`;
+    expect(restore(src, { k: '加载中' })).toContain(`v-loading.fullscreen="'加载中'"`);
+  });
+});
+
+/**
+ * prettier 会把长的模板调用折成多行并补尾逗号。三个 pass 的正则若要求引号紧跟 `(`，
+ * 折行后的调用一个都匹配不上：restore 原样保留 $t 调用且无任何告警。
+ */
+describe('VueRestoreTransformer — V-08 prettier 折行的 $t 调用仍能还原', () => {
+  const lib = new VueI18nLibraryImpl();
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, '@/plugins/locale');
+
+  it('V-08: pass 1 折行插值（含 vars 与尾逗号）', () => {
+    const src = `<template>\n  <p>{{\n    $t(\n      'k0',\n      { a: b },\n    )\n  }}</p>\n</template>\n`;
+    const out = restore(src, { k0: '共 {a} 条' });
+    expect(out).toContain('共 {{ b }} 条');
+    expect(out).not.toContain('$t(');
+  });
+
+  it('V-08: pass 2 折行属性绑定 → 静态属性', () => {
+    const src = `<template>\n  <div :title="$t(\n    'k1'\n  )" />\n</template>\n`;
+    expect(restore(src, { k1: '标题' })).toContain('title="标题"');
+  });
+
+  it('V-08: pass 3 表达式内折行调用', () => {
+    const src = `<template>\n  <div :title="cond ? $t(\n    'k1'\n  ) : other" />\n</template>\n`;
+    expect(restore(src, { k1: '标题' })).toContain(`:title="cond ? '标题' : other"`);
+  });
+
+  it('V-08 反向：第二参非对象字面量时折行也不还原', () => {
+    const src = `<template>\n  <p>{{\n    $t(\n      'k0',\n      params,\n    )\n  }}</p>\n</template>\n`;
+    expect(restore(src, { k0: '共 {a} 条' })).toBe(src);
+  });
+});
+
+/**
+ * cleanupPluginLocaleImport 曾是 removeNamedImports 的劣化复制：不剥命名列表里的注释、
+ * 不认默认说明符。两者都会产出坏代码（注释吞掉 `} from …`；死 t 摘不掉）。
+ */
+describe('VueRestoreTransformer — V-03 t import 清理复用 removeNamedImports', () => {
+  const lib = new VueI18nLibraryImpl();
+  const T_IMPORT = '@/plugins/locale';
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, T_IMPORT);
+
+  it('V-03: 多行命名列表带行注释时摘除 t 不破坏语法', () => {
+    const src =
+      `<script setup>\nimport {\n  t, // 翻译函数\n  i18n,\n} from '${T_IMPORT}';\n` +
+      `const msg = t('k0');\nconsole.log(i18n);\n</script>\n`;
+    const out = restore(src, { k0: '文案' });
+    expect(out).toContain(`import { i18n } from '${T_IMPORT}';`);
+    // 行注释若未剥离会吞掉 `} from …`，产出无法编译的 import
+    expect(out).not.toContain('// 翻译函数');
+    expect(out).toContain("const msg = '文案'");
+  });
+
+  it('V-03: `import locale, { t }` 的死 t 被摘掉，默认导入保留', () => {
+    const src =
+      `<script setup>\nimport locale, { t } from '${T_IMPORT}';\n` +
+      `const msg = t('k0');\nconsole.log(locale);\n</script>\n`;
+    const out = restore(src, { k0: '文案' });
+    expect(out).toContain(`import locale from '${T_IMPORT}';`);
+    expect(out).not.toMatch(/\{\s*t\s*\}/);
+  });
+
+  it('V-03: `import { t as tr, t }` 且 tr 仍在用时只摘死掉的 t，tr 与 import 保留', () => {
+    const src =
+      `<script setup>\nimport { t as tr, t } from '${T_IMPORT}';\n` +
+      `const m = t('k0');\nconst z = tr('y');\n</script>\n`;
+    const out = restore(src, { k0: '文案' });
+    expect(out).toContain(`import { t as tr } from '${T_IMPORT}';`);
+    expect(out).toContain("const m = '文案'");
+    expect(out).toContain("const z = tr('y')");
+  });
+
+  it('V-03 反向：尾逗号 `import { t, }` 仍整条删除且不留裸分号', () => {
+    const src =
+      `<template>\n  <div>{{ msg }}</div>\n</template>\n\n` +
+      `<script setup lang="ts">\nimport { t, } from '${T_IMPORT}';\nconst msg = t('k');\n</script>\n`;
+    const out = restore(src, { k: '你好' });
+    expect(out).not.toContain(T_IMPORT);
+    expect(out).not.toMatch(/^[ \t]*;[ \t]*$/m);
+  });
+});
+
+/**
+ * hook 声明清理正则按文本匹配，与用户手写完全同形。无位置约束时会删掉函数体内的
+ * `const { t } = useI18n()`（局部 scope 语义丢失）与字符串字面量里的同形文本（内容丢失）。
+ * 清理面只能是模块作用域（script 块顶层、零缩进）的声明——只有它与模块级 import 撞名。
+ */
+describe('VueRestoreTransformer — V-06 hook 声明清理只作用于模块顶层', () => {
+  const lib = new VueI18nLibraryImpl();
+  const restore = (src: string, map: Record<string, string>): string =>
+    VueRestoreTransformer.restoreVueFile(src, map, lib, '@/plugins/locale');
+
+  it('V-06: 字符串字面量里的同形 hook 声明不被删空', () => {
+    const src =
+      `<script setup>\nimport { t } from '@/plugins/locale';\n` +
+      `const doc = 'const { t } = useI18n();';\nconst msg = t('k0');\nvoid doc;\n</script>\n`;
+    const out = restore(src, { k0: '文案' });
+    expect(out).toContain(`const doc = 'const { t } = useI18n();';`);
+  });
+
+  it('V-06: 函数体内的用户 hook 声明与其库导入一并保留', () => {
+    const src =
+      `<script setup>\nimport { useI18n } from 'vue-i18n';\nimport { t } from '@/plugins/locale';\n` +
+      `function useX() {\n  const { t } = useI18n();\n  return t('own');\n}\n` +
+      `const msg = t('k0');\nvoid useX;\n</script>\n`;
+    const out = restore(src, { k0: '文案' });
+    expect(out).toContain('  const { t } = useI18n();');
+    expect(out).toContain(`import { useI18n } from 'vue-i18n';`);
+    expect(out).toContain("const msg = '文案'");
+  });
+
+  it('V-06 反向：模块顶层的 hook 声明与库导入仍被清理', () => {
+    const src =
+      `<script setup>\nimport { useI18n } from 'vue-i18n';\nconst { t } = useI18n();\n` +
+      `const msg = t('k0');\n</script>\n`;
+    const out = restore(src, { k0: '文案' });
+    expect(out).not.toContain('useI18n');
+  });
+});

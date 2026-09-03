@@ -49,6 +49,16 @@ export interface GeneratePlanFileEntry {
   transformedCodeRef: string;
   /** 转换前源文件内容的 SHA-256 指纹，apply 时校验源文件未被外部改过 */
   sourceHash: string;
+  /**
+   * `sources/` 下那份转换后源码的 SHA-256 指纹，read() 时校验 plan 目录未被外部改过。
+   *
+   * sourceHash 只盖源文件，盖不住 plan 自身：`sources/` 里的副本被改（restore 误扫、
+   * 手工编辑、同步工具截断）后 apply 会把改坏的内容当「审过的代码」写回源文件，
+   * 同时照常写 localeDelta，落成「源码无 t()、locale 却有 key」的不一致态且报成功。
+   *
+   * 可选：缺该字段的旧 plan 只告警不拒绝（schemaVersion 未变，旧 plan 仍可 apply）。
+   */
+  transformedHash?: string;
 }
 
 /**
@@ -264,6 +274,9 @@ export class GeneratePlanWriter {
     const baseDir = path.dirname(planPath);
     const sourcesRoot = path.resolve(baseDir, this.SOURCES_DIRNAME);
     const transformedSources = new Map<string, string>();
+    /** sources/ 内容与 plan 记录不符的条目；缺指纹的旧 plan 条目单独记，只告警。 */
+    const tampered: string[] = [];
+    const missingHash: string[] = [];
     for (const entry of plan.entries) {
       const refPath = this.resolveRelativeWithin(
         baseDir,
@@ -280,7 +293,26 @@ export class GeneratePlanWriter {
           `Plan 引用的转换后源码缺失：${entry.transformedCodeRef}（绝对路径 ${refPath}）。Plan 目录可能不完整。`,
         );
       }
-      transformedSources.set(entry.file, fs.readFileSync(refPath, 'utf-8'));
+      const code = fs.readFileSync(refPath, 'utf-8');
+      if (entry.transformedHash === undefined) {
+        missingHash.push(entry.file);
+      } else if (this.sha256(code) !== entry.transformedHash) {
+        tampered.push(entry.transformedCodeRef);
+      }
+      transformedSources.set(entry.file, code);
+    }
+    if (tampered.length > 0) {
+      throw new Error(
+        `Plan 目录下的转换后源码与写 plan 时不一致（共 ${tampered.length} 个）：\n` +
+          `   ${tampered.slice(0, 10).join('\n   ')}${tampered.length > 10 ? '\n   …' : ''}\n` +
+          '👉 apply 会把这些内容当「已审过的代码」写回源文件，已拒绝。请重新运行 generate --dry-run 生成新版 plan。',
+      );
+    }
+    if (missingHash.length > 0) {
+      LoggerUtils.warn(
+        `Plan 中 ${missingHash.length} 个条目缺少 transformedHash（旧版 plan），` +
+          '跳过 sources/ 完整性校验。建议重新运行 generate --dry-run 生成新版 plan。',
+      );
     }
 
     return { plan, transformedSources };

@@ -174,3 +174,84 @@ describe('PickProcessor — 在途译文保护（translate 已翻、未 merge �
     expect(translations['a.b']).toEqual({ 'zh-CN': '你好', 'en-US': 'Hello' });
   });
 });
+
+/**
+ * B4：merge 会把「既非 source 也不在当前 targets」的语种字段原样留在两个字典里，并
+ * 提示「已原样保留…请加进 targets 后重跑」。pick 每轮整体重写这两个文件，若只装
+ * source+targets，用户还没来得及改配置就跑一次 pick（automatic 每轮都跑），
+ * 那些译文无声消失——它们从未落进 locale，git 之外找不回。
+ */
+describe('PickProcessor — 非当前 targets 的语种字段透传（B4）', () => {
+  let tmpDir: string;
+  let localeDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  const writeJson = (name: string, data: unknown): void =>
+    fs.writeFileSync(path.join(localeDir, name), JSON.stringify(data, null, 2));
+  const readJson = (name: string): Record<string, Record<string, string>> =>
+    JSON.parse(fs.readFileSync(path.join(localeDir, name), 'utf-8'));
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pick-carried-'));
+    localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('B4: translations.json 里的 ja-JP 字段被带过来并告警一次', async () => {
+    writeJson('zh-CN.json', { 'a.b': '确认' });
+    writeJson('en-US.json', { 'a.b': 'Confirm' });
+    writeJson('untranslated.json', {});
+    writeJson('translations.json', {
+      'a.b': { 'zh-CN': '确认', 'en-US': 'Confirm', 'ja-JP': '確認' },
+    });
+
+    await new PickProcessor(makeConfig(), false).execute();
+
+    expect(readJson('translations.json')['a.b']!['ja-JP']).toBe('確認');
+    expect(warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n')).toContain('ja-JP');
+  });
+
+  it('B4: untranslated.json 里的 ja-JP 字段同样被带过来', async () => {
+    writeJson('zh-CN.json', { 'a.b': '确认' });
+    writeJson('en-US.json', {});
+    writeJson('untranslated.json', {
+      'a.b': { 'zh-CN': '确认', 'en-US': '', 'ja-JP': '確認' },
+    });
+    writeJson('translations.json', {});
+
+    await new PickProcessor(makeConfig(), false).execute();
+
+    expect(readJson('untranslated.json')['a.b']!['ja-JP']).toBe('確認');
+  });
+
+  it('B4: 无额外语种时不产生该告警（无回归）', async () => {
+    writeJson('zh-CN.json', { 'a.b': '确认' });
+    writeJson('en-US.json', { 'a.b': 'Confirm' });
+    writeJson('untranslated.json', {});
+    writeJson('translations.json', { 'a.b': { 'zh-CN': '确认', 'en-US': 'Confirm' } });
+
+    await new PickProcessor(makeConfig(), false).execute();
+
+    expect(warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n')).not.toContain(
+      '不在 locales.targets 内的语种',
+    );
+  });
+});

@@ -146,6 +146,15 @@ export abstract class FileProcessor {
   }
 
   /**
+   * 本次运行是否被用户取消。CLI 据此跳过覆盖率阈值卡点：取消的运行一个字节都没落盘，
+   * 按阈值判失败会以 exit 2 把「用户主动放弃」误报成 CI 失败，且失败文案（「改动已写入…
+   * 请用 git 回滚」）与事实相反。覆盖率本身仍照常结算渲染（反映本次扫描结果）。
+   */
+  isCancelled(): boolean {
+    return this.cancelled;
+  }
+
+  /**
    * 模板方法：包装子类逻辑，提供日志和错误处理
    */
   protected async executeWithLifecycle(fn: () => Promise<void> | void): Promise<void> {

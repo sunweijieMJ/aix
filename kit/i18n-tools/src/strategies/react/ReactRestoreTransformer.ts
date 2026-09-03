@@ -12,8 +12,10 @@ import {
   createStringOrTemplateNode,
 } from '../../utils/restore-node-factory';
 import {
+  findInnermostBindingDeclaration,
   isIdentifierValueReference,
   isImportedNameUnused,
+  unusedImportedLocalNames,
   isShadowedInsideScope,
 } from '../../utils/scope-analysis';
 import { convertUnicodeToChineseInCode } from '../../utils/string-escape';
@@ -127,7 +129,17 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
    */
   private declarationBindsVarFromThisProps(decl: ts.VariableDeclaration, varName: string): boolean {
     if (!this.declarationBindsVar(decl, varName)) return false;
-    const init = decl.initializer;
+    let init = decl.initializer;
+    // 手写代码常给 props 加类型断言（`this.props as WithTranslation`）或括号，剥掉再判本体。
+    while (
+      init &&
+      (ts.isAsExpression(init) ||
+        ts.isTypeAssertionExpression(init) ||
+        ts.isParenthesizedExpression(init) ||
+        ts.isNonNullExpression(init))
+    ) {
+      init = init.expression;
+    }
     return (
       !!init &&
       ts.isPropertyAccessExpression(init) &&
@@ -186,44 +198,35 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
    * Props 上不存在的属性（TS2339）且运行时恒为 undefined。工具自产形态从不把绑定放在形参上
    * （函数组件注入到体内、类组件走 this.props），故本判定只会命中手写代码。
    *
-   * 两个条件必须同时成立，缺一都会误伤：
-   *  1. 存在渲染 JSX 且形参解构绑定 translationVarName 的函数（componentParamBindsVar 与注入端
-   *     「见到该形态就跳过注入」同一判定）。附加 containsJsxNode 是为了排除
-   *     `list.map(({ t }) => t.label)` 这类同名字段解构的普通回调；
-   *  2. 文件里确实有 HOC 脚手架——HOC 调用或对 hocPropsType 的类型引用。否则没有可剥的
-   *     heritage / 可解的包裹，保守保留只会白白留下本该摘除的 import。
+   * 判定必须落在**同一个函数节点**上：既要形参解构绑定 translationVarName、渲染 JSX，又要
+   * 该形参确实由 HOC 注入——形参类型引用 hocPropsType，或该函数被库 HOC 包裹
+   * （componentParamBindsVar 传 options 后与注入端「见到该形态就跳过注入」同一判定）。
+   * 两个信号若各自在文件级独立成立，`list.map(({ t }) => <li/>)` 这类返回 JSX 的普通回调
+   * 撞上文件里任意一处 HOC 调用 / hocPropsType 类型引用就会误判，整文件停止清理并误告警。
    */
   private hasHandwrittenHocParamInjection(root: ts.Node, library: ReactI18nLibrary): boolean {
     const varName = library.translationVarName;
-    let paramBound = false;
-    let hocScaffolding = false;
+    const hocOptions = {
+      hocPropsType: library.hocPropsType,
+      isHOCCall: (expression: ts.Expression) => library.isHOCCall(expression),
+    };
+    let found = false;
     const visit = (node: ts.Node): void => {
-      if (paramBound && hocScaffolding) return;
+      if (found) return;
       if (
-        !paramBound &&
         (ts.isFunctionDeclaration(node) ||
           ts.isFunctionExpression(node) ||
           ts.isArrowFunction(node)) &&
-        ReactASTUtils.componentParamBindsVar(node, varName) &&
+        ReactASTUtils.componentParamBindsVar(node, varName, hocOptions) &&
         ReactASTUtils.containsJsxNode(node)
       ) {
-        paramBound = true;
-      }
-      if (!hocScaffolding) {
-        if (ts.isCallExpression(node) && library.isHOCCall(node)) {
-          hocScaffolding = true;
-        } else if (
-          ts.isIdentifier(node) &&
-          node.text === library.hocPropsType &&
-          !ts.isPropertyAccessExpression(node.parent)
-        ) {
-          hocScaffolding = true;
-        }
+        found = true;
+        return;
       }
       ts.forEachChild(node, visit);
     };
     visit(root);
-    return paramBound && hocScaffolding;
+    return found;
   }
 
   transform(filePath: string, localeMap: LocaleMap, sourceText?: string): string {
@@ -281,11 +284,11 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   /**
    * restore 收尾：逐个具名导入复核存活性，摘除还原后已无引用的工具注入名。
    *
-   * ReactImportManager.cleanupImports 的 keepLibraryImport 是**整条 import 粒度**的守卫：
-   * 文件里只要有一处还原不掉的翻译调用/组件，`import { Trans, useTranslation }` 整行都被保留，
-   * 其中已无 `<Trans>` 用法的 Trans 就成了死导入（no-unused-vars，且 prettify 步骤的 ESLint 会红）。
-   * 这里在最终代码上按名逐个判：JSX 标签、hook 调用、HOC 调用与类型引用都算引用（都是标识符的
-   * 值/类型位置读取，isImportedNameUnused 一并覆盖），零引用才摘。守卫保守——任一未遮蔽引用即保留。
+   * 这是库**值导入**（Trans / useTranslation / withTranslation）唯一的摘除点：在最终代码上
+   * 按名逐个判死——JSX 标签、hook 调用、HOC 调用、裸值透传与类型引用都算引用（都是标识符的
+   * 值/类型位置读取，isImportedNameUnused 一并覆盖），零引用才摘。守卫保守——任一未遮蔽引用
+   * 即保留。相比 AST 侧按名摘除，它不依赖「引用形态枚举」，`React.createElement(Trans, …)`、
+   * `() => useTranslation` 这类形态自然被保住。
    *
    * 只处理未改名的注入名：改名导入（`Trans as T`）一定是用户代码，与 cleanupImports 同口径跳过。
    * `import type { … }` 行不在 removeNamedImports 的匹配形态内，其类型名由 cleanupImports 在
@@ -335,10 +338,11 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
    */
   private finalizeTImport(code: string, filePath: string): string {
     const funcName = this.library.globalFunctionName.split('.')[0]!;
-    if (!isImportedNameUnused(code, filePath, this.tImport, funcName)) {
-      return code;
-    }
-    return removeNamedImports(code, (m) => m === this.tImport, [funcName]);
+    // 按本地名逐个摘：`import { t as tr, t }` 里 tr 仍在用时只摘死掉的 t，与 Vue 端
+    // VueRestoreTransformer.cleanupPluginLocaleImport 同口径。
+    const deadNames = unusedImportedLocalNames(code, filePath, this.tImport, funcName);
+    if (deadNames.length === 0) return code;
+    return removeNamedImports(code, (m) => m === this.tImport, deadNames, { byLocalName: true });
   }
 
   /**
@@ -417,6 +421,83 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   }
 
   /**
+   * 模块顶层是否把 varName 从「非 i18n 来源」的模块导入进来
+   * （`import { t } from '@/utils/tiny-template'`）。
+   * 局部作用域的绑定由 findInnermostBindingDeclaration 覆盖，import 绑定不在其列，故单列一判。
+   */
+  private importsTranslationVarFromForeignModule(
+    sourceFile: ts.SourceFile,
+    varName: string,
+  ): boolean {
+    // i18next 是 react-i18next 的运行时本体，其导出的 t / i18next 实例同属 i18n 来源。
+    const i18nModules = new Set([this.tImport, this.library.packageName, 'i18next']);
+    for (const statement of sourceFile.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+        continue;
+      }
+      const clause = statement.importClause;
+      if (!clause) continue;
+      const named = clause.namedBindings;
+      const binds =
+        clause.name?.text === varName ||
+        (named !== undefined &&
+          (ts.isNamespaceImport(named)
+            ? named.name.text === varName
+            : named.elements.some((element) => element.name.text === varName)));
+      if (binds && !i18nModules.has(statement.moduleSpecifier.text)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 翻译调用是否真的调在 i18n 绑定上——按名匹配之外再解析这一处引用「看到的是谁」。
+   *
+   * library.isTranslationCall 只看形态：react-i18next 认任何裸 `t(...)`、react-intl 认任何
+   * `intl.formatMessage(...)`。业务代码里的同名绑定（`const { t } = useTemperature()`、
+   * `import { t } from '@/utils/tiny-template'`、`const intl = createIntl(...)`）一旦实参恰好
+   * 撞上 locale 里的 key，就会被静默替换成翻译文案——改写的是与 i18n 无关的业务调用。
+   *
+   * 合法来源与 generate 端 hasConflictingTranslationBinding 同一份口径
+   * （isI18nSourceDeclaration）：i18n hook 解构 / 库全局函数声明 / `this.props` 解构 /
+   * HOC 注入的形参，加上 tImport 与库自身模块的具名导入。
+   * 保守方向：查不到任何绑定（模块级注入的裸 t、跨文件全局）时按 i18n 来源处理，照常还原。
+   */
+  private isRestorableTranslationCall(node: ts.CallExpression, sourceFile: ts.SourceFile): boolean {
+    if (!this.library.isTranslationCall(node)) {
+      return false;
+    }
+    const varName = this.library.translationVarName;
+    const callee = node.expression;
+    // 取调用的根标识符：裸 `t(...)` 取 t，`intl.formatMessage(...)` 取 intl。
+    // `props.t` / `this.props.t` / `i18next.t` 的根不是翻译变量，其接收者已由 library 的
+    // 白名单收窄，不再重复判定。
+    const root = ts.isIdentifier(callee)
+      ? callee
+      : ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)
+        ? callee.expression
+        : undefined;
+    if (!root || root.text !== varName) {
+      return true;
+    }
+
+    const declaration = findInnermostBindingDeclaration(root, varName);
+    if (declaration) {
+      return ReactASTUtils.isI18nSourceDeclaration(declaration, {
+        hookName: this.library.hookName,
+        hocPropsType: this.library.hocPropsType,
+        isHOCCall: (expression) => this.library.isHOCCall(expression),
+        isI18nDeclaration: (decl) =>
+          this.library.isHookDeclaration(decl) ||
+          this.library.isGlobalFunctionDeclaration(decl) ||
+          this.declarationBindsVarFromThisProps(decl, varName),
+      });
+    }
+    return !this.importsTranslationVarFromForeignModule(sourceFile, varName);
+  }
+
+  /**
    * 转换翻译函数调用
    */
   private transformTranslationCall(
@@ -425,7 +506,7 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
     definedMessages: Map<string, MessageInfo>,
     sourceFile: ts.SourceFile,
   ): ts.Node | null {
-    if (!this.library.isTranslationCall(node)) {
+    if (!this.isRestorableTranslationCall(node, sourceFile)) {
       return null;
     }
 
@@ -597,6 +678,8 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             context.componentNameMap.set(node.name.text, wrappedComponent);
             // 类组件 HOC 约定：内部类名 = 原名 + 'WithOutIntl'。若该 HOC 导出语句带 export，
             // 记录内部类名，供 unwrapHOC 把类改回原名时恢复 export。
+            // 两个判定并列而非互斥：源文件可以同时具名导出与默认导出同一个类
+            // （`export class Foo` + `export default Foo`），只记其一会永久丢掉另一条导出。
             if (wrappedComponent === node.name.text + HOC_CLASS_SUFFIX) {
               if (
                 ts.isVariableDeclarationList(node.parent) &&
@@ -604,7 +687,8 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
                 node.parent.parent.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
               ) {
                 context.exportedHocInnerNames!.add(wrappedComponent);
-              } else if (defaultExportedIdentifiers.has(node.name.text)) {
+              }
+              if (defaultExportedIdentifiers.has(node.name.text)) {
                 context.defaultExportedHocInnerNames!.add(wrappedComponent);
               }
             }
@@ -681,7 +765,10 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
       if (ts.isCallExpression(node) && library.isHOCCall(node) && !unwrappableHocCalls.has(node)) {
         keepLibraryImport = true;
       }
-      if (ts.isCallExpression(node) && library.isTranslationCall(node)) {
+      // 用 isRestorableTranslationCall 而非 library.isTranslationCall：调在业务同名绑定上的
+      // 伪翻译调用本就不该还原，若把它计入「存活翻译调用」会让整文件的 keep* 旗标恒为 true，
+      // 真正的 hook 声明与库导入反而清理不掉。
+      if (ts.isCallExpression(node) && this.isRestorableTranslationCall(node, context.sourceFile)) {
         const restored = this.transformTranslationCall(
           node,
           context.localeMap,

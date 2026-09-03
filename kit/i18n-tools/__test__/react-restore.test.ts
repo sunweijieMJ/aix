@@ -2042,3 +2042,261 @@ describe('React restore — 保留调用前的行内注释', () => {
     expect(out.match(/语句上方注释/g)).toHaveLength(1);
   });
 });
+
+/**
+ * 还原侧审计修复合集：导出恢复、库导入存活判定、翻译组件属性守卫、翻译调用的绑定来源判定。
+ */
+describe('React restore — 还原侧审计修复合集', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-restore-audit-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const restore = (
+    code: string,
+    locale: Record<string, string>,
+    libType: ReactI18nLibraryType = 'react-i18next',
+  ): string => {
+    const file = path.join(dir, 'C.tsx');
+    fs.writeFileSync(file, code);
+    return new ReactRestoreTransformer(
+      createReactI18nLibrary(libType),
+      '@/plugins/locale',
+    ).transform(file, locale, code);
+  };
+
+  const noParseErrors = (out: string): void => {
+    const sf = ts.createSourceFile('o.tsx', out, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    expect(
+      ((sf as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics ?? []).length,
+      `产物解析错误：\n${out}`,
+    ).toBe(0);
+  };
+
+  it('RR-01: 具名导出 + 独立 export default 的类组件往返后两条导出都在', async () => {
+    const original = `import React from 'react';
+export class Foo extends React.Component {
+  render() {
+    return <div title="确定">x</div>;
+  }
+}
+export default Foo;
+`;
+    const file = path.join(dir, 'Foo.tsx');
+    fs.writeFileSync(file, original);
+    const adapter = new ReactAdapter('@/plugins/locale', 'react-i18next');
+    const strings = await adapter.getTextExtractor().extractFromFile(file);
+    strings.forEach((s: ExtractedString, i) => (s.semanticId = `k${i}`));
+    const injected = adapter.getTransformer().transform(file, strings, original);
+    const locale: Record<string, string> = {};
+    strings.forEach((s) => (locale[s.semanticId] = s.processedMessage || s.original));
+
+    // 前置确认：确实走了类组件 HOC 注入路径
+    expect(injected).toContain('export const Foo = withTranslation()(FooWithOutIntl);');
+    expect(injected).toContain('export default Foo;');
+
+    const restored = new ReactRestoreTransformer(
+      createReactI18nLibrary('react-i18next'),
+      '@/plugins/locale',
+    ).transform(file, locale, injected);
+
+    expect(restored).toMatch(/export\s+class\s+Foo\b/);
+    expect(restored).toMatch(/export\s+default\s+Foo\s*;/);
+    expect(restored).not.toContain('WithOutIntl');
+    noParseErrors(restored);
+  });
+
+  it('RR-02: 手写 `_原名` 内部类 + 具名 HOC 导出 → 保留导出、不改类名', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { injectIntl } from 'react-intl';\n` +
+        `class _Foo extends React.Component<any> {\n` +
+        `  render() { return <div title={this.props.intl.formatMessage({ id: 'k0' })}>x</div>; }\n` +
+        `}\n` +
+        `export const Foo = injectIntl(_Foo);\n`,
+      { k0: '确定' },
+      'react-intl',
+    );
+    expect(out).toContain('确定');
+    expect(out).toMatch(/class\s+_Foo\b/);
+    expect(out).toContain('export const Foo = _Foo');
+    noParseErrors(out);
+  });
+
+  it('RR-02: 手写 `_原名` 内部类 + 默认 HOC 导出 → export default 指向存在的类', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { injectIntl } from 'react-intl';\n` +
+        `class _Foo extends React.Component<any> {\n` +
+        `  render() { return <div title={this.props.intl.formatMessage({ id: 'k0' })}>x</div>; }\n` +
+        `}\n` +
+        `export default injectIntl(_Foo);\n`,
+      { k0: '确定' },
+      'react-intl',
+    );
+    expect(out).toMatch(/class\s+_Foo\b/);
+    expect(out).toContain('export default _Foo');
+    noParseErrors(out);
+  });
+
+  it('RR-03: Trans 被当值引用（React.createElement）→ 保留 import', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { Trans } from 'react-i18next';\n` +
+        `export function P() {\n` +
+        `  return <div>{React.createElement(Trans, { i18nKey: 'x' })}<Trans i18nKey="k0" /></div>;\n` +
+        `}\n`,
+      { k0: '你好' },
+    );
+    expect(out).toContain('你好');
+    expect(out).toMatch(/import\s*\{\s*Trans\s*\}\s*from\s*['"]react-i18next['"]/);
+    noParseErrors(out);
+  });
+
+  it('RR-03: useTranslation 被当值转发 → 保留 import', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { useTranslation } from 'react-i18next';\n` +
+        `export const useT = () => useTranslation;\n` +
+        `export function P() { const { t } = useTranslation(); return <div title={t('k0')}>x</div>; }\n`,
+      { k0: '确定' },
+    );
+    expect(out).toContain('确定');
+    expect(out).toMatch(/import\s*\{\s*useTranslation\s*\}\s*from\s*['"]react-i18next['"]/);
+    noParseErrors(out);
+  });
+
+  it('tImport 别名共存 `import { t as tr, t }`：tr 仍在用时只摘死掉的 t', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { t as tr, t } from '@/plugins/locale';\n` +
+        `export const a = t('k0');\n` +
+        `export const b = tr('y');\n`,
+      { k0: '确定' },
+    );
+    expect(out).toContain('确定');
+    expect(out).toMatch(/import\s*\{\s*t as tr\s*\}\s*from\s*['"]@\/plugins\/locale['"]/);
+    expect(out).toContain("tr('y')");
+    noParseErrors(out);
+  });
+
+  it('RR-04: <Trans> 带 count 等非 values 属性 → 保留原组件，不丢运行时变量', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { Trans } from 'react-i18next';\n` +
+        `export function P({ n }: { n: number }) { return <p><Trans i18nKey="k0" count={n} /></p>; }\n`,
+      { k0: '{{count}} 项' },
+    );
+    expect(out).toContain('count={n}');
+    expect(out).toContain('<Trans');
+    noParseErrors(out);
+  });
+
+  it('RR-04: <Trans> 带 components 属性 → 保留原组件，不把标签渲染成可见文本', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { Trans } from 'react-i18next';\n` +
+        `export function P() { return <div><Trans i18nKey="k0" components={{ b: <b /> }} /></div>; }\n`,
+      { k0: '你好 <b>世界</b>' },
+    );
+    expect(out).toContain('components=');
+    expect(out).not.toContain('"你好 <b>世界</b>"');
+    noParseErrors(out);
+  });
+
+  it('RR-04: <FormattedMessage tagName> → 保留原组件，不丢外层标签语义', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { FormattedMessage } from 'react-intl';\n` +
+        `export function P() { return <div><FormattedMessage id="k0" tagName="p" /></div>; }\n`,
+      { k0: '你好' },
+      'react-intl',
+    );
+    expect(out).toContain('tagName="p"');
+    expect(out).toContain('<FormattedMessage');
+    noParseErrors(out);
+  });
+
+  it('RR-05: `const { t } = useTemperature()` 的同名 t 调用不被还原', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { useTranslation } from 'react-i18next';\n` +
+        `import { useTemperature } from './temp';\n` +
+        `export function A() { const { t } = useTranslation(); return <div title={t('k0')}>x</div>; }\n` +
+        `export function B() { const { t } = useTemperature(); return <div title={t('k0')}>{t('celsius')}</div>; }\n`,
+      { k0: '确定', celsius: '摄氏度' },
+    );
+    // A 的 i18n t 照常还原
+    expect(out).toContain('title="确定"');
+    // B 的温度 t 原样保留，且不得被替换成文案
+    expect(out).toContain("t('k0')");
+    expect(out).toContain("t('celsius')");
+    expect(out).not.toContain('摄氏度');
+    noParseErrors(out);
+  });
+
+  it('RR-05: 从非 i18n 模块导入的同名 t 调用不被还原', () => {
+    const out = restore(
+      `import { t } from '@/utils/tiny-template';\n` + `export const label = t('k0');\n`,
+      { k0: '确定' },
+    );
+    expect(out).toContain("t('k0')");
+    expect(out).not.toContain('确定');
+  });
+
+  it('RR-05: 同名业务 t 在 hook 依赖数组里 → 依赖项不被剥离（不留悬空依赖）', () => {
+    const out = restore(
+      `import React, { useMemo } from 'react';\n` +
+        `import { useTemperature } from './temp';\n` +
+        `export function P() {\n` +
+        `  const { t } = useTemperature();\n` +
+        `  const label = useMemo(() => t('k0'), [t]);\n` +
+        `  return <div>{label}</div>;\n` +
+        `}\n`,
+      { k0: '确定' },
+    );
+    expect(out).toContain("useMemo(() => t('k0'), [t])");
+    expect(out).not.toContain('确定');
+    noParseErrors(out);
+  });
+
+  it('RR-05: 对照 —— tImport 导入的全局 t 照常还原', () => {
+    const out = restore(
+      `import { t } from '@/plugins/locale';\n` + `export const label = t('k0');\n`,
+      { k0: '确定' },
+    );
+    expect(out).toContain('确定');
+    expect(out).not.toContain("t('k0')");
+  });
+
+  it('RR-06: 返回 JSX 的 map 回调解构同名 t + 文件内 HOC 类型引用 → 不触发保守保留', () => {
+    const warns: string[] = [];
+    const spy = vi.spyOn(LoggerUtils, 'warn').mockImplementation((m: string) => {
+      warns.push(m);
+    });
+    try {
+      const out = restore(
+        `import React from 'react';\n` +
+          `import { useTranslation } from 'react-i18next';\n` +
+          `import type { WithTranslation } from 'react-i18next';\n` +
+          `export type Props = WithTranslation & { x: string };\n` +
+          `export function P({ tabs }: { tabs: { t: string }[] }) {\n` +
+          `  const { t } = useTranslation();\n` +
+          `  return <ul title={t('k0')}>{tabs.map(({ t }) => <li key={t}>{t}</li>)}</ul>;\n` +
+          `}\n`,
+        { k0: '标题' },
+      );
+      expect(out).toContain('title="标题"');
+      // hook 声明与库导入照常清理
+      expect(out).not.toContain('useTranslation');
+      // 普通回调不该被判成「HOC 形参注入」而告警
+      expect(warns.some((w) => w.includes('跳过 HOC 解包'))).toBe(false);
+      noParseErrors(out);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

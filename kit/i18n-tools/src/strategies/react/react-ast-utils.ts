@@ -1,6 +1,7 @@
 import ts from 'typescript';
 import { MessageInfo } from '../../utils/types';
 import { extractObjectLiteralProperties, objectLiteralHasSpread } from '../../utils/ast-core';
+import { findInnermostBindingDeclaration } from '../../utils/scope-analysis';
 
 /** hasConflictingTranslationBinding 的「哪些同名绑定属于 i18n 来源」豁免口径。 */
 export interface ConflictingBindingOptions {
@@ -8,10 +9,34 @@ export interface ConflictingBindingOptions {
   i18nModules?: readonly string[];
   /** 变量声明是 i18n 来源（如 react-intl 的 `const intl = getIntl()`）时不算冲突。 */
   isI18nDeclaration?: (declaration: ts.VariableDeclaration) => boolean;
+  /** i18n hook 名：`const { t } = useTranslation()` 形态的初始化器算 i18n 来源。 */
+  hookName?: string;
+  /** HOC 注入的 props 类型名（WithTranslation / WrappedComponentProps）。 */
+  hocPropsType?: string;
+  /** 表达式是否为该库的 HOC 调用（`withTranslation()(X)` / `injectIntl(X)`）。 */
+  isHOCCall?: (expression: ts.Expression) => boolean;
 }
 
 /** plainlyCalledNames 的按文件缓存（见其注释：逐节点重扫是 O(n²)）。 */
 const PLAINLY_CALLED_NAMES = new WeakMap<ts.SourceFile, Set<string>>();
+
+/**
+ * 「把回调**当普通函数逐项调用**」的数组方法：其实参位上的 PascalCase 标识符
+ * （`rows.map(Row)`）与 `Row(...)` 同性质，见 plainlyCalledNames。
+ */
+const ITERATION_CALLBACK_METHODS = new Set([
+  'map',
+  'forEach',
+  'flatMap',
+  'filter',
+  'find',
+  'findLast',
+  'findIndex',
+  'findLastIndex',
+  'some',
+  'every',
+  'sort',
+]);
 
 /**
  * React 特定的 AST 工具类
@@ -269,8 +294,12 @@ export class ReactASTUtils {
    *
    * 每一级只看该作用域的直接语句、不下钻：嵌套回调里的同名声明
    * （`useEffect(() => { const t = setTimeout(...) })` 极常见）只是无害的内层遮蔽，
-   * 若也算冲突会误跳，触发面比要防的问题大得多。形参绑定不在此判（componentParamBindsVar
-   * 已把它算作「已有绑定」）。
+   * 若也算冲突会误跳，触发面比要防的问题大得多；「这一个替换点看到的 varName 是谁」由
+   * referenceBindsConflictingVar 按引用点单独判定。
+   *
+   * node 可以是函数（检查其形参与函数体顶层）、块、或 SourceFile（模块顶层，供模块级文案
+   * 与注入名可用性判定复用）。形参只在**不是 HOC 注入形态**时算冲突：`({ t }: WithTranslation)`
+   * 是 withTranslation 传入的合法 t，与 componentParamBindsVar 同口径。
    *
    * @param options.i18nModules 视为 i18n 来源、其具名导入不算冲突的模块（工具自身注入的
    *        全局 t 导入路径与 i18n 库包名）。缺省则任意同名具名导入都算冲突。
@@ -284,16 +313,13 @@ export class ReactASTUtils {
     options?: ConflictingBindingOptions,
   ): boolean {
     const opts = options ?? {};
-    const body = (node as ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration).body;
-    if (
-      body &&
-      ts.isBlock(body) &&
-      ReactASTUtils.statementsBindConflictingVar(body.statements, varName, hookName, opts)
-    ) {
+    if (ReactASTUtils.functionScopeBindsConflictingVar(node, varName, hookName, opts)) {
       return true;
     }
 
-    let current: ts.Node | undefined = node.parent;
+    // 自 node 自身起步（而非 node.parent）：node 为块 / SourceFile 时，该层的直接语句
+    // 正是要检查的作用域；node 为函数时本层不匹配任何分支，与从 parent 起步等价。
+    let current: ts.Node | undefined = node;
     while (current) {
       if (ts.isBlock(current) || ts.isSourceFile(current) || ts.isModuleBlock(current)) {
         if (
@@ -305,6 +331,26 @@ export class ReactASTUtils {
       current = current.parent;
     }
     return false;
+  }
+
+  /**
+   * 函数 / 类成员**自身作用域**（形参 + 函数体直属语句）里是否有同名非 i18n 绑定，不上溯外层。
+   * 注入点落在该作用域内时（类成员的 `const { t } = this.props`）用这一格判定即可；
+   * 函数组件的 hook 注入还要看外层，走 hasConflictingTranslationBinding。
+   */
+  static functionScopeBindsConflictingVar(
+    node: ts.Node,
+    varName: string,
+    hookName: string,
+    options: ConflictingBindingOptions = {},
+  ): boolean {
+    if (ReactASTUtils.functionParamsBindConflictingVar(node, varName, options)) return true;
+    const body = (node as ts.FunctionLikeDeclaration).body;
+    return (
+      !!body &&
+      ts.isBlock(body) &&
+      ReactASTUtils.statementsBindConflictingVar(body.statements, varName, hookName, options)
+    );
   }
 
   /** 单个作用域的直接语句里是否有与 varName 同名的非 i18n 绑定（见 hasConflictingTranslationBinding）。 */
@@ -371,6 +417,254 @@ export class ReactASTUtils {
     if (!named) return false;
     if (ts.isNamespaceImport(named)) return named.name.text === varName;
     return named.elements.some((el) => el.name.text === varName);
+  }
+
+  /**
+   * 类型节点是否**直接**引用名为 name 的类型（含交叉 / 联合 / 括号成员，按 TypeReference
+   * 的末段名精确比对）。
+   *
+   * 不能退化成 `getText().includes(name)`：`PanelWithTranslationToggleProps` 含
+   * `WithTranslation` 子串却与 HOC 注入的类型无关，子串匹配会把未包裹的类误判为已包裹 ——
+   * 不注入 HOC / 不加宽类型，产出 `this.props.t` 不存在的代码。
+   * 不下钻泛型实参：`Props<WithTranslation>` 的外层类型不是 WithTranslation。
+   */
+  static typeReferencesName(node: ts.TypeNode | undefined, name: string): boolean {
+    if (!node) return false;
+    if (ts.isIntersectionTypeNode(node) || ts.isUnionTypeNode(node)) {
+      return node.types.some((t) => ReactASTUtils.typeReferencesName(t, name));
+    }
+    if (ts.isParenthesizedTypeNode(node)) {
+      return ReactASTUtils.typeReferencesName(node.type, name);
+    }
+    if (ts.isTypeReferenceNode(node)) {
+      const typeName = node.typeName;
+      const last = ts.isQualifiedName(typeName) ? typeName.right.text : typeName.text;
+      return last === name;
+    }
+    return false;
+  }
+
+  /**
+   * 形参绑定的 varName 是否由 i18n HOC 注入（`({ t }: WithTranslation)` /
+   * `withTranslation()(({ t }) => …)`），而非业务自己的同名形参（`(t: Tab) => …`）。
+   *
+   * 两条信号：形参类型引用 hocPropsType；或该函数被库 HOC 包裹（直接包裹，或文件内
+   * 有 `HOC(组件名)` 形态的包裹语句）。都不满足时形参 t 与工具注入的 t 语义无关。
+   */
+  private static isHocInjectedParameter(
+    param: ts.ParameterDeclaration,
+    options: ConflictingBindingOptions,
+  ): boolean {
+    if (
+      options.hocPropsType &&
+      ReactASTUtils.typeReferencesName(param.type, options.hocPropsType)
+    ) {
+      return true;
+    }
+    const isHOCCall = options.isHOCCall;
+    if (!isHOCCall) return false;
+
+    const func = param.parent;
+    // HOC(( { t } ) => …)：形参所属函数本身就是 HOC 调用的实参（memo/forwardRef 先解包）
+    let host: ts.Node | undefined = func.parent;
+    while (
+      host &&
+      ts.isCallExpression(host) &&
+      ReactASTUtils.isForwardRefOrMemoCallee(host.expression)
+    ) {
+      host = host.parent;
+    }
+    if (host && ts.isCallExpression(host) && isHOCCall(host)) return true;
+
+    // `const Foo = ({ t }) => …; export default withTranslation()(Foo);`：按组件名回查包裹语句
+    const componentName = ReactASTUtils.declaredFunctionName(func);
+    const sourceFile = ReactASTUtils.sourceFileOf(param);
+    if (!componentName || !sourceFile) return false;
+    let wrapped = false;
+    const visit = (n: ts.Node): void => {
+      if (wrapped) return;
+      if (
+        ts.isCallExpression(n) &&
+        isHOCCall(n) &&
+        n.arguments.some((arg) => ts.isIdentifier(arg) && arg.text === componentName)
+      ) {
+        wrapped = true;
+        return;
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(sourceFile);
+    return wrapped;
+  }
+
+  /** 函数声明自身的名字，或其绑定到的变量名（`const Foo = () => …`）。 */
+  private static declaredFunctionName(func: ts.Node): string | undefined {
+    if (ts.isFunctionDeclaration(func) && func.name) return func.name.text;
+    let host: ts.Node | undefined = func.parent;
+    while (
+      host &&
+      ts.isCallExpression(host) &&
+      ReactASTUtils.isForwardRefOrMemoCallee(host.expression)
+    ) {
+      host = host.parent;
+    }
+    if (host && ts.isVariableDeclaration(host) && ts.isIdentifier(host.name)) return host.name.text;
+    return undefined;
+  }
+
+  /** 函数（若 node 是函数）的形参里是否有绑定 varName 的**非 i18n** 形参。 */
+  static functionParamsBindConflictingVar(
+    node: ts.Node,
+    varName: string,
+    options: ConflictingBindingOptions = {},
+  ): boolean {
+    if (
+      !ts.isArrowFunction(node) &&
+      !ts.isFunctionExpression(node) &&
+      !ts.isFunctionDeclaration(node) &&
+      !ts.isMethodDeclaration(node) &&
+      !ts.isConstructorDeclaration(node) &&
+      !ts.isGetAccessorDeclaration(node) &&
+      !ts.isSetAccessorDeclaration(node)
+    ) {
+      return false;
+    }
+    return node.parameters.some(
+      (param) =>
+        ReactASTUtils.parameterBindsName(param, varName) &&
+        !ReactASTUtils.isHocInjectedParameter(param, options),
+    );
+  }
+
+  /** 形参（标识符 / 对象解构 / 数组解构，含嵌套）是否绑定了名为 name 的本地变量。 */
+  private static parameterBindsName(param: ts.ParameterDeclaration, name: string): boolean {
+    const bindsName = (binding: ts.BindingName): boolean => {
+      if (ts.isIdentifier(binding)) return binding.text === name;
+      if (ts.isObjectBindingPattern(binding) || ts.isArrayBindingPattern(binding)) {
+        return binding.elements.some((el) => ts.isBindingElement(el) && bindsName(el.name));
+      }
+      return false;
+    };
+    return bindsName(param.name);
+  }
+
+  /**
+   * 声明是否属于 i18n 来源：hook 解构（`const { t } = useTranslation()`）、类组件的
+   * `const { t } = this.props`、库自定义的全局声明（`const intl = getIntl()`），
+   * 以及 HOC 注入的形参。其余（业务变量 / 回调形参 / 循环变量 / catch 参数 / 同名函数）
+   * 都不是 i18n 来源。
+   */
+  static isI18nSourceDeclaration(
+    declaration: ts.Node,
+    options: ConflictingBindingOptions = {},
+  ): boolean {
+    if (ts.isParameter(declaration)) {
+      return ReactASTUtils.isHocInjectedParameter(declaration, options);
+    }
+    if (!ts.isVariableDeclaration(declaration)) return false;
+    const initializer = declaration.initializer;
+    if (
+      initializer &&
+      options.hookName &&
+      ts.isCallExpression(initializer) &&
+      ts.isIdentifier(initializer.expression) &&
+      initializer.expression.text === options.hookName
+    ) {
+      return true;
+    }
+    // 类组件注入形态：`const { t } = this.props`
+    if (
+      initializer &&
+      ts.isPropertyAccessExpression(initializer) &&
+      initializer.expression.kind === ts.SyntaxKind.ThisKeyword &&
+      initializer.name.text === 'props'
+    ) {
+      return true;
+    }
+    return options.isI18nDeclaration?.(declaration) === true;
+  }
+
+  /**
+   * 「这一个替换点看到的 varName 是谁」——从引用点 ref 逐层向上找最内层同名绑定，
+   * 该绑定不是 i18n 来源即返回 true（替换成裸 varName(...) 会调到用户自己的变量上）。
+   *
+   * 与 hasConflictingTranslationBinding 的分工：后者回答「能否向这个作用域注入一个新的
+   * varName」（外层同名绑定会被遮蔽也算冲突），本方法回答「这一处引用解析到哪个绑定」。
+   * 提取端两者都要过：注入不安全、或本处引用被非 i18n 绑定遮蔽，都必须跳过该候选。
+   *
+   * boundary 限定上溯范围：函数组件传组件函数节点（含其形参），类成员传该成员函数节点，
+   * 模块级候选不传（一路查到 SourceFile）。
+   */
+  static referenceBindsConflictingVar(
+    ref: ts.Node,
+    varName: string,
+    boundary: ts.Node | undefined,
+    options: ConflictingBindingOptions = {},
+  ): boolean {
+    const declaration = findInnermostBindingDeclaration(ref, varName, boundary);
+    if (!declaration) return false;
+    return !ReactASTUtils.isI18nSourceDeclaration(declaration, options);
+  }
+
+  /**
+   * 向作用域 scope 注入名为 name 的绑定是否安全 —— 四类注入名（翻译变量 / hook /
+   * JSX 组件 / 全局函数 / HOC props 类型）与三类作用域（函数组件、类方法、模块顶层）
+   * 的统一入口，提取端跳过与注入端跳过共用其结论。
+   *
+   * kind='type' 时额外看同名的 interface / type / enum 声明：`import type { WithTranslation }`
+   * 与本地同名类型声明同样是重复标识符。
+   */
+  static canBindName(
+    scope: ts.Node,
+    name: string,
+    options: ConflictingBindingOptions & { kind?: 'value' | 'type' } = {},
+  ): boolean {
+    if (
+      ReactASTUtils.hasConflictingTranslationBinding(scope, name, options.hookName ?? '', options)
+    ) {
+      return false;
+    }
+    if (options.kind === 'type') {
+      const statements = (scope as ts.BlockLike).statements;
+      if (
+        statements?.some(
+          (stmt) =>
+            (ts.isInterfaceDeclaration(stmt) ||
+              ts.isTypeAliasDeclaration(stmt) ||
+              ts.isEnumDeclaration(stmt)) &&
+            stmt.name.text === name,
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * 从 node 向上找最近的「注入器会为其注入 `const { t } = this.props` 的类成员函数」
+   * （方法 / 构造器 / 访问器 / 箭头属性初始化器）；先遇到类体或源文件则返回 undefined。
+   */
+  static findEnclosingClassMemberFunction(node: ts.Node): ts.Node | undefined {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        return current;
+      }
+      if (ts.isPropertyDeclaration(current)) {
+        return current.initializer && ts.isArrowFunction(current.initializer)
+          ? current.initializer
+          : undefined;
+      }
+      if (ts.isClassLike(current) || ts.isSourceFile(current)) return undefined;
+      current = current.parent;
+    }
+    return undefined;
   }
 
   /**
@@ -444,8 +738,17 @@ export class ReactASTUtils {
    * useTranslation()/useIntl() 前规避「形参 t/intl + hook 解构」同作用域双声明。
    * 仅认本地绑定名（el.name 恒为本地名）：`{ t }` → true；`{ t: localT }`（t 改名）→ false；
    * `{ x: t }` → true。
+   *
+   * 传入 options（hocPropsType / isHOCCall）时进一步要求该形参**确实来自 i18n HOC**：形参类型
+   * 引用 hocPropsType，或该组件被库 HOC 包裹。业务自己的同名解构形参（`({ t }: { t: Tab })`）
+   * 不提供翻译函数，当成「已有 i18n 绑定」会让替换出的 `t('k')` 调到业务对象上（TS2349）。
+   * 不传 options 时维持"任意同名解构形参即算绑定"的宽口径（restore 侧据此识别 HOC 组件形态）。
    */
-  static componentParamBindsVar(node: ts.Node, varName: string): boolean {
+  static componentParamBindsVar(
+    node: ts.Node,
+    varName: string,
+    options?: ConflictingBindingOptions,
+  ): boolean {
     if (
       !ts.isArrowFunction(node) &&
       !ts.isFunctionExpression(node) &&
@@ -456,7 +759,8 @@ export class ReactASTUtils {
     return node.parameters.some(
       (param) =>
         ts.isObjectBindingPattern(param.name) &&
-        param.name.elements.some((el) => ts.isIdentifier(el.name) && el.name.text === varName),
+        param.name.elements.some((el) => ts.isIdentifier(el.name) && el.name.text === varName) &&
+        (!options || ReactASTUtils.isHocInjectedParameter(param, options)),
     );
   }
 
@@ -629,6 +933,12 @@ export class ReactASTUtils {
    * 调用方的组件里被条件/循环地执行（`dense ? Cell(r) : <Cell/>`），违反 Hooks 规则。
    * 故这类标识符整体不视为可注入组件：文案改由模块级全局 t/getIntl 承载，两种用法都安全。
    *
+   * 同样计入「作为迭代回调按引用传入」的形态（`rows.map(Row)`）：Row 会被逐行当普通函数
+   * 调用，注入 hook 后行数一变就是 "Rendered more hooks than during the previous render"。
+   * 只认 ITERATION_CALLBACK_METHODS 这几个数组方法的实参位，不泛化到任意调用实参 ——
+   * `memo(Foo)` / `observer(Foo)` / `connect(…)(Foo)` 等 HOC 同样是按引用传递，
+   * 但它们返回的仍是组件、渲染时才执行，算进来会让大量正常组件被降级成模块级 t。
+   *
    * 按 SourceFile 缓存：getComponentInfo 会对每个节点调用，逐次全文件扫描是 O(n²)。
    */
   static plainlyCalledNames(sourceFile: ts.SourceFile): ReadonlySet<string> {
@@ -636,8 +946,20 @@ export class ReactASTUtils {
     if (cached) return cached;
     const names = new Set<string>();
     const visit = (n: ts.Node): void => {
-      if (ts.isCallExpression(n) && ts.isIdentifier(n.expression)) {
-        names.add(n.expression.text);
+      if (ts.isCallExpression(n)) {
+        if (ts.isIdentifier(n.expression)) {
+          names.add(n.expression.text);
+        } else if (
+          ts.isPropertyAccessExpression(n.expression) &&
+          ts.isIdentifier(n.expression.name) &&
+          ITERATION_CALLBACK_METHODS.has(n.expression.name.text)
+        ) {
+          for (const arg of n.arguments) {
+            if (ts.isIdentifier(arg) && ReactASTUtils.isComponentName(arg.text)) {
+              names.add(arg.text);
+            }
+          }
+        }
       }
       ts.forEachChild(n, visit);
     };
@@ -918,6 +1240,12 @@ export class ReactASTUtils {
           // values={sharedValues} 等非对象字面量形态：无法静态解析，置位保留原组件。
           messageInfo.hasUnresolvableValues = true;
         }
+        break;
+      default:
+        // id / defaultMessage / values 之外的属性（tagName / description / children 函数…）
+        // 都参与运行时渲染，整节点替换会把它们连同其引用的变量一并丢弃。置位保留原组件，
+        // 与调用形态 `formatMessage(desc, values)` 的 hasUnresolvableValues 同口径。
+        messageInfo.hasUnresolvableValues = true;
         break;
     }
   }

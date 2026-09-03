@@ -84,7 +84,10 @@ export class MergeProcessor extends FileProcessor {
     this.assertTargetsSerializable(allTranslations);
 
     this.performMerge(analysisResult, existingTranslations, translatedPath);
-    this.updateLanguagePackage(allTranslations);
+    this.updateLanguagePackage(
+      allTranslations,
+      new Set(Object.keys(analysisResult.newlyTranslated)),
+    );
     this.displayMergeResult(analysisResult);
   }
 
@@ -378,12 +381,15 @@ export class MergeProcessor extends FileProcessor {
   /**
    * 同步翻译到目标语言文件：对每个 target 独立写入。
    */
-  private updateLanguagePackage(newlyTranslated: Translations): void {
+  private updateLanguagePackage(
+    newlyTranslated: Translations,
+    preValidatedKeys: ReadonlySet<string>,
+  ): void {
     const targets = this.config.locales.targets;
 
     if (!this.config.buckets) {
       for (const target of targets) {
-        this.updateFlatLanguagePackage(newlyTranslated, target);
+        this.updateFlatLanguagePackage(newlyTranslated, target, preValidatedKeys);
       }
       return;
     }
@@ -413,7 +419,12 @@ export class MergeProcessor extends FileProcessor {
         : null;
 
     for (const target of targets) {
-      this.updateBucketedLanguagePackage(newlyTranslated, target, sharedKeyBucketMap);
+      this.updateBucketedLanguagePackage(
+        newlyTranslated,
+        target,
+        sharedKeyBucketMap,
+        preValidatedKeys,
+      );
     }
   }
 
@@ -421,6 +432,7 @@ export class MergeProcessor extends FileProcessor {
     newlyTranslated: Translations,
     target: string,
     sharedKeyBucketMap: ReturnType<typeof LanguageFileManager.buildKeyBucketMap> | null,
+    preValidatedKeys: ReadonlySet<string>,
   ): void {
     // 冗余防御（normally unreachable）：真正 load-bearing 的损坏守卫是 mergeTranslationData()
     // 顶层的 assertLocalesNotCorrupt（写回前对 source + 所有 target 做 checkLegacy 探测、损坏即抛错），
@@ -450,7 +462,12 @@ export class MergeProcessor extends FileProcessor {
       );
     }
 
-    const updatedCount = MergeProcessor.applyTranslations(targetMessages, newlyTranslated, target);
+    const updatedCount = this.applyTranslations(
+      targetMessages,
+      newlyTranslated,
+      target,
+      preValidatedKeys,
+    );
 
     // source 为空时无共享分桶表，回退到当前 target 的消息计算（与原回退语义一致）。
     const keyBucketMap =
@@ -485,22 +502,40 @@ export class MergeProcessor extends FileProcessor {
   /**
    * 把 newlyTranslated 里某 target 语言的非空字符串译文写入 targetMessages，返回更新条目数。
    * 桶式 / 扁平两条写回路径共用，仅 targetMessages 来源不同。
+   *
+   * 本轮由 analyzeTranslationStatus 产出的条目（preValidatedKeys）已在那里过完
+   * isValidTranslation 与占位符校验，此处不重复；其余条目直接来自 translations.json，
+   * 可能由 csv-import 回流或人工编辑写入无效值，故在写进 locale 前补同一套把关。
    */
-  private static applyTranslations(
+  private applyTranslations(
     targetMessages: LocaleMap,
     newlyTranslated: Translations,
     target: string,
+    preValidatedKeys: ReadonlySet<string>,
   ): number {
     let updatedCount = 0;
     for (const [key, data] of Object.entries(newlyTranslated)) {
       // translations.json 可被人工编辑，条目值可能不是对象（如 null），读属性前须挡住。
       if (!MergeProcessor.isEntryObject(key, data)) continue;
       const translatedValue = data[target];
-      if (
-        translatedValue &&
-        typeof translatedValue === 'string' &&
-        targetMessages[key] !== translatedValue
-      ) {
+      if (!translatedValue || typeof translatedValue !== 'string') continue;
+      if (!preValidatedKeys.has(key)) {
+        if (!FileUtils.isValidTranslation(translatedValue)) {
+          const line =
+            `⚠️ [${target}] ${FILES.TRANSLATIONS_JSON} 中的译文无效（非空但无文字/数字），` +
+            `未写入语言文件 [${key}]: ${translatedValue}`;
+          LoggerUtils.warn(line);
+          this.report.addWarning(line);
+          continue;
+        }
+        this.warnPlaceholderMismatch(
+          key,
+          target,
+          data[this.config.locales.source],
+          translatedValue,
+        );
+      }
+      if (targetMessages[key] !== translatedValue) {
         targetMessages[key] = translatedValue;
         updatedCount++;
       }
@@ -508,7 +543,11 @@ export class MergeProcessor extends FileProcessor {
     return updatedCount;
   }
 
-  private updateFlatLanguagePackage(newlyTranslated: Translations, target: string): void {
+  private updateFlatLanguagePackage(
+    newlyTranslated: Translations,
+    target: string,
+    preValidatedKeys: ReadonlySet<string>,
+  ): void {
     const targetMessages = this.langFiles.readLocaleFile(target);
     if (targetMessages === null) {
       // 文件存在但解析失败。与桶式路径同口径抛错：静默 return 会让本轮译文全部丢失、
@@ -519,7 +558,12 @@ export class MergeProcessor extends FileProcessor {
       );
     }
 
-    const updatedCount = MergeProcessor.applyTranslations(targetMessages, newlyTranslated, target);
+    const updatedCount = this.applyTranslations(
+      targetMessages,
+      newlyTranslated,
+      target,
+      preValidatedKeys,
+    );
 
     this.langFiles.writeLocaleFile(targetMessages, target);
     LoggerUtils.info(

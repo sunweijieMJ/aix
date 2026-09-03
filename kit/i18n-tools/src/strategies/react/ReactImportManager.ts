@@ -62,8 +62,9 @@ export class ReactImportManager implements IImportManager {
   }
 
   private addGlobalFunctionDeclaration(code: string, declaration: string): string {
-    // 检查是否已存在
-    if (code.includes(declaration.trim())) {
+    // 已存在判定走 AST：字符串 includes 只认逐字一致的写法，用户手写的
+    // `const intl = getIntl()`（无分号 / 多空格）漏判即再插一条，块级重复声明（TS2451）。
+    if (this.hasGlobalFunctionDeclaration(code)) {
       return code;
     }
     // 在最后一个 import 之后插入声明，前置空行便于阅读
@@ -71,6 +72,18 @@ export class ReactImportManager implements IImportManager {
     const lastImportIndex = findLastImportLineIndex(lines);
     lines.splice(lastImportIndex + 1, 0, '\n' + declaration.trim());
     return lines.join('\n');
+  }
+
+  /** 模块顶层是否已有该库的全局函数声明（`const intl = getIntl()`）。 */
+  private hasGlobalFunctionDeclaration(code: string): boolean {
+    const sourceFile = parseSourceFile(code, 'global-decl-scan.tsx');
+    return sourceFile.statements.some(
+      (statement) =>
+        ts.isVariableStatement(statement) &&
+        statement.declarationList.declarations.some((declaration) =>
+          this.library.isGlobalFunctionDeclaration(declaration),
+        ),
+    );
   }
 
   /**
@@ -147,8 +160,9 @@ export class ReactImportManager implements IImportManager {
 
   /**
    * 清理 i18n 库导入 (AST)：restore 时从 `import ... from '<library.packageName>'` 中**仅摘除
-   * 工具注入的 i18n 具名导入**（Trans / useTranslation / withTranslation / WithTranslation 等），
-   * 保留用户在同一行手写的其它导入（如 I18nextProvider / IntlProvider）；摘除后若整条变空则移除。
+   * 工具注入的 i18n 类型导入**（WithTranslation / WrappedComponentProps），保留用户在同一行
+   * 手写的其它导入（如 I18nextProvider / IntlProvider）；摘除后若整条变空则移除。
+   * 值导入（Trans / useTranslation / withTranslation）不在此摘，见下方 remaining 处注释。
    *
    * 注意：tImport（如 `@/plugins/locale`）下的全局函数 `t` **不在此处理**。它可能是用户原有、
    * 且仍被「locale 查不到而未被还原的存活 t() 调用」引用——若在逐节点遍历时无条件删除，会删掉
@@ -192,10 +206,21 @@ export class ReactImportManager implements IImportManager {
     // 值与类型两组都要摘：类型名以 `import type` 单独一行注入（见 addI18nTypeImports），
     // 整条只剩工具注入的类型名时下方 remaining.length === 0 分支会把该行整体移除。
     const injectable = new Set([...specifiers.values, ...specifiers.types]);
-    // 仅删除「未改名且命中注入集」的 specifier：改名导入（`import { Trans as T }`）一定是
-    // 用户代码（工具只注入裸名），故 propertyName 存在时一律保留。
+    // 仅删除「未改名、命中注入集、且处于类型位置」的 specifier：
+    //  - 改名导入（`import { Trans as T }`）一定是用户代码（工具只注入裸名），一律保留；
+    //  - 值导入（Trans / useTranslation / withTranslation）在此按名摘除是不安全的——本函数
+    //    逐节点执行，看不到还原后的全文，任何非「翻译调用/组件/HOC/hook 声明」形态的引用
+    //    （`React.createElement(Trans, …)`、`() => useTranslation` 转发等）都不在 keep* 旗标
+    //    的枚举内，摘了就产出未定义标识符。值导入的存活判定统一交给
+    //    ReactRestoreTransformer.finalizeLibraryImports 在最终代码上逐名判死。
+    //  - 类型导入（`import type { WithTranslation }` 行或内联 `{ type WithTranslation }`）必须
+    //    留在这里摘：finalizeLibraryImports 依赖的 removeNamedImports 只匹配值导入形态。
+    //    其全部类型引用已由 cleanupHOCPropsType 在同一门控下剥除。
+    const isTypeOnlySpecifier = (el: ts.ImportSpecifier): boolean =>
+      importClause.isTypeOnly || el.isTypeOnly;
     const remaining = named.elements.filter(
-      (el) => el.propertyName !== undefined || !injectable.has(el.name.text),
+      (el) =>
+        el.propertyName !== undefined || !injectable.has(el.name.text) || !isTypeOnlySpecifier(el),
     );
 
     if (remaining.length === named.elements.length) return node; // 无工具注入名可摘，保留

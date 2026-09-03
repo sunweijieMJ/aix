@@ -789,3 +789,103 @@ export function Real() {
     await expect(proc.execute()).rejects.toThrow(/Doctor CI check failed/);
   });
 });
+
+// =============================================================================
+// B5 / B6：目标值无效、以及非中文源语种的对账口径
+// =============================================================================
+describe('DoctorProcessor — 目标值无效与非中文源语种', () => {
+  let rootDir: string;
+  let sourceDir: string;
+  let localeDir: string;
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-invalid-'));
+    sourceDir = path.join(rootDir, 'src');
+    localeDir = path.join(rootDir, 'locale');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(localeDir, { recursive: true });
+    infoSpy = vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'error').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const all = (): string => infoSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+  const writeLocaleFile = (locale: string, data: Record<string, string>): void =>
+    fs.writeFileSync(path.join(localeDir, `${locale}.json`), JSON.stringify(data));
+
+  it('B5: target 值为空串/纯空白/纯标点 → 报 invalid-target-value（warning，--ci 不卡）', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'P.vue'),
+      `<template>{{ t('a.empty') }}{{ t('a.blank') }}{{ t('a.punct') }}</template>`,
+    );
+    writeLocaleFile('zh-CN', { 'a.empty': '标题', 'a.blank': '副标题', 'a.punct': '说明' });
+    writeLocaleFile('en-US', { 'a.empty': '', 'a.blank': '   ', 'a.punct': '...' });
+
+    const proc = new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir), false, undefined, {
+      ci: true,
+    });
+    // warning 级：不阻断 CI
+    await expect(proc.execute()).resolves.toBeUndefined();
+    expect(all()).toContain('[invalid-target-value]');
+    expect(all()).toContain('a.empty');
+    expect(all()).toContain('a.blank');
+    expect(all()).toContain('a.punct');
+  });
+
+  it('B5: target 值有效 → 不报 invalid-target-value', async () => {
+    fs.writeFileSync(path.join(sourceDir, 'P.vue'), `<template>{{ t('a.ok') }}</template>`);
+    writeLocaleFile('zh-CN', { 'a.ok': '标题' });
+    writeLocaleFile('en-US', { 'a.ok': 'Title' });
+
+    await new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir)).execute();
+    expect(all()).not.toContain('[invalid-target-value]');
+  });
+
+  it('B6: 源语种非中文时 missing-target-key / untranslated 照常对账', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'P.vue'),
+      `<template>{{ t('a.missing') }}{{ t('a.same') }}</template>`,
+    );
+    fs.writeFileSync(
+      path.join(localeDir, 'en.json'),
+      JSON.stringify({ 'a.missing': 'Submit', 'a.same': 'Cancel' }),
+    );
+    fs.writeFileSync(path.join(localeDir, 'fr.json'), JSON.stringify({ 'a.same': 'Cancel' }));
+
+    const config = resolveConfig({
+      root: rootDir,
+      framework: { type: 'vue', tImport: '@/locale' },
+      locales: { source: 'en', targets: ['fr'] },
+      io: { localesDir: localeDir, sourceDir, format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    });
+    await new DoctorProcessor(config).execute();
+
+    expect(all()).toContain('[missing-target-key]');
+    expect(all()).toContain('a.missing');
+    expect(all()).toContain('[untranslated]');
+    expect(all()).toContain('a.same');
+  });
+
+  it('B6: 源语种为中文时纯英文/符号源值仍不参与对账（行为不变）', async () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'P.vue'),
+      `<template>{{ t('a.api') }}{{ t('a.zh') }}</template>`,
+    );
+    writeLocaleFile('zh-CN', { 'a.api': 'TCP/IP', 'a.zh': '提交' });
+    writeLocaleFile('en-US', {});
+
+    await new DoctorProcessor(buildConfig(rootDir, sourceDir, localeDir)).execute();
+    const out = all();
+    expect(out).toContain('[missing-target-key]');
+    expect(out).toContain('a.zh');
+    expect(out).not.toContain('a.api');
+  });
+});

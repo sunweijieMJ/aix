@@ -521,3 +521,43 @@ describe('IdGenerator - 内部工具', () => {
     expect(r).toMatch(/^t_[a-z0-9]+$/);
   });
 });
+
+/**
+ * key 段清理会抹掉下划线的话，fileNameCase='snake' 的产物与 kebab+preserveHyphens=false
+ * 完全同形，配置项静默失效；snake_case 目录名同理。
+ */
+describe('IdGenerator - 段清理保留下划线', () => {
+  it('U-09: fileNameCase=snake 的文件名段保留下划线', () => {
+    const gen = new IdGenerator(
+      buildConfig({
+        keys: { prefix: { strategy: 'path', includeFile: true, fileNameCase: 'snake' } },
+      }),
+    );
+    expect(gen.getDirectoryPrefix('/tmp/proj/src/views/UserProfile.vue')).toBe(
+      'views.user_profile',
+    );
+  });
+
+  it('U-09: snake_case 目录段保留下划线', () => {
+    const gen = new IdGenerator(buildConfig());
+    expect(gen.getDirectoryPrefix('/tmp/proj/src/views/user_profile/List.vue')).toBe(
+      'views.user_profile',
+    );
+  });
+
+  it('U-09: kebab + preserveHyphens=false 仍抹掉连字符（口径不变）', () => {
+    const gen = new IdGenerator(
+      buildConfig({
+        keys: {
+          prefix: {
+            strategy: 'path',
+            includeFile: true,
+            fileNameCase: 'kebab',
+            preserveHyphens: false,
+          },
+        },
+      }),
+    );
+    expect(gen.getDirectoryPrefix('/tmp/proj/src/views/UserProfile.vue')).toBe('views.userprofile');
+  });
+});

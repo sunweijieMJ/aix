@@ -449,7 +449,7 @@ export class GenerateProcessor extends BaseProcessor {
 
     textToIdMap.set(lookupKey, finalId);
     // 同次内后续文件也能复用：把刚生成的 finalId 注册回索引
-    reuseResolver.registerNewId(messageForId, finalId);
+    reuseResolver.registerNewId(messageForId, finalId, item.filePath);
     return finalId;
   }
 

@@ -14,6 +14,18 @@ import { classifyJsonFile, safeLoadJsonFile, writeJsonFile } from './json-io';
 type KeyBucketMap = Record<string, string>;
 
 /**
+ * 按桶名排序桶文件清单。
+ *
+ * `fs.readdirSync` 的顺序由文件系统决定（ext4 是哈希序，APFS 是字典序），不排序的话
+ * 「同 key 跨桶重复」时谁胜出、合并后的 key 顺序都随机器变化，导出产物跨机器不可复现。
+ */
+function sortByBucketName<T extends { bucketName: string }>(entries: T[]): T[] {
+  return entries.sort((a, b) =>
+    a.bucketName < b.bucketName ? -1 : a.bucketName > b.bucketName ? 1 : 0,
+  );
+}
+
+/**
  * 语言文件管理器
  *
  * 整合语言文件的所有操作：读取、写入、合并、分桶迁移、桶式落盘。
@@ -251,6 +263,12 @@ export class LanguageFileManager {
     onFile: (bucketName: string, data: Record<string, any>) => void,
     onCorrupt?: (filePath: string) => void,
     knownBuckets?: ReadonlySet<string>,
+    /**
+     * key 分隔符。传入即开启「同 key 跨桶重复」检测：合并时后读的桶覆盖先读的，
+     * 随后任何写路径都按 keyBucketMap 重写，另一份永久消失。传 undefined 的调用方
+     * （纯探测的 findCorruptBucketFile）不需要该检测。
+     */
+    duplicateKeySeparator?: string,
   ): void {
     // 读取单个 bucket 文件。返回 undefined 表示「损坏且已交给 onCorrupt 处理，应跳过」。
     //
@@ -272,6 +290,12 @@ export class LanguageFileManager {
       return cls.status === 'ok' ? cls.data : {};
     };
 
+    // 同 key 跨桶重复的登记表：key → 首个写入它的桶名与值。
+    const seenKeys =
+      duplicateKeySeparator === undefined
+        ? undefined
+        : new Map<string, { bucket: string; value: unknown }>();
+
     for (const { bucketName, filePath } of this.listBucketFilePaths(
       baseDir,
       locale,
@@ -279,7 +303,46 @@ export class LanguageFileManager {
       knownBuckets,
     )) {
       const data = loadOne(filePath);
-      if (data !== undefined) onFile(bucketName, data);
+      if (data === undefined) continue;
+      if (seenKeys) {
+        this.reportDuplicateBucketKeys(seenKeys, bucketName, data, duplicateKeySeparator!, locale);
+      }
+      onFile(bucketName, data);
+    }
+  }
+
+  /** 已告警过的重复 key（`locale|key` 去重），避免一次命令里多条读路径重复刷屏。 */
+  private static readonly warnedDuplicateBucketKeys = new Set<string>();
+
+  /**
+   * 登记本桶的 key，并对已出现在别的桶里的 key 告警。
+   *
+   * 合并逻辑（Object.assign / 逐 key 赋值）让后读的桶静默胜出，赢家取决于目录枚举顺序；
+   * 值不同则另一份译文在下一次重写时永久消失，故必须把两个桶名与两个值都摆出来。
+   */
+  private static reportDuplicateBucketKeys(
+    seen: Map<string, { bucket: string; value: unknown }>,
+    bucketName: string,
+    data: Record<string, any>,
+    separator: string,
+    locale: string,
+  ): void {
+    const flat = FileUtils.flattenObject(data, '', separator);
+    for (const key of Object.keys(flat)) {
+      const previous = seen.get(key);
+      if (!previous) {
+        seen.set(key, { bucket: bucketName, value: flat[key] });
+        continue;
+      }
+      const dedupeKey = `${locale}|${key}`;
+      if (this.warnedDuplicateBucketKeys.has(dedupeKey)) continue;
+      this.warnedDuplicateBucketKeys.add(dedupeKey);
+      LoggerUtils.warn(
+        `⚠️  key '${key}'（${locale}）同时存在于桶 '${previous.bucket}' 与 '${bucketName}'：` +
+          `'${previous.bucket}' = ${JSON.stringify(previous.value)}，` +
+          `'${bucketName}' = ${JSON.stringify(flat[key])}；` +
+          `读取时后者胜出，重写后前者会丢失，请手工保留一份。`,
+      );
     }
   }
 
@@ -330,7 +393,7 @@ export class LanguageFileManager {
         noteForeignBucket(bucketName, filePath);
         result.push({ bucketName, filePath });
       }
-      return result;
+      return sortByBucketName(result);
     }
     // by-bucket
     if (!fs.existsSync(baseDir)) return result;
@@ -341,7 +404,7 @@ export class LanguageFileManager {
       noteForeignBucket(entry.name, langFile);
       result.push({ bucketName: entry.name, filePath: langFile });
     }
-    return result;
+    return sortByBucketName(result);
   }
 
   /**
@@ -456,6 +519,7 @@ export class LanguageFileManager {
       },
       undefined,
       this.knownBucketNames(),
+      separator,
     );
     return merged;
   }
@@ -587,6 +651,7 @@ export class LanguageFileManager {
       },
       undefined,
       this.knownBucketNames(),
+      this.config.keys.separator,
     );
 
     return { flat, keyBucketMap };
@@ -647,6 +712,7 @@ export class LanguageFileManager {
         layout === 'by-bucket'
           ? path.join(baseDir, bucketName, `${locale}.json`)
           : path.join(baseDir, locale, `${bucketName}.json`);
+      LanguageFileManager.alignBucketFileCase(filePath);
       writeJsonFile(filePath, this.serialize(bucketMap), {
         indent: this.config.io.indent,
       });
@@ -660,6 +726,57 @@ export class LanguageFileManager {
       writtenPaths,
       this.knownBucketNames(),
     );
+  }
+
+  /**
+   * 写盘前把「仅大小写不同的同名文件」改名到目标名，让磁盘上的目录项与桶名对齐。
+   *
+   * 大小写不敏感的文件系统（macOS APFS / Windows NTFS）上，桶名从 `Common` 改成 `common`
+   * 后 writeJsonFile 写的是同一个 inode，目录项仍叫 `Common.json`：孤儿清理按路径字符串
+   * 比对认不出它，刚写好的桶被改名 `.bak`，活跃集清空。
+   *
+   * 只在「目录里没有精确同名项、但按目标名能 existsSync 命中」时改名——这正是大小写
+   * 不敏感文件系统的特征。case-sensitive 文件系统上二者是两个独立文件，保持原样交由
+   * 孤儿清理备份为 `.bak`。
+   */
+  /**
+   * candidate 与某个刚写过的路径「只差大小写」且指向同一个 inode。
+   *
+   * 只对大小写折叠后相等的路径做 stat：case-sensitive 文件系统上二者 inode 不同，
+   * 仍按孤儿处理（否则存量桶不会被备份，其内容会在下次读取时被并回活跃集）。
+   */
+  private static isSameFileAsWritten(candidate: string, writtenPaths: Set<string>): boolean {
+    const lower = path.resolve(candidate).toLowerCase();
+    for (const written of writtenPaths) {
+      if (written.toLowerCase() !== lower) continue;
+      try {
+        const a = fs.statSync(candidate);
+        const b = fs.statSync(written);
+        if (a.ino === b.ino && a.dev === b.dev) return true;
+      } catch {
+        // stat 失败（文件刚被移走等）：按不同文件处理，交给孤儿清理的 try/catch 兜底
+      }
+    }
+    return false;
+  }
+
+  private static alignBucketFileCase(filePath: string): void {
+    const dir = path.dirname(filePath);
+    const target = path.basename(filePath);
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      return; // 目录还不存在：writeJsonFile 会新建，无需对齐
+    }
+    if (entries.includes(target)) return;
+    const variant = entries.find((e) => e.toLowerCase() === target.toLowerCase());
+    if (!variant || !fs.existsSync(filePath)) return;
+    try {
+      fs.renameSync(path.join(dir, variant), filePath);
+    } catch (error) {
+      LoggerUtils.warn(`⚠️  桶文件大小写对齐失败（已忽略）: ${filePath}: ${error}`);
+    }
   }
 
   /**
@@ -682,6 +799,9 @@ export class LanguageFileManager {
 
     for (const candidate of candidates) {
       if (writtenPaths.has(path.resolve(candidate))) continue;
+      // 二道保险：路径只差大小写且在磁盘上是同一个文件（大小写不敏感 FS）时不是孤儿。
+      // 若把刚写好的桶备份成 .bak，该 locale 的活跃集会整体清空。
+      if (this.isSameFileAsWritten(candidate, writtenPaths)) continue;
       const bakPath = `${candidate}.bak`;
       if (fs.existsSync(bakPath)) {
         // 已经备份过，不再 rename 也不删原文件——人工决定何时清掉

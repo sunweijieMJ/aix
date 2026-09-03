@@ -230,6 +230,32 @@ describe('CLI 入口守卫（cli.ts main）', () => {
     T,
   );
 
+  /**
+   * CC-03：interactive 的默认值此前只看 --mode/--ci，从不读 process.stdin.isTTY，
+   * 而注释与 --help 都自述「无 TTY ⇒ 非交互」。管道里裸跑（漏带 --mode/--ci）会进
+   * inquirer：stdin 有内容时第一个 select 吃到回车即选中默认项「自动模式」并真跑。
+   * 子进程 stdin 是管道（非 TTY），故这里跑的正是该路径。
+   */
+  it(
+    'CC-03: 无 TTY 且未传 --mode/--ci → 走非交互路径报 --path 缺失，不进 inquirer',
+    () => {
+      const { code, out } = runCli([], cfgDir);
+      expect(out).toMatch(/需用 --path/);
+      expect(out).not.toMatch(/请选择运行模式|ExitPromptError/);
+      expect(code).toBe(1);
+    },
+    T,
+  );
+
+  it(
+    'CC-03: --help 中 --interactive 的描述与实际判定一致（含 TTY 条件）',
+    () => {
+      const { out } = runCli(['--help'], cfgDir);
+      expect(out).toMatch(/TTY/);
+    },
+    T,
+  );
+
   it(
     '--help → 成功退出（确认守卫不是恒返回非零）',
     () => {

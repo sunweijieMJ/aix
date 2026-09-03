@@ -44,7 +44,8 @@ export interface ManualSkipDiagnostic {
     | 'jsx-text-in-vue'
     | 'class-property'
     | 'param-default'
-    | 'conflicting-t-binding';
+    | 'conflicting-t-binding'
+    | 'parse-error';
   message: string;
   /** 同类展示文案不足以区分调用点时使用的稳定去重键。 */
   dedupeKey?: string;

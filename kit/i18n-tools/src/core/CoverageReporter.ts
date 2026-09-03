@@ -122,6 +122,7 @@ export class CoverageReporter {
       'class-property': 'class-property',
       'param-default': 'param-default',
       'conflicting-t-binding': 'conflicting-t-binding',
+      'parse-error': 'parse-error',
     };
     for (const item of this.manualSkips) {
       const category = manualSkipCategoryMap[item.category];

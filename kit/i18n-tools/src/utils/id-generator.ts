@@ -10,6 +10,7 @@ import type {
 import { FileUtils } from './file-utils';
 import { compileMatcher, normalizePosix } from './path-matcher';
 import { CHINESE_CHAR_RANGE } from './constants';
+import { LoggerUtils } from './logger';
 
 /** 语义 ID 取词前的清洗：只保留中文、标识符字符与空白。 */
 const NON_SEMANTIC_CHAR_RE = new RegExp(`[^${CHINESE_CHAR_RANGE}\\w\\s]`, 'g');
@@ -152,8 +153,14 @@ class PathPrefixStrategyImpl implements PrefixStrategy {
 
     for (let i = 0; i < segments.length; i++) {
       // 段清理收口到 cleanSegment（与 LLM/fixed 路径共用同一定义，避免字符集漂移）
-      let seg = cleanSegment(segments[i]!, this.options.preserveHyphens);
-      if (!seg) continue;
+      const original = segments[i]!;
+      let seg = cleanSegment(original, this.options.preserveHyphens);
+      if (!seg) {
+        // 整段被抹空（纯中文 / 纯符号目录名）：不同目录会折叠到同一前缀而互相撞 key，
+        // 由 ensureUniqueId 加 `_N` 后缀收场，key 与目录的对应关系肉眼不可读。
+        warnEmptySegmentOnce(original);
+        continue;
+      }
 
       if (transform) {
         const next = transform(seg, i, ctx);
@@ -330,11 +337,27 @@ function extractSemanticPart(text: string, mappings: Record<string, string>): st
 /**
  * 段清理：path/LLM/fixed 各路径共用的唯一定义（PathStrategy.finalize 亦调用本函数），
  * 收口字符集规则避免漂移。preserveHyphens=true 时保留连字符，否则一并抹除。
+ *
+ * 下划线始终保留（与 sanitizeSemanticId 同口径）：抹掉它会让 `fileNameCase: 'snake'`
+ * 的产物（`user_profile`）退化成 `userprofile`，与 kebab + preserveHyphens=false 完全同形，
+ * 配置项静默失效；snake_case 目录名同理。
  */
 function cleanSegment(segment: string, preserveHyphens: boolean): string {
   return preserveHyphens
-    ? segment.replace(/[^a-zA-Z0-9-]/g, '')
-    : segment.replace(/[^a-zA-Z0-9]/g, '');
+    ? segment.replace(/[^a-zA-Z0-9_-]/g, '')
+    : segment.replace(/[^a-zA-Z0-9_]/g, '');
+}
+
+/** 已告警过的空段，避免同一目录在整轮 generate 里反复刷屏。 */
+const warnedEmptySegments = new Set<string>();
+
+function warnEmptySegmentOnce(segment: string): void {
+  if (warnedEmptySegments.has(segment)) return;
+  warnedEmptySegments.add(segment);
+  LoggerUtils.warn(
+    `⚠️  路径段 '${segment}' 清理后为空（key 只允许 a-z A-Z 0-9 _ -），已从前缀中略去：` +
+      `同一层的其它同类目录会折算到相同前缀，key 需靠去重后缀区分。建议改用 ASCII 目录名或配置 keys.prefix.transform。`,
+  );
 }
 
 /**

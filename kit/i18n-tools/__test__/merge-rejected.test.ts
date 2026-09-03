@@ -583,3 +583,86 @@ describe('MergeProcessor — 非当前 targets 的语种字段透传', () => {
     });
   });
 });
+
+/**
+ * B3：applyTranslations 此前对 translations.json 里的条目零校验 —— csv-import 回流或
+ * 人工编辑写进去的 `---`、被翻译掉的占位符名，会直接同步进 locale。本轮由
+ * analyzeTranslationStatus 产出的条目已在那里把过关，此处只补校验「直接来自
+ * translations.json」的那部分，避免重复告警。
+ */
+describe('MergeProcessor — translations.json 条目写 locale 前的把关（B3）', () => {
+  let tmpDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'merge-existing-guard-'));
+    warnSpy = vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'success').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const writeJson = (relPath: string, data: unknown): void => {
+    const full = path.join(tmpDir, 'locale', relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, JSON.stringify(data, null, 2));
+  };
+  const readJson = (relPath: string): Record<string, unknown> =>
+    JSON.parse(fs.readFileSync(path.join(tmpDir, 'locale', relPath), 'utf-8'));
+  const makeConfig = (): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: 'locale', sourceDir: 'src', format: 'flat' },
+      keys: { separator: '.' },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  it('B3: translations.json 里的无效值被拒收并告警，不写进 locale', async () => {
+    writeJson('zh-CN.json', { 'a.c': '确认' });
+    writeJson('en-US.json', {});
+    writeJson('translations.json', { 'a.c': { 'zh-CN': '确认', 'en-US': '---' } });
+    writeJson('untranslated.json', {});
+
+    await new MergeProcessor(makeConfig(), false).execute();
+
+    expect(readJson('en-US.json')).toEqual({});
+    const warns = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
+    expect(warns).toContain('译文无效');
+    expect(warns).toContain('a.c');
+  });
+
+  it('B3: translations.json 里的占位符失配告警但仍合入（与 untranslated 侧同口径）', async () => {
+    writeJson('zh-CN.json', { 'a.b': '共{count}条' });
+    writeJson('en-US.json', {});
+    writeJson('translations.json', { 'a.b': { 'zh-CN': '共{count}条', 'en-US': '{数量} items' } });
+    writeJson('untranslated.json', {});
+
+    await new MergeProcessor(makeConfig(), false).execute();
+
+    expect(readJson('en-US.json')).toEqual({ 'a.b': '{数量} items' });
+    expect(warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n')).toContain(
+      '占位符不匹配',
+    );
+  });
+
+  it('B3: 本轮合入的条目不重复告警占位符（只在 analyze 阶段告警一次）', async () => {
+    writeJson('zh-CN.json', { k1: '共{value}件商品' });
+    writeJson('en-US.json', {});
+    writeJson('translations.json', {});
+    writeJson('untranslated.json', {
+      k1: { 'zh-CN': '共{value}件商品', 'en-US': 'Items pending' },
+    });
+
+    await new MergeProcessor(makeConfig(), false).execute();
+
+    const hits = warnSpy.mock.calls
+      .map((c: unknown[]) => String(c[0]))
+      .filter((line: string) => line.includes('占位符不匹配'));
+    expect(hits).toHaveLength(1);
+  });
+});

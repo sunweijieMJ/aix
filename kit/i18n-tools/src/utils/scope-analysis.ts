@@ -36,8 +36,17 @@ export function isIdentifierValueReference(id: ts.Identifier): boolean {
   if (ts.isParameter(p) && p.name === id) return false;
   if (ts.isFunctionDeclaration(p) && p.name === id) return false;
   if (ts.isClassDeclaration(p) && p.name === id) return false;
-  // import / export 具名（含别名两侧）
-  if (ts.isImportSpecifier(p) || ts.isImportClause(p) || ts.isExportSpecifier(p)) return false;
+  // import 具名（含别名两侧）：都是绑定名位置，不是对已有绑定的引用
+  if (ts.isImportSpecifier(p) || ts.isImportClause(p)) return false;
+  // export 具名：**本地名一侧**（`export { t }` 的 t、`export { t as x }` 的 propertyName）
+  // 是对本地绑定的真实引用——re-export 需要它存在，删掉声明即 TS2304；导出名一侧
+  // （`export { x as t }` 的 name）只是对外名字。`export { t } from 'mod'` 两侧都不引用
+  // 本地绑定（直接转发模块导出），一律不算。
+  if (ts.isExportSpecifier(p)) {
+    const decl = p.parent.parent;
+    if (ts.isExportDeclaration(decl) && decl.moduleSpecifier) return false;
+    return p.propertyName ? p.propertyName === id : p.name === id;
+  }
   // 属性访问名（x.t）/ 限定名右侧 / 对象字面量 key / JSX 属性名 / 各类成员名
   if (ts.isPropertyAccessExpression(p) && p.name === id) return false;
   if (ts.isQualifiedName(p) && p.right === id) return false;
@@ -267,10 +276,48 @@ export function isImportedNameUnused(
   moduleName: string,
   importedName: string,
 ): boolean {
-  const sf = parseSourceFile(code, filePath);
+  const usage = collectImportedLocalNameUsage(code, filePath, moduleName, importedName);
+  if (usage.size === 0) return false;
+  for (const used of usage.values()) if (used) return false;
+  return true;
+}
 
-  // 1. 找到 `import { ...importedName... } from moduleName`，取其本地名（处理 `as` 重命名）
-  let localName: string | undefined;
+/**
+ * 返回 `import { ...importedName... } from moduleName` 绑出的、已无任何未被遮蔽值引用的
+ * **本地名**列表（按 import 中出现顺序）。
+ *
+ * 与 isImportedNameUnused 的区别是粒度：后者要求同一源名的全部本地名都死了才算未使用，
+ * 面向「整条导入能否删」；本方法面向「哪几个说明符能单独摘」——`import { t as tr, t }`
+ * 里 tr 仍在用、t 已死时返回 `['t']`，调用方按本地名摘除 t，tr 原样保留。
+ * 无该 import 时返回空数组。
+ */
+export function unusedImportedLocalNames(
+  code: string,
+  filePath: string,
+  moduleName: string,
+  importedName: string,
+): string[] {
+  const usage = collectImportedLocalNameUsage(code, filePath, moduleName, importedName);
+  const unused: string[] = [];
+  for (const [localName, used] of usage) if (!used) unused.push(localName);
+  return unused;
+}
+
+/**
+ * 收集 moduleName 导入的源名 importedName 对应的全部本地名，并逐个标记是否仍有
+ * 未被内层局部声明遮蔽的值引用。
+ *
+ * 同一源名可以绑出多个本地名（`import { t as tr, t }`，工具追加 t 时正是这个形态）；
+ * 只记最后一个会让前面的别名凭空"消失"，调用方据此删掉整条 import → 别名引用 TS2304。
+ */
+function collectImportedLocalNameUsage(
+  code: string,
+  filePath: string,
+  moduleName: string,
+  importedName: string,
+): Map<string, boolean> {
+  const sf = parseSourceFile(code, filePath);
+  const usage = new Map<string, boolean>();
   const findImport = (n: ts.Node): void => {
     if (
       ts.isImportDeclaration(n) &&
@@ -281,33 +328,29 @@ export function isImportedNameUnused(
       if (nb && ts.isNamedImports(nb)) {
         for (const el of nb.elements) {
           const original = el.propertyName?.text ?? el.name.text;
-          if (original === importedName) localName = el.name.text;
+          if (original === importedName && !usage.has(el.name.text)) usage.set(el.name.text, false);
         }
       }
     }
     ts.forEachChild(n, findImport);
   };
   findImport(sf);
-  if (!localName) return false;
+  if (usage.size === 0) return usage;
 
-  // 2. 扫描所有「以本地名作为值引用」的标识符，逐个判断是否被内层局部声明遮蔽
-  const name = localName;
-  let usedUnshadowed = false;
   const visit = (n: ts.Node): void => {
-    if (usedUnshadowed) return;
     if (
       ts.isIdentifier(n) &&
-      n.text === name &&
+      usage.has(n.text) &&
       isIdentifierValueReference(n) &&
-      !hasEnclosingLocalDeclaration(n, name)
+      !hasEnclosingLocalDeclaration(n, n.text)
     ) {
-      usedUnshadowed = true;
+      usage.set(n.text, true);
       return;
     }
     ts.forEachChild(n, visit);
   };
   visit(sf);
-  return !usedUnshadowed;
+  return usage;
 }
 
 /**
@@ -334,4 +377,95 @@ export function isLocalNameUnused(code: string, filePath: string, name: string):
   };
   visit(sf);
   return !used;
+}
+
+/**
+ * 从引用点 ref 沿祖先作用域链向上，返回**最内层**绑定了 name 的那个声明节点
+ * （Parameter / VariableDeclaration / FunctionDeclaration / ClassDeclaration），无则 undefined。
+ *
+ * 与 hasShadowingDeclaration 的布尔判定共用同一套作用域规则（函数作用域的参数与 `var`、
+ * 块作用域直属的 `let/const`/`function`/`class`、for 头部、catch 参数），区别只在返回值：
+ * 调用方拿到声明节点后可再判它是不是 i18n 来源（`const { t } = useTranslation()` /
+ * `const { t } = this.props`）——"最内层绑定决定这个引用点看到的是谁"，只有布尔遮蔽结论
+ * 无法区分「被工具自己注入的绑定遮蔽」与「被用户的同名变量遮蔽」，前者正常、后者必须跳过。
+ *
+ * boundary / boundaryMode 语义同 hasShadowingDeclaration：'inclusive' 检查完 boundary 那一层
+ * 再停（含其形参），'exclusive' 到 boundary 即停、不检查它自身。
+ * 依赖 parent 指针，调用方须传 parseSourceFile 解析出的节点。
+ *
+ * 注意：import 绑定不在此列（import 不落在任何块的 let/const/function/class 声明里）——
+ * 模块顶层的同名导入需由调用方另行判定来源模块。
+ */
+export function findInnermostBindingDeclaration(
+  ref: ts.Node,
+  name: string,
+  boundary?: ts.Node,
+  boundaryMode: 'inclusive' | 'exclusive' = 'inclusive',
+): ts.Node | undefined {
+  const fromFunctionScope = (fn: ts.Node): ts.Node | undefined => {
+    const decl = fn as ts.FunctionLikeDeclaration;
+    for (const p of decl.parameters ?? []) {
+      if (bindingDeclaresName(p.name, name)) return p;
+    }
+    const body = decl.body;
+    if (!body) return undefined;
+    let found: ts.Node | undefined;
+    const walk = (n: ts.Node): void => {
+      if (found) return;
+      // 不下钻内层函数：内层的局部声明不影响当前作用域对 name 的解析
+      if (n !== body && isFunctionLikeScope(n)) return;
+      if (ts.isVariableDeclaration(n) && isVarDeclaration(n) && bindingDeclaresName(n.name, name)) {
+        found = n;
+        return;
+      }
+      ts.forEachChild(n, walk);
+    };
+    walk(body);
+    return found;
+  };
+
+  const fromBlockScope = (block: ts.Node): ts.Node | undefined => {
+    const statements = (block as ts.BlockLike).statements;
+    if (!statements) return undefined;
+    for (const stmt of statements) {
+      if (ts.isFunctionDeclaration(stmt) || ts.isClassDeclaration(stmt)) {
+        if (stmt.name && stmt.name.text === name) return stmt;
+        continue;
+      }
+      if (!ts.isVariableStatement(stmt)) continue;
+      const list = stmt.declarationList;
+      // 只认块级（let/const）；var 由 fromFunctionScope 处理（提升语义）
+      if ((list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) === 0) continue;
+      for (const d of list.declarations) {
+        if (bindingDeclaresName(d.name, name)) return d;
+      }
+    }
+    return undefined;
+  };
+
+  let cur: ts.Node | undefined = ref.parent;
+  while (cur) {
+    if (boundary && boundaryMode === 'exclusive' && cur === boundary) return undefined;
+    let hit: ts.Node | undefined;
+    if (isFunctionLikeScope(cur)) {
+      hit = fromFunctionScope(cur);
+    } else if (ts.isBlock(cur) || ts.isSourceFile(cur) || ts.isModuleBlock(cur)) {
+      hit = fromBlockScope(cur);
+    } else if (ts.isForStatement(cur) || ts.isForOfStatement(cur) || ts.isForInStatement(cur)) {
+      const initializer = cur.initializer;
+      if (initializer && ts.isVariableDeclarationList(initializer)) {
+        hit = initializer.declarations.find((d) => bindingDeclaresName(d.name, name));
+      }
+    } else if (
+      ts.isCatchClause(cur) &&
+      cur.variableDeclaration &&
+      bindingDeclaresName(cur.variableDeclaration.name, name)
+    ) {
+      hit = cur.variableDeclaration;
+    }
+    if (hit) return hit;
+    if (boundary && cur === boundary) return undefined;
+    cur = cur.parent;
+  }
+  return undefined;
 }

@@ -10,12 +10,13 @@ import { FileUtils } from './file-utils';
 import { stripStatefulFlags } from './path-matcher';
 
 // =============================================================================
-// 下面 CALL_FIRST_ARG / STRING_LITERAL / ATTR_PATTERNS 合起来覆盖各 i18n 库引用 key 的
-// 全部静态形式（捕获组 1 = key）。库无关：vue 项目不会有 FormattedMessage、react 项目
-// 不会有 keypath，跨库同跑互不干扰；`id` 两条限定在 FormattedMessage 标签 / formatMessage
-// 调用上下文内，避免误吃普通 HTML/对象 id。
+// 下面 CALL_FIRST_ARG / STRING_LITERAL / ATTR_PATTERNS / DEFINE_MESSAGES_BLOCK 合起来覆盖
+// 各 i18n 库引用 key 的静态形式（一次匹配里首个非空捕获组 = key）。库无关：vue 项目不会有
+// FormattedMessage、react 项目不会有 keypath，跨库同跑互不干扰；`id` 三条限定在
+// FormattedMessage 标签 / formatMessage 调用 / defineMessages 定义块内，避免误吃普通
+// HTML/对象 id。
 //
-// 仍按「尽力而为」不覆盖动态形式（t(prefix+x) / :keypath="expr" / v-t="{path:x}"），
+// 仍按「尽力而为」不覆盖动态形式（t(prefix+x) / :keypath="expr" / v-t="{ path: expr }"），
 // 这些由 keys.dynamicKeyAllowlist 兜底——静态扫描本就无法解析。
 // =============================================================================
 
@@ -40,14 +41,19 @@ const CALL_FIRST_ARG = new RegExp(String.raw`(?:\$t|(?<!\w)t)` + CALL_FIRST_ARG_
  */
 const DOLLAR_CALL_FIRST_ARG = new RegExp(String.raw`\$t` + CALL_FIRST_ARG_TAIL, 'g');
 /**
- * 从一段表达式文本里提取所有 'xxx' / "xxx" 字面量。
+ * 从一段表达式文本里提取所有 'xxx' / "xxx" / `xxx`（无插值）字面量。
  *
- * 单/双引号分支独立匹配（捕获组 1 = 单引号内文，组 2 = 双引号内文），强制开闭引号同型。
- * 旧写法 `/['"]([^'"]+)['"]/` 不要求配对，会在内引号处截断：双引号串含撇号
- * （英文极常见 `"Don't"` → 只取 `Don`）、单引号串含双引号（`'a"b'` → 只取 `a`），
+ * 三个分支独立匹配（捕获组 1 = 单引号内文，组 2 = 双引号内文，组 3 = 反引号内文），
+ * 强制开闭定界符同型：不要求配对的写法（`/['"]([^'"]+)['"]/`）会在内引号处截断，
+ * 双引号串含撇号（英文极常见 `"Don't"` → 只取 `Don`）、单引号串含双引号（`'a"b'` → 只取 `a`），
  * 截断后的残缺 key 漏采 → 被 prune/doctor 当孤儿从所有 locale 永久删除（破坏性）。
+ *
+ * 反引号分支只接受**不含 `${`** 的模板串：`` t(`views.a.sub`) `` 与 `t('views.a.sub')`
+ * 语义等价（ESLint `quotes: ['error','backtick']` 项目里是主流写法），不采同样会被当孤儿删除；
+ * 含插值的模板串仍是动态形式，不匹配，交给 keys.dynamicKeyAllowlist。
  */
-const STRING_LITERAL = /(?:'((?:\\[\s\S]|[^'\\])*)'|"((?:\\[\s\S]|[^"\\])*)")/g;
+const STRING_LITERAL =
+  /(?:'((?:\\[\s\S]|[^'\\])*)'|"((?:\\[\s\S]|[^"\\])*)"|`((?:\\[\s\S]|[^`\\$]|\$(?!\{))*)`)/g;
 
 /**
  * 把字符串字面量内部文本按 JavaScript 常用转义语义还原为运行时 key。
@@ -154,7 +160,8 @@ function stripCommentsByAst(filePath: string, raw: string): string | null {
  * （`详情见 https://a.com {{ t('k') }}`）不在引号内，`//` 会被误当行注释把行尾 t()
  * 一并剥掉；不配对的 `/*`（如展示 `src/*` 写法）更会吞掉文件剩余全部内容 → key 漏采
  * → prune 把在用 key 当孤儿从所有 locale 永久删除。故两类都不能整文件交给词法状态机：
- *  - .vue：先经 SFC 拆段，template 只剥 HTML 注释，script/scriptSetup 才走 stripComments
+ *  - .vue：先经 SFC 拆段，template 只剥 HTML 注释，script/scriptSetup 才走 stripComments；
+ *    其中 lang="tsx"/"jsx" 的块正文同样含 JSX 文本，按对应扩展名走 AST 剥离
  *  - JS/TS 系（含 JSX）：交 TypeScript 解析器，按 AST 的 token 前导 trivia 精确定位注释
  *
  * 解析失败的兜底方向统一是「多算不误删」：宁可让注释里的引用混入 used（多算 = 不删），
@@ -169,6 +176,18 @@ export function stripCommentsForScan(filePath: string, raw: string): string {
   const stripped = stripCommentsByAst(filePath, raw);
   if (stripped !== null) return stripped;
   return hasExtension(filePath, JSX_CAPABLE_EXTENSIONS) ? raw : stripComments(raw);
+}
+
+/**
+ * .vue 的单个 script 块剥注释：`lang="tsx"|"jsx"` 的块正文里有 JSX 文本节点，
+ * 与 .tsx/.jsx 文件同源地交给 TypeScript 解析器按 token 前导 trivia 精确定位注释；
+ * 词法状态机会把 JSX 正文里的 `//`（裸 URL）、不配对的 `/*` 当注释吞掉后续 t() 调用。
+ * 解析失败时与 .tsx 分支同口径：原样返回（多算不误删），不退回词法状态机。
+ */
+function stripScriptBlockForScan(content: string, filePath: string, lang?: string): string {
+  const normalized = lang?.toLowerCase();
+  if (normalized !== 'tsx' && normalized !== 'jsx') return stripComments(content);
+  return stripCommentsByAst(`${filePath}.${normalized}`, content) ?? content;
 }
 
 function stripVueCommentsForScan(filePath: string, raw: string): string {
@@ -186,7 +205,8 @@ function stripVueCommentsForScan(filePath: string, raw: string): string {
       parts.push(stripHtmlComments(descriptor.template.content));
     }
     for (const script of [descriptor.script, descriptor.scriptSetup]) {
-      if (script) parts.push(stripComments(script.content));
+      if (!script) continue;
+      parts.push(stripScriptBlockForScan(script.content, filePath, script.lang));
     }
     return parts.join('\n');
   } catch {
@@ -195,24 +215,69 @@ function stripVueCommentsForScan(filePath: string, raw: string): string {
   }
 }
 
+/**
+ * 属性 / 对象字段上的静态 key 值形态（捕获组全部是候选 key，命中时取首个非空组）：
+ *  - `'k'` / `"k"`：普通引号值；
+ *  - `"'k'"` / `'"k"'`：Vue 动态绑定（`:keypath="'k'"`）——外层是属性定界符、内层才是 JS 串；
+ *  - `{'k'}` / `{"k"}` / `` {`k`} ``：JSX 表达式容器（`i18nKey={'k'}`），反引号不得含插值。
+ * 嵌套形态必须排在普通引号分支之前：正则按序尝试，否则 `"'k'"` 会被外层双引号分支
+ * 连引号一起吃进 key。普通引号分支排除花括号，避免把 `v-t="{ path: x }"` 这类对象值
+ * 整段当成 key —— 多出来的假 key 会让 doctor 报 missing-key（error 级，CI 误红）。
+ */
+const ATTR_VALUE =
+  '(?:' +
+  "\"'([^'{}]+)'\"" + // "'k'"
+  '|\'"([^"{}]+)"\'' + // '"k"'
+  "|\\{\\s*'([^'{}]+)'\\s*\\}" + // {'k'}
+  '|\\{\\s*"([^"{}]+)"\\s*\\}' + // {"k"}
+  '|\\{\\s*`([^`${}]+)`\\s*\\}' + // {`k`}
+  "|'([^'{}]+)'" + // 'k'
+  '|"([^"{}]+)"' + // "k"
+  ')';
+
+/** 成对花括号（含一层嵌套）：JSX 表达式容器 `{{ n: a > 1 }}`、内联选项对象 `{ n: 1 }`。 */
+const BRACE_GROUP = String.raw`\{(?:[^{}]|\{[^{}]*\})*\}`;
+
 /** 组件 / 属性形式（库无关，跨库同跑互不干扰；id 两条限定上下文避免误吃普通 id）。 */
 const ATTR_PATTERNS: RegExp[] = [
-  // vue-i18n 组件：<i18n-t keypath="k">
-  /\bkeypath\s*=\s*['"]([^'"]+)['"]/g,
-  // vue-i18n 指令：v-t="'k'"
-  /\bv-t\s*=\s*"'([^']+)'"/g,
-  // react-i18next 组件：<Trans i18nKey="k">
-  /\bi18nKey\s*=\s*['"]([^'"]+)['"]/g,
-  // react-intl 组件：<FormattedMessage id="k">（限标签内的 id）
-  /<FormattedMessage\b[^>]*?\bid\s*=\s*['"]([^'"]+)['"]/g,
-  // react-intl 调用：formatMessage({ id: 'k' })（限调用对象内的 id）
-  /\bformatMessage\s*\(\s*\{[^}]*?\bid\s*:\s*['"]([^'"]+)['"]/g,
+  // vue-i18n 组件：<i18n-t keypath="k"> / :keypath="'k'"
+  new RegExp(String.raw`\bkeypath\s*=\s*` + ATTR_VALUE, 'g'),
+  // vue-i18n 指令：v-t="'k'" / v-t='"k"'
+  new RegExp(String.raw`\bv-t\s*=\s*` + ATTR_VALUE, 'g'),
+  // vue-i18n 指令的对象形态：v-t="{ path: 'k' }"（path 为字面量时是静态引用，
+  // 官方文档主推写法；path 为变量时不匹配，交给 dynamicKeyAllowlist）
+  /\bv-t\s*=\s*["']?\{\s*path\s*:\s*(?:'([^']+)'|"([^"]+)")/g,
+  // react-i18next 组件：<Trans i18nKey="k"> / i18nKey={'k'}
+  new RegExp(String.raw`\bi18nKey\s*=\s*` + ATTR_VALUE, 'g'),
+  // react-intl 组件：<FormattedMessage id="k">（限标签内的 id）。属性区按
+  // 「非 `>` 字符 | 成对花括号」推进：`values={{ n: a > 1 }}` 里的 `>` 在花括号内，
+  // 用 `[^>]*?` 会在此提前截断而漏采。
+  new RegExp(
+    String.raw`<FormattedMessage\b(?:[^>{]|${BRACE_GROUP})*?\bid\s*=\s*` + ATTR_VALUE,
+    'g',
+  ),
+  // react-intl 调用：formatMessage({ id: 'k' })（限调用对象内的 id）。同理允许 id 之前
+  // 出现一层嵌套对象（`formatMessage({ values: { n: 1 }, id: 'k' })`）。
+  new RegExp(
+    String.raw`\bformatMessage\s*\(\s*\{(?:[^{}]|${BRACE_GROUP})*?\bid\s*:\s*` + ATTR_VALUE,
+    'g',
+  ),
 ];
 
 /**
+ * react-intl 的 `defineMessages({ x: { id: 'k', defaultMessage: '…' } })`：
+ * 消费侧写成 `formatMessage(messages.x)`，首参没有任何字面量，key 只出现在定义处。
+ * 不采则整个 react-intl 项目的 key 会被 doctor 全量报孤儿、被 prune 从所有 locale 删除。
+ * 先框出 defineMessages 调用体，再取其中所有 `id` 字段，避免误吃普通对象的 id。
+ */
+const DEFINE_MESSAGES_BLOCK = /\bdefineMessages\s*\(\s*\{[\s\S]*?\}\s*\)/g;
+const MESSAGE_DESCRIPTOR_ID = new RegExp(String.raw`\bid\s*:\s*` + ATTR_VALUE, 'g');
+
+/**
  * 从单段源码文本里抽出所有 i18n key 引用（库无关全量口径）：函数调用 `t()/$t()`
- * 首参里的字符串字面量（含三元两分支）、vue `<i18n-t keypath>`/`v-t`、react
- * `<Trans i18nKey>`/`<FormattedMessage id>`/`formatMessage({id})`。
+ * 首参里的字符串字面量（含三元两分支、无插值反引号）、vue `<i18n-t keypath>`/`v-t`
+ * （含 `{ path: 'k' }` 形态）、react `<Trans i18nKey>`/`<FormattedMessage id>`/
+ * `formatMessage({id})`/`defineMessages({ x: { id } })`。
  *
  * 不做 namespace 剥离、不去重，原样返回每个命中（按出现顺序）。调用方按需归一化/计数。
  * collectUsedKeys（doctor/prune 对账）与 IdReuseResolver（覆盖率分子 + ID 复用）共用，
@@ -233,18 +298,40 @@ export function scanKeyReferencesInContent(
     STRING_LITERAL.lastIndex = 0;
     let lit: RegExpExecArray | null;
     while ((lit = STRING_LITERAL.exec(firstArg)) !== null) {
-      const rawKey = lit[1] ?? lit[2]; // 组 1=单引号内文 / 组 2=双引号内文，二者必有其一
+      // 组 1=单引号内文 / 组 2=双引号内文 / 组 3=反引号内文，三者必有其一
+      const rawKey = lit[1] ?? lit[2] ?? lit[3];
       const key = rawKey === undefined ? undefined : decodeStringLiteralContent(rawKey);
       if (key) refs.push(key); // 空串 key 无意义，跳过（与旧 `+` 量词的非空语义一致）
     }
   }
 
-  // 2. 组件 / 属性形式
+  // 2. 组件 / 属性形式。ATTR_VALUE 的多个值形态各占一个捕获组，命中的那个即 key。
+  const pushFirstGroup = (match: RegExpExecArray): void => {
+    for (let i = 1; i < match.length; i++) {
+      const group = match[i];
+      if (group) {
+        refs.push(group);
+        return;
+      }
+    }
+  };
   for (const pattern of ATTR_PATTERNS) {
     pattern.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(content)) !== null) {
-      if (match[1]) refs.push(match[1]);
+      pushFirstGroup(match);
+    }
+  }
+
+  // 3. react-intl 的 defineMessages 定义块：块内每个 id 都是被 formatMessage(messages.x)
+  // 间接引用的 key
+  DEFINE_MESSAGES_BLOCK.lastIndex = 0;
+  let block: RegExpExecArray | null;
+  while ((block = DEFINE_MESSAGES_BLOCK.exec(content)) !== null) {
+    MESSAGE_DESCRIPTOR_ID.lastIndex = 0;
+    let idMatch: RegExpExecArray | null;
+    while ((idMatch = MESSAGE_DESCRIPTOR_ID.exec(block[0])) !== null) {
+      pushFirstGroup(idMatch);
     }
   }
 
@@ -270,6 +357,74 @@ export function resolveI18nModules(config: ResolvedConfig, adapter: FrameworkAda
  * 解析不了（非 TS/JS 扩展名、语法错误）一律返回 false —— 保守方向是「当作 i18n 引用」，
  * 少算 usedKeys 会让 prune 误删在用 key。
  */
+/** i18n 组合式入口：其返回值解构出的 `t` 是 i18n 来源，不是本地模板函数。 */
+const I18N_COMPOSABLE_NAMES = new Set(['useI18n', 'useTranslation']);
+
+/**
+ * 变量声明的初始化表达式是否指向 i18n 来源。
+ *
+ * 覆盖三类主流写法：`useI18n()/useTranslation()` 调用（含 `x.useI18n()`）、
+ * 属性链末端为 `.global` / `.global.t` / `.t`（vue-i18n 组件外用法 `i18n.global.t`）、
+ * 以及直接引用 i18n 模块导入进来的标识符。
+ */
+function isI18nSourceInitializer(
+  initializer: ts.Expression | undefined,
+  i18nImportedNames: ReadonlySet<string>,
+): boolean {
+  if (!initializer) return false;
+  let expr: ts.Expression = initializer;
+  while (
+    ts.isParenthesizedExpression(expr) ||
+    ts.isAsExpression(expr) ||
+    ts.isNonNullExpression(expr)
+  ) {
+    expr = expr.expression;
+  }
+  const calleeName = (node: ts.Expression): string | undefined => {
+    if (ts.isIdentifier(node)) return node.text;
+    if (ts.isPropertyAccessExpression(node)) return node.name.text;
+    return undefined;
+  };
+  if (ts.isCallExpression(expr)) {
+    const name = calleeName(expr.expression);
+    if (name && I18N_COMPOSABLE_NAMES.has(name)) return true;
+    return ts.isIdentifier(expr.expression) && i18nImportedNames.has(expr.expression.text);
+  }
+  if (ts.isPropertyAccessExpression(expr)) {
+    return expr.name.text === 'global' || expr.name.text === 't';
+  }
+  if (ts.isIdentifier(expr)) return i18nImportedNames.has(expr.text);
+  return false;
+}
+
+/** 从 i18n 模块导入进来的本地名（默认导入 / 具名 / 命名空间三种形态）。 */
+function collectI18nImportedNames(
+  sourceFile: ts.SourceFile,
+  i18nModules: readonly string[],
+): Set<string> {
+  const names = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    if (
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      !i18nModules.includes(statement.moduleSpecifier.text)
+    ) {
+      continue;
+    }
+    const clause = statement.importClause;
+    if (!clause) continue;
+    if (clause.name) names.add(clause.name.text);
+    const named = clause.namedBindings;
+    if (!named) continue;
+    if (ts.isNamespaceImport(named)) {
+      names.add(named.name.text);
+    } else {
+      for (const el of named.elements) names.add(el.name.text);
+    }
+  }
+  return names;
+}
+
 export function hasNonI18nTranslationBinding(
   filePath: string,
   raw: string,
@@ -284,6 +439,10 @@ export function hasNonI18nTranslationBinding(
   }
   const diagnostics = (sourceFile as unknown as { parseDiagnostics?: unknown[] }).parseDiagnostics;
   if (!Array.isArray(diagnostics) || diagnostics.length > 0) return false;
+
+  // 先过一遍 import：i18n 模块导入的本地名用于判定后续变量声明的初始化来源，
+  // import 可以写在变量语句之后，故不能在同一趟循环里边走边收。
+  const i18nImportedNames = collectI18nImportedNames(sourceFile, i18nModules);
 
   for (const statement of sourceFile.statements) {
     if (ts.isFunctionDeclaration(statement)) {
@@ -311,6 +470,10 @@ export function hasNonI18nTranslationBinding(
     }
     if (!ts.isVariableStatement(statement)) continue;
     for (const decl of statement.declarationList.declarations) {
+      // 初始化表达式指向 i18n 来源（`useI18n()` / `i18n.global` / `i18n.global.t` /
+      // i18n 模块导入的标识符）时，绑出的 t 就是 i18n 的 t：判为非 i18n 会让该文件所有裸
+      // t() 退出 missing-key 对账，而 store / 工具模块正是 key 最容易写错的地方。
+      if (isI18nSourceInitializer(decl.initializer, i18nImportedNames)) continue;
       if (ts.isIdentifier(decl.name)) {
         if (decl.name.text === 't') return true;
       } else if (
@@ -356,7 +519,7 @@ export function createKeyNormalizer(
 /**
  * 扫描源码目录，抽出所有 i18n key 引用：函数调用 `t()/$t()`（含三元等首参表达式）、
  * vue 组件/指令 `<i18n-t keypath>`/`v-t`、react 组件/调用 `<Trans i18nKey>`/
- * `<FormattedMessage id>`/`formatMessage({id})`。已按 createKeyNormalizer 归一 namespace、
+ * `<FormattedMessage id>`/`formatMessage({id})`/`defineMessages`。已按 createKeyNormalizer 归一 namespace、
  * 剔除注释中的引用。doctor 对账与 prune 孤儿清理共用此口径，locale 侧比较前需过同一归一。
  *
  * options.skipNonI18nTranslationCalls 只允许 missing-key 检查开启，见其字段说明。

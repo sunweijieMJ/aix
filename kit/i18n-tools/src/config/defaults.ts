@@ -38,6 +38,9 @@ export const DEFAULT_IO: Required<Omit<IoConfig, 'exportDir' | 'customDir'>> = {
     'dist',
     'build',
     '.git',
+    // 工具自身的 plan 目录：sources/ 下是转换后的源码副本，被当源码处理会污染
+    // restore（把副本还原成未国际化代码）与覆盖率统计。
+    '.i18n-tools',
     'public',
     '*.config.ts',
     '*.config.js',

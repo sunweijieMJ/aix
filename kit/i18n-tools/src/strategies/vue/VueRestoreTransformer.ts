@@ -4,7 +4,7 @@ import { parse as parseSFC } from '@vue/compiler-sfc';
 import { nodeToText, parseSourceFile } from '../../utils/ast-core';
 import { removeNamedImports } from '../../utils/import-surgery';
 import { normalizeRestoreLocaleMap } from '../../utils/message-shape';
-import { isImportedNameUnused, isLocalNameUnused } from '../../utils/scope-analysis';
+import { isLocalNameUnused, unusedImportedLocalNames } from '../../utils/scope-analysis';
 import { escapeRegExp } from '../../utils/string-escape';
 import { CHINESE_CHAR_RANGE, NON_EXTRACTABLE_ELEMENT_TAGS } from '../../utils/constants';
 import {
@@ -166,35 +166,38 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 守卫：仅当 t 在还原后的 script 中已无任何引用时才删除——若存在「locale 查不到、未被
     // 还原」的存活 t() 调用，t 仍被使用，删 import 会产出未定义 t（TS2304）。与 React 端
     // ReactRestoreTransformer.finalizeTImport 对称。
-    if (tImport && this.isTImportUnusedInScript(restoredCode, tImport)) {
-      restoredCode = mapScriptBlocks(restoredCode, (script) =>
-        this.cleanupPluginLocaleImport(script, tImport),
-      );
+    if (tImport) {
+      const deadNames = this.unusedTImportNamesInScript(restoredCode, tImport);
+      if (deadNames.length > 0) {
+        restoredCode = mapScriptBlocks(restoredCode, (script) =>
+          this.cleanupPluginLocaleImport(script, tImport, deadNames),
+        );
+      }
     }
 
     return restoredCode;
   }
 
   /**
-   * 判断还原后的 SFC 中，tImport 的 `t` 是否在 script 块里已无引用。
+   * 还原后的 SFC 中，tImport 导入的源名 `t` 绑出的本地名里，哪些在 script 块已无引用。
    *
    * .vue 整体不是合法 TS，无法直接解析；取 script/scriptSetup 块内容合并后（Vue3 SFC 多
-   * script 共享模块作用域）交给 isImportedNameUnused 判定。无 script 块或无
-   * 该 import 时返回 false（无可清理）。
+   * script 共享模块作用域）交给 unusedImportedLocalNames 判定。按本地名逐个判：
+   * `import { t as tr, t }` 里 tr 仍在用时只摘 t。无 script 块或无该 import 时返回空数组。
    */
-  private static isTImportUnusedInScript(restoredCode: string, tImport: string): boolean {
+  private static unusedTImportNamesInScript(restoredCode: string, tImport: string): string[] {
     const { descriptor } = parseSFC(restoredCode);
     // t 同时是 template 绑定：模板里存活的裸 t()（key 不在 localeMap 而未被还原）仍需要
     // 这条 import，只看 script 会删出运行时 "t is not defined"。
     if (descriptor.template && this.templateReferencesBareT(descriptor.template.content)) {
-      return false;
+      return [];
     }
     const scriptContent = [descriptor.script, descriptor.scriptSetup]
       .filter((b): b is NonNullable<typeof b> => Boolean(b))
       .map((b) => b.content)
       .join('\n');
-    if (!scriptContent.trim()) return false;
-    return isImportedNameUnused(scriptContent, 'sfc.ts', tImport, 't');
+    if (!scriptContent.trim()) return [];
+    return unusedImportedLocalNames(scriptContent, 'sfc.ts', tImport, 't');
   }
 
   /**
@@ -241,45 +244,23 @@ export class VueRestoreTransformer implements IRestoreTransformer {
   /**
    * 清理 `import { t } from '<tImport>'`（含同时导入其它命名的混合形式）。
    *
-   * 实现说明：
-   *  - 只 t 一个命名：整条 import 直接删除（与 restoreStandaloneScript 行为对称）
-   *  - 还有其它命名（如 `import { t, i18n } from '...'`）：仅从命名集合中摘掉 t，保留其它
+   * 直接复用 import-surgery.removeNamedImports（React 端 ReactRestoreTransformer 同款）：
+   * 按本地名摘除调用方判定已死的说明符（`import { t as tr, t }` 里 tr 仍在用时只摘 t）、
+   * 先剥命名列表里的注释（多行 import 带 `// 说明` 时按逗号切分会把注释并进名字、重写成
+   * 单行后 `//` 吞掉 `} from …`）、并保留 `import locale, { t }` 的默认说明符。
+   * 这三点自建正则都做不到，故不再单独实现。
    *
    * 仅做"工具确定不会再用 t"场景下的清理；用户手写代码若还有 t() 调用，相应的 t import
    * 应在 restoreScript 阶段就保留（restoreScript 命中翻译才会做替换）。
    */
-  private static cleanupPluginLocaleImport(code: string, tImport: string): string {
-    const escapedPath = escapeRegExp(tImport);
-    // 行首锚定（^[ \t]* + m）：与 import-surgery / VueImportManager 的判定口径一致，
-    // 只认作为语句出现在行首（允许缩进）的 import，不吃注释或字符串里的同形文本。
-    // 形式 1：仅 t 一个命名 → 整条 import 删除
-    const onlyT = new RegExp(
-      `^[ \\t]*import\\s*\\{\\s*t\\s*\\}\\s*from\\s*['"]${escapedPath}['"];?[ \\t]*\\r?\\n?`,
-      'gm',
-    );
-    let updated = code.replace(onlyT, '');
-    // 形式 2：t 与其它命名混合 → 仅摘掉 t，保留其它命名（head 含行首缩进，原样回写）。
-    // 尾部的 `;` 与换行必须一并纳入匹配：命名全被摘净时（如 `import { t, } from …;`）
-    // 只删到右引号会留下裸 `;` 一行，那是语法噪声；保留命名时把它原样回写即可。
-    const mixed = new RegExp(
-      `(^[ \\t]*import\\s*\\{)([^}]*)(\\}\\s*from\\s*['"]${escapedPath}['"])(;?[ \\t]*\\r?\\n?)`,
-      'gm',
-    );
-    updated = updated.replace(
-      mixed,
-      (_match, head: string, body: string, tail: string, trailer: string) => {
-        const names = body
-          .split(',')
-          .map((s) => s.trim())
-          .filter((s) => s && s !== 't' && !/^t\s+as\s+/.test(s));
-        if (names.length === 0) {
-          // 全部命名都被剔除（理论上 onlyT 已先消掉，这里是兜底）
-          return '';
-        }
-        return `${head} ${names.join(', ')} ${tail}${trailer}`;
-      },
-    );
-    return updated;
+  private static cleanupPluginLocaleImport(
+    code: string,
+    tImport: string,
+    deadLocalNames: string[],
+  ): string {
+    return removeNamedImports(code, (moduleName) => moduleName === tImport, deadLocalNames, {
+      byLocalName: true,
+    });
   }
 
   /**
@@ -322,8 +303,11 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 复用 SFC 路径的 helper：可处理 `import { t }` 与 `import { t, i18n }` 混合形式。
     // 守卫：仅当 t 在还原后已无引用时才删除——存活的 t() 调用（locale 缺 key / 动态 key）
     // 仍引用 t，删 import 会产出未定义 t（TS2304）。与 SFC 路径 / React 端对称。
-    if (tImport && isImportedNameUnused(restoredCode, parseFileName, tImport, 't')) {
-      restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport);
+    if (tImport) {
+      const deadNames = unusedImportedLocalNames(restoredCode, parseFileName, tImport, 't');
+      if (deadNames.length > 0) {
+        restoredCode = this.cleanupPluginLocaleImport(restoredCode, tImport, deadNames);
+      }
     }
 
     return restoredCode;
@@ -389,8 +373,12 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 1. 匹配 {{ $t('key') }} 或 {{ t('key') }} 或 {{ $t('key', { vars }) }}
     //    仅匹配整个插值内容为单个 $t 调用的情况
     //    vars 段支持单层嵌套花括号（如 { obj: { a: 1 } }）
+    //    `t(` 之后与右括号之前允许空白/换行、并允许一个尾逗号：prettier 会把长调用折成
+    //    `$t(\n  'key',\n  { … },\n)`，不吃这两处的话整段静默不还原、源码里永远卡着 $t 调用。
+    //    三个 pass 的 `t\(\s*['"]` 与 `\s*,?\s*\)` 必须同口径，否则同一形态在不同上下文里
+    //    时还时不还。
     const i18nCallRegex =
-      /\{\{\s*\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)\s*\}\}/g;
+      /\{\{\s*\$?t\(\s*['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*,?\s*\)\s*\}\}/g;
 
     restored = restored.replace(i18nCallRegex, (match, key, vars) => {
       const text = lookupText(key as string);
@@ -421,9 +409,13 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     //    锚点用 `(?:v-bind)?:` 同时覆盖简写 `:attr=` 与完整 `v-bind:attr=`：完整写法下整体
     //    匹配 `v-bind:attr=...` 并连同 `v-bind` 前缀一起替换为静态属性，避免只吃掉 `:attr`
     //    残留 `v-bind` 拼出非法属性名 `v-bindattr`。
-    // cspell:ignore bindattr —— 上方注释里的非法属性名示例，非词汇
+    //    前置 `(?<![\w.\-:$])` 把起点限定在「空白/标签起始之后紧跟的 `:attr=`」：不加时冒号可以
+    //    从任意位置起匹配，`v-tooltip:bottom="$t()"` 会被换成 `v-tooltipbottom="文案"`、
+    //    `:xlink:href` 会被换成 `:xlinkhref`，都是非法属性名。带指令参数（`v-on:click`）或
+    //    第二个冒号（`xlink:href`）的形态一律不在本 pass 处理，交 3a 保持动态绑定。
+    // cspell:ignore bindattr tooltipbottom xlinkhref —— 上方注释里的非法属性名示例，非词汇
     const attrBindingRegex =
-      /(?:v-bind)?:([\w-]+)=(["'])\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)\2/g;
+      /(?<![\w.\-:$])(?:v-bind)?:([\w-]+)=(["'])\$?t\(\s*['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*,?\s*\)\2/g;
 
     restored = restored.replace(attrBindingRegex, (match, attrName, _outer, key, vars) => {
       const text = lookupText(key as string);
@@ -458,7 +450,7 @@ export class VueRestoreTransformer implements IRestoreTransformer {
     // 留下 `$i18n.` 拼出 `$i18n.'你好'` 的语法废码，以及 `$` 开头的自定义标识符。
     // 与 VueComponentInjector.needsHook / TEMPLATE_BARE_T_CALL_RE 的 t 调用探测同口径。
     const innerI18nCallRegex =
-      /(?<![\w.$])\$?t\(['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*\)/g;
+      /(?<![\w.$])\$?t\(\s*['"]([^'"]+)['"]\s*(?:,\s*(\{(?:[^{}]|\{[^{}]*\})*\}))?\s*,?\s*\)/g;
 
     // quote：还原出的 JS 字符串字面量用哪种引号。默认单引号；位于单引号包裹的属性值内时
     // 必须换成双引号，否则 `:title='cond ? '文本' : "x"'` 在外层单引号处提前闭合。

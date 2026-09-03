@@ -1987,3 +1987,246 @@ export const Panel = () => <p>单行文本</p>;
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// 场景：注入名 / 引用点绑定的作用域守卫（react-gen 审计 R1~R10）
+// ---------------------------------------------------------------------------
+describe('React 生成侧作用域守卫（审计 R1~R10）', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'react-gen-audit-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function run(
+    code: string,
+    options: { file?: string; lib?: ReactI18nLibraryType } = {},
+  ): Promise<{ strings: ExtractedString[]; out: string; warnings: string[] }> {
+    const file = path.join(dir, options.file ?? 'C.tsx');
+    fs.writeFileSync(file, code);
+    const adapter = new ReactAdapter('@/plugins/locale', options.lib ?? 'react-i18next');
+    const extractor = adapter.getTextExtractor() as ReactTextExtractor;
+    const strings = await extractor.extractFromFile(file);
+    strings.forEach((s, i) => (s.semanticId = `k${i}`));
+    const out = adapter.getTransformer().transform(file, strings, code);
+    return { strings, out, warnings: extractor.drainWarnings() };
+  }
+
+  it('R1: 模块顶层 const t 与注入的裸 t 同名 → 模块级文案整体跳过并记人工项', async () => {
+    const code = `const t = (s: string) => s;\nexport const cols = [{ title: '名称' }];\n`;
+    const { strings, out, warnings } = await run(code, { file: 'C.ts' });
+    expect(strings).toHaveLength(0);
+    expect(out).toBe(code);
+    expect(warnings.join('\n')).toContain('同名的非 i18n 本地绑定');
+  });
+
+  it('R1: 模块顶层 import { t } 来自他库 → 不再注入第二条同名 import（TS2300）', async () => {
+    const code = `import { t } from 'tiny-template';\nexport const cols = [{ title: '名称' }];\n`;
+    const { strings, out } = await run(code, { file: 'C.ts' });
+    expect(strings).toHaveLength(0);
+    expect(out).not.toContain(`from '@/plugins/locale'`);
+  });
+
+  it('R1 反向：tImport 的 t 是 i18n 来源，模块级文案照常提取', async () => {
+    const code = `import { t } from '@/plugins/locale';\nexport const cols = [{ title: '名称' }];\n`;
+    const { strings, out } = await run(code, { file: 'C.ts' });
+    expect(strings).toHaveLength(1);
+    expect(out).toContain(`title: t('k0')`);
+  });
+
+  it('R1/R6: react-intl 模块顶层已有他处 import { intl } → 跳过提取', async () => {
+    const code = `import { intl } from '@/i18n';\nexport const cols = [{ title: '名称' }];\n`;
+    const { strings } = await run(code, { file: 'C.ts', lib: 'react-intl' });
+    expect(strings).toHaveLength(0);
+  });
+
+  it('R2: 回调形参 t 遮蔽替换点 → 跳过该候选', async () => {
+    const code = `import React from 'react';
+export function App({ tabs }: { tabs: { id: string }[] }) {
+  return <ul>{tabs.map((t) => <li key={t.id} title="标签">{t.id}</li>)}</ul>;
+}
+`;
+    const { strings, out } = await run(code);
+    expect(strings).toHaveLength(0);
+    expect(out).not.toContain('useTranslation');
+  });
+
+  it('R2: 文案在内层块内、块内有 const t → 跳过；块外文案照常提取并注入', async () => {
+    const inner = `import React from 'react';
+export function App({ x }: { x: boolean }) {
+  if (x) {
+    const t = 5;
+    return <div title="标题" data-t={t} />;
+  }
+  return null;
+}
+`;
+    expect((await run(inner)).strings).toHaveLength(0);
+
+    const outer = `import React from 'react';
+export function App({ x }: { x: boolean }) {
+  if (x) {
+    const t = 5;
+    console.log(t);
+  }
+  return <div title="标题" />;
+}
+`;
+    const { strings, out } = await run(outer);
+    expect(strings).toHaveLength(1);
+    expect(out).toContain('const { t } = useTranslation();');
+  });
+
+  it('R2: 业务自己的解构形参 { t } 不是 i18n 绑定 → 跳过提取', async () => {
+    const code = `import React from 'react';
+type Tab = { id: string };
+export function Row({ t }: { t: Tab }) {
+  return <td title="标题">{t.id}</td>;
+}
+`;
+    const { strings, out } = await run(code);
+    expect(strings).toHaveLength(0);
+    expect(out).toBe(code);
+  });
+
+  it('R2 反向：HOC 形参（WithTranslation 类型 / 被 HOC 包裹）仍算 i18n 绑定，照常提取不注入 hook', async () => {
+    const typed = `import React from 'react';
+import type { WithTranslation } from 'react-i18next';
+export const Foo = ({ t }: WithTranslation & { a: number }) => <div title="标题" />;
+`;
+    const typedRun = await run(typed);
+    expect(typedRun.strings).toHaveLength(1);
+    expect(typedRun.out).toContain(`title={t('k0')}`);
+    expect(typedRun.out).not.toContain('useTranslation()');
+
+    const wrapped = `import React from 'react';
+import { withTranslation } from 'react-i18next';
+const Foo = ({ t }) => <div title="标题" />;
+export default withTranslation()(Foo);
+`;
+    const wrappedRun = await run(wrapped);
+    expect(wrappedRun.strings).toHaveLength(1);
+    expect(wrappedRun.out).not.toContain('useTranslation()');
+  });
+
+  it('R3: 类方法自身已绑定同名 t → 该方法内文案跳过，其它方法照常注入解构', async () => {
+    const code = `import React from 'react';
+export class Foo extends React.Component<{}> {
+  a() { const t = 1; return '甲' + t; }
+  render() { return <div title="乙" />; }
+}
+`;
+    const { strings, out } = await run(code);
+    expect(strings.map((s) => s.original)).toEqual(['乙']);
+    expect(count(out, /const \{ t \} = this\.props;/g)).toBe(1);
+    expect(out).toContain('a() { const t = 1;');
+  });
+
+  it('R4: .jsx 类组件不写类型实参与 import type', async () => {
+    const code = `import React from 'react';
+export default class Foo extends React.Component {
+  render() { return <div title="标题" />; }
+}
+`;
+    const { out } = await run(code, { file: 'C.jsx' });
+    expect(out).not.toContain('import type');
+    expect(out).not.toContain('React.Component<');
+    expect(out).toContain('withTranslation()(FooWithOutIntl)');
+  });
+
+  it('R5: 模块顶层自封装的 useTranslation → 全部候选跳过，不注入第二条同名导入', async () => {
+    const code = `import React from 'react';
+import { useTranslation } from '@/hooks/useTranslation';
+export function A() {
+  const { t } = useTranslation();
+  return <div title="标题">{t('x')}</div>;
+}
+export function B() {
+  return <div title="按钮" />;
+}
+`;
+    const { strings, out, warnings } = await run(code);
+    expect(strings).toHaveLength(0);
+    expect(count(out, /import \{ useTranslation \}/g)).toBe(1);
+    expect(warnings.join('\n')).toContain("待注入的 'useTranslation'");
+  });
+
+  it('R5: 模块顶层自有 Trans 组件 → jsx-text 候选跳过', async () => {
+    const code = `import React from 'react';
+import { Trans } from '@/components/Trans';
+export function A() {
+  return <div><Trans id="x" />你好</div>;
+}
+`;
+    const { strings, warnings } = await run(code);
+    expect(strings).toHaveLength(0);
+    expect(warnings.join('\n')).toContain("待注入的 'Trans'");
+  });
+
+  it('R5 反向：来自 i18n 库自身的同名导入不算冲突（增量重跑照常）', async () => {
+    const code = `import React from 'react';
+import { useTranslation, Trans } from 'react-i18next';
+export function A() {
+  const { t } = useTranslation();
+  return <div title="标题">{t('x')}<Trans i18nKey="y" />你好</div>;
+}
+`;
+    const { strings } = await run(code);
+    expect(strings.map((s) => s.original)).toEqual(['标题', '你好']);
+  });
+
+  it('R6: 已有 const intl = getIntl()（无分号）不再重复插入声明', async () => {
+    const code = `import { getIntl } from '@/plugins/locale'\nconst intl = getIntl()\nexport const cols = [{ title: '名称' }];\n`;
+    const { out } = await run(code, { file: 'C.ts', lib: 'react-intl' });
+    expect(count(out, /const intl = getIntl\(\)/g)).toBe(1);
+  });
+
+  it('R8: 函数体首行指令仍是首个语句，hook 插在其后', async () => {
+    const code = `import React from 'react';
+export function App() {
+  'use no memo';
+  return <div title="标题" />;
+}
+`;
+    const { out } = await run(code);
+    expect(out.indexOf(`'use no memo'`)).toBeLessThan(
+      out.indexOf('const { t } = useTranslation()'),
+    );
+  });
+
+  it('R9: PascalCase 组件按引用传给 map → 降级模块级 t，不注入 hook', async () => {
+    const code = `import React from 'react';
+const Row = (r: { id: string }) => <tr title="行">{r.id}</tr>;
+export function Table({ rows }: { rows: { id: string }[] }) {
+  return <table>{rows.map(Row)}</table>;
+}
+`;
+    const { strings, out } = await run(code);
+    expect(strings[0]!.componentType).toBe('other');
+    expect(out).not.toContain('useTranslation');
+    expect(out).toContain(`import { t } from '@/plugins/locale'`);
+  });
+
+  it('R9 反向：memo(Foo) 按引用包裹不是普通调用，照常注入 hook', async () => {
+    const code = `import React, { memo } from 'react';
+const Foo = () => <div title="标题" />;
+export default memo(Foo);
+`;
+    const { out } = await run(code);
+    expect(out).toContain('const { t } = useTranslation();');
+  });
+
+  it('R10: 混合内容含展开子节点 → 放弃合并、保留 {...items} 并告警', async () => {
+    const code = `import React from 'react';
+export function A({ items }: { items: string[] }) {
+  return <p>共有 {...items} 项</p>;
+}
+`;
+    const { strings, out, warnings } = await run(code);
+    expect(strings.map((s) => s.original)).toEqual(['共有', '项']);
+    expect(out).toContain('{...items}');
+    expect(warnings.join('\n')).toContain('展开子节点');
+  });
+});

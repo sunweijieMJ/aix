@@ -55,6 +55,23 @@ function maskNonCodeRegions(code: string): string {
  */
 type ScanMode = 'strip' | 'mask';
 
+/**
+ * 从 open 位置的引号起，在**同一行内**是否存在配对引号。
+ * `\` 按转义对跳过（`\` + 换行的续行因此能延续到下一行，与 JS 语义一致）。
+ */
+function hasMatchingQuoteOnLine(code: string, open: number, quote: string): boolean {
+  for (let j = open + 1; j < code.length; j++) {
+    const c = code[j];
+    if (c === '\\') {
+      j++;
+      continue;
+    }
+    if (c === '\n') return false;
+    if (c === quote) return true;
+  }
+  return false;
+}
+
 function scanSource(code: string, mode: ScanMode): string {
   const masking = mode === 'mask';
   const out: string[] = [];
@@ -107,14 +124,15 @@ function scanSource(code: string, mode: ScanMode): string {
 
     // 代码上下文（含模板表达式内）：识别字符串/注释起始，tpl_expr 还需匹配 ${} 的闭合
     if (frame.kind === 'none' || frame.kind === 'tpl_expr') {
-      if (ch === '"') {
-        stack.push({ kind: 'dq' });
-        out.push(ch);
-        i++;
-        continue;
-      }
-      if (ch === "'") {
-        stack.push({ kind: 'sq' });
+      if (ch === '"' || ch === "'") {
+        // 同一行内没有配对引号 → 这不是字符串起点，而是 JSX 正文里的撇号
+        // （`<p>it's fine</p>`）。当成字符串会一直吃到后面某个引号（多半在下一处
+        // `t('…')` 里），中间的注释因此失去掩码：注释里的 t('key') 被计入 used-key、
+        // 注释里的示例 import 被 import 手术当成真语句改写。
+        // JS 的单/双引号字符串不能裸跨行，故这条判定对真代码无损（`\` 续行仍然成立）。
+        if (hasMatchingQuoteOnLine(code, i, ch)) {
+          stack.push({ kind: ch === '"' ? 'dq' : 'sq' });
+        }
         out.push(ch);
         i++;
         continue;
@@ -508,15 +526,21 @@ export function removeNamedImports(
   code: string,
   isTargetModule: (moduleName: string) => boolean,
   namesToRemove: string[],
+  options: { byLocalName?: boolean } = {},
 ): string {
   if (namesToRemove.length === 0) return code;
+  // byLocalName：按本地名（`t as tr` 的 tr）而非源名比对。`import { t as tr, t }` 里只有
+  // 本地名 t 死掉、tr 仍在用时，按源名会把两个说明符一起摘掉，tr 引用悬空（TS2304）。
+  const byLocalName = options.byLocalName === true;
   // 匹配在掩码文本上做：行首锚定（gm + `^[ \t]*import`）保证只命中「语句」位置，掩码
   // 再保证注释/模板串里的示例 import 不参与匹配——否则会把注释里的 import 文本删掉，
   // `\n?` 还会吞掉换行把下一行真实代码并入注释。尾部 `;?` `\n?` 避免删除后留空行。
   // 可选默认说明符 `import D, { … }`：捕获默认名 D 并在重写时保留，否则 default+named 形式
   // 的死 t 摘不掉（regex 不匹配 → 残留 no-unused-vars）。
+  // `import type { … }`：类型导入与值导入同样需要逐名摘除（残留的类型导入同样触发
+  // no-unused-vars / 整条死导入），重写时把 `type` 关键字原样带回。
   const importRegex =
-    /^([ \t]*)import\s*(?:([A-Za-z0-9_$]+)\s*,\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"];?\n?/gm;
+    /^([ \t]*)import(\s+type)?\s*(?:([A-Za-z0-9_$]+)\s*,\s*)?\{([^}]*)\}\s*from\s*['"]([^'"]+)['"];?\n?/gm;
   const matches = [...maskNonCodeRegions(code).matchAll(importRegex)];
 
   // 从后往前按 index 切片改写原文：掩码与原文等长，下标可直接复用；倒序保证
@@ -525,18 +549,22 @@ export function removeNamedImports(
   for (let i = matches.length - 1; i >= 0; i--) {
     const match = matches[i]!;
     const indent = match[1]!;
-    const defaultName = match[2];
-    const namedList = match[3]!;
-    const moduleName = match[4]!;
+    const typeKeyword = match[2] ? 'type ' : '';
+    const defaultName = match[3];
+    const namedList = match[4]!;
+    const moduleName = match[5]!;
     if (!isTargetModule(moduleName)) continue;
     const remaining = stripImportListComments(namedList)
       .split(',')
       .map((n) => n.trim())
       .filter(Boolean)
-      // `useI18n as foo` 这类重命名导入：取 ` as ` 之前的原始名作为比对锚点
+      // `useI18n as foo` 这类重命名导入：取 ` as ` 之前的原始名作为比对锚点；
+      // 内联类型修饰符 `{ type Props }` 同样按其后的名字比对。
       .filter((entry) => {
-        const original = entry.split(/\s+as\s+/)[0]!.trim();
-        return !namesToRemove.includes(original);
+        const parts = entry.split(/\s+as\s+/);
+        const original = parts[0]!.trim().replace(/^type\s+/, '');
+        const local = (parts[1] ?? original).trim();
+        return !namesToRemove.includes(byLocalName ? local : original);
       });
     // 复用原始行尾分号/换行，保留风格一致
     const hasSemi = match[0].trimEnd().endsWith(';');
@@ -545,10 +573,12 @@ export function removeNamedImports(
     let replacement: string;
     if (remaining.length === 0) {
       // 无剩余具名项：存在默认导入则保留 `import D from 'pkg'`，否则整条删除
-      replacement = defaultName ? `${indent}import ${defaultName} from '${moduleName}'${tail}` : '';
+      replacement = defaultName
+        ? `${indent}import ${typeKeyword}${defaultName} from '${moduleName}'${tail}`
+        : '';
     } else {
       const prefix = defaultName ? `${defaultName}, ` : '';
-      replacement = `${indent}import ${prefix}{ ${remaining.join(', ')} } from '${moduleName}'${tail}`;
+      replacement = `${indent}import ${typeKeyword}${prefix}{ ${remaining.join(', ')} } from '${moduleName}'${tail}`;
     }
     const start = match.index!;
     result = result.slice(0, start) + replacement + result.slice(start + match[0].length);

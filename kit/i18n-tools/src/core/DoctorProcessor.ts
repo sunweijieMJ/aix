@@ -43,6 +43,8 @@ export type DoctorCategory =
   | 'missing-target-key'
   /** target locale 有该 key 但源 locale 没有（源侧已删/改名，译文成了残留） */
   | 'stale-target-key'
+  /** target locale 该 key 有值但无效（空串 / 纯空白 / 纯标点），运行时等同缺译 */
+  | 'invalid-target-value'
   /** 译文与源文案的占位符名集不一致（漏=运行时插值失效） */
   | 'placeholder-mismatch';
 
@@ -92,6 +94,9 @@ export class DoctorProcessor extends BaseProcessor {
   private skippedComparisons: SkippedTextLocation[] = [];
   private skippedNestedChinese: SkippedTextLocation[] = [];
 
+  /** 源语种是否属中文系（locale 以 zh 开头），决定 sourceNeedsTranslation 的判据。 */
+  private readonly sourceIsChineseFamily: boolean;
+
   constructor(
     config: ResolvedConfig,
     isCustom: boolean = false,
@@ -100,6 +105,7 @@ export class DoctorProcessor extends BaseProcessor {
   ) {
     super(config, isCustom, adapter);
     this.ciMode = Boolean(options.ci);
+    this.sourceIsChineseFamily = /^zh(?![a-z])/i.test(config.locales.source);
   }
 
   protected getOperationName(): string {
@@ -165,6 +171,7 @@ export class DoctorProcessor extends BaseProcessor {
         const targetMap = this.langFiles.readLocaleFile(target) ?? {};
         findings.push(...this.checkMissingTargetKeys(sourceMap, targetMap, target));
         findings.push(...this.checkStaleTargetKeys(sourceMap, targetMap, target));
+        findings.push(...this.checkInvalidTargetValues(sourceMap, targetMap, target));
         findings.push(...this.checkUntranslated(sourceMap, targetMap, target));
         findings.push(...this.checkPlaceholders(sourceMap, targetMap, target));
       }
@@ -421,7 +428,7 @@ export class DoctorProcessor extends BaseProcessor {
       // 与 checkMissingKeys/checkOrphanKeys 的判定纪律保持一致。
       if (Object.prototype.hasOwnProperty.call(targetMap, key)) continue;
       if (typeof sourceValue !== 'string') continue;
-      if (!FileUtils.containsChinese(sourceValue)) continue; // 纯英文/符号缺失视为合理不翻译，不报
+      if (!this.sourceNeedsTranslation(sourceValue)) continue;
       if (skipPredicate && skipPredicate(key, sourceValue)) continue;
       findings.push({
         category: 'missing-target-key',
@@ -475,6 +482,44 @@ export class DoctorProcessor extends BaseProcessor {
   }
 
   /**
+   * invalid-target-value：target locale 有该 key，但值为空串 / 纯空白 / 纯标点。
+   *
+   * hasOwnProperty 判定让 missing-target-key 把它当「已有译文」放过，`===` 比对又让
+   * untranslated 把它当「与源不同」放过——运行时却与缺译无异（显示空白或垃圾）。
+   * 判据与 pick/merge/translate 统一走 isValidTranslation，归 warning 级（同 untranslated）。
+   */
+  private checkInvalidTargetValues(
+    sourceMap: LocaleMap,
+    targetMap: LocaleMap,
+    target: string,
+  ): DoctorFinding[] {
+    const findings: DoctorFinding[] = [];
+    const skipPredicate = this.config.keys.skip;
+    for (const [key, sourceValue] of Object.entries(sourceMap)) {
+      if (!Object.prototype.hasOwnProperty.call(targetMap, key)) continue; // 缺 key 归 missing-target-key
+      if (typeof sourceValue !== 'string') continue;
+      if (!this.sourceNeedsTranslation(sourceValue)) continue;
+      if (skipPredicate && skipPredicate(key, sourceValue)) continue;
+      const targetValue = targetMap[key];
+      // 非字符串叶子（手写 locale 的数字/数组/null）不在本项职责内，交由 locale-lint。
+      if (typeof targetValue !== 'string') continue;
+      if (FileUtils.isValidTranslation(targetValue)) continue;
+      findings.push({
+        category: 'invalid-target-value',
+        severity: 'warning',
+        title: `${key} (${target} 的值无效)`,
+        details: [
+          `source [${this.config.locales.source}]: ${this.preview(sourceValue)}`,
+          `target [${target}]: ${this.preview(targetValue)}`,
+          '值为空串 / 纯空白 / 纯标点，运行时等同缺译；运行 `--mode translate` 或人工补译',
+        ],
+        key,
+      });
+    }
+    return findings;
+  }
+
+  /**
    * untranslated：target locale 的 value 与 source 完全相同（疑似漏译）。
    *
    * 三种情况会"故意"让 target = source（不应报警）：
@@ -496,7 +541,7 @@ export class DoctorProcessor extends BaseProcessor {
       const targetValue = targetMap[key];
       if (targetValue === undefined) continue; // 缺译归 missing 类，不重复报
       if (typeof sourceValue !== 'string' || typeof targetValue !== 'string') continue;
-      if (!FileUtils.containsChinese(sourceValue)) continue; // 源 value 无中文 → 不参与判定
+      if (!this.sourceNeedsTranslation(sourceValue)) continue;
       if (skipPredicate && skipPredicate(key, sourceValue)) continue;
       if (sourceValue === targetValue) {
         findings.push({
@@ -636,6 +681,7 @@ export class DoctorProcessor extends BaseProcessor {
       untranslated: '疑似未翻译（target = source）',
       'missing-target-key': '源 locale 有该 key 但目标语言完全缺失',
       'stale-target-key': '目标语言有该 key 但源 locale 已无（译文残留）',
+      'invalid-target-value': '目标语言的值无效（空串 / 纯空白 / 纯标点），运行时等同缺译',
       'placeholder-mismatch': '译文与源文案的占位符名集不一致',
     };
     for (const f of findings) {
@@ -658,6 +704,20 @@ export class DoctorProcessor extends BaseProcessor {
       // 让 summary.bySeverity 如实反映 error 级数量（与 console / --ci 口径一致）。
       this.report.addWarning(`[${f.category}] ${f.key}: ${reason}`, f.severity);
     }
+  }
+
+  /**
+   * 「该源文案需要翻译吗」——missing-target-key / invalid-target-value / untranslated 共用的过滤器。
+   *
+   * 源语种为中文系（locale 以 zh 开头，覆盖 zh / zh-CN / zh_Hans 等写法）时按「含中文」判定：
+   * 中文项目里纯英文/符号（'API'、'TCP/IP'）本就是合理的不翻译项，报出来只是噪音。
+   * 其它源语种没有等价的形态判据（source=en 时「含英文」恒真、也无从区分标识符），
+   * 退化为 isValidTranslation：只滤掉纯符号/数字/空白，宁可多报也不整类失明。
+   */
+  private sourceNeedsTranslation(sourceValue: string): boolean {
+    return this.sourceIsChineseFamily
+      ? FileUtils.containsChinese(sourceValue)
+      : FileUtils.isValidTranslation(sourceValue);
   }
 
   private preview(value: unknown): string {

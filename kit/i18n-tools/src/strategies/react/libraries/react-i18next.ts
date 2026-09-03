@@ -253,7 +253,14 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   hasLocalTranslationBinding(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
     // 函数组件经 withTranslation 把 t 作为 prop 解构传入（`({ t }: WithTranslation) => …`）时，
     // t 已是本地形参绑定；若漏判会再注入 `const { t } = useTranslation()` 与形参同作用域双声明。
-    if (ReactASTUtils.componentParamBindsVar(node, this.translationVarName)) {
+    // 必须带上 HOC 口径：业务自己的 `({ t }: { t: Tab })` 不是翻译函数，当成已有绑定会让替换出的
+    // t('k') 调到业务对象上（该形态由提取端的冲突守卫整体跳过）。
+    if (
+      ReactASTUtils.componentParamBindsVar(node, this.translationVarName, {
+        hocPropsType: this.hocPropsType,
+        isHOCCall: (expression) => this.isHOCCall(expression),
+      })
+    ) {
       return true;
     }
     // react-i18next 的 isTranslationAvailableInScope 本就只认本地 useTranslation 解构出的
@@ -316,9 +323,21 @@ export class ReactI18nextLibrary implements ReactI18nLibrary {
   ): MessageInfo {
     const messageInfo: MessageInfo = {};
     for (const attribute of openingElement.attributes.properties) {
-      if (!ts.isJsxAttribute(attribute) || !ts.isIdentifier(attribute.name)) continue;
+      // 展开属性（`<Trans {...descriptor} />`）与命名空间属性名：无法静态解析，置位保留原
+      // 组件。工具自产的 <Trans> 只有 i18nKey/defaults/values 三个裸属性，不受影响。
+      if (!ts.isJsxAttribute(attribute) || !ts.isIdentifier(attribute.name)) {
+        messageInfo.hasUnresolvableValues = true;
+        continue;
+      }
 
       const attrName = attribute.name.text;
+      // 三个已知属性之外的任何属性（count / components / tOptions / ns / shouldUnescape…）
+      // 都参与运行时渲染，整节点替换会把它们连同其引用的变量一并丢弃。置位保留原组件，
+      // 与调用形态 `t('k', opts)` 的 hasUnresolvableValues 同口径。
+      if (attrName !== 'i18nKey' && attrName !== 'defaults' && attrName !== 'values') {
+        messageInfo.hasUnresolvableValues = true;
+        continue;
+      }
       const initializer = attribute.initializer;
       if (!initializer) continue;
 

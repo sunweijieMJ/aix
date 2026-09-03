@@ -209,7 +209,10 @@ export class TranslateProcessor extends FileProcessor {
       // 与 pick/merge 统一用 isValidTranslation：非空但无效（纯标点/符号）的目标值
       // 应继续进入翻译，而非被 trim() 真值判定误当已译跳过。
       if (!FileUtils.isValidTranslation(item[targetLocale])) {
-        toTranslate[key] = item;
+        // 浅拷贝并置空目标值：prompt 规则「目标已有值则原样保留」会让模型把 `---`
+        // 这类无效值原样返回，mergeTranslations 再拒收，该 key 永不收敛。
+        // 拷贝只作 LLM 载荷与 originalBatch，落盘走 data 本体，不影响断点续翻语义。
+        toTranslate[key] = { ...item, [targetLocale]: '' };
       }
     }
     return toTranslate;

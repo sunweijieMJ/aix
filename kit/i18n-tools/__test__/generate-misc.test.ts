@@ -951,3 +951,105 @@ describe('resolveSemanticId — promoteToCommon 分支的本地兜底查 keys.fa
     expect(id).toBe('pages.baz.confirm');
   });
 });
+
+/**
+ * A-2：IdReuseResolver 的目录前缀不再用 `lastIndexOf(separator)` 从 key 反推。
+ *
+ * sanitizeSemanticId 把空格转 `_`，语义段天然含 `_`；separator 配成 `_` 时
+ * `pages_a_confirm_order` 会被切成前缀 `pages_a_confirm`，同一目录下两个同原文 key
+ * 被数成两个模块，第三个目录首次出现该原文即误触发 promoteToCommon。
+ * 现在改为：新 key 记真实目录前缀，历史 key 按「已知前缀集合最长匹配 + separator 边界」
+ * 归属，separator 可能出现在语义段里且无匹配时归入未知域（宁可少提升）。
+ */
+describe('IdReuseResolver — 目录前缀归属（A-2）', () => {
+  let tmpDir: string;
+  let localeDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'id-reuse-prefix-'));
+    localeDir = path.join(tmpDir, 'locale');
+    fs.mkdirSync(localeDir, { recursive: true });
+    vi.spyOn(LoggerUtils, 'info').mockImplementation(() => {});
+    vi.spyOn(LoggerUtils, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const buildConfig = (separator: string): ResolvedConfig =>
+    resolveConfig({
+      root: tmpDir,
+      framework: { type: 'vue' },
+      locales: { source: 'zh-CN', targets: ['en-US'] },
+      io: { localesDir: localeDir, sourceDir: path.join(tmpDir, 'src'), format: 'flat' },
+      keys: {
+        separator,
+        prefix: { strategy: 'path', anchor: 'src' },
+        reuse: {
+          acrossDirectories: false,
+          promoteToCommon: { threshold: 3, namespace: 'common' },
+        },
+      },
+      llm: { shared: { apiKey: 'x', model: 'm' } },
+    } as I18nToolsConfig);
+
+  const writeLocale = (data: Record<string, string>): void =>
+    fs.writeFileSync(path.join(localeDir, 'zh-CN.json'), JSON.stringify(data));
+
+  it("A-2: separator='_' 时同目录的两个 key 不被数成两个模块（不误触发提升）", () => {
+    // 两个 key 都在 src/pages/a 下，语义段自身含 '_'
+    writeLocale({ pages_a_confirm_order: '确认订单', pages_a_submit_order: '确认订单' });
+    const resolver = new IdReuseResolver(buildConfig('_'), false);
+    const fileB = path.join(tmpDir, 'src', 'pages', 'b', 'B.vue');
+
+    expect(resolver.shouldPromoteToCommon('确认订单', fileB)).toBe(false);
+  });
+
+  it("A-2: separator='_' 时真的跨 3 个目录仍会提升（已知前缀最长匹配生效）", () => {
+    writeLocale({ pages_a_confirm_order: '确认订单', pages_b_confirm_order: '确认订单' });
+    const resolver = new IdReuseResolver(buildConfig('_'), false);
+    // 先让 pages_a / pages_b 进入已知前缀集合（真实运行里由扫描文件列表登记）
+    resolver.scanExistingCallsInSources([
+      path.join(tmpDir, 'src', 'pages', 'a', 'A.vue'),
+      path.join(tmpDir, 'src', 'pages', 'b', 'B.vue'),
+    ]);
+
+    expect(
+      resolver.shouldPromoteToCommon('确认订单', path.join(tmpDir, 'src', 'pages', 'c', 'C.vue')),
+    ).toBe(true);
+  });
+
+  it("A-2: 默认 separator='.' 的既有判定不变（2 个历史前缀 + 新前缀 → 提升）", () => {
+    writeLocale({ 'pages.foo.save': '保存', 'pages.bar.save': '保存' });
+    const resolver = new IdReuseResolver(buildConfig('.'), false);
+
+    expect(
+      resolver.shouldPromoteToCommon('保存', path.join(tmpDir, 'src', 'pages', 'baz', 'f.vue')),
+    ).toBe(true);
+  });
+
+  it('A-2: 新分配的 key 记真实目录前缀，提升到 common 后不丢模块信息', () => {
+    writeLocale({});
+    const resolver = new IdReuseResolver(buildConfig('.'), false);
+    resolver.registerNewId(
+      '保存',
+      'common.save',
+      path.join(tmpDir, 'src', 'pages', 'foo', 'a.vue'),
+    );
+    resolver.registerNewId(
+      '保存',
+      'common.save',
+      path.join(tmpDir, 'src', 'pages', 'bar', 'b.vue'),
+    );
+
+    // 已记录 pages.foo / pages.bar 两个真实模块；第三个模块达阈值
+    expect(
+      resolver.shouldPromoteToCommon('保存', path.join(tmpDir, 'src', 'pages', 'baz', 'c.vue')),
+    ).toBe(true);
+    // 同模块重复出现不再计数
+    expect(
+      resolver.shouldPromoteToCommon('保存', path.join(tmpDir, 'src', 'pages', 'foo', 'd.vue')),
+    ).toBe(false);
+  });
+});

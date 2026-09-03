@@ -10,7 +10,7 @@ import {
   parseSourceFile,
   shouldReplaceNode,
 } from '../src/utils/ast-core';
-import { isExtractableStringLiteral } from '../src/utils/ast-guards';
+import { isExtractableStringLiteral, isInThisBindableScope } from '../src/utils/ast-guards';
 import {
   appendImportLine,
   findLastImportLineIndex,
@@ -470,6 +470,20 @@ function C() { const { t } = useTranslation(); return t('a'); }`;
       const code = `import { t, other } from '@/plugins/locale';\n`;
       const out = removeNamedImports(code, isPkg, ['t']);
       expect(out).toMatch(/import \{ other \} from '@\/plugins\/locale';/);
+    });
+
+    it('默认按源名比对：`t as tr` 与 `t` 同源，一起摘除', () => {
+      const code = `import { t as tr, t } from '@/plugins/locale';\n`;
+      const out = removeNamedImports(code, isPkg, ['t']);
+      expect(out).not.toMatch(/@\/plugins\/locale/);
+    });
+
+    it('byLocalName：只摘本地名命中的说明符，别名 tr 保留', () => {
+      const code = `import { t as tr, t } from '@/plugins/locale';\n`;
+      const out = removeNamedImports(code, isPkg, ['t'], { byLocalName: true });
+      expect(out).toMatch(/import \{ t as tr \} from '@\/plugins\/locale';/);
+      const out2 = removeNamedImports(code, isPkg, ['tr'], { byLocalName: true });
+      expect(out2).toMatch(/import \{ t \} from '@\/plugins\/locale';/);
     });
 
     it('默认+具名混合：摘掉死 t 后保留默认导入 `import locale from pkg`（#7）', () => {
@@ -1221,5 +1235,263 @@ describe('createJsxFragmentFromTemplate — JsxText 里的 NBSP', () => {
     const out = printer.printNode(ts.EmitHint.Unspecified, node!, dummy);
     expect(out).toContain('&nbsp;');
     expect(out).not.toContain('\u00A0');
+  });
+});
+
+/**
+ * 名字槽位（方法名 / class 属性名 / 成员签名名 / import-export 具名）里的字面量若被替换成
+ * t(...) 调用，产出的文件不再可解析；字面量类型上下文里的值被替换后过不了 tsc。
+ * 两类都必须在守卫层拦下。
+ */
+describe('isExtractableStringLiteral — 名字槽位与字面量类型上下文补全', () => {
+  const literalOf = (code: string, text: string): ts.StringLiteral => {
+    const sf = parseSourceFile(code, 'a.tsx');
+    let found: ts.StringLiteral | undefined;
+    const walk = (n: ts.Node): void => {
+      if (!found && ts.isStringLiteral(n) && n.text === text && !ts.isLiteralTypeNode(n.parent)) {
+        found = n;
+      }
+      ts.forEachChild(n, walk);
+    };
+    walk(sf);
+    return found!;
+  };
+  const extractable = (code: string, text = '中文'): boolean =>
+    isExtractableStringLiteral(literalOf(code, text));
+
+  it('U-01: 对象方法名 / class 属性名 / getter 名不提取', () => {
+    expect(extractable(`const o = { '中文'() { return 1; } };`)).toBe(false);
+    expect(extractable(`class A { '中文' = 1; }`)).toBe(false);
+    expect(extractable(`const o = { get '中文'() { return 1; } };`)).toBe(false);
+  });
+
+  it('U-01: interface / type literal 成员名不提取', () => {
+    expect(extractable(`interface I { '中文': string }`)).toBe(false);
+    expect(extractable(`type T = { '中文': string };`)).toBe(false);
+  });
+
+  it('U-01: import / export 具名字面量不提取', () => {
+    expect(extractable(`import { '中文' as x } from 'mod';`)).toBe(false);
+    expect(extractable(`const x = 1;\nexport { x as '中文' };`)).toBe(false);
+  });
+
+  it('U-01: 对象字面量属性值照常提取（守卫不扩大化）', () => {
+    expect(extractable(`const o = { label: '中文' };`)).toBe(true);
+  });
+
+  it('U-04: 字面量联合含 undefined 时不提取（与 | null 对称）', () => {
+    expect(extractable(`const cur: '待办' | '完成' | undefined = '待办';`, '待办')).toBe(false);
+  });
+
+  it('U-04: 字面量联合的数组 / 泛型数组注解元素不提取', () => {
+    expect(extractable(`type S = '待办' | '完成';\nconst t: S[] = ['待办'];`, '待办')).toBe(false);
+    expect(extractable(`type S = '待办' | '完成';\nconst t: Array<S> = ['待办'];`, '待办')).toBe(
+      false,
+    );
+    expect(
+      extractable(`type S = '待办' | '完成';\nconst t: ReadonlyArray<S> = ['待办'];`, '待办'),
+    ).toBe(false);
+  });
+
+  it('U-04: 对象类型成员 / Record 值类型按位置对应', () => {
+    expect(extractable(`type S = '待办';\nconst o: { s: S } = { s: '待办' };`, '待办')).toBe(false);
+    expect(
+      extractable(`type S = '待办';\nconst m: Record<string, S> = { a: '待办' };`, '待办'),
+    ).toBe(false);
+    // 成员名对不上时不误伤：other 的类型是 string
+    expect(
+      extractable(
+        `type S = '待办';\nconst o: { s: S; other: string } = { other: '待办' };`,
+        '待办',
+      ),
+    ).toBe(true);
+  });
+
+  it('U-04: 返回值被返回类型注解锁死时不提取', () => {
+    expect(
+      extractable(`type S = '待办' | '完成';\nfunction f(): S { return '待办'; }`, '待办'),
+    ).toBe(false);
+    expect(extractable(`type S = '待办' | '完成';\nconst f = (): S => '待办';`, '待办')).toBe(
+      false,
+    );
+    expect(extractable(`function f(): string { return '待办'; }`, '待办')).toBe(true);
+  });
+
+  it('U-04: as / satisfies 到字面量联合数组不提取', () => {
+    expect(extractable(`type S = '待办' | '完成';\nconst a = ['待办'] as S[];`, '待办')).toBe(
+      false,
+    );
+    expect(
+      extractable(`type S = '待办' | '完成';\nconst a = ['待办'] satisfies S[];`, '待办'),
+    ).toBe(false);
+    expect(extractable(`const a = ['待办'] as string[];`, '待办')).toBe(true);
+  });
+});
+
+/**
+ * this 绑定判定错了不会在生成时报错，而是产出 `this.$t(...)` 到运行时抛 TypeError。
+ */
+describe('isInThisBindableScope — 回调与全局注册形态', () => {
+  const chineseNode = (code: string): ts.Node => {
+    const sf = parseSourceFile(code, 'a.ts');
+    let found: ts.Node | undefined;
+    const walk = (n: ts.Node): void => {
+      if (!found && ts.isStringLiteral(n) && n.text === '中文') found = n;
+      ts.forEachChild(n, walk);
+    };
+    walk(sf);
+    return found!;
+  };
+
+  it('U-08: 作为调用实参的匿名 function 回调不可绑定 this', () => {
+    const code = `export default { methods: { foo() { list.forEach(function (x) { return '中文'; }); } } };`;
+    expect(isInThisBindableScope(chineseNode(code))).toBe(false);
+  });
+
+  it('U-08: 具名函数表达式与方法自身仍可绑定 this', () => {
+    expect(
+      isInThisBindableScope(
+        chineseNode(`export default { methods: { foo() { return '中文'; } } };`),
+      ),
+    ).toBe(true);
+    expect(
+      isInThisBindableScope(
+        chineseNode(
+          `export default { methods: { foo() { list.forEach(function named() { return '中文'; }); } } };`,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('U-08: Vue.component / app.component 第二实参里的 setup 不可绑定 this', () => {
+    expect(
+      isInThisBindableScope(chineseNode(`Vue.component('x', { setup() { return '中文'; } });`)),
+    ).toBe(false);
+    expect(
+      isInThisBindableScope(chineseNode(`app.component('x', { setup() { return '中文'; } });`)),
+    ).toBe(false);
+  });
+
+  it('U-08: 全局注册对象里的普通方法仍可绑定 this', () => {
+    expect(
+      isInThisBindableScope(
+        chineseNode(`app.component('x', { methods: { foo() { return '中文'; } } });`),
+      ),
+    ).toBe(true);
+  });
+});
+
+/**
+ * export 具名的本地名一侧是对绑定的真实引用（re-export 需要它存在）；
+ * 同一 import 里同源名绑出多个本地名时必须逐个判定，否则别名被连坐删除（TS2304）。
+ */
+describe('isImportedNameUnused — export 具名与多绑定', () => {
+  const mod = '@/plugins/locale';
+
+  it('U-07: export { t } / export { t as x } 算在用', () => {
+    expect(
+      isImportedNameUnused(`import { t } from '${mod}';\nexport { t };\n`, 'a.ts', mod, 't'),
+    ).toBe(false);
+    expect(
+      isImportedNameUnused(`import { t } from '${mod}';\nexport { t as tr };\n`, 'a.ts', mod, 't'),
+    ).toBe(false);
+  });
+
+  it('U-07: 导出名一侧与 re-export from 其它模块不算本地引用', () => {
+    expect(
+      isImportedNameUnused(
+        `import { t } from '${mod}';\nconst x = 1;\nexport { x as t };\n`,
+        'a.ts',
+        mod,
+        't',
+      ),
+    ).toBe(true);
+    expect(
+      isImportedNameUnused(
+        `import { t } from '${mod}';\nexport { t } from 'other';\n`,
+        'a.ts',
+        mod,
+        't',
+      ),
+    ).toBe(true);
+  });
+
+  it('V-03: 同一 import 多个本地名逐个判定，任一在用即不算死导入', () => {
+    expect(
+      isImportedNameUnused(
+        `import { t as translate, t } from '${mod}';\ntranslate('x');\n`,
+        'a.ts',
+        mod,
+        't',
+      ),
+    ).toBe(false);
+    expect(
+      isImportedNameUnused(
+        `import { t as translate, t } from '${mod}';\nconsole.log(1);\n`,
+        'a.ts',
+        mod,
+        't',
+      ),
+    ).toBe(true);
+  });
+});
+
+/**
+ * JSX 正文里的撇号不是字符串起点：当成字符串会一直吃到下一处引号，
+ * 中间的注释失去剥离 → 注释里的 t('key') 被计入 used-key。
+ */
+describe('stripComments — JSX 正文里的撇号', () => {
+  it('RR-07: 撇号之后的行注释仍被剥除', () => {
+    const code = `const A = () => <p>it's fine</p>;\n// t('dead.key')\nconst x = t('live.key');`;
+    const out = stripComments(code);
+    expect(out).not.toContain('dead.key');
+    expect(out).toContain("t('live.key')");
+  });
+
+  it('RR-07: 正常字符串与续行字符串照常保留', () => {
+    expect(stripComments(`const s = 'a // b'; // t('c')`)).toContain("'a // b'");
+    expect(stripComments(`const s = 'a\\\nb'; // t('c')`)).not.toContain("t('c')");
+  });
+});
+
+/**
+ * 类型导入与值导入同样需要逐名摘除：`import type { … }` 不匹配的话，React restore
+ * 摘不掉死掉的类型导入，残留 no-unused-vars。
+ */
+describe('removeNamedImports — import type 形态', () => {
+  const isLib = (m: string): boolean => m === 'react-i18next';
+
+  it('摘除 import type 的某一项时保留 type 关键字与其余项', () => {
+    expect(
+      removeNamedImports(
+        `import type { TFunction, Namespace } from 'react-i18next';\nconst a = 1;\n`,
+        isLib,
+        ['TFunction'],
+      ),
+    ).toBe(`import type { Namespace } from 'react-i18next';\nconst a = 1;\n`);
+  });
+
+  it('import type 摘空后整条删除', () => {
+    expect(
+      removeNamedImports(`import type { TFunction } from 'react-i18next';\nconst a = 1;\n`, isLib, [
+        'TFunction',
+      ]),
+    ).toBe(`const a = 1;\n`);
+  });
+
+  it('内联 type 修饰符按其后的名字比对', () => {
+    expect(
+      removeNamedImports(`import { type TFunction, Trans } from 'react-i18next';\n`, isLib, [
+        'TFunction',
+      ]),
+    ).toBe(`import { Trans } from 'react-i18next';\n`);
+  });
+
+  it('值导入口径不变', () => {
+    expect(
+      removeNamedImports(`import { Trans, useTranslation } from 'react-i18next';\n`, isLib, [
+        'Trans',
+      ]),
+    ).toBe(`import { useTranslation } from 'react-i18next';\n`);
   });
 });

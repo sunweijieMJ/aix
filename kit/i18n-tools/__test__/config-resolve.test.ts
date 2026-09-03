@@ -1171,3 +1171,84 @@ describe('DEFAULT_IO.include 与框架 extensions 同口径', () => {
     expect(result).toEqual({ isValid: true, type: 'file' });
   });
 });
+
+/**
+ * CC-01 / CC-02：数组元素类型与 io.indent 的守卫。
+ *  - filterPatterns 元素误写成字符串时，提取器对每个文件的 template/script 各抛一次
+ *    TypeError 并被就地吞成空提取 → 覆盖率虚报 100%、--coverage-threshold 放行、exit 0。
+ *  - dynamicKeyAllowlist 混入非 string/RegExp 元素 → doctor/prune 运行期抛无字段名 TypeError。
+ *  - io.indent 非数值经 Math.max 变 NaN，JSON.stringify 按 0 处理 → 所有 JSON 压成单行；
+ *    >10 被 JSON.stringify 静默截断到 10。
+ */
+describe('resolveConfig — 数组元素与 io.indent 守卫（CC-01/CC-02）', () => {
+  const base: I18nToolsConfig = {
+    root: TEST_ROOT,
+    framework: { type: 'vue' },
+    llm,
+  };
+
+  it('CC-01: extract.filterPatterns 元素是字符串 → 抛错并带下标', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        extract: { filterPatterns: [/^ok$/, '^\\d+$' as unknown as RegExp] },
+      }),
+    ).toThrow(/extract\.filterPatterns\[1\]/);
+  });
+
+  it('CC-01: keys.dynamicKeyAllowlist 元素是数字 → 抛错并带下标', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        keys: { dynamicKeyAllowlist: ['dyn.', 123 as unknown as string] },
+      }),
+    ).toThrow(/keys\.dynamicKeyAllowlist\[1\]/);
+  });
+
+  it('CC-01: 合法元素（string / RegExp）不受影响', () => {
+    const r = resolveConfig({
+      ...base,
+      keys: { dynamicKeyAllowlist: ['dyn.', /^x\./] },
+      extract: { filterPatterns: [/^\d+$/] },
+    });
+    expect(r.keys.dynamicKeyAllowlist).toHaveLength(2);
+    expect(r.extract.filterPatterns).toHaveLength(1);
+  });
+
+  it('CC-02: io.indent 非数值 / 非整数 / 越界 / 负值 → 抛错并带字段名', () => {
+    for (const bad of ['abc', true, 2.5, 100, -1]) {
+      expect(() => resolveConfig({ ...base, io: { indent: bad as unknown as number } })).toThrow(
+        /io\.indent/,
+      );
+    }
+  });
+
+  it('CC-02: io.indent 合法取值（0-10 整数）与默认值不受影响', () => {
+    expect(resolveConfig({ ...base, io: { indent: 0 } }).io.indent).toBe(0);
+    expect(resolveConfig({ ...base, io: { indent: 4 } }).io.indent).toBe(4);
+    expect(resolveConfig(base).io.indent).toBe(2);
+  });
+});
+
+/**
+ * A-1：`.i18n-tools`（工具自身的 plan 目录）必须始终被排除——`plans/<ts>/sources/` 下
+ * 是转换后的源码副本，被当源码扫到会让 restore 把副本还原成未国际化代码，
+ * apply 随后按副本写回源文件；generate 也会把副本里的 t() 计进 alreadyI18n。
+ */
+describe('resolveConfig — .i18n-tools 强制排除（A-1）', () => {
+  const base: I18nToolsConfig = {
+    root: TEST_ROOT,
+    framework: { type: 'vue' },
+    llm,
+  };
+
+  it('A-1: 默认 exclude 含 .i18n-tools', () => {
+    expect(resolveConfig(base).io.exclude).toContain('.i18n-tools');
+  });
+
+  it('A-1: 用户自定义 exclude 覆盖默认值时仍强制并入 .i18n-tools', () => {
+    const r = resolveConfig({ ...base, io: { exclude: ['dist'] } });
+    expect(r.io.exclude).toContain('.i18n-tools');
+    expect(r.io.exclude).toContain('node_modules');
+  });
+});

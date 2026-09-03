@@ -66,7 +66,8 @@ export type ManualCategory =
   | 'semantic-duplicate'
   | 'cross-module-reuse'
   | 'hardcoded-comparison'
-  | 'nested-interpolation-chinese';
+  | 'nested-interpolation-chinese'
+  | 'parse-error';
 
 /**
  * 单条「需要人工处理」记录。结构尽量贴合 IDE 跳转所需信息（file:line:column），
@@ -208,6 +209,7 @@ export class RunReport {
       'class-property',
       'param-default',
       'conflicting-t-binding',
+      'parse-error',
     ]);
     const groups: Record<string, ManualEntry[]> = {};
     for (const entry of this.needsManual) {
@@ -365,6 +367,7 @@ export class RunReport {
     'cross-module-reuse': '跨模块复用候选',
     'hardcoded-comparison': '硬编码中文 ↔ i18n 文案脱钩风险',
     'nested-interpolation-chinese': '插值表达式内中文未提取（渲染未翻译中文）',
+    'parse-error': '源文件解析失败，相应块整块未提取',
   };
 
   static readonly MANUAL_DEFAULT_SUGGESTIONS: Record<ManualCategory, string> = {
@@ -430,5 +433,10 @@ export class RunReport {
 切到非源语种后会渲染出未翻译的中文。建议把分支各自 t() 化：
     ❌  \`操作失败：\${cond ? '内部错误' : '网络异常'}\`
     ✅  \`操作失败：\${cond ? t('xxx__internalError') : t('xxx__networkError')}\``,
+    'parse-error': `源文件（或其中的 template / script 块）语法有误，解析器拿不到 AST，
+相应内容整块未提取——其中的中文既不在 locale 里，也不会出现在其它跳过清单里。
+建议先修好语法（未闭合标签、重复属性等）再重跑 generate：
+    ❌  <div class="a" class="b">重复属性</div>   // Duplicate attribute
+    ✅  <div class="a b">重复属性</div>`,
   };
 }
