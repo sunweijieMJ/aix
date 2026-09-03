@@ -72,9 +72,19 @@ const { runPostProcess } = await import('../src/core/post-processor');
 let tmpRoot: string;
 const originalCwd = process.cwd();
 
-/** 只有 outro 的那段文案是用户真正照着敲的，单独取出来断言 */
+/** 匹配 SGR 颜色序列（picocolors 的 `pc.cyan` 等只产出这一类）。 */
+const ANSI_SGR = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+/**
+ * 只有 outro 的那段文案是用户真正照着敲的，单独取出来断言。
+ *
+ * 剥掉颜色再断言：产品侧把命令名染色（`${pc.cyan(pm)} run dev`），而 picocolors 是否真的
+ * 输出颜色取决于运行环境——本地非 TTY 下不输出，GitHub Actions 下（CI + GITHUB_ACTIONS）
+ * 输出。带色时 `pnpm run dev` 会被 `[39m` 从中间劈开，`cd plain-app` 同理，用例便
+ * 只在 CI 里失败。断言的是文案本身，与终端颜色能力无关，故统一剥色。
+ */
 function nextSteps(): string {
-  return clack.outros.join('\n');
+  return clack.outros.join('\n').replace(ANSI_SGR, '');
 }
 
 function makeConfig(overrides: Partial<ProjectConfig> = {}): ProjectConfig {
