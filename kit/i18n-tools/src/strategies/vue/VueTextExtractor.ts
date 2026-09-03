@@ -18,9 +18,11 @@ import {
   isComparisonOperand,
   isExtractableStringLiteral,
   isInConsoleCall,
+  isInThisBindableScope,
   templateLiteralContainsHtmlTags,
   templateLiteralsContainChinese,
 } from '../../utils/ast-guards';
+import { collectI18nImportedNames, isI18nSourceInitializer } from '../../utils/source-key-scanner';
 import { processTemplateExpression } from '../../utils/message-shape';
 import { trimAsciiWhitespace, trimStartAsciiWhitespace } from '../../utils/string-escape';
 import {
@@ -38,11 +40,33 @@ import { LoggerUtils } from '../../utils/logger';
 import type { ExtractedString } from '../../utils/types';
 import { BaseTextExtractor } from '../base';
 
+/** 一个 script 块的作用域事实，决定该块里的候选会被替换成哪种调用形态。 */
+interface ScriptScopeInfo {
+  /** 模块顶层是否已有非 i18n 来源的同名 t（两个 script 块合并判定）。 */
+  hasConflictingLocalT: boolean;
+  /** 该块能否用 this.$t（非 setup 块为 true），与 VueTransformer 的分派一致。 */
+  allowThisQualifier: boolean;
+}
+
 /**
  * Vue 文本提取器
  * 负责从 Vue 文件中提取需要国际化的文本
  */
 export class VueTextExtractor extends BaseTextExtractor {
+  /**
+   * 判定「模块顶层同名 t 是否为 i18n 来源」时认可的模块（tImport 与 i18n 库包名）。
+   *
+   * 留空表示不做该判定：判据依赖准确的 tImport——不知道它就会把工具自己注入的
+   * `import { t } from '<tImport>'` 当成用户的非 i18n 绑定，增量重跑时整个文件的新文案
+   * 都会被跳过。故由 VueAdapter 从配置透传，未透传（测试直接构造）时保持原行为。
+   */
+  private readonly i18nModules: readonly string[];
+
+  constructor(rejectPatterns: readonly RegExp[] = [], i18nModules: readonly string[] = []) {
+    super(rejectPatterns);
+    this.i18nModules = i18nModules;
+  }
+
   /**
    * 从单个文件中提取字符串
    * @param filePath - 文件路径
@@ -85,7 +109,18 @@ export class VueTextExtractor extends BaseTextExtractor {
       // Vue 3 官方允许 <script> 与 <script setup> 共存（如用 <script> 声明
       // inheritAttrs: false 等组件选项，用 <script setup> 写 Composition API），
       // 两个块的中文文案都需要提取，不能只取其中一个。
-      for (const script of [descriptor.script, descriptor.scriptSetup]) {
+      // 两个块共享模块作用域（Vue 3 SFC 编译模型），冲突判定必须合并后做一次：
+      // `function t()` 写在 <script>、文案在 <script setup> 时，分块判会漏。
+      const hasConflictingLocalT = this.detectConflictingLocalT(
+        [descriptor.script?.content, descriptor.scriptSetup?.content].filter(Boolean).join('\n'),
+        'sfc.ts',
+      );
+      // allowThisQualifier 与 VueTransformer 的分派保持一致：非 setup 块可用 this.$t，
+      // <script setup> 只能用裸 t()。
+      for (const { script, allowThisQualifier } of [
+        { script: descriptor.script, allowThisQualifier: true },
+        { script: descriptor.scriptSetup, allowThisQualifier: false },
+      ]) {
         if (!script) continue;
         const scriptStrings = await this.extractFromScript(
           script.content,
@@ -93,6 +128,7 @@ export class VueTextExtractor extends BaseTextExtractor {
           script.loc.start.line - 1,
           script.loc.start.offset,
           scriptFileNameOfLang(script.lang),
+          { hasConflictingLocalT, allowThisQualifier },
         );
         extractedStrings.push(...scriptStrings);
       }
@@ -104,6 +140,12 @@ export class VueTextExtractor extends BaseTextExtractor {
         filePath,
         0, // 没有 template，从第 0 行开始
         0, // 整个文件即 script，块起点为 0
+        filePath,
+        {
+          hasConflictingLocalT: this.detectConflictingLocalT(sourceText, filePath),
+          // 独立脚本无组件实例，转换端同样传 false（走裸 t() + import）
+          allowThisQualifier: false,
+        },
       );
       extractedStrings.push(...scriptStrings);
     }
@@ -1145,12 +1187,88 @@ export class VueTextExtractor extends BaseTextExtractor {
    *                        纯 .ts/.js 直接用真实路径
    * @returns 提取的字符串数组
    */
+  /**
+   * 模块顶层是否存在「文件内定义的、非 i18n 来源」的同名 t。
+   *
+   * 只认**本文件里的声明**（`function t` / `class t` / `const t = …`），不认任何 import 绑定：
+   *  - 导入来的 t（`import { t } from '@/other'`、`import t from '@/legacy-i18n'`）可能就是
+   *    项目遗留的翻译函数，复用它是有意契约（见 vue-transform.test「复用已有 t」），照常提取；
+   *  - 文件内自己定义的 t 几乎必然是本地工具函数，替换出的 t('k') 会绑到它上面——代码能编译，
+   *    运行时静默返回 key。这类整处跳过并记人工项。
+   * `declare const t`（工具自己注入的占位声明，随后会被 stripPlaceholderTDeclares 清掉）
+   * 与 i18n 来源的初始化器（`useI18n()` / `i18n.global` 等）都不算冲突。
+   */
+  private detectConflictingLocalT(scriptContent: string, parseFileName: string): boolean {
+    if (this.i18nModules.length === 0 || !scriptContent.trim()) return false;
+    let sourceFile: ts.SourceFile;
+    try {
+      sourceFile = parseSourceFile(scriptContent, parseFileName);
+    } catch {
+      return false;
+    }
+    const i18nImportedNames = collectI18nImportedNames(sourceFile, this.i18nModules);
+    const isDeclare = (s: ts.Statement): boolean =>
+      ts.canHaveModifiers(s) &&
+      (ts.getModifiers(s)?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword) ?? false);
+    for (const statement of sourceFile.statements) {
+      if (isDeclare(statement)) continue;
+      if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) {
+        if (statement.name?.text === 't') return true;
+        continue;
+      }
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const decl of statement.declarationList.declarations) {
+        // 初始化器指向 i18n 来源时绑出的就是 i18n 的 t，不是冲突。
+        if (isI18nSourceInitializer(decl.initializer, i18nImportedNames)) continue;
+        if (ts.isIdentifier(decl.name) && decl.name.text === 't') return true;
+        if (
+          !ts.isIdentifier(decl.name) &&
+          decl.name.elements.some(
+            (el) => ts.isBindingElement(el) && ts.isIdentifier(el.name) && el.name.text === 't',
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** 已告警过的冲突绑定位置，按 文件:偏移 去重。 */
+  private warnedConflictingLocalT = new Set<string>();
+
+  /**
+   * 输出「模块顶层同名 t 非 i18n 来源、整处跳过提取」的 warning 并计入 manualSkip。
+   * 与 React 端 warnConflictingTranslationBinding 同走 conflicting-t-binding 类目。
+   */
+  private warnConflictingLocalT(
+    node: ts.Node,
+    sourceFile: ts.SourceFile,
+    filePath: string,
+    lineOffset: number,
+  ): void {
+    const dedupeKey = `${filePath}:${node.getStart(sourceFile)}`;
+    if (this.warnedConflictingLocalT.has(dedupeKey)) return;
+    this.warnedConflictingLocalT.add(dedupeKey);
+    const pos = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
+    const msg =
+      `⚠️ 跳过提取：模块顶层已存在与 't' 同名的非 i18n 本地绑定：` +
+      `${FileUtils.getRelativePath(filePath)}:${pos.line + 1 + lineOffset}\n` +
+      `   原因：注入器不能在同一模块作用域再声明一个 t，若仍替换文案，产出的 t(...) 会解析到` +
+      `那个同名绑定上——代码能编译，运行时静默返回 key 而不是译文。\n` +
+      `   建议：把该绑定改名，或人工为该文件接入 i18n 后重跑。`;
+    LoggerUtils.warn(msg);
+    this.recordWarning(msg);
+    this.recordManualSkip({ category: 'conflicting-t-binding', message: msg, dedupeKey });
+  }
+
   private async extractFromScript(
     scriptContent: string,
     filePath: string,
     lineOffset: number,
     blockStart: number,
     parseFileName: string = filePath,
+    scopeInfo: ScriptScopeInfo = { hasConflictingLocalT: false, allowThisQualifier: false },
   ): Promise<ExtractedString[]> {
     const extractedStrings: ExtractedString[] = [];
 
@@ -1170,6 +1288,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         lineOffset,
         filePath,
         blockStart,
+        scopeInfo,
       );
     } catch (error) {
       LoggerUtils.error(`解析 script 失败: ${filePath}`, error);
@@ -1194,6 +1313,7 @@ export class VueTextExtractor extends BaseTextExtractor {
     lineOffset: number,
     filePath: string,
     blockStart: number,
+    scopeInfo: ScriptScopeInfo,
   ): Promise<void> {
     if (ts.isCallExpression(node) && isCommonI18nCall(node)) {
       this.recordRuntimeChineseInI18nCall(node, sourceFile, filePath, lineOffset);
@@ -1289,6 +1409,17 @@ export class VueTextExtractor extends BaseTextExtractor {
 
     // 检查是否需要提取
     if (originalText && this.shouldExtract(processedText || originalText, 'script', node)) {
+      // 模块顶层已有非 i18n 来源的同名 t：该处会被替换成裸 t()，解析到用户那个 t 上——
+      // 代码能编译，运行时静默返回 key。宁可不改也不产出这种静默降级，与 React 端
+      // ReactTextExtractor.hasConflictingTranslationBinding 同口径整处跳过并记人工项。
+      // this.$t 形态不受影响（走组件实例，与模块作用域的 t 无关），照常提取。
+      if (
+        scopeInfo.hasConflictingLocalT &&
+        !(scopeInfo.allowThisQualifier && isInThisBindableScope(node))
+      ) {
+        this.warnConflictingLocalT(node, sourceFile, filePath, lineOffset);
+        return;
+      }
       const position = ts.getLineAndCharacterOfPosition(sourceFile, node.getStart(sourceFile));
 
       const extracted: VueExtractedString = {
@@ -1325,6 +1456,7 @@ export class VueTextExtractor extends BaseTextExtractor {
         lineOffset,
         filePath,
         blockStart,
+        scopeInfo,
       );
     }
   }

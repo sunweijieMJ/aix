@@ -157,8 +157,13 @@ export class VueImportManager implements IImportManager {
     // Why: 双块共存场景下，import 写到 nonSetup 块，但 t() 调用可能在 setup 块；
     //   仅看目标块会漏判，导致 setup 用 t 但 t 无声明（统一策略前置清理 hook 后
     //   尤其致命）。模块作用域下任一块声明 import { t }，所有块都能用。
-    // 用负向先行排除 this.t / `xt(` / `$t(` 等误匹配。
-    const allScriptContent = VueImportManager.collectAllScriptContent(code);
+    // 用负向先行排除 this.t / `xt(` / `$t(` 等误匹配；先抹掉 `function t(` 这类**声明**形态，
+    // 否则用户自己的 `function t(k) {…}` 会被当成一处裸 t() 调用，让下方 hasLocalTDeclaration
+    // 分支打出「跳过注入 t 来源」——而该文件根本没有需要 t 的调用点（提取端已整处跳过）。
+    const allScriptContent = VueImportManager.collectAllScriptContent(code).replace(
+      /\bfunction\s*\*?\s*t\s*\(/g,
+      ' (',
+    );
     if (!/(?:^|[^\w.$])t\s*\(/.test(allScriptContent)) return code;
 
     // 已存在从「任意模块」导入的具名本地 t（本工具 tImport 或用户手写的其它路径），再注入模块级

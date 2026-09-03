@@ -362,13 +362,17 @@ describe('审计修复回归（Vue / 共享 AST 层）', () => {
       return adapter.getTransformer().transform(fp, extracted, src);
     }
 
-    it('.ts 已有 const t 声明时不注入 import（否则同作用域双声明）', async () => {
+    // 契约收窄（原断言为 `expect(out).toContain("t('k0')")`，即复用文件内自己定义的 t）：
+    // 文件内定义的 t 几乎必然是本地工具函数，替换出的 t('k') 绑到它上面后代码能编译、
+    // 运行时静默返回 key。改为整处跳过并记 conflicting-t-binding，与 React 端同口径。
+    // 从**其它模块导入**的 t 仍按原契约复用（可能是项目遗留的翻译函数），见下方两条用例。
+    it('.ts 内自己定义的 const t：不注入 import，且不再复用它替换文案', async () => {
       const out = await generateTs(
         'local-t.ts',
         `const t = (k: string) => k;\nexport const msg = '你好';\n`,
       );
       expect(out).not.toContain("import { t } from '@/plugins/locale'");
-      expect(out).toContain("t('k0')");
+      expect(out).toContain("export const msg = '你好'");
     });
 
     it('.ts 无本地 t 时照常注入（无回归）', async () => {
@@ -477,6 +481,70 @@ describe('审计修复回归（Vue / 共享 AST 层）', () => {
         `<script setup>\nclass t {}\nconst label = '标签';\nvoid t;\n</script>\n`,
       );
       expect(out).not.toContain("import { t } from '@/plugins/locale'");
+    });
+
+    it('模块顶层非 i18n 的 t：整处跳过提取并记 conflicting-t-binding，不产出绑到本地 t 的调用', async () => {
+      const adapter = adapterOf();
+      const fp = path.join(dir, 'C.vue');
+      const src = `<script setup lang="ts">\nfunction t(k: string) { return k; }\nconst msg = '文案A';\n</script>\n`;
+      fs.writeFileSync(fp, src, 'utf8');
+      const extracted = await adapter.getTextExtractor().extractFromFile(fp);
+      const manual = adapter.getTextExtractor().drainManualSkips();
+      expect(extracted).toHaveLength(0);
+      expect(manual.map((m) => m.category)).toContain('conflicting-t-binding');
+      // 替换成 t('k') 会绑到用户那个 t 上，代码能编译但运行时静默返回 key
+      expect(src).toContain("const msg = '文案A'");
+    });
+
+    it('从其它模块导入的 t 仍按原契约复用（可能是遗留翻译函数），不判为冲突', async () => {
+      const { out, extracted } = await generate(
+        `<script setup>\nimport { t } from '@/other';\nconst msg = '你好';\n</script>\n`,
+      );
+      expect(extracted).toHaveLength(1);
+      expect(out).toContain("t('k0')");
+      expect((out.match(/import\s*\{[^}]*\bt\b[^}]*\}\s*from/g) ?? []).length).toBe(1);
+    });
+
+    it('declare const t 占位声明不算冲突（工具随后会清掉它）', async () => {
+      const { out, extracted } = await generate(
+        `<script setup>\ndeclare const t: (k: string) => string;\nconst msg = '你好';\n</script>\n`,
+      );
+      expect(extracted).toHaveLength(1);
+      expect(out).toContain("const msg = t('k0')");
+    });
+
+    it('this.$t 形态不受模块顶层同名 t 影响，照常提取', async () => {
+      const adapter = adapterOf();
+      const fp = path.join(dir, 'D.vue');
+      const src =
+        `<script lang="ts">\nfunction t(k: string) { return k; }\n` +
+        `export default { methods: { run() { this.a = '文案D'; } } };\n</script>\n`;
+      fs.writeFileSync(fp, src, 'utf8');
+      const extracted = await adapter.getTextExtractor().extractFromFile(fp);
+      extracted.forEach((s, i) => (s.semanticId = `k${i}`));
+      expect(extracted).toHaveLength(1);
+      const out = adapter.getTransformer().transform(fp, extracted, src);
+      expect(out).toContain("this.$t('k0')");
+      expect(out).not.toContain("import { t } from '@/plugins/locale'");
+    });
+
+    it('工具自注入的 import { t } 不算冲突：增量重跑仍提取新文案', async () => {
+      const { out, extracted } = await generate(
+        `<script setup lang="ts">\nimport { t } from '@/plugins/locale';\n` +
+          `const old = t('k_old');\nconst msg = '新增文案';\n</script>\n`,
+      );
+      expect(extracted).toHaveLength(1);
+      expect(out).toContain("const msg = t('k0')");
+    });
+
+    it('顶层 `const { t } = useI18n()` 仍按既有契约迁移为模块 import，不判为冲突', async () => {
+      const { out, extracted } = await generate(
+        `<script setup lang="ts">\nimport { useI18n } from 'vue-i18n';\n` +
+          `const { t } = useI18n();\nconst msg = '文案B';\n</script>\n`,
+      );
+      expect(extracted).toHaveLength(1);
+      expect(out).toContain("import { t } from '@/plugins/locale';");
+      expect(out).toContain("const msg = t('k0')");
     });
 
     it('V-04: 数组解构 `const [t] = useX()` 同样是本地 t 绑定', async () => {

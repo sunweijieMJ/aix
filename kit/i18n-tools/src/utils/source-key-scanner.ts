@@ -367,7 +367,7 @@ const I18N_COMPOSABLE_NAMES = new Set(['useI18n', 'useTranslation']);
  * 属性链末端为 `.global` / `.global.t` / `.t`（vue-i18n 组件外用法 `i18n.global.t`）、
  * 以及直接引用 i18n 模块导入进来的标识符。
  */
-function isI18nSourceInitializer(
+export function isI18nSourceInitializer(
   initializer: ts.Expression | undefined,
   i18nImportedNames: ReadonlySet<string>,
 ): boolean {
@@ -398,7 +398,7 @@ function isI18nSourceInitializer(
 }
 
 /** 从 i18n 模块导入进来的本地名（默认导入 / 具名 / 命名空间三种形态）。 */
-function collectI18nImportedNames(
+export function collectI18nImportedNames(
   sourceFile: ts.SourceFile,
   i18nModules: readonly string[],
 ): Set<string> {
