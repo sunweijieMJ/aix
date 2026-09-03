@@ -1205,6 +1205,21 @@ describe('resolveConfig — 数组元素与 io.indent 守卫（CC-01/CC-02）', 
     ).toThrow(/keys\.dynamicKeyAllowlist\[1\]/);
   });
 
+  it('CC-01: io.include / io.exclude 元素非字符串或空串 → 抛错并带字段名与下标', () => {
+    expect(() =>
+      resolveConfig({
+        ...base,
+        io: { include: ['**/*.vue', 123 as unknown as string] },
+      }),
+    ).toThrow(/io\.include\[1\]/);
+    expect(() =>
+      resolveConfig({
+        ...base,
+        io: { exclude: ['dist', '  ' as unknown as string] },
+      }),
+    ).toThrow(/io\.exclude\[1\]/);
+  });
+
   it('CC-01: 合法元素（string / RegExp）不受影响', () => {
     const r = resolveConfig({
       ...base,

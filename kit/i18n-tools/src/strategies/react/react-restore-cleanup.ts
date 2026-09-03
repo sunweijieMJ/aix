@@ -256,14 +256,12 @@ export function cleanupHOCPropsType(node: ts.Node, library: ReactI18nLibrary): t
     }
   }
 
-  // case 2: `type T = HOCPropsType & {}`
-  if (
-    ts.isTypeReferenceNode(node) &&
-    ts.isIdentifier(node.typeName) &&
-    node.typeName.text === propsType
-  ) {
-    return ts.factory.createTypeLiteralNode([]);
-  }
+  // 刻意不提供「裸 TypeReference → {}」的兜底分支：注入端只写两种形态——基类无类型参数时
+  // 补 `<HOCPropsType>`（case 0），已有类型参数或构造器形参时追加 ` & HOCPropsType`（case 3）——
+  // 加上用户手写的 `extends HOCPropsType`（case 1），三条已覆盖全部工具产出。visitor 自上而下，
+  // 这三种形态的父节点都先于其中的 TypeReference 被处理，能落到兜底分支的引用必然来自用户
+  // 自己的类型代码（`Omit<WithTranslation, 'i18n'>`、`Partial<WithTranslation>` 等泛型实参位），
+  // 替换成 `{}` 会改写用户类型语义并触发 no-empty-object-type。
 
   // case 3: 处理交叉类型
   if (ts.isIntersectionTypeNode(node)) {

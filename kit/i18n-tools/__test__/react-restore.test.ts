@@ -2272,6 +2272,42 @@ export default Foo;
     expect(out).not.toContain("t('k0')");
   });
 
+  it('用户写在泛型实参位的 WithTranslation 不被改成 {}，import type 一并保留', () => {
+    const src =
+      `import React from 'react';\n` +
+      `import type { WithTranslation } from 'react-i18next';\n` +
+      `export type MyProps = Omit<WithTranslation, 'i18n'> & { id: string };\n` +
+      `export type ListProps = Partial<WithTranslation> & { list: string[] };\n` +
+      `const P: React.FC<MyProps> = ({ id }) => <div>{id}</div>;\n` +
+      `export default P;\n`;
+    const out = restore(src, { k0: '确定' });
+    expect(out).toContain(`Omit<WithTranslation, 'i18n'>`);
+    expect(out).toContain('Partial<WithTranslation>');
+    expect(out).not.toContain('Omit<{}');
+    expect(out).not.toContain('Partial<{}>');
+    expect(out).toMatch(/import type \{ WithTranslation \} from ['"]react-i18next['"]/);
+    noParseErrors(out);
+  });
+
+  it('工具注入的 HOC props 类型仍被剥除，且随之摘掉 import type', () => {
+    const out = restore(
+      `import React from 'react';\n` +
+        `import { withTranslation } from 'react-i18next';\n` +
+        `import type { WithTranslation } from 'react-i18next';\n` +
+        `interface Props { id: number }\n` +
+        `class PanelWithOutIntl extends React.Component<Props & WithTranslation> {\n` +
+        `  render() { const { t } = this.props;\n return <div title={t('k0')}>{this.props.id}</div>; }\n` +
+        `}\n` +
+        `export const Panel = withTranslation()(PanelWithOutIntl);\n`,
+      { k0: '标题' },
+    );
+    expect(out).toContain('确定'.replace('确定', '标题'));
+    expect(out).toContain('React.Component<Props>');
+    expect(out).not.toContain('WithTranslation');
+    expect(out).not.toContain('react-i18next');
+    noParseErrors(out);
+  });
+
   it('RR-06: 返回 JSX 的 map 回调解构同名 t + 文件内 HOC 类型引用 → 不触发保守保留', () => {
     const warns: string[] = [];
     const spy = vi.spyOn(LoggerUtils, 'warn').mockImplementation((m: string) => {

@@ -21,7 +21,6 @@ import {
 import { convertUnicodeToChineseInCode } from '../../utils/string-escape';
 import { LoggerUtils } from '../../utils/logger';
 import { ReactASTUtils } from './react-ast-utils';
-import { ReactImportManager } from './ReactImportManager';
 import {
   HOC_CLASS_SUFFIX,
   cleanupHOCPropsType,
@@ -284,15 +283,16 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
   /**
    * restore 收尾：逐个具名导入复核存活性，摘除还原后已无引用的工具注入名。
    *
-   * 这是库**值导入**（Trans / useTranslation / withTranslation）唯一的摘除点：在最终代码上
-   * 按名逐个判死——JSX 标签、hook 调用、HOC 调用、裸值透传与类型引用都算引用（都是标识符的
-   * 值/类型位置读取，isImportedNameUnused 一并覆盖），零引用才摘。守卫保守——任一未遮蔽引用
-   * 即保留。相比 AST 侧按名摘除，它不依赖「引用形态枚举」，`React.createElement(Trans, …)`、
-   * `() => useTranslation` 这类形态自然被保住。
+   * 这是库导入（值 Trans / useTranslation / withTranslation 与类型 WithTranslation /
+   * WrappedComponentProps）唯一的摘除点：在最终代码上按名逐个判死——JSX 标签、hook 调用、
+   * HOC 调用、裸值透传与类型引用都算引用（都是标识符的值/类型位置读取，isImportedNameUnused
+   * 一并覆盖），零引用才摘。守卫保守——任一未遮蔽引用即保留。
    *
-   * 只处理未改名的注入名：改名导入（`Trans as T`）一定是用户代码，与 cleanupImports 同口径跳过。
-   * `import type { … }` 行不在 removeNamedImports 的匹配形态内，其类型名由 cleanupImports 在
-   * 常规路径摘除。
+   * 必须在整文件还原完成后做，不能在逐节点 visitor 里按名摘：那里看不到全文，只能枚举
+   * 引用形态，`React.createElement(Trans, …)`、`() => useTranslation` 这类透传、以及用户
+   * 自己写在泛型实参位的 `Omit<WithTranslation, 'i18n'>` 都会漏判而被误删。
+   *
+   * 只处理未改名的注入名：改名导入（`Trans as T`）一定是用户代码，一律跳过。
    */
   private finalizeLibraryImports(code: string, filePath: string): string {
     const specifiers = this.library.getImportSpecifiers({
@@ -1028,18 +1028,9 @@ export class ReactRestoreTransformer implements IRestoreTransformer {
             }
           }
 
-          // 清理导入（仅整条移除 i18n 库 import；tImport 的 t 延后到收尾 pass 带守卫处理）
-          if (ts.isImportDeclaration(currentNode)) {
-            const cleanedNode = ReactImportManager.cleanupImports(
-              currentNode,
-              library,
-              keepLibraryImport || keepLibraryImportForBinding,
-            );
-            if (cleanedNode !== currentNode) {
-              context.hasChanges = true;
-              currentNode = cleanedNode;
-            }
-          }
+          // 库导入（值与类型）一律不在逐节点遍历里摘：本 visitor 看不到还原后的全文，
+          // 任何按名摘除都得靠「引用形态枚举」，漏一种就产出未定义标识符。统一延后到
+          // finalizeLibraryImports 在最终代码上逐名判死，tImport 的 t 同理走 finalizeTImport。
 
           // 清理变量声明
           if (ts.isVariableStatement(currentNode)) {

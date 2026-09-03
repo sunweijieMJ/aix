@@ -605,6 +605,19 @@ export function resolveConfig(userConfig: I18nToolsConfig): ResolvedConfig {
   if (userConfig.io?.exclude !== undefined && !Array.isArray(userConfig.io.exclude)) {
     throw new Error('io.exclude 必须是字符串数组（glob 列表，如 ["**/*.test.ts"]）。');
   }
+  // 元素类型守卫（同 keys.dynamicKeyAllowlist / extract.filterPatterns）：include 的元素直接
+  // 交给 picomatch 编译，exclude 的元素直接 String.prototype.includes，混入非字符串会在扫描期
+  // 抛不带配置字段名的 TypeError（`Expected pattern to be a non-empty string`），用户无从定位。
+  for (const [field, list] of [
+    ['io.include', userConfig.io?.include],
+    ['io.exclude', userConfig.io?.exclude],
+  ] as const) {
+    (list ?? []).forEach((item, index) => {
+      if (typeof item !== 'string' || item.trim() === '') {
+        throw new Error(`${field}[${index}] 必须是非空字符串 glob，实际收到: ${String(item)}`);
+      }
+    });
+  }
   const ioFormat = userConfig.io?.format ?? DEFAULT_IO.format;
   validateEnum(ioFormat, ['flat', 'nested'], 'io.format');
   // 上限取 JSON.stringify 自身的 10 空格上限：更大的值会被静默截断，
