@@ -1,14 +1,34 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { TemplateResolver, isLocalSource, resolveLocalSource } from '../src/core/resolver';
+import { Composer } from '../src/core/composer';
+import { gitCacheDir } from '../src/core/git-source';
+import {
+  TemplateResolver,
+  describeRemoteAdvance,
+  isLocalSource,
+  resolveLocalSource,
+} from '../src/core/resolver';
+import type { ProjectConfig } from '../src/types';
 import { CreateAppError } from '../src/utils/errors';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.join(__dirname, 'fixtures', 'template-pc');
 const MINI_DIR = path.join(__dirname, 'fixtures', 'template-mini');
+
+// 缓存根指向本文件独占的临时目录，不写用户的 ~/.cache/create-app
+const ORIGINAL_CACHE_HOME = process.env['XDG_CACHE_HOME'];
+const CACHE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-cachehome-'));
+process.env['XDG_CACHE_HOME'] = CACHE_HOME;
+
+afterAll(() => {
+  if (ORIGINAL_CACHE_HOME === undefined) delete process.env['XDG_CACHE_HOME'];
+  else process.env['XDG_CACHE_HOME'] = ORIGINAL_CACHE_HOME;
+  fs.rmSync(CACHE_HOME, { recursive: true, force: true });
+});
 
 describe('isLocalSource', () => {
   it('识别绝对路径 / 相对路径 / home / file: 前缀', () => {
@@ -17,6 +37,18 @@ describe('isLocalSource', () => {
     expect(isLocalSource('../tpl')).toBe(true);
     expect(isLocalSource('~/tpl')).toBe(true);
     expect(isLocalSource('file:./tpl')).toBe(true);
+  });
+
+  it('识别 Windows 形态：盘符路径与反斜杠相对路径', () => {
+    expect(isLocalSource('C:\\tpl')).toBe(true);
+    expect(isLocalSource('c:/tpl')).toBe(true);
+    expect(isLocalSource('.\\tpl')).toBe(true);
+    expect(isLocalSource('..\\tpl')).toBe(true);
+  });
+
+  it('scp 简写不被盘符规则误判为本地路径（冒号前是主机名，不是单字母盘符）', () => {
+    expect(isLocalSource('git@git.example.com:owner/repo.git')).toBe(false);
+    expect(isLocalSource('h:host/repo.git')).toBe(false);
   });
 
   it('远端源与托管平台简写都不算本地路径', () => {
@@ -43,6 +75,197 @@ describe('resolveLocalSource', () => {
     expect(resolveLocalSource('file:/abs/tpl')).toBe('/abs/tpl');
     expect(resolveLocalSource('file:///abs/tpl')).toBe('/abs/tpl');
     expect(resolveLocalSource('file:./tpl')).toBe(path.resolve(process.cwd(), 'tpl'));
+  });
+});
+
+const cleanup: string[] = [];
+
+afterAll(() => {
+  for (const dir of cleanup.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+/** 造一个带 .template/config.ts 的本地 git 仓库，用 git+file:// 走完整 clone 链路 */
+function makeRepo(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-rs-repo-'));
+  cleanup.push(dir);
+  const git = (...args: string[]): void => {
+    execFileSync('git', args, { cwd: dir, stdio: 'ignore' });
+  };
+  // 显式指定分支名：本机 git 的 init.defaultBranch 可能是 main，用例不能跟着机器走
+  git('init', '-q', '-b', 'master');
+  git('config', 'user.email', 't@t.t');
+  git('config', 'user.name', 't');
+  fs.mkdirSync(path.join(dir, '.template'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, '.template/config.ts'),
+    'export default { id: "t", platform: "web", compatibleCliVersions: "*", variables: {}, features: {} };\n',
+  );
+  git('add', '-A');
+  git('commit', '-qm', 'init');
+  return dir;
+}
+
+/** 在仓库上再压一个提交，返回新的 HEAD */
+function commitMore(repo: string, marker: string): string {
+  const git = (...args: string[]): string =>
+    execFileSync('git', args, { cwd: repo, encoding: 'utf-8' });
+  fs.writeFileSync(path.join(repo, marker), 'x');
+  git('add', '-A');
+  git('commit', '-qm', marker);
+  return headOf(repo);
+}
+
+/** 源仓库当前 HEAD */
+function headOf(repo: string): string {
+  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf-8' }).trim();
+}
+
+describe('TemplateResolver.fetch - git 缓存刷新', () => {
+  it('--refresh 克隆失败时旧缓存原样保留（先删后拉会让紧接着的 --offline 也失败）', async () => {
+    const resolver = new TemplateResolver();
+    const repo = makeRepo();
+    const source = `git+file://${repo}#master`;
+    const cacheDir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
+    cleanup.push(cacheDir);
+
+    await expect(resolver.fetch(source)).resolves.toBe(cacheDir);
+    expect(fs.existsSync(path.join(cacheDir, '.template/config.ts'))).toBe(true);
+
+    // 源仓库移走 = 远端不可达
+    const moved = `${repo}-moved`;
+    cleanup.push(moved);
+    fs.renameSync(repo, moved);
+
+    await expect(resolver.fetch(source, { refresh: true })).rejects.toMatchObject({
+      code: 'E_TEMPLATE_FETCH_FAILED',
+    });
+
+    // 缓存还在，且仍是一份可用模板：--offline 兜底能继续跑
+    expect(fs.existsSync(path.join(cacheDir, '.template/config.ts'))).toBe(true);
+    await expect(resolver.fetch(source, { offline: true })).resolves.toBe(cacheDir);
+    // 失败路径不留 .tmp-* 孤儿（只看本仓库前缀，同文件其他仓库也在这个缓存根下）
+    const tmpPrefix = `${path.basename(cacheDir)}.tmp-`;
+    expect(fs.readdirSync(path.dirname(cacheDir)).filter((n) => n.startsWith(tmpPrefix))).toEqual(
+      [],
+    );
+  });
+
+  it('--refresh 成功时旧缓存被整份顶掉，不是增量合并', async () => {
+    const resolver = new TemplateResolver();
+    const repo = makeRepo();
+    const source = `git+file://${repo}#master`;
+    const cacheDir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
+    cleanup.push(cacheDir);
+
+    await resolver.fetch(source);
+    fs.writeFileSync(path.join(cacheDir, 'STALE'), 'x');
+
+    await expect(resolver.fetch(source, { refresh: true })).resolves.toBe(cacheDir);
+    expect(fs.existsSync(path.join(cacheDir, 'STALE'))).toBe(false);
+  });
+});
+
+describe('describeRemoteAdvance - 复用缓存时感知远端已前进', () => {
+  const resolver = new TemplateResolver();
+
+  /** 造仓库 + 拉一次缓存，返回 source / cacheDir / metaPath 三件套 */
+  async function seed(): Promise<{
+    repo: string;
+    source: string;
+    cacheDir: string;
+    metaPath: string;
+  }> {
+    const repo = makeRepo();
+    const source = `git+file://${repo}#master`;
+    const cacheDir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
+    cleanup.push(cacheDir, `${cacheDir}.meta.json`);
+    await resolver.fetch(source);
+    return { repo, source, cacheDir, metaPath: `${cacheDir}.meta.json` };
+  }
+
+  it('克隆后把 commit 写进缓存目录的兄弟文件，而不是目录内部', async () => {
+    const { repo, cacheDir, metaPath } = await seed();
+
+    expect(fs.existsSync(metaPath)).toBe(true);
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as Record<string, unknown>;
+    expect(meta['commit']).toBe(headOf(repo));
+    expect(meta['ref']).toBe('master');
+    expect(meta['url']).toBe(`git+file://${repo}`);
+    expect(typeof meta['fetchedAt']).toBe('string');
+
+    // 元数据必须在 dir 外面，否则会被 composer 拷进产物
+    expect(path.dirname(metaPath)).toBe(path.dirname(cacheDir));
+    expect(fs.readdirSync(cacheDir)).not.toContain('.meta.json');
+    expect(fs.readdirSync(cacheDir).some((n) => n.endsWith('.meta.json'))).toBe(false);
+  });
+
+  it('远端前进后报出本地与远端短 hash，未前进时返回 undefined', async () => {
+    const { repo, source } = await seed();
+    const before = headOf(repo);
+
+    // 刚克隆完，本地与远端一致
+    expect(describeRemoteAdvance(source)).toBeUndefined();
+
+    const after = commitMore(repo, 'NEW');
+    const msg = describeRemoteAdvance(source);
+    expect(msg).toContain('模板远端已有新提交');
+    expect(msg).toContain(before.slice(0, 7));
+    expect(msg).toContain(after.slice(0, 7));
+  });
+
+  it('远端不可达时静默返回 undefined，不抛', async () => {
+    const { repo, source } = await seed();
+    commitMore(repo, 'NEW');
+
+    const moved = `${repo}-gone`;
+    cleanup.push(moved);
+    fs.renameSync(repo, moved);
+
+    expect(() => describeRemoteAdvance(source)).not.toThrow();
+    expect(describeRemoteAdvance(source)).toBeUndefined();
+  });
+
+  it('本地路径源不联网探测，直接 undefined', () => {
+    expect(describeRemoteAdvance(MINI_DIR)).toBeUndefined();
+    expect(describeRemoteAdvance('github:org/repo')).toBeUndefined();
+  });
+
+  it('缓存目录存在但没有元数据（本特性之前建的缓存）时返回 undefined', async () => {
+    const { source, metaPath } = await seed();
+    fs.rmSync(metaPath, { force: true });
+    expect(describeRemoteAdvance(source)).toBeUndefined();
+  });
+
+  it('--refresh 后元数据的 commit 跟到新 HEAD，提示随之消失', async () => {
+    const { repo, source, metaPath } = await seed();
+    const after = commitMore(repo, 'NEW');
+    expect(describeRemoteAdvance(source)).toBeDefined();
+
+    await resolver.fetch(source, { refresh: true });
+
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as Record<string, unknown>;
+    expect(meta['commit']).toBe(after);
+    expect(describeRemoteAdvance(source)).toBeUndefined();
+  });
+
+  it('compose 出的文件列表里没有元数据文件（防有人把 meta 挪进缓存目录）', async () => {
+    const { cacheDir } = await seed();
+
+    const manifest = await resolver.readConfig(cacheDir);
+    const config: ProjectConfig = {
+      name: 'my-app',
+      description: 'd',
+      platform: 'web',
+      features: [],
+      params: {},
+      outputDir: './my-app',
+      packageManager: 'pnpm',
+      initGit: false,
+      installDeps: false,
+    };
+    const files = await new Composer().compose(cacheDir, manifest, config);
+
+    expect(files.some((f) => f.path.endsWith('.meta.json'))).toBe(false);
   });
 });
 

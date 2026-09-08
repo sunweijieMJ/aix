@@ -69,9 +69,11 @@ export function toCloneUrl(url: string): string {
   return url.startsWith('git+') ? url.slice('git+'.length) : url;
 }
 
-/** 缓存根目录：`~/.cache/create-app` */
+/** 缓存根目录：`$XDG_CACHE_HOME/create-app`，缺省 `~/.cache/create-app` */
 export function gitCacheRoot(): string {
-  return path.join(os.homedir(), '.cache', 'create-app');
+  const xdg = process.env['XDG_CACHE_HOME'];
+  const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), '.cache');
+  return path.join(base, 'create-app');
 }
 
 /**

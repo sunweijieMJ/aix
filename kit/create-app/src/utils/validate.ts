@@ -1,5 +1,8 @@
-/** 目录名里不允许出现的字符：`\` 与 Windows 非法字符（`/` 另行按路径段判定） */
-const ILLEGAL_DIR_CHARS = /[\\:*?"<>|]/;
+/**
+ * 项目名里不允许出现的字符：`\` 与 Windows 非法字符是写盘限制（`/` 另行按路径段判定）；
+ * `'` `"` 是注入限制——项目名会原文写进产物的 TS 字符串字面量
+ */
+const ILLEGAL_DIR_CHARS = /['\\:*?"<>|]/;
 
 /** 控制字符（写进文件名会直接写盘失败）；用 codePoint 判定而不是正则，避免源码里出现字面控制字符 */
 function hasControlChar(text: string): boolean {
@@ -28,7 +31,9 @@ export function validateProjectName(name: string | undefined): string | undefine
   if (!name || name.trim() === '') return '项目名称不能为空';
   if (name !== name.trim()) return '项目名称首尾不能有空格';
   if (hasControlChar(name)) return '项目名称不能包含控制字符';
-  if (ILLEGAL_DIR_CHARS.test(name)) return '项目名称不能包含 \\ : * ? " < > | 这些字符';
+  if (ILLEGAL_DIR_CHARS.test(name)) {
+    return '项目名称不能包含 \' " \\ : * ? < > | 这些字符';
+  }
   // `/` 放行（`@scope/name`、`nested/app` 都合法），但逐段检查：
   // - 空段 / `.` / `..`：会写到目标目录之外
   // - 以 `.` 开头：既不像是有意要建隐藏目录，更重要的是 `create-app .git` 会命中

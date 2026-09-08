@@ -12,7 +12,9 @@ import {
   gitCacheRoot,
   isGitSource,
   parseGitSource,
+  toCloneUrl,
 } from './git-source';
+import type { GitSource } from './git-source';
 import { TemplateConfigSchema } from './schemas';
 
 export interface FetchOptions {
@@ -80,19 +82,26 @@ function offlineMissError(source: string, where: string, cause?: unknown): Creat
   );
 }
 
+/** Windows 盘符路径：`C:\tpl`、`C:/tpl` */
+const WIN_DRIVE_PATH = /^[A-Za-z]:[\\/]/;
+
 /**
  * 判断模板源是否为本地路径
  *
- * 命中条件：绝对路径 `/`、相对路径 `./` `../`、home 展开 `~/`、`file:` 前缀。
+ * 命中条件：绝对路径 `/` 或盘符 `C:\` / `C:/`、相对路径 `./` `../` `.\` `..\`、home 展开 `~/`、`file:` 前缀。
  * 其余形态交给 isGitSource 判定，两边都不认的一律报错（见 fetch）。
+ * 盘符判定不会误伤 scp 简写：后者冒号前是主机名而非单字母。
  */
 export function isLocalSource(source: string): boolean {
   return (
     source.startsWith('/') ||
     source.startsWith('./') ||
     source.startsWith('../') ||
+    source.startsWith('.\\') ||
+    source.startsWith('..\\') ||
     source.startsWith('~/') ||
-    source.startsWith('file:')
+    source.startsWith('file:') ||
+    WIN_DRIVE_PATH.test(source)
   );
 }
 
@@ -139,6 +148,106 @@ export function describeCacheAge(dir: string): string | undefined {
   if (minutes < 60) return `${minutes} 分钟前拉取`;
   if (minutes < 60 * 24) return `${Math.floor(minutes / 60)} 小时前拉取`;
   return `${Math.floor(minutes / (60 * 24))} 天前拉取`;
+}
+
+/** 缓存元数据：这份缓存对应的 url / ref / commit */
+interface CacheMeta {
+  url: string;
+  ref?: string;
+  commit: string;
+  fetchedAt: string;
+}
+
+/** 元数据放在缓存目录旁边而不是里面：composer 会把目录内的一切拷进产物 */
+function cacheMetaPath(dir: string): string {
+  return `${dir}.meta.json`;
+}
+
+/** 元数据只服务提示，写失败不影响生成 */
+function writeCacheMeta(dir: string, src: GitSource, commit: string): void {
+  const meta: CacheMeta = {
+    url: src.url,
+    ...(src.ref ? { ref: src.ref } : {}),
+    commit,
+    fetchedAt: new Date().toISOString(),
+  };
+  try {
+    fs.writeFileSync(cacheMetaPath(dir), `${JSON.stringify(meta, null, 2)}\n`, 'utf-8');
+  } catch {
+    // 写失败忽略
+  }
+}
+
+/** 文件缺失或内容损坏都返回 undefined */
+function readCacheMeta(dir: string): CacheMeta | undefined {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(cacheMetaPath(dir), 'utf-8'));
+  } catch {
+    return undefined;
+  }
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const { commit } = raw as { commit?: unknown };
+  if (typeof commit !== 'string' || !COMMIT_HASH.test(commit)) return undefined;
+  return raw as CacheMeta;
+}
+
+/** git 对象名：sha1 是 40 位，sha256 仓库是 64 位 */
+const COMMIT_HASH = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+
+/** 远端探测只是提示，离线时宁可放弃也不能让用户干等 */
+const REMOTE_PROBE_TIMEOUT_MS = 5000;
+
+/** 工作区 HEAD 的 commit，拿不到返回 undefined */
+function readHeadCommit(dir: string): string | undefined {
+  const r = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf-8' });
+  if (r.status !== 0 || typeof r.stdout !== 'string') return undefined;
+  const commit = r.stdout.trim();
+  return COMMIT_HASH.test(commit) ? commit : undefined;
+}
+
+/**
+ * 从 `git ls-remote` 输出里挑目标 commit：无 ref 取 `HEAD` 行；有 ref 时分支优先于 tag
+ * （与 `git clone -b` 一致），annotated tag 取 `^{}` 行所指的提交
+ */
+function pickRemoteCommit(stdout: string, ref?: string): string | undefined {
+  const rows: Array<[string, string]> = [];
+  for (const line of stdout.split('\n')) {
+    const m = /^([0-9a-f]{40,64})\s+(\S+)$/.exec(line.trim());
+    if (m) rows.push([m[1]!, m[2]!]);
+  }
+  const pick = (name: string): string | undefined => rows.find(([, n]) => n === name)?.[0];
+  if (!ref) return pick('HEAD');
+  return pick(`refs/heads/${ref}`) ?? pick(`refs/tags/${ref}^{}`) ?? pick(`refs/tags/${ref}`);
+}
+
+/** 远端当前 commit；失败 / 超时 / 解析不到一律 undefined */
+function queryRemoteCommit(src: GitSource): string | undefined {
+  const url = toCloneUrl(src.url);
+  const args = src.ref
+    ? ['ls-remote', url, `refs/heads/${src.ref}`, `refs/tags/${src.ref}`]
+    : ['ls-remote', '--symref', url, 'HEAD'];
+  const r = spawnSync('git', args, { encoding: 'utf-8', timeout: REMOTE_PROBE_TIMEOUT_MS });
+  if (r.status !== 0 || typeof r.stdout !== 'string') return undefined;
+  return pickRemoteCommit(r.stdout, src.ref);
+}
+
+/**
+ * 复用缓存时用 `git ls-remote` 探一次远端，远端已前进则返回提示文案，否则 undefined。
+ * 探测失败（离线 / 无权限 / 无元数据）静默返回 undefined，缓存照常可用。
+ */
+export function describeRemoteAdvance(source: string): string | undefined {
+  if (!isGitSource(source)) return undefined;
+
+  const src = parseGitSource(source);
+  const meta = readCacheMeta(gitCacheDir(src));
+  if (!meta) return undefined;
+
+  const remote = queryRemoteCommit(src);
+  if (!remote || remote === meta.commit) return undefined;
+
+  const short = (c: string): string => c.slice(0, 7);
+  return `模板远端已有新提交（本地 ${short(meta.commit)} → 远端 ${short(remote)}）`;
 }
 
 /**
@@ -207,7 +316,8 @@ export class TemplateResolver {
    * 浅克隆 git 源到缓存目录并返回该目录
    *
    * 缓存三态由 fetch 入口统一判定后传入：
-   * 默认复用缓存，`--refresh` 删缓存重克隆，`--offline` 只用缓存、缺失即报错。
+   * 默认复用缓存，`--refresh` 重新克隆一份完整的再顶掉旧缓存（克隆失败则旧缓存原样保留），
+   * `--offline` 只用缓存、缺失即报错。
    * 克隆后删掉 `.git/`——模板只要工作区内容，留着会被 composer 当普通文件拷进新项目。
    *
    * 全程「克隆到临时目录，完整了再 rename 到 dir」，理由见函数内注释。
@@ -216,9 +326,9 @@ export class TemplateResolver {
     const src = parseGitSource(source);
     const dir = gitCacheDir(src);
 
-    if (fs.existsSync(dir)) {
+    const hasCache = fs.existsSync(dir);
+    if (hasCache) {
       if (policy !== 'refresh') return this.assertTemplateDir(dir, source);
-      fs.rmSync(dir, { recursive: true, force: true });
     } else if (policy === 'offline') {
       throw offlineMissError(source, dir);
     }
@@ -245,7 +355,13 @@ export class TemplateResolver {
         );
       }
 
+      // 删 .git 之前取 commit
+      const commit = readHeadCommit(tmp);
       fs.rmSync(path.join(tmp, '.git'), { recursive: true, force: true });
+      // 旧缓存在新克隆完整落地后才删：克隆失败时旧缓存保留，--offline 仍可用
+      if (hasCache && policy === 'refresh') {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
       try {
         fs.renameSync(tmp, dir);
       } catch (err) {
@@ -253,6 +369,8 @@ export class TemplateResolver {
         // 目标已存在即视为可用缓存（同一 url+ref，内容同源），丢掉自己这份 tmp 即可
         if (!fs.existsSync(dir)) throw err;
       }
+      // 元数据在 dir 到位后再写，避免 rename 失败留下指向旧内容的记录
+      if (commit) writeCacheMeta(dir, src, commit);
     } finally {
       // 成功路径上 tmp 已被 rename 走，这里兜的是失败与并发路径：任何出口都不留孤儿
       fs.rmSync(tmp, { recursive: true, force: true });

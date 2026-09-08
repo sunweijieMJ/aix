@@ -39,6 +39,13 @@ describe('validateProjectName - 目录名规则（不再套用 npm 包名规范�
     }
   });
 
+  it("单引号被拒——项目名会原文注入产物 TS 的单引号字面量（it's-app 报成功但产物语法错）", () => {
+    expect(validateProjectName("it's-app")).toContain("'");
+    expect(validateProjectName("it's-app")).toBeTruthy();
+    // 派生包名不受影响：toValidPackageName 会把单引号清成连字符
+    expect(toValidPackageName("it's-app")).toBe('it-s-app');
+  });
+
   it('控制字符被拒', () => {
     expect(validateProjectName('a\u0000b')).toContain('控制字符');
     expect(validateProjectName('a\nb')).toContain('控制字符');

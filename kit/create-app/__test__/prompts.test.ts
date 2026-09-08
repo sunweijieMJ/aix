@@ -67,6 +67,40 @@ describe('collectFeatureSelection', () => {
   it('模板无可选特性时直接返回空数组（不进入问答）', async () => {
     await expect(collectFeatureSelection(emptyManifest)).resolves.toEqual([]);
   });
+
+  it('零特性模板在非 TTY 下也不需要 -f（命令层不再一刀切要求，改由这里按真实清单判定）', async () => {
+    const original = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
+    try {
+      await expect(collectFeatureSelection(emptyManifest)).resolves.toEqual([]);
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', { value: original, configurable: true });
+    }
+  });
+
+  it('模板声明了特性但非 TTY 且未传 -f 时抛 E_NON_INTERACTIVE 并列出可选特性', async () => {
+    const original = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
+    try {
+      const err = await collectFeatureSelection(manifest).catch((e: unknown) => e);
+      expect(err).toMatchObject({ code: 'E_NON_INTERACTIVE' });
+      expect((err as Error).message).toContain('i18n');
+      expect((err as Error).message).toContain('qiankun');
+      expect((err as { suggestion?: string }).suggestion).toContain('--features');
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', { value: original, configurable: true });
+    }
+  });
+
+  it("非 TTY 下传 -f '' 视为明确的「一个都不要」，不再报缺失", async () => {
+    const original = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
+    try {
+      await expect(collectFeatureSelection(manifest, [])).resolves.toEqual([]);
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', { value: original, configurable: true });
+    }
+  });
 });
 
 describe('buildSummary', () => {

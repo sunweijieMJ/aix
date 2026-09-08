@@ -191,6 +191,7 @@ export function validateFeatureIds(ids: string[], manifest: TemplateConfig): str
  * 步骤 4：用 manifest.features 动态渲染 multiselect
  *
  * argvFeatures 为 `--features` 的解析结果（已按逗号切分），传入时跳过问答。
+ * 非 TTY 快速失败放在这里而不是命令层：模板有哪些特性要拉取后才知道，零特性模板不需要 `-f`。
  */
 export async function collectFeatureSelection(
   manifest: TemplateConfig,
@@ -200,6 +201,15 @@ export async function collectFeatureSelection(
 
   const entries = Object.entries(manifest.features);
   if (entries.length === 0) return [];
+
+  if (!process.stdin.isTTY) {
+    throw new CreateAppError(
+      'E_NON_INTERACTIVE',
+      `当前不是交互式终端（stdin 非 TTY），模板 ${manifest.id} 声明了可选特性，` +
+        `无法通过问答选择：\n${entries.map(([id, def]) => `  - ${id}（${def.label}）`).join('\n')}`,
+      "非交互场景请显式传 -f, --features <list>；一个都不要就传 -f ''",
+    );
+  }
 
   const result = await p.multiselect({
     message: '选择功能特性',

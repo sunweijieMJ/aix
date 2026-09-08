@@ -25,6 +25,11 @@ const MINI_DIR = path.join(__dirname, 'fixtures', 'template-mini');
 /** 每个 tsx 冷启动约 1s，整组用例给足预算 */
 const TIMEOUT = 120_000;
 
+// 缓存根指向本文件独占的临时目录，不写用户的 ~/.cache/create-app
+const ORIGINAL_CACHE_HOME = process.env['XDG_CACHE_HOME'];
+const CACHE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-cachehome-'));
+process.env['XDG_CACHE_HOME'] = CACHE_HOME;
+
 const tempDirs: string[] = [];
 
 function tempDir(prefix: string): string {
@@ -72,6 +77,8 @@ function runCli(args: string[], cwd: string): CliResult {
     encoding: 'utf-8',
     input: '',
     maxBuffer: 16 * 1024 * 1024,
+    // 子进程缓存根须与父进程 gitCacheDir 推导一致
+    env: { ...process.env, XDG_CACHE_HOME: CACHE_HOME },
   });
   return { status: r.status, output: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
@@ -248,6 +255,49 @@ describe('--force 与 --refresh 拆分后的语义', () => {
       expect(stale.output).toContain('复用模板缓存');
       expect(stale.output).toContain('3 天前拉取');
       expect(stale.output).toContain('--refresh');
+    },
+    TIMEOUT,
+  );
+});
+
+describe('复用缓存时感知远端已前进', () => {
+  let repo: string;
+  let source: string;
+  let cacheDir: string;
+  let workDir: string;
+
+  beforeAll(() => {
+    repo = makeTemplateRepo();
+    source = `git+file://${repo}#master`;
+    cacheDir = gitCacheDir({ url: `git+file://${repo}`, ref: 'master' });
+    // 元数据是缓存目录的兄弟文件，单独登记进清理清单
+    tempDirs.push(cacheDir, `${cacheDir}.meta.json`);
+    workDir = tempDir('create-app-advance-');
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  it(
+    '源仓库前进后，不带 --refresh 的生成会警告；--refresh 拉平后不再警告',
+    () => {
+      // 首次生成：缓存与远端一致，无提示
+      const first = runCreate('adv-1', source, workDir);
+      expect(first.status, first.output).toBe(0);
+      expect(first.output).not.toContain('远端已有新提交');
+
+      execFileSync('git', ['commit', '-qm', 'more', '--allow-empty'], {
+        cwd: repo,
+        stdio: 'ignore',
+      });
+
+      const second = runCreate('adv-2', source, workDir);
+      expect(second.status, second.output).toBe(0);
+      expect(second.output).toContain('远端已有新提交');
+      expect(second.output).toContain('--refresh');
+      expect(fs.existsSync(path.join(workDir, 'adv-2/package.json'))).toBe(true);
+
+      const third = runCreate('adv-3', source, workDir, ['--refresh']);
+      expect(third.status, third.output).toBe(0);
+      expect(third.output).not.toContain('远端已有新提交');
     },
     TIMEOUT,
   );
@@ -635,4 +685,7 @@ describe('模板参数（params 声明区）', () => {
 
 afterAll(() => {
   for (const d of tempDirs) fs.rmSync(d, { recursive: true, force: true });
+  if (ORIGINAL_CACHE_HOME === undefined) delete process.env['XDG_CACHE_HOME'];
+  else process.env['XDG_CACHE_HOME'] = ORIGINAL_CACHE_HOME;
+  fs.rmSync(CACHE_HOME, { recursive: true, force: true });
 });

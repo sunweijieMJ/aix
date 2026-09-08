@@ -5,7 +5,12 @@ import pc from 'picocolors';
 import { Composer } from '../core/composer';
 import { lintManifest } from '../core/manifest-lint';
 import { runPostProcess } from '../core/post-processor';
-import { describeCacheAge, resolveCachePolicy, TemplateResolver } from '../core/resolver';
+import {
+  describeCacheAge,
+  describeRemoteAdvance,
+  resolveCachePolicy,
+  TemplateResolver,
+} from '../core/resolver';
 import {
   collectBasicInfo,
   collectFeatureSelection,
@@ -101,11 +106,8 @@ export function missingNonInteractiveFlags(
     missing.push(`--force（目录 ${projectName} 已存在，否则会弹覆盖确认）`);
   }
 
-  // collectFeatureSelection
-  if (opts.features === undefined) missing.push('-f, --features <list>');
-
-  // collectTemplateParams 不在此预判：params 声明在模板 config.ts 里，此时模板还没拉取。
-  // 无默认值且没传 --param 的参数由 collectTemplateParams 在问答前补一道非 TTY 快速失败
+  // features / params 声明在模板 config.ts 里，此时模板还没拉取，不在此预判；
+  // collectFeatureSelection / collectTemplateParams 各自在问答前做非 TTY 快速失败
 
   // collectPostOptions + confirmSummary：dry-run 会整段跳过
   if (!opts.dryRun) {
@@ -180,11 +182,16 @@ export async function create(projectName: string | undefined, opts: CreateOption
       throw err;
     }
 
-    // 复用缓存时把缓存年龄说出来：默认策略不会联网 fetch，远端前进后会一直读旧克隆
+    // 复用缓存不会 fetch：优先提示远端是否已前进，探测不到时退回缓存年龄提示
     if (resolveCachePolicy({ refresh: opts.refresh, offline: opts.offline }) === 'reuse') {
-      const age = describeCacheAge(templateDir);
-      if (age) {
-        p.log.info(`复用模板缓存（${age}）：${templateDir}\n如需拉取远端最新改动，加 --refresh`);
+      const advance = describeRemoteAdvance(basic.templateSource);
+      if (advance) {
+        p.log.warn(`${advance}，如需最新加 --refresh`);
+      } else {
+        const age = describeCacheAge(templateDir);
+        if (age) {
+          p.log.info(`复用模板缓存（${age}）：${templateDir}\n如需拉取远端最新改动，加 --refresh`);
+        }
       }
     }
 

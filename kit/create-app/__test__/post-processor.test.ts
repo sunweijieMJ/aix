@@ -17,6 +17,10 @@ import type { ProjectConfig } from '../src/types';
 const cp = vi.hoisted(() => ({
   /** 每条 spawnSync 调用记为 `cmd arg arg`，用于断言执行了哪些命令 */
   calls: [] as string[],
+  /** 每条 spawnSync 调用的原始 args 数组，用于断言参数没有被拼接/拆分 */
+  argv: [] as string[][],
+  /** 每条 spawnSync 调用的 options，用于断言没开 shell */
+  options: [] as unknown[],
   /** 命令 → 退出状态；未登记的命令默认成功 */
   status: new Map<string, { status: number | null; error?: Error }>(),
 }));
@@ -28,9 +32,11 @@ const clack = vi.hoisted(() => ({
 }));
 
 vi.mock('node:child_process', () => ({
-  spawnSync: ((cmd: string, args: string[]) => {
+  spawnSync: ((cmd: string, args: string[], options: unknown) => {
     const key = `${cmd} ${args.join(' ')}`;
     cp.calls.push(key);
+    cp.argv.push(args);
+    cp.options.push(options);
     return cp.status.get(cmd) ?? { status: 0 };
   }) as unknown as typeof import('node:child_process').spawnSync,
 }));
@@ -67,7 +73,7 @@ vi.mock('@clack/prompts', () => {
   };
 });
 
-const { runPostProcess } = await import('../src/core/post-processor');
+const { resolveCommand, runPostProcess } = await import('../src/core/post-processor');
 
 let tmpRoot: string;
 const originalCwd = process.cwd();
@@ -118,6 +124,8 @@ beforeEach(() => {
   tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-pp-')));
   process.chdir(tmpRoot);
   cp.calls.length = 0;
+  cp.argv.length = 0;
+  cp.options.length = 0;
   cp.status.clear();
   clack.starts.length = 0;
   clack.stops.length = 0;
@@ -265,5 +273,44 @@ describe('printNextSteps - install 提示', () => {
     await runPostProcess(makeConfig({ installDeps: true, packageManager: 'yarn' }), dest);
     expect(nextSteps()).not.toContain('yarn install');
     expect(nextSteps()).toContain('yarn run dev');
+  });
+});
+
+describe('resolveCommand - Windows 上的包管理器垫片', () => {
+  it('win32 上包管理器补 .cmd 后缀（无后缀的名字 spawnSync 找不到）', () => {
+    for (const pm of ['pnpm', 'npm', 'yarn']) {
+      expect(resolveCommand(pm, 'win32')).toBe(`${pm}.cmd`);
+    }
+  });
+
+  it('git 是原生可执行文件，win32 上也原样传', () => {
+    expect(resolveCommand('git', 'win32')).toBe('git');
+  });
+
+  it('非 win32 平台一律原样返回', () => {
+    for (const platform of ['darwin', 'linux'] as const) {
+      expect(resolveCommand('pnpm', platform)).toBe('pnpm');
+      expect(resolveCommand('git', platform)).toBe('git');
+    }
+  });
+});
+
+describe('run - spawnSync 选项', () => {
+  // shell 模式下参数按空格拼接不加引号，带空格的 commit message 会被拆开
+  it('任何平台都不开 shell', async () => {
+    const dest = makeDest('noshell', { dev: 'vite' });
+    await runPostProcess(makeConfig({ initGit: true, installDeps: true }), dest);
+
+    expect(cp.options).not.toHaveLength(0);
+    for (const opt of cp.options) {
+      expect(opt).not.toHaveProperty('shell');
+    }
+  });
+
+  it('带空格的 commit message 是一个完整参数（shell 模式会把它拆成两个）', async () => {
+    const dest = makeDest('commitmsg', { dev: 'vite' });
+    await runPostProcess(makeConfig({ initGit: true }), dest);
+
+    expect(cp.argv).toContainEqual(['commit', '-m', 'chore: 初始化项目']);
   });
 });

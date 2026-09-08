@@ -6,12 +6,21 @@ import pc from 'picocolors';
 import type { ProjectConfig } from '../types';
 import { CreateAppError } from '../utils/errors';
 
+/**
+ * Windows 上 pnpm / npm / yarn 是 `.cmd` 垫片，spawnSync 不带后缀找不到；
+ * 不用 `shell: true`：shell 模式下参数按空格拼接且不加引号，带空格的 commit message 会被拆开。
+ * 平台由参数传入以便测试。
+ */
+export function resolveCommand(cmd: string, platform: NodeJS.Platform): string {
+  const SHIMMED = ['pnpm', 'npm', 'yarn'];
+  return platform === 'win32' && SHIMMED.includes(cmd) ? `${cmd}.cmd` : cmd;
+}
+
 /** 在指定目录执行命令，将输出流到终端 */
 function run(cmd: string, args: string[], cwd: string): void {
-  const result = spawnSync(cmd, args, {
+  const result = spawnSync(resolveCommand(cmd, process.platform), args, {
     cwd,
     stdio: 'inherit',
-    shell: process.platform === 'win32',
   });
   if (result.status !== 0) {
     throw new CreateAppError(

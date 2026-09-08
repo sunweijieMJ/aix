@@ -16,6 +16,17 @@ import { TemplateResolver } from '../src/core/resolver';
 const SSH = 'git+ssh://git@git.zhihuishu.com/weijie/vue-admin-template.git';
 const SCP = 'git@git.zhihuishu.com:weijie/vue-admin-template.git';
 
+// 缓存根指向本文件独占的临时目录，不写用户的 ~/.cache/create-app
+const ORIGINAL_CACHE_HOME = process.env['XDG_CACHE_HOME'];
+const CACHE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-cachehome-'));
+process.env['XDG_CACHE_HOME'] = CACHE_HOME;
+
+afterAll(() => {
+  if (ORIGINAL_CACHE_HOME === undefined) delete process.env['XDG_CACHE_HOME'];
+  else process.env['XDG_CACHE_HOME'] = ORIGINAL_CACHE_HOME;
+  fs.rmSync(CACHE_HOME, { recursive: true, force: true });
+});
+
 describe('isGitSource', () => {
   it('识别 git+ssh:// 与 scp 简写（含 #ref）', () => {
     expect(isGitSource(SSH)).toBe(true);
@@ -65,8 +76,30 @@ describe('toCloneUrl', () => {
   });
 });
 
+describe('gitCacheRoot', () => {
+  it('XDG_CACHE_HOME 非空时落在它下面的 create-app', () => {
+    process.env['XDG_CACHE_HOME'] = path.join(os.tmpdir(), 'xdg-cache-probe');
+    try {
+      expect(gitCacheRoot()).toBe(path.join(os.tmpdir(), 'xdg-cache-probe', 'create-app'));
+    } finally {
+      process.env['XDG_CACHE_HOME'] = CACHE_HOME;
+    }
+  });
+
+  it('未设或为空串时回落 ~/.cache/create-app', () => {
+    try {
+      delete process.env['XDG_CACHE_HOME'];
+      expect(gitCacheRoot()).toBe(path.join(os.homedir(), '.cache', 'create-app'));
+      process.env['XDG_CACHE_HOME'] = '';
+      expect(gitCacheRoot()).toBe(path.join(os.homedir(), '.cache', 'create-app'));
+    } finally {
+      process.env['XDG_CACHE_HOME'] = CACHE_HOME;
+    }
+  });
+});
+
 describe('gitCacheDir', () => {
-  it('落在 ~/.cache/create-app 下，目录名含 repo 名便于排查', () => {
+  it('落在缓存根下，目录名含 repo 名便于排查', () => {
     const dir = gitCacheDir(parseGitSource(`${SSH}#master`));
     expect(path.dirname(dir)).toBe(gitCacheRoot());
     expect(path.basename(dir)).toMatch(/^git-vue-admin-template-[0-9a-f]{12}$/);

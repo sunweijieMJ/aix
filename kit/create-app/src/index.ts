@@ -48,7 +48,12 @@ export type { ErrorCode } from './utils/errors';
 export { handleError } from './utils/logger';
 
 // 核心模块（P0-2, P0-3）
-export { TemplateResolver, isLocalSource, resolveLocalSource } from './core/resolver';
+export {
+  TemplateResolver,
+  isLocalSource,
+  resolveLocalSource,
+  describeRemoteAdvance,
+} from './core/resolver';
 export {
   isGitSource,
   parseGitSource,

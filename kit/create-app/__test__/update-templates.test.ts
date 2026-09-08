@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { gitCacheDir } from '../src/core/git-source';
 
 const clack = vi.hoisted(() => ({
@@ -63,6 +63,17 @@ const { updateTemplates } = await import('../src/commands/update-templates');
 const originalXdg = process.env['XDG_CONFIG_HOME'];
 let configHome: string;
 const cleanup: string[] = [];
+
+// 缓存根指向本文件独占的临时目录，不写用户的 ~/.cache/create-app
+const ORIGINAL_CACHE_HOME = process.env['XDG_CACHE_HOME'];
+const CACHE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'create-app-cachehome-'));
+process.env['XDG_CACHE_HOME'] = CACHE_HOME;
+
+afterAll(() => {
+  if (ORIGINAL_CACHE_HOME === undefined) delete process.env['XDG_CACHE_HOME'];
+  else process.env['XDG_CACHE_HOME'] = ORIGINAL_CACHE_HOME;
+  fs.rmSync(CACHE_HOME, { recursive: true, force: true });
+});
 
 /** 造一个带 .template/config.ts 的本地 git 仓库（同 git-source.test.ts 的做法） */
 function makeRepo(): string {
@@ -155,7 +166,7 @@ describe('updateTemplates - 正常刷新', () => {
 });
 
 describe('updateTemplates - 失败路径', () => {
-  it('单个模板拉取失败只记 warn 并继续，整体仍然收尾成功', async () => {
+  it('单个模板拉取失败不终止循环，但整体以非零退出收尾（只 warn 会让 CI 永远看到 exit 0）', async () => {
     const repo = makeRepo();
     const ok = `git+file://${repo}#master`;
     const broken = `git+file://${path.join(os.tmpdir(), 'create-app-no-such-repo-xyz')}#master`;
@@ -164,13 +175,54 @@ describe('updateTemplates - 失败路径', () => {
     // 坏的那条排在前面（注册表顺序 admin → h5），确认它不会终止后面的刷新
     writeRegistry({ admin: broken, h5: ok });
 
-    await expect(updateTemplates()).resolves.toBeUndefined();
+    const exit = vi.spyOn(process, 'exit').mockImplementation(((): never => {
+      throw new Error('process.exit called');
+    }) as never);
 
+    await expect(updateTemplates()).rejects.toThrow('process.exit called');
+
+    // 坏的那条之后，好的那条照样刷完
     expect(clack.starts).toHaveLength(2);
     expect(clack.stops).toEqual(['后台管理系统 模板更新失败', '移动端 H5 模板已更新']);
     expect(clack.warns).toHaveLength(1);
     expect(clack.warns[0]).toContain('克隆模板仓库失败');
-    expect(clack.outros).toEqual(['模板缓存刷新完成']);
+    // 部分失败不能打「刷新完成」，且要给出 N/M 总账
+    expect(clack.outros).toEqual([]);
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(clack.errors.join('\n')).toContain('1/2');
+    expect(clack.errors.join('\n')).toContain('E_TEMPLATE_FETCH_FAILED');
+  });
+
+  it('全部失败时同样非零退出，总账写明 N/M', async () => {
+    const brokenA = `git+file://${path.join(os.tmpdir(), 'create-app-no-such-a')}#master`;
+    const brokenB = `git+file://${path.join(os.tmpdir(), 'create-app-no-such-b')}#master`;
+    trackCache(brokenA);
+    trackCache(brokenB);
+    writeRegistry({ admin: brokenA, h5: brokenB });
+
+    const exit = vi.spyOn(process, 'exit').mockImplementation(((): never => {
+      throw new Error('process.exit called');
+    }) as never);
+
+    await expect(updateTemplates()).rejects.toThrow('process.exit called');
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(clack.outros).toEqual([]);
+    expect(clack.errors.join('\n')).toContain('2/2');
+  });
+
+  it('本地路径源不计入总数（不走缓存，没得刷，不该让 N/M 里凭空多一项）', async () => {
+    const repo = makeRepo();
+    const broken = `git+file://${path.join(os.tmpdir(), 'create-app-no-such-c')}#master`;
+    trackCache(broken);
+    writeRegistry({ admin: broken, h5: repo });
+
+    vi.spyOn(process, 'exit').mockImplementation(((): never => {
+      throw new Error('process.exit called');
+    }) as never);
+
+    await expect(updateTemplates()).rejects.toThrow('process.exit called');
+    expect(clack.errors.join('\n')).toContain('1/1');
   });
 
   it('注册表本身不可读时走统一错误出口（带错误码 + 非零退出），不是裸崩', async () => {
