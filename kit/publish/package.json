@@ -1,6 +1,6 @@
 {
   "name": "@kit/publish",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "把构建产物目录当作 npm 包发布到私有 registry 的交互式命令行工具",
   "author": "<sunweijie@able-elec.com>",
   "license": "MIT",
