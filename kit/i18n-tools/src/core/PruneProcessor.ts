@@ -23,7 +23,7 @@ export interface PruneOptions {
   /**
    * 是否处于交互会话（CLI 由「未显式 --mode 且非 --ci」推导，见 cli.ts）。
    * 非交互且未 --ci 时 prune 直接报错退出，而不是弹确认——stdin 为常开管道
-   * （agent / CI 编排常见）时 inquirer 会无限挂起等输入；stdin 关闭时虽会安全取消，
+   * （agent / CI 编排常见）时 @inquirer/prompts 会无限挂起等输入；stdin 关闭时虽会安全取消，
    * 但「挂起」与「静默取消」都不是非交互调用方想要的行为。默认 true 保持
    * 程序化调用的既有语义（弹确认）。
    */
@@ -176,7 +176,7 @@ export class PruneProcessor extends BaseProcessor {
     }
     if (!this.options.ci) {
       // 非交互会话不弹确认：prune 是破坏性删除，缺 --ci 视为未获授权，fail-fast 给出
-      // 明确指引（与 CLI 对「非交互 ⇒ 绝不碰 inquirer」的整体口径一致，见 cli.ts）。
+      // 明确指引（与 CLI 对「非交互 ⇒ 绝不碰 @inquirer/prompts」的整体口径一致，见 cli.ts）。
       if (this.options.interactive === false) {
         throw new Error(
           '非交互模式下 prune 是破坏性删除，需显式传 --ci 确认执行；' +

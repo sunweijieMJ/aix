@@ -1,5 +1,5 @@
 import fs from 'fs';
-import inquirer from 'inquirer';
+import { confirm, input, select } from '@inquirer/prompts';
 import { MODE_DESCRIPTIONS } from './constants';
 import { FileUtils } from './file-utils';
 import { LoggerUtils } from './logger';
@@ -15,16 +15,13 @@ export class InteractiveUtils {
    * @returns 用户选择的模式 ('automatic' | 'manual')
    */
   static async promptForTopLevelMode(): Promise<'automatic' | 'manual'> {
-    const { mode } = await inquirer.prompt({
-      type: 'select',
-      name: 'mode',
+    return select<'automatic' | 'manual'>({
       message: '请选择运行模式:',
       choices: [
         { name: '自动模式 (一键完成所有流程)', value: 'automatic' },
         { name: '手动模式 (选择单个步骤执行)', value: 'manual' },
       ],
     });
-    return mode;
   }
 
   /**
@@ -34,9 +31,7 @@ export class InteractiveUtils {
    * @returns 用户选择的模式
    */
   static async promptForMode(isCustom: boolean, defaultMode: ModeName): Promise<ModeName> {
-    const { mode } = await inquirer.prompt({
-      type: 'select',
-      name: 'mode',
+    return select<ModeName>({
       message: isCustom ? '请选择定制目录操作模式:' : '请选择操作模式:',
       choices: [
         // 主流水线顺序：提取 → 拆分 →（AI 翻译 / CSV 人工翻译二选一）→ 合并 → 导出
@@ -54,8 +49,6 @@ export class InteractiveUtils {
       ],
       default: defaultMode,
     });
-
-    return mode;
   }
 
   /**
@@ -97,18 +90,13 @@ export class InteractiveUtils {
     options: { default?: boolean } = {},
   ): Promise<boolean> {
     try {
-      const { confirmed } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'confirmed',
-          message,
-          // 默认 No：本方法承接 prune 删除孤儿 key、csv-import 覆写 translations 这类
-          // 不可撤销动作，inquirer 会把默认值渲染成 (Y/n)/(y/N)。默认 Yes 时手滑回车即执行，
-          // 且与用户从提示里读到的 "y/N" 直觉相反。要默认 Yes 的调用方须显式声明。
-          default: options.default ?? false,
-        },
-      ]);
-      return confirmed;
+      return await confirm({
+        message,
+        // 默认 No：本方法承接 prune 删除孤儿 key、csv-import 覆写 translations 这类
+        // 不可撤销动作，@inquirer/prompts 会把默认值渲染成 (Y/n)/(y/N)。默认 Yes 时手滑回车即执行，
+        // 且与用户从提示里读到的 "y/N" 直觉相反。要默认 Yes 的调用方须显式声明。
+        default: options.default ?? false,
+      });
     } catch (error) {
       LoggerUtils.error('通用确认提示失败', error);
       return false;
@@ -141,22 +129,17 @@ export class InteractiveUtils {
     }
 
     try {
-      const { targetPath } = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'targetPath',
-          message: `请输入要${actionText}的文件或目录路径:`,
-          validate: (input: string) => {
-            if (!input.trim()) return '请输入路径';
-            const validation = FileUtils.validateTargetPath(input, extensions, displayName);
-            if (!validation.isValid) {
-              return validation.error || '无效路径';
-            }
-            return true;
-          },
+      return await input({
+        message: `请输入要${actionText}的文件或目录路径:`,
+        validate: (value: string) => {
+          if (!value.trim()) return '请输入路径';
+          const validation = FileUtils.validateTargetPath(value, extensions, displayName);
+          if (!validation.isValid) {
+            return validation.error || '无效路径';
+          }
+          return true;
         },
-      ]);
-      return targetPath;
+      });
     } catch (error) {
       LoggerUtils.error(`提示输入路径时发生错误 (模式: ${mode})`, error);
       throw error;
@@ -168,20 +151,16 @@ export class InteractiveUtils {
    * 校验：非空、以 .csv 结尾、文件存在。
    */
   static async promptForCsvPath(): Promise<string> {
-    const { csvPath } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'csvPath',
-        message: '请输入要回流的 CSV 文件路径:',
-        validate: (input: string) => {
-          const p = input.trim();
-          if (!p) return '请输入路径';
-          if (!p.toLowerCase().endsWith('.csv')) return '请输入 .csv 文件路径';
-          if (!fs.existsSync(p)) return `文件不存在: ${p}`;
-          return true;
-        },
+    const csvPath = await input({
+      message: '请输入要回流的 CSV 文件路径:',
+      validate: (value: string) => {
+        const p = value.trim();
+        if (!p) return '请输入路径';
+        if (!p.toLowerCase().endsWith('.csv')) return '请输入 .csv 文件路径';
+        if (!fs.existsSync(p)) return `文件不存在: ${p}`;
+        return true;
       },
-    ]);
+    });
     return csvPath.trim();
   }
 }

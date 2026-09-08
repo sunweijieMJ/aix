@@ -32,11 +32,11 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@inquirer/prompts": "catalog:",
     "@vue/compiler-dom": "^3.5.41",
     "@vue/compiler-sfc": "^3.5.41",
     "chalk": "catalog:",
     "dotenv": "catalog:",
-    "inquirer": "catalog:",
     "jiti": "catalog:",
     "openai": "catalog:",
     "picomatch": "catalog:",
@@ -47,7 +47,6 @@
     "@kit/eslint-config": "workspace:^",
     "@kit/typescript-config": "workspace:^",
     "@kit/vitest-config": "workspace:^",
-    "@types/inquirer": "^9.0.10",
     "@types/node": "catalog:",
     "@types/picomatch": "catalog:",
     "@types/yargs": "^17.0.35",

@@ -310,7 +310,7 @@ public/locale/
 | `@vue/compiler-sfc` | Vue SFC 解析 |
 | `openai` | OpenAI 兼容 API 客户端 |
 | `commander` | CLI 框架 |
-| `inquirer` | 交互式 CLI |
+| `@inquirer/prompts` | 交互式 CLI |
 | `globby` | 文件匹配 |
 | `prettier` | 代码格式化 |
 

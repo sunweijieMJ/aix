@@ -21,7 +21,7 @@ export interface CsvImportOptions {
   ci: boolean;
   /**
    * 是否处于交互会话（语义同 PruneOptions.interactive）。非交互且未 --ci 时写回前
-   * 直接报错退出而非弹确认——stdin 为常开管道时 inquirer 会无限挂起。默认 true。
+   * 直接报错退出而非弹确认——stdin 为常开管道时 @inquirer/prompts 会无限挂起。默认 true。
    */
   interactive?: boolean;
 }

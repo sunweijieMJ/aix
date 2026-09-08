@@ -3,7 +3,7 @@
  */
 
 import chalk from 'chalk';
-import inquirer from 'inquirer';
+import { checkbox, confirm, input } from '@inquirer/prompts';
 import type { ComponentConfig, CliOptions } from './types.js';
 import { AVAILABLE_DEPENDENCIES } from './types.js';
 import { toPascalCase } from './utils.js';
@@ -131,27 +131,21 @@ async function collectBasicInfo(
     };
   }
 
-  const { componentName, description } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'componentName',
-      message: '📝 请输入组件名称 (kebab-case):',
-      default: 'my-component',
-      validate: async (input: string) => {
-        const formatResult = validateComponentName(input);
-        if (formatResult !== true) return formatResult;
-        return validateComponentNameWithExistence(input);
-      },
+  const componentName = await input({
+    message: '📝 请输入组件名称 (kebab-case):',
+    default: 'my-component',
+    validate: async (value: string) => {
+      const formatResult = validateComponentName(value);
+      if (formatResult !== true) return formatResult;
+      return validateComponentNameWithExistence(value);
     },
-    {
-      type: 'input',
-      name: 'description',
-      message: '📄 请输入组件描述:',
-      default: (answers: { componentName: string }) =>
-        `A Vue 3 ${toPascalCase(answers.componentName)} component for AIX component library`,
-      validate: validateDescription,
-    },
-  ]);
+  });
+
+  const description = await input({
+    message: '📄 请输入组件描述:',
+    default: `A Vue 3 ${toPascalCase(componentName)} component for AIX component library`,
+    validate: validateDescription,
+  });
 
   return { componentName, description };
 }
@@ -164,46 +158,34 @@ async function collectDependencies(cliOptions: CliOptions): Promise<string[]> {
     return cliOptions.deps;
   }
 
-  const { selectedDependencies } = await inquirer.prompt([
-    {
-      type: 'checkbox',
-      name: 'selectedDependencies',
-      message: '📦 请选择依赖包 (多选):',
-      choices: AVAILABLE_DEPENDENCIES.map((dep) => ({
-        name: dep.name,
-        value: dep.value,
-        checked: dep.checked,
-      })),
-    },
-  ]);
-
-  return selectedDependencies;
+  return checkbox<string>({
+    message: '📦 请选择依赖包 (多选):',
+    choices: AVAILABLE_DEPENDENCIES.map((dep) => ({
+      name: dep.name,
+      value: dep.value,
+      checked: dep.checked,
+    })),
+  });
 }
 
 /**
  * 收集功能特性
  */
 async function collectFeatures(cliOptions: CliOptions): Promise<ComponentConfig['features']> {
-  const { needScss, needComposables, needI18n } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'needScss',
-      message: '🎨 是否生成独立 SCSS 样式文件 (推荐)?',
-      default: cliOptions.scss ?? true,
-    },
-    {
-      type: 'confirm',
-      name: 'needComposables',
-      message: '🔧 是否生成 Composable 钩子 (useXxx)?',
-      default: cliOptions.composables ?? true,
-    },
-    {
-      type: 'confirm',
-      name: 'needI18n',
-      message: '🌍 是否需要多语言支持 (生成 src/locale/ 目录)?',
-      default: cliOptions.i18n ?? false,
-    },
-  ]);
+  const needScss = await confirm({
+    message: '🎨 是否生成独立 SCSS 样式文件 (推荐)?',
+    default: cliOptions.scss ?? true,
+  });
+
+  const needComposables = await confirm({
+    message: '🔧 是否生成 Composable 钩子 (useXxx)?',
+    default: cliOptions.composables ?? true,
+  });
+
+  const needI18n = await confirm({
+    message: '🌍 是否需要多语言支持 (生成 src/locale/ 目录)?',
+    default: cliOptions.i18n ?? false,
+  });
 
   return {
     scss: needScss,
@@ -216,17 +198,13 @@ async function collectFeatures(cliOptions: CliOptions): Promise<ComponentConfig[
  * 收集工具链选择
  */
 async function collectTools(_cliOptions: CliOptions): Promise<ComponentConfig['tools']> {
-  const { selectedTools } = await inquirer.prompt([
-    {
-      type: 'checkbox',
-      name: 'selectedTools',
-      message: '🛠️  请选择工具链 (多选):',
-      choices: [
-        { name: 'ESLint (代码检查)', value: 'eslint', checked: true },
-        { name: 'Stylelint (样式检查)', value: 'stylelint', checked: true },
-      ],
-    },
-  ]);
+  const selectedTools = await checkbox<string>({
+    message: '🛠️  请选择工具链 (多选):',
+    choices: [
+      { name: 'ESLint (代码检查)', value: 'eslint', checked: true },
+      { name: 'Stylelint (样式检查)', value: 'stylelint', checked: true },
+    ],
+  });
 
   return {
     eslint: selectedTools.includes('eslint'),
@@ -238,14 +216,10 @@ async function collectTools(_cliOptions: CliOptions): Promise<ComponentConfig['t
  * 收集文件选项
  */
 async function collectFileOptions(_cliOptions: CliOptions): Promise<ComponentConfig['files']> {
-  const { needGlobalTypes } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'needGlobalTypes',
-      message: '📝 是否生成全局类型声明 (typings/ 目录)?',
-      default: false,
-    },
-  ]);
+  const needGlobalTypes = await confirm({
+    message: '📝 是否生成全局类型声明 (typings/ 目录)?',
+    default: false,
+  });
 
   return {
     readme: true,
@@ -306,14 +280,8 @@ function previewConfig(config: ComponentConfig): void {
  * 确认生成
  */
 async function confirmGeneration(): Promise<boolean> {
-  const { confirmed } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'confirmed',
-      message: '✅ 确认生成组件?',
-      default: true,
-    },
-  ]);
-
-  return confirmed;
+  return confirm({
+    message: '✅ 确认生成组件?',
+    default: true,
+  });
 }

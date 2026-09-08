@@ -137,7 +137,7 @@ main().catch((error: unknown) => {
   // 它已经把该说的话打完了，别再套一层「❌」
   if (error instanceof CommanderError) process.exit(error.exitCode);
 
-  // Ctrl+C / Ctrl+D 下 inquirer 抛 ExitPromptError，统一成中文取消提示
+  // Ctrl+C / Ctrl+D 下 @inquirer/prompts 抛 ExitPromptError，统一成中文取消提示
   const message = isAbort(error)
     ? '已取消'
     : error instanceof Error

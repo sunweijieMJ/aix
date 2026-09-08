@@ -1,4 +1,4 @@
-import { text, multiselect, isCancel } from '@clack/prompts';
+import { text, multiselect } from '@clack/prompts';
 import pc from 'picocolors';
 import { CreateAppError } from '../utils/errors';
 import { validateOverrideCode } from '../utils/validate';
@@ -36,7 +36,9 @@ export async function runPrompts(
       message: '定制目录名（如 sysu、gzdx）',
       validate: (value) => validateOverrideCode(value),
     });
-    if (isCancel(result)) {
+    // 按 typeof 判取消：isCancel 的守卫是 `value is typeof CANCEL_SYMBOL`，收不掉 string | symbol 里的
+    // symbol；clack 返回值里 symbol 只有取消哨兵这一种
+    if (typeof result === 'symbol') {
       console.log(pc.yellow('\n已取消'));
       return null;
     }
@@ -63,7 +65,7 @@ export async function runPrompts(
       initialValues: REQUIRED_MODULES,
       required: true,
     });
-    if (isCancel(result)) {
+    if (typeof result === 'symbol') {
       console.log(pc.yellow('\n已取消'));
       return null;
     }

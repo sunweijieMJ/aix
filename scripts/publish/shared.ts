@@ -6,7 +6,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
-import inquirer from 'inquirer';
+import { confirm as promptConfirm } from '@inquirer/prompts';
 
 // ============ 常量配置 ============
 
@@ -188,16 +188,7 @@ export const confirm = async (
     return defaultValue;
   }
 
-  const { answer } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'answer',
-      message,
-      default: defaultValue,
-    },
-  ]);
-
-  return answer as boolean;
+  return promptConfirm({ message, default: defaultValue });
 };
 
 // 规范化路径分隔符（Windows 兼容）

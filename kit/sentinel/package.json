@@ -34,10 +34,10 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@inquirer/prompts": "catalog:",
     "chalk": "catalog:",
     "commander": "catalog:",
     "fs-extra": "catalog:",
-    "inquirer": "catalog:",
     "ora": "catalog:"
   },
   "devDependencies": {

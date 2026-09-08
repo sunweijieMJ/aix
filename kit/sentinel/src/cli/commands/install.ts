@@ -7,7 +7,7 @@
 import path from 'node:path';
 import chalk from 'chalk';
 import type { Command } from 'commander';
-import inquirer from 'inquirer';
+import { confirm } from '@inquirer/prompts';
 import ora from 'ora';
 
 import type { InstallConfig } from '../../types/index.js';
@@ -72,14 +72,10 @@ async function runInstall(options: InstallOptions): Promise<void> {
     printConfigPreview(config);
 
     // 确认安装
-    const { confirmed } = await inquirer.prompt<{ confirmed: boolean }>([
-      {
-        type: 'confirm',
-        name: 'confirmed',
-        message: '确认安装?',
-        default: true,
-      },
-    ]);
+    const confirmed = await confirm({
+      message: '确认安装?',
+      default: true,
+    });
 
     if (!confirmed) {
       logger.info('已取消安装');

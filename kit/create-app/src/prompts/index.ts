@@ -17,6 +17,18 @@ function onCancel(): never {
   process.exit(process.stdin.isTTY ? 0 : 1);
 }
 
+/**
+ * 收掉 clack 返回值里的取消哨兵：取消即退出，调用方拿到的就是业务类型。
+ *
+ * 用 typeof 而不是 p.isCancel 收窄：isCancel 的守卫是 `value is typeof CANCEL_SYMBOL`，
+ * 从 `T | symbol` 里排除一个 unique symbol 收不掉 symbol 本身；而 clack 各 prompt 的返回值里
+ * symbol 只有取消哨兵这一种，按 typeof 判等价且能让类型收干净。
+ */
+function unwrap<T>(value: T | symbol): T {
+  if (typeof value === 'symbol') onCancel();
+  return value;
+}
+
 /** 步骤 1-2 的产物：项目基本信息 + 已确定的模板源 */
 export interface BasicInfo {
   name: string;
@@ -95,12 +107,7 @@ export async function collectBasicInfo(options: CollectBasicOptions = {}): Promi
   p.intro(pc.bold(pc.bgCyan(' create-app ')) + ' 前端项目脚手架');
 
   const name =
-    options.name ??
-    (await (async () => {
-      const result = await p.text({ message: '项目名称', validate: validateProjectName });
-      if (p.isCancel(result)) onCancel();
-      return result;
-    })());
+    options.name ?? unwrap(await p.text({ message: '项目名称', validate: validateProjectName }));
 
   // 命令行传入的项目名也要校验，避免非法名一路走到写盘
   const nameError = validateProjectName(name);
@@ -110,11 +117,8 @@ export async function collectBasicInfo(options: CollectBasicOptions = {}): Promi
 
   const description =
     options.description ??
-    (await (async () => {
-      const result = await p.text({ message: '项目描述（可选）', placeholder: '留空跳过' });
-      if (p.isCancel(result)) onCancel();
-      return result ?? '';
-    })());
+    unwrap(await p.text({ message: '项目描述（可选）', placeholder: '留空跳过' })) ??
+    '';
 
   // 提前检查目标目录，避免走完所有问答才报冲突
   const targetDir = path.resolve(process.cwd(), name);
@@ -131,13 +135,15 @@ export async function collectBasicInfo(options: CollectBasicOptions = {}): Promi
 
   // dry-run 不写盘，问「是否覆盖」纯属虚惊（还会在非交互下逼用户传 --force）
   if (fs.existsSync(targetDir) && !options.force && !options.dryRun) {
-    const overwrite = await p.confirm({
-      // 「覆盖」的真实语义是先清空再生成（保留 .git），措辞必须说破——
-      // 只写“是否覆盖”会被理解成同名文件覆写，用户不知道无关文件也会被删
-      message: `目录 ${pc.yellow(name)} 已存在，覆盖会先清空该目录（保留 .git），是否继续？`,
-      initialValue: false,
-    });
-    if (p.isCancel(overwrite) || !overwrite) onCancel();
+    const overwrite = unwrap(
+      await p.confirm({
+        // 「覆盖」的真实语义是先清空再生成（保留 .git），措辞必须说破——
+        // 只写“是否覆盖”会被理解成同名文件覆写，用户不知道无关文件也会被删
+        message: `目录 ${pc.yellow(name)} 已存在，覆盖会先清空该目录（保留 .git），是否继续？`,
+        initialValue: false,
+      }),
+    );
+    if (!overwrite) onCancel();
   }
 
   if (options.template) {
@@ -154,15 +160,16 @@ export async function collectBasicInfo(options: CollectBasicOptions = {}): Promi
     );
   }
 
-  const picked = await p.select({
-    message: '项目模版',
-    options: registry.map((entry) => ({
-      value: entry.id,
-      label: entry.label,
-      hint: entry.hint,
-    })),
-  });
-  if (p.isCancel(picked)) onCancel();
+  const picked = unwrap(
+    await p.select({
+      message: '项目模版',
+      options: registry.map((entry) => ({
+        value: entry.id,
+        label: entry.label,
+        hint: entry.hint,
+      })),
+    }),
+  );
 
   return { name, description, ...resolveTemplateArg(picked) };
 }
@@ -211,15 +218,14 @@ export async function collectFeatureSelection(
     );
   }
 
-  const result = await p.multiselect({
-    message: '选择功能特性',
-    options: entries.map(([id, def]) => ({ value: id, label: def.label, hint: def.hint })),
-    initialValues: entries.filter(([, def]) => def.default).map(([id]) => id),
-    required: false,
-  });
-  if (p.isCancel(result)) onCancel();
-
-  return result;
+  return unwrap(
+    await p.multiselect({
+      message: '选择功能特性',
+      options: entries.map(([id, def]) => ({ value: id, label: def.label, hint: def.hint })),
+      initialValues: entries.filter(([, def]) => def.default).map(([id]) => id),
+      required: false,
+    }),
+  );
 }
 
 /**
@@ -309,14 +315,15 @@ export async function collectTemplateParams(
       resolved[key] = def.default!.trim();
       continue;
     }
-    const answer = await p.text({
-      message: def.label,
-      initialValue: def.default,
-      // 非空 + 字符校验：与 --param 入口同一份 validateParamValue，两条入口不得漂移
-      validate: (value) =>
-        value && value.trim().length > 0 ? validateParamValue(value.trim()) : '不能为空',
-    });
-    if (p.isCancel(answer)) onCancel();
+    const answer = unwrap(
+      await p.text({
+        message: def.label,
+        initialValue: def.default,
+        // 非空 + 字符校验：与 --param 入口同一份 validateParamValue，两条入口不得漂移
+        validate: (value) =>
+          value && value.trim().length > 0 ? validateParamValue(value.trim()) : '不能为空',
+      }),
+    );
     resolved[key] = answer.trim();
   }
   return resolved;
@@ -326,34 +333,26 @@ export async function collectTemplateParams(
 export async function collectPostOptions(options: CollectPostOptions = {}): Promise<PostOptions> {
   const initGit =
     options.initGit ??
-    (await (async () => {
-      const result = await p.confirm({ message: '初始化 Git 仓库？', initialValue: true });
-      if (p.isCancel(result)) onCancel();
-      return result;
-    })());
+    unwrap(await p.confirm({ message: '初始化 Git 仓库？', initialValue: true }));
 
   const installDeps =
     options.installDeps ??
-    (await (async () => {
-      const result = await p.confirm({ message: '自动安装依赖？', initialValue: true });
-      if (p.isCancel(result)) onCancel();
-      return result;
-    })());
+    unwrap(await p.confirm({ message: '自动安装依赖？', initialValue: true }));
 
   // 不安装依赖时包管理器只影响提示文案，用默认值即可，少问一题；
   // `--pm` 显式给了就不再问（否则非交互下 `--install` 会卡在这一问上）
   let packageManager: PostOptions['packageManager'] = options.packageManager ?? 'pnpm';
   if (installDeps && options.packageManager === undefined) {
-    const result = await p.select({
-      message: '包管理器',
-      options: [
-        { value: 'pnpm' as const, label: 'pnpm', hint: 'recommended' },
-        { value: 'npm' as const, label: 'npm' },
-        { value: 'yarn' as const, label: 'yarn' },
-      ],
-    });
-    if (p.isCancel(result)) onCancel();
-    packageManager = result;
+    packageManager = unwrap(
+      await p.select({
+        message: '包管理器',
+        options: [
+          { value: 'pnpm' as const, label: 'pnpm', hint: 'recommended' },
+          { value: 'npm' as const, label: 'npm' },
+          { value: 'yarn' as const, label: 'yarn' },
+        ],
+      }),
+    );
   }
 
   return { packageManager, initGit, installDeps };
@@ -391,6 +390,6 @@ export async function confirmSummary(input: SummaryInput, skipConfirm = false): 
   p.note(buildSummary(input), '配置确认');
   if (skipConfirm) return;
 
-  const confirmed = await p.confirm({ message: '确认创建？', initialValue: true });
-  if (p.isCancel(confirmed) || !confirmed) onCancel();
+  const confirmed = unwrap(await p.confirm({ message: '确认创建？', initialValue: true }));
+  if (!confirmed) onCancel();
 }

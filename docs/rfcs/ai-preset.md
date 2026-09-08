@@ -1208,7 +1208,7 @@ npx @kit/ai-preset init --extend @myteam/ai-preset-erp
 | 依赖 | 版本 | 用途 |
 |------|------|------|
 | `commander` | ^14.x | CLI 命令解析 |
-| `inquirer` | ^13.x | 交互式问答 |
+| `@inquirer/prompts` | ^8.x | 交互式问答 |
 | `handlebars` | ^4.x | 模板引擎（选择 Handlebars 而非项目已有的 Eta，因其 partial/helper 生态更成熟，适合规则模板中可能出现的条件渲染和组合复用场景） |
 | `chalk` | ^5.x | 终端着色 |
 | `diff` | ^7.x | 文件差异对比 |

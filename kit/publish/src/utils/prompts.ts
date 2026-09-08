@@ -19,7 +19,7 @@ const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
 export const isInteractive = (): boolean => interactive;
 
-/** Ctrl+C / Ctrl+D：inquirer 抛 ExitPromptError，统一成「已取消」由入口处理 */
+/** Ctrl+C / Ctrl+D：@inquirer/prompts 抛 ExitPromptError，统一成「已取消」由入口处理 */
 export const isAbort = (error: unknown): boolean => {
   const e = error as { name?: string; message?: string } | undefined;
   return e?.name === 'ExitPromptError' || /^aborted/i.test(e?.message ?? '');
@@ -47,7 +47,7 @@ export const ask = async (
   return promptInput({
     message,
     default: defaultValue || undefined,
-    // inquirer 的约定是「通过返回 true，失败返回提示字符串」，与我们的 validate 正好互补
+    // @inquirer/prompts 的约定是「通过返回 true，失败返回提示字符串」，与我们的 validate 正好互补
     validate: validate ? (value: string) => validate(value.trim()) ?? true : undefined,
   }).then((value) => value.trim());
 };

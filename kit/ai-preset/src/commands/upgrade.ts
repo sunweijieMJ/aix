@@ -11,7 +11,7 @@
 
 import { createRequire } from 'node:module';
 import type { Command } from 'commander';
-import inquirer from 'inquirer';
+import { select } from '@inquirer/prompts';
 import chalk from 'chalk';
 import path from 'node:path';
 
@@ -163,17 +163,13 @@ async function runUpgrade(opts: UpgradeOptions): Promise<void> {
       continue;
     }
 
-    const { action } = await inquirer.prompt<{ action: string }>([
-      {
-        type: 'select',
-        name: 'action',
-        message: `${file.relativePath} 已被修改，如何处理?`,
-        choices: [
-          { name: '保留本地版本', value: 'keep' },
-          { name: '使用新版本（覆盖本地修改）', value: 'overwrite' },
-        ],
-      },
-    ]);
+    const action = await select<string>({
+      message: `${file.relativePath} 已被修改，如何处理?`,
+      choices: [
+        { name: '保留本地版本', value: 'keep' },
+        { name: '使用新版本（覆盖本地修改）', value: 'overwrite' },
+      ],
+    });
 
     if (action === 'overwrite') {
       confirmedFiles.push(file);

@@ -75,11 +75,11 @@ const getFrameworkInfo = (adapter: FrameworkAdapter): FrameworkInfo => ({
 /**
  * 解析「要处理的文件/目录路径」。统一三种入口的非交互化：
  *  1. 传了 --path：校验后直接使用（无效即 exit(1)，给出明确错误而非进入 prompt）；
- *  2. 未传 --path 且 interactive：回退到 inquirer 询问；
+ *  2. 未传 --path 且 interactive：回退到 @inquirer/prompts 询问；
  *  3. 未传 --path 且非交互（显式 --mode / --ci / 无 TTY）：直接报错退出，
- *     避免在 CI / 管道里调到 inquirer 卡死或 EOF 崩溃。
+ *     避免在 CI / 管道里调到 @inquirer/prompts 卡死或 EOF 崩溃。
  *
- * 这是「非交互 ⇒ 绝不碰 inquirer」规则在 generate / restore / automatic 三条
+ * 这是「非交互 ⇒ 绝不碰 @inquirer/prompts」规则在 generate / restore / automatic 三条
  * 路径上的落点（其余 prompt 早已包在 main 的 `if (interactive)` 内）。
  */
 const resolveTargetPath = async (
@@ -584,7 +584,7 @@ export default defineConfig({
   // 当显式指定了 --mode/-m 时，默认关闭交互模式；否则默认开启。
   // --ci 自述「非交互」，必须真正隐含非交互：否则 `i18n-tools --ci`（漏带 --mode）会在
   // 无 TTY 的 CI 里进入 promptForTopLevelMode 卡死/报错。
-  // stdin 非 TTY 同样默认关闭：管道里裸跑（漏带 --mode/--ci）时 inquirer 会把管道内容
+  // stdin 非 TTY 同样默认关闭：管道里裸跑（漏带 --mode/--ci）时 @inquirer/prompts 会把管道内容
   // 当成按键，空行即选中默认项「自动模式」并真跑。-i 显式开启仍优先（用户主动要交互，
   // 例如在 TTY 外自行喂输入）。
   const modeExplicitlySet = isModeExplicitlySet(process.argv.slice(2));
@@ -825,7 +825,7 @@ export default defineConfig({
         break;
       case ModeName.PRUNE:
         // interactive 透传：非交互（--mode/--ci 推导）且未 --ci 时 prune 直接报错，
-        // 绝不弹 inquirer 确认——stdin 常开管道下会无限挂起（「非交互 ⇒ 绝不碰 inquirer」）。
+        // 绝不弹 @inquirer/prompts 确认——stdin 常开管道下会无限挂起（「非交互 ⇒ 绝不碰 @inquirer/prompts」）。
         await executePrune(config, adapter, custom, {
           dryRun,
           ci: Boolean(argv.ci),
@@ -857,7 +857,7 @@ export default defineConfig({
           langs: csvLangs,
           dryRun,
           ci: Boolean(argv.ci),
-          // 同 PRUNE：非交互且未 --ci 时写回前报错退出，防 inquirer 挂起
+          // 同 PRUNE：非交互且未 --ci 时写回前报错退出，防 @inquirer/prompts 挂起
           interactive,
         });
         break;

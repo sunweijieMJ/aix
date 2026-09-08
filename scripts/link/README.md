@@ -89,7 +89,7 @@ pnpm link:publish
 ```
 
 **技术实现**：
-- 使用 `inquirer` 提供交互式选择
+- 使用 `@inquirer/prompts` 提供交互式选择
 - 使用 `chalk` 美化输出
 - 自动检测构建状态
 - 错误处理和友好提示
@@ -152,7 +152,7 @@ cd /path/to/your-business-project
   "devDependencies": {
     "tsx": "latest",
     "chalk": "^5.3.0",
-    "inquirer": "^10.2.0"
+    "@inquirer/prompts": "^8.7.2"
   }
 }
 ```
@@ -209,7 +209,7 @@ pnpm remove:yalc  # 自动恢复原始版本
 所有脚本依赖以下 npm 包（已在根 package.json 中）：
 
 - `chalk` - 终端颜色输出
-- `inquirer` - 交互式命令行界面
+- `@inquirer/prompts` - 交互式命令行界面
 - `tsx` - TypeScript 执行器
 
 ### 错误处理

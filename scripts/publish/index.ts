@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
-import inquirer from 'inquirer';
+import { select } from '@inquirer/prompts';
 
 // 导入共享模块
 import {
@@ -412,24 +412,20 @@ const showInteractiveMenu = async (args: ReturnType<typeof parseArgs>) => {
   console.log(chalk.cyan('           本地包发布工具              '));
   console.log(chalk.cyan('========================================'));
 
-  const { action } = await inquirer.prompt([
-    {
-      type: 'select',
-      name: 'action',
-      message: '请选择要执行的操作:',
-      choices: [
-        { name: '完整发布流程', value: 'full' },
-        { name: '仅创建 changeset', value: 'create' },
-        { name: '仅更新版本号', value: 'version' },
-        { name: '仅构建并发布', value: 'publish' },
-        { name: '预览待发布的包 (dry-run)', value: 'dry-run' },
-        { name: '废弃包版本 (deprecate)', value: 'deprecate' },
-        { name: '撤回包版本 (unpublish)', value: 'unpublish' },
-        { name: '退出', value: 'exit' },
-      ],
-      default: 'full',
-    },
-  ]);
+  const action = await select<string>({
+    message: '请选择要执行的操作:',
+    choices: [
+      { name: '完整发布流程', value: 'full' },
+      { name: '仅创建 changeset', value: 'create' },
+      { name: '仅更新版本号', value: 'version' },
+      { name: '仅构建并发布', value: 'publish' },
+      { name: '预览待发布的包 (dry-run)', value: 'dry-run' },
+      { name: '废弃包版本 (deprecate)', value: 'deprecate' },
+      { name: '撤回包版本 (unpublish)', value: 'unpublish' },
+      { name: '退出', value: 'exit' },
+    ],
+    default: 'full',
+  });
 
   if (action === 'exit') {
     console.log(chalk.green('已退出'));
@@ -497,7 +493,7 @@ const runFullProcess = async (
       createChangesetNonInteractive(projectRoot, changesetInput);
     } else if (!skipPrompts) {
       // 已有 changeset 且未显式指定：仅在交互模式下询问是否追加新的 changeset
-      // skipPrompts 下直接复用已有 changeset，避免卡在 inquirer 的必填输入
+      // skipPrompts 下直接复用已有 changeset，避免卡在 @inquirer/prompts 的必填输入
       await createChangeset(projectRoot, skipPrompts);
     }
   } catch (error) {

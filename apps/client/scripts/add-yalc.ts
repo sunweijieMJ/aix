@@ -2,8 +2,8 @@
 import { execSync } from 'child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { checkbox, confirm } from '@inquirer/prompts';
 import chalk from 'chalk';
-import inquirer from 'inquirer';
 
 /**
  * 智能添加 Yalc 链接
@@ -104,23 +104,19 @@ async function addYalcDependencies(): Promise<void> {
   }
 
   // 交互式选择包
-  const { selectedPackages } = await inquirer.prompt([
-    {
-      type: 'checkbox',
-      name: 'selectedPackages',
-      message: '请选择要添加的组件包:',
-      choices: [
-        { name: '全部', value: 'all' },
-        ...packages.map((pkg) => ({ name: `@aix/${pkg}`, value: pkg })),
-      ],
-      validate: (answer) => {
-        if (answer.length === 0) {
-          return '请至少选择一个包';
-        }
-        return true;
-      },
+  const selectedPackages = await checkbox<string>({
+    message: '请选择要添加的组件包:',
+    choices: [
+      { name: '全部', value: 'all' },
+      ...packages.map((pkg) => ({ name: `@aix/${pkg}`, value: pkg })),
+    ],
+    validate: (selected) => {
+      if (selected.length === 0) {
+        return '请至少选择一个包';
+      }
+      return true;
     },
-  ]);
+  });
 
   // 处理"全部"选项
   const packagesToAdd = selectedPackages.includes('all') ? packages : selectedPackages;
@@ -169,14 +165,10 @@ async function main(): Promise<void> {
   const yalcDir = join(process.cwd(), '.yalc');
   if (existsSync(yalcDir)) {
     console.log(chalk.yellow('⚠ 检测到已存在 yalc 链接'));
-    const { shouldContinue } = await inquirer.prompt([
-      {
-        type: 'confirm',
-        name: 'shouldContinue',
-        message: '是否要继续添加（会覆盖现有链接）？',
-        default: false,
-      },
-    ]);
+    const shouldContinue = await confirm({
+      message: '是否要继续添加（会覆盖现有链接）？',
+      default: false,
+    });
 
     if (!shouldContinue) {
       console.log(chalk.gray('已取消'));

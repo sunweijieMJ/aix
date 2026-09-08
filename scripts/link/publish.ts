@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import chalk from 'chalk';
-import inquirer from 'inquirer';
+import { checkbox } from '@inquirer/prompts';
 
 /**
  * 发布组件库包到 yalc 本地仓库
@@ -60,21 +60,17 @@ async function main() {
     process.exit(1);
   }
 
-  const { selectedPackages } = await inquirer.prompt([
-    {
-      type: 'checkbox',
-      name: 'selectedPackages',
-      message: '请选择要发布的包:',
-      choices: [
-        { name: '全部', value: '__all__' },
-        ...packages.map((pkg) => ({
-          name: `@aix/${pkg}`,
-          value: pkg,
-          checked: false,
-        })),
-      ],
-    },
-  ]);
+  const selectedPackages = await checkbox<string>({
+    message: '请选择要发布的包:',
+    choices: [
+      { name: '全部', value: '__all__' },
+      ...packages.map((pkg) => ({
+        name: `@aix/${pkg}`,
+        value: pkg,
+        checked: false,
+      })),
+    ],
+  });
 
   if (selectedPackages.length === 0) {
     console.log(chalk.yellow('未选择任何包'));

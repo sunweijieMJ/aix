@@ -1,10 +1,10 @@
 /**
- * 交互式 Prompts - 基于 inquirer
+ * 交互式 Prompts - 基于 @inquirer/prompts
  *
  * 封装 visual-test init 所需的交互式收集流程
  */
 
-import inquirer from 'inquirer';
+import { confirm, input, password, select } from '@inquirer/prompts';
 
 /**
  * init 命令收集到的用户配置
@@ -19,20 +19,14 @@ export interface InitAnswers {
 
 /**
  * 运行 visual-test init 的交互式问答
- *
- * 分步收集以兼容 inquirer v9+ 的严格类型
  */
 export async function promptInit(): Promise<InitAnswers> {
-  const { projectName } = await inquirer.prompt({
-    type: 'input',
-    name: 'projectName',
+  const projectName = await input({
     message: 'Project name:',
     default: 'my-project',
   });
 
-  const { baselineProvider } = await inquirer.prompt({
-    type: 'list',
-    name: 'baselineProvider',
+  const baselineProvider = await select<'local' | 'figma-mcp'>({
     message: 'Baseline provider:',
     choices: [
       { name: 'Local (manual screenshots)', value: 'local' },
@@ -41,9 +35,7 @@ export async function promptInit(): Promise<InitAnswers> {
     default: 'local',
   });
 
-  const { enableLLM } = await inquirer.prompt({
-    type: 'confirm',
-    name: 'enableLLM',
+  const enableLLM = await confirm({
     message: 'Enable LLM analysis?',
     default: true,
   });
@@ -52,9 +44,7 @@ export async function promptInit(): Promise<InitAnswers> {
   let apiKey: string | undefined;
 
   if (enableLLM) {
-    const modelAnswer = await inquirer.prompt({
-      type: 'list',
-      name: 'llmModel',
+    llmModel = await select<string>({
       message: 'LLM model:',
       choices: [
         { name: 'GPT-4o (OpenAI)', value: 'gpt-4o' },
@@ -65,15 +55,12 @@ export async function promptInit(): Promise<InitAnswers> {
       ],
       default: 'gpt-4o',
     });
-    llmModel = modelAnswer.llmModel;
 
-    const keyAnswer = await inquirer.prompt({
-      type: 'password',
-      name: 'apiKey',
+    const key = await password({
       message: 'API Key (leave empty to use env variable):',
       mask: '*',
     });
-    apiKey = keyAnswer.apiKey || undefined;
+    apiKey = key || undefined;
   }
 
   return {

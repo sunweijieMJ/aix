@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { readdir, readFile } from 'fs/promises';
 import chalk from 'chalk';
-import inquirer from 'inquirer';
+import { checkbox, input, select } from '@inquirer/prompts';
 import {
   WORKSPACE_DIRS,
   type WorkspacePackage,
@@ -143,36 +143,27 @@ export const setupReleaseMode = async (
       console.log(chalk.dim('[自动选择: 正式版本]'));
       mode = 'release';
     } else {
-      const { selected } = await inquirer.prompt([
-        {
-          type: 'select',
-          name: 'selected',
-          message: '请选择发布模式:',
-          choices: [
-            { name: '正式版本', value: 'release' },
-            { name: 'Beta 版本', value: 'beta' },
-            { name: 'Alpha 版本', value: 'alpha' },
-            { name: '自定义标签 (如 oem)…', value: CUSTOM_TAG_SENTINEL },
-          ],
-          default: 'release',
-        },
-      ]);
-      mode = selected as string;
+      mode = await select<string>({
+        message: '请选择发布模式:',
+        choices: [
+          { name: '正式版本', value: 'release' },
+          { name: 'Beta 版本', value: 'beta' },
+          { name: 'Alpha 版本', value: 'alpha' },
+          { name: '自定义标签 (如 oem)…', value: CUSTOM_TAG_SENTINEL },
+        ],
+        default: 'release',
+      });
 
       if (mode === CUSTOM_TAG_SENTINEL) {
-        const { customTag } = await inquirer.prompt<{ customTag: string }>([
-          {
-            type: 'input',
-            name: 'customTag',
-            message: '请输入自定义 dist-tag (如 oem):',
-            validate: (input: string) => {
-              const tag = normalizeTag(input);
-              if (!tag) return '标签不能为空';
-              if (tag === 'release') return '正式版本请直接选择"正式版本"选项';
-              return validateDistTag(tag) ?? true;
-            },
+        const customTag = await input({
+          message: '请输入自定义 dist-tag (如 oem):',
+          validate: (value: string) => {
+            const tag = normalizeTag(value);
+            if (!tag) return '标签不能为空';
+            if (tag === 'release') return '正式版本请直接选择"正式版本"选项';
+            return validateDistTag(tag) ?? true;
           },
-        ]);
+        });
         mode = normalizeTag(customTag);
       }
     }
@@ -230,7 +221,7 @@ const writeChangesetFile = (
   return `${changesetId}.md`;
 };
 
-// 非交互创建参数：供 AI/CI 等无 TTY 场景绕过 inquirer 直接写 changeset 文件
+// 非交互创建参数：供 AI/CI 等无 TTY 场景绕过 @inquirer/prompts 直接写 changeset 文件
 export interface NonInteractiveChangesetOptions {
   /** 要包含的包 */
   packages: string[];
@@ -240,7 +231,7 @@ export interface NonInteractiveChangesetOptions {
   summary: string;
 }
 
-// 非交互创建 changeset（校验包名/版本类型/摘要后直接写文件，不弹任何 inquirer 提示）
+// 非交互创建 changeset（校验包名/版本类型/摘要后直接写文件，不弹任何 @inquirer/prompts 提示）
 export const createChangesetNonInteractive = (
   projectRoot: string,
   options: NonInteractiveChangesetOptions,
@@ -299,39 +290,31 @@ export const createChangeset = async (
   }
 
   // 1. 选择要包含的包
-  const { selectedPackages } = await inquirer.prompt<{ selectedPackages: string[] }>([
-    {
-      type: 'checkbox',
-      name: 'selectedPackages',
-      message: '请选择要发布的包:',
-      choices: publishablePackages.map((pkg: WorkspacePackage) => ({
-        name: `${pkg.name} ${chalk.gray(`(当前版本: ${pkg.version})`)}`,
-        value: pkg.name,
-      })),
-      validate: (answer: string[]) => {
-        if (answer.length === 0) {
-          return '请至少选择一个包';
-        }
-        return true;
-      },
+  const selectedPackages = await checkbox<string>({
+    message: '请选择要发布的包:',
+    choices: publishablePackages.map((pkg: WorkspacePackage) => ({
+      name: `${pkg.name} ${chalk.gray(`(当前版本: ${pkg.version})`)}`,
+      value: pkg.name,
+    })),
+    validate: (selected) => {
+      if (selected.length === 0) {
+        return '请至少选择一个包';
+      }
+      return true;
     },
-  ]);
+  });
 
   // 2. 多包时询问是否独立配置 CHANGELOG
   let perPackage = false;
   if (selectedPackages.length > 1) {
-    const { mode } = await inquirer.prompt<{ mode: 'shared' | 'per-package' }>([
-      {
-        type: 'select',
-        name: 'mode',
-        message: '多个包的变更说明配置方式:',
-        choices: [
-          { name: '统一配置 (所有包使用相同的版本类型和变更说明)', value: 'shared' },
-          { name: '逐个配置 (为每个包单独设置版本类型和变更说明)', value: 'per-package' },
-        ],
-        default: 'shared',
-      },
-    ]);
+    const mode = await select<'shared' | 'per-package'>({
+      message: '多个包的变更说明配置方式:',
+      choices: [
+        { name: '统一配置 (所有包使用相同的版本类型和变更说明)', value: 'shared' },
+        { name: '逐个配置 (为每个包单独设置版本类型和变更说明)', value: 'per-package' },
+      ],
+      default: 'shared',
+    });
     perPackage = mode === 'per-package';
   }
 
@@ -342,43 +325,27 @@ export const createChangeset = async (
   if (perPackage) {
     for (const pkgName of selectedPackages) {
       console.log(chalk.cyan(`\n配置包: ${pkgName}`));
-      const { bumpType } = await inquirer.prompt<{ bumpType: string }>([
-        {
-          type: 'select',
-          name: 'bumpType',
-          message: `[${pkgName}] 请选择版本升级类型:`,
-          choices: BUMP_TYPE_CHOICES,
-          default: 'patch',
-        },
-      ]);
-      const { summary } = await inquirer.prompt<{ summary: string }>([
-        {
-          type: 'input',
-          name: 'summary',
-          message: `[${pkgName}] 请输入变更说明:`,
-          validate: (input: string) => (input.trim() ? true : '变更说明不能为空'),
-        },
-      ]);
+      const bumpType = await select<string>({
+        message: `[${pkgName}] 请选择版本升级类型:`,
+        choices: BUMP_TYPE_CHOICES,
+        default: 'patch',
+      });
+      const summary = await input({
+        message: `[${pkgName}] 请输入变更说明:`,
+        validate: (value: string) => (value.trim() ? true : '变更说明不能为空'),
+      });
       entries.push({ pkg: pkgName, bumpType, summary: summary.trim() });
     }
   } else {
-    const { bumpType } = await inquirer.prompt<{ bumpType: string }>([
-      {
-        type: 'select',
-        name: 'bumpType',
-        message: '请选择版本升级类型:',
-        choices: BUMP_TYPE_CHOICES,
-        default: 'patch',
-      },
-    ]);
-    const { summary } = await inquirer.prompt<{ summary: string }>([
-      {
-        type: 'input',
-        name: 'summary',
-        message: '请输入变更说明 (将显示在 CHANGELOG 中):',
-        validate: (input: string) => (input.trim() ? true : '变更说明不能为空'),
-      },
-    ]);
+    const bumpType = await select<string>({
+      message: '请选择版本升级类型:',
+      choices: BUMP_TYPE_CHOICES,
+      default: 'patch',
+    });
+    const summary = await input({
+      message: '请输入变更说明 (将显示在 CHANGELOG 中):',
+      validate: (value: string) => (value.trim() ? true : '变更说明不能为空'),
+    });
     for (const pkg of selectedPackages) {
       entries.push({ pkg, bumpType, summary: summary.trim() });
     }

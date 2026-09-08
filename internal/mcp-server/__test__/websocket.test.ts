@@ -8,6 +8,33 @@ function getNextPort(): number {
   return portCounter++;
 }
 
+// 服务端与客户端两端都钉在同一个显式 IP，不用主机名：主机名在 dns verbatim 顺序下
+// 解析为 ::1 优先，服务端只会绑到其中一个地址族，而客户端会走 happy-eyeballs 双族并发
+// 尝试——压力下首族尝试超时、次族被拒即得到双族 AggregateError（ECONNREFUSED），
+// 表现为随机连接失败。钉死同一个 IP 后连接路径唯一，不受 DNS 顺序与双族竞速影响。
+const TEST_HOST = '127.0.0.1';
+const wsUrl = (port: number): string => `ws://${TEST_HOST}:${port}/mcp`;
+
+// 两个握手等待助手统一挂 'error' 监听：ws 的 'error' 事件无监听时会抛成 uncaught 错误，
+// 把一次连接抖动放大成整轮测试失败；挂上后失败以 reject 呈现，定位到具体用例。
+/** 等待握手完成并消费欢迎消息，返回其解析结果 */
+function waitWelcome(client: WebSocket): Promise<any> {
+  return new Promise((resolve, reject) => {
+    client.once('error', reject);
+    client.once('open', () => {
+      client.once('message', (data) => resolve(JSON.parse(data.toString())));
+    });
+  });
+}
+
+/** 仅等待握手完成，不消费欢迎消息 */
+function waitOpen(client: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    client.once('error', reject);
+    client.once('open', () => resolve());
+  });
+}
+
 describe('WebSocketTransport', () => {
   let transport: WebSocketTransport;
   let testPort: number;
@@ -25,7 +52,7 @@ describe('WebSocketTransport', () => {
 
   describe('constructor', () => {
     it('应该使用默认配置创建 WebSocket Transport', () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       expect(transport).toBeInstanceOf(WebSocketTransport);
     });
 
@@ -44,15 +71,15 @@ describe('WebSocketTransport', () => {
 
   describe('start', () => {
     it('应该成功启动 WebSocket 服务器', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await expect(transport.start()).resolves.not.toThrow();
     });
 
     it('应该在端口被占用时抛出错误', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
-      const transport2 = new WebSocketTransport({ port: testPort });
+      const transport2 = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       try {
         await expect(transport2.start()).rejects.toThrow();
       } finally {
@@ -64,28 +91,25 @@ describe('WebSocketTransport', () => {
 
   describe('close', () => {
     it('应该成功关闭 WebSocket 服务器', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
       await expect(transport.close()).resolves.not.toThrow();
     });
 
     it('应该在未启动时安全关闭', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await expect(transport.close()).resolves.not.toThrow();
     });
   });
 
   describe('客户端连接', () => {
     it('应该接受客户端连接', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
-      const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client = new WebSocket(wsUrl(testPort));
 
-      await new Promise<void>((resolve, reject) => {
-        client.on('open', resolve);
-        client.on('error', reject);
-      });
+      await waitOpen(client);
 
       expect(client.readyState).toBe(WebSocket.OPEN);
 
@@ -93,17 +117,12 @@ describe('WebSocketTransport', () => {
     });
 
     it('应该发送欢迎消息', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
-      const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client = new WebSocket(wsUrl(testPort));
 
-      const welcomeMessage = await new Promise<any>((resolve, reject) => {
-        client.on('message', (data) => {
-          resolve(JSON.parse(data.toString()));
-        });
-        client.on('error', reject);
-      });
+      const welcomeMessage = await waitWelcome(client);
 
       expect(welcomeMessage.type).toBe('welcome');
       expect(welcomeMessage.clientId).toBeDefined();
@@ -115,6 +134,7 @@ describe('WebSocketTransport', () => {
     it('应该限制最大连接数', async () => {
       transport = new WebSocketTransport({
         port: testPort,
+        host: TEST_HOST,
         maxConnections: 2,
       });
       await transport.start();
@@ -123,7 +143,9 @@ describe('WebSocketTransport', () => {
 
       // 依次创建连接，确保顺序
       for (let i = 0; i < 3; i++) {
-        const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
+        const client = new WebSocket(wsUrl(testPort));
+        // 超出上限的第 3 条连接预期被服务端拒绝：显式吞掉 error，同样是为了不抛成 uncaught
+        client.on('error', () => {});
         clients.push(client);
         // 等待每个连接完成握手
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -146,7 +168,7 @@ describe('WebSocketTransport', () => {
 
   describe('消息处理', () => {
     it('应该接收和处理消息', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
       const receivedMessages: any[] = [];
@@ -154,16 +176,10 @@ describe('WebSocketTransport', () => {
         receivedMessages.push(message);
       };
 
-      const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client = new WebSocket(wsUrl(testPort));
 
       // 等待连接并跳过欢迎消息
-      await new Promise<void>((resolve) => {
-        client.once('open', () => {
-          client.once('message', () => {
-            resolve();
-          });
-        });
-      });
+      await waitWelcome(client);
 
       // 发送测试消息
       const testMessage = {
@@ -184,19 +200,13 @@ describe('WebSocketTransport', () => {
     });
 
     it('应该处理无效的 JSON 消息', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
-      const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client = new WebSocket(wsUrl(testPort));
 
       // 等待连接并跳过欢迎消息
-      await new Promise<void>((resolve) => {
-        client.once('open', () => {
-          client.once('message', () => {
-            resolve();
-          });
-        });
-      });
+      await waitWelcome(client);
 
       // 发送无效 JSON
       client.send('invalid json {');
@@ -217,19 +227,13 @@ describe('WebSocketTransport', () => {
 
   describe('send', () => {
     it('应该发送消息到客户端', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
-      const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client = new WebSocket(wsUrl(testPort));
 
       // 等待连接并跳过欢迎消息
-      await new Promise<void>((resolve) => {
-        client.once('open', () => {
-          client.once('message', () => {
-            resolve();
-          });
-        });
-      });
+      await waitWelcome(client);
 
       // 发送请求以设置 currentClientId
       const request = { jsonrpc: '2.0', method: 'test', id: 1 };
@@ -255,26 +259,15 @@ describe('WebSocketTransport', () => {
     });
 
     it('应该正确路由响应到发起请求的客户端', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
       // 创建两个客户端
-      const client1 = new WebSocket(`ws://localhost:${testPort}/mcp`);
-      const client2 = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client1 = new WebSocket(wsUrl(testPort));
+      const client2 = new WebSocket(wsUrl(testPort));
 
       // 等待两个客户端都连接并跳过欢迎消息
-      await Promise.all([
-        new Promise<void>((resolve) => {
-          client1.once('open', () => {
-            client1.once('message', () => resolve());
-          });
-        }),
-        new Promise<void>((resolve) => {
-          client2.once('open', () => {
-            client2.once('message', () => resolve());
-          });
-        }),
-      ]);
+      await Promise.all([waitWelcome(client1), waitWelcome(client2)]);
 
       // client1 发送请求
       const request1 = { jsonrpc: '2.0', method: 'test1', id: 'req-1' };
@@ -313,25 +306,13 @@ describe('WebSocketTransport', () => {
 
   describe('broadcast', () => {
     it('应该广播消息到所有客户端', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
-      const clients = [
-        new WebSocket(`ws://localhost:${testPort}/mcp`),
-        new WebSocket(`ws://localhost:${testPort}/mcp`),
-      ];
+      const clients = [new WebSocket(wsUrl(testPort)), new WebSocket(wsUrl(testPort))];
 
       // 等待连接并跳过欢迎消息
-      await Promise.all(
-        clients.map(
-          (c) =>
-            new Promise<void>((resolve) => {
-              c.once('open', () => {
-                c.once('message', () => resolve());
-              });
-            }),
-        ),
-      );
+      await Promise.all(clients.map((c) => waitWelcome(c)));
 
       // 设置广播消息接收 Promise
       const receivePromises = clients.map(
@@ -359,19 +340,13 @@ describe('WebSocketTransport', () => {
 
   describe('sendToClient', () => {
     it('应该发送消息到指定客户端', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
-      const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client = new WebSocket(wsUrl(testPort));
 
       // 等待连接并获取欢迎消息以得到 clientId
-      const welcomeMessage = await new Promise<any>((resolve) => {
-        client.once('open', () => {
-          client.once('message', (data) => {
-            resolve(JSON.parse(data.toString()));
-          });
-        });
-      });
+      const welcomeMessage = await waitWelcome(client);
 
       const clientId = welcomeMessage.clientId;
 
@@ -396,7 +371,7 @@ describe('WebSocketTransport', () => {
     });
 
     it('应该对不存在的客户端返回 false', () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       const sent = transport.sendToClient('non-existent', { test: true });
       expect(sent).toBe(false);
     });
@@ -404,18 +379,15 @@ describe('WebSocketTransport', () => {
 
   describe('getConnectedClients', () => {
     it('应该返回所有连接的客户端 ID', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
       expect(transport.getConnectedClients()).toHaveLength(0);
 
-      const client1 = new WebSocket(`ws://localhost:${testPort}/mcp`);
-      const client2 = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client1 = new WebSocket(wsUrl(testPort));
+      const client2 = new WebSocket(wsUrl(testPort));
 
-      await Promise.all([
-        new Promise<void>((resolve) => client1.on('open', resolve)),
-        new Promise<void>((resolve) => client2.on('open', resolve)),
-      ]);
+      await Promise.all([waitOpen(client1), waitOpen(client2)]);
 
       expect(transport.getConnectedClients()).toHaveLength(2);
 
@@ -432,7 +404,7 @@ describe('WebSocketTransport', () => {
 
   describe('getStats', () => {
     it('应该返回正确的连接统计', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
       const initialStats = transport.getStats();
@@ -440,16 +412,10 @@ describe('WebSocketTransport', () => {
       expect(initialStats.activeConnections).toBe(0);
       expect(initialStats.totalMessages).toBe(0);
 
-      const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client = new WebSocket(wsUrl(testPort));
 
       // 等待连接并跳过欢迎消息
-      await new Promise<void>((resolve) => {
-        client.once('open', () => {
-          client.once('message', () => {
-            resolve();
-          });
-        });
-      });
+      await waitWelcome(client);
 
       // 发送几条消息
       client.send(JSON.stringify({ test: 1 }));
@@ -470,7 +436,7 @@ describe('WebSocketTransport', () => {
 
   describe('事件处理器', () => {
     it('应该在客户端断开时正确清理而不触发 transport onclose', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
       let closeCalled = false;
@@ -478,11 +444,9 @@ describe('WebSocketTransport', () => {
         closeCalled = true;
       };
 
-      const client = new WebSocket(`ws://localhost:${testPort}/mcp`);
+      const client = new WebSocket(wsUrl(testPort));
 
-      await new Promise<void>((resolve) => {
-        client.on('open', resolve);
-      });
+      await waitOpen(client);
 
       client.close();
 
@@ -495,7 +459,7 @@ describe('WebSocketTransport', () => {
     });
 
     it('应该触发 onError 处理器当发生错误', async () => {
-      transport = new WebSocketTransport({ port: testPort });
+      transport = new WebSocketTransport({ port: testPort, host: TEST_HOST });
       await transport.start();
 
       let errorCalled = false;

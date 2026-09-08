@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import { PruneProcessor } from '../src/core/PruneProcessor';
 import { CsvImportProcessor } from '../src/core/CsvImportProcessor';
-import inquirer from 'inquirer';
+import { confirm } from '@inquirer/prompts';
 import { InteractiveUtils } from '../src/utils/interactive-utils';
 import { LoggerUtils } from '../src/utils/logger';
 import { createFrameworkAdapter } from '../src/adapters';
@@ -14,14 +14,23 @@ import type { I18nToolsConfig, ResolvedConfig } from '../src/config';
 
 /**
  * 端到端验证（2026-08-28）发现的 P1 回归集：破坏性命令（prune / csv-import）的
- * 非交互守卫。此前二者只认 --ci，非交互会话（--mode 推导）下仍会弹 inquirer 确认——
- * stdin 为常开管道（agent / CI 编排常见）时无限挂起。修复后：
- *  - 非交互且未 --ci → 破坏性写入前直接报错退出（「非交互 ⇒ 绝不碰 inquirer」）；
+ * 非交互守卫。此前二者只认 --ci，非交互会话（--mode 推导）下仍会弹 @inquirer/prompts
+ * 确认——stdin 为常开管道（agent / CI 编排常见）时无限挂起。修复后：
+ *  - 非交互且未 --ci → 破坏性写入前直接报错退出（「非交互 ⇒ 绝不碰 @inquirer/prompts」）；
  *  - 交互取消 → 收尾打「已取消」，不再以「✅ …完成」的 SUCCESS 误导判读。
  */
 
+// 只替换 confirm：其余导出保持真实实现，避免影响未走确认路径的用例
+vi.mock('@inquirer/prompts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@inquirer/prompts')>();
+  return { ...actual, confirm: vi.fn() };
+});
+
+const confirmMock = vi.mocked(confirm);
+
 let tmpDir: string;
 beforeEach(() => {
+  confirmMock.mockReset();
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'destructive-guard-'));
 });
 afterEach(() => {
@@ -72,8 +81,9 @@ describe('PruneProcessor — 非交互破坏性守卫', () => {
       interactive: false,
     });
     await expect(processor.execute()).rejects.toThrow(/需显式传 --ci/);
-    // 关键：inquirer 路径一次都不许进
+    // 关键：确认路径一次都不许进
     expect(promptSpy).not.toHaveBeenCalled();
+    expect(confirmMock).not.toHaveBeenCalled();
     // 破坏性写入未发生
     const after = JSON.parse(
       fs.readFileSync(path.join(config.io.localesDir, 'zh-CN.json'), 'utf-8'),
@@ -198,29 +208,25 @@ describe('CsvImportProcessor — 非交互破坏性守卫', () => {
 });
 
 /**
- * 破坏性确认的默认值：inquirer 的 confirm 会把 default 渲染成 (Y/n) / (y/N)。
+ * 破坏性确认的默认值：@inquirer/prompts 的 confirm 会把 default 渲染成 (Y/n) / (y/N)。
  * 此前 promptForGenericConfirmation 恒为 `default: true`，prune 删孤儿 key、
  * csv-import 覆写 translations 都是回车即执行，且与用户读到的 "y/N" 直觉相反。
  */
 describe('InteractiveUtils — 确认提示的默认值', () => {
   it('promptForGenericConfirmation 默认 No（破坏性动作回车不执行）', async () => {
-    const promptSpy = vi.spyOn(inquirer, 'prompt').mockResolvedValue({ confirmed: false } as never);
+    confirmMock.mockResolvedValue(false);
 
     await InteractiveUtils.promptForGenericConfirmation('确认从所有 locale 删除孤儿 key？');
 
-    expect(promptSpy).toHaveBeenCalledWith([
-      expect.objectContaining({ type: 'confirm', default: false }),
-    ]);
+    expect(confirmMock).toHaveBeenCalledWith(expect.objectContaining({ default: false }));
   });
 
   it('显式声明时才默认 Yes：promptForConfirmation 委托后仍保持原有 default:true', async () => {
-    const promptSpy = vi.spyOn(inquirer, 'prompt').mockResolvedValue({ confirmed: true } as never);
+    confirmMock.mockResolvedValue(true);
 
     const ok = await InteractiveUtils.promptForConfirmation(ModeName.PRUNE, false, false);
 
     expect(ok).toBe(true);
-    expect(promptSpy).toHaveBeenCalledWith([
-      expect.objectContaining({ type: 'confirm', default: true }),
-    ]);
+    expect(confirmMock).toHaveBeenCalledWith(expect.objectContaining({ default: true }));
   });
 });
