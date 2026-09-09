@@ -2,10 +2,10 @@
  * 发布前后的门禁：问人、打日志、调 registry。
  *
  * 每条判据都拆成两层，本文件是「壳」那一半 —— 算结论的纯函数
- *（collectVersionTagWarnings、planDistTagUpdate）在 versioning.ts。
+ *（collectVersionTagWarnings、planDistTagUpdate 在 versioning.ts，planGitTag 在 git-tag.ts）。
  *
  * 拆开是为了让它们能被离线测试直接跑：判据与 CLI 解析、菜单、确认流程
- * 绑在一起的话，一行断言都写不了。纯的那半放 versioning.ts 而不是留在这里，
+ * 绑在一起的话，一行断言都写不了。纯的那半不留在这里，
  * 是因为本文件为了 ensureBuiltDist 要 import manifest.ts，
  * 会把 es-module-lexer 的 WASM 初始化一路拖进测试的依赖图。
  */
@@ -15,7 +15,16 @@ import { confirm } from '../utils/prompts';
 import { logInfo, logOk, logWarn } from '../utils/logger';
 import * as npm from './npm';
 import { collectVersionTagWarnings, planDistTagUpdate } from './versioning';
-import { getBranch, getCommit, getDirtyFiles } from './git';
+import {
+  createTag,
+  getBranch,
+  getCommit,
+  getDirtyFiles,
+  getTagCommit,
+  hasCommit,
+  pushTag,
+} from './git';
+import { planGitTag } from './git-tag';
 import { BUILD_META_FILE, formatBuildMeta, readBuildMeta, type Manifest } from './manifest';
 import type { PublishContext } from '../config/types';
 
@@ -167,6 +176,89 @@ export const verifyDistTag = ({
 
   logWarn(message);
   npm.setDistTag(name, version, tag, registry);
+};
+
+/**
+ * 发布成功后给来源 commit 打一个 git tag，可选推送。
+ *
+ * 补的是溯源的反向那条边：版本号只写进 dist/package.json，根 package.json 不动，
+ * 仓库里因此没有任何「哪个 commit 发了 x.y.z」的记录 —— 从 tarball 的 gitHead 能反查 commit，
+ * 从仓库却看不出发过哪些版本。
+ *
+ * 「这次打不打」不在这里决定：tag 名已由调用方渲染并过了引用名校验，配置关闭 / --no-git-tag /
+ * dry-run 时根本不会调到这里。这里只回答「打在哪个 commit 上」—— 依据是真实落盘的
+ * .build-meta.json，而不是确认摘要里那次构建之前的预判。
+ *
+ * 任何一步失败都只降级成告警（推送这步在这里兜，其余由调用方兜）：tag 是事后记录，
+ * 不该让一次已经成功的发布报失败。
+ */
+export const recordGitTag = ({
+  ctx,
+  tagName,
+  name,
+  version,
+  distTag,
+  push,
+}: {
+  ctx: PublishContext;
+  /** 已渲染、已通过 check-ref-format 的 git tag 名 */
+  tagName: string;
+  name: string;
+  version: string;
+  /** 本次发布用的 dist-tag，写进 annotated tag 的 message */
+  distTag: string;
+  push: boolean;
+}): void => {
+  const { remote } = ctx.config.git;
+
+  // 构建本身不产生 commit，这里的结论应当与确认摘要里的预判一致；
+  // 不一致只有一种可能 —— 构建把受 git 跟踪的文件写脏了，此时以真实 meta 为准
+  const plan = planGitTag({
+    meta: readBuildMeta(ctx.distPath),
+    tagName,
+    existingTagCommit: getTagCommit(tagName, ctx.projectRoot),
+  });
+  if (plan.action === 'skip') {
+    logWarn(`未打 git tag ${tagName}: ${plan.reason}`);
+    return;
+  }
+
+  if (plan.action === 'create') {
+    // 产物可以来自另一个 checkout（-a publish 复用别处拷来的 dist），那个 commit 在这里未必有
+    if (!hasCommit(plan.commit, ctx.projectRoot)) {
+      logWarn(`未打 git tag ${tagName}: 产物来源 ${plan.commit.slice(0, 8)} 不在当前仓库里`);
+      return;
+    }
+    createTag(
+      {
+        name: tagName,
+        commit: plan.commit,
+        message: [`${name}@${version}`, `dist-tag: ${distTag}`, `registry: ${ctx.registry}`].join(
+          '\n',
+        ),
+      },
+      ctx.projectRoot,
+    );
+    logOk(`已打 git tag ${tagName} → ${plan.commit.slice(0, 8)}`);
+  } else {
+    logInfo(`git tag ${tagName} ${plan.reason}（${plan.commit.slice(0, 8)}），不重复创建`);
+  }
+
+  const manually = `git push ${remote} refs/tags/${tagName}`;
+  if (!push) {
+    logInfo(`未推送 git tag，需要时手工执行: ${manually}`);
+    return;
+  }
+
+  try {
+    pushTag({ remote, name: tagName }, ctx.projectRoot);
+    logOk(`已推送 git tag ${tagName} 到 ${remote}`);
+  } catch (error) {
+    logWarn(
+      `推送 git tag 失败（发布本身已成功）: ${(error instanceof Error ? error.message : String(error)).split('\n')[0]}`,
+    );
+    logInfo(`tag 已在本地，可手工补: ${manually}`);
+  }
 };
 
 // ============ 复用现有 dist ============

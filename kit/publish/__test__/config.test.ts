@@ -11,6 +11,8 @@ import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   CONFIG_FILE_NAMES,
+  DEFAULT_GIT_REMOTE,
+  DEFAULT_GIT_TAG,
   DEFAULT_MAINLINE_TAGS,
   DEFAULT_REGISTRY,
   findConfigFile,
@@ -40,6 +42,7 @@ describe('默认值', () => {
     expect(config.tags.defaultDeclared).toBe(false);
     expect(config.tags.byBranch).toEqual({});
     expect(config.tags.mainline).toEqual(DEFAULT_MAINLINE_TAGS);
+    expect(config.git).toEqual({ tag: DEFAULT_GIT_TAG, push: true, remote: DEFAULT_GIT_REMOTE });
     expect(config.manifest.rootEntry).toBeUndefined();
     expect(config.manifest.peerDependencies).toEqual([]);
     expect(config.manifest.exports).toBeUndefined();
@@ -60,6 +63,7 @@ describe('默认值', () => {
       registry: 'http://example.test/ ',
       distDir: 'build',
       tags: { default: 'oem', mainline: ['alpha'] },
+      git: { tag: '{name}-v{version}', push: false, remote: 'upstream ' },
       manifest: { rootEntry: 'build', peerDependencies: ['vue'], copy: [] },
     });
 
@@ -68,6 +72,7 @@ describe('默认值', () => {
     expect(config.tags.default).toBe('oem');
     expect(config.tags.defaultDeclared).toBe(true);
     expect(config.tags.mainline).toEqual(['alpha']);
+    expect(config.git).toEqual({ tag: '{name}-v{version}', push: false, remote: 'upstream' });
     expect(config.manifest.rootEntry).toBe('build');
     expect(config.manifest.peerDependencies).toEqual(['vue']);
     expect(config.manifest.copy).toEqual([]);
@@ -123,6 +128,49 @@ describe('类型不对时报错，并说清实际是什么', () => {
     expect(() => resolve({ ...minimal, manifest: { peerDependencies: 'vue' } })).toThrow(
       /manifest\.peerDependencies 必须是非空字符串数组/,
     );
+  });
+
+  it('git 不是对象', () => {
+    expect(() => resolve({ ...minimal, git: 'v{version}' })).toThrow(
+      /git 必须是对象，实际是 string "v\{version\}"/,
+    );
+  });
+
+  it('git.tag 既不是 false 也不是非空字符串', () => {
+    expect(() => resolve({ ...minimal, git: { tag: true } })).toThrow(
+      /git\.tag 必须是 false（不打 tag）或非空字符串（tag 名模板），实际是 boolean true/,
+    );
+  });
+
+  // 常量 tag 名第二次发布必然撞上自己，那一次只会被静默跳过 —— 得在加载配置时就说
+  it('git.tag 不含 {version} 时报错', () => {
+    expect(() => resolve({ ...minimal, git: { tag: 'release' } })).toThrow(
+      /git\.tag 必须含 \{version\} 占位.*常量 tag 名第二次发布必然撞名/s,
+    );
+  });
+
+  it('git.tag 为 false 表示关闭，不报错', () => {
+    expect(resolve({ ...minimal, git: { tag: false } }).git.tag).toBe(false);
+  });
+
+  it('git.push 不是 boolean', () => {
+    expect(() => resolve({ ...minimal, git: { push: 'yes' } })).toThrow(
+      /git\.push 必须是 boolean，实际是 string "yes"/,
+    );
+  });
+
+  it('git.remote 不是非空字符串', () => {
+    expect(() => resolve({ ...minimal, git: { remote: '  ' } })).toThrow(
+      /git\.remote 必须是非空字符串/,
+    );
+  });
+
+  it('git 里的未知字段只告警、不报错', () => {
+    const warnings: string[] = [];
+    const config = resolve({ ...minimal, git: { pushTag: true } }, (m) => warnings.push(m));
+
+    expect(config.git.push).toBe(true);
+    expect(warnings.join('\n')).toMatch(/git 里有无法识别的字段.*pushTag/);
   });
 
   it('hooks.afterBuild 不是函数', () => {

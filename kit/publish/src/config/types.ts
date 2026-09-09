@@ -32,6 +32,21 @@ export interface TagsConfig {
   mainline?: string[];
 }
 
+/** 发布成功后打 git tag 的配置 */
+export interface GitConfig {
+  /**
+   * tag 名模板，占位 `{version}`（本次版本号）与 `{name}`（去掉 scope 的包名）；`false` 关闭。
+   * 默认 `'v{version}'`。
+   *
+   * 模板必须含 `{version}`：常量 tag 名第二次发布必然撞名。
+   */
+  tag?: false | string;
+  /** 是否推送 tag。交互模式下作为确认框的默认值；非交互 / `-y` 直接取它。默认 true */
+  push?: boolean;
+  /** 推送目标 remote，默认 'origin' */
+  remote?: string;
+}
+
 /** manifest.exports 为函数时拿到的上下文 */
 export interface ManifestExportsContext {
   projectRoot: string;
@@ -94,6 +109,7 @@ export interface PublishConfig {
   distDir?: string;
   build: BuildConfig;
   tags?: TagsConfig;
+  git?: GitConfig;
   manifest?: ManifestConfig;
   hooks?: HooksConfig;
 }
@@ -120,6 +136,12 @@ export interface ResolvedConfig {
     defaultDeclared: boolean;
     byBranch: Record<string, string>;
     mainline: string[];
+  };
+  git: {
+    /** tag 名模板，false 表示不打 */
+    tag: string | false;
+    push: boolean;
+    remote: string;
   };
   manifest: {
     rootEntry?: string;

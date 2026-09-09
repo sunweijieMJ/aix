@@ -2,7 +2,7 @@
 
 把构建产物目录（`dist`）当作 npm 包发布到私有 registry（`http://npm-registry.zhihuishu.com:4873/`）的交互式命令行工具。
 
-版本候选推导、四道搭配校验、大包上传重试与归属判定、复用 dist 的准入门禁、dry-run 不留副作用，业务仓库只需要一份配置文件。
+版本候选推导、四道搭配校验、大包上传重试与归属判定、复用 dist 的准入门禁、dry-run 不留副作用、发布成功后给来源 commit 打 git tag，业务仓库只需要一份配置文件。
 
 ```bash
 npm run pub                          # 交互式菜单（推荐）
@@ -65,6 +65,9 @@ export default defineConfig({
 | `tags.default`             | `'latest'`                | 无任何声明时的标签。无人值守时落到它会告警                                                                              |
 | `tags.byBranch`            | `{}`                      | 分支名 → dist-tag，支持 `*` 通配、最长模式优先。声明了却读不到分支名时非交互模式拒绝发布                               |
 | `tags.mainline`            | `['beta','dev','rc']`     | 「预发布转正」只认这些序列，防止几十条 OEM 线把正式版基线拽走                                                          |
+| `git.tag`                  | `'v{version}'`            | 发布成功后打的 git tag 名模板，占位 `{version}` 与 `{name}`（去 scope 的包名）；`false` 关闭。**必须含 `{version}`**，否则加载配置时就报错 |
+| `git.push`                 | `true`                    | 是否推送 tag。交互模式下是确认框的默认值，非交互 / `-y` 直接取它                                                        |
+| `git.remote`               | `'origin'`                | 推送目标 remote                                                                                                         |
 | `manifest.rootEntry`       | 无                        | 指定时 `dist/<rootEntry>/index.js` 成为 `"."` 且**必须存在**；未指定时不硬造 `"."`（dist 根有 `index.js` 就指向它）    |
 | `manifest.peerDependencies`| `[]`                      | 由宿主提供的依赖**名单**，版本范围从根 `package.json` 取（先 `peerDependencies` 再 `dependencies`），取不到直接报错   |
 | `manifest.exports`         | 按目录派生                | 传函数 `(ctx) => Record<string, unknown>` 时整体覆盖派生结果（单文件产物的 lib 用它）                                   |
@@ -130,6 +133,8 @@ hooks: {
 | `-d, --dry-run`           | 走完整流程但不真正发布                                                        |
 | `--registry`              | 覆盖 registry（也可用环境变量 `NPM_REGISTRY`）                                |
 | `--allow-unverified-dist` | 放行一份缺少 `.build-meta.json` 的 `dist`（见下方「复用 dist 的准入门禁」）   |
+| `--no-git-tag`            | 本次不打 git tag（覆盖配置 `git.tag`）                                        |
+| `--push-tag` / `--no-push-tag` | 推 / 不推 git tag（覆盖配置 `git.push`）。两个都不传时交回配置决定        |
 
 命令行直传的 `--tag` / `--version` / `--registry`、以及配置文件里声明的标签，同样会过格式校验，不会因为绕过交互就免检。多余的位置参数会直接报错，`pub full`（漏了 `-a`）不会被静默当成完整发布。
 
@@ -231,6 +236,7 @@ tags: {
    清理跑在构建之前（残留的入口目录会被派生进 `exports`，也会让产物修复重复作用于旧文件），因此**构建失败时仓库里不会剩下任何可发布的产物** —— 报错会点明这一点，免得人去试 `-a publish` 复用产物、再撞上一条不知所云的「dist 不存在」。
 
 5. **`npm publish --tag <tag>`**，随后**回读 dist-tag** 确认指针真的落到了本次版本上，没落上就补设。
+6. **给产物来源的 commit 打一个 git tag**，可选推送（见下方「发布成功后打 git tag」）。
 
 `dist/package.json` 的 `exports` 由 `dist` 下实际产出的入口目录派生（一级目录含 `index.js` 的即为入口），新增导出只需改打包配置，不必再同步维护第二份清单。
 
@@ -263,6 +269,30 @@ tags: {
 **脏工作区打出的产物不对应任何 commit，所以 `gitHead` 记为 `<sha>-dirty`**（`git describe --dirty` 的同一套写法），确认发布之前也会点明。为什么不能干脆不写这个字段：npm 只在字段**缺失**时才补 `gitHead`（`@npmcli/package-json` 的 normalize 里是 `if (steps.includes('gitHead') && !data.gitHead)`），而 `dist` 就在仓库里，它会一路往上找到 `.git` 并填进当前 HEAD —— 省略只是把同一个误导换成由 npm 来写，还丢掉了控制权。
 
 `.build-meta.json` 只服务于本地「复用 dist 发布」，不跟着包发给消费方（内部分支名会一起泄出去），因此会同时写一份 `dist/.npmignore` 把它挡掉 —— `.npmignore` 自身也不会进包。
+
+### 发布成功后打 git tag
+
+版本号只写进 `dist/package.json`，根 `package.json` 不动，所以**仓库里没有任何「哪个 commit 发了 `x.y.z`」的记录**。现有的溯源是单向的：`.build-meta.json` → 清单里的 `gitHead`，能从 tarball 反查回 commit；反方向 —— 从仓库看发过哪些版本 —— 是缺的。git tag 补的就是这条边。默认在产物来源的 commit 上打一个 annotated tag `v<version>`，`git.tag: false` 或 `--no-git-tag` 关掉。
+
+**为什么是发布成功之后，而不是构建之后。** `-a build` 只有占位版本号（`0.0.0-local`），没什么可 tag 的；dry-run 不该在仓库里留下痕迹；而 publish 失败时留下的 tag 是假的 —— 它宣称某个版本发过，registry 上却没有。tag 是「这一版发出去了」的记录，只有发出去了才成立。
+
+**为什么钉 `.build-meta.json` 里的 commit，而不是当前 HEAD。** `-a publish` 复用产物时二者可以不是同一个：`-a build` 之后切了分支、或者产物是从别处拷过来的。tag 要指向真正打出这份产物的那次提交，与 `gitHead` 用的是同一个 commit。那个 commit 不在当前仓库里（浅克隆、换了 checkout）时跳过。
+
+**为什么脏工作区不打。** 脏工作区里打出的产物不对应任何 commit —— `gitHead` 已经如实记成了 `<sha>-dirty`，tag 却只能指向一个具体的 commit，指过去就是在说谎。`dirty` 读不到（`null`）时同样跳过：那是「不知道」，不是「干净」。
+
+**为什么 tag 名里不编 dist-tag。** 版本号推导规则本身就是 `x.y.z-<tag>.N`，通道信息已经在版本号里了，`v1.8.4-oem.1` 不需要再叫 `oem/v1.8.4-oem.1`。更要紧的是 dist-tag 是个**可移动的指针**（`latest` 明天就能指到别的版本去），而版本号不变 —— 拿可变的东西去命名一个不可变的记录，两者迟早对不上。发布通道写进 annotated tag 的 message 里，连同 registry 地址一起：
+
+```
+@kit/publish@0.1.1
+dist-tag: beta
+registry: http://npm-registry.zhihuishu.com:4873/
+```
+
+**推送的确认问在发布之前。** 大包上传要十几分钟，人早走开了，发布跑完再弹一个确认框只会把流程卡在那儿。所以确认发布之前就把「这次打不打、推不推」定下来，摘要里也有一行 `git tag:`。`-y` 与非交互环境按 `git.push` 取默认值。
+
+**任何一步失败都只降级成告警。** 打不上、推不动都不该让一次已经成功的发布报失败 —— 推送失败时会把 `git push <remote> refs/tags/<name>` 打出来，tag 已经在本地，手工补一条命令的事。
+
+**同名 tag 已经存在时绝不 `-f`。** 指向同一个 commit 就复用它（不重打，但仍然推送 —— 上次可能中断在推送之前）；指向别的 commit 就跳过并说明。后者正常走不到：版本号重复先被 registry 那道门禁挡了，只可能是上次中断的流程留下的残留。移动一个别人可能已经拉走的 tag，代价远大于这次少一个 tag。
 
 ### 发布非幂等，所以前后各有一道防护
 
@@ -308,15 +338,16 @@ Node 修掉 CVE-2024-27980 之后（18.20.2 / 20.12.2 / 22 起），Windows 上 
 | `src/core/versioning.ts`| dist-tag 与版本号的全部纯规则：候选推导、搭配告警、指针补设判定。与交互和网络无关，可单独测试                 |
 | `src/core/npm.ts`       | registry 解析（不读 `.npmrc`）、登录校验、版本查询、publish / deprecate / unpublish                          |
 | `src/core/semver.ts`    | 版本号解析、比较与推导（薄封装 `node-semver`）                                                                |
-| `src/core/git.ts`       | 分支、未提交改动、commit sha。任何失败都不阻断发布                                                            |
+| `src/core/git.ts`       | 分支、未提交改动、commit sha、tag 的读写。读操作失败不阻断发布，写操作抛错由调用方兜                          |
+| `src/core/git-tag.ts`   | git tag 的纯判定：tag 名渲染、打 / 复用 / 跳过。不 import `manifest.ts`，可单独测试                          |
 | `src/core/selfcheck.ts` | `check` 操作的实现：通用断言 + `hooks.selfCheck`                                                              |
 | `src/utils/`            | `logger`（手写 ANSI）、`exec`（一律数组传参、不经 shell）、`prompts`（`@inquirer/prompts`）、`fs-walk`（递归收 `.js` / `.mjs` / `.cjs`） |
 
 ### 判据与外壳分开放
 
-每条发布判据都拆成两层：**算结论的纯函数在 `versioning.ts`**（`collectVersionTagWarnings`、`planDistTagUpdate`），**问人 / 打日志 / 调 registry 的外壳在 `checks.ts`**。
+每条发布判据都拆成两层：**算结论的纯函数在 `versioning.ts`**（`collectVersionTagWarnings`、`planDistTagUpdate`）**与 `git-tag.ts`**（`planGitTag`），**问人 / 打日志 / 调 git 与 registry 的外壳在 `checks.ts`**。
 
-拆开是为了让判据能被离线测试拿真实数据跑 —— 判据和 CLI 解析、菜单、确认流程挤在入口里的话，一行断言都写不了。纯的那半放 `versioning.ts` 而不是 `checks.ts`，是因为 `checks.ts` 为了 `ensureBuiltDist` 要 import `manifest.ts`，会把 `es-module-lexer` 的 WASM 初始化一路拖进测试的依赖图。
+拆开是为了让判据能被离线测试拿真实数据跑 —— 判据和 CLI 解析、菜单、确认流程挤在入口里的话，一行断言都写不了。纯的那半不放 `checks.ts`，是因为 `checks.ts` 为了 `ensureBuiltDist` 要 import `manifest.ts`，会把 `es-module-lexer` 的 WASM 初始化一路拖进测试的依赖图。`git-tag.ts` 需要 `BuildMeta` 的形状，因此只 `import type` 它 —— 类型在编译期就抹掉了，不构成运行时依赖。
 
 同样的道理，目录遍历从 `dist-scan.ts` 拆到了 `utils/fs-walk.ts`：业务仓库的 `afterBuild` hook 只要遍历文件，不该因为拿了 `listJsFiles` 就得等 WASM 就绪。
 

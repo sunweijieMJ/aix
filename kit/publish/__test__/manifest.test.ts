@@ -47,6 +47,7 @@ const makeCtx = (
     distDir: 'dist',
     build: { command: ['vite', 'build'] },
     tags: { default: 'latest', defaultDeclared: false, byBranch: {}, mainline: ['beta'] },
+    git: { tag: 'v{version}', push: true, remote: 'origin' },
     manifest: { peerDependencies: [], extra: {}, copy: [], ...manifest },
     hooks: {},
   };

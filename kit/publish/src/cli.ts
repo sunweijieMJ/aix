@@ -3,7 +3,7 @@
  */
 
 import { Command, CommanderError } from 'commander';
-import { c } from './utils/logger';
+import { c, logWarn } from './utils/logger';
 import { isAbort, isInteractive, select } from './utils/prompts';
 import * as semver from './core/semver';
 import { validateTag } from './core/versioning';
@@ -34,6 +34,11 @@ const buildProgram = (): Command => {
       '允许复用一份无法确认来源的 dist（缺少 .build-meta.json）',
       false,
     )
+    .option('--no-git-tag', '本次不打 git tag（默认发布成功后打，模板见配置 git.tag）')
+    // 正反两个 option 一起定义才能得到「没传」这个第三态：只定义 --no-push-tag 的话
+    // commander 会把默认值置为 true，配置里的 git.push: false 就被命令行顶掉了
+    .option('--push-tag', '推送 git tag（覆盖配置 git.push）')
+    .option('--no-push-tag', '不推送 git tag（覆盖配置 git.push）')
     // 不接受位置参数：`pub full`（漏了 -a）是最常见的手误，放行的话它会被静默吃掉、
     // 然后照旧走完整发布 —— 多余的参数必须让它报错
     .allowExcessArguments(false);
@@ -54,6 +59,7 @@ const buildProgram = (): Command => {
       '  kit-publish -a full -t oem -v 1.8.4-oem.1 -y',
       '  kit-publish -a publish -t beta     # 复用现有 dist 重发',
       '  kit-publish -a preview -t beta     # 只看会发出什么，不实际发布',
+      '  kit-publish -a full -t beta --no-git-tag   # 照常发布，但不打 git tag',
       '  kit-publish -a deprecate           # 废弃某个版本',
       '',
       '配置文件: 从当前目录逐级向上找 publish.config.ts（其所在目录即仓库根）',
@@ -75,6 +81,8 @@ const parseCliArgs = (argv: string[]): CliArgs => {
     dryRun: boolean;
     registry?: string;
     allowUnverifiedDist: boolean;
+    gitTag: boolean;
+    pushTag?: boolean;
   }>();
 
   // 一律用 || undefined 收口：--registry "" 之类的空串既躲过下面的校验，
@@ -87,6 +95,10 @@ const parseCliArgs = (argv: string[]): CliArgs => {
     dryRun: values.dryRun,
     registry: values.registry?.trim() || undefined,
     allowUnverifiedDist: values.allowUnverifiedDist,
+    // 只定义了 --no-git-tag，commander 的默认值因此是 true —— 原样传下去会把配置里的
+    // git.tag: false 顶掉。收成「显式关掉」与「没说」两种，后者交回配置决定
+    gitTag: values.gitTag === false ? false : undefined,
+    pushTag: typeof values.pushTag === 'boolean' ? values.pushTag : undefined,
   };
 
   // 命令行传入的值同样要过校验：交互输入有 validate，CLI 直传的不能是例外
@@ -99,6 +111,9 @@ const parseCliArgs = (argv: string[]): CliArgs => {
   }
   if (args.registry && !/^https?:\/\/\S+$/.test(args.registry)) {
     throw new Error(`registry 不合法: ${args.registry}`);
+  }
+  if (args.gitTag === false && args.pushTag === true) {
+    logWarn('未打 git tag，--push-tag 无效');
   }
 
   return args;

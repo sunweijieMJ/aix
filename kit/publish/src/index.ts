@@ -10,6 +10,7 @@ export type {
   AfterBuildContext,
   BuildConfig,
   CheckFn,
+  GitConfig,
   HooksConfig,
   ManifestConfig,
   ManifestExportsContext,

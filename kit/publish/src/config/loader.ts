@@ -32,6 +32,12 @@ export const DEFAULT_MAINLINE_TAGS = ['beta', 'dev', 'rc'];
 /** 构建后默认从仓库根复制进 dist 的文件 */
 export const DEFAULT_COPY = ['README.md'];
 
+/** 发布成功后打的 git tag 名模板 */
+export const DEFAULT_GIT_TAG = 'v{version}';
+
+/** git tag 的推送目标 */
+export const DEFAULT_GIT_REMOTE = 'origin';
+
 /**
  * 配置文件候选列表。
  *
@@ -104,8 +110,9 @@ const describe = (value: unknown): string =>
           ? '对象'
           : `${typeof value} ${JSON.stringify(value)}`;
 
-const KNOWN_KEYS = ['registry', 'distDir', 'build', 'tags', 'manifest', 'hooks'];
+const KNOWN_KEYS = ['registry', 'distDir', 'build', 'tags', 'git', 'manifest', 'hooks'];
 const KNOWN_TAGS_KEYS = ['default', 'byBranch', 'mainline'];
+const KNOWN_GIT_KEYS = ['tag', 'push', 'remote'];
 const KNOWN_MANIFEST_KEYS = ['rootEntry', 'peerDependencies', 'exports', 'extra', 'copy'];
 const KNOWN_HOOKS_KEYS = ['afterBuild', 'selfCheck'];
 
@@ -209,6 +216,33 @@ export const resolveConfig = (
       ? requireStringArray(file, 'tags.mainline', tagsRaw.mainline)
       : [...DEFAULT_MAINLINE_TAGS];
 
+  // ---- git ----
+  if ('git' in raw && !isPlainObject(raw.git)) {
+    throw new Error(`${file} 的 git 必须是对象，实际是 ${describe(raw.git)}`);
+  }
+  const gitRaw = (raw.git ?? {}) as Record<string, unknown>;
+  warnUnknown(file, ' git 里', gitRaw, KNOWN_GIT_KEYS, logWarn);
+
+  if ('tag' in gitRaw && gitRaw.tag !== false && !isNonEmptyString(gitRaw.tag)) {
+    throw new Error(
+      `${file} 的 git.tag 必须是 false（不打 tag）或非空字符串（tag 名模板），实际是 ${describe(gitRaw.tag)}`,
+    );
+  }
+  // 模板不含 {version} 就是个常量名，第二次发布必然撞上自己：届时会被判为「已存在且指向别的
+  // commit」而跳过，谁也不会去看那行告警。这个错误在加载配置时就该让人知道
+  if (isNonEmptyString(gitRaw.tag) && !gitRaw.tag.includes('{version}')) {
+    throw new Error(
+      `${file} 的 git.tag 必须含 {version} 占位，实际是 ${describe(gitRaw.tag)}：` +
+        '常量 tag 名第二次发布必然撞名，那一次的 tag 会被跳过',
+    );
+  }
+  if ('push' in gitRaw && typeof gitRaw.push !== 'boolean') {
+    throw new Error(`${file} 的 git.push 必须是 boolean，实际是 ${describe(gitRaw.push)}`);
+  }
+  if ('remote' in gitRaw && !isNonEmptyString(gitRaw.remote)) {
+    throw new Error(`${file} 的 git.remote 必须是非空字符串，实际是 ${describe(gitRaw.remote)}`);
+  }
+
   // ---- manifest ----
   if ('manifest' in raw && !isPlainObject(raw.manifest)) {
     throw new Error(`${file} 的 manifest 必须是对象，实际是 ${describe(raw.manifest)}`);
@@ -265,6 +299,14 @@ export const resolveConfig = (
         Object.entries(byBranchRaw).map(([branch, tag]) => [branch, (tag as string).trim()]),
       ),
       mainline,
+    },
+    git: {
+      tag:
+        gitRaw.tag === false
+          ? false
+          : (gitRaw.tag as string | undefined)?.trim() || DEFAULT_GIT_TAG,
+      push: (gitRaw.push as boolean | undefined) ?? true,
+      remote: (gitRaw.remote as string | undefined)?.trim() || DEFAULT_GIT_REMOTE,
     },
     manifest: {
       rootEntry: (manifestRaw.rootEntry as string | undefined)?.trim(),

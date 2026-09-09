@@ -12,8 +12,15 @@ import { c, logInfo, logOk, logStep, logWarn } from '../utils/logger';
 import * as npm from './npm';
 import * as semver from './semver';
 import { validateTag } from './versioning';
-import { getBranch, getCommit } from './git';
-import { MANIFEST_FILES, readPackageName, writeManifest } from './manifest';
+import { checkRefFormat, getBranch, getCommit, getDirtyFiles, getTagCommit } from './git';
+import { planGitTag, renderTagName, type GitTagPlan } from './git-tag';
+import {
+  MANIFEST_FILES,
+  readBuildMeta,
+  readPackageName,
+  writeManifest,
+  type BuildMeta,
+} from './manifest';
 import { buildDist, LOCAL_VERSION } from './build';
 import { runSelfCheck } from './selfcheck';
 import { loadConfig, resolveConfiguredTag } from '../config/loader';
@@ -23,6 +30,7 @@ import {
   confirmVersionTagMatch,
   describeReusedDist,
   ensureBuiltDist,
+  recordGitTag,
   verifyDistTag,
 } from './checks';
 import { resolveTag, resolveVersion } from './target';
@@ -37,6 +45,10 @@ export interface CliArgs {
   dryRun: boolean;
   registry?: string;
   allowUnverifiedDist: boolean;
+  /** --no-git-tag：本次不打 git tag。未指定为 undefined，交回配置的 git.tag 决定 */
+  gitTag?: false;
+  /** --push-tag / --no-push-tag：未指定为 undefined，交回配置的 git.push 决定 */
+  pushTag?: boolean;
 }
 
 // ============ 公共上下文 ============
@@ -125,6 +137,68 @@ const withRestoredDist = async <T>(
   }
 };
 
+/**
+ * 打 git tag 之前的预判所依据的 meta。
+ *
+ * `-a full` 时 dist 里还没有 .build-meta.json（构建走完才写），拿当前工作区现拼一份等价的 ——
+ * 构建本身不产生 commit，与构建之后读到的应当一致。`-a publish` 直接读现成的那份。
+ */
+const previewBuildMeta = (ctx: PublishContext, build: boolean): BuildMeta | null => {
+  if (!build) return readBuildMeta(ctx.distPath);
+
+  const dirty = getDirtyFiles(ctx.projectRoot);
+  return {
+    commit: getCommit(ctx.projectRoot),
+    branch: getBranch(ctx.projectRoot),
+    dirty: dirty === null ? null : dirty.length > 0,
+    builtAt: new Date().toISOString(),
+  };
+};
+
+/**
+ * 确认发布之前对 git tag 的预判：名字合不合法、打在哪、还是跳过。
+ *
+ * 引用名校验放在这里而不是发布之后：模板写坏了（git.tag: 'v{version}..x'）要在确认摘要里
+ * 就看见「跳过」，而不是上传十几分钟之后才被告知没打上。
+ */
+const previewGitTag = (
+  ctx: PublishContext,
+  { tagName, build }: { tagName: string; build: boolean },
+): GitTagPlan => {
+  const formatError = checkRefFormat(tagName, ctx.projectRoot);
+  if (formatError) {
+    return {
+      action: 'skip',
+      tagName,
+      commit: '',
+      reason: `${tagName} 不是合法的引用名（${formatError}），检查配置的 git.tag`,
+    };
+  }
+  return planGitTag({
+    meta: previewBuildMeta(ctx, build),
+    tagName,
+    existingTagCommit: getTagCommit(tagName, ctx.projectRoot),
+  });
+};
+
+// 确认摘要里 git tag 那一行。plan 为 null 表示这次根本不打（配置关了，或 --no-git-tag）
+const summarizeGitTag = ({
+  isDryRun,
+  plan,
+  remote,
+  push,
+}: {
+  isDryRun: boolean;
+  plan: GitTagPlan | null;
+  remote: string;
+  push: boolean;
+}): string => {
+  if (isDryRun) return 'dry-run 不打 git tag';
+  if (!plan) return '不打';
+  if (plan.action === 'skip') return `跳过（${plan.reason}）`;
+  return `${plan.tagName} @ ${plan.commit.slice(0, 8)} → ${push ? `推送到 ${remote}` : '不推送'}`;
+};
+
 // ============ 各操作 ============
 
 // 仅构建：版本号用占位值，之后可用「仅发布」在不重新构建的前提下确定真实版本号
@@ -206,6 +280,20 @@ const runRelease = async (
     throw new Error('已取消发布');
   }
 
+  /**
+   * git tag 的预判。问在前、做在后：大包上传十几分钟，人早走开了，
+   * 发布成功之后再弹确认框只会把流程卡在那儿，所以确认发布之前就要定下打不打、推不推。
+   *
+   * 优先级 命令行 > 配置 > 默认，与 registry / dist-tag 一致。
+   */
+  const tagTemplate = args.gitTag === false ? false : config.git.tag;
+  const gitTagName =
+    tagTemplate === false ? '' : renderTagName({ template: tagTemplate, name, version });
+  // dry-run 不留 tag，也就不必预判
+  const gitTagPlan: GitTagPlan | null =
+    gitTagName && !isDryRun ? previewGitTag(ctx, { tagName: gitTagName, build }) : null;
+  const pushDefault = args.pushTag ?? config.git.push;
+
   console.log('');
   logInfo(`包名   : ${name}`);
   logInfo(`版本   : ${c.bold(version)}`);
@@ -213,8 +301,20 @@ const runRelease = async (
   logInfo(`产物   : ${build ? '重新构建' : `复用现有 ${config.distDir}`}`);
   // 复用产物时，「这份 dist 是哪个 commit 打的」正是决策依据，必须在确认之前给出
   if (!build) describeReusedDist(ctx);
+  logInfo(
+    `git tag: ${summarizeGitTag({ isDryRun, plan: gitTagPlan, remote: config.git.remote, push: pushDefault })}`,
+  );
   if (isDryRun) logWarn('dry-run 模式：不会真正发布');
   else logWarn(`真实发布：会写入 registry，并把 dist-tag ${tag} 指向 ${version}`);
+
+  // 推送是要改远端的，单独问一次；它排在「确认发布?」之前，才不会在上传跑完之后才拦人
+  const pushGitTag =
+    gitTagPlan && gitTagPlan.action !== 'skip'
+      ? await confirm(`推送 git tag ${gitTagPlan.tagName} 到 ${config.git.remote}?`, {
+          defaultValue: pushDefault,
+          skip: args.skip,
+        })
+      : false;
 
   if (!(await confirm('确认发布?', { defaultValue: true, skip: args.skip }))) {
     throw new Error('已取消发布');
@@ -262,6 +362,25 @@ const runRelease = async (
       `dist-tag 校验未能完成（发布本身已成功）: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+  // 版本号只写进 dist/package.json，仓库里没有「哪个 commit 发了 x.y.z」的记录，git tag 补这条边。
+  // 同样地，它失败了也不该把一次已经成功的发布报成失败
+  if (gitTagPlan && gitTagPlan.action !== 'skip') {
+    try {
+      recordGitTag({
+        ctx,
+        tagName: gitTagPlan.tagName,
+        name,
+        version,
+        distTag: tag,
+        push: pushGitTag,
+      });
+    } catch (error) {
+      logWarn(
+        `git tag 未能完成（发布本身已成功）: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   logInfo(`安装: npm i ${name}@${tag}  或  npm i ${name}@${version}`);
 };
 

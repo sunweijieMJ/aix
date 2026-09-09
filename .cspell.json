@@ -233,7 +233,8 @@
     "EBADPLATFORM",
     "undeprecate",
     "Retriable",
-    "ver"
+    "ver",
+    "refspec"
   ],
   "patterns": [
     {
