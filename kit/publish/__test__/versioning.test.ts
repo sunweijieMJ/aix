@@ -47,7 +47,9 @@ describe('registry 快照', () => {
   });
 });
 
-describe('候选推导（全量真实标签）', () => {
+// 这一组是对 2550 个版本 × 34 个标签做穷举校验，纯 CPU。本地约 0.4s，但 CI 的 4 vCPU runner
+// 上 turbo 并行跑着近 30 个包，实测同比例慢约 25 倍（10s 量级），5s 默认预算不够用。
+describe('候选推导（全量真实标签）', { timeout: 30_000 }, () => {
   it('每个标签的候选都合法、未发布过、无重复，且首选严格前进', () => {
     const failures = collectFailures((check) =>
       // report 传空函数：测试里不需要那几十行 “当前 → 候选” 的清单
