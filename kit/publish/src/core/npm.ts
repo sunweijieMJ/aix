@@ -163,14 +163,22 @@ const existsSafely = (name: string, version: string, registry: string): boolean 
 
 /**
  * publish 失败后判定 registry 上的同名版本是谁发的：
- *   absent  —— 不存在，这一版确实没发出去
- *   ours    —— gitHead 与本次产物一致，属于「上传成功但响应超时」
- *   foreign —— gitHead 不一致，版本号在构建期间被别人占用了
- *   unknown —— 存在但无从比对，只能交人工核对
+ *   absent      —— 不存在，这一版确实没发出去
+ *   ours        —— gitHead 与本次产物一致，属于「上传成功但响应超时」
+ *   foreign     —— gitHead 不一致，版本号在构建期间被别人占用了
+ *   unknown     —— 存在但无从比对，只能交人工核对
+ *   unreachable —— 查询自己也失败了，这一版到底发出去了没有，本轮无从知晓
  *
- * 只看「版本存在」是不够的，它区分不了后两种：构建往往要几分钟，同事在这段时间里
- * 发了同一个版本号的话，脚本会以退出码 0 谎报成功，而 dist-tag 根本没指向我们的产物。
+ * 只看「版本存在」是不够的，它区分不了 foreign 与 unknown：构建往往要几分钟，同事在这段
+ * 时间里发了同一个版本号的话，脚本会以退出码 0 谎报成功，而 dist-tag 根本没指向我们的产物。
+ *
+ * unreachable 更不能并进 absent。会走到这个函数的场合本身就是「上传失败」，其中最常见的
+ * 一类是网络不稳，而查询走的是同一条链路 —— 跟着一起失败的概率并不低。把它当成「不存在」
+ * 等于在最该谨慎的时刻替人断言「没发出去」：真相若是「已上传、只是响应丢了」，
+ * 重传拿到的是 EPUBLISHCONFLICT，一次成功的发布就被报成了失败。
  */
+type Verdict = 'absent' | 'ours' | 'foreign' | 'unknown' | 'unreachable';
+
 const judgeLanded = ({
   name,
   version,
@@ -181,13 +189,13 @@ const judgeLanded = ({
   version: string;
   registry: string;
   gitHead?: string;
-}): 'absent' | 'ours' | 'foreign' | 'unknown' => {
+}): Verdict => {
   let landedHead: string | null;
   try {
     if (!versionExists(name, version, registry)) return 'absent';
     landedHead = gitHeadOf(name, version, registry);
   } catch {
-    return 'absent';
+    return 'unreachable';
   }
 
   if (!gitHead || !landedHead) return 'unknown';
@@ -248,14 +256,129 @@ export const isTransient = (error: unknown): boolean => {
  *
  * 这些值必须写在这里而不是靠各人的 .npmrc：发布能不能成功，不该取决于谁的机器上配了什么。
  */
-const NETWORK_ARGS = ['--fetch-timeout=1800000', '--fetch-retries=0'];
+const FETCH_TIMEOUT_MS = 1800000;
+const NETWORK_ARGS = [`--fetch-timeout=${FETCH_TIMEOUT_MS}`, '--fetch-retries=0'];
+
+/** npm pack 报出的体积，只留判断用得上的三个数 */
+interface TarballSize {
+  /** gzip 之后的 tarball 字节数，即 registry 收到的那个 attachment */
+  packed: number;
+  unpacked: number;
+  entries: number;
+}
+
+const formatBytes = (bytes: number): string =>
+  bytes >= 1024 * 1024
+    ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+// tarball 被 base64 编进 JSON body，上行量涨三分之一
+const uploadBytes = (packed: number): number => Math.round((packed * 4) / 3);
+
+/** Verdaccio 的 max_body_size 默认值。前置 nginx 的 client_max_body_size 默认更小（1m） */
+const DEFAULT_BODY_LIMIT = 10 * 1024 * 1024;
+
+/**
+ * 上行体积越过服务端默认 body 上限时的告警。
+ *
+ * 这是「传到一半被断开」最常见的成因，且现象与网络抖动完全一样：服务端先回 413 再断流，
+ * 客户端还在上行，于是只看到 read ECONNRESET。判据在客户端这边只能是「疑似」——
+ * 服务端把上限调大了就没事 —— 但把这个数摆出来，至少不用靠「换台机器对比」才想到它。
+ */
+export const bodyLimitWarning = (packed: number): string | null =>
+  uploadBytes(packed) > DEFAULT_BODY_LIMIT
+    ? `上行体积超过 Verdaccio 的 max_body_size 默认值（10mb）：服务端若没调大它，上传会在传到一半时被 413 掐断，而客户端只看到 read ECONNRESET`
+    : null;
+
+/**
+ * 量一次 tarball 体积，发布前打进日志。
+ *
+ * 走 npm pack 而不是自己遍历目录相加：要的是 gzip 之后、且按 .npmignore 过滤过的那个数，
+ * 跟 publish 真正上传的是同一套打包逻辑。多打一遍包是几秒钟的事，换来的是「体积」
+ * 这个维度在日志里有据可查 —— 同一个 commit 在不同机器上打出的产物并不总是一样大
+ * （清理失败留下的旧 chunk、混进来的 sourcemap），而那恰恰能解释「只有部分机器发不上去」。
+ *
+ * 量不到就返回 null：这只是诊断信息，不该让发布本身失败 —— publish 自己还要再打一次包，
+ * 真有打包问题会在那里报出来。
+ */
+const measureTarball = (dir: string): TarballSize | null => {
+  try {
+    const output = exec(NPM, npmArgs(['pack', '--dry-run', '--json']), dir);
+    const [packed] = JSON.parse(output) as {
+      size?: number;
+      unpackedSize?: number;
+      entryCount?: number;
+    }[];
+    if (typeof packed?.size !== 'number') return null;
+    return {
+      packed: packed.size,
+      unpacked: packed.unpackedSize ?? 0,
+      entries: packed.entryCount ?? 0,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const logTarball = ({ packed, unpacked, entries }: TarballSize): void => {
+  logInfo(
+    `产物体积 ${formatBytes(packed)}（${entries} 个文件，解包后 ${formatBytes(unpacked)}），` +
+      `上行约 ${formatBytes(uploadBytes(packed))}（tarball 以 base64 编进 JSON body）`,
+  );
+  const warning = bodyLimitWarning(packed);
+  if (warning) logWarn(warning);
+};
+
+/**
+ * 「几秒钟就断」的时长阈值。
+ *
+ * 真正的链路超时会撞在 fetch-timeout 上（30 分钟），不会在一分钟内收口。一分钟内断掉的
+ * ECONNRESET 更像是被对端主动拒绝：服务端 body 上限、代理或安全软件的策略、又或者版本号
+ * 已被上一轮上传占用而中间设备把 409 转成了 RST。这三者都不会因为「等网络缓过来」而好转。
+ */
+const FAST_FAILURE_SECONDS = 60;
+
+/**
+ * 快速失败时的排查提示。
+ *
+ * 只提示、不改重试决策：判据是时长而非确证，拿它去阻断一次可能真的是抖动的重试并不划算。
+ * 但错误文本一律是 read ECONNRESET，不给方向的话，人只会照着「网络问题」查下去 ——
+ * 而上面三种成因没有一个能靠重试解决。
+ */
+export const fastFailureHint = ({
+  seconds,
+  name,
+  version,
+  registry,
+  packed,
+}: {
+  seconds: number;
+  name: string;
+  version: string;
+  registry: string;
+  packed?: number;
+}): string | null => {
+  if (seconds >= FAST_FAILURE_SECONDS) return null;
+  const body = packed ? `上行约 ${formatBytes(uploadBytes(packed))} 的 body，却` : '';
+
+  return [
+    `${body}只用 ${formatDuration(seconds)} 就断连，离 fetch-timeout（${FETCH_TIMEOUT_MS / 60000} 分钟）很远，不像链路超时。`,
+    `   这种「快速被断」按下面三处查，等它自己好通常没用:`,
+    `   1) 服务端 body 上限: Verdaccio max_body_size（默认 10mb）/ 前置 nginx client_max_body_size（默认 1m），看服务端日志里有没有 413`,
+    `   2) 代理与安全软件: npm config get proxy https-proxy noproxy${process.platform === 'win32' ? '、netsh winhttp show proxy' : ''}`,
+    `   3) 版本号是否已被上一轮上传占用: npm view ${name}@${version} gitHead --registry=${registry}`,
+  ].join('\n');
+};
 
 /**
  * 拿 registry 上的实际状态，给一次失败的 publish 定性。
  *
- * 返回 true 表示「其实已经入库了」，调用方应当直接收工；false 表示确实没发出去，可以重试。
+ * landed 表示「其实已经入库了」，调用方应当直接收工；absent 表示确实没发出去，可以重传；
+ * unreachable 表示这一轮没查清，调用方不能据此重传（见 judgeLanded 的注释）。
  * 版本号被他人占用、或存在但无从比对来源的情况一律抛错交人工，不在这里替人做主。
  */
+type Settlement = 'landed' | 'absent' | 'unreachable';
+
 const settleByRegistry = ({
   name,
   version,
@@ -268,13 +391,13 @@ const settleByRegistry = ({
   registry: string;
   gitHead?: string;
   cause: unknown;
-}): boolean => {
+}): Settlement => {
   const verdict = judgeLanded({ name, version, registry, gitHead });
   if (verdict === 'ours') {
     logWarn(
       `npm publish 报错，但 registry 上的 ${name}@${version} 来源 commit 与本次产物一致，判定为「上传成功、响应超时」`,
     );
-    return true;
+    return 'landed';
   }
   if (verdict === 'foreign') {
     throw new Error(
@@ -288,8 +411,40 @@ const settleByRegistry = ({
       { cause },
     );
   }
-  return false;
+  if (verdict === 'unreachable') {
+    logWarn(
+      `连不上 registry，本轮无从判定 ${name}@${version} 是否已入库（查询与上传走的是同一条链路）`,
+    );
+    return 'unreachable';
+  }
+  return 'absent';
 };
+
+/**
+ * 两次定性都没连上 registry 时抛出的错误。
+ *
+ * 必须停在这里交人工，而不是再传一轮：真相若是「已上传、只是响应丢了」，重传拿到的是
+ * EPUBLISHCONFLICT —— 一次成功的发布被报成失败，人还得反过来怀疑 registry 上那一版是谁发的。
+ * 停下来的代价只是手动核对一条命令，判错的代价是一个已经发出去、却没人认领的版本。
+ */
+const unconfirmable = ({
+  name,
+  version,
+  registry,
+  cause,
+}: {
+  name: string;
+  version: string;
+  registry: string;
+  cause: unknown;
+}): Error =>
+  new Error(
+    `npm publish 失败，且查询 registry 也失败，无从确认 ${name}@${version} 是否已经入库。\n` +
+      `不再重传：这一版若其实已上传成功，重传只会拿到 EPUBLISHCONFLICT，把一次成功的发布报成失败。\n` +
+      `请等网络恢复后手动核对，再决定是否重发:\n\n` +
+      `  npm view ${name}@${version} gitHead --registry=${registry}\n`,
+    { cause },
+  );
 
 /**
  * 发布。npm publish 不是幂等操作，因此重试前必须先确认这一版是否其实已经入库：
@@ -302,6 +457,9 @@ const settleByRegistry = ({
  *
  * 退避是 30s / 60s：每次尝试都要传十几分钟，按「瞬时抖动」设的几秒钟退避
  * 等于网络还没缓过来就再撞一次。
+ *
+ * 两次定性都没能连上 registry 时不再重传，改抛错交人工：这一版是否已入库始终没查清，
+ * 而重传一个其实已入库的版本，换来的是 EPUBLISHCONFLICT 与一次被谎报成失败的发布。
  */
 export const publish = async (
   dir: string,
@@ -336,10 +494,19 @@ export const publish = async (
     ...(dryRun ? ['--dry-run'] : []),
   ]);
 
+  // 体积摆在上传之前：失败原因里「越过服务端 body 上限」与「网络抖动」的报错文本一模一样
+  //（都是 read ECONNRESET），而前者只要看一眼这个数就能排除或者确认
+  const size = measureTarball(dir);
+  if (size) logTarball(size);
+
   // 墙钟预算。单次尝试最长就是 fetch-timeout（30 分钟），三次尝试能占住终端一个半小时以上；
   // 已经烧掉一小时还没成的，再开一轮 30 分钟也不会有新信息，不如把失败交回给人
   const startedAt = Date.now();
   const overBudget = () => Date.now() - startedAt >= budgetMs;
+
+  // dry-run 不写 registry，无从也无须定性
+  const settle = (cause: unknown): Settlement =>
+    dryRun ? 'absent' : settleByRegistry({ name, version, registry, gitHead, cause });
 
   // 版本号可用性是在构建之前查的，而构建要几分钟：紧贴 publish 再确认一次，
   // 把「构建期间被别人占用」在发布前变成明确错误，而不是等发布失败后无从分辨
@@ -356,9 +523,31 @@ export const publish = async (
       logInfo(`上传用时 ${formatDuration(stop())}`);
       return;
     } catch (error) {
-      logWarn(`第 ${attempt} 次上传失败，用时 ${formatDuration(stop())}`);
+      const elapsed = stop();
+      logWarn(`第 ${attempt} 次上传失败，用时 ${formatDuration(elapsed)}`);
 
-      if (!dryRun && settleByRegistry({ name, version, registry, gitHead, cause: error })) return;
+      // 网络类报错才提示：E403 之类的确定性错误配上「查代理」只是噪音
+      if (isTransient(error)) {
+        const hint = fastFailureHint({
+          seconds: elapsed,
+          name,
+          version,
+          registry,
+          packed: size?.packed,
+        });
+        if (hint) logWarn(hint);
+      }
+
+      const verdict = settle(error);
+      if (verdict === 'landed') return;
+
+      // 这一轮没查清是否已入库：还要重试的话退避之后还有一次机会查清，就此收尾的话
+      // 不能拿原始错误糊过去 —— 那等于替人断言「没发出去」
+      const lastRound = attempt >= retries || !isTransient(error) || overBudget();
+      if (verdict === 'unreachable' && lastRound) {
+        throw unconfirmable({ name, version, registry, cause: error });
+      }
+
       if (attempt >= retries || !isTransient(error)) throw error;
       if (overBudget()) {
         logWarn(
@@ -372,7 +561,13 @@ export const publish = async (
       await sleep(wait);
 
       // 退避这段时间足够 registry 把上一轮的写入落地，再判一次，别让已经成功的那一版被重传
-      if (!dryRun && settleByRegistry({ name, version, registry, gitHead, cause: error })) return;
+      const settled = settle(error);
+      if (settled === 'landed') return;
+      // 失败当下与退避之后都没连上 registry：这一版是否已入库始终没查清，不敢重传。
+      // 只要有一次查清了「不存在」，重传就是安全的
+      if (verdict === 'unreachable' && settled === 'unreachable') {
+        throw unconfirmable({ name, version, registry, cause: error });
+      }
     }
   }
 };

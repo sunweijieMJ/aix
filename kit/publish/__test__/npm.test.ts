@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { errorText, isTransient } from '../src/core/npm';
+import { bodyLimitWarning, errorText, fastFailureHint, isTransient } from '../src/core/npm';
 import type { ExecError } from '../src/utils/exec';
 
 /** 造一个 exec 失败时抛出的错误对象 */
@@ -96,5 +96,43 @@ describe('isTransient', () => {
     // js/useNetworkStatus-*.js 里的 network 是 TRANSIENT 那条正则的裸词
     const error = execError({ stderr: `${NOTICE_NOISE}\nnpm error code E403 Forbidden` });
     expect(isTransient(error)).toBe(false);
+  });
+});
+
+describe('bodyLimitWarning', () => {
+  // 上限是按 base64 之后的 body 算的：8MB 的 tarball 上行已经 10.7MB，越过了 Verdaccio 的默认值
+  it('上行体积越过服务端默认上限时告警', () => {
+    expect(bodyLimitWarning(8 * 1024 * 1024)).toContain('max_body_size');
+  });
+
+  it('压在上限之内的不告警', () => {
+    expect(bodyLimitWarning(7 * 1024 * 1024)).toBeNull();
+    expect(bodyLimitWarning(1024)).toBeNull();
+  });
+});
+
+describe('fastFailureHint', () => {
+  const target = { name: '@demo/pkg', version: '1.0.0', registry: 'http://registry.test:4873/' };
+
+  it('一分钟内断连时给出三个排查方向，并报出上行体积', () => {
+    const hint = fastFailureHint({ ...target, seconds: 9, packed: 20 * 1024 * 1024 });
+
+    expect(hint).toContain('26.7 MB');
+    expect(hint).toContain('max_body_size');
+    expect(hint).toContain('noproxy');
+    expect(hint).toContain('npm view @demo/pkg@1.0.0');
+  });
+
+  // 传够久才断的更可能真是链路问题，那时提示「查代理」是误导
+  it('传够久才失败的不提示', () => {
+    expect(fastFailureHint({ ...target, seconds: 60, packed: 20 * 1024 * 1024 })).toBeNull();
+    expect(fastFailureHint({ ...target, seconds: 1800 })).toBeNull();
+  });
+
+  it('体积没量到时照旧给方向，只是不提上行体积', () => {
+    const hint = fastFailureHint({ ...target, seconds: 5 });
+
+    expect(hint).toContain('max_body_size');
+    expect(hint).not.toContain('上行约');
   });
 });

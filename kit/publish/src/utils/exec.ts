@@ -55,6 +55,10 @@ export const exec = (file: string, args: readonly string[] = [], cwd?: string): 
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
       cwd,
+      // 默认的 1MB 太窄：`npm pack --json` 会把整份文件清单（几千个文件）打进 stdout，
+      // 几千个版本的 `npm view versions --json` 也不算小。越界时 execFileSync 抛 ENOBUFS，
+      // 对调用方就是「命令失败」，而它其实成功了 —— 放宽比事后分辨这种失败便宜得多
+      maxBuffer: 64 * 1024 * 1024,
     })
       .toString()
       .trim();
