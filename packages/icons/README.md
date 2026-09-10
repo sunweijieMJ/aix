@@ -28,13 +28,13 @@ pnpm add @aix/icons
 <template>
   <div style="display: flex; gap: 16px; font-size: 24px;">
     <Camera />
-    <Search color="blue" />
+    <IconSearch color="blue" />
     <Home color="green" :width="32" :height="32" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { Camera, Search, Home } from '@aix/icons';
+import { Camera, IconSearch, Home } from '@aix/icons';
 </script>
 ```
 
@@ -47,7 +47,7 @@ import { Camera, Search, Home } from '@aix/icons';
     <Camera :width="24" :height="24" color="red" />
 
     <!-- 使用 style 属性 -->
-    <Search :style="{ fontSize: '24px', color: 'blue' }" />
+    <IconSearch :style="{ fontSize: '24px', color: 'blue' }" />
 
     <!-- 响应点击事件 -->
     <Home
@@ -58,7 +58,7 @@ import { Camera, Search, Home } from '@aix/icons';
 </template>
 
 <script setup lang="ts">
-import { Camera, Search, Home } from '@aix/icons';
+import { Camera, IconSearch, Home } from '@aix/icons';
 
 const handleClick = () => {
   console.log('图标被点击');
@@ -75,11 +75,11 @@ const handleClick = () => {
 ```vue
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '32px' }">
-    <BaoKongRenYuanJianKong title="保控人员监控" />
-    <CarFakeLicensed title="车辆假牌" />
-    <Default title="默认应用" />
-    <HuoDongGuiJi title="活动轨迹" />
-    <StatisticAll title="统计全部" />
+    <BaoKongRenYuanJianKong />
+    <CarFakeLicensed />
+    <Default />
+    <HuoDongGuiJi />
+    <StatisticAll />
   </div>
 </template>
 
@@ -101,11 +101,11 @@ import {
 ```vue
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '32px', color: '#1890ff' }">
-    <Camera title="摄像头" />
-    <Computer title="计算机" />
-    <JingWuTongFilled title="警务通" />
-    <ZhiAnZhuaPaiJiFilled title="智安抓拍机" />
-    <SheXiangTouFilled title="摄像头" />
+    <Camera />
+    <Computer />
+    <JingWuTongFilled />
+    <ZhiAnZhuaPaiJiFilled />
+    <SheXiangTouFilled />
   </div>
 </template>
 
@@ -127,12 +127,12 @@ import {
 ```vue
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '24px' }">
-    <Edit :style="{ color: '#52c41a' }" title="编辑" />
-    <Delete :style="{ color: '#ff4d4f' }" title="删除" />
-    <Copy :style="{ color: '#1890ff' }" title="复制" />
-    <Cut :style="{ color: '#fa8c16' }" title="剪切" />
-    <Send :style="{ color: '#722ed1' }" title="发送" />
-    <Dashboard :style="{ color: '#13c2c2' }" title="仪表板" />
+    <Edit :style="{ color: '#52c41a' }" />
+    <Delete :style="{ color: '#ff4d4f' }" />
+    <Copy :style="{ color: '#1890ff' }" />
+    <Cut :style="{ color: '#fa8c16' }" />
+    <Send :style="{ color: '#722ed1' }" />
+    <Dashboard :style="{ color: '#13c2c2' }" />
   </div>
 </template>
 
@@ -155,12 +155,12 @@ import {
 ```vue
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '28px', color: '#faad14' }">
-    <Folder title="文件夹" />
-    <FolderOpen title="打开文件夹" />
-    <File title="文件" />
-    <Description title="文档" />
-    <PictureAsPdf title="PDF文件" />
-    <Assignment title="任务" />
+    <Folder />
+    <FolderOpen />
+    <File />
+    <Description />
+    <PictureAsPdf />
+    <Assignment />
   </div>
 </template>
 
@@ -183,7 +183,7 @@ import {
 ```vue
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '24px' }">
-    <Search :style="{ color: '#1890ff' }" />
+    <IconSearch :style="{ color: '#1890ff' }" />
     <Add :style="{ color: '#52c41a' }" />
     <Close :style="{ color: '#ff4d4f' }" />
     <Check :style="{ color: '#52c41a' }" />
@@ -196,7 +196,7 @@ import {
 
 <script setup lang="ts">
 import {
-  Search,
+  IconSearch,
   Add,
   Close,
   Check,
@@ -215,12 +215,12 @@ import {
 ```vue
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '26px', color: '#eb2f96' }">
-    <Photo title="照片" />
-    <Eye title="查看" />
-    <Crop title="裁剪" />
-    <Filter title="滤镜" />
-    <Brightness title="亮度" />
-    <FrameFace title="人脸框选" />
+    <Photo />
+    <Eye />
+    <Crop />
+    <FilterBAndW />
+    <Brightness />
+    <FrameFace />
   </div>
 </template>
 
@@ -229,7 +229,7 @@ import {
   Photo,
   Eye,
   Crop,
-  Filter,
+  FilterBAndW,
   Brightness,
   FrameFace
 } from '@aix/icons';
@@ -243,19 +243,19 @@ import {
 ```vue
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '26px', color: '#13c2c2' }">
-    <LocationOn title="位置" />
-    <Map title="地图" />
-    <Navigation title="导航" />
-    <Car title="汽车" />
-    <Building title="建筑" />
-    <Police title="警察" />
+    <LocationOn />
+    <IconMap />
+    <Navigation />
+    <Car />
+    <Building />
+    <Police />
   </div>
 </template>
 
 <script setup lang="ts">
 import {
   LocationOn,
-  Map,
+  IconMap,
   Navigation,
   Car,
   Building,
@@ -271,12 +271,12 @@ import {
 ```vue
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '24px' }">
-    <Notifications :style="{ color: '#1890ff' }" title="通知" />
-    <Warning :style="{ color: '#fa8c16' }" title="警告" />
-    <Error :style="{ color: '#ff4d4f' }" title="错误" />
-    <InfoOutline :style="{ color: '#52c41a' }" title="信息" />
-    <Schedule :style="{ color: '#722ed1' }" title="计划" />
-    <Event :style="{ color: '#13c2c2' }" title="事件" />
+    <Notifications :style="{ color: '#1890ff' }" />
+    <Warning :style="{ color: '#fa8c16' }" />
+    <Error :style="{ color: '#ff4d4f' }" />
+    <InfoOutline :style="{ color: '#52c41a' }" />
+    <Schedule :style="{ color: '#722ed1' }" />
+    <Event :style="{ color: '#13c2c2' }" />
   </div>
 </template>
 
@@ -299,12 +299,12 @@ import {
 ```vue
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '28px', color: '#f759ab' }">
-    <Play title="播放" />
-    <Pause title="暂停" />
-    <Videocam title="摄像机" />
-    <VolumeUp title="音量" />
-    <Fullscreen title="全屏" />
-    <SlowMotionVideo title="慢动作" />
+    <Play />
+    <Pause />
+    <Videocam />
+    <VolumeUp />
+    <Fullscreen />
+    <SlowMotionVideo />
   </div>
 </template>
 
@@ -349,12 +349,12 @@ import { Camera } from '@aix/icons';
 <template>
   <div :style="{ display: 'flex', gap: '16px', fontSize: '32px' }">
     <!-- 单色图标 -->
-    <Search :style="{ color: '#1890ff' }" />
-    <Search :style="{ color: '#52c41a' }" />
-    <Search :style="{ color: '#ff4d4f' }" />
+    <IconSearch :style="{ color: '#1890ff' }" />
+    <IconSearch :style="{ color: '#52c41a' }" />
+    <IconSearch :style="{ color: '#ff4d4f' }" />
 
     <!-- 渐变色 -->
-    <Search
+    <IconSearch
       :style="{
         background: 'linear-gradient(45deg, #1890ff, #722ed1)',
         WebkitBackgroundClip: 'text',
@@ -365,7 +365,7 @@ import { Camera } from '@aix/icons';
 </template>
 
 <script setup lang="ts">
-import { Search } from '@aix/icons';
+import { IconSearch } from '@aix/icons';
 </script>
 ```
 
@@ -431,6 +431,9 @@ import { Loading, Refresh } from '@aix/icons';
 | style | CSSProperties | - | ❌ | 自定义样式对象（支持所有 CSS 属性） |
 | class | string | - | ❌ | CSS 类名 |
 
+> 没有 `title` 属性。透传上去只会变成 `<svg title="…">`，SVG 不认这个属性、不会有提示气泡；
+> 需要无障碍名称请用 `aria-label`，需要悬浮提示请在外层包一个带 `title` 的元素。
+
 **事件支持**：通过 `v-bind="$attrs"` 支持所有原生 DOM 事件，包括：
 - `@click` - 点击事件
 - `@mouseenter` - 鼠标进入事件
@@ -467,7 +470,7 @@ import { Loading, Refresh } from '@aix/icons';
   <!-- 在 Ant Design Vue 中使用 -->
   <a-button>
     <template #icon>
-      <Search :style="{ fontSize: '16px' }" />
+      <IconSearch :style="{ fontSize: '16px' }" />
     </template>
     搜索
   </a-button>
@@ -481,7 +484,7 @@ import { Loading, Refresh } from '@aix/icons';
 </template>
 
 <script setup lang="ts">
-import { Camera, Search, Setting } from '@aix/icons';
+import { Camera, IconSearch, Setting } from '@aix/icons';
 </script>
 ```
 
@@ -526,7 +529,7 @@ import {
 ```vue
 <script setup lang="ts">
 // ✅ 推荐：按需导入
-import { Camera, Search } from '@aix/icons';
+import { Camera, IconSearch } from '@aix/icons';
 
 // ❌ 不推荐：全量导入
 // import * as Icons from '@aix/icons';
@@ -570,14 +573,14 @@ A: 使用 `style` 对象中的 `color` 属性或 `color` prop 设置颜色：
 ```vue
 <template>
   <!-- 方式1：使用 style -->
-  <Search :style="{ color: '#1890ff' }" />
+  <IconSearch :style="{ color: '#1890ff' }" />
 
   <!-- 方式2：使用 color prop -->
-  <Search color="#1890ff" />
+  <IconSearch color="#1890ff" />
 </template>
 
 <script setup lang="ts">
-import { Search } from '@aix/icons';
+import { IconSearch } from '@aix/icons';
 </script>
 ```
 

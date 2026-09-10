@@ -14,7 +14,7 @@ pnpm add @aix/flow-graph
 <script setup lang="ts">
 import { ref } from 'vue'
 import { FlowGraph } from '@aix/flow-graph'
-import type { FlowNode, FlowEdge, Connection } from '@aix/flow-graph'
+import type { FlowNode, FlowEdge, FlowConnection } from '@aix/flow-graph'
 
 const nodes = ref<FlowNode[]>([
   { id: '1', position: { x: 80, y: 120 } },
@@ -25,7 +25,7 @@ const edges = ref<FlowEdge[]>([
   { id: 'e1-2', source: '1', target: '2', label: '主链路' },
 ])
 
-function onConnect(connection: Connection) {
+function onConnect(connection: FlowConnection) {
   edges.value.push({
     id: `e-${connection.source}-${connection.target}-${Date.now()}`,
     source: connection.source,
@@ -40,57 +40,12 @@ function onConnect(connection: Connection) {
   <FlowGraph
     v-model:nodes="nodes"
     v-model:edges="edges"
-    mode="edit"
-    :fit-view-on-init="true"
+    :connectable="true"
     style="width: 100%; height: 480px"
     @connect="onConnect"
   />
 </template>
 ```
-
-## Props
-
-| 属性 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `nodes` | `FlowNode[]` | `[]` | 节点数据，支持 `v-model:nodes` |
-| `edges` | `FlowEdge[]` | `[]` | 边数据，支持 `v-model:edges` |
-| `mode` | `'edit' \| 'view'` | `'edit'` | 编辑/只读模式 |
-| `nodesSelectable` | `boolean` | `true` | 是否允许选择节点和边 |
-| `nodesDraggable` | `boolean` | `true` | 是否允许拖拽节点 |
-| `nodesConnectable` | `boolean` | `true` | 是否允许发起连线 |
-| `showControls` | `boolean` | `true` | 是否显示缩放控制条 |
-| `showMinimap` | `boolean` | `false` | 是否显示缩略图 |
-| `showAddNodeButton` | `boolean` | `true` | 是否显示底部添加节点按钮 |
-| `background` | `'dots' \| 'lines' \| 'cross' \| false` | `'dots'` | 背景样式，`cross` 会降级为 `dots` |
-| `fitViewOnInit` | `boolean` | `false` | 初始化时是否自动适配视口 |
-
-## Events
-
-| 事件名 | 参数 | 说明 |
-|--------|------|------|
-| `connect` | `(connection: Connection)` | 用户完成一条连线 |
-| `node-click` | `(event: MouseEvent, node: FlowNode)` | 节点点击 |
-| `edge-click` | `(event: MouseEvent, edge: FlowEdge)` | 边点击 |
-| `selection-change` | `({ nodes, edges })` | 选中元素变化 |
-| `add-node-request` | `()` | 点击底部添加节点按钮 |
-
-## Slots
-
-| 插槽名 | 说明 |
-|--------|------|
-| `toolbar` | 顶部工具栏 |
-| `controls` | 自定义缩放控制条 |
-| `minimap` | 自定义缩略图 |
-| `progress` | 底部操作区扩展内容 |
-
-## 暴露方法
-
-- `fitView()`
-- `zoomIn() / zoomOut()`
-- `setViewport() / getViewport()`
-- `addNode() / removeNode() / updateNode() / getNode()`
-- `addEdge() / removeEdge() / updateEdge() / getEdge()`
-- `selectAll() / clearSelection()`
 
 ## API
 
@@ -134,3 +89,15 @@ function onConnect(connection: Connection) {
 | 插槽名 | 说明 |
 |--------|------|
 | `bottom-bar` | - |
+
+### 暴露方法
+
+通过模板 ref 获取实例（类型为 `FlowGraphInstance`）：
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `fitView` | `(params?: { nodes?: string[]; duration?: number; padding?: number }) => void` | 适应视图（包裹所有节点） |
+| `addNode` | `() => void` | 在视口中心螺旋寻位新建一个圆形节点 |
+| `openSearch` | `() => void` | 打开搜索面板并 focus |
+| `closeSearch` | `() => void` | 关闭搜索面板并清空高亮 |
+| `resetNodeStates` | `() => void` | 重置所有节点的交互状态（active / context / selecting） |
